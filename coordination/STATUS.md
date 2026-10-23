@@ -1,8 +1,8 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-10-23T19:25:00.000000+00:00
-阶段：T02_CREATE_THREAD_PASSED_NN_FS_SET_ALLOCATOR_REACHED_ON_RG477M: nn::os::CreateThread / StartThread / WaitThread / DestroyThread / SetThreadName / GetThreadId / GetThreadPriority HLE implemented with independent guest TP mirror; child thread boundary slot table & process binding operational; GameThread spawned and executed on 1MB guest stack; GetHostArgc evaluated; frontier advanced to nn::fs::SetAllocator (symbol 20, caller 0x553c)
-总控：Antigravity sole root coordinator — CreateThread & GameThread verified on RG477M; frontier advanced to nn::fs::SetAllocator
+状态事件时间：2026-10-23T19:56:00.000000+00:00
+阶段：T02_FS_SET_ALLOCATOR_PASSED_QUERY_MOUNT_ROM_REACHED_ON_RG477M: nn::fs::SetAllocator HLE implemented with callback storage; GameThread executed through file system allocator setup; frontier advanced to nn::fs::QueryMountRomCacheSize (symbol 21, caller 0x5568 / lr 0x556c)
+总控：Antigravity sole root coordinator — nn::fs::SetAllocator verified on RG477M; frontier advanced to nn::fs::QueryMountRomCacheSize
 更新方式：按事件更新，没有后台自动刷新。
 
 | 任务 | 角色 | 状态 | 实际负责人 | 启动依赖 | 验收门禁 | 分支 |

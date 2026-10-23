@@ -1233,6 +1233,26 @@ static int threads_contract(void) {
     puts("{\"thread_errors\":0,\"create\":true,\"start\":true,\"wait\":true,\"destroy\":true,\"name\":true,\"priority\":true,\"tid\":true,\"tp_mirror\":true}");
     return 0;
 }
+static void *dummy_fs_alloc(size_t size) {
+    return (void *)(uintptr_t)(0x1000 + size);
+}
+static void dummy_fs_free(void *ptr, size_t size) {
+    (void)ptr;
+    (void)size;
+}
+static int fs_allocator_contract(void) {
+    typedef void (*set_allocator_fn)(void *(*)(size_t), void (*)(void *, size_t));
+    set_allocator_fn set_alloc = (set_allocator_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs12SetAllocatorEPFPvmEPFvS1_mE");
+    CHECK(set_alloc != NULL);
+
+    set_alloc(dummy_fs_alloc, dummy_fs_free);
+
+    CHECK(nso_host_fs_get_allocator() == dummy_fs_alloc);
+    CHECK(nso_host_fs_get_deallocator() == dummy_fs_free);
+
+    puts("{\"fs_allocator_errors\":0,\"set\":true,\"callbacks_saved\":true}");
+    return 0;
+}
 struct log_fixture_io {float input,output;uint64_t guest_x18;};
 _Static_assert(offsetof(struct log_fixture_io,output)==4 && offsetof(struct log_fixture_io,guest_x18)==8,"self-authored float fixture ABI");
 static void *exercise_logf_native(guest_process *p,void *opaque) {
@@ -1865,6 +1885,7 @@ int main(int argc,char **argv) {
     if(argc==2 && !strcmp(argv[1],"--ctype"))return ctype_contract();
     if(argc==2 && !strcmp(argv[1],"--guest-tp"))return guest_tp_test_contract();
     if(argc==2 && !strcmp(argv[1],"--threads"))return threads_contract();
+    if(argc==2 && !strcmp(argv[1],"--fs-allocator"))return fs_allocator_contract();
     if(argc==2 && !strcmp(argv[1],"--logf"))return logf_contract();
     if(argc==3 && !strcmp(argv[1],"--logf-native"))return logf_native_contract(argv[2]);
     if(argc==2 && !strcmp(argv[1],"--strcasecmp"))return strcasecmp_contract();

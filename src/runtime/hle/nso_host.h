@@ -67,6 +67,12 @@ uint64_t nso_host_get_thread_available_core_mask(void);
 void *nso_host_get_current_thread(void);
 int32_t nso_host_movie_get_thread_priority(void);
 void nso_host_movie_set_thread_priority(int32_t p);
+
+typedef void *(*nn_fs_alloc_fn)(size_t);
+typedef void (*nn_fs_free_fn)(void *, size_t);
+void nso_host_fs_set_allocator(nn_fs_alloc_fn alloc, nn_fs_free_fn free_fn);
+nn_fs_alloc_fn nso_host_fs_get_allocator(void);
+nn_fs_free_fn nso_host_fs_get_deallocator(void);
 #ifdef __cplusplus
 }
 #endif

@@ -567,6 +567,24 @@ int32_t nso_host_movie_get_thread_priority(void) {
 void nso_host_movie_set_thread_priority(int32_t p) {
     (void)p;
 }
+
+static nn_fs_alloc_fn s_fs_alloc = NULL;
+static nn_fs_free_fn s_fs_free = NULL;
+
+void nso_host_fs_set_allocator(nn_fs_alloc_fn alloc, nn_fs_free_fn free_fn) {
+    s_fs_alloc = alloc;
+    s_fs_free = free_fn;
+    fprintf(stderr, "[hle] nn::fs::SetAllocator: alloc=%p free=%p\n", (void *)alloc, (void *)free_fn);
+}
+
+nn_fs_alloc_fn nso_host_fs_get_allocator(void) {
+    return s_fs_alloc;
+}
+
+nn_fs_free_fn nso_host_fs_get_deallocator(void) {
+    return s_fs_free;
+}
+
 void nso_host_set_extension_resolver(nso_import_fn resolver) {extension_resolver=resolver;}
 uint64_t nso_host_resolve(uint32_t index,const char *name) {
     if(!name)return 0;
@@ -575,6 +593,8 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
     if(!strcmp(name,"__cxa_guard_release"))return (uint64_t)(uintptr_t)&__cxa_guard_release;
     if(!strcmp(name,"__cxa_guard_abort"))return (uint64_t)(uintptr_t)&__cxa_guard_abort;
 #endif
+    if(!strcmp(name,"_ZN2nn2fs12SetAllocatorEPFPvmEPFvS1_mE") || !strcmp(name,"nnfsSetAllocator"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_set_allocator;
     if(!strcmp(name,"_ZN2nn4util11ReferSymbolEPKv") || !strcmp(name,"nnutilReferSymbol"))
         return (uint64_t)(uintptr_t)&refer_symbol;
     if(!strcmp(name,"_ZN2nn4util12GenerateUuidEv"))

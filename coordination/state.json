@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-10-23T19:25:00.000000+00:00",
-  "phase": "T02_CREATE_THREAD_PASSED_NN_FS_SET_ALLOCATOR_REACHED_ON_RG477M: nn::os::CreateThread / StartThread / WaitThread / DestroyThread / SetThreadName / GetThreadId / GetThreadPriority HLE implemented with independent guest TP mirror; child thread boundary slot table & process binding operational; GameThread spawned and executed on 1MB guest stack; GetHostArgc evaluated; frontier advanced to nn::fs::SetAllocator (symbol 20, caller 0x553c)",
-  "coordinator": "Antigravity sole root coordinator — CreateThread & GameThread verified on RG477M; frontier advanced to nn::fs::SetAllocator",
+  "updated_at": "2026-10-23T19:56:00.000000+00:00",
+  "phase": "T02_FS_SET_ALLOCATOR_PASSED_QUERY_MOUNT_ROM_REACHED_ON_RG477M: nn::fs::SetAllocator HLE implemented with callback storage; GameThread executed through file system allocator setup; frontier advanced to nn::fs::QueryMountRomCacheSize (symbol 21, caller 0x5568 / lr 0x556c)",
+  "coordinator": "Antigravity sole root coordinator — nn::fs::SetAllocator verified on RG477M; frontier advanced to nn::fs::QueryMountRomCacheSize",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
   "active_writers": [
