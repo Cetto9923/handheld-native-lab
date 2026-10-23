@@ -51,11 +51,36 @@ static int usage(const char *program) {
     fprintf(stderr,"usage: %s <uncompressed.nso> [--init-wrapper|--init-elf] --info|--call <offset> [arg0 ... arg5]|--symbol <name> [args]\n",program);
 #ifdef NSO_WITH_GUEST_PROFILE
     fputs("owned experiment: after path, supply --guest-quota <bytes> --guest-stack <bytes> [--guest-resource-quota <bytes>] [--guest-arg <literal> ...]; resource provider has no default; complete guest argv including argv0, default explicitly empty; no original SVC measurement\n",stderr);
+    fputs("owned --startup-allocator is an isolated original allocator contract; not normal SDK/CRT boot\n",stderr);
 #endif
     return 2;
 }
 #ifdef NSO_WITH_GUEST_PROFILE
-struct profile_entry {int info,init,by_symbol,rc;unsigned argument_count;nso_init_policy policy;const char *target;uint64_t off,args[6];};
+struct profile_entry {int info,init,by_symbol,rc,allocator_diagnostic;unsigned argument_count;nso_init_policy policy;const char *target;uint64_t off,args[6];};
+/* Explicit isolated allocator contract, not the normal SDK/CRT boot order. */
+static int exercise_original_allocator(guest_process *p) {
+    void *blocks[2]={NULL,NULL};
+    const size_t sizes[2]={48,64};
+    int failed=0;
+    for(unsigned i=0;i<2;i++) {
+        struct nso_result r=guest_process_allocate_thread_local(p,sizes[i],&blocks[i]);
+        if(r.status!=NSO_OK) {
+            fprintf(stderr,"[original-allocator] allocate bytes=%zu status=%d native=%d; no fallback\n",sizes[i],r.status,r.native_error);
+            failed=1;break;
+        }
+    }
+    if(blocks[0] && blocks[1])
+        printf("[original-allocator] actual callbacks returned two distinct owned records, sizes=48,64; no payload writes\n");
+    for(unsigned i=2;i>0;i--)if(blocks[i-1]) {
+        struct nso_result r=guest_process_free_thread_local(p,blocks[i-1],sizes[i-1]);
+        if(r.status!=NSO_OK) {
+            fprintf(stderr,"[original-allocator] free bytes=%zu status=%d native=%d; owner retained, no retry\n",sizes[i-1],r.status,r.native_error);
+            failed=1;break;
+        }
+    }
+    if(!failed)puts("[original-allocator] two original allocate/free pairs completed; CRT/ELF TLS still uninitialized");
+    fflush(stdout);return failed;
+}
 static void *run_profile_entry(guest_process *p,void *opaque) {
     struct profile_entry *entry=opaque;
     nso_module *m=guest_process_module(p);
@@ -84,6 +109,7 @@ static void *run_profile_entry(guest_process *p,void *opaque) {
         if(r.status!=NSO_OK) {fprintf(stderr,"[profile-executor] call status=%d errno=%d; no raw fallback\n",r.status,r.native_error);entry->rc=1;return NULL;}
         /* Preserve return evidence before primary/TLS teardown can failstop. */
         printf("result        : 0x%" PRIx64 "\n",value);fflush(stdout);
+        if(entry->allocator_diagnostic)entry->rc=exercise_original_allocator(p);
     }
     return NULL;
 }
@@ -138,10 +164,17 @@ int main(int argc,char **argv) {
     if(next>=argc)goto invalid_cli;
     const char *mode=argv[next++];
     int info=!strcmp(mode,"--info"),by_symbol=!strcmp(mode,"--symbol"),by_offset=!strcmp(mode,"--call");
+    int allocator_diagnostic=!strcmp(mode,"--startup-allocator");
+#ifdef NSO_WITH_GUEST_PROFILE
+    if(allocator_diagnostic) {if(!owned || init || next!=argc)goto invalid_cli;by_symbol=1;}
+#else
+    if(allocator_diagnostic)goto invalid_cli;
+#endif
     if(!info && !by_symbol && !by_offset)goto invalid_cli;
     const char *target=NULL;
     uint64_t off=0,args[6]={0};unsigned argument_count=0;
     if(info) {if(next!=argc)goto invalid_cli;}
+    else if(allocator_diagnostic)target="nninitStartup";
     else {
         if(next>=argc)goto invalid_cli;
         target=argv[next++];
@@ -151,7 +184,7 @@ int main(int argc,char **argv) {
     }
 #ifdef NSO_WITH_GUEST_PROFILE
     if(owned) {
-        struct profile_entry entry={.info=info,.init=init,.by_symbol=by_symbol,.argument_count=argument_count,.policy=policy,.target=target,.off=off};
+        struct profile_entry entry={.info=info,.init=init,.by_symbol=by_symbol,.allocator_diagnostic=allocator_diagnostic,.argument_count=argument_count,.policy=policy,.target=target,.off=off};
         memcpy(entry.args,args,sizeof(args));
         int result=owned_profile(argv[1],(size_t)quota,(size_t)stack,(size_t)resources,guest_argc,guest_argv,&entry);
         free(guest_argv);return result;
