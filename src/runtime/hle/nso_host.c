@@ -118,6 +118,9 @@ int64_t nso_host_os_get_system_tick(void) {
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (int64_t)ts.tv_sec * 19200000LL + (int64_t)ts.tv_nsec * 19200000LL / 1000000000LL;
 }
+void nso_host_tls_init_noop(void) {
+    /* No-op C++ thread_local init for trivial / statically initialized TLS objects */
+}
 void nso_host_set_extension_resolver(nso_import_fn resolver) {extension_resolver=resolver;}
 uint64_t nso_host_resolve(uint32_t index,const char *name) {
     if(!name)return 0;
@@ -191,6 +194,12 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
     if(!strcmp(name,"atexit"))return (uint64_t)(uintptr_t)&nso_host_atexit;
     if(!strcmp(name,"__cxa_atexit"))return (uint64_t)(uintptr_t)&nso_host_cxa_atexit;
     if(!strcmp(name,"__cxa_finalize"))return (uint64_t)(uintptr_t)&nso_host_cxa_finalize;
+    if(!strcmp(name,"_ZTHN13LowLevelTasks5FTask10ActiveTaskE") ||
+       !strcmp(name,"_ZTHN13LowLevelTasks7Private20FOversubscriptionTls26bIsOversubscriptionAllowedE") ||
+       !strcmp(name,"_ZTHN30FOverridableSerializationLogic20OverriddenPropertiesE") ||
+       !strcmp(name,"_ZTHN30FOverridableSerializationLogic28bUseOverridableSerializationE") ||
+       !strcmp(name,"_ZTHN17FPropertyTagScope18CurrentPropertyTagE"))
+        return (uint64_t)(uintptr_t)&nso_host_tls_init_noop;
     if(!strcmp(name,"exit"))return (uint64_t)(uintptr_t)&nso_host_exit;
     if(!strcmp(name,"_Exit") || !strcmp(name,"_exit"))return (uint64_t)(uintptr_t)&nso_host_immediate_exit;
     return extension_resolver?extension_resolver(index,name):0;

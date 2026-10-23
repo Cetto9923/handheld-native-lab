@@ -9,6 +9,7 @@
 #include "guest_os_tls.h"
 #include "module_tls.h"
 #include "exit_registry.h"
+#include "guest_tp.h"
 #include "nso_host.h"
 #include <errno.h>
 #include <ctype.h>
@@ -377,11 +378,22 @@ struct nso_result guest_process_create_with_resources(const struct guest_process
 struct nso_result guest_process_create(const struct guest_process_config *config,guest_process **out) {
     return guest_process_create_with_arguments(config,0,NULL,out);
 }
+static void guest_process_text_filter(void *text, size_t bytes, void *opaque) {
+    (void)opaque;
+    struct guest_tp_patch_report report;
+    guest_tp_patch_text(text, bytes, &report);
+    guest_tp_register_text(text, bytes);
+    if(report.patched > 0) {
+        fprintf(stderr,"[guest-tp] patched %zu MRS TPIDR_EL0 sites in text\n",report.patched);
+    }
+}
 struct nso_result guest_process_load(guest_process *p,const char *path,char *err,size_t len) {
     if(!p)return status(NSO_INVALID,EINVAL,0);
     pthread_mutex_lock(&p->mutex);
     if(p->module || p->running || p->quarantined) {pthread_mutex_unlock(&p->mutex);return status(NSO_INVALID,EBUSY,0);}
+    nso_set_text_filter(guest_process_text_filter, p);
     struct nso_load_result loaded=nso_load_file_owned(path,guest_process_resolve,&module_ops,p,err,len);
+    nso_set_text_filter(NULL, NULL);
     p->module=loaded.module;
     if(loaded.result.status==NSO_RETAINED)p->quarantined=1;
     if(loaded.result.status==NSO_OK) {
@@ -831,6 +843,22 @@ uint32_t guest_process_nnmusl_init_dso(
         pthread_mutex_unlock(&p->mutex);
         return 2;
     }
+    guest_tp_template tpl = {
+        .initialized_data = p->dso.tls_template.initialized_data,
+        .initialized_size = p->dso.tls_template.initialized_size,
+        .total_size = p->dso.tls_template.total_size,
+        .alignment = p->dso.tls_template.alignment,
+        .reserved_header_size = p->dso.tls_template.reserved_header_size,
+    };
+    guest_tp_mirror *mirror = NULL;
+    if(guest_tp_mirror_create(&tpl, &mirror).status == GUEST_TP_OK && mirror) {
+        if(guest_tp_current_base() != NULL) {
+            guest_tp_unbind_current();
+        }
+        guest_tp_bind_current(mirror);
+        fprintf(stderr,"[guest-tp] primary thread bound guest TP base=%p span=%zu\n",
+                (void*)guest_tp_mirror_base(mirror),guest_tp_mirror_span(mirror));
+    }
     p->dso.registered=1;
     fprintf(stderr,"[dso-registered] base=0x%" PRIx64 " tls_start=0x%" PRIx64 " init_size=%zu total_size=%zu align=%zu; registration complete, returning 1\n",
         p->dso.base,p->dso.tls_start,p->dso.tls_init_size,p->dso.tls_total_size,p->dso.tls_alignment);
@@ -871,6 +899,12 @@ static void guest_protect_relro(const void *a0,const void *a1,const void *a2,con
     (void)a0;(void)a1;(void)a2;(void)a3;(void)a4;
     fprintf(stderr,"[protect-relro] start=%p end=%p; returning to init_array walk\n",a0,a1);
 }
+static void guest_vibration_converter_ctor(void *self, int sample_rate) {
+    (void)self;(void)sample_rate;
+}
+static void guest_vibration_converter_dtor(void *self) {
+    (void)self;
+}
 uint64_t guest_process_resolve(uint32_t index,const char *name) {
     if(!name)return 0;
     if(!strcmp(name,"_ZN2nn2os36GetVirtualAddressMemoryResourceUsageEv"))
@@ -886,6 +920,36 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
     if(!strcmp(name,"finite"))return (uintptr_t)&guest_finite;
     if(!strcmp(name,"snprintf"))return (uintptr_t)&vsnprintf;
     PURE(logf); /* Standard float(float), current original caller uses s0. */
+    PURE(pow);PURE(powf);
+    PURE(atan2);PURE(atan2f);
+    PURE(fmod);PURE(fmodf);
+    PURE(hypot);
+    PURE(sin);PURE(sinf);
+    PURE(cos);PURE(cosf);
+    PURE(tan);PURE(tanf);
+    PURE(asin);PURE(asinf);
+    PURE(acos);PURE(acosf);
+    PURE(atan);PURE(atanf);
+    PURE(exp);PURE(expf);
+    PURE(log);PURE(log2);PURE(log10);
+    PURE(log2f);PURE(log10f);
+    PURE(sqrt);PURE(sqrtf);
+    PURE(sinhf);PURE(tanhf);
+    PURE(ceil);PURE(ceilf);
+    PURE(floor);PURE(floorf);
+    PURE(round);PURE(roundf);
+    PURE(trunc);PURE(truncf);
+    PURE(fabs);PURE(fabsf);
+    PURE(ldexp);PURE(ldexpf);
+    PURE(modf);PURE(modff);
+    PURE(logbf);PURE(exp2);PURE(exp2f);
+    PURE(nextafterf);PURE(fmaf);
+    PURE(lrint);PURE(lrintf);
+    PURE(rand);PURE(srand);
+    PURE(isupper);PURE(atoi);PURE(atof);PURE(atoll);
+    PURE(strtoll);PURE(strtoull);PURE(strtoul);PURE(strtod);
+    PURE(strcspn);PURE(strspn);PURE(strncat);PURE(strcat);PURE(strncasecmp);
+    PURE(bsearch);PURE(qsort);
 #undef PURE
     if(!strcmp(name,"_ZN2nn2os15QueryMemoryInfoEPNS0_10MemoryInfoE"))return (uintptr_t)&query_memory_info;
     if(!strcmp(name,"_ZN2nn2os21AllocateAddressRegionEPmm"))return (uintptr_t)&allocate_region;
@@ -902,6 +966,8 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
     if(!strcmp(name,"nnosFreeMemoryForThreadLocal"))return (uintptr_t)&sdk_free_thread_local;
     if(!strcmp(name,"__nnmusl_init_dso"))return (uintptr_t)&guest_process_nnmusl_init_dso;
     if(!strcmp(name,"_ZN2nn2ro12ProtectRelroEPKvS2_S2_S2_S2_"))return (uintptr_t)&guest_protect_relro;
+    if(!strcmp(name,"_ZN2nn3hid18VibrationConverterC1Ei"))return (uintptr_t)&guest_vibration_converter_ctor;
+    if(!strcmp(name,"_ZN2nn3hid18VibrationConverterD1Ev"))return (uintptr_t)&guest_vibration_converter_dtor;
     if(!strcmp(name,"strcasecmp"))return (uintptr_t)&guest_strcasecmp;
     if(!strcmp(name,"_ZN2nn2os29IsVirtualAddressMemoryEnabledEv"))return (uintptr_t)&virtual_address_enabled;
     if(!strcmp(name,"strncasecmp_l"))return (uintptr_t)&guest_strncasecmp_l;
@@ -945,6 +1011,11 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
         "_ZN2nn4time12GetDayOfWeekEiii",
         "_ZN2nn2os22GetSystemTickFrequencyEv","nnosGetSystemTickFrequency",
         "_ZN2nn2os13GetSystemTickEv","nnosGetSystemTick",
+        "_ZTHN13LowLevelTasks5FTask10ActiveTaskE",
+        "_ZTHN13LowLevelTasks7Private20FOversubscriptionTls26bIsOversubscriptionAllowedE",
+        "_ZTHN30FOverridableSerializationLogic20OverriddenPropertiesE",
+        "_ZTHN30FOverridableSerializationLogic28bUseOverridableSerializationE",
+        "_ZTHN17FPropertyTagScope18CurrentPropertyTagE",
         /* Registration is safe; finalize/exit can invoke guest callbacks and
          * require a separately supported callback/reentry boundary. */
         "atexit","__cxa_atexit","_Exit","_exit",NULL};
@@ -953,12 +1024,42 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
     return 0;
 }
 static int import_signature(const char *name,nb_signature *out) {
-    if(!strcmp(name,"logf")) {
+    if(!strcmp(name,"logf") || !strcmp(name,"log") || !strcmp(name,"log2") || !strcmp(name,"log2f") ||
+       !strcmp(name,"log10") || !strcmp(name,"log10f") || !strcmp(name,"exp") || !strcmp(name,"expf") ||
+       !strcmp(name,"sqrt") || !strcmp(name,"sqrtf") || !strcmp(name,"sin") || !strcmp(name,"sinf") ||
+       !strcmp(name,"cos") || !strcmp(name,"cosf") || !strcmp(name,"tan") || !strcmp(name,"tanf") ||
+       !strcmp(name,"asin") || !strcmp(name,"asinf") || !strcmp(name,"acos") || !strcmp(name,"acosf") ||
+       !strcmp(name,"atan") || !strcmp(name,"atanf") || !strcmp(name,"sinhf") || !strcmp(name,"tanhf") ||
+       !strcmp(name,"ceil") || !strcmp(name,"ceilf") || !strcmp(name,"floor") || !strcmp(name,"floorf") ||
+       !strcmp(name,"round") || !strcmp(name,"roundf") || !strcmp(name,"trunc") || !strcmp(name,"truncf") ||
+       !strcmp(name,"fabs") || !strcmp(name,"fabsf") ||
+       !strcmp(name,"logbf") || !strcmp(name,"exp2") || !strcmp(name,"exp2f")) {
         *out=(nb_signature){.version=1,.flags=NB_SIG_REGISTER_ONLY,.fp_arguments=1,.fp_returns=1};
-        return 1; /* GP0: float input/result travel in s0, never integer args. */
+        return 1;
     }
-    if(!strcmp(name,"finite")) {
+    if(!strcmp(name,"pow") || !strcmp(name,"powf") || !strcmp(name,"atan2") || !strcmp(name,"atan2f") ||
+       !strcmp(name,"fmod") || !strcmp(name,"fmodf") || !strcmp(name,"hypot") || !strcmp(name,"nextafterf")) {
+        *out=(nb_signature){.version=1,.flags=NB_SIG_REGISTER_ONLY,.fp_arguments=2,.fp_returns=1};
+        return 1;
+    }
+    if(!strcmp(name,"fmaf")) {
+        *out=(nb_signature){.version=1,.flags=NB_SIG_REGISTER_ONLY,.fp_arguments=3,.fp_returns=1};
+        return 1;
+    }
+    if(!strcmp(name,"ldexp") || !strcmp(name,"ldexpf") || !strcmp(name,"modf") || !strcmp(name,"modff")) {
+        *out=(nb_signature){.version=1,.flags=NB_SIG_REGISTER_ONLY,.gp_arguments=1,.fp_arguments=1,.fp_returns=1};
+        return 1;
+    }
+    if(!strcmp(name,"finite") || !strcmp(name,"lrint") || !strcmp(name,"lrintf")) {
         *out=(nb_signature){.version=1,.flags=NB_SIG_REGISTER_ONLY,.fp_arguments=1,.gp_returns=1};
+        return 1;
+    }
+    if(!strcmp(name,"atof")) {
+        *out=(nb_signature){.version=1,.flags=NB_SIG_REGISTER_ONLY,.gp_arguments=1,.fp_returns=1};
+        return 1;
+    }
+    if(!strcmp(name,"strtod")) {
+        *out=(nb_signature){.version=1,.flags=NB_SIG_REGISTER_ONLY,.gp_arguments=2,.fp_returns=1};
         return 1;
     }
     unsigned arguments=0,returns=1;
@@ -975,12 +1076,14 @@ static int import_signature(const char *name,nb_signature *out) {
         "_ZN2nn4time19ToCalendarTimeInUtcERKNS0_9PosixTimeE",
         "_ZN2nn4time21GetDeviceLocationNameEPNS0_12LocationNameE",
         "iswdigit","isspace","iswupper","iswspace","iswalnum","iswxdigit",
-        "iswalpha","iswlower","isalpha","tolower",NULL};
+        "iswalpha","iswlower","isalpha","tolower","isupper","atoi","atoll",NULL};
     static const char *const two[]={"strnlen","strcmp","strcasecmp","strcpy","strchr","strrchr","strstr","_ZN2nn2os15AllocateTlsSlotEPNS0_7TlsSlotEPFvmE",
         "_ZN2nn2os21AllocateAddressRegionEPmm","_ZN2nn2os19AllocateMemoryPagesEmm","_ZN2nn2os15FreeMemoryPagesEmm",
-        "_ZN2nn4time16LoadTimeZoneRuleEPNS0_12TimeZoneRuleERKNS0_12LocationNameE",NULL};
+        "_ZN2nn4time16LoadTimeZoneRuleEPNS0_12TimeZoneRuleERKNS0_12LocationNameE",
+        "strcspn","strspn","strcat",NULL};
     static const char *const three[]={"memset","memcpy","memmove","memcmp","memchr","strncmp","strncpy","__cxa_atexit","strtol",
-        "_ZN2nn4time12GetDayOfWeekEiii",NULL};
+        "_ZN2nn4time12GetDayOfWeekEiii",
+        "strtoll","strtoull","strtoul","strncat","strncasecmp",NULL};
     static const char *const void_one[]={"__cxa_guard_release","__cxa_guard_abort","_Exit","_exit","_ZN2nn2os11FreeTlsSlotENS0_7TlsSlotE",
         "_ZN2nn2os15QueryMemoryInfoEPNS0_10MemoryInfoE","_ZN2nn4util11ReferSymbolEPKv","nnutilReferSymbol",
         "_ZN2nn2os13FinalizeMutexEPNS0_9MutexTypeE","nnosFinalizeMutex",
@@ -991,12 +1094,17 @@ static int import_signature(const char *name,nb_signature *out) {
         "_ZN2nn2os15AcquireReadLockEPNS0_20ReaderWriterLockTypeE","nnosAcquireReadLock",
         "_ZN2nn2os15ReleaseReadLockEPNS0_20ReaderWriterLockTypeE","nnosReleaseReadLock",
         "_ZN2nn2os16AcquireWriteLockEPNS0_20ReaderWriterLockTypeE","nnosAcquireWriteLock",
-        "_ZN2nn2os16ReleaseWriteLockEPNS0_20ReaderWriterLockTypeE","nnosReleaseWriteLock",NULL};
+        "_ZN2nn2os16ReleaseWriteLockEPNS0_20ReaderWriterLockTypeE","nnosReleaseWriteLock","srand",NULL};
     const char *const *lists[]={one,two,three,void_one};
     for(unsigned group=0;group<4;group++)for(size_t i=0;lists[group][i];i++)if(!strcmp(name,lists[group][i])) {
         arguments=group==3?1:group+1;returns=group==3?0:1;goto found;
     }
-    if(!strcmp(name,"_ZN2nn2os29IsVirtualAddressMemoryEnabledEv")) {arguments=0;returns=1;}
+    if(!strcmp(name,"rand")) {arguments=0;returns=1;}
+    else if(!strcmp(name,"qsort")) {arguments=4;returns=0;}
+    else if(!strcmp(name,"bsearch")) {arguments=5;returns=1;}
+    else if(!strcmp(name,"_ZN2nn3hid18VibrationConverterC1Ei")) {arguments=2;returns=0;}
+    else if(!strcmp(name,"_ZN2nn3hid18VibrationConverterD1Ev")) {arguments=1;returns=0;}
+    else if(!strcmp(name,"_ZN2nn2os29IsVirtualAddressMemoryEnabledEv")) {arguments=0;returns=1;}
     else if(!strcmp(name,"_ZN2nn2os22GetSystemTickFrequencyEv") || !strcmp(name,"nnosGetSystemTickFrequency") ||
             !strcmp(name,"_ZN2nn2os13GetSystemTickEv") || !strcmp(name,"nnosGetSystemTick")) {arguments=0;returns=1;}
     else if(!strcmp(name,"_ZN2nn4time10InitializeEv") || !strcmp(name,"_ZN2nn4time13IsInitializedEv")) {arguments=0;returns=1;}
@@ -1024,6 +1132,11 @@ static int import_signature(const char *name,nb_signature *out) {
         return 1;
     }
     else if(!strcmp(name,"abort")) {arguments=0;returns=0;}
+    else if(!strcmp(name,"_ZTHN13LowLevelTasks5FTask10ActiveTaskE") ||
+            !strcmp(name,"_ZTHN13LowLevelTasks7Private20FOversubscriptionTls26bIsOversubscriptionAllowedE") ||
+            !strcmp(name,"_ZTHN30FOverridableSerializationLogic20OverriddenPropertiesE") ||
+            !strcmp(name,"_ZTHN30FOverridableSerializationLogic28bUseOverridableSerializationE") ||
+            !strcmp(name,"_ZTHN17FPropertyTagScope18CurrentPropertyTagE")) {arguments=0;returns=0;}
     else return 0;
 found:
     *out=(nb_signature){.version=1,.flags=NB_SIG_REGISTER_ONLY,
@@ -1042,6 +1155,7 @@ static struct nso_result prepare_boundary_locked(guest_process *p) {
     for(size_t i=0;i<count;i++) {
         nb_signature signature;
         if(nso_bound_import_at(p->module,i,&targets[i]).status!=NSO_OK || !import_signature(targets[i].name,&signature)) {
+            fprintf(stderr, "[boundary-unsupported] index=%u name=%s\n", targets[i].index, targets[i].name);
             free(targets);free(bindings);return status(NSO_UNSUPPORTED,ENOTSUP,0);
         }
     }
@@ -1061,7 +1175,10 @@ static struct nso_result prepare_boundary_locked(guest_process *p) {
     }
     if(r.status==NSO_OK)r=nso_retarget_imports(p->module,targets,count);
     free(targets);
-    if(r.status!=NSO_OK) {p->quarantined=1;return status(NSO_RETAINED,r.native_error,r.cleanup_error);}
+    if(r.status!=NSO_OK) {
+        fprintf(stderr,"[boundary-error] nso_retarget_imports failed status=%d native=%d\n",r.status,r.native_error);
+        p->quarantined=1;return status(NSO_RETAINED,r.native_error,r.cleanup_error);
+    }
     p->boundary_prepared=1;
     fprintf(stderr,"[boundary-ready] imports=%zu actual-primary-owned; bindings retained through module unload\n",count);
     return r;
@@ -1142,6 +1259,19 @@ static void *invoke_primary(guest_context *context,void *opaque) {
     int e=0;
     void *value=NULL;
     if(p->callback_status.status==NSO_OK) {
+        if(guest_tp_current_base() == NULL) {
+            guest_tp_template initial_tpl = {
+                .initialized_data = NULL,
+                .initialized_size = 0,
+                .total_size = 0x1019,
+                .alignment = 8,
+                .reserved_header_size = 0x10,
+            };
+            guest_tp_mirror *init_mirror = NULL;
+            if(guest_tp_mirror_create(&initial_tpl, &init_mirror).status == GUEST_TP_OK && init_mirror) {
+                guest_tp_bind_current(init_mirror);
+            }
+        }
         e=nso_fault_scope_begin(p->module);
         if(e) {
             int cleanup=nso_fault_scope_end(p->module);
@@ -1149,11 +1279,14 @@ static void *invoke_primary(guest_context *context,void *opaque) {
             if(cleanup)p->diagnostic_retained=1;
         }
         else {
+            guest_tp_install_trap_handler();
             value=p->callback(p,p->argument);
+            guest_tp_remove_trap_handler();
             cleanup_os_primary(p);
             e=nso_fault_scope_end(p->module);
             if(e) {p->callback_status=status(NSO_RETAINED,0,e);p->diagnostic_retained=1;}
         }
+        guest_tp_unbind_current();
     }
     if(p->os_thread)cleanup_os_primary(p);
     pthread_mutex_lock(&p->mutex);

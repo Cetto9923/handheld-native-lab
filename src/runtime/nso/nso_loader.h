@@ -131,6 +131,12 @@ typedef struct nso_result (*nso_executor_fn)(void *,nso_module *,uint64_t,
 /* Build id as 32 hex characters (big-endian display order). */
 void nso_build_id(const nso_module *m, char out[33]);
 
+/* Module text segment inspection and pre-exec filter */
+typedef void (*nso_text_filter_fn)(void *text, size_t bytes, void *opaque);
+void nso_set_text_filter(nso_text_filter_fn fn, void *opaque);
+uint64_t nso_text_offset(const nso_module *m);
+uint64_t nso_text_size(const nso_module *m);
+
 /*
  * Call a function at a module-relative offset with up to six integer
  * arguments. Returns the value in x0.

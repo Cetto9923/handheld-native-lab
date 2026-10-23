@@ -20,7 +20,7 @@ if a.main and (not a.quota_bytes or not a.stack_bytes):p.error('main requires ex
 out.mkdir(parents=True,exist_ok=False)
 def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 nso=ROOT/'src/runtime/nso';hle=ROOT/'src/runtime/hle'
-core_sources=[nso/'nso_loader.c',*[hle/(s+'.c') for s in ['guest_context','guest_process','nso_host','address_region','mutex','exit_registry','module_tls']]]
+core_sources=[nso/'nso_loader.c',*[hle/(s+'.c') for s in ['guest_context','guest_process','nso_host','address_region','mutex','exit_registry','module_tls','guest_tp']]]
 pages_hle=a.pages_source_root.resolve()/'src/runtime/hle';pages_source=pages_hle/'guest_pages.c'
 if not pages_source.is_file() or not pages_source.with_suffix('.h').is_file():p.error('guest_pages component missing; integrate its frozen commit or provide --pages-source-root')
 sources=[*core_sources,pages_source]
@@ -94,6 +94,7 @@ run('host-uuid-contract',[out/'guest_process_contract.host','--uuid'])
 run('host-time-contract',[out/'guest_process_contract.host','--time'])
 run('host-tick-contract',[out/'guest_process_contract.host','--tick'])
 run('host-ctype-contract',[out/'guest_process_contract.host','--ctype'])
+run('host-guest-tp-contract',[out/'guest_process_contract.host','--guest-tp'])
 run('host-logf-contract',[out/'guest_process_contract.host','--logf'])
 run('host-strcasecmp-contract',[out/'guest_process_contract.host','--strcasecmp'])
 run('host-va-enabled-contract',[out/'guest_process_contract.host','--va-enabled',out/'contract.nso'])
@@ -175,7 +176,7 @@ for v in [*library_inputs,api/'crtbegin_dynamic.o',api/'crtend_android.o',api/'l
  name=str(v.relative_to(tc));data=v.read_bytes();crc=f'{zlib.crc32(data):08x}'
  if len(data)!=known[name]['bytes'] or crc!=known[name]['crc32']:raise RuntimeError('official member mismatch '+name)
  manifest['official_members'][name]={'bytes':len(data),'crc32':crc,'sha256':digest(v)}
-common=['--target=aarch64-linux-android28','--sysroot',sysroot,'-resource-dir',resource,'-isystem',sysroot/'usr/include/aarch64-linux-android','-fPIC','-ffixed-x18',*strict]
+common=['--target=aarch64-linux-android28','--sysroot',sysroot,'-resource-dir',resource,'-isystem',sysroot/'usr/include/aarch64-linux-android','-fPIC','-ffixed-x18','-fno-emulated-tls',*strict]
 ld=a.rust_root/'lib/rustlib/aarch64-apple-darwin/bin/gcc-ld/ld.lld'
 # Self-authored register-ABI guest contract; no game instructions. The callbacks
 # use only typed OS imports and Query, including zero-value/reentrant cleanup.

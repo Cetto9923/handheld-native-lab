@@ -70,6 +70,14 @@ static _Thread_local int owns_signal_stack;
 static _Thread_local struct sigaction previous_actions[4];
 static _Thread_local unsigned owns_actions;
 static const int fault_signals[4]={SIGSEGV,SIGBUS,SIGILL,SIGTRAP};
+static nso_text_filter_fn g_text_filter = NULL;
+static void *g_text_filter_opaque = NULL;
+void nso_set_text_filter(nso_text_filter_fn fn, void *opaque) {
+    g_text_filter = fn;
+    g_text_filter_opaque = opaque;
+}
+uint64_t nso_text_offset(const nso_module *m) { return m ? m->text_lo : 0; }
+uint64_t nso_text_size(const nso_module *m) { return m ? (m->text_hi - m->text_lo) : 0; }
 static uint16_t rd16(const void *p) { uint16_t v; memcpy(&v,p,2); return v; }
 static uint32_t rd32(const void *p) { uint32_t v; memcpy(&v,p,4); return v; }
 static uint64_t rd64(const void *p) { uint64_t v; memcpy(&v,p,8); return v; }
@@ -311,6 +319,9 @@ static struct nso_load_result load_file(const char *path,nso_import_fn resolve,
         uint64_t hi=(uint64_t)s[i].mem+s[i].size+(i==2?s[i].aux:0);
         if(hi>s[i].mem) CHECK_SYS(loader_protect(m->image+down(s[i].mem),(size_t)(up(hi)-down(s[i].mem)),i==1?PROT_READ:PROT_READ|PROT_WRITE)==0,"data mprotect failed");
     }
+    if(g_text_filter && m->text_hi > m->text_lo) {
+        g_text_filter(m->image + m->text_lo, (size_t)(m->text_hi - m->text_lo), g_text_filter_opaque);
+    }
     __builtin___clear_cache((char*)m->image+m->text_lo,(char*)m->image+m->text_hi);
     CHECK_SYS(loader_protect(m->image+down(m->text_lo),(size_t)(up(m->text_hi)-down(m->text_lo)),PROT_READ|PROT_EXEC)==0,"text mprotect failed");
     m->writable_lo=down(s[2].mem);
@@ -398,8 +409,13 @@ struct nso_result nso_retarget_imports(nso_module *m,const struct nso_import_tar
     if(!m || !m->ready || m->closing || (count && !targets))return load_status(NSO_INVALID,EINVAL,0);
     for(size_t i=0;i<count;i++) {
         uint32_t symbol=targets[i].index;
+        uint8_t sym_type = m->sym_info[symbol]&15;
         if(!symbol || symbol>=m->sym_count || !m->import_resolved[symbol] || !targets[i].target ||
-           (m->sym_info[symbol]&15)!=2)return load_status(NSO_UNSUPPORTED,ENOTSUP,0);
+           (sym_type!=2 && sym_type!=0)) {
+            fprintf(stderr, "[retarget-unsupported] sym=%u name=%s type=%u\n",
+                    symbol, nso_symbol_name(m, symbol), sym_type);
+            return load_status(NSO_UNSUPPORTED,ENOTSUP,0);
+        }
         for(size_t j=0;j<i;j++)if(targets[j].index==symbol)return load_status(NSO_INVALID,EINVAL,0);
         for(size_t j=0;j<m->import_write_count;j++) {
             struct import_write *w=&m->import_writes[j];

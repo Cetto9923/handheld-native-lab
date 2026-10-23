@@ -45,6 +45,7 @@ uint32_t nso_host_time_to_calendar_time(struct nn_calendar_time *out_cal,
                                         const int64_t *posix_time,
                                         const void *rule);
 uint64_t nso_host_time_to_calendar_time_in_utc(const int64_t *posix_time);
+void nso_host_tls_init_noop(void);
 #ifdef __cplusplus
 }
 #endif

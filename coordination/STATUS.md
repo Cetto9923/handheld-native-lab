@@ -1,8 +1,8 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-10-23T17:27:00.000000+00:00
-阶段：T02_CONSTRUCTORS_RUNNING_ON_RG477M: RWLock, nn::time (ToCalendarTime), SystemTick (19.2MHz), ctype/wctype passed; constructors 0-486 (487 total) executed sequentially on RG477M; blocked at constructor 487 on import 150 _ZTHN13LowLevelTasks5FTask10ActiveTaskE / guest TPIDR_EL0
-总控：Antigravity sole root coordinator — RWLock, time, tick, ctype passed, 487 constructors executed on RG477M, frontier reached LowLevelTasks ActiveTask TLS init / TPIDR_EL0 access
+状态事件时间：2026-10-23T18:12:00.000000+00:00
+阶段：T02_ALL_CONSTRUCTORS_PASSED_NNMAIN_REACHED_ON_RG477M: Guest TP mirror/trap, weak TLS inits (_ZTH*), libm (pow, atan2, etc.), and VibrationConverter implemented; all 1,890 constructors executed sequentially to completion on RG477M (13,536 atexit callbacks registered); nnMain reached at offset 0x352f160, blocked on nn::os::CreateThread (import 126)
+总控：Antigravity sole root coordinator — guest TP & weak TLS passed, all 1,890 constructors completed on RG477M, game entered nnMain, frontier reached nn::os::CreateThread
 更新方式：按事件更新，没有后台自动刷新。
 
 | 任务 | 角色 | 状态 | 实际负责人 | 启动依赖 | 验收门禁 | 分支 |

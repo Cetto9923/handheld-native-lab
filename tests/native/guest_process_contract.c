@@ -3,6 +3,7 @@
 #include "../../src/runtime/hle/guest_context.h"
 #include "../../src/runtime/hle/nso_host.h"
 #include "../../src/runtime/hle/guest_pages.h"
+#include "../../src/runtime/hle/guest_tp.h"
 #include "../../src/runtime/nso/native_boundary.h"
 #include <errno.h>
 #include <ctype.h>
@@ -1024,6 +1025,145 @@ static int ctype_contract(void) {
     puts("{\"ctype_errors\":0,\"iswxdigit\":true,\"iswdigit\":true,\"isspace\":true,\"tolower\":true}");
     return 0;
 }
+struct tp_test_worker_arg {
+    unsigned id;
+    int errors;
+    uintptr_t base;
+};
+static pthread_mutex_t s_tp_test_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t s_tp_test_cond = PTHREAD_COND_INITIALIZER;
+static unsigned s_tp_test_ready = 0;
+static unsigned s_tp_test_release = 0;
+
+static void *tp_test_worker(void *arg) {
+    struct tp_test_worker_arg *a = arg;
+    unsigned char tpl_bytes[0x220];
+    memset(tpl_bytes, 0x42 + a->id, sizeof(tpl_bytes));
+    guest_tp_template src = {
+        .initialized_data = tpl_bytes,
+        .initialized_size = 0x220,
+        .total_size = 0x1019,
+        .alignment = 8,
+        .reserved_header_size = 0x10,
+    };
+    guest_tp_mirror *mirror = NULL;
+    if (guest_tp_mirror_create(&src, &mirror).status != GUEST_TP_OK || !mirror) { a->errors++; return NULL; }
+    if (guest_tp_bind_current(mirror).status != GUEST_TP_OK) { a->errors++; guest_tp_mirror_free(mirror); return NULL; }
+    const unsigned char *base = guest_tp_current_base();
+    if (base != guest_tp_mirror_base(mirror)) a->errors++;
+    a->base = (uintptr_t)base;
+    if (guest_tp_mirror_span(mirror) != 0x1030) a->errors++;
+    guest_tp_mirror_payload(mirror)[0] = (unsigned char)(a->id + 1);
+
+    /* Hold mirror until all workers are ready so memory is not recycled */
+    pthread_mutex_lock(&s_tp_test_mutex);
+    s_tp_test_ready++;
+    pthread_cond_broadcast(&s_tp_test_cond);
+    while (!s_tp_test_release) {
+        pthread_cond_wait(&s_tp_test_cond, &s_tp_test_mutex);
+    }
+    pthread_mutex_unlock(&s_tp_test_mutex);
+
+    if (guest_tp_unbind_current().status != GUEST_TP_OK) a->errors++;
+    return NULL;
+}
+static int guest_tp_test_contract(void) {
+    /* 1. Test mirror model with game's template facts */
+    unsigned char template_data[0x220];
+    for (size_t i = 0; i < 0x220; i++) template_data[i] = (unsigned char)(i * 31 + 7);
+    guest_tp_template source = {
+        .initialized_data = template_data,
+        .initialized_size = 0x220,
+        .total_size = 0x1019,
+        .alignment = 8,
+        .reserved_header_size = 0x10,
+    };
+    guest_tp_mirror *mirror = NULL;
+    CHECK(guest_tp_mirror_create(&source, &mirror).status == GUEST_TP_OK && mirror);
+    const unsigned char *base = guest_tp_mirror_base(mirror);
+    const unsigned char *payload = guest_tp_mirror_payload(mirror);
+    CHECK(base != NULL && payload == base + 0x10);
+    CHECK(guest_tp_mirror_span(mirror) == 0x1030);
+    CHECK((uintptr_t)base % 8 == 0);
+    for (size_t i = 0; i < 0x10; i++) CHECK(base[i] == 0);
+    CHECK(memcmp(payload, template_data, 0x220) == 0);
+    for (size_t i = 0x220; i < 0x1019; i++) CHECK(payload[i] == 0);
+
+    CHECK(guest_tp_bind_current(mirror).status == GUEST_TP_OK);
+    CHECK(guest_tp_current_base() == base);
+    /* Duplicate bind is rejected */
+    guest_tp_mirror *second = NULL;
+    CHECK(guest_tp_mirror_create(&source, &second).status == GUEST_TP_OK && second);
+    CHECK(guest_tp_bind_current(second).status == GUEST_TP_BUSY);
+    guest_tp_mirror_free(second);
+    CHECK(guest_tp_unbind_current().status == GUEST_TP_OK);
+    CHECK(guest_tp_current_base() == NULL);
+
+    /* 2. Test patching model */
+    uint32_t words[8] = {
+        0xd53bd048u, /* MRS x8, TPIDR_EL0 */
+        0xd53bd054u, /* MRS x20, TPIDR_EL0 */
+        0xd53bd060u, /* MRS TPIDRRO_EL0 */
+        0xd51bd040u, /* MSR TPIDR_EL0 */
+        0xd2a00000u, /* MOVZ x0, #0 */
+        0xd65f03c0u, /* RET */
+        0, 0
+    };
+    struct guest_tp_patch_report report;
+    CHECK(guest_tp_scan_text(words, sizeof(words), &report).status == GUEST_TP_OK);
+    CHECK(report.scanned_words == 8 && report.registers[8] == 1 && report.registers[20] == 1);
+    CHECK(guest_tp_patch_text(words, sizeof(words), &report).status == GUEST_TP_OK);
+    CHECK(report.patched == 2);
+    CHECK(words[0] == guest_tp_trap_encode(8));
+    CHECK(words[1] == guest_tp_trap_encode(20));
+    CHECK(words[2] == 0xd53bd060u);
+    CHECK(words[3] == 0xd51bd040u);
+
+    /* 3. Test trap decision */
+    unsigned dest = 0; int advance = 0;
+    enum guest_tp_trap_decision dec = guest_tp_trap_decide(1, words[0], 0xd503201fu, base, &dest, &advance);
+    CHECK(dec == GUEST_TP_TRAP_RESOLVE && dest == 8 && advance == 1);
+    dec = guest_tp_trap_decide(1, 0xd503201fu, words[0], base, &dest, &advance);
+    CHECK(dec == GUEST_TP_TRAP_RESOLVE && dest == 8 && advance == 0);
+
+    /* 4. Multi-thread isolation */
+    enum { TP_THREADS = 8 };
+    pthread_t th[TP_THREADS];
+    struct tp_test_worker_arg args[TP_THREADS];
+    memset(args, 0, sizeof(args));
+    s_tp_test_ready = 0;
+    s_tp_test_release = 0;
+    for (unsigned i = 0; i < TP_THREADS; i++) {
+        args[i].id = i;
+        CHECK(pthread_create(&th[i], NULL, tp_test_worker, &args[i]) == 0);
+    }
+    pthread_mutex_lock(&s_tp_test_mutex);
+    while (s_tp_test_ready != TP_THREADS) {
+        pthread_cond_wait(&s_tp_test_cond, &s_tp_test_mutex);
+    }
+    for (unsigned i = 0; i < TP_THREADS; i++) {
+        for (unsigned j = 0; j < i; j++) {
+            CHECK(args[i].base != args[j].base);
+        }
+    }
+    s_tp_test_release = 1;
+    pthread_cond_broadcast(&s_tp_test_cond);
+    pthread_mutex_unlock(&s_tp_test_mutex);
+    for (unsigned i = 0; i < TP_THREADS; i++) {
+        CHECK(pthread_join(th[i], NULL) == 0);
+        CHECK(args[i].errors == 0);
+    }
+    CHECK(guest_tp_live_mirrors() == 0);
+
+    /* 5. Test _ZTH weak TLS symbol resolution */
+    uint64_t zth_fn = guest_process_resolve(150, "_ZTHN13LowLevelTasks5FTask10ActiveTaskE");
+    CHECK(zth_fn != 0);
+    typedef void (*tls_init_fn)(void);
+    ((tls_init_fn)(uintptr_t)zth_fn)();
+
+    puts("{\"guest_tp_errors\":0,\"mirror_model\":true,\"patch_model\":true,\"trap_decision\":true,\"isolation\":true,\"zth_resolved\":true,\"live_mirrors\":0}");
+    return 0;
+}
 struct log_fixture_io {float input,output;uint64_t guest_x18;};
 _Static_assert(offsetof(struct log_fixture_io,output)==4 && offsetof(struct log_fixture_io,guest_x18)==8,"self-authored float fixture ABI");
 static void *exercise_logf_native(guest_process *p,void *opaque) {
@@ -1654,6 +1794,7 @@ int main(int argc,char **argv) {
     if(argc==2 && !strcmp(argv[1],"--time"))return time_contract();
     if(argc==2 && !strcmp(argv[1],"--tick"))return tick_contract();
     if(argc==2 && !strcmp(argv[1],"--ctype"))return ctype_contract();
+    if(argc==2 && !strcmp(argv[1],"--guest-tp"))return guest_tp_test_contract();
     if(argc==2 && !strcmp(argv[1],"--logf"))return logf_contract();
     if(argc==3 && !strcmp(argv[1],"--logf-native"))return logf_native_contract(argv[2]);
     if(argc==2 && !strcmp(argv[1],"--strcasecmp"))return strcasecmp_contract();
