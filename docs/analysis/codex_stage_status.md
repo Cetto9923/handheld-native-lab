@@ -10,7 +10,7 @@
 | 图形 / 标题 | NVN 有类型分发与缺失报告可用；535 个名字中 2 个查询入口可解析、533 个未实现。 | 实际 Vulkan 后端、资源/队列/着色器/呈现及真实标题。两个入口不构成渲染支持。 |
 | 可玩场景 | NOT_RUN。 | 标题之后真实场景、操作流程和正常退出。 |
 | 输入 / 音频 / 保存 | Android AVD已实测诊断UI点击/生命周期及app-private临时文件往返；无实体手柄或音频/游戏存档证据。 | 游戏输入映射、真实音频、游戏存读档；临时文件测试不能替代存档。 |
-| 真机 / 性能 / 稳定性 | RG477M及荣耀平板未连接；AVD已完成独立诊断。 | RG477M 实测 Vulkan、驱动、分辨率、30 FPS 帧呈现与 45 分钟运行，均 BLOCKED_DEVICE / NOT_RUN。 |
+| 真机 / 性能 / 稳定性 | RG477M已真实安装、JNI加载、leaf、compiler guard与部分物理输入通过；荣耀平板未连接。 | 已查Mali-G615 MC6 Vulkan1.3.247和实际显示；GPU操作/完整手柄音频休眠仍待验收。30FPS真实场景与45分钟运行NOT_RUN。 |
 
 这些入口实验分别调用 `nnMain`、startup、malloc、构造器定位阻塞，并没有完成平台启动或构造器序列。单独让 `nnMain` 更深入不能证明完整初始化后行为正确。
 
@@ -18,4 +18,10 @@
 
 测试原始输出与真实退出码在 `.local/runtime/`、`.local/host-verification/` 和 `.local/logs/android/`。当前检查点与精确恢复命令见 [HANDOFF](../../coordination/HANDOFF.md)。独立 QA 被平台安全检查中止，未取得完整独立验收，不记为通过。
 
-Android实证：`.local/emulator/pvz2-arm64/leaf-result.json` / `leaf-pass.png` / `runtime-execution.json`。AVD为API34、arm64-v8a、native bridge=0、4KiB页，图形探针为Apple M5 / MoltenVK Vulkan1.3，不能替代RG477M或荣耀平板GPU验证。旧显示探针误报1280×960已被实测发现（实际1080×2340），修复中；不把该默认值作为已验证分辨率。
+Android实证：`.local/emulator/pvz2-arm64/leaf-result.json` / `leaf-pass.png` / `runtime-execution.json`。AVD为API34、arm64-v8a、native bridge=0、4KiB页，图形探针为Apple M5 / MoltenVK Vulkan1.3，不能替代RG477M或荣耀平板GPU验证。版本4已修复旧显示误报，并在第二个临时AVD会话实测窗口1080×2340、内容1080×2138、440dpi、60.000004Hz；API28/29的旧安全区getter语义被独立审查发现P2，待修。
+
+最新实际Android guard结果：`14ed86a` 的CLI已越过缺失guard，到QueryMemoryInfo（main+0x27a50/malloc+0x1398c）严格exit133；但独立正常多线程/异常重试contract在Android实际exit134（uncaught int），正检查EH展开链接，不能记guard验收通过。证据 `.local/emulator/pvz2-arm64-session3/guard-execution.json`。
+
+异常修复实证闭环：`a22d0dc` 的`.eh_frame_hdr`/PT_GNU_EH_FRAME配置补齐后，同一真实ARM64 AVD的完整未删减guard契约exit0，8线程80000调用/初始化1/abortwinner1/exceptionattempts2/errors0；info0，main/malloc仍QueryMemoryInfo133。旧134失败证据保留在session3，当前结果见`guard-eh-execution.json`。这只验收宿主compiler-runtime异常，不证明原始guest NSO的unwind/构造器。
+
+真机当前结果见[codex_device_report.md](codex_device_report.md)。用户实际连接并操作后，RG477M leaf16875/0、C++guard8线程80000/errors0、JNI模块加载成功；nnMain/malloc仍QueryMemoryInfo133。不得再写RG477M未连接，也不得把诊断成功改记游戏成功。

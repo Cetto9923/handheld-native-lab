@@ -1,6 +1,6 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-10-23T08:36:49.519997+00:00
+状态事件时间：2026-10-23T09:42:46.691576+00:00
 阶段：NATIVE_RUNTIME_AND_DIAGNOSTIC_APK_CHECKPOINT
 总控：Codex — integration owner; GPT-6.1 xhigh workers; CreateGoal tool unavailable
 更新方式：按事件更新，没有后台自动刷新。
@@ -13,7 +13,7 @@
 | T02-PREP | CORE | in_progress | Codex coordinator (integrated strict loader and true exit-code infrastructure) | T00 | 无额外门禁 | task/codex-integration |
 | T02 | CORE | in_progress | Codex runtime worker | T01 | 无额外门禁 | task/T02-codex-runtime |
 | T03A | ANDROID | passed | Codex Android worker | T00 | 无额外门禁 | task/T03A-codex-android |
-| T03B | ANDROID | blocked | Codex coordinator — BLOCKED_DEVICE; no adb device | T03A | 无额外门禁 | 未创建 |
+| T03B | ANDROID | in_progress | Coordinator: actual RG477M connected and authorized, identity confirmed; capability acceptance pending | T03A | 无额外门禁 | task/codex-integration |
 | T04-assets | RESOURCE | passed | Agent D (RESOURCE) | T00 | 无额外门禁 | task/T04-assets |
 | T04-nvn | GRAPHICS | passed | Agent E (GRAPHICS) | T00 | 无额外门禁 | task/T04-nvn |
 | T04 | CORE_ANDROID | pending | 未领取 | T02, T03A | T03B | 未创建 |
@@ -23,27 +23,28 @@
 | T07-PREP | QA | blocked | Codex independent QA (platform safety check interrupted; no further retries) | T00R | 无额外门禁 | task/T07-codex-qa |
 | T04-NVN-RUNTIME | GRAPHICS | in_progress | Codex coordinator | T01 | 无额外门禁 | task/codex-integration |
 | T07-FUNCTIONAL-REVIEW | QA | passed | Independent ordinary functional reviewer | T00R | 无额外门禁 | 未创建 |
-| T02-TLS-ANALYSIS | RE | in_progress | Independent static TLS/main caller analyst | T00 | 无额外门禁 | 未创建 |
+| T02-TLS-ANALYSIS | RE | passed | Static scope completed only; not TLS compatibility | T00 | 无额外门禁 | 未创建 |
 | T07-MODULE-TLS-REVIEW | QA | passed | Independent ordinary C module TLS reviewer | T00R | 无额外门禁 | 未创建 |
-| T02-CXX-GUARD | CORE | in_progress | Runtime worker | T01 | 无额外门禁 | task/T02-codex-runtime |
-| T03B-VM-DISPLAY-FIX | ANDROID | in_progress | Android worker; coordinator independently validates in AVD | T03A | 无额外门禁 | task/T03A-codex-android |
+| T02-CXX-GUARD | CORE | passed | Runtime implementation + coordinator real AVD guard/EH contract; scope only compiler runtime | T01 | 无额外门禁 | task/T02-codex-runtime |
+| T03B-VM-DISPLAY-FIX | ANDROID | passed | Actual API34 AVD passed; API28/29 inset semantics followup P2 not yet fixed | T03A | 无额外门禁 | task/T03A-codex-android |
+| T03B-INPUT-SNAPSHOT | ANDROID | in_progress | Android worker; root sole device verification | T03A | 无额外门禁 | task/T03A-codex-android |
 
 ## 独占写入
 
-- {"task": "T03B-VM-DISPLAY-FIX", "owner": "Codex Android worker", "paths": ["src/android/", "scripts/device/", "tests/device/", "docs/analysis/codex_android_report.md"], "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-android", "branch": "task/T03A-codex-android", "acquired_at": "2026-10-23T06:58:31.817820+00:00", "checkpoint": "e59c2fa", "objective": "Fix observed Android JNI display false 1280x960 fallback: measured 1080x2340; unknown CLI values unavailable, no fabricated audio capabilities"}
-- {"task": "T04-NVN-RUNTIME", "owner": "Codex coordinator (graphics integration)", "paths": ["src/graphics/nvn/", "tests/graphics/", "scripts/graphics/", "docs/analysis/codex_graphics_report.md"], "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration", "branch": "task/codex-integration", "acquired_at": "2026-10-23T06:58:31.817820+00:00", "checkpoint": "d26d3f6"}
-- {"task": "T02-TLS-ANALYSIS", "owner": "Static TLS analyst — bounded remaining49 read flows", "paths": ["tls-research/ (outputs only; repository read-only)"], "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/tls-research", "branch": null, "acquired_at": "2026-10-23T08:23:49.368800+00:00", "checkpoint": "caller-v4", "objective": "Classify remaining49 non-adjacent TP data flows without execution; identify header/dynamic access uncertainty"}
-- {"task": "T02-CXX-GUARD", "owner": "Runtime worker — gpt-6.1-sol xhigh", "paths": ["src/runtime/nso/", "src/runtime/hle/", "tests/native/", "scripts/runtime/", "docs/analysis/codex_runtime_report.md"], "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-runtime", "branch": "task/T02-codex-runtime", "acquired_at": "2026-10-23T08:30:50.891315+00:00", "checkpoint": "3124895", "objective": "Actual Android missing __cxa_guard_acquire: use verified compiler C++ ABI implementation, link/export or typed bridge, no fake guard success; preserve unsupported CRT/TLS"}
+- {"task": "T03B-INPUT-SNAPSHOT", "owner": "Codex Android worker", "paths": ["src/android/", "scripts/device/", "tests/device/", "docs/analysis/codex_android_report.md"], "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-android", "branch": "task/T03A-codex-android", "acquired_at": "2026-10-23T06:58:31.817820+00:00", "checkpoint": "af049ab", "objective": "Finish independent legacy inset correction, then public Android InputDevice typed snapshot; no raw-node privilege bypass, no ADB operations"}
+- {"task": "T02-QUERY-MEMORY-ANALYSIS", "owner": "Runtime worker — gpt-6.1-sol xhigh", "paths": ["src/runtime/nso/", "src/runtime/hle/", "tests/native/", "scripts/runtime/", "docs/analysis/codex_runtime_report.md"], "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-runtime", "branch": "task/T02-codex-runtime", "acquired_at": "2026-10-23T08:30:50.891315+00:00", "checkpoint": "a22d0dc", "objective": "Static SDK memory budget/manager ABI proof; no guessed host binding"}
+- {"task": "T03B-RG477M-DIAGNOSTIC", "owner": "Codex coordinator — sole device operator", "paths": [".local/device/rg477m-session1/", "coordination/", "docs/analysis/codex_device_report.md"], "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration", "branch": "task/codex-integration", "acquired_at": "2026-10-23T09:29:16.172503+00:00", "checkpoint": "8b817b6", "objective": "User-connected RG477M actual install/load/JNI/Vulkan/display/leaf/compiler-runtime diagnostics; no data clear or fake full-game PASS"}
+- {"task": "T03B-VULKAN-OPERATIONS", "owner": "Vulkan diagnostic engineer — gpt-6.1-sol xhigh", "paths": ["src/graphics/vulkan_probe/", "scripts/graphics/ (new Vulkan probe files only)", "tests/graphics/ (new Vulkan probe files only)", "docs/analysis/codex_vulkan_ops_report.md"], "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-vulkan", "branch": "task/T03B-vulkan-ops", "acquired_at": "2026-10-23T09:37:46.482297+00:00", "checkpoint": "8b817b6", "objective": "Small real Android Vulkan buffer/image transfer roundtrip with real queue/fence/readback, not feature-query-only or game renderer. No ADB by worker."}
 
 ## 阻塞
 
-- 完整 CRT 初始化仍在 __nnmusl_init_dso（caller +0x5920a34）严格 exit133。原SDK allocator gate实际0、DSO函数实际return2；后续helper会写TP寄存器，禁止绕过门控直接执行。Android单独main/malloc另有__cxa_guard_acquire缺失（正在复用真实C++ABI实现），Mac当前QueryMemoryInfo。
-- RG477M与荣耀平板需等用户下班连接；真机GPU、标题、输入音频、游戏存读档、性能和稳定性仍NOT_RUN。Android14 ARM64 AVD已完成诊断/叶函数实跑，不替代真机。
+- 完整CRT仍__nnmusl_init_dso caller+0x5920a34 exit133，SDK allocator gate0/initreturn2，原helper会写TP。Android a22d0dc guard+EH修复实跑contract0，main/malloc下一边界QueryMemoryInfo133。QueryMemoryInfo是全局SDK预算非逐地址查询，禁止用宿主maps/meminfo假填。
 - NVN 535 名字仅两个查询入口可解析，其余 533 缺失；没有 Vulkan 资源/队列/着色器/显示转换实现。Bundled header 对其中 59 名字缺 PFN 类型，不能猜 ABI。
 - 既有 RomFS 流式工具和资源清单不等于游戏运行时挂载/IoStore 解压成功；尚未集成。保留合法本地素材，不获取新游戏或密钥。
 - 独立 QA 代理被平台安全检查中止；停止重试，未取得完整独立验收。普通基线与未提交成果保留，不记 PASS。
 - 完整 NDK 包校验未完成。当前真实 ARM64 构建使用 Google 官方逐项长度/CRC 已验证的部分 sysroot 与 AppleClang/RustLLD，不称完整官方 NDK 安装。
 - 环境未提供 CreateGoal / UpdateGoal 入口，未开启持久目标引擎；当前回合按完整目标执行。
+- RG477M已接入，基本诊断/原始leaf/C++guard通过；T03B仍缺公开手柄能力枚举修复、右杆复验、真实GPU操作与音频/休眠验收。荣耀平板尚未接入。
 
 ## 已验证
 
@@ -52,27 +53,36 @@
 - 游戏引擎 UE 5.6.1 的既有直接字符串证据保留；sdk=SDK 20.5.17，subsdk0=movie，rtld=nnrtld.nss。
 - 严格加载器实际解析当前 main.bin：651 个导入、4612 RELA、1370974 RELR；未知导入使用可定位 sentinel，不返回假成功；resolver callback 与正常有效输入契约已验证。
 - main.bin SHA256 6e6d1f3cd1672243e2ed344cc1b8849b85437d41bdecec81a5f9181e472d68a5；原始 leaf +0x694bd0 的 16875 组 Mac ARM64 真实执行与数学 oracle 零差异，前后输入哈希一致。不是完整游戏或正式 T02 PASS。
-- Android-target libffrs_leaf.so 已实际生成：2176B，ELF64 AArch64 ET_DYN，原函数44B哈希8a6e3c4fbd3164c966e2d164e0b59f140a162be1a4cf260b60beefae9921c9c9；无 DT_NEEDED。尚未设备执行。
+- 已实际生成并由两个临时Android ARM64 AVD会话重复执行的libffrs_leaf.so：2176B，SHA8008f3722db61346eabc02969ff5a37aab9fc405409ed891f65036d7649704d8；每次16875比较0差异，无构造器。仅单函数，不是完整T02。
 - SDK 已证实的 ReferSymbol typed anchor、Allocate/FreeAddressRegion 的真实 PROT_NONE 预留已实现；4KiB/64KiB/2MiB/62GiB 预留、保护查询、释放通过，不触及实体页。
 - 真实 POSIX Mutex 家族依据本地 SDK 字段 ABI 实现；8线程80000次 increments/overlap0、递归深度3、争用trylock、100次同址重建通过。Opaque owner token 不冒充完整 Switch ThreadType。
 - 独立 guest-TLS PoC：8线程16槽、128000次值检查零差异且宿主 pthread key / TPIDRRO 保留。尚未绑定游戏 SDK TLS，不证明完整 TLS 兼容。
 - Android T03A 包装范围通过：实际 AArch64 ELF/诊断CLI/JNI与 org.ffrs.diagnostic 签名 APK；DEX/Manifest/签名、16KiB LOAD、无 W+X/TEXTREL 静态检查通过。未安装或执行游戏。
-- 诊断 UI 有硬件输入、生命周期、app-private 临时文件往返代码；无真机执行证据，不能替代游戏输入/音频/存档。正在增加可选的设备 leaf 对照入口。
+- 诊断UI硬件事件/生命周期/app-private临时文件往返已在ARM64 AVD执行；不等于实体手柄/游戏音频/存档。
 - 主机普通功能测试、NVN typed registry 并发行为通过；NVN coverage 真实退出3、2/535解析明确表示无渲染完成。
 - 部分已校验 Android 工具缓存已复制到原仓库新建 .local/minimal-ndk（3330文件，未覆盖），后续可在交付目录重建。
 - e0024a0 集成真实退出回调注册/DSO筛选/重入/并发及明确单guest实验scope；注册不会提前执行，正常exit返回23运行一次，_Exit返回24不执行，卸载丢弃不会调用已卸载代码。真实nnMain当前QueryMemoryInfo，仍非完整启动。
 - 独立普通功能审查完成（adc6e8e / 5e165d0）：6次严格Clang编译均0，9次运行符合0/23/24预期；未发现正常Mutex/独立TLS/地址预留/退出回调范围需修缺陷。没有重启被中止的NSO安全/异常输入流程，不证明完整QA或SDK兼容。
-- 独立main caller/TLS静态研究：21参数全部RELR，候选TLS模板+0x7767108/初始化0x220/总长0x1019/对齐8；最高直接字节访问TP+0x1028，发现__cxa_thread_atexit实际调用。49处非相邻TP读取仍待核对；不证明可用宿主TP。
+- 独立main caller/TLS静态研究：21参数全部RELR；TLS模板+0x7767108/初始化0x220/总长0x1019/对齐8；已有59相邻常量外新证TP+0x258；49非相邻站点有界复核完成，33精确/15仅选定路径/1汇入未知；发现__cxa_thread_atexit，未绑定宿主TP。
 - Android14 ARM64 AVD pvz2/nativebridge0实际安装冷启动org.ffrs.diagnostic（c280e2a，422420B，SHA8ec9d704ae331f77074e67cc63ee56b398ff89d6f3bf148f8de1b3f9637bb07d）；原始leaf实际16875比较0差异，构造器未调用，scope仅单函数。
-- Android严格HLE CLI真实加载main exit0；构造器/__nnmusl_init_dso133、nnMain/malloc/__cxa_guard_acquire133、startup/AllocateTlsSlot133，未超时；不同平台边界没有混写。
+- 历史6b7437f Android HLE CLI实际加载main0，旧guard缺失133；最新14ed86a已越过guard到QueryMemoryInfo133，完整CRT仍__nnmusl_init_dso133，startup仍AllocateTlsSlot133。
 - 444115b独立module TLS镜像已真实复制/清零/对齐/释放；主机正常多线程与映射模板验证通过；独立纯C review 32968000检查无错。未绑定HLE、未写TP，复制的指针值不证明指向对象卸载后仍有效。
-- AVD图形探针实测Apple M5/MoltenVK Vulkan1.3（虚拟GPU，不替代Mali/Adreno），发现固定1280x960/60Hz探针fallback错误，版本4真实WindowMetrics/密度/刷新模式修复已主机测试/交叉构建，尚待总控VM复验。
+- AVD图形探针实测Apple M5/MoltenVK Vulkan1.3，仅虚拟GPU；版本4实际显示与leaf记录在session2，不能替代Mali/Adreno/游戏渲染。
+- TLS49 static bounded study completed:33 local exact address formations,15 selected paths,1 unknown join +0x32221bc; newly confirmed TP+0x258. All49 no matched FDE coverage, reachability/whole-path absence not proven; no gate opened.
+- aa8a623 canonical版本4 APK426516B SHA bb8bca99af247c52dd7f2890b81f3c2aeabc88574a7dca98c6625c23ee3bb646真实临时ARM64 AVD安装冷启动；WindowMetrics1080x2340/content1080x2138/dpi440/60.000004Hz，音频unknown0，原leaf重测16875/0。API28/29旧insets语义独立review发现P2，待修。
+- 14ed86a guard真实AVD：info0、nnMain/malloc越过guard到QueryMemoryInfo133；构造器/启动边界仍严格。独立8线程+异常guard contract134，stderr uncaught exception int，可能缺EH frame hdr，未验收。
+- a22d0dc真实Android同AVD修复闭环：保留完整throw/catch/retry，guard contract0，8线程80000/初始化1/abortwinner1/异常attempts2/errors0；补.eh_frame_hdr/PT_GNU_EH_FRAME。info0；main/malloc仍QueryMemoryInfo133。没有注册guest NSO unwind或执行完整CRT。
+- root checkpoint4690706普通host23检查均符合真实退出码（含NVN预期3、正常exit23、_Exit24），原始leaf和当前host JSON通过；不替代Android/游戏/T02验收。
+- RG477M actual device: canonical v4 install0/cold219ms; Mali-G615 MC6/Vulkan1.3.247/descriptor indexing; window1280x960/content1280x918/dpi280/current120Hz (panel not FPS), modes60/90/120. Original leaf16875/0 on real hardware. Production no-overwrite staging helper copied/verified2176B successfully.
+- User-confirmed real buttons/sticks: own app recorded45key+47motion+pause/destroy after baseline; directions/B/BACK and leftX/Y[-1,1], right axes not observed. Native /dev-input probe falsely saysok/0devices under permission restrictions; public InputDevice snapshot fix assigned, no root/SELinux workaround.
+- RG477M正常生产链HLE CLI与独立C++guard实跑：guard0、info0、main/malloc QueryMemoryInfo133、CRT __nnmusl_init_dso133、startup AllocateTlsSlot133；均未超时。APK JNI另真实加载125577976B授权主模块，651imports/4612RELA/1370974RELR，mode load_and_relocate_only/游戏执行false。
+- 用户在本任务明确批准继续修改/暂存/提交代码和报告到本地任务分支（不推送远端），随后补充完全访问授权。runtime原2文件提交拒绝在此新直接人类授权后仅重试一次成功f7a2ca1，无未决审批阻塞。
 
 ## 未验证
 
 - 正式 T02 所要求的 Switch/可信参考行为对照与 Android 实际执行；完整启动与 CRT/TLS。
 - 游戏运行时资源挂载与解压、NVN->Vulkan 渲染及 Switch 着色器转换。
-- RG477M 真机能力、标题、可玩场景、真实输入/音频/存读档。
+- RG477M剩余T03B能力/音频/右杆、标题、可玩场景、游戏输入/音频/存读档。
 - 实际分辨率、30FPS帧呈现、45分钟稳定性和完整独立 QA。
 
 具体恢复命令与未完成修改见 HANDOFF.md。
