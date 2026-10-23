@@ -34,6 +34,8 @@ struct guest_pages_usage {
     uint64_t generation;
     int backing_valid, ledger_valid;
     struct guest_context_usage context;
+    struct guest_resource_usage resources;
+    size_t metadata_regions,metadata_allocations;
     struct nso_owned_page_usage vm;
 };
 
@@ -43,7 +45,8 @@ struct guest_pages_usage {
  * own module/stack tickets; it must outlive this owner. No implicit quota.
  * APIs serialize owner mutations. Callers must quiesce guest memory users
  * before free/release/destroy and must exclude concurrent destroy/API entry.
- * Lock order: owner -> Context OR owner -> region, never region -> Context.
+ * Lock order: owner -> region -> terminal Context, or owner -> Context.
+ * Context never calls back into region/owner.
  * No resolver binding and no SDK Result/errno mapping is supplied here. */
 struct guest_pages_result guest_pages_create(guest_context *, guest_pages **out);
 struct guest_pages_result guest_pages_reserve(guest_pages *, size_t bytes, uintptr_t *out);

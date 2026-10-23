@@ -44,6 +44,28 @@ struct guest_primary_stack {
 };
 typedef void *(*guest_primary_callback)(guest_context *,void *);
 
+/* Explicit port-policy memory-management arena. Separate from application
+ * backing quota, not kernel page tables/RSS. A 256-byte slab includes its header
+ * and padding; only real live ticket/page/VA nodes occupy slabs. Other native
+ * runtime control/loader/pthread metadata is outside this policy. */
+enum guest_metadata_kind {GUEST_METADATA_TICKET=1,GUEST_METADATA_PAGE_REGION,
+    GUEST_METADATA_PAGE_ALLOCATION,GUEST_METADATA_VA_REGION,GUEST_METADATA_VA_INTERVAL,
+    GUEST_METADATA_KIND_END};
+struct guest_resource_usage {
+    size_t total_bytes,used_bytes,blocks,counts[GUEST_METADATA_KIND_END];
+    int valid;
+};
+struct guest_context_result guest_context_create_with_resources(
+        const struct guest_context_config *,size_t resource_bytes,guest_context **out);
+struct guest_context_result guest_metadata_allocate(guest_context *,enum guest_metadata_kind,size_t,void **out);
+struct guest_context_result guest_metadata_release(guest_context *,enum guest_metadata_kind,void *);
+int guest_metadata_is_owned(guest_context *,enum guest_metadata_kind,const void *,size_t);
+struct guest_context_result guest_context_resource_usage(guest_context *,struct guest_resource_usage *out);
+#if defined(GUEST_RESOURCE_TESTING)
+/* Test-only normal mmap/munmap failure provider; absent from production. */
+void guest_context_resource_test_vm(void *(*map)(size_t),int (*unmap)(void *,size_t));
+#endif
+
 struct guest_context_result guest_context_create(const struct guest_context_config *,guest_context **out);
 /* Users/APIs must be quiescent. Outstanding external tickets or an unjoined
  * native thread return BUSY. Failed cleanup retains the context/charge. */

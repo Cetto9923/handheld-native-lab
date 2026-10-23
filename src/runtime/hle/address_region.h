@@ -8,6 +8,18 @@
 uint32_t nso_host_allocate_address_region(uintptr_t *out,size_t size);
 uint32_t nso_host_free_address_region(uintptr_t address);
 
+/* Install/remove only with an empty ledger and externally quiescent APIs.
+ * One page owner holds the allocator alive until all real VA/node release.
+ * kind1=reservation, kind2=accessible interval. Callbacks are terminal, may
+ * take Context's lock, and must never reenter this registry. */
+struct nso_region_allocator {
+    void *owner;
+    void *(*allocate)(void *owner,unsigned kind,size_t bytes);
+    void (*release)(void *owner,unsigned kind,void *node);
+    int (*owns)(void *owner,unsigned kind,const void *node,size_t bytes);
+};
+int nso_host_region_allocator(const struct nso_region_allocator *);
+
 /* Internal native page interface. These statuses are NOT SDK Results and none
  * of these functions is registered in the guest import resolver. Anonymous
  * host VM can be lazy/overcommitted: mapped_guest_bytes counts accessible guest
@@ -45,6 +57,7 @@ struct nso_owned_page_usage {
     size_t quarantined_regions;
     /* False => mapped_guest_bytes is zero/unknown, not the old complete sum. */
     int mapped_guest_bytes_valid;
+    size_t interval_count;
 };
 struct nso_owned_page_result nso_host_owned_pages_map(uintptr_t address,size_t size);
 struct nso_owned_page_result nso_host_owned_pages_free(uintptr_t address,size_t size);

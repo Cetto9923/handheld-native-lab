@@ -50,7 +50,7 @@ static int number(const char *s,uint64_t *out) {
 static int usage(const char *program) {
     fprintf(stderr,"usage: %s <uncompressed.nso> [--init-wrapper|--init-elf] --info|--call <offset> [arg0 ... arg5]|--symbol <name> [args]\n",program);
 #ifdef NSO_WITH_GUEST_PROFILE
-    fputs("owned experiment: after path, supply --guest-quota <bytes> --guest-stack <bytes> [--guest-arg <literal> ...]; complete guest argv including argv0, default explicitly empty; no original SVC measurement\n",stderr);
+    fputs("owned experiment: after path, supply --guest-quota <bytes> --guest-stack <bytes> [--guest-resource-quota <bytes>] [--guest-arg <literal> ...]; resource provider has no default; complete guest argv including argv0, default explicitly empty; no original SVC measurement\n",stderr);
 #endif
     return 2;
 }
@@ -86,17 +86,17 @@ static void *run_profile_entry(guest_process *p,void *opaque) {
     }
     return NULL;
 }
-static int owned_profile(const char *path,size_t quota,size_t stack,size_t guest_argc,const char *const guest_argv[],struct profile_entry *entry) {
+static int owned_profile(const char *path,size_t quota,size_t stack,size_t resources,size_t guest_argc,const char *const guest_argv[],struct profile_entry *entry) {
     struct guest_process_config config={quota,stack};
     guest_process *p=NULL;
-    struct nso_result r=guest_process_create_with_arguments(&config,guest_argc,guest_argv,&p);
+    struct nso_result r=resources?guest_process_create_with_resources(&config,resources,guest_argc,guest_argv,&p):guest_process_create_with_arguments(&config,guest_argc,guest_argv,&p);
     char err[256]={0};
     if(r.status==NSO_OK)r=guest_process_load(p,path,err,sizeof(err));
     if(r.status==NSO_OK) {
         nso_module *m=guest_process_module(p);
         char bid[33];nso_build_id(m,bid);
-        printf("[profile] explicit diagnostic port-policy quota=%zu stack=%zu image=%zu guest_argc=%zu build=%s imports=%u unresolved=%u; CRT/TLS not initialized\n",
-            quota,stack,nso_image_size(m),guest_argc,bid,nso_import_count(m),nso_unresolved_count(m));fflush(stdout);
+        printf("[profile] explicit diagnostic port-policy quota=%zu stack=%zu image=%zu resource_quota=%zu guest_argc=%zu build=%s imports=%u unresolved=%u; CRT/TLS not initialized\n",
+            quota,stack,nso_image_size(m),resources,guest_argc,bid,nso_import_count(m),nso_unresolved_count(m));fflush(stdout);
         void *returned=NULL;r=guest_process_run(p,run_profile_entry,entry,&returned);
     }
     if(r.status!=NSO_OK)fprintf(stderr,"[profile-error] status=%d native=%d cleanup=%d %s\n",r.status,r.native_error,r.cleanup_error,err);
@@ -114,11 +114,11 @@ int main(int argc,char **argv) {
     int next=2,init=0;
     nso_init_policy policy=NSO_INIT_ELF;
 #ifdef NSO_WITH_GUEST_PROFILE
-    uint64_t quota=0,stack=0;
+    uint64_t quota=0,stack=0,resources=0;
     size_t guest_argc=0;const char **guest_argv=calloc((size_t)argc,sizeof(*guest_argv));
     if(!guest_argv) {fputs("guest argument metadata allocation failed\n",stderr);return 1;}
     int owned=0;
-    while(next<argc && (!strcmp(argv[next],"--guest-quota") || !strcmp(argv[next],"--guest-stack") || !strcmp(argv[next],"--guest-arg"))) {
+    while(next<argc && (!strcmp(argv[next],"--guest-quota") || !strcmp(argv[next],"--guest-stack") || !strcmp(argv[next],"--guest-arg") || !strcmp(argv[next],"--guest-resource-quota"))) {
         const char *option=argv[next++];
         if(next>=argc)goto invalid_cli;
         owned=1;
@@ -126,7 +126,8 @@ int main(int argc,char **argv) {
         uint64_t value;
         if(!number(argv[next++],&value) || !value || value>SIZE_MAX)goto invalid_cli;
         if(!strcmp(option,"--guest-quota")) {if(quota)goto invalid_cli;quota=value;}
-        else {if(stack)goto invalid_cli;stack=value;}
+        else if(!strcmp(option,"--guest-stack")) {if(stack)goto invalid_cli;stack=value;}
+        else {if(resources)goto invalid_cli;resources=value;}
     }
     if(owned && (!quota || !stack))goto invalid_cli;
 #endif
@@ -151,7 +152,7 @@ int main(int argc,char **argv) {
     if(owned) {
         struct profile_entry entry={.info=info,.init=init,.by_symbol=by_symbol,.argument_count=argument_count,.policy=policy,.target=target,.off=off};
         memcpy(entry.args,args,sizeof(args));
-        int result=owned_profile(argv[1],(size_t)quota,(size_t)stack,guest_argc,guest_argv,&entry);
+        int result=owned_profile(argv[1],(size_t)quota,(size_t)stack,(size_t)resources,guest_argc,guest_argv,&entry);
         free(guest_argv);return result;
     }
 #endif

@@ -35,6 +35,14 @@ struct nso_result guest_process_create(const struct guest_process_config *,guest
  * an explicitly empty guest command line, not diagnostic host arguments. */
 struct nso_result guest_process_create_with_arguments(const struct guest_process_config *,
         size_t argc,const char *const argv[],guest_process **out);
+/* Explicit management-resource policy; no default or original kernel/RSS
+ * equivalence. Arguments retain the create_with_arguments ownership contract. */
+struct nso_result guest_process_create_with_resources(const struct guest_process_config *,
+        size_t resource_bytes,size_t argc,const char *const argv[],guest_process **out);
+struct guest_virtual_resource_usage {uint64_t total,used;};
+/* Same live-primary ownership checks as Query; invalid leaves out untouched.
+ * used includes the original SDK's saturating 0x80000 reporting margin. */
+struct nso_result guest_process_resource_info(guest_process *,struct guest_virtual_resource_usage *out);
 #if defined(NSO_PROFILE_ARGUMENT_TESTING)
 /* Normal VM failure contracts only; not compiled into production. */
 void guest_process_test_argument_vm(void *(*map)(size_t bytes,size_t pending),

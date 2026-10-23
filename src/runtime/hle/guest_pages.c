@@ -1,7 +1,9 @@
 #define _GNU_SOURCE
 #include "guest_pages.h"
 #include <pthread.h>
+#include <errno.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <unistd.h>
 
 struct page_allocation {
@@ -72,6 +74,26 @@ static struct guest_context_result drop_ticket(struct page_allocation *a) {
     return a->committed ? guest_charge_release(a->ticket) : guest_charge_cancel(a->ticket);
 }
 
+static void *page_node(guest_pages *p,enum guest_metadata_kind kind,size_t bytes) {
+    void *node=NULL;
+    struct guest_context_result r=guest_metadata_allocate(p->context,kind,bytes,&node);
+    if(r.status!=GUEST_CONTEXT_OK)errno=r.native_error?r.native_error:ENOMEM;
+    return node;
+}
+static void drop_node(guest_pages *p,enum guest_metadata_kind kind,void *node) {
+    struct guest_context_result r=guest_metadata_release(p->context,kind,node);
+    if(r.status!=GUEST_CONTEXT_OK) {fprintf(stderr,"[metadata-fatal] node release status=%d errno=%d\n",r.status,r.native_error);abort();}
+}
+static void *raw_node_allocate(void *owner,unsigned kind,size_t bytes) {
+    return page_node(owner,kind==1?GUEST_METADATA_VA_REGION:GUEST_METADATA_VA_INTERVAL,bytes);
+}
+static void raw_node_release(void *owner,unsigned kind,void *node) {
+    drop_node(owner,kind==1?GUEST_METADATA_VA_REGION:GUEST_METADATA_VA_INTERVAL,node);
+}
+static int raw_node_owned(void *owner,unsigned kind,const void *node,size_t bytes) {
+    guest_pages *p=owner;
+    return guest_metadata_is_owned(p->context,kind==1?GUEST_METADATA_VA_REGION:GUEST_METADATA_VA_INTERVAL,node,bytes);
+}
 struct guest_pages_result guest_pages_create(guest_context *context, guest_pages **out) {
     if (!context || !out) return result(GUEST_PAGES_INVALID);
     struct guest_pages_result v = result(GUEST_PAGES_OK);
@@ -96,8 +118,10 @@ struct guest_pages_result guest_pages_create(guest_context *context, guest_pages
     if (active_owner || raw.region_count || v.vm.status != NSO_OWNED_PAGE_OK) {
         v.status = GUEST_PAGES_BUSY;
     } else {
-        active_owner = p;
-        *out = p;
+        struct nso_region_allocator allocator={p,raw_node_allocate,raw_node_release,raw_node_owned};
+        v.native_error=nso_host_region_allocator(&allocator);
+        if(v.native_error)v.status=GUEST_PAGES_BUSY;
+        else {active_owner = p;*out = p;}
     }
     pthread_mutex_unlock(&owner_mutex);
     if (v.status != GUEST_PAGES_OK) { pthread_mutex_destroy(&p->mutex); free(p); }
@@ -108,17 +132,19 @@ struct guest_pages_result guest_pages_reserve(guest_pages *p, size_t bytes, uint
     if (!p || !out) return result(GUEST_PAGES_INVALID);
     *out = 0;
     if (!valid_range(p, 0, bytes)) return result(GUEST_PAGES_UNSUPPORTED);
-    struct page_region *r = calloc(1, sizeof(*r));
-    if (!r) return result(GUEST_PAGES_NO_MEMORY);
     struct guest_pages_result v = result(GUEST_PAGES_OK);
     pthread_mutex_lock(&p->mutex);
+    /* Allocator occupancy and ledger publication share the owner lock, so a
+     * concurrent usage snapshot cannot observe an unpublished region node. */
+    struct page_region *r = page_node(p,GUEST_METADATA_PAGE_REGION,sizeof(*r));
+    if (!r) {v.status=GUEST_PAGES_NO_MEMORY;goto done;}
     /* A retired reservation can still own a failed-to-drop ticket. Finish that
      * release before reserving more VA, which could otherwise reuse its base. */
     for (struct page_region *s = p->regions; s; s = s->next)
-        if (!s->live) { v.status = GUEST_PAGES_BUSY; free(r); goto done; }
+        if (!s->live) { v.status = GUEST_PAGES_BUSY; drop_node(p,GUEST_METADATA_PAGE_REGION,r); goto done; }
     v.region_attempted = 1;
     v.region_result = nso_host_allocate_address_region(&r->base, bytes);
-    if (v.region_result) { v.status = GUEST_PAGES_VM_ERROR; free(r); }
+    if (v.region_result) { v.status = GUEST_PAGES_VM_ERROR; drop_node(p,GUEST_METADATA_PAGE_REGION,r); }
     else {
         r->bytes = bytes; r->live = 1;
         r->next = p->regions; p->regions = r;
@@ -142,12 +168,12 @@ struct guest_pages_result guest_pages_map(guest_pages *p, uintptr_t address, siz
         if (overlaps(address, bytes, a->address, a->bytes)) {
             v.status = GUEST_PAGES_OVERLAP; goto done;
         }
-    struct page_allocation *a = calloc(1, sizeof(*a));
+    struct page_allocation *a = page_node(p,GUEST_METADATA_PAGE_ALLOCATION,sizeof(*a));
     if (!a) { v.status = GUEST_PAGES_NO_MEMORY; goto done; }
     a->address = address; a->bytes = bytes;
     v.context = guest_charge_reserve(p->context, bytes, &a->ticket);
     if (v.context.status != GUEST_CONTEXT_OK) {
-        v.status = context_status(v.context.status); free(a); goto done;
+        v.status = context_status(v.context.status); drop_node(p,GUEST_METADATA_PAGE_ALLOCATION,a); goto done;
     }
     /* Owner lock serializes the ticket identity; the Context lock is released
      * before entering address_region and therefore before any real VM call. */
@@ -172,7 +198,7 @@ struct guest_pages_result guest_pages_map(guest_pages *p, uintptr_t address, siz
         /* Raw map failure with successful NONE restoration has no backing.
          * All other retained cases remain charged/pending until whole unmap. */
         v.ticket_cleanup = guest_charge_cancel(a->ticket);
-        if (v.ticket_cleanup.status == GUEST_CONTEXT_OK) { free(a); goto done; }
+        if (v.ticket_cleanup.status == GUEST_CONTEXT_OK) { drop_node(p,GUEST_METADATA_PAGE_ALLOCATION,a); goto done; }
         v.status = context_status(v.ticket_cleanup.status);
     }
     a->next = r->allocations; r->allocations = a;
@@ -212,7 +238,7 @@ struct guest_pages_result guest_pages_free_exact(guest_pages *p, uintptr_t addre
     if (v.ticket_cleanup.status != GUEST_CONTEXT_OK) {
         v.status = context_status(v.ticket_cleanup.status); goto done;
     }
-    *link = a->next; free(a); changed(p);
+    *link = a->next; drop_node(p,GUEST_METADATA_PAGE_ALLOCATION,a); changed(p);
 done:
     pthread_mutex_unlock(&p->mutex);
     return v;
@@ -237,9 +263,9 @@ static struct guest_pages_result release_locked(guest_pages *p, struct page_regi
         if (v.ticket_cleanup.status != GUEST_CONTEXT_OK) {
             v.status = context_status(v.ticket_cleanup.status); return v;
         }
-        r->allocations = a->next; free(a); changed(p);
+        r->allocations = a->next; drop_node(p,GUEST_METADATA_PAGE_ALLOCATION,a); changed(p);
     }
-    *link = r->next; free(r); changed(p);
+    *link = r->next; drop_node(p,GUEST_METADATA_PAGE_REGION,r); changed(p);
     return v;
 }
 struct guest_pages_result guest_pages_release_region(guest_pages *p, uintptr_t base) {
@@ -259,12 +285,16 @@ struct guest_pages_result guest_pages_usage(guest_pages *p, struct guest_pages_u
     pthread_mutex_lock(&p->mutex);
     u.generation = p->generation; u.backing_valid = u.ledger_valid = 1;
     for (struct page_region *r = p->regions; r; r = r->next) {
+        ++u.metadata_regions;
+        if(!guest_metadata_is_owned(p->context,GUEST_METADATA_PAGE_REGION,r,sizeof(*r))) {u.ledger_valid=0;break;}
         if (!valid_range(p, r->base, r->bytes)) u.ledger_valid = 0;
         for (struct page_region *s = r->next; s; s = s->next)
             if (r->base == s->base || (r->live && s->live && overlaps(r->base,r->bytes,s->base,s->bytes))) u.ledger_valid = 0;
         if (r->live && (!add_size(&u.region_count,1) || !add_size(&u.reserved_bytes,r->bytes))) u.ledger_valid = 0;
         if (r->quarantined) { ++u.quarantined_regions; u.backing_valid = 0; }
         for (struct page_allocation *a = r->allocations; a; a = a->next) {
+            ++u.metadata_allocations;
+            if(!guest_metadata_is_owned(p->context,GUEST_METADATA_PAGE_ALLOCATION,a,sizeof(*a))) {u.ledger_valid=0;break;}
             if (!a->ticket || !valid_range(p,a->address,a->bytes) || a->address < r->base ||
                 a->address - r->base >= r->bytes || a->bytes > r->bytes - (a->address - r->base) ||
                 (!r->live && a->backed)) u.ledger_valid = 0;
@@ -278,6 +308,13 @@ struct guest_pages_result guest_pages_usage(guest_pages *p, struct guest_pages_u
     }
     v.vm = nso_host_owned_pages_usage(&u.vm);
     v.context = guest_context_usage(p->context,&u.context);
+    struct guest_context_result resource=guest_context_resource_usage(p->context,&u.resources);
+    if(resource.status!=GUEST_CONTEXT_UNSUPPORTED && (resource.status!=GUEST_CONTEXT_OK || !u.resources.valid ||
+        u.resources.counts[GUEST_METADATA_TICKET]!=u.context.tickets ||
+        u.resources.counts[GUEST_METADATA_PAGE_REGION]!=u.metadata_regions ||
+        u.resources.counts[GUEST_METADATA_PAGE_ALLOCATION]!=u.metadata_allocations ||
+        u.resources.counts[GUEST_METADATA_VA_REGION]!=u.vm.region_count ||
+        u.resources.counts[GUEST_METADATA_VA_INTERVAL]!=u.vm.interval_count))u.ledger_valid=0;
     if (u.vm.region_count != u.region_count || u.vm.reserved_guest_bytes != u.reserved_bytes ||
         u.vm.quarantined_regions > u.quarantined_regions ||
         u.context.pending_bytes < u.pending_bytes || u.context.charged_bytes < u.charged_bytes ||
@@ -308,6 +345,10 @@ struct guest_pages_result guest_pages_destroy(guest_pages *p) {
     if (active_owner != p) {
         pthread_mutex_unlock(&owner_mutex); pthread_mutex_unlock(&p->mutex);
         return result(GUEST_PAGES_INCONSISTENT);
+    }
+    v.native_error=nso_host_region_allocator(NULL);
+    if(v.native_error) {
+        pthread_mutex_unlock(&owner_mutex);pthread_mutex_unlock(&p->mutex);return result(GUEST_PAGES_BUSY);
     }
     active_owner = NULL;
     pthread_mutex_unlock(&owner_mutex);

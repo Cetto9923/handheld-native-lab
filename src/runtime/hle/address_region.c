@@ -23,6 +23,22 @@ struct reservation {
 };
 static pthread_mutex_t region_mutex=PTHREAD_MUTEX_INITIALIZER;
 static struct reservation *regions;
+static struct nso_region_allocator node_allocator;
+int nso_host_region_allocator(const struct nso_region_allocator *allocator) {
+    pthread_mutex_lock(&region_mutex);
+    int error=regions?EBUSY:0;
+    if(!error && allocator && (!allocator->allocate || !allocator->release || !allocator->owns))error=EINVAL;
+    if(!error)node_allocator=allocator?*allocator:(struct nso_region_allocator){0};
+    pthread_mutex_unlock(&region_mutex);return error;
+}
+static void *allocate_node(unsigned kind,size_t bytes) {
+    return node_allocator.allocate?node_allocator.allocate(node_allocator.owner,kind,bytes):calloc(1,bytes);
+}
+static void release_node(unsigned kind,void *p) {
+    if(!p)return;
+    if(node_allocator.release)node_allocator.release(node_allocator.owner,kind,p);
+    else free(p);
+}
 
 static size_t host_page_size(void) {
     long value=sysconf(_SC_PAGESIZE);
@@ -99,12 +115,12 @@ uint32_t nso_host_allocate_address_region(uintptr_t *out,size_t size) {
     size_t rounded=(size+page-1)&~(page-1);
     if(rounded>SIZE_MAX-alignment-2*page)return 0x1803;
     size_t mapping_size=rounded+alignment+2*page;
-    struct reservation *r=malloc(sizeof(*r));
+    struct reservation *r=allocate_node(1,sizeof(*r));
     if(!r)return 0x1003; /* SDK metadata-node exhaustion */
     void *mapping=mmap(NULL,mapping_size,PROT_NONE,anonymous_flags(),-1,0);
     if(mapping==MAP_FAILED) {
         fprintf(stderr,"[address-region] virtual reservation failed size=0x%zx errno=%d\n",size,errno);
-        free(r);return 0x1803; /* SDK address-space exhaustion */
+        release_node(1,r);return 0x1803; /* SDK address-space exhaustion */
     }
     uintptr_t address=((uintptr_t)mapping+page+alignment-1)&~(uintptr_t)(alignment-1);
     *r=(struct reservation){.address=address,.mapping=mapping,
@@ -135,11 +151,11 @@ uint32_t nso_host_free_address_region(uintptr_t address) {
     struct accessible_interval *interval=r->accessible;
     while(interval) {
         struct accessible_interval *next=interval->next;
-        free(interval);interval=next;
+        release_node(2,interval);interval=next;
     }
     pthread_mutex_unlock(&region_mutex);
     fprintf(stderr,"[address-region] released address=0x%" PRIxPTR " size=0x%zx\n",address,r->requested_size);
-    free(r);
+    release_node(1,r);
     return 0;
 }
 
@@ -157,7 +173,7 @@ struct nso_owned_page_result nso_host_owned_pages_map(uintptr_t address,size_t s
         if(*slot && (*slot)->begin<end)
             result=page_result(NSO_OWNED_PAGE_UNSUPPORTED,NSO_OWNED_PAGE_DETAIL_OVERLAP,0,0);
         else {
-            struct accessible_interval *node=malloc(sizeof(*node));
+            struct accessible_interval *node=allocate_node(2,sizeof(*node));
             if(!node)result=page_result(NSO_OWNED_PAGE_NO_MEMORY,NSO_OWNED_PAGE_DETAIL_NONE,ENOMEM,0);
             else if(protect_owned((void *)address,size,PROT_READ|PROT_WRITE)) {
                 int failure=errno,restore=0,restore_failed=0;
@@ -166,7 +182,7 @@ struct nso_owned_page_result nso_host_owned_pages_map(uintptr_t address,size_t s
                 if(protect_owned((void *)address,size,PROT_NONE)) {
                     restore=errno;restore_failed=1;r->quarantined=1;
                 }
-                free(node);
+                release_node(2,node);
                 result=page_result(restore_failed?NSO_OWNED_PAGE_QUARANTINED:NSO_OWNED_PAGE_SYSTEM_ERROR,
                                    NSO_OWNED_PAGE_DETAIL_NONE,failure,restore);
             } else {
@@ -204,7 +220,7 @@ struct nso_owned_page_result nso_host_owned_pages_free(uintptr_t address,size_t 
             /* Only a strict middle cut of one interval needs a new right node.
              * Allocate it before MAP_FIXED can discard any old data. */
             int split=first->begin<address && first->end>end;
-            struct accessible_interval *right=split?malloc(sizeof(*right)):NULL;
+            struct accessible_interval *right=split?allocate_node(2,sizeof(*right)):NULL;
             if(split && !right)
                 result=page_result(NSO_OWNED_PAGE_NO_MEMORY,NSO_OWNED_PAGE_DETAIL_NONE,ENOMEM,0);
             else {
@@ -214,7 +230,7 @@ struct nso_owned_page_result nso_host_owned_pages_free(uintptr_t address,size_t 
                     /* A failed destructive replacement cannot prove old data
                      * survived. Do not publish the old complete count or guess
                      * a data-restoring rollback. Only full release is allowed. */
-                    r->quarantined=1;free(right);
+                    r->quarantined=1;release_node(2,right);
                     result=page_result(NSO_OWNED_PAGE_QUARANTINED,NSO_OWNED_PAGE_DETAIL_NONE,failure,0);
                 } else {
                     if(split) {
@@ -227,7 +243,7 @@ struct nso_owned_page_result nso_host_owned_pages_free(uintptr_t address,size_t 
                         while(*slot && (*slot)->begin<end) {
                             struct accessible_interval *node=*slot;
                             if(node->end>end) {node->begin=end;break;}
-                            *slot=node->next;free(node);
+                            *slot=node->next;release_node(2,node);
                         }
                     }
                     r->mapped_guest_bytes-=size;
@@ -245,12 +261,22 @@ struct nso_owned_page_result nso_host_owned_pages_usage(struct nso_owned_page_us
     struct nso_owned_page_result result=page_result(NSO_OWNED_PAGE_OK,NSO_OWNED_PAGE_DETAIL_NONE,0,0);
     pthread_mutex_lock(&region_mutex);
     for(struct reservation *r=regions;r;r=r->next) {
+        if(node_allocator.owns && !node_allocator.owns(node_allocator.owner,1,r,sizeof(*r))) {
+            out->mapped_guest_bytes_valid=0;result=page_result(NSO_OWNED_PAGE_QUARANTINED,NSO_OWNED_PAGE_DETAIL_NONE,EFAULT,0);break;
+        }
         if(out->region_count==SIZE_MAX || r->requested_size>SIZE_MAX-out->reserved_guest_bytes ||
                 r->mapped_guest_bytes>SIZE_MAX-out->mapped_guest_bytes) {
             result=page_result(NSO_OWNED_PAGE_UNSUPPORTED,NSO_OWNED_PAGE_DETAIL_OVERFLOW,0,0);
             out->mapped_guest_bytes_valid=0;break;
         }
         out->region_count++;out->reserved_guest_bytes+=r->requested_size;
+        for(struct accessible_interval *i=r->accessible;i;i=i->next) {
+            if(node_allocator.owns && !node_allocator.owns(node_allocator.owner,2,i,sizeof(*i))) {
+                out->mapped_guest_bytes_valid=0;result=page_result(NSO_OWNED_PAGE_QUARANTINED,NSO_OWNED_PAGE_DETAIL_NONE,EFAULT,0);break;
+            }
+            if(out->interval_count==SIZE_MAX) {out->mapped_guest_bytes_valid=0;result=page_result(NSO_OWNED_PAGE_UNSUPPORTED,NSO_OWNED_PAGE_DETAIL_OVERFLOW,0,0);break;}
+            out->interval_count++;
+        }
         out->mapped_guest_bytes+=r->mapped_guest_bytes;
         if(r->quarantined) {
             out->quarantined_regions++;

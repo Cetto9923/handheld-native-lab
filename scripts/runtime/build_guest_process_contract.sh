@@ -10,10 +10,12 @@ p.add_argument('--out',type=Path,required=True);p.add_argument('--toolchain',typ
 p.add_argument('--pages-source-root',type=Path,default=ROOT,help='reviewed guest_pages component checkout, default this integrated tree')
 p.add_argument('--boundary-source-root',type=Path,default=ROOT,help='frozen native_boundary component checkout')
 p.add_argument('--os-tls-source-root',type=Path,default=ROOT,help='frozen guest_os_tls component checkout')
+p.add_argument('--resource-quota-bytes',type=int,required=True,help='explicit logical metadata arena bytes, no default')
 p.add_argument('--main',type=Path);p.add_argument('--quota-bytes',type=int);p.add_argument('--stack-bytes',type=int)
 p.add_argument('--rust-root',type=Path,default=Path.home()/'.rustup/toolchains/stable-aarch64-apple-darwin')
 a=p.parse_args();out=a.out.resolve();tc=a.toolchain.resolve()
 if not out.is_relative_to((ROOT/'.local').resolve()):p.error('products must stay in this checkout .local')
+if a.resource_quota_bytes<=0:p.error('resource quota must be positive')
 if a.main and (not a.quota_bytes or not a.stack_bytes):p.error('main requires explicit diagnostic quota/stack inputs')
 out.mkdir(parents=True,exist_ok=False)
 def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -43,8 +45,9 @@ manifest={'head':subprocess.check_output(['git','rev-parse','HEAD'],text=True).s
  'os_tls_head':subprocess.check_output(['git','rev-parse','HEAD'],cwd=a.os_tls_source_root,text=True).strip(),
  'os_tls_inputs':{str(v):digest(v) for v in [os_source,os_source.with_suffix('.h')]},
  'quota_policy':'required explicit native logical backing cap; not original SVC measurements',
+ 'resource_policy':{'explicit_bytes':a.resource_quota_bytes,'kind':'bounded actual ticket/page/VA-node arena, not Horizon page tables or RSS','sdk_report_margin':524288},
  'heap_policy':'initialized immutable empty native heap; Vamm pages have a separate sole ticket owner',
- 'lock_order':'process -> page owner -> Context OR region; external raw APIs quiescent',
+ 'lock_order':'process -> page owner -> region -> terminal Context, or owner -> Context; external raw APIs quiescent',
  'game_started':False,'crt_tls_initialized':False}
 def save():(out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 def run(name,cmd,expected=0,timeout=30):
@@ -86,6 +89,14 @@ run('host-boundary-contract',[out/'guest_process_contract.host','--boundary',out
 run('host-retarget-contract',[out/'guest_process_contract.host','--retarget',out/'init-executor.nso'])
 run('host-readonly-retarget-contract',[out/'guest_process_contract.host','--retarget-readonly',out/'readonly-import.nso'])
 run('host-arguments-contract',[out/'guest_process_contract.host','--arguments',out/'contract.nso'])
+run('host-locale-contract',[out/'guest_process_contract.host','--locale'])
+run('host-resource-owner-contract',[out/'guest_process_contract.host','--resource-owner'])
+run('host-resource-process-contract',[out/'guest_process_contract.host','--resource',out/'contract.nso'])
+run('host-compile-resource-recovery',['clang',*strict,'-DGUEST_RESOURCE_TESTING=1','-c',hle/'guest_context.c','-o',out/'guest_context.resource-recovery.host.o'])
+run('host-compile-resource-vm-recovery',['clang',*strict,'-DNSO_OWNED_PAGES_TESTING=1','-c',hle/'address_region.c','-o',out/'address_region.resource-recovery.host.o'])
+resource_host=[v for v in host if v.name not in ['guest_context.host.o','address_region.host.o']]+[out/'address_region.resource-recovery.host.o']
+run('host-link-resource-recovery',['clang',*strict,'-DGUEST_RESOURCE_TESTING=1','-DNSO_OWNED_PAGES_TESTING=1',test,*resource_host,out/'guest_context.resource-recovery.host.o','-lc++','-lpthread','-o',out/'guest_process_resource_recovery.host'])
+run('host-resource-recovery',[out/'guest_process_resource_recovery.host','--resource-recovery'])
 run('host-os-tls-contract',[out/'guest_process_contract.host','--os-tls',out/'contract.nso'])
 run('host-os-tls-unsupported-provider',[out/'guest_process_contract.host','--tls-unsupported',out/'boundary.nso'],134)
 unsupported=(out/'host-os-tls-unsupported-provider/stderr.log').read_text()
@@ -108,6 +119,8 @@ run('host-legacy-info',[out/'nso_legacy.host',out/'contract.nso','--info'])
 run('host-profile-info',[out/'nso_owned_startup.host',out/'contract.nso','--guest-quota','1048576','--guest-stack','65536','--info'])
 run('host-profile-explicit-arguments',[out/'nso_owned_startup.host',out/'contract.nso','--guest-quota','1048576','--guest-stack','65536','--guest-arg','ffrs','--guest-arg','','--guest-arg','option=123','--info'])
 run('host-profile-arguments-require-policy',[out/'nso_owned_startup.host',out/'contract.nso','--guest-arg','ffrs','--info'],2)
+run('host-profile-explicit-resources',[out/'nso_owned_startup.host',out/'contract.nso','--guest-quota','1048576','--guest-stack','65536','--guest-resource-quota',str(a.resource_quota_bytes),'--info'])
+run('host-profile-resource-zero',[out/'nso_owned_startup.host',out/'contract.nso','--guest-quota','1048576','--guest-stack','65536','--guest-resource-quota','0','--info'],2)
 run('host-profile-module-limit',[out/'nso_owned_startup.host',out/'contract.nso','--guest-quota','1','--guest-stack','65536','--info'],1)
 if a.main:
  data=a.main.read_bytes();value=hashlib.sha256(data).hexdigest()
@@ -120,11 +133,11 @@ if a.main:
   word=struct.unpack_from('<I',text,offset)[0]
   if word&0xffe0001f==0xd4000001:svc.append(mem+offset)
   if word&0xffffffe0 in (0xd51bd040,0xd51bd060):msr.append(mem+offset)
- manifest['main']={'path':str(a.main),'sha256':value,'diagnostic_quota':a.quota_bytes,'stack_bytes':a.stack_bytes,
+ manifest['main']={'path':str(a.main),'sha256':value,'diagnostic_quota':a.quota_bytes,'stack_bytes':a.stack_bytes,'resource_quota':a.resource_quota_bytes,
   'text_bytes':size,'direct_svc_offsets':svc,'direct_msr_tp_offsets':msr}
  if svc or msr:raise RuntimeError('reviewed main contains direct kernel/TP-writing instructions; profile cannot certify ownership')
  for name,arguments in [('nnmain',['--symbol','nnMain']),('malloc',['--symbol','malloc','4096']),('startup',['--symbol','nninitStartup']),('startup-arguments',['--guest-arg','ffrs','--guest-arg','option=123','--symbol','nninitStartup']),('crt',['--init-wrapper','--info'])]:
-  run('host-original-'+name,[out/'nso_owned_startup.host',a.main,'--guest-quota',str(a.quota_bytes),'--guest-stack',str(a.stack_bytes),*arguments],1,10)
+  run('host-original-'+name,[out/'nso_owned_startup.host',a.main,'--guest-quota',str(a.quota_bytes),'--guest-stack',str(a.stack_bytes),'--guest-resource-quota',str(a.resource_quota_bytes),*arguments],1,10)
   diagnostic=(out/('host-original-'+name)/'stderr.log').read_text()
   if '[boundary-error] scope-init status=1; no guest execution' not in diagnostic or '[query-port-policy]' in diagnostic:
    raise RuntimeError('unsupported Mac executed guest code or missed its explicit boundary failure')
@@ -349,6 +362,77 @@ struct.pack_into('<QQq',data,0x1258,0x8208,(2<<32)|0x402,0)
 (out/'arguments.nso').write_bytes(data)
 manifest['generated_fixtures']['arguments.nso']={'bytes':len(data),'sha256':digest(out/'arguments.nso'),'kind':'self-authored two-getter native boundary contract','assembly_sha256':digest(argv_assembly)}
 run('host-arguments-native-unsupported',[out/'guest_process_contract.host','--arguments-native',out/'arguments.nso'])
+resource_assembly=out/'resource-fixture.S'
+resource_assembly.write_text(r''' .text
+.org 0x20
+.global fixture_entry
+fixture_entry:
+ stp x29, x30, [sp, #-32]!
+ str x19, [sp, #16]
+ mov x29, sp
+ mov x19, x0
+ mov x18, #0x55
+ adrp x16, fixture_got
+ add x16, x16, :lo12:fixture_got
+ ldr x16, [x16]
+ blr x16
+ stp x0, x1, [x19]
+ str x18, [x19, #16]
+ mov x0, #0x91
+ ldr x19, [sp, #16]
+ ldp x29, x30, [sp], #32
+ ret
+.section .fixture_got,"aw"
+.global fixture_got
+fixture_got: .zero 8
+''')
+run('fixture-resource-assemble',['clang',*common,'-c',resource_assembly,'-o',out/'resource-fixture.o'])
+run('fixture-resource-link',['env',f'DYLD_LIBRARY_PATH={a.rust_root}/lib',ld,'--no-undefined','--build-id=none','--image-base=0','-Ttext=0','--section-start=.fixture_got=0x8200','-e','fixture_entry','--oformat=binary','-o',out/'resource-fixture.raw',out/'resource-fixture.o'])
+raw=(out/'resource-fixture.raw').read_bytes();data=bytearray((out/'contract.nso').read_bytes())
+data[0x200:0x300]=raw[:0x100].ljust(0x100,b'\0');struct.pack_into('<I',data,0x204,0x4000)
+names=b'\0_ZN2nn2os36GetVirtualAddressMemoryResourceUsageEv\0'
+data[0x1160:0x1160+len(names)]=names
+struct.pack_into('<II',data,0x1080,1,2);struct.pack_into('<Q',data,0x2000+3*16+8,len(names));struct.pack_into('<Q',data,0x2000+5*16+8,24)
+(out/'resource.nso').write_bytes(data)
+manifest['generated_fixtures']['resource.nso']={'bytes':len(data),'sha256':digest(out/'resource.nso'),'kind':'self-authored dual GP return ABI fixture','assembly_sha256':digest(resource_assembly)}
+run('host-resource-native-unsupported',[out/'guest_process_contract.host','--resource-native',out/'resource.nso'])
+locale_assembly=out/'locale-fixture.S'
+locale_assembly.write_text(r''' .text
+.org 0x20
+.global fixture_entry
+fixture_entry:
+ stp x29, x30, [sp, #-32]!
+ str x19, [sp, #16]
+ mov x29, sp
+ mov x19, x0
+ mov x0, x1
+ mov x1, x2
+ mov x2, x3
+ mov x3, x4
+ mov x18, #0x55
+ adrp x16, fixture_got
+ add x16, x16, :lo12:fixture_got
+ ldr x16, [x16]
+ blr x16
+ sxtw x0, w0
+ str x0, [x19]
+ str x18, [x19, #8]
+ mov x0, #0x91
+ ldr x19, [sp, #16]
+ ldp x29, x30, [sp], #32
+ ret
+.section .fixture_got,"aw"
+.global fixture_got
+fixture_got: .zero 8
+''')
+run('fixture-locale-assemble',['clang',*common,'-c',locale_assembly,'-o',out/'locale-fixture.o'])
+run('fixture-locale-link',['env',f'DYLD_LIBRARY_PATH={a.rust_root}/lib',ld,'--no-undefined','--build-id=none','--image-base=0','-Ttext=0','--section-start=.fixture_got=0x8200','-e','fixture_entry','--oformat=binary','-o',out/'locale-fixture.raw',out/'locale-fixture.o'])
+raw=(out/'locale-fixture.raw').read_bytes();data=bytearray((out/'resource.nso').read_bytes())
+data[0x200:0x300]=raw[:0x100].ljust(0x100,b'\0');struct.pack_into('<I',data,0x204,0x4000)
+names=b'\0strncasecmp_l\0';data[0x1160:0x1160+len(names)]=names;struct.pack_into('<Q',data,0x2000+3*16+8,len(names))
+(out/'locale.nso').write_bytes(data)
+manifest['generated_fixtures']['locale.nso']={'bytes':len(data),'sha256':digest(out/'locale.nso'),'kind':'self-authored typed4 locale integer-return contract','assembly_sha256':digest(locale_assembly)}
+run('host-locale-native-unsupported',[out/'guest_process_contract.host','--locale-native',out/'locale.nso'])
 android=[]
 for source in sources:
  obj=out/(source.stem+'.android.o');android.append(obj)
@@ -358,14 +442,18 @@ run('android-compile-boundary-assembly',['clang',*common,'-c',boundary_assembly,
 run('android-compile-contract',['clang',*common,'-c',test,'-o',out/'contract.android.o'])
 run('android-compile-argument-recovery-contract',['clang',*common,'-DNSO_PROFILE_ARGUMENT_TESTING=1','-c',test,'-o',out/'argument-recovery-contract.android.o'])
 run('android-compile-argument-recovery-provider',['clang',*common,'-DNSO_PROFILE_ARGUMENT_TESTING=1','-c',hle/'guest_process.c','-o',out/'argument-recovery-provider.android.o'])
+run('android-compile-resource-recovery-contract',['clang',*common,'-DGUEST_RESOURCE_TESTING=1','-DNSO_OWNED_PAGES_TESTING=1','-c',test,'-o',out/'resource-recovery-contract.android.o'])
+run('android-compile-resource-recovery-provider',['clang',*common,'-DGUEST_RESOURCE_TESTING=1','-c',hle/'guest_context.c','-o',out/'resource-recovery-provider.android.o'])
+run('android-compile-resource-vm-recovery',['clang',*common,'-DNSO_OWNED_PAGES_TESTING=1','-c',hle/'address_region.c','-o',out/'resource-vm-recovery.android.o'])
 run('android-compile-cli',['clang',*common,'-DNSO_WITH_HOST_HLE=1','-DNSO_WITH_GUEST_PROFILE=1','-c',cli,'-o',out/'cli.android.o'])
 run('android-compile-boundary-cleanup-contract',['clang',*common,'-DNSO_PROFILE_BOUNDARY_TESTING=1','-c',test,'-o',out/'boundary-cleanup-contract.android.o'])
 run('android-compile-boundary-cleanup-provider',['clang',*common,'-Dmprotect=guest_boundary_test_protect','-Dmunmap=guest_boundary_test_unmap','-c',boundary_source,'-o',out/'boundary-cleanup-provider.android.o'])
 ld=a.rust_root/'lib/rustlib/aarch64-apple-darwin/bin/gcc-ld/ld.lld'
-for name,extra in [('guest_process_contract.android',out/'contract.android.o'),('nso_owned_startup.android',out/'cli.android.o'),('guest_process_boundary_cleanup.android',out/'boundary-cleanup-contract.android.o'),('guest_process_argument_recovery.android',out/'argument-recovery-contract.android.o')]:
+for name,extra in [('guest_process_contract.android',out/'contract.android.o'),('nso_owned_startup.android',out/'cli.android.o'),('guest_process_boundary_cleanup.android',out/'boundary-cleanup-contract.android.o'),('guest_process_argument_recovery.android',out/'argument-recovery-contract.android.o'),('guest_process_resource_recovery.android',out/'resource-recovery-contract.android.o')]:
  binary=out/name
  objects=android if name!='guest_process_boundary_cleanup.android' else [v for v in android if v.name!='native_boundary.android.o']+[out/'boundary-cleanup-provider.android.o']
  if name=='guest_process_argument_recovery.android':objects=[v for v in android if v.name!='guest_process.android.o']+[out/'argument-recovery-provider.android.o']
+ if name=='guest_process_resource_recovery.android':objects=[v for v in android if v.name not in ['guest_context.android.o','address_region.android.o']]+[out/'resource-recovery-provider.android.o',out/'resource-vm-recovery.android.o']
  run('android-link-'+name,['env',f'DYLD_LIBRARY_PATH={a.rust_root}/lib',ld,'-pie','--dynamic-linker','/system/bin/linker64',
   '--no-undefined','--eh-frame-hdr','-z','max-page-size=16384','-z','relro','-z','now','-z','noexecstack','--build-id=sha1',
   '-Map',out/(name+'.map'),'-o',binary,api/'crtbegin_dynamic.o',*objects,extra,'--start-group',*library_inputs,'--end-group','-L',api,'-lc','-lm','-ldl',api/'crtend_android.o'])
@@ -375,6 +463,8 @@ for name,extra in [('guest_process_contract.android',out/'contract.android.o'),(
  if 'nso_loader_test_vm' in elf or '.eh_frame_hdr' not in elf or 'GNU_EH_FRAME' not in elf:raise RuntimeError('production/unwind metadata mismatch')
  if name!='guest_process_boundary_cleanup.android' and 'guest_boundary_test_' in elf:raise RuntimeError('boundary test hooks leaked into production')
  if name!='guest_process_argument_recovery.android' and 'guest_process_test_argument_vm' in elf:raise RuntimeError('argument test hooks leaked into production')
+ if name!='guest_process_resource_recovery.android' and ('guest_context_resource_test_vm' in elf or 'nso_host_owned_pages_test_vm' in elf):raise RuntimeError('resource test hooks leaked into production')
+ if not re.search(r'UND\s+strncasecmp(?:\s|$)',elf) or re.search(r'UND\s+strncasecmp_l(?:\s|$)',elf):raise RuntimeError('Android locale bridge must call Bionic non-_l strncasecmp')
  if 'libc++abi.a(cxa_guard.cpp.o)' not in (out/(name+'.map')).read_text():raise RuntimeError('guard not from official compiler runtime')
  manifest.setdefault('android_artifacts',{})[name]={'path':str(binary),'bytes':len(data),'sha256':digest(binary)}
 for name,value in manifest['source_sha256'].items():

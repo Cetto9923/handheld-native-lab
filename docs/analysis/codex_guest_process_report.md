@@ -1,5 +1,66 @@
 # Owned startup profile: native boundary integration
 
+## Explicit VA management resource provider
+
+New opt-in constructors retain the old two-field config/constructor ABI. CLI
+`--guest-resource-quota <bytes>` supplies a positive exact host-page multiple;
+there is no default. Without it, GetVirtualAddressMemoryResourceUsage stays
+unresolved. The real RW anonymous arena uses 256-byte slabs (32-byte header,
+224-byte payload), lazy allocation and a checked free chain. Application backing
+quota remains separate. Real Context charge tickets, page region/allocation
+nodes and raw VA reservation/interval nodes allocate from this bounded pool;
+there is no malloc fallback when enabled or second interval ledger. Pool used
+counts occupied slabs, including padding, and enforces an actual allocation
+limit before VM mutation. It is explicit native metadata policy, not Horizon
+page-table allocation cost, physical/RSS usage, or host RAM. Native control
+objects, loader symbols/thunks, pthread/TLS and unrelated HLE metadata remain
+host administration outside this resource domain.
+
+A Process snapshot holds Process/pages serialization, verifies pool headers,
+real ticket owners/amounts and every page/raw node's allocator identity, then
+compares those with the existing sole ledgers. Lock order is Process -> pages
+-> raw region -> terminal Context, or pages -> Context. Context never calls
+back into the other owners. Page-node reservation/publication share its lock;
+other Context providers and raw APIs must be quiescent for a complete snapshot.
+Pending, retained or quarantined VM ownership cannot produce valid guest data.
+Free/decommit release their real nodes/tickets; VM rollback uncertainty keeps
+ownership. Context destroy refuses live slabs and only drops the arena after
+successful munmap; failure retains the Context/mapping for a real retry.
+
+The existing SDK+0x146930 slice confirms no-argument dual-u64 return:
+x0=Info16 total; x1=min(total,Info17 used+0x80000). The original 512KiB reporting
+margin is retained, without calling it mapped/physical storage. A reviewed
+`__uint128_t` bridge and gp_returns2 use the existing native gateway. Invalid
+snapshots fail fatally; no SVC fallback/default0 path is admitted. LAS fixed
+[fe66 kernel.c](https://raw.githubusercontent.com/peiikai/LASRecomp/fe66f31a6dbcaee1faa1e6718805cb2dbcc67a93/runtime/kernel.c#L695-L721)
+returns constant0 for Info16/17, so that implementation was not reused.
+
+The separate locale followup verified SDK strncasecmp_l+0x59c7e0 (172B) ignores
+x3 and uses unsigned ASCII folding with exact signed difference. A typed four
+argument bridge discards the opaque guest locale and calls Android's mature
+Bionic non-_l strncasecmp. Host evidence uses a deterministic ASCII-only path;
+no host locale_t cast/global locale mutation or other locale API was added.
+Full primary-source/LLVM provenance and the unsuccessful REA attempt are in
+`rea-followups/locale-compare/LOCALE_COMPARE_REPORT.md`; source hash is recorded
+in `.local/va-resource-v3/source_evidence.json`. Android ELF inspection confirms
+an undefined system strncasecmp import and no system strncasecmp_l import.
+
+`.local/va-resource-v3/manifest.json`: 88 expected commands, no timeout. Host
+normal/recovery/resource/locale contracts0; existing strict abort/unsupported/
+usage checks retain their actual nonzero exits. Pool tests cover exhaustion
+before VM, allocation rollback, reuse, 8 threads/8000 allocations and 400
+concurrent VA mutation/snapshot cycles, ending at used0. Normal resource tests
+exercise 1MiB, 2MiB and one-host-page policies, actual node deltas, separate data
+charges and the SDK's capped reporting margin. Recovery retains nodes/tickets
+on protect+restore failure, then genuine whole release; arena mmap failure and
+munmap failure/retry are also covered. Locale covers all 65536 unsigned-byte
+pairs, zero n/no load, NUL/length bounds, >32-bit n and arbitrary ignored locale.
+Self-authored resource.nso and locale.nso exercise dual GP returns and six
+four-register native comparisons with guest x18 clobbered. Android execution
+is NOT_RUN here; coordinator owns RG. V1/V2 raw logs/artifacts remain preserved.
+Original main hash is unchanged; next real startup gate awaits RG. CRT/ELF TLS
+and ThreadType remain unresolved.
+
 ## Owned guest command line checkpoint
 
 `guest_process_create_with_arguments` accepts a complete explicit guest vector,

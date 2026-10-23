@@ -2,6 +2,7 @@
 #include "../../src/runtime/hle/guest_process.h"
 #include "../../src/runtime/hle/guest_context.h"
 #include "../../src/runtime/hle/nso_host.h"
+#include "../../src/runtime/hle/guest_pages.h"
 #include <errno.h>
 #include <inttypes.h>
 #include <limits.h>
@@ -580,8 +581,247 @@ static int argument_recovery_contract(const char *path) {
     puts("{\"argument_recovery_errors\":0,\"precharge_observed\":true,\"quota_refusal_before_map\":true,\"map_failure_cancelled\":true,\"retained_readable\":true,\"unmap_attempts\":2,\"actual_unmaps\":1,\"retry_cleanup\":true}");return 0;
 }
 #endif
+static int32_t ascii_reference(const unsigned char *a,const unsigned char *b,uint64_t n) {
+    for(uint64_t i=0;i<n;i++) {
+        unsigned x=a[i],y=b[i];
+        x=(x>=65 && x<=90)?x+32:x;y=(y>=65 && y<=90)?y+32:y;
+        if(x!=y || !x)return (int32_t)x-(int32_t)y;
+    }
+    return 0;
+}
+static int locale_contract(void) {
+    typedef int32_t(*compare_fn)(const char *,const char *,uint64_t,uintptr_t);
+    compare_fn compare=(compare_fn)(uintptr_t)guest_process_resolve(0,"strncasecmp_l");CHECK(compare);
+    CHECK(compare(NULL,NULL,0,UINTPTR_MAX)==0);
+    unsigned checked=0;
+    for(unsigned a=0;a<256;a++)for(unsigned b=0;b<256;b++) {
+        unsigned char x[3]={(unsigned char)a,0,0x81},y[3]={(unsigned char)b,0,0x82};
+        CHECK(compare((const char *)x,(const char *)y,1,(checked&1)?0:UINTPTR_MAX)==ascii_reference(x,y,1));checked++;
+    }
+    const unsigned char a[]={'A','b',0,0x81},b[]={'a','B',0,0x82};
+    for(uint64_t n=0;n<8;n++)CHECK(compare((const char *)a,(const char *)b,n,UINTPTR_MAX)==0);
+    CHECK(compare("ab","ac",UINT64_C(0x100000001),UINTPTR_MAX)==-1);
+    CHECK(compare("abcd","ABce",3,0)==0 && compare("abcd","ABce",4,UINTPTR_MAX)==-1);
+    printf("{\"locale_errors\":0,\"unsigned_pairs\":%u,\"zero_count_no_load\":true,\"opaque_locale_ignored\":true,\"exact_ascii_difference\":true}\n",checked);return 0;
+}
+static void *exercise_locale_native(guest_process *p,void *opaque) {
+    (void)opaque;
+    const unsigned char a[][5]={{'A','b',0},{'x',0},{0xff,0},{'a',0},{'z',0},{0,0x81}};
+    const unsigned char b[][5]={{'a','C',0},{'Z',0},{0x80,0},{'b',0},{'a',0},{0,0x82}};
+    for(unsigned i=0;i<6;i++) {
+        uint64_t n=i==0?UINT64_C(0x100000001):4;
+        uint64_t output[2]={0xa5a5,0xa5a5},value=0xa5a5;
+        uint64_t arguments[6]={(uintptr_t)output,(uintptr_t)a[i],(uintptr_t)b[i],n,i&1?0:UINTPTR_MAX};
+        struct nso_result r=guest_process_call(p,0x20,arguments,5,&value);
+#if defined(__ANDROID__) && defined(__aarch64__)
+        expect_value("locale-native-call",r.status,NSO_OK);expect_value("locale-native-return",value,0x91);
+        expect_value("locale-native-exact-signed-difference",output[0],(uint64_t)(int64_t)ascii_reference(a[i],b[i],n));
+        expect_value("locale-native-x18",output[1],0x55);executed_calls++;
+#else
+        expect_value("locale-native-unsupported",r.status,NSO_UNSUPPORTED);expect_value("locale-no-raw-fallback",value,0xa5a5);
+#endif
+    }
+    return &returned_token;
+}
+static int locale_native_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(!locale_contract());CHECK(succeeded(guest_process_create(&config,&p)));
+    char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+    void *value=NULL;CHECK(succeeded(guest_process_run(p,exercise_locale_native,NULL,&value)) && value==&returned_token && !errors);
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    printf("{\"locale_native_errors\":%u,\"native_calls\":%u,\"raw_fallback\":false}\n",errors,executed_calls);return 0;
+}
+struct resource_input {size_t quota;int native;};
+static uint64_t resource_reported(size_t total,size_t occupied) {
+    return occupied>total || total-occupied<0x80000?total:occupied+0x80000;
+}
+static void *exercise_resource(guest_process *p,void *opaque) {
+    struct resource_input *input=opaque;
+    struct guest_virtual_resource_usage before,after;
+    expect_condition("resource-initial-snapshot",succeeded(guest_process_resource_info(p,&before)));
+    expect_value("resource-explicit-total",before.total,input->quota);
+    expect_value("resource-three-real-tickets-and-margin",before.used,resource_reported(input->quota,3*256));
+    typedef __uint128_t (*resource_fn)(void);
+    resource_fn getter=(resource_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os36GetVirtualAddressMemoryResourceUsageEv");
+    expect_condition("resource-getter-bound",getter!=NULL);
+    if(getter) {
+        __uint128_t pair=getter();expect_value("resource-direct-low-total",(uint64_t)pair,before.total);
+        expect_value("resource-direct-high-used",(uint64_t)(pair>>64),before.used);
+    }
+    if(input->native) {
+        uint64_t output[3]={0xa5a5,0xa5a5,0xa5a5},returned=0xa5a5;
+        uint64_t args[6]={(uintptr_t)output};struct nso_result r=guest_process_call(p,0x20,args,1,&returned);
+#if defined(__ANDROID__) && defined(__aarch64__)
+        expect_value("resource-native-call",r.status,NSO_OK);expect_value("resource-native-result",returned,0x91);
+        expect_value("resource-native-x0-total",output[0],before.total);
+        expect_value("resource-native-x1-used",output[1],before.used);
+        expect_value("resource-native-guest-x18",output[2],0x55);executed_calls++;
+#else
+        expect_value("resource-native-unsupported",r.status,NSO_UNSUPPORTED);
+        expect_value("resource-native-no-raw-fallback",returned,0xa5a5);
+#endif
+    }
+    typedef uint32_t (*reserve_fn)(uintptr_t *,size_t);typedef uint32_t (*release_fn)(uintptr_t);
+    typedef uint32_t (*pages_fn)(uintptr_t,size_t);
+    reserve_fn reserve=(reserve_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os21AllocateAddressRegionEPmm");
+    release_fn release=(release_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os17FreeAddressRegionEm");
+    pages_fn map=(pages_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os19AllocateMemoryPagesEmm");
+    pages_fn unmap=(pages_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os15FreeMemoryPagesEmm");
+    uintptr_t address=0;expect_value("resource-reserve",reserve(&address,page),0);
+    expect_condition("resource-reserved-snapshot",succeeded(guest_process_resource_info(p,&after)));
+    expect_value("resource-two-real-reservation-nodes",after.used,resource_reported(input->quota,5*256));
+    expect_value("resource-map",map(address,page),0);
+    *(volatile unsigned char *)address=0x49;
+    expect_condition("resource-mapped-snapshot",succeeded(guest_process_resource_info(p,&after)));
+    expect_value("resource-three-real-page-nodes",after.used,resource_reported(input->quota,8*256));
+    expect_value("resource-real-page-content",*(volatile unsigned char *)address,0x49);
+    expect_value("resource-free-page",unmap(address,page),0);
+    expect_condition("resource-after-decommit",succeeded(guest_process_resource_info(p,&after)));
+    expect_value("resource-page-nodes-returned",after.used,resource_reported(input->quota,5*256));
+    expect_value("resource-release-region",release(address),0);
+    expect_condition("resource-after-release",succeeded(guest_process_resource_info(p,&after)));
+    expect_value("resource-all-transient-nodes-returned",after.used,before.used);
+    return &returned_token;
+}
+static int resource_process_contract(const char *path,int native) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(guest_process_create_with_resources(&config,0,0,NULL,&p).status==NSO_INVALID && !p);
+    for(unsigned phase=1;phase<=3;phase++) {
+        struct resource_input input={phase==3?page:phase*1024*1024,native};
+        CHECK(succeeded(guest_process_create_with_resources(&config,input.quota,0,NULL,&p)));
+        struct guest_virtual_resource_usage untouched;memset(&untouched,0xa5,sizeof(untouched));
+        CHECK(guest_process_resource_info(p,&untouched).status!=NSO_OK && all_bytes(&untouched,sizeof(untouched),0xa5));
+        char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+        void *returned=NULL;CHECK(succeeded(guest_process_run(p,exercise_resource,&input,&returned)) && returned==&returned_token && !errors);
+        CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    }
+    printf("{\"resource_errors\":%u,\"explicit_quotas\":3,\"real_nodes\":true,\"separate_data_quota\":true,\"sdk_margin\":524288,\"native_calls\":%u,\"raw_fallback\":false}\n",errors,executed_calls);return 0;
+}
+struct metadata_worker {guest_context *context;unsigned errors;};
+static void *metadata_worker(void *opaque) {
+    struct metadata_worker *w=opaque;
+    for(unsigned i=0;i<1000;i++) {
+        void *p=NULL;struct guest_resource_usage use;
+        if(guest_metadata_allocate(w->context,GUEST_METADATA_PAGE_ALLOCATION,64,&p).status!=GUEST_CONTEXT_OK) {w->errors++;continue;}
+        memset(p,(int)(i&255),64);
+        if(guest_context_resource_usage(w->context,&use).status!=GUEST_CONTEXT_OK || !use.valid || !use.used_bytes)w->errors++;
+        if(guest_metadata_release(w->context,GUEST_METADATA_PAGE_ALLOCATION,p).status!=GUEST_CONTEXT_OK)w->errors++;
+    }
+    return NULL;
+}
+struct page_metadata_worker {guest_pages *owner;unsigned errors;};
+static void *page_metadata_worker(void *opaque) {
+    struct page_metadata_worker *w=opaque;
+    for(unsigned i=0;i<50;i++) {
+        uintptr_t range=0;
+        if(guest_pages_reserve(w->owner,page,&range).status!=GUEST_PAGES_OK) {w->errors++;continue;}
+        struct guest_pages_usage use;
+        if(guest_pages_usage(w->owner,&use).status!=GUEST_PAGES_OK || !use.ledger_valid || !use.resources.valid)w->errors++;
+        if(guest_pages_release_region(w->owner,range).status!=GUEST_PAGES_OK)w->errors++;
+    }
+    return NULL;
+}
+static int resource_owner_contract(void) {
+    struct guest_context_config config={1024*1024,65536};guest_context *c=NULL;
+    CHECK(guest_context_create_with_resources(&config,0,&c).status==GUEST_CONTEXT_INVALID && !c);
+    CHECK(guest_context_create_with_resources(&config,page-1,&c).status==GUEST_CONTEXT_INVALID && !c);
+    CHECK(guest_context_create_with_resources(&config,page,&c).status==GUEST_CONTEXT_OK);
+    guest_pages *owner=NULL;CHECK(guest_pages_create(c,&owner).status==GUEST_PAGES_OK);
+    guest_charge_ticket *pending=NULL;CHECK(guest_charge_reserve(c,1,&pending).status==GUEST_CONTEXT_OK);
+    size_t capacity=page/256+1,count=0;uintptr_t *ranges=calloc(capacity,sizeof(*ranges));CHECK(ranges);
+    struct guest_pages_result r={0};
+    for(;count<capacity;count++) {
+        r=guest_pages_reserve(owner,page,&ranges[count]);
+        if(r.status!=GUEST_PAGES_OK)break;
+    }
+    CHECK(count<capacity && r.status==GUEST_PAGES_VM_ERROR && r.region_result==0x1003 && !ranges[count]);
+    struct guest_pages_usage use;CHECK(guest_pages_usage(owner,&use).status==GUEST_PAGES_OK);
+    CHECK(use.region_count==count && use.vm.region_count==count && use.resources.valid);
+    CHECK(use.resources.blocks==1+2*count && use.resources.used_bytes==(1+2*count)*256 && use.context.pending_bytes==1);
+    CHECK(guest_charge_cancel(pending).status==GUEST_CONTEXT_OK);
+    for(size_t i=0;i<count;i++)CHECK(guest_pages_release_region(owner,ranges[i]).status==GUEST_PAGES_OK);
+    free(ranges);CHECK(guest_pages_destroy(owner).status==GUEST_PAGES_OK);
+    struct guest_resource_usage resources;CHECK(guest_context_resource_usage(c,&resources).status==GUEST_CONTEXT_OK && resources.valid && !resources.used_bytes);
+    void *first=NULL,*second=NULL;CHECK(guest_metadata_allocate(c,GUEST_METADATA_VA_INTERVAL,24,&first).status==GUEST_CONTEXT_OK);
+    CHECK(guest_metadata_release(c,GUEST_METADATA_VA_INTERVAL,first).status==GUEST_CONTEXT_OK);
+    CHECK(guest_metadata_allocate(c,GUEST_METADATA_VA_INTERVAL,24,&second).status==GUEST_CONTEXT_OK && second==first);
+    CHECK(guest_metadata_release(c,GUEST_METADATA_VA_INTERVAL,second).status==GUEST_CONTEXT_OK);
+    pthread_t threads[8];struct metadata_worker workers[8];
+    for(unsigned i=0;i<8;i++) {workers[i]=(struct metadata_worker){c,0};CHECK(!pthread_create(&threads[i],NULL,metadata_worker,&workers[i]));}
+    for(unsigned i=0;i<8;i++) {CHECK(!pthread_join(threads[i],NULL));CHECK(!workers[i].errors);}
+    CHECK(guest_context_resource_usage(c,&resources).status==GUEST_CONTEXT_OK && !resources.used_bytes && !resources.blocks);
+    CHECK(guest_context_destroy(c).status==GUEST_CONTEXT_OK);
+    CHECK(guest_context_create_with_resources(&config,8*page,&c).status==GUEST_CONTEXT_OK);
+    CHECK(guest_pages_create(c,&owner).status==GUEST_PAGES_OK);
+    struct page_metadata_worker page_workers[8];
+    for(unsigned i=0;i<8;i++) {page_workers[i]=(struct page_metadata_worker){owner,0};CHECK(!pthread_create(&threads[i],NULL,page_metadata_worker,&page_workers[i]));}
+    for(unsigned i=0;i<8;i++) {CHECK(!pthread_join(threads[i],NULL));CHECK(!page_workers[i].errors);}
+    CHECK(guest_pages_usage(owner,&use).status==GUEST_PAGES_OK && !use.region_count && !use.resources.used_bytes);
+    CHECK(guest_pages_destroy(owner).status==GUEST_PAGES_OK && guest_context_destroy(c).status==GUEST_CONTEXT_OK);
+    puts("{\"resource_owner_errors\":0,\"exhausted_before_vm\":true,\"metadata_rollback\":true,\"reuse\":true,\"threads\":8,\"iterations\":8000,\"concurrent_va_snapshots\":400,\"final_used\":0}");return 0;
+}
+#if defined(GUEST_RESOURCE_TESTING)
+static unsigned resource_map_calls,resource_unmap_calls,resource_unmap_success;
+static int resource_map_failure,resource_unmap_failure;
+static void *resource_map_probe(size_t bytes) {
+    resource_map_calls++;
+    if(resource_map_failure) {resource_map_failure=0;errno=ENOMEM;return MAP_FAILED;}
+    return mmap(NULL,bytes,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
+}
+static int resource_unmap_probe(void *p,size_t bytes) {
+    resource_unmap_calls++;
+    if(resource_unmap_failure) {resource_unmap_failure=0;errno=EBUSY;return -1;}
+    int r=munmap(p,bytes);if(!r)resource_unmap_success++;return r;
+}
+#if defined(NSO_OWNED_PAGES_TESTING)
+static int fail_resource_protect(void *p,size_t n,int protection) {
+    (void)p;(void)n;(void)protection;errno=EACCES;return -1;
+}
+static int resource_page_quarantine(void) {
+    struct guest_context_config config={1024*1024,65536};guest_context *c=NULL;guest_pages *p=NULL;
+    CHECK(guest_context_create_with_resources(&config,page,&c).status==GUEST_CONTEXT_OK);
+    CHECK(guest_pages_create(c,&p).status==GUEST_PAGES_OK);
+    uintptr_t base=0;CHECK(guest_pages_reserve(p,page,&base).status==GUEST_PAGES_OK);
+    nso_host_owned_pages_test_vm(fail_resource_protect,NULL);
+    struct guest_pages_result mapped=guest_pages_map(p,base,page);
+    CHECK(mapped.status==GUEST_PAGES_QUARANTINED && mapped.vm.native_errno==EACCES && mapped.vm.restore_errno==EACCES);
+    struct guest_pages_usage use;CHECK(guest_pages_usage(p,&use).status==GUEST_PAGES_QUARANTINED);
+    CHECK(!use.backing_valid && use.quarantined_regions==1 && use.ticket_count==1 && use.pending_bytes==page && use.resources.used_bytes==4*256);
+    nso_host_owned_pages_test_vm(NULL,NULL);
+    CHECK(guest_pages_destroy(p).status==GUEST_PAGES_OK);
+    struct guest_resource_usage resources;CHECK(guest_context_resource_usage(c,&resources).status==GUEST_CONTEXT_OK && !resources.used_bytes);
+    CHECK(guest_context_destroy(c).status==GUEST_CONTEXT_OK);return 0;
+}
+#endif
+static int resource_recovery_contract(void) {
+    struct guest_context_config config={1024*1024,65536};guest_context *c=NULL;
+#if defined(NSO_OWNED_PAGES_TESTING)
+    CHECK(!resource_page_quarantine());
+#endif
+    guest_context_resource_test_vm(resource_map_probe,resource_unmap_probe);
+    resource_map_failure=1;CHECK(guest_context_create_with_resources(&config,page,&c).status==GUEST_CONTEXT_SYSTEM_ERROR && !c);
+    CHECK(guest_context_create_with_resources(&config,page,&c).status==GUEST_CONTEXT_OK);
+    void *node=NULL;CHECK(guest_metadata_allocate(c,GUEST_METADATA_VA_REGION,64,&node).status==GUEST_CONTEXT_OK);
+    CHECK(guest_context_destroy(c).status==GUEST_CONTEXT_BUSY && resource_unmap_calls==0);
+    CHECK(guest_metadata_release(c,GUEST_METADATA_VA_REGION,node).status==GUEST_CONTEXT_OK);
+    resource_unmap_failure=1;CHECK(guest_context_destroy(c).status==GUEST_CONTEXT_QUARANTINED && resource_unmap_calls==1 && !resource_unmap_success);
+    struct guest_resource_usage untouched;CHECK(guest_context_resource_usage(c,&untouched).status==GUEST_CONTEXT_QUARANTINED && !untouched.valid);
+    CHECK(guest_context_destroy(c).status==GUEST_CONTEXT_OK && resource_unmap_calls==2 && resource_unmap_success==1);
+    guest_context_resource_test_vm(NULL,NULL);
+    CHECK(resource_map_calls==2);
+    puts("{\"resource_recovery_errors\":0,\"map_failure\":true,\"live_nodes_block_destroy\":true,\"retained_invalid\":true,\"unmap_attempts\":2,\"actual_unmaps\":1}");return 0;
+}
+#endif
 int main(int argc,char **argv) {
     page=(size_t)sysconf(_SC_PAGESIZE);
+    if(argc==2 && !strcmp(argv[1],"--locale"))return locale_contract();
+    if(argc==3 && !strcmp(argv[1],"--locale-native"))return locale_native_contract(argv[2]);
+    if(argc==2 && !strcmp(argv[1],"--resource-owner"))return resource_owner_contract();
+    if(argc==3 && !strcmp(argv[1],"--resource"))return resource_process_contract(argv[2],0);
+    if(argc==3 && !strcmp(argv[1],"--resource-native"))return resource_process_contract(argv[2],1);
+#if defined(GUEST_RESOURCE_TESTING)
+    if(argc==2 && !strcmp(argv[1],"--resource-recovery"))return resource_recovery_contract();
+#endif
     if(argc==3 && !strcmp(argv[1],"--arguments"))return argument_contract(argv[2],0);
     if(argc==3 && !strcmp(argv[1],"--arguments-native"))return argument_contract(argv[2],1);
 #if defined(NSO_PROFILE_ARGUMENT_TESTING)
