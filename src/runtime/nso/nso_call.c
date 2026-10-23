@@ -47,20 +47,32 @@ int main(int argc, char **argv) {
     printf("build id      : %s\n", bid);
     printf("imports       : %u\n", nso_import_count(m));
     printf("relocations   : %" PRIu64 "\n", nso_reloc_count(m));
+    printf("relr          : %" PRIu64 "\n", nso_relr_count(m));
     fflush(stdout);
 
+    int arg_start = 2;
+    if (arg_start < argc && !strcmp(argv[arg_start], "--init")) {
+        printf("[init] executing .init and .init_array static constructors...\n");
+        fflush(stdout);
+        nso_run_init(m);
+        printf("[init] constructors finished.\n");
+        fflush(stdout);
+        arg_start++;
+    }
+
     int rc = 0;
-    if (argc >= 3 && !strcmp(argv[2], "--call")) {
-        if (argc < 4) { fprintf(stderr, "--call needs an offset\n"); return 2; }
-        uint64_t off = strtoull(argv[3], NULL, 0);
+    if (arg_start < argc && !strcmp(argv[arg_start], "--call")) {
+        if (arg_start + 1 >= argc) { fprintf(stderr, "--call needs an offset\n"); return 2; }
+        uint64_t off = strtoull(argv[arg_start + 1], NULL, 0);
         uint64_t a[6] = {0};
-        for (int i = 0; i < 6 && 4 + i < argc; i++) a[i] = strtoull(argv[4 + i], NULL, 0);
+        for (int i = 0; i < 6 && arg_start + 2 + i < argc; i++) a[i] = strtoull(argv[arg_start + 2 + i], NULL, 0);
         uint64_t r = nso_call(m, off, a[0], a[1], a[2], a[3], a[4], a[5]);
         printf("result        : 0x%" PRIx64 "\n", r);
-    } else if (argc >= 3 && !strcmp(argv[2], "--symbol")) {
-        if (argc < 4) { fprintf(stderr, "--symbol needs a name\n"); return 2; }
-        uint32_t n = nso_find_symbol(m, argv[3]);
-        if (!n) { fprintf(stderr, "symbol not found: %s\n", argv[3]); rc = 1; }
+    } else if (arg_start < argc && !strcmp(argv[arg_start], "--symbol")) {
+        if (arg_start + 1 >= argc) { fprintf(stderr, "--symbol needs a name\n"); return 2; }
+        const char *sym_name = argv[arg_start + 1];
+        uint32_t n = nso_find_symbol(m, sym_name);
+        if (!n) { fprintf(stderr, "symbol not found: %s\n", sym_name); rc = 1; }
         else {
             uint64_t off = nso_symbol_value(m, n);
             printf("symbol index  : %u\n", n);
@@ -70,7 +82,7 @@ int main(int argc, char **argv) {
                 rc = 1;
             } else {
                 uint64_t a[6] = {0};
-                for (int i = 0; i < 6 && 4 + i < argc; i++) a[i] = strtoull(argv[4 + i], NULL, 0);
+                for (int i = 0; i < 6 && arg_start + 2 + i < argc; i++) a[i] = strtoull(argv[arg_start + 2 + i], NULL, 0);
                 uint64_t r = nso_call(m, off, a[0], a[1], a[2], a[3], a[4], a[5]);
                 printf("result        : 0x%" PRIx64 "\n", r);
             }

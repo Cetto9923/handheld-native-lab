@@ -9,12 +9,12 @@
  *
  * What it does, in order:
  *   1. parse the NSO0 header and the dynamic string/symbol tables;
- *   2. map one contiguous module image (text/rodata/rwdata/bss) in memory;
- *   3. copy the segments to their module-relative offsets;
- *   4. apply the relocation table, binding imported symbols to per-symbol
- *      trampolines and defined symbols to their module address;
- *   5. flip page protections so .text is execute-only and the rest stays
- *      read/write.
+ *   2. locate MOD0 block and parse the ELF .dynamic section;
+ *   3. map one contiguous module image (text/rodata/rwdata/bss) in memory;
+ *   4. copy the segments to their module-relative offsets;
+ *   5. apply compact relative relocations (DT_RELR);
+ *   6. apply symbolic relocations (DT_RELA and DT_JMPREL);
+ *   7. flip page protections so .text is execute-only and the rest stays read/write.
  *
  * Nothing here interprets or rewrites instructions: the module's own AArch64
  * code executes directly on the host CPU.
@@ -64,8 +64,11 @@ uint32_t nso_find_symbol(const nso_module *m, const char *name);
 /* Number of imported (undefined) symbols. */
 uint32_t nso_import_count(const nso_module *m);
 
-/* Number of relocation entries applied. */
+/* Number of RELA relocation entries applied. */
 uint64_t nso_reloc_count(const nso_module *m);
+
+/* Number of DT_RELR relative relocations applied. */
+uint64_t nso_relr_count(const nso_module *m);
 
 /* Build id as 32 hex characters (big-endian display order). */
 void nso_build_id(const nso_module *m, char out[33]);
@@ -77,6 +80,9 @@ void nso_build_id(const nso_module *m, char out[33]);
 uint64_t nso_call(nso_module *m, uint64_t module_offset,
                   uint64_t a0, uint64_t a1, uint64_t a2,
                   uint64_t a3, uint64_t a4, uint64_t a5);
+
+/* Run .init and .init_array static constructors. */
+void nso_run_init(nso_module *m);
 
 /* Install a fault handler that reports faulting PCs as module offsets. */
 void nso_install_fault_trap(nso_module *m);

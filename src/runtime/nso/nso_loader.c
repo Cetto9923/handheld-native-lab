@@ -18,11 +18,34 @@
 #endif
 
 #define NSO_MAGIC 0x304F534Eu
+#define MOD0_MAGIC 0x30444F4Du
+
 #define R_AARCH64_ABS64      0x101u
 #define R_AARCH64_ABS32      0x102u
 #define R_AARCH64_GLOB_DAT   0x401u
 #define R_AARCH64_JUMP_SLOT  0x402u
 #define R_AARCH64_RELATIVE   0x403u
+
+/* Standard ELF Dynamic Tags */
+#define DT_NULL         0
+#define DT_PLTRELSZ     2
+#define DT_STRTAB       5
+#define DT_SYMTAB       6
+#define DT_RELA         7
+#define DT_RELASZ       8
+#define DT_RELAENT      9
+#define DT_STRSZ        10
+#define DT_SYMENT       11
+#define DT_INIT         12
+#define DT_FINI         13
+#define DT_JMPREL       23
+#define DT_INIT_ARRAY   25
+#define DT_FINI_ARRAY   26
+#define DT_INIT_ARRAYSZ 27
+#define DT_FINI_ARRAYSZ 28
+#define DT_RELRSZ       35
+#define DT_RELR         36
+#define DT_RELRENT      37
 
 typedef struct {
     uint32_t file_off, dst_off, size, aux;
@@ -50,8 +73,19 @@ struct nso_module {
     uint32_t *sym_name;
     uint32_t sym_count;
 
-    uint64_t reloc_base;    /* file offset of the relocation table */
-    uint64_t reloc_count;
+    uint64_t rela_offset;
+    uint64_t rela_size;
+    uint64_t jmprel_offset;
+    uint64_t jmprel_size;
+    uint64_t relr_offset;
+    uint64_t relr_size;
+
+    uint64_t init_offset;
+    uint64_t init_array_offset;
+    uint64_t init_array_size;
+
+    uint64_t reloc_count;   /* count of RELA entries */
+    uint64_t relr_count;    /* count of RELR targets resolved */
 
     uint64_t *imports;      /* resolved host function per undefined symbol */
     char **import_names;
@@ -79,223 +113,273 @@ static uint64_t page_size(void) {
 static uint64_t page_down(uint64_t v) { return v & ~(page_size() - 1); }
 static uint64_t page_up(uint64_t v) { return page_down(v + page_size() - 1); }
 
-static int seg_index_of(const nso_header_t *h, uint64_t addr) {
-    for (int i = 0; i < 3; i++)
-        if (addr >= h->seg[i].dst_off && addr < h->seg[i].dst_off + h->seg[i].size)
-            return i;
-    /* .bss follows .rwdata and is part of the module image too */
-    uint64_t bss_lo = (uint64_t)h->seg[2].dst_off + h->seg[2].size;
-    if (addr >= bss_lo && addr < bss_lo + h->seg[2].aux) return 3;
-    return -1;
-}
-
-static uint64_t mem_to_file(const nso_header_t *h, uint64_t addr) {
-    for (int i = 0; i < 3; i++)
-        if (addr >= h->seg[i].dst_off && addr < h->seg[i].dst_off + h->seg[i].size)
-            return h->seg[i].file_off + (addr - h->seg[i].dst_off);
-    return 0;
+static void set_err(char *errbuf, size_t errlen, const char *msg) {
+    if (errbuf && errlen) {
+        snprintf(errbuf, errlen, "%s", msg);
+    }
 }
 
 /* ------------------------------------------------------------------ */
 /* default import trap                                                 */
 /* ------------------------------------------------------------------ */
 
-static uint64_t nso_trap(uint64_t a0, uint64_t a1, uint64_t a2,
-                          uint64_t a3, uint64_t a4, uint64_t a5) {
+static uint64_t nso_trap(uint32_t idx, const char *name,
+                         uint64_t a0, uint64_t a1, uint64_t a2,
+                         uint64_t a3, uint64_t a4, uint64_t a5) {
+    (void)idx; (void)name;
     (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5;
     return 0;
 }
 
 /* ------------------------------------------------------------------ */
-/* relocation table discovery                                          */
+/* loader implementation                                               */
 /* ------------------------------------------------------------------ */
 
-static uint64_t find_reloc_table(const nso_header_t *h, const uint8_t *file,
-                                 size_t fsize, size_t *out_count) {
-    uint64_t best = 0, best_count = 0;
-    for (size_t phase = 0; phase < 3; phase++) {
-        for (size_t s = 0x100 + phase * 8; s + 24 * 8 <= fsize; s += 8) {
-            uint64_t count = 0;
-            for (size_t k = 0; s + k * 24 + 24 <= fsize; k++) {
-                uint64_t info = rd64(file + s + k * 24 + 8);
-                uint32_t t = (uint32_t)(info & 0xffffffffu);
-                if (t != R_AARCH64_ABS64 && t != R_AARCH64_ABS32 &&
-                    t != R_AARCH64_GLOB_DAT && t != R_AARCH64_JUMP_SLOT &&
-                    t != R_AARCH64_RELATIVE)
-                    break;
-                if (seg_index_of(h, rd64(file + s + k * 24)) < 0) break;
-                count++;
-                if (count == 8) break;
-            }
-            if (count < 8) continue;
-            while (s + count * 24 + 24 <= fsize) {
-                uint64_t info = rd64(file + s + count * 24 + 8);
-                uint32_t t = (uint32_t)(info & 0xffffffffu);
-                if (t != R_AARCH64_ABS64 && t != R_AARCH64_ABS32 &&
-                    t != R_AARCH64_GLOB_DAT && t != R_AARCH64_JUMP_SLOT &&
-                    t != R_AARCH64_RELATIVE)
-                    break;
-                if (seg_index_of(h, rd64(file + s + count * 24)) < 0) break;
-                count++;
-            }
-            if (count > best_count) { best_count = count; best = s; }
-        }
-    }
-    *out_count = (size_t)best_count;
-    return best;
-}
-
-/* ------------------------------------------------------------------ */
-/* load                                                                */
-/* ------------------------------------------------------------------ */
-
-static void set_err(char *buf, size_t len, const char *msg) {
-    if (buf && len) snprintf(buf, len, "%s", msg);
-}
-
-nso_module *nso_load_file(const char *path, nso_import_fn import_fn,
-                          char *errbuf, size_t errlen) {
+nso_module *nso_load_file(const char *path, nso_import_fn import_fn, char *errbuf, size_t errlen) {
     int fd = open(path, O_RDONLY);
-    if (fd < 0) { set_err(errbuf, errlen, "cannot open NSO"); return NULL; }
+    if (fd < 0) {
+        set_err(errbuf, errlen, "cannot open file");
+        return NULL;
+    }
     struct stat st;
-    if (fstat(fd, &st) != 0) { close(fd); set_err(errbuf, errlen, "fstat failed"); return NULL; }
+    if (fstat(fd, &st) < 0) {
+        close(fd);
+        set_err(errbuf, errlen, "cannot fstat file");
+        return NULL;
+    }
     size_t fsize = (size_t)st.st_size;
-    uint8_t *file = mmap(NULL, fsize, PROT_READ, MAP_PRIVATE, fd, 0);
+    const uint8_t *file = (const uint8_t *)mmap(NULL, fsize, PROT_READ, MAP_PRIVATE, fd, 0);
     close(fd);
-    if (file == MAP_FAILED) { set_err(errbuf, errlen, "mmap of file failed"); return NULL; }
+    if (file == MAP_FAILED) {
+        set_err(errbuf, errlen, "mmap of file failed");
+        return NULL;
+    }
 
-    if (fsize < sizeof(nso_header_t)) { munmap(file, fsize); set_err(errbuf, errlen, "file too small"); return NULL; }
+    if (fsize < sizeof(nso_header_t)) {
+        munmap((void *)file, fsize);
+        set_err(errbuf, errlen, "file smaller than NSO header");
+        return NULL;
+    }
+
     nso_header_t h;
     memcpy(&h, file, sizeof(h));
-    if (h.magic != NSO_MAGIC) { munmap(file, fsize); set_err(errbuf, errlen, "bad NSO0 magic"); return NULL; }
+    if (h.magic != NSO_MAGIC) {
+        munmap((void *)file, fsize);
+        set_err(errbuf, errlen, "not an NSO0 file");
+        return NULL;
+    }
 
-    nso_module *m = calloc(1, sizeof(*m));
-    if (!m) { munmap(file, fsize); set_err(errbuf, errlen, "oom"); return NULL; }
+    nso_module *m = (nso_module *)calloc(1, sizeof(*m));
+    if (!m) {
+        munmap((void *)file, fsize);
+        set_err(errbuf, errlen, "out of memory for module struct");
+        return NULL;
+    }
     m->path = strdup(path);
+    m->import_fn = import_fn ? import_fn : nso_trap;
     memcpy(m->build_id, h.build_id, 16);
-    m->import_fn = import_fn;
 
-    /* --- dynamic tables (offsets are relative to the .rodata start) --- */
-    uint64_t dso = h.dynstr_extents & 0xffffffffu, dss = h.dynstr_extents >> 32;
-    uint64_t dyo = h.dynsym_extents & 0xffffffffu, dys = h.dynsym_extents >> 32;
-    if (!dss || !dys || dys % 24) {
-        munmap(file, fsize); free((void *)m->path); free(m);
-        set_err(errbuf, errlen, "dynstr/dynsym extents missing from NSO header");
+    /* --- locate MOD0 and .dynamic section --- */
+    uint32_t text_file_off = h.seg[0].file_off;
+    if (text_file_off + 8 > fsize) {
+        munmap((void *)file, fsize); free((void *)m->path); free(m);
+        set_err(errbuf, errlen, "text section out of bounds");
         return NULL;
     }
-    uint64_t base = h.seg[1].dst_off;
-    uint64_t fds = mem_to_file(&h, base + dso), fdy = mem_to_file(&h, base + dyo);
-    if (!fds || !fdy || fds + dss > fsize || fdy + dys > fsize) {
-        munmap(file, fsize); free((void *)m->path); free(m);
-        set_err(errbuf, errlen, "dynstr/dynsym out of file range");
+    uint32_t mod0_off = rd32(file + text_file_off + 4);
+    if (text_file_off + mod0_off + 16 > fsize) {
+        munmap((void *)file, fsize); free((void *)m->path); free(m);
+        set_err(errbuf, errlen, "MOD0 header out of file bounds");
         return NULL;
     }
-    m->dynstr = (const char *)(file + fds);
-    m->dynstr_size = (uint32_t)dss;
-    m->sym_count = (uint32_t)(dys / 24);
-    m->sym_name = calloc(m->sym_count, sizeof(uint32_t));
-    m->sym_shndx = calloc(m->sym_count, sizeof(uint16_t));
-    m->sym_value = calloc(m->sym_count, sizeof(uint64_t));
-    if (!m->sym_name || !m->sym_shndx || !m->sym_value) {
-        munmap(file, fsize); free((void *)m->path); free(m);
-        set_err(errbuf, errlen, "oom"); return NULL;
-    }
-    for (uint32_t i = 0; i < m->sym_count; i++) {
-        const uint8_t *e = file + fdy + i * 24;
-        m->sym_name[i] = rd32(e);
-        m->sym_shndx[i] = rd16(e + 6);
-        m->sym_value[i] = rd64(e + 8);
-    }
-
-    /* --- import list --- */
-    m->imports = calloc(m->sym_count, sizeof(uint64_t));
-    m->import_names = calloc(m->sym_count, sizeof(char *));
-    if (!m->imports || !m->import_names) {
-        munmap(file, fsize); free((void *)m->path); free(m);
-        set_err(errbuf, errlen, "oom"); return NULL;
-    }
-    for (uint32_t i = 1; i < m->sym_count; i++) {
-        if (m->sym_shndx[i] != 0) continue;   /* defined in this module */
-        const char *name = m->dynstr + m->sym_name[i];
-        m->import_names[i] = strdup(name);
-        void *host = dlsym(RTLD_DEFAULT, name);
-        m->imports[i] = host ? (uint64_t)(uintptr_t)host : (uint64_t)(uintptr_t)&nso_trap;
-        m->import_count++;
-    }
-
-    /* --- relocation table --- */
-    size_t rcount = 0;
-    uint64_t rbase = find_reloc_table(&h, file, fsize, &rcount);
-    if (!rcount) {
-        munmap(file, fsize); free((void *)m->path); free(m);
-        set_err(errbuf, errlen, "relocation table not found");
+    const uint8_t *mod0 = file + text_file_off + mod0_off;
+    if (rd32(mod0) != MOD0_MAGIC) {
+        munmap((void *)file, fsize); free((void *)m->path); free(m);
+        set_err(errbuf, errlen, "MOD0 magic mismatch");
         return NULL;
     }
-    m->reloc_base = rbase;
-    m->reloc_count = rcount;
+    int32_t dyn_off = (int32_t)rd32(mod0 + 4);
+    uint64_t dyn_mem_addr = (uint64_t)mod0_off + (uint64_t)dyn_off;
+    uint64_t dyn_file_off = text_file_off + dyn_mem_addr;
+    if (dyn_file_off + 16 > fsize) {
+        munmap((void *)file, fsize); free((void *)m->path); free(m);
+        set_err(errbuf, errlen, ".dynamic out of file bounds");
+        return NULL;
+    }
+
+    /* Parse .dynamic entries */
+    uint64_t symtab_mem = 0, strtab_mem = 0, strtab_sz = 0;
+    for (uint64_t cur = dyn_file_off; cur + 16 <= fsize; cur += 16) {
+        int64_t tag = (int64_t)rd64(file + cur);
+        uint64_t val = rd64(file + cur + 8);
+        if (tag == DT_NULL) break;
+        switch (tag) {
+            case DT_RELA:         m->rela_offset = val; break;
+            case DT_RELASZ:       m->rela_size = val; break;
+            case DT_JMPREL:       m->jmprel_offset = val; break;
+            case DT_PLTRELSZ:     m->jmprel_size = val; break;
+            case DT_RELR:         m->relr_offset = val; break;
+            case DT_RELRSZ:       m->relr_size = val; break;
+            case DT_SYMTAB:       symtab_mem = val; break;
+            case DT_STRTAB:       strtab_mem = val; break;
+            case DT_STRSZ:        strtab_sz = val; break;
+            case DT_INIT:         m->init_offset = val; break;
+            case DT_INIT_ARRAY:   m->init_array_offset = val; break;
+            case DT_INIT_ARRAYSZ: m->init_array_size = val; break;
+            default: break;
+        }
+    }
+
+    if (!strtab_mem || !strtab_sz || !symtab_mem) {
+        munmap((void *)file, fsize); free((void *)m->path); free(m);
+        set_err(errbuf, errlen, "dynamic symbol/string table missing in .dynamic");
+        return NULL;
+    }
+
+    /* Convert dynstr & dynsym memory offsets to file offsets */
+    /* .rodata dst_off is segment 1 */
+    uint64_t ro_dst = h.seg[1].dst_off;
+    uint64_t ro_file = h.seg[1].file_off;
+    uint64_t strtab_file = ro_file + (strtab_mem - ro_dst);
+    uint64_t symtab_file = ro_file + (symtab_mem - ro_dst);
+
+    char *dynstr_buf = (char *)malloc(strtab_sz + 1);
+    memcpy(dynstr_buf, file + strtab_file, strtab_sz);
+    dynstr_buf[strtab_sz] = 0;
+    m->dynstr = dynstr_buf;
+    m->dynstr_size = (uint32_t)strtab_sz;
+
+    /* Count dynsym entries up to dynstr or strtab */
+    size_t sym_bytes = (strtab_mem > symtab_mem) ? (strtab_mem - symtab_mem) : 0;
+    uint32_t nsyms = (uint32_t)(sym_bytes / 24);
+    if (nsyms == 0) nsyms = 1000; /* fallback estimate */
+    m->sym_count = nsyms;
+    m->sym_name  = (uint32_t *)malloc(nsyms * sizeof(uint32_t));
+    m->sym_shndx = (uint16_t *)malloc(nsyms * sizeof(uint16_t));
+    m->sym_value = (uint64_t *)malloc(nsyms * sizeof(uint64_t));
+    m->imports   = (uint64_t *)malloc(nsyms * sizeof(uint64_t));
+    m->import_names = (char **)malloc(nsyms * sizeof(char *));
+
+    for (uint32_t i = 0; i < nsyms; i++) {
+        uint64_t eoff = symtab_file + (uint64_t)i * 24;
+        if (eoff + 24 > fsize) { m->sym_count = i; break; }
+        m->sym_name[i]  = rd32(file + eoff);
+        m->sym_shndx[i] = rd16(file + eoff + 6);
+        m->sym_value[i] = rd64(file + eoff + 8);
+
+        if (m->sym_shndx[i] == 0 && m->sym_name[i] < m->dynstr_size) {
+            const char *name = m->dynstr + m->sym_name[i];
+            m->import_names[i] = strdup(name);
+            void *host = dlsym(RTLD_DEFAULT, name);
+            m->imports[i] = host ? (uint64_t)(uintptr_t)host : (uint64_t)(uintptr_t)&nso_trap;
+            m->import_count++;
+        } else {
+            m->import_names[i] = NULL;
+            m->imports[i] = 0;
+        }
+    }
 
     /* --- map the module image contiguously --- */
     uint64_t data_end = (uint64_t)h.seg[2].dst_off + h.seg[2].size;
     uint64_t image_size = data_end + h.seg[2].aux;
     image_size = page_up(image_size);
-    uint8_t *image = mmap(NULL, (size_t)image_size, PROT_READ | PROT_WRITE,
-                          MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    uint8_t *image = (uint8_t *)mmap(NULL, (size_t)image_size, PROT_READ | PROT_WRITE,
+                                     MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (image == MAP_FAILED) {
-        munmap(file, fsize); free((void *)m->path); free(m);
+        munmap((void *)file, fsize); free((void *)m->path); free(m);
         set_err(errbuf, errlen, "mmap of module image failed");
         return NULL;
     }
     m->image = image;
     m->image_size = (size_t)image_size;
+    uint64_t base = (uint64_t)(uintptr_t)image;
 
     for (int i = 0; i < 3; i++) {
         if (h.seg[i].file_off + h.seg[i].size > fsize) {
+            munmap(image, (size_t)image_size);
+            munmap((void *)file, fsize); free((void *)m->path); free(m);
             set_err(errbuf, errlen, "segment out of file range");
             return NULL;
         }
         memcpy(image + h.seg[i].dst_off, file + h.seg[i].file_off, h.seg[i].size);
     }
 
-    /* --- apply relocations --- */
-    for (size_t k = 0; k < rcount; k++) {
-        const uint8_t *e = file + rbase + k * 24;
-        uint64_t r_offset = rd64(e);
-        uint64_t r_info = rd64(e + 8);
-        int64_t r_addend = (int64_t)rd64(e + 16);
-        uint32_t type = (uint32_t)(r_info & 0xffffffffu);
-        uint32_t sym = (uint32_t)(r_info >> 32);
-        if (r_offset + 8 > image_size) continue;
-
-        uint64_t value;
-        if (type == R_AARCH64_RELATIVE) {
-            value = (uint64_t)(uintptr_t)image + r_offset + (uint64_t)r_addend;
-        } else if (sym < m->sym_count && m->sym_shndx[sym] == 0) {
-            /* import: bind to the resolved host function (or trap) */
-            uint64_t fn = m->imports[sym];
-            if (type == R_AARCH64_ABS32) {
-                *(uint32_t *)(image + r_offset) = (uint32_t)fn;
+    /* --- STEP 1: apply compact relative relocations (DT_RELR) --- */
+    if (m->relr_offset && m->relr_size) {
+        const uint64_t *relr = (const uint64_t *)(image + m->relr_offset);
+        size_t count = m->relr_size / 8;
+        uint64_t where = 0;
+        for (size_t i = 0; i < count; i++) {
+            uint64_t entry = relr[i];
+            if ((entry & 1) == 0) {
+                where = entry;
+                *(uint64_t *)(image + where) += base;
+                m->relr_count++;
+                where += 8;
             } else {
-                *(uint64_t *)(image + r_offset) = fn;
+                for (int b = 1; b < 64; b++) {
+                    if ((entry >> b) & 1) {
+                        *(uint64_t *)(image + where + (b - 1) * 8) += base;
+                        m->relr_count++;
+                    }
+                }
+                where += (64 - 1) * 8;
             }
-            continue;
-        } else if (sym < m->sym_count) {
-            /* defined symbol: module-relative address */
-            uint64_t addr = (uint64_t)(uintptr_t)image + m->sym_value[sym];
-            value = (type == R_AARCH64_ABS32) ? (uint32_t)addr
-                                               : addr + (uint64_t)r_addend;
-        } else {
-            continue;
         }
-        if (type == R_AARCH64_ABS32)
-            *(uint32_t *)(image + r_offset) = (uint32_t)value;
-        else
-            *(uint64_t *)(image + r_offset) = value;
     }
 
-    /* --- page protection: data first, text last so text wins shared pages --- */
+    /* --- STEP 2: apply RELA relocations (DT_RELA and DT_JMPREL) --- */
+    for (int pass = 0; pass < 2; pass++) {
+        uint64_t toff = (pass == 0) ? m->rela_offset : m->jmprel_offset;
+        uint64_t tsz  = (pass == 0) ? m->rela_size : m->jmprel_size;
+        if (!toff || !tsz) continue;
+
+        size_t nentries = tsz / 24;
+        for (size_t k = 0; k < nentries; k++) {
+            const uint8_t *e = image + toff + k * 24;
+            uint64_t r_offset = rd64(e);
+            uint64_t r_info   = rd64(e + 8);
+            int64_t  r_addend = (int64_t)rd64(e + 16);
+            uint32_t type = (uint32_t)(r_info & 0xffffffffu);
+            uint32_t sym  = (uint32_t)(r_info >> 32);
+
+            if (r_offset + 8 > image_size) continue;
+
+            uint64_t value = 0;
+            if (type == R_AARCH64_RELATIVE) {
+                value = base + r_offset + (uint64_t)r_addend;
+            } else if (sym < m->sym_count && m->sym_shndx[sym] == 0) {
+                /* import binding */
+                uint64_t fn = m->imports[sym];
+                if (type == R_AARCH64_ABS32) {
+                    *(uint32_t *)(image + r_offset) = (uint32_t)fn;
+                } else {
+                    *(uint64_t *)(image + r_offset) = fn;
+                }
+                m->reloc_count++;
+                continue;
+            } else if (sym < m->sym_count) {
+                /* defined symbol */
+                uint64_t addr = base + m->sym_value[sym];
+                value = (type == R_AARCH64_ABS32) ? (uint32_t)addr : (addr + (uint64_t)r_addend);
+            } else {
+                continue;
+            }
+
+            if (type == R_AARCH64_ABS32) {
+                *(uint32_t *)(image + r_offset) = (uint32_t)value;
+            } else {
+                *(uint64_t *)(image + r_offset) = value;
+            }
+            m->reloc_count++;
+        }
+    }
+
+    /* Flip segment page protections */
+    uint64_t tx_lo = h.seg[0].dst_off, tx_hi = tx_lo + h.seg[0].size;
     uint64_t ro_lo = h.seg[1].dst_off, ro_hi = ro_lo + h.seg[1].size;
     uint64_t da_lo = h.seg[2].dst_off, da_hi = data_end + h.seg[2].aux;
-    uint64_t tx_hi = h.seg[0].dst_off + h.seg[0].size;
+
     if (ro_hi > ro_lo)
         mprotect(image + page_down(ro_lo), (size_t)(page_up(ro_hi) - page_down(ro_lo)), PROT_READ);
     if (da_hi > da_lo)
@@ -303,25 +387,29 @@ nso_module *nso_load_file(const char *path, nso_import_fn import_fn,
     if (tx_hi)
         mprotect(image, (size_t)page_up(tx_hi), PROT_READ | PROT_EXEC);
 
-    munmap(file, fsize);
+    munmap((void *)file, fsize);
     return m;
 }
 
 void nso_free(nso_module *m) {
     if (!m) return;
     if (m->image) munmap(m->image, m->image_size);
-    for (uint32_t i = 0; i < m->sym_count; i++) free(m->import_names[i]);
-    free(m->import_names);
+    if (m->import_names) {
+        for (uint32_t i = 0; i < m->sym_count; i++) free(m->import_names[i]);
+        free(m->import_names);
+    }
     free(m->imports);
     free(m->sym_name); free(m->sym_shndx); free(m->sym_value);
+    free((void *)m->dynstr);
     free((void *)m->path);
     free(m);
 }
 
 uint64_t nso_base(const nso_module *m) { return (uint64_t)(uintptr_t)m->image; }
-uint64_t nso_addr(const nso_module *m, uint64_t off) { return (uint64_t)(uintptr_t)(m->image + off); }
+uint64_t nso_addr(const nso_module *m, uint64_t module_offset) { return (uint64_t)(uintptr_t)(m->image + module_offset); }
 uint32_t nso_import_count(const nso_module *m) { return m->import_count; }
 uint64_t nso_reloc_count(const nso_module *m) { return m->reloc_count; }
+uint64_t nso_relr_count(const nso_module *m) { return m->relr_count; }
 
 const char *nso_symbol_name(const nso_module *m, uint32_t index) {
     if (index >= m->sym_count) return NULL;
@@ -344,9 +432,6 @@ uint32_t nso_find_symbol(const nso_module *m, const char *name) {
 }
 
 void nso_build_id(const nso_module *m, char out[33]) {
-    /* The NSO header stores the build id little-endian; Nintendo displays it
-     * big-endian, which is the form T00 recorded. */
-    /* Nintendo displays the build id as four big-endian 32-bit words. */
     for (int i = 0; i < 4; i++)
         snprintf(out + i * 8, 9, "%08x",
                  ((uint32_t)m->build_id[i * 4] << 24) | ((uint32_t)m->build_id[i * 4 + 1] << 16) |
@@ -362,26 +447,41 @@ uint64_t nso_call(nso_module *m, uint64_t module_offset,
     return fn(a0, a1, a2, a3, a4, a5);
 }
 
-/* ------------------------------------------------------------------ */
-/* svc interception                                                    */
-/* ------------------------------------------------------------------ */
-
-static int g_svc_verbose;
-
-static void svc_handler(int sig, siginfo_t *si, void *uc) {
-    (void)sig; (void)si;
-    if (g_svc_verbose) {
-        fprintf(stderr, "[svc] intercepted at pc=%p\n", uc);
+void nso_run_init(nso_module *m) {
+    if (!m || !m->image) return;
+    if (m->init_offset) {
+        printf("[init] calling DT_INIT at module offset 0x%" PRIx64 "\n", m->init_offset);
+        fflush(stdout);
+        typedef void (*init_fn_t)(void);
+        init_fn_t fn = (init_fn_t)(m->image + m->init_offset);
+        fn();
+        printf("[init] DT_INIT done\n");
+        fflush(stdout);
     }
-    /* Return zero for the syscall and continue. */
-    if (uc) {
-        /* ucontext_t layout differs per platform; handled by the caller-side
-         * hook below on Darwin/Linux. Kept minimal here. */
+    if (m->init_array_offset && m->init_array_size) {
+        typedef void (*init_fn_t)(void);
+        init_fn_t *arr = (init_fn_t *)(m->image + m->init_array_offset);
+        size_t count = m->init_array_size / sizeof(init_fn_t);
+        printf("[init] calling DT_INIT_ARRAY (%zu initializers at offset 0x%" PRIx64 ")\n",
+               count, m->init_array_offset);
+        fflush(stdout);
+        for (size_t i = 0; i < count; i++) {
+            if (arr[i]) {
+                uint64_t fn_off = (uint64_t)((const uint8_t *)arr[i] - m->image);
+                printf("[init] [%zu/%zu] init fn at 0x%" PRIx64 "\n", i, count, fn_off);
+                fflush(stdout);
+                arr[i]();
+            }
+        }
+        printf("[init] DT_INIT_ARRAY done\n");
+        fflush(stdout);
     }
 }
 
-/* Report a faulting PC relative to the module image, so crashes inside the
- * game code can be attributed to a module offset instead of a raw address. */
+/* ------------------------------------------------------------------ */
+/* fault trap handler                                                  */
+/* ------------------------------------------------------------------ */
+
 static nso_module *g_fault_module;
 
 static void fault_handler(int sig, siginfo_t *si, void *uc) {
@@ -418,6 +518,12 @@ void nso_install_fault_trap(nso_module *m) {
     sigaction(SIGBUS, &sa, NULL);
     sigaction(SIGILL, &sa, NULL);
     sigaction(SIGTRAP, &sa, NULL);
+}
+
+static int g_svc_verbose;
+static void svc_handler(int sig, siginfo_t *si, void *uc) {
+    (void)sig; (void)si; (void)uc;
+    if (g_svc_verbose) fprintf(stderr, "[svc] intercepted\n");
 }
 
 void nso_enable_svc_trap(int verbose) {
