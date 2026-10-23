@@ -84,9 +84,11 @@ void guest_process_test_identity_vm(void *(*map)(size_t),int (*unmap)(void *,siz
 #endif
 /* Limited SDK allocator-pair provider, separate from OS slots and ELF/TCB TLS.
  * Registration is once-only, nonnull, module-text callbacks; it does not call
- * either target. Native consumers require this actual primary and an IDLE
- * prepared native boundary. Allocate passes (bytes,16), free passes (ptr,bytes)
- * and null free does not call the guest. No HOST reentry/raw C cast is used.
+ * either target. Native consumers require this actual primary and an IDLE or
+ * already active HOST prepared boundary. HOST calls use nb_call_from_host and
+ * actual active_guest_x18; only IDLE calls update the Process x18 cache.
+ * Allocate passes (bytes,16), free passes (ptr,bytes); SDK null free is a no-op.
+ * No temporary binding, raw C cast or caller-written phase is used.
  * Every successful allocation must be freed before primary return. A failed
  * or uncertain callback is retained, never retried as if no side effect ran;
  * live/uncertain records block module/pages destruction. These are logical

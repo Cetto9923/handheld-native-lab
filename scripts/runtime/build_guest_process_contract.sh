@@ -105,6 +105,8 @@ run('host-resource-recovery',[out/'guest_process_resource_recovery.host','--reso
 run('host-os-tls-contract',[out/'guest_process_contract.host','--os-tls',out/'contract.nso'])
 run('host-tls-registration',[out/'guest_process_contract.host','--tls-registration',out/'contract.nso'])
 run('host-tls-registration-fresh',[out/'guest_process_contract.host','--tls-registration-fresh',out/'contract.nso'])
+run('host-tls-HOST-null',[out/'guest_process_contract.host','--tls-host-null'])
+run('host-tls-HOST-invalid',[out/'guest_process_contract.host','--tls-host-invalid'],134)
 run('host-primary-identity',[out/'guest_process_contract.host','--identity',out/'contract.nso'])
 run('host-compile-identity-recovery',['clang',*strict,'-DNSO_WITH_CXX_GUARDS=1','-DNSO_PROFILE_IDENTITY_TESTING=1','-c',hle/'guest_process.c','-o',out/'guest_process.identity-recovery.host.o'])
 run('host-link-identity-recovery',['clang',*strict,'-DNSO_PROFILE_IDENTITY_TESTING=1',test,*[v for v in host if v.name!='guest_process.host.o'],out/'guest_process.identity-recovery.host.o','-lc++','-lpthread','-o',out/'guest_process_identity_recovery.host'])
@@ -518,6 +520,7 @@ fixture_entry:
  adrp x20, fixture_state
  add x20, x20, :lo12:fixture_state
  str x19, [x20]
+ str xzr, [x20, #8]
  mov x18, #0x55
  import_call 8
  str x0, [x19, #168]
@@ -542,7 +545,14 @@ fixture_allocate:
  mov x20, x1
  adrp x21, fixture_state
  add x21, x21, :lo12:fixture_state
+ ldr x9, [x21, #8]
  ldr x21, [x21]
+ str x18, [x21, #280]
+ cbz x9, allocation_seed_ready
+ mov x18, #0x66
+allocation_seed_ready:
+ cmp x9, #2
+ b.eq allocation_busy
  ldr x22, [x21]
  add x9, x21, #16
  str x19, [x9, x22, lsl #3]
@@ -553,11 +563,15 @@ fixture_allocate:
  add x0, x21, #184
  import_call 16
  str x18, [x21, #152]
+ mov x0, #0
+ mov x1, #123
+ import_call 32
  cmp x19, #4096
  b.eq allocation_null
  adrp x0, fixture_heap
  add x0, x0, :lo12:fixture_heap
  add x0, x0, x22, lsl #8
+ cbz x19, allocation_return
  mov w9, #0x5a
  strb w9, [x0]
  sub x10, x19, #1
@@ -565,6 +579,10 @@ fixture_allocate:
  b allocation_return
 allocation_null:
  mov x0, #0
+ b allocation_return
+allocation_busy:
+ mov x0, #16
+ import_call 24
 allocation_return:
  ldp x21, x22, [sp, #32]
  ldp x19, x20, [sp, #16]
@@ -578,7 +596,12 @@ fixture_free:
  mov x29, sp
  adrp x19, fixture_state
  add x19, x19, :lo12:fixture_state
+ ldr x9, [x19, #8]
  ldr x19, [x19]
+ str x18, [x19, #288]
+ cbz x9, free_seed_ready
+ mov x18, #0x77
+free_seed_ready:
  ldr x20, [x19, #8]
  add x9, x19, #80
  str x0, [x9, x20, lsl #3]
@@ -592,12 +615,57 @@ fixture_free:
  ldp x19, x20, [sp, #16]
  ldp x29, x30, [sp], #32
  ret
+.org 0x300
+.global fixture_host_consumer
+fixture_host_consumer:
+ stp x29, x30, [sp, #-32]!
+ stp x19, x20, [sp, #16]
+ mov x29, sp
+ adrp x20, fixture_state
+ add x20, x20, :lo12:fixture_state
+ str x0, [x20, #8]
+ ldr x19, [x20]
+ mov x18, #0x41
+ mov x0, #48
+ import_call 24
+ str x0, [x19, #240]
+ mov x0, #0
+ import_call 24
+ str x0, [x19, #248]
+ mov x0, #4096
+ import_call 24
+ str x0, [x19, #256]
+ mov x0, #0
+ mov x1, #123
+ import_call 32
+ ldr x0, [x19, #248]
+ mov x1, #0
+ import_call 32
+ ldr x0, [x19, #240]
+ mov x1, #48
+ import_call 32
+ str x18, [x19, #264]
+ mov x9, #1
+ str x9, [x19, #272]
+ mov x0, #0x91
+ ldp x19, x20, [sp, #16]
+ ldp x29, x30, [sp], #32
+ ret
+.org 0x500
+.global fixture_uninitialized_consumer
+fixture_uninitialized_consumer:
+ stp x29, x30, [sp, #-16]!
+ mov x29, sp
+ mov x0, #48
+ import_call 24
+ ldp x29, x30, [sp], #16
+ ret
 .section .fixture_got,"aw"
 .global fixture_got
-fixture_got: .zero 24
+fixture_got: .zero 40
 .section .fixture_state,"aw"
 .global fixture_state
-fixture_state: .zero 8
+fixture_state: .zero 16
 .section .fixture_heap,"aw"
 .global fixture_heap
 fixture_heap: .zero 1024
@@ -606,17 +674,18 @@ run('fixture-tls-allocator-assemble',['clang',*common,'-c',allocator_assembly,'-
 run('fixture-tls-allocator-link',['env',f'DYLD_LIBRARY_PATH={a.rust_root}/lib',ld,'--no-undefined','--build-id=none','--image-base=0','-Ttext=0','--section-start=.fixture_got=0x8200','--section-start=.fixture_state=0x8280','--section-start=.fixture_heap=0x8400','-e','fixture_entry','--oformat=binary','-o',out/'tls-allocator-fixture.raw',out/'tls-allocator-fixture.o'])
 run('fixture-tls-allocator-disassembly',['xcrun','llvm-objdump','--disassemble',out/'tls-allocator-fixture.o'])
 raw=(out/'tls-allocator-fixture.raw').read_bytes();data=bytearray((out/'contract.nso').read_bytes())
-struct.pack_into('<I',data,0x18,0x400);data[0x200:0x600]=raw[:0x400].ljust(0x400,b'\0');struct.pack_into('<I',data,0x204,0x4000)
-symbols=['_ZN2nn2os32SetMemoryAllocatorForThreadLocalEPFPvmmEPFvS1_mE','_ZN2nn2os40MemoryAllocatorForThreadLocalInitializedEv','_ZN2nn2os15QueryMemoryInfoEPNS0_10MemoryInfoE'];names=bytearray(b'\0')
+struct.pack_into('<I',data,0x18,0x600);data[0x200:0x800]=raw[:0x600].ljust(0x600,b'\0');struct.pack_into('<I',data,0x204,0x4000)
+symbols=['_ZN2nn2os32SetMemoryAllocatorForThreadLocalEPFPvmmEPFvS1_mE','_ZN2nn2os40MemoryAllocatorForThreadLocalInitializedEv','_ZN2nn2os15QueryMemoryInfoEPNS0_10MemoryInfoE','nnosAllocateMemoryForThreadLocal','nnosFreeMemoryForThreadLocal'];names=bytearray(b'\0')
 for i,name in enumerate(symbols,1):
  offset=len(names);names+=name.encode()+b'\0';struct.pack_into('<IBBHQQ',data,0x1100+i*24,offset,0x12,0,0,0,0)
  struct.pack_into('<QQq',data,0x1300+(i-1)*24,0x8200+(i-1)*8,(i<<32)|0x402,0)
 if len(names)>0x140:raise RuntimeError('allocator fixture names overlap relocations')
-data[0x11c0:0x11c0+len(names)]=names;struct.pack_into('<II',data,0x1080,1,4)
-for i,(tag,value) in enumerate([(4,0x4080),(6,0x4100),(5,0x41c0),(10,len(names)),(7,0x4300),(8,72),(9,24),(0,0)]):struct.pack_into('<QQ',data,0x2000+i*16,tag,value)
+data[0x11c0:0x11c0+len(names)]=names;struct.pack_into('<II',data,0x1080,1,6)
+for i,(tag,value) in enumerate([(4,0x4080),(6,0x4100),(5,0x41c0),(10,len(names)),(7,0x4300),(8,120),(9,24),(0,0)]):struct.pack_into('<QQ',data,0x2000+i*16,tag,value)
 (out/'tls-allocator.nso').write_bytes(data)
-manifest['generated_fixtures']['tls-allocator.nso']={'bytes':len(data),'sha256':digest(out/'tls-allocator.nso'),'kind':'self-authored typed pair registration/IDLE consumer, actual distinct storage + reentrant Query','assembly_sha256':digest(allocator_assembly),'abi':{'set_gp_arguments':2,'set_gp_returns':0,'allocate_gp_arguments':2,'allocate_gp_returns':1,'free_gp_arguments':2,'free_gp_returns':0,'fixed_alignment':16}}
+manifest['generated_fixtures']['tls-allocator.nso']={'bytes':len(data),'sha256':digest(out/'tls-allocator.nso'),'kind':'self-authored pair, IDLE/HOST consumers, distinct storage, zero/null/free and Query/x18 A/B/C','assembly_sha256':digest(allocator_assembly),'abi':{'set_gp_arguments':2,'set_gp_returns':0,'allocate_gp_arguments':2,'allocate_gp_returns':1,'free_gp_arguments':2,'free_gp_returns':0,'fixed_alignment':16}}
 run('host-tls-provider-unsupported',[out/'guest_process_contract.host','--tls-provider',out/'tls-allocator.nso'])
+run('host-tls-HOST-consumer-unsupported',[out/'guest_process_contract.host','--tls-host-consumer',out/'tls-allocator.nso'])
 # Identity fixture: authored register-only pointer/uint64 bridge + zero-value OS cleanup.
 identity_assembly=out/'identity-fixture.S'
 identity_assembly.write_text(r'''.text

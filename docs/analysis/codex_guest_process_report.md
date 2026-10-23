@@ -1,5 +1,45 @@
 # Owned startup profile: native boundary integration
 
+## SDK thread-local HOST consumers
+
+This unit admits exactly the reviewed C exports nnosAllocateMemoryForThreadLocal
+(one64-bit size -> pointer) and nnosFreeMemoryForThreadLocal(pointer,size -> void).
+SDK144640 supplies fixed align16 to the registered allocate pair;144650 skips
+null pointers before touching the pair. Actual callback NULL is forwarded as
+NULL; invalid/busy/domain failures terminate, never a guessed SDK success.
+
+Consumers now use the old nb_call path from IDLE and the already validated
+nb_call_from_host only from actual-primary HOST phase2. No scope/import binding
+is created there. The HOST packet explicitly seeds actual active_guest_x18;
+the boundary restores its outer scope, and callback x18 output never overwrites
+the Process cache. That cache is updated only by the original IDLE call path.
+No Process mutex spans guest callbacks. A preallocated uncertain identity is
+published before invocation so even in-flight owners are reachable; busy
+recursion is rejected before further side effects. Completed exact frees remove
+records, while failure/unknown results retain code/owner. Backing remains counted
+by the existing sole page owner, with no second physical/suballocation charge.
+
+The self-authored fixture covers guest->HOST allocate->guest pair->HOST Query,
+zero-byte allocation, real NULL return, null free inside an active callback,
+exact free sizes and multiple pointers. Its outer guest x18 A=41 differs from
+the Process's prior cached55; allocator/free change x18 to B=66/C=77 and outer A
+must survive. The separate SCS/testing binary probes busy rejection and live
+in-flight records from Query. Uninitialized and recursive HOST import cases
+are explicit expected-fatal contracts. Mac native execution remains unsupported;
+incremental hashes/raw codes and new Android ELFs are in the private checkpoint.
+These functional hooks do not install ELF templates/TCBs/DSO destructors, invoke
+SDK TP-writing initialization, or establish complete CRT/startup/main support.
+
+Checkpoint tls-host-consumer-v1 recompiles only changed Process/contract objects,
+reusing source/hash-matched f60/585 inputs. Its25 captured steps all meet their
+expected codes without timeout: ordinary host regressions and null-free pass,
+inactive allocate terminates with raw SIGABRT(-6), and Mac native fixture calls
+return explicit unsupported. Three Android ELFs link successfully; normal/CLI
+exclude test hooks, while the recovery binary instruments real host SCS and
+busy/metadata probes. Android execution is NOT_RUN here and belongs to the
+coordinator. The private manifest/freeze and device-argv.json preserve all
+commands, hashes and expected-fatal cases.
+
 ## Native primary identity subset
 
 The585 combined RG run printed its entry result before the original OS-slot
@@ -44,7 +84,7 @@ run/destroy. The full builder includes it; this correction's private incremental
 build reuses hash-verified cfc objects and fixtures and recompiles affected code.
 The original cfc source/artifacts and QA failure remain unchanged.
 
-## Thread-local allocator pair and limited IDLE consumers
+## Earlier checkpoint: allocator pair and limited IDLE consumers
 
 The b197 RG checkpoint passed both libm contracts and reached import69 after
 the original allocator constructor mapped1286144 and1048576 bytes. SDK1445e0
