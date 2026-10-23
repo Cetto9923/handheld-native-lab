@@ -1319,6 +1319,130 @@ static int fs_mount_rom_contract(void) {
     puts("{\"fs_mount_rom_errors\":0,\"mount\":true,\"unmount\":true,\"validation\":true}");
     return 0;
 }
+static int fs_open_file_contract(void) {
+    typedef int32_t (*open_fn)(nn_fs_file_handle *, const char *, int32_t);
+    typedef int32_t (*get_size_fn)(int64_t *, nn_fs_file_handle);
+    typedef int32_t (*read_fn)(size_t *, nn_fs_file_handle, int64_t, void *, size_t);
+    typedef int32_t (*read_no_out_fn)(nn_fs_file_handle, int64_t, void *, size_t);
+    typedef void (*close_fn)(nn_fs_file_handle);
+    typedef int32_t (*get_entry_type_fn)(int32_t *, const char *);
+
+    open_fn open_file = (open_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs8OpenFileEPNS0_10FileHandleEPKci");
+    CHECK(open_file != NULL);
+
+    open_fn open_file_alias = (open_fn)(uintptr_t)guest_process_resolve(0, "nnfsOpenFile");
+    CHECK(open_file_alias != NULL);
+
+    get_size_fn get_file_size = (get_size_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs11GetFileSizeEPlNS0_10FileHandleE");
+    CHECK(get_file_size != NULL);
+
+    get_size_fn get_file_size_alias = (get_size_fn)(uintptr_t)guest_process_resolve(0, "nnfsGetFileSize");
+    CHECK(get_file_size_alias != NULL);
+
+    read_fn read_file = (read_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs8ReadFileEPmNS0_10FileHandleElPvm");
+    CHECK(read_file != NULL);
+
+    read_fn read_file_alias = (read_fn)(uintptr_t)guest_process_resolve(0, "nnfsReadFile");
+    CHECK(read_file_alias != NULL);
+
+    read_no_out_fn read_file_no_out = (read_no_out_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs8ReadFileENS0_10FileHandleElPvm");
+    CHECK(read_file_no_out != NULL);
+
+    close_fn close_file = (close_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs9CloseFileENS0_10FileHandleE");
+    CHECK(close_file != NULL);
+
+    close_fn close_file_alias = (close_fn)(uintptr_t)guest_process_resolve(0, "nnfsCloseFile");
+    CHECK(close_file_alias != NULL);
+
+    get_entry_type_fn get_entry_type = (get_entry_type_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs12GetEntryTypeEPNS0_18DirectoryEntryTypeEPKc");
+    CHECK(get_entry_type != NULL);
+
+    get_entry_type_fn get_entry_type_alias = (get_entry_type_fn)(uintptr_t)guest_process_resolve(0, "nnfsGetEntryType");
+    CHECK(get_entry_type_alias != NULL);
+
+    /* Parameter validation */
+    nn_fs_file_handle handle = {0};
+    CHECK(open_file(NULL, "rom:/test.txt", 1) != 0);
+    CHECK(open_file(&handle, NULL, 1) != 0);
+    CHECK(open_file(&handle, "", 1) != 0);
+
+    /* Ensure 'rom' is mounted for contract testing */
+    if (!nso_host_fs_is_rom_mounted("rom")) {
+        static char cache_buf[0x10000];
+        nso_host_fs_mount_rom("rom", cache_buf, sizeof(cache_buf));
+    }
+
+    /* Non-existent file */
+    CHECK(open_file(&handle, "rom:/non_existent_file_xyz_123.bin", 1) != 0);
+
+    /* Create a temporary test file inside the mounted romfs directory */
+    const char *mount_root = nso_host_fs_get_rom_mount_path("rom");
+    char full_test_path[512];
+    snprintf(full_test_path, sizeof(full_test_path), "%s/romfs_contract_test.tmp", mount_root ? mount_root : ".");
+    FILE *fp = fopen(full_test_path, "wb");
+    CHECK(fp != NULL);
+    const char test_data[] = "Hello RG477M RomFS!";
+    size_t test_len = sizeof(test_data) - 1;
+    CHECK(fwrite(test_data, 1, test_len, fp) == test_len);
+    fclose(fp);
+
+    /* Open the temporary file via rom:/ path */
+    int32_t ok = open_file(&handle, "rom:/romfs_contract_test.tmp", 1);
+    CHECK(ok == 0);
+    CHECK(handle.handle != NULL);
+
+    /* Query size */
+    int64_t size = 0;
+    CHECK(get_file_size(&size, handle) == 0);
+    CHECK(size == (int64_t)test_len);
+
+    /* Read with out_bytes_read */
+    char read_buf[64] = {0};
+    size_t bytes_read = 0;
+    CHECK(read_file(&bytes_read, handle, 0, read_buf, sizeof(read_buf)) == 0);
+    CHECK(bytes_read == test_len);
+    CHECK(memcmp(read_buf, test_data, test_len) == 0);
+
+    /* Read with offset using 4-arg ReadFile */
+    memset(read_buf, 0, sizeof(read_buf));
+    CHECK(read_file_no_out(handle, 6, read_buf, 6) == 0);
+    CHECK(memcmp(read_buf, "RG477M", 6) == 0);
+
+    /* Close file */
+    close_file(handle);
+
+    /* Operations on closed handle must fail */
+    CHECK(get_file_size(&size, handle) != 0);
+
+    /* GetEntryType on file */
+    int32_t entry_type = -1;
+    CHECK(get_entry_type(&entry_type, "rom:/romfs_contract_test.tmp") == 0);
+    CHECK(entry_type == 1); /* File */
+
+    /* GetEntryType on directory */
+    CHECK(get_entry_type(&entry_type, "rom:/") == 0);
+    CHECK(entry_type == 0); /* Directory */
+
+    /* Clean up temporary file */
+    unlink(full_test_path);
+
+    /* Test real game asset if present */
+    nn_fs_file_handle game_handle = {0};
+    if (open_file(&game_handle, "rom:/UECommandLine.txt", 1) == 0) {
+        int64_t gsz = 0;
+        CHECK(get_file_size(&gsz, game_handle) == 0);
+        CHECK(gsz == 38);
+        char gbuf[64] = {0};
+        size_t gread = 0;
+        CHECK(read_file(&gread, game_handle, 0, gbuf, sizeof(gbuf)) == 0);
+        CHECK(gread == 38);
+        CHECK(strncmp(gbuf, "-project=", 9) == 0);
+        close_file(game_handle);
+    }
+
+    puts("{\"fs_open_file_errors\":0,\"open\":true,\"read\":true,\"size\":true,\"close\":true,\"entry_type\":true,\"validation\":true}");
+    return 0;
+}
 struct log_fixture_io {float input,output;uint64_t guest_x18;};
 _Static_assert(offsetof(struct log_fixture_io,output)==4 && offsetof(struct log_fixture_io,guest_x18)==8,"self-authored float fixture ABI");
 static void *exercise_logf_native(guest_process *p,void *opaque) {
@@ -1954,6 +2078,7 @@ int main(int argc,char **argv) {
     if(argc==2 && !strcmp(argv[1],"--fs-allocator"))return fs_allocator_contract();
     if(argc==2 && !strcmp(argv[1],"--fs-query-cache"))return fs_query_cache_contract();
     if(argc==2 && !strcmp(argv[1],"--fs-mount-rom"))return fs_mount_rom_contract();
+    if(argc==2 && !strcmp(argv[1],"--fs-open-file"))return fs_open_file_contract();
     if(argc==2 && !strcmp(argv[1],"--logf"))return logf_contract();
     if(argc==3 && !strcmp(argv[1],"--logf-native"))return logf_native_contract(argv[2]);
     if(argc==2 && !strcmp(argv[1],"--strcasecmp"))return strcasecmp_contract();

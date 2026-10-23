@@ -1,8 +1,8 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-10-23T20:57:00.000000+00:00
-阶段：T02_FS_MOUNT_ROM_PASSED_OPEN_FILE_REACHED_ON_RG477M: nn::fs::MountRom HLE implemented and verified; GameThread successfully mounted RomFS and advanced frontier to nn::fs::OpenFile (symbol index 10, caller 0x5864 / lr 0x5868)
-总控：Antigravity sole root coordinator — nn::fs::MountRom verified on RG477M; frontier advanced to nn::fs::OpenFile
+状态事件时间：2026-10-23T21:30:00.000000+00:00
+阶段：T02_FS_OPEN_FILE_PASSED_AOC_COUNT_REACHED_ON_RG477M: nn::fs::OpenFile + GetFileSize + ReadFile + CloseFile verified on RG477M; GameThread read UECommandLine.txt; frontier advanced to nn::aoc::CountAddOnContent (symbol index 51, caller 0x93dc / lr 0x7a4d5343dc)
+总控：Antigravity sole root coordinator — nn::fs::OpenFile passed on RG477M; frontier advanced to nn::aoc::CountAddOnContent
 更新方式：按事件更新，没有后台自动刷新。
 
 | 任务 | 角色 | 状态 | 实际负责人 | 启动依赖 | 验收门禁 | 分支 |

@@ -78,6 +78,22 @@ int32_t nso_host_fs_mount_rom(const char *name, void *buffer, size_t size);
 int nso_host_fs_is_rom_mounted(const char *name);
 const char *nso_host_fs_get_rom_mount_path(const char *name);
 int32_t nso_host_fs_unmount(const char *name);
+
+typedef struct {
+    void *handle;
+} nn_fs_file_handle;
+
+int32_t nso_host_fs_open_file(nn_fs_file_handle *out_handle, const char *path, int32_t mode);
+int32_t nso_host_fs_get_file_size(int64_t *out_size, nn_fs_file_handle handle);
+int32_t nso_host_fs_read_file(size_t *out_bytes_read, nn_fs_file_handle handle, int64_t offset, void *buffer, size_t size);
+int32_t nso_host_fs_read_file_no_out(nn_fs_file_handle handle, int64_t offset, void *buffer, size_t size);
+void nso_host_fs_close_file(nn_fs_file_handle handle);
+int32_t nso_host_fs_flush_file(nn_fs_file_handle handle);
+int32_t nso_host_fs_set_file_size(nn_fs_file_handle handle, int64_t size);
+int32_t nso_host_fs_write_file(nn_fs_file_handle handle, int64_t offset, const void *data, size_t size, const void *option);
+int32_t nso_host_fs_get_entry_type(int32_t *out_entry_type, const char *path);
+void nso_host_fs_disable_global_file_data_cache(void);
+void nso_host_fs_enable_global_file_data_cache(void *buffer, size_t size);
 #ifdef __cplusplus
 }
 #endif

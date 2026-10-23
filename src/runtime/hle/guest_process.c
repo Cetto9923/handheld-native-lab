@@ -1015,6 +1015,17 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
         "_ZN2nn2fs22QueryMountRomCacheSizeEPm","nnfsQueryMountRomCacheSize",
         "_ZN2nn2fs8MountRomEPKcPvm","nnfsMountRom",
         "_ZN2nn2fs7UnmountEPKc","nnfsUnmount",
+        "_ZN2nn2fs8OpenFileEPNS0_10FileHandleEPKci","nnfsOpenFile",
+        "_ZN2nn2fs11GetFileSizeEPlNS0_10FileHandleE","nnfsGetFileSize",
+        "_ZN2nn2fs8ReadFileEPmNS0_10FileHandleElPvm","nnfsReadFile",
+        "_ZN2nn2fs8ReadFileENS0_10FileHandleElPvm",
+        "_ZN2nn2fs9CloseFileENS0_10FileHandleE","nnfsCloseFile",
+        "_ZN2nn2fs9FlushFileENS0_10FileHandleE","nnfsFlushFile",
+        "_ZN2nn2fs11SetFileSizeENS0_10FileHandleEl","nnfsSetFileSize",
+        "_ZN2nn2fs9WriteFileENS0_10FileHandleElPKvmRKNS0_11WriteOptionE","nnfsWriteFile",
+        "_ZN2nn2fs12GetEntryTypeEPNS0_18DirectoryEntryTypeEPKc","nnfsGetEntryType",
+        "_ZN2nn2fs26DisableGlobalFileDataCacheEv",
+        "_ZN2nn2fs25EnableGlobalFileDataCacheEPvm",
         "_ZN2nn4util11ReferSymbolEPKv","nnutilReferSymbol",
         "_ZN2nn2os15InitializeMutexEPNS0_9MutexTypeEbi","nnosInitializeMutex",
         "_ZN2nn2os13FinalizeMutexEPNS0_9MutexTypeE","nnosFinalizeMutex",
@@ -1201,6 +1212,25 @@ static int import_signature(const char *name,nb_signature *out) {
             !strcmp(name,"nnfsMountRom")) {arguments=3;returns=1;}
     else if(!strcmp(name,"_ZN2nn2fs7UnmountEPKc") ||
             !strcmp(name,"nnfsUnmount")) {arguments=1;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2fs8OpenFileEPNS0_10FileHandleEPKci") ||
+            !strcmp(name,"nnfsOpenFile")) {arguments=3;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2fs11GetFileSizeEPlNS0_10FileHandleE") ||
+            !strcmp(name,"nnfsGetFileSize")) {arguments=2;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2fs8ReadFileEPmNS0_10FileHandleElPvm") ||
+            !strcmp(name,"nnfsReadFile")) {arguments=5;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2fs8ReadFileENS0_10FileHandleElPvm")) {arguments=4;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2fs9CloseFileENS0_10FileHandleE") ||
+            !strcmp(name,"nnfsCloseFile")) {arguments=1;returns=0;}
+    else if(!strcmp(name,"_ZN2nn2fs9FlushFileENS0_10FileHandleE") ||
+            !strcmp(name,"nnfsFlushFile")) {arguments=1;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2fs11SetFileSizeENS0_10FileHandleEl") ||
+            !strcmp(name,"nnfsSetFileSize")) {arguments=2;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2fs9WriteFileENS0_10FileHandleElPKvmRKNS0_11WriteOptionE") ||
+            !strcmp(name,"nnfsWriteFile")) {arguments=5;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2fs12GetEntryTypeEPNS0_18DirectoryEntryTypeEPKc") ||
+            !strcmp(name,"nnfsGetEntryType")) {arguments=2;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2fs26DisableGlobalFileDataCacheEv")) {arguments=0;returns=0;}
+    else if(!strcmp(name,"_ZN2nn2fs25EnableGlobalFileDataCacheEPvm")) {arguments=2;returns=0;}
     else if(!strcmp(name,"_ZN2nn2os32SetMemoryAllocatorForThreadLocalEPFPvmmEPFvS1_mE")) {arguments=2;returns=0;}
     else if(!strcmp(name,"_ZN2nn2os40MemoryAllocatorForThreadLocalInitializedEv")) {arguments=0;returns=1;}
     else if(!strcmp(name,"nnosAllocateMemoryForThreadLocal")) {arguments=1;returns=1;}

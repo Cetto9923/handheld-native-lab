@@ -14,6 +14,9 @@
 #include <sched.h>
 #include <inttypes.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <errno.h>
 #if defined(__linux__) && !defined(__ANDROID__)
 #include <sys/syscall.h>
 #endif
@@ -631,6 +634,7 @@ int32_t nso_host_fs_mount_rom(const char *name, void *buffer, size_t size) {
         static const char *const candidates[] = {
             "romfs",
             "./romfs",
+            ".local/romfs",
             ".local/control_romfs",
             "/data/local/tmp/ffrs-rg477m-efd1123620814764ae32529c18081259/romfs",
             "/data/local/tmp/romfs",
@@ -719,6 +723,342 @@ int32_t nso_host_fs_unmount(const char *name) {
     return 0;
 }
 
+#define NSO_FS_MAX_OPEN_FILES 128
+
+typedef struct {
+    int in_use;
+    int fd;
+    int mode;
+    int64_t file_size;
+    char nn_path[256];
+    char host_path[512];
+} nso_fs_file_entry;
+
+static nso_fs_file_entry s_fs_open_files[NSO_FS_MAX_OPEN_FILES];
+static pthread_mutex_t s_fs_file_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static int resolve_fs_path(const char *nn_path, char *out_host_path, size_t out_size) {
+    if (!nn_path || !out_host_path || out_size == 0) return -1;
+
+    const char *colon = strchr(nn_path, ':');
+    const char *subpath = NULL;
+    const char *mount_host_path = NULL;
+
+    if (colon) {
+        char mount_name[64];
+        size_t mlen = (size_t)(colon - nn_path);
+        if (mlen >= sizeof(mount_name)) mlen = sizeof(mount_name) - 1;
+        memcpy(mount_name, nn_path, mlen);
+        mount_name[mlen] = '\0';
+
+        subpath = colon + 1;
+        while (*subpath == '/' || *subpath == '\\') subpath++;
+
+        for (int i = 0; i < NSO_FS_MAX_MOUNTS; i++) {
+            if (s_fs_mounts[i].in_use && !strcmp(s_fs_mounts[i].name, mount_name)) {
+                mount_host_path = s_fs_mounts[i].host_path;
+                break;
+            }
+        }
+        if (!mount_host_path) {
+            fprintf(stderr, "[hle] resolve_fs_path: mount '%s' not found for '%s'\n", mount_name, nn_path);
+            return -1;
+        }
+    } else {
+        subpath = nn_path;
+        while (*subpath == '/' || *subpath == '\\') subpath++;
+        for (int i = 0; i < NSO_FS_MAX_MOUNTS; i++) {
+            if (s_fs_mounts[i].in_use && !strcmp(s_fs_mounts[i].name, "rom")) {
+                mount_host_path = s_fs_mounts[i].host_path;
+                break;
+            }
+        }
+        if (!mount_host_path) {
+            mount_host_path = ".";
+        }
+    }
+
+    char norm_subpath[512];
+    size_t j = 0;
+    for (size_t i = 0; subpath[i] && j + 1 < sizeof(norm_subpath); i++) {
+        norm_subpath[j++] = (subpath[i] == '\\') ? '/' : subpath[i];
+    }
+    norm_subpath[j] = '\0';
+
+    if (norm_subpath[0] == '\0') {
+        snprintf(out_host_path, out_size, "%s", mount_host_path);
+    } else {
+        snprintf(out_host_path, out_size, "%s/%s", mount_host_path, norm_subpath);
+    }
+    return 0;
+}
+
+static nso_fs_file_entry *allocate_file_slot(void) {
+    for (int i = 0; i < NSO_FS_MAX_OPEN_FILES; i++) {
+        if (!s_fs_open_files[i].in_use) {
+            s_fs_open_files[i].in_use = 1;
+            s_fs_open_files[i].fd = -1;
+            return &s_fs_open_files[i];
+        }
+    }
+    return NULL;
+}
+
+static nso_fs_file_entry *validate_file_handle(nn_fs_file_handle handle) {
+    if (!handle.handle) return NULL;
+    uintptr_t ptr = (uintptr_t)handle.handle;
+    uintptr_t base = (uintptr_t)&s_fs_open_files[0];
+    uintptr_t size = sizeof(nso_fs_file_entry);
+    if (ptr < base || ptr >= base + NSO_FS_MAX_OPEN_FILES * size) return NULL;
+    if ((ptr - base) % size != 0) return NULL;
+    nso_fs_file_entry *entry = (nso_fs_file_entry *)handle.handle;
+    if (!entry->in_use || entry->fd < 0) return NULL;
+    return entry;
+}
+
+int32_t nso_host_fs_open_file(nn_fs_file_handle *out_handle, const char *path, int32_t mode) {
+    if (!out_handle || !path) {
+        fprintf(stderr, "[hle] nn::fs::OpenFile: null pointer argument (out_handle=%p, path=%p)\n",
+                (void *)out_handle, (const void *)path);
+        return 1;
+    }
+    if (path[0] == '\0') {
+        fprintf(stderr, "[hle] nn::fs::OpenFile: empty path\n");
+        return 0x202; /* ResultPathNotFound */
+    }
+
+    char host_path[512];
+    if (resolve_fs_path(path, host_path, sizeof(host_path)) != 0) {
+        fprintf(stderr, "[hle] nn::fs::OpenFile: path='%s' mode=%d -> resolve mount failed\n", path, mode);
+        return 0x202; /* ResultPathNotFound */
+    }
+
+    pthread_mutex_lock(&s_fs_file_mutex);
+    nso_fs_file_entry *entry = allocate_file_slot();
+    if (!entry) {
+        pthread_mutex_unlock(&s_fs_file_mutex);
+        fprintf(stderr, "[hle] nn::fs::OpenFile: path='%s' -> out of file slots\n", path);
+        return 1;
+    }
+
+    int flags = 0;
+    if ((mode & 1) && (mode & 2)) {
+        flags = O_RDWR;
+    } else if (mode & 2) {
+        flags = O_WRONLY;
+    } else {
+        flags = O_RDONLY;
+    }
+    if (mode & 4) {
+        flags |= O_APPEND;
+    }
+#if defined(O_CLOEXEC)
+    flags |= O_CLOEXEC;
+#endif
+
+    int fd = open(host_path, flags);
+    if (fd < 0) {
+        entry->in_use = 0;
+        pthread_mutex_unlock(&s_fs_file_mutex);
+        fprintf(stderr, "[hle] nn::fs::OpenFile: path='%s' mode=%d (host_path='%s') -> open failed errno=%d (%s)\n",
+                path, mode, host_path, errno, strerror(errno));
+        return 0x202; /* ResultPathNotFound */
+    }
+
+    struct stat st;
+    int64_t fsz = 0;
+    if (fstat(fd, &st) == 0) {
+        fsz = (int64_t)st.st_size;
+    }
+    entry->fd = fd;
+    entry->mode = mode;
+    entry->file_size = fsz;
+    strncpy(entry->nn_path, path, sizeof(entry->nn_path) - 1);
+    entry->nn_path[sizeof(entry->nn_path) - 1] = '\0';
+    strncpy(entry->host_path, host_path, sizeof(entry->host_path) - 1);
+    entry->host_path[sizeof(entry->host_path) - 1] = '\0';
+
+    out_handle->handle = (void *)entry;
+    pthread_mutex_unlock(&s_fs_file_mutex);
+
+    fprintf(stderr, "[hle] nn::fs::OpenFile: path='%s' mode=%d (host_path='%s') size=%lld -> handle=%p (fd=%d)\n",
+            path, mode, host_path, (long long)fsz, (void *)entry, fd);
+    return 0;
+}
+
+int32_t nso_host_fs_get_file_size(int64_t *out_size, nn_fs_file_handle handle) {
+    if (!out_size) {
+        fprintf(stderr, "[hle] nn::fs::GetFileSize: null out pointer\n");
+        return 1;
+    }
+    pthread_mutex_lock(&s_fs_file_mutex);
+    nso_fs_file_entry *entry = validate_file_handle(handle);
+    if (!entry) {
+        pthread_mutex_unlock(&s_fs_file_mutex);
+        fprintf(stderr, "[hle] nn::fs::GetFileSize: invalid file handle %p\n", handle.handle);
+        return 1;
+    }
+    struct stat st;
+    if (fstat(entry->fd, &st) == 0) {
+        entry->file_size = (int64_t)st.st_size;
+    }
+    *out_size = entry->file_size;
+    pthread_mutex_unlock(&s_fs_file_mutex);
+    fprintf(stderr, "[hle] nn::fs::GetFileSize: handle=%p size=%lld\n", handle.handle, (long long)*out_size);
+    return 0;
+}
+
+int32_t nso_host_fs_read_file(size_t *out_bytes_read, nn_fs_file_handle handle, int64_t offset, void *buffer, size_t size) {
+    if (!buffer) {
+        fprintf(stderr, "[hle] nn::fs::ReadFile: null buffer pointer\n");
+        return 1;
+    }
+    if (offset < 0) {
+        fprintf(stderr, "[hle] nn::fs::ReadFile: negative offset %lld\n", (long long)offset);
+        return 1;
+    }
+    pthread_mutex_lock(&s_fs_file_mutex);
+    nso_fs_file_entry *entry = validate_file_handle(handle);
+    if (!entry) {
+        pthread_mutex_unlock(&s_fs_file_mutex);
+        fprintf(stderr, "[hle] nn::fs::ReadFile: invalid file handle %p\n", handle.handle);
+        return 1;
+    }
+    int fd = entry->fd;
+    pthread_mutex_unlock(&s_fs_file_mutex);
+
+    ssize_t n = pread(fd, buffer, size, (off_t)offset);
+    if (n < 0) {
+        fprintf(stderr, "[hle] nn::fs::ReadFile: pread failed fd=%d offset=%lld size=%zu errno=%d (%s)\n",
+                fd, (long long)offset, size, errno, strerror(errno));
+        return 1;
+    }
+    if (out_bytes_read) {
+        *out_bytes_read = (size_t)n;
+    }
+    fprintf(stderr, "[hle] nn::fs::ReadFile: handle=%p offset=%lld req_size=%zu read_bytes=%zd\n",
+            handle.handle, (long long)offset, size, n);
+    return 0;
+}
+
+int32_t nso_host_fs_read_file_no_out(nn_fs_file_handle handle, int64_t offset, void *buffer, size_t size) {
+    return nso_host_fs_read_file(NULL, handle, offset, buffer, size);
+}
+
+void nso_host_fs_close_file(nn_fs_file_handle handle) {
+    pthread_mutex_lock(&s_fs_file_mutex);
+    nso_fs_file_entry *entry = validate_file_handle(handle);
+    if (!entry) {
+        pthread_mutex_unlock(&s_fs_file_mutex);
+        fprintf(stderr, "[hle] nn::fs::CloseFile: invalid file handle %p\n", handle.handle);
+        return;
+    }
+    int fd = entry->fd;
+    char path[256];
+    strncpy(path, entry->nn_path, sizeof(path) - 1);
+    path[sizeof(path) - 1] = '\0';
+
+    entry->in_use = 0;
+    entry->fd = -1;
+    pthread_mutex_unlock(&s_fs_file_mutex);
+
+    if (fd >= 0) {
+        close(fd);
+    }
+    fprintf(stderr, "[hle] nn::fs::CloseFile: closed handle=%p (path='%s')\n", handle.handle, path);
+}
+
+int32_t nso_host_fs_flush_file(nn_fs_file_handle handle) {
+    pthread_mutex_lock(&s_fs_file_mutex);
+    nso_fs_file_entry *entry = validate_file_handle(handle);
+    if (!entry) {
+        pthread_mutex_unlock(&s_fs_file_mutex);
+        fprintf(stderr, "[hle] nn::fs::FlushFile: invalid file handle %p\n", handle.handle);
+        return 1;
+    }
+    int fd = entry->fd;
+    pthread_mutex_unlock(&s_fs_file_mutex);
+
+    fsync(fd);
+    fprintf(stderr, "[hle] nn::fs::FlushFile: flushed handle=%p\n", handle.handle);
+    return 0;
+}
+
+int32_t nso_host_fs_set_file_size(nn_fs_file_handle handle, int64_t size) {
+    if (size < 0) return 1;
+    pthread_mutex_lock(&s_fs_file_mutex);
+    nso_fs_file_entry *entry = validate_file_handle(handle);
+    if (!entry) {
+        pthread_mutex_unlock(&s_fs_file_mutex);
+        fprintf(stderr, "[hle] nn::fs::SetFileSize: invalid file handle %p\n", handle.handle);
+        return 1;
+    }
+    int fd = entry->fd;
+    int res = ftruncate(fd, (off_t)size);
+    if (res == 0) {
+        entry->file_size = size;
+    }
+    pthread_mutex_unlock(&s_fs_file_mutex);
+    fprintf(stderr, "[hle] nn::fs::SetFileSize: handle=%p size=%lld res=%d\n", handle.handle, (long long)size, res);
+    return res == 0 ? 0 : 1;
+}
+
+int32_t nso_host_fs_write_file(nn_fs_file_handle handle, int64_t offset, const void *data, size_t size, const void *option) {
+    (void)option;
+    if (!data || offset < 0) return 1;
+    pthread_mutex_lock(&s_fs_file_mutex);
+    nso_fs_file_entry *entry = validate_file_handle(handle);
+    if (!entry) {
+        pthread_mutex_unlock(&s_fs_file_mutex);
+        fprintf(stderr, "[hle] nn::fs::WriteFile: invalid file handle %p\n", handle.handle);
+        return 1;
+    }
+    int fd = entry->fd;
+    pthread_mutex_unlock(&s_fs_file_mutex);
+
+    ssize_t n = pwrite(fd, data, size, (off_t)offset);
+    if (n < 0 || (size_t)n != size) {
+        fprintf(stderr, "[hle] nn::fs::WriteFile: pwrite failed fd=%d size=%zu written=%zd\n", fd, size, n);
+        return 1;
+    }
+    fprintf(stderr, "[hle] nn::fs::WriteFile: handle=%p offset=%lld size=%zu\n", handle.handle, (long long)offset, size);
+    return 0;
+}
+
+int32_t nso_host_fs_get_entry_type(int32_t *out_entry_type, const char *path) {
+    if (!out_entry_type || !path) {
+        fprintf(stderr, "[hle] nn::fs::GetEntryType: null pointer argument\n");
+        return 1;
+    }
+    char host_path[512];
+    if (resolve_fs_path(path, host_path, sizeof(host_path)) != 0) {
+        fprintf(stderr, "[hle] nn::fs::GetEntryType: resolve failed for '%s'\n", path);
+        return 0x202; /* ResultPathNotFound */
+    }
+    struct stat st;
+    if (stat(host_path, &st) != 0) {
+        fprintf(stderr, "[hle] nn::fs::GetEntryType: path='%s' (host_path='%s') stat failed errno=%d\n",
+                path, host_path, errno);
+        return 0x202; /* ResultPathNotFound */
+    }
+    if (S_ISDIR(st.st_mode)) {
+        *out_entry_type = 0; /* Directory */
+    } else {
+        *out_entry_type = 1; /* File */
+    }
+    fprintf(stderr, "[hle] nn::fs::GetEntryType: path='%s' (host_path='%s') -> %s (%d)\n",
+            path, host_path, *out_entry_type == 0 ? "Directory" : "File", *out_entry_type);
+    return 0;
+}
+
+void nso_host_fs_disable_global_file_data_cache(void) {
+    fprintf(stderr, "[hle] nn::fs::DisableGlobalFileDataCache\n");
+}
+
+void nso_host_fs_enable_global_file_data_cache(void *buffer, size_t size) {
+    fprintf(stderr, "[hle] nn::fs::EnableGlobalFileDataCache: buffer=%p size=%zu\n", buffer, size);
+}
+
 void nso_host_set_extension_resolver(nso_import_fn resolver) {extension_resolver=resolver;}
 uint64_t nso_host_resolve(uint32_t index,const char *name) {
     if(!name)return 0;
@@ -735,6 +1075,28 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_fs_mount_rom;
     if(!strcmp(name,"_ZN2nn2fs7UnmountEPKc") || !strcmp(name,"nnfsUnmount"))
         return (uint64_t)(uintptr_t)&nso_host_fs_unmount;
+    if(!strcmp(name,"_ZN2nn2fs8OpenFileEPNS0_10FileHandleEPKci") || !strcmp(name,"nnfsOpenFile"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_open_file;
+    if(!strcmp(name,"_ZN2nn2fs11GetFileSizeEPlNS0_10FileHandleE") || !strcmp(name,"nnfsGetFileSize"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_get_file_size;
+    if(!strcmp(name,"_ZN2nn2fs8ReadFileEPmNS0_10FileHandleElPvm") || !strcmp(name,"nnfsReadFile"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_read_file;
+    if(!strcmp(name,"_ZN2nn2fs8ReadFileENS0_10FileHandleElPvm"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_read_file_no_out;
+    if(!strcmp(name,"_ZN2nn2fs9CloseFileENS0_10FileHandleE") || !strcmp(name,"nnfsCloseFile"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_close_file;
+    if(!strcmp(name,"_ZN2nn2fs9FlushFileENS0_10FileHandleE") || !strcmp(name,"nnfsFlushFile"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_flush_file;
+    if(!strcmp(name,"_ZN2nn2fs11SetFileSizeENS0_10FileHandleEl") || !strcmp(name,"nnfsSetFileSize"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_set_file_size;
+    if(!strcmp(name,"_ZN2nn2fs9WriteFileENS0_10FileHandleElPKvmRKNS0_11WriteOptionE") || !strcmp(name,"nnfsWriteFile"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_write_file;
+    if(!strcmp(name,"_ZN2nn2fs12GetEntryTypeEPNS0_18DirectoryEntryTypeEPKc") || !strcmp(name,"nnfsGetEntryType"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_get_entry_type;
+    if(!strcmp(name,"_ZN2nn2fs26DisableGlobalFileDataCacheEv"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_disable_global_file_data_cache;
+    if(!strcmp(name,"_ZN2nn2fs25EnableGlobalFileDataCacheEPvm"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_enable_global_file_data_cache;
     if(!strcmp(name,"_ZN2nn4util11ReferSymbolEPKv") || !strcmp(name,"nnutilReferSymbol"))
         return (uint64_t)(uintptr_t)&refer_symbol;
     if(!strcmp(name,"_ZN2nn4util12GenerateUuidEv"))
