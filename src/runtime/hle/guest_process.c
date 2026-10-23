@@ -1030,6 +1030,7 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
         "_ZN2nn3aoc16ListAddOnContentEPiii","nnaocListAddOnContent",
         "_ZN2nn2fs31QueryMountAddOnContentCacheSizeEPmi","nnfsQueryMountAddOnContentCacheSize",
         "_ZN2nn2fs17MountAddOnContentEPKciPvm","nnfsMountAddOnContent",
+        "_ZN2nn4nifm10InitializeEv","nnnifmInitialize",
         "_ZN2nn4util11ReferSymbolEPKv","nnutilReferSymbol",
         "_ZN2nn2os15InitializeMutexEPNS0_9MutexTypeEbi","nnosInitializeMutex",
         "_ZN2nn2os13FinalizeMutexEPNS0_9MutexTypeE","nnosFinalizeMutex",
@@ -1183,7 +1184,8 @@ static int import_signature(const char *name,nb_signature *out) {
     else if(!strcmp(name,"_ZN2nn2os29IsVirtualAddressMemoryEnabledEv")) {arguments=0;returns=1;}
     else if(!strcmp(name,"_ZN2nn2os22GetSystemTickFrequencyEv") || !strcmp(name,"nnosGetSystemTickFrequency") ||
             !strcmp(name,"_ZN2nn2os13GetSystemTickEv") || !strcmp(name,"nnosGetSystemTick")) {arguments=0;returns=1;}
-    else if(!strcmp(name,"_ZN2nn4time10InitializeEv") || !strcmp(name,"_ZN2nn4time13IsInitializedEv")) {arguments=0;returns=1;}
+    else if(!strcmp(name,"_ZN2nn4time10InitializeEv") || !strcmp(name,"_ZN2nn4time13IsInitializedEv") ||
+            !strcmp(name,"_ZN2nn4nifm10InitializeEv") || !strcmp(name,"nnnifmInitialize")) {arguments=0;returns=1;}
     else if(!strcmp(name,"_ZN2nn4util12GenerateUuidEv")) {arguments=0;returns=2;}
     else if(!strcmp(name,"strncasecmp_l") || !strcmp(name,"_ZN2nn4time14ToCalendarTimeEPNS0_12CalendarTimeEPNS0_22CalendarAdditionalInfoERKNS0_9PosixTimeERKNS0_12TimeZoneRuleE")) {arguments=4;returns=1;}
     else if(!strcmp(name,"_ZN2nn2os36GetVirtualAddressMemoryResourceUsageEv")) {arguments=0;returns=2;}

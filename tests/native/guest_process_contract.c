@@ -1503,6 +1503,24 @@ static int aoc_contract(void) {
     puts("{\"aoc_contract_errors\":0,\"count\":true,\"list\":true,\"query_cache\":true,\"mount\":true,\"baseline_zero\":true}");
     return 0;
 }
+static int nifm_contract(void) {
+    typedef int32_t (*init_fn)(void);
+
+    init_fn init_nifm = (init_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn4nifm10InitializeEv");
+    CHECK(init_nifm != NULL);
+
+    init_fn init_nifm_alias = (init_fn)(uintptr_t)guest_process_resolve(0, "nnnifmInitialize");
+    CHECK(init_nifm_alias != NULL);
+
+    /* Test Initialize: baseline returns 0 without crash */
+    int32_t res = init_nifm();
+    CHECK(res == 0);
+    res = init_nifm_alias();
+    CHECK(res == 0);
+
+    puts("{\"nifm_contract_errors\":0,\"initialize\":true,\"baseline_zero\":true}");
+    return 0;
+}
 struct log_fixture_io {float input,output;uint64_t guest_x18;};
 _Static_assert(offsetof(struct log_fixture_io,output)==4 && offsetof(struct log_fixture_io,guest_x18)==8,"self-authored float fixture ABI");
 static void *exercise_logf_native(guest_process *p,void *opaque) {
@@ -2140,6 +2158,7 @@ int main(int argc,char **argv) {
     if(argc==2 && !strcmp(argv[1],"--fs-mount-rom"))return fs_mount_rom_contract();
     if(argc==2 && !strcmp(argv[1],"--fs-open-file"))return fs_open_file_contract();
     if(argc==2 && !strcmp(argv[1],"--aoc"))return aoc_contract();
+    if(argc==2 && !strcmp(argv[1],"--nifm"))return nifm_contract();
     if(argc==2 && !strcmp(argv[1],"--logf"))return logf_contract();
     if(argc==3 && !strcmp(argv[1],"--logf-native"))return logf_native_contract(argv[2]);
     if(argc==2 && !strcmp(argv[1],"--strcasecmp"))return strcasecmp_contract();

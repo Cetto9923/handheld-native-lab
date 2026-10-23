@@ -1,8 +1,8 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-10-23T21:45:00.000000+00:00
-阶段：T02_AOC_COUNT_PASSED_NIFM_INIT_REACHED_ON_RG477M: nn::aoc::CountAddOnContent + ListAddOnContent verified on RG477M; GameThread advanced to nn::nifm::Initialize (symbol index 272, caller 0x942d24 / lr 0x6d903d9d24)
-总控：Antigravity sole root coordinator — nn::aoc::CountAddOnContent passed on RG477M; frontier advanced to nn::nifm::Initialize
+状态事件时间：2026-10-23T22:07:00.000000+00:00
+阶段：T02_NIFM_INIT_PASSED_SOCKET_INIT_REACHED_ON_RG477M: nn::nifm::Initialize verified on RG477M; GameThread advanced to nn::socket::Initialize (symbol index 273, GOT 0x7772858, lr 0x79ce0214f8 / offset 0x352f4f8)
+总控：Antigravity sole root coordinator — nn::nifm::Initialize passed on RG477M; frontier advanced to nn::socket::Initialize
 更新方式：按事件更新，没有后台自动刷新。
 
 | 任务 | 角色 | 状态 | 实际负责人 | 启动依赖 | 验收门禁 | 分支 |

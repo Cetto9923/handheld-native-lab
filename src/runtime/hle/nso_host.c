@@ -1090,6 +1090,17 @@ int32_t nso_host_fs_mount_add_on_content(const char *name, int32_t target_index,
     return 0x202; /* ResultPathNotFound */
 }
 
+static bool s_nifm_initialized = false;
+int32_t nso_host_nifm_initialize(void) {
+    s_nifm_initialized = true;
+    fprintf(stderr, "[hle] nn::nifm::Initialize: initialized network interface manager -> returning 0\n");
+    return 0;
+}
+
+bool nso_host_nifm_is_initialized(void) {
+    return s_nifm_initialized;
+}
+
 void nso_host_set_extension_resolver(nso_import_fn resolver) {extension_resolver=resolver;}
 uint64_t nso_host_resolve(uint32_t index,const char *name) {
     if(!name)return 0;
@@ -1136,6 +1147,8 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_fs_query_mount_add_on_content_cache_size;
     if(!strcmp(name,"_ZN2nn2fs17MountAddOnContentEPKciPvm") || !strcmp(name,"nnfsMountAddOnContent"))
         return (uint64_t)(uintptr_t)&nso_host_fs_mount_add_on_content;
+    if(!strcmp(name,"_ZN2nn4nifm10InitializeEv") || !strcmp(name,"nnnifmInitialize"))
+        return (uint64_t)(uintptr_t)&nso_host_nifm_initialize;
     if(!strcmp(name,"_ZN2nn4util11ReferSymbolEPKv") || !strcmp(name,"nnutilReferSymbol"))
         return (uint64_t)(uintptr_t)&refer_symbol;
     if(!strcmp(name,"_ZN2nn4util12GenerateUuidEv"))
