@@ -5,6 +5,7 @@
 #include "guest_process.h"
 #include "guest_context.h"
 #include "guest_pages.h"
+#include "native_boundary.h"
 #include "exit_registry.h"
 #include "nso_host.h"
 #include <errno.h>
@@ -37,6 +38,11 @@ struct guest_process {
     guest_process_callback callback;
     void *argument;
     struct nso_result callback_status;
+    nb_scope boundary;
+    nb_import *bindings;
+    size_t bindings_count;
+    int boundary_initialized,boundary_prepared,guest_session_ended,init_attempted;
+    uint64_t guest_x18;
 };
 static pthread_mutex_t exclusive_mutex=PTHREAD_MUTEX_INITIALIZER;
 static guest_process *exclusive_process;
@@ -128,6 +134,7 @@ struct nso_result guest_process_load(guest_process *p,const char *path,char *err
     p->module=loaded.module;
     if(loaded.result.status==NSO_RETAINED)p->quarantined=1;
     if(loaded.result.status==NSO_OK) {
+        nso_require_executor(p->module);
         if(nso_host_exit_scope_begin(p->module)) {
             struct nso_result cleanup=nso_release(&p->module);
             loaded.result=status(cleanup.status==NSO_OK?NSO_OWNER_ERROR:NSO_RETAINED,EBUSY,cleanup.cleanup_error);
@@ -278,10 +285,105 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
         "_ZN2nn2os12TryLockMutexEPNS0_9MutexTypeE","nnosTryLockMutex",
         "_ZN2nn2os11UnlockMutexEPNS0_9MutexTypeE","nnosUnlockMutex",
         "_ZN2nn2os28IsMutexLockedByCurrentThreadEPKNS0_9MutexTypeE",
-        "atexit","__cxa_atexit","__cxa_finalize","exit","_Exit","_exit",NULL};
+        /* Registration is safe; finalize/exit can invoke guest callbacks and
+         * require a separately supported callback/reentry boundary. */
+        "atexit","__cxa_atexit","_Exit","_exit",NULL};
     for(size_t i=0;typed[i];i++)if(!strcmp(name,typed[i]))return nso_host_resolve(index,name);
     if(!strcmp(name,"abort"))return (uintptr_t)&abort;
     return 0;
+}
+static int import_signature(const char *name,nb_signature *out) {
+    unsigned arguments=0,returns=1;
+    static const char *const one[]={"strlen","__cxa_guard_acquire","atexit",
+        "_ZN2nn2os17FreeAddressRegionEm","_ZN2nn2os12TryLockMutexEPNS0_9MutexTypeE",
+        "nnosTryLockMutex","_ZN2nn2os28IsMutexLockedByCurrentThreadEPKNS0_9MutexTypeE",NULL};
+    static const char *const two[]={"strnlen","strcmp","strcpy","strchr","strrchr","strstr",
+        "_ZN2nn2os21AllocateAddressRegionEPmm","_ZN2nn2os19AllocateMemoryPagesEmm","_ZN2nn2os15FreeMemoryPagesEmm",NULL};
+    static const char *const three[]={"memset","memcpy","memmove","memcmp","memchr","strncmp","strncpy","__cxa_atexit",NULL};
+    static const char *const void_one[]={"__cxa_guard_release","__cxa_guard_abort","_Exit","_exit",
+        "_ZN2nn2os15QueryMemoryInfoEPNS0_10MemoryInfoE","_ZN2nn4util11ReferSymbolEPKv","nnutilReferSymbol",
+        "_ZN2nn2os13FinalizeMutexEPNS0_9MutexTypeE","nnosFinalizeMutex",
+        "_ZN2nn2os9LockMutexEPNS0_9MutexTypeE","nnosLockMutex",
+        "_ZN2nn2os11UnlockMutexEPNS0_9MutexTypeE","nnosUnlockMutex",NULL};
+    const char *const *lists[]={one,two,three,void_one};
+    for(unsigned group=0;group<4;group++)for(size_t i=0;lists[group][i];i++)if(!strcmp(name,lists[group][i])) {
+        arguments=group==3?1:group+1;returns=group==3?0:1;goto found;
+    }
+    if(!strcmp(name,"_ZN2nn2os15InitializeMutexEPNS0_9MutexTypeEbi") || !strcmp(name,"nnosInitializeMutex")) {arguments=3;returns=0;}
+    else if(!strcmp(name,"abort")) {arguments=0;returns=0;}
+    else return 0;
+found:
+    *out=(nb_signature){.version=1,.flags=NB_SIG_REGISTER_ONLY,
+        .gp_arguments=(uint8_t)arguments,.gp_returns=(uint8_t)returns};
+    return 1;
+}
+static struct nso_result prepare_boundary_locked(guest_process *p) {
+    if(p->guest_session_ended)return status(NSO_UNSUPPORTED,ENOTSUP,0);
+    if(p->boundary_prepared)return status(NSO_OK,0,0);
+    if(p->boundary_initialized || p->bindings)return status(NSO_RETAINED,EBUSY,0);
+    size_t count=nso_bound_import_count(p->module);
+    if(count>SIZE_MAX/sizeof(nb_import) || count>SIZE_MAX/sizeof(struct nso_import_target))return status(NSO_OWNER_ERROR,EOVERFLOW,0);
+    struct nso_import_target *targets=count?calloc(count,sizeof(*targets)):NULL;
+    nb_import *bindings=count?calloc(count,sizeof(*bindings)):NULL;
+    if(count && (!targets || !bindings)) {free(targets);free(bindings);return status(NSO_OWNER_ERROR,ENOMEM,0);}
+    for(size_t i=0;i<count;i++) {
+        nb_signature signature;
+        if(nso_bound_import_at(p->module,i,&targets[i]).status!=NSO_OK || !import_signature(targets[i].name,&signature)) {
+            free(targets);free(bindings);return status(NSO_UNSUPPORTED,ENOTSUP,0);
+        }
+    }
+    nb_status s=nb_scope_init(&p->boundary);
+    if(s!=NB_OK) {free(targets);free(bindings);fprintf(stderr,"[boundary-error] scope-init status=%d; no guest execution\n",s);return status(s==NB_UNSUPPORTED?NSO_UNSUPPORTED:NSO_OWNER_ERROR,s==NB_UNSUPPORTED?ENOTSUP:EIO,0);}
+    p->boundary_initialized=1;p->bindings=bindings;p->bindings_count=count;
+    struct nso_result r=status(NSO_OK,0,0);
+    for(size_t i=0;i<count;i++) {
+        nb_signature signature;(void)import_signature(targets[i].name,&signature);
+        s=nb_import_bind(&bindings[i],&p->boundary,(void(*)(void))(uintptr_t)targets[i].target,&signature);
+        if(s!=NB_OK) {
+            fprintf(stderr,"[boundary-error] bind index=%u name=%s status=%d mapping=%p entry=%p; ownership retained\n",targets[i].index,targets[i].name,s,bindings[i].mapping,(void *)bindings[i].entry);
+            if(s==NB_RETAINED)fputs("[boundary-retained] non-callable RX rollback owner retained; no import retarget/publication\n",stderr);
+            r=status(NSO_RETAINED,EIO,0);break;
+        }
+        targets[i].target=(uintptr_t)nb_import_entry(&bindings[i]);
+    }
+    if(r.status==NSO_OK)r=nso_retarget_imports(p->module,targets,count);
+    free(targets);
+    if(r.status!=NSO_OK) {p->quarantined=1;return status(NSO_RETAINED,r.native_error,r.cleanup_error);}
+    p->boundary_prepared=1;
+    fprintf(stderr,"[boundary-ready] imports=%zu actual-primary-owned; bindings retained through module unload\n",count);
+    return r;
+}
+struct nso_result guest_process_call(guest_process *p,uint64_t off,const uint64_t arguments[6],unsigned count,uint64_t *value) {
+    if(!p || !arguments || !value || count>6)return status(NSO_INVALID,EINVAL,0);
+    pthread_mutex_lock(&p->mutex);
+    uint64_t address;
+    struct nso_result r=status(NSO_INVALID,EINVAL,0);
+    if(current_process==p && p->running && !p->quarantined && p->thread.state==THREAD_RUNNING &&
+       pthread_equal(p->thread.native,pthread_self()))r=nso_entry_address(p->module,off,&address);
+    if(r.status==NSO_OK)r=prepare_boundary_locked(p);
+    pthread_mutex_unlock(&p->mutex);
+    if(r.status!=NSO_OK)return r;
+    nb_registers packet={.guest_x18=p->guest_x18};
+    for(unsigned i=0;i<count;i++)packet.x[i]=arguments[i];
+    nb_status s=nb_call(&p->boundary,(void(*)(void))(uintptr_t)address,&packet);
+    if(s!=NB_OK) {
+        pthread_mutex_lock(&p->mutex);p->quarantined=1;pthread_mutex_unlock(&p->mutex);
+        fprintf(stderr,"[boundary-error] call offset=0x%" PRIx64 " status=%d; no raw fallback; owner retained\n",off,s);return status(NSO_RETAINED,EIO,0);
+    }
+    p->guest_x18=packet.guest_x18;*value=packet.x[0];return status(NSO_OK,0,0);
+}
+static struct nso_result profile_executor(void *user,nso_module *module,uint64_t off,const uint64_t arguments[6],uint64_t *value) {
+    guest_process *p=user;
+    if(module!=p->module)return status(NSO_INVALID,EINVAL,0);
+    return guest_process_call(p,off,arguments,0,value);
+}
+struct nso_result guest_process_initialize(guest_process *p,nso_init_policy policy) {
+    if(!p || current_process!=p || (policy!=NSO_INIT_ELF && policy!=NSO_INIT_DT_INIT_OWNS_ARRAY))return status(NSO_INVALID,EINVAL,0);
+    pthread_mutex_lock(&p->mutex);
+    struct nso_result r=(p->init_attempted || p->quarantined || !p->running || p->thread.state!=THREAD_RUNNING)?status(NSO_INVALID,EBUSY,0):prepare_boundary_locked(p);
+    if(r.status==NSO_OK)p->init_attempted=1;
+    pthread_mutex_unlock(&p->mutex);
+    return r.status==NSO_OK?nso_run_init_execute(p->module,policy,profile_executor,p):r;
 }
 static void *invoke_primary(guest_context *context,void *opaque) {
     guest_process *p=opaque;
@@ -312,6 +414,7 @@ static void *invoke_primary(guest_context *context,void *opaque) {
         }
     }
     pthread_mutex_lock(&p->mutex);p->thread.state=THREAD_RETURNED;
+    if(p->boundary_initialized)p->guest_session_ended=1;
     pthread_mutex_unlock(&p->mutex);current_process=NULL;
     return value;
 }
@@ -360,6 +463,19 @@ struct nso_result guest_process_destroy(guest_process **process) {
         p->pages=NULL;
     }
     struct nso_result r=nso_release(&p->module);
+    if(r.status==NSO_OK && p->boundary_initialized) {
+        /* The image and unload observer are gone before any thunk can become
+         * stale. Dead idle owner cleanup is explicitly supported by boundary. */
+        for(size_t i=0;i<p->bindings_count;i++) {
+            nb_status s=nb_import_unbind(&p->bindings[i]);
+            if(s!=NB_OK) {fprintf(stderr,"[boundary-retained] unbind=%zu status=%d\n",i,s);r=status(NSO_RETAINED,0,EIO);break;}
+        }
+        if(r.status==NSO_OK) {
+            nb_status s=nb_scope_close(&p->boundary);
+            if(s!=NB_OK) {fprintf(stderr,"[boundary-retained] scope-close status=%d\n",s);r=status(NSO_RETAINED,0,EIO);}
+            else {p->boundary_initialized=0;free(p->bindings);p->bindings=NULL;p->bindings_count=0;}
+        }
+    }
     if(r.status==NSO_OK)r=from_context(guest_context_destroy(p->context));
     if(r.status!=NSO_OK) {p->quarantined=1;pthread_mutex_unlock(&p->mutex);return r;}
     p->context=NULL;pthread_mutex_unlock(&p->mutex);

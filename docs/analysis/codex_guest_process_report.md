@@ -1,4 +1,60 @@
-# Owned startup profile: original nnMain crosses Query
+# Owned startup profile: native boundary integration
+
+The current profile dispatches actual guest code only through native_boundary
+(`5c20b064f2866577ca1fdd903fa196dd842eb3a8`, including retained RX rollback).
+The loader records validated import RELA write identities during its existing
+parse. Quiescent retargeting preflights every requested write: known imported
+function, 64-bit aligned zero-addend relocation, original writable data page,
+unchanged expected value and no overlapping import write. Unsupported readonly
+sites are rejected without mprotect or writes. No arbitrary pointer scan occurs.
+The supplied main's 36 previously admitted import sites meet these restrictions.
+
+Process.load remains on the coordinating host thread. The first actual guest
+call lazily creates the scope on its registered, capacity-verified primary,
+binds only explicit register-only signatures and atomically publishes their
+recorded import sites after all bindings succeed. The native gateway restores
+host x18 before entering host code and restores guest x18 on return. Same-primary
+calls reuse this session and saved guest x18. Initialization uses an injected
+executor for both DT_INIT and array entries, preserving the explicit wrapper
+single-walk policy; failed initialization is not retried. The 21-argument CRT
+import remains unresolved, without a guessed signature or success result.
+
+When this primary ends, its module cannot execute on another primary. Bindings
+remain alive because guest state may have cached thunk addresses. Destruction
+first runs the existing discard-only unload observer and really releases the
+module, then unbinds every mapping and closes the scope, including dead idle
+owner cleanup. Failed bind NB_RETAINED9, module release, unbind or close retains
+Process/handles for retry; a non-callable binding with entry NULL is never
+published. Administrative thunk pages remain explicitly outside the native
+logical backing quota. Non-idle dead boundary owners remain retained.
+
+The boundary excludes callback reentry, foreign unwinding/longjmp, stack arguments
+and unknown aggregate ABIs. Therefore profile exit and __cxa_finalize are now
+strict unresolved imports: they previously invoked guest callbacks directly.
+atexit registration remains functional and unload discards its records. Legacy
+non-profile behavior is unchanged. New profile CLI execution accepts reviewed
+named scalar entry signatures; it never guesses the ABI of a numeric offset.
+Mac ordinary C callback/owner/Query/page contracts still run; actual guest code
+returns explicit unsupported because this boundary supports Android AArch64.
+There is no raw fallback to keep those calls running.
+
+The contract includes a generated, non-game AArch64 fixture that clobbers x18,
+calls an admitted typed host import and checks the restored guest value, multiple
+calls and the ended-session prohibition. Loader-only valid fixtures exercise
+retarget values, readonly refusal and init executor call counts/failure stop.
+An Android-only failure product redirects just the component VM calls to test
+RX failure plus two unmap failures: no guest execution/publication, retained
+Process after first destroy, then one actual unmap before successful retry.
+These hooks are absent from both production ELF products.
+
+Fatal signal diagnostics remain an isolated experiment facility; native_boundary
+does not provide asynchronous signal adaptation or make those stdio handlers
+generally async-signal-safe. Query's old builtin-return-address diagnostic may
+point into the import gateway; it is not mislabelled as an original guest PC.
+The strict unresolved sentinel still records its original guest LR. CRT, ELF TLS,
+SDK ThreadType/alias mapping, CreateThread and full game startup remain incomplete.
+
+## Earlier checkpoints (historical evidence)
 
 The unchanged supplied main executes original nnMain at +0x352f160 on an owned
 64KiB native pthread stack. QueryMemoryInfo returns a complete native policy

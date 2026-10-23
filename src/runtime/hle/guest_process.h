@@ -26,6 +26,14 @@ struct nso_result guest_process_load(guest_process *,const char *path,char *err,
 /* Borrowed inspection/call handle, never independently release it. */
 nso_module *guest_process_module(guest_process *);
 struct nso_result guest_process_run(guest_process *,guest_process_callback,void *arg,void **value);
+/* Known integer/pointer register ABI only. Up to six explicit scalar arguments,
+ * one x0 result, no foreign unwind/stack arguments/unknown aggregate ABI.
+ * Android native boundary only: unsupported platforms never execute raw code.
+ * Multiple calls share one actual primary session. After that primary returns,
+ * this module cannot execute again; bindings survive until real module unload. */
+struct nso_result guest_process_call(guest_process *,uint64_t offset,
+        const uint64_t arguments[6],unsigned argument_count,uint64_t *result);
+struct nso_result guest_process_initialize(guest_process *,nso_init_policy);
 /* Native typed snapshot: failure writes none of out. The guest void ABI wrapper
  * treats invalid state as a precise fatal error, never silent success. */
 struct nso_result guest_process_memory_info(guest_process *,struct guest_memory_info *out);

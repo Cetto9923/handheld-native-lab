@@ -29,6 +29,7 @@
 #define R_RELATIVE 0x403u
 
 struct segment { uint32_t file, mem, size, aux; };
+struct import_write {uint64_t offset,expected;uint32_t symbol,type;int64_t addend;};
 struct nso_module {
     uint8_t *image;
     size_t image_size;
@@ -43,6 +44,11 @@ struct nso_module {
     uint16_t *sym_shndx;
     uint32_t *sym_name;
     uint8_t *sym_info;
+    uint8_t *import_resolved;
+    struct import_write *import_writes;
+    size_t import_write_count,bound_import_count;
+    uint64_t writable_lo,writable_hi;
+    int executor_required;
     uint8_t *import_traps, *object_traps;
     size_t trap_size;
     uint64_t rela_offset, rela_size, jmprel_offset, jmprel_size;
@@ -223,7 +229,8 @@ static struct nso_load_result load_file(const char *path,nso_import_fn resolve,
     m->sym_value=calloc(m->sym_count,sizeof(*m->sym_value));
     m->sym_info=calloc(m->sym_count,1);
     m->imports=calloc(m->sym_count,sizeof(*m->imports));
-    CHECK(m->dynstr && m->sym_name && m->sym_shndx && m->sym_value && m->imports && m->sym_info,"symbol allocation failed");
+    m->import_resolved=calloc(m->sym_count,1);
+    CHECK(m->dynstr && m->sym_name && m->sym_shndx && m->sym_value && m->imports && m->sym_info && m->import_resolved,"symbol allocation failed");
     memcpy(m->dynstr,m->image+strtab,(size_t)strsz);
     /* Per-symbol BRK sentinels supply identity, never target translation.
      * Imported objects use inaccessible slots so reads also fail observably. */
@@ -241,6 +248,7 @@ static struct nso_load_result load_file(const char *path,nso_import_fn resolve,
         if(i && !m->sym_shndx[i]) {
             m->import_count++;
             m->imports[i]=resolve?resolve(i,m->dynstr+m->sym_name[i]):0;
+            if(m->imports[i]) {m->import_resolved[i]=1;m->bound_import_count++;}
             if(!m->imports[i]) {
                 m->unresolved_count++;
                 m->imports[i]=(uint64_t)(uintptr_t)(((e[4]&15)==1?m->object_traps:m->import_traps)+i*8);
@@ -268,6 +276,12 @@ static struct nso_load_result load_file(const char *path,nso_import_fn resolve,
             where+=63*8;
         }
     }
+    CHECK(m->rela_size%24==0 && m->jmprel_size%24==0 &&
+        file_range(s,m->rela_offset,m->rela_size,&mapped) && file_range(s,m->jmprel_offset,m->jmprel_size,&mapped),"invalid RELA extent");
+    CHECK(m->rela_size/24<=SIZE_MAX/sizeof(*m->import_writes) &&
+        m->jmprel_size/24<=SIZE_MAX/sizeof(*m->import_writes)-m->rela_size/24,"import write allocation overflow");
+    size_t write_capacity=(size_t)(m->rela_size/24+m->jmprel_size/24);
+    if(write_capacity) {m->import_writes=calloc(write_capacity,sizeof(*m->import_writes));CHECK(m->import_writes,"import write allocation failed");}
     for(int pass=0;pass<2;pass++) {
         uint64_t off=pass?m->jmprel_offset:m->rela_offset,sz=pass?m->jmprel_size:m->rela_size;
         CHECK(sz%24==0 && file_range(s,off,sz,&mapped),"invalid RELA extent");
@@ -285,6 +299,8 @@ static struct nso_load_result load_file(const char *path,nso_import_fn resolve,
             }
             if(type==R_ABS32) { CHECK(value<=UINT32_MAX,"ABS32 relocation overflow"); uint32_t v=(uint32_t)value;memcpy(m->image+target,&v,4); }
             else wr64(m->image+target,value);
+            if(sym && !m->sym_shndx[sym])
+                m->import_writes[m->import_write_count++]=(struct import_write){target,value,sym,type,(int64_t)addend};
             m->reloc_count++;
         }
     }
@@ -297,6 +313,8 @@ static struct nso_load_result load_file(const char *path,nso_import_fn resolve,
     }
     __builtin___clear_cache((char*)m->image+m->text_lo,(char*)m->image+m->text_hi);
     CHECK_SYS(loader_protect(m->image+down(m->text_lo),(size_t)(up(m->text_hi)-down(m->text_lo)),PROT_READ|PROT_EXEC)==0,"text mprotect failed");
+    m->writable_lo=down(s[2].mem);
+    m->writable_hi=up((uint64_t)s[2].mem+s[2].size+s[2].aux);
     CHECK_SYS(loader_unmap((void*)file,fsize)==0,"source munmap failed");
     m->source=NULL;m->source_size=0;m->ready=1;
     return (struct nso_load_result){load_status(NSO_OK,0,0),m};
@@ -352,7 +370,7 @@ struct nso_result nso_release(nso_module **module) {
         else if(!cleanup)cleanup=dropped.native_error?dropped.native_error:EIO;
     }
     if(cleanup)return load_status(NSO_RETAINED,0,cleanup);
-    free(m->dynstr);free(m->sym_name);free(m->sym_shndx);free(m->sym_value);free(m->imports);free(m->sym_info);free(m);
+    free(m->dynstr);free(m->sym_name);free(m->sym_shndx);free(m->sym_value);free(m->imports);free(m->sym_info);free(m->import_resolved);free(m->import_writes);free(m);
     *module=NULL;return load_status(NSO_OK,0,0);
 }
 void nso_free(nso_module *m) {
@@ -367,6 +385,53 @@ void nso_set_unload_observer(nso_module *m,void (*observer)(void*),void *user) {
 }
 uint64_t nso_base(const nso_module *m) {return (uint64_t)(uintptr_t)m->image;}
 size_t nso_image_size(const nso_module *m) {return m->image_size;}
+size_t nso_bound_import_count(const nso_module *m) {return m?m->bound_import_count:0;}
+struct nso_result nso_bound_import_at(const nso_module *m,size_t ordinal,struct nso_import_target *out) {
+    if(!m || !out || !m->ready || m->closing)return load_status(NSO_INVALID,EINVAL,0);
+    for(uint32_t i=1;i<m->sym_count;i++)if(m->import_resolved[i]) {
+        if(!ordinal) {*out=(struct nso_import_target){i,nso_symbol_name(m,i),m->imports[i]};return load_status(NSO_OK,0,0);}
+        ordinal--;
+    }
+    return load_status(NSO_INVALID,ERANGE,0);
+}
+struct nso_result nso_retarget_imports(nso_module *m,const struct nso_import_target *targets,size_t count) {
+    if(!m || !m->ready || m->closing || (count && !targets))return load_status(NSO_INVALID,EINVAL,0);
+    for(size_t i=0;i<count;i++) {
+        uint32_t symbol=targets[i].index;
+        if(!symbol || symbol>=m->sym_count || !m->import_resolved[symbol] || !targets[i].target ||
+           (m->sym_info[symbol]&15)!=2)return load_status(NSO_UNSUPPORTED,ENOTSUP,0);
+        for(size_t j=0;j<i;j++)if(targets[j].index==symbol)return load_status(NSO_INVALID,EINVAL,0);
+        for(size_t j=0;j<m->import_write_count;j++) {
+            struct import_write *w=&m->import_writes[j];
+            if(w->symbol!=symbol)continue;
+            if(w->type==R_ABS32 || w->addend || (w->offset&7) ||
+               w->offset<m->writable_lo || !range(w->offset,8,m->writable_hi) ||
+               (w->offset<up(m->text_hi) && w->offset+8>down(m->text_lo)))
+                return load_status(NSO_UNSUPPORTED,ENOTSUP,0);
+            if(rd64(m->image+w->offset)!=w->expected)return load_status(NSO_RETAINED,EBUSY,0);
+            for(size_t k=0;k<m->import_write_count;k++)if(k!=j) {
+                uint64_t other=m->import_writes[k].offset;
+                if(other<w->offset+8 && w->offset<other+(m->import_writes[k].type==R_ABS32?4:8))
+                    return load_status(NSO_UNSUPPORTED,ENOTSUP,0);
+            }
+        }
+    }
+    /* No fallible operation follows preflight. Owner excludes every guest/user
+     * of these mappings; originally writable data pages remain writable. */
+    for(size_t i=0;i<count;i++) {
+        for(size_t j=0;j<m->import_write_count;j++)if(m->import_writes[j].symbol==targets[i].index) {
+            struct import_write *w=&m->import_writes[j];wr64(m->image+w->offset,targets[i].target);w->expected=targets[i].target;
+        }
+        m->imports[targets[i].index]=targets[i].target;
+    }
+    return load_status(NSO_OK,0,0);
+}
+void nso_require_executor(nso_module *m) {if(m)m->executor_required=1;}
+struct nso_result nso_entry_address(const nso_module *m,uint64_t off,uint64_t *out) {
+    if(!m || !out || !m->ready || m->closing || off<m->text_lo || off>=m->text_hi || off%4)
+        return load_status(NSO_INVALID,EINVAL,0);
+    *out=(uint64_t)(uintptr_t)(m->image+off);return load_status(NSO_OK,0,0);
+}
 uint64_t nso_addr(const nso_module *m,uint64_t off) {return off<m->image_size?nso_base(m)+off:0;}
 uint32_t nso_import_count(const nso_module *m) {return m->import_count;}
 uint32_t nso_unresolved_count(const nso_module *m) {return m->unresolved_count;}
@@ -380,26 +445,38 @@ uint32_t nso_find_symbol(const nso_module *m,const char *name) {
 }
 void nso_build_id(const nso_module *m,char out[33]) {for(int i=0;i<16;i++)snprintf(out+i*2,3,"%02x",m->build_id[i]);}
 uint64_t nso_call(nso_module *m,uint64_t off,uint64_t a0,uint64_t a1,uint64_t a2,uint64_t a3,uint64_t a4,uint64_t a5) {
-    if(!m->ready || m->closing || off<m->text_lo || off>=m->text_hi || off%4) {fprintf(stderr,"[call-error] offset 0x%" PRIx64 " outside ready aligned text\n",off);exit(2);}
+    uint64_t address;
+    if(!m || m->executor_required || nso_entry_address(m,off,&address).status!=NSO_OK) {fprintf(stderr,"[call-error] offset 0x%" PRIx64 " requires a valid executor/ready aligned text\n",off);exit(2);}
     typedef uint64_t(*fn)(uint64_t,uint64_t,uint64_t,uint64_t,uint64_t,uint64_t);
-    return ((fn)(m->image+off))(a0,a1,a2,a3,a4,a5);
+    return ((fn)(uintptr_t)address)(a0,a1,a2,a3,a4,a5);
 }
-void nso_run_init_policy(nso_module *m,nso_init_policy policy) {
+struct nso_result nso_run_init_execute(nso_module *m,nso_init_policy policy,nso_executor_fn execute,void *user) {
+    if(!m || !m->ready || m->closing || !execute)return load_status(NSO_INVALID,EINVAL,0);
     if(policy!=NSO_INIT_ELF && policy!=NSO_INIT_DT_INIT_OWNS_ARRAY) {
-        fprintf(stderr,"[init-error] unknown initialization policy\n");exit(2);
+        return load_status(NSO_INVALID,EINVAL,0);
     }
+    const uint64_t arguments[6]={0};uint64_t value;
     printf("[init] policy=%s\n",policy==NSO_INIT_ELF?"elf":"dt-init-owns-array");fflush(stdout);
-    if(m->init_offset) {printf("[init] DT_INIT 0x%" PRIx64 "\n",m->init_offset);fflush(stdout);nso_call(m,m->init_offset,0,0,0,0,0,0);}
+    if(m->init_offset) {printf("[init] DT_INIT 0x%" PRIx64 "\n",m->init_offset);fflush(stdout);struct nso_result r=execute(user,m,m->init_offset,arguments,&value);if(r.status!=NSO_OK)return r;}
     if(policy==NSO_INIT_DT_INIT_OWNS_ARRAY) {
-        if(m->init_offset) {puts("[init] array belongs to DT_INIT wrapper; no second walk");return;}
+        if(m->init_offset) {puts("[init] array belongs to DT_INIT wrapper; no second walk");return load_status(NSO_OK,0,0);}
         puts("[init] no DT_INIT; walking array once");
     }
     for(uint64_t k=0;k<m->init_array_size;k+=8) {
         uint64_t addr=rd64(m->image+m->init_array_offset+k);
         if(!addr || addr==UINT64_MAX)continue;
         printf("[init] array[%" PRIu64 "] offset 0x%" PRIx64 "\n",k/8,addr-nso_base(m));fflush(stdout);
-        nso_call(m,addr-nso_base(m),0,0,0,0,0,0);
+        uint64_t ignored;
+        if(addr<nso_base(m) || nso_entry_address(m,addr-nso_base(m),&ignored).status!=NSO_OK)return load_status(NSO_INVALID,EINVAL,0);
+        struct nso_result r=execute(user,m,addr-nso_base(m),arguments,&value);if(r.status!=NSO_OK)return r;
     }
+    return load_status(NSO_OK,0,0);
+}
+static struct nso_result raw_executor(void *user,nso_module *m,uint64_t off,const uint64_t a[6],uint64_t *value) {
+    (void)user;*value=nso_call(m,off,a[0],a[1],a[2],a[3],a[4],a[5]);return load_status(NSO_OK,0,0);
+}
+void nso_run_init_policy(nso_module *m,nso_init_policy policy) {
+    if(nso_run_init_execute(m,policy,raw_executor,NULL).status!=NSO_OK) {fputs("[init-error] executor/policy failed\n",stderr);exit(2);}
 }
 void nso_run_init(nso_module *m) {nso_run_init_policy(m,NSO_INIT_ELF);}
 static int sentinel_index(const uint8_t *base,size_t size,uint64_t addr) {

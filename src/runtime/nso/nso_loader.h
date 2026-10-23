@@ -50,7 +50,7 @@ nso_module *nso_load_file(const char *path, nso_import_fn import_fn, char *errbu
  * Callback failure must retain its ticket; only successful cancel/release may
  * consume it. No callback may execute guest code or reenter this module. */
 enum nso_status { NSO_OK, NSO_INVALID, NSO_LOAD_ERROR, NSO_LIMIT,
-                  NSO_OWNER_ERROR, NSO_RETAINED };
+                  NSO_OWNER_ERROR, NSO_RETAINED, NSO_UNSUPPORTED };
 struct nso_result { enum nso_status status; int native_error,cleanup_error; };
 struct nso_owner_ops {
     struct nso_result (*reserve)(void *owner,size_t bytes,void **ticket);
@@ -108,6 +108,21 @@ uint64_t nso_relr_count(const nso_module *m);
 uint32_t nso_unresolved_count(const nso_module *m);
 size_t nso_image_size(const nso_module *m);
 
+/* Quiescent host control only. These are validated imported function identities,
+ * not pointers discovered by scanning guest memory. Names are borrowed. */
+struct nso_import_target {uint32_t index;const char *name;uint64_t target;};
+size_t nso_bound_import_count(const nso_module *);
+struct nso_result nso_bound_import_at(const nso_module *,size_t,struct nso_import_target *);
+/* All-or-none preflight: recorded 64-bit, zero-addend RELA sites must still
+ * contain their expected values and lie in originally writable data pages.
+ * No protection change, unknown memory scan or guest execution is performed.
+ * Caller excludes all guest execution, mutation and teardown during this call. */
+struct nso_result nso_retarget_imports(nso_module *,const struct nso_import_target *,size_t);
+void nso_require_executor(nso_module *);
+struct nso_result nso_entry_address(const nso_module *,uint64_t offset,uint64_t *out);
+typedef struct nso_result (*nso_executor_fn)(void *,nso_module *,uint64_t,
+        const uint64_t arguments[6],uint64_t *result);
+
 /* Build id as 32 hex characters (big-endian display order). */
 void nso_build_id(const nso_module *m, char out[33]);
 
@@ -127,6 +142,9 @@ typedef enum {
 /* Explicit lifecycle selection. With no DT_INIT, either policy walks the array
  * once. No policy detects or invents SDK CRT/TLS initialization. */
 void nso_run_init_policy(nso_module *m,nso_init_policy policy);
+/* Same single-walk policy, with every initializer dispatched by the supplied
+ * executor. Failure stops the walk; it is never silently retried or completed. */
+struct nso_result nso_run_init_execute(nso_module *,nso_init_policy,nso_executor_fn,void *);
 
 /* Legacy generic ELF strategy: DT_INIT followed by DT_INIT_ARRAY. A Horizon
  * wrapper that owns its array must instead use the explicit policy above. */

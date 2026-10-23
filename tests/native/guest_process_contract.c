@@ -268,8 +268,124 @@ static int owner_contract(const char *path) {
     return 0;
 }
 #endif
+static unsigned executed_calls;
+#if defined(NSO_PROFILE_BOUNDARY_TESTING)
+static unsigned boundary_protect_failures,boundary_unmap_failures,boundary_unmap_attempts,boundary_unmap_successes;
+int guest_boundary_test_protect(void *address,size_t bytes,int protection) {
+    if(boundary_protect_failures) {boundary_protect_failures--;errno=EACCES;return -1;}
+    return mprotect(address,bytes,protection);
+}
+int guest_boundary_test_unmap(void *address,size_t bytes) {
+    boundary_unmap_attempts++;
+    if(boundary_unmap_failures) {boundary_unmap_failures--;errno=EBUSY;return -1;}
+    int r=munmap(address,bytes);if(!r)boundary_unmap_successes++;return r;
+}
+static void *retained_boundary_callback(guest_process *process,void *opaque) {
+    (void)opaque;const uint64_t arguments[6]={0};uint64_t value=0xa5a5;
+    struct nso_result r=guest_process_call(process,0x20,arguments,0,&value);
+    expect_value("boundary-failed-bind-retained",r.status,NSO_RETAINED);
+    expect_value("boundary-failed-bind-did-not-execute",value,0xa5a5);
+    return &returned_token;
+}
+static int boundary_retained_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *process=NULL;
+    CHECK(succeeded(guest_process_create(&config,&process)));
+    char err[128]={0};CHECK(succeeded(guest_process_load(process,path,err,sizeof(err))));
+    boundary_protect_failures=1;boundary_unmap_failures=2;
+    void *value=NULL;CHECK(succeeded(guest_process_run(process,retained_boundary_callback,NULL,&value)));
+    CHECK(value==&returned_token && !errors && boundary_unmap_attempts==1 && !boundary_unmap_successes);
+    CHECK(guest_process_destroy(&process).status==NSO_RETAINED && process);
+    CHECK(boundary_unmap_attempts==2 && !boundary_unmap_successes);
+    CHECK(succeeded(guest_process_destroy(&process)) && !process);
+    CHECK(boundary_unmap_attempts==3 && boundary_unmap_successes==1);
+    CHECK(succeeded(guest_process_create(&config,&process)) && succeeded(guest_process_destroy(&process)));
+    puts("{\"boundary_retained_errors\":0,\"unmap_attempts\":3,\"actual_unmaps\":1,\"guest_executed\":false,\"retry_cleanup\":true}");return 0;
+}
+#endif
+static void *execute_boundary(guest_process *process,void *opaque) {
+    unsigned phase=*(unsigned *)opaque;
+    const uint64_t arguments[6]={0x1234};uint64_t value=UINT64_C(0xa5a5a5a5);
+    for(unsigned i=0;i<2;i++) {
+        struct nso_result r=guest_process_call(process,0x20,arguments,1,&value);
+#if defined(__ANDROID__) && defined(__aarch64__)
+        if(!phase) {expect_value("boundary-call-status",r.status,NSO_OK);expect_value("boundary-result-and-guest-x18",value,0x91);executed_calls++;}
+        else {expect_value("boundary-ended-session-rejected",r.status,NSO_UNSUPPORTED);expect_value("boundary-rejected-output",value,UINT64_C(0xa5a5a5a5));}
+#else
+        (void)phase;expect_value("boundary-host-explicit-unsupported",r.status,NSO_UNSUPPORTED);
+        expect_value("boundary-unsupported-output",value,UINT64_C(0xa5a5a5a5));
+#endif
+    }
+    return &returned_token;
+}
+static int boundary_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *process=NULL;
+    CHECK(succeeded(guest_process_create(&config,&process)));
+    char err[128]={0};CHECK(succeeded(guest_process_load(process,path,err,sizeof(err))));
+    const uint64_t arguments[6]={0};uint64_t untouched=0xa5a5;
+    CHECK(guest_process_call(process,0x20,arguments,0,&untouched).status==NSO_INVALID && untouched==0xa5a5);
+    for(unsigned phase=0;phase<2;phase++) {
+        void *value=NULL;CHECK(succeeded(guest_process_run(process,execute_boundary,&phase,&value)));
+        CHECK(value==&returned_token && !errors);
+    }
+    CHECK(succeeded(guest_process_destroy(&process)) && !process);
+    printf("{\"boundary_errors\":%u,\"executed_calls\":%u,\"raw_fallback\":false,\"ended_session_rejected\":%s}\n",errors,executed_calls,
+#if defined(__ANDROID__) && defined(__aarch64__)
+        "true"
+#else
+        "null"
+#endif
+    );
+    return 0;
+}
+static uint64_t retarget_target(uint64_t a) {return a+1;}
+static uint64_t replacement_target(uint64_t a) {return a+2;}
+static uint64_t retarget_resolver(uint32_t index,const char *name) {
+    (void)index;return !strcmp(name,"host_sum")?(uintptr_t)&retarget_target:0;
+}
+static unsigned init_count,init_fail_at;
+static struct nso_result count_initializer(void *user,nso_module *module,uint64_t off,const uint64_t args[6],uint64_t *value) {
+    (void)user;(void)module;
+    if((off!=0x20 && off!=0x40 && off!=0x60) || args[0] || args[5])return (struct nso_result){NSO_INVALID,EINVAL,0};
+    init_count++;*value=0;return (struct nso_result){init_count==init_fail_at?NSO_OWNER_ERROR:NSO_OK,0,0};
+}
+static int retarget_contract(const char *path) {
+    char err[128];nso_module *module=nso_load_file(path,retarget_resolver,err,sizeof(err));CHECK(module);
+    CHECK(nso_bound_import_count(module)==1);
+    struct nso_import_target target;CHECK(succeeded(nso_bound_import_at(module,0,&target)));
+    CHECK(target.index==1 && target.target==(uintptr_t)&retarget_target && !strcmp(target.name,"host_sum"));
+    const uint64_t *slot=(const uint64_t *)(uintptr_t)nso_addr(module,0x8200);
+    CHECK(*slot==target.target);target.target=(uintptr_t)&replacement_target;
+    struct nso_import_target duplicate[2]={target,target};
+    CHECK(nso_retarget_imports(module,duplicate,2).status==NSO_INVALID && *slot==(uintptr_t)&retarget_target);
+    CHECK(succeeded(nso_retarget_imports(module,&target,1)) && *slot==target.target);
+    CHECK(succeeded(nso_retarget_imports(module,&target,1)) && *slot==target.target);
+    *(uint64_t *)slot=(uintptr_t)&retarget_target;
+    CHECK(nso_retarget_imports(module,&target,1).status==NSO_RETAINED && *slot==(uintptr_t)&retarget_target);
+    CHECK(succeeded(nso_run_init_execute(module,NSO_INIT_ELF,count_initializer,NULL)) && init_count==3);
+    init_count=0;CHECK(succeeded(nso_run_init_execute(module,NSO_INIT_DT_INIT_OWNS_ARRAY,count_initializer,NULL)) && init_count==1);
+    init_count=0;init_fail_at=2;
+    CHECK(nso_run_init_execute(module,NSO_INIT_ELF,count_initializer,NULL).status==NSO_OWNER_ERROR && init_count==2);
+    init_fail_at=0;
+    CHECK(succeeded(nso_release(&module)) && !module);
+    puts("{\"retarget_errors\":0,\"recorded_import_only\":true,\"init_elf_calls\":3,\"init_wrapper_calls\":1}");return 0;
+}
+static int readonly_retarget_contract(const char *path) {
+    char err[128];nso_module *module=nso_load_file(path,retarget_resolver,err,sizeof(err));CHECK(module);
+    struct nso_import_target target;CHECK(succeeded(nso_bound_import_at(module,0,&target)));
+    const uint64_t *slot=(const uint64_t *)(uintptr_t)nso_addr(module,0x4200);
+    CHECK(*slot==(uintptr_t)&retarget_target);target.target=(uintptr_t)&replacement_target;
+    CHECK(nso_retarget_imports(module,&target,1).status==NSO_UNSUPPORTED && *slot==(uintptr_t)&retarget_target);
+    CHECK(succeeded(nso_release(&module)) && !module);
+    puts("{\"readonly_retarget_errors\":0,\"unsupported\":true,\"no_write\":true}");return 0;
+}
 int main(int argc,char **argv) {
     page=(size_t)sysconf(_SC_PAGESIZE);
+#if defined(NSO_PROFILE_BOUNDARY_TESTING)
+    if(argc==3 && !strcmp(argv[1],"--boundary-retained"))return boundary_retained_contract(argv[2]);
+#endif
+    if(argc==3 && !strcmp(argv[1],"--boundary"))return boundary_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--retarget"))return retarget_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--retarget-readonly"))return readonly_retarget_contract(argv[2]);
     if(argc==2 && !strcmp(argv[1],"--invalid-query")) {
         struct guest_memory_info untouched;memset(&untouched,0xa5,sizeof(untouched));
         typedef void (*query_fn)(struct guest_memory_info *);
@@ -282,7 +398,7 @@ int main(int argc,char **argv) {
 #endif
     nso_host_set_extension_resolver(extension);
     const char *const rejected[]={"strdup","malloc","calloc","mmap","mprotect","pthread_create",
-        "nvnBootstrapLoader","__nnmusl_init_dso",NULL};
+        "nvnBootstrapLoader","__nnmusl_init_dso","__cxa_finalize","exit",NULL};
     for(size_t i=0;rejected[i];i++)CHECK(!guest_process_resolve(0,rejected[i]));
     CHECK(!extension_calls);
     guest_process *process=NULL,*extra=NULL;

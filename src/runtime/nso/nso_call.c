@@ -55,11 +55,14 @@ static int usage(const char *program) {
     return 2;
 }
 #ifdef NSO_WITH_GUEST_PROFILE
-struct profile_entry {int info,init,by_symbol,rc;nso_init_policy policy;const char *target;uint64_t off,args[6];};
+struct profile_entry {int info,init,by_symbol,rc;unsigned argument_count;nso_init_policy policy;const char *target;uint64_t off,args[6];};
 static void *run_profile_entry(guest_process *p,void *opaque) {
     struct profile_entry *entry=opaque;
     nso_module *m=guest_process_module(p);
-    if(entry->init)nso_run_init_policy(m,entry->policy);
+    if(entry->init) {
+        struct nso_result r=guest_process_initialize(p,entry->policy);
+        if(r.status!=NSO_OK) {fprintf(stderr,"[profile-executor] initializer status=%d errno=%d; no raw fallback\n",r.status,r.native_error);entry->rc=1;return NULL;}
+    }
     if(!entry->info) {
         uint64_t off=entry->off;
         if(entry->by_symbol) {
@@ -68,9 +71,17 @@ static void *run_profile_entry(guest_process *p,void *opaque) {
                 fprintf(stderr,"defined symbol not found: %s\n",entry->target);entry->rc=1;return NULL;
             }
         }
-        printf("[call] original offset=0x%" PRIx64 " native owned primary\n",off);fflush(stdout);
-        uint64_t *a=entry->args;
-        uint64_t value=nso_call(m,off,a[0],a[1],a[2],a[3],a[4],a[5]);
+        unsigned expected=UINT32_MAX;
+        if(entry->by_symbol) {
+            if(!strcmp(entry->target,"nnMain") || !strcmp(entry->target,"nninitStartup"))expected=0;
+            else if(!strcmp(entry->target,"malloc") || !strcmp(entry->target,"free"))expected=1;
+            else if(!strcmp(entry->target,"calloc") || !strcmp(entry->target,"realloc") || !strcmp(entry->target,"aligned_alloc"))expected=2;
+        }
+        if(expected!=entry->argument_count) {fputs("[profile-executor] entry signature unsupported; named reviewed scalar ABI required\n",stderr);entry->rc=1;return NULL;}
+        printf("[call] original offset=0x%" PRIx64 " native owned primary boundary\n",off);fflush(stdout);
+        uint64_t value=0;
+        struct nso_result r=guest_process_call(p,off,entry->args,expected,&value);
+        if(r.status!=NSO_OK) {fprintf(stderr,"[profile-executor] call status=%d errno=%d; no raw fallback\n",r.status,r.native_error);entry->rc=1;return NULL;}
         printf("result        : 0x%" PRIx64 "\n",value);
     }
     return NULL;
@@ -122,22 +133,23 @@ int main(int argc,char **argv) {
     int info=!strcmp(mode,"--info"),by_symbol=!strcmp(mode,"--symbol"),by_offset=!strcmp(mode,"--call");
     if(!info && !by_symbol && !by_offset)return usage(argv[0]);
     const char *target=NULL;
-    uint64_t off=0,args[6]={0};
+    uint64_t off=0,args[6]={0};unsigned argument_count=0;
     if(info) {if(next!=argc)return usage(argv[0]);}
     else {
         if(next>=argc)return usage(argv[0]);
         target=argv[next++];
         if(by_offset && !number(target,&off))return usage(argv[0]);
         if(argc-next>6)return usage(argv[0]);
-        for(int i=0;next<argc;i++,next++)if(!number(argv[next],&args[i]))return usage(argv[0]);
+        for(int i=0;next<argc;i++,next++) {if(!number(argv[next],&args[i]))return usage(argv[0]);argument_count++;}
     }
 #ifdef NSO_WITH_GUEST_PROFILE
     if(owned) {
-        struct profile_entry entry={.info=info,.init=init,.by_symbol=by_symbol,.policy=policy,.target=target,.off=off};
+        struct profile_entry entry={.info=info,.init=init,.by_symbol=by_symbol,.argument_count=argument_count,.policy=policy,.target=target,.off=off};
         memcpy(entry.args,args,sizeof(args));
         return owned_profile(argv[1],(size_t)quota,(size_t)stack,&entry);
     }
 #endif
+    (void)argument_count;
     char err[256]={0};
     nso_module *m=nso_load_file(argv[1],resolve_import,err,sizeof(err));
     if(!m){fprintf(stderr,"load failed: %s\n",err);return 1;}
