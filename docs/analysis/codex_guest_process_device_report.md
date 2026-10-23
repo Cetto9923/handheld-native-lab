@@ -49,3 +49,28 @@ Direct nnMain without preceding completed startup remains126/+352f1b8/133,150.97
 ELFs: contract824656B/SHA7fa988417a9c3a147edf90d43734299bc78dd488dad10cb192d01471ff4130c3;CLI759352B/SHAb142eb52f0f17eb48d5f29f400181f576ae021eb82c67726e75bd4e1ca6c9973;controlledcleanup832768B/SHAba358bd81b6335b908bc47ffd70c9033a996a89d411f7e7327a1af140a1d2cb5. Root plan/source/dependency hashes, fresh staging/readbacks, actual argv/exits/stdout/stderr hashes at .local/device/rg477m-session1/os-tls-profile-v2-{plan,stage,execution}.json and eachcase output; executed run_os_tls_profile_v2.py. No APK/data/permission/firmware/TP changes.
 
 Author finalv2:54captured commands match their expected0/1/-6 with no timeout; separatelygenerated fixtureinfo0. Earlier v1 fixture linker used an incorrect image-base flag and actually exited1; retained v1 log is a producer tooling correction, not a hidden game crash. Finalv2/freeze and manifest in ../ffrs-runtime/.local/os-tls-profile-v2/. Independent9c component acceptance does not substitute for new28 consumer review (pending). Missing provider in ordinaryhost contract really aborts134 before cleanup success/stack return; failstop is not a recoverable release. ELF TLS/SDK ThreadType/alias manager/CRT remain unsupported.
+
+## Owned guest arguments9dc: current actual RG checkpoint
+
+Source `9dc8aa73c6e2d038c2b1c89efd898b65fbf0d1bb` integrated as `3af578a`. Real RG477M/Android14/ARM64/4KiB, same original main SHA before/after. No APK update or data clear. The first two identity attempts returned1/device-not-found before any push/execution; later USB identity verified and the fresh `guest-arguments-v1-usb-ready-*` run completed.
+
+| Actual RG command | Raw exit | ms | Evidence scope |
+|---|---:|---:|---|
+| normal | 0 | 50.725 | actual primary/Query/page lifecycle |
+| arguments | 0 | 46.7765 | empty charged page, copied mutable strings/vector/NULL tail, multi-page |
+| arguments-native | 0 | 62.240041 | 3 actual self-authored native getter calls; no raw fallback |
+| arguments-recovery | 0 | 60.010917 | quota before VM/map rollback/retained unmap retry |
+| OS callback + argv lifetime | 0 | 48.16525 | real A0/B9/A5, argv still live inside guest cleanup |
+| boundary-retained | 0 | 43.349167 | 3 unmap attempts/1 actual release |
+| info | 0 | 158.545458 | imports651/unresolved613, not game startup |
+| original startup, empty argv | 133 | 146.479125 | passed60/61, nowVA resource usage66/caller+0x13744 |
+| original startup, argv ffrs/option=123 | 133 | 161.929625 | strncasecmp_l63/caller+0x13498, n29/locale0 |
+| original direct nnMain | 133 | 150.707542 | CreateThread126/+0x352f1b8, pre-init experiment |
+| original malloc | 133 | 151.632 | VA resource usage66/+0x144b8 |
+| original CRT wrapper | 133 | 148.647708 | __nnmusl_init_dso515/+0x5920a34 |
+
+All runs no timeout. Raw plan/source/ELF/fixture hashes, exact argv and exits: `.local/device/rg477m-session1/guest-arguments-v1-usb-ready-{plan,stage,execution}.json`; executed `run_guest_arguments_v1_usb_ready.py`. Freeze `../ffrs-runtime/.local/guest-arguments-v1/freeze.json` SHA256 `7c51d0a928123956f90b6ec38903426ef693f0b66bd124c97fa812e706a99354`; source build manifest SHA256 `cac385920d0e37a41f9a203f802d52920bf3071018b66a82a7827eab4d891c51`.
+
+Actual CLI771864B/SHA`ff26a2887a723301b076f0e390fcaad3aad82589daf9f82916cefa287b7cda96`; normal853288B/SHA`430dcb1feccb757997b29a0b06abcfad1de0e689979afeffc53c83fbc052dd86`; argument recovery867920B/SHA`b62ab981f388603d25c465ec10acf09646b5fb1c850dd79b8aeb6df32b60f95e`; boundary cleanup861992B/SHA`bef567c61896d09ceeed823dede301fcad8326ff74bb6cd98bd23ba181f3320c`. Updated OS fixture SHA`ec889611349d57808b800086ec387e8102fd658d29c08a20ee8611b38012bf15`, not old28 fixture. Empty argv now really charges4KiB: startup Query baseline162873344/active162938880; this does not mean host RAM or original physical SVC measurements.
+
+[Independent9dc review](codex_guest_arguments_review.md):53 commands meet expected48×0,guard1,twoSIGABRT(-6),twoUsage2; no timeouts. Ownership/free ordering, caller-free copies and metadata failure independently exercised. Reviewer Android NOT_RUN; root device results separately attributed. This advances startup interfaces, not complete CRT/title/gameplay.
