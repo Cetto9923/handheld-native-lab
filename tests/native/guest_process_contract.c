@@ -784,6 +784,145 @@ static int logf_native_contract(const char *path) {
     CHECK(succeeded(guest_process_destroy(&p)) && !p);
     printf("{\"logf_native_errors\":%u,\"native_calls\":%u,\"fp_arguments\":1,\"fp_returns\":1,\"gp_float_arguments\":0,\"raw_fallback\":false}\n",errors,executed_calls);return 0;
 }
+static void *exercise_tls_registration(guest_process *p,void *opaque) {
+    uintptr_t phase=(uintptr_t)opaque;
+    uint64_t a=nso_addr(guest_process_module(p),0x20),f=nso_addr(guest_process_module(p),0x40);
+    struct guest_tls_allocator_info info;
+    expect_value("tls-reg-empty",guest_process_tls_allocator_info(p,&info).status,NSO_OK);
+    expect_value("tls-reg-not-initialized",info.initialized,0);
+    expect_value("tls-uninitialized-null-free",guest_process_free_thread_local(p,NULL,123).status,NSO_OK);
+    typedef void(*set_fn)(uint64_t,uint64_t);
+    set_fn set=(set_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os32SetMemoryAllocatorForThreadLocalEPFPvmmEPFvS1_mE");
+    if(phase==1) {set(0,f);return NULL;}
+    expect_value("tls-reg-null-reject",guest_process_register_tls_allocator(p,0,f).status,NSO_INVALID);
+    expect_value("tls-reg-data-reject",guest_process_register_tls_allocator(p,nso_addr(guest_process_module(p),0x8000),f).status,NSO_INVALID);
+    expect_value("tls-reg-first",guest_process_register_tls_allocator(p,a,f).status,NSO_OK);
+    if(phase==2) {set(a,f);return NULL;}
+    expect_value("tls-reg-repeat-reject",guest_process_register_tls_allocator(p,a,f).status,NSO_INVALID);
+    expect_value("tls-reg-info",guest_process_tls_allocator_info(p,&info).status,NSO_OK);
+    expect_value("tls-reg-saved-allocate",info.allocate_callback,a);expect_value("tls-reg-saved-free",info.free_callback,f);
+    expect_value("tls-reg-no-consumption",info.allocations,0);
+    typedef uint32_t(*initialized_fn)(void);
+    initialized_fn initialized=(initialized_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os40MemoryAllocatorForThreadLocalInitializedEv");
+    expect_value("tls-reg-initialized",initialized(),1);
+    void *untouched=(void *)(uintptr_t)0xa5a5;
+    expect_value("tls-consumer-unprepared-unsupported",guest_process_allocate_thread_local(p,48,&untouched).status,NSO_UNSUPPORTED);
+    expect_value("tls-consumer-output-untouched",(uintptr_t)untouched,0xa5a5);
+    return &returned_token;
+}
+static int tls_registration_contract(const char *path,uintptr_t phase) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+    CHECK(guest_process_register_tls_allocator(p,1,2).status==NSO_INVALID);
+    void *value=NULL;CHECK(succeeded(guest_process_run(p,exercise_tls_registration,(void *)phase,&value)) && value==&returned_token && !errors);
+    struct guest_tls_allocator_info info;CHECK(succeeded(guest_process_tls_allocator_info(p,&info)) && info.initialized && !info.allocations);
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    puts("{\"tls_registration_errors\":0,\"once_nonnull\":true,\"module_owned_targets\":true,\"registration_callback_calls\":0,\"no_raw_fallback\":true}");return 0;
+}
+struct tls_fixture_io {
+    uint64_t allocate_calls,free_calls,sizes[4],alignments[4],freed_pointers[4],freed_sizes[4];
+    uint64_t entry_x18,allocate_x18,free_x18,initialized_before,initialized_after;
+    struct guest_memory_info query;
+};
+_Static_assert(offsetof(struct tls_fixture_io,entry_x18)==144 && offsetof(struct tls_fixture_io,query)==184,"self-authored TLS provider fixture ABI");
+#if defined(NSO_PROFILE_TLS_ALLOCATOR_TESTING) && defined(__ANDROID__) && defined(__aarch64__)
+static unsigned tls_host_rejections;
+static void tls_host_probe(guest_process *p) {
+    void *untouched=(void *)(uintptr_t)0xa5a5;
+    expect_value("tls-HOST-allocation-unsupported",guest_process_allocate_thread_local(p,48,&untouched).status,NSO_UNSUPPORTED);
+    expect_value("tls-HOST-output-untouched",(uintptr_t)untouched,0xa5a5);
+    expect_value("tls-HOST-free-unsupported",guest_process_free_thread_local(p,NULL,0).status,NSO_UNSUPPORTED);
+    tls_host_rejections++;
+}
+#endif
+struct tls_provider_input {struct tls_fixture_io io;int retain;};
+static void *exercise_tls_provider(guest_process *p,void *opaque) {
+    struct tls_provider_input *input=opaque;struct tls_fixture_io *io=&input->io;
+#if defined(__ANDROID__) && defined(__aarch64__)
+    uint64_t host_x18_before,host_x18_after;
+    __asm__ volatile("mov %0, x18":"=r"(host_x18_before));
+#endif
+    const uint64_t args[6]={(uintptr_t)io};uint64_t result=0xa5a5;
+    struct nso_result r=guest_process_call(p,0x20,args,1,&result);
+#if defined(__ANDROID__) && defined(__aarch64__)
+    expect_value("tls-native-register-call",r.status,NSO_OK);expect_value("tls-native-register-return",result,0x91);
+    __asm__ volatile("mov %0, x18":"=r"(host_x18_after));
+    expect_value("tls-register-host-x18",host_x18_after,host_x18_before);
+    expect_value("tls-native-before",io->initialized_before,0);expect_value("tls-native-after",io->initialized_after,1);
+    expect_value("tls-native-entry-x18",io->entry_x18,0x55);
+    expect_value("tls-registration-no-allocate",io->allocate_calls,0);expect_value("tls-registration-no-free",io->free_calls,0);
+    expect_value("tls-null-free-no-call",guest_process_free_thread_local(p,NULL,123).status,NSO_OK);
+    void *a=(void *)(uintptr_t)0xa5a5,*b=NULL;
+#if defined(NSO_PROFILE_TLS_ALLOCATOR_TESTING)
+    guest_process_test_tls_allocator(1,tls_host_probe);
+    r=guest_process_allocate_thread_local(p,37,&a);
+    expect_value("tls-metadata-before-side-effect",r.status,NSO_OWNER_ERROR);expect_value("tls-metadata-ENOMEM",r.native_error,ENOMEM);
+    expect_value("tls-metadata-no-guest-call",io->allocate_calls,0);expect_value("tls-metadata-output-untouched",(uintptr_t)a,0xa5a5);
+#endif
+    expect_value("tls-first-allocate",guest_process_allocate_thread_local(p,37,&a).status,NSO_OK);
+    expect_value("tls-second-allocate",guest_process_allocate_thread_local(p,93,&b).status,NSO_OK);
+    __asm__ volatile("mov %0, x18":"=r"(host_x18_after));
+    expect_value("tls-allocate-host-x18",host_x18_after,host_x18_before);
+    if(!a || !b || a==b) {expect_condition("tls-real-distinct-pointers",0);return NULL;}
+    expect_condition("tls-return-alignment",!((uintptr_t)a&15) && !((uintptr_t)b&15));
+    expect_value("tls-actual-storage-a",*(unsigned char *)a,0x5a);expect_value("tls-actual-storage-b",*(unsigned char *)b,0x5a);
+    expect_value("tls-actual-tail-a",((unsigned char *)a)[36],0x5a);expect_value("tls-actual-tail-b",((unsigned char *)b)[92],0x5a);
+    expect_value("tls-first-size",io->sizes[0],37);expect_value("tls-second-size",io->sizes[1],93);
+    expect_value("tls-first-align",io->alignments[0],16);expect_value("tls-second-align",io->alignments[1],16);
+    expect_value("tls-allocate-x18",io->allocate_x18,0x55);
+    struct guest_tls_allocator_info state;expect_value("tls-live-info",guest_process_tls_allocator_info(p,&state).status,NSO_OK);
+    expect_value("tls-two-owned-suballocations",state.allocations,2);
+    expect_value("tls-no-uncertain",state.uncertain_allocations,0);
+    if(input->retain)return &returned_token;
+    void *untouched=(void *)(uintptr_t)0xa5a5;
+    expect_value("tls-actual-null-allocation",guest_process_allocate_thread_local(p,4096,&untouched).status,NSO_LIMIT);
+    expect_value("tls-null-output-untouched",(uintptr_t)untouched,0xa5a5);
+    expect_value("tls-free-wrong-size-rejected",guest_process_free_thread_local(p,a,38).status,NSO_UNSUPPORTED);
+    expect_value("tls-free-unknown-identity-rejected",guest_process_free_thread_local(p,(unsigned char *)a+16,21).status,NSO_UNSUPPORTED);
+    expect_value("tls-no-wrong-size-callback",io->free_calls,0);
+    expect_value("tls-real-free-second",guest_process_free_thread_local(p,b,93).status,NSO_OK);
+    expect_value("tls-real-free-first",guest_process_free_thread_local(p,a,37).status,NSO_OK);
+    __asm__ volatile("mov %0, x18":"=r"(host_x18_after));
+    expect_value("tls-free-host-x18",host_x18_after,host_x18_before);
+    expect_value("tls-no-repeat-free",guest_process_free_thread_local(p,a,37).status,NSO_UNSUPPORTED);
+    expect_value("tls-free-count",io->free_calls,2);expect_value("tls-free-first-address",io->freed_pointers[0],(uintptr_t)b);
+    expect_value("tls-free-second-address",io->freed_pointers[1],(uintptr_t)a);expect_value("tls-free-first-size",io->freed_sizes[0],93);
+    expect_value("tls-free-second-size",io->freed_sizes[1],37);expect_value("tls-free-x18",io->free_x18,0x55);
+    expect_value("tls-free-final-info",guest_process_tls_allocator_info(p,&state).status,NSO_OK);expect_value("tls-live-final-zero",state.allocations,0);
+    expect_value("tls-reentrant-query-thread",io->query.thread_objects,1);expect_value("tls-reentrant-query-stack",io->query.stack_bytes,65536);
+#if defined(NSO_PROFILE_TLS_ALLOCATOR_TESTING)
+    expect_value("tls-real-HOST-rejections",tls_host_rejections,5);
+    guest_process_test_tls_allocator(0,NULL);
+#endif
+    executed_calls+=6; /* register + 3 alloc + 2 free; null/wrong/repeat never enter guest. */
+#else
+    expect_value("tls-native-host-unsupported",r.status,NSO_UNSUPPORTED);expect_value("tls-no-raw-result",result,0xa5a5);
+    expect_value("tls-no-fake-registration",io->initialized_after,0);
+    (void)input;
+#endif
+    return &returned_token;
+}
+static int tls_provider_contract(const char *path,int retain) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+    struct tls_provider_input input={.retain=retain};void *value=NULL;
+    CHECK(succeeded(guest_process_run(p,exercise_tls_provider,&input,&value)) && value==&returned_token && !errors);
+#if defined(__ANDROID__) && defined(__aarch64__)
+    if(retain) {
+        nso_module *module=guest_process_module(p);struct guest_tls_allocator_info before,after;
+        CHECK(succeeded(guest_process_tls_allocator_info(p,&before)) && before.allocations==2 && before.initialized);
+        CHECK(guest_process_destroy(&p).status==NSO_RETAINED && p && guest_process_module(p)==module);
+        CHECK(succeeded(guest_process_tls_allocator_info(p,&after)) && before.allocate_callback==after.allocate_callback &&
+            before.free_callback==after.free_callback && before.allocations==after.allocations &&
+            before.uncertain_allocations==after.uncertain_allocations && before.initialized==after.initialized && before.busy==after.busy);
+        puts("{\"tls_live_retained_errors\":0,\"allocations\":2,\"module_and_callbacks_retained\":true,\"cleanup_complete\":false,\"no_host_free\":true,\"lifetime\":\"until isolated process shutdown\"}");return 0;
+    }
+#else
+    (void)retain;
+#endif
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    printf("{\"tls_provider_errors\":%u,\"native_calls\":%u,\"callbacks_use_native_boundary\":true,\"reentrant_Query\":true,\"raw_fallback\":false,\"ELF_TLS_initialized\":false}\n",errors,executed_calls);return 0;
+}
 struct resource_input {size_t quota;int native;};
 static uint64_t resource_reported(size_t total,size_t occupied) {
     return occupied>total || total-occupied<0x80000?total:occupied+0x80000;
@@ -967,6 +1106,11 @@ static int resource_recovery_contract(void) {
 #endif
 int main(int argc,char **argv) {
     page=(size_t)sysconf(_SC_PAGESIZE);
+    if(argc==3 && !strcmp(argv[1],"--tls-registration"))return tls_registration_contract(argv[2],0);
+    if(argc==3 && !strcmp(argv[1],"--tls-registration-null"))return tls_registration_contract(argv[2],1);
+    if(argc==3 && !strcmp(argv[1],"--tls-registration-repeat"))return tls_registration_contract(argv[2],2);
+    if(argc==3 && !strcmp(argv[1],"--tls-provider"))return tls_provider_contract(argv[2],0);
+    if(argc==3 && !strcmp(argv[1],"--tls-provider-live"))return tls_provider_contract(argv[2],1);
     if(argc==2 && !strcmp(argv[1],"--logf"))return logf_contract();
     if(argc==3 && !strcmp(argv[1],"--logf-native"))return logf_native_contract(argv[2]);
     if(argc==2 && !strcmp(argv[1],"--strcasecmp"))return strcasecmp_contract();

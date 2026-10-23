@@ -69,6 +69,29 @@ struct nso_result guest_process_initialize(guest_process *,nso_init_policy);
 struct nso_result guest_process_memory_info(guest_process *,struct guest_memory_info *out);
 /* Executing primary only: copy the verified logical/raw/native descriptor. */
 struct nso_result guest_process_primary_stack(guest_process *,struct guest_primary_stack *out);
+/* Limited SDK allocator-pair provider, separate from OS slots and ELF/TCB TLS.
+ * Registration is once-only, nonnull, module-text callbacks; it does not call
+ * either target. Native consumers require this actual primary and an IDLE
+ * prepared native boundary. Allocate passes (bytes,16), free passes (ptr,bytes)
+ * and null free does not call the guest. No HOST reentry/raw C cast is used.
+ * Every successful allocation must be freed before primary return. A failed
+ * or uncertain callback is retained, never retried as if no side effect ran;
+ * live/uncertain records block module/pages destruction. These are logical
+ * suballocation identities, not a second physical/backing charge.
+ */
+struct guest_tls_allocator_info {
+    uint64_t allocate_callback,free_callback;
+    size_t allocations,uncertain_allocations;
+    int initialized,busy;
+};
+struct nso_result guest_process_register_tls_allocator(guest_process *,uint64_t allocate,uint64_t release);
+struct nso_result guest_process_tls_allocator_info(guest_process *,struct guest_tls_allocator_info *out);
+struct nso_result guest_process_allocate_thread_local(guest_process *,size_t bytes,void **out);
+struct nso_result guest_process_free_thread_local(guest_process *,void *pointer,size_t bytes);
+#if defined(NSO_PROFILE_TLS_ALLOCATOR_TESTING)
+/* Separate test binary only. Production has neither fault injection nor hook. */
+void guest_process_test_tls_allocator(unsigned metadata_failures,void (*query_probe)(guest_process *));
+#endif
 uint64_t guest_process_resolve(uint32_t,const char *);
 /* Quiescent only. Failed release retains *process for retry/process shutdown. */
 struct nso_result guest_process_destroy(guest_process **process);

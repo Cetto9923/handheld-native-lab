@@ -1,5 +1,49 @@
 # Owned startup profile: native boundary integration
 
+## Thread-local allocator pair and limited IDLE consumers
+
+The b197 RG checkpoint passed both libm contracts and reached import69 after
+the original allocator constructor mapped1286144 and1048576 bytes. SDK1445e0
+only registers a nonnull pair once at+b91008/+b91010; null/repeat abort, and
+registration makes no allocation. Initialized144620 tests the allocate pointer.
+Allocate144640 passes(size,16); Free144650 skips null, otherwise passes(ptr,size).
+The cached40 instructions were rechecked against SDK SHA9dfd1cc6...655a9.
+Main13830/13870 route through the real allocator object's vtable+30/+50. Startup
+1381c tail-branches after restoring LR, explaining the host LR/unsigned offset
+underflow in the69 trap; it is not a usable guest caller offset.
+
+This unit stores validated module-text callbacks until real module release.
+Public consumers require the actual registered primary and an IDLE prepared
+gateway; null free requires no prepared binding and makes no callback. Nonnull
+free requires the same process's exact pointer/size record. Host administrative
+records are allocated before guest side effects, with no Process lock across
+the guest call. Query/page import reentry can therefore use the existing locks.
+Callback failure or an uncertain result retains the identity, pair and code;
+live records refuse destroy before pages/module/unload-observer changes. No
+host free, automatic callback retry, separate physical charge or parallel VM
+ledger is introduced. Returning null is a native typed allocation failure, not
+a guessed SDK Result. Returned storage is opaque callback storage; these
+records do not establish a general allocator's internal layout or ownership.
+
+The self-authored native fixture registers the pair without invoking it, then
+allocates distinct module-owned buffers through the gateway, records exact
+size/alignment and frees in reverse order. Each callback reenters real Query.
+The separate SCS-instrumented recovery contract checks host/guest x18, metadata
+failure before any guest call, and actual HOST-phase consumer rejection. The
+production ELF contains no testing hook. A separate live-allocation contract
+intentionally retains two allocations plus module/pair until isolated process
+shutdown; that result is not successful cleanup. Mac refuses native guest
+execution; host registration/null/repeat and ordinary contracts remain real
+host tests. Build logs, exact products and device argv are under the new private
+`.local/tls-provider-v2/` manifest/freeze; Android execution is coordinator-owned.
+
+SDK ELF consumers98a44 (48B destructor node),9ad50 (TLS aggregate) and their
+free paths are real consumers but remain unbound here: invoking an allocator
+from an imported HOST service needs unsupported same-scope reentry. OS32-slot
+scalar storage is unrelated, and the existing host module-template mirror is
+not installed as SDK ThreadPointer/TCB. No SDK TP-writing path, original module
+patch, full CRT/ELF TLS initialization or complete constructor success is claimed.
+
 ## Scalar libm import: logf
 
 The coordinator's frozenff RG run passed the new comparison/capability contracts

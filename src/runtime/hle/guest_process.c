@@ -32,6 +32,13 @@ enum heap_state {HEAP_UNINITIALIZED,HEAP_READY_EMPTY};
 struct empty_heap_manager {enum heap_state state;size_t capacity,blocks;};
 enum thread_state {THREAD_ABSENT,THREAD_STARTING,THREAD_RUNNING,THREAD_RETURNED};
 struct thread_record {enum thread_state state;pthread_t native;struct guest_primary_stack stack;};
+enum tls_allocation_state {TLS_ALLOCATION_LIVE,TLS_ALLOCATION_UNCERTAIN};
+struct tls_allocation {
+    struct tls_allocation *next;
+    void *pointer;
+    size_t bytes;
+    enum tls_allocation_state state;
+};
 struct guest_process {
     pthread_mutex_t mutex;
     guest_context *context; /* Private: no raw tickets/Context escape this owner. */
@@ -58,10 +65,21 @@ struct guest_process {
     guest_charge_ticket *argument_ticket;
     int argument_committed,argument_count;
     size_t resource_quota;
+    uint64_t tls_allocate_callback,tls_free_callback;
+    struct tls_allocation *tls_allocations;
+    size_t tls_allocation_count;
+    int tls_allocator_busy;
 };
 static pthread_mutex_t exclusive_mutex=PTHREAD_MUTEX_INITIALIZER;
 static guest_process *exclusive_process;
 static _Thread_local guest_process *current_process;
+#if defined(NSO_PROFILE_TLS_ALLOCATOR_TESTING)
+static _Thread_local unsigned tls_metadata_failures;
+static _Thread_local void (*tls_query_probe)(guest_process *);
+void guest_process_test_tls_allocator(unsigned failures,void (*probe)(guest_process *)) {
+    tls_metadata_failures=failures;tls_query_probe=probe;
+}
+#endif
 static struct nso_result status(enum nso_status s,int e,int cleanup) {return (struct nso_result){s,e,cleanup};}
 static struct nso_result from_context(struct guest_context_result r) {
     enum nso_status s=NSO_OWNER_ERROR;
@@ -380,6 +398,9 @@ static void query_memory_info(struct guest_memory_info *out) {
         fprintf(stderr,"[query-invalid] native single-primary policy has incomplete/retained ownership status=%d errno=%d; output untouched\n",r.status,r.native_error);
         abort();
     }
+#if defined(NSO_PROFILE_TLS_ALLOCATOR_TESTING)
+    if(tls_query_probe)tls_query_probe(p);
+#endif
     fprintf(stderr,"[query-port-policy] total=%" PRIu64 " used=%" PRIu64 " heap=%" PRIu64 "/%" PRIu64
         " baseline=%" PRIu64 " stacks=%" PRIu64 " thread_objects=%u valid=0x7f; not original SVC measurements\n",
         out->total,out->used,out->heap_capacity,out->heap_blocks,out->baseline,out->stack_bytes,out->thread_objects);
@@ -463,6 +484,109 @@ static void tls_set(uint32_t slot,uint64_t value) {
     guest_process *p=tls_current();struct guest_os_tls_result r=guest_os_tls_set(p->os_tls,p->os_thread,slot,value);
     if(r.status!=GUEST_OS_TLS_OK)tls_failure("set",r);
 }
+static int tls_primary_locked(guest_process *p) {
+    return current_process==p && p->module_ready && p->running && !p->quarantined &&
+        p->thread.state==THREAD_RUNNING && pthread_equal(p->thread.native,pthread_self());
+}
+struct nso_result guest_process_register_tls_allocator(guest_process *p,uint64_t allocate,uint64_t release) {
+    if(!p || !allocate || !release)return status(NSO_INVALID,EINVAL,0);
+    pthread_mutex_lock(&p->mutex);uint64_t ignored;struct nso_result r=status(NSO_INVALID,EINVAL,0);
+    uint64_t base=nso_base(p->module);
+    if(tls_primary_locked(p) && !p->tls_allocate_callback && !p->tls_free_callback &&
+       allocate>=base && release>=base &&
+       nso_entry_address(p->module,allocate-base,&ignored).status==NSO_OK &&
+       nso_entry_address(p->module,release-base,&ignored).status==NSO_OK) {
+        p->tls_allocate_callback=allocate;p->tls_free_callback=release;r=status(NSO_OK,0,0);
+    }
+    pthread_mutex_unlock(&p->mutex);return r;
+}
+struct nso_result guest_process_tls_allocator_info(guest_process *p,struct guest_tls_allocator_info *out) {
+    if(!p || !out)return status(NSO_INVALID,EINVAL,0);
+    pthread_mutex_lock(&p->mutex);
+    struct guest_tls_allocator_info value={p->tls_allocate_callback,p->tls_free_callback,
+        p->tls_allocation_count,0,p->tls_allocate_callback!=0,p->tls_allocator_busy};
+    for(struct tls_allocation *a=p->tls_allocations;a;a=a->next)
+        if(a->state==TLS_ALLOCATION_UNCERTAIN)value.uncertain_allocations++;
+    *out=value;pthread_mutex_unlock(&p->mutex);return status(NSO_OK,0,0);
+}
+/* Only control-plane IDLE consumers are supported by native_boundary v1.
+ * Inspecting phase under our exclusive actual-primary lifetime is safe; never
+ * reset it or temporarily create/bind a scope inside a HOST callback. */
+static struct nso_result tls_consumer_locked(guest_process *p,int needs_boundary) {
+    if(!tls_primary_locked(p))return status(NSO_INVALID,EINVAL,0);
+    if((needs_boundary && !p->boundary_prepared) || __atomic_load_n(&p->boundary.phase,__ATOMIC_ACQUIRE))
+        return status(NSO_UNSUPPORTED,ENOTSUP,0);
+    if(p->tls_allocator_busy)return status(NSO_UNSUPPORTED,EBUSY,0);
+    return status(NSO_OK,0,0);
+}
+struct nso_result guest_process_allocate_thread_local(guest_process *p,size_t bytes,void **out) {
+    if(!p || !out)return status(NSO_INVALID,EINVAL,0);
+    pthread_mutex_lock(&p->mutex);
+    struct nso_result r=tls_consumer_locked(p,1);
+    if(r.status==NSO_OK && !p->tls_allocate_callback)r=status(NSO_UNSUPPORTED,ENOENT,0);
+    if(r.status==NSO_OK && p->tls_allocation_count==SIZE_MAX)r=status(NSO_OWNER_ERROR,EOVERFLOW,0);
+    struct tls_allocation *record=NULL;
+    if(r.status==NSO_OK) {
+#if defined(NSO_PROFILE_TLS_ALLOCATOR_TESTING)
+        if(tls_metadata_failures)tls_metadata_failures--;
+        else
+#endif
+        record=calloc(1,sizeof(*record)); /* Host administrative metadata, before guest side effects. */
+        if(!record)r=status(NSO_OWNER_ERROR,ENOMEM,0);
+    }
+    if(r.status!=NSO_OK) {pthread_mutex_unlock(&p->mutex);return r;}
+    uint64_t callback=p->tls_allocate_callback;
+    p->tls_allocator_busy=1;
+    pthread_mutex_unlock(&p->mutex);
+    const uint64_t args[6]={bytes,16};uint64_t pointer=0;
+    r=guest_process_call(p,callback-nso_base(p->module),args,2,&pointer);
+    pthread_mutex_lock(&p->mutex);p->tls_allocator_busy=0;
+    if(r.status==NSO_OK && !pointer) {
+        free(record);pthread_mutex_unlock(&p->mutex);return status(NSO_LIMIT,ENOMEM,0);
+    }
+    record->pointer=(void *)(uintptr_t)pointer;record->bytes=bytes;
+    int duplicate=0;
+    for(struct tls_allocation *a=p->tls_allocations;a;a=a->next)
+        if(pointer && a->pointer==record->pointer)duplicate=1;
+    record->state=r.status==NSO_OK && !(pointer&15) && !duplicate?TLS_ALLOCATION_LIVE:TLS_ALLOCATION_UNCERTAIN;
+    record->next=p->tls_allocations;p->tls_allocations=record;p->tls_allocation_count++;
+    if(record->state!=TLS_ALLOCATION_LIVE) {
+        /* The callback may have allocated already. Keep even an unknown ptr,
+         * code and owner; no host free, automatic retry or successful unload. */
+        p->quarantined=1;r=status(NSO_RETAINED,r.native_error?r.native_error:EINVAL,r.cleanup_error);
+    }
+    else {*out=record->pointer;r=status(NSO_OK,0,0);}
+    pthread_mutex_unlock(&p->mutex);return r;
+}
+struct nso_result guest_process_free_thread_local(guest_process *p,void *pointer,size_t bytes) {
+    if(!p)return status(NSO_INVALID,EINVAL,0);
+    pthread_mutex_lock(&p->mutex);struct nso_result r=tls_consumer_locked(p,pointer!=NULL);
+    if(r.status!=NSO_OK || !pointer) {pthread_mutex_unlock(&p->mutex);return r;}
+    struct tls_allocation **link=&p->tls_allocations;
+    while(*link && (*link)->pointer!=pointer)link=&(*link)->next;
+    struct tls_allocation *record=*link;
+    if(!record || record->bytes!=bytes || record->state!=TLS_ALLOCATION_LIVE || !p->tls_free_callback) {
+        pthread_mutex_unlock(&p->mutex);return status(NSO_UNSUPPORTED,EINVAL,0);
+    }
+    uint64_t callback=p->tls_free_callback;p->tls_allocator_busy=1;
+    pthread_mutex_unlock(&p->mutex);
+    const uint64_t args[6]={(uintptr_t)pointer,bytes};uint64_t ignored;
+    r=guest_process_call(p,callback-nso_base(p->module),args,2,&ignored);
+    pthread_mutex_lock(&p->mutex);p->tls_allocator_busy=0;
+    if(r.status==NSO_OK) {*link=record->next;p->tls_allocation_count--;free(record);}
+    else {record->state=TLS_ALLOCATION_UNCERTAIN;p->quarantined=1;r.status=NSO_RETAINED;}
+    pthread_mutex_unlock(&p->mutex);return r;
+}
+static void set_tls_allocator(uint64_t allocate,uint64_t release) {
+    struct nso_result r=guest_process_register_tls_allocator(required_current(),allocate,release);
+    if(r.status!=NSO_OK) {fprintf(stderr,"[tls-allocator-invalid] once-only nonnull module callbacks required status=%d; pair unchanged\n",r.status);abort();}
+    fprintf(stderr,"[tls-allocator-register] allocate=0x%" PRIx64 " free=0x%" PRIx64 "; retained module callbacks, no immediate allocation; ELF/TCB TLS not initialized\n",allocate,release);
+}
+static uint32_t tls_allocator_initialized(void) {
+    struct guest_tls_allocator_info info;
+    if(guest_process_tls_allocator_info(required_current(),&info).status!=NSO_OK)abort();
+    return (uint32_t)info.initialized;
+}
 /* SDK hash-matched strncasecmp_l ignores x3 and folds unsigned ASCII only.
  * Bionic's mature non-_l implementation has precisely that contract. Never
  * pass the opaque guest value as a host locale_t or alter global locale. */
@@ -524,6 +648,8 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
     if(!strcmp(name,"_ZN2nn2os11FreeTlsSlotENS0_7TlsSlotE"))return (uintptr_t)&tls_free;
     if(!strcmp(name,"_ZN2nn2os11GetTlsValueENS0_7TlsSlotE"))return (uintptr_t)&tls_get;
     if(!strcmp(name,"_ZN2nn2os11SetTlsValueENS0_7TlsSlotEm"))return (uintptr_t)&tls_set;
+    if(!strcmp(name,"_ZN2nn2os32SetMemoryAllocatorForThreadLocalEPFPvmmEPFvS1_mE"))return (uintptr_t)&set_tls_allocator;
+    if(!strcmp(name,"_ZN2nn2os40MemoryAllocatorForThreadLocalInitializedEv"))return (uintptr_t)&tls_allocator_initialized;
     if(!strcmp(name,"strcasecmp"))return (uintptr_t)&guest_strcasecmp;
     if(!strcmp(name,"_ZN2nn2os29IsVirtualAddressMemoryEnabledEv"))return (uintptr_t)&virtual_address_enabled;
     if(!strcmp(name,"strncasecmp_l"))return (uintptr_t)&guest_strncasecmp_l;
@@ -576,6 +702,8 @@ static int import_signature(const char *name,nb_signature *out) {
     else if(!strcmp(name,"_ZN2nn2os15InitializeMutexEPNS0_9MutexTypeEbi") || !strcmp(name,"nnosInitializeMutex")) {arguments=3;returns=0;}
     else if(!strcmp(name,"_ZN2nn2os11GetHostArgcEv") || !strcmp(name,"_ZN2nn2os11GetHostArgvEv")) {arguments=0;returns=1;}
     else if(!strcmp(name,"_ZN2nn2os11SetTlsValueENS0_7TlsSlotEm")) {arguments=2;returns=0;}
+    else if(!strcmp(name,"_ZN2nn2os32SetMemoryAllocatorForThreadLocalEPFPvmmEPFvS1_mE")) {arguments=2;returns=0;}
+    else if(!strcmp(name,"_ZN2nn2os40MemoryAllocatorForThreadLocalInitializedEv")) {arguments=0;returns=1;}
     else if(!strcmp(name,"abort")) {arguments=0;returns=0;}
     else return 0;
 found:
@@ -746,6 +874,10 @@ struct nso_result guest_process_destroy(guest_process **process) {
     pthread_mutex_lock(&p->mutex);
     if(p->running || p->diagnostic_retained) {pthread_mutex_unlock(&p->mutex);return status(NSO_RETAINED,EBUSY,0);}
     if(p->os_thread) {pthread_mutex_unlock(&p->mutex);return status(NSO_RETAINED,EBUSY,0);}
+    if(p->tls_allocator_busy || p->tls_allocations || p->tls_allocation_count) {
+        fprintf(stderr,"[tls-allocator-retained] allocations=%zu busy=%d; module/callbacks/pages remain owned, no host free\n",p->tls_allocation_count,p->tls_allocator_busy);
+        pthread_mutex_unlock(&p->mutex);return status(NSO_RETAINED,EBUSY,0);
+    }
     p->module_ready=0;
     if(p->os_tls) {
         struct guest_os_tls_result released=guest_os_tls_destroy(p->os_tls);
@@ -762,6 +894,7 @@ struct nso_result guest_process_destroy(guest_process **process) {
         p->pages=NULL;
     }
     struct nso_result r=nso_release(&p->module);
+    if(r.status==NSO_OK) {p->tls_allocate_callback=0;p->tls_free_callback=0;}
     if(r.status==NSO_OK && p->boundary_initialized) {
         /* The image and unload observer are gone before any thunk can become
          * stale. Dead idle owner cleanup is explicitly supported by boundary. */

@@ -103,6 +103,10 @@ resource_host=[v for v in host if v.name not in ['guest_context.host.o','address
 run('host-link-resource-recovery',['clang',*strict,'-DGUEST_RESOURCE_TESTING=1','-DNSO_OWNED_PAGES_TESTING=1',test,*resource_host,out/'guest_context.resource-recovery.host.o','-lc++','-lpthread','-o',out/'guest_process_resource_recovery.host'])
 run('host-resource-recovery',[out/'guest_process_resource_recovery.host','--resource-recovery'])
 run('host-os-tls-contract',[out/'guest_process_contract.host','--os-tls',out/'contract.nso'])
+run('host-tls-registration',[out/'guest_process_contract.host','--tls-registration',out/'contract.nso'])
+for case in ['null','repeat']:
+ run('host-tls-registration-'+case,[out/'guest_process_contract.host','--tls-registration-'+case,out/'contract.nso'],134)
+ if '[tls-allocator-invalid]' not in (out/('host-tls-registration-'+case)/'stderr.log').read_text():raise RuntimeError('allocator registration must fail strictly')
 run('host-os-tls-unsupported-provider',[out/'guest_process_contract.host','--tls-unsupported',out/'boundary.nso'],134)
 unsupported=(out/'host-os-tls-unsupported-provider/stderr.log').read_text()
 if '[os-tls-provider-fatal]' not in unsupported or 'value=0x0' not in unsupported or '[os-tls-cleanup]' in unsupported:raise RuntimeError('unsupported destructor provider did not failstop before cleanup')
@@ -488,6 +492,126 @@ names=b'\0logf\0';data[0x1160:0x1160+len(names)]=names;struct.pack_into('<Q',dat
 (out/'logf.nso').write_bytes(data)
 manifest['generated_fixtures']['logf.nso']={'bytes':len(data),'sha256':digest(out/'logf.nso'),'kind':'self-authored scalar float s0 input/return contract','assembly_sha256':digest(math_assembly)}
 run('host-logf-native-unsupported',[out/'guest_process_contract.host','--logf-native',out/'logf.nso'])
+# This self-authored allocator pair has real, distinct module-owned storage and
+# calls Query through an admitted import while its consumer is busy. It is not
+# SDK/TCB code, host malloc/free, or a claim that ELF TLS is installed.
+allocator_assembly=out/'tls-allocator-fixture.S'
+allocator_assembly.write_text(r'''.text
+.macro import_call offset
+ adrp x16, fixture_got
+ add x16, x16, :lo12:fixture_got
+ ldr x16, [x16, #\offset]
+ blr x16
+.endm
+.org 0x20
+.global fixture_entry
+fixture_entry:
+ stp x29, x30, [sp, #-32]!
+ stp x19, x20, [sp, #16]
+ mov x29, sp
+ mov x19, x0
+ adrp x20, fixture_state
+ add x20, x20, :lo12:fixture_state
+ str x19, [x20]
+ mov x18, #0x55
+ import_call 8
+ str x0, [x19, #168]
+ adr x0, fixture_allocate
+ adr x1, fixture_free
+ import_call 0
+ import_call 8
+ str x0, [x19, #176]
+ str x18, [x19, #144]
+ mov x0, #0x91
+ ldp x19, x20, [sp, #16]
+ ldp x29, x30, [sp], #32
+ ret
+.org 0x100
+.global fixture_allocate
+fixture_allocate:
+ stp x29, x30, [sp, #-48]!
+ stp x19, x20, [sp, #16]
+ stp x21, x22, [sp, #32]
+ mov x29, sp
+ mov x19, x0
+ mov x20, x1
+ adrp x21, fixture_state
+ add x21, x21, :lo12:fixture_state
+ ldr x21, [x21]
+ ldr x22, [x21]
+ add x9, x21, #16
+ str x19, [x9, x22, lsl #3]
+ add x9, x21, #48
+ str x20, [x9, x22, lsl #3]
+ add x9, x22, #1
+ str x9, [x21]
+ add x0, x21, #184
+ import_call 16
+ str x18, [x21, #152]
+ cmp x19, #4096
+ b.eq allocation_null
+ adrp x0, fixture_heap
+ add x0, x0, :lo12:fixture_heap
+ add x0, x0, x22, lsl #8
+ mov w9, #0x5a
+ strb w9, [x0]
+ sub x10, x19, #1
+ strb w9, [x0, x10]
+ b allocation_return
+allocation_null:
+ mov x0, #0
+allocation_return:
+ ldp x21, x22, [sp, #32]
+ ldp x19, x20, [sp, #16]
+ ldp x29, x30, [sp], #48
+ ret
+.org 0x200
+.global fixture_free
+fixture_free:
+ stp x29, x30, [sp, #-32]!
+ stp x19, x20, [sp, #16]
+ mov x29, sp
+ adrp x19, fixture_state
+ add x19, x19, :lo12:fixture_state
+ ldr x19, [x19]
+ ldr x20, [x19, #8]
+ add x9, x19, #80
+ str x0, [x9, x20, lsl #3]
+ add x9, x19, #112
+ str x1, [x9, x20, lsl #3]
+ add x20, x20, #1
+ str x20, [x19, #8]
+ add x0, x19, #184
+ import_call 16
+ str x18, [x19, #160]
+ ldp x19, x20, [sp, #16]
+ ldp x29, x30, [sp], #32
+ ret
+.section .fixture_got,"aw"
+.global fixture_got
+fixture_got: .zero 24
+.section .fixture_state,"aw"
+.global fixture_state
+fixture_state: .zero 8
+.section .fixture_heap,"aw"
+.global fixture_heap
+fixture_heap: .zero 1024
+''')
+run('fixture-tls-allocator-assemble',['clang',*common,'-c',allocator_assembly,'-o',out/'tls-allocator-fixture.o'])
+run('fixture-tls-allocator-link',['env',f'DYLD_LIBRARY_PATH={a.rust_root}/lib',ld,'--no-undefined','--build-id=none','--image-base=0','-Ttext=0','--section-start=.fixture_got=0x8200','--section-start=.fixture_state=0x8280','--section-start=.fixture_heap=0x8400','-e','fixture_entry','--oformat=binary','-o',out/'tls-allocator-fixture.raw',out/'tls-allocator-fixture.o'])
+run('fixture-tls-allocator-disassembly',['xcrun','llvm-objdump','--disassemble',out/'tls-allocator-fixture.o'])
+raw=(out/'tls-allocator-fixture.raw').read_bytes();data=bytearray((out/'contract.nso').read_bytes())
+struct.pack_into('<I',data,0x18,0x400);data[0x200:0x600]=raw[:0x400].ljust(0x400,b'\0');struct.pack_into('<I',data,0x204,0x4000)
+symbols=['_ZN2nn2os32SetMemoryAllocatorForThreadLocalEPFPvmmEPFvS1_mE','_ZN2nn2os40MemoryAllocatorForThreadLocalInitializedEv','_ZN2nn2os15QueryMemoryInfoEPNS0_10MemoryInfoE'];names=bytearray(b'\0')
+for i,name in enumerate(symbols,1):
+ offset=len(names);names+=name.encode()+b'\0';struct.pack_into('<IBBHQQ',data,0x1100+i*24,offset,0x12,0,0,0,0)
+ struct.pack_into('<QQq',data,0x1300+(i-1)*24,0x8200+(i-1)*8,(i<<32)|0x402,0)
+if len(names)>0x140:raise RuntimeError('allocator fixture names overlap relocations')
+data[0x11c0:0x11c0+len(names)]=names;struct.pack_into('<II',data,0x1080,1,4)
+for i,(tag,value) in enumerate([(4,0x4080),(6,0x4100),(5,0x41c0),(10,len(names)),(7,0x4300),(8,72),(9,24),(0,0)]):struct.pack_into('<QQ',data,0x2000+i*16,tag,value)
+(out/'tls-allocator.nso').write_bytes(data)
+manifest['generated_fixtures']['tls-allocator.nso']={'bytes':len(data),'sha256':digest(out/'tls-allocator.nso'),'kind':'self-authored typed pair registration/IDLE consumer, actual distinct storage + reentrant Query','assembly_sha256':digest(allocator_assembly),'abi':{'set_gp_arguments':2,'set_gp_returns':0,'allocate_gp_arguments':2,'allocate_gp_returns':1,'free_gp_arguments':2,'free_gp_returns':0,'fixed_alignment':16}}
+run('host-tls-provider-unsupported',[out/'guest_process_contract.host','--tls-provider',out/'tls-allocator.nso'])
 android=[]
 for source in sources:
  obj=out/(source.stem+'.android.o');android.append(obj)
@@ -495,6 +619,8 @@ for source in sources:
 android.append(out/'native_boundary.assembly.android.o')
 run('android-compile-boundary-assembly',['clang',*common,'-c',boundary_assembly,'-o',android[-1]])
 run('android-compile-contract',['clang',*common,'-c',test,'-o',out/'contract.android.o'])
+run('android-compile-tls-allocator-contract',['clang',*common,'-fsanitize=shadow-call-stack','-DNSO_PROFILE_TLS_ALLOCATOR_TESTING=1','-c',test,'-o',out/'tls-allocator-contract.android.o'])
+run('android-compile-tls-allocator-provider',['clang',*common,'-fsanitize=shadow-call-stack','-DNSO_PROFILE_TLS_ALLOCATOR_TESTING=1','-c',hle/'guest_process.c','-o',out/'tls-allocator-provider.android.o'])
 run('android-compile-argument-recovery-contract',['clang',*common,'-DNSO_PROFILE_ARGUMENT_TESTING=1','-c',test,'-o',out/'argument-recovery-contract.android.o'])
 run('android-compile-argument-recovery-provider',['clang',*common,'-DNSO_PROFILE_ARGUMENT_TESTING=1','-c',hle/'guest_process.c','-o',out/'argument-recovery-provider.android.o'])
 run('android-compile-resource-recovery-contract',['clang',*common,'-DGUEST_RESOURCE_TESTING=1','-DNSO_OWNED_PAGES_TESTING=1','-c',test,'-o',out/'resource-recovery-contract.android.o'])
@@ -504,10 +630,11 @@ run('android-compile-cli',['clang',*common,'-DNSO_WITH_HOST_HLE=1','-DNSO_WITH_G
 run('android-compile-boundary-cleanup-contract',['clang',*common,'-DNSO_PROFILE_BOUNDARY_TESTING=1','-c',test,'-o',out/'boundary-cleanup-contract.android.o'])
 run('android-compile-boundary-cleanup-provider',['clang',*common,'-Dmprotect=guest_boundary_test_protect','-Dmunmap=guest_boundary_test_unmap','-c',boundary_source,'-o',out/'boundary-cleanup-provider.android.o'])
 ld=a.rust_root/'lib/rustlib/aarch64-apple-darwin/bin/gcc-ld/ld.lld'
-for name,extra in [('guest_process_contract.android',out/'contract.android.o'),('nso_owned_startup.android',out/'cli.android.o'),('guest_process_boundary_cleanup.android',out/'boundary-cleanup-contract.android.o'),('guest_process_argument_recovery.android',out/'argument-recovery-contract.android.o'),('guest_process_resource_recovery.android',out/'resource-recovery-contract.android.o')]:
+for name,extra in [('guest_process_contract.android',out/'contract.android.o'),('nso_owned_startup.android',out/'cli.android.o'),('guest_process_tls_allocator_recovery.android',out/'tls-allocator-contract.android.o'),('guest_process_boundary_cleanup.android',out/'boundary-cleanup-contract.android.o'),('guest_process_argument_recovery.android',out/'argument-recovery-contract.android.o'),('guest_process_resource_recovery.android',out/'resource-recovery-contract.android.o')]:
  binary=out/name
  objects=android if name!='guest_process_boundary_cleanup.android' else [v for v in android if v.name!='native_boundary.android.o']+[out/'boundary-cleanup-provider.android.o']
  if name=='guest_process_argument_recovery.android':objects=[v for v in android if v.name!='guest_process.android.o']+[out/'argument-recovery-provider.android.o']
+ if name=='guest_process_tls_allocator_recovery.android':objects=[v for v in android if v.name!='guest_process.android.o']+[out/'tls-allocator-provider.android.o']
  if name=='guest_process_resource_recovery.android':objects=[v for v in android if v.name not in ['guest_context.android.o','address_region.android.o']]+[out/'resource-recovery-provider.android.o',out/'resource-vm-recovery.android.o']
  run('android-link-'+name,['env',f'DYLD_LIBRARY_PATH={a.rust_root}/lib',ld,'-pie','--dynamic-linker','/system/bin/linker64',
   '--no-undefined','--eh-frame-hdr','-z','max-page-size=16384','-z','relro','-z','now','-z','noexecstack','--build-id=sha1',
@@ -518,6 +645,7 @@ for name,extra in [('guest_process_contract.android',out/'contract.android.o'),(
  if 'nso_loader_test_vm' in elf or '.eh_frame_hdr' not in elf or 'GNU_EH_FRAME' not in elf:raise RuntimeError('production/unwind metadata mismatch')
  if name!='guest_process_boundary_cleanup.android' and 'guest_boundary_test_' in elf:raise RuntimeError('boundary test hooks leaked into production')
  if name!='guest_process_argument_recovery.android' and 'guest_process_test_argument_vm' in elf:raise RuntimeError('argument test hooks leaked into production')
+ if name!='guest_process_tls_allocator_recovery.android' and 'guest_process_test_tls_allocator' in elf:raise RuntimeError('TLS allocator test hooks leaked into production')
  if name!='guest_process_resource_recovery.android' and ('guest_context_resource_test_vm' in elf or 'nso_host_owned_pages_test_vm' in elf):raise RuntimeError('resource test hooks leaked into production')
  if not re.search(r'UND\s+strncasecmp(?:\s|$)',elf) or re.search(r'UND\s+strncasecmp_l(?:\s|$)',elf):raise RuntimeError('Android locale bridge must call Bionic non-_l strncasecmp')
  if not re.search(r'UND\s+strcasecmp(?:@|\s|$)',elf):raise RuntimeError('Android strcasecmp bridge must use Bionic API')
