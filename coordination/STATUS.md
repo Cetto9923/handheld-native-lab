@@ -1,8 +1,8 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-10-23T14:03:00+08:00
-阶段：ROUND3_T01_PASSED_T02_T03A_T04NVN
-总控：Antigravity — 唯一总控；T01 passed (Route A 确立)，推进 T02 运行时 / T03A Android 交叉构建 / T04-nvn 图形翻译
+状态事件时间：2026-10-23T14:19:00+08:00
+阶段：ROUND4_T01_T03A_T04NVN_PASSED_ACTIVE_T02_T04ASSETS
+总控：Antigravity — 唯一总控；T01 / T03A / T04-nvn 已通过验收并完成集成，正推进 T02 运行时环境与 T04 资源流
 更新方式：按事件更新，没有后台自动刷新。
 
 | 任务 | 角色 | 状态 | 实际负责人 | 启动依赖 | 验收门禁 | 分支 |
@@ -12,10 +12,10 @@
 | T01 | RE | passed | Agent A (RE) | T00 | 无额外门禁 | task/T01-route |
 | T02-PREP | CORE | in_progress | 总控 (NSO 原生加载器 / 行为基线基础设施) | T00 | 无额外门禁 | claude/laughing-cray-3464b0 |
 | T02 | CORE | pending | 未领取 | T01 | 无额外门禁 | 未创建 |
-| T03A | ANDROID | in_progress | Agent B (ANDROID) | T00 | 无额外门禁 | task/T03A-android |
+| T03A | ANDROID | passed | Agent B (ANDROID) | T00 | 无额外门禁 | task/T03A-android |
 | T03B | ANDROID | pending | 未领取 | T03A | 无额外门禁 | 未创建 |
 | T04-assets | RESOURCE | in_progress | Agent D (RESOURCE) | T00 | 无额外门禁 | task/T04-assets |
-| T04-nvn | GRAPHICS | in_progress | Agent E (GRAPHICS) | T00 | 无额外门禁 | task/T04-nvn |
+| T04-nvn | GRAPHICS | passed | Agent E (GRAPHICS) | T00 | 无额外门禁 | task/T04-nvn |
 | T04 | CORE_ANDROID | pending | 未领取 | T02, T03A | T03B | 未创建 |
 | T05 | CORE_GPU | pending | 未领取 | T04 | 无额外门禁 | 未创建 |
 | T06 | GPU_PERF | pending | 未领取 | T05 | 无额外门禁 | 未创建 |
@@ -23,9 +23,7 @@
 
 ## 独占写入
 
-- {"task": "T03A", "owner": "Agent B (ANDROID)", "paths": ["src/android/", "scripts/device/", "tests/device/", "docs/analysis/t03a_build_report.md"], "worktree": ".claude/worktrees/t03a-android", "branch": "task/T03A-android", "acquired_at": "2026-10-23T12:39:00+08:00", "checkpoint": "baseline b26bf15"}
 - {"task": "T04-assets", "owner": "Agent D (RESOURCE)", "paths": ["scripts/extract/", "docs/analysis/asset_inventory.md", "evidence/assets/"], "worktree": ".claude/worktrees/t04-assets", "branch": "task/T04-assets", "acquired_at": "2026-10-23T13:05:00+08:00", "checkpoint": "baseline a7ae15d"}
-- {"task": "T04-nvn", "owner": "Agent E (GRAPHICS)", "paths": ["src/graphics/nvn/", "docs/analysis/nvn_surface.md", "evidence/nvn/"], "worktree": ".claude/worktrees/t04-nvn", "branch": "task/T04-nvn", "acquired_at": "2026-10-23T13:05:00+08:00", "checkpoint": "baseline a7ae15d"}
 - {"task": "T02-PREP", "owner": "总控 (Claude Code) — NSO 原生加载器", "paths": ["src/runtime/nso/", "tests/native/", "evidence/coordinator/"], "worktree": ".claude/worktrees/laughing-cray-3464b0", "branch": "claude/laughing-cray-3464b0", "acquired_at": "2026-10-23T13:05:00+08:00", "checkpoint": "a7ae15d + 本轮 loader 提交"}
 
 ## 阻塞

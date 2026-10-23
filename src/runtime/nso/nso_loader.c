@@ -504,6 +504,32 @@ static void fault_handler(int sig, siginfo_t *si, void *uc) {
         fprintf(stderr, " module_offset=0x%llx",
                 (unsigned long long)(pc - nso_base(g_fault_module)));
     fprintf(stderr, "\n");
+#if defined(__APPLE__)
+    for (int r = 0; r < 29; r += 4) {
+        fprintf(stderr, "  x%-2d=0x%016llx x%-2d=0x%016llx x%-2d=0x%016llx x%-2d=0x%016llx\n",
+                r, (unsigned long long)u->uc_mcontext->__ss.__x[r],
+                r+1, (unsigned long long)u->uc_mcontext->__ss.__x[r+1],
+                r+2, (unsigned long long)u->uc_mcontext->__ss.__x[r+2],
+                r+3, (unsigned long long)u->uc_mcontext->__ss.__x[r+3]);
+    }
+    fprintf(stderr, "  fp =0x%016llx lr =0x%016llx sp =0x%016llx\n",
+            (unsigned long long)u->uc_mcontext->__ss.__fp,
+            (unsigned long long)u->uc_mcontext->__ss.__lr,
+            (unsigned long long)u->uc_mcontext->__ss.__sp);
+    uint64_t *frame = (uint64_t *)u->uc_mcontext->__ss.__fp;
+    for (int depth = 0; depth < 12 && frame; depth++) {
+        uint64_t ret_addr = frame[1];
+        if (g_fault_module && ret_addr >= nso_base(g_fault_module) &&
+            ret_addr < nso_base(g_fault_module) + g_fault_module->image_size) {
+            fprintf(stderr, "  frame #%d: 0x%016llx (module_offset=0x%llx)\n",
+                    depth, (unsigned long long)ret_addr,
+                    (unsigned long long)(ret_addr - nso_base(g_fault_module)));
+        } else {
+            fprintf(stderr, "  frame #%d: 0x%016llx\n", depth, (unsigned long long)ret_addr);
+        }
+        frame = (uint64_t *)frame[0];
+    }
+#endif
     fflush(stderr);
     _exit(128 + sig);
 }

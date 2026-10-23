@@ -21,9 +21,33 @@ static uint64_t g_trap_calls;
 static uint64_t import_trap(uint32_t idx, const char *name,
                             uint64_t a0, uint64_t a1, uint64_t a2,
                             uint64_t a3, uint64_t a4, uint64_t a5) {
-    (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5;
+    (void)a3; (void)a4; (void)a5;
     g_trap_calls++;
-    fprintf(stderr, "[import-trap] sym#%u %s\n", idx, name ? name : "?");
+    if (!name) return 0;
+    if (!strcmp(name, "__cxa_guard_acquire")) {
+        uint8_t *guard = (uint8_t *)a0;
+        if (*guard) return 0;
+        return 1;
+    }
+    if (!strcmp(name, "__cxa_guard_release")) {
+        uint8_t *guard = (uint8_t *)a0;
+        *guard = 1;
+        return 0;
+    }
+    if (!strcmp(name, "memset")) {
+        return (uint64_t)memset((void *)a0, (int)a1, (size_t)a2);
+    }
+    if (!strcmp(name, "memcpy")) {
+        return (uint64_t)memcpy((void *)a0, (const void *)a1, (size_t)a2);
+    }
+    if (!strcmp(name, "memmove")) {
+        return (uint64_t)memmove((void *)a0, (const void *)a1, (size_t)a2);
+    }
+    if (!strcmp(name, "atexit")) {
+        return 0;
+    }
+    fprintf(stderr, "[import-trap] sym#%u %s(0x%" PRIx64 ", 0x%" PRIx64 ", 0x%" PRIx64 ")\n",
+            idx, name, a0, a1, a2);
     return 0;
 }
 
@@ -81,6 +105,19 @@ int main(int argc, char **argv) {
                 fprintf(stderr, "symbol is an import, not callable here\n");
                 rc = 1;
             } else {
+                uint64_t p_ptr = *(uint64_t *)(nso_base(m) + 0x7767738);
+                uint64_t got_guard = *(uint64_t *)(nso_base(m) + 0x7772018);
+                printf("[debug] GOT[__cxa_guard_acquire] (0x7772018) = 0x%" PRIx64 "\n", got_guard);
+                printf("[debug] *0x7767738 = 0x%" PRIx64 " (relative: 0x%" PRIx64 ")\n",
+                       p_ptr, p_ptr - nso_base(m));
+                if (p_ptr >= nso_base(m) && p_ptr < nso_base(m) + 0xa000000) {
+                    uint64_t p_val = *(uint64_t *)p_ptr;
+                    printf("[debug] *(0x%" PRIx64 ") = 0x%" PRIx64 "\n", p_ptr - nso_base(m), p_val);
+                    if (p_val >= nso_base(m) && p_val < nso_base(m) + 0xa000000) {
+                        uint64_t vtable = *(uint64_t *)p_val;
+                        printf("[debug] **(0x%" PRIx64 ") = 0x%" PRIx64 "\n", p_ptr - nso_base(m), vtable);
+                    }
+                }
                 uint64_t a[6] = {0};
                 for (int i = 0; i < 6 && arg_start + 2 + i < argc; i++) a[i] = strtoull(argv[arg_start + 2 + i], NULL, 0);
                 uint64_t r = nso_call(m, off, a[0], a[1], a[2], a[3], a[4], a[5]);
