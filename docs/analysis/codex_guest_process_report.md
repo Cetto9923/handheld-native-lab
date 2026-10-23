@@ -1,5 +1,41 @@
 # Owned startup profile: native boundary integration
 
+## Scalar libm import: logf
+
+The coordinator's frozenff RG run passed the new comparison/capability contracts
+and info0. Both original startup command lines now reserve62GiB VA and reach
+logf153, caller+0xb3eac, strict133, with original frames
++0x137f4 -> +0xae93c -> +0xaf320 -> +0xb3eac. This is the real allocator
+constructor chain, not completion of it or of CRT/TLS. Pre-init malloc139 is
+not reinterpreted as a pass and is not repeated in the next device plan.
+
+Bounded LLVM/byte/relocation evidence confirms +0xb3e98 converts w19 to s0,
++0xb3ea8 calls PLT+0x5e68440 -> GOT+0x77724b8 -> JMPREL+0x5e83458,
+R_AARCH64_JUMP_SLOT/symbol153=logf. The returned s0 is immediately doubled at
++0xb3eac and converted to unsigned w8 at +0xb3eb0. Details and unchanged main
+hash are in `.local/math-callsite-static/facts.json`; no successful REA Evidence
+is claimed. No adjacent additional math import is proposed from this slice.
+
+Only standard `<math.h>` float logf(float) is admitted, directly from system
+libm. Native metadata is GP0, FP arguments1/returns1, register-only; the existing
+gateway forwards s0 in its raw q0 register, restores the correct x18 domain and
+retains normal scope/SCS rules. No CLI integer-to-float convention, custom math
+algorithm, special-case adjustment or floating control-mode write was added.
+Android ELF inspection requires UND logf and DT_NEEDED libm.so, using the existing
+-lm link. Unknown math imports remain strict unresolved.
+
+`.local/math-runtime-v1/manifest.json` contains101 expected commands, no timeout.
+Host normal/recovery/contracts remain0; new direct logf evidence covers10
+positive varying/boundary values against numeric tolerances and5 IEEE cases
+against unchanged system behavior. The self-authored logf.nso fixture loads its
+input with LDR s0, invokes the actual imported native target and stores returned
+s0, while deliberately clobbering guest x18. Its15 calls verify input storage,
+nonconstant outputs and x18; the integer entry argument is only an object
+pointer. Mac explicitly refuses guest execution with no raw fallback. Android
+FP/native execution and the next original startup gate are pending coordinator
+RG runs; all products/hashes/argv are recorded in freeze. No loader, Context,
+pages, boundary, CLI or original game bytes changed in this unit.
+
 ## Startup continuation: imports61/67
 
 The coordinator's frozen3db RG run passed 13 component contracts and info0.

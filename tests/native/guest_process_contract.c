@@ -6,6 +6,8 @@
 #include <errno.h>
 #include <inttypes.h>
 #include <limits.h>
+#include <float.h>
+#include <math.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
@@ -726,6 +728,62 @@ static int va_enabled_contract(const char *path,int native) {
     }
     printf("{\"va_enabled_errors\":%u,\"explicit_enabled_policy\":true,\"unconfigured_false\":true,\"actual_vm_stages\":5,\"invalid_untouched\":true,\"native_calls\":%u,\"raw_fallback\":false}\n",errors,executed_calls);return 0;
 }
+struct log_case {float input;double expected;};
+static const struct log_case log_cases[]={
+    {0.125f,-2.0794415416798359283},{0.5f,-0.69314718055994530942},
+    {1.0f,0.0},{2.0f,0.69314718055994530942},{3.5f,1.2527629684953679957},
+    {10.0f,2.3025850929940456840},{65536.0f,11.090354888959124951},
+    {FLT_MIN,-87.336544750553108986},{FLT_MAX,88.722839052068353053},
+    {0x1p-149f,-103.27892990343185110}
+};
+static int log_close(float result,double expected) {
+    return isfinite(result) && fabs((double)result-expected)<=0.000002*fmax(1.0,fabs(expected));
+}
+static int log_special_matches(float result,float reference) {
+    if(isnan(reference))return isnan(result);
+    if(isinf(reference))return isinf(result) && !!signbit(result)==!!signbit(reference);
+    return result==reference && (result!=0.0f || !!signbit(result)==!!signbit(reference));
+}
+static int logf_contract(void) {
+    typedef float (*log_fn)(float);log_fn logarithm=(log_fn)(uintptr_t)guest_process_resolve(0,"logf");CHECK(logarithm);
+    for(size_t i=0;i<sizeof(log_cases)/sizeof(log_cases[0]);i++)CHECK(log_close(logarithm(log_cases[i].input),log_cases[i].expected));
+    const float special[]={0.0f,-0.0f,-1.0f,INFINITY,NAN};
+    for(size_t i=0;i<sizeof(special)/sizeof(special[0]);i++)CHECK(log_special_matches(logarithm(special[i]),logf(special[i])));
+    puts("{\"logf_errors\":0,\"positive_boundary_values\":10,\"ieee_observations\":5,\"dynamic_values\":true,\"implementation\":\"system-libm\",\"fp_control_mode_changed_by_test\":false}");return 0;
+}
+struct log_fixture_io {float input,output;uint64_t guest_x18;};
+_Static_assert(offsetof(struct log_fixture_io,output)==4 && offsetof(struct log_fixture_io,guest_x18)==8,"self-authored float fixture ABI");
+static void *exercise_logf_native(guest_process *p,void *opaque) {
+    (void)opaque;
+    const float special[]={0.0f,-0.0f,-1.0f,INFINITY,NAN};
+    size_t normal_count=sizeof(log_cases)/sizeof(log_cases[0]);
+    for(size_t i=0;i<normal_count+sizeof(special)/sizeof(special[0]);i++) {
+        float input=i<normal_count?log_cases[i].input:special[i-normal_count];
+        struct log_fixture_io io={input,12345.0f,UINT64_C(0xa5a5)};
+        const uint64_t arguments[6]={(uintptr_t)&io};uint64_t result=0xa5a5;
+        struct nso_result r=guest_process_call(p,0x20,arguments,1,&result);
+#if defined(__ANDROID__) && defined(__aarch64__)
+        expect_value("logf-native-call",r.status,NSO_OK);expect_value("logf-native-return",result,0x91);
+        expect_value("logf-native-guest-x18",io.guest_x18,0x55);
+        expect_condition("logf-fixture-input-preserved",!memcmp(&io.input,&input,sizeof(input)));
+        if(i<normal_count)expect_condition("logf-fp-argument-return-value",log_close(io.output,log_cases[i].expected));
+        else expect_condition("logf-ieee-system-behavior",log_special_matches(io.output,logf(input)));
+        executed_calls++;
+#else
+        expect_value("logf-native-host-unsupported",r.status,NSO_UNSUPPORTED);
+        expect_value("logf-no-raw-fallback",result,0xa5a5);
+        expect_condition("logf-no-fake-fp-result",io.output==12345.0f && io.guest_x18==0xa5a5);
+#endif
+    }
+    return &returned_token;
+}
+static int logf_native_contract(const char *path) {
+    CHECK(!logf_contract());struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+    void *value=NULL;CHECK(succeeded(guest_process_run(p,exercise_logf_native,NULL,&value)) && value==&returned_token && !errors);
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    printf("{\"logf_native_errors\":%u,\"native_calls\":%u,\"fp_arguments\":1,\"fp_returns\":1,\"gp_float_arguments\":0,\"raw_fallback\":false}\n",errors,executed_calls);return 0;
+}
 struct resource_input {size_t quota;int native;};
 static uint64_t resource_reported(size_t total,size_t occupied) {
     return occupied>total || total-occupied<0x80000?total:occupied+0x80000;
@@ -909,6 +967,8 @@ static int resource_recovery_contract(void) {
 #endif
 int main(int argc,char **argv) {
     page=(size_t)sysconf(_SC_PAGESIZE);
+    if(argc==2 && !strcmp(argv[1],"--logf"))return logf_contract();
+    if(argc==3 && !strcmp(argv[1],"--logf-native"))return logf_native_contract(argv[2]);
     if(argc==2 && !strcmp(argv[1],"--strcasecmp"))return strcasecmp_contract();
     if(argc==3 && !strcmp(argv[1],"--strcasecmp-native"))return strcasecmp_native_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--va-enabled"))return va_enabled_contract(argv[2],0);

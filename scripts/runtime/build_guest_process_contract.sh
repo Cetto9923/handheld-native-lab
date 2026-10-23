@@ -89,6 +89,7 @@ run('host-boundary-contract',[out/'guest_process_contract.host','--boundary',out
 run('host-retarget-contract',[out/'guest_process_contract.host','--retarget',out/'init-executor.nso'])
 run('host-readonly-retarget-contract',[out/'guest_process_contract.host','--retarget-readonly',out/'readonly-import.nso'])
 run('host-arguments-contract',[out/'guest_process_contract.host','--arguments',out/'contract.nso'])
+run('host-logf-contract',[out/'guest_process_contract.host','--logf'])
 run('host-strcasecmp-contract',[out/'guest_process_contract.host','--strcasecmp'])
 run('host-va-enabled-contract',[out/'guest_process_contract.host','--va-enabled',out/'contract.nso'])
 run('host-invalid-va-enabled',[out/'guest_process_contract.host','--invalid-va-enabled'],134)
@@ -452,6 +453,41 @@ for basename,symbol,text in [
  manifest['generated_fixtures'][name]={'bytes':len(data),'sha256':digest(out/name),'kind':'self-authored typed native import contract','assembly_sha256':digest(assembly)}
 run('host-strcasecmp-native-unsupported',[out/'guest_process_contract.host','--strcasecmp-native',out/'strcasecmp.nso'])
 run('host-va-native-unsupported',[out/'guest_process_contract.host','--va-native',out/'va-enabled.nso'])
+# Float arguments are loaded by this self-authored guest entry from its own
+# input object; they are never encoded as the CLI's six integer arguments.
+math_assembly=out/'logf-fixture.S'
+math_assembly.write_text(r''' .text
+.org 0x20
+.global fixture_entry
+fixture_entry:
+ stp x29, x30, [sp, #-32]!
+ str x19, [sp, #16]
+ mov x29, sp
+ mov x19, x0
+ mov x18, #0x55
+ ldr s0, [x19]
+ adrp x16, fixture_got
+ add x16, x16, :lo12:fixture_got
+ ldr x16, [x16]
+ blr x16
+ str s0, [x19, #4]
+ str x18, [x19, #8]
+ mov x0, #0x91
+ ldr x19, [sp, #16]
+ ldp x29, x30, [sp], #32
+ ret
+.section .fixture_got,"aw"
+.global fixture_got
+fixture_got: .zero 8
+''')
+run('fixture-logf-assemble',['clang',*common,'-c',math_assembly,'-o',out/'logf-fixture.o'])
+run('fixture-logf-link',['env',f'DYLD_LIBRARY_PATH={a.rust_root}/lib',ld,'--no-undefined','--build-id=none','--image-base=0','-Ttext=0','--section-start=.fixture_got=0x8200','-e','fixture_entry','--oformat=binary','-o',out/'logf-fixture.raw',out/'logf-fixture.o'])
+raw=(out/'logf-fixture.raw').read_bytes();data=bytearray((out/'resource.nso').read_bytes())
+data[0x200:0x300]=raw[:0x100].ljust(0x100,b'\0');struct.pack_into('<I',data,0x204,0x4000)
+names=b'\0logf\0';data[0x1160:0x1160+len(names)]=names;struct.pack_into('<Q',data,0x2000+3*16+8,len(names))
+(out/'logf.nso').write_bytes(data)
+manifest['generated_fixtures']['logf.nso']={'bytes':len(data),'sha256':digest(out/'logf.nso'),'kind':'self-authored scalar float s0 input/return contract','assembly_sha256':digest(math_assembly)}
+run('host-logf-native-unsupported',[out/'guest_process_contract.host','--logf-native',out/'logf.nso'])
 android=[]
 for source in sources:
  obj=out/(source.stem+'.android.o');android.append(obj)
@@ -485,6 +521,7 @@ for name,extra in [('guest_process_contract.android',out/'contract.android.o'),(
  if name!='guest_process_resource_recovery.android' and ('guest_context_resource_test_vm' in elf or 'nso_host_owned_pages_test_vm' in elf):raise RuntimeError('resource test hooks leaked into production')
  if not re.search(r'UND\s+strncasecmp(?:\s|$)',elf) or re.search(r'UND\s+strncasecmp_l(?:\s|$)',elf):raise RuntimeError('Android locale bridge must call Bionic non-_l strncasecmp')
  if not re.search(r'UND\s+strcasecmp(?:@|\s|$)',elf):raise RuntimeError('Android strcasecmp bridge must use Bionic API')
+ if not re.search(r'UND\s+logf(?:@|\s|$)',elf) or 'Shared library: [libm.so]' not in elf:raise RuntimeError('logf must bind system libm')
  if 'libc++abi.a(cxa_guard.cpp.o)' not in (out/(name+'.map')).read_text():raise RuntimeError('guard not from official compiler runtime')
  manifest.setdefault('android_artifacts',{})[name]={'path':str(binary),'bytes':len(data),'sha256':digest(binary)}
 for name,value in manifest['source_sha256'].items():

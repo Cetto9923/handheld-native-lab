@@ -12,6 +12,7 @@
 #include <errno.h>
 #include <inttypes.h>
 #include <limits.h>
+#include <math.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -512,6 +513,7 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
     PURE(memset);PURE(memcpy);PURE(memmove);PURE(memcmp);PURE(memchr);
     PURE(strlen);PURE(strnlen);PURE(strcmp);PURE(strncmp);PURE(strcpy);PURE(strncpy);
     PURE(strchr);PURE(strrchr);PURE(strstr);
+    PURE(logf); /* Standard float(float), current original caller uses s0. */
 #undef PURE
     if(!strcmp(name,"_ZN2nn2os15QueryMemoryInfoEPNS0_10MemoryInfoE"))return (uintptr_t)&query_memory_info;
     if(!strcmp(name,"_ZN2nn2os21AllocateAddressRegionEPmm"))return (uintptr_t)&allocate_region;
@@ -548,6 +550,10 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
     return 0;
 }
 static int import_signature(const char *name,nb_signature *out) {
+    if(!strcmp(name,"logf")) {
+        *out=(nb_signature){.version=1,.flags=NB_SIG_REGISTER_ONLY,.fp_arguments=1,.fp_returns=1};
+        return 1; /* GP0: float input/result travel in s0, never integer args. */
+    }
     unsigned arguments=0,returns=1;
     static const char *const one[]={"strlen","__cxa_guard_acquire","atexit","_ZN2nn2os11GetTlsValueENS0_7TlsSlotE",
         "_ZN2nn2os17FreeAddressRegionEm","_ZN2nn2os12TryLockMutexEPNS0_9MutexTypeE",
