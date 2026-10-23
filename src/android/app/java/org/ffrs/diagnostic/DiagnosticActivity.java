@@ -12,6 +12,7 @@ import android.graphics.Rect;
 import android.graphics.Insets;
 import android.util.DisplayMetrics;
 import android.view.Display;
+import android.view.DisplayCutout;
 import android.view.WindowMetrics;
 import android.view.WindowInsets;
 import android.view.View;
@@ -158,6 +159,7 @@ public final class DiagnosticActivity extends Activity implements View.OnClickLi
                 snapshot.inset_top_px = insets.top;
                 snapshot.inset_right_px = insets.right;
                 snapshot.inset_bottom_px = insets.bottom;
+                snapshot.insets_source = DisplaySnapshot.MODERN_INSETS_SOURCE;
                 snapshot.insets_measured = true;
             } else {
                 View decor = getWindow().getDecorView();
@@ -172,12 +174,14 @@ public final class DiagnosticActivity extends Activity implements View.OnClickLi
                     snapshot.size_source = "Display.getMetrics.app_bounds";
                 }
                 WindowInsets insets = decor.getRootWindowInsets();
-                if (insets != null) {
-                    snapshot.inset_left_px = insets.getSystemWindowInsetLeft();
-                    snapshot.inset_top_px = insets.getSystemWindowInsetTop();
-                    snapshot.inset_right_px = insets.getSystemWindowInsetRight();
-                    snapshot.inset_bottom_px = insets.getSystemWindowInsetBottom();
-                    snapshot.insets_measured = true;
+                if (insets != null && !insets.isConsumed()) {
+                    DisplayCutout cutout = insets.getDisplayCutout();
+                    snapshot.setStableInsetsWithCutout(insets.getStableInsetLeft(), insets.getStableInsetTop(),
+                            insets.getStableInsetRight(), insets.getStableInsetBottom(),
+                            cutout == null ? 0 : cutout.getSafeInsetLeft(),
+                            cutout == null ? 0 : cutout.getSafeInsetTop(),
+                            cutout == null ? 0 : cutout.getSafeInsetRight(),
+                            cutout == null ? 0 : cutout.getSafeInsetBottom());
                 }
             }
         } catch (RuntimeException failure) { snapshot.error = "Window measurement: " + failure.toString(); }

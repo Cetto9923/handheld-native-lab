@@ -12,6 +12,7 @@ public final class DisplaySnapshotJniTest {
         s.size_source = "WindowManager.currentWindowMetrics.bounds";
         s.density_dpi = 440; s.density = 2.75; s.refresh_rate_hz = 59.94;
         s.insets_measured = true; s.inset_top_px = 66; s.inset_bottom_px = 90;
+        s.insets_source = DisplaySnapshot.MODERN_INSETS_SOURCE;
         s.display_id = 0; s.rotation = 0; s.current_mode_id = 1;
         s.captured_elapsed_realtime_ns = 123456789;
         s.mode_ids = new int[] {1, 2};
@@ -39,6 +40,17 @@ public final class DisplaySnapshotJniTest {
         s = snapshot(1080, 2340);
         s.mode_ids = new int[0]; s.mode_widths = new int[0]; s.mode_heights = new int[0]; s.mode_refresh_rates = new double[0];
         emit("no_modes", s);
+        s = snapshot(1080, 2340);
+        s.setStableInsetsWithCutout(0, 66, 0, 90, 18, 100, 23, 0);
+        emit("legacy_stable_cutout", s);
+        // A smaller content viewport (e.g. an IME resize) is not a system-bar inset input.
+        s.content_height_px = 1500;
+        emit("legacy_ime_content", s);
+        // Failed capture must clear a previous valid measurement rather than retaining it.
+        s.setStableInsetsWithCutout(0, -1, 0, 90, 0, 0, 0, 0);
+        emit("legacy_unknown", s);
+        s = snapshot(1080, 2340); s.insets_source = "";
+        emit("missing_inset_source", s);
         emit("no_snapshot", null);
         emit("wrong_object", new Object());
     }

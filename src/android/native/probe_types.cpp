@@ -23,6 +23,12 @@ DisplayInfo NormalizeDisplaySnapshot(const DisplayInfo& measured) {
     if (out.content_width_px <= 0 || out.content_height_px <= 0) {
         out.content_width_px = out.content_height_px = 0;
     }
+    if (!out.insets_measured || out.insets_source.empty() || out.inset_left_px < 0
+            || out.inset_top_px < 0 || out.inset_right_px < 0 || out.inset_bottom_px < 0) {
+        out.insets_measured = false;
+        out.insets_source.clear();
+        out.inset_left_px = out.inset_top_px = out.inset_right_px = out.inset_bottom_px = 0;
+    }
     out.modes.clear();
     for (const auto& mode : measured.modes) {
         if (mode.mode_id > 0 && mode.width_px > 0 && mode.height_px > 0

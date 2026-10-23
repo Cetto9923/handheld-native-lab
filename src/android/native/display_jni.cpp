@@ -38,7 +38,8 @@ DisplayInfo ReadDisplaySnapshot(JNIEnv* env, jobject snapshot) {
         && read_int("display_id", out.display_id) && read_int("rotation", out.rotation)
         && read_int("current_mode_id", out.current_mode_id) && read_int("density_dpi", out.density_dpi)
         && read_double("density", out.density) && read_double("refresh_rate_hz", out.refresh_rate_hz)
-        && read_string("size_source", out.size_source) && read_string("error", out.error);
+        && read_string("size_source", out.size_source) && read_string("error", out.error)
+        && read_string("insets_source", out.insets_source);
     jfieldID insets = valid ? env->GetFieldID(type, "insets_measured", "Z") : nullptr;
     if (insets) out.insets_measured = env->GetBooleanField(snapshot, insets);
     else valid = false;

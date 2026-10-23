@@ -114,6 +114,7 @@ struct DisplayInfo {
     std::string status = "unavailable";
     std::string size_source;
     std::string error;
+    std::string insets_source;
     int width_px = 0;
     int height_px = 0;
     int content_width_px = 0;

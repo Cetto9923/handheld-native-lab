@@ -174,6 +174,8 @@ std::string SerializeProbeReportToJson(const FullProbeReport& rep) {
     w.Key("content_height_px"); w.Int(rep.display.content_height_px);
     w.Key("system_bar_cutout_insets_px"); w.BeginObject();
     w.Key("status"); w.String(rep.display.insets_measured ? "measured_android_api" : "unavailable");
+    w.Key("source"); w.String(rep.display.insets_source);
+    w.Key("scope"); w.String("system_bars_and_display_cutout_ignoring_visibility_excluding_ime");
     w.Key("left"); w.Int(rep.display.inset_left_px);
     w.Key("top"); w.Int(rep.display.inset_top_px);
     w.Key("right"); w.Int(rep.display.inset_right_px);
