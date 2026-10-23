@@ -65,6 +65,18 @@
 3. **主机执行 ≠ 真机执行**：Mac 上的样例通过只证明该样例；Android 侧只证明交叉构建产物存在。真机项在 T03B 通过前保持 `NOT_RUN`。
 4. **证据不可覆盖**：原始证据只追加不覆盖；重跑会覆写证据文件的脚本必须改输出路径后执行（见 1.2）。
 5. **资源调度**：Ghidra 大工程与 NDK 安装**串行**；每轮只允许一个重型分析工程。
+6. **历史线索不继承结论**：用户历史 "Mac移植交付" 是 **Ryujinx 模拟器 + Cecil IL 补丁**，明确"非原生重写"。按 `AGENTS.md`，其 PASS/帧率/引擎归属一律**不继承**；其中可用的只有**关于本作自身的事实性线索**：
+   - 本作**重度依赖 bindless / textureBuffer 绑定**（日志：`Failed to find handle source for bindless access of type "textureBuffer"`）；
+   - 本作使用 **NVN 专有纹理格式 `0x25A5A`**（Ryujinx 格式表缺失它，表现为特效 CG 色偏/噪点，非崩溃）；
+   - 原生 Switch 上本作**限帧 30**（Mac 上观测上限 31），与 PROJECT.md 的 30 FPS 口径吻合；
+   - 历史瓶颈判定为 **GPU 侧 FIFO 积压而非像素填充率**（渲染倍率降至 0.5x 仅提升约 40%）。
+   - **推论（待验证）**：Mali-G615 的 descriptor indexing / bindless 支持度是本项目 30 FPS 目标的**最高风险项**，只能由 T03B 真机探针实测判定。
+7. **已识别的可复现性缺口**：T00 的 ExeFS 提取依赖一段**未入库**的 NCA 流式解密逻辑（仓库内只有产物 `.local/exefs/`，没有脚本）。RomFS（8.5 GB）同样未提取，且提取会加剧磁盘压力。这是 T04 启动链的硬前置，需在 T02/T04 前补齐（脚本进 `scripts/` 或 `tools/`，产物进 `.local/`）。
+
+### 3.1 本轮新增的路由风险（已随提示转给 Agent A / Agent B）
+
+- **T01**：NVN 兼容层必须支持 bindless texture buffer；须给出本作 NVN 导入面里 texture buffer / descriptor array 相关符号的**符号级证据与数量**，并单列 **NVN 纹理格式表 → Vulkan format 映射**（含 `0x25A5A`）为兼容层必做项。
+- **T03A**：Vulkan 探针必须采集 `VkPhysicalDeviceDescriptorIndexingFeatures` 全字段、`Vulkan11/12/13Features` 相关位、`Maintenance3Features`、以及 `maxPerStageDescriptorUpdateAfterBind*` / `maxDescriptorSetUpdateAfterBind*` 等 limits 与关键 format properties；host 侧同 schema 占位，便于 T03B 逐字段对比。
 
 ---
 

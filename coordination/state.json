@@ -184,7 +184,9 @@
   ],
   "blockers": [
     "RG477M 真机尚未连接或验证；真机实测项保持 BLOCKED_DEVICE 门禁，不阻塞主机交叉构建。",
-    "宿主可用磁盘仅约 18 GiB；Android NDK + Ghidra 工程属重型占用，需串行并及时回收，禁止并发铺开多个大分析工程。"
+    "宿主可用磁盘仅约 18 GiB；Android NDK + Ghidra 工程属重型占用，需串行并及时回收，禁止并发铺开多个大分析工程。",
+    "游戏资源侧缺口：Program NCA 的 RomFS（8.5 GB）未提取，ExeFS 提取所用 NCA 流式解密逻辑未入库（只有产物，没有可复现脚本）；T04 启动链需要资源与模块加载器时这是硬前置，且提取会进一步挤压磁盘。",
+    "bindless/textureBuffer 支持度未验证：历史线索显示本作重度依赖 bindless 与 NVN 专有纹理格式 0x25A5A，在 MoltenVK 上即成为 GPU 侧瓶颈；Mali-G615 的 descriptor indexing 能力只能由 T03B 真机实测判定，是 30 FPS 目标的最高风险项。"
   ],
   "verified": [
     "协作项目初始化与总控接管",
@@ -194,7 +196,8 @@
     "游戏引擎直接证据：Unreal Engine 5.4 (Shipping工件 FFRS-Switch-Shipping.nss, 项目代号 mucha, 含 EChaosVDAABBTreeNodeFlags, EnhancedInput, CommonUI, CRIWARE, Oodle, NVN)",
     "逆向工具链实测：hactool 正常解析，Ghidra 12.1.4 + Switch Loader 成功导入识别 NSO0 (AARCH64:LE:64:v8A)",
     "2026-10-23 接管复核：5 个 ExeFS 工件 SHA-256 与 evidence/t00_verification.json 逐项一致（轻量复核，未重算 9GB NSP）",
-    "2026-10-23 接管复核：adb devices 无设备；Android SDK 存在但缺 NDK/build-tools/platforms/cmake，T03A 需按路线安装"
+    "2026-10-23 接管复核：adb devices 无设备；Android SDK 存在但缺 NDK/build-tools/platforms/cmake，T03A 需按路线安装",
+    "2026-10-23 接管复核：历史 Mac 交付为 Ryujinx 模拟器 + IL 补丁（非原生重写），仅作线索不继承其 PASS；从中确认本作重度依赖 bindless/textureBuffer、使用 NVN 专有格式 0x25A5A、原生 Switch 限帧 30"
   ],
   "unverified": [
     "本游戏原生代码重编译/重建样例 (T02)",
