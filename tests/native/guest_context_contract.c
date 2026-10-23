@@ -79,8 +79,17 @@ static void *primary_callback(guest_context *context,void *opaque) {
     if(stack.bytes!=state->stack_bytes || address<stack.address || address-stack.address>=stack.bytes ||
             sp<stack.address || sp-stack.address>=stack.bytes ||
             local[0]!=0x37 || local[63]!=0x59 || host_tls_marker)state->errors++;
-    if(!protection_is(stack.address,1) || !protection_is(stack.address-stack.guard_bytes,0) ||
-            !protection_is(stack.address+stack.bytes,0))state->errors++;
+    if(stack.native_bytes<stack.bytes || stack.address<stack.native_address ||
+       stack.address+stack.bytes!=stack.native_address+stack.native_bytes ||
+       stack.allocation_bytes!=stack.bytes+stack.administrative_bytes ||
+       stack.administrative_bytes>4*page || stack.capacity_attempts>3 ||
+       stack.native_address<stack.allocation_address ||
+       stack.native_address+stack.native_bytes>stack.allocation_address+stack.allocation_bytes)state->errors++;
+    if(!protection_is(stack.address,1) || !protection_is(stack.allocation_address-stack.guard_bytes,0) ||
+            !protection_is(stack.allocation_address+stack.allocation_bytes,0))state->errors++;
+    printf("stack logical=(0x%" PRIxPTR ",%zu) native=(0x%" PRIxPTR ",%zu) raw=(0x%" PRIxPTR ",%zu) admin=%zu attempts=%u sp=0x%" PRIxPTR "\n",
+        stack.address,stack.bytes,stack.native_address,stack.native_bytes,stack.allocation_address,
+        stack.allocation_bytes,stack.administrative_bytes,stack.capacity_attempts,sp);
     host_tls_marker=0x71;errno=EDOM;
     if(!usage_is(context,0,stack.bytes,1) || host_tls_marker!=0x71 || errno!=EDOM)state->errors++;
     if(guest_context_destroy(context).status!=GUEST_CONTEXT_BUSY)state->errors++;
@@ -109,8 +118,32 @@ static int stack_contract(void) {
     CHECK(guest_context_test_pending_before_map(context)==config.primary_stack_bytes);
     CHECK(ok(guest_context_run_primary(context,primary_callback,&state,&value)) && value==&return_token);
     CHECK(!state.errors && usage_is(context,0,0,0));
+    /* No guest callback until public native capacity meets the exact window. */
+    guest_context_test_capacity(context,784,1,0);
+    calls=state.calls;
+    CHECK(ok(guest_context_run_primary(context,primary_callback,&state,&value)) && value==&return_token);
+    CHECK(state.calls==calls+1 && guest_context_test_capacity_attempts(context)==2 && usage_is(context,0,0,0));
+    guest_context_test_capacity(context,0,1,EIO);calls=state.calls;
+    r=guest_context_run_primary(context,primary_callback,&state,&value);
+    CHECK(r.status==GUEST_CONTEXT_SYSTEM_ERROR && r.native_error==EIO && !value && state.calls==calls && usage_is(context,0,0,0));
+    guest_context_test_capacity(context,16,3,0);
+    r=guest_context_run_primary(context,primary_callback,&state,&value);
+    CHECK(r.status==GUEST_CONTEXT_UNSUPPORTED && !value && state.calls==calls &&
+        guest_context_test_capacity_attempts(context)==3 && usage_is(context,0,0,0));
+    guest_context_test_capacity(context,0,0,0);
 #endif
     CHECK(ok(guest_context_destroy(context)));
+#if defined(GUEST_CONTEXT_TESTING)
+    config.primary_stack_bytes=16*page;config.quota_bytes=2*config.primary_stack_bytes;
+    CHECK(ok(guest_context_create(&config,&context)));
+    guest_context_test_capacity(context,4*page+1,1,0);
+    int cap_calls=state.calls;void *cap_value=NULL;
+    struct guest_context_result cap=guest_context_run_primary(context,primary_callback,&state,&cap_value);
+    CHECK(cap.status==GUEST_CONTEXT_UNSUPPORTED && !cap_value && state.calls==cap_calls &&
+        guest_context_test_capacity_attempts(context)==1 && usage_is(context,0,0,0));
+    CHECK(ok(guest_context_destroy(context)));
+    config.primary_stack_bytes=65536;
+#endif
     /* Explicit smaller quota rejects the same configured stack before mmap. */
     config.quota_bytes=config.primary_stack_bytes-1;
     CHECK(ok(guest_context_create(&config,&context)));
@@ -182,6 +215,7 @@ int main(void) {
     printf("{\"stack_bytes\":65536,\"host_page_bytes\":%zu,\"quota_explicit\":true,"
            "\"quota_threads\":8,\"quota_accepted\":2,\"quota_limited\":6,\"callback_sp_verified\":true,"
            "\"charged_after_join\":0,\"pending_after_join\":0,\"map_failure_rollback_cases\":%d,"
-           "\"memory_info_valid_fields\":0,\"errors\":0}\n",page,recovery);
+           "\"capacity_retry_cases\":%d,\"capacity_failure_cases\":%d,"
+           "\"memory_info_valid_fields\":0,\"errors\":0}\n",page,recovery,recovery,3*recovery);
     return 0;
 }

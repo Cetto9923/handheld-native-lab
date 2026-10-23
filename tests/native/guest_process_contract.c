@@ -11,6 +11,10 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#if defined(__APPLE__)
+#include <mach/mach.h>
+#include <mach/mach_vm.h>
+#endif
 #define CHECK(x) do {if(!(x)) {fprintf(stderr,"process contract line=%d: %s\n",__LINE__,#x);return 1;}} while(0)
 static size_t page;
 static unsigned errors,calls,extension_calls;
@@ -31,6 +35,23 @@ static void expect_value(const char *tag,uint64_t actual,uint64_t expected) {
 }
 static void expect_condition(const char *tag,int condition) {
     if(!condition) {errors++;fprintf(stderr,"[check-fail] %s\n",tag);}
+}
+static int inaccessible(uintptr_t address) {
+#if defined(__APPLE__)
+    mach_vm_address_t base=address;mach_vm_size_t bytes=0;
+    vm_region_basic_info_data_64_t info;mach_msg_type_number_t count=VM_REGION_BASIC_INFO_COUNT_64;
+    mach_port_t object=MACH_PORT_NULL;
+    kern_return_t r=mach_vm_region(mach_task_self(),&base,&bytes,VM_REGION_BASIC_INFO_64,(vm_region_info_t)&info,&count,&object);
+    if(object!=MACH_PORT_NULL)mach_port_deallocate(mach_task_self(),object);
+    return r==KERN_SUCCESS && base<=address && address-base<bytes && info.protection==VM_PROT_NONE;
+#else
+    FILE *maps=fopen("/proc/self/maps","r");if(!maps)return 0;
+    char line[1024],permissions[5];uintptr_t base,end;int found=0;
+    while(fgets(line,sizeof(line),maps))if(sscanf(line,"%" SCNxPTR "-%" SCNxPTR " %4s",&base,&end,permissions)==3 && base<=address && address<end) {
+        found=permissions[0]=='-' && permissions[1]=='-' && permissions[2]=='-';break;
+    }
+    fclose(maps);return found;
+#endif
 }
 struct callback_input {size_t quota,image;};
 static void *exercise(guest_process *process,void *opaque) {
@@ -68,7 +89,25 @@ static void *exercise(guest_process *process,void *opaque) {
     fprintf(stderr,"[check-values] native-stack call=%u low=0x%" PRIxPTR " high=0x%" PRIxPTR
         " reported_bytes=%" PRIuPTR " expected_owned_bytes=65536 sp=0x%" PRIxPTR " local=0x%" PRIxPTR "\n",
         calls,stack_low,stack_high,stack_high-stack_low,sp,(uintptr_t)&info);
-    expect_value("pthread-reported-stack-bytes",stack_high-stack_low,65536);
+    struct guest_primary_stack owned;
+    struct nso_result owned_status=guest_process_primary_stack(process,&owned);
+    expect_condition("owned-stack-descriptor",succeeded(owned_status));
+    if(owned_status.status!=NSO_OK)return NULL;
+    fprintf(stderr,"[check-values] owned-stack logical=(0x%" PRIxPTR ",%zu) raw=(0x%" PRIxPTR ",%zu) native=(0x%" PRIxPTR ",%zu) admin=%zu attempts=%u\n",
+        owned.address,owned.bytes,owned.allocation_address,owned.allocation_bytes,
+        owned.native_address,owned.native_bytes,owned.administrative_bytes,owned.capacity_attempts);
+    expect_value("logical-guest-stack-bytes",owned.bytes,65536);
+    expect_condition("pthread-capacity-at-least-logical",stack_high-stack_low>=owned.bytes);
+    expect_value("pthread-reported-native-base",stack_low,owned.native_address);
+    expect_value("pthread-reported-native-bytes",stack_high-stack_low,owned.native_bytes);
+    expect_condition("logical-window-in-native",owned.address>=stack_low && owned.address+owned.bytes==stack_high);
+    expect_condition("native-in-raw-allocation",stack_low>=owned.allocation_address && stack_high<=owned.allocation_address+owned.allocation_bytes);
+    expect_value("raw-logical-admin-accounting",owned.allocation_bytes,owned.bytes+owned.administrative_bytes);
+    expect_condition("bounded-admin",owned.administrative_bytes<=4*page && owned.capacity_attempts<=3);
+    expect_condition("sp-in-exact-logical-window",sp>=owned.address && sp-owned.address<owned.bytes);
+    expect_condition("local-in-exact-logical-window",(uintptr_t)&info>=owned.address && (uintptr_t)&info-owned.address<owned.bytes);
+    expect_condition("raw-lower-guard",inaccessible(owned.allocation_address-owned.guard_bytes));
+    expect_condition("raw-upper-guard",inaccessible(owned.allocation_address+owned.allocation_bytes));
     expect_condition("sp-in-pthread-reported-stack",sp>=stack_low && sp<stack_high);
     expect_condition("local-in-pthread-reported-stack",(uintptr_t)&info>=stack_low && (uintptr_t)&info<stack_high);
     stack_t alternate;

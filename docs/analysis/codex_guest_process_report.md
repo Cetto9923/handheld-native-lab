@@ -103,3 +103,46 @@ d02c86845607be6f1da3a546a04b515c986d31c1402601f73e4af7ec715e36ef.
 Fixture remains a8467dc70098b693ab2d0266ac9ec99c705b76a644da20fbc0e5b263cd237493;
 the CLI ELF remains byte-identical to the frozen artifact. Device diagnosis is
 pending coordinator execution; no Bionic usable-stack assumption is relaxed.
+
+## Measured capacity repair
+
+The coordinator's diagnostic binary isolated exactly one failure: native usable
+64752 bytes (0xfcf0), 784 below 65536. SP/local, Query widths/padding, altstack,
+reservations and returned token all passed. Both original failures remain saved.
+Public AOSP [pthread creation source](https://android.googlesource.com/platform/bionic/+/808d176e7e0dd727c7f929622ec017f6e065c582/libc/bionic/pthread_create.cpp)
+also demonstrates that pthread bookkeeping can reduce caller-supplied stack
+capacity; its private size is not used by this fix or assumed to match RG.
+
+Context now measures native usable capacity on the child before invoking any
+guest callback. A short probe executes no guest code, is joined, genuinely
+unmapped and refunded, then retries with the measured shortfall rounded to a
+host page. Checked limits are three attempts and four extra host pages. Query
+failure, exceeding either limit or an invalid/SP-excluding layout returns a
+typed nonzero status; rollback/join uncertainty retains ownership as before.
+Raw RW allocation/outer guards, native usable range, exact 65536-byte logical
+guest window at its usable top, and extra administrative bytes are distinct
+descriptor fields. SP/local must lie in that exact logical window; raw guards
+are inspected at raw boundaries. This strengthens the capacity requirement;
+the original insufficient 64752-byte layout cannot invoke the guest callback.
+Only logical 65536 bytes is the stack quota charge; extra RW administration,
+native pthread/TLS overhead and unused padding are explicitly outside it.
+
+Guards bind directly to the three real typed compiler symbols, independent of
+another translation unit's macros. A host profile without typed guard support
+is rejected at compile time; the dedicated script tests that expected exit1.
+
+New evidence: `.local/guest-context-capacity-v2/manifest.json` has eight steps0,
+including real host normal/recovery contracts, one successful capacity rebuild,
+three capacity refusal cases (query error, retry bound, admin bound), callback0
+on refusal and empty post-join quota. `.local/owned-startup-capacity-v1/manifest.json`
+has 34 expected steps (0/1/134/133), no timeout, and unchanged real main SHA.
+Host nnMain/malloc retain their truthful post-Query boundaries. Android products:
+
+| Product | Bytes | SHA256 |
+|---|---:|---|
+| guest_context_contract.android (capacity-v2) | 78432 | 6d7d46bae9a0b97f8a25221b6d1213f02ec748f8d17c92e6144ee198b761dda5 |
+| guest_process_contract.android (owned-startup-capacity-v1) | 675792 | aa82fc592bb4db849375aa54efdc0cfb17b703cde29f3d5f4456aad77abb2d86 |
+| nso_owned_startup.android (owned-startup-capacity-v1) | 655104 | 1e5953a8144855d65f93310c5d68fce215abe097d1ff94f8e6fed9cd8d6a6d69 |
+
+All are cross-built from official CRC-verified partial NDK inputs. New RG
+execution/independent review remain pending coordinator confirmation.

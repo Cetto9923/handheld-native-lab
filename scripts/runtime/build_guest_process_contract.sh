@@ -37,6 +37,8 @@ spec=importlib.util.spec_from_file_location('positive_loader_fixture',ROOT/'test
 fixture=importlib.util.module_from_spec(spec);spec.loader.exec_module(fixture);fixture.fixture(out/'contract.nso')
 manifest['fixture']={'path':str(out/'contract.nso'),'bytes':(out/'contract.nso').stat().st_size,'sha256':digest(out/'contract.nso')}
 strict=['-std=c11','-O2','-g','-fno-omit-frame-pointer','-Wall','-Wextra','-Werror']
+run('host-reject-untyped-guards',['clang',*strict,'-c',hle/'guest_process.c','-o',out/'unsupported-guards.o'],1)
+if 'requires the real typed C++ guard runtime' not in (out/'host-reject-untyped-guards/stderr.log').read_text():raise RuntimeError('missing typed guard build constraint')
 host=[]
 for source in sources:
  obj=out/(source.stem+'.host.o');host.append(obj)

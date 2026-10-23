@@ -5,6 +5,7 @@
 extern "C" {
 #endif
 typedef struct guest_process guest_process;
+struct guest_primary_stack;
 struct guest_process_config {size_t quota_bytes,primary_stack_bytes;};
 /* Field names describe the native port policy, not recovered SDK C names.
  * The observed ABI writes six u64 values and one u32; final padding is untouched. */
@@ -25,6 +26,8 @@ struct nso_result guest_process_run(guest_process *,guest_process_callback,void 
 /* Native typed snapshot: failure writes none of out. The guest void ABI wrapper
  * treats invalid state as a precise fatal error, never silent success. */
 struct nso_result guest_process_memory_info(guest_process *,struct guest_memory_info *out);
+/* Executing primary only: copy the verified logical/raw/native descriptor. */
+struct nso_result guest_process_primary_stack(guest_process *,struct guest_primary_stack *out);
 uint64_t guest_process_resolve(uint32_t,const char *);
 /* Quiescent only. Failed release retains *process for retry/process shutdown. */
 struct nso_result guest_process_destroy(guest_process **process);

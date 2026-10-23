@@ -11,7 +11,7 @@ typedef struct guest_charge_ticket guest_charge_ticket;
 enum guest_context_status {
     GUEST_CONTEXT_OK, GUEST_CONTEXT_INVALID, GUEST_CONTEXT_LIMIT,
     GUEST_CONTEXT_NO_MEMORY, GUEST_CONTEXT_BUSY, GUEST_CONTEXT_BAD_STATE,
-    GUEST_CONTEXT_SYSTEM_ERROR, GUEST_CONTEXT_QUARANTINED
+    GUEST_CONTEXT_SYSTEM_ERROR, GUEST_CONTEXT_QUARANTINED, GUEST_CONTEXT_UNSUPPORTED
 };
 struct guest_context_result {
     enum guest_context_status status;
@@ -31,8 +31,16 @@ struct guest_context_usage {
     unsigned memory_info_valid_fields;
 };
 struct guest_primary_stack {
+    /* Exact logical guest window, contained in verified native usable memory. */
     uintptr_t address;
     size_t bytes, guard_bytes;
+    /* Outer guards bracket this raw RW allocation, not the logical window. */
+    uintptr_t allocation_address;
+    size_t allocation_bytes;
+    uintptr_t native_address;
+    size_t native_bytes;
+    size_t administrative_bytes;
+    unsigned capacity_attempts;
 };
 typedef void *(*guest_primary_callback)(guest_context *,void *);
 
@@ -54,7 +62,14 @@ struct guest_context_result guest_context_usage(guest_context *,struct guest_con
 
 /* Synchronous ordinary native callback on a separately owned pthread stack.
  * Guard/padding VA and host pthread/TLS/bookkeeping overhead are not application
- * quota charges. Quota charges the exact RW stack payload. No SDK thread/TCB,
+ * quota charges. Quota charges the exact requested logical guest window. Public
+ * pthread stack queries verify capacity BEFORE callback. Short capacity probes
+ * are joined/unmapped/refunded before retry; at most three attempts and at most
+ * four host pages of extra RW administrative space, with checked arithmetic.
+ * No private pthread layout/constant deficit or default host stack is assumed.
+ * Native usable capacity may exceed the logical window; SP must remain inside
+ * the exact logical window. Guards are inspected using allocation_* above.
+ * No SDK thread/TCB,
  * guest TLS, QueryMemoryInfo, game entry or TP-register adaptation is installed.
  * Return value must not point into the soon-to-be-released primary stack.
  * Cancellation/concurrent destruction of a running call is unsupported. */
@@ -67,6 +82,10 @@ struct guest_context_result guest_context_primary_stack(guest_context *,struct g
 #if defined(GUEST_CONTEXT_TESTING)
 void guest_context_test_fail_next_map(guest_context *,int native_error);
 size_t guest_context_test_pending_before_map(guest_context *);
+/* Synthetic capacity-query outcomes, absent from production. A short report
+ * suppresses callback and exercises join/free/precharge, never guest execution. */
+void guest_context_test_capacity(guest_context *,size_t shortfall,unsigned reports,int query_error);
+unsigned guest_context_test_capacity_attempts(guest_context *);
 #endif
 #ifdef __cplusplus
 }

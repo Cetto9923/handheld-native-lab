@@ -1,4 +1,7 @@
 #define _GNU_SOURCE
+#if !defined(__ANDROID__) && !(defined(NSO_WITH_CXX_GUARDS) && NSO_WITH_CXX_GUARDS)
+#error "owned startup profile requires the real typed C++ guard runtime"
+#endif
 #include "guest_process.h"
 #include "guest_context.h"
 #include "address_region.h"
@@ -10,6 +13,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+/* Explicit compiler runtime references, independent of another translation
+ * unit's HLE feature flags. Never reach the extension fallback for guards. */
+extern int __cxa_guard_acquire(uint64_t *);
+extern void __cxa_guard_release(uint64_t *);
+extern void __cxa_guard_abort(uint64_t *);
 
 struct va_record {uintptr_t address;size_t bytes;struct va_record *next;};
 enum heap_state {HEAP_UNINITIALIZED,HEAP_READY_EMPTY};
@@ -158,6 +166,16 @@ struct nso_result guest_process_memory_info(guest_process *p,struct guest_memory
     }
     pthread_mutex_unlock(&p->mutex);return r;
 }
+struct nso_result guest_process_primary_stack(guest_process *p,struct guest_primary_stack *out) {
+    if(!p || !out)return status(NSO_INVALID,EINVAL,0);
+    pthread_mutex_lock(&p->mutex);
+    struct nso_result r=status(NSO_INVALID,EINVAL,0);
+    if(current_process==p && p->running && !p->quarantined &&
+       p->thread.state==THREAD_RUNNING && pthread_equal(p->thread.native,pthread_self())) {
+        *out=p->thread.stack;r=status(NSO_OK,0,0);
+    }
+    pthread_mutex_unlock(&p->mutex);return r;
+}
 static void query_memory_info(struct guest_memory_info *out) {
     guest_process *p=current_process;
     uintptr_t caller=(uintptr_t)__builtin_return_address(0);
@@ -219,10 +237,12 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
     if(!strcmp(name,"_ZN2nn2os15QueryMemoryInfoEPNS0_10MemoryInfoE"))return (uintptr_t)&query_memory_info;
     if(!strcmp(name,"_ZN2nn2os21AllocateAddressRegionEPmm"))return (uintptr_t)&allocate_region;
     if(!strcmp(name,"_ZN2nn2os17FreeAddressRegionEm"))return (uintptr_t)&free_region;
+    if(!strcmp(name,"__cxa_guard_acquire"))return (uintptr_t)&__cxa_guard_acquire;
+    if(!strcmp(name,"__cxa_guard_release"))return (uintptr_t)&__cxa_guard_release;
+    if(!strcmp(name,"__cxa_guard_abort"))return (uintptr_t)&__cxa_guard_abort;
     /* Every entry is an existing typed branch, never the extension fallthrough.
      * No nvn/dlsym/backing/thread/heap service is admitted by this profile. */
     static const char *const typed[]={
-        "__cxa_guard_acquire","__cxa_guard_release","__cxa_guard_abort",
         "_ZN2nn4util11ReferSymbolEPKv","nnutilReferSymbol",
         "_ZN2nn2os15InitializeMutexEPNS0_9MutexTypeEbi","nnosInitializeMutex",
         "_ZN2nn2os13FinalizeMutexEPNS0_9MutexTypeE","nnosFinalizeMutex",

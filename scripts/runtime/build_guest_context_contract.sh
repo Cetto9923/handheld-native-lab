@@ -29,7 +29,9 @@ manifest={'head':subprocess.check_output(['git','rev-parse','HEAD'],text=True).s
  'official_source':verified['source'],'whole_archive_sha1_verified':verified['whole_archive_sha1_verified'],
  'android_executed':False,'game_entry_executed':False,'query_memory_info_bound':False,
  'quota_source':'explicit synthetic contract inputs, not a selected game budget',
- 'stack_test_bytes':65536,'stack_source':'explicit test input, matching coordinator-verified NPDM main stack size'}
+ 'stack_test_bytes':65536,'stack_source':'explicit test input, matching coordinator-verified NPDM main stack size',
+ 'capacity_policy':{'public_native_measurement':True,'max_attempts':3,'max_admin_host_pages':4,
+   'logical_window_bytes':65536,'outer_guards_use':'raw allocation bounds'}}
 def save():(out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 for v in [api/'crtbegin_dynamic.o',api/'crtend_android.o',api/'libc.so',builtins,
           sysroot/'usr/include/pthread.h',sysroot/'usr/include/sys/mman.h']:
@@ -50,6 +52,7 @@ for name,flags in [('normal',[]),('recovery',['-DGUEST_CONTEXT_TESTING=1'])]:
  run('host-build-'+name,['clang',*strict,*flags,source,test,'-lpthread','-o',binary])
  log=run('host-run-'+name,[binary]);case=json.loads(log.splitlines()[-1])
  if case['errors'] or case['charged_after_join'] or case['pending_after_join'] or case['memory_info_valid_fields']:raise RuntimeError('contract accounting mismatch')
+ if case['capacity_failure_cases']!=(3 if name=='recovery' else 0) or case['capacity_retry_cases']!=(1 if name=='recovery' else 0):raise RuntimeError('capacity recovery coverage mismatch')
  manifest.setdefault('host_contracts',{})[name]=case
 common=['--target=aarch64-linux-android28','--sysroot',sysroot,'-resource-dir',resource,
  '-isystem',sysroot/'usr/include/aarch64-linux-android','-fPIC',*strict]
