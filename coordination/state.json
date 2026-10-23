@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-10-23T10:20:11.387939+00:00",
-  "phase": "NATIVE_RUNTIME_AND_DIAGNOSTIC_APK_CHECKPOINT",
-  "coordinator": "Codex — integration owner; GPT-6.1 xhigh workers; CreateGoal tool unavailable",
+  "updated_at": "2026-10-23T10:41:50.279633+00:00",
+  "phase": "NATIVE_RUNTIME_STARTUP_PROFILE_IN_PROGRESS",
+  "coordinator": "Codex integration/device owner; DOC-HANDOFF-LIVE delegated sole coordination writer",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
   "active_writers": [
@@ -12,32 +12,68 @@
       "owner": "Codex coordinator — sole device operator",
       "paths": [
         ".local/device/rg477m-session1/",
-        "coordination/",
-        "docs/analysis/codex_device_report.md"
+        "docs/analysis/codex_device_report.md",
+        "docs/analysis/codex_stage_status.md",
+        "docs/analysis/codex_guest_context_report.md"
       ],
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration",
       "branch": "task/codex-integration",
       "acquired_at": "2026-10-23T09:29:16.172503+00:00",
-      "checkpoint": "8b817b6",
+      "checkpoint": "d9a1667",
       "objective": "User-connected RG477M actual install/load/JNI/Vulkan/display/leaf/compiler-runtime diagnostics; no data clear or fake full-game PASS"
     },
     {
-      "task": "T02-GUEST-PRIMARY-STACK",
+      "task": "T02-OWNED-STARTUP-PROFILE",
       "owner": "Runtime engineer",
       "paths": [
-        "src/runtime/hle/guest_context.c",
-        "src/runtime/hle/guest_context.h",
-        "tests/native/guest_context_contract.c",
-        "scripts/runtime/build_guest_context_contract.sh",
-        "docs/analysis/codex_guest_context_report.md",
-        ".local/guest-context-plan/",
-        ".local/guest-context-contract/"
+        "src/runtime/nso/nso_loader.c",
+        "src/runtime/nso/nso_loader.h",
+        "src/runtime/nso/nso_call.c",
+        "src/runtime/hle/guest_process.c",
+        "src/runtime/hle/guest_process.h",
+        "tests/native/guest_process_contract.c",
+        "scripts/runtime/build_guest_process_contract.sh",
+        "docs/analysis/codex_guest_process_report.md",
+        ".local/loader-owner-plan/",
+        ".local/guest-process/"
       ],
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-runtime",
       "branch": "task/T02-codex-runtime",
-      "acquired_at": "2026-10-23T10:12:50.581545+00:00",
-      "checkpoint": "e112d65",
-      "objective": "Real explicit-quota precharge and owned native primary pthread stack; no default budgets/Query/TLS/CRT bindings and no claimed memory-info equivalence"
+      "acquired_at": "2026-10-23T10:33:12.677393+00:00",
+      "checkpoint": "e846dc1",
+      "objective": "Implement closed explicit-policy native startup profile with module precharge, owned primary stack/ThreadRecord, real empty manager, exact Query; all unknown backing mutators strict; original nnMain next real gate"
+    },
+    {
+      "task": "DOC-HANDOFF-LIVE",
+      "owner": "Independent documentation agent (reuse Android worker; sole coordination writer until handback)",
+      "paths": [
+        "coordination/HANDOFF.md",
+        "coordination/state.json",
+        "coordination/STATUS.md",
+        "docs/analysis/codex_handoff_evidence_index.md"
+      ],
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration",
+      "branch": "task/codex-integration",
+      "acquired_at": "2026-10-23T10:33:12.677393+00:00",
+      "checkpoint": "d9a1667 + live WIP; 2026-10-23T10:38:35.220088+00:00",
+      "objective": "User explicitly requests recording in parallel with development/review; preserve current dirty coordination WIP; no runtime edits or Git mutations"
+    },
+    {
+      "task": "T04-VULKAN-BUFFER-RESOURCE",
+      "owner": "Graphics implementation engineer (reuse completed research agent)",
+      "paths": [
+        "src/graphics/vulkan/",
+        "src/graphics/vulkan_probe/vulkan_transfer_probe.c",
+        "scripts/graphics/",
+        "tests/graphics/",
+        "docs/analysis/codex_vulkan_buffer_report.md",
+        ".local/vulkan-buffer/"
+      ],
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-vulkan",
+      "branch": "task/T03B-vulkan-ops",
+      "acquired_at": "2026-10-23T10:41:50.279633+00:00",
+      "checkpoint": "2ca5d3587e43006bd0073ef4cfcad7f710f12eb8",
+      "objective": "Extract real reusable VkBuffer allocation/map/coherency/cleanup component from verified existing transfer driver; reuse existing contract, no new demo/probe/NVN ABI guesses or title claims"
     }
   ],
   "tasks": [
@@ -359,15 +395,17 @@
     {
       "id": "T02-GUEST-PRIMARY-STACK",
       "role": "CORE",
-      "status": "in_progress",
-      "owner": "Runtime engineer",
+      "status": "passed",
+      "owner": "Runtime engineer; coordinator RG contract0; independent host review PASS",
       "dependencies": [
         "T00R"
       ],
       "pass_gates": [],
       "report": "docs/analysis/codex_guest_context_report.md",
-      "branch": null,
-      "worktree": null
+      "branch": "task/T02-codex-runtime",
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-runtime",
+      "freeze_sha": "e846dc174edcb687c4e075288326c62ab10ac86e",
+      "acceptance_scope": "Owned native callback stack/quota component only; Query valid mask remains0, no loader/game binding"
     },
     {
       "id": "T02-TLS-EXIT-HOOK-ANALYSIS",
@@ -394,14 +432,110 @@
       "branch": "task/codex-integration",
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration",
       "report": "docs/analysis/codex_npdm_memory_report.md"
+    },
+    {
+      "id": "T07-GUEST-CONTEXT-REVIEW",
+      "role": "QA",
+      "status": "passed",
+      "owner": "Independent ordinary POSIX/native stack reviewer",
+      "dependencies": [
+        "T00R"
+      ],
+      "pass_gates": [],
+      "report": "docs/analysis/codex_guest_context_review.md",
+      "branch": null,
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/functional-review",
+      "freeze_sha": "e846dc174edcb687c4e075288326c62ab10ac86e",
+      "acceptance_scope": "Host production/recovery/corrected independent supplement compile0/run0; Android execution by coordinator only"
+    },
+    {
+      "id": "T04-GRAPHICS-FOUNDATION-ASSESSMENT",
+      "role": "GRAPHICS_ANALYSIS",
+      "status": "passed",
+      "owner": "Graphics feasibility analyst (completed; no new probe)",
+      "dependencies": [
+        "T00R"
+      ],
+      "pass_gates": [],
+      "report": "docs/analysis/codex_graphics_foundation_report.md",
+      "branch": null,
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/tls-research",
+      "acceptance_scope": "Bounded two-candidate source/ABI assessment only; Strato/Hades are not an NVN ABI bridge or game compatibility proof"
+    },
+    {
+      "id": "T02-OWNED-STARTUP-PROFILE",
+      "role": "CORE",
+      "status": "in_progress",
+      "owner": "Runtime engineer",
+      "dependencies": [
+        "T02-GUEST-PRIMARY-STACK"
+      ],
+      "pass_gates": [],
+      "report": "docs/analysis/codex_guest_process_report.md",
+      "branch": "task/T02-codex-runtime",
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-runtime",
+      "checkpoint": "e846dc1; loader.c/h WIP observed, not frozen",
+      "acceptance_scope": "Closed explicit-policy profile; transactional module ownership and exact seven-field Query; no complete CRT/TLS/game claim"
+    },
+    {
+      "id": "T07-STARTUP-PROFILE-REVIEW",
+      "role": "QA",
+      "status": "pending",
+      "owner": "Independent ordinary native startup profile reviewer",
+      "dependencies": [
+        "T00R"
+      ],
+      "pass_gates": [],
+      "report": "../functional-review/startup-profile/REVIEW.md",
+      "branch": null,
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/functional-review",
+      "implementation_freeze": null,
+      "execution_status": "NOT_RUNNING_NOT_RUN_WAIT_FREEZE",
+      "scope": "Read-only PLAN and profile boundary pre-review; no runtime write, ADB or stopped NSO security workflow",
+      "design_review_snapshot": "a5de2bd3",
+      "review_notes": [
+        "Invalid Query must be fatal without modifying output.",
+        "Validity and ownership must be captured in one serialized snapshot."
+      ],
+      "phase": "PRE_REVIEW_COMPLETE_AWAITING_FROZEN_IMPLEMENTATION",
+      "reserved_output_scope": "../functional-review/startup-profile/; reacquire execution lease at implementation freeze"
+    },
+    {
+      "id": "DOC-HANDOFF-LIVE",
+      "role": "DOC",
+      "status": "in_progress",
+      "owner": "Independent documentation agent (delegated sole coordination writer)",
+      "dependencies": [
+        "T00R"
+      ],
+      "pass_gates": [],
+      "report": "docs/analysis/codex_handoff_evidence_index.md",
+      "branch": "task/codex-integration",
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration",
+      "scope": "Four designated documentation/state files only; preserve inherited WIP; coordinator alone stages/commits/integrates",
+      "checkpoint_status": "PAUSED_FOR_COORDINATOR_LOCAL_COMMIT_AND_FAST_FORWARD",
+      "activity_state": "PAUSED_FOR_COORDINATOR_LOCAL_COMMIT_AND_FAST_FORWARD"
+    },
+    {
+      "id": "T04-VULKAN-BUFFER-RESOURCE",
+      "role": "GRAPHICS",
+      "status": "in_progress",
+      "dependencies": [
+        "T03A"
+      ],
+      "pass_gates": [],
+      "owner": "Graphics implementation engineer",
+      "branch": "task/T03B-vulkan-ops",
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-vulkan",
+      "report": "docs/analysis/codex_vulkan_buffer_report.md"
     }
   ],
   "blockers": [
     "完整CRT仍__nnmusl_init_dso caller+0x5920a34 exit133，SDK allocator gate0/initreturn2，原helper会写TP。Android a22d0dc guard+EH修复实跑contract0，main/malloc下一边界QueryMemoryInfo133。QueryMemoryInfo是全局SDK预算非逐地址查询，禁止用宿主maps/meminfo假填。",
     "NVN 535 名字仅两个查询入口可解析，其余 533 缺失；没有 Vulkan 资源/队列/着色器/显示转换实现。Bundled header 对其中 59 名字缺 PFN 类型，不能猜 ABI。",
     "既有 RomFS 流式工具和资源清单不等于游戏运行时挂载/IoStore 解压成功；尚未集成。保留合法本地素材，不获取新游戏或密钥。",
-    "独立 QA 代理被平台安全检查中止；停止重试，未取得完整独立验收。普通基线与未提交成果保留，不记 PASS。",
-    "完整 NDK 包校验未完成。当前真实 ARM64 构建使用 Google 官方逐项长度/CRC 已验证的部分 sysroot 与 AppleClang/RustLLD，不称完整官方 NDK 安装。",
+    "旧完整NSO安全/异常QA被平台检查中止，不重试；普通组件独立review已分别通过，不替代完整游戏QA。",
+    "完整NDK归档校验NOT_VERIFIED；Google官方部分sysroot逐成员长度/CRC验证+AppleClang/RustLLD minimal真实出包通过。额外partial CMake configure0/build2：Darwin ar/ranlib不能索引ELF，尚未配置兼容交叉归档器。",
     "环境未提供 CreateGoal / UpdateGoal 入口，未开启持久目标引擎；当前回合按完整目标执行。",
     "RG477M诊断GPU传输/owned-pages/数字L2R2与右杆实测通过；听感未确认、所需GPU更多操作/完整输入/休眠待验收。荣耀平板未接入；游戏本体未启动。"
   ],
@@ -427,7 +561,7 @@
     "444115b独立module TLS镜像已真实复制/清零/对齐/释放；主机正常多线程与映射模板验证通过；独立纯C review 32968000检查无错。未绑定HLE、未写TP，复制的指针值不证明指向对象卸载后仍有效。",
     "AVD图形探针实测Apple M5/MoltenVK Vulkan1.3，仅虚拟GPU；版本4实际显示与leaf记录在session2，不能替代Mali/Adreno/游戏渲染。",
     "TLS49 static bounded study completed:33 local exact address formations,15 selected paths,1 unknown join +0x32221bc; newly confirmed TP+0x258. All49 no matched FDE coverage, reachability/whole-path absence not proven; no gate opened.",
-    "aa8a623 canonical版本4 APK426516B SHA bb8bca99af247c52dd7f2890b81f3c2aeabc88574a7dca98c6625c23ee3bb646真实临时ARM64 AVD安装冷启动；WindowMetrics1080x2340/content1080x2138/dpi440/60.000004Hz，音频unknown0，原leaf重测16875/0。API28/29旧insets语义独立review发现P2，待修。",
+    "aa8a623 canonical版本4 APK426516B SHA bb8bca99af247c52dd7f2890b81f3c2aeabc88574a7dca98c6625c23ee3bb646真实临时ARM64 AVD安装冷启动；WindowMetrics1080x2340/content1080x2138/dpi440/60.000004Hz，音频unknown0，原leaf重测16875/0。历史API28/29 insets P2已由fbea2e7修复并集成；旧API设备实测仍NOT_RUN。",
     "14ed86a guard真实AVD：info0、nnMain/malloc越过guard到QueryMemoryInfo133；构造器/启动边界仍严格。独立8线程+异常guard contract134，stderr uncaught exception int，可能缺EH frame hdr，未验收。",
     "a22d0dc真实Android同AVD修复闭环：保留完整throw/catch/retry，guard contract0，8线程80000/初始化1/abortwinner1/异常attempts2/errors0；补.eh_frame_hdr/PT_GNU_EH_FRAME。info0；main/malloc仍QueryMemoryInfo133。没有注册guest NSO unwind或执行完整CRT。",
     "root checkpoint4690706普通host23检查均符合真实退出码（含NVN预期3、正常exit23、_Exit24），原始leaf和当前host JSON通过；不替代Android/游戏/T02验收。",
@@ -442,13 +576,18 @@
     "root fb7d870 ordinary host23checks all expected0/3/23/24, original hashes stable.",
     "NPDM actualmain-thread stack0x10000=65536B,systemresource0x1400000=20MiB distinctkernelmanagement reservation,Application class;readonly parser0/inputSHAstable. Totalguestbudget not encoded by these fields, no Query binding.",
     "TLS可空GLOBAL OBJECT hook安装/清零和普通新建线程返回OSslots→state/notify→hook→ELFdrain限定顺序闭合；790 evidence lines逐字节核验，非STB_WEAK，异常/初始线程不外推。",
-    "RG v6真实再次JNI/moduleload:LOADED_DIAGNOSTIC_ONLY，651unresolved明确未调用；report changed + fresh start/finish events verified，非沿用v5旧报告。"
+    "RG v6真实再次JNI/moduleload:LOADED_DIAGNOSTIC_ONLY，651unresolved明确未调用；report changed + fresh start/finish events verified，非沿用v5旧报告。",
+    "e846dc1真实显式quota+ownedprimary stack组件RG contract0/35.5ms/no timeout:SP verified/65536B/双guard/hostTLS/join清账，8threads2accepted6LIMIT，memory_info_valid0/errors0；production无故障hooks，mapfailurecases0。未绑定Query或game。",
+    "GuestContext e846dc1独立FINAL PASS：production/recovery/校正补测严格编译0、运行0；pending并发2 accepted/6 LIMIT、pthread析构阻塞期间保留费用、join后退款，七字段仍invalid0。初次补测未承诺的TLS析构顺序假设已纠正，保留失败1/初次child code未落盘事实；非游戏或完整QA通过。",
+    "图形底座有界评估已结束：Strato GPU ae1566a和Hades shader 8717c8f真实存在，但没有直接NVN ABI桥；需图形负责人选择生产接入边界并核清逐文件许可证。未clone/build/probe，不证明整游戏可行。",
+    "用户质疑外围投入后，停止新增外围probe；主优先级收紧为真实Query/CRT/TLS与NVN生产路径。最近16提交按主要目的粗分5直接runtime/启动链、5诊断包装、6分析记录，仅描述提交用途，不是工时、完成率或游戏进度。"
   ],
   "unverified": [
     "完整CRT/TLS/线程/guest内存上下文与真正完整入口，正式T02参考行为验收。",
     "游戏资源挂载、NVN→Vulkan后端、着色器转换、surface/present、标题与可玩场景。",
     "诊断听感、完整键轴/休眠；游戏输入/音频/存读档；荣耀平板实际身份及GPU能力。",
-    "真实场景30FPS/45分钟稳定性及完整独立QA。"
+    "真实场景30FPS/45分钟稳定性及完整独立QA。",
+    "Bundled NVN header explicitly reconstructs older53.105/Darksiders ABI; matching current game object layouts not yet proven. New generic Vulkan buffer component must not expose guessed NVN structs."
   ],
   "execution_goal": {
     "objective": "RG477M Android ARM64 native game startup and playable flow with input, audio, saves, resolution, frame pacing and stability evidence",
@@ -533,6 +672,51 @@
     "audibility": "NOT_CONFIRMED user did not notice",
     "owned_pages_evidence": ".local/device/rg477m-session1/owned-pages-execution.json",
     "install_evidence": ".local/device/rg477m-session1/install-v6-result.json",
-    "screenshot": ".local/device/rg477m-session1/audio-v6.png"
+    "screenshot": ".local/device/rg477m-session1/audio-v6.png",
+    "guest_context_evidence": ".local/device/rg477m-session1/guest-context-execution.json"
+  },
+  "parallelism_note": "10:38UTC实际runtime与doc两路running；graphics assessment及QA pre-review已完成交回，QA仅待freeze不运行。文档交此检查点后暂停，待总控提交/ff后通知恢复；writer lease不代表OS进程running。",
+  "handoff_checkpoint": {
+    "observed_at_utc": "2026-10-23T10:38:35.220088+00:00",
+    "integration_HEAD": "d9a166714fa14da68bad0e1f7d322bd174615daf",
+    "integration_branch": "task/codex-integration",
+    "original_delivery_HEAD": "253b824180667fa31ce8bdc08e94e95ebf7d4c91",
+    "runtime_HEAD": "e846dc174edcb687c4e075288326c62ab10ac86e",
+    "runtime_dirty_observed": [
+      "src/runtime/nso/nso_loader.c",
+      "src/runtime/nso/nso_loader.h"
+    ],
+    "inherited_root_WIP": [
+      "coordination/HANDOFF.md",
+      "coordination/STATUS.md",
+      "coordination/state.json",
+      "docs/analysis/codex_device_report.md",
+      "docs/analysis/codex_guest_context_report.md",
+      "docs/analysis/codex_stage_status.md"
+    ],
+    "coordination_writer": "DOC-HANDOFF-LIVE until explicit handback",
+    "pending_approval": "NONE_REPORTED",
+    "uncertain_mutation": "NONE_REPORTED",
+    "long_ADB_command": "NONE_REPORTED_BY_COORDINATOR",
+    "historical_AVD_PID_check": "ps -p 49247,63060,71987 -o pid=,comm= refused by execution sandbox, exit127; liveness not established",
+    "next_core_gate": "Frozen owned-startup profile -> independent ordinary review -> coordinator real entry next unsupported caller/exit",
+    "coordinator_latest_readonly_event": "2026-10-23 10:37 UTC: root d9a1667; original delivery253b824 clean; runtime e846dc1 with loader.c/h WIP, new profile files not yet on disk; QA design pre-review a5de2bd3, implementation not frozen.",
+    "doc_write_status": "PAUSED_AFTER_THIS_CHECKPOINT_UNTIL_COORDINATOR_RESUMES_WRITER",
+    "reported_running_at_1038_UTC": [
+      "runtime startup-profile coding",
+      "documentation checkpoint (paused after handback)"
+    ],
+    "UI_visibility": {
+      "status": "UNKNOWN",
+      "action": "cua.getApp('Codex')",
+      "result": "DENIED",
+      "reason": "Computer Use is not allowed to use the app com.openai.codex for safety reasons",
+      "screenshot_or_AX_obtained": false,
+      "retry_or_bypass": false,
+      "blocks_development": false,
+      "sidebar_tasks_created": false,
+      "internal_agent_ids_are_sidebar_tasks": false
+    },
+    "index_written": true
   }
 }

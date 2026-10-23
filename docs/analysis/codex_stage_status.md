@@ -8,7 +8,7 @@
 | 资源 | 合法既有素材、清单与流式工具保留；APK JNI 已实际加载125577976B主模块。 | 运行时文件系统挂载、资源解压和实际游戏资源使用。 |
 | Android APK | canonical v6、451092B，SHA256 4b40d3896ac9d8f7cb9069df81dd4d30148d030dda3cbaf449ba9a9b02a74e0a；clean fb7d870 源码、35构建步骤0，签名/DEX/JNI/16KiB LOAD/EH索引检查通过。RG 更新安装0、冷启动195ms，旧事件与leaf保留。 | 仍是诊断宿主，APK不执行完整游戏。工具链是逐成员CRC验证的部分官方NDK sysroot，完整NDK归档校验未完成。 |
 | GPU / 标题 | RG Mali-G615 MC6/Vulkan1.3.247；实际64KiB buffer copy及8×8 RGBA image clear/readback零差异，31 VkResult均0。 | 着色器、surface/present、descriptor indexing等真实所需操作、NVN转换和标题。NVN仅2/535查询名字，533缺失；不平均铺假桩。 |
-| 内存 / C++ ABI | RG owned-pages正常契约0，8线程×32周期、32释放竞争、4KiB清零重映射、账本归零；主机另独立审查rollback/quarantine通过。RG C++ guard 8线程80000调用、初始化1、异常重试2、errors0。 | Pages尚未绑定SDK；虚拟预留62GiB不等于实体内存。Guest配额、module/专属栈/page/heap/thread归属及Query七字段尚未闭合；guest NSO unwind未注册。 |
+| 内存 / C++ ABI | RG owned-pages正常契约0，8线程×32周期、32释放竞争、4KiB清零重映射、账本归零；主机另独立审查rollback/quarantine通过。RG C++ guard 8线程80000调用、初始化1、异常重试2、errors0。 | Pages尚未绑定SDK；虚拟预留62GiB不等于实体内存。显式配额ticket与真实64KiB专属栈的独立组件已在RG通过（SP/guard/TLS/join/并发），但module/page/heap/thread归属及Query七字段尚未闭合；guest NSO unwind未注册。 |
 | 可玩场景 | NOT_RUN。 | 完整启动、标题、场景、操作流程与正常退出。 |
 | 输入 / 音频 / 保存 | 用户实际操作：方向/B/左杆；补测右杆Z/RZ均[-1,1]、L2/R2按键事件。公开InputDevice识别retrogame_joypad。显式0.25秒音频探针实际48000Hz、12000写入及播放推进、扬声器路由、stop/release正常。 | 游戏映射未实现；扳机模拟轴本次仍0，只有数字键证据。人回复提示音“刚才没注意”，听感未确认。游戏音频、游戏存读档、休眠恢复NOT_RUN。临时文件不是游戏存档。 |
 | 真机 / 性能 | RG已连接并执行上述诊断；Android14/API34/ARM64/nativebridge0/4KiB。实测窗口1280×960、内容1280×918、280dpi。 | 当前120Hz是面板刷新率；游戏30FPS/45分钟稳定性NOT_RUN。荣耀平板未接入；按实际内容区等比例留边要求保留。 |

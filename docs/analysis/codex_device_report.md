@@ -13,6 +13,7 @@
 | 原始leaf | 真机16875比较0差异，无构造器；main+0x694bd0原始44B | 不是完整T02或游戏 |
 | C++ ABI | 8线程80000次，构造1、abort竞争winner1、异常重试2、errors0，exit0 | 仅host compiler-runtime契约，guest NSO unwind未注册 |
 | 内存页 | e112d65独立owned-pages正常契约exit0，4KiB，8线程×32，32释放竞争，mapped0/validtrue/errors0；62GiB仅虚拟预留，实际映射4096B | 未绑定SDK。受控VM失败只在主机测试，真机没有故障注入。懒映射计量不是物理resident预算 |
+| 独占主栈 / 配额 | e846dc1组件真机exit0，真实SP位于65536B栈、双guard/TLS/join清账通过，8线程2accepted/6LIMIT，pending=charged=0/errors0 | 只验证显式fixture配额；Query七字段valid_mask0，无游戏入口，无真机故障注入 |
 | 严格CLI | production info0；nnMain/malloc QueryMemoryInfo +0x27a50/+0x1398c exit133；CRT __nnmusl_init_dso +0x5920a34/133；startup AllocateTlsSlot +0x133a0/133，无超时 | 独立调用定位阻塞，完整CRT和游戏启动未完成 |
 | APK JNI | main.nso125577976B，651imports、4612RELA、1370974RELR，LOADED_DIAGNOSTIC_ONLY | NULLresolver，只load_and_relocate，不调用imports/constructors/entry |
 | 输入能力 | v5公开InputDevice枚举完整，1逻辑gamepad id5 retrogame_joypad；左X/Y、右Z/RZ、HAT及触发轴能力 | 能力表不是物理操作或游戏映射验收；raw-node旧探针空列表误报已修 |
@@ -29,6 +30,7 @@ Canonical APK位于原交付目录 `.local/artifacts/android/ffrs-diagnostic-deb
 | production HLE CLI source8b817b6 | 558000 | 5cf82020353e061f3c2cef4fd2dd4cb417dbb3eb883460ecd688bb1b1ff89853 |
 | C++guard sourcea22d0dc | 542984 | 0b627417417bf09595e7b869f0501efd26087a2144c0aa15a53fc02c77bec14c |
 | Vulkan操作ELF | 174856 | 6e66aced9f0db6e67db754a2122be75febd51173d005515a831f9c60c36869b8 |
+| GuestContext e846dc1 ELF | 72160 | e3d3500d9919d5aad1c67385802635fdaa29df4c340bc8529507ce2fb30d6ec1 |
 | owned-pages e112d65 ELF | 89936 | d95b592eedbcd35b9c30283a529222860f38f232e81f8dc0d5a96e697ea45a94 |
 
 主模块SHA256 6e6d1f3cd1672243e2ed344cc1b8849b85437d41bdecec81a5f9181e472d68a5，未改变。shell诊断目录为新建 `/data/local/tmp/ffrs-rg477m-efd1123620814764ae32529c18081259`；安装/复制均摘要回读，模块独占创建并只读。adb exec-out的远端错误可能返回0，证据需解析JSON/长度/摘要，不能只看宿主退出码。

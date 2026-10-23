@@ -95,3 +95,21 @@ SHA-256 e3d3500d9919d5aad1c67385802635fdaa29df4c340bc8529507ce2fb30d6ec1.
 Android execution is pending the coordinator; this agent operated no device.
 No module/page budget integration or seven-field Query bridge exists yet. Game
 QueryMemoryInfo/CRT/TLS barriers and full T02 remain unresolved by this unit.
+
+## Coordinator actual RG477M run
+
+The frozen e846dc1 Android artifact above was hash-verified, staged to a fresh
+hash-named file under the existing owned diagnostic directory and executed on
+user-authorized RG477M Android14 ARM64/nativebridge0/4KiB. Actual exit0, no
+timeout, elapsed0.0355s: 65536B stack, actual SP verified, both guards/TLS/join
+checks passed; eight quota contenders accepted2/limited6; charged_after_join0,
+pending_after_join0, memory_info_valid_fields0, errors0. Production binary has
+no test hooks and map_failure_rollback_cases=0; no device fault injection claimed.
+This device evidence is coordinator execution, separate from author host tests
+and independent reviewer host execution. Raw index:
+.local/device/rg477m-session1/guest-context-{plan,stage,execution}.json and
+guest-context.stdout/stderr. Initial coordinator plan validation misspelled
+returncode as exit_code and stopped before device actions; corrected against
+the actual run_capture schema. No denied, pending or uncertain device mutation.
+
+Independent frozen-source host review completed PASS: see codex_guest_context_review.md. Reviewer retained two failures caused by an inapplicable test-only TLS teardown-order assumption; author source and original contract were unchanged. Ordinary corrected supplement confirms charge/active survive pthread-key destructor work until native join, then refund. This is not SDK thread lifecycle acceptance.
