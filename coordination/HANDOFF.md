@@ -1,93 +1,102 @@
-# 当前接力入口 (Handover to Claude Code)
+# 当前接力入口 (Round 1 — Claude Code 总控)
 
-## 1. 任务完成与状态恢复
-
-- **总控交接状态**：Antigravity 已完成 T00 基线验收及交接检查点收口；已核实无后台活动写者及长进程；已停止本轮所有写入操作，等待 Claude Code 接管。
-- **状态模型漂移修复**：已在 `coordination/state.json` 中完整恢复 `T03A`（宿主交叉构建）与 `T03B`（真机验证）的拆分结构。
-  - `T03A` 依赖 `T00`，状态 `ready`；
-  - `T03B` 依赖 `T03A`，验收受 `BLOCKED_DEVICE` 门禁约束；
-  - `T04` 启动依赖 `T02` 与 `T03A`，验收门禁为 `T03B`（缺设备可推进主机实现与交叉构建，真机标题验收仍须 T03B 通过）。
+> 本文件是**总控独占写**的交接入口。`coordination/state.json` 与本文件由 Claude Code (Fable 5) 独占维护；
+> 其他 Agent 只在自己的分支/工作区写自己被授权的路径。`coordination/STATUS.md` 由 `scripts/project_status.py --write` 生成，不手工编辑。
 
 ---
 
-## 2. Git 状态与检查点
+## 1. 总控登记与接管核验（2026-10-23）
 
-- **当前分支**：`work/rg477m-native`
-- **当前 HEAD**：`ff881e99565f79b36ecd42ee952e4c9c41e75485`（待完成本轮提交）
-- **Dirty / Untracked 清单**：
-  - Tracked 修改：`coordination/state.json`、`coordination/HANDOFF.md`、`coordination/STATUS.md`
-  - 新增审查文件：`scripts/t00_verify.py`、`evidence/t00_verification.json`、`docs/analysis/t00_baseline_report.md`
-  - 未跟踪/私有生成内容：严格隔离在 `.local/`，已在 `.gitignore` 忽略，不含任何未追踪私有脏数据泄露到 Git。
+- **总控**：Claude Code (Fable 5)，唯一总控与集成人。接管自 Antigravity 的交接检查点。
+- **接管方式**：Antigravity 已停止写入并释放占用；Claude Code 在 `b26bf15` 基础上核验现场、登记总控、创建第一轮工作区并派工。
+- **集成分支**：`work/rg477m-native`（根交付分支）。本总控在 `claude/laughing-cray-3464b0` 工作区编辑，**检查点式合并**进 `work/rg477m-native`。
 
----
+### 1.1 现场实测（与交接记录比对）
 
-## 3. T00 实际证据与覆盖范围
+| 项 | 交接记录 | 实测 | 判定 |
+|---|---|---|---|
+| HEAD | `ff881e9`（HANDOFF 写的是"待完成本轮提交"） | `b26bf15` | 交接文档的 HEAD 引用**过期**；实际提交已包含 T00 全部产物 |
+| 分支 | `work/rg477m-native` | `work/rg477m-native` + 本总控分支 + 3 个任务分支 | 一致 |
+| 工作区 | clean | 主检出 clean；本工作区 clean（接管前） | 一致 |
+| `active_writers` | 空 | 空 | 一致，无遗留写者 |
+| 后台长进程 | 无 | 未发现遗留 Ghidra/hactool/build 进程 | 一致 |
 
-### 3.1 游戏包全量哈希 (Whole-package SHA-256)
-- 本体 `[本体v1.0.0][0100B8A026F14000][22.1.0][中文][HK].nsp` (9,061,339,984 B)：`02b61f9fe88cb8b04e948dffbfa15eaadbd7f8a6bd45b53960a66812cf8a325e`
-- 升级档 `[升级档v1.0.1][0100B8A026F14800][22.5.0][中文][HK].nsp` (143,005,520 B)：`a31ebd0a1f416321da0b32ec0e519b337f0b322d9f00209d6bc1695a14cde06b`
-- DLC `[DLC][0100B8A026F15002][v0][HK][見習騎士起步衝刺包].nsp` (121,040 B)：`17631319c1fad16a93ef5cdda58713a5e9b61b1601d7de6cf52b8e26b2fb4a49`
+**结论：交接基线成立，无新增未提交工作需要保护。未执行 reset / clean / stash。**
 
-### 3.2 已提取工件与本地摘要 (置于 `.local/exefs/`)
-利用 Ticket 中的 Rights ID (`0100b8a026f140000000000000000016`) 与 `titlekek_15` 解密 Program NCA Section 0，定向提取 ExeFS 分区（总计 71.45 MB），无需解包 8.5 GB RomFS：
-- `main` (65,285,909 B, SHA-256: `5fd6cfaf554672d1364f519d0a93b33cffdd81a3e3f0cf96b8ddc599f579b570`, BuildId: `736837AFD390442ED7C74A7DE730E71B00000000000000000000000000000000`)
-- `main.npdm` (1,620 B, SHA-256: `a39b66ed07bcb7b2730a9bbd37ec9afe968dd28d6e3d5f4d7794c3528c1b3f95`)
-- `rtld` (10,109 B, SHA-256: `4a520d568bbc0e584bc2da5f3250f81f28d09562f7b4b5f57365b970907b709c`)
-- `sdk` (6,200,384 B, SHA-256: `56af5073788dc1975b5186afafcdcbc0ab0f2f9b40b9d483e8747fd649bd8f8e`)
-- `subsdk0` (3,367,524 B, SHA-256: `017fa4eea05892b997ef749077a9c38ebede7bafa648c7a4a794d297d5e58be3`，multimedia 模块)
-- 解压后二进制镜像：`.local/uncompressed/main.bin` (125,577,976 B, 119.76 MB)
+### 1.2 轻量证据复核（复用 T00，未重做昂贵步骤）
 
----
+- **ExeFS 五个工件 SHA-256 现场重算**，与 `evidence/t00_verification.json` **逐项一致**：
+  `main`=`5fd6cfaf…f579b570`、`main.npdm`=`a39b66ed…1b3f95`、`rtld`=`4a520d56…7b709c`、`sdk`=`56af5073…bd8f8e`、`subsdk0`=`017fa4ee…3e58be3`。
+- **未重算 9 GB NSP 哈希**（无必要且昂贵）；NSP 仅核对文件存在与大小。
+- **发现（已交 Agent C 独立复核）**：`scripts/t00_verify.py` 的 `engine` 与 `toolchain` 两段是**硬编码字面量**，不是从二进制派生的证据；且该脚本会**无条件覆盖** `evidence/t00_verification.json`。T00 的引擎结论目前属"报告结论 + 直证字符串"，**自动化验证尚未建立**。
 
-## 4. 引擎身份：直接证据与推断区分
+### 1.3 宿主环境实测
 
-- **直接确凿证据 (Direct Evidence)**：
-  1. 内部构建项目路径与目标工件直接写入二进制：`E:/workspace/mucha/mucha/Binaries/Switch/FFRS-Switch-Shipping.nss`，项目代号为 `mucha`。
-  2. 源码树痕迹直读：`Source/mucha/GameInstance/CPP_MuchaGameInstance.cpp`、`Source/mucha/Unit/CPP_Unit.h`、`Source/mucha/Task/CPP_Task.h`、`Source/mucha/UI/...`。
-  3. Unreal Engine UObject 导出表与命名空间：`/Script/mucha`、`/Script/Engine`、`/Script/Slate`、`/Script/EnhancedInput`、`/Script/CommonUI`、`/Script/IrisCore`。
-  4. 底层图形与音频直接符号：`nvnDeviceInitialize`、`nvnQueueInitialize` (Nintendo NVN)；`CriAtom`、`CriMana` (CRIWARE)；`OodleLZ`、`OodleNetworkHandlerComponent`。
-  5. 明确特征枚举值：`EChaosVDAABBTreeNodeFlags::IsDirty`（Chaos Visual Debugger，在 UE 5.4 正式引入并提供运行时支持）。
-- **推断部分 (Inferred)**：
-  - 核心引擎版本推断为 **Unreal Engine 5.4.x**（基于 `ChaosVDRuntime` + `IrisCore` + `DataflowEngine` + `UniversalObjectLocator` 的同时存在，排除 5.2 及更早版本；具体补丁小版本如 5.4.1/5.4.2 需待源码符号深入核对）。
+- `adb devices` → **无设备**。真机项一律 `NOT_RUN` / `BLOCKED_DEVICE`。
+- Android SDK 根 `/Users/yuyan9923/Library/Android/sdk`：有 `cmdline-tools`/`platform-tools`/`emulator`/`licenses`/`system-images`；
+  **缺 `ndk/`、`build-tools/`、`platforms/`、`cmake/`**；系统 `cmake` 不在 PATH。
+- 工具就位：`hactool`、`ghidra-headless`(Ghidra 12.1.4 + Switch Loader)、`rea` 6.5.0、`adb`、`ninja`。
+- **磁盘仅余约 18 GiB（98% 已用）** → 重型占用（NDK 安装、Ghidra 工程）必须**串行**并及时回收。
 
 ---
 
-## 5. 失败尝试、避坑记录与存活进程
+## 2. 第一轮工作区、写入占用与分支
 
-- **失败尝试 1**：早期测试时使用 `hactool` 检查 header 报 `Failed to read section`。
-  - *原因定位*：单独切片 16KB header 时，hactool 默认会 seek 至 section 内部校验 hash table，遇到 EOF 导致报错。
-  - *处置*：编写直接解析 NCA FS Header 的流式解密算法，准确定位 `pfs0_offset = 0xc000` 并通过 `titlekek_15` 完成解密。
-- **失败尝试 2**：Ghidra Headless 项目路径带 `.`（如 `.local`）时直接异常中止。
-  - *原因定位*：Ghidra 内部 `NamingUtilities.checkName` 严禁项目路径元素以点开头。
-  - *处置*：Ghidra 分析工程目录必须指向无点路径（如系统临时目录或非隐藏目录）。
-- **存活进程核查**：经 `manage_task` 与系统进程查询，**无任何存活后台长进程、无挂起任务**。
+| Agent | 任务 | 工作区 | 分支 | 授权写入范围 |
+|---|---|---|---|---|
+| A (RE) | T01 | `.claude/worktrees/t01-route` | `task/T01-route` | `docs/analysis/route.md`、`docs/analysis/t01_*.md`、`tools/`、`evidence/t01/` |
+| B (ANDROID) | T03A | `.claude/worktrees/t03a-android` | `task/T03A-android` | `src/android/`、`scripts/device/`、`tests/device/`、`docs/analysis/t03a_build_report.md` |
+| C (QA) | T00R | `.claude/worktrees/t00-qa-review` | `task/T00-qa-review` | `coordination/reports/T00R-evidence-review.md`、`tests/acceptance/`、`docs/analysis/acceptance_matrix.md` |
 
----
-
-## 6. 自测与独立 QA 分开记录
-
-- **实现者自测 (Antigravity Self-Test)**：
-  - `python3 scripts/t00_verify.py`：通过，SHA-256 全量核验及元数据提取 100% 成功。
-  - `hactool` / `ghidra-headless` 导入自测：通过，成功识别 AARCH64 NSO 并建立段表。
-- **独立 QA 验收**：
-  - **NOT_RUN**：T00 仅为总控与环境自检，QA 独立验收按计划在 T07 或各阶段 Gate 执行，不伪造独立 QA PASS。
+- 三个工作区均以 `work/rg477m-native@b26bf15` 为基线创建，各自独立分支，**互不共享工作区**。
+- 每个工作区的 `.local` 软链到主仓库 `.local/`（已 gitignore），私有日志按 `.local/agent-a|b|c/` 分隔，避免并发覆盖。
+- **Ghidra 工程目录禁用点开头路径元素**（T00 已踩 `NamingUtilities.checkName`）：统一用 `/Users/yuyan9923/ffrs-scratch/ghidra/`。
+- 三个 Agent 均被告知：**禁止 `git add .`**、禁止推送远端、禁止改 `coordination/` 与 `TASKS.md`、禁止打印密钥。
 
 ---
 
-## 7. 当前阻塞与下一步前三条精确命令
+## 3. 总控裁决（对后续 T02/T04 的口径约束）
 
-- **当前阻塞**：RG477M 真机未连接，真机能力项保持 `BLOCKED_DEVICE`；不阻塞 T01/T03A。
-- **下一位 (Claude Code) 启动的前三条精确命令**：
-  1. 核实状态与工作区（确认 clean / commit 状态）：
-     ```sh
-     git status && python3 scripts/project_status.py
-     ```
-  2. 接管总控角色并派发 T01（逆向路线评估）：
-     ```sh
-     git checkout -b task/T01-re-route work/rg477m-native
-     ```
-  3. 读取反编译分析环境与 ExeFS 目标并开始路线评估：
-     ```sh
-     cat docs/analysis/t00_baseline_report.md
-     ls -la .local/exefs/
-     ```
+1. **"原生执行"的操作化定义**（写给实现者，避免自我降格）：
+   - 合格：游戏派生代码由 NDK 编译为 arm64-v8a 原生代码并真实执行；或原作 ARM64 代码在**不经解释器/JIT**的前提下由自研原生加载器执行，且平台 API 由自研兼容层承接。
+   - 不合格：运行时通用 CPU 解释器或 JIT；把 Ryujinx 等模拟器套壳；串流/视频/硬编码菜单/空窗口。
+   - **验收不能只看进程名或"没有 JIT"**：需同时给出「源模块/地址 ↔ 实现对应」「构建链与 ABI」「原生库符号与执行路径」「已加载模块/进程检查」「真实行为对照」。
+2. **行为对照必须有参照物**：任何"重建代码行为正确"的结论，必须附**同输入下的原始行为对照**，否则只算"看起来对"。
+3. **主机执行 ≠ 真机执行**：Mac 上的样例通过只证明该样例；Android 侧只证明交叉构建产物存在。真机项在 T03B 通过前保持 `NOT_RUN`。
+4. **证据不可覆盖**：原始证据只追加不覆盖；重跑会覆写证据文件的脚本必须改输出路径后执行（见 1.2）。
+5. **资源调度**：Ghidra 大工程与 NDK 安装**串行**；每轮只允许一个重型分析工程。
+
+---
+
+## 4. 当前阶段与门禁
+
+- T00 `passed`（已复核关键工件哈希）；T00R / T01 / T03A `in_progress`。
+- T02 依赖 T01；T04 启动依赖 T02+T03A，**验收门禁 T03B**（无设备时不得标记真机标题画面 PASS）。
+- 阻塞项：`BLOCKED_DEVICE`（RG477M 未连接）+ 磁盘余量偏紧。
+
+---
+
+## 5. 下一步前三条精确命令
+
+```sh
+cd /Users/yuyan9923/GitHub/ff-resonance-rg477m-native/.claude/worktrees/laughing-cray-3464b0 && python3 scripts/project_status.py
+```
+
+```sh
+git -C /Users/yuyan9923/GitHub/ff-resonance-rg477m-native worktree list && git -C /Users/yuyan9923/GitHub/ff-resonance-rg477m-native branch -v
+```
+
+```sh
+git -C /Users/yuyan9923/GitHub/ff-resonance-rg477m-native log --oneline -5 work/rg477m-native
+```
+
+---
+
+## 6. 收口检查项（本轮交接前必须逐条确认）
+
+- [ ] 各子 Agent 是否已结束（或已明确转移写入占用）
+- [ ] 每个工作区是否已提交或有明确的未提交 WIP 记录
+- [ ] 长进程（构建/Ghidra/安装）是否已结束并落盘日志
+- [ ] `state.json` 的 `active_writers` 与实际占用一致
+- [ ] `HANDOFF.md` / `state.json` / `STATUS.md` 已更新且 `python3 scripts/project_status.py --write` 已跑通
+- [ ] 明确写出"当前是否只有一个总控"

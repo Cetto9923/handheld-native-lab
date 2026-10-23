@@ -1,12 +1,54 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-10-23T12:32:45+08:00",
-  "phase": "T00_PASSED_HANDOVER_TO_CLAUDE_CODE",
-  "coordinator": "Antigravity (Handover checkpoint complete, writes stopped; pending Claude Code takeover)",
+  "updated_at": "2026-10-23T12:40:00+08:00",
+  "phase": "ROUND1_DISPATCHED_T01_T03A_T00R",
+  "coordinator": "Claude Code (Fable 5) — 唯一总控；2026-10-23 接管 Antigravity 交接，已核验现场并派工",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
-  "active_writers": [],
+  "active_writers": [
+    {
+      "task": "T01",
+      "owner": "Agent A (RE)",
+      "paths": [
+        "docs/analysis/route.md",
+        "docs/analysis/t01_*.md",
+        "tools/",
+        "evidence/t01/"
+      ],
+      "worktree": ".claude/worktrees/t01-route",
+      "branch": "task/T01-route",
+      "acquired_at": "2026-10-23T12:39:00+08:00",
+      "checkpoint": "baseline b26bf15"
+    },
+    {
+      "task": "T03A",
+      "owner": "Agent B (ANDROID)",
+      "paths": [
+        "src/android/",
+        "scripts/device/",
+        "tests/device/",
+        "docs/analysis/t03a_build_report.md"
+      ],
+      "worktree": ".claude/worktrees/t03a-android",
+      "branch": "task/T03A-android",
+      "acquired_at": "2026-10-23T12:39:00+08:00",
+      "checkpoint": "baseline b26bf15"
+    },
+    {
+      "task": "T00R",
+      "owner": "Agent C (QA, 只读复核)",
+      "paths": [
+        "coordination/reports/T00R-evidence-review.md",
+        "tests/acceptance/",
+        "docs/analysis/acceptance_matrix.md"
+      ],
+      "worktree": ".claude/worktrees/t00-qa-review",
+      "branch": "task/T00-qa-review",
+      "acquired_at": "2026-10-23T12:39:00+08:00",
+      "checkpoint": "baseline b26bf15"
+    }
+  ],
   "tasks": [
     {
       "id": "T00",
@@ -20,17 +62,30 @@
       "report": "docs/analysis/t00_baseline_report.md"
     },
     {
-      "id": "T01",
-      "role": "RE",
-      "status": "ready",
+      "id": "T00R",
+      "role": "QA",
+      "status": "in_progress",
       "dependencies": [
         "T00"
       ],
       "pass_gates": [],
-      "owner": null,
-      "branch": null,
-      "worktree": null,
-      "report": null
+      "owner": "Agent C (QA)",
+      "branch": "task/T00-qa-review",
+      "worktree": ".claude/worktrees/t00-qa-review",
+      "report": "coordination/reports/T00R-evidence-review.md"
+    },
+    {
+      "id": "T01",
+      "role": "RE",
+      "status": "in_progress",
+      "dependencies": [
+        "T00"
+      ],
+      "pass_gates": [],
+      "owner": "Agent A (RE)",
+      "branch": "task/T01-route",
+      "worktree": ".claude/worktrees/t01-route",
+      "report": "docs/analysis/route.md"
     },
     {
       "id": "T02",
@@ -48,15 +103,15 @@
     {
       "id": "T03A",
       "role": "ANDROID",
-      "status": "ready",
+      "status": "in_progress",
       "dependencies": [
         "T00"
       ],
       "pass_gates": [],
-      "owner": null,
-      "branch": null,
-      "worktree": null,
-      "report": null
+      "owner": "Agent B (ANDROID)",
+      "branch": "task/T03A-android",
+      "worktree": ".claude/worktrees/t03a-android",
+      "report": "docs/analysis/t03a_build_report.md"
     },
     {
       "id": "T03B",
@@ -128,7 +183,8 @@
     }
   ],
   "blockers": [
-    "RG477M 真机尚未连接或验证；真机实测项保持 BLOCKED_DEVICE 门禁，不阻塞主机交叉构建。"
+    "RG477M 真机尚未连接或验证；真机实测项保持 BLOCKED_DEVICE 门禁，不阻塞主机交叉构建。",
+    "宿主可用磁盘仅约 18 GiB；Android NDK + Ghidra 工程属重型占用，需串行并及时回收，禁止并发铺开多个大分析工程。"
   ],
   "verified": [
     "协作项目初始化与总控接管",
@@ -136,13 +192,16 @@
     "内部元数据已从 NACP/NPDM 提取：Title 0100B8A026F14000, 内部项目名 mucha (FFRS), SQUARE ENIX, v1.0.0",
     "ExeFS 关键二进制定向提取完成 (.local/exefs/，含 main, main.npdm, sdk, subsdk0, rtld)",
     "游戏引擎直接证据：Unreal Engine 5.4 (Shipping工件 FFRS-Switch-Shipping.nss, 项目代号 mucha, 含 EChaosVDAABBTreeNodeFlags, EnhancedInput, CommonUI, CRIWARE, Oodle, NVN)",
-    "逆向工具链实测：hactool 正常解析，Ghidra 12.1.4 + Switch Loader 成功导入识别 NSO0 (AARCH64:LE:64:v8A)"
+    "逆向工具链实测：hactool 正常解析，Ghidra 12.1.4 + Switch Loader 成功导入识别 NSO0 (AARCH64:LE:64:v8A)",
+    "2026-10-23 接管复核：5 个 ExeFS 工件 SHA-256 与 evidence/t00_verification.json 逐项一致（轻量复核，未重算 9GB NSP）",
+    "2026-10-23 接管复核：adb devices 无设备；Android SDK 存在但缺 NDK/build-tools/platforms/cmake，T03A 需按路线安装"
   ],
   "unverified": [
     "本游戏原生代码重编译/重建样例 (T02)",
     "Android ARM64 APK 宿主 (T03A)",
     "RG477M 实际 Vulkan/驱动/硬件能力 (T03B/BLOCKED_DEVICE)",
     "真机画面/输入/音频",
-    "帧率与45分钟稳定性"
+    "帧率与45分钟稳定性",
+    "T01 技术路线判定（Agent A 产出中）"
   ]
 }
