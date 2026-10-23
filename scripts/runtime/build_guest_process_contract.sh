@@ -103,6 +103,7 @@ run('host-fs-open-file-contract',[out/'guest_process_contract.host','--fs-open-f
 run('host-aoc-contract',[out/'guest_process_contract.host','--aoc'])
 run('host-nifm-contract',[out/'guest_process_contract.host','--nifm'])
 run('host-socket-contract',[out/'guest_process_contract.host','--socket'])
+run('host-account-contract',[out/'guest_process_contract.host','--account'])
 run('host-logf-contract',[out/'guest_process_contract.host','--logf'])
 run('host-strcasecmp-contract',[out/'guest_process_contract.host','--strcasecmp'])
 run('host-va-enabled-contract',[out/'guest_process_contract.host','--va-enabled',out/'contract.nso'])

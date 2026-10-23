@@ -105,6 +105,9 @@ bool nso_host_nifm_is_initialized(void);
 
 int32_t nso_host_socket_initialize(void *work_buffer, size_t work_buffer_size, size_t allocator_size, int32_t concurrency);
 bool nso_host_socket_is_initialized(void);
+
+int32_t nso_host_account_initialize(void);
+bool nso_host_account_is_initialized(void);
 #ifdef __cplusplus
 }
 #endif

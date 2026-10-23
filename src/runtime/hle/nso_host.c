@@ -1122,6 +1122,18 @@ bool nso_host_socket_is_initialized(void) {
     return s_socket_initialized;
 }
 
+static bool s_account_initialized = false;
+
+int32_t nso_host_account_initialize(void) {
+    s_account_initialized = true;
+    fprintf(stderr, "[hle] nn::account::Initialize: initialized account system -> returning 0\n");
+    return 0;
+}
+
+bool nso_host_account_is_initialized(void) {
+    return s_account_initialized;
+}
+
 void nso_host_set_extension_resolver(nso_import_fn resolver) {extension_resolver=resolver;}
 uint64_t nso_host_resolve(uint32_t index,const char *name) {
     if(!name)return 0;
@@ -1172,6 +1184,8 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_nifm_initialize;
     if(!strcmp(name,"_ZN2nn6socket10InitializeEPvmmi") || !strcmp(name,"nnsocketInitialize"))
         return (uint64_t)(uintptr_t)&nso_host_socket_initialize;
+    if(!strcmp(name,"_ZN2nn7account10InitializeEv") || !strcmp(name,"nnaccountInitialize"))
+        return (uint64_t)(uintptr_t)&nso_host_account_initialize;
     if(!strcmp(name,"_ZN2nn4util11ReferSymbolEPKv") || !strcmp(name,"nnutilReferSymbol"))
         return (uint64_t)(uintptr_t)&refer_symbol;
     if(!strcmp(name,"_ZN2nn4util12GenerateUuidEv"))

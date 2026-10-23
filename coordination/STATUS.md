@@ -1,8 +1,8 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-10-23T22:21:30.000000+00:00
-阶段：T02_SOCKET_INIT_PASSED_ACCOUNT_INIT_REACHED_ON_RG477M: nn::socket::Initialize verified on RG477M; GameThread advanced to nn::account::Initialize (symbol index 364, GOT 0x7772ae8, lr offset 0x352f53c)
-总控：Antigravity sole root coordinator — P-AG-10 socket::Initialize closed; frontier advanced to nn::account::Initialize (symbol index 364, GOT 0x7772ae8, exit 133)
+状态事件时间：2026-10-23T22:40:00.000000+00:00
+阶段：T02_ACCOUNT_INIT_PASSED_FS_OPENDIRECTORY_REACHED_ON_RG477M: nn::account::Initialize verified on RG477M; GameThread advanced to nn::fs::OpenDirectory (symbol index 37, GOT 0x7772120, caller offset 0x11c40, lr offset 0x11c44)
+总控：Antigravity sole root coordinator — P-AG-11 account::Initialize closed; nn::fs::OpenDirectory reached (symbol index 37, GOT 0x7772120, exit 133); log .local/logs/rg477m-boot-v27-accountinit.log
 更新方式：按事件更新，没有后台自动刷新。
 
 | 任务 | 角色 | 状态 | 实际负责人 | 启动依赖 | 验收门禁 | 分支 |
