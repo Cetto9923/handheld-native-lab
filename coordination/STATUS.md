@@ -1,6 +1,6 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-10-23T10:41:50.279633+00:00
+状态事件时间：2026-10-23T10:45:33.426643+00:00
 阶段：NATIVE_RUNTIME_STARTUP_PROFILE_IN_PROGRESS
 总控：Codex integration/device owner; DOC-HANDOFF-LIVE delegated sole coordination writer
 更新方式：按事件更新，没有后台自动刷新。
@@ -45,12 +45,12 @@
 
 - {"task": "T03B-RG477M-DIAGNOSTIC", "owner": "Codex coordinator — sole device operator", "paths": [".local/device/rg477m-session1/", "docs/analysis/codex_device_report.md", "docs/analysis/codex_stage_status.md", "docs/analysis/codex_guest_context_report.md"], "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration", "branch": "task/codex-integration", "acquired_at": "2026-10-23T09:29:16.172503+00:00", "checkpoint": "d9a1667", "objective": "User-connected RG477M actual install/load/JNI/Vulkan/display/leaf/compiler-runtime diagnostics; no data clear or fake full-game PASS"}
 - {"task": "T02-OWNED-STARTUP-PROFILE", "owner": "Runtime engineer", "paths": ["src/runtime/nso/nso_loader.c", "src/runtime/nso/nso_loader.h", "src/runtime/nso/nso_call.c", "src/runtime/hle/guest_process.c", "src/runtime/hle/guest_process.h", "tests/native/guest_process_contract.c", "scripts/runtime/build_guest_process_contract.sh", "docs/analysis/codex_guest_process_report.md", ".local/loader-owner-plan/", ".local/guest-process/"], "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-runtime", "branch": "task/T02-codex-runtime", "acquired_at": "2026-10-23T10:33:12.677393+00:00", "checkpoint": "e846dc1", "objective": "Implement closed explicit-policy native startup profile with module precharge, owned primary stack/ThreadRecord, real empty manager, exact Query; all unknown backing mutators strict; original nnMain next real gate"}
-- {"task": "DOC-HANDOFF-LIVE", "owner": "Independent documentation agent (reuse Android worker; sole coordination writer until handback)", "paths": ["coordination/HANDOFF.md", "coordination/state.json", "coordination/STATUS.md", "docs/analysis/codex_handoff_evidence_index.md"], "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration", "branch": "task/codex-integration", "acquired_at": "2026-10-23T10:33:12.677393+00:00", "checkpoint": "d9a1667 + live WIP; 2026-10-23T10:38:35.220088+00:00", "objective": "User explicitly requests recording in parallel with development/review; preserve current dirty coordination WIP; no runtime edits or Git mutations"}
+- {"task": "DOC-HANDOFF-LIVE", "owner": "Independent documentation agent (reuse Android worker; sole coordination writer until handback)", "paths": ["coordination/HANDOFF.md", "coordination/state.json", "coordination/STATUS.md", "docs/analysis/codex_handoff_evidence_index.md"], "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration", "branch": "task/codex-integration", "acquired_at": "2026-10-23T10:33:12.677393+00:00", "checkpoint": "11e8611; resumed event-driven documentation 2026-10-23T10:45:33.426643+00:00", "objective": "User explicitly requests recording in parallel with development/review; preserve current dirty coordination WIP; no runtime edits or Git mutations"}
 - {"task": "T04-VULKAN-BUFFER-RESOURCE", "owner": "Graphics implementation engineer (reuse completed research agent)", "paths": ["src/graphics/vulkan/", "src/graphics/vulkan_probe/vulkan_transfer_probe.c", "scripts/graphics/", "tests/graphics/", "docs/analysis/codex_vulkan_buffer_report.md", ".local/vulkan-buffer/"], "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-vulkan", "branch": "task/T03B-vulkan-ops", "acquired_at": "2026-10-23T10:41:50.279633+00:00", "checkpoint": "2ca5d3587e43006bd0073ef4cfcad7f710f12eb8", "objective": "Extract real reusable VkBuffer allocation/map/coherency/cleanup component from verified existing transfer driver; reuse existing contract, no new demo/probe/NVN ABI guesses or title claims"}
 
 ## 阻塞
 
-- 完整CRT仍__nnmusl_init_dso caller+0x5920a34 exit133，SDK allocator gate0/initreturn2，原helper会写TP。Android a22d0dc guard+EH修复实跑contract0，main/malloc下一边界QueryMemoryInfo133。QueryMemoryInfo是全局SDK预算非逐地址查询，禁止用宿主maps/meminfo假填。
+- 最新未冻结Mac closed startup profile已真实越过Query：valid0x7f、1GiB明确port-policy/非原SVC RAM，随后AllocateMemoryPages symbol71 caller+0x27f90 exit133/no timeout。冻结Android同RG复核及真实pages quota接管待做；TLS/完整CRT仍未过，旧RG严格CLI Query133仅历史基线。
 - NVN 535 名字仅两个查询入口可解析，其余 533 缺失；没有 Vulkan 资源/队列/着色器/显示转换实现。Bundled header 对其中 59 名字缺 PFN 类型，不能猜 ABI。
 - 既有 RomFS 流式工具和资源清单不等于游戏运行时挂载/IoStore 解压成功；尚未集成。保留合法本地素材，不获取新游戏或密钥。
 - 旧完整NSO安全/异常QA被平台检查中止，不重试；普通组件独立review已分别通过，不替代完整游戏QA。
@@ -101,6 +101,10 @@
 - GuestContext e846dc1独立FINAL PASS：production/recovery/校正补测严格编译0、运行0；pending并发2 accepted/6 LIMIT、pthread析构阻塞期间保留费用、join后退款，七字段仍invalid0。初次补测未承诺的TLS析构顺序假设已纠正，保留失败1/初次child code未落盘事实；非游戏或完整QA通过。
 - 图形底座有界评估已结束：Strato GPU ae1566a和Hades shader 8717c8f真实存在，但没有直接NVN ABI桥；需图形负责人选择生产接入边界并核清逐文件许可证。未clone/build/probe，不证明整游戏可行。
 - 用户质疑外围投入后，停止新增外围probe；主优先级收紧为真实Query/CRT/TLS与NVN生产路径。最近16提交按主要目的粗分5直接runtime/启动链、5诊断包装、6分析记录，仅描述提交用途，不是工时、完成率或游戏进度。
+- 第一接力检查点11e861127c84a2c7904804ec2bc4748b1df71fdb已由总控本地提交；原交付work/rg477m-native安全ff到同SHA、采样时两树clean。文档现恢复四文件独占，Git/设备仍总控唯一。
+- 10:40:12UTC总控真实恢复快照.local/handoff-runtime-check/snapshot.json：ps -axo pid=,comm= exit0，限定AVD/qemu/gradle/cmake/nso名字匹配空；adb devices -l exit0只有授权RG477M。仅last-verified快照，不表示今后永久无进程或没有开发推进。
+- 未冻结startup profile首轮host normal fixture真实build0/run0：errors0/calls2/extension_calls0/stack65536/query_fields7/padding preserved/thread joined/signal dispositions restored，控制失败+retained retry5阶段。仅普通fixture，非被中止的旧异常NSO QA。
+- 10:42:46UTC runtime未冻结Mac16KiB host原nnMain+0x352f160真实Query valid0x7f：total1073741824=明确1GiB诊断port-policy，used162938880/heap0,0(READY_EMPTY)/baseline162873344/stack65536/count1；随后AllocateMemoryPages sym71 caller+0x27f90，ownedVA+0x10000/size0x10000，exit133/0.6416s/no timeout。作者报告原main未patch且hash保持；文档未读取原始游戏字节。Android/RG与TLS/CRT/game尚未通过。
 
 ## 未验证
 

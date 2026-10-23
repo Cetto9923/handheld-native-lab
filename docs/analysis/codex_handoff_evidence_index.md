@@ -1,13 +1,13 @@
 # 实时接力证据索引
 
-本索引只整理现有证据，未重跑游戏/设备/构建。入口是 [HANDOFF](../../coordination/HANDOFF.md) 与 [state](../../coordination/state.json)，STATUS只能由 `python3 scripts/project_status.py --write` 生成。采样基线为root `d9a1667`；后续先重新核对Git，勿把本文当自动刷新状态。
+本索引只整理现有证据，未重跑游戏/设备/构建。入口是 [HANDOFF](../../coordination/HANDOFF.md) 与 [state](../../coordination/state.json)，STATUS只能由 `python3 scripts/project_status.py --write` 生成。第一检查点已提交/快进至 `11e861127c84a2c7904804ec2bc4748b1df71fdb`，后续最后核验事实分时记录；旧采样基线为root `d9a1667`；后续先重新核对Git，勿把本文当自动刷新状态。
 
 ## 当前所有权与恢复点
 
 | 对象 | 已核对状态 / 唯一写者 |
 | --- | --- |
-| 原交付 `/Users/yuyan9923/GitHub/ff-resonance-rg477m-native` | `work/rg477m-native` / `253b824180667fa31ce8bdc08e94e95ebf7d4c91`，采样时clean；只由总控安全快进 |
-| integration `/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration` | `task/codex-integration` / `d9a166714fa14da68bad0e1f7d322bd174615daf`；原有coord三文件与device/context/stage报告WIP保留；总控持有报告、Git与设备操作 |
+| 原交付 `/Users/yuyan9923/GitHub/ff-resonance-rg477m-native` | `work/rg477m-native` / `11e861127c84a2c7904804ec2bc4748b1df71fdb`，恢复维护时采样clean；只由总控安全快进 |
+| integration `/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration` | `task/codex-integration` / `11e861127c84a2c7904804ec2bc4748b1df71fdb`；第一轮原有coord及报告WIP已由总控本地提交；总控持有报告、Git与设备操作 |
 | 本文档代理 | 用户明确委派DOC-HANDOFF-LIVE，当前仅四文件：HANDOFF/state/生成STATUS/本索引；不stage/commit，交总控串行提交 |
 | `../ffrs-runtime` | `task/T02-codex-runtime` / `e846dc174edcb687c4e075288326c62ab10ac86e`；已观察loader.c/h有WIP，T02-OWNED-STARTUP-PROFILE独占scope见state；未冻结 |
 | `../ffrs-android` | `task/T03A-codex-android` / `15da4c2ef7a11138de45d098574f9bd66ef60b66`，采样时clean；已集成v6，当前不再开新外围probe |
@@ -53,3 +53,12 @@
 10:38 UTC实际仅runtime/doc两路running，图形评估与QA预审已交回；新profile review为pending/等待freeze，已释放预审lease，不能写四路持续编码。本文档已落盘，交检查点后暂停写入供总控一笔提交+ff。
 
 UI只读动作`cua.getApp('Codex')`被CUA明确DENIED：`Computer Use is not allowed to use the app com.openai.codex for safety reasons`。没有截图或AX，不重试/绕过；UI可见性UNKNOWN。内部`/root/...`是协作标识，未创建四个sidebar任务。此读动作拒绝不阻开发，也不是Git审批pending。
+
+## 11e8611后新增关键事件（最后核验，不是永久当前状态）
+
+- 总控已提交/原交付安全快进11e8611，文档恢复四文件独占；新增T04-VULKAN-BUFFER-RESOURCE从既有driver提取真正VkBuffer分配/map/coherency/cleanup组件，复用原contract，非新probe/UI或猜NVN ABI；scope以state为准。QA预审完成、执行待freeze。
+- [10:40:12UTC恢复快照](../../.local/handoff-runtime-check/snapshot.json)：真实`ps -axo pid=,comm=`0、限定AVD/qemu/gradle/cmake/nso名字为空；`adb devices -l`0，仅授权RG。旧ps127仍是历史失败，新快照不解决CUAUI DENIED，也不代表未来进程状态或推进量。
+- [首轮host build](../../../ffrs-runtime/.local/owned-profile-first-build/run.json)0、[普通fixture run](../../../ffrs-runtime/.local/owned-profile-first-run/run.json)0：7字段/padding/owned stack/ThreadRecord/join与5阶段清理失败/retained retry、errors0。源码是e846dc1之上的未提交WIP，不是冻结版独立QA PASS。
+- [10:42:46UTC原nnMain run](../../../ffrs-runtime/.local/owned-profile-first-nnmain/run.json)真实133、0.6416s/no timeout；命令为`.local/nso_profile.first.host .local/uncompressed/main.bin --guest-quota 1073741824 --guest-stack 65536 --symbol nnMain`。原始+0x352f160在64KiB owned primary实际越过Query；[stderr](../../../ffrs-runtime/.local/owned-profile-first-nnmain/stderr.log)显示valid0x7f、total1073741824/used162938880/heap0,0(READY_EMPTY)/baseline162873344/stack65536/count1，随后AllocateMemoryPages symbol71 caller+0x27f90，ownedVA+0x10000/size0x10000。作者报告main未patch且hash保持；文档未读游戏字节。
+- **1GiB是显式诊断port-policy配额，不是原SVC实测RAM。** 当前仅Mac16KiB host突破，Android/RG复核、独立冻结review、TLS/CRT/游戏仍未过。下一关先冻结并交Android同RG复核，再做真实pages quota所有权（当前仅只读ABI），不假桩跳过AllocateMemoryPages。
+- 持续目标：原始nnMain→Query/TLS/CRT→真实图形/标题→可操作场景→游戏输入音频存档性能；按“真实阻塞→最小修复→编译→真机→本地检查点→下一关”推进。仅报实质突破/用户操作/真实阻塞；无CreateGoal/UpdateGoal/persistent工具，不伪称后台或持久参数已开启。
