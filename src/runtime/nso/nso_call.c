@@ -40,6 +40,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    nso_install_fault_trap(m);
     char bid[33];
     nso_build_id(m, bid);
     printf("base          : 0x%" PRIx64 "\n", nso_base(m));

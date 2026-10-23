@@ -78,6 +78,9 @@ uint64_t nso_call(nso_module *m, uint64_t module_offset,
                   uint64_t a0, uint64_t a1, uint64_t a2,
                   uint64_t a3, uint64_t a4, uint64_t a5);
 
+/* Install a fault handler that reports faulting PCs as module offsets. */
+void nso_install_fault_trap(nso_module *m);
+
 /* Enable the SIGILL trap that intercepts `svc` instructions. */
 void nso_enable_svc_trap(int verbose);
 

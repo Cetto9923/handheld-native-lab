@@ -83,6 +83,9 @@ static int seg_index_of(const nso_header_t *h, uint64_t addr) {
     for (int i = 0; i < 3; i++)
         if (addr >= h->seg[i].dst_off && addr < h->seg[i].dst_off + h->seg[i].size)
             return i;
+    /* .bss follows .rwdata and is part of the module image too */
+    uint64_t bss_lo = (uint64_t)h->seg[2].dst_off + h->seg[2].size;
+    if (addr >= bss_lo && addr < bss_lo + h->seg[2].aux) return 3;
     return -1;
 }
 
@@ -375,6 +378,46 @@ static void svc_handler(int sig, siginfo_t *si, void *uc) {
         /* ucontext_t layout differs per platform; handled by the caller-side
          * hook below on Darwin/Linux. Kept minimal here. */
     }
+}
+
+/* Report a faulting PC relative to the module image, so crashes inside the
+ * game code can be attributed to a module offset instead of a raw address. */
+static nso_module *g_fault_module;
+
+static void fault_handler(int sig, siginfo_t *si, void *uc) {
+    uint64_t pc = 0, fa = 0;
+#if defined(__APPLE__)
+    ucontext_t *u = (ucontext_t *)uc;
+    pc = (uint64_t)u->uc_mcontext->__ss.__pc;
+    fa = si ? (uint64_t)si->si_addr : 0;
+#elif defined(__linux__)
+    ucontext_t *u = (ucontext_t *)uc;
+    pc = (uint64_t)u->uc_mcontext.gregs[REG_PC];
+    fa = (uint64_t)u->uc_mcontext.gregs[REG_SIGINFO];
+    if (si) fa = (uint64_t)si->si_addr;
+#endif
+    (void)si;
+    fprintf(stderr, "[fault] signal=%d pc=0x%llx fa=0x%llx", sig,
+            (unsigned long long)pc, (unsigned long long)fa);
+    if (g_fault_module && pc >= nso_base(g_fault_module) &&
+        pc < nso_base(g_fault_module) + g_fault_module->image_size)
+        fprintf(stderr, " module_offset=0x%llx",
+                (unsigned long long)(pc - nso_base(g_fault_module)));
+    fprintf(stderr, "\n");
+    fflush(stderr);
+    _exit(128 + sig);
+}
+
+void nso_install_fault_trap(nso_module *m) {
+    g_fault_module = m;
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_sigaction = fault_handler;
+    sa.sa_flags = SA_SIGINFO;
+    sigaction(SIGSEGV, &sa, NULL);
+    sigaction(SIGBUS, &sa, NULL);
+    sigaction(SIGILL, &sa, NULL);
+    sigaction(SIGTRAP, &sa, NULL);
 }
 
 void nso_enable_svc_trap(int verbose) {
