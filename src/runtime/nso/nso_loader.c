@@ -499,7 +499,14 @@ static void fault_handler(int sig,siginfo_t *si,void *context) {
     if(m) {
         int i=sentinel_index(m->import_traps,m->trap_size,pc);
         if(i<0)i=sentinel_index(m->object_traps,m->trap_size,fa);
-        if(i>=0 && (uint32_t)i<m->sym_count)fprintf(stderr,"[unresolved-import] index=%d name=%s caller_offset=0x%" PRIx64 "\n",i,nso_symbol_name(m,(uint32_t)i),lr-nso_base(m));
+        if(i>=0 && (uint32_t)i<m->sym_count) {
+            fprintf(stderr,"[unresolved-import] index=%d name=%s",i,nso_symbol_name(m,(uint32_t)i));
+            if(lr>=nso_base(m) && range(lr-nso_base(m),1,m->image_size))
+                fprintf(stderr," caller_offset=0x%" PRIx64,lr-nso_base(m));
+            else
+                fprintf(stderr," caller_address=0x%" PRIx64 " caller_outside_module=true",lr);
+            fputc('\n',stderr);
+        }
     }
     for(int i=0;i<29;i++)fprintf(stderr," x%d=0x%" PRIx64 "%c",i,regs[i],i%4==3?'\n':' ');
     fprintf(stderr,"\n fp=0x%" PRIx64 " lr=0x%" PRIx64 " sp=0x%" PRIx64 "\n",fp,lr,sp);
