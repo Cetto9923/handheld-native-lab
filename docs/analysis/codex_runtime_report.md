@@ -223,3 +223,67 @@ DYLD_LIBRARY_PATH, without changing installation or global configuration.
 The failed link is retained in leaf-libraries-v1. This is a genuine freestanding
 Android-target cross-build, not official NDK compiler acceptance or Android
 execution. NSPRE-2/NSPRE-3/device gates and full T02 remain unmet.
+
+## Third checkpoint: real address-space reservation
+
+The next HLE implementation is deliberately limited to the observed
+AllocateAddressRegion/FreeAddressRegion interface. It does not implement
+AllocateMemoryBlock, MapPhysicalMemory, heap size, or QueryMemoryInfo.
+
+Current SDK byte evidence:
+
+- AllocateAddressRegion +0x144800 delegates to VammManager +0x145da0 (0x178 bytes).
+  Its parameters are output uint64 pointer and size_t; the result is in w0.
+  The implementation finds and inserts an interval in its address-region tree;
+  it contains no physical-page commit operation.
+- Success returns 0; metadata-node exhaustion returns 0x1003 and lack of an
+  address interval returns 0x1803. Requested sizes below 2 MiB use 64 KiB
+  alignment; larger sizes use 2 MiB alignment. Candidate ranges retain at least
+  a 4 KiB gap on each side.
+- FreeAddressRegion +0x144860 delegates to +0x146680 (0x108 bytes). It takes the
+  address, finds the recorded size, invokes SVC 0x2d, removes the interval, and
+  returns a Result. An unregistered address returns 0xe03. No syscall name is
+  inferred beyond the directly observed SVC number.
+- Full static byte/disassembly evidence:
+  .local/runtime/static-sdk-vamm-v1 and .local/runtime/static-sdk-free-v1.
+
+The host implementation reserves mmap(PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS),
+with MAP_NORESERVE where defined. A side table records the exact owned mapping,
+including host-page guards and alignment padding, for matching munmap. On hosts
+with pages larger than 4 KiB, inaccessible guards use the host page size. The
+supported normal size contract is nonzero and a multiple of 4 KiB. Unsupported
+contracts are diagnosed, not silently treated as success. No MAP_FIXED, writable
+large mapping, page-touch loop, or physical-memory total is introduced.
+
+The independent normal contract reserves four simultaneous ranges: 4 KiB,
+64 KiB, 2 MiB and 0xf80000000 bytes (62 GiB / 66,571,993,088 bytes). The
+macOS mach_vm_region API independently confirms PROT_NONE at both ends of every
+requested interval. The returned addresses meet the observed alignment rules;
+matching release succeeds for all four. No reserved byte is read or written.
+getrusage maxrss is 1,671,168 before and after (native host units, observed only).
+Build and run exit 0; exact logs:
+.local/runtime/address-region-v1/{build,run}.
+
+    clang -g -O2 -Wall -Wextra -Werror \
+      src/runtime/hle/address_region.c tests/native/address_region_contract.c \
+      -lpthread -o .local/runtime/address_region_contract
+    python3 scripts/runtime/run_capture.py \
+      --out .local/runtime/address-region-next --timeout 10 \
+      -- .local/runtime/address_region_contract
+
+With the optional HLE resolver, nnMain now performs the actual 62-GiB virtual
+reservation, then reaches unresolved symbol 7:
+nn::os::InitializeMutex(MutexType*,bool,int), caller +0x277d8, x1=1, x2=0.
+The child exits 133 with the full register/frame diagnostic. The reservation
+has PROT_NONE and no physical contents are fabricated; the process exit releases
+its remaining virtual mappings. No mutex layout is guessed to advance further.
+Final command set: .local/runtime/checkpoint-v4-region/manifest.json.
+All builds and the 16,875-case leaf comparison exit 0. Structural info still
+reports 651 imports, 4,612 RELA and 1,370,974 RELR targets (630 unresolved with
+these optional HLE adapters). malloc, startup and constructors stop at their
+existing QueryMemoryInfo, AllocateTlsSlot and __nnmusl_init_dso boundaries.
+
+The third checkpoint changes only new HLE address-region sources, its exact-name
+resolver registration, the native contract, the optional experiment build list,
+and this report. The shared loader API does not change. Full T02, real Android
+execution, SDK TLS/CRT, mutex/threading, game startup and graphics remain open.

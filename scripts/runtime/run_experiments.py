@@ -41,7 +41,7 @@ def main():
     base=["clang","-g","-O2","-Wall","-Wextra","-Werror",ROOT/"src/runtime/nso/nso_loader.c"]
     for name,source in [("nso_call",ROOT/"src/runtime/nso/nso_call.c"),
                         ("game_leaf_sample",ROOT/"tests/native/game_leaf_sample.c")]:
-        extra=["-DNSO_WITH_HOST_HLE",ROOT/"src/runtime/hle/nso_host.c"] if args.host_hle and name=="nso_call" else []
+        extra=["-DNSO_WITH_HOST_HLE",ROOT/"src/runtime/hle/nso_host.c",ROOT/"src/runtime/hle/address_region.c"] if args.host_hle and name=="nso_call" else []
         if run("build-"+name,[*base,source,*extra,"-o",out/name,"-ldl","-lpthread"]):
             raise RuntimeError("native build failed; inspect run logs")
     if run("leaf-sample",[out/"game_leaf_sample",args.input]):

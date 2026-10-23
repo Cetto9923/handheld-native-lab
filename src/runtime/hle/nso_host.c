@@ -1,4 +1,5 @@
 #include "nso_host.h"
+#include "address_region.h"
 #include <stdio.h>
 #include <string.h>
 static nso_import_fn extension_resolver;
@@ -13,5 +14,9 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
     if(!name)return 0;
     if(!strcmp(name,"_ZN2nn4util11ReferSymbolEPKv") || !strcmp(name,"nnutilReferSymbol"))
         return (uint64_t)(uintptr_t)&refer_symbol;
+    if(!strcmp(name,"_ZN2nn2os21AllocateAddressRegionEPmm"))
+        return (uint64_t)(uintptr_t)&nso_host_allocate_address_region;
+    if(!strcmp(name,"_ZN2nn2os17FreeAddressRegionEm"))
+        return (uint64_t)(uintptr_t)&nso_host_free_address_region;
     return extension_resolver?extension_resolver(index,name):0;
 }
