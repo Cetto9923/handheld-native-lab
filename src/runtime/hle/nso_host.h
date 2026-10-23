@@ -74,6 +74,10 @@ void nso_host_fs_set_allocator(nn_fs_alloc_fn alloc, nn_fs_free_fn free_fn);
 nn_fs_alloc_fn nso_host_fs_get_allocator(void);
 nn_fs_free_fn nso_host_fs_get_deallocator(void);
 int32_t nso_host_fs_query_mount_rom_cache_size(size_t *out_size);
+int32_t nso_host_fs_mount_rom(const char *name, void *buffer, size_t size);
+int nso_host_fs_is_rom_mounted(const char *name);
+const char *nso_host_fs_get_rom_mount_path(const char *name);
+int32_t nso_host_fs_unmount(const char *name);
 #ifdef __cplusplus
 }
 #endif

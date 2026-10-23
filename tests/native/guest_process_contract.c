@@ -1269,6 +1269,56 @@ static int fs_query_cache_contract(void) {
     puts("{\"fs_query_cache_errors\":0,\"query\":true,\"size_valid\":true}");
     return 0;
 }
+static int fs_mount_rom_contract(void) {
+    typedef int32_t (*mount_fn)(const char *, void *, size_t);
+    typedef int32_t (*unmount_fn)(const char *);
+
+    mount_fn mount = (mount_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs8MountRomEPKcPvm");
+    CHECK(mount != NULL);
+
+    mount_fn mount_alias = (mount_fn)(uintptr_t)guest_process_resolve(0, "nnfsMountRom");
+    CHECK(mount_alias != NULL);
+
+    unmount_fn unmount = (unmount_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs7UnmountEPKc");
+    CHECK(unmount != NULL);
+
+    unmount_fn unmount_alias = (unmount_fn)(uintptr_t)guest_process_resolve(0, "nnfsUnmount");
+    CHECK(unmount_alias != NULL);
+
+    /* Null name rejection */
+    int32_t err = mount(NULL, (void *)0x1000, 0x10000);
+    CHECK(err != 0);
+
+    /* Empty name rejection */
+    err = mount("", (void *)0x1000, 0x10000);
+    CHECK(err != 0);
+
+    /* Null buffer rejection */
+    err = mount("rom", NULL, 0x10000);
+    CHECK(err != 0);
+
+    /* Buffer too small rejection (< 64KB) */
+    err = mount("rom", (void *)0x1000, 0x8000);
+    CHECK(err != 0);
+
+    /* Valid mount */
+    char dummy_buf[64];
+    int32_t ok = mount("rom", dummy_buf, 0x10000);
+    CHECK(ok == 0);
+    CHECK(nso_host_fs_is_rom_mounted("rom") == 1);
+    CHECK(nso_host_fs_get_rom_mount_path("rom") != NULL);
+
+    /* Valid unmount */
+    int32_t unmount_ok = unmount("rom");
+    CHECK(unmount_ok == 0);
+    CHECK(nso_host_fs_is_rom_mounted("rom") == 0);
+
+    /* Unmount invalid/non-existent returns clean */
+    unmount("non_existent");
+
+    puts("{\"fs_mount_rom_errors\":0,\"mount\":true,\"unmount\":true,\"validation\":true}");
+    return 0;
+}
 struct log_fixture_io {float input,output;uint64_t guest_x18;};
 _Static_assert(offsetof(struct log_fixture_io,output)==4 && offsetof(struct log_fixture_io,guest_x18)==8,"self-authored float fixture ABI");
 static void *exercise_logf_native(guest_process *p,void *opaque) {
@@ -1903,6 +1953,7 @@ int main(int argc,char **argv) {
     if(argc==2 && !strcmp(argv[1],"--threads"))return threads_contract();
     if(argc==2 && !strcmp(argv[1],"--fs-allocator"))return fs_allocator_contract();
     if(argc==2 && !strcmp(argv[1],"--fs-query-cache"))return fs_query_cache_contract();
+    if(argc==2 && !strcmp(argv[1],"--fs-mount-rom"))return fs_mount_rom_contract();
     if(argc==2 && !strcmp(argv[1],"--logf"))return logf_contract();
     if(argc==3 && !strcmp(argv[1],"--logf-native"))return logf_native_contract(argv[2]);
     if(argc==2 && !strcmp(argv[1],"--strcasecmp"))return strcasecmp_contract();

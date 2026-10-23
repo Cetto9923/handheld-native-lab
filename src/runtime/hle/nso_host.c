@@ -596,6 +596,129 @@ int32_t nso_host_fs_query_mount_rom_cache_size(size_t *out_size) {
     return 0;
 }
 
+#define NSO_FS_MAX_MOUNTS 8
+typedef struct {
+    int in_use;
+    char name[64];
+    void *buffer;
+    size_t size;
+    char host_path[512];
+} nso_fs_mount_entry;
+
+static nso_fs_mount_entry s_fs_mounts[NSO_FS_MAX_MOUNTS];
+
+int32_t nso_host_fs_mount_rom(const char *name, void *buffer, size_t size) {
+    if (!name || !name[0]) {
+        fprintf(stderr, "[hle] nn::fs::MountRom: invalid or null name\n");
+        return 1;
+    }
+    if (!buffer) {
+        fprintf(stderr, "[hle] nn::fs::MountRom: null buffer pointer\n");
+        return 1;
+    }
+    if (size < 0x10000) {
+        fprintf(stderr, "[hle] nn::fs::MountRom: cache size %zu too small (min 65536)\n", size);
+        return 1;
+    }
+
+    const char *resolved_path = NULL;
+    const char *env_path = getenv("NN_FS_ROM_PATH");
+    if (!env_path) env_path = getenv("ROMFS_PATH");
+
+    if (env_path && env_path[0] && access(env_path, F_OK) == 0) {
+        resolved_path = env_path;
+    } else {
+        static const char *const candidates[] = {
+            "romfs",
+            "./romfs",
+            ".local/control_romfs",
+            "/data/local/tmp/ffrs-rg477m-efd1123620814764ae32529c18081259/romfs",
+            "/data/local/tmp/romfs",
+            "."
+        };
+        for (size_t i = 0; i < sizeof(candidates)/sizeof(candidates[0]); i++) {
+            if (access(candidates[i], F_OK) == 0) {
+                resolved_path = candidates[i];
+                break;
+            }
+        }
+    }
+
+    if (!resolved_path) {
+        resolved_path = ".";
+    }
+
+    int slot = -1;
+    for (int i = 0; i < NSO_FS_MAX_MOUNTS; i++) {
+        if (s_fs_mounts[i].in_use && !strcmp(s_fs_mounts[i].name, name)) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot < 0) {
+        for (int i = 0; i < NSO_FS_MAX_MOUNTS; i++) {
+            if (!s_fs_mounts[i].in_use) {
+                slot = i;
+                break;
+            }
+        }
+    }
+    if (slot < 0) {
+        fprintf(stderr, "[hle] nn::fs::MountRom: out of mount slots\n");
+        return 1;
+    }
+
+    s_fs_mounts[slot].in_use = 1;
+    strncpy(s_fs_mounts[slot].name, name, sizeof(s_fs_mounts[slot].name) - 1);
+    s_fs_mounts[slot].name[sizeof(s_fs_mounts[slot].name) - 1] = '\0';
+    s_fs_mounts[slot].buffer = buffer;
+    s_fs_mounts[slot].size = size;
+    strncpy(s_fs_mounts[slot].host_path, resolved_path, sizeof(s_fs_mounts[slot].host_path) - 1);
+    s_fs_mounts[slot].host_path[sizeof(s_fs_mounts[slot].host_path) - 1] = '\0';
+
+    fprintf(stderr, "[hle] nn::fs::MountRom: mounted '%s' buffer=%p size=%zu (0x%zx) host_path='%s'\n",
+            name, buffer, size, size, resolved_path);
+    return 0;
+}
+
+int nso_host_fs_is_rom_mounted(const char *name) {
+    if (!name) {
+        for (int i = 0; i < NSO_FS_MAX_MOUNTS; i++) {
+            if (s_fs_mounts[i].in_use) return 1;
+        }
+        return 0;
+    }
+    for (int i = 0; i < NSO_FS_MAX_MOUNTS; i++) {
+        if (s_fs_mounts[i].in_use && !strcmp(s_fs_mounts[i].name, name)) return 1;
+    }
+    return 0;
+}
+
+const char *nso_host_fs_get_rom_mount_path(const char *name) {
+    if (!name) return NULL;
+    for (int i = 0; i < NSO_FS_MAX_MOUNTS; i++) {
+        if (s_fs_mounts[i].in_use && !strcmp(s_fs_mounts[i].name, name))
+            return s_fs_mounts[i].host_path;
+    }
+    return NULL;
+}
+
+int32_t nso_host_fs_unmount(const char *name) {
+    if (!name || !name[0]) {
+        fprintf(stderr, "[hle] nn::fs::Unmount: invalid name\n");
+        return 1;
+    }
+    for (int i = 0; i < NSO_FS_MAX_MOUNTS; i++) {
+        if (s_fs_mounts[i].in_use && !strcmp(s_fs_mounts[i].name, name)) {
+            s_fs_mounts[i].in_use = 0;
+            fprintf(stderr, "[hle] nn::fs::Unmount: unmounted '%s'\n", name);
+            return 0;
+        }
+    }
+    fprintf(stderr, "[hle] nn::fs::Unmount: name '%s' not found\n", name);
+    return 0;
+}
+
 void nso_host_set_extension_resolver(nso_import_fn resolver) {extension_resolver=resolver;}
 uint64_t nso_host_resolve(uint32_t index,const char *name) {
     if(!name)return 0;
@@ -608,6 +731,10 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_fs_set_allocator;
     if(!strcmp(name,"_ZN2nn2fs22QueryMountRomCacheSizeEPm") || !strcmp(name,"nnfsQueryMountRomCacheSize"))
         return (uint64_t)(uintptr_t)&nso_host_fs_query_mount_rom_cache_size;
+    if(!strcmp(name,"_ZN2nn2fs8MountRomEPKcPvm") || !strcmp(name,"nnfsMountRom"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_mount_rom;
+    if(!strcmp(name,"_ZN2nn2fs7UnmountEPKc") || !strcmp(name,"nnfsUnmount"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_unmount;
     if(!strcmp(name,"_ZN2nn4util11ReferSymbolEPKv") || !strcmp(name,"nnutilReferSymbol"))
         return (uint64_t)(uintptr_t)&refer_symbol;
     if(!strcmp(name,"_ZN2nn4util12GenerateUuidEv"))

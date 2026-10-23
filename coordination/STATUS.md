@@ -1,8 +1,8 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-10-23T20:25:00.000000+00:00
-阶段：T02_FS_QUERY_CACHE_PASSED_MOUNT_ROM_REACHED_ON_RG477M: nn::fs::QueryMountRomCacheSize HLE implemented with valid cache size (64KB); GameThread allocated buffer and called nn::fs::MountRom; frontier advanced to nn::fs::MountRom (symbol 22, caller 0x5590 / lr 0x5594)
-总控：Antigravity sole root coordinator — nn::fs::QueryMountRomCacheSize verified on RG477M; frontier advanced to nn::fs::MountRom
+状态事件时间：2026-10-23T20:57:00.000000+00:00
+阶段：T02_FS_MOUNT_ROM_PASSED_OPEN_FILE_REACHED_ON_RG477M: nn::fs::MountRom HLE implemented and verified; GameThread successfully mounted RomFS and advanced frontier to nn::fs::OpenFile (symbol index 10, caller 0x5864 / lr 0x5868)
+总控：Antigravity sole root coordinator — nn::fs::MountRom verified on RG477M; frontier advanced to nn::fs::OpenFile
 更新方式：按事件更新，没有后台自动刷新。
 
 | 任务 | 角色 | 状态 | 实际负责人 | 启动依赖 | 验收门禁 | 分支 |
