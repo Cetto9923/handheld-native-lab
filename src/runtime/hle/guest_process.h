@@ -21,6 +21,11 @@ typedef void *(*guest_process_callback)(guest_process *,void *);
  * Only disjoint owned maps and whole-allocation frees are admitted; unsupported
  * transitions terminate with diagnostics, never a guessed SDK failure Result.
  * No extension, unrelated backing mutator, SDK init or TP write is used. */
+/* A logical 32-slot OS manager belongs to this process; each actual primary
+ * registers a separate record. Normal return drains callbacks through the idle
+ * native gateway before unregister/ThreadReturned/stack refund. Provider failure
+ * failstops while those owners remain alive; no recoverable stack-retention or
+ * SDK ThreadType/ELF TLS layout is claimed. */
 struct nso_result guest_process_create(const struct guest_process_config *,guest_process **out);
 struct nso_result guest_process_load(guest_process *,const char *path,char *err,size_t errlen);
 /* Borrowed inspection/call handle, never independently release it. */

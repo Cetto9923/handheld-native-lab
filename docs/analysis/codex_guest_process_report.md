@@ -1,5 +1,44 @@
 # Owned startup profile: native boundary integration
 
+## OS TLS binding checkpoint
+
+The profile now owns the independent `guest_os_tls` manager (`9c24ed35`) and
+registers a record only on its actual capacity-verified primary. The exact local
+SDK exports are Allocate143b60 (`uint32_t*, callback` -> u32 Result), Free143bf0
+(u32 -> void), Get143c10 (u32 -> u64), Set143c30 (u32,u64 -> void). Main imports
+Allocate59, Set124 and Get131; these indices were checked against dynamic symbols,
+not assumed from messages. Public APP exhaustion alone maps to proven 0x1203;
+other unsupported/internal failures failstop without a guessed SDK Result.
+SDK allocation wrappers, slot16, GetCurrentThread, SDK ThreadType and ELF TLS are
+not provided. No TP register, BSS stack setting or source input is changed.
+
+After normal user callback return, with nb_call idle but current_process,
+ThreadRecord RUNNING and its fault scope/owned stack still alive, cleanup invokes
+each opaque destructor through the same typed native boundary. The manager holds
+no mutex across the call, so Get/Set/Allocate/Free imports may reenter normally.
+The first round calls non-null callbacks even with value0, then clears the current
+slot after return; the component implements the proven five-round limit.
+Only successful cleanup may unregister before ThreadReturned, fault-scope end
+and Context stack refund. Provider failure logs the retained event and aborts
+BEFORE returning to Context; this isolated runner does not pretend to offer
+recoverable stack retention or complete cleanup. Values are never host-freed.
+After a real guest primary has ended, a second primary run is rejected outright
+so allocated process callback identities cannot trigger on another dead session.
+
+Normal host contracts exercise actual records, all16 APP slots, output-preserving
+0x1203 exhaustion, stale value after Free and zero after reallocation. A separate
+Mac unsupported-provider run registers a valid non-null module callback with
+value0, then must failstop rather than silently skip it. A self-authored Android
+fixture verifies deferred guest callbacks, zero first value, reentrant Set,
+clear-after-callback, earlier-slot second round and Query observing a still-live
+ThreadRecord/64KiB stack. Its callback order is A(0),B(9),A(5); no game bytes are
+used. Actual Android execution belongs to the coordinator.
+
+The original hard target is nninitStartup passing Allocate59 and reaching
+GetHostArgc60/return+13420. The known straight-line original store of1MiB lies
+between those calls. Reaching that gate is static-plus-control-flow evidence,
+not direct BSS readback or complete OS/ELF TLS/CRT initialization.
+
 The current profile dispatches actual guest code only through native_boundary
 (`5c20b064f2866577ca1fdd903fa196dd842eb3a8`, including retained RX rollback).
 The loader records validated import RELA write identities during its existing

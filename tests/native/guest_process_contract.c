@@ -324,7 +324,11 @@ static int boundary_contract(const char *path) {
     const uint64_t arguments[6]={0};uint64_t untouched=0xa5a5;
     CHECK(guest_process_call(process,0x20,arguments,0,&untouched).status==NSO_INVALID && untouched==0xa5a5);
     for(unsigned phase=0;phase<2;phase++) {
-        void *value=NULL;CHECK(succeeded(guest_process_run(process,execute_boundary,&phase,&value)));
+        void *value=NULL;struct nso_result run=guest_process_run(process,execute_boundary,&phase,&value);
+#if defined(__ANDROID__) && defined(__aarch64__)
+        if(phase) {CHECK(run.status==NSO_UNSUPPORTED && !value);continue;}
+#endif
+        CHECK(succeeded(run));
         CHECK(value==&returned_token && !errors);
     }
     CHECK(succeeded(guest_process_destroy(&process)) && !process);
@@ -337,6 +341,22 @@ static int boundary_contract(const char *path) {
     );
     return 0;
 }
+#if !defined(__ANDROID__)
+static void *register_unsupported_destructor(guest_process *process,void *opaque) {
+    (void)opaque;typedef uint32_t(*allocate_fn)(uint32_t *,uint64_t);
+    allocate_fn allocate=(allocate_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os15AllocateTlsSlotEPNS0_7TlsSlotEPFvmE");
+    uint32_t slot=99;uint32_t result=allocate(&slot,nso_addr(guest_process_module(process),0x20));
+    expect_value("os-tls-register-before-unsupported-provider",result,0);
+    return &returned_token;
+}
+static int unsupported_tls_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *process=NULL;
+    CHECK(succeeded(guest_process_create(&config,&process)));
+    char err[128];CHECK(succeeded(guest_process_load(process,path,err,sizeof(err))));
+    void *value=NULL;(void)guest_process_run(process,register_unsupported_destructor,NULL,&value);
+    fputs("unexpected return after unsupported guest provider\n",stderr);return 1;
+}
+#endif
 static uint64_t retarget_target(uint64_t a) {return a+1;}
 static uint64_t replacement_target(uint64_t a) {return a+2;}
 static uint64_t retarget_resolver(uint32_t index,const char *name) {
@@ -378,6 +398,63 @@ static int readonly_retarget_contract(const char *path) {
     CHECK(succeeded(nso_release(&module)) && !module);
     puts("{\"readonly_retarget_errors\":0,\"unsupported\":true,\"no_write\":true}");return 0;
 }
+static void *exercise_os_wrappers(guest_process *process,void *opaque) {
+    (void)opaque;
+    typedef uint32_t(*allocate_fn)(uint32_t *,uint64_t);typedef uint64_t(*get_fn)(uint32_t);
+    typedef void(*set_fn)(uint32_t,uint64_t);typedef void(*free_fn)(uint32_t);
+    allocate_fn allocate=(allocate_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os15AllocateTlsSlotEPNS0_7TlsSlotEPFvmE");
+    get_fn get=(get_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os11GetTlsValueENS0_7TlsSlotE");
+    set_fn set=(set_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os11SetTlsValueENS0_7TlsSlotEm");
+    free_fn release=(free_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os11FreeTlsSlotENS0_7TlsSlotE");
+    uint32_t slots[16];
+    for(unsigned i=0;i<16;i++) {expect_value("os-app-allocate",allocate(&slots[i],0),0);expect_value("os-app-search-order",slots[i],i);expect_value("os-initial-zero",get(slots[i]),0);}
+    uint32_t untouched=0xabc;expect_value("os-app-exhaust-sdk-result",allocate(&untouched,0),0x1203);expect_value("os-exhaust-output",untouched,0xabc);
+    set(slots[0],0x99);release(slots[0]);expect_value("os-free-retains-value-no-hostfree",get(slots[0]),0x99);
+    expect_value("os-reallocate",allocate(&slots[0],0),0);expect_value("os-reallocate-clears",get(slots[0]),0);
+    for(unsigned i=0;i<16;i++)release(slots[i]);
+    struct guest_memory_info info;expect_condition("os-thread-query-still-live",succeeded(guest_process_memory_info(process,&info)) && info.thread_objects==1);
+    return &returned_token;
+}
+static int os_wrapper_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *process=NULL;
+    CHECK(succeeded(guest_process_create(&config,&process)));char err[128];
+    CHECK(succeeded(guest_process_load(process,path,err,sizeof(err))));
+    for(unsigned i=0;i<2;i++) {void *value=NULL;CHECK(succeeded(guest_process_run(process,exercise_os_wrappers,NULL,&value)));CHECK(value==&returned_token && !errors);}
+    CHECK(succeeded(guest_process_destroy(&process)) && !process);
+    puts("{\"os_wrapper_errors\":0,\"native_primary_records\":2,\"exhaust_result\":4611,\"free_keeps_value\":true,\"no_hostfree\":true}");return 0;
+}
+struct os_fixture_output {
+    uint64_t initial,stale,cleared,calls_a,calls_b,first_a,second_a,value_b,seen_a;
+    uint64_t thread_count,stack_bytes,order,errors,returned;
+};
+_Static_assert(offsetof(struct os_fixture_output,returned)==104 && offsetof(struct os_fixture_output,order)==88,"self-authored fixture output ABI");
+static void *execute_os_fixture(guest_process *process,void *opaque) {
+    struct os_fixture_output *output=opaque;
+    const uint64_t arguments[6]={(uintptr_t)output};uint64_t value=0;
+    struct nso_result r=guest_process_call(process,0x20,arguments,1,&value);
+#if defined(__ANDROID__) && defined(__aarch64__)
+    expect_value("os-fixture-entry-status",r.status,NSO_OK);expect_value("os-fixture-entry-result",value,0x91);
+    expect_value("os-callback-deferred-a",output->calls_a,0);expect_value("os-callback-deferred-b",output->calls_b,0);
+    expect_value("os-entry-returned",output->returned,1);
+#else
+    expect_value("os-fixture-unsupported",r.status,NSO_UNSUPPORTED);
+#endif
+    return &returned_token;
+}
+static int os_callback_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *process=NULL;
+    CHECK(succeeded(guest_process_create(&config,&process)));char err[128];
+    CHECK(succeeded(guest_process_load(process,path,err,sizeof(err))));
+    struct os_fixture_output output={0};void *value=NULL;
+    CHECK(succeeded(guest_process_run(process,execute_os_fixture,&output,&value)) && value==&returned_token && !errors);
+#if defined(__ANDROID__) && defined(__aarch64__)
+    CHECK(output.initial==0 && output.stale==0x99 && output.cleared==0);
+    CHECK(output.calls_a==2 && output.calls_b==1 && output.first_a==0 && output.second_a==5 && output.value_b==9);
+    CHECK(output.seen_a==0 && output.thread_count==1 && output.stack_bytes==65536 && output.order==0x121 && !output.errors);
+#endif
+    CHECK(succeeded(guest_process_destroy(&process)) && !process);
+    printf("{\"os_callback_errors\":%u,\"calls_a\":%" PRIu64 ",\"calls_b\":%" PRIu64 ",\"first_a\":%" PRIu64 ",\"second_a\":%" PRIu64 ",\"value_b\":%" PRIu64 ",\"order\":%" PRIu64 "}\n",errors,output.calls_a,output.calls_b,output.first_a,output.second_a,output.value_b,output.order);return 0;
+}
 int main(int argc,char **argv) {
     page=(size_t)sysconf(_SC_PAGESIZE);
 #if defined(NSO_PROFILE_BOUNDARY_TESTING)
@@ -386,6 +463,11 @@ int main(int argc,char **argv) {
     if(argc==3 && !strcmp(argv[1],"--boundary"))return boundary_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--retarget"))return retarget_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--retarget-readonly"))return readonly_retarget_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--os-tls"))return os_wrapper_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--os-tls-callback"))return os_callback_contract(argv[2]);
+#if !defined(__ANDROID__)
+    if(argc==3 && !strcmp(argv[1],"--tls-unsupported"))return unsupported_tls_contract(argv[2]);
+#endif
     if(argc==2 && !strcmp(argv[1],"--invalid-query")) {
         struct guest_memory_info untouched;memset(&untouched,0xa5,sizeof(untouched));
         typedef void (*query_fn)(struct guest_memory_info *);

@@ -6,6 +6,7 @@
 #include "guest_context.h"
 #include "guest_pages.h"
 #include "native_boundary.h"
+#include "guest_os_tls.h"
 #include "exit_registry.h"
 #include "nso_host.h"
 #include <errno.h>
@@ -43,6 +44,8 @@ struct guest_process {
     size_t bindings_count;
     int boundary_initialized,boundary_prepared,guest_session_ended,init_attempted;
     uint64_t guest_x18;
+    guest_os_tls_manager *os_tls;
+    guest_os_tls_thread *os_thread;
 };
 static pthread_mutex_t exclusive_mutex=PTHREAD_MUTEX_INITIALIZER;
 static guest_process *exclusive_process;
@@ -122,6 +125,20 @@ struct nso_result guest_process_create(const struct guest_process_config *config
             else p->context=NULL;
         }
     }
+    if(r.status==NSO_OK) {
+        struct guest_os_tls_result created=guest_os_tls_create(&p->os_tls);
+        if(created.status!=GUEST_OS_TLS_OK) {
+            r=status(NSO_OWNER_ERROR,created.native_error,0);
+            struct guest_pages_result pages=guest_pages_destroy(p->pages);
+            if(pages.status!=GUEST_PAGES_OK)r=status(NSO_RETAINED,r.native_error,EIO);
+            else {
+                p->pages=NULL;struct nso_result cleanup=from_context(guest_context_destroy(p->context));
+                if(cleanup.status!=NSO_OK)r=status(NSO_RETAINED,r.native_error,cleanup.native_error);
+                else p->context=NULL;
+            }
+            if(r.status==NSO_RETAINED)p->quarantined=1;
+        }
+    }
     if(r.status!=NSO_OK && r.status!=NSO_RETAINED) {pthread_mutex_destroy(&p->mutex);free(p);}
     else {exclusive_process=p;*out=p;}
     pthread_mutex_unlock(&exclusive_mutex);return r;
@@ -156,14 +173,16 @@ static int initialize_empty_heap(struct empty_heap_manager *heap) {
 }
 static struct nso_result snapshot_locked(guest_process *p,struct guest_memory_info *out) {
     if(current_process!=p || !p->running || p->quarantined || !p->module_ready ||
-       !p->module || !p->module_ticket || !p->module_committed || !p->pages ||
+       !p->module || !p->module_ticket || !p->module_committed || !p->pages || !p->os_tls || !p->os_thread ||
        p->thread.state!=THREAD_RUNNING || !pthread_equal(p->thread.native,pthread_self()) ||
        p->heap.state!=HEAP_READY_EMPTY || p->heap.capacity || p->heap.blocks)
         return status(NSO_INVALID,EINVAL,0);
     struct guest_context_usage use;
     struct guest_primary_stack stack;
     struct guest_pages_usage pages;
+    struct guest_os_tls_counts tls;
     if(guest_pages_usage(p->pages,&pages).status!=GUEST_PAGES_OK ||
+       guest_os_tls_count(p->os_tls,&tls).status!=GUEST_OS_TLS_OK || tls.quarantined || tls.registered_threads!=1 ||
        guest_context_primary_stack(p->context,&stack).status!=GUEST_CONTEXT_OK)
         return status(NSO_INVALID,EINVAL,0);
     use=pages.context;
@@ -260,6 +279,42 @@ static uint32_t free_pages(uintptr_t address,size_t bytes) {
     struct guest_pages_result r=guest_pages_free_exact(p->pages,address,bytes);
     return finish_page_service(p,"free-exact",address,bytes,r);
 }
+static guest_process *tls_current(void) {
+    guest_process *p=required_current();
+    if(!p->os_tls || !p->os_thread || !p->running || p->thread.state!=THREAD_RUNNING || p->quarantined) {
+        fputs("[os-tls-invalid] no live actual-primary OS record\n",stderr);abort();
+    }
+    return p;
+}
+static void tls_failure(const char *operation,struct guest_os_tls_result r) {
+    fprintf(stderr,"[os-tls-fatal] op=%s status=%d native=%d; no guessed SDK Result, owners retained until process shutdown\n",operation,r.status,r.native_error);abort();
+}
+static uint32_t tls_allocate(uint32_t *out,uint64_t destructor) {
+    guest_process *p=tls_current();uint64_t ignored;
+    if(!out || (destructor && (destructor<nso_base(p->module) ||
+       nso_entry_address(p->module,destructor-nso_base(p->module),&ignored).status!=NSO_OK))) {
+        fputs("[os-tls-fatal] unsupported output/callback identity; no registration\n",stderr);abort();
+    }
+    struct guest_os_tls_result r=guest_os_tls_allocate(p->os_tls,GUEST_OS_TLS_APP,destructor,out);
+    if(r.status==GUEST_OS_TLS_EXHAUSTED)return 0x1203; /* Verified public APP exhausted result only. */
+    if(r.status!=GUEST_OS_TLS_OK)tls_failure("allocate",r);
+    fprintf(stderr,"[os-tls-allocate] app_slot=%u callback=0x%" PRIx64 " result=0; logical OS storage, not ThreadType/ELF TLS\n",*out,destructor);
+    return 0;
+}
+static void tls_free(uint32_t slot) {
+    guest_process *p=tls_current();struct guest_os_tls_result r=guest_os_tls_free(p->os_tls,slot);
+    if(r.status!=GUEST_OS_TLS_OK)tls_failure("free",r);
+}
+static uint64_t tls_get(uint32_t slot) {
+    guest_process *p=tls_current();uint64_t value=0;
+    struct guest_os_tls_result r=guest_os_tls_get(p->os_tls,p->os_thread,slot,&value);
+    if(r.status!=GUEST_OS_TLS_OK)tls_failure("get",r);
+    return value;
+}
+static void tls_set(uint32_t slot,uint64_t value) {
+    guest_process *p=tls_current();struct guest_os_tls_result r=guest_os_tls_set(p->os_tls,p->os_thread,slot,value);
+    if(r.status!=GUEST_OS_TLS_OK)tls_failure("set",r);
+}
 uint64_t guest_process_resolve(uint32_t index,const char *name) {
     if(!name)return 0;
 #define PURE(fn) if(!strcmp(name,#fn))return (uint64_t)(uintptr_t)&fn
@@ -272,6 +327,10 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
     if(!strcmp(name,"_ZN2nn2os17FreeAddressRegionEm"))return (uintptr_t)&free_region;
     if(!strcmp(name,"_ZN2nn2os19AllocateMemoryPagesEmm"))return (uintptr_t)&allocate_pages;
     if(!strcmp(name,"_ZN2nn2os15FreeMemoryPagesEmm"))return (uintptr_t)&free_pages;
+    if(!strcmp(name,"_ZN2nn2os15AllocateTlsSlotEPNS0_7TlsSlotEPFvmE"))return (uintptr_t)&tls_allocate;
+    if(!strcmp(name,"_ZN2nn2os11FreeTlsSlotENS0_7TlsSlotE"))return (uintptr_t)&tls_free;
+    if(!strcmp(name,"_ZN2nn2os11GetTlsValueENS0_7TlsSlotE"))return (uintptr_t)&tls_get;
+    if(!strcmp(name,"_ZN2nn2os11SetTlsValueENS0_7TlsSlotEm"))return (uintptr_t)&tls_set;
     if(!strcmp(name,"__cxa_guard_acquire"))return (uintptr_t)&__cxa_guard_acquire;
     if(!strcmp(name,"__cxa_guard_release"))return (uintptr_t)&__cxa_guard_release;
     if(!strcmp(name,"__cxa_guard_abort"))return (uintptr_t)&__cxa_guard_abort;
@@ -294,13 +353,13 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
 }
 static int import_signature(const char *name,nb_signature *out) {
     unsigned arguments=0,returns=1;
-    static const char *const one[]={"strlen","__cxa_guard_acquire","atexit",
+    static const char *const one[]={"strlen","__cxa_guard_acquire","atexit","_ZN2nn2os11GetTlsValueENS0_7TlsSlotE",
         "_ZN2nn2os17FreeAddressRegionEm","_ZN2nn2os12TryLockMutexEPNS0_9MutexTypeE",
         "nnosTryLockMutex","_ZN2nn2os28IsMutexLockedByCurrentThreadEPKNS0_9MutexTypeE",NULL};
-    static const char *const two[]={"strnlen","strcmp","strcpy","strchr","strrchr","strstr",
+    static const char *const two[]={"strnlen","strcmp","strcpy","strchr","strrchr","strstr","_ZN2nn2os15AllocateTlsSlotEPNS0_7TlsSlotEPFvmE",
         "_ZN2nn2os21AllocateAddressRegionEPmm","_ZN2nn2os19AllocateMemoryPagesEmm","_ZN2nn2os15FreeMemoryPagesEmm",NULL};
     static const char *const three[]={"memset","memcpy","memmove","memcmp","memchr","strncmp","strncpy","__cxa_atexit",NULL};
-    static const char *const void_one[]={"__cxa_guard_release","__cxa_guard_abort","_Exit","_exit",
+    static const char *const void_one[]={"__cxa_guard_release","__cxa_guard_abort","_Exit","_exit","_ZN2nn2os11FreeTlsSlotENS0_7TlsSlotE",
         "_ZN2nn2os15QueryMemoryInfoEPNS0_10MemoryInfoE","_ZN2nn4util11ReferSymbolEPKv","nnutilReferSymbol",
         "_ZN2nn2os13FinalizeMutexEPNS0_9MutexTypeE","nnosFinalizeMutex",
         "_ZN2nn2os9LockMutexEPNS0_9MutexTypeE","nnosLockMutex",
@@ -310,6 +369,7 @@ static int import_signature(const char *name,nb_signature *out) {
         arguments=group==3?1:group+1;returns=group==3?0:1;goto found;
     }
     if(!strcmp(name,"_ZN2nn2os15InitializeMutexEPNS0_9MutexTypeEbi") || !strcmp(name,"nnosInitializeMutex")) {arguments=3;returns=0;}
+    else if(!strcmp(name,"_ZN2nn2os11SetTlsValueENS0_7TlsSlotEm")) {arguments=2;returns=0;}
     else if(!strcmp(name,"abort")) {arguments=0;returns=0;}
     else return 0;
 found:
@@ -385,6 +445,30 @@ struct nso_result guest_process_initialize(guest_process *p,nso_init_policy poli
     pthread_mutex_unlock(&p->mutex);
     return r.status==NSO_OK?nso_run_init_execute(p->module,policy,profile_executor,p):r;
 }
+static struct guest_os_tls_invoke_result invoke_os_destructor(guest_os_tls_manager *manager,
+        guest_os_tls_thread *thread,uint64_t destructor,uint64_t value,void *opaque) {
+    guest_process *p=opaque;
+    if(current_process!=p || manager!=p->os_tls || thread!=p->os_thread || destructor<nso_base(p->module))
+        return (struct guest_os_tls_invoke_result){GUEST_OS_TLS_INVOKE_FAILED,EINVAL};
+    const uint64_t args[6]={value};uint64_t ignored;
+    struct nso_result r=guest_process_call(p,destructor-nso_base(p->module),args,1,&ignored);
+    return (struct guest_os_tls_invoke_result){r.status==NSO_OK?GUEST_OS_TLS_INVOKE_OK:GUEST_OS_TLS_INVOKE_FAILED,r.status};
+}
+static void cleanup_os_primary(guest_process *p) {
+    struct guest_os_tls_cleanup_report report={0};
+    struct guest_os_tls_result r=guest_os_tls_cleanup(p->os_tls,p->os_thread,invoke_os_destructor,p,&report);
+    if(r.status!=GUEST_OS_TLS_OK) {
+        /* Do not return to Context, mark ThreadReturned or refund its stack.
+         * No recoverable stack-retention API exists in this limited runner. */
+        fprintf(stderr,"[os-tls-provider-fatal] status=%d round=%u slot=%u callback=0x%" PRIx64 " value=0x%" PRIx64 " provider=(%d,%d); ThreadRecord/stack/module/bindings remain owned until process shutdown\n",
+            r.status,report.failed_round,report.failed_slot,report.failed_destructor,report.failed_value,report.invocation.status,report.invocation.provider_error);
+        abort();
+    }
+    fprintf(stderr,"[os-tls-cleanup] rounds=%u invocations=%zu remaining=%zu; actual primary still RUNNING\n",report.rounds_scanned,report.invocations,report.remaining_nonzero);
+    r=guest_os_tls_unregister(p->os_tls,p->os_thread);
+    if(r.status!=GUEST_OS_TLS_OK)tls_failure("unregister",r);
+    p->os_thread=NULL;
+}
 static void *invoke_primary(guest_context *context,void *opaque) {
     guest_process *p=opaque;
     struct guest_primary_stack stack;
@@ -394,9 +478,10 @@ static void *invoke_primary(guest_context *context,void *opaque) {
     current_process=p;
     pthread_mutex_lock(&p->mutex);
     p->thread=(struct thread_record){THREAD_RUNNING,pthread_self(),stack};
+    struct guest_os_tls_result registered=guest_os_tls_register(p->os_tls,&p->os_thread);
     if(p->heap.state==HEAP_UNINITIALIZED && initialize_empty_heap(&p->heap))p->quarantined=1;
     struct guest_memory_info initial;
-    p->callback_status=snapshot_locked(p,&initial);
+    p->callback_status=registered.status==GUEST_OS_TLS_OK?snapshot_locked(p,&initial):status(NSO_OWNER_ERROR,registered.native_error,0);
     pthread_mutex_unlock(&p->mutex);
     int e=0;
     void *value=NULL;
@@ -409,10 +494,12 @@ static void *invoke_primary(guest_context *context,void *opaque) {
         }
         else {
             value=p->callback(p,p->argument);
+            cleanup_os_primary(p);
             e=nso_fault_scope_end(p->module);
             if(e) {p->callback_status=status(NSO_RETAINED,0,e);p->diagnostic_retained=1;}
         }
     }
+    if(p->os_thread)cleanup_os_primary(p);
     pthread_mutex_lock(&p->mutex);p->thread.state=THREAD_RETURNED;
     if(p->boundary_initialized)p->guest_session_ended=1;
     pthread_mutex_unlock(&p->mutex);current_process=NULL;
@@ -422,8 +509,8 @@ struct nso_result guest_process_run(guest_process *p,guest_process_callback call
     if(!p || !callback || !value)return status(NSO_INVALID,EINVAL,0);
     *value=NULL;
     pthread_mutex_lock(&p->mutex);
-    if(!p->module_ready || p->quarantined || p->running || p->thread.state!=THREAD_ABSENT) {
-        pthread_mutex_unlock(&p->mutex);return status(NSO_INVALID,EBUSY,0);
+    if(!p->module_ready || p->quarantined || p->running || p->thread.state!=THREAD_ABSENT || p->guest_session_ended) {
+        pthread_mutex_unlock(&p->mutex);return status(p->guest_session_ended?NSO_UNSUPPORTED:NSO_INVALID,EBUSY,0);
     }
     p->running=1;p->thread.state=THREAD_STARTING;p->callback=callback;p->argument=arg;
     p->callback_status=status(NSO_OK,0,0);
@@ -452,7 +539,13 @@ struct nso_result guest_process_destroy(guest_process **process) {
     guest_process *p=*process;if(!p)return status(NSO_OK,0,0);
     pthread_mutex_lock(&p->mutex);
     if(p->running || p->diagnostic_retained) {pthread_mutex_unlock(&p->mutex);return status(NSO_RETAINED,EBUSY,0);}
+    if(p->os_thread) {pthread_mutex_unlock(&p->mutex);return status(NSO_RETAINED,EBUSY,0);}
     p->module_ready=0;
+    if(p->os_tls) {
+        struct guest_os_tls_result released=guest_os_tls_destroy(p->os_tls);
+        if(released.status!=GUEST_OS_TLS_OK) {pthread_mutex_unlock(&p->mutex);return status(NSO_RETAINED,released.native_error,0);}
+        p->os_tls=NULL;
+    }
     if(p->pages) {
         struct guest_pages_result released=guest_pages_destroy(p->pages);
         if(released.status!=GUEST_PAGES_OK) {
