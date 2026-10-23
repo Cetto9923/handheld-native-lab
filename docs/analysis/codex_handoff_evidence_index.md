@@ -6,12 +6,12 @@
 
 | 对象 | 已核对状态 / 唯一写者 |
 | --- | --- |
-| 原交付 `/Users/yuyan9923/GitHub/ff-resonance-rg477m-native` | `work/rg477m-native` / `2e444a16a1d80fe3ff1407e69eb5ba554490b528`，本次采样clean；只由总控安全快进 |
-| integration `/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration` | `task/codex-integration` / `999b5494c6f84d02758dc845ad727a8cf280212b`（known_at 2026-10-23T11:10:02.051068+00:00，后续文档commit会改变HEAD）；三份root报告已提交，仅四文档WIP；容量源码集成c5bbddb，原交付仍2e444a1；总控持有报告、Git与设备操作 |
+| 原交付 `/Users/yuyan9923/GitHub/ff-resonance-rg477m-native` | `work/rg477m-native` / `f4cd524fa10e52dc7846a7be994a9446f8906bae`，本次只读确认已安全ff/clean；只由总控安全快进 |
+| integration `../ffrs-integration` | known_atc1ddecb5cd179b80bf8f14c84171fb336ee26a05；85→70c已集成，四文档与root报告WIP分开，当前原交付仍最后f4 |
 | 本文档代理 | 用户明确委派DOC-HANDOFF-LIVE，当前仅四文件：HANDOFF/state/生成STATUS/本索引；不stage/commit，交总控串行提交 |
-| `../ffrs-runtime` | `task/T02-codex-runtime` / `15e498c0985aee20c973632b6406e2b976628d81`；当前clean freeze `d4ded908096feef6fff2876ab2ffdaa9e48303b5`，九文件容量/guard修复已同RG实测；15e/e95旧失败/WIP是历史，独立新freeze QA进行中 |
+| `../ffrs-runtime` | 85八filefreeze证据保留；当前同writer新5fileprimary/59 OS HLE phase已实际编码（非reserved），新WIP未passed |
 | `../ffrs-android` | `task/T03A-codex-android` / `15da4c2ef7a11138de45d098574f9bd66ef60b66`，采样时clean；已集成v6，当前不再开新外围probe |
-| `../functional-review` | GuestContext完成并释放lease；startup-profile/旧freeze15e498c独立host正常路径通过、宏关闭P2/RG失败；等新修复freeze复核 |
+| `../functional-review` | 5cBoundaryrepair与9cOSTLS组件FINAL；native-profile/已actualfollowup审85+4695+5c，noWIP/ADB/originalgame，未FINAL |
 | `../tls-research` | 图形底座有界评估完成并退出，lease释放；原证据保留，不解释为后端实现或新probe |
 
 当前无待处理审批或不确定写入（总控最新消息）。本代理没有后台进程；总控声明当前真实RG命令均已结束。历史AVD PID49247/63060/71987不能当存活证据：本代理执行 `ps -p 49247,63060,71987 -o pid=,comm=` 被执行沙箱拒绝，exit127。恢复后由有权限的总控重新只读核验，不能盲重启、wipe或杀他人进程。
@@ -117,3 +117,83 @@ UI只读动作`cua.getApp('Codex')`被CUA明确DENIED：`Computer Use is not all
 - 2026-10-23T11:09:10.328776+00:00 c5bbddb主机回归session22690已完成wrapper0：[summary](../../.local/host-verification/checkpoint-c5bbddb/summary.json)23checks passedtrue，真实预期0/3/23/24，main before/after6e6d…68a5一致；source dirty当时仅四文档。该进程已结束，不重复启动；capacity独立QA仍在执行，不外推FINAL。
 
 检查点 2026-10-23T11:10:02.051068+00:00：root三份清理报告已提交`999b5494c6f84d02758dc845ad727a8cf280212b`，此为known_at快照而非自指未来文档commit；构建源码检查点仍c5bbddb/d4ded9，原交付最后报告2e444a1未ff。四文档已记录d4同RG真实越Query、host23预期通过、Vulkan独立FINAL、pages实际运行；capacity新freeze QA仍待结果。文档现暂停写入供总控一笔提交，代码/QA继续。仅这四文件WIP，无本代理Git/ADB操作、待审批或不确定写入。
+
+## f4交付与小增量检查点（2026-10-23T11:14:47.133988+00:00）
+
+- 四文档检查点`f4cd524fa10e52dc7846a7be994a9446f8906bae`已提交，原交付`work/rg477m-native`已从已核clean2e安全ff同SHA；本次只读root/delivery均HEADf4/clean。capacity独立复核为`REVIEW_EXECUTED_PENDING_REPORT`：Context/profile normal/recovery、6capacity边界、跨TUguards0；缺宏/0宏拒绝1为预期，受控munmapfail保raw/charge65536且析构后再释放重试。等FINAL，未提前passed。
+- pages头/API已交runtime，作者仍四新文件实际实现；runtime已由rootfollowup触发只接Process c/h、processcontract/buildscript四文件Query/VA适配，单一owner且scope无交叠。只读runtime当刻仍clean d4、pages c/h已untracked；后续WIP不能继承immutable d4快照review通过，本phase不改TP/loader。
+- x18 ABI风险：[source_evidence](../../../ffrs-runtime/.local/call-boundary-x18/source_evidence.json)、[NOTES](../../../ffrs-runtime/.local/call-boundary-x18/NOTES.md)已落盘；ownCLI SHA1e5953…6d69、objdump exit0。runtime报告Android+0x22134直接BRx8未保存/恢复x18，profile导入直指host typed，原nnMain严格trapx18=1；作者依据Android系统库约定指出需未来host↔guest gateway，末尾restore不够。**未证明是当前strict133原因，未修复**，不改TP/loader、不把风险当新游戏成功。
+- 该小增量后四文件再次暂停供总控串行提交；无本代理Git/设备操作、待审批或不确定写入。
+
+## d4独立FINAL与下阶段scope预留（2026-10-23T11:17:04.487278+00:00）
+
+- [新capacity FINAL](../../../functional-review/startup-capacity/REVIEW.md)、[summary](../../../functional-review/startup-capacity/summary.json)、manifest/source snapshot/原始日志齐；root[归档报告](codex_native_stack_capacity_review.md)SHA`d8f8e6fb7a24c8c3759d164283150f817fd27f4cbe89e69ea0f4766caa729c16`。d4无剩余具体组件缺陷、跨TU旧P2闭合；38命令33x0/1x-6/4x1，19严格成功编译链接0。4个1为缺宏/0宏拒绝、modulequota、补测漏fixtureargv；旧漏argv1保留、只补argv后0。独立设备/main未执行，Process/pages新WIP不在PASS内。
+- T02-NATIVE-BOUNDARY owner`/root/vulkan`，`ffrs-native-boundary/task/T02-native-boundary`已只读确认based4/clean，五新文件native_boundary.c/h/S、native_boundary_contract.c、build_native_boundary_contract.sh无scope交叠，现RESERVED等待root真实followup。仅最小真实AArch64 gateway+普通契约；不改loader/process/main、无resolver绑定/TP写/ADB/通用JIT，不标已运行/已修x18。未来另作者QA；临时第四worker含doc获明确并行许可，runtime/pages优先。
+- T07-GUEST-PAGES-REVIEW owner`/root/functional_review`，输出仅`../functional-review/guest-pages/`，RESERVED等pages四文件freeze+真实followup；普通typed quota/真实VM/rollback/retained/freewhole契约，无source/ADB/NSO。作者当前仅报告hostnormal/recovery0、6恢复cases，源码/Android未冻结，不提前passed。
+
+## 页组件freeze与两个实际followup（2026-10-23T11:19:14.811663+00:00）
+
+- `ffrs-pages`四文件clean freeze`4695e3c995993832ff8e274415f58b1cdb1e4684`已只读核验；作者hostnormal76/recovery152 checks0、6recoverycases、19commands0，Android100784B/SHA5cfde4d177e65211a93b4098ecbabea360f882d629af0db2cca2636091fbd172，bundle作者报告23e0869…9ba42。总控开始核验并准备RG normal，**此事件尚未执行，不提前PASS**。
+- T07-GUEST-PAGES-REVIEW已实际followup触发，输入immutable4695e3c，输出guest-pages/，普通typedowner契约；非原游戏/ADB/源码写。Runtime四个Process文件已实际dirty接单owner，不在旧d4独立PASS内。
+- T02-NATIVE-BOUNDARY也已实际followup触发，五新文件register-only gateway组件编码；真实x18域切换/每线程/nesting为目标，foreignunwind/stackargs明确未支持。没有resolver/loader/process/main/TP写/ADB/通用JIT绑定，不称已完成/修好游戏ABI。
+
+## 页owner真实RG normal通过 / 下个检查点（2026-10-23T11:20:51.437377+00:00）
+
+- [plan](../../.local/device/rg477m-session1/guest-pages-v1-plan.json)/[stage](../../.local/device/rg477m-session1/guest-pages-v1-stage.json)/[execution](../../.local/device/rg477m-session1/guest-pages-v1-execution.json)/[stdout](../../.local/device/rg477m-session1/guest-pages-v1.stdout)：4695e3c standalone normal contract同RG return0/39.740125ms、双层无timeout，76checks/errors0/recoverycases0，finalpending/charged/tickets/rawregions全0。ELF100784B/SHA5cfde4d177e65211a93b4098ecbabea360f882d629af0db2cca2636091fbd172，sourcebundle23e0869ace569308a0b734e8cae88c88cef2ffe8fc7f7f22138a703b9619ba42，全部sourcehash匹配freeze。
+- root已集成`d8ccef804082813a5206368689f06d10181d5ebb`，原交付最后报告f4；仅standalone normal组件passed，独立页QA仍running，RG故障注入/SDK绑定/原nnMain新gate未测。最新原游戏证据仍d4的pages71/VAusage66严格133；Process四文件WIP继续接入、Boundary五文件真实编码但未完成。
+- 四文档本检查点再次暂停供总控串行提交，root两份自有报告WIP分开；STATUS生成和diffcheck实际0，无本代理Git/设备操作、待审批/不确定写入。新文档commit会改变known_at rootHEAD，不能自指。
+
+## 原nnMain真实map后进入CreateThread gate（2026-10-23T11:24:43.908970+00:00）
+
+- Clean四文件page-profile freeze`f24b826b5d118b2479a476ec61aba778df26e021`（依赖owner4695）已集成root`c414aadbff878c179d4f1687c27df60e2ecf6e54`。亲读[plan](../../.local/device/rg477m-session1/page-profile-v1-plan.json)/[execution](../../.local/device/rg477m-session1/page-profile-v1-execution.json)：RG contract0/52.85ms、info0/133.88ms，nnMain133/138.02ms、malloc133/136.23ms，全部无timeout；main前后hash保持。Contract714024B/SHAad7d9995b3bcb3f5aff23c35cb9e51573bfd7f188c07647a7b0854bdf77f28c6；CLI688016/SHA9cd67f087627a792aaee7a4926ea7ed8f97a7ab5e987dd8a3cd7e865517d566a。plan内android_executed=false为pre-execution历史字段，实际以随后execution为准。
+- [nnMain stderr](../../.local/device/rg477m-session1/page-profile-v1-nnmain.stderr)：Query→真实65536B map→CreateThread126/caller+0x352f1b8严格133；六参线索x3=ownedVA+0x1000、x4stackbytes=0、x5prio16。作者已实际只读[thread-first-gate](../../../ffrs-runtime/.local/thread-first-gate/)追来源/CRT/ctors前置，f24源码不改；不能猜默认栈或return0越关。[malloc](../../.local/device/rg477m-session1/page-profile-v1-malloc.stderr)仍VAusage66/+0x144b8/133。
+- T07-PAGE-PROFILE-REVIEW已RESERVED，ownerfunctionalreview，输出仅`functional-review/page-profile/`，输入immutablef24+4695普通host契约，待root真实followup才running。页ownerQA仍在审，f24新bridge独立QA尚未；原交付f4不提前覆盖，仍无完整CRT/TLS/游戏通过。
+
+四文档检查点 2026-10-23T11:26:42.129570+00:00：rootHEAD known_at`c414aadbff878c179d4f1687c27df60e2ecf6e54`，不可作为未来文档commit自指；immutable页桥源码仍f24/c414。已保存RG Query→真实map→CreateThread133及新review RESERVED，文档再次暂停供总控提交，其他runtime/QA/Boundary继续。STATUS与diffcheck实际0；未Git mutation/设备操作，无待审批或不确定写入。
+
+本检查点另只读观察root自有报告WIP三份：codex_guest_process_device_report.md、codex_guest_pages_report.md、codex_native_stack_capacity_review.md；与本代理四文件分开，均未触碰。
+
+## stack0来源闭合 / 页FINAL / OS TLS预留（2026-10-23T11:32:04.632505+00:00）
+
+- [thread report](../../../ffrs-runtime/.local/thread-first-gate/REPORT.md)/[evidence](../../../ffrs-runtime/.local/thread-first-gate/evidence.json)/manifest：f24 readonly/static验证0、production未改/未执行target。BSS77c51b8由startup+133ec MOV1MiB/+133f4 STR写；nnMain+352f150先到startup但+1339c AllocateTlsSlot59 trap，未到writer。callback18c60非NULL；-MainThreadStackSize=可覆盖（<=4095按MiB）。这是nnMain worker栈，与NPDM primary64KiB不同，不归因凭空DT_INIT_ARRAY ctor；SDKzero-stack无默认，MapAliasStack有aliasmanager/真实SVC，不可简单pthread旁路。
+- 同f24/CLI9cd67f…566a的[CRT真实RG execution](../../.local/device/rg477m-session1/crt-gate-v1-execution.json)：`--init-wrapper --info`133/169.573875ms、无timeout，musl515/+0x5920a34；不是CRT完成。
+- 页owner独立[FINAL](../../../functional-review/guest-pages/REVIEW.md)/[summary](../../../functional-review/guest-pages/summary.json)20commands0/no timeout，normal/recovery/identity/concurrency均过、无确认组件缺陷；[root归档](codex_guest_pages_review.md)SHA`9ea1e0fc98ae35b787e0899287388a61e247672ea6fb180abcce39fec1d7a449`。scope仅4695owner，无独立设备/Process绑定；旧页作者/QA lease释放。新page-profile QA已真实followup运行，输入f24四Processfiles+4695两页源，不能说单SHA包含依赖。
+- T02-OS-TLS owner`/root/tls_research`：`ffrs-os-tls/task/T02-os-tls`已只读确认basec414aad/clean，guest_os_tls.c/h、guest_os_tls_contract.c、build_guest_os_tls_contract.sh四新路径无交叠，RESERVED待实际followup，不称running。按既有报告直接编码32OS槽真实manager/注册线程值/清零/Free/5轮dtor/typedinvoker，供后续nativegateway/ThreadRecord；无16槽PoC绑定/ELFTLS/ThreadType或SDKTP布局猜测/HLEresolver/直接游戏callback/ADB。
+- doc此关键检查点后暂停供总控提交，root自有五报告WIP单列未碰；新profileQA/Boundary/后续OS TLS代码不因文档检查点等待。
+
+## OS TLS实际编码 / register-only Boundary RG组件通过（2026-10-23T11:37:34.511858+00:00）
+
+- T02-OS-TLS已真实followup到tls_research，basec414/taskT02-os-tls，四新files实际实现；只读见header untracked。直接复用现有SDK报告，noHLE/noADB，不提前冻结或PASS。runtime thread-first-gate只读与源码phase已完成释放，未来nativeboundary/OSTLS接入另领scope。
+- Clean2f五文件已核，rootcherry79f3513。[plan](../../.local/device/rg477m-session1/native-boundary-v1-plan.json)/[execution](../../.local/device/rg477m-session1/native-boundary-v1-execution.json)/[stdout](../../.local/device/rg477m-session1/native-boundary-v1.stdout)：sameRG own normal0/210.023084ms、无timeout、stderr空；ELF51856B/SHA6582237ef40824f52217e0bc02668e212cf438c412da7bd0a61758fec8b98b09，5sourcehash匹配2f。GP/FP/sret、x18clobber/真实hostSCS、thread/nesting、2自有SIGTRAPchildren、BTI flags均true；game_input=false。仅register-only组件，stackargs/foreignunwind未支持，21参musl有stackargs不能用；没有loader/resolver/game绑定，游戏x18缺口不宣称闭合。
+- rootHEAD`6b4a261af57dca808f859b13d97aa5a104842c40`已提交7报告：[native boundary](codex_native_boundary_report.md)、[thread来源](codex_startup_thread_gate_report.md)、[页owner](codex_guest_pages_report.md)/[独立review](codex_guest_pages_review.md)、[capacityreview](codex_native_stack_capacity_review.md)、[device](codex_guest_process_device_report.md)、[stage](codex_stage_status.md)。root除四文档外clean，原交付仍f4；下一ff是计划而非事实。
+- Profile独立QA已补测：retainedpending/charged但backing0时typedQuery NSO_INVALID且output不写，修复后0；livepages先释放再modulemunmapfail/retry/drop1；quota/partial SDK路径严格abort而非猜Result。FINAL仍待消息，不标passed。T07-NATIVE-BOUNDARY-REVIEW已RESERVED，ownerfunctionalreview，输出`functional-review/native-boundary/`，只审2f五files普通ABI/离线构建，noADB/NSO/旧security流程，profileFINAL后由root真实followup才running。
+- 本四文档检查点暂停供root串行提交，不阻编码；STATUS与diffcheck实际0，未动代码/报告/设备，未Git mutation。
+
+## profile FINAL / Boundary QA ACTIVE / 下一8文件phase预留（2026-10-23T11:41:37.490796+00:00）
+
+- [profile FINAL](../../../functional-review/page-profile/REVIEW.md)/[summary](../../../functional-review/page-profile/summary.json)与root[归档](codex_guest_page_profile_review.md)SHA`7f2bd0d502f8e036db139be5f0a2db70e716cd734d9d9df06dc912a3531872ac`：f24四files+4695两页源独立组件无具体缺陷；32构建/检查/运行命令27x0/3x-6/2x1、18严格成功compile0，另保留首次单SHA依赖gitshow128后按4695修正，不混入32分布、不冒称singleSHA含依赖。root归档/更新3报告WIP与四文档分开。
+- T07-NATIVE-BOUNDARY-REVIEW已actualfollowup ACTIVE，独立只读/交叉审查2f五files，无设备，未FINAL；OSmodule继续并行。
+- T02-NATIVE-PROFILE owner`/root/runtime`，runtime树basedf24，8scopefiles为Process c/h、loader c/h、nso_call.c、processbuildscript、processcontract、processreport，已检查无活跃scope交叠并RESERVED，待真实followup、先给root方案再实施。2f Boundary源在另一树精确依赖；覆盖真实guestentry、全部已准hostimports及initwalker正确x18域边界。load时宿主协调线程与真实primary另pthread不同，不能错绑scope。优先最小quiescent retarget/initexecutor或证据等价方案；不改Context/Boundary/OS_TLS/gamebytes，不rawfallback/假默认。Boundary独立QA不等于集成通过，OSmodule未完成也不阻此plan。
+- 本最小登记后doc再次暂停供root串行commit/safeff；尚未发生的ff不写成交付事实，原交付最后核验f4；STATUS与diffcheck实际0，无本代理代码/设备/Git操作。
+
+## Boundary确认缺陷 / 两项源码lease（2026-10-23T11:45:31.158231+00:00）
+
+- 独立QA静态与producer只读确认：2f native_boundary.c112在mprotect失败后忽略munmap失败，zero binding/count导致liveRW映射handle丢失且scope可close。旧normalRG0/ABI flags保留，但组件独立接受现blocked，不能称已修复；QA继续只读2f并待新freeze重测，不阻OSTLS。
+- T02-NATIVE-BOUNDARY-REPAIR owner/root/vulkan已无交叠RESERVED，仍原5scopefiles（C/h/S、contract/buildscript，.S原则不改）。NB_RETAINED9仅提案：保scope/mapping/rawbytes，entryNULL不可调用，count阻close；unbind接受retained、真实unmap后才清账。控制包装测试须保留oldbugfails/newretryPASS，production无hook。等待root实际followup写，不提前running/fixed。
+- T02-NATIVE-PROFILE原8files RESERVED已再次确认落盘，runtime当前只读设计。原则同意actualprimary懒init/bind/quiescentretarget，sameprimary可多call，但primary结束module不再执行；bindings保到module真实munmap+exitobserver之后deadowner释放，失败保留。首版__cxa_finalize/exit（可直接回调guest）strictunresolved，避免same-scope重入/漏domain/lifetime；atexit仍真实注册、observer只discard，guestcallbacks另phase，无测试rawfallback。root实际授权实现followup之前不标运行。
+- f24+4695独立profile FINAL已passed并归档7f2bd0…72ac；不外推新NativeProfile/Boundary修复。两项lease登记后doc再次暂停，STATUS与diffcheck0，无代码/报告/设备/Git mutation。
+
+## NativeProfile实际WIP / repair与OS TLS实机组件结果（2026-10-23T11:56:24.653874+00:00）
+
+- NativeProfile已root正式授权并实际编码；亲读f24树8scopefiles dirty，不再RESERVED。primary/session/strictcallback限制保持，未冻结或PASS。
+- Boundaryclean5c20→root30b：normal52056B/SHA228672de96da20ee2d9b8bd000c5e0104ee6428b9b17fb73dc94b227f99ce78a，RG0/156.280833ms；cleanup34560B/SHA504d5308ddbb11270dbcc9a4f73f1b1535ba77d91dead96a4fdf55d5d01927e4，RG0/67.742708ms、3attempt/1actualunmap/count0/allflags true，均无timeout/stderr空。独立review实际续repair子目录，**未FINAL/未独立接受**。旧[regression execution](../../.local/device/rg477m-session1/native-cleanup-old-execution.json)/[stdout](../../.local/device/rg477m-session1/native-cleanup-old.stdout)1/47.067292ms、losthandletrue/scopeclose0/4096B、thunk_executed=false保留，root已手动回收自有fixture。见更新[boundary报告](codex_native_boundary_report.md)。
+- OSTLS clean4filefreeze9c24ed35e683e0aa426ae2561dac670a8ead8ef1→root408fe26：[execution](../../.local/device/rg477m-session1/os-tls-v1-execution.json)/[stdout](../../.local/device/rg477m-session1/os-tls-v1.stdout)RG0/45.649208ms、1351checks/errors0、app16/sdk15/slot16reserved、round5/8workers×16、retainedmanager/thread0，无timeout；ELF112864B/SHA22d3a937d68e03718628ee06aa158b44ef8b4eacc7f1c8ea64d9c13a22d48cba。仅组件未HLE，见[root报告](codex_os_tls_report.md)。
+- T07-OS-TLS-REVIEW已RESERVED，ownerfunctionalreview，输出`functional-review/os-tls/`，输入9c4files+已完成SDKreports，普通独立C/POSIX，noADB/NSO/guest/sourcewrites。等BoundaryFINAL及root实际followup才running。四文档暂停供root立即checkpoint；rootHEAD known_at30b，报告WIP另列，STATUS/diffcheck0。
+
+最小交付检查点 2026-10-23T12:02:03.874537+00:00：Boundary repair [FINAL](../../../functional-review/native-boundary/repair/REVIEW.md)已收到，综合报告SHA`78a0ecaaa321b518768b5444fc0bc538246d3112825258cab07f4166ab6312d7`，5c组件接受/旧2f失败保留；OS TLS QA已root实际followup ACTIVE。NativeProfile clean8filefreeze`85a13c79378550fe850ffb5ff182cdbdfec177f8`，[freeze](../../../ffrs-runtime/.local/native-profile-v2/freeze.json)依赖pages4695/Boundary5c，root刚开始RG契约/原始入口测试，**无结果/未集成/不得提前PASS**。下一同root/runtime writer、同8files+精确guest_os_tls集成仅RESERVED，目标注册真实primary/59/OS TLScallbackgateway，等85设备判据后实际激活；当前未编码、无重复并行writer。四文档立即暂停供root单入口checkpoint，STATUS/diffcheck0；本代理无代码/报告/设备/Git操作。
+
+立即交付更正 2026-10-23T12:05:14.571827+00:00：85 [deviceexecution](../../.local/device/rg477m-session1/native-profile-v2-execution.json)已完成，5合同0/info0、2真实自有guest调用/raw_fallback=false/endedsessionrejected、retained3attempt1actualunmap/count0；33准hostimports保护x18。原nnMain126+352f1b8/malloc66+144b8/startup59+133a0/CRT515+5920a34均133，Query/map65536保持、无timeout/mainhash一致，**未越原启动gate**。85已cherry70c。5c独立FINAL/OSQA ACTIVE均为当前口径；root已实际授权同runtime writer新5files OS HLE primary注册→正常return同IDLEscope typedcallbackcleanup→unregister→ThreadReturned，核APP59/Get/Set/Free、providerfailstop，目标59后60未达。当前字段非reserved；新WIP不算85通过证据。生成STATUS/diffcheck后四文档立即暂停供rootcommit，未碰代码/报告/设备/Git。
+
+最终最小快照 2026-10-23T12:06:40.411207+00:00：OS9c [独立FINAL](../../../functional-review/os-tls/REVIEW.md)SHA`8823424f8c9857968ce988166d112f118de21d565ac27e8bf774a69967659346`，11captured0/normal1351/recovery1419+并发重入0，无具体组件缺陷，Android归因root；不覆盖新5fileHLEWIP。root已实际followup T07-NATIVE-PROFILE-REVIEW ACTIVE，输出functional-review/native-profile，只审immutable85+pages4695+boundary5c普通positive/ABI/lifecycle，noWIP/ADB/originalgame。root七报告已commit c1ddecb，仅四文档待commit，doc生成检查后立即暂停。
+
+Reuse scope: concise table and no-game9216B native-import fixture proof are in HANDOFF.md section“能复用什么，不能推断什么”; root device native-profile-v2-contract-2 exit0/two actualcalls/raw_fallbackfalse, not arbitrary-game proof. Original immutable main unchanged; hardcoded entry/CRT/SDK offsets are specific. Root23file integrated source match .local/host-verification/integration-70c3e84/source-match.json; root evidence reports c1ddecb and OS QAe7427f3. New stack13 independent tree starts at5c, fivefile lease only; planned first followup, not passed.
