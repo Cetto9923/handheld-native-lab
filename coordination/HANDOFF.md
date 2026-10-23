@@ -1,23 +1,44 @@
-# Antigravity接力入口：接口515 (__nnmusl_init_dso) 与原startup在RG477M成功通过
+# Antigravity接力入口：变参 snprintf 桥接与逐构造函数执行记账验证
 
-本轮按用户指令推进方案 A（《最终幻想：共鸣》Switch→RG477M Android ARM64原生移植），严格保护密钥与敏感数据，严禁FC27或无依据改动。
-最新进展：**接口 515 (`__nnmusl_init_dso`)、DSO 登记、主线程 TLS 模板及 `ProtectRelro` 已全部实现并在真机通过。**
-真机完整运行 `main.nso` 经 `DT_INIT`（调用 515 返回 1）与 `nninitStartup`（返回 `0x92`，分配器与堆初始化完成，OS TLS 槽 0 析构完成）全流程返回 `EXIT=0`。
+本轮按用户指令推进方案 A（《最终幻想：共鸣》Switch→RG477M Android ARM64 原生移植），严格保护密钥与敏感数据，严禁FC27或无依据改动。
+最新进展：
+1. **AAPCS64 真实变参 `snprintf` 桥接已实现并在真机验证通过**：
+   - 彻底避免将 `snprintf` 当作标量六参或直接转换 `va_list` 指针。
+   - 实现专用网关 `nb_import_snprintf_gateway`：捕获调用方真实寄存器 `x3-x7`（GP）、`q0-q7`（FP）及调用方原始栈顶 `SP_guest`，组装合规的 32 字节 AAPCS64 `va_list` 结构体，由宿主 Bionic `vsnprintf` 执行格式化。
+   - 补充专用回归测试 `--snprintf`，在 RG477M 真机上通过测试：
+     `{"snprintf_errors":0,"integers":true,"pointers":true,"strings":true,"floats":true,"length_modifiers":true,"truncation":true,"stack_arguments":true,"gateway_tested":true}`。
+2. **逐模块、逐构造函数执行记账已实施**：
+   - 在 `nso_call.c` 中为 1,890 项构造函数布置透明追踪跳板（trampoline table），逐项输出 `[ctor-start] idx=...` 与 `[ctor-done] idx=...`。
+   - 真机 `--boot` 实测证明：构造函数 0 至 7 按真实顺序完整执行，无跳漏、无重复执行！
+     - 构造函数 0 (`+0x25d60`) 执行完成；
+     - 构造函数 1 (`+0x70`) 执行完成（原真实调用 `strtol` 与 `snprintf` 均成功返回，`FMallocBinned3` 堆映射完成）；
+     - 构造函数 2 至 5 全部顺利执行完毕；
+     - 构造函数 6 (`+0x38620`) 经新增 `finite` 绑定顺利执行完成；
+     - 构造函数 7 (`+0x6bdf0`) 顺利执行完成，累积登记 72 个 `atexit` 回调；
+     - 构造函数 8 (`+0x5c4d0`) 启动并登记第 73 个回调，遇到首个真实阻塞。
+3. **首个真实阻塞点确定**：
+   - 未绑定导入项 `index=163 name=_ZN2nn2os26InitializeReaderWriterLockEPNS0_20ReaderWriterLockTypeE` (`caller_offset=0x119e74`)，退出码 133。
+4. **未完成项明确标注**：
+   - `ProtectRelro` 当前仍为桩函数日志记录，**未真正实施页面写保护，仍列未完成**；
+   - 逐线程 TP 隔离仍列未完成（仅主线程分配了模板镜像，`TPIDR_EL0` 仍由宿主维护）。
 
 ## 先读这些
 
 - [可直接复制的完整接力提词](ANTIGRAVITY_PROMPT.md)；[当前证据索引](../docs/analysis/codex_handoff_evidence_index.md)；[所有工作树绝对路径/分支/SHA/WIP快照](WORKTREES.json)。先读本仓库 AGENTS.md，实核 Git 与 writer 后再接手。
 - 根交付路径 `/Users/yuyan9923/GitHub/ff-resonance-rg477m-native`，当前主分支 `work/rg477m-native`。
-- 本地检查点基线 `b137209bc3a2747cf41f41de1ad9d26d1ca8a49d`。当前 Antigravity 为唯一根总控与独占写入者。
+- 本地检查点基线 `b827fc5`。当前 Antigravity 为唯一根总控与独占写入者。
 - 严禁打印、记录或提交任何游戏密钥与加密素材，所有大型原始二进制留在 `.local/`。
 
 ## 最新真实结果
 
 | 范围 | 证据与边界 |
 |---|---|
-| **接口 515 (`__nnmusl_init_dso`)** | **已实现并真机通过**：`guest_process_nnmusl_init_dso` 经 GP21 拆包 21 个机器字（base、text、tls_start、tls_init 544B、tls_total 4121B、align 8、relro/jmprel/rela）。结合 `module_tls` 分配主线程 TLS 镜像。幂等返回 1（通知 DT_INIT DSO 登记完成）。宿主 contracts 全部 0 错误；真机 `--dso-registration` 输出 `{"dso_registration_errors":0,"dso_registered":true,"tls_init_size":544,"tls_total_size":4121,"tls_align":8,"repeat_idempotent":true}`，`EXIT=0`。 |
-| **接口 516 (`ProtectRelro`)** | **已实现**：`guest_protect_relro` 接收 5 个指针参数，在 `guest_process_resolve` 中绑定。 |
-| **真机完整 DT_INIT + 原 startup** | **真机实测 PASS (`EXIT=0`)**：在 RG477M (`RG477M01445122`) 上运行 `dso-frontier-v4-nso_owned_startup.android-5aa4b786 main.nso --guest-quota 1073741824 --guest-stack 2097152 --guest-resource-quota 1048576 --init-wrapper --symbol nninitStartup`：<br>1. `DT_INIT 0x5920950` 执行，调用接口 515 登记 DSO 并返回 1；<br>2. `nninitStartup` (+0x352f150) 执行：申请 OS TLS slot 0，查询内存，预留 62 GB 虚拟空间 (`0xf80000000`)，注册 3 个 `atexit`，完成堆映射，注册 TLS allocator 回调 (`allocate=0x737a7a0830, free=0x737a7a0870`)，返回 `0x92`；<br>3. 真实 OS TLS slot 0 析构函数顺利调用（2轮/1调用/remaining 0），虚拟空间安全释放，**无超时、无崩溃，`EXIT=0`**。 |
+| **变参 `snprintf` 桥接** | **已实现并真机通过**：`nb_import_snprintf_gateway` 解析 `x3-x7`、`q0-q7` 与栈参数，组装 AAPCS64 `va_list` 传给 Bionic `vsnprintf`。真机 contracts `--snprintf` 输出 0 错误全部 PASS。构造函数 1 中的真实 `snprintf` 调用正常通过。 |
+| **逐构造函数记账** | **已实现并在 RG477M 实测实证**：1890 项跳板追踪就绪。已实测证明 idx 0~7 共 8 个构造函数顺序执行完成，无漏执行、无重复执行。 |
+| **浮点辅助 `finite`** | **已实现并真机通过**：`NB_SIG_REGISTER_ONLY`（1 FP arg `d0`，1 GP return `w0`），解除了构造函数 6 的阻塞。 |
+| **首个真实阻塞** | **明确归因**：构造函数 8 调用的 `_ZN2nn2os26InitializeReaderWriterLockEPNS0_20ReaderWriterLockTypeE`（import 163, caller 0x119e74）。 |
+| **ProtectRelro 状态** | **明确标注未完成**：当前为打印桩，未实施 mprotect 保护，不计入闭环语义。 |
+| **逐线程 TP 状态** | **明确标注未完成**：主线程分配了静态镜像，但未实施线程上下文与 TP 切换隔离。 |
 | 106/110 与原 startup | 已编译并在 RG 验证：`nninitStartup` 空/带参均正常返回，真实 OS slot 0 析构完成。 |
 | 原游戏分配器 | `--startup-allocator`：startup 后 48/64B alloc/free 双对测试在 RG477M 通过。全局分配器单例 `0x77c5210` 现已由 `nninitStartup` 构造就绪。 |
 | 图形/设备 | LAS MIT 命令记录/typed Vulkan transfer 实际 Mali copy/clear 零差异；待推进 NVN 接口层与着色器转化。 |
