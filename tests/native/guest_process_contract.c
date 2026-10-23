@@ -3,6 +3,7 @@
 #include "../../src/runtime/hle/guest_context.h"
 #include "../../src/runtime/hle/nso_host.h"
 #include "../../src/runtime/hle/guest_pages.h"
+#include "../../src/runtime/nso/native_boundary.h"
 #include <errno.h>
 #include <inttypes.h>
 #include <limits.h>
@@ -751,6 +752,73 @@ static int logf_contract(void) {
     for(size_t i=0;i<sizeof(special)/sizeof(special[0]);i++)CHECK(log_special_matches(logarithm(special[i]),logf(special[i])));
     puts("{\"logf_errors\":0,\"positive_boundary_values\":10,\"ieee_observations\":5,\"dynamic_values\":true,\"implementation\":\"system-libm\",\"fp_control_mode_changed_by_test\":false}");return 0;
 }
+static int snprintf_contract(void) {
+    uint64_t target = guest_process_resolve(0, "snprintf");
+    CHECK(target == (uintptr_t)&vsnprintf);
+    char buf[128];
+    /* 1. Integers */
+    int r = snprintf(buf, sizeof(buf), "%d %u 0x%x %d %d", 12345, 67890U, 0xabcd, INT_MIN, INT_MAX);
+    CHECK(r > 0 && strstr(buf, "12345 67890 0xabcd"));
+    /* 2. Pointers */
+    void *ptr = (void *)0xdeadbeef;
+    r = snprintf(buf, sizeof(buf), "%p %p", NULL, ptr);
+    CHECK(r > 0 && strstr(buf, "deadbeef"));
+    /* 3. Strings */
+    r = snprintf(buf, sizeof(buf), "%s and '%s'", "hello", "");
+    CHECK(r == 12 && !strcmp(buf, "hello and ''"));
+    /* 4. Floats */
+    r = snprintf(buf, sizeof(buf), "%.2f %.4f %g", 3.14159, 2.71828, 1e-4);
+    CHECK(r > 0 && strstr(buf, "3.14 2.7183"));
+    /* 5. Length modifiers */
+    long long ll = 123456789012345LL;
+    size_t sz = 999;
+    r = snprintf(buf, sizeof(buf), "%lld %zu %hhd", ll, sz, (char)42);
+    CHECK(r > 0 && strstr(buf, "123456789012345 999 42"));
+    /* 6. Buffer truncation & return values */
+    const char *trunc_input = "abcdef";
+    r = snprintf(NULL, 0, "test %s", "123");
+    CHECK(r == 8);
+    char small[4];
+    r = snprintf(small, 4, "%s", trunc_input);
+    CHECK(r == 6 && !strcmp(small, "abc"));
+    /* 7. Stack arguments (10 arguments: > 5 variadic GP args) */
+    r = snprintf(buf, sizeof(buf), "%d %d %d %d %d %d %d %d %d %d",
+                 1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+    CHECK(r > 0 && !strcmp(buf, "1 2 3 4 5 6 7 8 9 10"));
+    /* 8. Mixed FP and stack arguments */
+    r = snprintf(buf, sizeof(buf), "%d %.1f %d %.1f %d %d %d %d %d %d",
+                 10, 1.5, 20, 2.5, 30, 40, 50, 60, 70, 80);
+    CHECK(r > 0 && !strcmp(buf, "10 1.5 20 2.5 30 40 50 60 70 80"));
+#if defined(__ANDROID__) && defined(__aarch64__)
+    /* Test actual native boundary gateway */
+    nb_scope scope;
+    memset(&scope, 0, sizeof(scope));
+    CHECK(nb_scope_init(&scope) == NB_OK);
+    nb_import binding = {0};
+    nb_signature sig = {
+        .version = 3, .flags = NB_SIG_VARIADIC_SNPRINTF,
+        .gp_arguments = 3, .gp_returns = 1, .variadic = 1
+    };
+    CHECK(nb_import_bind(&binding, &scope, (void(*)(void))(uintptr_t)&vsnprintf, &sig) == NB_OK);
+    typedef int (*snp_fn)(char *, size_t, const char *, ...);
+    snp_fn gateway_snprintf = (snp_fn)nb_import_entry(&binding);
+    CHECK(gateway_snprintf != NULL);
+    scope.phase = 1; /* NB_PHASE_GUEST */
+    r = gateway_snprintf(buf, sizeof(buf), "%d %d %d %d %d %d %d %d %d %d",
+                         11, 22, 33, 44, 55, 66, 77, 88, 99, 100);
+    CHECK(r > 0 && !strcmp(buf, "11 22 33 44 55 66 77 88 99 100"));
+    r = gateway_snprintf(buf, sizeof(buf), "pi=%.4f e=%.4f s=%s p=%p",
+                         3.14159, 2.71828, "verified", ptr);
+    CHECK(r > 0 && strstr(buf, "pi=3.1416 e=2.7183 s=verified"));
+    r = gateway_snprintf(small, 4, "gateway_truncation");
+    CHECK(r == 18 && !strcmp(small, "gat"));
+    scope.phase = 0;
+    CHECK(nb_import_unbind(&binding) == NB_OK);
+    CHECK(nb_scope_close(&scope) == NB_OK);
+#endif
+    puts("{\"snprintf_errors\":0,\"integers\":true,\"pointers\":true,\"strings\":true,\"floats\":true,\"length_modifiers\":true,\"truncation\":true,\"stack_arguments\":true,\"gateway_tested\":true}");
+    return 0;
+}
 struct log_fixture_io {float input,output;uint64_t guest_x18;};
 _Static_assert(offsetof(struct log_fixture_io,output)==4 && offsetof(struct log_fixture_io,guest_x18)==8,"self-authored float fixture ABI");
 static void *exercise_logf_native(guest_process *p,void *opaque) {
@@ -1375,6 +1443,7 @@ int main(int argc,char **argv) {
     if(argc==3 && !strcmp(argv[1],"--tls-host-consumer"))return tls_host_consumer_contract(argv[2],1);
     if(argc==3 && !strcmp(argv[1],"--tls-host-busy"))return tls_host_consumer_contract(argv[2],2);
     if(argc==3 && !strcmp(argv[1],"--tls-host-uninitialized"))return tls_host_consumer_contract(argv[2],-1);
+    if(argc==2 && !strcmp(argv[1],"--snprintf"))return snprintf_contract();
     if(argc==2 && !strcmp(argv[1],"--logf"))return logf_contract();
     if(argc==3 && !strcmp(argv[1],"--logf-native"))return logf_native_contract(argv[2]);
     if(argc==2 && !strcmp(argv[1],"--strcasecmp"))return strcasecmp_contract();

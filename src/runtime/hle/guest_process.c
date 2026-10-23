@@ -23,6 +23,12 @@
 #endif
 #include <sys/mman.h>
 #include <unistd.h>
+#if defined(__APPLE__)
+static int guest_finite(double x) { return isfinite(x); }
+#else
+extern int finite(double);
+#define guest_finite finite
+#endif
 /* Explicit compiler runtime references, independent of another translation
  * unit's HLE feature flags. Never reach the extension fallback for guards. */
 extern int __cxa_guard_acquire(uint64_t *);
@@ -871,6 +877,9 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
     PURE(memset);PURE(memcpy);PURE(memmove);PURE(memcmp);PURE(memchr);
     PURE(strlen);PURE(strnlen);PURE(strcmp);PURE(strncmp);PURE(strcpy);PURE(strncpy);
     PURE(strchr);PURE(strrchr);PURE(strstr);
+    PURE(strtol);
+    if(!strcmp(name,"finite"))return (uintptr_t)&guest_finite;
+    if(!strcmp(name,"snprintf"))return (uintptr_t)&vsnprintf;
     PURE(logf); /* Standard float(float), current original caller uses s0. */
 #undef PURE
     if(!strcmp(name,"_ZN2nn2os15QueryMemoryInfoEPNS0_10MemoryInfoE"))return (uintptr_t)&query_memory_info;
@@ -920,13 +929,17 @@ static int import_signature(const char *name,nb_signature *out) {
         *out=(nb_signature){.version=1,.flags=NB_SIG_REGISTER_ONLY,.fp_arguments=1,.fp_returns=1};
         return 1; /* GP0: float input/result travel in s0, never integer args. */
     }
+    if(!strcmp(name,"finite")) {
+        *out=(nb_signature){.version=1,.flags=NB_SIG_REGISTER_ONLY,.fp_arguments=1,.gp_returns=1};
+        return 1;
+    }
     unsigned arguments=0,returns=1;
     static const char *const one[]={"strlen","__cxa_guard_acquire","atexit","_ZN2nn2os11GetTlsValueENS0_7TlsSlotE",
         "_ZN2nn2os17FreeAddressRegionEm","_ZN2nn2os12TryLockMutexEPNS0_9MutexTypeE",
         "nnosTryLockMutex","_ZN2nn2os28IsMutexLockedByCurrentThreadEPKNS0_9MutexTypeE",NULL};
     static const char *const two[]={"strnlen","strcmp","strcasecmp","strcpy","strchr","strrchr","strstr","_ZN2nn2os15AllocateTlsSlotEPNS0_7TlsSlotEPFvmE",
         "_ZN2nn2os21AllocateAddressRegionEPmm","_ZN2nn2os19AllocateMemoryPagesEmm","_ZN2nn2os15FreeMemoryPagesEmm",NULL};
-    static const char *const three[]={"memset","memcpy","memmove","memcmp","memchr","strncmp","strncpy","__cxa_atexit",NULL};
+    static const char *const three[]={"memset","memcpy","memmove","memcmp","memchr","strncmp","strncpy","__cxa_atexit","strtol",NULL};
     static const char *const void_one[]={"__cxa_guard_release","__cxa_guard_abort","_Exit","_exit","_ZN2nn2os11FreeTlsSlotENS0_7TlsSlotE",
         "_ZN2nn2os15QueryMemoryInfoEPNS0_10MemoryInfoE","_ZN2nn4util11ReferSymbolEPKv","nnutilReferSymbol",
         "_ZN2nn2os13FinalizeMutexEPNS0_9MutexTypeE","nnosFinalizeMutex",
@@ -952,6 +965,11 @@ static int import_signature(const char *name,nb_signature *out) {
     else if(!strcmp(name,"__nnmusl_init_dso")) {
         *out=(nb_signature){.version=2,.flags=NB_SIG_FIXED_GP21,
             .stack_argument_bytes=104,.gp_arguments=8,.gp_returns=1};
+        return 1;
+    }
+    else if(!strcmp(name,"snprintf")) {
+        *out=(nb_signature){.version=3,.flags=NB_SIG_VARIADIC_SNPRINTF,
+            .gp_arguments=3,.gp_returns=1,.variadic=1};
         return 1;
     }
     else if(!strcmp(name,"abort")) {arguments=0;returns=0;}

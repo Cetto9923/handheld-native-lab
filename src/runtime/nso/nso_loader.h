@@ -104,6 +104,11 @@ uint64_t nso_reloc_count(const nso_module *m);
 /* Number of DT_RELR relative relocations applied. */
 uint64_t nso_relr_count(const nso_module *m);
 
+/* DT_INIT module offset, or 0 if none. */
+uint64_t nso_init_offset(const nso_module *m);
+uint64_t nso_init_array_offset(const nso_module *m);
+uint64_t nso_init_array_size(const nso_module *m);
+
 /* Bound import statistics exclude ELF's mandatory null symbol. */
 uint32_t nso_unresolved_count(const nso_module *m);
 size_t nso_image_size(const nso_module *m);

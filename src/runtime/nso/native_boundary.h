@@ -47,13 +47,13 @@ typedef struct nb_registers {
 typedef struct nb_stack13 { uint64_t words[13]; } nb_stack13;
 
 typedef struct nb_signature {
-    uint32_t version;                 /* 1 register-only; 2 fixed GP21 */
-    uint32_t flags;                   /* v2: exactly NB_SIG_FIXED_GP21 */
-    uint32_t stack_argument_bytes;    /* v1: 0; v2: exactly 104 */
+    uint32_t version;                 /* 1 register-only; 2 fixed GP21; 3 variadic snprintf */
+    uint32_t flags;                   /* v2: NB_SIG_FIXED_GP21; v3: NB_SIG_VARIADIC_SNPRINTF */
+    uint32_t stack_argument_bytes;    /* v1: 0; v2: exactly 104; v3: 0 */
     uint8_t gp_arguments, fp_arguments, gp_returns, fp_returns;
     uint8_t variadic, aggregate_arguments, unknown_layout, aggregate_returns;
 } nb_signature;
-enum { NB_SIG_REGISTER_ONLY = 1, NB_SIG_SRET_X8 = 2, NB_SIG_FIXED_GP21 = 4 };
+enum { NB_SIG_REGISTER_ONLY = 1, NB_SIG_SRET_X8 = 2, NB_SIG_FIXED_GP21 = 4, NB_SIG_VARIADIC_SNPRINTF = 8 };
 
 typedef struct nb_import {
     nb_scope *scope;

@@ -437,6 +437,9 @@ uint32_t nso_import_count(const nso_module *m) {return m->import_count;}
 uint32_t nso_unresolved_count(const nso_module *m) {return m->unresolved_count;}
 uint64_t nso_reloc_count(const nso_module *m) {return m->reloc_count;}
 uint64_t nso_relr_count(const nso_module *m) {return m->relr_count;}
+uint64_t nso_init_offset(const nso_module *m) {return m?m->init_offset:0;}
+uint64_t nso_init_array_offset(const nso_module *m) {return m?m->init_array_offset:0;}
+uint64_t nso_init_array_size(const nso_module *m) {return m?m->init_array_size:0;}
 const char *nso_symbol_name(const nso_module *m,uint32_t i) {return i<m->sym_count?m->dynstr+m->sym_name[i]:NULL;}
 uint64_t nso_symbol_value(const nso_module *m,uint32_t i) {return i<m->sym_count && m->sym_shndx[i]?m->sym_value[i]:UINT64_MAX;}
 uint32_t nso_find_symbol(const nso_module *m,const char *name) {

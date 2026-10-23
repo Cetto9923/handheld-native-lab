@@ -325,6 +325,73 @@ nb_import_stack13_gateway:
     brk #0x4e42
 .size nb_import_stack13_gateway,.-nb_import_stack13_gateway
 
+.p2align 2
+.global nb_import_snprintf_gateway
+.hidden nb_import_snprintf_gateway
+.type nb_import_snprintf_gateway,%function
+nb_import_snprintf_gateway:
+    .inst 0xd50324df /* bti jc: thunk uses an indirect BR */
+    ldr x9, [x16]
+    mov x10, #0x4e42
+    cmp x9, x10
+    b.ne .Lsnp_trap
+    ldr x10, [x16, #40]
+    cbz x10, .Lsnp_trap
+    ldar x9, [x10]
+    cbz x9, .Lsnp_trap
+    mrs x9, tpidr_el0
+    ldr x10, [x16, #8]
+    cmp x9, x10
+    b.ne .Lsnp_trap
+    add x11, x16, #24
+    ldar x9, [x11]
+    cmp x9, #1
+    b.ne .Lsnp_trap
+    mov x12, sp                     /* original incoming guest SP */
+    sub sp, sp, #256                /* allocate 256-byte frame */
+    stp q0, q1, [sp]                /* FP save area: q0-q7 at sp+0..sp+128 */
+    stp q2, q3, [sp, #32]
+    stp q4, q5, [sp, #64]
+    stp q6, q7, [sp, #96]
+    stp x3, x4, [sp, #128]          /* GP save area: x3-x7 at sp+128..sp+168 */
+    stp x5, x6, [sp, #144]
+    str x7, [sp, #160]
+    /* AAPCS64 va_list structure at sp+176 (32 bytes): */
+    str x12, [sp, #176]             /* __stack = original incoming guest SP */
+    add x9, sp, #168
+    str x9, [sp, #184]              /* __gr_top = sp + 168 (end of GP save area) */
+    add x9, sp, #128
+    str x9, [sp, #192]              /* __vr_top = sp + 128 (end of FP save area) */
+    mov w9, #-40
+    str w9, [sp, #200]              /* __gr_offs = -40 (5 GP args: x3..x7) */
+    mov w9, #-128
+    str w9, [sp, #204]              /* __vr_offs = -128 (8 FP args: q0..q7) */
+    /* Gateway state save area at sp+208 (48 bytes): */
+    stp x29, x30, [sp, #208]
+    stp x18, x16, [sp, #224]
+    ldr x9, [x16, #48]
+    str x9, [sp, #240]              /* previous active_guest_x18 */
+    str x18, [x16, #48]             /* actual guest x18 before restoring host SCS */
+    add x29, sp, #208
+    add x3, sp, #176                /* arg3: pointer to va_list */
+    mov x9, #2
+    stlr x9, [x11]                  /* phase = HOST */
+    ldr x18, [x16, #16]             /* restore host SCS x18 */
+    blr x17                         /* call vsnprintf(buf, size, fmt, ap) */
+    ldr x16, [sp, #232]             /* restore scope pointer */
+    ldr x9, [sp, #240]              /* restore previous active_guest_x18 */
+    str x9, [x16, #48]
+    add x11, x16, #24
+    mov x9, #1
+    stlr x9, [x11]                  /* phase = GUEST */
+    ldr x18, [sp, #224]             /* restore guest x18 */
+    ldp x29, x30, [sp, #208]
+    add sp, sp, #256
+    ret
+.Lsnp_trap:
+    brk #0x4e42
+.size nb_import_snprintf_gateway,.-nb_import_snprintf_gateway
+
 /* Owned HOST callback, register-only. Existing caller's HOST fields are stacked
  * and restored, not guessed or shared with a process-global host x18. */
 .p2align 2

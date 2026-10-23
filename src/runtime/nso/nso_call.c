@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <unistd.h>
 #ifdef NSO_WITH_HOST_HLE
 #include "../hle/nso_host.h"
 #include "../hle/exit_registry.h"
@@ -48,15 +50,16 @@ static int number(const char *s,uint64_t *out) {
     *out=v;return 1;
 }
 static int usage(const char *program) {
-    fprintf(stderr,"usage: %s <uncompressed.nso> [--init-wrapper|--init-elf] --info|--call <offset> [arg0 ... arg5]|--symbol <name> [args]\n",program);
+    fprintf(stderr,"usage: %s <uncompressed.nso> [--init-wrapper|--init-elf] --info|--call <offset> [arg0 ... arg5]|--symbol <name> [args]|--boot\n",program);
 #ifdef NSO_WITH_GUEST_PROFILE
     fputs("owned experiment: after path, supply --guest-quota <bytes> --guest-stack <bytes> [--guest-resource-quota <bytes>] [--guest-arg <literal> ...]; resource provider has no default; complete guest argv including argv0, default explicitly empty; no original SVC measurement\n",stderr);
     fputs("owned --startup-allocator is an isolated original allocator contract; not normal SDK/CRT boot\n",stderr);
+    fputs("owned --boot runs complete official sequence: DT_INIT phase 1 -> nninitStartup -> DT_INIT phase 2 (.init_array) -> nnMain\n",stderr);
 #endif
     return 2;
 }
 #ifdef NSO_WITH_GUEST_PROFILE
-struct profile_entry {int info,init,by_symbol,rc,allocator_diagnostic;unsigned argument_count;nso_init_policy policy;const char *target;uint64_t off,args[6];};
+struct profile_entry {int info,init,by_symbol,rc,allocator_diagnostic,boot;unsigned argument_count;nso_init_policy policy;const char *target;uint64_t off,args[6];};
 /* Explicit isolated allocator contract, not the normal SDK/CRT boot order. */
 static int exercise_original_allocator(guest_process *p) {
     void *blocks[2]={NULL,NULL};
@@ -81,9 +84,114 @@ static int exercise_original_allocator(guest_process *p) {
     if(!failed)puts("[original-allocator] two original allocate/free pairs completed; CRT/ELF TLS still uninitialized");
     fflush(stdout);return failed;
 }
+#if defined(__aarch64__)
+static uint64_t *s_orig_ctors = NULL;
+static uint32_t s_ctor_total = 0;
+static uint32_t s_ctors_started = 0;
+static uint32_t s_ctors_finished = 0;
+static uint64_t s_module_base = 0;
+
+static void ctor_instrument_hook(uint32_t idx) {
+    if(idx >= s_ctor_total || !s_orig_ctors) return;
+    s_ctors_started++;
+    uint64_t ctor_addr = s_orig_ctors[idx];
+    uint64_t ctor_off = ctor_addr >= s_module_base ? ctor_addr - s_module_base : ctor_addr;
+    printf("[ctor-start] idx=%u/%u off=0x%" PRIx64 "\n", idx, s_ctor_total, ctor_off);
+    fflush(stdout);
+    typedef void (*ctor_fn)(void);
+    ctor_fn fn = (ctor_fn)(uintptr_t)ctor_addr;
+    fn();
+    s_ctors_finished++;
+    printf("[ctor-done] idx=%u/%u (total finished=%u)\n", idx, s_ctor_total, s_ctors_finished);
+    fflush(stdout);
+}
+#endif
+
 static void *run_profile_entry(guest_process *p,void *opaque) {
     struct profile_entry *entry=opaque;
     nso_module *m=guest_process_module(p);
+    if(entry->boot) {
+        printf("[boot-step1] executing DT_INIT phase 1 (DSO registration)...\n");
+        fflush(stdout);
+        struct nso_result r=guest_process_initialize(p,NSO_INIT_DT_INIT_OWNS_ARRAY);
+        if(r.status!=NSO_OK) {
+            fprintf(stderr,"[boot-step1] DT_INIT failed status=%d native=%d\n",r.status,r.native_error);
+            entry->rc=1;return NULL;
+        }
+        uint32_t startup_sym=nso_find_symbol(m,"nninitStartup");
+        if(!startup_sym) {fputs("[boot-step2] nninitStartup symbol not found\n",stderr);entry->rc=1;return NULL;}
+        uint64_t startup_off=nso_symbol_value(m,startup_sym);
+        printf("[boot-step2] calling nninitStartup (offset 0x%" PRIx64 ")...\n",startup_off);
+        fflush(stdout);
+        uint64_t startup_res=0;
+        const uint64_t zero_args[6]={0};
+        r=guest_process_call(p,startup_off,zero_args,0,&startup_res);
+        if(r.status!=NSO_OK) {
+            fprintf(stderr,"[boot-step2] nninitStartup failed status=%d native=%d\n",r.status,r.native_error);
+            entry->rc=1;return NULL;
+        }
+        printf("[boot-step2] nninitStartup returned 0x%" PRIx64 "\n",startup_res);
+        fflush(stdout);
+        uint64_t init_off=nso_init_offset(m);
+        if(!init_off) {fputs("[boot-step3] DT_INIT offset not found\n",stderr);entry->rc=1;return NULL;}
+#if defined(__aarch64__)
+        uint64_t arr_off=nso_init_array_offset(m);
+        uint64_t arr_sz=nso_init_array_size(m);
+        if(arr_off && arr_sz && (arr_sz % 8 == 0)) {
+            uint32_t count=(uint32_t)(arr_sz / 8);
+            uint64_t *arr=(uint64_t *)(uintptr_t)(nso_base(m) + arr_off);
+            s_ctor_total=count;
+            s_module_base=nso_base(m);
+            s_orig_ctors=malloc(arr_sz);
+            if(s_orig_ctors) {
+                memcpy(s_orig_ctors, arr, arr_sz);
+                size_t tramp_bytes=((count * 24 + 4095) / 4096) * 4096;
+                void *tramps=mmap(NULL, tramp_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+                if(tramps!=MAP_FAILED) {
+                    for(uint32_t i=0;i<count;i++) {
+                        char *item=(char *)tramps + i * 24;
+                        uint32_t *code=(uint32_t *)item;
+                        code[0]=0x52800000 | (i << 5); /* movz w0, #i */
+                        code[1]=0xd503201f;            /* nop */
+                        code[2]=0x58000050;            /* ldr x16, [pc, #8] */
+                        code[3]=0xd61f0200;            /* br x16 */
+                        *(uint64_t *)(item + 16)=(uintptr_t)&ctor_instrument_hook;
+                        arr[i]=(uint64_t)(uintptr_t)item;
+                    }
+                    mprotect(tramps, tramp_bytes, PROT_READ | PROT_EXEC);
+                    __builtin___clear_cache(tramps, (char *)tramps + tramp_bytes);
+                    printf("[boot-step3] instrumented %u constructors for execution accounting\n", count);
+                    fflush(stdout);
+                }
+            }
+        }
+#endif
+        printf("[boot-step3] calling DT_INIT Phase 2 (constructors & ProtectRelro) at offset 0x%" PRIx64 "...\n",init_off);
+        fflush(stdout);
+        uint64_t ctor_res=0;
+        r=guest_process_call(p,init_off,zero_args,0,&ctor_res);
+        if(r.status!=NSO_OK) {
+            fprintf(stderr,"[boot-step3] constructors failed status=%d native=%d\n",r.status,r.native_error);
+            entry->rc=1;return NULL;
+        }
+        printf("[boot-step3] constructors completed successfully! total finished=%u return=0x%" PRIx64 "\n",s_ctors_finished,ctor_res);
+        fflush(stdout);
+        uint32_t main_sym=nso_find_symbol(m,"nnMain");
+        if(!main_sym) {fputs("[boot-step4] nnMain symbol not found\n",stderr);entry->rc=1;return NULL;}
+        uint64_t main_off=nso_symbol_value(m,main_sym);
+        printf("[boot-step4] calling nnMain at offset 0x%" PRIx64 "...\n",main_off);
+        fflush(stdout);
+        uint64_t main_res=0;
+        r=guest_process_call(p,main_off,zero_args,0,&main_res);
+        if(r.status!=NSO_OK) {
+            fprintf(stderr,"[boot-step4] nnMain failed status=%d native=%d\n",r.status,r.native_error);
+            entry->rc=1;return NULL;
+        }
+        printf("[boot-step4] nnMain returned 0x%" PRIx64 "\n",main_res);
+        fflush(stdout);
+        entry->rc=0;
+        return NULL;
+    }
     if(entry->init) {
         struct nso_result r=guest_process_initialize(p,entry->policy);
         if(r.status!=NSO_OK) {fprintf(stderr,"[profile-executor] initializer status=%d errno=%d; no raw fallback\n",r.status,r.native_error);entry->rc=1;return NULL;}
@@ -165,15 +273,17 @@ int main(int argc,char **argv) {
     const char *mode=argv[next++];
     int info=!strcmp(mode,"--info"),by_symbol=!strcmp(mode,"--symbol"),by_offset=!strcmp(mode,"--call");
     int allocator_diagnostic=!strcmp(mode,"--startup-allocator");
+    int boot=!strcmp(mode,"--boot");
 #ifdef NSO_WITH_GUEST_PROFILE
     if(allocator_diagnostic) {if(!owned || init || next!=argc)goto invalid_cli;by_symbol=1;}
+    if(boot) {if(!owned || init || next!=argc)goto invalid_cli;}
 #else
-    if(allocator_diagnostic)goto invalid_cli;
+    if(allocator_diagnostic || boot)goto invalid_cli;
 #endif
-    if(!info && !by_symbol && !by_offset)goto invalid_cli;
+    if(!info && !by_symbol && !by_offset && !boot)goto invalid_cli;
     const char *target=NULL;
     uint64_t off=0,args[6]={0};unsigned argument_count=0;
-    if(info) {if(next!=argc)goto invalid_cli;}
+    if(info || boot) {if(next!=argc)goto invalid_cli;}
     else if(allocator_diagnostic)target="nninitStartup";
     else {
         if(next>=argc)goto invalid_cli;
@@ -184,7 +294,7 @@ int main(int argc,char **argv) {
     }
 #ifdef NSO_WITH_GUEST_PROFILE
     if(owned) {
-        struct profile_entry entry={.info=info,.init=init,.by_symbol=by_symbol,.allocator_diagnostic=allocator_diagnostic,.argument_count=argument_count,.policy=policy,.target=target,.off=off};
+        struct profile_entry entry={.info=info,.init=init,.by_symbol=by_symbol,.allocator_diagnostic=allocator_diagnostic,.boot=boot,.argument_count=argument_count,.policy=policy,.target=target,.off=off};
         memcpy(entry.args,args,sizeof(args));
         int result=owned_profile(argv[1],(size_t)quota,(size_t)stack,(size_t)resources,guest_argc,guest_argv,&entry);
         free(guest_argv);return result;
