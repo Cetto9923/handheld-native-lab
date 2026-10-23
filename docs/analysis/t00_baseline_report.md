@@ -64,14 +64,14 @@
    - 目标构建配置：`E:/workspace/mucha/mucha/Binaries/Switch/FFRS-Switch-Shipping.nss`
    - 核心源文件路径痕迹：
      - `E:/workspace/mucha/mucha/Source/mucha/GameInstance/CPP_MuchaGameInstance.cpp`
-     - `E:/workspace/mucha/mucha/Source/mucha/Unit/CPP_Unit.h`
-     - `E:/workspace/mucha/mucha/Source/mucha/Task/CPP_Task.h`
-     - `E:/workspace/mucha/mucha/Source/mucha/Encount/Slate/CPP_SW_Encount_CellList.cpp`
+     - `E:\workspace\mucha\mucha\Source\mucha\Unit\CPP_Unit.h`
+     - `E:\workspace\mucha\mucha\Source\mucha\Task\CPP_Task.h`
+     - `E:\workspace\mucha\mucha\Source\mucha\Encount\Slate\CPP_SW_Encount_CellList.cpp`
      - `E:/workspace/mucha/mucha/Source/mucha/UI/...`
    - UE5.4 特征符号验证：
      - `EChaosVDAABBTreeNodeFlags::IsDirty` (Chaos Visual Debugger, UE 5.4 引入)
      - `UniversalObjectLocator`, `IrisCore`, `DataflowEngine`, `HairStrandsSolver`, `NNE` (Neural Network Engine)
-     - `EnhancedInput` / `UEnhancedInputUserSettings` (支持实体键位、输入重映射)
+     - `EnhancedInput`（支持实体键位、输入重映射）；注：带 `U` 前缀的 `UEnhancedInputUserSettings` 形态在二进制中 0 命中
      - `CommonUI` / `CommonLoadingScreen`
      - `SpriteStudio6` UMG 插件
 2. **中间件**：
@@ -85,7 +85,7 @@
 
 ## 4. 工具链与环境准备情况
 
-- **hactool**：1.4.0（本地 ARM64，已验证 PFS0/NCA/NSO 解析能力）。
+- **hactool**：1.4.0（本地 ARM64）。**已验证 PFS0 与 NSO 解析**；**NCA 解析对本作不成立**——`hactool -t nsp -k .local/keys.txt <本体.nsp>` 报 `Invalid NCA header! Are keys correct?`（本作为 rights-id 加密，需另行推导 title key）。另注：hactool 内置密钥集含一条损坏记录，会直接报 `Key (...) must be 32 hex digits!` 退出，须用 `-k <keyset>` 覆盖。
 - **Ghidra**：12.1.4 + Switch Loader（已实测加载 NSO0，自动识别 `AARCH64:LE:64:v8A:default`，成功分析段表与重定位）。
 - **REA (Reverse-Engineer-Anything)**：6.5.0（Antigravity MCP 207 工具已加载就绪）。
 - **Android SDK**：已就绪于 `/Users/yuyan9923/Library/Android/sdk`，含 `cmdline-tools/latest/bin/sdkmanager` 与 `adb`。
