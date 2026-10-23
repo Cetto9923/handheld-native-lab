@@ -4,6 +4,7 @@
 #include "probe_types.h"
 
 #include <dirent.h>
+#include <inttypes.h>
 #include <fcntl.h>
 #include <linux/input.h>
 #include <sys/auxv.h>
@@ -89,7 +90,7 @@ void AndroidCollectMemory(const ProbeContext& /*ctx*/, MemoryInfo& out) {
         while (std::getline(meminfo, line)) {
             char key[64];
             uint64_t val = 0;
-            if (std::sscanf(line.c_str(), "%63s %llu", key, &val) >= 2) {
+            if (std::sscanf(line.c_str(), "%63s %" SCNu64, key, &val) >= 2) {
                 if (std::strcmp(key, "MemAvailable:") == 0) {
                     mem_avail_kb = val;
                     has_avail = true;

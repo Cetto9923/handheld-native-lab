@@ -1,56 +1,50 @@
 cmake_minimum_required(VERSION 3.22)
-project(probe_rg477m LANGUAGES CXX)
+project(ffrs_android_diagnostics LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# Common probe sources
-set(PROBE_SOURCES
-    main.cpp
-    probe_core.cpp
-    probe_types.cpp
-    probe_platform.cpp
-    json_writer.cpp
-)
+set(PROBE_SOURCES probe_core.cpp probe_types.cpp probe_platform.cpp json_writer.cpp probe_vulkan.cpp)
+if(ANDROID)
+    if(NOT ANDROID_ABI STREQUAL "arm64-v8a")
+        message(FATAL_ERROR "The native NSO diagnostic requires arm64-v8a")
+    endif()
+    list(APPEND PROBE_SOURCES probe_android.cpp)
+else()
+    list(APPEND PROBE_SOURCES probe_host.cpp)
+endif()
+add_library(ffrs_probe STATIC ${PROBE_SOURCES})
+target_include_directories(ffrs_probe PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+if(ANDROID)
+    target_link_libraries(ffrs_probe PUBLIC vulkan android log)
+endif()
+add_executable(probe_rg477m main.cpp)
+target_link_libraries(probe_rg477m PRIVATE ffrs_probe)
 
 if(ANDROID)
-    message(STATUS "Building for Android:")
-    message(STATUS "  ABI: ${ANDROID_ABI}")
-    message(STATUS "  Platform: ${ANDROID_PLATFORM}")
-    message(STATUS "  NDK: ${ANDROID_NDK}")
-
-    list(APPEND PROBE_SOURCES
-        probe_android.cpp
-        probe_vulkan.cpp
-    )
-
-    add_executable(probe_rg477m ${PROBE_SOURCES})
-
-    target_compile_definitions(probe_rg477m PRIVATE
-        __ANDROID_UNAVAILABLE_SYMBOLS_ARE_WEAK__
-    )
-
-    target_link_libraries(probe_rg477m PRIVATE
-        vulkan
-        android
-        log
-    )
-
-    # Ensure position independent executable for Android modern Bionic
-    set_target_properties(probe_rg477m PROPERTIES
-        POSITION_INDEPENDENT_CODE ON
-    )
-else()
-    message(STATUS "Building for Host (${CMAKE_SYSTEM_NAME} ${CMAKE_SYSTEM_PROCESSOR})")
-
-    list(APPEND PROBE_SOURCES
-        probe_host.cpp
-        probe_vulkan.cpp
-    )
-
-    add_executable(probe_rg477m ${PROBE_SOURCES})
+    # Read the one runtime implementation in place; never fork the loader here.
+    set(FFRS_RUNTIME_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../runtime/nso" CACHE PATH "NSO loader source directory")
+    add_library(ffrs_nso STATIC "${FFRS_RUNTIME_DIR}/nso_loader.c")
+    target_include_directories(ffrs_nso PUBLIC "${FFRS_RUNTIME_DIR}")
+    target_link_libraries(ffrs_nso PUBLIC dl)
+    add_library(ffrs_diagnostic_core STATIC nso_diagnostic.cpp)
+    target_link_libraries(ffrs_diagnostic_core PUBLIC ffrs_nso ffrs_probe)
+    option(FFRS_LINK_NVN_DIAGNOSTICS "Include the NVN dispatch diagnostic surface when available" ON)
+    set(FFRS_NVN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../graphics/nvn" CACHE PATH "NVN compatibility source directory")
+    if(FFRS_LINK_NVN_DIAGNOSTICS AND EXISTS "${FFRS_NVN_DIR}/src/nvn_dispatch.c")
+        add_library(ffrs_nvn_diagnostics STATIC "${FFRS_NVN_DIR}/src/nvn_dispatch.c")
+        target_include_directories(ffrs_nvn_diagnostics PUBLIC "${FFRS_NVN_DIR}/include")
+        target_link_libraries(ffrs_diagnostic_core PUBLIC ffrs_nvn_diagnostics)
+        target_compile_definitions(ffrs_diagnostic_core PRIVATE FFRS_HAS_NVN_DIAGNOSTICS=1)
+    endif()
+    add_executable(nso_diagnostic diagnostic_main.cpp)
+    target_link_libraries(nso_diagnostic PRIVATE ffrs_diagnostic_core)
+    add_library(ffrs_diagnostic SHARED diagnostic_jni.cpp)
+    target_link_libraries(ffrs_diagnostic PRIVATE ffrs_diagnostic_core)
+    foreach(target probe_rg477m nso_diagnostic ffrs_diagnostic)
+        target_link_options(${target} PRIVATE "-Wl,-z,max-page-size=16384" "-Wl,--build-id=sha1")
+    endforeach()
 endif()
-
-# Install / output directory
 install(TARGETS probe_rg477m RUNTIME DESTINATION bin)

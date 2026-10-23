@@ -74,8 +74,10 @@ static std::vector<std::string> DecodeOptimalTilingFeatures(VkFormatFeatureFlags
 void CollectVulkan(const ProbeContext& /*ctx*/, VulkanReport& out) {
     // 1. Check vkEnumerateInstanceVersion
     uint32_t instVer = VK_API_VERSION_1_0;
-    if (vkEnumerateInstanceVersion != nullptr) {
-        if (vkEnumerateInstanceVersion(&instVer) == VK_SUCCESS) {
+    auto enumerate_version = reinterpret_cast<PFN_vkEnumerateInstanceVersion>(
+        vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkEnumerateInstanceVersion"));
+    if (enumerate_version != nullptr) {
+        if (enumerate_version(&instVer) == VK_SUCCESS) {
             out.instance_version_query_supported = true;
         }
     }
