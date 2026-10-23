@@ -1,0 +1,35 @@
+{
+  "target_platform": "Nintendo Switch (SF_GLSL_SWITCH / SP_GLSL_SWITCH)",
+  "engine_version": "UE 5.6.1",
+  "pipeline_cache": {
+    "path": "FFRS/Content/PipelineCaches/Switch/FFRS_SF_GLSL_SWITCH.stable.upipelinecache",
+    "format": "SF_GLSL_SWITCH",
+    "type": "stable"
+  },
+  "global_shader_cache": {
+    "path": "Engine/GlobalShaderCache-SP_GLSL_SWITCH.bin",
+    "platform": "SP_GLSL_SWITCH"
+  },
+  "shader_code_libraries": [
+    {
+      "name": "FFRS",
+      "bytecode_archive": "FFRS/Content/ShaderArchive-FFRS-SF_GLSL_SWITCH-SP_GLSL_SWITCH.ushaderbytecode",
+      "type_info": "FFRS/Content/ShaderTypeInfo-FFRS-SF_GLSL_SWITCH-SP_GLSL_SWITCH.stinfo",
+      "format": "SF_GLSL_SWITCH",
+      "platform": "SP_GLSL_SWITCH"
+    },
+    {
+      "name": "Global",
+      "bytecode_archive": "FFRS/Content/ShaderArchive-Global-SF_GLSL_SWITCH-SP_GLSL_SWITCH.ushaderbytecode",
+      "type_info": "FFRS/Content/ShaderTypeInfo-Global-SF_GLSL_SWITCH-SP_GLSL_SWITCH.stinfo",
+      "format": "SF_GLSL_SWITCH",
+      "platform": "SP_GLSL_SWITCH"
+    }
+  ],
+  "runtime_implications_for_rg477m": {
+    "native_target_gpu": "Mali-G615 MC6",
+    "native_target_api": "Vulkan 1.3 / OpenGL ES 3.2",
+    "switch_shader_isa": "NVIDIA Maxwell / NVN GLSL binary",
+    "port_strategy": "Shader recompilation / SPIR-V bytecode translation or NVN-to-Vulkan translation layer required for runtime shader execution."
+  }
+}
