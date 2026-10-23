@@ -137,6 +137,12 @@ void nso_host_os_wait_event(void *event);
 bool nso_host_os_try_wait_event(void *event);
 bool nso_host_os_timed_wait_event(void *event, int64_t timeout_ns);
 bool nso_host_os_is_event_signaled(void *event);
+
+int nso_host_posix_memalign(void **memptr, size_t alignment, size_t size);
+void *nso_host_memalign(size_t alignment, size_t size);
+void *nso_host_aligned_alloc(size_t alignment, size_t size);
+void *nso_host_valloc(size_t size);
+void nso_host_free(void *ptr);
 #ifdef __cplusplus
 }
 #endif

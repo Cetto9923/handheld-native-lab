@@ -1682,6 +1682,69 @@ bool nso_host_os_is_event_signaled(void *event) {
     return s;
 }
 
+/* ========================================================================= */
+/* posix_memalign / memalign HLE Implementation                              */
+/* ========================================================================= */
+
+int nso_host_posix_memalign(void **memptr, size_t alignment, size_t size) {
+    if (!memptr) {
+        fprintf(stderr, "[hle] posix_memalign: null memptr pointer\n");
+        return EINVAL;
+    }
+    if (alignment < sizeof(void *) || (alignment & (alignment - 1)) != 0) {
+        fprintf(stderr, "[hle] posix_memalign: invalid alignment %zu (must be power of two >= %zu)\n",
+                alignment, sizeof(void *));
+        return EINVAL;
+    }
+    size_t alloc_size = (size == 0) ? sizeof(void *) : size;
+    void *ptr = NULL;
+    int rc = posix_memalign(&ptr, alignment, alloc_size);
+    if (rc != 0) {
+        fprintf(stderr, "[hle] posix_memalign: allocation failed alignment=%zu size=%zu rc=%d\n",
+                alignment, size, rc);
+        return rc;
+    }
+    memset(ptr, 0, alloc_size);
+    *memptr = ptr;
+    fprintf(stderr, "[hle] posix_memalign: memptr=%p alignment=%zu (0x%zx) size=%zu (0x%zx) -> *memptr=%p rc=0\n",
+            (void *)memptr, alignment, alignment, size, size, ptr);
+    return 0;
+}
+
+void *nso_host_memalign(size_t alignment, size_t size) {
+    if (alignment == 0 || (alignment & (alignment - 1)) != 0) {
+        fprintf(stderr, "[hle] memalign: invalid alignment %zu\n", alignment);
+        return NULL;
+    }
+    size_t alloc_align = alignment < sizeof(void *) ? sizeof(void *) : alignment;
+    size_t alloc_size = (size == 0) ? sizeof(void *) : size;
+    void *ptr = NULL;
+    int rc = posix_memalign(&ptr, alloc_align, alloc_size);
+    if (rc != 0) {
+        fprintf(stderr, "[hle] memalign: allocation failed alignment=%zu size=%zu rc=%d\n",
+                alignment, size, rc);
+        return NULL;
+    }
+    memset(ptr, 0, alloc_size);
+    fprintf(stderr, "[hle] memalign: alignment=%zu (0x%zx) size=%zu (0x%zx) -> %p\n",
+            alignment, alignment, size, size, ptr);
+    return ptr;
+}
+
+void *nso_host_aligned_alloc(size_t alignment, size_t size) {
+    return nso_host_memalign(alignment, size);
+}
+
+void *nso_host_valloc(size_t size) {
+    return nso_host_memalign(4096, size);
+}
+
+void nso_host_free(void *ptr) {
+    if (ptr) {
+        free(ptr);
+    }
+}
+
 void nso_host_set_extension_resolver(nso_import_fn resolver) {extension_resolver=resolver;}
 uint64_t nso_host_resolve(uint32_t index,const char *name) {
     if(!name)return 0;
@@ -1871,5 +1934,10 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_tls_init_noop;
     if(!strcmp(name,"exit"))return (uint64_t)(uintptr_t)&nso_host_exit;
     if(!strcmp(name,"_Exit") || !strcmp(name,"_exit"))return (uint64_t)(uintptr_t)&nso_host_immediate_exit;
+    if(!strcmp(name,"posix_memalign"))return (uint64_t)(uintptr_t)&nso_host_posix_memalign;
+    if(!strcmp(name,"memalign"))return (uint64_t)(uintptr_t)&nso_host_memalign;
+    if(!strcmp(name,"aligned_alloc"))return (uint64_t)(uintptr_t)&nso_host_aligned_alloc;
+    if(!strcmp(name,"valloc"))return (uint64_t)(uintptr_t)&nso_host_valloc;
+    if(!strcmp(name,"free"))return (uint64_t)(uintptr_t)&nso_host_free;
     return extension_resolver?extension_resolver(index,name):0;
 }

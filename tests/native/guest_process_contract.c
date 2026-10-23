@@ -1853,6 +1853,61 @@ static int os_event_contract(void) {
     puts("{\"os_event_errors\":0,\"init\":true,\"auto_clear\":true,\"manual_clear\":true,\"timed_wait\":true,\"cross_thread\":true,\"finalize\":true}");
     return 0;
 }
+
+static int posix_memalign_contract(void) {
+    typedef int (*posix_memalign_fn)(void **, size_t, size_t);
+    typedef void *(*memalign_fn)(size_t, size_t);
+
+    posix_memalign_fn p_memalign = (posix_memalign_fn)(uintptr_t)guest_process_resolve(0, "posix_memalign");
+    CHECK(p_memalign != NULL);
+    memalign_fn m_align = (memalign_fn)(uintptr_t)guest_process_resolve(0, "memalign");
+    CHECK(m_align != NULL);
+
+    /* 1. Invalid parameter checks */
+    void *ptr = (void *)0xdeadbeef;
+    CHECK(p_memalign(NULL, 64, 128) == EINVAL);
+    CHECK(p_memalign(&ptr, 3, 128) == EINVAL);
+    CHECK(p_memalign(&ptr, 4, 128) == EINVAL);
+    CHECK(p_memalign(&ptr, 7, 128) == EINVAL);
+    CHECK(m_align(3, 128) == NULL);
+    CHECK(m_align(0, 128) == NULL);
+
+    /* 2. Normal allocation matching UE4 caller (alignment=64, size=40) */
+    ptr = NULL;
+    int rc = p_memalign(&ptr, 64, 40);
+    CHECK(rc == 0);
+    CHECK(ptr != NULL);
+    CHECK(((uintptr_t)ptr & 63) == 0);
+    memset(ptr, 0xaa, 40);
+    free(ptr);
+
+    /* 3. Page alignment (4096, 8192) */
+    ptr = NULL;
+    rc = p_memalign(&ptr, 4096, 8192);
+    CHECK(rc == 0);
+    CHECK(ptr != NULL);
+    CHECK(((uintptr_t)ptr & 4095) == 0);
+    memset(ptr, 0x55, 8192);
+    free(ptr);
+
+    /* 4. Zero size allocation */
+    ptr = NULL;
+    rc = p_memalign(&ptr, 16, 0);
+    CHECK(rc == 0);
+    CHECK(ptr != NULL);
+    CHECK(((uintptr_t)ptr & 15) == 0);
+    free(ptr);
+
+    /* 5. memalign direct allocation */
+    void *m_ptr = m_align(64, 128);
+    CHECK(m_ptr != NULL);
+    CHECK(((uintptr_t)m_ptr & 63) == 0);
+    memset(m_ptr, 0x33, 128);
+    free(m_ptr);
+
+    puts("{\"posix_memalign_errors\":0,\"resolve\":true,\"invalid_params\":true,\"alloc_64\":true,\"alloc_page\":true,\"zero_size\":true,\"memalign\":true}");
+    return 0;
+}
 struct log_fixture_io {float input,output;uint64_t guest_x18;};
 _Static_assert(offsetof(struct log_fixture_io,output)==4 && offsetof(struct log_fixture_io,guest_x18)==8,"self-authored float fixture ABI");
 static void *exercise_logf_native(guest_process *p,void *opaque) {
@@ -2495,6 +2550,7 @@ int main(int argc,char **argv) {
     if(argc==2 && !strcmp(argv[1],"--account"))return account_contract();
     if(argc==2 && !strcmp(argv[1],"--fs-open-dir"))return fs_open_dir_contract();
     if(argc==2 && !strcmp(argv[1],"--os-event"))return os_event_contract();
+    if(argc==2 && !strcmp(argv[1],"--posix-memalign"))return posix_memalign_contract();
     if(argc==2 && !strcmp(argv[1],"--logf"))return logf_contract();
     if(argc==3 && !strcmp(argv[1],"--logf-native"))return logf_native_contract(argv[2]);
     if(argc==2 && !strcmp(argv[1],"--strcasecmp"))return strcasecmp_contract();

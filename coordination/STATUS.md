@@ -1,8 +1,8 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-10-23T23:35:00.000000+00:00
-阶段：T02_OS_EVENT_PASSED_POSIX_MEMALIGN_REACHED_ON_RG477M: nn::os::InitializeEvent & event primitives verified on RG477M; GameThread advanced to posix_memalign (symbol index 190, JMPREL reloc index 186, GOT 0x77725d0, caller offset 0xadbc8, lr offset 0xadbcc)
-总控：Antigravity sole root coordinator — P-AG-13 nn::os::InitializeEvent closed; posix_memalign reached (symbol index 190, GOT 0x77725d0, exit 133); log .local/logs/rg477m-boot-v29-initializeevent.log
+状态事件时间：2026-10-24T00:00:00.000000+00:00
+阶段：T02_POSIX_MEMALIGN_PASSED_CXA_THREAD_ATEXIT_REACHED_ON_RG477M: posix_memalign & aligned allocation verified on RG477M; GameThread advanced to __cxa_thread_atexit (symbol index 130, JMPREL reloc index 129, GOT 0x7772408, caller offset 0x221e8, lr offset 0x221ec)
+总控：Antigravity sole root coordinator — P-AG-14 posix_memalign closed; __cxa_thread_atexit reached (symbol index 130, GOT 0x7772408, exit 133); log .local/logs/rg477m-boot-v30-posixmemalign.log
 更新方式：按事件更新，没有后台自动刷新。
 
 | 任务 | 角色 | 状态 | 实际负责人 | 启动依赖 | 验收门禁 | 分支 |

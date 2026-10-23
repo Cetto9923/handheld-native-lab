@@ -1100,7 +1100,8 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
         "_ZTHN17FPropertyTagScope18CurrentPropertyTagE",
         /* Registration is safe; finalize/exit can invoke guest callbacks and
          * require a separately supported callback/reentry boundary. */
-        "atexit","__cxa_atexit","_Exit","_exit",NULL};
+        "atexit","__cxa_atexit","_Exit","_exit",
+        "posix_memalign","memalign","aligned_alloc","valloc","free",NULL};
     for(size_t i=0;typed[i];i++)if(!strcmp(name,typed[i]))return nso_host_resolve(index,name);
     if(!strcmp(name,"abort"))return (uintptr_t)&abort;
     return 0;
@@ -1163,15 +1164,15 @@ static int import_signature(const char *name,nb_signature *out) {
         "_ZN2nn2os24GetThreadCurrentPriorityEPKNS0_10ThreadTypeE",
         "_ZN5movie17GetThreadPriorityEv",
         "iswdigit","isspace","iswupper","iswspace","iswalnum","iswxdigit",
-        "iswalpha","iswlower","isalpha","tolower","isupper","atoi","atoll",NULL};
+        "iswalpha","iswlower","isalpha","tolower","isupper","atoi","atoll","valloc",NULL};
     static const char *const two[]={"strnlen","strcmp","strcasecmp","strcpy","strchr","strrchr","strstr","_ZN2nn2os15AllocateTlsSlotEPNS0_7TlsSlotEPFvmE",
         "_ZN2nn2os21AllocateAddressRegionEPmm","_ZN2nn2os19AllocateMemoryPagesEmm","_ZN2nn2os15FreeMemoryPagesEmm",
         "_ZN2nn4time16LoadTimeZoneRuleEPNS0_12TimeZoneRuleERKNS0_12LocationNameE",
         "_ZN2nn2os14TimedWaitEventEPNS0_9EventTypeENS_8TimeSpanE",
-        "strcspn","strspn","strcat",NULL};
+        "strcspn","strspn","strcat","memalign","aligned_alloc",NULL};
     static const char *const three[]={"memset","memcpy","memmove","memcmp","memchr","strncmp","strncpy","__cxa_atexit","strtol",
         "_ZN2nn4time12GetDayOfWeekEiii",
-        "strtoll","strtoull","strtoul","strncat","strncasecmp",NULL};
+        "strtoll","strtoull","strtoul","strncat","strncasecmp","posix_memalign",NULL};
     static const char *const void_one[]={"__cxa_guard_release","__cxa_guard_abort","_Exit","_exit","_ZN2nn2os11FreeTlsSlotENS0_7TlsSlotE",
         "_ZN2nn2os15QueryMemoryInfoEPNS0_10MemoryInfoE","_ZN2nn4util11ReferSymbolEPKv","nnutilReferSymbol",
         "_ZN2nn2os13FinalizeMutexEPNS0_9MutexTypeE","nnosFinalizeMutex",
@@ -1191,7 +1192,7 @@ static int import_signature(const char *name,nb_signature *out) {
         "_ZN2nn2os11SignalEventEPNS0_9EventTypeE","nnosSignalEvent",
         "_ZN2nn2os10ClearEventEPNS0_9EventTypeE",
         "_ZN2nn2os9WaitEventEPNS0_9EventTypeE","nnosWaitEvent",
-        "_ZN5movie17SetThreadPriorityEi",NULL};
+        "_ZN5movie17SetThreadPriorityEi","free",NULL};
     const char *const *lists[]={one,two,three,void_one};
     for(unsigned group=0;group<4;group++)for(size_t i=0;lists[group][i];i++)if(!strcmp(name,lists[group][i])) {
         arguments=group==3?1:group+1;returns=group==3?0:1;goto found;
