@@ -16,6 +16,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <dirent.h>
 #include <errno.h>
 #if defined(__linux__) && !defined(__ANDROID__)
 #include <sys/syscall.h>
@@ -1051,6 +1052,276 @@ int32_t nso_host_fs_get_entry_type(int32_t *out_entry_type, const char *path) {
     return 0;
 }
 
+_Static_assert(sizeof(nn_fs_directory_entry) == 0x310, "nn_fs_directory_entry size must be 0x310");
+_Static_assert(offsetof(nn_fs_directory_entry, name) == 0, "name offset");
+_Static_assert(offsetof(nn_fs_directory_entry, type) == 0x304, "type offset");
+_Static_assert(offsetof(nn_fs_directory_entry, file_size) == 0x308, "file_size offset");
+
+#define NSO_FS_MAX_OPEN_DIRS 64
+
+typedef struct {
+    int in_use;
+    int mode;
+    char nn_path[256];
+    char host_path[512];
+    nn_fs_directory_entry *entries;
+    size_t total_entries;
+    size_t cursor;
+} nso_fs_dir_entry;
+
+static nso_fs_dir_entry s_fs_open_dirs[NSO_FS_MAX_OPEN_DIRS];
+static pthread_mutex_t s_fs_dir_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static nso_fs_dir_entry *allocate_dir_slot(void) {
+    for (int i = 0; i < NSO_FS_MAX_OPEN_DIRS; i++) {
+        if (!s_fs_open_dirs[i].in_use) {
+            s_fs_open_dirs[i].in_use = 1;
+            s_fs_open_dirs[i].entries = NULL;
+            s_fs_open_dirs[i].total_entries = 0;
+            s_fs_open_dirs[i].cursor = 0;
+            return &s_fs_open_dirs[i];
+        }
+    }
+    return NULL;
+}
+
+static nso_fs_dir_entry *validate_dir_handle(nn_fs_directory_handle handle) {
+    if (!handle.handle) return NULL;
+    uintptr_t ptr = (uintptr_t)handle.handle;
+    uintptr_t base = (uintptr_t)&s_fs_open_dirs[0];
+    uintptr_t size = sizeof(nso_fs_dir_entry);
+    if (ptr < base || ptr >= base + NSO_FS_MAX_OPEN_DIRS * size) return NULL;
+    if ((ptr - base) % size != 0) return NULL;
+    nso_fs_dir_entry *entry = (nso_fs_dir_entry *)handle.handle;
+    if (!entry->in_use) return NULL;
+    return entry;
+}
+
+int32_t nso_host_fs_open_directory(nn_fs_directory_handle *out_handle, const char *path, int32_t mode) {
+    if (!out_handle || !path) {
+        fprintf(stderr, "[hle] nn::fs::OpenDirectory: null pointer argument (out_handle=%p, path=%p)\n",
+                (void *)out_handle, (const void *)path);
+        return 1;
+    }
+    if (path[0] == '\0') {
+        fprintf(stderr, "[hle] nn::fs::OpenDirectory: empty path\n");
+        return 0x202; /* ResultPathNotFound */
+    }
+
+    char host_path[512];
+    if (resolve_fs_path(path, host_path, sizeof(host_path)) != 0) {
+        fprintf(stderr, "[hle] nn::fs::OpenDirectory: path='%s' mode=%d -> resolve mount failed\n", path, mode);
+        return 0x202; /* ResultPathNotFound */
+    }
+
+    struct stat st;
+    if (stat(host_path, &st) != 0) {
+        fprintf(stderr, "[hle] nn::fs::OpenDirectory: path='%s' mode=%d (host_path='%s') stat failed errno=%d (%s)\n",
+                path, mode, host_path, errno, strerror(errno));
+        return 0x202; /* ResultPathNotFound */
+    }
+
+    if (!S_ISDIR(st.st_mode)) {
+        fprintf(stderr, "[hle] nn::fs::OpenDirectory: path='%s' mode=%d (host_path='%s') is not a directory (mode=0%o)\n",
+                path, mode, host_path, st.st_mode);
+        return 0x202; /* ResultPathNotFound */
+    }
+
+    DIR *d = opendir(host_path);
+    if (!d) {
+        fprintf(stderr, "[hle] nn::fs::OpenDirectory: path='%s' mode=%d (host_path='%s') opendir failed errno=%d (%s)\n",
+                path, mode, host_path, errno, strerror(errno));
+        return 0x202;
+    }
+
+    /* Pass 1: count matching entries */
+    size_t count = 0;
+    struct dirent *de;
+    while ((de = readdir(d)) != NULL) {
+        if (!strcmp(de->d_name, ".") || !strcmp(de->d_name, "..")) continue;
+
+        char child_path[1024];
+        snprintf(child_path, sizeof(child_path), "%s/%s", host_path, de->d_name);
+        struct stat cst;
+        if (stat(child_path, &cst) != 0) continue;
+
+        int is_dir = S_ISDIR(cst.st_mode);
+        if (is_dir && !(mode & 1)) continue;
+        if (!is_dir && !(mode & 2)) continue;
+        count++;
+    }
+
+    nn_fs_directory_entry *entries_buf = NULL;
+    if (count > 0) {
+        entries_buf = (nn_fs_directory_entry *)calloc(count, sizeof(nn_fs_directory_entry));
+        if (!entries_buf) {
+            closedir(d);
+            fprintf(stderr, "[hle] nn::fs::OpenDirectory: path='%s' calloc failed for %zu entries\n", path, count);
+            return 1;
+        }
+
+        rewinddir(d);
+        size_t idx = 0;
+        while ((de = readdir(d)) != NULL && idx < count) {
+            if (!strcmp(de->d_name, ".") || !strcmp(de->d_name, "..")) continue;
+
+            char child_path[1024];
+            snprintf(child_path, sizeof(child_path), "%s/%s", host_path, de->d_name);
+            struct stat cst;
+            if (stat(child_path, &cst) != 0) continue;
+
+            int is_dir = S_ISDIR(cst.st_mode);
+            if (is_dir && !(mode & 1)) continue;
+            if (!is_dir && !(mode & 2)) continue;
+
+            memset(&entries_buf[idx], 0, sizeof(nn_fs_directory_entry));
+            strncpy(entries_buf[idx].name, de->d_name, sizeof(entries_buf[idx].name) - 1);
+            entries_buf[idx].name[sizeof(entries_buf[idx].name) - 1] = '\0';
+            entries_buf[idx].type = is_dir ? 0 : 1;
+            entries_buf[idx].file_size = is_dir ? 0 : (int64_t)cst.st_size;
+            idx++;
+        }
+        count = idx;
+    }
+    closedir(d);
+
+    pthread_mutex_lock(&s_fs_dir_mutex);
+    nso_fs_dir_entry *entry = allocate_dir_slot();
+    if (!entry) {
+        pthread_mutex_unlock(&s_fs_dir_mutex);
+        if (entries_buf) free(entries_buf);
+        fprintf(stderr, "[hle] nn::fs::OpenDirectory: path='%s' -> out of directory slots\n", path);
+        return 1;
+    }
+
+    entry->mode = mode;
+    strncpy(entry->nn_path, path, sizeof(entry->nn_path) - 1);
+    entry->nn_path[sizeof(entry->nn_path) - 1] = '\0';
+    strncpy(entry->host_path, host_path, sizeof(entry->host_path) - 1);
+    entry->host_path[sizeof(entry->host_path) - 1] = '\0';
+    entry->entries = entries_buf;
+    entry->total_entries = count;
+    entry->cursor = 0;
+
+    out_handle->handle = (void *)entry;
+    pthread_mutex_unlock(&s_fs_dir_mutex);
+
+    fprintf(stderr, "[hle] nn::fs::OpenDirectory: path='%s' mode=%d (host_path='%s') total_entries=%zu -> handle=%p\n",
+            path, mode, host_path, count, (void *)entry);
+    return 0;
+}
+
+int32_t nso_host_fs_get_directory_entry_count(int64_t *out_count, nn_fs_directory_handle handle) {
+    if (!out_count) {
+        fprintf(stderr, "[hle] nn::fs::GetDirectoryEntryCount: null out_count pointer\n");
+        return 1;
+    }
+    pthread_mutex_lock(&s_fs_dir_mutex);
+    nso_fs_dir_entry *entry = validate_dir_handle(handle);
+    if (!entry) {
+        pthread_mutex_unlock(&s_fs_dir_mutex);
+        fprintf(stderr, "[hle] nn::fs::GetDirectoryEntryCount: invalid directory handle %p\n", handle.handle);
+        return 1;
+    }
+    *out_count = (int64_t)entry->total_entries;
+    pthread_mutex_unlock(&s_fs_dir_mutex);
+
+    fprintf(stderr, "[hle] nn::fs::GetDirectoryEntryCount: handle=%p -> count=%lld\n",
+            handle.handle, (long long)*out_count);
+    return 0;
+}
+
+int32_t nso_host_fs_read_directory(int64_t *out_entries_read, nn_fs_directory_entry *entries,
+                                   nn_fs_directory_handle handle, int64_t max_entries) {
+    if (!entries) {
+        fprintf(stderr, "[hle] nn::fs::ReadDirectory: null entries buffer\n");
+        return 1;
+    }
+    if (max_entries <= 0) {
+        if (out_entries_read) *out_entries_read = 0;
+        return 0;
+    }
+    pthread_mutex_lock(&s_fs_dir_mutex);
+    nso_fs_dir_entry *entry = validate_dir_handle(handle);
+    if (!entry) {
+        pthread_mutex_unlock(&s_fs_dir_mutex);
+        fprintf(stderr, "[hle] nn::fs::ReadDirectory: invalid directory handle %p\n", handle.handle);
+        return 1;
+    }
+
+    size_t available = 0;
+    if (entry->cursor < entry->total_entries) {
+        available = entry->total_entries - entry->cursor;
+    }
+    size_t to_read = (size_t)max_entries;
+    if (to_read > available) {
+        to_read = available;
+    }
+
+    for (size_t i = 0; i < to_read; i++) {
+        memcpy(&entries[i], &entry->entries[entry->cursor + i], sizeof(nn_fs_directory_entry));
+    }
+    entry->cursor += to_read;
+    size_t cur = entry->cursor;
+    size_t tot = entry->total_entries;
+    pthread_mutex_unlock(&s_fs_dir_mutex);
+
+    if (out_entries_read) {
+        *out_entries_read = (int64_t)to_read;
+    }
+    fprintf(stderr, "[hle] nn::fs::ReadDirectory: handle=%p req_max=%lld read_entries=%zu (cursor=%zu/%zu)\n",
+            handle.handle, (long long)max_entries, to_read, cur, tot);
+    return 0;
+}
+
+void nso_host_fs_close_directory(nn_fs_directory_handle handle) {
+    pthread_mutex_lock(&s_fs_dir_mutex);
+    nso_fs_dir_entry *entry = validate_dir_handle(handle);
+    if (!entry) {
+        pthread_mutex_unlock(&s_fs_dir_mutex);
+        fprintf(stderr, "[hle] nn::fs::CloseDirectory: invalid directory handle %p\n", handle.handle);
+        return;
+    }
+    char path[256];
+    strncpy(path, entry->nn_path, sizeof(path) - 1);
+    path[sizeof(path) - 1] = '\0';
+
+    if (entry->entries) {
+        free(entry->entries);
+        entry->entries = NULL;
+    }
+    entry->in_use = 0;
+    entry->total_entries = 0;
+    entry->cursor = 0;
+    pthread_mutex_unlock(&s_fs_dir_mutex);
+
+    fprintf(stderr, "[hle] nn::fs::CloseDirectory: closed handle=%p (path='%s')\n", handle.handle, path);
+}
+
+int32_t nso_host_fs_create_directory(const char *path) {
+    if (!path) {
+        fprintf(stderr, "[hle] nn::fs::CreateDirectory: null path argument\n");
+        return 1;
+    }
+    char host_path[512];
+    if (resolve_fs_path(path, host_path, sizeof(host_path)) != 0) {
+        fprintf(stderr, "[hle] nn::fs::CreateDirectory: resolve failed for '%s'\n", path);
+        return 0x202;
+    }
+    struct stat st;
+    if (stat(host_path, &st) == 0) {
+        fprintf(stderr, "[hle] nn::fs::CreateDirectory: path='%s' already exists (host_path='%s')\n", path, host_path);
+        return 0x402; /* ResultPathAlreadyExists */
+    }
+    if (mkdir(host_path, 0755) != 0) {
+        fprintf(stderr, "[hle] nn::fs::CreateDirectory: path='%s' (host_path='%s') mkdir failed errno=%d (%s)\n",
+                path, host_path, errno, strerror(errno));
+        return 0x202;
+    }
+    fprintf(stderr, "[hle] nn::fs::CreateDirectory: path='%s' (host_path='%s') created\n", path, host_path);
+    return 0;
+}
+
 void nso_host_fs_disable_global_file_data_cache(void) {
     fprintf(stderr, "[hle] nn::fs::DisableGlobalFileDataCache\n");
 }
@@ -1168,6 +1439,16 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_fs_write_file;
     if(!strcmp(name,"_ZN2nn2fs12GetEntryTypeEPNS0_18DirectoryEntryTypeEPKc") || !strcmp(name,"nnfsGetEntryType"))
         return (uint64_t)(uintptr_t)&nso_host_fs_get_entry_type;
+    if(!strcmp(name,"_ZN2nn2fs13OpenDirectoryEPNS0_15DirectoryHandleEPKci") || !strcmp(name,"nnfsOpenDirectory"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_open_directory;
+    if(!strcmp(name,"_ZN2nn2fs22GetDirectoryEntryCountEPlNS0_15DirectoryHandleE") || !strcmp(name,"nnfsGetDirectoryEntryCount"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_get_directory_entry_count;
+    if(!strcmp(name,"_ZN2nn2fs13ReadDirectoryEPlPNS0_14DirectoryEntryENS0_15DirectoryHandleEl") || !strcmp(name,"nnfsReadDirectory"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_read_directory;
+    if(!strcmp(name,"_ZN2nn2fs14CloseDirectoryENS0_15DirectoryHandleE") || !strcmp(name,"nnfsCloseDirectory"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_close_directory;
+    if(!strcmp(name,"_ZN2nn2fs15CreateDirectoryEPKc") || !strcmp(name,"nnfsCreateDirectory"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_create_directory;
     if(!strcmp(name,"_ZN2nn2fs26DisableGlobalFileDataCacheEv"))
         return (uint64_t)(uintptr_t)&nso_host_fs_disable_global_file_data_cache;
     if(!strcmp(name,"_ZN2nn2fs25EnableGlobalFileDataCacheEPvm"))

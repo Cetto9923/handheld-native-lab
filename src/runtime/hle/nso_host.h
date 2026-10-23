@@ -95,6 +95,26 @@ int32_t nso_host_fs_get_entry_type(int32_t *out_entry_type, const char *path);
 void nso_host_fs_disable_global_file_data_cache(void);
 void nso_host_fs_enable_global_file_data_cache(void *buffer, size_t size);
 
+typedef struct {
+    void *handle;
+} nn_fs_directory_handle;
+
+#define NN_FS_MAX_PATH 0x301
+
+typedef struct {
+    char name[NN_FS_MAX_PATH];
+    uint8_t pad[3];
+    int8_t type;       /* 0 = Directory, 1 = File */
+    uint8_t pad2[3];
+    int64_t file_size; /* 0 for directory */
+} nn_fs_directory_entry;
+
+int32_t nso_host_fs_open_directory(nn_fs_directory_handle *out_handle, const char *path, int32_t mode);
+int32_t nso_host_fs_get_directory_entry_count(int64_t *out_count, nn_fs_directory_handle handle);
+int32_t nso_host_fs_read_directory(int64_t *out_entries_read, nn_fs_directory_entry *entries, nn_fs_directory_handle handle, int64_t max_entries);
+void nso_host_fs_close_directory(nn_fs_directory_handle handle);
+int32_t nso_host_fs_create_directory(const char *path);
+
 int32_t nso_host_aoc_count_add_on_content(void);
 int32_t nso_host_aoc_list_add_on_content(int32_t *out_indices, int32_t offset, int32_t count);
 int32_t nso_host_fs_query_mount_add_on_content_cache_size(size_t *out_size, int32_t target_index);

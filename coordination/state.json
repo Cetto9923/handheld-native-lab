@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-10-23T22:40:00.000000+00:00",
-  "phase": "T02_ACCOUNT_INIT_PASSED_FS_OPENDIRECTORY_REACHED_ON_RG477M: nn::account::Initialize verified on RG477M; GameThread advanced to nn::fs::OpenDirectory (symbol index 37, GOT 0x7772120, caller offset 0x11c40, lr offset 0x11c44)",
-  "coordinator": "Antigravity sole root coordinator — P-AG-11 account::Initialize closed; nn::fs::OpenDirectory reached (symbol index 37, GOT 0x7772120, exit 133); log .local/logs/rg477m-boot-v27-accountinit.log",
+  "updated_at": "2026-10-23T23:10:00.000000+00:00",
+  "phase": "T02_FS_OPENDIRECTORY_PASSED_OS_INITIALIZEEVENT_REACHED_ON_RG477M: nn::fs::OpenDirectory & directory enumeration verified on RG477M; GameThread advanced to nn::os::InitializeEvent (symbol index 132, GOT 0x7772418, caller offset 0x25bcc, lr offset 0x25bd0)",
+  "coordinator": "Antigravity sole root coordinator — P-AG-12 OpenDirectory / directory enumeration closed; nn::os::InitializeEvent reached (symbol index 132, GOT 0x7772418, exit 133); log .local/logs/rg477m-boot-v28-opendirectory.log",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
   "active_writers": [
@@ -2659,7 +2659,7 @@
     "original_delivery_state": "SAFE_FF_A277_COMPLETED_CLEAN_NO_PUSH",
     "single_entry": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration/coordination/HANDOFF.md",
     "latest_device_event": "Originalstartup+realOScleanup0/0; allocator48/64 actual0/0; HOST14expected; completeCRT515raw133; no timeout. See original-allocator-v2 and tls-host-consumer-v1 execution.json",
-    "active_work": "P-AG-11 nn::account::Initialize closed; advanced to nn::fs::OpenDirectory (import 37, GOT 0x7772120, exit 133); baseline HEAD 724957c; log .local/logs/rg477m-boot-v27-accountinit.log",
+    "active_work": "P-AG-12 nn::fs::OpenDirectory closed; advanced to nn::os::InitializeEvent (import 132, GOT 0x7772418, exit 133); baseline HEAD 0c319c2; log .local/logs/rg477m-boot-v28-opendirectory.log",
     "note": "Previous checkpoint fields mixed historical facts and are superseded by this current snapshot; exact containing-commit SHA always read Git.",
     "process_check": ".local/handoff-final/process-check.json",
     "new_development": "NOT_STARTED_DSO_AND_TP_READ_CLEAN",

@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #if defined(__APPLE__)
 #include <mach/mach.h>
@@ -1562,6 +1563,159 @@ static int account_contract(void) {
     puts("{\"account_contract_errors\":0,\"initialize\":true,\"baseline_zero\":true}");
     return 0;
 }
+static int fs_open_dir_contract(void) {
+    typedef int32_t (*open_dir_fn)(nn_fs_directory_handle *, const char *, int32_t);
+    typedef int32_t (*get_count_fn)(int64_t *, nn_fs_directory_handle);
+    typedef int32_t (*read_dir_fn)(int64_t *, nn_fs_directory_entry *, nn_fs_directory_handle, int64_t);
+    typedef void (*close_dir_fn)(nn_fs_directory_handle);
+    typedef int32_t (*create_dir_fn)(const char *);
+
+    open_dir_fn open_dir = (open_dir_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs13OpenDirectoryEPNS0_15DirectoryHandleEPKci");
+    CHECK(open_dir != NULL);
+
+    open_dir_fn open_dir_alias = (open_dir_fn)(uintptr_t)guest_process_resolve(0, "nnfsOpenDirectory");
+    CHECK(open_dir_alias != NULL);
+
+    get_count_fn get_count = (get_count_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs22GetDirectoryEntryCountEPlNS0_15DirectoryHandleE");
+    CHECK(get_count != NULL);
+
+    get_count_fn get_count_alias = (get_count_fn)(uintptr_t)guest_process_resolve(0, "nnfsGetDirectoryEntryCount");
+    CHECK(get_count_alias != NULL);
+
+    read_dir_fn read_dir = (read_dir_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs13ReadDirectoryEPlPNS0_14DirectoryEntryENS0_15DirectoryHandleEl");
+    CHECK(read_dir != NULL);
+
+    read_dir_fn read_dir_alias = (read_dir_fn)(uintptr_t)guest_process_resolve(0, "nnfsReadDirectory");
+    CHECK(read_dir_alias != NULL);
+
+    close_dir_fn close_dir = (close_dir_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs14CloseDirectoryENS0_15DirectoryHandleE");
+    CHECK(close_dir != NULL);
+
+    close_dir_fn close_dir_alias = (close_dir_fn)(uintptr_t)guest_process_resolve(0, "nnfsCloseDirectory");
+    CHECK(close_dir_alias != NULL);
+
+    create_dir_fn create_dir = (create_dir_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs15CreateDirectoryEPKc");
+    CHECK(create_dir != NULL);
+
+    create_dir_fn create_dir_alias = (create_dir_fn)(uintptr_t)guest_process_resolve(0, "nnfsCreateDirectory");
+    CHECK(create_dir_alias != NULL);
+
+    /* Parameter validation */
+    nn_fs_directory_handle handle = {0};
+    CHECK(open_dir(NULL, "rom:/", 3) != 0);
+    CHECK(open_dir(&handle, NULL, 3) != 0);
+    CHECK(open_dir(&handle, "", 3) != 0);
+
+    /* Ensure 'rom' is mounted for contract testing */
+    if (!nso_host_fs_is_rom_mounted("rom")) {
+        static char cache_buf[0x10000];
+        nso_host_fs_mount_rom("rom", cache_buf, sizeof(cache_buf));
+    }
+
+    /* Non-existent directory */
+    CHECK(open_dir(&handle, "rom:/non_existent_dir_contract_xyz", 3) != 0);
+
+    /* Setup a dedicated temporary directory with test files & subdirectories */
+    const char *mount_root = nso_host_fs_get_rom_mount_path("rom");
+    char test_dir_path[512];
+    snprintf(test_dir_path, sizeof(test_dir_path), "%s/dir_test_fixture", mount_root ? mount_root : ".");
+    mkdir(test_dir_path, 0755);
+
+    char sub_dir_path[512];
+    snprintf(sub_dir_path, sizeof(sub_dir_path), "%s/sub_dir", test_dir_path);
+    mkdir(sub_dir_path, 0755);
+
+    char file1_path[512];
+    snprintf(file1_path, sizeof(file1_path), "%s/file1.txt", test_dir_path);
+    FILE *fp1 = fopen(file1_path, "wb");
+    if (fp1) { fputs("file1 contents", fp1); fclose(fp1); }
+
+    char file2_path[512];
+    snprintf(file2_path, sizeof(file2_path), "%s/file2.bin", test_dir_path);
+    FILE *fp2 = fopen(file2_path, "wb");
+    if (fp2) { fputs("longer file2 contents here", fp2); fclose(fp2); }
+
+    /* Test 1: Open Directory mode 1 (Directories only) */
+    int32_t ok = open_dir(&handle, "rom:/dir_test_fixture", 1);
+    CHECK(ok == 0);
+    CHECK(handle.handle != NULL);
+
+    int64_t count = 0;
+    CHECK(get_count(&count, handle) == 0);
+    CHECK(count == 1);
+
+    nn_fs_directory_entry entries[4];
+    memset(entries, 0, sizeof(entries));
+    int64_t read_count = 0;
+    CHECK(read_dir(&read_count, entries, handle, 4) == 0);
+    CHECK(read_count == 1);
+    CHECK(entries[0].type == 0); /* Directory */
+    CHECK(strcmp(entries[0].name, "sub_dir") == 0);
+    CHECK(entries[0].file_size == 0);
+
+    /* End of enumeration */
+    CHECK(read_dir(&read_count, entries, handle, 4) == 0);
+    CHECK(read_count == 0);
+
+    close_dir(handle);
+
+    /* Test 2: Open Directory mode 2 (Files only) */
+    ok = open_dir_alias(&handle, "rom:/dir_test_fixture", 2);
+    CHECK(ok == 0);
+    CHECK(handle.handle != NULL);
+
+    CHECK(get_count_alias(&count, handle) == 0);
+    CHECK(count == 2);
+
+    memset(entries, 0, sizeof(entries));
+    CHECK(read_dir_alias(&read_count, entries, handle, 4) == 0);
+    CHECK(read_count == 2);
+    CHECK(entries[0].type == 1); /* File */
+    CHECK(entries[1].type == 1); /* File */
+    CHECK(entries[0].file_size > 0);
+    CHECK(entries[1].file_size > 0);
+
+    close_dir_alias(handle);
+
+    /* Test 3: Open Directory mode 3 (All: files and directories) */
+    ok = open_dir(&handle, "rom:/dir_test_fixture", 3);
+    CHECK(ok == 0);
+    CHECK(handle.handle != NULL);
+
+    CHECK(get_count(&count, handle) == 0);
+    CHECK(count == 3);
+
+    /* Read in chunks of 2 */
+    memset(entries, 0, sizeof(entries));
+    CHECK(read_dir(&read_count, entries, handle, 2) == 0);
+    CHECK(read_count == 2);
+
+    CHECK(read_dir(&read_count, entries + 2, handle, 2) == 0);
+    CHECK(read_count == 1);
+
+    close_dir(handle);
+
+    /* Operations on closed handle must fail */
+    CHECK(get_count(&count, handle) != 0);
+    CHECK(read_dir(&read_count, entries, handle, 1) != 0);
+
+    /* Clean up temporary fixture directory */
+    unlink(file1_path);
+    unlink(file2_path);
+    rmdir(sub_dir_path);
+    rmdir(test_dir_path);
+
+    /* If rom:/ exists, test opening root rom directory */
+    nn_fs_directory_handle root_dir = {0};
+    if (open_dir(&root_dir, "rom:/", 3) == 0) {
+        int64_t root_count = 0;
+        CHECK(get_count(&root_count, root_dir) == 0);
+        close_dir(root_dir);
+    }
+
+    puts("{\"fs_open_dir_errors\":0,\"open\":true,\"count\":true,\"read\":true,\"close\":true,\"validation\":true}");
+    return 0;
+}
 struct log_fixture_io {float input,output;uint64_t guest_x18;};
 _Static_assert(offsetof(struct log_fixture_io,output)==4 && offsetof(struct log_fixture_io,guest_x18)==8,"self-authored float fixture ABI");
 static void *exercise_logf_native(guest_process *p,void *opaque) {
@@ -2202,6 +2356,7 @@ int main(int argc,char **argv) {
     if(argc==2 && !strcmp(argv[1],"--nifm"))return nifm_contract();
     if(argc==2 && !strcmp(argv[1],"--socket"))return socket_contract();
     if(argc==2 && !strcmp(argv[1],"--account"))return account_contract();
+    if(argc==2 && !strcmp(argv[1],"--fs-open-dir"))return fs_open_dir_contract();
     if(argc==2 && !strcmp(argv[1],"--logf"))return logf_contract();
     if(argc==3 && !strcmp(argv[1],"--logf-native"))return logf_native_contract(argv[2]);
     if(argc==2 && !strcmp(argv[1],"--strcasecmp"))return strcasecmp_contract();

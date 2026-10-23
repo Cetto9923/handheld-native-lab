@@ -1024,6 +1024,11 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
         "_ZN2nn2fs11SetFileSizeENS0_10FileHandleEl","nnfsSetFileSize",
         "_ZN2nn2fs9WriteFileENS0_10FileHandleElPKvmRKNS0_11WriteOptionE","nnfsWriteFile",
         "_ZN2nn2fs12GetEntryTypeEPNS0_18DirectoryEntryTypeEPKc","nnfsGetEntryType",
+        "_ZN2nn2fs13OpenDirectoryEPNS0_15DirectoryHandleEPKci","nnfsOpenDirectory",
+        "_ZN2nn2fs22GetDirectoryEntryCountEPlNS0_15DirectoryHandleE","nnfsGetDirectoryEntryCount",
+        "_ZN2nn2fs13ReadDirectoryEPlPNS0_14DirectoryEntryENS0_15DirectoryHandleEl","nnfsReadDirectory",
+        "_ZN2nn2fs14CloseDirectoryENS0_15DirectoryHandleE","nnfsCloseDirectory",
+        "_ZN2nn2fs15CreateDirectoryEPKc","nnfsCreateDirectory",
         "_ZN2nn2fs26DisableGlobalFileDataCacheEv",
         "_ZN2nn2fs25EnableGlobalFileDataCacheEPvm",
         "_ZN2nn3aoc17CountAddOnContentEv","nnaocCountAddOnContent",
@@ -1238,6 +1243,16 @@ static int import_signature(const char *name,nb_signature *out) {
             !strcmp(name,"nnfsWriteFile")) {arguments=5;returns=1;}
     else if(!strcmp(name,"_ZN2nn2fs12GetEntryTypeEPNS0_18DirectoryEntryTypeEPKc") ||
             !strcmp(name,"nnfsGetEntryType")) {arguments=2;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2fs13OpenDirectoryEPNS0_15DirectoryHandleEPKci") ||
+            !strcmp(name,"nnfsOpenDirectory")) {arguments=3;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2fs22GetDirectoryEntryCountEPlNS0_15DirectoryHandleE") ||
+            !strcmp(name,"nnfsGetDirectoryEntryCount")) {arguments=2;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2fs13ReadDirectoryEPlPNS0_14DirectoryEntryENS0_15DirectoryHandleEl") ||
+            !strcmp(name,"nnfsReadDirectory")) {arguments=4;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2fs14CloseDirectoryENS0_15DirectoryHandleE") ||
+            !strcmp(name,"nnfsCloseDirectory")) {arguments=1;returns=0;}
+    else if(!strcmp(name,"_ZN2nn2fs15CreateDirectoryEPKc") ||
+            !strcmp(name,"nnfsCreateDirectory")) {arguments=1;returns=1;}
     else if(!strcmp(name,"_ZN2nn2fs26DisableGlobalFileDataCacheEv")) {arguments=0;returns=0;}
     else if(!strcmp(name,"_ZN2nn2fs25EnableGlobalFileDataCacheEPvm")) {arguments=2;returns=0;}
     else if(!strcmp(name,"_ZN2nn3aoc17CountAddOnContentEv") ||

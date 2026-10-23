@@ -1,82 +1,69 @@
-# Antigravity接力入口：越过 nn::account::Initialize，推进至 nn::fs::OpenDirectory（P-AG-11）
+# Antigravity接力入口：越过 nn::fs::OpenDirectory，推进至 nn::os::InitializeEvent（P-AG-12）
 
 ## 调度备注（夜守 PM）
-- **当前阻塞**：`nn::fs::OpenDirectory`（`_ZN2nn2fs13OpenDirectoryEPNS0_15DirectoryHandleEPKci`，import 37，GOT `0x7772120`，lr offset `0x11c44`，caller offset `0x11c40`，exit 133）
-- **基线 HEAD**：本轮提交检查点（account HLE 已过）；日志 `.local/logs/rg477m-boot-v27-accountinit.log`
-- **P-AG-11**：已闭环（account::Initialize 成功，已推进至虚幻引擎目录枚举探测 `OpenDirectory`）；无其他并行 agy worker
-- **阶段**：`T02_ACCOUNT_INIT_PASSED_FS_OPENDIRECTORY_REACHED_ON_RG477M`
+- **当前阻塞**：`nn::os::InitializeEvent`（`_ZN2nn2os15InitializeEventEPNS0_9EventTypeEbNS0_14EventClearModeE`，import 132，GOT `0x7772418`，lr offset `0x25bd0`，caller offset `0x25bcc`，exit 133）
+- **基线 HEAD**：本轮提交检查点（OpenDirectory & directory enumeration HLE 已过）；日志 `.local/logs/rg477m-boot-v28-opendirectory.log`
+- **P-AG-12**：已闭环（OpenDirectory、GetDirectoryEntryCount、ReadDirectory、CloseDirectory 成功落地，已完成虚幻引擎 7 项 romfs 核心目录枚举）；无其他并行 agy worker
+- **阶段**：`T02_FS_OPENDIRECTORY_PASSED_OS_INITIALIZEEVENT_REACHED_ON_RG477M`
 - **未达**：标题画面 / 可操作场景（勿伪称可玩）
 
-本轮按工单 P-AG-11 推进方案 A（《最终幻想：共鸣》Switch→RG477M Android ARM64 原生移植），严格保护密钥与敏感数据，严禁FC27或无依据改动。
+本轮按工单 P-AG-12 推进方案 A（《最终幻想：共鸣》Switch→RG477M Android ARM64 原生移植），严格保护密钥与敏感数据，严禁FC27或无依据改动。
 
 ## 最新重大突破
 
-1. **最小可用 `nn::account::Initialize` HLE 全链路落地闭环**：
-   - 实现了 `nn::account::Initialize`（`_ZN2nn7account10InitializeEv` 及别名 `nnaccountInitialize`），按 Horizon / Nintendo SDK ABI 实现无参账号子系统初始化，记录并返回 0 (`ResultSuccess`)，保留清晰可归因日志 `[hle] nn::account::Initialize: initialized account system -> returning 0`。
-   - 在 `guest_process.c` 中将 `_ZN2nn7account10InitializeEv` 与 `nnaccountInitialize` 登记入 `typed` 白名单与 `import_signature`（0 参数，1 返回值），子线程 `GameThread` 无缝复用 Native Boundary 网关分派。
+1. **最小可用 `nn::fs::OpenDirectory` 及完整目录枚举 HLE 全链路落地闭环**：
+   - 实现了 `nn::fs::OpenDirectory`、`nn::fs::GetDirectoryEntryCount`、`nn::fs::ReadDirectory`、`nn::fs::CloseDirectory` 及别名和 `CreateDirectory`。
+   - 严格依据 Horizon / Nintendo SDK / SwitchBrew ABI 定义了 `nn_fs_directory_entry`（尺寸精确为 784 字节 / `0x310`，`name[0x301]`、`type` 0=Dir/1=File、`file_size` 64-bit），并通过 `_Static_assert` 约束对齐与偏移。
+   - 实现目录句柄表池管理（`s_fs_open_dirs`），按 `mode`（1=Dir, 2=File, 3=All）在已挂载 `rom`（宿主 `romfs`）上执行扫描快照，提供无文件描述符泄露的平滑流式读取、精确计数及资源安全释放。
+   - 在 `guest_process.c` 中将相关符号与别名登记入 `typed` 白名单与 `import_signature`，子线程 `GameThread` 无缝复用 Native Boundary 网关分派。
 
-2. **宿主与真机契约全绿（32 项契约全部 PASS）**：
-   - 增加 `--account` 独立契约测试用例 `account_contract`，全面覆盖符号解析、别名调用、初始化状态记录及基线返回 0 验证。
-   - `./scripts/runtime/build_guest_process_contract.sh` 编译并跑通全量 32 项宿主契约（含 `host-account-contract`，returncode 0）。
-   - 在 RG477M (`RG477M01445122`) 上运行 `./guest_process_contract.android --account`：
-     `{"account_contract_errors":0,"initialize":true,"baseline_zero":true}`。
-   - 复跑 `--socket`、`--nifm`、`--aoc`、`--fs-open-file`、`--fs-mount-rom`、`--threads` 与 `--guest-tp` 均验证通过：
-     `{"socket_contract_errors":0,"initialize":true,"baseline_zero":true}`
-     `{"nifm_contract_errors":0,"initialize":true,"baseline_zero":true}`
-     `{"aoc_contract_errors":0,"count":true,"list":true,"query_cache":true,"mount":true,"baseline_zero":true}`
-     `{"fs_open_file_errors":0,"open":true,"read":true,"size":true,"close":true,"entry_type":true,"validation":true}`
-     `{"fs_mount_rom_errors":0,"mount":true,"unmount":true,"validation":true}`
-     `{"thread_errors":0,"create":true,"start":true,"wait":true,"destroy":true,"name":true,"priority":true,"tid":true,"tp_mirror":true}`
-     `{"guest_tp_errors":0,"mirror_model":true,"patch_model":true,"trap_decision":true,"isolation":true,"zth_resolved":true,"live_mirrors":0}`。
+2. **宿主与真机契约全绿（33 项契约全部 PASS）**：
+   - 增加 `--fs-open-dir` 独立契约测试用例 `fs_open_dir_contract`，全面覆盖符号与别名解析、空指针/无效路径校验、目录过滤模式（Dir/File/All）、分块与尽头读取、关闭句柄失效性检查及真实 `rom:/` 目录探测。
+   - `./scripts/runtime/build_guest_process_contract.sh` 编译并跑通全量 33 项宿主契约（含 `host-fs-open-dir-contract`，returncode 0）。
+   - 在 RG477M (`RG477M01445122`) 上运行 `./guest_process_contract.android --fs-open-dir`：
+     `{"fs_open_dir_errors":0,"open":true,"count":true,"read":true,"close":true,"validation":true}`。
+   - 复跑 `--account`、`--socket`、`--fs-open-file`、`--threads` 与 `--guest-tp` 均全绿通过。
 
-3. **真机实测重大突破：越过 nn::account::Initialize，激活 UE 核心探测，推进至 nn::fs::OpenDirectory**：
+3. **真机实测重大突破：越过 OpenDirectory，虚幻引擎成功枚举 7 项 romfs 目录并推进至 nn::os::InitializeEvent**：
    - 运行 `./nso_owned_startup.android main.nso --guest-quota 1073741824 --guest-stack 2097152 --guest-resource-quota 16777216 --boot`：
    - 日志实证：
      ```text
-     [hle] nn::socket::Initialize: buffer=0x6fa6fcb000 size=6291456 (0x600000) alloc_size=131072 (0x20000) concurrency=14 -> returning 0
-     [hle] nn::account::Initialize: initialized account system -> returning 0
-     [crt] atexit registered callback=0x6f9f4896d0 pending=13539; deferred
-     [crt] atexit registered callback=0x6f9f489710 pending=13540; deferred
-     [crt] atexit registered callback=0x6f9f489750 pending=13541; deferred
-     [crt] atexit registered callback=0x6f9f489790 pending=13542; deferred
-     [crt] atexit registered callback=0x6f9f4d1fb0 pending=13543; deferred
-     [page-port-policy] op=map address=0x69df783000 bytes=4096 result=0 after real VM/accounting transition
-     [crt] atexit registered callback=0x6f9f3b7970 pending=13544; deferred
-     [crt] atexit registered callback=0x6f9f3b7980 pending=13545; deferred
-     [crt] atexit registered callback=0x6f9f576090 pending=13546; deferred
-     [crt] atexit registered callback=0x6f9f504890 pending=13547; deferred
-     [crt] atexit registered callback=0x6f9f3b7750 pending=13548; deferred
-     [crt] atexit registered callback=0x6f9f30ce50 pending=13549; deferred
      [hle] nn::fs::GetEntryType: path='rom:/FFRS/FFRS.uproject' (host_path='romfs/FFRS/FFRS.uproject') stat failed errno=2
-     [fault] signal=5 pc=0x72491d4128 fa=0x72491d4128
-      x0=0x69df680758  x1=0x69df680630  x2=0x3  x3=0x0
-      x4=0x601f21c71a  x5=0x601f21c73a  x6=0x0  x7=0x3a006d006f0072
-      x8=0x69df680636  x9=0x6  x10=0xdc00  x11=0xfca02400
-      x12=0xffffffff  x13=0xfffe  x14=0xffffffff  x15=0x0
-      x16=0x6fa6a7c120  x17=0x72491d4128  x18=0x0  x19=0x69df680820
-      x20=0x603f26ca80  x21=0x6fa6f0e5a0  x22=0x601f21c720  x23=0x0
-      x24=0x6  x25=0x69df6806b0  x26=0x6  x27=0x6fa7f344c0
-      x28=0x116000 
-      fp=0x69df6807b0 lr=0x6f9f31bc44 sp=0x69df680600
+     [hle] nn::fs::OpenDirectory: path='rom:/' mode=3 (host_path='romfs') total_entries=7 -> handle=0x63e35aa1a0
+     [hle] nn::fs::GetDirectoryEntryCount: handle=0x63e35aa1a0 -> count=7
+     [page-port-policy] op=map address=0x70a6400000 bytes=28672 result=0 after real VM/accounting transition
+     [page-port-policy] op=map address=0x7586982000 bytes=4096 result=0 after real VM/accounting transition
+     [hle] nn::fs::ReadDirectory: handle=0x63e35aa1a0 req_max=7 read_entries=7 (cursor=7/7)
+     [hle] nn::fs::CloseDirectory: closed handle=0x63e35aa1a0 (path='rom:/')
+     [crt] atexit registered callback=0x7b4667d500 pending=13550; deferred
+     [crt] atexit registered callback=0x7b4699f570 pending=13551; deferred
+     [crt] atexit registered callback=0x7b4699f580 pending=13552; deferred
+     [crt] atexit registered callback=0x7b46539a80 pending=13553; deferred
+     [fault] signal=5 pc=0x7dea6cb420 fa=0x7dea6cb420
+      x0=0x6c0649a330  x1=0x0  x2=0x1  x3=0x7586880858
+      ...
+      x16=0x7b4dbf5418  x17=0x7dea6cb420  x18=0x65  x19=0x0
+      ...
+      fp=0x75868808c0 lr=0x7b464a8bd0 sp=0x75868808c0
      ```
-   - 子线程 `GameThread` 成功调用并完全越过 `nn::account::Initialize`（返回 0）！
-   - 虚幻引擎顺利完成互斥锁群初始化与 atexit 注册，触发 4KB 页面分配，并激活引擎启动核心文件探测（已成功由宿主处理 `GetEntryType: rom:/FFRS/FFRS.uproject`），随后推进至目录打开 `nn::fs::OpenDirectory`！
+   - 子线程 `GameThread` 成功调用并完全越过 `nn::fs::OpenDirectory`、`GetDirectoryEntryCount`、`ReadDirectory`、`CloseDirectory`！
+   - 虚幻引擎顺利完成目录内容解析，并在获取 7 个目录项后触发 28KB + 4KB 页面映射，继续注册 4 项 atexit 回调（推进至 13553 项），最终平稳触达未绑定导入 132 `_ZN2nn2os15InitializeEventEPNS0_9EventTypeEbNS0_14EventClearModeE`。
 
 4. **最新真实阻塞前沿确认**：
-   - 确证新阻塞符号：`_ZN2nn2fs13OpenDirectoryEPNS0_15DirectoryHandleEPKci`（`nn::fs::OpenDirectory(nn::fs::DirectoryHandle*, const char*, int)`）。
-   - 符号索引：`symbol index = 37`（JMPREL 重定位索引 `reloc_idx = 36`）。
-   - GOT / JMPREL 槽位：`0x7772120`。
+   - 确证新阻塞符号：`_ZN2nn2os15InitializeEventEPNS0_9EventTypeEbNS0_14EventClearModeE`（`nn::os::InitializeEvent(nn::os::EventType*, bool, nn::os::EventClearMode)`）。
+   - 符号索引：`symbol index = 132`。
+   - GOT / JMPREL 槽位：`0x7772418`。
    - 调用点现场：
-     - 基地址：`0x6f9f30a000`
-     - 调用点：`caller_offset = 0x11c40`
-     - 返回点：`lr_offset = 0x11c44`（`lr = 0x6f9f31bc44`）
-     - GOT 地址：`x16 = 0x6fa6a7c120`（`0x6fa6a7c120 - 0x6f9f30a000 = 0x7772120`）
+     - 基地址：`0x7b46483000`
+     - 调用点：`caller_offset = 0x25bcc`
+     - 返回点：`lr_offset = 0x25bd0`（`lr = 0x7b464a8bd0`）
+     - GOT 地址：`x16 = 0x7b4dbf5418`（`0x7b4dbf5418 - 0x7b46483000 = 0x7772418`）
      - 实参分析：
-       - `x0 = 0x69df680758`：`out_handle` 输出句柄指针（栈内存）
-       - `x1 = 0x69df680630`：目录路径指针
-       - `x2 = 0x3`：目录打开模式（`OpenDirectoryMode_All = 3`）
-   - 退出码：133（SIGTRAP sentinel `brk` at unlinked import 37）。
-   - 完整原始日志：`.local/logs/rg477m-boot-v27-accountinit.log` + `.exitcode`。
+       - `x0 = 0x6c0649a330`：`EventType *event` 事件对象指针
+       - `x1 = 0x0`：`bool initially_signaled = false`
+       - `x2 = 0x1`：`EventClearMode = EventClearMode_AutoClear (1)`
+   - 退出码：133（SIGTRAP sentinel `brk` at unlinked import 132）。
+   - 完整原始日志：`.local/logs/rg477m-boot-v28-opendirectory.log` + `.exitcode`。
 
 5. **明确未完成项标注**：
    - `ProtectRelro` 当前仍为桩函数日志记录，未真正实施页面写保护；
@@ -99,5 +86,6 @@
 | **nn::aoc::CountAddOnContent / ListAddOnContent** | **已越过并真机通过**：实测 Count 返回 0，List 返回 0 项，顺利越过。 |
 | **nn::nifm::Initialize** | **已越过并真机通过**：成功初始化网络接口管理返回 0。 |
 | **nn::socket::Initialize** | **已越过并真机通过**：成功初始化 6MB 缓冲区套接字系统返回 0。 |
-| **nn::account::Initialize** | **已越过并真机通过**：成功初始化账号子系统返回 0，GameThread 顺利越过！ |
-| **当前阻塞前沿** | **确证为 `nn::fs::OpenDirectory`**（`_ZN2nn2fs13OpenDirectoryEPNS0_15DirectoryHandleEPKci`，import index 37，GOT 0x7772120，caller 0x11c40，lr 0x11c44，exit 133，日志 `.local/logs/rg477m-boot-v27-accountinit.log`）。 |
+| **nn::account::Initialize** | **已越过并真机通过**：成功初始化账号子系统返回 0。 |
+| **nn::fs::OpenDirectory / GetDirectoryEntryCount / ReadDirectory / CloseDirectory** | **已越过并真机通过**：实测成功打开 `rom:/`，获取 7 个条目，读取 7 个条目并安全关闭，GameThread 顺利越过！ |
+| **当前阻塞前沿** | **确证为 `nn::os::InitializeEvent`**（`_ZN2nn2os15InitializeEventEPNS0_9EventTypeEbNS0_14EventClearModeE`，import index 132，GOT 0x7772418，caller 0x25bcc，lr 0x25bd0，exit 133，日志 `.local/logs/rg477m-boot-v28-opendirectory.log`）。 |

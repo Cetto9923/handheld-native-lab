@@ -1,8 +1,8 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-10-23T22:40:00.000000+00:00
-阶段：T02_ACCOUNT_INIT_PASSED_FS_OPENDIRECTORY_REACHED_ON_RG477M: nn::account::Initialize verified on RG477M; GameThread advanced to nn::fs::OpenDirectory (symbol index 37, GOT 0x7772120, caller offset 0x11c40, lr offset 0x11c44)
-总控：Antigravity sole root coordinator — P-AG-11 account::Initialize closed; nn::fs::OpenDirectory reached (symbol index 37, GOT 0x7772120, exit 133); log .local/logs/rg477m-boot-v27-accountinit.log
+状态事件时间：2026-10-23T23:10:00.000000+00:00
+阶段：T02_FS_OPENDIRECTORY_PASSED_OS_INITIALIZEEVENT_REACHED_ON_RG477M: nn::fs::OpenDirectory & directory enumeration verified on RG477M; GameThread advanced to nn::os::InitializeEvent (symbol index 132, GOT 0x7772418, caller offset 0x25bcc, lr offset 0x25bd0)
+总控：Antigravity sole root coordinator — P-AG-12 OpenDirectory / directory enumeration closed; nn::os::InitializeEvent reached (symbol index 132, GOT 0x7772418, exit 133); log .local/logs/rg477m-boot-v28-opendirectory.log
 更新方式：按事件更新，没有后台自动刷新。
 
 | 任务 | 角色 | 状态 | 实际负责人 | 启动依赖 | 验收门禁 | 分支 |
