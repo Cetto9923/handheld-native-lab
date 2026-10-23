@@ -1,0 +1,37 @@
+/* Derived from peiikai/LASRecomp Beta4, MIT, Copyright (c) 2026 Peiikai.
+ * Fixed revision fe66f31a6dbcaee1faa1e6718805cb2dbcc67a93. See third_party/lasrecomp/LICENSE.
+ * This is the host compatibility-layer record format, not a Nintendo GPU packet
+ * or evidence of this game's opaque object layout. */
+#ifndef FFRS_LAS_COMMAND_RECORD_H
+#define FFRS_LAS_COMMAND_RECORD_H
+#include <stddef.h>
+#include <stdint.h>
+// One recorded command: header, the call's integer and float arguments, then copied data.
+typedef struct {
+    uint32_t op, size;  // size includes the header, multiple of 8
+    uint64_t x[7];      // x1..x7 of the call
+    float f[4];         // s0..s3 of the call
+    uint8_t extra[];
+} CmdRec;
+
+enum {
+    CMD_END = 0, CMD_JUMP, CMD_CALL,
+    CMD_BIND_PROGRAM, CMD_BIND_BLEND, CMD_BIND_CHANNEL_MASK, CMD_BIND_COLOR, CMD_BIND_DEPTH_STENCIL,
+    CMD_BIND_MULTISAMPLE, CMD_BIND_POLYGON, CMD_BIND_VERTEX_ATTRIB, CMD_BIND_VERTEX_STREAM,
+    CMD_BIND_VERTEX_BUFFERS, CMD_BIND_UNIFORM_BUFFERS, CMD_BIND_STORAGE_BUFFERS, CMD_BIND_TEXTURES,
+    CMD_BIND_IMAGES, CMD_SET_TEXTURE_POOL, CMD_SET_SAMPLER_POOL, CMD_SET_RENDER_TARGETS,
+    CMD_SET_VIEWPORTS, CMD_SET_SCISSORS, CMD_SET_DEPTH_RANGES, CMD_SET_BLEND_COLOR, CMD_SET_STENCIL,
+    CMD_SET_PRIMITIVE_RESTART, CMD_SET_ALPHA_REF, CMD_SET_DEPTH_BOUNDS, CMD_SET_POLYGON_OFFSET,
+    CMD_SET_LINE_WIDTH, CMD_SET_POINT_SIZE, CMD_SET_SAMPLE_MASK, CMD_SET_RENDER_ENABLE,
+    CMD_CLEAR_COLOR, CMD_CLEAR_DEPTH_STENCIL, CMD_CLEAR_TEXTURE, CMD_CLEAR_BUFFER,
+    CMD_DRAW_ARRAYS, CMD_DRAW_ELEMENTS, CMD_DRAW_ARRAYS_INDIRECT, CMD_DRAW_ELEMENTS_INDIRECT,
+    CMD_DISPATCH, CMD_DISPATCH_INDIRECT,
+    CMD_COPY_BUFFER_TO_BUFFER, CMD_COPY_BUFFER_TO_TEXTURE, CMD_COPY_TEXTURE_TO_BUFFER,
+    CMD_COPY_TEXTURE_TO_TEXTURE, CMD_DOWNSAMPLE, CMD_UPDATE_UNIFORM_BUFFER, CMD_FENCE_SYNC, CMD_WAIT_SYNC,
+    CMD_BARRIER, CMD_SIGNAL_EVENT, CMD_WAIT_EVENT, CMD_REPORT_COUNTER, CMD_DISCARD_COLOR,
+    CMD_DISCARD_DEPTH_STENCIL, CMD_SET_COPY_STRIDES, CMD_DRAW_TEXTURE, CMD_RESOLVE_DEPTH,
+    CMD_COUNT
+};
+_Static_assert(sizeof(CmdRec)==80 && offsetof(CmdRec,x)==8 &&
+    offsetof(CmdRec,f)==64 && offsetof(CmdRec,extra)==80,"LAS record ABI");
+#endif

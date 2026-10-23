@@ -4,6 +4,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include <vulkan_core.h>
 #include "../vulkan/buffer_resource.h"
+#include "../nvn_las/typed_transfer.h"
 #include <inttypes.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -41,6 +42,15 @@ typedef struct Probe {
     uint32_t image_memory_type;
     VkMemoryPropertyFlags image_memory_flags;
     HostBuffer source, destination, pixels;
+    FfrsLasBackend las;
+    FfrsLasTyped las_typed;
+    NVNdevice las_device_key;
+    NVNmemoryPool las_pool_key;
+    NVNcommandBuffer las_command_key;
+    _Alignas(8) unsigned char las_records[3*sizeof(CmdRec)];
+    bool las_encoded,las_retired;
+    uint32_t las_copy_count;
+    uint64_t las_copy_bytes;
     VkPhysicalDeviceProperties properties;
     VkPhysicalDeviceMemoryProperties memory_properties;
     VkPhysicalDeviceFeatures features;
@@ -260,6 +270,43 @@ static VkBufferMemoryBarrier buffer_barrier(VkBuffer buffer, VkAccessFlags sourc
     return barrier;
 }
 
+static void (*las_target(const char *name))(void) {
+    size_t count=0;const FfrsLasTypedTarget *targets=ffrs_las_typed_targets(&count);
+    for(size_t i=0;i<count;++i)if(!strcmp(targets[i].name,name))return targets[i].host_target;
+    return NULL;
+}
+static bool record_las_copy(Probe *p) {
+    FfrsLasStatus s=ffrs_las_backend_init(&p->las,p->device);
+    if(!s)s=ffrs_las_backend_bind(&p->las,(uintptr_t)p->source.mapped,COPY_BYTES,
+                                &p->source,0,VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+    if(!s)s=ffrs_las_backend_bind(&p->las,(uintptr_t)p->destination.mapped,COPY_BYTES,
+                                &p->destination,0,VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+    if(!s)s=ffrs_las_typed_init(&p->las_typed,&p->las,&p->las_device_key);
+    if(!s)s=ffrs_las_typed_attach_pool(&p->las_typed,&p->las_pool_key,
+                                     p->las_records,sizeof(p->las_records));
+    if(!s)s=ffrs_las_typed_enter(&p->las_typed);
+    if(s)return fail(p,"las_record","LAS_OWNER_OR_REGISTRATION_ERROR",2);
+    PFNNVNCOMMANDBUFFERINITIALIZEPROC initialize=(PFNNVNCOMMANDBUFFERINITIALIZEPROC)las_target("nvnCommandBufferInitialize");
+    PFNNVNCOMMANDBUFFERADDCOMMANDMEMORYPROC memory=(PFNNVNCOMMANDBUFFERADDCOMMANDMEMORYPROC)las_target("nvnCommandBufferAddCommandMemory");
+    PFNNVNCOMMANDBUFFERBEGINRECORDINGPROC begin=(PFNNVNCOMMANDBUFFERBEGINRECORDINGPROC)las_target("nvnCommandBufferBeginRecording");
+    PFNNVNCOMMANDBUFFERCOPYBUFFERTOBUFFERPROC copy=(PFNNVNCOMMANDBUFFERCOPYBUFFERTOBUFFERPROC)las_target("nvnCommandBufferCopyBufferToBuffer");
+    PFNNVNCOMMANDBUFFERENDRECORDINGPROC end=(PFNNVNCOMMANDBUFFERENDRECORDINGPROC)las_target("nvnCommandBufferEndRecording");
+    NVNcommandHandle handle=0;
+    if(initialize&&memory&&begin&&copy&&end&&initialize(&p->las_command_key,&p->las_device_key)) {
+        memory(&p->las_command_key,&p->las_pool_key,0,sizeof(p->las_records));
+        begin(&p->las_command_key);
+        copy(&p->las_command_key,(uintptr_t)p->source.mapped,(uintptr_t)p->destination.mapped,COPY_BYTES,0);
+        handle=end(&p->las_command_key);
+    }
+    s=ffrs_las_typed_status(&p->las_typed);
+    FfrsLasStatus left=ffrs_las_typed_leave(&p->las_typed);
+    if(s||left||!handle)return fail(p,"las_record","LAS_TYPED_RECORD_ERROR",2);
+    s=ffrs_las_typed_encode(&p->las_typed,p->command,handle);
+    if(s)return fail(p,"las_encode","LAS_UNSUPPORTED_OR_INVALID_RECORD",2);
+    p->las_copy_count=p->las.copy_count;p->las_copy_bytes=p->las.copied_bytes;
+    p->las_encoded=true;return true;
+}
+
 static bool record_commands(Probe *p) {
     VkCommandBufferBeginInfo begin = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT};
@@ -270,8 +317,7 @@ static bool record_commands(Probe *p) {
         buffer_barrier(p->pixels.buffer, VK_ACCESS_HOST_WRITE_BIT, VK_ACCESS_TRANSFER_WRITE_BIT)};
     vkCmdPipelineBarrier(p->command, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
                          0, 0, NULL, 3, before, 0, NULL);
-    VkBufferCopy copy = {.srcOffset = 0, .dstOffset = 0, .size = COPY_BYTES};
-    vkCmdCopyBuffer(p->command, p->source.buffer, p->destination.buffer, 1, &copy);
+    if(!record_las_copy(p))return false;
     VkImageSubresourceRange subresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
         .baseMipLevel = 0, .levelCount = 1, .baseArrayLayer = 0, .layerCount = 1};
     VkImageMemoryBarrier to_clear = {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -315,18 +361,28 @@ static uint64_t monotonic_ns(void) {
 static bool execute(Probe *p) {
     VkSubmitInfo submit = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
         .commandBufferCount = 1, .pCommandBuffers = &p->command};
-    if (!result(p, "queue_submit", vkQueueSubmit(p->queue, 1, &submit, p->fence))) return false;
+    VkResult queued=vkQueueSubmit(p->queue,1,&submit,p->fence);
+    FfrsLasStatus observed=ffrs_las_backend_submitted(&p->las,p->fence,queued);
+    /* A failed/uncertain submission is retained conservatively too. */
+    if(observed)p->pending=true;
+    if(!result(p,"queue_submit",queued))return false;
+    if(observed)return fail(p,"las_submit_observer","LAS_SUBMISSION_STATE_ERROR",2);
     p->pending = true; p->submitted = true;
     uint64_t start = monotonic_ns();
     VkResult wait = vkWaitForFences(p->device, 1, &p->fence, VK_TRUE, FENCE_TIMEOUT_NS);
+    observed=ffrs_las_backend_waited(&p->las,p->fence,wait);
     uint64_t end = monotonic_ns();
     p->wait_elapsed_ns = end >= start ? end - start : 0;
-    if (wait == VK_SUCCESS) p->pending = false;
+    if(wait==VK_SUCCESS&&!observed)p->pending=false;
     if (!result(p, "wait_for_fence", wait)) {
         if (wait == VK_TIMEOUT) { p->failure = "FENCE_TIMEOUT"; p->exit_code = 4; }
         return false;
     }
+    if(observed)return fail(p,"las_wait_observer","LAS_COMPLETION_STATE_ERROR",2);
     p->fence_complete = true;
+    if(ffrs_las_backend_retire(&p->las)!=FFRS_LAS_OK)
+        return fail(p,"las_retire","LAS_COMPLETION_NOT_RETIRED",2);
+    p->las_retired=true;
     const FfrsVkBufferResource *readback[2] = {&p->destination, &p->pixels};
     VkMappedMemoryRange ranges[2];
     FfrsVkBufferResult invalidated = ffrs_vk_buffer_invalidate(readback, 2, ranges);
@@ -371,6 +427,19 @@ static void cleanup(Probe *p) {
     if (p->device) {
         if (p->fence) { vkDestroyFence(p->device, p->fence, NULL); ++p->destroyed_objects; }
         if (p->pool) { vkDestroyCommandPool(p->device, p->pool, NULL); ++p->destroyed_objects; }
+        if(p->las.magic) {
+            if(p->las.phase==FFRS_LAS_ENCODED)
+                (void)ffrs_las_backend_cancel(&p->las,true); /* pool actually freed above */
+            if(p->las_typed.magic&&(ffrs_las_typed_close(&p->las_typed)!=FFRS_LAS_OK)) {
+                (void)fail(p,"las_cleanup","LAS_TYPED_OWNER_BUSY",2);return;
+            }
+            for(unsigned i=0;i<FFRS_LAS_MAX_BUFFERS;++i)if(p->las.buffers[i].resource)
+                if(ffrs_las_backend_unbind(&p->las,p->las.buffers[i].address)!=FFRS_LAS_OK)
+                    (void)fail(p,"las_cleanup","LAS_BUFFER_OWNER_BUSY",2);
+            if(ffrs_las_backend_close(&p->las)!=FFRS_LAS_OK) {
+                (void)fail(p,"las_cleanup","LAS_BACKEND_OWNER_BUSY",2);return;
+            }
+        }
         if (p->image) { vkDestroyImage(p->device, p->image, NULL); ++p->destroyed_objects; }
         if (p->image_memory) { vkFreeMemory(p->device, p->image_memory, NULL); ++p->destroyed_objects; }
         cleanup_buffer(p, &p->pixels);
@@ -403,6 +472,11 @@ static void print_report(const Probe *p) {
     fputs("\"source_sha256\":", stdout); json_string(FFRS_VK_SOURCE_SHA256);
     fputs(",\"git_head_at_build\":", stdout); json_string(FFRS_VK_GIT_HEAD);
     fputs(",\"scope\":\"buffer_copy_and_image_clear_transfer_only\",\"game_rendering\":false,", stdout);
+    printf("\"las_transfer\":{\"revision\":\"fe66f31a6dbcaee1faa1e6718805cb2dbcc67a93\","
+        "\"typed_record_path\":%s,\"backend_copy_count\":%u,\"backend_copy_bytes\":%" PRIu64 ","
+        "\"gpu_completion_retired\":%s,\"opaque_layout_written\":false,\"shader_or_present\":false},",
+        p->las_encoded?"true":"false",p->las_copy_count,
+        p->las_copy_bytes,p->las_retired?"true":"false");
     fputs("\"failure_stage\":", stdout); json_string(p->failure_stage);
     fputs(",\"failure\":", stdout); json_string(p->failure);
     fputs(",\"device\":{\"name\":", stdout); json_string(p->properties.deviceName);
