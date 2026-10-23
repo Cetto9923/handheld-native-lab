@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "nso_loader.h"
+#include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
 #include <pthread.h>
@@ -45,6 +46,14 @@ struct nso_module {
     uint64_t text_lo, text_hi;
     uint8_t build_id[16];
 };
+/* Diagnostic state belongs to the thread that explicitly installed it. The
+ * signal disposition itself is process-wide; this remains an opt-in fatal
+ * experiment facility, not a recoverable multi-thread exception mechanism. */
+static _Thread_local nso_module *fault_module;
+static _Thread_local uintptr_t stack_lo,stack_hi;
+static _Thread_local unsigned char signal_stack[64*1024];
+static _Thread_local stack_t previous_signal_stack;
+static _Thread_local int owns_signal_stack;
 static uint16_t rd16(const void *p) { uint16_t v; memcpy(&v,p,2); return v; }
 static uint32_t rd32(const void *p) { uint32_t v; memcpy(&v,p,4); return v; }
 static uint64_t rd64(const void *p) { uint64_t v; memcpy(&v,p,8); return v; }
@@ -241,6 +250,21 @@ fail:
 }
 void nso_free(nso_module *m) {
     if(!m)return;
+    if(fault_module==m) {
+        fault_module=NULL; stack_lo=stack_hi=0;
+        if(owns_signal_stack) {
+            stack_t restore=previous_signal_stack;
+            /* macOS returned ENOMEM when restoring the initial disabled,
+             * zero-size state. Keep SS_DISABLE and supply its minimum size;
+             * disabled stacks do not become active or consume this pointer. */
+            if((restore.ss_flags&SS_DISABLE) && restore.ss_size<MINSIGSTKSZ)
+                restore.ss_size=MINSIGSTKSZ;
+            if(sigaltstack(&restore,NULL))
+                fprintf(stderr,"[fault-scope] restore alternate stack failed errno=%d previous=(%p,%zu,%d)\n",
+                        errno,previous_signal_stack.ss_sp,previous_signal_stack.ss_size,previous_signal_stack.ss_flags);
+            else owns_signal_stack=0;
+        }
+    }
     if(m->image)munmap(m->image,m->image_size);
     if(m->import_traps)munmap(m->import_traps,m->trap_size);
     if(m->object_traps)munmap(m->object_traps,m->trap_size);
@@ -274,9 +298,6 @@ void nso_run_init(nso_module *m) {
         nso_call(m,addr-nso_base(m),0,0,0,0,0,0);
     }
 }
-static nso_module *fault_module;
-static uintptr_t stack_lo,stack_hi;
-static unsigned char signal_stack[64*1024];
 static int sentinel_index(const uint8_t *base,size_t size,uint64_t addr) {
     return addr>=(uintptr_t)base && addr-(uintptr_t)base<size?(int)((addr-(uintptr_t)base)/8):-1;
 }
@@ -322,7 +343,7 @@ void nso_install_fault_trap(nso_module *m) {
     if(!pthread_getattr_np(pthread_self(),&attr)) {void *addr;size_t size;if(!pthread_attr_getstack(&attr,&addr,&size)){stack_lo=(uintptr_t)addr;stack_hi=stack_lo+size;}pthread_attr_destroy(&attr);}
 #endif
     stack_t ss={.ss_sp=signal_stack,.ss_size=sizeof(signal_stack),.ss_flags=0};
-    sigaltstack(&ss,NULL);
+    if(!owns_signal_stack && sigaltstack(&ss,&previous_signal_stack)==0)owns_signal_stack=1;
     struct sigaction sa;memset(&sa,0,sizeof(sa));sigemptyset(&sa.sa_mask);sa.sa_sigaction=fault_handler;sa.sa_flags=SA_SIGINFO|SA_ONSTACK;
     sigaction(SIGSEGV,&sa,NULL);sigaction(SIGBUS,&sa,NULL);sigaction(SIGILL,&sa,NULL);sigaction(SIGTRAP,&sa,NULL);
 }

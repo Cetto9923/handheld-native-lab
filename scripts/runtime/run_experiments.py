@@ -16,6 +16,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input",type=Path,default=ROOT/".local/uncompressed/main.bin")
     parser.add_argument("--out",type=Path,required=True)
+    parser.add_argument("--host-hle",action="store_true",help="enable only byte-evidenced optional host adapters")
     args=parser.parse_args()
     out=args.out.resolve();out.mkdir(parents=True,exist_ok=False)
     data=args.input.read_bytes()
@@ -25,7 +26,7 @@ def main():
         raise ValueError("private input does not match the reviewed native sample")
     del data
     manifest={"input_sha256":digest,"leaf_sha256":leaf_digest,"host":platform.platform(),
-              "architecture":platform.machine(),"cases":{},"commands":[]}
+              "architecture":platform.machine(),"host_hle":args.host_hle,"cases":{},"commands":[]}
     for key,cmd in [("head",["git","rev-parse","HEAD"]),("dirty",["git","status","--short"]),
                     ("compiler",["clang","--version"])]:
         manifest[key]=subprocess.check_output(cmd,cwd=ROOT,text=True)
@@ -40,7 +41,8 @@ def main():
     base=["clang","-g","-O2","-Wall","-Wextra","-Werror",ROOT/"src/runtime/nso/nso_loader.c"]
     for name,source in [("nso_call",ROOT/"src/runtime/nso/nso_call.c"),
                         ("game_leaf_sample",ROOT/"tests/native/game_leaf_sample.c")]:
-        if run("build-"+name,[*base,source,"-o",out/name,"-ldl","-lpthread"]):
+        extra=["-DNSO_WITH_HOST_HLE",ROOT/"src/runtime/hle/nso_host.c"] if args.host_hle and name=="nso_call" else []
+        if run("build-"+name,[*base,source,*extra,"-o",out/name,"-ldl","-lpthread"]):
             raise RuntimeError("native build failed; inspect run logs")
     if run("leaf-sample",[out/"game_leaf_sample",args.input]):
         raise RuntimeError("native game leaf did not match its mathematical oracle")

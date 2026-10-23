@@ -5,6 +5,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef NSO_WITH_HOST_HLE
+#include "../hle/nso_host.h"
+#endif
 
 /* Keep host binding deliberately small. Matching a name alone does not establish
  * C++ layout, Switch OS semantics, or macOS variadic ABI compatibility. */
@@ -18,12 +21,13 @@ static uint64_t resolve_import(uint32_t index, const char *name) {
         "nvnBootstrapLoader",
         NULL
     };
-    if(!strcmp(name,"stdout")) return (uintptr_t)&stdout;
-    if(!strcmp(name,"stderr")) return (uintptr_t)&stderr;
-    if(!strcmp(name,"stdin")) return (uintptr_t)&stdin;
     for(size_t i=0;compatible[i];i++) if(!strcmp(name,compatible[i]))
         return (uintptr_t)dlsym(RTLD_DEFAULT,name);
+#ifdef NSO_WITH_HOST_HLE
+    return nso_host_resolve(index,name);
+#else
     return 0;
+#endif
 }
 static int number(const char *s,uint64_t *out) {
     char *end;errno=0;

@@ -8,13 +8,13 @@
  * not, and must not become, a general-purpose CPU interpreter or emulator.
  *
  * What it does, in order:
- *   1. parse the NSO0 header and the dynamic string/symbol tables;
- *   2. locate MOD0 block and parse the ELF .dynamic section;
- *   3. map one contiguous module image (text/rodata/rwdata/bss) in memory;
- *   4. copy the segments to their module-relative offsets;
+ *   1. validate the NSO0 header and segment extents;
+ *   2. map one contiguous module image and copy the segments;
+ *   3. locate MOD0 and parse the mapped ELF .dynamic section;
+ *   4. resolve bounded dynamic symbols through an explicit typed resolver;
  *   5. apply compact relative relocations (DT_RELR);
  *   6. apply symbolic relocations (DT_RELA and DT_JMPREL);
- *   7. flip page protections so .text is execute-only and the rest stays read/write.
+ *   7. protect text as read/execute, rodata as read, and data as read/write.
  *
  * Nothing here interprets or rewrites instructions: the module's own AArch64
  * code executes directly on the host CPU.
