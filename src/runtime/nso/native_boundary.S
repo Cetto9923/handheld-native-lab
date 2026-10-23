@@ -144,5 +144,175 @@ nb_import_gateway:
 .Ltrap:
     brk #0x4e42
 .size nb_import_gateway,.-nb_import_gateway
+
+/* Exactly 104 bytes; x9/x10 are scratch, never argument/result registers. */
+.macro NB_COPY_STACK13 source,destination
+    ldp x9,x10,[\source]
+    stp x9,x10,[\destination]
+    ldp x9,x10,[\source,#16]
+    stp x9,x10,[\destination,#16]
+    ldp x9,x10,[\source,#32]
+    stp x9,x10,[\destination,#32]
+    ldp x9,x10,[\source,#48]
+    stp x9,x10,[\destination,#48]
+    ldp x9,x10,[\source,#64]
+    stp x9,x10,[\destination,#64]
+    ldp x9,x10,[\source,#80]
+    stp x9,x10,[\destination,#80]
+    ldr x9,[\source,#96]
+    str x9,[\destination,#96]
+.endm
+
+.p2align 2
+.global nb_call_stack13
+.type nb_call_stack13,%function
+nb_call_stack13:
+    .inst 0xd503245f
+    cbz x0,.Lst_invalid
+    cbz x1,.Lst_invalid
+    cbz x2,.Lst_invalid
+    cbz x3,.Lst_invalid
+    tst x0,#7
+    b.ne .Lst_invalid
+    tst x2,#15
+    b.ne .Lst_invalid
+    tst x3,#7
+    b.ne .Lst_invalid
+    ldr x9,[x0]
+    mov x10,#0x4e42
+    cmp x9,x10
+    b.ne .Lst_invalid
+    ldr x10,[x0,#40]
+    cbz x10,.Lst_invalid
+    ldar x9,[x10]
+    cbz x9,.Lst_dead
+    mrs x9,tpidr_el0
+    ldr x10,[x0,#8]
+    cmp x9,x10
+    b.ne .Lst_thread
+    add x11,x0,#24
+.Lst_claim:
+    ldaxr x9,[x11]
+    cbnz x9,.Lst_busy
+    mov x10,#1
+    stlxr w9,x10,[x11]
+    cbnz w9,.Lst_claim
+    str x18,[x0,#16]
+    sub sp,sp,#368 /* outgoing 112 + original save area 256 */
+    stp x29,x30,[sp,#112]
+    stp x19,x20,[sp,#128]
+    stp x21,x22,[sp,#144]
+    stp x23,x24,[sp,#160]
+    stp x25,x26,[sp,#176]
+    stp x27,x28,[sp,#192]
+    stp q8,q9,[sp,#208]
+    stp q10,q11,[sp,#240]
+    stp q12,q13,[sp,#272]
+    stp q14,q15,[sp,#304]
+    stp x0,x2,[sp,#336]
+    str x18,[sp,#352]
+    add x29,sp,#112
+    NB_COPY_STACK13 x3,sp
+    str xzr,[sp,#104] /* alignment padding, not another argument */
+    mov x16,x1
+    mov x17,x2
+    ldr x18,[x17,#72]
+    ldp q0,q1,[x17,#80]
+    ldp q2,q3,[x17,#112]
+    ldp q4,q5,[x17,#144]
+    ldp q6,q7,[x17,#176]
+    ldp x0,x1,[x17]
+    ldp x2,x3,[x17,#16]
+    ldp x4,x5,[x17,#32]
+    ldp x6,x7,[x17,#48]
+    ldr x8,[x17,#64]
+    blr x16
+    ldp x16,x17,[sp,#336]
+    stp x0,x1,[x17]
+    stp x2,x3,[x17,#16]
+    stp x4,x5,[x17,#32]
+    stp x6,x7,[x17,#48]
+    str x8,[x17,#64]
+    str x18,[x17,#72]
+    stp q0,q1,[x17,#80]
+    stp q2,q3,[x17,#112]
+    stp q4,q5,[x17,#144]
+    stp q6,q7,[x17,#176]
+    ldr x18,[sp,#352]
+    str xzr,[x16,#16]
+    add x9,x16,#24
+    stlr xzr,[x9]
+    ldp q8,q9,[sp,#208]
+    ldp q10,q11,[sp,#240]
+    ldp q12,q13,[sp,#272]
+    ldp q14,q15,[sp,#304]
+    ldp x19,x20,[sp,#128]
+    ldp x21,x22,[sp,#144]
+    ldp x23,x24,[sp,#160]
+    ldp x25,x26,[sp,#176]
+    ldp x27,x28,[sp,#192]
+    ldp x29,x30,[sp,#112]
+    add sp,sp,#368
+    mov w0,#0
+    ret
+.Lst_busy:
+    clrex
+    mov w0,#4
+    ret
+.Lst_thread:
+    mov w0,#3
+    ret
+.Lst_dead:
+    mov w0,#7
+    ret
+.Lst_invalid:
+    mov w0,#2
+    ret
+.size nb_call_stack13,.-nb_call_stack13
+
+.p2align 2
+.global nb_import_stack13_gateway
+.hidden nb_import_stack13_gateway
+.type nb_import_stack13_gateway,%function
+nb_import_stack13_gateway:
+    .inst 0xd50324df
+    ldr x9,[x16]
+    mov x10,#0x4e42
+    cmp x9,x10
+    b.ne .Lst_trap
+    ldr x10,[x16,#40]
+    cbz x10,.Lst_trap
+    ldar x9,[x10]
+    cbz x9,.Lst_trap
+    mrs x9,tpidr_el0
+    ldr x10,[x16,#8]
+    cmp x9,x10
+    b.ne .Lst_trap
+    add x11,x16,#24
+    ldar x9,[x11]
+    cmp x9,#1
+    b.ne .Lst_trap
+    sub sp,sp,#144 /* outgoing 112 + gateway metadata 32 */
+    stp x29,x30,[sp,#112]
+    stp x18,x16,[sp,#128]
+    add x29,sp,#112
+    add x12,sp,#144 /* ORIGINAL incoming guest SP, before this frame */
+    NB_COPY_STACK13 x12,sp
+    str xzr,[sp,#104]
+    mov x9,#2
+    stlr x9,[x11]
+    ldr x18,[x16,#16]
+    blr x17
+    ldr x16,[sp,#136]
+    add x11,x16,#24
+    mov x9,#1
+    stlr x9,[x11]
+    ldr x18,[sp,#128]
+    ldp x29,x30,[sp,#112]
+    add sp,sp,#144
+    ret
+.Lst_trap:
+    brk #0x4e42
+.size nb_import_stack13_gateway,.-nb_import_stack13_gateway
 .section .note.GNU-stack,"",%progbits
 #endif

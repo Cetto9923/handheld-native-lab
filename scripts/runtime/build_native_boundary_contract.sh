@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-RUN="${NB_BUILD_DIR:-${ROOT}/.local/native-boundary/$(date -u +%Y%m%dT%H%M%SZ)}"
+RUN="${NB_BUILD_DIR:-${ROOT}/.local/native-stack13/$(date -u +%Y%m%dT%H%M%SZ)}"
 TOOLCHAIN="${NB_TOOLCHAIN:-${ROOT}/../ffrs-android/.local/minimal-ndk/toolchain}"
 RUST_ROOT="${NB_RUST_ROOT:-${HOME}/.rustup/toolchains/stable-aarch64-apple-darwin}"
 LINKER="${RUST_ROOT}/lib/rustlib/aarch64-apple-darwin/bin/gcc-ld/ld.lld"
@@ -105,8 +105,11 @@ def artifact_record(path,expected_exit):
 symbols=(run/'logs/android-symbols.stdout').read_text()
 assert '__wrap_mprotect' not in symbols and '__wrap_munmap' not in symbols
 assert 'fail_protect' not in symbols and 'fail_unmap' not in symbols
+assert 'nb_call_stack13' in symbols and 'nb_import_stack13_gateway' in symbols
 logs=[{'command':p.name,'command_sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'exit_code':int(p.with_suffix('.exitcode').read_text())}for p in sorted((run/'logs').glob('*.command'))]
 manifest={'android_execution':'NOT_RUN','host_native_boundary_execution':'UNSUPPORTED','git_head_at_build':(run/'git-head.txt').read_text().strip(),'sources':files,'commands':logs,'inputs':input_records,'artifact':artifact_record(artifact,0),'cleanup_artifact':artifact_record(run/'native_boundary_cleanup.android',0),'regression_artifact':artifact_record(run/'native_boundary_regression.android',1),'normal_test_hooks':False,'regression_component_commit':'2fca9614b59332a3ef78a024fce2b379302492a4','regression_component_sha256':hashlib.sha256((run/'baseline_native_boundary.c').read_bytes()).hexdigest(),'toolchain_provenance':'existing Google partial NDK members CRC validated; whole archive SHA1 not verified'}
+manifest['abi_modes']={'v1':'existing register-only ABI unchanged','v2':'declared GP21 scalar/pointer u64 only','v2_stack_payload_bytes':104,'v2_stack_words':13,'v2_outgoing_area_bytes':112,'v2_guest_entry_frame_bytes':368,'v2_host_import_frame_bytes':144,'variadic_aggregate_unknown_layout':'UNSUPPORTED','musl_implementation':False}
+manifest['source_bundle_sha256']=hashlib.sha256(json.dumps(files,sort_keys=True,separators=(',',':')).encode()).hexdigest()
 (run/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 for key in ['artifact','cleanup_artifact','regression_artifact']:print(json.dumps({key:manifest[key]}))
 PY

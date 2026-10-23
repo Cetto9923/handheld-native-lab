@@ -29,7 +29,8 @@ typedef struct nb_scope {
 
 /* Scalar/pointer/vector register ABI packet. x8 carries an explicitly declared
  * indirect-result pointer. q0-q7 are raw 128-bit register contents, not C doubles.
- * No stack arguments, variadic calls, HFA/heterogeneous/unknown aggregates,
+ * nb_call is register-only; nb_call_stack13 adds exactly thirteen u64 words.
+ * No variadic calls, HFA/heterogeneous/unknown aggregates,
  * guest unwind, foreign exceptions, longjmp, or asynchronous signal adaptation.
  */
 typedef struct nb_registers {
@@ -41,14 +42,16 @@ typedef struct nb_registers {
 #endif
 } nb_registers;
 
+typedef struct nb_stack13 { uint64_t words[13]; } nb_stack13;
+
 typedef struct nb_signature {
-    uint32_t version;                 /* exactly 1 */
-    uint32_t flags;                   /* NB_SIG_REGISTER_ONLY | optional SRET */
-    uint32_t stack_argument_bytes;    /* must be 0 */
+    uint32_t version;                 /* 1 register-only; 2 fixed GP21 */
+    uint32_t flags;                   /* v2: exactly NB_SIG_FIXED_GP21 */
+    uint32_t stack_argument_bytes;    /* v1: 0; v2: exactly 104 */
     uint8_t gp_arguments, fp_arguments, gp_returns, fp_returns;
     uint8_t variadic, aggregate_arguments, unknown_layout, aggregate_returns;
 } nb_signature;
-enum { NB_SIG_REGISTER_ONLY = 1, NB_SIG_SRET_X8 = 2 };
+enum { NB_SIG_REGISTER_ONLY = 1, NB_SIG_SRET_X8 = 2, NB_SIG_FIXED_GP21 = 4 };
 
 typedef struct nb_import {
     nb_scope *scope;
@@ -85,6 +88,20 @@ void (*nb_import_entry(const nb_import *binding))(void);
  * Entry/signatures must be known register-only ABI; this does not classify code.
  */
 nb_status nb_call(nb_scope *scope, void (*guest_entry)(void), nb_registers *registers);
+
+/* Explicit machine ABI, not signature inference: x0-x7 plus exactly 13 scalar/
+ * pointer-sized 64-bit stack words at callee SP+0 through SP+96, u64 result x0.
+ * Bind version=2/flags=NB_SIG_FIXED_GP21/gp_arguments=8/fp_arguments=0/
+ * gp_returns=1/fp_returns=0/stack_argument_bytes=104; all layout exclusions zero.
+ * x8/q0-q7 are transported without adapter clobber, but v2 does not declare
+ * sret or FP arguments/results. Padding to 112 bytes is not a fourteenth arg.
+ * stack must name a live aligned nb_stack13, separate from scope/registers.
+ * Guest/host targets must return normally with SP restored. Stack access faults
+ * are outside the recoverable status domain; no foreign unwind/signal adaptation.
+ * Existing scope/thread/lifetime/RETAINED semantics apply unchanged.
+ */
+nb_status nb_call_stack13(nb_scope *scope, void (*guest_entry)(void),
+                          nb_registers *registers, const nb_stack13 *stack);
 
 #ifdef __cplusplus
 }

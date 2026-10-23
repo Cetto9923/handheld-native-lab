@@ -99,6 +99,48 @@ typedef struct Context {
     nb_scope *scope;
     unsigned callbacks;
 } Context;
+typedef struct StackContext {
+    void (*entry)(void);
+    uint64_t native_seen,sp_seen,guest_after;
+    uint64_t observed[21];
+    uint64_t canary_before;
+    nb_stack13 outgoing;
+    uint64_t canary_after;
+    nb_scope *scope;
+    uint64_t nested_checks;
+    _Alignas(16) unsigned char q_seen[8][16];
+    uint64_t x8_seen;
+} StackContext;
+_Static_assert(offsetof(StackContext,observed)==32&&offsetof(StackContext,outgoing)==208&&
+    offsetof(StackContext,q_seen)==336&&offsetof(StackContext,x8_seen)==464,"stack21 test ABI");
+extern void stack_guest_record(void),stack_guest_construct(void),stack_guest_tail(void),stack_host_wrapper(void);
+__asm__(
+".text\n.p2align 2\n.global stack_guest_record\n.type stack_guest_record,%function\nstack_guest_record:\n"
+".inst 0xd503245f\n mov x9,sp\n str x9,[x0,#16]\n str x8,[x0,#464]\n"
+"stp x0,x1,[x0,#32]\n stp x2,x3,[x0,#48]\n stp x4,x5,[x0,#64]\n stp x6,x7,[x0,#80]\n"
+"stp q0,q1,[x0,#336]\n stp q2,q3,[x0,#368]\n stp q4,q5,[x0,#400]\n stp q6,q7,[x0,#432]\n"
+"ldp x9,x10,[sp]\n stp x9,x10,[x0,#96]\n ldp x9,x10,[sp,#16]\n stp x9,x10,[x0,#112]\n"
+"ldp x9,x10,[sp,#32]\n stp x9,x10,[x0,#128]\n ldp x9,x10,[sp,#48]\n stp x9,x10,[x0,#144]\n"
+"ldp x9,x10,[sp,#64]\n stp x9,x10,[x0,#160]\n ldp x9,x10,[sp,#80]\n stp x9,x10,[x0,#176]\n"
+"ldr x9,[sp,#96]\n str x9,[x0,#192]\n mov x18,#0x13\n str x18,[x0,#24]\n"
+"add x11,x0,#32\n mov x10,#21\n mov x0,#0x5678\n movk x0,#0x1234,lsl#16\n"
+"1: ldr x12,[x11],#8\n ror x0,x0,#7\n eor x0,x0,x12\n subs x10,x10,#1\n b.ne 1b\n"
+"str xzr,[sp]\n ret\n"
+".global stack_guest_construct\n.type stack_guest_construct,%function\nstack_guest_construct:\n.inst 0xd503245f\n"
+"sub sp,sp,#144\n stp x29,x30,[sp,#112]\n stp x19,x20,[sp,#128]\n add x29,sp,#112\n mov x19,x0\n"
+"ldp x9,x10,[x19,#208]\n stp x9,x10,[sp]\n ldp x9,x10,[x19,#224]\n stp x9,x10,[sp,#16]\n"
+"ldp x9,x10,[x19,#240]\n stp x9,x10,[sp,#32]\n ldp x9,x10,[x19,#256]\n stp x9,x10,[sp,#48]\n"
+"ldp x9,x10,[x19,#272]\n stp x9,x10,[sp,#64]\n ldp x9,x10,[x19,#288]\n stp x9,x10,[sp,#80]\n"
+"ldr x9,[x19,#304]\n str x9,[sp,#96]\n str xzr,[sp,#104]\n"
+"ldp x1,x2,[x19,#40]\n ldp x3,x4,[x19,#56]\n ldp x5,x6,[x19,#72]\n ldr x7,[x19,#88]\n"
+"mov x18,#0x21\n ldr x16,[x19]\n blr x16\n str x18,[x19,#24]\n"
+"ldp x19,x20,[sp,#128]\n ldp x29,x30,[sp,#112]\n add sp,sp,#144\n ret\n"
+".global stack_guest_tail\n.type stack_guest_tail,%function\nstack_guest_tail:\n.inst 0xd503245f\n"
+"mov x18,#0x31\n ldr x16,[x0]\n br x16\n"
+".global stack_host_wrapper\n.type stack_host_wrapper,%function\nstack_host_wrapper:\n.inst 0xd503245f\n"
+"str x18,[x0,#8]\n mov x9,sp\n str x9,[x0,#16]\n str x8,[x0,#464]\n"
+"stp q0,q1,[x0,#336]\n stp q2,q3,[x0,#368]\n stp q4,q5,[x0,#400]\n stp q6,q7,[x0,#432]\n"
+"b stack_host21\n");
 _Static_assert(offsetof(Context, observed) == 32, "owned test ABI");
 extern void contract_guest(void), contract_leaf(void), contract_host_raw(void), contract_callback_wrapper(void);
 extern void contract_fp_guest(void),contract_fp_wrapper(void);
@@ -138,6 +180,130 @@ static uint64_t current_tp(void) {
 static nb_signature scalar_signature(void) {
     return (nb_signature){.version=1,.flags=NB_SIG_REGISTER_ONLY,.gp_arguments=8,
                           .fp_arguments=8,.gp_returns=1};
+}
+
+static nb_signature stack_signature(void) {
+    return (nb_signature){.version=2,.flags=NB_SIG_FIXED_GP21,.stack_argument_bytes=104,
+        .gp_arguments=8,.gp_returns=1};
+}
+static uint64_t digest21(const uint64_t words[21]) {
+    uint64_t value=0x12345678;
+    for(unsigned i=0;i<21;++i)value=((value>>7)|(value<<57))^words[i];
+    return value;
+}
+static void prepare_stack(StackContext *context,nb_scope *scope,nb_registers *registers,
+                          nb_stack13 *stack,uint64_t words[21]) {
+    memset(context,0,sizeof(*context));context->scope=scope;
+    context->canary_before=UINT64_C(0xabcddcba11223344);
+    context->canary_after=UINT64_C(0x12344321baadcafe);
+    memset(registers,0,sizeof(*registers));
+    words[0]=(uintptr_t)context;
+    for(unsigned i=1;i<21;++i)words[i]=UINT64_C(0x1100220033004400)+i*UINT64_C(0x102030405);
+    for(unsigned i=0;i<8;++i)registers->x[i]=words[i];
+    registers->x[8]=UINT64_C(0xbadc0de8);
+    for(unsigned i=0;i<8;++i)memset(registers->q[i],0x20+i,16);
+    for(unsigned i=0;i<13;++i)stack->words[i]=context->outgoing.words[i]=words[i+8];
+    memcpy(context->observed,words,21*sizeof(uint64_t));
+}
+static void verify_stack(const StackContext *context,const uint64_t words[21]) {
+    assert(!memcmp(context->observed,words,21*sizeof(uint64_t)));
+    assert(context->observed[20]==words[20]&&!(context->sp_seen&15));
+    assert(context->x8_seen==UINT64_C(0xbadc0de8));
+    assert(context->canary_before==UINT64_C(0xabcddcba11223344));
+    assert(context->canary_after==UINT64_C(0x12344321baadcafe));
+    for(unsigned i=0;i<8;++i)for(unsigned j=0;j<16;++j)assert(context->q_seen[i][j]==0x20+i);
+}
+
+/* A real typed 21-argument C target, compiled with SCS. It is a checksum and
+ * observation contract, has no musl name/semantics, and never returns fake CRT
+ * success. Each argument contributes to a data-dependent result.
+ */
+__attribute__((noinline)) uint64_t stack_host21(StackContext *context,
+    uint64_t a1,uint64_t a2,uint64_t a3,uint64_t a4,uint64_t a5,uint64_t a6,uint64_t a7,
+    uint64_t a8,uint64_t a9,uint64_t a10,uint64_t a11,uint64_t a12,uint64_t a13,uint64_t a14,
+    uint64_t a15,uint64_t a16,uint64_t a17,uint64_t a18,uint64_t a19,uint64_t a20) {
+    uint64_t words[21]={(uintptr_t)context,a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12,a13,a14,a15,a16,a17,a18,a19,a20};
+    memcpy(context->observed,words,sizeof(words));
+    assert(context->native_seen==context->scope->host_x18&&!(context->sp_seen&15));
+    uint64_t native=current_x18();assert(pthread_self());
+    nb_scope nested={0};StackContext nested_context;nb_stack13 stack;nb_registers registers;
+    uint64_t expected[21];prepare_stack(&nested_context,&nested,&registers,&stack,expected);
+    assert(nb_call_stack13(context->scope,stack_guest_record,&registers,&stack)==NB_BUSY);
+    assert(nb_scope_init(&nested)==NB_OK);
+    assert(nb_call_stack13(&nested,stack_guest_record,&registers,&stack)==NB_OK);
+    assert(registers.x[0]==digest21(expected)&&registers.guest_x18==0x13);
+    verify_stack(&nested_context,expected);
+    assert(nb_scope_close(&nested)==NB_OK&&current_x18()==native);
+    ++context->nested_checks;
+    return digest21(words);
+}
+
+static void fixed_stack_contract(nb_scope *scope) {
+    StackContext contexts[2];nb_registers registers;uint64_t words[21];
+    struct Guarded {uint64_t before;nb_stack13 stack;uint64_t after;} guarded;
+    guarded.before=UINT64_C(0xfedcba9876543210);guarded.after=UINT64_C(0x0123456789abcdef);
+    uint64_t previous=0;
+    /* Independent host->guest reader: 21 single-argument variations, including
+     * a second live context pointer and the thirteenth stacked word. */
+    for(unsigned variant=0;variant<22;++variant) {
+        StackContext *context=&contexts[variant==1?1:0];
+        prepare_stack(context,scope,&registers,&guarded.stack,words);
+        if(variant>1)words[variant-1]^=UINT64_C(0x8000000000000001);
+        for(unsigned i=0;i<8;++i)registers.x[i]=words[i];
+        for(unsigned i=0;i<13;++i)guarded.stack.words[i]=words[i+8];
+        uint64_t native=current_x18();
+        assert(nb_call_stack13(scope,stack_guest_record,&registers,&guarded.stack)==NB_OK);
+        assert(current_x18()==native&&registers.guest_x18==0x13);
+        assert(registers.x[0]==digest21(words)&&registers.x[0]!=0);
+        if(variant)assert(registers.x[0]!=previous);
+        if(!variant)previous=registers.x[0];
+        verify_stack(context,words);
+        assert(!memcmp(guarded.stack.words,words+8,104));
+        assert(guarded.before==UINT64_C(0xfedcba9876543210)&&guarded.after==UINT64_C(0x0123456789abcdef));
+    }
+    nb_import binding={0};nb_signature signature=stack_signature();
+    assert(nb_import_bind(&binding,scope,stack_host_wrapper,&signature)==NB_OK);
+    /* Independent guest->host route starts via register-only nb_call. The
+     * guest constructs its OWN outgoing 13 words, not nb_call_stack13's area. */
+    previous=0;
+    for(unsigned variant=0;variant<22;++variant) {
+        StackContext *context=&contexts[variant==1?1:0];
+        prepare_stack(context,scope,&registers,&guarded.stack,words);context->entry=binding.entry;
+        if(variant>1)words[variant-1]^=UINT64_C(0x8000000000000001);
+        memcpy(context->observed,words,sizeof(words));
+        for(unsigned i=0;i<13;++i)context->outgoing.words[i]=words[i+8];
+        uint64_t native=current_x18();
+        assert(nb_call(scope,stack_guest_construct,&registers)==NB_OK);
+        assert(current_x18()==native&&registers.guest_x18==0x21&&context->guest_after==0x21);
+        assert(registers.x[0]==digest21(words)&&registers.x[0]!=0);
+        if(variant)assert(registers.x[0]!=previous);
+        if(!variant)previous=registers.x[0];
+        assert(context->nested_checks==1);verify_stack(context,words);
+    }
+    StackContext *context=&contexts[0];
+    prepare_stack(context,scope,&registers,&guarded.stack,words);context->entry=binding.entry;
+    /* Combined round-trip reads the real incoming SP, not context.outgoing. */
+    memset(&context->outgoing,0,sizeof(context->outgoing));
+    assert(nb_call_stack13(scope,stack_guest_tail,&registers,&guarded.stack)==NB_OK);
+    assert(registers.x[0]==digest21(words)&&registers.guest_x18==0x31);
+    verify_stack(context,words);assert(context->nested_checks==1);
+    assert(nb_import_unbind(&binding)==NB_OK);
+    assert(nb_call_stack13(scope,stack_guest_record,&registers,NULL)==NB_INVALID);
+    assert(!scope->phase&&!scope->host_x18);
+    for(unsigned variant=0;variant<14;++variant) {
+        signature=stack_signature();
+        switch(variant) {
+        case 0:signature.version=1;break;case 1:signature.flags=NB_SIG_REGISTER_ONLY;break;
+        case 2:signature.stack_argument_bytes=96;break;case 3:signature.stack_argument_bytes=112;break;
+        case 4:signature.gp_arguments=7;break;case 5:signature.gp_arguments=9;break;
+        case 6:signature.fp_arguments=1;break;case 7:signature.gp_returns=0;break;
+        case 8:signature.fp_returns=1;break;case 9:signature.variadic=1;break;
+        case 10:signature.aggregate_arguments=1;break;case 11:signature.aggregate_returns=1;break;
+        case 12:signature.unknown_layout=1;break;case 13:signature.flags|=NB_SIG_SRET_X8;break;
+        }
+        assert(nb_import_bind(&binding,scope,stack_host_wrapper,&signature)==NB_UNSUPPORTED);
+        assert(!binding.mapping&&!scope->binding_count);
+    }
 }
 
 /* Compiled with real Clang SCS. The assembly wrapper records x18 before this
@@ -215,9 +381,10 @@ static void run_scope(nb_scope *scope, int raw) {
 static void *wrong_thread_import(void *opaque) {
     nb_import *binding=opaque;binding->entry();return NULL;
 }
-static void expect_import_traps(nb_scope *scope) {
+static void expect_import_traps(nb_scope *scope,int fixed_stack) {
     nb_import binding={0};nb_signature signature=scalar_signature();
-    assert(nb_import_bind(&binding,scope,contract_host_raw,&signature)==NB_OK);
+    if(fixed_stack)signature=stack_signature();
+    assert(nb_import_bind(&binding,scope,fixed_stack?stack_host_wrapper:contract_host_raw,&signature)==NB_OK);
     for(unsigned wrong_thread=0;wrong_thread<2;++wrong_thread) {
         pid_t child=fork();assert(child>=0);
         if(!child) {
@@ -238,10 +405,13 @@ typedef struct ThreadData {nb_scope *foreign;uint64_t owner;int result;
 static void *thread_contract(void *opaque) {
     ThreadData *data=opaque;nb_registers registers={0};
     assert(nb_call(data->foreign,contract_leaf,&registers)==NB_WRONG_THREAD);
+    nb_stack13 stack={0};
+    assert(nb_call_stack13(data->foreign,stack_guest_record,&registers,&stack)==NB_WRONG_THREAD);
     assert(nb_scope_close(data->foreign)==NB_WRONG_THREAD);
     nb_scope scope={0};assert(nb_scope_init(&scope)==NB_OK);
     data->owner=scope.owner_tp;
     run_scope(&scope,0);
+    fixed_stack_contract(&scope);
     assert(nb_scope_close(&scope)==NB_OK);
     assert(nb_scope_init(&data->abandoned)==NB_OK);
     nb_signature signature=scalar_signature();
@@ -258,12 +428,15 @@ __attribute__((no_sanitize("shadow-call-stack"))) int main(void) {
     signature.stack_argument_bytes=8;assert(nb_import_bind(&rejected,&scope,contract_host_raw,&signature)==NB_UNSUPPORTED);
     signature=scalar_signature();signature.variadic=1;assert(nb_import_bind(&rejected,&scope,contract_host_raw,&signature)==NB_UNSUPPORTED);
     signature=scalar_signature();signature.aggregate_arguments=1;assert(nb_import_bind(&rejected,&scope,contract_host_raw,&signature)==NB_UNSUPPORTED);
-    run_scope(&scope,1);run_scope(&scope,0);fp_contract(&scope);expect_import_traps(&scope);
+    run_scope(&scope,1);run_scope(&scope,0);fp_contract(&scope);fixed_stack_contract(&scope);
+    expect_import_traps(&scope,0);expect_import_traps(&scope,1);
     ThreadData data={.foreign=&scope};pthread_t thread;
     assert(!pthread_create(&thread,NULL,thread_contract,&data));assert(!pthread_join(thread,NULL));
     assert(data.result==1 && data.owner!=scope.owner_tp);
     nb_registers dead_registers={0};
     assert(nb_call(&data.abandoned,contract_leaf,&dead_registers)==NB_OWNER_DEAD);
+    nb_stack13 dead_stack={0};
+    assert(nb_call_stack13(&data.abandoned,stack_guest_record,&dead_registers,&dead_stack)==NB_OWNER_DEAD);
     assert(nb_import_unbind(&data.abandoned_binding)==NB_OK);
     assert(nb_scope_close(&data.abandoned)==NB_OK);
     assert(nb_scope_close(&scope)==NB_OK);
@@ -275,14 +448,19 @@ __attribute__((no_sanitize("shadow-call-stack"))) int main(void) {
          "\"dead_owner_rejected_and_released\":true,"
          "\"typed_double_return\":true,"
          "\"wrong_thread_import_sigtrap\":true,\"bti_guarded_thunks\":%s,"
+         "\"fixed_gp21_host_to_guest\":true,\"fixed_gp21_guest_to_host\":true,"
+         "\"fixed_gp21_combined\":true,\"every_argument_mutation\":true,\"stack_canaries\":true,"
+         "\"fixed_gp21_nested_threads_lifecycle\":true,\"fixed_gp21_signature_rejections\":14,"
          "\"game_input\":false}\n",(getauxval(AT_HWCAP2)&HWCAP2_BTI)?"true":"false");return 0;
 }
 #endif /* NB_CLEANUP_CONTRACT */
 #else
 int main(void) {
     nb_scope scope={0};nb_registers registers={0};
+    nb_stack13 stack={0};
     assert(nb_scope_init(&scope)==NB_UNSUPPORTED);
     assert(nb_call(&scope,NULL,&registers)==NB_UNSUPPORTED);
+    assert(nb_call_stack13(&scope,NULL,&registers,&stack)==NB_UNSUPPORTED);
     puts("{\"status\":\"UNSUPPORTED\",\"platform\":\"non_android_a64\",\"android_execution\":\"NOT_RUN\"}");return 0;
 }
 #endif
