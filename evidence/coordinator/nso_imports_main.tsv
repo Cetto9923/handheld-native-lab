@@ -1,0 +1,651 @@
+1 memset	memset
+2 memcpy	memcpy
+3 memmove	memmove
+4 __cxa_guard_acquire	__cxa_guard_acquire
+5 __cxa_guard_release	__cxa_guard_release
+6 atexit	atexit
+7 _ZN2nn2os15InitializeMutexEPNS0_9MutexTypeEbi	nn::os::InitializeMutex(nn::os::MutexType*, bool, int)
+8 _ZN2nn2fs8OpenFileEPNS0_10FileHandleEPKci	nn::fs::OpenFile(nn::fs::FileHandle*, char const*, int)
+9 _ZN2nn2fs11GetFileSizeEPlNS0_10FileHandleE	nn::fs::GetFileSize(long*, nn::fs::FileHandle)
+10 _ZN2nn2fs8ReadFileEPmNS0_10FileHandleElPvm	nn::fs::ReadFile(unsigned long*, nn::fs::FileHandle, long, void*, unsigned long)
+11 _ZN2nn2fs9CloseFileENS0_10FileHandleE	nn::fs::CloseFile(nn::fs::FileHandle)
+12 _ZN2nn4diag6detail9AbortImplEv	nn::diag::detail::AbortImpl()
+13 _ZN2nn2os13GetSystemTickEv	nn::os::GetSystemTick()
+14 _ZN2nn2fs9FlushFileENS0_10FileHandleE	nn::fs::FlushFile(nn::fs::FileHandle)
+15 _ZN2nn2os12TryLockMutexEPNS0_9MutexTypeE	nn::os::TryLockMutex(nn::os::MutexType*)
+16 _ZN2nn2os9LockMutexEPNS0_9MutexTypeE	nn::os::LockMutex(nn::os::MutexType*)
+17 _ZN2nn2os11UnlockMutexEPNS0_9MutexTypeE	nn::os::UnlockMutex(nn::os::MutexType*)
+18 _ZN2nn2fs9WriteFileENS0_10FileHandleElPKvmRKNS0_11WriteOptionE	nn::fs::WriteFile(nn::fs::FileHandle, long, void const*, unsigned long, nn::fs::WriteOption const&)
+19 _ZN2nn2fs11SetFileSizeENS0_10FileHandleEl	nn::fs::SetFileSize(nn::fs::FileHandle, long)
+20 _ZN2nn2fs12SetAllocatorEPFPvmEPFvS1_mE	nn::fs::SetAllocator(void* (*)(unsigned long), void (*)(void*, unsigned long))
+21 _ZN2nn2fs22QueryMountRomCacheSizeEPm	nn::fs::QueryMountRomCacheSize(unsigned long*)
+22 _ZN2nn2fs8MountRomEPKcPvm	nn::fs::MountRom(char const*, void*, unsigned long)
+23 strlen	strlen
+24 _ZN2nn2fs12GetEntryTypeEPNS0_18DirectoryEntryTypeEPKc	nn::fs::GetEntryType(nn::fs::DirectoryEntryType*, char const*)
+25 _ZN2nn2fs26DisableGlobalFileDataCacheEv	nn::fs::DisableGlobalFileDataCache()
+26 _ZN2nn2fs25EnableGlobalFileDataCacheEPvm	nn::fs::EnableGlobalFileDataCache(void*, unsigned long)
+27 _ZN2nn2fs17MountCacheStorageEPKc	nn::fs::MountCacheStorage(char const*)
+28 _ZN2nn2fs21MountTemporaryStorageEPKc	nn::fs::MountTemporaryStorage(char const*)
+29 _ZN2nn2fs20OpenCacheStorageListEPNS0_22CacheStorageListHandleE	nn::fs::OpenCacheStorageList(nn::fs::CacheStorageListHandle*)
+30 _ZN2nn2fs21CloseCacheStorageListENS0_22CacheStorageListHandleE	nn::fs::CloseCacheStorageList(nn::fs::CacheStorageListHandle)
+31 _ZN2nn2fs20ReadCacheStorageListEPiPNS0_16CacheStorageInfoENS0_22CacheStorageListHandleEi	nn::fs::ReadCacheStorageList(int*, nn::fs::CacheStorageInfo*, nn::fs::CacheStorageListHandle, int)
+32 _ZN2nn2fs18CreateCacheStorageEill	nn::fs::CreateCacheStorage(int, long, long)
+33 _ZN2nn2fs19GetCacheStorageSizeEPlS1_i	nn::fs::GetCacheStorageSize(long*, long*, int)
+34 _ZN2nn2fs18DeleteCacheStorageEi	nn::fs::DeleteCacheStorage(int)
+35 _ZN2nn2fs17MountCacheStorageEPKci	nn::fs::MountCacheStorage(char const*, int)
+36 _ZN2nn2fs7UnmountEPKc	nn::fs::Unmount(char const*)
+37 _ZN2nn2fs13OpenDirectoryEPNS0_15DirectoryHandleEPKci	nn::fs::OpenDirectory(nn::fs::DirectoryHandle*, char const*, int)
+38 _ZN2nn2fs22GetDirectoryEntryCountEPlNS0_15DirectoryHandleE	nn::fs::GetDirectoryEntryCount(long*, nn::fs::DirectoryHandle)
+39 _ZN2nn2fs13ReadDirectoryEPlPNS0_14DirectoryEntryENS0_15DirectoryHandleEl	nn::fs::ReadDirectory(long*, nn::fs::DirectoryEntry*, nn::fs::DirectoryHandle, long)
+40 _ZN2nn2fs14CloseDirectoryENS0_15DirectoryHandleE	nn::fs::CloseDirectory(nn::fs::DirectoryHandle)
+41 _ZN2nn2os13FinalizeMutexEPNS0_9MutexTypeE	nn::os::FinalizeMutex(nn::os::MutexType*)
+42 _ZN2nn2fs10CreateFileEPKcl	nn::fs::CreateFile(char const*, long)
+43 _ZN2nn2fs10RenameFileEPKcS2_	nn::fs::RenameFile(char const*, char const*)
+44 _ZN2nn2fs10DeleteFileEPKc	nn::fs::DeleteFile(char const*)
+45 _ZN2nn2fs15CreateDirectoryEPKc	nn::fs::CreateDirectory(char const*)
+46 _ZN2nn2fs26DeleteDirectoryRecursivelyEPKc	nn::fs::DeleteDirectoryRecursively(char const*)
+47 _ZN2nn2fs6CommitEPKc	nn::fs::Commit(char const*)
+48 _ZN2nn2os22GetSystemTickFrequencyEv	nn::os::GetSystemTickFrequency()
+49 _ZN2nn2os17SignalSystemEventEPNS0_15SystemEventTypeE	nn::os::SignalSystemEvent(nn::os::SystemEventType*)
+50 _ZN2nn2os18DestroySystemEventEPNS0_15SystemEventTypeE	nn::os::DestroySystemEvent(nn::os::SystemEventType*)
+51 _ZN2nn3aoc17CountAddOnContentEv	nn::aoc::CountAddOnContent()
+52 _ZN2nn3aoc16ListAddOnContentEPiii	nn::aoc::ListAddOnContent(int*, int, int)
+53 _ZN2nn2fs31QueryMountAddOnContentCacheSizeEPmi	nn::fs::QueryMountAddOnContentCacheSize(unsigned long*, int)
+54 _ZN2nn2fs17MountAddOnContentEPKciPvm	nn::fs::MountAddOnContent(char const*, int, void*, unsigned long)
+55 strrchr	strrchr
+56 _ZN2nn3aoc31GetAddOnContentListChangedEventEPNS_2os11SystemEventE	nn::aoc::GetAddOnContentListChangedEvent(nn::os::SystemEvent*)
+57 _ZN2nn2os15WaitSystemEventEPNS0_15SystemEventTypeE	nn::os::WaitSystemEvent(nn::os::SystemEventType*)
+58 strcmp	strcmp
+59 _ZN2nn2os15AllocateTlsSlotEPNS0_7TlsSlotEPFvmE	nn::os::AllocateTlsSlot(nn::os::TlsSlot*, void (*)(unsigned long))
+60 _ZN2nn2os11GetHostArgcEv	nn::os::GetHostArgc()
+61 strcasecmp	strcasecmp
+62 _ZN2nn2os11GetHostArgvEv	nn::os::GetHostArgv()
+63 strncasecmp_l	strncasecmp_l
+64 atoll	atoll
+65 _ZN2nn2os15QueryMemoryInfoEPNS0_10MemoryInfoE	nn::os::QueryMemoryInfo(nn::os::MemoryInfo*)
+66 _ZN2nn2os36GetVirtualAddressMemoryResourceUsageEv	nn::os::GetVirtualAddressMemoryResourceUsage()
+67 _ZN2nn2os29IsVirtualAddressMemoryEnabledEv	nn::os::IsVirtualAddressMemoryEnabled()
+68 _ZN2nn2os21AllocateAddressRegionEPmm	nn::os::AllocateAddressRegion(unsigned long*, unsigned long)
+69 _ZN2nn2os32SetMemoryAllocatorForThreadLocalEPFPvmmEPFvS1_mE	nn::os::SetMemoryAllocatorForThreadLocal(void* (*)(unsigned long, unsigned long), void (*)(void*, unsigned long))
+70 exit	exit
+71 _ZN2nn2os19AllocateMemoryPagesEmm	nn::os::AllocateMemoryPages(unsigned long, unsigned long)
+72 _ZN2nn2os15FreeMemoryPagesEmm	nn::os::FreeMemoryPages(unsigned long, unsigned long)
+73 _ZN2nn2os11SleepThreadENS_8TimeSpanE	nn::os::SleepThread(nn::TimeSpan)
+74 _ZN5movie12SetAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_	movie::SetAllocator(void* (*)(unsigned long, unsigned long, void*), void (*)(void*, void*), void* (*)(void*, unsigned long, void*), void*)
+75 _ZN2nn2oe15SetCpuBoostModeENS0_12CpuBoostModeE	nn::oe::SetCpuBoostMode(nn::oe::CpuBoostMode)
+76 _ZN2nn2oe17GetPseudoDeviceIdEPNS_4util4UuidE	nn::oe::GetPseudoDeviceId(nn::util::Uuid*)
+77 _ZN2nn4util9TSNPrintfEPcmPKcz	nn::util::TSNPrintf(char*, unsigned long, char const*, ...)
+78 _ZN2nn7account13PushOpenUsersEv	nn::account::PushOpenUsers()
+79 _ZN2nn2oe14ExecuteProgramEiPKvm	nn::oe::ExecuteProgram(int, void const*, unsigned long)
+80 _ZN2nn2oe10InitializeEv	nn::oe::Initialize()
+81 _ZN2nn2oe18GetDesiredLanguageEv	nn::oe::GetDesiredLanguage()
+82 _ZN2nn4time10InitializeEv	nn::time::Initialize()
+83 _ZN2nn4time21GetDeviceLocationNameEPNS0_12LocationNameE	nn::time::GetDeviceLocationName(nn::time::LocationName*)
+84 _ZN2nn4time16LoadTimeZoneRuleEPNS0_12TimeZoneRuleERKNS0_12LocationNameE	nn::time::LoadTimeZoneRule(nn::time::TimeZoneRule*, nn::time::LocationName const&)
+85 _ZN2nn7account22TryOpenPreselectedUserEPNS0_10UserHandleE	nn::account::TryOpenPreselectedUser(nn::account::UserHandle*)
+86 _ZN2nn7account12PopOpenUsersEPiPNS0_10UserHandleEi	nn::account::PopOpenUsers(int*, nn::account::UserHandle*, int)
+87 _ZN2nn7account9GetUserIdEPNS0_3UidERKNS0_10UserHandleE	nn::account::GetUserId(nn::account::Uid*, nn::account::UserHandle const&)
+88 _ZN2nn3ldn8GetStateEv	nn::ldn::GetState()
+89 _ZN2nn4nifm18IsNetworkAvailableEv	nn::nifm::IsNetworkAvailable()
+90 _ZN2nn4nifm27SubmitNetworkRequestAndWaitEv	nn::nifm::SubmitNetworkRequestAndWait()
+91 _ZN2nn4nifm31HandleNetworkRequestErrorResultEv	nn::nifm::HandleNetworkRequestErrorResult()
+92 _ZN2nn3web14ShowWebPageArgC1EPKc	nn::web::ShowWebPageArg::ShowWebPageArg(char const*)
+93 _ZN2nn3web14ShowWebPageArg14SetCallbackUrlEPKc	nn::web::ShowWebPageArg::SetCallbackUrl(char const*)
+94 _ZN2nn3web14ShowWebPageArg18SetCallbackableUrlEPKc	nn::web::ShowWebPageArg::SetCallbackableUrl(char const*)
+95 _ZN2nn3web14ShowWebPageArg6SetUidERKNS_7account3UidE	nn::web::ShowWebPageArg::SetUid(nn::account::Uid const&)
+96 _ZN2nn3web14ShowWebPageArg17SetPointerEnabledEb	nn::web::ShowWebPageArg::SetPointerEnabled(bool)
+97 _ZN2nn3web22ShowOfflineHtmlPageArgC1EPKc	nn::web::ShowOfflineHtmlPageArg::ShowOfflineHtmlPageArg(char const*)
+98 _ZN2nn3web22ShowOfflineHtmlPageArg17SetPointerEnabledEb	nn::web::ShowOfflineHtmlPageArg::SetPointerEnabled(bool)
+99 _ZN2nn3err9ShowErrorENS_6ResultE	nn::err::ShowError(nn::Result)
+100 _ZN2nn2fs16GetFreeSpaceSizeEPlPKc	nn::fs::GetFreeSpaceSize(long*, char const*)
+101 _ZN2nn2oe17FinishStartupLogoEv	nn::oe::FinishStartupLogo()
+102 _ZN2nn4util12GenerateUuidEv	nn::util::GenerateUuid()
+103 _ZN2nn2os9WaitEventEPNS0_9EventTypeE	nn::os::WaitEvent(nn::os::EventType*)
+104 _ZN2nn2os14TimedWaitEventEPNS0_9EventTypeENS_8TimeSpanE	nn::os::TimedWaitEvent(nn::os::EventType*, nn::TimeSpan)
+105 _ZN2nn2os23GetCurrentProcessHandleEv	nn::os::GetCurrentProcessHandle()
+106 _ZN2nn2os16GetCurrentThreadEv	nn::os::GetCurrentThread()
+107 _ZN2nn2os26GetThreadAvailableCoreMaskEv	nn::os::GetThreadAvailableCoreMask()
+108 _ZN2nn2os17SetThreadCoreMaskEPNS0_10ThreadTypeEim	nn::os::SetThreadCoreMask(nn::os::ThreadType*, int, unsigned long)
+109 _ZN2nn2os20ChangeThreadPriorityEPNS0_10ThreadTypeEi	nn::os::ChangeThreadPriority(nn::os::ThreadType*, int)
+110 _ZN2nn2os11GetThreadIdEPKNS0_10ThreadTypeE	nn::os::GetThreadId(nn::os::ThreadType const*)
+111 _ZN2nn2os17GetThreadPriorityEPKNS0_10ThreadTypeE	nn::os::GetThreadPriority(nn::os::ThreadType const*)
+112 _ZN2nn2os20GetThreadNamePointerEPKNS0_10ThreadTypeE	nn::os::GetThreadNamePointer(nn::os::ThreadType const*)
+113 _ZN2nn2os24GetThreadCurrentPriorityEPKNS0_10ThreadTypeE	nn::os::GetThreadCurrentPriority(nn::os::ThreadType const*)
+114 _ZN2nn2os11YieldThreadEv	nn::os::YieldThread()
+115 _ZN2nn2ro12UnloadModuleEPNS0_6ModuleE	nn::ro::UnloadModule(nn::ro::Module*)
+116 _ZN2nn2ro18RegisterModuleInfoEPNS0_16RegistrationInfoEPKv	nn::ro::RegisterModuleInfo(nn::ro::RegistrationInfo*, void const*)
+117 _ZN2nn2ro10InitializeEv	nn::ro::Initialize()
+118 strncpy	strncpy
+119 _ZN2nn4diag12GetBacktraceEPmi	nn::diag::GetBacktrace(unsigned long*, int)
+120 _ZN2nn4time23StandardUserSystemClock14GetCurrentTimeEPNS0_9PosixTimeE	nn::time::StandardUserSystemClock::GetCurrentTime(nn::time::PosixTime*)
+121 _ZN2nn4time14ToCalendarTimeEPNS0_12CalendarTimeEPNS0_22CalendarAdditionalInfoERKNS0_9PosixTimeERKNS0_12TimeZoneRuleE	nn::time::ToCalendarTime(nn::time::CalendarTime*, nn::time::CalendarAdditionalInfo*, nn::time::PosixTime const&, nn::time::TimeZoneRule const&)
+122 _ZN2nn4time19ToCalendarTimeInUtcERKNS0_9PosixTimeE	nn::time::ToCalendarTimeInUtc(nn::time::PosixTime const&)
+123 _ZN2nn4time12GetDayOfWeekEiii	nn::time::GetDayOfWeek(int, int, int)
+124 _ZN2nn2os11SetTlsValueENS0_7TlsSlotEm	nn::os::SetTlsValue(nn::os::TlsSlot, unsigned long)
+125 _ZN2nn2os13DestroyThreadEPNS0_10ThreadTypeE	nn::os::DestroyThread(nn::os::ThreadType*)
+126 _ZN2nn2os12CreateThreadEPNS0_10ThreadTypeEPFvPvES3_S3_mi	nn::os::CreateThread(nn::os::ThreadType*, void (*)(void*), void*, void*, unsigned long, int)
+127 _ZN2nn2os13SetThreadNameEPNS0_10ThreadTypeEPKc	nn::os::SetThreadName(nn::os::ThreadType*, char const*)
+128 _ZN2nn2os11StartThreadEPNS0_10ThreadTypeE	nn::os::StartThread(nn::os::ThreadType*)
+129 _ZN2nn3mem17StandardAllocator8FinalizeEv	nn::mem::StandardAllocator::Finalize()
+130 __cxa_thread_atexit	__cxa_thread_atexit
+131 _ZN2nn2os11GetTlsValueENS0_7TlsSlotE	nn::os::GetTlsValue(nn::os::TlsSlot)
+132 _ZN2nn2os15InitializeEventEPNS0_9EventTypeEbNS0_14EventClearModeE	nn::os::InitializeEvent(nn::os::EventType*, bool, nn::os::EventClearMode)
+133 _ZN2nn2os11SignalEventEPNS0_9EventTypeE	nn::os::SignalEvent(nn::os::EventType*)
+134 _ZN2nn2os10ClearEventEPNS0_9EventTypeE	nn::os::ClearEvent(nn::os::EventType*)
+135 _ZN2nn2os13FinalizeEventEPNS0_9EventTypeE	nn::os::FinalizeEvent(nn::os::EventType*)
+136 _ZN2nn2os10WaitThreadEPNS0_10ThreadTypeE	nn::os::WaitThread(nn::os::ThreadType*)
+137 _ZN2nn3web18WebPageReturnValueC1Ev	nn::web::WebPageReturnValue::WebPageReturnValue()
+138 _ZN2nn3web11ShowWebPageEPNS0_18WebPageReturnValueERKNS0_14ShowWebPageArgE	nn::web::ShowWebPage(nn::web::WebPageReturnValue*, nn::web::ShowWebPageArg const&)
+139 _ZNK2nn3web18WebPageReturnValue16GetWebExitReasonEv	nn::web::WebPageReturnValue::GetWebExitReason() const
+140 _ZNK2nn3web18WebPageReturnValue10GetLastUrlEv	nn::web::WebPageReturnValue::GetLastUrl() const
+141 _ZN2nn3web26OfflineHtmlPageReturnValueC1Ev	nn::web::OfflineHtmlPageReturnValue::OfflineHtmlPageReturnValue()
+142 _ZN2nn3web19ShowOfflineHtmlPageEPNS0_26OfflineHtmlPageReturnValueERKNS0_22ShowOfflineHtmlPageArgE	nn::web::ShowOfflineHtmlPage(nn::web::OfflineHtmlPageReturnValue*, nn::web::ShowOfflineHtmlPageArg const&)
+143 _ZNK2nn3web26OfflineHtmlPageReturnValue20GetOfflineExitReasonEv	nn::web::OfflineHtmlPageReturnValue::GetOfflineExitReason() const
+144 _ZNK2nn3web26OfflineHtmlPageReturnValue10GetLastUrlEv	nn::web::OfflineHtmlPageReturnValue::GetLastUrl() const
+145 vsnprintf	vsnprintf
+146 __cxa_pure_virtual	__cxa_pure_virtual
+147 _ZNSt3__15mutex4lockEv	std::__1::mutex::lock()
+148 _ZNSt3__118condition_variable10notify_oneEv	std::__1::condition_variable::notify_one()
+149 _ZNSt3__15mutex6unlockEv	std::__1::mutex::unlock()
+150 _ZTHN13LowLevelTasks5FTask10ActiveTaskE	thread-local initialization routine for LowLevelTasks::FTask::ActiveTask
+151 iswdigit	iswdigit
+152 powf	powf
+153 logf	logf
+154 rand	rand
+155 strncmp	strncmp
+156 isupper	isupper
+157 isspace	isspace
+158 atoi	atoi
+159 strtol	strtol
+160 strstr	strstr
+161 iswupper	iswupper
+162 iswspace	iswspace
+163 _ZN2nn2os26InitializeReaderWriterLockEPNS0_20ReaderWriterLockTypeE	nn::os::InitializeReaderWriterLock(nn::os::ReaderWriterLockType*)
+164 _ZN2nn2os16AcquireWriteLockEPNS0_20ReaderWriterLockTypeE	nn::os::AcquireWriteLock(nn::os::ReaderWriterLockType*)
+165 _ZN2nn2os16ReleaseWriteLockEPNS0_20ReaderWriterLockTypeE	nn::os::ReleaseWriteLock(nn::os::ReaderWriterLockType*)
+166 _ZN2nn2os24FinalizeReaderWriterLockEPNS0_20ReaderWriterLockTypeE	nn::os::FinalizeReaderWriterLock(nn::os::ReaderWriterLockType*)
+167 _ZTHN13LowLevelTasks7Private20FOversubscriptionTls26bIsOversubscriptionAllowedE	thread-local initialization routine for LowLevelTasks::Private::FOversubscriptionTls::bIsOversubscriptionAllowed
+168 _ZNSt3__118condition_variable4waitERNS_11unique_lockINS_5mutexEEE	std::__1::condition_variable::wait(std::__1::unique_lock<std::__1::mutex>&)
+169 _ZNSt3__16chrono12steady_clock3nowEv	std::__1::chrono::steady_clock::now()
+170 pthread_cond_clockwait	pthread_cond_clockwait
+171 _ZNSt3__120__throw_system_errorEiPKc	std::__1::__throw_system_error(int, char const*)
+172 atan2	atan2
+173 fmodf	fmodf
+174 fmod	fmod
+175 printf	printf
+176 abort	abort
+177 _ZN2nn2os15AcquireReadLockEPNS0_20ReaderWriterLockTypeE	nn::os::AcquireReadLock(nn::os::ReaderWriterLockType*)
+178 _ZN2nn2os15ReleaseReadLockEPNS0_20ReaderWriterLockTypeE	nn::os::ReleaseReadLock(nn::os::ReaderWriterLockType*)
+179 strchr	strchr
+180 strtoll	strtoll
+181 strtoull	strtoull
+182 atof	atof
+183 snprintf	snprintf
+184 strnlen	strnlen
+185 setlocale	setlocale
+186 stdout	stdout
+187 fflush	fflush
+188 stdin	stdin
+189 fgets	fgets
+190 posix_memalign	posix_memalign
+191 modf	modf
+192 log	log
+193 iswalnum	iswalnum
+194 memcmp	memcmp
+195 logbf	logbf
+196 ldexpf	ldexpf
+197 sqrtf	sqrtf
+198 sin	sin
+199 cos	cos
+200 asin	asin
+201 finite	finite
+202 sqrt	sqrt
+203 acos	acos
+204 acosf	acosf
+205 cosf	cosf
+206 sinf	sinf
+207 modff	modff
+208 asinf	asinf
+209 iswxdigit	iswxdigit
+210 getpid	getpid
+211 gettimeofday	gettimeofday
+212 _ZN2nn2os19TryAcquireWriteLockEPNS0_20ReaderWriterLockTypeE	nn::os::TryAcquireWriteLock(nn::os::ReaderWriterLockType*)
+213 iswalpha	iswalpha
+214 iswlower	iswlower
+215 exp2f	exp2f
+216 strcpy	strcpy
+217 _ZTHN30FOverridableSerializationLogic20OverriddenPropertiesE	thread-local initialization routine for FOverridableSerializationLogic::OverriddenProperties
+218 _ZTHN30FOverridableSerializationLogic28bUseOverridableSerializationE	thread-local initialization routine for FOverridableSerializationLogic::bUseOverridableSerialization
+219 _ZTHN17FPropertyTagScope18CurrentPropertyTagE	thread-local initialization routine for FPropertyTagScope::CurrentPropertyTag
+220 isalpha	isalpha
+221 expf	expf
+222 _ZN2nn2oe20GetCurrentFocusStateEv	nn::oe::GetCurrentFocusState()
+223 _ZN2nn2oe44SetPerformanceModeChangedNotificationEnabledEb	nn::oe::SetPerformanceModeChangedNotificationEnabled(bool)
+224 _ZN2nn2oe42SetOperationModeChangedNotificationEnabledEb	nn::oe::SetOperationModeChangedNotificationEnabled(bool)
+225 _ZN2nn2oe20SetFocusHandlingModeENS0_17FocusHandlingModeE	nn::oe::SetFocusHandlingMode(nn::oe::FocusHandlingMode)
+226 _ZN2nn2oe28SetResumeNotificationEnabledEb	nn::oe::SetResumeNotificationEnabled(bool)
+227 _ZN2nn2oe16GetOperationModeEv	nn::oe::GetOperationMode()
+228 _ZN2nn2vi10InitializeEv	nn::vi::Initialize()
+229 _ZN2nn2vi18OpenDefaultDisplayEPPNS0_7DisplayE	nn::vi::OpenDefaultDisplay(nn::vi::Display**)
+230 _ZN2nn2vi20GetDisplayVsyncEventEPNS_2os15SystemEventTypeEPNS0_7DisplayE	nn::vi::GetDisplayVsyncEvent(nn::os::SystemEventType*, nn::vi::Display*)
+231 _ZN2nn2vi11CreateLayerEPPNS0_5LayerEPNS0_7DisplayE	nn::vi::CreateLayer(nn::vi::Layer**, nn::vi::Display*)
+232 _ZN2nn2vi15GetNativeWindowEPPvPNS0_5LayerE	nn::vi::GetNativeWindow(void**, nn::vi::Layer*)
+233 _ZN2nn2oe25TryPopNotificationMessageEPj	nn::oe::TryPopNotificationMessage(unsigned int*)
+234 _ZN2nn3hid18InitializeKeyboardEv	nn::hid::InitializeKeyboard()
+235 _ZN2nn3hid15InitializeMouseEv	nn::hid::InitializeMouse()
+236 _ZN2nn3hid16GetKeyboardStateEPNS0_13KeyboardStateE	nn::hid::GetKeyboardState(nn::hid::KeyboardState*)
+237 _ZN2nn3hid13GetMouseStateEPNS0_10MouseStateE	nn::hid::GetMouseState(nn::hid::MouseState*)
+238 _ZN2nn2oe38SetUserInactivityDetectionTimeExtendedEb	nn::oe::SetUserInactivityDetectionTimeExtended(bool)
+239 _ZN2nn2oe27SetPerformanceConfigurationENS0_15PerformanceModeEi	nn::oe::SetPerformanceConfiguration(nn::oe::PerformanceMode, int)
+240 _ZN2nn2oe18GetPerformanceModeEv	nn::oe::GetPerformanceMode()
+241 memchr	memchr
+242 fopen	fopen
+243 fseek	fseek
+244 ftell	ftell
+245 fread	fread
+246 fclose	fclose
+247 tanf	tanf
+248 qsort	qsort
+249 pow	pow
+250 sscanf	sscanf
+251 atan2f	atan2f
+252 _ZNSt3__122__libcpp_verbose_abortEPKcz	std::__1::__libcpp_verbose_abort(char const*, ...)
+253 __cxa_guard_abort	__cxa_guard_abort
+254 _Unwind_Resume	_Unwind_Resume
+255 longjmp	longjmp
+256 setjmp	setjmp
+257 __cxa_begin_catch	__cxa_begin_catch
+258 _ZSt9terminatev	std::terminate()
+259 __cxa_allocate_exception	__cxa_allocate_exception
+260 __cxa_throw	__cxa_throw
+261 __cxa_free_exception	__cxa_free_exception
+262 __cxa_end_catch	__cxa_end_catch
+263 fwrite	fwrite
+264 _ZTVN10__cxxabiv117__class_type_infoE	vtable for __cxxabiv1::__class_type_info
+265 __gxx_personality_v0	__gxx_personality_v0
+266 _ZN2nn5swkbd10MakePresetEPNS0_14KeyboardConfigENS0_6PresetE	nn::swkbd::MakePreset(nn::swkbd::KeyboardConfig*, nn::swkbd::Preset)
+267 _ZN2nn5swkbd25GetRequiredWorkBufferSizeEb	nn::swkbd::GetRequiredWorkBufferSize(bool)
+268 _ZN2nn5swkbd18SetInitialTextUtf8EPNS0_15ShowKeyboardArgEPKc	nn::swkbd::SetInitialTextUtf8(nn::swkbd::ShowKeyboardArg*, char const*)
+269 _ZN2nn5swkbd16SetGuideTextUtf8EPNS0_14KeyboardConfigEPKc	nn::swkbd::SetGuideTextUtf8(nn::swkbd::KeyboardConfig*, char const*)
+270 _ZN2nn5swkbd27GetRequiredStringBufferSizeEv	nn::swkbd::GetRequiredStringBufferSize()
+271 _ZN2nn5swkbd12ShowKeyboardEPNS0_6StringERKNS0_15ShowKeyboardArgE	nn::swkbd::ShowKeyboard(nn::swkbd::String*, nn::swkbd::ShowKeyboardArg const&)
+272 _ZN2nn4nifm10InitializeEv	nn::nifm::Initialize()
+273 _ZN2nn6socket10InitializeEPvmmi	nn::socket::Initialize(void*, unsigned long, unsigned long, int)
+274 _ZN2nn6socket6SocketEiii	nn::socket::Socket(int, int, int)
+275 _ZN2nn3ldn14GetIpv4AddressEPNS0_11Ipv4AddressEPNS0_10SubnetMaskE	nn::ldn::GetIpv4Address(nn::ldn::Ipv4Address*, nn::ldn::SubnetMask*)
+276 _ZN2nn4nifm26GetCurrentPrimaryIpAddressEPNS_6socket6InAddrE	nn::nifm::GetCurrentPrimaryIpAddress(nn::socket::InAddr*)
+277 _ZN2nn6socket9InetNtohlEj	nn::socket::InetNtohl(unsigned int)
+278 _ZN2nn6socket9InetHtonlEj	nn::socket::InetHtonl(unsigned int)
+279 _ZN2nn6socket9InetHtonsEt	nn::socket::InetHtons(unsigned short)
+280 _ZN2nn6socket9InetNtohsEt	nn::socket::InetNtohs(unsigned short)
+281 _ZN2nn6socket11GetNameInfoEPK8sockaddrjPcjS4_ji	nn::socket::GetNameInfo(sockaddr const*, unsigned int, char*, unsigned int, char*, unsigned int, int)
+282 _ZN2nn6socket8ShutdownEii	nn::socket::Shutdown(int, int)
+283 _ZN2nn6socket5CloseEi	nn::socket::Close(int)
+284 _ZN2nn6socket4BindEiPK8sockaddrj	nn::socket::Bind(int, sockaddr const*, unsigned int)
+285 _ZN2nn6socket7ConnectEiPK8sockaddrj	nn::socket::Connect(int, sockaddr const*, unsigned int)
+286 _ZN2nn6socket6ListenEii	nn::socket::Listen(int, int)
+287 _ZN2nn6socket5IoctlEijPvm	nn::socket::Ioctl(int, unsigned int, void*, unsigned long)
+288 _ZN2nn6socket6AcceptEiP8sockaddrPj	nn::socket::Accept(int, sockaddr*, unsigned int*)
+289 _ZN2nn6socket6SendToEiPKvmiPK8sockaddrj	nn::socket::SendTo(int, void const*, unsigned long, int, sockaddr const*, unsigned int)
+290 _ZN2nn6socket4SendEiPKvmi	nn::socket::Send(int, void const*, unsigned long, int)
+291 _ZN2nn6socket8RecvFromEiPvmiP8sockaddrPj	nn::socket::RecvFrom(int, void*, unsigned long, int, sockaddr*, unsigned int*)
+292 _ZN2nn6socket4RecvEiPvmi	nn::socket::Recv(int, void*, unsigned long, int)
+293 _ZN2nn6socket11GetSockNameEiP8sockaddrPj	nn::socket::GetSockName(int, sockaddr*, unsigned int*)
+294 _ZN2nn6socket11GetPeerNameEiP8sockaddrPj	nn::socket::GetPeerName(int, sockaddr*, unsigned int*)
+295 _ZN2nn6socket5FcntlEiiz	nn::socket::Fcntl(int, int, ...)
+296 _ZN2nn6socket10SetSockOptEiiiPKvj	nn::socket::SetSockOpt(int, int, int, void const*, unsigned int)
+297 _ZN2nn6socket10GetSockOptEiiiPvPj	nn::socket::GetSockOpt(int, int, int, void*, unsigned int*)
+298 _nnmusl_socket_TranslateNnmuslFileDescriptorOrPassThrough	_nnmusl_socket_TranslateNnmuslFileDescriptorOrPassThrough
+299 _ZN2nn6socket6SelectEiP6fd_setS2_S2_P7timeval	nn::socket::Select(int, fd_set*, fd_set*, fd_set*, timeval*)
+300 _ZN2nn6socket11GetAddrInfoEPKcS2_PK8addrinfoPPS3_	nn::socket::GetAddrInfo(char const*, char const*, addrinfo const*, addrinfo**)
+301 _ZN2nn6socket12FreeAddrInfoEP8addrinfo	nn::socket::FreeAddrInfo(addrinfo*)
+302 _ZN2nn6socket8InetPtonEiPKcPv	nn::socket::InetPton(int, char const*, void*)
+303 _ZN2nn6socket12GetLastErrorEv	nn::socket::GetLastError()
+304 tan	tan
+305 exp2	exp2
+306 stderr	stderr
+307 fprintf	fprintf
+308 puts	puts
+309 exp	exp
+310 srand	srand
+311 _ZNSt3__18ios_base4initEPv	std::__1::ios_base::init(void*)
+312 _ZNSt3__113basic_ostreamIcNS_11char_traitsIcEEED2Ev	std::__1::basic_ostream<char, std::__1::char_traits<char>>::~basic_ostream()
+313 _ZNSt3__19basic_iosIcNS_11char_traitsIcEEED2Ev	std::__1::basic_ios<char, std::__1::char_traits<char>>::~basic_ios()
+314 _ZNSt3__115basic_streambufIcNS_11char_traitsIcEEED2Ev	std::__1::basic_streambuf<char, std::__1::char_traits<char>>::~basic_streambuf()
+315 _ZNSt3__115basic_streambufIcNS_11char_traitsIcEEEC2Ev	std::__1::basic_streambuf<char, std::__1::char_traits<char>>::basic_streambuf()
+316 _ZNSt3__113basic_ostreamIcNS_11char_traitsIcEEED1Ev	std::__1::basic_ostream<char, std::__1::char_traits<char>>::~basic_ostream()
+317 _ZNSt3__113basic_ostreamIcNS_11char_traitsIcEEED0Ev	std::__1::basic_ostream<char, std::__1::char_traits<char>>::~basic_ostream()
+318 _ZTv0_n24_NSt3__113basic_ostreamIcNS_11char_traitsIcEEED1Ev	virtual thunk to std::__1::basic_ostream<char, std::__1::char_traits<char>>::~basic_ostream()
+319 _ZTv0_n24_NSt3__113basic_ostreamIcNS_11char_traitsIcEEED0Ev	virtual thunk to std::__1::basic_ostream<char, std::__1::char_traits<char>>::~basic_ostream()
+320 _ZNSt3__115basic_streambufIcNS_11char_traitsIcEEE9showmanycEv	std::__1::basic_streambuf<char, std::__1::char_traits<char>>::showmanyc()
+321 _ZNSt3__115basic_streambufIcNS_11char_traitsIcEEE6xsgetnEPcl	std::__1::basic_streambuf<char, std::__1::char_traits<char>>::xsgetn(char*, long)
+322 _ZNSt3__115basic_streambufIcNS_11char_traitsIcEEE5uflowEv	std::__1::basic_streambuf<char, std::__1::char_traits<char>>::uflow()
+323 _ZNSt3__115basic_streambufIcNS_11char_traitsIcEEE6xsputnEPKcl	std::__1::basic_streambuf<char, std::__1::char_traits<char>>::xsputn(char const*, long)
+324 strerror_r	strerror_r
+325 _ZN2nn6socket7EventFdEmNS0_12EventFdFlagsE	nn::socket::EventFd(unsigned long, nn::socket::EventFdFlags)
+326 _ZN2nn6socket12EventFdWriteEim	nn::socket::EventFdWrite(int, unsigned long)
+327 _ZN2nn6socket11EventFdReadEiPm	nn::socket::EventFdRead(int, unsigned long*)
+328 _ZN2nn6crypto36GenerateCryptographicallyRandomBytesEPvm	nn::crypto::GenerateCryptographicallyRandomBytes(void*, unsigned long)
+329 time	time
+330 _ZN2nn3ssl7Context6CreateENS1_10SslVersionE	nn::ssl::Context::Create(nn::ssl::Context::SslVersion)
+331 _ZN2nn3ssl7Context15ImportServerPkiEPmPKcjNS0_17CertificateFormatE	nn::ssl::Context::ImportServerPki(unsigned long*, char const*, unsigned int, nn::ssl::CertificateFormat)
+332 nextafterf	nextafterf
+333 atan	atan
+334 lrintf	lrintf
+335 lrint	lrint
+336 sinhf	sinhf
+337 atanf	atanf
+338 _ZN2nn6socket4PollEPNS0_6PollFdEmi	nn::socket::Poll(nn::socket::PollFd*, unsigned long, int)
+339 _ZN2nn6socket6SocketENS0_6FamilyENS0_4TypeENS0_8ProtocolE	nn::socket::Socket(nn::socket::Family, nn::socket::Type, nn::socket::Protocol)
+340 _ZN2nn6socket10SetSockOptEiNS0_5LevelENS0_6OptionEPKvj	nn::socket::SetSockOpt(int, nn::socket::Level, nn::socket::Option, void const*, unsigned int)
+341 _ZN2nn6socket7ConnectEiPKNS0_8SockAddrEj	nn::socket::Connect(int, nn::socket::SockAddr const*, unsigned int)
+342 __errno_location	__errno_location
+343 _ZN2nn6socket4SendEiPKvmNS0_7MsgFlagE	nn::socket::Send(int, void const*, unsigned long, nn::socket::MsgFlag)
+344 _ZN2nn6socket10GetSockOptEiNS0_5LevelENS0_6OptionEPvPj	nn::socket::GetSockOpt(int, nn::socket::Level, nn::socket::Option, void*, unsigned int*)
+345 _ZN2nn6socket4RecvEiPvmNS0_7MsgFlagE	nn::socket::Recv(int, void*, unsigned long, nn::socket::MsgFlag)
+346 _ZN2nn6socket5FcntlEiNS0_12FcntlCommandEz	nn::socket::Fcntl(int, nn::socket::FcntlCommand, ...)
+347 mktime	mktime
+348 _ZN2nn6socket11GetAddrInfoEPKcS2_PKNS0_8AddrInfoEPPS3_	nn::socket::GetAddrInfo(char const*, char const*, nn::socket::AddrInfo const*, nn::socket::AddrInfo**)
+349 _ZN2nn6socket12FreeAddrInfoEPNS0_8AddrInfoE	nn::socket::FreeAddrInfo(nn::socket::AddrInfo*)
+350 _ZN2nv20SetGraphicsAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_	nv::SetGraphicsAllocator(void* (*)(unsigned long, unsigned long, void*), void (*)(void*, void*), void* (*)(void*, unsigned long, void*), void*)
+351 _ZN2nv28SetGraphicsDevtoolsAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_	nv::SetGraphicsDevtoolsAllocator(void* (*)(unsigned long, unsigned long, void*), void (*)(void*, void*), void* (*)(void*, unsigned long, void*), void*)
+352 _ZN2nv18InitializeGraphicsEPvm	nv::InitializeGraphics(void*, unsigned long)
+353 nvnBootstrapLoader	nvnBootstrapLoader
+354 _ZN2nn2vi20GetLatestFrameNumberEPmPKNS0_5LayerE	nn::vi::GetLatestFrameNumber(unsigned long*, nn::vi::Layer const*)
+355 _ZN2nn2vi16ListFrameHistoryEPNS0_9FrameInfoEiPKNS0_5LayerE	nn::vi::ListFrameHistory(nn::vi::FrameInfo*, int, nn::vi::Layer const*)
+356 log2f	log2f
+357 log2	log2
+358 log10f	log10f
+359 _ZN2nn2os16ReleaseSemaphoreEPNS0_13SemaphoreTypeEi	nn::os::ReleaseSemaphore(nn::os::SemaphoreType*, int)
+360 _ZN2nn2os19InitializeSemaphoreEPNS0_13SemaphoreTypeEii	nn::os::InitializeSemaphore(nn::os::SemaphoreType*, int, int)
+361 _ZN2nn2os21TimedAcquireSemaphoreEPNS0_13SemaphoreTypeENS_8TimeSpanE	nn::os::TimedAcquireSemaphore(nn::os::SemaphoreType*, nn::TimeSpan)
+362 _ZN2nn2os17FinalizeSemaphoreEPNS0_13SemaphoreTypeE	nn::os::FinalizeSemaphore(nn::os::SemaphoreType*)
+363 _ZN2nn4util11ReferSymbolEPKv	nn::util::ReferSymbol(void const*)
+364 _ZN2nn7account10InitializeEv	nn::account::Initialize()
+365 setvbuf	setvbuf
+366 hypot	hypot
+367 log10	log10
+368 _ZNSt3__112basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEE6appendEPKcm	std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>::append(char const*, unsigned long)
+369 _ZNSt3__112__next_primeEm	std::__1::__next_prime(unsigned long)
+370 ldexp	ldexp
+371 _ZNSt3__119__shared_weak_count14__release_weakEv	std::__1::__shared_weak_count::__release_weak()
+372 _ZNSt3__119__shared_weak_countD2Ev	std::__1::__shared_weak_count::~__shared_weak_count()
+373 _ZNKSt3__119__shared_weak_count13__get_deleterERKSt9type_info	std::__1::__shared_weak_count::__get_deleter(std::type_info const&) const
+374 _ZNSt3__113basic_ostreamIcNS_11char_traitsIcEEElsEl	std::__1::basic_ostream<char, std::__1::char_traits<char>>::operator<<(long)
+375 _ZNSt3__112basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEE9push_backEc	std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>::push_back(char)
+376 _ZNSt3__112basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEE6appendEmc	std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>::append(unsigned long, char)
+377 _ZNSt3__115basic_streambufIcNS_11char_traitsIcEEE5imbueERKNS_6localeE	std::__1::basic_streambuf<char, std::__1::char_traits<char>>::imbue(std::__1::locale const&)
+378 _ZNSt3__115basic_streambufIcNS_11char_traitsIcEEE6setbufEPcl	std::__1::basic_streambuf<char, std::__1::char_traits<char>>::setbuf(char*, long)
+379 _ZNSt3__115basic_streambufIcNS_11char_traitsIcEEE4syncEv	std::__1::basic_streambuf<char, std::__1::char_traits<char>>::sync()
+380 _ZN2nn2fs18IsSaveDataExistingENS_13ApplicationIdERKNS_7account3UidE	nn::fs::IsSaveDataExisting(nn::ApplicationId, nn::account::Uid const&)
+381 _ZN2nn2fs21MountSaveDataReadOnlyEPKcNS_13ApplicationIdERKNS_7account3UidE	nn::fs::MountSaveDataReadOnly(char const*, nn::ApplicationId, nn::account::Uid const&)
+382 strcspn	strcspn
+383 strspn	strspn
+384 localtime	localtime
+385 _ZN2nn3hid14InitializeNpadEv	nn::hid::InitializeNpad()
+386 _ZN2nn2os17GetThreadCoreMaskEPiPmPKNS0_10ThreadTypeE	nn::os::GetThreadCoreMask(int*, unsigned long*, nn::os::ThreadType const*)
+387 fmaf	fmaf
+388 _ZNSt3__16__sortIRNS_6__lessIttEEPtEEvT0_S5_T_	void std::__1::__sort<std::__1::__less<unsigned short, unsigned short>&, unsigned short*>(unsigned short*, unsigned short*, std::__1::__less<unsigned short, unsigned short>&)
+389 tanhf	tanhf
+390 _ZN5movie9ExtractorC1ENS_13ContainerTypeE	movie::Extractor::Extractor(movie::ContainerType)
+391 _ZN5movie17GetThreadPriorityEv	movie::GetThreadPriority()
+392 _ZN5movie7DecoderC1ENS_11DecoderTypeENS_19DecoderOutputFormatENS_11DecoderModeEi	movie::Decoder::Decoder(movie::DecoderType, movie::DecoderOutputFormat, movie::DecoderMode, int)
+393 _ZN5movie9MediaDataC1Ev	movie::MediaData::MediaData()
+394 _ZN5movie9MediaDataD1Ev	movie::MediaData::~MediaData()
+395 _ZN5movie9MediaData5ClearEv	movie::MediaData::Clear()
+396 _ZNK5movie9MediaData10FindStringEPKcPS2_	movie::MediaData::FindString(char const*, char const**) const
+397 strncasecmp	strncasecmp
+398 _ZN5movie9MediaDataaSERKS0_	movie::MediaData::operator=(movie::MediaData const&)
+399 _ZNK5movie9MediaData9FindInt64EPKcPl	movie::MediaData::FindInt64(char const*, long*) const
+400 _ZNK5movie9MediaData9FindInt32EPKcPi	movie::MediaData::FindInt32(char const*, int*) const
+401 _ZNK5movie9MediaData8FindRectEPKcPiS3_S3_S3_	movie::MediaData::FindRect(char const*, int*, int*, int*, int*) const
+402 _ZN5movie9MediaDataC1ERKS0_	movie::MediaData::MediaData(movie::MediaData const&)
+403 _ZN5movie6BufferC1Ev	movie::Buffer::Buffer()
+404 _ZN5movie6Buffer8SetRangeEii	movie::Buffer::SetRange(int, int)
+405 _ZNK5movie6Buffer4SizeEv	movie::Buffer::Size() const
+406 _ZNK5movie6Buffer6OffsetEv	movie::Buffer::Offset() const
+407 _ZN5movie6BufferD1Ev	movie::Buffer::~Buffer()
+408 _ZN2nn2os12TryWaitEventEPNS0_9EventTypeE	nn::os::TryWaitEvent(nn::os::EventType*)
+409 _ZN2nn2os25InitializeMultiWaitHolderEPNS0_19MultiWaitHolderTypeEPNS0_9EventTypeE	nn::os::InitializeMultiWaitHolder(nn::os::MultiWaitHolderType*, nn::os::EventType*)
+410 _ZN2nn2os19InitializeMultiWaitEPNS0_13MultiWaitTypeE	nn::os::InitializeMultiWait(nn::os::MultiWaitType*)
+411 _ZN2nn2os19LinkMultiWaitHolderEPNS0_13MultiWaitTypeEPNS0_19MultiWaitHolderTypeE	nn::os::LinkMultiWaitHolder(nn::os::MultiWaitType*, nn::os::MultiWaitHolderType*)
+412 _ZN2nn2os21UnlinkMultiWaitHolderEPNS0_19MultiWaitHolderTypeE	nn::os::UnlinkMultiWaitHolder(nn::os::MultiWaitHolderType*)
+413 _ZN2nn2os23FinalizeMultiWaitHolderEPNS0_19MultiWaitHolderTypeE	nn::os::FinalizeMultiWaitHolder(nn::os::MultiWaitHolderType*)
+414 _ZN2nn2os17FinalizeMultiWaitEPNS0_13MultiWaitTypeE	nn::os::FinalizeMultiWait(nn::os::MultiWaitType*)
+415 _ZN2nn2os7WaitAnyEPNS0_13MultiWaitTypeE	nn::os::WaitAny(nn::os::MultiWaitType*)
+416 _ZN2nn2os12TimedWaitAnyEPNS0_13MultiWaitTypeENS_8TimeSpanE	nn::os::TimedWaitAny(nn::os::MultiWaitType*, nn::TimeSpan)
+417 _ZN2nn2os20SetThreadNamePointerEPNS0_10ThreadTypeEPKc	nn::os::SetThreadNamePointer(nn::os::ThreadType*, char const*)
+418 _ZN5movie6Buffer9SetNvnDevEPv	movie::Buffer::SetNvnDev(void*)
+419 _ZN5movie6Buffer10SetNvnSyncEPv	movie::Buffer::SetNvnSync(void*)
+420 _ZN5movie6Buffer18SetDataAndCapacityEPvm	movie::Buffer::SetDataAndCapacity(void*, unsigned long)
+421 _ZN2nn5audio26RequestUpdateAudioRendererENS0_19AudioRendererHandleEPKNS0_19AudioRendererConfigE	nn::audio::RequestUpdateAudioRenderer(nn::audio::AudioRendererHandle, nn::audio::AudioRendererConfig const*)
+422 _ZN2nn5audio20GetMemoryPoolAddressEPKNS0_14MemoryPoolTypeE	nn::audio::GetMemoryPoolAddress(nn::audio::MemoryPoolType const*)
+423 _ZN2nn5audio18CopyMemoryPoolDataEPKNS0_14MemoryPoolTypeEPvPKvm	nn::audio::CopyMemoryPoolData(nn::audio::MemoryPoolType const*, void*, void const*, unsigned long)
+424 _ZN2nn5audio16AppendWaveBufferEPNS0_9VoiceTypeEPKNS0_10WaveBufferE	nn::audio::AppendWaveBuffer(nn::audio::VoiceType*, nn::audio::WaveBuffer const*)
+425 _ZN2nn5audio17GetVoicePlayStateEPKNS0_9VoiceTypeE	nn::audio::GetVoicePlayState(nn::audio::VoiceType const*)
+426 _ZN2nn5audio17SetVoicePlayStateEPNS0_9VoiceTypeENS1_9PlayStateE	nn::audio::SetVoicePlayState(nn::audio::VoiceType*, nn::audio::VoiceType::PlayState)
+427 _ZN2nn5audio21GetReleasedWaveBufferEPNS0_9VoiceTypeE	nn::audio::GetReleasedWaveBuffer(nn::audio::VoiceType*)
+428 _ZN2nn5audio25GetVoicePlayedSampleCountEPKNS0_9VoiceTypeE	nn::audio::GetVoicePlayedSampleCount(nn::audio::VoiceType const*)
+429 _ZN2nn5audio32InitializeAudioRendererParameterEPNS0_22AudioRendererParameterE	nn::audio::InitializeAudioRendererParameter(nn::audio::AudioRendererParameter*)
+430 _ZN2nn5audio29IsValidAudioRendererParameterERKNS0_22AudioRendererParameterE	nn::audio::IsValidAudioRendererParameter(nn::audio::AudioRendererParameter const&)
+431 _ZN2nn5audio30GetAudioRendererWorkBufferSizeERKNS0_22AudioRendererParameterE	nn::audio::GetAudioRendererWorkBufferSize(nn::audio::AudioRendererParameter const&)
+432 _ZN2nn5audio17OpenAudioRendererEPNS0_19AudioRendererHandleEPNS_2os11SystemEventERKNS0_22AudioRendererParameterEPvm	nn::audio::OpenAudioRenderer(nn::audio::AudioRendererHandle*, nn::os::SystemEvent*, nn::audio::AudioRendererParameter const&, void*, unsigned long)
+433 _ZN2nn5audio36GetAudioRendererConfigWorkBufferSizeERKNS0_22AudioRendererParameterE	nn::audio::GetAudioRendererConfigWorkBufferSize(nn::audio::AudioRendererParameter const&)
+434 _ZN2nn5audio29InitializeAudioRendererConfigEPNS0_19AudioRendererConfigERKNS0_22AudioRendererParameterEPvm	nn::audio::InitializeAudioRendererConfig(nn::audio::AudioRendererConfig*, nn::audio::AudioRendererParameter const&, void*, unsigned long)
+435 _ZN2nn5audio15AcquireFinalMixEPNS0_19AudioRendererConfigEPNS0_12FinalMixTypeEi	nn::audio::AcquireFinalMix(nn::audio::AudioRendererConfig*, nn::audio::FinalMixType*, int)
+436 _ZN2nn5audio13AddDeviceSinkEPNS0_19AudioRendererConfigEPNS0_14DeviceSinkTypeEPNS0_12FinalMixTypeEPKaiPKc	nn::audio::AddDeviceSink(nn::audio::AudioRendererConfig*, nn::audio::DeviceSinkType*, nn::audio::FinalMixType*, signed char const*, int, char const*)
+437 _ZN2nn5audio18StartAudioRendererENS0_19AudioRendererHandleE	nn::audio::StartAudioRenderer(nn::audio::AudioRendererHandle)
+438 _ZN2nn5audio16ReleaseVoiceSlotEPNS0_19AudioRendererConfigEPNS0_9VoiceTypeE	nn::audio::ReleaseVoiceSlot(nn::audio::AudioRendererConfig*, nn::audio::VoiceType*)
+439 _ZN2nn5audio16AcquireVoiceSlotEPNS0_19AudioRendererConfigEPNS0_9VoiceTypeEiiNS0_12SampleFormatEiPKvm	nn::audio::AcquireVoiceSlot(nn::audio::AudioRendererConfig*, nn::audio::VoiceType*, int, int, nn::audio::SampleFormat, int, void const*, unsigned long)
+440 _ZN2nn5audio19SetVoiceDestinationEPNS0_19AudioRendererConfigEPNS0_9VoiceTypeEPNS0_12FinalMixTypeE	nn::audio::SetVoiceDestination(nn::audio::AudioRendererConfig*, nn::audio::VoiceType*, nn::audio::FinalMixType*)
+441 _ZN2nn5audio17SetVoiceMixVolumeEPNS0_9VoiceTypeEPNS0_12FinalMixTypeEfii	nn::audio::SetVoiceMixVolume(nn::audio::VoiceType*, nn::audio::FinalMixType*, float, int, int)
+442 _ZN2nn5audio17AcquireMemoryPoolEPNS0_19AudioRendererConfigEPNS0_14MemoryPoolTypeEPvm	nn::audio::AcquireMemoryPool(nn::audio::AudioRendererConfig*, nn::audio::MemoryPoolType*, void*, unsigned long)
+443 _ZN2nn5audio23RequestAttachMemoryPoolEPNS0_14MemoryPoolTypeE	nn::audio::RequestAttachMemoryPool(nn::audio::MemoryPoolType*)
+444 _ZN2nn5audio17StopAudioRendererENS0_19AudioRendererHandleE	nn::audio::StopAudioRenderer(nn::audio::AudioRendererHandle)
+445 _ZN2nn5audio18CloseAudioRendererENS0_19AudioRendererHandleE	nn::audio::CloseAudioRenderer(nn::audio::AudioRendererHandle)
+446 _ZN2nn5audio23RequestDetachMemoryPoolEPNS0_14MemoryPoolTypeE	nn::audio::RequestDetachMemoryPool(nn::audio::MemoryPoolType*)
+447 _ZN2nn5audio20IsMemoryPoolAttachedEPKNS0_14MemoryPoolTypeE	nn::audio::IsMemoryPoolAttached(nn::audio::MemoryPoolType const*)
+448 _ZN2nn5audio17ReleaseMemoryPoolEPNS0_19AudioRendererConfigEPNS0_14MemoryPoolTypeE	nn::audio::ReleaseMemoryPool(nn::audio::AudioRendererConfig*, nn::audio::MemoryPoolType*)
+449 _ZN2nn3hid24SetSupportedNpadStyleSetENS_4util10BitFlagSetILi32ENS0_12NpadStyleTagEEE	nn::hid::SetSupportedNpadStyleSet(nn::util::BitFlagSet<32, nn::hid::NpadStyleTag>)
+450 _ZN2nn3hid22SetSupportedNpadIdTypeEPKjm	nn::hid::SetSupportedNpadIdType(unsigned int const*, unsigned long)
+451 _ZN2nn3hid18SetNpadJoyHoldTypeENS0_15NpadJoyHoldTypeE	nn::hid::SetNpadJoyHoldType(nn::hid::NpadJoyHoldType)
+452 _ZN2nn3hid25SetGyroscopeZeroDriftModeERKNS0_19SixAxisSensorHandleERKNS0_22GyroscopeZeroDriftModeE	nn::hid::SetGyroscopeZeroDriftMode(nn::hid::SixAxisSensorHandle const&, nn::hid::GyroscopeZeroDriftMode const&)
+453 _ZN2nn3hid25GetVibrationDeviceHandlesEPNS0_21VibrationDeviceHandleEiRKjNS_4util10BitFlagSetILi32ENS0_12NpadStyleTagEEE	nn::hid::GetVibrationDeviceHandles(nn::hid::VibrationDeviceHandle*, int, unsigned int const&, nn::util::BitFlagSet<32, nn::hid::NpadStyleTag>)
+454 _ZN2nn3hid25InitializeVibrationDeviceERKNS0_21VibrationDeviceHandleE	nn::hid::InitializeVibrationDevice(nn::hid::VibrationDeviceHandle const&)
+455 _ZN2nn3hid22GetVibrationDeviceInfoEPNS0_19VibrationDeviceInfoERKNS0_21VibrationDeviceHandleE	nn::hid::GetVibrationDeviceInfo(nn::hid::VibrationDeviceInfo*, nn::hid::VibrationDeviceHandle const&)
+456 _ZN2nn3hid18SendVibrationValueERKNS0_21VibrationDeviceHandleERKNS0_14VibrationValueE	nn::hid::SendVibrationValue(nn::hid::VibrationDeviceHandle const&, nn::hid::VibrationValue const&)
+457 _ZN2nn3hid15GetNpadStyleSetERKj	nn::hid::GetNpadStyleSet(unsigned int const&)
+458 _ZN2nn3hid12GetNpadStateEPNS0_17NpadHandheldStateERKj	nn::hid::GetNpadState(nn::hid::NpadHandheldState*, unsigned int const&)
+459 _ZN2nn3hid12GetNpadStateEPNS0_16NpadJoyDualStateERKj	nn::hid::GetNpadState(nn::hid::NpadJoyDualState*, unsigned int const&)
+460 _ZN2nn3hid12GetNpadStateEPNS0_16NpadFullKeyStateERKj	nn::hid::GetNpadState(nn::hid::NpadFullKeyState*, unsigned int const&)
+461 _ZN2nn3hid12GetNpadStateEPNS0_16NpadJoyLeftStateERKj	nn::hid::GetNpadState(nn::hid::NpadJoyLeftState*, unsigned int const&)
+462 _ZN2nn3hid18GetNpadJoyHoldTypeEv	nn::hid::GetNpadJoyHoldType()
+463 _ZN2nn3hid12GetNpadStateEPNS0_17NpadJoyRightStateERKj	nn::hid::GetNpadState(nn::hid::NpadJoyRightState*, unsigned int const&)
+464 _ZN2nn3hid22GetSixAxisSensorStatesEPNS0_18SixAxisSensorStateEiRKNS0_19SixAxisSensorHandleE	nn::hid::GetSixAxisSensorStates(nn::hid::SixAxisSensorState*, int, nn::hid::SixAxisSensorHandle const&)
+465 _ZNK2nn3hid18SixAxisSensorState13GetQuaternionEPNS_4util4neon12Vector4fTypeE	nn::hid::SixAxisSensorState::GetQuaternion(nn::util::neon::Vector4fType*) const
+466 _ZN2nn3hid18StartSixAxisSensorERKNS0_19SixAxisSensorHandleE	nn::hid::StartSixAxisSensor(nn::hid::SixAxisSensorHandle const&)
+467 _ZN2nn3hid17StopSixAxisSensorERKNS0_19SixAxisSensorHandleE	nn::hid::StopSixAxisSensor(nn::hid::SixAxisSensorHandle const&)
+468 _ZN2nn3hid23GetSixAxisSensorHandlesEPNS0_19SixAxisSensorHandleEiRKjNS_4util10BitFlagSetILi32ENS0_12NpadStyleTagEEE	nn::hid::GetSixAxisSensorHandles(nn::hid::SixAxisSensorHandle*, int, unsigned int const&, nn::util::BitFlagSet<32, nn::hid::NpadStyleTag>)
+469 _ZN2nn3hid20ControllerSupportArg10SetDefaultEv	nn::hid::ControllerSupportArg::SetDefault()
+470 _ZN2nn3hid21ShowControllerSupportEPNS0_27ControllerSupportResultInfoERKNS0_20ControllerSupportArgE	nn::hid::ShowControllerSupport(nn::hid::ControllerSupportResultInfo*, nn::hid::ControllerSupportArg const&)
+471 _ZN2nn2oe16EnableScreenShotEv	nn::oe::EnableScreenShot()
+472 _ZN2nn2oe17DisableScreenShotEv	nn::oe::DisableScreenShot()
+473 _ZN2nn2oe31LeaveExitRequestHandlingSectionEv	nn::oe::LeaveExitRequestHandlingSection()
+474 _ZN2nn2oe31EnterExitRequestHandlingSectionEv	nn::oe::EnterExitRequestHandlingSection()
+475 _ZN2nn2oe15EnableRecordingEv	nn::oe::EnableRecording()
+476 _ZN2nn2oe15UnmuteRecordingEv	nn::oe::UnmuteRecording()
+477 _ZN2nn2oe13MuteRecordingEv	nn::oe::MuteRecording()
+478 _ZN2nn2oe16DisableRecordingEv	nn::oe::DisableRecording()
+479 _ZN2nn2fs14EnsureSaveDataERKNS_7account3UidE	nn::fs::EnsureSaveData(nn::account::Uid const&)
+480 _ZN2nn2fs13MountSaveDataEPKcRKNS_7account3UidE	nn::fs::MountSaveData(char const*, nn::account::Uid const&)
+481 _ZN2nn2fs15GetSaveDataSizeEPlS1_RKNS_7account3UidE	nn::fs::GetSaveDataSize(long*, long*, nn::account::Uid const&)
+482 _ZN2nn2fs14ExtendSaveDataERKNS_7account3UidEll	nn::fs::ExtendSaveData(nn::account::Uid const&, long, long)
+483 _ZN2nn5codec36GetHardwareOpusDecoderWorkBufferSizeEiii	nn::codec::GetHardwareOpusDecoderWorkBufferSize(int, int, int)
+484 _ZN2nn5codec28GetOpusDecoderWorkBufferSizeEii	nn::codec::GetOpusDecoderWorkBufferSize(int, int)
+485 _ZN2nn5codec29InitializeHardwareOpusDecoderEPNS0_23HardwareOpusDecoderTypeEiiPvmi	nn::codec::InitializeHardwareOpusDecoder(nn::codec::HardwareOpusDecoderType*, int, int, void*, unsigned long, int)
+486 _ZN2nn5codec27FinalizeHardwareOpusDecoderEPNS0_23HardwareOpusDecoderTypeE	nn::codec::FinalizeHardwareOpusDecoder(nn::codec::HardwareOpusDecoderType*)
+487 _ZN2nn5codec32GetHardwareOpusDecoderSampleRateEPKNS0_23HardwareOpusDecoderTypeE	nn::codec::GetHardwareOpusDecoderSampleRate(nn::codec::HardwareOpusDecoderType const*)
+488 _ZN2nn5codec34GetHardwareOpusDecoderChannelCountEPKNS0_23HardwareOpusDecoderTypeE	nn::codec::GetHardwareOpusDecoderChannelCount(nn::codec::HardwareOpusDecoderType const*)
+489 _ZN2nn5codec24ResetHardwareOpusDecoderEPNS0_23HardwareOpusDecoderTypeE	nn::codec::ResetHardwareOpusDecoder(nn::codec::HardwareOpusDecoderType*)
+490 _ZN2nn5codec33DecodeOpusInterleavedWithHardwareEPNS0_23HardwareOpusDecoderTypeEPmPiPsmPKvm	nn::codec::DecodeOpusInterleavedWithHardware(nn::codec::HardwareOpusDecoderType*, unsigned long*, int*, short*, unsigned long, void const*, unsigned long)
+491 _ZN2nn5codec21InitializeOpusDecoderEPNS0_15OpusDecoderTypeEiiPvm	nn::codec::InitializeOpusDecoder(nn::codec::OpusDecoderType*, int, int, void*, unsigned long)
+492 _ZN2nn5codec19FinalizeOpusDecoderEPNS0_15OpusDecoderTypeE	nn::codec::FinalizeOpusDecoder(nn::codec::OpusDecoderType*)
+493 _ZN2nn5codec24GetOpusDecoderSampleRateEPKNS0_15OpusDecoderTypeE	nn::codec::GetOpusDecoderSampleRate(nn::codec::OpusDecoderType const*)
+494 _ZN2nn5codec26GetOpusDecoderChannelCountEPKNS0_15OpusDecoderTypeE	nn::codec::GetOpusDecoderChannelCount(nn::codec::OpusDecoderType const*)
+495 _ZN2nn5codec16ResetOpusDecoderEPNS0_15OpusDecoderTypeE	nn::codec::ResetOpusDecoder(nn::codec::OpusDecoderType*)
+496 _ZN2nn5codec21DecodeOpusInterleavedEPNS0_15OpusDecoderTypeEPmPiPsmPKvm	nn::codec::DecodeOpusInterleaved(nn::codec::OpusDecoderType*, unsigned long*, int*, short*, unsigned long, void const*, unsigned long)
+497 _ZN2nn5audio27InitializeAudioOutParameterEPNS0_17AudioOutParameterE	nn::audio::InitializeAudioOutParameter(nn::audio::AudioOutParameter*)
+498 _ZN2nn5audio19OpenDefaultAudioOutEPNS0_8AudioOutERKNS0_17AudioOutParameterE	nn::audio::OpenDefaultAudioOut(nn::audio::AudioOut*, nn::audio::AudioOutParameter const&)
+499 _ZN2nn5audio15GetAudioOutNameEPKNS0_8AudioOutE	nn::audio::GetAudioOutName(nn::audio::AudioOut const*)
+500 _ZN2nn5audio23GetAudioOutSampleFormatEPKNS0_8AudioOutE	nn::audio::GetAudioOutSampleFormat(nn::audio::AudioOut const*)
+501 _ZN2nn5audio13CloseAudioOutEPNS0_8AudioOutE	nn::audio::CloseAudioOut(nn::audio::AudioOut*)
+502 _ZN2nn5audio17GetSampleByteSizeENS0_12SampleFormatE	nn::audio::GetSampleByteSize(nn::audio::SampleFormat)
+503 _ZN2nn5audio19OpenDefaultAudioOutEPNS0_8AudioOutEPNS_2os11SystemEventERKNS0_17AudioOutParameterE	nn::audio::OpenDefaultAudioOut(nn::audio::AudioOut*, nn::os::SystemEvent*, nn::audio::AudioOutParameter const&)
+504 _ZN2nn5audio21GetAudioOutSampleRateEPKNS0_8AudioOutE	nn::audio::GetAudioOutSampleRate(nn::audio::AudioOut const*)
+505 _ZN2nn5audio21SetAudioOutBufferInfoEPNS0_14AudioOutBufferEPvmm	nn::audio::SetAudioOutBufferInfo(nn::audio::AudioOutBuffer*, void*, unsigned long, unsigned long)
+506 _ZN2nn5audio20AppendAudioOutBufferEPNS0_8AudioOutEPNS0_14AudioOutBufferE	nn::audio::AppendAudioOutBuffer(nn::audio::AudioOut*, nn::audio::AudioOutBuffer*)
+507 _ZN2nn5audio33GetRequiredBufferSizeForResamplerEi	nn::audio::GetRequiredBufferSizeForResampler(int)
+508 _ZN2nn5audio19InitializeResamplerEPNS0_13ResamplerTypeEPvmiii	nn::audio::InitializeResampler(nn::audio::ResamplerType*, void*, unsigned long, int, int, int)
+509 _ZN2nn5audio29GetResamplerOutputSampleCountEPKNS0_13ResamplerTypeEi	nn::audio::GetResamplerOutputSampleCount(nn::audio::ResamplerType const*, int)
+510 _ZN2nn5audio22ProcessResamplerBufferEPNS0_13ResamplerTypeEPiPsmPKsi	nn::audio::ProcessResamplerBuffer(nn::audio::ResamplerType*, int*, short*, unsigned long, short const*, int)
+511 _ZN2nn5audio13StartAudioOutEPNS0_8AudioOutE	nn::audio::StartAudioOut(nn::audio::AudioOut*)
+512 _ZN2nn5audio25GetReleasedAudioOutBufferEPNS0_8AudioOutE	nn::audio::GetReleasedAudioOutBuffer(nn::audio::AudioOut*)
+513 _ZN2nn5audio28GetAudioOutBufferDataPointerEPKNS0_14AudioOutBufferE	nn::audio::GetAudioOutBufferDataPointer(nn::audio::AudioOutBuffer const*)
+514 _ZN2nn5audio12StopAudioOutEPNS0_8AudioOutE	nn::audio::StopAudioOut(nn::audio::AudioOut*)
+515 __nnmusl_init_dso	__nnmusl_init_dso
+516 _ZN2nn2ro12ProtectRelroEPKvS2_S2_S2_S2_	nn::ro::ProtectRelro(void const*, void const*, void const*, void const*, void const*)
+517 gmtime	gmtime
+518 getenv	getenv
+519 strncat	strncat
+520 strcat	strcat
+521 nl_langinfo	nl_langinfo
+522 strtoul	strtoul
+523 _ZNSt3__118condition_variable10notify_allEv	std::__1::condition_variable::notify_all()
+524 _ZTVN10__cxxabiv120__si_class_type_infoE	vtable for __cxxabiv1::__si_class_type_info
+525 _ZTINSt3__119__shared_weak_countE	typeinfo for std::__1::__shared_weak_count
+526 sprintf	sprintf
+527 strtod	strtod
+528 __dynamic_cast	__dynamic_cast
+529 _ZTVN10__cxxabiv121__vmi_class_type_infoE	vtable for __cxxabiv1::__vmi_class_type_info
+530 div	div
+531 memalign	memalign
+532 fputs	fputs
+533 fputc	fputc
+534 strerror	strerror
+535 bsearch	bsearch
+536 strdup	strdup
+537 stat	stat
+538 vfprintf	vfprintf
+539 _ZN2nn2os17ConvertToTimeSpanENS0_4TickE	nn::os::ConvertToTimeSpan(nn::os::Tick)
+540 _ZN2nn2os27InitializeConditionVariableEPNS0_21ConditionVariableTypeE	nn::os::InitializeConditionVariable(nn::os::ConditionVariableType*)
+541 _ZN2nn2os25FinalizeConditionVariableEPNS0_21ConditionVariableTypeE	nn::os::FinalizeConditionVariable(nn::os::ConditionVariableType*)
+542 _ZN2nn2os21WaitConditionVariableEPNS0_21ConditionVariableTypeEPNS0_9MutexTypeE	nn::os::WaitConditionVariable(nn::os::ConditionVariableType*, nn::os::MutexType*)
+543 _ZN2nn2os23SignalConditionVariableEPNS0_21ConditionVariableTypeE	nn::os::SignalConditionVariable(nn::os::ConditionVariableType*)
+544 _ZN2nn2os26TimedWaitConditionVariableEPNS0_21ConditionVariableTypeEPNS0_9MutexTypeENS_8TimeSpanE	nn::os::TimedWaitConditionVariable(nn::os::ConditionVariableType*, nn::os::MutexType*, nn::TimeSpan)
+545 _ZN2nn2fs8ReadFileENS0_10FileHandleElPvm	nn::fs::ReadFile(nn::fs::FileHandle, long, void*, unsigned long)
+546 _ZN2nn5codec47GetHardwareOpusMultiStreamDecoderProcessingTimeEPKNS0_34HardwareOpusMultiStreamDecoderTypeE	nn::codec::GetHardwareOpusMultiStreamDecoderProcessingTime(nn::codec::HardwareOpusMultiStreamDecoderType const*)
+547 _ZN2nn5codec47GetHardwareOpusMultiStreamDecoderWorkBufferSizeEiiiii	nn::codec::GetHardwareOpusMultiStreamDecoderWorkBufferSize(int, int, int, int, int)
+548 _ZN2nn5codec40InitializeHardwareOpusMultiStreamDecoderEPNS0_34HardwareOpusMultiStreamDecoderTypeEiiiiPKhPvmi	nn::codec::InitializeHardwareOpusMultiStreamDecoder(nn::codec::HardwareOpusMultiStreamDecoderType*, int, int, int, int, unsigned char const*, void*, unsigned long, int)
+549 _ZN2nn5codec38FinalizeHardwareOpusMultiStreamDecoderEPNS0_34HardwareOpusMultiStreamDecoderTypeE	nn::codec::FinalizeHardwareOpusMultiStreamDecoder(nn::codec::HardwareOpusMultiStreamDecoderType*)
+550 _ZN2nn5codec43GetHardwareOpusMultiStreamDecoderSampleRateEPKNS0_34HardwareOpusMultiStreamDecoderTypeE	nn::codec::GetHardwareOpusMultiStreamDecoderSampleRate(nn::codec::HardwareOpusMultiStreamDecoderType const*)
+551 _ZN2nn5codec45GetHardwareOpusMultiStreamDecoderChannelCountEPKNS0_34HardwareOpusMultiStreamDecoderTypeE	nn::codec::GetHardwareOpusMultiStreamDecoderChannelCount(nn::codec::HardwareOpusMultiStreamDecoderType const*)
+552 _ZN2nn5codec49GetHardwareOpusMultiStreamDecoderTotalStreamCountEPKNS0_34HardwareOpusMultiStreamDecoderTypeE	nn::codec::GetHardwareOpusMultiStreamDecoderTotalStreamCount(nn::codec::HardwareOpusMultiStreamDecoderType const*)
+553 _ZN2nn5codec50GetHardwareOpusMultiStreamDecoderStereoStreamCountEPKNS0_34HardwareOpusMultiStreamDecoderTypeE	nn::codec::GetHardwareOpusMultiStreamDecoderStereoStreamCount(nn::codec::HardwareOpusMultiStreamDecoderType const*)
+554 _ZN2nn5codec35ResetHardwareOpusMultiStreamDecoderEPNS0_34HardwareOpusMultiStreamDecoderTypeE	nn::codec::ResetHardwareOpusMultiStreamDecoder(nn::codec::HardwareOpusMultiStreamDecoderType*)
+555 _ZN2nn5codec44DecodeOpusMultiStreamInterleavedWithHardwareEPNS0_34HardwareOpusMultiStreamDecoderTypeEPmPiPsmPKvm	nn::codec::DecodeOpusMultiStreamInterleavedWithHardware(nn::codec::HardwareOpusMultiStreamDecoderType*, unsigned long*, int*, short*, unsigned long, void const*, unsigned long)
+556 _ZN2nn3hid18VibrationConverter13ChunkDurationE	nn::hid::VibrationConverter::ChunkDuration
+557 _ZN2nn3hid18VibrationConverter12ProcessChunkEPNS0_14VibrationValueEPKsi	nn::hid::VibrationConverter::ProcessChunk(nn::hid::VibrationValue*, short const*, int)
+558 _ZN2nn3hid18VibrationConverterC1Ei	nn::hid::VibrationConverter::VibrationConverter(int)
+559 _ZN2nn3hid18VibrationConverterD1Ev	nn::hid::VibrationConverter::~VibrationConverter()
+560 _ZN2nn5audio24GetActiveAudioDeviceNameEPNS0_15AudioDeviceNameE	nn::audio::GetActiveAudioDeviceName(nn::audio::AudioDeviceName*)
+561 _ZN2nn5audio41GetActiveAudioDeviceChannelCountForOutputEv	nn::audio::GetActiveAudioDeviceChannelCountForOutput()
+562 _ZN2nn5audio39AcquireAudioDeviceNotificationForOutputEPNS_2os11SystemEventE	nn::audio::AcquireAudioDeviceNotificationForOutput(nn::os::SystemEvent*)
+563 __assert_fail	__assert_fail
+564 _ZN2nn5audio23GetAudioOutChannelCountEPKNS0_8AudioOutE	nn::audio::GetAudioOutChannelCount(nn::audio::AudioOut const*)
+565 _ZN2nn5audio16GetAudioOutStateEPKNS0_8AudioOutE	nn::audio::GetAudioOutState(nn::audio::AudioOut const*)
+566 _ZN2nn2os18TryWaitSystemEventEPNS0_15SystemEventTypeE	nn::os::TryWaitSystemEvent(nn::os::SystemEventType*)
+567 _ZN2nn5audio25GetAudioOutBufferDataSizeEPKNS0_14AudioOutBufferE	nn::audio::GetAudioOutBufferDataSize(nn::audio::AudioOutBuffer const*)
+568 _ZN2nn2oe25GetProgramTotalActiveTimeEv	nn::oe::GetProgramTotalActiveTime()
+569 _ZN2nn4diag6detail18OnAssertionFailureENS0_13AssertionTypeE	nn::diag::detail::OnAssertionFailure(nn::diag::AssertionType)
+570 _ZNK5movie6Buffer4BaseEv	movie::Buffer::Base() const
+571 _ZN5movie11SetCoreMaskEm	movie::SetCoreMask(unsigned long)
+572 _ZN5movie17SetThreadPriorityEi	movie::SetThreadPriority(int)
+573 _ZNK5movie6Buffer8CapacityEv	movie::Buffer::Capacity() const
+574 _ZN5movie37GetH264NalUnitStartPositionAndNalSizeEPPhPmS1_S2_	movie::GetH264NalUnitStartPositionAndNalSize(unsigned char**, unsigned long*, unsigned char**, unsigned long*)
+575 _ZN5movie34CreateH264DecoderConfigurationDataEPKhmS1_mPNS_9MediaDataE	movie::CreateH264DecoderConfigurationData(unsigned char const*, unsigned long, unsigned char const*, unsigned long, movie::MediaData*)
+576 _ZN5movie33CreateVp9DecoderConfigurationDataEiiiPNS_9MediaDataE	movie::CreateVp9DecoderConfigurationData(int, int, int, movie::MediaData*)
+577 _ZN5movie9MediaData8SetInt32EPKci	movie::MediaData::SetInt32(char const*, int)
+578 nnsocketResolverSetOption	nnsocketResolverSetOption
+579 nnsocketGetLastErrno	nnsocketGetLastErrno
+580 nnosSleepThread	nnosSleepThread
+581 nnosLockMutex	nnosLockMutex
+582 nnosUnlockMutex	nnosUnlockMutex
+583 nnosInitializeMutex	nnosInitializeMutex
+584 nnsocketResolverGetOption	nnsocketResolverGetOption
+585 nnosFinalizeMutex	nnosFinalizeMutex
+586 nnsocketGetPeerName	nnsocketGetPeerName
+587 nnsocketGetSockName	nnsocketGetSockName
+588 nnsocketInetNtohs	nnsocketInetNtohs
+589 nnsocketSetLastErrno	nnsocketSetLastErrno
+590 nnsocketGetSockOpt	nnsocketGetSockOpt
+591 nnsocketClose	nnsocketClose
+592 nnsocketSetSockOpt	nnsocketSetSockOpt
+593 nnsocketInetHtons	nnsocketInetHtons
+594 nnsocketBind	nnsocketBind
+595 nnsocketConnect	nnsocketConnect
+596 nnsocketRecv	nnsocketRecv
+597 nnsocketSocket	nnsocketSocket
+598 tolower	tolower
+599 nnsocketGetHostByNameWithOptions	nnsocketGetHostByNameWithOptions
+600 nnsocketInetHtonl	nnsocketInetHtonl
+601 nnsocketInetNtohl	nnsocketInetNtohl
+602 nnsocketFcntl	nnsocketFcntl
+603 nnsocketPoll	nnsocketPoll
+604 nnsocketSend	nnsocketSend
+605 nndetailDiagAbortNoMessageImpl	nndetailDiagAbortNoMessageImpl
+606 nnsslInitialize	nnsslInitialize
+607 nnResultIsFailure	nnResultIsFailure
+608 nnsslFinalize	nnsslFinalize
+609 nnsslConnectionPeek	nnsslConnectionPeek
+610 nnsslConnectionPending	nnsslConnectionPending
+611 nnResultIsSuccess	nnResultIsSuccess
+612 nnResultGetModule	nnResultGetModule
+613 nnResultGetDescription	nnResultGetDescription
+614 nnsslConnectionDoHandshakeWithCertBuffer	nnsslConnectionDoHandshakeWithCertBuffer
+615 nnsslContextGetContextId	nnsslContextGetContextId
+616 nnsslConnectionCreate	nnsslConnectionCreate
+617 nnsslConnectionSetOption	nnsslConnectionSetOption
+618 nnsslConnectionSetSocketDescriptor	nnsslConnectionSetSocketDescriptor
+619 nnsslConnectionSetHostName	nnsslConnectionSetHostName
+620 nnsslConnectionSetVerifyOption	nnsslConnectionSetVerifyOption
+621 nnsslConnectionSetSessionCacheMode	nnsslConnectionSetSessionCacheMode
+622 nnsslConnectionGetNextAlpnProto	nnsslConnectionGetNextAlpnProto
+623 nnsslContextDestroy	nnsslContextDestroy
+624 nnsslConnectionGetServerCertDetail	nnsslConnectionGetServerCertDetail
+625 nnsslConnectionGetVerifyCertError	nnsslConnectionGetVerifyCertError
+626 nnsslConnectionSetServerCertBuffer	nnsslConnectionSetServerCertBuffer
+627 nnsslConnectionSetNextAlpnProto	nnsslConnectionSetNextAlpnProto
+628 nnsslConnectionSetIoMode	nnsslConnectionSetIoMode
+629 nnsslConnectionRead	nnsslConnectionRead
+630 nnsslConnectionWrite	nnsslConnectionWrite
+631 nnsslConnectionGetConnectionId	nnsslConnectionGetConnectionId
+632 nnsslConnectionDestroy	nnsslConnectionDestroy
+633 _ZN2nn3ssl7Context15ImportClientPkiEPmPKcS4_jj	nn::ssl::Context::ImportClientPki(unsigned long*, char const*, char const*, unsigned int, unsigned int)
+634 _ZN2nn3ssl7Context9ImportCrlEPmPKcj	nn::ssl::Context::ImportCrl(unsigned long*, char const*, unsigned int)
+635 _ZN2nn3nsd9ResolveExEPNS0_4FqdnERKS1_	nn::nsd::ResolveEx(nn::nsd::Fqdn*, nn::nsd::Fqdn const&)
+636 _ZN2nn4nifm22GetCurrentProxySettingEPNS0_12ProxySettingE	nn::nifm::GetCurrentProxySetting(nn::nifm::ProxySetting*)
+637 nnosGetSystemTick	nnosGetSystemTick
+638 nnosGetSystemTickFrequency	nnosGetSystemTickFrequency
+639 nnosGetCurrentThread	nnosGetCurrentThread
+640 nnosGetThreadPriority	nnosGetThreadPriority
+641 nnosCreateThread	nnosCreateThread
+642 nnosGetThreadCoreMask	nnosGetThreadCoreMask
+643 nnosSetThreadCoreMask	nnosSetThreadCoreMask
+644 nnosSetThreadNamePointer	nnosSetThreadNamePointer
+645 nnosDestroyThread	nnosDestroyThread
+646 nnosInitializeEvent	nnosInitializeEvent
+647 nnosStartThread	nnosStartThread
+648 nnosWaitEvent	nnosWaitEvent
+649 nnosFinalizeEvent	nnosFinalizeEvent
+650 nnosSignalEvent	nnosSignalEvent
+651 nnosWaitThread	nnosWaitThread
