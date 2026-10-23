@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-10-23T13:29:51.554723+00:00",
-  "phase": "3db resource/locale integrated2f68d64; ff originalstartup reachesallocatorlogf153; mathlibcoding",
-  "coordinator": "Codex root — sole Git/device/integration; DOC-HANDOFF-LIVE delegated sole four-file writer",
+  "updated_at": "2026-10-23T13:58:23.576778+00:00",
+  "phase": "Original startup at typed TLS allocator registration69; native callback and provider implementation in parallel",
+  "coordinator": "root sole Git/ADB and four-file documentation owner after DOC handback",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
   "active_writers": [
@@ -30,12 +30,13 @@
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration",
       "branch": "task/codex-integration",
       "acquired_at": "2026-10-23T09:29:16.172503+00:00",
-      "checkpoint": "d9a1667",
-      "objective": "User-connected RG477M actual install/load/JNI/Vulkan/display/leaf/compiler-runtime diagnostics; no data clear or fake full-game PASS"
+      "checkpoint": "92fd886e4338cb3b02a717dbaa991452489f7130",
+      "objective": "User-connected RG477M actual install/load/JNI/Vulkan/display/leaf/compiler-runtime diagnostics; no data clear or fake full-game PASS",
+      "write_state": "ACTIVE_ROOT"
     },
     {
       "task": "DOC-HANDOFF-LIVE",
-      "owner": "root coordinator — sole four-file writer",
+      "owner": "root coordinator",
       "paths": [
         "coordination/HANDOFF.md",
         "coordination/state.json",
@@ -44,63 +45,13 @@
       ],
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration",
       "branch": "task/codex-integration",
-      "acquired_at": "2026-10-23T13:05:43.110376+00:00",
-      "checkpoint": "7698a9e plus root approval-resolution WIP",
+      "acquired_at": "2026-10-23T13:53:56.645010+00:00",
+      "checkpoint": "92fd886 docs WIP; root temporarily transfers four-file lease",
       "write_state": "HANDED_BACK_ROOT_CHECKPOINT",
       "objective": "Preserve existing WIP and evidence; generated STATUS only; root alone stages/commits/integrates/device operations"
     },
     {
-      "task": "T02-VA-RESOURCE",
-      "owner": "/root/runtime",
-      "paths": [
-        "src/runtime/hle/guest_context.c",
-        "src/runtime/hle/guest_context.h",
-        "src/runtime/hle/guest_pages.c",
-        "src/runtime/hle/guest_pages.h",
-        "src/runtime/hle/address_region.c",
-        "src/runtime/hle/address_region.h",
-        "src/runtime/hle/guest_process.c",
-        "src/runtime/hle/guest_process.h",
-        "src/runtime/nso/nso_call.c",
-        "tests/native/guest_process_contract.c",
-        "scripts/runtime/build_guest_process_contract.sh",
-        "docs/analysis/codex_guest_process_report.md"
-      ],
-      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-va-resource",
-      "branch": "task/T02-va-resource",
-      "acquired_at": "2026-10-23T12:55:02.700590+00:00",
-      "checkpoint": "3db -> root2f68d64",
-      "write_state": "INTEGRATED2F68D64_COMPONENT_QA_FINAL",
-      "objective": "Actual bounded opt-in VA-management arena/metadata ownership, exact ledger/lifecycle, typed two-register SDK usage return; explicit policy not hostRAM/constant0; no guest binary edits"
-    },
-    {
-      "task": "T07-LAS-TRANSFER-REVIEW",
-      "owner": "/root/functional_review",
-      "paths": [
-        "functional-review/las-transfer/"
-      ],
-      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task",
-      "branch": null,
-      "acquired_at": "2026-10-23T12:59:09.309535+00:00",
-      "checkpoint": "81b1917 review f5213435",
-      "write_state": "FINAL_ACCEPTED_COMPONENT_NO_CURRENT_WRITES",
-      "objective": "Independent ordinary production C adapter/ownership/LASlicense source review and positive contract; no ADB/original binaries/old stoppedworkflow"
-    },
-    {
-      "task": "T07-VA-RESOURCE-REVIEW",
-      "owner": "/root/functional_review",
-      "paths": [
-        "functional-review/va-resource/"
-      ],
-      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task",
-      "branch": null,
-      "acquired_at": "2026-10-23T13:11:29.593427+00:00",
-      "checkpoint": "3db review1b5aea",
-      "write_state": "FINAL_BOUNDED_COMPONENT_NO_CURRENT_WRITES",
-      "objective": "Independent normal bounded allocator/ledger/ABI/locale C contracts; no originalgame/device/oldexceptionworkflow"
-    },
-    {
-      "task": "T02-STARTUP-NEXT",
+      "task": "T02-TLS-ALLOCATOR-PROVIDER",
       "owner": "/root/runtime",
       "paths": [
         "src/runtime/hle/guest_process.c",
@@ -109,67 +60,30 @@
         "scripts/runtime/build_guest_process_contract.sh",
         "docs/analysis/codex_guest_process_report.md"
       ],
-      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-startup-next",
-      "branch": "task/T02-startup-next",
-      "acquired_at": "2026-10-23T13:13:21.453306+00:00",
-      "checkpoint": "ff964e9d479e288e2b695b5100836def780ca4df",
-      "write_state": "FROZENFF964E9_ROOT_RG0_COMPONENTS_STARTUP_NOWLOGF153",
-      "objective": "Real capability67 from live owned VA backend and mature strcasecmp61 ABI; no constantstubs; preserve3db reviewfreeze"
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-tls-provider",
+      "branch": "task/T02-tls-provider",
+      "acquired_at": "2026-10-23T13:43:57.542396+00:00",
+      "checkpoint": "b19706c4cfc9fdd3246d85a12c880f922ae346d3",
+      "write_state": "ACTIVE_CODING",
+      "objective": "Actualonce/nonNULL module-owned TLS allocator pair and trueIDLE guestalloc/free consumers with lifecycle;HOSTstrictunsupported pendingindependentboundary"
     },
     {
-      "task": "T02-MALLOC-FAULT-PROVENANCE",
-      "owner": "/root/tls_research",
+      "task": "T02-NATIVE-HOST-CALLBACK",
+      "owner": "/root/vulkan",
       "paths": [
-        "startup-followups/malloc-null/"
+        "src/runtime/nso/native_boundary.c",
+        "src/runtime/nso/native_boundary.S",
+        "src/runtime/nso/native_boundary.h",
+        "tests/native/native_boundary_contract.c",
+        "scripts/runtime/build_native_boundary_contract.sh",
+        "docs/analysis/codex_native_host_callback_report.md"
       ],
-      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task",
-      "branch": null,
-      "acquired_at": "2026-10-23T13:13:21.453306+00:00",
-      "checkpoint": "3db actualRG malloc139/main+b705c/fa30",
-      "write_state": "COMPLETE_REPORT_B1A2BD_NO_CURRENT_WRITES",
-      "objective": "Focused actual newfault backward provenance, reuse known static hashes; no source/device/SDKTPexecution"
-    },
-    {
-      "task": "T02-MATH-IMPORT",
-      "owner": "/root/runtime",
-      "paths": [
-        "src/runtime/hle/guest_process.c",
-        "tests/native/guest_process_contract.c",
-        "scripts/runtime/build_guest_process_contract.sh",
-        "docs/analysis/codex_guest_process_report.md"
-      ],
-      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-math-runtime",
-      "branch": "task/T02-math-runtime",
-      "acquired_at": "2026-10-23T13:24:07.572671+00:00",
-      "checkpoint": "ff964e9d479e288e2b695b5100836def780ca4df",
-      "write_state": "ACTIVATING_NOW",
-      "objective": "Current real allocator logf153 pureFP typed matureBioniclibm reuse; no invented algorithm, no bulkunprovedsig/stub"
-    },
-    {
-      "task": "T02-BOOT-ORDER-REUSE",
-      "owner": "/root/tls_research",
-      "paths": [
-        "startup-followups/boot-order/"
-      ],
-      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task",
-      "branch": null,
-      "acquired_at": "2026-10-23T13:24:07.572671+00:00",
-      "checkpoint": "LASfe66 main.c concreteentryorder vs current SDKStart",
-      "write_state": "ACTIVATING_NOW",
-      "objective": "Bounded maturebootorder reuse and exactSDKStartABI beforeactualCRTentry integration; no game/source/deviceexecution"
-    },
-    {
-      "task": "T07-STARTUP-NEXT-REVIEW",
-      "owner": "/root/functional_review",
-      "paths": [
-        "functional-review/startup-next/"
-      ],
-      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task",
-      "branch": null,
-      "acquired_at": "2026-10-23T13:27:59.854244+00:00",
-      "checkpoint": "ff964e9d479e288e2b695b5100836def780ca4df",
-      "write_state": "ACTIVATING_NOW",
-      "objective": "Only5-file61/67 typedpositiveincrementalreview onaccepted3db; no repeatedwholeownerQA orADB/originalgame"
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-native-host-callback",
+      "branch": "task/T02-native-host-callback",
+      "acquired_at": "2026-10-23T13:43:57.542396+00:00",
+      "checkpoint": "7beeb22294311cc3c896ec23ac23561fca9d6b6d",
+      "write_state": "ACTIVE_CODING",
+      "objective": "ExplicitownedHOST->guestcallback->sameboundhostimports, actualcurrentSCS/x18/phase restore;notCPUemulation/TPwrite/no fakephase reset"
     }
   ],
   "tasks": [
@@ -908,8 +822,8 @@
       "branch": "task/codex-integration",
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration",
       "scope": "Four designated documentation/state files only; preserve inherited WIP; coordinator alone stages/commits/integrates",
-      "checkpoint_status": "7698_APPROVAL_RESOLVED_F928_DELIVERY_LAS_RG0_LOCALE_REA_LIMITS_CURRENT_ENTRY_UNIFIED",
-      "activity_state": "PAUSED_FOUR_FILES_HANDBACK_FOR_ROOT_CHECKPOINT"
+      "checkpoint_status": "CURRENT_ENTRY_CONDENSED92_RG_RECHECK_GATE69",
+      "activity_state": "PAUSED_FOUR_FILES_HANDBACK_FOR_ROOT_SERIAL_CHECKPOINT"
     },
     {
       "id": "T04-VULKAN-BUFFER-RESOURCE",
@@ -2001,7 +1915,7 @@
     {
       "id": "T07-LAS-TRANSFER-REVIEW",
       "role": "QA_GRAPHICS_COMPONENT",
-      "status": "in_progress",
+      "status": "passed",
       "owner": "/root/functional_review",
       "dependencies": [
         "T00R"
@@ -2031,8 +1945,8 @@
     {
       "id": "T02-STARTUP-NEXT",
       "role": "CORE",
-      "status": "in_progress",
-      "owner": "ff frozen/rootRG components0; independentreviewactive",
+      "status": "passed",
+      "owner": "/root/runtime — frozen/handed back",
       "branch": "task/T02-startup-next",
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-startup-next",
       "report": "docs/analysis/codex_guest_process_report.md",
@@ -2045,16 +1959,17 @@
     {
       "id": "T07-STARTUP-NEXT-REVIEW",
       "role": "QA",
-      "status": "in_progress",
-      "owner": "/root/functional_review actualincrementreview",
+      "status": "passed",
+      "owner": "/root/functional_review — handed back idle",
       "branch": null,
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/functional-review/startup-next",
-      "report": null,
+      "report": "docs/analysis/codex_startup_next_review.md",
       "dependencies": [
         "T02-VA-RESOURCE"
       ],
       "pass_gates": [],
-      "acceptance_scope": "Onlyff964e9deltaonaccepted3db;rootnotreviewerdevice"
+      "acceptance_scope": "Onlyff964e9deltaonaccepted3db;rootnotreviewerdevice",
+      "execution_status": "FINAL_INCREMENTAL_COMPONENT_REVIEW_COMPLETE"
     },
     {
       "id": "T02-MALLOC-FAULT-PROVENANCE",
@@ -2073,8 +1988,8 @@
     {
       "id": "T02-MATH-IMPORT",
       "role": "CORE",
-      "status": "in_progress",
-      "owner": "/root/runtime actualfourfilecoding/buildsession7499",
+      "status": "passed",
+      "owner": "/root/runtime — frozen/handed back",
       "branch": "task/T02-math-runtime",
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-math-runtime",
       "report": "docs/analysis/codex_guest_process_report.md",
@@ -2085,13 +2000,13 @@
         "T02-STARTUP-NEXT",
         "T07-STARTUP-NEXT-REVIEW"
       ],
-      "acceptance_scope": "ReuseactualBioniclibmlogf/currentFPboundary;hostcontract0,Androidbuildinprogress,notyetfreeze/device",
+      "acceptance_scope": "b197 real system logf FP contract RG0; original startup now69/133, independent FINAL. Not full initialization/CRT/game.",
       "input_freeze": "ff964e9 source+rootcomponents available; implementation input is frozen, independent acceptance is separatepassgate"
     },
     {
       "id": "T02-BOOT-ORDER-REUSE",
       "role": "RE",
-      "status": "in_progress",
+      "status": "passed",
       "owner": "/root/tls_research actualreadonlyreportclosing",
       "branch": null,
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/startup-followups/boot-order",
@@ -2101,10 +2016,87 @@
       ],
       "pass_gates": [],
       "acceptance_scope": "LASsourceorder locallycheckedSDK5argsvsLAS4;originalStartunsafeTPdependency,noentryexecution"
+    },
+    {
+      "id": "T02-TLS-ALLOCATOR-PROVIDER",
+      "role": "CORE",
+      "status": "in_progress",
+      "dependencies": [
+        "T00R"
+      ],
+      "pass_gates": [],
+      "owner": "/root/runtime",
+      "branch": "task/T02-tls-provider",
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-tls-provider",
+      "scope_paths": [
+        "src/runtime/hle/guest_process.c",
+        "src/runtime/hle/guest_process.h",
+        "tests/native/guest_process_contract.c",
+        "scripts/runtime/build_guest_process_contract.sh",
+        "docs/analysis/codex_guest_process_report.md"
+      ],
+      "checkpoint": "b19706c4cfc9fdd3246d85a12c880f922ae346d3",
+      "execution_status": "ACTIVE_SCOPED_IMPLEMENTATION_NOT_FROZEN_NOT_DEVICE_ACCEPTED",
+      "objective": "Actualonce/nonNULL module-owned TLS allocator pair and trueIDLE guestalloc/free consumers with lifecycle;HOSTstrictunsupported pendingindependentboundary",
+      "implementation_scope": "Five files: once-only nonNULL module-owned TLS allocator registration; true IDLE typed alloc/free, live allocations retain owner; build in progress. No fake registration/default objects."
+    },
+    {
+      "id": "T02-NATIVE-HOST-CALLBACK",
+      "role": "NATIVE_ABI_ENGINEER",
+      "status": "in_progress",
+      "dependencies": [
+        "T00R"
+      ],
+      "pass_gates": [],
+      "owner": "/root/vulkan",
+      "branch": "task/T02-native-host-callback",
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-native-host-callback",
+      "scope_paths": [
+        "src/runtime/nso/native_boundary.c",
+        "src/runtime/nso/native_boundary.S",
+        "src/runtime/nso/native_boundary.h",
+        "tests/native/native_boundary_contract.c",
+        "scripts/runtime/build_native_boundary_contract.sh",
+        "docs/analysis/codex_native_host_callback_report.md"
+      ],
+      "checkpoint": "7beeb22294311cc3c896ec23ac23561fca9d6b6d",
+      "execution_status": "ACTIVE_SCOPED_IMPLEMENTATION_NOT_FROZEN_NOT_DEVICE_ACCEPTED",
+      "objective": "ExplicitownedHOST->guestcallback->sameboundhostimports, actualcurrentSCS/x18/phase restore;notCPUemulation/TPwrite/no fakephase reset",
+      "implementation_scope": "Six files: nb_call_from_host bounded nesting4, actual host SCS/x18 restore, same owned binding/lifecycle; no TP write/phase spoof/CPU interpreter."
+    },
+    {
+      "id": "T07-NATIVE-HOST-CALLBACK-REVIEW",
+      "role": "QA_NATIVE_CALLBACK",
+      "status": "pending",
+      "dependencies": [
+        "T00R"
+      ],
+      "pass_gates": [],
+      "owner": "/root/tls_research",
+      "branch": null,
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/functional-review/native-host-callback",
+      "report": "../functional-review/native-host-callback/REVIEW.md",
+      "execution_status": "PRE_FREEZE_PLAN_RETURNED_WAITING_IMMUTABLE_FREEZE_NOT_EXECUTING_TESTS",
+      "scope": "Pre-freeze plan completed only; actual component QA waits for frozen input, no ADB/original game"
+    },
+    {
+      "id": "T07-MATH-IMPORT-REVIEW",
+      "role": "QA_MATH_IMPORT",
+      "dependencies": [
+        "T00R"
+      ],
+      "pass_gates": [],
+      "status": "passed",
+      "owner": "/root/functional_review — handed back idle",
+      "execution_status": "FINAL_INCREMENTAL_COMPONENT_REVIEW_COMPLETE",
+      "report": "docs/analysis/codex_math_runtime_review.md",
+      "report_sha256": "7b8f4a0dfb36401fecf4ecdb0667ea066ca6fb1883646406995c33abbc96d6d2",
+      "scope": "Frozen b197 logf FP typed gateway only; root RG separate, not full startup/CRT",
+      "branch": null
     }
   ],
   "blockers": [
-    "Latest ffactualRG originalstartupbothargs passed61/67 andstrictstopslogf153/+b3eac/133 inrealallocatorctorchain137f4/ae93c/af320.13preinitmalloc139 sourcedbeforeobjectctor,notpassed/notTLSfault. Fullstartup/CRT notcomplete. MatureBioniclibm mathFP importcoding; bootorderSDK5argvsLAS4argreadonlycheckinparallel.",
+    "Latest executed b197 RG logf FP contract0; original startup empty/nonempty both stop SetMemoryAllocatorForThreadLocal69, allocator main+0x13830/free main+0x13870, actual mappings1286144+1048576, exit133/no timeout. Provider registration/IDLE consumers and HOST callback are active isolated components, not frozen/accepted. Root integrated92 build process exit0; new combined RG raw0,0,0,0,133,133/no timeout, both original startups still69. Actual caller_address/outside_module=true diagnostic verified. Full startup/CRT/title/game unmet.",
     "NVN535名字仅2查询入口可解析、533缺失，59缺PFN类型不能猜ABI。新生产VkBuffer组件已同RG transfer contract0，但尚无游戏NVN→Vulkan资源/队列/着色器/present桥接，标题/game_rendering仍未过。",
     "既有 RomFS 流式工具和资源清单不等于游戏运行时挂载/IoStore 解压成功；尚未集成。保留合法本地素材，不获取新游戏或密钥。",
     "旧完整NSO安全/异常QA被平台检查中止，不重试；普通组件独立review已分别通过，不替代完整游戏QA。",
@@ -2193,7 +2185,7 @@
     "workers_reasoning": "xhigh",
     "completion": "unproven",
     "human_local_development_approval": "User directly approved local development and commits; later fully authorized access. Existing task boundaries remain, no remote publication or data clearing.",
-    "next_goal": "Real logfFPimportviaexistinggateway/Bioniclibm -> originalallocatorstartupcontinuation; exactSDKfive-argbootorderandfullCRTnext. No made-upconstructor/TP ordefaultobject.",
+    "next_goal": "Complete typed allocator69 provider and bounded HOST callback; freeze -> scoped independent QA -> root original startup recheck. Integrated92 RG completed raw0,0,0,0,133,133, still69; no full CRT/title/game.",
     "loop": "Locate real blocker -> smallest functional code fix -> compile -> real device recheck -> local checkpoint -> next gate",
     "parallel_scope": "Runtime, graphics, ordinary QA and documentation operate in assigned scopes; no repeated research of confirmed facts, no fake stubs",
     "reporting": "Report material breakthroughs, required user action or real blockers; no artificial progress from diagnostic counts"
@@ -2279,18 +2271,18 @@
     "latest_evidence": ".local/device/rg477m-session1/startup-next-v1-execution.json",
     "las_transfer_evidence": ".local/device/rg477m-session1/las-transfer-v1-execution.json"
   },
-  "parallelism_note": "Actual3workers:runtimefivefile61/67innewtree;functional_reviewfrozen3dbnormalCQA;tls_researchfreshmallocnullprovenance. Doc/vulkanpaused. RootADB/Git/docs; combinedLASsourcebuild58expected/RG0 completed,session43347ended0.",
+  "parallelism_note": "Two active coders: runtime TLS-provider5files and vulkan native-host-callback6files; DOC four-file maintenance. tls_research pre-freeze QA plan returned/waiting freeze, not testing; functional_review idle. Root sole Git/ADB and other reports. DOC current entry condensed and paused for root serial checkpoint; two coders continue.",
   "handoff_checkpoint": {
-    "known_at_utc": "2026-10-23T13:08:46.175383+00:00",
-    "integration_HEAD": "2f68d64",
+    "known_at_utc": "2026-10-23T13:56:56.571016+00:00",
+    "integration_HEAD": "92fd886e4338cb3b02a717dbaa991452489f7130",
     "original_delivery_last_verified": "f9284ea44f10a0d3a838c554508a3e911635b49f",
-    "doc_writer": "root",
+    "doc_writer": "Four files paused and handed back, root may checkpoint/safeff; no further DOC writes until resumed",
     "note": "Read git rev-parse for commit containing this snapshot; self-SHA deliberately not guessed",
-    "observed_at_utc": "2026-10-23T13:08:46.175383+00:00",
+    "observed_at_utc": "2026-10-23T13:56:56.571016+00:00",
     "original_delivery_HEAD": "f9284ea44f10a0d3a838c554508a3e911635b49f",
-    "original_delivery_state": "EXPLICIT_USER_BRANCH_APPROVAL_SAFE_FF_COMPLETED_CLEAN_NO_PUSH",
-    "integration_state": "3DB_CODE_INTEGRATED_QA_FINAL_FF_INCREMENT_REVIEW_ACTIVE",
-    "doc_write_status": "ROOT_CHECKPOINT_IN_PROGRESS",
+    "original_delivery_state": "EXPLICIT_BRANCH_APPROVAL_SAFE_FF_COMPLETED_CLEAN_NO_PUSH",
+    "integration_state": "92FD_BUILD0_AND_ROOT_RG0_0_0_0_133_133_CURRENT_STARTUP69",
+    "doc_write_status": "PAUSED_HANDBACK_FOR_ROOT_SERIAL_CHECKPOINT",
     "runtime_dirty_observed": [],
     "runtime_git_last_verified_at_utc": "2026-10-23T12:17:22.629571+00:00",
     "stack13_snapshot": {
@@ -2303,12 +2295,39 @@
     },
     "single_entry": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration/coordination/HANDOFF.md",
     "coordinator_handback_additions": "Preservedreuse-table,9216B no-game-byte boundaryfixtureproof andwithdrawnpercentageclaim;no newframework/norepeatexecution",
-    "original_delivery_git_last_verified_at_utc": "2026-10-23T13:08:46.175383+00:00",
-    "integration_git_last_verified_at_utc": "2026-10-23T13:08:46.175383+00:00",
+    "original_delivery_git_last_verified_at_utc": "2026-10-23T13:56:56.571016+00:00",
+    "integration_git_last_verified_at_utc": "2026-10-23T13:56:56.571016+00:00",
     "runtime_HEAD": "9dc8aa73c6e2d038c2b1c89efd898b65fbf0d1bb",
     "integration_HEAD_source": "Direct read integration HEAD; never guess containing-document self SHA",
-    "latest_device_event": "ff5components+info0,bothstartup153logf/133;3dbintegrated2f68d64,ffincrementreviewactive",
-    "entry_copy_in_delivery": "Original work branch has checkpoint f9284ea; newer LAS/approval-resolution docs remain in integration pending next root checkpoint/safeff"
+    "latest_device_event": "Integrated92 RG systemlogf/native/normal/info0, startup empty/nonempty69/133, no timeout; caller_address/outside_module true diagnosed correctly",
+    "entry_copy_in_delivery": "Original work branch remains f9284ea clean; newer integration snapshot awaits authorized root checkpoint/safeff, no pending approval",
+    "integrated_build": {
+      "directory": ".local/runtime/integrated-92fd886",
+      "manifest": ".local/runtime/integrated-92fd886/manifest.json",
+      "process_returncode": 0,
+      "source": "92fd886e4338cb3b02a717dbaa991452489f7130",
+      "RG_execution": "COMPLETED_MATCHED_EXPECTED_NOT_FULL_STARTUP",
+      "execution": ".local/device/rg477m-session1/integrated-runtime-v1-execution.json",
+      "raw_returncodes": [
+        0,
+        0,
+        0,
+        0,
+        133,
+        133
+      ],
+      "no_timeout": true,
+      "freeze_sha256": "45f0222985aeee189525b98dc1a74267c0b7ab0ce42f37eaa63dadc072bd0383",
+      "cli": {
+        "bytes": 807776,
+        "sha256": "8300d0a19ef7d02ad8083d8bf3999dcb8d43cc237ad947e0a792a15bd7f37388"
+      },
+      "normal": {
+        "bytes": 977456,
+        "sha256": "13f7dbc08031c98ef7ab3ce22b898f2105511f63185daab3b8113d97ec802d6e"
+      }
+    },
+    "doc_validation_note": "First STATUS generation exit1: newly recorded review task lacked branch field; added explicit null branch, then regenerate. No source/tests/device rerun."
   },
   "runtime_risks": [
     {
@@ -2321,8 +2340,8 @@
       "objdump_exit": 0,
       "observations": "Runtime readonly report: Android CLI+0x22134 branches BRx8 without x18 save/restore; profile imports directly target typed host functions; original nnMain strict trap x18=1. Runtime notes Android system library x18 preservation contract.",
       "causality": "Not proven cause of current failure, which remains explicit unresolved-import133.",
-      "todo": "Current original startup gates66/63 and CRT515; fixedGP21 transport is rootRG0 with limited independent review/C20s timeout. Full signatures/foreign unwind/ELF TLS still unsupported; no fake musl.",
-      "next_component": "9dc owned argv integrated3af/independent53 expected commands FINAL/rootRG6contracts0;7be integrated9cd/rootRG0. Actual management arena66+Bionic63 active isolated12-file scope, not frozen."
+      "todo": "Current allocator69 may need genuine HOST->guest callback; isolated six-file bounded4 implementation active, not accepted. Fixed GP21 scalar transport works for declared signatures only; full foreign unwind/ELF TLS/CRT remain unsupported.",
+      "next_component": "Current two writers: TLS provider5 + HOST callback6. Prior logf/ff incremental reviews FINAL, no current functional QA execution; new QA waits freeze."
     },
     {
       "id": "NATIVE_BOUNDARY_2F_RETAINED_MAPPING_LOSS",
@@ -2423,7 +2442,7 @@
     "clean": true,
     "no_remote_push": true,
     "prior_auto_rejection_retained": ".local/integration-approval/original-ff-f9284ea-rejection.json",
-    "last_verified_at_utc": "2026-10-23T13:08:46.175383+00:00"
+    "last_verified_at_utc": "2026-10-23T13:56:56.571016+00:00"
   },
   "coordination_validation_note": "Initialmath task incorrectlylisted not-yetacceptedff asstartdependency; validator reportedunmet. Correctedtoaccepted3dbstartbase andff/independentreview aspassgates; no source/test success inferred fromvalidator."
 }
