@@ -3,6 +3,7 @@
 set -euo pipefail
 DEVICE_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FFRS_ROOT="$(cd "${DEVICE_SCRIPT_DIR}/../.." && pwd)"
+FFRS_ROOT="${FFRS_SOURCE_ROOT:-${FFRS_ROOT}}"
 FFRS_SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-${HOME}/Library/Android/sdk}}"
 FFRS_NDK="${ANDROID_NDK_ROOT:-}"
 if [[ "${FFRS_USE_MINIMAL_TOOLCHAIN:-0}" == 1 ]]; then
@@ -46,7 +47,7 @@ if [[ "${FFRS_USE_MINIMAL_TOOLCHAIN:-0}" == 1 ]]; then
     FFRS_BUILD="${FFRS_ANDROID_BUILD_DIR:-${FFRS_ROOT}/.local/build/android-arm64-minimal}"
 fi
 FFRS_ARTIFACTS="${FFRS_ROOT}/.local/artifacts/android"
-FFRS_LOGS="${FFRS_ROOT}/.local/logs/android"
+FFRS_LOGS="${FFRS_ANDROID_LOG_DIR:-${FFRS_ROOT}/.local/logs/android}"
 mkdir -p "${FFRS_BUILD}" "${FFRS_ARTIFACTS}" "${FFRS_LOGS}"
 # Each step preserves the executed command, full output, and actual command exit.
 ffrs_run() {

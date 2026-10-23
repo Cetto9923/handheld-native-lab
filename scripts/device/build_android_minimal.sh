@@ -49,7 +49,7 @@ if [[ "${1:-}" == '--all' ]]; then
         DIAGNOSTIC_FLAGS=(-I "${NVN_DIR}/include" -DFFRS_HAS_NVN_DIAGNOSTICS=1)
         GRAPHICS_OBJECTS=("${FFRS_BUILD}/objects/nvn_dispatch.o")
     fi
-    for source in nso_diagnostic diagnostic_main diagnostic_jni; do
+    for source in nso_diagnostic diagnostic_main diagnostic_jni leaf_validation leaf_jni; do
         ffrs_run "minimal-compile-${source}" clang++ "${COMMON[@]}" "${CXX[@]}" "${DIAGNOSTIC_FLAGS[@]}" -c \
             "${FFRS_ROOT}/src/android/native/${source}.cpp" -o "${FFRS_BUILD}/objects/${source}.o"
     done
@@ -59,7 +59,8 @@ if [[ "${1:-}" == '--all' ]]; then
         "${NSO_OBJECTS[@]}" "${FFRS_BUILD}/objects/diagnostic_main.o" "${LIBRARIES[@]}" "${API_LIBS}/crtend_android.o"
     ffrs_run minimal-link-jni "${LINK[@]}" -shared --no-undefined -soname libffrs_diagnostic.so \
         -o "${FFRS_BUILD}/libffrs_diagnostic.so" "${API_LIBS}/crtbegin_so.o" "${OBJECTS[@]}" \
-        "${NSO_OBJECTS[@]}" "${FFRS_BUILD}/objects/diagnostic_jni.o" "${LIBRARIES[@]}" "${API_LIBS}/crtend_so.o"
+        "${NSO_OBJECTS[@]}" "${FFRS_BUILD}/objects/diagnostic_jni.o" "${FFRS_BUILD}/objects/leaf_validation.o" \
+        "${FFRS_BUILD}/objects/leaf_jni.o" "${LIBRARIES[@]}" "${API_LIBS}/crtend_so.o"
     cp "${FFRS_BUILD}/nso_diagnostic" "${FFRS_ARTIFACTS}/nso_diagnostic"
     cp "${FFRS_BUILD}/libffrs_diagnostic.so" "${FFRS_ARTIFACTS}/libffrs_diagnostic.so"
 fi

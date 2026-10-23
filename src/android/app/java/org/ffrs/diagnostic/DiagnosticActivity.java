@@ -27,7 +27,13 @@ import org.json.JSONObject;
 public final class DiagnosticActivity extends Activity implements View.OnClickListener, Runnable, Handler.Callback {
     static { System.loadLibrary("ffrs_diagnostic"); }
     private native String runNativeDiagnostic(String modulePath, String reportPath);
+    private native String runNativeLeafDiagnostic(String libraryPath, String reportPath);
     private Button button;
+    private Button leafButton;
+    private boolean leafMode;
+    private boolean hardwareReady;
+    private String leafLibrary;
+    private String leafReport;
     private TextView result;
     private Handler handler;
     private String module;
@@ -51,6 +57,9 @@ public final class DiagnosticActivity extends Activity implements View.OnClickLi
         button = new Button(this);
         button.setText("Run hardware + NSO loader diagnostics");
         layout.addView(button);
+        leafButton = new Button(this);
+        leafButton.setText("Validate optional original leaf · 16,875 samples");
+        layout.addView(leafButton);
         eventStatus = new TextView(this);
         eventStatus.setText("Hardware event capture: waiting. This tests the diagnostic host only.");
         layout.addView(eventStatus);
@@ -65,6 +74,9 @@ public final class DiagnosticActivity extends Activity implements View.OnClickLi
         eventFile = new File(getFilesDir(), "hardware-events.jsonl");
         recordEvent("onCreate", new JSONObject());
         probePrivateStorage();
+        leafLibrary = new File(getFilesDir(), "libffrs_leaf.so").getAbsolutePath();
+        leafReport = new File(getFilesDir(), "leaf-report.json").getAbsolutePath();
+        leafButton.setOnClickListener(this);
         File root = getExternalFilesDir(null);
         if (root == null) root = getFilesDir();
         File modules = new File(root, "modules");
@@ -75,31 +87,38 @@ public final class DiagnosticActivity extends Activity implements View.OnClickLi
         }
         module = new File(modules, "main.nso").getAbsolutePath();
         report = new File(root, "diagnostic.json").getAbsolutePath();
+        hardwareReady = true;
         result.setText("No game module is included.\nAuthorized uncompressed NSO path:\n" + module
-                + "\n\nReport path:\n" + report + "\n\nThis carrier only loads and relocates; it does not execute game code.");
+                + "\n\nReport path:\n" + report + "\n\nNSO mode only loads and relocates."
+                + "\nOptional leaf library (generated locally, absent = NOT_RUN):\n" + leafLibrary
+                + "\nLeaf source: main+0x694bd0, SHA256 8a6e3c4fbd3164c966e2d164e0b59f140a162be1a4cf260b60beefae9921c9c9"
+                + "\nPlanned leaf samples: 16,875. Full game startup and rendering remain NOT_RUN.");
         button.setOnClickListener(this);
         button.requestFocus();
     }
 
     @Override public void onClick(View view) {
-        recordEvent("native_diagnostic_start", new JSONObject());
+        leafMode = view == leafButton;
+        recordEvent(leafMode ? "leaf_diagnostic_start" : "native_diagnostic_start", new JSONObject());
         button.setEnabled(false);
-        result.setText("Running diagnostics...\nGame code execution: NOT_RUN");
+        leafButton.setEnabled(false);
+        result.setText(leafMode ? "Checking optional leaf identity before any call..." : "Running hardware + NSO diagnostics...");
         new Thread(this, "ffrs-diagnostic").start();
     }
 
     @Override public void run() {
         String diagnostics;
-        try { diagnostics = runNativeDiagnostic(module, report); }
+        try { diagnostics = leafMode ? runNativeLeafDiagnostic(leafLibrary, leafReport) : runNativeDiagnostic(module, report); }
         catch (Throwable failure) { diagnostics = "JNI_FAILED: " + failure.toString(); }
         handler.obtainMessage(1, diagnostics).sendToTarget();
     }
 
     @Override public boolean handleMessage(Message message) {
-        recordEvent("native_diagnostic_finish", new JSONObject());
+        recordEvent(leafMode ? "leaf_diagnostic_finish" : "native_diagnostic_finish", new JSONObject());
         if (!isFinishing() && !isDestroyed()) {
             result.setText((String) message.obj);
-            button.setEnabled(true);
+            button.setEnabled(hardwareReady);
+            leafButton.setEnabled(true);
         }
         return true;
     }

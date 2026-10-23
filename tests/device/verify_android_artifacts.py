@@ -53,6 +53,8 @@ with zipfile.ZipFile(args.apk) as apk:
                                 capture_output=True, text=True, check=True)
         if 'Java_org_ffrs_diagnostic_DiagnosticActivity_runNativeDiagnostic' not in result.stdout:
             raise SystemExit('JNI entry point absent from native symbol table')
+        if 'Java_org_ffrs_diagnostic_DiagnosticActivity_runNativeLeafDiagnostic' not in result.stdout:
+            raise SystemExit('Leaf JNI entry point absent from native symbol table')
         if 'nso_load_file' not in result.stdout:
             raise SystemExit('NSO loader absent from native symbol table')
         if 'TEXTREL' in result.stdout:

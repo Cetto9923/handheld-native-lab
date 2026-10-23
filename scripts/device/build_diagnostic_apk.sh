@@ -2,19 +2,36 @@
 # Offline packaging after NDK installation. Uses only installed SDK tools + JDK.
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/android_env.sh"
+if [[ -z "${FFRS_ANDROID_LOG_DIR:-}" ]]; then
+    FFRS_LOGS="$(mktemp -d "${FFRS_ROOT}/.local/logs/android-build.XXXXXX")"
+    export FFRS_ANDROID_LOG_DIR="${FFRS_LOGS}"
+fi
+finish_build() {
+    local result=$?
+    trap - EXIT
+    python3 "${DEVICE_SCRIPT_DIR}/record_build_evidence.py" --source-root "${FFRS_ROOT}" \
+        --logs "${FFRS_LOGS}" --artifacts "${FFRS_ARTIFACTS}" --overall-exit "${result}" || result=6
+    printf 'Build evidence: %s/build-evidence.json\nStep logs: %s\n' "${FFRS_ARTIFACTS}" "${FFRS_LOGS}"
+    exit "${result}"
+}
+trap finish_build EXIT
 printf 'NOT_RUN\n' > "${FFRS_LOGS}/source-guard.exitcode"
 snapshot_sources() {
     python3 - "${FFRS_ROOT}" "${FFRS_RUNTIME_DIR:-${FFRS_ROOT}/src/runtime/nso}" \
         "${FFRS_NVN_DIR:-${FFRS_ROOT}/src/graphics/nvn}" <<'PY'
-import hashlib, json, subprocess, sys
+import hashlib, json, os, subprocess, sys
 from pathlib import Path
 root, runtime, graphics = map(Path, sys.argv[1:])
 paths = set()
-for directory in (root / 'src/android', root / 'scripts/device', runtime, graphics):
+for directory in (root / 'src/android', root / 'scripts/device', root / 'tests/device', runtime, graphics):
     if directory.exists():
-        paths.update(p for p in directory.rglob('*') if p.is_file() and p.suffix in ('.c', '.cpp', '.h', '.java', '.xml', '.sh', '.py'))
-commit = subprocess.run(['git', '-C', str(runtime), 'rev-parse', 'HEAD'], capture_output=True, text=True, check=True).stdout.strip()
-print(json.dumps({'runtime_repository_head': commit, 'files': [
+        paths.update(p for p in directory.rglob('*') if p.is_file()
+                     and '__pycache__' not in p.parts and p.name != '.DS_Store' and p.suffix != '.pyc')
+def git(directory, *args):
+    return subprocess.run(['git', '-C', str(directory), *args], capture_output=True, text=True, check=True).stdout.strip()
+commit = os.environ.get('FFRS_DEPENDENCY_REVISION') or git(runtime, 'rev-parse', 'HEAD')
+print(json.dumps({'source_root':str(root.resolve()), 'source_HEAD':git(root, 'rev-parse', 'HEAD'),
+    'source_dirty':git(root, 'status', '--porcelain'), 'runtime_source_revision': commit, 'files': [
     {'path': str(p.resolve()), 'bytes': p.stat().st_size, 'sha256': hashlib.sha256(p.read_bytes()).hexdigest()}
     for p in sorted(paths)]}, indent=2))
 PY
@@ -38,14 +55,14 @@ PACKAGE_DIR="$(mktemp -d "${FFRS_BUILD}/apk.XXXXXX")"
 mkdir -p "${PACKAGE_DIR}/classes" "${PACKAGE_DIR}/dex" "${PACKAGE_DIR}/payload/lib/arm64-v8a"
 ffrs_run javac javac --release 8 -classpath "${FFRS_ANDROID_JAR}" -g -d "${PACKAGE_DIR}/classes" \
     "${FFRS_ROOT}/src/android/app/java/org/ffrs/diagnostic/DiagnosticActivity.java"
-jar cf "${PACKAGE_DIR}/classes.jar" -C "${PACKAGE_DIR}/classes" .
+ffrs_run jar jar cf "${PACKAGE_DIR}/classes.jar" -C "${PACKAGE_DIR}/classes" .
 ffrs_run dex "${FFRS_BUILD_TOOLS}/d8" --min-api 28 --lib "${FFRS_ANDROID_JAR}" --output "${PACKAGE_DIR}/dex" "${PACKAGE_DIR}/classes.jar"
 ffrs_run package-manifest "${FFRS_BUILD_TOOLS}/aapt" package -f \
     -M "${FFRS_ROOT}/src/android/app/AndroidManifest.xml" -S "${FFRS_ROOT}/src/android/app/res" \
     -I "${FFRS_ANDROID_JAR}" -F "${PACKAGE_DIR}/unsigned.apk"
 cp "${PACKAGE_DIR}/dex/classes.dex" "${PACKAGE_DIR}/payload/classes.dex"
-"${FFRS_LLVM}/bin/llvm-strip" --strip-debug -o "${PACKAGE_DIR}/payload/lib/arm64-v8a/libffrs_diagnostic.so" "${FFRS_BUILD}/libffrs_diagnostic.so"
-(cd "${PACKAGE_DIR}/payload" && zip -q -r "${PACKAGE_DIR}/unsigned.apk" classes.dex lib)
+ffrs_run strip "${FFRS_LLVM}/bin/llvm-strip" --strip-debug -o "${PACKAGE_DIR}/payload/lib/arm64-v8a/libffrs_diagnostic.so" "${FFRS_BUILD}/libffrs_diagnostic.so"
+ffrs_run payload-zip bash -c 'cd "$1" && zip -q -r "$2" classes.dex lib' _ "${PACKAGE_DIR}/payload" "${PACKAGE_DIR}/unsigned.apk"
 ffrs_run zipalign "${FFRS_BUILD_TOOLS}/zipalign" -f -p 4 "${PACKAGE_DIR}/unsigned.apk" "${PACKAGE_DIR}/aligned.apk"
 snapshot_sources > "${FFRS_LOGS}/build-input-after-compile.json"
 if ! cmp -s "${FFRS_LOGS}/build-input-before.json" "${FFRS_LOGS}/build-input-after-compile.json"; then
@@ -63,13 +80,20 @@ if [[ ! -f "${SIGNING_DIR}/diagnostic-debug.p12" ]]; then
         > "${FFRS_LOGS}/debug-key-generation.log" 2>&1
 fi
 APK="${FFRS_ARTIFACTS}/ffrs-diagnostic-debug.apk"
+sign_result=0
 "${FFRS_BUILD_TOOLS}/apksigner" sign --ks "${SIGNING_DIR}/diagnostic-debug.p12" --ks-key-alias androiddebugkey \
     --ks-pass pass:android --key-pass pass:android --out "${APK}" "${PACKAGE_DIR}/aligned.apk" \
-    > "${FFRS_LOGS}/sign.log" 2>&1
+    > "${FFRS_LOGS}/sign.log" 2>&1 || sign_result=$?
+printf '%s\n' "${sign_result}" > "${FFRS_LOGS}/sign.exitcode"
+if [[ "${sign_result}" != 0 ]]; then cat "${FFRS_LOGS}/sign.log"; exit "${sign_result}"; fi
 ffrs_run apk-signature "${FFRS_BUILD_TOOLS}/apksigner" verify --verbose --print-certs "${APK}"
 ffrs_run apk-manifest "${FFRS_BUILD_TOOLS}/aapt" dump badging "${APK}"
 ffrs_run apk-structure python3 "${FFRS_ROOT}/tests/device/verify_android_artifacts.py" \
     --apk "${APK}" --readelf "${FFRS_LLVM}/bin/llvm-readelf"
+if [[ -n "${FFRS_REVIEWED_LEAF_LIBRARY:-}" ]]; then
+    ffrs_run leaf-not-embedded python3 "${FFRS_ROOT}/tests/device/verify_leaf_exclusion.py" \
+        --apk "${APK}" --reviewed-library "${FFRS_REVIEWED_LEAF_LIBRARY}"
+fi
 snapshot_sources > "${FFRS_LOGS}/build-input-after.json"
 if ! cmp -s "${FFRS_LOGS}/build-input-before.json" "${FFRS_LOGS}/build-input-after.json"; then
     printf '5\n' > "${FFRS_LOGS}/source-guard.exitcode"

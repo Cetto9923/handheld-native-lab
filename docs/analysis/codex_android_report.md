@@ -4,7 +4,7 @@
 
 ## Scope and status
 
-This is an Android carrier and load-only diagnostic pipeline. It does not claim game startup, rendering, title screen, gameplay, or performance. The application invokes the shared `src/runtime/nso/nso_loader.c` in place, then releases the module; it never calls constructors or a game entry point. No game module/resource/credential is packaged. Missing `modules/main.nso` is reported as `BLOCKED_MODULE`.
+This is an Android carrier and load-only diagnostic pipeline. It does not claim game startup, rendering, title screen, gameplay, or performance. The NSO mode invokes the shared `src/runtime/nso/nso_loader.c` in place, then releases the module; it never calls constructors or a game entry point. No game module/resource/credential is packaged. Missing `modules/main.nso` is reported as `BLOCKED_MODULE`.
 
 - Source implementation: JNI Activity, native diagnostic CLI/shared library, optional NVN dispatch diagnostic reference, offline SDK packaging and artifact inspection scripts are implemented.
 - Host CMake probe build and existing three probe output checks: exit 0.
@@ -99,6 +99,8 @@ The earlier intermediate APK with SHA256 `0d2f1c1c772c30a05c76f838aab8092b77f8fd
 
 Accepted hardware checkpoint artifacts:
 
+These are historical version 0.2 identities. The original APK remains at `.local/artifacts/android/checkpoint-40ce791/ffrs-diagnostic-debug.apk`; live output paths are replaced by the following version.
+
 | Artifact | Bytes | SHA256 |
 | --- | ---: | --- |
 | `.local/artifacts/android/probe_rg477m` | 2872776 | `f4b939ad90a008555ba4eb8da6960e722207d3f8fb9642538ee8ceca70ae7ece` |
@@ -108,9 +110,77 @@ Accepted hardware checkpoint artifacts:
 
 The APK passes v3 signature verification and aapt reports version 0.2, Chinese label, API28/target34 and arm64-v8a. The artifact verifier additionally checks ET_DYN, AArch64, valid 16 KiB LOAD congruence and no writable+executable LOAD segment. All device/game gates remain BLOCKED_DEVICE/NOT_RUN.
 
+## Optional original-leaf runner (version 0.3)
+
+This checkpoint builds the diagnostic app's optional leaf-validation entry. It does **not** execute the leaf on an Android device during this task. Current Android leaf status is **NOT_RUN**; game startup, constructors, rendering and gameplay remain NOT_RUN. No USB action is requested or awaited for this host-side work.
+
+The UI has a separate explicit button. Input is only the app-private `getFilesDir()/libffrs_leaf.so`; output is app-private `leaf-report.json`. The reviewed locally generated library is not bundled in source or APK. `tests/device/verify_leaf_exclusion.py` reads the separate reviewed artifact, checks its identity, and searches every decompressed APK member for both the library name as a member and the original 44-byte instruction sequence: neither is embedded (exit 0). Generated game bytes were neither copied into source nor printed.
+
+The immutable script at integration `41a79716dafb9f48cfc34b3e8209dae88b04ec82`, `scripts/runtime/build_leaf_library.py`, establishes:
+
+| Item | Identity |
+| --- | --- |
+| source module SHA256 | `6e6d1f3cd1672243e2ed344cc1b8849b85437d41bdecec81a5f9181e472d68a5` |
+| original leaf | main `+0x694bd0`, 44 bytes |
+| original leaf SHA256 | `8a6e3c4fbd3164c966e2d164e0b59f140a162be1a4cf260b60beefae9921c9c9` |
+| generated ELF | 2,176 bytes; SHA256 `8008f3722db61346eabc02969ff5a37aab9fc405409ed891f65036d7649704d8` |
+| exports | `ffrs_leaf_694bd0`, `ffrs_leaf_reference` |
+| exact typed signature | `uint32_t(int32_t, int32_t, int32_t, uint32_t)` |
+
+The runner opens a regular, non-symlink 2,176-byte file and bounds-checks its AArch64 ELF64 ET_DYN headers. It rejects nonzero entry points, an ELF interpreter, writable/executable segments and dynamic tags outside the generated artifact's narrow metadata allowlist. Dependencies, init/fini functions and init/fini arrays are prohibited before loading. Java MessageDigest computes SHA256 of the native-read bytes; only the reviewed whole-library digest is accepted. `dlopen` names that checked descriptor through `/proc/self/fd/N`; `dlsym` resolves the two explicitly typed exports. No NSO/game startup or constructor API is invoked.
+
+The comparison grid is 15 signed input values cubed, times five flag values (0, 1, 2, 3, UINT32_MAX): **16,875 deterministic samples**. Each original result and the library's handwritten reference result are compared against local C++ integer mathematics (`std::bit_width` of the unsigned signed-max result OR 1). Structured JSON reports source/module/library SHA256, actual execution architecture, planned/executed counts, mismatch count and the first failing tuple/results. Missing input is NOT_RUN; read, hash, preflight, loader, export and comparison failures are FAIL. Only the actual Android AArch64 comparison path can emit `PASS_LEAF_BEHAVIOR`; host synthetic tests emit `HOST_TEST_COMPARISON_ONLY`.
+
+Host checks (all command exits 0):
+
+- `test_leaf_validation.cpp`: 16,875 unique **synthetic** typed calls, boundary values, wrong-original and wrong-reference mismatch detection, null export, absent file, absent digest, malformed ELF, entry-point and constructor/dependency rejection. The reviewed Android ELF is parsed only; original leaf bytes are not loaded or executed on the host in this test.
+- `test_build_evidence.py`: synthetic artifacts confirm fresh SHA recomputation and rejection after source change or a failed command, while device/leaf execution remain NOT_RUN.
+- Java/DEX/native ELF/APK build, v3 signature, aapt version 0.3, AArch64/16 KiB/no-WX checks, both JNI exports and original-leaf exclusion all pass static inspection.
+- `stage_leaf_library.py` was run only in its default local-plan mode, with serial `RG477M-NOT-RUN`; its `steps` list is empty. It performed **no ADB or device operation**.
+
+### Fixed build inputs and automatic machine evidence
+
+New Android code is read from this worker tree via explicit `FFRS_SOURCE_ROOT`. Runtime and NVN dependencies are a task-local `git archive 41a7971` snapshot at `.local/source-inputs/41a7971/`; they do not follow the coordinator's live integrations. The source guard fingerprints **all ordinary files** under Android source/config/resources, device build scripts, device tests/validators and dependency source directories, excluding only Python cache files and `.DS_Store`. CMakeLists.txt, APK validation code, resource/version configuration and new evidence/staging scripts are included. All 47 input-file fingerprints match before compilation, after compilation and after verification.
+
+Every build gets a distinct step-log directory. On success or failure, `record_build_evidence.py` automatically writes current `build-evidence.json` and artifact `manifest.json`; no previous handwritten hash is reused. It records source HEAD and dirty paths at build time, pinned dependency revision, complete input fingerprints and stability, actual overall/step exit codes, current artifact size/SHA256 and explicit `HOST_STATIC_CROSS_BUILD_AND_PACKAGING_ONLY` scope. A failed/mixed build cannot be accepted. Device, Android leaf, game startup and gameplay are always NOT_RUN in this host-build record.
+
+Final build evidence: `.local/artifacts/android/build-evidence.json` and `/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-android/.local/logs/android-build.WLFvFv/build-evidence.json`. Build-time source HEAD is `40ce791` plus the recorded leaf-checkpoint dirty files; the forthcoming atomic source commit contains these compiled source fingerprints. Dependency revision is `41a79716dafb9f48cfc34b3e8209dae88b04ec82`. All recorded step exits and the overall exit are 0. The official NDK remains a **partial, per-member CRC-verified toolchain**; whole archive checksum is NOT_VERIFIED.
+
+```bash
+FFRS_SOURCE_ROOT="$PWD" FFRS_USE_MINIMAL_TOOLCHAIN=1 \
+FFRS_DEPENDENCY_REVISION=41a79716dafb9f48cfc34b3e8209dae88b04ec82 \
+FFRS_RUNTIME_DIR="$PWD/.local/source-inputs/41a7971/src/runtime/nso" \
+FFRS_NVN_DIR="$PWD/.local/source-inputs/41a7971/src/graphics/nvn" \
+FFRS_REVIEWED_LEAF_LIBRARY=/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration/.local/runtime/leaf-e860f99/libffrs_leaf.so \
+scripts/device/build_diagnostic_apk.sh
+```
+
+Current accepted static artifacts:
+
+| Artifact | Bytes | SHA256 |
+| --- | ---: | --- |
+| `probe_rg477m` | 2872776 | `f4b939ad90a008555ba4eb8da6960e722207d3f8fb9642538ee8ceca70ae7ece` |
+| `nso_diagnostic` | 2878448 | `459a99463d4b2a70a0ebf1db8749cc9bc79957149b98fba6f2f7e74baf6b6cb2` |
+| `libffrs_diagnostic.so` | 3471144 | `3e8a284af7d80c452da49c440dbc431204283e69e8c6d1e533ae6a1971550ce7` |
+| `ffrs-diagnostic-debug.apk` | 422420 | `7270b1080e4a4e2ac7b1544a8610f84f4ae050047e12528029018492b127d2c8` |
+
+Artifacts are in `.local/artifacts/android/`; full command/output/exit evidence is `.local/logs/android-apk-leaf-final.*` plus the unique step directory above. Host synthetic checks are `.local/logs/leaf-host-{compile,tests}.*` and `.local/logs/build-evidence-tests.*`.
+
+### Later private-file staging
+
+`stage_leaf_library.py --serial <explicit-selected-RG477M> --library <local-generated-lib>` only prints a plan. Adding `--copy` performs normal ADB operations on that exact serial: verifies online state and RG477M model, verifies access to the already-installed debuggable diagnostic package, copies to an exclusive app-private temporary file, verifies readback SHA256, makes it read-only and atomically hard-links to `files/libffrs_leaf.so` without overwriting an existing file. It cleans only its own created temporary path. It never installs/uninstalls a package, clears app data, touches game/save paths or selects another device. A separate APK install, if later requested, must stop on a signature conflict; removing the installed package is not an automatic remedy.
+
+Android namespace/permission behavior for descriptor-based dlopen, actual typed calls, hardware/UI operation and RG477M leaf results remain NOT_RUN until a later device session. This host task does not wait for one.
+
+### Next independent host-side build item
+
+Read-only inspection of the coordinator's current startup build shows `nso_call.c`'s verified HLE resolver is enabled by `NSO_WITH_HOST_HLE`; its host experiment links `nso_host.c`, `address_region.c`, `mutex.c` and the coordinator's in-progress exit-registry work. This Android project currently cross-builds only `nso_loader.c`, load-only diagnostics and the leaf runner; it does not yet cross-link those HLE adapters or an Android `nso_call` driver.
+
+A useful next independent item is an **Android ARM64 cross-link gate for the narrowly verified startup HLE and strict CLI**, using a new coordinator-approved immutable checkpoint. Compile the existing adapters against Bionic, link the actual strict `nso_call` driver, inspect system-library dependencies/export ABIs and retain host-only contract evidence. Keep guest TLS PoC unbound, preserve fatal unsupported-import behavior, and wait for the coordinator's explicit CRT/DSO/exit-registry checkpoint before adding that source. This establishes a real startup build dependency while CRT initialization is developed; it does not add 533 NVN stubs or claim game startup/device execution.
+
 ## Remaining gates
 
 1. Total NDK archive SHA1 remains pending. The working partial official toolchain is sufficient for the recorded real Android cross-build; do not equate that with a completed SDK-manager package installation.
-2. The parent should integrate the hardware UI checkpoint onto its frozen `e860f99` tree, then rebuild from relative source paths to establish the final integrated build identity. The first Android checkpoint has already been integrated by the parent.
+2. The parent should integrate this optional-leaf checkpoint and rebuild against its approved, frozen runtime/graphics revision. Earlier carrier and hardware UI checkpoints are already integrated. The machine evidence generator records the new build identity automatically.
 3. Connect the user's RG477M for install, JNI invocation, module load, Vulkan capability capture and crash evidence. Until then all on-device and game-execution gates remain NOT_RUN/BLOCKED_DEVICE.
 4. No Android device or emulator was used. No game constructor/entry point, title screen, scene, gameplay or performance gate passed.
