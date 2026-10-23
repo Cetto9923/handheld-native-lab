@@ -44,7 +44,7 @@
 | `main.npdm` | NPDM | 1,620 | `a39b66ed07bcb7b2730a9bbd37ec9afe968dd28d6e3d5f4d7794c3528c1b3f95` | - | ACI0: 0100b8a026f14000, SVCs, SACs |
 | `rtld` | NSO0 | 10,109 | `4a520d568bbc0e584bc2da5f3250f81f28d09562f7b4b5f57365b970907b709c` | `387E9A52A10AC682BD84858284D2EFF7...` | .text 12KB / .rodata 4KB / .rwdata 4KB / .bss 4KB |
 | `sdk` | NSO0 | 6,200,384 | `56af5073788dc1975b5186afafcdcbc0ab0f2f9b40b9d483e8747fd649bd8f8e` | `0023A1B06130CD795F7BC4613772AF0A...` | .text 6.4MB / .rodata 4.8MB / .rwdata 341KB / .bss 830KB |
-| `subsdk0` | NSO0 | 3,367,524 | `017fa4eea05892b997ef749077a9c38ebede7bafa648c7a4a794d297d5e58be3` | `AB62FE8EDD07A6A293F885D54359E559...` | .text 3.3MB / .rodata 1.8MB / .rwdata 194KB / .bss 1.1MB (multimedia) |
+| `subsdk0` | NSO0 | 3,367,524 | `017fa4eea05892b997ef749077a9c38ebede7bafa648c7a4a794d297d5e58be3` | `AB62FE8EDD07A6A293F885D54359E559...` | .text 3.3MB / .rodata 1.8MB / .rwdata 199,560 B / .bss 1.1MB (Nintendo SDK **movie**) |
 
 解压后的完整反编译原语保存在 `.local/uncompressed/main.bin`（119.76 MB）。
 
@@ -54,7 +54,12 @@
 
 通过反编译符号与二进制只读段搜索，发现本作具有极度明确的引擎身份：
 
-1. **引擎类型**：**Epic Games Unreal Engine 5 (UE 5.4)**
+1. **引擎类型**：**Epic Games Unreal Engine 5，版本 5.6.1**
+
+> **2026-10-23 复核修订**：本报告初版基于 ChaosVD / IrisCore / DataflowEngine 等特征符号组合推断为 "UE 5.4"。该**推断已被二进制内嵌的链接器模块标识串推翻**：
+> `SDK MW+EpicGames+UnrealEngine-5_6_1`（`main.bin` 偏移 108,874,700，全文唯一匹配）。
+> 特征符号族只能给出 UE5 版本的**下界**，无法定到 5.4。
+> 证据与复现：`coordination/reports/T00R-evidence-review.md`；门禁脚本 `tests/acceptance/tools/verify_engine_strings.py`。
    - 内部项目代码代号：**`mucha`**
    - 目标构建配置：`E:/workspace/mucha/mucha/Binaries/Switch/FFRS-Switch-Shipping.nss`
    - 核心源文件路径痕迹：
@@ -94,3 +99,32 @@
 - [x] **PFS0 外层清单与内部真实身份已明确区分**：真实项目为基于 UE 5.4 开发的 `mucha` (`FFRS-Switch-Shipping.nss`)。
 - [x] **所有二进制文件哈希完整记录，产物位于 `.local/`，不污染 Git**。
 - [x] **T00 成功通过 (PASSED)**，下一阶段 T01 (技术路线评估) 与 T03 (Android 宿主骨架) 具备开工条件。
+
+---
+
+## 8. 2026-10-23 独立复核修订（T00R）
+
+本节由独立复核 Agent 产出，总控集成。完整复核表见 `coordination/reports/T00R-evidence-review.md`，
+覆盖矩阵与验收用例见 `docs/analysis/acceptance_matrix.md` 与 `tests/acceptance/`。
+
+### 8.1 被修订的结论
+
+| 项 | 初版 | 修订后 | 依据 |
+|---|---|---|---|
+| 引擎版本 | UE 5.4（推断） | **UE 5.6.1（直接证据）** | `SDK MW+EpicGames+UnrealEngine-5_6_1`，`main.bin` 偏移 108,874,700，全文唯一 |
+| `sdk` / `subsdk0` 职责 | 未明确 | `sdk` = Nintendo SDK 20.5.17 **NVN 图形栈**；`subsdk0` = Nintendo SDK **movie**；`rtld` = `nnrtld.nss`；**游戏与 UE 代码只在 `main`** | 构建标识串 + NSO 导入/导出关系 |
+| hactool 能力 | "已验证 PFS0/NCA/NSO 解析" | **PFS0 与 NSO 成立；NCA 对本作不成立** | `hactool -t nsp -k .local/keys.txt` → `Invalid NCA header!` |
+| `scripts/t00_verify.py` | 视为证据生成脚本 | **`engine` / `toolchain` 段为硬编码字面量**，且无条件覆盖 `evidence/t00_verification.json` | 源码 86–119 行 |
+
+### 8.2 已独立复核为真（可复现）
+
+ExeFS 五个工件 SHA-256、三个 NSP 完整 SHA-256（含 9 GB 本体）、NACP 元数据、PFS0 外层清单与三个 NCA 名字/大小、
+`.local/*` 产物与 NSP 内字节逐字节绑定、Ticket Rights ID、NSO0 段表、build-id 与模块对应、33 项引擎特征符号计数与偏移、
+工具链版本（hactool 1.4.0 / Ghidra 12.1.4 / REA 6.5.0 / adb 37.0.1）、设备未连接。
+
+### 8.3 仍未验证（明确保留未知）
+
+RomFS 内容、Pak/IoStore 资源清单、着色器清点与格式、NSO 导入表（本报告初版未统计）、指令集覆盖度、
+NPDM 字段权威解码、ExeFS 分区 63 KiB 差、升级档/DLC 内部元数据、是否为官方版 UE 5.6.1。
+
+> 其中「NSO 导入表统计」与「着色器格式」已由总控与后续任务补齐，见 `evidence/coordinator/nso_structure_report.md`。
