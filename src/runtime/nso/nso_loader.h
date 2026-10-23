@@ -47,6 +47,10 @@ nso_module *nso_load_file(const char *path, nso_import_fn import_fn, char *errbu
 /* Release everything owned by the module. */
 void nso_free(nso_module *m);
 
+/* Optional host-owned cleanup, called once before unmapping. This is not a
+ * guest exit/destructor callback. Install at most one observer per module. */
+void nso_set_unload_observer(nso_module *m,void (*observer)(void *),void *user);
+
 /* Base address the module image is mapped at. */
 uint64_t nso_base(const nso_module *m);
 

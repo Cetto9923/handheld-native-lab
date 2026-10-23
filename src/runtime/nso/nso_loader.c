@@ -45,6 +45,8 @@ struct nso_module {
     uint64_t init_offset, init_array_offset, init_array_size;
     uint64_t text_lo, text_hi;
     uint8_t build_id[16];
+    void (*unload_observer)(void *);
+    void *unload_user;
 };
 /* Diagnostic state belongs to the thread that explicitly installed it. The
  * signal disposition itself is process-wide; this remains an opt-in fatal
@@ -250,6 +252,11 @@ fail:
 }
 void nso_free(nso_module *m) {
     if(!m)return;
+    if(m->unload_observer) {
+        void (*observer)(void*)=m->unload_observer;
+        m->unload_observer=NULL;
+        observer(m->unload_user);
+    }
     if(fault_module==m) {
         fault_module=NULL; stack_lo=stack_hi=0;
         if(owns_signal_stack) {
@@ -269,6 +276,9 @@ void nso_free(nso_module *m) {
     if(m->import_traps)munmap(m->import_traps,m->trap_size);
     if(m->object_traps)munmap(m->object_traps,m->trap_size);
     free(m->dynstr);free(m->sym_name);free(m->sym_shndx);free(m->sym_value);free(m->imports);free(m->sym_info);free(m);
+}
+void nso_set_unload_observer(nso_module *m,void (*observer)(void*),void *user) {
+    if(m){m->unload_observer=observer;m->unload_user=user;}
 }
 uint64_t nso_base(const nso_module *m) {return (uint64_t)(uintptr_t)m->image;}
 size_t nso_image_size(const nso_module *m) {return m->image_size;}

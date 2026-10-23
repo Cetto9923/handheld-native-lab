@@ -7,12 +7,18 @@
 #include <string.h>
 #ifdef NSO_WITH_HOST_HLE
 #include "../hle/nso_host.h"
+#include "../hle/exit_registry.h"
 #endif
 
 /* Keep host binding deliberately small. Matching a name alone does not establish
  * C++ layout, Switch OS semantics, or macOS variadic ABI compatibility. */
 static uint64_t resolve_import(uint32_t index, const char *name) {
     (void)index;
+#ifdef NSO_WITH_HOST_HLE
+    /* Typed process-exit handling must precede the host dlsym allowlist. */
+    uint64_t adapted=nso_host_resolve(index,name);
+    if(adapted)return adapted;
+#endif
     static const char *const compatible[] = {
         "__cxa_guard_acquire", "__cxa_guard_release", "__cxa_guard_abort",
         "memset", "memcpy", "memmove", "memcmp", "memchr",
@@ -23,11 +29,7 @@ static uint64_t resolve_import(uint32_t index, const char *name) {
     };
     for(size_t i=0;compatible[i];i++) if(!strcmp(name,compatible[i]))
         return (uintptr_t)dlsym(RTLD_DEFAULT,name);
-#ifdef NSO_WITH_HOST_HLE
-    return nso_host_resolve(index,name);
-#else
     return 0;
-#endif
 }
 static int number(const char *s,uint64_t *out) {
     char *end;errno=0;
@@ -61,6 +63,13 @@ int main(int argc,char **argv) {
     char err[256]={0};
     nso_module *m=nso_load_file(argv[1],resolve_import,err,sizeof(err));
     if(!m){fprintf(stderr,"load failed: %s\n",err);return 1;}
+#ifdef NSO_WITH_HOST_HLE
+    if(nso_host_exit_scope_begin(m)) {
+        fprintf(stderr,"only one quiescent guest module exit scope is supported\n");
+        nso_free(m);return 1;
+    }
+    nso_set_unload_observer(m,nso_host_exit_scope_end,m);
+#endif
     nso_install_fault_trap(m);
     char bid[33];nso_build_id(m,bid);
     printf("build id      : %s\nbase          : 0x%" PRIx64 "\nimports       : %u\nunresolved    : %u\nrelocations   : %" PRIu64 "\nrelr          : %" PRIu64 "\n",

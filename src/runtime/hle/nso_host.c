@@ -1,6 +1,7 @@
 #include "nso_host.h"
 #include "address_region.h"
 #include "mutex.h"
+#include "exit_registry.h"
 #include <stdio.h>
 #include <string.h>
 static nso_import_fn extension_resolver;
@@ -31,5 +32,10 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_unlock_mutex;
     if(!strcmp(name,"_ZN2nn2os28IsMutexLockedByCurrentThreadEPKNS0_9MutexTypeE"))
         return (uint64_t)(uintptr_t)&nso_host_is_mutex_locked_by_current_thread;
+    if(!strcmp(name,"atexit"))return (uint64_t)(uintptr_t)&nso_host_atexit;
+    if(!strcmp(name,"__cxa_atexit"))return (uint64_t)(uintptr_t)&nso_host_cxa_atexit;
+    if(!strcmp(name,"__cxa_finalize"))return (uint64_t)(uintptr_t)&nso_host_cxa_finalize;
+    if(!strcmp(name,"exit"))return (uint64_t)(uintptr_t)&nso_host_exit;
+    if(!strcmp(name,"_Exit") || !strcmp(name,"_exit"))return (uint64_t)(uintptr_t)&nso_host_immediate_exit;
     return extension_resolver?extension_resolver(index,name):0;
 }

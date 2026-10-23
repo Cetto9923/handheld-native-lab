@@ -377,3 +377,118 @@ The actual exit is 133, not a timeout. Logs and build commands:
 The original 16,875-case leaf comparison and structural loader remain exit 0;
 startup/malloc/constructors retain their previously identified boundaries.
 There is no game startup, Android execution, full CRT or full ThreadType PASS.
+
+## Fifth checkpoint: functional exit registration, not fabricated SDK DSO init
+
+Local SDK evidence establishes the public atexit calling convention at
++0x56c400: the incoming void callback moves into x1, a thunk at +0x56c420
+(which branches to x0) becomes the argument-taking callback in x0, and x2 is
+zero. The module-local helper at +0x5c0 stores 24-byte callback/argument/DSO
+tuples and returns 0 or -1. In the current static bytes that helper explicitly
+rejects a null DSO field. Therefore the missing SDK module/DSO initialization
+and route cannot be declared understood or reproduced. The helper at +0x650
+walks matching DSO records in reverse and accounts for registration during
+cleanup. None of these static observations execute the SDK CRT.
+
+The new implementation is a functional HLE replacement for C exit registration
+and the C++ ABI callback interface, not a precise reconstruction of that missing
+SDK CRT module context. The locally installed cxxabi.h explicitly documents
+int __cxa_atexit(void (*)(void *), void *, void *) and
+void __cxa_finalize(void *) under Runtime API 3.3.5.3.
+DSO values in this replacement are opaque comparison keys; no SDK DSO handle
+layout or __nnmusl_init_dso result is invented. __cxa_thread_atexit remains
+unresolved because thread-exit lifecycle and real guest TLS are not implemented.
+
+Implementation and lifecycle:
+
+- Registration allocates and inserts a real typed record, returning 0 only on
+  acceptance and -1 on failure. Plain void callbacks and callbacks with a void
+  argument have separate types; no generic six-argument callback is used.
+- Finalization selects records in LIFO order, optionally matching a DSO key.
+  Records are removed before invocation. The list lock is released around guest
+  calls, while a separate recursive finalization mutex serializes drainers.
+  Reentrant/repeated finalization does not repeat a consumed registration;
+  callbacks registered by another callback are subsequently processed.
+- Only a genuine call to the typed guest exit adapter or __cxa_finalize executes
+  callbacks. Normal exit drains then calls host exit(status); _Exit/_exit use
+  immediate host termination without draining. Probe startup/registration never
+  triggers cleanup merely to move the entry point forward.
+- The CLI resolves HLE before its host dlsym allowlist. Its prior exit allowlist
+  can no longer bypass the typed guest exit path in HLE builds.
+- One current guest-module exit scope is supported. A second simultaneous scope
+  or a scope entered while unrelated callbacks are pending is explicitly rejected.
+  The optional host unload observer is installed after loading the CLI module;
+  nso_free invokes it before unmapping. It discards pending exit records without
+  invoking guest code, preventing retained callbacks into that unloaded image.
+- Module scope teardown requires joined/quiescent guest threads. General
+  concurrent module unloading, multiple guest processes in one host process,
+  dynamic SDK DSO initialization and arbitrary cross-module callback ownership
+  are not implemented. A probe call returning is treated as an abandoned probe
+  scope, not as proof of a normally completed game process.
+- The unload observer cleans EXIT REGISTRATIONS ONLY. Mutex and AddressRegion
+  side tables are not associated with modules or generally cleaned by this
+  observer. The whole HLE is consequently not advertised as supporting repeated
+  arbitrary module loading/unloading or multiple games. The APK does not bind
+  these HLE functions.
+
+Static evidence:
+.local/runtime/static-sdk-exit-v1,
+.local/runtime/static-sdk-crt-adapters-v1,
+.local/runtime/static-sdk-finalize-v1,
+.local/runtime/static-main-exit-v1.
+The first real main callback +0x3680 restores an allocator vtable and tail-calls
+the FinalizeMutex import for its embedded object. It is recorded, not executed
+during these game entry experiments.
+
+Normal functional verification:
+
+    python3 tests/native/test_exit_registry.py \
+      --out .local/runtime/exit-registry-next
+    python3 tests/native/test_loader.py \
+      --out .local/runtime/loader-unload-next
+    python3 scripts/runtime/run_experiments.py --host-hle \
+      --out .local/runtime/repro-exit-next
+
+.local/runtime/exit-registry-v5 records zero errors for LIFO, argument delivery,
+DSO filtering, repeated/reentrant finalization, newly registered callbacks during
+cleanup, 4,000 registrations across eight threads, concurrent finalizers, and
+scope discard without execution. Normal native exit returns the requested 23
+and executes one callback; immediate exit returns the requested 24 and executes
+none. These nonzero statuses are intentional successful contract outcomes.
+
+A well-formed synthetic AArch64 NSO additionally runs through the actual CLI
+resolver and unload observer, not a duplicate resolver in the test. Its typed
+guest exit returns 23 with exactly one native callback; _Exit returns 24 without
+a callback; a returning register-only probe unloads with zero callbacks executed.
+The test explicitly checks that resolving exit yields the guest adapter rather
+than the host dlsym result. This fixture is infrastructure evidence, not game
+code or game-startup acceptance. The earlier exit-registry-v2 launch did not run
+its contract because its executable path collided with its log directory;
+the runner was corrected, with the failed directory retained.
+
+.local/runtime/contract-v6-exit validates the positive loader fixture, exact-once
+host unload observation while mapped data is still readable, alternate-stack
+restoration and named unknown imports. The ordinary contract exits 0; the
+intentional unsupported import exits 133.
+
+Final real-module evidence:
+.local/runtime/checkpoint-v7-exit-final/manifest.json.
+nnMain logs a successful real atexit registration (one pending callback, deferred)
+and next stops at QueryMemoryInfo, symbol 65, caller +0x27a50, exit 133.
+No registered game callback runs at this boundary. The module remains byte-
+identical; its 16,875-case leaf and structural load both exit 0, with imports
+651 / unresolved 620 / RELA 4,612 / RELR 1,370,974.
+
+Current independent frontiers:
+
+| Probe | First remaining unsupported call | Caller offset | Exit |
+|---|---|---:|---:|
+| nnMain | QueryMemoryInfo | 0x27a50 | 133 |
+| malloc(4096) | QueryMemoryInfo | 0x1398c | 133 |
+| nninitStartup | AllocateTlsSlot | 0x133a0 | 133 |
+| DT_INIT | __nnmusl_init_dso | 0x5920a34 | 133 |
+
+QueryMemoryInfo still requires a coherent guest-owned memory model and accounting
+backed by real allocations, not invented total/free RAM. Guest ELF TLS, SDK thread
+state and DSO/CRT initialization remain separate unresolved layouts/lifecycles.
+There is no full game startup, Android execution or complete T02 PASS.

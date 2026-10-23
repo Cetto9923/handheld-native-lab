@@ -5,6 +5,14 @@
 #include <signal.h>
 #include <string.h>
 static unsigned resolutions;
+static unsigned unloads;
+static void before_unload(void *user) {
+    nso_module *m=user;
+    uint64_t value;
+    memcpy(&value,(void*)(uintptr_t)nso_addr(m,0x8208),8);
+    if(value!=nso_base(m)+0x1234)abort();
+    unloads++;
+}
 static uint64_t sum(uint64_t a,uint64_t b) {return a+b;}
 static uint64_t resolver(uint32_t i,const char *name) {
     resolutions++;
@@ -21,6 +29,7 @@ int main(int argc,char **argv) {
     nso_module *m=nso_load_file(argv[1],resolver,err,sizeof(err));
     if(!m){fprintf(stderr,"%s\n",err);return 1;}
     nso_install_fault_trap(m);
+    nso_set_unload_observer(m,before_unload,m);
     if(argc==3 && !strcmp(argv[2],"--unknown")) {
         nso_call(m,0x40,0,0,0,0,0,0);
         return 1;
@@ -35,6 +44,7 @@ int main(int argc,char **argv) {
     printf("contract ok=%d resolver_calls=%u imports=%u unresolved=%u rela=%" PRIu64 " relr=%" PRIu64 "\n",
         ok,resolutions,nso_import_count(m),nso_unresolved_count(m),nso_reloc_count(m),nso_relr_count(m));
     nso_free(m);
+    if(unloads!=1)ok=0;
     if(sigaltstack(NULL,&after))return 1;
     printf("signal stack before=(%p,%zu,%d) after=(%p,%zu,%d)\n",
            before.ss_sp,before.ss_size,before.ss_flags,after.ss_sp,after.ss_size,after.ss_flags);
