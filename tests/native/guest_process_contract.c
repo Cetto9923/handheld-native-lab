@@ -1253,6 +1253,22 @@ static int fs_allocator_contract(void) {
     puts("{\"fs_allocator_errors\":0,\"set\":true,\"callbacks_saved\":true}");
     return 0;
 }
+static int fs_query_cache_contract(void) {
+    typedef int32_t (*query_fn)(size_t *);
+    query_fn query = (query_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs22QueryMountRomCacheSizeEPm");
+    CHECK(query != NULL);
+
+    int32_t err = query(NULL);
+    CHECK(err != 0);
+
+    size_t size = 0;
+    int32_t ok = query(&size);
+    CHECK(ok == 0);
+    CHECK(size >= 32);
+
+    puts("{\"fs_query_cache_errors\":0,\"query\":true,\"size_valid\":true}");
+    return 0;
+}
 struct log_fixture_io {float input,output;uint64_t guest_x18;};
 _Static_assert(offsetof(struct log_fixture_io,output)==4 && offsetof(struct log_fixture_io,guest_x18)==8,"self-authored float fixture ABI");
 static void *exercise_logf_native(guest_process *p,void *opaque) {
@@ -1886,6 +1902,7 @@ int main(int argc,char **argv) {
     if(argc==2 && !strcmp(argv[1],"--guest-tp"))return guest_tp_test_contract();
     if(argc==2 && !strcmp(argv[1],"--threads"))return threads_contract();
     if(argc==2 && !strcmp(argv[1],"--fs-allocator"))return fs_allocator_contract();
+    if(argc==2 && !strcmp(argv[1],"--fs-query-cache"))return fs_query_cache_contract();
     if(argc==2 && !strcmp(argv[1],"--logf"))return logf_contract();
     if(argc==3 && !strcmp(argv[1],"--logf-native"))return logf_native_contract(argv[2]);
     if(argc==2 && !strcmp(argv[1],"--strcasecmp"))return strcasecmp_contract();

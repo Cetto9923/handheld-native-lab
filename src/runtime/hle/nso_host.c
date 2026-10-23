@@ -585,6 +585,17 @@ nn_fs_free_fn nso_host_fs_get_deallocator(void) {
     return s_fs_free;
 }
 
+int32_t nso_host_fs_query_mount_rom_cache_size(size_t *out_size) {
+    if (!out_size) {
+        fprintf(stderr, "[hle] nn::fs::QueryMountRomCacheSize: null out pointer\n");
+        return 1;
+    }
+    *out_size = 0x10000; /* 64 KB cache size */
+    fprintf(stderr, "[hle] nn::fs::QueryMountRomCacheSize: out_size=%p -> %zu (0x%zx)\n",
+            (void *)out_size, *out_size, *out_size);
+    return 0;
+}
+
 void nso_host_set_extension_resolver(nso_import_fn resolver) {extension_resolver=resolver;}
 uint64_t nso_host_resolve(uint32_t index,const char *name) {
     if(!name)return 0;
@@ -595,6 +606,8 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
 #endif
     if(!strcmp(name,"_ZN2nn2fs12SetAllocatorEPFPvmEPFvS1_mE") || !strcmp(name,"nnfsSetAllocator"))
         return (uint64_t)(uintptr_t)&nso_host_fs_set_allocator;
+    if(!strcmp(name,"_ZN2nn2fs22QueryMountRomCacheSizeEPm") || !strcmp(name,"nnfsQueryMountRomCacheSize"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_query_mount_rom_cache_size;
     if(!strcmp(name,"_ZN2nn4util11ReferSymbolEPKv") || !strcmp(name,"nnutilReferSymbol"))
         return (uint64_t)(uintptr_t)&refer_symbol;
     if(!strcmp(name,"_ZN2nn4util12GenerateUuidEv"))

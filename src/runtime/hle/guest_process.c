@@ -1012,6 +1012,7 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
      * No nvn/dlsym/unowned backing/thread/heap service is admitted. */
     static const char *const typed[]={
         "_ZN2nn2fs12SetAllocatorEPFPvmEPFvS1_mE","nnfsSetAllocator",
+        "_ZN2nn2fs22QueryMountRomCacheSizeEPm","nnfsQueryMountRomCacheSize",
         "_ZN2nn4util11ReferSymbolEPKv","nnutilReferSymbol",
         "_ZN2nn2os15InitializeMutexEPNS0_9MutexTypeEbi","nnosInitializeMutex",
         "_ZN2nn2os13FinalizeMutexEPNS0_9MutexTypeE","nnosFinalizeMutex",
@@ -1192,6 +1193,8 @@ static int import_signature(const char *name,nb_signature *out) {
     else if(!strcmp(name,"_ZN2nn2os11SetTlsValueENS0_7TlsSlotEm")) {arguments=2;returns=0;}
     else if(!strcmp(name,"_ZN2nn2fs12SetAllocatorEPFPvmEPFvS1_mE") ||
             !strcmp(name,"nnfsSetAllocator")) {arguments=2;returns=0;}
+    else if(!strcmp(name,"_ZN2nn2fs22QueryMountRomCacheSizeEPm") ||
+            !strcmp(name,"nnfsQueryMountRomCacheSize")) {arguments=1;returns=1;}
     else if(!strcmp(name,"_ZN2nn2os32SetMemoryAllocatorForThreadLocalEPFPvmmEPFvS1_mE")) {arguments=2;returns=0;}
     else if(!strcmp(name,"_ZN2nn2os40MemoryAllocatorForThreadLocalInitializedEv")) {arguments=0;returns=1;}
     else if(!strcmp(name,"nnosAllocateMemoryForThreadLocal")) {arguments=1;returns=1;}

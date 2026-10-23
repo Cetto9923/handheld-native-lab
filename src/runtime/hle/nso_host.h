@@ -73,6 +73,7 @@ typedef void (*nn_fs_free_fn)(void *, size_t);
 void nso_host_fs_set_allocator(nn_fs_alloc_fn alloc, nn_fs_free_fn free_fn);
 nn_fs_alloc_fn nso_host_fs_get_allocator(void);
 nn_fs_free_fn nso_host_fs_get_deallocator(void);
+int32_t nso_host_fs_query_mount_rom_cache_size(size_t *out_size);
 #ifdef __cplusplus
 }
 #endif

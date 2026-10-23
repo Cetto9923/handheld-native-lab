@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-10-23T19:56:00.000000+00:00",
-  "phase": "T02_FS_SET_ALLOCATOR_PASSED_QUERY_MOUNT_ROM_REACHED_ON_RG477M: nn::fs::SetAllocator HLE implemented with callback storage; GameThread executed through file system allocator setup; frontier advanced to nn::fs::QueryMountRomCacheSize (symbol 21, caller 0x5568 / lr 0x556c)",
-  "coordinator": "Antigravity sole root coordinator — nn::fs::SetAllocator verified on RG477M; frontier advanced to nn::fs::QueryMountRomCacheSize",
+  "updated_at": "2026-10-23T20:25:00.000000+00:00",
+  "phase": "T02_FS_QUERY_CACHE_PASSED_MOUNT_ROM_REACHED_ON_RG477M: nn::fs::QueryMountRomCacheSize HLE implemented with valid cache size (64KB); GameThread allocated buffer and called nn::fs::MountRom; frontier advanced to nn::fs::MountRom (symbol 22, caller 0x5590 / lr 0x5594)",
+  "coordinator": "Antigravity sole root coordinator — nn::fs::QueryMountRomCacheSize verified on RG477M; frontier advanced to nn::fs::MountRom",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
   "active_writers": [
