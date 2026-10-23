@@ -59,10 +59,6 @@ void HostCollectCpu(const ProbeContext& /*ctx*/, CpuInfo& out) {
     out.page_size_bytes = static_cast<uint64_t>(sysconf(_SC_PAGESIZE));
 }
 
-void HostCollectDisplay(const ProbeContext& /*ctx*/, DisplayInfo& out) {
-    out.status = kUnavailableOnHost;
-}
-
 void HostCollectInput(const ProbeContext& /*ctx*/, InputInfo& out) {
     out.status = kUnavailableOnHost;
 }

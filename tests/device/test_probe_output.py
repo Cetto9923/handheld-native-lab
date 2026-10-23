@@ -40,6 +40,21 @@ def test_json_output(bin_path: str):
     assert "cores_online" in cpu
     assert cpu["cores_online"] > 0
 
+    # This executable has no Activity/window snapshot. Unknown measurements
+    # must remain unknown on Android as well as the host, never RG defaults.
+    display = data["display"]
+    assert display["status"] == "unavailable_no_activity_context"
+    for field in ("width_px", "height_px", "density_dpi", "density", "refresh_rate_hz"):
+        assert display[field] == 0, (field, display[field])
+    assert display["modes"] == []
+    assert display["refresh_rate_status"] == "unavailable"
+    audio = data["audio"]
+    assert audio["status"] != "ok"
+    for field in ("output_device_count", "sample_rate_hz", "output_frames_per_buffer",
+                  "native_output_sample_rate_hz", "min_buffer_size_bytes"):
+        assert audio[field] == 0, (field, audio[field])
+    assert not audio["audiotrack_create_ok"] and audio["channel_config"] == ""
+
     # Vulkan
     vk = data["vulkan"]
     assert "status" in vk

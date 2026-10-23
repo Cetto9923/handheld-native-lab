@@ -2,11 +2,18 @@ package org.ffrs.diagnostic;
 
 import android.app.Activity;
 import android.os.Bundle;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 import android.os.SystemClock;
 import android.graphics.Typeface;
+import android.graphics.Rect;
+import android.graphics.Insets;
+import android.util.DisplayMetrics;
+import android.view.Display;
+import android.view.WindowMetrics;
+import android.view.WindowInsets;
 import android.view.View;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -26,12 +33,13 @@ import org.json.JSONObject;
 /** Minimal JNI carrier that displays actual capability and module diagnostics. */
 public final class DiagnosticActivity extends Activity implements View.OnClickListener, Runnable, Handler.Callback {
     static { System.loadLibrary("ffrs_diagnostic"); }
-    private native String runNativeDiagnostic(String modulePath, String reportPath);
+    private native String runNativeDiagnostic(String modulePath, String reportPath, DisplaySnapshot display);
     private native String runNativeLeafDiagnostic(String libraryPath, String reportPath);
     private Button button;
     private Button leafButton;
     private boolean leafMode;
     private boolean hardwareReady;
+    private DisplaySnapshot displaySnapshot;
     private String leafLibrary;
     private String leafReport;
     private TextView result;
@@ -99,6 +107,7 @@ public final class DiagnosticActivity extends Activity implements View.OnClickLi
 
     @Override public void onClick(View view) {
         leafMode = view == leafButton;
+        if (!leafMode) displaySnapshot = captureDisplaySnapshot();
         recordEvent(leafMode ? "leaf_diagnostic_start" : "native_diagnostic_start", new JSONObject());
         button.setEnabled(false);
         leafButton.setEnabled(false);
@@ -108,7 +117,7 @@ public final class DiagnosticActivity extends Activity implements View.OnClickLi
 
     @Override public void run() {
         String diagnostics;
-        try { diagnostics = leafMode ? runNativeLeafDiagnostic(leafLibrary, leafReport) : runNativeDiagnostic(module, report); }
+        try { diagnostics = leafMode ? runNativeLeafDiagnostic(leafLibrary, leafReport) : runNativeDiagnostic(module, report, displaySnapshot); }
         catch (Throwable failure) { diagnostics = "JNI_FAILED: " + failure.toString(); }
         handler.obtainMessage(1, diagnostics).sendToTarget();
     }
@@ -121,6 +130,78 @@ public final class DiagnosticActivity extends Activity implements View.OnClickLi
             leafButton.setEnabled(true);
         }
         return true;
+    }
+
+    @SuppressWarnings("deprecation")
+    private DisplaySnapshot captureDisplaySnapshot() {
+        // Called by onClick on the UI thread. No window API is queried by the JNI worker.
+        DisplaySnapshot snapshot = new DisplaySnapshot();
+        snapshot.captured_elapsed_realtime_ns = SystemClock.elapsedRealtimeNanos();
+        DisplayMetrics metrics = getResources().getDisplayMetrics();
+        snapshot.density_dpi = metrics.densityDpi;
+        snapshot.density = metrics.density;
+        View content = findViewById(android.R.id.content);
+        if (content != null) {
+            snapshot.content_width_px = content.getWidth();
+            snapshot.content_height_px = content.getHeight();
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= 30) {
+                WindowMetrics window = getWindowManager().getCurrentWindowMetrics();
+                Rect bounds = window.getBounds();
+                snapshot.width_px = bounds.width();
+                snapshot.height_px = bounds.height();
+                snapshot.size_source = "WindowManager.currentWindowMetrics.bounds";
+                Insets insets = window.getWindowInsets().getInsetsIgnoringVisibility(
+                        WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                snapshot.inset_left_px = insets.left;
+                snapshot.inset_top_px = insets.top;
+                snapshot.inset_right_px = insets.right;
+                snapshot.inset_bottom_px = insets.bottom;
+                snapshot.insets_measured = true;
+            } else {
+                View decor = getWindow().getDecorView();
+                snapshot.width_px = decor.getWidth();
+                snapshot.height_px = decor.getHeight();
+                snapshot.size_source = "Window.decorView.measured_bounds";
+                if (snapshot.width_px <= 0 || snapshot.height_px <= 0) {
+                    DisplayMetrics app = new DisplayMetrics();
+                    getWindowManager().getDefaultDisplay().getMetrics(app);
+                    snapshot.width_px = app.widthPixels;
+                    snapshot.height_px = app.heightPixels;
+                    snapshot.size_source = "Display.getMetrics.app_bounds";
+                }
+                WindowInsets insets = decor.getRootWindowInsets();
+                if (insets != null) {
+                    snapshot.inset_left_px = insets.getSystemWindowInsetLeft();
+                    snapshot.inset_top_px = insets.getSystemWindowInsetTop();
+                    snapshot.inset_right_px = insets.getSystemWindowInsetRight();
+                    snapshot.inset_bottom_px = insets.getSystemWindowInsetBottom();
+                    snapshot.insets_measured = true;
+                }
+            }
+        } catch (RuntimeException failure) { snapshot.error = "Window measurement: " + failure.toString(); }
+        try {
+            Display display = Build.VERSION.SDK_INT >= 30 ? getDisplay() : getWindowManager().getDefaultDisplay();
+            if (display != null) {
+                snapshot.display_id = display.getDisplayId();
+                snapshot.rotation = display.getRotation();
+                snapshot.refresh_rate_hz = display.getRefreshRate();
+                snapshot.current_mode_id = display.getMode().getModeId();
+                Display.Mode[] modes = display.getSupportedModes();
+                snapshot.mode_ids = new int[modes.length];
+                snapshot.mode_widths = new int[modes.length];
+                snapshot.mode_heights = new int[modes.length];
+                snapshot.mode_refresh_rates = new double[modes.length];
+                for (int i = 0; i < modes.length; i++) {
+                    snapshot.mode_ids[i] = modes[i].getModeId();
+                    snapshot.mode_widths[i] = modes[i].getPhysicalWidth();
+                    snapshot.mode_heights[i] = modes[i].getPhysicalHeight();
+                    snapshot.mode_refresh_rates[i] = modes[i].getRefreshRate();
+                }
+            }
+        } catch (RuntimeException failure) { snapshot.error += " Display measurement: " + failure.toString(); }
+        return snapshot;
     }
 
     @Override public void onResume() {

@@ -20,15 +20,12 @@ namespace ffrs {
 extern const char* const kUnavailableOnHost; // host build, needs an Android device
 extern const char* const kUnavailable;       // Android build, reason unknown/unavailable
 
-// Optional Java context. When activity_ref is null the probe runs "headless":
-// it can still report Build/storage/CPU/Vulkan facts that do not need a
-// Context, while Context-bound sections report unavailable_no_context.
+struct DisplayInfo;
+// UI-thread Android API snapshot, owned by the synchronous probe caller.
+// A CLI has no Activity/window measurement and must not substitute a model.
 struct ProbeContext {
-    void* java_vm = nullptr;      // JavaVM*
-    void* activity_ref = nullptr; // jobject (global ref) to the Activity
+    const DisplayInfo* display_snapshot = nullptr;
     const char* execution_mode = "host";
-
-    bool has_java() const { return java_vm != nullptr && activity_ref != nullptr; }
 };
 
 struct DeviceInfo {
@@ -107,6 +104,7 @@ struct InputInfo {
 };
 
 struct DisplayModeInfo {
+    int mode_id = 0;
     int width_px = 0;
     int height_px = 0;
     double refresh_rate_hz = 0.0;
@@ -114,13 +112,31 @@ struct DisplayModeInfo {
 
 struct DisplayInfo {
     std::string status = "unavailable";
+    std::string size_source;
+    std::string error;
     int width_px = 0;
     int height_px = 0;
+    int content_width_px = 0;
+    int content_height_px = 0;
+    int inset_left_px = 0;
+    int inset_top_px = 0;
+    int inset_right_px = 0;
+    int inset_bottom_px = 0;
+    bool insets_measured = false;
+    int display_id = -1;
+    int rotation = -1;
+    int current_mode_id = 0;
     double refresh_rate_hz = 0.0;
+    std::string refresh_rate_status = "unavailable";
     int density_dpi = 0;
     double density = 0.0;
+    uint64_t captured_elapsed_realtime_ns = 0;
+    std::string modes_status = "unavailable";
     std::vector<DisplayModeInfo> modes;
 };
+
+// Validate a measured Activity snapshot; never fill unknown values by guess.
+DisplayInfo NormalizeDisplaySnapshot(const DisplayInfo& measured);
 
 struct AudioInfo {
     std::string status = "unavailable";

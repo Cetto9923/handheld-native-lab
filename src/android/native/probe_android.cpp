@@ -169,103 +169,6 @@ void AndroidCollectCpu(const ProbeContext& /*ctx*/, CpuInfo& out) {
     }
 }
 
-void AndroidCollectDisplay(const ProbeContext& /*ctx*/, DisplayInfo& out) {
-    out.status = "ok";
-    std::string density_str = GetSystemProperty("ro.sf.lcd_density");
-    if (!density_str.empty()) {
-        out.density_dpi = std::atoi(density_str.c_str());
-        out.density = static_cast<double>(out.density_dpi) / 160.0;
-    }
-
-    // Attempt 1: check /sys/class/graphics/fb0/virtual_size
-    std::ifstream fb_vsize("/sys/class/graphics/fb0/virtual_size");
-    if (fb_vsize.is_open()) {
-        int w = 0, h = 0;
-        char comma = 0;
-        if (fb_vsize >> w >> comma >> h && w > 0 && h > 0) {
-            out.width_px = w;
-            out.height_px = h;
-        }
-    }
-
-    // Attempt 2: check /sys/class/graphics/fb0/modes
-    std::ifstream fb_modes("/sys/class/graphics/fb0/modes");
-    if (fb_modes.is_open()) {
-        std::string mline;
-        while (std::getline(fb_modes, mline)) {
-            int w = 0, h = 0;
-            double hz = 60.0;
-            // e.g. U:1280x960p-60
-            const char* p = mline.c_str();
-            while (*p && !std::isdigit(*p)) p++;
-            if (std::sscanf(p, "%dx%d", &w, &h) == 2 && w > 0 && h > 0) {
-                DisplayModeInfo dm;
-                dm.width_px = w;
-                dm.height_px = h;
-                const char* dash = std::strchr(p, '-');
-                if (dash) {
-                    dm.refresh_rate_hz = std::atof(dash + 1);
-                } else {
-                    dm.refresh_rate_hz = hz;
-                }
-                out.modes.push_back(dm);
-                if (out.width_px == 0) {
-                    out.width_px = w;
-                    out.height_px = h;
-                    out.refresh_rate_hz = dm.refresh_rate_hz;
-                }
-            }
-        }
-    }
-
-    // Attempt 3: DRM modes in /sys/class/drm/
-    if (out.width_px == 0) {
-        DIR* drm_dir = opendir("/sys/class/drm");
-        if (drm_dir) {
-            struct dirent* entry;
-            while ((entry = readdir(drm_dir)) != nullptr) {
-                if (entry->d_name[0] == '.') continue;
-                std::string path = std::string("/sys/class/drm/") + entry->d_name + "/modes";
-                std::ifstream drm_modes(path);
-                if (drm_modes.is_open()) {
-                    std::string m;
-                    while (std::getline(drm_modes, m)) {
-                        int w = 0, h = 0;
-                        if (std::sscanf(m.c_str(), "%dx%d", &w, &h) == 2 && w > 0 && h > 0) {
-                            DisplayModeInfo dm;
-                            dm.width_px = w;
-                            dm.height_px = h;
-                            dm.refresh_rate_hz = 60.0;
-                            out.modes.push_back(dm);
-                            if (out.width_px == 0) {
-                                out.width_px = w;
-                                out.height_px = h;
-                                out.refresh_rate_hz = 60.0;
-                            }
-                        }
-                    }
-                }
-            }
-            closedir(drm_dir);
-        }
-    }
-
-    // Default RG477M fallback if sysfs access is restricted by SELinux
-    if (out.width_px == 0) {
-        out.width_px = 1280;
-        out.height_px = 960;
-        out.refresh_rate_hz = 60.0;
-        DisplayModeInfo dm;
-        dm.width_px = 1280;
-        dm.height_px = 960;
-        dm.refresh_rate_hz = 60.0;
-        out.modes.push_back(dm);
-    }
-    if (out.refresh_rate_hz <= 0.0) {
-        out.refresh_rate_hz = 60.0;
-    }
-}
-
 void AndroidCollectInput(const ProbeContext& /*ctx*/, InputInfo& out) {
     out.status = "ok";
     out.gamepad_count = 0;
@@ -386,22 +289,9 @@ void AndroidCollectInput(const ProbeContext& /*ctx*/, InputInfo& out) {
 }
 
 void AndroidCollectAudio(const ProbeContext& /*ctx*/, AudioInfo& out) {
-    out.status = "headless_cli_no_audiotrack";
-    std::ifstream asound_cards("/proc/asound/cards");
-    if (asound_cards.is_open()) {
-        std::string line;
-        int count = 0;
-        while (std::getline(asound_cards, line)) {
-            if (!line.empty() && std::isdigit(line[0])) {
-                count++;
-            }
-        }
-        out.output_device_count = count;
-    }
-    out.sample_rate_hz = 48000;
-    out.native_output_sample_rate_hz = 48000;
-    out.output_frames_per_buffer = 192;
-    out.channel_config = "STEREO";
+    out = AudioInfo{};
+    out.status = "not_run_no_audiotrack_probe";
+    out.audiotrack_error = "AudioTrack output and playback have not been measured; NOT_RUN.";
 }
 
 } // namespace ffrs
