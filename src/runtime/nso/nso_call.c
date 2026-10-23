@@ -39,13 +39,15 @@ static int number(const char *s,uint64_t *out) {
     *out=v;return 1;
 }
 static int usage(const char *program) {
-    fprintf(stderr,"usage: %s <uncompressed.nso> [--init] --info|--call <offset> [arg0 ... arg5]|--symbol <name> [args]\n",program);
+    fprintf(stderr,"usage: %s <uncompressed.nso> [--init-wrapper|--init-elf] --info|--call <offset> [arg0 ... arg5]|--symbol <name> [args]\n",program);
     return 2;
 }
 int main(int argc,char **argv) {
     if(argc<3)return usage(argv[0]);
     int next=2,init=0;
-    if(!strcmp(argv[next],"--init")) {init=1;next++;}
+    nso_init_policy policy=NSO_INIT_ELF;
+    if(!strcmp(argv[next],"--init-wrapper")) {init=1;policy=NSO_INIT_DT_INIT_OWNS_ARRAY;next++;}
+    else if(!strcmp(argv[next],"--init-elf")) {init=1;next++;}
     if(next>=argc)return usage(argv[0]);
     const char *mode=argv[next++];
     int info=!strcmp(mode,"--info"),by_symbol=!strcmp(mode,"--symbol"),by_offset=!strcmp(mode,"--call");
@@ -75,7 +77,7 @@ int main(int argc,char **argv) {
     printf("build id      : %s\nbase          : 0x%" PRIx64 "\nimports       : %u\nunresolved    : %u\nrelocations   : %" PRIu64 "\nrelr          : %" PRIu64 "\n",
            bid,nso_base(m),nso_import_count(m),nso_unresolved_count(m),nso_reloc_count(m),nso_relr_count(m));
     fflush(stdout);
-    if(init)nso_run_init(m);
+    if(init)nso_run_init_policy(m,policy);
     int rc=0;
     if(!info) {
         if(by_symbol) {

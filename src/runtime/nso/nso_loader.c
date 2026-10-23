@@ -299,8 +299,16 @@ uint64_t nso_call(nso_module *m,uint64_t off,uint64_t a0,uint64_t a1,uint64_t a2
     typedef uint64_t(*fn)(uint64_t,uint64_t,uint64_t,uint64_t,uint64_t,uint64_t);
     return ((fn)(m->image+off))(a0,a1,a2,a3,a4,a5);
 }
-void nso_run_init(nso_module *m) {
+void nso_run_init_policy(nso_module *m,nso_init_policy policy) {
+    if(policy!=NSO_INIT_ELF && policy!=NSO_INIT_DT_INIT_OWNS_ARRAY) {
+        fprintf(stderr,"[init-error] unknown initialization policy\n");exit(2);
+    }
+    printf("[init] policy=%s\n",policy==NSO_INIT_ELF?"elf":"dt-init-owns-array");fflush(stdout);
     if(m->init_offset) {printf("[init] DT_INIT 0x%" PRIx64 "\n",m->init_offset);fflush(stdout);nso_call(m,m->init_offset,0,0,0,0,0,0);}
+    if(policy==NSO_INIT_DT_INIT_OWNS_ARRAY) {
+        if(m->init_offset) {puts("[init] array belongs to DT_INIT wrapper; no second walk");return;}
+        puts("[init] no DT_INIT; walking array once");
+    }
     for(uint64_t k=0;k<m->init_array_size;k+=8) {
         uint64_t addr=rd64(m->image+m->init_array_offset+k);
         if(!addr || addr==UINT64_MAX)continue;
@@ -308,6 +316,7 @@ void nso_run_init(nso_module *m) {
         nso_call(m,addr-nso_base(m),0,0,0,0,0,0);
     }
 }
+void nso_run_init(nso_module *m) {nso_run_init_policy(m,NSO_INIT_ELF);}
 static int sentinel_index(const uint8_t *base,size_t size,uint64_t addr) {
     return addr>=(uintptr_t)base && addr-(uintptr_t)base<size?(int)((addr-(uintptr_t)base)/8):-1;
 }
@@ -356,8 +365,4 @@ void nso_install_fault_trap(nso_module *m) {
     if(!owns_signal_stack && sigaltstack(&ss,&previous_signal_stack)==0)owns_signal_stack=1;
     struct sigaction sa;memset(&sa,0,sizeof(sa));sigemptyset(&sa.sa_mask);sa.sa_sigaction=fault_handler;sa.sa_flags=SA_SIGINFO|SA_ONSTACK;
     sigaction(SIGSEGV,&sa,NULL);sigaction(SIGBUS,&sa,NULL);sigaction(SIGILL,&sa,NULL);sigaction(SIGTRAP,&sa,NULL);
-}
-void nso_enable_svc_trap(int verbose) {
-    /* Never resume an unsupported SVC: silently returning would loop forever. */
-    if(verbose)fprintf(stderr,"[svc] unsupported platform calls remain fatal; no SVC emulation installed\n");
 }

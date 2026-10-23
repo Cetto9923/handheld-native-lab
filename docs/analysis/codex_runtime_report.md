@@ -492,3 +492,155 @@ QueryMemoryInfo still requires a coherent guest-owned memory model and accountin
 backed by real allocations, not invented total/free RAM. Guest ELF TLS, SDK thread
 state and DSO/CRT initialization remain separate unresolved layouts/lifecycles.
 There is no full game startup, Android execution or complete T02 PASS.
+
+
+## Sixth checkpoint: real CRT gate and explicit initializer ownership
+
+This unit starts at 5e165d08a22d6b19826467ef0ed861ce168bb5fb. It does not add
+__nnmusl_init_dso to the HLE resolver. The true main initialization still stops
+at import 515, caller +0x5920a34, exit 133. A separate, explicitly terminating
+diagnostic establishes what the original SDK would do at its first gate.
+
+### Actual machine arguments and original SDK result
+
+Main's DT_INIT +0x5920950 prepares 21 fixed GP words: x0..x7 and thirteen
+8-byte stack arguments at sp+0 through sp+96. Its BL at +0x5920a30 calls PLT
++0x5e699d0, whose relocation identifies __nnmusl_init_dso. The test's fixed-word
+C signature is a diagnostic for that observed machine ABI, not a recovered
+source prototype or permission to use a six-argument generic wrapper here.
+
+All 21 input GOT slots are DT_RELR targets. Every received argument is B plus
+the corresponding original GOT word, where B is the main mapping base. This
+includes the words 0 and 8: their actual arguments are B and B+8, not null or
+a literal scalar alignment value. The native observer checks each actual
+argument against its actual relocated GOT slot.
+
+| Argument | Register / stack byte offset | GOT slot | Value minus B |
+|---:|---|---:|---:|
+| 0 | x0 | 0x776f120 | 0 |
+| 1 | x1 | 0x776f128 | 0x5e67aa4 |
+| 2 | x2 | 0x776f130 | 0x7767108 |
+| 3 | x3 | 0x776f138 | 0x7767328 |
+| 4 | x4 | 0x776f140 | 8 |
+| 5 | x5 | 0x776f148 | 0x7767110 |
+| 6 | x6 | 0x776f158 | 0x7767328 |
+| 7 | x7 | 0x776f160 | 0x7768121 |
+| 8 | sp+0 | 0x776f170 | 8 |
+| 9 | sp+8 | 0x776f168 | 0x7767330 |
+| 10 | sp+16 | 0x776f118 | 0x7771fe8 |
+| 11 | sp+24 | 0x776f150 | 0x7773398 |
+| 12 | sp+32 | 0x776f110 | 0x5e6b098 |
+| 13 | sp+40 | 0x776f108 | 0x5e82630 |
+| 14 | sp+48 | 0x776f100 | 0 |
+| 15 | sp+56 | 0x776f0f8 | 0 |
+| 16 | sp+64 | 0x776f0f0 | 0x5e82630 |
+| 17 | sp+72 | 0x776f0e8 | 0x5e860f8 |
+| 18 | sp+80 | 0x776f0e0 | 0 |
+| 19 | sp+88 | 0x776f0d8 | 0 |
+| 20 | sp+96 | 0x776f0d0 | 0x7767328 |
+
+Arguments 3, 6 and 20 coincide with this main's verified DT_DYNAMIC address.
+The callee field writes provide stronger semantic evidence than names guessed
+from adjacent data. At SDK +0x98e30 relative offsets +0xb4..+0xd4 it computes
+(a5-a2)=8, a4-(a5-a2)=B, and (a9-a6)=8. At +0x1f4..+0x218 it writes a2,
+(a3-a2)=0x220, (a7-a2)=0x1019 and maximum alignment 8 into the first four
+64-bit fields of its allocated 0x148-byte record. Interpreting these as a TLS
+template pointer, initialized size 544, aggregate size 4,121 and alignment 8 is
+an inference from field use; the original parameter/structure declarations
+remain unavailable. The dynamic-table parser adds the derived B to table
+pointer values. These findings do not establish a complete guest thread layout.
+
+The original SDK's first dependency is
+nn::os::MemoryAllocatorForThreadLocalInitialized() at +0x144620, reached through
+its own PLT. The getter checks an SDK-owned allocator function pointer. The
+setter +0x1445e0 accepts non-null allocate/free pointers, rejects reinitialization,
+and stores both; no setter is invoked by this experiment. With a fresh mapped
+SDK, the getter actually returns 0. Calling the original, unmodified
+__nnmusl_init_dso with all 21 captured main arguments then actually returns 2
+through its early-return branch. SDK DT_INIT, SDK constructors, DSO allocation,
+TLS setup and callbacks have not executed.
+
+The observer exits 86 immediately after logging this result, before main
+consumes it or enters ProtectRelro/constructors. This nonzero status is an
+intentional diagnostic stop, not a game or CRT success result. Both capture-only
+and SDK-gate modes pass their observations with exactly 21 matching arguments;
+both return 86, with no timeout. The normal strict resolver continues to leave
+__nnmusl_init_dso unsupported.
+
+Going further by merely setting the allocator would be unsafe and semantically
+incomplete. The subsequent path uses SdkMutexType, allocates DSO tables/records,
+counts TLS relocations and computes thread storage. Its internal helper at SDK
++0x99930 contains MRS TPIDRRO_EL0 at +0x99b4c, a store to [TPIDRRO_EL0+0x1f0] at
++0x99b50 and MSR TPIDR_EL0 at +0x99b54. These instructions were inspected
+statically only. They are not executed on the host. No host TP register or host
+TLS memory is replaced, and gate=false is never bound as fabricated CRT success.
+
+### Constructor ownership is now explicit
+
+This main's DT_INIT wrapper already walks its DT_INIT_ARRAY: after the DSO call
+it skips its remaining work when w0==1; otherwise it calls ProtectRelro, then
+walks from the GOT-derived array start 0x67d5000 to end 0x67d8b10. These exactly
+match dynamic array offset 0x67d5000 and size 0x3b10 (1,890 entries). The SDK's
+own DT_INIT +0x400 uses the same wrapper pattern. Running a generic ELF
+DT_INIT-then-array walk after either wrapper can therefore duplicate constructor
+execution once the current earlier platform boundaries are resolved.
+
+The loader now exposes nso_run_init_policy with NSO_INIT_ELF and
+NSO_INIT_DT_INIT_OWNS_ARRAY. The latter runs DT_INIT and leaves its array to the
+verified wrapper. With no DT_INIT, either strategy explicitly walks the array
+once. Legacy nso_run_init remains documented as the generic ELF strategy; it is
+not used for this main. No strategy skips CRT initialization or invents its
+state.
+
+The CLI requires the caller to choose --init-wrapper or --init-elf. Ambiguous
+--init is rejected with exit 2; it does not infer a strategy for an unidentified
+NSO. The reviewed main experiment and CRT diagnostic explicitly select the
+wrapper strategy. The stale nso_enable_svc_trap API was removed: its old
+implementation only printed a message and installed no SVC compatibility, while
+its header misleadingly claimed interception. Fatal SVC behavior is unchanged.
+
+A valid synthetic native fixture has a DT_INIT wrapper report event 1 and call
+its array function (event 2). Wrapper policy reports [1,2], count 2; explicit
+ELF and legacy generic policies report [1,2,2], count 3. Array-only fixtures
+report [2], count 1 for both strategies. These are deliberately ordinary
+lifecycle examples, not game bytes or a malformed-input/security QA flow.
+
+### Reproduction, evidence and next feasible host work
+
+    python3 scripts/runtime/probe_crt_init.py \
+      --out .local/runtime/crt-init-next
+    python3 tests/native/test_init_policy.py \
+      --out .local/runtime/init-policy-next
+    python3 scripts/runtime/run_experiments.py --host-hle \
+      --out .local/runtime/entry-policy-next
+
+Evidence directories:
+
+- .local/runtime/crt-init-v3/manifest.json: input identities, code-range hashes,
+  all argument/GOT values, build exit 0, capture exit 86 and SDK-gate exit 86.
+- .local/runtime/init-policy-v1: both native policy counts, legacy semantics,
+  array-only fallback, strict CLI rejection. Functional cases/builds exit 0;
+  ambiguous --init exits the expected 2; no timeouts.
+- .local/runtime/static-main-dso-v1: exact caller +0x5920900 instruction slice.
+- .local/runtime/static-sdk-dso-v1: entire exported +0x98e30 implementation.
+- .local/runtime/static-sdk-dso-gate-v1: getter/setter and SDK DT_INIT wrapper.
+- .local/runtime/static-sdk-dso-mutex-v1: SdkMutexType calls and the internal
+  helper containing the guest TP write sites, inspected without execution.
+- .local/runtime/checkpoint-v8-init-policy: new host builds and the actual
+  --init-wrapper path. Leaf 16,875 comparisons and --info exit 0; all four game
+  entry boundary probes still exit 133. No boundary is recategorized as startup.
+
+The next meaningful host step is a separately owned, bounded per-thread guest
+TLS image: confirm template/zero-fill/alignment and all thread-relative offsets,
+then test copy/zero-fill/isolation and host TLS preservation without executing
+game accesses. Connecting that storage to original code additionally requires
+an evidenced native adaptation for every relevant TP read/write site, preserving
+registers and return state. The SDK helper above must not execute its host-TP
+writes. SDK object/DSO ownership, private mutex/allocator dependencies and
+startup order also require an explicit process context. Mapping the SDK and
+letting its native CRT continue is not presently safe or compatible.
+
+This bounded TLS/context research is feasible without a device. Full game CRT
+startup has not become feasible merely from the gate observation; it still
+needs substantive platform adaptation. No Android execution, game initialization,
+RG477M performance, independent acceptance or overall T02 PASS is claimed.

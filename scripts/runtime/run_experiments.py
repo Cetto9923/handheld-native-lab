@@ -48,7 +48,7 @@ def main():
         raise RuntimeError("native game leaf did not match its mathematical oracle")
     for name,argv in [("info",["--info"]),("malloc",["--symbol","malloc","4096"]),
                       ("startup",["--symbol","nninitStartup"]),("main",["--symbol","nnMain"]),
-                      ("constructors",["--init","--info"])]:
+                      ("constructors",["--init-wrapper","--info"])]:
         run(name,[out/"nso_call",args.input,*argv])
         manifest["cases"][name]["classification"]="STRUCTURAL_LOAD" if name=="info" else "PLATFORM_BOUNDARY_EXPERIMENT"
     manifest["input_sha256_after"]=hashlib.sha256(args.input.read_bytes()).hexdigest()

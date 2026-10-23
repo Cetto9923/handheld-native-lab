@@ -90,14 +90,21 @@ uint64_t nso_call(nso_module *m, uint64_t module_offset,
                   uint64_t a0, uint64_t a1, uint64_t a2,
                   uint64_t a3, uint64_t a4, uint64_t a5);
 
-/* Run .init and .init_array static constructors. */
+typedef enum {
+    NSO_INIT_ELF = 0, /* DT_INIT, then DT_INIT_ARRAY. */
+    NSO_INIT_DT_INIT_OWNS_ARRAY = 1 /* A verified wrapper runs its own array. */
+} nso_init_policy;
+
+/* Explicit lifecycle selection. With no DT_INIT, either policy walks the array
+ * once. No policy detects or invents SDK CRT/TLS initialization. */
+void nso_run_init_policy(nso_module *m,nso_init_policy policy);
+
+/* Legacy generic ELF strategy: DT_INIT followed by DT_INIT_ARRAY. A Horizon
+ * wrapper that owns its array must instead use the explicit policy above. */
 void nso_run_init(nso_module *m);
 
 /* Install a fault handler that reports faulting PCs as module offsets. */
 void nso_install_fault_trap(nso_module *m);
-
-/* Enable the SIGILL trap that intercepts `svc` instructions. */
-void nso_enable_svc_trap(int verbose);
 
 #ifdef __cplusplus
 }
