@@ -3,6 +3,7 @@
  */
 #define _POSIX_C_SOURCE 200809L
 #include <vulkan_core.h>
+#include "../vulkan/buffer_resource.h"
 #include <inttypes.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -25,14 +26,7 @@ enum { COPY_BYTES = 65536, IMAGE_WIDTH = 8, IMAGE_HEIGHT = 8,
 static const uint64_t FENCE_TIMEOUT_NS = UINT64_C(5000000000);
 
 typedef struct Stage { const char *name; VkResult result; } Stage;
-typedef struct HostBuffer {
-    VkBuffer buffer;
-    VkDeviceMemory memory;
-    void *mapped;
-    VkDeviceSize allocation_bytes;
-    uint32_t memory_type;
-    VkMemoryPropertyFlags memory_flags;
-} HostBuffer;
+typedef FfrsVkBufferResource HostBuffer;
 typedef struct Probe {
     VkInstance instance;
     VkPhysicalDevice physical;
@@ -123,33 +117,32 @@ static bool memory_type(Probe *p, uint32_t bits, VkMemoryPropertyFlags required,
     return best_score >= 0;
 }
 
+typedef struct BufferTrace { Probe *probe; const char *const *names; } BufferTrace;
+static void buffer_observer(void *user, FfrsVkBufferOperation operation, VkResult value) {
+    BufferTrace *trace = user;
+    (void)result(trace->probe, trace->names[operation], value);
+}
+
 static bool create_host_buffer(Probe *p, HostBuffer *b, VkDeviceSize bytes,
                                VkBufferUsageFlags usage, const char *const names[5]) {
-    VkBufferCreateInfo create = {.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = bytes, .usage = usage, .sharingMode = VK_SHARING_MODE_EXCLUSIVE};
-    if (!result(p, names[0], vkCreateBuffer(p->device, &create, NULL, &b->buffer))) return false;
-    VkMemoryRequirements requirements;
-    vkGetBufferMemoryRequirements(p->device, b->buffer, &requirements);
-    if (!memory_type(p, requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-                     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &b->memory_type))
+    FfrsVkBufferCreateInfo info = {.device = p->device,
+        .memory_properties = &p->memory_properties, .bytes = bytes, .usage = usage};
+    BufferTrace trace = {p, names};
+    FfrsVkBufferResult created = ffrs_vk_buffer_create(b, &info, buffer_observer, &trace);
+    p->destroyed_objects += created.rollback.destroyed_objects;
+    p->unmapped_allocations += created.rollback.unmapped_allocations;
+    if (created.status == FFRS_VK_BUFFER_NO_HOST_MEMORY)
         return fail(p, names[1], "NO_HOST_VISIBLE_MEMORY_TYPE", 5);
-    b->memory_flags = p->memory_properties.memoryTypes[b->memory_type].propertyFlags;
-    b->allocation_bytes = requirements.size;
-    VkMemoryAllocateInfo allocate = {.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-        .allocationSize = requirements.size, .memoryTypeIndex = b->memory_type};
-    if (!result(p, names[1], vkAllocateMemory(p->device, &allocate, NULL, &b->memory))) return false;
-    if (!result(p, names[2], vkBindBufferMemory(p->device, b->buffer, b->memory, 0))) return false;
-    if (!result(p, names[3], vkMapMemory(p->device, b->memory, 0, VK_WHOLE_SIZE, 0, &b->mapped)))
-        return false;
-    /* Whole-allocation ranges satisfy nonCoherentAtomSize alignment at the end. */
-    (void)names[4];
-    return true;
+    if (created.status == FFRS_VK_BUFFER_INVALID_ARGUMENT)
+        return fail(p, names[0], "INVALID_BUFFER_RESOURCE_ARGUMENT", 2);
+    return created.status == FFRS_VK_BUFFER_OK && !p->failure;
 }
 
 static bool flush_buffer(Probe *p, HostBuffer *b, const char *name) {
-    VkMappedMemoryRange range = {.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
-        .memory = b->memory, .offset = 0, .size = VK_WHOLE_SIZE};
-    return result(p, name, vkFlushMappedMemoryRanges(p->device, 1, &range));
+    FfrsVkBufferResult flushed = ffrs_vk_buffer_flush(b);
+    if (flushed.status == FFRS_VK_BUFFER_INVALID_ARGUMENT)
+        return fail(p, name, "INVALID_BUFFER_RESOURCE_ARGUMENT", 2);
+    return result(p, name, flushed.vk_result);
 }
 
 static uint8_t pattern(size_t index) {
@@ -328,18 +321,18 @@ static bool execute(Probe *p) {
     VkResult wait = vkWaitForFences(p->device, 1, &p->fence, VK_TRUE, FENCE_TIMEOUT_NS);
     uint64_t end = monotonic_ns();
     p->wait_elapsed_ns = end >= start ? end - start : 0;
-    if (wait == VK_SUCCESS || wait == VK_ERROR_DEVICE_LOST) p->pending = false;
+    if (wait == VK_SUCCESS) p->pending = false;
     if (!result(p, "wait_for_fence", wait)) {
         if (wait == VK_TIMEOUT) { p->failure = "FENCE_TIMEOUT"; p->exit_code = 4; }
         return false;
     }
     p->fence_complete = true;
-    VkMappedMemoryRange ranges[2] = {
-        {.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE, .memory = p->destination.memory,
-         .offset = 0, .size = VK_WHOLE_SIZE},
-        {.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE, .memory = p->pixels.memory,
-         .offset = 0, .size = VK_WHOLE_SIZE}};
-    if (!result(p, "invalidate_readback_memory", vkInvalidateMappedMemoryRanges(p->device, 2, ranges)))
+    const FfrsVkBufferResource *readback[2] = {&p->destination, &p->pixels};
+    VkMappedMemoryRange ranges[2];
+    FfrsVkBufferResult invalidated = ffrs_vk_buffer_invalidate(readback, 2, ranges);
+    if (invalidated.status == FFRS_VK_BUFFER_INVALID_ARGUMENT)
+        return fail(p, "invalidate_readback_memory", "INVALID_BUFFER_RESOURCE_ARGUMENT", 2);
+    if (!result(p, "invalidate_readback_memory", invalidated.vk_result))
         return false;
     for (size_t i = 0; i < COPY_BYTES; ++i) {
         if (((const uint8_t *)p->destination.mapped)[i] != pattern(i)) {
@@ -361,9 +354,13 @@ static bool execute(Probe *p) {
 }
 
 static void cleanup_buffer(Probe *p, HostBuffer *b) {
-    if (b->mapped) { vkUnmapMemory(p->device, b->memory); ++p->unmapped_allocations; }
-    if (b->buffer) { vkDestroyBuffer(p->device, b->buffer, NULL); ++p->destroyed_objects; }
-    if (b->memory) { vkFreeMemory(p->device, b->memory, NULL); ++p->destroyed_objects; }
+    FfrsVkBufferReleaseStats released;
+    if (!ffrs_vk_buffer_destroy(b, !p->pending, &released)) {
+        (void)fail(p, "destroy_buffer_resource", "GPU_QUIESCENCE_NOT_CONFIRMED", 2);
+        return;
+    }
+    p->destroyed_objects += released.destroyed_objects;
+    p->unmapped_allocations += released.unmapped_allocations;
 }
 
 static void cleanup(Probe *p) {

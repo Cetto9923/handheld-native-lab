@@ -227,5 +227,65 @@ VKAPI_ATTR VkResult VKAPI_CALL vkWaitForFences(VkDevice device, uint32_t count, 
     VkBool32 wait_all, uint64_t timeout) {
     UNUSED(device); UNUSED(fence); assert(count == 1 && wait_all && timeout == 5000000000ULL); CHECK_RESULT();
     if (enabled("MOCK_HANG")) sleep(30);
+    if (enabled("MOCK_WAIT_DEVICE_LOST")) return VK_ERROR_DEVICE_LOST;
     return enabled("MOCK_TIMEOUT") ? VK_TIMEOUT : VK_SUCCESS;
 }
+
+#ifdef FFRS_VK_BUFFER_RESOURCE_UNIT_TEST
+#include "../../src/graphics/vulkan/buffer_resource.h"
+
+/* Unit tests of the production owner contract, using this same host double.
+ * This branch is never linked into the Android transfer driver.
+ */
+int main(void) {
+    VkInstance instance;
+    VkApplicationInfo app = {.apiVersion = VK_API_VERSION_1_0};
+    VkInstanceCreateInfo instance_info = {.pApplicationInfo = &app};
+    assert(vkCreateInstance(&instance_info, NULL, &instance) == VK_SUCCESS);
+    VkDevice device;
+    VkDeviceCreateInfo device_info = {.queueCreateInfoCount = 1};
+    assert(vkCreateDevice((VkPhysicalDevice)&physical_token, &device_info, NULL, &device) == VK_SUCCESS);
+    VkPhysicalDeviceMemoryProperties memory_properties;
+    vkGetPhysicalDeviceMemoryProperties((VkPhysicalDevice)&physical_token, &memory_properties);
+    FfrsVkBufferCreateInfo info = {.device = device, .memory_properties = &memory_properties,
+        .bytes = 97, .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT};
+    FfrsVkBufferResource first = {0}, second = {0};
+    assert(ffrs_vk_buffer_create(&first, &info, NULL, NULL).status == FFRS_VK_BUFFER_OK);
+    assert(ffrs_vk_buffer_create(&second, &info, NULL, NULL).status == FFRS_VK_BUFFER_OK);
+    assert(first.bytes == 97 && first.allocation_bytes == 353);
+    VkBuffer saved_buffer = first.buffer;
+    VkDeviceMemory saved_memory = first.memory;
+    void *saved_mapping = first.mapped;
+    FfrsVkBufferReleaseStats released;
+    assert(!ffrs_vk_buffer_destroy(&first, false, &released));
+    assert(first.buffer == saved_buffer && first.memory == saved_memory && first.mapped == saved_mapping);
+    assert(released.destroyed_objects == 0 && released.unmapped_allocations == 0);
+    int before = result_calls;
+    assert(ffrs_vk_buffer_create(&first, &info, NULL, NULL).status == FFRS_VK_BUFFER_INVALID_ARGUMENT);
+    assert(result_calls == before && first.buffer == saved_buffer && first.mapped == saved_mapping);
+    assert(ffrs_vk_buffer_flush(&first).status == FFRS_VK_BUFFER_OK);
+    const FfrsVkBufferResource *batch[2] = {&first, &second};
+    VkMappedMemoryRange ranges[2];
+    assert(ffrs_vk_buffer_invalidate(batch, 2, ranges).status == FFRS_VK_BUFFER_OK);
+    assert(ffrs_vk_buffer_destroy(&second, true, &released));
+    assert(released.destroyed_objects == 2 && released.unmapped_allocations == 1);
+    assert(ffrs_vk_buffer_destroy(&first, true, &released));
+    assert(released.destroyed_objects == 2 && released.unmapped_allocations == 1);
+    assert(!first.buffer && !first.memory && !first.mapped && !first.device);
+    assert(ffrs_vk_buffer_destroy(&first, true, &released));
+    assert(!released.destroyed_objects && !released.unmapped_allocations);
+    before = result_calls;
+    assert(ffrs_vk_buffer_flush(&first).status == FFRS_VK_BUFFER_INVALID_ARGUMENT);
+    assert(ffrs_vk_buffer_invalidate(batch, 2, ranges).status == FFRS_VK_BUFFER_INVALID_ARGUMENT);
+    info.bytes = 0;
+    assert(ffrs_vk_buffer_create(&first, &info, NULL, NULL).status == FFRS_VK_BUFFER_INVALID_ARGUMENT);
+    assert(result_calls == before);
+    vkDestroyDevice(device, NULL);
+    vkDestroyInstance(instance, NULL);
+    assert(!live_objects && !mapped_memories);
+    puts("{\"status\":\"PASS\",\"scope\":\"buffer_resource_host_contract_only\","
+         "\"gpu_execution\":\"NOT_RUN\",\"quiescence_refusal\":true,\"idempotent_release\":true,"
+         "\"busy_owner_preserved\":true,\"local_errors_issue_no_vk_calls\":true}");
+    return 0;
+}
+#endif

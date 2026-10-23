@@ -13,6 +13,15 @@ def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+def source_bundle(root):
+    """Canonical driver+component+public-interface identity embedded in the ELF."""
+    paths = ("src/graphics/vulkan_probe/vulkan_transfer_probe.c",
+             "src/graphics/vulkan/buffer_resource.c", "src/graphics/vulkan/buffer_resource.h")
+    records = [{"path": name, "sha256": digest(Path(root) / name)} for name in paths]
+    content = json.dumps(records, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(content).hexdigest(), records
+
+
 def verify_elf(path):
     data = Path(path).read_bytes()
     assert data[:6] == b"\x7fELF\x02\x01", "ELF64 little endian required"
@@ -53,8 +62,10 @@ def main():
     manifest = json.loads(Path(args.members).read_text())
     assert manifest["whole_archive_sha1_verified"] is False, "expected explicit partial-NDK provenance"
     members = {entry["path"]: entry for entry in manifest["members"]}
-    dependency_text = (run / "probe.d").read_text().replace("\\\n", " ")
-    dependencies = [Path(p).resolve() for p in shlex.split(dependency_text.split(":", 1)[1])]
+    dependencies = []
+    for name in ("probe.d", "buffer_resource.d"):
+        dependency_text = (run / name).read_text().replace("\\\n", " ")
+        dependencies += [Path(p).resolve() for p in shlex.split(dependency_text.split(":", 1)[1])]
     api = toolchain / "sysroot/usr/lib/aarch64-linux-android/28"
     inputs = set(dependencies + [api / name for name in
                   ("crtbegin_dynamic.o", "crtend_android.o", "libc.so", "libvulkan.so")]
@@ -72,9 +83,11 @@ def main():
             entry["crc32_rechecked"] = crc
         records.append(entry)
     artifact = run / "vulkan_transfer_probe"
+    bundle_sha, source_records = source_bundle(run / "source_freeze")
     evidence = {"schema": "ffrs.vulkan.build.v1", "android_execution": "NOT_RUN",
                 "git_head_at_build": (run / "git-head.txt").read_text().strip(),
-                "source_sha256": digest(run / "source_freeze/src/graphics/vulkan_probe/vulkan_transfer_probe.c"),
+                "source_sha256": bundle_sha, "source_hash_scheme": "canonical_path_sha256_json_v1",
+                "sources": source_records,
                 "artifact": {"path": str(artifact), "bytes": artifact.stat().st_size, "sha256": digest(artifact)},
                 "elf_checks": verify_elf(artifact), "inputs": records,
                 "tools": [{"path": str(Path(p).resolve()), "sha256": digest(Path(p).resolve())}

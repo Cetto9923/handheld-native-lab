@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import runpy
 import subprocess
 
 
@@ -18,9 +19,13 @@ def main():
     output.mkdir(parents=True, exist_ok=False)
     include = Path(args.toolchain).resolve() / "sysroot/usr/include"
     binary = output / "host_vulkan_probe_test_double"
+    source_sha, source_records = runpy.run_path(str(root / "scripts/graphics/validate_vulkan_artifact.py"))["source_bundle"](root)
+    (output / "source-bundle.json").write_text(json.dumps({"sha256": source_sha, "sources": source_records}, indent=2) + "\n")
     command = ["clang", "-std=c11", "-g", "-O1", "-Wall", "-Wextra", "-Werror", "-Wpedantic",
                "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-isystem", str(include / "vulkan"),
-               "-iquote", str(include), str(root / "src/graphics/vulkan_probe/vulkan_transfer_probe.c"),
+               "-iquote", str(include), '-DFFRS_VK_SOURCE_SHA256="' + source_sha + '"',
+               str(root / "src/graphics/vulkan_probe/vulkan_transfer_probe.c"),
+               str(root / "src/graphics/vulkan/buffer_resource.c"),
                str(root / "tests/graphics/vulkan_mock_driver.c"), "-o", str(binary)]
     (output / "compile-command.json").write_text(json.dumps(command, indent=2) + "\n")
     compile_result = subprocess.run(command, text=True, capture_output=True)
@@ -29,6 +34,34 @@ def main():
     (output / "compile.exitcode").write_text(str(compile_result.returncode) + "\n")
     compile_result.check_returncode()
     records = []
+
+    contract_binary = output / "host_buffer_resource_contract"
+    contract_command = command[:command.index(str(root / "src/graphics/vulkan_probe/vulkan_transfer_probe.c"))]
+    contract_command += ["-DFFRS_VK_BUFFER_RESOURCE_UNIT_TEST",
+                         str(root / "src/graphics/vulkan/buffer_resource.c"),
+                         str(root / "tests/graphics/vulkan_mock_driver.c"), "-o", str(contract_binary)]
+    (output / "resource-contract-compile-command.json").write_text(json.dumps(contract_command, indent=2) + "\n")
+    contract_compile = subprocess.run(contract_command, text=True, capture_output=True)
+    (output / "resource-contract-compile.stdout").write_text(contract_compile.stdout)
+    (output / "resource-contract-compile.stderr").write_text(contract_compile.stderr)
+    (output / "resource-contract-compile.exitcode").write_text(str(contract_compile.returncode) + "\n")
+    contract_compile.check_returncode()
+    contract_records = []
+    for label, environment in (("coherent", {}), ("noncoherent", {"MOCK_NONCOHERENT": "1"})):
+        checked = subprocess.run([str(contract_binary)], env={**os.environ, **environment},
+                                 text=True, capture_output=True, timeout=5)
+        stem = output / ("resource-contract-" + label)
+        stem.with_suffix(".stdout.json").write_text(checked.stdout)
+        stem.with_suffix(".stderr").write_text(checked.stderr)
+        stem.with_suffix(".exitcode").write_text(str(checked.returncode) + "\n")
+        checked.check_returncode()
+        contract_report, mock_report = json.loads(checked.stdout), json.loads(checked.stderr)
+        assert contract_report["status"] == "PASS" and contract_report["gpu_execution"] == "NOT_RUN"
+        assert all(contract_report[k] is True for k in
+                   ("quiescence_refusal", "idempotent_release", "busy_owner_preserved", "local_errors_issue_no_vk_calls"))
+        assert mock_report["live_objects"] == 0 and mock_report["mapped_memories"] == 0
+        assert mock_report["flush_calls"] == 1 and mock_report["invalidate_calls"] == 1
+        contract_records.append({"case": label, "exit_code": checked.returncode, "scope": "host contract only"})
 
     def run(label, environment, expected_exit):
         result = subprocess.run([str(binary)], env={**os.environ, **environment},
@@ -70,6 +103,10 @@ def main():
     timeout = run("fence-timeout", {"MOCK_TIMEOUT": "1"}, 4)
     assert timeout["failure"] == "FENCE_TIMEOUT" and not timeout["operations"]["readback_compared"]
     assert timeout["stages"][-1]["vk_result"] == 2
+    lost = run("device-lost-wait", {"MOCK_WAIT_DEVICE_LOST": "1"}, 2)
+    assert lost["stages"][-1]["vk_result"] == -4
+    assert lost["cleanup"]["strategy"] == "process_teardown_inflight_uncertain"
+    assert not lost["operations"]["fence_completed"] and not lost["operations"]["readback_compared"]
     for target, offset in (("buffer", 123), ("image", 17)):
         mismatch = run(target + "-mismatch", {"MOCK_CORRUPT": target}, 3)
         assert mismatch["operations"][target + "_mismatches"] == 1
@@ -81,7 +118,8 @@ def main():
         watchdog = run("watchdog-timeout", {"MOCK_HANG": "1"}, 124)
         assert watchdog["failure"] == "PROCESS_WATCHDOG_TIMEOUT"
     summary = {"schema": "ffrs.vulkan.host-tests.v1", "status": "PASS", "cases": len(records),
-               "android_execution": "NOT_RUN", "gpu_execution": "NOT_RUN", "tests": records}
+               "android_execution": "NOT_RUN", "gpu_execution": "NOT_RUN", "tests": records,
+               "resource_contract_tests": contract_records}
     (output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     print(json.dumps({k: v for k, v in summary.items() if k != "tests"}))
 
