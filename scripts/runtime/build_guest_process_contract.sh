@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT=Path.cwd()
 p=argparse.ArgumentParser(description='Build the restricted owned startup experiment')
 p.add_argument('--out',type=Path,required=True);p.add_argument('--toolchain',type=Path,required=True)
+p.add_argument('--pages-source-root',type=Path,default=ROOT,help='reviewed guest_pages component checkout, default this integrated tree')
 p.add_argument('--main',type=Path);p.add_argument('--quota-bytes',type=int);p.add_argument('--stack-bytes',type=int)
 p.add_argument('--rust-root',type=Path,default=Path.home()/'.rustup/toolchains/stable-aarch64-apple-darwin')
 a=p.parse_args();out=a.out.resolve();tc=a.toolchain.resolve()
@@ -15,16 +16,22 @@ if a.main and (not a.quota_bytes or not a.stack_bytes):p.error('main requires ex
 out.mkdir(parents=True,exist_ok=False)
 def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 nso=ROOT/'src/runtime/nso';hle=ROOT/'src/runtime/hle'
-sources=[nso/'nso_loader.c',*[hle/(s+'.c') for s in ['guest_context','guest_process','nso_host','address_region','mutex','exit_registry']]]
+core_sources=[nso/'nso_loader.c',*[hle/(s+'.c') for s in ['guest_context','guest_process','nso_host','address_region','mutex','exit_registry']]]
+pages_hle=a.pages_source_root.resolve()/'src/runtime/hle';pages_source=pages_hle/'guest_pages.c'
+if not pages_source.is_file() or not pages_source.with_suffix('.h').is_file():p.error('guest_pages component missing; integrate its frozen commit or provide --pages-source-root')
+sources=[*core_sources,pages_source]
 test=ROOT/'tests/native/guest_process_contract.c';cli=nso/'nso_call.c'
-inputs=[*sources,*[s.with_suffix('.h') for s in sources],test,cli,ROOT/'scripts/runtime/build_guest_process_contract.sh',ROOT/'tests/native/test_loader.py']
+inputs=[*core_sources,*[s.with_suffix('.h') for s in core_sources],test,cli,ROOT/'scripts/runtime/build_guest_process_contract.sh',ROOT/'tests/native/test_loader.py']
 manifest={'head':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
  'dirty':subprocess.check_output(['git','status','--short'],text=True),'host':platform.platform(),
  'compiler':subprocess.check_output(['clang','--version'],text=True),'cases':{},
  'source_sha256':{str(v.relative_to(ROOT)):digest(v) for v in inputs},'android_executed':False,
+ 'page_owner_source_root':str(a.pages_source_root.resolve()),
+ 'page_owner_inputs':{str(v):digest(v) for v in [pages_source,pages_source.with_suffix('.h')]},
+ 'page_owner_head':subprocess.check_output(['git','rev-parse','HEAD'],cwd=a.pages_source_root,text=True).strip(),
  'quota_policy':'required explicit native logical backing cap; not original SVC measurements',
- 'heap_policy':'initialized immutable empty native manager; backing mutators unresolved',
- 'lock_order':'process -> Context or process -> VA; external raw APIs quiescent',
+ 'heap_policy':'initialized immutable empty native heap; Vamm pages have a separate sole ticket owner',
+ 'lock_order':'process -> page owner -> Context OR region; external raw APIs quiescent',
  'game_started':False,'crt_tls_initialized':False}
 def save():(out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 def run(name,cmd,expected=0,timeout=30):
@@ -36,7 +43,7 @@ def run(name,cmd,expected=0,timeout=30):
 spec=importlib.util.spec_from_file_location('positive_loader_fixture',ROOT/'tests/native/test_loader.py')
 fixture=importlib.util.module_from_spec(spec);spec.loader.exec_module(fixture);fixture.fixture(out/'contract.nso')
 manifest['fixture']={'path':str(out/'contract.nso'),'bytes':(out/'contract.nso').stat().st_size,'sha256':digest(out/'contract.nso')}
-strict=['-std=c11','-O2','-g','-fno-omit-frame-pointer','-Wall','-Wextra','-Werror']
+strict=['-std=c11','-O2','-g','-fno-omit-frame-pointer','-Wall','-Wextra','-Werror','-I',pages_hle]
 run('host-reject-untyped-guards',['clang',*strict,'-c',hle/'guest_process.c','-o',out/'unsupported-guards.o'],1)
 if 'requires the real typed C++ guard runtime' not in (out/'host-reject-untyped-guards/stderr.log').read_text():raise RuntimeError('missing typed guard build constraint')
 host=[]
@@ -55,7 +62,7 @@ if manifest['recovery_contract']['errors']:raise RuntimeError('recovery contract
 run('host-invalid-query',[out/'guest_process_contract.host','--invalid-query'],134)
 if '[query-invalid]' not in (out/'host-invalid-query/stderr.log').read_text():raise RuntimeError('missing fatal invalid Query diagnostic')
 run('host-build-cli',['clang',*strict,'-DNSO_WITH_HOST_HLE=1','-DNSO_WITH_GUEST_PROFILE=1',cli,*host,'-lc++','-lpthread','-o',out/'nso_owned_startup.host'])
-legacy=[v for v in host if v.stem not in ['guest_context.host','guest_process.host']]
+legacy=[v for v in host if v.stem not in ['guest_context.host','guest_process.host','guest_pages.host']]
 run('host-build-legacy-cli',['clang',*strict,'-DNSO_WITH_HOST_HLE=1',cli,*legacy,'-lc++','-lpthread','-o',out/'nso_legacy.host'])
 run('host-legacy-info',[out/'nso_legacy.host',out/'contract.nso','--info'])
 run('host-profile-info',[out/'nso_owned_startup.host',out/'contract.nso','--guest-quota','1048576','--guest-stack','65536','--info'])
@@ -77,9 +84,9 @@ if a.main:
  for name,arguments in [('nnmain',['--symbol','nnMain']),('malloc',['--symbol','malloc','4096'])]:
   run('host-original-'+name,[out/'nso_owned_startup.host',a.main,'--guest-quota',str(a.quota_bytes),'--guest-stack',str(a.stack_bytes),*arguments],133,10)
   diagnostic=(out/('host-original-'+name)/'stderr.log').read_text()
-  boundary='index=71 name=_ZN2nn2os19AllocateMemoryPagesEmm' if name=='nnmain' else 'index=66 name=_ZN2nn2os36GetVirtualAddressMemoryResourceUsageEv'
-  if '[query-port-policy]' not in diagnostic or boundary not in diagnostic:
-   raise RuntimeError('original code did not reach the recorded post-Query page boundary')
+  boundary='index=126 name=_ZN2nn2os12CreateThreadEPNS0_10ThreadTypeEPFvPvES3_S3_mi caller_offset=0x352f1b8' if name=='nnmain' else 'index=66 name=_ZN2nn2os36GetVirtualAddressMemoryResourceUsageEv caller_offset=0x144b8'
+  if '[query-port-policy]' not in diagnostic or boundary not in diagnostic or (name=='nnmain' and '[page-port-policy] op=map' not in diagnostic):
+   raise RuntimeError('original code did not reach the supported page transition / next strict boundary')
  manifest['main']['sha256_after']=digest(a.main)
  if manifest['main']['sha256_after']!=value:raise RuntimeError('source main changed')
 sysroot=tc/'sysroot';resource=tc/'lib/clang/18';libs=sysroot/'usr/lib/aarch64-linux-android';api=libs/'28'
@@ -115,5 +122,7 @@ for name,value in manifest['source_sha256'].items():
  if digest(ROOT/name)!=value:raise RuntimeError('source changed during build '+name)
 for name,value in manifest['official_members'].items():
  if digest(tc/name)!=value['sha256']:raise RuntimeError('official input changed '+name)
+for name,value in manifest['page_owner_inputs'].items():
+ if digest(Path(name))!=value:raise RuntimeError('page owner source changed during build '+name)
 save();print('Owned profile normal/recovery contracts passed; original post-Query boundary recorded if requested; Android NOT_RUN')
 PY

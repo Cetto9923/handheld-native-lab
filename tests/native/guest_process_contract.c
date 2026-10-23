@@ -53,14 +53,14 @@ static int inaccessible(uintptr_t address) {
     fclose(maps);return found;
 #endif
 }
-struct callback_input {size_t quota,image;};
+struct callback_input {size_t quota,image,live_page_bytes;};
 static void *exercise(guest_process *process,void *opaque) {
     struct callback_input *input=opaque;calls++;
     struct guest_memory_info info;
     memset(&info,0xa5,sizeof(info));
     if(!succeeded(guest_process_memory_info(process,&info))) {expect_condition("query-initial-status",0);return NULL;}
     expect_value("query-total",info.total,input->quota);
-    expect_value("query-used",info.used,input->image+65536);
+    expect_value("query-used",info.used,input->image+65536+input->live_page_bytes);
     expect_value("query-heap-capacity",info.heap_capacity,0);
     expect_value("query-heap-blocks",info.heap_blocks,0);
     expect_value("query-baseline",info.baseline,input->image);
@@ -139,6 +139,30 @@ static void *exercise(guest_process *process,void *opaque) {
     if(query) {memset(&after,0x5a,sizeof(after));query(&after);
         expect_condition("query-guest-fields",!memcmp(&after,&info,0x34));
         expect_condition("query-guest-padding",all_bytes((unsigned char *)&after+0x34,sizeof(after)-0x34,0x5a));}
+    typedef uint32_t (*pages_fn)(uintptr_t,size_t);
+    pages_fn map=(pages_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os19AllocateMemoryPagesEmm");
+    pages_fn unmap=(pages_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os15FreeMemoryPagesEmm");
+    expect_condition("pages-map-binding",map!=NULL);expect_condition("pages-free-binding",unmap!=NULL);
+    if(first && query && map && unmap) {
+        size_t mapped=2*page;
+        expect_value("pages-map-result",map(first,mapped),0);
+        volatile unsigned char *memory=(volatile unsigned char *)first;
+        memory[0]=0x37;memory[mapped-1]=0x81;
+        expect_condition("pages-pattern-rw",memory[0]==0x37 && memory[mapped-1]==0x81);
+        struct guest_memory_info expected=info;expected.used+=mapped;
+        memset(&after,0x5a,sizeof(after));query(&after);
+        expect_condition("query-adds-real-page-backing",!memcmp(&after,&expected,0x34));
+        expect_condition("query-mapped-padding",all_bytes((unsigned char *)&after+0x34,sizeof(after)-0x34,0x5a));
+        expect_value("pages-free-exact-result",unmap(first,mapped),0);
+        query(&after);expect_condition("query-refunds-decommitted-pages",!memcmp(&after,&info,0x34));
+        expect_value("pages-recommit-result",map(first,mapped),0);
+        expect_condition("pages-recommit-zero",memory[0]==0 && memory[mapped-1]==0);
+        memory[0]=0x6d;memory[mapped-1]=0x29;
+        query(&after);expect_condition("query-retains-live-page-charge",!memcmp(&after,&expected,0x34));
+        input->live_page_bytes+=mapped;
+        /* Keep a real allocation alive: whole owner destroy must unmap it
+         * before refund, not just clear a duplicate profile ledger. */
+    }
     return &returned_token;
 }
 #if defined(NSO_LOADER_TESTING)
@@ -258,7 +282,7 @@ int main(int argc,char **argv) {
 #endif
     nso_host_set_extension_resolver(extension);
     const char *const rejected[]={"strdup","malloc","calloc","mmap","mprotect","pthread_create",
-        "nvnBootstrapLoader","_ZN2nn2os19AllocateMemoryPagesEmm","__nnmusl_init_dso",NULL};
+        "nvnBootstrapLoader","__nnmusl_init_dso",NULL};
     for(size_t i=0;rejected[i];i++)CHECK(!guest_process_resolve(0,rejected[i]));
     CHECK(!extension_calls);
     guest_process *process=NULL,*extra=NULL;
@@ -269,7 +293,7 @@ int main(int argc,char **argv) {
     memset(&untouched,0xa5,sizeof(untouched));
     CHECK(guest_process_memory_info(process,&untouched).status==NSO_INVALID && all_bytes(&untouched,sizeof(untouched),0xa5));
     char err[256]={0};CHECK(succeeded(guest_process_load(process,argv[1],err,sizeof(err))));
-    struct callback_input input={config.quota_bytes,nso_image_size(guest_process_module(process))};
+    struct callback_input input={.quota=config.quota_bytes,.image=nso_image_size(guest_process_module(process))};
     struct sigaction before[4],after;const int sigs[4]={SIGSEGV,SIGBUS,SIGILL,SIGTRAP};
     for(int i=0;i<4;i++)CHECK(!sigaction(sigs[i],NULL,&before[i]));
     for(int i=0;i<2;i++) {
@@ -284,8 +308,8 @@ int main(int argc,char **argv) {
     CHECK(succeeded(guest_process_destroy(&process)) && !process);
     CHECK(succeeded(guest_process_create(&config,&process)) && succeeded(guest_process_destroy(&process)));
     nso_host_set_extension_resolver(NULL);
-    CHECK(!extension_calls && !errors && calls==2);
-    printf("{\"errors\":%u,\"calls\":%u,\"extension_calls\":%u,\"stack_bytes\":65536,\"query_fields\":7,\"padding_preserved\":true,\"thread_record_joined\":true,\"signal_dispositions_restored\":true,\"cleanup_failure_cases\":%d}\n",
+    CHECK(!extension_calls && !errors && calls==2 && input.live_page_bytes==4*page);
+    printf("{\"errors\":%u,\"calls\":%u,\"extension_calls\":%u,\"stack_bytes\":65536,\"query_fields\":7,\"padding_preserved\":true,\"thread_record_joined\":true,\"signal_dispositions_restored\":true,\"pages_accounted\":true,\"recommit_zero\":true,\"whole_owner_release\":true,\"cleanup_failure_cases\":%d}\n",
         errors,calls,extension_calls,
 #if defined(NSO_LOADER_TESTING)
         5

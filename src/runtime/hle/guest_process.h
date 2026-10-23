@@ -16,8 +16,11 @@ struct guest_memory_info {
 typedef void *(*guest_process_callback)(guest_process *,void *);
 /* Exclusive single-guest experiment. External raw loader/VA/Context operations
  * must be quiescent. Lifecycle calls are serialized by the caller; Query and VA
- * services run only on this process's registered native primary thread. No
- * extension resolver, backing mutator, SDK initialization or TP write is used. */
+ * services run only on this process's registered native primary thread. One
+ * private guest_pages owner supplies VA and exact page-allocation identities.
+ * Only disjoint owned maps and whole-allocation frees are admitted; unsupported
+ * transitions terminate with diagnostics, never a guessed SDK failure Result.
+ * No extension, unrelated backing mutator, SDK init or TP write is used. */
 struct nso_result guest_process_create(const struct guest_process_config *,guest_process **out);
 struct nso_result guest_process_load(guest_process *,const char *path,char *err,size_t errlen);
 /* Borrowed inspection/call handle, never independently release it. */

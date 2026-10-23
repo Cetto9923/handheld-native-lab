@@ -4,7 +4,7 @@
 #endif
 #include "guest_process.h"
 #include "guest_context.h"
-#include "address_region.h"
+#include "guest_pages.h"
 #include "exit_registry.h"
 #include "nso_host.h"
 #include <errno.h>
@@ -19,7 +19,6 @@ extern int __cxa_guard_acquire(uint64_t *);
 extern void __cxa_guard_release(uint64_t *);
 extern void __cxa_guard_abort(uint64_t *);
 
-struct va_record {uintptr_t address;size_t bytes;struct va_record *next;};
 enum heap_state {HEAP_UNINITIALIZED,HEAP_READY_EMPTY};
 struct empty_heap_manager {enum heap_state state;size_t capacity,blocks;};
 enum thread_state {THREAD_ABSENT,THREAD_STARTING,THREAD_RUNNING,THREAD_RETURNED};
@@ -27,14 +26,13 @@ struct thread_record {enum thread_state state;pthread_t native;struct guest_prim
 struct guest_process {
     pthread_mutex_t mutex;
     guest_context *context; /* Private: no raw tickets/Context escape this owner. */
+    guest_pages *pages; /* Sole VA/page/ticket authority. */
     nso_module *module;
     void *module_ticket;
     size_t module_bytes;
     int module_committed,module_ready,running,quarantined,diagnostic_retained;
     struct empty_heap_manager heap;
     struct thread_record thread;
-    struct va_record *regions;
-    size_t region_count,reserved_bytes;
     uint64_t baseline;
     guest_process_callback callback;
     void *argument;
@@ -52,8 +50,24 @@ static struct nso_result from_context(struct guest_context_result r) {
     else if(r.status==GUEST_CONTEXT_QUARANTINED)s=NSO_RETAINED;
     return status(s,r.native_error,r.cleanup_error);
 }
-/* Lock order: process -> Context or process -> VA registry. The raw APIs are
- * private/quiescent in this exclusive profile. Context never calls out while
+static void page_diagnostic(const char *operation,uintptr_t address,size_t bytes,
+        struct guest_pages_result r) {
+    fprintf(stderr,"[page-owner-error] op=%s address=0x%" PRIxPTR " bytes=%zu status=%d native=%d context=(%d,%d,%d) ticket=(%d,%d,%d) vm=(%d,%d,%d,%d) rollback=(%d,%d,%d,%d) attempted=(%d,%d,%d) region=0x%x\n",
+        operation,address,bytes,r.status,r.native_error,r.context.status,r.context.native_error,r.context.cleanup_error,
+        r.ticket_cleanup.status,r.ticket_cleanup.native_error,r.ticket_cleanup.cleanup_error,
+        r.vm.status,r.vm.detail,r.vm.native_errno,r.vm.restore_errno,
+        r.rollback_vm.status,r.rollback_vm.detail,r.rollback_vm.native_errno,r.rollback_vm.restore_errno,
+        r.vm_attempted,r.rollback_attempted,r.region_attempted,r.region_result);
+}
+static struct nso_result page_failure(struct guest_pages_result r) {
+    int native=r.native_error?r.native_error:r.context.native_error?r.context.native_error:r.vm.native_errno;
+    int cleanup=r.ticket_cleanup.native_error?r.ticket_cleanup.native_error:r.vm.restore_errno;
+    if(!cleanup)cleanup=r.rollback_vm.native_errno?r.rollback_vm.native_errno:r.rollback_vm.restore_errno;
+    return status(r.status==GUEST_PAGES_QUOTA?NSO_LIMIT:NSO_OWNER_ERROR,native,cleanup);
+}
+/* Lock order: process -> pages owner -> Context OR pages owner -> VA registry.
+ * Module/primary ownership is stable during the executing primary snapshot.
+ * The raw APIs are private/quiescent in this exclusive profile. Context never calls out while
  * holding its mutex. Loader owner callbacks execute under process lifecycle
  * lock; no accounting uses the existing unload observer. */
 static struct nso_result reserve_module(void *owner,size_t bytes,void **out) {
@@ -87,18 +101,22 @@ struct nso_result guest_process_create(const struct guest_process_config *config
     if(!config)return status(NSO_INVALID,EINVAL,0);
     pthread_mutex_lock(&exclusive_mutex);
     if(exclusive_process) {pthread_mutex_unlock(&exclusive_mutex);return status(NSO_INVALID,EBUSY,0);}
-    struct nso_owned_page_usage pages;
-    struct nso_owned_page_result observed=nso_host_owned_pages_usage(&pages);
-    if(observed.status!=NSO_OWNED_PAGE_OK || !pages.mapped_guest_bytes_valid || pages.region_count) {
-        pthread_mutex_unlock(&exclusive_mutex);return status(NSO_INVALID,EBUSY,0);
-    }
     guest_process *p=calloc(1,sizeof(*p));
     if(!p) {pthread_mutex_unlock(&exclusive_mutex);return status(NSO_OWNER_ERROR,ENOMEM,0);}
     int e=pthread_mutex_init(&p->mutex,NULL);
     if(e) {free(p);pthread_mutex_unlock(&exclusive_mutex);return status(NSO_OWNER_ERROR,e,0);}
     struct guest_context_config c={config->quota_bytes,config->primary_stack_bytes};
     struct nso_result r=from_context(guest_context_create(&c,&p->context));
-    if(r.status!=NSO_OK) {pthread_mutex_destroy(&p->mutex);free(p);}
+    if(r.status==NSO_OK) {
+        struct guest_pages_result created=guest_pages_create(p->context,&p->pages);
+        if(created.status!=GUEST_PAGES_OK) {
+            page_diagnostic("create",0,0,created);r=page_failure(created);
+            struct nso_result cleanup=from_context(guest_context_destroy(p->context));
+            if(cleanup.status!=NSO_OK) {p->quarantined=1;r=status(NSO_RETAINED,r.native_error,cleanup.native_error);}
+            else p->context=NULL;
+        }
+    }
+    if(r.status!=NSO_OK && r.status!=NSO_RETAINED) {pthread_mutex_destroy(&p->mutex);free(p);}
     else {exclusive_process=p;*out=p;}
     pthread_mutex_unlock(&exclusive_mutex);return r;
 }
@@ -124,32 +142,36 @@ struct nso_result guest_process_load(guest_process *p,const char *path,char *err
 nso_module *guest_process_module(guest_process *p) {return p?p->module:NULL;}
 /* A functional empty native heap, not a zero-filled SDK manager. It can be
  * initialized once, owns no backing and exposes NO allocator mutator capability.
- * The closed resolver rejects every heap/block/page allocation service. */
+ * Vamm page backing is separately owned; no heap/block allocator is admitted. */
 static int initialize_empty_heap(struct empty_heap_manager *heap) {
     if(heap->state!=HEAP_UNINITIALIZED || heap->capacity || heap->blocks)return EINVAL;
     heap->state=HEAP_READY_EMPTY;return 0;
 }
 static struct nso_result snapshot_locked(guest_process *p,struct guest_memory_info *out) {
     if(current_process!=p || !p->running || p->quarantined || !p->module_ready ||
-       !p->module || !p->module_ticket || !p->module_committed ||
+       !p->module || !p->module_ticket || !p->module_committed || !p->pages ||
        p->thread.state!=THREAD_RUNNING || !pthread_equal(p->thread.native,pthread_self()) ||
        p->heap.state!=HEAP_READY_EMPTY || p->heap.capacity || p->heap.blocks)
         return status(NSO_INVALID,EINVAL,0);
     struct guest_context_usage use;
     struct guest_primary_stack stack;
-    struct nso_owned_page_usage pages;
-    if(guest_context_usage(p->context,&use).status!=GUEST_CONTEXT_OK ||
-       guest_context_primary_stack(p->context,&stack).status!=GUEST_CONTEXT_OK ||
-       nso_host_owned_pages_usage(&pages).status!=NSO_OWNED_PAGE_OK ||
-       !pages.mapped_guest_bytes_valid || pages.quarantined_regions || pages.mapped_guest_bytes ||
-       pages.region_count!=p->region_count || pages.reserved_guest_bytes!=p->reserved_bytes ||
-       !use.primary_active || use.quarantined || use.pending_bytes || use.tickets!=2 ||
-       p->module_bytes>SIZE_MAX-stack.bytes || use.charged_bytes!=p->module_bytes+stack.bytes ||
+    struct guest_pages_usage pages;
+    if(guest_pages_usage(p->pages,&pages).status!=GUEST_PAGES_OK ||
+       guest_context_primary_stack(p->context,&stack).status!=GUEST_CONTEXT_OK)
+        return status(NSO_INVALID,EINVAL,0);
+    use=pages.context;
+    if(!pages.backing_valid || !pages.ledger_valid || pages.quarantined_regions || pages.pending_bytes ||
+       !pages.vm.mapped_guest_bytes_valid || pages.vm.quarantined_regions ||
+       pages.ticket_count!=pages.allocation_count || pages.backing_bytes!=pages.charged_bytes ||
+       !use.primary_active || use.quarantined || use.pending_bytes || pages.ticket_count>SIZE_MAX-2 ||
+       use.tickets!=2+pages.ticket_count || p->module_bytes!=nso_image_size(p->module) ||
+       p->module_bytes>SIZE_MAX-stack.bytes || pages.charged_bytes>SIZE_MAX-p->module_bytes-stack.bytes ||
+       use.charged_bytes!=p->module_bytes+stack.bytes+pages.charged_bytes ||
        stack.address!=p->thread.stack.address || stack.bytes!=p->thread.stack.bytes)
         return status(NSO_INVALID,EINVAL,0);
-    /* Exact two private backing identities, not merely a matching byte sum:
-     * the module ticket above and Context's currently active primary allocation.
-     * No raw Context pointer/ticket or backing service is exported to callers. */
+    /* Private module/primary identities plus the sole page owner's validated
+     * per-allocation tickets. Its locked snapshot includes Context and raw VM;
+     * module/stack mutations are excluded during this primary callback. */
     if(!p->baseline)p->baseline=use.charged_bytes-p->heap.capacity-stack.bytes;
     *out=(struct guest_memory_info){use.quota_bytes,use.charged_bytes,p->heap.capacity,
         p->heap.blocks,p->baseline,stack.bytes,1};
@@ -196,36 +218,40 @@ static guest_process *required_current(void) {
     if(!p) {fputs("[profile-invalid] service outside native primary scope\n",stderr);abort();}
     return p;
 }
+static uint32_t finish_page_service(guest_process *p,const char *operation,
+        uintptr_t address,size_t bytes,struct guest_pages_result r) {
+    if(r.status!=GUEST_PAGES_OK)p->quarantined=1;
+    pthread_mutex_unlock(&p->mutex);
+    if(r.status!=GUEST_PAGES_OK) {
+        page_diagnostic(operation,address,bytes,r);
+        fputs("[page-unsupported] no unproved SDK Result mapping; owner/tickets retained until isolated process shutdown\n",stderr);
+        abort();
+    }
+    fprintf(stderr,"[page-port-policy] op=%s address=0x%" PRIxPTR " bytes=%zu result=0 after real VM/accounting transition\n",
+        operation,address,bytes);
+    return 0;
+}
 static uint32_t allocate_region(uintptr_t *out,size_t bytes) {
     guest_process *p=required_current();
     if(!out) {fputs("[profile-invalid] null reservation output\n",stderr);abort();}
-    struct va_record *r=malloc(sizeof(*r));
-    if(!r)return 0x1003; /* Existing verified SDK metadata exhaustion result. */
     pthread_mutex_lock(&p->mutex);
-    if(p->quarantined || p->region_count==SIZE_MAX || bytes>SIZE_MAX-p->reserved_bytes) {
-        pthread_mutex_unlock(&p->mutex);free(r);return 0x1803;
-    }
-    uintptr_t address=0;
-    uint32_t result=nso_host_allocate_address_region(&address,bytes);
-    if(!result) {
-        *r=(struct va_record){address,bytes,p->regions};p->regions=r;
-        p->region_count++;p->reserved_bytes+=bytes;*out=address;
-    } else free(r);
-    pthread_mutex_unlock(&p->mutex);return result;
-}
-static uint32_t free_region_locked(guest_process *p,uintptr_t address) {
-    struct va_record **slot=&p->regions;
-    while(*slot && (*slot)->address!=address)slot=&(*slot)->next;
-    if(!*slot)return 0xe03;
-    struct va_record *r=*slot;
-    uint32_t result=nso_host_free_address_region(address);
-    if(!result) {*slot=r->next;p->region_count--;p->reserved_bytes-=r->bytes;free(r);}
-    return result;
+    struct guest_pages_result r=guest_pages_reserve(p->pages,bytes,out);
+    return finish_page_service(p,"reserve",r.status==GUEST_PAGES_OK?*out:0,bytes,r);
 }
 static uint32_t free_region(uintptr_t address) {
     guest_process *p=required_current();pthread_mutex_lock(&p->mutex);
-    uint32_t result=free_region_locked(p,address);
-    pthread_mutex_unlock(&p->mutex);return result;
+    struct guest_pages_result r=guest_pages_release_region(p->pages,address);
+    return finish_page_service(p,"release-region",address,0,r);
+}
+static uint32_t allocate_pages(uintptr_t address,size_t bytes) {
+    guest_process *p=required_current();pthread_mutex_lock(&p->mutex);
+    struct guest_pages_result r=guest_pages_map(p->pages,address,bytes);
+    return finish_page_service(p,"map",address,bytes,r);
+}
+static uint32_t free_pages(uintptr_t address,size_t bytes) {
+    guest_process *p=required_current();pthread_mutex_lock(&p->mutex);
+    struct guest_pages_result r=guest_pages_free_exact(p->pages,address,bytes);
+    return finish_page_service(p,"free-exact",address,bytes,r);
 }
 uint64_t guest_process_resolve(uint32_t index,const char *name) {
     if(!name)return 0;
@@ -237,11 +263,13 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
     if(!strcmp(name,"_ZN2nn2os15QueryMemoryInfoEPNS0_10MemoryInfoE"))return (uintptr_t)&query_memory_info;
     if(!strcmp(name,"_ZN2nn2os21AllocateAddressRegionEPmm"))return (uintptr_t)&allocate_region;
     if(!strcmp(name,"_ZN2nn2os17FreeAddressRegionEm"))return (uintptr_t)&free_region;
+    if(!strcmp(name,"_ZN2nn2os19AllocateMemoryPagesEmm"))return (uintptr_t)&allocate_pages;
+    if(!strcmp(name,"_ZN2nn2os15FreeMemoryPagesEmm"))return (uintptr_t)&free_pages;
     if(!strcmp(name,"__cxa_guard_acquire"))return (uintptr_t)&__cxa_guard_acquire;
     if(!strcmp(name,"__cxa_guard_release"))return (uintptr_t)&__cxa_guard_release;
     if(!strcmp(name,"__cxa_guard_abort"))return (uintptr_t)&__cxa_guard_abort;
     /* Every entry is an existing typed branch, never the extension fallthrough.
-     * No nvn/dlsym/backing/thread/heap service is admitted by this profile. */
+     * No nvn/dlsym/unowned backing/thread/heap service is admitted. */
     static const char *const typed[]={
         "_ZN2nn4util11ReferSymbolEPKv","nnutilReferSymbol",
         "_ZN2nn2os15InitializeMutexEPNS0_9MutexTypeEbi","nnosInitializeMutex",
@@ -322,8 +350,14 @@ struct nso_result guest_process_destroy(guest_process **process) {
     pthread_mutex_lock(&p->mutex);
     if(p->running || p->diagnostic_retained) {pthread_mutex_unlock(&p->mutex);return status(NSO_RETAINED,EBUSY,0);}
     p->module_ready=0;
-    while(p->regions)if(free_region_locked(p,p->regions->address)) {
-        p->quarantined=1;pthread_mutex_unlock(&p->mutex);return status(NSO_RETAINED,0,EIO);
+    if(p->pages) {
+        struct guest_pages_result released=guest_pages_destroy(p->pages);
+        if(released.status!=GUEST_PAGES_OK) {
+            page_diagnostic("destroy",0,0,released);p->quarantined=1;
+            struct nso_result failure=page_failure(released);failure.status=NSO_RETAINED;
+            pthread_mutex_unlock(&p->mutex);return failure;
+        }
+        p->pages=NULL;
     }
     struct nso_result r=nso_release(&p->module);
     if(r.status==NSO_OK)r=from_context(guest_context_destroy(p->context));
