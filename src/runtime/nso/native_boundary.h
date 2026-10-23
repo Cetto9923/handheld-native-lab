@@ -10,8 +10,9 @@ extern "C" {
 typedef enum nb_status {
     NB_OK = 0, NB_UNSUPPORTED = 1, NB_INVALID = 2, NB_WRONG_THREAD = 3,
     NB_BUSY = 4, NB_MAP_FAILED = 5, NB_PROTECT_FAILED = 6, NB_OWNER_DEAD = 7,
-    NB_SYSTEM_ERROR = 8, NB_RETAINED = 9
+    NB_SYSTEM_ERROR = 8, NB_RETAINED = 9, NB_DEPTH_LIMIT = 10
 } nb_status;
+enum { NB_MAX_CALLBACK_DEPTH = 4 };
 
 /* Caller-owned, zero-init, no copying. All control APIs require normal host x18.
  * Android AArch64 only. TPIDR_EL0 is READ ONLY and used as an opaque owner token;
@@ -24,7 +25,8 @@ typedef struct nb_scope {
     uint64_t magic, owner_tp, host_x18, phase;
     uint64_t binding_count;
     void *lifetime;
-    uint64_t reserved[2];
+    /* Former reserved words; fixed size/offsets retained. */
+    uint64_t active_guest_x18, callback_depth;
 } nb_scope;
 
 /* Scalar/pointer/vector register ABI packet. x8 carries an explicitly declared
@@ -88,6 +90,24 @@ void (*nb_import_entry(const nb_import *binding))(void);
  * Entry/signatures must be known register-only ABI; this does not classify code.
  */
 nb_status nb_call(nb_scope *scope, void (*guest_entry)(void), nb_registers *registers);
+
+/* Synchronous owned HOST->GUEST callback on this same active scope only.
+ * Must be called by a normal host function currently reached through its import
+ * gateway (phase HOST). Plain nb_call remains NB_BUSY for same-scope reentry.
+ * Assembly captures the CURRENT host SCS depth before C; it temporarily replaces
+ * scope.host_x18 so callback guest code may use this scope's existing imports.
+ * Initial guest x18 is the gateway's actual active_guest_x18, NOT the packet's
+ * input guest_x18. Output packet captures actual guest registers/x18 on return.
+ * All outer scope fields (HOST phase, host_x18, active_guest_x18, depth) and host
+ * x18/callee-saved/SP/LR are restored. At most NB_MAX_CALLBACK_DEPTH callbacks
+ * may be active. NB_DEPTH_LIMIT, wrong phase/owner, invalid/dead scope refusals
+ * leave packet/scope untouched. This is register-only (same x0-x8/q0-q7 raw
+ * contract as nb_call), with no new stack/variadic/aggregate declaration.
+ * Target/packet/scope lifetimes must span the normal return. Foreign unwind,
+ * longjmp and asynchronous signal adaptation remain unsupported; abandoned
+ * active scopes are never reset as if they completed.
+ */
+nb_status nb_call_from_host(nb_scope *scope, void (*guest_entry)(void), nb_registers *registers);
 
 /* Explicit machine ABI, not signature inference: x0-x7 plus exactly 13 scalar/
  * pointer-sized 64-bit stack words at callee SP+0 through SP+96, u64 result x0.

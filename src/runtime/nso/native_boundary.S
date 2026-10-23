@@ -127,19 +127,24 @@ nb_import_gateway:
     ldar x9, [x11]
     cmp x9, #1
     b.ne .Ltrap
-    stp x29, x30, [sp, #-32]!
+    stp x29, x30, [sp, #-48]!
     stp x18, x16, [sp, #16]
+    ldr x9,[x16,#48]
+    str x9,[sp,#32]
+    str x18,[x16,#48] /* actual guest x18 before restoring host SCS */
     mov x29, sp
     mov x9, #2
     stlr x9, [x11]
     ldr x18, [x16, #16] /* restore before the first possible host SCS prologue */
     blr x17
     ldr x16, [sp, #24]
+    ldr x9,[sp,#32]
+    str x9,[x16,#48]
     add x11, x16, #24
     mov x9, #1
     stlr x9, [x11]
     ldr x18, [sp, #16]
-    ldp x29, x30, [sp], #32
+    ldp x29, x30, [sp], #48
     ret
 .Ltrap:
     brk #0x4e42
@@ -292,11 +297,14 @@ nb_import_stack13_gateway:
     ldar x9,[x11]
     cmp x9,#1
     b.ne .Lst_trap
-    sub sp,sp,#144 /* outgoing 112 + gateway metadata 32 */
+    sub sp,sp,#160 /* outgoing 112 + gateway metadata 48 */
     stp x29,x30,[sp,#112]
     stp x18,x16,[sp,#128]
+    ldr x9,[x16,#48]
+    str x9,[sp,#144]
+    str x18,[x16,#48]
     add x29,sp,#112
-    add x12,sp,#144 /* ORIGINAL incoming guest SP, before this frame */
+    add x12,sp,#160 /* ORIGINAL incoming guest SP, before this frame */
     NB_COPY_STACK13 x12,sp
     str xzr,[sp,#104]
     mov x9,#2
@@ -304,15 +312,139 @@ nb_import_stack13_gateway:
     ldr x18,[x16,#16]
     blr x17
     ldr x16,[sp,#136]
+    ldr x9,[sp,#144]
+    str x9,[x16,#48]
     add x11,x16,#24
     mov x9,#1
     stlr x9,[x11]
     ldr x18,[sp,#128]
     ldp x29,x30,[sp,#112]
-    add sp,sp,#144
+    add sp,sp,#160
     ret
 .Lst_trap:
     brk #0x4e42
 .size nb_import_stack13_gateway,.-nb_import_stack13_gateway
+
+/* Owned HOST callback, register-only. Existing caller's HOST fields are stacked
+ * and restored, not guessed or shared with a process-global host x18. */
+.p2align 2
+.global nb_call_from_host
+.type nb_call_from_host,%function
+nb_call_from_host:
+    .inst 0xd503245f
+    cbz x0,.Lcb_invalid
+    cbz x1,.Lcb_invalid
+    cbz x2,.Lcb_invalid
+    tst x0,#7
+    b.ne .Lcb_invalid
+    tst x2,#15
+    b.ne .Lcb_invalid
+    ldr x9,[x0]
+    mov x10,#0x4e42
+    cmp x9,x10
+    b.ne .Lcb_invalid
+    ldr x10,[x0,#40]
+    cbz x10,.Lcb_invalid
+    ldar x9,[x10]
+    cbz x9,.Lcb_dead
+    mrs x9,tpidr_el0
+    ldr x10,[x0,#8]
+    cmp x9,x10
+    b.ne .Lcb_thread
+    add x11,x0,#24
+    ldar x9,[x11]
+    cmp x9,#2
+    b.ne .Lcb_busy
+    ldr x9,[x0,#56]
+    cmp x9,#4
+    b.hs .Lcb_depth
+.Lcb_claim:
+    ldaxr x9,[x11]
+    cmp x9,#2
+    b.ne .Lcb_busy
+    mov x10,#1
+    stlxr w9,x10,[x11]
+    cbnz w9,.Lcb_claim
+    sub sp,sp,#272
+    stp x29,x30,[sp]
+    stp x19,x20,[sp,#16]
+    stp x21,x22,[sp,#32]
+    stp x23,x24,[sp,#48]
+    stp x25,x26,[sp,#64]
+    stp x27,x28,[sp,#80]
+    stp q8,q9,[sp,#96]
+    stp q10,q11,[sp,#128]
+    stp q12,q13,[sp,#160]
+    stp q14,q15,[sp,#192]
+    stp x0,x2,[sp,#224]
+    ldr x9,[x0,#16]
+    stp x18,x9,[sp,#240] /* CURRENT host SCS and outer scope host_x18 */
+    ldp x9,x10,[x0,#48]
+    stp x9,x10,[sp,#256] /* actual outer guest x18 and callback depth */
+    str x18,[x0,#16]
+    add x10,x10,#1
+    str x10,[x0,#56]
+    mov x29,sp
+    mov x16,x1
+    mov x17,x2
+    mov x18,x9 /* actual guest suspended at this HOST import */
+    ldp q0,q1,[x17,#80]
+    ldp q2,q3,[x17,#112]
+    ldp q4,q5,[x17,#144]
+    ldp q6,q7,[x17,#176]
+    ldp x0,x1,[x17]
+    ldp x2,x3,[x17,#16]
+    ldp x4,x5,[x17,#32]
+    ldp x6,x7,[x17,#48]
+    ldr x8,[x17,#64]
+    blr x16
+    ldp x16,x17,[sp,#224]
+    stp x0,x1,[x17]
+    stp x2,x3,[x17,#16]
+    stp x4,x5,[x17,#32]
+    stp x6,x7,[x17,#48]
+    str x8,[x17,#64]
+    str x18,[x17,#72]
+    stp q0,q1,[x17,#80]
+    stp q2,q3,[x17,#112]
+    stp q4,q5,[x17,#144]
+    stp q6,q7,[x17,#176]
+    ldp x18,x9,[sp,#240]
+    str x9,[x16,#16]
+    ldp x9,x10,[sp,#256]
+    stp x9,x10,[x16,#48]
+    mov x10,#2
+    add x9,x16,#24
+    stlr x10,[x9]
+    ldp q8,q9,[sp,#96]
+    ldp q10,q11,[sp,#128]
+    ldp q12,q13,[sp,#160]
+    ldp q14,q15,[sp,#192]
+    ldp x19,x20,[sp,#16]
+    ldp x21,x22,[sp,#32]
+    ldp x23,x24,[sp,#48]
+    ldp x25,x26,[sp,#64]
+    ldp x27,x28,[sp,#80]
+    ldp x29,x30,[sp]
+    add sp,sp,#272
+    mov w0,#0
+    ret
+.Lcb_depth:
+    mov w0,#10
+    ret
+.Lcb_busy:
+    clrex
+    mov w0,#4
+    ret
+.Lcb_thread:
+    mov w0,#3
+    ret
+.Lcb_dead:
+    mov w0,#7
+    ret
+.Lcb_invalid:
+    mov w0,#2
+    ret
+.size nb_call_from_host,.-nb_call_from_host
 .section .note.GNU-stack,"",%progbits
 #endif

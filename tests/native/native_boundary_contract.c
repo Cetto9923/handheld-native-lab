@@ -114,6 +114,7 @@ typedef struct StackContext {
 _Static_assert(offsetof(StackContext,observed)==32&&offsetof(StackContext,outgoing)==208&&
     offsetof(StackContext,q_seen)==336&&offsetof(StackContext,x8_seen)==464,"stack21 test ABI");
 extern void stack_guest_record(void),stack_guest_construct(void),stack_guest_tail(void),stack_host_wrapper(void);
+extern void callback_seed_leaf(void);
 __asm__(
 ".text\n.p2align 2\n.global stack_guest_record\n.type stack_guest_record,%function\nstack_guest_record:\n"
 ".inst 0xd503245f\n mov x9,sp\n str x9,[x0,#16]\n str x8,[x0,#464]\n"
@@ -140,7 +141,9 @@ __asm__(
 ".global stack_host_wrapper\n.type stack_host_wrapper,%function\nstack_host_wrapper:\n.inst 0xd503245f\n"
 "str x18,[x0,#8]\n mov x9,sp\n str x9,[x0,#16]\n str x8,[x0,#464]\n"
 "stp q0,q1,[x0,#336]\n stp q2,q3,[x0,#368]\n stp q4,q5,[x0,#400]\n stp q6,q7,[x0,#432]\n"
-"b stack_host21\n");
+"b stack_host21\n"
+".global callback_seed_leaf\n.type callback_seed_leaf,%function\ncallback_seed_leaf:\n"
+".inst 0xd503245f\n mov x0,x18\n mov x18,#0x55\n ret\n");
 _Static_assert(offsetof(Context, observed) == 32, "owned test ABI");
 extern void contract_guest(void), contract_leaf(void), contract_host_raw(void), contract_callback_wrapper(void);
 extern void contract_fp_guest(void),contract_fp_wrapper(void);
@@ -226,6 +229,11 @@ __attribute__((noinline)) uint64_t stack_host21(StackContext *context,
     memcpy(context->observed,words,sizeof(words));
     assert(context->native_seen==context->scope->host_x18&&!(context->sp_seen&15));
     uint64_t native=current_x18();assert(pthread_self());
+    nb_scope outer=*context->scope;nb_registers callback={0};callback.guest_x18=0xfeed;
+    assert(outer.phase==2&&outer.active_guest_x18);
+    assert(nb_call_from_host(context->scope,callback_seed_leaf,&callback)==NB_OK);
+    assert(callback.x[0]==outer.active_guest_x18&&callback.guest_x18==0x55);
+    assert(!memcmp(context->scope,&outer,sizeof(outer))&&current_x18()==native);
     nb_scope nested={0};StackContext nested_context;nb_stack13 stack;nb_registers registers;
     uint64_t expected[21];prepare_stack(&nested_context,&nested,&registers,&stack,expected);
     assert(nb_call_stack13(context->scope,stack_guest_record,&registers,&stack)==NB_BUSY);
@@ -400,11 +408,357 @@ static void expect_import_traps(nb_scope *scope,int fixed_stack) {
     assert(nb_import_unbind(&binding)==NB_OK);
 }
 
+typedef struct CallbackSuite CallbackSuite;
+typedef struct CallbackFrame {
+    void (*entry)(void);
+    nb_scope *scope;
+    CallbackSuite *suite;
+    uint64_t depth,expected_seed,seed_seen,native_seen,sp_seen,guest_after,padding;
+    nb_registers observed;
+    uint64_t result_bits;
+} CallbackFrame;
+struct CallbackSuite {
+    CallbackFrame frames[NB_MAX_CALLBACK_DEPTH+1];
+    uint64_t expected_host[NB_MAX_CALLBACK_DEPTH+1];
+    nb_scope *scope;
+    void (*entry)(void);
+    unsigned calls,callbacks,depth_refusals;
+};
+_Static_assert(offsetof(CallbackFrame,depth)==24&&offsetof(CallbackFrame,seed_seen)==40&&
+    offsetof(CallbackFrame,native_seen)==48&&offsetof(CallbackFrame,observed)==80&&
+    offsetof(CallbackFrame,result_bits)==288&&sizeof(CallbackFrame)==304,"callback fixture ABI");
+extern void callback_guest(void),callback_host_wrapper(void);
+extern nb_status callback_call_guard(nb_scope *,void(*)(void),nb_registers *);
+__asm__(
+".text\n"
+".p2align 2\n"
+".global callback_guest\n"
+".type callback_guest,%function\n"
+"callback_guest:\n"
+".inst 0xd503245f\n"
+"stp x29,x30,[sp,#-32]!\n"
+"str x19,[sp,#16]\n"
+"mov x29,sp\n"
+"mov x19,x0\n"
+"str x18,[x19,#40]\n"
+"stp x0,x1,[x19,#80]\n"
+"stp x2,x3,[x19,#96]\n"
+"stp x4,x5,[x19,#112]\n"
+"stp x6,x7,[x19,#128]\n"
+"str x8,[x19,#144]\n"
+"str x18,[x19,#152]\n"
+"stp q0,q1,[x19,#160]\n"
+"stp q2,q3,[x19,#192]\n"
+"stp q4,q5,[x19,#224]\n"
+"stp q6,q7,[x19,#256]\n"
+"ldr x9,[x19,#24]\n"
+"add x18,x9,#0x80\n"
+"ldr x16,[x19]\n"
+"blr x16\n"
+"str x18,[x19,#64]\n"
+"str d0,[x19,#288]\n"
+"ldr x10,[x19,#24]\n"
+"mov x0,#0x5150\n"
+"add x0,x0,x10\n"
+"mov x1,#0x7101\n"
+"add x1,x1,x10\n"
+"movi v1.16b,#0xa1\n"
+"mov x2,#0x7102\n"
+"add x2,x2,x10\n"
+"movi v2.16b,#0xa2\n"
+"mov x3,#0x7103\n"
+"add x3,x3,x10\n"
+"movi v3.16b,#0xa3\n"
+"mov x4,#0x7104\n"
+"add x4,x4,x10\n"
+"movi v4.16b,#0xa4\n"
+"mov x5,#0x7105\n"
+"add x5,x5,x10\n"
+"movi v5.16b,#0xa5\n"
+"mov x6,#0x7106\n"
+"add x6,x6,x10\n"
+"movi v6.16b,#0xa6\n"
+"mov x7,#0x7107\n"
+"add x7,x7,x10\n"
+"movi v7.16b,#0xa7\n"
+"mov x8,#0x8180\n"
+"add x8,x8,x10\n"
+"ldp x29,x30,[sp]\n"
+"add sp,sp,#32\n"
+"mov x19,#0xdead\n"
+"mov x20,#0xdead\n"
+"mov x21,#0xdead\n"
+"mov x22,#0xdead\n"
+"mov x23,#0xdead\n"
+"mov x24,#0xdead\n"
+"mov x25,#0xdead\n"
+"mov x26,#0xdead\n"
+"mov x27,#0xdead\n"
+"mov x28,#0xdead\n"
+"mov x29,#0xbeef\n"
+"movi v8.16b,#0xee\n"
+"movi v9.16b,#0xee\n"
+"movi v10.16b,#0xee\n"
+"movi v11.16b,#0xee\n"
+"movi v12.16b,#0xee\n"
+"movi v13.16b,#0xee\n"
+"movi v14.16b,#0xee\n"
+"movi v15.16b,#0xee\n"
+"ret\n"
+".global callback_host_wrapper\n"
+".type callback_host_wrapper,%function\n"
+"callback_host_wrapper:\n"
+".inst 0xd503245f\n"
+"str x18,[x0,#48]\n"
+"mov x9,sp\n"
+"str x9,[x0,#56]\n"
+"b callback_host\n"
+".global callback_call_guard\n"
+".type callback_call_guard,%function\n"
+"callback_call_guard:\n"
+".inst 0xd503245f\n"
+"sub sp,sp,#240\n"
+"stp x29,x30,[sp]\n"
+"stp x19,x20,[sp,#16]\n"
+"stp x21,x22,[sp,#32]\n"
+"stp x23,x24,[sp,#48]\n"
+"stp x25,x26,[sp,#64]\n"
+"stp x27,x28,[sp,#80]\n"
+"stp q8,q9,[sp,#96]\n"
+"stp q10,q11,[sp,#128]\n"
+"stp q12,q13,[sp,#160]\n"
+"stp q14,q15,[sp,#192]\n"
+"str x18,[sp,#224]\n"
+"mov x19,#0x1913\n"
+"mov x20,#0x1914\n"
+"mov x21,#0x1915\n"
+"mov x22,#0x1916\n"
+"mov x23,#0x1917\n"
+"mov x24,#0x1918\n"
+"mov x25,#0x1919\n"
+"mov x26,#0x191a\n"
+"mov x27,#0x191b\n"
+"mov x28,#0x191c\n"
+"mov x29,#0x191d\n"
+"movi v8.16b,#0x88\n"
+"movi v9.16b,#0x89\n"
+"movi v10.16b,#0x8a\n"
+"movi v11.16b,#0x8b\n"
+"movi v12.16b,#0x8c\n"
+"movi v13.16b,#0x8d\n"
+"movi v14.16b,#0x8e\n"
+"movi v15.16b,#0x8f\n"
+"bl nb_call_from_host\n"
+"ldr x9,[sp,#224]\n"
+"cmp x18,x9\n"
+"b.ne .Lcallback_guard_bad\n"
+"mov x9,#0x1913\n"
+"cmp x19,x9\n"
+"b.ne .Lcallback_guard_bad\n"
+"mov x9,#0x1914\n"
+"cmp x20,x9\n"
+"b.ne .Lcallback_guard_bad\n"
+"mov x9,#0x1915\n"
+"cmp x21,x9\n"
+"b.ne .Lcallback_guard_bad\n"
+"mov x9,#0x1916\n"
+"cmp x22,x9\n"
+"b.ne .Lcallback_guard_bad\n"
+"mov x9,#0x1917\n"
+"cmp x23,x9\n"
+"b.ne .Lcallback_guard_bad\n"
+"mov x9,#0x1918\n"
+"cmp x24,x9\n"
+"b.ne .Lcallback_guard_bad\n"
+"mov x9,#0x1919\n"
+"cmp x25,x9\n"
+"b.ne .Lcallback_guard_bad\n"
+"mov x9,#0x191a\n"
+"cmp x26,x9\n"
+"b.ne .Lcallback_guard_bad\n"
+"mov x9,#0x191b\n"
+"cmp x27,x9\n"
+"b.ne .Lcallback_guard_bad\n"
+"mov x9,#0x191c\n"
+"cmp x28,x9\n"
+"b.ne .Lcallback_guard_bad\n"
+"mov x9,#0x191d\n"
+"cmp x29,x9\n"
+"b.ne .Lcallback_guard_bad\n"
+"movi v16.16b,#0x88\n"
+"eor v16.16b,v16.16b,v8.16b\n"
+"umaxv b16,v16.16b\n"
+"umov w9,v16.b[0]\n"
+"cbnz w9,.Lcallback_guard_bad\n"
+"movi v16.16b,#0x89\n"
+"eor v16.16b,v16.16b,v9.16b\n"
+"umaxv b16,v16.16b\n"
+"umov w9,v16.b[0]\n"
+"cbnz w9,.Lcallback_guard_bad\n"
+"movi v16.16b,#0x8a\n"
+"eor v16.16b,v16.16b,v10.16b\n"
+"umaxv b16,v16.16b\n"
+"umov w9,v16.b[0]\n"
+"cbnz w9,.Lcallback_guard_bad\n"
+"movi v16.16b,#0x8b\n"
+"eor v16.16b,v16.16b,v11.16b\n"
+"umaxv b16,v16.16b\n"
+"umov w9,v16.b[0]\n"
+"cbnz w9,.Lcallback_guard_bad\n"
+"movi v16.16b,#0x8c\n"
+"eor v16.16b,v16.16b,v12.16b\n"
+"umaxv b16,v16.16b\n"
+"umov w9,v16.b[0]\n"
+"cbnz w9,.Lcallback_guard_bad\n"
+"movi v16.16b,#0x8d\n"
+"eor v16.16b,v16.16b,v13.16b\n"
+"umaxv b16,v16.16b\n"
+"umov w9,v16.b[0]\n"
+"cbnz w9,.Lcallback_guard_bad\n"
+"movi v16.16b,#0x8e\n"
+"eor v16.16b,v16.16b,v14.16b\n"
+"umaxv b16,v16.16b\n"
+"umov w9,v16.b[0]\n"
+"cbnz w9,.Lcallback_guard_bad\n"
+"movi v16.16b,#0x8f\n"
+"eor v16.16b,v16.16b,v15.16b\n"
+"umaxv b16,v16.16b\n"
+"umov w9,v16.b[0]\n"
+"cbnz w9,.Lcallback_guard_bad\n"
+"ldp q8,q9,[sp,#96]\n"
+"ldp q10,q11,[sp,#128]\n"
+"ldp q12,q13,[sp,#160]\n"
+"ldp q14,q15,[sp,#192]\n"
+"ldp x19,x20,[sp,#16]\n"
+"ldp x21,x22,[sp,#32]\n"
+"ldp x23,x24,[sp,#48]\n"
+"ldp x25,x26,[sp,#64]\n"
+"ldp x27,x28,[sp,#80]\n"
+"ldp x29,x30,[sp]\n"
+"add sp,sp,#240\n"
+"ret\n"
+".Lcallback_guard_bad:\n"
+"brk #0x4342\n"
+);
+
+static uint64_t callback_sp(void) {
+    uint64_t value;__asm__ volatile("mov %0,sp":"=r"(value));return value;
+}
+static uint64_t callback_arg(unsigned depth,unsigned index) {return 0x100+depth*16+index;}
+static double callback_expected(unsigned depth) {
+    double result=(double)depth+1.25+(double)depth+2.5;
+    for(unsigned i=1;i<8;++i)result+=(double)callback_arg(depth,i);
+    if(depth<NB_MAX_CALLBACK_DEPTH)result+=callback_expected(depth+1);
+    return result;
+}
+static void callback_prepare(CallbackSuite *suite,unsigned depth,uint64_t seed,nb_registers *r) {
+    CallbackFrame *f=&suite->frames[depth];memset(f,0,sizeof(*f));
+    f->entry=suite->entry;f->scope=suite->scope;f->suite=suite;f->depth=depth;f->expected_seed=seed;
+    memset(r,0,sizeof(*r));r->x[0]=(uintptr_t)f;
+    for(unsigned i=1;i<8;++i)r->x[i]=callback_arg(depth,i);
+    r->x[8]=0xabc000+depth;r->guest_x18=0xf00d+depth;
+    double left=(double)depth+1.25,right=(double)depth+2.5;
+    memcpy(r->q[0],&left,sizeof(left));memcpy(r->q[1],&right,sizeof(right));
+    for(unsigned i=2;i<8;++i)memset(r->q[i],0x30+depth+i,16);
+}
+static void callback_verify(CallbackSuite *suite,unsigned depth,const nb_registers *r) {
+    const CallbackFrame *f=&suite->frames[depth];
+    assert(f->seed_seen==f->expected_seed&&f->observed.guest_x18==f->expected_seed);
+    assert(f->guest_after==0x80+depth&&!(f->sp_seen&15));
+    assert(f->observed.x[0]==(uintptr_t)f&&f->observed.x[8]==0xabc000+depth);
+    for(unsigned i=1;i<8;++i)assert(f->observed.x[i]==callback_arg(depth,i));
+    double left=(double)depth+1.25,right=(double)depth+2.5,observed=0;
+    memcpy(&observed,f->observed.q[0],sizeof(observed));assert(observed==left);
+    memcpy(&observed,f->observed.q[1],sizeof(observed));assert(observed==right);
+    for(unsigned i=2;i<8;++i)for(unsigned j=0;j<16;++j)assert(f->observed.q[i][j]==0x30+depth+i);
+    assert(r->x[0]==0x5150+depth&&r->x[8]==0x8180+depth&&r->guest_x18==0x80+depth);
+    for(unsigned i=1;i<8;++i)assert(r->x[i]==0x7100+i+depth);
+    for(unsigned i=1;i<8;++i)for(unsigned j=0;j<16;++j)assert(r->q[i][j]==0xa0+i);
+    memcpy(&observed,r->q[0],sizeof(observed));assert(observed==callback_expected(depth));
+    memcpy(&observed,&f->result_bits,sizeof(observed));assert(observed==callback_expected(depth));
+}
+/* This real C helper and callback_host are both nonleaf and SCS-instrumented.
+ * Their deeper x18 must replace scope.host_x18 only during the owned callback. */
+__attribute__((noinline)) static nb_status callback_deep(CallbackFrame *parent,nb_registers *packet,int bound) {
+    nb_scope before=*parent->scope;nb_registers original=*packet;
+    uint64_t native=current_x18(),sp=callback_sp();
+    assert(native!=before.host_x18&&before.phase==2);
+    if(!bound)parent->suite->expected_host[parent->depth+1]=native;
+    nb_status status=callback_call_guard(parent->scope,callback_guest,packet);
+    assert(current_x18()==native&&callback_sp()==sp);
+    assert(!memcmp(&before,parent->scope,sizeof(before)));
+    if(bound){assert(status==NB_DEPTH_LIMIT);assert(!memcmp(packet,&original,sizeof(original)));}
+    else assert(status==NB_OK);
+    return status;
+}
+__attribute__((noinline)) double callback_host(CallbackFrame *f,
+    uint64_t a1,uint64_t a2,uint64_t a3,uint64_t a4,uint64_t a5,uint64_t a6,uint64_t a7,
+    double left,double right) {
+    CallbackSuite *suite=f->suite;unsigned depth=(unsigned)f->depth;
+    assert(depth<=NB_MAX_CALLBACK_DEPTH&&f->scope->callback_depth==depth&&f->scope->phase==2);
+    assert(f->native_seen==suite->expected_host[depth]&&f->scope->host_x18==f->native_seen);
+    assert(f->scope->active_guest_x18==0x80+depth&&current_x18()!=f->native_seen);
+    uint64_t actual[7]={a1,a2,a3,a4,a5,a6,a7};
+    double result=left+right;
+    assert(left==(double)depth+1.25&&right==(double)depth+2.5&&pthread_self());
+    for(unsigned i=0;i<7;++i){assert(actual[i]==callback_arg(depth,i+1));result+=(double)actual[i];}
+    ++suite->calls;
+    nb_scope unchanged=*f->scope;nb_registers refused;memset(&refused,0x5a,sizeof(refused));
+    nb_registers original=refused;
+    assert(nb_call(f->scope,contract_leaf,&refused)==NB_BUSY);
+    assert(nb_call_from_host(f->scope,NULL,&refused)==NB_INVALID);
+    assert(nb_scope_close(f->scope)==NB_BUSY);
+    assert(!memcmp(&refused,&original,sizeof(refused))&&!memcmp(&unchanged,f->scope,sizeof(unchanged)));
+    if(depth<NB_MAX_CALLBACK_DEPTH) {
+        nb_registers callback;
+        callback_prepare(suite,depth+1,f->scope->active_guest_x18,&callback);
+        assert(callback.guest_x18!=f->scope->active_guest_x18);
+        assert(callback_deep(f,&callback,0)==NB_OK);
+        callback_verify(suite,depth+1,&callback);
+        double child=0;memcpy(&child,callback.q[0],sizeof(child));result+=child;
+        ++suite->callbacks;
+    } else {
+        assert(callback_deep(f,&refused,1)==NB_DEPTH_LIMIT);
+        ++suite->depth_refusals;
+    }
+    assert(!memcmp(&unchanged,f->scope,sizeof(unchanged)));
+    return result;
+}
+static void owned_host_callback_contract(nb_scope *scope) {
+    nb_import binding={0};
+    nb_signature signature={.version=1,.flags=NB_SIG_REGISTER_ONLY,.gp_arguments=8,
+        .fp_arguments=2,.fp_returns=1};
+    assert(nb_import_bind(&binding,scope,callback_host_wrapper,&signature)==NB_OK);
+    CallbackSuite suite={.scope=scope,.entry=binding.entry};
+    nb_scope idle=*scope;nb_registers r;memset(&r,0xcc,sizeof(r));nb_registers saved=r;
+    assert(nb_call_from_host(scope,callback_guest,&r)==NB_BUSY);
+    assert(!memcmp(scope,&idle,sizeof(idle))&&!memcmp(&r,&saved,sizeof(saved)));
+    nb_scope invalid={0};
+    assert(nb_call_from_host(&invalid,callback_guest,&r)==NB_INVALID);
+    assert(nb_call_from_host(NULL,callback_guest,&r)==NB_INVALID);
+    assert(!memcmp(&r,&saved,sizeof(saved)));
+    for(unsigned repeat=0;repeat<3;++repeat) {
+        callback_prepare(&suite,0,0x41+repeat,&r);r.guest_x18=0x41+repeat;
+        suite.expected_host[0]=current_x18();
+        uint64_t sp=callback_sp();
+        assert(nb_call(scope,callback_guest,&r)==NB_OK);
+        assert(current_x18()==suite.expected_host[0]&&callback_sp()==sp);
+        callback_verify(&suite,0,&r);
+        assert(!memcmp(scope,&idle,sizeof(idle))&&!scope->active_guest_x18&&!scope->callback_depth);
+    }
+    assert(suite.calls==3*(NB_MAX_CALLBACK_DEPTH+1)&&suite.callbacks==3*NB_MAX_CALLBACK_DEPTH&&suite.depth_refusals==3);
+    assert(nb_import_unbind(&binding)==NB_OK);
+}
+
 typedef struct ThreadData {nb_scope *foreign;uint64_t owner;int result;
     nb_scope abandoned;nb_import abandoned_binding;} ThreadData;
 static void *thread_contract(void *opaque) {
     ThreadData *data=opaque;nb_registers registers={0};
     assert(nb_call(data->foreign,contract_leaf,&registers)==NB_WRONG_THREAD);
+    nb_scope foreign_before=*data->foreign;nb_registers packet_before=registers;
+    assert(nb_call_from_host(data->foreign,callback_guest,&registers)==NB_WRONG_THREAD);
+    assert(!memcmp(data->foreign,&foreign_before,sizeof(foreign_before))&&
+           !memcmp(&registers,&packet_before,sizeof(registers)));
     nb_stack13 stack={0};
     assert(nb_call_stack13(data->foreign,stack_guest_record,&registers,&stack)==NB_WRONG_THREAD);
     assert(nb_scope_close(data->foreign)==NB_WRONG_THREAD);
@@ -429,12 +783,17 @@ __attribute__((no_sanitize("shadow-call-stack"))) int main(void) {
     signature=scalar_signature();signature.variadic=1;assert(nb_import_bind(&rejected,&scope,contract_host_raw,&signature)==NB_UNSUPPORTED);
     signature=scalar_signature();signature.aggregate_arguments=1;assert(nb_import_bind(&rejected,&scope,contract_host_raw,&signature)==NB_UNSUPPORTED);
     run_scope(&scope,1);run_scope(&scope,0);fp_contract(&scope);fixed_stack_contract(&scope);
+    owned_host_callback_contract(&scope);
     expect_import_traps(&scope,0);expect_import_traps(&scope,1);
     ThreadData data={.foreign=&scope};pthread_t thread;
     assert(!pthread_create(&thread,NULL,thread_contract,&data));assert(!pthread_join(thread,NULL));
     assert(data.result==1 && data.owner!=scope.owner_tp);
     nb_registers dead_registers={0};
     assert(nb_call(&data.abandoned,contract_leaf,&dead_registers)==NB_OWNER_DEAD);
+    nb_scope dead_before=data.abandoned;nb_registers dead_packet=dead_registers;
+    assert(nb_call_from_host(&data.abandoned,callback_guest,&dead_registers)==NB_OWNER_DEAD);
+    assert(!memcmp(&dead_before,&data.abandoned,sizeof(dead_before))&&
+           !memcmp(&dead_packet,&dead_registers,sizeof(dead_packet)));
     nb_stack13 dead_stack={0};
     assert(nb_call_stack13(&data.abandoned,stack_guest_record,&dead_registers,&dead_stack)==NB_OWNER_DEAD);
     assert(nb_import_unbind(&data.abandoned_binding)==NB_OK);
@@ -451,6 +810,10 @@ __attribute__((no_sanitize("shadow-call-stack"))) int main(void) {
          "\"fixed_gp21_host_to_guest\":true,\"fixed_gp21_guest_to_host\":true,"
          "\"fixed_gp21_combined\":true,\"every_argument_mutation\":true,\"stack_canaries\":true,"
          "\"fixed_gp21_nested_threads_lifecycle\":true,\"fixed_gp21_signature_rejections\":14,"
+         "\"owned_host_callback\":true,\"same_scope_import_from_callback\":true,"
+         "\"callback_depth_limit\":4,\"callback_depth_refusals\":3,\"callback_scs_deeper\":true,"
+         "\"callback_scope_packet_restored\":true,\"callback_callee_gp_fp_sp\":true,"
+         "\"callback_actual_guest_x18_seed\":true,\"gp21_host_callback\":true,"
          "\"game_input\":false}\n",(getauxval(AT_HWCAP2)&HWCAP2_BTI)?"true":"false");return 0;
 }
 #endif /* NB_CLEANUP_CONTRACT */
@@ -460,6 +823,7 @@ int main(void) {
     nb_stack13 stack={0};
     assert(nb_scope_init(&scope)==NB_UNSUPPORTED);
     assert(nb_call(&scope,NULL,&registers)==NB_UNSUPPORTED);
+    assert(nb_call_from_host(&scope,NULL,&registers)==NB_UNSUPPORTED);
     assert(nb_call_stack13(&scope,NULL,&registers,&stack)==NB_UNSUPPORTED);
     puts("{\"status\":\"UNSUPPORTED\",\"platform\":\"non_android_a64\",\"android_execution\":\"NOT_RUN\"}");return 0;
 }

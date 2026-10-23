@@ -14,6 +14,9 @@ _Static_assert(offsetof(nb_scope, owner_tp) == 8 && offsetof(nb_scope, host_x18)
 _Static_assert(offsetof(nb_registers, guest_x18) == 72 && offsetof(nb_registers, q) == 80 &&
                sizeof(nb_registers) == 208, "register assembly ABI");
 _Static_assert(offsetof(nb_scope, lifetime)==40, "lifetime assembly ABI");
+_Static_assert(offsetof(nb_scope,active_guest_x18)==48 && offsetof(nb_scope,callback_depth)==56,
+               "host callback assembly ABI");
+_Static_assert(NB_MAX_CALLBACK_DEPTH==4 && NB_DEPTH_LIMIT==10,"host callback assembly bound/status");
 _Static_assert(sizeof(nb_stack13)==104, "fixed GP21 stack payload");
 typedef struct nb_lifetime { uint64_t live, refs; } nb_lifetime;
 static pthread_key_t lifetime_key;
@@ -50,7 +53,7 @@ static nb_status check_scope(const nb_scope *scope) {
     if(!life)return NB_INVALID;
     if(!__atomic_load_n(&life->live,__ATOMIC_ACQUIRE))return NB_OWNER_DEAD;
     if (scope->owner_tp != thread_token()) return NB_WRONG_THREAD;
-    if (__atomic_load_n(&scope->phase, __ATOMIC_ACQUIRE)) return NB_BUSY;
+    if (__atomic_load_n(&scope->phase, __ATOMIC_ACQUIRE) || scope->callback_depth) return NB_BUSY;
     return NB_OK;
 }
 #endif
@@ -74,7 +77,7 @@ nb_status nb_scope_close(nb_scope *scope) {
 #if defined(__ANDROID__) && defined(__aarch64__)
     nb_status status = check_scope(scope);
     if (status != NB_OK && status != NB_OWNER_DEAD) return status;
-    if(__atomic_load_n(&scope->phase,__ATOMIC_ACQUIRE))return NB_BUSY;
+    if(__atomic_load_n(&scope->phase,__ATOMIC_ACQUIRE)||scope->callback_depth)return NB_BUSY;
     if (scope->binding_count) return NB_BUSY;
     nb_lifetime *life=scope->lifetime;
     memset(scope, 0, sizeof(*scope));lifetime_drop(life); return NB_OK;
@@ -142,7 +145,7 @@ nb_status nb_import_unbind(nb_import *binding) {
     if (!binding->mapping && !binding->entry && !binding->scope) return NB_OK;
     nb_status status = check_scope(binding->scope);
     if (status != NB_OK && status != NB_OWNER_DEAD) return status;
-    if(__atomic_load_n(&binding->scope->phase,__ATOMIC_ACQUIRE))return NB_BUSY;
+    if(__atomic_load_n(&binding->scope->phase,__ATOMIC_ACQUIRE)||binding->scope->callback_depth)return NB_BUSY;
     if (!binding->mapping || !binding->mapping_bytes || !binding->scope->binding_count) return NB_INVALID;
     if (munmap(binding->mapping, binding->mapping_bytes)) return NB_MAP_FAILED;
     --binding->scope->binding_count;
@@ -159,6 +162,9 @@ void (*nb_import_entry(const nb_import *binding))(void) {
 #if !defined(__ANDROID__) || !defined(__aarch64__)
 nb_status nb_call(nb_scope *scope, void (*entry)(void), nb_registers *registers) {
     (void)scope; (void)entry; (void)registers; return NB_UNSUPPORTED;
+}
+nb_status nb_call_from_host(nb_scope *scope, void (*entry)(void), nb_registers *registers) {
+    (void)scope;(void)entry;(void)registers;return NB_UNSUPPORTED;
 }
 nb_status nb_call_stack13(nb_scope *scope, void (*entry)(void),
                           nb_registers *registers, const nb_stack13 *stack) {
