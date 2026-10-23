@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-10-23T13:02:44.468633+00:00",
-  "phase": "Original startup beyond host arguments: real VA management resource provider and locale gate; LAS production API integration in parallel",
-  "coordinator": "Codex root — sole Git/device/integration/handoff writer",
+  "updated_at": "2026-10-23T13:15:58.229918+00:00",
+  "phase": "3db RG startup advanced to67/61; realmalloc139 newprovenance; LAS integratedGPU0",
+  "coordinator": "Codex root — sole Git/device/integration; DOC-HANDOFF-LIVE delegated sole four-file writer",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
   "active_writers": [
@@ -35,7 +35,7 @@
     },
     {
       "task": "DOC-HANDOFF-LIVE",
-      "owner": "root coordinator — sole handoff writer",
+      "owner": "root coordinator — sole four-file writer",
       "paths": [
         "coordination/HANDOFF.md",
         "coordination/state.json",
@@ -44,71 +44,10 @@
       ],
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration",
       "branch": "task/codex-integration",
-      "acquired_at": "2026-10-23T12:17:22.629571+00:00",
-      "checkpoint": "a3cb435ec2569fc84ba1068c73bfbfbb96dddcf0",
-      "write_state": "ROOT_WRITING_CHECKPOINT_NO_DOC_AGENT",
+      "acquired_at": "2026-10-23T13:05:43.110376+00:00",
+      "checkpoint": "7698a9e plus root approval-resolution WIP",
+      "write_state": "HANDED_BACK_ROOT_CHECKPOINT",
       "objective": "Preserve existing WIP and evidence; generated STATUS only; root alone stages/commits/integrates/device operations"
-    },
-    {
-      "task": "T07-OS-TLS-PROFILE-REVIEW",
-      "owner": "/root/functional_review — independent frozen binding reviewer",
-      "paths": [
-        "os-tls-profile/"
-      ],
-      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/functional-review",
-      "branch": null,
-      "acquired_at": "2026-10-23T12:18:52.991102+00:00",
-      "checkpoint": "28dc1a792946ae990690f11d71e89a60bf5d8b8b + pages4695/boundary5c/OS9c",
-      "write_state": "REVIEW_COMPLETE_NO_CURRENT_WRITES_WITH_EXPLICIT_EXTRA_CROSS_TIMEOUT",
-      "objective": "Only frozen five-file binding plus exact dependencies, ordinary C/POSIX positive fixtures; no source writes/ADB/original game or stopped exceptional flow"
-    },
-    {
-      "task": "T07-STACK13-REVIEW",
-      "owner": "/root/tls_research",
-      "paths": [
-        "functional-review/native-stack13/"
-      ],
-      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task",
-      "branch": null,
-      "checkpoint": "7beeb22294311cc3c896ec23ac23561fca9d6b6d",
-      "write_state": "COMPLETE_WITH_ANDROID_COMPONENT_C_COMPILE_TIMEOUT_DECLARED",
-      "objective": "Independent7be fixedGP21transport ordinaryC/ASM/frozenfivefiles,rootRG0separate"
-    },
-    {
-      "task": "T04-LAS-TRANSFER",
-      "owner": "/root/vulkan",
-      "paths": [
-        "third_party/lasrecomp/LICENSE",
-        "third_party/lasrecomp/UPSTREAM.json",
-        "src/graphics/nvn_las/command_record.h",
-        "src/graphics/nvn_las/transfer_backend.c",
-        "src/graphics/nvn_las/transfer_backend.h",
-        "src/graphics/nvn_las/typed_transfer.c",
-        "src/graphics/nvn_las/typed_transfer.h",
-        "tests/graphics/test_las_transfer_contract.c",
-        "scripts/graphics/build_las_transfer_contract.sh",
-        "src/graphics/vulkan_probe/vulkan_transfer_probe.c",
-        "docs/analysis/codex_las_transfer_report.md"
-      ],
-      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-las-transfer",
-      "branch": "task/T04-las-transfer",
-      "acquired_at": "2026-10-23T12:39:24.037351+00:00",
-      "checkpoint": "81b1917adb261f80ce1780e2c16d8d31c536a693",
-      "write_state": "CLEAN_FROZEN81B1917_ROOT_DEVICE_AND_INDEPENDENT_QA_NEXT",
-      "objective": "PinnedMIT CmdRec/recordsemanticreuse + typedside-table adapter + realGPUcopyviaexistingbuffer_resource,existingtransferdriverconsumesproductionAPI;nogamepublicationorunknownABI"
-    },
-    {
-      "task": "T02-LOCALE-ABI-REA",
-      "owner": "/root/tls_research",
-      "paths": [
-        "rea-followups/locale-compare/"
-      ],
-      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task",
-      "branch": null,
-      "acquired_at": "2026-10-23T12:51:08.958953+00:00",
-      "checkpoint": "SDK9dfd1cc6d3209d857dcafb191736265ac812401ddcc7b49dabf3bc0b114655a9",
-      "write_state": "ACTIVE_ACTUAL_FOLLOWUP",
-      "objective": "Onefreshactualstartup63strncasecmp_l ABI/locale semantics throughfocusedREA andprimarymaturelibc;no duplicateoldInfoanalysis/no source/device changes"
     },
     {
       "task": "T02-VA-RESOURCE",
@@ -130,8 +69,8 @@
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-va-resource",
       "branch": "task/T02-va-resource",
       "acquired_at": "2026-10-23T12:55:02.700590+00:00",
-      "checkpoint": "3af578a",
-      "write_state": "ACTIVE_ACTUAL_FOLLOWUP_CODING",
+      "checkpoint": "3dbb0dcc81543b790c75510e9320981e429046f2",
+      "write_state": "FROZEN3DBB0DC_ROOT_DEVICE_AND_QA_NEXT",
       "objective": "Actual bounded opt-in VA-management arena/metadata ownership, exact ledger/lifecycle, typed two-register SDK usage return; explicit policy not hostRAM/constant0; no guest binary edits"
     },
     {
@@ -143,9 +82,52 @@
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task",
       "branch": null,
       "acquired_at": "2026-10-23T12:59:09.309535+00:00",
-      "checkpoint": "81b1917adb261f80ce1780e2c16d8d31c536a693",
-      "write_state": "ACTIVATING_NOW",
+      "checkpoint": "81b1917 review f5213435",
+      "write_state": "FINAL_ACCEPTED_COMPONENT_NO_CURRENT_WRITES",
       "objective": "Independent ordinary production C adapter/ownership/LASlicense source review and positive contract; no ADB/original binaries/old stoppedworkflow"
+    },
+    {
+      "task": "T07-VA-RESOURCE-REVIEW",
+      "owner": "/root/functional_review",
+      "paths": [
+        "functional-review/va-resource/"
+      ],
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task",
+      "branch": null,
+      "acquired_at": "2026-10-23T13:11:29.593427+00:00",
+      "checkpoint": "3dbb0dcc81543b790c75510e9320981e429046f2",
+      "write_state": "ACTIVATING_NOW",
+      "objective": "Independent normal bounded allocator/ledger/ABI/locale C contracts; no originalgame/device/oldexceptionworkflow"
+    },
+    {
+      "task": "T02-STARTUP-NEXT",
+      "owner": "/root/runtime",
+      "paths": [
+        "src/runtime/hle/guest_process.c",
+        "src/runtime/hle/guest_process.h",
+        "tests/native/guest_process_contract.c",
+        "scripts/runtime/build_guest_process_contract.sh",
+        "docs/analysis/codex_guest_process_report.md"
+      ],
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-startup-next",
+      "branch": "task/T02-startup-next",
+      "acquired_at": "2026-10-23T13:13:21.453306+00:00",
+      "checkpoint": "3dbb0dcc81543b790c75510e9320981e429046f2",
+      "write_state": "ACTIVATING_NOW",
+      "objective": "Real capability67 from live owned VA backend and mature strcasecmp61 ABI; no constantstubs; preserve3db reviewfreeze"
+    },
+    {
+      "task": "T02-MALLOC-FAULT-PROVENANCE",
+      "owner": "/root/tls_research",
+      "paths": [
+        "startup-followups/malloc-null/"
+      ],
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task",
+      "branch": null,
+      "acquired_at": "2026-10-23T13:13:21.453306+00:00",
+      "checkpoint": "3db actualRG malloc139/main+b705c/fa30",
+      "write_state": "ACTIVATING_NOW",
+      "objective": "Focused actual newfault backward provenance, reuse known static hashes; no source/device/SDKTPexecution"
     }
   ],
   "tasks": [
@@ -884,8 +866,8 @@
       "branch": "task/codex-integration",
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration",
       "scope": "Four designated documentation/state files only; preserve inherited WIP; coordinator alone stages/commits/integrates",
-      "checkpoint_status": "28_RG_STARTUP60_85_FINAL_28_QA_ACTIVE_STACK13_FREEZE_RECORDED",
-      "activity_state": "PAUSED_FOUR_FILES_HANDBACK_FOR_ROOT_SERIAL_CHECKPOINT"
+      "checkpoint_status": "7698_APPROVAL_RESOLVED_F928_DELIVERY_LAS_RG0_LOCALE_REA_LIMITS_CURRENT_ENTRY_UNIFIED",
+      "activity_state": "PAUSED_FOUR_FILES_HANDBACK_FOR_ROOT_CHECKPOINT"
     },
     {
       "id": "T04-VULKAN-BUFFER-RESOURCE",
@@ -1317,7 +1299,7 @@
         "atexit": "Realregistrationmayremain;exitobserveronlydiscards,doesnotinvokeguestcallbacks",
         "future_callbacks": "Separatefuturephase withcorrectboundary,notrawfallbackfortests"
       },
-      "native_boundary_dependency_state": "Corrected5c20 source available/realRGnormal+cleanup0,independentrepairQA pending;freezeexactdependencyfornewintegration,do notuseold2ferrorpathasacceptedproof.",
+      "native_boundary_dependency_state": "5c repair independently FINAL and RGnormal/cleanup0; old2f failure retained. Exact later dependency freezes remain versioned.",
       "phase": "85_FROZEN_RG_COMPONENT_CONTRACTS_PASSED_ORIGINAL_GATES_UNCHANGED",
       "actual_dispatch": "Coordinator authorized and worker actually coding accepted session/strict exitcallback plan",
       "source_WIP_observed": [
@@ -1706,14 +1688,14 @@
       "objective": "Implement declared GP21 fixed104-byte stack scalar transport in both native directions; preserve v1/5c ownership and x18/SCS; no actual SDK binding",
       "acceptance": "Both directions all21 values/canaries/data-dependent realC/SCS result; old normal+cleanup regression, strict build and RG root execution later; source/dependency freeze",
       "recovery": "Preserve 5c frozen source tree and all WIP, only root integrates",
-      "execution_status": "CLEAN_FIVE_FILE_FREEZE_ROOT_DEVICE_VALIDATION_IN_PROGRESS_NOT_PASS",
+      "execution_status": "INTEGRATED9CD_ROOT_RG_NORMAL_AND_CLEANUP0_LIMITED_INDEPENDENT_REVIEW_C_COMPILE_TIMEOUT",
       "last_git_snapshot": {
         "known_at_utc": "2026-10-23T12:18:52.991102+00:00",
         "head": "7beeb22294311cc3c896ec23ac23561fca9d6b6d",
         "dirty_paths": [],
         "source": "Coordinator confirmed clean freeze; original5c tree unchanged"
       },
-      "implementation_status": "Frozen five-file source; root device checks in progress, no device or independent QA acceptance yet",
+      "implementation_status": "Clean7be frozen/integrated9cd3352; actual RG normal/cleanup0. Complete independent Android C compile timed out20s; no full independent Android build PASS.",
       "actual_RG": {
         "normal_exit": 0,
         "normal_seconds": 0.227309792,
@@ -1722,7 +1704,7 @@
         "no_timeout": true,
         "source": "exact5sourcefreeze7be",
         "evidence": ".local/device/rg477m-session1/native-stack13-v1-execution.json",
-        "limits": "fixed scalartransport only; not bound to musl/CRT, independentQA pending, not integrated"
+        "limits": "Fixed GP21 scalar transport only; not musl/CRT. Integrated9cd3352; limited independent review completed with full Android C compile20s timeout retained."
       },
       "integration_sha": "9cd3352",
       "acceptance_scope": "FixedGP21transport rootRGnormal/cleanup0; independentlimitedreview, fullAndroidCcompiletimeout declared; notmusl"
@@ -1739,7 +1721,7 @@
       "branch": null,
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/functional-review",
       "report": "../functional-review/os-tls-profile/REVIEW.md",
-      "execution_status": "ACTIVE_ROOT_ACTUAL_FOLLOWUP_FROZEN28",
+      "execution_status": "FINAL_SCOPED_HOST_REVIEW_COMPLETE_EXTRA_ANDROID_C_COMPILE_TIMEOUT30S_RETAINED",
       "immutable_inputs": {
         "native_os_tls_profile": "28dc1a792946ae990690f11d71e89a60bf5d8b8b",
         "pages": "4695e3c995993832ff8e274415f58b1cdb1e4684",
@@ -1778,7 +1760,7 @@
       "acceptance": "Correctcopy/lifetime/mutablevector/privatebase, exactQueryaccounting/trueunmapbeforerefund/retry, nativepositivefixture+realstartupnextgate; nofixedsuccess",
       "recovery": "Samewriter sixfilesonly;freezeartifact+source/deps;preserveWIP/noreset",
       "source_state": "CLEAN_SIXFILE_FREEZE_AUTHOR68COMMANDS_MATCH_ANDROID_NOT_RUN",
-      "device_gate": "Pendingroot7old+3newcontracts andoriginalstartupempty/nonempty,nextactualgateunknown",
+      "device_gate": "ROOT_RG6_CONTRACTS_AND_INFO0_STARTUP_EMPTY66_NONEMPTY63_BOTH133_NO_TIMEOUT_MAIN_UNCHANGED",
       "freeze_sha": "9dc8aa73c6e2d038c2b1c89efd898b65fbf0d1bb",
       "integration_sha": "3af578a",
       "acceptance_scope": "Ownedargv component/rootRG6contracts0/independenthostFINAL; not startup/game success"
@@ -1838,7 +1820,7 @@
     {
       "id": "T04-LAS-TRANSFER",
       "role": "GRAPHICS_ENGINEER",
-      "status": "in_progress",
+      "status": "passed",
       "owner": "/root/vulkan",
       "dependencies": [
         "T00R"
@@ -1861,12 +1843,42 @@
       ],
       "objective": "Firstrealresource-to-record-toGPUcopyproductionmoduleusingpinnedLASsemanticcodeandexistingGPUresourceowner;notNVNfullbackend",
       "acceptance": "Attribution/rev/extractedhashes;strictunknownop/flags/error;fence/quiescentretain;ordinaryhostcontracts/existingdriverrealRGtransferwithoutnewprobe;independentQAafterfreeze",
-      "recovery": "Onlyscopedindependenttree;original5c/7be/root/runtimeunchanged,noreset/clean/push"
+      "recovery": "Onlyscopedindependenttree;original5c/7be/root/runtimeunchanged,noreset/clean/push",
+      "checkpoint": "81b1917adb261f80ce1780e2c16d8d31c536a693",
+      "execution_status": "CLEAN_ELEVEN_FILE_FREEZE_ROOT_RG0_INDEPENDENT_REPORT_NOT_FINAL",
+      "writer_state": "RETURNED_IDLE_NO_CURRENT_WRITES",
+      "integration_status": "NOT_YET_REPORTED_INTEGRATED",
+      "device_result": {
+        "evidence_prefix": ".local/device/rg477m-session1/las-transfer-v1-",
+        "returncode": 0,
+        "elapsed_ms": 100.1925,
+        "timed_out": false,
+        "buffer_bytes": 65536,
+        "image_bytes": 256,
+        "mismatches": 0,
+        "vk_result_zero_count": 31,
+        "destroy_count": 12,
+        "unmap_count": 3,
+        "typed_record_path": true,
+        "backend_copy_count": 1,
+        "backend_copy_bytes": 65536,
+        "gpu_completion_retired": true,
+        "shader_or_present": false,
+        "game_rendering": false,
+        "artifact_bytes": 288744,
+        "artifact_sha256": "8ac793ff4bc978ecad1e1d837195e102ec9a7f28118b97fed38f38694430ef26",
+        "source_bundle_sha256": "21e4c62f30c481211ff09e8df8f89557215322f610552824e64dbd82079eed70",
+        "validator_returncode": 0
+      },
+      "independent_review": "Contracts exit0 reported; report closing, not FINAL",
+      "freeze_sha": "81b1917adb261f80ce1780e2c16d8d31c536a693",
+      "integration_sha": "7e5123c",
+      "acceptance_scope": "BoundedtypedCmdRecGPUtransfer,rootRG0+independenthostFINAL;notguestbinding/shader/present"
     },
     {
       "id": "T02-LOCALE-ABI-REA",
       "role": "REVERSE_ENGINEER",
-      "status": "in_progress",
+      "status": "passed",
       "owner": "/root/tls_research",
       "dependencies": [
         "T00R"
@@ -1874,7 +1886,13 @@
       "pass_gates": [],
       "branch": null,
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/rea-followups/locale-compare",
-      "objective": "FocusedfreshSDKlocale63provenance/REAevidenceandmaturelibc reuse recommendation;notcode/game execution"
+      "objective": "FocusedfreshSDKlocale63provenance/REAevidenceandmaturelibc reuse recommendation;notcode/game execution",
+      "report": "docs/analysis/codex_locale_compare_report.md",
+      "execution_status": "SCOPED_REPORT_COMPLETE_SKILL_READ_REA_FUNCTION_HELPER_COMPILE_FAILED1",
+      "report_sha256": "483f79ab710081c244d361b87720d910021d0d5e14cc2554f5867af92453bed6",
+      "acceptance_scope": "Analysis/report delivery only, not successful REA function extraction. Actual CLI helper Swift compile exit1 before slice, not timeout, no function Evidence. Separate LLVM exact SDK code proves locale ignored; official Bionic implementation reuse recommended.",
+      "source_report": "../rea-followups/locale-compare/LOCALE_COMPARE_REPORT.md",
+      "writer_state": "RETURNED_IDLE_NO_CURRENT_WRITES"
     },
     {
       "id": "T02-VA-RESOURCE",
@@ -1887,7 +1905,42 @@
       "owner": "/root/runtime",
       "branch": "task/T02-va-resource",
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-va-resource",
-      "report": "docs/analysis/codex_guest_process_report.md"
+      "report": "docs/analysis/codex_guest_process_report.md",
+      "checkpoint": "3af578a3a9948dc4f5e05a67503ac3795e30e264",
+      "scope_paths": [
+        "src/runtime/hle/guest_context.c",
+        "src/runtime/hle/guest_context.h",
+        "src/runtime/hle/guest_pages.c",
+        "src/runtime/hle/guest_pages.h",
+        "src/runtime/hle/address_region.c",
+        "src/runtime/hle/address_region.h",
+        "src/runtime/hle/guest_process.c",
+        "src/runtime/hle/guest_process.h",
+        "src/runtime/nso/nso_call.c",
+        "tests/native/guest_process_contract.c",
+        "scripts/runtime/build_guest_process_contract.sh",
+        "docs/analysis/codex_guest_process_report.md"
+      ],
+      "execution_status": "ACTIVE_TWELVE_FILE_SCOPE_REAL_MANAGEMENT_ARENA_66_AND_BIONIC63",
+      "producer_reported_checks": "Host contracts0; Android build in progress, not frozen/no device acceptance",
+      "last_git_snapshot": {
+        "known_at_utc": "2026-10-23T13:08:46.175383+00:00",
+        "head": "3af578a3a9948dc4f5e05a67503ac3795e30e264",
+        "modified_paths": [
+          "scripts/runtime/build_guest_process_contract.sh",
+          "src/runtime/hle/address_region.c",
+          "src/runtime/hle/address_region.h",
+          "src/runtime/hle/guest_context.c",
+          "src/runtime/hle/guest_context.h",
+          "src/runtime/hle/guest_pages.c",
+          "src/runtime/hle/guest_pages.h",
+          "src/runtime/hle/guest_process.c",
+          "src/runtime/hle/guest_process.h",
+          "src/runtime/nso/nso_call.c",
+          "tests/native/guest_process_contract.c"
+        ],
+        "interpretation": "11 modified paths observed inside12-file lease; proof of WIP only, not completion measure"
+      }
     },
     {
       "id": "T07-GUEST-ARGUMENTS-REVIEW",
@@ -1901,18 +1954,33 @@
       "branch": null,
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/functional-review/guest-arguments",
       "report": "docs/analysis/codex_guest_arguments_review.md"
+    },
+    {
+      "id": "T07-LAS-TRANSFER-REVIEW",
+      "role": "QA_GRAPHICS_COMPONENT",
+      "status": "in_progress",
+      "owner": "/root/functional_review",
+      "dependencies": [
+        "T00R"
+      ],
+      "pass_gates": [],
+      "branch": null,
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/functional-review",
+      "report": "../functional-review/las-transfer/REVIEW.md",
+      "checkpoint": "81b1917adb261f80ce1780e2c16d8d31c536a693",
+      "execution_status": "ACTIVE_INDEPENDENT_CONTRACTS0_REPORT_CLOSING_NOT_FINAL",
+      "scope": "Ordinary production C adapter/ownership/LAS license and positive contracts; no ADB/original binary/stopped exceptional workflow/source writes"
     }
   ],
   "blockers": [
-    "9dc RG original startup crossed59/60/61; emptyargv66/+13744/133, nonempty63/+13498/133, no timeout. Runtime actual management arena coding; locale ABI via fresh focused REA. Direct nnMain126/malloc66/CRT515 remain133; no default-stack/TP shortcuts.",
+    "3db actualRG13components0/info0, emptyoriginalstartup67/+137a4/133 andnonemptystrcasecmp61/+1345c/133; malloc4096new139/main+b705c/fa30 aftertrueVAreserve. Capturestopped,CRTthisfreezeNOTRUN. Frozen3dbQAactive; nexttree61/67coding+parallelmallocprovenance. No gameframe or guessedrootcause.",
     "NVN535名字仅2查询入口可解析、533缺失，59缺PFN类型不能猜ABI。新生产VkBuffer组件已同RG transfer contract0，但尚无游戏NVN→Vulkan资源/队列/着色器/present桥接，标题/game_rendering仍未过。",
     "既有 RomFS 流式工具和资源清单不等于游戏运行时挂载/IoStore 解压成功；尚未集成。保留合法本地素材，不获取新游戏或密钥。",
     "旧完整NSO安全/异常QA被平台检查中止，不重试；普通组件独立review已分别通过，不替代完整游戏QA。",
     "完整NDK归档校验NOT_VERIFIED；Google官方部分sysroot逐成员长度/CRC验证+AppleClang/RustLLD minimal真实出包通过。额外partial CMake configure0/build2：Darwin ar/ranlib不能索引ELF，尚未配置兼容交叉归档器。",
     "环境未提供 CreateGoal / UpdateGoal 入口，未开启持久目标引擎；当前回合按完整目标执行。",
     "RG477M诊断GPU传输/owned-pages/数字L2R2与右杆实测通过；听感未确认、所需GPU更多操作/完整输入/休眠待验收。荣耀平板未接入；游戏本体未启动。",
-    "旧15e独立review的host guard宏关闭extension P2已在d4ded9源码用typed引用/编译前置条件处理；指定Android原本不受影响，d4独立FINAL已闭合该P2；当前Process/pages WIP仍须新freeze/review，不能外推旧PASS。",
-    "Original delivery fast-forwardf9284ea auto-review DENIED,not executed: scope localtask vs preservedoriginal requires explicitbranchapproval. User async questionpending; no retries/workaround. Task branch remains savedf9284ea; development/deviceunaffected."
+    "旧15e独立review的host guard宏关闭extension P2已在d4ded9源码用typed引用/编译前置条件处理；指定Android原本不受影响，d4独立FINAL已闭合该P2；当前Process/pages WIP仍须新freeze/review，不能外推旧PASS。"
   ],
   "verified": [
     "Antigravity 交接基线 d26d3f6，接管时工作树干净、active_writers=[]；新开发使用独立分支/工作树，旧成果保留。",
@@ -1975,7 +2043,8 @@
     "Native boundary2fca9614b59332a3ef78a024fce2b379302492a4 clean5file component→root79f3513,actualsameRGnormal0/210.023084ms/no timeout,stderr empty;ELF51856 SHA6582237ef40824f52217e0bc02668e212cf438c412da7bd0a61758fec8b98b09. Owncontract GP/FP/sret,x18,realSCS,thread/nesting,two ownSIGTRAPchildren,BTI flags alltrue. Register-only no stackargs/foreignunwind,notloader/resolver/gamebound;21argmusl unsupported,gamex18debtnotclosed;independentreviewreserved.",
     "28dc1a clean five-file OS HLE integrated rootfb6d08b: actual RG seven contracts0/info0; real typed callbacks A0/B9/A5/order0x121; original nninitStartup now GetHostArgc60/+0x13420/133 at149.603916ms, no timeout and main hash unchanged. Direct nnMain126/malloc66/CRT515 remain133. New binding independent QA pending; 1MiB writer control-flow only, no BSS readback.",
     "9dc actualRG sixcontracts0/info0; originalnninitStartup60/61->66empty or63nonempty, raw133/noTimeout/mainhashunchanged. Independent53expectedcommands, reviewerAndroidNOTRUN. Logs guest-arguments-v1-usb-ready-*; updatedOSfixtureec8896 notold28.",
-    "LAS81b1917 actualRG originaldriver consumes typedrecord->CmdRec->realvkCmdCopyBuffer,raw0/100.1925ms/noTimeout/stderrempty;Mali64KiB+256BzeroMismatch,31VkResults0,12destroy3unmap,validator0,typedpathtrue/copy1/65536/retiredtrue;shaderpresentfalse/notgame. Logs las-transfer-v1-*;newindependentQAactive."
+    "LAS81b1917 actualRG originaldriver consumes typedrecord->CmdRec->realvkCmdCopyBuffer,raw0/100.1925ms/noTimeout/stderrempty;Mali64KiB+256BzeroMismatch,31VkResults0,12destroy3unmap,validator0,typedpathtrue/copy1/65536/retiredtrue;shaderpresentfalse/notgame. Logs las-transfer-v1-*;newindependentQAactive.",
+    "3db RG13ordinary/newcontracts0/info0;resource3actualdualreturns andlocale6actualguestcalls/65536pairs0. Mainhashunchanged. Neworiginalgates67/61raw133;malloc139notpass,CRTnotrun. Logsva-resource-v1-*"
   ],
   "unverified": [
     "完整CRT/TLS/线程/guest内存上下文与真正完整入口，正式T02参考行为验收。",
@@ -1992,7 +2061,7 @@
     "workers_reasoning": "xhigh",
     "completion": "unproven",
     "human_local_development_approval": "User directly approved local development and commits; later fully authorized access. Existing task boundaries remain, no remote publication or data clearing.",
-    "next_goal": "Implement actual bounded VA management provider66 and proved locale63; native CRT515 remains; LAS typedcommand->GPU next. No gameframe/title or percentage.",
+    "next_goal": "Implement actualcapability67/strcasecmp61,trace malloc139 initializationdependency; then true startup/CRT. LAS productionAPItransfer integrated/rootcombinedRG0, stillno guestNVNbinding/shader/present.",
     "loop": "Locate real blocker -> smallest functional code fix -> compile -> real device recheck -> local checkpoint -> next gate",
     "parallel_scope": "Runtime, graphics, ordinary QA and documentation operate in assigned scopes; no repeated research of confirmed facts, no fake stubs",
     "reporting": "Report material breakthroughs, required user action or real blockers; no artificial progress from diagnostic counts"
@@ -2064,7 +2133,7 @@
     "runtime_evidence": ".local/device/rg477m-session1/runtime-execution.json",
     "jni_load_evidence": ".local/device/rg477m-session1/reload-v6-execution.json",
     "guard_contract": "PASS actual8threads80000/init1/exceptionretry2/errors0",
-    "game_startup": "9dc actual original nninitStartup emptyargv66/133 or nonempty63/133; directnnMain126/malloc66/CRT515, no fullstartup",
+    "game_startup": "3db startupempty67/nonempty61/raw133; malloc139main+b705c/fa30;directnnMain126/133;CRTthisfreezeNOTRUN",
     "apk_version": 6,
     "input_report": ".local/device/rg477m-session1/diagnostic-v5.json",
     "input_enumeration": "PUBLIC_API_COMPLETE,retrogame_joypad id5; actual rightZ/RZ[-1,1],L2/R2 digital keys; analog trigger values0 in sample",
@@ -2075,20 +2144,20 @@
     "install_evidence": ".local/device/rg477m-session1/install-v6-result.json",
     "screenshot": ".local/device/rg477m-session1/audio-v6.png",
     "guest_context_evidence": ".local/device/rg477m-session1/guest-context-execution.json",
-    "latest_evidence": ".local/device/rg477m-session1/guest-arguments-v1-usb-ready-execution.json",
+    "latest_evidence": ".local/device/rg477m-session1/va-resource-v1-execution.json",
     "las_transfer_evidence": ".local/device/rg477m-session1/las-transfer-v1-execution.json"
   },
-  "parallelism_note": "Runtime66+63scoped12filescoding; fresh63REA/staticABIanalystclosingreport; frozen81LASsource independentlyreviewedbyfunctional_review; rootRG81actual0 andsoleGit/docs. No liveVulkanwriter afterfreeze.",
+  "parallelism_note": "Actual3workers:runtimefivefile61/67innewtree;functional_reviewfrozen3dbnormalCQA;tls_researchfreshmallocnullprovenance. Doc/vulkanpaused. RootADB/Git/docs; combinedLASsourcebuild58expected/RG0 completed,session43347ended0.",
   "handoff_checkpoint": {
-    "known_at_utc": "2026-10-23T12:58:49.280245+00:00",
-    "integration_HEAD": "9cd335209082e9cac0d11d53e45aec60ca2b56fd",
-    "original_delivery_last_verified": "245dfa222f22da6998819d4e0773bde9d8e6ae71",
+    "known_at_utc": "2026-10-23T13:08:46.175383+00:00",
+    "integration_HEAD": "7e5123c541219c513bc4a30bc7fccc344504de4b",
+    "original_delivery_last_verified": "f9284ea44f10a0d3a838c554508a3e911635b49f",
     "doc_writer": "root",
     "note": "Read git rev-parse for commit containing this snapshot; self-SHA deliberately not guessed",
-    "observed_at_utc": "2026-10-23T12:18:52.991102+00:00",
-    "original_delivery_HEAD": "245dfa222f22da6998819d4e0773bde9d8e6ae71",
-    "original_delivery_state": "VERIFIED_CLEAN_EXPECTED245_BEFORE_THIS_CHECKPOINT",
-    "integration_state": "9DC_AND7BE_CODE_INTEGRATED_REPORTS_WIP",
+    "observed_at_utc": "2026-10-23T13:08:46.175383+00:00",
+    "original_delivery_HEAD": "f9284ea44f10a0d3a838c554508a3e911635b49f",
+    "original_delivery_state": "EXPLICIT_USER_BRANCH_APPROVAL_SAFE_FF_COMPLETED_CLEAN_NO_PUSH",
+    "integration_state": "LAS_COMBINED_BUILD_AND_RG0_NEW3DB_FROZEN_NOTYETINTEGRATED",
     "doc_write_status": "ROOT_CHECKPOINT_IN_PROGRESS",
     "runtime_dirty_observed": [],
     "runtime_git_last_verified_at_utc": "2026-10-23T12:17:22.629571+00:00",
@@ -2100,13 +2169,14 @@
       "dirty_paths": [],
       "source": "Coordinator actual freeze message"
     },
-    "single_entry": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native/coordination/HANDOFF.md",
+    "single_entry": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration/coordination/HANDOFF.md",
     "coordinator_handback_additions": "Preservedreuse-table,9216B no-game-byte boundaryfixtureproof andwithdrawnpercentageclaim;no newframework/norepeatexecution",
-    "original_delivery_git_last_verified_at_utc": "2026-10-23T12:12:07.810426+00:00",
-    "integration_git_last_verified_at_utc": "2026-10-23T12:12:07.810426+00:00",
+    "original_delivery_git_last_verified_at_utc": "2026-10-23T13:08:46.175383+00:00",
+    "integration_git_last_verified_at_utc": "2026-10-23T13:08:46.175383+00:00",
     "runtime_HEAD": "9dc8aa73c6e2d038c2b1c89efd898b65fbf0d1bb",
-    "integration_HEAD_source": "Coordinator actual cherry confirmed; delivery remains a3 until later safeff",
-    "latest_device_event": "9dc sixcontracts0/info0; originalstartupempty66/nonempty63/133 all noTimeout"
+    "integration_HEAD_source": "Direct read integration HEAD; never guess containing-document self SHA",
+    "latest_device_event": "3db 13contracts0/info0,startup67/61/133,malloc139;CRTnotrun",
+    "entry_copy_in_delivery": "Original work branch has checkpoint f9284ea; newer LAS/approval-resolution docs remain in integration pending next root checkpoint/safeff"
   },
   "runtime_risks": [
     {
@@ -2119,8 +2189,8 @@
       "objdump_exit": 0,
       "observations": "Runtime readonly report: Android CLI+0x22134 branches BRx8 without x18 save/restore; profile imports directly target typed host functions; original nnMain strict trap x18=1. Runtime notes Android system library x18 preservation contract.",
       "causality": "Not proven cause of current failure, which remains explicit unresolved-import133.",
-      "todo": "Actual argv after current GetHostArgc60; arbitrary callbacks/foreign unwind/full ELF TLS remain unsupported. GP21 stack transport is separate WIP; no fake musl.",
-      "next_component": "5c/9c/85 component independent FINAL;28 binding integratedfb6d08b,RG startup59->60,independent28 QA ACTIVE. GP21 freeze7beeb2 root device validation pending; next argv design only."
+      "todo": "Current original startup gates66/63 and CRT515; fixedGP21 transport is rootRG0 with limited independent review/C20s timeout. Full signatures/foreign unwind/ELF TLS still unsupported; no fake musl.",
+      "next_component": "9dc owned argv integrated3af/independent53 expected commands FINAL/rootRG6contracts0;7be integrated9cd/rootRG0. Actual management arena66+Bionic63 active isolated12-file scope, not frozen."
     },
     {
       "id": "NATIVE_BOUNDARY_2F_RETAINED_MAPPING_LOSS",
@@ -2199,14 +2269,28 @@
       "global_config_changes": false,
       "cache": ".local/rea-method-audit/npm-cache"
     },
-    "route_adjustment": "Actual11fileLASproductiontypedcommandcodingactive,new63localequestionfocusedREA;LASGetInfo16/17constant0rejected;no fullrouteflip"
+    "route_adjustment": "LAS81 typed production transfer is frozen and RG0, independent QA report closing. New locale63 REA Skill used but helper compile failed1 before extraction; exact LLVM SDK analysis plus official Bionic source remain separately attributed.",
+    "locale63_followup": {
+      "report": "docs/analysis/codex_locale_compare_report.md",
+      "sha256": "483f79ab710081c244d361b87720d910021d0d5e14cc2554f5867af92453bed6",
+      "skill_used": true,
+      "REA_function_slice_returncode": 1,
+      "timed_out": false,
+      "failure_stage": "Swift helper compilation before function extraction",
+      "functionEvidence_available": false,
+      "separate_method": "LLVM exact SDK function shows locale ignored; official Bionic implementation can be reused",
+      "global_config_changes": false
+    }
   },
   "original_delivery_update": {
-    "state": "AUTO_REVIEW_DENIED_USER_APPROVAL_PENDING",
+    "state": "USER_EXPLICIT_BRANCH_APPROVAL_THEN_SAFE_FF_COMPLETED",
     "target_branch": "work/rg477m-native",
-    "target_commit": "f9284ea",
-    "last_verified_HEAD": "245dfa222f22da6998819d4e0773bde9d8e6ae71",
-    "operation_executed": false,
-    "unaffected": "task/codex-integration development"
+    "target_commit": "f9284ea44f10a0d3a838c554508a3e911635b49f",
+    "last_verified_HEAD": "f9284ea44f10a0d3a838c554508a3e911635b49f",
+    "operation_executed": true,
+    "clean": true,
+    "no_remote_push": true,
+    "prior_auto_rejection_retained": ".local/integration-approval/original-ff-f9284ea-rejection.json",
+    "last_verified_at_utc": "2026-10-23T13:08:46.175383+00:00"
   }
 }

@@ -1,3 +1,5 @@
+当前集成补充：81b已在rootRG真实执行0/100.1925ms、无timeout，64KiB+256B零差异；独立19命令审查FINAL无确认缺陷，reviewerAndroidNOT_RUN，见[归档review](codex_las_transfer_review.md)。已集成root7e5123c。下文作者“Android NOT_RUN”是冻结时快照；root证据las-transfer-v1-*明确单独归因。因root还有7be头文件，本轮额外一次组合源码重建进行中（session43347，.local/las-transfer/integrated-7e5123c），原冻结81设备结果不能冒称该新二进制已运行。
+
 T04-LAS-TRANSFER：LAS 固定记录协议接入现有 Vulkan transfer driver
 
 已新增可消费的生产组件，并将现有 driver 的 64 KiB copy 改为 typed CommandBuffer 入口 → LAS CmdRec → 已登记 buffer_resource → 实际 vkCmdCopyBuffer。driver 继续持有真实 queue/fence、执行原 64 KiB 与 8×8 RGBA 256B 比较；没有新增 probe、三角形、surface、shader 或 present。本轮 Android execution 为 **NOT_RUN**，待总控使用冻结 ELF 在 RG477M 实测；宿主 test double PASS 不代表 GPU/本游戏图形成功。
@@ -28,3 +30,7 @@ command handles 为单调 side-table token，区别于 LAS 的原 raw record add
 冻结 Android ELF：`vulkan_transfer_probe`，288744B，SHA256 `8ac793ff4bc978ecad1e1d837195e102ec9a7f28118b97fed38f38694430ef26`。源码 bundle SHA256 `21e4c62f30c481211ff09e8df8f89557215322f610552824e64dbd82079eed70`。构建时 HEAD 为 `245dfa222f22da6998819d4e0773bde9d8e6ae71` 加本任务工作内容，最终本地提交与 frozen source 的一致性另存 `.local/las-transfer/final1/freeze.json`；不会把旧base HEAD写作新源码提交。报告本身不参与ELF源码身份，避免报告记录产物hash的循环。
 
 总控设备执行：将上述已校验 ELF 放入独立设备目录、chmod700，执行 `./vulkan_transfer_probe`，host端30秒有界，保存真实exit/stdout/stderr。成功时沿用原 validator，再核 `las_transfer.typed_record_path=true`、backend_copy_count=1、backend_copy_bytes=65536、gpu_completion_retired=true。此命令尚未由本 worker 执行，不能把现有 buffer-transfer 或 native ABI 的历史 RG PASS 当作新路径实证。得到0差异也仅证明本条 transfer 组件路径，不是 shader/present、CRT 或游戏画面验收。
+
+## Root combined-source7e5123c actual rebuild/recheck
+
+Root built58 expectedcommands0/no unexpected exit, samepositive contracts andold41driverexpectedscenarios afterGP21header7be integration. Twelveproductioninputs eachmatchgit7e5123c exactly; documentationWIP separatelyrecorded, not falselyclean. Newsourcebundle8fb737a126251ee0dc8e0555f464a94b9be2073b97df7f29d4c3bb6b0e5ac895;ELF288752B/SHA049c01ab3a0b23b6a81e1f2a906b1f6ce210553e62ae75d9e2d9630110d779a9. ActualsameRGexit0/113.853958ms/noTimeout/stderrempty,validator0,64KiB+256BzeroMismatch/31VkResults0/12destroy3unmap/typedpathtrue/retiredtrue. Logs .local/las-transfer/integrated-7e5123c/ anddevice/rg477m-session1/las-transfer-integrated-v2-*. This is currentcombinationproof, notinherited81binarytest. Fullgame/shader/presentfalse.

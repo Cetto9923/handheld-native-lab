@@ -4,19 +4,25 @@
 
 ## 当前所有权与恢复点
 
-| 对象 | 已核对状态 / 唯一写者 |
+| 对象 | 当前最后核验 / 唯一写者 |
 | --- | --- |
-| 原交付 `/Users/yuyan9923/GitHub/ff-resonance-rg477m-native` | work/rg477m-native / a3cb435ec2569fc84ba1068c73bfbfbb96dddcf0，已实际safeff且本轮核clean，只由root串行推进 |
-| integration `../ffrs-integration` | root证据HEAD4c07e21f555f236327de2be5c1fdaf894a267970，28已集成fb6d08b；四文档/报告WIP，原交付仍a3，未safeff本次改动 |
-| 本文档代理 | 四文件已暂停交回root串行checkpoint：HANDOFF/state/生成STATUS/本索引；本代理不stage/commit，待root明确恢复writer再增量维护 |
-| `../ffrs-runtime` | task/T02-codex-runtime / clean28dc1a792946ae990690f11d71e89a60bf5d8b8b；五文件primary OS HLE已root RG七合同0/startup59→60，独立接线QA已ACTIVE未FINAL；argv仅设计 |
-| `../ffrs-android` | `task/T03A-codex-android` / `15da4c2ef7a11138de45d098574f9bd66ef60b66`，采样时clean；已集成v6，当前不再开新外围probe |
-| `../functional-review` | 5cBoundaryrepair与9cOSTLS组件FINAL；native-profile/85独立FINAL；os-tls-profile/28接线独立QA实际ACTIVE，noWIP/ADB/originalgame |
-| `../tls-research` | 图形底座有界评估完成并退出，lease释放；原证据保留，不解释为后端实现或新probe |
+| 原交付 `/Users/yuyan9923/GitHub/ff-resonance-rg477m-native` | work/rg477m-native / f9284ea44f10a0d3a838c554508a3e911635b49f，明确分支批准后safeff成功，本轮只读clean，无push；历史拒绝已解除 |
+| integration `../ffrs-integration` | task/codex-integration / 7698a9e6b6f3676277367523296651f3b5501133；root审批解除WIP保留，DOC四文件已暂停交回root串行checkpoint，root唯一Git设备 |
+| 当前运行时 `../ffrs-va-resource` | task/T02-va-resource / base3af578a；12文件scope真实management arena/66+Bionic63编码，host合同0，Android构建未冻结/未设备验收 |
+| 冻结运行时/ABI | 9dc→3af已同RG六合同/info0、startup空66/非空63/133；9dc独立53expected命令FINAL。7be→9cd同RG0，完整独立C编译20s timeout保留，不当全交叉QA通过 |
+| LAS `../ffrs-las-transfer` | clean81b1917十一文件已RG0/100.1925ms，typedGPUcopy65536B/256B回读零差异、validator0；functional QA合同0报告收口/未FINAL，作者idle，未称游戏图形或已集成 |
+| Locale63/REA | [清理归档](codex_locale_compare_report.md)SHA483f79ab710081c244d361b87720d910021d0d5e14cc2554f5867af92453bed6；Skill实际使用，函数切片前helper编译1、非timeout/无functionEvidence，LLVM精确SDK语义及官方Bionic复用另归因 |
+| 实际活跃worker | runtime、DOC、functional QA三路；vulkan/tls已交回idle。无待审批/不确定写入；不靠进程存在或代码行数算进度 |
 
-当前无待处理审批或不确定写入（总控最新消息）。本代理没有后台进程；总控声明当前真实RG命令均已结束。历史AVD PID49247/63060/71987不能当存活证据：本代理执行 `ps -p 49247,63060,71987 -o pid=,comm=` 被执行沙箱拒绝，exit127。恢复后由有权限的总控重新只读核验，不能盲重启、wipe或杀他人进程。
+当前证据（最后核验 2026-10-23T13:08:46.175383+00:00）：
 
-## 证据与真实退出码
+- 9dc原启动：[设备报告](codex_guest_process_device_report.md)、[独立FINAL](codex_guest_arguments_review.md)、[原始execution](../../.local/device/rg477m-session1/guest-arguments-v1-usb-ready-execution.json)。空argv66/+0x13744、非空63/+0x13498均133；无timeout/main不变，完整CRT仍515。
+- LAS81：[plan](../../.local/device/rg477m-session1/las-transfer-v1-plan.json)、[execution](../../.local/device/rg477m-session1/las-transfer-v1-execution.json)、[result](../../.local/device/rg477m-session1/las-transfer-v1-result.json)、[validator](../../.local/device/rg477m-session1/las-transfer-v1-validator.json)。ELF288744B/SHA8ac793ff4bc978ecad1e1d837195e102ec9a7f28118b97fed38f38694430ef26，bundle21e4c62f30c481211ff09e8df8f89557215322f610552824e64dbd82079eed70；执行0/100.1925ms、validator0，31VkResults0/12destroy/3unmap、typedpath/copy1/65536/retiredtrue，shader/present/gamefalse。
+- 审批：[历史拒绝记录](../../.local/integration-approval/original-ff-f9284ea-rejection.json)保留；用户明确分支许可后唯一重试已成功，原分支f9284ea clean。当前无Git审批block，不重放或换方式。
+
+以下按版本保留历史证据，旧“当前/下一关/待审”文字属于各自事件时间，不代表上表的当前状态；不重复执行旧命令。历史AVD/ps/CUA失败与限制保留，不能当当前进程或UI证据。
+
+## 历史证据与真实退出码（按版本）
 
 | 范围 | 证据入口 | 已核对的命令 / 结果与限度 |
 | --- | --- | --- |
@@ -221,3 +227,11 @@ Method/Skill audit and bounded maturecase correction: codex_method_reuse_audit.m
 同RG `.local/device/rg477m-session1/las-transfer-v1-*`：冻结ELF288744B/SHA8ac793ff4bc978ecad1e1d837195e102ec9a7f28118b97fed38f38694430ef26/sourcebundle21e4c62f30c481211ff09e8df8f89557215322f610552824e64dbd82079eed70，raw0/100.1925ms/noTimeout，真实typedrecordGPUcopy65536B/图像256B各0差异，清理12/3。新QA进行，shader/present/game false。
 
 f9284ea保存在task/codex-integration；原交付fast-forward被自动审批拒绝/未执行，等待明确分支批准，原交付245dfa2。不要盲重试或另路写原仓，任务树仍是最新可用交接。
+
+LAS81已root7e5123c集成，独立[review](codex_las_transfer_review.md)SHAf52134352d7c57c179156c69d7ca491f7fd23ba4760a33e449c8f489708a2b49原字节归档；19命令原始预期，无timeout，reviewerDeviceNOTRUN。当前组合7be头文件的root重建明确新身份，不继承旧ELF设备结果。
+
+## 3db新关卡及组合LAS实测
+
+3db device logs va-resource-v1-*，13组件0/info0；startupempty67/133，nonempty61/133，nnMain126/133，malloc139/main+b705c/fa30，CRT本轮NOT_RUN，mainSHA前后相同。script1明确保留unexpected139，非全通过。独立QAactive，新运行时只写ffrs-startup-next/base3db五文件；原3db冻结。详见[device report](codex_guest_process_device_report.md)。
+
+组合7eLAS新ELF288752B/SHA049c01ab3a0b23b6a81e1f2a906b1f6ce210553e62ae75d9e2d9630110d779a9/sourcebundle8fb737a126251ee0dc8e0555f464a94b9be2073b97df7f29d4c3bb6b0e5ac895。58expectedbuilder完成0，actualRG0/113.853958ms/validator0，logs las-transfer-integrated-v2-*，不继承旧ELFdevicePASS。

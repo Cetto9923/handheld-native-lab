@@ -74,3 +74,21 @@ All runs no timeout. Raw plan/source/ELF/fixture hashes, exact argv and exits: `
 Actual CLI771864B/SHA`ff26a2887a723301b076f0e390fcaad3aad82589daf9f82916cefa287b7cda96`; normal853288B/SHA`430dcb1feccb757997b29a0b06abcfad1de0e689979afeffc53c83fbc052dd86`; argument recovery867920B/SHA`b62ab981f388603d25c465ec10acf09646b5fb1c850dd79b8aeb6df32b60f95e`; boundary cleanup861992B/SHA`bef567c61896d09ceeed823dede301fcad8326ff74bb6cd98bd23ba181f3320c`. Updated OS fixture SHA`ec889611349d57808b800086ec387e8102fd658d29c08a20ee8611b38012bf15`, not old28 fixture. Empty argv now really charges4KiB: startup Query baseline162873344/active162938880; this does not mean host RAM or original physical SVC measurements.
 
 [Independent9dc review](codex_guest_arguments_review.md):53 commands meet expected48×0,guard1,twoSIGABRT(-6),twoUsage2; no timeouts. Ownership/free ordering, caller-free copies and metadata failure independently exercised. Reviewer Android NOT_RUN; root device results separately attributed. This advances startup interfaces, not complete CRT/title/gameplay.
+
+## Resource/locale3db: actual RG advancement and new malloc139
+
+Frozen3dbb0dcc81543b790c75510e9320981e429046f2, ../ffrs-va-resource clean, exact12 source files/base3af reviewed separately. Actual sameRG13 normal/arguments/native/OS wrappers/callback/resource/native/locale-native/owner/locale/resource-recovery/argument-recovery/boundary-retained contracts all0, info0. Native resource fixture actually3quota dualx0/x1 calls withx18; Bionic locale component65536 unsignedpairs and6actual typedguestcalls0. No timeout. Query remains explicit1GiB data quota,64KiB stack and1MiB actualmanagementarena, not physicalRAM/RSS.
+
+| Original entry, newfreeze | Raw exit | ms | Actual observed next gate |
+|---|---:|---:|---|
+| startup-empty | 133 | 143.098833 | passed66; IsVirtualAddressMemoryEnabled67/+0x137a4 |
+| startup-nonempty | 133 | 176.639125 | passedstrncasecmp_l63; strcasecmp61/+0x1345c |
+| directnnMain | 133 | 148.612625 | pre-initCreateThread126/+0x352f1b8 |
+| malloc4096 | **139** | 143.75425 | passed66, realPROT_NONE VA reserve66571993088B, thenSIGSEGV main+0xb705c/fa0x30/x8=0 |
+| CRTwrapper | **NOT_RUN thisfreeze** | — | testsequence stopped after unexpected139; old9dc515/133 not copied as newrun |
+
+Do not call malloc139 a pass or attribute it toTLS/CRT before provenance. Fullstderr contains truePC/registers/frameoffsets. The capture script intentionally exits1 after retainingunexpected139 and checkingmainSHAafter; this is not hidden bytail. Inputmainbefore/after6e6d1f3cd1672243e2ed344cc1b8849b85437d41bdecec81a5f9181e472d68a5 unchanged. No APK/data/permission/TP change.
+
+Evidence .local/device/rg477m-session1/va-resource-v1-{plan,stage,execution}.json and eachcase.stdout/.stderr; executedrun_va_resource_v1.py. Fullfreeze ../ffrs-va-resource/.local/va-resource-v3/freeze.json SHA1c2687b49c775733e38d70be4129eed60d049aabf6f3eeff584cda0b32d1e4db;manifestSHAfcb0cbd0a64133f4a37f2a8d8980ed3aa8f19f118566ae4a3bfcf1e68cfdfbfa,88 actualexpectedcommands/noTimeout. CLI803896B/SHA72405ea9a9201579dfebc00b2162249e5ebd33166861f4f180c9b9a59ae91ba3;normal936296B/SHA91d3ad61d27723f7495aa94882dd99541666d4648399d93609ca189e77890542;resourcerecovery950336B/SHAeaa0018963e298723cb085f9f86cc3eda65807744129b00eed81b9a6d5c54d96.
+
+New independent3dbsourceQAactive; root hasnotintegrated3dborclaimedfullgame. Runtime nowseparateffrs-startup-next/base3db fivefiles61/67; mallocnullprovenanceonlystartup-followups/malloc-null. Preservefreezeandraw139 whilefixingnewgate.

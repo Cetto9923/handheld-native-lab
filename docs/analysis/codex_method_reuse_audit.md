@@ -21,3 +21,9 @@
 已实际复用NDK libc++abi guard、unwind/CRT/libc/compiler-rt与Vulkan API；这些有真实构建/运行证据。LAS/Strato/Hades尚未集成；不能把“选中”写作“已复用”。shaderc只处理该文件的GLSL输入，未证明本游戏Maxwell前端/绑定兼容。详细primary URLs、版本/许可/范围见同目录codex_reuse_route_review.md与codex_las_implementation_review.md；本轮不重复游戏leaf次数来证明通用性。
 
 证据：root`.local/rea-method-audit/{doctor,offline-help,isolated-doctor,isolated-help,function-help}/run.json/stdout.log/stderr.log`（首次version使用tool session81813真实exit1；publiclauncher源码已读）；外部限定源码审计`../reuse-audit/.local/manifest.json`及12份primary返回。无新游戏/密钥、刷机、购买、远端发布或模拟器演示。
+
+## New focused locale query: actual REA attempt, explicit failure
+
+63 strncasecmp_l after9dc is a fresh binary question, not repeat Info16/17. Skill42/native/connection read; public6.5.0 CLI function actually invoked on explicit172B rawSDKslice/VA59c7e0, bounded55s. Actual6.957s/exit1, not timeout: beforeGhidra startup ProcessRunTokenReader Swift helper could not write defaultclangModuleCache under sandbox and reportedSwiftcompiler/SDKmismatch. No successfulfunctionEvidence/snapshot; no repeateddoctor/setup/install or blindretry. This is a toolfailure, notautoapproval rejection. The actual functionABI/ASCII/ignoredlocale conclusion is from preciseLLVM+PLT/RELA, separately attributed. Fullcommand/stdout/run andoriginalhash preserved in ../rea-followups/locale-compare/.local/. [Completed scoped report](codex_locale_compare_report.md), originalSHA483f79ab710081c244d361b87720d910021d0d5e14cc2554f5867af92453bed6.
+
+Mature implementation chosen: systemBionic non_l strncasecmp, typedfourargwrapper ignoresguestlocale asactualSDKdoes; nohostlocale_t cast/locale-manager/selfmadealgorithm. AOSPandroid14tag production sources read; exactimmutableAOSPtagcommit resolutionDNSfailed and isUNKNOWN. ActualRGlibc importexecution stillnextstage, notinstaticanalystpass. Runtime new12filescope implementingthisalongside66realmanagementprovider.
