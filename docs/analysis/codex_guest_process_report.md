@@ -1,5 +1,36 @@
 # Owned startup profile: native boundary integration
 
+## Native primary identity subset
+
+The585 combined RG run printed its entry result before the original OS-slot
+destructor18c60 stopped at GetCurrentThread106. That is post-entry cleanup,
+not a new call in startup's body; the undefined x0 of void startup is not a
+success result. Hash-matched SDK140bd0 loads ThreadType* from TPIDRRO+1f8;
+140d70 GetThreadId loads a full64-bit x0 from ThreadType+1b8. Main18d64/18d68
+only passes that pointer between these APIs, then stores low32 bits of the ID.
+
+This provider implements an explicit opaque native API subset: the actual
+managed primary's real gettid (Android) or pthread_threadid_np (Darwin) plus a
+dedicated PROT_NONE host page. It exposes neither pthread_t nor a host control
+object or guessed SDK fields. Direct token-field reads encounter protected
+memory; foreign tokens are rejected without dereferencing them. Only the current
+primary's token is accepted, including
+the entire normal OS5-round cleanup. The token is acquired before publication,
+invalidated when that primary leaves, and retired pages remain owned until
+quiescent destroy, preventing address reuse between this Process's primaries.
+Real munmap failure retains owner/pages/code for retry. Page and control-node
+costs are explicit host administrative VA/metadata, outside the configured
+guest backing and resource-pool budgets; they are not measured Switch RAM.
+
+Contracts cover actual TID/stability, fresh/inactive/foreign output sentinels,
+protected tokens, two retired generations, real map failure/callback withholding
+and failed-unmap retention/retry. A self-authored native fixture verifies both
+full-width returns/x18 and a nonnull OS destructor invoked with zero while the
+identity remains live. Separate SCS/testing binaries retain hook separation.
+Incremental source/object hashes and real codes are recorded in the private
+primary-identity checkpoint. No ThreadType/TCB memory layout, arbitrary thread
+lookup, CreateThread support, SDK TP writes or complete CRT/TLS is supplied.
+
 ## Fresh Process registration correction
 
 Independent QA reproduced cfc's ordinary create-without-load API crash: the

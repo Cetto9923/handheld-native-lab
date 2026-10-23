@@ -39,6 +39,13 @@ struct tls_allocation {
     size_t bytes;
     enum tls_allocation_state state;
 };
+struct primary_identity {
+    struct primary_identity *next;
+    void *token;
+    size_t bytes;
+    uint64_t tid;
+    int active;
+};
 struct guest_process {
     pthread_mutex_t mutex;
     guest_context *context; /* Private: no raw tickets/Context escape this owner. */
@@ -69,10 +76,18 @@ struct guest_process {
     struct tls_allocation *tls_allocations;
     size_t tls_allocation_count;
     int tls_allocator_busy;
+    struct primary_identity *identities,*active_identity;
 };
 static pthread_mutex_t exclusive_mutex=PTHREAD_MUTEX_INITIALIZER;
 static guest_process *exclusive_process;
 static _Thread_local guest_process *current_process;
+#if defined(NSO_PROFILE_IDENTITY_TESTING)
+static void *(*identity_test_map)(size_t);
+static int (*identity_test_unmap)(void *,size_t);
+void guest_process_test_identity_vm(void *(*map)(size_t),int (*unmap)(void *,size_t)) {
+    identity_test_map=map;identity_test_unmap=unmap;
+}
+#endif
 #if defined(NSO_PROFILE_TLS_ALLOCATOR_TESTING)
 static _Thread_local unsigned tls_metadata_failures;
 static _Thread_local void (*tls_query_probe)(guest_process *);
@@ -88,6 +103,83 @@ static struct nso_result from_context(struct guest_context_result r) {
     else if(r.status==GUEST_CONTEXT_INVALID)s=NSO_INVALID;
     else if(r.status==GUEST_CONTEXT_QUARANTINED)s=NSO_RETAINED;
     return status(s,r.native_error,r.cleanup_error);
+}
+static int native_thread_id(uint64_t *out) {
+#if defined(__ANDROID__)
+    pid_t tid=gettid();if(tid<=0)return errno?errno:EINVAL;*out=(uint64_t)tid;return 0;
+#elif defined(__APPLE__)
+    uint64_t tid=0;int e=pthread_threadid_np(NULL,&tid);if(e)return e;
+    if(!tid)return EINVAL;*out=tid;return 0;
+#else
+    (void)out;return ENOTSUP;
+#endif
+}
+static int unmap_identity(void *token,size_t bytes) {
+#if defined(NSO_PROFILE_IDENTITY_TESTING)
+    if(identity_test_unmap)return identity_test_unmap(token,bytes);
+#endif
+    return munmap(token,bytes);
+}
+/* Process lock held. Allocate the ownership record before mmap and publish
+ * only after a real native TID and protected page have both been obtained. */
+static struct nso_result create_identity_locked(guest_process *p) {
+    uint64_t tid;int e=native_thread_id(&tid);
+    if(e)return status(NSO_OWNER_ERROR,e,0);
+    long page=sysconf(_SC_PAGESIZE);
+    if(page<=0 || ((size_t)page&((size_t)page-1)) || p->active_identity)return status(NSO_OWNER_ERROR,EINVAL,0);
+    struct primary_identity *id=calloc(1,sizeof(*id));
+    if(!id)return status(NSO_OWNER_ERROR,ENOMEM,0);
+    void *token;
+#if defined(NSO_PROFILE_IDENTITY_TESTING)
+    if(identity_test_map)token=identity_test_map((size_t)page);
+    else
+#endif
+    token=mmap(NULL,(size_t)page,PROT_NONE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
+    if(token==MAP_FAILED) {e=errno;free(id);return status(NSO_OWNER_ERROR,e,0);}
+    id->token=token;id->bytes=(size_t)page;id->tid=tid;
+    id->next=p->identities;p->identities=id;
+    if(!token) {
+        /* A zero-address owner is retained rather than published as NULL. */
+        if(unmap_identity(token,id->bytes)) {p->quarantined=1;return status(NSO_RETAINED,EINVAL,errno);}
+        p->identities=id->next;free(id);return status(NSO_OWNER_ERROR,EINVAL,0);
+    }
+    id->active=1;p->active_identity=id;
+    return status(NSO_OK,0,0);
+}
+static int identity_live_locked(guest_process *p) {
+    return current_process==p && p->running && !p->quarantined && p->module_ready && p->module &&
+        p->thread.state==THREAD_RUNNING && pthread_equal(p->thread.native,pthread_self()) &&
+        p->active_identity && p->active_identity->active;
+}
+struct nso_result guest_process_current_thread(guest_process *p,uintptr_t *token) {
+    if(!p || !token)return status(NSO_INVALID,EINVAL,0);
+    pthread_mutex_lock(&p->mutex);uint64_t tid=0;struct nso_result r=status(NSO_INVALID,EINVAL,0);
+    if(identity_live_locked(p)) {
+        int e=native_thread_id(&tid);
+        if(e)r=status(NSO_OWNER_ERROR,e,0);
+        else if(tid==p->active_identity->tid) {*token=(uintptr_t)p->active_identity->token;r=status(NSO_OK,0,0);}
+    }
+    pthread_mutex_unlock(&p->mutex);return r;
+}
+struct nso_result guest_process_thread_id(guest_process *p,uintptr_t token,uint64_t *tid) {
+    if(!p || !tid)return status(NSO_INVALID,EINVAL,0);
+    pthread_mutex_lock(&p->mutex);uint64_t current=0;struct nso_result r=status(NSO_INVALID,EINVAL,0);
+    if(identity_live_locked(p) && token==(uintptr_t)p->active_identity->token) {
+        int e=native_thread_id(&current);
+        if(e)r=status(NSO_OWNER_ERROR,e,0);
+        else if(current==p->active_identity->tid) {*tid=current;r=status(NSO_OK,0,0);}
+    }
+    pthread_mutex_unlock(&p->mutex);return r;
+}
+static uintptr_t current_thread_token(void) {
+    uintptr_t token;struct nso_result r=guest_process_current_thread(current_process,&token);
+    if(r.status!=NSO_OK) {fprintf(stderr,"[primary-identity-invalid] GetCurrentThread status=%d native=%d\n",r.status,r.native_error);abort();}
+    return token;
+}
+static uint64_t current_thread_tid(uintptr_t token) {
+    uint64_t tid;struct nso_result r=guest_process_thread_id(current_process,token,&tid);
+    if(r.status!=NSO_OK) {fprintf(stderr,"[primary-identity-invalid] GetThreadId token=0x%" PRIxPTR " status=%d native=%d; no ThreadType dereference\n",token,r.status,r.native_error);abort();}
+    return tid;
 }
 static void page_diagnostic(const char *operation,uintptr_t address,size_t bytes,
         struct guest_pages_result r) {
@@ -658,6 +750,8 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
     if(!strcmp(name,"strncasecmp_l"))return (uintptr_t)&guest_strncasecmp_l;
     if(!strcmp(name,"_ZN2nn2os11GetHostArgcEv"))return (uintptr_t)&host_argument_count;
     if(!strcmp(name,"_ZN2nn2os11GetHostArgvEv"))return (uintptr_t)&host_argument_vector;
+    if(!strcmp(name,"_ZN2nn2os16GetCurrentThreadEv"))return (uintptr_t)&current_thread_token;
+    if(!strcmp(name,"_ZN2nn2os11GetThreadIdEPKNS0_10ThreadTypeE"))return (uintptr_t)&current_thread_tid;
     if(!strcmp(name,"__cxa_guard_acquire"))return (uintptr_t)&__cxa_guard_acquire;
     if(!strcmp(name,"__cxa_guard_release"))return (uintptr_t)&__cxa_guard_release;
     if(!strcmp(name,"__cxa_guard_abort"))return (uintptr_t)&__cxa_guard_abort;
@@ -704,6 +798,8 @@ static int import_signature(const char *name,nb_signature *out) {
     else if(!strcmp(name,"_ZN2nn2os36GetVirtualAddressMemoryResourceUsageEv")) {arguments=0;returns=2;}
     else if(!strcmp(name,"_ZN2nn2os15InitializeMutexEPNS0_9MutexTypeEbi") || !strcmp(name,"nnosInitializeMutex")) {arguments=3;returns=0;}
     else if(!strcmp(name,"_ZN2nn2os11GetHostArgcEv") || !strcmp(name,"_ZN2nn2os11GetHostArgvEv")) {arguments=0;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2os16GetCurrentThreadEv")) {arguments=0;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2os11GetThreadIdEPKNS0_10ThreadTypeE")) {arguments=1;returns=1;}
     else if(!strcmp(name,"_ZN2nn2os11SetTlsValueENS0_7TlsSlotEm")) {arguments=2;returns=0;}
     else if(!strcmp(name,"_ZN2nn2os32SetMemoryAllocatorForThreadLocalEPFPvmmEPFvS1_mE")) {arguments=2;returns=0;}
     else if(!strcmp(name,"_ZN2nn2os40MemoryAllocatorForThreadLocalInitializedEv")) {arguments=0;returns=1;}
@@ -815,10 +911,13 @@ static void *invoke_primary(guest_context *context,void *opaque) {
     current_process=p;
     pthread_mutex_lock(&p->mutex);
     p->thread=(struct thread_record){THREAD_RUNNING,pthread_self(),stack};
-    struct guest_os_tls_result registered=guest_os_tls_register(p->os_tls,&p->os_thread);
+    struct nso_result identity=create_identity_locked(p);
+    struct guest_os_tls_result registered={0};
+    if(identity.status==NSO_OK)registered=guest_os_tls_register(p->os_tls,&p->os_thread);
     if(p->heap.state==HEAP_UNINITIALIZED && initialize_empty_heap(&p->heap))p->quarantined=1;
     struct guest_memory_info initial;
-    p->callback_status=registered.status==GUEST_OS_TLS_OK?snapshot_locked(p,&initial,NULL,NULL):status(NSO_OWNER_ERROR,registered.native_error,0);
+    p->callback_status=identity.status!=NSO_OK?identity:
+        registered.status==GUEST_OS_TLS_OK?snapshot_locked(p,&initial,NULL,NULL):status(NSO_OWNER_ERROR,registered.native_error,0);
     pthread_mutex_unlock(&p->mutex);
     int e=0;
     void *value=NULL;
@@ -837,7 +936,9 @@ static void *invoke_primary(guest_context *context,void *opaque) {
         }
     }
     if(p->os_thread)cleanup_os_primary(p);
-    pthread_mutex_lock(&p->mutex);p->thread.state=THREAD_RETURNED;
+    pthread_mutex_lock(&p->mutex);
+    if(p->active_identity) {p->active_identity->active=0;p->active_identity=NULL;}
+    p->thread.state=THREAD_RETURNED;
     if(p->boundary_initialized)p->guest_session_ended=1;
     pthread_mutex_unlock(&p->mutex);current_process=NULL;
     return value;
@@ -880,6 +981,15 @@ struct nso_result guest_process_destroy(guest_process **process) {
     if(p->tls_allocator_busy || p->tls_allocations || p->tls_allocation_count) {
         fprintf(stderr,"[tls-allocator-retained] allocations=%zu busy=%d; module/callbacks/pages remain owned, no host free\n",p->tls_allocation_count,p->tls_allocator_busy);
         pthread_mutex_unlock(&p->mutex);return status(NSO_RETAINED,EBUSY,0);
+    }
+    if(p->active_identity) {pthread_mutex_unlock(&p->mutex);return status(NSO_RETAINED,EBUSY,0);}
+    while(p->identities) {
+        struct primary_identity *id=p->identities;
+        if(id->active || unmap_identity(id->token,id->bytes)) {
+            int e=id->active?EBUSY:errno;p->quarantined=1;
+            pthread_mutex_unlock(&p->mutex);return status(NSO_RETAINED,0,e);
+        }
+        p->identities=id->next;free(id);
     }
     p->module_ready=0;
     if(p->os_tls) {

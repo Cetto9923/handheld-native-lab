@@ -105,6 +105,10 @@ run('host-resource-recovery',[out/'guest_process_resource_recovery.host','--reso
 run('host-os-tls-contract',[out/'guest_process_contract.host','--os-tls',out/'contract.nso'])
 run('host-tls-registration',[out/'guest_process_contract.host','--tls-registration',out/'contract.nso'])
 run('host-tls-registration-fresh',[out/'guest_process_contract.host','--tls-registration-fresh',out/'contract.nso'])
+run('host-primary-identity',[out/'guest_process_contract.host','--identity',out/'contract.nso'])
+run('host-compile-identity-recovery',['clang',*strict,'-DNSO_WITH_CXX_GUARDS=1','-DNSO_PROFILE_IDENTITY_TESTING=1','-c',hle/'guest_process.c','-o',out/'guest_process.identity-recovery.host.o'])
+run('host-link-identity-recovery',['clang',*strict,'-DNSO_PROFILE_IDENTITY_TESTING=1',test,*[v for v in host if v.name!='guest_process.host.o'],out/'guest_process.identity-recovery.host.o','-lc++','-lpthread','-o',out/'guest_process_identity_recovery.host'])
+run('host-identity-recovery',[out/'guest_process_identity_recovery.host','--identity-recovery',out/'contract.nso'])
 for case in ['null','repeat']:
  run('host-tls-registration-'+case,[out/'guest_process_contract.host','--tls-registration-'+case,out/'contract.nso'],134)
  if '[tls-allocator-invalid]' not in (out/('host-tls-registration-'+case)/'stderr.log').read_text():raise RuntimeError('allocator registration must fail strictly')
@@ -613,6 +617,93 @@ for i,(tag,value) in enumerate([(4,0x4080),(6,0x4100),(5,0x41c0),(10,len(names))
 (out/'tls-allocator.nso').write_bytes(data)
 manifest['generated_fixtures']['tls-allocator.nso']={'bytes':len(data),'sha256':digest(out/'tls-allocator.nso'),'kind':'self-authored typed pair registration/IDLE consumer, actual distinct storage + reentrant Query','assembly_sha256':digest(allocator_assembly),'abi':{'set_gp_arguments':2,'set_gp_returns':0,'allocate_gp_arguments':2,'allocate_gp_returns':1,'free_gp_arguments':2,'free_gp_returns':0,'fixed_alignment':16}}
 run('host-tls-provider-unsupported',[out/'guest_process_contract.host','--tls-provider',out/'tls-allocator.nso'])
+# Identity fixture: authored register-only pointer/uint64 bridge + zero-value OS cleanup.
+identity_assembly=out/'identity-fixture.S'
+identity_assembly.write_text(r'''.text
+.macro import_call offset
+ adrp x16, fixture_got
+ add x16, x16, :lo12:fixture_got
+ ldr x16, [x16, #\offset]
+ blr x16
+.endm
+.org 0x20
+.global fixture_entry
+fixture_entry:
+ stp x29, x30, [sp, #-32]!
+ stp x19, x20, [sp, #16]
+ mov x29, sp
+ mov x19, x0
+ adrp x20, fixture_state
+ add x20, x20, :lo12:fixture_state
+ str x19, [x20]
+ mov x18, #0x55
+ import_call 0
+ str x0, [x19]
+ import_call 0
+ str x0, [x19, #8]
+ ldr x0, [x19]
+ import_call 8
+ str x0, [x19, #16]
+ ldr x0, [x19, #8]
+ import_call 8
+ str x0, [x19, #24]
+ str x18, [x19, #32]
+ add x0, x20, #8
+ adr x1, identity_cleanup
+ import_call 16
+ cbnz w0, identity_error
+ mov x0, #0x91
+ b identity_return
+identity_error:
+ mov x0, #0
+identity_return:
+ ldp x19, x20, [sp, #16]
+ ldp x29, x30, [sp], #32
+ ret
+.org 0x100
+.global identity_cleanup
+identity_cleanup:
+ stp x29, x30, [sp, #-32]!
+ stp x19, x20, [sp, #16]
+ mov x29, sp
+ adrp x19, fixture_state
+ add x19, x19, :lo12:fixture_state
+ ldr x19, [x19]
+ str x0, [x19, #56]
+ ldr x20, [x19, #72]
+ add x20, x20, #1
+ str x20, [x19, #72]
+ import_call 0
+ str x0, [x19, #40]
+ import_call 8
+ str x0, [x19, #48]
+ str x18, [x19, #64]
+ ldp x19, x20, [sp, #16]
+ ldp x29, x30, [sp], #32
+ ret
+.section .fixture_got,"aw"
+.global fixture_got
+fixture_got: .zero 24
+.section .fixture_state,"aw"
+.global fixture_state
+fixture_state: .zero 16
+''')
+run('fixture-identity-assemble',['clang',*common,'-c',identity_assembly,'-o',out/'identity-fixture.o'])
+run('fixture-identity-link',['env',f'DYLD_LIBRARY_PATH={a.rust_root}/lib',ld,'--no-undefined','--build-id=none','--image-base=0','-Ttext=0','--section-start=.fixture_got=0x8200','--section-start=.fixture_state=0x8280','-e','fixture_entry','--oformat=binary','-o',out/'identity-fixture.raw',out/'identity-fixture.o'])
+run('fixture-identity-disassembly',['xcrun','llvm-objdump','--disassemble',out/'identity-fixture.o'])
+raw=(out/'identity-fixture.raw').read_bytes();data=bytearray((out/'contract.nso').read_bytes())
+struct.pack_into('<I',data,0x18,0x400);data[0x200:0x600]=raw[:0x400].ljust(0x400,b'\0');struct.pack_into('<I',data,0x204,0x4000)
+symbols=['_ZN2nn2os16GetCurrentThreadEv','_ZN2nn2os11GetThreadIdEPKNS0_10ThreadTypeE','_ZN2nn2os15AllocateTlsSlotEPNS0_7TlsSlotEPFvmE'];names=bytearray(b'\0')
+for i,name in enumerate(symbols,1):
+ offset=len(names);names+=name.encode()+b'\0';struct.pack_into('<IBBHQQ',data,0x1100+i*24,offset,0x12,0,0,0,0)
+ struct.pack_into('<QQq',data,0x1300+(i-1)*24,0x8200+(i-1)*8,(i<<32)|0x402,0)
+if len(names)>0x140:raise RuntimeError('identity fixture names overlap relocations')
+data[0x11c0:0x11c0+len(names)]=names;struct.pack_into('<II',data,0x1080,1,4)
+for i,(tag,value) in enumerate([(4,0x4080),(6,0x4100),(5,0x41c0),(10,len(names)),(7,0x4300),(8,72),(9,24),(0,0)]):struct.pack_into('<QQ',data,0x2000+i*16,tag,value)
+(out/'identity.nso').write_bytes(data)
+manifest['generated_fixtures']['identity.nso']={'bytes':len(data),'sha256':digest(out/'identity.nso'),'kind':'self-authored opaque primary identity + zero-value cleanup fixture','assembly_sha256':digest(identity_assembly),'tid_bits':64}
+run('host-identity-native-unsupported',[out/'guest_process_contract.host','--identity-native',out/'identity.nso'])
+# End identity fixture.
 android=[]
 for source in sources:
  obj=out/(source.stem+'.android.o');android.append(obj)
@@ -620,6 +711,8 @@ for source in sources:
 android.append(out/'native_boundary.assembly.android.o')
 run('android-compile-boundary-assembly',['clang',*common,'-c',boundary_assembly,'-o',android[-1]])
 run('android-compile-contract',['clang',*common,'-c',test,'-o',out/'contract.android.o'])
+run('android-compile-identity-recovery-contract',['clang',*common,'-fsanitize=shadow-call-stack','-DNSO_PROFILE_IDENTITY_TESTING=1','-c',test,'-o',out/'identity-recovery-contract.android.o'])
+run('android-compile-identity-recovery-provider',['clang',*common,'-fsanitize=shadow-call-stack','-DNSO_PROFILE_IDENTITY_TESTING=1','-c',hle/'guest_process.c','-o',out/'identity-recovery-provider.android.o'])
 run('android-compile-tls-allocator-contract',['clang',*common,'-fsanitize=shadow-call-stack','-DNSO_PROFILE_TLS_ALLOCATOR_TESTING=1','-c',test,'-o',out/'tls-allocator-contract.android.o'])
 run('android-compile-tls-allocator-provider',['clang',*common,'-fsanitize=shadow-call-stack','-DNSO_PROFILE_TLS_ALLOCATOR_TESTING=1','-c',hle/'guest_process.c','-o',out/'tls-allocator-provider.android.o'])
 run('android-compile-argument-recovery-contract',['clang',*common,'-DNSO_PROFILE_ARGUMENT_TESTING=1','-c',test,'-o',out/'argument-recovery-contract.android.o'])
@@ -631,11 +724,12 @@ run('android-compile-cli',['clang',*common,'-DNSO_WITH_HOST_HLE=1','-DNSO_WITH_G
 run('android-compile-boundary-cleanup-contract',['clang',*common,'-DNSO_PROFILE_BOUNDARY_TESTING=1','-c',test,'-o',out/'boundary-cleanup-contract.android.o'])
 run('android-compile-boundary-cleanup-provider',['clang',*common,'-Dmprotect=guest_boundary_test_protect','-Dmunmap=guest_boundary_test_unmap','-c',boundary_source,'-o',out/'boundary-cleanup-provider.android.o'])
 ld=a.rust_root/'lib/rustlib/aarch64-apple-darwin/bin/gcc-ld/ld.lld'
-for name,extra in [('guest_process_contract.android',out/'contract.android.o'),('nso_owned_startup.android',out/'cli.android.o'),('guest_process_tls_allocator_recovery.android',out/'tls-allocator-contract.android.o'),('guest_process_boundary_cleanup.android',out/'boundary-cleanup-contract.android.o'),('guest_process_argument_recovery.android',out/'argument-recovery-contract.android.o'),('guest_process_resource_recovery.android',out/'resource-recovery-contract.android.o')]:
+for name,extra in [('guest_process_contract.android',out/'contract.android.o'),('nso_owned_startup.android',out/'cli.android.o'),('guest_process_identity_recovery.android',out/'identity-recovery-contract.android.o'),('guest_process_tls_allocator_recovery.android',out/'tls-allocator-contract.android.o'),('guest_process_boundary_cleanup.android',out/'boundary-cleanup-contract.android.o'),('guest_process_argument_recovery.android',out/'argument-recovery-contract.android.o'),('guest_process_resource_recovery.android',out/'resource-recovery-contract.android.o')]:
  binary=out/name
  objects=android if name!='guest_process_boundary_cleanup.android' else [v for v in android if v.name!='native_boundary.android.o']+[out/'boundary-cleanup-provider.android.o']
  if name=='guest_process_argument_recovery.android':objects=[v for v in android if v.name!='guest_process.android.o']+[out/'argument-recovery-provider.android.o']
  if name=='guest_process_tls_allocator_recovery.android':objects=[v for v in android if v.name!='guest_process.android.o']+[out/'tls-allocator-provider.android.o']
+ if name=='guest_process_identity_recovery.android':objects=[v for v in android if v.name!='guest_process.android.o']+[out/'identity-recovery-provider.android.o']
  if name=='guest_process_resource_recovery.android':objects=[v for v in android if v.name not in ['guest_context.android.o','address_region.android.o']]+[out/'resource-recovery-provider.android.o',out/'resource-vm-recovery.android.o']
  run('android-link-'+name,['env',f'DYLD_LIBRARY_PATH={a.rust_root}/lib',ld,'-pie','--dynamic-linker','/system/bin/linker64',
   '--no-undefined','--eh-frame-hdr','-z','max-page-size=16384','-z','relro','-z','now','-z','noexecstack','--build-id=sha1',
@@ -647,6 +741,7 @@ for name,extra in [('guest_process_contract.android',out/'contract.android.o'),(
  if name!='guest_process_boundary_cleanup.android' and 'guest_boundary_test_' in elf:raise RuntimeError('boundary test hooks leaked into production')
  if name!='guest_process_argument_recovery.android' and 'guest_process_test_argument_vm' in elf:raise RuntimeError('argument test hooks leaked into production')
  if name!='guest_process_tls_allocator_recovery.android' and 'guest_process_test_tls_allocator' in elf:raise RuntimeError('TLS allocator test hooks leaked into production')
+ if name!='guest_process_identity_recovery.android' and 'guest_process_test_identity_vm' in elf:raise RuntimeError('identity test hooks leaked into production')
  if name!='guest_process_resource_recovery.android' and ('guest_context_resource_test_vm' in elf or 'nso_host_owned_pages_test_vm' in elf):raise RuntimeError('resource test hooks leaked into production')
  if not re.search(r'UND\s+strncasecmp(?:\s|$)',elf) or re.search(r'UND\s+strncasecmp_l(?:\s|$)',elf):raise RuntimeError('Android locale bridge must call Bionic non-_l strncasecmp')
  if not re.search(r'UND\s+strcasecmp(?:@|\s|$)',elf):raise RuntimeError('Android strcasecmp bridge must use Bionic API')

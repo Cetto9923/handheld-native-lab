@@ -849,6 +849,115 @@ struct tls_fixture_io {
     uint64_t entry_x18,allocate_x18,free_x18,initialized_before,initialized_after;
     struct guest_memory_info query;
 };
+struct identity_io {
+    uint64_t token_a,token_b,tid_a,tid_b,guest_x18;
+    uint64_t cleanup_token,cleanup_tid,cleanup_value,cleanup_x18,cleanup_calls;
+};
+struct identity_input {struct identity_io io;uintptr_t retired;uint64_t native_tid;int native;};
+static uint64_t actual_tid(void) {
+#if defined(__ANDROID__)
+    return (uint64_t)gettid();
+#else
+    uint64_t tid=0;if(pthread_threadid_np(NULL,&tid))return 0;return tid;
+#endif
+}
+static void identity_inactive(guest_process *p,uintptr_t token) {
+    uintptr_t untouched=0xa5a5;uint64_t tid=0xa5a5;
+    expect_value("identity-inactive-current",guest_process_current_thread(p,&untouched).status,NSO_INVALID);
+    expect_value("identity-inactive-current-output",untouched,0xa5a5);
+    expect_value("identity-inactive-id",guest_process_thread_id(p,token,&tid).status,NSO_INVALID);
+    expect_value("identity-inactive-id-output",tid,0xa5a5);
+}
+static void *identity_foreign(void *opaque) {identity_inactive(opaque,0);return NULL;}
+static unsigned identity_callbacks;
+static void *exercise_identity(guest_process *p,void *opaque) {
+    struct identity_input *input=opaque;identity_callbacks++;
+    uintptr_t a=0,b=0;uint64_t tid=0,again=0,foreign=0xa5a5;
+    expect_value("identity-current",guest_process_current_thread(p,&a).status,NSO_OK);
+    expect_value("identity-current-repeat",guest_process_current_thread(p,&b).status,NSO_OK);
+    expect_condition("identity-token-stable-nonzero",a && a==b);
+    expect_condition("identity-token-unreadable",inaccessible(a));
+    expect_value("identity-id",guest_process_thread_id(p,a,&tid).status,NSO_OK);
+    expect_value("identity-id-repeat",guest_process_thread_id(p,b,&again).status,NSO_OK);
+    expect_value("identity-real-native-id",tid,actual_tid());expect_value("identity-id-stable",again,tid);
+    expect_condition("identity-real-id-nonzero",tid!=0);
+    expect_value("identity-foreign-token",guest_process_thread_id(p,(uintptr_t)&tid,&foreign).status,NSO_INVALID);
+    expect_value("identity-foreign-output",foreign,0xa5a5);
+    if(input->retired) {
+        expect_condition("identity-retired-address-reserved",inaccessible(input->retired));
+        expect_condition("identity-new-generation-different",a!=input->retired);
+        expect_value("identity-retired-token-rejected",guest_process_thread_id(p,input->retired,&foreign).status,NSO_INVALID);
+        expect_value("identity-retired-output",foreign,0xa5a5);
+    }
+    pthread_t helper;int e=pthread_create(&helper,NULL,identity_foreign,p);
+    expect_value("identity-host-helper-create",(uint64_t)e,0);
+    if(!e)expect_value("identity-host-helper-join",(uint64_t)pthread_join(helper,NULL),0);
+    input->native_tid=tid;input->retired=a;
+    if(input->native) {
+        uint64_t result=0xa5a5;const uint64_t args[6]={(uintptr_t)&input->io};
+        struct nso_result r=guest_process_call(p,0x20,args,1,&result);
+#if defined(__ANDROID__) && defined(__aarch64__)
+        expect_value("identity-native-status",r.status,NSO_OK);expect_value("identity-native-return",result,0x91);
+        expect_value("identity-native-token",input->io.token_a,a);expect_value("identity-native-token-repeat",input->io.token_b,a);
+        expect_value("identity-native-tid64",input->io.tid_a,tid);expect_value("identity-native-tid64-repeat",input->io.tid_b,tid);
+        expect_value("identity-native-x18",input->io.guest_x18,0x55);executed_calls++;
+#else
+        expect_value("identity-native-unsupported",r.status,NSO_UNSUPPORTED);expect_value("identity-native-no-raw-output",result,0xa5a5);
+#endif
+    }
+    return &returned_token;
+}
+static int identity_contract(const char *path,int native) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));identity_inactive(p,0);
+    char error[128];CHECK(succeeded(guest_process_load(p,path,error,sizeof(error))));
+    struct identity_input input={.native=native};
+    for(unsigned i=0;i<(native?1u:2u);i++) {
+        void *value=NULL;CHECK(succeeded(guest_process_run(p,exercise_identity,&input,&value)) && value==&returned_token && !errors);
+        identity_inactive(p,input.retired);
+        CHECK(inaccessible(input.retired)); /* Retired token remains reserved until destroy. */
+    }
+#if defined(__ANDROID__) && defined(__aarch64__)
+    if(native) {
+        CHECK(input.io.cleanup_calls==1 && input.io.cleanup_token==input.retired && input.io.cleanup_tid==input.native_tid);
+        CHECK(!input.io.cleanup_value && input.io.cleanup_x18==0x55);executed_calls++;
+    }
+#endif
+    CHECK(succeeded(guest_process_destroy(&p)) && !p && !errors);
+    printf("{\"identity_errors\":%u,\"actual_primaries\":%u,\"native_calls\":%u,\"tid_bits\":64,\"token_PROT_NONE\":true,\"retired_token_no_reuse\":true,\"raw_fallback\":false,\"SDK_ThreadType_layout\":false}\n",errors,identity_callbacks,executed_calls);return 0;
+}
+#if defined(NSO_PROFILE_IDENTITY_TESTING)
+static unsigned identity_map_failure,identity_unmap_failure,identity_maps,identity_unmaps,identity_actual_unmaps;
+static void *identity_map_probe(size_t bytes) {
+    identity_maps++;
+    if(identity_map_failure) {identity_map_failure--;errno=ENOMEM;return MAP_FAILED;}
+    return mmap(NULL,bytes,PROT_NONE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
+}
+static int identity_unmap_probe(void *token,size_t bytes) {
+    identity_unmaps++;
+    if(identity_unmap_failure) {identity_unmap_failure--;errno=EBUSY;return -1;}
+    int r=munmap(token,bytes);if(!r)identity_actual_unmaps++;return r;
+}
+static int identity_recovery_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));char error[128];CHECK(succeeded(guest_process_load(p,path,error,sizeof(error))));
+    guest_process_test_identity_vm(identity_map_probe,identity_unmap_probe);identity_map_failure=1;
+    struct identity_input input={0};void *value=(void *)(uintptr_t)0xa5a5;
+    struct nso_result r=guest_process_run(p,exercise_identity,&input,&value);
+    CHECK(r.status==NSO_OWNER_ERROR && r.native_error==ENOMEM && !value && !identity_callbacks && identity_maps==1);
+    for(unsigned i=0;i<2;i++) {
+        CHECK(succeeded(guest_process_run(p,exercise_identity,&input,&value)) && value==&returned_token && !errors);
+        identity_inactive(p,input.retired);
+    }
+    identity_unmap_failure=1;nso_module *module=guest_process_module(p);
+    r=guest_process_destroy(&p);
+    CHECK(r.status==NSO_RETAINED && r.cleanup_error==EBUSY && p && guest_process_module(p)==module);
+    CHECK(identity_unmaps==1 && !identity_actual_unmaps && inaccessible(input.retired));
+    CHECK(succeeded(guest_process_destroy(&p)) && !p && identity_unmaps==3 && identity_actual_unmaps==2);
+    guest_process_test_identity_vm(NULL,NULL);
+    puts("{\"identity_recovery_errors\":0,\"failed_map_callback_calls\":0,\"protected_maps\":2,\"retired_generations\":2,\"unmap_attempts\":3,\"actual_unmaps\":2,\"retained_retry\":true}");return 0;
+}
+#endif
 _Static_assert(offsetof(struct tls_fixture_io,entry_x18)==144 && offsetof(struct tls_fixture_io,query)==184,"self-authored TLS provider fixture ABI");
 #if defined(NSO_PROFILE_TLS_ALLOCATOR_TESTING) && defined(__ANDROID__) && defined(__aarch64__)
 static unsigned tls_host_rejections;
@@ -1131,6 +1240,11 @@ static int resource_recovery_contract(void) {
 #endif
 int main(int argc,char **argv) {
     page=(size_t)sysconf(_SC_PAGESIZE);
+    if(argc==3 && !strcmp(argv[1],"--identity"))return identity_contract(argv[2],0);
+    if(argc==3 && !strcmp(argv[1],"--identity-native"))return identity_contract(argv[2],1);
+#if defined(NSO_PROFILE_IDENTITY_TESTING)
+    if(argc==3 && !strcmp(argv[1],"--identity-recovery"))return identity_recovery_contract(argv[2]);
+#endif
     if(argc==3 && !strcmp(argv[1],"--tls-registration"))return tls_registration_contract(argv[2],0);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-fresh"))return tls_fresh_registration_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-null"))return tls_registration_contract(argv[2],1);

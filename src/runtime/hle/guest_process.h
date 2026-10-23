@@ -69,6 +69,19 @@ struct nso_result guest_process_initialize(guest_process *,nso_init_policy);
 struct nso_result guest_process_memory_info(guest_process *,struct guest_memory_info *out);
 /* Executing primary only: copy the verified logical/raw/native descriptor. */
 struct nso_result guest_process_primary_stack(guest_process *,struct guest_primary_stack *out);
+/* Native opaque API subset, NOT an SDK ThreadType/TCB memory layout. Tokens
+ * are dedicated PROT_NONE pages, never pthread_t/host object addresses. Only
+ * this actual live primary (including normal OS cleanup) can obtain/consume its
+ * token. GetThreadId returns the actual native OS TID as uint64, not a fabricated
+ * Horizon ID. Foreign/fresh/retired calls leave outputs untouched. Retired token
+ * pages are held until quiescent destroy to prevent same-Process address reuse;
+ * they are host administrative VA, not guest physical/backing quota bytes. */
+struct nso_result guest_process_current_thread(guest_process *,uintptr_t *token);
+struct nso_result guest_process_thread_id(guest_process *,uintptr_t token,uint64_t *tid);
+#if defined(NSO_PROFILE_IDENTITY_TESTING)
+/* Quiescent test setup only, separate binary; production has neither hook. */
+void guest_process_test_identity_vm(void *(*map)(size_t),int (*unmap)(void *,size_t));
+#endif
 /* Limited SDK allocator-pair provider, separate from OS slots and ELF/TCB TLS.
  * Registration is once-only, nonnull, module-text callbacks; it does not call
  * either target. Native consumers require this actual primary and an IDLE
