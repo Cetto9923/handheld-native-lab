@@ -29,13 +29,15 @@ for source in probe_core probe_types probe_platform json_writer probe_vulkan pro
 done
 ffrs_run minimal-compile-main clang++ "${COMMON[@]}" "${CXX[@]}" -c \
     "${FFRS_ROOT}/src/android/native/main.cpp" -o "${FFRS_BUILD}/objects/main.o"
-LINK=(env "DYLD_LIBRARY_PATH=${RUST_ROOT}/lib" "${LINKER}" -z max-page-size=16384 --build-id=sha1)
+LINK=(env "DYLD_LIBRARY_PATH=${RUST_ROOT}/lib" "${LINKER}" -z max-page-size=16384 --build-id=sha1 --eh-frame-hdr)
 LIBRARIES=(--start-group "${TARGET_LIBS}/libc++_static.a" "${TARGET_LIBS}/libc++abi.a"
     "${RESOURCE}/lib/linux/aarch64/libunwind.a" "${RESOURCE}/lib/linux/libclang_rt.builtins-aarch64-android.a"
     --end-group -L "${API_LIBS}" -lc -lm -ldl -llog -landroid -lvulkan)
 ffrs_run minimal-link-probe "${LINK[@]}" -pie --dynamic-linker /system/bin/linker64 \
     -o "${FFRS_BUILD}/probe_rg477m" "${API_LIBS}/crtbegin_dynamic.o" "${OBJECTS[@]}" \
     "${FFRS_BUILD}/objects/main.o" "${LIBRARIES[@]}" "${API_LIBS}/crtend_android.o"
+ffrs_run probe-unwind python3 "${FFRS_ROOT}/tests/device/verify_eh_frame.py" \
+    --elf "${FFRS_BUILD}/probe_rg477m" --output "${FFRS_BUILD}/probe_rg477m.eh.json"
 cp "${FFRS_BUILD}/probe_rg477m" "${FFRS_ARTIFACTS}/probe_rg477m"
 ffrs_run probe-elf "${FFRS_LLVM}/bin/llvm-readelf" --file-header --program-headers "${FFRS_ARTIFACTS}/probe_rg477m"
 if [[ "${1:-}" == '--all' ]]; then
@@ -57,10 +59,14 @@ if [[ "${1:-}" == '--all' ]]; then
     ffrs_run minimal-link-diagnostic "${LINK[@]}" -pie --dynamic-linker /system/bin/linker64 \
         -o "${FFRS_BUILD}/nso_diagnostic" "${API_LIBS}/crtbegin_dynamic.o" "${OBJECTS[@]}" \
         "${NSO_OBJECTS[@]}" "${FFRS_BUILD}/objects/diagnostic_main.o" "${LIBRARIES[@]}" "${API_LIBS}/crtend_android.o"
+    ffrs_run diagnostic-unwind python3 "${FFRS_ROOT}/tests/device/verify_eh_frame.py" \
+        --elf "${FFRS_BUILD}/nso_diagnostic" --output "${FFRS_BUILD}/nso_diagnostic.eh.json"
     ffrs_run minimal-link-jni "${LINK[@]}" -shared --no-undefined -soname libffrs_diagnostic.so \
         -o "${FFRS_BUILD}/libffrs_diagnostic.so" "${API_LIBS}/crtbegin_so.o" "${OBJECTS[@]}" \
         "${NSO_OBJECTS[@]}" "${FFRS_BUILD}/objects/diagnostic_jni.o" "${FFRS_BUILD}/objects/display_jni.o" "${FFRS_BUILD}/objects/input_jni.o" "${FFRS_BUILD}/objects/leaf_validation.o" \
         "${FFRS_BUILD}/objects/leaf_jni.o" "${LIBRARIES[@]}" "${API_LIBS}/crtend_so.o"
+    ffrs_run jni-unwind python3 "${FFRS_ROOT}/tests/device/verify_eh_frame.py" \
+        --elf "${FFRS_BUILD}/libffrs_diagnostic.so" --output "${FFRS_BUILD}/libffrs_diagnostic.so.eh.json"
     cp "${FFRS_BUILD}/nso_diagnostic" "${FFRS_ARTIFACTS}/nso_diagnostic"
     cp "${FFRS_BUILD}/libffrs_diagnostic.so" "${FFRS_ARTIFACTS}/libffrs_diagnostic.so"
 fi

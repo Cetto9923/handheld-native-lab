@@ -168,8 +168,8 @@ void AndroidCollectCpu(const ProbeContext& /*ctx*/, CpuInfo& out) {
 
 void AndroidCollectAudio(const ProbeContext& /*ctx*/, AudioInfo& out) {
     out = AudioInfo{};
-    out.status = "not_run_no_audiotrack_probe";
-    out.audiotrack_error = "AudioTrack output and playback have not been measured; NOT_RUN.";
+    out.status = "not_run_requires_explicit_audio_probe";
+    out.audiotrack_error = "NOT_RUN in hardware query. Use the separate explicit short-tone button/audio-probe.json; game audio remains NOT_RUN.";
 }
 
 } // namespace ffrs

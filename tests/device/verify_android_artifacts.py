@@ -8,6 +8,7 @@ import struct
 import subprocess
 import tempfile
 import zipfile
+from verify_eh_frame import verify_unwind_layout
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--apk', type=Path, required=True)
@@ -46,10 +47,11 @@ with zipfile.ZipFile(args.apk) as apk:
                 raise SystemExit('JNI ELF LOAD segment is writable and executable')
     if not loads:
         raise SystemExit('JNI ELF has no LOAD segments')
+    unwind = verify_unwind_layout(native)
     with tempfile.TemporaryDirectory() as temporary:
         library = Path(temporary) / 'libffrs_diagnostic.so'
         library.write_bytes(native)
-        result = subprocess.run([str(args.readelf), '-h', '-l', '-d', '-Ws', str(library)],
+        result = subprocess.run([str(args.readelf), '-h', '-l', '-SW', '-d', '-Ws', str(library)],
                                 capture_output=True, text=True, check=True)
         if 'Java_org_ffrs_diagnostic_DiagnosticActivity_runNativeDiagnostic' not in result.stdout:
             raise SystemExit('JNI entry point absent from native symbol table')
@@ -66,4 +68,5 @@ with zipfile.ZipFile(args.apk) as apk:
                 print(line)
 print(json.dumps({'status': 'PASS_PACKAGING_ONLY', 'apk': str(args.apk),
                   'bytes': args.apk.stat().st_size, 'sha256': hashlib.sha256(args.apk.read_bytes()).hexdigest(),
-                  'abi': 'arm64-v8a', 'device_execution': 'NOT_RUN', 'game_execution': 'NOT_RUN'}, indent=2))
+                  'abi': 'arm64-v8a', 'unwind_index': unwind,
+                  'device_execution': 'NOT_RUN', 'game_execution': 'NOT_RUN'}, indent=2))

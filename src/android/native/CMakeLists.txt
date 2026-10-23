@@ -43,8 +43,13 @@ if(ANDROID)
     target_link_libraries(nso_diagnostic PRIVATE ffrs_diagnostic_core)
     add_library(ffrs_diagnostic SHARED diagnostic_jni.cpp display_jni.cpp input_jni.cpp leaf_jni.cpp leaf_validation.cpp)
     target_link_libraries(ffrs_diagnostic PRIVATE ffrs_diagnostic_core)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
     foreach(target probe_rg477m nso_diagnostic ffrs_diagnostic)
-        target_link_options(${target} PRIVATE "-Wl,-z,max-page-size=16384" "-Wl,--build-id=sha1")
+        target_link_options(${target} PRIVATE "-Wl,-z,max-page-size=16384" "-Wl,--build-id=sha1" "-Wl,--eh-frame-hdr")
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../../../tests/device/verify_eh_frame.py"
+                --elf "$<TARGET_FILE:${target}>" --output "$<TARGET_FILE:${target}>.eh.json"
+            VERBATIM)
     endforeach()
 
     # Experimental guest execution belongs to this standalone CLI only. Never

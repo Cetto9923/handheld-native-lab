@@ -41,7 +41,11 @@ public final class DiagnosticActivity extends Activity implements View.OnClickLi
     private native String runNativeLeafDiagnostic(String libraryPath, String reportPath);
     private Button button;
     private Button leafButton;
+    private Button audioButton;
     private boolean leafMode;
+    private boolean audioMode;
+    private Thread diagnosticWorker;
+    private File audioReport;
     private boolean hardwareReady;
     private DisplaySnapshot displaySnapshot;
     private InputSnapshot inputSnapshot;
@@ -73,6 +77,9 @@ public final class DiagnosticActivity extends Activity implements View.OnClickLi
         leafButton = new Button(this);
         leafButton.setText("Validate optional original leaf · 16,875 samples");
         layout.addView(leafButton);
+        audioButton = new Button(this);
+        audioButton.setText("Play 0.25s quiet audio probe · volume unchanged");
+        layout.addView(audioButton);
         eventStatus = new TextView(this);
         eventStatus.setText("Hardware event capture: waiting. This tests the diagnostic host only.");
         layout.addView(eventStatus);
@@ -90,6 +97,8 @@ public final class DiagnosticActivity extends Activity implements View.OnClickLi
         leafLibrary = new File(getFilesDir(), "libffrs_leaf.so").getAbsolutePath();
         leafReport = new File(getFilesDir(), "leaf-report.json").getAbsolutePath();
         leafButton.setOnClickListener(this);
+        audioReport = new File(getFilesDir(), "audio-probe.json");
+        audioButton.setOnClickListener(this);
         File root = getExternalFilesDir(null);
         if (root == null) root = getFilesDir();
         File modules = new File(root, "modules");
@@ -111,31 +120,46 @@ public final class DiagnosticActivity extends Activity implements View.OnClickLi
     }
 
     @Override public void onClick(View view) {
+        audioMode = view == audioButton;
         leafMode = view == leafButton;
-        if (!leafMode) {
+        if (!leafMode && !audioMode) {
             displaySnapshot = captureDisplaySnapshot();
             inputSnapshot = captureInputSnapshot();
         }
-        recordEvent(leafMode ? "leaf_diagnostic_start" : "native_diagnostic_start", new JSONObject());
+        recordEvent(audioMode ? "explicit_audio_probe_start" : leafMode ? "leaf_diagnostic_start" : "native_diagnostic_start", new JSONObject());
         button.setEnabled(false);
         leafButton.setEnabled(false);
-        result.setText(leafMode ? "Checking optional leaf identity before any call..." : "Running hardware + NSO diagnostics...");
-        new Thread(this, "ffrs-diagnostic").start();
+        audioButton.setEnabled(false);
+        result.setText(audioMode ? "Playing a quiet 0.25s diagnostic tone. Audibility needs your confirmation."
+                : leafMode ? "Checking optional leaf identity before any call..." : "Running hardware + NSO diagnostics...");
+        diagnosticWorker = new Thread(this, "ffrs-diagnostic");
+        diagnosticWorker.start();
     }
 
     @Override public void run() {
         String diagnostics;
-        try { diagnostics = leafMode ? runNativeLeafDiagnostic(leafLibrary, leafReport) : runNativeDiagnostic(module, report, displaySnapshot, inputSnapshot); }
-        catch (Throwable failure) { diagnostics = "JNI_FAILED: " + failure.toString(); }
+        try {
+            if (audioMode) {
+                AudioProbeResult audio = AndroidAudioProbe.run(getApplicationContext());
+                diagnostics = AndroidAudioProbe.toJson(audio);
+                // Serialize once: the successful file payload and UI payload are identical.
+                try (FileOutputStream output = new FileOutputStream(audioReport)) {
+                    output.write(diagnostics.getBytes(StandardCharsets.UTF_8));
+                    output.getFD().sync();
+                }
+            } else diagnostics = leafMode ? runNativeLeafDiagnostic(leafLibrary, leafReport)
+                    : runNativeDiagnostic(module, report, displaySnapshot, inputSnapshot);
+        } catch (Throwable failure) { diagnostics = (audioMode ? "AUDIO_PROBE_FAILED: " : "JNI_FAILED: ") + failure.toString(); }
         handler.obtainMessage(1, diagnostics).sendToTarget();
     }
 
     @Override public boolean handleMessage(Message message) {
-        recordEvent(leafMode ? "leaf_diagnostic_finish" : "native_diagnostic_finish", new JSONObject());
+        recordEvent(audioMode ? "explicit_audio_probe_finish" : leafMode ? "leaf_diagnostic_finish" : "native_diagnostic_finish", new JSONObject());
         if (!isFinishing() && !isDestroyed()) {
             result.setText((String) message.obj);
             button.setEnabled(hardwareReady);
             leafButton.setEnabled(true);
+            audioButton.setEnabled(true);
         }
         return true;
     }
@@ -272,6 +296,8 @@ public final class DiagnosticActivity extends Activity implements View.OnClickLi
     }
 
     @Override public void onPause() {
+        // Cancel only the explicitly requested tone when leaving the Activity.
+        if (audioMode && diagnosticWorker != null) diagnosticWorker.interrupt();
         recordEvent("onPause", new JSONObject());
         super.onPause();
     }

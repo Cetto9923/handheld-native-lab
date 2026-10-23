@@ -41,7 +41,10 @@ mkdir -p "${PACKAGE_DIR}/classes" "${PACKAGE_DIR}/dex" "${PACKAGE_DIR}/payload/l
 ffrs_run javac javac --release 8 -classpath "${FFRS_ANDROID_JAR}" -g -d "${PACKAGE_DIR}/classes" \
     "${FFRS_ROOT}/src/android/app/java/org/ffrs/diagnostic/DiagnosticActivity.java" \
     "${FFRS_ROOT}/src/android/app/java/org/ffrs/diagnostic/DisplaySnapshot.java" \
-    "${FFRS_ROOT}/src/android/app/java/org/ffrs/diagnostic/InputSnapshot.java"
+    "${FFRS_ROOT}/src/android/app/java/org/ffrs/diagnostic/InputSnapshot.java" \
+    "${FFRS_ROOT}/src/android/app/java/org/ffrs/diagnostic/AudioProbeResult.java" \
+    "${FFRS_ROOT}/src/android/app/java/org/ffrs/diagnostic/AudioProbeSession.java" \
+    "${FFRS_ROOT}/src/android/app/java/org/ffrs/diagnostic/AndroidAudioProbe.java"
 ffrs_run jar jar cf "${PACKAGE_DIR}/classes.jar" -C "${PACKAGE_DIR}/classes" .
 ffrs_run dex "${FFRS_BUILD_TOOLS}/d8" --min-api 28 --lib "${FFRS_ANDROID_JAR}" --output "${PACKAGE_DIR}/dex" "${PACKAGE_DIR}/classes.jar"
 ffrs_run package-manifest "${FFRS_BUILD_TOOLS}/aapt" package -f \
