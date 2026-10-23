@@ -215,3 +215,9 @@ Method/Skill audit and bounded maturecase correction: codex_method_reuse_audit.m
 [9dc独立review](codex_guest_arguments_review.md)原文件SHA98382babf8736f94266cfb7ed936c3e16e8bec1580e227451c25872ab08181ec；[7be有限review](codex_native_stack13_review.md)SHA2c195532b56f774d137a1ebabfc520b9916f60f7e2b2634cec28974098b8e422。均按原字节归档。9dc独立53命令符合真实expected，无超时；7be独立完整Android C20秒timeout保留，不扩大scope。
 
 目前运行时新树ffrs-va-resource/base3af实施真实资源pool；图形ffrs-las-transfer/base245实施LAS MIT production typedcommand接入；独立63 locale REA定点进行。无新游戏画面、无新诊断APK、无整体完成百分比。
+
+### LAS81真实GPU执行及分支保存边界
+
+同RG `.local/device/rg477m-session1/las-transfer-v1-*`：冻结ELF288744B/SHA8ac793ff4bc978ecad1e1d837195e102ec9a7f28118b97fed38f38694430ef26/sourcebundle21e4c62f30c481211ff09e8df8f89557215322f610552824e64dbd82079eed70，raw0/100.1925ms/noTimeout，真实typedrecordGPUcopy65536B/图像256B各0差异，清理12/3。新QA进行，shader/present/game false。
+
+f9284ea保存在task/codex-integration；原交付fast-forward被自动审批拒绝/未执行，等待明确分支批准，原交付245dfa2。不要盲重试或另路写原仓，任务树仍是最新可用交接。

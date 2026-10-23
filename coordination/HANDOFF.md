@@ -56,3 +56,9 @@ REA Skill42本轮实际读取；此前Codex实际使用未找到证据，不能�
 详细历史/命令索引：[证据索引](../docs/analysis/codex_handoff_evidence_index.md)；当前分阶段事实：[stage status](../docs/analysis/codex_stage_status.md)。
 
 **可复制接手句：** 先读AGENTS.md和coordination/HANDOFF.md，核对HEAD/WIP/代理写入归属并保留成果，从当前真实启动66/63与CRT515继续，优先复用已核验组件，禁止以诊断合同或空画面冒充游戏成功。
+
+## 最新事件：LAS真机与原分支审批
+
+图形81b1917已同RG真实执行0/100.1925ms、无timeout、stderr空；新typedrecord路径64KiB复制及256B清除回读0差异，31VkResults0，12destroy/3unmap，validator0。typed_record_path=true/copy1/65536/gpu_completion_retired=true，未写opaque layout，无shader/present。证据 `las-transfer-v1-{plan,stage,execution,result,validator}.json`；独立新组件QA在进行，未先标最终接受或集成。
+
+任务分支已保存9dc/7be/交接为f9284ea。向原交付work/rg477m-native快进f9284ea被自动审批拒绝且未执行：审核认定授权覆盖本地任务分支、原交付需单独批准。用户明确分支许可待答；禁止换方式绕过。当前请从本任务树HANDOFF接手，原树仍245dfa2。代码开发和设备实测不受此审批影响。
