@@ -1,562 +1,332 @@
 #define _GNU_SOURCE
 #include "nso_loader.h"
-
-#include <dlfcn.h>
-#include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#if defined(__APPLE__)
+#include <sys/ucontext.h>
+#else
+#include <ucontext.h>
+#endif
 #include <unistd.h>
 
 #if !defined(__aarch64__)
-#error "nso_loader targets AArch64 hosts (module code executes natively, untranslated)"
+#error "nso_loader executes AArch64 code natively"
 #endif
+#define NSO_MAGIC 0x304f534eu
+#define MOD0_MAGIC 0x30444f4du
+#define R_ABS64 0x101u
+#define R_ABS32 0x102u
+#define R_GLOB_DAT 0x401u
+#define R_JUMP_SLOT 0x402u
+#define R_RELATIVE 0x403u
 
-#define NSO_MAGIC 0x304F534Eu
-#define MOD0_MAGIC 0x30444F4Du
-
-#define R_AARCH64_ABS64      0x101u
-#define R_AARCH64_ABS32      0x102u
-#define R_AARCH64_GLOB_DAT   0x401u
-#define R_AARCH64_JUMP_SLOT  0x402u
-#define R_AARCH64_RELATIVE   0x403u
-
-/* Standard ELF Dynamic Tags */
-#define DT_NULL         0
-#define DT_PLTRELSZ     2
-#define DT_STRTAB       5
-#define DT_SYMTAB       6
-#define DT_RELA         7
-#define DT_RELASZ       8
-#define DT_RELAENT      9
-#define DT_STRSZ        10
-#define DT_SYMENT       11
-#define DT_INIT         12
-#define DT_FINI         13
-#define DT_JMPREL       23
-#define DT_INIT_ARRAY   25
-#define DT_FINI_ARRAY   26
-#define DT_INIT_ARRAYSZ 27
-#define DT_FINI_ARRAYSZ 28
-#define DT_RELRSZ       35
-#define DT_RELR         36
-#define DT_RELRENT      37
-
-typedef struct {
-    uint32_t file_off, dst_off, size, aux;
-} nso_seg_t;
-
-typedef struct {
-    uint32_t magic, version, reserved, flags;
-    nso_seg_t seg[3];
-    uint8_t build_id[0x20];
-    uint32_t compressed_size[3];
-    uint8_t pad[0x24];
-    uint64_t dynstr_extents, dynsym_extents;
-    uint8_t section_hash[3][0x20];
-} nso_header_t;
-
+struct segment { uint32_t file, mem, size, aux; };
 struct nso_module {
-    uint8_t *image;         /* base of the contiguous module mapping */
+    uint8_t *image;
     size_t image_size;
-    char *path;
-
-    const char *dynstr;
-    uint32_t dynstr_size;
-    uint64_t *sym_value;    /* st_value per dynsym entry */
+    char *dynstr;
+    uint32_t dynstr_size, sym_count, import_count, unresolved_count;
+    uint64_t *sym_value, *imports;
     uint16_t *sym_shndx;
     uint32_t *sym_name;
-    uint32_t sym_count;
-
-    uint64_t rela_offset;
-    uint64_t rela_size;
-    uint64_t jmprel_offset;
-    uint64_t jmprel_size;
-    uint64_t relr_offset;
-    uint64_t relr_size;
-
-    uint64_t init_offset;
-    uint64_t init_array_offset;
-    uint64_t init_array_size;
-
-    uint64_t reloc_count;   /* count of RELA entries */
-    uint64_t relr_count;    /* count of RELR targets resolved */
-
-    uint64_t *imports;      /* resolved host function per undefined symbol */
-    char **import_names;
-    uint32_t import_count;
-
-    nso_import_fn import_fn;
+    uint8_t *sym_info;
+    uint8_t *import_traps, *object_traps;
+    size_t trap_size;
+    uint64_t rela_offset, rela_size, jmprel_offset, jmprel_size;
+    uint64_t relr_offset, relr_size, reloc_count, relr_count;
+    uint64_t init_offset, init_array_offset, init_array_size;
+    uint64_t text_lo, text_hi;
     uint8_t build_id[16];
-    void *user_dlsym;
-    uint64_t trap_calls;
 };
-
-/* ------------------------------------------------------------------ */
-/* helpers                                                             */
-/* ------------------------------------------------------------------ */
-
-static uint32_t rd32(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return v; }
-static uint64_t rd64(const uint8_t *p) { uint64_t v; memcpy(&v, p, 8); return v; }
-static uint16_t rd16(const uint8_t *p) { uint16_t v; memcpy(&v, p, 2); return v; }
-
-static uint64_t page_size(void) {
-    static uint64_t ps;
-    if (!ps) ps = (uint64_t)sysconf(_SC_PAGESIZE);
-    return ps;
-}
-static uint64_t page_down(uint64_t v) { return v & ~(page_size() - 1); }
-static uint64_t page_up(uint64_t v) { return page_down(v + page_size() - 1); }
-
-static void set_err(char *errbuf, size_t errlen, const char *msg) {
-    if (errbuf && errlen) {
-        snprintf(errbuf, errlen, "%s", msg);
+static uint16_t rd16(const void *p) { uint16_t v; memcpy(&v,p,2); return v; }
+static uint32_t rd32(const void *p) { uint32_t v; memcpy(&v,p,4); return v; }
+static uint64_t rd64(const void *p) { uint64_t v; memcpy(&v,p,8); return v; }
+static void wr64(void *p, uint64_t v) { memcpy(p,&v,8); }
+static size_t pagesize(void) { return (size_t)sysconf(_SC_PAGESIZE); }
+static uint64_t down(uint64_t v) { return v & ~(uint64_t)(pagesize()-1); }
+static uint64_t up(uint64_t v) { return down(v+pagesize()-1); }
+static int range(uint64_t off, uint64_t n, uint64_t limit) { return off <= limit && n <= limit-off; }
+static int file_range(const struct segment s[3], uint64_t addr, uint64_t len, uint64_t *off) {
+    if (!len) { *off=0; return 1; }
+    for(int i=0;i<3;i++) if(addr>=s[i].mem && range(addr-s[i].mem,len,s[i].size)) {
+        *off=(uint64_t)s[i].file+addr-s[i].mem; return 1;
     }
-}
-
-/* ------------------------------------------------------------------ */
-/* default import trap                                                 */
-/* ------------------------------------------------------------------ */
-
-static uint64_t nso_trap(uint32_t idx, const char *name,
-                         uint64_t a0, uint64_t a1, uint64_t a2,
-                         uint64_t a3, uint64_t a4, uint64_t a5) {
-    (void)idx; (void)name;
-    (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5;
     return 0;
 }
+static void error(char *buf, size_t len, const char *msg) { if(buf && len) snprintf(buf,len,"%s",msg); }
 
-/* ------------------------------------------------------------------ */
-/* loader implementation                                               */
-/* ------------------------------------------------------------------ */
-
-nso_module *nso_load_file(const char *path, nso_import_fn import_fn, char *errbuf, size_t errlen) {
-    int fd = open(path, O_RDONLY);
-    if (fd < 0) {
-        set_err(errbuf, errlen, "cannot open file");
-        return NULL;
-    }
+nso_module *nso_load_file(const char *path, nso_import_fn resolve, char *err, size_t errlen) {
+    int fd=-1;
+    const uint8_t *file=MAP_FAILED;
+    size_t fsize=0;
+    nso_module *m=NULL;
+    const char *failure="unknown load failure";
+#define FAIL(msg) do { failure=(msg); goto fail; } while(0)
+#define CHECK(cond,msg) do { if(!(cond)) FAIL(msg); } while(0)
+    fd=open(path,O_RDONLY);
+    CHECK(fd>=0,"cannot open file");
     struct stat st;
-    if (fstat(fd, &st) < 0) {
-        close(fd);
-        set_err(errbuf, errlen, "cannot fstat file");
-        return NULL;
+    CHECK(fstat(fd,&st)==0 && st.st_size>=0x100,"file smaller than NSO header");
+    fsize=(size_t)st.st_size;
+    file=mmap(NULL,fsize,PROT_READ,MAP_PRIVATE,fd,0);
+    close(fd); fd=-1;
+    CHECK(file!=MAP_FAILED,"file mmap failed");
+    CHECK(rd32(file)==NSO_MAGIC,"not an NSO0 file");
+    CHECK(!(rd32(file+12)&7),"compressed NSO segments unsupported; supply uncompressed image");
+    struct segment s[3];
+    uint64_t end=0;
+    for(int i=0;i<3;i++) {
+        s[i]=(struct segment){rd32(file+16+i*16),rd32(file+20+i*16),rd32(file+24+i*16),rd32(file+28+i*16)};
+        CHECK(range(s[i].file,s[i].size,fsize),"segment out of file range");
+        uint64_t hi=(uint64_t)s[i].mem+s[i].size;
+        if(i==2) hi+=s[i].aux;
+        if(hi>end) end=hi;
+        if(i) CHECK((uint64_t)s[i-1].mem+s[i-1].size<=s[i].mem,"overlapping NSO segments");
     }
-    size_t fsize = (size_t)st.st_size;
-    const uint8_t *file = (const uint8_t *)mmap(NULL, fsize, PROT_READ, MAP_PRIVATE, fd, 0);
-    close(fd);
-    if (file == MAP_FAILED) {
-        set_err(errbuf, errlen, "mmap of file failed");
-        return NULL;
-    }
-
-    if (fsize < sizeof(nso_header_t)) {
-        munmap((void *)file, fsize);
-        set_err(errbuf, errlen, "file smaller than NSO header");
-        return NULL;
-    }
-
-    nso_header_t h;
-    memcpy(&h, file, sizeof(h));
-    if (h.magic != NSO_MAGIC) {
-        munmap((void *)file, fsize);
-        set_err(errbuf, errlen, "not an NSO0 file");
-        return NULL;
-    }
-
-    nso_module *m = (nso_module *)calloc(1, sizeof(*m));
-    if (!m) {
-        munmap((void *)file, fsize);
-        set_err(errbuf, errlen, "out of memory for module struct");
-        return NULL;
-    }
-    m->path = strdup(path);
-    m->import_fn = import_fn ? import_fn : nso_trap;
-    memcpy(m->build_id, h.build_id, 16);
-
-    /* --- locate MOD0 and .dynamic section --- */
-    uint32_t text_file_off = h.seg[0].file_off;
-    if (text_file_off + 8 > fsize) {
-        munmap((void *)file, fsize); free((void *)m->path); free(m);
-        set_err(errbuf, errlen, "text section out of bounds");
-        return NULL;
-    }
-    uint32_t mod0_off = rd32(file + text_file_off + 4);
-    if (text_file_off + mod0_off + 16 > fsize) {
-        munmap((void *)file, fsize); free((void *)m->path); free(m);
-        set_err(errbuf, errlen, "MOD0 header out of file bounds");
-        return NULL;
-    }
-    const uint8_t *mod0 = file + text_file_off + mod0_off;
-    if (rd32(mod0) != MOD0_MAGIC) {
-        munmap((void *)file, fsize); free((void *)m->path); free(m);
-        set_err(errbuf, errlen, "MOD0 magic mismatch");
-        return NULL;
-    }
-    int32_t dyn_off = (int32_t)rd32(mod0 + 4);
-    uint64_t dyn_mem_addr = (uint64_t)mod0_off + (uint64_t)dyn_off;
-    uint64_t dyn_file_off = text_file_off + dyn_mem_addr;
-    if (dyn_file_off + 16 > fsize) {
-        munmap((void *)file, fsize); free((void *)m->path); free(m);
-        set_err(errbuf, errlen, ".dynamic out of file bounds");
-        return NULL;
-    }
-
-    /* Parse .dynamic entries */
-    uint64_t symtab_mem = 0, strtab_mem = 0, strtab_sz = 0;
-    for (uint64_t cur = dyn_file_off; cur + 16 <= fsize; cur += 16) {
-        int64_t tag = (int64_t)rd64(file + cur);
-        uint64_t val = rd64(file + cur + 8);
-        if (tag == DT_NULL) break;
-        switch (tag) {
-            case DT_RELA:         m->rela_offset = val; break;
-            case DT_RELASZ:       m->rela_size = val; break;
-            case DT_JMPREL:       m->jmprel_offset = val; break;
-            case DT_PLTRELSZ:     m->jmprel_size = val; break;
-            case DT_RELR:         m->relr_offset = val; break;
-            case DT_RELRSZ:       m->relr_size = val; break;
-            case DT_SYMTAB:       symtab_mem = val; break;
-            case DT_STRTAB:       strtab_mem = val; break;
-            case DT_STRSZ:        strtab_sz = val; break;
-            case DT_INIT:         m->init_offset = val; break;
-            case DT_INIT_ARRAY:   m->init_array_offset = val; break;
-            case DT_INIT_ARRAYSZ: m->init_array_size = val; break;
-            default: break;
+    CHECK(end && end<=SIZE_MAX-pagesize(),"invalid image extent");
+    m=calloc(1,sizeof(*m)); CHECK(m,"module allocation failed");
+    m->image_size=(size_t)up(end);
+    m->text_lo=s[0].mem; m->text_hi=(uint64_t)s[0].mem+s[0].size;
+    memcpy(m->build_id,file+0x40,16);
+    m->image=mmap(NULL,m->image_size,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
+    if(m->image==MAP_FAILED) { m->image=NULL; FAIL("module mmap failed"); }
+    for(int i=0;i<3;i++) memcpy(m->image+s[i].mem,file+s[i].file,s[i].size);
+    CHECK(s[0].size>=8,"text too short for MOD0 reference");
+    /* MOD0 and dynamic pointers are virtual offsets, not file offsets. */
+    int64_t mod=(int64_t)s[0].mem+(int32_t)rd32(m->image+s[0].mem+4);
+    uint64_t mapped;
+    CHECK(mod>=0 && file_range(s,(uint64_t)mod,28,&mapped),"MOD0 out of mapped segments");
+    CHECK(rd32(m->image+mod)==MOD0_MAGIC,"MOD0 magic mismatch");
+    int64_t dyn=mod+(int32_t)rd32(m->image+mod+4);
+    CHECK(dyn>=0,"negative .dynamic offset");
+    uint64_t strtab=0,strsz=0,symtab=0,hash=0;
+    uint64_t relaent=24,syment=24,relrent=8,pltrel=7;
+    int terminated=0;
+    for(uint64_t cur=(uint64_t)dyn; file_range(s,cur,16,&mapped);cur+=16) {
+        uint64_t tag=rd64(m->image+cur),val=rd64(m->image+cur+8);
+        if(!tag) { terminated=1; break; }
+        switch(tag) {
+        case 2:m->jmprel_size=val;break;
+        case 4:hash=val;break;
+        case 5:strtab=val;break;
+        case 6:symtab=val;break;
+        case 7:m->rela_offset=val;break;
+        case 8:m->rela_size=val;break;
+        case 9:relaent=val;break;
+        case 10:strsz=val;break;
+        case 11:syment=val;break;
+        case 12:m->init_offset=val;break;
+        case 20:pltrel=val;break;
+        case 23:m->jmprel_offset=val;break;
+        case 25:m->init_array_offset=val;break;
+        case 27:m->init_array_size=val;break;
+        case 35:m->relr_size=val;break;
+        case 36:m->relr_offset=val;break;
+        case 37:relrent=val;break;
+        default:break;
         }
     }
-
-    if (!strtab_mem || !strtab_sz || !symtab_mem) {
-        munmap((void *)file, fsize); free((void *)m->path); free(m);
-        set_err(errbuf, errlen, "dynamic symbol/string table missing in .dynamic");
-        return NULL;
+    CHECK(terminated,"unterminated or out-of-segment .dynamic");
+    CHECK(syment==24 && relaent==24 && relrent==8 && pltrel==7,"unsupported dynamic entry encoding");
+    CHECK(strsz && strsz<=UINT32_MAX && file_range(s,strtab,strsz,&mapped),"invalid dynamic string table");
+    if(hash) {
+        CHECK(file_range(s,hash,8,&mapped),"invalid DT_HASH header");
+        m->sym_count=rd32(m->image+hash+4);
+        CHECK(file_range(s,hash,8+4ull*((uint64_t)rd32(m->image+hash)+m->sym_count),&mapped),"invalid DT_HASH extent");
+    } else {
+        /* GNU-hash-only NSOs supply an exact dynsym extent in their NSO header.
+         * Never infer the symbol count from adjacent data or a fixed estimate. */
+        uint64_t header_sym=(uint64_t)s[1].mem+rd32(file+0x98);
+        uint32_t header_size=rd32(file+0x9c);
+        CHECK(header_sym==symtab && header_size%24==0,"missing bounded dynsym extent");
+        m->sym_count=header_size/24;
     }
-
-    /* Convert dynstr & dynsym memory offsets to file offsets */
-    /* .rodata dst_off is segment 1 */
-    uint64_t ro_dst = h.seg[1].dst_off;
-    uint64_t ro_file = h.seg[1].file_off;
-    uint64_t strtab_file = ro_file + (strtab_mem - ro_dst);
-    uint64_t symtab_file = ro_file + (symtab_mem - ro_dst);
-
-    char *dynstr_buf = (char *)malloc(strtab_sz + 1);
-    memcpy(dynstr_buf, file + strtab_file, strtab_sz);
-    dynstr_buf[strtab_sz] = 0;
-    m->dynstr = dynstr_buf;
-    m->dynstr_size = (uint32_t)strtab_sz;
-
-    /* Count dynsym entries up to dynstr or strtab */
-    size_t sym_bytes = (strtab_mem > symtab_mem) ? (strtab_mem - symtab_mem) : 0;
-    uint32_t nsyms = (uint32_t)(sym_bytes / 24);
-    if (nsyms == 0) nsyms = 1000; /* fallback estimate */
-    m->sym_count = nsyms;
-    m->sym_name  = (uint32_t *)malloc(nsyms * sizeof(uint32_t));
-    m->sym_shndx = (uint16_t *)malloc(nsyms * sizeof(uint16_t));
-    m->sym_value = (uint64_t *)malloc(nsyms * sizeof(uint64_t));
-    m->imports   = (uint64_t *)malloc(nsyms * sizeof(uint64_t));
-    m->import_names = (char **)malloc(nsyms * sizeof(char *));
-
-    for (uint32_t i = 0; i < nsyms; i++) {
-        uint64_t eoff = symtab_file + (uint64_t)i * 24;
-        if (eoff + 24 > fsize) { m->sym_count = i; break; }
-        m->sym_name[i]  = rd32(file + eoff);
-        m->sym_shndx[i] = rd16(file + eoff + 6);
-        m->sym_value[i] = rd64(file + eoff + 8);
-
-        if (m->sym_shndx[i] == 0 && m->sym_name[i] < m->dynstr_size) {
-            const char *name = m->dynstr + m->sym_name[i];
-            m->import_names[i] = strdup(name);
-            void *host = dlsym(RTLD_DEFAULT, name);
-            m->imports[i] = host ? (uint64_t)(uintptr_t)host : (uint64_t)(uintptr_t)&nso_trap;
+    CHECK(m->sym_count && file_range(s,symtab,(uint64_t)m->sym_count*24,&mapped),"invalid dynamic symbol table");
+    m->dynstr_size=(uint32_t)strsz;
+    m->dynstr=malloc((size_t)strsz);
+    m->sym_name=calloc(m->sym_count,sizeof(*m->sym_name));
+    m->sym_shndx=calloc(m->sym_count,sizeof(*m->sym_shndx));
+    m->sym_value=calloc(m->sym_count,sizeof(*m->sym_value));
+    m->sym_info=calloc(m->sym_count,1);
+    m->imports=calloc(m->sym_count,sizeof(*m->imports));
+    CHECK(m->dynstr && m->sym_name && m->sym_shndx && m->sym_value && m->imports && m->sym_info,"symbol allocation failed");
+    memcpy(m->dynstr,m->image+strtab,(size_t)strsz);
+    /* Per-symbol BRK sentinels supply identity, never target translation.
+     * Imported objects use inaccessible slots so reads also fail observably. */
+    m->trap_size=(size_t)up((uint64_t)m->sym_count*8);
+    m->import_traps=mmap(NULL,m->trap_size,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
+    if(m->import_traps==MAP_FAILED) {m->import_traps=NULL;FAIL("import sentinel mmap failed");}
+    m->object_traps=mmap(NULL,m->trap_size,PROT_NONE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
+    if(m->object_traps==MAP_FAILED) {m->object_traps=NULL;FAIL("object sentinel mmap failed");}
+    for(uint32_t i=0;i<m->sym_count;i++) {
+        const uint8_t *e=m->image+symtab+(uint64_t)i*24;
+        m->sym_name[i]=rd32(e); m->sym_shndx[i]=rd16(e+6); m->sym_value[i]=rd64(e+8); m->sym_info[i]=e[4];
+        CHECK(m->sym_name[i]<strsz && memchr(m->dynstr+m->sym_name[i],0,(size_t)strsz-m->sym_name[i]),"invalid symbol name");
+        uint32_t brk=0xd4200000u;
+        memcpy(m->import_traps+i*8,&brk,4);
+        if(i && !m->sym_shndx[i]) {
             m->import_count++;
+            m->imports[i]=resolve?resolve(i,m->dynstr+m->sym_name[i]):0;
+            if(!m->imports[i]) {
+                m->unresolved_count++;
+                m->imports[i]=(uint64_t)(uintptr_t)(((e[4]&15)==1?m->object_traps:m->import_traps)+i*8);
+            }
+        }
+    }
+    __builtin___clear_cache((char*)m->import_traps,(char*)m->import_traps+m->trap_size);
+    CHECK(mprotect(m->import_traps,m->trap_size,PROT_READ|PROT_EXEC)==0,"import sentinel mprotect failed");
+    uint64_t base=nso_base(m);
+    CHECK(m->relr_size%8==0 && file_range(s,m->relr_offset,m->relr_size,&mapped),"invalid DT_RELR extent");
+    uint64_t where=0;
+    int have_where=0;
+    for(uint64_t k=0;k<m->relr_size;k+=8) {
+        uint64_t entry=rd64(m->image+m->relr_offset+k);
+        if(!(entry&1)) {
+            CHECK(!(entry&7) && range(entry,8,m->image_size),"RELR target out of image");
+            where=entry; have_where=1;
+            wr64(m->image+where,rd64(m->image+where)+base); m->relr_count++; where+=8;
         } else {
-            m->import_names[i] = NULL;
-            m->imports[i] = 0;
+            CHECK(have_where && range(where,63*8,m->image_size),"RELR bitmap out of image");
+            for(int b=1;b<64;b++) if((entry>>b)&1) {
+                uint64_t target=where+(b-1)*8;
+                wr64(m->image+target,rd64(m->image+target)+base); m->relr_count++;
+            }
+            where+=63*8;
         }
     }
-
-    /* --- map the module image contiguously --- */
-    uint64_t data_end = (uint64_t)h.seg[2].dst_off + h.seg[2].size;
-    uint64_t image_size = data_end + h.seg[2].aux;
-    image_size = page_up(image_size);
-    uint8_t *image = (uint8_t *)mmap(NULL, (size_t)image_size, PROT_READ | PROT_WRITE,
-                                     MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (image == MAP_FAILED) {
-        munmap((void *)file, fsize); free((void *)m->path); free(m);
-        set_err(errbuf, errlen, "mmap of module image failed");
-        return NULL;
-    }
-    m->image = image;
-    m->image_size = (size_t)image_size;
-    uint64_t base = (uint64_t)(uintptr_t)image;
-
-    for (int i = 0; i < 3; i++) {
-        if (h.seg[i].file_off + h.seg[i].size > fsize) {
-            munmap(image, (size_t)image_size);
-            munmap((void *)file, fsize); free((void *)m->path); free(m);
-            set_err(errbuf, errlen, "segment out of file range");
-            return NULL;
-        }
-        memcpy(image + h.seg[i].dst_off, file + h.seg[i].file_off, h.seg[i].size);
-    }
-
-    /* --- STEP 1: apply compact relative relocations (DT_RELR) --- */
-    if (m->relr_offset && m->relr_size) {
-        const uint64_t *relr = (const uint64_t *)(image + m->relr_offset);
-        size_t count = m->relr_size / 8;
-        uint64_t where = 0;
-        for (size_t i = 0; i < count; i++) {
-            uint64_t entry = relr[i];
-            if ((entry & 1) == 0) {
-                where = entry;
-                *(uint64_t *)(image + where) += base;
-                m->relr_count++;
-                where += 8;
-            } else {
-                for (int b = 1; b < 64; b++) {
-                    if ((entry >> b) & 1) {
-                        *(uint64_t *)(image + where + (b - 1) * 8) += base;
-                        m->relr_count++;
-                    }
-                }
-                where += (64 - 1) * 8;
+    for(int pass=0;pass<2;pass++) {
+        uint64_t off=pass?m->jmprel_offset:m->rela_offset,sz=pass?m->jmprel_size:m->rela_size;
+        CHECK(sz%24==0 && file_range(s,off,sz,&mapped),"invalid RELA extent");
+        for(uint64_t k=0;k<sz;k+=24) {
+            const uint8_t *e=m->image+off+k;
+            uint64_t target=rd64(e),info=rd64(e+8),addend=rd64(e+16),value;
+            uint32_t type=(uint32_t)info,sym=(uint32_t)(info>>32);
+            CHECK(type==R_ABS64 || type==R_ABS32 || type==R_GLOB_DAT || type==R_JUMP_SLOT || type==R_RELATIVE,"unsupported AArch64 relocation");
+            CHECK(range(target,type==R_ABS32?4:8,m->image_size),"RELA target out of image");
+            if(type==R_RELATIVE) { CHECK(sym==0,"RELATIVE relocation has nonzero symbol"); value=base+addend; }
+            else {
+                CHECK(sym<m->sym_count,"RELA symbol out of bounds");
+                value=m->sym_shndx[sym]?(m->sym_shndx[sym]==0xfff1?m->sym_value[sym]:base+m->sym_value[sym]):m->imports[sym];
+                value+=addend;
             }
-        }
-    }
-
-    /* --- STEP 2: apply RELA relocations (DT_RELA and DT_JMPREL) --- */
-    for (int pass = 0; pass < 2; pass++) {
-        uint64_t toff = (pass == 0) ? m->rela_offset : m->jmprel_offset;
-        uint64_t tsz  = (pass == 0) ? m->rela_size : m->jmprel_size;
-        if (!toff || !tsz) continue;
-
-        size_t nentries = tsz / 24;
-        for (size_t k = 0; k < nentries; k++) {
-            const uint8_t *e = image + toff + k * 24;
-            uint64_t r_offset = rd64(e);
-            uint64_t r_info   = rd64(e + 8);
-            int64_t  r_addend = (int64_t)rd64(e + 16);
-            uint32_t type = (uint32_t)(r_info & 0xffffffffu);
-            uint32_t sym  = (uint32_t)(r_info >> 32);
-
-            if (r_offset + 8 > image_size) continue;
-
-            uint64_t value = 0;
-            if (type == R_AARCH64_RELATIVE) {
-                value = base + r_offset + (uint64_t)r_addend;
-            } else if (sym < m->sym_count && m->sym_shndx[sym] == 0) {
-                /* import binding */
-                uint64_t fn = m->imports[sym];
-                if (type == R_AARCH64_ABS32) {
-                    *(uint32_t *)(image + r_offset) = (uint32_t)fn;
-                } else {
-                    *(uint64_t *)(image + r_offset) = fn;
-                }
-                m->reloc_count++;
-                continue;
-            } else if (sym < m->sym_count) {
-                /* defined symbol */
-                uint64_t addr = base + m->sym_value[sym];
-                value = (type == R_AARCH64_ABS32) ? (uint32_t)addr : (addr + (uint64_t)r_addend);
-            } else {
-                continue;
-            }
-
-            if (type == R_AARCH64_ABS32) {
-                *(uint32_t *)(image + r_offset) = (uint32_t)value;
-            } else {
-                *(uint64_t *)(image + r_offset) = value;
-            }
+            if(type==R_ABS32) { CHECK(value<=UINT32_MAX,"ABS32 relocation overflow"); uint32_t v=(uint32_t)value;memcpy(m->image+target,&v,4); }
+            else wr64(m->image+target,value);
             m->reloc_count++;
         }
     }
-
-    /* Flip segment page protections */
-    uint64_t tx_lo = h.seg[0].dst_off, tx_hi = tx_lo + h.seg[0].size;
-    uint64_t ro_lo = h.seg[1].dst_off, ro_hi = ro_lo + h.seg[1].size;
-    uint64_t da_lo = h.seg[2].dst_off, da_hi = data_end + h.seg[2].aux;
-
-    if (ro_hi > ro_lo)
-        mprotect(image + page_down(ro_lo), (size_t)(page_up(ro_hi) - page_down(ro_lo)), PROT_READ);
-    if (da_hi > da_lo)
-        mprotect(image + page_down(da_lo), (size_t)(page_up(da_hi) - page_down(da_lo)), PROT_READ | PROT_WRITE);
-    if (tx_hi)
-        mprotect(image, (size_t)page_up(tx_hi), PROT_READ | PROT_EXEC);
-
-    munmap((void *)file, fsize);
+    CHECK(!m->init_offset || (m->init_offset>=m->text_lo && m->init_offset<m->text_hi),"DT_INIT out of text");
+    CHECK(m->init_array_size%8==0 && range(m->init_array_offset,m->init_array_size,m->image_size),"invalid DT_INIT_ARRAY");
+    /* Retain shared host-page policy: executable text owns its last page. */
+    for(int i=1;i<3;i++) {
+        uint64_t hi=(uint64_t)s[i].mem+s[i].size+(i==2?s[i].aux:0);
+        if(hi>s[i].mem) CHECK(mprotect(m->image+down(s[i].mem),(size_t)(up(hi)-down(s[i].mem)),i==1?PROT_READ:PROT_READ|PROT_WRITE)==0,"data mprotect failed");
+    }
+    __builtin___clear_cache((char*)m->image+m->text_lo,(char*)m->image+m->text_hi);
+    CHECK(mprotect(m->image+down(m->text_lo),(size_t)(up(m->text_hi)-down(m->text_lo)),PROT_READ|PROT_EXEC)==0,"text mprotect failed");
+    munmap((void*)file,fsize);
     return m;
+fail:
+    if(fd>=0) close(fd);
+    if(file!=MAP_FAILED) munmap((void*)file,fsize);
+    nso_free(m); error(err,errlen,failure); return NULL;
+#undef CHECK
+#undef FAIL
 }
-
 void nso_free(nso_module *m) {
-    if (!m) return;
-    if (m->image) munmap(m->image, m->image_size);
-    if (m->import_names) {
-        for (uint32_t i = 0; i < m->sym_count; i++) free(m->import_names[i]);
-        free(m->import_names);
-    }
-    free(m->imports);
-    free(m->sym_name); free(m->sym_shndx); free(m->sym_value);
-    free((void *)m->dynstr);
-    free((void *)m->path);
-    free(m);
+    if(!m)return;
+    if(m->image)munmap(m->image,m->image_size);
+    if(m->import_traps)munmap(m->import_traps,m->trap_size);
+    if(m->object_traps)munmap(m->object_traps,m->trap_size);
+    free(m->dynstr);free(m->sym_name);free(m->sym_shndx);free(m->sym_value);free(m->imports);free(m->sym_info);free(m);
 }
-
-uint64_t nso_base(const nso_module *m) { return (uint64_t)(uintptr_t)m->image; }
-uint64_t nso_addr(const nso_module *m, uint64_t module_offset) { return (uint64_t)(uintptr_t)(m->image + module_offset); }
-uint32_t nso_import_count(const nso_module *m) { return m->import_count; }
-uint64_t nso_reloc_count(const nso_module *m) { return m->reloc_count; }
-uint64_t nso_relr_count(const nso_module *m) { return m->relr_count; }
-
-const char *nso_symbol_name(const nso_module *m, uint32_t index) {
-    if (index >= m->sym_count) return NULL;
-    return m->dynstr + m->sym_name[index];
-}
-
-uint64_t nso_symbol_value(const nso_module *m, uint32_t index) {
-    if (index >= m->sym_count) return UINT64_MAX;
-    if (m->sym_shndx[index] == 0) return UINT64_MAX;
-    return m->sym_value[index];
-}
-
-uint32_t nso_find_symbol(const nso_module *m, const char *name) {
-    if (!name) return 0;
-    for (uint32_t i = 1; i < m->sym_count; i++) {
-        const char *s = m->dynstr + m->sym_name[i];
-        if (!strcmp(s, name)) return i;
-    }
+uint64_t nso_base(const nso_module *m) {return (uint64_t)(uintptr_t)m->image;}
+size_t nso_image_size(const nso_module *m) {return m->image_size;}
+uint64_t nso_addr(const nso_module *m,uint64_t off) {return off<m->image_size?nso_base(m)+off:0;}
+uint32_t nso_import_count(const nso_module *m) {return m->import_count;}
+uint32_t nso_unresolved_count(const nso_module *m) {return m->unresolved_count;}
+uint64_t nso_reloc_count(const nso_module *m) {return m->reloc_count;}
+uint64_t nso_relr_count(const nso_module *m) {return m->relr_count;}
+const char *nso_symbol_name(const nso_module *m,uint32_t i) {return i<m->sym_count?m->dynstr+m->sym_name[i]:NULL;}
+uint64_t nso_symbol_value(const nso_module *m,uint32_t i) {return i<m->sym_count && m->sym_shndx[i]?m->sym_value[i]:UINT64_MAX;}
+uint32_t nso_find_symbol(const nso_module *m,const char *name) {
+    if(name)for(uint32_t i=1;i<m->sym_count;i++)if(!strcmp(nso_symbol_name(m,i),name))return i;
     return 0;
 }
-
-void nso_build_id(const nso_module *m, char out[33]) {
-    for (int i = 0; i < 4; i++)
-        snprintf(out + i * 8, 9, "%08x",
-                 ((uint32_t)m->build_id[i * 4] << 24) | ((uint32_t)m->build_id[i * 4 + 1] << 16) |
-                 ((uint32_t)m->build_id[i * 4 + 2] << 8) | (uint32_t)m->build_id[i * 4 + 3]);
-    out[32] = 0;
+void nso_build_id(const nso_module *m,char out[33]) {for(int i=0;i<16;i++)snprintf(out+i*2,3,"%02x",m->build_id[i]);}
+uint64_t nso_call(nso_module *m,uint64_t off,uint64_t a0,uint64_t a1,uint64_t a2,uint64_t a3,uint64_t a4,uint64_t a5) {
+    if(off<m->text_lo || off>=m->text_hi || off%4) {fprintf(stderr,"[call-error] offset 0x%" PRIx64 " outside aligned text\n",off);exit(2);}
+    typedef uint64_t(*fn)(uint64_t,uint64_t,uint64_t,uint64_t,uint64_t,uint64_t);
+    return ((fn)(m->image+off))(a0,a1,a2,a3,a4,a5);
 }
-
-uint64_t nso_call(nso_module *m, uint64_t module_offset,
-                  uint64_t a0, uint64_t a1, uint64_t a2,
-                  uint64_t a3, uint64_t a4, uint64_t a5) {
-    typedef uint64_t (*fn_t)(uint64_t, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t);
-    fn_t fn = (fn_t)(m->image + module_offset);
-    return fn(a0, a1, a2, a3, a4, a5);
-}
-
 void nso_run_init(nso_module *m) {
-    if (!m || !m->image) return;
-    if (m->init_offset) {
-        printf("[init] calling DT_INIT at module offset 0x%" PRIx64 "\n", m->init_offset);
-        fflush(stdout);
-        typedef void (*init_fn_t)(void);
-        init_fn_t fn = (init_fn_t)(m->image + m->init_offset);
-        fn();
-        printf("[init] DT_INIT done\n");
-        fflush(stdout);
-    }
-    if (m->init_array_offset && m->init_array_size) {
-        typedef void (*init_fn_t)(void);
-        init_fn_t *arr = (init_fn_t *)(m->image + m->init_array_offset);
-        size_t count = m->init_array_size / sizeof(init_fn_t);
-        printf("[init] calling DT_INIT_ARRAY (%zu initializers at offset 0x%" PRIx64 ")\n",
-               count, m->init_array_offset);
-        fflush(stdout);
-        for (size_t i = 0; i < count; i++) {
-            if (arr[i]) {
-                uint64_t fn_off = (uint64_t)((const uint8_t *)arr[i] - m->image);
-                printf("[init] [%zu/%zu] init fn at 0x%" PRIx64 "\n", i, count, fn_off);
-                fflush(stdout);
-                arr[i]();
-            }
-        }
-        printf("[init] DT_INIT_ARRAY done\n");
-        fflush(stdout);
+    if(m->init_offset) {printf("[init] DT_INIT 0x%" PRIx64 "\n",m->init_offset);fflush(stdout);nso_call(m,m->init_offset,0,0,0,0,0,0);}
+    for(uint64_t k=0;k<m->init_array_size;k+=8) {
+        uint64_t addr=rd64(m->image+m->init_array_offset+k);
+        if(!addr || addr==UINT64_MAX)continue;
+        printf("[init] array[%" PRIu64 "] offset 0x%" PRIx64 "\n",k/8,addr-nso_base(m));fflush(stdout);
+        nso_call(m,addr-nso_base(m),0,0,0,0,0,0);
     }
 }
-
-/* ------------------------------------------------------------------ */
-/* fault trap handler                                                  */
-/* ------------------------------------------------------------------ */
-
-static nso_module *g_fault_module;
-
-static void fault_handler(int sig, siginfo_t *si, void *uc) {
-    uint64_t pc = 0, fa = 0;
+static nso_module *fault_module;
+static uintptr_t stack_lo,stack_hi;
+static unsigned char signal_stack[64*1024];
+static int sentinel_index(const uint8_t *base,size_t size,uint64_t addr) {
+    return addr>=(uintptr_t)base && addr-(uintptr_t)base<size?(int)((addr-(uintptr_t)base)/8):-1;
+}
+static void fault_handler(int sig,siginfo_t *si,void *context) {
+    ucontext_t *u=context;
+    uint64_t pc=0,lr=0,fp=0,sp=0,fa=si?(uintptr_t)si->si_addr:0,regs[29]={0};
 #if defined(__APPLE__)
-    ucontext_t *u = (ucontext_t *)uc;
-    pc = (uint64_t)u->uc_mcontext->__ss.__pc;
-    fa = si ? (uint64_t)si->si_addr : 0;
-#elif defined(__linux__)
-    ucontext_t *u = (ucontext_t *)uc;
-    pc = (uint64_t)u->uc_mcontext.gregs[REG_PC];
-    fa = (uint64_t)u->uc_mcontext.gregs[REG_SIGINFO];
-    if (si) fa = (uint64_t)si->si_addr;
+    pc=u->uc_mcontext->__ss.__pc;lr=u->uc_mcontext->__ss.__lr;fp=u->uc_mcontext->__ss.__fp;sp=u->uc_mcontext->__ss.__sp;
+    for(int i=0;i<29;i++)regs[i]=u->uc_mcontext->__ss.__x[i];
+#elif defined(__linux__) && defined(__aarch64__)
+    pc=u->uc_mcontext.pc;lr=u->uc_mcontext.regs[30];fp=u->uc_mcontext.regs[29];sp=u->uc_mcontext.sp;
+    for(int i=0;i<29;i++)regs[i]=u->uc_mcontext.regs[i];
 #endif
-    (void)si;
-    fprintf(stderr, "[fault] signal=%d pc=0x%llx fa=0x%llx", sig,
-            (unsigned long long)pc, (unsigned long long)fa);
-    if (g_fault_module && pc >= nso_base(g_fault_module) &&
-        pc < nso_base(g_fault_module) + g_fault_module->image_size)
-        fprintf(stderr, " module_offset=0x%llx",
-                (unsigned long long)(pc - nso_base(g_fault_module)));
-    fprintf(stderr, "\n");
-#if defined(__APPLE__)
-    for (int r = 0; r < 29; r += 4) {
-        fprintf(stderr, "  x%-2d=0x%016llx x%-2d=0x%016llx x%-2d=0x%016llx x%-2d=0x%016llx\n",
-                r, (unsigned long long)u->uc_mcontext->__ss.__x[r],
-                r+1, (unsigned long long)u->uc_mcontext->__ss.__x[r+1],
-                r+2, (unsigned long long)u->uc_mcontext->__ss.__x[r+2],
-                r+3, (unsigned long long)u->uc_mcontext->__ss.__x[r+3]);
+    nso_module *m=fault_module;
+    fprintf(stderr,"[fault] signal=%d pc=0x%" PRIx64 " fa=0x%" PRIx64,sig,pc,fa);
+    if(m && range(pc-nso_base(m),1,m->image_size))fprintf(stderr," module_offset=0x%" PRIx64,pc-nso_base(m));
+    fputc('\n',stderr);
+    if(m) {
+        int i=sentinel_index(m->import_traps,m->trap_size,pc);
+        if(i<0)i=sentinel_index(m->object_traps,m->trap_size,fa);
+        if(i>=0 && (uint32_t)i<m->sym_count)fprintf(stderr,"[unresolved-import] index=%d name=%s caller_offset=0x%" PRIx64 "\n",i,nso_symbol_name(m,(uint32_t)i),lr-nso_base(m));
     }
-    fprintf(stderr, "  fp =0x%016llx lr =0x%016llx sp =0x%016llx\n",
-            (unsigned long long)u->uc_mcontext->__ss.__fp,
-            (unsigned long long)u->uc_mcontext->__ss.__lr,
-            (unsigned long long)u->uc_mcontext->__ss.__sp);
-    uint64_t *frame = (uint64_t *)u->uc_mcontext->__ss.__fp;
-    for (int depth = 0; depth < 12 && frame; depth++) {
-        uint64_t ret_addr = frame[1];
-        if (g_fault_module && ret_addr >= nso_base(g_fault_module) &&
-            ret_addr < nso_base(g_fault_module) + g_fault_module->image_size) {
-            fprintf(stderr, "  frame #%d: 0x%016llx (module_offset=0x%llx)\n",
-                    depth, (unsigned long long)ret_addr,
-                    (unsigned long long)(ret_addr - nso_base(g_fault_module)));
-        } else {
-            fprintf(stderr, "  frame #%d: 0x%016llx\n", depth, (unsigned long long)ret_addr);
-        }
-        frame = (uint64_t *)frame[0];
+    for(int i=0;i<29;i++)fprintf(stderr," x%d=0x%" PRIx64 "%c",i,regs[i],i%4==3?'\n':' ');
+    fprintf(stderr,"\n fp=0x%" PRIx64 " lr=0x%" PRIx64 " sp=0x%" PRIx64 "\n",fp,lr,sp);
+    for(int depth=0;depth<16 && stack_hi>=16 && !(fp&15) && fp>=stack_lo && fp<=stack_hi-16;depth++) {
+        const uint64_t *frame=(const uint64_t*)(uintptr_t)fp;
+        uint64_t next=frame[0],ret=frame[1];
+        fprintf(stderr," frame[%d] return=0x%" PRIx64,depth,ret);
+        if(m && range(ret-nso_base(m),1,m->image_size))fprintf(stderr," module_offset=0x%" PRIx64,ret-nso_base(m));
+        fputc('\n',stderr);
+        if(next<=fp)break;
+        fp=next;
     }
-#endif
     fflush(stderr);
-    _exit(128 + sig);
+    _exit(128+sig);
 }
-
 void nso_install_fault_trap(nso_module *m) {
-    g_fault_module = m;
-    struct sigaction sa;
-    memset(&sa, 0, sizeof(sa));
-    sa.sa_sigaction = fault_handler;
-    sa.sa_flags = SA_SIGINFO;
-    sigaction(SIGSEGV, &sa, NULL);
-    sigaction(SIGBUS, &sa, NULL);
-    sigaction(SIGILL, &sa, NULL);
-    sigaction(SIGTRAP, &sa, NULL);
+    fault_module=m;
+#if defined(__APPLE__)
+    stack_hi=(uintptr_t)pthread_get_stackaddr_np(pthread_self());stack_lo=stack_hi-pthread_get_stacksize_np(pthread_self());
+#elif defined(__linux__)
+    pthread_attr_t attr;
+    if(!pthread_getattr_np(pthread_self(),&attr)) {void *addr;size_t size;if(!pthread_attr_getstack(&attr,&addr,&size)){stack_lo=(uintptr_t)addr;stack_hi=stack_lo+size;}pthread_attr_destroy(&attr);}
+#endif
+    stack_t ss={.ss_sp=signal_stack,.ss_size=sizeof(signal_stack),.ss_flags=0};
+    sigaltstack(&ss,NULL);
+    struct sigaction sa;memset(&sa,0,sizeof(sa));sigemptyset(&sa.sa_mask);sa.sa_sigaction=fault_handler;sa.sa_flags=SA_SIGINFO|SA_ONSTACK;
+    sigaction(SIGSEGV,&sa,NULL);sigaction(SIGBUS,&sa,NULL);sigaction(SIGILL,&sa,NULL);sigaction(SIGTRAP,&sa,NULL);
 }
-
-static int g_svc_verbose;
-static void svc_handler(int sig, siginfo_t *si, void *uc) {
-    (void)sig; (void)si; (void)uc;
-    if (g_svc_verbose) fprintf(stderr, "[svc] intercepted\n");
-}
-
 void nso_enable_svc_trap(int verbose) {
-    g_svc_verbose = verbose;
-    struct sigaction sa;
-    memset(&sa, 0, sizeof(sa));
-    sa.sa_sigaction = svc_handler;
-    sa.sa_flags = SA_SIGINFO;
-    sigaction(SIGILL, &sa, NULL);
+    /* Never resume an unsupported SVC: silently returning would loop forever. */
+    if(verbose)fprintf(stderr,"[svc] unsupported platform calls remain fatal; no SVC emulation installed\n");
 }

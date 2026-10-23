@@ -1,132 +1,79 @@
-/*
- * nso_call — invoke a function inside a loaded Switch NSO module natively.
- *
- * The module's own AArch64 code runs directly on the host CPU; this tool only
- * provides the platform surface the module expects (see nso_loader.c).
- *
- * Usage:
- *   nso_call <nso> --info
- *   nso_call <nso> --call <module_offset> [arg0 ... arg5]
- *   nso_call <nso> --symbol <name>        (call an exported symbol)
- */
 #include "nso_loader.h"
-
+#include <dlfcn.h>
+#include <errno.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-static uint64_t g_trap_calls;
-
-static uint64_t import_trap(uint32_t idx, const char *name,
-                            uint64_t a0, uint64_t a1, uint64_t a2,
-                            uint64_t a3, uint64_t a4, uint64_t a5) {
-    (void)a3; (void)a4; (void)a5;
-    g_trap_calls++;
-    if (!name) return 0;
-    if (!strcmp(name, "__cxa_guard_acquire")) {
-        uint8_t *guard = (uint8_t *)a0;
-        if (*guard) return 0;
-        return 1;
-    }
-    if (!strcmp(name, "__cxa_guard_release")) {
-        uint8_t *guard = (uint8_t *)a0;
-        *guard = 1;
-        return 0;
-    }
-    if (!strcmp(name, "memset")) {
-        return (uint64_t)memset((void *)a0, (int)a1, (size_t)a2);
-    }
-    if (!strcmp(name, "memcpy")) {
-        return (uint64_t)memcpy((void *)a0, (const void *)a1, (size_t)a2);
-    }
-    if (!strcmp(name, "memmove")) {
-        return (uint64_t)memmove((void *)a0, (const void *)a1, (size_t)a2);
-    }
-    if (!strcmp(name, "atexit")) {
-        return 0;
-    }
-    fprintf(stderr, "[import-trap] sym#%u %s(0x%" PRIx64 ", 0x%" PRIx64 ", 0x%" PRIx64 ")\n",
-            idx, name, a0, a1, a2);
+/* Keep host binding deliberately small. Matching a name alone does not establish
+ * C++ layout, Switch OS semantics, or macOS variadic ABI compatibility. */
+static uint64_t resolve_import(uint32_t index, const char *name) {
+    (void)index;
+    static const char *const compatible[] = {
+        "__cxa_guard_acquire", "__cxa_guard_release", "__cxa_guard_abort",
+        "memset", "memcpy", "memmove", "memcmp", "memchr",
+        "strlen", "strnlen", "strcmp", "strncmp", "strcpy", "strncpy",
+        "strchr", "strrchr", "strstr", "exit", "abort",
+        "nvnBootstrapLoader",
+        NULL
+    };
+    if(!strcmp(name,"stdout")) return (uintptr_t)&stdout;
+    if(!strcmp(name,"stderr")) return (uintptr_t)&stderr;
+    if(!strcmp(name,"stdin")) return (uintptr_t)&stdin;
+    for(size_t i=0;compatible[i];i++) if(!strcmp(name,compatible[i]))
+        return (uintptr_t)dlsym(RTLD_DEFAULT,name);
     return 0;
 }
-
-int main(int argc, char **argv) {
-    if (argc < 2) {
-        fprintf(stderr, "usage: %s <nso> --info|--call <off> [args]|--symbol <name>\n", argv[0]);
-        return 2;
+static int number(const char *s,uint64_t *out) {
+    char *end;errno=0;
+    if(!s || !*s || *s=='-')return 0;
+    unsigned long long v=strtoull(s,&end,0);
+    if(errno || *end)return 0;
+    *out=v;return 1;
+}
+static int usage(const char *program) {
+    fprintf(stderr,"usage: %s <uncompressed.nso> [--init] --info|--call <offset> [arg0 ... arg5]|--symbol <name> [args]\n",program);
+    return 2;
+}
+int main(int argc,char **argv) {
+    if(argc<3)return usage(argv[0]);
+    int next=2,init=0;
+    if(!strcmp(argv[next],"--init")) {init=1;next++;}
+    if(next>=argc)return usage(argv[0]);
+    const char *mode=argv[next++];
+    int info=!strcmp(mode,"--info"),by_symbol=!strcmp(mode,"--symbol"),by_offset=!strcmp(mode,"--call");
+    if(!info && !by_symbol && !by_offset)return usage(argv[0]);
+    const char *target=NULL;
+    uint64_t off=0,args[6]={0};
+    if(info) {if(next!=argc)return usage(argv[0]);}
+    else {
+        if(next>=argc)return usage(argv[0]);
+        target=argv[next++];
+        if(by_offset && !number(target,&off))return usage(argv[0]);
+        if(argc-next>6)return usage(argv[0]);
+        for(int i=0;next<argc;i++,next++)if(!number(argv[next],&args[i]))return usage(argv[0]);
     }
-    const char *path = argv[1];
-    char err[256] = {0};
-    nso_module *m = nso_load_file(path, import_trap, err, sizeof(err));
-    if (!m) {
-        fprintf(stderr, "load failed: %s\n", err);
-        return 1;
-    }
-
+    char err[256]={0};
+    nso_module *m=nso_load_file(argv[1],resolve_import,err,sizeof(err));
+    if(!m){fprintf(stderr,"load failed: %s\n",err);return 1;}
     nso_install_fault_trap(m);
-    char bid[33];
-    nso_build_id(m, bid);
-    printf("base          : 0x%" PRIx64 "\n", nso_base(m));
-    printf("build id      : %s\n", bid);
-    printf("imports       : %u\n", nso_import_count(m));
-    printf("relocations   : %" PRIu64 "\n", nso_reloc_count(m));
-    printf("relr          : %" PRIu64 "\n", nso_relr_count(m));
+    char bid[33];nso_build_id(m,bid);
+    printf("build id      : %s\nbase          : 0x%" PRIx64 "\nimports       : %u\nunresolved    : %u\nrelocations   : %" PRIu64 "\nrelr          : %" PRIu64 "\n",
+           bid,nso_base(m),nso_import_count(m),nso_unresolved_count(m),nso_reloc_count(m),nso_relr_count(m));
     fflush(stdout);
-
-    int arg_start = 2;
-    if (arg_start < argc && !strcmp(argv[arg_start], "--init")) {
-        printf("[init] executing .init and .init_array static constructors...\n");
-        fflush(stdout);
-        nso_run_init(m);
-        printf("[init] constructors finished.\n");
-        fflush(stdout);
-        arg_start++;
-    }
-
-    int rc = 0;
-    if (arg_start < argc && !strcmp(argv[arg_start], "--call")) {
-        if (arg_start + 1 >= argc) { fprintf(stderr, "--call needs an offset\n"); return 2; }
-        uint64_t off = strtoull(argv[arg_start + 1], NULL, 0);
-        uint64_t a[6] = {0};
-        for (int i = 0; i < 6 && arg_start + 2 + i < argc; i++) a[i] = strtoull(argv[arg_start + 2 + i], NULL, 0);
-        uint64_t r = nso_call(m, off, a[0], a[1], a[2], a[3], a[4], a[5]);
-        printf("result        : 0x%" PRIx64 "\n", r);
-    } else if (arg_start < argc && !strcmp(argv[arg_start], "--symbol")) {
-        if (arg_start + 1 >= argc) { fprintf(stderr, "--symbol needs a name\n"); return 2; }
-        const char *sym_name = argv[arg_start + 1];
-        uint32_t n = nso_find_symbol(m, sym_name);
-        if (!n) { fprintf(stderr, "symbol not found: %s\n", sym_name); rc = 1; }
-        else {
-            uint64_t off = nso_symbol_value(m, n);
-            printf("symbol index  : %u\n", n);
-            printf("module offset : 0x%" PRIx64 "\n", off);
-            if (off == UINT64_MAX) {
-                fprintf(stderr, "symbol is an import, not callable here\n");
-                rc = 1;
-            } else {
-                uint64_t p_ptr = *(uint64_t *)(nso_base(m) + 0x7767738);
-                uint64_t got_guard = *(uint64_t *)(nso_base(m) + 0x7772018);
-                printf("[debug] GOT[__cxa_guard_acquire] (0x7772018) = 0x%" PRIx64 "\n", got_guard);
-                printf("[debug] *0x7767738 = 0x%" PRIx64 " (relative: 0x%" PRIx64 ")\n",
-                       p_ptr, p_ptr - nso_base(m));
-                if (p_ptr >= nso_base(m) && p_ptr < nso_base(m) + 0xa000000) {
-                    uint64_t p_val = *(uint64_t *)p_ptr;
-                    printf("[debug] *(0x%" PRIx64 ") = 0x%" PRIx64 "\n", p_ptr - nso_base(m), p_val);
-                    if (p_val >= nso_base(m) && p_val < nso_base(m) + 0xa000000) {
-                        uint64_t vtable = *(uint64_t *)p_val;
-                        printf("[debug] **(0x%" PRIx64 ") = 0x%" PRIx64 "\n", p_ptr - nso_base(m), vtable);
-                    }
-                }
-                uint64_t a[6] = {0};
-                for (int i = 0; i < 6 && arg_start + 2 + i < argc; i++) a[i] = strtoull(argv[arg_start + 2 + i], NULL, 0);
-                uint64_t r = nso_call(m, off, a[0], a[1], a[2], a[3], a[4], a[5]);
-                printf("result        : 0x%" PRIx64 "\n", r);
+    if(init)nso_run_init(m);
+    int rc=0;
+    if(!info) {
+        if(by_symbol) {
+            uint32_t index=nso_find_symbol(m,target);
+            if(!index || (off=nso_symbol_value(m,index))==UINT64_MAX) {
+                fprintf(stderr,"defined symbol not found: %s\n",target);nso_free(m);return 1;
             }
         }
+        printf("[call] offset=0x%" PRIx64 "\n",off);fflush(stdout);
+        uint64_t result=nso_call(m,off,args[0],args[1],args[2],args[3],args[4],args[5]);
+        printf("result        : 0x%" PRIx64 "\n",result);
     }
-    printf("trap calls    : %" PRIu64 "\n", g_trap_calls);
-    fflush(stdout);
-    nso_free(m);
-    return rc;
+    nso_free(m);return rc;
 }

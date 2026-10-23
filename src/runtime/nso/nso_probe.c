@@ -159,8 +159,15 @@ int main(int argc, char **argv) {
     if (!g_file || fread(g_file, 1, g_size, f) != g_size) { fprintf(stderr, "read failed\n"); return 1; }
     fclose(f);
 
+    if (g_size < sizeof(H)) { fprintf(stderr, "file smaller than NSO header\n"); free(g_file); return 1; }
     memcpy(&H, g_file, sizeof(H));
     if (H.magic != NSO_MAGIC) { fprintf(stderr, "bad magic 0x%08x\n", H.magic); return 1; }
+    if (H.flags & 7) { fprintf(stderr, "compressed segments unsupported; supply uncompressed image\n"); free(g_file); return 1; }
+    for (int i = 0; i < 3; i++) {
+        if (H.seg[i].file_off > g_size || H.seg[i].size > g_size - H.seg[i].file_off) {
+            fprintf(stderr, "segment %d out of file range\n", i); free(g_file); return 1;
+        }
+    }
 
     printf("== NSO0 header ==\n");
     printf("file size        : %zu (0x%zx)\n", g_size, g_size);

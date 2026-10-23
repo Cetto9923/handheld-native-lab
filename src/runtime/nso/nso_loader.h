@@ -31,15 +31,16 @@ extern "C" {
 
 typedef struct nso_module nso_module;
 
-/* Import resolution callback. */
-typedef uint64_t (*nso_import_fn)(uint32_t symbol_index, const char *symbol_name,
-                                  uint64_t arg0, uint64_t arg1, uint64_t arg2,
-                                  uint64_t arg3, uint64_t arg4, uint64_t arg5);
+/* Return a correctly typed function/object address, or zero if unsupported.
+ * The loader never invokes target functions through this resolver signature.
+ * Unknown imports remain identifiable fault sentinels; they never return zero.
+ */
+typedef uint64_t (*nso_import_fn)(uint32_t symbol_index, const char *symbol_name);
 
 /*
  * Load an unpacked NSO0 image from disk.
- * `import_fn` may be NULL, in which case a default trap handler is used
- * that logs the symbol name and returns 0.
+ * Only uncompressed segments are accepted. A NULL resolver leaves all imports
+ * unresolved. Calling/reading one produces a named fatal diagnostic.
  */
 nso_module *nso_load_file(const char *path, nso_import_fn import_fn, char *errbuf, size_t errlen);
 
@@ -69,6 +70,10 @@ uint64_t nso_reloc_count(const nso_module *m);
 
 /* Number of DT_RELR relative relocations applied. */
 uint64_t nso_relr_count(const nso_module *m);
+
+/* Bound import statistics exclude ELF's mandatory null symbol. */
+uint32_t nso_unresolved_count(const nso_module *m);
+size_t nso_image_size(const nso_module *m);
 
 /* Build id as 32 hex characters (big-endian display order). */
 void nso_build_id(const nso_module *m, char out[33]);
