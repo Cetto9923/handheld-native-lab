@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "project": "ff-resonance-rg477m-native",
+  "updated_at": "2026-10-23T12:20:23+08:00",
+  "phase": "BOOTSTRAP_ONLY",
+  "coordinator": "Codex bootstrap (project setup only; Antigravity takeover pending)",
+  "integration_branch": "work/rg477m-native",
+  "update_mode": "event_driven_no_background_scheduler",
+  "active_writers": [],
+  "tasks": [
+    {
+      "id": "T00",
+      "role": "RE",
+      "status": "ready",
+      "dependencies": [],
+      "owner": null,
+      "branch": null,
+      "worktree": null,
+      "report": null
+    },
+    {
+      "id": "T01",
+      "role": "RE",
+      "status": "pending",
+      "dependencies": [
+        "T00"
+      ],
+      "owner": null,
+      "branch": null,
+      "worktree": null,
+      "report": null
+    },
+    {
+      "id": "T02",
+      "role": "CORE",
+      "status": "pending",
+      "dependencies": [
+        "T01"
+      ],
+      "owner": null,
+      "branch": null,
+      "worktree": null,
+      "report": null
+    },
+    {
+      "id": "T03A",
+      "role": "ANDROID",
+      "status": "pending",
+      "dependencies": [
+        "T00"
+      ],
+      "owner": null,
+      "branch": null,
+      "worktree": null,
+      "report": null
+    },
+    {
+      "id": "T03B",
+      "role": "ANDROID_QA",
+      "status": "pending",
+      "dependencies": [
+        "T03A"
+      ],
+      "owner": null,
+      "branch": null,
+      "worktree": null,
+      "report": null
+    },
+    {
+      "id": "T04",
+      "role": "CORE_ANDROID",
+      "status": "pending",
+      "dependencies": [
+        "T02",
+        "T03A"
+      ],
+      "owner": null,
+      "branch": null,
+      "worktree": null,
+      "report": null,
+      "pass_gates": [
+        "T03B"
+      ]
+    },
+    {
+      "id": "T05",
+      "role": "CORE_GPU",
+      "status": "pending",
+      "dependencies": [
+        "T04"
+      ],
+      "owner": null,
+      "branch": null,
+      "worktree": null,
+      "report": null
+    },
+    {
+      "id": "T06",
+      "role": "GPU_PERF",
+      "status": "pending",
+      "dependencies": [
+        "T05"
+      ],
+      "owner": null,
+      "branch": null,
+      "worktree": null,
+      "report": null
+    },
+    {
+      "id": "T07",
+      "role": "QA",
+      "status": "pending",
+      "dependencies": [
+        "T06"
+      ],
+      "owner": null,
+      "branch": null,
+      "worktree": null,
+      "report": null
+    }
+  ],
+  "blockers": [
+    "RG477M 真机尚未连接或验证；仅真机相关验收被此阻塞。",
+    "本游戏原生技术路线与内部代码/资源结构尚待 T00/T01 验证。"
+  ],
+  "verified": [
+    "协作项目初始化；此条不是游戏运行结果。",
+    "只读审查及复审通过；启动依赖与真机验收门禁分离，场景校验通过（不是游戏测试）。"
+  ],
+  "unverified": [
+    "游戏内部身份与引擎",
+    "本游戏原生样例",
+    "Android APK",
+    "RG477M 实际 Vulkan 能力",
+    "真机画面/输入/音频",
+    "帧率和45分钟稳定性"
+  ]
+}
