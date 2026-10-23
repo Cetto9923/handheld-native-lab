@@ -5,7 +5,10 @@
 #include "../../src/runtime/hle/guest_pages.h"
 #include "../../src/runtime/nso/native_boundary.h"
 #include <errno.h>
+#include <ctype.h>
+#include <wctype.h>
 #include <inttypes.h>
+#include <stdbool.h>
 #include <limits.h>
 #include <float.h>
 #include <math.h>
@@ -819,6 +822,208 @@ static int snprintf_contract(void) {
     puts("{\"snprintf_errors\":0,\"integers\":true,\"pointers\":true,\"strings\":true,\"floats\":true,\"length_modifiers\":true,\"truncation\":true,\"stack_arguments\":true,\"gateway_tested\":true}");
     return 0;
 }
+struct rwlock_test_thread_arg {
+    void *lock;
+    int phase;
+    int result;
+};
+static void *rwlock_test_thread(void *arg) {
+    struct rwlock_test_thread_arg *a = arg;
+    typedef bool (*try_acquire_fn)(void *);
+    typedef void (*release_fn)(void *);
+
+    release_fn rel_read = (release_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os15ReleaseReadLockEPNS0_20ReaderWriterLockTypeE");
+    try_acquire_fn try_write = (try_acquire_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os19TryAcquireWriteLockEPNS0_20ReaderWriterLockTypeE");
+    try_acquire_fn try_read = (try_acquire_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os18TryAcquireReadLockEPNS0_20ReaderWriterLockTypeE");
+
+    if (a->phase == 1) {
+        if (try_write(a->lock)) { a->result = 101; return NULL; }
+        if (try_read(a->lock)) { a->result = 102; return NULL; }
+        a->result = 0;
+    } else if (a->phase == 2) {
+        if (try_write(a->lock)) { a->result = 201; return NULL; }
+        if (!try_read(a->lock)) { a->result = 202; return NULL; }
+        rel_read(a->lock);
+        a->result = 0;
+    }
+    return NULL;
+}
+static int rwlock_contract(void) {
+    typedef void (*init_fn)(void *);
+    typedef void (*fini_fn)(void *);
+    typedef void (*acquire_fn)(void *);
+    typedef bool (*try_acquire_fn)(void *);
+    typedef void (*release_fn)(void *);
+    typedef bool (*query_fn)(const void *);
+
+    init_fn init = (init_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os26InitializeReaderWriterLockEPNS0_20ReaderWriterLockTypeE");
+    fini_fn fini = (fini_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os24FinalizeReaderWriterLockEPNS0_20ReaderWriterLockTypeE");
+    acquire_fn acq_read = (acquire_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os15AcquireReadLockEPNS0_20ReaderWriterLockTypeE");
+    release_fn rel_read = (release_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os15ReleaseReadLockEPNS0_20ReaderWriterLockTypeE");
+    acquire_fn acq_write = (acquire_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os16AcquireWriteLockEPNS0_20ReaderWriterLockTypeE");
+    try_acquire_fn try_write = (try_acquire_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os19TryAcquireWriteLockEPNS0_20ReaderWriterLockTypeE");
+    release_fn rel_write = (release_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os16ReleaseWriteLockEPNS0_20ReaderWriterLockTypeE");
+    query_fn is_owner = (query_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os29IsReaderWriterLockOwnerThreadEPKNS0_20ReaderWriterLockTypeE");
+    query_fn is_read_held = (query_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os14IsReadLockHeldEPKNS0_20ReaderWriterLockTypeE");
+
+    CHECK(init && fini && acq_read && rel_read && acq_write && try_write && rel_write && is_owner && is_read_held);
+
+    _Alignas(8) unsigned char lock[64];
+    memset(lock, 0, sizeof(lock));
+    init(lock);
+    CHECK(lock[0x10] == 1);
+    CHECK(!is_owner(lock));
+    CHECK(!is_read_held(lock));
+
+    /* 1. Test Write Lock */
+    acq_write(lock);
+    CHECK(is_owner(lock));
+    CHECK(*(uintptr_t*)(lock + 0x18) != 0);
+
+    /* Test concurrent exclusion from another thread */
+    pthread_t thread;
+    struct rwlock_test_thread_arg arg = { .lock = lock, .phase = 1, .result = -1 };
+    CHECK(pthread_create(&thread, NULL, rwlock_test_thread, &arg) == 0);
+    CHECK(pthread_join(thread, NULL) == 0);
+    CHECK(arg.result == 0);
+
+    rel_write(lock);
+    CHECK(!is_owner(lock));
+    CHECK(*(uintptr_t*)(lock + 0x18) == 0);
+
+    /* 2. Test Read Lock */
+    acq_read(lock);
+    CHECK(is_read_held(lock));
+    CHECK(!is_owner(lock));
+
+    arg.phase = 2;
+    arg.result = -1;
+    CHECK(pthread_create(&thread, NULL, rwlock_test_thread, &arg) == 0);
+    CHECK(pthread_join(thread, NULL) == 0);
+    CHECK(arg.result == 0);
+
+    rel_read(lock);
+    CHECK(!is_read_held(lock));
+
+    /* 3. Finalize */
+    fini(lock);
+    CHECK(lock[0x10] == 0);
+
+    puts("{\"rwlock_errors\":0,\"initialized\":true,\"write_exclusive\":true,\"read_shared\":true,\"owner_tracked\":true,\"finalized\":true}");
+    return 0;
+}
+static int uuid_contract(void) {
+    uint64_t target = guest_process_resolve(0, "_ZN2nn4util12GenerateUuidEv");
+    CHECK(target != 0);
+    typedef struct nn_uuid (*gen_fn)(void);
+    gen_fn generate = (gen_fn)(uintptr_t)target;
+    struct nn_uuid u1 = generate();
+    struct nn_uuid u2 = generate();
+    CHECK(u1.w0 != 0 || u1.w1 != 0);
+    CHECK(u2.w0 != 0 || u2.w1 != 0);
+    CHECK(u1.w0 != u2.w0 || u1.w1 != u2.w1);
+
+#if defined(__ANDROID__) && defined(__aarch64__)
+    nb_scope scope;
+    memset(&scope, 0, sizeof(scope));
+    CHECK(nb_scope_init(&scope) == NB_OK);
+    nb_import binding = {0};
+    nb_signature sig = {
+        .version = 1, .flags = NB_SIG_REGISTER_ONLY,
+        .gp_arguments = 0, .gp_returns = 2
+    };
+    CHECK(nb_import_bind(&binding, &scope, (void(*)(void))(uintptr_t)target, &sig) == NB_OK);
+    gen_fn gateway_gen = (gen_fn)nb_import_entry(&binding);
+    CHECK(gateway_gen != NULL);
+    scope.phase = 1;
+    struct nn_uuid gu1 = gateway_gen();
+    struct nn_uuid gu2 = gateway_gen();
+    CHECK(gu1.w0 != 0 || gu1.w1 != 0);
+    CHECK(gu2.w0 != 0 || gu2.w1 != 0);
+    CHECK(gu1.w0 != gu2.w0 || gu1.w1 != gu2.w1);
+    scope.phase = 0;
+    CHECK(nb_import_unbind(&binding) == NB_OK);
+    CHECK(nb_scope_close(&scope) == NB_OK);
+#endif
+
+    puts("{\"uuid_errors\":0,\"generated\":true,\"distinct\":true,\"two_gp_returns\":true,\"gateway_tested\":true}");
+    return 0;
+}
+static int time_contract(void) {
+    typedef uint32_t (*time_init_fn)(void);
+    typedef bool (*time_is_init_fn)(void);
+    typedef uint32_t (*get_time_fn)(int64_t *);
+    typedef uint32_t (*loc_fn)(struct nn_location_name *);
+    typedef int (*dow_fn)(int, int, int);
+
+    time_init_fn init = (time_init_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn4time10InitializeEv");
+    time_is_init_fn is_init = (time_is_init_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn4time13IsInitializedEv");
+    get_time_fn get_time = (get_time_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn4time23StandardUserSystemClock14GetCurrentTimeEPNS0_9PosixTimeE");
+    loc_fn get_loc = (loc_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn4time21GetDeviceLocationNameEPNS0_12LocationNameE");
+    dow_fn dow = (dow_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn4time12GetDayOfWeekEiii");
+    typedef uint32_t (*to_cal_fn)(struct nn_calendar_time *, struct nn_calendar_additional_info *, const int64_t *, const void *);
+    typedef uint64_t (*to_utc_fn)(const int64_t *);
+    to_cal_fn to_cal = (to_cal_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn4time14ToCalendarTimeEPNS0_12CalendarTimeEPNS0_22CalendarAdditionalInfoERKNS0_9PosixTimeERKNS0_12TimeZoneRuleE");
+    to_utc_fn to_utc = (to_utc_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn4time19ToCalendarTimeInUtcERKNS0_9PosixTimeE");
+
+    CHECK(init && is_init && get_time && get_loc && dow && to_cal && to_utc);
+    CHECK(init() == 0);
+    CHECK(is_init());
+
+    int64_t now = 0;
+    CHECK(get_time(&now) == 0 && now > 1700000000);
+
+    struct nn_location_name loc;
+    memset(&loc, 0, sizeof(loc));
+    CHECK(get_loc(&loc) == 0 && strlen(loc.name) > 0);
+
+    CHECK(dow(2026, 10, 24) == 6);
+
+    struct nn_calendar_time cal;
+    struct nn_calendar_additional_info info;
+    int64_t sample_time = 1700000000;
+    CHECK(to_cal(&cal, &info, &sample_time, NULL) == 0);
+    CHECK(cal.year == 2023 && cal.month == 11 && cal.day == 14 && cal.hour == 22 && cal.minute == 13 && cal.second == 20);
+    CHECK(info.day_of_week == 2);
+    uint64_t utc_val = to_utc(&sample_time);
+    struct nn_calendar_time *utc_cal = (struct nn_calendar_time *)&utc_val;
+    CHECK(utc_cal->year == 2023 && utc_cal->month == 11 && utc_cal->day == 14);
+
+    puts("{\"time_errors\":0,\"initialized\":true,\"current_time_valid\":true,\"location_name\":true,\"day_of_week\":true,\"to_calendar_time\":true,\"to_calendar_time_utc\":true}");
+    return 0;
+}
+static int tick_contract(void) {
+    typedef int64_t (*get_freq_fn)(void);
+    typedef int64_t (*get_tick_fn)(void);
+    get_freq_fn get_freq = (get_freq_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os22GetSystemTickFrequencyEv");
+    get_tick_fn get_tick = (get_tick_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os13GetSystemTickEv");
+    CHECK(get_freq && get_tick);
+    int64_t freq = get_freq();
+    CHECK(freq == 19200000LL);
+    int64_t t1 = get_tick();
+    CHECK(t1 > 0);
+    int64_t t2 = get_tick();
+    CHECK(t2 >= t1);
+    puts("{\"tick_errors\":0,\"frequency_19_2mhz\":true,\"ticks_monotonic\":true}");
+    return 0;
+}
+static int ctype_contract(void) {
+    typedef int (*iswxdigit_fn)(wint_t);
+    typedef int (*iswdigit_fn)(wint_t);
+    typedef int (*isspace_fn)(int);
+    typedef int (*tolower_fn)(int);
+    iswxdigit_fn fn_xdigit = (iswxdigit_fn)(uintptr_t)guest_process_resolve(0, "iswxdigit");
+    iswdigit_fn fn_digit = (iswdigit_fn)(uintptr_t)guest_process_resolve(0, "iswdigit");
+    isspace_fn fn_space = (isspace_fn)(uintptr_t)guest_process_resolve(0, "isspace");
+    tolower_fn fn_tolower = (tolower_fn)(uintptr_t)guest_process_resolve(0, "tolower");
+    CHECK(fn_xdigit && fn_digit && fn_space && fn_tolower);
+    CHECK(fn_xdigit(L'a') && fn_xdigit(L'F') && fn_xdigit(L'0') && !fn_xdigit(L'g'));
+    CHECK(fn_digit(L'5') && !fn_digit(L'a'));
+    CHECK(fn_space(' ') && fn_space('\t') && !fn_space('x'));
+    CHECK(fn_tolower('A') == 'a');
+    puts("{\"ctype_errors\":0,\"iswxdigit\":true,\"iswdigit\":true,\"isspace\":true,\"tolower\":true}");
+    return 0;
+}
 struct log_fixture_io {float input,output;uint64_t guest_x18;};
 _Static_assert(offsetof(struct log_fixture_io,output)==4 && offsetof(struct log_fixture_io,guest_x18)==8,"self-authored float fixture ABI");
 static void *exercise_logf_native(guest_process *p,void *opaque) {
@@ -1444,6 +1649,11 @@ int main(int argc,char **argv) {
     if(argc==3 && !strcmp(argv[1],"--tls-host-busy"))return tls_host_consumer_contract(argv[2],2);
     if(argc==3 && !strcmp(argv[1],"--tls-host-uninitialized"))return tls_host_consumer_contract(argv[2],-1);
     if(argc==2 && !strcmp(argv[1],"--snprintf"))return snprintf_contract();
+    if(argc==2 && !strcmp(argv[1],"--rwlock"))return rwlock_contract();
+    if(argc==2 && !strcmp(argv[1],"--uuid"))return uuid_contract();
+    if(argc==2 && !strcmp(argv[1],"--time"))return time_contract();
+    if(argc==2 && !strcmp(argv[1],"--tick"))return tick_contract();
+    if(argc==2 && !strcmp(argv[1],"--ctype"))return ctype_contract();
     if(argc==2 && !strcmp(argv[1],"--logf"))return logf_contract();
     if(argc==3 && !strcmp(argv[1],"--logf-native"))return logf_native_contract(argv[2]);
     if(argc==2 && !strcmp(argv[1],"--strcasecmp"))return strcasecmp_contract();

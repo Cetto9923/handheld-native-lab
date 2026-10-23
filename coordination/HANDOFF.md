@@ -1,44 +1,49 @@
-# Antigravity接力入口：变参 snprintf 桥接与逐构造函数执行记账验证
+# Antigravity接力入口：RWLock/Time/Tick/Wctype闭环与487项构造函数真机连跑实证
 
 本轮按用户指令推进方案 A（《最终幻想：共鸣》Switch→RG477M Android ARM64 原生移植），严格保护密钥与敏感数据，严禁FC27或无依据改动。
 最新进展：
-1. **AAPCS64 真实变参 `snprintf` 桥接已实现并在真机验证通过**：
-   - 彻底避免将 `snprintf` 当作标量六参或直接转换 `va_list` 指针。
-   - 实现专用网关 `nb_import_snprintf_gateway`：捕获调用方真实寄存器 `x3-x7`（GP）、`q0-q7`（FP）及调用方原始栈顶 `SP_guest`，组装合规的 32 字节 AAPCS64 `va_list` 结构体，由宿主 Bionic `vsnprintf` 执行格式化。
-   - 补充专用回归测试 `--snprintf`，在 RG477M 真机上通过测试：
-     `{"snprintf_errors":0,"integers":true,"pointers":true,"strings":true,"floats":true,"length_modifiers":true,"truncation":true,"stack_arguments":true,"gateway_tested":true}`。
-2. **逐模块、逐构造函数执行记账已实施**：
-   - 在 `nso_call.c` 中为 1,890 项构造函数布置透明追踪跳板（trampoline table），逐项输出 `[ctor-start] idx=...` 与 `[ctor-done] idx=...`。
-   - 真机 `--boot` 实测证明：构造函数 0 至 7 按真实顺序完整执行，无跳漏、无重复执行！
-     - 构造函数 0 (`+0x25d60`) 执行完成；
-     - 构造函数 1 (`+0x70`) 执行完成（原真实调用 `strtol` 与 `snprintf` 均成功返回，`FMallocBinned3` 堆映射完成）；
-     - 构造函数 2 至 5 全部顺利执行完毕；
-     - 构造函数 6 (`+0x38620`) 经新增 `finite` 绑定顺利执行完成；
-     - 构造函数 7 (`+0x6bdf0`) 顺利执行完成，累积登记 72 个 `atexit` 回调；
-     - 构造函数 8 (`+0x5c4d0`) 启动并登记第 73 个回调，遇到首个真实阻塞。
-3. **首个真实阻塞点确定**：
-   - 未绑定导入项 `index=163 name=_ZN2nn2os26InitializeReaderWriterLockEPNS0_20ReaderWriterLockTypeE` (`caller_offset=0x119e74`)，退出码 133。
-4. **未完成项明确标注**：
+1. **ReaderWriterLock (RWLock) HLE 全族接线完成并在真机验证通过**：
+   - 完整实现 `InitializeReaderWriterLock`, `FinalizeReaderWriterLock`, `AcquireReadLock`, `TryAcquireReadLock`, `ReleaseReadLock`, `AcquireWriteLock`, `TryAcquireWriteLock`, `ReleaseWriteLock`, `IsWriteLockHeldByCurrentThread`, `IsReadLockHeld`, `IsReaderWriterLockOwnerThread`。
+   - 镜像同步 `ReaderWriterLockType` 内部字段（`+0x04` readers, `+0x0c` write_depth, `+0x10` init_flag, `+0x18` write_owner_token）。
+   - 补充专用回归测试 `--rwlock`，在 RG477M 真机上通过测试：
+     `{"rwlock_errors":0,"initialized":true,"write_exclusive":true,"read_shared":true,"owner_tracked":true,"finalized":true}`。
+2. **`nn::time`、SystemTick 与 C99/wctype 系列导入项补齐并验证**：
+   - 补齐 `ToCalendarTime`、`ToCalendarTimeInUtc`、`GetDeviceLocationName`、`LoadTimeZoneRule`、`GetDayOfWeek`，真机 `--time` PASS：
+     `{"time_errors":0,"initialized":true,"current_time_valid":true,"location_name":true,"day_of_week":true,"to_calendar_time":true,"to_calendar_time_utc":true}`。
+   - 补齐 `GetSystemTickFrequency`（Switch 硬件标准 19.2MHz / `19200000ULL`）与 `GetSystemTick`（基于 `CLOCK_MONOTONIC` 精确缩放），真机 `--tick` PASS：
+     `{"tick_errors":0,"frequency_19_2mhz":true,"ticks_monotonic":true}`。
+   - 补齐 `iswxdigit`, `iswdigit`, `iswspace`, `iswalnum`, `iswalpha`, `iswlower`, `iswupper`, `isspace`, `isalpha`, `tolower`，真机 `--ctype` PASS：
+     `{"ctype_errors":0,"iswxdigit":true,"iswdigit":true,"isspace":true,"tolower":true}`。
+3. **逐模块、逐构造函数执行记账重大突破：从 idx=8 推进至 idx=487**：
+   - 真机 `--boot` 实测证明：**构造函数 0 至 486（共 487 项构造函数）按真实顺序完整执行完毕，无跳漏、无重复执行！**
+   - 累积登记 2,366 个 `atexit` 回调；完成多轮大块虚拟内存映射与分配器注册；
+   - 构造函数 487 (`idx=487/1890 off=0x1478c60`) 启动并执行至 caller `0x1484494`。
+4. **最新真实阻塞点确定**：
+   - 未绑定导入项 `index=150 name=_ZTHN13LowLevelTasks5FTask10ActiveTaskE`（caller_offset=0x1484494），退出码 133。
+   - 反汇编实证：`0x148448c cbz x8, 0x1484494` 检测 weak 导入 `_ZTH` 是否为空，紧接着在 `0x14844a4` 执行 `mrs x8, tpidr_el0` 并读取 `[x8, #0x238]`（UE5 LowLevelTasks 线程局部变量）。
+   - 此阻塞点恰好精准接合工单 `P-CC-1`（原生 TP 隔离 / 逐线程 thread_local 读取适配）。
+5. **未完成项明确标注**：
    - `ProtectRelro` 当前仍为桩函数日志记录，**未真正实施页面写保护，仍列未完成**；
-   - 逐线程 TP 隔离仍列未完成（仅主线程分配了模板镜像，`TPIDR_EL0` 仍由宿主维护）。
+   - 逐线程 TP 隔离与 guest `TPIDR_EL0` 适配仍列未完成，为下一阶段主入口。
 
 ## 先读这些
 
 - [可直接复制的完整接力提词](ANTIGRAVITY_PROMPT.md)；[当前证据索引](../docs/analysis/codex_handoff_evidence_index.md)；[所有工作树绝对路径/分支/SHA/WIP快照](WORKTREES.json)。先读本仓库 AGENTS.md，实核 Git 与 writer 后再接手。
 - 根交付路径 `/Users/yuyan9923/GitHub/ff-resonance-rg477m-native`，当前主分支 `work/rg477m-native`。
-- 本地检查点基线 `b827fc5`。当前 Antigravity 为唯一根总控与独占写入者。
+- 本地检查点基线 `1bcf655`。当前 Antigravity 为唯一根总控与独占写入者。
 - 严禁打印、记录或提交任何游戏密钥与加密素材，所有大型原始二进制留在 `.local/`。
+- 本次 `--boot` 完整原始运行日志已留盘：`.local/logs/rg477m-boot-v16-ctor487.log` (237KB, exitcode 133)。
 
 ## 最新真实结果
 
 | 范围 | 证据与边界 |
 |---|---|
-| **变参 `snprintf` 桥接** | **已实现并真机通过**：`nb_import_snprintf_gateway` 解析 `x3-x7`、`q0-q7` 与栈参数，组装 AAPCS64 `va_list` 传给 Bionic `vsnprintf`。真机 contracts `--snprintf` 输出 0 错误全部 PASS。构造函数 1 中的真实 `snprintf` 调用正常通过。 |
-| **逐构造函数记账** | **已实现并在 RG477M 实测实证**：1890 项跳板追踪就绪。已实测证明 idx 0~7 共 8 个构造函数顺序执行完成，无漏执行、无重复执行。 |
-| **浮点辅助 `finite`** | **已实现并真机通过**：`NB_SIG_REGISTER_ONLY`（1 FP arg `d0`，1 GP return `w0`），解除了构造函数 6 的阻塞。 |
-| **首个真实阻塞** | **明确归因**：构造函数 8 调用的 `_ZN2nn2os26InitializeReaderWriterLockEPNS0_20ReaderWriterLockTypeE`（import 163, caller 0x119e74）。 |
+| **RWLock HLE 全族** | **已实现并真机通过**：`Initialize/Finalize/Acquire/Release/Try/Is*` 完整闭环，多线程排他/共享锁验证通过。真机 contracts `--rwlock` 输出 0 错误全部 PASS。构造函数 8 中的真实 RWLock 调用顺利通过。 |
+| **逐构造函数记账** | **重大进展**：已实测实证 idx 0~486 共 487 项构造函数连续顺序执行完成，累积登记 2366 项 atexit 回调。 |
+| **时间与计时辅助** | **已实现并真机通过**：`nn::time` 全族（ToCalendarTime/InUtc 等）、19.2MHz `GetSystemTickFrequency` / `GetSystemTick`、`wctype/ctype` 辅助全部真机 PASS。 |
+| **最新真实阻塞** | **明确归因**：构造函数 487 调用的 `_ZTHN13LowLevelTasks5FTask10ActiveTaskE`（import 150, caller 0x1484494），紧跟 `MRS TPIDR_EL0` + offset `0x238`。 |
 | **ProtectRelro 状态** | **明确标注未完成**：当前为打印桩，未实施 mprotect 保护，不计入闭环语义。 |
-| **逐线程 TP 状态** | **明确标注未完成**：主线程分配了静态镜像，但未实施线程上下文与 TP 切换隔离。 |
+| **逐线程 TP 状态** | **明确标注未完成**：主线程分配了静态镜像，但未实施线程上下文与 TP 切换隔离（工单 P-CC-1 对口领域）。 |
 | 106/110 与原 startup | 已编译并在 RG 验证：`nninitStartup` 空/带参均正常返回，真实 OS slot 0 析构完成。 |
 | 原游戏分配器 | `--startup-allocator`：startup 后 48/64B alloc/free 双对测试在 RG477M 通过。全局分配器单例 `0x77c5210` 现已由 `nninitStartup` 构造就绪。 |
 | 图形/设备 | LAS MIT 命令记录/typed Vulkan transfer 实际 Mali copy/clear 零差异；待推进 NVN 接口层与着色器转化。 |

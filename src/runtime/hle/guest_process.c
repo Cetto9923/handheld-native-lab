@@ -11,6 +11,8 @@
 #include "exit_registry.h"
 #include "nso_host.h"
 #include <errno.h>
+#include <ctype.h>
+#include <wctype.h>
 #include <inttypes.h>
 #include <limits.h>
 #include <math.h>
@@ -878,6 +880,9 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
     PURE(strlen);PURE(strnlen);PURE(strcmp);PURE(strncmp);PURE(strcpy);PURE(strncpy);
     PURE(strchr);PURE(strrchr);PURE(strstr);
     PURE(strtol);
+    PURE(iswdigit);PURE(isspace);PURE(iswupper);PURE(iswspace);
+    PURE(iswalnum);PURE(iswxdigit);PURE(iswalpha);PURE(iswlower);
+    PURE(isalpha);PURE(tolower);
     if(!strcmp(name,"finite"))return (uintptr_t)&guest_finite;
     if(!strcmp(name,"snprintf"))return (uintptr_t)&vsnprintf;
     PURE(logf); /* Standard float(float), current original caller uses s0. */
@@ -917,6 +922,29 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
         "_ZN2nn2os12TryLockMutexEPNS0_9MutexTypeE","nnosTryLockMutex",
         "_ZN2nn2os11UnlockMutexEPNS0_9MutexTypeE","nnosUnlockMutex",
         "_ZN2nn2os28IsMutexLockedByCurrentThreadEPKNS0_9MutexTypeE",
+        "_ZN2nn2os26InitializeReaderWriterLockEPNS0_20ReaderWriterLockTypeE","nnosInitializeReaderWriterLock",
+        "_ZN2nn2os24FinalizeReaderWriterLockEPNS0_20ReaderWriterLockTypeE","nnosFinalizeReaderWriterLock",
+        "_ZN2nn2os15AcquireReadLockEPNS0_20ReaderWriterLockTypeE","nnosAcquireReadLock",
+        "_ZN2nn2os18TryAcquireReadLockEPNS0_20ReaderWriterLockTypeE","nnosTryAcquireReadLock",
+        "_ZN2nn2os15ReleaseReadLockEPNS0_20ReaderWriterLockTypeE","nnosReleaseReadLock",
+        "_ZN2nn2os16AcquireWriteLockEPNS0_20ReaderWriterLockTypeE","nnosAcquireWriteLock",
+        "_ZN2nn2os19TryAcquireWriteLockEPNS0_20ReaderWriterLockTypeE","nnosTryAcquireWriteLock",
+        "_ZN2nn2os16ReleaseWriteLockEPNS0_20ReaderWriterLockTypeE","nnosReleaseWriteLock",
+        "_ZN2nn2os30IsWriteLockHeldByCurrentThreadEPKNS0_20ReaderWriterLockTypeE",
+        "_ZN2nn2os35IsWriteLockHeldByCurrentThreadEPKNS0_20ReaderWriterLockTypeE",
+        "_ZN2nn2os29IsReaderWriterLockOwnerThreadEPKNS0_20ReaderWriterLockTypeE",
+        "_ZN2nn2os14IsReadLockHeldEPKNS0_20ReaderWriterLockTypeE",
+        "_ZN2nn4util12GenerateUuidEv",
+        "_ZN2nn4time10InitializeEv",
+        "_ZN2nn4time13IsInitializedEv",
+        "_ZN2nn4time23StandardUserSystemClock14GetCurrentTimeEPNS0_9PosixTimeE",
+        "_ZN2nn4time21GetDeviceLocationNameEPNS0_12LocationNameE",
+        "_ZN2nn4time16LoadTimeZoneRuleEPNS0_12TimeZoneRuleERKNS0_12LocationNameE",
+        "_ZN2nn4time14ToCalendarTimeEPNS0_12CalendarTimeEPNS0_22CalendarAdditionalInfoERKNS0_9PosixTimeERKNS0_12TimeZoneRuleE",
+        "_ZN2nn4time19ToCalendarTimeInUtcERKNS0_9PosixTimeE",
+        "_ZN2nn4time12GetDayOfWeekEiii",
+        "_ZN2nn2os22GetSystemTickFrequencyEv","nnosGetSystemTickFrequency",
+        "_ZN2nn2os13GetSystemTickEv","nnosGetSystemTick",
         /* Registration is safe; finalize/exit can invoke guest callbacks and
          * require a separately supported callback/reentry boundary. */
         "atexit","__cxa_atexit","_Exit","_exit",NULL};
@@ -936,21 +964,44 @@ static int import_signature(const char *name,nb_signature *out) {
     unsigned arguments=0,returns=1;
     static const char *const one[]={"strlen","__cxa_guard_acquire","atexit","_ZN2nn2os11GetTlsValueENS0_7TlsSlotE",
         "_ZN2nn2os17FreeAddressRegionEm","_ZN2nn2os12TryLockMutexEPNS0_9MutexTypeE",
-        "nnosTryLockMutex","_ZN2nn2os28IsMutexLockedByCurrentThreadEPKNS0_9MutexTypeE",NULL};
+        "nnosTryLockMutex","_ZN2nn2os28IsMutexLockedByCurrentThreadEPKNS0_9MutexTypeE",
+        "_ZN2nn2os19TryAcquireWriteLockEPNS0_20ReaderWriterLockTypeE","nnosTryAcquireWriteLock",
+        "_ZN2nn2os18TryAcquireReadLockEPNS0_20ReaderWriterLockTypeE","nnosTryAcquireReadLock",
+        "_ZN2nn2os30IsWriteLockHeldByCurrentThreadEPKNS0_20ReaderWriterLockTypeE",
+        "_ZN2nn2os35IsWriteLockHeldByCurrentThreadEPKNS0_20ReaderWriterLockTypeE",
+        "_ZN2nn2os29IsReaderWriterLockOwnerThreadEPKNS0_20ReaderWriterLockTypeE",
+        "_ZN2nn2os14IsReadLockHeldEPKNS0_20ReaderWriterLockTypeE",
+        "_ZN2nn4time23StandardUserSystemClock14GetCurrentTimeEPNS0_9PosixTimeE",
+        "_ZN2nn4time19ToCalendarTimeInUtcERKNS0_9PosixTimeE",
+        "_ZN2nn4time21GetDeviceLocationNameEPNS0_12LocationNameE",
+        "iswdigit","isspace","iswupper","iswspace","iswalnum","iswxdigit",
+        "iswalpha","iswlower","isalpha","tolower",NULL};
     static const char *const two[]={"strnlen","strcmp","strcasecmp","strcpy","strchr","strrchr","strstr","_ZN2nn2os15AllocateTlsSlotEPNS0_7TlsSlotEPFvmE",
-        "_ZN2nn2os21AllocateAddressRegionEPmm","_ZN2nn2os19AllocateMemoryPagesEmm","_ZN2nn2os15FreeMemoryPagesEmm",NULL};
-    static const char *const three[]={"memset","memcpy","memmove","memcmp","memchr","strncmp","strncpy","__cxa_atexit","strtol",NULL};
+        "_ZN2nn2os21AllocateAddressRegionEPmm","_ZN2nn2os19AllocateMemoryPagesEmm","_ZN2nn2os15FreeMemoryPagesEmm",
+        "_ZN2nn4time16LoadTimeZoneRuleEPNS0_12TimeZoneRuleERKNS0_12LocationNameE",NULL};
+    static const char *const three[]={"memset","memcpy","memmove","memcmp","memchr","strncmp","strncpy","__cxa_atexit","strtol",
+        "_ZN2nn4time12GetDayOfWeekEiii",NULL};
     static const char *const void_one[]={"__cxa_guard_release","__cxa_guard_abort","_Exit","_exit","_ZN2nn2os11FreeTlsSlotENS0_7TlsSlotE",
         "_ZN2nn2os15QueryMemoryInfoEPNS0_10MemoryInfoE","_ZN2nn4util11ReferSymbolEPKv","nnutilReferSymbol",
         "_ZN2nn2os13FinalizeMutexEPNS0_9MutexTypeE","nnosFinalizeMutex",
         "_ZN2nn2os9LockMutexEPNS0_9MutexTypeE","nnosLockMutex",
-        "_ZN2nn2os11UnlockMutexEPNS0_9MutexTypeE","nnosUnlockMutex",NULL};
+        "_ZN2nn2os11UnlockMutexEPNS0_9MutexTypeE","nnosUnlockMutex",
+        "_ZN2nn2os26InitializeReaderWriterLockEPNS0_20ReaderWriterLockTypeE","nnosInitializeReaderWriterLock",
+        "_ZN2nn2os24FinalizeReaderWriterLockEPNS0_20ReaderWriterLockTypeE","nnosFinalizeReaderWriterLock",
+        "_ZN2nn2os15AcquireReadLockEPNS0_20ReaderWriterLockTypeE","nnosAcquireReadLock",
+        "_ZN2nn2os15ReleaseReadLockEPNS0_20ReaderWriterLockTypeE","nnosReleaseReadLock",
+        "_ZN2nn2os16AcquireWriteLockEPNS0_20ReaderWriterLockTypeE","nnosAcquireWriteLock",
+        "_ZN2nn2os16ReleaseWriteLockEPNS0_20ReaderWriterLockTypeE","nnosReleaseWriteLock",NULL};
     const char *const *lists[]={one,two,three,void_one};
     for(unsigned group=0;group<4;group++)for(size_t i=0;lists[group][i];i++)if(!strcmp(name,lists[group][i])) {
         arguments=group==3?1:group+1;returns=group==3?0:1;goto found;
     }
     if(!strcmp(name,"_ZN2nn2os29IsVirtualAddressMemoryEnabledEv")) {arguments=0;returns=1;}
-    else if(!strcmp(name,"strncasecmp_l")) {arguments=4;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2os22GetSystemTickFrequencyEv") || !strcmp(name,"nnosGetSystemTickFrequency") ||
+            !strcmp(name,"_ZN2nn2os13GetSystemTickEv") || !strcmp(name,"nnosGetSystemTick")) {arguments=0;returns=1;}
+    else if(!strcmp(name,"_ZN2nn4time10InitializeEv") || !strcmp(name,"_ZN2nn4time13IsInitializedEv")) {arguments=0;returns=1;}
+    else if(!strcmp(name,"_ZN2nn4util12GenerateUuidEv")) {arguments=0;returns=2;}
+    else if(!strcmp(name,"strncasecmp_l") || !strcmp(name,"_ZN2nn4time14ToCalendarTimeEPNS0_12CalendarTimeEPNS0_22CalendarAdditionalInfoERKNS0_9PosixTimeERKNS0_12TimeZoneRuleE")) {arguments=4;returns=1;}
     else if(!strcmp(name,"_ZN2nn2os36GetVirtualAddressMemoryResourceUsageEv")) {arguments=0;returns=2;}
     else if(!strcmp(name,"_ZN2nn2ro12ProtectRelroEPKvS2_S2_S2_S2_")) {arguments=5;returns=0;}
     else if(!strcmp(name,"_ZN2nn2os15InitializeMutexEPNS0_9MutexTypeEbi") || !strcmp(name,"nnosInitializeMutex")) {arguments=3;returns=0;}

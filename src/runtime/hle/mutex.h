@@ -12,4 +12,16 @@ bool nso_host_try_lock_mutex(void *object);
 void nso_host_unlock_mutex(void *object);
 bool nso_host_is_mutex_locked_by_current_thread(const void *object);
 uintptr_t nso_host_mutex_thread_token(void);
+
+void nso_host_initialize_rwlock(void *object);
+void nso_host_finalize_rwlock(void *object);
+void nso_host_acquire_read_lock(void *object);
+bool nso_host_try_acquire_read_lock(void *object);
+void nso_host_release_read_lock(void *object);
+void nso_host_acquire_write_lock(void *object);
+bool nso_host_try_acquire_write_lock(void *object);
+void nso_host_release_write_lock(void *object);
+bool nso_host_is_write_lock_held_by_current_thread(const void *object);
+bool nso_host_is_read_lock_held(const void *object);
+bool nso_host_is_rwlock_owner_thread(const void *object);
 #endif

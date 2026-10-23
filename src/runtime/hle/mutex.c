@@ -60,9 +60,31 @@ static struct mutex_entry *find(void *object) {
     return e;
 }
 static struct mutex_entry *borrow(void *object) {
+    if(!object || ((uintptr_t)object & 7)) fatal("unaligned MutexType", EINVAL);
     pthread_mutex_lock(&registry_mutex);
     struct mutex_entry *e=find(object);
-    if(!e)fatal("unregistered MutexType",EINVAL);
+    if(!e) {
+        unsigned char *b = (unsigned char *)object;
+        if(b[0] == 1) {
+            /* Statically-initialized MutexType (NN_OS_MUTEX_INITIALIZER) */
+            bool recursive = b[1] != 0;
+            e = calloc(1, sizeof(*e));
+            if(!e) fatal("mutex allocation", ENOMEM);
+            pthread_mutexattr_t attr;
+            int error = pthread_mutexattr_init(&attr);
+            if(error) fatal("pthread_mutexattr_init", error);
+            error = pthread_mutexattr_settype(&attr, recursive ? PTHREAD_MUTEX_RECURSIVE : PTHREAD_MUTEX_NORMAL);
+            if(error) fatal("pthread_mutexattr_settype", error);
+            error = pthread_mutex_init(&e->native, &attr);
+            pthread_mutexattr_destroy(&attr);
+            if(error) fatal("pthread_mutex_init", error);
+            e->object = object;
+            e->next = registry;
+            registry = e;
+        } else {
+            fatal("unregistered MutexType", EINVAL);
+        }
+    }
     e->users++;
     pthread_mutex_unlock(&registry_mutex);
     return e;
@@ -100,10 +122,20 @@ void nso_host_initialize_mutex(void *object,bool recursive,int level) {
     pthread_mutex_unlock(&registry_mutex);
 }
 void nso_host_finalize_mutex(void *object) {
+    if(!object || ((uintptr_t)object & 7)) fatal("unaligned MutexType", EINVAL);
     pthread_mutex_lock(&registry_mutex);
     struct mutex_entry **slot=&registry;
     while(*slot && (*slot)->object!=object)slot=&(*slot)->next;
-    if(!*slot || (*slot)->users || (*slot)->depth)fatal("FinalizeMutex while active/unregistered",EBUSY);
+    if(!*slot) {
+        unsigned char *b = (unsigned char *)object;
+        if(b && b[0] == 1) {
+            b[0] = 0;
+            pthread_mutex_unlock(&registry_mutex);
+            return;
+        }
+        fatal("FinalizeMutex while active/unregistered",EBUSY);
+    }
+    if((*slot)->users || (*slot)->depth)fatal("FinalizeMutex while active/unregistered",EBUSY);
     struct mutex_entry *e=*slot;
     int error=pthread_mutex_destroy(&e->native);
     if(error)fatal("pthread_mutex_destroy",error);
@@ -156,4 +188,207 @@ bool nso_host_is_mutex_locked_by_current_thread(const void *object) {
     e->users--;
     pthread_mutex_unlock(&registry_mutex);
     return owned;
+}
+
+struct rwlock_entry {
+    void *object;
+    pthread_rwlock_t native;
+    uint32_t write_owner_handle;
+    uintptr_t write_owner_token;
+    uint32_t write_depth;
+    uint32_t read_count;
+    uint32_t users;
+    struct rwlock_entry *next;
+};
+static pthread_mutex_t rwlock_registry_mutex = PTHREAD_MUTEX_INITIALIZER;
+static struct rwlock_entry *rwlock_registry = NULL;
+
+static struct rwlock_entry *find_rwlock(void *object) {
+    struct rwlock_entry *e = rwlock_registry;
+    while(e && e->object != object) e = e->next;
+    return e;
+}
+
+static struct rwlock_entry *borrow_rwlock(void *object) {
+    if(!object || ((uintptr_t)object & 7)) fatal("unaligned ReaderWriterLockType", EINVAL);
+    pthread_mutex_lock(&rwlock_registry_mutex);
+    struct rwlock_entry *e = find_rwlock(object);
+    if(!e) {
+        unsigned char *bytes = (unsigned char *)object;
+        if(bytes[0x10] == 1) {
+            e = calloc(1, sizeof(*e));
+            if(!e) fatal("rwlock allocation", ENOMEM);
+            int error = pthread_rwlock_init(&e->native, NULL);
+            if(error) fatal("pthread_rwlock_init", error);
+            e->object = object;
+            e->next = rwlock_registry;
+            rwlock_registry = e;
+        } else {
+            fatal("unregistered ReaderWriterLockType", EINVAL);
+        }
+    }
+    e->users++;
+    pthread_mutex_unlock(&rwlock_registry_mutex);
+    return e;
+}
+
+static void mirror_rwlock(struct rwlock_entry *e) {
+    __atomic_store_n((uintptr_t*)((unsigned char*)e->object + 0x18), e->write_owner_token, __ATOMIC_RELEASE);
+    __atomic_store_n((uint32_t*)((unsigned char*)e->object + 0x0c), e->write_depth, __ATOMIC_RELAXED);
+    __atomic_store_n((uint32_t*)((unsigned char*)e->object + 0x04), e->read_count, __ATOMIC_RELAXED);
+}
+
+void nso_host_initialize_rwlock(void *object) {
+    if(!object || ((uintptr_t)object & 7)) fatal("unaligned ReaderWriterLockType", EINVAL);
+    struct rwlock_entry *e = calloc(1, sizeof(*e));
+    if(!e) fatal("rwlock allocation", ENOMEM);
+    int error = pthread_rwlock_init(&e->native, NULL);
+    if(error) fatal("pthread_rwlock_init", error);
+    e->object = object;
+    pthread_mutex_lock(&rwlock_registry_mutex);
+    if(find_rwlock(object)) fatal("duplicate InitializeReaderWriterLock", EINVAL);
+    e->next = rwlock_registry;
+    rwlock_registry = e;
+    unsigned char *bytes = object;
+    bytes[0x10] = 1;
+    *(uintptr_t *)(bytes + 0x18) = 0;
+    *(uint32_t *)(bytes + 0x0c) = 0;
+    *(uint32_t *)(bytes + 0x20) = 0;
+    pthread_mutex_unlock(&rwlock_registry_mutex);
+}
+
+void nso_host_finalize_rwlock(void *object) {
+    if(!object || ((uintptr_t)object & 7)) fatal("unaligned ReaderWriterLockType", EINVAL);
+    pthread_mutex_lock(&rwlock_registry_mutex);
+    struct rwlock_entry **slot = &rwlock_registry;
+    while(*slot && (*slot)->object != object) slot = &(*slot)->next;
+    if(!*slot) {
+        unsigned char *b = (unsigned char *)object;
+        if(b && b[0x10] == 1) {
+            b[0x10] = 0;
+            pthread_mutex_unlock(&rwlock_registry_mutex);
+            return;
+        }
+        fatal("FinalizeReaderWriterLock while active/unregistered", EBUSY);
+    }
+    if((*slot)->users || (*slot)->write_depth || (*slot)->read_count)
+        fatal("FinalizeReaderWriterLock while active/unregistered", EBUSY);
+    struct rwlock_entry *e = *slot;
+    int error = pthread_rwlock_destroy(&e->native);
+    if(error) fatal("pthread_rwlock_destroy", error);
+    ((unsigned char *)object)[0x10] = 0;
+    *slot = e->next;
+    pthread_mutex_unlock(&rwlock_registry_mutex);
+    free(e);
+}
+
+void nso_host_acquire_read_lock(void *object) {
+    struct rwlock_entry *e = borrow_rwlock(object);
+    int error = pthread_rwlock_rdlock(&e->native);
+    if(error) fatal("pthread_rwlock_rdlock", error);
+    pthread_mutex_lock(&rwlock_registry_mutex);
+    e->read_count++;
+    mirror_rwlock(e);
+    e->users--;
+    pthread_mutex_unlock(&rwlock_registry_mutex);
+}
+
+bool nso_host_try_acquire_read_lock(void *object) {
+    struct rwlock_entry *e = borrow_rwlock(object);
+    int error = pthread_rwlock_tryrdlock(&e->native);
+    pthread_mutex_lock(&rwlock_registry_mutex);
+    if(!error) {
+        e->read_count++;
+        mirror_rwlock(e);
+    } else if(error != EBUSY) {
+        fatal("pthread_rwlock_tryrdlock", error);
+    }
+    e->users--;
+    pthread_mutex_unlock(&rwlock_registry_mutex);
+    return error == 0;
+}
+
+void nso_host_release_read_lock(void *object) {
+    struct rwlock_entry *e = borrow_rwlock(object);
+    pthread_mutex_lock(&rwlock_registry_mutex);
+    if(!e->read_count) fatal("ReleaseReadLock without readers", EPERM);
+    e->read_count--;
+    mirror_rwlock(e);
+    pthread_mutex_unlock(&rwlock_registry_mutex);
+    int error = pthread_rwlock_unlock(&e->native);
+    if(error) fatal("pthread_rwlock_unlock (read)", error);
+    pthread_mutex_lock(&rwlock_registry_mutex);
+    e->users--;
+    pthread_mutex_unlock(&rwlock_registry_mutex);
+}
+
+void nso_host_acquire_write_lock(void *object) {
+    struct thread_identity *identity = current_identity();
+    struct rwlock_entry *e = borrow_rwlock(object);
+    int error = pthread_rwlock_wrlock(&e->native);
+    if(error) fatal("pthread_rwlock_wrlock", error);
+    pthread_mutex_lock(&rwlock_registry_mutex);
+    e->write_owner_handle = identity->handle;
+    e->write_owner_token = (uintptr_t)identity->token;
+    e->write_depth = 1;
+    mirror_rwlock(e);
+    e->users--;
+    pthread_mutex_unlock(&rwlock_registry_mutex);
+}
+
+bool nso_host_try_acquire_write_lock(void *object) {
+    struct thread_identity *identity = current_identity();
+    struct rwlock_entry *e = borrow_rwlock(object);
+    int error = pthread_rwlock_trywrlock(&e->native);
+    pthread_mutex_lock(&rwlock_registry_mutex);
+    if(!error) {
+        e->write_owner_handle = identity->handle;
+        e->write_owner_token = (uintptr_t)identity->token;
+        e->write_depth = 1;
+        mirror_rwlock(e);
+    } else if(error != EBUSY) {
+        fatal("pthread_rwlock_trywrlock", error);
+    }
+    e->users--;
+    pthread_mutex_unlock(&rwlock_registry_mutex);
+    return error == 0;
+}
+
+void nso_host_release_write_lock(void *object) {
+    struct thread_identity *identity = current_identity();
+    struct rwlock_entry *e = borrow_rwlock(object);
+    pthread_mutex_lock(&rwlock_registry_mutex);
+    if(!e->write_depth || e->write_owner_handle != identity->handle)
+        fatal("ReleaseWriteLock without ownership", EPERM);
+    e->write_depth = 0;
+    e->write_owner_handle = 0;
+    e->write_owner_token = 0;
+    mirror_rwlock(e);
+    int error = pthread_rwlock_unlock(&e->native);
+    if(error) fatal("pthread_rwlock_unlock (write)", error);
+    e->users--;
+    pthread_mutex_unlock(&rwlock_registry_mutex);
+}
+
+bool nso_host_is_write_lock_held_by_current_thread(const void *object) {
+    struct thread_identity *identity = current_identity();
+    struct rwlock_entry *e = borrow_rwlock((void *)object);
+    pthread_mutex_lock(&rwlock_registry_mutex);
+    bool owned = e->write_depth && e->write_owner_handle == identity->handle;
+    e->users--;
+    pthread_mutex_unlock(&rwlock_registry_mutex);
+    return owned;
+}
+
+bool nso_host_is_read_lock_held(const void *object) {
+    struct rwlock_entry *e = borrow_rwlock((void *)object);
+    pthread_mutex_lock(&rwlock_registry_mutex);
+    bool held = e->read_count > 0;
+    e->users--;
+    pthread_mutex_unlock(&rwlock_registry_mutex);
+    return held;
+}
+
+bool nso_host_is_rwlock_owner_thread(const void *object) {
+    return nso_host_is_write_lock_held_by_current_thread(object);
 }
