@@ -1,5 +1,56 @@
 # Owned startup profile: native boundary integration
 
+## Owned guest command line checkpoint
+
+`guest_process_create_with_arguments` accepts a complete explicit guest vector,
+including the caller-selected argv0, and copies it into one page-rounded RW
+mapping with a NULL tail. The original create API means an explicitly empty
+command line; even that vector owns and charges one host page. The ordinary C
+input contract requires stable readable strings/vector until create returns.
+Host metadata caches source pointers/lengths, and quota is reserved before mmap,
+then committed after the copy. Query verifies a third private ticket and adds
+its actual mapped extent to used/baseline. These remain diagnostic port-policy
+logical backing values, not original SVC measurements.
+
+The mutable guest vector never selects a free address: private rawbase/extent
+and ticket survive vector/string changes. Normal OS destructors, actual module
+unmap and boundary cleanup all precede argument unmap; only successful unmap
+permits refund. Failed unmap retains the Process/mapping/charge for retry.
+Host metadata and native pthread administration retain their existing distinct
+accounting policy. No loader, Context, boundary or OS component changed.
+
+The exact SDK getters are `_ZN2nn2os11GetHostArgcEv` (SDK+0x143690, w0)
+and `_ZN2nn2os11GetHostArgvEv` (+0x1436b0, x0), both without arguments.
+Hash-matching bounded LLVM evidence is saved in `.local/guest-argv-plan/`;
+this is ordinary tool evidence, not REA Evidence. Both imports now bind typed
+register-only getters over real owned storage. CLI repeats `--guest-arg <literal>`
+before the mode; the full guest vector is solely these values and never the
+host diagnostic command line. Explicit quota/stack are still required.
+
+`.local/guest-arguments-v1/manifest.json` captures 68 expected commands, no
+timeout: ordinary host contracts0, invalid query/provider SIGABRT, unsupported
+Mac guest execution1, untyped guard compile1, missing-policy usage2. New normal
+storage cases cover empty/three strings/empty string/multiple pages, caller
+mutation after create, guest vector mutation, NULL tail and Query charge/padding.
+Recovery observes pending quota before mmap, quota refusal before map, real
+mmap failure rollback, and failed unmap retaining readable storage until the
+second attempt genuinely unmaps it. Existing five loader recovery cases still0.
+A self-authored native fixture calls both getters with guest x18 clobbered;
+the OS cleanup fixture also reads argv from a real destructor callback. These
+Android paths are cross-built but NOT_RUN here; root owns device execution.
+Production ELF symbol checks exclude argument/loader/boundary test hooks.
+
+Android CLI: 771864B, SHA256
+ff26a2887a723301b076f0e390fcaad3aad82589daf9f82916cefa287b7cda96.
+Normal contract: 853288B, SHA256
+430dcb1feccb757997b29a0b06abcfad1de0e689979afeffc53c83fbc052dd86.
+Argument recovery: 867920B, SHA256
+b62ab981f388603d25c465ec10acf09646b5fb1c850dd79b8aeb6df32b60f95e.
+Full dependencies, generated fixture hashes, commands and official partial NDK
+member validation are in manifest/freeze. Original startup with empty and
+nonempty vectors is ready for RG; its next strict gate is not yet measured.
+Original main hash is unchanged. CRT/ELF TLS/ThreadType remain unresolved.
+
 ## OS TLS binding checkpoint
 
 The profile now owns the independent `guest_os_tls` manager (`9c24ed35`) and

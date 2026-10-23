@@ -50,7 +50,7 @@ static int number(const char *s,uint64_t *out) {
 static int usage(const char *program) {
     fprintf(stderr,"usage: %s <uncompressed.nso> [--init-wrapper|--init-elf] --info|--call <offset> [arg0 ... arg5]|--symbol <name> [args]\n",program);
 #ifdef NSO_WITH_GUEST_PROFILE
-    fputs("owned experiment: after path, supply --guest-quota <bytes> --guest-stack <bytes>; no defaults, no original SVC measurement\n",stderr);
+    fputs("owned experiment: after path, supply --guest-quota <bytes> --guest-stack <bytes> [--guest-arg <literal> ...]; complete guest argv including argv0, default explicitly empty; no original SVC measurement\n",stderr);
 #endif
     return 2;
 }
@@ -86,17 +86,17 @@ static void *run_profile_entry(guest_process *p,void *opaque) {
     }
     return NULL;
 }
-static int owned_profile(const char *path,size_t quota,size_t stack,struct profile_entry *entry) {
+static int owned_profile(const char *path,size_t quota,size_t stack,size_t guest_argc,const char *const guest_argv[],struct profile_entry *entry) {
     struct guest_process_config config={quota,stack};
     guest_process *p=NULL;
-    struct nso_result r=guest_process_create(&config,&p);
+    struct nso_result r=guest_process_create_with_arguments(&config,guest_argc,guest_argv,&p);
     char err[256]={0};
     if(r.status==NSO_OK)r=guest_process_load(p,path,err,sizeof(err));
     if(r.status==NSO_OK) {
         nso_module *m=guest_process_module(p);
         char bid[33];nso_build_id(m,bid);
-        printf("[profile] explicit diagnostic port-policy quota=%zu stack=%zu image=%zu build=%s imports=%u unresolved=%u; CRT/TLS not initialized\n",
-            quota,stack,nso_image_size(m),bid,nso_import_count(m),nso_unresolved_count(m));fflush(stdout);
+        printf("[profile] explicit diagnostic port-policy quota=%zu stack=%zu image=%zu guest_argc=%zu build=%s imports=%u unresolved=%u; CRT/TLS not initialized\n",
+            quota,stack,nso_image_size(m),guest_argc,bid,nso_import_count(m),nso_unresolved_count(m));fflush(stdout);
         void *returned=NULL;r=guest_process_run(p,run_profile_entry,entry,&returned);
     }
     if(r.status!=NSO_OK)fprintf(stderr,"[profile-error] status=%d native=%d cleanup=%d %s\n",r.status,r.native_error,r.cleanup_error,err);
@@ -115,39 +115,48 @@ int main(int argc,char **argv) {
     nso_init_policy policy=NSO_INIT_ELF;
 #ifdef NSO_WITH_GUEST_PROFILE
     uint64_t quota=0,stack=0;
+    size_t guest_argc=0;const char **guest_argv=calloc((size_t)argc,sizeof(*guest_argv));
+    if(!guest_argv) {fputs("guest argument metadata allocation failed\n",stderr);return 1;}
     int owned=0;
-    while(next<argc && (!strcmp(argv[next],"--guest-quota") || !strcmp(argv[next],"--guest-stack"))) {
-        int is_quota=!strcmp(argv[next++],"--guest-quota");uint64_t value;
-        if(next>=argc || !number(argv[next++],&value) || !value || value>SIZE_MAX)return usage(argv[0]);
-        if(is_quota) {if(quota)return usage(argv[0]);quota=value;}
-        else {if(stack)return usage(argv[0]);stack=value;}
+    while(next<argc && (!strcmp(argv[next],"--guest-quota") || !strcmp(argv[next],"--guest-stack") || !strcmp(argv[next],"--guest-arg"))) {
+        const char *option=argv[next++];
+        if(next>=argc)goto invalid_cli;
         owned=1;
+        if(!strcmp(option,"--guest-arg")) {guest_argv[guest_argc++]=argv[next++];continue;}
+        uint64_t value;
+        if(!number(argv[next++],&value) || !value || value>SIZE_MAX)goto invalid_cli;
+        if(!strcmp(option,"--guest-quota")) {if(quota)goto invalid_cli;quota=value;}
+        else {if(stack)goto invalid_cli;stack=value;}
     }
-    if(owned && (!quota || !stack))return usage(argv[0]);
+    if(owned && (!quota || !stack))goto invalid_cli;
 #endif
-    if(next>=argc)return usage(argv[0]);
+    if(next>=argc)goto invalid_cli;
     if(!strcmp(argv[next],"--init-wrapper")) {init=1;policy=NSO_INIT_DT_INIT_OWNS_ARRAY;next++;}
     else if(!strcmp(argv[next],"--init-elf")) {init=1;next++;}
-    if(next>=argc)return usage(argv[0]);
+    if(next>=argc)goto invalid_cli;
     const char *mode=argv[next++];
     int info=!strcmp(mode,"--info"),by_symbol=!strcmp(mode,"--symbol"),by_offset=!strcmp(mode,"--call");
-    if(!info && !by_symbol && !by_offset)return usage(argv[0]);
+    if(!info && !by_symbol && !by_offset)goto invalid_cli;
     const char *target=NULL;
     uint64_t off=0,args[6]={0};unsigned argument_count=0;
-    if(info) {if(next!=argc)return usage(argv[0]);}
+    if(info) {if(next!=argc)goto invalid_cli;}
     else {
-        if(next>=argc)return usage(argv[0]);
+        if(next>=argc)goto invalid_cli;
         target=argv[next++];
-        if(by_offset && !number(target,&off))return usage(argv[0]);
-        if(argc-next>6)return usage(argv[0]);
-        for(int i=0;next<argc;i++,next++) {if(!number(argv[next],&args[i]))return usage(argv[0]);argument_count++;}
+        if(by_offset && !number(target,&off))goto invalid_cli;
+        if(argc-next>6)goto invalid_cli;
+        for(int i=0;next<argc;i++,next++) {if(!number(argv[next],&args[i]))goto invalid_cli;argument_count++;}
     }
 #ifdef NSO_WITH_GUEST_PROFILE
     if(owned) {
         struct profile_entry entry={.info=info,.init=init,.by_symbol=by_symbol,.argument_count=argument_count,.policy=policy,.target=target,.off=off};
         memcpy(entry.args,args,sizeof(args));
-        return owned_profile(argv[1],(size_t)quota,(size_t)stack,&entry);
+        int result=owned_profile(argv[1],(size_t)quota,(size_t)stack,guest_argc,guest_argv,&entry);
+        free(guest_argv);return result;
     }
+#endif
+#ifdef NSO_WITH_GUEST_PROFILE
+    free(guest_argv);
 #endif
     (void)argument_count;
     char err[256]={0};
@@ -179,4 +188,9 @@ int main(int argc,char **argv) {
         printf("result        : 0x%" PRIx64 "\n",result);
     }
     nso_free(m);return rc;
+invalid_cli:
+#ifdef NSO_WITH_GUEST_PROFILE
+    free(guest_argv);
+#endif
+    return usage(argv[0]);
 }

@@ -4,6 +4,7 @@
 #include "../../src/runtime/hle/nso_host.h"
 #include <errno.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
@@ -60,10 +61,10 @@ static void *exercise(guest_process *process,void *opaque) {
     memset(&info,0xa5,sizeof(info));
     if(!succeeded(guest_process_memory_info(process,&info))) {expect_condition("query-initial-status",0);return NULL;}
     expect_value("query-total",info.total,input->quota);
-    expect_value("query-used",info.used,input->image+65536+input->live_page_bytes);
+    expect_value("query-used",info.used,input->image+page+65536+input->live_page_bytes);
     expect_value("query-heap-capacity",info.heap_capacity,0);
     expect_value("query-heap-blocks",info.heap_blocks,0);
-    expect_value("query-baseline",info.baseline,input->image);
+    expect_value("query-baseline",info.baseline,input->image+page);
     expect_value("query-stack-bytes",info.stack_bytes,65536);
     expect_value("query-thread-count",info.thread_objects,1);
     expect_condition("query-initial-padding",all_bytes((unsigned char *)&info+0x34,sizeof(info)-0x34,0xa5));
@@ -426,10 +427,14 @@ static int os_wrapper_contract(const char *path) {
 struct os_fixture_output {
     uint64_t initial,stale,cleared,calls_a,calls_b,first_a,second_a,value_b,seen_a;
     uint64_t thread_count,stack_bytes,order,errors,returned;
+    uint64_t argument_count,argument_vector,argument_byte,expected_argument_vector;
 };
 _Static_assert(offsetof(struct os_fixture_output,returned)==104 && offsetof(struct os_fixture_output,order)==88,"self-authored fixture output ABI");
 static void *execute_os_fixture(guest_process *process,void *opaque) {
     struct os_fixture_output *output=opaque;
+    typedef char **(*vector_fn)(void);
+    vector_fn get_vector=(vector_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os11GetHostArgvEv");
+    output->expected_argument_vector=(uintptr_t)get_vector();
     const uint64_t arguments[6]={(uintptr_t)output};uint64_t value=0;
     struct nso_result r=guest_process_call(process,0x20,arguments,1,&value);
 #if defined(__ANDROID__) && defined(__aarch64__)
@@ -443,20 +448,145 @@ static void *execute_os_fixture(guest_process *process,void *opaque) {
 }
 static int os_callback_contract(const char *path) {
     struct guest_process_config config={1024*1024,65536};guest_process *process=NULL;
-    CHECK(succeeded(guest_process_create(&config,&process)));char err[128];
+    const char *arguments[]={"ffrs","callback-lifetime"};
+    CHECK(succeeded(guest_process_create_with_arguments(&config,2,arguments,&process)));char err[128];
     CHECK(succeeded(guest_process_load(process,path,err,sizeof(err))));
     struct os_fixture_output output={0};void *value=NULL;
     CHECK(succeeded(guest_process_run(process,execute_os_fixture,&output,&value)) && value==&returned_token && !errors);
 #if defined(__ANDROID__) && defined(__aarch64__)
     CHECK(output.initial==0 && output.stale==0x99 && output.cleared==0);
     CHECK(output.calls_a==2 && output.calls_b==1 && output.first_a==0 && output.second_a==5 && output.value_b==9);
+    CHECK(output.argument_count==2 && output.argument_vector==output.expected_argument_vector && output.argument_byte=='c');
     CHECK(output.seen_a==0 && output.thread_count==1 && output.stack_bytes==65536 && output.order==0x121 && !output.errors);
 #endif
     CHECK(succeeded(guest_process_destroy(&process)) && !process);
     printf("{\"os_callback_errors\":%u,\"calls_a\":%" PRIu64 ",\"calls_b\":%" PRIu64 ",\"first_a\":%" PRIu64 ",\"second_a\":%" PRIu64 ",\"value_b\":%" PRIu64 ",\"order\":%" PRIu64 "}\n",errors,output.calls_a,output.calls_b,output.first_a,output.second_a,output.value_b,output.order);return 0;
 }
+/* The ordinary storage contract and the self-authored guest fixture exercise
+ * the same getters. A borrowed vector never transfers its allocation owner. */
+struct argument_input {size_t count,bytes;const char *expected[3];char **borrowed;int native,mutate;};
+static void *exercise_arguments(guest_process *process,void *opaque) {
+    struct argument_input *input=opaque;
+    typedef int (*count_fn)(void);typedef char **(*vector_fn)(void);
+    count_fn get_count=(count_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os11GetHostArgcEv");
+    vector_fn get_vector=(vector_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os11GetHostArgvEv");
+    expect_condition("argv-getters-bound",get_count && get_vector);
+    if(!get_count || !get_vector)return NULL;
+    expect_value("argv-owned-count",(uint64_t)get_count(),input->count);
+    char **vector=get_vector();input->borrowed=vector;
+    expect_condition("argv-nonnull-even-empty",vector!=NULL);
+    if(!vector)return NULL;
+    expect_condition("argv-null-tail",vector[input->count]==NULL);
+    expect_condition("argv-stable-vector",get_vector()==vector);
+    for(size_t i=0;i<input->count;i++) {
+        expect_condition("argv-copied-string",!strcmp(vector[i],input->expected[i]));
+        expect_condition("argv-string-in-owned-extent",(uintptr_t)vector[i]>=(uintptr_t)vector+(input->count+1)*sizeof(*vector) &&
+            (uintptr_t)vector[i]-(uintptr_t)vector<input->bytes && strlen(vector[i])+1<=input->bytes-((uintptr_t)vector[i]-(uintptr_t)vector));
+    }
+    struct guest_memory_info info;memset(&info,0xa5,sizeof(info));
+    expect_condition("argv-query-status",succeeded(guest_process_memory_info(process,&info)));
+    size_t image=nso_image_size(guest_process_module(process));
+    expect_value("argv-query-backing-charge",info.used,image+65536+input->bytes);
+    expect_value("argv-query-baseline",info.baseline,image+input->bytes);
+    expect_condition("argv-query-padding",all_bytes((unsigned char *)&info+0x34,sizeof(info)-0x34,0xa5));
+    if(input->native) {
+        uint64_t output[3]={UINT64_C(0xa5a5),UINT64_C(0xa5a5),UINT64_C(0xa5a5)};
+        const uint64_t arguments[6]={(uintptr_t)output};uint64_t returned=0xa5a5;
+        struct nso_result r=guest_process_call(process,0x20,arguments,1,&returned);
+#if defined(__ANDROID__) && defined(__aarch64__)
+        expect_value("argv-native-call",r.status,NSO_OK);
+        expect_value("argv-native-return",returned,0x91);
+        expect_value("argv-native-w0-count",output[0],input->count);
+        expect_value("argv-native-x0-vector",output[1],(uintptr_t)vector);
+        expect_value("argv-native-guest-x18-preserved",output[2],0x55);
+        executed_calls++;
+#else
+        expect_value("argv-native-host-unsupported",r.status,NSO_UNSUPPORTED);
+        expect_value("argv-no-raw-fallback",returned,0xa5a5);
+        expect_value("argv-no-guest-output",output[0],0xa5a5);
+#endif
+    }
+    if(input->mutate && input->count) {
+        vector[0][0]='X';vector[0]=vector[input->count-1];
+        expect_value("argv-count-independent-of-mutable-vector",(uint64_t)get_count(),input->count);
+        expect_condition("argv-base-independent-of-mutable-vector",get_vector()==vector);
+    }
+    return &returned_token;
+}
+static int argument_contract(const char *path,int native) {
+    struct guest_process_config config={1024*1024,65536};
+    for(unsigned phase=0;phase<3;phase++) {
+        char first[]="ffrs",last[]="option=123";const char *source[]={first,"",last};
+        char *large=NULL;
+        struct argument_input input={.count=phase==0?0:phase==1?3:1,.bytes=page,.native=native,.mutate=phase==1};
+        if(phase==1) {input.expected[0]="ffrs";input.expected[1]="";input.expected[2]="option=123";}
+        if(phase==2) {
+            large=malloc(page+14);CHECK(large);memset(large,'q',page+13);large[page+13]=0;
+            source[0]=large;input.expected[0]=large;input.bytes=2*page;
+        }
+        guest_process *process=NULL;
+        CHECK(succeeded(guest_process_create_with_arguments(&config,input.count,input.count?source:NULL,&process)));
+        if(phase==1) {first[0]='!';last[0]='!';source[0]="caller vector changed";}
+        char err[128]={0};CHECK(succeeded(guest_process_load(process,path,err,sizeof(err))));
+        void *value=NULL;CHECK(succeeded(guest_process_run(process,exercise_arguments,&input,&value)));
+        CHECK(value==&returned_token && !errors);
+        /* Guest mutations above must not change the private munmap base. */
+        CHECK(succeeded(guest_process_destroy(&process)) && !process);free(large);
+    }
+    printf("{\"argument_errors\":%u,\"cases\":3,\"empty_charged_page\":true,\"copied_mutable_vector\":true,\"null_tail\":true,\"multi_page\":true,\"native_calls\":%u,\"raw_fallback\":false}\n",errors,executed_calls);return 0;
+}
+#if defined(NSO_PROFILE_ARGUMENT_TESTING)
+static unsigned argument_maps,argument_unmaps,argument_actual_unmaps;
+static int argument_fail_map,argument_fail_unmap;
+static void *argument_raw_base;
+static void *argument_map_probe(size_t bytes,size_t pending) {
+    argument_maps++;expect_value("argv-pending-before-mmap",pending,bytes);
+    if(argument_fail_map) {argument_fail_map=0;errno=ENOMEM;return MAP_FAILED;}
+    void *result=mmap(NULL,bytes,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
+    if(result!=MAP_FAILED)argument_raw_base=result;
+    return result;
+}
+static int argument_unmap_probe(void *address,size_t bytes) {
+    argument_unmaps++;expect_condition("argv-unmap-private-base",address==argument_raw_base);
+    expect_value("argv-unmap-rounded-extent",bytes,page);
+    if(argument_fail_unmap) {argument_fail_unmap=0;errno=EBUSY;return -1;}
+    int r=munmap(address,bytes);if(!r)argument_actual_unmaps++;return r;
+}
+static int argument_recovery_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *process=NULL,*extra=NULL;
+    const char *source[]={"retained-argv"};
+    guest_process_test_argument_vm(argument_map_probe,argument_unmap_probe);
+    CHECK(guest_process_create_with_arguments(&config,(size_t)INT_MAX+1,NULL,&process).status==NSO_INVALID && !process);
+    CHECK(guest_process_create_with_arguments(&config,1,NULL,&process).status==NSO_INVALID && !process);
+    const char *bad[]={NULL};
+    CHECK(guest_process_create_with_arguments(&config,1,bad,&process).status==NSO_INVALID && !process);
+    struct guest_process_config limited={page-1,65536};
+    CHECK(guest_process_create(&limited,&process).status==NSO_LIMIT && !process && !argument_maps);
+    argument_fail_map=1;
+    struct nso_result r=guest_process_create_with_arguments(&config,1,source,&process);
+    CHECK(r.status==NSO_OWNER_ERROR && r.native_error==ENOMEM && !process && argument_maps==1 && !argument_unmaps);
+    CHECK(succeeded(guest_process_create_with_arguments(&config,1,source,&process)));
+    char err[128]={0};CHECK(succeeded(guest_process_load(process,path,err,sizeof(err))));
+    struct argument_input input={.count=1,.bytes=page,.expected={"retained-argv"}};
+    void *value=NULL;CHECK(succeeded(guest_process_run(process,exercise_arguments,&input,&value)) && value==&returned_token && !errors);
+    argument_fail_unmap=1;r=guest_process_destroy(&process);
+    CHECK(r.status==NSO_RETAINED && r.cleanup_error==EBUSY && process && argument_unmaps==1 && !argument_actual_unmaps);
+    CHECK(input.borrowed==argument_raw_base && !strcmp(input.borrowed[0],"retained-argv") && !input.borrowed[1]);
+    CHECK(guest_process_create(&config,&extra).status!=NSO_OK && !extra);
+    CHECK(succeeded(guest_process_destroy(&process)) && !process && argument_unmaps==2 && argument_actual_unmaps==1);
+    guest_process_test_argument_vm(NULL,NULL);
+    CHECK(succeeded(guest_process_create(&config,&process)) && succeeded(guest_process_destroy(&process)));
+    CHECK(!errors);
+    puts("{\"argument_recovery_errors\":0,\"precharge_observed\":true,\"quota_refusal_before_map\":true,\"map_failure_cancelled\":true,\"retained_readable\":true,\"unmap_attempts\":2,\"actual_unmaps\":1,\"retry_cleanup\":true}");return 0;
+}
+#endif
 int main(int argc,char **argv) {
     page=(size_t)sysconf(_SC_PAGESIZE);
+    if(argc==3 && !strcmp(argv[1],"--arguments"))return argument_contract(argv[2],0);
+    if(argc==3 && !strcmp(argv[1],"--arguments-native"))return argument_contract(argv[2],1);
+#if defined(NSO_PROFILE_ARGUMENT_TESTING)
+    if(argc==3 && !strcmp(argv[1],"--arguments-recovery"))return argument_recovery_contract(argv[2]);
+#endif
 #if defined(NSO_PROFILE_BOUNDARY_TESTING)
     if(argc==3 && !strcmp(argv[1],"--boundary-retained"))return boundary_retained_contract(argv[2]);
 #endif

@@ -11,10 +11,13 @@
 #include "nso_host.h"
 #include <errno.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <unistd.h>
 /* Explicit compiler runtime references, independent of another translation
  * unit's HLE feature flags. Never reach the extension fallback for guards. */
 extern int __cxa_guard_acquire(uint64_t *);
@@ -46,6 +49,10 @@ struct guest_process {
     uint64_t guest_x18;
     guest_os_tls_manager *os_tls;
     guest_os_tls_thread *os_thread;
+    void *argument_mapping;
+    size_t argument_bytes;
+    guest_charge_ticket *argument_ticket;
+    int argument_committed,argument_count;
 };
 static pthread_mutex_t exclusive_mutex=PTHREAD_MUTEX_INITIALIZER;
 static guest_process *exclusive_process;
@@ -104,7 +111,7 @@ static struct nso_result cancel_module(void *owner,void *ticket) {return drop_mo
 static struct nso_result release_module(void *owner,void *ticket) {return drop_module(owner,ticket,1);}
 static const struct nso_owner_ops module_ops={reserve_module,commit_module,cancel_module,release_module};
 
-struct nso_result guest_process_create(const struct guest_process_config *config,guest_process **out) {
+static struct nso_result create_base(const struct guest_process_config *config,guest_process **out) {
     if(!out)return status(NSO_INVALID,EINVAL,0);
     *out=NULL;
     if(!config)return status(NSO_INVALID,EINVAL,0);
@@ -143,6 +150,81 @@ struct nso_result guest_process_create(const struct guest_process_config *config
     else {exclusive_process=p;*out=p;}
     pthread_mutex_unlock(&exclusive_mutex);return r;
 }
+#if defined(NSO_PROFILE_ARGUMENT_TESTING)
+static _Thread_local void *(*argument_test_map)(size_t,size_t);
+static _Thread_local int (*argument_test_unmap)(void *,size_t);
+void guest_process_test_argument_vm(void *(*map)(size_t,size_t),int (*unmap)(void *,size_t)) {
+    argument_test_map=map;argument_test_unmap=unmap;
+}
+#endif
+static void *map_arguments(guest_process *p,size_t bytes) {
+#if defined(NSO_PROFILE_ARGUMENT_TESTING)
+    if(argument_test_map) {
+        struct guest_context_usage usage;
+        if(guest_context_usage(p->context,&usage).status!=GUEST_CONTEXT_OK) {errno=EINVAL;return MAP_FAILED;}
+        return argument_test_map(bytes,usage.pending_bytes);
+    }
+#else
+    (void)p;
+#endif
+    return mmap(NULL,bytes,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
+}
+static int unmap_arguments(void *mapping,size_t bytes) {
+#if defined(NSO_PROFILE_ARGUMENT_TESTING)
+    if(argument_test_unmap)return argument_test_unmap(mapping,bytes);
+#endif
+    return munmap(mapping,bytes);
+}
+static struct nso_result copy_arguments(guest_process *p,size_t argc,const char *const argv[]) {
+    if(argc>INT_MAX || (argc && !argv) || argc>SIZE_MAX/sizeof(char *)-1)return status(NSO_INVALID,EINVAL,0);
+    struct argument_source {const char *text;size_t bytes;};
+    if(argc>SIZE_MAX/sizeof(struct argument_source))return status(NSO_INVALID,EOVERFLOW,0);
+    struct argument_source *source=argc?calloc(argc,sizeof(*source)):NULL;
+    if(argc && !source)return status(NSO_OWNER_ERROR,ENOMEM,0);
+    struct nso_result r=status(NSO_INVALID,EOVERFLOW,0);
+    size_t vector_bytes=(argc+1)*sizeof(char *),total=vector_bytes;
+    for(size_t i=0;i<argc;i++) {
+        if(!argv[i]) {r=status(NSO_INVALID,EINVAL,0);goto done;}
+        source[i].text=argv[i];size_t n=strlen(source[i].text);
+        if(n==SIZE_MAX || n+1>SIZE_MAX-total)goto done;
+        source[i].bytes=n+1;
+        total+=n+1;
+    }
+    long native_page=sysconf(_SC_PAGESIZE);
+    if(native_page<=0 || ((size_t)native_page&((size_t)native_page-1)) || total>SIZE_MAX-((size_t)native_page-1))goto done;
+    size_t bytes=(total+(size_t)native_page-1)&~((size_t)native_page-1);
+    r=from_context(guest_charge_reserve(p->context,bytes,&p->argument_ticket));
+    if(r.status!=NSO_OK)goto done;
+    p->argument_bytes=bytes;
+    void *mapping=map_arguments(p,bytes);
+    if(mapping==MAP_FAILED) {r=status(NSO_OWNER_ERROR,errno,0);goto done;}
+    p->argument_mapping=mapping;
+    char **vector=mapping;char *cursor=(char *)mapping+vector_bytes;
+    for(size_t i=0;i<argc;i++) {
+        size_t n=source[i].bytes;vector[i]=cursor;memcpy(cursor,source[i].text,n);cursor+=n;
+    }
+    vector[argc]=NULL;
+    r=from_context(guest_charge_commit(p->argument_ticket));
+    if(r.status==NSO_OK) {p->argument_committed=1;p->argument_count=(int)argc;}
+done:
+    free(source);
+    return r;
+}
+struct nso_result guest_process_create_with_arguments(const struct guest_process_config *config,
+        size_t argc,const char *const argv[],guest_process **out) {
+    if(!out)return status(NSO_INVALID,EINVAL,0);
+    *out=NULL;
+    guest_process *p=NULL;struct nso_result r=create_base(config,&p);
+    if(r.status!=NSO_OK) {*out=p;return r;}
+    r=copy_arguments(p,argc,argv);
+    if(r.status==NSO_OK) {*out=p;return r;}
+    struct nso_result cleanup=guest_process_destroy(&p);
+    if(cleanup.status!=NSO_OK) {*out=p;return status(NSO_RETAINED,r.native_error,cleanup.cleanup_error?cleanup.cleanup_error:cleanup.native_error);}
+    return r;
+}
+struct nso_result guest_process_create(const struct guest_process_config *config,guest_process **out) {
+    return guest_process_create_with_arguments(config,0,NULL,out);
+}
 struct nso_result guest_process_load(guest_process *p,const char *path,char *err,size_t len) {
     if(!p)return status(NSO_INVALID,EINVAL,0);
     pthread_mutex_lock(&p->mutex);
@@ -174,6 +256,7 @@ static int initialize_empty_heap(struct empty_heap_manager *heap) {
 static struct nso_result snapshot_locked(guest_process *p,struct guest_memory_info *out) {
     if(current_process!=p || !p->running || p->quarantined || !p->module_ready ||
        !p->module || !p->module_ticket || !p->module_committed || !p->pages || !p->os_tls || !p->os_thread ||
+       !p->argument_mapping || !p->argument_ticket || !p->argument_committed || !p->argument_bytes ||
        p->thread.state!=THREAD_RUNNING || !pthread_equal(p->thread.native,pthread_self()) ||
        p->heap.state!=HEAP_READY_EMPTY || p->heap.capacity || p->heap.blocks)
         return status(NSO_INVALID,EINVAL,0);
@@ -189,10 +272,11 @@ static struct nso_result snapshot_locked(guest_process *p,struct guest_memory_in
     if(!pages.backing_valid || !pages.ledger_valid || pages.quarantined_regions || pages.pending_bytes ||
        !pages.vm.mapped_guest_bytes_valid || pages.vm.quarantined_regions ||
        pages.ticket_count!=pages.allocation_count || pages.backing_bytes!=pages.charged_bytes ||
-       !use.primary_active || use.quarantined || use.pending_bytes || pages.ticket_count>SIZE_MAX-2 ||
-       use.tickets!=2+pages.ticket_count || p->module_bytes!=nso_image_size(p->module) ||
+       !use.primary_active || use.quarantined || use.pending_bytes || pages.ticket_count>SIZE_MAX-3 ||
+       use.tickets!=3+pages.ticket_count || p->module_bytes!=nso_image_size(p->module) ||
        p->module_bytes>SIZE_MAX-stack.bytes || pages.charged_bytes>SIZE_MAX-p->module_bytes-stack.bytes ||
-       use.charged_bytes!=p->module_bytes+stack.bytes+pages.charged_bytes ||
+       p->argument_bytes>SIZE_MAX-p->module_bytes-stack.bytes-pages.charged_bytes ||
+       use.charged_bytes!=p->module_bytes+stack.bytes+pages.charged_bytes+p->argument_bytes ||
        stack.address!=p->thread.stack.address || stack.bytes!=p->thread.stack.bytes)
         return status(NSO_INVALID,EINVAL,0);
     /* Private module/primary identities plus the sole page owner's validated
@@ -315,6 +399,15 @@ static void tls_set(uint32_t slot,uint64_t value) {
     guest_process *p=tls_current();struct guest_os_tls_result r=guest_os_tls_set(p->os_tls,p->os_thread,slot,value);
     if(r.status!=GUEST_OS_TLS_OK)tls_failure("set",r);
 }
+static int host_argument_count(void) {
+    guest_process *p=required_current();
+    if(!p->argument_mapping || !p->argument_committed) {fputs("[guest-argv-fatal] arguments not owned/committed\n",stderr);abort();}
+    return p->argument_count;
+}
+static char **host_argument_vector(void) {
+    guest_process *p=required_current();(void)host_argument_count();
+    return p->argument_mapping;
+}
 uint64_t guest_process_resolve(uint32_t index,const char *name) {
     if(!name)return 0;
 #define PURE(fn) if(!strcmp(name,#fn))return (uint64_t)(uintptr_t)&fn
@@ -331,6 +424,8 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
     if(!strcmp(name,"_ZN2nn2os11FreeTlsSlotENS0_7TlsSlotE"))return (uintptr_t)&tls_free;
     if(!strcmp(name,"_ZN2nn2os11GetTlsValueENS0_7TlsSlotE"))return (uintptr_t)&tls_get;
     if(!strcmp(name,"_ZN2nn2os11SetTlsValueENS0_7TlsSlotEm"))return (uintptr_t)&tls_set;
+    if(!strcmp(name,"_ZN2nn2os11GetHostArgcEv"))return (uintptr_t)&host_argument_count;
+    if(!strcmp(name,"_ZN2nn2os11GetHostArgvEv"))return (uintptr_t)&host_argument_vector;
     if(!strcmp(name,"__cxa_guard_acquire"))return (uintptr_t)&__cxa_guard_acquire;
     if(!strcmp(name,"__cxa_guard_release"))return (uintptr_t)&__cxa_guard_release;
     if(!strcmp(name,"__cxa_guard_abort"))return (uintptr_t)&__cxa_guard_abort;
@@ -369,6 +464,7 @@ static int import_signature(const char *name,nb_signature *out) {
         arguments=group==3?1:group+1;returns=group==3?0:1;goto found;
     }
     if(!strcmp(name,"_ZN2nn2os15InitializeMutexEPNS0_9MutexTypeEbi") || !strcmp(name,"nnosInitializeMutex")) {arguments=3;returns=0;}
+    else if(!strcmp(name,"_ZN2nn2os11GetHostArgcEv") || !strcmp(name,"_ZN2nn2os11GetHostArgvEv")) {arguments=0;returns=1;}
     else if(!strcmp(name,"_ZN2nn2os11SetTlsValueENS0_7TlsSlotEm")) {arguments=2;returns=0;}
     else if(!strcmp(name,"abort")) {arguments=0;returns=0;}
     else return 0;
@@ -568,6 +664,14 @@ struct nso_result guest_process_destroy(guest_process **process) {
             if(s!=NB_OK) {fprintf(stderr,"[boundary-retained] scope-close status=%d\n",s);r=status(NSO_RETAINED,0,EIO);}
             else {p->boundary_initialized=0;free(p->bindings);p->bindings=NULL;p->bindings_count=0;}
         }
+    }
+    if(r.status==NSO_OK && p->argument_mapping) {
+        if(unmap_arguments(p->argument_mapping,p->argument_bytes))r=status(NSO_RETAINED,0,errno);
+        else p->argument_mapping=NULL;
+    }
+    if(r.status==NSO_OK && p->argument_ticket) {
+        r=from_context(p->argument_committed?guest_charge_release(p->argument_ticket):guest_charge_cancel(p->argument_ticket));
+        if(r.status==NSO_OK) {p->argument_ticket=NULL;p->argument_bytes=0;p->argument_committed=0;p->argument_count=0;}
     }
     if(r.status==NSO_OK)r=from_context(guest_context_destroy(p->context));
     if(r.status!=NSO_OK) {p->quarantined=1;pthread_mutex_unlock(&p->mutex);return r;}

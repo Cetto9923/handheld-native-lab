@@ -27,6 +27,19 @@ typedef void *(*guest_process_callback)(guest_process *,void *);
  * failstops while those owners remain alive; no recoverable stack-retention or
  * SDK ThreadType/ELF TLS layout is claimed. */
 struct nso_result guest_process_create(const struct guest_process_config *,guest_process **out);
+/* Complete explicit guest vector, including caller-selected argv[0]. Inputs
+ * and its NUL-terminated strings must remain readable and unchanged until this
+ * call returns (ordinary C caller contract). Copies live
+ * in one charged RW mapping, including a NULL tail even for argc0. The mutable
+ * guest vector never controls ownership/free addresses. Existing create means
+ * an explicitly empty guest command line, not diagnostic host arguments. */
+struct nso_result guest_process_create_with_arguments(const struct guest_process_config *,
+        size_t argc,const char *const argv[],guest_process **out);
+#if defined(NSO_PROFILE_ARGUMENT_TESTING)
+/* Normal VM failure contracts only; not compiled into production. */
+void guest_process_test_argument_vm(void *(*map)(size_t bytes,size_t pending),
+        int (*unmap)(void *,size_t));
+#endif
 struct nso_result guest_process_load(guest_process *,const char *path,char *err,size_t errlen);
 /* Borrowed inspection/call handle, never independently release it. */
 nso_module *guest_process_module(guest_process *);
