@@ -49,11 +49,16 @@ int main(void) {
     assert(nvn_dispatch_register(NULL, 1) == EINVAL);
     nvn_dispatch_entry reserved = {"nvnBootstrapLoader", (PFNNVNGENERICFUNCPTRPROC)initialize};
     assert(nvn_dispatch_register(&reserved, 1) == EINVAL);
+    char name[] = "nvnDeviceInitializeAlternate";
+    nvn_dispatch_entry copied = {name, (PFNNVNGENERICFUNCPTRPROC)initialize};
+    assert(nvn_dispatch_register(&copied, 1) == 0);
+    name[3] = 'X';
+    assert(nvnBootstrapLoader("nvnDeviceInitializeAlternate") == (PFNNVNGENERICFUNCPTRPROC)initialize);
     pthread_t threads[4];
     for (unsigned i = 0; i < 4; ++i) assert(!pthread_create(&threads[i], NULL, lookup_thread, NULL));
     for (unsigned i = 0; i < 4; ++i) assert(!pthread_join(threads[i], NULL));
     nvn_dispatch_get_stats(&stats);
-    assert(stats.registered == 1 && stats.missing == 4 && stats.lookups >= 4000);
+    assert(stats.registered == 2 && stats.missing == 4 && stats.lookups >= 4000);
     puts("NVN dispatch ABI, atomic registration, missing APIs and concurrent lookups passed");
     return 0;
 }
