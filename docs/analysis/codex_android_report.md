@@ -1,4 +1,4 @@
-# T03A Codex Android — verified cross-build and APK carrier
+# T03A Codex Android — verified cross-build, APK carrier and HLE CLI
 
 2026-10-23, worktree `/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-android`, branch `task/T03A-codex-android`, starting commit `d26d3f6`.
 
@@ -172,15 +172,55 @@ Artifacts are in `.local/artifacts/android/`; full command/output/exit evidence 
 
 Android namespace/permission behavior for descriptor-based dlopen, actual typed calls, hardware/UI operation and RG477M leaf results remain NOT_RUN until a later device session. This host task does not wait for one.
 
-### Next independent host-side build item
+### Prior handoff: startup build dependency
 
-Read-only inspection of the coordinator's current startup build shows `nso_call.c`'s verified HLE resolver is enabled by `NSO_WITH_HOST_HLE`; its host experiment links `nso_host.c`, `address_region.c`, `mutex.c` and the coordinator's in-progress exit-registry work. This Android project currently cross-builds only `nso_loader.c`, load-only diagnostics and the leaf runner; it does not yet cross-link those HLE adapters or an Android `nso_call` driver.
+At the optional-leaf checkpoint, read-only inspection identified `nso_call.c`'s verified HLE resolver, enabled by `NSO_WITH_HOST_HLE`, and its typed startup adapters as the next cross-link dependency. The separate HLE CLI checkpoint below completes that build item against a coordinator-approved immutable runtime revision.
 
-A useful next independent item is an **Android ARM64 cross-link gate for the narrowly verified startup HLE and strict CLI**, using a new coordinator-approved immutable checkpoint. Compile the existing adapters against Bionic, link the actual strict `nso_call` driver, inspect system-library dependencies/export ABIs and retain host-only contract evidence. Keep guest TLS PoC unbound, preserve fatal unsupported-import behavior, and wait for the coordinator's explicit CRT/DSO/exit-registry checkpoint before adding that source. This establishes a real startup build dependency while CRT initialization is developed; it does not add 533 NVN stubs or claim game startup/device execution.
+## Independent HLE CLI checkpoint
+
+Scope: **PASS_STATIC_ANDROID_HLE_CLI_ONLY**. Android execution, guest initialization, game startup, gameplay and RG477M performance remain **NOT_RUN**. No device, emulator, APK installation, guest function, constructor or full game entry was executed by this worker. Guest TLS SDK binding is **NOT_IMPLEMENTED**. This unit adds build support and validation, with no new runtime functions or import stubs.
+
+The immutable runtime dependency is `e0024a040b7de948b751dc861809312ab794435e` (coordinator integration `5e165d0`). `git archive` saved only `src/runtime/nso` and `src/runtime/hle` into `.local/source-inputs/e0024a0/`. Every one of the 14 extracted files was compared to its exact Git blob identity; `.local/source-inputs/e0024a0/archive-evidence.json` records that comparison, SHA256 for each source and the tar archive. The build reads this fixed snapshot, never the integration tree's changing HEAD. No runtime or graphics source is modified by this checkpoint.
+
+`scripts/device/build_runtime_hle.sh` builds an independent `nso_runtime_hle` executable from exactly:
+
+- `nso_call.c` and `nso_loader.c`;
+- `nso_host.c`, `address_region.c`, `mutex.c`, `exit_registry.c`.
+
+All six compile with `NSO_WITH_HOST_HLE=1`, C11, `-Wall -Wextra -Werror -Wformat=2`, using Bionic headers for Android API28/AArch64. Each compile and the strict `--no-undefined` link exited 0; no warning suppression or Bionic source patch was needed. The inherited exact-name typed resolver, unknown-import BRK/fatal path, module unload observer, scoped guest exit callbacks and real `exit`/`_Exit` handling are compiled unchanged. This is source/link evidence, not a behavioral execution result. The CLI's experimental fault handler remains in that standalone executable; HLE and its handler are not added to JNI.
+
+The CMake target is opt-in (`FFRS_BUILD_RUNTIME_HLE=ON`) and uses the same six sources, strict warnings and post-link static checker. It defaults OFF for the APK. `FFRS_HLE_DIR`, `FFRS_RUNTIME_DIR` and `FFRS_READELF` select the dependency and checker tool. The CMake target was also actually configured and built with the available partial Apple Clang/Rust LLD/Bionic toolchain: both commands exit 0 and its post-build ELF gate passes. That local CMake configuration describes a Linux cross system with an explicit Android compiler target; it is not a completed NDK installation. The installed-NDK CMake toolchain branch remains NOT_RUN because the full NDK is unavailable.
+
+One preliminary CMake configure exited 1 because macOS stripped the inherited `DYLD_LIBRARY_PATH` before launching Rust LLD. A task-local linker wrapper sets that variable immediately before executing the existing linker. The corrected configure/build exited 0. The initial error and successful commands/output/exit codes are retained separately under `.local/logs/android-hle-checks/`; no global toolchain/library setting was changed.
+
+`tests/device/verify_runtime_hle_elf.py` never executes its input. It verifies ELF64/AArch64 ET_DYN, a nonzero executable entry, `/system/bin/linker64`, 16 KiB-compatible LOAD segments, no writable/executable segment or executable stack, RELRO/immediate binding, no text relocations, only Android `libc.so`/`libm.so`/`libdl.so` dependencies, and defined typed resolver/Mutex/address-region/exit cleanup functions. It records all undefined imports as well as required definitions. The original unsupported imports are not reclassified as supported by the static gate.
+
+| Artifact | Bytes | SHA256 |
+| --- | ---: | --- |
+| `.local/artifacts/android-runtime-hle/nso_runtime_hle` (minimal script) | 121720 | `10fb9e80292e6a7d9f3d953745f2d365ecd39e36d8586174cfb7ec40c4cc350d` |
+| `.local/build/android-hle-cmake-check/nso_runtime_hle` (CMake partial cross configuration) | 123456 | `fed000da8b0752345c8b1c869b8bfb3f82f86389ab98fa63db43055bdfecfe90` |
+
+The script artifact has four LOAD segments, all aligned `0x4000`; NEEDED is exactly `libc.so`, `libm.so`, `libdl.so`. Both artifacts pass the same static verifier. Different compile/link driver settings account for their distinct artifact identities. The diagnostic APK remains byte-for-byte the leaf checkpoint's 422420-byte package, SHA256 `7270b1080e4a4e2ac7b1544a8610f84f4ae050047e12528029018492b127d2c8`; this HLE build does not rebuild or replace it.
+
+Reproduction after making the same immutable source snapshot:
+
+```bash
+FFRS_SOURCE_ROOT="$PWD" FFRS_USE_MINIMAL_TOOLCHAIN=1 \
+FFRS_DEPENDENCY_REVISION=e0024a040b7de948b751dc861809312ab794435e \
+FFRS_RUNTIME_DIR="$PWD/.local/source-inputs/e0024a0/src/runtime/nso" \
+FFRS_HLE_DIR="$PWD/.local/source-inputs/e0024a0/src/runtime/hle" \
+scripts/device/build_runtime_hle.sh
+```
+
+The precommit build exited 0 (`.local/logs/android-hle-precommit.{log,exitcode}`); its 10 step exits are integer 0. Its full per-step command, output and exit files, readelf dump, ELF summary and before/after fingerprints are in `.local/logs/android-hle-build.DUqLN8/`. Current authoritative evidence is `.local/artifacts/android-runtime-hle/build-evidence.json`, including the actual source HEAD/dirty state and unique log-directory pointer; a clean post-commit rebuild may update that pointer without changing this report's compiled inputs. All 56 input fingerprints are stable across the three snapshots, including `CMakeLists.txt`, the APK/CLI checkers and all new scripts/configuration. The shared `snapshot_build_inputs.py` now supplies both APK and CLI guards.
+
+Machine evidence acceptance now requires **every recorded step to be integer 0**, every required terminal gate present, and all required artifacts present as nonempty files. APK mode requires its four artifacts; the independent HLE mode requires its own CLI in its separate artifact directory. Overall failure or source changes also reject acceptance. Host synthetic tests check every missing/empty artifact, missing terminal gate, additional failing/unknown/empty step, fresh hashing, separate CLI scope and source-change rejection. Actual-ELF negative tests reject altered architecture, missing entry, WX, 4 KiB LOAD alignment, wrong interpreter, executable stack, non-Android dependencies, missing typed resolver/scope-end, absent immediate binding and text relocations. These tests only inspect files; they never execute the Android binaries. Both regression scripts exit 0; the ELF regression covers both actual CLI layouts. Logs and exact commands are `.local/logs/android-hle-checks/*-final.{command.json,log,exitcode}`.
+
+The official NDK remains a partial, per-member CRC-verified toolchain. Its whole-archive checksum remains NOT_VERIFIED. The useful next execution step belongs to a separately authorized Android diagnostic session; RG477M hardware and guest TLS/CRT compatibility remain distinct gates.
 
 ## Remaining gates
 
 1. Total NDK archive SHA1 remains pending. The working partial official toolchain is sufficient for the recorded real Android cross-build; do not equate that with a completed SDK-manager package installation.
-2. The parent should integrate this optional-leaf checkpoint and rebuild against its approved, frozen runtime/graphics revision. Earlier carrier and hardware UI checkpoints are already integrated. The machine evidence generator records the new build identity automatically.
-3. Connect the user's RG477M for install, JNI invocation, module load, Vulkan capability capture and crash evidence. Until then all on-device and game-execution gates remain NOT_RUN/BLOCKED_DEVICE.
-4. No Android device or emulator was used. No game constructor/entry point, title screen, scene, gameplay or performance gate passed.
+2. The parent should integrate this independent HLE CLI checkpoint and rebuild against its approved, frozen runtime revision. Carrier, hardware UI and optional-leaf checkpoints have already been integrated. The machine evidence generator records each build identity automatically.
+3. RG477M install, JNI invocation, module load, Vulkan capability capture and crash evidence remain later hardware gates. The user currently cannot connect it; this host work does not request or await USB.
+4. This worker used no Android device or emulator. No game constructor/entry point, title screen, scene, gameplay or performance gate passed. Any later coordinator emulator results must identify their own artifact and execution scope.

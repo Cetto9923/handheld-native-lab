@@ -17,24 +17,9 @@ finish_build() {
 trap finish_build EXIT
 printf 'NOT_RUN\n' > "${FFRS_LOGS}/source-guard.exitcode"
 snapshot_sources() {
-    python3 - "${FFRS_ROOT}" "${FFRS_RUNTIME_DIR:-${FFRS_ROOT}/src/runtime/nso}" \
-        "${FFRS_NVN_DIR:-${FFRS_ROOT}/src/graphics/nvn}" <<'PY'
-import hashlib, json, os, subprocess, sys
-from pathlib import Path
-root, runtime, graphics = map(Path, sys.argv[1:])
-paths = set()
-for directory in (root / 'src/android', root / 'scripts/device', root / 'tests/device', runtime, graphics):
-    if directory.exists():
-        paths.update(p for p in directory.rglob('*') if p.is_file()
-                     and '__pycache__' not in p.parts and p.name != '.DS_Store' and p.suffix != '.pyc')
-def git(directory, *args):
-    return subprocess.run(['git', '-C', str(directory), *args], capture_output=True, text=True, check=True).stdout.strip()
-commit = os.environ.get('FFRS_DEPENDENCY_REVISION') or git(runtime, 'rev-parse', 'HEAD')
-print(json.dumps({'source_root':str(root.resolve()), 'source_HEAD':git(root, 'rev-parse', 'HEAD'),
-    'source_dirty':git(root, 'status', '--porcelain'), 'runtime_source_revision': commit, 'files': [
-    {'path': str(p.resolve()), 'bytes': p.stat().st_size, 'sha256': hashlib.sha256(p.read_bytes()).hexdigest()}
-    for p in sorted(paths)]}, indent=2))
-PY
+    python3 "${DEVICE_SCRIPT_DIR}/snapshot_build_inputs.py" --source-root "${FFRS_ROOT}" \
+        --runtime "${FFRS_RUNTIME_DIR:-${FFRS_ROOT}/src/runtime/nso}" \
+        --additional-dir "${FFRS_NVN_DIR:-${FFRS_ROOT}/src/graphics/nvn}"
 }
 snapshot_sources > "${FFRS_LOGS}/build-input-before.json"
 FFRS_BUILD_TOOLS="${FFRS_BUILD_TOOLS:-${FFRS_SDK}/build-tools/34.0.0}"
