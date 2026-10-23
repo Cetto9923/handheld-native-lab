@@ -1,0 +1,329 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ff-resonance-rg477m-native.local/schema/frametime-sample.schema.json",
+  "title": "Frame-time raw sample record (T06)",
+  "description": "One continuous capture of frame presentation timestamps for a single scenario segment on the real RG477M. This is the RAW artefact: derived statistics are computed by tools/perf/ from these fields, never typed in by hand. See frametime-format.md for the prose spec of the clock source, measurement point, percentile algorithm and segment/caching fields.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "captured_at",
+    "build",
+    "device",
+    "clock",
+    "measurement_point",
+    "scenario",
+    "cache",
+    "environment",
+    "samples",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "run_id": {
+      "type": "string",
+      "pattern": "^t06-[0-9]{8}t[0-9]{6}z-[a-z0-9-]+$",
+      "description": "Unique run id. One record per capture session (a session may contain several segments)."
+    },
+    "captured_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 with explicit UTC offset, taken on the DEVICE clock at the START of the capture."
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["apk_sha256", "build_id", "git_rev", "dirty"],
+      "properties": {
+        "apk_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "build_id": { "type": "string" },
+        "git_rev": { "type": "string" },
+        "dirty": { "type": "boolean" },
+        "native_libs_sha256": {
+          "type": "object",
+          "description": "SHA-256 of each native library shipped in the APK, keyed by lib name (e.g. lib/arm64-v8a/libmain.so).",
+          "additionalProperties": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+        }
+      }
+    },
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["serial", "model", "android_version", "abi", "physical_resolution", "panel_refresh_rate_hz"],
+      "properties": {
+        "serial": { "type": "string" },
+        "model": { "type": "string" },
+        "marketing_name": { "type": ["string", "null"] },
+        "android_version": { "type": ["string", "null"] },
+        "abi": { "type": ["string", "null"] },
+        "physical_resolution": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width", "height"],
+          "properties": {
+            "width": { "type": "integer", "minimum": 1 },
+            "height": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "panel_refresh_rate_hz": {
+          "type": "number",
+          "description": "Physical panel refresh rate. If 120, the panel can present the same game frame twice; the dedup rule in frametime-format.md applies."
+        },
+        "current_mode_refresh_rate_hz": { "type": ["number", "null"] }
+      }
+    },
+    "render_settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["internal_render_width", "internal_render_height", "output_width", "output_height", "ui_scale", "fixed_resolution"],
+      "properties": {
+        "internal_render_width": { "type": "integer", "minimum": 1, "description": "Internal render target width actually used." },
+        "internal_render_height": { "type": "integer", "minimum": 1 },
+        "output_width": { "type": "integer", "minimum": 1, "description": "Composited output surface width." },
+        "output_height": { "type": "integer", "minimum": 1 },
+        "ui_resolution": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["width", "height"],
+          "properties": { "width": { "type": "integer" }, "height": { "type": "integer" } },
+          "description": "UI resolution, if it is adapted separately from the internal render target."
+        },
+        "ui_scale": { "type": ["number", "null"] },
+        "fixed_resolution": {
+          "type": "boolean",
+          "description": "True when this run used a fixed internal resolution with no dynamic scaling."
+        },
+        "dynamic_resolution": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "min_width": { "type": ["integer", "null"] },
+            "min_height": { "type": ["integer", "null"] },
+            "max_width": { "type": ["integer", "null"] },
+            "max_height": { "type": ["integer", "null"] },
+            "change_rate_per_sec": { "type": ["number", "null"] },
+            "subtitle_readability_checked": { "type": ["boolean", "null"] }
+          }
+        },
+        "vsync_mode": { "type": ["string", "null"], "description": "e.g. fifo, mailbox, immediate." },
+        "swap_interval": { "type": ["integer", "null"] }
+      }
+    },
+    "clock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "resolution_ns", "measurement_point", "clock", "sampling"],
+      "description": "Provenance of the timestamps. Must be filled for every record; a record with an unknown clock is not usable for PASS/FAIL.",
+      "properties": {
+        "source": {
+          "enum": ["CLOCK_MONOTONIC_RAW", "CLOCK_MONOTONIC", "CLOCK_BOOTTIME", "CLOCK_REALTIME", "unknown"],
+          "description": "POSIX clock id actually passed to clock_gettime(). CLOCK_MONOTONIC_RAW is preferred: it is not slewed by NTP and is not scaled by suspend."
+        },
+        "clock": { "type": "string", "description": "Concrete clock_gettime() clock id / Android API used, e.g. clock_gettime(CLOCK_MONOTONIC_RAW)." },
+        "resolution_ns": { "type": "integer", "minimum": 1, "description": "clock_getres() for the chosen clock." },
+        "monotonic_anchor_ns": { "type": "integer", "description": "First raw timestamp observed in this capture (ns, same clock as source)." },
+        "wallclock_anchor_iso": { "type": "string", "format": "date-time", "description": "Wall-clock time at the monotonic anchor, for cross-referencing logs." },
+        "suspend_aware": {
+          "type": "boolean",
+          "description": "True if the clock keeps advancing across device sleep (CLOCK_BOOTTIME) or if the capture was stopped across sleep."
+        },
+        "drift_correction": {
+          "type": ["string", "null"],
+          "description": "null when no correction was applied. Must state the method if any."
+        }
+      }
+    },
+    "measurement_point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["location", "method", "overhead_ns", "timestamp_semantics"],
+      "properties": {
+        "location": {
+          "type": "string",
+          "description": "Exactly where the timestamp is taken, e.g. 'immediately after eglSwapBuffers() returns, on the render thread'."
+        },
+        "method": {
+          "type": "string",
+          "description": "e.g. 'eglSwapBuffers + clock_gettime(CLOCK_MONOTONIC_RAW)' or 'Choreographer.FrameCallback' or 'Vulkan fence wait -> clock_gettime'."
+        },
+        "timestamp_semantics": {
+          "enum": ["present", "submit", "render_complete", "input_to_present", "unknown"],
+          "description": "What the timestamp represents. 'present' is preferred for game-frame intervals."
+        },
+        "overhead_ns": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "MEASURED cost of adding the instrumentation, not an estimate. If it was not measured, use -1 and record a limitation."
+        },
+        "overhead_measured": { "type": "boolean" },
+        "sampling": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["every_n_frames", "interval_ns"],
+          "properties": {
+            "every_n_frames": { "type": "integer", "minimum": 1 },
+            "interval_ns": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "category", "segments"],
+      "properties": {
+        "name": { "type": "string", "description": "Human label of the scenario, e.g. 'combat-encounter-A'." },
+        "category": {
+          "enum": ["movement", "battle", "cutscene", "menu", "loading", "mixed", "other"],
+          "description": "PROJECT.md requires movement, battle and cutscene to be measured separately, each >= 5 minutes."
+        },
+        "planned_duration_s": { "type": "number", "minimum": 0 },
+        "load_boundary_policy": {
+          "type": "string",
+          "description": "Boundary rule DECLARED BEFORE the run, e.g. 'exclude frames while a loading screen is visible; loading frames are reported separately in segment kind=loading'."
+        },
+        "segments": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["index", "label", "start_ns", "end_ns", "kind", "excluded_from_playing_stats"],
+            "properties": {
+              "index": { "type": "integer", "minimum": 0 },
+              "label": { "type": "string" },
+              "start_ns": { "type": "integer", "description": "Inclusive, same clock unit as clock.source." },
+              "end_ns": { "type": "integer", "description": "Exclusive." },
+              "kind": {
+                "enum": ["playing", "loading", "cutscene", "video", "menu", "warmup", "transition", "unknown"],
+                "description": "video = source-material video playback whose native frame rate may differ from the game frame rate; must be reported separately."
+              },
+              "excluded_from_playing_stats": {
+                "type": "boolean",
+                "description": "True when the segment is NOT gameplay (loading/warmup/video). The exclusion must be declared in load_boundary_policy BEFORE the run."
+              },
+              "exclusion_reason": { "type": ["string", "null"] },
+              "source_video_fps": { "type": ["number", "null"], "description": "Native frame rate of a source video segment, if it is a video asset." }
+            }
+          }
+        }
+      }
+    },
+    "cache": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state"],
+      "properties": {
+        "state": {
+          "enum": ["cold", "warm", "unknown"],
+          "description": "cold = first run after install / first run after asset cache clear / first run after boot with cold page cache. warm = subsequent run with caches populated."
+        },
+        "cold_reason": {
+          "type": ["string", "null"],
+          "enum": ["first_install", "first_launch_after_install", "asset_cache_cleared", "first_launch_after_boot", "page_cache_dropped", "other", null]
+        },
+        "app_data_cleared": { "type": ["boolean", "null"] },
+        "system_page_cache_dropped": { "type": ["boolean", "null"] },
+        "shader_compile_pause_ms": {
+          "type": ["number", "null"],
+          "description": "Measured first-compile shader stall for this run, if cold. Must be reported separately from warm-cache results."
+        },
+        "warmup_frames_discarded": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["firmware_version", "power_source", "thermal_state_start", "thermal_state_end"],
+      "properties": {
+        "firmware_version": { "type": ["string", "null"] },
+        "power_source": { "type": ["string", "null"] },
+        "battery_level_pct_start": { "type": ["number", "null"] },
+        "battery_level_pct_end": { "type": ["number", "null"] },
+        "thermal_state_start": { "type": ["string", "null"] },
+        "thermal_state_end": { "type": ["string", "null"] },
+        "ambient_temperature_c": { "type": ["number", "null"] },
+        "fan_mode": { "type": ["string", "null"] },
+        "display_brightness_pct": { "type": ["number", "null"] }
+      }
+    },
+    "samples": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Ordered frame presentation records. Must be monotonically increasing in ts_ns.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["index", "ts_ns", "new_game_frame"],
+        "properties": {
+          "index": { "type": "integer", "minimum": 0 },
+          "ts_ns": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Presentation timestamp in nanoseconds, same clock as clock.source."
+          },
+          "game_frame_id": {
+            "type": ["integer", "null"],
+            "minimum": 0,
+            "description": "Monotonic id of the game frame that was rendered. Two consecutive samples with the SAME game_frame_id mean the same game frame was presented twice (repeat present) and MUST NOT count as two new game frames."
+          },
+          "new_game_frame": {
+            "type": "boolean",
+            "description": "False when this presentation repeats the previous game frame. Repeat presents are excluded from game-frame interval statistics; they are still recorded."
+          },
+          "presented_content": {
+            "enum": ["game", "ui_overlay", "video", "external_texture", "unknown"],
+            "description": "What was actually presented. 'ui_overlay' and 'external_texture' are NOT new game frames."
+          },
+          "input_to_present_ns": {
+            "type": ["integer", "null"],
+            "minimum": 0,
+            "description": "Latency from the input event that drove this frame to its presentation, when the input event can be attributed."
+          },
+          "notes": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "stats": {
+      "type": ["object", "null"],
+      "description": "Derived statistics. If present, MUST have been computed by tools/perf/ from samples with the algorithm documented in frametime-format.md; hand-typed values are not admissible.",
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": { "type": "string", "description": "Exact percentile algorithm id, e.g. 'nearest-rank-v1'." },
+        "frame_count": { "type": "integer", "minimum": 0 },
+        "new_game_frame_count": { "type": "integer", "minimum": 0 },
+        "mean_fps": { "type": ["number", "null"] },
+        "median_interval_ms": { "type": ["number", "null"] },
+        "p95_interval_ms": { "type": ["number", "null"] },
+        "p99_interval_ms": { "type": ["number", "null"] },
+        "p1_low_fps": {
+          "type": ["number", "null"],
+          "description": "1% low, computed as (100 / P99 interval) by default. MUST NOT be presented as the same quantity as P99 interval; the formula is stated explicitly here."
+        },
+        "p1_low_formula": { "type": ["string", "null"] },
+        "over_100ms_count": { "type": ["integer", "null"] },
+        "max_interval_ms": { "type": ["number", "null"] },
+        "per_segment": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "segment_index": { "type": "integer" },
+              "kind": { "type": "string" },
+              "excluded_from_playing_stats": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Explicit statements of what this record does NOT establish."
+    }
+  }
+}

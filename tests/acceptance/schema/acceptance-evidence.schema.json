@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ff-resonance-rg477m-native.local/schema/acceptance-evidence.schema.json",
+  "title": "Acceptance case run record (QA)",
+  "description": "One execution record for one acceptance case. Every PASS must carry build identity, input identity, test conditions, raw log path, exit code and coverage. A case with no run record is NOT_RUN, never PASS.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "case_id",
+    "task",
+    "status",
+    "executed_at",
+    "executor",
+    "build",
+    "inputs",
+    "environment",
+    "evidence_paths",
+    "coverage",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "case_id": { "type": "string", "pattern": "^[A-Z]{2,4}-[0-9]{3}$" },
+    "task": { "enum": ["T02", "T03B", "T04", "T05", "T06", "T07"] },
+    "status": {
+      "enum": ["PASS", "FAIL", "NOT_RUN", "BLOCKED_DEVICE", "BLOCKED_DEPENDENCY", "BLOCKED_TOOLCHAIN", "INCONCLUSIVE"],
+      "description": "BLOCKED_* and INCONCLUSIVE are NOT passes and must never be counted as one."
+    },
+    "executed_at": { "type": "string", "format": "date-time" },
+    "executor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "independent_of_implementer"],
+      "properties": {
+        "role": { "type": "string", "description": "e.g. QA" },
+        "name": { "type": ["string", "null"] },
+        "independent_of_implementer": {
+          "type": "boolean",
+          "description": "True when the case was executed by someone other than the implementer of the code under test, using the same build."
+        }
+      }
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["build_id", "git_rev", "dirty", "apk_sha256"],
+      "properties": {
+        "build_id": { "type": "string" },
+        "git_rev": { "type": "string" },
+        "dirty": { "type": "boolean" },
+        "apk_sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "native_libs_sha256": { "type": ["object", "null"], "additionalProperties": { "type": "string" } },
+        "source_module_refs": {
+          "type": ["array", "null"],
+          "description": "For T02: mapping from original game module/address to the native implementation symbol.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["origin_module", "origin_symbol", "implementation_symbol"],
+            "properties": {
+              "origin_module": { "type": "string" },
+              "origin_sha256": { "type": ["string", "null"] },
+              "origin_address": { "type": ["string", "null"] },
+              "origin_build_id": { "type": ["string", "null"] },
+              "implementation_symbol": { "type": "string" },
+              "implementation_library": { "type": ["string", "null"] }
+            }
+          }
+        }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["game_package_sha256", "game_title_id", "game_version"],
+      "properties": {
+        "game_package_sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "game_title_id": { "type": ["string", "null"] },
+        "game_version": { "type": ["string", "null"] },
+        "update_package_sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "dlc_sha256": { "type": ["array", "null"], "items": { "type": "string" } },
+        "save_state_sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["platform", "device_serial"],
+      "properties": {
+        "platform": { "enum": ["android-arm64", "android-arm64-device", "host-macos-arm64", "host-linux-x64", "other"] },
+        "device_serial": { "type": ["string", "null"] },
+        "device_firmware": { "type": ["string", "null"] },
+        "host_os": { "type": ["string", "null"] },
+        "host_cpu": { "type": ["string", "null"] },
+        "compiler": { "type": ["string", "null"] },
+        "abi": { "type": ["string", "null"] },
+        "thermal_state": { "type": ["string", "null"] },
+        "power_source": { "type": ["string", "null"] }
+      }
+    },
+    "procedure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["steps"],
+      "properties": {
+        "steps": { "type": "array", "items": { "type": "string" } },
+        "commands": { "type": "array", "items": { "type": "string" } },
+        "exit_codes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["command", "exit_code"],
+            "properties": {
+              "command": { "type": "string" },
+              "exit_code": { "type": "integer" },
+              "log_path": { "type": ["string", "null"] }
+            }
+          }
+        }
+      }
+    },
+    "observed": {
+      "type": ["object", "null"],
+      "description": "Free-form but structured observations, e.g. measured frame stats, measured vulkan feature values."
+    },
+    "evidence_paths": {
+      "type": "array",
+      "description": "Paths (repo-relative or .local-relative) of the RAW artefacts backing this record.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "path"],
+        "properties": {
+          "kind": {
+            "enum": ["raw_log", "capture_json", "screenshot", "video", "device_capture", "build_manifest", "diff", "other"]
+          },
+          "path": { "type": "string" },
+          "sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+          "size_bytes": { "type": ["integer", "null"], "minimum": 0 }
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope"],
+      "properties": {
+        "scope": { "type": "string", "description": "What this run actually exercised, in plain words." },
+        "not_covered": { "type": "array", "items": { "type": "string" }, "description": "Explicitly NOT exercised by this run." },
+        "requires_full_game_compatibility_claim": { "type": "boolean", "default": false }
+      }
+    },
+    "failures": {
+      "type": "array",
+      "description": "Per-failure localisation. Every >100 ms interval must be located and listed here.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["at_ns", "duration_ms", "category", "description"],
+        "properties": {
+          "at_ns": { "type": "integer" },
+          "duration_ms": { "type": "number" },
+          "category": {
+            "enum": ["shader_compile", "io", "gc", "texture_stream", "audio", "sync", "driver", "unknown", "scene_transition", "video"]
+          },
+          "description": { "type": "string" },
+          "repeated_same_point": { "type": ["boolean", "null"], "description": "True when the same location reproduces, which per PROJECT.md keeps the case FAIL." },
+          "reproduce_count": { "type": ["integer", "null"], "minimum": 0 }
+        }
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}
