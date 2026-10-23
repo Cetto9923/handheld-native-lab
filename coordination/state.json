@@ -1,39 +1,12 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-10-23T14:19:00+08:00",
-  "phase": "ROUND4_T01_T03A_T04NVN_PASSED_ACTIVE_T02_T04ASSETS",
-  "coordinator": "Antigravity — 唯一总控；T01 / T03A / T04-nvn 已通过验收并完成集成，正推进 T02 运行时环境与 T04 资源流",
+  "updated_at": "2026-10-23T14:55:00+08:00",
+  "phase": "HANDOFF_TO_CODEX",
+  "coordinator": "Antigravity (交接检查点已收口，已停止项目写入，移交 Codex 接管)",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
-  "active_writers": [
-    {
-      "task": "T04-assets",
-      "owner": "Agent D (RESOURCE)",
-      "paths": [
-        "scripts/extract/",
-        "docs/analysis/asset_inventory.md",
-        "evidence/assets/"
-      ],
-      "worktree": ".claude/worktrees/t04-assets",
-      "branch": "task/T04-assets",
-      "acquired_at": "2026-10-23T13:05:00+08:00",
-      "checkpoint": "baseline a7ae15d"
-    },
-    {
-      "task": "T02-PREP",
-      "owner": "总控 (Claude Code) — NSO 原生加载器",
-      "paths": [
-        "src/runtime/nso/",
-        "tests/native/",
-        "evidence/coordinator/"
-      ],
-      "worktree": ".claude/worktrees/laughing-cray-3464b0",
-      "branch": "claude/laughing-cray-3464b0",
-      "acquired_at": "2026-10-23T13:05:00+08:00",
-      "checkpoint": "a7ae15d + 本轮 loader 提交"
-    }
-  ],
+  "active_writers": [],
   "tasks": [
     {
       "id": "T00",
@@ -127,7 +100,7 @@
     {
       "id": "T04-assets",
       "role": "RESOURCE",
-      "status": "in_progress",
+      "status": "passed",
       "dependencies": [
         "T00"
       ],
