@@ -31,6 +31,21 @@ with zipfile.ZipFile(args.apk) as apk:
         raise SystemExit('Library is not ELF64 little endian')
     if struct.unpack_from('<H', native, 18)[0] != 183:
         raise SystemExit('ELF machine is not AArch64')
+    if struct.unpack_from('<H', native, 16)[0] != 3:
+        raise SystemExit('JNI ELF is not ET_DYN')
+    phoff = struct.unpack_from('<Q', native, 32)[0]
+    phsize, phcount = struct.unpack_from('<HH', native, 54)
+    loads = []
+    for index in range(phcount):
+        values = struct.unpack_from('<IIQQQQQQ', native, phoff + index * phsize)
+        if values[0] == 1:
+            loads.append(values)
+            if values[7] < 16384 or values[2] % values[7] != values[3] % values[7]:
+                raise SystemExit('JNI ELF LOAD segment is not 16 KiB compatible')
+            if values[1] & 3 == 3:
+                raise SystemExit('JNI ELF LOAD segment is writable and executable')
+    if not loads:
+        raise SystemExit('JNI ELF has no LOAD segments')
     with tempfile.TemporaryDirectory() as temporary:
         library = Path(temporary) / 'libffrs_diagnostic.so'
         library.write_bytes(native)

@@ -64,20 +64,53 @@ On the final integrated tree, omit both source-directory overrides to use the re
 
 The app writes `diagnostic.json` beneath its own external files directory (falling back to internal files), showing the actual path on screen. User-authorized uncompressed module input belongs at that directory's `modules/main.nso`. Capability fields retaining existing headless limitations (e.g. AudioTrack, display and input sysfs permissions) must not be treated as measured Java-backed results.
 
-## Verified artifacts
+## First verified checkpoint artifacts (`9be2705`)
+
+| Artifact | Bytes | SHA256 |
+| --- | ---: | --- |
+| `.local/artifacts/android/checkpoint-9be2705/probe_rg477m` | 2872776 | `f4b939ad90a008555ba4eb8da6960e722207d3f8fb9642538ee8ceca70ae7ece` |
+| `.local/artifacts/android/checkpoint-9be2705/nso_diagnostic` | 2877208 | `f0616514f16b35d9dd0c82dae527bcdc09a3288e7b689cf342746400de91cf5c` |
+| `.local/artifacts/android/checkpoint-9be2705/libffrs_diagnostic.so` | 3234592 | `0e585d95eccb6699a98abf6a344a0fba1d357c345601800423ca4dbb9ab58213` |
+| `.local/artifacts/android/checkpoint-9be2705/ffrs-diagnostic-debug.apk` | 410072 | `4ab22db59be7b6a49df36b4d7aeb8013e390b2a7b6ae8eeff79ba23d15f48039` |
+
+`llvm-readelf` confirms ELF64 AArch64, `/system/bin/linker64` for both CLI executables, and 0x4000 alignment on all LOAD segments. APK signature verification passes v3; the compiled manifest reports package `org.ffrs.diagnostic`, min SDK28, target34, debuggable, and native ABI `arm64-v8a`. Required JNI and loader symbols are present, with no ELF TEXTREL and no private game inputs. The JNI shared object depends only on Android system libc/libm/libdl/liblog/libandroid/libvulkan; libc++ is statically linked. Signed APK verification and packaging tests are host-side structural evidence only.
+
+## Hardware diagnostic checkpoint (version 0.2)
+
+The first source checkpoint is `9be2705e6f149e4bef40367d79c4520c4d6c4611`; its original APK and native outputs remain preserved under `.local/artifacts/android/checkpoint-9be2705/`. This second checkpoint adds only Android host diagnostics, packaging, verification and this report.
+
+- Manifest versionCode 2 / versionName `0.2-hardware-diagnostic`, compiled application label `FFRS 诊断宿主`, touchscreen and gamepad both optional. The unused GLES feature declaration is removed.
+- `dispatchKeyEvent` captures physical key source/device/action/keycode/scancode/repeat and event timestamp while preserving normal Android handling. `dispatchGenericMotionEvent` captures common stick/hat/trigger axes before views handle the event. Motion is sampled every 50 ms and the skipped event count is recorded explicitly.
+- onCreate/onResume/onPause/onDestroy and diagnostic start/finish are written to `FFRS-Hardware` logcat and the app-private `hardware-events.jsonl`. The existing private evidence file is retained when it reaches 1 MiB, while logcat continues; it is not silently truncated.
+- The private storage probe uses `File.createTempFile` under `getFilesDir()`, writes/fsyncs/reads and compares only this newly created sample, then deletes only that sample in `finally`. It reports the cleanup result. It does not touch game saves or external/user files. No audio is played and no volume setting is changed.
+- These input/lifecycle/storage implementations are **NOT_RUN on device**. A future `PASS_FILE_LOOPBACK_ONLY` result concerns only the diagnostic app's private-file round trip, never a game-save gate.
+
+The complete build/Java/DEX/aapt/signature/ELF inspection command exited 0. Evidence is `.local/logs/android-apk-hardware-frozen.{log,exitcode}`, with per-step outputs under `.local/logs/android/`. `source-guard.exitcode` is 0. Both the before/after-compile and before/final source snapshots match for all 34 files; runtime repository HEAD remained frozen at `e860f999ac08a584fb66731d0ca11373fe268185`. Source changes during a build now stop packaging with exit 5 instead of accepting a mixed candidate. The three preserved fingerprints are `build-input-before.json`, `build-input-after-compile.json` and `build-input-after.json`.
+
+Frozen compiled dependency SHA256:
+
+| File | SHA256 |
+| --- | --- |
+| runtime `nso_loader.c` | `621b7b54869484e95f3de92c143fe39b52a10243c4ba472f59206eb9b65a579f` |
+| runtime `nso_loader.h` | `4c40b8c84d4d3c0ee7dfdec6324e1e335ba8bc57d1e6e5235ea20894dd4ed882` |
+| graphics `nvn_dispatch.c` | `bcf1a852be4b8a80bdd24ec0672a301e1a460825aadc0d05eff5dbcae03d0393` |
+
+The earlier intermediate APK with SHA256 `0d2f1c1c772c30a05c76f838aab8092b77f8fddc00cf4513c2c794a87835c4c7` is explicitly **MIXED_SOURCE_NOT_ACCEPTED**: integration runtime changed during that build, despite successful structural checks. It is preserved separately at `.local/artifacts/android/mixed-source-not-accepted-0d2f1c1c/` with a status manifest. It is not the accepted hardware checkpoint.
+
+Accepted hardware checkpoint artifacts:
 
 | Artifact | Bytes | SHA256 |
 | --- | ---: | --- |
 | `.local/artifacts/android/probe_rg477m` | 2872776 | `f4b939ad90a008555ba4eb8da6960e722207d3f8fb9642538ee8ceca70ae7ece` |
-| `.local/artifacts/android/nso_diagnostic` | 2877208 | `f0616514f16b35d9dd0c82dae527bcdc09a3288e7b689cf342746400de91cf5c` |
-| `.local/artifacts/android/libffrs_diagnostic.so` | 3234592 | `0e585d95eccb6699a98abf6a344a0fba1d357c345601800423ca4dbb9ab58213` |
-| `.local/artifacts/android/ffrs-diagnostic-debug.apk` | 410072 | `4ab22db59be7b6a49df36b4d7aeb8013e390b2a7b6ae8eeff79ba23d15f48039` |
+| `.local/artifacts/android/nso_diagnostic` | 2878608 | `9233ec028bd750ccd1ac77596b42302b2307e76d50842b220d88c05071e48e33` |
+| `.local/artifacts/android/libffrs_diagnostic.so` | 3235968 | `8494df957ab097c374b4ccb7d425e160d32bef5188acc40c0f64aa6f8699cd5b` |
+| `.local/artifacts/android/ffrs-diagnostic-debug.apk` | 414228 | `42d379034ea53b5cff5ce23eac452d0df4325e288857a77fefc4ae27aeb1aefa` |
 
-`llvm-readelf` confirms ELF64 AArch64, `/system/bin/linker64` for both CLI executables, and 0x4000 alignment on all LOAD segments. APK signature verification passes v3; the compiled manifest reports package `org.ffrs.diagnostic`, min SDK28, target34, debuggable, and native ABI `arm64-v8a`. Required JNI and loader symbols are present, with no ELF TEXTREL and no private game inputs. The JNI shared object depends only on Android system libc/libm/libdl/liblog/libandroid/libvulkan; libc++ is statically linked. Signed APK verification and packaging tests are host-side structural evidence only.
+The APK passes v3 signature verification and aapt reports version 0.2, Chinese label, API28/target34 and arm64-v8a. The artifact verifier additionally checks ET_DYN, AArch64, valid 16 KiB LOAD congruence and no writable+executable LOAD segment. All device/game gates remain BLOCKED_DEVICE/NOT_RUN.
 
 ## Remaining gates
 
 1. Total NDK archive SHA1 remains pending. The working partial official toolchain is sufficient for the recorded real Android cross-build; do not equate that with a completed SDK-manager package installation.
-2. The parent should integrate this Android commit with runtime `987256b` and graphics `9a51034`, then rebuild from relative source paths to establish its integrated build identity.
+2. The parent should integrate the hardware UI checkpoint onto its frozen `e860f99` tree, then rebuild from relative source paths to establish the final integrated build identity. The first Android checkpoint has already been integrated by the parent.
 3. Connect the user's RG477M for install, JNI invocation, module load, Vulkan capability capture and crash evidence. Until then all on-device and game-execution gates remain NOT_RUN/BLOCKED_DEVICE.
 4. No Android device or emulator was used. No game constructor/entry point, title screen, scene, gameplay or performance gate passed.
