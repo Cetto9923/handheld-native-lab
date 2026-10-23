@@ -18,6 +18,7 @@ import android.view.WindowInsets;
 import android.view.View;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
+import android.view.InputDevice;
 import android.util.Log;
 import android.widget.Button;
 import android.widget.LinearLayout;
@@ -29,18 +30,21 @@ import java.io.FileOutputStream;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.List;
 import org.json.JSONObject;
 
 /** Minimal JNI carrier that displays actual capability and module diagnostics. */
 public final class DiagnosticActivity extends Activity implements View.OnClickListener, Runnable, Handler.Callback {
     static { System.loadLibrary("ffrs_diagnostic"); }
-    private native String runNativeDiagnostic(String modulePath, String reportPath, DisplaySnapshot display);
+    private native String runNativeDiagnostic(String modulePath, String reportPath, DisplaySnapshot display, InputSnapshot input);
     private native String runNativeLeafDiagnostic(String libraryPath, String reportPath);
     private Button button;
     private Button leafButton;
     private boolean leafMode;
     private boolean hardwareReady;
     private DisplaySnapshot displaySnapshot;
+    private InputSnapshot inputSnapshot;
     private String leafLibrary;
     private String leafReport;
     private TextView result;
@@ -108,7 +112,10 @@ public final class DiagnosticActivity extends Activity implements View.OnClickLi
 
     @Override public void onClick(View view) {
         leafMode = view == leafButton;
-        if (!leafMode) displaySnapshot = captureDisplaySnapshot();
+        if (!leafMode) {
+            displaySnapshot = captureDisplaySnapshot();
+            inputSnapshot = captureInputSnapshot();
+        }
         recordEvent(leafMode ? "leaf_diagnostic_start" : "native_diagnostic_start", new JSONObject());
         button.setEnabled(false);
         leafButton.setEnabled(false);
@@ -118,7 +125,7 @@ public final class DiagnosticActivity extends Activity implements View.OnClickLi
 
     @Override public void run() {
         String diagnostics;
-        try { diagnostics = leafMode ? runNativeLeafDiagnostic(leafLibrary, leafReport) : runNativeDiagnostic(module, report, displaySnapshot); }
+        try { diagnostics = leafMode ? runNativeLeafDiagnostic(leafLibrary, leafReport) : runNativeDiagnostic(module, report, displaySnapshot, inputSnapshot); }
         catch (Throwable failure) { diagnostics = "JNI_FAILED: " + failure.toString(); }
         handler.obtainMessage(1, diagnostics).sendToTarget();
     }
@@ -205,6 +212,57 @@ public final class DiagnosticActivity extends Activity implements View.OnClickLi
                 }
             }
         } catch (RuntimeException failure) { snapshot.error += " Display measurement: " + failure.toString(); }
+        return snapshot;
+    }
+
+    private InputSnapshot captureInputSnapshot() {
+        // Capabilities only. Existing event listeners still forward all events to Android.
+        InputSnapshot snapshot = new InputSnapshot();
+        snapshot.captured_elapsed_realtime_ns = SystemClock.elapsedRealtimeNanos();
+        ArrayList<InputSnapshot.Device> devices = new ArrayList<>();
+        try {
+            int[] ids = InputDevice.getDeviceIds();
+            int[] keys = new int[KeyEvent.getMaxKeyCode() + 1];
+            for (int key = 0; key < keys.length; key++) keys[key] = key;
+            snapshot.measured = true;
+            snapshot.enumeration_complete = true;
+            for (int id : ids) {
+                try {
+                    InputDevice device = InputDevice.getDevice(id);
+                    if (device == null) throw new IllegalStateException("Device detached during capture: " + id);
+                    InputSnapshot.Device d = new InputSnapshot.Device();
+                    d.id = device.getId(); d.name = device.getName();
+                    d.vendor_id = device.getVendorId(); d.product_id = device.getProductId();
+                    d.controller_number = device.getControllerNumber();
+                    d.source_mask = device.getSources(); d.is_virtual = device.isVirtual();
+                    boolean[] supported = device.hasKeys(keys);
+                    if (supported.length != keys.length) throw new IllegalStateException("hasKeys length mismatch");
+                    int count = 0;
+                    for (boolean present : supported) if (present) count++;
+                    d.key_codes = new int[count];
+                    for (int key = 0, n = 0; key < keys.length; key++) if (supported[key]) d.key_codes[n++] = key;
+                    List<InputDevice.MotionRange> ranges = device.getMotionRanges();
+                    d.axes = new InputSnapshot.Axis[ranges.size()];
+                    for (int i = 0; i < ranges.size(); i++) {
+                        InputDevice.MotionRange range = ranges.get(i);
+                        InputSnapshot.Axis axis = new InputSnapshot.Axis();
+                        axis.type = range.getAxis(); axis.name = MotionEvent.axisToString(axis.type);
+                        axis.source_mask = range.getSource();
+                        axis.min = range.getMin(); axis.max = range.getMax();
+                        axis.flat = range.getFlat(); axis.fuzz = range.getFuzz(); axis.resolution = range.getResolution();
+                        d.axes[i] = axis;
+                    }
+                    devices.add(d);
+                } catch (RuntimeException failure) {
+                    snapshot.enumeration_complete = false;
+                    snapshot.error += " Input device " + id + ": " + failure.toString();
+                }
+            }
+        } catch (RuntimeException failure) {
+            snapshot.error += " Input enumeration: " + failure.toString();
+            snapshot.enumeration_complete = false;
+        }
+        snapshot.devices = devices.toArray(new InputSnapshot.Device[0]);
         return snapshot;
     }
 

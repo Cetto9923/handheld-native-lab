@@ -2,6 +2,7 @@
 #include "probe_core.h"
 #include "json_writer.h"
 #include "display_jni.h"
+#include "input_jni.h"
 #include <android/log.h>
 #include <jni.h>
 #include <fstream>
@@ -9,7 +10,7 @@
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_org_ffrs_diagnostic_DiagnosticActivity_runNativeDiagnostic(JNIEnv* env, jobject,
-                                                               jstring module, jstring destination, jobject display) {
+                                                               jstring module, jstring destination, jobject display, jobject input) {
     const char* module_chars = env->GetStringUTFChars(module, nullptr);
     if (!module_chars) return nullptr;
     std::string module_path(module_chars);
@@ -22,6 +23,8 @@ Java_org_ffrs_diagnostic_DiagnosticActivity_runNativeDiagnostic(JNIEnv* env, job
     ffrs::ProbeContext context;
     ffrs::DisplayInfo measured_display = ffrs::ReadDisplaySnapshot(env, display);
     context.display_snapshot = &measured_display;
+    ffrs::InputInfo measured_input = ffrs::ReadInputSnapshot(env, input);
+    context.input_snapshot = &measured_input;
     context.execution_mode = "android_jni_diagnostic";
     ffrs::JsonWriter report;
     report.BeginObject();

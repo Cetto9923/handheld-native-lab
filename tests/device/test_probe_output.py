@@ -48,6 +48,11 @@ def test_json_output(bin_path: str):
         assert display[field] == 0, (field, display[field])
     assert display["modes"] == []
     assert display["refresh_rate_status"] == "unavailable"
+    inputs = data["input"]
+    assert inputs["status"] == "unavailable_no_android_api_snapshot"
+    assert not inputs["enumeration_complete"] and inputs["devices"] == []
+    assert inputs["gamepad_count_status"] == "unavailable"
+    assert inputs["key_code_namespace"] == "android.view.KeyEvent.KEYCODE_*"
     audio = data["audio"]
     assert audio["status"] != "ok"
     for field in ("output_device_count", "sample_rate_hz", "output_frames_per_buffer",
@@ -84,6 +89,7 @@ def test_summary_output(bin_path: str):
     assert "Memory:" in res.stdout
     assert "CPU:" in res.stdout
     assert "Vulkan:" in res.stdout
+    assert "gamepad count unavailable" in res.stdout and "Detected 0 gamepad" not in res.stdout
     print("Summary output validated successfully.")
 
 if __name__ == "__main__":

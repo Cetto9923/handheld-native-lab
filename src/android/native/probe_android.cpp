@@ -3,10 +3,7 @@
 #include "probe_platform.h"
 #include "probe_types.h"
 
-#include <dirent.h>
 #include <inttypes.h>
-#include <fcntl.h>
-#include <linux/input.h>
 #include <sys/auxv.h>
 #include <sys/statvfs.h>
 #include <sys/system_properties.h>
@@ -166,125 +163,6 @@ void AndroidCollectCpu(const ProbeContext& /*ctx*/, CpuInfo& out) {
     }
     if (out.cpu_family.empty()) {
         out.cpu_family = GetSystemProperty("ro.board.platform", "ARM64");
-    }
-}
-
-void AndroidCollectInput(const ProbeContext& /*ctx*/, InputInfo& out) {
-    out.status = "ok";
-    out.gamepad_count = 0;
-
-    // First try /dev/input/event*
-    for (int i = 0; i < 32; i++) {
-        char dev_path[64];
-        std::snprintf(dev_path, sizeof(dev_path), "/dev/input/event%d", i);
-        int fd = open(dev_path, O_RDONLY | O_NONBLOCK);
-        if (fd < 0) continue;
-
-        InputDeviceInfo dev;
-        dev.id = i;
-        char name[128] = {0};
-        if (ioctl(fd, EVIOCGNAME(sizeof(name)), name) >= 0) {
-            dev.name = name;
-        }
-
-        struct input_id iid;
-        if (ioctl(fd, EVIOCGID, &iid) >= 0) {
-            dev.vendor_id = iid.vendor;
-            dev.product_id = iid.product;
-        }
-
-        uint8_t ev_bits[(EV_MAX + 7) / 8] = {0};
-        if (ioctl(fd, EVIOCGBIT(0, sizeof(ev_bits)), ev_bits) >= 0) {
-            bool has_keys = (ev_bits[EV_KEY / 8] & (1 << (EV_KEY % 8))) != 0;
-            bool has_abs = (ev_bits[EV_ABS / 8] & (1 << (EV_ABS % 8))) != 0;
-
-            if (has_keys) {
-                uint8_t key_bits[(KEY_MAX + 7) / 8] = {0};
-                if (ioctl(fd, EVIOCGBIT(EV_KEY, sizeof(key_bits)), key_bits) >= 0) {
-                    for (int k = 0; k < KEY_MAX; k++) {
-                        if (key_bits[k / 8] & (1 << (k % 8))) {
-                            dev.key_codes.push_back(k);
-                            if (k >= BTN_MISC && k <= BTN_GEAR_UP) {
-                                dev.is_gamepad = true;
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (has_abs) {
-                uint8_t abs_bits[(ABS_MAX + 7) / 8] = {0};
-                if (ioctl(fd, EVIOCGBIT(EV_ABS, sizeof(abs_bits)), abs_bits) >= 0) {
-                    for (int a = 0; a < ABS_MAX; a++) {
-                        if (abs_bits[a / 8] & (1 << (a % 8))) {
-                            struct input_absinfo absinfo;
-                            if (ioctl(fd, EVIOCGABS(a), &absinfo) >= 0) {
-                                AxisInfo ax;
-                                ax.type = a;
-                                char ax_name[32];
-                                std::snprintf(ax_name, sizeof(ax_name), "ABS_%d", a);
-                                ax.name = ax_name;
-                                ax.min = absinfo.minimum;
-                                ax.max = absinfo.maximum;
-                                ax.flat = absinfo.flat;
-                                ax.fuzz = absinfo.fuzz;
-                                dev.axes.push_back(ax);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if (dev.is_gamepad || !dev.axes.empty()) {
-            dev.is_gamepad = true;
-            out.gamepad_count++;
-        }
-        out.devices.push_back(dev);
-        close(fd);
-    }
-
-    // Fallback: If /dev/input opened 0 devices due to permissions, query /sys/class/input/
-    if (out.devices.empty()) {
-        DIR* input_dir = opendir("/sys/class/input");
-        if (input_dir) {
-            struct dirent* entry;
-            int idx = 0;
-            while ((entry = readdir(input_dir)) != nullptr) {
-                if (std::strncmp(entry->d_name, "event", 5) == 0) {
-                    std::string base = std::string("/sys/class/input/") + entry->d_name + "/device/";
-                    std::string name_path = base + "name";
-                    std::ifstream nf(name_path);
-                    if (nf.is_open()) {
-                        InputDeviceInfo dev;
-                        dev.id = idx++;
-                        std::getline(nf, dev.name);
-                        std::ifstream vid_file(base + "id/vendor");
-                        if (vid_file.is_open()) {
-                            std::string v; vid_file >> v;
-                            dev.vendor_id = static_cast<int>(std::strtol(v.c_str(), nullptr, 16));
-                        }
-                        std::ifstream pid_file(base + "id/product");
-                        if (pid_file.is_open()) {
-                            std::string p; pid_file >> p;
-                            dev.product_id = static_cast<int>(std::strtol(p.c_str(), nullptr, 16));
-                        }
-                        // Heuristic for RG477M / gamepads
-                        std::string lower_name = dev.name;
-                        for (auto& c : lower_name) c = std::tolower(c);
-                        if (lower_name.find("gamepad") != std::string::npos ||
-                            lower_name.find("controller") != std::string::npos ||
-                            lower_name.find("joystick") != std::string::npos ||
-                            lower_name.find("anbernic") != std::string::npos) {
-                            dev.is_gamepad = true;
-                            out.gamepad_count++;
-                        }
-                        out.devices.push_back(dev);
-                    }
-                }
-            }
-            closedir(input_dir);
-        }
     }
 }
 

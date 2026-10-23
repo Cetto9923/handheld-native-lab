@@ -216,8 +216,19 @@ std::string SerializeProbeReportToJson(const FullProbeReport& rep) {
     w.BeginObject();
     w.Key("status");
     w.String(rep.input.status);
+    w.Key("source"); w.String(rep.input.source);
+    w.Key("error"); w.String(rep.input.error);
+    w.Key("enumeration_complete"); w.Bool(rep.input.enumeration_complete);
+    w.Key("key_code_namespace"); w.String("android.view.KeyEvent.KEYCODE_*");
+    w.Key("axis_code_namespace"); w.String("android.view.MotionEvent.AXIS_*");
+    w.Key("scope"); w.String("reported_device_capabilities_not_event_or_game_mapping_validation");
+    w.Key("captured_elapsed_realtime_ns"); w.UInt(rep.input.captured_elapsed_realtime_ns);
+    w.Key("gamepad_count_status");
+    w.String(!rep.input.measured ? "unavailable" : rep.input.enumeration_complete && rep.input.error.empty()
+        ? "measured_android_api" : "partial_android_api_measurement");
     w.Key("gamepad_count");
     w.Int(rep.input.gamepad_count);
+    w.Key("gamepad_count_unit"); w.String("android_input_devices_supporting_gamepad_or_joystick");
     w.Key("devices");
     w.BeginArray();
     for (const auto& dev : rep.input.devices) {
@@ -234,6 +245,8 @@ std::string SerializeProbeReportToJson(const FullProbeReport& rep) {
         w.Int(dev.controller_number);
         w.Key("is_gamepad");
         w.Bool(dev.is_gamepad);
+        w.Key("is_virtual"); w.Bool(dev.is_virtual);
+        w.Key("source_mask"); w.UInt(dev.source_mask);
         w.Key("sources");
         w.BeginArray();
         for (const auto& src : dev.sources) {
@@ -248,6 +261,8 @@ std::string SerializeProbeReportToJson(const FullProbeReport& rep) {
             w.Int(ax.type);
             w.Key("name");
             w.String(ax.name);
+            w.Key("source_mask"); w.UInt(ax.source_mask);
+            w.Key("resolution"); w.Double(ax.resolution);
             w.Key("min");
             w.Double(ax.min);
             w.Key("max");
@@ -409,7 +424,10 @@ void PrintReportSummary(const FullProbeReport& rep) {
               << (rep.memory.available_bytes / (1024 * 1024)) << " MB\n";
     std::cout << "Display:  " << rep.display.width_px << "x" << rep.display.height_px
               << " @" << rep.display.refresh_rate_hz << "Hz, density=" << rep.display.density_dpi << " dpi\n";
-    std::cout << "Input:    Detected " << rep.input.gamepad_count << " gamepad(s)\n";
+    std::cout << "Input:    Status=" << rep.input.status;
+    if (rep.input.measured) std::cout << ", reported gamepad/joystick InputDevices=" << rep.input.gamepad_count;
+    else std::cout << ", gamepad count unavailable";
+    std::cout << '\n';
     std::cout << "Vulkan:   Status=" << rep.vulkan.status << ", API Version=" << rep.vulkan.instance_api_version << "\n";
     if (rep.vulkan.physical_device_count > 0) {
         for (const auto& dev : rep.vulkan.devices) {

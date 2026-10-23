@@ -21,10 +21,12 @@ extern const char* const kUnavailableOnHost; // host build, needs an Android dev
 extern const char* const kUnavailable;       // Android build, reason unknown/unavailable
 
 struct DisplayInfo;
+struct InputInfo;
 // UI-thread Android API snapshot, owned by the synchronous probe caller.
 // A CLI has no Activity/window measurement and must not substitute a model.
 struct ProbeContext {
     const DisplayInfo* display_snapshot = nullptr;
+    const InputInfo* input_snapshot = nullptr;
     const char* execution_mode = "host";
 };
 
@@ -83,6 +85,8 @@ struct AxisInfo {
     double max = 0.0;
     double flat = 0.0;
     double fuzz = 0.0;
+    double resolution = 0.0;
+    uint32_t source_mask = 0;
 };
 
 struct InputDeviceInfo {
@@ -93,15 +97,24 @@ struct InputDeviceInfo {
     int controller_number = -1;
     std::vector<std::string> sources;
     bool is_gamepad = false;
+    bool is_virtual = false;
+    uint32_t source_mask = 0;
     std::vector<AxisInfo> axes;
     std::vector<int> key_codes;
 };
 
 struct InputInfo {
     std::string status = "unavailable";
+    std::string source;
+    std::string error;
+    bool measured = false;
+    bool enumeration_complete = false;
+    uint64_t captured_elapsed_realtime_ns = 0;
     std::vector<InputDeviceInfo> devices;
     int gamepad_count = 0;
 };
+
+InputInfo NormalizeInputSnapshot(const InputInfo& measured);
 
 struct DisplayModeInfo {
     int mode_id = 0;
