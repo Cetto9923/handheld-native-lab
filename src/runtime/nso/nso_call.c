@@ -82,7 +82,8 @@ static void *run_profile_entry(guest_process *p,void *opaque) {
         uint64_t value=0;
         struct nso_result r=guest_process_call(p,off,entry->args,expected,&value);
         if(r.status!=NSO_OK) {fprintf(stderr,"[profile-executor] call status=%d errno=%d; no raw fallback\n",r.status,r.native_error);entry->rc=1;return NULL;}
-        printf("result        : 0x%" PRIx64 "\n",value);
+        /* Preserve return evidence before primary/TLS teardown can failstop. */
+        printf("result        : 0x%" PRIx64 "\n",value);fflush(stdout);
     }
     return NULL;
 }
