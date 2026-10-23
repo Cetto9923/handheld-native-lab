@@ -1,3 +1,5 @@
+> 更正：可空hook是GLOBAL OBJECT而非ELF STB_WEAK；普通新建线程返回的OS槽→状态通知→hook→ELF drain顺序已闭合。详见[codex_tls_exit_hook_report.md](codex_tls_exit_hook_report.md)，其限定结论取代下文旧未闭合表述。
+
 # SDK TLS 槽与 main 回调：限定静态结论
 
 普通 LLVM 反汇编及本地 NSO 元数据，非 REA Evidence。没有运行目标代码、修改 TP/SDK/repo 或操作设备。全部派生产物在本目录 `.local/`。机器表：`.local/sdk-lifecycle-review-v1/tls_sdk_lifecycle.json`；逐 PC：`.local/sdk-lifecycle-normalized-v3/`；命令、编译退出码及原始切片：`.local/sdk-lifecycle-v1/run.json` 与各子目录。复用了 runtime 匹配输入的既有小切片，没有重新 setup。

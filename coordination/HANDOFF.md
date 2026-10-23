@@ -8,7 +8,7 @@
 
 ## 分支 / 工作树
 
-- 原交付：`/Users/yuyan9923/GitHub/ff-resonance-rg477m-native`，`work/rg477m-native`，本检查点已干净快进至 **fb7d8702a2c13af5fb517717ca6c2789c441824c**。后续快进前再核实branch/HEAD/dirty，禁止覆盖新成果。
+- 原交付：`/Users/yuyan9923/GitHub/ff-resonance-rg477m-native`，`work/rg477m-native`，本检查点已干净快进至 **253b824180667fa31ce8bdc08e94e95ebf7d4c91**。后续快进前再核实branch/HEAD/dirty，禁止覆盖新成果。
 - 总控：`/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration`，`task/codex-integration`。总控唯一写coordination与集成；active_writers以state.json为准，不按过期时间抢占。
 - Runtime：`../ffrs-runtime`，`task/T02-codex-runtime`，owned-pages冻结e112d65。新GuestContext/专属栈任务独占新增文件，不动resolver/入口；最新HEAD需重查。
 - Android：`../ffrs-android`，`task/T03A-codex-android`，冻结15da4c2，v6音频及EH链接已集成fb7d870。
@@ -36,8 +36,8 @@
 
 ## 核心阻塞及下一步
 
-1. **真正GuestContext和QueryMemoryInfo**：SDK七字段是total/used non-system memory、heap capacity、heap allocated、baseline、registered stack bytes和thread-object count，不是地址查询。不能把宿主MemAvailable/meminfo/pthread栈大小填成guest值。main映像port逻辑span4KiB=162869248B，文件size不是映像计量；专属主栈尚未建立。新任务实现必填quota/stack_size、precharge与真实专属pthread栈/guard，先普通callback验证，不绑定Query或执行原始入口。module/heap/thread未知保持invalid；62GiB虚拟reserve不算physical。设计来源在runtime.local/guest-context-plan/。
-2. **TLS/CRT**：main模块TLS镜像initialized0x220/total0x1019/align8/prefix16，独立复制/清零/对齐正常，不代表header/指针生命周期兼容。SDK OS32槽与ELF destructor LIFO是不同机制；应用槽0–15、SDK31–17、16未知；OS最多5轮且callback后清值。ELF节点48B/align16，可重入且无固定轮数。main303e0释放依赖guest allocator虚表，不能hostfree。静态报告在docs/analysis/codex_tls_sdk_lifecycle_report.md。可空destroyer hook安装/退出顺序仍分析；早期“weak”称谓尚未证实STB_WEAK，待新报告更正。不要执行写TPIDR的原SDK helper、批量改MRS或强制CRTgate。
+1. **真正GuestContext和QueryMemoryInfo**：SDK七字段是total/used non-system memory、heap capacity、heap allocated、baseline、registered stack bytes和thread-object count，不是地址查询。不能把宿主MemAvailable/meminfo/pthread栈大小填成guest值。main映像port逻辑span4KiB=162869248B，文件size不是映像计量；NPDM主栈明确配置65536B，SystemResourceSize20MiB只是内核管理保留、不是guest总额；见codex_npdm_memory_report.md。专属主栈尚未建立。新任务实现必填quota/stack_size、precharge与真实专属pthread栈/guard，先普通callback验证，不绑定Query或执行原始入口。module/heap/thread未知保持invalid；62GiB虚拟reserve不算physical。设计来源在runtime.local/guest-context-plan/。
+2. **TLS/CRT**：main模块TLS镜像initialized0x220/total0x1019/align8/prefix16，独立复制/清零/对齐正常，不代表header/指针生命周期兼容。SDK OS32槽与ELF destructor LIFO是不同机制；应用槽0–15、SDK31–17、16未知；OS最多5轮且callback后清值。ELF节点48B/align16，可重入且无固定轮数。main303e0释放依赖guest allocator虚表，不能hostfree。静态报告在docs/analysis/codex_tls_sdk_lifecycle_report.md。可空GLOBAL OBJECT hook安装99ba0→9ae40、fini分支99ea0清零已闭合；普通线程返回依次OS槽→结束状态/通知→hook→ELF drain（内部门控非零条件），异常及初始线程退出不外推，详见codex_tls_exit_hook_report.md。不要执行写TPIDR的原SDK helper、批量改MRS或强制CRTgate。
 3. **真实游戏图形/资源**：NVN仅2/535查询入口，533未实现，59缺PFN类型；当前GPU探针不等于翻译后端。按启动真实调用链补接口，不能批量假桩。合法本地素材保留，实际挂载/IoStore/着色器/呈现/标题/场景都未验收。
 4. **设备余项**：听感、完整键轴/休眠、真实游戏输入音频存档；30FPS实际场景/45分钟未运行。荣耀平板未连接，官方profile3000×1920/8sGen3/144Hz仅规格，不是adb身份或GPU兼容证据。
 

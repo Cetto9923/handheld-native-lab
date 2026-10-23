@@ -1,6 +1,6 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-10-23T10:14:41.887475+00:00
+状态事件时间：2026-10-23T10:20:11.387939+00:00
 阶段：NATIVE_RUNTIME_AND_DIAGNOSTIC_APK_CHECKPOINT
 总控：Codex — integration owner; GPT-6.1 xhigh workers; CreateGoal tool unavailable
 更新方式：按事件更新，没有后台自动刷新。
@@ -32,12 +32,12 @@
 | T07-OWNED-PAGE-REVIEW | QA | passed | Independent ordinary POSIX component reviewer | T00R | 无额外门禁 | 未创建 |
 | T07-AUDIO-REVIEW | QA | passed | Independent ordinary Java/Android component reviewer | T00R | 无额外门禁 | 未创建 |
 | T02-GUEST-PRIMARY-STACK | CORE | in_progress | Runtime engineer | T00R | 无额外门禁 | 未创建 |
-| T02-TLS-EXIT-HOOK-ANALYSIS | RE | in_progress | Static TLS analyst | T00R | 无额外门禁 | 未创建 |
+| T02-TLS-EXIT-HOOK-ANALYSIS | RE | passed | Static analyst bounded successful normal return path only | T00R | 无额外门禁 | 未创建 |
+| T02-NPDM-MEMORY-CONFIG | RE | passed | Coordinator read-only local metadata inspection | T00 | 无额外门禁 | task/codex-integration |
 
 ## 独占写入
 
 - {"task": "T03B-RG477M-DIAGNOSTIC", "owner": "Codex coordinator — sole device operator", "paths": [".local/device/rg477m-session1/", "coordination/", "docs/analysis/codex_device_report.md"], "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration", "branch": "task/codex-integration", "acquired_at": "2026-10-23T09:29:16.172503+00:00", "checkpoint": "8b817b6", "objective": "User-connected RG477M actual install/load/JNI/Vulkan/display/leaf/compiler-runtime diagnostics; no data clear or fake full-game PASS"}
-- {"task": "T02-TLS-EXIT-HOOK-ANALYSIS", "owner": "Static TLS analyst", "paths": ["tls-research/.local/exit-hook-review-v1/ and TLS_EXIT_HOOK_REPORT.md only; private inputs read-only"], "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/tls-research", "branch": null, "acquired_at": "2026-10-23T10:11:23.666587+00:00", "checkpoint": "sdk-lifecycle-v3", "objective": "Close bounded weak TLS destroyer install and cleanup order using existing matching LLVM slices; no original execution or source mutation"}
 - {"task": "T02-GUEST-PRIMARY-STACK", "owner": "Runtime engineer", "paths": ["src/runtime/hle/guest_context.c", "src/runtime/hle/guest_context.h", "tests/native/guest_context_contract.c", "scripts/runtime/build_guest_context_contract.sh", "docs/analysis/codex_guest_context_report.md", ".local/guest-context-plan/", ".local/guest-context-contract/"], "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-runtime", "branch": "task/T02-codex-runtime", "acquired_at": "2026-10-23T10:12:50.581545+00:00", "checkpoint": "e112d65", "objective": "Real explicit-quota precharge and owned native primary pthread stack; no default budgets/Query/TLS/CRT bindings and no claimed memory-info equivalence"}
 
 ## 阻塞
@@ -86,6 +86,9 @@
 - RG owned-pages e112d65 normalcontract0,4KiB,8threads×32,32release races,mapped0/validtrue/errors0;host independent rollback/quarantine reviewPASS,not device fault-injection nor SDK Query binding.
 - RG v6 actual rightZ/RZ[-1,1],L2/R2 digital keys8/10;analog trigger sample0. Audio48000Hz/12000frameswritten+headadvance/246ms/speakerroute/cleanupok/volumeunchanged;human did not notice, audibility NOT_CONFIRMED.
 - root fb7d870 ordinary host23checks all expected0/3/23/24, original hashes stable.
+- NPDM actualmain-thread stack0x10000=65536B,systemresource0x1400000=20MiB distinctkernelmanagement reservation,Application class;readonly parser0/inputSHAstable. Totalguestbudget not encoded by these fields, no Query binding.
+- TLS可空GLOBAL OBJECT hook安装/清零和普通新建线程返回OSslots→state/notify→hook→ELFdrain限定顺序闭合；790 evidence lines逐字节核验，非STB_WEAK，异常/初始线程不外推。
+- RG v6真实再次JNI/moduleload:LOADED_DIAGNOSTIC_ONLY，651unresolved明确未调用；report changed + fresh start/finish events verified，非沿用v5旧报告。
 
 ## 未验证
 

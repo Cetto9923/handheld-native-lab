@@ -20,7 +20,7 @@
 | 显式音频 | 0.25秒、PCM16 mono、peak327；AudioManager实际48000Hz/256frames，route speaker type2；12000frames写入/播放头推进，246ms，stop/release正常、无错误；音量7/15未改 | 只是诊断音。人回复“刚才没注意”，audibility未确认；游戏音频NOT_RUN |
 | 文件 / 休眠 | app-private临时文件与生命周期已有证据 | 游戏存读档与休眠恢复NOT_RUN |
 
-原始证据均在协调工作树 `.local/device/rg477m-session1/`：identity-before-install.json；install-v6-plan.json / install-v6-result.json / v6-data-preservation.json；audio-v6.json / audio-v6.png；manual-right-v6-summary.json / events-after-right-test-v6.jsonl；vulkan-execution.json / vulkan-result.json / vulkan-validator.json；owned-pages-execution.json；leaf-result.json；runtime-execution.json；diagnostic-module-loaded.json；diagnostic-v5.json。用户反馈“页面一串代码”时实际截屏 current-screen-v5.png，v6音频后截图 audio-v6.png，同为正常结果文本。
+原始证据均在协调工作树 `.local/device/rg477m-session1/`：identity-before-install.json；install-v6-plan.json / install-v6-result.json / v6-data-preservation.json；audio-v6.json / audio-v6.png；manual-right-v6-summary.json / events-after-right-test-v6.jsonl；vulkan-execution.json / vulkan-result.json / vulkan-validator.json；owned-pages-execution.json；leaf-result.json；runtime-execution.json；diagnostic-module-loaded.json；diagnostic-v5.json；新版重新load的diagnostic-v6.json / reload-v6-execution.json（fresh事件start/finish与变更报告验证）。用户反馈“页面一串代码”时实际截屏 current-screen-v5.png，v6音频后截图 audio-v6.png，同为正常结果文本。
 
 Canonical APK位于原交付目录 `.local/artifacts/android/ffrs-diagnostic-debug.apk`；重建会改变摘要，安装前必须重新核对build-evidence。当前证据accepted_static_build=true，源码指纹稳定，完整NDK归档校验仍NOT_VERIFIED。
 

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-10-23T10:14:41.887475+00:00",
+  "updated_at": "2026-10-23T10:20:11.387939+00:00",
   "phase": "NATIVE_RUNTIME_AND_DIAGNOSTIC_APK_CHECKPOINT",
   "coordinator": "Codex — integration owner; GPT-6.1 xhigh workers; CreateGoal tool unavailable",
   "integration_branch": "work/rg477m-native",
@@ -20,18 +20,6 @@
       "acquired_at": "2026-10-23T09:29:16.172503+00:00",
       "checkpoint": "8b817b6",
       "objective": "User-connected RG477M actual install/load/JNI/Vulkan/display/leaf/compiler-runtime diagnostics; no data clear or fake full-game PASS"
-    },
-    {
-      "task": "T02-TLS-EXIT-HOOK-ANALYSIS",
-      "owner": "Static TLS analyst",
-      "paths": [
-        "tls-research/.local/exit-hook-review-v1/ and TLS_EXIT_HOOK_REPORT.md only; private inputs read-only"
-      ],
-      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/tls-research",
-      "branch": null,
-      "acquired_at": "2026-10-23T10:11:23.666587+00:00",
-      "checkpoint": "sdk-lifecycle-v3",
-      "objective": "Close bounded weak TLS destroyer install and cleanup order using existing matching LLVM slices; no original execution or source mutation"
     },
     {
       "task": "T02-GUEST-PRIMARY-STACK",
@@ -384,8 +372,8 @@
     {
       "id": "T02-TLS-EXIT-HOOK-ANALYSIS",
       "role": "RE",
-      "status": "in_progress",
-      "owner": "Static TLS analyst",
+      "status": "passed",
+      "owner": "Static analyst bounded successful normal return path only",
       "dependencies": [
         "T00R"
       ],
@@ -393,6 +381,19 @@
       "report": "docs/analysis/codex_tls_exit_hook_report.md",
       "branch": null,
       "worktree": null
+    },
+    {
+      "id": "T02-NPDM-MEMORY-CONFIG",
+      "role": "RE",
+      "status": "passed",
+      "dependencies": [
+        "T00"
+      ],
+      "pass_gates": [],
+      "owner": "Coordinator read-only local metadata inspection",
+      "branch": "task/codex-integration",
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration",
+      "report": "docs/analysis/codex_npdm_memory_report.md"
     }
   ],
   "blockers": [
@@ -438,7 +439,10 @@
     "canonical v6 cleanfb7d870:35 buildsteps0,451092B SHA4b40d3896ac9d8f7cb9069df81dd4d30148d030dda3cbaf449ba9a9b02a74e0a;RG install-r0/cold195ms/events+leaf preserved/no permissions.",
     "RG owned-pages e112d65 normalcontract0,4KiB,8threads×32,32release races,mapped0/validtrue/errors0;host independent rollback/quarantine reviewPASS,not device fault-injection nor SDK Query binding.",
     "RG v6 actual rightZ/RZ[-1,1],L2/R2 digital keys8/10;analog trigger sample0. Audio48000Hz/12000frameswritten+headadvance/246ms/speakerroute/cleanupok/volumeunchanged;human did not notice, audibility NOT_CONFIRMED.",
-    "root fb7d870 ordinary host23checks all expected0/3/23/24, original hashes stable."
+    "root fb7d870 ordinary host23checks all expected0/3/23/24, original hashes stable.",
+    "NPDM actualmain-thread stack0x10000=65536B,systemresource0x1400000=20MiB distinctkernelmanagement reservation,Application class;readonly parser0/inputSHAstable. Totalguestbudget not encoded by these fields, no Query binding.",
+    "TLS可空GLOBAL OBJECT hook安装/清零和普通新建线程返回OSslots→state/notify→hook→ELFdrain限定顺序闭合；790 evidence lines逐字节核验，非STB_WEAK，异常/初始线程不外推。",
+    "RG v6真实再次JNI/moduleload:LOADED_DIAGNOSTIC_ONLY，651unresolved明确未调用；report changed + fresh start/finish events verified，非沿用v5旧报告。"
   ],
   "unverified": [
     "完整CRT/TLS/线程/guest内存上下文与真正完整入口，正式T02参考行为验收。",
@@ -514,11 +518,11 @@
     "identity": ".local/device/rg477m-session1/identity-before-install.json",
     "scope": "Real diagnostic only: install/JNI/display/leaf/guard/owned-pages/Vulkan transfer and physical controls; short audio frame progress observed, audibility unconfirmed",
     "apk_sha256": "4b40d3896ac9d8f7cb9069df81dd4d30148d030dda3cbaf449ba9a9b02a74e0a",
-    "report": ".local/device/rg477m-session1/diagnostic-v4.json",
+    "report": ".local/device/rg477m-session1/diagnostic-v6.json",
     "leaf": ".local/device/rg477m-session1/leaf-result.json",
     "input_events": ".local/device/rg477m-session1/manual-right-v6-summary.json",
     "runtime_evidence": ".local/device/rg477m-session1/runtime-execution.json",
-    "jni_load_evidence": ".local/device/rg477m-session1/diagnostic-module-loaded.json",
+    "jni_load_evidence": ".local/device/rg477m-session1/reload-v6-execution.json",
     "guard_contract": "PASS actual8threads80000/init1/exceptionretry2/errors0",
     "game_startup": "NOT_RUN fullCRT; nnMain/malloc strict QueryMemoryInfo133",
     "apk_version": 6,
