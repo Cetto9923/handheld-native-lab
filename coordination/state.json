@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-10-23T14:13:32.339844+00:00",
-  "phase": "585 combined RG confirmed original startup returned; OS destructor106 remains; identity106/110 implementation active; callback/provider reviews FINAL",
+  "updated_at": "2026-10-23T14:50:28.967086+00:00",
+  "phase": "Startup+OScleanup+realallocator pairs pass; HOSTconsumers RG+review pass; next hardgate actual515 DSO+threadTLS/TP",
   "coordinator": "root sole Git/ADB and four-file documentation owner after DOC handback",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
@@ -153,9 +153,78 @@
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-primary-identity",
       "branch": "task/T02-primary-identity",
       "acquired_at": "2026-10-23T14:09:08.212887+00:00",
-      "checkpoint": "585e3e1445a3ebfa68e6fad7d86487b2eaf34a55",
-      "write_state": "ACTIVE_IMPLEMENTATION",
+      "checkpoint": "f60b4b4029b0cb5e09d769fbbb6a91877d91821f",
+      "write_state": "COMPLETE_HANDED_BACK",
       "objective": "Real managed-primary opaque identity and actual native thread ID for exact106->110 cleanup call; no fake SDK ThreadType fields or host pthread pointer"
+    },
+    {
+      "task": "T07-PRIMARY-IDENTITY-REVIEW",
+      "owner": "/root/tls_research",
+      "paths": [
+        "functional-review/primary-identity/"
+      ],
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task",
+      "branch": null,
+      "acquired_at": "2026-10-23T14:16:00.566672+00:00",
+      "checkpoint": "f60b4b4029b0cb5e09d769fbbb6a91877d91821f",
+      "write_state": "COMPLETE_HANDED_BACK",
+      "objective": "Independent ordinary API actualTID/token-generation/cleanup-lifetime contract; final execution waits exact author freeze"
+    },
+    {
+      "task": "T02-TLS-HOST-CONSUMER",
+      "owner": "/root/runtime",
+      "paths": [
+        "src/runtime/hle/guest_process.c",
+        "src/runtime/hle/guest_process.h",
+        "tests/native/guest_process_contract.c",
+        "scripts/runtime/build_guest_process_contract.sh",
+        "docs/analysis/codex_guest_process_report.md"
+      ],
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-tls-host-consumer",
+      "branch": "task/T02-tls-host-consumer",
+      "acquired_at": "2026-10-23T14:24:01.327766+00:00",
+      "checkpoint": "6a615e355dde2aedfe7db3dd3cd002b74ef23ebb",
+      "write_state": "COMPLETE_HANDED_BACK",
+      "objective": "Real HOST allocator/free consumers via verified nb_call_from_host; typed exact SDK APIs, no raw fallback/temporarybind/fakephase or TCB claim"
+    },
+    {
+      "task": "T02-ORIGINAL-ALLOCATOR-CONTRACT",
+      "owner": "root",
+      "paths": [
+        "src/runtime/nso/nso_call.c"
+      ],
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration",
+      "branch": "task/codex-integration",
+      "acquired_at": "2026-10-23T14:29:12.223972+00:00",
+      "checkpoint": "83ad4d1",
+      "write_state": "COMPLETE_HANDED_BACK",
+      "objective": "Explicit isolated startup-allocator diagnostic exercises original registered allocator/free pair48/64 after realstartup, no normalgameboot shortcut/no patch/gamebyteswrite"
+    },
+    {
+      "task": "T07-CRT-FRONTIER-REVIEW",
+      "owner": "/root/functional_review",
+      "paths": [
+        "functional-review/crt-frontier/"
+      ],
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task",
+      "branch": null,
+      "acquired_at": "2026-10-23T14:38:01.423343+00:00",
+      "checkpoint": "851a842 and existing585/f60 facts",
+      "write_state": "COMPLETE_HANDED_BACK",
+      "objective": "Before implementing515, verify actual guestTP/DSO/multithread prerequisites and reject fake/temporarywrong TLS schemes; reuse existing facts, no new broad reverse engineering"
+    },
+    {
+      "task": "T07-TLS-HOST-CONSUMER-REVIEW",
+      "owner": "/root/tls_research",
+      "paths": [
+        "functional-review/tls-host-consumer/"
+      ],
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task",
+      "branch": null,
+      "acquired_at": "2026-10-23T14:38:49.420997+00:00",
+      "checkpoint": "6a615e355dde2aedfe7db3dd3cd002b74ef23ebb",
+      "write_state": "COMPLETE_HANDED_BACK",
+      "objective": "Independent typed HOSTcallback consumer/lifetime/outerx18 review; actual Android execution root only"
     }
   ],
   "tasks": [
@@ -2198,7 +2267,7 @@
     {
       "id": "T02-PRIMARY-IDENTITY",
       "role": "CORE_NATIVE_THREAD_SUBSET",
-      "status": "in_progress",
+      "status": "passed",
       "dependencies": [
         "T00R"
       ],
@@ -2206,7 +2275,66 @@
       "owner": "/root/runtime",
       "branch": "task/T02-primary-identity",
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-primary-identity",
-      "scope": "Exact observed cleanup APIs106/110; only real managed primary, fullThreadType/TCB unsupported"
+      "scope": "Exact observed cleanup APIs106/110; only real managed primary, fullThreadType/TCB unsupported",
+      "execution_status": "LIMITED_OPAQUE_API_PASS_NOT_THREADTYPE_OR_CRT"
+    },
+    {
+      "id": "T07-PRIMARY-IDENTITY-REVIEW",
+      "role": "QA_NATIVE_THREAD_IDENTITY",
+      "status": "passed",
+      "dependencies": [
+        "T00R"
+      ],
+      "pass_gates": [],
+      "owner": "/root/tls_research",
+      "branch": null,
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/functional-review/primary-identity",
+      "execution_status": "LIMITED_OPAQUE_API_PASS_NOT_THREADTYPE_OR_CRT",
+      "scope": "Native opaque identity API subset only; no SDK ThreadType/TCB/guest TP compatibility"
+    },
+    {
+      "id": "T02-TLS-HOST-CONSUMER",
+      "role": "CORE_NATIVE_CALLBACK_CONSUMER",
+      "status": "passed",
+      "dependencies": [
+        "T00R"
+      ],
+      "pass_gates": [
+        "T02-NATIVE-HOST-CALLBACK"
+      ],
+      "owner": "/root/runtime",
+      "branch": "task/T02-tls-host-consumer",
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-tls-host-consumer",
+      "scope": "SDK allocator/free HOST reentry for real CRT prereqs, not completeELFTLS/TP/DSO",
+      "execution_status": "BOUNDED_COMPONENT_OR_FRONTIER_REVIEW_COMPLETE_NOT_FULL_CRT"
+    },
+    {
+      "id": "T07-CRT-FRONTIER-REVIEW",
+      "role": "QA_ARCHITECTURE_FRONTIER",
+      "status": "passed",
+      "dependencies": [
+        "T00R"
+      ],
+      "pass_gates": [],
+      "owner": "/root/functional_review",
+      "branch": null,
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/functional-review/crt-frontier",
+      "scope": "Bounded actual next CRT/guestTP prerequisite assessment, not full feasibility proof or gamepass",
+      "execution_status": "BOUNDED_COMPONENT_OR_FRONTIER_REVIEW_COMPLETE_NOT_FULL_CRT"
+    },
+    {
+      "id": "T07-TLS-HOST-CONSUMER-REVIEW",
+      "role": "QA_NATIVE_HOST_ALLOCATOR",
+      "status": "passed",
+      "dependencies": [
+        "T00R"
+      ],
+      "pass_gates": [],
+      "owner": "/root/tls_research",
+      "branch": null,
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/functional-review/tls-host-consumer",
+      "scope": "Exactnnos HOSTcallback bridge, notcompleteCRT/guestTP",
+      "execution_status": "BOUNDED_COMPONENT_OR_FRONTIER_REVIEW_COMPLETE_NOT_FULL_CRT"
     }
   ],
   "blockers": [

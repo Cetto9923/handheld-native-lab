@@ -1,7 +1,7 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-10-23T14:13:32.339844+00:00
-阶段：585 combined RG confirmed original startup returned; OS destructor106 remains; identity106/110 implementation active; callback/provider reviews FINAL
+状态事件时间：2026-10-23T14:50:28.967086+00:00
+阶段：Startup+OScleanup+realallocator pairs pass; HOSTconsumers RG+review pass; next hardgate actual515 DSO+threadTLS/TP
 总控：root sole Git/ADB and four-file documentation owner after DOC handback
 更新方式：按事件更新，没有后台自动刷新。
 
@@ -75,7 +75,11 @@
 | T07-MATH-IMPORT-REVIEW | QA_MATH_IMPORT | passed | /root/functional_review — handed back idle | T00R | 无额外门禁 | 未创建 |
 | T07-TLS-PROVIDER-REVIEW | QA_TLS_PROVIDER | passed | /root/functional_review | T00R | 无额外门禁 | 未创建 |
 | T02-TLS-PROVIDER-FIX | CORE_FIX | passed | /root/runtime | T00R | 无额外门禁 | task/T02-tls-provider-fix |
-| T02-PRIMARY-IDENTITY | CORE_NATIVE_THREAD_SUBSET | in_progress | /root/runtime | T00R | 无额外门禁 | task/T02-primary-identity |
+| T02-PRIMARY-IDENTITY | CORE_NATIVE_THREAD_SUBSET | passed | /root/runtime | T00R | 无额外门禁 | task/T02-primary-identity |
+| T07-PRIMARY-IDENTITY-REVIEW | QA_NATIVE_THREAD_IDENTITY | passed | /root/tls_research | T00R | 无额外门禁 | 未创建 |
+| T02-TLS-HOST-CONSUMER | CORE_NATIVE_CALLBACK_CONSUMER | passed | /root/runtime | T00R | T02-NATIVE-HOST-CALLBACK | task/T02-tls-host-consumer |
+| T07-CRT-FRONTIER-REVIEW | QA_ARCHITECTURE_FRONTIER | passed | /root/functional_review | T00R | 无额外门禁 | 未创建 |
+| T07-TLS-HOST-CONSUMER-REVIEW | QA_NATIVE_HOST_ALLOCATOR | passed | /root/tls_research | T00R | 无额外门禁 | 未创建 |
 
 ## 独占写入
 
@@ -87,7 +91,12 @@
 - {"task": "T07-NATIVE-HOST-CALLBACK-REVIEW", "owner": "/root/tls_research", "paths": ["functional-review/native-host-callback/"], "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task", "branch": null, "acquired_at": "2026-10-23T14:00:35.889773+00:00", "checkpoint": "434c4d13efcfd0e2ea20188bede031d6353e89ce", "write_state": "COMPLETE_HANDED_BACK", "objective": "Frozen ordinary self-authored native callback C/ASM incremental audit; root sole ADB"}
 - {"task": "T02-ENTRY-RETURN-EVIDENCE", "owner": "root", "paths": ["src/runtime/nso/nso_call.c"], "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration", "branch": "task/codex-integration", "acquired_at": "2026-10-23T14:01:50.394447+00:00", "checkpoint": "37af0a7", "write_state": "COMPLETE_HANDED_BACK", "objective": "Flush existing successful owned-entry result before primary teardown; distinguish entry return from real OS TLS cleanup gate, no bypass"}
 - {"task": "T02-TLS-PROVIDER-FIX", "owner": "/root/runtime", "paths": ["src/runtime/hle/guest_process.c", "tests/native/guest_process_contract.c", "scripts/runtime/build_guest_process_contract.sh", "docs/analysis/codex_guest_process_report.md"], "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-tls-provider-fix", "branch": "task/T02-tls-provider-fix", "acquired_at": "2026-10-23T14:02:55.080615+00:00", "checkpoint": "80d4cfbf3756f7744072914cda1c1b2d2653c6cb", "write_state": "FROZEN_REVIEW_PENDING", "objective": "Fix independently confirmed fresh valid Process registration NULL module segv; ordinary lifecycle regression only"}
-- {"task": "T02-PRIMARY-IDENTITY", "owner": "/root/runtime", "paths": ["src/runtime/hle/guest_process.c", "src/runtime/hle/guest_process.h", "tests/native/guest_process_contract.c", "scripts/runtime/build_guest_process_contract.sh", "docs/analysis/codex_guest_process_report.md"], "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-primary-identity", "branch": "task/T02-primary-identity", "acquired_at": "2026-10-23T14:09:08.212887+00:00", "checkpoint": "585e3e1445a3ebfa68e6fad7d86487b2eaf34a55", "write_state": "ACTIVE_IMPLEMENTATION", "objective": "Real managed-primary opaque identity and actual native thread ID for exact106->110 cleanup call; no fake SDK ThreadType fields or host pthread pointer"}
+- {"task": "T02-PRIMARY-IDENTITY", "owner": "/root/runtime", "paths": ["src/runtime/hle/guest_process.c", "src/runtime/hle/guest_process.h", "tests/native/guest_process_contract.c", "scripts/runtime/build_guest_process_contract.sh", "docs/analysis/codex_guest_process_report.md"], "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-primary-identity", "branch": "task/T02-primary-identity", "acquired_at": "2026-10-23T14:09:08.212887+00:00", "checkpoint": "f60b4b4029b0cb5e09d769fbbb6a91877d91821f", "write_state": "COMPLETE_HANDED_BACK", "objective": "Real managed-primary opaque identity and actual native thread ID for exact106->110 cleanup call; no fake SDK ThreadType fields or host pthread pointer"}
+- {"task": "T07-PRIMARY-IDENTITY-REVIEW", "owner": "/root/tls_research", "paths": ["functional-review/primary-identity/"], "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task", "branch": null, "acquired_at": "2026-10-23T14:16:00.566672+00:00", "checkpoint": "f60b4b4029b0cb5e09d769fbbb6a91877d91821f", "write_state": "COMPLETE_HANDED_BACK", "objective": "Independent ordinary API actualTID/token-generation/cleanup-lifetime contract; final execution waits exact author freeze"}
+- {"task": "T02-TLS-HOST-CONSUMER", "owner": "/root/runtime", "paths": ["src/runtime/hle/guest_process.c", "src/runtime/hle/guest_process.h", "tests/native/guest_process_contract.c", "scripts/runtime/build_guest_process_contract.sh", "docs/analysis/codex_guest_process_report.md"], "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-tls-host-consumer", "branch": "task/T02-tls-host-consumer", "acquired_at": "2026-10-23T14:24:01.327766+00:00", "checkpoint": "6a615e355dde2aedfe7db3dd3cd002b74ef23ebb", "write_state": "COMPLETE_HANDED_BACK", "objective": "Real HOST allocator/free consumers via verified nb_call_from_host; typed exact SDK APIs, no raw fallback/temporarybind/fakephase or TCB claim"}
+- {"task": "T02-ORIGINAL-ALLOCATOR-CONTRACT", "owner": "root", "paths": ["src/runtime/nso/nso_call.c"], "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration", "branch": "task/codex-integration", "acquired_at": "2026-10-23T14:29:12.223972+00:00", "checkpoint": "83ad4d1", "write_state": "COMPLETE_HANDED_BACK", "objective": "Explicit isolated startup-allocator diagnostic exercises original registered allocator/free pair48/64 after realstartup, no normalgameboot shortcut/no patch/gamebyteswrite"}
+- {"task": "T07-CRT-FRONTIER-REVIEW", "owner": "/root/functional_review", "paths": ["functional-review/crt-frontier/"], "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task", "branch": null, "acquired_at": "2026-10-23T14:38:01.423343+00:00", "checkpoint": "851a842 and existing585/f60 facts", "write_state": "COMPLETE_HANDED_BACK", "objective": "Before implementing515, verify actual guestTP/DSO/multithread prerequisites and reject fake/temporarywrong TLS schemes; reuse existing facts, no new broad reverse engineering"}
+- {"task": "T07-TLS-HOST-CONSUMER-REVIEW", "owner": "/root/tls_research", "paths": ["functional-review/tls-host-consumer/"], "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task", "branch": null, "acquired_at": "2026-10-23T14:38:49.420997+00:00", "checkpoint": "6a615e355dde2aedfe7db3dd3cd002b74ef23ebb", "write_state": "COMPLETE_HANDED_BACK", "objective": "Independent typed HOSTcallback consumer/lifetime/outerx18 review; actual Android execution root only"}
 
 ## 阻塞
 

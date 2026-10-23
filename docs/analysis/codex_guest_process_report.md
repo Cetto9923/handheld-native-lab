@@ -86,6 +86,9 @@ The original cfc source/artifacts and QA failure remain unchanged.
 
 ## Earlier checkpoint: allocator pair and limited IDLE consumers
 
+Historical cfc checkpoint only. Its IDLE-only and HOST-unsupported statements
+below describe that frozen implementation; current HOST support is at the top.
+
 The b197 RG checkpoint passed both libm contracts and reached import69 after
 the original allocator constructor mapped1286144 and1048576 bytes. SDK1445e0
 only registers a nonnull pair once at+b91008/+b91010; null/repeat abort, and
@@ -122,8 +125,9 @@ host tests. Build logs, exact products and device argv are under the new private
 `.local/tls-provider-v2/` manifest/freeze; Android execution is coordinator-owned.
 
 SDK ELF consumers98a44 (48B destructor node),9ad50 (TLS aggregate) and their
-free paths are real consumers but remain unbound here: invoking an allocator
-from an imported HOST service needs unsupported same-scope reentry. OS32-slot
+free paths remained unbound at this historical checkpoint because imported
+HOST services lacked same-scope reentry. Current HOST reentry is implemented;
+the ELF consumers still need actual DSO/guest-TP/destructor integration. OS32-slot
 scalar storage is unrelated, and the existing host module-template mirror is
 not installed as SDK ThreadPointer/TCB. No SDK TP-writing path, original module
 patch, full CRT/ELF TLS initialization or complete constructor success is claimed.
