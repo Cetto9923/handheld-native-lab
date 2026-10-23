@@ -644,3 +644,115 @@ This bounded TLS/context research is feasible without a device. Full game CRT
 startup has not become feasible merely from the gate observation; it still
 needs substantive platform adaptation. No Android execution, game initialization,
 RG477M performance, independent acceptance or overall T02 PASS is claimed.
+
+
+## Seventh checkpoint: independent module TLS template storage
+
+Starting HEAD: 92c7b9bb5408e8c01060813c1b9ec05040288db9. The new
+src/runtime/hle/module_tls.c/h implements reusable owned storage, not a guest
+thread runtime or an SDK initialization adapter. The existing 16-slot guest_tls
+PoC and nso_host_resolve are unchanged. No allocator gate is set to true.
+
+A descriptor supplies an already-relocated initialized-data pointer, initialized
+length, total length, payload alignment and reserved prefix length. Synchronous
+nso_module_tls_create allocates a real image, zeroes its storage and copies
+exactly the initialized bytes. It returns 0 only on successful allocation/copy,
+or a POSIX error value, with explicit parameter/size-overflow checks. No template,
+module or current-thread pointer is retained. The caller must keep the source
+readable and its module alive until create returns. Afterwards the image owns
+its copy independently of the source.
+
+The opaque instance exposes a const metadata view with mutable anchor/payload
+storage. The payload obeys the requested power-of-two alignment; host allocation
+alignment is at least pointer alignment. Extra allocation padding may precede
+the anchor when the requested prefix is not a multiple of that alignment. The
+reported storage_size is the rounded anchor-to-end span, not those preceding
+host allocation bytes. Free releases the instance and allocation without running
+callbacks. Callers must quiesce image users first; sharing an image requires
+ordinary caller synchronization. There are no global image pointers, pthread
+keys, automatic destructors, register writes or instruction rewrites in this
+component.
+
+For the evidenced main descriptor, the prefix is 16, initialized size 0x220,
+total size 0x1019 and alignment 8. The resulting storage span is 0x1030:
+
+| Anchor-relative bytes | Contents | Length |
+|---|---|---:|
+| [0,0x10) | Zero-filled reserved prefix; TCB/header semantics unmodeled | 16 |
+| [0x10,0x230) | Copy of initialized module template | 544 |
+| [0x230,0x1029) | Zero-filled module TLS/BSS tail | 3,577 |
+| [0x1029,0x1030) | Zero-filled allocation padding | 7 |
+
+The anchor models only the candidate address relation payload=anchor+0x10.
+Neither it nor its first 16 bytes is a complete SDK ThreadPointer/TCB. No host
+TP register is directed at this image, and no original game instruction reads
+or writes through it during these experiments.
+
+### Normal functional and lifetime evidence
+
+    python3 tests/native/test_module_tls.py \
+      --main .local/uncompressed/main.bin \
+      --out .local/runtime/module-tls-next
+
+The ordinary C contract uses a nontrivial synthetic initialized template and
+valid empty/all-initialized/zero-initialized templates, including alignments
+1, 8, 64 and 256. Prefix-to-payload distance and payload alignment are checked;
+copying remains valid after the source buffer is overwritten and freed.
+
+Eight simultaneous threads create separate main-sized images. While all images
+are live, their anchor-to-end ranges are checked for non-overlap. Each verifies
+the template, reserved prefix, zero tail and allocation padding, then writes
+its own values at payload offsets 0, 0x21f, 0x220 and 0x1018. The last is
+anchor+0x1028, the highest directly evidenced main TLS byte. Repeated payload
+checks total 32,968,000 expected byte values, with zero errors. The shared
+source remains unchanged. Unrelated pthread-key values and compiler TLS canaries
+remain correct; TPIDRRO_EL0 is unchanged for all eight threads. Seven observed
+TPIDR_EL0 changes are recorded, consistent with the previously retained host-only
+scheduling control; that register is not written by this component or assumed
+constant across scheduling.
+
+The private-source harness loads main with the native loader, so relocation has
+already completed, and copies the actual mapped [0x7767108,0x7767328) template.
+It does not call main, DT_INIT, constructors or any original game instruction.
+Two images are created while the module is alive; the module is then freed.
+Both copied images remain correct, one image's mutation does not affect the
+other, and the second remains valid after the first is freed. The Python byte
+oracle independently checks the complete 4,144-byte image against zero prefix,
+exact source template, zero tail and zero padding. It never copies the module's
+ordinary dynamic/GOT bytes after 0x7767328 as TLS data.
+
+Final local evidence: .local/runtime/module-tls-v2/manifest.json. Both host
+builds, synthetic threaded contract, Android-target object compilation and
+mapped-main copy/lifetime test exit 0, with no timeout. Source main SHA-256 before
+and after is unchanged at
+6e6d1f3cd1672243e2ed344cc1b8849b85437d41bdecec81a5f9181e472d68a5.
+The 544-byte template contains 11 nonzero bytes and has SHA-256
+2236311146eecaa733a64cda6108fece94e6693159ba1d3add9bb3f0899834bf.
+
+Private artifacts, retained only under that experiment directory:
+
+- private/loaded-template.bin: 544 bytes, template hash above.
+- private/copied-image.bin: 4,144 bytes, SHA-256
+  0516b0ba6d9225c86451c81d5b7ca2bffc493b3a7a711fe5ef76180d4995b111.
+- module_tls.android.o: 2,056 bytes, SHA-256
+  25dee6da71f41b6d0d916482510a0cb21ccba0e045ffd9fbb06741e6a76bd805.
+  This is ELF64 little-endian AArch64 ET_REL, produced by existing AppleClang 21
+  targeting aarch64-linux-android34 with the previously supplied official NDK
+  sysroot headers. The driver accepts that existing sysroot through
+  --android-sysroot. This unit does not link a new NDK runtime or execute Android.
+
+### Remaining integration boundary
+
+The first 16 header bytes, full ThreadType/TCB structure, SDK DSO tables and
+module/thread ownership are still unmodeled. Main's actual TLS constructor at
++0x34a0 reaches __cxa_thread_atexit at +0x34e8; storage alone does not implement
+that destructor lifecycle. This component registers no thread-exit callback and
+does not reuse ordinary process atexit as a substitute.
+
+The 1,489 main TPIDR_EL0 reads and SDK TP read/write sites still require an
+accurate native adaptation. The separate caller research resolved constant
+patterns at 1,440 sites; 49 non-adjacent uses remain without complete data-flow
+verification. The unsafe original SDK helper identified in the sixth checkpoint
+is not executed. Existing CRT/nnMain boundaries remain unresolved; this storage
+component is not bound into the HLE resolver, does not enable __nnmusl_init_dso,
+and does not change APK behavior or any acceptance gate. T02 remains IN_PROGRESS.
