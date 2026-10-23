@@ -7,7 +7,10 @@ extern "C" {
 
 /* A caller-verified module template, already relocated if relocation is needed.
  * Keep initialized_data readable and its module alive until create returns.
- * No source or module pointer is retained after the synchronous copy. */
+ * No source or module pointer is retained after the synchronous copy. Copied
+ * bytes can themselves contain module pointers: their pointees/code still need
+ * a valid module/DSO lifetime if later used. Storage ownership does not retain
+ * those targets or make guest execution safe after module unloading. */
 typedef struct nso_module_tls_template {
     const void *initialized_data;
     size_t initialized_size;

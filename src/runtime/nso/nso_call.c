@@ -20,7 +20,10 @@ static uint64_t resolve_import(uint32_t index, const char *name) {
     if(adapted)return adapted;
 #endif
     static const char *const compatible[] = {
+#if !defined(__ANDROID__)
+        /* Android uses only the explicitly linked typed HLE guard runtime. */
         "__cxa_guard_acquire", "__cxa_guard_release", "__cxa_guard_abort",
+#endif
         "memset", "memcpy", "memmove", "memcmp", "memchr",
         "strlen", "strnlen", "strcmp", "strncmp", "strcpy", "strncpy",
         "strchr", "strrchr", "strstr", "exit", "abort",

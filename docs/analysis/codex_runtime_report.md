@@ -721,6 +721,13 @@ oracle independently checks the complete 4,144-byte image against zero prefix,
 exact source template, zero tail and zero padding. It never copies the module's
 ordinary dynamic/GOT bytes after 0x7767328 as TLS data.
 
+Here "valid" means the owned storage bytes remain readable. A relocated template
+can itself contain pointer values into a module or DSO; copying their values
+does not retain their pointees or executable code. Later use of embedded
+pointers still requires the corresponding module/DSO lifecycle. The source-
+module lifetime requirement in module_tls.h describes readable copying, not
+general guest execution or safe pointee access after module unloading.
+
 Final local evidence: .local/runtime/module-tls-v2/manifest.json. Both host
 builds, synthetic threaded contract, Android-target object compilation and
 mapped-main copy/lifetime test exit 0, with no timeout. Source main SHA-256 before
@@ -756,3 +763,138 @@ verification. The unsafe original SDK helper identified in the sixth checkpoint
 is not executed. Existing CRT/nnMain boundaries remain unresolved; this storage
 component is not bound into the HLE resolver, does not enable __nnmusl_init_dso,
 and does not change APK behavior or any acceptance gate. T02 remains IN_PROGRESS.
+
+
+## Eighth checkpoint: linked compiler-runtime C++ guards
+
+Starting HEAD: 3124895f06ea3f589c3334a61abb91ca4eb7232d. The coordinator's real
+Android C-only HLE CLI had stopped before the Mac boundary because dlsym could
+not find __cxa_guard_acquire. The executable linked libc/libm/libdl without a
+C++ ABI runtime. This unit supplies an explicit typed binding to a real linked
+compiler runtime; it does not implement another guard state machine.
+
+### Local official runtime and caller ABI evidence
+
+The existing partial official NDK r27d cache contains libc++abi.a, libc++_static.a
+and libc++_shared.so. The supplied validated-members.json identifies Google's
+android-ndk-r27d-darwin.zip and per-member ZIP CRC/size validation. The prototype
+recomputes CRC32, sizes and SHA-256 of all used headers/libraries before building
+and checks SHA-256 again afterwards. It makes no network request or installation.
+The partial package's whole-archive checksum remains NOT_VERIFIED.
+
+Official cxxabi.h declares int __cxa_guard_acquire(uint64_t*) and void
+__cxa_guard_release/abort(uint64_t*) for this AArch64 target. Its 32-bit guard
+branch is selected by _LIBCXXABI_GUARD_ABI_ARM; __cxxabi_config.h enables that for
+__arm__, wasm32 or ARM64_8_32, not the current aarch64-linux-android target.
+Compile-time type/size/alignment checks in the C++ contract corroborate the
+64-bit interface. The header's license is Apache-2.0 WITH LLVM-exception.
+
+libc++abi.a is 765,120 bytes, ZIP CRC32 08356d14, SHA-256
+90d5d4835e2f4c214a8c3c6e1fd87655e12f46012998767f176b7593b1ee7259.
+Its actual cxa_guard.cpp.o member defines all three functions. That member is
+8,464 bytes, SHA-256 fcc1541d51f21d7d074243edc174e4a7caaf94a046aa3ef3f91f273e771ac3ee.
+The retained symbol/disassembly evidence identifies real global-mutex/condition-
+variable synchronization and a platform thread-ID check. Acquire loads the
+first byte with LDARB; release publishes 1 with STLRB. Private pending/waiter/
+owner fields are operated on only by this compiler runtime. No archive bytes,
+upstream implementation source or derived instructions are committed.
+
+At the two observed main failure sites:
+
+| Caller | Guard address minus main base | Original fast path | Acquire return address |
+|---|---:|---|---:|
+| nnMain prerequisite | 0x7c04618 | LDARB +0x13e7c; TBZ bit 0 +0x13e80 | 0x13e98 |
+| malloc prerequisite | 0x7c18908 | LDARB +0xb7074; TBZ bit 0 +0xb707c | 0xb70ac |
+
+Both guard addresses are 8-byte aligned in the zero-filled BSS. Main imports
+acquire/release/abort as symbols 4, 5 and 253. The supplied SDK's own definitions
+(+0x63a2e0/+0x63a364/+0x63a3cc) independently load the first byte with acquire
+semantics, publish 1 with release semantics and use byte +1 for pending state.
+The host implementation is not a copy of the SDK's private Horizon mutex or
+owner layout. The observed caller-facing 64-bit ABI and first-byte convention
+are the compatibility surface; all three imported guard functions consistently
+use one host runtime.
+
+Static slices: .local/runtime/static-main-guard-v1 and
+.local/runtime/static-sdk-guard-v2. These bind the exact supplied main/SDK hashes
+already recorded above. The earlier static-sdk-guard-v1 slice used an unrelated
+initial address; the corrected v2 slice is the guard implementation evidence.
+
+### Binding, linking and normal behavior
+
+Android nso_host_resolve now strongly references the exact typed compiler
+runtime functions and returns their addresses for only these three names. A
+64-bit ABI assertion prevents accidentally building this bridge for a 32-bit
+layout. Other hosts can opt into the same path with NSO_WITH_CXX_GUARDS=1.
+Android removes these names from the generic dlsym allowlist, so a non-HLE
+Android probe cannot accidentally bind some external runtime by global lookup.
+The resolver never writes guard bytes, returns a constant initialization claim,
+or substitutes a pthread mutex layout for the guard object.
+
+The actual successful standalone Android link prototype retains the existing
+six C sources and adds this archive group before Android system libraries:
+
+    --start-group libc++abi.a libc++_static.a libunwind.a \
+      libclang_rt.builtins-aarch64-android.a --end-group -lc -lm -ldl
+
+The script supplies full paths, Android CRT begin/end objects, API28, Rust LLD,
+no undefined symbols, PIE, 16-KiB load-page alignment and relro/now/noexecstack.
+Strong references pull the required archive member; no whole-archive, global
+export flag or extra dlsym search is needed. Link maps explicitly identify
+libc++abi.a(cxa_guard.cpp.o). ELF symbols show all three functions defined, and
+nso_host.android.o has direct guard-address relocations. The executables need
+only libc.so/libm.so/libdl.so dynamically; libc++_shared.so is not required by
+these artifacts. Android worker scripts/CMake were not modified by this agent.
+
+The normal C++ contract checks that the resolver addresses equal the linked
+runtime's typed functions. A fresh guard acquires, aborts, reacquires, releases
+and subsequently returns already-initialized. Eight threads make 80,000 calls
+to a genuine compiler-generated local static; its constructor runs exactly once.
+A second test aborts an in-progress owner with eight competing acquires; exactly
+one contender initializes and all see the published value. A throwing local-
+static constructor invokes the compiler's actual abort path and retries once:
+two attempts, one completed object. Host result is exit 0 and errors 0.
+
+A host C-only HLE CLI explicitly linked with libc++ and the typed guard path
+executes the real module again. nnMain and malloc still stop at named
+QueryMemoryInfo, caller +0x27a50 and +0x1398c respectively, both exit 133. The
+private main input hash is identical before/after. No initializer or guest TLS
+gate is bypassed to obtain those results.
+
+### Frozen prototype artifacts and remaining boundary
+
+    python3 scripts/runtime/build_cxx_guard.py \
+      --toolchain /path/to/existing/minimal-ndk/toolchain \
+      --main .local/uncompressed/main.bin \
+      --out .local/runtime/cxx-guard-next
+
+Final manifest: .local/runtime/cxx-guard-v3/manifest.json. Host/Android builds,
+ABI archive inspection, ELF inspection and host guard contract all exit 0, no
+timeouts. The two intentional real host platform-boundary runs exit 133.
+
+- nso_runtime_hle_guards: Android ELF64 AArch64 PIE, 555,856 bytes, SHA-256
+  0adc6631502641ce63d8953d742ae284dfe73e57c4ca758503c644badf746674.
+- guard_contract.android: same typed resolver and compiler-runtime contract,
+  536,288 bytes, SHA-256
+  eca1fba733de8870a915a50de1db69142e017abd3d8f159122a0fb895d04f4d9.
+
+This agent does not select/start a VM or execute Android; the frozen artifacts
+are ready for the coordinator's separately authorized Android run. Cross-linking
+alone does not establish the new Android nnMain/malloc boundary.
+
+The binding currently belongs to one standalone executable/compiler runtime.
+A live guard object must not alternate between SDK/host or multiple independent
+compiler-runtime instances: their private synchronization/owner state can differ.
+Multiple guest modules can use these functions only while their guard storage
+and all initialized objects/code remain live and all callers share that same
+runtime. This is not a general cross-game or dynamic-DSO lifecycle manager.
+Module unload requires all guard users/waiters to have quiesced. The normal
+pthread tests establish host-thread behavior, not Horizon thread creation,
+thread-local layout, native TP adaptation or guest thread exit semantics.
+
+Original CRT, AllocateTlsSlot, QueryMemoryInfo, embedded-pointer/module lifetime
+and the unsafe original SDK TP writes remain separate unsupported boundaries.
+No guard change enables the SDK allocator gate, runs the original TP-writing
+helper, or claims complete C++ ABI compatibility/game startup. The module_tls
+header/report now explicitly distinguish copied byte-storage lifetime from the
+lifetime of any copied module pointers and their pointees/code.

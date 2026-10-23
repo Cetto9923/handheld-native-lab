@@ -4,6 +4,15 @@
 #include "exit_registry.h"
 #include <stdio.h>
 #include <string.h>
+#if defined(__ANDROID__) || (defined(NSO_WITH_CXX_GUARDS) && NSO_WITH_CXX_GUARDS)
+/* Official NDK cxxabi.h: AArch64 uses the uint64_t guard ABI. Main's observed
+ * LDARB/TBZ bit-0 fast path agrees with that ABI. All state transitions and
+ * synchronization belong to the compiler runtime, never to this resolver. */
+_Static_assert(sizeof(void*)==8 && _Alignof(uint64_t)==8,"guard bridge requires the verified 64-bit ABI");
+extern int __cxa_guard_acquire(uint64_t *guard);
+extern void __cxa_guard_release(uint64_t *guard);
+extern void __cxa_guard_abort(uint64_t *guard);
+#endif
 static nso_import_fn extension_resolver;
 /* Supplied SDK build 0023a1b0..., offset 0x86670, size 4: RET.
  * This API is a retained link reference, not an OS initialization operation.
@@ -14,6 +23,11 @@ static void refer_symbol(const void *symbol) {
 void nso_host_set_extension_resolver(nso_import_fn resolver) {extension_resolver=resolver;}
 uint64_t nso_host_resolve(uint32_t index,const char *name) {
     if(!name)return 0;
+#if defined(__ANDROID__) || (defined(NSO_WITH_CXX_GUARDS) && NSO_WITH_CXX_GUARDS)
+    if(!strcmp(name,"__cxa_guard_acquire"))return (uint64_t)(uintptr_t)&__cxa_guard_acquire;
+    if(!strcmp(name,"__cxa_guard_release"))return (uint64_t)(uintptr_t)&__cxa_guard_release;
+    if(!strcmp(name,"__cxa_guard_abort"))return (uint64_t)(uintptr_t)&__cxa_guard_abort;
+#endif
     if(!strcmp(name,"_ZN2nn4util11ReferSymbolEPKv") || !strcmp(name,"nnutilReferSymbol"))
         return (uint64_t)(uintptr_t)&refer_symbol;
     if(!strcmp(name,"_ZN2nn2os21AllocateAddressRegionEPmm"))
