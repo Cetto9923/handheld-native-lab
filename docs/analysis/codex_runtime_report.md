@@ -1114,3 +1114,113 @@ again afterwards. Evidence for this source version is
 commands and the outer capture exited 0 with no timeout; source hashes remained
 the main/SDK values recorded above. No Query resolver or page implementation was
 added in this analysis checkpoint. T02 and full game startup remain in progress.
+
+## Eleventh checkpoint: internal owned native page mappings
+
+This implements a native prerequisite behind the existing address-region owner
+table. It does not register AllocateMemoryPages/FreeMemoryPages, implement
+QueryMemoryInfo or change CRT/TLS initialization. Its internal status enum is
+explicitly separate from SDK Results; no guessed SVC error mapping is returned.
+
+The previously established public ABI is (address x0, byte size x1) -> Result
+w0 at SDK+0x144840/+0x144880. Methods +0x1464f0/+0x146790 validate a reserved
+interval and invoke SVC #0x2c/#0x2d at +0x17572c/+0x175734. A static direct-BL
+scan found main allocation calls +0x27ee4/+0x27f8c and free call +0x281ec;
+all check w0 before normal allocator accounting. This does not prove arbitrary
+repeat/overlap/hole behavior of the original kernel service. Private caller
+evidence and the reviewed plan remain in .local/runtime/page-management-plan-v1.
+
+### Native ownership and failure behavior
+
+address_region.c/h now provide three internal functions: owned_pages_map,
+owned_pages_free and owned_pages_usage, all with the nso_host_ prefix. One
+region_mutex serializes owner lookup, interval changes, VM operations, snapshots
+and whole-region release. Ranges must fit the requested guest interval, excluding
+rounded padding and guards, and meet both 4-KiB guest and host-page alignment.
+The code does not widen a guest request. The owner table, not an arbitrary host
+address query, is the authority for all permission changes and replacements.
+
+Mapping supports disjoint inaccessible spans only. An interval node is allocated
+before mprotect(PROT_READ|PROT_WRITE). A failed mprotect may have changed a prefix,
+so the implementation attempts to restore the complete attempted span to
+PROT_NONE. Successful restoration returns SYSTEM_ERROR with the original native
+errno and preserves the ledger. Failed restoration returns QUARANTINED with both
+the original and restoration errno; the reservation permits only whole release.
+
+Free requires a completely covered accessible span, including adjacent recorded
+intervals. A strict middle split allocates its right-hand node before the host VM
+operation. The checked interior is replaced with fresh anonymous PROT_NONE at
+the same address using MAP_FIXED while holding the owner lock. This discards its
+old contents while preserving address ownership. Only that verified owned span
+is replaced; unaffected left/right data is retained. A failed replacement may
+have destructive consequences, so the code captures its errno immediately and
+quarantines the region instead of guessing a data-restoring rollback or reporting
+the old count as complete. Unexpected replacement addresses are also quarantined.
+
+Successful operations publish exact accessible interval bytes. Unsupported
+repeat/overlap mapping or mixed-hole free returns an explicit UNSUPPORTED detail,
+without a VM operation or SDK success. Whole FreeAddressRegion releases the full
+original mapping, including split VM intervals, then discards all ledger nodes.
+An OS failure during whole release is diagnosed and fatal as before.
+
+Usage reports region count, requested reserved bytes and mapped_guest_bytes.
+If any reservation is quarantined, mapped_guest_bytes_valid is false and the
+numeric mapped field is zero/unknown, not a claim of zero or the old complete
+sum. The quarantined-region count remains visible. This API does not synchronize
+guest reads/writes themselves; callers must quiesce data users before freeing.
+The existing single-guest/process scope and module-lifetime limitations remain:
+these side tables are not attached to SDK DSO unload or guest thread teardown.
+
+Host anonymous mappings may populate physical pages lazily or overcommit.
+mapped_guest_bytes counts host-accessible guest spans, not resident memory or a
+Horizon physical budget. Successful RW mappings and real small byte reads/writes
+are evidence for this limited component only. No inferred process budget, SDK
+allocator gate, thread header or TP adaptation was added.
+
+### Normal contracts and controlled native failure checks
+
+The production contract verifies actual zero-initialized RW bytes, nonzero
+patterns, prefix/suffix/middle free, preservation of still-mapped sides, zero
+contents after successful recommit, adjacent-interval removal and whole-region
+ledger cleanup. Independent host permission checks inspect the requested address
+using Mach VM on macOS or a bounded /proc/self/maps lookup in the Linux/Android
+test only. They never read PROT_NONE or freed data. There is no generic host
+mapping-query component in the runtime.
+
+Eight native threads each run 32 independent small-reservation cycles. Another
+32 normal map-vs-whole-release races accept either owner-lock ordering and never
+dereference the raced address. All final region/mapped counters return to zero.
+The large 62-GiB reservation test maps/touches exactly one host page; the rest
+remains inaccessible. On this Mac, that page is 16,384 bytes, not 62 GiB.
+
+A separate host-only test build enables NSO_OWNED_PAGES_TESTING hooks. Three
+controlled syscall-error cases verify partial-permission restoration, failed
+restoration quarantine and replacement-error quarantine, preserving original
+errno details. The partial-change hook performs a real small prefix mprotect;
+the restore case independently verifies PROT_NONE afterwards. No target module,
+malformed input, signal fault or previously interrupted security-QA workflow is
+used. Production objects and the Android contract contain no test hook symbol.
+
+Reproduce the strict host builds, normal/recovery executions, original reservation
+regression and offline Android cross-link:
+
+    python3 scripts/runtime/test_owned_pages.py \
+      --toolchain /path/to/existing/minimal-ndk/toolchain \
+      --out .local/runtime/owned-pages-next
+
+Evidence: .local/runtime/owned-pages-v3/manifest.json. All ten build/run/inspect
+steps exited 0 without timeout. Both host contracts report errors=0,
+mapped_guest_bytes=0, valid=true, 8 threads x 32 cycles and 32 release races;
+the recovery build additionally reports three controlled VM failure cases.
+The original PROT_NONE-only address-region contract still returns 0.
+
+The C sources compile with -std=c11 -O2 -Wall -Wextra -Werror. The cross-build
+uses AppleClang 21, verified installed r27d headers/CRT/libc/compiler-rt and LLD,
+target aarch64-linux-android28, PIE, 16-KiB maximum segment alignment, RELRO/NOW
+and no executable stack. It requires no C++ runtime. Frozen Android contract:
+.local/runtime/owned-pages-v3/owned_pages_contract.android, 89,936 bytes,
+SHA-256 d95b592eedbcd35b9c30283a529222860f38f232e81f8dc0d5a96e697ea45a94.
+This agent has not executed that artifact on Android or operated a device.
+Coordinator device execution and independent review remain pending. The game
+still stops at the verified QueryMemoryInfo/CRT/TLS boundaries; full T02 and game
+startup are not passed by this internal page component.
