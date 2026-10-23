@@ -938,7 +938,7 @@ main/malloc still exit 133 at the same QueryMemoryInfo callers. The new Android
 contract has a read-only GNU_EH_FRAME segment covering .eh_frame_hdr (offset
 0xfb08, size 0x1654), and both executables pass the new static gate.
 
-Frozen v4 artifacts, pending coordinator Android execution:
+Frozen v4 artifacts, awaiting coordinator Android execution at this checkpoint:
 
 - nso_runtime_hle_guards: 561,936 bytes, SHA-256
   aa3df1dceb8e30e034969e36a2afb459d7cd3d0458d6d8f71bdb9e2f3c48c380.
@@ -949,8 +949,8 @@ The same EH-header option should be used by other hand-written Android C++ LLD
 links. This agent has not edited Android-owned scripts/CMake or started/selected
 a VM. The fix covers host ELF test/compiler-runtime unwind metadata; it does not
 register the separately mapped game's NSO unwind tables or prove cross-guest
-exception/DSO unwinding compatibility. Android full guard-contract PASS remains
-pending until the actual new binary runs successfully.
+exception/DSO unwinding compatibility. Actual Android execution was pending at
+this checkpoint; the subsequent coordinator results are recorded below.
 
 ### Paused QueryMemoryInfo investigation recovery point
 
@@ -983,3 +983,134 @@ Retained static recovery evidence:
 .local/runtime/static-sdk-query-info-v2 (export +0x143710 and SVC wrapper
 +0x17570c). The guard exception-link defect took priority before further field
 semantics/budget-provider research. None of these SDK routines were executed.
+
+## Tenth checkpoint: QueryMemoryInfo fields and real budget boundary
+
+This unit adds static evidence and a reproducible inspection script only. It does
+not add a QueryMemoryInfo resolver binding or execute SDK thread initialization.
+
+### Subsequent coordinator Android execution
+
+The coordinator executed the frozen a22d0dc guard contract on its ARM64 API34 VM
+and then on the actual RG477M. Both returned 0: 8 threads, 80,000 compiler local
+static calls, one constructor, one contended-abort winner, two exception-retry
+attempts, errors 0. This closes the earlier v3 uncaught-int contract failure for
+the corrected host executable. It does not register guest NSO unwind tables or
+prove general guest/DSO exceptions.
+
+The agent read the following coordinator-produced JSON files without operating
+ADB or any device:
+
+- ffrs-integration/.local/emulator/pvz2-arm64-session3/guard-eh-execution.json,
+  2,004 bytes, SHA-256
+  135773017ffae5b6508e6698fa09cae2877ecc3f41a9a0bb3d9eea6bb1e9a384.
+- ffrs-integration/.local/device/rg477m-session1/runtime-execution.json,
+  4,496 bytes, SHA-256
+  ea5a85b902979abb5752bce6eefa281e82ac14ec3180450af767174949a64eeb.
+
+The RG477M production CLI source is coordinator integration 8b817b6; its artifact
+is 558,000 bytes, SHA-256
+5cf82020353e061f3c2cef4fd2dd4cb417dbb3eb883460ecd688bb1b1ff89853.
+It returned info=0, nnMain=133 at QueryMemoryInfo caller +0x27a50,
+malloc(4096)=133 at +0x1398c, init-wrapper=133 at __nnmusl_init_dso caller
++0x5920a34, and startup=133 at AllocateTlsSlot caller +0x133a0. No timeout or
+complete game-startup success was reported.
+
+### Seven writes, arguments and error path
+
+SDK export +0x143710 tail-branches via PLT to +0x14711c. x0 is the sole observed
+output argument and is retained in x19. Both observed main callers provide an
+8-aligned 0x38-byte stack area. The table describes proven uses, not recovered
+original SDK C field names:
+
+| Offset | Width | Source and meaning | SDK write PC |
+|---|---|---|---|
+| +0 | u64 | GetInfo(21), total process non-system memory budget | 0x14719c, STP first |
+| +8 | u64 | GetInfo(22), used process non-system memory | 0x14719c, STP second |
+| +0x10 | u64 | resource[0x3f8], SDK heap capacity | 0x1471ac |
+| +0x18 | u64 | resource[0x400], SDK allocated heap-block bytes | 0x1471b4 |
+| +0x20 | u64 | baseline cache at SDK+0xb915a0 | 0x1471a0 |
+| +0x28 | u64 | resource[0x2d0], registered thread objects' aggregate stack sizes | 0x1471bc |
+| +0x30 | u32 | resource[0x2d8], registered thread object count | 0x1471c4 |
+
+The callee does not write the final +0x34..+0x37 bytes. Original padding contents
+and source-level field names are not established. It reuses a nonzero baseline
+cache; otherwise it assigns used_non_system - heap_capacity - initial_stack_size
+with unsigned 64-bit subtraction. A zero result is recomputed on the next call.
+This is an initialization snapshot, not a live sum of all nonheap allocations.
+
+GetInfo calls at +0x147144/+0x147164 use IDs 22 then 21, w2=0xffff8001,
+x3=0 and a local u64 output. Wrapper +0x17570c executes SVC #0x29 and preserves
+its Result in w0. Either failure calls AbortImpl(Result const*) at +0x1471d8
+before any MemoryInfo field is written. The observed main callers do not consume
+a normal return status; the symbol mangling does not establish its C return type.
+An incidental successful SVC Result in w0 is not proof of a Result-returning API.
+
+The official libnx v4.12.0 header identifies these IDs as
+TotalNonSystemMemorySize and UsedNonSystemMemorySize: process memory budget/usage
+excluding process memory management. It also defines this current-process pseudo
+handle. This cross-check names the locally proven SVC numbers; it does not supply
+the private SDK struct or initialize it. Sources actually read:
+[release header](https://github.com/switchbrew/libnx/blob/v4.12.0/nx/include/switch/kernel/svc.h),
+[official generated documentation](https://switchbrew.github.io/libnx/svc_8h.html).
+The tag-commit API was unavailable, so no unverified immutable commit hash or
+external implementation is introduced.
+
+### Proven state writers
+
+g_OsResourceManagerStorage is SDK+0xb91018, size 0x470. Its relocated GOT entry
+is +0xb68db8. ThreadManager starts at resource+0xf0; MemoryHeapManager starts at
+resource+0x3f0. GetMemoryHeapSize (+0x143f00) directly reads resource+0x3f8.
+SetHeapSize (+0x145260) updates that capacity after its real platform heap call.
+AllocateFromHeap (+0x145480) adds the allocated block's requested bytes to
+manager+0x10 at +0x145580; ReleaseToHeap (+0x1455c0) subtracts them at +0x14574c
+after range/free-list handling. This is block accounting, not RSS or reserved VA.
+
+ThreadManager constructs the initial ThreadType at TM+8. Its platform constructor
+(+0x147f4c) queries the mapping containing its current frame using SVC QueryMemory
+#6, then passes its base/size to SetupThreadObjectUnsafe (+0x141880). That routine
+stores the size at ThreadType+0x58. Thus TM+0x60 == resource+0x150 is the initial
+thread's stack size used by the baseline formula. GetThreadStackInfo (+0x144710)
+independently reads that size on the direct nonfiber path.
+
+The constructor increments the initial count at +0x142270 and stack sum at
++0x142278. Successful CreateThread adds an object and its stack size at
++0x141c44/+0x141c50; DestroyThreadObject subtracts them at +0x141f68/+0x141f74.
+The count includes the initial thread and objects not yet destroyed, not just
+currently running threads. nnosInitialize constructs these managers and calls
+QueryMemoryInfo at +0x1494b4, naturally establishing the baseline at that point.
+Calling those original constructors is unsafe on the host: +0x142214 stores
+through TPIDRRO+0x1f8 and +0x147ff0 writes TPIDR_EL0. They were not executed.
+
+### Missing provider and next native prerequisite
+
+Main reads +0 to size malloc metadata in GiB units, and +0 minus +8 to initialize
+allocator available-growth accounting. Its actual imports include
+AllocateMemoryPages (#71) and FreeMemoryPages (#72), rather than SDK
+SetMemoryHeapSize/AllocateMemoryBlock. The SDK page paths validate owned reserved
+ranges, then invoke MapPhysicalMemory/UnmapPhysicalMemory SVC #0x2c/#0x2d.
+GetVirtualAddressMemoryResourceUsage is separate: it queries Info16/17, the
+process memory-management resource budget/usage, not Query's Info21/22.
+
+The current runtime has no enforced guest process-memory budget provider, no
+physical-page commit/decommit accounting and no complete initial-thread /
+thread-lifecycle context. A 62-GiB PROT_NONE reservation supplies none of those
+physical totals. Host RAM, available RAM, mappings and RSS are not substitutes.
+The minimal Query blocker is the absent coherent provider/context; output byte
+offsets are no longer the uncertainty. A native implementation can build real
+page ownership/accounting and an explicit enforced guest-instance budget policy
+before binding Query. It must not choose a total merely to advance startup.
+CRT/DSO/TLR/TP and thread destruction remain separate blockers.
+
+Reproduce all bounded slices without executing target code:
+
+    python3 scripts/runtime/inspect_memory_info.py \
+      --out .local/runtime/query-memory-analysis-next
+
+The script requires the supplied module hashes, restricts derived output to this
+checkout's .local, records commands/PIDs/real exits and verifies input hashes
+again afterwards. Evidence for this source version is
+.local/runtime/query-memory-analysis-v2/manifest.json. Both SDK/main static
+commands and the outer capture exited 0 with no timeout; source hashes remained
+the main/SDK values recorded above. No Query resolver or page implementation was
+added in this analysis checkpoint. T02 and full game startup remain in progress.
