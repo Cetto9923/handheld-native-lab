@@ -491,12 +491,15 @@ static int tls_primary_locked(guest_process *p) {
 struct nso_result guest_process_register_tls_allocator(guest_process *p,uint64_t allocate,uint64_t release) {
     if(!p || !allocate || !release)return status(NSO_INVALID,EINVAL,0);
     pthread_mutex_lock(&p->mutex);uint64_t ignored;struct nso_result r=status(NSO_INVALID,EINVAL,0);
-    uint64_t base=nso_base(p->module);
-    if(tls_primary_locked(p) && !p->tls_allocate_callback && !p->tls_free_callback &&
-       allocate>=base && release>=base &&
-       nso_entry_address(p->module,allocate-base,&ignored).status==NSO_OK &&
-       nso_entry_address(p->module,release-base,&ignored).status==NSO_OK) {
-        p->tls_allocate_callback=allocate;p->tls_free_callback=release;r=status(NSO_OK,0,0);
+    if(tls_primary_locked(p) && p->module && !p->tls_allocate_callback && !p->tls_free_callback) {
+        /* A valid created Process need not have a module yet. Reject that
+         * lifecycle before consulting the loader's nonnull module accessor. */
+        uint64_t base=nso_base(p->module);
+        if(allocate>=base && release>=base &&
+           nso_entry_address(p->module,allocate-base,&ignored).status==NSO_OK &&
+           nso_entry_address(p->module,release-base,&ignored).status==NSO_OK) {
+            p->tls_allocate_callback=allocate;p->tls_free_callback=release;r=status(NSO_OK,0,0);
+        }
     }
     pthread_mutex_unlock(&p->mutex);return r;
 }

@@ -104,6 +104,7 @@ run('host-link-resource-recovery',['clang',*strict,'-DGUEST_RESOURCE_TESTING=1',
 run('host-resource-recovery',[out/'guest_process_resource_recovery.host','--resource-recovery'])
 run('host-os-tls-contract',[out/'guest_process_contract.host','--os-tls',out/'contract.nso'])
 run('host-tls-registration',[out/'guest_process_contract.host','--tls-registration',out/'contract.nso'])
+run('host-tls-registration-fresh',[out/'guest_process_contract.host','--tls-registration-fresh',out/'contract.nso'])
 for case in ['null','repeat']:
  run('host-tls-registration-'+case,[out/'guest_process_contract.host','--tls-registration-'+case,out/'contract.nso'],134)
  if '[tls-allocator-invalid]' not in (out/('host-tls-registration-'+case)/'stderr.log').read_text():raise RuntimeError('allocator registration must fail strictly')

@@ -819,6 +819,31 @@ static int tls_registration_contract(const char *path,uintptr_t phase) {
     CHECK(succeeded(guest_process_destroy(&p)) && !p);
     puts("{\"tls_registration_errors\":0,\"once_nonnull\":true,\"module_owned_targets\":true,\"registration_callback_calls\":0,\"no_raw_fallback\":true}");return 0;
 }
+static int tls_fresh_registration_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};
+    for(unsigned phase=0;phase<2;phase++) {
+        guest_process *p=NULL;CHECK(succeeded(guest_process_create(&config,&p)) && p);
+        CHECK(!guest_process_module(p));
+        struct nso_result r=guest_process_register_tls_allocator(p,1,2);
+        CHECK(r.status==NSO_INVALID && r.native_error==EINVAL && !r.cleanup_error);
+        CHECK(!guest_process_module(p));
+        struct guest_tls_allocator_info state;
+        CHECK(succeeded(guest_process_tls_allocator_info(p,&state)) && !state.initialized &&
+            !state.allocate_callback && !state.free_callback && !state.allocations &&
+            !state.uncertain_allocations && !state.busy);
+        struct guest_memory_info info,untouched;memset(&info,0xa5,sizeof(info));untouched=info;
+        CHECK(guest_process_memory_info(p,&info).status==NSO_INVALID && !memcmp(&info,&untouched,sizeof(info)));
+        void *output=(void *)(uintptr_t)0xa5a5;
+        CHECK(guest_process_allocate_thread_local(p,48,&output).status==NSO_INVALID && (uintptr_t)output==0xa5a5);
+        CHECK(guest_process_free_thread_local(p,NULL,0).status==NSO_INVALID);
+        if(phase) {
+            char error[128];CHECK(succeeded(guest_process_load(p,path,error,sizeof(error))));
+            void *value=NULL;CHECK(succeeded(guest_process_run(p,exercise_tls_registration,NULL,&value)) && value==&returned_token && !errors);
+        }
+        CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    }
+    puts("{\"tls_fresh_registration_errors\":0,\"created_without_module_rejected\":true,\"status\":1,\"errno\":22,\"sentinels_untouched\":true,\"no_registration_side_effect\":true,\"fresh_destroy\":true,\"subsequent_load_run_destroy\":true}");return 0;
+}
 struct tls_fixture_io {
     uint64_t allocate_calls,free_calls,sizes[4],alignments[4],freed_pointers[4],freed_sizes[4];
     uint64_t entry_x18,allocate_x18,free_x18,initialized_before,initialized_after;
@@ -1107,6 +1132,7 @@ static int resource_recovery_contract(void) {
 int main(int argc,char **argv) {
     page=(size_t)sysconf(_SC_PAGESIZE);
     if(argc==3 && !strcmp(argv[1],"--tls-registration"))return tls_registration_contract(argv[2],0);
+    if(argc==3 && !strcmp(argv[1],"--tls-registration-fresh"))return tls_fresh_registration_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-null"))return tls_registration_contract(argv[2],1);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-repeat"))return tls_registration_contract(argv[2],2);
     if(argc==3 && !strcmp(argv[1],"--tls-provider"))return tls_provider_contract(argv[2],0);

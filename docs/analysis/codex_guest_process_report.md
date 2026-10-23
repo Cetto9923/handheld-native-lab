@@ -1,5 +1,18 @@
 # Owned startup profile: native boundary integration
 
+## Fresh Process registration correction
+
+Independent QA reproduced cfc's ordinary create-without-load API crash: the
+registration function called nonnull-only nso_base before checking its module
+lifecycle (raw SIGSEGV -11/shell139). Registration now verifies the actual live
+primary and module before reading its base. A fresh Process returns typed
+NSO_INVALID/EINVAL with no module/callback/allocation mutation. The new ordinary
+contract preserves Query/allocation output sentinels, destroys a never-loaded
+Process, then repeats create/reject followed by successful load/registration/
+run/destroy. The full builder includes it; this correction's private incremental
+build reuses hash-verified cfc objects and fixtures and recompiles affected code.
+The original cfc source/artifacts and QA failure remain unchanged.
+
 ## Thread-local allocator pair and limited IDLE consumers
 
 The b197 RG checkpoint passed both libm contracts and reached import69 after
