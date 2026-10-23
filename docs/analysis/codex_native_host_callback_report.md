@@ -17,3 +17,6 @@ ordinary合同在原文件扩展，没有新probe：一条真实的 self-authore
 `.local/native-host-callback/candidate1/manifest.json` 保存5个编译/构建源文件、输入与逐命令哈希、normal/cleanup ELF大小和SHA；报告本身不参与该编译源bundle。`checks/static.json`记录已执行的反汇编检查：callback_host/callback_deep有真实str x30,[x18],#8；新入口272B、v1 48B、v2 160B、incomingSP及第13word地址正确，边界无MSR。最终冻结commit与6文件精确清单另见同目录freeze.json。Root在独立设备目录校验ELF、chmod700后分别 `./native_boundary.android`、`./native_boundary_cleanup.android`（host端30秒有界）并保存真实exit/stdout/stderr；预期0尚不是实测0。
 
 该组件为后续guest allocator/析构回调提供必要同步调用边界，不实现allocator、DTLS、__cxa_thread_atexit或SDK初始化，也不把之前7be GP21/81 LAS transfer的RG PASS当本次回调或CRT成功。新树独立于原5c/7be冻结树，集成与设备操作只由总控执行。
+
+
+总控追加实测（作者冻结保持）：source434c4d13efcfd0e2ea20188bede031d6353e89ce，已同RG477M/Android14/ARM64执行normal raw0/265.250958ms、cleanup raw0/72.840083ms，两者noTimeout/stderr空。normal的owned_host_callback、same_scope_import_from_callback、callback_scs_deeper、callback_scope_packet_restored、callback_callee_gp_fp_sp、callback_actual_guest_x18_seed、gp21_host_callback均true，depth4/refusals3；原GP21与GP/FP/SRET/thread生命周期回归仍true。cleanup真实3munmap尝试/1释放/count0/idempotenttrue。源码/115输入/两ELF hash核对后新路径stage/readback/chmod700，未运行旧2f regression。独立QA已启动，尚未FINAL；root已集成7f9c42e，集成不是独立review通过。原始证据.local/device/rg477m-session1/native-host-callback-v1-{plan,stage,execution}.json及各stdout/stderr，运行run_native_host_callback_v1.py。不外推Process HOST消费者、完整CRT或游戏成功。

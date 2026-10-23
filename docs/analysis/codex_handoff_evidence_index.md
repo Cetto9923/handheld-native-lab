@@ -42,3 +42,13 @@
 - 环境中断后先只读查HEAD/index/WIP/日志再决定恢复，不重放uncertain mutation。当前无待审批或不确定写入；root唯一Git/ADB，其它Agent不stage/commit、选设备或启动VM。授权并行本地开发/提交/原分支ff；不push、清数据、root或获取新游戏/密钥。
 
 [AGENTS](../../AGENTS.md)约束不变；STATUS仅`python3 scripts/project_status.py --write`生成。精确后续构建argv复用当前builder manifest，root核工件hash后设备复测；文档快照不会自动刷新或打开持久目标引擎。
+
+## 69→106 与HOST callback最新冻结
+
+- TLSprovider `../ffrs-tls-provider` / task/T02-tls-provider / cfc4df8921eaf911662ee6512c770a0683e787db clean；freeze `.local/tls-provider-v2/freeze.json` SHA45bd3c2707f11ff91fe13b5fa1ba893fa3d191a799057f5abe60537907a1dc75，112步骤预期/无timeout。root `tls-provider-v2-{plan,stage,execution}.json` 十例，raw0,0,134,134,0,0,0,0,133,133；原startup到106/+18d68，是否entry返回后的TLS析构待组合flush确认。fresh API P2独立证据 `../functional-review/tls-provider/logs/fresh-process-registration/`，修复另树ffrs-tls-provider-fix，不污染冻结cfc。
+- HOSTcallback `../ffrs-native-host-callback` /434c4d13efcfd0e2ea20188bede031d6353e89ce clean；freeze `.local/native-host-callback/candidate1/freeze.json`，五源bundle c3cd96fb49d88415b612cb3a8ca17daa1900f43fca372a486a72c0640e965ab9。root `native-host-callback-v1-{plan,stage,execution}.json` normal0/265.251ms、cleanup0/72.840ms，noTimeout/stderr空；normalELF129064/B070e788...18d1，cleanup37032/4be7c5e6...3e2，完整SHA见plan。root已集成7f9c42e，独立review进行中。
+- 既有原入口返回日志可能被缓冲；root7628947仅在成功call后fflush，严格syntax0 `.local/host-verification/entry-return-evidence/result.json`，尚未组合RG运行。不把stdout无result误称入口未返回；不以晚期清理断点冒充完整游戏成功。
+
+
+最新组合585源/full113build0与真实RG11case见 `tls-combined-v1-*`；wrapper结果已在环境恢复后完整取回0。两startup返回日志0x92后再stop106（voidx0非状态）。freezeSHA1ab04cb38fece44c184be5382e31d646f46e59c2468cd4ea881600f4cc4e3d4f。完整SHA/精确argv原码在plan/execution。
+独立FINAL已归档：codex_native_host_callback_review.md SHAb2d6d291925067cb0f818c4e0e2e5d4e42eae285e06dd9766857ac53d013ad85；codex_tls_provider_review.md SHA4d4f41aa63865ec32976921846a07f49aca4cff6265a67dd140e451e642a9fee；codex_tls_provider_repair_review.md保持原samefixture复现和旧P2失败。Android执行一律root单独归因。当前唯一coding是ffrs-primary-identity/base585的106/110子集，其余已冻结。

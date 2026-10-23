@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-10-23T13:58:23.576778+00:00",
-  "phase": "Original startup at typed TLS allocator registration69; native callback and provider implementation in parallel",
+  "updated_at": "2026-10-23T14:13:32.339844+00:00",
+  "phase": "585 combined RG confirmed original startup returned; OS destructor106 remains; identity106/110 implementation active; callback/provider reviews FINAL",
   "coordinator": "root sole Git/ADB and four-file documentation owner after DOC handback",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
@@ -63,8 +63,8 @@
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-tls-provider",
       "branch": "task/T02-tls-provider",
       "acquired_at": "2026-10-23T13:43:57.542396+00:00",
-      "checkpoint": "b19706c4cfc9fdd3246d85a12c880f922ae346d3",
-      "write_state": "ACTIVE_CODING",
+      "checkpoint": "cfc4df8921eaf911662ee6512c770a0683e787db",
+      "write_state": "FROZEN_WAITING_ROOT_DEVICE_AND_REVIEW",
       "objective": "Actualonce/nonNULL module-owned TLS allocator pair and trueIDLE guestalloc/free consumers with lifecycle;HOSTstrictunsupported pendingindependentboundary"
     },
     {
@@ -81,9 +81,81 @@
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-native-host-callback",
       "branch": "task/T02-native-host-callback",
       "acquired_at": "2026-10-23T13:43:57.542396+00:00",
-      "checkpoint": "7beeb22294311cc3c896ec23ac23561fca9d6b6d",
-      "write_state": "ACTIVE_CODING",
+      "checkpoint": "434c4d13efcfd0e2ea20188bede031d6353e89ce",
+      "write_state": "FROZEN_WAITING_DEVICE_AND_REVIEW",
       "objective": "ExplicitownedHOST->guestcallback->sameboundhostimports, actualcurrentSCS/x18/phase restore;notCPUemulation/TPwrite/no fakephase reset"
+    },
+    {
+      "task": "T07-TLS-PROVIDER-REVIEW",
+      "owner": "/root/functional_review",
+      "paths": [
+        "functional-review/tls-provider/"
+      ],
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task",
+      "branch": null,
+      "acquired_at": "2026-10-23T13:59:29.503314+00:00",
+      "checkpoint": "cfc4df8921eaf911662ee6512c770a0683e787db",
+      "write_state": "COMPLETE_HANDED_BACK",
+      "objective": "Independent bounded positive C/native fixture and lifetime semantics of frozen five-file provider; no ADB/game/old blocked workflow"
+    },
+    {
+      "task": "T07-NATIVE-HOST-CALLBACK-REVIEW",
+      "owner": "/root/tls_research",
+      "paths": [
+        "functional-review/native-host-callback/"
+      ],
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task",
+      "branch": null,
+      "acquired_at": "2026-10-23T14:00:35.889773+00:00",
+      "checkpoint": "434c4d13efcfd0e2ea20188bede031d6353e89ce",
+      "write_state": "COMPLETE_HANDED_BACK",
+      "objective": "Frozen ordinary self-authored native callback C/ASM incremental audit; root sole ADB"
+    },
+    {
+      "task": "T02-ENTRY-RETURN-EVIDENCE",
+      "owner": "root",
+      "paths": [
+        "src/runtime/nso/nso_call.c"
+      ],
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration",
+      "branch": "task/codex-integration",
+      "acquired_at": "2026-10-23T14:01:50.394447+00:00",
+      "checkpoint": "37af0a7",
+      "write_state": "COMPLETE_HANDED_BACK",
+      "objective": "Flush existing successful owned-entry result before primary teardown; distinguish entry return from real OS TLS cleanup gate, no bypass"
+    },
+    {
+      "task": "T02-TLS-PROVIDER-FIX",
+      "owner": "/root/runtime",
+      "paths": [
+        "src/runtime/hle/guest_process.c",
+        "tests/native/guest_process_contract.c",
+        "scripts/runtime/build_guest_process_contract.sh",
+        "docs/analysis/codex_guest_process_report.md"
+      ],
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-tls-provider-fix",
+      "branch": "task/T02-tls-provider-fix",
+      "acquired_at": "2026-10-23T14:02:55.080615+00:00",
+      "checkpoint": "80d4cfbf3756f7744072914cda1c1b2d2653c6cb",
+      "write_state": "FROZEN_REVIEW_PENDING",
+      "objective": "Fix independently confirmed fresh valid Process registration NULL module segv; ordinary lifecycle regression only"
+    },
+    {
+      "task": "T02-PRIMARY-IDENTITY",
+      "owner": "/root/runtime",
+      "paths": [
+        "src/runtime/hle/guest_process.c",
+        "src/runtime/hle/guest_process.h",
+        "tests/native/guest_process_contract.c",
+        "scripts/runtime/build_guest_process_contract.sh",
+        "docs/analysis/codex_guest_process_report.md"
+      ],
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-primary-identity",
+      "branch": "task/T02-primary-identity",
+      "acquired_at": "2026-10-23T14:09:08.212887+00:00",
+      "checkpoint": "585e3e1445a3ebfa68e6fad7d86487b2eaf34a55",
+      "write_state": "ACTIVE_IMPLEMENTATION",
+      "objective": "Real managed-primary opaque identity and actual native thread ID for exact106->110 cleanup call; no fake SDK ThreadType fields or host pthread pointer"
     }
   ],
   "tasks": [
@@ -2020,7 +2092,7 @@
     {
       "id": "T02-TLS-ALLOCATOR-PROVIDER",
       "role": "CORE",
-      "status": "in_progress",
+      "status": "passed",
       "dependencies": [
         "T00R"
       ],
@@ -2036,14 +2108,14 @@
         "docs/analysis/codex_guest_process_report.md"
       ],
       "checkpoint": "b19706c4cfc9fdd3246d85a12c880f922ae346d3",
-      "execution_status": "ACTIVE_SCOPED_IMPLEMENTATION_NOT_FROZEN_NOT_DEVICE_ACCEPTED",
+      "execution_status": "LIMITED_COMPONENT_PASS_NOT_GAME",
       "objective": "Actualonce/nonNULL module-owned TLS allocator pair and trueIDLE guestalloc/free consumers with lifecycle;HOSTstrictunsupported pendingindependentboundary",
       "implementation_scope": "Five files: once-only nonNULL module-owned TLS allocator registration; true IDLE typed alloc/free, live allocations retain owner; build in progress. No fake registration/default objects."
     },
     {
       "id": "T02-NATIVE-HOST-CALLBACK",
       "role": "NATIVE_ABI_ENGINEER",
-      "status": "in_progress",
+      "status": "passed",
       "dependencies": [
         "T00R"
       ],
@@ -2060,14 +2132,14 @@
         "docs/analysis/codex_native_host_callback_report.md"
       ],
       "checkpoint": "7beeb22294311cc3c896ec23ac23561fca9d6b6d",
-      "execution_status": "ACTIVE_SCOPED_IMPLEMENTATION_NOT_FROZEN_NOT_DEVICE_ACCEPTED",
+      "execution_status": "LIMITED_COMPONENT_PASS_NOT_GAME",
       "objective": "ExplicitownedHOST->guestcallback->sameboundhostimports, actualcurrentSCS/x18/phase restore;notCPUemulation/TPwrite/no fakephase reset",
       "implementation_scope": "Six files: nb_call_from_host bounded nesting4, actual host SCS/x18 restore, same owned binding/lifecycle; no TP write/phase spoof/CPU interpreter."
     },
     {
       "id": "T07-NATIVE-HOST-CALLBACK-REVIEW",
       "role": "QA_NATIVE_CALLBACK",
-      "status": "pending",
+      "status": "passed",
       "dependencies": [
         "T00R"
       ],
@@ -2076,8 +2148,8 @@
       "branch": null,
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/functional-review/native-host-callback",
       "report": "../functional-review/native-host-callback/REVIEW.md",
-      "execution_status": "PRE_FREEZE_PLAN_RETURNED_WAITING_IMMUTABLE_FREEZE_NOT_EXECUTING_TESTS",
-      "scope": "Pre-freeze plan completed only; actual component QA waits for frozen input, no ADB/original game"
+      "execution_status": "LIMITED_COMPONENT_PASS_NOT_GAME",
+      "scope": "434c4d1 native callback only; not game/ELF TLS"
     },
     {
       "id": "T07-MATH-IMPORT-REVIEW",
@@ -2093,6 +2165,48 @@
       "report_sha256": "7b8f4a0dfb36401fecf4ecdb0667ea066ca6fb1883646406995c33abbc96d6d2",
       "scope": "Frozen b197 logf FP typed gateway only; root RG separate, not full startup/CRT",
       "branch": null
+    },
+    {
+      "id": "T07-TLS-PROVIDER-REVIEW",
+      "role": "QA_TLS_PROVIDER",
+      "status": "passed",
+      "dependencies": [
+        "T00R"
+      ],
+      "pass_gates": [],
+      "owner": "/root/functional_review",
+      "branch": null,
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/functional-review/tls-provider",
+      "report": "../functional-review/tls-provider/REVIEW.md",
+      "scope": "Frozen cfc4df8 provider; IDLE native callbacks, not ELF/TCB TLS",
+      "execution_status": "LIMITED_COMPONENT_PASS_NOT_GAME"
+    },
+    {
+      "id": "T02-TLS-PROVIDER-FIX",
+      "role": "CORE_FIX",
+      "status": "passed",
+      "dependencies": [
+        "T00R"
+      ],
+      "pass_gates": [],
+      "owner": "/root/runtime",
+      "branch": "task/T02-tls-provider-fix",
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-tls-provider-fix",
+      "scope": "Fresh Process uninitialized registration must return invalid without module dereference",
+      "execution_status": "LIMITED_COMPONENT_PASS_NOT_GAME"
+    },
+    {
+      "id": "T02-PRIMARY-IDENTITY",
+      "role": "CORE_NATIVE_THREAD_SUBSET",
+      "status": "in_progress",
+      "dependencies": [
+        "T00R"
+      ],
+      "pass_gates": [],
+      "owner": "/root/runtime",
+      "branch": "task/T02-primary-identity",
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-primary-identity",
+      "scope": "Exact observed cleanup APIs106/110; only real managed primary, fullThreadType/TCB unsupported"
     }
   ],
   "blockers": [
