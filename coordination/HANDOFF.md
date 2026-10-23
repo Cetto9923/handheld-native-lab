@@ -8,18 +8,18 @@
 
 ## 分支 / 工作树
 
-- 原交付：`/Users/yuyan9923/GitHub/ff-resonance-rg477m-native` / `work/rg477m-native`，已安全ff至 **f4cd524fa10e52dc7846a7be994a9446f8906bae**，最后只读核验clean（2026-10-23T11:14:47.133988+00:00）；后续提交前实时重查，不覆盖新成果。
-- 总控：`../ffrs-integration` / `task/codex-integration`，known_at **c1ddecb5cd179b80bf8f14c84171fb336ee26a05**（2026-10-23T12:05:14.571827+00:00），85已cherry70c；doc已交回四文件写权，root在保存本检查点。原交付最后f4，未来safeff待root实际执行；唯一Git/设备操作者root。
-- Native-profile：85八文件freeze已集成70c，真实RG五合同0/info0，两个真实自有guest调用、raw_fallback=false、ended_session_rejected=true，33准hostimports保护x18；原nnMain126/malloc66/startup59/CRT515仍133，全部无timeout/mainhash保持，未越原启动gate。
-- Runtime当前phase：root/runtime已实际编码5files（Processc/h、contract/buildscript/report），基于85+OS9c+Boundary5c。注册actualprimary→正常return同scopeIDLE typedcallbackcleanup→unregister→ThreadReturned；核APP59/Get/Set/Free真实符号，providerfailstop不假成功，目标真实startup59后到60，未达到。
+- 原交付：`/Users/yuyan9923/GitHub/ff-resonance-rg477m-native` / `work/rg477m-native`，已实际safeff **a3cb435ec2569fc84ba1068c73bfbfbb96dddcf0**，本轮只读确认clean；后续快照实时重查，不循环猜自身SHA。
+- 总控：`../ffrs-integration` / `task/codex-integration`，known_at **4c07e21f555f236327de2be5c1fdaf894a267970**（root证据提交；28已集成fb6d08b）；四文档/真机报告在更新，原交付最后核验a3，后续实际HEAD读git，未提前交付fb。DOC四文件现已暂停交回root串行checkpoint；恢复writer前不再写，root仍唯一Git/设备。
+- Native-profile：85八文件freeze已集成70c，真实RG五合同0/info0，两个真实自有guest调用、raw_fallback=false、ended_session_rejected=true，33准hostimports保护x18；85当时原nnMain126/malloc66/startup59/CRT515仍133；后续28 startup60见下，旧85结果不改写。
+- Runtime：`../ffrs-runtime` / `task/T02-codex-runtime`，五文件clean冻结 **28dc1a792946ae990690f11d71e89a60bf5d8b8b**→rootfb6d08b。actualprimary注册/同IDLEscope typedcallbackcleanup已真实接入，RG七合同0/info0；真实startup越59到60。新28接线独立QA已实际ACTIVE，下一ownedargv六文件已冻结9dc8aa73，原生设备验证待总控。
 - Android：`../ffrs-android`，`task/T03A-codex-android`，冻结15da4c2，v6音频及EH链接已集成fb7d870。
 - Vulkan：`../ffrs-vulkan`，`task/T03B-vulkan-ops`，新production VkBuffer冻结 **fa76ca979d711c68beebe9e6ae699914f8a1cdf0**、最后核验clean；旧源f7ac445已集成4695bca，新组件已集成34dd0c8且同RG contract/validator均0；仅transfer范围通过。
 - Pages：`../ffrs-pages` / `task/T02-guest-pages`，4695e3c四文件freeze→d8，RG normal0/39.74ms/76checks；独立FINAL20commands0、无组件缺陷，scope仅owner，不覆盖Process绑定。旧作者/页QA lease释放；[归档review](../docs/analysis/codex_guest_pages_review.md)。
-- OS TLS：9c独立FINAL已过（REVIEW SHA8823424f…59346；11captured0、normal1351/recovery1419及并发重入0），仅组件、Android归因root；新OS HLE5fileWIP不在PASS内。
+- OS TLS：9c独立FINAL已过（REVIEW SHA8823424f…59346；11captured0、normal1351/recovery1419及并发重入0），仅组件、Android归因root；28五文件接线有root RG实测，其独立QA已ACTIVE尚未FINAL。
 - Boundary：5c20 repair独立FINAL已接受（综合报告SHA78a0ecaa…6312d7），旧2f失败和修复RG0均保留；仅组件非游戏绑定，register-only/stackargs/foreignunwind限制保持。
 - 独立普通功能审查：`../functional-review/`；GuestContext FINAL PASS已释放旧lease，新startup-profile已接收freeze15e498c开始独立普通源码/host contract审查，旧15e已交回host路径通过/宏关闭P2/RG失败，等新freeze复核。fa76ca9 buffer_resource.c/h独立review已FINAL接受组件：精确8文件，40普通mock+2ownership+自编两种各7组PASS，ASan/UBSan无误；reviewer非新组件作者、未ADB，范围不含游戏图形。静态TLS/图形底座评估：`../tls-research/`，底座评估已完成并释放lease；只写各自证据。旧QA异常NSO流程被平台安全检查中止，不重试，其WIP保留，不冒充完整QA。
 
-实际工作模型GPT-6.1-sol/xhigh，无持久目标开关。5c/9c组件独立FINAL已过；85实机组件合同0/集成70c，原启动gate未变。新85+4695+5c独立QA实际ACTIVE，runtime新5fileOS HLE实际编码。root七报告已c1提交，仅四文档待commit；doc立即暂停供单入口交付。
+实际工作模型GPT-6.1-sol/xhigh，无持久目标开关。5c/9c组件独立FINAL已过；85+4695+5c独立QA已FINAL（42命令41×0/1预期拒绝1，无新缺陷）；28新接线独立host审查已完成；额外AndroidC编译timeout明确保留。Stack13五文件clean7beeb2冻结，rootRG normal/cleanup已0，独立审查进行中，未完成全部验收；DOC四文件已暂停供root串行checkpoint，root唯一Git/设备。
 
 各树.local独立，仅private uncompressed/exefs为原素材链接。保留原交付开发签名，不读取或复制私钥。原交接历史曾含敏感内容，当前文本已清理；未来上传需另做历史审查，当前禁止push。
 
@@ -30,7 +30,7 @@
 - 真实RG477M Android14/API34，MT6897/ARM64/nativebridge0/4KiB。窗口1280×960、内容1280×918、280dpi，当前120Hz是面板而非游戏帧率。
 - canonical v6 APK已更新并冷启动195ms，旧事件前缀和leaf摘要保留。无申请权限，451092B，SHA256 **4b40d3896ac9d8f7cb9069df81dd4d30148d030dda3cbaf449ba9a9b02a74e0a**。路径原交付`.local/artifacts/android/ffrs-diagnostic-debug.apk`；clean sourcefb7d870，35构建步骤0、输入稳定。重新构建必须重新核对build-evidence及摘要。
 - 原始main+0x694bd0 leaf44B，在Mac/ARM64 AVD/真实RG各16875比较0差异；仅单函数、无构造器，不是正式T02/full game。APK JNI只load/relocate125577976B主模块，651imports/4612RELA/1370974RELR，NULLresolver，未调用game entry。
-- **最新RG原始入口突破**：f24+4695 contract/info0；nnMain Query→真实map65536→CreateThread126/+0x352f1b8/133，malloc仍VA66/+0x144b8/133，无timeout/mainhash保持。stack0来源已闭合（下列）；同f24真实`--init-wrapper --info`仍musl515/+0x5920a34/133、169.57ms、无timeout，CRT未完成。
+- **最新RG原始入口突破**：28dc1a七合同/info0；真实`nninitStartup`越AllocateTlsSlot59→GetHostArgc60/+0x13420/133，149.603916ms，无timeout/mainhash保持；typed OS callback A0/B9/A5/order0x121。直接nnMain仍126/+0x352f1b8、malloc66/+0x144b8、CRT515/+0x5920a34，均133。证据`os-tls-profile-v2-{plan,stage,execution}.json`；新28绑定独立QA已ACTIVE未FINAL，1MiB写者只证明控制流经过，未BSS读回。
 - **保留旧失败**：15e startup contract649672B实际1/42.27ms，e95诊断-only663040B实际1/36.30ms，唯一pthread usable64752 vs65536差784B；原断言未删，这些不是d4的新结果。
 - 历史同RG production HLE CLI info0；nnMain/malloc严格在QueryMemoryInfo +0x27a50/+0x1398c exit133；CRT __nnmusl_init_dso +0x5920a34/133；startup AllocateTlsSlot +0x133a0/133。无超时。不要用tail的0掩盖真实退出码，旧SIGSEGV139不是最新结论。
 - C++guard/EH真实修复：a22d0dc含.eh_frame_hdr/PT_GNU_EH_FRAME，RG8线程80000调用/初始化1/abortwinner1/异常attempts2/errors0。未注册guest NSO unwind或完成CRT。
@@ -43,8 +43,8 @@
 
 ## 核心阻塞及下一步
 
-1. **先OS TLS上下文与真实nninitStartup**：BSS77c51b8由main+133ec MOV1MiB/+133f4 STR写，nnMain+352f150先走nninitStartup却在+1339c AllocateTlsSlot59 trap，故worker stack全局仍0；不是凭空DT_INIT_ARRAY ctor。`-MainThreadStackSize=`可覆盖（<=4095按MiB），worker默认1MiB与NPDM primary64KiB不同。callback main18c60非NULL；SDK CreateThread不为size0选默认，MapAliasStack依赖alias manager/真实SVC，不可简单pthread旁路。新OS TLS9c组件已冻结实测0但未HLE，32槽/注册线程/Free/5轮dtor+typedinvoker供后续gateway，不绑16槽PoC/ELFTLS/SDKTP/ThreadType/直接游戏callback。musl CRT门槛仍严格133，SDK初始化/游戏未过。
-2. **TLS/CRT**：另有调用边界ABI欠账：runtime只读d4 Android CLI+0x22134为BRx8未保存/恢复x18，imports直指host typed，原nnMain严格trap时x18=1；证据在`.local/call-boundary-x18/`。尚未证明导致当前133；register-only gateway组件2f旧normalRG0保留，但旧错误路径缺陷已5c20修复并组件实测0、独立repairFINAL已接受；85已实际接入entry及33准hostimports，独立profileQA进行中、21参musl的stackargs不支持，不能宣称游戏ABI缺口闭合。main模块TLS镜像initialized0x220/total0x1019/align8/prefix16，独立复制/清零/对齐正常，不代表header/指针生命周期兼容。SDK OS32槽与ELF destructor LIFO是不同机制；应用槽0–15、SDK31–17、16未知；OS最多5轮且callback后清值。ELF节点48B/align16，可重入且无固定轮数。main303e0释放依赖guest allocator虚表，不能hostfree。静态报告在docs/analysis/codex_tls_sdk_lifecycle_report.md。可空GLOBAL OBJECT hook安装99ba0→9ae40、fini分支99ea0清零已闭合；普通线程返回依次OS槽→结束状态/通知→hook→ELF drain（内部门控非零条件），异常及初始线程退出不外推，详见codex_tls_exit_hook_report.md。不要执行写TPIDR的原SDK helper、批量改MRS或强制CRTgate。
+1. **真实argv与后续startup**：28已在注册primary上接入APP59/Get/Set/Free及typed析构，原`nninitStartup`现停GetHostArgc60；真正ownedargv六文件已冻结9dc8aa73，设备复测待总控。BSS77c51b8由+133ec/+133f4写worker默认1MiB的来源已闭合，新运行只证明经过写者，未直接读回。`-MainThreadStackSize=`可覆盖（<=4095按MiB），与NPDM primary64KiB不同；直接nnMain仍CreateThread126/133，不能给stack0假默认或pthread旁路。musl515/CRT、ThreadType/ELF TLS/SDK池仍未通过。
+2. **TLS/CRT**：另有调用边界ABI欠账：runtime只读d4 Android CLI+0x22134为BRx8未保存/恢复x18，imports直指host typed，原nnMain严格trap时x18=1；证据在`.local/call-boundary-x18/`。尚未证明导致当前133；register-only gateway组件2f旧normalRG0保留，但旧错误路径缺陷已5c20修复并组件实测0、独立repairFINAL已接受；85已实际接入entry及33准hostimports，85独立profileQA已FINAL，28接线QA进行中、21参musl的stackargs不支持，不能宣称游戏ABI缺口闭合。main模块TLS镜像initialized0x220/total0x1019/align8/prefix16，独立复制/清零/对齐正常，不代表header/指针生命周期兼容。SDK OS32槽与ELF destructor LIFO是不同机制；应用槽0–15、SDK31–17、16未知；OS最多5轮且callback后清值。ELF节点48B/align16，可重入且无固定轮数。main303e0释放依赖guest allocator虚表，不能hostfree。静态报告在docs/analysis/codex_tls_sdk_lifecycle_report.md。可空GLOBAL OBJECT hook安装99ba0→9ae40、fini分支99ea0清零已闭合；普通线程返回依次OS槽→结束状态/通知→hook→ELF drain（内部门控非零条件），异常及初始线程退出不外推，详见codex_tls_exit_hook_report.md。不要执行写TPIDR的原SDK helper、批量改MRS或强制CRTgate。
 3. **真实游戏图形/资源**：NVN仅2/535查询入口，533未实现，59缺PFN类型；当前GPU探针不等于翻译后端。Strato GPU/Hades评估已结束：有真实代码但无直接NVN ABI桥，需图形负责人定生产接入边界；整游戏可行性仍未知。按启动真实调用链补接口，不能批量假桩或继续用新probe替代后端。合法本地素材保留，实际挂载/IoStore/着色器/呈现/标题/场景都未验收。
 4. **设备余项**：听感、完整键轴/休眠、真实游戏输入音频存档；30FPS实际场景/45分钟未运行。荣耀平板未连接，官方profile3000×1920/8sGen3/144Hz仅规格，不是adb身份或GPU兼容证据。
 
@@ -55,14 +55,22 @@
 | 范围 | 已实现/证据 | 换游戏时的边界 |
 |---|---|---|
 | 通用NSO/内存基础 | loader/重定位与记录导入重绑定、Context真实原生栈、唯一页owner/预算/释放重试；独立合同和RG通过 | 格式/重定位种类和Android ARM64 ABI须匹配；不能推出其他游戏能启动 |
-| 原生调用与OS TLS | x18/SCS register-only网关5c；32槽OS TLS9c/五轮typed析构，均独立review及RG组件0 | 精确声明签名、SDK池/生命周期；9c尚未接入真实startup，ELF TLS另算；21参栈运输正在独立编码 |
+| 原生调用与OS TLS | x18/SCS register-only网关5c；32槽OS TLS9c/五轮typed析构，均独立review及RG组件0 | 精确声明签名、SDK池/生命周期；28已接入APP池/真实startup越59到60，新接线独立QA进行未FINAL；ELF TLS另算，21参栈运输正在独立编码 |
 | 图形子集 | production VkBuffer创建/绑定/map/copy/clear/释放，Mali实际读回零差异 | 只有transfer资源操作；没有NVN着色器翻译、surface/present、标题 |
 | 当前游戏专用 | main SHA6e6…68a5、BuildID7368…e71b、nnMain/59/CRT/1MiB写者地址和leaf+694bd0验证；原游戏文件未补丁 | 下个版本/游戏必须重核签名、偏移、SDK语义，不能搬地址；leaf次数不证明任意游戏可玩 |
 | 仅研究/未实现 | 全CRT/ELF TLS/ThreadType/alias栈、NVN bridge/着色器/呈现/资源挂载、完整输入音频保存 | 静态报告可复用方法和否定路线；实现与适用性仍未证明 |
 
-最小无游戏字节fixture已经实际运行：85构建的9216B `boundary.nso`，SHA256 `0214c62fdc6ffb00093ad7bce051955b1003ff1ad73abd10deb53f110d82278f`，自行声明普通NSO导入并故意改x18，真实RG两次native调用/跨host import后校验值，exit0、raw_fallback=false、已结束primary拒绝再次执行。证据总控 `.local/device/rg477m-session1/native-profile-v2-contract-2.stdout` 及execution.json；这证明该loader/import/ABI子集不依赖本游戏指令，独立profile审查仍进行中，不保证其他游戏/SDK/图形接口兼容。复跑精确argv含源/依赖/产物hash见同prefix plan/execution；不必为说明复用再重复跑。
+最小无游戏字节fixture已经实际运行：85构建的9216B `boundary.nso`，SHA256 `0214c62fdc6ffb00093ad7bce051955b1003ff1ad73abd10deb53f110d82278f`，自行声明普通NSO导入并故意改x18，真实RG两次native调用/跨host import后校验值，exit0、raw_fallback=false、已结束primary拒绝再次执行。证据总控 `.local/device/rg477m-session1/native-profile-v2-contract-2.stdout` 及execution.json；这证明该loader/import/ABI子集不依赖本游戏指令，85独立profile审查已FINAL（不覆盖28新接线），不保证其他游戏/SDK/图形接口兼容。复跑精确argv含源/依赖/产物hash见同prefix plan/execution；不必为说明复用再重复跑。
 
-新并行 `T02-NATIVE-STACK13`：`../ffrs-native-stack13` / `task/T02-native-stack13` 从5c独立创建，仅五boundary文件。实现明确GP21/13×u64栈参数运输，两方向真实C/SCS合同；不绑定musl假桩、不写TP、不改原5c冻树，尚无代码/设备验收。
+新并行 `T02-NATIVE-STACK13`：`../ffrs-native-stack13` / `task/T02-native-stack13`，五文件clean冻结 **7beeb22294311cc3c896ec23ac23561fca9d6b6d**，rootRG normal0/227.31ms、cleanup0/55.49ms，独立审查进行中（额外AndroidC编译timeout保留）；仅明确GP21/13×u64两向运输，不绑定musl假桩/不写TP，原5c冻树保持。
+
+## 方法核验与成熟底座调整
+
+本轮刚实际读REASkill42：[安装入口](/Users/yuyan9923/.codex/skills/reverse-engineer-anything/SKILL.md)。此前当前Codex读取/REA引擎调用未找到实证，旧Antigravity MCP207 loaded不能代替；原分析仍归LLVM/机器码/实机。当前REA MCP0；publicCLI首次npmDNS/cache缺失后，项目隔离缓存固定6.5.0实际doctor0/Ghidraavailable，无全局改动。遵Skill复用已有hash匹配结果，新未解binary问题走定点REA，普通源码开发不用REA。
+
+成熟代码优先级已调整：LASRecomp Beta4 fe66f31a、自有MIT，确有NVN API renderer device/present、draw、GLSL→SPIRV实现；不是本游戏或Android完成案例。图形Agent先闭合其CpuContext/opaque布局/SDL3/VMA/shaderc与最短资源→命令生产接入；不继续泛搜或从零填535入口。当前loader/页/TLS保留。旧94MB必OOM论据撤回；N64Recomp输入MIPS、librecomp为N64 runtime不当Switch编译器。详见[方法及复用核验](../docs/analysis/codex_method_reuse_audit.md)及其中固定版本/许可/代码范围链接。
+
+当前新增Stack13 source7be真实RG normal0/227.31ms、cleanup0/55.49ms，仅显式21参数native运输，独立QA进行/未集成，不是CRT完成；原startup已到60，runtime真正ownedargv六文件已冻结9dc8aa73待真机。
 
 ## 恢复与构建
 
@@ -79,10 +87,12 @@ FFRS_USE_MINIMAL_TOOLCHAIN=1 scripts/device/build_runtime_hle.sh
 
 设备操作用显式序列号（保存在本地证据），先身份核验，安装前记录包名/权限/hash/签名；只访问本项目应用/新shell诊断目录。当前shell目录`/data/local/tmp/ffrs-rg477m-efd1123620814764ae32529c18081259`保留，不清理。adb exec-out远端错误可能仍return0，须解析JSON、长度和摘要。不要读取私钥、别的应用或系统凭据。
 
-下一优先级是typed32槽OS TLS真实manager与native gateway普通组件→注册线程上下文→真实nninitStartup/CRT初始化→合法SDK线程前置→同RG复测；不再反复研究已闭合stack来源，也不默认补值/pthread旁路。新profile独立QA并行，正式图形/标题/可玩仍未过。
+下一优先级是GetHostArgc60真实ownedargv9dc冻结版本→同RG原startup复测，并行完成Stack13冻结版本真机与独立review；不重做已闭合stack来源，不默认补值/pthread旁路。完整CRT/SDK线程/图形/标题/可玩仍未过。
 
-> 短接力提示：85已实机五合同0/集成70c，仅entry/33imports边界；原126/66/59/515仍133。5c/9c独立FINAL，新85+4695+5cQA ACTIVE且不读WIP；runtime5fileprimary/59OS HLE实际编码，目标59后60未达。七报告c1及OS独立报告e742已存；DOC已交回四文件，root串行保存并safe-ff，root唯一Git/设备。
+> 短接力提示：单入口a3已safeff原交付且核clean，保留复用表、自有boundaryfixture与撤回百分比口径。28五文件已集成rootfb、真实startup59→60/133，nnMain126/malloc66/CRT515仍133；原交付最后核验a3，后续实际HEAD读git。28接线独立审查已完成（额外交叉C编译timeout保留）、85QA FINAL，Stack13冻结7b已RG两0/独立QA进行；ownedargv9dc六文件冻结待设备。先核HEAD/WIP/lease，DOC四文件暂停交回/root唯一Git设备，不重复跑已确认合同。
 
 主界面只读核验`cua.getApp('Codex')`被CUA安全规则DENIED，无截图/AX、不重试绕过，不阻开发且不是Git待审批。内部`/root/...`仅协作标识，未创建四个sidebar任务，UI可见性UNKNOWN。
 
 短目标：原始nnMain越过Query/TLS/CRT→真实图形/标题→可操作场景→游戏输入音频存档性能。持续循环“定位真实阻塞→最小功能修复→编译→真机复测→本地检查点→下一关”；各scope并行，少重复调研、无假桩，仅报实质突破/用户操作/真实阻塞。工具无CreateGoal/UpdateGoal/persistent入口，仅当前回合按目标持续执行，不声称持久参数或后台已开启。
+
+28接线独立报告见[consumer审查](../docs/analysis/codex_os_tls_profile_review.md)：host正常/恢复及OOM/register/providerfailstop补测符合，root七项RG0单独归因；额外AndroidC编译30s超时、旧stderr复制读取中断130及环境pgrep3均保留，不计实现通过。root只读进程核验12:35:47UTC无clang/cc1条目，不停止其他已有进程。

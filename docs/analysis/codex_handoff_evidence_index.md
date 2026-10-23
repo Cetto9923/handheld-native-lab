@@ -6,12 +6,12 @@
 
 | 对象 | 已核对状态 / 唯一写者 |
 | --- | --- |
-| 原交付 `/Users/yuyan9923/GitHub/ff-resonance-rg477m-native` | `work/rg477m-native` / `f4cd524fa10e52dc7846a7be994a9446f8906bae`，本次只读确认已安全ff/clean；只由总控安全快进 |
-| integration `../ffrs-integration` | known_atc1ddecb5cd179b80bf8f14c84171fb336ee26a05；85→70c已集成，四文档与root报告WIP分开，当前原交付仍最后f4 |
-| 本文档代理 | 用户明确委派DOC-HANDOFF-LIVE，当前仅四文件：HANDOFF/state/生成STATUS/本索引；不stage/commit，交总控串行提交 |
-| `../ffrs-runtime` | 85八filefreeze证据保留；当前同writer新5fileprimary/59 OS HLE phase已实际编码（非reserved），新WIP未passed |
+| 原交付 `/Users/yuyan9923/GitHub/ff-resonance-rg477m-native` | work/rg477m-native / a3cb435ec2569fc84ba1068c73bfbfbb96dddcf0，已实际safeff且本轮核clean，只由root串行推进 |
+| integration `../ffrs-integration` | root证据HEAD4c07e21f555f236327de2be5c1fdaf894a267970，28已集成fb6d08b；四文档/报告WIP，原交付仍a3，未safeff本次改动 |
+| 本文档代理 | 四文件已暂停交回root串行checkpoint：HANDOFF/state/生成STATUS/本索引；本代理不stage/commit，待root明确恢复writer再增量维护 |
+| `../ffrs-runtime` | task/T02-codex-runtime / clean28dc1a792946ae990690f11d71e89a60bf5d8b8b；五文件primary OS HLE已root RG七合同0/startup59→60，独立接线QA已ACTIVE未FINAL；argv仅设计 |
 | `../ffrs-android` | `task/T03A-codex-android` / `15da4c2ef7a11138de45d098574f9bd66ef60b66`，采样时clean；已集成v6，当前不再开新外围probe |
-| `../functional-review` | 5cBoundaryrepair与9cOSTLS组件FINAL；native-profile/已actualfollowup审85+4695+5c，noWIP/ADB/originalgame，未FINAL |
+| `../functional-review` | 5cBoundaryrepair与9cOSTLS组件FINAL；native-profile/85独立FINAL；os-tls-profile/28接线独立QA实际ACTIVE，noWIP/ADB/originalgame |
 | `../tls-research` | 图形底座有界评估完成并退出，lease释放；原证据保留，不解释为后端实现或新probe |
 
 当前无待处理审批或不确定写入（总控最新消息）。本代理没有后台进程；总控声明当前真实RG命令均已结束。历史AVD PID49247/63060/71987不能当存活证据：本代理执行 `ps -p 49247,63060,71987 -o pid=,comm=` 被执行沙箱拒绝，exit127。恢复后由有权限的总控重新只读核验，不能盲重启、wipe或杀他人进程。
@@ -197,3 +197,13 @@ UI只读动作`cua.getApp('Codex')`被CUA明确DENIED：`Computer Use is not all
 最终最小快照 2026-10-23T12:06:40.411207+00:00：OS9c [独立FINAL](../../../functional-review/os-tls/REVIEW.md)SHA`8823424f8c9857968ce988166d112f118de21d565ac27e8bf774a69967659346`，11captured0/normal1351/recovery1419+并发重入0，无具体组件缺陷，Android归因root；不覆盖新5fileHLEWIP。root已实际followup T07-NATIVE-PROFILE-REVIEW ACTIVE，输出functional-review/native-profile，只审immutable85+pages4695+boundary5c普通positive/ABI/lifecycle，noWIP/ADB/originalgame。root七报告已commit c1ddecb，仅四文档待commit，doc生成检查后立即暂停。
 
 Reuse scope: concise table and no-game9216B native-import fixture proof are in HANDOFF.md section“能复用什么，不能推断什么”; root device native-profile-v2-contract-2 exit0/two actualcalls/raw_fallbackfalse, not arbitrary-game proof. Original immutable main unchanged; hardcoded entry/CRT/SDK offsets are specific. Root23file integrated source match .local/host-verification/integration-70c3e84/source-match.json; root evidence reports c1ddecb and OS QAe7427f3. New stack13 independent tree starts at5c, fivefile lease only; planned first followup, not passed.
+
+a3恢复事件维护 2026-10-23T12:12:07.810426+00:00：root实际保存a3cb435ec2569fc84ba1068c73bfbfbb96dddcf0并safeff原交付同SHA，本轮只读两树clean，唯一绝对入口仍coordination/HANDOFF.md；保留root新增复用表/无游戏字节fixtureproof/撤回百分比，不重跑或另造框架。Stack13已真实followup，当前gitstatus为`M src/runtime/nso/native_boundary.S;  M src/runtime/nso/native_boundary.c;  M src/runtime/nso/native_boundary.h`，只属WIP元数据，不等于构建/设备成果；root另报约12:15clean采样单独保留，不据跨时钟标签推断先后。Runtime五fileWIP与85review23sources/四fixtures及生命周期补测仅记inprogress，无FINAL。doc恢复solewriter，待下一实质结果再合checkpoint。
+
+28 OS HLE关键事件 2026-10-23T12:17:22.629571+00:00：root实际cherry28→fb6d08b，原交付仍a3。亲读[plan](../../.local/device/rg477m-session1/os-tls-profile-v2-plan.json)/[execution](../../.local/device/rg477m-session1/os-tls-profile-v2-execution.json)：7合同/info0；真实nninitStartup59→GetHostArgc60/+0x13420/133、149.603916ms，无timeout/mainhash保持。callback A0/B9/A5/order0x121/errors0，单线程logical65536；1MiB写者仅控制流经过、未BSS读回。直接nnMain126/malloc66/CRT515仍133。contract824656B SHA7fa988417a9c3a147edf90d43734299bc78dd488dad10cb192d01471ff4130c3；CLI759352B SHAb142eb52f0f17eb48d5f29f400181f576ae021eb82c67726e75bd4e1ca6c9973；cleanup832768B SHAba358bd81b6335b908bc47ffd70c9033a996a89d411f7e7327a1af140a1d2cb5。精确argv/cwd/各退出码和loghash均在plan/execution，不重跑。新五文件接线QA未开始，9c组件FINAL不代替；85QA仍收口，Stack13三源码WIP，下一argv未授权编码。
+
+85 QA/Stack13冻结事件 2026-10-23T12:18:52.991102+00:00：亲核[85 FINAL](../../../functional-review/native-profile/REVIEW.md)SHA`a4dc679c3a92d6ae7ee45501dd280ca41350e7e2e2bf3429c3ded2363f27ff10`；42命令41×0/1预期拒绝1，无新缺陷，root cleanup-order0/99.205541ms included。root归档`codex_native_profile_review.md`准备中；reviewer已真实转[28接线审查目录](../../../functional-review/os-tls-profile/) ACTIVE，仅28+精确依赖，不覆盖原game/设备/旧异常流程。Stack13五文件clean冻结`7beeb22294311cc3c896ec23ac23561fca9d6b6d`，root正在设备验证，未提前PASS；原5c树保持。root最新证据4c07e21，原交付仍a3。
+
+本检查点四文件已暂停交回root：当前startup60、85独立FINAL/28 QA ACTIVE、Stack13 freeze待设备接受均已记录；生成STATUS/diffcheck退出0。新的设备结果可留下一增量，不为文档延后代码或提交。
+
+Method/Skill audit and bounded maturecase correction: codex_method_reuse_audit.md; primaryreports codex_reuse_route_review.md/codex_las_implementation_review.md. Skillactualread42/SHA3456…4715, isolatedREA6.5doctor0/Ghidraavailable/currentMCP0; no fullreanalysis. LatestfixedGP21 device report codex_native_stack13_report.md (7be normal0/cleanup0,independentQAactive/notintegrated), ordinary85FINAL codex_native_profile_review.md. Currentstartup60,not59; HostArgsrealownedmapping6fileworkcontinues.

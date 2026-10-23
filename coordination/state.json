@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-10-23T12:08:40.233847+00:00",
+  "updated_at": "2026-10-23T12:38:07.144956+00:00",
   "phase": "NATIVE_RUNTIME_STARTUP_PROFILE_IN_PROGRESS",
-  "coordinator": "Codex root — sole Git/device/integration; doc four-file writer handed back and paused",
+  "coordinator": "Codex root — soleGit/device/integration;DOC-HANDOFF-LIVE resumedsolefourfilewriteraftera3checkpoint",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
   "active_writers": [
@@ -24,7 +24,8 @@
         "docs/analysis/codex_guest_page_profile_review.md",
         "docs/analysis/codex_os_tls_report.md",
         "docs/analysis/codex_native_boundary_review.md",
-        "docs/analysis/codex_os_tls_review.md"
+        "docs/analysis/codex_os_tls_review.md",
+        "docs/analysis/codex_native_profile_review.md"
       ],
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration",
       "branch": "task/codex-integration",
@@ -33,51 +34,57 @@
       "objective": "User-connected RG477M actual install/load/JNI/Vulkan/display/leaf/compiler-runtime diagnostics; no data clear or fake full-game PASS"
     },
     {
-      "task": "T02-NATIVE-OS-TLS",
-      "owner": "/root/runtime — scoped native profile integration engineer",
+      "task": "DOC-HANDOFF-LIVE",
+      "owner": "/root/android — delegated sole documentation writer",
       "paths": [
-        "src/runtime/hle/guest_process.c",
-        "src/runtime/hle/guest_process.h",
-        "tests/native/guest_process_contract.c",
-        "scripts/runtime/build_guest_process_contract.sh",
-        "docs/analysis/codex_guest_process_report.md"
+        "coordination/HANDOFF.md",
+        "coordination/state.json",
+        "coordination/STATUS.md",
+        "docs/analysis/codex_handoff_evidence_index.md"
       ],
-      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-runtime",
-      "branch": "task/T02-codex-runtime",
-      "acquired_at": "2026-10-23T11:41:37.490796+00:00",
-      "checkpoint": "85a13c79378550fe850ffb5ff182cdbdfec177f8 + OSTLS9c24ed35e683e0aa426ae2561dac670a8ead8ef1 + Boundary5c20b064f2866577ca1fdd903fa196dd842eb3a8",
-      "write_state": "ACTIVE_ROOT_AUTHORIZED_FIVE_FILE_OS_TLS_HLE_IMPLEMENTATION",
-      "objective": "Actualprimaryregister,normalreturnsameIDLEscope typedcallbackcleanup,unregister,ThreadReturned;verifyAPP59/Get/Set/Free,explicitproviderfailstop,targetrealstartup59->60. 5filesonly,nofake success,notpassed."
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration",
+      "branch": "task/codex-integration",
+      "acquired_at": "2026-10-23T12:17:22.629571+00:00",
+      "checkpoint": "a3cb435ec2569fc84ba1068c73bfbfbb96dddcf0",
+      "write_state": "HANDED_BACK_TO_ROOT_PAUSED_NO_CURRENT_WRITES",
+      "objective": "Preserve existing WIP and evidence; generated STATUS only; root alone stages/commits/integrates/device operations"
     },
     {
-      "task": "T07-NATIVE-PROFILE-REVIEW",
-      "owner": "/root/functional_review — independent frozen native profile reviewer",
+      "task": "T07-OS-TLS-PROFILE-REVIEW",
+      "owner": "/root/functional_review — independent frozen binding reviewer",
       "paths": [
-        "native-profile/"
+        "os-tls-profile/"
       ],
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/functional-review",
       "branch": null,
-      "acquired_at": "2026-10-23T12:06:40.411207+00:00",
-      "checkpoint": "85a13c79378550fe850ffb5ff182cdbdfec177f8 + pages4695 + boundary5c",
-      "write_state": "ACTIVE_ACTUAL_FOLLOWUP_INDEPENDENT_FROZEN_REVIEW",
-      "objective": "Onlyimmutable85+4695+5c ordinarypositive/ABI/lifecycle,noWIP/ADB/originalgame/sourcewrites;native-profileoutputonly,notFINAL"
+      "acquired_at": "2026-10-23T12:18:52.991102+00:00",
+      "checkpoint": "28dc1a792946ae990690f11d71e89a60bf5d8b8b + pages4695/boundary5c/OS9c",
+      "write_state": "REVIEW_COMPLETE_NO_CURRENT_WRITES_WITH_EXPLICIT_EXTRA_CROSS_TIMEOUT",
+      "objective": "Only frozen five-file binding plus exact dependencies, ordinary C/POSIX positive fixtures; no source writes/ADB/original game or stopped exceptional flow"
     },
     {
-      "task": "T02-NATIVE-STACK13",
+      "task": "T07-STACK13-REVIEW",
+      "owner": "/root/tls_research",
+      "paths": [
+        "functional-review/native-stack13/"
+      ],
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task",
+      "branch": null,
+      "checkpoint": "7beeb22294311cc3c896ec23ac23561fca9d6b6d",
+      "write_state": "ACTIVE_ACTUAL_FOLLOWUP",
+      "objective": "Independent7be fixedGP21transport ordinaryC/ASM/frozenfivefiles,rootRG0separate"
+    },
+    {
+      "task": "T04-LAS-REUSE-PREFLIGHT",
       "owner": "/root/vulkan",
       "paths": [
-        "src/runtime/nso/native_boundary.c",
-        "src/runtime/nso/native_boundary.h",
-        "src/runtime/nso/native_boundary.S",
-        "tests/native/native_boundary_contract.c",
-        "scripts/runtime/build_native_boundary_contract.sh"
+        "graphics-reuse-integration/"
       ],
-      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-native-stack13",
-      "branch": "task/T02-native-stack13",
-      "acquired_at": "2026-10-23T12:08:40.233847+00:00",
-      "checkpoint": "5c20b064f2866577ca1fdd903fa196dd842eb3a8",
-      "write_state": "LEASED_AWAITING_IMMEDIATE_ACTUAL_FOLLOWUP",
-      "objective": "Explicit fixed GP21/13 stack words native ABI transport; no musl stub, TP write or guest instruction translation"
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task",
+      "branch": null,
+      "checkpoint": "LASfe66f31a6dbcaee1faa1e6718805cb2dbcc67a93",
+      "write_state": "ACTIVE_ACTUAL_FOLLOWUP",
+      "objective": "BoundedpinnedLASAPIfrontdoor/resources/commands/rendererdependencyclosureandminproductionpatchscope;notanotherprobe"
     }
   ],
   "tasks": [
@@ -816,8 +823,8 @@
       "branch": "task/codex-integration",
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration",
       "scope": "Four designated documentation/state files only; preserve inherited WIP; coordinator alone stages/commits/integrates",
-      "checkpoint_status": "CURRENT_FIELDS_CORRECT_85_RG70C_NEXT_OS_HLE5FILES_ACTIVE_PAUSED",
-      "activity_state": "CHECKPOINT_READY_PAUSED_FOR_IMMEDIATE_COORDINATOR_COMMIT"
+      "checkpoint_status": "28_RG_STARTUP60_85_FINAL_28_QA_ACTIVE_STACK13_FREEZE_RECORDED",
+      "activity_state": "PAUSED_FOUR_FILES_HANDBACK_FOR_ROOT_SERIAL_CHECKPOINT"
     },
     {
       "id": "T04-VULKAN-BUFFER-RESOURCE",
@@ -1235,7 +1242,7 @@
         "Bindingsretainedthroughrealmodulemunmap+exitobserver,deadownerreleaseafterward,failuresretain",
         "Firstphase__cxa_finalize/exitstrictunresolved;atexitregistrationreal,observerdiscardonly,guestcallbacksseparatephase"
       ],
-      "acceptance_scope": "85 scopedentry/33acceptedhostimports boundaries andowncontracts only;originalstartupgates notadvanced,oldf24QAdoesnotbecomeindependent85QA",
+      "acceptance_scope": "Immutable85 protected entry/33 admitted host imports/ordinary ABI and lifecycle; independent FINAL accepted. Original startup gates were not advanced by85; no game compatibility claim.",
       "path_overlap_check": "NO_OVERLAP_WITH_OS_TLS_FOUR_FILES_OR_BOUNDARY_REVIEW_OUTPUT",
       "approved_initial_plan": {
         "scope_owner": "Lazyinit/bind onactualprimarypthread,neverloadcoordinator thread",
@@ -1370,7 +1377,12 @@
       "integration_state": "NOT_YET_INTEGRATED",
       "next_phase_reservation": "T02-NATIVE-OS-TLS actuallyactivatedwithnarrowed5filecodelease",
       "integration_commit": "70c3e84e3b28aced7c1a649e1f7d5b7408f91729",
-      "independent_review": "ACTUAL85_FROZEN_REVIEW_ACTIVE_NOT_FINAL_NEWOS5WIP_EXCLUDED"
+      "independent_review": {
+        "status": "FINAL_COMPONENT_ACCEPTED",
+        "report": "../functional-review/native-profile/REVIEW.md",
+        "sha256": "a4dc679c3a92d6ae7ee45501dd280ca41350e7e2e2bf3429c3ded2363f27ff10",
+        "execution": "42 commands:41 exit0,1 expected rejection exit1; root cleanup-order fixture0/99.205541ms included"
+      }
     },
     {
       "id": "T02-NATIVE-BOUNDARY-REPAIR",
@@ -1479,7 +1491,7 @@
       "phase": "FINAL9C_ORDINARY_COMPONENT_ACCEPTED",
       "report_sha256": "8823424f8c9857968ce988166d112f118de21d565ac27e8bf774a69967659346",
       "execution_summary": "11capturedactual0;normal1351/recovery1419checks plusordinaryconcurrency/reentry0;Androidexecutionattributedroot,notreviewer",
-      "acceptance_scope": "Immutable9c componentonly,notnewOS HLE5fileWIP/SDKgamebinding"
+      "acceptance_scope": "Immutable9c component only; does not cover new28 OS HLE binding/SDK game compatibility"
     },
     {
       "id": "T02-NATIVE-OS-TLS",
@@ -1502,23 +1514,93 @@
         "docs/analysis/codex_guest_process_report.md"
       ],
       "report": "docs/analysis/codex_guest_process_report.md",
-      "checkpoint": "85a13c79378550fe850ffb5ff182cdbdfec177f8",
-      "execution_status": "ACTIVE_ROOT_AUTHORIZED_ACTUAL_CODING_NOT_RESERVED",
-      "scope": "Exactly5files,actualregisteredprimary -> normalreturnsameIDLEscope typedOS TLS callbackcleanup -> unregister -> ThreadReturned. VerifyactualAPP59/Get/Set/Free symbols;providerfailstopexplicit,no fake success. Targetrealstartup59then60,notyetmeasured.",
+      "checkpoint": "28dc1a792946ae990690f11d71e89a60bf5d8b8b",
+      "execution_status": "CLEAN_FREEZE_RG_SCOPED_GATE59_TO60_VERIFIED_INDEPENDENT_REVIEW_PENDING",
+      "scope": "Actual primary registration and same-IDLE-scope callback cleanup are implemented in five files. APP59/Get/Set/Free use typed gateway; provider failure remains failstop. Original nninitStartup now reaches GetHostArgc60, not full startup.",
       "required_sources": {
         "native_profile": "85a13c79378550fe850ffb5ff182cdbdfec177f8",
         "guest_os_tls": "9c24ed35e683e0aa426ae2561dac670a8ead8ef1",
         "native_boundary": "5c20b064f2866577ca1fdd903fa196dd842eb3a8"
       },
-      "lease_representation": "Exclusiveactive5fileleaseforroot/runtime,old85eightfilephasecompleted;noOSTLScomponentfourfileedits",
+      "lease_representation": "Five-file producer returned clean freeze; no next argv coding lease authorized",
       "activation_gate": "SATISFIED_ROOT_ACTUAL_IMPLEMENTATION_FOLLOWUP",
-      "phase": "ACTUAL_FIVE_FILE_PRIMARY_OS_TLS_HLE_CALLBACK_GATEWAY_IMPLEMENTATION",
-      "acceptance_scope": "NewphaseWIPnotfrozen/reviewed/devicepassed;85oldgatesunchanged"
+      "phase": "FIVE_FILE_OS_TLS_HLE_FROZEN_AND_INTEGRATED",
+      "acceptance_scope": "Root RG seven contracts/info exit0 and original startup59->60 verified; new five-file binding independent QA has not started. OS9c component FINAL does not cover this integration.",
+      "last_git_snapshot": {
+        "known_at_utc": "2026-10-23T12:17:22.629571+00:00",
+        "head": "28dc1a792946ae990690f11d71e89a60bf5d8b8b",
+        "dirty_paths": [],
+        "interpretation": "Clean freeze read directly; no outcome inferred solely from clean status"
+      },
+      "integration_commit": "fb6d08b971d1ebdd12aa25224a52a518b431b168",
+      "independent_review_status": "ACTIVE_T07_OS_TLS_PROFILE_REVIEW_FROZEN28",
+      "device_result": {
+        "evidence_prefix": ".local/device/rg477m-session1/os-tls-profile-v2-",
+        "contract_returncodes": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "info_returncode": 0,
+        "startup": {
+          "returncode": 133,
+          "import_index": 60,
+          "import_name": "GetHostArgc",
+          "caller_offset": "0x13420",
+          "elapsed_ms": 149.603916
+        },
+        "nnmain": {
+          "returncode": 133,
+          "import_index": 126,
+          "caller_offset": "0x352f1b8"
+        },
+        "malloc": {
+          "returncode": 133,
+          "import_index": 66,
+          "caller_offset": "0x144b8"
+        },
+        "crt": {
+          "returncode": 133,
+          "import_index": 515,
+          "caller_offset": "0x5920a34"
+        },
+        "timed_out": false,
+        "main_hash_unchanged": true,
+        "callback": {
+          "errors": 0,
+          "first_a": 0,
+          "value_b": 9,
+          "second_a": 5,
+          "order": "0x121",
+          "threads": 1,
+          "logical_stack_bytes": 65536
+        },
+        "bss_write_status": "Straight-line control-flow passed the known 1MiB writer; BSS bytes not directly read back"
+      },
+      "artifacts": {
+        "contract": {
+          "bytes": 824656,
+          "sha256": "7fa988417a9c3a147edf90d43734299bc78dd488dad10cb192d01471ff4130c3"
+        },
+        "cli": {
+          "bytes": 759352,
+          "sha256": "b142eb52f0f17eb48d5f29f400181f576ae021eb82c67726e75bd4e1ca6c9973"
+        },
+        "cleanup": {
+          "bytes": 832768,
+          "sha256": "ba358bd81b6335b908bc47ffd70c9033a996a89d411f7e7327a1af140a1d2cb5"
+        }
+      },
+      "next_phase": "Actual argv design only; no implementation authorized or claimed"
     },
     {
       "id": "T07-NATIVE-PROFILE-REVIEW",
       "role": "QA_NATIVE_PROFILE",
-      "status": "in_progress",
+      "status": "passed",
       "owner": "/root/functional_review — independent frozen native profile reviewer",
       "dependencies": [
         "T00R"
@@ -1527,13 +1609,19 @@
       "branch": null,
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/functional-review",
       "report": "../functional-review/native-profile/REVIEW.md",
-      "execution_status": "ACTIVE_ROOT_ACTUAL_FOLLOWUP_FROZEN85_REVIEW_NOT_FINAL",
+      "execution_status": "FINAL_INDEPENDENT_COMPONENT_REVIEW_COMPLETE",
       "immutable_inputs": {
         "native_profile": "85a13c79378550fe850ffb5ff182cdbdfec177f8",
         "pages": "4695e3c995993832ff8e274415f58b1cdb1e4684",
         "boundary": "5c20b064f2866577ca1fdd903fa196dd842eb3a8"
       },
-      "scope": "Onlyfrozen85+4695+5c ordinarypositive/ABI/lifecycle;native-profileoutputonly,noWIP/ADB/originalgame/sourcewrites"
+      "scope": "Onlyfrozen85+4695+5c ordinarypositive/ABI/lifecycle;native-profileoutputonly,noWIP/ADB/originalgame/sourcewrites",
+      "interim_activity": "Independent85 snapshots23sources/fourfixtures;hostnormal/recovery/retarget/info/explicitunsupported executed,foreignhost/rawAPIrejectsupplement0;currentlylifecyclecleanupcrosscontract. Exactpartiallogsretained,noFINALyet.",
+      "report_sha256": "a4dc679c3a92d6ae7ee45501dd280ca41350e7e2e2bf3429c3ded2363f27ff10",
+      "execution_summary": "42 commands:41x0/1 expected rejection1; no new concrete defect. Root cleanup-order fixture0/99.205541ms included.",
+      "archived_report": "docs/analysis/codex_native_profile_review.md",
+      "archive_status": "ROOT_PREPARING_ARCHIVE",
+      "acceptance_scope": "Frozen85 plus pages4695 and boundary5c only; not new28 binding, no independent device/original-game result"
     },
     {
       "id": "T02-NATIVE-STACK13",
@@ -1546,7 +1634,7 @@
       "pass_gates": [],
       "branch": "task/T02-native-stack13",
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-native-stack13",
-      "checkpoint": "5c20b064f2866577ca1fdd903fa196dd842eb3a8",
+      "checkpoint": "7beeb22294311cc3c896ec23ac23561fca9d6b6d",
       "paths": [
         "src/runtime/nso/native_boundary.c",
         "src/runtime/nso/native_boundary.h",
@@ -1556,11 +1644,130 @@
       ],
       "objective": "Implement declared GP21 fixed104-byte stack scalar transport in both native directions; preserve v1/5c ownership and x18/SCS; no actual SDK binding",
       "acceptance": "Both directions all21 values/canaries/data-dependent realC/SCS result; old normal+cleanup regression, strict build and RG root execution later; source/dependency freeze",
-      "recovery": "Preserve 5c frozen source tree and all WIP, only root integrates"
+      "recovery": "Preserve 5c frozen source tree and all WIP, only root integrates",
+      "execution_status": "CLEAN_FIVE_FILE_FREEZE_ROOT_DEVICE_VALIDATION_IN_PROGRESS_NOT_PASS",
+      "last_git_snapshot": {
+        "known_at_utc": "2026-10-23T12:18:52.991102+00:00",
+        "head": "7beeb22294311cc3c896ec23ac23561fca9d6b6d",
+        "dirty_paths": [],
+        "source": "Coordinator confirmed clean freeze; original5c tree unchanged"
+      },
+      "implementation_status": "Frozen five-file source; root device checks in progress, no device or independent QA acceptance yet",
+      "actual_RG": {
+        "normal_exit": 0,
+        "normal_seconds": 0.227309792,
+        "cleanup_exit": 0,
+        "cleanup_seconds": 0.055494125,
+        "no_timeout": true,
+        "source": "exact5sourcefreeze7be",
+        "evidence": ".local/device/rg477m-session1/native-stack13-v1-execution.json",
+        "limits": "fixed scalartransport only; not bound to musl/CRT, independentQA pending, not integrated"
+      }
+    },
+    {
+      "id": "T07-OS-TLS-PROFILE-REVIEW",
+      "role": "QA_OS_TLS_BINDING",
+      "status": "passed",
+      "owner": "/root/functional_review",
+      "dependencies": [
+        "T00R"
+      ],
+      "pass_gates": [],
+      "branch": null,
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/functional-review",
+      "report": "../functional-review/os-tls-profile/REVIEW.md",
+      "execution_status": "ACTIVE_ROOT_ACTUAL_FOLLOWUP_FROZEN28",
+      "immutable_inputs": {
+        "native_os_tls_profile": "28dc1a792946ae990690f11d71e89a60bf5d8b8b",
+        "pages": "4695e3c995993832ff8e274415f58b1cdb1e4684",
+        "boundary": "5c20b064f2866577ca1fdd903fa196dd842eb3a8",
+        "os_tls": "9c24ed35e683e0aa426ae2561dac670a8ead8ef1"
+      },
+      "scope": "Only frozen28 five-file binding plus dependencies, ordinary C/POSIX positive fixtures; no ADB/old exceptional workflow/original game/source writes; OS9c component FINAL does not substitute",
+      "checkpoint": "28dc1a792946ae990690f11d71e89a60bf5d8b8b",
+      "independent_report": "docs/analysis/codex_os_tls_profile_review.md",
+      "limits": "Host+source/ordinaryrecovery accepted,no concrete defect; extraAndroidCcompile30sTIMEOUT notpassed,reviewerdeviceNOT_RUN;root7contracts0separate"
+    },
+    {
+      "id": "T02-GUEST-ARGUMENTS",
+      "role": "RUNTIME_ENGINEER",
+      "status": "in_progress",
+      "owner": "/root/runtime",
+      "dependencies": [
+        "T00R"
+      ],
+      "pass_gates": [
+        "T07-OS-TLS-PROFILE-REVIEW"
+      ],
+      "branch": "task/T02-codex-runtime",
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-runtime",
+      "paths": [
+        "src/runtime/hle/guest_process.c",
+        "src/runtime/hle/guest_process.h",
+        "src/runtime/nso/nso_call.c",
+        "tests/native/guest_process_contract.c",
+        "scripts/runtime/build_guest_process_contract.sh",
+        "docs/analysis/codex_guest_process_report.md"
+      ],
+      "checkpoint": "9dc8aa73c6e2d038c2b1c89efd898b65fbf0d1bb",
+      "source_prerequisite": "28frozen + RG7contracts0/startup59to60,9c/5c/4695fixeddependencies;notdependonQAcompletionforcoding",
+      "objective": "Actualowned argv pipeline with exactContextticketprecharge/map/copy/commit, nativeGetHostArgc/Argv, CLIexplicitarguments",
+      "acceptance": "Correctcopy/lifetime/mutablevector/privatebase, exactQueryaccounting/trueunmapbeforerefund/retry, nativepositivefixture+realstartupnextgate; nofixedsuccess",
+      "recovery": "Samewriter sixfilesonly;freezeartifact+source/deps;preserveWIP/noreset",
+      "source_state": "CLEAN_SIXFILE_FREEZE_AUTHOR68COMMANDS_MATCH_ANDROID_NOT_RUN",
+      "device_gate": "Pendingroot7old+3newcontracts andoriginalstartupempty/nonempty,nextactualgateunknown"
+    },
+    {
+      "id": "T07-STACK13-REVIEW",
+      "role": "QA_NATIVE_ABI",
+      "status": "in_progress",
+      "owner": "/root/tls_research",
+      "dependencies": [
+        "T00R"
+      ],
+      "pass_gates": [],
+      "branch": null,
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task",
+      "paths": [
+        "functional-review/native-stack13/"
+      ],
+      "objective": "Independent7be fixedGP21transport ordinaryC/ASM/frozenfivefiles,rootRG0separate",
+      "recovery": "Scopedoutputsonly;nootherwriter/Git/device/originalgamechanges"
+    },
+    {
+      "id": "T04-LAS-REUSE-PREFLIGHT",
+      "role": "GRAPHICS_ENGINEER",
+      "status": "in_progress",
+      "owner": "/root/vulkan",
+      "dependencies": [
+        "T00R"
+      ],
+      "pass_gates": [],
+      "branch": null,
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task",
+      "paths": [
+        "graphics-reuse-integration/"
+      ],
+      "objective": "BoundedpinnedLASAPIfrontdoor/resources/commands/rendererdependencyclosureandminproductionpatchscope;notanotherprobe",
+      "recovery": "Scopedoutputsonly;nootherwriter/Git/device/originalgamechanges"
+    },
+    {
+      "id": "METHOD-REUSE-AUDIT",
+      "role": "REUSE_AUDITOR",
+      "status": "passed",
+      "owner": "/root/tls_research",
+      "dependencies": [
+        "T00R"
+      ],
+      "pass_gates": [],
+      "branch": null,
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/reuse-audit",
+      "objective": "Boundedthreecandidates/threeproductionimplementationsprimarysourceaudit,notintegration",
+      "output": "reuse-audit/REUSE_AUDIT.md and LAS_IMPLEMENTATION_CHECK.md"
     }
   ],
   "blockers": [
-    "CreateThread stack0来源已闭合：BSS77c51b8由nninitStartup+133ec/133f4写1MiB，nnMain+352f150先走startup却在+1339c AllocateTlsSlot59 trap，故未写。worker1MiB可由-MainThreadStackSize=覆盖（<=4095按MiB），与NPDM primary64KiB不同，非凭空DT_INIT_ARRAY ctor。SDK CreateThread不为size0选默认，MapAliasStack依赖alias manager/真实SVC，不能简单pthread旁路。应先typed OS TLS上下文+真实nninitStartup（callback main18c60非NULL）；同f24 RG init-wrapper/info仍musl515/+5920a34/133，无timeout，CRT未过。",
+    "Current startup gate: source28dc1a/rootfb6d08b original nninitStartup passed APP AllocateTlsSlot59 and stops strictly at GetHostArgc60/+0x13420/133, no timeout. Known worker1MiB writer has been passed in control flow, not directly read back from BSS. Direct nnMain still CreateThread126/+0x352f1b8/133; zero-stack SDK semantics must not be replaced by a default/pthread shortcut. Worker size differs from NPDM primary64KiB; real argv next phase is design only. CRT still musl515/133.",
     "NVN535名字仅2查询入口可解析、533缺失，59缺PFN类型不能猜ABI。新生产VkBuffer组件已同RG transfer contract0，但尚无游戏NVN→Vulkan资源/队列/着色器/present桥接，标题/game_rendering仍未过。",
     "既有 RomFS 流式工具和资源清单不等于游戏运行时挂载/IoStore 解压成功；尚未集成。保留合法本地素材，不获取新游戏或密钥。",
     "旧完整NSO安全/异常QA被平台检查中止，不重试；普通组件独立review已分别通过，不替代完整游戏QA。",
@@ -1627,7 +1834,8 @@
     "Frozen pages4695e3c→integrationd8ccef8 actual sameRG standalone normal contract0/39.740125ms/no timeout,76checks/errors0/recoverycases0,finalpending/charged/tickets/rawregions all0. ELF100784B SHA5cfde4d177e65211a93b4098ecbabea360f882d629af0db2cca2636091fbd172,sourcebundle23e0869ace569308a0b734e8cae88c88cef2ffe8fc7f7f22138a703b9619ba42,allsource hashes matchfreeze. IndependentQA running,RGfailureinjection/SDKbinding/newnnMaingate NOT_RUN. Plan/stage/execution/stdout retained.",
     "Frozen page-profilef24→rootc414aad plus pageowner4695 actual sameRG contract0/info0,nnMain Query→real65536 mapping→CreateThread126/+352f1b8 return133,mallocVA66/+144b8 return133,all no timeout,original main hash unchanged. Contract714024B SHAad7d9995b3bcb3f5aff23c35cb9e51573bfd7f188c07647a7b0854bdf77f28c6;CLI688016 SHA9cd67f087627a792aaee7a4926ea7ed8f97a7ab5e987dd8a3cd7e865517d566a. Six args x3ownedVA+1000/x4stackbytes0/x5prio16 are next trace,not invented defaults; CRT/ctors/game unmet,independent newprofile review onlyreserved.",
     "Thread startup provenance readonly source verified0/production unchanged: BSS77c51b8 set1MiB atmain+133ec/+133f4 only afterstartup; nnMain+352f150 reachesstartup butstrictAllocateTlsSlot59/+1339c trapsfirst. -MainThreadStackSize= mayoverride (<=4095MiB units),workerstack notNPDM64KiB,not assumedDT_INIT_ARRAY ctor. Callback main18c60 nonnull; SDKzero-stack has no default,alias manager/realSVC required. Samef24 RG init-wrapper/info actual133/169.57ms/no timeout atmusl515/+5920a34; CRT incomplete.",
-    "Native boundary2fca9614b59332a3ef78a024fce2b379302492a4 clean5file component→root79f3513,actualsameRGnormal0/210.023084ms/no timeout,stderr empty;ELF51856 SHA6582237ef40824f52217e0bc02668e212cf438c412da7bd0a61758fec8b98b09. Owncontract GP/FP/sret,x18,realSCS,thread/nesting,two ownSIGTRAPchildren,BTI flags alltrue. Register-only no stackargs/foreignunwind,notloader/resolver/gamebound;21argmusl unsupported,gamex18debtnotclosed;independentreviewreserved."
+    "Native boundary2fca9614b59332a3ef78a024fce2b379302492a4 clean5file component→root79f3513,actualsameRGnormal0/210.023084ms/no timeout,stderr empty;ELF51856 SHA6582237ef40824f52217e0bc02668e212cf438c412da7bd0a61758fec8b98b09. Owncontract GP/FP/sret,x18,realSCS,thread/nesting,two ownSIGTRAPchildren,BTI flags alltrue. Register-only no stackargs/foreignunwind,notloader/resolver/gamebound;21argmusl unsupported,gamex18debtnotclosed;independentreviewreserved.",
+    "28dc1a clean five-file OS HLE integrated rootfb6d08b: actual RG seven contracts0/info0; real typed callbacks A0/B9/A5/order0x121; original nninitStartup now GetHostArgc60/+0x13420/133 at149.603916ms, no timeout and main hash unchanged. Direct nnMain126/malloc66/CRT515 remain133. New binding independent QA pending; 1MiB writer control-flow only, no BSS readback."
   ],
   "unverified": [
     "完整CRT/TLS/线程/guest内存上下文与真正完整入口，正式T02参考行为验收。",
@@ -1635,7 +1843,7 @@
     "诊断听感、完整键轴/休眠；游戏输入/音频/存读档；荣耀平板实际身份及GPU能力。",
     "真实场景30FPS/45分钟稳定性及完整独立QA。",
     "Bundled NVN header explicitly reconstructs older53.105/Darksiders ABI; matching current game object layouts not yet proven. New generic Vulkan buffer component must not expose guessed NVN structs.",
-    "Host↔guest gateway and x18 ABI preservation at every transition: readonly evidence logged, not proved cause of current strict133 and not fixed; no TP/loader changes in active Process phase."
+    "85/28 entry and accepted typed host imports use x18-protected gateway with root RG contracts; arbitrary signatures, foreign unwind, full SDK/ELF TLS and 21-argument musl remain unsupported. This does not prove every future host/guest transition or game startup."
   ],
   "execution_goal": {
     "objective": "Original unpatched nnMain past Query/TLS/CRT -> real graphics/title -> controllable scene -> game input/audio/saves/performance",
@@ -1644,20 +1852,21 @@
     "workers_reasoning": "xhigh",
     "completion": "unproven",
     "human_local_development_approval": "User directly approved local development and commits; later fully authorized access. Existing task boundaries remain, no remote publication or data clearing.",
-    "next_goal": "Real OS TLS binding in registered primary -> original nninitStartup beyond59, not achieved yet. Parallel explicit fixedGP21 transport required for later actualCRT; no fake musl. Source85 actualRG fivecontracts0 and same gates133; 5c/9c component independent FINAL; nativeprofile independentQA active. No percent claim.",
+    "next_goal": "Runfrozenownedargv9dconRGbeyondGetHostArgc60;28hostQAcompletewithextraCrosstimeoutdeclared;stack13RG0+independentreviewinprogress;LASAPIproductionextractionscopepreflightactive,notimplemented. No gameframe/title/CRT success or percentage claim.",
     "loop": "Locate real blocker -> smallest functional code fix -> compile -> real device recheck -> local checkpoint -> next gate",
     "parallel_scope": "Runtime, graphics, ordinary QA and documentation operate in assigned scopes; no repeated research of confirmed facts, no fake stubs",
     "reporting": "Report material breakthroughs, required user action or real blockers; no artificial progress from diagnostic counts"
   },
   "coordinator_branch": "task/codex-integration",
   "progress_assessment": {
-    "basis": "final playable target; qualitative engineering estimate, not code/task/hour accounting",
-    "rough_range_percent": [
+    "basis": "No reliable total for final playable target; component evidence is reported qualitatively",
+    "rough_range_percent": null,
+    "previous_estimate_withdrawn": [
       10,
       15
     ],
     "meaningful_increase_supported": false,
-    "reason": "packaging and runtime progress exists; full startup, renderer and playable flow remain unverified"
+    "reason": "Startup advances are real but full CRT/renderer/playable flow remain unverified; diagnostics and line counts are not completion percentages"
   },
   "device_availability": "User confirmed handheld connected; adb RG477M device authorized. Android14/API34,arm64,MT6897,nativebridge0,4KiB,wm1280x960,dpi280. Honor tablet still unavailable.",
   "emulator": {
@@ -1727,13 +1936,35 @@
     "screenshot": ".local/device/rg477m-session1/audio-v6.png",
     "guest_context_evidence": ".local/device/rg477m-session1/guest-context-execution.json"
   },
-  "parallelism_note": "5c及9c独立FINAL组件已过；85实机五合同0/70c集成、原gate未变，新85+4695+5c独立QA已actualACTIVE。Runtime新5fileOS HLE实际编码未冻结，target59->60未达。root七报告c1已提交，只剩四文档待commit，doc立即暂停。",
+  "parallelism_note": "28 five-file binding integratedfb6d08b/RG startup59->60/133; independent28 QA actually ACTIVE after85 FINAL. Stack13 clean7beeb2 five-file freeze, root device validation underway/notpassed. Actual argv design only, no new runtime coding authorized; DOC key-event maintenance, original delivery remainsa3.",
   "handoff_checkpoint": {
     "known_at_utc": "2026-10-23T12:08:40.233847+00:00",
-    "integration_HEAD": "e7427f3a1e006e02cc4c6f6524da56b06adde7d0",
-    "original_delivery_last_verified": "f4cd524fa10e52dc7846a7be994a9446f8906bae",
-    "doc_writer": "handed back, root current serial checkpoint owner",
-    "note": "Read git rev-parse for commit containing this snapshot; self-SHA deliberately not guessed"
+    "integration_HEAD": "4c07e21f555f236327de2be5c1fdaf894a267970",
+    "original_delivery_last_verified": "a3cb435ec2569fc84ba1068c73bfbfbb96dddcf0",
+    "doc_writer": "Four-file writes paused; root may stage/commit checkpoint, resume only after coordinator handback",
+    "note": "Read git rev-parse for commit containing this snapshot; self-SHA deliberately not guessed",
+    "observed_at_utc": "2026-10-23T12:18:52.991102+00:00",
+    "original_delivery_HEAD": "a3cb435ec2569fc84ba1068c73bfbfbb96dddcf0",
+    "original_delivery_state": "Actualsafeffverifiedwork/rg477m-nativecleanata3beforethisdocincrement",
+    "integration_state": "ROOT_REPORTED_EVIDENCE_COMMIT4C07E21_FOUR_DOCS_WIP_ORIGINAL_DELIVERY_A3",
+    "doc_write_status": "PAUSED_HANDBACK_FOR_ROOT_SERIAL_CHECKPOINT",
+    "runtime_dirty_observed": [],
+    "runtime_git_last_verified_at_utc": "2026-10-23T12:17:22.629571+00:00",
+    "stack13_snapshot": {
+      "known_at_utc": "2026-10-23T12:18:52.991102+00:00",
+      "head": "7beeb22294311cc3c896ec23ac23561fca9d6b6d",
+      "status": "CLEAN_FROZEN_ROOT_DEVICE_VALIDATION_IN_PROGRESS",
+      "not_pass": true,
+      "dirty_paths": [],
+      "source": "Coordinator actual freeze message"
+    },
+    "single_entry": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration/coordination/HANDOFF.md",
+    "coordinator_handback_additions": "Preservedreuse-table,9216B no-game-byte boundaryfixtureproof andwithdrawnpercentageclaim;no newframework/norepeatexecution",
+    "original_delivery_git_last_verified_at_utc": "2026-10-23T12:12:07.810426+00:00",
+    "integration_git_last_verified_at_utc": "2026-10-23T12:12:07.810426+00:00",
+    "runtime_HEAD": "28dc1a792946ae990690f11d71e89a60bf5d8b8b",
+    "integration_HEAD_source": "Coordinator actual cherry confirmed; delivery remains a3 until later safeff",
+    "latest_device_event": "RG original nninitStartup59->GetHostArgc60; seven contracts/info0; independent binding review pending"
   },
   "runtime_risks": [
     {
@@ -1746,8 +1977,8 @@
       "objdump_exit": 0,
       "observations": "Runtime readonly report: Android CLI+0x22134 branches BRx8 without x18 save/restore; profile imports directly target typed host functions; original nnMain strict trap x18=1. Runtime notes Android system library x18 preservation contract.",
       "causality": "Not proven cause of current failure, which remains explicit unresolved-import133.",
-      "todo": "Completeactualregisteredprimary/sameIDLEtypedcleanup/59GetSetFree throughverifieddomains,providerfailstop;21argmuslstackargs/foreignunwindstillunsupported,nooriginalgateadvancefrom85alone.",
-      "next_component": "5cFINAL/9cFINAL;85fivecontracts0+33protectedimports integrated70c,85independentQA ACTIVE. Current5fileOS HLEphaseactualcoding,target59->60notyetmeasured;notRESERVED."
+      "todo": "Actual argv after current GetHostArgc60; arbitrary callbacks/foreign unwind/full ELF TLS remain unsupported. GP21 stack transport is separate WIP; no fake musl.",
+      "next_component": "5c/9c/85 component independent FINAL;28 binding integratedfb6d08b,RG startup59->60,independent28 QA ACTIVE. GP21 freeze7beeb2 root device validation pending; next argv design only."
     },
     {
       "id": "NATIVE_BOUNDARY_2F_RETAINED_MAPPING_LOSS",
@@ -1798,5 +2029,34 @@
       "limits": "Only declared NSO/import/nativeABI subset; independent profile review active, no arbitrary-game guarantee"
     },
     "percentage": "No defensible total; previous10-15% withdrawn"
+  },
+  "method_audit": {
+    "skill": "reverse-engineer-anything",
+    "skill_version": "42",
+    "actual_read_this_turn": true,
+    "path": "/Users/yuyan9923/.codex/skills/reverse-engineer-anything/SKILL.md",
+    "resolved": "/Users/yuyan9923/.cc-switch/skills/reverse-engineer-anything/SKILL.md",
+    "sha256": "3456aab99d48c3294726065c9d5bd586bc165f2849fd5a3d5080381630564715",
+    "past_skill_execution": "No directread/executionevidence forcurrentCodex earlierinthisturn;oldT00reportonlyAntigravityMCP207loaded,notCodexSkilluse",
+    "current_REA_MCP_tools": 0,
+    "public_cli": "/Users/yuyan9923/.local/bin/rea",
+    "launcher": "sourcesdedicatedtoolchainenv,then npx-yrea-agents@6.5.0",
+    "actual_doctor": "timeout30/-9 andcapture124, noEvidenceoutput",
+    "actual_cli_version": "npmDNSENOTFOUND exit1;noanalysisperformed",
+    "offline_help": "actualENOTCACHED exit1, no local rea-agents6.5 cache; noanalysisperformed",
+    "source_work": "NormalC/ASMrepositorycodingdoesnotneedREA perSkill;newbinaryquestionsusefocusedREAwhenavailable,existinghashmatchedanalysisnotrepeated",
+    "isolated_doctor": {
+      "exit": 0,
+      "timed_out": false,
+      "cli_version": "6.5.0",
+      "skill_version": "42",
+      "codex_scope_healthy": true,
+      "environment_healthy": false,
+      "ghidra_available": true,
+      "active_MCP": false,
+      "global_config_changes": false,
+      "cache": ".local/rea-method-audit/npm-cache"
+    },
+    "route_adjustment": "LASBeta4APIrendererextractionpreflightfirst,notfullCPUrouteflip;previousOOMclaimnotproved;nointegratedLAScodeyet"
   }
 }
