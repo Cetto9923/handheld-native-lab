@@ -1,0 +1,348 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ff-resonance-rg477m-native.local/schema/device-capability.schema.json",
+  "title": "RG477M device capability record (T03B)",
+  "description": "One snapshot of the real RG477M device as observed by the T03A probe APK. Produced by the probe on-device and pulled to evidence/device/. A record must exist for every T03B case; missing fields are recorded as null with a limitations entry, never silently omitted.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "capture_id",
+    "captured_at",
+    "build",
+    "device",
+    "memory",
+    "storage",
+    "vulkan",
+    "display",
+    "input",
+    "audio",
+    "lifecycle",
+    "environment",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "capture_id": {
+      "type": "string",
+      "pattern": "^t03b-[0-9]{8}t[0-9]{6}z-[a-z0-9-]+$",
+      "description": "Unique capture id, e.g. t03b-20261023t120000z-device-01."
+    },
+    "captured_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 with explicit UTC offset, taken on the DEVICE clock."
+    },
+    "capture_mode": {
+      "enum": ["full", "delta", "recheck"],
+      "default": "full",
+      "description": "full = every section re-probed; delta = only the sections listed in probe_sections; recheck = repeat of an earlier full capture for drift comparison."
+    },
+    "probe_sections": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Section names actually probed in this capture."
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["apk_sha256", "abi_filters", "build_id", "git_rev", "dirty"],
+      "properties": {
+        "apk_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "abi_filters": { "type": "array", "items": { "type": "string" } },
+        "build_id": { "type": "string", "description": "Build identifier string embedded in the probe binary." },
+        "git_rev": { "type": "string", "description": "Commit the probe was built from." },
+        "dirty": { "type": "boolean", "description": "True if the working tree was dirty at build time." },
+        "ndk_version": { "type": ["string", "null"] },
+        "build_type": { "type": ["string", "null"], "description": "e.g. debug, release." },
+        "min_sdk": { "type": ["integer", "null"] },
+        "target_sdk": { "type": ["integer", "null"] }
+      }
+    },
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["manufacturer", "model", "device", "board", "hardware", "android_version", "sdk_int", "build_fingerprint", "abi", "abilist"],
+      "properties": {
+        "manufacturer": { "type": ["string", "null"] },
+        "marketing_name": { "type": ["string", "null"], "description": "e.g. ANBERNIC RG477M. Distinct from Build.MODEL which may be a generic string." },
+        "model": { "type": ["string", "null"] },
+        "device": { "type": ["string", "null"] },
+        "board": { "type": ["string", "null"] },
+        "hardware": { "type": ["string", "null"] },
+        "bootloader": { "type": ["string", "null"] },
+        "android_version": { "type": ["string", "null"] },
+        "sdk_int": { "type": ["integer", "null"] },
+        "build_fingerprint": { "type": ["string", "null"] },
+        "kernel_version": { "type": ["string", "null"] },
+        "abi": { "type": ["string", "null"], "description": "Primary ABI of the running process, e.g. arm64-v8a." },
+        "abilist": { "type": "array", "items": { "type": "string" } },
+        "cpu_implementer": { "type": ["string", "null"] },
+        "cpu_part": { "type": ["string", "null"] },
+        "soc_model": { "type": ["string", "null"], "description": "Reported SoC string, e.g. MediaTek Dimensity 8300. null if the device does not expose it." },
+        "gpu_renderer": { "type": ["string", "null"], "description": "GLES renderer string; for Vulkan use vulkan.device_name." }
+      }
+    },
+    "memory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total_ram_bytes", "available_ram_bytes", "low_memory_state"],
+      "properties": {
+        "total_ram_bytes": { "type": ["integer", "null"], "minimum": 0 },
+        "available_ram_bytes": { "type": ["integer", "null"], "minimum": 0 },
+        "swap_total_bytes": { "type": ["integer", "null"], "minimum": 0 },
+        "threshold_bytes": { "type": ["integer", "null"], "minimum": 0 },
+        "low_memory_state": { "type": ["string", "null"], "description": "ActivityManager.MemoryInfo.lowMemory" },
+        "per_app_limit_bytes": { "type": ["integer", "null"], "description": "android:largeHeap / native heap ceiling observed for the probe, if measurable." }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["data_dir_total_bytes", "data_dir_available_bytes"],
+      "properties": {
+        "data_dir_total_bytes": { "type": ["integer", "null"], "minimum": 0 },
+        "data_dir_available_bytes": { "type": ["integer", "null"], "minimum": 0 },
+        "install_dir_total_bytes": { "type": ["integer", "null"], "minimum": 0 },
+        "install_dir_available_bytes": { "type": ["integer", "null"], "minimum": 0 },
+        "fs_type": { "type": ["string", "null"], "description": "e.g. f2fs, ext4." },
+        "emulated_storage": { "type": ["boolean", "null"] }
+      }
+    },
+    "vulkan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available", "api_version", "instance_version", "device_name", "driver_version", "features", "limits", "extensions", "formats"],
+      "properties": {
+        "available": { "type": "boolean", "description": "False if no Vulkan driver was reachable; all other fields then null." },
+        "api_version": { "type": ["string", "null"], "description": "vkGetPhysicalDeviceProperties.apiVersion, e.g. 1.3.268." },
+        "instance_version": { "type": ["string", "null"] },
+        "driver_version": { "type": ["string", "null"] },
+        "vendor_id": { "type": ["integer", "null"] },
+        "device_id": { "type": ["integer", "null"] },
+        "device_type": { "type": ["string", "null"], "enum": ["integrated", "discrete", "virtual", "cpu", null] },
+        "device_name": { "type": ["string", "null"] },
+        "driver_info": { "type": ["string", "null"] },
+        "pipeline_cache_uuid": { "type": ["string", "null"] },
+        "features": {
+          "type": "object",
+          "description": "Map of VkPhysicalDeviceFeature / VkPhysicalDeviceVulkan12Features / 13 / 14 flag name -> boolean. Names are the exact Vulkan enum spellings without the Vk prefix.",
+          "additionalProperties": { "type": "boolean" }
+        },
+        "limits": {
+          "type": "object",
+          "description": "Map of VkPhysicalDeviceLimits name -> number. Names are exact Vulkan enum spellings without the Vk prefix.",
+          "additionalProperties": { "type": "number" }
+        },
+        "extensions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Sorted list of supported VK_EXT_* / VK_KHR_* device extension names. Sorted ascending by byte value for determinism.",
+          "uniqueItems": true
+        },
+        "features_probed": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Which feature/limit structures were actually queried (e.g. Vulkan11Features, Vulkan12Features, Vulkan13Features, Vulkan14Features). Features outside this list are unknown, not false."
+        },
+        "formats": {
+          "type": "array",
+          "description": "Per-format capability, one entry per queried VkFormat.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["format", "optimal_tiling_features"],
+            "properties": {
+              "format": { "type": "string", "description": "Exact VkFormat name, e.g. VK_FORMAT_R8G8B8A8_UNORM." },
+              "optimal_tiling_features": { "type": "array", "items": { "type": "string" } },
+              "linear_tiling_features": { "type": "array", "items": { "type": "string" } },
+              "buffer_features": { "type": "array", "items": { "type": "string" } },
+              "max_extent": { "type": ["object", "null"], "additionalProperties": { "type": "integer" } },
+              "supported": { "type": "boolean" }
+            }
+          }
+        },
+        "surface_support": {
+          "type": ["object", "null"],
+          "description": "Per-surface-format present-mode support for the Android surface.",
+          "additionalProperties": true
+        }
+      }
+    },
+    "display": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["physical_resolution", "density_dpi", "supported_refresh_rates_hz", "current_mode"],
+      "properties": {
+        "physical_resolution": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width", "height"],
+          "properties": {
+            "width": { "type": "integer", "minimum": 1 },
+            "height": { "type": "integer", "minimum": 1 },
+            "refresh_rate_hz": { "type": ["number", "null"] }
+          }
+        },
+        "density_dpi": { "type": ["integer", "null"], "minimum": 1 },
+        "supported_refresh_rates_hz": { "type": "array", "items": { "type": "number" } },
+        "current_mode": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["width", "height", "refresh_rate_hz"],
+          "properties": {
+            "width": { "type": "integer" },
+            "height": { "type": "integer" },
+            "refresh_rate_hz": { "type": "number" },
+            "mode_id": { "type": ["integer", "null"] }
+          }
+        },
+        "supported_modes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["width", "height", "refresh_rate_hz"],
+            "properties": {
+              "width": { "type": "integer" },
+              "height": { "type": "integer" },
+              "refresh_rate_hz": { "type": "number" }
+            }
+          }
+        },
+        "hdr_supported": { "type": ["boolean", "null"] },
+        "wide_color_gamut": { "type": ["boolean", "null"] },
+        "panel_refresh_rate_hz": { "type": ["number", "null"], "description": "Physical panel max refresh. If 120, UI overlay / panel refresh MUST NOT be counted as game frames." }
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gamepads"],
+      "properties": {
+        "gamepads": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "axes", "buttons"],
+            "properties": {
+              "name": { "type": ["string", "null"] },
+              "vendor_id": { "type": ["integer", "null"] },
+              "product_id": { "type": ["integer", "null"] },
+              "source": { "type": ["string", "null"], "description": "usb | bluetooth | virtual | internal" },
+              "axes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["axis", "min", "max", "value"],
+                  "properties": {
+                    "axis": { "type": "integer" },
+                    "label": { "type": ["string", "null"] },
+                    "min": { "type": "number" },
+                    "max": { "type": "number" },
+                    "value": { "type": "number" },
+                    "deadzone": { "type": ["number", "null"] },
+                    "flat": { "type": ["number", "null"] },
+                    "fuzz": { "type": ["number", "null"] }
+                  }
+                }
+              },
+              "buttons": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["button", "pressed"],
+                  "properties": {
+                    "button": { "type": "integer" },
+                    "label": { "type": ["string", "null"] },
+                    "pressed": { "type": "boolean" },
+                    "axis_value": { "type": ["number", "null"] }
+                  }
+                }
+              },
+              "hat": { "type": ["object", "null"], "additionalProperties": { "type": "integer" } },
+              "vibrator": { "type": ["boolean", "null"] }
+            }
+          }
+        },
+        "keyboard": { "type": ["boolean", "null"] },
+        "mouse": { "type": ["boolean", "null"] }
+      }
+    },
+    "audio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["native_sample_rate_hz", "output_devices"],
+      "properties": {
+        "native_sample_rate_hz": { "type": ["integer", "null"] },
+        "output_devices": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string" },
+              "sample_rate_hz": { "type": ["integer", "null"] },
+              "channels": { "type": ["integer", "null"] },
+              "low_latency": { "type": ["boolean", "null"] }
+            }
+          }
+        },
+        "aaudio_low_latency_supported": { "type": ["boolean", "null"] },
+        "audio_latency_ms": { "type": ["number", "null"] },
+        "offload_supported": { "type": ["boolean", "null"] }
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["package_name", "activities"],
+      "properties": {
+        "package_name": { "type": "string" },
+        "activities": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string" },
+              "launched": { "type": "boolean" },
+              "config_changes": { "type": ["string", "null"] },
+              "screen_orientation": { "type": ["string", "null"] },
+              "resizeable": { "type": ["boolean", "null"] }
+            }
+          }
+        },
+        "on_resume_after_background_ms": { "type": ["number", "null"] },
+        "on_resume_after_sleep_ms": { "type": ["number", "null"] },
+        "surface_recreated_on_resume": { "type": ["boolean", "null"] },
+        "gl_context_lost_observed": { "type": ["boolean", "null"] }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["firmware_version", "power_source", "thermal_state"],
+      "properties": {
+        "firmware_version": { "type": ["string", "null"] },
+        "power_source": { "type": ["string", "null"], "enum": ["ac", "usb", "battery", "wireless", "dock", null] },
+        "battery_level_pct": { "type": ["number", "null"] },
+        "battery_temperature_c": { "type": ["number", "null"] },
+        "thermal_state": { "type": ["string", "null"], "enum": ["none", "light", "moderate", "severe", "critical", "emergency", null] },
+        "ambient_temperature_c": { "type": ["number", "null"], "description": "Externally measured ambient temperature at run time. null if not measured." },
+        "fan_mode": { "type": ["string", "null"], "description": "External cooling fan state, e.g. off | low | high." },
+        "display_brightness_pct": { "type": ["number", "null"] }
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Explicit statements of what this capture does NOT establish."
+    }
+  }
+}
