@@ -119,7 +119,7 @@ def main():
                                      "-std=c++17","-c",test,"-o",out/"contract.android.o"])
     linker=args.rust_root/"lib/rustlib/aarch64-apple-darwin/bin/gcc-ld/ld.lld"
     link=["env",f"DYLD_LIBRARY_PATH={args.rust_root}/lib",linker,"-pie","--dynamic-linker","/system/bin/linker64",
-          "--no-undefined","-z","max-page-size=16384","-z","relro","-z","now","-z","noexecstack","--build-id=sha1"]
+          "--no-undefined","--eh-frame-hdr","-z","max-page-size=16384","-z","relro","-z","now","-z","noexecstack","--build-id=sha1"]
     libraries=["--start-group",target_libs/"libc++abi.a",target_libs/"libc++_static.a",
                resource/"lib/linux/aarch64/libunwind.a",resource/"lib/linux/libclang_rt.builtins-aarch64-android.a",
                "--end-group","-L",api_libs,"-lc","-lm","-ldl"]
@@ -128,7 +128,12 @@ def main():
                                   api_libs/"crtbegin_dynamic.o",*inputs,*libraries,api_libs/"crtend_android.o"])
         link_map=(out/(name+".map")).read_text()
         if "libc++abi.a(cxa_guard.cpp.o)" not in link_map:raise RuntimeError("guard was not sourced from the verified archive member")
-        readelf=run("android-inspect-"+name,[toolchain/"bin/llvm-readelf","--wide","--file-header","--dynamic","--symbols",out/name])
+        readelf=run("android-inspect-"+name,[toolchain/"bin/llvm-readelf","--wide","--file-header",
+                     "--program-headers","--sections","--dynamic","--symbols",out/name])
+        # Raw LLD does not inherit the compiler driver's EH-header default.
+        # Android's linked unwinder needs discoverable executable FDE metadata.
+        if "GNU_EH_FRAME" not in readelf or ".eh_frame_hdr" not in readelf:
+            raise RuntimeError("Android executable lacks discoverable exception-unwind metadata")
         for symbol in ("__cxa_guard_acquire","__cxa_guard_release","__cxa_guard_abort"):
             definitions=[line for line in readelf.splitlines() if line.split() and line.split()[-1]==symbol and " UND " not in line]
             if not definitions:raise RuntimeError(f"linked guard implementation missing: {symbol}")

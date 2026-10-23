@@ -71,6 +71,7 @@ int main() {
     if((reinterpret_cast<unsigned char*>(&guard)[0]&1) || acquire(&guard)!=1)return 1;
     release_guard(&guard);
     if(!(reinterpret_cast<unsigned char*>(&guard)[0]&1) || acquire(&guard)!=0)return 1;
+    std::puts("phase=manual_acquire_abort_release completed");std::fflush(stdout);
     pthread_t threads[threads_count];Value *values[threads_count]={};
     for(unsigned i=0;i<threads_count;i++)if(pthread_create(&threads[i],nullptr,local_worker,&values[i]))return 1;
     while(ready.load()!=threads_count)sched_yield();
@@ -78,6 +79,8 @@ int main() {
     for(auto &thread:threads)if(pthread_join(thread,nullptr))return 1;
     for(auto *value:values)if(value!=values[0])failures.fetch_add(1);
     if(constructors.load()!=1)failures.fetch_add(1);
+    std::printf("phase=local_static completed constructors=%u errors=%u\n",constructors.load(),failures.load());
+    std::fflush(stdout);
     // An in-progress owner aborts while other real runtime acquires contend.
     ready.store(0);
     if(acquire(&manual_guard)!=1)return 1;
@@ -86,6 +89,8 @@ int main() {
     abort_guard(&manual_guard);
     for(auto &thread:threads)if(pthread_join(thread,nullptr))return 1;
     if(manual_constructors.load()!=1 || acquire(&manual_guard)!=0)failures.fetch_add(1);
+    std::printf("phase=contended_abort completed constructors=%u errors=%u\n",manual_constructors.load(),failures.load());
+    std::fflush(stdout);
     bool caught=false;
     try {(void)retry_static();}catch(int value) {caught=value==17;}
     if(!caught || retry_static().value!=0x19a4u || retry_static().value!=0x19a4u || retry_attempts.load()!=2)

@@ -898,3 +898,88 @@ No guard change enables the SDK allocator gate, runs the original TP-writing
 helper, or claims complete C++ ABI compatibility/game startup. The module_tls
 header/report now explicitly distinguish copied byte-storage lifetime from the
 lifetime of any copied module pointers and their pointees/code.
+
+
+## Ninth checkpoint: discoverable Android exception metadata
+
+The coordinator executed the eighth checkpoint's frozen v3 artifacts on its
+ARM64 Android API34 VM. The strict CLI passed __cxa_guard_acquire and reached
+QueryMemoryInfo in both nnMain (+0x27a50) and malloc (+0x1398c), each exit 133;
+--info exited 0. CRT and startup retained __nnmusl_init_dso/AllocateTlsSlot
+boundaries, exit 133. These are the coordinator's runs, not this agent's device
+execution.
+
+The complete Android guard contract did NOT pass: it exited 134 with
+"libc++abi: terminating due to uncaught exception of type int" and no stdout.
+The eighth checkpoint claimed host contract success and cross-link success only;
+this new Android failure must remain visible. The exception test is retained.
+Coordinator evidence is .local/emulator/pvz2-arm64-session3/guard-execution.json
+and guard-guard-contract.stderr in its original delivery checkout.
+
+Inspection of the actual v3 ELF found .gcc_except_table and .eh_frame, plus the
+expected __gxx_personality_v0/_Unwind_Resume/__cxa_throw relocations in the test
+object. However, the executable lacked both .eh_frame_hdr and PT_GNU_EH_FRAME.
+The hand-written direct LLD invocation had omitted --eh-frame-hdr; it does not
+inherit compiler-driver link defaults. Missing discoverable executable FDE
+metadata is a concrete build defect and the leading explanation for the uncaught
+exception. Causality still requires the coordinator's Android rerun.
+
+The prototype now passes --eh-frame-hdr to LLD for both Android executables and
+rejects output missing either the header section or GNU_EH_FRAME program header.
+The test additionally flushes phase markers after manual acquire/abort/release,
+compiler-generated local-static initialization, and contended abort. It still
+requires the actual integer exception to be caught and the local-static
+constructor to retry successfully; no test is skipped or converted to success.
+
+Final evidence: .local/runtime/cxx-guard-v4/manifest.json. Host contract and all
+cross-build/static checks exit 0. The host phase markers show constructor counts
+1/1 and errors 0; the final exception-retry count remains 2, errors 0. Real host
+main/malloc still exit 133 at the same QueryMemoryInfo callers. The new Android
+contract has a read-only GNU_EH_FRAME segment covering .eh_frame_hdr (offset
+0xfb08, size 0x1654), and both executables pass the new static gate.
+
+Frozen v4 artifacts, pending coordinator Android execution:
+
+- nso_runtime_hle_guards: 561,936 bytes, SHA-256
+  aa3df1dceb8e30e034969e36a2afb459d7cd3d0458d6d8f71bdb9e2f3c48c380.
+- guard_contract.android: 542,984 bytes, SHA-256
+  0b627417417bf09595e7b869f0501efd26087a2144c0aa15a53fc02c77bec14c.
+
+The same EH-header option should be used by other hand-written Android C++ LLD
+links. This agent has not edited Android-owned scripts/CMake or started/selected
+a VM. The fix covers host ELF test/compiler-runtime unwind metadata; it does not
+register the separately mapped game's NSO unwind tables or prove cross-guest
+exception/DSO unwinding compatibility. Android full guard-contract PASS remains
+pending until the actual new binary runs successfully.
+
+### Paused QueryMemoryInfo investigation recovery point
+
+No QueryMemoryInfo HLE binding or host mapping-query component was added. The
+export at SDK+0x143710 tail-branches through the PLT to
+nn::os::detail::DebugImplByHorizon::QueryMemoryInfo at +0x14711c (0xc0 bytes).
+It calls the native SVC #0x29 wrapper at +0x17570c with an output u64 pointer,
+Info IDs 0x16 then 0x15, w2=0xffff8001 and x3=0. Nonzero SVC status branches to
+nn::diag::detail::AbortImpl(Result const*), not a normal error return to main.
+
+Output writes are u64 at +0 (Info 0x15), +8 (Info 0x16), +0x10 (resource manager
++0x3f8), +0x18 (manager+0x400), +0x20 (a cached value initially derived as
+Info0x16 - manager[0x3f8] - manager[0x150]), +0x28 (manager+0x2d0) and u32 at
++0x30 (manager+0x2d8). The manager is the defined SDK object
+nn::os::detail::g_OsResourceManagerStorage at +0xb91018, size 0x470. The cache is
+at SDK+0xb915a0. Final padding and original C field names are not established.
+
+The malloc caller passes sp+8, leaving 0x38 bytes before saved frame data, and
+uses output field +0 to size internal heap metadata in GiB units. The nnMain
+allocator constructor reads fields +0/+8 and subtracts the latter from the
+former to initialize its available-growth accounting. Neither observed caller
+checks a normal QueryMemoryInfo return status. Host /proc mappings or available
+physical RAM are not equivalent to these process-budget/resource-manager fields.
+A coherent guest-owned heap/physical-allocation budget and the related manager
+accounting are required before a truthful adapter can replace unsupported.
+
+Retained static recovery evidence:
+.local/runtime/static-main-query-info-v1 (caller slices +0x13940/+0x27a10),
+.local/runtime/static-sdk-query-info-v1 (+0x14711c), and
+.local/runtime/static-sdk-query-info-v2 (export +0x143710 and SVC wrapper
++0x17570c). The guard exception-link defect took priority before further field
+semantics/budget-provider research. None of these SDK routines were executed.
