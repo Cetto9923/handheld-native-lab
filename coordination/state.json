@@ -1,12 +1,56 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-10-23T14:55:00+08:00",
-  "phase": "HANDOFF_TO_CODEX",
-  "coordinator": "Antigravity (交接检查点已收口，已停止项目写入，移交 Codex 接管)",
-  "integration_branch": "work/rg477m-native",
+  "updated_at": "2026-10-23T07:12:46.461404+00:00",
+  "phase": "CODEX_RUNTIME_ANDROID_PARALLEL",
+  "coordinator": "Codex — integration owner; GPT-6.1 xhigh workers; CreateGoal tool unavailable",
+  "integration_branch": "task/codex-integration",
   "update_mode": "event_driven_no_background_scheduler",
-  "active_writers": [],
+  "active_writers": [
+    {
+      "task": "T02",
+      "owner": "Codex runtime worker",
+      "paths": [
+        "src/runtime/nso/",
+        "src/runtime/hle/",
+        "tests/native/",
+        "scripts/runtime/",
+        "docs/analysis/codex_runtime_report.md"
+      ],
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-runtime",
+      "branch": "task/T02-codex-runtime",
+      "acquired_at": "2026-10-23T06:58:31.817820+00:00",
+      "checkpoint": "d26d3f6"
+    },
+    {
+      "task": "T03A-BUILD",
+      "owner": "Codex Android worker",
+      "paths": [
+        "src/android/",
+        "scripts/device/",
+        "tests/device/",
+        "docs/analysis/codex_android_report.md"
+      ],
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-android",
+      "branch": "task/T03A-codex-android",
+      "acquired_at": "2026-10-23T06:58:31.817820+00:00",
+      "checkpoint": "d26d3f6"
+    },
+    {
+      "task": "T04-NVN-RUNTIME",
+      "owner": "Codex coordinator (graphics integration)",
+      "paths": [
+        "src/graphics/nvn/",
+        "tests/graphics/",
+        "scripts/graphics/",
+        "docs/analysis/codex_graphics_report.md"
+      ],
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration",
+      "branch": "task/codex-integration",
+      "acquired_at": "2026-10-23T06:58:31.817820+00:00",
+      "checkpoint": "d26d3f6"
+    }
+  ],
   "tasks": [
     {
       "id": "T00",
@@ -61,28 +105,28 @@
     {
       "id": "T02",
       "role": "CORE",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "T01"
       ],
       "pass_gates": [],
-      "owner": null,
-      "branch": null,
-      "worktree": null,
-      "report": null
+      "owner": "Codex runtime worker",
+      "branch": "task/T02-codex-runtime",
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-runtime",
+      "report": "docs/analysis/codex_runtime_report.md"
     },
     {
       "id": "T03A",
       "role": "ANDROID",
-      "status": "passed",
+      "status": "in_progress",
       "dependencies": [
         "T00"
       ],
       "pass_gates": [],
-      "owner": "Agent B (ANDROID)",
-      "branch": "task/T03A-android",
-      "worktree": ".claude/worktrees/t03a-android",
-      "report": "docs/analysis/t03a_build_report.md"
+      "owner": "Codex Android worker",
+      "branch": "task/T03A-codex-android",
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-android",
+      "report": "docs/analysis/codex_android_report.md"
     },
     {
       "id": "T03B",
@@ -177,22 +221,47 @@
       "branch": null,
       "worktree": null,
       "report": null
+    },
+    {
+      "id": "T07-PREP",
+      "role": "QA",
+      "status": "blocked",
+      "dependencies": [
+        "T00R"
+      ],
+      "pass_gates": [],
+      "owner": "Codex independent QA (platform safety check interrupted; no further retries)",
+      "branch": "task/T07-codex-qa",
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-qa",
+      "report": "docs/analysis/codex_qa_report.md"
+    },
+    {
+      "id": "T04-NVN-RUNTIME",
+      "role": "GRAPHICS",
+      "status": "in_progress",
+      "dependencies": [
+        "T01"
+      ],
+      "pass_gates": [],
+      "owner": "Codex coordinator",
+      "branch": "task/codex-integration",
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration",
+      "report": "docs/analysis/codex_graphics_report.md"
     }
   ],
   "blockers": [
-    "【已推翻/已解决】此前关于'NSO 链接基址为 0 且不可重定位'的推断已通过 MOD0 -> .dynamic -> DT_RELR（0x3fa80 字节，1,370,974 条相对重定位）实证完全推翻。NSO 是标准可重定位 PIE ELF 镜像，src/runtime/nso/nso_loader 已成功将其加载到高位地址并完成全部相对与符号重定位。当前 nnMain 执行需进一步提供 CRT/TLS 及堆分配环境。",
-    "RG477M 真机尚未连接或验证；真机实测项保持 BLOCKED_DEVICE 门禁，不阻塞主机交叉构建。",
-    "宿主可用磁盘约 20 GiB；Android NDK + Ghidra 工程 + RomFS 提取属重型占用，必须串行并及时回收，禁止并发铺开多个大分析工程。",
-    "游戏资源侧缺口：Program NCA 的 RomFS（8.5 GB）未提取；ExeFS 提取所用 NCA 流式解密逻辑此前未入库（已由 T00R 复核确认），T04 启动链需要资源与模块加载器时这是硬前置。",
-    "bindless/textureBuffer 支持度未验证：本作重度依赖 bindless 与 NVN 专有纹理格式 0x25A5A；Mali-G615 的 descriptor indexing 能力只能由 T03B 真机实测判定，是 30 FPS 目标的最高风险项。",
-    "hactool 内置密钥集含损坏记录（Key ... must be 32 hex digits!）导致其 NCA 路径不可用；本作 rights-id 加密的 title key 需另行推导（已交 Agent D 复现）。"
+    "真实游戏入口未通过：新基线DT_RELR已生效，但malloc/init依然SIGSEGV（fa=0x30），nnMain fa=0x10000；CRT/TLS/导入解析尚不完备。",
+    "未连接RG477M，真机能力、标题画面、输入音频存读档、性能与稳定性验收均BLOCKED_DEVICE。",
+    "Android交叉编译与APK尚未复核，NDK工具链正在隔离安装；已有HOST探针通过不等于Android通过。",
+    "NVN图形层只有映射资料与不完整分发器，Vulkan资源/着色器/命令与显示转换尚未实现；旧通用零返回桩已识别为错误。",
+    "RomFS本地流式工具已有提交，游戏运行时文件系统挂载、IoStore解压/着色器转换仍未集成；不更改或获取游戏/密钥。",
+    "独立QA代理继续回合被平台安全检查中止；停止重试，未取得完整独立审查。已落盘普通基线结果和未提交测试成果保留，不冒充PASS。"
   ],
   "verified": [
     "协作项目初始化与总控接管",
     "游戏包完整性与全量哈希已校验 (本体/升级档/DLC)",
     "内部元数据已从 NACP/NPDM 提取：Title 0100B8A026F14000, 内部项目名 mucha (FFRS), SQUARE ENIX, v1.0.0",
     "ExeFS 关键二进制定向提取完成 (.local/exefs/，含 main, main.npdm, sdk, subsdk0, rtld)",
-    "游戏引擎直接证据：Unreal Engine 5.4 (Shipping工件 FFRS-Switch-Shipping.nss, 项目代号 mucha, 含 EChaosVDAABBTreeNodeFlags, EnhancedInput, CommonUI, CRIWARE, Oodle, NVN)",
     "逆向工具链实测：hactool 正常解析，Ghidra 12.1.4 + Switch Loader 成功导入识别 NSO0 (AARCH64:LE:64:v8A)",
     "2026-10-23 接管复核：5 个 ExeFS 工件 SHA-256 与 evidence/t00_verification.json 逐项一致（轻量复核，未重算 9GB NSP）",
     "2026-10-23 接管复核：adb devices 无设备；Android SDK 存在但缺 NDK/build-tools/platforms/cmake，T03A 需按路线安装",
@@ -200,22 +269,23 @@
     "2026-10-23 独立复核（T00R）：ExeFS 五工件 SHA-256、三个 NSP 完整 SHA-256（含 9GB 本体）、NACP 元数据、PFS0 清单、NSO0 段表、build-id 对应均独立重算一致。",
     "2026-10-23 引擎版本修订为 UE 5.6.1（直接证据：SDK MW+EpicGames+UnrealEngine-5_6_1，main.bin 偏移 108874700，全文唯一）；T00 的 UE 5.4 为推断且已被推翻。",
     "2026-10-23 模块职责修订：sdk=Nintendo SDK 20.5.17 NVN 图形栈，subsdk0=movie，rtld=nnrtld.nss；游戏与 UE 代码只在 main。",
-    "2026-10-23 总控：main 模块 NSO 重定位表 4612 条（RELATIVE=0，.text 完全位置无关）、导入 651 符号（24 个 nn:: 命名空间+libc+CRT）、导出 8（含 nnMain @0x352F160）。",
-    "2026-10-23 总控：原生 NSO 加载器（src/runtime/nso/）在 macOS arm64 上完成映射 162MB 模块镜像、解析 651 导入、应用 4612 重定位，并首次原生执行了游戏二进制内的真实导出函数（模块偏移 0x1090，返回正常，build id 与 T00 一致）。",
     "2026-10-23 总控：原生 NSO 加载器（src/runtime/nso/）在 macOS arm64 上完成 162,869,248 B 连续模块镜像映射、651 导入按名绑定、4612 条重定位应用、文本段 R+X 保护；build id 输出与 T00 逐字节一致。",
-    "2026-10-23 总控：已在宿主上原生执行本作二进制内的真实函数（模块内偏移 0x1090，正常返回），首次实现非 Switch 宿主上的原生执行。",
-    "2026-10-23 总控：确定本作 NSO 链接基址为 0、模块不可重定位（RELATIVE=0；.data 绝对指针无重定位；代码直接解引用模块偏移；nnMain 分支到绝对地址 0x27830）。宿主无法映射到 0，已实测排除该出路。"
+    "Codex host build and ordinary functional checks pass: NSO --info, host probe JSON, NVN dispatcher registration/ABI/concurrency. This is not Android or game startup evidence.",
+    "Codex strict resolver runtime experiment now identifies entry blockers: nnMain -> ReferSymbol; startup -> AllocateTlsSlot; init -> __nnmusl_init_dso; malloc -> QueryMemoryInfo. Awaiting integration and rerun."
   ],
   "unverified": [
-    "rebase 方案的指针集合是否可可靠提取（约 74 万候选槽，误伤评估未做）",
-    "UE 5.6.1 源码可获取性（Agent A 核实中，直接决定 P1/C 出路）",
-    "本游戏原生代码重编译/重建样例 (T02) — 前置基础设施(T02-PREP)已完成并可原生执行模块内函数，但尚未选定并验证目标函数",
-    "Android ARM64 APK 宿主 (T03A)",
-    "RG477M 实际 Vulkan/驱动/硬件能力 (T03B/BLOCKED_DEVICE)",
-    "真机画面/输入/音频",
-    "帧率与45分钟稳定性",
-    "T01 技术路线判定（Agent A 产出中）",
-    "游戏资源清单与着色器字节码格式（Agent D 产出中）",
-    "NVN API 面与 Vulkan 映射（Agent E 产出中）"
-  ]
+    "T02真实游戏函数行为对照与完整启动序列",
+    "Android ARM64 ELF/APK真实交叉构建及装载",
+    "RG477M实际Vulkan/驱动/输入/音频能力",
+    "NVN到Vulkan渲染与Switch着色器离线转换",
+    "真实标题、可操作流程、存读档",
+    "分辨率、30FPS帧呈现与45分钟稳定性"
+  ],
+  "execution_goal": {
+    "objective": "RG477M Android ARM64 native game startup and playable flow with input, audio, saves, resolution, frame pacing and stability evidence",
+    "mode": "continuous execution; no CreateGoal API available",
+    "workers_model": "gpt-6.1-sol",
+    "workers_reasoning": "xhigh",
+    "completion": "unproven"
+  }
 }
