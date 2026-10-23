@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-10-23T11:03:54.737228+00:00",
+  "updated_at": "2026-10-23T11:10:02.051068+00:00",
   "phase": "NATIVE_RUNTIME_STARTUP_PROFILE_IN_PROGRESS",
   "coordinator": "Codex integration/device owner; DOC-HANDOFF-LIVE delegated sole coordination writer",
   "integration_branch": "work/rg477m-native",
@@ -42,9 +42,9 @@
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-runtime",
       "branch": "task/T02-codex-runtime",
       "acquired_at": "2026-10-23T10:33:12.677393+00:00",
-      "checkpoint": "e95e521c79bead1c6de4f64d5b01416f1f639ec1",
-      "objective": "Fix actual64752 vslogical65536 capacity preserving assertion; distinguish raw/native/logical/admin. Original8+Context4 authorized. Enforce typed guard compilation prerequisite. Do not implement pages yet.",
-      "write_state": "RG_NATIVE_USABLE_STACK_CAPACITY_AND_GUARD_PREREQUISITE_FIX"
+      "checkpoint": "d4ded908096feef6fff2876ab2ffdaa9e48303b5",
+      "objective": "Capacity/strict guard fix clean d4ded9 now sameRG Context/contract/info0 and original Query→pages/VAusage133; wait typed page component, then profile wrappers/Query only, no duplicate VA/page authority",
+      "write_state": "FROZEN_WAIT_TYPED_PAGES_API_AND_INDEPENDENT_REVIEW"
     },
     {
       "task": "DOC-HANDOFF-LIVE",
@@ -58,7 +58,7 @@
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration",
       "branch": "task/codex-integration",
       "acquired_at": "2026-10-23T10:33:12.677393+00:00",
-      "checkpoint": "2e444a1 -> current34dd0c8 event docs WIP ready 2026-10-23T11:01:32.772142+00:00",
+      "checkpoint": "999b5494c6f84d02758dc845ad727a8cf280212b known_at 2026-10-23T11:10:02.051068+00:00; four docs ready",
       "objective": "User explicitly requests recording in parallel with development/review; preserve current dirty coordination WIP; no runtime edits or Git mutations",
       "write_state": "PAUSED_FOR_COORDINATOR_SERIAL_COMMIT"
     },
@@ -71,22 +71,25 @@
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/functional-review",
       "branch": null,
       "acquired_at": "2026-10-23T10:52:24.868673+00:00",
-      "checkpoint": "15e498c0985aee20c973632b6406e2b976628d81",
-      "objective": "Frozen15e host normal paths PASS but macro-off P2 and actual RG capacity FAIL; report published, await immutable corrected source before acceptance/retest",
-      "write_state": "REVIEW_PUBLISHED_PENDING_NEW_FIX_FREEZE"
+      "checkpoint": "d4ded908096feef6fff2876ab2ffdaa9e48303b5",
+      "objective": "Independently review/retest immutable d4ded9 capacity and strict guard fix, retain old15e failure evidence; no device/source operations",
+      "write_state": "ACTUALLY_DISPATCHED_RUNNING_NEW_FREEZE_REVIEW"
     },
     {
-      "task": "T07-VULKAN-BUFFER-REVIEW",
-      "owner": "Independent prior Vulkan agent (not buffer component author)",
+      "task": "T02-GUEST-PAGES",
+      "owner": "/root/tls_research — independent typed owned-page component implementer",
       "paths": [
-        "vulkan-buffer/"
+        "src/runtime/hle/guest_pages.c",
+        "src/runtime/hle/guest_pages.h",
+        "tests/native/guest_pages_contract.c",
+        "scripts/runtime/build_guest_pages_contract.sh"
       ],
-      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/functional-review",
-      "branch": null,
-      "acquired_at": "2026-10-23T10:59:17.066895+00:00",
-      "checkpoint": "fa76ca979d711c68beebe9e6ae699914f8a1cdf0",
-      "write_state": "ACTUAL_REVIEW_RUNNING_REPORT_SAVING",
-      "objective": "Actually dispatched reviewer snapshottedfa76ca9 and independently ran40 ordinary mock cases,2ownership groups,coherent/noncoherent7failure-release groups each; report saving, no final QA PASS, no ADB/source edits"
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-pages",
+      "branch": "task/T02-guest-pages",
+      "acquired_at": "2026-10-23T11:05:59.989695+00:00",
+      "checkpoint": "d4ded908096feef6fff2876ab2ffdaa9e48303b5",
+      "write_state": "ACTIVE_RUNNING",
+      "objective": "Actual isolated ffrs-pages/taskT02-guest-pages based4ded9 created and worker triggered; implement four new typed internal owned-page files only, no resolver/noADB, sole VA/page authority"
     }
   ],
   "tasks": [
@@ -419,7 +422,17 @@
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-runtime",
       "freeze_sha": "e846dc174edcb687c4e075288326c62ab10ac86e",
       "acceptance_scope": "Owned native callback stack/quota component only; Query valid mask remains0, no loader/game binding",
-      "later_integration_gap": "Historical e846dc1 callback contract PASS retained; later startup profile RG exact pthread usable capacity assertion measured64752 vslogical65536, capacity correction/retest pending under startup task."
+      "later_integration_gap": "Historical e846dc1 callback contract PASS retained; later startup profile RG exact pthread usable capacity assertion measured64752 vslogical65536, capacity correction/retest pending under startup task.",
+      "capacity_fix_followup": {
+        "freeze": "d4ded908096feef6fff2876ab2ffdaa9e48303b5",
+        "same_RG_context_contract_returncode": 0,
+        "logical_bytes": 65536,
+        "native_usable_bytes": 68848,
+        "raw_rw_bytes": 69632,
+        "admin_bytes": 4096,
+        "independent_review": "RUNNING_NEW_FREEZE",
+        "previous_failure_retained": true
+      }
     },
     {
       "id": "T02-TLS-EXIT-HOOK-ANALYSIS",
@@ -488,7 +501,7 @@
       "report": "docs/analysis/codex_guest_process_report.md",
       "branch": "task/T02-codex-runtime",
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-runtime",
-      "checkpoint": "15e498c0985aee20c973632b6406e2b976628d81",
+      "checkpoint": "d4ded908096feef6fff2876ab2ffdaa9e48303b5",
       "acceptance_scope": "Closed explicit-policy profile; transactional module ownership and exact seven-field Query; no complete CRT/TLS/game claim",
       "host_first_contract": {
         "build_returncode": 0,
@@ -509,10 +522,10 @@
         "raw_run": "../ffrs-runtime/.local/owned-profile-first-nnmain/run.json",
         "scope": "Historical first Mac16KiB run, explicit1GiB diagnostic port-policy, not original SVC RAM. Android/RG was NOT_RUN then; later frozen RG contract failure is separate, no original RG entry run yet."
       },
-      "phase": "RG_NATIVE_STACK_CAPACITY_AND_GUARD_PREREQUISITE_FIX",
-      "integration_commit": "1997f27aaaf68621e2770fe14f3a592e1146740f",
+      "phase": "INTEGRATED_RG_QUERY_PASSED_PENDING_INDEPENDENT_REVIEW",
+      "integration_commit": "c5bbddbe2487e27e16a05627580607c0b956351a",
       "runtime_worktree_clean_at": "2026-10-23T10:52:24.868673+00:00",
-      "author_activity": "Production capacity fix authorized original8+Context4 files; distinguish raw mapping/native usable/logical64KiB/admin, preserve capacity assertion. Also compile-time typed guard prerequisite. Pages deferred.",
+      "author_activity": "Frozen d4ded9; wait typed guest_pages component API, then integrate only guest_process wrappers/Query, no duplicate VA/page authority",
       "source_freeze_evidence": "../ffrs-runtime/.local/owned-startup-v2/frozen-checkpoint.json",
       "frozen_validation": {
         "evidence": "../ffrs-runtime/.local/owned-startup-v2/manifest.json",
@@ -602,25 +615,76 @@
         "query": "ready only after capacity validated; guest quota/stack fields remain65536, admin separate",
         "guard_fix": "cross-TU direct typed references plus macro-off compile rejection"
       },
-      "runtime_current_HEAD": "e95e521c79bead1c6de4f64d5b01416f1f639ec1",
-      "runtime_current_dirty_paths": [
-        "cripts/runtime/build_guest_context_contract.sh",
-        "scripts/runtime/build_guest_process_contract.sh",
-        "src/runtime/hle/guest_context.c",
-        "src/runtime/hle/guest_context.h",
-        "src/runtime/hle/guest_process.c",
-        "src/runtime/hle/guest_process.h",
-        "tests/native/guest_context_contract.c",
-        "tests/native/guest_process_contract.c"
-      ],
-      "runtime_current_git_verified_at_utc": "2026-10-23T11:03:54.737228+00:00",
-      "production_baseline_freeze": "15e498c0985aee20c973632b6406e2b976628d81",
-      "capacity_fix_source_state": "E95E521_PLUS_EIGHT_FILES_WIP_NOT_FROZEN_NOT_PASS"
+      "runtime_current_HEAD": "d4ded908096feef6fff2876ab2ffdaa9e48303b5",
+      "runtime_current_dirty_paths": [],
+      "runtime_current_git_verified_at_utc": "2026-10-23T11:07:57.118071+00:00",
+      "production_baseline_freeze": "d4ded908096feef6fff2876ab2ffdaa9e48303b5",
+      "capacity_fix_source_state": "CLEAN_NINE_FILE_FREEZE_D4DED9",
+      "capacity_v1_artifact_state": "Exact hashes/source fingerprints verified in coordinator plan; actual same-RG execution completed, no timeout",
+      "new_capacity_rg_execution": {
+        "source_freeze": "d4ded908096feef6fff2876ab2ffdaa9e48303b5",
+        "plan": ".local/device/rg477m-session1/capacity-v1-plan.json",
+        "execution": ".local/device/rg477m-session1/capacity-v1-execution.json",
+        "artifacts": [
+          {
+            "name": "context",
+            "path": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-runtime/.local/guest-context-capacity-v2/guest_context_contract.android",
+            "bytes": 78432,
+            "sha256": "6d7d46bae9a0b97f8a25221b6d1213f02ec748f8d17c92e6144ee198b761dda5"
+          },
+          {
+            "name": "contract",
+            "path": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-runtime/.local/owned-startup-capacity-v1/guest_process_contract.android",
+            "bytes": 675792,
+            "sha256": "aa82fc592bb4db849375aa54efdc0cfb17b703cde29f3d5f4456aad77abb2d86"
+          },
+          {
+            "name": "cli",
+            "path": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-runtime/.local/owned-startup-capacity-v1/nso_owned_startup.android",
+            "bytes": 655104,
+            "sha256": "1e5953a8144855d65f93310c5d68fce215abe097d1ff94f8e6fed9cd8d6a6d69"
+          }
+        ],
+        "actual_case_exit_codes": {
+          "context": 0,
+          "contract": 0,
+          "info": 0,
+          "nnmain": 133,
+          "malloc": 133
+        },
+        "all_no_timeout": true,
+        "raw_rw_bytes": 69632,
+        "admin_bytes": 4096,
+        "native_usable_bytes": 68848,
+        "logical_bytes": 65536,
+        "attempt1_native_usable": 64752,
+        "attempt1_callback": "WITHHELD",
+        "attempt2_callback": "READY",
+        "guest_quota_policy": 1073741824,
+        "main_sha256": "6e6d1f3cd1672243e2ed344cc1b8849b85437d41bdecec81a5f9181e472d68a5",
+        "main_hash_before_after": "VERIFIED_UNCHANGED_BY_COORDINATOR",
+        "nnMain_barrier": {
+          "name": "AllocateMemoryPages",
+          "index": 71,
+          "caller_offset": "0x27f90",
+          "returncode": 133
+        },
+        "malloc_barrier": {
+          "name": "GetVirtualAddressMemoryResourceUsage",
+          "index": 66,
+          "caller_offset": "0x144b8",
+          "returncode": 133
+        },
+        "scope": "Real original RG entry past Query only; explicit diagnostic1GiB logical policy, no complete TLS/CRT/game startup"
+      },
+      "device_report": "docs/analysis/codex_guest_process_device_report.md",
+      "previous_frozen_review": "docs/analysis/codex_guest_process_review.md",
+      "current_host_regression": "COMPLETED return0,23checks expected0/3/23/24,sourcec5bbddb,main hash stable; independent newcapacity QA still pending"
     },
     {
       "id": "T07-STARTUP-PROFILE-REVIEW",
       "role": "QA",
-      "status": "blocked",
+      "status": "in_progress",
       "owner": "Independent ordinary native startup profile reviewer",
       "dependencies": [
         "T00R"
@@ -629,15 +693,15 @@
       "report": "../functional-review/startup-profile/REVIEW.md",
       "branch": null,
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/functional-review",
-      "implementation_freeze": "15e498c0985aee20c973632b6406e2b976628d81",
-      "execution_status": "INDEPENDENT_HOST_REVIEW_COMPLETE_FINDING_P2_RG_FAIL",
-      "scope": "Frozen15e498c ordinary host component review with real P2; re-review new freeze after stack/guard fix, no runtime writes or device operation",
+      "implementation_freeze": "d4ded908096feef6fff2876ab2ffdaa9e48303b5",
+      "execution_status": "ACTUALLY_DISPATCHED_D4DED9_REVIEW_PENDING_FINAL",
+      "scope": "Independent ordinary review/retest of immutable capacity/strict guard fixd4ded9, preserving old15e P2 and RG failure; no runtime writes, ADB or stopped NSO workflow",
       "design_review_snapshot": "a5de2bd3",
       "review_notes": [
         "Invalid Query must be fatal without modifying output.",
         "Validity and ownership must be captured in one serialized snapshot."
       ],
-      "phase": "REVIEW_COMPLETE_WITH_P2_AND_RG_FAIL_PENDING_NEW_FREEZE",
+      "phase": "INDEPENDENT_CAPACITY_FIX_FREEZE_REVIEW_RUNNING",
       "reserved_output_scope": "../functional-review/startup-profile/",
       "last_manifest_observed": "2026-10-23T10:48:57.352701+00:00; awaiting_freeze=false, implementation_executed=false",
       "findings": [
@@ -665,7 +729,7 @@
       "branch": "task/codex-integration",
       "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration",
       "scope": "Four designated documentation/state files only; preserve inherited WIP; coordinator alone stages/commits/integrates",
-      "checkpoint_status": "VULKAN_REVIEW_RUNNING_AND_RUNTIME_WIP_FACT_CORRECTED_PAUSED",
+      "checkpoint_status": "D4_RG_QUERY_HOST0_VULKAN_FINAL_PAGES_RUNNING_RECORDED_PAUSED",
       "activity_state": "CHECKPOINT_READY_PAUSED_FOR_COORDINATOR_SERIAL_COMMIT"
     },
     {
@@ -715,7 +779,7 @@
     {
       "id": "T07-VULKAN-BUFFER-REVIEW",
       "role": "QA_GRAPHICS",
-      "status": "in_progress",
+      "status": "passed",
       "owner": "Independent prior Vulkan agent (not buffer component author)",
       "dependencies": [
         "T04-VULKAN-BUFFER-RESOURCE"
@@ -726,8 +790,8 @@
       "report": "../functional-review/vulkan-buffer/REVIEW.md",
       "freeze_sha": "fa76ca979d711c68beebe9e6ae699914f8a1cdf0",
       "scope": "Read-only ordinary review of new buffer_resource.c/h and existing component contract, output vulkan-buffer only; no ADB/source edits; does not block startup repair",
-      "execution_status": "ACTUAL_RUNNING_SNAPSHOT_AND_ORDINARY_CONTRACTS_EXECUTED_NOT_FINAL_PASS",
-      "phase": "INDEPENDENT_REVIEW_RUNNING_REPORT_SAVING",
+      "execution_status": "FINAL_INDEPENDENT_HOST_REVIEW_COMPLETE_NO_CONFIRMED_FINDINGS",
+      "phase": "FINAL_COMPONENT_ACCEPTED_WITHIN_SCOPE",
       "interim_evidence": {
         "snapshot": "../functional-review/vulkan-buffer/snapshot-manifest.json",
         "snapshot_files": 8,
@@ -741,18 +805,57 @@
         "report_state": "SAVING_NOT_FINAL_ACCEPTANCE",
         "reviewer_device_execution": "NOT_RUN",
         "exit_scope": "Host cases include expected nonzero failure exits, not all return0"
-      }
+      },
+      "final_summary": "../functional-review/vulkan-buffer/final-summary.json",
+      "acceptance_scope": "Independent review of new production buffer_resource.c/h and driver integration only; reviewer was old transfer baseline author, not new component/refactor author; deterministic host test doubles and read-only verification of coordinator RG records, no own GPU/device execution",
+      "final_validation": "Exact8file fa76ca9 snapshot;40ordinary mocks+2ownership+reviewer coherent/noncoherent7failure-release groups each PASS with ASan/UBSan no findings; expected failure case exits retained, not all0",
+      "reviewer_device_execution": "NOT_RUN",
+      "limitations": "No independent device/validation layers/real noncoherent cache model/long workload/game rendering",
+      "archived_report": "docs/analysis/codex_vulkan_buffer_review.md"
+    },
+    {
+      "id": "T02-GUEST-PAGES",
+      "role": "CORE_COMPONENT",
+      "status": "in_progress",
+      "owner": "/root/tls_research — independent typed owned-page component implementer",
+      "dependencies": [
+        "T02-GUEST-PRIMARY-STACK"
+      ],
+      "pass_gates": [],
+      "branch": "task/T02-guest-pages",
+      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-pages",
+      "report": null,
+      "execution_status": "ACTUAL_WORKTREE_CREATED_AND_WORKER_TRIGGERED_RUNNING",
+      "scope": "Exactly four new files typed internal guest_pages owner over existing address_region; no resolver, no ADB, no guest_process/Query wrapper edits",
+      "required_inputs": {
+        "context_capacity_freeze": "d4ded908096feef6fff2876ab2ffdaa9e48303b5",
+        "address_region": "Existing source at pinned d4ded9"
+      },
+      "start_gate": "SATISFIED: coordinator created isolated worktree and triggered /root/tls_research; branch/base independently read",
+      "authority_boundary": "Exactly one VA/page authority in this typed component; runtime integrates only guest_process wrappers/Query later, no duplicate ownership implementation",
+      "scope_paths": [
+        "src/runtime/hle/guest_pages.c",
+        "src/runtime/hle/guest_pages.h",
+        "tests/native/guest_pages_contract.c",
+        "scripts/runtime/build_guest_pages_contract.sh"
+      ],
+      "path_overlap_check": {
+        "result": "NO_OVERLAP_WITH_ACTIVE_WRITER_SCOPES",
+        "checked_at_utc": "2026-10-23T11:05:59.989695+00:00"
+      },
+      "base_commit": "d4ded908096feef6fff2876ab2ffdaa9e48303b5",
+      "checkpoint": "d4ded908096feef6fff2876ab2ffdaa9e48303b5"
     }
   ],
   "blockers": [
-    "RG分项诊断artifact663040B/SHAd02c868...36ef实际1/36.30ms，唯一失败pthread-reported-stack-bytes64752(0xfcf0) vs65536少784B。reported bounds/真实SP/local、altstack flags0、Query七字段/padding/VA/returned_token均正确；原因只定位至实际容量差，未外推底层布局。诊断-only e95e521保留全部断言，production未改；作者获准扩原Context4文件修真实容量并分清rawmapping/nativeusable/logical64KiB/admin。先修RG contract，暂停新pages实现；旧15eHostPASS/RGFAIL不是新修复PASS。",
+    "d4ded9容量修复已同RG真实Context0/contract0/info0；nnMain越Query+0x27a50到AllocateMemoryPages71/+0x27f90/133，malloc到GetVirtualAddressMemoryResourceUsage66/+0x144b8/133，均无timeout。当前阻塞转为typed真实owned pages与VA usage接管；1GiB仍明确port-policy非原SVC RAM。d4独立QA进行中/总控待集成，TLS/完整CRT仍未过；保留15e/e95旧失败，不混版本。",
     "NVN535名字仅2查询入口可解析、533缺失，59缺PFN类型不能猜ABI。新生产VkBuffer组件已同RG transfer contract0，但尚无游戏NVN→Vulkan资源/队列/着色器/present桥接，标题/game_rendering仍未过。",
     "既有 RomFS 流式工具和资源清单不等于游戏运行时挂载/IoStore 解压成功；尚未集成。保留合法本地素材，不获取新游戏或密钥。",
     "旧完整NSO安全/异常QA被平台检查中止，不重试；普通组件独立review已分别通过，不替代完整游戏QA。",
     "完整NDK归档校验NOT_VERIFIED；Google官方部分sysroot逐成员长度/CRC验证+AppleClang/RustLLD minimal真实出包通过。额外partial CMake configure0/build2：Darwin ar/ranlib不能索引ELF，尚未配置兼容交叉归档器。",
     "环境未提供 CreateGoal / UpdateGoal 入口，未开启持久目标引擎；当前回合按完整目标执行。",
     "RG477M诊断GPU传输/owned-pages/数字L2R2与右杆实测通过；听感未确认、所需GPU更多操作/完整输入/休眠待验收。荣耀平板未接入；游戏本体未启动。",
-    "Startup profile独立review在冻结15e498c发现P2：host编译关闭NSO_WITH_CXX_GUARDS时guard名称可能走extension（probe1，宏开对照0）；当前指定/Android配置不受影响，不解释RG容量失败。作者需加真实typed guard编译前置条件；新freeze待复核。"
+    "旧15e独立review的host guard宏关闭extension P2已在d4ded9源码用typed引用/编译前置条件处理；指定Android原本不受影响，新冻结独立QA复核进行中，不能把旧HostPASS外推为新代码review通过。"
   ],
   "verified": [
     "Antigravity 交接基线 d26d3f6，接管时工作树干净、active_writers=[]；新开发使用独立分支/工作树，旧成果保留。",
@@ -804,7 +907,10 @@
     "Actual RG frozen15e498c ordinary startup fixture contract649672B/SHA646adf...ab95 failed: exit1 expected0,42.27ms/no timeout,line202 value==&returned_token && !errors. Query valid0x7f outputs fixture1MiB/used102400/baseline36864/stacks65536; not acceptance. info/original nnMain/malloc not executed for this freeze. Raw owned-profile-execution.json and owned-profile-contract.stderr retained; original assertion not relaxed.",
     "Production VkBuffer freezefa76ca9 integrated34dd0c8: same RG actual ELF198584B SHA2088ffd84187f8f868f6d892584a4d4164e09c6091bddc0f0531c948347ed3b9, exact source bundlea43b88df0741e61581f069d95e33342d6f1759deb58b60605665538cd540d26f; execution0/90.15ms/no timeout,31VkResult0,64KiB buffer/256B image zero mismatches,12destroy/3unmap,validator0/PASS. Existing driver uses production resource component; no NVN bridge/game_rendering=false.",
     "Integration source1997f27 clean host checkpoint:23 checks meet actual expected0/3/23/24 and original input hashes unchanged; summary .local/host-verification/checkpoint-1997f27/summary.json. Later GPU integration34dd0c8 has its own same-RG/validator verification, not falsely covered by the earlier host source checkpoint.",
-    "RG diagnostic-only e95e521 preserves all assertions, production unchanged:663040B SHAd02c86845607be6f1da3a546a04b515c986d31c1402601f73e4af7ec715e36ef actual1/36.30ms; sole tag pthread-reported-stack-bytes64752 vs65536 delta784. Bounds/SP/local/altstackflags0/Query7/padding/VA/returned_token normal. No capacity fix PASS yet. Separate frozen15e QA P2 macro-off extension guard does not explain RG failure; current Android macro config unaffected."
+    "RG diagnostic-only e95e521 preserves all assertions, production unchanged:663040B SHAd02c86845607be6f1da3a546a04b515c986d31c1402601f73e4af7ec715e36ef actual1/36.30ms; sole tag pthread-reported-stack-bytes64752 vs65536 delta784. Bounds/SP/local/altstackflags0/Query7/padding/VA/returned_token normal. No capacity fix PASS yet. Separate frozen15e QA P2 macro-off extension guard does not explain RG failure; current Android macro config unaffected.",
+    "T07-VULKAN-BUFFER-REVIEW FINAL accepted fa76ca9 new production component within bounded scope: exact8files,40ordinary mock+2ownership+independent coherent/noncoherent7failure-release groups each PASS, ASan/UBSan no findings. Reviewer not new component/refactor author, no ADB/own GPU execution. REVIEW.md and final-summary.json; no NVN/game claim.",
+    "d4ded908096feef6fff2876ab2ffdaa9e48303b5 clean freeze actual sameRG capacity-v1:Context0/contract0/info0,originalnnMain Query+27a50→pages71/+27f90 return133,malloc→VAusage66/+144b8 return133,all no timeout. Attempt1 usable64752 callbackwithheld; attempt2 raw69632/admin4096/native68848/logical65536 ready. Original main hash unchanged; diagnostic1GiB policy not SVC RAM. Source/artifact fingerprints in capacity-v1-plan.json. Independent QA new freeze pending, full TLS/CRT/game unmet.",
+    "c5bbddb host regression session22690 completed wrapper0:23checks passedtrue with actual expected0/3/23/24; original main before/after6e6d1f3cd1672243e2ed344cc1b8849b85437d41bdecec81a5f9181e472d68a5 unchanged. source dirty then only four documentation files; newcapacity independentQA still executing, no final review claim. Summary checkpoint-c5bbddb/summary.json."
   ],
   "unverified": [
     "完整CRT/TLS/线程/guest内存上下文与真正完整入口，正式T02参考行为验收。",
@@ -820,7 +926,7 @@
     "workers_reasoning": "xhigh",
     "completion": "unproven",
     "human_local_development_approval": "User directly approved local development and commits; later fully authorized access. Existing task boundaries remain, no remote publication or data clearing.",
-    "next_goal": "Fix real RG native usable stack capacity: pthread reported64752B versus logical65536B (-784), preserve capacity assertion and distinguish raw mapping/native usable/logical/admin bytes. Also enforce typed guard feature prerequisite, then freeze and rerun RG contract before original nnMain/malloc; defer pages.",
+    "next_goal": "RG original nnMain has genuinely passed typed Query to AllocateMemoryPages71/+27f90; implement typed owned guest_pages over pinned d4ded9 in isolated worker, integrate only profile wrappers/Query, independently review freeze and rerun same RG; full TLS/CRT still unmet",
     "loop": "Locate real blocker -> smallest functional code fix -> compile -> real device recheck -> local checkpoint -> next gate",
     "parallel_scope": "Runtime, graphics, ordinary QA and documentation operate in assigned scopes; no repeated research of confirmed facts, no fake stubs",
     "reporting": "Report material breakthroughs, required user action or real blockers; no artificial progress from diagnostic counts"
@@ -903,23 +1009,14 @@
     "screenshot": ".local/device/rg477m-session1/audio-v6.png",
     "guest_context_evidence": ".local/device/rg477m-session1/guest-context-execution.json"
   },
-  "parallelism_note": "Runtime HEAD e95e521+8files实际WIP修容量/guard，未冻结；独立Vulkan reviewer已真实运行并保存报告中，40mock/2ownership/coherent与noncoherent各7失败释放组，无确认缺陷但非最终QA PASS；profile QA待新freeze；doc补此事件后暂停供root串行提交，root唯一设备/Git。",
+  "parallelism_note": "Runtime d4ded9 clean容量/guard freeze同RG成功越Query，独立QA实际新freeze复核中；pages隔离树已创建且/root/tls_research实际编码四typed内部文件（noADB/noresolver）；runtime待API后只接profile wrappers/Query；VulkanFINAL已接受，doc事件同步/root唯一设备Git。",
   "handoff_checkpoint": {
-    "observed_at_utc": "2026-10-23T11:03:54.737228+00:00",
-    "integration_HEAD": "34dd0c8642e1006fb72401785e89c2cd3be1393e",
+    "observed_at_utc": "2026-10-23T11:10:02.051068+00:00",
+    "integration_HEAD": "999b5494c6f84d02758dc845ad727a8cf280212b",
     "integration_branch": "task/codex-integration",
     "original_delivery_HEAD": "2e444a16a1d80fe3ff1407e69eb5ba554490b528",
-    "runtime_HEAD": "e95e521c79bead1c6de4f64d5b01416f1f639ec1",
-    "runtime_dirty_observed": [
-      "cripts/runtime/build_guest_context_contract.sh",
-      "scripts/runtime/build_guest_process_contract.sh",
-      "src/runtime/hle/guest_context.c",
-      "src/runtime/hle/guest_context.h",
-      "src/runtime/hle/guest_process.c",
-      "src/runtime/hle/guest_process.h",
-      "tests/native/guest_context_contract.c",
-      "tests/native/guest_process_contract.c"
-    ],
+    "runtime_HEAD": "d4ded908096feef6fff2876ab2ffdaa9e48303b5",
+    "runtime_dirty_observed": [],
     "inherited_root_WIP": [
       "coordination/HANDOFF.md",
       "coordination/STATUS.md",
@@ -933,8 +1030,8 @@
     "uncertain_mutation": "NONE_REPORTED",
     "long_ADB_command": "NONE_REPORTED_BY_COORDINATOR",
     "historical_AVD_PID_check": "ps -p 49247,63060,71987 -o pid=,comm= refused by execution sandbox, exit127; liveness not established",
-    "next_core_gate": "Real native usable stack>=logical64KiB on RG while retaining capacity assertion; typed guard compile prerequisite; freeze/retest before entry or pages work",
-    "coordinator_latest_readonly_event": "2026-10-23T10:58:43.711770+00:00: diagnostic-onlye95e521c79bead1c6de4f64d5b01416f1f639ec1, RG663040B d02c868...36ef exit1/36.30ms with sole pthread capacity64752 vs65536 delta784. Other tagged checks normal. QA15e found separate host macro-off guard extension P2; no new-code PASS yet.",
+    "next_core_gate": "Typed owned pages/VA usage component based4ded9 -> profile wrappers/Query -> independent review and sameRG original entry; TLS/CRT unmet",
+    "coordinator_latest_readonly_event": "2026-10-23T11:07:57.118071+00:00: d4ded9 clean freeze and actual capacity-v1 RG execution; root integrating while pages worker actually started at pinned base, no early complete-game claim",
     "doc_write_status": "CHECKPOINT_READY_PAUSED_FOR_COORDINATOR_SERIAL_COMMIT",
     "reported_running_at_1038_UTC": [
       "runtime startup-profile coding",
@@ -962,16 +1059,46 @@
       "not_a_permanent_current_state": true
     },
     "source_freeze_evidence": "../ffrs-runtime/.local/owned-startup-v2/frozen-checkpoint.json",
-    "integration_state": "STARTUP_INTEGRATED_1997f27_RG_CONTRACT_FAILED",
+    "integration_state": "ROOT_REPORTS_999b549_COMMITTED_ONLY_FOUR_DOCS_WIP",
     "current_runtime_write_state": "RG_STACK_CAPACITY_FIX_ORIGINAL_EIGHT_PLUS_CONTEXT_FOUR_FILES",
     "inherited_root_WIP_note": "The listed inherited WIP is historical and was committed in11e8611; it is not the current dirty list.",
-    "runtime_git_last_verified_at_utc": "2026-10-23T11:03:54.737228+00:00",
-    "runtime_git_state_note": "Current runtime HEAD e95e521 with eight-file capacity/guard WIP. 15e498c is only previous production freeze, not current clean tree.",
-    "integration_git_last_verified_at_utc": "2026-10-23T10:55:33.623785+00:00",
+    "runtime_git_last_verified_at_utc": "2026-10-23T11:07:57.118071+00:00",
+    "runtime_git_state_note": "Current runtime clean nine-file freeze d4ded9; previous e95+8file WIP completed, old15e failure artifacts retained",
+    "integration_git_last_verified_at_utc": "2026-10-23T11:10:02.051068+00:00",
     "vulkan_component": "fa76ca9 integrated34dd0c8; same RG execution0 and result validator0, scope buffer/image transfer only",
     "capacity_fix_state": "Author/QA agreed bounded public-pthread measurement/rebuild plan only; not implemented/PASS",
-    "vulkan_review_state": "ACTUAL_RUNNING_fa76ca9_SNAPSHOT_AND_HOST_CONTRACTS_DONE_REPORT_SAVING_NOT_FINAL_QA_PASS",
-    "doc_checkpoint_ready_at_utc": "2026-10-23T11:03:54.737228+00:00",
-    "runtime_production_freeze": "15e498c0985aee20c973632b6406e2b976628d81"
+    "vulkan_review_state": "FINAL_COMPONENT_ACCEPTED_NO_CONFIRMED_FINDINGS_fa76ca9",
+    "doc_checkpoint_ready_at_utc": "2026-10-23T11:10:02.051068+00:00",
+    "runtime_production_freeze": "d4ded908096feef6fff2876ab2ffdaa9e48303b5",
+    "pages_lease_state": "ACTUAL_WORKTREE_CREATED_d4ded9_AND_WORKER_TRIGGERED_ACTIVE_RUNNING",
+    "capacity_v1_state": "Actual sameRG Context0/contract0/info0,nnMain133 pages71,malloc133 VAusage66,all no timeout; independentQA running",
+    "runtime_diagnostic_integration_commit": "d111d23",
+    "runtime_capacity_integration_commit": "c5bbddbe2487e27e16a05627580607c0b956351a",
+    "coordinator_new_reports": [
+      "docs/analysis/codex_guest_process_review.md",
+      "docs/analysis/codex_vulkan_buffer_review.md",
+      "docs/analysis/codex_guest_process_device_report.md"
+    ],
+    "current_host_regression": {
+      "source_commit": "c5bbddbe2487e27e16a05627580607c0b956351a",
+      "state": "COMPLETED_RETURN0_23_EXPECTED_CHECKS_PASSED",
+      "tool_session_id": 22690,
+      "log_dir": ".local/host-verification/checkpoint-c5bbddb",
+      "verification": "Read completed summary at 2026-10-23T11:09:10.328776+00:00",
+      "session_complete": true,
+      "actual_wrapper_returncode": 0,
+      "expected_check_exit_codes": [
+        0,
+        3,
+        23,
+        24
+      ],
+      "source_dirty_at_run": "Only four delegated documentation files; later root reports are separately owned WIP",
+      "input_hash_stable": true,
+      "summary": ".local/host-verification/checkpoint-c5bbddb/summary.json"
+    },
+    "integration_HEAD_semantics": "known_at snapshot before the next documentation commit; do not expect self-referential HEAD to equal future commit",
+    "coordinator_reports_commit": "999b5494c6f84d02758dc845ad727a8cf280212b",
+    "original_delivery_state": "Still2e444a1 by coordinator, do not fast-forward before independent capacity QA acceptance"
   }
 }

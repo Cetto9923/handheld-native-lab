@@ -7,9 +7,9 @@
 | 对象 | 已核对状态 / 唯一写者 |
 | --- | --- |
 | 原交付 `/Users/yuyan9923/GitHub/ff-resonance-rg477m-native` | `work/rg477m-native` / `2e444a16a1d80fe3ff1407e69eb5ba554490b528`，本次采样clean；只由总控安全快进 |
-| integration `/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration` | `task/codex-integration` / `34dd0c8642e1006fb72401785e89c2cd3be1393e`；目标文档2e444a1之后集成startup profile1997f27和GPU组件34dd0c8；四文档WIP保留；总控持有报告、Git与设备操作 |
+| integration `/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration` | `task/codex-integration` / `999b5494c6f84d02758dc845ad727a8cf280212b`（known_at 2026-10-23T11:10:02.051068+00:00，后续文档commit会改变HEAD）；三份root报告已提交，仅四文档WIP；容量源码集成c5bbddb，原交付仍2e444a1；总控持有报告、Git与设备操作 |
 | 本文档代理 | 用户明确委派DOC-HANDOFF-LIVE，当前仅四文件：HANDOFF/state/生成STATUS/本索引；不stage/commit，交总控串行提交 |
-| `../ffrs-runtime` | `task/T02-codex-runtime` / `15e498c0985aee20c973632b6406e2b976628d81`；当前HEAD `e95e521c79bead1c6de4f64d5b01416f1f639ec1`，最后核验8文件dirty（2build脚本、Context c/h、process c/h、2contracts），容量/guard修复未冻结；15e498c仅此前production freeze，不是当前clean HEAD |
+| `../ffrs-runtime` | `task/T02-codex-runtime` / `15e498c0985aee20c973632b6406e2b976628d81`；当前clean freeze `d4ded908096feef6fff2876ab2ffdaa9e48303b5`，九文件容量/guard修复已同RG实测；15e/e95旧失败/WIP是历史，独立新freeze QA进行中 |
 | `../ffrs-android` | `task/T03A-codex-android` / `15da4c2ef7a11138de45d098574f9bd66ef60b66`，采样时clean；已集成v6，当前不再开新外围probe |
 | `../functional-review` | GuestContext完成并释放lease；startup-profile/旧freeze15e498c独立host正常路径通过、宏关闭P2/RG失败；等新修复freeze复核 |
 | `../tls-research` | 图形底座有界评估完成并退出，lease释放；原证据保留，不解释为后端实现或新probe |
@@ -95,3 +95,25 @@ UI只读动作`cua.getApp('Codex')`被CUA明确DENIED：`Computer Use is not all
 文档检查点 2026-10-23T11:01:32.772142+00:00：仅HANDOFF/state/生成STATUS/本索引四文件WIP，未stage/commit；文档暂停写入供总控一笔本地提交，收到恢复通知后继续按事件增量维护。`project_status.py --write`与`git diff --check`均实际0；无待审批/不确定写入、无本代理后台进程。下一短提词：保留现有WIP并核对HEAD/lease；先修RG真实usable容量/guard前置条件，冻结→独立QA→同RG复测，再原入口与pages，禁止把旧结果当新PASS。
 
 提交前补充 2026-10-23T11:03:54.737228+00:00：T07-VULKAN-BUFFER-REVIEW已真实运行，[snapshot](../../../functional-review/vulkan-buffer/snapshot-manifest.json)冻结fa76ca9八文件，[host summary](../../../functional-review/vulkan-buffer/host-suite/summary.json)独立40普通mock、2ownership及coherent/noncoherent各7失败/释放组已执行，包含预期非零失败码；目前无确认缺陷、报告保存中，**不标最终QA PASS**，reviewer设备执行NOT_RUN。runtime当前HEAD`e95e521c79bead1c6de4f64d5b01416f1f639ec1`与8文件dirty已只读复核；15e498c只是旧production freeze，容量/guard新代码未冻结/未验收。四文档再次暂停，交总控串行提交；目标工具仍无CreateGoal/UpdateGoal，未开启真实持久开关。
+
+## 4e90347后恢复事件维护（2026-10-23T11:05:59.989695+00:00）
+
+- root已提交四文档检查点`4e9034756f3bea255df18593b5d291f8956053f3`，恢复前clean；原交付仍2e444a1。四文档恢复独占增量，Git与设备仍总控串行。
+- Vulkan独立[FINAL REVIEW](../../../functional-review/vulkan-buffer/REVIEW.md)与[final summary](../../../functional-review/vulkan-buffer/final-summary.json)已接受freezefa76ca9的两个新生产文件及driver接入：精确8文件、40mock+2ownership+自编coherent/noncoherent各7失败/释放组PASS，ASan/UBSan无误；reviewer非新组件作者、无ADB/自主GPU执行。已标组件review passed并释放lease；不外推NVN/title/game rendering。
+- capacity-v1三Android ELF由作者提供，总控正核hash、等source commit后再真机；**尚无新RG结果/修复PASS**，旧15eRGFAIL完整保留。
+- `T02-GUEST-PAGES` owner`/root/tls_research`预定`../ffrs-pages`/`task/T02-guest-pages`，四新文件guest_pages.c/h、guest_pages_contract.c、build_guest_pages_contract.sh已检查无交叠并RESERVED；本次工作树尚不存在，未开始运行。依赖新Context容量freeze+既有address_region；typed内部owner无resolver/noADB，后续runtime只接guest_process wrappers/Query，不能产生第二份VA/page authority。
+
+## d4ded9真实RG Query突破与pages派工（2026-10-23T11:07:57.118071+00:00）
+
+- Runtime clean九文件freeze`d4ded908096feef6fff2876ab2ffdaa9e48303b5`已只读核验；[capacity plan](../../.local/device/rg477m-session1/capacity-v1-plan.json)含源fingerprint/三ELF完整size/hash；[实际execution](../../.local/device/rg477m-session1/capacity-v1-execution.json)记录Context0/contract0/info0、nnMain133/129.10ms、malloc133/134.35ms，全部host/remote无timeout。原始main前后hash由总控核实保持；文档未读游戏字节。
+- Context78432B/SHA6d7d46bae9a0b97f8a25221b6d1213f02ec748f8d17c92e6144ee198b761dda5；contract675792B/SHAaa82fc592bb4db849375aa54efdc0cfb17b703cde29f3d5f4456aad77abb2d86；CLI655104B/SHA1e5953a8144855d65f93310c5d68fce215abe097d1ff94f8e6fed9cd8d6a6d69。
+- [contract stderr](../../.local/device/rg477m-session1/capacity-v1-contract.stderr)：attempt1 usable64752不足，callback withheld；attempt2 raw69632/admin4096/native68848/logical65536后ready。reported与SP/local/logical约束、Querystack65536保持，未删除旧容量assert。
+- [原nnMain stderr](../../.local/device/rg477m-session1/capacity-v1-nnmain.stderr)真实Query+0x27a50→AllocateMemoryPages71/+0x27f90/133；[malloc stderr](../../.local/device/rg477m-session1/capacity-v1-malloc.stderr)→GetVirtualAddressMemoryResourceUsage66/+0x144b8/133。RG Querytotal1073741824/used162934784/baseline162869248/stack65536/count1/valid0x7f；1GiB明确port-policy非SVC RAM，不能混Mac16KiB数值或称CRT/TLS/game通过。旧15e/e95失败留存。
+- 新freeze独立QA已实际派发，待FINAL；总控正cherry，原交付仍2e444a1最后报告状态。`ffrs-pages/task/T02-guest-pages`base d4ded9已实际创建并只读核验HEAD/branch，总控已触发`/root/tls_research`，T02-GUEST-PAGES转ACTIVE/RUNNING；精确四新文件typed组件/noresolver/noADB，runtime只接profile wrappers/Query，不重复VA/page authority。
+
+- 2026-10-23T11:08:41.882505+00:00 总控已集成e95→d111d23、d4ded9→`c5bbddbe2487e27e16a05627580607c0b956351a`。归档报告：[旧15e profile QA](codex_guest_process_review.md)、[VkBuffer独立FINAL](codex_vulkan_buffer_review.md)、[新RG容量/原nnMain gate](codex_guest_process_device_report.md)；由总控写，文档代理只索引。新的d4capacity QA仍实际执行，未标PASS。
+- c5bbddb主机回归session22690正在`.local/host-verification/checkpoint-c5bbddb`，完成结果待总控事件，不拿旧1997 host检查替代，也不重复启动同一回归；原交付仍2e444a1最后报告状态。
+
+- 2026-10-23T11:09:10.328776+00:00 c5bbddb主机回归session22690已完成wrapper0：[summary](../../.local/host-verification/checkpoint-c5bbddb/summary.json)23checks passedtrue，真实预期0/3/23/24，main before/after6e6d…68a5一致；source dirty当时仅四文档。该进程已结束，不重复启动；capacity独立QA仍在执行，不外推FINAL。
+
+检查点 2026-10-23T11:10:02.051068+00:00：root三份清理报告已提交`999b5494c6f84d02758dc845ad727a8cf280212b`，此为known_at快照而非自指未来文档commit；构建源码检查点仍c5bbddb/d4ded9，原交付最后报告2e444a1未ff。四文档已记录d4同RG真实越Query、host23预期通过、Vulkan独立FINAL、pages实际运行；capacity新freeze QA仍待结果。文档现暂停写入供总控一笔提交，代码/QA继续。仅这四文件WIP，无本代理Git/ADB操作、待审批或不确定写入。
