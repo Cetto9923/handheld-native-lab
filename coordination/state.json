@@ -116,15 +116,15 @@
     {
       "id": "T02",
       "role": "CORE",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "T01"
       ],
       "pass_gates": [],
-      "owner": null,
-      "branch": null,
-      "worktree": null,
-      "report": null
+      "owner": "总控 (NSO 原生加载器 / 行为基线)",
+      "branch": "claude/laughing-cray-3464b0",
+      "worktree": ".claude/worktrees/laughing-cray-3464b0",
+      "report": "evidence/coordinator/nso_structure_report.md"
     },
     {
       "id": "T03A",
@@ -177,19 +177,6 @@
       "branch": "task/T04-nvn",
       "worktree": ".claude/worktrees/t04-nvn",
       "report": "docs/analysis/nvn_surface.md"
-    },
-    {
-      "id": "T02",
-      "role": "CORE",
-      "status": "in_progress",
-      "dependencies": [
-        "T01"
-      ],
-      "pass_gates": [],
-      "owner": "总控 (NSO 原生加载器 / 行为基线)",
-      "branch": "claude/laughing-cray-3464b0",
-      "worktree": ".claude/worktrees/laughing-cray-3464b0",
-      "report": "evidence/coordinator/nso_structure_report.md"
     },
     {
       "id": "T04",
