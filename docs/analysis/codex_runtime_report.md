@@ -287,3 +287,93 @@ The third checkpoint changes only new HLE address-region sources, its exact-name
 resolver registration, the native contract, the optional experiment build list,
 and this report. The shared loader API does not change. Full T02, real Android
 execution, SDK TLS/CRT, mutex/threading, game startup and graphics remain open.
+
+## Fourth checkpoint: byte-evidenced Mutex family
+
+Starting HEAD was rechecked clean at 0b98b5a. Current SDK function-call ABI:
+
+| API | SDK offset | Return |
+|---|---:|---|
+| InitializeMutex(MutexType*, bool, int) | 0x13f4f0 | void |
+| FinalizeMutex(MutexType*) | 0x13f540 | void |
+| LockMutex(MutexType*) | 0x13f550 | void |
+| TryLockMutex(MutexType*) | 0x13f5a0 | bool in w0 |
+| UnlockMutex(MutexType*) | 0x13f610 | void |
+| IsMutexLockedByCurrentThread(const MutexType*) | 0x13f630 | bool in w0 |
+
+InitializeMutex's observed stores establish state byte +0, recursive byte +1,
+signed level +4, recursion count u32 +8, owner pointer +0x10 and critical word
+u32 +0x18. Its nested CriticalSection::Initialize +0x1498b4 writes one zero u32.
+Padding at +2/+3, +0xc..+0xf and +0x1c..+0x1f is not written. FinalizeMutex
+clears the state byte only. Lock/TryLock update depth and owner; Unlock clears
+owner and releases the critical section only when depth reaches zero.
+
+C aliases at SDK +0x141190/+0x1411a0/+0x1411b0/+0x1411c0/+0x1411d0 are each
+a tail branch through an exact GOT relocation to Initialize/Finalize/Lock/Try/
+Unlock respectively. Evidence: .local/runtime/mutex-aliases-v1.json.
+
+The first main allocator constructor at +0x27780 passes its embedded mutex at
+object +8 and directly clears these same metadata fields before InitializeMutex.
+It is therefore incorrect to assume the guest struct is completely opaque.
+The adapter mirrors the observed fields and preserves all padding.
+
+The implementation uses POSIX normal/recursive mutexes in a side table keyed by
+the guest object's address. It performs real blocking, recursion, trylock and
+release, and destroys native resources at Finalize. Registry references prevent
+destruction while operations are active. Native errors and unsupported object
+lifecycle operations are fatal, not generic successful returns.
+
+Owner identity uses a dedicated inaccessible mapping per host thread; it is not
+a host pthread pointer or host TLS address, and is not advertised as a complete
+Switch ThreadType. The synthetic critical-word handle reserves bit 30 for
+contention, matching observed critical-section instructions. Direct guest
+dereference of this opaque owner token cannot silently read host thread fields.
+GetCurrentThread, condition-variable waits and other ThreadType services remain
+unresolved. This is a compatibility boundary, not a claim that all inline SDK
+operations can run.
+
+A full 99,000,832-byte main-text scan identifies 14,496 direct B/BL sites to the
+nine Mutex imports: 1,218 Initialize, 4,119 Try, 3,950 Lock, 4,096 Unlock, 1,089
+Finalize, plus 24 C-alias calls. Two additional direct sites reference condition
+variable waits and remain unsupported. The scan resolves bounded PLT ADRP/LDR
+GOT references, not arbitrary indirect calls or whole-program field alias flow.
+No MRS TPIDRRO_EL0 instruction appears in main, but this does not establish ELF
+TLS compatibility or prove absence of every inline field access. Main's 1,489
+TPIDR_EL0 reads remain a separate unresolved issue.
+
+Reproduction:
+
+    python3 scripts/runtime/inspect_mutex_abi.py \
+      --out .local/runtime/mutex-abi-next
+    clang -g -O2 -Wall -Wextra -Werror src/runtime/hle/mutex.c \
+      tests/native/mutex_contract.c -lpthread -o .local/runtime/mutex_contract
+    python3 scripts/runtime/run_capture.py --out .local/runtime/mutex-next \
+      --timeout 15 -- .local/runtime/mutex_contract
+    python3 scripts/runtime/run_experiments.py --host-hle \
+      --out .local/runtime/repro-mutex-next
+
+Local static evidence:
+.local/runtime/static-sdk-mutex-v1,
+.local/runtime/static-sdk-critical-init-v1,
+.local/runtime/static-main-mutex-first-v1,
+.local/runtime/mutex-abi-v2/mutex-abi.json.
+The JSON includes exact input/code hashes, function addresses and all direct
+call-site offsets. The first selected constructor's field stores are preserved
+in the private disassembly. This is bounded static analysis, not a proof of
+complete compatibility across every object and call path.
+
+Normal native contract .local/runtime/mutex-v2/{build,run} exits 0:
+eight simultaneous threads perform 80,000 protected increments, zero overlapping
+critical sections, correct recursive depth three, trylock false for a current
+nonrecursive owner and another owning thread, trylock true after release,
+100 destroy/reinitialize cycles at the same address, unchanged object padding
+and unchanged per-thread TPIDRRO_EL0. The adapter writes no thread-pointer
+register and calls only host pthread interfaces for synchronization.
+
+Real main now passes the observed mutex initialization calls and stops at
+unresolved atexit, symbol 6, caller +0x13ed4, with callback +0x3680.
+The actual exit is 133, not a timeout. Logs and build commands:
+.local/runtime/checkpoint-v5-mutex/manifest.json.
+The original 16,875-case leaf comparison and structural loader remain exit 0;
+startup/malloc/constructors retain their previously identified boundaries.
+There is no game startup, Android execution, full CRT or full ThreadType PASS.

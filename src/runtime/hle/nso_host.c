@@ -1,5 +1,6 @@
 #include "nso_host.h"
 #include "address_region.h"
+#include "mutex.h"
 #include <stdio.h>
 #include <string.h>
 static nso_import_fn extension_resolver;
@@ -18,5 +19,17 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_allocate_address_region;
     if(!strcmp(name,"_ZN2nn2os17FreeAddressRegionEm"))
         return (uint64_t)(uintptr_t)&nso_host_free_address_region;
+    if(!strcmp(name,"_ZN2nn2os15InitializeMutexEPNS0_9MutexTypeEbi") || !strcmp(name,"nnosInitializeMutex"))
+        return (uint64_t)(uintptr_t)&nso_host_initialize_mutex;
+    if(!strcmp(name,"_ZN2nn2os13FinalizeMutexEPNS0_9MutexTypeE") || !strcmp(name,"nnosFinalizeMutex"))
+        return (uint64_t)(uintptr_t)&nso_host_finalize_mutex;
+    if(!strcmp(name,"_ZN2nn2os9LockMutexEPNS0_9MutexTypeE") || !strcmp(name,"nnosLockMutex"))
+        return (uint64_t)(uintptr_t)&nso_host_lock_mutex;
+    if(!strcmp(name,"_ZN2nn2os12TryLockMutexEPNS0_9MutexTypeE") || !strcmp(name,"nnosTryLockMutex"))
+        return (uint64_t)(uintptr_t)&nso_host_try_lock_mutex;
+    if(!strcmp(name,"_ZN2nn2os11UnlockMutexEPNS0_9MutexTypeE") || !strcmp(name,"nnosUnlockMutex"))
+        return (uint64_t)(uintptr_t)&nso_host_unlock_mutex;
+    if(!strcmp(name,"_ZN2nn2os28IsMutexLockedByCurrentThreadEPKNS0_9MutexTypeE"))
+        return (uint64_t)(uintptr_t)&nso_host_is_mutex_locked_by_current_thread;
     return extension_resolver?extension_resolver(index,name):0;
 }
