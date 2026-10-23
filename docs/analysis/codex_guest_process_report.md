@@ -83,3 +83,23 @@ Its complete aligned 99000832-byte text scan finds no direct SVC or MSR to
 TPIDR_EL0/TPIDRRO_EL0; this does not prove its remaining TLS reads compatible.
 SDK initialization, actual guest TLS/TCB/destructors and the new page/VA-budget
 boundaries remain unresolved. No SDK TP-writing path or device operation ran.
+
+## RG contract failure and diagnostic checkpoint
+
+The coordinator ran the frozen 649672-byte contract (SHA646adf09...0455ab95)
+on RG477M: exit1/no timeout, after valid Query values and ordinary VA operations.
+The callback's aggregate `value==&returned_token && !errors` assertion failed;
+the original binary did not distinguish its internal checks. This is a real
+Android contract failure, so the original entry was not run on RG with this
+profile. Logs are in the integration worktree
+`.local/device/rg477m-session1/owned-profile-{execution.json,contract.stderr}`.
+
+`owned-startup-diagnostic-v1` adds per-field/per-condition failure labels and
+actual pthread stack range/SP/local, altstack and returned-token values. The
+65536-byte stack equality and all original pass requirements remain enforced;
+no production runtime behavior changed. Host normal/recovery contracts still0.
+The new Android contract is 663040 bytes, SHA256
+d02c86845607be6f1da3a546a04b515c986d31c1402601f73e4af7ec715e36ef.
+Fixture remains a8467dc70098b693ab2d0266ac9ec99c705b76a644da20fbc0e5b263cd237493;
+the CLI ELF remains byte-identical to the frozen artifact. Device diagnosis is
+pending coordinator execution; no Bionic usable-stack assumption is relaxed.

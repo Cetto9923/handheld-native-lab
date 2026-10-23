@@ -23,47 +23,83 @@ static int succeeded(struct nso_result r) {
 static int all_bytes(const void *p,size_t n,unsigned char value) {
     const unsigned char *b=p;for(size_t i=0;i<n;i++)if(b[i]!=value)return 0;return 1;
 }
+static void expect_value(const char *tag,uint64_t actual,uint64_t expected) {
+    if(actual!=expected) {
+        errors++;
+        fprintf(stderr,"[check-fail] %s actual=0x%" PRIx64 " expected=0x%" PRIx64 "\n",tag,actual,expected);
+    }
+}
+static void expect_condition(const char *tag,int condition) {
+    if(!condition) {errors++;fprintf(stderr,"[check-fail] %s\n",tag);}
+}
 struct callback_input {size_t quota,image;};
 static void *exercise(guest_process *process,void *opaque) {
     struct callback_input *input=opaque;calls++;
     struct guest_memory_info info;
     memset(&info,0xa5,sizeof(info));
-    if(!succeeded(guest_process_memory_info(process,&info))) {errors++;return NULL;}
-    if(info.total!=input->quota || info.used!=input->image+65536 || info.heap_capacity || info.heap_blocks ||
-       info.baseline!=input->image || info.stack_bytes!=65536 || info.thread_objects!=1 ||
-       !all_bytes((unsigned char *)&info+0x34,sizeof(info)-0x34,0xa5))errors++;
+    if(!succeeded(guest_process_memory_info(process,&info))) {expect_condition("query-initial-status",0);return NULL;}
+    expect_value("query-total",info.total,input->quota);
+    expect_value("query-used",info.used,input->image+65536);
+    expect_value("query-heap-capacity",info.heap_capacity,0);
+    expect_value("query-heap-blocks",info.heap_blocks,0);
+    expect_value("query-baseline",info.baseline,input->image);
+    expect_value("query-stack-bytes",info.stack_bytes,65536);
+    expect_value("query-thread-count",info.thread_objects,1);
+    expect_condition("query-initial-padding",all_bytes((unsigned char *)&info+0x34,sizeof(info)-0x34,0xa5));
     uintptr_t stack_low,stack_high,sp;
 #if defined(__APPLE__)
     stack_high=(uintptr_t)pthread_get_stackaddr_np(pthread_self());
     stack_low=stack_high-pthread_get_stacksize_np(pthread_self());
 #else
     pthread_attr_t attr;void *stack;size_t bytes;
-    if(pthread_getattr_np(pthread_self(),&attr) || pthread_attr_getstack(&attr,&stack,&bytes)) {errors++;return NULL;}
-    pthread_attr_destroy(&attr);stack_low=(uintptr_t)stack;stack_high=stack_low+bytes;
+    int getattr_error=pthread_getattr_np(pthread_self(),&attr);
+    if(getattr_error) {fprintf(stderr,"[check-fail] pthread-getattr error=%d\n",getattr_error);errors++;return NULL;}
+    int getstack_error=pthread_attr_getstack(&attr,&stack,&bytes);
+    int attr_destroy_error=pthread_attr_destroy(&attr);
+    if(getstack_error) {fprintf(stderr,"[check-fail] pthread-getstack error=%d\n",getstack_error);errors++;return NULL;}
+    expect_value("pthread-attr-destroy",(uint64_t)attr_destroy_error,0);
+    stack_low=(uintptr_t)stack;stack_high=stack_low+bytes;
 #endif
 #if defined(__aarch64__)
     __asm__ volatile("mov %0, sp":"=r"(sp));
 #else
 #error "this ordinary SP contract requires the selected AArch64 target"
 #endif
-    if(stack_high-stack_low!=65536 || sp<stack_low || sp>=stack_high ||
-       (uintptr_t)&info<stack_low || (uintptr_t)&info>=stack_high)errors++;
+    fprintf(stderr,"[check-values] native-stack call=%u low=0x%" PRIxPTR " high=0x%" PRIxPTR
+        " reported_bytes=%" PRIuPTR " expected_owned_bytes=65536 sp=0x%" PRIxPTR " local=0x%" PRIxPTR "\n",
+        calls,stack_low,stack_high,stack_high-stack_low,sp,(uintptr_t)&info);
+    expect_value("pthread-reported-stack-bytes",stack_high-stack_low,65536);
+    expect_condition("sp-in-pthread-reported-stack",sp>=stack_low && sp<stack_high);
+    expect_condition("local-in-pthread-reported-stack",(uintptr_t)&info>=stack_low && (uintptr_t)&info<stack_high);
     stack_t alternate;
-    if(sigaltstack(NULL,&alternate) || alternate.ss_flags&SS_DISABLE)errors++;
+    memset(&alternate,0,sizeof(alternate));
+    int alternate_result=sigaltstack(NULL,&alternate),alternate_error=errno;
+    fprintf(stderr,"[check-values] altstack result=%d errno=%d address=%p bytes=%zu flags=0x%x\n",
+        alternate_result,alternate_error,alternate.ss_sp,alternate.ss_size,alternate.ss_flags);
+    expect_value("altstack-read-result",(uint64_t)alternate_result,0);
+    expect_condition("altstack-enabled",!(alternate.ss_flags&SS_DISABLE));
     typedef uint32_t (*allocate_fn)(uintptr_t *,size_t);
     typedef uint32_t (*free_fn)(uintptr_t);
     allocate_fn allocate=(allocate_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os21AllocateAddressRegionEPmm");
     free_fn release=(free_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os17FreeAddressRegionEm");
     uintptr_t first=0,second=0;
-    if(!allocate || !release || allocate(&first,2*page) || allocate(&second,2*page))errors++;
+    expect_condition("va-allocate-binding",allocate!=NULL);expect_condition("va-free-binding",release!=NULL);
+    if(allocate && release) {
+        expect_value("va-allocate-first-result",allocate(&first,2*page),0);
+        expect_value("va-allocate-second-result",allocate(&second,2*page),0);
+    }
     struct guest_memory_info after;
-    if(!succeeded(guest_process_memory_info(process,&after)) || memcmp(&info,&after,0x34))errors++;
-    if(second && release(second))errors++;
+    struct nso_result after_result=guest_process_memory_info(process,&after);
+    expect_condition("query-after-va-status",succeeded(after_result));
+    if(after_result.status==NSO_OK)expect_condition("query-after-va-unchanged",!memcmp(&info,&after,0x34));
+    if(second && release)expect_value("va-free-second-result",release(second),0);
     /* first remains genuinely owned PROT_NONE; process destroy must release it. */
     typedef void (*query_fn)(struct guest_memory_info *);
     query_fn query=(query_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os15QueryMemoryInfoEPNS0_10MemoryInfoE");
-    if(!query)errors++;else {memset(&after,0x5a,sizeof(after));query(&after);
-        if(memcmp(&after,&info,0x34) || !all_bytes((unsigned char *)&after+0x34,sizeof(after)-0x34,0x5a))errors++;}
+    expect_condition("query-guest-binding",query!=NULL);
+    if(query) {memset(&after,0x5a,sizeof(after));query(&after);
+        expect_condition("query-guest-fields",!memcmp(&after,&info,0x34));
+        expect_condition("query-guest-padding",all_bytes((unsigned char *)&after+0x34,sizeof(after)-0x34,0x5a));}
     return &returned_token;
 }
 #if defined(NSO_LOADER_TESTING)
@@ -199,6 +235,8 @@ int main(int argc,char **argv) {
     for(int i=0;i<4;i++)CHECK(!sigaction(sigs[i],NULL,&before[i]));
     for(int i=0;i<2;i++) {
         void *value=NULL;CHECK(succeeded(guest_process_run(process,exercise,&input,&value)));
+        fprintf(stderr,"[check-values] callback-joined run=%d returned=%p expected=%p errors=%u calls=%u\n",
+            i,value,(void *)&returned_token,errors,calls);
         CHECK(value==&returned_token && !errors);
         memset(&untouched,0xa5,sizeof(untouched));
         CHECK(guest_process_memory_info(process,&untouched).status==NSO_INVALID && all_bytes(&untouched,sizeof(untouched),0xa5));
