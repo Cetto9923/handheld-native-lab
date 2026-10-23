@@ -81,6 +81,8 @@ def main():
     parser.add_argument("input", type=Path)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
+    if args.output and args.output.resolve() == args.input.resolve():
+        parser.error("output must not replace the input NPDM")
     result = inspect(args.input)
     encoded = json.dumps(result, ensure_ascii=False, indent=2) + "\n"
     if args.output:
