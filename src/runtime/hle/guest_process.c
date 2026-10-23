@@ -7,6 +7,7 @@
 #include "guest_pages.h"
 #include "native_boundary.h"
 #include "guest_os_tls.h"
+#include "module_tls.h"
 #include "exit_registry.h"
 #include "nso_host.h"
 #include <errno.h>
@@ -46,6 +47,22 @@ struct primary_identity {
     uint64_t tid;
     int active;
 };
+struct guest_dso_record {
+    uint64_t base;
+    uint64_t text_token;
+    uint64_t tls_start;
+    size_t tls_init_size;
+    size_t tls_total_size;
+    size_t tls_alignment;
+    uint64_t plt_got_start, plt_got_end;
+    uint64_t rela_start, rela_end;
+    uint64_t jmprel_start, jmprel_end;
+    uint64_t dynamic;
+    uint64_t raw_words[21];
+    int registered;
+    nso_module_tls_template tls_template;
+    nso_module_tls_image *primary_tls_image;
+};
 struct guest_process {
     pthread_mutex_t mutex;
     guest_context *context; /* Private: no raw tickets/Context escape this owner. */
@@ -77,6 +94,7 @@ struct guest_process {
     size_t tls_allocation_count;
     int tls_allocator_busy;
     struct primary_identity *identities,*active_identity;
+    struct guest_dso_record dso;
 };
 static pthread_mutex_t exclusive_mutex=PTHREAD_MUTEX_INITIALIZER;
 static guest_process *exclusive_process;
@@ -756,6 +774,95 @@ static char **host_argument_vector(void) {
     guest_process *p=required_current();(void)host_argument_count();
     return p->argument_mapping;
 }
+uint32_t guest_process_nnmusl_init_dso(
+    uint64_t a0,uint64_t a1,uint64_t a2,uint64_t a3,uint64_t a4,
+    uint64_t a5,uint64_t a6,uint64_t a7,uint64_t a8,uint64_t a9,
+    uint64_t a10,uint64_t a11,uint64_t a12,uint64_t a13,uint64_t a14,
+    uint64_t a15,uint64_t a16,uint64_t a17,uint64_t a18,uint64_t a19,uint64_t a20) {
+    guest_process *p=current_process;
+    if(!p || !p->module || !p->running || p->quarantined)return 2;
+    uint64_t base=nso_base(p->module);
+    if(a0!=base)return 2;
+    pthread_mutex_lock(&p->mutex);
+    if(p->dso.registered) {
+        pthread_mutex_unlock(&p->mutex);
+        return 1;
+    }
+    const uint64_t raw[21]={a0,a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12,a13,a14,a15,a16,a17,a18,a19,a20};
+    memcpy(p->dso.raw_words,raw,sizeof(raw));
+    p->dso.base=a0;
+    p->dso.text_token=a1;
+    p->dso.tls_start=a2;
+    if(a3<a2 || a7<a3) {
+        pthread_mutex_unlock(&p->mutex);
+        return 2;
+    }
+    p->dso.tls_init_size=(size_t)(a3-a2);
+    p->dso.tls_total_size=(size_t)(a7-a2);
+    size_t align1=(size_t)(a5>=a2?a5-a2:8);
+    size_t align2=(size_t)(a9>=a6?a9-a6:8);
+    p->dso.tls_alignment=align1>align2?align1:align2;
+    if(!p->dso.tls_alignment)p->dso.tls_alignment=8;
+    p->dso.plt_got_start=a10;
+    p->dso.plt_got_end=a11;
+    p->dso.rela_start=a12;
+    p->dso.rela_end=a13;
+    p->dso.jmprel_start=a16;
+    p->dso.jmprel_end=a17;
+    p->dso.dynamic=a20;
+    p->dso.tls_template=(nso_module_tls_template){
+        .initialized_data=(const void*)(uintptr_t)p->dso.tls_start,
+        .initialized_size=p->dso.tls_init_size,
+        .total_size=p->dso.tls_total_size,
+        .alignment=p->dso.tls_alignment,
+        .reserved_header_size=0x10,
+    };
+    int err=nso_module_tls_create(&p->dso.tls_template,&p->dso.primary_tls_image);
+    if(err) {
+        fprintf(stderr,"[dso-error] nso_module_tls_create failed err=%d\n",err);
+        pthread_mutex_unlock(&p->mutex);
+        return 2;
+    }
+    p->dso.registered=1;
+    fprintf(stderr,"[dso-registered] base=0x%" PRIx64 " tls_start=0x%" PRIx64 " init_size=%zu total_size=%zu align=%zu; registration complete, returning 1\n",
+        p->dso.base,p->dso.tls_start,p->dso.tls_init_size,p->dso.tls_total_size,p->dso.tls_alignment);
+    pthread_mutex_unlock(&p->mutex);
+    return 1;
+}
+struct nso_result guest_process_dso_info(guest_process *p, struct guest_dso_info *out) {
+    if(!p || !out)return status(NSO_INVALID,EINVAL,0);
+    pthread_mutex_lock(&p->mutex);
+    out->base=p->dso.base;
+    out->text_token=p->dso.text_token;
+    out->tls_start=p->dso.tls_start;
+    out->tls_init_size=p->dso.tls_init_size;
+    out->tls_total_size=p->dso.tls_total_size;
+    out->tls_alignment=p->dso.tls_alignment;
+    out->plt_got_start=p->dso.plt_got_start;
+    out->plt_got_end=p->dso.plt_got_end;
+    out->rela_start=p->dso.rela_start;
+    out->rela_end=p->dso.rela_end;
+    out->jmprel_start=p->dso.jmprel_start;
+    out->jmprel_end=p->dso.jmprel_end;
+    out->dynamic=p->dso.dynamic;
+    out->registered=p->dso.registered;
+    if(p->dso.primary_tls_image) {
+        const nso_module_tls_view *view=nso_module_tls_get_view(p->dso.primary_tls_image);
+        out->tls_anchor=(uintptr_t)view->anchor;
+        out->tls_payload=(uintptr_t)view->payload;
+        out->tls_storage_size=view->storage_size;
+    } else {
+        out->tls_anchor=0;
+        out->tls_payload=0;
+        out->tls_storage_size=0;
+    }
+    pthread_mutex_unlock(&p->mutex);
+    return status(NSO_OK,0,0);
+}
+static void guest_protect_relro(const void *a0,const void *a1,const void *a2,const void *a3,const void *a4) {
+    (void)a0;(void)a1;(void)a2;(void)a3;(void)a4;
+    fprintf(stderr,"[protect-relro] start=%p end=%p; returning to init_array walk\n",a0,a1);
+}
 uint64_t guest_process_resolve(uint32_t index,const char *name) {
     if(!name)return 0;
     if(!strcmp(name,"_ZN2nn2os36GetVirtualAddressMemoryResourceUsageEv"))
@@ -779,6 +886,8 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
     if(!strcmp(name,"_ZN2nn2os40MemoryAllocatorForThreadLocalInitializedEv"))return (uintptr_t)&tls_allocator_initialized;
     if(!strcmp(name,"nnosAllocateMemoryForThreadLocal"))return (uintptr_t)&sdk_allocate_thread_local;
     if(!strcmp(name,"nnosFreeMemoryForThreadLocal"))return (uintptr_t)&sdk_free_thread_local;
+    if(!strcmp(name,"__nnmusl_init_dso"))return (uintptr_t)&guest_process_nnmusl_init_dso;
+    if(!strcmp(name,"_ZN2nn2ro12ProtectRelroEPKvS2_S2_S2_S2_"))return (uintptr_t)&guest_protect_relro;
     if(!strcmp(name,"strcasecmp"))return (uintptr_t)&guest_strcasecmp;
     if(!strcmp(name,"_ZN2nn2os29IsVirtualAddressMemoryEnabledEv"))return (uintptr_t)&virtual_address_enabled;
     if(!strcmp(name,"strncasecmp_l"))return (uintptr_t)&guest_strncasecmp_l;
@@ -830,6 +939,7 @@ static int import_signature(const char *name,nb_signature *out) {
     if(!strcmp(name,"_ZN2nn2os29IsVirtualAddressMemoryEnabledEv")) {arguments=0;returns=1;}
     else if(!strcmp(name,"strncasecmp_l")) {arguments=4;returns=1;}
     else if(!strcmp(name,"_ZN2nn2os36GetVirtualAddressMemoryResourceUsageEv")) {arguments=0;returns=2;}
+    else if(!strcmp(name,"_ZN2nn2ro12ProtectRelroEPKvS2_S2_S2_S2_")) {arguments=5;returns=0;}
     else if(!strcmp(name,"_ZN2nn2os15InitializeMutexEPNS0_9MutexTypeEbi") || !strcmp(name,"nnosInitializeMutex")) {arguments=3;returns=0;}
     else if(!strcmp(name,"_ZN2nn2os11GetHostArgcEv") || !strcmp(name,"_ZN2nn2os11GetHostArgvEv")) {arguments=0;returns=1;}
     else if(!strcmp(name,"_ZN2nn2os16GetCurrentThreadEv")) {arguments=0;returns=1;}
@@ -839,6 +949,11 @@ static int import_signature(const char *name,nb_signature *out) {
     else if(!strcmp(name,"_ZN2nn2os40MemoryAllocatorForThreadLocalInitializedEv")) {arguments=0;returns=1;}
     else if(!strcmp(name,"nnosAllocateMemoryForThreadLocal")) {arguments=1;returns=1;}
     else if(!strcmp(name,"nnosFreeMemoryForThreadLocal")) {arguments=2;returns=0;}
+    else if(!strcmp(name,"__nnmusl_init_dso")) {
+        *out=(nb_signature){.version=2,.flags=NB_SIG_FIXED_GP21,
+            .stack_argument_bytes=104,.gp_arguments=8,.gp_returns=1};
+        return 1;
+    }
     else if(!strcmp(name,"abort")) {arguments=0;returns=0;}
     else return 0;
 found:
@@ -1064,6 +1179,11 @@ struct nso_result guest_process_destroy(guest_process **process) {
     if(r.status==NSO_OK && p->argument_ticket) {
         r=from_context(p->argument_committed?guest_charge_release(p->argument_ticket):guest_charge_cancel(p->argument_ticket));
         if(r.status==NSO_OK) {p->argument_ticket=NULL;p->argument_bytes=0;p->argument_committed=0;p->argument_count=0;}
+    }
+    if(r.status==NSO_OK && p->dso.primary_tls_image) {
+        nso_module_tls_free(p->dso.primary_tls_image);
+        p->dso.primary_tls_image=NULL;
+        p->dso.registered=0;
     }
     if(r.status==NSO_OK)r=from_context(guest_context_destroy(p->context));
     if(r.status!=NSO_OK) {p->quarantined=1;pthread_mutex_unlock(&p->mutex);return r;}

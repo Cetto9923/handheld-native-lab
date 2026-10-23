@@ -1,6 +1,7 @@
 #ifndef NSO_GUEST_PROCESS_H
 #define NSO_GUEST_PROCESS_H
 #include "../nso/nso_loader.h"
+#include "module_tls.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -107,6 +108,28 @@ struct nso_result guest_process_free_thread_local(guest_process *,void *pointer,
 /* Separate test binary only. Production has neither fault injection nor hook. */
 void guest_process_test_tls_allocator(unsigned metadata_failures,void (*query_probe)(guest_process *));
 #endif
+struct guest_dso_info {
+    uint64_t base;
+    uint64_t text_token;
+    uint64_t tls_start;
+    size_t tls_init_size;
+    size_t tls_total_size;
+    size_t tls_alignment;
+    uint64_t plt_got_start, plt_got_end;
+    uint64_t rela_start, rela_end;
+    uint64_t jmprel_start, jmprel_end;
+    uint64_t dynamic;
+    int registered;
+    uintptr_t tls_anchor;
+    uintptr_t tls_payload;
+    size_t tls_storage_size;
+};
+struct nso_result guest_process_dso_info(guest_process *p, struct guest_dso_info *out);
+uint32_t guest_process_nnmusl_init_dso(
+    uint64_t a0,uint64_t a1,uint64_t a2,uint64_t a3,uint64_t a4,
+    uint64_t a5,uint64_t a6,uint64_t a7,uint64_t a8,uint64_t a9,
+    uint64_t a10,uint64_t a11,uint64_t a12,uint64_t a13,uint64_t a14,
+    uint64_t a15,uint64_t a16,uint64_t a17,uint64_t a18,uint64_t a19,uint64_t a20);
 uint64_t guest_process_resolve(uint32_t,const char *);
 /* Quiescent only. Failed release retains *process for retry/process shutdown. */
 struct nso_result guest_process_destroy(guest_process **process);

@@ -1,15 +1,32 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-10-23T15:00:26.630698+00:00",
-  "phase": "USER_REQUESTED_HANDOFF_PAUSED: startup+OScleanup+allocator passed; completeCRT515 raw133; nextDSO/TP notimplemented",
-  "coordinator": "Codex root: safely closing; all workers handed back; next tool must reverify and transfer leases",
+  "updated_at": "2026-10-23T15:42:00.000000+00:00",
+  "phase": "T02_CRT_515_DSO_PASSED_ON_RG477M: interface 515 __nnmusl_init_dso implemented, primary TLS image allocated, verified on RG477M; DT_INIT + nninitStartup returned 0x92 with EXIT=0",
+  "coordinator": "Antigravity sole root coordinator — interface 515 DSO & TLS passed on RG477M, advancing constructor sequence & TLS/TP",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
   "active_writers": [
     {
+      "task": "T02-DSO-THREAD-OWNER",
+      "owner": "Antigravity coordinator",
+      "paths": [
+        "src/runtime/hle/guest_process.c",
+        "src/runtime/hle/guest_process.h",
+        "tests/native/guest_process_contract.c",
+        "scripts/runtime/build_guest_process_contract.sh",
+        "docs/analysis/codex_guest_process_report.md"
+      ],
+      "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native",
+      "branch": "work/rg477m-native",
+      "acquired_at": "2026-10-23T15:25:00.000000+00:00",
+      "checkpoint": "b137209bc3a2747cf41f41de1ad9d26d1ca8a49d",
+      "objective": "Interface 515 __nnmusl_init_dso consumer, DSO registration, module_tls image wiring, per-thread TLS storage",
+      "write_state": "ACTIVE"
+    },
+    {
       "task": "T03B-RG477M-DIAGNOSTIC",
-      "owner": "Codex coordinator — sole device operator",
+      "owner": "Antigravity coordinator — sole device operator",
       "paths": [
         ".local/device/rg477m-session1/",
         "docs/analysis/codex_device_report.md",
@@ -27,27 +44,27 @@
         "docs/analysis/codex_os_tls_review.md",
         "docs/analysis/codex_native_profile_review.md"
       ],
-      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration",
-      "branch": "task/codex-integration",
-      "acquired_at": "2026-10-23T09:29:16.172503+00:00",
-      "checkpoint": "92fd886e4338cb3b02a717dbaa991452489f7130",
+      "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native",
+      "branch": "work/rg477m-native",
+      "acquired_at": "2026-10-23T15:25:00.000000+00:00",
+      "checkpoint": "b137209bc3a2747cf41f41de1ad9d26d1ca8a49d",
       "objective": "User-connected RG477M actual install/load/JNI/Vulkan/display/leaf/compiler-runtime diagnostics; no data clear or fake full-game PASS",
-      "write_state": "PAUSED_FOR_TOOL_HANDOFF"
+      "write_state": "ACTIVE"
     },
     {
       "task": "DOC-HANDOFF-LIVE",
-      "owner": "root coordinator",
+      "owner": "Antigravity coordinator",
       "paths": [
         "coordination/HANDOFF.md",
         "coordination/state.json",
         "coordination/STATUS.md",
         "docs/analysis/codex_handoff_evidence_index.md"
       ],
-      "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration",
-      "branch": "task/codex-integration",
-      "acquired_at": "2026-10-23T13:53:56.645010+00:00",
-      "checkpoint": "92fd886 docs WIP; root temporarily transfers four-file lease",
-      "write_state": "PAUSED_FOR_TOOL_HANDOFF",
+      "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native",
+      "branch": "work/rg477m-native",
+      "acquired_at": "2026-10-23T15:25:00.000000+00:00",
+      "checkpoint": "b137209bc3a2747cf41f41de1ad9d26d1ca8a49d",
+      "write_state": "ACTIVE",
       "objective": "Preserve existing WIP and evidence; generated STATUS only; root alone stages/commits/integrates/device operations"
     },
     {

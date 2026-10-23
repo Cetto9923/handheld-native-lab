@@ -20,7 +20,7 @@ if a.main and (not a.quota_bytes or not a.stack_bytes):p.error('main requires ex
 out.mkdir(parents=True,exist_ok=False)
 def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 nso=ROOT/'src/runtime/nso';hle=ROOT/'src/runtime/hle'
-core_sources=[nso/'nso_loader.c',*[hle/(s+'.c') for s in ['guest_context','guest_process','nso_host','address_region','mutex','exit_registry']]]
+core_sources=[nso/'nso_loader.c',*[hle/(s+'.c') for s in ['guest_context','guest_process','nso_host','address_region','mutex','exit_registry','module_tls']]]
 pages_hle=a.pages_source_root.resolve()/'src/runtime/hle';pages_source=pages_hle/'guest_pages.c'
 if not pages_source.is_file() or not pages_source.with_suffix('.h').is_file():p.error('guest_pages component missing; integrate its frozen commit or provide --pages-source-root')
 sources=[*core_sources,pages_source]
@@ -105,6 +105,7 @@ run('host-resource-recovery',[out/'guest_process_resource_recovery.host','--reso
 run('host-os-tls-contract',[out/'guest_process_contract.host','--os-tls',out/'contract.nso'])
 run('host-tls-registration',[out/'guest_process_contract.host','--tls-registration',out/'contract.nso'])
 run('host-tls-registration-fresh',[out/'guest_process_contract.host','--tls-registration-fresh',out/'contract.nso'])
+run('host-dso-registration',[out/'guest_process_contract.host','--dso-registration',out/'contract.nso'])
 run('host-tls-HOST-null',[out/'guest_process_contract.host','--tls-host-null'])
 run('host-tls-HOST-invalid',[out/'guest_process_contract.host','--tls-host-invalid'],134)
 run('host-primary-identity',[out/'guest_process_contract.host','--identity',out/'contract.nso'])

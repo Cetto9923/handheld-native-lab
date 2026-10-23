@@ -1289,6 +1289,65 @@ static int resource_recovery_contract(void) {
     puts("{\"resource_recovery_errors\":0,\"map_failure\":true,\"live_nodes_block_destroy\":true,\"retained_invalid\":true,\"unmap_attempts\":2,\"actual_unmaps\":1}");return 0;
 }
 #endif
+static void *exercise_dso_registration(guest_process *process,void *opaque) {
+    (void)opaque;
+    nso_module *m=guest_process_module(process);
+    uint64_t base=nso_base(m);
+    uint32_t bad_base=guest_process_nnmusl_init_dso(
+        base+0x1000,base+0x10,base+0x20,base+0x30,base+8,
+        base+0x28,base+0x30,base+0x40,base+8,base+0x38,
+        base+0x50,base+0x60,base+0x70,base+0x80,base,base,
+        base+0x90,base+0xa0,base,base,base+0xb0);
+    expect_value("dso-bad-base-result",bad_base,2);
+    uint32_t bad_bounds=guest_process_nnmusl_init_dso(
+        base,base+0x10,base+0x30,base+0x20,base+8,
+        base+0x38,base+0x20,base+0x40,base+8,base+0x28,
+        base+0x50,base+0x60,base+0x70,base+0x80,base,base,
+        base+0x90,base+0xa0,base,base,base+0xb0);
+    expect_value("dso-bad-bounds-result",bad_bounds,2);
+    uint64_t tls_start=base+0x1000;
+    uint64_t tls_init_end=tls_start+0x220;
+    uint64_t tls_total_end=tls_start+0x1019;
+    uint32_t ok=guest_process_nnmusl_init_dso(
+        base,base+0x500,tls_start,tls_init_end,base+8,
+        tls_start+8,tls_init_end,tls_total_end,base+8,tls_init_end+8,
+        base+0x3000,base+0x3500,base+0x4000,base+0x4500,base,base,
+        base+0x4500,base+0x4800,base,base,base+0x5000);
+    expect_value("dso-normal-result",ok,1);
+    struct guest_dso_info info={0};
+    struct nso_result r=guest_process_dso_info(process,&info);
+    expect_value("dso-info-status",r.status,NSO_OK);
+    expect_value("dso-registered",info.registered,1);
+    expect_value("dso-base",info.base,base);
+    expect_value("dso-tls-start",info.tls_start,tls_start);
+    expect_value("dso-tls-init-size",info.tls_init_size,0x220);
+    expect_value("dso-tls-total-size",info.tls_total_size,0x1019);
+    expect_value("dso-tls-align",info.tls_alignment,8);
+    expect_condition("dso-tls-anchor-nonnull",info.tls_anchor!=0);
+    expect_condition("dso-tls-payload-offset",info.tls_payload==info.tls_anchor+16);
+    expect_condition("dso-tls-storage-size",info.tls_storage_size>=16+0x1019);
+    uint32_t repeat=guest_process_nnmusl_init_dso(
+        base,base+0x500,tls_start,tls_init_end,base+8,
+        tls_start+8,tls_init_end,tls_total_end,base+8,tls_init_end+8,
+        base+0x3000,base+0x3500,base+0x4000,base+0x4500,base,base,
+        base+0x4500,base+0x4800,base,base,base+0x5000);
+    expect_value("dso-repeat-result",repeat,1);
+    return &returned_token;
+}
+static int dso_registration_contract(const char *path) {
+    uint32_t outside=guest_process_nnmusl_init_dso(
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
+    CHECK(outside==2);
+    struct guest_process_config config={1024*1024,65536};guest_process *process=NULL;
+    CHECK(succeeded(guest_process_create(&config,&process)));char err[128];
+    CHECK(succeeded(guest_process_load(process,path,err,sizeof(err))));
+    void *value=NULL;
+    CHECK(succeeded(guest_process_run(process,exercise_dso_registration,NULL,&value)));
+    CHECK(value==&returned_token && !errors);
+    CHECK(succeeded(guest_process_destroy(&process)) && !process);
+    puts("{\"dso_registration_errors\":0,\"dso_registered\":true,\"tls_init_size\":544,\"tls_total_size\":4121,\"tls_align\":8,\"repeat_idempotent\":true}");
+    return 0;
+}
 int main(int argc,char **argv) {
     page=(size_t)sysconf(_SC_PAGESIZE);
     if(argc==2 && !strcmp(argv[1],"--tls-host-null")) {
@@ -1307,6 +1366,7 @@ int main(int argc,char **argv) {
     if(argc==3 && !strcmp(argv[1],"--identity-recovery"))return identity_recovery_contract(argv[2]);
 #endif
     if(argc==3 && !strcmp(argv[1],"--tls-registration"))return tls_registration_contract(argv[2],0);
+    if(argc==3 && !strcmp(argv[1],"--dso-registration"))return dso_registration_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-fresh"))return tls_fresh_registration_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-null"))return tls_registration_contract(argv[2],1);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-repeat"))return tls_registration_contract(argv[2],2);
@@ -1362,7 +1422,7 @@ int main(int argc,char **argv) {
 #endif
     nso_host_set_extension_resolver(extension);
     const char *const rejected[]={"strdup","malloc","calloc","mmap","mprotect","pthread_create",
-        "nvnBootstrapLoader","__nnmusl_init_dso","__cxa_finalize","exit",NULL};
+        "nvnBootstrapLoader","__cxa_finalize","exit",NULL};
     for(size_t i=0;rejected[i];i++)CHECK(!guest_process_resolve(0,rejected[i]));
     CHECK(!extension_calls);
     guest_process *process=NULL,*extra=NULL;
