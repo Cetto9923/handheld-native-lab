@@ -10,7 +10,7 @@ extern "C" {
 typedef enum nb_status {
     NB_OK = 0, NB_UNSUPPORTED = 1, NB_INVALID = 2, NB_WRONG_THREAD = 3,
     NB_BUSY = 4, NB_MAP_FAILED = 5, NB_PROTECT_FAILED = 6, NB_OWNER_DEAD = 7,
-    NB_SYSTEM_ERROR = 8
+    NB_SYSTEM_ERROR = 8, NB_RETAINED = 9
 } nb_status;
 
 /* Caller-owned, zero-init, no copying. All control APIs require normal host x18.
@@ -60,6 +60,13 @@ typedef struct nb_import {
 
 nb_status nb_scope_init(nb_scope *scope);
 nb_status nb_scope_close(nb_scope *scope);
+/* Bind returns NB_PROTECT_FAILED only if a failed RX transition was rolled
+ * back by a successful munmap. NB_RETAINED means that rollback also failed:
+ * binding owns mapping/scope/count but entry is NULL and MUST NOT be published.
+ * Keep both owner objects alive; retry nb_import_unbind. Unbind accepts this
+ * non-callable owner, and on NB_MAP_FAILED retains it unchanged. Only an actual
+ * successful munmap decrements binding_count and clears the binding.
+ */
 nb_status nb_import_bind(nb_import *binding, nb_scope *scope,
                         void (*typed_host_target)(void), const nb_signature *signature);
 nb_status nb_import_unbind(nb_import *binding);

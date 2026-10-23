@@ -13,6 +13,85 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#if defined(NB_CLEANUP_CONTRACT)
+#include <errno.h>
+#include <sys/mman.h>
+/* Linked only into the separate cleanup contract with --wrap. These symbols
+ * and failure controls are absent from the normal/production ELF.
+ */
+extern int __real_mprotect(void *,size_t,int);
+extern int __real_munmap(void *,size_t);
+static unsigned fail_protect,fail_unmap,protect_calls,unmap_calls,real_unmap_successes;
+static void *last_unmap_address;
+static size_t last_unmap_bytes;
+int __wrap_mprotect(void *address,size_t bytes,int protection) {
+    ++protect_calls;
+    if(fail_protect){--fail_protect;errno=EACCES;return -1;}
+    return __real_mprotect(address,bytes,protection);
+}
+int __wrap_munmap(void *address,size_t bytes) {
+    ++unmap_calls;last_unmap_address=address;last_unmap_bytes=bytes;
+    if(fail_unmap){--fail_unmap;errno=EBUSY;return -1;}
+    int result=__real_munmap(address,bytes);
+    if(!result)++real_unmap_successes;
+    return result;
+}
+static void cleanup_unused_target(void) { }
+static nb_signature cleanup_signature(void) {
+    return (nb_signature){.version=1,.flags=NB_SIG_REGISTER_ONLY};
+}
+int main(void) {
+    nb_scope scope={0};nb_import binding={0};nb_signature signature=cleanup_signature();
+    assert(nb_scope_init(&scope)==NB_OK);
+    /* First prove the ordinary protect-failure rollback still releases once. */
+    fail_protect=1;
+    assert(nb_import_bind(&binding,&scope,cleanup_unused_target,&signature)==NB_PROTECT_FAILED);
+    assert(!binding.mapping&&!binding.entry&&!binding.scope&&!scope.binding_count);
+    assert(protect_calls==1&&unmap_calls==1&&real_unmap_successes==1);
+    assert(nb_scope_close(&scope)==NB_OK);
+    assert(nb_scope_init(&scope)==NB_OK);
+    protect_calls=unmap_calls=real_unmap_successes=0;
+    fail_protect=1;fail_unmap=2;
+    nb_status status=nb_import_bind(&binding,&scope,cleanup_unused_target,&signature);
+    if(status!=NB_RETAINED) {
+        /* A regression binary links the original 2f component to this exact
+         * test. It must report FAIL/1 rather than hiding the lost ownership.
+         * Its lost mapping is reclaimed only by process teardown.
+         */
+        nb_status close_status=nb_scope_close(&scope);
+        printf("{\"status\":\"FAIL\",\"case\":\"double_failure_retention\",\"bind_status\":%u,"
+            "\"scope_close_status\":%u,\"mapping_retained\":%s,\"munmap_attempts\":%u,"
+            "\"actual_unmap_successes\":%u,\"cleanup\":\"process_teardown\"}\n",
+            (unsigned)status,(unsigned)close_status,binding.mapping?"true":"false",
+            unmap_calls,real_unmap_successes);
+        return 1;
+    }
+    assert(binding.scope==&scope&&binding.mapping==last_unmap_address);
+    assert(binding.mapping_bytes==last_unmap_bytes&&binding.mapping_bytes>0);
+    assert(!binding.entry&&!binding.bti_guarded&&!nb_import_entry(&binding));
+    assert(scope.binding_count==1&&scope.lifetime&&nb_scope_close(&scope)==NB_BUSY);
+    void *saved=binding.mapping;size_t saved_bytes=binding.mapping_bytes;
+    assert(nb_import_bind(&binding,&scope,cleanup_unused_target,&signature)==NB_INVALID);
+    assert(nb_import_unbind(&binding)==NB_MAP_FAILED);
+    assert(binding.mapping==saved&&binding.mapping_bytes==saved_bytes&&binding.scope==&scope);
+    assert(!binding.entry&&scope.binding_count==1&&nb_scope_close(&scope)==NB_BUSY);
+    assert(protect_calls==1&&unmap_calls==2&&real_unmap_successes==0);
+    assert(nb_import_unbind(&binding)==NB_OK);
+    assert(!binding.mapping&&!binding.entry&&!binding.scope&&!binding.mapping_bytes);
+    assert(scope.binding_count==0&&unmap_calls==3&&real_unmap_successes==1);
+    assert(nb_import_unbind(&binding)==NB_OK);
+    assert(unmap_calls==3&&real_unmap_successes==1);
+    assert(nb_scope_close(&scope)==NB_OK);
+    printf("{\"status\":\"PASS\",\"scope\":\"owned_cleanup_failure_contract_only\","
+        "\"protect_failure_rollback_success\":true,\"double_failure_retained\":true,"
+        "\"entry_null\":true,\"scope_busy_until_actual_unmap\":true,"
+        "\"failed_retry_preserves_owner\":true,\"actual_unmap_once\":true,"
+        "\"count_refunded_once\":true,\"idempotent_unbind\":true,"
+        "\"munmap_attempts\":%u,\"actual_unmap_successes\":%u,\"binding_count_after\":%" PRIu64 ","
+        "\"game_input\":false}\n",unmap_calls,real_unmap_successes,scope.binding_count);
+    return 0;
+}
+#else
 typedef struct Context {
     void (*entry)(void);
     uint64_t native_seen, sp_seen, guest_after;
@@ -198,6 +277,7 @@ __attribute__((no_sanitize("shadow-call-stack"))) int main(void) {
          "\"wrong_thread_import_sigtrap\":true,\"bti_guarded_thunks\":%s,"
          "\"game_input\":false}\n",(getauxval(AT_HWCAP2)&HWCAP2_BTI)?"true":"false");return 0;
 }
+#endif /* NB_CLEANUP_CONTRACT */
 #else
 int main(void) {
     nb_scope scope={0};nb_registers registers={0};

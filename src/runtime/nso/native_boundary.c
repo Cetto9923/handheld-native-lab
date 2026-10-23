@@ -110,7 +110,14 @@ nb_status nb_import_bind(nb_import *binding, nb_scope *scope,
     memcpy((unsigned char *)memory + 32, literals, sizeof(literals));
     uint32_t bti=(getauxval(AT_HWCAP2)&HWCAP2_BTI)?1u:0u;
     if (mprotect(memory, (size_t)page, PROT_READ | PROT_EXEC | (bti?PROT_BTI:0))) {
-        (void)munmap(memory, (size_t)page); return NB_PROTECT_FAILED;
+        if (!munmap(memory, (size_t)page)) return NB_PROTECT_FAILED;
+        /* RX publication failed and rollback did not release the allocation.
+         * Retain a non-callable owner so scope/lifetime cannot be closed and a
+         * later unbind retries the exact mapping. Never lose the only handle.
+         */
+        *binding = (nb_import){.scope=scope,.mapping=memory,.mapping_bytes=(size_t)page};
+        ++scope->binding_count;
+        return NB_RETAINED;
     }
     __builtin___clear_cache(memory, (char *)memory + 64);
     *binding = (nb_import){.scope = scope, .mapping = memory, .mapping_bytes = (size_t)page,
@@ -129,7 +136,7 @@ nb_status nb_import_unbind(nb_import *binding) {
     nb_status status = check_scope(binding->scope);
     if (status != NB_OK && status != NB_OWNER_DEAD) return status;
     if(__atomic_load_n(&binding->scope->phase,__ATOMIC_ACQUIRE))return NB_BUSY;
-    if (!binding->mapping || !binding->entry || !binding->scope->binding_count) return NB_INVALID;
+    if (!binding->mapping || !binding->mapping_bytes || !binding->scope->binding_count) return NB_INVALID;
     if (munmap(binding->mapping, binding->mapping_bytes)) return NB_MAP_FAILED;
     --binding->scope->binding_count;
     *binding = (nb_import){0}; return NB_OK;
