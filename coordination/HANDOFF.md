@@ -2,6 +2,12 @@
 
 更新时间 `2026-10-23T13:08:46.175383+00:00`。先读本仓库 `AGENTS.md`，然后核对Git/当前代理和本文件引用的原始证据；旧聊天不作为当前工作树状态。
 
+## 最新原始启动：已进入分配器构造
+
+ff964e9已实际RG验证：5组件+info0，空/非空原startup均越61/67到logf153/+b3eac/133，无timeout；原生strcasecmp6次与capability10次真实call通过。frames137f4→ae93c→af320表明进入原构造链，不是完整startup/CRT通过。没有重复已知pre-init malloc139。当前新ffrs-math-runtime/task/T02-math-runtime/baseff四文件只接真实Bioniclibm logf和现有FP边界；另外独立3dbQA在收口、只读LAS实际启动顺序/本SDK五参ABI核对中。3db/ff原树继续clean冻结，源码未提前标集成。
+
+最新报告：[device](../docs/analysis/codex_guest_process_device_report.md)、[malloc前置条件](../docs/analysis/codex_malloc_startup_prerequisite.md)。下方3db/9dc均为保留的历史快照；原交付f9284ea，任务树最新保存0dea9d6后此增量待checkpoint。
+
 ## 最新现场（优先于下面历史冻结快照）
 
 3db资源/locale已同RG13组件合同0+info0；原startup空argv越66到67/+137a4/133，非空越63到strcasecmp61/+1345c/133。malloc出现真实139/main+b705c/fa30；脚本保留原码并停止，3db CRT本轮NOT_RUN，独立QA进行中。root尚未集成3db。当前运行时写者已移新树ffrs-startup-next/task/T02-startup-next/base3db五文件做61/67，旧ffrs-va-resource/3db clean冻结；另只读mallocprovenance在startup-followups/malloc-null。不要填默认对象/假能力/写TP。
@@ -31,7 +37,7 @@ LAS81已集成root7e5123c且独立19命令FINAL；root GP21header组合重建58e
 | 实际RG477M/9dc | 原始码 | 结论 |
 |---|---:|---|
 | 六个正常/参数/native参数/恢复/guest析构/retained合同 | 0 | 参数真实复制、计费、native getter、析构仍存活、真unmap后退款 |
-| 原始nninitStartup空argv | 133 | 已越59/60/61，停VA usage66/caller+0x13744 |
+| 原始nninitStartup空argv | 133 | 已越59/60/62，停VA usage66/caller+0x13744 |
 | 原始nninitStartup两个argv | 133 | 停strncasecmp_l63/+0x13498，n29/locale0 |
 | 原始direct nnMain / malloc / CRT | 133 | 分别CreateThread126 / VA66 / musl515，尚未完成初始化 |
 

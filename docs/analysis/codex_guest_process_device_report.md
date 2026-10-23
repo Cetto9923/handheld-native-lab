@@ -63,7 +63,7 @@ Source `9dc8aa73c6e2d038c2b1c89efd898b65fbf0d1bb` integrated as `3af578a`. Real 
 | OS callback + argv lifetime | 0 | 48.16525 | real A0/B9/A5, argv still live inside guest cleanup |
 | boundary-retained | 0 | 43.349167 | 3 unmap attempts/1 actual release |
 | info | 0 | 158.545458 | imports651/unresolved613, not game startup |
-| original startup, empty argv | 133 | 146.479125 | passed60/61, nowVA resource usage66/caller+0x13744 |
+| original startup, empty argv | 133 | 146.479125 | passed60/62, nowVA resource usage66/caller+0x13744 |
 | original startup, argv ffrs/option=123 | 133 | 161.929625 | strncasecmp_l63/caller+0x13498, n29/locale0 |
 | original direct nnMain | 133 | 150.707542 | CreateThread126/+0x352f1b8, pre-init experiment |
 | original malloc | 133 | 151.632 | VA resource usage66/+0x144b8 |
@@ -92,3 +92,13 @@ Do not call malloc139 a pass or attribute it toTLS/CRT before provenance. Fullst
 Evidence .local/device/rg477m-session1/va-resource-v1-{plan,stage,execution}.json and eachcase.stdout/.stderr; executedrun_va_resource_v1.py. Fullfreeze ../ffrs-va-resource/.local/va-resource-v3/freeze.json SHA1c2687b49c775733e38d70be4129eed60d049aabf6f3eeff584cda0b32d1e4db;manifestSHAfcb0cbd0a64133f4a37f2a8d8980ed3aa8f19f118566ae4a3bfcf1e68cfdfbfa,88 actualexpectedcommands/noTimeout. CLI803896B/SHA72405ea9a9201579dfebc00b2162249e5ebd33166861f4f180c9b9a59ae91ba3;normal936296B/SHA91d3ad61d27723f7495aa94882dd99541666d4648399d93609ca189e77890542;resourcerecovery950336B/SHAeaa0018963e298723cb085f9f86cc3eda65807744129b00eed81b9a6d5c54d96.
 
 New independent3dbsourceQAactive; root hasnotintegrated3dborclaimedfullgame. Runtime nowseparateffrs-startup-next/base3db fivefiles61/67; mallocnullprovenanceonlystartup-followups/malloc-null. Preservefreezeandraw139 whilefixingnewgate.
+
+## ff964e9: original startup reaches actual allocator math
+
+Five-file freezeff964e9d479e288e2b695b5100836def780ca4df preserves3db tree. ActualRG8cases/noTimeout: strcasecmp-native0/93.011625ms (65536u8pairs+6actualguestcalls),va-enabled-native0/86.696167ms (unconfigured0/explicitpolicy1 ×5actualreserve/map/free states=10guestcalls,x18),normal0/76.22175ms,strcasecmp0/89.895875ms,capability0/84.631209ms,info0/164.938375ms. Bothunmodifiedoriginalstartupempty/nonempty nowpass61/67 andstrictstop**logf153/caller+0xb3eac**,raw133/172.596584ms and166.659667ms. Frames137f4→ae93c→af320 are inoriginalallocatorconstruction,not startupreturn/game success. Exactoldmalloc139isnotrerun;CRT unchangedNOTRUNthisfreeze.
+
+Capability truth followsactualowner/completeledger/explicit resource_total>0,notconstant1 or requirement toalreadyhaveallocation. Actualoperationsreserve/map/decommit/releasearecovered;scope isnativeownerpolicy,notfullHorizon VM. MatureBionicstrcasecmp isactualtyped2argcall withverifiedSDKASCII/u8 semantics. Source/binaryandself-containednewfixtures allhashverifiedbeforeremotechmod,pushreadbackandexecution. Main6e6d...a5 before/aftermatches. No gamebytes/APK/data/TPchanges.
+
+freeze .local/startup-next-v1/freeze.json inffrs-startup-nextSHA6fc7d78db3edfdc02a8d2a843bc561c20e305f3b8da97e7ca47fb8fd966533a8,97actualexpectedbuildercommands/noTimeout. CLI807440B/SHA06c22db0428ee2dc5c7a5614edba3949a9601f116e67eff9e534320f595c3797,normal966232B/SHA21ac601bd9ba617194604350b0f80f777698bf94e0adf8ab7687c29b2e6d2f03. Fixtures9216B each:strcasecmpSHA0f76d2220ab857358f8d63284941c350cbf0d264031f2ad16ca3c5b0730e62ef;vaenabledSHA639cd080e82577fd44ecad9433122957a5a3643b2a8b327a65ff3c24a9084074. Rawrootstartup-next-v1-{plan,stage,execution}.json/stdout/stderrandrun_startup_next_v1.pycontainexactargv/rawcodes.
+
+[139provenance](codex_malloc_startup_prerequisite.md) identifiesb705c LDRx3,[x8,#30] afterb7058 LDRx8,[x0],x0=BSS77c5210nonzero/firstqwordzero. Realstartupwriter137f0→ae770 writesvptratae7ac/ae7ec;previousdirectmallocwasbeforethatstage,notTPorx18fault. Thisdoesnotprovefullconstructorsuccess. Nowactualstartuphasreachedthatconstructingcallchain,butmath153stillpreventscompletion. Do not manually fillvptroraddfakeheap.
