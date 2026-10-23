@@ -11,6 +11,8 @@
 #ifndef FFRS_PROBE_VULKAN_H
 #define FFRS_PROBE_VULKAN_H
 
+#include "probe_types.h"
+
 #include <cstdint>
 #include <string>
 #include <vector>
