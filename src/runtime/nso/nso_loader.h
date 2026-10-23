@@ -44,8 +44,37 @@ typedef uint64_t (*nso_import_fn)(uint32_t symbol_index, const char *symbol_name
  */
 nso_module *nso_load_file(const char *path, nso_import_fn import_fn, char *errbuf, size_t errlen);
 
-/* Release everything owned by the module. */
+/* Native ownership transaction, independent of any HLE headers. The owner and
+ * callbacks must remain alive until typed release clears the module handle.
+ * Reserve receives the SAME validated, host-page-rounded extent used by mmap.
+ * Callback failure must retain its ticket; only successful cancel/release may
+ * consume it. No callback may execute guest code or reenter this module. */
+enum nso_status { NSO_OK, NSO_INVALID, NSO_LOAD_ERROR, NSO_LIMIT,
+                  NSO_OWNER_ERROR, NSO_RETAINED };
+struct nso_result { enum nso_status status; int native_error,cleanup_error; };
+struct nso_owner_ops {
+    struct nso_result (*reserve)(void *owner,size_t bytes,void **ticket);
+    struct nso_result (*commit)(void *owner,void *ticket);
+    struct nso_result (*cancel)(void *owner,void *ticket);
+    struct nso_result (*release)(void *owner,void *ticket);
+};
+struct nso_load_result { struct nso_result result; nso_module *module; };
+struct nso_load_result nso_load_file_owned(const char *path,nso_import_fn,
+        const struct nso_owner_ops *,void *owner,char *errbuf,size_t errlen);
+/* Quiescent users only. A failed cleanup keeps *module non-NULL and prohibits
+ * execution; retry this function. Observer runs once while the image is alive.
+ * Complete success consumes the descriptor and sets *module=NULL. */
+struct nso_result nso_release(nso_module **module);
+
+/* Compatibility API: cleanup failure is fatal because void cannot return the
+ * retained owner/handle. New recoverable callers must use nso_release. */
 void nso_free(nso_module *m);
+
+#if defined(NSO_LOADER_TESTING)
+/* Deterministic normal VM failure contracts only; absent from production. */
+void nso_loader_test_vm(void *(*map)(size_t,int,int),
+        int (*protect)(void *,size_t,int),int (*unmap)(void *,size_t));
+#endif
 
 /* Optional host-owned cleanup, called once before unmapping. This is not a
  * guest exit/destructor callback. Install at most one observer per module. */
@@ -105,6 +134,11 @@ void nso_run_init(nso_module *m);
 
 /* Install a fault handler that reports faulting PCs as module offsets. */
 void nso_install_fault_trap(nso_module *m);
+/* Explicit single-guest diagnostic scope, on the executing native thread.
+ * Returns a native errno (zero on success). End restores prior dispositions
+ * and that thread's altstack before its owned stack can be released. */
+int nso_fault_scope_begin(nso_module *m);
+int nso_fault_scope_end(nso_module *m);
 
 #ifdef __cplusplus
 }

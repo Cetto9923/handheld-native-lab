@@ -32,6 +32,11 @@ struct segment { uint32_t file, mem, size, aux; };
 struct nso_module {
     uint8_t *image;
     size_t image_size;
+    const uint8_t *source;
+    size_t source_size;
+    struct nso_owner_ops owner_ops;
+    void *owner,*ticket;
+    int committed,ready,closing;
     char *dynstr;
     uint32_t dynstr_size, sym_count, import_count, unresolved_count;
     uint64_t *sym_value, *imports;
@@ -56,6 +61,9 @@ static _Thread_local uintptr_t stack_lo,stack_hi;
 static _Thread_local unsigned char signal_stack[64*1024];
 static _Thread_local stack_t previous_signal_stack;
 static _Thread_local int owns_signal_stack;
+static _Thread_local struct sigaction previous_actions[4];
+static _Thread_local unsigned owns_actions;
+static const int fault_signals[4]={SIGSEGV,SIGBUS,SIGILL,SIGTRAP};
 static uint16_t rd16(const void *p) { uint16_t v; memcpy(&v,p,2); return v; }
 static uint32_t rd32(const void *p) { uint32_t v; memcpy(&v,p,4); return v; }
 static uint64_t rd64(const void *p) { uint64_t v; memcpy(&v,p,8); return v; }
@@ -73,22 +81,60 @@ static int file_range(const struct segment s[3], uint64_t addr, uint64_t len, ui
 }
 static void error(char *buf, size_t len, const char *msg) { if(buf && len) snprintf(buf,len,"%s",msg); }
 
-nso_module *nso_load_file(const char *path, nso_import_fn resolve, char *err, size_t errlen) {
+#if defined(NSO_LOADER_TESTING)
+static _Thread_local void *(*test_map)(size_t,int,int);
+static _Thread_local int (*test_protect)(void *,size_t,int);
+static _Thread_local int (*test_unmap)(void *,size_t);
+void nso_loader_test_vm(void *(*map)(size_t,int,int),int (*protect)(void *,size_t,int),
+        int (*unmap)(void *,size_t)) {test_map=map;test_protect=protect;test_unmap=unmap;}
+#endif
+static void *loader_map(size_t bytes,int protection,int fd) {
+#if defined(NSO_LOADER_TESTING)
+    if(test_map)return test_map(bytes,protection,fd);
+#endif
+    return mmap(NULL,bytes,protection,MAP_PRIVATE|(fd<0?MAP_ANONYMOUS:0),fd,0);
+}
+static int loader_protect(void *address,size_t bytes,int protection) {
+#if defined(NSO_LOADER_TESTING)
+    if(test_protect)return test_protect(address,bytes,protection);
+#endif
+    return mprotect(address,bytes,protection);
+}
+static int loader_unmap(void *address,size_t bytes) {
+#if defined(NSO_LOADER_TESTING)
+    if(test_unmap)return test_unmap(address,bytes);
+#endif
+    return munmap(address,bytes);
+}
+static struct nso_result load_status(enum nso_status status,int native,int cleanup) {
+    return (struct nso_result){status,native,cleanup};
+}
+
+static struct nso_load_result load_file(const char *path,nso_import_fn resolve,
+        const struct nso_owner_ops *ops,void *owner,char *err,size_t errlen) {
     int fd=-1;
     const uint8_t *file=MAP_FAILED;
     size_t fsize=0;
     nso_module *m=NULL;
+    struct nso_result status=load_status(NSO_LOAD_ERROR,0,0);
     const char *failure="unknown load failure";
 #define FAIL(msg) do { failure=(msg); goto fail; } while(0)
 #define CHECK(cond,msg) do { if(!(cond)) FAIL(msg); } while(0)
+#define CHECK_SYS(cond,msg) do { if(!(cond)) {status.native_error=errno;FAIL(msg);} } while(0)
+    CHECK(path,"missing path");
+    m=calloc(1,sizeof(*m)); CHECK(m,"module allocation failed");
+    if(ops) {m->owner_ops=*ops;m->owner=owner;}
     fd=open(path,O_RDONLY);
-    CHECK(fd>=0,"cannot open file");
+    CHECK_SYS(fd>=0,"cannot open file");
     struct stat st;
-    CHECK(fstat(fd,&st)==0 && st.st_size>=0x100,"file smaller than NSO header");
+    CHECK_SYS(fstat(fd,&st)==0,"file stat failed");
+    CHECK(st.st_size>=0x100,"file smaller than NSO header");
     fsize=(size_t)st.st_size;
-    file=mmap(NULL,fsize,PROT_READ,MAP_PRIVATE,fd,0);
+    file=loader_map(fsize,PROT_READ,fd);
+    int map_error=errno;
     close(fd); fd=-1;
-    CHECK(file!=MAP_FAILED,"file mmap failed");
+    if(file==MAP_FAILED) {status.native_error=map_error;FAIL("file mmap failed");}
+    m->source=file;m->source_size=fsize;
     CHECK(rd32(file)==NSO_MAGIC,"not an NSO0 file");
     CHECK(!(rd32(file+12)&7),"compressed NSO segments unsupported; supply uncompressed image");
     struct segment s[3];
@@ -102,12 +148,22 @@ nso_module *nso_load_file(const char *path, nso_import_fn resolve, char *err, si
         if(i) CHECK((uint64_t)s[i-1].mem+s[i-1].size<=s[i].mem,"overlapping NSO segments");
     }
     CHECK(end && end<=SIZE_MAX-pagesize(),"invalid image extent");
-    m=calloc(1,sizeof(*m)); CHECK(m,"module allocation failed");
     m->image_size=(size_t)up(end);
     m->text_lo=s[0].mem; m->text_hi=(uint64_t)s[0].mem+s[0].size;
     memcpy(m->build_id,file+0x40,16);
-    m->image=mmap(NULL,m->image_size,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
-    if(m->image==MAP_FAILED) { m->image=NULL; FAIL("module mmap failed"); }
+    if(ops) {
+        status=ops->reserve(owner,m->image_size,&m->ticket);
+        if(status.status!=NSO_OK)FAIL("module precharge rejected");
+        CHECK(m->ticket,"owner returned no charge ticket");
+        status=load_status(NSO_LOAD_ERROR,0,0);
+    }
+    m->image=loader_map(m->image_size,PROT_READ|PROT_WRITE,-1);
+    if(m->image==MAP_FAILED) {status.native_error=errno;m->image=NULL;FAIL("module mmap failed");}
+    if(ops) {
+        status=ops->commit(owner,m->ticket);
+        if(status.status!=NSO_OK)FAIL("module charge commit failed");
+        m->committed=1;status=load_status(NSO_LOAD_ERROR,0,0);
+    }
     for(int i=0;i<3;i++) memcpy(m->image+s[i].mem,file+s[i].file,s[i].size);
     CHECK(s[0].size>=8,"text too short for MOD0 reference");
     /* MOD0 and dynamic pointers are virtual offsets, not file offsets. */
@@ -172,10 +228,10 @@ nso_module *nso_load_file(const char *path, nso_import_fn resolve, char *err, si
     /* Per-symbol BRK sentinels supply identity, never target translation.
      * Imported objects use inaccessible slots so reads also fail observably. */
     m->trap_size=(size_t)up((uint64_t)m->sym_count*8);
-    m->import_traps=mmap(NULL,m->trap_size,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
-    if(m->import_traps==MAP_FAILED) {m->import_traps=NULL;FAIL("import sentinel mmap failed");}
-    m->object_traps=mmap(NULL,m->trap_size,PROT_NONE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
-    if(m->object_traps==MAP_FAILED) {m->object_traps=NULL;FAIL("object sentinel mmap failed");}
+    m->import_traps=loader_map(m->trap_size,PROT_READ|PROT_WRITE,-1);
+    if(m->import_traps==MAP_FAILED) {status.native_error=errno;m->import_traps=NULL;FAIL("import sentinel mmap failed");}
+    m->object_traps=loader_map(m->trap_size,PROT_NONE,-1);
+    if(m->object_traps==MAP_FAILED) {status.native_error=errno;m->object_traps=NULL;FAIL("object sentinel mmap failed");}
     for(uint32_t i=0;i<m->sym_count;i++) {
         const uint8_t *e=m->image+symtab+(uint64_t)i*24;
         m->sym_name[i]=rd32(e); m->sym_shndx[i]=rd16(e+6); m->sym_value[i]=rd64(e+8); m->sym_info[i]=e[4];
@@ -192,7 +248,7 @@ nso_module *nso_load_file(const char *path, nso_import_fn resolve, char *err, si
         }
     }
     __builtin___clear_cache((char*)m->import_traps,(char*)m->import_traps+m->trap_size);
-    CHECK(mprotect(m->import_traps,m->trap_size,PROT_READ|PROT_EXEC)==0,"import sentinel mprotect failed");
+    CHECK_SYS(loader_protect(m->import_traps,m->trap_size,PROT_READ|PROT_EXEC)==0,"import sentinel mprotect failed");
     uint64_t base=nso_base(m);
     CHECK(m->relr_size%8==0 && file_range(s,m->relr_offset,m->relr_size,&mapped),"invalid DT_RELR extent");
     uint64_t where=0;
@@ -237,45 +293,74 @@ nso_module *nso_load_file(const char *path, nso_import_fn resolve, char *err, si
     /* Retain shared host-page policy: executable text owns its last page. */
     for(int i=1;i<3;i++) {
         uint64_t hi=(uint64_t)s[i].mem+s[i].size+(i==2?s[i].aux:0);
-        if(hi>s[i].mem) CHECK(mprotect(m->image+down(s[i].mem),(size_t)(up(hi)-down(s[i].mem)),i==1?PROT_READ:PROT_READ|PROT_WRITE)==0,"data mprotect failed");
+        if(hi>s[i].mem) CHECK_SYS(loader_protect(m->image+down(s[i].mem),(size_t)(up(hi)-down(s[i].mem)),i==1?PROT_READ:PROT_READ|PROT_WRITE)==0,"data mprotect failed");
     }
     __builtin___clear_cache((char*)m->image+m->text_lo,(char*)m->image+m->text_hi);
-    CHECK(mprotect(m->image+down(m->text_lo),(size_t)(up(m->text_hi)-down(m->text_lo)),PROT_READ|PROT_EXEC)==0,"text mprotect failed");
-    munmap((void*)file,fsize);
-    return m;
+    CHECK_SYS(loader_protect(m->image+down(m->text_lo),(size_t)(up(m->text_hi)-down(m->text_lo)),PROT_READ|PROT_EXEC)==0,"text mprotect failed");
+    CHECK_SYS(loader_unmap((void*)file,fsize)==0,"source munmap failed");
+    m->source=NULL;m->source_size=0;m->ready=1;
+    return (struct nso_load_result){load_status(NSO_OK,0,0),m};
 fail:
     if(fd>=0) close(fd);
-    if(file!=MAP_FAILED) munmap((void*)file,fsize);
-    nso_free(m); error(err,errlen,failure); return NULL;
+    {struct nso_result cleanup=nso_release(&m);
+    if(cleanup.status!=NSO_OK) {status.cleanup_error=cleanup.cleanup_error?cleanup.cleanup_error:cleanup.native_error;status.status=NSO_RETAINED;}
+    error(err,errlen,failure);return (struct nso_load_result){status,m};}
 #undef CHECK
+#undef CHECK_SYS
 #undef FAIL
 }
-void nso_free(nso_module *m) {
-    if(!m)return;
+struct nso_load_result nso_load_file_owned(const char *path,nso_import_fn resolve,
+        const struct nso_owner_ops *ops,void *owner,char *err,size_t errlen) {
+    if(!ops || !ops->reserve || !ops->commit || !ops->cancel || !ops->release) {
+        error(err,errlen,"complete owner callbacks required");
+        return (struct nso_load_result){load_status(NSO_INVALID,0,0),NULL};
+    }
+    return load_file(path,resolve,ops,owner,err,errlen);
+}
+nso_module *nso_load_file(const char *path,nso_import_fn resolve,char *err,size_t errlen) {
+    struct nso_load_result loaded=load_file(path,resolve,NULL,NULL,err,errlen);
+    if(loaded.module && loaded.result.status!=NSO_OK) {
+        fprintf(stderr,"[loader-retained] legacy load cannot discard cleanup handle=%p errno=%d\n",
+                (void *)loaded.module,loaded.result.cleanup_error);abort();
+    }
+    return loaded.module;
+}
+struct nso_result nso_release(nso_module **module) {
+    if(!module)return load_status(NSO_INVALID,0,0);
+    nso_module *m=*module;
+    if(!m)return load_status(NSO_OK,0,0);
+    if(fault_module==m) {
+        int e=nso_fault_scope_end(m);
+        if(e)return load_status(NSO_RETAINED,0,e);
+    }
+    m->ready=0;m->closing=1;
     if(m->unload_observer) {
         void (*observer)(void*)=m->unload_observer;
         m->unload_observer=NULL;
         observer(m->unload_user);
     }
-    if(fault_module==m) {
-        fault_module=NULL; stack_lo=stack_hi=0;
-        if(owns_signal_stack) {
-            stack_t restore=previous_signal_stack;
-            /* macOS returned ENOMEM when restoring the initial disabled,
-             * zero-size state. Keep SS_DISABLE and supply its minimum size;
-             * disabled stacks do not become active or consume this pointer. */
-            if((restore.ss_flags&SS_DISABLE) && restore.ss_size<MINSIGSTKSZ)
-                restore.ss_size=MINSIGSTKSZ;
-            if(sigaltstack(&restore,NULL))
-                fprintf(stderr,"[fault-scope] restore alternate stack failed errno=%d previous=(%p,%zu,%d)\n",
-                        errno,previous_signal_stack.ss_sp,previous_signal_stack.ss_size,previous_signal_stack.ss_flags);
-            else owns_signal_stack=0;
-        }
+    int cleanup=0;
+#define RELEASE_MAPPING(ptr,bytes) do {if(ptr) {if(loader_unmap((void *)(ptr),(bytes))) {if(!cleanup)cleanup=errno;} else (ptr)=NULL;}} while(0)
+    RELEASE_MAPPING(m->source,m->source_size);
+    RELEASE_MAPPING(m->image,m->image_size);
+    RELEASE_MAPPING(m->import_traps,m->trap_size);
+    RELEASE_MAPPING(m->object_traps,m->trap_size);
+#undef RELEASE_MAPPING
+    if(!m->image && m->ticket) {
+        struct nso_result dropped=m->committed?m->owner_ops.release(m->owner,m->ticket):m->owner_ops.cancel(m->owner,m->ticket);
+        if(dropped.status==NSO_OK)m->ticket=NULL;
+        else if(!cleanup)cleanup=dropped.native_error?dropped.native_error:EIO;
     }
-    if(m->image)munmap(m->image,m->image_size);
-    if(m->import_traps)munmap(m->import_traps,m->trap_size);
-    if(m->object_traps)munmap(m->object_traps,m->trap_size);
+    if(cleanup)return load_status(NSO_RETAINED,0,cleanup);
     free(m->dynstr);free(m->sym_name);free(m->sym_shndx);free(m->sym_value);free(m->imports);free(m->sym_info);free(m);
+    *module=NULL;return load_status(NSO_OK,0,0);
+}
+void nso_free(nso_module *m) {
+    struct nso_result status=nso_release(&m);
+    if(status.status!=NSO_OK) {
+        fprintf(stderr,"[loader-retained] legacy free cannot discard handle=%p errno=%d\n",(void *)m,status.cleanup_error);
+        abort();
+    }
 }
 void nso_set_unload_observer(nso_module *m,void (*observer)(void*),void *user) {
     if(m){m->unload_observer=observer;m->unload_user=user;}
@@ -295,7 +380,7 @@ uint32_t nso_find_symbol(const nso_module *m,const char *name) {
 }
 void nso_build_id(const nso_module *m,char out[33]) {for(int i=0;i<16;i++)snprintf(out+i*2,3,"%02x",m->build_id[i]);}
 uint64_t nso_call(nso_module *m,uint64_t off,uint64_t a0,uint64_t a1,uint64_t a2,uint64_t a3,uint64_t a4,uint64_t a5) {
-    if(off<m->text_lo || off>=m->text_hi || off%4) {fprintf(stderr,"[call-error] offset 0x%" PRIx64 " outside aligned text\n",off);exit(2);}
+    if(!m->ready || m->closing || off<m->text_lo || off>=m->text_hi || off%4) {fprintf(stderr,"[call-error] offset 0x%" PRIx64 " outside ready aligned text\n",off);exit(2);}
     typedef uint64_t(*fn)(uint64_t,uint64_t,uint64_t,uint64_t,uint64_t,uint64_t);
     return ((fn)(m->image+off))(a0,a1,a2,a3,a4,a5);
 }
@@ -353,16 +438,51 @@ static void fault_handler(int sig,siginfo_t *si,void *context) {
     fflush(stderr);
     _exit(128+sig);
 }
-void nso_install_fault_trap(nso_module *m) {
+int nso_fault_scope_end(nso_module *m) {
+    if(!fault_module)return 0;
+    if(fault_module!=m)return EINVAL;
+    int error=0;
+    for(int i=0;i<4;i++)if(owns_actions&(1u<<i)) {
+        if(sigaction(fault_signals[i],&previous_actions[i],NULL)) {if(!error)error=errno;}
+        else owns_actions&=~(1u<<i);
+    }
+    if(owns_signal_stack) {
+        stack_t restore=previous_signal_stack;
+        if((restore.ss_flags&SS_DISABLE) && restore.ss_size<MINSIGSTKSZ)restore.ss_size=MINSIGSTKSZ;
+        if(sigaltstack(&restore,NULL)) {if(!error)error=errno;}
+        else owns_signal_stack=0;
+    }
+    if(!error) {fault_module=NULL;stack_lo=stack_hi=0;}
+    return error;
+}
+int nso_fault_scope_begin(nso_module *m) {
+    if(!m || !m->ready || fault_module)return EBUSY;
     fault_module=m;
 #if defined(__APPLE__)
     stack_hi=(uintptr_t)pthread_get_stackaddr_np(pthread_self());stack_lo=stack_hi-pthread_get_stacksize_np(pthread_self());
 #elif defined(__linux__)
     pthread_attr_t attr;
-    if(!pthread_getattr_np(pthread_self(),&attr)) {void *addr;size_t size;if(!pthread_attr_getstack(&attr,&addr,&size)){stack_lo=(uintptr_t)addr;stack_hi=stack_lo+size;}pthread_attr_destroy(&attr);}
+    int e=pthread_getattr_np(pthread_self(),&attr);
+    if(e) {fault_module=NULL;return e;}
+    void *addr;size_t size;
+    e=pthread_attr_getstack(&attr,&addr,&size);pthread_attr_destroy(&attr);
+    if(e) {fault_module=NULL;return e;}
+    stack_lo=(uintptr_t)addr;stack_hi=stack_lo+size;
 #endif
     stack_t ss={.ss_sp=signal_stack,.ss_size=sizeof(signal_stack),.ss_flags=0};
-    if(!owns_signal_stack && sigaltstack(&ss,&previous_signal_stack)==0)owns_signal_stack=1;
+    if(sigaltstack(&ss,&previous_signal_stack)) {int e=errno;fault_module=NULL;return e;}
+    owns_signal_stack=1;
     struct sigaction sa;memset(&sa,0,sizeof(sa));sigemptyset(&sa.sa_mask);sa.sa_sigaction=fault_handler;sa.sa_flags=SA_SIGINFO|SA_ONSTACK;
-    sigaction(SIGSEGV,&sa,NULL);sigaction(SIGBUS,&sa,NULL);sigaction(SIGILL,&sa,NULL);sigaction(SIGTRAP,&sa,NULL);
+    for(int i=0;i<4;i++) {
+        if(sigaction(fault_signals[i],&sa,&previous_actions[i])) {
+            int e=errno,cleanup=nso_fault_scope_end(m);
+            return cleanup?cleanup:e;
+        }
+        owns_actions|=1u<<i;
+    }
+    return 0;
+}
+void nso_install_fault_trap(nso_module *m) {
+    int e=nso_fault_scope_begin(m);
+    if(e) {fprintf(stderr,"[fault-scope] installation failed errno=%d\n",e);abort();}
 }
