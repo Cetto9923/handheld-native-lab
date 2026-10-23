@@ -2,11 +2,21 @@
 #include "address_region.h"
 #include "mutex.h"
 #include "exit_registry.h"
+#include "guest_process.h"
+#include "guest_tp.h"
+#include "../nso/native_boundary.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
 #include <time.h>
+#include <pthread.h>
+#include <sched.h>
+#include <inttypes.h>
+#include <unistd.h>
+#if defined(__linux__) && !defined(__ANDROID__)
+#include <sys/syscall.h>
+#endif
 #if defined(__ANDROID__) || (defined(NSO_WITH_CXX_GUARDS) && NSO_WITH_CXX_GUARDS)
 /* Official NDK cxxabi.h: AArch64 uses the uint64_t guard ABI. Main's observed
  * LDARB/TBZ bit-0 fast path agrees with that ABI. All state transitions and
@@ -121,6 +131,442 @@ int64_t nso_host_os_get_system_tick(void) {
 void nso_host_tls_init_noop(void) {
     /* No-op C++ thread_local init for trivial / statically initialized TLS objects */
 }
+
+__attribute__((weak)) nb_scope *guest_process_current_boundary(void) {
+    return NULL;
+}
+__attribute__((weak)) int guest_process_current_tls_template(guest_tp_template *out) {
+    (void)out;
+    return 0;
+}
+__attribute__((weak)) void guest_process_bind_child_thread(void) {}
+__attribute__((weak)) void guest_process_unbind_child_thread(void) {}
+__attribute__((weak)) nb_status nb_call_child(nb_scope *scope, void (*guest_entry)(void),
+                                              nb_registers *registers, uintptr_t guest_sp) {
+    (void)scope; (void)guest_entry; (void)registers; (void)guest_sp;
+    return NB_UNSUPPORTED;
+}
+
+enum {
+    NN_THREAD_TYPE_SIZE = 0x1c0,
+    NN_THREAD_STATE_OFFSET = 0x40,
+    NN_THREAD_PRIORITY_OFFSET = 0x44,
+    NN_THREAD_STACK_OFFSET = 0x48,
+    NN_THREAD_STACK_SIZE_OFFSET = 0x58,
+    NN_THREAD_ARG_OFFSET = 0x60,
+    NN_THREAD_ENTRY_OFFSET = 0x68,
+    NN_THREAD_NAME_BUF_OFFSET = 0x180,
+    NN_THREAD_NAME_PTR_OFFSET = 0x1a0,
+    NN_THREAD_HANDLE_OFFSET = 0x1b0,
+    NN_THREAD_ID_OFFSET = 0x1b8,
+};
+
+#define MAX_HOST_THREADS 32
+
+typedef struct nso_host_thread {
+    pthread_t host_thread;
+    uint64_t tid;
+    void *guest_thread_type;
+    void (*guest_entry)(void *);
+    void *guest_arg;
+    uintptr_t guest_sp;
+    size_t guest_stack_size;
+    int priority;
+    char name[32];
+    guest_tp_mirror *tp_mirror;
+    nb_scope *boundary_scope;
+    pthread_mutex_t mutex;
+    pthread_cond_t start_cond;
+    pthread_cond_t ready_cond;
+    pthread_cond_t done_cond;
+    bool ready;
+    bool started;
+    bool finished;
+    bool joined;
+    bool active;
+} nso_host_thread;
+
+static pthread_mutex_t s_threads_mutex = PTHREAD_MUTEX_INITIALIZER;
+static nso_host_thread s_host_threads[MAX_HOST_THREADS] = {{0}};
+
+static uint64_t current_native_tid(void) {
+#if defined(__ANDROID__)
+    return (uint64_t)gettid();
+#elif defined(__APPLE__)
+    uint64_t tid = 0;
+    pthread_threadid_np(NULL, &tid);
+    return tid;
+#elif defined(__linux__)
+    return (uint64_t)syscall(SYS_gettid);
+#else
+    return (uint64_t)(uintptr_t)pthread_self();
+#endif
+}
+
+static nso_host_thread *find_thread_locked(const void *thread) {
+    if (!thread) return NULL;
+    for (int i = 0; i < MAX_HOST_THREADS; i++) {
+        if (s_host_threads[i].active && s_host_threads[i].guest_thread_type == thread) {
+            return &s_host_threads[i];
+        }
+    }
+    return NULL;
+}
+
+static void *thread_worker(void *arg) {
+    nso_host_thread *th = (nso_host_thread *)arg;
+    uint64_t tid = current_native_tid();
+
+    pthread_mutex_lock(&th->mutex);
+    th->tid = tid;
+    if (th->guest_thread_type) {
+        *(uint64_t *)((char *)th->guest_thread_type + NN_THREAD_ID_OFFSET) = tid;
+    }
+    th->ready = true;
+    pthread_cond_broadcast(&th->ready_cond);
+
+    while (!th->started) {
+        pthread_cond_wait(&th->start_cond, &th->mutex);
+    }
+    pthread_mutex_unlock(&th->mutex);
+
+    if (guest_process_bind_child_thread) {
+        guest_process_bind_child_thread();
+    }
+
+    if (th->name[0]) {
+#if defined(__ANDROID__)
+        pthread_setname_np(pthread_self(), th->name);
+#elif defined(__APPLE__)
+        pthread_setname_np(th->name);
+#endif
+    }
+
+    if (th->tp_mirror) {
+        guest_tp_bind_current(th->tp_mirror);
+        fprintf(stderr, "[hle] thread tid=%" PRIu64 " bound guest TP base=%p span=%zu\n",
+                th->tid, (void *)guest_tp_mirror_base(th->tp_mirror), guest_tp_mirror_span(th->tp_mirror));
+    }
+
+    nb_scope *scope = th->boundary_scope ? th->boundary_scope :
+                      (guest_process_current_boundary ? guest_process_current_boundary() : NULL);
+    if (scope && nb_call_child) {
+        nb_registers pkt = {0};
+        pkt.x[0] = (uint64_t)(uintptr_t)th->guest_arg;
+        fprintf(stderr, "[hle] child thread tid=%" PRIu64 " entering guest_entry=%p sp=0x%" PRIxPTR " arg=%p\n",
+                th->tid, (void *)th->guest_entry, th->guest_sp, th->guest_arg);
+        nb_status s = nb_call_child(scope, (void (*)(void))th->guest_entry, &pkt, th->guest_sp);
+        fprintf(stderr, "[hle] child thread tid=%" PRIu64 " returned from guest_entry status=%d x0=0x%" PRIx64 "\n",
+                th->tid, s, pkt.x[0]);
+    } else {
+        if (th->guest_entry) {
+            th->guest_entry(th->guest_arg);
+        }
+    }
+
+    if (th->tp_mirror) {
+        guest_tp_unbind_current();
+        th->tp_mirror = NULL;
+    }
+    if (guest_process_unbind_child_thread) {
+        guest_process_unbind_child_thread();
+    }
+
+    pthread_mutex_lock(&th->mutex);
+    th->finished = true;
+    if (th->guest_thread_type) {
+        *(uint8_t *)((char *)th->guest_thread_type + NN_THREAD_STATE_OFFSET) = 3; /* Finished */
+    }
+    pthread_cond_broadcast(&th->done_cond);
+    pthread_mutex_unlock(&th->mutex);
+
+    return NULL;
+}
+
+int32_t nso_host_create_thread(void *thread, void (*entry)(void *), void *arg,
+                               void *stack, size_t stack_size, int32_t priority) {
+    if (!thread || !entry || !stack || stack_size < 16384) {
+        fprintf(stderr, "[hle] CreateThread invalid params: t=%p entry=%p stack=%p size=%zu prio=%d\n",
+                thread, (void *)entry, stack, stack_size, priority);
+        return 0x64;
+    }
+
+    memset(thread, 0, NN_THREAD_TYPE_SIZE);
+    *(uint8_t *)((char *)thread + NN_THREAD_STATE_OFFSET) = 1;
+    *(int16_t *)((char *)thread + NN_THREAD_PRIORITY_OFFSET) = (int16_t)priority;
+    *(void **)((char *)thread + NN_THREAD_STACK_OFFSET) = stack;
+    *(size_t *)((char *)thread + NN_THREAD_STACK_SIZE_OFFSET) = stack_size;
+    *(void **)((char *)thread + NN_THREAD_ARG_OFFSET) = arg;
+    *(void **)((char *)thread + NN_THREAD_ENTRY_OFFSET) = (void *)entry;
+    ((char *)thread + NN_THREAD_NAME_BUF_OFFSET)[0] = '\0';
+    *(const char **)((char *)thread + NN_THREAD_NAME_PTR_OFFSET) = (char *)thread + NN_THREAD_NAME_BUF_OFFSET;
+
+    uintptr_t initial_sp = ((uintptr_t)stack + stack_size) & ~15ULL;
+
+    guest_tp_template tpl = {0};
+    if (!guest_process_current_tls_template || !guest_process_current_tls_template(&tpl) || tpl.total_size == 0) {
+        tpl = (guest_tp_template){
+            .initialized_data = NULL,
+            .initialized_size = 0,
+            .total_size = 0x1019,
+            .alignment = 8,
+            .reserved_header_size = 0x10,
+        };
+    }
+    guest_tp_mirror *mirror = NULL;
+    struct guest_tp_result tpres = guest_tp_mirror_create(&tpl, &mirror);
+    if (tpres.status != GUEST_TP_OK || !mirror) {
+        fprintf(stderr, "[hle] CreateThread failed to allocate guest TP mirror status=%d\n", tpres.status);
+        return 0x64;
+    }
+
+    pthread_mutex_lock(&s_threads_mutex);
+    nso_host_thread *th = NULL;
+    for (int i = 0; i < MAX_HOST_THREADS; i++) {
+        if (!s_host_threads[i].active) {
+            th = &s_host_threads[i];
+            break;
+        }
+    }
+    if (!th) {
+        pthread_mutex_unlock(&s_threads_mutex);
+        guest_tp_mirror_free(mirror);
+        fprintf(stderr, "[hle] CreateThread: out of thread slots\n");
+        return 0x64;
+    }
+
+    memset(th, 0, sizeof(*th));
+    th->active = true;
+    th->guest_thread_type = thread;
+    th->guest_entry = entry;
+    th->guest_arg = arg;
+    th->guest_sp = initial_sp;
+    th->guest_stack_size = stack_size;
+    th->priority = priority;
+    th->tp_mirror = mirror;
+    th->boundary_scope = guest_process_current_boundary ? guest_process_current_boundary() : NULL;
+    pthread_mutex_init(&th->mutex, NULL);
+    pthread_cond_init(&th->start_cond, NULL);
+    pthread_cond_init(&th->ready_cond, NULL);
+    pthread_cond_init(&th->done_cond, NULL);
+
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setstacksize(&attr, 1024 * 1024);
+    int rc = pthread_create(&th->host_thread, &attr, thread_worker, th);
+    pthread_attr_destroy(&attr);
+    if (rc != 0) {
+        th->active = false;
+        pthread_mutex_unlock(&s_threads_mutex);
+        guest_tp_mirror_free(mirror);
+        fprintf(stderr, "[hle] CreateThread: pthread_create failed rc=%d\n", rc);
+        return 0x64;
+    }
+
+    pthread_mutex_lock(&th->mutex);
+    while (!th->ready) {
+        pthread_cond_wait(&th->ready_cond, &th->mutex);
+    }
+    uint64_t tid = th->tid;
+    pthread_mutex_unlock(&th->mutex);
+    pthread_mutex_unlock(&s_threads_mutex);
+
+    fprintf(stderr, "[hle] nn::os::CreateThread: thread=%p entry=%p arg=%p stack=%p size=0x%zx prio=%d tid=%" PRIu64 "\n",
+            thread, (void *)entry, arg, stack, stack_size, priority, tid);
+    return 0;
+}
+
+int32_t nso_host_create_thread_7(void *thread, void (*entry)(void *), void *arg,
+                                 void *stack, size_t stack_size, int32_t priority, int32_t ideal_core) {
+    (void)ideal_core;
+    return nso_host_create_thread(thread, entry, arg, stack, stack_size, priority);
+}
+
+void nso_host_start_thread(void *thread) {
+    if (!thread) return;
+    pthread_mutex_lock(&s_threads_mutex);
+    nso_host_thread *th = find_thread_locked(thread);
+    if (th) {
+        pthread_mutex_lock(&th->mutex);
+        th->started = true;
+        *(uint8_t *)((char *)thread + NN_THREAD_STATE_OFFSET) = 2; /* Started */
+        pthread_cond_signal(&th->start_cond);
+        fprintf(stderr, "[hle] nn::os::StartThread: thread=%p tid=%" PRIu64 "\n", thread, th->tid);
+        pthread_mutex_unlock(&th->mutex);
+    }
+    pthread_mutex_unlock(&s_threads_mutex);
+}
+
+void nso_host_wait_thread(void *thread) {
+    if (!thread) return;
+    pthread_mutex_lock(&s_threads_mutex);
+    nso_host_thread *th = find_thread_locked(thread);
+    if (!th) {
+        pthread_mutex_unlock(&s_threads_mutex);
+        return;
+    }
+    pthread_mutex_lock(&th->mutex);
+    pthread_mutex_unlock(&s_threads_mutex);
+
+    while (!th->finished) {
+        pthread_cond_wait(&th->done_cond, &th->mutex);
+    }
+    if (!th->joined) {
+        th->joined = true;
+        pthread_mutex_unlock(&th->mutex);
+        pthread_join(th->host_thread, NULL);
+        fprintf(stderr, "[hle] nn::os::WaitThread: thread=%p tid=%" PRIu64 " joined\n", thread, th->tid);
+    } else {
+        pthread_mutex_unlock(&th->mutex);
+    }
+}
+
+void nso_host_destroy_thread(void *thread) {
+    if (!thread) return;
+    pthread_mutex_lock(&s_threads_mutex);
+    nso_host_thread *th = find_thread_locked(thread);
+    if (th) {
+        if (!th->joined) {
+            th->joined = true;
+            pthread_join(th->host_thread, NULL);
+        }
+        if (th->tp_mirror) {
+            guest_tp_mirror_free(th->tp_mirror);
+            th->tp_mirror = NULL;
+        }
+        pthread_mutex_destroy(&th->mutex);
+        pthread_cond_destroy(&th->start_cond);
+        pthread_cond_destroy(&th->ready_cond);
+        pthread_cond_destroy(&th->done_cond);
+        th->active = false;
+        fprintf(stderr, "[hle] nn::os::DestroyThread: thread=%p\n", thread);
+    }
+    *(uint8_t *)((char *)thread + NN_THREAD_STATE_OFFSET) = 0;
+    pthread_mutex_unlock(&s_threads_mutex);
+}
+
+void nso_host_set_thread_name(void *thread, const char *name) {
+    if (!thread) return;
+    char *buf = (char *)thread + NN_THREAD_NAME_BUF_OFFSET;
+    strncpy(buf, name ? name : "", 31);
+    buf[31] = '\0';
+    *(const char **)((char *)thread + NN_THREAD_NAME_PTR_OFFSET) = buf;
+
+    pthread_mutex_lock(&s_threads_mutex);
+    nso_host_thread *th = find_thread_locked(thread);
+    if (th) {
+        strncpy(th->name, buf, 31);
+        th->name[31] = '\0';
+#if defined(__ANDROID__)
+        if (th->started && !th->finished) {
+            pthread_setname_np(th->host_thread, th->name);
+        }
+#endif
+    }
+    pthread_mutex_unlock(&s_threads_mutex);
+    fprintf(stderr, "[hle] nn::os::SetThreadName: thread=%p name='%s'\n", thread, buf);
+}
+
+void nso_host_set_thread_name_pointer(void *thread, const char *name) {
+    if (!thread) return;
+    *(const char **)((char *)thread + NN_THREAD_NAME_PTR_OFFSET) = name;
+    fprintf(stderr, "[hle] nn::os::SetThreadNamePointer: thread=%p name='%s'\n", thread, name ? name : "");
+}
+
+const char *nso_host_get_thread_name_pointer(const void *thread) {
+    if (!thread) return "";
+    const char *p = *(const char **)((const char *)thread + NN_THREAD_NAME_PTR_OFFSET);
+    return p ? p : "";
+}
+
+int32_t nso_host_get_thread_priority(const void *thread) {
+    if (!thread) return 16;
+    return *(const int16_t *)((const char *)thread + NN_THREAD_PRIORITY_OFFSET);
+}
+
+int32_t nso_host_get_thread_current_priority(const void *thread) {
+    return nso_host_get_thread_priority(thread);
+}
+
+void nso_host_change_thread_priority(void *thread, int32_t priority) {
+    if (!thread) return;
+    *(int16_t *)((char *)thread + NN_THREAD_PRIORITY_OFFSET) = (int16_t)priority;
+    pthread_mutex_lock(&s_threads_mutex);
+    nso_host_thread *th = find_thread_locked(thread);
+    if (th) th->priority = priority;
+    pthread_mutex_unlock(&s_threads_mutex);
+}
+
+uint64_t nso_host_get_thread_id(const void *thread) {
+    if (!thread) {
+        return current_native_tid();
+    }
+    uint64_t tid = *(const uint64_t *)((const char *)thread + NN_THREAD_ID_OFFSET);
+    if (tid != 0) return tid;
+    pthread_mutex_lock(&s_threads_mutex);
+    nso_host_thread *th = find_thread_locked(thread);
+    if (th && th->tid != 0) tid = th->tid;
+    pthread_mutex_unlock(&s_threads_mutex);
+    return tid;
+}
+
+void nso_host_sleep_thread(int64_t nanoseconds) {
+    if (nanoseconds <= 0) return;
+    struct timespec ts = {
+        .tv_sec = nanoseconds / 1000000000LL,
+        .tv_nsec = nanoseconds % 1000000000LL
+    };
+    nanosleep(&ts, NULL);
+}
+
+void nso_host_yield_thread(void) {
+    sched_yield();
+}
+
+void nso_host_set_thread_core_mask(void *thread, int32_t ideal_core, uint64_t affinity_mask) {
+    (void)thread; (void)ideal_core; (void)affinity_mask;
+}
+
+void nso_host_get_thread_core_mask(int32_t *out_ideal_core, uint64_t *out_affinity_mask, const void *thread) {
+    (void)thread;
+    if (out_ideal_core) *out_ideal_core = -1;
+    if (out_affinity_mask) *out_affinity_mask = 0x7ULL;
+}
+
+uint64_t nso_host_get_thread_available_core_mask(void) {
+    return 0x7ULL;
+}
+
+void *nso_host_get_current_thread(void) {
+    pthread_t self = pthread_self();
+    pthread_mutex_lock(&s_threads_mutex);
+    for (int i = 0; i < MAX_HOST_THREADS; i++) {
+        if (s_host_threads[i].active && pthread_equal(s_host_threads[i].host_thread, self)) {
+            void *t = s_host_threads[i].guest_thread_type;
+            pthread_mutex_unlock(&s_threads_mutex);
+            return t;
+        }
+    }
+    pthread_mutex_unlock(&s_threads_mutex);
+    static char s_main_thread_storage[NN_THREAD_TYPE_SIZE] = {0};
+    static bool s_main_inited = false;
+    if (!s_main_inited) {
+        s_main_inited = true;
+        *(uint8_t *)(s_main_thread_storage + NN_THREAD_STATE_OFFSET) = 2; /* Started */
+        *(int16_t *)(s_main_thread_storage + NN_THREAD_PRIORITY_OFFSET) = 16;
+        *(const char **)(s_main_thread_storage + NN_THREAD_NAME_PTR_OFFSET) = "MainThread";
+        *(uint64_t *)(s_main_thread_storage + NN_THREAD_ID_OFFSET) = nso_host_get_thread_id(NULL);
+    }
+    return s_main_thread_storage;
+}
+
+int32_t nso_host_movie_get_thread_priority(void) {
+    return 16;
+}
+
+void nso_host_movie_set_thread_priority(int32_t p) {
+    (void)p;
+}
 void nso_host_set_extension_resolver(nso_import_fn resolver) {extension_resolver=resolver;}
 uint64_t nso_host_resolve(uint32_t index,const char *name) {
     if(!name)return 0;
@@ -191,6 +637,46 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_is_write_lock_held_by_current_thread;
     if(!strcmp(name,"_ZN2nn2os14IsReadLockHeldEPKNS0_20ReaderWriterLockTypeE"))
         return (uint64_t)(uintptr_t)&nso_host_is_read_lock_held;
+    if(!strcmp(name,"_ZN2nn2os12CreateThreadEPNS0_10ThreadTypeEPFvPvES3_S3_mi") || !strcmp(name,"nnosCreateThread"))
+        return (uint64_t)(uintptr_t)&nso_host_create_thread;
+    if(!strcmp(name,"_ZN2nn2os12CreateThreadEPNS0_10ThreadTypeEPFvPvES3_S3_mii"))
+        return (uint64_t)(uintptr_t)&nso_host_create_thread_7;
+    if(!strcmp(name,"_ZN2nn2os11StartThreadEPNS0_10ThreadTypeE") || !strcmp(name,"nnosStartThread"))
+        return (uint64_t)(uintptr_t)&nso_host_start_thread;
+    if(!strcmp(name,"_ZN2nn2os10WaitThreadEPNS0_10ThreadTypeE") || !strcmp(name,"nnosWaitThread"))
+        return (uint64_t)(uintptr_t)&nso_host_wait_thread;
+    if(!strcmp(name,"_ZN2nn2os13DestroyThreadEPNS0_10ThreadTypeE") || !strcmp(name,"nnosDestroyThread"))
+        return (uint64_t)(uintptr_t)&nso_host_destroy_thread;
+    if(!strcmp(name,"_ZN2nn2os13SetThreadNameEPNS0_10ThreadTypeEPKc"))
+        return (uint64_t)(uintptr_t)&nso_host_set_thread_name;
+    if(!strcmp(name,"_ZN2nn2os20SetThreadNamePointerEPNS0_10ThreadTypeEPKc") || !strcmp(name,"nnosSetThreadNamePointer"))
+        return (uint64_t)(uintptr_t)&nso_host_set_thread_name_pointer;
+    if(!strcmp(name,"_ZN2nn2os20GetThreadNamePointerEPKNS0_10ThreadTypeE"))
+        return (uint64_t)(uintptr_t)&nso_host_get_thread_name_pointer;
+    if(!strcmp(name,"_ZN2nn2os17GetThreadPriorityEPKNS0_10ThreadTypeE") || !strcmp(name,"nnosGetThreadPriority"))
+        return (uint64_t)(uintptr_t)&nso_host_get_thread_priority;
+    if(!strcmp(name,"_ZN2nn2os24GetThreadCurrentPriorityEPKNS0_10ThreadTypeE"))
+        return (uint64_t)(uintptr_t)&nso_host_get_thread_current_priority;
+    if(!strcmp(name,"_ZN2nn2os20ChangeThreadPriorityEPNS0_10ThreadTypeEi"))
+        return (uint64_t)(uintptr_t)&nso_host_change_thread_priority;
+    if(!strcmp(name,"_ZN2nn2os11GetThreadIdEPKNS0_10ThreadTypeE") || !strcmp(name,"nnosGetThreadId"))
+        return (uint64_t)(uintptr_t)&nso_host_get_thread_id;
+    if(!strcmp(name,"_ZN2nn2os16GetCurrentThreadEv") || !strcmp(name,"nnosGetCurrentThread"))
+        return (uint64_t)(uintptr_t)&nso_host_get_current_thread;
+    if(!strcmp(name,"_ZN2nn2os11SleepThreadENS_8TimeSpanE") || !strcmp(name,"nnosSleepThread"))
+        return (uint64_t)(uintptr_t)&nso_host_sleep_thread;
+    if(!strcmp(name,"_ZN2nn2os11YieldThreadEv"))
+        return (uint64_t)(uintptr_t)&nso_host_yield_thread;
+    if(!strcmp(name,"_ZN2nn2os17SetThreadCoreMaskEPNS0_10ThreadTypeEim") || !strcmp(name,"nnosSetThreadCoreMask"))
+        return (uint64_t)(uintptr_t)&nso_host_set_thread_core_mask;
+    if(!strcmp(name,"_ZN2nn2os17GetThreadCoreMaskEPiPmPKNS0_10ThreadTypeE") || !strcmp(name,"nnosGetThreadCoreMask"))
+        return (uint64_t)(uintptr_t)&nso_host_get_thread_core_mask;
+    if(!strcmp(name,"_ZN2nn2os26GetThreadAvailableCoreMaskEv"))
+        return (uint64_t)(uintptr_t)&nso_host_get_thread_available_core_mask;
+    if(!strcmp(name,"_ZN5movie17GetThreadPriorityEv"))
+        return (uint64_t)(uintptr_t)&nso_host_movie_get_thread_priority;
+    if(!strcmp(name,"_ZN5movie17SetThreadPriorityEi"))
+        return (uint64_t)(uintptr_t)&nso_host_movie_set_thread_priority;
     if(!strcmp(name,"atexit"))return (uint64_t)(uintptr_t)&nso_host_atexit;
     if(!strcmp(name,"__cxa_atexit"))return (uint64_t)(uintptr_t)&nso_host_cxa_atexit;
     if(!strcmp(name,"__cxa_finalize"))return (uint64_t)(uintptr_t)&nso_host_cxa_finalize;

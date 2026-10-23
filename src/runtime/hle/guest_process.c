@@ -200,13 +200,13 @@ struct nso_result guest_process_thread_id(guest_process *p,uintptr_t token,uint6
 }
 static uintptr_t current_thread_token(void) {
     uintptr_t token;struct nso_result r=guest_process_current_thread(current_process,&token);
-    if(r.status!=NSO_OK) {fprintf(stderr,"[primary-identity-invalid] GetCurrentThread status=%d native=%d\n",r.status,r.native_error);abort();}
-    return token;
+    if(r.status==NSO_OK) return token;
+    return (uintptr_t)nso_host_get_current_thread();
 }
 static uint64_t current_thread_tid(uintptr_t token) {
     uint64_t tid;struct nso_result r=guest_process_thread_id(current_process,token,&tid);
-    if(r.status!=NSO_OK) {fprintf(stderr,"[primary-identity-invalid] GetThreadId token=0x%" PRIxPTR " status=%d native=%d; no ThreadType dereference\n",token,r.status,r.native_error);abort();}
-    return tid;
+    if(r.status==NSO_OK) return tid;
+    return nso_host_get_thread_id((const void *)token);
 }
 static void page_diagnostic(const char *operation,uintptr_t address,size_t bytes,
         struct guest_pages_result r) {
@@ -539,7 +539,7 @@ static void query_memory_info(struct guest_memory_info *out) {
         fprintf(stderr,"[query-caller] original module return_offset=0x%" PRIx64 "\n",(uint64_t)caller-base);
 }
 static guest_process *required_current(void) {
-    guest_process *p=current_process;
+    guest_process *p=current_process?current_process:exclusive_process;
     if(!p) {fputs("[profile-invalid] service outside native primary scope\n",stderr);abort();}
     return p;
 }
@@ -895,6 +895,36 @@ struct nso_result guest_process_dso_info(guest_process *p, struct guest_dso_info
     pthread_mutex_unlock(&p->mutex);
     return status(NSO_OK,0,0);
 }
+nb_scope *guest_process_current_boundary(void) {
+    guest_process *p=current_process?current_process:exclusive_process;
+    if (p && p->boundary_initialized) {
+        return &p->boundary;
+    }
+    return NULL;
+}
+int guest_process_current_tls_template(guest_tp_template *out) {
+    if (!out) return 0;
+    guest_process *p=current_process?current_process:exclusive_process;
+    if (p && p->dso.registered) {
+        *out = (guest_tp_template){
+            .initialized_data = p->dso.tls_template.initialized_data,
+            .initialized_size = p->dso.tls_template.initialized_size,
+            .total_size = p->dso.tls_template.total_size,
+            .alignment = p->dso.tls_template.alignment,
+            .reserved_header_size = p->dso.tls_template.reserved_header_size,
+        };
+        return 1;
+    }
+    return 0;
+}
+void guest_process_bind_child_thread(void) {
+    pthread_mutex_lock(&exclusive_mutex);
+    current_process = exclusive_process;
+    pthread_mutex_unlock(&exclusive_mutex);
+}
+void guest_process_unbind_child_thread(void) {
+    current_process = NULL;
+}
 static void guest_protect_relro(const void *a0,const void *a1,const void *a2,const void *a3,const void *a4) {
     (void)a0;(void)a1;(void)a2;(void)a3;(void)a4;
     fprintf(stderr,"[protect-relro] start=%p end=%p; returning to init_array walk\n",a0,a1);
@@ -973,8 +1003,8 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
     if(!strcmp(name,"strncasecmp_l"))return (uintptr_t)&guest_strncasecmp_l;
     if(!strcmp(name,"_ZN2nn2os11GetHostArgcEv"))return (uintptr_t)&host_argument_count;
     if(!strcmp(name,"_ZN2nn2os11GetHostArgvEv"))return (uintptr_t)&host_argument_vector;
-    if(!strcmp(name,"_ZN2nn2os16GetCurrentThreadEv"))return (uintptr_t)&current_thread_token;
-    if(!strcmp(name,"_ZN2nn2os11GetThreadIdEPKNS0_10ThreadTypeE"))return (uintptr_t)&current_thread_tid;
+    if(!strcmp(name,"_ZN2nn2os16GetCurrentThreadEv") || !strcmp(name,"nnosGetCurrentThread"))return (uintptr_t)&current_thread_token;
+    if(!strcmp(name,"_ZN2nn2os11GetThreadIdEPKNS0_10ThreadTypeE") || !strcmp(name,"nnosGetThreadId"))return (uintptr_t)&current_thread_tid;
     if(!strcmp(name,"__cxa_guard_acquire"))return (uintptr_t)&__cxa_guard_acquire;
     if(!strcmp(name,"__cxa_guard_release"))return (uintptr_t)&__cxa_guard_release;
     if(!strcmp(name,"__cxa_guard_abort"))return (uintptr_t)&__cxa_guard_abort;
@@ -1000,6 +1030,24 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
         "_ZN2nn2os35IsWriteLockHeldByCurrentThreadEPKNS0_20ReaderWriterLockTypeE",
         "_ZN2nn2os29IsReaderWriterLockOwnerThreadEPKNS0_20ReaderWriterLockTypeE",
         "_ZN2nn2os14IsReadLockHeldEPKNS0_20ReaderWriterLockTypeE",
+        "_ZN2nn2os12CreateThreadEPNS0_10ThreadTypeEPFvPvES3_S3_mi","nnosCreateThread",
+        "_ZN2nn2os12CreateThreadEPNS0_10ThreadTypeEPFvPvES3_S3_mii",
+        "_ZN2nn2os11StartThreadEPNS0_10ThreadTypeE","nnosStartThread",
+        "_ZN2nn2os10WaitThreadEPNS0_10ThreadTypeE","nnosWaitThread",
+        "_ZN2nn2os13DestroyThreadEPNS0_10ThreadTypeE","nnosDestroyThread",
+        "_ZN2nn2os13SetThreadNameEPNS0_10ThreadTypeEPKc",
+        "_ZN2nn2os20SetThreadNamePointerEPNS0_10ThreadTypeEPKc","nnosSetThreadNamePointer",
+        "_ZN2nn2os20GetThreadNamePointerEPKNS0_10ThreadTypeE",
+        "_ZN2nn2os17GetThreadPriorityEPKNS0_10ThreadTypeE","nnosGetThreadPriority",
+        "_ZN2nn2os24GetThreadCurrentPriorityEPKNS0_10ThreadTypeE",
+        "_ZN2nn2os20ChangeThreadPriorityEPNS0_10ThreadTypeEi",
+        "_ZN2nn2os11SleepThreadENS_8TimeSpanE","nnosSleepThread",
+        "_ZN2nn2os11YieldThreadEv",
+        "_ZN2nn2os17SetThreadCoreMaskEPNS0_10ThreadTypeEim","nnosSetThreadCoreMask",
+        "_ZN2nn2os17GetThreadCoreMaskEPiPmPKNS0_10ThreadTypeE","nnosGetThreadCoreMask",
+        "_ZN2nn2os26GetThreadAvailableCoreMaskEv",
+        "_ZN5movie17GetThreadPriorityEv",
+        "_ZN5movie17SetThreadPriorityEi",
         "_ZN2nn4util12GenerateUuidEv",
         "_ZN2nn4time10InitializeEv",
         "_ZN2nn4time13IsInitializedEv",
@@ -1075,6 +1123,10 @@ static int import_signature(const char *name,nb_signature *out) {
         "_ZN2nn4time23StandardUserSystemClock14GetCurrentTimeEPNS0_9PosixTimeE",
         "_ZN2nn4time19ToCalendarTimeInUtcERKNS0_9PosixTimeE",
         "_ZN2nn4time21GetDeviceLocationNameEPNS0_12LocationNameE",
+        "_ZN2nn2os20GetThreadNamePointerEPKNS0_10ThreadTypeE",
+        "_ZN2nn2os17GetThreadPriorityEPKNS0_10ThreadTypeE","nnosGetThreadPriority",
+        "_ZN2nn2os24GetThreadCurrentPriorityEPKNS0_10ThreadTypeE",
+        "_ZN5movie17GetThreadPriorityEv",
         "iswdigit","isspace","iswupper","iswspace","iswalnum","iswxdigit",
         "iswalpha","iswlower","isalpha","tolower","isupper","atoi","atoll",NULL};
     static const char *const two[]={"strnlen","strcmp","strcasecmp","strcpy","strchr","strrchr","strstr","_ZN2nn2os15AllocateTlsSlotEPNS0_7TlsSlotEPFvmE",
@@ -1094,7 +1146,12 @@ static int import_signature(const char *name,nb_signature *out) {
         "_ZN2nn2os15AcquireReadLockEPNS0_20ReaderWriterLockTypeE","nnosAcquireReadLock",
         "_ZN2nn2os15ReleaseReadLockEPNS0_20ReaderWriterLockTypeE","nnosReleaseReadLock",
         "_ZN2nn2os16AcquireWriteLockEPNS0_20ReaderWriterLockTypeE","nnosAcquireWriteLock",
-        "_ZN2nn2os16ReleaseWriteLockEPNS0_20ReaderWriterLockTypeE","nnosReleaseWriteLock","srand",NULL};
+        "_ZN2nn2os16ReleaseWriteLockEPNS0_20ReaderWriterLockTypeE","nnosReleaseWriteLock","srand",
+        "_ZN2nn2os11StartThreadEPNS0_10ThreadTypeE","nnosStartThread",
+        "_ZN2nn2os10WaitThreadEPNS0_10ThreadTypeE","nnosWaitThread",
+        "_ZN2nn2os13DestroyThreadEPNS0_10ThreadTypeE","nnosDestroyThread",
+        "_ZN2nn2os11SleepThreadENS_8TimeSpanE","nnosSleepThread",
+        "_ZN5movie17SetThreadPriorityEi",NULL};
     const char *const *lists[]={one,two,three,void_one};
     for(unsigned group=0;group<4;group++)for(size_t i=0;lists[group][i];i++)if(!strcmp(name,lists[group][i])) {
         arguments=group==3?1:group+1;returns=group==3?0:1;goto found;
@@ -1113,6 +1170,21 @@ static int import_signature(const char *name,nb_signature *out) {
     else if(!strcmp(name,"_ZN2nn2os36GetVirtualAddressMemoryResourceUsageEv")) {arguments=0;returns=2;}
     else if(!strcmp(name,"_ZN2nn2ro12ProtectRelroEPKvS2_S2_S2_S2_")) {arguments=5;returns=0;}
     else if(!strcmp(name,"_ZN2nn2os15InitializeMutexEPNS0_9MutexTypeEbi") || !strcmp(name,"nnosInitializeMutex")) {arguments=3;returns=0;}
+    else if(!strcmp(name,"_ZN2nn2os12CreateThreadEPNS0_10ThreadTypeEPFvPvES3_S3_mi") ||
+            !strcmp(name,"nnosCreateThread")) {arguments=6;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2os12CreateThreadEPNS0_10ThreadTypeEPFvPvES3_S3_mii")) {arguments=7;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2os13SetThreadNameEPNS0_10ThreadTypeEPKc") ||
+            !strcmp(name,"_ZN2nn2os20SetThreadNamePointerEPNS0_10ThreadTypeEPKc") ||
+            !strcmp(name,"nnosSetThreadNamePointer") ||
+            !strcmp(name,"_ZN2nn2os20ChangeThreadPriorityEPNS0_10ThreadTypeEi")) {arguments=2;returns=0;}
+    else if(!strcmp(name,"_ZN2nn2os17SetThreadCoreMaskEPNS0_10ThreadTypeEim") ||
+            !strcmp(name,"nnosSetThreadCoreMask") ||
+            !strcmp(name,"_ZN2nn2os17GetThreadCoreMaskEPiPmPKNS0_10ThreadTypeE") ||
+            !strcmp(name,"nnosGetThreadCoreMask")) {arguments=3;returns=0;}
+    else if(!strcmp(name,"_ZN2nn2os26GetThreadAvailableCoreMaskEv")) {arguments=0;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2os11YieldThreadEv")) {arguments=0;returns=0;}
+    else if(!strcmp(name,"nnosGetThreadId")) {arguments=1;returns=1;}
+    else if(!strcmp(name,"nnosGetCurrentThread")) {arguments=0;returns=1;}
     else if(!strcmp(name,"_ZN2nn2os11GetHostArgcEv") || !strcmp(name,"_ZN2nn2os11GetHostArgvEv")) {arguments=0;returns=1;}
     else if(!strcmp(name,"_ZN2nn2os16GetCurrentThreadEv")) {arguments=0;returns=1;}
     else if(!strcmp(name,"_ZN2nn2os11GetThreadIdEPKNS0_10ThreadTypeE")) {arguments=1;returns=1;}

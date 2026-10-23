@@ -46,6 +46,19 @@ typedef struct nb_registers {
 
 typedef struct nb_stack13 { uint64_t words[13]; } nb_stack13;
 
+enum { NB_MAX_GUEST_THREADS = 32 };
+
+typedef struct nb_thread_slot {
+    uint64_t tpidr;             /* offset 0 */
+    uint64_t owner_tp;          /* offset 8 */
+    uint64_t host_x18;          /* offset 16 */
+    uint64_t phase;             /* offset 24: 0=IDLE, 1=GUEST, 2=HOST */
+    uint64_t callback_depth;    /* offset 32 */
+    nb_scope *scope;            /* offset 40 */
+    uint64_t active_guest_x18;  /* offset 48 */
+    uint64_t reserved;          /* offset 56 */
+} nb_thread_slot;
+
 typedef struct nb_signature {
     uint32_t version;                 /* 1 register-only; 2 fixed GP21; 3 variadic snprintf */
     uint32_t flags;                   /* v2: NB_SIG_FIXED_GP21; v3: NB_SIG_VARIADIC_SNPRINTF */
@@ -122,6 +135,13 @@ nb_status nb_call_from_host(nb_scope *scope, void (*guest_entry)(void), nb_regis
  */
 nb_status nb_call_stack13(nb_scope *scope, void (*guest_entry)(void),
                           nb_registers *registers, const nb_stack13 *stack);
+
+/* Execute guest entry on an authorized child thread of scope on guest_sp.
+ * Captures host x18, registers thread in slot table, restores host SP/x18 on return. */
+nb_status nb_call_child(nb_scope *scope, void (*guest_entry)(void),
+                        nb_registers *registers, uintptr_t guest_sp);
+nb_thread_slot *nb_register_current_thread(nb_scope *scope, uint64_t host_x18);
+void nb_unregister_current_thread(void);
 
 #ifdef __cplusplus
 }

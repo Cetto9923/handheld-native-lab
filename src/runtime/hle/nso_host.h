@@ -46,6 +46,27 @@ uint32_t nso_host_time_to_calendar_time(struct nn_calendar_time *out_cal,
                                         const void *rule);
 uint64_t nso_host_time_to_calendar_time_in_utc(const int64_t *posix_time);
 void nso_host_tls_init_noop(void);
+
+int32_t nso_host_create_thread(void *thread, void (*entry)(void *), void *arg, void *stack, size_t stack_size, int32_t priority);
+int32_t nso_host_create_thread_7(void *thread, void (*entry)(void *), void *arg, void *stack, size_t stack_size, int32_t priority, int32_t ideal_core);
+void nso_host_start_thread(void *thread);
+void nso_host_wait_thread(void *thread);
+void nso_host_destroy_thread(void *thread);
+void nso_host_set_thread_name(void *thread, const char *name);
+void nso_host_set_thread_name_pointer(void *thread, const char *name);
+const char *nso_host_get_thread_name_pointer(const void *thread);
+int32_t nso_host_get_thread_priority(const void *thread);
+int32_t nso_host_get_thread_current_priority(const void *thread);
+void nso_host_change_thread_priority(void *thread, int32_t priority);
+uint64_t nso_host_get_thread_id(const void *thread);
+void nso_host_sleep_thread(int64_t nanoseconds);
+void nso_host_yield_thread(void);
+void nso_host_set_thread_core_mask(void *thread, int32_t ideal_core, uint64_t affinity_mask);
+void nso_host_get_thread_core_mask(int32_t *out_ideal_core, uint64_t *out_affinity_mask, const void *thread);
+uint64_t nso_host_get_thread_available_core_mask(void);
+void *nso_host_get_current_thread(void);
+int32_t nso_host_movie_get_thread_priority(void);
+void nso_host_movie_set_thread_priority(int32_t p);
 #ifdef __cplusplus
 }
 #endif

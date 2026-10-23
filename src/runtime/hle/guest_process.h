@@ -131,6 +131,12 @@ uint32_t guest_process_nnmusl_init_dso(
     uint64_t a10,uint64_t a11,uint64_t a12,uint64_t a13,uint64_t a14,
     uint64_t a15,uint64_t a16,uint64_t a17,uint64_t a18,uint64_t a19,uint64_t a20);
 uint64_t guest_process_resolve(uint32_t,const char *);
+struct nb_scope;
+struct nb_scope *guest_process_current_boundary(void);
+struct guest_tp_template;
+int guest_process_current_tls_template(struct guest_tp_template *out);
+void guest_process_bind_child_thread(void);
+void guest_process_unbind_child_thread(void);
 /* Quiescent only. Failed release retains *process for retry/process shutdown. */
 struct nso_result guest_process_destroy(guest_process **process);
 #ifdef __cplusplus

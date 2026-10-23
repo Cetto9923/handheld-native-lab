@@ -1164,6 +1164,75 @@ static int guest_tp_test_contract(void) {
     puts("{\"guest_tp_errors\":0,\"mirror_model\":true,\"patch_model\":true,\"trap_decision\":true,\"isolation\":true,\"zth_resolved\":true,\"live_mirrors\":0}");
     return 0;
 }
+struct test_thread_context {
+    uint64_t magic;
+    uint64_t value;
+    uint64_t observed_tp;
+    uint64_t thread_id;
+};
+static void test_thread_worker(void *arg) {
+    struct test_thread_context *ctx = (struct test_thread_context *)arg;
+    ctx->value = 0x12345678;
+    ctx->observed_tp = (uint64_t)(uintptr_t)guest_tp_current_base();
+}
+static int threads_contract(void) {
+    typedef int32_t (*create_thread_fn)(void *, void (*)(void *), void *, void *, size_t, int32_t);
+    typedef void (*start_thread_fn)(void *);
+    typedef void (*wait_thread_fn)(void *);
+    typedef void (*destroy_thread_fn)(void *);
+    typedef void (*set_name_fn)(void *, const char *);
+    typedef const char *(*get_name_fn)(const void *);
+    typedef int32_t (*get_priority_fn)(const void *);
+    typedef uint64_t (*get_id_fn)(const void *);
+    typedef void (*sleep_fn)(int64_t);
+    typedef void (*yield_fn)(void);
+    typedef uint64_t (*get_cores_fn)(void);
+
+    create_thread_fn create = (create_thread_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os12CreateThreadEPNS0_10ThreadTypeEPFvPvES3_S3_mi");
+    start_thread_fn start = (start_thread_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os11StartThreadEPNS0_10ThreadTypeE");
+    wait_thread_fn wait = (wait_thread_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os10WaitThreadEPNS0_10ThreadTypeE");
+    destroy_thread_fn destroy = (destroy_thread_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os13DestroyThreadEPNS0_10ThreadTypeE");
+    set_name_fn set_name = (set_name_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os13SetThreadNameEPNS0_10ThreadTypeEPKc");
+    get_name_fn get_name = (get_name_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os20GetThreadNamePointerEPKNS0_10ThreadTypeE");
+    get_priority_fn get_prio = (get_priority_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os17GetThreadPriorityEPKNS0_10ThreadTypeE");
+    get_id_fn get_id = (get_id_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os11GetThreadIdEPKNS0_10ThreadTypeE");
+    sleep_fn sleep_th = (sleep_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os11SleepThreadENS_8TimeSpanE");
+    yield_fn yield_th = (yield_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os11YieldThreadEv");
+    get_cores_fn get_cores = (get_cores_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os26GetThreadAvailableCoreMaskEv");
+
+    CHECK(create && start && wait && destroy && set_name && get_name && get_prio && get_id && sleep_th && yield_th && get_cores);
+
+    CHECK(get_cores() == 0x7ULL);
+    sleep_th(1000);
+    yield_th();
+
+    _Alignas(16) unsigned char thread_obj[0x1c0];
+    memset(thread_obj, 0, sizeof(thread_obj));
+
+    _Alignas(16) unsigned char stack[65536];
+    struct test_thread_context ctx = { .magic = 0xfeedface, .value = 0, .observed_tp = 0, .thread_id = 0 };
+
+    int32_t rc = create(thread_obj, test_thread_worker, &ctx, stack, sizeof(stack), 16);
+    CHECK(rc == 0);
+
+    CHECK(get_prio(thread_obj) == 16);
+    uint64_t tid = get_id(thread_obj);
+    CHECK(tid != 0);
+
+    set_name(thread_obj, "TestThread");
+    CHECK(!strcmp(get_name(thread_obj), "TestThread"));
+
+    start(thread_obj);
+    wait(thread_obj);
+
+    CHECK(ctx.value == 0x12345678);
+    CHECK(ctx.observed_tp != 0);
+
+    destroy(thread_obj);
+
+    puts("{\"thread_errors\":0,\"create\":true,\"start\":true,\"wait\":true,\"destroy\":true,\"name\":true,\"priority\":true,\"tid\":true,\"tp_mirror\":true}");
+    return 0;
+}
 struct log_fixture_io {float input,output;uint64_t guest_x18;};
 _Static_assert(offsetof(struct log_fixture_io,output)==4 && offsetof(struct log_fixture_io,guest_x18)==8,"self-authored float fixture ABI");
 static void *exercise_logf_native(guest_process *p,void *opaque) {
@@ -1795,6 +1864,7 @@ int main(int argc,char **argv) {
     if(argc==2 && !strcmp(argv[1],"--tick"))return tick_contract();
     if(argc==2 && !strcmp(argv[1],"--ctype"))return ctype_contract();
     if(argc==2 && !strcmp(argv[1],"--guest-tp"))return guest_tp_test_contract();
+    if(argc==2 && !strcmp(argv[1],"--threads"))return threads_contract();
     if(argc==2 && !strcmp(argv[1],"--logf"))return logf_contract();
     if(argc==3 && !strcmp(argv[1],"--logf-native"))return logf_native_contract(argv[2]);
     if(argc==2 && !strcmp(argv[1],"--strcasecmp"))return strcasecmp_contract();

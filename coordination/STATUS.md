@@ -1,8 +1,8 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-10-23T18:12:00.000000+00:00
-阶段：T02_ALL_CONSTRUCTORS_PASSED_NNMAIN_REACHED_ON_RG477M: Guest TP mirror/trap, weak TLS inits (_ZTH*), libm (pow, atan2, etc.), and VibrationConverter implemented; all 1,890 constructors executed sequentially to completion on RG477M (13,536 atexit callbacks registered); nnMain reached at offset 0x352f160, blocked on nn::os::CreateThread (import 126)
-总控：Antigravity sole root coordinator — guest TP & weak TLS passed, all 1,890 constructors completed on RG477M, game entered nnMain, frontier reached nn::os::CreateThread
+状态事件时间：2026-10-23T19:25:00.000000+00:00
+阶段：T02_CREATE_THREAD_PASSED_NN_FS_SET_ALLOCATOR_REACHED_ON_RG477M: nn::os::CreateThread / StartThread / WaitThread / DestroyThread / SetThreadName / GetThreadId / GetThreadPriority HLE implemented with independent guest TP mirror; child thread boundary slot table & process binding operational; GameThread spawned and executed on 1MB guest stack; GetHostArgc evaluated; frontier advanced to nn::fs::SetAllocator (symbol 20, caller 0x553c)
+总控：Antigravity sole root coordinator — CreateThread & GameThread verified on RG477M; frontier advanced to nn::fs::SetAllocator
 更新方式：按事件更新，没有后台自动刷新。
 
 | 任务 | 角色 | 状态 | 实际负责人 | 启动依赖 | 验收门禁 | 分支 |

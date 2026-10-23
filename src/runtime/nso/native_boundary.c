@@ -18,6 +18,14 @@ _Static_assert(offsetof(nb_scope,active_guest_x18)==48 && offsetof(nb_scope,call
                "host callback assembly ABI");
 _Static_assert(NB_MAX_CALLBACK_DEPTH==4 && NB_DEPTH_LIMIT==10,"host callback assembly bound/status");
 _Static_assert(sizeof(nb_stack13)==104, "fixed GP21 stack payload");
+_Static_assert(sizeof(nb_thread_slot) == 64, "slot size must be 64 bytes");
+_Static_assert(offsetof(nb_thread_slot, tpidr) == 0, "slot tpidr offset");
+_Static_assert(offsetof(nb_thread_slot, host_x18) == 16, "slot host_x18 offset");
+_Static_assert(offsetof(nb_thread_slot, phase) == 24, "slot phase offset");
+_Static_assert(offsetof(nb_thread_slot, scope) == 40, "slot scope offset");
+_Static_assert(offsetof(nb_thread_slot, active_guest_x18) == 48, "slot active_guest_x18 offset");
+nb_thread_slot s_slots[NB_MAX_GUEST_THREADS] __attribute__((aligned(64))) = {{0}};
+static pthread_mutex_t s_slots_lock = PTHREAD_MUTEX_INITIALIZER;
 typedef struct nb_lifetime { uint64_t live, refs; } nb_lifetime;
 static pthread_key_t lifetime_key;
 static pthread_once_t lifetime_once=PTHREAD_ONCE_INIT;
@@ -165,7 +173,70 @@ void (*nb_import_entry(const nb_import *binding))(void) {
     return binding ? binding->entry : NULL;
 }
 
+#if defined(__ANDROID__) && defined(__aarch64__)
+nb_thread_slot *nb_register_current_thread(nb_scope *scope, uint64_t host_x18) {
+    if (!scope || scope->magic != 0x4e42) return NULL;
+    nb_lifetime *life = scope->lifetime;
+    if (!life || !__atomic_load_n(&life->live, __ATOMIC_ACQUIRE)) return NULL;
+    uint64_t my_tp = thread_token();
+    if (!my_tp) return NULL;
+
+    pthread_mutex_lock(&s_slots_lock);
+    nb_thread_slot *slot = NULL;
+    for (int i = 0; i < NB_MAX_GUEST_THREADS; i++) {
+        if (s_slots[i].tpidr == my_tp) {
+            slot = &s_slots[i];
+            break;
+        }
+    }
+    if (!slot) {
+        for (int i = 0; i < NB_MAX_GUEST_THREADS; i++) {
+            if (s_slots[i].tpidr == 0) {
+                slot = &s_slots[i];
+                break;
+            }
+        }
+    }
+    if (slot) {
+        slot->tpidr = my_tp;
+        slot->owner_tp = my_tp;
+        slot->host_x18 = host_x18;
+        slot->phase = 1; /* GUEST */
+        slot->callback_depth = 0;
+        slot->scope = scope;
+        slot->active_guest_x18 = 0;
+    }
+    pthread_mutex_unlock(&s_slots_lock);
+    return slot;
+}
+
+void nb_unregister_current_thread(void) {
+    uint64_t my_tp = thread_token();
+    if (!my_tp) return;
+    pthread_mutex_lock(&s_slots_lock);
+    for (int i = 0; i < NB_MAX_GUEST_THREADS; i++) {
+        if (s_slots[i].tpidr == my_tp) {
+            s_slots[i].tpidr = 0;
+            s_slots[i].scope = NULL;
+            s_slots[i].phase = 0;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&s_slots_lock);
+}
+#else
+nb_thread_slot *nb_register_current_thread(nb_scope *scope, uint64_t host_x18) {
+    (void)scope; (void)host_x18; return NULL;
+}
+void nb_unregister_current_thread(void) {}
+#endif
+
 #if !defined(__ANDROID__) || !defined(__aarch64__)
+nb_status nb_call_child(nb_scope *scope, void (*entry)(void),
+                        nb_registers *registers, uintptr_t guest_sp) {
+    (void)scope; (void)entry; (void)registers; (void)guest_sp;
+    return NB_UNSUPPORTED;
+}
 nb_status nb_call(nb_scope *scope, void (*entry)(void), nb_registers *registers) {
     (void)scope; (void)entry; (void)registers; return NB_UNSUPPORTED;
 }

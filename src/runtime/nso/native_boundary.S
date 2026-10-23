@@ -122,7 +122,24 @@ nb_import_gateway:
     mrs x9, tpidr_el0
     ldr x10, [x16, #8]
     cmp x9, x10
+    b.eq .Lowner_matched
+    adrp x10, s_slots
+    add  x10, x10, :lo12:s_slots
+    mov  w12, #32
+.Lsearch_slot:
+    ldr  x13, [x10]       /* slot->tpidr */
+    cmp  x13, x9
+    b.eq .Lslot_found
+    add  x10, x10, #64
+    subs w12, w12, #1
+    b.ne .Lsearch_slot
+    b    .Ltrap
+.Lslot_found:
+    ldr  x13, [x10, #40]  /* slot->scope */
+    cmp  x13, x16
     b.ne .Ltrap
+    mov  x16, x10
+.Lowner_matched:
     add x11, x16, #24
     ldar x9, [x11]
     cmp x9, #1
@@ -292,7 +309,24 @@ nb_import_stack13_gateway:
     mrs x9,tpidr_el0
     ldr x10,[x16,#8]
     cmp x9,x10
+    b.eq .Lst_owner_matched
+    adrp x10, s_slots
+    add  x10, x10, :lo12:s_slots
+    mov  w12, #32
+.Lst_search_slot:
+    ldr  x13, [x10]
+    cmp  x13, x9
+    b.eq .Lst_slot_found
+    add  x10, x10, #64
+    subs w12, w12, #1
+    b.ne .Lst_search_slot
+    b    .Lst_trap
+.Lst_slot_found:
+    ldr  x13, [x10, #40]
+    cmp  x13, x16
     b.ne .Lst_trap
+    mov  x16, x10
+.Lst_owner_matched:
     add x11,x16,#24
     ldar x9,[x11]
     cmp x9,#1
@@ -342,7 +376,24 @@ nb_import_snprintf_gateway:
     mrs x9, tpidr_el0
     ldr x10, [x16, #8]
     cmp x9, x10
+    b.eq .Lsnp_owner_matched
+    adrp x10, s_slots
+    add  x10, x10, :lo12:s_slots
+    mov  w12, #32
+.Lsnp_search_slot:
+    ldr  x13, [x10]
+    cmp  x13, x9
+    b.eq .Lsnp_slot_found
+    add  x10, x10, #64
+    subs w12, w12, #1
+    b.ne .Lsnp_search_slot
+    b    .Lsnp_trap
+.Lsnp_slot_found:
+    ldr  x13, [x10, #40]
+    cmp  x13, x16
     b.ne .Lsnp_trap
+    mov  x16, x10
+.Lsnp_owner_matched:
     add x11, x16, #24
     ldar x9, [x11]
     cmp x9, #1
@@ -417,7 +468,24 @@ nb_call_from_host:
     mrs x9,tpidr_el0
     ldr x10,[x0,#8]
     cmp x9,x10
+    b.eq .Lhost_owner_matched
+    adrp x10, s_slots
+    add  x10, x10, :lo12:s_slots
+    mov  w12, #32
+.Lhost_search_slot:
+    ldr  x13, [x10]
+    cmp  x13, x9
+    b.eq .Lhost_slot_found
+    add  x10, x10, #64
+    subs w12, w12, #1
+    b.ne .Lhost_search_slot
+    b    .Lcb_thread
+.Lhost_slot_found:
+    ldr  x13, [x10, #40]
+    cmp  x13, x0
     b.ne .Lcb_thread
+    mov  x0, x10
+.Lhost_owner_matched:
     add x11,x0,#24
     ldar x9,[x11]
     cmp x9,#2
@@ -513,5 +581,141 @@ nb_call_from_host:
     mov w0,#2
     ret
 .size nb_call_from_host,.-nb_call_from_host
+
+.p2align 2
+.global nb_call_child
+.type nb_call_child,%function
+nb_call_child:
+    .inst 0xd503245f /* bti c */
+    cbz x0, .Lchild_invalid
+    cbz x1, .Lchild_invalid
+    cbz x2, .Lchild_invalid
+    tst x0, #7
+    b.ne .Lchild_invalid
+    tst x2, #15
+    b.ne .Lchild_invalid
+    ldr x9, [x0]
+    mov x10, #0x4e42
+    cmp x9, x10
+    b.ne .Lchild_invalid
+    ldr x10, [x0, #40]
+    cbz x10, .Lchild_invalid
+    ldar x9, [x10]
+    cbz x9, .Lchild_dead
+
+    /* Save host callee-saved registers and SCS pointer on host stack */
+    sub sp, sp, #272
+    stp x29, x30, [sp]
+    stp x19, x20, [sp, #16]
+    stp x21, x22, [sp, #32]
+    stp x23, x24, [sp, #48]
+    stp x25, x26, [sp, #64]
+    stp x27, x28, [sp, #80]
+    stp q8, q9,   [sp, #96]
+    stp q10, q11, [sp, #128]
+    stp q12, q13, [sp, #160]
+    stp q14, q15, [sp, #192]
+    stp x0, x2,   [sp, #224] /* scope, registers */
+    str x1,       [sp, #240] /* guest_entry */
+    str x3,       [sp, #248] /* guest_sp */
+    str x18,      [sp, #256] /* host_x18 */
+    mov x29, sp
+
+    /* Register current thread with native_boundary.
+     * x0 = scope, x1 = current host x18 */
+    mov x1, x18
+    bl nb_register_current_thread
+    cbz x0, .Lchild_busy
+
+    /* Thread registered. Reload arguments */
+    ldr x1,  [sp, #240] /* guest_entry */
+    ldr x17, [sp, #232] /* registers */
+    ldr x3,  [sp, #248] /* guest_sp */
+
+    /* If guest_sp is nonzero and 16-byte aligned, switch SP to guest_sp */
+    cbz x3, .Luse_host_sp
+    tst x3, #15
+    b.ne .Luse_host_sp
+    mov sp, x3
+.Luse_host_sp:
+
+    /* Set up guest registers */
+    mov x16, x1
+    ldr x18, [x17, #72]
+    ldp q0, q1, [x17, #80]
+    ldp q2, q3, [x17, #112]
+    ldp q4, q5, [x17, #144]
+    ldp q6, q7, [x17, #176]
+    ldp x0, x1, [x17]
+    ldp x2, x3, [x17, #16]
+    ldp x4, x5, [x17, #32]
+    ldp x6, x7, [x17, #48]
+    ldr x8,     [x17, #64]
+
+    /* Call guest function */
+    blr x16
+
+    /* Restore host SP from x29 */
+    mov sp, x29
+
+    /* Save guest return values into registers packet */
+    ldr x17, [sp, #232]
+    stp x0, x1, [x17]
+    stp x2, x3, [x17, #16]
+    stp x4, x5, [x17, #32]
+    stp x6, x7, [x17, #48]
+    str x8,     [x17, #64]
+    str x18,    [x17, #72]
+    stp q0, q1, [x17, #80]
+    stp q2, q3, [x17, #112]
+    stp q4, q5, [x17, #144]
+    stp q6, q7, [x17, #176]
+
+    /* Restore host x18 before C call */
+    ldr x18, [sp, #256]
+
+    /* Unregister current thread */
+    bl nb_unregister_current_thread
+
+    /* Restore host registers */
+    ldr x18, [sp, #256]
+    ldp q8, q9,   [sp, #96]
+    ldp q10, q11, [sp, #128]
+    ldp q12, q13, [sp, #160]
+    ldp q14, q15, [sp, #192]
+    ldp x19, x20, [sp, #16]
+    ldp x21, x22, [sp, #32]
+    ldp x23, x24, [sp, #48]
+    ldp x25, x26, [sp, #64]
+    ldp x27, x28, [sp, #80]
+    ldp x29, x30, [sp]
+    add sp, sp, #272
+    mov w0, #0
+    ret
+
+.Lchild_busy:
+    ldr x18, [sp, #256]
+    ldp q8, q9,   [sp, #96]
+    ldp q10, q11, [sp, #128]
+    ldp q12, q13, [sp, #160]
+    ldp q14, q15, [sp, #192]
+    ldp x19, x20, [sp, #16]
+    ldp x21, x22, [sp, #32]
+    ldp x23, x24, [sp, #48]
+    ldp x25, x26, [sp, #64]
+    ldp x27, x28, [sp, #80]
+    ldp x29, x30, [sp]
+    add sp, sp, #272
+    mov w0, #4 /* NB_BUSY */
+    ret
+
+.Lchild_invalid:
+    mov w0, #2 /* NB_INVALID */
+    ret
+
+.Lchild_dead:
+    mov w0, #7 /* NB_OWNER_DEAD */
+    ret
+.size nb_call_child,.-nb_call_child
 .section .note.GNU-stack,"",%progbits
 #endif
