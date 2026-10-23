@@ -21,7 +21,7 @@ def main():
     parser.add_argument('--output', type=Path, default=Path('.local/host-verification'))
     parser.add_argument('--module', type=Path, default=Path('.local/uncompressed/main.bin'))
     parser.add_argument('--runtime-contracts', action='store_true',
-                        help='run ordinary mutex, reservation and isolated guest-TLS contracts on macOS ARM64')
+                        help='run ordinary synchronization, reservation, isolated TLS and exit contracts on macOS ARM64')
     parser.add_argument('--game-leaf', action='store_true',
                         help='compare one original local game routine with its mathematical oracle')
     args = parser.parse_args()
@@ -82,7 +82,8 @@ def main():
         else:
             contracts = [('mutex', 'mutex', 'mutex_contract'),
                          ('address-region', 'address_region', 'address_region_contract'),
-                         ('guest-tls', 'guest_tls', 'guest_tls_threads')]
+                         ('guest-tls', 'guest_tls', 'guest_tls_threads'),
+                         ('exit-registry', 'exit_registry', 'exit_registry_contract')]
             for name, implementation, harness in contracts:
                 binary = out / ('test-' + name)
                 extra_artifacts.append(binary)
@@ -92,6 +93,14 @@ def main():
                     run(name + '-contract', [binary])
                     if name == 'guest-tls':
                         run(name + '-host-control', [binary, '--host-only-control'])
+                    if name == 'exit-registry':
+                        run('normal-exit', [binary, '--normal-exit'], expected=23)
+                        run('immediate-exit', [binary, '--immediate-exit'], expected=24)
+                        normal = (out / 'normal-exit.stdout').read_text()
+                        immediate = (out / 'immediate-exit.stdout').read_text()
+                        message = 'guest normal-exit callback executed'
+                        results.append(dict(name='exit-callback-policy',
+                                            passed=normal.count(message) == 1 and message not in immediate))
     if args.game_leaf:
         expected_sha = '6e6d1f3cd1672243e2ed344cc1b8849b85437d41bdecec81a5f9181e472d68a5'
         if platform.machine() != 'arm64' or module_before != expected_sha:
