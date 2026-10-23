@@ -1,26 +1,12 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-10-23T14:10:00+08:00",
-  "phase": "ROUND1_ACTIVE_T01_T03A_T04ASSETS_T04NVN_T02LOADER",
-  "coordinator": "Claude Code (Fable 5) — 唯一总控；2026-10-23 接管 Antigravity 交接，已核验现场并派工",
+  "updated_at": "2026-10-23T14:03:00+08:00",
+  "phase": "ROUND3_T01_PASSED_T02_T03A_T04NVN",
+  "coordinator": "Antigravity — 唯一总控；T01 passed (Route A 确立)，推进 T02 运行时 / T03A Android 交叉构建 / T04-nvn 图形翻译",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
   "active_writers": [
-    {
-      "task": "T01",
-      "owner": "Agent A (RE)",
-      "paths": [
-        "docs/analysis/route.md",
-        "docs/analysis/t01_*.md",
-        "tools/",
-        "evidence/t01/"
-      ],
-      "worktree": ".claude/worktrees/t01-route",
-      "branch": "task/T01-route",
-      "acquired_at": "2026-10-23T12:39:00+08:00",
-      "checkpoint": "baseline b26bf15"
-    },
     {
       "task": "T03A",
       "owner": "Agent B (ANDROID)",
@@ -103,7 +89,7 @@
     {
       "id": "T01",
       "role": "RE",
-      "status": "in_progress",
+      "status": "passed",
       "dependencies": [
         "T00"
       ],
@@ -111,7 +97,7 @@
       "owner": "Agent A (RE)",
       "branch": "task/T01-route",
       "worktree": ".claude/worktrees/t01-route",
-      "report": "docs/analysis/route.md"
+      "report": "docs/analysis/t01_architecture_report.md"
     },
     {
       "id": "T02-PREP",
@@ -248,7 +234,7 @@
     }
   ],
   "blockers": [
-    "【最高优先级】本作 NSO 链接基址为 0 且无 RELATIVE 重定位，模块不可重定位；宿主无法映射到 0（macOS 实测 MAP_FIXED(0) 被忽略）。P2「原模块原样原生执行」必须先解决基址 0：映射 0（已排除）/ rebase（指针集合只能推断，候选约 74 万槽）/ 静态重编译（取决于 UE 5.6.1 源码可获取性）。详见 evidence/coordinator/nso_loader_findings.md 与 HANDOFF.md §3.2。",
+    "【已推翻/已解决】此前关于'NSO 链接基址为 0 且不可重定位'的推断已通过 MOD0 -> .dynamic -> DT_RELR（0x3fa80 字节，1,370,974 条相对重定位）实证完全推翻。NSO 是标准可重定位 PIE ELF 镜像，src/runtime/nso/nso_loader 已成功将其加载到高位地址并完成全部相对与符号重定位。当前 nnMain 执行需进一步提供 CRT/TLS 及堆分配环境。",
     "RG477M 真机尚未连接或验证；真机实测项保持 BLOCKED_DEVICE 门禁，不阻塞主机交叉构建。",
     "宿主可用磁盘约 20 GiB；Android NDK + Ghidra 工程 + RomFS 提取属重型占用，必须串行并及时回收，禁止并发铺开多个大分析工程。",
     "游戏资源侧缺口：Program NCA 的 RomFS（8.5 GB）未提取；ExeFS 提取所用 NCA 流式解密逻辑此前未入库（已由 T00R 复核确认），T04 启动链需要资源与模块加载器时这是硬前置。",

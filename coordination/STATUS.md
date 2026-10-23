@@ -1,15 +1,15 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-10-23T14:10:00+08:00
-阶段：ROUND1_ACTIVE_T01_T03A_T04ASSETS_T04NVN_T02LOADER
-总控：Claude Code (Fable 5) — 唯一总控；2026-10-23 接管 Antigravity 交接，已核验现场并派工
+状态事件时间：2026-10-23T14:03:00+08:00
+阶段：ROUND3_T01_PASSED_T02_T03A_T04NVN
+总控：Antigravity — 唯一总控；T01 passed (Route A 确立)，推进 T02 运行时 / T03A Android 交叉构建 / T04-nvn 图形翻译
 更新方式：按事件更新，没有后台自动刷新。
 
 | 任务 | 角色 | 状态 | 实际负责人 | 启动依赖 | 验收门禁 | 分支 |
 |---|---|---|---|---|---|---|
 | T00 | RE | passed | Antigravity (RE) | 无 | 无额外门禁 | work/rg477m-native |
 | T00R | QA | passed | Agent C (QA, 独立复核) | T00 | 无额外门禁 | task/T00-qa-review |
-| T01 | RE | in_progress | Agent A (RE) | T00 | 无额外门禁 | task/T01-route |
+| T01 | RE | passed | Agent A (RE) | T00 | 无额外门禁 | task/T01-route |
 | T02-PREP | CORE | in_progress | 总控 (NSO 原生加载器 / 行为基线基础设施) | T00 | 无额外门禁 | claude/laughing-cray-3464b0 |
 | T02 | CORE | pending | 未领取 | T01 | 无额外门禁 | 未创建 |
 | T03A | ANDROID | in_progress | Agent B (ANDROID) | T00 | 无额外门禁 | task/T03A-android |
@@ -23,7 +23,6 @@
 
 ## 独占写入
 
-- {"task": "T01", "owner": "Agent A (RE)", "paths": ["docs/analysis/route.md", "docs/analysis/t01_*.md", "tools/", "evidence/t01/"], "worktree": ".claude/worktrees/t01-route", "branch": "task/T01-route", "acquired_at": "2026-10-23T12:39:00+08:00", "checkpoint": "baseline b26bf15"}
 - {"task": "T03A", "owner": "Agent B (ANDROID)", "paths": ["src/android/", "scripts/device/", "tests/device/", "docs/analysis/t03a_build_report.md"], "worktree": ".claude/worktrees/t03a-android", "branch": "task/T03A-android", "acquired_at": "2026-10-23T12:39:00+08:00", "checkpoint": "baseline b26bf15"}
 - {"task": "T04-assets", "owner": "Agent D (RESOURCE)", "paths": ["scripts/extract/", "docs/analysis/asset_inventory.md", "evidence/assets/"], "worktree": ".claude/worktrees/t04-assets", "branch": "task/T04-assets", "acquired_at": "2026-10-23T13:05:00+08:00", "checkpoint": "baseline a7ae15d"}
 - {"task": "T04-nvn", "owner": "Agent E (GRAPHICS)", "paths": ["src/graphics/nvn/", "docs/analysis/nvn_surface.md", "evidence/nvn/"], "worktree": ".claude/worktrees/t04-nvn", "branch": "task/T04-nvn", "acquired_at": "2026-10-23T13:05:00+08:00", "checkpoint": "baseline a7ae15d"}
@@ -31,7 +30,7 @@
 
 ## 阻塞
 
-- 【最高优先级】本作 NSO 链接基址为 0 且无 RELATIVE 重定位，模块不可重定位；宿主无法映射到 0（macOS 实测 MAP_FIXED(0) 被忽略）。P2「原模块原样原生执行」必须先解决基址 0：映射 0（已排除）/ rebase（指针集合只能推断，候选约 74 万槽）/ 静态重编译（取决于 UE 5.6.1 源码可获取性）。详见 evidence/coordinator/nso_loader_findings.md 与 HANDOFF.md §3.2。
+- 【已推翻/已解决】此前关于'NSO 链接基址为 0 且不可重定位'的推断已通过 MOD0 -> .dynamic -> DT_RELR（0x3fa80 字节，1,370,974 条相对重定位）实证完全推翻。NSO 是标准可重定位 PIE ELF 镜像，src/runtime/nso/nso_loader 已成功将其加载到高位地址并完成全部相对与符号重定位。当前 nnMain 执行需进一步提供 CRT/TLS 及堆分配环境。
 - RG477M 真机尚未连接或验证；真机实测项保持 BLOCKED_DEVICE 门禁，不阻塞主机交叉构建。
 - 宿主可用磁盘约 20 GiB；Android NDK + Ghidra 工程 + RomFS 提取属重型占用，必须串行并及时回收，禁止并发铺开多个大分析工程。
 - 游戏资源侧缺口：Program NCA 的 RomFS（8.5 GB）未提取；ExeFS 提取所用 NCA 流式解密逻辑此前未入库（已由 T00R 复核确认），T04 启动链需要资源与模块加载器时这是硬前置。
