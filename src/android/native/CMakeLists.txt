@@ -60,9 +60,26 @@ if(ANDROID)
         target_include_directories(nso_runtime_hle PRIVATE "${FFRS_RUNTIME_DIR}" "${FFRS_HLE_DIR}")
         target_compile_definitions(nso_runtime_hle PRIVATE NSO_WITH_HOST_HLE=1)
         target_compile_options(nso_runtime_hle PRIVATE -Wall -Wextra -Werror -Wformat=2)
-        target_link_libraries(nso_runtime_hle PRIVATE dl m)
+        set(FFRS_HLE_SYSROOT "${CMAKE_SYSROOT}" CACHE PATH "Android compiler sysroot for static C++ ABI archives")
+        set(FFRS_HLE_RESOURCE_DIR "" CACHE PATH "Android compiler resource directory")
+        if(NOT FFRS_HLE_RESOURCE_DIR)
+            execute_process(COMMAND "${CMAKE_C_COMPILER}" -print-resource-dir
+                OUTPUT_VARIABLE FFRS_HLE_RESOURCE_DIR OUTPUT_STRIP_TRAILING_WHITESPACE
+                COMMAND_ERROR_IS_FATAL ANY)
+        endif()
+        set(FFRS_HLE_TARGET_LIBS "${FFRS_HLE_SYSROOT}/usr/lib/aarch64-linux-android")
+        set(FFRS_HLE_CXX_ARCHIVES "${FFRS_HLE_TARGET_LIBS}/libc++abi.a" "${FFRS_HLE_TARGET_LIBS}/libc++_static.a"
+            "${FFRS_HLE_RESOURCE_DIR}/lib/linux/aarch64/libunwind.a"
+            "${FFRS_HLE_RESOURCE_DIR}/lib/linux/libclang_rt.builtins-aarch64-android.a")
+        foreach(archive IN LISTS FFRS_HLE_CXX_ARCHIVES)
+            if(NOT EXISTS "${archive}")
+                message(FATAL_ERROR "Missing Android compiler runtime archive: ${archive}")
+            endif()
+        endforeach()
+        target_link_libraries(nso_runtime_hle PRIVATE "-Wl,--start-group" ${FFRS_HLE_CXX_ARCHIVES} "-Wl,--end-group" c m dl)
         target_link_options(nso_runtime_hle PRIVATE "-Wl,--no-undefined" "-Wl,-z,max-page-size=16384"
-            "-Wl,--build-id=sha1" "-Wl,-z,relro" "-Wl,-z,now" "-Wl,-z,noexecstack")
+            "-Wl,--build-id=sha1" "-Wl,--eh-frame-hdr" "-Wl,-z,relro" "-Wl,-z,now" "-Wl,-z,noexecstack"
+            "-Wl,-Map,$<TARGET_FILE:nso_runtime_hle>.map")
         find_package(Python3 REQUIRED COMPONENTS Interpreter)
         set(FFRS_READELF "" CACHE FILEPATH "Android LLVM readelf used by the static build gate")
         if(NOT EXISTS "${FFRS_READELF}")
@@ -72,6 +89,8 @@ if(ANDROID)
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../../../tests/device/verify_runtime_hle_elf.py"
                 --elf "$<TARGET_FILE:nso_runtime_hle>" --readelf "${FFRS_READELF}"
                 --output "$<TARGET_FILE:nso_runtime_hle>.elf.json"
+            COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/device/build_runtime_hle.sh" --verify-cxx-link
+                "${FFRS_READELF}" "$<TARGET_FILE:nso_runtime_hle>" "$<TARGET_FILE:nso_runtime_hle>.map"
             VERBATIM)
     endif()
 endif()
