@@ -1,5 +1,46 @@
 # Owned startup profile: native boundary integration
 
+## Startup continuation: imports61/67
+
+The coordinator's frozen3db RG run passed 13 component contracts and info0.
+Original empty startup reached IsVirtualAddressMemoryEnabled67/+0x137a4/133;
+nonempty reached strcasecmp61/+0x1345c/133. Standalone pre-init malloc reserved
+0xf80000000 VA and then faulted139 at main+0xb705c/address0x30; CRT was NOT_RUN
+after that failure. This is not a malloc pass or a resource-provider failure.
+Its zero-vptr object/required original startup writer is tracked separately;
+this change does not patch the object or add a startup-first execution mode.
+
+Bounded new SDK slices (hash unchanged) confirm strcasecmp+0x59bdb0/148B:
+unsigned byte loads, the same four tolower PLT targets+0x64f2f0 already resolved
+by the locale followup, and an exact signed folded-byte difference. The typed
+two-pointer import calls mature Bionic strcasecmp on Android; host evidence
+uses fixed ASCII folding without depending on global locale. No new aliases,
+locale objects or unrelated string APIs are admitted.
+
+IsVirtualAddressMemoryEnabled export+0x1448b0 delegates to the VammManager method
+at +0x145c6c/64B. That body ignores its object argument, requests Info16 for the
+current process and returns canonical w0=(query success && total!=0). It does
+not require a pre-existing allocation or positive remaining quota. The native
+provider obtains the same locked Process/pages/resource snapshot used by Query,
+requiring the actual primary and live sole VA owner, allocator identities,
+coherent ledgers and no pending/retained/quarantined state. A valid explicit
+resource policy with nonzero arena total yields1; an unconfigured policy yields0.
+Invalid/missing owner leaves the public API output untouched and the guest
+getter fails fatally. It reports only the admitted owned reserve/map/exact-free
+policy, not full Horizon VM capabilities. Logs include live region/allocation
+counts before and after actual VM operations; no unconditional true stub exists.
+
+`.local/startup-next-static/facts.json` records exact words/BL targets and reused
+relocation evidence. LLVM slices/run all0; no REA success is claimed or retried
+after the already recorded pre-engine Swift helper failure. New build evidence
+is `.local/startup-next-v1/manifest.json`: 97 expected commands, no timeout.
+Host strcasecmp's 65536 u8 pairs and VA capability's five real VM stages under
+both enabled/disabled policies all0; invalid capability retains real SIGABRT.
+Self-authored strcasecmp.nso and va-enabled.nso cover six int32 results and ten
+canonical bool returns/x18 crossings on Android. Products are cross-built only
+here; the new original startup gate awaits coordinator RG execution. Main input
+hash is unchanged; no Context/pages/region/loader/CLI code changed in this unit.
+
 ## Explicit VA management resource provider
 
 New opt-in constructors retain the old two-field config/constructor ABI. CLI

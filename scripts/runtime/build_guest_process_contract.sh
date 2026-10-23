@@ -89,6 +89,10 @@ run('host-boundary-contract',[out/'guest_process_contract.host','--boundary',out
 run('host-retarget-contract',[out/'guest_process_contract.host','--retarget',out/'init-executor.nso'])
 run('host-readonly-retarget-contract',[out/'guest_process_contract.host','--retarget-readonly',out/'readonly-import.nso'])
 run('host-arguments-contract',[out/'guest_process_contract.host','--arguments',out/'contract.nso'])
+run('host-strcasecmp-contract',[out/'guest_process_contract.host','--strcasecmp'])
+run('host-va-enabled-contract',[out/'guest_process_contract.host','--va-enabled',out/'contract.nso'])
+run('host-invalid-va-enabled',[out/'guest_process_contract.host','--invalid-va-enabled'],134)
+if '[va-capability-invalid]' not in (out/'host-invalid-va-enabled/stderr.log').read_text():raise RuntimeError('invalid capability query did not fail strictly')
 run('host-locale-contract',[out/'guest_process_contract.host','--locale'])
 run('host-resource-owner-contract',[out/'guest_process_contract.host','--resource-owner'])
 run('host-resource-process-contract',[out/'guest_process_contract.host','--resource',out/'contract.nso'])
@@ -433,6 +437,21 @@ names=b'\0strncasecmp_l\0';data[0x1160:0x1160+len(names)]=names;struct.pack_into
 (out/'locale.nso').write_bytes(data)
 manifest['generated_fixtures']['locale.nso']={'bytes':len(data),'sha256':digest(out/'locale.nso'),'kind':'self-authored typed4 locale integer-return contract','assembly_sha256':digest(locale_assembly)}
 run('host-locale-native-unsupported',[out/'guest_process_contract.host','--locale-native',out/'locale.nso'])
+# Additional self-authored register-only imports: exact int32 strcmp-family
+# result and canonical bool capability, with guest x18 deliberately clobbered.
+for basename,symbol,text in [
+ ('strcasecmp','strcasecmp',locale_assembly.read_text().replace(' mov x2, x3\n','').replace(' mov x3, x4\n','')),
+ ('va-enabled','_ZN2nn2os29IsVirtualAddressMemoryEnabledEv',resource_assembly.read_text().replace(' stp x0, x1, [x19]',' str x0, [x19]').replace(' str x18, [x19, #16]',' str x18, [x19, #8]'))]:
+ assembly=out/(basename+'-fixture.S');assembly.write_text(text)
+ run('fixture-'+basename+'-assemble',['clang',*common,'-c',assembly,'-o',out/(basename+'-fixture.o')])
+ run('fixture-'+basename+'-link',['env',f'DYLD_LIBRARY_PATH={a.rust_root}/lib',ld,'--no-undefined','--build-id=none','--image-base=0','-Ttext=0','--section-start=.fixture_got=0x8200','-e','fixture_entry','--oformat=binary','-o',out/(basename+'-fixture.raw'),out/(basename+'-fixture.o')])
+ raw=(out/(basename+'-fixture.raw')).read_bytes();data=bytearray((out/'resource.nso').read_bytes())
+ data[0x200:0x300]=raw[:0x100].ljust(0x100,b'\0');struct.pack_into('<I',data,0x204,0x4000)
+ names=b'\0'+symbol.encode()+b'\0';data[0x1160:0x1160+len(names)]=names;struct.pack_into('<Q',data,0x2000+3*16+8,len(names))
+ name=basename+'.nso';(out/name).write_bytes(data)
+ manifest['generated_fixtures'][name]={'bytes':len(data),'sha256':digest(out/name),'kind':'self-authored typed native import contract','assembly_sha256':digest(assembly)}
+run('host-strcasecmp-native-unsupported',[out/'guest_process_contract.host','--strcasecmp-native',out/'strcasecmp.nso'])
+run('host-va-native-unsupported',[out/'guest_process_contract.host','--va-native',out/'va-enabled.nso'])
 android=[]
 for source in sources:
  obj=out/(source.stem+'.android.o');android.append(obj)
@@ -465,6 +484,7 @@ for name,extra in [('guest_process_contract.android',out/'contract.android.o'),(
  if name!='guest_process_argument_recovery.android' and 'guest_process_test_argument_vm' in elf:raise RuntimeError('argument test hooks leaked into production')
  if name!='guest_process_resource_recovery.android' and ('guest_context_resource_test_vm' in elf or 'nso_host_owned_pages_test_vm' in elf):raise RuntimeError('resource test hooks leaked into production')
  if not re.search(r'UND\s+strncasecmp(?:\s|$)',elf) or re.search(r'UND\s+strncasecmp_l(?:\s|$)',elf):raise RuntimeError('Android locale bridge must call Bionic non-_l strncasecmp')
+ if not re.search(r'UND\s+strcasecmp(?:@|\s|$)',elf):raise RuntimeError('Android strcasecmp bridge must use Bionic API')
  if 'libc++abi.a(cxa_guard.cpp.o)' not in (out/(name+'.map')).read_text():raise RuntimeError('guard not from official compiler runtime')
  manifest.setdefault('android_artifacts',{})[name]={'path':str(binary),'bytes':len(data),'sha256':digest(binary)}
 for name,value in manifest['source_sha256'].items():

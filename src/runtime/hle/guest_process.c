@@ -268,7 +268,7 @@ static int initialize_empty_heap(struct empty_heap_manager *heap) {
     if(heap->state!=HEAP_UNINITIALIZED || heap->capacity || heap->blocks)return EINVAL;
     heap->state=HEAP_READY_EMPTY;return 0;
 }
-static struct nso_result snapshot_locked(guest_process *p,struct guest_memory_info *out,struct guest_resource_usage *resources) {
+static struct nso_result snapshot_locked(guest_process *p,struct guest_memory_info *out,struct guest_resource_usage *resources,struct guest_pages_usage *page_snapshot) {
     if(current_process!=p || !p->running || p->quarantined || !p->module_ready ||
        !p->module || !p->module_ticket || !p->module_committed || !p->pages || !p->os_tls || !p->os_thread ||
        !p->argument_mapping || !p->argument_ticket || !p->argument_committed || !p->argument_bytes ||
@@ -300,6 +300,7 @@ static struct nso_result snapshot_locked(guest_process *p,struct guest_memory_in
     if(p->resource_quota && (!pages.resources.valid || pages.resources.total_bytes!=p->resource_quota))
         return status(NSO_INVALID,EINVAL,0);
     if(resources)*resources=pages.resources;
+    if(page_snapshot)*page_snapshot=pages;
     if(!p->baseline)p->baseline=use.charged_bytes-p->heap.capacity-stack.bytes;
     *out=(struct guest_memory_info){use.quota_bytes,use.charged_bytes,p->heap.capacity,
         p->heap.blocks,p->baseline,stack.bytes,1};
@@ -309,7 +310,7 @@ struct nso_result guest_process_memory_info(guest_process *p,struct guest_memory
     if(!p || !out)return status(NSO_INVALID,EINVAL,0);
     struct guest_memory_info value;
     pthread_mutex_lock(&p->mutex);
-    struct nso_result r=snapshot_locked(p,&value,NULL);
+    struct nso_result r=snapshot_locked(p,&value,NULL,NULL);
     if(r.status==NSO_OK) {
         _Static_assert(offsetof(struct guest_memory_info,thread_objects)==0x30,"verified Query count offset");
         memcpy(out,&value,0x34); /* Never write trailing +0x34..0x37 padding. */
@@ -320,7 +321,7 @@ struct nso_result guest_process_resource_info(guest_process *p,struct guest_virt
     if(!p || !out)return status(NSO_INVALID,EINVAL,0);
     pthread_mutex_lock(&p->mutex);
     struct guest_memory_info info;struct guest_resource_usage resource={0};
-    struct nso_result r=p->resource_quota?snapshot_locked(p,&info,&resource):status(NSO_UNSUPPORTED,0,0);
+    struct nso_result r=p->resource_quota?snapshot_locked(p,&info,&resource,NULL):status(NSO_UNSUPPORTED,0,0);
     if(r.status==NSO_OK) {
         if(!resource.valid || resource.used_bytes>resource.total_bytes)r=status(NSO_INVALID,EINVAL,0);
         else {
@@ -332,6 +333,26 @@ struct nso_result guest_process_resource_info(guest_process *p,struct guest_virt
         }
     }
     pthread_mutex_unlock(&p->mutex);return r;
+}
+struct nso_result guest_process_va_enabled(guest_process *p,int *out) {
+    if(!p || !out)return status(NSO_INVALID,EINVAL,0);
+    pthread_mutex_lock(&p->mutex);
+    struct guest_memory_info info;struct guest_resource_usage resource={0};struct guest_pages_usage pages;
+    struct nso_result r=snapshot_locked(p,&info,&resource,&pages);
+    if(r.status==NSO_OK) {
+        /* SDK checks successful Info16 and nonzero total, not free quota or an
+         * already allocated guest range. A live empty owner is a valid state.
+         * Our admitted functionality is only the existing native VA/page owner. */
+        *out=p->resource_quota && resource.valid && resource.total_bytes!=0;
+        fprintf(stderr,"[va-capability-policy] enabled=%d live_owner=true regions=%zu allocations=%zu resource_total=%zu; native owned reserve/map/exact-free only, not full Horizon VM\n",
+            *out,pages.region_count,pages.allocation_count,resource.total_bytes);
+    }
+    pthread_mutex_unlock(&p->mutex);return r;
+}
+static uint32_t virtual_address_enabled(void) {
+    int enabled=0;struct nso_result r=guest_process_va_enabled(current_process,&enabled);
+    if(r.status!=NSO_OK) {fprintf(stderr,"[va-capability-invalid] status=%d native=%d; no capability answer\n",r.status,r.native_error);abort();}
+    return (uint32_t)enabled;
 }
 static __uint128_t virtual_resource_usage(void) {
     struct guest_virtual_resource_usage value;
@@ -460,6 +481,20 @@ static int32_t guest_strncasecmp_l(const char *a,const char *b,uint64_t n,uintpt
     return 0;
 #endif
 }
+/* SDK+59bdb0: unsigned bytes, same fixed ASCII tolower as strncasecmp_l,
+ * exact signed difference. Bionic uses the already reviewed fixed ASCII map. */
+static int32_t guest_strcasecmp(const char *a,const char *b) {
+#if defined(__ANDROID__)
+    return strcasecmp(a,b);
+#else
+    for(;;a++,b++) {
+        unsigned x=(unsigned char)*a,y=(unsigned char)*b;
+        if(x>='A' && x<='Z')x+='a'-'A';
+        if(y>='A' && y<='Z')y+='a'-'A';
+        if(x!=y || !x)return (int32_t)x-(int32_t)y;
+    }
+#endif
+}
 static int host_argument_count(void) {
     guest_process *p=required_current();
     if(!p->argument_mapping || !p->argument_committed) {fputs("[guest-argv-fatal] arguments not owned/committed\n",stderr);abort();}
@@ -487,6 +522,8 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
     if(!strcmp(name,"_ZN2nn2os11FreeTlsSlotENS0_7TlsSlotE"))return (uintptr_t)&tls_free;
     if(!strcmp(name,"_ZN2nn2os11GetTlsValueENS0_7TlsSlotE"))return (uintptr_t)&tls_get;
     if(!strcmp(name,"_ZN2nn2os11SetTlsValueENS0_7TlsSlotEm"))return (uintptr_t)&tls_set;
+    if(!strcmp(name,"strcasecmp"))return (uintptr_t)&guest_strcasecmp;
+    if(!strcmp(name,"_ZN2nn2os29IsVirtualAddressMemoryEnabledEv"))return (uintptr_t)&virtual_address_enabled;
     if(!strcmp(name,"strncasecmp_l"))return (uintptr_t)&guest_strncasecmp_l;
     if(!strcmp(name,"_ZN2nn2os11GetHostArgcEv"))return (uintptr_t)&host_argument_count;
     if(!strcmp(name,"_ZN2nn2os11GetHostArgvEv"))return (uintptr_t)&host_argument_vector;
@@ -515,7 +552,7 @@ static int import_signature(const char *name,nb_signature *out) {
     static const char *const one[]={"strlen","__cxa_guard_acquire","atexit","_ZN2nn2os11GetTlsValueENS0_7TlsSlotE",
         "_ZN2nn2os17FreeAddressRegionEm","_ZN2nn2os12TryLockMutexEPNS0_9MutexTypeE",
         "nnosTryLockMutex","_ZN2nn2os28IsMutexLockedByCurrentThreadEPKNS0_9MutexTypeE",NULL};
-    static const char *const two[]={"strnlen","strcmp","strcpy","strchr","strrchr","strstr","_ZN2nn2os15AllocateTlsSlotEPNS0_7TlsSlotEPFvmE",
+    static const char *const two[]={"strnlen","strcmp","strcasecmp","strcpy","strchr","strrchr","strstr","_ZN2nn2os15AllocateTlsSlotEPNS0_7TlsSlotEPFvmE",
         "_ZN2nn2os21AllocateAddressRegionEPmm","_ZN2nn2os19AllocateMemoryPagesEmm","_ZN2nn2os15FreeMemoryPagesEmm",NULL};
     static const char *const three[]={"memset","memcpy","memmove","memcmp","memchr","strncmp","strncpy","__cxa_atexit",NULL};
     static const char *const void_one[]={"__cxa_guard_release","__cxa_guard_abort","_Exit","_exit","_ZN2nn2os11FreeTlsSlotENS0_7TlsSlotE",
@@ -527,7 +564,8 @@ static int import_signature(const char *name,nb_signature *out) {
     for(unsigned group=0;group<4;group++)for(size_t i=0;lists[group][i];i++)if(!strcmp(name,lists[group][i])) {
         arguments=group==3?1:group+1;returns=group==3?0:1;goto found;
     }
-    if(!strcmp(name,"strncasecmp_l")) {arguments=4;returns=1;}
+    if(!strcmp(name,"_ZN2nn2os29IsVirtualAddressMemoryEnabledEv")) {arguments=0;returns=1;}
+    else if(!strcmp(name,"strncasecmp_l")) {arguments=4;returns=1;}
     else if(!strcmp(name,"_ZN2nn2os36GetVirtualAddressMemoryResourceUsageEv")) {arguments=0;returns=2;}
     else if(!strcmp(name,"_ZN2nn2os15InitializeMutexEPNS0_9MutexTypeEbi") || !strcmp(name,"nnosInitializeMutex")) {arguments=3;returns=0;}
     else if(!strcmp(name,"_ZN2nn2os11GetHostArgcEv") || !strcmp(name,"_ZN2nn2os11GetHostArgvEv")) {arguments=0;returns=1;}
@@ -643,7 +681,7 @@ static void *invoke_primary(guest_context *context,void *opaque) {
     struct guest_os_tls_result registered=guest_os_tls_register(p->os_tls,&p->os_thread);
     if(p->heap.state==HEAP_UNINITIALIZED && initialize_empty_heap(&p->heap))p->quarantined=1;
     struct guest_memory_info initial;
-    p->callback_status=registered.status==GUEST_OS_TLS_OK?snapshot_locked(p,&initial,NULL):status(NSO_OWNER_ERROR,registered.native_error,0);
+    p->callback_status=registered.status==GUEST_OS_TLS_OK?snapshot_locked(p,&initial,NULL,NULL):status(NSO_OWNER_ERROR,registered.native_error,0);
     pthread_mutex_unlock(&p->mutex);
     int e=0;
     void *value=NULL;

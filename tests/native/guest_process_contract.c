@@ -631,6 +631,101 @@ static int locale_native_contract(const char *path) {
     CHECK(succeeded(guest_process_destroy(&p)) && !p);
     printf("{\"locale_native_errors\":%u,\"native_calls\":%u,\"raw_fallback\":false}\n",errors,executed_calls);return 0;
 }
+static int strcasecmp_contract(void) {
+    typedef int32_t(*compare_fn)(const char *,const char *);
+    compare_fn compare=(compare_fn)(uintptr_t)guest_process_resolve(0,"strcasecmp");CHECK(compare);
+    unsigned checked=0;
+    for(unsigned a=0;a<256;a++)for(unsigned b=0;b<256;b++) {
+        unsigned char x[2]={(unsigned char)a,0},y[2]={(unsigned char)b,0};
+        CHECK(compare((const char *)x,(const char *)y)==ascii_reference(x,y,2));checked++;
+    }
+    CHECK(compare("LongEqualPrefixAbc","longequalprefixabD")==-1);
+    CHECK(compare("", "z")==-'z' && compare("Z","")=='z');
+    CHECK(compare("same","SAME")==0);
+    printf("{\"strcasecmp_errors\":0,\"unsigned_pairs\":%u,\"exact_signed_difference\":true,\"nul_termination\":true}\n",checked);return 0;
+}
+static void *exercise_strcasecmp_native(guest_process *p,void *opaque) {
+    (void)opaque;
+    const unsigned char a[][24]={{'A','b',0},{'x',0},{0xff,0},{'a',0},{'z',0},{0,0x81}};
+    const unsigned char b[][24]={{'a','C',0},{'Z',0},{0x80,0},{'b',0},{'a',0},{0,0x82}};
+    for(unsigned i=0;i<6;i++) {
+        uint64_t output[2]={0xa5a5,0xa5a5},value=0xa5a5;
+        uint64_t arguments[6]={(uintptr_t)output,(uintptr_t)a[i],(uintptr_t)b[i]};
+        struct nso_result r=guest_process_call(p,0x20,arguments,3,&value);
+#if defined(__ANDROID__) && defined(__aarch64__)
+        expect_value("strcasecmp-native-call",r.status,NSO_OK);expect_value("strcasecmp-native-return",value,0x91);
+        expect_value("strcasecmp-native-exact-difference",output[0],(uint64_t)(int64_t)ascii_reference(a[i],b[i],24));
+        expect_value("strcasecmp-native-x18",output[1],0x55);executed_calls++;
+#else
+        expect_value("strcasecmp-native-unsupported",r.status,NSO_UNSUPPORTED);expect_value("strcasecmp-no-raw-fallback",value,0xa5a5);
+#endif
+    }
+    return &returned_token;
+}
+static int strcasecmp_native_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(!strcasecmp_contract());CHECK(succeeded(guest_process_create(&config,&p)));
+    char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+    void *value=NULL;CHECK(succeeded(guest_process_run(p,exercise_strcasecmp_native,NULL,&value)) && value==&returned_token && !errors);
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    printf("{\"strcasecmp_native_errors\":%u,\"native_calls\":%u,\"raw_fallback\":false}\n",errors,executed_calls);return 0;
+}
+struct va_enabled_input {int policy,native;};
+static void verify_va_enabled(guest_process *p,const struct va_enabled_input *input,const char *stage) {
+    int enabled=0x5a;struct nso_result r=guest_process_va_enabled(p,&enabled);
+    expect_condition(stage,succeeded(r));expect_value("va-enabled-canonical-policy",(uint64_t)enabled,(uint64_t)input->policy);
+    typedef uint32_t(*enabled_fn)(void);
+    enabled_fn query=(enabled_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os29IsVirtualAddressMemoryEnabledEv");
+    expect_condition("va-enabled-binding",query!=NULL);
+    if(query)expect_value("va-enabled-typed-getter",query(),(uint64_t)input->policy);
+    if(input->native) {
+        uint64_t output[2]={0xa5a5,0xa5a5},value=0xa5a5;
+        uint64_t arguments[6]={(uintptr_t)output};r=guest_process_call(p,0x20,arguments,1,&value);
+#if defined(__ANDROID__) && defined(__aarch64__)
+        expect_value("va-enabled-native-call",r.status,NSO_OK);expect_value("va-enabled-native-return",value,0x91);
+        expect_value("va-enabled-native-canonical-w0",output[0],(uint64_t)input->policy);
+        expect_value("va-enabled-native-guest-x18",output[1],0x55);executed_calls++;
+#else
+        expect_value("va-enabled-native-unsupported",r.status,NSO_UNSUPPORTED);expect_value("va-enabled-no-raw-fallback",value,0xa5a5);
+#endif
+    }
+}
+static void *exercise_va_enabled(guest_process *p,void *opaque) {
+    struct va_enabled_input *input=opaque;
+    verify_va_enabled(p,input,"va-enabled-empty-live-owner");
+    typedef uint32_t (*reserve_fn)(uintptr_t *,size_t);typedef uint32_t(*release_fn)(uintptr_t);
+    typedef uint32_t(*pages_fn)(uintptr_t,size_t);
+    reserve_fn reserve=(reserve_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os21AllocateAddressRegionEPmm");
+    release_fn release=(release_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os17FreeAddressRegionEm");
+    pages_fn map=(pages_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os19AllocateMemoryPagesEmm");
+    pages_fn unmap=(pages_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os15FreeMemoryPagesEmm");
+    uintptr_t base=0;expect_value("va-enabled-reserve",reserve(&base,2*page),0);
+    verify_va_enabled(p,input,"va-enabled-live-reservation");
+    expect_value("va-enabled-real-map",map(base,page),0);*(volatile unsigned char *)base=0x39;
+    verify_va_enabled(p,input,"va-enabled-live-backed-allocation");
+    expect_value("va-enabled-rw-pattern",*(volatile unsigned char *)base,0x39);
+    expect_value("va-enabled-real-free",unmap(base,page),0);
+    verify_va_enabled(p,input,"va-enabled-after-decommit");
+    expect_value("va-enabled-real-release",release(base),0);
+    verify_va_enabled(p,input,"va-enabled-empty-after-release");
+    return &returned_token;
+}
+static int va_enabled_contract(const char *path,int native) {
+    int untouched=0x5a;CHECK(guest_process_va_enabled(NULL,&untouched).status==NSO_INVALID && untouched==0x5a);
+    struct guest_process_config config={1024*1024,65536};
+    for(int policy=0;policy<=1;policy++) {
+        guest_process *p=NULL;
+        struct nso_result r=policy?guest_process_create_with_resources(&config,1024*1024,0,NULL,&p):guest_process_create(&config,&p);
+        CHECK(succeeded(r));untouched=0x5a;
+        CHECK(guest_process_va_enabled(p,&untouched).status==NSO_INVALID && untouched==0x5a);
+        char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+        struct va_enabled_input input={policy,native};void *value=NULL;
+        CHECK(succeeded(guest_process_run(p,exercise_va_enabled,&input,&value)) && value==&returned_token && !errors);
+        untouched=0x5a;CHECK(guest_process_va_enabled(p,&untouched).status==NSO_INVALID && untouched==0x5a);
+        CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    }
+    printf("{\"va_enabled_errors\":%u,\"explicit_enabled_policy\":true,\"unconfigured_false\":true,\"actual_vm_stages\":5,\"invalid_untouched\":true,\"native_calls\":%u,\"raw_fallback\":false}\n",errors,executed_calls);return 0;
+}
 struct resource_input {size_t quota;int native;};
 static uint64_t resource_reported(size_t total,size_t occupied) {
     return occupied>total || total-occupied<0x80000?total:occupied+0x80000;
@@ -814,6 +909,15 @@ static int resource_recovery_contract(void) {
 #endif
 int main(int argc,char **argv) {
     page=(size_t)sysconf(_SC_PAGESIZE);
+    if(argc==2 && !strcmp(argv[1],"--strcasecmp"))return strcasecmp_contract();
+    if(argc==3 && !strcmp(argv[1],"--strcasecmp-native"))return strcasecmp_native_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--va-enabled"))return va_enabled_contract(argv[2],0);
+    if(argc==3 && !strcmp(argv[1],"--va-native"))return va_enabled_contract(argv[2],1);
+    if(argc==2 && !strcmp(argv[1],"--invalid-va-enabled")) {
+        typedef uint32_t(*enabled_fn)(void);
+        enabled_fn query=(enabled_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os29IsVirtualAddressMemoryEnabledEv");
+        (void)query();return 9;
+    }
     if(argc==2 && !strcmp(argv[1],"--locale"))return locale_contract();
     if(argc==3 && !strcmp(argv[1],"--locale-native"))return locale_native_contract(argv[2]);
     if(argc==2 && !strcmp(argv[1],"--resource-owner"))return resource_owner_contract();

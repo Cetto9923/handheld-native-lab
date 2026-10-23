@@ -43,6 +43,10 @@ struct guest_virtual_resource_usage {uint64_t total,used;};
 /* Same live-primary ownership checks as Query; invalid leaves out untouched.
  * used includes the original SDK's saturating 0x80000 reporting margin. */
 struct nso_result guest_process_resource_info(guest_process *,struct guest_virtual_resource_usage *out);
+/* Capability for the configured native VA-owner policy, not full Horizon VM.
+ * Live primary/owner/coherent ledgers required; invalid leaves out untouched.
+ * An unconfigured resource policy returns canonical false. */
+struct nso_result guest_process_va_enabled(guest_process *,int *out);
 #if defined(NSO_PROFILE_ARGUMENT_TESTING)
 /* Normal VM failure contracts only; not compiled into production. */
 void guest_process_test_argument_vm(void *(*map)(size_t bytes,size_t pending),
