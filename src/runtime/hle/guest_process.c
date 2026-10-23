@@ -1026,6 +1026,10 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
         "_ZN2nn2fs12GetEntryTypeEPNS0_18DirectoryEntryTypeEPKc","nnfsGetEntryType",
         "_ZN2nn2fs26DisableGlobalFileDataCacheEv",
         "_ZN2nn2fs25EnableGlobalFileDataCacheEPvm",
+        "_ZN2nn3aoc17CountAddOnContentEv","nnaocCountAddOnContent",
+        "_ZN2nn3aoc16ListAddOnContentEPiii","nnaocListAddOnContent",
+        "_ZN2nn2fs31QueryMountAddOnContentCacheSizeEPmi","nnfsQueryMountAddOnContentCacheSize",
+        "_ZN2nn2fs17MountAddOnContentEPKciPvm","nnfsMountAddOnContent",
         "_ZN2nn4util11ReferSymbolEPKv","nnutilReferSymbol",
         "_ZN2nn2os15InitializeMutexEPNS0_9MutexTypeEbi","nnosInitializeMutex",
         "_ZN2nn2os13FinalizeMutexEPNS0_9MutexTypeE","nnosFinalizeMutex",
@@ -1231,6 +1235,14 @@ static int import_signature(const char *name,nb_signature *out) {
             !strcmp(name,"nnfsGetEntryType")) {arguments=2;returns=1;}
     else if(!strcmp(name,"_ZN2nn2fs26DisableGlobalFileDataCacheEv")) {arguments=0;returns=0;}
     else if(!strcmp(name,"_ZN2nn2fs25EnableGlobalFileDataCacheEPvm")) {arguments=2;returns=0;}
+    else if(!strcmp(name,"_ZN2nn3aoc17CountAddOnContentEv") ||
+            !strcmp(name,"nnaocCountAddOnContent")) {arguments=0;returns=1;}
+    else if(!strcmp(name,"_ZN2nn3aoc16ListAddOnContentEPiii") ||
+            !strcmp(name,"nnaocListAddOnContent")) {arguments=3;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2fs31QueryMountAddOnContentCacheSizeEPmi") ||
+            !strcmp(name,"nnfsQueryMountAddOnContentCacheSize")) {arguments=2;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2fs17MountAddOnContentEPKciPvm") ||
+            !strcmp(name,"nnfsMountAddOnContent")) {arguments=4;returns=1;}
     else if(!strcmp(name,"_ZN2nn2os32SetMemoryAllocatorForThreadLocalEPFPvmmEPFvS1_mE")) {arguments=2;returns=0;}
     else if(!strcmp(name,"_ZN2nn2os40MemoryAllocatorForThreadLocalInitializedEv")) {arguments=0;returns=1;}
     else if(!strcmp(name,"nnosAllocateMemoryForThreadLocal")) {arguments=1;returns=1;}

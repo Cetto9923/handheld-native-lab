@@ -94,6 +94,11 @@ int32_t nso_host_fs_write_file(nn_fs_file_handle handle, int64_t offset, const v
 int32_t nso_host_fs_get_entry_type(int32_t *out_entry_type, const char *path);
 void nso_host_fs_disable_global_file_data_cache(void);
 void nso_host_fs_enable_global_file_data_cache(void *buffer, size_t size);
+
+int32_t nso_host_aoc_count_add_on_content(void);
+int32_t nso_host_aoc_list_add_on_content(int32_t *out_indices, int32_t offset, int32_t count);
+int32_t nso_host_fs_query_mount_add_on_content_cache_size(size_t *out_size, int32_t target_index);
+int32_t nso_host_fs_mount_add_on_content(const char *name, int32_t target_index, void *buffer, size_t size);
 #ifdef __cplusplus
 }
 #endif

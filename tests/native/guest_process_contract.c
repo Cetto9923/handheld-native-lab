@@ -1443,6 +1443,66 @@ static int fs_open_file_contract(void) {
     puts("{\"fs_open_file_errors\":0,\"open\":true,\"read\":true,\"size\":true,\"close\":true,\"entry_type\":true,\"validation\":true}");
     return 0;
 }
+static int aoc_contract(void) {
+    typedef int32_t (*count_fn)(void);
+    typedef int32_t (*list_fn)(int32_t *, int32_t, int32_t);
+    typedef int32_t (*query_cache_fn)(size_t *, int32_t);
+    typedef int32_t (*mount_aoc_fn)(const char *, int32_t, void *, size_t);
+
+    count_fn count_aoc = (count_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn3aoc17CountAddOnContentEv");
+    CHECK(count_aoc != NULL);
+
+    count_fn count_aoc_alias = (count_fn)(uintptr_t)guest_process_resolve(0, "nnaocCountAddOnContent");
+    CHECK(count_aoc_alias != NULL);
+
+    list_fn list_aoc = (list_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn3aoc16ListAddOnContentEPiii");
+    CHECK(list_aoc != NULL);
+
+    list_fn list_aoc_alias = (list_fn)(uintptr_t)guest_process_resolve(0, "nnaocListAddOnContent");
+    CHECK(list_aoc_alias != NULL);
+
+    query_cache_fn query_cache = (query_cache_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs31QueryMountAddOnContentCacheSizeEPmi");
+    CHECK(query_cache != NULL);
+
+    query_cache_fn query_cache_alias = (query_cache_fn)(uintptr_t)guest_process_resolve(0, "nnfsQueryMountAddOnContentCacheSize");
+    CHECK(query_cache_alias != NULL);
+
+    mount_aoc_fn mount_aoc = (mount_aoc_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs17MountAddOnContentEPKciPvm");
+    CHECK(mount_aoc != NULL);
+
+    mount_aoc_fn mount_aoc_alias = (mount_aoc_fn)(uintptr_t)guest_process_resolve(0, "nnfsMountAddOnContent");
+    CHECK(mount_aoc_alias != NULL);
+
+    /* Test CountAddOnContent: baseline returns 0 without crash */
+    int32_t c = count_aoc();
+    CHECK(c == 0);
+    c = count_aoc_alias();
+    CHECK(c == 0);
+
+    /* Test ListAddOnContent: returns 0 when no addon content */
+    int32_t indices[8] = {0};
+    int32_t listed = list_aoc(indices, 0, 8);
+    CHECK(listed == 0);
+    listed = list_aoc_alias(indices, 0, 8);
+    CHECK(listed == 0);
+
+    /* Test QueryMountAddOnContentCacheSize: writes 0 to out_size */
+    size_t cache_size = 9999;
+    CHECK(query_cache(NULL, 1) != 0);
+    CHECK(query_cache(&cache_size, 1) == 0);
+    CHECK(cache_size == 0);
+    cache_size = 9999;
+    CHECK(query_cache_alias(&cache_size, 1) == 0);
+    CHECK(cache_size == 0);
+
+    /* Test MountAddOnContent: returns error because no addon is available */
+    char dummy_buf[64];
+    CHECK(mount_aoc("aoc", 1, dummy_buf, sizeof(dummy_buf)) != 0);
+    CHECK(mount_aoc_alias("aoc", 1, dummy_buf, sizeof(dummy_buf)) != 0);
+
+    puts("{\"aoc_contract_errors\":0,\"count\":true,\"list\":true,\"query_cache\":true,\"mount\":true,\"baseline_zero\":true}");
+    return 0;
+}
 struct log_fixture_io {float input,output;uint64_t guest_x18;};
 _Static_assert(offsetof(struct log_fixture_io,output)==4 && offsetof(struct log_fixture_io,guest_x18)==8,"self-authored float fixture ABI");
 static void *exercise_logf_native(guest_process *p,void *opaque) {
@@ -2079,6 +2139,7 @@ int main(int argc,char **argv) {
     if(argc==2 && !strcmp(argv[1],"--fs-query-cache"))return fs_query_cache_contract();
     if(argc==2 && !strcmp(argv[1],"--fs-mount-rom"))return fs_mount_rom_contract();
     if(argc==2 && !strcmp(argv[1],"--fs-open-file"))return fs_open_file_contract();
+    if(argc==2 && !strcmp(argv[1],"--aoc"))return aoc_contract();
     if(argc==2 && !strcmp(argv[1],"--logf"))return logf_contract();
     if(argc==3 && !strcmp(argv[1],"--logf-native"))return logf_native_contract(argv[2]);
     if(argc==2 && !strcmp(argv[1],"--strcasecmp"))return strcasecmp_contract();

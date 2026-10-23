@@ -1,8 +1,8 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-10-23T21:30:00.000000+00:00
-阶段：T02_FS_OPEN_FILE_PASSED_AOC_COUNT_REACHED_ON_RG477M: nn::fs::OpenFile + GetFileSize + ReadFile + CloseFile verified on RG477M; GameThread read UECommandLine.txt; frontier advanced to nn::aoc::CountAddOnContent (symbol index 51, caller 0x93dc / lr 0x7a4d5343dc)
-总控：Antigravity sole root coordinator — nn::fs::OpenFile passed on RG477M; frontier advanced to nn::aoc::CountAddOnContent
+状态事件时间：2026-10-23T21:45:00.000000+00:00
+阶段：T02_AOC_COUNT_PASSED_NIFM_INIT_REACHED_ON_RG477M: nn::aoc::CountAddOnContent + ListAddOnContent verified on RG477M; GameThread advanced to nn::nifm::Initialize (symbol index 272, caller 0x942d24 / lr 0x6d903d9d24)
+总控：Antigravity sole root coordinator — nn::aoc::CountAddOnContent passed on RG477M; frontier advanced to nn::nifm::Initialize
 更新方式：按事件更新，没有后台自动刷新。
 
 | 任务 | 角色 | 状态 | 实际负责人 | 启动依赖 | 验收门禁 | 分支 |

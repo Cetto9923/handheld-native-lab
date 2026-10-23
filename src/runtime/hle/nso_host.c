@@ -1059,6 +1059,37 @@ void nso_host_fs_enable_global_file_data_cache(void *buffer, size_t size) {
     fprintf(stderr, "[hle] nn::fs::EnableGlobalFileDataCache: buffer=%p size=%zu\n", buffer, size);
 }
 
+int32_t nso_host_aoc_count_add_on_content(void) {
+    fprintf(stderr, "[hle] nn::aoc::CountAddOnContent: returning 0 (no add-on content installed)\n");
+    return 0;
+}
+
+int32_t nso_host_aoc_list_add_on_content(int32_t *out_indices, int32_t offset, int32_t count) {
+    if (count > 0 && !out_indices) {
+        fprintf(stderr, "[hle] nn::aoc::ListAddOnContent: null out_indices with count=%d\n", count);
+        return 0;
+    }
+    fprintf(stderr, "[hle] nn::aoc::ListAddOnContent: out_indices=%p offset=%d count=%d -> returning 0\n",
+            (void *)out_indices, offset, count);
+    return 0;
+}
+
+int32_t nso_host_fs_query_mount_add_on_content_cache_size(size_t *out_size, int32_t target_index) {
+    if (!out_size) {
+        fprintf(stderr, "[hle] nn::fs::QueryMountAddOnContentCacheSize: null out_size\n");
+        return 1;
+    }
+    *out_size = 0;
+    fprintf(stderr, "[hle] nn::fs::QueryMountAddOnContentCacheSize: target_index=%d -> out_size=0\n", target_index);
+    return 0;
+}
+
+int32_t nso_host_fs_mount_add_on_content(const char *name, int32_t target_index, void *buffer, size_t size) {
+    fprintf(stderr, "[hle] nn::fs::MountAddOnContent: name='%s' target_index=%d buffer=%p size=%zu -> no aoc installed\n",
+            name ? name : "(null)", target_index, buffer, size);
+    return 0x202; /* ResultPathNotFound */
+}
+
 void nso_host_set_extension_resolver(nso_import_fn resolver) {extension_resolver=resolver;}
 uint64_t nso_host_resolve(uint32_t index,const char *name) {
     if(!name)return 0;
@@ -1097,6 +1128,14 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_fs_disable_global_file_data_cache;
     if(!strcmp(name,"_ZN2nn2fs25EnableGlobalFileDataCacheEPvm"))
         return (uint64_t)(uintptr_t)&nso_host_fs_enable_global_file_data_cache;
+    if(!strcmp(name,"_ZN2nn3aoc17CountAddOnContentEv") || !strcmp(name,"nnaocCountAddOnContent"))
+        return (uint64_t)(uintptr_t)&nso_host_aoc_count_add_on_content;
+    if(!strcmp(name,"_ZN2nn3aoc16ListAddOnContentEPiii") || !strcmp(name,"nnaocListAddOnContent"))
+        return (uint64_t)(uintptr_t)&nso_host_aoc_list_add_on_content;
+    if(!strcmp(name,"_ZN2nn2fs31QueryMountAddOnContentCacheSizeEPmi") || !strcmp(name,"nnfsQueryMountAddOnContentCacheSize"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_query_mount_add_on_content_cache_size;
+    if(!strcmp(name,"_ZN2nn2fs17MountAddOnContentEPKciPvm") || !strcmp(name,"nnfsMountAddOnContent"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_mount_add_on_content;
     if(!strcmp(name,"_ZN2nn4util11ReferSymbolEPKv") || !strcmp(name,"nnutilReferSymbol"))
         return (uint64_t)(uintptr_t)&refer_symbol;
     if(!strcmp(name,"_ZN2nn4util12GenerateUuidEv"))
