@@ -1,27 +1,20 @@
-# 原生移植阶段验收：尚未进入可玩阶段
+# 原生移植阶段验收（2026-10-23 真机检查点）
 
-验收目标为 RG477M 上实际游戏启动、标题、可操作场景、输入、音频、存读档及持续帧率；单函数测试与诊断 APK 只证明其中的基础设施。
+目标是 RG477M 上完整原生游戏启动、标题、可操作场景、游戏输入、音频、存读档及持续帧率。当前仍未进入可玩阶段；诊断页上的 JSON 是预期结果文本，不是游戏画面。
 
-| 阶段 | 当前真实证据 | 尚缺的验收 |
+| 阶段 | 当前真实证据 | 尚缺验收 |
 |---|---|---|
-| 加载器及真实入口 | 主模块可映射，解析 651 个导入、4,612 条 RELA、1,370,974 条 RELR；原始 44 字节函数在 Mac ARM64 的 16,875 组输入与数学参考零差异。隔离直接调用 `nnMain` 已越过地址预留和互斥量初始化，已实际注册并延迟保存 `atexit` 回调，随后在未实现 `QueryMemoryInfo`（caller +0x27a50）严格停止，退出 133。 | 完整 CRT/TLS、线程和平台接口；完整启动；Switch/可信参考环境对照及RG477M实测；Android ARM64 AVD的独立leaf已实际执行16,875组零差异，但正式T02尚未通过。 |
-| 资源 | 既有清单、流式提取工具和本地素材保留。 | 游戏实际文件系统挂载、资源解压与运行时使用；不能把文件存在视为加载成功。 |
-| Android ARM64 / APK | 真实 AArch64 ELF 与已签名 `org.ffrs.diagnostic` APK，DEX/JNI、Manifest、签名、16 KiB LOAD 对齐静态检查通过。 | 已在Android14 ARM64 AVD安装/冷启动，JNI及leaf比较成功；严格CLI加载exit0，完整CRT入口仍exit133。尚未在RG477M/荣耀平板安装执行，当前仍是诊断宿主。部分官方工具链可重建，完整 NDK 包校验未完成。 |
-| 图形 / 标题 | NVN 有类型分发与缺失报告可用；535 个名字中 2 个查询入口可解析、533 个未实现。 | 实际 Vulkan 后端、资源/队列/着色器/呈现及真实标题。两个入口不构成渲染支持。 |
-| 可玩场景 | NOT_RUN。 | 标题之后真实场景、操作流程和正常退出。 |
-| 输入 / 音频 / 保存 | Android AVD已实测诊断UI点击/生命周期及app-private临时文件往返；无实体手柄或音频/游戏存档证据。 | 游戏输入映射、真实音频、游戏存读档；临时文件测试不能替代存档。 |
-| 真机 / 性能 / 稳定性 | RG477M已真实安装、JNI加载、leaf、compiler guard与部分物理输入通过；荣耀平板未连接。 | 已查Mali-G615 MC6 Vulkan1.3.247和实际显示；GPU操作/完整手柄音频休眠仍待验收。30FPS真实场景与45分钟运行NOT_RUN。 |
+| 加载器 / 真正入口 | main 映射与 651 导入、4612 RELA、1370974 RELR；原始 44B leaf 在 Mac、Android ARM64 AVD、RG477M 各 16875 比较零差异。RG 严格 CLI info=0，nnMain/malloc 分别在 QueryMemoryInfo +0x27a50/+0x1398c 退出133。 | 全部 CRT/TLS/线程/内存上下文。构造器仍 __nnmusl_init_dso133，startup 仍 AllocateTlsSlot133；单独入口实验不证明完整初始化。 |
+| 资源 | 合法既有素材、清单与流式工具保留；APK JNI 已实际加载125577976B主模块。 | 运行时文件系统挂载、资源解压和实际游戏资源使用。 |
+| Android APK | canonical v6、451092B，SHA256 4b40d3896ac9d8f7cb9069df81dd4d30148d030dda3cbaf449ba9a9b02a74e0a；clean fb7d870 源码、35构建步骤0，签名/DEX/JNI/16KiB LOAD/EH索引检查通过。RG 更新安装0、冷启动195ms，旧事件与leaf保留。 | 仍是诊断宿主，APK不执行完整游戏。工具链是逐成员CRC验证的部分官方NDK sysroot，完整NDK归档校验未完成。 |
+| GPU / 标题 | RG Mali-G615 MC6/Vulkan1.3.247；实际64KiB buffer copy及8×8 RGBA image clear/readback零差异，31 VkResult均0。 | 着色器、surface/present、descriptor indexing等真实所需操作、NVN转换和标题。NVN仅2/535查询名字，533缺失；不平均铺假桩。 |
+| 内存 / C++ ABI | RG owned-pages正常契约0，8线程×32周期、32释放竞争、4KiB清零重映射、账本归零；主机另独立审查rollback/quarantine通过。RG C++ guard 8线程80000调用、初始化1、异常重试2、errors0。 | Pages尚未绑定SDK；虚拟预留62GiB不等于实体内存。Guest配额、module/专属栈/page/heap/thread归属及Query七字段尚未闭合；guest NSO unwind未注册。 |
+| 可玩场景 | NOT_RUN。 | 完整启动、标题、场景、操作流程与正常退出。 |
+| 输入 / 音频 / 保存 | 用户实际操作：方向/B/左杆；补测右杆Z/RZ均[-1,1]、L2/R2按键事件。公开InputDevice识别retrogame_joypad。显式0.25秒音频探针实际48000Hz、12000写入及播放推进、扬声器路由、stop/release正常。 | 游戏映射未实现；扳机模拟轴本次仍0，只有数字键证据。人回复提示音“刚才没注意”，听感未确认。游戏音频、游戏存读档、休眠恢复NOT_RUN。临时文件不是游戏存档。 |
+| 真机 / 性能 | RG已连接并执行上述诊断；Android14/API34/ARM64/nativebridge0/4KiB。实测窗口1280×960、内容1280×918、280dpi。 | 当前120Hz是面板刷新率；游戏30FPS/45分钟稳定性NOT_RUN。荣耀平板未接入；按实际内容区等比例留边要求保留。 |
 
-这些入口实验分别调用 `nnMain`、startup、malloc、构造器定位阻塞，并没有完成平台启动或构造器序列。单独让 `nnMain` 更深入不能证明完整初始化后行为正确。
+可玩目标粗估仍约10%～15%，仅定性工程判断，不按代码量、任务卡或工时计算。平台诊断进展不能显著降低完整启动、图形转换及可玩性的最高风险。
 
-此前“总体约 10%～15%”只能是按最终可玩目标给出的粗略工程判断，不是代码量、任务卡或工时统计。这次补齐了真实打包和运行时基础设施，但最高风险的完整启动、图形与可玩性仍未验证，目前没有足够证据明显提高该估计。
+主机集成回归：fb7d870的23项检查全部符合真实预期退出码（NVN覆盖3、normal exit23、_Exit24，其余0），见 `.local/host-verification/checkpoint-fb7d870/summary.json`。普通独立组件审查已执行；旧异常NSO安全流程被平台中止，未重试，不冒充完整独立QA。
 
-测试原始输出与真实退出码在 `.local/runtime/`、`.local/host-verification/` 和 `.local/logs/android/`。当前检查点与精确恢复命令见 [HANDOFF](../../coordination/HANDOFF.md)。独立 QA 被平台安全检查中止，未取得完整独立验收，不记为通过。
-
-Android实证：`.local/emulator/pvz2-arm64/leaf-result.json` / `leaf-pass.png` / `runtime-execution.json`。AVD为API34、arm64-v8a、native bridge=0、4KiB页，图形探针为Apple M5 / MoltenVK Vulkan1.3，不能替代RG477M或荣耀平板GPU验证。版本4已修复旧显示误报，并在第二个临时AVD会话实测窗口1080×2340、内容1080×2138、440dpi、60.000004Hz；API28/29的旧安全区getter语义被独立审查发现P2，待修。
-
-最新实际Android guard结果：`14ed86a` 的CLI已越过缺失guard，到QueryMemoryInfo（main+0x27a50/malloc+0x1398c）严格exit133；但独立正常多线程/异常重试contract在Android实际exit134（uncaught int），正检查EH展开链接，不能记guard验收通过。证据 `.local/emulator/pvz2-arm64-session3/guard-execution.json`。
-
-异常修复实证闭环：`a22d0dc` 的`.eh_frame_hdr`/PT_GNU_EH_FRAME配置补齐后，同一真实ARM64 AVD的完整未删减guard契约exit0，8线程80000调用/初始化1/abortwinner1/exceptionattempts2/errors0；info0，main/malloc仍QueryMemoryInfo133。旧134失败证据保留在session3，当前结果见`guard-eh-execution.json`。这只验收宿主compiler-runtime异常，不证明原始guest NSO的unwind/构造器。
-
-真机当前结果见[codex_device_report.md](codex_device_report.md)。用户实际连接并操作后，RG477M leaf16875/0、C++guard8线程80000/errors0、JNI模块加载成功；nnMain/malloc仍QueryMemoryInfo133。不得再写RG477M未连接，也不得把诊断成功改记游戏成功。
+当前设备证据索引见 [codex_device_report.md](codex_device_report.md)，可复制恢复信息见 [HANDOFF](../../coordination/HANDOFF.md)。
