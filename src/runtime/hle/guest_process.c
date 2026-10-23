@@ -1031,6 +1031,7 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
         "_ZN2nn2fs31QueryMountAddOnContentCacheSizeEPmi","nnfsQueryMountAddOnContentCacheSize",
         "_ZN2nn2fs17MountAddOnContentEPKciPvm","nnfsMountAddOnContent",
         "_ZN2nn4nifm10InitializeEv","nnnifmInitialize",
+        "_ZN2nn6socket10InitializeEPvmmi","nnsocketInitialize",
         "_ZN2nn4util11ReferSymbolEPKv","nnutilReferSymbol",
         "_ZN2nn2os15InitializeMutexEPNS0_9MutexTypeEbi","nnosInitializeMutex",
         "_ZN2nn2os13FinalizeMutexEPNS0_9MutexTypeE","nnosFinalizeMutex",
@@ -1245,6 +1246,8 @@ static int import_signature(const char *name,nb_signature *out) {
             !strcmp(name,"nnfsQueryMountAddOnContentCacheSize")) {arguments=2;returns=1;}
     else if(!strcmp(name,"_ZN2nn2fs17MountAddOnContentEPKciPvm") ||
             !strcmp(name,"nnfsMountAddOnContent")) {arguments=4;returns=1;}
+    else if(!strcmp(name,"_ZN2nn6socket10InitializeEPvmmi") ||
+            !strcmp(name,"nnsocketInitialize")) {arguments=4;returns=1;}
     else if(!strcmp(name,"_ZN2nn2os32SetMemoryAllocatorForThreadLocalEPFPvmmEPFvS1_mE")) {arguments=2;returns=0;}
     else if(!strcmp(name,"_ZN2nn2os40MemoryAllocatorForThreadLocalInitializedEv")) {arguments=0;returns=1;}
     else if(!strcmp(name,"nnosAllocateMemoryForThreadLocal")) {arguments=1;returns=1;}

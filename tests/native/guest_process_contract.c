@@ -1521,6 +1521,27 @@ static int nifm_contract(void) {
     puts("{\"nifm_contract_errors\":0,\"initialize\":true,\"baseline_zero\":true}");
     return 0;
 }
+static int socket_contract(void) {
+    typedef int32_t (*init_fn)(void *work_buffer, size_t work_buffer_size, size_t allocator_size, int32_t concurrency);
+
+    init_fn init_sock = (init_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn6socket10InitializeEPvmmi");
+    CHECK(init_sock != NULL);
+
+    init_fn init_sock_alias = (init_fn)(uintptr_t)guest_process_resolve(0, "nnsocketInitialize");
+    CHECK(init_sock_alias != NULL);
+
+    /* Test Initialize: baseline returns 0 without crash */
+    static char dummy_buf[1024];
+    int32_t res = init_sock(dummy_buf, sizeof(dummy_buf), 256, 4);
+    CHECK(res == 0);
+    CHECK(nso_host_socket_is_initialized());
+
+    res = init_sock_alias(dummy_buf, sizeof(dummy_buf), 256, 4);
+    CHECK(res == 0);
+
+    puts("{\"socket_contract_errors\":0,\"initialize\":true,\"baseline_zero\":true}");
+    return 0;
+}
 struct log_fixture_io {float input,output;uint64_t guest_x18;};
 _Static_assert(offsetof(struct log_fixture_io,output)==4 && offsetof(struct log_fixture_io,guest_x18)==8,"self-authored float fixture ABI");
 static void *exercise_logf_native(guest_process *p,void *opaque) {
@@ -2159,6 +2180,7 @@ int main(int argc,char **argv) {
     if(argc==2 && !strcmp(argv[1],"--fs-open-file"))return fs_open_file_contract();
     if(argc==2 && !strcmp(argv[1],"--aoc"))return aoc_contract();
     if(argc==2 && !strcmp(argv[1],"--nifm"))return nifm_contract();
+    if(argc==2 && !strcmp(argv[1],"--socket"))return socket_contract();
     if(argc==2 && !strcmp(argv[1],"--logf"))return logf_contract();
     if(argc==3 && !strcmp(argv[1],"--logf-native"))return logf_native_contract(argv[2]);
     if(argc==2 && !strcmp(argv[1],"--strcasecmp"))return strcasecmp_contract();

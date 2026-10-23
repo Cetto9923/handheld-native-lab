@@ -1101,6 +1101,27 @@ bool nso_host_nifm_is_initialized(void) {
     return s_nifm_initialized;
 }
 
+static bool s_socket_initialized = false;
+static void *s_socket_work_buffer = NULL;
+static size_t s_socket_work_buffer_size = 0;
+static size_t s_socket_allocator_size = 0;
+static int32_t s_socket_concurrency = 0;
+
+int32_t nso_host_socket_initialize(void *work_buffer, size_t work_buffer_size, size_t allocator_size, int32_t concurrency) {
+    s_socket_initialized = true;
+    s_socket_work_buffer = work_buffer;
+    s_socket_work_buffer_size = work_buffer_size;
+    s_socket_allocator_size = allocator_size;
+    s_socket_concurrency = concurrency;
+    fprintf(stderr, "[hle] nn::socket::Initialize: buffer=%p size=%zu (0x%zx) alloc_size=%zu (0x%zx) concurrency=%d -> returning 0\n",
+            work_buffer, work_buffer_size, work_buffer_size, allocator_size, allocator_size, concurrency);
+    return 0;
+}
+
+bool nso_host_socket_is_initialized(void) {
+    return s_socket_initialized;
+}
+
 void nso_host_set_extension_resolver(nso_import_fn resolver) {extension_resolver=resolver;}
 uint64_t nso_host_resolve(uint32_t index,const char *name) {
     if(!name)return 0;
@@ -1149,6 +1170,8 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_fs_mount_add_on_content;
     if(!strcmp(name,"_ZN2nn4nifm10InitializeEv") || !strcmp(name,"nnnifmInitialize"))
         return (uint64_t)(uintptr_t)&nso_host_nifm_initialize;
+    if(!strcmp(name,"_ZN2nn6socket10InitializeEPvmmi") || !strcmp(name,"nnsocketInitialize"))
+        return (uint64_t)(uintptr_t)&nso_host_socket_initialize;
     if(!strcmp(name,"_ZN2nn4util11ReferSymbolEPKv") || !strcmp(name,"nnutilReferSymbol"))
         return (uint64_t)(uintptr_t)&refer_symbol;
     if(!strcmp(name,"_ZN2nn4util12GenerateUuidEv"))

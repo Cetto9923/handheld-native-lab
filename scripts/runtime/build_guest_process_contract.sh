@@ -102,6 +102,7 @@ run('host-fs-mount-rom-contract',[out/'guest_process_contract.host','--fs-mount-
 run('host-fs-open-file-contract',[out/'guest_process_contract.host','--fs-open-file'])
 run('host-aoc-contract',[out/'guest_process_contract.host','--aoc'])
 run('host-nifm-contract',[out/'guest_process_contract.host','--nifm'])
+run('host-socket-contract',[out/'guest_process_contract.host','--socket'])
 run('host-logf-contract',[out/'guest_process_contract.host','--logf'])
 run('host-strcasecmp-contract',[out/'guest_process_contract.host','--strcasecmp'])
 run('host-va-enabled-contract',[out/'guest_process_contract.host','--va-enabled',out/'contract.nso'])

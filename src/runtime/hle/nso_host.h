@@ -102,6 +102,9 @@ int32_t nso_host_fs_mount_add_on_content(const char *name, int32_t target_index,
 
 int32_t nso_host_nifm_initialize(void);
 bool nso_host_nifm_is_initialized(void);
+
+int32_t nso_host_socket_initialize(void *work_buffer, size_t work_buffer_size, size_t allocator_size, int32_t concurrency);
+bool nso_host_socket_is_initialized(void);
 #ifdef __cplusplus
 }
 #endif
