@@ -1,0 +1,222 @@
+{
+  "observed_at_utc": "2026-10-23T14:57:17.346617+00:00",
+  "root_owns_git_and_device": true,
+  "worktrees": [
+    {
+      "path": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native",
+      "branch": "work/rg477m-native",
+      "sha": "a27742c2abf52421a900aaea93567c7b5427ac99",
+      "status_exit": 0,
+      "dirty": []
+    },
+    {
+      "path": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-android",
+      "branch": "task/T03A-codex-android",
+      "sha": "15da4c2ef7a11138de45d098574f9bd66ef60b66",
+      "status_exit": 0,
+      "dirty": []
+    },
+    {
+      "path": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-dso-thread-owner",
+      "branch": "task/T02-dso-thread-owner",
+      "sha": "a27742c2abf52421a900aaea93567c7b5427ac99",
+      "status_exit": 0,
+      "dirty": []
+    },
+    {
+      "path": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration",
+      "branch": "task/codex-integration",
+      "sha": "a27742c2abf52421a900aaea93567c7b5427ac99",
+      "status_exit": 0,
+      "dirty": [
+        " M coordination/HANDOFF.md",
+        " M coordination/STATUS.md",
+        " M coordination/state.json"
+      ]
+    },
+    {
+      "path": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-las-transfer",
+      "branch": "task/T04-las-transfer",
+      "sha": "81b1917adb261f80ce1780e2c16d8d31c536a693",
+      "status_exit": 0,
+      "dirty": []
+    },
+    {
+      "path": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-math-runtime",
+      "branch": "task/T02-math-runtime",
+      "sha": "b19706c4cfc9fdd3246d85a12c880f922ae346d3",
+      "status_exit": 0,
+      "dirty": []
+    },
+    {
+      "path": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-native-boundary",
+      "branch": "task/T02-native-boundary",
+      "sha": "5c20b064f2866577ca1fdd903fa196dd842eb3a8",
+      "status_exit": 0,
+      "dirty": []
+    },
+    {
+      "path": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-native-host-callback",
+      "branch": "task/T02-native-host-callback",
+      "sha": "434c4d13efcfd0e2ea20188bede031d6353e89ce",
+      "status_exit": 0,
+      "dirty": []
+    },
+    {
+      "path": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-native-stack13",
+      "branch": "task/T02-native-stack13",
+      "sha": "7beeb22294311cc3c896ec23ac23561fca9d6b6d",
+      "status_exit": 0,
+      "dirty": []
+    },
+    {
+      "path": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-native-tp-read",
+      "branch": "task/T02-native-tp-read",
+      "sha": "a27742c2abf52421a900aaea93567c7b5427ac99",
+      "status_exit": 0,
+      "dirty": []
+    },
+    {
+      "path": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-os-tls",
+      "branch": "task/T02-os-tls",
+      "sha": "9c24ed35e683e0aa426ae2561dac670a8ead8ef1",
+      "status_exit": 0,
+      "dirty": []
+    },
+    {
+      "path": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-pages",
+      "branch": "task/T02-guest-pages",
+      "sha": "4695e3c995993832ff8e274415f58b1cdb1e4684",
+      "status_exit": 0,
+      "dirty": []
+    },
+    {
+      "path": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-primary-identity",
+      "branch": "task/T02-primary-identity",
+      "sha": "f60b4b4029b0cb5e09d769fbbb6a91877d91821f",
+      "status_exit": 0,
+      "dirty": []
+    },
+    {
+      "path": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-qa",
+      "branch": "task/T07-codex-qa",
+      "sha": "d26d3f683e3cf93fa857c1306e31e29912310a67",
+      "status_exit": 0,
+      "dirty": [
+        "?? scripts/qa/",
+        "?? tests/acceptance/nso_contract.c"
+      ]
+    },
+    {
+      "path": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-runtime",
+      "branch": "task/T02-codex-runtime",
+      "sha": "9dc8aa73c6e2d038c2b1c89efd898b65fbf0d1bb",
+      "status_exit": 0,
+      "dirty": []
+    },
+    {
+      "path": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-startup-next",
+      "branch": "task/T02-startup-next",
+      "sha": "ff964e9d479e288e2b695b5100836def780ca4df",
+      "status_exit": 0,
+      "dirty": []
+    },
+    {
+      "path": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-tls-host-consumer",
+      "branch": "task/T02-tls-host-consumer",
+      "sha": "6a615e355dde2aedfe7db3dd3cd002b74ef23ebb",
+      "status_exit": 0,
+      "dirty": []
+    },
+    {
+      "path": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-tls-provider",
+      "branch": "task/T02-tls-provider",
+      "sha": "cfc4df8921eaf911662ee6512c770a0683e787db",
+      "status_exit": 0,
+      "dirty": []
+    },
+    {
+      "path": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-tls-provider-fix",
+      "branch": "task/T02-tls-provider-fix",
+      "sha": "80d4cfbf3756f7744072914cda1c1b2d2653c6cb",
+      "status_exit": 0,
+      "dirty": []
+    },
+    {
+      "path": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-va-resource",
+      "branch": "task/T02-va-resource",
+      "sha": "3dbb0dcc81543b790c75510e9320981e429046f2",
+      "status_exit": 0,
+      "dirty": []
+    },
+    {
+      "path": "/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-vulkan",
+      "branch": "task/T03B-vulkan-ops",
+      "sha": "fa76ca979d711c68beebe9e6ae699914f8a1cdf0",
+      "status_exit": 0,
+      "dirty": []
+    },
+    {
+      "path": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native/.claude/worktrees/laughing-cray-3464b0",
+      "branch": "claude/laughing-cray-3464b0",
+      "sha": "5310159988f21558b5b93c0f4041fc4f0da4ba28",
+      "status_exit": 0,
+      "dirty": []
+    },
+    {
+      "path": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native/.claude/worktrees/t00-qa-review",
+      "branch": "task/T00-qa-review",
+      "sha": "c6265b6a3ee9bbfc32589e31042846710ed944f3",
+      "status_exit": 0,
+      "dirty": [
+        "?? .local"
+      ]
+    },
+    {
+      "path": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native/.claude/worktrees/t01-route",
+      "branch": "task/T01-route",
+      "sha": "d8b2e59fb935e941138ec459a40f356aec1088c2",
+      "status_exit": 0,
+      "dirty": [
+        "?? .local"
+      ]
+    },
+    {
+      "path": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native/.claude/worktrees/t02-sample",
+      "branch": "task/T02-sample",
+      "sha": "1e379cafba6a75847f66b2846d2bae950c1790ad",
+      "status_exit": 0,
+      "dirty": [
+        "?? .local"
+      ]
+    },
+    {
+      "path": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native/.claude/worktrees/t03a-android",
+      "branch": "task/T03A-android",
+      "sha": "8be2967f8c405c3c28dade07be3d17b1374b6558",
+      "status_exit": 0,
+      "dirty": [
+        "?? .local"
+      ]
+    },
+    {
+      "path": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native/.claude/worktrees/t04-assets",
+      "branch": "task/T04-assets",
+      "sha": "732265251fb5a088e3db25a84cad64a8d9949fa8",
+      "status_exit": 0,
+      "dirty": [
+        "?? .local"
+      ]
+    },
+    {
+      "path": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native/.claude/worktrees/t04-nvn",
+      "branch": "task/T04-nvn",
+      "sha": "bed2bdfd76fa84f5779fd829319eade6bc2e0836",
+      "status_exit": 0,
+      "dirty": [
+        "?? .local"
+      ]
+    }
+  ],
+  "snapshot_note": "Read-only worktree snapshot before this final documentation commit. Root dirty paths are its own handoff WIP; final containing HEAD/clean state and original safeff outcome must be read Git/final receipt. Do not assume document self-SHA."
+}

@@ -1,62 +1,28 @@
-# 当前接力证据索引
+# 当前交接证据索引
 
-最后核验：2026-10-23T13:56:56.571016+00:00。只读整理，未重跑构建/游戏/设备；[单入口](../../coordination/HANDOFF.md)与[state](../../coordination/state.json)记录当前版本，Git历史及下列原始日志保留旧阶段，不拼接为同次PASS。
+这是安全收口时的当前索引，替代a277及更早索引顶部的历史“startup69/106仍阻塞”描述；旧命令/失败保留在Git与原始目录。单入口：[HANDOFF](../../coordination/HANDOFF.md)。所有`.local/`均相对`/Users/yuyan9923/Documents/Codex/2026-10-23/task/ffrs-integration`，其它作者证据在相邻工作树，不假定原交付复制了大日志。
 
-## 当前版本与门槛
+## 最新可核验链
 
-| 范围 | 版本/入口 | 结果与限度 |
+| 范围 | 精确现存证据 | 真实结果 |
 |---|---|---|
-| integration | task/codex-integration / 92fd886e4338cb3b02a717dbaa991452489f7130 | 实读HEAD；LAS81/3db/ff964e9/b197/0708已集成，后续包含本文的SHA须实读 |
-| 原交付 | work/rg477m-native / f9284ea44f10a0d3a838c554508a3e911635b49f | 本轮只读clean，明确许可后safeff成功，无push/当前审批block |
-| 新组合构建 | [manifest](../../.local/runtime/integrated-92fd886/manifest.json) | 构建进程0；新组合RG原码0,0,0,0,133,133/no timeout，两个startup仍69，不是完整启动 |
-| 最近b197 RG | [math-runtime-v1证据目录](../../.local/device/rg477m-session1/) / [device report](codex_guest_process_device_report.md) | logf真实FP合同0；原startup空/非空均69 SetMemoryAllocatorForThreadLocal，allocmain+13830/freemain+13870，两真实map1286144+1048576，133/no timeout；未完整startup/CRT |
-| 当前开发 | state精确5file TLSprovider +6file HOSTcallback lease | 两编码实际进行，未freeze；tls_research计划已交回等freeze，functional_review idle，DOC只四文件 |
+| 当前代码 | integration与原交付a277；源码e305d1e；[工作树快照](../../coordination/WORKTREES.json) | 已集成434、cfc、80d修复、f60、6a与851诊断；仅本次交接文档待最终自引用Git核对 |
+| 106/110/startup | `.local/device/rg477m-session1/primary-identity-v1-{plan,stage,execution}.json`；[device report](codex_guest_process_device_report.md) | 10项：组件/两原startup0，CRT515/133；两startup真实OS析构2轮/1调用/remaining0；无timeout/main未改 |
+| HOST消费者 | `.local/device/rg477m-session1/tls-host-consumer-v1-{plan,stage,execution}.json` | 14项11×0/3预期134，无timeout/main未改；SCS/HOST/currentx18与ledger真实覆盖 |
+| 最新原allocator+CRT | `.local/runtime/original-allocator-v2/manifest.json`；`.local/device/rg477m-session1/original-allocator-v2-{plan,stage,execution}.json` | allocator空/带参0/0、155.918208/170.973375ms；CRT515/+5920a34、raw133/162.899666ms，wrapper0不掩盖原码 |
+| 最新Android CLI | `.local/runtime/original-allocator-v2/nso_owned_startup.android` | 839248B，SHA256`b9085e0669c36a7c968d80a721d0eb7d1dc521d268bdb9d0e8f4291a3090b6f7`；精确增量link argv与输入hash在manifest，未重跑全113构建 |
+| 独立审查 | [primary](codex_primary_identity_review.md)、[HOST消费者](codex_tls_host_consumer_review.md)、[HOST边界](codex_native_host_callback_review.md)、[provider](codex_tls_provider_review.md)、[P2修复](codex_tls_provider_repair_review.md) | 各FINAL；reviewer Android NOT_RUN，root设备另归因；原fresh P2 -11保留，80d同fixture修复0；Darwin mincore测试误判校准保留 |
+| CRT下一关 | [frontier](codex_crt_frontier_review.md)、[caller](codex_tls_caller_report.md)、[boot](codex_boot_order_reuse_report.md)、[thread exit](codex_tls_exit_hook_report.md) | 21字保真/104B运输已过；515真实DSO schema/逐线程ELFTLS/TP/五参Start尚未闭合 |
+| 图形复用 | [LAS FINAL](codex_las_transfer_review.md)、`las-transfer-integrated-v2-*`设备日志 | MIT LAS typed记录→真实vkCmdCopyBuffer，RG0/113.854ms、64KiB+256B零差异；无shader/present/game |
+| 设备/APK | [device](codex_device_report.md)、[Android](codex_android_report.md)、[阶段](codex_stage_status.md) | v6仅诊断APK451092B/SHA4b40d3896ac9d8f7cb9069df81dd4d30148d030dda3cbaf449ba9a9b02a74e0a；无完整游戏APK |
+| 真实进程收口 | `.local/handoff-final/process-check.json` | ps只读0，命名本项目构建/测试匹配0；普通沙箱ps EPERM后获准只读核对成功；不外推外部代理/设备全局进程 |
+| 原分支保存 | `.local/integration-approval/original-ff-a27742c-result.json`及最终新回执（如有） | a277实际safeff成功clean/no push；不重放历史已完成操作，最终文档提交实读Git |
 
-组合92新RG：[execution](../../.local/device/rg477m-session1/integrated-runtime-v1-execution.json)；systemlogf76.093ms/native87.782ms/normal86.732ms/info225.082ms均0，startup空182.680ms/非空194.006ms均133/69，两真实map1286144+1048576。freeze SHA`45f0222985aeee189525b98dc1a74267c0b7ab0ce42f37eaa63dadc072bd0383`；CLI807776B/SHA8300d0a19ef7d02ad8083d8bf3999dcb8d43cc237ad947e0a792a15bd7f37388，normal977456B/SHA13f7dbc08031c98ef7ab3ce22b898f2105511f63185daab3b8113d97ec802d6e。0708 caller诊断已核，不影响控制流。DOC四文件现暂停交回root。
+## 原始材料与工具
 
-## 组件与原始命令入口
-
-所有RG计划/执行文件在总控`.local/device/rg477m-session1/`；各prefix的`plan/stage/execution`及stdout/stderr保留精确argv、timeout、原始exit、来源/工件hash。读取匹配版本，不重放旧命令。
-
-| 范围 | 清理报告 / 原始prefix | 有效覆盖 |
-|---|---|---|
-| math b197 | [独立FINAL](codex_math_runtime_review.md)、[原review](../../../functional-review/math-runtime/REVIEW.md) | review SHA`7b8f4a0dfb36401fecf4ecdb0667ea066ca6fb1883646406995c33abbc96d6d2`；typed libm/FP增量，非CRT；root device `math-runtime-v1-*` |
-| ff964e9 61/67 | [独立FINAL](codex_startup_next_review.md)、`startup-next-v1-*` | 成熟strcasecmp及实际capability，原startup曾到153；后续b197已到69，旧153不是当前门槛 |
-| 3db VA/locale | [独立review](codex_va_resource_review.md)、`va-resource-v1-*` | 真management arena/usage和Bionic locale；历史malloc139保留，不作为正常路径继续重试 |
-| LAS81 | [LAS FINAL](codex_las_transfer_review.md)、`las-transfer-integrated-v2-*` | 19命令11×0/5×2/2×3/1×4符合预期；集成组合真实GPUtransfer0/113.853958ms、64KiB+256B零差异，shader/present/gamefalse；非新92组合结果 |
-| owned argv9dc | [review](codex_guest_arguments_review.md)、`guest-arguments-v1-usb-ready-*` | 独立53命令符合预期；RG六合同/info0，历史空66/非空63均133；原main未改 |
-| native/OS/pages/stack | [boundary review](codex_native_boundary_review.md)、[OS TLS review](codex_os_tls_review.md)、[pages review](codex_guest_pages_review.md)、[capacity review](codex_native_stack_capacity_review.md)、[GP21 review](codex_native_stack13_review.md) | 声明ABI/票据/lifecycle子集；GP21完整独立C交叉编译20s timeout保留，28额外C编译30s timeout不算通过；root设备与reviewer区分 |
-| boot与malloc | [boot](codex_boot_order_reuse_report.md)、[malloc前置条件](codex_malloc_startup_prerequisite.md) | 原初始化先后与已知pre-init故障来源；不造对象/默认值或强行pthread旁路 |
-| 现有APK/输入/音频/leaf | [Android](codex_android_report.md)、[device](codex_device_report.md) | v6 451092B/SHA4b40d3896ac9d8f7cb9069df81dd4d30148d030dda3cbaf449ba9a9b02a74e0a；leaf各16875零差异仅单函数；音频headadvance不证明听感/游戏音频 |
-| 方法/成熟源码复用 | [method](codex_method_reuse_audit.md)、[locale](codex_locale_compare_report.md)、[LAS reuse](codex_las_implementation_review.md)、[route](codex_reuse_route_review.md) | REA Skill实际读取但63函数helper编译1/no timeout/nofunctionEvidence；LLVM与Bionic另归因。LAS MIT pinnedfe66 API/记录语义复用，不继承CPUmemmove假GPU或GetInfo常量0 |
-
-自有9216B `boundary.nso` SHA`0214c62fdc6ffb00093ad7bce051955b1003ff1ad73abd10deb53f110d82278f`不含游戏字节；`native-profile-v2-contract-2.stdout`真实RG两次native调用0、raw_fallback=false、ended_session_rejected=true，只证明声明loader/import/ABI子集。游戏专用main SHA`6e6d1f3cd1672243e2ed344cc1b8849b85437d41bdecec81a5f9181e472d68a5`与SDK SHA`9dfd1cc6d3209d857dcafb191736265ac812401ddcc7b49dabf3bc0b114655a9`及偏移须逐版本核对，不能当任意游戏支持。
-
-## 历史失败、工具与恢复
-
-- 原分支ff曾被自动审批拒绝且未执行：[拒绝记录](../../.local/integration-approval/original-ff-f9284ea-rejection.json)。用户明确允许后唯一重试成功f9284ea clean，当前无pending/blocked；不重放已完成动作。
-- 15e/e95 usable64752≠65536的RG合同1保留；d4容量修复先hold callback、真实join/unmap/refund后有界补admin，第二次raw69632/admin4096/native68848/logical65536。5c修旧2f retained映射丢handle，旧fixture1与修复retry0分别保留，见对应报告。
-- mmap(0)无MAP_FIXED仅hint；tail0曾掩盖139；最长RELA候选不证明完整性；leaf和musl早return2不是CRT；94MB必OOM无证据论据撤回。代码量/合同数/面板Hz不计游戏完成率。
-- Google官方部分sysroot逐成员长度/CRC验证，AppleClang/RustLLD真实ELF；完整NDK归档NOT_VERIFIED。CMake configure0/build2为Darwin ar/ranlib不能索引ELF，minimal成功不能改称完整NDK成功。
-- 平台中止的旧NSO安全/异常QA不重试；`cua.getApp('Codex')`被明确DENIED，无截图/AX，UI可见性UNKNOWN，不绕过。历史ps127和10:40恢复快照不当当前进程证明。
-- 环境中断后先只读查HEAD/index/WIP/日志再决定恢复，不重放uncertain mutation。当前无待审批或不确定写入；root唯一Git/ADB，其它Agent不stage/commit、选设备或启动VM。授权并行本地开发/提交/原分支ff；不push、清数据、root或获取新游戏/密钥。
-
-[AGENTS](../../AGENTS.md)约束不变；STATUS仅`python3 scripts/project_status.py --write`生成。精确后续构建argv复用当前builder manifest，root核工件hash后设备复测；文档快照不会自动刷新或打开持久目标引擎。
-
-## 69→106 与HOST callback最新冻结
-
-- TLSprovider `../ffrs-tls-provider` / task/T02-tls-provider / cfc4df8921eaf911662ee6512c770a0683e787db clean；freeze `.local/tls-provider-v2/freeze.json` SHA45bd3c2707f11ff91fe13b5fa1ba893fa3d191a799057f5abe60537907a1dc75，112步骤预期/无timeout。root `tls-provider-v2-{plan,stage,execution}.json` 十例，raw0,0,134,134,0,0,0,0,133,133；原startup到106/+18d68，是否entry返回后的TLS析构待组合flush确认。fresh API P2独立证据 `../functional-review/tls-provider/logs/fresh-process-registration/`，修复另树ffrs-tls-provider-fix，不污染冻结cfc。
-- HOSTcallback `../ffrs-native-host-callback` /434c4d13efcfd0e2ea20188bede031d6353e89ce clean；freeze `.local/native-host-callback/candidate1/freeze.json`，五源bundle c3cd96fb49d88415b612cb3a8ca17daa1900f43fca372a486a72c0640e965ab9。root `native-host-callback-v1-{plan,stage,execution}.json` normal0/265.251ms、cleanup0/72.840ms，noTimeout/stderr空；normalELF129064/B070e788...18d1，cleanup37032/4be7c5e6...3e2，完整SHA见plan。root已集成7f9c42e，独立review进行中。
-- 既有原入口返回日志可能被缓冲；root7628947仅在成功call后fflush，严格syntax0 `.local/host-verification/entry-return-evidence/result.json`，尚未组合RG运行。不把stdout无result误称入口未返回；不以晚期清理断点冒充完整游戏成功。
-
-
-最新组合585源/full113build0与真实RG11case见 `tls-combined-v1-*`；wrapper结果已在环境恢复后完整取回0。两startup返回日志0x92后再stop106（voidx0非状态）。freezeSHA1ab04cb38fece44c184be5382e31d646f46e59c2468cd4ea881600f4cc4e3d4f。完整SHA/精确argv原码在plan/execution。
-独立FINAL已归档：codex_native_host_callback_review.md SHAb2d6d291925067cb0f818c4e0e2e5d4e42eae285e06dd9766857ac53d013ad85；codex_tls_provider_review.md SHA4d4f41aa63865ec32976921846a07f49aca4cff6265a67dd140e451e642a9fee；codex_tls_provider_repair_review.md保持原samefixture复现和旧P2失败。Android执行一律root单独归因。当前唯一coding是ffrs-primary-identity/base585的106/110子集，其余已冻结。
-
-
-f60身份子集FINAL：codex_primary_identity_review.md/bba6c80bf5db81aee02426ac50221ec10af20a1a42c78cacf51e85e4a8d806e9；Darwinmincore初版-6原日志及校准保留在../functional-review/primary-identity/，不以mincore0当未unmap。
-原始startup+OS清理RG0/0，原CRTwrapper515/133：primary-identity-v1-*；原游戏48/64 allocatorpairs poststartup RG0/0：original-allocator-v1-*。后者CLI源851a842，834328B/d7f95603a90eb5fbbdeb8e49e169592ef642a3cb3e90cb7aa5f6435c24b29983，显式隔离合同非正常SDKboot，原mainhash不变。
-
-
-HOST6a新14RG：tls-host-consumer-v1-*（11x0/3expected134，mainhash前后匹配）；独立review6425555d94061ad335399d4b3270b6ba11b6fe43c9b9dac4e649de8d908b23ab。root当前e305+851CLi新linkonly原allocator-v2真实0/0、CRT515/133，ELF839248/B9085e0669c36a7c968d80a721d0eb7d1dc521d268bdb9d0e8f4291a3090b6f7；不重复全113构建。
-CRTfrontier有限只读报告c7f8abdd2a368e9d4ef577eaaff4cc48954e14b3891ca25c3d3463d8bf302022，明确GP21/160Bgateway已有，应复用；无固定单primaryTP或假515return捷径。docs旧IDLE-only章节加历史标记，冻结6a不改。
+- main125577976B SHA256`6e6d1f3cd1672243e2ed344cc1b8849b85437d41bdecec81a5f9181e472d68a5`；SDK SHA256`9dfd1cc6d3209d857dcafb191736265ac812401ddcc7b49dabf3bc0b114655a9`。路径`/Users/yuyan9923/GitHub/ff-resonance-rg477m-native/.local/uncompressed/{main.bin,sdk.bin}`；仅引用，不复制/提交素材。
+- 当前设备项目根`/data/local/tmp/ffrs-rg477m-efd1123620814764ae32529c18081259`，main已匹配hash；ADB序列`RG477M01445122`。精确push/运行输入在上述stage/plan；先核是否已完成，不盲重放。
+- 完整585基线构建：`.local/runtime/integrated-585e3e1/manifest.json`；增量f60 `../ffrs-primary-identity/.local/primary-identity-v1/freeze.json`；6a `../ffrs-tls-host-consumer/.local/tls-host-consumer-v1/{freeze.json,manifest.json,device-argv.json}`。工具链`../ffrs-android/.local/minimal-ndk/toolchain`，CRC/member hash已核而整个NDK归档未核。
+- 精确复现优先读取manifest的argv；host `scripts/runtime/run_capture.py`保留真实退出码和timeout。原设备CLI诊断预算1GiB、logicalstack65536、resourcequota1MiB是明确端口策略，不是伪装Horizon原内存值。
+- [REA/方法](codex_method_reuse_audit.md)、[成熟路线](codex_reuse_route_review.md)、[LAS范围](codex_las_implementation_review.md)、[malloc前置条件](codex_malloc_startup_prerequisite.md)、[module_tls范围](codex_module_tls_review.md)。不重复helper同故障/GP21运输/已通过探针；未证明的SDK字段不猜。
+- 历史失败必须保留：地址0误判、tail掩盖139、候选重定位完整性误判、pre-init malloc139、原fresh登记-11、mincore harness -6、编译超时及旧QA平台中止。当前startup和CRT不同结果不能拼接为完整启动。
