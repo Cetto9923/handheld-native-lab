@@ -1,12 +1,25 @@
 # FF: Resonance (RG477M Native Port) — 技术路线实证筛选与架构论证报告
 
+> **2026-10-23 Codex 复核修订：以下为历史路线论证，不是完整兼容性验收。**
+> 当前继续验证原生加载器 + HLE 路线，但其最终可行性、工期和性能均未证明。
+> 当前输入 `main.bin` SHA-256 为
+> `6e6d1f3cd1672243e2ed344cc1b8849b85437d41bdecec81a5f9181e472d68a5`；
+> 本报告旧哈希和部分数量不可作为当前运行输入指纹。实测加载器报告 651 个导入、
+> 4,612 条 RELA 与 1,370,974 条 RELR，完整入口仍停在未实现的运行时接口。
+> TPIDR_EL0 指令相同不代表 TLS 布局兼容：本地 SDK 的线程结构与宿主 pthread 不同，
+> 游戏也直接读取 TPIDR_EL0。零 SVC 扫描不能证明 651 个导入覆盖全部 ABI 边界。
+> NVN 清单有 535 个名字，目前仅两个查询入口可解析，尚无 Vulkan 渲染后端。
+> 下文“100% 原生性能”“天然兼容”“完全同构”、重编译必然 OOM / 年限，
+> 以及整个地址空间均安全可重定位等断言都缺乏足够证据，不作为当前结论。
+> 当前事实以 [阶段验收](codex_stage_status.md) 和 [运行时报告](codex_runtime_report.md) 为准。
+
 - **报告标识**：`docs/analysis/route.md`
 - **执行角色**：Agent A (RE 逆向与架构分析师)
 - **基准工件**：`main.bin` (SHA-256: `5fd6cfaf554672d1364f519d0a93b33cffdd81a3e3f0cf96b8ddc599f579b570`)
 - **引擎版本**：Epic Games Unreal Engine 5.6.1 (Shipping)
 - **内部代号**：`mucha` (`FFRS-Switch-Shipping.nss`)
 - **分析日期**：2026-10-23
-- **状态**：**PASSED / ROUTE FINALIZED**
+- **状态**：历史路线候选；完整兼容性未验收
 
 ---
 

@@ -38,3 +38,9 @@ This is a correctness prerequisite for T04, not a title-screen or rendering
 pass. A real backend must implement Vulkan resources, queues, commands,
 presentation, format mapping and Switch shader conversion, with RG477M evidence.
 No registered function alone demonstrates equivalent NVN semantics.
+
+Header coverage check: 59 of the 535 inventoried names have no corresponding
+PFN typedef in the bundled header. Its own comment describes NVN 53.105 and
+contains incomplete opaque types; it is not proof of SDK 20.5 ABI coverage.
+Do not infer missing function signatures or texture-format equivalence to make
+the game advance. The new dispatcher provides no such inferred implementation.
