@@ -1,0 +1,134 @@
+{
+  "title_id": "0100B8A026F14000",
+  "title_name": "FINAL FANTASY RESONANCE",
+  "package": "[本体v1.0.0][0100B8A026F14000][22.1.0][中文][HK].nsp",
+  "rights_id": "0100b8a026f140000000000000000016",
+  "titlekey_derived": "14d985e5730ed0e8b847102332f5ad99",
+  "romfs_header": {
+    "header_size": 80,
+    "dir_hash_table_offset": 8968105464,
+    "dir_hash_table_size": 44,
+    "dir_meta_table_offset": 8968105508,
+    "dir_meta_table_size": 308,
+    "file_hash_table_offset": 8968105816,
+    "file_hash_table_size": 60,
+    "file_meta_table_offset": 8968105876,
+    "file_meta_table_size": 716,
+    "data_offset": 512
+  },
+  "ue_command_line": "-project=\"../../../FFRS/FFRS.uproject\"",
+  "files_count": 14,
+  "files": [
+    {
+      "path": "Engine/Config/StagedBuild_FFRS.ini",
+      "data_offset": 0,
+      "size": 3,
+      "size_formatted": "3 B",
+      "sha256": "f1945cd6c19e56b3c1c78943ef5ec18116907a4ca1efc40a57d48ab1db7adfc5"
+    },
+    {
+      "path": "Engine/Content/Renderer/TessellationTable.bin",
+      "data_offset": 16,
+      "size": 259568,
+      "size_formatted": "259568 B",
+      "sha256": "edc4f3b628a139c5e185bbaeca661c95c1f427368d3b92892c5cff36c56dd941"
+    },
+    {
+      "path": "Engine/Content/SlateDebug/Fonts/LastResort.tps",
+      "data_offset": 259584,
+      "size": 930,
+      "size_formatted": "930 B",
+      "sha256": "0f775fa99d05e21d43d2d06d55982b23dcdccdb512a9a5a07aff674f212c41b8"
+    },
+    {
+      "path": "Engine/Content/SlateDebug/Fonts/LastResort.ttf",
+      "data_offset": 260528,
+      "size": 5395052,
+      "size_formatted": "5.15 MB"
+    },
+    {
+      "path": "FFRS/Content/Paks/FFRS-Switch.pak",
+      "data_offset": 5655584,
+      "size": 2958593334,
+      "size_formatted": "2821.53 MB",
+      "pak_info": {
+        "magic": "0x5a6f12e1",
+        "version": 11,
+        "index_offset": 2958205880,
+        "index_size": 236702
+      }
+    },
+    {
+      "path": "FFRS/Content/Paks/FFRS-Switch.ucas",
+      "data_offset": 2964248928,
+      "size": 5976848928,
+      "size_formatted": "5699.97 MB"
+    },
+    {
+      "path": "FFRS/Content/Paks/FFRS-Switch.utoc",
+      "data_offset": 8941097856,
+      "size": 12382627,
+      "size_formatted": "11.81 MB",
+      "iostore_header": {
+        "magic": "-==--==--==--==-",
+        "version": 8,
+        "header_size": 144,
+        "entry_count": 63910,
+        "compressed_block_count": 518224,
+        "compressed_block_entry_size": 12,
+        "compression_method_count": 1,
+        "compression_block_size": 65536,
+        "directory_index_size": 3096083,
+        "partition_count": 1
+      }
+    },
+    {
+      "path": "FFRS/Content/Paks/global.ucas",
+      "data_offset": 8953480496,
+      "size": 3353200,
+      "size_formatted": "3.20 MB"
+    },
+    {
+      "path": "FFRS/Content/Paks/global.utoc",
+      "data_offset": 8956833696,
+      "size": 818,
+      "size_formatted": "818 B",
+      "sha256": "7ca83c64f82057830c61d605e176850be1c84329e5344c672ca8d83106410636"
+    },
+    {
+      "path": "Manifest_DebugFiles_Switch.txt",
+      "data_offset": 8956834528,
+      "size": 395,
+      "size_formatted": "395 B",
+      "sha256": "0ff328bd5c63a4c0af7e8e42151e5369f2694f33d60d687312a3b2b9a97478e0"
+    },
+    {
+      "path": "Manifest_NonUFSFiles_Switch.txt",
+      "data_offset": 8956834928,
+      "size": 3448,
+      "size_formatted": "3448 B",
+      "sha256": "ce029d95f3ab29ffd09b5d18d21c28f29b90b52d07d6d06f99dc0e74acfbcc6a"
+    },
+    {
+      "path": "Manifest_UFSFiles_Switch.txt",
+      "data_offset": 8956838384,
+      "size": 11266505,
+      "size_formatted": "10.74 MB",
+      "sha256": "62eb9756ea3f64d871b50b8c4b6de970e35b911fb1da0ff24d1f33fe66f1325b"
+    },
+    {
+      "path": "UECommandLine.txt",
+      "data_offset": 8968104896,
+      "size": 38,
+      "size_formatted": "38 B",
+      "sha256": "f842c65b9968c0c430c4a1d430e16ff2f51b1a1a7d43cb1ae74afd7cba7efc88"
+    },
+    {
+      "path": "__rom",
+      "data_offset": 8968104944,
+      "size": 4,
+      "size_formatted": "4 B",
+      "sha256": "c2368fda4366b6f2c2c2dfe92732d383174c37a52b06cf708bad97048ce6b047"
+    }
+  ]
+}
