@@ -1057,6 +1057,13 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
         "_ZN2nn2os35IsWriteLockHeldByCurrentThreadEPKNS0_20ReaderWriterLockTypeE",
         "_ZN2nn2os29IsReaderWriterLockOwnerThreadEPKNS0_20ReaderWriterLockTypeE",
         "_ZN2nn2os14IsReadLockHeldEPKNS0_20ReaderWriterLockTypeE",
+        "_ZN2nn2os15InitializeEventEPNS0_9EventTypeEbNS0_14EventClearModeE","nnosInitializeEvent",
+        "_ZN2nn2os13FinalizeEventEPNS0_9EventTypeE","nnosFinalizeEvent",
+        "_ZN2nn2os11SignalEventEPNS0_9EventTypeE","nnosSignalEvent",
+        "_ZN2nn2os10ClearEventEPNS0_9EventTypeE",
+        "_ZN2nn2os9WaitEventEPNS0_9EventTypeE","nnosWaitEvent",
+        "_ZN2nn2os12TryWaitEventEPNS0_9EventTypeE",
+        "_ZN2nn2os14TimedWaitEventEPNS0_9EventTypeENS_8TimeSpanE",
         "_ZN2nn2os12CreateThreadEPNS0_10ThreadTypeEPFvPvES3_S3_mi","nnosCreateThread",
         "_ZN2nn2os12CreateThreadEPNS0_10ThreadTypeEPFvPvES3_S3_mii",
         "_ZN2nn2os11StartThreadEPNS0_10ThreadTypeE","nnosStartThread",
@@ -1147,6 +1154,7 @@ static int import_signature(const char *name,nb_signature *out) {
         "_ZN2nn2os35IsWriteLockHeldByCurrentThreadEPKNS0_20ReaderWriterLockTypeE",
         "_ZN2nn2os29IsReaderWriterLockOwnerThreadEPKNS0_20ReaderWriterLockTypeE",
         "_ZN2nn2os14IsReadLockHeldEPKNS0_20ReaderWriterLockTypeE",
+        "_ZN2nn2os12TryWaitEventEPNS0_9EventTypeE",
         "_ZN2nn4time23StandardUserSystemClock14GetCurrentTimeEPNS0_9PosixTimeE",
         "_ZN2nn4time19ToCalendarTimeInUtcERKNS0_9PosixTimeE",
         "_ZN2nn4time21GetDeviceLocationNameEPNS0_12LocationNameE",
@@ -1159,6 +1167,7 @@ static int import_signature(const char *name,nb_signature *out) {
     static const char *const two[]={"strnlen","strcmp","strcasecmp","strcpy","strchr","strrchr","strstr","_ZN2nn2os15AllocateTlsSlotEPNS0_7TlsSlotEPFvmE",
         "_ZN2nn2os21AllocateAddressRegionEPmm","_ZN2nn2os19AllocateMemoryPagesEmm","_ZN2nn2os15FreeMemoryPagesEmm",
         "_ZN2nn4time16LoadTimeZoneRuleEPNS0_12TimeZoneRuleERKNS0_12LocationNameE",
+        "_ZN2nn2os14TimedWaitEventEPNS0_9EventTypeENS_8TimeSpanE",
         "strcspn","strspn","strcat",NULL};
     static const char *const three[]={"memset","memcpy","memmove","memcmp","memchr","strncmp","strncpy","__cxa_atexit","strtol",
         "_ZN2nn4time12GetDayOfWeekEiii",
@@ -1178,6 +1187,10 @@ static int import_signature(const char *name,nb_signature *out) {
         "_ZN2nn2os10WaitThreadEPNS0_10ThreadTypeE","nnosWaitThread",
         "_ZN2nn2os13DestroyThreadEPNS0_10ThreadTypeE","nnosDestroyThread",
         "_ZN2nn2os11SleepThreadENS_8TimeSpanE","nnosSleepThread",
+        "_ZN2nn2os13FinalizeEventEPNS0_9EventTypeE","nnosFinalizeEvent",
+        "_ZN2nn2os11SignalEventEPNS0_9EventTypeE","nnosSignalEvent",
+        "_ZN2nn2os10ClearEventEPNS0_9EventTypeE",
+        "_ZN2nn2os9WaitEventEPNS0_9EventTypeE","nnosWaitEvent",
         "_ZN5movie17SetThreadPriorityEi",NULL};
     const char *const *lists[]={one,two,three,void_one};
     for(unsigned group=0;group<4;group++)for(size_t i=0;lists[group][i];i++)if(!strcmp(name,lists[group][i])) {
@@ -1198,6 +1211,8 @@ static int import_signature(const char *name,nb_signature *out) {
     else if(!strcmp(name,"strncasecmp_l") || !strcmp(name,"_ZN2nn4time14ToCalendarTimeEPNS0_12CalendarTimeEPNS0_22CalendarAdditionalInfoERKNS0_9PosixTimeERKNS0_12TimeZoneRuleE")) {arguments=4;returns=1;}
     else if(!strcmp(name,"_ZN2nn2os36GetVirtualAddressMemoryResourceUsageEv")) {arguments=0;returns=2;}
     else if(!strcmp(name,"_ZN2nn2ro12ProtectRelroEPKvS2_S2_S2_S2_")) {arguments=5;returns=0;}
+    else if(!strcmp(name,"_ZN2nn2os15InitializeEventEPNS0_9EventTypeEbNS0_14EventClearModeE") ||
+            !strcmp(name,"nnosInitializeEvent")) {arguments=3;returns=0;}
     else if(!strcmp(name,"_ZN2nn2os15InitializeMutexEPNS0_9MutexTypeEbi") || !strcmp(name,"nnosInitializeMutex")) {arguments=3;returns=0;}
     else if(!strcmp(name,"_ZN2nn2os12CreateThreadEPNS0_10ThreadTypeEPFvPvES3_S3_mi") ||
             !strcmp(name,"nnosCreateThread")) {arguments=6;returns=1;}

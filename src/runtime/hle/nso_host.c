@@ -1405,6 +1405,283 @@ bool nso_host_account_is_initialized(void) {
     return s_account_initialized;
 }
 
+/* ========================================================================= */
+/* nn::os::EventType HLE Implementation                                      */
+/* ========================================================================= */
+
+typedef enum {
+    NN_OS_EVENT_CLEAR_MODE_MANUAL = 0,
+    NN_OS_EVENT_CLEAR_MODE_AUTO   = 1,
+} nn_os_event_clear_mode;
+
+struct nso_event_entry {
+    void *object;                 /* Guest EventType pointer */
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+    bool signaled;
+    uint8_t clear_mode;          /* 0 = manual, 1 = auto */
+    bool initialized;
+    uint32_t waiters;
+    uint32_t users;
+    struct nso_event_entry *next;
+};
+
+static pthread_mutex_t s_event_registry_mutex = PTHREAD_MUTEX_INITIALIZER;
+static struct nso_event_entry *s_event_registry = NULL;
+
+static struct nso_event_entry *find_event_locked(void *object) {
+    struct nso_event_entry *e = s_event_registry;
+    while (e && e->object != object) e = e->next;
+    return e;
+}
+
+static struct nso_event_entry *borrow_event(void *object) {
+    if (!object || ((uintptr_t)object & 7)) {
+        fprintf(stderr, "[hle] nn::os::Event: unaligned or null object %p\n", object);
+        return NULL;
+    }
+    pthread_mutex_lock(&s_event_registry_mutex);
+    struct nso_event_entry *e = find_event_locked(object);
+    if (!e) {
+        /* Auto-register statically initialized or dynamically allocated event */
+        uint8_t *b = (uint8_t *)object;
+        bool signaled = b[0x10] != 0;
+        uint8_t clear_mode = b[0x12];
+        e = (struct nso_event_entry *)calloc(1, sizeof(*e));
+        if (!e) {
+            pthread_mutex_unlock(&s_event_registry_mutex);
+            fprintf(stderr, "[hle] nn::os::Event: out of memory allocating event entry\n");
+            return NULL;
+        }
+        pthread_mutex_init(&e->mutex, NULL);
+        pthread_cond_init(&e->cond, NULL);
+        e->object = object;
+        e->signaled = signaled;
+        e->clear_mode = clear_mode;
+        e->initialized = true;
+        e->next = s_event_registry;
+        s_event_registry = e;
+    }
+    e->users++;
+    pthread_mutex_unlock(&s_event_registry_mutex);
+    return e;
+}
+
+static void release_event(struct nso_event_entry *e) {
+    if (!e) return;
+    pthread_mutex_lock(&s_event_registry_mutex);
+    if (e->users > 0) e->users--;
+    pthread_mutex_unlock(&s_event_registry_mutex);
+}
+
+void nso_host_os_initialize_event(void *event, bool initially_signaled, int32_t clear_mode) {
+    if (!event) {
+        fprintf(stderr, "[hle] nn::os::InitializeEvent: null event pointer\n");
+        return;
+    }
+    if ((uintptr_t)event & 7) {
+        fprintf(stderr, "[hle] nn::os::InitializeEvent: unaligned event pointer %p\n", event);
+        return;
+    }
+
+    pthread_mutex_lock(&s_event_registry_mutex);
+    struct nso_event_entry *e = find_event_locked(event);
+    if (!e) {
+        e = (struct nso_event_entry *)calloc(1, sizeof(*e));
+        if (!e) {
+            pthread_mutex_unlock(&s_event_registry_mutex);
+            fprintf(stderr, "[hle] nn::os::InitializeEvent: out of memory for event %p\n", event);
+            return;
+        }
+        pthread_mutex_init(&e->mutex, NULL);
+        pthread_cond_init(&e->cond, NULL);
+        e->object = event;
+        e->next = s_event_registry;
+        s_event_registry = e;
+    } else {
+        pthread_mutex_lock(&e->mutex);
+        pthread_cond_broadcast(&e->cond);
+        pthread_mutex_unlock(&e->mutex);
+    }
+
+    pthread_mutex_lock(&e->mutex);
+    e->signaled = initially_signaled != 0;
+    e->clear_mode = (uint8_t)clear_mode;
+    e->initialized = true;
+    e->waiters = 0;
+    pthread_mutex_unlock(&e->mutex);
+
+    /* Mirror native Horizon/SDK EventType layout into guest memory */
+    uint8_t *bytes = (uint8_t *)event;
+    *(uint64_t *)(bytes + 0x00) = (uintptr_t)event;
+    *(uint64_t *)(bytes + 0x08) = (uintptr_t)event;
+    bytes[0x10] = initially_signaled ? 1 : 0;
+    bytes[0x11] = initially_signaled ? 1 : 0;
+    bytes[0x12] = (uint8_t)clear_mode;
+    bytes[0x13] = 1; /* initialized state */
+    *(uint64_t *)(bytes + 0x14) = 0;
+    *(uint32_t *)(bytes + 0x1c) = 0;
+    *(uint32_t *)(bytes + 0x20) = 0;
+
+    pthread_mutex_unlock(&s_event_registry_mutex);
+
+    fprintf(stderr, "[hle] nn::os::InitializeEvent: event=%p initially_signaled=%d clear_mode=%d (%s)\n",
+            event, initially_signaled ? 1 : 0, clear_mode,
+            clear_mode == NN_OS_EVENT_CLEAR_MODE_AUTO ? "AutoClear" : "ManualClear");
+}
+
+void nso_host_os_finalize_event(void *event) {
+    if (!event) {
+        fprintf(stderr, "[hle] nn::os::FinalizeEvent: null event pointer\n");
+        return;
+    }
+    pthread_mutex_lock(&s_event_registry_mutex);
+    struct nso_event_entry **slot = &s_event_registry;
+    while (*slot && (*slot)->object != event) {
+        slot = &(*slot)->next;
+    }
+    if (*slot) {
+        struct nso_event_entry *e = *slot;
+        *slot = e->next;
+        pthread_mutex_lock(&e->mutex);
+        e->initialized = false;
+        pthread_cond_broadcast(&e->cond);
+        pthread_mutex_unlock(&e->mutex);
+        pthread_cond_destroy(&e->cond);
+        pthread_mutex_destroy(&e->mutex);
+        free(e);
+    }
+    /* Clear guest initialized state */
+    ((uint8_t *)event)[0x13] = 0;
+    pthread_mutex_unlock(&s_event_registry_mutex);
+
+    fprintf(stderr, "[hle] nn::os::FinalizeEvent: event=%p\n", event);
+}
+
+void nso_host_os_signal_event(void *event) {
+    struct nso_event_entry *e = borrow_event(event);
+    if (!e) return;
+
+    pthread_mutex_lock(&e->mutex);
+    if (!e->signaled) {
+        e->signaled = true;
+        ((uint8_t *)event)[0x10] = 1;
+        if (e->clear_mode == NN_OS_EVENT_CLEAR_MODE_AUTO) {
+            pthread_cond_signal(&e->cond);
+        } else {
+            pthread_cond_broadcast(&e->cond);
+        }
+    }
+    pthread_mutex_unlock(&e->mutex);
+    release_event(e);
+
+    fprintf(stderr, "[hle] nn::os::SignalEvent: event=%p\n", event);
+}
+
+void nso_host_os_clear_event(void *event) {
+    struct nso_event_entry *e = borrow_event(event);
+    if (!e) return;
+
+    pthread_mutex_lock(&e->mutex);
+    e->signaled = false;
+    ((uint8_t *)event)[0x10] = 0;
+    pthread_mutex_unlock(&e->mutex);
+    release_event(e);
+
+    fprintf(stderr, "[hle] nn::os::ClearEvent: event=%p\n", event);
+}
+
+void nso_host_os_wait_event(void *event) {
+    struct nso_event_entry *e = borrow_event(event);
+    if (!e) return;
+
+    pthread_mutex_lock(&e->mutex);
+    while (!e->signaled && e->initialized) {
+        e->waiters++;
+        pthread_cond_wait(&e->cond, &e->mutex);
+        e->waiters--;
+    }
+    if (e->clear_mode == NN_OS_EVENT_CLEAR_MODE_AUTO) {
+        e->signaled = false;
+        ((uint8_t *)event)[0x10] = 0;
+    }
+    pthread_mutex_unlock(&e->mutex);
+    release_event(e);
+
+    fprintf(stderr, "[hle] nn::os::WaitEvent: event=%p satisfied\n", event);
+}
+
+bool nso_host_os_try_wait_event(void *event) {
+    struct nso_event_entry *e = borrow_event(event);
+    if (!e) return false;
+
+    pthread_mutex_lock(&e->mutex);
+    bool signaled = e->signaled;
+    if (signaled && e->clear_mode == NN_OS_EVENT_CLEAR_MODE_AUTO) {
+        e->signaled = false;
+        ((uint8_t *)event)[0x10] = 0;
+    }
+    pthread_mutex_unlock(&e->mutex);
+    release_event(e);
+
+    return signaled;
+}
+
+bool nso_host_os_timed_wait_event(void *event, int64_t timeout_ns) {
+    if (timeout_ns <= 0) {
+        return nso_host_os_try_wait_event(event);
+    }
+    struct nso_event_entry *e = borrow_event(event);
+    if (!e) return false;
+
+    struct timespec deadline;
+    clock_gettime(CLOCK_REALTIME, &deadline);
+    deadline.tv_sec += timeout_ns / 1000000000LL;
+    deadline.tv_nsec += timeout_ns % 1000000000LL;
+    if (deadline.tv_nsec >= 1000000000L) {
+        deadline.tv_sec += 1;
+        deadline.tv_nsec -= 1000000000L;
+    }
+
+    pthread_mutex_lock(&e->mutex);
+    bool satisfied = false;
+    while (!e->signaled && e->initialized) {
+        e->waiters++;
+        int rc = pthread_cond_timedwait(&e->cond, &e->mutex, &deadline);
+        e->waiters--;
+        if (rc == ETIMEDOUT) {
+            break;
+        }
+    }
+    if (e->signaled) {
+        satisfied = true;
+        if (e->clear_mode == NN_OS_EVENT_CLEAR_MODE_AUTO) {
+            e->signaled = false;
+            ((uint8_t *)event)[0x10] = 0;
+        }
+    }
+    pthread_mutex_unlock(&e->mutex);
+    release_event(e);
+
+    return satisfied;
+}
+
+bool nso_host_os_is_event_signaled(void *event) {
+    if (!event) return false;
+    pthread_mutex_lock(&s_event_registry_mutex);
+    struct nso_event_entry *e = find_event_locked(event);
+    bool s = false;
+    if (e) {
+        pthread_mutex_lock(&e->mutex);
+        s = e->signaled;
+        pthread_mutex_unlock(&e->mutex);
+    } else {
+        s = ((uint8_t *)event)[0x10] != 0;
+    }
+    pthread_mutex_unlock(&s_event_registry_mutex);
+    return s;
+}
+
 void nso_host_set_extension_resolver(nso_import_fn resolver) {extension_resolver=resolver;}
 uint64_t nso_host_resolve(uint32_t index,const char *name) {
     if(!name)return 0;
@@ -1529,6 +1806,20 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_is_write_lock_held_by_current_thread;
     if(!strcmp(name,"_ZN2nn2os14IsReadLockHeldEPKNS0_20ReaderWriterLockTypeE"))
         return (uint64_t)(uintptr_t)&nso_host_is_read_lock_held;
+    if(!strcmp(name,"_ZN2nn2os15InitializeEventEPNS0_9EventTypeEbNS0_14EventClearModeE") || !strcmp(name,"nnosInitializeEvent"))
+        return (uint64_t)(uintptr_t)&nso_host_os_initialize_event;
+    if(!strcmp(name,"_ZN2nn2os13FinalizeEventEPNS0_9EventTypeE") || !strcmp(name,"nnosFinalizeEvent"))
+        return (uint64_t)(uintptr_t)&nso_host_os_finalize_event;
+    if(!strcmp(name,"_ZN2nn2os11SignalEventEPNS0_9EventTypeE") || !strcmp(name,"nnosSignalEvent"))
+        return (uint64_t)(uintptr_t)&nso_host_os_signal_event;
+    if(!strcmp(name,"_ZN2nn2os10ClearEventEPNS0_9EventTypeE"))
+        return (uint64_t)(uintptr_t)&nso_host_os_clear_event;
+    if(!strcmp(name,"_ZN2nn2os9WaitEventEPNS0_9EventTypeE") || !strcmp(name,"nnosWaitEvent"))
+        return (uint64_t)(uintptr_t)&nso_host_os_wait_event;
+    if(!strcmp(name,"_ZN2nn2os12TryWaitEventEPNS0_9EventTypeE"))
+        return (uint64_t)(uintptr_t)&nso_host_os_try_wait_event;
+    if(!strcmp(name,"_ZN2nn2os14TimedWaitEventEPNS0_9EventTypeENS_8TimeSpanE"))
+        return (uint64_t)(uintptr_t)&nso_host_os_timed_wait_event;
     if(!strcmp(name,"_ZN2nn2os12CreateThreadEPNS0_10ThreadTypeEPFvPvES3_S3_mi") || !strcmp(name,"nnosCreateThread"))
         return (uint64_t)(uintptr_t)&nso_host_create_thread;
     if(!strcmp(name,"_ZN2nn2os12CreateThreadEPNS0_10ThreadTypeEPFvPvES3_S3_mii"))

@@ -1,8 +1,8 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-10-23T23:10:00.000000+00:00
-阶段：T02_FS_OPENDIRECTORY_PASSED_OS_INITIALIZEEVENT_REACHED_ON_RG477M: nn::fs::OpenDirectory & directory enumeration verified on RG477M; GameThread advanced to nn::os::InitializeEvent (symbol index 132, GOT 0x7772418, caller offset 0x25bcc, lr offset 0x25bd0)
-总控：Antigravity sole root coordinator — P-AG-12 OpenDirectory / directory enumeration closed; nn::os::InitializeEvent reached (symbol index 132, GOT 0x7772418, exit 133); log .local/logs/rg477m-boot-v28-opendirectory.log
+状态事件时间：2026-10-23T23:35:00.000000+00:00
+阶段：T02_OS_EVENT_PASSED_POSIX_MEMALIGN_REACHED_ON_RG477M: nn::os::InitializeEvent & event primitives verified on RG477M; GameThread advanced to posix_memalign (symbol index 190, JMPREL reloc index 186, GOT 0x77725d0, caller offset 0xadbc8, lr offset 0xadbcc)
+总控：Antigravity sole root coordinator — P-AG-13 nn::os::InitializeEvent closed; posix_memalign reached (symbol index 190, GOT 0x77725d0, exit 133); log .local/logs/rg477m-boot-v29-initializeevent.log
 更新方式：按事件更新，没有后台自动刷新。
 
 | 任务 | 角色 | 状态 | 实际负责人 | 启动依赖 | 验收门禁 | 分支 |

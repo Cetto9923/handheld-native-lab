@@ -1716,6 +1716,143 @@ static int fs_open_dir_contract(void) {
     puts("{\"fs_open_dir_errors\":0,\"open\":true,\"count\":true,\"read\":true,\"close\":true,\"validation\":true}");
     return 0;
 }
+struct event_signal_thread_arg {
+    void (*signal_fn)(void *);
+    void *event;
+    int delay_ms;
+};
+
+static void *event_signal_worker(void *param) {
+    struct event_signal_thread_arg *arg = (struct event_signal_thread_arg *)param;
+    usleep(arg->delay_ms * 1000);
+    arg->signal_fn(arg->event);
+    return NULL;
+}
+
+static int os_event_contract(void) {
+    typedef void (*init_event_fn)(void *, bool, int32_t);
+    typedef void (*finalize_event_fn)(void *);
+    typedef void (*signal_event_fn)(void *);
+    typedef void (*clear_event_fn)(void *);
+    typedef void (*wait_event_fn)(void *);
+    typedef bool (*try_wait_event_fn)(void *);
+    typedef bool (*timed_wait_event_fn)(void *, int64_t);
+
+    init_event_fn init_event = (init_event_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os15InitializeEventEPNS0_9EventTypeEbNS0_14EventClearModeE");
+    CHECK(init_event != NULL);
+    init_event_fn init_event_alias = (init_event_fn)(uintptr_t)guest_process_resolve(0, "nnosInitializeEvent");
+    CHECK(init_event_alias != NULL);
+
+    finalize_event_fn finalize_event = (finalize_event_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os13FinalizeEventEPNS0_9EventTypeE");
+    CHECK(finalize_event != NULL);
+    finalize_event_fn finalize_event_alias = (finalize_event_fn)(uintptr_t)guest_process_resolve(0, "nnosFinalizeEvent");
+    CHECK(finalize_event_alias != NULL);
+
+    signal_event_fn signal_event = (signal_event_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os11SignalEventEPNS0_9EventTypeE");
+    CHECK(signal_event != NULL);
+    signal_event_fn signal_event_alias = (signal_event_fn)(uintptr_t)guest_process_resolve(0, "nnosSignalEvent");
+    CHECK(signal_event_alias != NULL);
+
+    clear_event_fn clear_event = (clear_event_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os10ClearEventEPNS0_9EventTypeE");
+    CHECK(clear_event != NULL);
+
+    wait_event_fn wait_event = (wait_event_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os9WaitEventEPNS0_9EventTypeE");
+    CHECK(wait_event != NULL);
+    wait_event_fn wait_event_alias = (wait_event_fn)(uintptr_t)guest_process_resolve(0, "nnosWaitEvent");
+    CHECK(wait_event_alias != NULL);
+
+    try_wait_event_fn try_wait_event = (try_wait_event_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os12TryWaitEventEPNS0_9EventTypeE");
+    CHECK(try_wait_event != NULL);
+
+    timed_wait_event_fn timed_wait_event = (timed_wait_event_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os14TimedWaitEventEPNS0_9EventTypeENS_8TimeSpanE");
+    CHECK(timed_wait_event != NULL);
+
+    /* 1. Null / unaligned parameter safety checks */
+    init_event(NULL, false, 1);
+    signal_event(NULL);
+    clear_event(NULL);
+    wait_event(NULL);
+    CHECK(try_wait_event(NULL) == false);
+    CHECK(timed_wait_event(NULL, 1000000) == false);
+    finalize_event(NULL);
+
+    /* 2. AutoClear mode contract (EventClearMode_AutoClear = 1) */
+    uint8_t auto_event_buf[64] __attribute__((aligned(8))) = {0};
+    init_event(auto_event_buf, false, 1);
+
+    /* Check mirrored ABI bytes */
+    CHECK(auto_event_buf[0x10] == 0); /* signaled = false */
+    CHECK(auto_event_buf[0x11] == 0); /* initially_signaled = false */
+    CHECK(auto_event_buf[0x12] == 1); /* clear_mode = AutoClear (1) */
+    CHECK(auto_event_buf[0x13] == 1); /* state = initialized (1) */
+
+    CHECK(try_wait_event(auto_event_buf) == false);
+    /* Timed wait should timeout when not signaled */
+    CHECK(timed_wait_event(auto_event_buf, 5000000) == false); /* 5ms */
+
+    /* Signal event */
+    signal_event(auto_event_buf);
+    CHECK(auto_event_buf[0x10] == 1);
+
+    /* In AutoClear mode, try_wait succeeds and auto-clears signaled state */
+    CHECK(try_wait_event(auto_event_buf) == true);
+    CHECK(auto_event_buf[0x10] == 0);
+    CHECK(try_wait_event(auto_event_buf) == false);
+
+    /* Signal again and test timed_wait success */
+    signal_event(auto_event_buf);
+    CHECK(timed_wait_event(auto_event_buf, 100000000) == true); /* 100ms */
+    CHECK(auto_event_buf[0x10] == 0); /* auto-cleared */
+
+    finalize_event(auto_event_buf);
+    CHECK(auto_event_buf[0x13] == 0); /* state = uninitialized */
+
+    /* 3. ManualClear mode contract (EventClearMode_ManualClear = 0) */
+    uint8_t manual_event_buf[64] __attribute__((aligned(8))) = {0};
+    init_event_alias(manual_event_buf, true, 0); /* initially signaled */
+
+    CHECK(manual_event_buf[0x10] == 1); /* signaled = true */
+    CHECK(manual_event_buf[0x11] == 1); /* initially_signaled = true */
+    CHECK(manual_event_buf[0x12] == 0); /* clear_mode = ManualClear (0) */
+    CHECK(manual_event_buf[0x13] == 1);
+
+    /* In ManualClear mode, try_wait does NOT clear signaled state */
+    CHECK(try_wait_event(manual_event_buf) == true);
+    CHECK(manual_event_buf[0x10] == 1);
+    CHECK(try_wait_event(manual_event_buf) == true);
+    CHECK(manual_event_buf[0x10] == 1);
+
+    /* ClearEvent resets signaled */
+    clear_event(manual_event_buf);
+    CHECK(manual_event_buf[0x10] == 0);
+    CHECK(try_wait_event(manual_event_buf) == false);
+
+    finalize_event_alias(manual_event_buf);
+    CHECK(manual_event_buf[0x13] == 0);
+
+    /* 4. Cross-thread WaitEvent notification */
+    uint8_t thread_event_buf[64] __attribute__((aligned(8))) = {0};
+    init_event(thread_event_buf, false, 1); /* AutoClear */
+
+    pthread_t thread;
+    struct event_signal_thread_arg thread_arg = {
+        .signal_fn = signal_event,
+        .event = thread_event_buf,
+        .delay_ms = 10,
+    };
+    int pth_rc = pthread_create(&thread, NULL, event_signal_worker, &thread_arg);
+    CHECK(pth_rc == 0);
+
+    wait_event(thread_event_buf);
+    /* Successfully woke up! With AutoClear, signaled is reset */
+    CHECK(thread_event_buf[0x10] == 0);
+
+    pthread_join(thread, NULL);
+    finalize_event(thread_event_buf);
+
+    puts("{\"os_event_errors\":0,\"init\":true,\"auto_clear\":true,\"manual_clear\":true,\"timed_wait\":true,\"cross_thread\":true,\"finalize\":true}");
+    return 0;
+}
 struct log_fixture_io {float input,output;uint64_t guest_x18;};
 _Static_assert(offsetof(struct log_fixture_io,output)==4 && offsetof(struct log_fixture_io,guest_x18)==8,"self-authored float fixture ABI");
 static void *exercise_logf_native(guest_process *p,void *opaque) {
@@ -2357,6 +2494,7 @@ int main(int argc,char **argv) {
     if(argc==2 && !strcmp(argv[1],"--socket"))return socket_contract();
     if(argc==2 && !strcmp(argv[1],"--account"))return account_contract();
     if(argc==2 && !strcmp(argv[1],"--fs-open-dir"))return fs_open_dir_contract();
+    if(argc==2 && !strcmp(argv[1],"--os-event"))return os_event_contract();
     if(argc==2 && !strcmp(argv[1],"--logf"))return logf_contract();
     if(argc==3 && !strcmp(argv[1],"--logf-native"))return logf_native_contract(argv[2]);
     if(argc==2 && !strcmp(argv[1],"--strcasecmp"))return strcasecmp_contract();
