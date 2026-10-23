@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-10-23T12:20:23+08:00",
-  "phase": "BOOTSTRAP_ONLY",
-  "coordinator": "Codex bootstrap (project setup only; Antigravity takeover pending)",
+  "updated_at": "2026-10-23T12:32:45+08:00",
+  "phase": "T00_PASSED_HANDOVER_TO_CLAUDE_CODE",
+  "coordinator": "Antigravity (Handover checkpoint complete, writes stopped; pending Claude Code takeover)",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
   "active_writers": [],
@@ -11,20 +11,22 @@
     {
       "id": "T00",
       "role": "RE",
-      "status": "ready",
+      "status": "passed",
       "dependencies": [],
-      "owner": null,
-      "branch": null,
+      "pass_gates": [],
+      "owner": "Antigravity (RE)",
+      "branch": "work/rg477m-native",
       "worktree": null,
-      "report": null
+      "report": "docs/analysis/t00_baseline_report.md"
     },
     {
       "id": "T01",
       "role": "RE",
-      "status": "pending",
+      "status": "ready",
       "dependencies": [
         "T00"
       ],
+      "pass_gates": [],
       "owner": null,
       "branch": null,
       "worktree": null,
@@ -37,6 +39,7 @@
       "dependencies": [
         "T01"
       ],
+      "pass_gates": [],
       "owner": null,
       "branch": null,
       "worktree": null,
@@ -45,10 +48,11 @@
     {
       "id": "T03A",
       "role": "ANDROID",
-      "status": "pending",
+      "status": "ready",
       "dependencies": [
         "T00"
       ],
+      "pass_gates": [],
       "owner": null,
       "branch": null,
       "worktree": null,
@@ -56,11 +60,12 @@
     },
     {
       "id": "T03B",
-      "role": "ANDROID_QA",
+      "role": "ANDROID",
       "status": "pending",
       "dependencies": [
         "T03A"
       ],
+      "pass_gates": [],
       "owner": null,
       "branch": null,
       "worktree": null,
@@ -74,13 +79,13 @@
         "T02",
         "T03A"
       ],
+      "pass_gates": [
+        "T03B"
+      ],
       "owner": null,
       "branch": null,
       "worktree": null,
-      "report": null,
-      "pass_gates": [
-        "T03B"
-      ]
+      "report": null
     },
     {
       "id": "T05",
@@ -89,6 +94,7 @@
       "dependencies": [
         "T04"
       ],
+      "pass_gates": [],
       "owner": null,
       "branch": null,
       "worktree": null,
@@ -101,6 +107,7 @@
       "dependencies": [
         "T05"
       ],
+      "pass_gates": [],
       "owner": null,
       "branch": null,
       "worktree": null,
@@ -113,6 +120,7 @@
       "dependencies": [
         "T06"
       ],
+      "pass_gates": [],
       "owner": null,
       "branch": null,
       "worktree": null,
@@ -120,19 +128,21 @@
     }
   ],
   "blockers": [
-    "RG477M 真机尚未连接或验证；仅真机相关验收被此阻塞。",
-    "本游戏原生技术路线与内部代码/资源结构尚待 T00/T01 验证。"
+    "RG477M 真机尚未连接或验证；真机实测项保持 BLOCKED_DEVICE 门禁，不阻塞主机交叉构建。"
   ],
   "verified": [
-    "协作项目初始化；此条不是游戏运行结果。",
-    "只读审查及复审通过；启动依赖与真机验收门禁分离，场景校验通过（不是游戏测试）。"
+    "协作项目初始化与总控接管",
+    "游戏包完整性与全量哈希已校验 (本体/升级档/DLC)",
+    "内部元数据已从 NACP/NPDM 提取：Title 0100B8A026F14000, 内部项目名 mucha (FFRS), SQUARE ENIX, v1.0.0",
+    "ExeFS 关键二进制定向提取完成 (.local/exefs/，含 main, main.npdm, sdk, subsdk0, rtld)",
+    "游戏引擎直接证据：Unreal Engine 5.4 (Shipping工件 FFRS-Switch-Shipping.nss, 项目代号 mucha, 含 EChaosVDAABBTreeNodeFlags, EnhancedInput, CommonUI, CRIWARE, Oodle, NVN)",
+    "逆向工具链实测：hactool 正常解析，Ghidra 12.1.4 + Switch Loader 成功导入识别 NSO0 (AARCH64:LE:64:v8A)"
   ],
   "unverified": [
-    "游戏内部身份与引擎",
-    "本游戏原生样例",
-    "Android APK",
-    "RG477M 实际 Vulkan 能力",
+    "本游戏原生代码重编译/重建样例 (T02)",
+    "Android ARM64 APK 宿主 (T03A)",
+    "RG477M 实际 Vulkan/驱动/硬件能力 (T03B/BLOCKED_DEVICE)",
     "真机画面/输入/音频",
-    "帧率和45分钟稳定性"
+    "帧率与45分钟稳定性"
   ]
 }
