@@ -62,7 +62,7 @@
       "checkpoint": "baseline a7ae15d"
     },
     {
-      "task": "T02",
+      "task": "T02-PREP",
       "owner": "总控 (Claude Code) — NSO 原生加载器",
       "paths": [
         "src/runtime/nso/",
@@ -114,17 +114,30 @@
       "report": "docs/analysis/route.md"
     },
     {
-      "id": "T02",
+      "id": "T02-PREP",
       "role": "CORE",
       "status": "in_progress",
+      "dependencies": [
+        "T00"
+      ],
+      "pass_gates": [],
+      "owner": "总控 (NSO 原生加载器 / 行为基线基础设施)",
+      "branch": "claude/laughing-cray-3464b0",
+      "worktree": ".claude/worktrees/laughing-cray-3464b0",
+      "report": "evidence/coordinator/nso_structure_report.md"
+    },
+    {
+      "id": "T02",
+      "role": "CORE",
+      "status": "pending",
       "dependencies": [
         "T01"
       ],
       "pass_gates": [],
-      "owner": "总控 (NSO 原生加载器 / 行为基线)",
-      "branch": "claude/laughing-cray-3464b0",
-      "worktree": ".claude/worktrees/laughing-cray-3464b0",
-      "report": "evidence/coordinator/nso_structure_report.md"
+      "owner": null,
+      "branch": null,
+      "worktree": null,
+      "report": null
     },
     {
       "id": "T03A",
@@ -258,7 +271,7 @@
     "2026-10-23 总控：原生 NSO 加载器（src/runtime/nso/）在 macOS arm64 上完成映射 162MB 模块镜像、解析 651 导入、应用 4612 重定位，并首次原生执行了游戏二进制内的真实导出函数（模块偏移 0x1090，返回正常，build id 与 T00 一致）。"
   ],
   "unverified": [
-    "本游戏原生代码重编译/重建样例 (T02) — 加载器已可原生执行，但尚未选定并验证目标函数",
+    "本游戏原生代码重编译/重建样例 (T02) — 前置基础设施(T02-PREP)已完成并可原生执行模块内函数，但尚未选定并验证目标函数",
     "Android ARM64 APK 宿主 (T03A)",
     "RG477M 实际 Vulkan/驱动/硬件能力 (T03B/BLOCKED_DEVICE)",
     "真机画面/输入/音频",
