@@ -42,6 +42,10 @@ typedef struct {
     uint32_t api_version;
     uint32_t driver_version;
     char gpu_name[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE];
+    VkPhysicalDeviceFeatures features;         /* the features that were asked for */
+    VkPhysicalDeviceFeatures enabled;         /* the features the device gave */
+    uint32_t storage_image_write_supported;   /* the device can write a storage image without a format */
+    uint32_t storage_image_write_enabled;     /* and it was enabled on this device */
 } nvn_vulkan_state;
 
 static int nvn_vulkan_create(nvn_device_state *device, const void *builder) {
@@ -158,10 +162,34 @@ static int nvn_vulkan_create(nvn_device_state *device, const void *builder) {
     queue_info.queueCount = 1;
     queue_info.pQueuePriorities = &priority;
 
+    /* The features of the device.
+     *
+     * Two of the compute shaders of this game write into a storage image
+     * whose format the game never states: the format is a property of the
+     * bound texture and not of the shader, so there is nothing in the game's
+     * data to put into the module. The way the reference host that runs this
+     * game solves it is the same way: the module declares the capability
+     * StorageImageWriteWithoutFormat, and the device has to have the
+     * matching feature turned on.
+     *
+     * Support and enablement are two different facts and the log keeps them
+     * apart: a device that does not support the feature is not asked for it,
+     * and a device that supports it but was not given it says so. */
+    {
+        VkPhysicalDeviceFeatures supported;
+        memset(&supported, 0, sizeof(supported));
+        vkGetPhysicalDeviceFeatures(st->physical, &supported);
+        st->storage_image_write_supported = supported.shaderStorageImageWriteWithoutFormat ? 1 : 0;
+        if (st->storage_image_write_supported) {
+            st->features.shaderStorageImageWriteWithoutFormat = VK_TRUE;
+        }
+    }
+
     memset(&device_info, 0, sizeof(device_info));
     device_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     device_info.queueCreateInfoCount = 1;
     device_info.pQueueCreateInfos = &queue_info;
+    device_info.pEnabledFeatures = &st->features;
 
     result = vkCreateDevice(st->physical, &device_info, NULL, &st->device);
     if (result != VK_SUCCESS) {
@@ -170,6 +198,18 @@ static int nvn_vulkan_create(nvn_device_state *device, const void *builder) {
         free(st);
         return 0;
     }
+    /* What the device really has.
+     *
+     * The instance of this runtime is Vulkan 1.0, and that version has no
+     * query for the features of a logical device: a device is created with
+     * exactly the features that are asked for, and the creation fails with
+     * VK_ERROR_FEATURE_NOT_PRESENT if one of them is not supported. The
+     * creation above succeeded, so the features that were asked for are the
+     * features the device has. The supported set is asked of the physical
+     * device above, and the two numbers are logged apart so that "the device
+     * can do it" and "the device does it" are never the same claim. */
+    st->enabled = st->features;
+    st->storage_image_write_enabled = st->enabled.shaderStorageImageWriteWithoutFormat ? 1 : 0;
     vkGetDeviceQueue(st->device, st->queue_family, 0, &st->queue);
 
     device->backend_state = st;
@@ -178,6 +218,9 @@ static int nvn_vulkan_create(nvn_device_state *device, const void *builder) {
              st->gpu_name, VK_VERSION_MAJOR(st->api_version), VK_VERSION_MINOR(st->api_version),
              st->driver_version, st->queue_family);
     fprintf(stderr, "[nvn] vulkan: created %s\n", device->description);
+    fprintf(stderr, "[nvn] vulkan: feature shaderStorageImageWriteWithoutFormat "
+                    "supported=%u enabled=%u\n",
+            st->storage_image_write_supported, st->storage_image_write_enabled);
     return 1;
 }
 
@@ -197,9 +240,11 @@ static void nvn_vulkan_describe(const nvn_device_state *device, char *out, size_
         return;
     }
     snprintf(out, out_size,
-             "Vulkan device \"%s\", instance API %u.%u, driver %u, graphics queue family %u",
+             "Vulkan device \"%s\", instance API %u.%u, driver %u, graphics queue family %u, "
+             "shaderStorageImageWriteWithoutFormat supported=%u enabled=%u",
              st->gpu_name, VK_VERSION_MAJOR(st->api_version), VK_VERSION_MINOR(st->api_version),
-             st->driver_version, st->queue_family);
+             st->driver_version, st->queue_family,
+             st->storage_image_write_supported, st->storage_image_write_enabled);
 }
 
 static int nvn_vulkan_get_queue(nvn_device_state *device, void **out_queue) {
