@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <pthread.h>
 #include <time.h>
+#include <sys/time.h>
+#include <sys/types.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -181,6 +183,8 @@ char *nso_host_setlocale(int category, const char *locale);
 char *nso_host_getenv(const char *name);
 char *nso_host_nl_langinfo(int item);
 void nso_host_cxa_pure_virtual(void);
+int nso_host_gettimeofday(struct timeval *tv, void *tz);
+pid_t nso_host_getpid(void);
 #ifdef __cplusplus
 }
 #endif

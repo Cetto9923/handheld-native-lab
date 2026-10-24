@@ -1,3 +1,29 @@
+# P-AG-20 闭环｜2026-10-24 11:10 Asia/Shanghai — gettimeofday（import 211）与 getpid 落地，真机推进至 nn::os::GetCurrentProcessHandle
+
+- **结论**：工单 P-AG-20 目标圆满闭环。
+  1. 落地最小可用 `gettimeofday` HLE（POSIX 契约：填充 `struct timeval`，返回 0，timezone 忽略；清晰打印 `[hle] gettimeofday: tv=%p tz=%p -> sec=%ld usec=%ld rc=0` 归因日志）。
+  2. 同步覆盖紧随 C 运行时 `getpid`（返回宿主 pid，清晰打印 `[hle] getpid -> %d`）。
+  3. `guest_process.c` 中 `is_typed_runtime_export`、`import_signature`（2 args, 1 return GP register for gettimeofday; 0 args, 1 return GP register for getpid）完整绑定。
+  4. 宿主契约与 RG477M 真机契约测试均通过（`{"gettimeofday_contract_errors":0,"valid_timeval":true,"tv_sec_positive":true,"tv_usec_bounded":true,"null_tv_rejected":true,"getpid_positive":true}`）。
+  5. RG477M 真机实测彻底越过 index 211 `gettimeofday`（先后两次被 UE 成功调用并获取时间戳），引擎继续执行两个虚存映射（57,344 B @ `0x560582a000`、94,208 B @ `0x58ca182000`）、连续完成多段 pak 物理读取（15,251 B、13,513 B、23,992 B、30,288 B、12,734 B）、多线程事件同步等待（`nn::os::SignalEvent` / `nn::os::WaitEvent`），`atexit` 登记回调数攀升至 13,594，成功探测引擎构建版本描述符。
+- **最新阻塞前沿**：
+  - `[fault] signal=5 pc=0x6ff7e2a348 fa=0x6ff7e2a348`
+  - `[unresolved-import] index=105 name=_ZN2nn2os23GetCurrentProcessHandleEv caller_offset=0x7f1f4`（`nn::os::GetCurrentProcessHandle()`）
+  - 退出码 133（SIGTRAP，未解析导入触发）；基线日志 `.local/logs/rg477m-boot-v42-gettimeofday.log`（及 `.exitcode`=133）。
+- **未达**：标题画面 / 可玩（仍未进呈现阶段）。
+
+---
+
+# 日间调度（P-AG-20 启动｜2026-10-24 10:54 Asia/Shanghai）
+
+- **切换原因**：P-AG-19 agy PID 26521 已退出；HANDOFF 已写闭环 @ HEAD `902ef4a`；真机最新 v41 越过 `nn::oe::Initialize` / `GetDesiredLanguage`，阻塞 `gettimeofday`（import 211，exit 133）；主树 clean、无活跃 FFRS 写手。
+- **里程碑**：新 HEAD `902ef4a`；真机 v40→v41；oe import 80/81 消除；ICU/pak/事件同步继续。
+- **已派**：P-AG-20 攻 `gettimeofday`（及紧随时钟族符号）；提词 `coordination/prompts/P-AG-gettimeofday.md`；agy PID **35135**（若 --dangerously-skip-permissions 弹出审批请点批准）；日志 `.local/agent-pm/agy-p-ag-20.log`
+- **基线**：`.local/logs/rg477m-boot-v41-oe-init.log` exit 133；设备 RG477M01445122；pak/ucas PASS（`.local/romfs/FFRS/Content/Paks/`）
+- **未达**：标题 / 可玩
+
+---
+
 # P-AG-19 闭环｜2026-10-24 10:55 Asia/Shanghai — nn::oe::Initialize 与 nn::oe::GetDesiredLanguage 落地与推进
 
 - **结论**：工单 P-AG-19 目标圆满闭环。

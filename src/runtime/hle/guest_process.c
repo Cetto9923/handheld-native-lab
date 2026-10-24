@@ -1144,7 +1144,7 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
         "pthread_cond_clockwait",
         "_ZNSt3__120__throw_system_errorEiPKc",
         "_ZNSt3__122__libcpp_verbose_abortEPKcz",
-        "setlocale","getenv","nl_langinfo",
+        "setlocale","getenv","nl_langinfo","gettimeofday","getpid",
         "__cxa_pure_virtual",NULL};
     for(size_t i=0;typed[i];i++)if(!strcmp(name,typed[i]))return nso_host_resolve(index,name);
     if(!strcmp(name,"abort"))return (uintptr_t)&abort;
@@ -1213,7 +1213,7 @@ static int import_signature(const char *name,nb_signature *out) {
         "_ZN2nn2os21AllocateAddressRegionEPmm","_ZN2nn2os19AllocateMemoryPagesEmm","_ZN2nn2os15FreeMemoryPagesEmm",
         "_ZN2nn4time16LoadTimeZoneRuleEPNS0_12TimeZoneRuleERKNS0_12LocationNameE",
         "_ZN2nn2os14TimedWaitEventEPNS0_9EventTypeENS_8TimeSpanE",
-        "strcspn","strspn","strcat","memalign","aligned_alloc","setlocale",NULL};
+        "strcspn","strspn","strcat","memalign","aligned_alloc","setlocale","gettimeofday",NULL};
     static const char *const three[]={"memset","memcpy","memmove","memcmp","memchr","strncmp","strncpy","__cxa_atexit","strtol",
         "_ZN2nn4time12GetDayOfWeekEiii",
         "strtoll","strtoull","strtoul","strncat","strncasecmp","posix_memalign",
@@ -1250,7 +1250,7 @@ static int import_signature(const char *name,nb_signature *out) {
     for(unsigned group=0;group<4;group++)for(size_t i=0;lists[group][i];i++)if(!strcmp(name,lists[group][i])) {
         arguments=group==3?1:group+1;returns=group==3?0:1;goto found;
     }
-    if(!strcmp(name,"rand")) {arguments=0;returns=1;}
+    if(!strcmp(name,"rand") || !strcmp(name,"getpid")) {arguments=0;returns=1;}
     else if(!strcmp(name,"qsort")) {arguments=4;returns=0;}
     else if(!strcmp(name,"bsearch")) {arguments=5;returns=1;}
     else if(!strcmp(name,"_ZN2nn3hid18VibrationConverterC1Ei")) {arguments=2;returns=0;}

@@ -20,6 +20,8 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/types.h>
 #include <unistd.h>
 #if defined(__APPLE__)
 #include <mach/mach.h>
@@ -462,6 +464,11 @@ static void *exercise_os_wrappers(guest_process *process,void *opaque) {
     typedef char *(*setlocale_fn)(int, const char *);
     setlocale_fn sl=(setlocale_fn)(uintptr_t)guest_process_resolve(0,"setlocale");
     expect_condition("setlocale-returns-c",sl && sl(0,NULL) && !strcmp(sl(0,NULL),"C"));
+    typedef int (*gtod_fn)(struct timeval *, void *);
+    gtod_fn gtod=(gtod_fn)(uintptr_t)guest_process_resolve(0,"gettimeofday");
+    struct timeval test_tv;
+    memset(&test_tv, 0, sizeof(test_tv));
+    expect_condition("gettimeofday-returns-zero",gtod && gtod(&test_tv,NULL)==0 && test_tv.tv_sec>0);
     struct guest_memory_info info;expect_condition("os-thread-query-still-live",succeeded(guest_process_memory_info(process,&info)) && info.thread_objects==1);
     return &returned_token;
 }
@@ -1637,6 +1644,30 @@ static int oe_contract(void) {
     puts("{\"oe_contract_errors\":0,\"initialize\":true,\"get_desired_language\":true,\"baseline_locale\":\"en-US\"}");
     return 0;
 }
+static int gettimeofday_contract(void) {
+    typedef int (*gtod_fn)(struct timeval *, void *);
+    typedef pid_t (*getpid_fn)(void);
+
+    gtod_fn gtod = (gtod_fn)(uintptr_t)guest_process_resolve(0, "gettimeofday");
+    CHECK(gtod != NULL);
+
+    struct timeval tv;
+    memset(&tv, 0, sizeof(tv));
+    int rc = gtod(&tv, NULL);
+    CHECK(rc == 0);
+    CHECK(tv.tv_sec > 1700000000);
+    CHECK(tv.tv_usec >= 0 && tv.tv_usec < 1000000);
+
+    /* Test null pointer returns -1 */
+    CHECK(gtod(NULL, NULL) == -1);
+
+    getpid_fn gpid = (getpid_fn)(uintptr_t)guest_process_resolve(0, "getpid");
+    CHECK(gpid != NULL);
+    CHECK(gpid() > 0);
+
+    puts("{\"gettimeofday_contract_errors\":0,\"valid_timeval\":true,\"tv_sec_positive\":true,\"tv_usec_bounded\":true,\"null_tv_rejected\":true,\"getpid_positive\":true}");
+    return 0;
+}
 static int fs_open_dir_contract(void) {
     typedef int32_t (*open_dir_fn)(nn_fs_directory_handle *, const char *, int32_t);
     typedef int32_t (*get_count_fn)(int64_t *, nn_fs_directory_handle);
@@ -2758,6 +2789,7 @@ int main(int argc,char **argv) {
     if(argc==2 && !strcmp(argv[1],"--socket"))return socket_contract();
     if(argc==2 && !strcmp(argv[1],"--account"))return account_contract();
     if(argc==2 && !strcmp(argv[1],"--oe"))return oe_contract();
+    if(argc==2 && !strcmp(argv[1],"--gettimeofday"))return gettimeofday_contract();
     if(argc==2 && !strcmp(argv[1],"--fs-open-dir"))return fs_open_dir_contract();
     if(argc==2 && !strcmp(argv[1],"--os-event"))return os_event_contract();
     if(argc==2 && !strcmp(argv[1],"--posix-memalign"))return posix_memalign_contract();

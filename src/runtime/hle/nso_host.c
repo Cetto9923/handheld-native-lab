@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <time.h>
+#include <sys/time.h>
 #include <pthread.h>
 #include <sched.h>
 #include <inttypes.h>
@@ -2116,6 +2117,23 @@ char *nso_host_nl_langinfo(int item) {
     return utf8;
 }
 
+int nso_host_gettimeofday(struct timeval *tv, void *tz) {
+    (void)tz;
+    if (!tv) {
+        return -1;
+    }
+    int rc = gettimeofday(tv, NULL);
+    fprintf(stderr, "[hle] gettimeofday: tv=%p tz=%p -> sec=%ld usec=%ld rc=%d\n",
+            (void *)tv, tz, (long)tv->tv_sec, (long)tv->tv_usec, rc);
+    return rc;
+}
+
+pid_t nso_host_getpid(void) {
+    pid_t pid = getpid();
+    fprintf(stderr, "[hle] getpid -> %d\n", (int)pid);
+    return pid;
+}
+
 void nso_host_throw_system_error(int ev, const char *what_arg) {
     fprintf(stderr, "[hle] std::__throw_system_error: ev=%d what=%s\n", ev, what_arg ? what_arg : "(null)");
     abort();
@@ -2367,6 +2385,10 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_getenv;
     if(!strcmp(name,"nl_langinfo"))
         return (uint64_t)(uintptr_t)&nso_host_nl_langinfo;
+    if(!strcmp(name,"gettimeofday"))
+        return (uint64_t)(uintptr_t)&nso_host_gettimeofday;
+    if(!strcmp(name,"getpid"))
+        return (uint64_t)(uintptr_t)&nso_host_getpid;
     if(!strcmp(name,"__cxa_pure_virtual"))
         return (uint64_t)(uintptr_t)&nso_host_cxa_pure_virtual;
     return extension_resolver?extension_resolver(index,name):0;
