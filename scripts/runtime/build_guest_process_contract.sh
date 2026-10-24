@@ -931,6 +931,103 @@ run('host-nv-initialize-graphics-contract',[out/'guest_process_contract.host','-
 nv_init_stderr=(out/'host-nv-initialize-graphics-contract'/'stderr.log').read_text()
 if '[hle] nv::InitializeGraphics:' not in nv_init_stderr:raise RuntimeError('nv::InitializeGraphics stub did not run')
 if '[boundary-unsupported]' in nv_init_stderr:raise RuntimeError('nv graphics initialisation import signature was refused by the boundary')
+# nvnBootstrapLoader (main NSO import index 353) is the only NVN symbol the
+# main NSO imports dynamically; every other NVN entry point is looked up by
+# name through the nvnDeviceGetProcAddress it hands out. The fixture drives
+# the real guest import path with the two names the guest uses and with the
+# names that have to be refused.
+nvn_assembly=out/'nvn-bootstrap-fixture.S'
+nvn_assembly.write_text(r''' .text
+.org 0x20
+.global fixture_entry
+fixture_entry:
+ stp x29, x30, [sp, #-64]!
+ stp x19, x20, [sp, #16]
+ stp x21, x22, [sp, #32]
+ stp x23, x24, [sp, #48]
+ mov x29, sp
+ mov x19, x0
+ adrp x16, fixture_got
+ add x16, x16, :lo12:fixture_got
+ ldr x20, [x16]
+ adr x0, s_init
+ blr x20
+ mov x21, x0
+ cmp x21, #0
+ cset x9, ne
+ str x9, [x19, #8]
+ mov x0, xzr
+ mov x1, xzr
+ blr x21
+ str x0, [x19, #16]
+ adr x0, s_lookup
+ blr x20
+ mov x22, x0
+ cmp x22, #0
+ cset x9, ne
+ str x9, [x19, #24]
+ mov x0, xzr
+ adr x1, s_entry
+ blr x22
+ mov x23, x0
+ cmp x23, #0
+ cset x10, ne
+ str x10, [x19, #32]
+ blr x23
+ str x0, [x19, #40]
+ mov x0, xzr
+ adr x1, s_outside
+ blr x22
+ str x0, [x19, #48]
+ adr x0, s_missing
+ blr x20
+ str x0, [x19, #56]
+ mov x9, #1
+ str x9, [x19]
+ mov x0, #0x91
+ ldp x23, x24, [sp, #48]
+ ldp x21, x22, [sp, #32]
+ ldp x19, x20, [sp, #16]
+ ldp x29, x30, [sp], #64
+ ret
+.org 0x120
+.global s_init
+s_init: .asciz "nvnDeviceInitialize"
+.global s_lookup
+s_lookup: .asciz "nvnDeviceGetProcAddress"
+.global s_entry
+s_entry: .asciz "nvnDeviceBuilderSetDefaults"
+.global s_outside
+s_outside: .asciz "notAnNvnName"
+.global s_missing
+s_missing: .asciz "nvnDeviceThatDoesNotExist"
+.section .fixture_got,"aw"
+.global fixture_got
+fixture_got: .zero 8
+''')
+run('fixture-nvn-bootstrap-assemble',['clang',*common,'-c',nvn_assembly,'-o',out/'nvn-bootstrap-fixture.o'])
+run('fixture-nvn-bootstrap-link',['env',f'DYLD_LIBRARY_PATH={a.rust_root}/lib',ld,'--no-undefined','--build-id=none','--image-base=0','-Ttext=0','--section-start=.fixture_got=0x8200','-e','fixture_entry','--oformat=binary','-o',out/'nvn-bootstrap-fixture.raw',out/'nvn-bootstrap-fixture.o'])
+raw=(out/'nvn-bootstrap-fixture.raw').read_bytes();data=bytearray((out/'contract.nso').read_bytes())
+# The fixture carries its name strings in the text segment, so the segment is
+# grown from 0x100 to 0x400 bytes. The first word of that data is the MOD0
+# offset the loader reads, so it is restored after the copy.
+data[0x200:0x600]=raw[:0x400].ljust(0x400,b'\0')
+struct.pack_into('<I',data,0x18,0x400)
+struct.pack_into('<I',data,0x204,0x4000)
+names=b'\0nvnBootstrapLoader\0'
+data[0x1160:0x1160+len(names)]=names
+# One dynsym entry here, so the base RELA table (DT_RELASZ = 72, three
+# entries) is truncated to 24 bytes and only the first RELA stays. Dynamic
+# index 5 is DT_RELASZ, not DT_RELAENT (index 6) - the base already carries
+# 24 there.
+struct.pack_into('<II',data,0x1080,1,2);struct.pack_into('<Q',data,0x2000+3*16+8,len(names));struct.pack_into('<Q',data,0x2000+5*16+8,24)
+(out/'nvn-bootstrap.nso').write_bytes(data)
+manifest['generated_fixtures']['nvn-bootstrap.nso']={'bytes':len(data),'sha256':digest(out/'nvn-bootstrap.nso'),'kind':'self-authored single-import nvn bootstrap loader fixture','assembly_sha256':digest(nvn_assembly)}
+run('host-nvn-bootstrap-contract',[out/'guest_process_contract.host','--nvn-bootstrap',out/'nvn-bootstrap.nso'])
+nvn_stderr=(out/'host-nvn-bootstrap-contract'/'stderr.log').read_text()
+if '[hle] nvnBootstrapLoader:' not in nvn_stderr:raise RuntimeError('nvnBootstrapLoader stub did not run')
+if '[hle] nvnDeviceGetProcAddress:' not in nvn_stderr:raise RuntimeError('nvnDeviceGetProcAddress stub did not run')
+if '[boundary-unsupported]' in nvn_stderr:raise RuntimeError('nvn bootstrap import signature was refused by the boundary')
 locale_assembly=out/'locale-fixture.S'
 locale_assembly.write_text(r''' .text
 .org 0x20

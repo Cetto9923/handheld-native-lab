@@ -135,6 +135,20 @@ void *nso_host_nv_get_graphics_devtools_userdata(void);
 void nso_host_nv_initialize_graphics(void *param,uint64_t size);
 void *nso_host_nv_get_initialize_graphics_param(void);
 uint64_t nso_host_nv_get_initialize_graphics_size(void);
+
+/* nvnBootstrapLoader (main NSO import index 353): the only NVN symbol the
+ * main NSO imports dynamically. One argument (the entry point name) and one
+ * result (a function pointer).
+ *
+ * This runtime has no NVN device, so the loader is a null device backend:
+ * nvnDeviceInitialize reports failure, nvnDeviceGetProcAddress serves the
+ * whole "nvn" namespace with a do-nothing entry point (the guest never
+ * checks the pointer it gets back, so returning NULL there would send it to
+ * pc=0), and every name outside that namespace is refused. */
+void *nso_host_nvn_bootstrap_loader(const char *name);
+void *nso_host_nvn_device_get_proc_address(void *device,const char *name);
+uint64_t nso_host_nvn_resolved_count(void);
+uint64_t nso_host_nvn_call_count(void);
 void *nso_host_movie_get_allocator_userdata(void);
 
 typedef void *(*nn_fs_alloc_fn)(size_t);

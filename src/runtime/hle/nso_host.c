@@ -706,6 +706,102 @@ void nso_host_nv_initialize_graphics(void *param,uint64_t size) {
 void *nso_host_nv_get_initialize_graphics_param(void) { return s_nv_initialize_graphics_param; }
 uint64_t nso_host_nv_get_initialize_graphics_size(void) { return s_nv_initialize_graphics_size; }
 
+/* nvnBootstrapLoader (main NSO import index 353).
+ *
+ * This is the only NVN symbol the main NSO imports dynamically. Every other
+ * NVN entry point is looked up at run time by name, through the
+ * nvnDeviceGetProcAddress that this loader hands out. The guest code is
+ * Unreal Engine 4's NVNRHI (Platforms/Switch/Source/Runtime/NVNRHI/Private/
+ * NVNManager.cpp) and it drives the loader from five call sites
+ * (0x143541c, 0x1435438, 0x143544c, 0x143554c, 0x1435578) with exactly two
+ * distinct name strings: "nvnDeviceInitialize" (0x63fd01f) and
+ * "nvnDeviceGetProcAddress" (0x636485c).
+ *
+ * The loader has no mangled name, so it is a C function: one argument (the
+ * name) and one result, a function pointer in x0.
+ *
+ * There is no NVN device in this runtime, so this is a null device backend
+ * and nothing more: nvnDeviceInitialize reports failure, and every other NVN
+ * entry point exists only so the guest never branches to a NULL function
+ * pointer, and does nothing when it is called. No device, queue, surface or
+ * frame is claimed to exist, and no frame is ever produced.
+ *
+ * The guest never checks the pointer it gets from nvnDeviceGetProcAddress
+ * (the resolver at 0x1430e10 stores it and calls it later), so returning
+ * NULL there would send the guest to pc=0. That is why the null device
+ * backend serves the whole "nvn" namespace, and why every resolution is
+ * logged: the resulting trace is the NVN surface this game actually uses,
+ * which is what the T04 NVN to Vulkan bridge needs.
+ */
+static uint64_t s_nvn_resolved_count = 0;
+static uint64_t s_nvn_call_count = 0;
+
+/* The null device entry point. Every NVN call the guest makes lands here.
+ * It reports failure in both register classes: x0 = 0 for the integer and
+ * pointer results, d0 = 0 for a float result. */
+static uint64_t host_nvn_null_entry(void *a0,void *a1,void *a2,void *a3,
+                                     void *a4,void *a5,void *a6,void *a7) {
+    (void)a0;(void)a1;(void)a2;(void)a3;(void)a4;(void)a5;(void)a6;(void)a7;
+    s_nvn_call_count++;
+    if(s_nvn_call_count<=32 || (s_nvn_call_count%1000)==0)
+        fprintf(stderr,"[hle] nvn null entry: call #%" PRIu64 " (no NVN device exists in this runtime; the call did nothing)\n",s_nvn_call_count);
+    __asm__ volatile("fmov d0, xzr" : : : "v0");
+    return 0;
+}
+
+/* nvnDeviceInitialize(nvnDevice*, nvnDeviceBuilder*): the guest reads the
+ * low byte of the result and treats zero as failure
+ * (0x14354b4: tst w0,#0xff). This runtime has no NVN device, so the honest
+ * answer is failure.
+ *
+ * The v62 RG477M boot shows what the guest does with that failure: it is
+ * fatal, not a soft error. Unreal Engine 4 raises LowLevelFatalError at
+ * NVNManager.cpp line 1246 ("nvnDeviceInitialize failed") and calls
+ * nn::diag::detail::AbortImpl (main NSO import index 12) from the failure
+ * path at 0x14355a0, whose branch at 0x14355c4 appears in the guest
+ * backtrace. */
+static uint64_t host_nvn_device_initialize(void *device,void *builder) {
+    fprintf(stderr,"[hle] nvnDeviceInitialize: device=%p builder=%p -> false (no NVN device exists in this runtime)\n",device,builder);
+    return 0;
+}
+
+/* nvnDeviceFinalize(nvnDevice*): nothing to finalize without a device. */
+static uint64_t host_nvn_device_finalize(void *device) {
+    (void)device;
+    fprintf(stderr,"[hle] nvnDeviceFinalize: no NVN device exists in this runtime; nothing to finalize\n");
+    return 0;
+}
+
+/* nvnDeviceGetProcAddress(nvnDevice*, const char*): the guest looks every
+ * other NVN entry point up by name through this, and never checks the
+ * result, so the null device backend serves the whole "nvn" namespace and
+ * refuses anything outside it. */
+void *nso_host_nvn_device_get_proc_address(void *device,const char *name) {
+    (void)device;
+    if(!name)return NULL;
+    if(strncmp(name,"nvn",3)!=0) {
+        fprintf(stderr,"[hle] nvnDeviceGetProcAddress: name=%s is outside the NVN namespace -> NULL\n",name);
+        return NULL;
+    }
+    s_nvn_resolved_count++;
+    fprintf(stderr,"[hle] nvnDeviceGetProcAddress: name=%s -> null device entry (no NVN device exists in this runtime)\n",name);
+    return (void *)(uintptr_t)host_nvn_null_entry;
+}
+
+/* nvnBootstrapLoader(const char*): the guest asks for exactly two names.
+ * Anything else is reported as not provided rather than silently answered. */
+void *nso_host_nvn_bootstrap_loader(const char *name) {
+    if(!name)return NULL;
+    if(!strcmp(name,"nvnDeviceGetProcAddress"))return (void *)(uintptr_t)nso_host_nvn_device_get_proc_address;
+    if(!strcmp(name,"nvnDeviceInitialize"))return (void *)(uintptr_t)host_nvn_device_initialize;
+    if(!strcmp(name,"nvnDeviceFinalize"))return (void *)(uintptr_t)host_nvn_device_finalize;
+    fprintf(stderr,"[hle] nvnBootstrapLoader: name=%s is not provided by this runtime -> NULL\n",name);
+    return NULL;
+}
+
+uint64_t nso_host_nvn_resolved_count(void) { return s_nvn_resolved_count; }
+uint64_t nso_host_nvn_call_count(void) { return s_nvn_call_count; }
+
 static nn_fs_alloc_fn s_fs_alloc = NULL;
 static nn_fs_free_fn s_fs_free = NULL;
 
@@ -3161,6 +3257,8 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_nv_set_graphics_devtools_allocator;
     if(!strcmp(name,"_ZN2nv18InitializeGraphicsEPvm"))
         return (uint64_t)(uintptr_t)&nso_host_nv_initialize_graphics;
+    if(!strcmp(name,"nvnBootstrapLoader"))
+        return (uint64_t)(uintptr_t)&nso_host_nvn_bootstrap_loader;
     if(!strcmp(name,"_ZN2nn2oe27SetPerformanceConfigurationENS0_15PerformanceModeEi"))
         return (uint64_t)(uintptr_t)&nso_host_oe_set_performance_configuration;
     if(!strcmp(name,"_ZN2nn2oe18GetPerformanceModeEv"))

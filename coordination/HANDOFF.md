@@ -1,3 +1,34 @@
+# P-MM-11 闭环｜2026-10-24 19:35 Asia/Shanghai — 绑定 `nvnBootstrapLoader`（import 353，**整个 main NSO 唯一一个动态导入的 NVN 符号**），真机**越过 v61 的 SIGTRAP**（unresolved 374 → 373），前沿从「未解析导入」推进到 **游戏自己的致命错误**（UE4 `NVNManager.cpp:1246` `LowLevelFatalError: nvnDeviceInitialize failed`，exit 132）
+
+- **结论**：工单 P-MM-11 目标闭环。`nvnBootstrapLoader`（import 353）已绑定为**诚实空设备后端**；真机 v62 **不再**因该符号触发 `[unresolved-import]`，profile 行 `unresolved` 由 **374 → 373**（**正好 1 个**），boundary 导入计数由 **274 → 275**。**本轮的重大变化不是"又推进了一个导入"，而是游戏第一次走到了它自己的致命错误路径**——也就是说，**挡住标题画面的已经不再是导入绑定，而是"这台运行时没有 NVN 设备"这件事本身**。**未达标题画面 / 可玩**。
+  1. **取证：这是 UE4 的 NVNRHI**。guest 的 NVN 管理代码属于 `.\../Platforms/Switch/Source/Runtime/NVNRHI/Private/NVNManager.cpp`（字符串直接取自 guest 二进制）。`nvnBootstrapLoader` 有 **5 个调用点**（`0x143541c` / `0x1435438` / `0x143544c` / `0x143554c` / `0x1435578`），但只传 **2 个不同的名字**：`"nvnDeviceInitialize"`（字符串在 `0x63fd01f`）与 `"nvnDeviceGetProcAddress"`（`0x636485c`）。
+  2. **ABI**：`nvnBootstrapLoader` **没有 mangled 名** ⇒ 是 C 函数，`(const char*) → void*`，**1 参、返回 64 位函数指针**（x0 进、x0 出）。这与本项目此前所有绑定（C++ mangled 名、参数由 mangling 定）都不同，签名门禁按 `arguments=1 / returns=2` 登记。
+  3. **决定实现形态的一条硬约束（静态取证）**：guest **从不检查** `nvnDeviceGetProcAddress` 的返回值——解析器 `0x1430e10` 逐个 `blr x19` 取地址后直接 `str x0, [x8, #偏移]` 存进全局，**没有任何 NULL 判断**，之后直接 `blr` 过去。⇒ 若这里返回 NULL，guest 会跳到 **pc=0**，比干净的 SIGTRAP 更难诊断。⇒ 空设备后端必须为**整个 `nvn` 命名空间**提供"存在但不做事"的入口。
+  4. **诚实口径（本单的核心）**：
+     - `nvnDeviceInitialize` **返回 false**（失败）——本运行时确实没有 NVN 设备，失败是事实，不是占位符。guest 自己读 `w0` 的低字节（`0x14354b4 tst w0,#0xff`）并因此走失败路径。
+     - `nvnDeviceGetProcAddress` 只服务 `nvn` 命名空间；**命名空间外的名字一律 NULL**（例如 `notAnNvnName`），**本运行时不提供的名字一律 NULL**（例如 `nvnDeviceThatDoesNotExist`）。
+     - 被服务的入口**什么都不做**：x0 返 0（整数/指针结果）、d0 返 0（浮点结果），并计数打点。
+     - **不宣称设备、队列、交换链、表面、显示或任何一帧**。
+  5. **旧 guard 被改写成更强的 guard（不是简单删掉）**：主契约里原本有一条"`nvnBootstrapLoader` **必须不可解析**"的拒绝项——那是旧政策（"运行时没资格凭空造一个 NVN 设备"）。本单把它换成**更强**的断言：必须可解析，但**设备初始化必须答失败**、未提供的名字必须被拒、命名空间外的名字必须被拒。`--nvn-bootstrap` 契约再把同样的性质钉死在 guest 真实路径上。
+  6. **契约 `--nvn-bootstrap`**：自造**单导入** fixture（`nvn-bootstrap.nso`，sha256 `40b7eda9…`）驱动**真实 guest 导入路径**——fixture 自己 `blr` 导入取回两个入口、调用设备初始化、调用名字查找、再调用取回的空入口。宿主 `errors=0`；真机 `native_ran=true`、`guest_marker=true`、`direct_ok=true`。直调路径用**另一组**名字（`nvnDeviceThatDoesNotExist` / `notAnNvnName`）验证桩按名分发而不是无脑返回非空。
+  7. **三变体自证**：A（把期望从"初始化必须失败"改成"必须成功"、保留末尾 `CHECK(!errors)`）⇒ **exit 1（红）**；B（同一处改坏、去掉末尾 `CHECK(!errors)` 且报告错误数**硬编码 0**）⇒ **exit 0（假绿）**，stdout 仍谎报 `nvn_bootstrap_errors:0` 而 `direct_ok:false` 暴露了失败被掩盖；C（**契约完全不改**，让桩把设备初始化改成**返回成功**）⇒ **exit 1（红）**——这条正是"后端永远不许宣称设备存在"的守门。日志 `.local/logs/p-mm-11-contract-selfproof.log`。
+  8. **真机 v62 的关键发现（比"推进一个导入"重要得多）**：guest 把**整条 NVN 引导链真跑了一遍**——第 57878/57879 行解析出 `nvnDeviceBuilderSetDefaults` 与 `nvnDeviceBuilderSetFlags`，第 57880/57881 行两次调用空入口，第 57882 行调用 `nvnDeviceInitialize` 得到 false；随后 **游戏自己**抛出致命错误：
+
+     ```
+     [hle] nn::diag::detail::AbortImpl message: "LowLevelFatalError [File:.\../Platforms/Switch/Source/Runtime/NVNRHI/Private/NVNManager.cpp] [Line: 1246]
+     nvnDeviceInitialize failed
+     "
+     ```
+
+     guest 回溯 `frame[3] = module_offset 0x14355c4` **正好是静态预测的失败路径分支**（`0x14355a0` 记日志 → `0x14355c4` 继续）。`nn::diag::detail::AbortImpl`（import 12）被调用了**两次**，而**运行时桩只是打印后返回**；guest 于是继续往下走，在 **module offset `0x11f8`** 撞上 `udf #0`（`0x11f4` 调完导入紧跟 `udf`）⇒ **SIGILL，exit 132**。
+- **新阻塞一句话**：现在挡住标题画面的**不是**未解析导入，而是**这台运行时没有 NVN 设备**——UE4 在 NVN 初始化失败时直接 `LowLevelFatalError`，游戏无法在无设备情况下启动。要看到标题画面，**必须**有真的 NVN 设备，那属于 **T04（NVN→Vulkan 桥）**，不是继续绑定导入能解决的。同时有一个**独立的、更小的下一步**：guest 的致命错误路径目前**不是终止性的**——`nn::diag::detail::AbortImpl` 桩打印后返回，guest 于是掉进 `udf #0`；**正确行为是就地终止 guest 并把游戏自己的消息原样报出来**（P-MM-12 候选）。二者不要混淆：**P-MM-12 只让致命错误干净地终止，不会让游戏启动起来**。
+- **产物与证据**：
+  - 构建目录 `.local/build-p-mm-11/`（`guest_process_contract.android` sha256 `8b148d2a…`、`nso_owned_startup.android` sha256 `b9af4fc1…`、`nvn-bootstrap.nso` sha256 `40b7eda9…`）；manifest 已写入 `android_executed` / `device_contracts` / `device_boot`。
+  - 真机日志 `.local/logs/rg477m-boot-v62-nvn-bootstrap-loader.log`（**57947** 行，exit 132）+ `.exitcode`；契约日志 `.local/logs/rg477m-contract-p-mm-11-nvn-bootstrap.stdout/.stderr`；自证日志 `.local/logs/p-mm-11-contract-selfproof.log`。
+  - 设备侧文件：`p-mm-11-nso_owned_startup.android-b9af4fc1`、`p-mm-11-guest_process_contract.android-8b148d2a`、`p-mm-11-nvn-bootstrap.nso-40b7eda9`。
+  - 取证脚本：`.local/selfproof/decode.py`（Capstone 直接解 main NSO 的 module offset，地址即 guest 自己的寻址，可与 boot 日志逐条对照）。
+- **未完成 / 风险**：标题画面与可玩**均未达**；全模块仍有 **373** 个导入未绑定（`imports=651`）。**空设备后端不是图形实现**：它只让游戏走到"没有设备"这个事实面前，**一帧都没有产生**。T04 的 NVN→Vulkan 桥当前只有 `nvnDeviceInitialize` / `nvnDeviceFinalize` 两条桩（fallback 返 NULL），且所绑定的 NVN 头是**旧 53.105/Darksiders ABI**、**不含** `nvnDeviceBuilder*`，builder 结构体布局未知、**不得猜**。已知语义保留项：P-MM-5 的 `GetCurrentFocusState` 桩返回 0（guest 只与 3 比较，行为等价，但无权威枚举，故不宣称其名字）。
+
 # P-MM-10 闭环｜2026-10-24 19:05 Asia/Shanghai — 绑定 `nv::InitializeGraphics(void*, unsigned long)`（import 352），真机**越过 v60 的 SIGTRAP**（unresolved 375 → 374，前沿推进到 **`nvnBootstrapLoader` import 353**＝**进入 NVN 引导加载**）
 
 - **结论**：工单 P-MM-10 目标闭环。NVN 图形初始化调用（import 352 `nv::InitializeGraphics`）已绑定为**如实记录**型桩；真机 v61 **不再**因该符号触发 `[unresolved-import]` / `[fault] signal=5`，profile 行 `unresolved` 由 **375 → 374**（**正好 1 个**），boundary 导入计数由 **273 → 274**，新第一致命推进到 **import 353 `nvnBootstrapLoader`**，exit **133**（SIGTRAP）。**未达标题画面 / 可玩**。

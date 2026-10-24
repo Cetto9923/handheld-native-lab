@@ -4037,6 +4037,107 @@ static int nv_initialize_graphics_contract(const char *path) {
            c.native_ran?"true":"false",c.native_marker?"true":"false");
     return 0;
 }
+
+/* nvnBootstrapLoader (main NSO import index 353).
+ *
+ * The only NVN symbol the main NSO imports dynamically; every other NVN
+ * entry point is looked up by name through the nvnDeviceGetProcAddress it
+ * hands out. It carries no mangled name, so it is a C function: one argument
+ * (the entry point name) and one result (a function pointer in x0).
+ *
+ * The guest code is Unreal Engine 4's NVNRHI (NVNManager.cpp) and it drives
+ * the loader from five call sites with exactly two names. The fixture
+ * reproduces that: it asks for the two names the guest uses, calls the
+ * device initialisation (which must report failure, because this runtime has
+ * no NVN device), looks one NVN entry point up by name (which must be
+ * served, because the guest never checks that pointer and would branch to
+ * pc=0 otherwise), and asks for a name outside the NVN namespace and a name
+ * this runtime does not provide (both must be refused).
+ */
+#define NVN_BOOTSTRAP_MANGLED "nvnBootstrapLoader"
+struct nvn_bootstrap_case {
+    guest_process *process;
+    int resolved;
+    int native_ran,native_marker;
+    int direct_ok;
+};
+static void *exercise_nvn_bootstrap(guest_process *p,void *opaque) {
+    struct nvn_bootstrap_case *c=opaque;
+    c->process=p;
+    typedef void *(*nvn_bootstrap_fn)(const char *);
+    nvn_bootstrap_fn loader=(nvn_bootstrap_fn)(uintptr_t)guest_process_resolve(0,NVN_BOOTSTRAP_MANGLED);
+    c->resolved=loader!=NULL;
+    expect_condition("nvn-bootstrap-resolved",loader!=NULL);
+    /* The real guest path: the fixture calls the import itself, so the
+     * boundary has to accept the one-argument pointer-returning signature
+     * or the guest never runs. */
+    uint64_t output[8]={0},returned=0xa5a5,args[1]={(uintptr_t)output};
+    struct nso_result r=guest_process_call(p,0x20,args,1,&returned);
+#if defined(__ANDROID__) && defined(__aarch64__)
+    expect_value("nvn-bootstrap-native-status",r.status,NSO_OK);
+    expect_value("nvn-bootstrap-native-return",returned,0x91);
+    c->native_ran=1;
+    c->native_marker=output[0]==1;
+    expect_condition("nvn-bootstrap-guest-call-returned",output[0]==1);
+    expect_value("nvn-bootstrap-guest-init-pointer",output[1],1);
+    /* The device initialisation reports failure: there is no NVN device. */
+    expect_value("nvn-bootstrap-guest-init-result",output[2],0);
+    expect_value("nvn-bootstrap-guest-lookup-pointer",output[3],1);
+    /* An NVN name is served with a do-nothing entry point. */
+    expect_value("nvn-bootstrap-guest-entry-pointer",output[4],1);
+    expect_value("nvn-bootstrap-guest-entry-result",output[5],0);
+    /* A name outside the NVN namespace is refused. */
+    expect_value("nvn-bootstrap-guest-outside-namespace",output[6],0);
+    /* A name this runtime does not provide is refused. */
+    expect_value("nvn-bootstrap-guest-missing-name",output[7],0);
+    /* The guest really went through the name lookup and really called the
+     * entry point it got back. */
+    expect_condition("nvn-bootstrap-guest-resolved-nvn-names",nso_host_nvn_resolved_count()>0);
+    expect_condition("nvn-bootstrap-guest-called-null-entry",nso_host_nvn_call_count()>0);
+#else
+    /* No AArch64 executor on this host: the boundary is prepared but the raw
+     * guest entry cannot run here. Nothing may be faked in its place. */
+    expect_value("nvn-bootstrap-native-unsupported",r.status,NSO_UNSUPPORTED);
+    expect_value("nvn-bootstrap-native-no-raw-fallback",returned,0xa5a5);
+#endif
+    /* Direct host calls: the loader answers by name and refuses the rest.
+     * The values here are the ones this runtime must really produce. */
+    if(loader) {
+        typedef uint64_t (*nvn_init_fn)(void *,void *);
+        typedef void *(*nvn_lookup_fn)(void *,const char *);
+        void *init=loader("nvnDeviceInitialize");
+        void *lookup=loader("nvnDeviceGetProcAddress");
+        void *missing=loader("nvnDeviceThatDoesNotExist");
+        int ok=init!=NULL && lookup!=NULL && missing==NULL;
+        if(init)ok=ok && ((nvn_init_fn)(uintptr_t)init)(NULL,NULL)==0;
+        if(lookup)ok=ok && ((nvn_lookup_fn)(uintptr_t)lookup)(NULL,"nvnDeviceBuilderSetDefaults")!=NULL &&
+                          ((nvn_lookup_fn)(uintptr_t)lookup)(NULL,"notAnNvnName")==NULL;
+        c->direct_ok=ok;
+        expect_condition("nvn-bootstrap-direct-name-dispatch",ok);
+    }
+    return &returned_token;
+}
+static int nvn_bootstrap_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));
+    char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+    struct nvn_bootstrap_case c={0};
+    void *value=NULL;
+    CHECK(succeeded(guest_process_run(p,exercise_nvn_bootstrap,&c,&value)));
+    CHECK(value==&returned_token);
+    expect_condition("nvn-bootstrap-resolved",c.resolved);
+    expect_condition("nvn-bootstrap-direct-ok",c.direct_ok);
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    /* The final gate. Every expect_* above must have passed; without this the
+     * contract could still exit 0 while the expectations had failed. */
+    CHECK(!errors);
+    /* The report states what this run observed, not a literal zero. */
+    printf("{\"nvn_bootstrap_errors\":%u,\"resolved\":%s,\"direct_ok\":%s,"
+           "\"native_ran\":%s,\"guest_marker\":%s}\n",errors,
+           c.resolved?"true":"false",c.direct_ok?"true":"false",
+           c.native_ran?"true":"false",c.native_marker?"true":"false");
+    return 0;
+}
 int main(int argc,char **argv) {
     page=(size_t)sysconf(_SC_PAGESIZE);
     if(argc==2 && !strcmp(argv[1],"--tls-host-null")) {
@@ -4066,6 +4167,7 @@ int main(int argc,char **argv) {
     if(argc==3 && !strcmp(argv[1],"--oe-performance"))return oe_performance_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--nv-graphics-allocator"))return nv_allocator_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--nv-initialize-graphics"))return nv_initialize_graphics_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--nvn-bootstrap"))return nvn_bootstrap_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-fresh"))return tls_fresh_registration_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-null"))return tls_registration_contract(argv[2],1);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-repeat"))return tls_registration_contract(argv[2],2);
@@ -4150,8 +4252,30 @@ int main(int argc,char **argv) {
 #endif
     nso_host_set_extension_resolver(extension);
     const char *const rejected[]={"strdup","malloc","calloc","mmap","mprotect","pthread_create",
-        "nvnBootstrapLoader","__cxa_finalize","exit",NULL};
+        "__cxa_finalize","exit",NULL};
     for(size_t i=0;rejected[i];i++)CHECK(!guest_process_resolve(0,rejected[i]));
+    /* nvnBootstrapLoader used to sit in the rejected list: the runtime had no
+     * business inventing an NVN device. It is now admitted as a null device
+     * backend, so the guard moves from "must not resolve" to "must never
+     * claim a device": the device initialisation has to answer failure, a
+     * name this runtime does not provide has to be refused, and a name
+     * outside the NVN namespace has to be refused as well. The full
+     * behaviour is pinned by the --nvn-bootstrap contract. */
+    {
+        typedef void *(*nvn_bootstrap_fn)(const char *);
+        typedef uint64_t (*nvn_init_fn)(void *,void *);
+        typedef void *(*nvn_lookup_fn)(void *,const char *);
+        nvn_bootstrap_fn loader=(nvn_bootstrap_fn)(uintptr_t)guest_process_resolve(0,"nvnBootstrapLoader");
+        CHECK(loader!=NULL);
+        void *init=loader("nvnDeviceInitialize");
+        CHECK(init!=NULL);
+        CHECK(((nvn_init_fn)(uintptr_t)init)(NULL,NULL)==0);
+        CHECK(loader("nvnDeviceThatDoesNotExist")==NULL);
+        void *lookup=loader("nvnDeviceGetProcAddress");
+        CHECK(lookup!=NULL);
+        CHECK(((nvn_lookup_fn)(uintptr_t)lookup)(NULL,"nvnDeviceBuilderSetDefaults")!=NULL);
+        CHECK(((nvn_lookup_fn)(uintptr_t)lookup)(NULL,"notAnNvnName")==NULL);
+    }
     CHECK(!extension_calls);
     guest_process *process=NULL,*extra=NULL;
     struct guest_process_config config={1024*1024,65536};
