@@ -1102,7 +1102,9 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
          * require a separately supported callback/reentry boundary. */
         "atexit","__cxa_atexit","_Exit","_exit",
         "posix_memalign","memalign","aligned_alloc","valloc","free",
-        "__cxa_thread_atexit","__cxa_thread_atexit_impl",NULL};
+        "__cxa_thread_atexit","__cxa_thread_atexit_impl",
+        "_ZN2nn4diag6detail9AbortImplEv",
+        "_ZN2nn4diag12GetBacktraceEPmi",NULL};
     for(size_t i=0;typed[i];i++)if(!strcmp(name,typed[i]))return nso_host_resolve(index,name);
     if(!strcmp(name,"abort"))return (uintptr_t)&abort;
     return 0;
@@ -1297,6 +1299,8 @@ static int import_signature(const char *name,nb_signature *out) {
             .gp_arguments=3,.gp_returns=1,.variadic=1};
         return 1;
     }
+    else if(!strcmp(name,"_ZN2nn4diag6detail9AbortImplEv")) {arguments=0;returns=1;}
+    else if(!strcmp(name,"_ZN2nn4diag12GetBacktraceEPmi")) {arguments=2;returns=1;}
     else if(!strcmp(name,"abort")) {arguments=0;returns=0;}
     else if(!strcmp(name,"_ZTHN13LowLevelTasks5FTask10ActiveTaskE") ||
             !strcmp(name,"_ZTHN13LowLevelTasks7Private20FOversubscriptionTls26bIsOversubscriptionAllowedE") ||

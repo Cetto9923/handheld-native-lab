@@ -148,6 +148,9 @@ int nso_host_cxa_thread_atexit(void (*dtor)(void *), void *obj, void *dso_symbol
 int nso_host_cxa_thread_atexit_impl(void (*dtor)(void *), void *obj, void *dso_symbol);
 size_t nso_exit_registry_thread_pending(void);
 void nso_exit_registry_thread_finalize(void);
+
+uint64_t nso_host_diag_abort_impl(void);
+int32_t nso_host_diag_get_backtrace(uintptr_t *out_backtrace, int32_t count);
 #ifdef __cplusplus
 }
 #endif

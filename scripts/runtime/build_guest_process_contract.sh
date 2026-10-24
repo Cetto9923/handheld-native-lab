@@ -108,6 +108,7 @@ run('host-fs-open-dir-contract',[out/'guest_process_contract.host','--fs-open-di
 run('host-os-event-contract',[out/'guest_process_contract.host','--os-event'])
 run('host-posix-memalign-contract',[out/'guest_process_contract.host','--posix-memalign'])
 run('host-cxa-thread-atexit-contract',[out/'guest_process_contract.host','--cxa-thread-atexit'])
+run('host-diag-abort-contract',[out/'guest_process_contract.host','--diag-abort'])
 run('host-logf-contract',[out/'guest_process_contract.host','--logf'])
 run('host-strcasecmp-contract',[out/'guest_process_contract.host','--strcasecmp'])
 run('host-va-enabled-contract',[out/'guest_process_contract.host','--va-enabled',out/'contract.nso'])

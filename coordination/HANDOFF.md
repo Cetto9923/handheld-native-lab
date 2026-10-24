@@ -1,94 +1,95 @@
-# Antigravity接力入口：越过 __cxa_thread_atexit，推进至 _ZN2nn4diag6detail9AbortImplEv（P-AG-15）
+# 夜守调度（P-AG-16 闭环｜2026-10-24 08:50 Asia/Shanghai）
+
+- **切换原因**：P-AG-16 已闭环；真机 v32 越过 `AbortImpl`；未链接导入 12 彻底消除（signal 5 消除）；成功捕获并归因虚幻引擎致命错误 `LowLevelFatalError: PreInit() failed! Aborting`；新阻塞推进至 UE 致命错误退出指令 `udf #0`（signal 4 / exitcode 132）。主树无活跃 agy/claude 写手。
+- **已闭环**：P-AG-16 Antigravity 攻克 AbortImpl 并完成根因归因
+- **设备**：RG477M01445122 在线；pak/ucas 已物化 PASS
+- **未达**：标题 / 可玩
+
+---
+
+# Antigravity接力入口：越过 AbortImpl，归因 PreInit() failed!（P-AG-16）
 
 ## 调度备注（夜守 PM）
-- **当前阻塞**：`_ZN2nn4diag6detail9AbortImplEv`（`nn::diag::detail::AbortImpl()`，symbol index 12, JMPREL reloc index 3996, GOT `0x7772058`, caller offset `0x11b8`, lr offset `0x11bc`, exit 133）
-- **基线 HEAD**：本轮提交检查点（`__cxa_thread_atexit` & `__cxa_thread_atexit_impl` HLE 已过）；日志 `.local/logs/rg477m-boot-v31-cxa-thread-atexit.log`
-- **P-AG-15**：已闭环（`__cxa_thread_atexit` 与 `__cxa_thread_atexit_impl` 严格遵循 Itanium/Android C++ ABI 规范落地，支持线程级生命周期管理与 LIFO 执行；真机上 GameThread 成功完成 3 次 `__cxa_thread_atexit` 登记，成功枚举 `rom:/FFRS/Content/Paks/`，创建并启动 `FHeartBeatThread` 线程，跨线程 Event 唤醒全通，并平稳推进至 `AbortImpl`）；无其他并行 agy worker
-- **阶段**：`T02_CXA_THREAD_ATEXIT_PASSED_ABORT_IMPL_REACHED_ON_RG477M`
+- **当前阻塞**：虚幻引擎初始化失败 `GEngineLoop.PreInit()` 返回错误码，触发 `LaunchNintendo.cpp:241` 的 `LowLevelFatalError [PreInit() failed! Aborting]`，经由 `FOutputDeviceError::Serialize` 调用 `AbortImpl()` 后进入致命退出指令 `0x11f8: udf #0`（signal 4, exitcode 132）。
+- **基线 HEAD**：本轮提交检查点（`nn::diag::detail::AbortImpl` & `nn::diag::GetBacktrace` HLE 已过，PreInit 根因归因）；日志 `.local/logs/rg477m-boot-v32-abortimpl.log`（exitcode 132）
+- **P-AG-16**：已闭环（`AbortImpl` 与 `GetBacktrace` 最小可归因 HLE 落地并接入 Native Boundary 网关；真机实测越过 import 12，消除未链接导入 signal 5；完整捕获寄存器快照、栈帧回溯及 UTF-16 致命错误内容；彻底定位到 `GEngineLoop.PreInit()` 失败逻辑）；无其他并行 agy worker
+- **阶段**：`T02_ABORT_IMPL_PASSED_PREINIT_ATTRIBUTED_ON_RG477M`
 - **未达**：标题画面 / 可操作场景（勿伪称可玩）
 
-本轮按工单 P-AG-15 推进方案 A（《最终幻想：共鸣》Switch→RG477M Android ARM64 原生移植），严格保护密钥与敏感数据，严禁FC27或无依据改动。
+本轮按工单 P-AG-16 推进方案 A（《最终幻想：共鸣》Switch→RG477M Android ARM64 原生移植），严格保护密钥与敏感数据，严禁FC27或无依据改动。
 
 ## 最新重大突破
 
-1. **严格 Itanium / Android C++ ABI `__cxa_thread_atexit` 全链路落地闭环**：
-   - 遵循 Itanium C++ ABI / POSIX / Android bionic 规范，实现独立线程局部析构登记链表；
-   - 通过 `pthread_key_t` 注册线程退出清理器，确保子线程退出时按 LIFO 倒序自动调用各析构函数并释放节点；
-   - 支持显式主动析构 `nso_exit_registry_thread_finalize()` 以及线程登记数查询 `nso_exit_registry_thread_pending()`；
-   - 一并落地配套符号 `__cxa_thread_atexit_impl`；
-   - 输出可归因日志 `[hle] __cxa_thread_atexit: dtor=%p obj=%p dso=%p pending=%zu`；
-   - 在 `guest_process.c` 将符号登记入 `typed` 白名单，并在 `import_signature`（3 参 1 返，`register_only`）绑定，GameThread 及衍生子线程无缝复用 Native Boundary 统一网关。
+1. **`nn::diag::detail::AbortImpl` 与 `nn::diag::GetBacktrace` 最小可归因 HLE 落地**：
+   - 在 `src/runtime/hle/nso_host.c` 落地安全探活与可归因诊断 HLE；
+   - 捕获完整寄存器快照（`x0`, `x19`, `x20`, `x21`, `x22`, `x8`, `fp`, `lr`）；
+   - 安全探活并遍历 Frame Pointer 链表，输出完整的调用栈回溯（Frame 0～Frame 10）；
+   - 探活 `x22` 指向的 UTF-16 错误描述字符串并转码输出为可读文本；
+   - 伴生落地 `_ZN2nn4diag12GetBacktraceEPmi`（`nso_host_diag_get_backtrace`）；
+   - 在 `guest_process.c` 中将两符号登记入 `typed` 白名单，并在 `import_signature`（0 参 1 返 与 2 参 1 返，`register_only`）绑定，GameThread 及衍生子线程无缝复用 Native Boundary 统一网关。
 
-2. **宿主与真机契约全绿（36 项契约全部 PASS）**：
-   - 增加 `--cxa-thread-atexit` 独立契约测试用例 `cxa_thread_atexit_contract`，全面覆盖符号解析、空参数拒绝、主线程 LIFO 逆序执行校验、多线程线程局部隔离（子线程注册不影响主线程）、子线程退出时 pthread 自动析构验证；
-   - `./scripts/runtime/build_guest_process_contract.sh` 编译并跑通全量 36 项宿主契约（含 `host-cxa-thread-atexit-contract`，returncode 0）；
-   - 在 RG477M (`RG477M01445122`) 上运行 `./guest_process_contract.android --cxa-thread-atexit`：
-     `{"cxa_thread_atexit_errors":0,"resolve":true,"invalid_params":true,"lifo":true,"thread_isolation":true,"auto_exit":true}`；
-   - 复跑 `--posix-memalign`、`--os-event`、`--threads` 与 `--guest-tp` 均全绿通过。
-
-3. **真机实测重大突破：越过 __cxa_thread_atexit，虚幻引擎枚举 Paks 并派生 FHeartBeatThread**：
-   - 运行 `./nso_owned_startup.android main.nso --guest-quota 1073741824 --guest-stack 2097152 --guest-resource-quota 16777216 --boot`：
-   - 日志实证：
+2. **深度逆向与调用点根因归因**：
+   - 符号调用点位于 `main.nso` 偏移 `0x11b8`，属于虚幻引擎的 `FOutputDeviceError::Serialize` 虚方法（vtable `0x67d8c50` 的偏移 `0x10`）；
+   - 栈帧回溯显示：
+     - `frame[1]`: `ret=0x73fb3c81bc`（偏移 `0x11bc`，`FOutputDeviceError::Serialize`）
+     - `frame[2]`: `ret=0x73fb5a9154`（偏移 `0x1e2154`）
+     - `frame[3]`: `ret=0x73fb5399f0`（偏移 `0x1729f0`，`LowLevelFatalError` 格式化）
+     - `frame[4]`: `ret=0x73fe8f6884`（偏移 `0x352f884`，`LaunchNintendo.cpp` 第 241 行）
+   - 代码逻辑定位：
+     - `LaunchNintendo.cpp` 中调用 `GEngineLoop.PreInit(CmdLine)`（位于偏移 `0x3530700`）；
+     - `0x3530700` 调用内部 `FEngineLoop::PreInitPreStartupScreen`（偏移 `0x3530920`）；
+     - `PreInitPreStartupScreen` 返回了非零错误码；
+     - `0x352f8c0: cbnz w0, #0x352f96c` 判定返回非零直接跳转至致命错误分支（Line 241）；
+     - `0x352f97c: mov w1, #0xf1`（`0xf1 = 241`，即源码第 241 行）调用致命错误上报；
+   - 提取到完整错误信息：
      ```text
-     [hle] posix_memalign: memptr=0x67fa2806d8 alignment=64 (0x40) size=40 (0x28) -> *memptr=0xb400006e6d2a4a40 rc=0
-     [hle] __cxa_thread_atexit: dtor=0x6db9f5e650 obj=0xb400006e7d2aa450 dso=0x6dc1657a00 pending=1
-     [hle] nn::fs::OpenDirectory: path='rom:/FFRS/Content/Paks/' mode=3 (host_path='romfs/FFRS/Content/Paks/') total_entries=3 -> handle=0x5b7f3a84a0
-     [hle] nn::fs::GetDirectoryEntryCount: handle=0x5b7f3a84a0 -> count=3
-     [hle] nn::fs::ReadDirectory: handle=0x5b7f3a84a0 req_max=3 read_entries=3 (cursor=3/3)
-     [hle] nn::fs::CloseDirectory: closed handle=0x5b7f3a84a0 (path='rom:/FFRS/Content/Paks/')
-     [hle] nn::fs::OpenDirectory: path='rom:/FFRS/Saved/Paks/' mode=3 (host_path='romfs/FFRS/Saved/Paks/') stat failed errno=2 (No such file or directory)
-     [hle] nn::fs::OpenDirectory: path='rom:/Engine/Content/Paks/' mode=3 (host_path='romfs/Engine/Content/Paks/') stat failed errno=2 (No such file or directory)
-     [crt] atexit registered callback=0x6db9ff1e90 pending=13561; deferred
-     [crt] atexit registered callback=0x6dbd361f60 pending=13562; deferred
-     [crt] atexit registered callback=0x6db9ff1e70 pending=13563; deferred
-     [crt] atexit registered callback=0x6db9fb7e80 pending=13564; deferred
-     [hle] nn::os::InitializeEvent: event=0x5e79e9acf0 initially_signaled=0 clear_mode=0 (ManualClear)
-     [page-port-policy] op=map address=0x67fa851000 bytes=1048576 result=0 after real VM/accounting transition
-     [hle] nn::os::CreateThread: thread=0x60b9e0d278 entry=0x6db9f56a1c arg=0x60b9e0d240 stack=0x67fa851000 size=0x100000 prio=15 tid=25178
-     [hle] nn::os::SetThreadName: thread=0x60b9e0d278 name='FHeartBeatThread'
-     [hle] nn::os::StartThread: thread=0x60b9e0d278 tid=25178
-     [hle] __cxa_thread_atexit: dtor=0x6db9ff9ec4 obj=0xb400006e7d2aae00 dso=0x6dc1657a00 pending=2
-     [hle] thread tid=25178 bound guest TP base=0xb400006e7d2ab430 span=4144
-     [hle] child thread tid=25178 entering guest_entry=0x6db9f56a1c sp=0x67fa951000 arg=0x60b9e0d240
-     [crt] atexit registered callback=0x6db9ff20e0 pending=13565; deferred
-     [hle] nn::os::SignalEvent: event=0x5e79e9acf0
-     [hle] nn::os::WaitEvent: event=0x5e79e9acf0 satisfied
-     [hle] nn::os::ClearEvent: event=0x5e79e9acf0
-     [page-port-policy] op=map address=0x67faa50000 bytes=393216 result=0 after real VM/accounting transition
-     [page-port-policy] op=map address=0x67faad0000 bytes=4096 result=0 after real VM/accounting transition
-     [crt] atexit registered callback=0x6db9ff1eb0 pending=13566; deferred
-     [crt] atexit registered callback=0x6db9f3e560 pending=13567; deferred
-     [hle] nn::fs::OpenFile: path='rom:/FFRS/FFRS.uproject' mode=1 (host_path='romfs/FFRS/FFRS.uproject') -> open failed errno=2 (No such file or directory)
-     [crt] atexit registered callback=0x6dba104340 pending=13568; deferred
-     [page-port-policy] op=map address=0x6599e20000 bytes=65536 result=0 after real VM/accounting transition
-     [hle] __cxa_thread_atexit: dtor=0x6dba12c440 obj=0xb400006e7d2aae40 dso=0x6dc1657a00 pending=3
-     [fault] signal=5 pc=0x705dc5a060 fa=0x705dc5a060
-      x0=0x6259  x1=0x0  x2=0x67fa280688  x3=0x9ff230772b
-      x4=0xffffffffffffff  x5=0x1931148  x6=0x32  x7=0x7f7f7f7f7f7f7f7f
-      x8=0x6dc1b81aa4  x9=0x1  x10=0x2  x11=0x5b7f3b4f58
-      x12=0x20  x13=0xb400006e4d2a6250  x14=0x1931148  x15=0x9ff2311a37
-      x16=0x6dc16ae058  x17=0x705dc5a060  x18=0x5fabd61ad1b3a274  x19=0x6dc1bcc9e8
-      x20=0x5e39e1c7b4  x21=0x5  x22=0x67fa280878  x23=0x200
-      x24=0x6dc681dbb0  x25=0x6dc681dbb0  x26=0x6dc681def8  x27=0x114000
-      x28=0x116000 
-      fp=0x67fa280730 lr=0x6db9f3d1bc sp=0x67fa280720
+     LowLevelFatalError [File:.\../Platforms/Nintendo/Source/Runtime/Launch/Private/LaunchNintendo.cpp] [Line: 241] 
+     PreInit() failed! Aborting
      ```
-   - 虚幻引擎连续 3 次成功完成 `__cxa_thread_atexit` 登记！
-   - GameThread 顺利进入 Pak 文件系统扫描（`rom:/FFRS/Content/Paks/` 枚举），派生子线程 `FHeartBeatThread` 并成功完成跨线程 Event 唤醒。
+   - 破译 v31 日志中 `x0=0x6259` 的来源：`0x6259` 为十进制 `25177`，正是 `GameThread` 的真实线程 ID，是 `0x1e3f10` 处调用 `nn::os::GetThreadId` 获取的，并非 `nn::Result` 错误码。
 
-4. **最新真实阻塞前沿确认**：
-   - 确证新阻塞符号：`_ZN2nn4diag6detail9AbortImplEv`（`nn::diag::detail::AbortImpl()`）。
-   - 符号索引：`symbol index = 12`（JMPREL 重定位索引 `reloc_idx = 3996`，`type = 1026` / `R_AARCH64_JUMP_SLOT`）。
-   - GOT 槽位：`0x7772058`。
-   - 调用点现场：
-     - 基地址：`0x6db9f3c000`
-     - 调用点：`caller_offset = 0x11b8`
-     - 返回点：`lr_offset = 0x11bc`（`lr = 0x6db9f3d1bc`）
-     - GOT 地址：`x16 = 0x6dc16ae058`（`0x6dc16ae058 - 0x6db9f3c000 = 0x7772058`）
-   - 退出码：133（SIGTRAP sentinel `brk` at unlinked import 12 `nn::diag::detail::AbortImpl()`）。
-   - 完整原始日志：`.local/logs/rg477m-boot-v31-cxa-thread-atexit.log` + `.exitcode`。
+3. **宿主与真机契约全绿**：
+   - 增加 `--diag-abort` 独立契约测试用例 `diag_abort_contract`，覆盖符号动态解析、AbortImpl 安全返回 0、GetBacktrace 边界与深度探查校验；
+   - `./scripts/runtime/build_guest_process_contract.sh` 编译并跑通全量 37 项宿主契约（含 `host-diag-abort-contract`，returncode 0）；
+   - 在 RG477M (`RG477M01445122`) 上运行 `./guest_process_contract.android --diag-abort`：
+     `{"diag_abort_errors":0,"resolve":true,"return_zero":true,"backtrace":true}`；
+   - 复跑 `--cxa-thread-atexit`、`--posix-memalign`、`--os-event`、`--threads` 与 `--guest-tp` 均全绿通过。
 
-5. **明确未完成项标注**：
+4. **真机实测重大突破：越过 import 12，消除 signal 5，捕获致命错误现场**：
+   - 运行 `./nso_owned_startup.android main.nso --guest-quota 1073741824 --guest-stack 2097152 --guest-resource-quota 16777216 --boot`：
+   - 日志实证（`.local/logs/rg477m-boot-v32-abortimpl.log`）：
+     ```text
+     [hle] nn::fs::OpenFile: path='rom:/FFRS/FFRS.uproject' mode=1 (host_path='romfs/FFRS/FFRS.uproject') -> open failed errno=2 (No such file or directory)
+     [crt] atexit registered callback=0x73fb58f340 pending=13568; deferred
+     [page-port-policy] op=map address=0x6bdb220000 bytes=65536 result=0 after real VM/accounting transition
+     [hle] __cxa_thread_atexit: dtor=0x73fb5b7440 obj=0xb40000754068be40 dso=0x7402ae2a00 pending=3
+     [hle] nn::diag::detail::AbortImpl: lr=0x5603b5b368 fp=0x6e3b680690 x0=0x4685 x19=0x74030579e8 x20=0x6e3b680690 x21=0x5 x22=0x6e3b680878 x8=0x740300caa4
+     [hle]   frame[0]: fp=0x6e3b6806f0 ret=0x5603b5b368
+     [hle]   frame[1]: fp=0x6e3b680730 ret=0x73fb3c81bc
+     [hle]   frame[2]: fp=0x6e3b680ca0 ret=0x73fb5a9154
+     [hle]   frame[3]: fp=0x6e3b680de0 ret=0x73fb5399f0
+     [hle]   frame[4]: fp=0x6e3b680fa0 ret=0x73fe8f6884
+     [hle]   frame[5]: fp=0x740a52f940 ret=0x5603b5ba34
+     [hle]   frame[6]: fp=0x740a52fb20 ret=0x5603b4fc8c
+     [hle]   frame[7]: fp=0x740a52fb50 ret=0x76a0752cd0
+     [hle]   frame[8]: fp=0x740a52fb80 ret=0x76a06e6b04
+     [hle]   frame[9]: fp=0x0 ret=0x0
+     [hle] nn::diag::detail::AbortImpl message: "LowLevelFatalError [File:.\../Platforms/Nintendo/Source/Runtime/Launch/Private/LaunchNintendo.cpp] [Line: 241] 
+     PreInit() failed! Aborting
+
+
+     "
+     [hle] nn::diag::detail::AbortImpl: lr=0x5603b5b368 fp=0x6e3b680680 x0=0x4685 x19=0x74030579e8 x20=0x6e3b680680 x21=0x5 x22=0x6e3b680878 x8=0x740300caa4
+     [hle]   frame[0]: fp=0x6e3b6806e0 ret=0x5603b5b368
+     [hle]   frame[1]: fp=0x6e3b680710 ret=0x73fb3c81f8
+     ...
+     [fault] signal=4 pc=0x73fb3c81f8 fa=0x73fb3c81f8
+     ```
+   - 未链接导入符号 12 彻底消除，GameThread 顺利越过 `AbortImpl`；
+   - 进程执行退出路径并达到硬断言 `0x11f8: udf #0`，退出码由 133 变为 132。
+
+5. **明确未完成项与下一前沿标注**：
+   - **下一前沿**：虚幻引擎 `FEngineLoop::PreInitPreStartupScreen`（偏移 `0x3530920`）执行失败并返回非零错误码；需进一步分析其失败原因（检查配置文件如 `rom:/Engine/Config/StagedBuild_FFRS.ini`、Pak / IoStore 挂载与解密、或渲染/音频子系统预初始化等）；
    - `ProtectRelro` 当前仍为桩函数日志记录，未真正实施页面写保护；
    - 尚无标题画面 / 可操作场景证据；
    - NVN→Vulkan 完整桥接、大文件 Pak/IoStore（2.9GB/5.9GB）读取管线未完成。
@@ -114,4 +115,5 @@
 | **nn::os::InitializeEvent / FinalizeEvent / SignalEvent / ClearEvent / WaitEvent** | **已越过并真机通过**：实测成功初始化 Event（AutoClear 与 ManualClear），跨线程 Signal/Wait 唤醒全部通过！ |
 | **posix_memalign / memalign** | **已越过并真机通过**：实测成功完成 64 字节对齐分配（40 字节），GameThread 顺利越过！ |
 | **__cxa_thread_atexit / __cxa_thread_atexit_impl** | **已越过并真机通过**：实测 3 次成功登记线程局部析构器，GameThread 顺利越过！ |
-| **当前阻塞前沿** | **确证为 `_ZN2nn4diag6detail9AbortImplEv`**（symbol index 12, JMPREL reloc index 3996, GOT 0x7772058, caller 0x11b8, lr 0x11bc, exit 133, 日志 `.local/logs/rg477m-boot-v31-cxa-thread-atexit.log`）。 |
+| **nn::diag::detail::AbortImpl / GetBacktrace** | **已越过并真机通过**：实测越过 import 12，消除未链接导入 signal 5；完整捕获寄存器快照、栈帧回溯及 UTF-16 致命错误内容，彻底定位到 `GEngineLoop.PreInit()` 失败逻辑！ |
+| **当前阻塞前沿** | **确证为虚幻引擎 `GEngineLoop.PreInit()` 失败**（偏移 `0x3530920` 返回错误码，触发 `LaunchNintendo.cpp:241` 的 `LowLevelFatalError: PreInit() failed! Aborting`，最终到达 `0x11f8: udf #0`，signal 4 / exitcode 132，日志 `.local/logs/rg477m-boot-v32-abortimpl.log`）。 |

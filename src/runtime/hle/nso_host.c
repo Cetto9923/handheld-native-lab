@@ -1745,6 +1745,109 @@ void nso_host_free(void *ptr) {
     }
 }
 
+static int is_readable(const void *ptr, size_t len) {
+    if (!ptr || (uintptr_t)ptr < 4096) return 0;
+    int pfd[2];
+    if (pipe(pfd) != 0) return 0;
+    ssize_t ret = write(pfd[1], ptr, len);
+    close(pfd[0]);
+    close(pfd[1]);
+    return ret == (ssize_t)len;
+}
+
+uint64_t nso_host_diag_abort_impl(void) {
+    uint64_t cur_fp = 0, cur_lr = 0;
+    uint64_t cur_x0 = 0, cur_x19 = 0, cur_x20 = 0, cur_x21 = 0, cur_x22 = 0, cur_x8 = 0;
+#if defined(__aarch64__)
+    __asm__ volatile("mov %0, x29" : "=r"(cur_fp));
+    __asm__ volatile("mov %0, x30" : "=r"(cur_lr));
+    __asm__ volatile("mov %0, x0"  : "=r"(cur_x0));
+    __asm__ volatile("mov %0, x19" : "=r"(cur_x19));
+    __asm__ volatile("mov %0, x20" : "=r"(cur_x20));
+    __asm__ volatile("mov %0, x21" : "=r"(cur_x21));
+    __asm__ volatile("mov %0, x22" : "=r"(cur_x22));
+    __asm__ volatile("mov %0, x8"  : "=r"(cur_x8));
+#endif
+    fprintf(stderr, "[hle] nn::diag::detail::AbortImpl: lr=0x%" PRIx64 " fp=0x%" PRIx64 " x0=0x%" PRIx64 " x19=%p x20=%p x21=0x%" PRIx64 " x22=%p x8=0x%" PRIx64 "\n",
+            cur_lr, cur_fp, cur_x0, (void *)cur_x19, (void *)cur_x20, cur_x21, (void *)cur_x22, cur_x8);
+
+    /* Frame chain walk */
+    uint64_t fp = cur_fp;
+    for (int depth = 0; depth < 16; depth++) {
+        if (!fp || (fp & 15) || fp < 0x1000) break;
+        if (!is_readable((const void *)(uintptr_t)fp, 16)) break;
+        const uint64_t *frame = (const uint64_t *)(uintptr_t)fp;
+        uint64_t next_fp = frame[0];
+        uint64_t ret_addr = frame[1];
+        fprintf(stderr, "[hle]   frame[%d]: fp=0x%" PRIx64 " ret=0x%" PRIx64 "\n", depth, next_fp, ret_addr);
+        if (next_fp <= fp) break;
+        fp = next_fp;
+    }
+
+    /* Decode UTF-16 message string in x22 if valid readable pointer */
+    if (cur_x22 && !(cur_x22 & 1) && cur_x22 >= 0x1000 && is_readable((const void *)(uintptr_t)cur_x22, 2)) {
+        const uint16_t *u16 = (const uint16_t *)(uintptr_t)cur_x22;
+        char utf8[1024];
+        size_t out = 0;
+        for (size_t in = 0; in < 512 && out + 4 < sizeof(utf8); in++) {
+            if (!is_readable(&u16[in], 2) || u16[in] == 0) break;
+            uint32_t cp = u16[in];
+            if (cp >= 0xd800 && cp <= 0xdbff && in + 1 < 512 && is_readable(&u16[in + 1], 2)) {
+                uint32_t low = u16[in + 1];
+                if (low >= 0xdc00 && low <= 0xdfff) {
+                    cp = 0x10000 + ((cp - 0xd800) << 10) + (low - 0xdc00);
+                    in++;
+                }
+            }
+            if (cp < 0x80) {
+                utf8[out++] = (char)cp;
+            } else if (cp < 0x800) {
+                utf8[out++] = (char)(0xc0 | (cp >> 6));
+                utf8[out++] = (char)(0x80 | (cp & 0x3f));
+            } else if (cp < 0x10000) {
+                utf8[out++] = (char)(0xe0 | (cp >> 12));
+                utf8[out++] = (char)(0x80 | ((cp >> 6) & 0x3f));
+                utf8[out++] = (char)(0x80 | (cp & 0x3f));
+            } else {
+                utf8[out++] = (char)(0xf0 | (cp >> 18));
+                utf8[out++] = (char)(0x80 | ((cp >> 12) & 0x3f));
+                utf8[out++] = (char)(0x80 | ((cp >> 6) & 0x3f));
+                utf8[out++] = (char)(0x80 | (cp & 0x3f));
+            }
+        }
+        utf8[out] = '\0';
+        if (out > 0) {
+            fprintf(stderr, "[hle] nn::diag::detail::AbortImpl message: \"%s\"\n", utf8);
+        }
+    }
+    return 0;
+}
+
+int32_t nso_host_diag_get_backtrace(uintptr_t *out_backtrace, int32_t count) {
+    if (!out_backtrace || count <= 0) return 0;
+    int32_t depth = 0;
+#if defined(__aarch64__)
+    uint64_t fp = 0;
+    __asm__ volatile("mov %0, x29" : "=r"(fp));
+    while (depth < count && fp && !(fp & 15) && fp >= 0x1000) {
+        if (!is_readable((const void *)(uintptr_t)fp, 16)) break;
+        const uint64_t *frame = (const uint64_t *)(uintptr_t)fp;
+        uint64_t next_fp = frame[0];
+        uint64_t ret_addr = frame[1];
+        if (depth > 0) {
+            out_backtrace[depth - 1] = ret_addr;
+        }
+        depth++;
+        if (next_fp <= fp) break;
+        fp = next_fp;
+    }
+    if (depth > 0) depth--;
+#endif
+    fprintf(stderr, "[hle] nn::diag::GetBacktrace: out=%p count=%d -> captured=%d\n",
+            (void *)out_backtrace, count, depth);
+    return depth;
+}
+
 void nso_host_set_extension_resolver(nso_import_fn resolver) {extension_resolver=resolver;}
 uint64_t nso_host_resolve(uint32_t index,const char *name) {
     if(!name)return 0;
@@ -1941,5 +2044,9 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
     if(!strcmp(name,"aligned_alloc"))return (uint64_t)(uintptr_t)&nso_host_aligned_alloc;
     if(!strcmp(name,"valloc"))return (uint64_t)(uintptr_t)&nso_host_valloc;
     if(!strcmp(name,"free"))return (uint64_t)(uintptr_t)&nso_host_free;
+    if(!strcmp(name,"_ZN2nn4diag6detail9AbortImplEv") || !strcmp(name,"nndetailDiagAbortImpl"))
+        return (uint64_t)(uintptr_t)&nso_host_diag_abort_impl;
+    if(!strcmp(name,"_ZN2nn4diag12GetBacktraceEPmi"))
+        return (uint64_t)(uintptr_t)&nso_host_diag_get_backtrace;
     return extension_resolver?extension_resolver(index,name):0;
 }
