@@ -1,9 +1,9 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-10-24T03:58:00.000000+00:00",
- "phase": "T02_NN_RESULT_UNBLOCKED_NNSSL_INIT_ON_RG477M: nnResultIsFailure (import 607) and nnResult* family HLE landed and verified; boot advanced past LibcurlGc thread creation and event sync; new frontier [unresolved-import] index=606 name=nnsslInitialize caller_offset=0x5e647e8 (exit 133)",
- "coordinator": "Antigravity sole root coordinator - P-AG-22 closed: nnResultIsFailure landed, host/device contracts PASS, RG477M boot log .local/logs/rg477m-boot-v44-nn-result-is-failure.log",
+ "updated_at": "2026-10-24T04:34:00.000000+00:00",
+ "phase": "T02_NNSSL_INITIALIZE_UNBLOCKED_STDOUT_DATA_IMPORT_ON_RG477M: nnsslInitialize (import 606) and nnsslFinalize (import 608) HLE landed and verified on device (nnsslFinalize ABI corrected to return a masked nn::Result per retail SDK disassembly at sdk module_offset 0x433620); RG477M boot advanced past the LibcurlGc child-thread SSL subsystem init; unresolved imports 410 -> 408; new frontier [unresolved-import] index=186 name=stdout caller_offset=0x5e5a874, a STT_OBJECT data import faulting as SIGSEGV (exit 139) because the loader backs unresolved data imports with a PROT_NONE object sentinel",
+ "coordinator": "P-AG-23 (Antigravity) closed by P-CC-5 (Claude Code): nnsslInitialize landed, host/device contracts PASS, RG477M boot log .local/logs/rg477m-boot-v46-nnssl-initialize.log (exit 139); next frontier is the stdio family (stdout/stderr/stdin data objects + printf/fprintf/vfprintf/fwrite/fputs/snprintf/vsnprintf/sprintf)",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
  "active_writers": [
@@ -22,8 +22,8 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native",
    "branch": "work/rg477m-native",
    "acquired_at": "2026-10-23T15:25:00.000000+00:00",
-   "checkpoint": "P-AG-22",
-   "objective": "Owned startup runtime: nnResultIsFailure HLE and contract verification",
+   "checkpoint": "P-CC-5",
+   "objective": "Owned startup runtime: nnsslInitialize/nnsslFinalize HLE, ABI verification against retail SDK NSO, and RG477M boot past import 606",
    "write_state": "ACTIVE"
   },
   {
@@ -65,7 +65,7 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native",
    "branch": "work/rg477m-native",
    "acquired_at": "2026-10-23T15:25:00.000000+00:00",
-   "checkpoint": "P-AG-17",
+   "checkpoint": "P-CC-5",
    "write_state": "ACTIVE",
    "objective": "Preserve existing WIP and evidence; generated STATUS only; root alone stages/commits/integrates/device operations"
   },

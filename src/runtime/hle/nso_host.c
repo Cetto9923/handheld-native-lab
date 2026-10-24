@@ -2170,6 +2170,46 @@ uint32_t nso_host_nn_result_success(void) {
     return 0;
 }
 
+/* ========================================================================= */
+/* nnsslInitialize / nnsslFinalize HLE Implementation                         */
+/* Nintendo SDK SSL service lifecycle stubs.                                  */
+/* nnsslInitialize: no parameters, returns nn::Result (0 = success).          */
+/* nnsslFinalize:   no parameters, returns nn::Result (0 = success).          */
+/* We do not perform real TLS handshakes or certificate validation.           */
+/*                                                                          */
+/* ABI evidence (retail Nintendo SDK NSO, build_id                            */
+/* 0023a1b06130cd795f7bc4613772af0af71c8cfd000000000000000000000000,      */
+/* sha256 9dfd1cc6d3209d857dcafb191736265ac812401ddcc7b49dabf3bc0b114655a9): */
+/*   nnsslInitialize  @ sdk module_offset 0x4335e0 (size 24)                  */
+/*     stp x29,x30,[sp,#-0x10]! ; mov x29,sp ; bl <internal> ;                */
+/*     and w0,w0,#0x3fffff ; ldp x29,x30,[sp],#0x10 ; ret                     */
+/*   nnsslFinalize    @ sdk module_offset 0x433620 (size 24)                  */
+/*     stp x29,x30,[sp,#-0x10]! ; mov x29,sp ; bl <internal> ;                */
+/*     and w0,w0,#0x3fffff ; ldp x29,x30,[sp],#0x10 ; ret                     */
+/* No argument is staged before the call, so both take zero parameters, and   */
+/* both return a masked nn::Result in w0 (bits 0..21 = module|description;   */
+/* 0 = success). The import gateway (native_boundary.S) forwards w0 to the    */
+/* guest unchanged, so nnsslFinalize must return 0 rather than void.          */
+/* ========================================================================= */
+
+static bool s_ssl_initialized = false;
+
+int32_t nso_host_ssl_initialize(void) {
+    s_ssl_initialized = true;
+    fprintf(stderr, "[hle] nnsslInitialize: initialized Nintendo SSL service (stub) -> returning 0\n");
+    return 0;
+}
+
+int32_t nso_host_ssl_finalize(void) {
+    s_ssl_initialized = false;
+    fprintf(stderr, "[hle] nnsslFinalize: finalized Nintendo SSL service (stub) -> returning 0\n");
+    return 0;
+}
+
+bool nso_host_ssl_is_initialized(void) {
+    return s_ssl_initialized;
+}
+
 void nso_host_throw_system_error(int ev, const char *what_arg) {
     fprintf(stderr, "[hle] std::__throw_system_error: ev=%d what=%s\n", ev, what_arg ? what_arg : "(null)");
     abort();
@@ -2437,6 +2477,10 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_nn_result_get_description;
     if(!strcmp(name,"nnResultSuccess"))
         return (uint64_t)(uintptr_t)&nso_host_nn_result_success;
+    if(!strcmp(name,"nnsslInitialize"))
+        return (uint64_t)(uintptr_t)&nso_host_ssl_initialize;
+    if(!strcmp(name,"nnsslFinalize"))
+        return (uint64_t)(uintptr_t)&nso_host_ssl_finalize;
     if(!strcmp(name,"__cxa_pure_virtual"))
         return (uint64_t)(uintptr_t)&nso_host_cxa_pure_virtual;
     return extension_resolver?extension_resolver(index,name):0;

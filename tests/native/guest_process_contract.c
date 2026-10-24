@@ -1735,6 +1735,29 @@ static int nn_result_contract(void) {
     puts("{\"nn_result_contract_errors\":0,\"is_failure_works\":true,\"is_success_works\":true,\"get_module_works\":true,\"get_description_works\":true,\"success_constant_zero\":true}");
     return 0;
 }
+static int nnssl_contract(void) {
+    typedef int32_t (*init_fn)(void);
+    typedef int32_t (*finalize_fn)(void);
+
+    init_fn ssl_init = (init_fn)(uintptr_t)guest_process_resolve(0, "nnsslInitialize");
+    CHECK(ssl_init != NULL);
+    finalize_fn ssl_fin = (finalize_fn)(uintptr_t)guest_process_resolve(0, "nnsslFinalize");
+    CHECK(ssl_fin != NULL);
+
+    /* nnsslInitialize returns nn::Result (0 = success) */
+    int32_t rc = ssl_init();
+    CHECK(rc == 0);
+
+    /* nnsslFinalize returns a masked nn::Result in w0, not void: the retail SDK
+     * wrapper (sdk module_offset 0x433620) ends with "and w0, w0, #0x3fffff".
+     * The import gateway forwards w0 unchanged, so a void stub would hand the
+     * guest an indeterminate Result. */
+    int32_t fin_rc = ssl_fin();
+    CHECK(fin_rc == 0);
+
+    puts("{\"nnssl_contract_errors\":0,\"initialize\":true,\"finalize\":true,\"baseline_zero\":true,\"finalize_result_zero\":true}");
+    return 0;
+}
 static int fs_open_dir_contract(void) {
     typedef int32_t (*open_dir_fn)(nn_fs_directory_handle *, const char *, int32_t);
     typedef int32_t (*get_count_fn)(int64_t *, nn_fs_directory_handle);
@@ -2859,6 +2882,7 @@ int main(int argc,char **argv) {
     if(argc==2 && !strcmp(argv[1],"--gettimeofday"))return gettimeofday_contract();
     if(argc==2 && !strcmp(argv[1],"--os-process-handle"))return os_process_handle_contract();
     if(argc==2 && !strcmp(argv[1],"--nn-result"))return nn_result_contract();
+    if(argc==2 && !strcmp(argv[1],"--nnssl"))return nnssl_contract();
     if(argc==2 && !strcmp(argv[1],"--fs-open-dir"))return fs_open_dir_contract();
     if(argc==2 && !strcmp(argv[1],"--os-event"))return os_event_contract();
     if(argc==2 && !strcmp(argv[1],"--posix-memalign"))return posix_memalign_contract();

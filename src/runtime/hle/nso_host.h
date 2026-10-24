@@ -191,6 +191,10 @@ uint32_t nso_host_nn_result_is_success(uint32_t result);
 uint32_t nso_host_nn_result_get_module(uint32_t result);
 uint32_t nso_host_nn_result_get_description(uint32_t result);
 uint32_t nso_host_nn_result_success(void);
+
+int32_t nso_host_ssl_initialize(void);
+int32_t nso_host_ssl_finalize(void);
+bool nso_host_ssl_is_initialized(void);
 #ifdef __cplusplus
 }
 #endif

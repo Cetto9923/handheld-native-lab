@@ -1,3 +1,53 @@
+# P-AG-23 / P-CC-5 闭环｜2026-10-24 12:34 Asia/Shanghai — nnsslInitialize（import 606）真机越过，前沿推进至 stdout（import 186）
+
+- **结论**：工单 P-AG-23（Antigravity 因 429 额度耗尽中途退出）+ P-CC-5（Claude Code 接力）目标闭环：真机**彻底越过 `nnsslInitialize`（import 606）**，新前沿归因为 `stdout`（import 186，STT_OBJECT 数据导入）。
+  1. **接力范围**：agy 已落地 `nnsslInitialize`/`nnsslFinalize` HLE、白名单、`import_signature`、resolve 与 `--nnssl` 契约；P-CC-5 **未重写该桩**，只做三件事：(a) 核对 WIP 与既有产物是否匹配并重编；(b) 按 v44 **同一套** diagnostic port-policy 跑通真机全量 `--boot`；(c) 依零售 SDK 反汇编证据修正 `nnsslFinalize` 的 ABI（`void` → 返回 masked `nn::Result`）。
+  2. **产物一致性核对**：`.local/build-p-ag-23/nso_owned_startup.android`（sha256 `9a2fa25651cbc18668527126626568437794bc10b54c6b9023f9b6099f41ecfa`，mtime 12:08:22）晚于全部 nnssl 源码改动（12:05:02–12:06:01），且 `strings` 含 `nnsslInitialize`/`nnsslFinalize` 与 `[hle] nnsslInitialize…` 日志串 → 与当时 WIP 源码匹配，可直接上机。因随后修正了 `nnsslFinalize` ABI，最终以新目录 **`.local/build-p-cc-5/`** 重编（`sh scripts/runtime/build_guest_process_contract.sh --out .local/build-p-cc-5 --toolchain .local/minimal-ndk/toolchain --resource-quota-bytes 16777216`，exit 0），**最终真机证据全部来自该产物**（`nso_owned_startup.android` sha256 `f0d2ec172cb342411f4c7559746bff6f5e34b81db28952ef26c1d25cdf7158e5`）。
+  3. **ABI 证据（零售 Nintendo SDK NSO，build_id `0023a1b06130cd795f7bc4613772af0af71c8cfd…`，sha256 `9dfd1cc6d3209d857dcafb191736265ac812401ddcc7b49dabf3bc0b114655a9`，`scripts/runtime/inspect_nso.py --slice` 取证）**：
+     - `nnsslInitialize` @ sdk module_offset `0x4335e0`（size 24）：`stp x29,x30,[sp,#-0x10]! ; mov x29,sp ; bl <internal> ; and w0,w0,#0x3fffff ; ldp x29,x30,[sp],#0x10 ; ret` —— 调用前**不布置任何参数** ⇒ 零参；返回 w0 为 masked `nn::Result`（bit 0..21 = module|description，0 = 成功）。
+     - `nnsslFinalize` @ sdk module_offset `0x433620`（size 24）：**同一形态** ⇒ 同样返回 masked `nn::Result`，**并非 `void`**。
+     - `nn::ssl::Initialize()` @ `0x437670`、`nn::ssl::Finalize()` @ `0x4378c0`：亦为 0 参 + 返回 `nn::Result`（成功路径 `mov w0, wzr`）。
+     - 影响面：`nb_import_gateway`（`src/runtime/nso/native_boundary.S`）只保存/恢复 `x18/x29/x30/x16`，**不恢复 x0** ⇒ void 桩会把不确定值交给 guest 当 `nn::Result` 读。已把 `nso_host_ssl_finalize` 改为返回 `int32_t 0`，`import_signature` 由 `returns=0` 改为 `returns=1`，契约新增 `finalize_result_zero` 断言；源码注释内嵌上述模块地址与反汇编。
+  4. **真机推进轨迹（RG477M01445122，v44 同一套参数）**：
+     - 参数：`quota=1073741824 stack=2097152 image=162869248 resource_quota=16777216 guest_argc=0`；guest 输入不变（main NSO build_id `736837afd390442ed7c74a7de730e71b`，sha256 `6e6d1f3cd1672243e2ed344cc1b8849b85437d41bdecec81a5f9181e472d68a5`）。
+     - `unresolved` 计数 **410 → 408**（正是 `nnsslInitialize` + `nnsslFinalize` 两个新绑定）。
+     - `[hle] nnsslInitialize: initialized Nintendo SSL service (stub) -> returning 0` —— import 606 被真机**真实调用并越过**。
+     - 引擎随即 `[hle] nnResultIsFailure: res=0x0 -> 0` ⇒ guest 把返回值当 `nn::Result` 判为成功，**反证 `nnsslInitialize` 返回 `nn::Result` 且 0 = 成功**，与 SDK 反汇编一致。
+     - LibcurlGc 子线程完成事件同步（SignalEvent / WaitEvent / FinalizeEvent）后继续推进；父线程 `atexit` 登记攀升至 13616，插件 Pak 目录探测继续。
+  5. **新阻塞前沿**：
+     - `[fault] signal=11 pc=0x789c88f678 fa=0x7b39ee35d0 module_offset=0x5e5a678`
+     - `[unresolved-import] index=186 name=stdout caller_offset=0x5e5a874`
+     - 退出码 **139**（SIGSEGV）。
+     - 归因：`stdout` 在 main NSO dynsym 中 `st_info&0xf == 1`（**STT_OBJECT，数据导入**），loader 对未解析的**数据**导入填 PROT_NONE 的 object sentinel ⇒ guest **读写 `stdout` 对象槽**即 SIGSEGV（与代码分支未解析导入触发 SIGTRAP 不同）。
+     - 同族仍未解析：`stdin`(188)、`stderr`(306) 数据对象，以及 `printf`(175)、`fprintf`(307)、`vfprintf`(538)、`fwrite`(263)、`fputs`(532)、`snprintf`(183)、`vsnprintf`(145)、`sprintf`(526) 函数。**下一张工单应攻 stdio 族（3 数据 + 8 函数），而非 ssl 族**（ssl 族在 `stdout` 之前不会成为前沿）。
+  6. **契约**：宿主 `--nnssl` PASS `{"nnssl_contract_errors":0,"initialize":true,"finalize":true,"baseline_zero":true,"finalize_result_zero":true}`；RG477M 真机 `--nnssl` 同结果 PASS。
+  7. **日志**：
+     - 最终证据（= 提交源码构建）：`.local/logs/rg477m-boot-v46-nnssl-initialize.log` + `.exitcode` = **139**（产物 `.local/build-p-cc-5/`）。
+     - 过程证据（= P-AG-23 产物，pre-ABI-fix）：`.local/logs/rg477m-boot-v45-nnssl-initialize.log` + `.exitcode` = 139，结论一致。
+     - 无效首跑（cwd 错误导致 `cannot open file`）已备份为 `.local/logs/rg477m-boot-v45-nnssl-initialize.INVALID-cwd.log`，不再作为证据。
+  8. **未达**：标题画面 / 可玩（仍未进呈现阶段）。未伪造 TLS 握手/证书校验/在线账号；`nnssl*` 仅为生命周期成功桩。
+
+---
+
+# 日间调度（P-CC-5 启动｜2026-10-24 12:26 Asia/Shanghai）
+
+- **切换原因**：P-AG-23 agy PID 78326 已退出；Antigravity 429 额度耗尽（约 12:09，重置约再等 ~5h）；nnssl HLE/契约/Android 构建已落地但未提交，真机全量 boot 未完成。现有 v45 日志无效（`cannot open file`/exit 1）。主树 dirty、无活跃 FFRS 主路径写手。按优先级改派 Claude Code。
+- **已派**：P-CC-5 接力完成 nnsslInitialize 真机 boot + 提交；提词 `coordination/prompts/P-CC-nnssl-boot-finish.md`；claude PID **92401**（若 --dangerously-skip-permissions 弹出审批请点批准）；日志 `.local/agent-pm/cc-p-cc-5.log`
+- **基线**：HEAD `4393ed9` + dirty WIP；产物 `.local/build-p-ag-23/nso_owned_startup.android`；阻塞仍 v44 `nnsslInitialize` import 606 exit 133；设备 RG477M01445122；pak/ucas PASS
+- **未达**：标题 / 可玩
+
+---
+
+# 日间调度（P-AG-23 启动｜2026-10-24 12:00 Asia/Shanghai）
+
+- **切换原因**：P-AG-22 agy PID 70112 已退出并写闭环 @ HEAD `4393ed9`；真机最新 v44 越过 `nnResultIsFailure`，阻塞 `nnsslInitialize`（import 606，exit 133）；主树 clean、无活跃 FFRS 主路径写手。
+- **里程碑**：新 HEAD `4393ed9`；真机 v43→v44；import 607 消除；LibcurlGc 子线程已起并完成事件同步；pak/ucas PASS。
+- **已派**：P-AG-23 攻 `nnsslInitialize`（及紧随 nnsslFinalize / ssl 族按需）；提词 `coordination/prompts/P-AG-nnssl-initialize.md`；agy PID **78326**（若 --dangerously-skip-permissions 弹出审批请点批准）；日志 `.local/agent-pm/agy-p-ag-23.log`
+- **基线**：`.local/logs/rg477m-boot-v44-nn-result-is-failure.log` exit 133；设备 RG477M01445122；pak/ucas PASS（`.local/romfs/FFRS/Content/Paks/`）
+- **未达**：标题 / 可玩
+
+---
+
 # P-AG-22 闭环｜2026-10-24 12:00 Asia/Shanghai — nnResultIsFailure（import 607）及 nnResult 族落地，真机推进至 nnsslInitialize
 
 - **结论**：工单 P-AG-22 目标圆满闭环。
