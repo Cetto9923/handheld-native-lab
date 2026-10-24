@@ -2007,6 +2007,42 @@ static int diag_abort_contract(void) {
     puts("{\"diag_abort_errors\":0,\"resolve\":true,\"return_zero\":true,\"backtrace\":true}");
     return 0;
 }
+
+static int diag_aoc_event_contract(void) {
+    typedef void (*event_fn)(void *);
+
+    event_fn p_get = (event_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn3aoc31GetAddOnContentListChangedEventEPNS_2os11SystemEventE");
+    CHECK(p_get != NULL);
+    event_fn p_wait = (event_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os15WaitSystemEventEPNS0_15SystemEventTypeE");
+    CHECK(p_wait != NULL);
+    event_fn p_signal = (event_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os17SignalSystemEventEPNS0_15SystemEventTypeE");
+    CHECK(p_signal != NULL);
+    event_fn p_destroy = (event_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os18DestroySystemEventEPNS0_15SystemEventTypeE");
+    CHECK(p_destroy != NULL);
+
+    /* The host owns the signalling state and must not rewrite the guest
+     * nn::os::SystemEvent object: the game keeps its own layout. */
+    uint8_t guest_object[64];
+    for (size_t i = 0; i < sizeof guest_object; i++) guest_object[i] = (uint8_t)(i * 7u + 3u);
+    uint8_t before[64];
+    memcpy(before, guest_object, sizeof before);
+    p_get(guest_object);
+    CHECK(memcmp(before, guest_object, sizeof before) == 0);
+
+    /* A raised event releases a waiter instead of blocking forever. */
+    p_signal(guest_object);
+    p_wait(guest_object);
+
+    /* Null objects are reported, not dereferenced. */
+    p_get(NULL);
+    p_wait(NULL);
+    p_signal(NULL);
+    p_destroy(NULL);
+    p_destroy(guest_object);
+
+    puts("{\"diag_aoc_event_errors\":0,\"resolve\":true,\"guest_object_untouched\":true,\"signal_wait_roundtrip\":true}");
+    return 0;
+}
 struct log_fixture_io {float input,output;uint64_t guest_x18;};
 _Static_assert(offsetof(struct log_fixture_io,output)==4 && offsetof(struct log_fixture_io,guest_x18)==8,"self-authored float fixture ABI");
 static void *exercise_logf_native(guest_process *p,void *opaque) {
@@ -2652,6 +2688,7 @@ int main(int argc,char **argv) {
     if(argc==2 && !strcmp(argv[1],"--posix-memalign"))return posix_memalign_contract();
     if(argc==2 && !strcmp(argv[1],"--cxa-thread-atexit"))return cxa_thread_atexit_contract();
     if(argc==2 && !strcmp(argv[1],"--diag-abort"))return diag_abort_contract();
+    if(argc==2 && !strcmp(argv[1],"--diag-aoc-event"))return diag_aoc_event_contract();
     if(argc==2 && !strcmp(argv[1],"--logf"))return logf_contract();
     if(argc==3 && !strcmp(argv[1],"--logf-native"))return logf_native_contract(argv[2]);
     if(argc==2 && !strcmp(argv[1],"--strcasecmp"))return strcasecmp_contract();

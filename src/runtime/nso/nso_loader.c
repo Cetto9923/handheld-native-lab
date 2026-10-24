@@ -63,6 +63,12 @@ struct nso_module {
  * signal disposition itself is process-wide; this remains an opt-in fatal
  * experiment facility, not a recoverable multi-thread exception mechanism. */
 static _Thread_local nso_module *fault_module;
+/* The fault disposition itself is process-wide, so the module that owns it
+ * must stay visible to every thread that can fault. Guest child threads the
+ * runtime creates never install a scope of their own, so without this owner
+ * pointer their faults report an unattributable PC. Written once while the
+ * scope is installed and cleared when it ends. */
+static nso_module *fault_scope_owner;
 static _Thread_local uintptr_t stack_lo,stack_hi;
 static _Thread_local unsigned char signal_stack[64*1024];
 static _Thread_local stack_t previous_signal_stack;
@@ -511,7 +517,7 @@ static void fault_handler(int sig,siginfo_t *si,void *context) {
     pc=u->uc_mcontext.pc;lr=u->uc_mcontext.regs[30];fp=u->uc_mcontext.regs[29];sp=u->uc_mcontext.sp;
     for(int i=0;i<29;i++)regs[i]=u->uc_mcontext.regs[i];
 #endif
-    nso_module *m=fault_module;
+    nso_module *m=fault_module?fault_module:fault_scope_owner;
     fprintf(stderr,"[fault] signal=%d pc=0x%" PRIx64 " fa=0x%" PRIx64,sig,pc,fa);
     if(m && range(pc-nso_base(m),1,m->image_size))fprintf(stderr," module_offset=0x%" PRIx64,pc-nso_base(m));
     fputc('\n',stderr);
@@ -555,25 +561,30 @@ int nso_fault_scope_end(nso_module *m) {
         if(sigaltstack(&restore,NULL)) {if(!error)error=errno;}
         else owns_signal_stack=0;
     }
-    if(!error) {fault_module=NULL;stack_lo=stack_hi=0;}
+    if(!error) {fault_module=NULL;fault_scope_owner=NULL;stack_lo=stack_hi=0;}
     return error;
+}
+void nso_fault_scope_set_thread_stack(uintptr_t lo, uintptr_t hi) {
+    stack_lo=lo;
+    stack_hi=hi;
 }
 int nso_fault_scope_begin(nso_module *m) {
     if(!m || !m->ready || fault_module)return EBUSY;
     fault_module=m;
+    fault_scope_owner=m;
 #if defined(__APPLE__)
     stack_hi=(uintptr_t)pthread_get_stackaddr_np(pthread_self());stack_lo=stack_hi-pthread_get_stacksize_np(pthread_self());
 #elif defined(__linux__)
     pthread_attr_t attr;
     int e=pthread_getattr_np(pthread_self(),&attr);
-    if(e) {fault_module=NULL;return e;}
+    if(e) {fault_module=NULL;fault_scope_owner=NULL;return e;}
     void *addr;size_t size;
     e=pthread_attr_getstack(&attr,&addr,&size);pthread_attr_destroy(&attr);
-    if(e) {fault_module=NULL;return e;}
+    if(e) {fault_module=NULL;fault_scope_owner=NULL;return e;}
     stack_lo=(uintptr_t)addr;stack_hi=stack_lo+size;
 #endif
     stack_t ss={.ss_sp=signal_stack,.ss_size=sizeof(signal_stack),.ss_flags=0};
-    if(sigaltstack(&ss,&previous_signal_stack)) {int e=errno;fault_module=NULL;return e;}
+    if(sigaltstack(&ss,&previous_signal_stack)) {int e=errno;fault_module=NULL;fault_scope_owner=NULL;return e;}
     owns_signal_stack=1;
     struct sigaction sa;memset(&sa,0,sizeof(sa));sigemptyset(&sa.sa_mask);sa.sa_sigaction=fault_handler;sa.sa_flags=SA_SIGINFO|SA_ONSTACK;
     for(int i=0;i<4;i++) {

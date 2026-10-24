@@ -5,6 +5,7 @@
 #include "guest_process.h"
 #include "guest_tp.h"
 #include "../nso/native_boundary.h"
+#include "../nso/nso_loader.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -250,6 +251,13 @@ static void *thread_worker(void *arg) {
         guest_tp_bind_current(th->tp_mirror);
         fprintf(stderr, "[hle] thread tid=%" PRIu64 " bound guest TP base=%p span=%zu\n",
                 th->tid, (void *)guest_tp_mirror_base(th->tp_mirror), guest_tp_mirror_span(th->tp_mirror));
+    }
+
+    /* Guest frames live in the guest stack this thread was handed, not in the
+     * host thread stack. The guest stack pointer starts at its top and grows
+     * down, so the walkable range runs from the base to that top. */
+    if (th->guest_sp && th->guest_stack_size) {
+        nso_fault_scope_set_thread_stack(th->guest_sp - th->guest_stack_size, th->guest_sp);
     }
 
     nb_scope *scope = th->boundary_scope ? th->boundary_scope :
@@ -1361,6 +1369,123 @@ int32_t nso_host_fs_mount_add_on_content(const char *name, int32_t target_index,
     return 0x202; /* ResultPathNotFound */
 }
 
+/* nn::os::SystemEvent is a separate SDK object from nn::os::Event: the guest
+ * owns the object and hands its address to the SDK calls, while the host owns
+ * the signalling state. The host never rewrites the guest object, so the real
+ * nn::os::SystemEvent layout stays exactly as the game shipped it. */
+typedef struct nso_system_event_entry {
+    void *object;
+    bool signaled;
+    bool initialized;
+    struct nso_system_event_entry *next;
+} nso_system_event_entry;
+
+static pthread_mutex_t s_system_event_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t s_system_event_cond = PTHREAD_COND_INITIALIZER;
+static nso_system_event_entry *s_system_events = NULL;
+
+static nso_system_event_entry *find_system_event_locked(void *object) {
+    for (nso_system_event_entry *e = s_system_events; e; e = e->next) {
+        if (e->object == object) return e;
+    }
+    return NULL;
+}
+
+/* Register the object if the SDK handed us one we have not seen. An event the
+ * host has not been told about starts unsignaled, exactly like a system event
+ * that has never been raised. */
+static nso_system_event_entry *borrow_system_event(void *object) {
+    if (!object) return NULL;
+    pthread_mutex_lock(&s_system_event_mutex);
+    nso_system_event_entry *e = find_system_event_locked(object);
+    if (!e) {
+        e = (nso_system_event_entry *)calloc(1, sizeof(*e));
+        if (e) {
+            e->object = object;
+            e->signaled = false;
+            e->initialized = true;
+            e->next = s_system_events;
+            s_system_events = e;
+        }
+    }
+    pthread_mutex_unlock(&s_system_event_mutex);
+    return e;
+}
+
+void nso_host_aoc_get_add_on_content_list_changed_event(void *out_event) {
+    if (!out_event) {
+        fprintf(stderr, "[hle] nn::aoc::GetAddOnContentListChangedEvent: null out_event\n");
+        return;
+    }
+    nso_system_event_entry *e = borrow_system_event(out_event);
+    if (!e) {
+        fprintf(stderr, "[hle] nn::aoc::GetAddOnContentListChangedEvent: out_event=%p -> out of memory\n",
+                (void *)out_event);
+        return;
+    }
+    pthread_mutex_lock(&s_system_event_mutex);
+    /* No add-on content is installed and this host cannot install any, so the
+     * add-on content list can never change. The event stays unsignaled and a
+     * waiter blocks, which is the retail-card behaviour of the real SDK. */
+    e->signaled = false;
+    e->initialized = true;
+    pthread_mutex_unlock(&s_system_event_mutex);
+
+    fprintf(stderr, "[hle] nn::aoc::GetAddOnContentListChangedEvent: event=%p -> unsignaled (no add-on content can be installed)\n",
+            (void *)out_event);
+}
+
+void nso_host_os_wait_system_event(void *event) {
+    nso_system_event_entry *e = borrow_system_event(event);
+    if (!e) {
+        fprintf(stderr, "[hle] nn::os::WaitSystemEvent: null event\n");
+        return;
+    }
+    /* Log before blocking: an event that is never raised parks this thread
+     * forever, and the trace must show that the call was reached. */
+    fprintf(stderr, "[hle] nn::os::WaitSystemEvent: event=%p waiting\n", event);
+    pthread_mutex_lock(&s_system_event_mutex);
+    while (!e->signaled && e->initialized) {
+        pthread_cond_wait(&s_system_event_cond, &s_system_event_mutex);
+    }
+    bool satisfied = e->signaled;
+    pthread_mutex_unlock(&s_system_event_mutex);
+
+    fprintf(stderr, "[hle] nn::os::WaitSystemEvent: event=%p %s\n",
+            event, satisfied ? "satisfied" : "destroyed while waiting");
+}
+
+void nso_host_os_signal_system_event(void *event) {
+    nso_system_event_entry *e = borrow_system_event(event);
+    if (!e) {
+        fprintf(stderr, "[hle] nn::os::SignalSystemEvent: null event\n");
+        return;
+    }
+    pthread_mutex_lock(&s_system_event_mutex);
+    e->signaled = true;
+    pthread_cond_broadcast(&s_system_event_cond);
+    pthread_mutex_unlock(&s_system_event_mutex);
+
+    fprintf(stderr, "[hle] nn::os::SignalSystemEvent: event=%p\n", event);
+}
+
+void nso_host_os_destroy_system_event(void *event) {
+    if (!event) {
+        fprintf(stderr, "[hle] nn::os::DestroySystemEvent: null event\n");
+        return;
+    }
+    pthread_mutex_lock(&s_system_event_mutex);
+    nso_system_event_entry *e = find_system_event_locked(event);
+    if (e) {
+        e->initialized = false;
+        e->signaled = false;
+        pthread_cond_broadcast(&s_system_event_cond);
+    }
+    pthread_mutex_unlock(&s_system_event_mutex);
+
+    fprintf(stderr, "[hle] nn::os::DestroySystemEvent: event=%p\n", event);
+}
+
 static bool s_nifm_initialized = false;
 int32_t nso_host_nifm_initialize(void) {
     s_nifm_initialized = true;
@@ -1900,6 +2025,14 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_aoc_count_add_on_content;
     if(!strcmp(name,"_ZN2nn3aoc16ListAddOnContentEPiii") || !strcmp(name,"nnaocListAddOnContent"))
         return (uint64_t)(uintptr_t)&nso_host_aoc_list_add_on_content;
+    if(!strcmp(name,"_ZN2nn3aoc31GetAddOnContentListChangedEventEPNS_2os11SystemEventE"))
+        return (uint64_t)(uintptr_t)&nso_host_aoc_get_add_on_content_list_changed_event;
+    if(!strcmp(name,"_ZN2nn2os15WaitSystemEventEPNS0_15SystemEventTypeE"))
+        return (uint64_t)(uintptr_t)&nso_host_os_wait_system_event;
+    if(!strcmp(name,"_ZN2nn2os17SignalSystemEventEPNS0_15SystemEventTypeE"))
+        return (uint64_t)(uintptr_t)&nso_host_os_signal_system_event;
+    if(!strcmp(name,"_ZN2nn2os18DestroySystemEventEPNS0_15SystemEventTypeE"))
+        return (uint64_t)(uintptr_t)&nso_host_os_destroy_system_event;
     if(!strcmp(name,"_ZN2nn2fs31QueryMountAddOnContentCacheSizeEPmi") || !strcmp(name,"nnfsQueryMountAddOnContentCacheSize"))
         return (uint64_t)(uintptr_t)&nso_host_fs_query_mount_add_on_content_cache_size;
     if(!strcmp(name,"_ZN2nn2fs17MountAddOnContentEPKciPvm") || !strcmp(name,"nnfsMountAddOnContent"))

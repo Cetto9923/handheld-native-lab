@@ -1033,6 +1033,10 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
         "_ZN2nn2fs25EnableGlobalFileDataCacheEPvm",
         "_ZN2nn3aoc17CountAddOnContentEv","nnaocCountAddOnContent",
         "_ZN2nn3aoc16ListAddOnContentEPiii","nnaocListAddOnContent",
+        "_ZN2nn3aoc31GetAddOnContentListChangedEventEPNS_2os11SystemEventE",
+        "_ZN2nn2os15WaitSystemEventEPNS0_15SystemEventTypeE",
+        "_ZN2nn2os17SignalSystemEventEPNS0_15SystemEventTypeE",
+        "_ZN2nn2os18DestroySystemEventEPNS0_15SystemEventTypeE",
         "_ZN2nn2fs31QueryMountAddOnContentCacheSizeEPmi","nnfsQueryMountAddOnContentCacheSize",
         "_ZN2nn2fs17MountAddOnContentEPKciPvm","nnfsMountAddOnContent",
         "_ZN2nn4nifm10InitializeEv","nnnifmInitialize",
@@ -1196,6 +1200,10 @@ static int import_signature(const char *name,nb_signature *out) {
         "_ZN2nn2os11SignalEventEPNS0_9EventTypeE","nnosSignalEvent",
         "_ZN2nn2os10ClearEventEPNS0_9EventTypeE",
         "_ZN2nn2os9WaitEventEPNS0_9EventTypeE","nnosWaitEvent",
+        "_ZN2nn3aoc31GetAddOnContentListChangedEventEPNS_2os11SystemEventE",
+        "_ZN2nn2os15WaitSystemEventEPNS0_15SystemEventTypeE",
+        "_ZN2nn2os17SignalSystemEventEPNS0_15SystemEventTypeE",
+        "_ZN2nn2os18DestroySystemEventEPNS0_15SystemEventTypeE",
         "_ZN5movie17SetThreadPriorityEi","free",NULL};
     const char *const *lists[]={one,two,three,void_one};
     for(unsigned group=0;group<4;group++)for(size_t i=0;lists[group][i];i++)if(!strcmp(name,lists[group][i])) {

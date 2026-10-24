@@ -168,6 +168,11 @@ void nso_install_fault_trap(nso_module *m);
  * and that thread's altstack before its owned stack can be released. */
 int nso_fault_scope_begin(nso_module *m);
 int nso_fault_scope_end(nso_module *m);
+/* Publish the calling thread's guest stack bounds. Guest child threads run on
+ * their own host stack while the guest frames live in the guest stack the
+ * runtime reserved for them, so the frame walk needs those bounds to report
+ * a fault on such a thread. */
+void nso_fault_scope_set_thread_stack(uintptr_t lo, uintptr_t hi);
 
 #ifdef __cplusplus
 }

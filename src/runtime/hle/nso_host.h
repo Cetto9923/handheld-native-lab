@@ -119,6 +119,11 @@ int32_t nso_host_aoc_count_add_on_content(void);
 int32_t nso_host_aoc_list_add_on_content(int32_t *out_indices, int32_t offset, int32_t count);
 int32_t nso_host_fs_query_mount_add_on_content_cache_size(size_t *out_size, int32_t target_index);
 int32_t nso_host_fs_mount_add_on_content(const char *name, int32_t target_index, void *buffer, size_t size);
+void nso_host_aoc_get_add_on_content_list_changed_event(void *out_event);
+
+void nso_host_os_wait_system_event(void *event);
+void nso_host_os_signal_system_event(void *event);
+void nso_host_os_destroy_system_event(void *event);
 
 int32_t nso_host_nifm_initialize(void);
 bool nso_host_nifm_is_initialized(void);
