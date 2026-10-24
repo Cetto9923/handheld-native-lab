@@ -4643,9 +4643,6 @@ static int nvn_queue_contract(void) {
     reset_counts(queue_object);
     expect_value("nvn-queue-memory-usage-reset", get_used(queue_object), 0);
     set_label(queue_object, "contract-queue");
-    queue_finalize(queue_object);
-    nvn_queue_get_stats(&stats);
-    expect_value("nvn-queue-finalized-is-not-live", (uint64_t)stats.live_queues, 0);
 
     /* 9. The counters. */
     nvn_queue_get_stats(&stats);
@@ -4657,6 +4654,12 @@ static int nvn_queue_contract(void) {
                  (uint64_t)NVN_QUEUE_EXPECT_REAL_QUEUE);
     expect_condition("nvn-queue-command-memory-requested-is-recorded",
                      stats.command_memory_requested > 0);
+
+    /* 10. The queue is finalized last, because a finalized queue is gone
+     *     and its platform queue with it. */
+    queue_finalize(queue_object);
+    nvn_queue_get_stats(&stats);
+    expect_value("nvn-queue-finalized-is-not-live", (uint64_t)stats.live_queues, 0);
 
     /* The final gate. Without it the contract could exit 0 while the
      * expectations had failed. */
