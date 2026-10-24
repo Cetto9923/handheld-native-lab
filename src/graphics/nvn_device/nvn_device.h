@@ -79,6 +79,15 @@ struct nvn_device_state {
     uint64_t calls;               /* calls into implemented entry points */
     uint64_t unimplemented_calls;
     char description[192];
+    /* The device state that only carries information. */
+    int window_origin_mode;
+    int depth_mode;
+    int intermediate_shader_cache;
+    int debug_callback_installed;
+    void *debug_callback;
+    void *debug_callback_userdata;
+    uint32_t debug_domain_next;
+    char debug_label[64];
 };
 
 /* The backend of this build. */
@@ -121,6 +130,48 @@ void nvn_device_builder_set_flags(void *builder, int flags);
 int nvn_device_builder_get_flags(const void *builder);
 void nvn_device_get_integer(void *device, int info, int *out_value);
 uint64_t nvn_device_get_current_timestamp_in_nanoseconds(void *device);
+
+/* The rest of the device family. These are the entry points that only carry
+ * state, so they can be answered truthfully without a graphics object:
+ *
+ *   nvnDeviceSetDebugLabel(device, label)              void
+ *   nvnDeviceSetIntermediateShaderCache(device, on)    void
+ *   nvnDeviceInstallDebugCallback(device, cb, ud, on)  void, the callback is
+ *       stored and never called, because calling back into the guest from a
+ *       host stub would need the guest thread and the guest TLS context
+ *   nvnDeviceGenerateDebugDomainId(device, label)      -> an id
+ *   nvnDeviceSetWindowOriginMode(device, mode)         void
+ *   nvnDeviceGetWindowOriginMode(device)               -> the mode that was set
+ *   nvnDeviceSetDepthMode(device, mode)                void
+ *   nvnDeviceGetDepthMode(device)                      -> the mode that was set
+ *   nvnDeviceRegisterFastClearColor(device, c, fmt)    -> false, this device
+ *   nvnDeviceRegisterFastClearColori(device, c, fmt)      does not register
+ *   nvnDeviceRegisterFastClearColorui(device, c, fmt)     fast clears
+ *   nvnDeviceRegisterFastClearDepth(device, d)         -> false
+ *   nvnDeviceIsExternalDebuggerAttached(device)        -> false
+ *   nvnDeviceGetTimestampInNanoseconds(device, c)      -> the host clock
+ *   nvnDeviceApplyDeferredFinalizes(device, n)         void
+ *   nvnDeviceFinalizeCommandHandle(device, handle)     void
+ *   nvnDeviceWalkDebugDatabase(device, ...)            void, the guest callback
+ *       is never called
+ */
+void nvn_device_set_debug_label(void *device, const char *label);
+void nvn_device_set_intermediate_shader_cache(void *device, int enabled);
+void nvn_device_install_debug_callback(void *device, void *callback, void *userdata, int enabled);
+uint32_t nvn_device_generate_debug_domain_id(void *device, const char *label);
+void nvn_device_set_window_origin_mode(void *device, int mode);
+int nvn_device_get_window_origin_mode(void *device);
+void nvn_device_set_depth_mode(void *device, int mode);
+int nvn_device_get_depth_mode(void *device);
+int nvn_device_register_fast_clear_color(void *device, const float *color, int format);
+int nvn_device_register_fast_clear_colori(void *device, const int *color, int format);
+int nvn_device_register_fast_clear_colorui(void *device, const unsigned int *color, int format);
+int nvn_device_register_fast_clear_depth(void *device, float depth);
+int nvn_device_is_external_debugger_attached(void *device);
+uint64_t nvn_device_get_timestamp_in_nanoseconds(void *device, const void *counter_data);
+void nvn_device_apply_deferred_finalizes(void *device, int count);
+void nvn_device_finalize_command_handle(void *device, uint64_t handle);
+void nvn_device_walk_debug_database(void *device, int object_type, void *callback, void *userdata);
 
 /* The trap that an unimplemented entry point resolves to. It is reached
  * through the per-API trampoline table, so it knows which API was called. */

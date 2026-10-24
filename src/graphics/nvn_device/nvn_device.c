@@ -227,6 +227,161 @@ uint64_t nvn_device_get_current_timestamp_in_nanoseconds(void *device) {
 }
 
 /* ------------------------------------------------------------------ */
+/* The rest of the device family                                       */
+/* ------------------------------------------------------------------ */
+
+/* These entry points only carry state, so they can be answered truthfully
+ * without a graphics object. Two rules apply:
+ *
+ *   - a callback the guest hands over is stored and never called, because
+ *     calling back into the guest from a host stub needs the guest thread
+ *     and the guest TLS context, and doing it wrong corrupts the guest;
+ *   - a query this device cannot really answer reports failure rather than a
+ *     success it has not got. A fast clear that is not registered is
+ *     reported as not registered, so the guest falls back to a normal clear
+ *     instead of believing an optimisation happened.
+ */
+
+void nvn_device_set_debug_label(void *device, const char *label) {
+    s_device.calls++;
+    (void)device;
+    snprintf(s_device.debug_label, sizeof(s_device.debug_label), "%s", label ? label : "");
+    fprintf(stderr, "[nvn] nvnDeviceSetDebugLabel: \"%s\"\n", s_device.debug_label);
+    NVN_VOID_RETURN();
+}
+
+void nvn_device_set_intermediate_shader_cache(void *device, int enabled) {
+    s_device.calls++;
+    (void)device;
+    s_device.intermediate_shader_cache = enabled;
+    NVN_VOID_RETURN();
+}
+
+void nvn_device_install_debug_callback(void *device, void *callback, void *userdata, int enabled) {
+    s_device.calls++;
+    (void)device;
+    s_device.debug_callback = callback;
+    s_device.debug_callback_userdata = userdata;
+    s_device.debug_callback_installed = enabled ? 1 : 0;
+    fprintf(stderr, "[nvn] nvnDeviceInstallDebugCallback: callback=%p userdata=%p enabled=%d "
+                    "(the callback is stored and never called)\n",
+            callback, userdata, enabled ? 1 : 0);
+    NVN_VOID_RETURN();
+}
+
+uint32_t nvn_device_generate_debug_domain_id(void *device, const char *label) {
+    s_device.calls++;
+    (void)device;
+    (void)label;
+    /* A domain id this runtime hands out. It identifies the debug objects
+     * this device creates, and nothing else. */
+    return ++s_device.debug_domain_next;
+}
+
+void nvn_device_set_window_origin_mode(void *device, int mode) {
+    s_device.calls++;
+    (void)device;
+    s_device.window_origin_mode = mode;
+    NVN_VOID_RETURN();
+}
+
+int nvn_device_get_window_origin_mode(void *device) {
+    s_device.calls++;
+    (void)device;
+    return s_device.window_origin_mode;
+}
+
+void nvn_device_set_depth_mode(void *device, int mode) {
+    s_device.calls++;
+    (void)device;
+    s_device.depth_mode = mode;
+    NVN_VOID_RETURN();
+}
+
+int nvn_device_get_depth_mode(void *device) {
+    s_device.calls++;
+    (void)device;
+    return s_device.depth_mode;
+}
+
+int nvn_device_register_fast_clear_color(void *device, const float *color, int format) {
+    s_device.calls++;
+    (void)device;
+    (void)color;
+    (void)format;
+    /* This device does not register fast clears, so it says so. */
+    return 0;
+}
+
+int nvn_device_register_fast_clear_colori(void *device, const int *color, int format) {
+    s_device.calls++;
+    (void)device;
+    (void)color;
+    (void)format;
+    return 0;
+}
+
+int nvn_device_register_fast_clear_colorui(void *device, const unsigned int *color, int format) {
+    s_device.calls++;
+    (void)device;
+    (void)color;
+    (void)format;
+    return 0;
+}
+
+int nvn_device_register_fast_clear_depth(void *device, float depth) {
+    s_device.calls++;
+    (void)device;
+    (void)depth;
+    return 0;
+}
+
+int nvn_device_is_external_debugger_attached(void *device) {
+    s_device.calls++;
+    (void)device;
+    /* Nothing is attached to this device. */
+    return 0;
+}
+
+uint64_t nvn_device_get_timestamp_in_nanoseconds(void *device, const void *counter_data) {
+    struct timespec ts;
+    uint64_t ns = 0;
+    s_device.calls++;
+    (void)device;
+    (void)counter_data;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0)
+        ns = (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
+    return ns;
+}
+
+void nvn_device_apply_deferred_finalizes(void *device, int count) {
+    s_device.calls++;
+    (void)device;
+    (void)count;
+    NVN_VOID_RETURN();
+}
+
+void nvn_device_finalize_command_handle(void *device, uint64_t handle) {
+    s_device.calls++;
+    (void)device;
+    (void)handle;
+    NVN_VOID_RETURN();
+}
+
+void nvn_device_walk_debug_database(void *device, int object_type, void *callback, void *userdata) {
+    s_device.calls++;
+    (void)device;
+    (void)object_type;
+    (void)callback;
+    (void)userdata;
+    /* The guest callback is not called: it would need the guest thread and
+     * the guest TLS context, and this runtime does not enter the guest from
+     * a host stub. */
+    fprintf(stderr, "[nvn] nvnDeviceWalkDebugDatabase: the guest callback was not called\n");
+    NVN_VOID_RETURN();
+}
+
+/* ------------------------------------------------------------------ */
 /* The trap                                                            */
 /* ------------------------------------------------------------------ */
 
@@ -290,6 +445,26 @@ static const nvn_implemented_entry s_implemented[] = {
     { "nvnDeviceGetInteger", (void *)(uintptr_t)nvn_device_get_integer },
     { "nvnDeviceGetCurrentTimestampInNanoseconds",
       (void *)(uintptr_t)nvn_device_get_current_timestamp_in_nanoseconds },
+    { "nvnDeviceSetDebugLabel", (void *)(uintptr_t)nvn_device_set_debug_label },
+    { "nvnDeviceSetIntermediateShaderCache",
+      (void *)(uintptr_t)nvn_device_set_intermediate_shader_cache },
+    { "nvnDeviceInstallDebugCallback", (void *)(uintptr_t)nvn_device_install_debug_callback },
+    { "nvnDeviceGenerateDebugDomainId", (void *)(uintptr_t)nvn_device_generate_debug_domain_id },
+    { "nvnDeviceSetWindowOriginMode", (void *)(uintptr_t)nvn_device_set_window_origin_mode },
+    { "nvnDeviceGetWindowOriginMode", (void *)(uintptr_t)nvn_device_get_window_origin_mode },
+    { "nvnDeviceSetDepthMode", (void *)(uintptr_t)nvn_device_set_depth_mode },
+    { "nvnDeviceGetDepthMode", (void *)(uintptr_t)nvn_device_get_depth_mode },
+    { "nvnDeviceRegisterFastClearColor", (void *)(uintptr_t)nvn_device_register_fast_clear_color },
+    { "nvnDeviceRegisterFastClearColori", (void *)(uintptr_t)nvn_device_register_fast_clear_colori },
+    { "nvnDeviceRegisterFastClearColorui", (void *)(uintptr_t)nvn_device_register_fast_clear_colorui },
+    { "nvnDeviceRegisterFastClearDepth", (void *)(uintptr_t)nvn_device_register_fast_clear_depth },
+    { "nvnDeviceIsExternalDebuggerAttached",
+      (void *)(uintptr_t)nvn_device_is_external_debugger_attached },
+    { "nvnDeviceGetTimestampInNanoseconds",
+      (void *)(uintptr_t)nvn_device_get_timestamp_in_nanoseconds },
+    { "nvnDeviceApplyDeferredFinalizes", (void *)(uintptr_t)nvn_device_apply_deferred_finalizes },
+    { "nvnDeviceFinalizeCommandHandle", (void *)(uintptr_t)nvn_device_finalize_command_handle },
+    { "nvnDeviceWalkDebugDatabase", (void *)(uintptr_t)nvn_device_walk_debug_database },
 };
 
 static const size_t s_implemented_count = sizeof(s_implemented) / sizeof(s_implemented[0]);
