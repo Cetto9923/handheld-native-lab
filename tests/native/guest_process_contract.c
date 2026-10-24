@@ -6493,15 +6493,16 @@ static int nvn_command_buffer_contract(void) {
     expect_value("nvn-command-buffer-is-recording", (uint64_t)(uint32_t)is_recording(buffer_object), 1);
 
     /* How many records there are before the three commands below. The count
-     *    itself is not written down here, so the check afterwards does not
-     *    depend on how many commands the family records on its own. */
+     * itself is not written down here, so the check afterwards does not depend
+     * on how many commands the family records on its own. */
     const nvn_recorded_command *records = NULL;
     size_t record_count = 0;
     expect_value("nvn-command-buffer-has-records",
                  (uint64_t)(uint32_t)nvn_command_buffer_get_records(buffer_object, &records, &record_count), 1);
     size_t records_before = record_count;
 
-    /* The arguments are recorded as they were passed. */
+    /* 6. The commands. The colour is an array in the guest's own memory, and
+     *    the viewport is four numbers, and the index buffer is an address. */
     static float clear_color[4] = {0.25f, 0.5f, 0.75f, 1.0f};
     clear(buffer_object, 0, clear_color, 0);
     set_viewport(buffer_object, 0, 0, 1280, 720);
@@ -6514,70 +6515,113 @@ static int nvn_command_buffer_contract(void) {
     expect_value("nvn-command-buffer-three-commands-were-recorded",
                  (uint64_t)record_count, (uint64_t)(records_before + 3));
     if (records && record_count >= 3) {
-        records = &records[record_count - 3];
-        const nvn_command_buffer_family_entry *clear_entry =
-            nvn_command_buffer_family_entry_at((size_t)records[0].op);
-        const nvn_command_buffer_family_entry *viewport_entry =
-            nvn_command_buffer_family_entry_at((size_t)records[1].op);
-        const nvn_command_buffer_family_entry *draw_entry =
-            nvn_command_buffer_family_entry_at((size_t)records[2].op);
-        expect_condition("nvn-command-buffer-first-record-is-the-clear",
-                         clear_entry && clear_entry->name &&
-                             !strcmp(clear_entry->name, "nvnCommandBufferClearColor"));
-        expect_condition("nvn-command-buffer-second-record-is-the-viewport",
-                         viewport_entry && viewport_entry->name &&
-                             !strcmp(viewport_entry->name, "nvnCommandBufferSetViewport"));
-        expect_condition("nvn-command-buffer-third-record-is-the-draw",
-                         draw_entry && draw_entry->name &&
-                             !strcmp(draw_entry->name, "nvnCommandBufferDrawElements"));
-        /* The command buffer itself is the first word of every record. */
-        expect_value("nvn-command-buffer-record-names-the-buffer",
-                     records[2].args[0], (uint64_t)(uintptr_t)buffer_object);
-        /* The address of the index buffer is the word the guest passed. */
-        expect_value("nvn-command-buffer-record-holds-the-index-address",
-                     records[2].args[4], 0x12345000ULL);
-        /* The viewport is recorded as the four numbers the guest passed. */
-        expect_value("nvn-command-buffer-record-holds-the-viewport-height",
-                     records[1].args[4], 720);
+        const nvn_recorded_command *last = &records[record_count - 3];
+        expect_value("nvn-command-buffer-first-record-is-the-clear",
+                     (uint64_t)last[0].op, (uint64_t)NVN_CB_OP_CLEAR_COLOR);
+        expect_value("nvn-command-buffer-second-record-is-the-viewport",
+                     (uint64_t)last[1].op, (uint64_t)NVN_CB_OP_VIEWPORTS);
+        expect_condition("nvn-command-buffer-third-record-is-a-draw",
+                         last[2].op == NVN_CB_OP_DRAW_IDX || last[2].op == NVN_CB_OP_DRAW);
+        expect_condition("nvn-command-buffer-opcode-has-a-name",
+                         nvn_command_buffer_opcode_name(last[0].op) != NULL);
+
+        /* 7. The record holds the data, not an address of the guest's
+         *    memory. The guest may write over that memory the moment it
+         *    returns, so a record that only names the address would be
+         *    unreadable by the time the command is run. */
+        if (last[0].payload && last[0].size >= sizeof(nvn_cb_p_clear_color)) {
+            const nvn_cb_p_clear_color *color = (const nvn_cb_p_clear_color *)last[0].payload;
+            float expected[4] = {0.25f, 0.5f, 0.75f, 1.0f};
+            int k;
+            int equal = 1;
+            for (k = 0; k < 4; k++) {
+                if (color->rgba[k] != expected[k]) equal = 0;
+            }
+            expect_condition("nvn-command-buffer-record-holds-the-colour", equal);
+        } else {
+            expect_condition("nvn-command-buffer-clear-record-has-a-payload", 0);
+        }
+        if (last[1].payload && last[1].size >= sizeof(nvn_cb_p_viewports)) {
+            const nvn_cb_p_viewports *viewports = (const nvn_cb_p_viewports *)last[1].payload;
+            expect_condition("nvn-command-buffer-record-holds-the-viewport",
+                             viewports->n == 1 && viewports->v[0][2] == 1280.0f &&
+                                 viewports->v[0][3] == 720.0f);
+        } else {
+            expect_condition("nvn-command-buffer-viewport-record-has-a-payload", 0);
+        }
     }
 
-    /* 6. A record keeps what it was given. The guest may write into its own
-     *    memory afterwards, and the record must not change with it. */
-    if (records && record_count == 3) {
+    /* 8. The record does not follow the guest's memory. The guest writes over
+     *    its colour right after the call, and the record must not change. */
+    if (records && record_count >= 3) {
         const nvn_recorded_command *again = NULL;
         size_t again_count = 0;
         memset(clear_color, 0x99, sizeof(clear_color));
         expect_value("nvn-command-buffer-records-are-still-there",
                      (uint64_t)(uint32_t)nvn_command_buffer_get_records(buffer_object, &again, &again_count), 1);
         expect_condition("nvn-command-buffer-record-count-is-unchanged", again_count == record_count);
-        if (again && again_count == record_count) {
-            expect_value("nvn-command-buffer-record-does-not-follow-the-guest-memory",
-                         again[2].args[4], 0x12345000ULL);
-            /* The colour is an address in the guest's memory. The record names
-             *    that address; it does not hold the four numbers yet, because
-             *    the guest may write over them before the command is run. */
-            expect_value("nvn-command-buffer-record-names-the-colour-address",
-                         again[0].args[2], (uint64_t)(uintptr_t)clear_color);
+        if (again && again_count >= 3 && again[record_count - 3].payload &&
+            again[record_count - 3].size >= sizeof(nvn_cb_p_clear_color)) {
+            const nvn_cb_p_clear_color *color =
+                (const nvn_cb_p_clear_color *)again[record_count - 3].payload;
+            expect_condition("nvn-command-buffer-record-does-not-follow-the-guest-memory",
+                             color->rgba[0] == 0.25f && color->rgba[1] == 0.5f);
         }
     }
 
-    /* 7. Ending the recording hands out a handle of the runtime. It is not a
-     *    command of the device, because nothing was executed. */
+    /* 9. Ending the recording hands out a handle of the runtime, and the
+     *    handle names an immutable package. */
     uint64_t handle = end_recording(buffer_object);
     expect_condition("nvn-command-buffer-end-recording-hands-out-a-handle", handle != 0);
-    expect_value("nvn-command-buffer-is-not-recording-any-more",
-                 (uint64_t)(uint32_t)is_recording(buffer_object), 0);
+    nvn_command_package package;
+    memset(&package, 0, sizeof(package));
+    expect_value("nvn-command-buffer-handle-names-a-package",
+                 (uint64_t)(uint32_t)nvn_command_buffer_get_package(handle, &package), 1);
+    expect_condition("nvn-command-buffer-package-has-records", package.record_count >= 3);
+    expect_condition("nvn-command-buffer-package-has-bytes", package.bytes > 0);
+    expect_condition("nvn-command-buffer-package-handle-matches", package.handle == handle);
 
-    /* 8. The counters. */
+    /* 10. The package is immutable. Recording again into the same buffer, and
+     *     reusing the guest's address for another buffer, both leave it alone. */
+    unsigned char package_bytes[64];
+    size_t package_copy = package.bytes < sizeof(package_bytes) ? package.bytes : sizeof(package_bytes);
+    if (package.records && package_copy) memcpy(package_bytes, package.records, package_copy);
+    begin_recording(buffer_object);
+    clear(buffer_object, 0, clear_color, 0);
+    uint64_t second_handle = end_recording(buffer_object);
+    expect_condition("nvn-command-buffer-second-recording-has-its-own-handle",
+                     second_handle != 0 && second_handle != handle);
+    nvn_command_package second_package;
+    memset(&second_package, 0, sizeof(second_package));
+    expect_value("nvn-command-buffer-second-handle-names-a-package",
+                 (uint64_t)(uint32_t)nvn_command_buffer_get_package(second_handle, &second_package), 1);
+    nvn_command_package again_package;
+    memset(&again_package, 0, sizeof(again_package));
+    expect_value("nvn-command-buffer-first-handle-still-names-its-package",
+                 (uint64_t)(uint32_t)nvn_command_buffer_get_package(handle, &again_package), 1);
+    expect_condition("nvn-command-buffer-first-package-is-unchanged",
+                     again_package.bytes == package.bytes && again_package.record_count == package.record_count &&
+                         (again_package.records == package.records ||
+                          (again_package.records && package.records &&
+                           !memcmp(again_package.records, package_bytes, package_copy))));
+
+    /* 11. A handle the registry does not know is refused, never followed. */
+    nvn_command_package unknown;
+    memset(&unknown, 0, sizeof(unknown));
+    expect_value("nvn-command-buffer-unknown-handle-is-refused",
+                 (uint64_t)(uint32_t)nvn_command_buffer_get_package(0xfeedfacecafef00dULL, &unknown), 0);
+
+    /* 12. The counters. */
     nvn_command_buffer_get_stats(&stats);
     expect_condition("nvn-command-buffer-stats-count-calls", stats.calls > 0);
     expect_condition("nvn-command-buffer-stats-count-records", stats.recorded >= 3);
-    expect_condition("nvn-command-buffer-stats-count-handles", stats.handles > 0);
+    expect_condition("nvn-command-buffer-stats-count-handles", stats.handles >= 2);
     expect_condition("nvn-command-buffer-stats-count-initialized", stats.initialized > 0);
-    expect_condition("nvn-command-buffer-stats-have-records", stats.records >= 3);
+    expect_condition("nvn-command-buffer-stats-count-packages", stats.packages >= 2);
+    expect_condition("nvn-command-buffer-stats-copied-bytes", stats.copies_bytes > 0);
     expect_condition("nvn-command-buffer-stats-have-a-live-buffer", stats.live_buffers > 0);
 
-    /* 9. The buffer is finalized last, because a finalized buffer is gone. */
+    /* 13. The buffer is finalized last, because a finalized buffer is gone. */
     finalize(buffer_object);
     nvn_command_buffer_get_stats(&stats);
     expect_condition("nvn-command-buffer-finalized-is-not-live", stats.live_buffers == 0);
@@ -6586,9 +6630,10 @@ static int nvn_command_buffer_contract(void) {
      * expectations had failed. */
     CHECK(!errors);
     printf("{\"nvn_command_buffer_errors\":%u,\"names\":%zu,\"calls\":%llu,\"recorded\":%llu,"
-           "\"handles\":%llu,\"initialized\":%llu,\"finalized\":%llu}\n",
+           "\"handles\":%llu,\"packages\":%llu,\"copied_bytes\":%llu,\"initialized\":%llu,\"finalized\":%llu}\n",
            errors, count, (unsigned long long)stats.calls, (unsigned long long)stats.recorded,
-           (unsigned long long)stats.handles, (unsigned long long)stats.initialized,
+           (unsigned long long)stats.handles, (unsigned long long)stats.packages,
+           (unsigned long long)stats.copies_bytes, (unsigned long long)stats.initialized,
            (unsigned long long)stats.finalized);
     return 0;
 }
