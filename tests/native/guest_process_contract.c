@@ -3817,6 +3817,136 @@ static int oe_performance_contract(const char *path) {
            c.native_ran?(int)c.native_performance_mode:-1);
     return 0;
 }
+
+/* nv::SetGraphicsAllocator and nv::SetGraphicsDevtoolsAllocator (main NSO
+ * import indexes 350 and 351).
+ *
+ * Both take the same four arguments as the already bound movie::SetAllocator
+ * (import 74): an allocation callback, a free callback, a realloc callback
+ * and a userdata pointer, and neither returns anything. The guest calls the
+ * two of them back to back in one straight-line block (0x1434c90 and
+ * 0x1434ca4), so both are reached on every boot.
+ *
+ * The fixture drives both through the real guest import path and passes its
+ * own callbacks, so the boundary has to accept both four-argument void
+ * signatures or the guest never runs. The host has to record the guest's
+ * callbacks unmoved: the NVN graphics heap will be allocated through them,
+ * so a stub that dropped or rewrote a pointer would break the graphics path
+ * later on. */
+#define NV_SET_GRAPHICS_ALLOCATOR_MANGLED "_ZN2nv20SetGraphicsAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_"
+#define NV_SET_GRAPHICS_DEVTOOLS_MANGLED "_ZN2nv28SetGraphicsDevtoolsAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_"
+/* The module offsets the fixture guest puts its three callbacks at; see the
+ * nv-graphics-allocator fixture assembly in
+ * scripts/runtime/build_guest_process_contract.sh. */
+#define NV_FIXTURE_CB_ALLOC_OFF 0xc0
+#define NV_FIXTURE_CB_FREE_OFF 0xc4
+#define NV_FIXTURE_CB_REALLOC_OFF 0xc8
+struct nv_allocator_case {
+    guest_process *process;
+    int resolved_graphics,resolved_devtools;
+    int native_ran,native_marker;
+    uintptr_t native_alloc,native_free,native_realloc,native_userdata;
+    uintptr_t native_devtools_alloc,native_devtools_free,native_devtools_realloc,native_devtools_userdata;
+    int direct_record_ok;
+};
+static void *exercise_nv_allocator(guest_process *p,void *opaque) {
+    struct nv_allocator_case *c=opaque;
+    c->process=p;
+    typedef void (*nv_set_allocator_fn)(nv_alloc_fn,nv_free_fn,nv_realloc_fn,void *);
+    nv_set_allocator_fn set_graphics=(nv_set_allocator_fn)(uintptr_t)guest_process_resolve(0,NV_SET_GRAPHICS_ALLOCATOR_MANGLED);
+    nv_set_allocator_fn set_devtools=(nv_set_allocator_fn)(uintptr_t)guest_process_resolve(0,NV_SET_GRAPHICS_DEVTOOLS_MANGLED);
+    c->resolved_graphics=set_graphics!=NULL;
+    c->resolved_devtools=set_devtools!=NULL;
+    expect_condition("nv-allocator-graphics-resolved",set_graphics!=NULL);
+    expect_condition("nv-allocator-devtools-resolved",set_devtools!=NULL);
+    /* The real guest path: the fixture calls the imports itself, so the
+     * boundary must accept the four-argument void signature or the guest
+     * never executes and the registration is never observed. */
+    uint64_t output[2]={0xa5a5,0xa5a5},returned=0xa5a5;
+    uint64_t args[1]={(uintptr_t)output};
+    struct nso_result r=guest_process_call(p,0x20,args,1,&returned);
+#if defined(__ANDROID__) && defined(__aarch64__)
+    expect_value("nv-allocator-native-status",r.status,NSO_OK);
+    expect_value("nv-allocator-native-return",returned,0x91);
+    c->native_ran=1;
+    c->native_marker=output[0]==1;
+    expect_condition("nv-allocator-guest-call-returned",output[0]==1);
+    uint64_t base=nso_base(guest_process_module(p));
+    c->native_alloc=(uintptr_t)nso_host_nv_get_graphics_allocator();
+    c->native_free=(uintptr_t)nso_host_nv_get_graphics_deallocator();
+    c->native_realloc=(uintptr_t)nso_host_nv_get_graphics_reallocator();
+    c->native_userdata=(uintptr_t)nso_host_nv_get_graphics_allocator_userdata();
+    c->native_devtools_alloc=(uintptr_t)nso_host_nv_get_graphics_devtools_allocator();
+    c->native_devtools_free=(uintptr_t)nso_host_nv_get_graphics_devtools_deallocator();
+    c->native_devtools_realloc=(uintptr_t)nso_host_nv_get_graphics_devtools_reallocator();
+    c->native_devtools_userdata=(uintptr_t)nso_host_nv_get_graphics_devtools_userdata();
+    /* The guest's own callbacks reached the host unmoved. */
+    expect_value("nv-allocator-guest-alloc-pointer",c->native_alloc,base+NV_FIXTURE_CB_ALLOC_OFF);
+    expect_value("nv-allocator-guest-free-pointer",c->native_free,base+NV_FIXTURE_CB_FREE_OFF);
+    expect_value("nv-allocator-guest-realloc-pointer",c->native_realloc,base+NV_FIXTURE_CB_REALLOC_OFF);
+    expect_condition("nv-allocator-guest-userdata-null",c->native_userdata==0);
+    /* The devtools registration is a separate one and is recorded separately. */
+    expect_value("nv-allocator-devtools-alloc-pointer",c->native_devtools_alloc,base+NV_FIXTURE_CB_ALLOC_OFF);
+    expect_value("nv-allocator-devtools-free-pointer",c->native_devtools_free,base+NV_FIXTURE_CB_FREE_OFF);
+    expect_value("nv-allocator-devtools-realloc-pointer",c->native_devtools_realloc,base+NV_FIXTURE_CB_REALLOC_OFF);
+    expect_condition("nv-allocator-devtools-userdata-null",c->native_devtools_userdata==0);
+#else
+    /* No AArch64 executor on this host: the boundary is prepared but the raw
+     * guest entry cannot run here. Nothing may be faked in its place. */
+    expect_value("nv-allocator-native-unsupported",r.status,NSO_UNSUPPORTED);
+    expect_value("nv-allocator-native-no-raw-fallback",returned,0xa5a5);
+#endif
+    /* Direct host calls: the registration is stored exactly as given,
+     * including the fourth argument. */
+    if(set_graphics&&set_devtools) {
+        set_graphics((nv_alloc_fn)(uintptr_t)0x1111,(nv_free_fn)(uintptr_t)0x2222,
+                     (nv_realloc_fn)(uintptr_t)0x3333,(void *)(uintptr_t)0x4444);
+        set_devtools((nv_alloc_fn)(uintptr_t)0x5555,(nv_free_fn)(uintptr_t)0x6666,
+                     (nv_realloc_fn)(uintptr_t)0x7777,(void *)(uintptr_t)0x8888);
+        uintptr_t da=(uintptr_t)nso_host_nv_get_graphics_allocator();
+        uintptr_t df=(uintptr_t)nso_host_nv_get_graphics_deallocator();
+        uintptr_t dr=(uintptr_t)nso_host_nv_get_graphics_reallocator();
+        uintptr_t du=(uintptr_t)nso_host_nv_get_graphics_allocator_userdata();
+        uintptr_t ta=(uintptr_t)nso_host_nv_get_graphics_devtools_allocator();
+        uintptr_t tf=(uintptr_t)nso_host_nv_get_graphics_devtools_deallocator();
+        uintptr_t tr=(uintptr_t)nso_host_nv_get_graphics_devtools_reallocator();
+        uintptr_t tu=(uintptr_t)nso_host_nv_get_graphics_devtools_userdata();
+        c->direct_record_ok=da==0x1111&&df==0x2222&&dr==0x3333&&du==0x4444&&
+                            ta==0x5555&&tf==0x6666&&tr==0x7777&&tu==0x8888;
+        expect_value("nv-allocator-direct-alloc",da,0x1111);
+        expect_value("nv-allocator-direct-free",df,0x2222);
+        expect_value("nv-allocator-direct-realloc",dr,0x3333);
+        expect_value("nv-allocator-direct-userdata",du,0x4444);
+        expect_value("nv-allocator-direct-devtools-alloc",ta,0x5555);
+        expect_value("nv-allocator-direct-devtools-free",tf,0x6666);
+        expect_value("nv-allocator-direct-devtools-realloc",tr,0x7777);
+        expect_value("nv-allocator-direct-devtools-userdata",tu,0x8888);
+    }
+    return &returned_token;
+}
+static int nv_allocator_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));
+    char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+    struct nv_allocator_case c={0};
+    void *value=NULL;
+    CHECK(succeeded(guest_process_run(p,exercise_nv_allocator,&c,&value)));
+    CHECK(value==&returned_token);
+    expect_condition("nv-allocator-graphics-resolved",c.resolved_graphics);
+    expect_condition("nv-allocator-devtools-resolved",c.resolved_devtools);
+    expect_condition("nv-allocator-direct-record",c.direct_record_ok);
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    /* The final gate. Every expect_* above must have passed; without this the
+     * contract could still exit 0 while the expectations had failed. */
+    CHECK(!errors);
+    /* The report states what this run observed, not a literal zero. */
+    printf("{\"nv_allocator_errors\":%u,\"graphics_resolved\":%s,\"devtools_resolved\":%s,"
+           "\"direct_record_ok\":%s,\"native_ran\":%s,\"guest_marker\":%s}\n",errors,
+           c.resolved_graphics?"true":"false",c.resolved_devtools?"true":"false",
+           c.direct_record_ok?"true":"false",c.native_ran?"true":"false",
+           c.native_marker?"true":"false");
+    return 0;
+}
 int main(int argc,char **argv) {
     page=(size_t)sysconf(_SC_PAGESIZE);
     if(argc==2 && !strcmp(argv[1],"--tls-host-null")) {
@@ -3844,6 +3974,7 @@ int main(int argc,char **argv) {
     if(argc==3 && !strcmp(argv[1],"--oe-operation-mode"))return oe_operation_mode_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--ldn-get-state"))return ldn_state_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--oe-performance"))return oe_performance_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--nv-graphics-allocator"))return nv_allocator_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-fresh"))return tls_fresh_registration_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-null"))return tls_registration_contract(argv[2],1);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-repeat"))return tls_registration_contract(argv[2],2);

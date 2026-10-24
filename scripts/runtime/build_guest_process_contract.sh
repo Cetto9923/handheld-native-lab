@@ -810,6 +810,76 @@ run('host-oe-performance-contract',[out/'guest_process_contract.host','--oe-perf
 performance_stderr=(out/'host-oe-performance-contract'/'stderr.log').read_text()
 if '[hle] nn::oe::SetPerformanceConfiguration:' not in performance_stderr:raise RuntimeError('nn::oe::SetPerformanceConfiguration stub did not run')
 if '[boundary-unsupported]' in performance_stderr:raise RuntimeError('nn::oe performance configuration import signature was refused by the boundary')
+# nv::SetGraphicsAllocator and nv::SetGraphicsDevtoolsAllocator (main NSO
+# import indexes 350 and 351) both take four arguments - an allocation
+# callback, a free callback, a realloc callback and a userdata pointer - and
+# return nothing. The fixture drives both through the real guest import path
+# with its own callbacks, so the boundary has to accept both four-argument
+# void signatures or the guest never runs.
+nv_assembly=out/'nv-graphics-allocator-fixture.S'
+nv_assembly.write_text(r''' .text
+.org 0x20
+.global fixture_entry
+fixture_entry:
+ stp x29, x30, [sp, #-32]!
+ str x19, [sp, #16]
+ mov x29, sp
+ mov x19, x0
+ adrp x16, fixture_got
+ add x16, x16, :lo12:fixture_got
+ ldr x17, [x16]
+ adr x0, cb_alloc
+ adr x1, cb_free
+ adr x2, cb_realloc
+ mov x3, xzr
+ blr x17
+ adrp x16, fixture_got2
+ add x16, x16, :lo12:fixture_got2
+ ldr x17, [x16]
+ adr x0, cb_alloc
+ adr x1, cb_free
+ adr x2, cb_realloc
+ mov x3, xzr
+ blr x17
+ mov x9, #1
+ str x9, [x19]
+ mov x0, #0x91
+ ldr x19, [sp, #16]
+ ldp x29, x30, [sp], #32
+ ret
+.org 0xc0
+.global cb_alloc
+cb_alloc: ret
+.global cb_free
+cb_free: ret
+.global cb_realloc
+cb_realloc: ret
+.section .fixture_got,"aw"
+.global fixture_got
+fixture_got: .zero 8
+.section .fixture_got2,"aw"
+.global fixture_got2
+fixture_got2: .zero 8
+''')
+run('fixture-nv-graphics-allocator-assemble',['clang',*common,'-c',nv_assembly,'-o',out/'nv-graphics-allocator-fixture.o'])
+run('fixture-nv-graphics-allocator-link',['env',f'DYLD_LIBRARY_PATH={a.rust_root}/lib',ld,'--no-undefined','--build-id=none','--image-base=0','-Ttext=0','--section-start=.fixture_got=0x8200','--section-start=.fixture_got2=0x8208','-e','fixture_entry','--oformat=binary','-o',out/'nv-graphics-allocator-fixture.raw',out/'nv-graphics-allocator-fixture.o'])
+raw=(out/'nv-graphics-allocator-fixture.raw').read_bytes();data=bytearray((out/'contract.nso').read_bytes())
+data[0x200:0x300]=raw[:0x100].ljust(0x100,b'\0');struct.pack_into('<I',data,0x204,0x4000)
+names=b'\0_ZN2nv20SetGraphicsAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_\0_ZN2nv28SetGraphicsDevtoolsAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_\0'
+data[0x1160:0x1160+len(names)]=names
+# Three dynsym entries here, so the base RELA table (DT_RELASZ = 72, three
+# entries) stays intact: dynamic index 5 is DT_RELASZ, not DT_RELAENT, and
+# truncating it would drop the relocation that fills the second GOT slot.
+struct.pack_into('<II',data,0x1080,1,3);struct.pack_into('<I',data,0x1130,names.index(b'_ZN2nv28SetGraphicsDevtoolsAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_'))
+struct.pack_into('<Q',data,0x2000+3*16+8,len(names))
+struct.pack_into('<QQq',data,0x1258,0x8208,(2<<32)|0x101,0)
+(out/'nv-graphics-allocator.nso').write_bytes(data)
+manifest['generated_fixtures']['nv-graphics-allocator.nso']={'bytes':len(data),'sha256':digest(out/'nv-graphics-allocator.nso'),'kind':'self-authored two-import four-argument nv graphics allocator registration fixture','assembly_sha256':digest(nv_assembly)}
+run('host-nv-graphics-allocator-contract',[out/'guest_process_contract.host','--nv-graphics-allocator',out/'nv-graphics-allocator.nso'])
+nv_stderr=(out/'host-nv-graphics-allocator-contract'/'stderr.log').read_text()
+if '[hle] nv::SetGraphicsAllocator:' not in nv_stderr:raise RuntimeError('nv::SetGraphicsAllocator stub did not run')
+if '[hle] nv::SetGraphicsDevtoolsAllocator:' not in nv_stderr:raise RuntimeError('nv::SetGraphicsDevtoolsAllocator stub did not run')
+if '[boundary-unsupported]' in nv_stderr:raise RuntimeError('nv graphics allocator import signature was refused by the boundary')
 locale_assembly=out/'locale-fixture.S'
 locale_assembly.write_text(r''' .text
 .org 0x20

@@ -92,6 +92,35 @@ void nso_host_movie_set_allocator(movie_alloc_fn alloc, movie_free_fn free_fn,
 movie_alloc_fn nso_host_movie_get_allocator(void);
 movie_free_fn nso_host_movie_get_deallocator(void);
 movie_realloc_fn nso_host_movie_get_reallocator(void);
+
+/* nv::SetGraphicsAllocator and nv::SetGraphicsDevtoolsAllocator (main NSO
+ * import indexes 350 and 351).
+ *
+ * Both take the same four arguments as the already bound
+ * movie::SetAllocator (import 74): an allocation callback, a free callback,
+ * a realloc callback and a userdata pointer, and neither returns anything.
+ * The guest calls the two of them back to back in one straight-line block
+ * (0x1434c90 and 0x1434ca4), so both are reached on every boot.
+ *
+ * The registration is recorded, not invoked: calling a guest callback from a
+ * host stub needs the guest thread and the guest TLS context and would
+ * corrupt the guest's thread state. The same rule already applies to the
+ * movie allocator registration. */
+typedef void *(*nv_alloc_fn)(size_t, size_t, void *);
+typedef void (*nv_free_fn)(void *, void *);
+typedef void *(*nv_realloc_fn)(void *, size_t, void *);
+void nso_host_nv_set_graphics_allocator(nv_alloc_fn alloc,nv_free_fn free_fn,
+                                         nv_realloc_fn realloc_fn,void *userdata);
+void nso_host_nv_set_graphics_devtools_allocator(nv_alloc_fn alloc,nv_free_fn free_fn,
+                                                  nv_realloc_fn realloc_fn,void *userdata);
+nv_alloc_fn nso_host_nv_get_graphics_allocator(void);
+nv_free_fn nso_host_nv_get_graphics_deallocator(void);
+nv_realloc_fn nso_host_nv_get_graphics_reallocator(void);
+void *nso_host_nv_get_graphics_allocator_userdata(void);
+nv_alloc_fn nso_host_nv_get_graphics_devtools_allocator(void);
+nv_free_fn nso_host_nv_get_graphics_devtools_deallocator(void);
+nv_realloc_fn nso_host_nv_get_graphics_devtools_reallocator(void);
+void *nso_host_nv_get_graphics_devtools_userdata(void);
 void *nso_host_movie_get_allocator_userdata(void);
 
 typedef void *(*nn_fs_alloc_fn)(size_t);

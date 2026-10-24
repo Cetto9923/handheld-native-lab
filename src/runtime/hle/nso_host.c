@@ -623,6 +623,65 @@ void *nso_host_movie_get_allocator_userdata(void) {
     return s_movie_allocator_userdata;
 }
 
+/* nv::SetGraphicsAllocator and nv::SetGraphicsDevtoolsAllocator: the guest
+ * registers the allocator that the NVN graphics library will use for its
+ * heap, once for the graphics library and once for its devtools channel.
+ *
+ * Both signatures are exactly the shape of the already bound
+ * movie::SetAllocator (import 74), and the guest calls the two of them back
+ * to back in one straight-line block (0x1434c90 and 0x1434ca4, with only the
+ * argument setup in between), so both are reached on every boot.
+ *
+ * The guest callbacks are only stored, exactly like the movie registration:
+ * invoking them from a host stub needs the guest thread and the guest TLS
+ * context and would corrupt the guest's thread state. The registration is
+ * still recorded faithfully, because it is the guest's real state change and
+ * a later NVN stub that actually allocates has to use the allocator the
+ * guest chose rather than a host malloc. */
+static nv_alloc_fn s_nv_alloc = NULL;
+static nv_free_fn s_nv_free = NULL;
+static nv_realloc_fn s_nv_realloc = NULL;
+static void *s_nv_allocator_userdata = NULL;
+static nv_alloc_fn s_nv_devtools_alloc = NULL;
+static nv_free_fn s_nv_devtools_free = NULL;
+static nv_realloc_fn s_nv_devtools_realloc = NULL;
+static void *s_nv_devtools_userdata = NULL;
+
+static void record_nv_allocator(const char *label,nv_alloc_fn alloc,nv_free_fn free_fn,
+                                 nv_realloc_fn realloc_fn,void *userdata,
+                                 nv_alloc_fn *slot_alloc,nv_free_fn *slot_free,
+                                 nv_realloc_fn *slot_realloc,void **slot_userdata) {
+    *slot_alloc=alloc;
+    *slot_free=free_fn;
+    *slot_realloc=realloc_fn;
+    *slot_userdata=userdata;
+    fprintf(stderr,"[hle] %s: alloc=%p free=%p realloc=%p userdata=%p\n",label,
+            (void *)(uintptr_t)alloc,(void *)(uintptr_t)free_fn,
+            (void *)(uintptr_t)realloc_fn,userdata);
+}
+
+void nso_host_nv_set_graphics_allocator(nv_alloc_fn alloc,nv_free_fn free_fn,
+                                         nv_realloc_fn realloc_fn,void *userdata) {
+    record_nv_allocator("nv::SetGraphicsAllocator",alloc,free_fn,realloc_fn,userdata,
+                        &s_nv_alloc,&s_nv_free,&s_nv_realloc,&s_nv_allocator_userdata);
+}
+
+void nso_host_nv_set_graphics_devtools_allocator(nv_alloc_fn alloc,nv_free_fn free_fn,
+                                                  nv_realloc_fn realloc_fn,void *userdata) {
+    record_nv_allocator("nv::SetGraphicsDevtoolsAllocator",alloc,free_fn,realloc_fn,userdata,
+                        &s_nv_devtools_alloc,&s_nv_devtools_free,&s_nv_devtools_realloc,
+                        &s_nv_devtools_userdata);
+}
+
+nv_alloc_fn nso_host_nv_get_graphics_allocator(void) { return s_nv_alloc; }
+nv_free_fn nso_host_nv_get_graphics_deallocator(void) { return s_nv_free; }
+nv_realloc_fn nso_host_nv_get_graphics_reallocator(void) { return s_nv_realloc; }
+void *nso_host_nv_get_graphics_allocator_userdata(void) { return s_nv_allocator_userdata; }
+nv_alloc_fn nso_host_nv_get_graphics_devtools_allocator(void) { return s_nv_devtools_alloc; }
+nv_free_fn nso_host_nv_get_graphics_devtools_deallocator(void) { return s_nv_devtools_free; }
+nv_realloc_fn nso_host_nv_get_graphics_devtools_reallocator(void) { return s_nv_devtools_realloc; }
+void *nso_host_nv_get_graphics_devtools_userdata(void) { return s_nv_devtools_userdata; }
+
 static nn_fs_alloc_fn s_fs_alloc = NULL;
 static nn_fs_free_fn s_fs_free = NULL;
 
@@ -3072,6 +3131,10 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_oe_set_resume_notification_enabled;
     if(!strcmp(name,"_ZN2nn2oe16GetOperationModeEv"))
         return (uint64_t)(uintptr_t)&nso_host_oe_get_operation_mode;
+    if(!strcmp(name,"_ZN2nv20SetGraphicsAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_"))
+        return (uint64_t)(uintptr_t)&nso_host_nv_set_graphics_allocator;
+    if(!strcmp(name,"_ZN2nv28SetGraphicsDevtoolsAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_"))
+        return (uint64_t)(uintptr_t)&nso_host_nv_set_graphics_devtools_allocator;
     if(!strcmp(name,"_ZN2nn2oe27SetPerformanceConfigurationENS0_15PerformanceModeEi"))
         return (uint64_t)(uintptr_t)&nso_host_oe_set_performance_configuration;
     if(!strcmp(name,"_ZN2nn2oe18GetPerformanceModeEv"))
