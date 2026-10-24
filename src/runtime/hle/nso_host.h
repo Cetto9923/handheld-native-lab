@@ -386,6 +386,16 @@ int nso_host_cxa_thread_atexit_impl(void (*dtor)(void *), void *obj, void *dso_s
 size_t nso_exit_registry_thread_pending(void);
 void nso_exit_registry_thread_finalize(void);
 
+/* nn::diag::detail::AbortImpl (main NSO import index 12).
+ *
+ * The guest calls this when the game reaches a fatal error, and it does not
+ * expect the call to return: the RG477M v62 boot shows the guest falling
+ * straight through into a udf #0 trap right after the call, because the stub
+ * used to print the message and hand control back. The stub therefore ends
+ * the run, with the game's own message on stderr.
+ *
+ * The exit code is the one a real abort() produces, that is 128 + SIGABRT. */
+#define NN_DIAG_ABORT_EXIT_CODE 134
 uint64_t nso_host_diag_abort_impl(void);
 int32_t nso_host_diag_get_backtrace(uintptr_t *out_backtrace, int32_t count);
 

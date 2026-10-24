@@ -2676,6 +2676,8 @@ uint64_t nso_host_diag_abort_impl(void) {
     }
 
     /* Decode UTF-16 message string in x22 if valid readable pointer */
+    char message[1024];
+    message[0] = '\0';
     if (cur_x22 && !(cur_x22 & 1) && cur_x22 >= 0x1000 && is_readable((const void *)(uintptr_t)cur_x22, 2)) {
         const uint16_t *u16 = (const uint16_t *)(uintptr_t)cur_x22;
         char utf8[1024];
@@ -2709,8 +2711,27 @@ uint64_t nso_host_diag_abort_impl(void) {
         utf8[out] = '\0';
         if (out > 0) {
             fprintf(stderr, "[hle] nn::diag::detail::AbortImpl message: \"%s\"\n", utf8);
+            size_t copy=out<sizeof(message)-1?out:sizeof(message)-1;
+            memcpy(message,utf8,copy);message[copy]='\0';
         }
     }
+    /* A fatal error is fatal.
+     *
+     * The guest does not expect this call to return. The v62 RG477M boot
+     * shows why: after the abort handler, the guest falls through into the
+     * udf #0 trap at module offset 0x11f8, because this stub used to print
+     * the message and hand control back to the guest. Ending the run here,
+     * with the game's own message already on stderr, is what the guest asked
+     * for, and it keeps every future game-declared failure legible instead
+     * of turning it into a mystery illegal instruction.
+     *
+     * The exit code is the one a real abort() produces, and the process end
+     * is the same shape the runtime already uses for a guest fault: report,
+     * flush, leave. */
+    fprintf(stderr,"[guest-abort] nn::diag::detail::AbortImpl: the guest aborted%s%s\n",
+            message[0]?": ":"",message);
+    fflush(stderr);
+    _exit(NN_DIAG_ABORT_EXIT_CODE);
     return 0;
 }
 

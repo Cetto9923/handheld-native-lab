@@ -115,6 +115,13 @@ run('host-os-event-contract',[out/'guest_process_contract.host','--os-event'])
 run('host-posix-memalign-contract',[out/'guest_process_contract.host','--posix-memalign'])
 run('host-cxa-thread-atexit-contract',[out/'guest_process_contract.host','--cxa-thread-atexit'])
 run('host-diag-abort-contract',[out/'guest_process_contract.host','--diag-abort'])
+# nn::diag::detail::AbortImpl (main NSO import index 12) has to end the run
+# instead of handing control back to the guest. The contract runs the abort
+# in a child process, because the call not coming back is the property
+# under test.
+diag_stdout=(out/'host-diag-abort-contract'/'stdout.log').read_text()
+if '"aborted":true' not in diag_stdout:raise RuntimeError('the guest abort returned instead of ending the run')
+if '"message_reported":true' not in diag_stdout:raise RuntimeError('the guest abort did not report the message the game supplied')
 run('host-diag-aoc-event-contract',[out/'guest_process_contract.host','--diag-aoc-event'])
 run('host-logf-contract',[out/'guest_process_contract.host','--logf'])
 run('host-strcasecmp-contract',[out/'guest_process_contract.host','--strcasecmp'])

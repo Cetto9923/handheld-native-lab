@@ -22,6 +22,7 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #if defined(__APPLE__)
 #include <mach/mach.h>
@@ -2381,6 +2382,37 @@ static int cxa_thread_atexit_contract(void) {
     return 0;
 }
 
+/* nn::diag::detail::AbortImpl (main NSO import index 12).
+ *
+ * A guest fatal error must end the run. The guest does not expect this call
+ * to return: the RG477M v62 boot shows it falling straight through into the
+ * udf #0 trap at module offset 0x11f8, because the stub used to print the
+ * message and hand control back.
+ *
+ * The abort therefore runs in a child process - the whole point is that the
+ * call does not come back, so it cannot be observed in process - and two
+ * things are checked: the child left with the abort exit code instead of
+ * returning, and the game's own message reached stderr. The message is
+ * passed the way the SDK passes it, in x22, so the report plumbing is checked
+ * as well and not only the exit.
+ */
+static const char diag_abort_message[]="contract abort message";
+static uint16_t diag_abort_utf16[64];
+static void diag_abort_call(void (*target)(void)) {
+#if defined(__aarch64__)
+    /* One asm block, so nothing can change x22 between setting it and the
+     * call. The call is expected not to return. */
+    __asm__ volatile(
+        "mov x22, %1\n\t"
+        "blr %0\n\t"
+        :
+        : "r"(target), "r"(diag_abort_utf16)
+        : "x22","x0","x1","x2","x3","x4","x5","memory");
+#else
+    (void)target;
+    nso_host_diag_abort_impl();
+#endif
+}
 static int diag_abort_contract(void) {
     typedef uint64_t (*abort_impl_fn)(void);
     typedef int32_t (*get_backtrace_fn)(uintptr_t *, int32_t);
@@ -2391,21 +2423,53 @@ static int diag_abort_contract(void) {
     get_backtrace_fn p_bt = (get_backtrace_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn4diag12GetBacktraceEPmi");
     CHECK(p_bt != NULL);
 
-    /* 1. AbortImpl call returns 0 */
-    uint64_t res = p_abort();
-    CHECK(res == 0);
-
-    /* 2. GetBacktrace invalid params */
+    /* 1. GetBacktrace invalid params */
     CHECK(p_bt(NULL, 10) == 0);
     CHECK(p_bt((uintptr_t *)0x1234, 0) == 0);
     CHECK(p_bt((uintptr_t *)0x1234, -1) == 0);
 
-    /* 3. GetBacktrace captures non-negative depth */
+    /* 2. GetBacktrace captures non-negative depth */
     uintptr_t bt[16] = {0};
     int32_t count = p_bt(bt, 16);
     CHECK(count >= 0);
 
-    puts("{\"diag_abort_errors\":0,\"resolve\":true,\"return_zero\":true,\"backtrace\":true}");
+    /* 3. The abort ends the run instead of returning to the guest. */
+    size_t i=0;
+    for(;i+1<sizeof(diag_abort_utf16)/sizeof(diag_abort_utf16[0]) && diag_abort_message[i];i++)
+        diag_abort_utf16[i]=(uint16_t)(unsigned char)diag_abort_message[i];
+    diag_abort_utf16[i]=0;
+    FILE *capture=tmpfile();
+    CHECK(capture!=NULL);
+    fflush(stderr);
+    pid_t child=fork();
+    CHECK(child>=0);
+    if(child==0) {
+        dup2(fileno(capture),fileno(stderr));
+        diag_abort_call((void (*)(void))(uintptr_t)p_abort);
+        /* The abort came back. That is the failure this contract exists to
+         * catch, and the child says so with a distinct exit code. */
+        fflush(stderr);
+        _exit(0);
+    }
+    int status=0;
+    CHECK(waitpid(child,&status,0)==child);
+    fflush(capture);
+    fseek(capture,0,SEEK_SET);
+    char report[8192];
+    size_t got=fread(report,1,sizeof(report)-1,capture);
+    report[got]='\0';
+    fclose(capture);
+    int aborted=WIFEXITED(status) && WEXITSTATUS(status)==NN_DIAG_ABORT_EXIT_CODE;
+    int message_reported=strstr(report,diag_abort_message)!=NULL;
+    int report_line=strstr(report,"[guest-abort]")!=NULL;
+    expect_condition("diag-abort-does-not-return",aborted);
+    expect_condition("diag-abort-message-reported",message_reported);
+    expect_condition("diag-abort-report-line",report_line);
+    /* The final gate. Every expect_* above must have passed; without this the
+     * contract could still exit 0 while the expectations had failed. */
+    CHECK(!errors);
+    printf("{\"diag_abort_errors\":%u,\"resolve\":true,\"backtrace\":true,\"aborted\":%s,\"message_reported\":%s}\n",
+           errors,aborted?"true":"false",message_reported?"true":"false");
     return 0;
 }
 

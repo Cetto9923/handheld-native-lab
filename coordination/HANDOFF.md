@@ -1,3 +1,24 @@
+# P-MM-12 闭环｜2026-10-24 20:15 Asia/Shanghai — guest 的**致命错误就地终止**（`nn::diag::detail::AbortImpl` 不再返回），真机 boot v63 从 SIGILL(132) 变成干净的 abort(134)，日志**最后一行就是游戏自己的报错**
+
+- **结论**：工单 P-MM-12 目标闭环。guest 的致命错误现在**在游戏自己宣告的那里**结束运行，不再掉进 guest 的 `udf #0` 陷阱。宿主与 RG477M 真机 `--diag-abort` 契约 PASS；真机 v63 **exit 134**、**日志里一条 `[fault]` 都没有**，最后一行原样是游戏自己的消息。**导入计数不变**（`imports=651`、仍 **373** 未绑定）——**本单不绑任何导入**，game 停下的位置也没变（还是"没有 NVN 设备"），变的是**原因终于成了日志的最后一行**，而不是一条莫名其妙的非法指令。**未达标题画面 / 可玩**。
+  1. **v62 暴露出的真实问题**：guest 在 `0x14355c0` 调 `nn::diag::detail::AbortImpl`（import 12），而**运行时桩只是打印后返回**；guest 并不指望这次调用返回——它紧接着就执行 `0x11f8` 的 `udf #0`（`0x11f4` 调完导入紧跟 `udf`）。⇒ 之前每次"游戏自己判定失败"的结局，最终都表现为**一条 SIGILL 陷阱**，真正的原因（`LowLevelFatalError`）要往回翻日志才看得到。**游戏原话在日志里，但结局是假的**。
+  2. **改法（最小、诚实、与既有模型一致）**：桩在打印完诊断与游戏消息后，**以真实 `abort()` 的退出码 134 结束运行**（`128 + SIGABRT`），形态与运行时处理 guest 故障时完全一致：**报告 → flush → 离开**（`[fault]` 处理器同样是 `_exit(128+sig)`）。**没有**引入 longjmp／setjmp 改造，**没有**跳过 guest 栈或 TLS 的既有语义，也**没有**改变任何游戏行为或导入计数。
+  3. **消息必须是游戏自己的**：SDK 把消息指针放在 `x22`（UTF-16），桩照旧解码，并把它带进最终报告行——`[guest-abort] nn::diag::detail::AbortImpl: the guest aborted: <游戏原话>`。契约**不**接受宿主自造的措辞。
+  4. **契约 `--diag-abort`**：改写**既有**的 `diag_abort_contract`（旧版写着「AbortImpl 调用返回 0」，那正是旧政策），保留 `GetBacktrace` 的原有检查，把 abort 检查换成**子进程**执行——因为"这次调用不返回"**在进程内无法观测**。子进程把 stderr 重定向到 `tmpfile()`，父进程 `waitpid` 后断言：**子进程以 134 退出**（而不是返回 0）、**游戏消息出现在 stderr**、**有 `[guest-abort]` 报告行**。消息按 SDK 方式用 `x22` 传递（`__asm__` 里 `mov x22` + `blr` 放在**同一个块**里，保证中间没人能改 x22），所以**报告链路**也被验到，不只是退出码。
+  5. **三变体自证**：A（把期望从"子进程以 134 退出"改成"以 0 退出"、保留末尾 `CHECK(!errors)`）⇒ **exit 1（红）**，`[check-fail] diag-abort-does-not-return`；B（同一处改坏、去掉末尾 `CHECK(!errors)` 且报告错误数**硬编码 0**）⇒ **exit 0（假绿）**，stdout 谎报 `diag_abort_errors:0` 而 `aborted:false` 暴露了失败被掩盖；C（**契约完全不改**，让桩**返回而不结束运行**）⇒ **exit 1（红）**——这条正是"guest 致命错误不得回交控制权"的守门。日志 `.local/logs/p-mm-12-contract-selfproof.log`。
+  6. **真机 v63 的结果**：exit **134**；`grep -c '\[fault\]'` = **0**；日志最后一行即
+     ```
+     [guest-abort] nn::diag::detail::AbortImpl: the guest aborted: LowLevelFatalError [File:.\../Platforms/Switch/Source/Runtime/NVNRHI/Private/NVNManager.cpp] [Line: 1246]
+     nvnDeviceInitialize failed
+     ```
+     ⇒ 现在的结局**就是**游戏宣告的那句话。`unresolved` 仍是 **373**、`boundary` 仍是 **275**（本单不绑导入，计数不该变，实测确实没变）。
+- **新阻塞一句话**：**没有变**——挡住标题画面的仍然"是这台运行时没有 NVN 设备"（游戏在 NVN 初始化失败时致命退出），那是 **T04 的 NVN 设备**（规格见 `docs/analysis/nvn_device_requirements.md`：1 个 bootstrap 只答 2 个名字 + device 级 `GetProcAddress` 答 534 个名字；**builder 布局不是阻塞项**）+ **`nn::vi` 显示桥**（5 个导入，`GetNativeWindow` 就是 Android 窗口的接缝，规格见 `docs/analysis/display_bridge_requirements.md`）。P-MM-12 只是让"没有设备"这件事**说得清楚**。
+- **产物与证据**：
+  - 构建目录 `.local/build-p-mm-12/`（`guest_process_contract.android` sha256 `c900e45e…`、`nso_owned_startup.android` sha256 `4ffad55d…`）；manifest 已写入 `android_executed` / `device_contracts` / `device_boot`。
+  - 真机日志 `.local/logs/rg477m-boot-v63-terminal-abort.log`（**59376** 行，exit 134）+ `.exitcode`；契约日志 `.local/logs/rg477m-contract-p-mm-12-diag-abort.stdout/.stderr`；自证日志 `.local/logs/p-mm-12-contract-selfproof.log`。
+  - 设备侧文件：`p-mm-12-nso_owned_startup.android-4ffad55d`、`p-mm-12-guest_process_contract.android-c900e45e`。
+- **未完成 / 风险**：标题画面与可玩**均未达**；全模块仍有 **373** 个导入未绑定（`imports=651`）。已知语义保留项：P-MM-5 的 `GetCurrentFocusState` 桩返回 0（guest 只与 3 比较，行为等价，但无权威枚举，故不宣称其名字）。
+
 # P-MM-11 后续侦察｜2026-10-24 19:55 Asia/Shanghai — 把"没有 NVN 设备"这道墙拆成**可施工的规格**：NVN 设备实现需求 + 显示桥实现需求 + 534 个 API 的确切清单（**只读侦察，不改运行时代码**）
 
 - **结论**：P-MM-11 证明了"挡住标题画面的是没有 NVN 设备"，但**没有回答"要做出这个设备需要什么"**。本轮侦察把这个问题拆成可施工的规格，并**推翻了项目此前记录的一个阻塞项**。产出：
