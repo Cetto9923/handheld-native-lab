@@ -186,6 +186,11 @@ void nso_host_cxa_pure_virtual(void);
 int nso_host_gettimeofday(struct timeval *tv, void *tz);
 pid_t nso_host_getpid(void);
 uint32_t nso_host_get_current_process_handle(void);
+uint32_t nso_host_nn_result_is_failure(uint32_t result);
+uint32_t nso_host_nn_result_is_success(uint32_t result);
+uint32_t nso_host_nn_result_get_module(uint32_t result);
+uint32_t nso_host_nn_result_get_description(uint32_t result);
+uint32_t nso_host_nn_result_success(void);
 #ifdef __cplusplus
 }
 #endif

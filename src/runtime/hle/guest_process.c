@@ -1146,6 +1146,7 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
         "_ZNSt3__120__throw_system_errorEiPKc",
         "_ZNSt3__122__libcpp_verbose_abortEPKcz",
         "setlocale","getenv","nl_langinfo","gettimeofday","getpid",
+        "nnResultIsFailure","nnResultIsSuccess","nnResultGetModule","nnResultGetDescription","nnResultSuccess",
         "__cxa_pure_virtual",NULL};
     for(size_t i=0;typed[i];i++)if(!strcmp(name,typed[i]))return nso_host_resolve(index,name);
     if(!strcmp(name,"abort"))return (uintptr_t)&abort;
@@ -1209,7 +1210,8 @@ static int import_signature(const char *name,nb_signature *out) {
         "_ZN2nn2os24GetThreadCurrentPriorityEPKNS0_10ThreadTypeE",
         "_ZN5movie17GetThreadPriorityEv",
         "iswdigit","isspace","iswupper","iswspace","iswalnum","iswxdigit",
-        "iswalpha","iswlower","isalpha","tolower","isupper","atoi","atoll","valloc","getenv","nl_langinfo",NULL};
+        "iswalpha","iswlower","isalpha","tolower","isupper","atoi","atoll","valloc","getenv","nl_langinfo",
+        "nnResultIsFailure","nnResultIsSuccess","nnResultGetModule","nnResultGetDescription",NULL};
     static const char *const two[]={"strnlen","strcmp","strcasecmp","strcpy","strchr","strrchr","strstr","_ZN2nn2os15AllocateTlsSlotEPNS0_7TlsSlotEPFvmE",
         "_ZN2nn2os21AllocateAddressRegionEPmm","_ZN2nn2os19AllocateMemoryPagesEmm","_ZN2nn2os15FreeMemoryPagesEmm",
         "_ZN2nn4time16LoadTimeZoneRuleEPNS0_12TimeZoneRuleERKNS0_12LocationNameE",
@@ -1264,7 +1266,8 @@ static int import_signature(const char *name,nb_signature *out) {
             !strcmp(name,"_ZN2nn7account10InitializeEv") || !strcmp(name,"nnaccountInitialize") ||
             !strcmp(name,"_ZN2nn2oe10InitializeEv") || !strcmp(name,"nnoeInitialize") ||
             !strcmp(name,"_ZN2nn2oe18GetDesiredLanguageEv") || !strcmp(name,"nnoeGetDesiredLanguage") ||
-            !strcmp(name,"_ZN2nn2os23GetCurrentProcessHandleEv") || !strcmp(name,"nnosGetCurrentProcessHandle")) {arguments=0;returns=1;}
+            !strcmp(name,"_ZN2nn2os23GetCurrentProcessHandleEv") || !strcmp(name,"nnosGetCurrentProcessHandle") ||
+            !strcmp(name,"nnResultSuccess")) {arguments=0;returns=1;}
     else if(!strcmp(name,"_ZN2nn4util12GenerateUuidEv")) {arguments=0;returns=2;}
     else if(!strcmp(name,"strncasecmp_l") || !strcmp(name,"_ZN2nn4time14ToCalendarTimeEPNS0_12CalendarTimeEPNS0_22CalendarAdditionalInfoERKNS0_9PosixTimeERKNS0_12TimeZoneRuleE")) {arguments=4;returns=1;}
     else if(!strcmp(name,"_ZN2nn2os36GetVirtualAddressMemoryResourceUsageEv")) {arguments=0;returns=2;}

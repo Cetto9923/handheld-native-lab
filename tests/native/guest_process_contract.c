@@ -472,6 +472,9 @@ static void *exercise_os_wrappers(guest_process *process,void *opaque) {
     typedef uint32_t (*get_process_handle_fn)(void);
     get_process_handle_fn gph=(get_process_handle_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os23GetCurrentProcessHandleEv");
     expect_condition("get-current-process-handle-live",gph && gph()==(uint32_t)getpid());
+    typedef uint32_t (*is_fail_fn)(uint32_t);
+    is_fail_fn is_fail = (is_fail_fn)(uintptr_t)guest_process_resolve(0, "nnResultIsFailure");
+    expect_condition("nn-result-is-failure-live", is_fail && is_fail(0) == 0 && is_fail(1) == 1);
     struct guest_memory_info info;expect_condition("os-thread-query-still-live",succeeded(guest_process_memory_info(process,&info)) && info.thread_objects==1);
     return &returned_token;
 }
@@ -1687,6 +1690,51 @@ static int os_process_handle_contract(void) {
     puts("{\"os_process_handle_contract_errors\":0,\"get_current_process_handle\":true,\"handle_positive\":true,\"matches_getpid\":true}");
     return 0;
 }
+static int nn_result_contract(void) {
+    typedef uint32_t (*is_fail_fn)(uint32_t);
+    typedef uint32_t (*is_succ_fn)(uint32_t);
+    typedef uint32_t (*get_mod_fn)(uint32_t);
+    typedef uint32_t (*get_desc_fn)(uint32_t);
+    typedef uint32_t (*succ_fn)(void);
+
+    is_fail_fn is_fail = (is_fail_fn)(uintptr_t)guest_process_resolve(0, "nnResultIsFailure");
+    CHECK(is_fail != NULL);
+    is_succ_fn is_succ = (is_succ_fn)(uintptr_t)guest_process_resolve(0, "nnResultIsSuccess");
+    CHECK(is_succ != NULL);
+    get_mod_fn get_mod = (get_mod_fn)(uintptr_t)guest_process_resolve(0, "nnResultGetModule");
+    CHECK(get_mod != NULL);
+    get_desc_fn get_desc = (get_desc_fn)(uintptr_t)guest_process_resolve(0, "nnResultGetDescription");
+    CHECK(get_desc != NULL);
+    succ_fn succ = (succ_fn)(uintptr_t)guest_process_resolve(0, "nnResultSuccess");
+    CHECK(succ != NULL);
+
+    CHECK(is_fail(0) == 0);
+    CHECK(is_fail(1) == 1);
+    CHECK(is_fail(0x202) == 1);
+    CHECK(is_fail(0x80000000) == 1);
+
+    CHECK(is_succ(0) == 1);
+    CHECK(is_succ(1) == 0);
+    CHECK(is_succ(0x202) == 0);
+
+    /* 0x202 = Module 2 (fs), Description 1 (PathNotFound) */
+    CHECK(get_mod(0x202) == 2);
+    CHECK(get_desc(0x202) == 1);
+
+    /* 0x402 = Module 2 (fs), Description 2 (PathAlreadyExists) */
+    CHECK(get_mod(0x402) == 2);
+    CHECK(get_desc(0x402) == 2);
+
+    /* 0x7b | (0x65 << 9) = 123 | (101 << 9) */
+    uint32_t ssl_err = 0x7b | (0x65 << 9);
+    CHECK(get_mod(ssl_err) == 0x7b);
+    CHECK(get_desc(ssl_err) == 0x65);
+
+    CHECK(succ() == 0);
+
+    puts("{\"nn_result_contract_errors\":0,\"is_failure_works\":true,\"is_success_works\":true,\"get_module_works\":true,\"get_description_works\":true,\"success_constant_zero\":true}");
+    return 0;
+}
 static int fs_open_dir_contract(void) {
     typedef int32_t (*open_dir_fn)(nn_fs_directory_handle *, const char *, int32_t);
     typedef int32_t (*get_count_fn)(int64_t *, nn_fs_directory_handle);
@@ -2810,6 +2858,7 @@ int main(int argc,char **argv) {
     if(argc==2 && !strcmp(argv[1],"--oe"))return oe_contract();
     if(argc==2 && !strcmp(argv[1],"--gettimeofday"))return gettimeofday_contract();
     if(argc==2 && !strcmp(argv[1],"--os-process-handle"))return os_process_handle_contract();
+    if(argc==2 && !strcmp(argv[1],"--nn-result"))return nn_result_contract();
     if(argc==2 && !strcmp(argv[1],"--fs-open-dir"))return fs_open_dir_contract();
     if(argc==2 && !strcmp(argv[1],"--os-event"))return os_event_contract();
     if(argc==2 && !strcmp(argv[1],"--posix-memalign"))return posix_memalign_contract();

@@ -2141,6 +2141,35 @@ uint32_t nso_host_get_current_process_handle(void) {
     return handle;
 }
 
+uint32_t nso_host_nn_result_is_failure(uint32_t result) {
+    uint32_t is_failure = (result != 0) ? 1 : 0;
+    fprintf(stderr, "[hle] nnResultIsFailure: res=0x%x -> %u\n", result, is_failure);
+    return is_failure;
+}
+
+uint32_t nso_host_nn_result_is_success(uint32_t result) {
+    uint32_t is_success = (result == 0) ? 1 : 0;
+    fprintf(stderr, "[hle] nnResultIsSuccess: res=0x%x -> %u\n", result, is_success);
+    return is_success;
+}
+
+uint32_t nso_host_nn_result_get_module(uint32_t result) {
+    uint32_t module = result & 0x1ff;
+    fprintf(stderr, "[hle] nnResultGetModule: res=0x%x -> %u\n", result, module);
+    return module;
+}
+
+uint32_t nso_host_nn_result_get_description(uint32_t result) {
+    uint32_t description = (result >> 9) & 0x1fff;
+    fprintf(stderr, "[hle] nnResultGetDescription: res=0x%x -> %u\n", result, description);
+    return description;
+}
+
+uint32_t nso_host_nn_result_success(void) {
+    fprintf(stderr, "[hle] nnResultSuccess -> 0\n");
+    return 0;
+}
+
 void nso_host_throw_system_error(int ev, const char *what_arg) {
     fprintf(stderr, "[hle] std::__throw_system_error: ev=%d what=%s\n", ev, what_arg ? what_arg : "(null)");
     abort();
@@ -2398,6 +2427,16 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_getpid;
     if(!strcmp(name,"_ZN2nn2os23GetCurrentProcessHandleEv") || !strcmp(name,"nnosGetCurrentProcessHandle"))
         return (uint64_t)(uintptr_t)&nso_host_get_current_process_handle;
+    if(!strcmp(name,"nnResultIsFailure"))
+        return (uint64_t)(uintptr_t)&nso_host_nn_result_is_failure;
+    if(!strcmp(name,"nnResultIsSuccess"))
+        return (uint64_t)(uintptr_t)&nso_host_nn_result_is_success;
+    if(!strcmp(name,"nnResultGetModule"))
+        return (uint64_t)(uintptr_t)&nso_host_nn_result_get_module;
+    if(!strcmp(name,"nnResultGetDescription"))
+        return (uint64_t)(uintptr_t)&nso_host_nn_result_get_description;
+    if(!strcmp(name,"nnResultSuccess"))
+        return (uint64_t)(uintptr_t)&nso_host_nn_result_success;
     if(!strcmp(name,"__cxa_pure_virtual"))
         return (uint64_t)(uintptr_t)&nso_host_cxa_pure_virtual;
     return extension_resolver?extension_resolver(index,name):0;

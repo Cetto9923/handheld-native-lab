@@ -1,3 +1,28 @@
+# P-AG-22 闭环｜2026-10-24 12:00 Asia/Shanghai — nnResultIsFailure（import 607）及 nnResult 族落地，真机推进至 nnsslInitialize
+
+- **结论**：工单 P-AG-22 目标圆满闭环。
+  1. 落地最小可用 `nnResultIsFailure` 及 `nnResult*` 族 HLE（Nintendo SDK 规范：`nnResultIsFailure` 返回 `res != 0`，`nnResultIsSuccess` 返回 `res == 0`，`nnResultGetModule` 提取低 9 位 `res & 0x1ff`，`nnResultGetDescription` 提取 13 位描述 `(res >> 9) & 0x1fff`，`nnResultSuccess` 返回 0；清晰打印 `[hle] nnResultIsFailure: res=0x%x -> %u` 等归因日志）。
+  2. `guest_process.c` 中 `typed[]` 白名单与 `import_signature`（1 GP arg, 1 return GP register for IsFailure/IsSuccess/GetModule/GetDescription; 0 args, 1 return for Success）完整绑定。
+  3. 宿主契约与 RG477M 真机契约测试均通过（`{"nn_result_contract_errors":0,"is_failure_works":true,"is_success_works":true,"get_module_works":true,"get_description_works":true,"success_constant_zero":true}`）。
+  4. RG477M 真机实测彻底越过 index 607 `nnResultIsFailure`（被 LibcurlGc 线程创建流程两次成功调用并校验结果为 0/success），引擎继续设置子线程名 `nn::os::SetThreadNamePointer(name='LibcurlGc')`，初始化两组事件（`nn::os::InitializeEvent`，AutoClear），通过 `nn::os::StartThread` 成功唤醒调度子线程，子线程成功绑定专属 guest OS TLS 记录并进入 guest_entry（`0x7454b37450`），父子线程完成同步等待与事件销毁（`SignalEvent` / `WaitEvent` / `FinalizeEvent`）。
+- **最新阻塞前沿**：
+  - `[fault] signal=5 pc=0x76f4b2b2f0 fa=0x76f4b2b2f0`
+  - `[unresolved-import] index=606 name=nnsslInitialize caller_offset=0x5e647e8`（SSL 子系统初始化）
+  - 退出码 133（SIGTRAP，未解析导入触发）；基线日志 `.local/logs/rg477m-boot-v44-nn-result-is-failure.log`（及 `.exitcode`=133）。
+- **未达**：标题画面 / 可玩（仍未进呈现阶段）。
+
+---
+
+# 日间调度（P-AG-22 启动｜2026-10-24 11:45 Asia/Shanghai）
+
+- **切换原因**：P-AG-21 agy PID 49431 已退出并写闭环 @ HEAD `c61fbac`；真机最新 v43 越过 `GetCurrentProcessHandle`，阻塞 `nnResultIsFailure`（import 607，exit 133）；主树 clean、无活跃 FFRS 主路径写手（P-CC-4 Claude 43082 已退出）。
+- **里程碑**：新 HEAD `c61fbac`；真机 v42→v43；import 105 消除；CreateThread 子线程已起；pak/ucas PASS。
+- **已派**：P-AG-22 攻 `nnResultIsFailure`（及紧随 Result 族）；提词 `coordination/prompts/P-AG-nn-result-is-failure.md`；agy PID **70112**（若 --dangerously-skip-permissions 弹出审批请点批准）；日志 `.local/agent-pm/agy-p-ag-22.log`
+- **基线**：`.local/logs/rg477m-boot-v43-os-process-handle.log` exit 133；设备 RG477M01445122；pak/ucas PASS（`.local/romfs/FFRS/Content/Paks/`）
+- **未达**：标题 / 可玩
+
+---
+
 # P-AG-21 闭环｜2026-10-24 11:35 Asia/Shanghai — nn::os::GetCurrentProcessHandle（import 105）落地，真机推进至 nnResultIsFailure
 
 - **结论**：工单 P-AG-21 目标圆满闭环。
