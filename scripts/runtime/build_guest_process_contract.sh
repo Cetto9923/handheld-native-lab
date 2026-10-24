@@ -20,7 +20,7 @@ if a.main and (not a.quota_bytes or not a.stack_bytes):p.error('main requires ex
 out.mkdir(parents=True,exist_ok=False)
 def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 nso=ROOT/'src/runtime/nso';hle=ROOT/'src/runtime/hle';nvn_device=ROOT/'src/graphics/nvn_device'
-core_sources=[nso/'nso_loader.c',*[hle/(s+'.c') for s in ['guest_context','guest_process','nso_host','address_region','mutex','exit_registry','module_tls','guest_tp','native_window']],nvn_device/'nvn_device.c',nvn_device/'nvn_queue.c',nvn_device/'nvn_window.c',nvn_device/'nvn_memory_pool.c',nvn_device/'nvn_sampler_pool.c',nvn_device/'nvn_sampler_builder.c',nvn_device/'nvn_texture_pool.c',nvn_device/'nvn_texture_builder.c',nvn_device/'nvn_blend_state.c',nvn_device/'nvn_render_state.c',nvn_device/'nvn_program.c',nvn_device/'nvn_sha256.c',nvn_device/'nvn_command_buffer.c',nvn_device/'nvn_command_buffer.generated.c']
+core_sources=[nso/'nso_loader.c',*[hle/(s+'.c') for s in ['guest_context','guest_process','nso_host','address_region','mutex','exit_registry','module_tls','guest_tp','native_window']],nvn_device/'nvn_device.c',nvn_device/'nvn_queue.c',nvn_device/'nvn_window.c',nvn_device/'nvn_memory_pool.c',nvn_device/'nvn_sampler_pool.c',nvn_device/'nvn_sampler_builder.c',nvn_device/'nvn_texture_pool.c',nvn_device/'nvn_texture_builder.c',nvn_device/'nvn_blend_state.c',nvn_device/'nvn_render_state.c',nvn_device/'nvn_program.c',nvn_device/'nvn_sha256.c',nvn_device/'nvn_command_buffer.c',nvn_device/'nvn_command_buffer.generated.c',nvn_device/'nvn_command_replay.c']
 # The NVN device layer has a portable half and a platform backend. The host
 # build has no Vulkan implementation, the Android build has the real one.
 host_only_sources=[nvn_device/'nvn_backend_none.c']
@@ -36,15 +36,21 @@ os_hle=a.os_tls_source_root.resolve()/'src/runtime/hle';os_source=os_hle/'guest_
 if not os_source.is_file() or not os_source.with_suffix('.h').is_file():p.error('guest_os_tls component missing')
 sources.append(os_source)
 test=ROOT/'tests/native/guest_process_contract.c';cli=nso/'nso_call.c'
+# The family contracts live in their own translation units, each with its own
+# main and its own switch, so that two families can be worked on at the same
+# time without writing into the same file. A file that is not there is simply
+# not run.
+family_contracts=sorted((ROOT/'tests/native').glob('nvn_*_contract.c'))
 # The owned boot profile lives in its own translation unit so the CLI and the
 # in-process library run the same guest. It is compiled with the profile
 # defines; a build without them would silently link the refusing stub.
 boot_source=nso/'nso_boot.c'
-inputs=[*core_sources,*[s.with_suffix('.h') for s in core_sources if s.with_suffix('.h').exists()],*host_only_sources,*android_only_sources,test,cli,boot_source,boot_source.with_suffix('.h'),ROOT/'scripts/runtime/build_guest_process_contract.sh',ROOT/'tests/native/test_loader.py']
+inputs=[*core_sources,*[s.with_suffix('.h') for s in core_sources if s.with_suffix('.h').exists()],*host_only_sources,*android_only_sources,test,cli,boot_source,boot_source.with_suffix('.h'),*family_contracts,ROOT/'scripts/runtime/build_guest_process_contract.sh',ROOT/'tests/native/test_loader.py']
 manifest={'head':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
  'dirty':subprocess.check_output(['git','status','--short'],text=True),'host':platform.platform(),
  'compiler':subprocess.check_output(['clang','--version'],text=True),'cases':{},
  'source_sha256':{str(v.relative_to(ROOT)):digest(v) for v in inputs},'android_executed':False,
+ 'family_contracts':{},
  'page_owner_source_root':str(a.pages_source_root.resolve()),
  'page_owner_inputs':{str(v):digest(v) for v in [pages_source,pages_source.with_suffix('.h')]},
  'page_owner_head':subprocess.check_output(['git','rev-parse','HEAD'],cwd=a.pages_source_root,text=True).strip(),
@@ -97,6 +103,17 @@ run('host-build-normal',['clang',*strict,test,*host,'-lc++','-lpthread','-o',out
 log=run('host-contract-normal',[out/'guest_process_contract.host',out/'contract.nso'])
 manifest['normal_contract']=json.loads(log.splitlines()[-1])
 if manifest['normal_contract']['errors']:raise RuntimeError('normal contract failed')
+# The family contracts. Each one is its own binary and its own case, and each
+# one reports a line of JSON with its own error count.
+for family_test in family_contracts:
+    name=family_test.stem
+    binary=out/(name+'.host')
+    run('host-build-'+name,['clang',*strict,family_test,*host,'-lc++','-lpthread','-o',binary])
+    family_log=run('host-'+name,[binary])
+    report=json.loads(family_log.splitlines()[-1])
+    manifest['family_contracts'][name]=report
+    failed=[key for key,value in report.items() if key.endswith('_errors') and value]
+    if failed:raise RuntimeError(name+' failed: '+', '.join(failed))
 run('host-boundary-contract',[out/'guest_process_contract.host','--boundary',out/'boundary.nso'])
 run('host-retarget-contract',[out/'guest_process_contract.host','--retarget',out/'init-executor.nso'])
 run('host-readonly-retarget-contract',[out/'guest_process_contract.host','--retarget-readonly',out/'readonly-import.nso'])

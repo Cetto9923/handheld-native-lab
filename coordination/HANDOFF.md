@@ -1,3 +1,26 @@
+# P-MM-29 真机重跑 / 记录格式比对 / replay 消费者｜2026-10-25 03:00 Asia/Shanghai — **guest 越过 `nvnSamplerBuilderSetDefaults`（整套 builder 8 个调用全过）**；**新的第一致命是 `nvnSamplerInitialize`**；**命令内存回调被边界拒绝（NB_BUSY），录制作废 ⇒ 仍无命令包**；**记录格式已逐字段对过参考树（50 opcode + 33 载荷结构，0 问题）**；**帧数仍为 0**
+
+- **结论**：真机往前推了一段（builder 族落地生效），但**命令流仍然出不来**：guest 向宿主要更多命令内存的回调**被边界按设计拒绝**，于是这次录制作废、不交出 handle ⇒ **replay 没有包可读**。这是当前关键路径上的**唯一堵点**，根因已定位到边界的 phase 协议，已派 **P-MM-24**。同时**记录格式不再靠声称**：`scripts/graphics/compare_nvn_record_format.py` 把它和参考树逐字段对过。**帧数仍为 0，不声称标题画面、不声称可玩。**
+  1. **真机（APK sha256 `1c8974cadce1842c19a72d3c8ab15fb7ee3f97b45ddd0b4afb755f549a942cee`，300 秒窗口，transcript `.local/logs/p-mm-29-guest-transcript.log` 58539 行）**：guest **越过整个 sampler builder**（`SetDefaults` → `SetDevice` → `SetBorderColor` → `SetMinMagFilter` → `SetMaxAnisotropy` → `SetWrapMode` → `SetLodBias` → `SetLodClamp`，8 个全过）。**新的第一致命**：`[nvn] unimplemented NVN entry "nvnSamplerInitialize" was called (trap slot 71, caller lr=0x72130cfd3c)`，实参 `x0=0x50f9a75328`（sampler 对象）`x1=0x5a39e80630`（builder）`x2=0x0` ⇒ 与参考树签名 `NVNboolean nvnSamplerInitialize(NVNsampler*, const NVNsamplerBuilder*)` 一致。
+  2. **命令内存回调失败（关键卡点，已定位）**：guest 要更多命令内存时，宿主三次收到 `[nvn-callback] the guest's command memory callback did not return; status=4`，随后 `the recording of the command buffer 0x51b9a63638 is void`。**status=4 就是 `NB_BUSY`**。根因在边界的 phase 协议，不在记录器：
+     - `nb_call` 要求 scope 的 phase 是 **0(IDLE)**，`nb_call_from_host` 要求 phase 是 **2(HOST)**；
+     - **HOST phase 只在「宿主函数跑在 import gateway 后面」时存在**；而 **NVN 入口不是 import gateway**——guest 是通过 `nvnDeviceGetProcAddress` 拿到的函数指针**直接调用**它们的，那种调用期间 scope 处于 **1(GUEST)**，两个入口**按设计**都拒绝；
+     - 线程检查是**通过**的（拿到的是 BUSY 不是 `NB_WRONG_THREAD`）⇒ **调用点就在 guest 自己的线程上**，唯一不满足的是 phase。
+     **参考树怎么做**（`hle_nvn.c` 的 `cmd_alloc_keep`）：**直接调用** guest 的回调；回调两次仍不够就**借宿主段继续录**，绝不中断。参考树还写明为什么这不是边角情况：*「Our records are larger than real-device NVN commands, so the budget the game reserved for real-device usage is not necessarily enough」*。
+     **本项目的两个关键事实**（已核实）：`nso_base(m) == (uint64_t)m->image` ⇒ **guest 地址就是宿主地址**，guest 给的回调指针已是宿主入口；`nso_entry_address()` 是「指针落在模块 text 内且 4 字节对齐」的校验。**guest 的 TP 走 pthread key + 指令改写**，不依赖 x18。
+     ⇒ **P-MM-24**（worker）：在 guest 线程上、带三项**显式校验**（是 guest 线程 / TP mirror 已绑定 / 地址在模块 text 内）地调用回调；回调两次仍不够则**借宿主段**，录制**永不因内存作废**。
+  3. **记录格式：逐字段对过参考树，0 问题**（`scripts/graphics/compare_nvn_record_format.py`，报告 `.local/shader-verify/record-format-comparison.json`，退出码 0）：**记录头一致**；**50 个 opcode 名称/顺序/编号全一致**；**33 个载荷结构逐字段布局全一致**；唯一差异是 `p_clear_buf` 的成员改名（参考树 `_pad`、本项目 `pad`），**不改布局**。
+  4. **设备特性（worker 查出的、我方文件的缺口）**：`nvn_backend_vulkan.c` 之前**不启用任何可选特性**。本游戏两个计算着色器写入 **storage image 的格式不是 shader 常量**（是所绑定纹理的运行时属性），游戏数据里**根本没有**这个格式 ⇒ 只能**声明 capability + 开设备特性**。现改为：**查询**该特性，**仅在设备支持时才申请**，并且**支持与启用分开记录**（日志与设备描述各写一份）。Vulkan 1.0 没有「查询逻辑设备特性」的接口，所以「已授予」= 「已申请」（申请不被支持时创建设备会失败，所以是精确的）。**设备是否支持该特性尚未实测。**
+  5. **replay 消费者落地**（`src/graphics/nvn_device/nvn_command_replay.{h,c}`）：按**参考树的结构**解码命令包、维持**流的状态表**（tex pool / samp pool / program / render target）、把记录里的地址解析成宿主内存并**点名拒绝**不属于任何池的地址与越界的长度。**它不发 Vulkan 命令、不 present**（那要接同一个 VkDevice/queue，是下一步）。
+     - **两个从参考树学到的、猜错就会崩的点**：① **纹理句柄不是指针**，是 `texture ID | sampler ID << 20` 的打包值，读的时候还要加上描述符池的**编号基址**；② **带数组的绑定记录按实际个数分配**（参考树原话：*Binding records with arrays are allocated by the actual count*），且**无 indirect 的 draw 记录在 indirect 字段前就截断** ⇒ 解码器按**尺寸区间 + 记录内计数**校验，而不是写死结构大小。**这条是契约自己抓出来的**：第一版解码器按固定尺寸校验，把合法的 32 字节 `BindVertexBuffers` 判成坏记录。
+  6. **契约并行化（协调者侧）**：`tests/native/guest_process_contract.c` 长期被 P-MM-24 独占会挡住并行 ⇒ 建立**每族独立契约 TU + 第二个契约二进制**的模式：族契约放在 `tests/native/nvn_*_contract.c`（自带 main 与开关），`build_guest_process_contract.sh` 自动发现、编译、运行并把结果写进 manifest 的 `family_contracts`。**契约文件仍是单一写者**（我或某个 worker），互不覆盖。
+- **本单未解决 / 风险**：**帧数仍为 0**；**命令包仍不存在**（P-MM-24 在修）；**replay 不发 Vulkan 命令、不 present**（S1-c 待做）；**描述符池编号基址仍为 0**（记录器不知道 guest 绑定的池的基址，replay 因此只能拒绝「未绑池的句柄」并如实说明，还不能把句柄变成纹理）；**shader 路径仍未被任何设备接受过**（无真机 `VkShaderModule`、无 `VkPipeline`、无 draw 消费；设备是否支持 `shaderStorageImageWriteWithoutFormat` 未实测）；**NVN 陷阱仍是进程级终止**（`_exit(97)` 会带走整个 app）；`nn::hid` 输入族未动；368 个未绑定导入**不可当关键路径完成度**；vendored 头是**别的游戏**（Darksiders II）的 NVN 53.105 重建件 ⇒ **156 个命令入口里 140 个签名未对本游戏证实**（sampler 对象族 15 个名字里 **2 个签名参考树没有、1 个是推断**）。
+- **下一项可证伪实验（按依赖顺序）**：
+  1. **P-MM-24 落地后重跑真机**（≥300 秒、独立日志目录）：确认**录制不再作废**、`EndRecording` **交出 handle**、replay 能读到包 ⇒ 这是「replay 链第一次有输入」的判据。
+  2. **P-MM-25 落地后重跑真机**：看 guest 是否越过 `nvnSamplerInitialize`，并记下**下一个**第一致命。
+  3. **S1-c**：包 → `nvnQueueSubmitCommands` / `nvnQueuePresentTexture`，走**同一个 VkDevice / queue**。**第一帧必须是 guest 自己的命令流解释得出来的颜色，不是宿主探针色。**
+  4. **P-MM-23**：真机 `VkShaderModule` / `VkPipeline` / descriptor **分级**验证（模块创建 / 管线创建 / draw 消费分开报），以及设备是否支持并启用 `shaderStorageImageWriteWithoutFormat`。
+
 # P-MM-22 闭环 / 九族自证修复｜2026-10-25 02:35 Asia/Shanghai — **命令录制已换成同款游戏参考树的真实记录格式**（handle → 不可变命令包、调用期拷贝、guest 回调走边界）；**九个 NVN 族自证全部恢复 A红/B假绿/C红**；**帧数仍为 0**
 
 - **结论**：命令录制不再是自造的平行格式，**换成 `.local/refs/nxnative/dm/gfx/nvn/nvn_obj.h` 里本游戏自己的记录格式**（`op_hdr{op,size}` + 载荷结构 + opcode 表），并且 **handle 现在指向一个不可变的命令包**。但**帧数仍是 0**：命令包**没有消费者**，没有 submit 路径，没有任何像素上过屏。**不声称标题画面、不声称可玩、不承诺第一章时间。**

@@ -76,6 +76,7 @@ if(ANDROID)
         "${FFRS_GUEST_NVN_DIR}/nvn_device.c"
         "${FFRS_GUEST_NVN_DIR}/nvn_command_buffer.c"
         "${FFRS_GUEST_NVN_DIR}/nvn_command_buffer.generated.c"
+        "${FFRS_GUEST_NVN_DIR}/nvn_command_replay.c"
         "${FFRS_GUEST_NVN_DIR}/nvn_queue.c"
         "${FFRS_GUEST_NVN_DIR}/nvn_window.c"
         "${FFRS_GUEST_NVN_DIR}/nvn_memory_pool.c"
