@@ -2,6 +2,8 @@
 #define NSO_HOST_H
 #include "../nso/nso_loader.h"
 #include <stdbool.h>
+#include <pthread.h>
+#include <time.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -156,6 +158,21 @@ void nso_exit_registry_thread_finalize(void);
 
 uint64_t nso_host_diag_abort_impl(void);
 int32_t nso_host_diag_get_backtrace(uintptr_t *out_backtrace, int32_t count);
+
+void nso_host_std_mutex_lock(void *m);
+void nso_host_std_mutex_unlock(void *m);
+void nso_host_std_cv_notify_one(void *cv);
+void nso_host_std_cv_notify_all(void *cv);
+void nso_host_std_cv_wait(void *cv, void *unique_lock_ptr);
+uint64_t nso_host_steady_clock_now(void);
+int nso_host_pthread_cond_clockwait(pthread_cond_t *cond, pthread_mutex_t *mutex,
+                                    clockid_t clock_id, const struct timespec *abstime);
+void nso_host_throw_system_error(int ev, const char *what_arg);
+void nso_host_libcpp_verbose_abort(const char *format, ...);
+char *nso_host_setlocale(int category, const char *locale);
+char *nso_host_getenv(const char *name);
+char *nso_host_nl_langinfo(int item);
+void nso_host_cxa_pure_virtual(void);
 #ifdef __cplusplus
 }
 #endif

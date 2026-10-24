@@ -408,6 +408,22 @@ static int readonly_retarget_contract(const char *path) {
     CHECK(succeeded(nso_release(&module)) && !module);
     puts("{\"readonly_retarget_errors\":0,\"unsupported\":true,\"no_write\":true}");return 0;
 }
+struct child_tls_test_data {
+    uint32_t slot;
+    uint64_t initial;
+    uint64_t after_set;
+    uint64_t (*get)(uint32_t);
+    void (*set)(uint32_t,uint64_t);
+};
+static void *child_tls_worker(void *arg) {
+    struct child_tls_test_data *d=(struct child_tls_test_data *)arg;
+    guest_process_bind_child_thread();
+    d->initial=d->get(d->slot);
+    d->set(d->slot,0x123456);
+    d->after_set=d->get(d->slot);
+    guest_process_unbind_child_thread();
+    return NULL;
+}
 static void *exercise_os_wrappers(guest_process *process,void *opaque) {
     (void)opaque;
     typedef uint32_t(*allocate_fn)(uint32_t *,uint64_t);typedef uint64_t(*get_fn)(uint32_t);
@@ -419,9 +435,33 @@ static void *exercise_os_wrappers(guest_process *process,void *opaque) {
     uint32_t slots[16];
     for(unsigned i=0;i<16;i++) {expect_value("os-app-allocate",allocate(&slots[i],0),0);expect_value("os-app-search-order",slots[i],i);expect_value("os-initial-zero",get(slots[i]),0);}
     uint32_t untouched=0xabc;expect_value("os-app-exhaust-sdk-result",allocate(&untouched,0),0x1203);expect_value("os-exhaust-output",untouched,0xabc);
-    set(slots[0],0x99);release(slots[0]);expect_value("os-free-retains-value-no-hostfree",get(slots[0]),0x99);
+    set(slots[0],0x99);
+    struct child_tls_test_data cd={slots[0],0xdead,0xdead,get,set};
+    pthread_t cth;
+    expect_condition("child-create-success",pthread_create(&cth,NULL,child_tls_worker,&cd)==0);
+    expect_condition("child-join-success",pthread_join(cth,NULL)==0);
+    expect_value("child-os-tls-isolated-initial-zero",cd.initial,0);
+    expect_value("child-os-tls-after-set",cd.after_set,0x123456);
+    expect_value("primary-os-tls-untouched-by-child",get(slots[0]),0x99);
+    release(slots[0]);expect_value("os-free-retains-value-no-hostfree",get(slots[0]),0x99);
     expect_value("os-reallocate",allocate(&slots[0],0),0);expect_value("os-reallocate-clears",get(slots[0]),0);
     for(unsigned i=0;i<16;i++)release(slots[i]);
+    typedef void (*std_lock_fn)(void *);
+    typedef void (*std_unlock_fn)(void *);
+    typedef void (*std_notify_all_fn)(void *);
+    typedef uint64_t (*std_now_fn)(void);
+    std_lock_fn std_lock=(std_lock_fn)(uintptr_t)guest_process_resolve(0,"_ZNSt3__15mutex4lockEv");
+    std_unlock_fn std_unlock=(std_unlock_fn)(uintptr_t)guest_process_resolve(0,"_ZNSt3__15mutex6unlockEv");
+    std_notify_all_fn std_notify_all=(std_notify_all_fn)(uintptr_t)guest_process_resolve(0,"_ZNSt3__118condition_variable10notify_allEv");
+    std_now_fn std_now=(std_now_fn)(uintptr_t)guest_process_resolve(0,"_ZNSt3__16chrono12steady_clock3nowEv");
+    uint64_t dummy_m=0,dummy_cv=0;
+    std_lock(&dummy_m);
+    std_unlock(&dummy_m);
+    std_notify_all(&dummy_cv);
+    expect_condition("std-steady-clock-now-positive",std_now()>0);
+    typedef char *(*setlocale_fn)(int, const char *);
+    setlocale_fn sl=(setlocale_fn)(uintptr_t)guest_process_resolve(0,"setlocale");
+    expect_condition("setlocale-returns-c",sl && sl(0,NULL) && !strcmp(sl(0,NULL),"C"));
     struct guest_memory_info info;expect_condition("os-thread-query-still-live",succeeded(guest_process_memory_info(process,&info)) && info.thread_objects==1);
     return &returned_token;
 }

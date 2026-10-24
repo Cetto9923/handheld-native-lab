@@ -108,6 +108,9 @@ struct guest_process {
 static pthread_mutex_t exclusive_mutex=PTHREAD_MUTEX_INITIALIZER;
 static guest_process *exclusive_process;
 static _Thread_local guest_process *current_process;
+static _Thread_local guest_os_tls_thread *current_os_thread;
+static struct guest_os_tls_invoke_result invoke_os_destructor(guest_os_tls_manager *manager,
+        guest_os_tls_thread *thread,uint64_t destructor,uint64_t value,void *opaque);
 #if defined(NSO_PROFILE_IDENTITY_TESTING)
 static void *(*identity_test_map)(size_t);
 static int (*identity_test_unmap)(void *,size_t);
@@ -606,12 +609,15 @@ static void tls_free(uint32_t slot) {
 }
 static uint64_t tls_get(uint32_t slot) {
     guest_process *p=tls_current();uint64_t value=0;
-    struct guest_os_tls_result r=guest_os_tls_get(p->os_tls,p->os_thread,slot,&value);
+    guest_os_tls_thread *t=current_os_thread?current_os_thread:p->os_thread;
+    struct guest_os_tls_result r=guest_os_tls_get(p->os_tls,t,slot,&value);
     if(r.status!=GUEST_OS_TLS_OK)tls_failure("get",r);
     return value;
 }
 static void tls_set(uint32_t slot,uint64_t value) {
-    guest_process *p=tls_current();struct guest_os_tls_result r=guest_os_tls_set(p->os_tls,p->os_thread,slot,value);
+    guest_process *p=tls_current();
+    guest_os_tls_thread *t=current_os_thread?current_os_thread:p->os_thread;
+    struct guest_os_tls_result r=guest_os_tls_set(p->os_tls,t,slot,value);
     if(r.status!=GUEST_OS_TLS_OK)tls_failure("set",r);
 }
 static int tls_primary_locked(guest_process *p) {
@@ -920,10 +926,28 @@ int guest_process_current_tls_template(guest_tp_template *out) {
 void guest_process_bind_child_thread(void) {
     pthread_mutex_lock(&exclusive_mutex);
     current_process = exclusive_process;
+    guest_process *p = exclusive_process;
+    if(p && p->os_tls) {
+        struct guest_os_tls_result r = guest_os_tls_register(p->os_tls, &current_os_thread);
+        if(r.status != GUEST_OS_TLS_OK) {
+            fprintf(stderr, "[os-tls-fatal] failed to register child thread os_tls: status=%d\n", r.status);
+            abort();
+        }
+        fprintf(stderr, "[hle] child thread bound guest OS TLS record=%p\n", (void *)current_os_thread);
+    }
     pthread_mutex_unlock(&exclusive_mutex);
 }
 void guest_process_unbind_child_thread(void) {
+    pthread_mutex_lock(&exclusive_mutex);
+    guest_process *p = current_process ? current_process : exclusive_process;
+    if(p && p->os_tls && current_os_thread) {
+        struct guest_os_tls_cleanup_report report = {0};
+        guest_os_tls_cleanup(p->os_tls, current_os_thread, invoke_os_destructor, p, &report);
+        guest_os_tls_unregister(p->os_tls, current_os_thread);
+        current_os_thread = NULL;
+    }
     current_process = NULL;
+    pthread_mutex_unlock(&exclusive_mutex);
 }
 static void guest_protect_relro(const void *a0,const void *a1,const void *a2,const void *a3,const void *a4) {
     (void)a0;(void)a1;(void)a2;(void)a3;(void)a4;
@@ -1108,7 +1132,18 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
         "posix_memalign","memalign","aligned_alloc","valloc","free",
         "__cxa_thread_atexit","__cxa_thread_atexit_impl",
         "_ZN2nn4diag6detail9AbortImplEv",
-        "_ZN2nn4diag12GetBacktraceEPmi",NULL};
+        "_ZN2nn4diag12GetBacktraceEPmi",
+        "_ZNSt3__15mutex4lockEv",
+        "_ZNSt3__15mutex6unlockEv",
+        "_ZNSt3__118condition_variable10notify_oneEv",
+        "_ZNSt3__118condition_variable10notify_allEv",
+        "_ZNSt3__118condition_variable4waitERNS_11unique_lockINS_5mutexEEE",
+        "_ZNSt3__16chrono12steady_clock3nowEv",
+        "pthread_cond_clockwait",
+        "_ZNSt3__120__throw_system_errorEiPKc",
+        "_ZNSt3__122__libcpp_verbose_abortEPKcz",
+        "setlocale","getenv","nl_langinfo",
+        "__cxa_pure_virtual",NULL};
     for(size_t i=0;typed[i];i++)if(!strcmp(name,typed[i]))return nso_host_resolve(index,name);
     if(!strcmp(name,"abort"))return (uintptr_t)&abort;
     return 0;
@@ -1171,12 +1206,12 @@ static int import_signature(const char *name,nb_signature *out) {
         "_ZN2nn2os24GetThreadCurrentPriorityEPKNS0_10ThreadTypeE",
         "_ZN5movie17GetThreadPriorityEv",
         "iswdigit","isspace","iswupper","iswspace","iswalnum","iswxdigit",
-        "iswalpha","iswlower","isalpha","tolower","isupper","atoi","atoll","valloc",NULL};
+        "iswalpha","iswlower","isalpha","tolower","isupper","atoi","atoll","valloc","getenv","nl_langinfo",NULL};
     static const char *const two[]={"strnlen","strcmp","strcasecmp","strcpy","strchr","strrchr","strstr","_ZN2nn2os15AllocateTlsSlotEPNS0_7TlsSlotEPFvmE",
         "_ZN2nn2os21AllocateAddressRegionEPmm","_ZN2nn2os19AllocateMemoryPagesEmm","_ZN2nn2os15FreeMemoryPagesEmm",
         "_ZN2nn4time16LoadTimeZoneRuleEPNS0_12TimeZoneRuleERKNS0_12LocationNameE",
         "_ZN2nn2os14TimedWaitEventEPNS0_9EventTypeENS_8TimeSpanE",
-        "strcspn","strspn","strcat","memalign","aligned_alloc",NULL};
+        "strcspn","strspn","strcat","memalign","aligned_alloc","setlocale",NULL};
     static const char *const three[]={"memset","memcpy","memmove","memcmp","memchr","strncmp","strncpy","__cxa_atexit","strtol",
         "_ZN2nn4time12GetDayOfWeekEiii",
         "strtoll","strtoull","strtoul","strncat","strncasecmp","posix_memalign",
@@ -1204,6 +1239,10 @@ static int import_signature(const char *name,nb_signature *out) {
         "_ZN2nn2os15WaitSystemEventEPNS0_15SystemEventTypeE",
         "_ZN2nn2os17SignalSystemEventEPNS0_15SystemEventTypeE",
         "_ZN2nn2os18DestroySystemEventEPNS0_15SystemEventTypeE",
+        "_ZNSt3__15mutex4lockEv",
+        "_ZNSt3__15mutex6unlockEv",
+        "_ZNSt3__118condition_variable10notify_oneEv",
+        "_ZNSt3__118condition_variable10notify_allEv",
         "_ZN5movie17SetThreadPriorityEi","free",NULL};
     const char *const *lists[]={one,two,three,void_one};
     for(unsigned group=0;group<4;group++)for(size_t i=0;lists[group][i];i++)if(!strcmp(name,lists[group][i])) {
@@ -1246,6 +1285,12 @@ static int import_signature(const char *name,nb_signature *out) {
     else if(!strcmp(name,"_ZN2nn2os16GetCurrentThreadEv")) {arguments=0;returns=1;}
     else if(!strcmp(name,"_ZN2nn2os11GetThreadIdEPKNS0_10ThreadTypeE")) {arguments=1;returns=1;}
     else if(!strcmp(name,"_ZN2nn2os11SetTlsValueENS0_7TlsSlotEm")) {arguments=2;returns=0;}
+    else if(!strcmp(name,"_ZNSt3__118condition_variable4waitERNS_11unique_lockINS_5mutexEEE")) {arguments=2;returns=0;}
+    else if(!strcmp(name,"_ZNSt3__16chrono12steady_clock3nowEv")) {arguments=0;returns=1;}
+    else if(!strcmp(name,"pthread_cond_clockwait")) {arguments=4;returns=1;}
+    else if(!strcmp(name,"_ZNSt3__120__throw_system_errorEiPKc")) {arguments=2;returns=0;}
+    else if(!strcmp(name,"_ZNSt3__122__libcpp_verbose_abortEPKcz")) {arguments=1;returns=0;}
+    else if(!strcmp(name,"__cxa_pure_virtual")) {arguments=0;returns=0;}
     else if(!strcmp(name,"_ZN2nn2fs12SetAllocatorEPFPvmEPFvS1_mE") ||
             !strcmp(name,"nnfsSetAllocator")) {arguments=2;returns=0;}
     else if(!strcmp(name,"_ZN2nn2fs22QueryMountRomCacheSizeEPm") ||
@@ -1396,11 +1441,20 @@ struct nso_result guest_process_initialize(guest_process *p,nso_init_policy poli
 static struct guest_os_tls_invoke_result invoke_os_destructor(guest_os_tls_manager *manager,
         guest_os_tls_thread *thread,uint64_t destructor,uint64_t value,void *opaque) {
     guest_process *p=opaque;
-    if(current_process!=p || manager!=p->os_tls || thread!=p->os_thread || destructor<nso_base(p->module))
+    if(current_process!=p || manager!=p->os_tls || (thread!=p->os_thread && thread!=current_os_thread) || destructor<nso_base(p->module))
         return (struct guest_os_tls_invoke_result){GUEST_OS_TLS_INVOKE_FAILED,EINVAL};
-    const uint64_t args[6]={value};uint64_t ignored;
-    struct nso_result r=guest_process_call(p,destructor-nso_base(p->module),args,1,&ignored);
-    return (struct guest_os_tls_invoke_result){r.status==NSO_OK?GUEST_OS_TLS_INVOKE_OK:GUEST_OS_TLS_INVOKE_FAILED,r.status};
+    if(thread==p->os_thread) {
+        const uint64_t args[6]={value};uint64_t ignored;
+        struct nso_result r=guest_process_call(p,destructor-nso_base(p->module),args,1,&ignored);
+        return (struct guest_os_tls_invoke_result){r.status==NSO_OK?GUEST_OS_TLS_INVOKE_OK:GUEST_OS_TLS_INVOKE_FAILED,r.status};
+    }
+    nb_scope *scope=guest_process_current_boundary();
+    if(scope) {
+        nb_registers pkt={.x={value}};
+        nb_status s=nb_call_child(scope,(void(*)(void))(uintptr_t)destructor,&pkt,0);
+        return (struct guest_os_tls_invoke_result){s==NB_OK?GUEST_OS_TLS_INVOKE_OK:GUEST_OS_TLS_INVOKE_FAILED,s};
+    }
+    return (struct guest_os_tls_invoke_result){GUEST_OS_TLS_INVOKE_OK,0};
 }
 static void cleanup_os_primary(guest_process *p) {
     struct guest_os_tls_cleanup_report report={0};
@@ -1416,6 +1470,7 @@ static void cleanup_os_primary(guest_process *p) {
     r=guest_os_tls_unregister(p->os_tls,p->os_thread);
     if(r.status!=GUEST_OS_TLS_OK)tls_failure("unregister",r);
     p->os_thread=NULL;
+    current_os_thread=NULL;
 }
 static void *invoke_primary(guest_context *context,void *opaque) {
     guest_process *p=opaque;
@@ -1429,6 +1484,7 @@ static void *invoke_primary(guest_context *context,void *opaque) {
     struct nso_result identity=create_identity_locked(p);
     struct guest_os_tls_result registered={0};
     if(identity.status==NSO_OK)registered=guest_os_tls_register(p->os_tls,&p->os_thread);
+    if(registered.status==GUEST_OS_TLS_OK)current_os_thread=p->os_thread;
     if(p->heap.state==HEAP_UNINITIALIZED && initialize_empty_heap(&p->heap))p->quarantined=1;
     struct guest_memory_info initial;
     p->callback_status=identity.status!=NSO_OK?identity:

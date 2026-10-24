@@ -19,6 +19,7 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include <errno.h>
+#include <stdarg.h>
 #if defined(__linux__) && !defined(__ANDROID__)
 #include <sys/syscall.h>
 #endif
@@ -1973,6 +1974,145 @@ int32_t nso_host_diag_get_backtrace(uintptr_t *out_backtrace, int32_t count) {
     return depth;
 }
 
+typedef struct std_mutex_entry {
+    void *guest_ptr;
+    pthread_mutex_t mutex;
+    struct std_mutex_entry *next;
+} std_mutex_entry;
+
+static pthread_mutex_t s_std_mutex_lock = PTHREAD_MUTEX_INITIALIZER;
+static std_mutex_entry *s_std_mutex_head = NULL;
+
+static pthread_mutex_t *get_std_mutex(void *ptr) {
+    if (!ptr) return NULL;
+    pthread_mutex_lock(&s_std_mutex_lock);
+    std_mutex_entry *e = s_std_mutex_head;
+    while (e) {
+        if (e->guest_ptr == ptr) {
+            pthread_mutex_unlock(&s_std_mutex_lock);
+            return &e->mutex;
+        }
+        e = e->next;
+    }
+    e = calloc(1, sizeof(*e));
+    e->guest_ptr = ptr;
+    pthread_mutexattr_t attr;
+    pthread_mutexattr_init(&attr);
+    pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_NORMAL);
+    pthread_mutex_init(&e->mutex, &attr);
+    pthread_mutexattr_destroy(&attr);
+    e->next = s_std_mutex_head;
+    s_std_mutex_head = e;
+    pthread_mutex_unlock(&s_std_mutex_lock);
+    return &e->mutex;
+}
+
+void nso_host_std_mutex_lock(void *m) {
+    pthread_mutex_t *pm = get_std_mutex(m);
+    if (pm) pthread_mutex_lock(pm);
+}
+
+void nso_host_std_mutex_unlock(void *m) {
+    pthread_mutex_t *pm = get_std_mutex(m);
+    if (pm) pthread_mutex_unlock(pm);
+}
+
+typedef struct std_cv_entry {
+    void *guest_ptr;
+    pthread_cond_t cond;
+    struct std_cv_entry *next;
+} std_cv_entry;
+
+static pthread_mutex_t s_std_cv_lock = PTHREAD_MUTEX_INITIALIZER;
+static std_cv_entry *s_std_cv_head = NULL;
+
+static pthread_cond_t *get_std_cv(void *ptr) {
+    if (!ptr) return NULL;
+    pthread_mutex_lock(&s_std_cv_lock);
+    std_cv_entry *e = s_std_cv_head;
+    while (e) {
+        if (e->guest_ptr == ptr) {
+            pthread_mutex_unlock(&s_std_cv_lock);
+            return &e->cond;
+        }
+        e = e->next;
+    }
+    e = calloc(1, sizeof(*e));
+    e->guest_ptr = ptr;
+    pthread_cond_init(&e->cond, NULL);
+    e->next = s_std_cv_head;
+    s_std_cv_head = e;
+    pthread_mutex_unlock(&s_std_cv_lock);
+    return &e->cond;
+}
+
+void nso_host_std_cv_notify_one(void *cv) {
+    pthread_cond_t *pc = get_std_cv(cv);
+    if (pc) pthread_cond_signal(pc);
+}
+
+void nso_host_std_cv_notify_all(void *cv) {
+    pthread_cond_t *pc = get_std_cv(cv);
+    if (pc) pthread_cond_broadcast(pc);
+}
+
+void nso_host_std_cv_wait(void *cv, void *unique_lock_ptr) {
+    pthread_cond_t *pc = get_std_cv(cv);
+    if (!pc || !unique_lock_ptr) return;
+    void *m = *(void **)unique_lock_ptr;
+    pthread_mutex_t *pm = get_std_mutex(m);
+    if (pm) pthread_cond_wait(pc, pm);
+}
+
+uint64_t nso_host_steady_clock_now(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+}
+
+int nso_host_pthread_cond_clockwait(pthread_cond_t *cond, pthread_mutex_t *mutex,
+                                    clockid_t clock_id, const struct timespec *abstime) {
+    (void)clock_id;
+    return pthread_cond_timedwait(cond, mutex, abstime);
+}
+
+void nso_host_cxa_pure_virtual(void) {
+    fprintf(stderr, "[hle] __cxa_pure_virtual called!\n");
+    abort();
+}
+
+char *nso_host_setlocale(int category, const char *locale) {
+    (void)category; (void)locale;
+    static char c_locale[] = "C";
+    return c_locale;
+}
+
+char *nso_host_getenv(const char *name) {
+    (void)name;
+    return NULL;
+}
+
+char *nso_host_nl_langinfo(int item) {
+    (void)item;
+    static char utf8[] = "UTF-8";
+    return utf8;
+}
+
+void nso_host_throw_system_error(int ev, const char *what_arg) {
+    fprintf(stderr, "[hle] std::__throw_system_error: ev=%d what=%s\n", ev, what_arg ? what_arg : "(null)");
+    abort();
+}
+
+void nso_host_libcpp_verbose_abort(const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    fprintf(stderr, "[hle] libcpp_verbose_abort: ");
+    vfprintf(stderr, format, args);
+    fprintf(stderr, "\n");
+    va_end(args);
+    abort();
+}
+
 void nso_host_set_extension_resolver(nso_import_fn resolver) {extension_resolver=resolver;}
 uint64_t nso_host_resolve(uint32_t index,const char *name) {
     if(!name)return 0;
@@ -2181,5 +2321,31 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_diag_abort_impl;
     if(!strcmp(name,"_ZN2nn4diag12GetBacktraceEPmi"))
         return (uint64_t)(uintptr_t)&nso_host_diag_get_backtrace;
+    if(!strcmp(name,"_ZNSt3__15mutex4lockEv"))
+        return (uint64_t)(uintptr_t)&nso_host_std_mutex_lock;
+    if(!strcmp(name,"_ZNSt3__15mutex6unlockEv"))
+        return (uint64_t)(uintptr_t)&nso_host_std_mutex_unlock;
+    if(!strcmp(name,"_ZNSt3__118condition_variable10notify_oneEv"))
+        return (uint64_t)(uintptr_t)&nso_host_std_cv_notify_one;
+    if(!strcmp(name,"_ZNSt3__118condition_variable10notify_allEv"))
+        return (uint64_t)(uintptr_t)&nso_host_std_cv_notify_all;
+    if(!strcmp(name,"_ZNSt3__118condition_variable4waitERNS_11unique_lockINS_5mutexEEE"))
+        return (uint64_t)(uintptr_t)&nso_host_std_cv_wait;
+    if(!strcmp(name,"_ZNSt3__16chrono12steady_clock3nowEv"))
+        return (uint64_t)(uintptr_t)&nso_host_steady_clock_now;
+    if(!strcmp(name,"pthread_cond_clockwait"))
+        return (uint64_t)(uintptr_t)&nso_host_pthread_cond_clockwait;
+    if(!strcmp(name,"_ZNSt3__120__throw_system_errorEiPKc"))
+        return (uint64_t)(uintptr_t)&nso_host_throw_system_error;
+    if(!strcmp(name,"_ZNSt3__122__libcpp_verbose_abortEPKcz"))
+        return (uint64_t)(uintptr_t)&nso_host_libcpp_verbose_abort;
+    if(!strcmp(name,"setlocale"))
+        return (uint64_t)(uintptr_t)&nso_host_setlocale;
+    if(!strcmp(name,"getenv"))
+        return (uint64_t)(uintptr_t)&nso_host_getenv;
+    if(!strcmp(name,"nl_langinfo"))
+        return (uint64_t)(uintptr_t)&nso_host_nl_langinfo;
+    if(!strcmp(name,"__cxa_pure_virtual"))
+        return (uint64_t)(uintptr_t)&nso_host_cxa_pure_virtual;
     return extension_resolver?extension_resolver(index,name):0;
 }
