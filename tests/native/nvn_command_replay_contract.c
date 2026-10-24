@@ -59,7 +59,13 @@ typedef void (*cb_bind_vertex_buffer_fn)(void *, int, uint64_t, uint64_t);
 typedef void (*cb_bind_texture_fn)(void *, int, int, uint64_t);
 
 int main(int argc,char **argv) {
-    (void)argc;(void)argv;
+    /* The family contracts have their own switch, so that two families can be
+     * worked on at the same time without writing into the same file. The
+     * build script derives the switch from the file's name. */
+    if(argc!=2 || strcmp(argv[1],"--nvn-command-replay")) {
+        fprintf(stderr,"usage: %s --nvn-command-replay\n",argv[0]);
+        return 2;
+    }
     bootstrap_fn bootstrap = (bootstrap_fn)(uintptr_t)guest_process_resolve(0,"nvnBootstrapLoader");
     CHECK(bootstrap);
     lookup_fn lookup = (lookup_fn)(uintptr_t)bootstrap("nvnDeviceGetProcAddress");

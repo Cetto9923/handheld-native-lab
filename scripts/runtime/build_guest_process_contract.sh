@@ -20,7 +20,7 @@ if a.main and (not a.quota_bytes or not a.stack_bytes):p.error('main requires ex
 out.mkdir(parents=True,exist_ok=False)
 def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 nso=ROOT/'src/runtime/nso';hle=ROOT/'src/runtime/hle';nvn_device=ROOT/'src/graphics/nvn_device'
-core_sources=[nso/'nso_loader.c',*[hle/(s+'.c') for s in ['guest_context','guest_process','nso_host','address_region','mutex','exit_registry','module_tls','guest_tp','native_window']],nvn_device/'nvn_device.c',nvn_device/'nvn_queue.c',nvn_device/'nvn_window.c',nvn_device/'nvn_memory_pool.c',nvn_device/'nvn_sampler_pool.c',nvn_device/'nvn_sampler_builder.c',nvn_device/'nvn_texture_pool.c',nvn_device/'nvn_texture_builder.c',nvn_device/'nvn_blend_state.c',nvn_device/'nvn_render_state.c',nvn_device/'nvn_program.c',nvn_device/'nvn_sha256.c',nvn_device/'nvn_command_buffer.c',nvn_device/'nvn_command_buffer.generated.c',nvn_device/'nvn_command_replay.c']
+core_sources=[nso/'nso_loader.c',*[hle/(s+'.c') for s in ['guest_context','guest_process','nso_host','address_region','mutex','exit_registry','module_tls','guest_tp','native_window']],nvn_device/'nvn_device.c',nvn_device/'nvn_queue.c',nvn_device/'nvn_window.c',nvn_device/'nvn_memory_pool.c',nvn_device/'nvn_sampler_pool.c',nvn_device/'nvn_sampler_builder.c',nvn_device/'nvn_sampler.c',nvn_device/'nvn_texture_pool.c',nvn_device/'nvn_texture_builder.c',nvn_device/'nvn_blend_state.c',nvn_device/'nvn_render_state.c',nvn_device/'nvn_program.c',nvn_device/'nvn_sha256.c',nvn_device/'nvn_command_buffer.c',nvn_device/'nvn_command_buffer.generated.c',nvn_device/'nvn_command_replay.c']
 # The NVN device layer has a portable half and a platform backend. The host
 # build has no Vulkan implementation, the Android build has the real one.
 host_only_sources=[nvn_device/'nvn_backend_none.c']
@@ -105,11 +105,15 @@ manifest['normal_contract']=json.loads(log.splitlines()[-1])
 if manifest['normal_contract']['errors']:raise RuntimeError('normal contract failed')
 # The family contracts. Each one is its own binary and its own case, and each
 # one reports a line of JSON with its own error count.
+# A family contract has its own switch, so that two families can be worked on
+# at the same time without writing into the same file. The switch is derived
+# from the file's name: nvn_sampler_contract.c answers to --nvn-sampler.
 for family_test in family_contracts:
     name=family_test.stem
+    switch='--'+name[:-len('_contract')].replace('_','-')
     binary=out/(name+'.host')
     run('host-build-'+name,['clang',*strict,family_test,*host,'-lc++','-lpthread','-o',binary])
-    family_log=run('host-'+name,[binary])
+    family_log=run('host-'+name,[binary,switch])
     report=json.loads(family_log.splitlines()[-1])
     manifest['family_contracts'][name]=report
     failed=[key for key,value in report.items() if key.endswith('_errors') and value]

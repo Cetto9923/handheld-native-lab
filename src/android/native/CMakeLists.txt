@@ -82,6 +82,7 @@ if(ANDROID)
         "${FFRS_GUEST_NVN_DIR}/nvn_memory_pool.c"
         "${FFRS_GUEST_NVN_DIR}/nvn_sampler_pool.c"
         "${FFRS_GUEST_NVN_DIR}/nvn_sampler_builder.c"
+        "${FFRS_GUEST_NVN_DIR}/nvn_sampler.c"
         "${FFRS_GUEST_NVN_DIR}/nvn_blend_state.c"
         "${FFRS_GUEST_NVN_DIR}/nvn_render_state.c"
         "${FFRS_GUEST_NVN_DIR}/nvn_program.c"
