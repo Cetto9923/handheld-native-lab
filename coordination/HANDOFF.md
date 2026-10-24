@@ -1,3 +1,27 @@
+# P-MM-31 命令内存回调落地 / 句柄按池基址读取 / SPIR-V 能力按模块自身证据修正｜2026-10-25 05:10 Asia/Shanghai — **录制不再作废**（guest 回调在 guest 线程上直调 + 宿主借段）；**句柄终于按池的编号基址读了**；**SPIR-V 能力声明可按模块自身证据修正并被 spirv-val 验证**；**帧数仍为 0**
+
+- **结论**：命令流链上**最后一段「guest 要不到命令内存 ⇒ 录制作废 ⇒ 没有包」被拆掉了**。P-MM-24 把 guest 的命令内存回调改成**在 guest 线程上带三项显式校验直接调用**，两次不够就**借宿主段继续录**，**录制永不因内存作废**。同时我把**描述符池的编号基址接到了命令流的两头**：命令缓冲把绑定的池的 base 存进自己的状态、**单纹理绑定记录带上 base**，replay 读句柄时**加上 base**。另外把 P-MM-23 留在 `.local/` 里的两个能力脚本升级成**仓库里的正式工具**——它**不看清单、只看模块自己用了什么**，模块真用到的能力**不许删**（删就拒）。**帧数仍为 0：replay 仍不发一条 Vulkan 命令、不 present。**
+  1. **P-MM-24 已集成**（`a9fba6d` / `37f4b86` / `47eb5b3`）：原分支 `task/P-MM-24-command-memory`（`41a6771` + `0204d45` + `cd79863`），无冲突 cherry-pick 进主树。**guest 回调不再走边界**——边界按设计无法在 NVN 入口里调 guest（HOST phase 只存在于 import gateway 后面，而 NVN 入口是 guest 通过 `nvnDeviceGetProcAddress` 拿到的函数指针**直调**），改为**在 guest 线程上、带三项显式校验**（是 guest 线程 / TP mirror 已绑定 / 地址在模块 text 内且 4 字节对齐）**直接调用**，与参考树 `cmd_alloc_keep` 一致；**两次不够就借宿主段继续录**。族契约 `nvn_command_memory_contract` 已进宿主门，**errors 0**。
+  2. **句柄按基址读（协调者侧，`381f951`）**：
+     - 池侧（`83a64d5`）：**首次 Initialize 分配 base**，按 `(n+255)&~255` 步进；**纹理与采样器各一个独立编号空间**；base 表**独立于池状态**，池 Finalize 再 Initialize 仍拿同一个 base。
+     - 命令缓冲侧（`381f951`）：`SetTexturePool` / `SetSamplerPool` 把池的 base 存进**命令缓冲自己的状态**（参考树就是这么放的：`CB(c)->tex_base` / `CB(c)->samp_base`），**单纹理绑定记录 `p_bind_tex1` 带上 tbase/sbase**；**数组绑定形式没有位置放 base**（参考树的 `p_bind_handles` 也没有），**照参考树一样点名说出来**。
+     - replay 侧：读句柄时**加上 base**，并把读到的号码记进状态（`last_texture` / `last_sampler`），**契约能验出「base 被加了」而不是「base 只是被记下来了」**。
+     - **契约新增用例**：造**两个纹理池**（第一个 size 300 → base 0，第二个 size 10 → **base 512**），录制时绑定**第二个池**并绑一个纹理号 1 的句柄 ⇒ replay 读出的号码必须是 **513 = 1 + 512**。**这条真的跑通了**（池日志：`base=0` / `base=512`）。
+  3. **SPIR-V 能力修正工具入库**（`a0a8099`，`scripts/graphics/fix_spirv_capabilities.py`）：**不看清单、只看模块自己用了什么**——
+     - `Float64` 用没���：`OpTypeFloat` 的 width；
+     - `FragmentShaderPixelInterlockEXT` 用没用：有没有 **InterlockedWorkgroupMemory 语义**的 barrier；
+     - `StorageImageWriteWithoutFormat` 用没用：有没有写**格式为 Unknown 的** storage image（图像经 `OpLoad` / `OpAccessChain` / **函数参数** / **变量** 解析到 `OpTypeImage`）。
+     - **模块真用到的能力不许删**：要删就**拒绝并 exit 2**（实测：加完 `StorageImageWriteWithoutFormat` 再去删它 → `refusing to drop ... the module uses it`，exit 2）。
+     - **spirv-val `--target-env vulkan1.1` 实测**：两个 compute 模块**修前 exit 1、修后 exit 0**；四个图形模块**修前修后都 exit 0**。**原始文件一律不改**，结果另存。
+     - ⚠️ **这一步只解决「模块对不对」**，**不解决「驱动崩不崩」**——图形管线的 SIGSEGV 是另一回事（P-MM-27 在查）。
+  4. **宿主门重建（`.local/build-p-mm-37`）全绿**：**242 个用例**；`normal_contract.errors = 0`；**三个族契约都真的跑了**且 errors 为 0：`nvn_command_memory_contract`（P-MM-24 的）、`nvn_command_replay_contract`（含新增的基址用例）、`nvn_sampler_contract`（P-MM-25 的）。
+- **本单未解决 / 风险**：**帧数仍为 0**；**replay 仍不发 Vulkan 命令、不 present**（S1-c 待做，且要等图形管线能建）；**replay 读到号码后还不会把号码变成纹理**（池侧已有 `nvn_texture_pool_texture_at()`，接上即可）；**设备上次跑还是 P-MM-29 的那次**（P-MM-24/25 落地后**还没重跑真机**），所以「录制不再作废」**只有宿主契约证据，没有设备证据**；**图形管线一次都没建成过**（驱动崩，P-MM-27）；**纹理对象族与 view 族尚未在设备上跑过**（P-MM-26）；**`Float64` / `FragmentShaderPixelInterlockEXT` 的无用声明要在产物链上真的用上这个工具**（目前只做了工具与验证，**产物链还没接**）；**NVN 陷阱仍是进程级终止**（`_exit(97)` 会带走整个 app）；`nn::hid` 输入族未动；368 个未绑定导入**不可当关键路径完成度**；vendored 头是**别的游戏**（Darksiders II）的 NVN 53.105 重建件 ⇒ **156 个命令入口里 140 个签名未对本游戏证实**。
+- **下一项可证伪实验（按依赖顺序）**：
+  1. **真机重跑**（P-MM-26 落地后；≥300 秒、独立日志目录、设备锁）：看三件事——**录制是否不再作废**、**`EndRecording` 是否交出 handle**、**guest 的第一致命是否已经往后挪**（期望从 `nvnSamplerInitialize` 挪到纹理相关的那一步）。
+  2. **P-MM-27 交回**：拿到**实测成立的**图形管线状态后，S1-c 把包接到**同一个 VkDevice/queue**；**第一帧必须是 guest 自己的命令流解释得出来的颜色，不是宿主探针色**。
+  3. **replay 把号码变成纹理**：用 `nvn_texture_pool_texture_at()` 把 replay 读到的号码换成宿主纹理状态。
+  4. **产物链接上能力修正**：让 APK 里的 `.spv` 走 `fix_spirv_capabilities.py`，而不是手工的 `spv-fixed/`。
+
 # P-MM-30 sampler 族落地 / 描述符池编号 / 真机 Vulkan 四级结论 / 派出纹理族与图形管线崩溃两张卡｜2026-10-25 04:20 Asia/Shanghai — **sampler 对象族 15 名已实现并接线**；**描述符池的编号基址回来了**；**设备已实测：compute 管线能建成并被 GPU 消费，但 `vkCreateGraphicsPipelines` 直接把 Mali 驱动打崩（SIGSEGV）**；**帧数仍为 0**
 
 - **结论**：本轮把三块地基补齐了——**guest 下一步要撞的 sampler 对象族**（P-MM-25）已交付并接线；**描述符池的编号基址**已按参考树语义实现；**设备的 Vulkan 行为**第一次有了分级实测答案。**最要紧的新事实是负面的**：`vkCreateGraphicsPipelines` 在 RG477M 上是 **SIGSEGV**，不是返回错误码，而且**用手写的 trivial vertex+fragment 对照组同样崩、同一个 fault addr** ⇒ 崩在**图形管线状态本身**，不是游戏的 shader。**没有图形管线就没有第一帧**，所以这条已单独立卡 **P-MM-27**。**帧数仍为 0，不声称标题画面、不声称可玩。**
