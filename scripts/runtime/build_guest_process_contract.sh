@@ -20,7 +20,7 @@ if a.main and (not a.quota_bytes or not a.stack_bytes):p.error('main requires ex
 out.mkdir(parents=True,exist_ok=False)
 def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 nso=ROOT/'src/runtime/nso';hle=ROOT/'src/runtime/hle';nvn_device=ROOT/'src/graphics/nvn_device'
-core_sources=[nso/'nso_loader.c',*[hle/(s+'.c') for s in ['guest_context','guest_process','nso_host','address_region','mutex','exit_registry','module_tls','guest_tp','native_window']],nvn_device/'nvn_device.c',nvn_device/'nvn_queue.c',nvn_device/'nvn_window.c',nvn_device/'nvn_memory_pool.c',nvn_device/'nvn_sampler_pool.c',nvn_device/'nvn_texture_pool.c',nvn_device/'nvn_blend_state.c',nvn_device/'nvn_render_state.c',nvn_device/'nvn_program.c',nvn_device/'nvn_sha256.c']
+core_sources=[nso/'nso_loader.c',*[hle/(s+'.c') for s in ['guest_context','guest_process','nso_host','address_region','mutex','exit_registry','module_tls','guest_tp','native_window']],nvn_device/'nvn_device.c',nvn_device/'nvn_queue.c',nvn_device/'nvn_window.c',nvn_device/'nvn_memory_pool.c',nvn_device/'nvn_sampler_pool.c',nvn_device/'nvn_texture_pool.c',nvn_device/'nvn_blend_state.c',nvn_device/'nvn_render_state.c',nvn_device/'nvn_program.c',nvn_device/'nvn_sha256.c',nvn_device/'nvn_command_buffer.c',nvn_device/'nvn_command_buffer.generated.c']
 # The NVN device layer has a portable half and a platform backend. The host
 # build has no Vulkan implementation, the Android build has the real one.
 host_only_sources=[nvn_device/'nvn_backend_none.c']
@@ -40,7 +40,7 @@ test=ROOT/'tests/native/guest_process_contract.c';cli=nso/'nso_call.c'
 # in-process library run the same guest. It is compiled with the profile
 # defines; a build without them would silently link the refusing stub.
 boot_source=nso/'nso_boot.c'
-inputs=[*core_sources,*[s.with_suffix('.h') for s in core_sources],*host_only_sources,*android_only_sources,test,cli,boot_source,boot_source.with_suffix('.h'),ROOT/'scripts/runtime/build_guest_process_contract.sh',ROOT/'tests/native/test_loader.py']
+inputs=[*core_sources,*[s.with_suffix('.h') for s in core_sources if s.with_suffix('.h').exists()],*host_only_sources,*android_only_sources,test,cli,boot_source,boot_source.with_suffix('.h'),ROOT/'scripts/runtime/build_guest_process_contract.sh',ROOT/'tests/native/test_loader.py']
 manifest={'head':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
  'dirty':subprocess.check_output(['git','status','--short'],text=True),'host':platform.platform(),
  'compiler':subprocess.check_output(['clang','--version'],text=True),'cases':{},
@@ -1106,6 +1106,10 @@ run('host-nvn-program-contract',[out/'guest_process_contract.host','--nvn-progra
 nvn_program_stdout=(out/'host-nvn-program-contract'/'stdout.log').read_text()
 manifest['nvn_program_contract']=json.loads(nvn_program_stdout.splitlines()[-1])
 if manifest['nvn_program_contract']['nvn_program_errors']:raise RuntimeError('the NVN program contract failed')
+run('host-nvn-command-buffer-contract',[out/'guest_process_contract.host','--nvn-command-buffer'])
+nvn_command_buffer_stdout=(out/'host-nvn-command-buffer-contract'/'stdout.log').read_text()
+manifest['nvn_command_buffer_contract']=json.loads(nvn_command_buffer_stdout.splitlines()[-1])
+if manifest['nvn_command_buffer_contract']['nvn_command_buffer_errors']:raise RuntimeError('the NVN command buffer contract failed')
 # The nn::vi display bridge: the handles it issues, the ones it refuses and
 # the vsync event that starts unsignalled because no frame was presented.
 run('host-vi-display-contract',[out/'guest_process_contract.host','--vi-display'])

@@ -9,6 +9,7 @@
 #include "../../src/graphics/nvn_device/nvn_device.h"
 #include "../../src/graphics/nvn_device/nvn_memory_pool.h"
 #include "../../src/graphics/nvn_device/nvn_program.h"
+#include "../../src/graphics/nvn_device/nvn_command_buffer.h"
 #include "../../src/graphics/nvn_device/nvn_queue.h"
 #include "../../src/graphics/nvn_device/nvn_render_state.h"
 #include "../../src/graphics/nvn_device/nvn_sampler_pool.h"
@@ -6384,6 +6385,212 @@ static int nvn_program_contract(void) {
     return 0;
 }
 
+/* The NVN command buffer family.
+ *
+ * A command buffer is a recorder in the real SDK as well: the guest records
+ * the commands it wants and the device runs them later. So the contract is
+ * about the recording, and about the runtime keeping its state on the host
+ * instead of writing into the guest's object. */
+static int nvn_command_buffer_contract(void) {
+    typedef void *(*bootstrap_fn)(const char *);
+    typedef void *(*lookup_fn)(void *, const char *);
+    typedef uint64_t (*cb_initialize_fn)(void *, void *);
+    typedef void (*cb_finalize_fn)(void *);
+    typedef void (*cb_begin_recording_fn)(void *);
+    typedef uint64_t (*cb_end_recording_fn)(void *);
+    typedef uint64_t (*cb_add_command_memory_fn)(void *, void *, int64_t, uint64_t);
+    typedef uint64_t (*cb_get_command_memory_size_fn)(const void *);
+    typedef uint64_t (*cb_get_command_memory_free_fn)(const void *);
+    typedef int (*cb_is_recording_fn)(const void *);
+    typedef void (*cb_draw_elements_fn)(void *, int, int, int, uint64_t);
+    typedef void (*cb_clear_fn)(void *, int, const float *, int);
+    typedef void (*cb_set_viewport_fn)(void *, int, int, int, int);
+    nvn_command_buffer_stats stats;
+    size_t i;
+
+    /* 1. The family table holds every name of the family, once each. */
+    size_t count = nvn_command_buffer_family_count();
+    expect_condition("nvn-command-buffer-family-has-names", count > 100);
+    for (i = 0; i < count; i++) {
+        const nvn_command_buffer_family_entry *entry = nvn_command_buffer_family_entry_at(i);
+        size_t j;
+        expect_condition("nvn-command-buffer-family-entry-has-a-name",
+                         entry != NULL && entry->name != NULL && entry->name[0] != 0);
+        expect_condition("nvn-command-buffer-family-entry-has-a-function",
+                         entry != NULL && entry->fn != NULL);
+        if (!entry || !entry->name) continue;
+        for (j = i + 1; j < count; j++) {
+            const nvn_command_buffer_family_entry *other = nvn_command_buffer_family_entry_at(j);
+            if (!other || !other->name) continue;
+            expect_condition("nvn-command-buffer-family-name-is-unique",
+                             strcmp(entry->name, other->name) != 0);
+        }
+    }
+
+    /* 2. Every name of the family resolves through the guest's own lookup,
+     *    and resolves to the same entry point every time. */
+    bootstrap_fn bootstrap = (bootstrap_fn)(uintptr_t)guest_process_resolve(0, "nvnBootstrapLoader");
+    CHECK(bootstrap != NULL);
+    lookup_fn lookup = (lookup_fn)(uintptr_t)bootstrap("nvnDeviceGetProcAddress");
+    CHECK(lookup != NULL);
+    for (i = 0; i < count; i++) {
+        const nvn_command_buffer_family_entry *entry = nvn_command_buffer_family_entry_at(i);
+        void *resolved;
+        if (!entry || !entry->name) continue;
+        resolved = lookup(NULL, entry->name);
+        expect_condition("nvn-command-buffer-name-resolves", resolved != NULL);
+        expect_condition("nvn-command-buffer-name-is-stable", resolved == lookup(NULL, entry->name));
+        expect_condition("nvn-command-buffer-name-matches-the-table", resolved == entry->fn);
+    }
+
+    /* 3. The command buffer of the guest. The runtime keeps its state on the
+     *    host, so the guest's object must come back untouched. */
+    cb_initialize_fn initialize = (cb_initialize_fn)(uintptr_t)lookup(NULL, "nvnCommandBufferInitialize");
+    cb_finalize_fn finalize = (cb_finalize_fn)(uintptr_t)lookup(NULL, "nvnCommandBufferFinalize");
+    cb_begin_recording_fn begin_recording =
+        (cb_begin_recording_fn)(uintptr_t)lookup(NULL, "nvnCommandBufferBeginRecording");
+    cb_end_recording_fn end_recording =
+        (cb_end_recording_fn)(uintptr_t)lookup(NULL, "nvnCommandBufferEndRecording");
+    cb_add_command_memory_fn add_command_memory =
+        (cb_add_command_memory_fn)(uintptr_t)lookup(NULL, "nvnCommandBufferAddCommandMemory");
+    cb_get_command_memory_size_fn get_command_memory_size =
+        (cb_get_command_memory_size_fn)(uintptr_t)lookup(NULL, "nvnCommandBufferGetCommandMemorySize");
+    cb_get_command_memory_free_fn get_command_memory_free =
+        (cb_get_command_memory_free_fn)(uintptr_t)lookup(NULL, "nvnCommandBufferGetCommandMemoryFree");
+    cb_is_recording_fn is_recording =
+        (cb_is_recording_fn)(uintptr_t)lookup(NULL, "nvnCommandBufferIsRecording");
+    cb_draw_elements_fn draw_elements =
+        (cb_draw_elements_fn)(uintptr_t)lookup(NULL, "nvnCommandBufferDrawElements");
+    cb_clear_fn clear = (cb_clear_fn)(uintptr_t)lookup(NULL, "nvnCommandBufferClearColor");
+    cb_set_viewport_fn set_viewport =
+        (cb_set_viewport_fn)(uintptr_t)lookup(NULL, "nvnCommandBufferSetViewport");
+    CHECK(initialize && finalize && begin_recording && end_recording);
+    CHECK(add_command_memory && get_command_memory_size && get_command_memory_free && is_recording);
+    CHECK(draw_elements && clear && set_viewport);
+
+    unsigned char buffer_object[64];
+    memset(buffer_object, 0xaa, sizeof(buffer_object));
+    expect_value("nvn-command-buffer-initialize-succeeds", initialize(buffer_object, NULL), 1);
+    expect_condition("nvn-command-buffer-object-not-written",
+                     all_bytes(buffer_object, sizeof(buffer_object), 0xaa));
+
+    /* 4. The command memory the guest hands over is remembered as it was
+     *    given, and the answer about what is free cannot be a measurement,
+     *    because the guest writes into that memory itself. */
+    static unsigned char command_memory[4096];
+    memset(command_memory, 0x11, sizeof(command_memory));
+    add_command_memory(buffer_object, command_memory, 0, sizeof(command_memory));
+    expect_value("nvn-command-buffer-command-memory-size", get_command_memory_size(buffer_object),
+                 sizeof(command_memory));
+    expect_value("nvn-command-buffer-command-memory-free-is-the-whole-memory",
+                 get_command_memory_free(buffer_object), sizeof(command_memory));
+
+    /* 5. Recording. The guest is not recording yet. */
+    expect_value("nvn-command-buffer-is-not-recording-yet", (uint64_t)(uint32_t)is_recording(buffer_object), 0);
+    begin_recording(buffer_object);
+    expect_value("nvn-command-buffer-is-recording", (uint64_t)(uint32_t)is_recording(buffer_object), 1);
+
+    /* How many records there are before the three commands below. The count
+     *    itself is not written down here, so the check afterwards does not
+     *    depend on how many commands the family records on its own. */
+    const nvn_recorded_command *records = NULL;
+    size_t record_count = 0;
+    expect_value("nvn-command-buffer-has-records",
+                 (uint64_t)(uint32_t)nvn_command_buffer_get_records(buffer_object, &records, &record_count), 1);
+    size_t records_before = record_count;
+
+    /* The arguments are recorded as they were passed. */
+    static float clear_color[4] = {0.25f, 0.5f, 0.75f, 1.0f};
+    clear(buffer_object, 0, clear_color, 0);
+    set_viewport(buffer_object, 0, 0, 1280, 720);
+    draw_elements(buffer_object, 3, 1, 6, 0x12345000ULL);
+
+    records = NULL;
+    record_count = 0;
+    expect_value("nvn-command-buffer-has-records-again",
+                 (uint64_t)(uint32_t)nvn_command_buffer_get_records(buffer_object, &records, &record_count), 1);
+    expect_value("nvn-command-buffer-three-commands-were-recorded",
+                 (uint64_t)record_count, (uint64_t)(records_before + 3));
+    if (records && record_count >= 3) {
+        records = &records[record_count - 3];
+        const nvn_command_buffer_family_entry *clear_entry =
+            nvn_command_buffer_family_entry_at((size_t)records[0].op);
+        const nvn_command_buffer_family_entry *viewport_entry =
+            nvn_command_buffer_family_entry_at((size_t)records[1].op);
+        const nvn_command_buffer_family_entry *draw_entry =
+            nvn_command_buffer_family_entry_at((size_t)records[2].op);
+        expect_condition("nvn-command-buffer-first-record-is-the-clear",
+                         clear_entry && clear_entry->name &&
+                             !strcmp(clear_entry->name, "nvnCommandBufferClearColor"));
+        expect_condition("nvn-command-buffer-second-record-is-the-viewport",
+                         viewport_entry && viewport_entry->name &&
+                             !strcmp(viewport_entry->name, "nvnCommandBufferSetViewport"));
+        expect_condition("nvn-command-buffer-third-record-is-the-draw",
+                         draw_entry && draw_entry->name &&
+                             !strcmp(draw_entry->name, "nvnCommandBufferDrawElements"));
+        /* The command buffer itself is the first word of every record. */
+        expect_value("nvn-command-buffer-record-names-the-buffer",
+                     records[2].args[0], (uint64_t)(uintptr_t)buffer_object);
+        /* The address of the index buffer is the word the guest passed. */
+        expect_value("nvn-command-buffer-record-holds-the-index-address",
+                     records[2].args[4], 0x12345000ULL);
+        /* The viewport is recorded as the four numbers the guest passed. */
+        expect_value("nvn-command-buffer-record-holds-the-viewport-height",
+                     records[1].args[4], 720);
+    }
+
+    /* 6. A record keeps what it was given. The guest may write into its own
+     *    memory afterwards, and the record must not change with it. */
+    if (records && record_count == 3) {
+        const nvn_recorded_command *again = NULL;
+        size_t again_count = 0;
+        memset(clear_color, 0x99, sizeof(clear_color));
+        expect_value("nvn-command-buffer-records-are-still-there",
+                     (uint64_t)(uint32_t)nvn_command_buffer_get_records(buffer_object, &again, &again_count), 1);
+        expect_condition("nvn-command-buffer-record-count-is-unchanged", again_count == record_count);
+        if (again && again_count == record_count) {
+            expect_value("nvn-command-buffer-record-does-not-follow-the-guest-memory",
+                         again[2].args[4], 0x12345000ULL);
+            /* The colour is an address in the guest's memory. The record names
+             *    that address; it does not hold the four numbers yet, because
+             *    the guest may write over them before the command is run. */
+            expect_value("nvn-command-buffer-record-names-the-colour-address",
+                         again[0].args[2], (uint64_t)(uintptr_t)clear_color);
+        }
+    }
+
+    /* 7. Ending the recording hands out a handle of the runtime. It is not a
+     *    command of the device, because nothing was executed. */
+    uint64_t handle = end_recording(buffer_object);
+    expect_condition("nvn-command-buffer-end-recording-hands-out-a-handle", handle != 0);
+    expect_value("nvn-command-buffer-is-not-recording-any-more",
+                 (uint64_t)(uint32_t)is_recording(buffer_object), 0);
+
+    /* 8. The counters. */
+    nvn_command_buffer_get_stats(&stats);
+    expect_condition("nvn-command-buffer-stats-count-calls", stats.calls > 0);
+    expect_condition("nvn-command-buffer-stats-count-records", stats.recorded >= 3);
+    expect_condition("nvn-command-buffer-stats-count-handles", stats.handles > 0);
+    expect_condition("nvn-command-buffer-stats-count-initialized", stats.initialized > 0);
+    expect_condition("nvn-command-buffer-stats-have-records", stats.records >= 3);
+    expect_condition("nvn-command-buffer-stats-have-a-live-buffer", stats.live_buffers > 0);
+
+    /* 9. The buffer is finalized last, because a finalized buffer is gone. */
+    finalize(buffer_object);
+    nvn_command_buffer_get_stats(&stats);
+    expect_condition("nvn-command-buffer-finalized-is-not-live", stats.live_buffers == 0);
+
+    /* The final gate. Without it the contract could exit 0 while the
+     * expectations had failed. */
+    CHECK(!errors);
+    printf("{\"nvn_command_buffer_errors\":%u,\"names\":%zu,\"calls\":%llu,\"recorded\":%llu,"
+           "\"handles\":%llu,\"initialized\":%llu,\"finalized\":%llu}\n",
+           errors, count, (unsigned long long)stats.calls, (unsigned long long)stats.recorded,
+           (unsigned long long)stats.handles, (unsigned long long)stats.initialized,
+           (unsigned long long)stats.finalized);
+    return 0;
+}
+
 int main(int argc,char **argv) {
     page=(size_t)sysconf(_SC_PAGESIZE);
     if(argc==2 && !strcmp(argv[1],"--tls-host-null")) {
@@ -6422,6 +6629,7 @@ int main(int argc,char **argv) {
     if(argc==2 && !strcmp(argv[1],"--nvn-blend-state"))return nvn_blend_state_contract();
     if(argc==2 && !strcmp(argv[1],"--nvn-render-states"))return nvn_render_state_contract();
     if(argc==2 && !strcmp(argv[1],"--nvn-program"))return nvn_program_contract();
+    if(argc==2 && !strcmp(argv[1],"--nvn-command-buffer"))return nvn_command_buffer_contract();
     if(argc==2 && !strcmp(argv[1],"--vi-display"))return vi_display_contract();
     if(argc==3 && !strcmp(argv[1],"--nvn-bootstrap"))return nvn_bootstrap_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-fresh"))return tls_fresh_registration_contract(argv[2]);
