@@ -1531,6 +1531,24 @@ bool nso_host_account_is_initialized(void) {
     return s_account_initialized;
 }
 
+static bool s_oe_initialized = false;
+
+int32_t nso_host_oe_initialize(void) {
+    s_oe_initialized = true;
+    fprintf(stderr, "[hle] nn::oe::Initialize: initialized operation environment -> returning 0\n");
+    return 0;
+}
+
+bool nso_host_oe_is_initialized(void) {
+    return s_oe_initialized;
+}
+
+nn_settings_language_code nso_host_oe_get_desired_language(void) {
+    nn_settings_language_code code = { .code = "en-US" };
+    fprintf(stderr, "[hle] nn::oe::GetDesiredLanguage: returning 'en-US'\n");
+    return code;
+}
+
 /* ========================================================================= */
 /* nn::os::EventType HLE Implementation                                      */
 /* ========================================================================= */
@@ -2183,6 +2201,10 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_socket_initialize;
     if(!strcmp(name,"_ZN2nn7account10InitializeEv") || !strcmp(name,"nnaccountInitialize"))
         return (uint64_t)(uintptr_t)&nso_host_account_initialize;
+    if(!strcmp(name,"_ZN2nn2oe10InitializeEv") || !strcmp(name,"nnoeInitialize"))
+        return (uint64_t)(uintptr_t)&nso_host_oe_initialize;
+    if(!strcmp(name,"_ZN2nn2oe18GetDesiredLanguageEv") || !strcmp(name,"nnoeGetDesiredLanguage"))
+        return (uint64_t)(uintptr_t)&nso_host_oe_get_desired_language;
     if(!strcmp(name,"_ZN2nn4util11ReferSymbolEPKv") || !strcmp(name,"nnutilReferSymbol"))
         return (uint64_t)(uintptr_t)&refer_symbol;
     if(!strcmp(name,"_ZN2nn4util12GenerateUuidEv"))

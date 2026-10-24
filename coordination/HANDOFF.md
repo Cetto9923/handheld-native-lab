@@ -1,3 +1,29 @@
+# P-AG-19 闭环｜2026-10-24 10:55 Asia/Shanghai — nn::oe::Initialize 与 nn::oe::GetDesiredLanguage 落地与推进
+
+- **结论**：工单 P-AG-19 目标圆满闭环。
+  1. 落地最小可用 `nn::oe::Initialize` HLE（无参，基线成功返回 0 / ResultSuccess，清晰归因 `[hle] nn::oe::Initialize: initialized operation environment -> returning 0` 日志）。
+  2. 紧随其后的 `nn::oe::GetDesiredLanguage`（dynsym index 81）按 Nintendo SDK `nn::settings::LanguageCode`（8 字节 packed ASCII / NUL-terminated 字符串）以 ARM64 ABI `x0` 返回 `"en-US"`（与零售包 ICU 资源查找 `en_US` 强一致），打清晰 `[hle] nn::oe::GetDesiredLanguage: returning 'en-US'` 归因日志。
+  3. `guest_process.c` 中 `is_typed_runtime_export` 与 `import_signature`（0 args, 1 return GP register）完整绑定 `_ZN2nn2oe10InitializeEv` / `nnoeInitialize` 与 `_ZN2nn2oe18GetDesiredLanguageEv` / `nnoeGetDesiredLanguage`。
+  4. 宿主契约与 RG477M 真机契约测试均通过（`{"oe_contract_errors":0,"initialize":true,"get_desired_language":true,"baseline_locale":"en-US"}`）。
+  5. 真机实测越过 index 80 与 index 81，两次成功完成 `Initialize` 与 `GetDesiredLanguage` 流程，引擎推进跨过本地化区域设置，继续物理读取 pak、多线程事件同步等待（`nn::os::SignalEvent` / `nn::os::WaitEvent`），atexit 登记进一步攀升至 13,593。
+- **最新阻塞前沿**：
+  - `[fault] signal=5 pc=0x7668e4c698 fa=0x7668e4c698`
+  - `[unresolved-import] index=211 name=gettimeofday caller_offset=0x5920c94`
+  - 退出码 133（SIGTRAP，未解析导入导致）；基线日志 `.local/logs/rg477m-boot-v41-oe-init.log`（及 `.exitcode`=133）。
+- **未达**：标题画面 / 可玩（仍未进呈现阶段）。
+
+---
+
+# 日间调度（P-AG-19 启动｜2026-10-24 10:38 Asia/Shanghai）
+
+- **切换原因**：P-AG-18 agy PID 88093 已退出；HANDOFF 已写闭环 @ HEAD `15636ca`；真机最新 v40 越过 setlocale / TaskGraph SIGSEGV，阻塞 `nn::oe::Initialize`（import 80，exit 133）；主树 clean、无活跃 FFRS 写手。
+- **里程碑**：新 HEAD `15636ca`；真机 v36→v40；TaskGraph SIGSEGV（exit 139）消除；ICU/pak 读推进。
+- **已派**：P-AG-19 攻 `nn::oe::Initialize`（及紧随 GetDesiredLanguage）；提词 `coordination/prompts/P-AG-oe-initialize.md`；agy PID **26521**（若 --dangerously-skip-permissions 弹出审批请点批准）；日志 `.local/agent-pm/agy-p-ag-19.log`
+- **基线**：`.local/logs/rg477m-boot-v40-setlocale.log` exit 133；设备 RG477M01445122；pak/ucas PASS（`.local/romfs/FFRS/Content/Paks/`）
+- **未达**：标题 / 可玩
+
+---
+
 # P-AG-18 闭环｜2026-10-24 10:30 Asia/Shanghai — UE TaskGraph worker SIGSEGV 根因修复与 libc++/locale 推进
 
 - **结论**：v36 的 TaskGraph worker `SIGSEGV (signal 11, fa=0x4, module_offset=0x3cb84)` 根因确认为 **子线程（Worker 线程）与 GameThread 共享单个 guest OS TLS 槽 0 记录**（缺少 `_Thread_local guest_os_tls_thread *current_os_thread`）。子线程并发调用 `nn::os::GetTlsValue(slot=0)` / `SetTlsValue` 篡改 `FThreadLocalData` 锁计数器，导致锁计数器下溢为负数（-3）；解锁慢路径 `0x3cb20`（`ldr x20, [x9, #8]`，`x9 = ((-3 & ~1) | 2) & ~3 = -4`）将 `-4 + 8 = 0x4` 当作队列节点指针访问，触发 SIGSEGV `fa=0x4`。

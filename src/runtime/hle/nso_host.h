@@ -136,6 +136,14 @@ bool nso_host_socket_is_initialized(void);
 int32_t nso_host_account_initialize(void);
 bool nso_host_account_is_initialized(void);
 
+typedef struct {
+    char code[8];
+} nn_settings_language_code;
+
+int32_t nso_host_oe_initialize(void);
+bool nso_host_oe_is_initialized(void);
+nn_settings_language_code nso_host_oe_get_desired_language(void);
+
 void nso_host_os_initialize_event(void *event, bool initially_signaled, int32_t clear_mode);
 void nso_host_os_finalize_event(void *event);
 void nso_host_os_signal_event(void *event);

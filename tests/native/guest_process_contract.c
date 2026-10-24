@@ -1603,6 +1603,40 @@ static int account_contract(void) {
     puts("{\"account_contract_errors\":0,\"initialize\":true,\"baseline_zero\":true}");
     return 0;
 }
+static int oe_contract(void) {
+    typedef int32_t (*init_fn)(void);
+    typedef nn_settings_language_code (*lang_fn)(void);
+
+    init_fn init_oe = (init_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2oe10InitializeEv");
+    CHECK(init_oe != NULL);
+
+    init_fn init_oe_alias = (init_fn)(uintptr_t)guest_process_resolve(0, "nnoeInitialize");
+    CHECK(init_oe_alias != NULL);
+
+    lang_fn get_lang = (lang_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2oe18GetDesiredLanguageEv");
+    CHECK(get_lang != NULL);
+
+    lang_fn get_lang_alias = (lang_fn)(uintptr_t)guest_process_resolve(0, "nnoeGetDesiredLanguage");
+    CHECK(get_lang_alias != NULL);
+
+    /* Test Initialize: baseline returns 0 without crash */
+    int32_t res = init_oe();
+    CHECK(res == 0);
+    CHECK(nso_host_oe_is_initialized());
+
+    res = init_oe_alias();
+    CHECK(res == 0);
+
+    /* Test GetDesiredLanguage: returns "en-US" */
+    nn_settings_language_code lc = get_lang();
+    CHECK(!strcmp(lc.code, "en-US"));
+
+    nn_settings_language_code lc_alias = get_lang_alias();
+    CHECK(!strcmp(lc_alias.code, "en-US"));
+
+    puts("{\"oe_contract_errors\":0,\"initialize\":true,\"get_desired_language\":true,\"baseline_locale\":\"en-US\"}");
+    return 0;
+}
 static int fs_open_dir_contract(void) {
     typedef int32_t (*open_dir_fn)(nn_fs_directory_handle *, const char *, int32_t);
     typedef int32_t (*get_count_fn)(int64_t *, nn_fs_directory_handle);
@@ -2723,6 +2757,7 @@ int main(int argc,char **argv) {
     if(argc==2 && !strcmp(argv[1],"--nifm"))return nifm_contract();
     if(argc==2 && !strcmp(argv[1],"--socket"))return socket_contract();
     if(argc==2 && !strcmp(argv[1],"--account"))return account_contract();
+    if(argc==2 && !strcmp(argv[1],"--oe"))return oe_contract();
     if(argc==2 && !strcmp(argv[1],"--fs-open-dir"))return fs_open_dir_contract();
     if(argc==2 && !strcmp(argv[1],"--os-event"))return os_event_contract();
     if(argc==2 && !strcmp(argv[1],"--posix-memalign"))return posix_memalign_contract();
