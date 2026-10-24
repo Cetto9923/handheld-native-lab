@@ -1003,7 +1003,13 @@ static bool create_pipelines(Probe *p) {
             VkPipelineColorBlendStateCreateInfo blend = {
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
                 .attachmentCount = 1, .pAttachments = &blend_attachment};
+            /* Every field of the stage structure has to be written.  The
+             * driver dereferences stage.pNext and stage.pSpecializationInfo
+             * without checking them, so a field that keeps the stack's
+             * leftovers takes the process down with a SIGSEGV; P-MM-27
+             * measured that on RG477M and the fix is the memset below. */
             VkPipelineShaderStageCreateInfo stages[2];
+            memset(stages, 0, sizeof(stages));
             uint32_t stage_count = 0;
             stages[stage_count].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
             stages[stage_count].stage = VK_SHADER_STAGE_VERTEX_BIT;

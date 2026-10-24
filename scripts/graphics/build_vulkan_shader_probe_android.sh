@@ -21,8 +21,11 @@ RESOURCE="${TOOLCHAIN}/lib/clang/18"
 API_LIBS="${SYSROOT}/usr/lib/aarch64-linux-android/28"
 BUILTINS="${RESOURCE}/lib/linux/libclang_rt.builtins-aarch64-android.a"
 SOURCE="${ROOT}/src/graphics/vulkan_probe/vulkan_shader_probe.c"
+BISECT_SOURCE="${ROOT}/src/graphics/vulkan_probe/vulkan_graphics_bisect.c"
 SPV_VARIANTS="${FFRS_SPV_VARIANTS:-${ROOT}/.local/shader-verify/spv=original,${ROOT}/.local/shader-verify/spv-fixed=fixed}"
 SPV_STAGE_FILTER="${FFRS_SPV_STAGE_FILTER:-}"
+# The hand-written trivial vertex/fragment pair P-MM-23 used as its control.
+TRIVIAL_DIR="${FFRS_SPV_TRIVIAL:-${ROOT}/.local/shader-verify/spv-trivialpair}"
 RUN="${FFRS_VK_BUILD_DIR:-${ROOT}/.local/vulkan-shader/$(date -u +%Y%m%dT%H%M%SZ)}"
 if [[ ! -f "${MEMBERS}" || ! -f "${SYSROOT}/usr/include/vulkan/vulkan_core.h" ||
       ! -f "${API_LIBS}/libdl.so" || ! -x "${LINKER}" || ! -x "${TOOLCHAIN}/bin/llvm-readelf" ||
@@ -37,6 +40,14 @@ for entry in ${SPV_VARIANTS//,/ }; do
         exit 2
     fi
 done
+if [[ ! -f "${TRIVIAL_DIR}/trivial_vert.spv" || ! -f "${TRIVIAL_DIR}/trivial_frag.spv" ]]; then
+    echo "BLOCKED_INPUTS: the trivial vertex/fragment pair not found: ${TRIVIAL_DIR}" >&2
+    exit 2
+fi
+if [[ ! -f "${BISECT_SOURCE}" ]]; then
+    echo "BLOCKED_INPUTS: the bisect probe source not found: ${BISECT_SOURCE}" >&2
+    exit 2
+fi
 if [[ -e "${RUN}" ]]; then
     echo "Refusing to overwrite existing build evidence: ${RUN}" >&2
     exit 2
@@ -279,6 +290,29 @@ run_step elf "${TOOLCHAIN}/bin/llvm-readelf" --file-header --program-headers --d
 run_step symbols "${TOOLCHAIN}/bin/llvm-readelf" --symbols "${RUN}/probe.o"
 
 # ---------------------------------------------------------------------------
+# The graphics-pipeline crash bisect (P-MM-27).  It is a second, independent
+# binary: it owns its own instance and device and never links the runtime.
+# ---------------------------------------------------------------------------
+cp "${BISECT_SOURCE}" "${RUN}/source_freeze/src/graphics/vulkan_probe/"
+mkdir -p "${RUN}/modules-trivial"
+cp "${TRIVIAL_DIR}/trivial_vert.spv" "${RUN}/modules-trivial/trivial_vert.spv"
+cp "${TRIVIAL_DIR}/trivial_frag.spv" "${RUN}/modules-trivial/trivial_frag.spv"
+run_step bisect-compile "${CC}" --target=aarch64-linux-android28 --sysroot="${SYSROOT}" \
+    -resource-dir "${RESOURCE}" -isystem "${SYSROOT}/usr/include/aarch64-linux-android" \
+    -isystem "${SYSROOT}/usr/include/vulkan" -std=c11 -O2 -g -fPIE -fno-omit-frame-pointer \
+    -Wall -Wextra -Werror -Wpedantic -MD -MF "${RUN}/bisect.d" \
+    -c "${RUN}/source_freeze/src/graphics/vulkan_probe/vulkan_graphics_bisect.c" \
+    -o "${RUN}/bisect.o"
+run_step bisect-link env "DYLD_LIBRARY_PATH=${RUST_ROOT}/lib" "${LINKER}" \
+    --no-undefined --fatal-warnings --build-id=sha1 --eh-frame-hdr \
+    -pie --dynamic-linker /system/bin/linker64 -z max-page-size=16384 -z noexecstack -z relro -z now \
+    -o "${RUN}/vulkan_graphics_bisect" "${API_LIBS}/crtbegin_dynamic.o" "${RUN}/bisect.o" \
+    --start-group "${BUILTINS}" -L "${API_LIBS}" -lc -ldl --end-group "${API_LIBS}/crtend_android.o"
+run_step bisect-elf "${TOOLCHAIN}/bin/llvm-readelf" --file-header --program-headers --dynamic-table \
+    "${RUN}/vulkan_graphics_bisect"
+run_step bisect-symbols "${TOOLCHAIN}/bin/llvm-readelf" --symbols "${RUN}/bisect.o"
+
+# ---------------------------------------------------------------------------
 # Evidence: ELF protections and the re-checked local build inputs.
 # ---------------------------------------------------------------------------
 run_step evidence python3 - "${RUN}" "${TOOLCHAIN}" "${MEMBERS}" "${CC}" "${LINKER}" "${BUILTINS}" <<'PY'
@@ -351,12 +385,46 @@ for path in sorted(inputs):
         entry["crc32_rechecked"] = crc
     records.append(entry)
 artifact = run / "vulkan_shader_probe"
+bisect_artifact = run / "vulkan_graphics_bisect"
+bisect_dependency_text = (run / "bisect.d").read_text().replace("\\\n", " ")
+bisect_dependencies = [Path(p).resolve() for p in
+                       shlex.split(bisect_dependency_text.split(":", 1)[1])]
+bisect_inputs = set(bisect_dependencies + [api / name for name in
+                                           ("crtbegin_dynamic.o", "crtend_android.o", "libc.so",
+                                            "libdl.so")]
+                    + [builtins])
+bisect_records = []
+for path in sorted(bisect_inputs):
+    content = path.read_bytes()
+    entry = {"path": str(path), "bytes": len(content), "sha256": hashlib.sha256(content).hexdigest()}
+    if path.is_relative_to(toolchain):
+        relative = path.relative_to(toolchain).as_posix()
+        assert relative in known, "input absent from validated NDK manifest: %s" % relative
+        expected = known[relative]
+        crc = "%08x" % (zlib.crc32(content) & 0xFFFFFFFF)
+        assert len(content) == expected["bytes"] and crc == expected["crc32"], \
+            "CRC mismatch: %s" % relative
+        entry["crc32_rechecked"] = crc
+    bisect_records.append(entry)
+trivial_modules = {}
+for name in ("trivial_vert.spv", "trivial_frag.spv"):
+    path = run / "modules-trivial" / name
+    trivial_modules[name] = {"path": str(path), "bytes": path.stat().st_size,
+                             "sha256": digest(path)}
 evidence = {"schema": "ffrs.vulkan.shader.build.v1", "android_execution": "NOT_RUN",
             "git_head_at_build": (run / "git-head.txt").read_text().strip(),
             "source_sha256": digest(run / "source_freeze/src/graphics/vulkan_probe/vulkan_shader_probe.c"),
             "artifact": {"path": str(artifact), "bytes": artifact.stat().st_size,
                          "sha256": digest(artifact)},
             "elf_checks": verify_elf(artifact),
+            "bisect": {"source_sha256": digest(
+                           run / "source_freeze/src/graphics/vulkan_probe/vulkan_graphics_bisect.c"),
+                       "artifact": {"path": str(bisect_artifact),
+                                    "bytes": bisect_artifact.stat().st_size,
+                                    "sha256": digest(bisect_artifact)},
+                       "elf_checks": verify_elf(bisect_artifact),
+                       "trivial_modules": trivial_modules,
+                       "inputs": bisect_records},
             "links_against_vulkan": False,
             "loader": "dlopen at run time",
             "inputs": records,
@@ -366,7 +434,11 @@ evidence = {"schema": "ffrs.vulkan.shader.build.v1", "android_execution": "NOT_R
                              "whole_archive_sha1_verified": False}}
 (run / "build-evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")
 print(json.dumps({"artifact": evidence["artifact"], "elf_checks": evidence["elf_checks"],
-                  "validated_input_count": len(records)}, indent=2))
+                  "bisect_artifact": evidence["bisect"]["artifact"],
+                  "bisect_elf_checks": evidence["bisect"]["elf_checks"],
+                  "trivial_modules": trivial_modules,
+                  "validated_input_count": len(records),
+                  "bisect_validated_input_count": len(bisect_records)}, indent=2))
 PY
 
 # ---------------------------------------------------------------------------
