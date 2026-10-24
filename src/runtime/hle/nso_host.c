@@ -1943,6 +1943,21 @@ nn_settings_language_code nso_host_oe_get_desired_language(void) {
     return code;
 }
 
+static nn_oe_cpu_boost_mode s_oe_cpu_boost_mode = 0;
+
+void nso_host_oe_set_cpu_boost_mode(nn_oe_cpu_boost_mode mode) {
+    s_oe_cpu_boost_mode = mode;
+    /* On the Switch this selects the title's CPU boost profile. On RG477M the
+     * frequency policy belongs to the Android governor (writing cpufreq sysfs
+     * needs root), so the request is recorded faithfully and stays visible in
+     * the log instead of being dropped silently or faked. */
+    fprintf(stderr, "[hle] nn::oe::SetCpuBoostMode: mode=%d recorded (cpu frequency policy stays with the Android governor)\n", (int)mode);
+}
+
+nn_oe_cpu_boost_mode nso_host_oe_get_cpu_boost_mode(void) {
+    return s_oe_cpu_boost_mode;
+}
+
 /* ========================================================================= */
 /* nn::os::EventType HLE Implementation                                      */
 /* ========================================================================= */
@@ -2878,6 +2893,8 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_oe_initialize;
     if(!strcmp(name,"_ZN2nn2oe18GetDesiredLanguageEv") || !strcmp(name,"nnoeGetDesiredLanguage"))
         return (uint64_t)(uintptr_t)&nso_host_oe_get_desired_language;
+    if(!strcmp(name,"_ZN2nn2oe15SetCpuBoostModeENS0_12CpuBoostModeE"))
+        return (uint64_t)(uintptr_t)&nso_host_oe_set_cpu_boost_mode;
     if(!strcmp(name,"_ZN2nn4util11ReferSymbolEPKv") || !strcmp(name,"nnutilReferSymbol"))
         return (uint64_t)(uintptr_t)&refer_symbol;
     if(!strcmp(name,"_ZN2nn4util12GenerateUuidEv"))

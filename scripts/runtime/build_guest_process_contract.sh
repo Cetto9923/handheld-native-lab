@@ -495,6 +495,48 @@ run('host-movie-allocator-contract',[out/'guest_process_contract.host','--movie-
 movie_stderr=(out/'host-movie-allocator-contract'/'stderr.log').read_text()
 if '[hle] movie::SetAllocator:' not in movie_stderr:raise RuntimeError('movie::SetAllocator stub did not run')
 if '[boundary-unsupported]' in movie_stderr:raise RuntimeError('movie::SetAllocator import signature was refused by the boundary')
+# nn::oe::SetCpuBoostMode (main NSO import index 75) takes one enum argument and
+# returns nothing. The fixture calls the import with mode 1 through the real
+# guest import path, so the boundary must accept the one-argument void
+# signature or the guest never runs. A missing import_signature entry makes
+# prepare_boundary_locked() refuse the whole boundary.
+oe_assembly=out/'oe-cpu-boost-fixture.S'
+oe_assembly.write_text(r''' .text
+.org 0x20
+.global fixture_entry
+fixture_entry:
+ stp x29, x30, [sp, #-32]!
+ str x19, [sp, #16]
+ mov x29, sp
+ mov x19, x0
+ mov w0, #1
+ adrp x16, fixture_got
+ add x16, x16, :lo12:fixture_got
+ ldr x16, [x16]
+ blr x16
+ mov x9, #1
+ str x9, [x19]
+ mov x0, #0x91
+ ldr x19, [sp, #16]
+ ldp x29, x30, [sp], #32
+ ret
+.section .fixture_got,"aw"
+.global fixture_got
+fixture_got: .zero 8
+''')
+run('fixture-oe-cpu-boost-assemble',['clang',*common,'-c',oe_assembly,'-o',out/'oe-cpu-boost-fixture.o'])
+run('fixture-oe-cpu-boost-link',['env',f'DYLD_LIBRARY_PATH={a.rust_root}/lib',ld,'--no-undefined','--build-id=none','--image-base=0','-Ttext=0','--section-start=.fixture_got=0x8200','-e','fixture_entry','--oformat=binary','-o',out/'oe-cpu-boost-fixture.raw',out/'oe-cpu-boost-fixture.o'])
+raw=(out/'oe-cpu-boost-fixture.raw').read_bytes();data=bytearray((out/'contract.nso').read_bytes())
+data[0x200:0x300]=raw[:0x100].ljust(0x100,b'\0');struct.pack_into('<I',data,0x204,0x4000)
+names=b'\0_ZN2nn2oe15SetCpuBoostModeENS0_12CpuBoostModeE\0'
+data[0x1160:0x1160+len(names)]=names
+struct.pack_into('<II',data,0x1080,1,2);struct.pack_into('<Q',data,0x2000+3*16+8,len(names));struct.pack_into('<Q',data,0x2000+5*16+8,24)
+(out/'oe-cpu-boost.nso').write_bytes(data)
+manifest['generated_fixtures']['oe-cpu-boost.nso']={'bytes':len(data),'sha256':digest(out/'oe-cpu-boost.nso'),'kind':'self-authored one-argument void nn::oe cpu boost mode fixture','assembly_sha256':digest(oe_assembly)}
+run('host-oe-cpu-boost-contract',[out/'guest_process_contract.host','--oe-cpu-boost',out/'oe-cpu-boost.nso'])
+oe_stderr=(out/'host-oe-cpu-boost-contract'/'stderr.log').read_text()
+if '[hle] nn::oe::SetCpuBoostMode:' not in oe_stderr:raise RuntimeError('nn::oe::SetCpuBoostMode stub did not run')
+if '[boundary-unsupported]' in oe_stderr:raise RuntimeError('nn::oe::SetCpuBoostMode import signature was refused by the boundary')
 locale_assembly=out/'locale-fixture.S'
 locale_assembly.write_text(r''' .text
 .org 0x20

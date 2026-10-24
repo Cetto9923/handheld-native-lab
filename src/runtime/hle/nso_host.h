@@ -180,6 +180,20 @@ int32_t nso_host_oe_initialize(void);
 bool nso_host_oe_is_initialized(void);
 nn_settings_language_code nso_host_oe_get_desired_language(void);
 
+/* nn::oe::CpuBoostMode (main NSO import index 75).
+ *
+ * ABI: void SetCpuBoostMode(nn::oe::CpuBoostMode) - one 32-bit enum argument in
+ * w0 and no return value. Two independent confirmations: an exact clang mangling
+ * round trip reproduces _ZN2nn2oe15SetCpuBoostModeENS0_12CpuBoostModeE for that
+ * declaration, and all six guest call sites discard w0 after the call.
+ *
+ * The enum stays opaque on purpose. The guest only ever passes 0 or 1, and no
+ * authoritative enumerator list exists in-tree, so the stub records the raw
+ * value instead of inventing names for it. */
+typedef int32_t nn_oe_cpu_boost_mode;
+void nso_host_oe_set_cpu_boost_mode(nn_oe_cpu_boost_mode mode);
+nn_oe_cpu_boost_mode nso_host_oe_get_cpu_boost_mode(void);
+
 void nso_host_os_initialize_event(void *event, bool initially_signaled, int32_t clear_mode);
 void nso_host_os_finalize_event(void *event);
 void nso_host_os_signal_event(void *event);

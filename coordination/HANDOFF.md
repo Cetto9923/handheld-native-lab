@@ -1,3 +1,43 @@
+# P-MM-3 闭环｜2026-10-24 15:35 Asia/Shanghai — 绑定 `nn::oe::SetCpuBoostMode`（import 75），真机**越过 v53 的 SIGTRAP**（exit 133 → 133，前沿推进到 `nn::hid::InitializeKeyboard` import 234）
+
+- **结论**：工单 P-MM-3 目标闭环。`nn::oe::SetCpuBoostMode`（import 75）已在 HLE 层绑定为**如实记录**请求模式的宿主桩；真机 v54 **不再**因该符号触发 `[unresolved-import] index=75` / `[fault] signal=5`，profile 行 `unresolved` 由 **389 → 388**（正好少 1 个绑定），新第一致命推进到 **import 234 `nn::hid::InitializeKeyboard()`**，exit **133**（SIGTRAP，未解析代码导入）。**未达标题画面 / 可玩**。
+  1. **三处必改点全部落地**：
+     - `src/runtime/hle/nso_host.c`：`nso_host_oe_set_cpu_boost_mode(mode)` + `nso_host_oe_get_cpu_boost_mode()`（记录型桩，**不**伪造任何频率变更）；`nso_host_resolve()` 新增 `_ZN2nn2oe15SetCpuBoostModeENS0_12CpuBoostModeE` 绑定分支。
+     - `src/runtime/hle/nso_host.h`：新增 `typedef int32_t nn_oe_cpu_boost_mode;` + 两个声明。
+     - `src/runtime/hle/guest_process.c`：`typed[]` 白名单新增该 mangled 名；`import_signature()` 新增显式分支 `{arguments=1;returns=0;}`。
+  2. **ABI 双重独立确认（实测，非推测）**：
+     - **clang 往返**：`void nn::oe::SetCpuBoostMode(nn::oe::CpuBoostMode)` 的 mangled 名**逐字节**等于 `_ZN2nn2oe15SetCpuBoostModeENS0_12CpuBoostModeE`（`c++filt` 与 `clang++ -target aarch64-linux-gnu` 均复核）；LLVM IR 实测形参为 **i32**（w0）。
+     - **调用点静态**：全部 **6 处** BL（`0x14a30 0x14d60 0x14de4 0x14e0c 0x2f030 0x2f060`）目标均为 PLT `0x5e67f70`；**6 处无一消费调用后的 w0**（调用后存的是调用前已算好的 `w19`/`wzr`）⇒ 确证 **void 返回、1 个枚举实参**。离线脚本 `resolve_import_callers.py --index 75` 与逐条手工解码互为印证。
+  3. **枚举刻意保持不透明**：仓库内**无**权威 `CpuBoostMode` 枚举定义（已全仓检索确认），guest 实测只出现过 **0 / 1** ⇒ 桩按 **不透明 int32** 记录原始值，不臆造枚举名（`CpuBoostMode_None/Emulation/Max` 一类说法未采信）。
+  4. **语义边界（不伪造）**：Switch 上该 API 选择标题的 CPU 提升档位；RG477M 的频率策略归 Android governor（写 cpufreq sysfs 需 root，本项目禁止 root）⇒ 桩**只记录并留日志**，**不**改频率、**不**假装已应用。
+  5. **契约（宿主 + 真机同测）**：新增 `--oe-cpu-boost` 契约，由构建脚本自造的 `oe-cpu-boost.nso` fixture 驱动**真实 guest 导入路径**（fixture 自身以 `w0=1` 调用该导入）。
+     - 宿主 PASS：`{"oe_cpu_boost_errors":0,"resolved":true,"direct_record_ok":true,"native_ran":false,"guest_marker":false,"guest_mode":-1}`（宿主无 AArch64 执行器，`guest_mode:-1` = 本次未观测，未伪造）。
+     - **RG477M 真机 PASS**：`{"oe_cpu_boost_errors":0,"resolved":true,"direct_record_ok":true,"native_ran":true,"guest_marker":true,"guest_mode":1}`。
+     - 覆盖面：`guest_process_resolve` 返回非 0（白名单门禁）✓；**签名门禁**通过（真机 stderr `[boundary-ready] imports=1 actual-primary-owned`，全日志 `[boundary-unsupported]` 计数 **0** —— 缺 `import_signature` 条目会让 `prepare_boundary_locked()` 拒绝整个 boundary、guest 根本不会跑）✓；真实 guest 调用后读回的模式 == **1**（实参原样送达，未错位）✓；直调宿主再记 **5** —— 两个**不同**取值 ⇒ 忽略参数的桩无法同时通过 ✓。
+  6. **两变体自证**（日志 `.local/logs/p-mm-3-contract-selfproof.log`，只改一处期望值 `5 → 6`）：
+     - **变体 A（当前源码形态：真实错误数 + 末尾 `CHECK(!errors)`）** → `[check-fail] oe-cpu-boost-direct-mode actual=0x5 expected=0x6`，**exit 1（红）**。
+     - **变体 B（修复前形态：去掉末尾 `CHECK(!errors)` 且错误数硬编码 0）** → 同样打印 `[check-fail]`，却 **exit 0（假绿）** 并输出 `"oe_cpu_boost_errors":0`。
+     ⇒ 证明该契约确实能检出失败，且修复形态不会假绿。（自证在 `.local/selfproof/` 用副本完成，**工作树源码未被污染**；变体生成器 `.local/selfproof/make_mm3_variants.py`、运行脚本 `.local/selfproof/selfproof_mm3.sh`。）
+  7. **验收 A（真机 v54）**：`.local/logs/rg477m-boot-v54-oe-setcpuboostmode.log`（**55517** 行，exit 133）实测 `[unresolved-import] index=74` **0 次**、`index=75` **0 次**、`[boundary-unsupported]` **0 次**、`Aborted` **0 次**、`[snapshot-refused]` **0 次**；第 **52060** 行 `[hle] nn::oe::SetCpuBoostMode: mode=1 recorded (cpu frequency policy stays with the Android governor)` 为**真实 guest 调用**；boot 由 v53 的 52539 行推进到 55517 行（**+2978**）。
+  8. **验收 B（新阻塞）**：第 **55499–55500** 行
+     ```
+     [fault] signal=5 pc=0x70fcbb1750 fa=0x70fcbb1750
+     [unresolved-import] index=234 name=_ZN2nn3hid18InitializeKeyboardEv caller_offset=0x51f61c
+     ```
+     exit **133**（SIGTRAP，未解析**代码**导入）。**新阻塞一句话**：guest 调用未解析的 `nn::hid::InitializeKeyboard()`（import 234，**零实参**），运行时无该符号 typed HLE ⇒ SIGTRAP。**下一刀应攻 import 234**；`nn::hid` 命名空间已有 `nn::hid::VibrationConverter` 的 `import_signature` 条目可照抄先例。**注意**：Itanium mangling **不编码返回类型**，该符号的返回类型须在派工时用与本单同样的双重确认（clang 往返 + 调用点寄存器使用）判定，不得猜测。
+  9. **产物与日志**：
+     - 构建：`.local/build-p-mm-3/`（`sh scripts/runtime/build_guest_process_contract.sh --out .local/build-p-mm-3 --toolchain .local/minimal-ndk/toolchain --resource-quota-bytes 16777216`，exit 0；宿主全量契约 PASS；`manifest.json` 的 `source_sha256` 与工作树**逐项一致、无源码漂移**；`android_executed` 已置 true 并补 `device_contracts` / `device_boot` 证据块）。
+     - 启动二进制 `nso_owned_startup.android` sha256 `34059f2f40835a6295791c7fc3a8ea9bef0abd4a87f080e21b4e8e751e06f942`（设备端 `p-mm-3-nso_owned_startup.android-34059f2f`）；契约二进制 `guest_process_contract.android` sha256 `19945b8bccfc080077384f3c8974ca04c3d550f39e98e4316625c44b88764bb7`（设备端 `p-mm-3-guest_process_contract.android-19945b8b`）；fixture `oe-cpu-boost.nso` sha256 `aff3f0db9ab51ce74efc540800ab28a606bfa2f55881120dfe9a7be778a7c226`（设备端 `p-mm-3-oe-cpu-boost.nso-aff3f0db`，**自造 fixture，非游戏字节**）。
+     - 真机全量 boot：`.local/logs/rg477m-boot-v54-oe-setcpuboostmode.log` + 同名 `.exitcode` = **133**；run 目录 `/data/local/tmp/ffrs-rg477m-efd1123620814764ae32529c18081259/`，cwd 正确；参数与 v47/v51/v52/v53 一致：`quota=1073741824 stack=2097152 image=162869248 resource_quota=16777216 guest_argc=0`；runner 脚本 `.local/selfproof/boot_v54.sh`。
+     - 真机契约：`.local/logs/rg477m-contract-p-mm-3-oe-cpu-boost.stdout` / `.stderr`（exit 0）。
+     - 离线取证：`main.nso` 副本 `.local/nso/main.nso`（sha256 `6e6d1f3cd1672243e2ed344cc1b8849b85437d41bdecec81a5f9181e472d68a5`，只读、不进 git）；反汇编切片 `.local/analysis/p-mm-3/`、`.local/analysis/p-mm-4-call/`。
+  10. **改动文件清单**（本单自有，共 6 个）：
+     - `src/runtime/hle/nso_host.c`（+17）、`src/runtime/hle/nso_host.h`（+14）、`src/runtime/hle/guest_process.c`（+5）、`tests/native/guest_process_contract.c`（+84）、`scripts/runtime/build_guest_process_contract.sh`（+42）、`coordination/state.json`（+34/-…，写占用与 phase 更新）、`coordination/HANDOFF.md`（本段）、`coordination/STATUS.md`（脚本生成）。
+  11. **口径保持诚实**：`imports=651 unresolved=388` —— **仍有 388 个未绑定**，本单只推进导入边界一层。「unresolved-import 计数 = 0」仍仅指 boot 期没有因未解析导入而产生 fault，**不是**全部导入已绑定。唯一可靠的推进方式依旧是「修一个 → 跑一次真机 → 看下一个」。
+  12. **未达标题画面 / 可玩**；未伪造影片库 / 解码器 / 页表 / RSS；`nn::oe::SetCpuBoostMode` 桩**如实记录 guest 请求**，不调用任何未验证的系统接口、不改设备频率。
+
+---
+
 # P-MM-2 闭环｜2026-10-24 14:55 Asia/Shanghai — 绑定 `movie::SetAllocator`（import 74），真机**越过 v52 的 SIGTRAP**（exit 133 → 133，前沿推进到 `nn::oe::SetCpuBoostMode` import 75）
 
 - **结论**：工单 P-MM-2 目标闭环。`movie::SetAllocator`（import 74）已在 HLE 层绑定为**如实记录并转发 allocator 注册**的宿主桩；真机 v53 **不再**因该符号触发 `[unresolved-import] index=74` / `[fault] signal=5`，profile 行 `unresolved` 由 **390 → 389**（正好少 1 个绑定），新第一致命推进到 **import 75 `nn::oe::SetCpuBoostMode`**，exit **133**（SIGTRAP，未解析代码导入）。**未达标题画面 / 可玩**。

@@ -1151,6 +1151,7 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
         "_ZN2nn7account10InitializeEv","nnaccountInitialize",
         "_ZN2nn2oe10InitializeEv","nnoeInitialize",
         "_ZN2nn2oe18GetDesiredLanguageEv","nnoeGetDesiredLanguage",
+        "_ZN2nn2oe15SetCpuBoostModeENS0_12CpuBoostModeE",
         "_ZN2nn4util11ReferSymbolEPKv","nnutilReferSymbol",
         "_ZN2nn2os15InitializeMutexEPNS0_9MutexTypeEbi","nnosInitializeMutex",
         "_ZN2nn2os13FinalizeMutexEPNS0_9MutexTypeE","nnosFinalizeMutex",
@@ -1358,6 +1359,10 @@ static int import_signature(const char *name,nb_signature *out) {
             !strcmp(name,"_ZN2nn2oe18GetDesiredLanguageEv") || !strcmp(name,"nnoeGetDesiredLanguage") ||
             !strcmp(name,"_ZN2nn2os23GetCurrentProcessHandleEv") || !strcmp(name,"nnosGetCurrentProcessHandle") ||
             !strcmp(name,"nnResultSuccess")) {arguments=0;returns=1;}
+    /* nn::oe::SetCpuBoostMode(nn::oe::CpuBoostMode): one 32-bit enum in w0, no
+     * return. Verified by clang mangling round trip and by all six guest call
+     * sites, none of which consumes w0 after the call. */
+    else if(!strcmp(name,"_ZN2nn2oe15SetCpuBoostModeENS0_12CpuBoostModeE")) {arguments=1;returns=0;}
     else if(!strcmp(name,"nnsslInitialize")) {arguments=0;returns=1;}
     else if(!strcmp(name,"nnsslFinalize")) {arguments=0;returns=1;}
     else if(!strcmp(name,"_ZN2nn4util12GenerateUuidEv")) {arguments=0;returns=2;}

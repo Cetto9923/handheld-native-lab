@@ -3252,6 +3252,89 @@ static int movie_allocator_contract(const char *path) {
            c.native_userdata_null?"true":"false");
     return 0;
 }
+
+/* nn::oe::SetCpuBoostMode (main NSO import index 75) takes one enum argument
+ * and returns nothing. The runtime must bind the symbol, accept the
+ * one-argument void signature at the boundary and record the requested mode
+ * faithfully instead of dropping it. The fixture NSO drives the real guest
+ * import path, so the boundary has to accept the signature or the guest never
+ * runs and the mode is never observed. The guest call uses mode 1 and the
+ * direct host call uses mode 5, so a stub that ignored its argument could not
+ * satisfy both observations. */
+#define OE_SET_CPU_BOOST_MODE_MANGLED "_ZN2nn2oe15SetCpuBoostModeENS0_12CpuBoostModeE"
+/* The mode the fixture guest passes to the import; see the oe-cpu-boost
+ * fixture assembly in scripts/runtime/build_guest_process_contract.sh. */
+#define OE_FIXTURE_GUEST_MODE 1
+/* A different value for the direct host call, so the two observations cannot
+ * be satisfied by one constant. */
+#define OE_DIRECT_HOST_MODE 5
+struct oe_cpu_boost_case {
+    guest_process *process;
+    int resolved;
+    int direct_record_ok;
+    nn_oe_cpu_boost_mode direct_mode;
+    int native_ran,native_marker;
+    nn_oe_cpu_boost_mode native_mode;
+};
+static void *exercise_oe_cpu_boost(guest_process *p,void *opaque) {
+    struct oe_cpu_boost_case *c=opaque;
+    c->process=p;
+    typedef void (*oe_set_cpu_boost_fn)(nn_oe_cpu_boost_mode);
+    oe_set_cpu_boost_fn setter=(oe_set_cpu_boost_fn)(uintptr_t)guest_process_resolve(0,OE_SET_CPU_BOOST_MODE_MANGLED);
+    c->resolved=setter!=NULL;
+    expect_condition("oe-cpu-boost-resolved",setter!=NULL);
+    /* The real guest path: the fixture calls the import itself, so the
+     * boundary must accept the one-argument void signature or the guest never
+     * executes and the mode is never observed. */
+    uint64_t output[2]={0xa5a5,0xa5a5},returned=0xa5a5;
+    uint64_t args[1]={(uintptr_t)output};
+    struct nso_result r=guest_process_call(p,0x20,args,1,&returned);
+#if defined(__ANDROID__) && defined(__aarch64__)
+    expect_value("oe-cpu-boost-native-status",r.status,NSO_OK);
+    expect_value("oe-cpu-boost-native-return",returned,0x91);
+    c->native_ran=1;
+    c->native_marker=output[0]==1;
+    expect_condition("oe-cpu-boost-guest-call-returned",output[0]==1);
+    c->native_mode=nso_host_oe_get_cpu_boost_mode();
+    expect_value("oe-cpu-boost-guest-mode",(uint64_t)(uint32_t)c->native_mode,(uint64_t)(uint32_t)OE_FIXTURE_GUEST_MODE);
+#else
+    /* No AArch64 executor on this host: the boundary is prepared but the raw
+     * guest entry cannot run here. Nothing may be faked in its place. */
+    expect_value("oe-cpu-boost-native-unsupported",r.status,NSO_UNSUPPORTED);
+    expect_value("oe-cpu-boost-native-no-raw-fallback",returned,0xa5a5);
+#endif
+    /* Direct host call: the requested mode is recorded exactly as given. */
+    if(setter) {
+        setter((nn_oe_cpu_boost_mode)OE_DIRECT_HOST_MODE);
+        c->direct_mode=nso_host_oe_get_cpu_boost_mode();
+        c->direct_record_ok=c->direct_mode==OE_DIRECT_HOST_MODE;
+        expect_value("oe-cpu-boost-direct-mode",(uint64_t)(uint32_t)c->direct_mode,(uint64_t)(uint32_t)OE_DIRECT_HOST_MODE);
+    }
+    return &returned_token;
+}
+static int oe_cpu_boost_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));
+    char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+    struct oe_cpu_boost_case c={0};
+    void *value=NULL;
+    CHECK(succeeded(guest_process_run(p,exercise_oe_cpu_boost,&c,&value)));
+    CHECK(value==&returned_token);
+    expect_condition("oe-cpu-boost-resolved",c.resolved);
+    expect_condition("oe-cpu-boost-direct-record",c.direct_record_ok);
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    /* The final gate. Every expect_* above must have passed; without this the
+     * contract could still exit 0 while the expectations had failed. */
+    CHECK(!errors);
+    /* The report states what this run observed, not a literal zero. guest_mode
+     * is -1 when the raw guest entry could not run on this host. */
+    printf("{\"oe_cpu_boost_errors\":%u,\"resolved\":%s,\"direct_record_ok\":%s,"
+           "\"native_ran\":%s,\"guest_marker\":%s,\"guest_mode\":%d}\n",errors,
+           c.resolved?"true":"false",c.direct_record_ok?"true":"false",
+           c.native_ran?"true":"false",c.native_marker?"true":"false",
+           c.native_ran?(int)c.native_mode:-1);
+    return 0;
+}
 int main(int argc,char **argv) {
     page=(size_t)sysconf(_SC_PAGESIZE);
     if(argc==2 && !strcmp(argv[1],"--tls-host-null")) {
@@ -3273,6 +3356,7 @@ int main(int argc,char **argv) {
     if(argc==3 && !strcmp(argv[1],"--dso-registration"))return dso_registration_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--snapshot-thread"))return snapshot_thread_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--movie-allocator"))return movie_allocator_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--oe-cpu-boost"))return oe_cpu_boost_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-fresh"))return tls_fresh_registration_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-null"))return tls_registration_contract(argv[2],1);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-repeat"))return tls_registration_contract(argv[2],2);
