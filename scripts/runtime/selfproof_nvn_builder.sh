@@ -49,12 +49,11 @@ python3 scripts/runtime/make_nvn_builder_variants.py >> "${LOG}" 2>&1 || {
 }
 
 LIBOBJS=""
-for object in nso_loader guest_context guest_process nso_host address_region mutex exit_registry \
-              module_tls guest_tp guest_pages native_boundary guest_os_tls native_window nvn_device \
-              nvn_queue nvn_window nvn_memory_pool nvn_sampler_pool nvn_texture_pool \
-              nvn_sampler_builder nvn_texture_builder \
-              nvn_blend_state nvn_render_state nvn_program nvn_sha256 \
-              nvn_command_buffer; do
+for object in nso_loader guest_context guest_process nso_host address_region mutex \
+             exit_registry module_tls guest_tp guest_pages native_boundary guest_os_tls \
+             native_window nvn_device nvn_queue nvn_window nvn_memory_pool nvn_sampler_pool \
+             nvn_texture_pool nvn_blend_state nvn_render_state nvn_program nvn_sha256 \
+             nvn_command_buffer nvn_command_buffer.generated nvn_texture_builder; do
     LIBOBJS="${LIBOBJS} ${BUILD}/${object}.host.o"
 done
 
@@ -78,10 +77,12 @@ run_variant () {
     return 0
 }
 
-run_variant nvn_builder_broken_fixed "${OUT}/nvn_builder_broken_fixed.c" "${LIBOBJS}"
-run_variant nvn_builder_broken_prefix "${OUT}/nvn_builder_broken_prefix.c" "${LIBOBJS}"
+run_variant nvn_builder_broken_fixed "${OUT}/nvn_builder_broken_fixed.c" \
+    "${LIBOBJS} ${BUILD}/nvn_sampler_builder.host.o ${BUILD}/nvn_backend_none.host.o"
+run_variant nvn_builder_broken_prefix "${OUT}/nvn_builder_broken_prefix.c" \
+    "${LIBOBJS} ${BUILD}/nvn_sampler_builder.host.o ${BUILD}/nvn_backend_none.host.o"
 run_variant nvn_builder_stub_no_defaults tests/native/guest_process_contract.c \
-    "${LIBOBJS} ${OUT}/nvn_sampler_builder_stub_no_defaults.host.o"
+    "${LIBOBJS} ${OUT}/nvn_sampler_builder_stub_no_defaults.host.o ${BUILD}/nvn_backend_none.host.o"
 
 echo "self-proof written to ${LOG}"
 grep -E "exit_code=|stdout:|\[check-fail\]" "${LOG}"

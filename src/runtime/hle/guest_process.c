@@ -977,6 +977,47 @@ struct nso_result guest_process_dso_info(guest_process *p, struct guest_dso_info
     pthread_mutex_unlock(&p->mutex);
     return status(NSO_OK,0,0);
 }
+/* ------------------------------------------------------------------ */
+/* The NVN command buffer layer and the guest thread boundary         */
+/* ------------------------------------------------------------------ */
+
+/* The NVN command buffer layer holds a hook to this, because the guest's
+ * command memory callback has to run on the guest's own thread and through
+ * the boundary, never by calling the pointer the guest handed over directly.
+ * The declaration is repeated here so that this file does not have to know
+ * about the graphics layer; the definition is in nvn_command_buffer.c. */
+void nvn_command_buffer_set_guest_call(int (*call)(void *entry, const uint64_t *x, uint64_t *out_x));
+
+/* Call the guest on its own thread.
+ *
+ * The arguments are the four words the NVN layer hands over: the command
+ * buffer, the event, the size it asks for and the callback data. The guest's
+ * answer comes back in the first register, which is where the NVN layer
+ * expects it. A call that the boundary refuses is a failure and is said so;
+ * there is no raw fallback, because calling the guest's pointer directly is
+ * exactly what this hook exists to avoid. */
+static int nvn_guest_call_through_boundary(void *entry, const uint64_t *x, uint64_t *out_x) {
+    nb_scope *scope = guest_process_current_boundary();
+    nb_registers packet;
+    nb_status s;
+    if (!scope || !entry || !x) return 0;
+    memset(&packet, 0, sizeof(packet));
+    packet.guest_x18 = scope->active_guest_x18;
+    packet.x[0] = x[0];
+    packet.x[1] = x[1];
+    packet.x[2] = x[2];
+    packet.x[3] = x[3];
+    s = nb_call_from_host(scope, (void (*)(void))(uintptr_t)entry, &packet);
+    if (s != NB_OK) {
+        fprintf(stderr, "[nvn-callback] the guest's command memory callback did not return; status=%d; "
+                        "no raw fallback and no direct call to the guest's pointer\n",
+                (int)s);
+        return 0;
+    }
+    if (out_x) *out_x = packet.x[0];
+    return 1;
+}
+
 nb_scope *guest_process_current_boundary(void) {
     guest_process *p=current_process?current_process:exclusive_process;
     if (p && p->boundary_initialized) {
@@ -1615,6 +1656,8 @@ static struct nso_result prepare_boundary_locked(guest_process *p) {
     nb_status s=nb_scope_init(&p->boundary);
     if(s!=NB_OK) {free(targets);free(bindings);fprintf(stderr,"[boundary-error] scope-init status=%d; no guest execution\n",s);return status(s==NB_UNSUPPORTED?NSO_UNSUPPORTED:NSO_OWNER_ERROR,s==NB_UNSUPPORTED?ENOTSUP:EIO,0);}
     p->boundary_initialized=1;p->bindings=bindings;p->bindings_count=callable;
+    /* The NVN command buffer layer calls the guest through the boundary from now on. */
+    nvn_command_buffer_set_guest_call(nvn_guest_call_through_boundary);
     struct nso_result r=status(NSO_OK,0,0);
     for(size_t i=0;i<callable;i++) {
         nb_signature signature;(void)import_signature(targets[i].name,&signature);

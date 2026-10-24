@@ -50,10 +50,11 @@ python3 scripts/runtime/make_nvn_memory_pool_variants.py >> "${LOG}" 2>&1 || {
 }
 
 LIBOBJS=""
-for object in nso_loader guest_context guest_process nso_host address_region mutex exit_registry \
-              module_tls guest_tp guest_pages native_boundary guest_os_tls native_window nvn_device \
-              nvn_queue nvn_window nvn_sampler_pool nvn_texture_pool nvn_blend_state \
-              nvn_render_state nvn_program nvn_sha256; do
+for object in nso_loader guest_context guest_process nso_host address_region mutex \
+             exit_registry module_tls guest_tp guest_pages native_boundary guest_os_tls \
+             native_window nvn_device nvn_queue nvn_window nvn_sampler_pool nvn_texture_pool \
+             nvn_blend_state nvn_render_state nvn_program nvn_sha256 nvn_command_buffer \
+             nvn_command_buffer.generated nvn_sampler_builder nvn_texture_builder; do
     LIBOBJS="${LIBOBJS} ${BUILD}/${object}.host.o"
 done
 

@@ -667,7 +667,18 @@ void *nvn_device_get_proc_address(void *device, const char *name) {
             if (!entry || !entry->name) continue;
             if (!strcmp(name, entry->name)) {
                 s_device.implemented_resolved++;
-                fprintf(stderr, "[nvn] nvnDeviceGetProcAddress: \"%s\" -> implemented\n", name);
+                /* An entry point whose signature is not in the header this
+                 * runtime was built against is recorded, but it is not a
+                 * command the runtime claims to understand. The log says so,
+                 * so that a reader does not take it for a working call. */
+                if (entry->status == NVN_CB_ENTRY_DIAGNOSTIC_ONLY) {
+                    fprintf(stderr, "[nvn] nvnDeviceGetProcAddress: \"%s\" -> diagnostic recorder only "
+                                    "(the signature of this entry point is not in the header this runtime was "
+                                    "built against, so the call is written down and not interpreted)\n",
+                            name);
+                } else {
+                    fprintf(stderr, "[nvn] nvnDeviceGetProcAddress: \"%s\" -> implemented\n", name);
+                }
                 return entry->fn;
             }
         }

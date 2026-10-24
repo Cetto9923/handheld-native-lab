@@ -47,10 +47,14 @@ assert block.count(report_anchor) == 1, 'report anchor is not unique inside the 
 # Variant B: the pre-fix shape - no final gate, reported error count hardcoded.
 b_block = block.replace(gate, '')
 b_block = b_block.replace(report_anchor, r'"{\"nvn_builder_errors\":0,')
+# The error count is now a literal in the format string, so the argument that
+# used to carry it has to go with it. The counts stay size_t, because the
+# format says %zu for them.
 b_block = b_block.replace('           errors, sampler_count, texture_count,',
-                           '           (unsigned long long)sampler_count, (unsigned long long)texture_count,')
+                           '           sampler_count, texture_count,')
 assert 'CHECK(!errors);' not in b_block, 'final gate still present in variant B'
 assert r'"{\"nvn_builder_errors\":0,' in b_block, 'hardcoded error count not applied'
+assert '           errors, sampler_count,' not in b_block, 'the error argument was not dropped'
 
 (out / 'nvn_builder_broken_fixed.c').write_text(broke)
 (out / 'nvn_builder_broken_prefix.c').write_text(broke[:start] + b_block + broke[end:])
@@ -61,7 +65,9 @@ assert r'"{\"nvn_builder_errors\":0,' in b_block, 'hardcoded error count not app
 # ---------------------------------------------------------------------------
 c_anchor = '        apply_defaults(s);'
 assert sampler_src.count(c_anchor) == 1, 'the sampler defaults anchor is not unique'
+# The helper stays referenced, so the stub does not trip the unused function
+# warning, but the defaults are not applied any more.
 (out / 'nvn_sampler_builder_stub_no_defaults.c').write_text(
-    sampler_src.replace(c_anchor, '        (void)s;'))
+    sampler_src.replace(c_anchor, '        (void)apply_defaults; (void)s;'))
 
 print('wrote the three NVN builder contract variants')

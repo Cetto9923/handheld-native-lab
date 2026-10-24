@@ -6656,11 +6656,14 @@ static int nvn_builder_contract(void) {
     typedef void (*set_wrap_fn)(void *, int, int, int);
     typedef void (*get_wrap_fn)(void *, int *, int *, int *);
     typedef void (*set_format_fn)(void *, int);
-    typedef void (*get_format_fn)(void *, int *);
+    /* The texture builder getters hand the value back, the sampler builder
+     * getters write through their arguments. That difference is the one of the
+     * vendored header. */
+    typedef int (*get_format_fn)(void *);
     typedef void (*set_width_fn)(void *, int);
-    typedef void (*get_width_fn)(void *, int *);
+    typedef int (*get_width_fn)(void *);
     typedef void (*set_height_fn)(void *, int);
-    typedef void (*get_height_fn)(void *, int *);
+    typedef int (*get_height_fn)(void *);
     nvn_sampler_builder_stats sampler_stats;
     nvn_texture_builder_stats texture_stats;
     size_t i;
@@ -6771,12 +6774,9 @@ static int nvn_builder_contract(void) {
     texture_set_format(texture_builder, 0x25 /* RGBA8 */);
     texture_set_width(texture_builder, 1280);
     texture_set_height(texture_builder, 720);
-    int format = -1;
-    int width = -1;
-    int height = -1;
-    texture_get_format(texture_builder, &format);
-    texture_get_width(texture_builder, &width);
-    texture_get_height(texture_builder, &height);
+    int format = texture_get_format(texture_builder);
+    int width = texture_get_width(texture_builder);
+    int height = texture_get_height(texture_builder);
     expect_value("nvn-builder-texture-format-round-trips", (uint64_t)(uint32_t)format, 0x25);
     expect_value("nvn-builder-texture-width-round-trips", (uint64_t)(uint32_t)width, 1280);
     expect_value("nvn-builder-texture-height-round-trips", (uint64_t)(uint32_t)height, 720);
@@ -6784,8 +6784,8 @@ static int nvn_builder_contract(void) {
     /* 6. The defaults of the texture builder: the reference host sets the
      *    target to 2D and the size and the level count to one. */
     texture_defaults(texture_builder);
-    texture_get_width(texture_builder, &width);
-    texture_get_height(texture_builder, &height);
+    width = texture_get_width(texture_builder);
+    height = texture_get_height(texture_builder);
     expect_value("nvn-builder-texture-default-width", (uint64_t)(uint32_t)width, 1);
     expect_value("nvn-builder-texture-default-height", (uint64_t)(uint32_t)height, 1);
 
