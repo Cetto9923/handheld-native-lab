@@ -42,4 +42,22 @@ typedef struct nvn_sampler_pool_stats {
 
 void nvn_sampler_pool_get_stats(nvn_sampler_pool_stats *out);
 
+/* The numbering base of a pool.
+ *
+ * A sampler handle holds the index of the sampler inside the pool in the bits
+ * above the texture number, and the numbering base of the pool that is bound
+ * is added to it when the handle is read. The base is given to a pool at its
+ * first Initialize and does not change afterwards; the samplers have a
+ * numbering of their own, apart from the numbering of the textures. */
+int nvn_sampler_pool_base(const void *pool);
+
+/* Whether the pool has been given a numbering base of its own. The base of
+ * the first pool is zero, so the base alone cannot tell a first pool and a
+ * pool that was never initialized apart. */
+int nvn_sampler_pool_known(const void *pool);
+
+/* The sampler that is registered at an index of the pool, or NULL when the
+ * index holds no sampler. */
+const void *nvn_sampler_pool_sampler_at(const void *pool, int index);
+
 #endif /* FFRS_NVN_SAMPLER_POOL_H */

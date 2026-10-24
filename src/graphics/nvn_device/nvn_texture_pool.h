@@ -43,4 +43,22 @@ typedef struct nvn_texture_pool_stats {
 
 void nvn_texture_pool_get_stats(nvn_texture_pool_stats *out);
 
+/* The numbering base of a pool.
+ *
+ * A texture handle is not a pointer: it holds the index of the texture inside
+ * the pool in its low twenty bits, and the numbering base of the pool that is
+ * bound is added to it when the handle is read. The base is given to a pool at
+ * its first Initialize and does not change afterwards; the pools share one
+ * numbering, so two pools never hand out the same number. */
+int nvn_texture_pool_base(const void *pool);
+
+/* Whether the pool has been given a numbering base of its own. The base of
+ * the first pool is zero, so the base alone cannot tell a first pool and a
+ * pool that was never initialized apart. */
+int nvn_texture_pool_known(const void *pool);
+
+/* The texture that is registered at an index of the pool, or NULL when the
+ * index holds no texture. */
+const void *nvn_texture_pool_texture_at(const void *pool, int index);
+
 #endif /* FFRS_NVN_TEXTURE_POOL_H */
