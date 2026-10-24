@@ -2053,6 +2053,44 @@ bool nso_host_oe_resume_notification_enabled(void) {
     return s_oe_resume_notification;
 }
 
+/* nn::oe performance configuration (main NSO import indexes 239 and 240).
+ *
+ * nn::oe::SetPerformanceConfiguration(PerformanceMode mode, int clock) is
+ * bound as a record-only stub: the guest asks for a performance mode and a
+ * clock code, the stub records both, and the real CPU and GPU frequencies
+ * stay with the Android governor. Changing them from here is not possible
+ * anyway, because the cpufreq sysfs nodes need root, and the already bound
+ * nn::oe::SetCpuBoostMode (import 75) follows the same rule.
+ *
+ * The guest calls SetPerformanceConfiguration from four sites (0x520518,
+ * 0x520524, 0x5205bc and 0x5205c8). Each pair of sites loads w0 and w1
+ * immediately before the call and never consumes the result, so the ABI is
+ * two 32-bit arguments and no return value. The values the guest passes are
+ * mode 0 with clock 0x20003 or 0x20004, and then mode 1 with clock 0x10001.
+ *
+ * nn::oe::GetPerformanceMode() has a single call site (0x5203c4) and its
+ * result is compared against 1, so it returns the performance mode that was
+ * requested last. Reporting the requested state is what the reference
+ * platform does: the guest asks for a mode and then reads it back. The
+ * initial value is 0, the mode that has been in effect before the guest
+ * asked for anything. */
+static int32_t s_oe_performance_mode = 0;
+static int32_t s_oe_performance_clock = 0;
+
+void nso_host_oe_set_performance_configuration(int32_t mode,int32_t clock) {
+    s_oe_performance_mode=mode;
+    s_oe_performance_clock=clock;
+    fprintf(stderr,"[hle] nn::oe::SetPerformanceConfiguration: mode=%d clock=0x%x recorded (the real CPU and GPU frequencies stay with the Android governor)\n",(int)mode,(unsigned)clock);
+}
+
+int32_t nso_host_oe_get_performance_mode(void) {
+    return s_oe_performance_mode;
+}
+
+int32_t nso_host_oe_performance_clock(void) {
+    return s_oe_performance_clock;
+}
+
 static uint32_t s_oe_operation_mode = 1;
 
 uint32_t nso_host_oe_get_operation_mode(void) {
@@ -3034,6 +3072,10 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_oe_set_resume_notification_enabled;
     if(!strcmp(name,"_ZN2nn2oe16GetOperationModeEv"))
         return (uint64_t)(uintptr_t)&nso_host_oe_get_operation_mode;
+    if(!strcmp(name,"_ZN2nn2oe27SetPerformanceConfigurationENS0_15PerformanceModeEi"))
+        return (uint64_t)(uintptr_t)&nso_host_oe_set_performance_configuration;
+    if(!strcmp(name,"_ZN2nn2oe18GetPerformanceModeEv"))
+        return (uint64_t)(uintptr_t)&nso_host_oe_get_performance_mode;
     if(!strcmp(name,"_ZN2nn4util11ReferSymbolEPKv") || !strcmp(name,"nnutilReferSymbol"))
         return (uint64_t)(uintptr_t)&refer_symbol;
     if(!strcmp(name,"_ZN2nn4util12GenerateUuidEv"))

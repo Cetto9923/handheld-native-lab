@@ -3710,6 +3710,113 @@ static int ldn_state_contract(const char *path) {
            c.native_ran?(int)c.native_state:-1);
     return 0;
 }
+
+/* nn::oe performance configuration (main NSO import indexes 239 and 240).
+ *
+ * nn::oe::SetPerformanceConfiguration(PerformanceMode, int) takes two 32-bit
+ * arguments and returns nothing; nn::oe::GetPerformanceMode() takes none and
+ * returns the 32-bit mode. The guest asks for a mode and then reads it back,
+ * and that round trip is what the fixture drives through the real guest
+ * import path: the guest sets a configuration and then reads the mode back
+ * through the second import, so the boundary has to accept both signatures
+ * or the guest never runs.
+ *
+ * The fixture passes a mode and a clock that differ from the values the
+ * real guest uses, so a stub that ignores its arguments cannot satisfy both
+ * the guest path and the direct host calls. */
+#define OE_PERFORMANCE_SET_MANGLED "_ZN2nn2oe27SetPerformanceConfigurationENS0_15PerformanceModeEi"
+#define OE_PERFORMANCE_GET_MANGLED "_ZN2nn2oe18GetPerformanceModeEv"
+/* The mode and clock the fixture guest passes through the import path. */
+#define OE_FIXTURE_PERFORMANCE_MODE 5
+#define OE_FIXTURE_PERFORMANCE_CLOCK 0x20003
+/* Different values for the direct host call, so the two observations cannot
+ * be satisfied by one constant. */
+#define OE_DIRECT_PERFORMANCE_MODE 7
+#define OE_DIRECT_PERFORMANCE_CLOCK 0x10001
+/* The values the host has to report back after the direct call above. They
+ * are spelled out separately on purpose: an expectation derived from the
+ * input would change together with it, and the contract could then no
+ * longer tell a stub that records its arguments from one that ignores them.
+ * The self-proof breaks exactly these two constants. */
+#define OE_EXPECTED_DIRECT_MODE 7
+#define OE_EXPECTED_DIRECT_CLOCK 0x10001
+struct oe_performance_case {
+    guest_process *process;
+    int resolved_set,resolved_get;
+    int native_ran,native_marker;
+    uint32_t native_performance_mode;
+    int direct_ok;
+};
+static void *exercise_oe_performance(guest_process *p,void *opaque) {
+    struct oe_performance_case *c=opaque;
+    c->process=p;
+    typedef void (*oe_performance_set_fn)(int32_t,int32_t);
+    typedef int32_t (*oe_performance_get_fn)(void);
+    oe_performance_set_fn set_config=(oe_performance_set_fn)(uintptr_t)guest_process_resolve(0,OE_PERFORMANCE_SET_MANGLED);
+    oe_performance_get_fn get_mode=(oe_performance_get_fn)(uintptr_t)guest_process_resolve(0,OE_PERFORMANCE_GET_MANGLED);
+    c->resolved_set=set_config!=NULL;
+    c->resolved_get=get_mode!=NULL;
+    expect_condition("oe-performance-set-resolved",set_config!=NULL);
+    expect_condition("oe-performance-get-resolved",get_mode!=NULL);
+    /* The real guest path: the fixture calls the imports itself. */
+    uint64_t output[2]={0xa5a5,0xa5a5},returned=0xa5a5;
+    uint64_t args[1]={(uintptr_t)output};
+    struct nso_result r=guest_process_call(p,0x20,args,1,&returned);
+#if defined(__ANDROID__) && defined(__aarch64__)
+    expect_value("oe-performance-native-status",r.status,NSO_OK);
+    expect_value("oe-performance-native-return",returned,0x91);
+    c->native_ran=1;
+    c->native_marker=output[1]==1;
+    expect_condition("oe-performance-guest-call-returned",output[1]==1);
+    /* The mode the guest read back through the second import, after it set a
+     * configuration through the first one. */
+    c->native_performance_mode=(uint32_t)output[0];
+    expect_value("oe-performance-guest-mode-readback",output[0],OE_FIXTURE_PERFORMANCE_MODE);
+    /* The clock the guest asked for reached the host unmoved. */
+    expect_value("oe-performance-guest-clock",(uint64_t)(uint32_t)nso_host_oe_performance_clock(),(uint64_t)(uint32_t)OE_FIXTURE_PERFORMANCE_CLOCK);
+#else
+    /* No AArch64 executor on this host: the boundary is prepared but the raw
+     * guest entry cannot run here. Nothing may be faked in its place. */
+    expect_value("oe-performance-native-unsupported",r.status,NSO_UNSUPPORTED);
+    expect_value("oe-performance-native-no-raw-fallback",returned,0xa5a5);
+#endif
+    /* Direct host calls: every stub must record exactly what it was given. */
+    if(set_config&&get_mode) {
+        set_config((int32_t)OE_DIRECT_PERFORMANCE_MODE,(int32_t)OE_DIRECT_PERFORMANCE_CLOCK);
+        c->direct_ok=nso_host_oe_get_performance_mode()==OE_EXPECTED_DIRECT_MODE &&
+                     nso_host_oe_performance_clock()==OE_EXPECTED_DIRECT_CLOCK &&
+                     get_mode()==OE_EXPECTED_DIRECT_MODE;
+        expect_condition("oe-performance-direct-mode",nso_host_oe_get_performance_mode()==OE_EXPECTED_DIRECT_MODE);
+        expect_value("oe-performance-direct-clock",(uint64_t)(uint32_t)nso_host_oe_performance_clock(),(uint64_t)(uint32_t)OE_EXPECTED_DIRECT_CLOCK);
+        expect_value("oe-performance-direct-get-mode",(uint64_t)(uint32_t)get_mode(),(uint64_t)(uint32_t)OE_EXPECTED_DIRECT_MODE);
+    }
+    return &returned_token;
+}
+static int oe_performance_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));
+    char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+    struct oe_performance_case c={0};
+    void *value=NULL;
+    CHECK(succeeded(guest_process_run(p,exercise_oe_performance,&c,&value)));
+    CHECK(value==&returned_token);
+    expect_condition("oe-performance-set-resolved",c.resolved_set);
+    expect_condition("oe-performance-get-resolved",c.resolved_get);
+    expect_condition("oe-performance-direct-record",c.direct_ok);
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    /* The final gate. Every expect_* above must have passed; without this the
+     * contract could still exit 0 while the expectations had failed. */
+    CHECK(!errors);
+    /* The report states what this run observed, not a literal zero. */
+    printf("{\"oe_performance_errors\":%u,\"set_resolved\":%s,\"get_resolved\":%s,"
+           "\"direct_ok\":%s,\"native_ran\":%s,\"guest_marker\":%s,"
+           "\"guest_performance_mode\":%d}\n",errors,
+           c.resolved_set?"true":"false",c.resolved_get?"true":"false",
+           c.direct_ok?"true":"false",c.native_ran?"true":"false",
+           c.native_marker?"true":"false",
+           c.native_ran?(int)c.native_performance_mode:-1);
+    return 0;
+}
 int main(int argc,char **argv) {
     page=(size_t)sysconf(_SC_PAGESIZE);
     if(argc==2 && !strcmp(argv[1],"--tls-host-null")) {
@@ -3736,6 +3843,7 @@ int main(int argc,char **argv) {
     if(argc==3 && !strcmp(argv[1],"--oe-focus"))return oe_focus_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--oe-operation-mode"))return oe_operation_mode_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--ldn-get-state"))return ldn_state_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--oe-performance"))return oe_performance_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-fresh"))return tls_fresh_registration_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-null"))return tls_registration_contract(argv[2],1);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-repeat"))return tls_registration_contract(argv[2],2);

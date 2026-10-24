@@ -286,6 +286,29 @@ bool nso_host_oe_resume_notification_enabled(void);
  * no authoritative enumerator list is available in-tree. */
 uint32_t nso_host_oe_get_operation_mode(void);
 
+/* nn::oe performance configuration (main NSO import indexes 239 and 240).
+ *
+ * nn::oe::SetPerformanceConfiguration(PerformanceMode mode, int clock) takes
+ * two 32-bit arguments and returns nothing: every one of the four guest
+ * call sites (0x520518, 0x520524, 0x5205bc and 0x5205c8) loads w0 and w1
+ * right before the call and never consumes the result. The guest asks for
+ * mode 0 with clock 0x20003 or 0x20004 and then mode 1 with clock 0x10001.
+ *
+ * The stub records the request and does not change the real CPU or GPU
+ * frequency. That is the same rule the already bound nn::oe::SetCpuBoostMode
+ * (import 75) follows: the Android governor owns the frequency and the
+ * cpufreq sysfs nodes need root.
+ *
+ * nn::oe::GetPerformanceMode() takes no argument and returns the 32-bit
+ * performance mode; its single guest call site (0x5203c4) compares the
+ * result against 1. It reports the mode that was requested last, which is
+ * what the reference platform does, because the guest asks for a mode and
+ * then reads it back. The initial value is 0, the mode in effect before the
+ * guest asked for anything. */
+void nso_host_oe_set_performance_configuration(int32_t mode,int32_t clock);
+int32_t nso_host_oe_get_performance_mode(void);
+int32_t nso_host_oe_performance_clock(void);
+
 void nso_host_os_initialize_event(void *event, bool initially_signaled, int32_t clear_mode);
 void nso_host_os_finalize_event(void *event);
 void nso_host_os_signal_event(void *event);

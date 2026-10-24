@@ -1161,6 +1161,8 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
         "_ZN2nn2oe28SetResumeNotificationEnabledEb",
         "_ZN2nn2oe16GetOperationModeEv",
         "_ZN2nn3ldn8GetStateEv",
+        "_ZN2nn2oe27SetPerformanceConfigurationENS0_15PerformanceModeEi",
+        "_ZN2nn2oe18GetPerformanceModeEv",
         "_ZN2nn4util11ReferSymbolEPKv","nnutilReferSymbol",
         "_ZN2nn2os15InitializeMutexEPNS0_9MutexTypeEbi","nnosInitializeMutex",
         "_ZN2nn2os13FinalizeMutexEPNS0_9MutexTypeE","nnosFinalizeMutex",
@@ -1395,6 +1397,14 @@ static int import_signature(const char *name,nb_signature *out) {
      * state. The Itanium mangling carries no return type, so the return type
      * comes from the guest: every call site reads the result in w0. */
     else if(!strcmp(name,"_ZN2nn3ldn8GetStateEv")) {arguments=0;returns=1;}
+    /* nn::oe::SetPerformanceConfiguration(PerformanceMode, int): two 32-bit
+     * arguments and no return. The Itanium mangling carries no return type,
+     * so the return type comes from the guest: all four call sites load w0
+     * and w1 right before the call and never consume the result.
+     * nn::oe::GetPerformanceMode(): no argument, returns the 32-bit mode;
+     * its single call site compares the result against 1. */
+    else if(!strcmp(name,"_ZN2nn2oe27SetPerformanceConfigurationENS0_15PerformanceModeEi")) {arguments=2;returns=0;}
+    else if(!strcmp(name,"_ZN2nn2oe18GetPerformanceModeEv")) {arguments=0;returns=1;}
     else if(!strcmp(name,"nnsslInitialize")) {arguments=0;returns=1;}
     else if(!strcmp(name,"nnsslFinalize")) {arguments=0;returns=1;}
     else if(!strcmp(name,"_ZN2nn4util12GenerateUuidEv")) {arguments=0;returns=2;}

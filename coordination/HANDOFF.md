@@ -1,3 +1,22 @@
+# P-MM-8 闭环｜2026-10-24 17:15 Asia/Shanghai — 绑定 `nn::oe` 性能配置组（import 239 `SetPerformanceConfiguration` + 240 `GetPerformanceMode`，**一次 2 个**），真机**越过 v58 的 SIGTRAP**（unresolved 379 → 377，前沿推进到 **`nv::SetGraphicsAllocator` import 350**＝进入图形阶段）
+
+- **结论**：工单 P-MM-8 目标闭环。`nn::oe` 性能配置对 **2 个符号一次绑定**（import 239 `SetPerformanceConfiguration(PerformanceMode, int)`、240 `GetPerformanceMode()`），均为**如实记录**型桩；真机 v59 **不再**因这两个符号触发 `[unresolved-import]` / `[fault] signal=5`，profile 行 `unresolved` 由 **379 → 377**（**正好 2 个**），boundary 导入计数由 **269 → 271**，新第一致命推进到 **import 350 `nv::SetGraphicsAllocator()`**，exit **133**（SIGTRAP）。**未达标题画面 / 可玩**。
+  1. **ABI 由 guest 定论（mangling 不编码返回类型）**：
+     - **239**：`SetPerformanceConfiguration` 有 **4 个调用点**（`0x520518`/`0x520524`/`0x5205bc`/`0x5205c8`），每一处都在 `bl` 之前立刻 `mov w0, …` / `mov w1, …`，且**调用后 w0 立刻被下一条指令覆写** ⇒ **两参（w0 模式 / w1 时钟码）、无返回**。
+     - **240**：`GetPerformanceMode` 只有 **1 个调用点** `0x5203c4`，返回值在 `0x520404` 被 `cmp w0, #1` 消费 ⇒ **零参、返回 32 位模式**。
+  2. **guest 实际传的实参**（静态分析 + 真机日志**双重吻合**）：先 `SetPerformanceConfiguration(0, 0x20003 或 0x20004)`，再 `SetPerformanceConfiguration(1, 0x10001)`；真机 v59 第 **53229/53230** 行记录到 `mode=0 clock=0x20004` 与 `mode=1 clock=0x10001`，**与静态预测逐条吻合**。
+  3. **不伪造真实频率变更**：沿用已绑定的 `nn::oe::SetCpuBoostMode`（import 75）口径——桩**只记录**模式与时钟码，真实 CPU/GPU 频率仍由 **Android governor** 拥有（cpufreq sysfs 需 root，本项目无 root）。
+  4. **`GetPerformanceMode` 返回「最近一次请求的模式」**：参考平台的行为就是「先请求、再读回」；guest 在 `0x520404` 正是要判断「当前是不是 Boost」。初值为 **0**（guest 尚未请求任何模式前生效的模式）。
+  5. **契约 `--oe-performance`**：自造**双导入** fixture（`oe-performance.nso`，sha256 `bac43e9f…`）驱动 **guest 真实路径的「设置→读回」往返**——fixture 先经导入设 `mode=5 clock=0x20003`，再经第二个导入读回模式并写进输出槽。宿主 `errors=0`；真机 `native_ran=true`、`guest_marker=true`、`guest_performance_mode=5` ⇒ 真实导入路径上「设 5 读回 5」成立；直调路径用**另一组**值（`7 / 0x10001`）验证桩不忽略实参。
+  6. **⚠ 自证两次失效、已修正（本单最重要的方法论产出）**：第一版三变体**全绿**——A 改的是 `OE_FIXTURE_PERFORMANCE_MODE`，而该常量**只**出现在 `#if defined(__ANDROID__)` 的设备端期望里，宿主端根本不编译，宿主自证**看不到任何变化**；改成 `OE_DIRECT_PERFORMANCE_MODE` 后**仍全绿**，因为它**同时是输入和期望**，两边一起动，断言恒真。**修法**：把期望值拆成独立常量 `OE_EXPECTED_DIRECT_MODE` / `OE_EXPECTED_DIRECT_CLOCK`（输入用另一组常量），自证**只改期望**。修正后三变体恢复区分力：A **exit 1（红）**、B **exit 0（假绿**，且报告里 `direct_ok:false` 暴露了失败被掩盖）、C **exit 1（红**，桩被改成**忽略实参**后 `actual=0x63 / clock=0x0`）。失败行 `process contract line=3809: !errors`。日志 `.local/logs/p-mm-8-contract-selfproof.log`。
+  7. **刻意排除的符号（不夹带）**：`89/90/91 nn::nifm`（**是否联网取决于设备真实网络状态**，不能凭空断言）、`228–232 nn::vi`（显示族，需 Android Surface 桥）、`236/237` 与 Npad 族（需 Android 输入桥）。
+- **新阻塞一句话**：真机 v59 现在停在 **import 350 `nv::SetGraphicsAllocator(...)`**（`caller_offset=0x1434c94`，exit 133）。它的签名与**已绑定的 `movie::SetAllocator`（import 74）完全同形**：`void*(*)(ulong,ulong,void*)` 分配回调、`void(*)(void*,void*)` 释放回调、`void*(*)(void*,ulong,void*)` 重分配回调、`void*` userdata。故障现场寄存器也印证了四参形态（x0/x1/x2 = 三个回调，x3 = userdata = 0）。**下一刀应攻 import 350**，并以 P-MM-2 的 movie 契约 + 自造 fixture 为模板复用（注意：四个回调必须**原样到达宿主**，桩不能只打印）。另注：v59 日志里游戏已在读 `rom:/Unreal Engine/Engine/Config/SystemEngine.ini`、`rom:/FFRS/Config/UserEngine.ini` 等 UE 配置 ⇒ **已进入配置阶段与图形阶段**。同族还有 import 351 `nv::SetGraphicsDevtoolsAllocator`（同签名），是否一并绑定需先证明其调用点可达。
+- **产物与证据**：
+  - 构建目录 `.local/build-p-mm-8/`（`guest_process_contract.android` sha256 `23a83c61…`、`nso_owned_startup.android` sha256 `d8350f2d…`、`oe-performance.nso` sha256 `bac43e9f…`）；manifest 已写入 `android_executed` / `device_contracts` / `device_boot`。
+  - 真机日志 `.local/logs/rg477m-boot-v59-performance-configuration.log`（**56907** 行，exit 133）+ `.exitcode`；契约日志 `.local/logs/rg477m-contract-p-mm-8-oe-performance.stdout/.stderr`；自证日志 `.local/logs/p-mm-8-contract-selfproof.log`。
+  - 设备侧文件：`p-mm-8-nso_owned_startup.android-d8350f2d`、`p-mm-8-guest_process_contract.android-23a83c61`、`p-mm-8-oe-performance.nso-bac43e9f`。
+- **未完成 / 风险**：标题画面与可玩**均未达**；全模块仍有 **377** 个导入未绑定（`imports=651`）。已知语义保留项：P-MM-5 的 `GetCurrentFocusState` 桩返回 0（guest 只与 3 比较，行为等价，但无权威枚举，故不宣称其名字）。
+
 # P-MM-7 闭环｜2026-10-24 16:55 Asia/Shanghai — 绑定 `nn::ldn::GetState()`（import 88），真机**越过 v57 的 SIGTRAP**（unresolved 380 → 379，前沿推进到 `nn::oe::SetPerformanceConfiguration` import 239）
 
 - **结论**：工单 P-MM-7 目标闭环。`nn::ldn::GetState()`（import 88）已绑定为**如实记录**型桩；真机 v58 **不再**因该符号触发 `[unresolved-import]` / `[fault] signal=5`，profile 行 `unresolved` 由 **380 → 379**（**正好 1 个**），boundary 导入计数由 **268 → 269**，新第一致命推进到 **import 239 `nn::oe::SetPerformanceConfiguration(nn::oe::PerformanceMode, int)`**，exit **133**（SIGTRAP）。**未达标题画面 / 可玩**。
