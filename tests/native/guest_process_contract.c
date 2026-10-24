@@ -3335,6 +3335,93 @@ static int oe_cpu_boost_contract(const char *path) {
            c.native_ran?(int)c.native_mode:-1);
     return 0;
 }
+
+/* nn::hid::InitializeKeyboard() and nn::hid::InitializeMouse() (main NSO
+ * import indexes 234 and 235) take no arguments and return nothing. The
+ * runtime must bind both symbols, accept the zero-argument void signature at
+ * the boundary and record that the subsystem was initialised. The fixture NSO
+ * drives the real guest import path with both imports, so the boundary has to
+ * accept the signature or the guest never runs. Before the direct host call
+ * the host state must still be untouched, so a stub that pre-sets the flags
+ * cannot pass. */
+#define HID_INIT_KEYBOARD_MANGLED "_ZN2nn3hid18InitializeKeyboardEv"
+#define HID_INIT_MOUSE_MANGLED "_ZN2nn3hid15InitializeMouseEv"
+struct hid_init_case {
+    guest_process *process;
+    int resolved_keyboard,resolved_mouse;
+    int direct_ok;
+    int native_ran,native_marker;
+    int native_keyboard_initialized,native_mouse_initialized;
+};
+static void *exercise_hid_init(guest_process *p,void *opaque) {
+    struct hid_init_case *c=opaque;
+    c->process=p;
+    typedef void (*hid_init_fn)(void);
+    hid_init_fn keyboard=(hid_init_fn)(uintptr_t)guest_process_resolve(0,HID_INIT_KEYBOARD_MANGLED);
+    hid_init_fn mouse=(hid_init_fn)(uintptr_t)guest_process_resolve(0,HID_INIT_MOUSE_MANGLED);
+    c->resolved_keyboard=keyboard!=NULL;
+    c->resolved_mouse=mouse!=NULL;
+    expect_condition("hid-init-keyboard-resolved",keyboard!=NULL);
+    expect_condition("hid-init-mouse-resolved",mouse!=NULL);
+    /* The stubs record an initialisation; they do not start out initialised. */
+    expect_condition("hid-init-keyboard-not-preinitialised",!nso_host_hid_keyboard_initialized());
+    expect_condition("hid-init-mouse-not-preinitialised",!nso_host_hid_mouse_initialized());
+    /* The real guest path: the fixture calls both imports itself. */
+    uint64_t output[2]={0xa5a5,0xa5a5},returned=0xa5a5;
+    uint64_t args[1]={(uintptr_t)output};
+    struct nso_result r=guest_process_call(p,0x20,args,1,&returned);
+#if defined(__ANDROID__) && defined(__aarch64__)
+    expect_value("hid-init-native-status",r.status,NSO_OK);
+    expect_value("hid-init-native-return",returned,0x91);
+    c->native_ran=1;
+    c->native_marker=output[0]==1;
+    expect_condition("hid-init-guest-call-returned",output[0]==1);
+    c->native_keyboard_initialized=nso_host_hid_keyboard_initialized();
+    c->native_mouse_initialized=nso_host_hid_mouse_initialized();
+    expect_condition("hid-init-guest-keyboard-initialised",c->native_keyboard_initialized);
+    expect_condition("hid-init-guest-mouse-initialised",c->native_mouse_initialized);
+#else
+    /* No AArch64 executor on this host: the boundary is prepared but the raw
+     * guest entry cannot run here. Nothing may be faked in its place. */
+    expect_value("hid-init-native-unsupported",r.status,NSO_UNSUPPORTED);
+    expect_value("hid-init-native-no-raw-fallback",returned,0xa5a5);
+#endif
+    /* Direct host call: both stubs must actually record the initialisation. */
+    if(keyboard&&mouse) {
+        keyboard();
+        mouse();
+        c->direct_ok=nso_host_hid_keyboard_initialized()&&nso_host_hid_mouse_initialized();
+        expect_condition("hid-init-direct-keyboard",nso_host_hid_keyboard_initialized());
+        expect_condition("hid-init-direct-mouse",nso_host_hid_mouse_initialized());
+    }
+    return &returned_token;
+}
+static int hid_init_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));
+    char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+    struct hid_init_case c={0};
+    void *value=NULL;
+    CHECK(succeeded(guest_process_run(p,exercise_hid_init,&c,&value)));
+    CHECK(value==&returned_token);
+    expect_condition("hid-init-keyboard-resolved",c.resolved_keyboard);
+    expect_condition("hid-init-mouse-resolved",c.resolved_mouse);
+    expect_condition("hid-init-direct-record",c.direct_ok);
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    /* The final gate. Every expect_* above must have passed; without this the
+     * contract could still exit 0 while the expectations had failed. */
+    CHECK(!errors);
+    /* The report states what this run observed, not a literal zero. */
+    printf("{\"hid_init_errors\":%u,\"keyboard_resolved\":%s,\"mouse_resolved\":%s,"
+           "\"direct_ok\":%s,\"native_ran\":%s,\"guest_marker\":%s,"
+           "\"guest_keyboard_initialized\":%s,\"guest_mouse_initialized\":%s}\n",errors,
+           c.resolved_keyboard?"true":"false",c.resolved_mouse?"true":"false",
+           c.direct_ok?"true":"false",c.native_ran?"true":"false",
+           c.native_marker?"true":"false",
+           c.native_keyboard_initialized?"true":"false",
+           c.native_mouse_initialized?"true":"false");
+    return 0;
+}
 int main(int argc,char **argv) {
     page=(size_t)sysconf(_SC_PAGESIZE);
     if(argc==2 && !strcmp(argv[1],"--tls-host-null")) {
@@ -3357,6 +3444,7 @@ int main(int argc,char **argv) {
     if(argc==3 && !strcmp(argv[1],"--snapshot-thread"))return snapshot_thread_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--movie-allocator"))return movie_allocator_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--oe-cpu-boost"))return oe_cpu_boost_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--hid-init"))return hid_init_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-fresh"))return tls_fresh_registration_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-null"))return tls_registration_contract(argv[2],1);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-repeat"))return tls_registration_contract(argv[2],2);

@@ -1958,6 +1958,27 @@ nn_oe_cpu_boost_mode nso_host_oe_get_cpu_boost_mode(void) {
     return s_oe_cpu_boost_mode;
 }
 
+static bool s_hid_keyboard_initialized = false;
+static bool s_hid_mouse_initialized = false;
+
+void nso_host_hid_initialize_keyboard(void) {
+    s_hid_keyboard_initialized = true;
+    fprintf(stderr, "[hle] nn::hid::InitializeKeyboard: keyboard subsystem initialised\n");
+}
+
+bool nso_host_hid_keyboard_initialized(void) {
+    return s_hid_keyboard_initialized;
+}
+
+void nso_host_hid_initialize_mouse(void) {
+    s_hid_mouse_initialized = true;
+    fprintf(stderr, "[hle] nn::hid::InitializeMouse: mouse subsystem initialised\n");
+}
+
+bool nso_host_hid_mouse_initialized(void) {
+    return s_hid_mouse_initialized;
+}
+
 /* ========================================================================= */
 /* nn::os::EventType HLE Implementation                                      */
 /* ========================================================================= */
@@ -2895,6 +2916,10 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_oe_get_desired_language;
     if(!strcmp(name,"_ZN2nn2oe15SetCpuBoostModeENS0_12CpuBoostModeE"))
         return (uint64_t)(uintptr_t)&nso_host_oe_set_cpu_boost_mode;
+    if(!strcmp(name,"_ZN2nn3hid18InitializeKeyboardEv"))
+        return (uint64_t)(uintptr_t)&nso_host_hid_initialize_keyboard;
+    if(!strcmp(name,"_ZN2nn3hid15InitializeMouseEv"))
+        return (uint64_t)(uintptr_t)&nso_host_hid_initialize_mouse;
     if(!strcmp(name,"_ZN2nn4util11ReferSymbolEPKv") || !strcmp(name,"nnutilReferSymbol"))
         return (uint64_t)(uintptr_t)&refer_symbol;
     if(!strcmp(name,"_ZN2nn4util12GenerateUuidEv"))

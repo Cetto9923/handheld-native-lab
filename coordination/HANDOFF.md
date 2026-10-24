@@ -1,3 +1,45 @@
+# P-MM-4 闭环｜2026-10-24 15:45 Asia/Shanghai — 绑定 `nn::hid::InitializeKeyboard` + `InitializeMouse`（import 234/235），真机**越过 v54 的 SIGTRAP**（unresolved 388 → 386，前沿推进到 `nn::oe::GetCurrentFocusState` import 222）
+
+- **结论**：工单 P-MM-4 目标闭环。`nn::hid::InitializeKeyboard`（import 234）与 `nn::hid::InitializeMouse`（import 235）已在 HLE 层绑定为**如实记录**初始化状态的宿主桩；真机 v55 **不再**因这两个符号触发 `[unresolved-import]` / `[fault] signal=5`，profile 行 `unresolved` 由 **388 → 386**（**正好 2 个**，即本单绑定的两个），新第一致命推进到 **import 222 `nn::oe::GetCurrentFocusState()`**，exit **133**（SIGTRAP）。**未达标题画面 / 可玩**。
+  1. **三处必改点全部落地**：
+     - `src/runtime/hle/nso_host.c`：新增 `nso_host_hid_initialize_keyboard()` / `nso_host_hid_keyboard_initialized()` / `nso_host_hid_initialize_mouse()` / `nso_host_hid_mouse_initialized()`；`nso_host_resolve()` 新增两个绑定分支。
+     - `src/runtime/hle/nso_host.h`：新增四个声明（记录型桩，**不**伪造任何按键/鼠标数据）。
+     - `src/runtime/hle/guest_process.c`：`typed[]` 白名单新增两个 mangled 名；`import_signature()` 新增显式分支 `{arguments=0;returns=0;}`（两个符号共用）。
+  2. **ABI 定论（实测，非猜测）**：`_ZN2nn3hid18InitializeKeyboardEv` / `_ZN2nn3hid15InitializeMouseEv` 经 `c++filt` 确认为 `nn::hid::InitializeKeyboard()` / `InitializeMouse()`，**零实参**。**返回类型不能从 mangled 名判定**（Itanium ABI 不编码返回类型），改由调用点定论：`0x51f618` 与 `0x51f61c` 是**紧邻的两个 BL**（同一 HID 初始化序列，**已证实同处一次执行**），两次调用后 w0 均未被消费 ⇒ **void 返回、0 实参**。
+  3. **本刀边界（刻意不扩大）**：`nn::hid::GetKeyboardState`（import 236）与 `GetMouseState`（import 237）各只有 1 个调用点，但它们是**每帧输入轮询**、携带真实数据语义；连同 Npad 族（385 `InitializeNpad`、458–463 `GetNpadState`）一并属于「**Android 输入桥**」这把单独的刀，需要真实输入源，**本单不夹带、不伪造**。本单只做「子系统已初始化」的事实记录。
+  4. **契约（宿主 + 真机同测）**：新增 `--hid-init` 契约，由构建脚本自造的 `hid-init.nso` fixture 驱动**真实 guest 导入路径**（fixture 自身依次调用**两个**导入）。
+     - 宿主 PASS：`{"hid_init_errors":0,"keyboard_resolved":true,"mouse_resolved":true,"direct_ok":true,"native_ran":false,...}`（宿主无 AArch64 执行器，`native_ran=false` = 未观测，未伪造）。
+     - **RG477M 真机 PASS**：`{"hid_init_errors":0,"keyboard_resolved":true,"mouse_resolved":true,"direct_ok":true,"native_ran":true,"guest_marker":true,"guest_keyboard_initialized":true,"guest_mouse_initialized":true}`。
+     - 覆盖面：白名单门禁 ✓；**签名门禁**通过（真机 stderr `[boundary-ready] imports=2 actual-primary-owned`，`[boundary-unsupported]` 全程 **0**）✓；**guest 真实调用后两个标志均为 true** ✓（证明两个导入都真被调用，而非只有一个）；契约另断言「直调前标志必须为 false」⇒ 预置标志的桩无法蒙混 ✓。
+  5. **两变体自证**（日志 `.local/logs/p-mm-4-contract-selfproof.log`，只把一条期望取反）：
+     - **变体 A（当前源码形态：真实错误数 + 末尾 `CHECK(!errors)`）** → `[check-fail] hid-init-direct-keyboard`，**exit 1（红）**。
+     - **变体 B（修复前形态：去掉末尾 `CHECK(!errors)` 且错误数硬编码 0）** → 同样打印 `[check-fail]`，却 **exit 0（假绿）** 并输出 `"hid_init_errors":0`。
+     ⇒ 证明契约能检出失败、且修复形态不假绿。（自证在 `.local/selfproof/` 用副本完成，**工作树源码未被污染**。）
+  6. **根因修复（本单最重要的产出）：自造 NSO 的 `.dynamic` 被按位置索引打错 tag**。首轮真机契约 **exit 139（SIGSEGV，`pc=0x0`、`x16=0x0`）**——guest 的第二个 `blr` 跳到了 0。定位链条：
+     - 静态核对：fixture 汇编链接后 `adr` 被松弛为单条指令，两个 GOT 目标分别是 0x8200 / 0x8208（与 `adrp+add` 原意一致）；NSO 的 dynstr / dynsym / DT_RELA 三项内容全部正确。
+     - **秒级探针**（不改 runtime，只链接已构建的 `.o`，load 后直接读 `nso_base(module)+0x8200/0x8208/0x8230`）：`got[0x8200]=<键盘桩>` ✓ 而 **`got[0x8208]=0`**、`got[0x8230]=0` ⇒ 重定位**没被应用**。
+     - dump `.dynamic` 后确认：构建脚本里的 `struct.pack_into('<Q',data,0x2000+5*16+8,24)` 打的**不是 DT_RELAENT（idx 6）而是 DT_RELASZ（idx 5）**，把重定位表从 72 字节（3 项）截成 24 字节（1 项）⇒ 第二个导入的 GOT 槽从未被填 ⇒ 跳到 0。
+     - 修复：hid fixture **不再截断** DT_RELASZ（保留基线 72，3 项重定位全部生效），并把两处 patch 的**真实 tag 名**写进注释（movie fixture 的 24 是其单导入设计所必需，保留不动，且其 sha256 仍为 `4a8dec9b…`，**与 P-MM-2 已提交证据逐字节一致**）。
+     - 修复后复测：`got[0x8208]=<鼠标桩>` ✓，宿主 hid 与 movie 契约**均 PASS（无回归）**，真机契约 PASS。
+  7. **验收 A（真机 v55）**：`.local/logs/rg477m-boot-v55-hid-initializekeyboard.log`（**54556** 行，exit 133）实测 `[boundary-unsupported]` **0**、`Aborted` **0**、`[snapshot-refused]` **0**；第 **54538 / 54539** 行 `[hle] nn::hid::InitializeKeyboard: keyboard subsystem initialised` / `[hle] nn::hid::InitializeMouse: mouse subsystem initialised` 为**真实 guest 调用**；profile 行 `imports=651 unresolved=386`（388 → 386，**正好 2 个**）。
+  8. **验收 B（新阻塞）**：第 **54540–54541** 行
+     ```
+     [fault] signal=5 pc=0x7bd3d606f0 fa=0x7bd3d606f0
+     [unresolved-import] index=222 name=_ZN2nn2oe20GetCurrentFocusStateEv caller_offset=0x51da14
+     ```
+     exit **133**（SIGTRAP，未解析**代码**导入）。**新阻塞一句话**：guest 调用未解析的 `nn::oe::GetCurrentFocusState()`（import 222，**零实参、有返回值**，共 4 个调用点 `0x51da10 0x51ed40 0x51ed54 0x51f1c8`）⇒ 运行时无该符号 typed HLE ⇒ SIGTRAP。**下一刀应攻 import 222**；`nn::oe` 已有 `nso_host_oe_initialize` / `nso_host_oe_get_desired_language` / `nso_host_oe_set_cpu_boost_mode` 先例可照抄。**注意**：该符号**有返回值**，返回类型与「前台 Android 应用应返回哪个焦点态」必须由 4 个调用点 + guest 消费结果的方式判定，不得猜测。
+  9. **产物与日志**：
+     - 构建：`.local/build-p-mm-4/`（`sh scripts/runtime/build_guest_process_contract.sh --out .local/build-p-mm-4 --toolchain .local/minimal-ndk/toolchain --resource-quota-bytes 16777216`，exit 0；宿主全量契约 PASS；`manifest.json` 的 `source_sha256` 与工作树逐项一致、无源码漂移；`android_executed` 已置 true 并补 `device_contracts` / `device_boot` 证据块）。
+     - 启动二进制 `nso_owned_startup.android` sha256 `420e661f…`（设备端 `p-mm-4-nso_owned_startup.android-420e661f`）；契约二进制 `guest_process_contract.android` sha256 `5430e88c…`（设备端 `p-mm-4-guest_process_contract.android-5430e88c`）；fixture `hid-init.nso` sha256 `b4286388…`（设备端 `p-mm-4-hid-init.nso-b4286388`，**自造 fixture，非游戏字节**）。
+     - 真机全量 boot：`.local/logs/rg477m-boot-v55-hid-initializekeyboard.log` + 同名 `.exitcode` = **133**；run 目录 `/data/local/tmp/ffrs-rg477m-efd1123620814764ae32529c18081259/`；参数与 v47–v54 一致：`quota=1073741824 stack=2097152 image=162869248 resource_quota=16777216 guest_argc=0`；runner 脚本 `.local/selfproof/boot_v55.sh`。
+     - 真机契约：`.local/logs/rg477m-contract-p-mm-4-hid-init.stdout` / `.stderr`（exit 0）。
+     - 诊断工具（只读、`.local/` 内，不进 git）：`.local/selfproof/got_probe.c`（GOT 槽直读探针）、`.local/selfproof/make_mm4_variants.py`、`.local/selfproof/selfproof_mm4.sh`。
+  10. **改动文件清单**（本单自有）：`src/runtime/hle/nso_host.c`、`src/runtime/hle/nso_host.h`、`src/runtime/hle/guest_process.c`、`tests/native/guest_process_contract.c`、`scripts/runtime/build_guest_process_contract.sh`、`coordination/state.json`、`coordination/HANDOFF.md`（本段）、`coordination/STATUS.md`（脚本生成）。
+  11. **口径保持诚实**：`imports=651 unresolved=386` —— **仍有 386 个未绑定**，本单只推进导入边界两层。「unresolved-import 计数 = 0」仍仅指 boot 期没有因未解析导入而产生 fault，**不是**全部导入已绑定。
+  12. **未达标题画面 / 可玩**；未伪造影片库 / 解码器 / 页表 / RSS / 按键状态；两个 HID 桩**只记录初始化事实**，不伪造任何输入数据。
+
+---
+
 # P-MM-3 闭环｜2026-10-24 15:35 Asia/Shanghai — 绑定 `nn::oe::SetCpuBoostMode`（import 75），真机**越过 v53 的 SIGTRAP**（exit 133 → 133，前沿推进到 `nn::hid::InitializeKeyboard` import 234）
 
 - **结论**：工单 P-MM-3 目标闭环。`nn::oe::SetCpuBoostMode`（import 75）已在 HLE 层绑定为**如实记录**请求模式的宿主桩；真机 v54 **不再**因该符号触发 `[unresolved-import] index=75` / `[fault] signal=5`，profile 行 `unresolved` 由 **389 → 388**（正好少 1 个绑定），新第一致命推进到 **import 234 `nn::hid::InitializeKeyboard()`**，exit **133**（SIGTRAP，未解析代码导入）。**未达标题画面 / 可玩**。

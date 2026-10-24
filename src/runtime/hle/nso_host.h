@@ -194,6 +194,23 @@ typedef int32_t nn_oe_cpu_boost_mode;
 void nso_host_oe_set_cpu_boost_mode(nn_oe_cpu_boost_mode mode);
 nn_oe_cpu_boost_mode nso_host_oe_get_cpu_boost_mode(void);
 
+/* nn::hid keyboard and mouse subsystem initialisation (main NSO import indexes
+ * 234 and 235).
+ *
+ * ABI: void InitializeKeyboard(void) and void InitializeMouse(void) - no
+ * arguments and no return value. The Itanium mangling carries no return type,
+ * so the return type was settled from the call sites instead: 0x51f618 and
+ * 0x51f61c are adjacent BLs into the two import stubs and neither result is
+ * consumed afterwards.
+ *
+ * These stubs only record that the subsystem was initialised. The state
+ * readers (imports 236 GetKeyboardState and 237 GetMouseState) run every frame
+ * and carry real data semantics, so they are deliberately not faked here. */
+void nso_host_hid_initialize_keyboard(void);
+bool nso_host_hid_keyboard_initialized(void);
+void nso_host_hid_initialize_mouse(void);
+bool nso_host_hid_mouse_initialized(void);
+
 void nso_host_os_initialize_event(void *event, bool initially_signaled, int32_t clear_mode);
 void nso_host_os_finalize_event(void *event);
 void nso_host_os_signal_event(void *event);

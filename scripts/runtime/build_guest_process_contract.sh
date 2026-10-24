@@ -488,6 +488,10 @@ raw=(out/'movie-allocator-fixture.raw').read_bytes();data=bytearray((out/'contra
 data[0x200:0x300]=raw[:0x100].ljust(0x100,b'\0');struct.pack_into('<I',data,0x204,0x4000)
 names=b'\0_ZN5movie12SetAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_\0'
 data[0x1160:0x1160+len(names)]=names
+# DT_RELASZ (dynamic index 5) is set to 24 on purpose: this fixture keeps one
+# dynsym entry, so the base table's third RELA (R_GLOB_DAT against symbol 2)
+# would be out of bounds and must not be applied. Dynamic index 5 is
+# DT_RELASZ, not DT_RELAENT (index 6) - the base already carries 24 there.
 struct.pack_into('<II',data,0x1080,1,2);struct.pack_into('<Q',data,0x2000+3*16+8,len(names));struct.pack_into('<Q',data,0x2000+5*16+8,24)
 (out/'movie-allocator.nso').write_bytes(data)
 manifest['generated_fixtures']['movie-allocator.nso']={'bytes':len(data),'sha256':digest(out/'movie-allocator.nso'),'kind':'self-authored four-argument void movie allocator registration fixture','assembly_sha256':digest(movie_assembly)}
@@ -537,6 +541,61 @@ run('host-oe-cpu-boost-contract',[out/'guest_process_contract.host','--oe-cpu-bo
 oe_stderr=(out/'host-oe-cpu-boost-contract'/'stderr.log').read_text()
 if '[hle] nn::oe::SetCpuBoostMode:' not in oe_stderr:raise RuntimeError('nn::oe::SetCpuBoostMode stub did not run')
 if '[boundary-unsupported]' in oe_stderr:raise RuntimeError('nn::oe::SetCpuBoostMode import signature was refused by the boundary')
+# nn::hid::InitializeKeyboard() and nn::hid::InitializeMouse() (main NSO import
+# indexes 234 and 235) take no arguments and return nothing. The fixture calls
+# both imports through the real guest import path, so the boundary must accept
+# the zero-argument void signature or the guest never runs. Two imports need two
+# dynsym entries and two GOT slots: the second RELA is rewritten from RELATIVE
+# to ABS64 against symbol 2.
+hid_assembly=out/'hid-init-fixture.S'
+hid_assembly.write_text(r''' .text
+.org 0x20
+.global fixture_entry
+fixture_entry:
+ stp x29, x30, [sp, #-32]!
+ str x19, [sp, #16]
+ mov x29, sp
+ mov x19, x0
+ adrp x16, fixture_got
+ add x16, x16, :lo12:fixture_got
+ ldr x16, [x16]
+ blr x16
+ adrp x16, fixture_got2
+ add x16, x16, :lo12:fixture_got2
+ ldr x16, [x16]
+ blr x16
+ mov x9, #1
+ str x9, [x19]
+ mov x0, #0x91
+ ldr x19, [sp, #16]
+ ldp x29, x30, [sp], #32
+ ret
+.section .fixture_got,"aw"
+.global fixture_got
+fixture_got: .zero 8
+.section .fixture_got2,"aw"
+.global fixture_got2
+fixture_got2: .zero 8
+''')
+run('fixture-hid-init-assemble',['clang',*common,'-c',hid_assembly,'-o',out/'hid-init-fixture.o'])
+run('fixture-hid-init-link',['env',f'DYLD_LIBRARY_PATH={a.rust_root}/lib',ld,'--no-undefined','--build-id=none','--image-base=0','-Ttext=0','--section-start=.fixture_got=0x8200','--section-start=.fixture_got2=0x8208','-e','fixture_entry','--oformat=binary','-o',out/'hid-init-fixture.raw',out/'hid-init-fixture.o'])
+raw=(out/'hid-init-fixture.raw').read_bytes();data=bytearray((out/'contract.nso').read_bytes())
+data[0x200:0x300]=raw[:0x100].ljust(0x100,b'\0');struct.pack_into('<I',data,0x204,0x4000)
+names=b'\0_ZN2nn3hid18InitializeKeyboardEv\0_ZN2nn3hid15InitializeMouseEv\0'
+data[0x1160:0x1160+len(names)]=names
+# Three dynsym entries here, so the base RELA table (DT_RELASZ = 72, three
+# entries) stays intact: dynamic index 5 is DT_RELASZ, not DT_RELAENT, and
+# truncating it would drop the relocation that fills the second GOT slot.
+struct.pack_into('<II',data,0x1080,1,3);struct.pack_into('<I',data,0x1130,names.index(b'_ZN2nn3hid15InitializeMouseEv'))
+struct.pack_into('<Q',data,0x2000+3*16+8,len(names))
+struct.pack_into('<QQq',data,0x1258,0x8208,(2<<32)|0x101,0)
+(out/'hid-init.nso').write_bytes(data)
+manifest['generated_fixtures']['hid-init.nso']={'bytes':len(data),'sha256':digest(out/'hid-init.nso'),'kind':'self-authored two-import zero-argument void nn::hid keyboard/mouse initialisation fixture','assembly_sha256':digest(hid_assembly)}
+run('host-hid-init-contract',[out/'guest_process_contract.host','--hid-init',out/'hid-init.nso'])
+hid_stderr=(out/'host-hid-init-contract'/'stderr.log').read_text()
+if '[hle] nn::hid::InitializeKeyboard:' not in hid_stderr:raise RuntimeError('nn::hid::InitializeKeyboard stub did not run')
+if '[hle] nn::hid::InitializeMouse:' not in hid_stderr:raise RuntimeError('nn::hid::InitializeMouse stub did not run')
+if '[boundary-unsupported]' in hid_stderr:raise RuntimeError('nn::hid initialisation import signature was refused by the boundary')
 locale_assembly=out/'locale-fixture.S'
 locale_assembly.write_text(r''' .text
 .org 0x20
