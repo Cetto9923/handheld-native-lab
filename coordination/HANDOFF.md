@@ -1,3 +1,28 @@
+# P-MM-30 sampler 族落地 / 描述符池编号 / 真机 Vulkan 四级结论 / 派出纹理族与图形管线崩溃两张卡｜2026-10-25 04:20 Asia/Shanghai — **sampler 对象族 15 名已实现并接线**；**描述符池的编号基址回来了**；**设备已实测：compute 管线能建成并被 GPU 消费，但 `vkCreateGraphicsPipelines` 直接把 Mali 驱动打崩（SIGSEGV）**；**帧数仍为 0**
+
+- **结论**：本轮把三块地基补齐了——**guest 下一步要撞的 sampler 对象族**（P-MM-25）已交付并接线；**描述符池的编号基址**已按参考树语义实现；**设备的 Vulkan 行为**第一次有了分级实测答案。**最要紧的新事实是负面的**：`vkCreateGraphicsPipelines` 在 RG477M 上是 **SIGSEGV**，不是返回错误码，而且**用手写的 trivial vertex+fragment 对照组同样崩、同一个 fault addr** ⇒ 崩在**图形管线状态本身**，不是游戏的 shader。**没有图形管线就没有第一帧**，所以这条已单独立卡 **P-MM-27**。**帧数仍为 0，不声称标题画面、不声称可玩。**
+  1. **P-MM-25 已集成（sampler 对象族 15 名）**：分支 `task/P-MM-25-sampler-object`，交付 `becda29`（代码）+ `26c1849`（报告），已 cherry-pick 进主树 `c15cb3b` / `c527ca6`，接线 `8131f76`（`nvn_device.c` 族块 + `build_guest_process_contract.sh` 源列表 + `src/android/native/CMakeLists.txt`）。契约结论：`{"nvn_sampler_errors":0,"names":15,"initialized":4,"finalized":1,"compared":5,"gets":19,"refused":4,"live_samplers":3}`；三变体自证 **A exit 1 / B exit 0 且 stdout 谎报 `errors:0` 而 stderr 留着真 `[check-fail]` / C exit 1**。
+  2. **族契约的开关约定（协调者侧修的坑）**：族契约要带**自己的开关**（`nvn_sampler_contract.c` → `--nvn-sampler`），而构建脚本原来**不带参数**跑族契约 ⇒ sampler 契约只打印 usage 并 `return 2`，宿主门在 `host-nvn_sampler_contract failed` 处中止。现改为**从文件名推导开关**（`nvn_sampler_contract.c` → `--nvn-sampler`，`nvn_command_replay_contract.c` → `--nvn-command-replay`），两个族契约**都进 manifest**。
+  3. **描述符池的编号基址（`83a64d5`）**：handle **不是指针**，是池内编号（低 20 位纹理号、第 20 位以上采样器号），**读取时才加上池的编号基址**。现按参考树 `dpool_add`/`dpool_base` 语义实现：**首次 Initialize 分配 base，按 `(n+255)&~255` 步进**；**纹理与采样器各一个独立编号空间**；base 表**独立于池状态**，所以池被 Finalize 再 Initialize 仍拿到同一个 base。池另外能回答**某个索引上注册的是哪个纹理**（replay 要靠它把句柄变成纹理）。**尚未接上的一头**：命令缓冲写进记录的 `tbase/sbase` **仍是 0**——那个文件属于 P-MM-24，等它放手后再接。
+  4. **P-MM-23 真机四级结论（已入库 `eec6456`）**：
+     | 级 | 结果 |
+     |---|---|
+     | 1 设备事实 | **PASS**：instance/device 都 `VK_SUCCESS`；物理设备 `Mali-G615 MC6`，API 1.3.247，queue flags 7；**设备支持 `shaderStorageImageWriteWithoutFormat` ⇒ 我方 `nvn_backend_vulkan.c` 的条件启用在这台机器上是活的** |
+     | 2 shader module | **PASS 24/24**：**驱动比 spirv-val 宽松**，连 spirv-val 判不合法的两个模块也收 |
+     | 3 pipeline | **PARTIAL**：两个 compute 管线 **被拒**（`VK_ERROR_INITIALIZATION_FAILED -3`），原因**不是** storage image 格式，而是模块**声明了根本没用到的 `Float64` 能力**，而设备 `shaderFloat64=false`；**去掉那句声明后两个 compute 管线都建成** |
+     | 4 draw 消费 | **PASS（仅 compute）**：descriptor set 真绑了 buffer/image/sampler/storage image，`vkQueueSubmit` + `vkWaitForFences` 都 `VK_SUCCESS` ⇒ **GPU 真消费了**；**没有回读内容，没有出图** |
+     | 3（图形） | **未到达**：`vkCreateGraphicsPipelines` **SIGSEGV**（`SEGV_MAPERR`，fault addr `0x40000000000`）；非空 pipeline cache / framebuffer 后建 / 收窄 stage flags **都仍崩**；**trivial 对照组同样崩** ⇒ 不是游戏 shader 的问题 |
+  5. **两张新卡已派出**：
+     - **P-MM-26（施工中，不占设备）**：**纹理对象族 31 名 + 纹理 view 族 14 名 + 三个 device 句柄函数 3 名 = 48 名**。名字**全部来自 guest 自己解析出来的记录**（`.local/logs/p-mm-29-guest-transcript.log`），不是猜的。`nvnTextureInitialize` 现在是 **trap slot 40**，就是 sampler 之后 guest 必然撞上的下一个门。`nvnDeviceGetTextureHandle` 等三个函数**此前完全没有实现**。
+     - **P-MM-27（施工中，独占设备）**：查清 `vkCreateGraphicsPipelines` 崩溃的**最小触发条件**、崩在 loader 还是 driver、以及**在这台设备上能建成图形管线的办法**（必须**实测通过**，不是推演）。**不许**去改 `nvn_backend_vulkan.c` 绕过崩溃。
+  6. **宿主门重建（`.local/build-p-mm-35`）全绿**：`normal_contract.errors = 0`；`family_contracts` = `nvn_command_replay_contract`（`nvn_replay_errors:0`）+ `nvn_sampler_contract`（`nvn_sampler_errors:0`），**两个族契约都真的跑了**（此前 sampler 那次是构建中止，不是绿）。
+- **本单未解决 / 风险**：**帧数仍为 0**；**命令包仍不存在**（P-MM-24 正在收尾，宿主门已绿 232 例，报告在写）；**命令缓冲写的 `tbase/sbase` 仍是 0**，句柄暂时还变不成纹理；**图形管线一次都没建成过**，因此 **replay 至今没有发过一条 Vulkan 命令、没有任何 draw 被提交**；**纹理对象族与 view 族尚未在设备上跑过**；**`Float64` / `FragmentShaderPixelInterlockEXT` 的无用能力声明还没在翻译器里去掉**（那是翻译器的事，不是运行时）；**NVN 陷阱仍是进程级终止**（`_exit(97)` 会带走整个 app）；`nn::hid` 输入族未动；368 个未绑定导入**不可当关键路径完成度**；vendored 头是**别的游戏**（Darksiders II）的 NVN 53.105 重建件 ⇒ **156 个命令入口里 140 个签名未对本游戏证实**（sampler 对象族 15 个名字里 **2 个签名参考树没有、1 个是推断**）。
+- **下一项可证伪实验（按依赖顺序）**：
+  1. **P-MM-24 落地后重跑真机**（≥300 秒、独立日志目录）：确认**录制不再作废**、`EndRecording` **交出 handle**、replay 能读到包 ⇒ 这是「replay 链第一次有输入」的判据。
+  2. **P-MM-26 落地后重跑真机**：看 guest 是否越过 `nvnTextureInitialize`，并记下**下一个**第一致命。
+  3. **P-MM-27 交回**：拿到**实测成立的**图形管线状态之后，S1-c 才能把 replay 的包接到**同一个 VkDevice/queue** 上，**第一帧必须是 guest 自己的命令流解释得出来的颜色，不是宿主探针色**。
+  4. **命令缓冲侧接 base**：P-MM-24 放手 `nvn_command_buffer.c` 后，把 `SetTexturePool`/`SetSamplerPool` 绑定的池的 base 写进记录的 `tbase/sbase`，replay 才能把句柄解析成纹理。
+
 # P-MM-29 真机重跑 / 记录格式比对 / replay 消费者｜2026-10-25 03:00 Asia/Shanghai — **guest 越过 `nvnSamplerBuilderSetDefaults`（整套 builder 8 个调用全过）**；**新的第一致命是 `nvnSamplerInitialize`**；**命令内存回调被边界拒绝（NB_BUSY），录制作废 ⇒ 仍无命令包**；**记录格式已逐字段对过参考树（50 opcode + 33 载荷结构，0 问题）**；**帧数仍为 0**
 
 - **结论**：真机往前推了一段（builder 族落地生效），但**命令流仍然出不来**：guest 向宿主要更多命令内存的回调**被边界按设计拒绝**，于是这次录制作废、不交出 handle ⇒ **replay 没有包可读**。这是当前关键路径上的**唯一堵点**，根因已定位到边界的 phase 协议，已派 **P-MM-24**。同时**记录格式不再靠声称**：`scripts/graphics/compare_nvn_record_format.py` 把它和参考树逐字段对过。**帧数仍为 0，不声称标题画面、不声称可玩。**
