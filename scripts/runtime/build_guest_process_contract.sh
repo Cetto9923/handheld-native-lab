@@ -133,6 +133,7 @@ run('host-os-tls-contract',[out/'guest_process_contract.host','--os-tls',out/'co
 run('host-tls-registration',[out/'guest_process_contract.host','--tls-registration',out/'contract.nso'])
 run('host-tls-registration-fresh',[out/'guest_process_contract.host','--tls-registration-fresh',out/'contract.nso'])
 run('host-dso-registration',[out/'guest_process_contract.host','--dso-registration',out/'contract.nso'])
+run('host-snapshot-thread-contract',[out/'guest_process_contract.host','--snapshot-thread',out/'contract.nso'])
 run('host-tls-HOST-null',[out/'guest_process_contract.host','--tls-host-null'])
 run('host-tls-HOST-invalid',[out/'guest_process_contract.host','--tls-host-invalid'],134)
 run('host-primary-identity',[out/'guest_process_contract.host','--identity',out/'contract.nso'])

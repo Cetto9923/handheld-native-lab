@@ -17,7 +17,11 @@ struct guest_memory_info {
 typedef void *(*guest_process_callback)(guest_process *,void *);
 /* Exclusive single-guest experiment. External raw loader/VA/Context operations
  * must be quiescent. Lifecycle calls are serialized by the caller; Query and VA
- * services run only on this process's registered native primary thread. One
+ * services run on this process's registered native primary thread and on any
+ * guest thread bound to it (each such worker registers its own OS-TLS record).
+ * The snapshot they share is a read of the same primary-owned ledger, so the
+ * numbers do not depend on the asking thread; an unbound host thread is
+ * refused with a named reason. One
  * private guest_pages owner supplies VA and exact page-allocation identities.
  * Only disjoint owned maps and whole-allocation frees are admitted; unsupported
  * transitions terminate with diagnostics, never a guessed SDK failure Result.
@@ -41,7 +45,7 @@ struct nso_result guest_process_create_with_arguments(const struct guest_process
 struct nso_result guest_process_create_with_resources(const struct guest_process_config *,
         size_t resource_bytes,size_t argc,const char *const argv[],guest_process **out);
 struct guest_virtual_resource_usage {uint64_t total,used;};
-/* Same live-primary ownership checks as Query; invalid leaves out untouched.
+/* Same live ownership checks as Query; invalid leaves out untouched.
  * used includes the original SDK's saturating 0x80000 reporting margin. */
 struct nso_result guest_process_resource_info(guest_process *,struct guest_virtual_resource_usage *out);
 /* Capability for the configured native VA-owner policy, not full Horizon VM.

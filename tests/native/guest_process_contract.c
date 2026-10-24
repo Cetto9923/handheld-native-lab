@@ -3041,6 +3041,120 @@ static int dso_registration_contract(const char *path) {
     puts("{\"dso_registration_errors\":0,\"dso_registered\":true,\"tls_init_size\":544,\"tls_total_size\":4121,\"tls_align\":8,\"repeat_idempotent\":true}");
     return 0;
 }
+/* Snapshot thread policy.
+ *
+ * The guest asks for the memory/resource snapshot from more than one of its
+ * own threads - on RG477M the engine's IOThreadPool workers do exactly that.
+ * The runtime must answer a worker that bound to this guest with the same
+ * numbers the primary sees, and must still refuse a host thread that never
+ * bound, with a named reason and an untouched output. */
+struct snapshot_thread_case {
+    guest_process *process;
+    struct guest_memory_info primary_info;
+    struct guest_virtual_resource_usage primary_resource;
+    int primary_va_enabled;
+    int primary_memory_ok,primary_resource_ok,primary_va_ok;
+    struct nso_result worker_memory_status,worker_resource_status,worker_va_status;
+    struct guest_memory_info worker_info;
+    struct guest_virtual_resource_usage worker_resource;
+    int worker_va_enabled;
+    struct nso_result unbound_memory_status;
+    struct guest_memory_info unbound_info;
+    int unbound_untouched;
+};
+static void *snapshot_thread_bound_worker(void *arg) {
+    struct snapshot_thread_case *c=(struct snapshot_thread_case *)arg;
+    memset(&c->worker_info,0xa5,sizeof(c->worker_info));
+    /* Binding registers this worker's own OS-TLS record in the guest's
+     * manager, exactly like the runtime does for a guest-created thread. */
+    guest_process_bind_child_thread();
+    c->worker_memory_status=guest_process_memory_info(c->process,&c->worker_info);
+    c->worker_resource_status=guest_process_resource_info(c->process,&c->worker_resource);
+    c->worker_va_status=guest_process_va_enabled(c->process,&c->worker_va_enabled);
+    guest_process_unbind_child_thread();
+    return NULL;
+}
+static void *snapshot_thread_unbound_worker(void *arg) {
+    struct snapshot_thread_case *c=(struct snapshot_thread_case *)arg;
+    memset(&c->unbound_info,0xa5,sizeof(c->unbound_info));
+    /* No bind: this host thread never became a thread of this guest. */
+    c->unbound_memory_status=guest_process_memory_info(c->process,&c->unbound_info);
+    c->unbound_untouched=all_bytes((unsigned char *)&c->unbound_info,sizeof(c->unbound_info),0xa5);
+    return NULL;
+}
+static void *exercise_snapshot_thread(guest_process *process,void *opaque) {
+    struct snapshot_thread_case *c=(struct snapshot_thread_case *)opaque;
+    c->process=process;
+    c->primary_memory_ok=succeeded(guest_process_memory_info(process,&c->primary_info));
+    c->primary_resource_ok=succeeded(guest_process_resource_info(process,&c->primary_resource));
+    c->primary_va_ok=succeeded(guest_process_va_enabled(process,&c->primary_va_enabled));
+    pthread_t worker,unbound;
+    expect_condition("snapshot-worker-create",pthread_create(&worker,NULL,snapshot_thread_bound_worker,c)==0);
+    expect_condition("snapshot-unbound-create",pthread_create(&unbound,NULL,snapshot_thread_unbound_worker,c)==0);
+    expect_condition("snapshot-worker-join",pthread_join(worker,NULL)==0);
+    expect_condition("snapshot-unbound-join",pthread_join(unbound,NULL)==0);
+    return &returned_token;
+}
+static int snapshot_thread_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *process=NULL;
+    CHECK(succeeded(guest_process_create_with_resources(&config,1024*1024,0,NULL,&process)));
+    char err[128];
+    CHECK(succeeded(guest_process_load(process,path,err,sizeof(err))));
+    struct snapshot_thread_case c={0};
+    void *value=NULL;
+    CHECK(succeeded(guest_process_run(process,exercise_snapshot_thread,&c,&value)));
+    /* The error count is checked at the END of this contract, after every
+     * expect_* below has run. Checking it here would swallow the failures
+     * recorded by the expectations that follow. */
+    CHECK(value==&returned_token);
+    /* The primary still answers for itself. */
+    expect_condition("snapshot-primary-memory-ok",c.primary_memory_ok);
+    expect_condition("snapshot-primary-resource-ok",c.primary_resource_ok);
+    expect_condition("snapshot-primary-va-ok",c.primary_va_ok);
+    /* A bound worker gets the same answer out of the same ledger. */
+    expect_condition("snapshot-worker-memory-ok",c.worker_memory_status.status==NSO_OK);
+    expect_condition("snapshot-worker-resource-ok",c.worker_resource_status.status==NSO_OK);
+    expect_condition("snapshot-worker-va-ok",c.worker_va_status.status==NSO_OK);
+    expect_value("snapshot-worker-total-matches-primary",c.worker_info.total,c.primary_info.total);
+    expect_value("snapshot-worker-used-matches-primary",c.worker_info.used,c.primary_info.used);
+    expect_value("snapshot-worker-baseline-matches-primary",c.worker_info.baseline,c.primary_info.baseline);
+    expect_value("snapshot-worker-stack-matches-primary",c.worker_info.stack_bytes,c.primary_info.stack_bytes);
+    expect_value("snapshot-worker-thread-objects-matches-primary",c.worker_info.thread_objects,c.primary_info.thread_objects);
+    expect_value("snapshot-worker-resource-total-matches-primary",c.worker_resource.total,c.primary_resource.total);
+    expect_value("snapshot-worker-resource-used-matches-primary",c.worker_resource.used,c.primary_resource.used);
+    expect_value("snapshot-worker-va-matches-primary",(uint64_t)(c.worker_va_enabled?1:0),(uint64_t)(c.primary_va_enabled?1:0));
+    expect_value("snapshot-worker-va-enabled",(uint64_t)(c.worker_va_enabled?1:0),1);
+    /* A host thread that never bound to this guest is still refused. */
+    expect_condition("snapshot-unbound-refused",c.unbound_memory_status.status!=NSO_OK);
+    expect_condition("snapshot-unbound-output-untouched",c.unbound_untouched);
+    CHECK(succeeded(guest_process_destroy(&process)) && !process);
+    /* The final gate. Every expect_* above must have passed; without this the
+     * contract could still exit 0 while the expectations had failed. */
+    CHECK(!errors);
+    /* The report states what this run observed, not a literal zero: a failed
+     * expectation has to be visible in the number the caller reads. */
+    int worker_matches_primary=c.worker_info.total==c.primary_info.total
+        && c.worker_info.used==c.primary_info.used
+        && c.worker_info.baseline==c.primary_info.baseline
+        && c.worker_info.stack_bytes==c.primary_info.stack_bytes
+        && c.worker_info.thread_objects==c.primary_info.thread_objects
+        && c.worker_resource.total==c.primary_resource.total
+        && c.worker_resource.used==c.primary_resource.used
+        && c.worker_va_enabled==c.primary_va_enabled;
+    printf("{\"snapshot_thread_errors\":%u,\"primary_memory_ok\":%s,\"primary_resource_ok\":%s,"
+         "\"primary_va_ok\":%s,\"bound_worker_memory_ok\":%s,\"bound_worker_resource_ok\":%s,"
+         "\"bound_worker_va_ok\":%s,\"worker_matches_primary\":%s,"
+         "\"unbound_caller_refused\":%s,\"unbound_output_untouched\":%s}\n",errors,
+         c.primary_memory_ok?"true":"false",c.primary_resource_ok?"true":"false",
+         c.primary_va_ok?"true":"false",
+         c.worker_memory_status.status==NSO_OK?"true":"false",
+         c.worker_resource_status.status==NSO_OK?"true":"false",
+         c.worker_va_status.status==NSO_OK?"true":"false",
+         worker_matches_primary?"true":"false",
+         c.unbound_memory_status.status!=NSO_OK?"true":"false",
+         c.unbound_untouched?"true":"false");
+    return 0;
+}
 int main(int argc,char **argv) {
     page=(size_t)sysconf(_SC_PAGESIZE);
     if(argc==2 && !strcmp(argv[1],"--tls-host-null")) {
@@ -3060,6 +3174,7 @@ int main(int argc,char **argv) {
 #endif
     if(argc==3 && !strcmp(argv[1],"--tls-registration"))return tls_registration_contract(argv[2],0);
     if(argc==3 && !strcmp(argv[1],"--dso-registration"))return dso_registration_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--snapshot-thread"))return snapshot_thread_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-fresh"))return tls_fresh_registration_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-null"))return tls_registration_contract(argv[2],1);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-repeat"))return tls_registration_contract(argv[2],2);

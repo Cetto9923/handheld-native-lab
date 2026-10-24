@@ -420,6 +420,31 @@ static int initialize_empty_heap(struct empty_heap_manager *heap) {
     if(heap->state!=HEAP_UNINITIALIZED || heap->capacity || heap->blocks)return EINVAL;
     heap->state=HEAP_READY_EMPTY;return 0;
 }
+/* Thread policy for the memory/resource snapshot.
+ *
+ * The guest owns several threads and asks for this snapshot from more than one
+ * of them: on RG477M the engine's IOThreadPool workers call
+ * nn::os::GetVirtualAddressMemoryResourceUsage from their own threads. The
+ * retail SDK answers wherever the query is asked, so refusing every non-primary
+ * caller starved the guest of its own accounting and the runtime then aborted.
+ *
+ * The snapshot itself is a READ of the page ledger, the context usage and the
+ * primary stack. Each of those owners locks internally and this function runs
+ * under the process mutex, so every bound thread observes one consistent view
+ * of the same numbers - the values do not depend on which thread asks.
+ *
+ * What must still hold: the primary guest thread is alive, and the caller is a
+ * thread bound to THIS guest - the primary itself, or a worker that registered
+ * its own OS-TLS record. A host thread that never bound to this guest is still
+ * refused, with a named reason. */
+static int snapshot_caller_is_primary(guest_process *p) {
+    return pthread_equal(p->thread.native,pthread_self());
+}
+static int snapshot_caller_bound(guest_process *p) {
+    if(!current_os_thread)return 0;               /* never bound to this guest */
+    if(current_os_thread==p->os_thread)return snapshot_caller_is_primary(p);
+    return 1;                                       /* a worker with its own record */
+}
 static struct nso_result snapshot_locked(guest_process *p,struct guest_memory_info *out,struct guest_resource_usage *resources,struct guest_pages_usage *page_snapshot) {
     /* A refused snapshot must name the invariant that refused it: the guest
      * reaches this path from nn::os::GetVirtualAddressMemoryResourceUsage and
@@ -433,7 +458,8 @@ static struct nso_result snapshot_locked(guest_process *p,struct guest_memory_in
     else if(!p->module || !p->module_ticket || !p->module_committed)reason="module-identity";
     else if(!p->pages || !p->os_tls || !p->os_thread)reason="owner-missing";
     else if(!p->argument_mapping || !p->argument_ticket || !p->argument_committed || !p->argument_bytes)reason="argument-identity";
-    else if(p->thread.state!=THREAD_RUNNING || !pthread_equal(p->thread.native,pthread_self()))reason="primary-thread";
+    else if(p->thread.state!=THREAD_RUNNING)reason="primary-thread-stopped";
+    else if(!snapshot_caller_bound(p))reason="unbound-caller-thread";
     else if(p->heap.state!=HEAP_READY_EMPTY || p->heap.capacity || p->heap.blocks)reason="heap-state";
     if(reason) {
         fprintf(stderr,"[snapshot-refused] reason=%s; memory/resource answer withheld\n",reason);
@@ -443,10 +469,19 @@ static struct nso_result snapshot_locked(guest_process *p,struct guest_memory_in
     struct guest_primary_stack stack;
     struct guest_pages_usage pages={0};
     struct guest_os_tls_counts tls={0};
+    struct guest_os_tls_cleanup_report caller={0};
+    /* The registered-thread count is no longer a single-thread invariant: the
+     * guest's own workers register their own OS-TLS records once they start.
+     * What has to hold instead is that at least one record exists, that no
+     * record is quarantined, and that THIS caller owns a live record - the
+     * per-thread analogue of the old "exactly one registered thread" check. */
     if(guest_pages_usage(p->pages,&pages).status!=GUEST_PAGES_OK)reason="pages-usage";
     else if(guest_os_tls_count(p->os_tls,&tls).status!=GUEST_OS_TLS_OK)reason="os-tls-count";
     else if(tls.quarantined)reason="os-tls-quarantined";
-    else if(tls.registered_threads!=1)reason="os-tls-registered-threads";
+    else if(tls.quarantined_threads)reason="os-tls-quarantined-thread";
+    else if(tls.registered_threads<1)reason="os-tls-no-registered-thread";
+    else if(guest_os_tls_report(p->os_tls,current_os_thread,&caller).status!=GUEST_OS_TLS_OK)reason="os-tls-caller-unregistered";
+    else if(caller.state!=GUEST_OS_TLS_THREAD_LIVE && caller.state!=GUEST_OS_TLS_THREAD_CLEANING)reason="os-tls-caller-not-live";
     else if(guest_context_primary_stack(p->context,&stack).status!=GUEST_CONTEXT_OK)reason="primary-stack";
     if(reason) {
         fprintf(stderr,"[snapshot-refused] reason=%s registered_threads=%u; memory/resource answer withheld\n",
@@ -490,6 +525,10 @@ static struct nso_result snapshot_locked(guest_process *p,struct guest_memory_in
     }
     if(resources)*resources=pages.resources;
     if(page_snapshot)*page_snapshot=pages;
+    if(!snapshot_caller_is_primary(p))
+        fprintf(stderr,"[snapshot-thread-policy] caller=bound-worker registered_threads=%u quota=%zu"
+            " charged=%zu stack_bytes=%zu; same primary-owned ledger read under the process mutex\n",
+            (unsigned)tls.registered_threads,use.quota_bytes,use.charged_bytes,stack.bytes);
     if(!p->baseline)p->baseline=use.charged_bytes-p->heap.capacity-stack.bytes;
     *out=(struct guest_memory_info){use.quota_bytes,use.charged_bytes,p->heap.capacity,
         p->heap.blocks,p->baseline,stack.bytes,1};
@@ -565,7 +604,7 @@ static void query_memory_info(struct guest_memory_info *out) {
     uintptr_t caller=(uintptr_t)__builtin_return_address(0);
     struct nso_result r=guest_process_memory_info(p,out);
     if(r.status!=NSO_OK) {
-        fprintf(stderr,"[query-invalid] native single-primary policy has incomplete/retained ownership status=%d errno=%d; output untouched\n",r.status,r.native_error);
+        fprintf(stderr,"[query-invalid] native ownership policy has incomplete/retained ownership status=%d errno=%d; output untouched\n",r.status,r.native_error);
         abort();
     }
 #if defined(NSO_PROFILE_TLS_ALLOCATOR_TESTING)

@@ -1,3 +1,52 @@
+# P-MM-1 闭环｜2026-10-24 14:05 Asia/Shanghai — 内存/资源快照多线程策略：工作线程取快照放行，真机**越过 primary-thread snapshot abort**（exit 134 → 133），新前沿推进到 `movie::SetAllocator`（import 74）
+
+- **结论**：工单 P-MM-1 目标闭环。**真机彻底越过 `[snapshot-refused] reason=primary-thread` → `[va-resource-invalid]` → `Aborted`（exit 134）这条阻塞链**；guest 的 IOThreadPool 工作线程现在能取到内存/资源快照，新第一致命推进到**未解析的代码导入** `movie::SetAllocator`（import 74），exit **133**（SIGTRAP）。**未达标题画面 / 可玩**。
+  1. **对被停止同岗 Agent WIP 的逐行复核结论**：`src/runtime/hle/guest_process.c` 新增的 `snapshot_caller_is_primary()` / `snapshot_caller_bound()` 策略**正确，予以保留**。理由：① 主线程路径行为与改动前完全一致（`snapshot_caller_bound` 对主线程返回 `pthread_equal(...)`）；② 工作线程只要是该 guest **已绑定 OS-TLS 记录**、且记录状态为 LIVE/CLEANING，即可读同一份 primary-owned ledger；③ 未绑定的宿主线程仍被拒（`reason=current-process` / `unbound-caller-thread`）且**输出不被改写**；④ **复用既有 `guest_os_tls_report()` API，未新增 guest_os_tls 接口、未改 TLS 隔离语义** —— 取舍正确，保持不变。`guest_os_tls_report(m,NULL,out)` 不空指针解引用（`thread_link` 走到链表尾返回 NULL 槽 ⇒ `GUEST_OS_TLS_NOT_REGISTERED`），且 `current_os_thread==NULL` 时 `snapshot_caller_bound` 已提前返回 0，走不到 report。
+  2. **修掉的假绿缺陷（本单必修项）**：`tests/native/guest_process_contract.c` 的 `snapshot_thread_contract()` 原本把错误数**硬编码**为 `"snapshot_thread_errors":0`，且 `CHECK(... && !errors)` 位于**所有 `expect_*` 断言之前** —— 断言失败只打印 `[check-fail]` 行，契约仍返回 0（假绿）。修法三条：(a) 报告改为 `printf(... "%u" ..., errors)` 打印**真实**错误数；(b) 在报告之前补**最终 `CHECK(!errors)`**（现为第 3133 行），任一 `expect_*` 失败真正导致非 0 退出；(c) 报告里各布尔字段也改为**本次运行实测值**（不再写死 `true`）。
+  3. **「故意改坏 → 契约变红」自证**（日志 `.local/logs/p-mm-1-contract-selfproof.log`）：只改一处 —— `expect_value("snapshot-worker-used-matches-primary", c.worker_info.used, c.primary_info.used)` → `... c.primary_info.used+1)`。
+     - **修复后的源码** → `[check-fail] snapshot-worker-used-matches-primary actual=0x20000 expected=0x20001` + `process contract line=3133: !errors`，**exit 1（红）**。
+     - **恢复修复前形态 + 同一处改坏** → 同样打印 `[check-fail]`，却仍输出 `"snapshot_thread_errors":0` 并 **exit 0（假绿）**。
+     ⇒ 证明该缺陷是真实存在的假绿，且本单修复确实让它变红。（自证在 `.local/selfproof/` 下用副本完成，**工作树源码未被改动**，HEAD 源码仍是修复后状态。）
+  4. **契约（宿主 + 真机同测，同一份 JSON 逐字相同）**：
+     - 宿主 PASS（`.local/build-p-mm-1/host-snapshot-thread-contract/stdout.log`）：`{"snapshot_thread_errors":0,"primary_memory_ok":true,"primary_resource_ok":true,"primary_va_ok":true,"bound_worker_memory_ok":true,"bound_worker_resource_ok":true,"bound_worker_va_ok":true,"worker_matches_primary":true,"unbound_caller_refused":true,"unbound_output_untouched":true}`
+     - **RG477M 真机 PASS（逐字相同）**：同上（stdout sha256 `a178625ecd80c589b9d704fc96437d12ec7db54316b12a1c81fcc94187bab15f` 两侧一致）
+     - 覆盖面：主线程自问 ✓；**已绑定工作线程**取 memory / resource / VA 三类查询均 OK ✓；工作线程读数与主线程**逐项相等**（total / used / baseline / stack_bytes / thread_objects / resource total+used / VA enabled）✓；未绑定宿主线程被拒且输出未改写 ✓。
+  5. **验收 A 达成（真机 v52）**：`.local/logs/rg477m-boot-v52-snapshot-thread.log`（52115 行，exit 133）实测
+     - `[snapshot-refused] reason=primary-thread` **0 次**；`reason=os-tls-registered-threads` **0 次**；`[va-resource-invalid]` **0 次**；`Aborted` **0 次**；`[query-invalid]` **0 次**；全日志**无任何** `[snapshot-refused]`。
+     - **工作线程侧成功**证据：第 **52093** 行 `[snapshot-thread-policy] caller=bound-worker registered_threads=18 quota=1073741824 charged=748843008 stack_bytes=2097152; same primary-owned ledger read under the process mutex`，紧接第 **52094** 行 `[va-resource-policy] total=16777216 raw_metadata_used=3288320 blocks=12845 reported_used=3812608 SDK_margin=0x80000; logical node pool, not Horizon page tables/RSS`（同一 mutex 下读同一份 ledger，数字与主线程一致）。
+  6. **验收 B（新阻塞）**：第 **52101–52102** 行
+     ```
+     [fault] signal=5 pc=0x7a0451b250 fa=0x7a0451b250
+     [unresolved-import] index=74 name=_ZN5movie12SetAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_ caller_offset=0x14990
+     ```
+     exit **133**（SIGTRAP，未解析**代码**导入）；全日志 `unresolved-import` 仅此 1 条（v51 为 0 条）。
+     ⇒ **与同岗 Agent 产物结论一致**（其 `.local/build-p-cc-8/` 的 v52 日志同为该符号、同一 index 74、同一 caller_offset `0x14990`、同一 exit 133）；本单已用 `.local/build-p-mm-1/` **自己的产物独立复跑确认**，未直接引用其日志作证据。
+  7. **新阻塞一句话**：guest 在模块初始化后调用 **`movie::SetAllocator`**（未解析导入 index 74），运行时无该符号的 typed HLE ⇒ SIGTRAP 退出（exit 133）；**下一刀应攻 `movie::SetAllocator` 及其同族导入**，不是快照线程策略。
+  8. **日志限流决策：不做限流（理由）**：实测 v51 全量 boot 中 `[va-resource-policy]` 仅 **2** 次、`[query-port-policy]` 仅 **4** 次、child TLS 绑定 **17** 次；本单 v52 中工作线程快照只触发 **1** 行 `[snapshot-thread-policy]`。运行时本来就对每次查询逐条打点（`[query-port-policy]` / `[va-resource-policy]` / `[page-port-policy]`），再加一行不构成刷屏；加限流反而可能盖掉本单最需要诊断的「哪次快照来自哪个线程」转换。故**保持每次一行、不加限流**。
+  9. **产物与日志**：
+     - 构建：`.local/build-p-mm-1/`（`sh scripts/runtime/build_guest_process_contract.sh --out .local/build-p-mm-1 --toolchain .local/minimal-ndk/toolchain --resource-quota-bytes 16777216`，exit 0；宿主全量契约 **156** case PASS，`normal_contract.errors=0`、`recovery_contract.errors=0`；`manifest.json` 的 `source_sha256` 与工作树 **22 项逐项一致，无源码漂移**；`manifest.json` 的 `android_executed` 已置 true 并补 `device_contracts` / `device_boot` 证据）。
+     - 启动二进制 `nso_owned_startup.android` sha256 `6533dea46ce9e6e9a2a8fdf4be84d0ba060d794215ad7e8e34b1a1417e8d3ac1`（设备端 `p-mm-1-nso_owned_startup.android-6533dea4`）；契约二进制 `guest_process_contract.android` sha256 `c75dc9cd3aa55431c6b6f8b77099893842ca7c28232c5c8e90bc8c1730ca4375`（设备端 `p-mm-1-guest_process_contract.android-c75dc9cd`）。
+     - 真机全量 boot：`.local/logs/rg477m-boot-v52-snapshot-thread.log` + 同名 `.exitcode` = **133**；run 目录 `/data/local/tmp/ffrs-rg477m-efd1123620814764ae32529c18081259/`，cwd 正确；参数与 v47/v51 一致：`quota=1073741824 stack=2097152 image=162869248 resource_quota=16777216 guest_argc=0`。
+     - 真机契约：`.local/logs/rg477m-contract-p-mm-1-snapshot-thread.stdout`（exit 0）。
+     - **无效首跑（不作证据）**：`.local/logs/rg477m-boot-v52-snapshot-thread.INVALID-cli-order.log`（exit 2；CLI 参数顺序写成 `--boot` 在前，而 `nso_call.c` 要求选项在 mode 之前，已按正确顺序 `--guest-quota … --guest-stack … --guest-resource-quota … --boot` 重跑）。
+     - 同岗 Agent 的旧 v52 日志归档为 `.local/logs/rg477m-boot-v52-snapshot-thread.P-CC-8-build.log`（exit 133，仅作对照，非本单证据）。
+     - 自证日志：`.local/logs/p-mm-1-contract-selfproof.log`。
+  10. **改动文件清单**：`src/runtime/hle/guest_process.c`（策略，保留同岗 Agent WIP 并经复核）、`src/runtime/hle/guest_process.h`（注释同步）、`tests/native/guest_process_contract.c`（新增 `--snapshot-thread` 契约 + 修掉假绿）、`scripts/runtime/build_guest_process_contract.sh`（+1 行接入 `host-snapshot-thread-contract`）、`coordination/HANDOFF.md`、`coordination/state.json`（协调者写）、`coordination/STATUS.md`（脚本生成）。
+  11. **未达 / 边界**：标题画面 / 可玩（仍未进呈现阶段）。本单**未**伪造 Horizon 页表/RSS，**未**改 TLS 隔离语义，**未**降级任何「模块身份 / pages ledger / charged 一致性」校验，**未**新增 guest OS TLS 接口，**未**把拒绝改成静默假成功（拒绝仍保留 `[snapshot-refused] reason=…` 可归因日志）。
+  12. **提交**：本单提交 `fix(runtime): allow memory/resource snapshots from guest worker threads`（父提交 `3a9092e`，分支 `work/rg477m-native`，**未 push**；本单提交 SHA 见 `git log -1`）。`coordination/prompts/P-CC-snapshot-thread.md`、`P-MM-1-multiagent-supplement.md`、`P-MM-snapshot-thread-policy.md` 三份派工单据为协调者产物，**未**纳入本单提交，仍是 untracked，留给协调者处理。
+
+---
+
+# 日间调度（P-CC-8 启动｜2026-10-24 13:50 Asia/Shanghai）
+
+- **切换原因**：P-CC-7 claude PID 24728 已退出并写闭环 @ HEAD `3a9092e`；真机最新 v51 越过 EventFd/Poll（unresolved-import=0），阻塞 `[snapshot-refused] reason=primary-thread` → `va-resource-invalid` → exit 134；主树 clean、无活跃 FFRS 主路径写手。Antigravity 仍处 429 额度窗口，按优先级改派 Claude Code。
+- **里程碑**：新 HEAD `3a9092e`；真机 v47→v51；socket 事件族落地；导入级 unresolved 清零；新前沿为内存快照线程策略。
+- **已派**：P-CC-8 攻 snapshot 线程策略（放宽 primary-thread / 评估 os-tls-registered-threads）；提词 `coordination/prompts/P-CC-snapshot-thread.md`；claude PID **44703**（若 --dangerously-skip-permissions 弹出审批请点批准）；日志 `.local/agent-pm/cc-p-cc-8.log`
+- **基线**：`.local/logs/rg477m-boot-v51-socket-eventfd-final.log` exit 134；设备 RG477M01445122；pak/ucas PASS（`.local/romfs/FFRS/Content/Paks/`）
+- **未达**：标题 / 可玩
+
+---
+
 # 日间调度（P-CC-7 启动｜2026-10-24 13:20 Asia/Shanghai）
 
 - **切换原因**：P-CC-6 claude PID 7295 已退出并写闭环 @ HEAD `2120088`；真机最新 v47 越过 stdout/stdio，阻塞 `nn::socket::EventFd`（import 325，exit 133）；主树 clean、无活跃 FFRS 主路径写手。Antigravity 仍处 429 额度窗口（约 12:09 起，重置约再等数小时），按优先级改派 Claude Code。
