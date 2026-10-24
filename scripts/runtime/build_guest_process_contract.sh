@@ -703,6 +703,55 @@ run('host-oe-operation-mode-contract',[out/'guest_process_contract.host','--oe-o
 operation_mode_stderr=(out/'host-oe-operation-mode-contract'/'stderr.log').read_text()
 if '[hle] nn::oe::GetOperationMode:' not in operation_mode_stderr:raise RuntimeError('nn::oe::GetOperationMode stub did not run')
 if '[boundary-unsupported]' in operation_mode_stderr:raise RuntimeError('nn::oe operation mode import signature was refused by the boundary')
+# nn::ldn::GetState (main NSO import index 88) takes no argument and returns
+# the 32-bit local wireless state. The fixture calls the import through the
+# real guest import path and keeps the returned word, so the boundary must
+# accept the zero-argument signature with a return value or the guest never
+# runs. A missing import_signature entry makes prepare_boundary_locked()
+# refuse the whole boundary, so this fixture also exercises that gate.
+ldn_state_assembly=out/'ldn-get-state-fixture.S'
+ldn_state_assembly.write_text(r''' .text
+.org 0x20
+.global fixture_entry
+fixture_entry:
+ stp x29, x30, [sp, #-32]!
+ str x19, [sp, #16]
+ mov x29, sp
+ mov x19, x0
+ adrp x16, fixture_got
+ add x16, x16, :lo12:fixture_got
+ ldr x17, [x16]
+ blr x17
+ uxtw x9, w0
+ str x9, [x19]
+ mov x9, #1
+ str x9, [x19, #8]
+ mov x0, #0x91
+ ldr x19, [sp, #16]
+ ldp x29, x30, [sp], #32
+ ret
+.section .fixture_got,"aw"
+.global fixture_got
+fixture_got: .zero 8
+''')
+run('fixture-ldn-get-state-assemble',['clang',*common,'-c',ldn_state_assembly,'-o',out/'ldn-get-state-fixture.o'])
+run('fixture-ldn-get-state-link',['env',f'DYLD_LIBRARY_PATH={a.rust_root}/lib',ld,'--no-undefined','--build-id=none','--image-base=0','-Ttext=0','--section-start=.fixture_got=0x8200','-e','fixture_entry','--oformat=binary','-o',out/'ldn-get-state-fixture.raw',out/'ldn-get-state-fixture.o'])
+raw=(out/'ldn-get-state-fixture.raw').read_bytes();data=bytearray((out/'contract.nso').read_bytes())
+data[0x200:0x300]=raw[:0x100].ljust(0x100,b'\0');struct.pack_into('<I',data,0x204,0x4000)
+names=b'\0_ZN2nn3ldn8GetStateEv\0'
+data[0x1160:0x1160+len(names)]=names
+# One dynsym entry here, so the base RELA table (DT_RELASZ = 72, three
+# entries) is truncated to 24 bytes and only the first RELA stays: the two
+# later ones point at symbol 2, which this fixture does not define. Dynamic
+# index 5 is DT_RELASZ, not DT_RELAENT (index 6) - the base already carries
+# 24 there.
+struct.pack_into('<II',data,0x1080,1,2);struct.pack_into('<Q',data,0x2000+3*16+8,len(names));struct.pack_into('<Q',data,0x2000+5*16+8,24)
+(out/'ldn-get-state.nso').write_bytes(data)
+manifest['generated_fixtures']['ldn-get-state.nso']={'bytes':len(data),'sha256':digest(out/'ldn-get-state.nso'),'kind':'self-authored single-import zero-argument nn::ldn local wireless state fixture','assembly_sha256':digest(ldn_state_assembly)}
+run('host-ldn-get-state-contract',[out/'guest_process_contract.host','--ldn-get-state',out/'ldn-get-state.nso'])
+ldn_state_stderr=(out/'host-ldn-get-state-contract'/'stderr.log').read_text()
+if '[hle] nn::ldn::GetState:' not in ldn_state_stderr:raise RuntimeError('nn::ldn::GetState stub did not run')
+if '[boundary-unsupported]' in ldn_state_stderr:raise RuntimeError('nn::ldn local wireless state import signature was refused by the boundary')
 locale_assembly=out/'locale-fixture.S'
 locale_assembly.write_text(r''' .text
 .org 0x20

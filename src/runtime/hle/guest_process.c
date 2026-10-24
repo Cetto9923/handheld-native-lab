@@ -1160,6 +1160,7 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
         "_ZN2nn2oe20SetFocusHandlingModeENS0_17FocusHandlingModeE",
         "_ZN2nn2oe28SetResumeNotificationEnabledEb",
         "_ZN2nn2oe16GetOperationModeEv",
+        "_ZN2nn3ldn8GetStateEv",
         "_ZN2nn4util11ReferSymbolEPKv","nnutilReferSymbol",
         "_ZN2nn2os15InitializeMutexEPNS0_9MutexTypeEbi","nnosInitializeMutex",
         "_ZN2nn2os13FinalizeMutexEPNS0_9MutexTypeE","nnosFinalizeMutex",
@@ -1390,6 +1391,10 @@ static int import_signature(const char *name,nb_signature *out) {
      * from the guest: both call sites (0x51dc84 and 0x51ee40) compare the
      * result against 1 in w0 and cache the outcome as a byte flag. */
     else if(!strcmp(name,"_ZN2nn2oe16GetOperationModeEv")) {arguments=0;returns=1;}
+    /* nn::ldn::GetState(): no arguments, returns the 32-bit local wireless
+     * state. The Itanium mangling carries no return type, so the return type
+     * comes from the guest: every call site reads the result in w0. */
+    else if(!strcmp(name,"_ZN2nn3ldn8GetStateEv")) {arguments=0;returns=1;}
     else if(!strcmp(name,"nnsslInitialize")) {arguments=0;returns=1;}
     else if(!strcmp(name,"nnsslFinalize")) {arguments=0;returns=1;}
     else if(!strcmp(name,"_ZN2nn4util12GenerateUuidEv")) {arguments=0;returns=2;}

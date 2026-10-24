@@ -1,3 +1,24 @@
+# P-MM-7 闭环｜2026-10-24 16:55 Asia/Shanghai — 绑定 `nn::ldn::GetState()`（import 88），真机**越过 v57 的 SIGTRAP**（unresolved 380 → 379，前沿推进到 `nn::oe::SetPerformanceConfiguration` import 239）
+
+- **结论**：工单 P-MM-7 目标闭环。`nn::ldn::GetState()`（import 88）已绑定为**如实记录**型桩；真机 v58 **不再**因该符号触发 `[unresolved-import]` / `[fault] signal=5`，profile 行 `unresolved` 由 **380 → 379**（**正好 1 个**），boundary 导入计数由 **268 → 269**，新第一致命推进到 **import 239 `nn::oe::SetPerformanceConfiguration(nn::oe::PerformanceMode, int)`**，exit **133**（SIGTRAP）。**未达标题画面 / 可玩**。
+  1. **触达证据被本轮设备运行改写**：此前 `state.json` 把 index 88 记为「条件分支可达 ⇒ 不可证实触达 ⇒ 不夹带」。v57 真机运行直接打到 `caller_offset=0x51dcac`（`0x51dc9c` 的 `tbz` 本次走了「未置位」分支）⇒ **运行时已证实触达**，静态顾虑被实测取代。
+  2. **取值由 guest 四个调用点一致定论**（全部离线反汇编，Capstone 与 llvm-objdump 交叉验证）：
+     - `0x15bd4`（刷新函数）：`GetState() != 0` ⇒ 立刻 `return 0`；`== 0` ⇒ 才去拿互斥锁并走**互联网**路径。
+     - `0x51dca8` / `0x51ecb8`：guest 把状态并入**三级网络分类**——`nn::nifm::IsNetworkAvailable()`（import 89）真 ⇒ **3（互联网）**；否则状态非 0 ⇒ **2（本地无线）**；否则 ⇒ **1（都没有）**。分类值随后写进全局字节 `0x77741dc`（函数 `0x87680` 比较新旧值，变了才动作）。
+     - `0x942edc`：先查状态，再决定是否调刷新函数。
+     - `0x943198`：**只有状态 3 与 5 才去取本地无线 IPv4 地址**（`nn::ldn::GetIpv4Address`，import 275）；状态 0 走互联网路径。
+     ⇒ 四个调用点**一致**把 **0** 当作「无本地无线会话」。RG477M 是无任天堂本地无线硬件、也不跑本地无线会话的掌机 ⇒ 桩返回 **0**。仓库内无权威 `nn::ldn` 状态枚举表，故**不宣称 0 对应任何名字**。
+  3. **ABI 双重确认**：零实参、返回 32 位整数——mangling `_ZN2nn3ldn8GetStateEv` 无参；5 个调用点全部用 `cbz`/`cbnz`/`cmp`/`cinc` 读 **w0**。二者一致。
+  4. **契约 `--ldn-get-state`**：自造单导入 fixture（`ldn-get-state.nso`，sha256 `7575abad…`）驱动**真实 guest 导入路径**，guest 自己 `blr` 导入并把返回的 w0 写进输出槽。宿主 `errors=0`；真机 `native_ran=true`、`guest_marker=true`、`guest_ldn_state=0` ⇒ guest 确实经真实导入路径拿回 **0**。
+  5. **三变体自证**：变体 A（故意把期望改成 1、保留末尾 `CHECK(!errors)`）⇒ **exit 1（红）**，失败行 `process contract line=3704: !errors`；变体 B（同一处改坏、去掉末尾 `CHECK(!errors)` 且报告错误数**硬编码 0**）⇒ **exit 0（假绿）**，stderr 仍留 `[check-fail]`；变体 C（**契约完全不改**，让桩返回 7）⇒ **exit 1（红）**，证明契约观测的是**桩的真实返回值**。日志 `.local/logs/p-mm-7-contract-selfproof.log`。
+  6. **刻意排除的符号（不夹带）**：`89/90/91 nn::nifm` 族（**是否联网取决于设备真实网络状态，不能凭空断言**；且 `89` 只有在 guest 走到互联网分支时才会被调用）、`240 nn::oe::GetPerformanceMode`（单调用点 `0x5203c4`，返回语义尚未从 guest 侧定论）、`228–232 nn::vi`（显示族，需 Android Surface 桥）、`236/237` 与 Npad 族（需 Android 输入桥）。
+- **新阻塞一句话**：真机 v58 现在停在 **import 239 `nn::oe::SetPerformanceConfiguration(nn::oe::PerformanceMode, int)`**（`caller_offset=0x5205c0`，exit 133）。guest 有 **4 个调用点**（`0x520518`/`0x520524`/`0x5205bc`/`0x5205c8`），形态一致：`w0` = 模式，`w1` = 时钟码——先 `SetPerformanceConfiguration(0, 0x20003 或 0x20004)`，再 `SetPerformanceConfiguration(1, 0x10001)`；**返回值都不被消费** ⇒ 两参、void。**下一刀应攻 import 239**，且必须沿用 P-MM-3 `SetCpuBoostMode` 的既有口径：**如实记录模式与时钟码，但不伪造真实 CPU/GPU 频率变更**（Android governor 拥有频率，cpufreq sysfs 需 root）。
+- **产物与证据**：
+  - 构建目录 `.local/build-p-mm-7/`（`guest_process_contract.android` sha256 `71909eb1…`、`nso_owned_startup.android` sha256 `14668a1b…`、`ldn-get-state.nso` sha256 `7575abad…`）；manifest 已写入 `android_executed` / `device_contracts` / `device_boot`。
+  - 真机日志 `.local/logs/rg477m-boot-v58-ldn-get-state.log`（**54853** 行，exit 133）+ `.exitcode`；契约日志 `.local/logs/rg477m-contract-p-mm-7-ldn-get-state.stdout/.stderr`；自证日志 `.local/logs/p-mm-7-contract-selfproof.log`。
+  - 设备侧文件：`p-mm-7-nso_owned_startup.android-14668a1b`、`p-mm-7-guest_process_contract.android-71909eb1`、`p-mm-7-ldn-get-state.nso-7575abad`。
+- **未完成 / 风险**：标题画面与可玩**均未达**；全模块仍有 **379** 个导入未绑定（`imports=651`）。`nn::vi` 显示族、输入族、`nn::nifm` 联网状态族各自需要平台桥或真实状态查询，不能用桩糊过去。已知语义保留项：P-MM-5 的 `GetCurrentFocusState` 桩返回 0（guest 只与 3 比较，行为等价，但无权威枚举，故不宣称其名字）。
+
 # P-MM-6 闭环｜2026-10-24 16:35 Asia/Shanghai — 绑定 `nn::oe::GetOperationMode()`（import 227），真机**越过 v56 的 SIGTRAP**（unresolved 381 → 380，前沿推进到 `nn::ldn::GetState` import 88）
 
 - **结论**：工单 P-MM-6 目标闭环。`nn::oe::GetOperationMode()`（import 227）已绑定为**如实记录**型桩；真机 v57 **不再**因该符号触发 `[unresolved-import]` / `[fault] signal=5`，profile 行 `unresolved` 由 **381 → 380**（**正好 1 个**，即本单绑定数），boundary 导入计数由 **267 → 268**，新第一致命推进到 **import 88 `nn::ldn::GetState()`**，exit **133**（SIGTRAP）。**未达标题画面 / 可玩**。

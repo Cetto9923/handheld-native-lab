@@ -154,6 +154,30 @@ void nso_host_os_destroy_system_event(void *event);
 int32_t nso_host_nifm_initialize(void);
 bool nso_host_nifm_is_initialized(void);
 
+/* nn::ldn::GetState() (main NSO import index 88).
+ *
+ * Zero arguments, returns the 32-bit local wireless state. The Itanium
+ * mangling carries no return type, so the return type comes from the guest:
+ * all four call sites (0x15bd4, 0x51dca8, 0x51ecb8, 0x942edc and 0x943198
+ * in total) read the result in w0 with cbz, cbnz, cmp or cinc.
+ *
+ * The value 0 means "no Nintendo local wireless session" in every one of
+ * them:
+ *   0x15bd4  the refresh helper returns 0 straight away when the state is
+ *            non-zero and only continues into the internet path on state 0.
+ *   0x51dca8 the state feeds a three-valued network classification:
+ *            internet available (3), local wireless session (2) or
+ *            neither (1, state 0).
+ *   0x51ecb8 the same classification in the notification handler.
+ *   0x942edc the state is checked before the refresh helper runs.
+ *   0x943198 the local wireless IPv4 address is only requested for the
+ *            states 3 and 5, so state 0 takes the internet path instead.
+ *
+ * The RG477M has no Nintendo local wireless radio and runs no local wireless
+ * session, so 0 is the state it has to report. No enumerator name is
+ * claimed, because the tree carries no authoritative nn::ldn state list. */
+int32_t nso_host_ldn_get_state(void);
+
 int32_t nso_host_socket_initialize(void *work_buffer, size_t work_buffer_size, size_t allocator_size, int32_t concurrency);
 bool nso_host_socket_is_initialized(void);
 

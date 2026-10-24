@@ -1540,6 +1540,31 @@ bool nso_host_nifm_is_initialized(void) {
     return s_nifm_initialized;
 }
 
+static int32_t s_ldn_state = 0;
+int32_t nso_host_ldn_get_state(void) {
+    /* nn::ldn::GetState() (main NSO import index 88).
+     *
+     * The value is settled from the four places the guest reads it, and all
+     * of them agree that 0 means "no Nintendo local wireless session":
+     *
+     *   0x15bd4  the refresh helper returns 0 straight away when the state
+     *            is non-zero and only takes its mutex and continues with the
+     *            internet path when the state is 0.
+     *   0x51dca8 and 0x51ecb8  the guest turns the state into a three-valued
+     *            network classification: internet available (3), a local
+     *            wireless session (2, state non-zero) or neither (1, state 0).
+     *   0x942edc the state is checked before the refresh helper runs.
+     *   0x943198 the local wireless IPv4 address is only requested for the
+     *            states 3 and 5; state 0 takes the internet path instead.
+     *
+     * The RG477M is a standalone handheld with no Nintendo local wireless
+     * radio and no local wireless session, so 0 is the state it has to
+     * report. No enumerator name is claimed for it, because the tree carries
+     * no authoritative nn::ldn state list. */
+    fprintf(stderr,"[hle] nn::ldn::GetState: state=%d recorded\n",s_ldn_state);
+    return s_ldn_state;
+}
+
 static bool s_socket_initialized = false;
 static void *s_socket_work_buffer = NULL;
 static size_t s_socket_work_buffer_size = 0;
@@ -2967,6 +2992,8 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_fs_mount_add_on_content;
     if(!strcmp(name,"_ZN2nn4nifm10InitializeEv") || !strcmp(name,"nnnifmInitialize"))
         return (uint64_t)(uintptr_t)&nso_host_nifm_initialize;
+    if(!strcmp(name,"_ZN2nn3ldn8GetStateEv"))
+        return (uint64_t)(uintptr_t)&nso_host_ldn_get_state;
     if(!strcmp(name,"_ZN2nn6socket10InitializeEPvmmi") || !strcmp(name,"nnsocketInitialize"))
         return (uint64_t)(uintptr_t)&nso_host_socket_initialize;
     if(!strcmp(name,"_ZN2nn6socket7EventFdEmNS0_12EventFdFlagsE"))
