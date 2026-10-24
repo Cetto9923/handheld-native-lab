@@ -6,6 +6,7 @@
 #include "../../src/runtime/hle/guest_tp.h"
 #include "../../src/runtime/nso/native_boundary.h"
 #include "../../src/graphics/nvn_device/nvn_device.h"
+#include "../../src/graphics/nvn_device/nvn_memory_pool.h"
 #include "../../src/graphics/nvn_device/nvn_queue.h"
 #include "../../src/graphics/nvn_device/nvn_window.h"
 #include <errno.h>
@@ -4920,6 +4921,247 @@ static int nvn_window_contract(void) {
     return 0;
 }
 
+/* The NVN memory pool family.
+ *
+ * A memory pool is built from memory that the guest itself allocated, so the
+ * pool records that range and uses it as the CPU mapping. The contract checks
+ * the builder round trip, that the guest's builder and pool objects are never
+ * written into, that a pool without a real device is refused, and that the
+ * buffer address of a pool is stable. */
+#if defined(__ANDROID__)
+#define NVN_MEMORY_POOL_EXPECT_REAL_POOL 1
+#else
+#define NVN_MEMORY_POOL_EXPECT_REAL_POOL 0
+#endif
+
+static int nvn_memory_pool_contract(void) {
+    typedef void *(*bootstrap_fn)(const char *);
+    typedef void *(*lookup_fn)(void *, const char *);
+    typedef uint64_t (*init_fn)(void *, void *);
+    typedef void (*builder_set_defaults_fn)(void *);
+    typedef void (*builder_set_device_fn)(void *, void *);
+    typedef void *(*builder_get_device_fn)(const void *);
+    typedef void (*builder_set_storage_fn)(void *, void *, uint64_t);
+    typedef void *(*builder_get_memory_fn)(const void *);
+    typedef uint64_t (*builder_get_size_fn)(const void *);
+    typedef void (*builder_set_flags_fn)(void *, int);
+    typedef uint32_t (*builder_get_flags_fn)(const void *);
+    typedef int (*pool_initialize_fn)(void *, const void *);
+    typedef void (*pool_set_debug_label_fn)(void *, const char *);
+    typedef void (*pool_finalize_fn)(void *);
+    typedef void *(*pool_map_fn)(const void *);
+    typedef void (*pool_flush_fn)(const void *, ptrdiff_t, size_t);
+    typedef void (*pool_invalidate_fn)(const void *, ptrdiff_t, size_t);
+    typedef uint64_t (*pool_get_buffer_address_fn)(const void *);
+    typedef int (*pool_map_virtual_fn)(void *, int, const void *);
+    typedef uint64_t (*pool_get_size_fn)(const void *);
+    typedef uint32_t (*pool_get_flags_fn)(const void *);
+    nvn_memory_pool_stats stats;
+    size_t i;
+
+    /* 1. Every name of the family has to resolve through the device scoped
+     *    lookup, and the same name has to resolve to the same entry point
+     *    every time. */
+    bootstrap_fn bootstrap =
+        (bootstrap_fn)(uintptr_t)guest_process_resolve(0, "nvnBootstrapLoader");
+    CHECK(bootstrap != NULL);
+    lookup_fn lookup = (lookup_fn)(uintptr_t)bootstrap("nvnDeviceGetProcAddress");
+    CHECK(lookup != NULL);
+    static const char *const pool_names[] = {
+        "nvnMemoryPoolBuilderSetDevice",
+        "nvnMemoryPoolBuilderSetDefaults",
+        "nvnMemoryPoolBuilderSetStorage",
+        "nvnMemoryPoolBuilderSetFlags",
+        "nvnMemoryPoolBuilderGetDevice",
+        "nvnMemoryPoolBuilderGetMemory",
+        "nvnMemoryPoolBuilderGetSize",
+        "nvnMemoryPoolBuilderGetFlags",
+        "nvnMemoryPoolInitialize",
+        "nvnMemoryPoolSetDebugLabel",
+        "nvnMemoryPoolFinalize",
+        "nvnMemoryPoolMap",
+        "nvnMemoryPoolFlushMappedRange",
+        "nvnMemoryPoolInvalidateMappedRange",
+        "nvnMemoryPoolGetBufferAddress",
+        "nvnMemoryPoolMapVirtual",
+        "nvnMemoryPoolGetSize",
+        "nvnMemoryPoolGetFlags",
+    };
+    for (i = 0; i < sizeof(pool_names) / sizeof(pool_names[0]); i++) {
+        void *entry = lookup(NULL, pool_names[i]);
+        expect_condition("nvn-memory-pool-name-resolves", entry != NULL);
+        expect_condition("nvn-memory-pool-name-is-stable", entry == lookup(NULL, pool_names[i]));
+    }
+
+    builder_set_defaults_fn set_defaults =
+        (builder_set_defaults_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolBuilderSetDefaults");
+    builder_set_device_fn set_device =
+        (builder_set_device_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolBuilderSetDevice");
+    builder_get_device_fn get_device =
+        (builder_get_device_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolBuilderGetDevice");
+    builder_set_storage_fn set_storage =
+        (builder_set_storage_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolBuilderSetStorage");
+    builder_get_memory_fn get_memory =
+        (builder_get_memory_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolBuilderGetMemory");
+    builder_get_size_fn builder_get_pool_size =
+        (builder_get_size_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolBuilderGetSize");
+    builder_set_flags_fn set_flags =
+        (builder_set_flags_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolBuilderSetFlags");
+    builder_get_flags_fn get_flags =
+        (builder_get_flags_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolBuilderGetFlags");
+    CHECK(set_defaults && set_device && get_device && set_storage && get_memory);
+    CHECK(builder_get_pool_size && set_flags && get_flags);
+
+    /* 2. The builder round trips. The expected values are written out here
+     *    on purpose: they must not be the constants the implementation uses,
+     *    or the check would prove nothing. */
+    unsigned char builder[64];
+    memset(builder, 0xaa, sizeof(builder));
+    set_defaults(builder);
+    expect_value("nvn-memory-pool-builder-defaults-clear-device", (uint64_t)(uintptr_t)get_device(builder), 0);
+    expect_value("nvn-memory-pool-builder-defaults-clear-flags", (uint64_t)(uint32_t)get_flags(builder), 0);
+    expect_value("nvn-memory-pool-builder-defaults-clear-size", builder_get_pool_size(builder), 0);
+    expect_condition("nvn-memory-pool-builder-defaults-clear-memory", get_memory(builder) == NULL);
+
+    void *device_marker = (void *)(uintptr_t)0x5eed;
+    set_device(builder, device_marker);
+    expect_condition("nvn-memory-pool-builder-device-round-trip", get_device(builder) == device_marker);
+
+    /* The storage is host memory the guest owns. The runtime records it; it
+     * must not copy it, because the guest writes into the range it handed
+     * over. */
+    unsigned char storage[256];
+    memset(storage, 0x5a, sizeof(storage));
+    set_storage(builder, storage, sizeof(storage));
+    expect_condition("nvn-memory-pool-builder-memory-round-trip", get_memory(builder) == storage);
+    expect_value("nvn-memory-pool-builder-size-round-trip", builder_get_pool_size(builder), sizeof(storage));
+
+    set_flags(builder, 0x24);
+    expect_value("nvn-memory-pool-builder-flag-round-trip", (uint64_t)(uint32_t)get_flags(builder), 0x24);
+
+    /* 3. The runtime keeps the state on the host, so it must not write a
+     *    single byte into the guest's builder. */
+    expect_condition("nvn-memory-pool-builder-not-written", all_bytes(builder, sizeof(builder), 0xaa));
+
+    /* 4. The device, so that the pool has one to belong to. */
+    init_fn init = (init_fn)(uintptr_t)bootstrap("nvnDeviceInitialize");
+    CHECK(init != NULL);
+    void *guest_device = (void *)(uintptr_t)0x9000;
+    uint64_t init_result = init(guest_device, NULL);
+    nvn_device_stats device_stats;
+    nvn_device_get_stats(&device_stats);
+    expect_condition("nvn-memory-pool-device-initialised-matches-reality",
+                     (init_result != 0) == (device_stats.real_device != 0));
+
+    pool_initialize_fn pool_initialize =
+        (pool_initialize_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolInitialize");
+    pool_map_fn pool_map = (pool_map_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolMap");
+    pool_flush_fn pool_flush = (pool_flush_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolFlushMappedRange");
+    pool_invalidate_fn pool_invalidate =
+        (pool_invalidate_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolInvalidateMappedRange");
+    pool_get_buffer_address_fn pool_get_buffer_address =
+        (pool_get_buffer_address_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolGetBufferAddress");
+    pool_map_virtual_fn pool_map_virtual =
+        (pool_map_virtual_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolMapVirtual");
+    pool_get_size_fn pool_get_size = (pool_get_size_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolGetSize");
+    pool_get_flags_fn pool_get_flags = (pool_get_flags_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolGetFlags");
+    pool_set_debug_label_fn pool_set_debug_label =
+        (pool_set_debug_label_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolSetDebugLabel");
+    pool_finalize_fn pool_finalize = (pool_finalize_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolFinalize");
+    CHECK(pool_initialize && pool_map && pool_flush && pool_invalidate && pool_get_buffer_address);
+    CHECK(pool_map_virtual && pool_get_size && pool_get_flags && pool_set_debug_label && pool_finalize);
+
+    /* 5. A pool that is built without a device must be refused. A pool
+     *    without a device is memory that no graphics device can use. */
+    unsigned char pool_object[256];
+    memset(pool_object, 0xaa, sizeof(pool_object));
+    unsigned char no_device_builder[64];
+    memset(no_device_builder, 0xaa, sizeof(no_device_builder));
+    set_defaults(no_device_builder);
+    set_storage(no_device_builder, storage, sizeof(storage));
+    expect_value("nvn-memory-pool-init-without-device-refused",
+                 (uint64_t)(uint32_t)pool_initialize(pool_object, no_device_builder), 0);
+    expect_condition("nvn-memory-pool-init-without-device-not-written",
+                     all_bytes(pool_object, sizeof(pool_object), 0xaa));
+
+    /* 6. A pool without storage must be refused too: the guest allocates the
+     *    memory itself, and a runtime that invented a buffer here would give
+     *    the guest memory it never asked for. */
+    unsigned char no_storage_builder[64];
+    memset(no_storage_builder, 0xaa, sizeof(no_storage_builder));
+    set_defaults(no_storage_builder);
+    set_device(no_storage_builder, guest_device);
+    expect_value("nvn-memory-pool-init-without-storage-refused",
+                 (uint64_t)(uint32_t)pool_initialize(pool_object, no_storage_builder), 0);
+    expect_condition("nvn-memory-pool-init-without-storage-not-written",
+                     all_bytes(pool_object, sizeof(pool_object), 0xaa));
+
+    /* 7. The pool with the device of the guest and the storage the guest
+     *    owns. It exists exactly when a real device exists. */
+    unsigned char device_builder[64];
+    memset(device_builder, 0xaa, sizeof(device_builder));
+    set_defaults(device_builder);
+    set_device(device_builder, guest_device);
+    set_storage(device_builder, storage, sizeof(storage));
+    set_flags(device_builder, 0x24);
+    memset(pool_object, 0xaa, sizeof(pool_object));
+    uint64_t pool_result = (uint64_t)(uint32_t)pool_initialize(pool_object, device_builder);
+    expect_value("nvn-memory-pool-init-matches-real-device", pool_result, NVN_MEMORY_POOL_EXPECT_REAL_POOL);
+    expect_condition("nvn-memory-pool-object-not-written", all_bytes(pool_object, sizeof(pool_object), 0xaa));
+
+    /* 8. The pool state. The mapping is the storage the guest handed over,
+     *    so that the guest writes into the memory it knows. */
+    if (NVN_MEMORY_POOL_EXPECT_REAL_POOL) {
+        expect_condition("nvn-memory-pool-map-is-the-guest-storage", pool_map(pool_object) == storage);
+        expect_value("nvn-memory-pool-size-matches-the-builder", pool_get_size(pool_object), sizeof(storage));
+        expect_value("nvn-memory-pool-flags-match-the-builder", (uint64_t)(uint32_t)pool_get_flags(pool_object), 0x24);
+        /* The buffer address has to be stable: the guest hands it back to the
+         * device for every access to the memory. */
+        uint64_t address_first = pool_get_buffer_address(pool_object);
+        uint64_t address_second = pool_get_buffer_address(pool_object);
+        expect_condition("nvn-memory-pool-buffer-address-is-not-zero", address_first != 0);
+        expect_condition("nvn-memory-pool-buffer-address-is-stable", address_first == address_second);
+    } else {
+        /* Without a device there is no pool, so there is no mapping either. */
+        expect_condition("nvn-memory-pool-map-is-null-without-a-device", pool_map(pool_object) == NULL);
+        expect_value("nvn-memory-pool-size-is-zero-without-a-device", pool_get_size(pool_object), 0);
+    }
+    pool_set_debug_label(pool_object, "contract-pool");
+    pool_flush(pool_object, 0, sizeof(storage));
+    pool_invalidate(pool_object, 0, sizeof(storage));
+
+    /* 9. The virtual mapping is refused and named, because this runtime does
+     *    not build a page table for the guest. */
+    expect_value("nvn-memory-pool-map-virtual-refused",
+                 (uint64_t)(uint32_t)pool_map_virtual(pool_object, 0, NULL), 0);
+
+    /* 10. The counters. */
+    nvn_memory_pool_get_stats(&stats);
+    expect_condition("nvn-memory-pool-stats-count-builder-calls", stats.builder_calls > 0);
+    expect_condition("nvn-memory-pool-stats-initialized-matches-device",
+                     (stats.initialized > 0) == (NVN_MEMORY_POOL_EXPECT_REAL_POOL != 0));
+    expect_condition("nvn-memory-pool-stats-count-refused", stats.refused > 0);
+    expect_condition("nvn-memory-pool-stats-count-storage", stats.storage_recorded > 0);
+    expect_condition("nvn-memory-pool-stats-count-map-virtual-refusal", stats.map_virtual_refused > 0);
+
+    /* 11. The pool is finalized last, because a finalized pool is gone. */
+    pool_finalize(pool_object);
+    nvn_memory_pool_get_stats(&stats);
+    expect_value("nvn-memory-pool-finalized-is-not-live", (uint64_t)stats.live_pools, 0);
+    expect_condition("nvn-memory-pool-map-is-null-after-finalize", pool_map(pool_object) == NULL);
+
+    /* The final gate. Without it the contract could exit 0 while the
+     * expectations had failed. */
+    CHECK(!errors);
+    printf("{\"nvn_memory_pool_errors\":%u,\"real_pool\":%s,\"initialized\":%llu,"
+           "\"refused\":%llu,\"builder_calls\":%llu,\"map_virtual_refused\":%llu}\n",
+           errors, pool_result ? "true" : "false",
+           (unsigned long long)stats.initialized, (unsigned long long)stats.refused,
+           (unsigned long long)stats.builder_calls,
+           (unsigned long long)stats.map_virtual_refused);
+    return 0;
+}
+
 int main(int argc,char **argv) {
     page=(size_t)sysconf(_SC_PAGESIZE);
     if(argc==2 && !strcmp(argv[1],"--tls-host-null")) {
@@ -4952,6 +5194,7 @@ int main(int argc,char **argv) {
     if(argc==2 && !strcmp(argv[1],"--nvn-device"))return nvn_device_contract();
     if(argc==2 && !strcmp(argv[1],"--nvn-queue"))return nvn_queue_contract();
     if(argc==2 && !strcmp(argv[1],"--nvn-window"))return nvn_window_contract();
+    if(argc==2 && !strcmp(argv[1],"--nvn-memory-pool"))return nvn_memory_pool_contract();
     if(argc==2 && !strcmp(argv[1],"--vi-display"))return vi_display_contract();
     if(argc==3 && !strcmp(argv[1],"--nvn-bootstrap"))return nvn_bootstrap_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-fresh"))return tls_fresh_registration_contract(argv[2]);

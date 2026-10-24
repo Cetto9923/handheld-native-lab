@@ -18,6 +18,7 @@
  * starts, which is what lets the report name the call site.
  */
 #include "nvn_device.h"
+#include "nvn_memory_pool.h"
 #include "nvn_queue.h"
 #include "nvn_window.h"
 
@@ -533,6 +534,18 @@ void *nvn_device_get_proc_address(void *device, const char *name) {
         size_t count = nvn_window_family_count();
         for (i = 0; i < count; i++) {
             const nvn_window_family_entry *entry = nvn_window_family_entry_at(i);
+            if (!entry || !entry->name) continue;
+            if (!strcmp(name, entry->name)) {
+                s_device.implemented_resolved++;
+                fprintf(stderr, "[nvn] nvnDeviceGetProcAddress: \"%s\" -> implemented\n", name);
+                return entry->fn;
+            }
+        }
+    }
+    {
+        size_t count = nvn_memory_pool_family_count();
+        for (i = 0; i < count; i++) {
+            const nvn_memory_pool_family_entry *entry = nvn_memory_pool_family_entry_at(i);
             if (!entry || !entry->name) continue;
             if (!strcmp(name, entry->name)) {
                 s_device.implemented_resolved++;

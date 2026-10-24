@@ -1,3 +1,30 @@
+# P-MM-17 闭环｜2026-10-24 23:30 Asia/Shanghai — **NVN 内存池家族（18 名）已落地，越过 `nvnMemoryPoolBuilderSetDefaults`**；guest 在真机上建成**第一个真实内存池**（`storage=0x5a5e960000 size=524288 flags=0xe2 -> true`）；新的第一致命前移到 **`nvnSamplerPoolInitialize`**（trap slot 23）
+
+- **结论**：E3.3 达成，验收 A 与 B 都过。**guest 越过内存池家族**，第一次让 NVN 的存储路径真正跑起来：**新阻塞从「内存池不存在」换成「采样器池 / 纹理池 / 缓冲 / 命令缓冲这一整段不存在」**。**帧数仍为 0**（guest 还没记录过一条命令，**未达标题画面、不可玩**，不承诺第一章时间）。
+  1. **实现形态（照 queue / window 两族的既有形态，不新造架构）**：新文件 `src/graphics/nvn_device/nvn_memory_pool.{h,c}`；**状态全在宿主**，按 guest 的 builder / pool 地址建键，**绝不写 guest 对象内存**（SDK 布局不可知）。18 个名字挂进 `nvn_device.c` 的 `nvnDeviceGetProcAddress`（紧挨 queue / window 注册），并在 `src/android/native/CMakeLists.txt` 与 `scripts/runtime/build_guest_process_contract.sh` 的同一批源文件里接入 ⇒ **契约与真机跑的是同一批代码**。
+  2. **签名不是猜的，是取证来的（头文件 + guest 实参双向交叉）**：
+     - 头文件 `src/graphics/nvn/include/nvn/nvn.h` L1196–1212 给出 15 个 `PFNNVNMEMORYPOOL*`；`nvnMemoryPoolBuilderGetDevice` 在 typedef 段**缺失**（名字在 `main_nvn_ids.txt`），按真实 NVN 约定补 `NVNdevice* nvnMemoryPoolBuilderGetDevice(const NVNmemoryPoolBuilder*)`。
+     - `nvnMemoryPoolBuilderGetMemory` 在头文件里写成 **void 返回**（逆向头的笔误）⇒ 按 **`void*` 返回**实现（builder 存进去的 storage 指针原样返回），并在代码注释与本记录里标明这是**头文件笔误**。
+     - **真机实参交叉验证**：`nvnMemoryPoolInitialize: pool=0x5219a26000 builder=0x5a39e80580 device=0x5639a03810 storage=0x5a5e960000 size=524288 flags=0xe2 -> true` ⇒ guest 确实以 **(ptr, size)** 两参设置 storage，`SetStorage(builder, void*, size_t)` 的签名被真机日志证实。
+  3. **语义要点（禁止假成功，逐条落到代码）**：
+     - `Initialize` 三种拒绝路径都**点名说明原因**：builder 未准备 / device 未初始化 / **没有 storage**（"this runtime does not allocate a pool behind the guest's back"）⇒ **不替 guest 偷偷 malloc 一份影子拷贝**（那会给 guest 一个与它写入地址不同的内存，比没有池更糟）。
+     - `Map` 返回的就是 **guest 自己那块的 storage 基址**（guest 与宿主同地址空间），不是另一次映射。
+     - `Flush/InvalidateMappedRange`：storage 是 guest 自己写的宿主内存，**本来就一致** ⇒ 不假装做了 cache 操作，日志写明为何是 no-op。
+     - `GetBufferAddress`：**同一 pool 反复调用必须稳定**（guest 每次访问都把这个地址交回设备），由 pool 身份派生，两个 pool 不会撞。
+     - `MapVirtual`：**返回 false + 点名日志**（本运行时不给 guest 造页表），不伪造地址。
+     - `Finalize` 释放表项、重复调用安全；`Finalize` 后 `Map` 返 NULL。
+  4. **契约与三变体自证（防假绿）**：新增 `--nvn-memory-pool`，覆盖 18 名字 resolve 且同名稳定、builder 往返（defaults/device/storage/size/flags）、**builder 与 pool 对象内存不被写入（0xAA 哨兵）**、无 device 时 Initialize→false、无 storage 时 Initialize→false、真设备下 Initialize→true 且 Map 非 NULL、GetSize/GetFlags 与 builder 一致、**GetBufferAddress 稳定**、MapVirtual 被拒、Finalize 后 Map 返 NULL、末尾 `CHECK(!errors)`。**期望值独立于实现常量**（`NVN_MEMORY_POOL_EXPECT_REAL_POOL` 与实现里的 flag 常量分离）。宿主门 **全过（EXIT=0，`nvn_memory_pool_errors:0`）**；**真机全绿**：`{"nvn_memory_pool_errors":0,"real_pool":true,"initialized":1,"refused":2,"builder_calls":23,"map_virtual_refused":1}`（真 Vulkan 设备下池建成、Map 生效）。
+     - **三变体自证入 git**：`scripts/runtime/selfproof_nvn_memory_pool.sh` + `scripts/runtime/make_nvn_memory_pool_variants.py` ⇒ **A 红**（改期望保留末门，exit 1，6 项 check-fail）／**B 假绿**（同处改坏 + 去末门 + 错误数硬编码 0，**exit 0 但 stdout 谎报 `nvn_memory_pool_errors:0`**）／**C 红**（契约不动、池层谎报「无真设备也给池」，exit 1，5 项 check-fail）。
+  5. **guest 真实推进（从真机 transcript 读出来，不是猜的）**：device → queue → **memory pool（本次达成）** → **sampler pool（新卡点）** → …。18 个内存池名字在真机日志里**全部 resolve 为 implemented**，但 guest **实际只调用了 `nvnMemoryPoolInitialize`**（其余是 resolve 未调用）⇒ **下一单要按 guest 真实调用顺序推进，不要按名字数量铺满**。
+  6. **新卡点（第一致命，已如实记录）**：`[nvn] unimplemented NVN entry "nvnSamplerPoolInitialize" was called (trap slot 23, caller lr=0x721ba570ec)` ⇒ **NVN 陷阱仍是进程级终止**（`_exit(97)`），在 app 里会连 app 一起带走（crash buffer 空 ⇒ 干净退出，不是崩溃）。**进入可玩形态前必须改成只终止 guest 运行**。
+  7. **本单的一个弯路（记录下来，别再走）**：先试图用**静态反汇编**找出每个 NVN 名字的 guest 调用点（`scripts/runtime/nvn_pool_callers.py`、`scripts/runtime/nvn_api_usage.py`）。结论是**guest 的调用点极难静态定位**：lookup 表在 `0x82d2000` 页，槽位读取用的基址寄存器**不是** lookup 用的那个 x8（实测是 x31 / 经 `add` 组合的寄存器），静态「槽位被读」判定会**全表误报为 never loaded**（533/533）。⇒ **以真机运行日志为权威**，静态脚本只保留作 lookup 槽位定位工具（能给出名字→槽位映射：`SetStorage`@0x82d29e8、`GetDevice`@0x82d29f8、`GetMemory`@0x82d2a00）。
+- **本单未解决 / 风险**：**帧数仍为 0**；NVN 陷阱仍**进程级终止**；`nvnDeviceGetInteger` 的 **53/105** 依据**仍未从 guest 的兼容检查反推**（待复核，不得当已证事实）；`SetDepthMode` 已有状态语义但**还没有管线消费**；**shader 路径（NVN 二进制 → SPIR-V）仍未定案**，命令缓冲之后会卡在这里；`nn::hid` 输入族未动；`nn::vi` 之外仍有 373 个未绑定导入。
+- **下一项可证伪实验（E3.4，按 guest 真实调用顺序）**：
+  1. **采样器池家族**（`nvnSamplerPoolInitialize` 等）：guest 的**下一个真实调用点**，体量小，先补它把 guest 再往前推。
+  2. **纹理池 / 缓冲家族**：`nvnTexturePoolInitialize` / `nvnBufferBuilder*` / `nvnBufferInitialize` 等，把存储真正接上设备资源。
+  3. **命令缓冲家族（156 名，量最大）+ 记录/回放 + `nvnQueueSubmitCommands` / `nvnQueuePresentTexture`** ⇒ **第一个 guest 像素**（截图颜色必须可由 guest 的命令流解释，**不是宿主探针色**）。
+  4. **shader 路径定案**（Maxwell/NVN 二进制 → SPIR-V），否则 E3.4 之后必然卡死在 shader。
+
 # P-MM-16 进展｜2026-10-24 22:20 Asia/Shanghai — **guest 已经在持窗进程里画图的前置件齐了三块**：`nn::vi` 显示桥（把 app 的 `ANativeWindow` 交给 guest）、**NVN 队列家族**（真 Vulkan 队列）、**NVN 窗口家族**（真 surface + 真 swapchain）；下一个卡点前移到 **`nvnMemoryPoolBuilderSetDefaults`**
 
 - **结论**：E1 之后按 guest 的真实依赖顺序补图形链，本轮补完三块，并**第一次拿到「guest 拿到真 Vulkan 队列」的真机证据**。**仍然没有游戏帧**（帧数 = 0）：guest 还没记录过一条命令。卡点从「队列」前移到「**内存池**」。

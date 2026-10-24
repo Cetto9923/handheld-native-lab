@@ -20,7 +20,7 @@ if a.main and (not a.quota_bytes or not a.stack_bytes):p.error('main requires ex
 out.mkdir(parents=True,exist_ok=False)
 def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 nso=ROOT/'src/runtime/nso';hle=ROOT/'src/runtime/hle';nvn_device=ROOT/'src/graphics/nvn_device'
-core_sources=[nso/'nso_loader.c',*[hle/(s+'.c') for s in ['guest_context','guest_process','nso_host','address_region','mutex','exit_registry','module_tls','guest_tp','native_window']],nvn_device/'nvn_device.c',nvn_device/'nvn_queue.c',nvn_device/'nvn_window.c']
+core_sources=[nso/'nso_loader.c',*[hle/(s+'.c') for s in ['guest_context','guest_process','nso_host','address_region','mutex','exit_registry','module_tls','guest_tp','native_window']],nvn_device/'nvn_device.c',nvn_device/'nvn_queue.c',nvn_device/'nvn_window.c',nvn_device/'nvn_memory_pool.c']
 # The NVN device layer has a portable half and a platform backend. The host
 # build has no Vulkan implementation, the Android build has the real one.
 host_only_sources=[nvn_device/'nvn_backend_none.c']
@@ -1070,6 +1070,12 @@ run('host-nvn-window-contract',[out/'guest_process_contract.host','--nvn-window'
 nvn_window_stdout=(out/'host-nvn-window-contract'/'stdout.log').read_text()
 manifest['nvn_window_contract']=json.loads(nvn_window_stdout.splitlines()[-1])
 if manifest['nvn_window_contract']['nvn_window_errors']:raise RuntimeError('the NVN window contract failed')
+# The NVN memory pool family: the builder round trip, the storage the guest
+# owns, the host side state and the pool that exists only with a real device.
+run('host-nvn-memory-pool-contract',[out/'guest_process_contract.host','--nvn-memory-pool'])
+nvn_memory_pool_stdout=(out/'host-nvn-memory-pool-contract'/'stdout.log').read_text()
+manifest['nvn_memory_pool_contract']=json.loads(nvn_memory_pool_stdout.splitlines()[-1])
+if manifest['nvn_memory_pool_contract']['nvn_memory_pool_errors']:raise RuntimeError('the NVN memory pool contract failed')
 # The nn::vi display bridge: the handles it issues, the ones it refuses and
 # the vsync event that starts unsignalled because no frame was presented.
 run('host-vi-display-contract',[out/'guest_process_contract.host','--vi-display'])
