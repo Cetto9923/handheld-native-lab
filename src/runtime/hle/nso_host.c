@@ -711,7 +711,7 @@ uint64_t nso_host_nv_get_initialize_graphics_size(void) { return s_nv_initialize
  * This is the only NVN symbol the main NSO imports dynamically. Every other
  * NVN entry point is looked up at run time by name, through the
  * nvnDeviceGetProcAddress that this loader hands out. The guest code is
- * Unreal Engine 4's NVNRHI (Platforms/Switch/Source/Runtime/NVNRHI/Private/
+ * Unreal Engine's Switch NVNRHI (Platforms/Switch/Source/Runtime/NVNRHI/Private/
  * NVNManager.cpp) and it drives the loader from five call sites
  * (0x143541c, 0x1435438, 0x143544c, 0x143554c, 0x1435578) with exactly two
  * distinct name strings: "nvnDeviceInitialize" (0x63fd01f) and
@@ -755,7 +755,7 @@ static uint64_t host_nvn_null_entry(void *a0,void *a1,void *a2,void *a3,
  * answer is failure.
  *
  * The v62 RG477M boot shows what the guest does with that failure: it is
- * fatal, not a soft error. Unreal Engine 4 raises LowLevelFatalError at
+ * fatal, not a soft error. Unreal Engine raises LowLevelFatalError at
  * NVNManager.cpp line 1246 ("nvnDeviceInitialize failed") and calls
  * nn::diag::detail::AbortImpl (main NSO import index 12) from the failure
  * path at 0x14355a0, whose branch at 0x14355c4 appears in the guest

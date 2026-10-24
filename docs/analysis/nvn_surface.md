@@ -78,3 +78,35 @@
 1. **Phase 1 (基础握手)**：在 `nso_loader` 中将 `nvnBootstrapLoader` 绑定至 `nvn_dispatch`，完成 Device, Queue, Window 的无报错创建。
 2. **Phase 2 (呈现管线)**：对接 Android `ANativeWindow` 渲染表面，实现首帧 `ClearColor(0.0, 0.0, 0.0, 1.0)` 与黑边 1280x720 视口呈现。
 3. **Phase 3 (着色器与管线)**：对接 UE 5.6.1 的着色器字节码转换，加载标题画面基础着色器。
+
+---
+
+## 5. 运行证据修正（2026-10-24，RG477M boot v62）
+
+本节由 RG477M 真机运行证据补正，不是新的设计主张。完整推导见
+`docs/analysis/nvn_device_requirements.md`，NVN 名字清单见
+`evidence/nvn/guest_nvn_code_references.tsv`。
+
+1. **分发是两级，不是一级**：本文件第 1 节说其余 534 个 API「通过向
+   `nvnBootstrapLoader` 传入函数名字符串」获取。真机证据显示不是这样：
+   guest 只向 `nvnBootstrapLoader` 询问 **2 个**名字
+   （`nvnDeviceInitialize` 与 `nvnDeviceGetProcAddress`，共 5 个调用点），
+   其余 534 个名字是**通过 bootstrap 交出来的 `nvnDeviceGetProcAddress`
+   按名解析**的（guest 侧调用点 `0x1435464` / `0x143547c` / `0x1430e10`）。
+   ⇒ 桥接层需要 **bootstrap（2 个名字）+ device 级 GetProcAddress（534 个名字）**
+   两级分发；把 534 个名字放进 bootstrap 的平表里将永远不会被查到。
+2. **guest 不检查 GetProcAddress 的返回值**（`0x1430e10` 直接 `str` 不判空），
+   所以该函数对 guest 会问的名字**不能返回 NULL**，否则 guest 跳到 `pc=0`。
+   命名空间外的名字才可以拒。
+3. **`nvnDeviceBuilder` 布局不是阻塞项**：guest 的 builder 是它自己栈帧
+   `sp+0x00..0x3f`（64 字节）里的一块内存，guest **从不读写其字段**，只把地址
+   交给 `nvnDeviceBuilderSetDefaults` / `nvnDeviceBuilderSetFlags` /
+   `nvnDeviceInitialize` 三个 NVN 函数。⇒ 自研设备**可以自定义自己的 builder
+   布局**，只要不超出 64 字节、且自身的 setter/getter/initialize 互相自洽。
+   本条**不**声称还原了任天堂的真实布局，只说明它对 guest 不可观测。
+4. **`nvn_dispatch.c` 现有两处桩不能直接集成**：
+   `stub_nvnDeviceInitialize` 返回 **1**（谎报设备初始化成功），而
+   `nvnBootstrapLoader` 的 fallback 返回 NULL（会让 guest 跳 `pc=0`）。
+5. **本运行时的 NVN 后端是"空设备"**：`nvnDeviceInitialize` 报失败，
+   其余入口存在但什么都不做，guest 因此在自己的 `LowLevelFatalError`
+   （`NVNManager.cpp:1246`）处停下。**没有设备、没有队列、没有表面、没有一帧。**

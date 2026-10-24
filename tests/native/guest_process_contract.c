@@ -4045,8 +4045,8 @@ static int nv_initialize_graphics_contract(const char *path) {
  * hands out. It carries no mangled name, so it is a C function: one argument
  * (the entry point name) and one result (a function pointer in x0).
  *
- * The guest code is Unreal Engine 4's NVNRHI (NVNManager.cpp) and it drives
- * the loader from five call sites with exactly two names. The fixture
+ * The guest code is Unreal Engine's Switch NVNRHI (NVNManager.cpp) and it
+ * drives the loader from five call sites with exactly two names. The fixture
  * reproduces that: it asks for the two names the guest uses, calls the
  * device initialisation (which must report failure, because this runtime has
  * no NVN device), looks one NVN entry point up by name (which must be
