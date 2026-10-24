@@ -26,6 +26,9 @@
 /* The Android surface and the present bits only exist when the platform is
  * declared before the Vulkan header. */
 #define VK_USE_PLATFORM_ANDROID_KHR
+/* The header is needed for the ANativeWindow type of the surface info. Its
+ * functions live in libandroid.so, and this layer deliberately does not call
+ * them: the size of the window comes from the surface instead. */
 #include <android/native_window.h>
 #include <vulkan/vulkan.h>
 
@@ -268,14 +271,12 @@ static int nvn_vulkan_create_window_surface(nvn_device_state *device, void *nati
     }
 
     /* The size of the platform window is what the guest draws into. The
-     * capabilities say what the surface allows, so the window size is
-     * clamped into that range instead of being trusted blindly. */
-    width = ANativeWindow_getWidth((ANativeWindow *)native_window);
-    height = ANativeWindow_getHeight((ANativeWindow *)native_window);
-    if (width == 0 || height == 0) {
-        width = capabilities.currentExtent.width;
-        height = capabilities.currentExtent.height;
-    }
+     * surface reports the current size of the window it was made from, so
+     * the size comes from the surface itself and not from a guess. The
+     * capabilities say what the surface allows, so the size is clamped into
+     * that range instead of being trusted blindly. */
+    width = capabilities.currentExtent.width;
+    height = capabilities.currentExtent.height;
     if (capabilities.currentExtent.width != 0xFFFFFFFFu) {
         if (width < capabilities.currentExtent.width) width = capabilities.currentExtent.width;
         if (height < capabilities.currentExtent.height) height = capabilities.currentExtent.height;

@@ -1,3 +1,15 @@
+# P-MM-16 进展｜2026-10-24 22:20 Asia/Shanghai — **guest 已经在持窗进程里画图的前置件齐了三块**：`nn::vi` 显示桥（把 app 的 `ANativeWindow` 交给 guest）、**NVN 队列家族**（真 Vulkan 队列）、**NVN 窗口家族**（真 surface + 真 swapchain）；下一个卡点前移到 **`nvnMemoryPoolBuilderSetDefaults`**
+
+- **结论**：E1 之后按 guest 的真实依赖顺序补图形链，本轮补完三块，并**第一次拿到「guest 拿到真 Vulkan 队列」的真机证据**。**仍然没有游戏帧**（帧数 = 0）：guest 还没记录过一条命令。卡点从「队列」前移到「**内存池**」。
+  1. **队列家族（真机已验证）**：`nvnQueueInitialize` 在 app 进程内返回 true，且**拿到真 Vulkan 队列**：`platform_queue=0xb4000073aef93ad0`。guest 的 queue flags 是 `0x291fd708`（非平凡值 ⇒ 我们的参数映射是对的；也因此**不能**按未知位去猜 flag 语义，后端改成「只提供它真有的那条图形队列，flags 由队列层如实记录」）。
+  2. **窗口家族（真 surface + 真 swapchain）**：`nvnWindowBuilderSetNativeWindow` 就是 guest 把窗口交给 NVN 的缝。**这里修掉一个真 bug**：NVN 后端的实例**没有启用 `VK_KHR_surface` / `VK_KHR_android_surface`** ⇒ 根本没有 `vkCreateAndroidSurfaceKHR` ⇒ 没有窗口也没有帧（P-MM-14 的探针已经踩过同一个坑，当时只修了探针没修运行时）。另外窗口尺寸**取自 surface capabilities**，不去调 `ANativeWindow_getWidth` ⇒ 图形层**不依赖 libandroid.so**（契约的 Android 链接就是被这个符号卡住的）。
+  3. **显示桥（nn::vi 5 导入）**：guest 拿到 app 发布的那个 `ANativeWindow`；`GetNativeWindow` 在没有已发布窗口时**如实写 NULL 并说明**，不自己造窗口；vsync 事件用真的 `nn::os` 事件，**初始不置位**（还没有任何一帧被呈现过，置位就是撒谎），等真 present 之后再置。
+  4. **两个契约抓出来的真缺陷（不是读代码看出来的）**：
+     - **句柄校验会崩宿主**：worker 原来用「读指针里的 magic 值」校验 display/layer 句柄，guest 一旦回传别的地址，宿主就**解引用野指针崩掉**（契约里用假句柄复现）。现在改成**与已发放句柄表比对**，不解引用任何来路不明的地址。
+     - **统计读序错误**：队列契约在 `nvnQueueFinalize` **之后**才读「有没有平台队列」，而 finalize 会把队列连同平台队列一起释放 ⇒ 真机读到 0 而实际有队列。是**真机那轮**暴露的。
+  5. **契约与自证**：新增 `--nvn-queue` / `--nvn-window` / `--vi-display` 三个用例，宿主门 **202 例全过（EXIT=0）**；真机三个用例全绿（`nvn_queue real_queue=true initialized=1 refused=1`、`nvn_window real_window=true initialized=1 refused=1`、`vi_display errors=0`）。**队列契约三变体自证**（`scripts/runtime/selfproof_nvn_queue.sh`，这次**入 git**）：A（改期望，保留末门）⇒ **红**；B（同处改坏 + 去末门 + 错误数硬编码 0）⇒ **假绿**（stdout 谎报 `nvn_queue_errors:0`，stderr 里有 3 条 check-fail）；C（契约不动，队列层谎报「无真设备也给队列」）⇒ **红**。
+  6. **guest 真实推进顺序（从 transcript 的解析顺序读出来的，不是猜的）**：device → queue → **memory pool** →（纹理/缓冲）→ window（用 nn::vi 给它的原生窗口）→ command buffer → 提交/呈现。⇒ **下一块是内存池家族（18 个名字）**，然后是命令缓冲家族（156 个名字，量最大）。
+- **本单未解决 / 风险**：**帧数仍为 0**；NVN 陷阱仍是**进程级终止**，在 app 里会连 app 一起带走（crash buffer 为空，是干净退出）；`nvnDeviceGetInteger` 的 **53/105** 依据**仍未从 guest 的兼容检查反推**（待复核，不得当已证事实）；`SetDepthMode` 已有状态语义但**还没有管线消费**；shader 路径（NVN 二进制 → SPIR-V）**仍未定案**，E3 之后会卡在这里；`nn::hid` 输入族未动。
 # P-MM-15 闭环｜2026-10-24 21:10 Asia/Shanghai — **E1 达成：guest 跑进了持窗进程**（`app_pid=7933` == `guest_pid=7933`），**app 进程内建成真 Vulkan 设备**（`nvnDeviceInitialize -> true`）；下一个卡点由进程边界换成 **NVN 绘制链本身**：`nvnQueueBuilderSetDefaults`（trap slot 11）
 
 - **结论**：P-MM-14 开题时定下的 E1（架构使能，最小可证伪）**已通过**，且通过的方式是可证伪的：**guest 与窗口在同一个 PID 里**，**真 Vulkan 设备在 app 进程内建成**，**romfs 在 app 进程内挂载成功**。**仍然没有游戏帧**：guest 紧接着就在第一个未实现的 API 上**被点名停下**——`nvnQueueBuilderSetDefaults`（trap slot 11）。**第一个阻塞换了**：不再是「guest 在窗口之外的进程」，而是「**NVN 的队列/命令缓冲/窗口/呈现这段根本不存在**」。
