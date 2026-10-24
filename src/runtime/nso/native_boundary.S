@@ -443,6 +443,117 @@ nb_import_snprintf_gateway:
     brk #0x4e42
 .size nb_import_snprintf_gateway,.-nb_import_snprintf_gateway
 
+/* Variadic stdio import gateways.
+ *
+ * A variadic callee takes its named arguments in x0..x(named-1); the variadic
+ * tail continues in the remaining general registers x(named)..x7 and then on
+ * the caller's stack. The gateway rebuilds that register save area so that the
+ * host libc entry (vprintf/vfprintf) can read the guest's variadic arguments
+ * through a standard AAPCS64 va_list:
+ *
+ *   sp+0    q0..q7        vector register save area
+ *   sp+128  x1..x7        general register save area
+ *   sp+192  va_list        __stack, __gr_top, __vr_top, __gr_offs, __vr_offs
+ *   sp+224  gateway state
+ *
+ * __stack is the guest's incoming stack pointer, so variadic arguments that
+ * did not fit in registers are read from the guest's own stack. The va_list
+ * pointer is passed as the argument right after the named arguments, and the
+ * host entry is the non-variadic v-prefixed form, so no vector register count
+ * has to be carried across the boundary.
+ */
+.macro NB_VARIADIC_GATEWAY name, named, vreg, tag
+    .p2align 2
+    .global \name
+    .hidden \name
+    .type \name,%function
+\name:
+    .inst 0xd50324df /* bti jc: thunk uses an indirect BR */
+    ldr x9, [x16]
+    mov x10, #0x4e42
+    cmp x9, x10
+    b.ne .Lvag_\tag\()_trap
+    ldr x10, [x16, #40]
+    cbz x10, .Lvag_\tag\()_trap
+    ldar x9, [x10]
+    cbz x9, .Lvag_\tag\()_trap
+    mrs x9, tpidr_el0
+    ldr x10, [x16, #8]
+    cmp x9, x10
+    b.eq .Lvag_\tag\()_owner_matched
+    adrp x10, s_slots
+    add  x10, x10, :lo12:s_slots
+    mov  w12, #32
+.Lvag_\tag\()_search_slot:
+    ldr  x13, [x10]
+    cmp  x13, x9
+    b.eq .Lvag_\tag\()_slot_found
+    add  x10, x10, #64
+    subs w12, w12, #1
+    b.ne .Lvag_\tag\()_search_slot
+    b    .Lvag_\tag\()_trap
+.Lvag_\tag\()_slot_found:
+    ldr  x13, [x10, #40]
+    cmp  x13, x16
+    b.ne .Lvag_\tag\()_trap
+    mov  x16, x10
+.Lvag_\tag\()_owner_matched:
+    add x11, x16, #24
+    ldar x9, [x11]
+    cmp x9, #1
+    b.ne .Lvag_\tag\()_trap
+    mov x12, sp                     /* original incoming guest SP */
+    sub sp, sp, #272
+    stp q0, q1, [sp]                /* vector save area: q0-q7 at sp+0..127 */
+    stp q2, q3, [sp, #32]
+    stp q4, q5, [sp, #64]
+    stp q6, q7, [sp, #96]
+    stp x1, x2, [sp, #128]          /* general save area: x1-x7 at sp+128..183 */
+    stp x3, x4, [sp, #144]
+    stp x5, x6, [sp, #160]
+    str x7, [sp, #176]
+    str x12, [sp, #192]             /* __stack = original incoming guest SP */
+    add x9, sp, #184
+    str x9, [sp, #200]              /* __gr_top = sp+184 */
+    add x9, sp, #128
+    str x9, [sp, #208]              /* __vr_top = sp+128 */
+.if \named == 1
+    mov w9, #-56                    /* seven general variadic arguments x1-x7 */
+.else
+    mov w9, #-48                    /* six general variadic arguments x2-x7 */
+.endif
+    str w9, [sp, #216]              /* __gr_offs */
+    mov w9, #-128
+    str w9, [sp, #220]              /* __vr_offs: eight vector variadic arguments */
+    stp x29, x30, [sp, #224]
+    stp x18, x16, [sp, #240]
+    ldr x9, [x16, #48]
+    str x9, [sp, #256]              /* previous active_guest_x18 */
+    str x18, [x16, #48]             /* actual guest x18 before restoring host SCS */
+    add x29, sp, #224
+    add \vreg, sp, #192             /* argument after the named arguments */
+    mov x9, #2
+    stlr x9, [x11]                  /* phase = HOST */
+    ldr x18, [x16, #16]             /* restore host SCS x18 */
+    blr x17                         /* call the host v-prefixed entry */
+    ldr x16, [sp, #248]             /* restore scope pointer */
+    ldr x9, [sp, #256]
+    str x9, [x16, #48]
+    add x11, x16, #24
+    mov x9, #1
+    stlr x9, [x11]                  /* phase = GUEST */
+    ldr x18, [sp, #240]             /* restore guest x18 */
+    ldp x29, x30, [sp, #224]
+    add sp, sp, #272
+    ret
+.Lvag_\tag\()_trap:
+    brk #0x4e42
+.size \name, .-\name
+.endm
+
+NB_VARIADIC_GATEWAY nb_import_variadic1_gateway, 1, x1, one
+NB_VARIADIC_GATEWAY nb_import_variadic2_gateway, 2, x2, two
+
 /* Owned HOST callback, register-only. Existing caller's HOST fields are stacked
  * and restored, not guessed or shared with a process-global host x18. */
 .p2align 2

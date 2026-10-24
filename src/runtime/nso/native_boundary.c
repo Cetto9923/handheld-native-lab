@@ -51,6 +51,8 @@ static nb_lifetime *lifetime_get(void) {
 extern void nb_import_gateway(void);
 extern void nb_import_stack13_gateway(void);
 extern void nb_import_snprintf_gateway(void);
+extern void nb_import_variadic1_gateway(void);
+extern void nb_import_variadic2_gateway(void);
 static uint64_t thread_token(void) {
     uint64_t value;
     __asm__ volatile("mrs %0, tpidr_el0" : "=r"(value));
@@ -106,7 +108,16 @@ nb_status nb_import_bind(nb_import *binding, nb_scope *scope,
         signature->variadic==1 && signature->gp_arguments==3 && !signature->fp_arguments &&
         signature->gp_returns==1 && !signature->fp_returns && !signature->aggregate_arguments &&
         !signature->unknown_layout && !signature->aggregate_returns && !signature->stack_argument_bytes;
-    int excluded=(signature->variadic && !variadic_snprintf) || signature->aggregate_arguments ||
+    /* Variadic stdio: one or two named general arguments, then the AAPCS64
+     * variadic tail. The gateway rebuilds a va_list from the guest registers
+     * and passes it as the next argument. */
+    int variadic_stdio=signature->version==4 && signature->flags==NB_SIG_VARIADIC_STDIO &&
+        signature->variadic==1 && (signature->gp_arguments==1 || signature->gp_arguments==2) &&
+        !signature->fp_arguments && signature->gp_returns==1 && !signature->fp_returns &&
+        !signature->aggregate_arguments && !signature->unknown_layout &&
+        !signature->aggregate_returns && !signature->stack_argument_bytes;
+    int excluded=(signature->variadic && !variadic_snprintf && !variadic_stdio) ||
+                 signature->aggregate_arguments ||
                  signature->unknown_layout || signature->aggregate_returns;
     int register_only=signature->version==1 && (signature->flags & NB_SIG_REGISTER_ONLY) &&
         !(signature->flags & ~(NB_SIG_REGISTER_ONLY | NB_SIG_SRET_X8)) &&
@@ -117,7 +128,7 @@ nb_status nb_import_bind(nb_import *binding, nb_scope *scope,
     int fixed_gp21=signature->version==2 && signature->flags==NB_SIG_FIXED_GP21 &&
         signature->stack_argument_bytes==104 && signature->gp_arguments==8 &&
         !signature->fp_arguments && signature->gp_returns==1 && !signature->fp_returns;
-    if(excluded || (!register_only && !fixed_gp21 && !variadic_snprintf))return NB_UNSUPPORTED;
+    if(excluded || (!register_only && !fixed_gp21 && !variadic_snprintf && !variadic_stdio))return NB_UNSUPPORTED;
     long page = sysconf(_SC_PAGESIZE);
     if (page < 64 || scope->binding_count == UINT64_MAX) return NB_INVALID;
     void *memory = mmap(NULL, (size_t)page, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
@@ -128,6 +139,8 @@ nb_status nb_import_bind(nb_import *binding, nb_scope *scope,
     uint32_t instructions[8] = {0xd503245f, 0x580000f0, 0x58000111, 0x58000129,
                                 0xd61f0120, 0xd503201f, 0xd503201f, 0xd503201f};
     void *gateway = variadic_snprintf ? (void *)nb_import_snprintf_gateway :
+                    variadic_stdio ? (void *)(signature->gp_arguments==1?(uintptr_t)nb_import_variadic1_gateway:
+                                                              (uintptr_t)nb_import_variadic2_gateway) :
                     (fixed_gp21 ? (void *)nb_import_stack13_gateway : (void *)nb_import_gateway);
     uint64_t literals[4] = {(uintptr_t)scope, (uintptr_t)target, (uintptr_t)gateway, 0};
     memcpy(memory, instructions, sizeof(instructions));

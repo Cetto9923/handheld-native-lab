@@ -6,6 +6,10 @@
 #include <time.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include <stdarg.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -195,6 +199,20 @@ uint32_t nso_host_nn_result_success(void);
 int32_t nso_host_ssl_initialize(void);
 int32_t nso_host_ssl_finalize(void);
 bool nso_host_ssl_is_initialized(void);
+
+/* stdio: data-object bindings and the print/write entry points. The stream
+ * objects resolve to the address of a host FILE* mirror that the guest
+ * dereferences; the print entry points take an explicit va_list because the
+ * import gateway rebuilds it from the guest registers. */
+uint64_t nso_host_stdio_object(const char *name);
+int nso_host_vprintf(const char *fmt, va_list ap);
+int nso_host_vfprintf(FILE *stream, const char *fmt, va_list ap);
+int nso_host_vsprintf(char *buf, const char *fmt, va_list ap);
+int nso_host_fflush(FILE *stream);
+size_t nso_host_fwrite(const void *ptr, size_t size, size_t count, FILE *stream);
+int nso_host_fputs(const char *text, FILE *stream);
+int nso_host_fputc(int c, FILE *stream);
+int nso_host_puts(const char *text);
 #ifdef __cplusplus
 }
 #endif

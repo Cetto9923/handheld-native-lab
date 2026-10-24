@@ -1,8 +1,8 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-10-24T04:34:00.000000+00:00
-阶段：T02_NNSSL_INITIALIZE_UNBLOCKED_STDOUT_DATA_IMPORT_ON_RG477M: nnsslInitialize (import 606) and nnsslFinalize (import 608) HLE landed and verified on device (nnsslFinalize ABI corrected to return a masked nn::Result per retail SDK disassembly at sdk module_offset 0x433620); RG477M boot advanced past the LibcurlGc child-thread SSL subsystem init; unresolved imports 410 -> 408; new frontier [unresolved-import] index=186 name=stdout caller_offset=0x5e5a874, a STT_OBJECT data import faulting as SIGSEGV (exit 139) because the loader backs unresolved data imports with a PROT_NONE object sentinel
-总控：P-AG-23 (Antigravity) closed by P-CC-5 (Claude Code): nnsslInitialize landed, host/device contracts PASS, RG477M boot log .local/logs/rg477m-boot-v46-nnssl-initialize.log (exit 139); next frontier is the stdio family (stdout/stderr/stdin data objects + printf/fprintf/vfprintf/fwrite/fputs/snprintf/vsnprintf/sprintf)
+状态事件时间：2026-10-24T05:09:00.000000+00:00
+阶段：T02_STDIO_DATA_IMPORT_UNBLOCKED_SOCKET_EVENTFD_ON_RG477M: stdout/stdin/stderr bound as host FILE* data objects (writable mirror, never a callable entry) and the stdio function family (printf/fprintf/sprintf variadic + fflush/fwrite/fputs/fputc/puts) landed with new AAPCS64 variadic import gateways; the loader no longer retargets STT_OBJECT imports to callables; unresolved imports 408 -> 397; RG477M boot advanced past the stdout SIGSEGV (exit 139) and now stops at unresolved code import [unresolved-import] index=325 name=_ZN2nn6socket7EventFdEmNS0_12EventFdFlagsE caller_offset=0x1091278 (SIGTRAP, exit 133)
+总控：P-CC-6 (Claude Code): stdio data-object + stdio function family landed, host and RG477M device contracts PASS (stdio_contract_errors=0, real native-boundary variadic gateways verified on device), RG477M boot log .local/logs/rg477m-boot-v47-stdio-stdout.log (exit 133); next frontier is the nn::socket family (nn::socket::EventFd), not the stdio family
 更新方式：按事件更新，没有后台自动刷新。
 
 | 任务 | 角色 | 状态 | 实际负责人 | 启动依赖 | 验收门禁 | 分支 |

@@ -118,6 +118,11 @@ size_t nso_image_size(const nso_module *m);
 struct nso_import_target {uint32_t index;const char *name;uint64_t target;};
 size_t nso_bound_import_count(const nso_module *);
 struct nso_result nso_bound_import_at(const nso_module *,size_t,struct nso_import_target *);
+/* ELF dynamic symbol type of an index: 0 NOTYPE, 1 OBJECT, 2 FUNC, 3 SECTION,
+ * 4 FILE. A data import (STT_OBJECT) is addressed, never called: the loader
+ * writes the address of the object into the guest GOT and the guest loads the
+ * object value from there. */
+uint8_t nso_symbol_type(const nso_module *,uint32_t index);
 /* All-or-none preflight: recorded 64-bit, zero-addend RELA sites must still
  * contain their expected values and lie in originally writable data pages.
  * No protection change, unknown memory scan or guest execution is performed.

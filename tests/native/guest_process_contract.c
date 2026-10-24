@@ -1758,6 +1758,135 @@ static int nnssl_contract(void) {
     puts("{\"nnssl_contract_errors\":0,\"initialize\":true,\"finalize\":true,\"baseline_zero\":true,\"finalize_result_zero\":true}");
     return 0;
 }
+static int stdio_contract(void) {
+    typedef int (*fflush_fn)(FILE *);
+    typedef size_t (*fwrite_fn)(const void *,size_t,size_t,FILE *);
+    typedef int (*fputs_fn)(const char *,FILE *);
+    typedef int (*fputc_fn)(int,FILE *);
+    typedef int (*puts_fn)(const char *);
+
+    /* Data imports: the resolved value is the address of a host object the
+     * guest dereferences (stdout is a FILE* variable in the guest's libc), so
+     * it must never be a callable entry or a sentinel slot. */
+    uint64_t stdout_object=guest_process_resolve(0,"stdout");
+    uint64_t stdin_object=guest_process_resolve(0,"stdin");
+    uint64_t stderr_object=guest_process_resolve(0,"stderr");
+    CHECK(stdout_object!=0 && stdin_object!=0 && stderr_object!=0);
+    CHECK(*(FILE **)(uintptr_t)stdout_object==stdout);
+    CHECK(*(FILE **)(uintptr_t)stdin_object==stdin);
+    CHECK(*(FILE **)(uintptr_t)stderr_object==stderr);
+    CHECK(stdout_object!=stdin_object && stdout_object!=stderr_object && stdin_object!=stderr_object);
+    /* The object slot is writable and holds exactly one host stream pointer. */
+    FILE *mirror=*(FILE **)(uintptr_t)stdout_object;
+    CHECK(mirror==stdout);
+
+    fflush_fn flush=(fflush_fn)(uintptr_t)guest_process_resolve(0,"fflush");
+    fwrite_fn write_bytes=(fwrite_fn)(uintptr_t)guest_process_resolve(0,"fwrite");
+    fputs_fn put_string=(fputs_fn)(uintptr_t)guest_process_resolve(0,"fputs");
+    fputc_fn put_char=(fputc_fn)(uintptr_t)guest_process_resolve(0,"fputc");
+    puts_fn put_line=(puts_fn)(uintptr_t)guest_process_resolve(0,"puts");
+    CHECK(flush&&write_bytes&&put_string&&put_char&&put_line);
+    CHECK(guest_process_resolve(0,"printf")!=0);
+    CHECK(guest_process_resolve(0,"fprintf")!=0);
+    CHECK(guest_process_resolve(0,"sprintf")!=0);
+
+    /* Round trip through a scratch host file: the write entry points must
+     * deliver the guest bytes and return the libc results. */
+    FILE *scratch=tmpfile();
+    CHECK(scratch!=NULL);
+    const char payload[]="stdio-contract";
+    CHECK(write_bytes(payload,1,sizeof(payload)-1,scratch)==sizeof(payload)-1);
+    CHECK(put_string("fputs",scratch)>=0);
+    CHECK(put_char('!',scratch)=='!');
+    CHECK(flush(scratch)==0);
+    rewind(scratch);
+    char readback[64];
+    memset(readback,0,sizeof(readback));
+    size_t got=fread(readback,1,sizeof(readback)-1,scratch);
+    CHECK(got==sizeof(payload)-1+5+1);
+    CHECK(!strncmp(readback,payload,sizeof(payload)-1));
+    CHECK(!strcmp(readback+sizeof(payload)-1,"fputs!"));
+
+    /* puts writes to the process stdout: capture it so the contract output
+     * stays machine readable and the written line can be verified. */
+    int saved=dup(fileno(stdout));
+    CHECK(saved>=0);
+    CHECK(dup2(fileno(scratch),fileno(stdout))>=0);
+    int line_result=put_line("line");
+    fflush(stdout);
+    CHECK(dup2(saved,fileno(stdout))>=0);
+    close(saved);
+    CHECK(line_result>=0);
+    fflush(scratch);
+    fseek(scratch,0,SEEK_END);
+    long size=ftell(scratch);
+    CHECK(size==(long)(sizeof(payload)-1+5+1+5));
+    fseek(scratch,0,SEEK_SET);
+    memset(readback,0,sizeof(readback));
+    got=fread(readback,1,sizeof(readback)-1,scratch);
+    CHECK(got==(size_t)(sizeof(payload)-1+5+1+5));
+    CHECK(!strcmp(readback+sizeof(payload)-1+5+1,"line\n"));
+    fclose(scratch);
+
+#if defined(__ANDROID__) && defined(__aarch64__)
+    /* Real native boundary gateways: the variadic tail is rebuilt from the
+     * guest registers, including the arguments that did not fit in registers
+     * and are read from the caller's stack. */
+    nb_scope scope;
+    memset(&scope,0,sizeof(scope));
+    CHECK(nb_scope_init(&scope)==NB_OK);
+    nb_import binding={0};
+    nb_signature one={.version=4,.flags=NB_SIG_VARIADIC_STDIO,.gp_arguments=1,.gp_returns=1,.variadic=1};
+    CHECK(nb_import_bind(&binding,&scope,(void(*)(void))(uintptr_t)&nso_host_vprintf,&one)==NB_OK);
+    nb_import binding_two={0};
+    nb_signature two={.version=4,.flags=NB_SIG_VARIADIC_STDIO,.gp_arguments=2,.gp_returns=1,.variadic=1};
+    CHECK(nb_import_bind(&binding_two,&scope,(void(*)(void))(uintptr_t)&nso_host_vfprintf,&two)==NB_OK);
+    typedef int (*gateway_one_fn)(const char *,...);
+    typedef int (*gateway_two_fn)(FILE *,const char *,...);
+    gateway_one_fn gateway_one=(gateway_one_fn)nb_import_entry(&binding);
+    gateway_two_fn gateway_two=(gateway_two_fn)nb_import_entry(&binding_two);
+    CHECK(gateway_one&&gateway_two);
+    scope.phase=1;
+    scratch=tmpfile();
+    CHECK(scratch!=NULL);
+    int result=gateway_two(scratch,"contract %d %s %.2f %d %d %d %d %d %d %d %d\n",
+        7,"text",1.5,1,2,3,4,5,6,7,8);
+    CHECK(result>0);
+    fflush(scratch);
+    rewind(scratch);
+    memset(readback,0,sizeof(readback));
+    got=fread(readback,1,sizeof(readback)-1,scratch);
+    CHECK(got>0);
+    CHECK(got==37);
+    CHECK(!memcmp(readback,"contract 7 text 1.50 1 2 3 4 5 6 7 8\n",37));
+    /* One named argument: the first variadic argument is the second
+     * general register, so the rebuilt list starts there. */
+    saved=dup(fileno(stdout));
+    CHECK(saved>=0);
+    CHECK(dup2(fileno(scratch),fileno(stdout))>=0);
+    result=gateway_one("one %d %s\n",42,"tail");
+    fflush(stdout);
+    CHECK(dup2(saved,fileno(stdout))>=0);
+    close(saved);
+    CHECK(result>0);
+    fflush(scratch);
+    fseek(scratch,0,SEEK_END);
+    size=ftell(scratch);
+    CHECK(size>0);
+    fseek(scratch,0,SEEK_SET);
+    memset(readback,0,sizeof(readback));
+    got=fread(readback,1,sizeof(readback)-1,scratch);
+    CHECK(got>0);
+    CHECK(strstr(readback,"one 42 tail")!=NULL);
+    fclose(scratch);
+    scope.phase=0;
+    CHECK(nb_import_unbind(&binding)==NB_OK);
+    CHECK(nb_import_unbind(&binding_two)==NB_OK);
+    CHECK(nb_scope_close(&scope)==NB_OK);
+#endif
+    puts("{\"stdio_contract_errors\":0,\"objects_bound\":true,\"object_holds_host_stream\":true,\"writable_mirror\":true,\"fwrite_roundtrip\":true,\"fputs_roundtrip\":true,\"fputc_roundtrip\":true,\"puts_roundtrip\":true,\"fflush_roundtrip\":true,\"callables_bound\":true}");
+    return 0;
+}
 static int fs_open_dir_contract(void) {
     typedef int32_t (*open_dir_fn)(nn_fs_directory_handle *, const char *, int32_t);
     typedef int32_t (*get_count_fn)(int64_t *, nn_fs_directory_handle);
@@ -2883,6 +3012,7 @@ int main(int argc,char **argv) {
     if(argc==2 && !strcmp(argv[1],"--os-process-handle"))return os_process_handle_contract();
     if(argc==2 && !strcmp(argv[1],"--nn-result"))return nn_result_contract();
     if(argc==2 && !strcmp(argv[1],"--nnssl"))return nnssl_contract();
+    if(argc==2 && !strcmp(argv[1],"--stdio"))return stdio_contract();
     if(argc==2 && !strcmp(argv[1],"--fs-open-dir"))return fs_open_dir_contract();
     if(argc==2 && !strcmp(argv[1],"--os-event"))return os_event_contract();
     if(argc==2 && !strcmp(argv[1],"--posix-memalign"))return posix_memalign_contract();

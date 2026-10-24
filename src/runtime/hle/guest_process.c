@@ -1148,6 +1148,11 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
         "setlocale","getenv","nl_langinfo","gettimeofday","getpid",
         "nnResultIsFailure","nnResultIsSuccess","nnResultGetModule","nnResultGetDescription","nnResultSuccess",
         "nnsslInitialize","nnsslFinalize",
+        /* stdio: the three stream objects are data imports, the rest are
+         * callables. The data imports are resolved to a host object address
+         * and are never bound as a callable thunk. */
+        "stdout","stdin","stderr",
+        "printf","fprintf","sprintf","fflush","fwrite","fputs","fputc","puts",
         "__cxa_pure_virtual",NULL};
     for(size_t i=0;typed[i];i++)if(!strcmp(name,typed[i]))return nso_host_resolve(index,name);
     if(!strcmp(name,"abort"))return (uintptr_t)&abort;
@@ -1364,6 +1369,22 @@ static int import_signature(const char *name,nb_signature *out) {
             .gp_arguments=3,.gp_returns=1,.variadic=1};
         return 1;
     }
+    else if(!strcmp(name,"printf")) {
+        /* One named argument (the format string); the gateway rebuilds the
+         * variadic tail from the guest registers. */
+        *out=(nb_signature){.version=4,.flags=NB_SIG_VARIADIC_STDIO,
+            .gp_arguments=1,.gp_returns=1,.variadic=1};
+        return 1;
+    }
+    else if(!strcmp(name,"fprintf") || !strcmp(name,"sprintf")) {
+        /* Two named arguments (stream or buffer, then the format string). */
+        *out=(nb_signature){.version=4,.flags=NB_SIG_VARIADIC_STDIO,
+            .gp_arguments=2,.gp_returns=1,.variadic=1};
+        return 1;
+    }
+    else if(!strcmp(name,"fwrite")) {arguments=4;returns=1;}
+    else if(!strcmp(name,"fflush") || !strcmp(name,"puts")) {arguments=1;returns=1;}
+    else if(!strcmp(name,"fputs") || !strcmp(name,"fputc")) {arguments=2;returns=1;}
     else if(!strcmp(name,"_ZN2nn4diag6detail9AbortImplEv")) {arguments=0;returns=1;}
     else if(!strcmp(name,"_ZN2nn4diag12GetBacktraceEPmi")) {arguments=2;returns=1;}
     else if(!strcmp(name,"abort")) {arguments=0;returns=0;}
@@ -1387,18 +1408,35 @@ static struct nso_result prepare_boundary_locked(guest_process *p) {
     struct nso_import_target *targets=count?calloc(count,sizeof(*targets)):NULL;
     nb_import *bindings=count?calloc(count,sizeof(*bindings)):NULL;
     if(count && (!targets || !bindings)) {free(targets);free(bindings);return status(NSO_OWNER_ERROR,ENOMEM,0);}
+    /* A data import (STT_OBJECT) is addressed by the guest, never called: the
+     * loader already wrote the resolved object address into the guest GOT
+     * (R_GLOB_DAT, zero addend) and the guest loads the object value from
+     * there. Such an import must keep that address, so it is not bound as a
+     * callable thunk and is not retargeted. */
+    size_t callable=0,objects=0;
     for(size_t i=0;i<count;i++) {
+        if(nso_bound_import_at(p->module,i,&targets[i]).status!=NSO_OK) {
+            fprintf(stderr, "[boundary-unsupported] index=%zu name=(unreadable)\n", i);
+            free(targets);free(bindings);return status(NSO_UNSUPPORTED,ENOTSUP,0);
+        }
+        if(nso_symbol_type(p->module,targets[i].index)==1) {
+            fprintf(stderr,"[boundary-data-object] index=%u name=%s address=0x%" PRIx64 "; resolved data import kept as host object, not callable\n",
+                targets[i].index,targets[i].name,targets[i].target);
+            objects++;
+            continue;
+        }
         nb_signature signature;
-        if(nso_bound_import_at(p->module,i,&targets[i]).status!=NSO_OK || !import_signature(targets[i].name,&signature)) {
+        if(!import_signature(targets[i].name,&signature)) {
             fprintf(stderr, "[boundary-unsupported] index=%u name=%s\n", targets[i].index, targets[i].name);
             free(targets);free(bindings);return status(NSO_UNSUPPORTED,ENOTSUP,0);
         }
+        targets[callable++]=targets[i];
     }
     nb_status s=nb_scope_init(&p->boundary);
     if(s!=NB_OK) {free(targets);free(bindings);fprintf(stderr,"[boundary-error] scope-init status=%d; no guest execution\n",s);return status(s==NB_UNSUPPORTED?NSO_UNSUPPORTED:NSO_OWNER_ERROR,s==NB_UNSUPPORTED?ENOTSUP:EIO,0);}
-    p->boundary_initialized=1;p->bindings=bindings;p->bindings_count=count;
+    p->boundary_initialized=1;p->bindings=bindings;p->bindings_count=callable;
     struct nso_result r=status(NSO_OK,0,0);
-    for(size_t i=0;i<count;i++) {
+    for(size_t i=0;i<callable;i++) {
         nb_signature signature;(void)import_signature(targets[i].name,&signature);
         s=nb_import_bind(&bindings[i],&p->boundary,(void(*)(void))(uintptr_t)targets[i].target,&signature);
         if(s!=NB_OK) {
@@ -1408,14 +1446,14 @@ static struct nso_result prepare_boundary_locked(guest_process *p) {
         }
         targets[i].target=(uintptr_t)nb_import_entry(&bindings[i]);
     }
-    if(r.status==NSO_OK)r=nso_retarget_imports(p->module,targets,count);
+    if(r.status==NSO_OK)r=nso_retarget_imports(p->module,targets,callable);
     free(targets);
     if(r.status!=NSO_OK) {
         fprintf(stderr,"[boundary-error] nso_retarget_imports failed status=%d native=%d\n",r.status,r.native_error);
         p->quarantined=1;return status(NSO_RETAINED,r.native_error,r.cleanup_error);
     }
     p->boundary_prepared=1;
-    fprintf(stderr,"[boundary-ready] imports=%zu actual-primary-owned; bindings retained through module unload\n",count);
+    fprintf(stderr,"[boundary-ready] imports=%zu actual-primary-owned; data objects=%zu; bindings retained through module unload\n",callable,objects);
     return r;
 }
 struct nso_result guest_process_call(guest_process *p,uint64_t off,const uint64_t arguments[6],unsigned count,uint64_t *value) {

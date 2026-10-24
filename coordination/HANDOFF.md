@@ -1,3 +1,36 @@
+# P-CC-6 闭环｜2026-10-24 13:09 Asia/Shanghai — stdout/stderr/stdin 数据导入真机越过，前沿推进至 nn::socket::EventFd（import 325）
+
+- **结论**：工单 P-CC-6 目标闭环。真机**彻底越过 `stdout` 数据导入（import 186）**：v46 的 SIGSEGV 前沿（exit 139）已消除，v47 推进到更远的 **未解析代码导入 `nn::socket::EventFd`（import 325，SIGTRAP/exit 133）**。
+  1. **根因复核（不是假设，是可算的证据）**：v46 故障 `fa=0x7b39ee35d0`，而 `0x7b39ee35d0 − 186×8 = 0x7b39ee3000` 恰为页对齐 ⇒ 该地址正是 loader 给**第 186 号数据导入**分配的 `object_traps` PROT_NONE 槽（`nso_loader.c`：`m->imports[i] = (e[4]&15)==1 ? object_traps : import_traps` + `i*8`）。故障指令 `module_offset 0x5e5a678` 反汇编为 `ldr x8, [x8]`，其 x8 来自 `ldr x8, [x8, #0x888]` ⇒ GOT 槽 `module_offset 0x7767888`，而该槽对 `stdout` 的重定位正是 **R_GLOB_DAT、addend 0**（脚本解析 main NSO 动态表确认；`stdin` 0x77678a0、`stderr` 0x7768ee0 同型）。因此 guest 的读法是「GOT → 对象地址 → 对象里的 FILE*」两跳，v46 的第二跳撞上 PROT_NONE ⇒ SIGSEGV。独立佐证：用 NDK clang 编译 `fprintf(stdout,…)` 得到同一形态 `adrp/ldr :got:stdout; ldr x0,[x8]`。
+  2. **数据导入落地（关键差异：对象不是函数）**：`nso_host.c` 新增 stdio 段——`stdout`/`stdin`/`stderr` 各绑定到**宿主 `FILE*` 的可写镜像槽地址**（`&stream->object`，镜像副本而非 libc 自身变量，避免 guest 写穿宿主 stdio 状态），日志 `[hle] stdio-object: stdout -> host FILE*=0x… (object address=0x…, writable mirror)`。**绝不返回函数入口或 BRK 哨兵**。
+  3. **loader/边界语义修正（此前会直接失败）**：`nso_retarget_imports` 原本只接受 `sym_type∈{0,2}`，STT_OBJECT 会被判 `[retarget-unsupported]` 而整轮边界准备失败；且边界会把每个绑定导入做成**可调用 thunk**，对数据导入是错的。现做法：新增 `nso_symbol_type()`（loader 权威符号类型），`prepare_boundary_locked` 把 STT_OBJECT 导入**排除出可调用绑定与 retarget**，保留 loader 已写入 GOT 的对象地址 ⇒ 日志 `[boundary-data-object] index=186 name=stdout address=0x…; resolved data import kept as host object, not callable`，`[boundary-ready] imports=251 actual-primary-owned; data objects=3`（251 可调用 + 3 数据对象 = 254 已绑定；651−254 = 397 unresolved，与 profile 行一致）。
+  4. **stdio 函数族落地**：`printf`/`fprintf`/`sprintf`（变参）、`fflush`/`fwrite`/`fputs`/`fputc`/`puts`（非变参）。**变参 ABI 用本仓库既有的 snprintf 网关模式推广**，而不是直接透传：
+     - 新增 `nb_import_variadic1_gateway`（1 个具名参数：printf）与 `nb_import_variadic2_gateway`（2 个具名参数：fprintf/sprintf），在 `native_boundary.S` 用 `NB_VARIADIC_GATEWAY` 宏生成，按 AAPCS64 重建寄存器保存区（`q0-q7@sp+0`、`x1-x7@sp+128`、`__gr_top=sp+184`、`__vr_top=sp+128`、`__gr_offs=-8×(8-named)`、`__vr_offs=-128`、`__stack` = **guest 原始入栈 SP**），并把 `va_list*` 放到具名参数之后的那个参数寄存器。
+     - ABI 取证：实测 NDK clang（AArch64）**变参调用不设置 `al`**（无 vector 计数寄存器），且 clang 生成的 `va_start` 保存区布局与网关一致（`x1-x7` 于 +128、`q0-q7` 于 +0、`__gr_offs=-56`（1 具名）/`-48`（2 具名）/`-40`（3 具名，如既有 snprintf））。故宿主一律调用**非变参** `vprintf/vfprintf` 形态，不依赖 `al`。
+     - 宿主要求 `v*` 形态（`nso_host_vprintf/vfprintf/vsprintf`），`guest_process.c` 的 `import_signature` 用新 `version=4 / NB_SIG_VARIADIC_STDIO` 声明 1 或 2 个具名 GP 参数；`native_boundary.c` 校验并选择对应网关。
+  5. **安全边界（guest 字符串不是宿主可信输入）**：格式串与文本参数先拷进**有界宿主缓冲**（格式串 4096 B、文本 64 KiB）再交给宿主 libc 解析，超界/未终止即拒绝并记账；`sprintf` 无 guest 侧长度，改用有界缓冲生成后再拷出，截断明确记账（guest 仍拿到应有长度）。`vfprintf`/`vsnprintf`（guest 传 musl 风格 `va_list` 指针）**本单未绑定**：guest 侧 `va_list` 布局未经证实前不得当作宿主 `va_list` 透传，宁可留作未解析导入。
+  6. **契约（宿主 + 真机同测）**：新增 `--stdio` 契约（`tests/native/guest_process_contract.c`）。宿主 PASS：`{"stdio_contract_errors":0,"objects_bound":true,"object_holds_host_stream":true,"writable_mirror":true,"fwrite_roundtrip":true,"fputs_roundtrip":true,"fputc_roundtrip":true,"puts_roundtrip":true,"fflush_roundtrip":true,"callables_bound":true}`。**RG477M 真机同契约 PASS**（同一 JSON），且在真机上走了**真实 native boundary 网关**：`fprintf` 变参 11 个实参（含 `%.2f` 双精度与 4 个溢出到栈的整型）输出逐字节核对 `contract 7 text 1.50 1 2 3 4 5 6 7 8\n`；`printf`（1 具名）网关输出 `one 42 tail` 均正确 ⇒ 变参尾（含栈溢出区）重建无误。
+  7. **真机推进（RG477M01445122，v47 与 v46 同一套参数）**：`quota=1073741824 stack=2097152 image=162869248 resource_quota=16777216 guest_argc=0`；guest 输入不变（main NSO build_id `736837afd390442ed7c74a7de730e71b`）。`unresolved` **408 → 397**（正是 3 数据对象 + 8 函数）。v46 故障点 `module_offset 0x5e5a678` 已越过，guest 继续创建 `HttpManagerThread`（tid 24412）、`atexit` 登记攀升至 13,618。
+  8. **新阻塞前沿**：`[fault] signal=5 pc=0x76cd4f3a28 fa=0x76cd4f3a28` + `[unresolved-import] index=325 name=_ZN2nn6socket7EventFdEmNS0_12EventFdFlagsE caller_offset=0x1091278`；退出码 **133**（SIGTRAP，未解析**代码**导入）。⇒ 下一张工单应攻 **nn::socket 族**（`nn::socket::EventFd` 等），而非 stdio 族。
+  9. **产物与日志**：
+     - 宿主/Android 构建：`.local/build-p-cc-6c/`（`sh scripts/runtime/build_guest_process_contract.sh --out .local/build-p-cc-6c --toolchain .local/minimal-ndk/toolchain --resource-quota-bytes 16777216`，exit 0；全量宿主契约 PASS；`manifest.json` 记录 `source_sha256` 与当前工作树**逐项一致，无源码漂移**）。启动二进制 `nso_owned_startup.android` sha256 `e1363149cdce632f5f65d8fb3a53d83086c66d02d565647812f594f7eb33cdbc`；契约二进制 `guest_process_contract.android` sha256 `533023b84e8ecce38e50842e5a6cc6792e3ebca3aaa0a79cd38fb8732ff337da`。
+     - 真机证据：`.local/logs/rg477m-boot-v47-stdio-stdout.log` + `.exitcode` = **133**（设备端 `p-cc-6c-nso_owned_startup.android-e1363149`，run 目录 `/data/local/tmp/ffrs-rg477m-efd1123620814764ae32529c18081259/`，cwd 正确）。
+     - 契约真机执行：设备端 `p-cc-6c-guest_process_contract.android-533023b8 --stdio` PASS。
+     - 栈预算说明：stdio 的格式/文本/输出缓冲（4 KiB / 16 KiB / 16 KiB）跑在 **guest 栈**（宿主线程栈即 guest 栈，2 MiB）上，故取小上限；单次调用最大 scratch 约 20 KiB。
+  10. **未达**：标题画面 / 可玩（仍未进呈现阶段）。本次仅推进导入边界，**未**伪造任何 TLS 握手、证书校验、在线账号或 socket 服务；`nn::socket::EventFd` 等 socket 语义未实现。
+
+---
+
+# 日间调度（P-CC-6 启动｜2026-10-24 12:53 Asia/Shanghai）
+
+- **切换原因**：P-CC-5 claude PID 92401 已退出并写闭环 @ HEAD `f9fd30b`；真机最新 v46 越过 `nnsslInitialize`，阻塞 `stdout`（import 186，STT_OBJECT，exit 139）；主树 clean、无活跃 FFRS 主路径写手。Antigravity 仍处 429 额度窗口（约 12:09 起，重置约再等数小时），按优先级改派 Claude Code。
+- **里程碑**：新 HEAD `f9fd30b`；真机 v45/v46 越过 nnssl；import 606/608 消除；新前沿 stdio 数据导入。
+- **已派**：P-CC-6 攻 stdio 族（`stdout`/`stdin`/`stderr` 对象 + printf/fprintf/fwrite/…）；提词 `coordination/prompts/P-CC-stdio-stdout.md`；claude PID **7295**（若 --dangerously-skip-permissions 弹出审批请点批准）；日志 `.local/agent-pm/cc-p-cc-6.log`
+- **基线**：`.local/logs/rg477m-boot-v46-nnssl-initialize.log` exit 139；设备 RG477M01445122；pak/ucas PASS（`.local/romfs/FFRS/Content/Paks/`）
+- **未达**：标题 / 可玩
+
+---
+
 # P-AG-23 / P-CC-5 闭环｜2026-10-24 12:34 Asia/Shanghai — nnsslInitialize（import 606）真机越过，前沿推进至 stdout（import 186）
 
 - **结论**：工单 P-AG-23（Antigravity 因 429 额度耗尽中途退出）+ P-CC-5（Claude Code 接力）目标闭环：真机**彻底越过 `nnsslInitialize`（import 606）**，新前沿归因为 `stdout`（import 186，STT_OBJECT 数据导入）。

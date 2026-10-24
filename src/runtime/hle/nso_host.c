@@ -2210,6 +2210,178 @@ bool nso_host_ssl_is_initialized(void) {
     return s_ssl_initialized;
 }
 
+/* ========================================================================= */
+/* stdio HLE: stream objects, print entry points and stream writes          */
+/* ========================================================================= */
+/* The guest imports stdout/stdin/stderr as STT_OBJECT data symbols, not as  */
+/* callables. The loader binds such an import to the *address of the object* */
+/* (R_GLOB_DAT, zero addend) and the guest then loads the object value:     */
+/*   adrp x8, :got:stdout                                                  */
+/*   ldr  x8, [x8, :got_lo12:stdout]   // address of the stdout object      */
+/*   ldr  x0, [x8]                     // the FILE* the object holds         */
+/* An unresolved data import instead receives a PROT_NONE sentinel slot, so  */
+/* that second load faults with SIGSEGV. The binding must therefore be a     */
+/* readable, writable host location holding a live host FILE*: never a       */
+/* function entry, never a BRK sentinel, never a call target.               */
+/*                                                                          */
+/* The guest hands the same FILE* back to the host stdio functions below, so */
+/* the guest stream and the host stream stay one object and guest output     */
+/* reaches the host log.                                                     */
+/* ========================================================================= */
+
+/* These buffers live on the guest stack (the guest stack is the host thread
+ * stack of the running guest), so the bounds stay small: the whole scratch
+ * area of one call must stay a small fraction of the guest stack. */
+#define NSO_STDIO_FORMAT_LIMIT 4096
+#define NSO_STDIO_TEXT_LIMIT 16384
+#define NSO_STDIO_OUTPUT_LIMIT 16384
+
+struct nso_stdio_stream {
+    const char *name;
+    FILE *object;
+    bool logged;
+};
+static struct nso_stdio_stream s_stdio_streams[3]={
+    {"stdout",NULL,false},{"stdin",NULL,false},{"stderr",NULL,false}};
+
+static struct nso_stdio_stream *stdio_stream_for(const char *name) {
+    if(!name)return NULL;
+    for(size_t i=0;i<sizeof(s_stdio_streams)/sizeof(s_stdio_streams[0]);i++)
+        if(!strcmp(s_stdio_streams[i].name,name))return &s_stdio_streams[i];
+    return NULL;
+}
+/* One host mirror per guest stream. The guest may write the object slot, so
+ * the mirror keeps the guest write away from the host libc's own variable. */
+static FILE *stdio_stream_object(struct nso_stdio_stream *stream) {
+    if(!stream->object) {
+        if(!strcmp(stream->name,"stdout"))stream->object=stdout;
+        else if(!strcmp(stream->name,"stdin"))stream->object=stdin;
+        else stream->object=stderr;
+    }
+    return stream->object;
+}
+uint64_t nso_host_stdio_object(const char *name) {
+    struct nso_stdio_stream *stream=stdio_stream_for(name);
+    if(!stream)return 0;
+    FILE *object=stdio_stream_object(stream);
+    if(!stream->logged) {
+        stream->logged=true;
+        fprintf(stderr,"[hle] stdio-object: %s -> host FILE*=%p (object address=%p, writable mirror)\n",
+            stream->name,(void *)object,(void *)&stream->object);
+    }
+    return (uint64_t)(uintptr_t)&stream->object;
+}
+
+/* The guest owns the format string, its content and its termination. Copy it
+ * into a bounded host buffer before the host libc parses it, so an unbounded
+ * or unterminated guest string is never walked by the host. */
+static const char *stdio_format_copy(const char *guest,char *buffer,size_t limit) {
+    if(!guest)return NULL;
+    for(size_t i=0;i<limit;i++) {
+        char c=guest[i];
+        buffer[i]=c;
+        if(!c)return buffer;
+    }
+    buffer[limit-1]='\0';
+    return NULL;
+}
+/* Same bound for a plain guest text argument (puts/fputs). */
+static const char *stdio_text_copy(const char *guest,char *buffer,size_t limit) {
+    if(!guest)return NULL;
+    size_t i=0;
+    for(;i+1<limit;i++) {
+        char c=guest[i];
+        buffer[i]=c;
+        if(!c)return buffer;
+    }
+    buffer[i]='\0';
+    if(guest[i])fprintf(stderr,"[hle] stdio: guest text truncated at %zu bytes\n",limit-1);
+    return buffer;
+}
+
+int nso_host_vprintf(const char *fmt,va_list ap) {
+    char format[NSO_STDIO_FORMAT_LIMIT];
+    const char *parsed=stdio_format_copy(fmt,format,sizeof(format));
+    if(!parsed) {
+        fprintf(stderr,"[hle] printf: unusable guest format string %p\n",(const void *)fmt);
+        return -1;
+    }
+    int result=vprintf(parsed,ap);
+    fprintf(stderr,"[hle] printf: -> %d\n",result);
+    return result;
+}
+int nso_host_vfprintf(FILE *stream,const char *fmt,va_list ap) {
+    char format[NSO_STDIO_FORMAT_LIMIT];
+    const char *parsed=stdio_format_copy(fmt,format,sizeof(format));
+    if(!parsed) {
+        fprintf(stderr,"[hle] fprintf: unusable guest format string %p\n",(const void *)fmt);
+        return -1;
+    }
+    int result=vfprintf(stream,parsed,ap);
+    fprintf(stderr,"[hle] fprintf: stream=%p -> %d\n",(void *)stream,result);
+    return result;
+}
+/* sprintf has no guest-supplied bound, so the formatted result is produced in
+ * a bounded host buffer and copied out. The guest sees the full length, and a
+ * truncated copy is reported instead of overrunning guest memory. */
+int nso_host_vsprintf(char *buf,const char *fmt,va_list ap) {
+    char format[NSO_STDIO_FORMAT_LIMIT];
+    const char *parsed=stdio_format_copy(fmt,format,sizeof(format));
+    if(!parsed) {
+        fprintf(stderr,"[hle] sprintf: unusable guest format string %p\n",(const void *)fmt);
+        return -1;
+    }
+    char scratch[NSO_STDIO_OUTPUT_LIMIT];
+    int result=vsnprintf(scratch,sizeof(scratch),parsed,ap);
+    if(result<0) {
+        fprintf(stderr,"[hle] sprintf: formatting failed\n");
+        return result;
+    }
+    size_t length=(size_t)result;
+    size_t copy=length<sizeof(scratch)?length:sizeof(scratch)-1;
+    if(copy<length)fprintf(stderr,"[hle] sprintf: guest buffer truncated at %zu of %zu bytes\n",copy,length);
+    if(buf)memcpy(buf,scratch,copy+1);
+    fprintf(stderr,"[hle] sprintf: -> %d bytes\n",result);
+    return result;
+}
+int nso_host_fflush(FILE *stream) {
+    int result=fflush(stream);
+    fprintf(stderr,"[hle] fflush: stream=%p -> %d\n",(void *)stream,result);
+    return result;
+}
+size_t nso_host_fwrite(const void *ptr,size_t size,size_t count,FILE *stream) {
+    size_t result=fwrite(ptr,size,count,stream);
+    fprintf(stderr,"[hle] fwrite: size=%zu count=%zu -> %zu\n",size,count,result);
+    return result;
+}
+int nso_host_fputs(const char *text,FILE *stream) {
+    char buffer[NSO_STDIO_TEXT_LIMIT];
+    const char *copy=stdio_text_copy(text,buffer,sizeof(buffer));
+    if(!copy) {
+        fprintf(stderr,"[hle] fputs: unusable guest text %p\n",(const void *)text);
+        return -1;
+    }
+    int result=fputs(copy,stream);
+    fprintf(stderr,"[hle] fputs: stream=%p -> %d\n",(void *)stream,result);
+    return result;
+}
+int nso_host_fputc(int c,FILE *stream) {
+    int result=fputc(c,stream);
+    fprintf(stderr,"[hle] fputc: c=%d stream=%p -> %d\n",c,(void *)stream,result);
+    return result;
+}
+int nso_host_puts(const char *text) {
+    char buffer[NSO_STDIO_TEXT_LIMIT];
+    const char *copy=stdio_text_copy(text,buffer,sizeof(buffer));
+    if(!copy) {
+        fprintf(stderr,"[hle] puts: unusable guest text %p\n",(const void *)text);
+        return -1;
+    }
+    int result=puts(copy);
+    fprintf(stderr,"[hle] puts: -> %d\n",result);
+    return result;
+}
+
 void nso_host_throw_system_error(int ev, const char *what_arg) {
     fprintf(stderr, "[hle] std::__throw_system_error: ev=%d what=%s\n", ev, what_arg ? what_arg : "(null)");
     abort();
@@ -2481,6 +2653,28 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_ssl_initialize;
     if(!strcmp(name,"nnsslFinalize"))
         return (uint64_t)(uintptr_t)&nso_host_ssl_finalize;
+    /* Data imports: the resolved value is the address of the host object the
+     * guest dereferences, never a callable entry. */
+    if(!strcmp(name,"stdout") || !strcmp(name,"stdin") || !strcmp(name,"stderr"))
+        return nso_host_stdio_object(name);
+    /* Print family: the variadic gateway rebuilds an AAPCS64 va_list from the
+     * guest registers and passes it as an explicit argument. */
+    if(!strcmp(name,"printf"))
+        return (uint64_t)(uintptr_t)&nso_host_vprintf;
+    if(!strcmp(name,"fprintf"))
+        return (uint64_t)(uintptr_t)&nso_host_vfprintf;
+    if(!strcmp(name,"sprintf"))
+        return (uint64_t)(uintptr_t)&nso_host_vsprintf;
+    if(!strcmp(name,"fflush"))
+        return (uint64_t)(uintptr_t)&nso_host_fflush;
+    if(!strcmp(name,"fwrite"))
+        return (uint64_t)(uintptr_t)&nso_host_fwrite;
+    if(!strcmp(name,"fputs"))
+        return (uint64_t)(uintptr_t)&nso_host_fputs;
+    if(!strcmp(name,"fputc"))
+        return (uint64_t)(uintptr_t)&nso_host_fputc;
+    if(!strcmp(name,"puts"))
+        return (uint64_t)(uintptr_t)&nso_host_puts;
     if(!strcmp(name,"__cxa_pure_virtual"))
         return (uint64_t)(uintptr_t)&nso_host_cxa_pure_virtual;
     return extension_resolver?extension_resolver(index,name):0;
