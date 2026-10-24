@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-10-24T06:19:05.465454+00:00",
- "phase": "T02_SNAPSHOT_WORKER_THREAD_POLICY_UNBLOCKED_ON_RG477M: the memory/resource snapshot is now answered to any guest thread bound to this guest (the primary pthread, or a worker holding its own admitted guest OS TLS record) instead of the primary alone; the snapshot remains a read-only aggregate of the same primary-owned ledgers under the process owner mutex; an unbound host thread is still refused with a named reason and an untouched output; the obsolete tls.registered_threads==1 invariant was replaced by per-caller registration plus at-least-one-registered checks; host and RG477M device --snapshot-thread contracts PASS with identical JSON and a two-variant self-proof shows the contract turns RED when a single expected value is broken; the RG477M v52 boot has zero [snapshot-refused], zero [va-resource-invalid] and zero Aborted, with the worker snapshot succeeding at line 52093; new frontier is unresolved code import index 74 movie::SetAllocator (SIGTRAP on the BRK import sentinel, exit 133), formally dispatched as P-MM-2; accounting correction: the v52 profile line reads imports=651 unresolved=390, so 390 imports remain unbound and \"unresolved-import count = 0\" only means no fault was produced by an unresolved import, not that every import is bound; 341 unbound imports have BL call sites, so the only reliable advance is one symbol per device boot; title screen and playable remain unmet",
+ "updated_at": "2026-10-24T06:58:13.675521+00:00",
+ "phase": "T02_MOVIE_SET_ALLOCATOR_UNBOUND_ON_RG477M: movie::SetAllocator (main NSO import index 74) is now bound in the HLE layer as a faithful record-and-forward allocator registration stub: nso_host.c implements and resolves it, guest_process.c lists it in the typed[] whitelist and registers the signature arguments=4/returns=0 (ABI confirmed by an exact clang mangling round trip, not by guess), and the four guest callbacks are stored but never invoked; host and RG477M device --movie-allocator contracts PASS with the device running the real guest import path, and a two-variant self-proof shows the contract turns RED when one expected value is broken instead of false-greening; the RG477M v53 boot has zero index-74 unresolved-import faults and the profile line drops from imports=651 unresolved=390 to unresolved=389, with the recorded guest pointers matching the offline static prediction exactly (base+0x1c4b0/0x1c4c0/0x13340, userdata NULL); new frontier is unresolved code import index 75 nn::oe::SetCpuBoostMode(nn::oe::CpuBoostMode) (SIGTRAP, exit 133), whose namespace already has nso_host_oe_initialize and nso_host_oe_get_desired_language as in-repo precedent; title screen and playable remain unmet",
  "coordinator": "P-MM-1 / P-MM-2 (MiniMax Code coordinator): the memory/resource snapshot thread policy landed at 5423dac and the RG477M v52 boot cleared the primary-thread snapshot abort (exit 134 -> 133); host and RG477M device --snapshot-thread contracts PASS with identical JSON; new frontier is unresolved code import index 74 movie::SetAllocator, formally dispatched as P-MM-2 (coordination/prompts/P-MM-2-movie-setallocator.md) with the read-only reconnaissance appendix P-MM-2-DRAFT-movie-setallocator.md; the P-CC-8 / P-MM-1 double-write on guest_process.c was resolved by stopping the Claude Code process and inheriting its reviewed diff; import accounting corrected to imports=651 unresolved=390",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -373,7 +373,7 @@
   },
   {
    "task": "P-MM-2-MOVIE-SETALLOCATOR",
-   "owner": "PENDING_DISPATCH (single HLE writer required)",
+   "owner": "MiniMax Code implementer (single HLE writer)",
    "paths": [
     "src/runtime/hle/nso_host.c",
     "src/runtime/hle/guest_process.c",
@@ -386,8 +386,30 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native",
    "branch": "work/rg477m-native",
    "acquired_at": "2026-10-24T06:18:28.098240+00:00",
-   "checkpoint": "P-MM-1 @ 5423dac",
+   "checkpoint": "P-MM-2 closure",
    "objective": "Bind movie::SetAllocator (main NSO import index 74) with a faithful record-and-forward allocator registration stub: nso_host.c resolve+impl, guest_process.c typed[] whitelist and import_signature arguments=4/returns=0; contract must assert resolve!=0 and gp_arguments==4/gp_returns==0; RG477M boot v53 must clear the index-74 SIGTRAP and record the next frontier",
+   "write_state": "COMPLETE_HANDED_BACK",
+   "device_boot_lock": null,
+   "completed_at": "2026-10-24T06:58:13.675521+00:00",
+   "handoff": "coordination/HANDOFF.md P-MM-2 closure; host+RG477M --movie-allocator contract PASS (device drives the real guest import path); v53 boot exit 133 with unresolved 390->389 and index 74 cleared; next frontier index 75 nn::oe::SetCpuBoostMode"
+  },
+  {
+   "task": "P-MM-3-NN-OE-SET-CPU-BOOST-MODE",
+   "owner": "PENDING_DISPATCH (single HLE writer required)",
+   "paths": [
+    "src/runtime/hle/nso_host.c",
+    "src/runtime/hle/guest_process.c",
+    "src/runtime/hle/guest_process.h",
+    "tests/native/guest_process_contract.c",
+    "scripts/runtime/build_guest_process_contract.sh",
+    ".local/build-p-mm-3/",
+    ".local/logs/rg477m-boot-v54-oe-setcpuboostmode.log"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native",
+   "branch": "work/rg477m-native",
+   "acquired_at": "2026-10-24T06:58:13.675521+00:00",
+   "checkpoint": "P-MM-2 closure",
+   "objective": "Bind nn::oe::SetCpuBoostMode (main NSO import index 75, one enum argument) so the RG477M boot clears the index-75 SIGTRAP; nn::oe already has nso_host_oe_initialize and nso_host_oe_get_desired_language as precedent; record the next frontier and keep unresolved counting honest (imports=651, 389 unbound after P-MM-2)",
    "write_state": "PENDING_DISPATCH",
    "device_boot_lock": ".local/agent-pm/BOOT_LOCK_MM_A"
   }

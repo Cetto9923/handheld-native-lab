@@ -3155,6 +3155,103 @@ static int snapshot_thread_contract(const char *path) {
          c.unbound_untouched?"true":"false");
     return 0;
 }
+/* movie::SetAllocator binding contract.
+ *
+ * The guest registers its own allocator with the SDK movie library. The
+ * runtime must bind the symbol, accept its four-argument void signature and
+ * record the registration faithfully instead of dropping it. The recorded
+ * values are read back from the host state, so a wrong argument order or a
+ * dropped fourth argument is observable rather than silent. The fixture NSO
+ * drives the real guest import path, so the boundary has to accept the
+ * signature or the guest never runs at all. */
+#define MOVIE_SET_ALLOCATOR_MANGLED "_ZN5movie12SetAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_"
+/* Callback addresses inside the fixture NSO; see the movie-allocator fixture
+ * assembly in scripts/runtime/build_guest_process_contract.sh. */
+#define MOVIE_FIXTURE_CB_ALLOC_OFF 0x80
+#define MOVIE_FIXTURE_CB_FREE_OFF 0x84
+#define MOVIE_FIXTURE_CB_REALLOC_OFF 0x88
+struct movie_allocator_case {
+    guest_process *process;
+    int resolved;
+    int direct_record_ok;
+    uintptr_t direct_alloc,direct_free,direct_realloc,direct_userdata;
+    int native_ran,native_marker,native_userdata_null;
+    uintptr_t native_alloc,native_free,native_realloc;
+};
+static void *exercise_movie_allocator(guest_process *p,void *opaque) {
+    struct movie_allocator_case *c=opaque;
+    c->process=p;
+    typedef void (*movie_set_allocator_fn)(movie_alloc_fn,movie_free_fn,movie_realloc_fn,void *);
+    movie_set_allocator_fn setter=(movie_set_allocator_fn)(uintptr_t)guest_process_resolve(0,MOVIE_SET_ALLOCATOR_MANGLED);
+    c->resolved=setter!=NULL;
+    expect_condition("movie-allocator-resolved",setter!=NULL);
+    /* The real guest path: the fixture calls the import itself, so the
+     * boundary must accept the four-argument void signature or the guest
+     * never executes and the registration is never observed. */
+    uint64_t output[2]={0xa5a5,0xa5a5},returned=0xa5a5;
+    uint64_t args[1]={(uintptr_t)output};
+    struct nso_result r=guest_process_call(p,0x20,args,1,&returned);
+#if defined(__ANDROID__) && defined(__aarch64__)
+    expect_value("movie-allocator-native-status",r.status,NSO_OK);
+    expect_value("movie-allocator-native-return",returned,0x91);
+    c->native_ran=1;
+    c->native_marker=output[0]==1;
+    expect_condition("movie-allocator-guest-call-returned",output[0]==1);
+    uint64_t base=nso_base(guest_process_module(p));
+    c->native_alloc=(uintptr_t)nso_host_movie_get_allocator();
+    c->native_free=(uintptr_t)nso_host_movie_get_deallocator();
+    c->native_realloc=(uintptr_t)nso_host_movie_get_reallocator();
+    c->native_userdata_null=nso_host_movie_get_allocator_userdata()==NULL;
+    expect_value("movie-allocator-guest-alloc-pointer",c->native_alloc,base+MOVIE_FIXTURE_CB_ALLOC_OFF);
+    expect_value("movie-allocator-guest-free-pointer",c->native_free,base+MOVIE_FIXTURE_CB_FREE_OFF);
+    expect_value("movie-allocator-guest-realloc-pointer",c->native_realloc,base+MOVIE_FIXTURE_CB_REALLOC_OFF);
+    expect_condition("movie-allocator-guest-userdata-null",c->native_userdata_null);
+#else
+    /* No AArch64 executor on this host: the boundary is prepared but the raw
+     * guest entry cannot run here. Nothing may be faked in its place. */
+    expect_value("movie-allocator-native-unsupported",r.status,NSO_UNSUPPORTED);
+    expect_value("movie-allocator-native-no-raw-fallback",returned,0xa5a5);
+#endif
+    /* Direct host call: the registration is stored exactly as given,
+     * including the fourth argument. */
+    if(setter) {
+        setter((movie_alloc_fn)(uintptr_t)0x1111,(movie_free_fn)(uintptr_t)0x2222,
+               (movie_realloc_fn)(uintptr_t)0x3333,(void *)(uintptr_t)0x4444);
+        c->direct_alloc=(uintptr_t)nso_host_movie_get_allocator();
+        c->direct_free=(uintptr_t)nso_host_movie_get_deallocator();
+        c->direct_realloc=(uintptr_t)nso_host_movie_get_reallocator();
+        c->direct_userdata=(uintptr_t)nso_host_movie_get_allocator_userdata();
+        c->direct_record_ok=c->direct_alloc==0x1111&&c->direct_free==0x2222&&
+                           c->direct_realloc==0x3333&&c->direct_userdata==0x4444;
+        expect_value("movie-allocator-direct-alloc",c->direct_alloc,0x1111);
+        expect_value("movie-allocator-direct-free",c->direct_free,0x2222);
+        expect_value("movie-allocator-direct-realloc",c->direct_realloc,0x3333);
+        expect_value("movie-allocator-direct-userdata",c->direct_userdata,0x4444);
+    }
+    return &returned_token;
+}
+static int movie_allocator_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));
+    char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+    struct movie_allocator_case c={0};
+    void *value=NULL;
+    CHECK(succeeded(guest_process_run(p,exercise_movie_allocator,&c,&value)));
+    CHECK(value==&returned_token);
+    expect_condition("movie-allocator-resolved",c.resolved);
+    expect_condition("movie-allocator-direct-record",c.direct_record_ok);
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    /* The final gate. Every expect_* above must have passed; without this the
+     * contract could still exit 0 while the expectations had failed. */
+    CHECK(!errors);
+    /* The report states what this run observed, not a literal zero. */
+    printf("{\"movie_allocator_errors\":%u,\"resolved\":%s,\"direct_record_ok\":%s,"
+           "\"native_ran\":%s,\"guest_marker\":%s,\"guest_userdata_null\":%s}\n",errors,
+           c.resolved?"true":"false",c.direct_record_ok?"true":"false",
+           c.native_ran?"true":"false",c.native_marker?"true":"false",
+           c.native_userdata_null?"true":"false");
+    return 0;
+}
 int main(int argc,char **argv) {
     page=(size_t)sysconf(_SC_PAGESIZE);
     if(argc==2 && !strcmp(argv[1],"--tls-host-null")) {
@@ -3175,6 +3272,7 @@ int main(int argc,char **argv) {
     if(argc==3 && !strcmp(argv[1],"--tls-registration"))return tls_registration_contract(argv[2],0);
     if(argc==3 && !strcmp(argv[1],"--dso-registration"))return dso_registration_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--snapshot-thread"))return snapshot_thread_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--movie-allocator"))return movie_allocator_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-fresh"))return tls_fresh_registration_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-null"))return tls_registration_contract(argv[2],1);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-repeat"))return tls_registration_contract(argv[2],2);

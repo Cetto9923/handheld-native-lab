@@ -582,6 +582,47 @@ void nso_host_movie_set_thread_priority(int32_t p) {
     (void)p;
 }
 
+/* movie::SetAllocator: the guest registers its own allocator with the SDK
+ * movie library. The retail implementation is a forwarder inside the SDK's
+ * movie module (subsdk0); this runtime never loads that module, so no real
+ * movie library exists here to read the registration back. The registration is
+ * still recorded faithfully, because it is the guest's real state change and
+ * a later movie:: stub that actually allocates has to use the allocator the
+ * guest chose rather than a host malloc. The guest callbacks are only stored:
+ * invoking them from a host stub needs the guest thread and guest TLS context
+ * and would corrupt the guest's thread state. */
+static movie_alloc_fn s_movie_alloc = NULL;
+static movie_free_fn s_movie_free = NULL;
+static movie_realloc_fn s_movie_realloc = NULL;
+static void *s_movie_allocator_userdata = NULL;
+
+void nso_host_movie_set_allocator(movie_alloc_fn alloc, movie_free_fn free_fn,
+                                  movie_realloc_fn realloc_fn, void *userdata) {
+    s_movie_alloc = alloc;
+    s_movie_free = free_fn;
+    s_movie_realloc = realloc_fn;
+    s_movie_allocator_userdata = userdata;
+    fprintf(stderr, "[hle] movie::SetAllocator: alloc=%p free=%p realloc=%p userdata=%p\n",
+            (void *)(uintptr_t)alloc, (void *)(uintptr_t)free_fn,
+            (void *)(uintptr_t)realloc_fn, userdata);
+}
+
+movie_alloc_fn nso_host_movie_get_allocator(void) {
+    return s_movie_alloc;
+}
+
+movie_free_fn nso_host_movie_get_deallocator(void) {
+    return s_movie_free;
+}
+
+movie_realloc_fn nso_host_movie_get_reallocator(void) {
+    return s_movie_realloc;
+}
+
+void *nso_host_movie_get_allocator_userdata(void) {
+    return s_movie_allocator_userdata;
+}
+
 static nn_fs_alloc_fn s_fs_alloc = NULL;
 static nn_fs_free_fn s_fs_free = NULL;
 
@@ -2953,6 +2994,8 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_movie_get_thread_priority;
     if(!strcmp(name,"_ZN5movie17SetThreadPriorityEi"))
         return (uint64_t)(uintptr_t)&nso_host_movie_set_thread_priority;
+    if(!strcmp(name,"_ZN5movie12SetAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_"))
+        return (uint64_t)(uintptr_t)&nso_host_movie_set_allocator;
     if(!strcmp(name,"atexit"))return (uint64_t)(uintptr_t)&nso_host_atexit;
     if(!strcmp(name,"__cxa_atexit"))return (uint64_t)(uintptr_t)&nso_host_cxa_atexit;
     if(!strcmp(name,"__cxa_thread_atexit"))return (uint64_t)(uintptr_t)&nso_host_cxa_thread_atexit;

@@ -441,6 +441,60 @@ struct.pack_into('<II',data,0x1080,1,2);struct.pack_into('<Q',data,0x2000+3*16+8
 (out/'resource.nso').write_bytes(data)
 manifest['generated_fixtures']['resource.nso']={'bytes':len(data),'sha256':digest(out/'resource.nso'),'kind':'self-authored dual GP return ABI fixture','assembly_sha256':digest(resource_assembly)}
 run('host-resource-native-unsupported',[out/'guest_process_contract.host','--resource-native',out/'resource.nso'])
+# movie::SetAllocator fixture: the guest calls the import with its own three
+# allocator callbacks plus a NULL userdata. The callbacks live at fixed module
+# offsets so the contract can prove the four arguments reached the host stub
+# unmoved. A missing import_signature entry makes prepare_boundary_locked()
+# refuse the whole boundary, so this fixture also exercises that gate.
+movie_assembly=out/'movie-allocator-fixture.S'
+movie_assembly.write_text(r''' .text
+.org 0x20
+.global fixture_entry
+fixture_entry:
+ stp x29, x30, [sp, #-32]!
+ str x19, [sp, #16]
+ mov x29, sp
+ mov x19, x0
+ mov x18, #0x55
+ adr x0, cb_alloc
+ adr x1, cb_free
+ adr x2, cb_realloc
+ mov x3, xzr
+ adrp x16, fixture_got
+ add x16, x16, :lo12:fixture_got
+ ldr x16, [x16]
+ blr x16
+ mov x9, #1
+ str x9, [x19]
+ str x18, [x19, #8]
+ mov x0, #0x91
+ ldr x19, [sp, #16]
+ ldp x29, x30, [sp], #32
+ ret
+.org 0x80
+.global cb_alloc
+cb_alloc: ret
+.global cb_free
+cb_free: ret
+.global cb_realloc
+cb_realloc: ret
+.section .fixture_got,"aw"
+.global fixture_got
+fixture_got: .zero 8
+''')
+run('fixture-movie-allocator-assemble',['clang',*common,'-c',movie_assembly,'-o',out/'movie-allocator-fixture.o'])
+run('fixture-movie-allocator-link',['env',f'DYLD_LIBRARY_PATH={a.rust_root}/lib',ld,'--no-undefined','--build-id=none','--image-base=0','-Ttext=0','--section-start=.fixture_got=0x8200','-e','fixture_entry','--oformat=binary','-o',out/'movie-allocator-fixture.raw',out/'movie-allocator-fixture.o'])
+raw=(out/'movie-allocator-fixture.raw').read_bytes();data=bytearray((out/'contract.nso').read_bytes())
+data[0x200:0x300]=raw[:0x100].ljust(0x100,b'\0');struct.pack_into('<I',data,0x204,0x4000)
+names=b'\0_ZN5movie12SetAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_\0'
+data[0x1160:0x1160+len(names)]=names
+struct.pack_into('<II',data,0x1080,1,2);struct.pack_into('<Q',data,0x2000+3*16+8,len(names));struct.pack_into('<Q',data,0x2000+5*16+8,24)
+(out/'movie-allocator.nso').write_bytes(data)
+manifest['generated_fixtures']['movie-allocator.nso']={'bytes':len(data),'sha256':digest(out/'movie-allocator.nso'),'kind':'self-authored four-argument void movie allocator registration fixture','assembly_sha256':digest(movie_assembly)}
+run('host-movie-allocator-contract',[out/'guest_process_contract.host','--movie-allocator',out/'movie-allocator.nso'])
+movie_stderr=(out/'host-movie-allocator-contract'/'stderr.log').read_text()
+if '[hle] movie::SetAllocator:' not in movie_stderr:raise RuntimeError('movie::SetAllocator stub did not run')
+if '[boundary-unsupported]' in movie_stderr:raise RuntimeError('movie::SetAllocator import signature was refused by the boundary')
 locale_assembly=out/'locale-fixture.S'
 locale_assembly.write_text(r''' .text
 .org 0x20

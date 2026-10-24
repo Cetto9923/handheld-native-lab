@@ -76,6 +76,24 @@ void *nso_host_get_current_thread(void);
 int32_t nso_host_movie_get_thread_priority(void);
 void nso_host_movie_set_thread_priority(int32_t p);
 
+/* movie::SetAllocator registers the game's own allocator with the SDK movie
+ * library. ABI verified by an exact clang mangling round trip against
+ * _ZN5movie12SetAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_: four general
+ * register arguments, no return value. The retail implementation lives in the
+ * SDK's movie module (subsdk0); this runtime never loads it, so nothing calls
+ * the registered callbacks back. The registration is still recorded so a
+ * later movie:: stub that really allocates uses the allocator the guest chose.
+ * The guest callbacks are never invoked from this host stub. */
+typedef void *(*movie_alloc_fn)(size_t, size_t, void *);
+typedef void (*movie_free_fn)(void *, void *);
+typedef void *(*movie_realloc_fn)(void *, size_t, void *);
+void nso_host_movie_set_allocator(movie_alloc_fn alloc, movie_free_fn free_fn,
+                                  movie_realloc_fn realloc_fn, void *userdata);
+movie_alloc_fn nso_host_movie_get_allocator(void);
+movie_free_fn nso_host_movie_get_deallocator(void);
+movie_realloc_fn nso_host_movie_get_reallocator(void);
+void *nso_host_movie_get_allocator_userdata(void);
+
 typedef void *(*nn_fs_alloc_fn)(size_t);
 typedef void (*nn_fs_free_fn)(void *, size_t);
 void nso_host_fs_set_allocator(nn_fs_alloc_fn alloc, nn_fs_free_fn free_fn);

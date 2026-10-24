@@ -1196,6 +1196,7 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
         "_ZN2nn2os23GetCurrentProcessHandleEv","nnosGetCurrentProcessHandle",
         "_ZN5movie17GetThreadPriorityEv",
         "_ZN5movie17SetThreadPriorityEi",
+        "_ZN5movie12SetAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_",
         "_ZN2nn4util12GenerateUuidEv",
         "_ZN2nn4time10InitializeEv",
         "_ZN2nn4time13IsInitializedEv",
@@ -1446,6 +1447,7 @@ static int import_signature(const char *name,nb_signature *out) {
     else if(!strcmp(name,"_ZN2nn6socket4PollEPNS0_6PollFdEmi")) {arguments=3;returns=1;}
     else if(!strcmp(name,"nnsocketPoll")) {arguments=3;returns=1;}
     else if(!strcmp(name,"_ZN2nn2os32SetMemoryAllocatorForThreadLocalEPFPvmmEPFvS1_mE")) {arguments=2;returns=0;}
+    else if(!strcmp(name,"_ZN5movie12SetAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_")) {arguments=4;returns=0;}
     else if(!strcmp(name,"_ZN2nn2os40MemoryAllocatorForThreadLocalInitializedEv")) {arguments=0;returns=1;}
     else if(!strcmp(name,"nnosAllocateMemoryForThreadLocal")) {arguments=1;returns=1;}
     else if(!strcmp(name,"nnosFreeMemoryForThreadLocal")) {arguments=2;returns=0;}
