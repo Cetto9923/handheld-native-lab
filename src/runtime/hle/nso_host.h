@@ -139,6 +139,18 @@ bool nso_host_nifm_is_initialized(void);
 int32_t nso_host_socket_initialize(void *work_buffer, size_t work_buffer_size, size_t allocator_size, int32_t concurrency);
 bool nso_host_socket_is_initialized(void);
 
+/* nn::socket event family. The descriptors handed to the guest are real host
+ * descriptors so that nn::socket::Close and nn::socket::Poll operate on the
+ * same object. See the "nn::socket event family" block in nso_host.c for the
+ * retail ABI evidence and the documented host-mapping coverage. */
+int32_t nso_host_socket_event_fd(uint64_t initval, int32_t flags);
+int32_t nso_host_socket_event_fd_write(int32_t fd, uint64_t value);
+int32_t nso_host_socket_event_fd_read(int32_t fd, uint64_t *out_value);
+int32_t nso_host_socket_close(int32_t fd);
+int32_t nso_host_socket_get_last_error(void);
+int32_t nso_host_socket_poll(void *fds, uint64_t count, int32_t timeout_ms);
+int32_t nso_host_socket_poll_c(void *fds, int32_t count, int32_t timeout_ms);
+
 int32_t nso_host_account_initialize(void);
 bool nso_host_account_is_initialized(void);
 

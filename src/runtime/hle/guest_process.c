@@ -421,36 +421,73 @@ static int initialize_empty_heap(struct empty_heap_manager *heap) {
     heap->state=HEAP_READY_EMPTY;return 0;
 }
 static struct nso_result snapshot_locked(guest_process *p,struct guest_memory_info *out,struct guest_resource_usage *resources,struct guest_pages_usage *page_snapshot) {
-    if(current_process!=p || !p->running || p->quarantined || !p->module_ready ||
-       !p->module || !p->module_ticket || !p->module_committed || !p->pages || !p->os_tls || !p->os_thread ||
-       !p->argument_mapping || !p->argument_ticket || !p->argument_committed || !p->argument_bytes ||
-       p->thread.state!=THREAD_RUNNING || !pthread_equal(p->thread.native,pthread_self()) ||
-       p->heap.state!=HEAP_READY_EMPTY || p->heap.capacity || p->heap.blocks)
+    /* A refused snapshot must name the invariant that refused it: the guest
+     * reaches this path from nn::os::GetVirtualAddressMemoryResourceUsage and
+     * nn::os::GetMemoryInfo, and an opaque status makes the stop
+     * undiagnosable. The refusal conditions themselves are unchanged. */
+    const char *reason=NULL;
+    if(current_process!=p)reason="current-process";
+    else if(!p->running)reason="process-not-running";
+    else if(p->quarantined)reason="process-quarantined";
+    else if(!p->module_ready)reason="module-not-ready";
+    else if(!p->module || !p->module_ticket || !p->module_committed)reason="module-identity";
+    else if(!p->pages || !p->os_tls || !p->os_thread)reason="owner-missing";
+    else if(!p->argument_mapping || !p->argument_ticket || !p->argument_committed || !p->argument_bytes)reason="argument-identity";
+    else if(p->thread.state!=THREAD_RUNNING || !pthread_equal(p->thread.native,pthread_self()))reason="primary-thread";
+    else if(p->heap.state!=HEAP_READY_EMPTY || p->heap.capacity || p->heap.blocks)reason="heap-state";
+    if(reason) {
+        fprintf(stderr,"[snapshot-refused] reason=%s; memory/resource answer withheld\n",reason);
         return status(NSO_INVALID,EINVAL,0);
+    }
     struct guest_context_usage use;
     struct guest_primary_stack stack;
-    struct guest_pages_usage pages;
-    struct guest_os_tls_counts tls;
-    if(guest_pages_usage(p->pages,&pages).status!=GUEST_PAGES_OK ||
-       guest_os_tls_count(p->os_tls,&tls).status!=GUEST_OS_TLS_OK || tls.quarantined || tls.registered_threads!=1 ||
-       guest_context_primary_stack(p->context,&stack).status!=GUEST_CONTEXT_OK)
+    struct guest_pages_usage pages={0};
+    struct guest_os_tls_counts tls={0};
+    if(guest_pages_usage(p->pages,&pages).status!=GUEST_PAGES_OK)reason="pages-usage";
+    else if(guest_os_tls_count(p->os_tls,&tls).status!=GUEST_OS_TLS_OK)reason="os-tls-count";
+    else if(tls.quarantined)reason="os-tls-quarantined";
+    else if(tls.registered_threads!=1)reason="os-tls-registered-threads";
+    else if(guest_context_primary_stack(p->context,&stack).status!=GUEST_CONTEXT_OK)reason="primary-stack";
+    if(reason) {
+        fprintf(stderr,"[snapshot-refused] reason=%s registered_threads=%u; memory/resource answer withheld\n",
+                reason,(unsigned)tls.registered_threads);
         return status(NSO_INVALID,EINVAL,0);
+    }
     use=pages.context;
-    if(!pages.backing_valid || !pages.ledger_valid || pages.quarantined_regions || pages.pending_bytes ||
-       !pages.vm.mapped_guest_bytes_valid || pages.vm.quarantined_regions ||
-       pages.ticket_count!=pages.allocation_count || pages.backing_bytes!=pages.charged_bytes ||
-       !use.primary_active || use.quarantined || use.pending_bytes || pages.ticket_count>SIZE_MAX-3 ||
-       use.tickets!=3+pages.ticket_count || p->module_bytes!=nso_image_size(p->module) ||
-       p->module_bytes>SIZE_MAX-stack.bytes || pages.charged_bytes>SIZE_MAX-p->module_bytes-stack.bytes ||
-       p->argument_bytes>SIZE_MAX-p->module_bytes-stack.bytes-pages.charged_bytes ||
-       use.charged_bytes!=p->module_bytes+stack.bytes+pages.charged_bytes+p->argument_bytes ||
-       stack.address!=p->thread.stack.address || stack.bytes!=p->thread.stack.bytes)
+    if(!pages.backing_valid)reason="pages-backing";
+    else if(!pages.ledger_valid)reason="pages-ledger";
+    else if(pages.quarantined_regions)reason="pages-quarantined-regions";
+    else if(pages.pending_bytes)reason="pages-pending-bytes";
+    else if(!pages.vm.mapped_guest_bytes_valid)reason="vm-mapped-bytes";
+    else if(pages.vm.quarantined_regions)reason="vm-quarantined-regions";
+    else if(pages.ticket_count!=pages.allocation_count)reason="ticket-allocation-count";
+    else if(pages.backing_bytes!=pages.charged_bytes)reason="backing-charged-bytes";
+    else if(!use.primary_active)reason="context-primary";
+    else if(use.quarantined)reason="context-quarantined";
+    else if(use.pending_bytes)reason="context-pending-bytes";
+    else if(pages.ticket_count>SIZE_MAX-3)reason="ticket-overflow";
+    else if(use.tickets!=3+pages.ticket_count)reason="context-ticket-count";
+    else if(p->module_bytes!=nso_image_size(p->module))reason="module-size";
+    else if(p->module_bytes>SIZE_MAX-stack.bytes)reason="module-overflow";
+    else if(pages.charged_bytes>SIZE_MAX-p->module_bytes-stack.bytes)reason="charged-overflow";
+    else if(p->argument_bytes>SIZE_MAX-p->module_bytes-stack.bytes-pages.charged_bytes)reason="argument-overflow";
+    else if(use.charged_bytes!=p->module_bytes+stack.bytes+pages.charged_bytes+p->argument_bytes)reason="charged-total";
+    else if(stack.address!=p->thread.stack.address || stack.bytes!=p->thread.stack.bytes)reason="stack-identity";
+    if(reason) {
+        fprintf(stderr,"[snapshot-refused] reason=%s tickets=%llu allocations=%llu charged=%llu registered_threads=%u; memory/resource answer withheld\n",
+                reason,(unsigned long long)pages.ticket_count,(unsigned long long)pages.allocation_count,
+                (unsigned long long)use.charged_bytes,(unsigned)tls.registered_threads);
         return status(NSO_INVALID,EINVAL,0);
+    }
     /* Private module/primary identities plus the sole page owner's validated
      * per-allocation tickets. Its locked snapshot includes Context and raw VM;
      * module/stack mutations are excluded during this primary callback. */
-    if(p->resource_quota && (!pages.resources.valid || pages.resources.total_bytes!=p->resource_quota))
+    if(p->resource_quota && (!pages.resources.valid || pages.resources.total_bytes!=p->resource_quota)) {
+        fprintf(stderr,"[snapshot-refused] reason=resource-quota valid=%d total=%llu quota=%llu; memory/resource answer withheld\n",
+                (int)pages.resources.valid,(unsigned long long)pages.resources.total_bytes,
+                (unsigned long long)p->resource_quota);
         return status(NSO_INVALID,EINVAL,0);
+    }
     if(resources)*resources=pages.resources;
     if(page_snapshot)*page_snapshot=pages;
     if(!p->baseline)p->baseline=use.charged_bytes-p->heap.capacity-stack.bytes;
@@ -1065,6 +1102,13 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
         "_ZN2nn2fs17MountAddOnContentEPKciPvm","nnfsMountAddOnContent",
         "_ZN2nn4nifm10InitializeEv","nnnifmInitialize",
         "_ZN2nn6socket10InitializeEPvmmi","nnsocketInitialize",
+        "_ZN2nn6socket7EventFdEmNS0_12EventFdFlagsE",
+        "_ZN2nn6socket12EventFdWriteEim",
+        "_ZN2nn6socket11EventFdReadEiPm",
+        "_ZN2nn6socket5CloseEi",
+        "_ZN2nn6socket12GetLastErrorEv",
+        "_ZN2nn6socket4PollEPNS0_6PollFdEmi",
+        "nnsocketPoll",
         "_ZN2nn7account10InitializeEv","nnaccountInitialize",
         "_ZN2nn2oe10InitializeEv","nnoeInitialize",
         "_ZN2nn2oe18GetDesiredLanguageEv","nnoeGetDesiredLanguage",
@@ -1355,6 +1399,13 @@ static int import_signature(const char *name,nb_signature *out) {
             !strcmp(name,"nnfsMountAddOnContent")) {arguments=4;returns=1;}
     else if(!strcmp(name,"_ZN2nn6socket10InitializeEPvmmi") ||
             !strcmp(name,"nnsocketInitialize")) {arguments=4;returns=1;}
+    else if(!strcmp(name,"_ZN2nn6socket7EventFdEmNS0_12EventFdFlagsE")) {arguments=2;returns=1;}
+    else if(!strcmp(name,"_ZN2nn6socket12EventFdWriteEim")) {arguments=2;returns=1;}
+    else if(!strcmp(name,"_ZN2nn6socket11EventFdReadEiPm")) {arguments=2;returns=1;}
+    else if(!strcmp(name,"_ZN2nn6socket5CloseEi")) {arguments=1;returns=1;}
+    else if(!strcmp(name,"_ZN2nn6socket12GetLastErrorEv")) {arguments=0;returns=1;}
+    else if(!strcmp(name,"_ZN2nn6socket4PollEPNS0_6PollFdEmi")) {arguments=3;returns=1;}
+    else if(!strcmp(name,"nnsocketPoll")) {arguments=3;returns=1;}
     else if(!strcmp(name,"_ZN2nn2os32SetMemoryAllocatorForThreadLocalEPFPvmmEPFvS1_mE")) {arguments=2;returns=0;}
     else if(!strcmp(name,"_ZN2nn2os40MemoryAllocatorForThreadLocalInitializedEv")) {arguments=0;returns=1;}
     else if(!strcmp(name,"nnosAllocateMemoryForThreadLocal")) {arguments=1;returns=1;}

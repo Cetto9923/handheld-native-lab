@@ -1520,6 +1520,358 @@ bool nso_host_socket_is_initialized(void) {
     return s_socket_initialized;
 }
 
+/* ==========================================================================
+ * nn::socket event family: EventFd / EventFdWrite / EventFdRead / Close /
+ * GetLastError / Poll.
+ *
+ * Retail ABI evidence (Nintendo SDK NSO, build_id
+ * 0023a1b06130cd795f7bc4613772af0af71c8cfd000000000000000000000000, sha256
+ * 9dfd1cc6d3209d857dcafb191736265ac812401ddcc7b49dabf3bc0b114655a9; read
+ * offline with scripts/runtime/inspect_nso.py --slice):
+ *   nn::socket::EventFd(unsigned long, EventFdFlags)   @ 0x159b70 (4-byte
+ *       thunk) -> nn::socket::detail::EventFd @ 0x165df0, which returns the
+ *       descriptor in w0, or -1 with errno set on failure.
+ *   nn::socket::EventFdWrite(int, unsigned long)       @ 0x159be0:
+ *       "sub sp,#0x20 ; str x1,[sp,#8] ; mov w2,#8 ; bl write ; cmp w0,#8 ;
+ *       csetm w0,ne" -> exactly 8 bytes are written and the result is 0 on
+ *       success, -1 otherwise.
+ *   nn::socket::EventFdRead(int, unsigned long*)        @ 0x159b80:
+ *       "cbz x1 -> -1 ; str xzr,[x29,#0x18] ; mov w2,#8 ; bl read ;
+ *       cmp w0,#8 ; str x8,[x19]" -> exactly 8 bytes are read into the output
+ *       word and the result is 0 on success, -1 otherwise.
+ *   nn::socket::Close(int) and nn::socket::GetLastError() are the matching
+ *       release and error-report entry points.
+ *
+ * Guest usage (main NSO build_id 736837afd390442ed7c74a7de730e71b, resolved
+ * with scripts/runtime/resolve_import_callers.py):
+ *   0x109125c  EventFd(0, 4)            -> stores the descriptor, returns fd != -1
+ *   0x10912c4  EventFdWrite(fd, 1)      -> post a single signal
+ *   0x10912f0  EventFdRead(fd, &local)  -> drain; the return value is discarded
+ *   0x1091290  nn::socket::Close(fd)    -> release
+ *   0x10912ec  nn::socket::GetLastError() on the write error path
+ * The guest polls the descriptor before reading it, so the descriptor only has
+ * to be pollable, not blocking.
+ *
+ * Host mapping and documented coverage:
+ *   - The descriptor is a real host descriptor, so nn::socket::Close closes it
+ *     and nn::socket::Poll polls it. nn::socket::PollFd is {int fd; short
+ *     events; short revents;}, which is layout-identical to POSIX pollfd
+ *     (the guest writes fd+events as one 8-byte store and reads revents as a
+ *     short at +6), so the guest array is polled in place.
+ *   - Linux and Android use the kernel eventfd(2) with EFD_SEMAPHORE and
+ *     EFD_NONBLOCK. Other hosts use an equivalent pipe-backed event object
+ *     with the same observable behaviour, so the host contract and the device
+ *     contract assert identical facts.
+ *   - Semaphore (auto-reset) semantics are used because the guest drains with
+ *     a single read per posted signal: a plain counter eventfd would consume
+ *     two posted signals in one wait and could lose a wake-up.
+ *   - The read never blocks. Retail blocks until a signal arrives; the guest
+ *     polls first and discards the read result, so an empty read reports
+ *     EAGAIN instead of parking the runtime thread.
+ *   - nn::socket::EventFdFlags is logged verbatim but not reinterpreted: the
+ *     retail mapping lives in the socket-framework service (its no-service
+ *     fallback at 0x165d10 fails with EOPNOTSUPP), so no local artifact
+ *     states the bit meanings. The guest passes the single value 4.
+ * ========================================================================== */
+
+#if defined(__linux__) || defined(__ANDROID__)
+#include <sys/eventfd.h>
+#define NN_SOCKET_EVENT_BACKEND_EVENTFD 1
+#else
+#define NN_SOCKET_EVENT_BACKEND_PIPE 1
+#endif
+#include <poll.h>
+
+enum { NN_SOCKET_EVENT_SLOTS = 64 };
+struct nn_socket_event_slot {
+    int event_fd;      /* descriptor handed to the guest */
+    int aux_fd;        /* pipe write end of the portable backend, else -1 */
+    uint64_t counter;  /* pending posts of the portable backend */
+    bool token;        /* portable backend: a readability token is queued */
+    bool in_use;
+};
+static struct nn_socket_event_slot s_socket_events[NN_SOCKET_EVENT_SLOTS];
+static pthread_mutex_t s_socket_events_mutex = PTHREAD_MUTEX_INITIALIZER;
+static _Thread_local int s_socket_last_error = 0;
+
+static void socket_set_error(int error) {
+    s_socket_last_error = error;
+    errno = error;
+}
+static struct nn_socket_event_slot *socket_event_find(int fd) {
+    for (size_t i = 0; i < NN_SOCKET_EVENT_SLOTS; i++)
+        if (s_socket_events[i].in_use && s_socket_events[i].event_fd == fd) return &s_socket_events[i];
+    return NULL;
+}
+static struct nn_socket_event_slot *socket_event_reserve(int event_fd, int aux_fd) {
+    struct nn_socket_event_slot *slot = NULL;
+    for (size_t i = 0; i < NN_SOCKET_EVENT_SLOTS; i++) {
+        if (!s_socket_events[i].in_use) { slot = &s_socket_events[i]; break; }
+    }
+    if (!slot) return NULL;
+    *slot = (struct nn_socket_event_slot){.event_fd = event_fd, .aux_fd = aux_fd, .in_use = true};
+    return slot;
+}
+static void socket_event_release(struct nn_socket_event_slot *slot) {
+    if (slot->aux_fd >= 0) close(slot->aux_fd);
+    slot->in_use = false;
+    slot->event_fd = -1;
+    slot->aux_fd = -1;
+    slot->counter = 0;
+    slot->token = false;
+}
+
+int32_t nso_host_socket_event_fd(uint64_t initval, int32_t flags) {
+    int event_fd = -1;
+    int aux_fd = -1;
+    uint64_t counter = 0;
+    bool token = false;
+#if defined(NN_SOCKET_EVENT_BACKEND_EVENTFD)
+    event_fd = eventfd((unsigned int)initval, EFD_SEMAPHORE | EFD_NONBLOCK);
+    if (event_fd < 0) {
+        socket_set_error(errno);
+        fprintf(stderr, "[hle] nn::socket::EventFd: eventfd(initval=%llu) failed errno=%d (%s) -> returning -1\n",
+                (unsigned long long)initval, errno, strerror(errno));
+        return -1;
+    }
+#else
+    int fds[2];
+    if (pipe(fds) != 0) {
+        socket_set_error(errno);
+        fprintf(stderr, "[hle] nn::socket::EventFd: pipe failed errno=%d (%s) -> returning -1\n", errno, strerror(errno));
+        return -1;
+    }
+    int flags_now = fcntl(fds[0], F_GETFL, 0);
+    if (flags_now >= 0) fcntl(fds[0], F_SETFL, flags_now | O_NONBLOCK);
+    event_fd = fds[0];
+    aux_fd = fds[1];
+    counter = initval;
+    if (counter) {
+        uint64_t mark = 1;
+        if (write(aux_fd, &mark, sizeof(mark)) == (ssize_t)sizeof(mark)) token = true;
+    }
+#endif
+    pthread_mutex_lock(&s_socket_events_mutex);
+    struct nn_socket_event_slot *slot = socket_event_reserve(event_fd, aux_fd);
+    if (slot) {
+        slot->counter = counter;
+        slot->token = token;
+    }
+    pthread_mutex_unlock(&s_socket_events_mutex);
+    if (!slot) {
+        if (aux_fd >= 0) close(aux_fd);
+        close(event_fd);
+        socket_set_error(EMFILE);
+        fprintf(stderr, "[hle] nn::socket::EventFd: no free event slot -> returning -1\n");
+        return -1;
+    }
+    fprintf(stderr, "[hle] nn::socket::EventFd: initval=%llu flags=0x%x -> descriptor=%d (backend=%s, auto-reset, non-blocking)\n",
+            (unsigned long long)initval, (unsigned)flags, event_fd,
+#if defined(NN_SOCKET_EVENT_BACKEND_EVENTFD)
+            "eventfd"
+#else
+            "pipe"
+#endif
+            );
+    return event_fd;
+}
+
+/* Portable backend: queue one readability token while posts are pending so a
+ * poll on the descriptor reports the same readiness as the kernel eventfd. The
+ * token travels on the pipe write end; the guest sees the read end. */
+#if defined(NN_SOCKET_EVENT_BACKEND_PIPE)
+static bool socket_event_post(struct nn_socket_event_slot *slot, uint64_t value) {
+    slot->counter += value;
+    if (slot->token) return true;
+    uint64_t mark = 1;
+    if (write(slot->aux_fd, &mark, sizeof(mark)) != (ssize_t)sizeof(mark)) return false;
+    slot->token = true;
+    return true;
+}
+#endif
+
+int32_t nso_host_socket_event_fd_write(int32_t fd, uint64_t value) {
+    if (fd < 0) {
+        socket_set_error(EBADF);
+        fprintf(stderr, "[hle] nn::socket::EventFdWrite: invalid descriptor %d -> returning -1\n", fd);
+        return -1;
+    }
+    pthread_mutex_lock(&s_socket_events_mutex);
+    struct nn_socket_event_slot *slot = socket_event_find(fd);
+    if (slot) {
+#if defined(NN_SOCKET_EVENT_BACKEND_EVENTFD)
+        uint64_t posted = value;
+        ssize_t written = write(fd, &posted, sizeof(posted));
+        bool ok = written == (ssize_t)sizeof(posted);
+        int error = ok ? 0 : errno;
+#else
+        bool ok = socket_event_post(slot, value);
+        int error = ok ? 0 : errno;
+#endif
+        pthread_mutex_unlock(&s_socket_events_mutex);
+        if (!ok) {
+            socket_set_error(error);
+            fprintf(stderr, "[hle] nn::socket::EventFdWrite: descriptor=%d value=%llu failed errno=%d (%s) -> returning -1\n",
+                    fd, (unsigned long long)value, error, strerror(error));
+            return -1;
+        }
+        fprintf(stderr, "[hle] nn::socket::EventFdWrite: descriptor=%d value=%llu -> posted\n",
+                fd, (unsigned long long)value);
+        return 0;
+    }
+    pthread_mutex_unlock(&s_socket_events_mutex);
+    /* Not one of ours: fall back to the documented 8-byte write so a foreign
+     * descriptor still behaves like the retail entry point. */
+    uint64_t posted = value;
+    ssize_t written = write(fd, &posted, sizeof(posted));
+    if (written != (ssize_t)sizeof(posted)) {
+        int error = written < 0 ? errno : EIO;
+        socket_set_error(error);
+        fprintf(stderr, "[hle] nn::socket::EventFdWrite: descriptor=%d value=%llu foreign write failed errno=%d (%s) -> returning -1\n",
+                fd, (unsigned long long)value, error, strerror(error));
+        return -1;
+    }
+    fprintf(stderr, "[hle] nn::socket::EventFdWrite: descriptor=%d value=%llu -> posted (foreign descriptor)\n",
+            fd, (unsigned long long)value);
+    return 0;
+}
+
+int32_t nso_host_socket_event_fd_read(int32_t fd, uint64_t *out_value) {
+    if (!out_value) {
+        socket_set_error(EFAULT);
+        fprintf(stderr, "[hle] nn::socket::EventFdRead: null output pointer -> returning -1\n");
+        return -1;
+    }
+    if (fd < 0) {
+        socket_set_error(EBADF);
+        fprintf(stderr, "[hle] nn::socket::EventFdRead: invalid descriptor %d -> returning -1\n", fd);
+        return -1;
+    }
+    pthread_mutex_lock(&s_socket_events_mutex);
+    struct nn_socket_event_slot *slot = socket_event_find(fd);
+    if (slot) {
+#if defined(NN_SOCKET_EVENT_BACKEND_EVENTFD)
+        uint64_t value = 0;
+        ssize_t got = read(fd, &value, sizeof(value));
+        bool ok = got == (ssize_t)sizeof(value);
+        int error = ok ? 0 : (got < 0 ? errno : EIO);
+#else
+        bool ok = slot->counter > 0;
+        int error = ok ? 0 : EAGAIN;
+        uint64_t value = 1;
+        if (ok) {
+            slot->counter -= 1;
+            if (!slot->counter) {
+                uint64_t mark = 0;
+                ssize_t got = read(slot->event_fd, &mark, sizeof(mark));
+                if (got == (ssize_t)sizeof(mark)) slot->token = false;
+            }
+        }
+#endif
+        pthread_mutex_unlock(&s_socket_events_mutex);
+        if (!ok) {
+            socket_set_error(error);
+            fprintf(stderr, "[hle] nn::socket::EventFdRead: descriptor=%d no pending signal errno=%d (%s) -> returning -1\n",
+                    fd, error, strerror(error));
+            return -1;
+        }
+        *out_value = value;
+        fprintf(stderr, "[hle] nn::socket::EventFdRead: descriptor=%d -> value=%llu\n",
+                fd, (unsigned long long)value);
+        return 0;
+    }
+    pthread_mutex_unlock(&s_socket_events_mutex);
+    uint64_t value = 0;
+    ssize_t got = read(fd, &value, sizeof(value));
+    if (got != (ssize_t)sizeof(value)) {
+        int error = got < 0 ? errno : EIO;
+        socket_set_error(error);
+        fprintf(stderr, "[hle] nn::socket::EventFdRead: descriptor=%d foreign read failed errno=%d (%s) -> returning -1\n",
+                fd, error, strerror(error));
+        return -1;
+    }
+    *out_value = value;
+    fprintf(stderr, "[hle] nn::socket::EventFdRead: descriptor=%d -> value=%llu (foreign descriptor)\n",
+            fd, (unsigned long long)value);
+    return 0;
+}
+
+int32_t nso_host_socket_close(int32_t fd) {
+    if (fd < 0) {
+        socket_set_error(EBADF);
+        fprintf(stderr, "[hle] nn::socket::Close: invalid descriptor %d -> returning -1\n", fd);
+        return -1;
+    }
+    /* The guest's nn::socket descriptors are real host descriptors, so a close
+     * of 0/1/2 would take the runtime's own standard streams with it. The
+     * retail socket namespace never contains them, so refuse instead. */
+    if (fd < 3) {
+        socket_set_error(EBADF);
+        fprintf(stderr, "[hle] nn::socket::Close: descriptor %d is outside the socket namespace -> returning -1\n", fd);
+        return -1;
+    }
+    pthread_mutex_lock(&s_socket_events_mutex);
+    struct nn_socket_event_slot *slot = socket_event_find(fd);
+    if (slot) socket_event_release(slot);
+    pthread_mutex_unlock(&s_socket_events_mutex);
+    if (close(fd) != 0) {
+        int error = errno;
+        socket_set_error(error);
+        fprintf(stderr, "[hle] nn::socket::Close: descriptor=%d close failed errno=%d (%s) -> returning -1\n",
+                fd, error, strerror(error));
+        return -1;
+    }
+    fprintf(stderr, "[hle] nn::socket::Close: descriptor=%d -> released\n", fd);
+    return 0;
+}
+
+int32_t nso_host_socket_get_last_error(void) {
+    int error = s_socket_last_error;
+    fprintf(stderr, "[hle] nn::socket::GetLastError: -> %d (%s)\n", error, error ? strerror(error) : "no error");
+    return error;
+}
+
+int32_t nso_host_socket_poll(void *fds, uint64_t count, int32_t timeout_ms) {
+    if (!fds && count) {
+        socket_set_error(EFAULT);
+        fprintf(stderr, "[hle] nn::socket::Poll: null descriptor array -> returning -1\n");
+        return -1;
+    }
+    if (count > 65536) {
+        socket_set_error(EINVAL);
+        fprintf(stderr, "[hle] nn::socket::Poll: descriptor count %llu out of range -> returning -1\n",
+                (unsigned long long)count);
+        return -1;
+    }
+    /* Logged before the call: a wait that never completes is then attributable
+     * to this entry point instead of looking like a silent stall. */
+    fprintf(stderr, "[hle] nn::socket::Poll: waiting count=%llu timeout_ms=%d\n",
+            (unsigned long long)count, timeout_ms);
+    int ready = poll((struct pollfd *)fds, (nfds_t)count, timeout_ms);
+    if (ready < 0) {
+        int error = errno;
+        socket_set_error(error);
+        fprintf(stderr, "[hle] nn::socket::Poll: count=%llu timeout_ms=%d failed errno=%d (%s) -> returning -1\n",
+                (unsigned long long)count, timeout_ms, error, strerror(error));
+        return -1;
+    }
+    fprintf(stderr, "[hle] nn::socket::Poll: count=%llu timeout_ms=%d -> ready=%d\n",
+            (unsigned long long)count, timeout_ms, ready);
+    return ready;
+}
+
+/* nnsocketPoll is the C entry point of the same POSIX poll. The retail SDK
+ * signature is nnsocketPoll(struct pollfd *, int nfds, int timeout), which
+ * nn::socket::detail::Poll @ 0x164c80 forwards to the socket framework. */
+int32_t nso_host_socket_poll_c(void *fds, int32_t count, int32_t timeout_ms) {
+    if (count < 0) {
+        socket_set_error(EINVAL);
+        fprintf(stderr, "[hle] nnsocketPoll: negative descriptor count %d -> returning -1\n", count);
+        return -1;
+    }
+    return nso_host_socket_poll(fds, (uint64_t)count, timeout_ms);
+}
+
 static bool s_account_initialized = false;
 
 int32_t nso_host_account_initialize(void) {
@@ -2465,6 +2817,20 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_nifm_initialize;
     if(!strcmp(name,"_ZN2nn6socket10InitializeEPvmmi") || !strcmp(name,"nnsocketInitialize"))
         return (uint64_t)(uintptr_t)&nso_host_socket_initialize;
+    if(!strcmp(name,"_ZN2nn6socket7EventFdEmNS0_12EventFdFlagsE"))
+        return (uint64_t)(uintptr_t)&nso_host_socket_event_fd;
+    if(!strcmp(name,"_ZN2nn6socket12EventFdWriteEim"))
+        return (uint64_t)(uintptr_t)&nso_host_socket_event_fd_write;
+    if(!strcmp(name,"_ZN2nn6socket11EventFdReadEiPm"))
+        return (uint64_t)(uintptr_t)&nso_host_socket_event_fd_read;
+    if(!strcmp(name,"_ZN2nn6socket5CloseEi"))
+        return (uint64_t)(uintptr_t)&nso_host_socket_close;
+    if(!strcmp(name,"_ZN2nn6socket12GetLastErrorEv"))
+        return (uint64_t)(uintptr_t)&nso_host_socket_get_last_error;
+    if(!strcmp(name,"_ZN2nn6socket4PollEPNS0_6PollFdEmi"))
+        return (uint64_t)(uintptr_t)&nso_host_socket_poll;
+    if(!strcmp(name,"nnsocketPoll"))
+        return (uint64_t)(uintptr_t)&nso_host_socket_poll_c;
     if(!strcmp(name,"_ZN2nn7account10InitializeEv") || !strcmp(name,"nnaccountInitialize"))
         return (uint64_t)(uintptr_t)&nso_host_account_initialize;
     if(!strcmp(name,"_ZN2nn2oe10InitializeEv") || !strcmp(name,"nnoeInitialize"))

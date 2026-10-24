@@ -103,6 +103,7 @@ run('host-fs-open-file-contract',[out/'guest_process_contract.host','--fs-open-f
 run('host-aoc-contract',[out/'guest_process_contract.host','--aoc'])
 run('host-nifm-contract',[out/'guest_process_contract.host','--nifm'])
 run('host-socket-contract',[out/'guest_process_contract.host','--socket'])
+run('host-socket-eventfd-contract',[out/'guest_process_contract.host','--socket-eventfd'])
 run('host-account-contract',[out/'guest_process_contract.host','--account'])
 run('host-oe-contract',[out/'guest_process_contract.host','--oe'])
 run('host-gettimeofday-contract',[out/'guest_process_contract.host','--gettimeofday'])

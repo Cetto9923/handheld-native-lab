@@ -1596,6 +1596,83 @@ static int socket_contract(void) {
     puts("{\"socket_contract_errors\":0,\"initialize\":true,\"baseline_zero\":true}");
     return 0;
 }
+/* nn::socket event family. Retail ABI (Nintendo SDK NSO): EventFd(initval,
+ * flags) returns a descriptor or -1; EventFdWrite/EventFdRead move exactly
+ * eight bytes and answer 0 or -1. The guest posts one signal and drains it
+ * with a single read, so the contract asserts the auto-reset behaviour, the
+ * empty-read error and the pollability of the descriptor. */
+static int socket_eventfd_contract(void) {
+    typedef int32_t (*event_fd_fn)(uint64_t, int32_t);
+    typedef int32_t (*event_fd_write_fn)(int32_t, uint64_t);
+    typedef int32_t (*event_fd_read_fn)(int32_t, uint64_t *);
+    typedef int32_t (*close_fn)(int32_t);
+    typedef int32_t (*get_last_error_fn)(void);
+    typedef int32_t (*poll_fn)(void *, uint64_t, int32_t);
+
+    event_fd_fn event_fd = (event_fd_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn6socket7EventFdEmNS0_12EventFdFlagsE");
+    CHECK(event_fd != NULL);
+    event_fd_write_fn event_fd_write = (event_fd_write_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn6socket12EventFdWriteEim");
+    CHECK(event_fd_write != NULL);
+    event_fd_read_fn event_fd_read = (event_fd_read_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn6socket11EventFdReadEiPm");
+    CHECK(event_fd_read != NULL);
+    close_fn socket_close = (close_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn6socket5CloseEi");
+    CHECK(socket_close != NULL);
+    get_last_error_fn get_last_error = (get_last_error_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn6socket12GetLastErrorEv");
+    CHECK(get_last_error != NULL);
+    poll_fn socket_poll = (poll_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn6socket4PollEPNS0_6PollFdEmi");
+    CHECK(socket_poll != NULL);
+    poll_fn socket_poll_c = (poll_fn)(uintptr_t)guest_process_resolve(0, "nnsocketPoll");
+    CHECK(socket_poll_c != NULL);
+
+    /* The guest's own call shape: EventFd(0, 4). */
+    int32_t fd = event_fd(0, 4);
+    CHECK(fd >= 0);
+
+    /* A read with nothing posted must fail instead of parking the caller. */
+    uint64_t value = 0xdeadbeef;
+    CHECK(event_fd_read(fd, &value) == -1);
+    CHECK(get_last_error() != 0);
+
+    /* A null output pointer is rejected, matching the retail null check. */
+    CHECK(event_fd_read(fd, NULL) == -1);
+
+    /* Post and drain: one read consumes exactly one posted signal. */
+    CHECK(event_fd_write(fd, 1) == 0);
+    CHECK(event_fd_read(fd, &value) == 0);
+    CHECK(value == 1);
+
+    /* Two posts, two drains: the second read must not report the first post. */
+    CHECK(event_fd_write(fd, 1) == 0);
+    CHECK(event_fd_write(fd, 1) == 0);
+    CHECK(event_fd_read(fd, &value) == 0);
+    CHECK(value == 1);
+    CHECK(event_fd_read(fd, &value) == 0);
+    CHECK(value == 1);
+    CHECK(event_fd_read(fd, &value) == -1);
+
+    /* The descriptor is pollable, which is how the guest waits for a signal. */
+    struct { int fd; short events; short revents; } descriptors[1];
+    descriptors[0].fd = fd;
+    descriptors[0].events = 1;   /* POLLIN */
+    descriptors[0].revents = 0;
+    CHECK(socket_poll(descriptors, 1, 0) == 0);
+    CHECK(descriptors[0].revents == 0);
+    CHECK(event_fd_write(fd, 1) == 0);
+    descriptors[0].revents = 0;
+    CHECK(socket_poll(descriptors, 1, 0) == 1);
+    CHECK((descriptors[0].revents & 1) == 1);
+    /* The C entry point polls the same array and reports the same readiness. */
+    descriptors[0].revents = 0;
+    CHECK(socket_poll_c(descriptors, 1, 0) == 1);
+    CHECK((descriptors[0].revents & 1) == 1);
+
+    CHECK(socket_close(fd) == 0);
+
+    puts("{\"socket_eventfd_contract_errors\":0,\"create\":true,\"write\":true,\"read_roundtrip\":true,"
+         "\"read_empty_rejected\":true,\"null_output_rejected\":true,\"auto_reset\":true,"
+         "\"pollable\":true,\"close\":true}");
+    return 0;
+}
 static int account_contract(void) {
     typedef int32_t (*init_fn)(void);
 
@@ -3006,6 +3083,7 @@ int main(int argc,char **argv) {
     if(argc==2 && !strcmp(argv[1],"--aoc"))return aoc_contract();
     if(argc==2 && !strcmp(argv[1],"--nifm"))return nifm_contract();
     if(argc==2 && !strcmp(argv[1],"--socket"))return socket_contract();
+    if(argc==2 && !strcmp(argv[1],"--socket-eventfd"))return socket_eventfd_contract();
     if(argc==2 && !strcmp(argv[1],"--account"))return account_contract();
     if(argc==2 && !strcmp(argv[1],"--oe"))return oe_contract();
     if(argc==2 && !strcmp(argv[1],"--gettimeofday"))return gettimeofday_contract();

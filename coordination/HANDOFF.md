@@ -1,3 +1,46 @@
+# 日间调度（P-CC-7 启动｜2026-10-24 13:20 Asia/Shanghai）
+
+- **切换原因**：P-CC-6 claude PID 7295 已退出并写闭环 @ HEAD `2120088`；真机最新 v47 越过 stdout/stdio，阻塞 `nn::socket::EventFd`（import 325，exit 133）；主树 clean、无活跃 FFRS 主路径写手。Antigravity 仍处 429 额度窗口（约 12:09 起，重置约再等数小时），按优先级改派 Claude Code。
+- **里程碑**：新 HEAD `2120088`；真机 v46→v47；import 186 stdout SIGSEGV 消除；stdio 数据对象+函数族落地；新前沿 EventFd。
+- **已派**：P-CC-7 攻 `nn::socket::EventFd`（及紧随 EventFdWrite/Read）；提词 `coordination/prompts/P-CC-socket-eventfd.md`；claude PID **24728**（若 --dangerously-skip-permissions 弹出审批请点批准）；日志 `.local/agent-pm/cc-p-cc-7.log`
+- **基线**：`.local/logs/rg477m-boot-v47-stdio-stdout.log` exit 133；设备 RG477M01445122；pak/ucas PASS（`.local/romfs/FFRS/Content/Paks/`）
+- **未达**：标题 / 可玩
+
+---
+
+# P-CC-7 闭环｜2026-10-24 13:35 Asia/Shanghai — nn::socket 事件族（EventFd/EventFdWrite/EventFdRead/Close/GetLastError/Poll）落地，真机 **0 个未解析导入**，新前沿推进到「工作线程内存快照被拒」
+
+- **结论**：工单 P-CC-7 目标闭环并超额推进。真机**彻底越过 `nn::socket::EventFd`（import 325）**，并连带清掉同族与等待路径上的 `nnsocketPoll`（import 603）：**v50 全量 boot 日志中 `unresolved-import` 计数为 0**，不再有任何未解析导入致命。
+  1. **零售 ABI 取证（离线读零售 NSO，不猜）**：用 `scripts/runtime/inspect_nso.py --slice` 读 Nintendo SDK NSO（build_id `0023a1b06130cd795…`，sha256 `9dfd1cc6…`）：
+     - `nn::socket::EventFd(unsigned long, EventFdFlags)` @ sdk `0x159b70`（4 字节 thunk）→ `detail::EventFd` @ `0x165df0`：返回 w0 中的描述符，失败返回 -1 并置 errno。
+     - `nn::socket::EventFdWrite(int, unsigned long)` @ `0x159be0`：`str x1,[sp,#8] ; mov w2,#8 ; bl write ; cmp w0,#8 ; csetm w0,ne` → 恰好写 8 字节，成功 0 / 失败 -1。
+     - `nn::socket::EventFdRead(int, unsigned long*)` @ `0x159b80`：`cbz x1 → -1 ; mov w2,#8 ; bl read ; cmp w0,#8 ; str x8,[x19]` → 恰好读 8 字节，成功 0 / 失败 -1。
+     - `nn::socket::detail::Poll(pollfd*, int, int)` @ `0x164c80` 与 `detail::Poll(PollFd*, unsigned long, int)` @ `0x164a80`：`lsl x8, x21, #3` ⇒ **PollFd 为 8 字节**，与 POSIX `struct pollfd`（fd/int、events/short、revents/short）同布局。
+  2. **新增可复用取证工具 `scripts/runtime/resolve_import_callers.py`**（本单新增，进 Git）：离线解析 NSO 动态段（DT_JMPREL/DT_RELA）与 16 字节 PLT stub（`adrp x16,page / ldr x17,[x16,#off] / add x16,x16,#off / br x17`），把 **guest module_offset → import index → 导入名** 打通，并可反查某导入的全部调用点。用它定位到 guest 的事件对象实现：`EventFd(0,4)` @ `0x1091254`、`EventFdWrite(fd,1)` @ `0x10912d4`、`EventFdRead(fd,&local)` @ `0x1091308`、`nn::socket::Close(fd)` @ `0x10912ac`、`nn::socket::GetLastError()` @ `0x10912ec`；并确认 `EventFdRead` 的返回值与栈上局部量**被 guest 完全丢弃**（0x10912f0 处 `bl` 后直接返回），guest 只把它当「排空一次事件」。
+  3. **HLE 落地（`src/runtime/hle/nso_host.c` / `.h`）**：
+     - `nn::socket::EventFd(initval, flags)` → 返回**真实宿主描述符**（不是哨兵）：Linux/Android 用内核 `eventfd(2)`（`EFD_SEMAPHORE|EFD_NONBLOCK`），其他宿主用等价 pipe 后端（同一套可观察语义），因此 `nn::socket::Close` / `nn::socket::Poll` 能直接作用在同一对象上。
+     - `nn::socket::EventFdWrite` / `EventFdRead` 按零售语义搬运 8 字节，成功 0 / 失败 -1；读空返回 EAGAIN 并记 `[hle]` 归因日志。
+     - `nn::socket::Close`、`nn::socket::GetLastError`（线程局部错误码）、`nn::socket::Poll`（PollFd 数组就地 poll）、`nnsocketPoll`（C 入口，int nfds）。
+     - 安全边界：guest 的 `nn::socket` 描述符就是宿主描述符，故 `Close` 拒绝 0/1/2（零售 socket 命名空间不含进程标准流），避免误关运行时自身 stdout/stderr。
+     - **语义选择与偏差（已在源码注释中写明）**：① 采用 **auto-reset（EFD_SEMAPHORE）** 语义——guest 每次 post 1、每次 wait 一次读，普通计数型 eventfd 会把两次 post 一次吃掉而丢唤醒；② **读不阻塞**：零售读会阻塞到有信号，HLE 空读返回 EAGAIN，因为 guest 先 poll 再读且丢弃读返回值（0x10912f0 证据），阻塞会把运行时线程挂死；③ `EventFdFlags` 原值打印但**不重新解释**：零售映射在 socket-framework 服务里（无服务回退 `0x165d10` 直接 EOPNOTSUPP），本地无任何产物说明其位含义，guest 只用到一个值 4。
+  4. **契约（宿主 + 真机同测）**：新增 `--socket-eventfd` 契约（`tests/native/guest_process_contract.c`），覆盖创建→写→读往返、空读被拒、空指针被拒、**auto-reset 语义（两次 post 两次排空）**、可 poll 性（POLLIN 报位）、关闭。
+     - 宿主 PASS：`{"socket_eventfd_contract_errors":0,"create":true,"write":true,"read_roundtrip":true,"read_empty_rejected":true,"null_output_rejected":true,"auto_reset":true,"pollable":true,"close":true}`
+     - **RG477M 真机同契约 PASS（JSON 逐字相同）**，且真机走的是内核 `eventfd` 后端（宿主是 pipe 后端，两侧可观察行为一致）。
+  5. **真机推进轨迹（RG477M01445122，与 v47 同一套参数）**：`quota=1073741824 stack=2097152 image=162869248 resource_quota=16777216 guest_argc=0`；guest 输入不变（main NSO build_id `736837afd390442ed7c74a7de730e71b`）。
+     - **v48**（`.local/logs/rg477m-boot-v48-socket-eventfd.log`，exit 133）：`unresolved` **397 → 391**（6 个新绑定）；`[hle] nn::socket::EventFd: initval=0 flags=0x4 -> descriptor=6` 与 3 次 `EventFdWrite` 真实落地；前沿推进到 `nnsocketPoll`（import 603，caller_offset=0x5e52a84）。
+     - **v49**（`.local/logs/rg477m-boot-v49-socket-poll.log`，exit 134）：`unresolved` **391 → 390**；**全日志 `unresolved-import` 计数 = 0**；guest 进入事件等待循环（`nn::socket::Poll` timeout 100 ms 轮询）、起 `IOThreadPool #0/#1` 工作线程、连续映射 4285 段真实内容（合计 556.8 MiB）。
+     - **v50**（`.local/logs/rg477m-boot-v50-socket-poll-diag.log`，exit 134）：同 v49 轨迹，加了快照拒绝原因诊断。
+     - **v51 = 最终证据**（`.local/logs/rg477m-boot-v51-socket-eventfd-final.log`，exit 134，产物 `.local/build-p-cc-7d/` 与本单提交源码逐项一致）：`unresolved=390`、**`unresolved-import` 计数 0**、`nn::socket::EventFd` 相关 `[hle]` 行 11 条、`[snapshot-refused] reason=primary-thread`。
+  6. **新阻塞前沿（已精确定位，非导入问题）**：`[snapshot-refused] reason=primary-thread` → `[va-resource-invalid] status=1 native=22` → `Aborted`（exit **134**）。即 guest 的**工作线程**（`IOThreadPool #0/#1`）调用了 `nn::os::GetVirtualAddressMemoryResourceUsage`，而运行时 `snapshot_locked` 只允许**主线程**取内存/资源快照（`p->thread.state!=THREAD_RUNNING || !pthread_equal(p->thread.native,pthread_self())`），于是拒答并 abort。证据链：v47/v48/v49 中该查询的最后一次成功发生在日志第 42 行、**早于任何子线程注册**（首个 child TLS 绑定在第 18734 行），v50 起在 17 次子线程绑定后失败。
+     - 本单为让该拒绝可归因，把 `snapshot_locked` 的拒绝条件改成**逐项命名**（`[snapshot-refused] reason=…`，拒绝语义完全不变），避免只留 `status=1 native=22` 的不可诊断崩溃。
+     - **下一张工单建议**：这是**内存/资源快照的线程策略**（`nn::os::GetMemoryInfo` / `GetVirtualAddressMemoryResourceUsage` 的单主线程限制），不是 socket 族问题；要么允许任意线程取快照（底层 state 本来就有锁），要么改为非 abort 的可归因失败。属策略决定，未由本单擅自更改。
+  7. **产物与日志**：
+     - 构建（最终）：`.local/build-p-cc-7d/`（`sh scripts/runtime/build_guest_process_contract.sh --out .local/build-p-cc-7d --toolchain .local/minimal-ndk/toolchain --resource-quota-bytes 16777216`，exit 0；宿主全量契约 PASS；`manifest.json` 的 `source_sha256` 与工作树逐项一致，无源码漂移）。启动二进制 `nso_owned_startup.android` sha256 `6f2f9ecfffdcea6665cafdebd398ada33b64f204ffda1ae006ba2fb227d7cdf6`（设备端 `p-cc-7d-nso_owned_startup.android-6f2f9ec`）；契约二进制 `guest_process_contract.android` sha256 `7e8e9bd2fd82a926239deff9061e497e1889b6ae5849ec8b530c7b13424915ed`（设备端 `p-cc-7d-guest_process_contract.android-7e8e9bd`，已跑 `--socket-eventfd` PASS）。
+     - 真机证据：`.local/logs/rg477m-boot-v48-socket-eventfd.log`（exit 133）、`.local/logs/rg477m-boot-v49-socket-poll.log`（exit 134）、`.local/logs/rg477m-boot-v50-socket-poll-diag.log`（exit 134）、`.local/logs/rg477m-boot-v51-socket-eventfd-final.log`（exit 134，最终），各带 `.exitcode`。
+  8. **未达**：标题画面 / 可玩（仍未进呈现阶段）。本次只推进导入边界与 socket 事件族；**未**伪造 TLS 握手、证书校验、在线账号、socket 服务或任何网络在线状态；`nn::socket` 的其余族（Socket/Bind/Connect/Send/Recv/SetSockOpt/Select/Fcntl 等）仍未实现，guest 一旦调用即会成为新前沿。
+
+---
+
 # P-CC-6 闭环｜2026-10-24 13:09 Asia/Shanghai — stdout/stderr/stdin 数据导入真机越过，前沿推进至 nn::socket::EventFd（import 325）
 
 - **结论**：工单 P-CC-6 目标闭环。真机**彻底越过 `stdout` 数据导入（import 186）**：v46 的 SIGSEGV 前沿（exit 139）已消除，v47 推进到更远的 **未解析代码导入 `nn::socket::EventFd`（import 325，SIGTRAP/exit 133）**。

@@ -1,9 +1,9 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-10-24T05:09:00.000000+00:00",
- "phase": "T02_STDIO_DATA_IMPORT_UNBLOCKED_SOCKET_EVENTFD_ON_RG477M: stdout/stdin/stderr bound as host FILE* data objects (writable mirror, never a callable entry) and the stdio function family (printf/fprintf/sprintf variadic + fflush/fwrite/fputs/fputc/puts) landed with new AAPCS64 variadic import gateways; the loader no longer retargets STT_OBJECT imports to callables; unresolved imports 408 -> 397; RG477M boot advanced past the stdout SIGSEGV (exit 139) and now stops at unresolved code import [unresolved-import] index=325 name=_ZN2nn6socket7EventFdEmNS0_12EventFdFlagsE caller_offset=0x1091278 (SIGTRAP, exit 133)",
- "coordinator": "P-CC-6 (Claude Code): stdio data-object + stdio function family landed, host and RG477M device contracts PASS (stdio_contract_errors=0, real native-boundary variadic gateways verified on device), RG477M boot log .local/logs/rg477m-boot-v47-stdio-stdout.log (exit 133); next frontier is the nn::socket family (nn::socket::EventFd), not the stdio family",
+ "updated_at": "2026-10-24T05:35:00.000000+00:00",
+ "phase": "T02_SOCKET_EVENT_FAMILY_UNBLOCKED_NO_UNRESOLVED_IMPORTS_ON_RG477M: nn::socket event family landed with retail SDK ABI evidence (EventFd/EventFdWrite/EventFdRead/Close/GetLastError/Poll + nnsocketPoll); the guest descriptor is a real host descriptor (Linux/Android kernel eventfd, EFD_SEMAPHORE|EFD_NONBLOCK; other hosts an equivalent pipe backend), so nn::socket::Close and nn::socket::Poll operate on the same object; host and RG477M device --socket-eventfd contracts PASS with identical JSON; unresolved imports 397 -> 390 and the v50 RG477M boot log has zero unresolved-import faults; new frontier is no longer an import: [snapshot-refused] reason=primary-thread -> nn::os::GetVirtualAddressMemoryResourceUsage called from a worker thread (IOThreadPool #0/#1) is refused by the single-primary-thread memory snapshot policy (exit 134)",
+ "coordinator": "P-CC-7 (Claude Code): nn::socket event family landed (7 imports), host and RG477M device contracts PASS, RG477M boot logs .local/logs/rg477m-boot-v48-socket-eventfd.log (exit 133), .local/logs/rg477m-boot-v49-socket-poll.log and .local/logs/rg477m-boot-v50-socket-poll-diag.log (exit 134, zero unresolved imports); next frontier is the memory/resource snapshot thread policy, not the nn::socket family",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
  "active_writers": [
