@@ -244,6 +244,24 @@ bool nso_host_oe_operation_mode_changed_notification_enabled(void);
 int32_t nso_host_oe_focus_handling_mode(void);
 bool nso_host_oe_resume_notification_enabled(void);
 
+/* nn::oe::GetOperationMode() (main NSO import index 227).
+ *
+ * Zero arguments, returns the 32-bit operation mode the guest compares
+ * against 1 at both call sites (0x51dc84 and 0x51ee40).
+ *
+ * The value is settled from the guest code, not from the mangled name,
+ * because the Itanium mangling carries no return type. The guest uses the
+ * result in exactly one way: it caches "mode == 1" as a byte flag at
+ * 0x7c90614, and the four readers of that flag (0x51e98c, 0x51f06c,
+ * 0x523e98, 0x525104) each select a screen-size scale factor of either
+ * 0.026873588 (flag set) or 0.0 (flag clear). The factor multiplies the
+ * runtime screen width and height, so the flag-clear branch degenerates
+ * the scaled screen size to zero, which no released game can use as its
+ * normal state. The working state is therefore the flag-set one, so the
+ * value returned here is 1. No enumerator name is claimed for it, because
+ * no authoritative enumerator list is available in-tree. */
+uint32_t nso_host_oe_get_operation_mode(void);
+
 void nso_host_os_initialize_event(void *event, bool initially_signaled, int32_t clear_mode);
 void nso_host_os_finalize_event(void *event);
 void nso_host_os_signal_event(void *event);

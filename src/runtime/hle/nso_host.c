@@ -2028,6 +2028,32 @@ bool nso_host_oe_resume_notification_enabled(void) {
     return s_oe_resume_notification;
 }
 
+static uint32_t s_oe_operation_mode = 1;
+
+uint32_t nso_host_oe_get_operation_mode(void) {
+    /* The guest calls this from two unconditional sites (0x51dc84 and
+     * 0x51ee40) and uses the result in exactly one way: it compares the
+     * value against 1 and caches the outcome as a byte flag at 0x7c90614
+     * (cset / strb at 0x51dc90-0x51dc94 and 0x51ee50-0x51ee58). That flag is
+     * the game's "operation mode is 1" state.
+     *
+     * The flag is read at four sites (0x51e98c, 0x51f06c, 0x523e98 and
+     * 0x525104) and each one picks the screen-size scale factor the same
+     * way: fcsel selects 0x3cf5c290 (0.026873588) when the flag is set and
+     * the default 0.0 when it is not. The factor multiplies the runtime
+     * screen width and height, so the flag-clear branch scales the screen
+     * size to zero and leaves the scaled size fields of the screen-info
+     * structure (offsets 0x40, 0x48, 0x60, 0x68, 0x70 and 0x78) degenerate.
+     *
+     * A released game cannot use that branch as its normal state, so the
+     * working state of the game is the one where the flag is set, which
+     * means the value returned here has to be 1. The enumerator name behind
+     * the value is not available in-tree and is not claimed; only the value
+     * the guest requires is implemented. */
+    fprintf(stderr,"[hle] nn::oe::GetOperationMode: mode=%u recorded\n",s_oe_operation_mode);
+    return s_oe_operation_mode;
+}
+
 /* ========================================================================= */
 /* nn::os::EventType HLE Implementation                                      */
 /* ========================================================================= */
@@ -2979,6 +3005,8 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_oe_set_focus_handling_mode;
     if(!strcmp(name,"_ZN2nn2oe28SetResumeNotificationEnabledEb"))
         return (uint64_t)(uintptr_t)&nso_host_oe_set_resume_notification_enabled;
+    if(!strcmp(name,"_ZN2nn2oe16GetOperationModeEv"))
+        return (uint64_t)(uintptr_t)&nso_host_oe_get_operation_mode;
     if(!strcmp(name,"_ZN2nn4util11ReferSymbolEPKv") || !strcmp(name,"nnutilReferSymbol"))
         return (uint64_t)(uintptr_t)&refer_symbol;
     if(!strcmp(name,"_ZN2nn4util12GenerateUuidEv"))

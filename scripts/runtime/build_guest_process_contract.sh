@@ -654,6 +654,55 @@ if '[hle] nn::oe::SetOperationModeChangedNotificationEnabled:' not in focus_stde
 if '[hle] nn::oe::SetFocusHandlingMode:' not in focus_stderr:raise RuntimeError('nn::oe::SetFocusHandlingMode stub did not run')
 if '[hle] nn::oe::SetResumeNotificationEnabled:' not in focus_stderr:raise RuntimeError('nn::oe::SetResumeNotificationEnabled stub did not run')
 if '[boundary-unsupported]' in focus_stderr:raise RuntimeError('nn::oe focus import signature was refused by the boundary')
+# nn::oe::GetOperationMode (main NSO import index 227) takes no argument and
+# returns the 32-bit operation mode. The fixture calls the import through the
+# real guest import path and keeps the returned word, so the boundary must
+# accept the zero-argument signature with a return value or the guest never
+# runs. A missing import_signature entry makes prepare_boundary_locked()
+# refuse the whole boundary, so this fixture also exercises that gate.
+operation_mode_assembly=out/'oe-operation-mode-fixture.S'
+operation_mode_assembly.write_text(r''' .text
+.org 0x20
+.global fixture_entry
+fixture_entry:
+ stp x29, x30, [sp, #-32]!
+ str x19, [sp, #16]
+ mov x29, sp
+ mov x19, x0
+ adrp x16, fixture_got
+ add x16, x16, :lo12:fixture_got
+ ldr x17, [x16]
+ blr x17
+ uxtw x9, w0
+ str x9, [x19]
+ mov x9, #1
+ str x9, [x19, #8]
+ mov x0, #0x91
+ ldr x19, [sp, #16]
+ ldp x29, x30, [sp], #32
+ ret
+.section .fixture_got,"aw"
+.global fixture_got
+fixture_got: .zero 8
+''')
+run('fixture-oe-operation-mode-assemble',['clang',*common,'-c',operation_mode_assembly,'-o',out/'oe-operation-mode-fixture.o'])
+run('fixture-oe-operation-mode-link',['env',f'DYLD_LIBRARY_PATH={a.rust_root}/lib',ld,'--no-undefined','--build-id=none','--image-base=0','-Ttext=0','--section-start=.fixture_got=0x8200','-e','fixture_entry','--oformat=binary','-o',out/'oe-operation-mode-fixture.raw',out/'oe-operation-mode-fixture.o'])
+raw=(out/'oe-operation-mode-fixture.raw').read_bytes();data=bytearray((out/'contract.nso').read_bytes())
+data[0x200:0x300]=raw[:0x100].ljust(0x100,b'\0');struct.pack_into('<I',data,0x204,0x4000)
+names=b'\0_ZN2nn2oe16GetOperationModeEv\0'
+data[0x1160:0x1160+len(names)]=names
+# One dynsym entry here, so the base RELA table (DT_RELASZ = 72, three
+# entries) is truncated to 24 bytes and only the first RELA stays: the two
+# later ones point at symbol 2, which this fixture does not define. Dynamic
+# index 5 is DT_RELASZ, not DT_RELAENT (index 6) - the base already carries
+# 24 there.
+struct.pack_into('<II',data,0x1080,1,2);struct.pack_into('<Q',data,0x2000+3*16+8,len(names));struct.pack_into('<Q',data,0x2000+5*16+8,24)
+(out/'oe-operation-mode.nso').write_bytes(data)
+manifest['generated_fixtures']['oe-operation-mode.nso']={'bytes':len(data),'sha256':digest(out/'oe-operation-mode.nso'),'kind':'self-authored single-import zero-argument nn::oe operation mode fixture','assembly_sha256':digest(operation_mode_assembly)}
+run('host-oe-operation-mode-contract',[out/'guest_process_contract.host','--oe-operation-mode',out/'oe-operation-mode.nso'])
+operation_mode_stderr=(out/'host-oe-operation-mode-contract'/'stderr.log').read_text()
+if '[hle] nn::oe::GetOperationMode:' not in operation_mode_stderr:raise RuntimeError('nn::oe::GetOperationMode stub did not run')
+if '[boundary-unsupported]' in operation_mode_stderr:raise RuntimeError('nn::oe operation mode import signature was refused by the boundary')
 locale_assembly=out/'locale-fixture.S'
 locale_assembly.write_text(r''' .text
 .org 0x20

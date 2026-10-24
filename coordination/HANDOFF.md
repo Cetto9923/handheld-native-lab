@@ -1,3 +1,30 @@
+# P-MM-6 闭环｜2026-10-24 16:35 Asia/Shanghai — 绑定 `nn::oe::GetOperationMode()`（import 227），真机**越过 v56 的 SIGTRAP**（unresolved 381 → 380，前沿推进到 `nn::ldn::GetState` import 88）
+
+- **结论**：工单 P-MM-6 目标闭环。`nn::oe::GetOperationMode()`（import 227）已绑定为**如实记录**型桩；真机 v57 **不再**因该符号触发 `[unresolved-import]` / `[fault] signal=5`，profile 行 `unresolved` 由 **381 → 380**（**正好 1 个**，即本单绑定数），boundary 导入计数由 **267 → 268**，新第一致命推进到 **import 88 `nn::ldn::GetState()`**，exit **133**（SIGTRAP）。**未达标题画面 / 可玩**。
+  1. **返回值语义由 guest 代码定论（不是猜的）**：本单开工前明确要求「必须先追到该布尔全局标志的消费点再定值」。追查链条如下，全部来自离线反汇编（Capstone，独立于 llvm-objdump 的切片相对寻址，两者交叉验证）：
+     - guest 在 **两个无条件调用点** `0x51dc84` / `0x51ee40` 调用本导入，调用后立即 `cmp w0, #1` ⇒ **零实参、32 位整数返回**（Itanium mangling 不编码返回类型，故返回类型由 w0 的消费方式定）。
+     - 两次调用都用 `cset w8, eq` + `strb w8, [x9, #0x614]` 把 **`mode == 1`** 缓存成**字节全局标志**，地址 **module offset 0x7c90614**（`adrp x9, #0x7c90000` + 偏移 `0x614`）。
+     - 该标志**全模块只有 2 处写、4 处读**（写：`0x51dc94`、`0x51ee58`；读：`0x51e98c`、`0x51f06c`、`0x523e98`、`0x525104`）。4 个读点形态完全一致：`fcsel` 在 **标志置位时取常量 `0x3cf5c290`（float 0.026873588）**，标志未置位时取**默认 0.0**。
+     - 该因子随后**乘在运行时屏幕宽高上**（`scvtf` 把两个 int 宽高转 float 再 `fmul`），结果以 `double` 写进屏幕信息结构的 `0x40/0x48/0x60/0x68/0x70/0x78` 偏移；而**像素宽高本身**原样保留在 `0x00/0x04`。
+     - ⇒ **标志未置位分支会把缩放后的屏幕尺寸退化成 0**（`0.0 × width = 0`）。已发行的游戏不可能把这一支当常态 ⇒ **游戏的正常工作态就是标志置位那一支** ⇒ 桩必须返回 **1**。
+  2. **不宣称枚举名**：仓库内没有 `nn::oe::OperationMode` 的权威枚举定义（NSO 内出现的 `OperationMode` 字符串经核实是 **UE5 反射元数据**里的一个无关属性名，`Handheld` 字符串是 `nn::hid::NpadHandheldState` 的子串，都不是枚举表），所以桩**只实现 guest 要求的数值 1**，不宣称它对应「掌机/底座」中的哪一个。
+  3. **触达证据**：两个调用点都是 init 区里**无条件直线序列**上的 `BL`；且真机 v57 日志第 **55238** 行出现真实 guest 调用 `[hle] nn::oe::GetOperationMode: mode=1 recorded`，前后紧邻 P-MM-5 那组焦点/通知调用，与静态预测逐条吻合。
+  4. **ABI 双重确认**：返回类型由两处调用点的 `cmp w0, #1` + `cset` 定为 32 位整数；实参数为 0（mangling `_ZN2nn2oe16GetOperationModeEv` 亦为无参）。二者一致，无歧义。
+  5. **契约 `--oe-operation-mode`**：自造单导入 fixture NSO（`oe-operation-mode.nso`，sha256 `178d697f…`）驱动**真实 guest 导入路径**——guest 自己 `blr` 导入并把返回的 w0 写进输出槽。宿主侧 `resolved=true`、`errors=0`；真机侧 `native_ran=true`、`guest_marker=true`、`guest_operation_mode=1` ⇒ guest 确实经真实导入路径拿回了 **1**。边界在 guest 运行前校验该导入签名，签名不被接受则 guest 根本不执行。
+  6. **三变体自证（比常规两变体多一组反向对照）**：
+     - 变体 A：故意把期望值改成 2、保留末尾 `CHECK(!errors)` ⇒ **exit 1（红）**，失败行 `process contract line=3622: !errors`。
+     - 变体 B：同一处故意改坏、但去掉末尾 `CHECK(!errors)` 且把报告里的错误数**硬编码为 0** ⇒ **exit 0（假绿）**，stderr 仍留下 `[check-fail]` —— 证明单跑变体 A 无法区分「已修好」与「断言本来就是恒真的」。
+     - 变体 C（**新增的反向对照**）：**契约完全不改**，改让桩返回 0 ⇒ **exit 1（红）** —— 证明契约观测的是**桩的真实返回值**而不是写死的常量。
+     - 完整日志：`.local/logs/p-mm-6-contract-selfproof.log`；脚本 `.local/selfproof/selfproof_mm6.sh` + `.local/selfproof/make_mm6_variants.py`（均留在 `.local/`，不入 git）。
+  7. **刻意排除的符号（不夹带）**：`228–232 nn::vi`（显示/图层/原生窗口，语义重，需 Android Surface 桥）、`233 TryPopNotificationMessage`、每帧输入读取族 236/237 与 Npad 族（需「Android 输入桥」单独一刀）。
+- **新阻塞一句话**：真机 v57 现在停在 **import 88 `nn::ldn::GetState()`**（`caller_offset=0x51dcac`，exit 133）。**这修正了此前「88 只是条件分支可达、不可证实触达」的判断**——v57 用运行时证据证明 `0x51dca8` 这一路**确实被走到了**（`0x51dc9c` 的 `tbz` 在本次运行中走了「未置位」分支）。guest 在 `0x51dca8` 调 `nn::ldn::GetState()`，随后 `cmp w0, #0` + `cinc` 把状态映射成 **三值分类 `w0 ∈ {1, 2, 3}`**（形似 离线/本地/互联网 的网络状态分级），最终值经 `0x51dcb8` 的调用被使用。**下一刀应攻 import 88**；需要先从这 5 个调用点（`0x15bd4`、`0x51dca8`、`0x51ecb8`、`0x942edc`、`0x943198`）判定返回类型与取值语义，**不得编造无线连接状态**。
+- **产物与证据**：
+  - 构建目录 `.local/build-p-mm-6/`（`guest_process_contract.android` sha256 `27dfaadf…`、`nso_owned_startup.android` sha256 `56d09ae7…`、`oe-operation-mode.nso` sha256 `178d697f…`）；manifest 已写入 `android_executed` / `device_contracts` / `device_boot`。
+  - 真机日志 `.local/logs/rg477m-boot-v57-oe-operation-mode.log`（**55255** 行，exit 133）、`.local/logs/rg477m-boot-v57-oe-operation-mode.log.exitcode`；契约日志 `.local/logs/rg477m-contract-p-mm-6-oe-operation-mode.stdout/.stderr`。
+  - 设备侧文件：`p-mm-6-nso_owned_startup.android-56d09ae7`、`p-mm-6-guest_process_contract.android-27dfaadf`、`p-mm-6-oe-operation-mode.nso-178d697f`。
+  - 离线取证：`scripts/runtime/scan_import_range.py`（区间导入扫描）、`scripts/runtime/resolve_import_callers.py`、Capstone 交叉验证脚本（本地临时，未入 git）。
+- **未完成 / 风险**：标题画面与可玩**均未达**；全模块仍有 **380** 个导入未绑定（`imports=651`）。`nn::vi` 显示族与输入族需要各自的平台桥，不能靠桩糊过去。P-MM-5 的 `GetCurrentFocusState` 桩返回 0：guest 只与 3 比较，行为上等价，但仓库内无权威枚举，**此处保留为已知语义保留项**（不宣称 0 的名字）。
+
 # P-MM-5 闭环｜2026-10-24 16:15 Asia/Shanghai — 绑定 `nn::oe` 焦点/通知组（import 222–226，**一次性 5 个**），真机**越过 v55 的 SIGTRAP**（unresolved 386 → 381，前沿推进到 `nn::oe::GetOperationMode` import 227）
 
 - **结论**：工单 P-MM-5 目标闭环。`nn::oe` 焦点/通知组 **5 个符号一次绑定**（import 222 `GetCurrentFocusState`、223 `SetPerformanceModeChangedNotificationEnabled`、224 `SetOperationModeChangedNotificationEnabled`、225 `SetFocusHandlingMode`、226 `SetResumeNotificationEnabled`），均为**如实记录**型桩；真机 v56 **不再**因这些符号触发 `[unresolved-import]` / `[fault] signal=5`，profile 行 `unresolved` 由 **386 → 381**（**正好 5 个**，即本单绑定数），新第一致命推进到 **import 227 `nn::oe::GetOperationMode()`**，exit **133**（SIGTRAP）。**未达标题画面 / 可玩**。

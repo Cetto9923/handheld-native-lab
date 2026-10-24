@@ -3544,6 +3544,90 @@ static int oe_focus_contract(const char *path) {
            c.native_ran?(int)c.native_focus_state:-1);
     return 0;
 }
+
+/* nn::oe::GetOperationMode() (main NSO import index 227).
+ *
+ * Zero arguments, one 32-bit result. The guest calls it from two
+ * unconditional sites (0x51dc84 and 0x51ee40) and uses the result in
+ * exactly one way: it compares the value against 1 and caches the outcome
+ * as a byte flag at 0x7c90614. The four readers of that flag each pick a
+ * screen-size scale factor of 0.026873588 (flag set) or 0.0 (flag clear),
+ * and the factor multiplies the runtime screen width and height, so the
+ * flag-clear branch leaves the scaled screen size degenerate at zero.
+ * The working state of the game is therefore the flag-set one, so the
+ * value the guest requires is 1. The enumerator name behind that value is
+ * not available in-tree and is not claimed here.
+ *
+ * The fixture drives the real guest import path: the guest calls the
+ * import itself and writes the returned word into the output slot, so the
+ * boundary has to accept the zero-argument signature with a return value or
+ * the guest never runs. */
+#define OE_OPERATION_MODE_MANGLED "_ZN2nn2oe16GetOperationModeEv"
+/* The operation mode value the guest code requires, see the comment above. */
+#define OE_EXPECTED_OPERATION_MODE 1
+struct oe_operation_mode_case {
+    guest_process *process;
+    int resolved;
+    int native_ran,native_marker;
+    uint32_t native_operation_mode;
+};
+static void *exercise_oe_operation_mode(guest_process *p,void *opaque) {
+    struct oe_operation_mode_case *c=opaque;
+    c->process=p;
+    typedef uint32_t (*oe_operation_mode_fn)(void);
+    oe_operation_mode_fn operation_mode=(oe_operation_mode_fn)(uintptr_t)guest_process_resolve(0,OE_OPERATION_MODE_MANGLED);
+    c->resolved=operation_mode!=NULL;
+    expect_condition("oe-operation-mode-resolved",operation_mode!=NULL);
+    /* The real guest path: the fixture calls the import itself. */
+    uint64_t output[2]={0xa5a5,0xa5a5},returned=0xa5a5;
+    uint64_t args[1]={(uintptr_t)output};
+    struct nso_result r=guest_process_call(p,0x20,args,1,&returned);
+#if defined(__ANDROID__) && defined(__aarch64__)
+    expect_value("oe-operation-mode-native-status",r.status,NSO_OK);
+    expect_value("oe-operation-mode-native-return",returned,0x91);
+    c->native_ran=1;
+    c->native_marker=output[1]==1;
+    expect_condition("oe-operation-mode-guest-call-returned",output[1]==1);
+    /* The value the guest actually received back from the operation mode
+     * call, observed through the real import path. */
+    c->native_operation_mode=(uint32_t)output[0];
+    expect_value("oe-operation-mode-guest-value",output[0],OE_EXPECTED_OPERATION_MODE);
+#else
+    /* No AArch64 executor on this host: the boundary is prepared but the raw
+     * guest entry cannot run here. Nothing may be faked in its place. */
+    expect_value("oe-operation-mode-native-unsupported",r.status,NSO_UNSUPPORTED);
+    expect_value("oe-operation-mode-native-no-raw-fallback",returned,0xa5a5);
+#endif
+    /* Direct host call: the stub must report the same value it hands to the
+     * guest, and it must not drift from it. */
+    if(operation_mode) {
+        uint32_t direct=operation_mode();
+        expect_value("oe-operation-mode-direct-value",(uint64_t)direct,(uint64_t)OE_EXPECTED_OPERATION_MODE);
+        expect_value("oe-operation-mode-host-recorded",(uint64_t)nso_host_oe_get_operation_mode(),(uint64_t)OE_EXPECTED_OPERATION_MODE);
+    }
+    return &returned_token;
+}
+static int oe_operation_mode_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));
+    char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+    struct oe_operation_mode_case c={0};
+    void *value=NULL;
+    CHECK(succeeded(guest_process_run(p,exercise_oe_operation_mode,&c,&value)));
+    CHECK(value==&returned_token);
+    expect_condition("oe-operation-mode-resolved",c.resolved);
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    /* The final gate. Every expect_* above must have passed; without this the
+     * contract could still exit 0 while the expectations had failed. */
+    CHECK(!errors);
+    /* The report states what this run observed, not a literal zero. */
+    printf("{\"oe_operation_mode_errors\":%u,\"resolved\":%s,\"native_ran\":%s,"
+           "\"guest_marker\":%s,\"guest_operation_mode\":%d}\n",errors,
+           c.resolved?"true":"false",c.native_ran?"true":"false",
+           c.native_marker?"true":"false",
+           c.native_ran?(int)c.native_operation_mode:-1);
+    return 0;
+}
 int main(int argc,char **argv) {
     page=(size_t)sysconf(_SC_PAGESIZE);
     if(argc==2 && !strcmp(argv[1],"--tls-host-null")) {
@@ -3568,6 +3652,7 @@ int main(int argc,char **argv) {
     if(argc==3 && !strcmp(argv[1],"--oe-cpu-boost"))return oe_cpu_boost_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--hid-init"))return hid_init_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--oe-focus"))return oe_focus_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--oe-operation-mode"))return oe_operation_mode_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-fresh"))return tls_fresh_registration_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-null"))return tls_registration_contract(argv[2],1);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-repeat"))return tls_registration_contract(argv[2],2);
