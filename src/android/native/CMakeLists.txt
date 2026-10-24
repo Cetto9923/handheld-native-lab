@@ -89,6 +89,8 @@ if(ANDROID)
         "${FFRS_GUEST_NVN_DIR}/nvn_sha256.c"
         "${FFRS_GUEST_NVN_DIR}/nvn_texture_pool.c"
         "${FFRS_GUEST_NVN_DIR}/nvn_texture_builder.c"
+        "${FFRS_GUEST_NVN_DIR}/nvn_texture.c"
+        "${FFRS_GUEST_NVN_DIR}/nvn_texture_view.c"
         "${FFRS_GUEST_NVN_DIR}/nvn_backend_vulkan.c")
     set_target_properties(ffrs_guest_runtime PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES
         C_EXTENSIONS NO POSITION_INDEPENDENT_CODE ON)

@@ -25,6 +25,8 @@
 #include "nvn_program.h"
 #include "nvn_render_state.h"
 #include "nvn_sampler.h"
+#include "nvn_texture.h"
+#include "nvn_texture_view.h"
 #include "nvn_sampler_builder.h"
 #include "nvn_sampler_pool.h"
 #include "nvn_texture_builder.h"
@@ -712,6 +714,42 @@ void *nvn_device_get_proc_address(void *device, const char *name) {
         size_t count = nvn_sampler_family_count();
         for (i = 0; i < count; i++) {
             const nvn_sampler_family_entry *entry = nvn_sampler_family_entry_at(i);
+            if (!entry || !entry->name) continue;
+            if (!strcmp(name, entry->name)) {
+                s_device.implemented_resolved++;
+                fprintf(stderr, "[nvn] nvnDeviceGetProcAddress: \"%s\" -> implemented\n", name);
+                return entry->fn;
+            }
+        }
+    }
+    {
+        size_t count = nvn_texture_family_count();
+        for (i = 0; i < count; i++) {
+            const nvn_texture_family_entry *entry = nvn_texture_family_entry_at(i);
+            if (!entry || !entry->name) continue;
+            if (!strcmp(name, entry->name)) {
+                s_device.implemented_resolved++;
+                fprintf(stderr, "[nvn] nvnDeviceGetProcAddress: \"%s\" -> implemented\n", name);
+                return entry->fn;
+            }
+        }
+    }
+    {
+        size_t count = nvn_texture_view_family_count();
+        for (i = 0; i < count; i++) {
+            const nvn_texture_view_family_entry *entry = nvn_texture_view_family_entry_at(i);
+            if (!entry || !entry->name) continue;
+            if (!strcmp(name, entry->name)) {
+                s_device.implemented_resolved++;
+                fprintf(stderr, "[nvn] nvnDeviceGetProcAddress: \"%s\" -> implemented\n", name);
+                return entry->fn;
+            }
+        }
+    }
+    {
+        size_t count = nvn_device_handle_family_count();
+        for (i = 0; i < count; i++) {
+            const nvn_device_handle_family_entry *entry = nvn_device_handle_family_entry_at(i);
             if (!entry || !entry->name) continue;
             if (!strcmp(name, entry->name)) {
                 s_device.implemented_resolved++;
