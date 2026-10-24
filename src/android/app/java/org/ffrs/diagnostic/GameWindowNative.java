@@ -31,4 +31,16 @@ public final class GameWindowNative {
      * comes from the guest.
      */
     public static native int nativeRunVulkanProbe();
+    /**
+     * Starts the owned guest inside this process, on its own thread.
+     *
+     * The guest image is loaded and booted exactly like the standalone CLI
+     * does it. The guest blocks for the whole session, so the caller must not
+     * run this on the UI thread. The guest transcript is written to
+     * logPath, because it is far too long for the log buffer.
+     *
+     * Returns the guest thread id, or -1 when the guest was refused.
+     */
+    public static native long nativeStartGuest(String image, String romfs, String logPath,
+            long quota, long stack, long resources, String[] guestArgs);
 }

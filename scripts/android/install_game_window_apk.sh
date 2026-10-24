@@ -48,4 +48,15 @@ step logcat-window adb -s "${FFRS_DEVICE}" logcat -d -s FFRS-GameWindow:I '*:S'
 step logcat-crash adb -s "${FFRS_DEVICE}" logcat -d -b crash -t 200
 step window-dumpsys adb -s "${FFRS_DEVICE}" shell dumpsys window windows
 
+# The owned guest boots inside this app process and writes its transcript to
+# the app's own external directory. It needs time to reach the graphics
+# device, so the wait is explicit instead of implied.
+if [[ "${FFRS_GUEST_WAIT_SECONDS:-0}" != "0" ]]; then
+    sleep "${FFRS_GUEST_WAIT_SECONDS}"
+fi
+step logcat-guest adb -s "${FFRS_DEVICE}" logcat -d -s FFRS-GuestBoot:I '*:S'
+step app-pid adb -s "${FFRS_DEVICE}" shell pidof "${FFRS_PACKAGE}"
+step guest-transcript adb -s "${FFRS_DEVICE}" shell \
+    "cat /sdcard/Android/data/${FFRS_PACKAGE}/files/guest_boot.log 2>/dev/null | tail -n 200"
+
 printf 'Device evidence: %s\n' "${FFRS_LOGS}"

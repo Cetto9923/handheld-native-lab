@@ -47,11 +47,51 @@ if(ANDROID)
     # the runtime-side holder in src/runtime/hle/native_window.c. No rendering,
     # no input and no nn::vi import binding happen in this library.
     set(FFRS_NATIVE_WINDOW_HLE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../runtime/hle" CACHE PATH "Native window holder source directory")
-    add_library(ffrs_game_window SHARED game_window_jni.cpp game_vulkan_probe.cpp
-        "${FFRS_NATIVE_WINDOW_HLE_DIR}/native_window.c")
+    # The owned guest runtime, linked into the app process.
+    #
+    # The window is a process-local platform handle, so the guest has to run in
+    # the process that owns the SurfaceView. These are the same sources the
+    # standalone CLI is built from (scripts/runtime/build_guest_process_contract.sh):
+    # the loader, the typed HLE, the native boundary and the NVN device layer.
+    set(FFRS_GUEST_NSO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../runtime/nso" CACHE PATH "NSO runtime source directory")
+    set(FFRS_GUEST_HLE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../runtime/hle" CACHE PATH "Typed runtime HLE source directory")
+    set(FFRS_GUEST_NVN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../graphics/nvn_device" CACHE PATH "NVN device source directory")
+    enable_language(ASM)
+    add_library(ffrs_guest_runtime STATIC
+        "${FFRS_GUEST_NSO_DIR}/nso_loader.c"
+        "${FFRS_GUEST_NSO_DIR}/nso_boot.c"
+        "${FFRS_GUEST_NSO_DIR}/native_boundary.c"
+        "${FFRS_GUEST_NSO_DIR}/native_boundary.S"
+        "${FFRS_GUEST_HLE_DIR}/guest_context.c"
+        "${FFRS_GUEST_HLE_DIR}/guest_process.c"
+        "${FFRS_GUEST_HLE_DIR}/nso_host.c"
+        "${FFRS_GUEST_HLE_DIR}/address_region.c"
+        "${FFRS_GUEST_HLE_DIR}/mutex.c"
+        "${FFRS_GUEST_HLE_DIR}/exit_registry.c"
+        "${FFRS_GUEST_HLE_DIR}/module_tls.c"
+        "${FFRS_GUEST_HLE_DIR}/guest_tp.c"
+        "${FFRS_GUEST_HLE_DIR}/guest_pages.c"
+        "${FFRS_GUEST_HLE_DIR}/guest_os_tls.c"
+        "${FFRS_GUEST_HLE_DIR}/native_window.c"
+        "${FFRS_GUEST_NVN_DIR}/nvn_device.c"
+        "${FFRS_GUEST_NVN_DIR}/nvn_backend_vulkan.c")
+    set_target_properties(ffrs_guest_runtime PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES
+        C_EXTENSIONS NO POSITION_INDEPENDENT_CODE ON)
+    target_include_directories(ffrs_guest_runtime PUBLIC
+        "${FFRS_GUEST_NSO_DIR}" "${FFRS_GUEST_HLE_DIR}" "${FFRS_GUEST_NVN_DIR}")
+    # The owned profile is the whole point of this library: without the
+    # defines the boot unit would compile to its refusing stub.
+    target_compile_definitions(ffrs_guest_runtime PRIVATE NSO_WITH_HOST_HLE=1 NSO_WITH_GUEST_PROFILE=1)
+    # The same code generation policy the standalone CLI is built with:
+    # -ffixed-x18 keeps the compiler out of the platform register the guest
+    # ABI reserves, and -fno-emulated-tls keeps thread locals real.
+    target_compile_options(ffrs_guest_runtime PRIVATE -Wall -Wextra -O2 -g
+        -fno-omit-frame-pointer -ffixed-x18 -fno-emulated-tls -fvisibility=hidden)
+    target_link_libraries(ffrs_guest_runtime PUBLIC dl m log vulkan)
+    add_library(ffrs_game_window SHARED game_window_jni.cpp game_vulkan_probe.cpp guest_boot_jni.cpp)
     set_target_properties(ffrs_game_window PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
-    target_include_directories(ffrs_game_window PRIVATE "${FFRS_NATIVE_WINDOW_HLE_DIR}")
-    target_link_libraries(ffrs_game_window PRIVATE android log vulkan)
+    target_include_directories(ffrs_game_window PRIVATE "${FFRS_NATIVE_WINDOW_HLE_DIR}" "${FFRS_GUEST_NSO_DIR}")
+    target_link_libraries(ffrs_game_window PRIVATE android log vulkan ffrs_guest_runtime)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
     foreach(target probe_rg477m nso_diagnostic ffrs_diagnostic ffrs_game_window)
         target_link_options(${target} PRIVATE "-Wl,-z,max-page-size=16384" "-Wl,--build-id=sha1" "-Wl,--eh-frame-hdr")

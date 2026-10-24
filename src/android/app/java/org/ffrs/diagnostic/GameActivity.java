@@ -19,6 +19,8 @@ import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
 
+import java.io.File;
+
 /**
  * Game window form only.
  *
@@ -124,8 +126,60 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 + " error=" + snapshot.error);
         // The Vulkan presentation probe runs off the UI thread: the driver
         // calls must not happen on the thread that owns the SurfaceView.
-        Thread probe = new Thread(new VulkanProbeTask(), "ffrs-vk-probe");
-        probe.start();
+        // It is opt-in, because it paints the screen with the probe's own
+        // colour and would hide whatever the guest presents.
+        if (getIntent() != null && getIntent().getBooleanExtra("run_probe", false)) {
+            Thread probe = new Thread(new VulkanProbeTask(), "ffrs-vk-probe");
+            probe.start();
+        }
+        // The guest runs in this process, because the window is a
+        // process-local platform handle. It starts after the window is
+        // published, so the display bridge finds a real window.
+        if (getIntent() == null || getIntent().getBooleanExtra("run_guest", true)) {
+            startGuest();
+        }
+    }
+
+    /** Where the owned guest image and its romfs live on this device. */
+    private static final String DEFAULT_GAME_DIR =
+            "/data/local/tmp/ffrs-rg477m-efd1123620814764ae32529c18081259";
+    /** Explicit guest resource policy, matching the standalone CLI runs. */
+    private static final long GUEST_QUOTA_BYTES = 1073741824L;
+    private static final long GUEST_STACK_BYTES = 2097152L;
+    private static final long GUEST_RESOURCE_BYTES = 16777216L;
+
+    /** Starts the owned guest on its own thread inside this app process. */
+    private void startGuest() {
+        String game_dir = getIntent() == null ? null : getIntent().getStringExtra("game_dir");
+        if (game_dir == null || game_dir.isEmpty()) game_dir = DEFAULT_GAME_DIR;
+        String image = game_dir + "/main.nso";
+        String romfs = game_dir + "/romfs";
+        if (!new java.io.File(image).canRead()) {
+            Log.e(TAG, "guest_image_unreadable path=" + image);
+            return;
+        }
+        File files = getExternalFilesDir(null);
+        String log_path = files == null ? null : new File(files, "guest_boot.log").getAbsolutePath();
+        Thread guest = new Thread(new GuestBootTask(image, romfs, log_path), "ffrs-guest");
+        guest.start();
+    }
+
+    /** A named task, so the dexer sees a plain class and not an anonymous one. */
+    private static final class GuestBootTask implements Runnable {
+        private final String image;
+        private final String romfs;
+        private final String log_path;
+        GuestBootTask(String image, String romfs, String log_path) {
+            this.image = image;
+            this.romfs = romfs;
+            this.log_path = log_path;
+        }
+        @Override public void run() {
+            long thread = GameWindowNative.nativeStartGuest(image, romfs, log_path,
+                    GUEST_QUOTA_BYTES, GUEST_STACK_BYTES, GUEST_RESOURCE_BYTES, new String[0]);
+            Log.i(TAG, "guest_start thread=" + thread + " guest_in_app_process=true"
+                    + " transcript=" + log_path);
+        }
     }
 
     /** A named task, so the dexer sees a plain class and not an anonymous one. */

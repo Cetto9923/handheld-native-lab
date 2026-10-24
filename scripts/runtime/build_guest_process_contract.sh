@@ -36,7 +36,11 @@ os_hle=a.os_tls_source_root.resolve()/'src/runtime/hle';os_source=os_hle/'guest_
 if not os_source.is_file() or not os_source.with_suffix('.h').is_file():p.error('guest_os_tls component missing')
 sources.append(os_source)
 test=ROOT/'tests/native/guest_process_contract.c';cli=nso/'nso_call.c'
-inputs=[*core_sources,*[s.with_suffix('.h') for s in core_sources],*host_only_sources,*android_only_sources,test,cli,ROOT/'scripts/runtime/build_guest_process_contract.sh',ROOT/'tests/native/test_loader.py']
+# The owned boot profile lives in its own translation unit so the CLI and the
+# in-process library run the same guest. It is compiled with the profile
+# defines; a build without them would silently link the refusing stub.
+boot_source=nso/'nso_boot.c'
+inputs=[*core_sources,*[s.with_suffix('.h') for s in core_sources],*host_only_sources,*android_only_sources,test,cli,boot_source,boot_source.with_suffix('.h'),ROOT/'scripts/runtime/build_guest_process_contract.sh',ROOT/'tests/native/test_loader.py']
 manifest={'head':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
  'dirty':subprocess.check_output(['git','status','--short'],text=True),'host':platform.platform(),
  'compiler':subprocess.check_output(['clang','--version'],text=True),'cases':{},
@@ -54,7 +58,11 @@ manifest={'head':subprocess.check_output(['git','rev-parse','HEAD'],text=True).s
  'lock_order':'process -> page owner -> region -> terminal Context, or owner -> Context; external raw APIs quiescent',
  'game_started':False,'crt_tls_initialized':False}
 def save():(out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
-def run(name,cmd,expected=0,timeout=30):
+def run(name,cmd,expected=0,timeout=300):
+ # The timeout is a hang guard, not a performance assertion. A single -O2
+ # compile of the contract translation unit takes well over 30 seconds on a
+ # loaded host, and a build step that gets killed mid compile fails the gate
+ # for a reason that has nothing to do with the code under test.
  save();r=subprocess.run(['python3',str(ROOT/'scripts/runtime/run_capture.py'),'--out',str(out/name),'--timeout',str(timeout),'--',*map(str,cmd)],capture_output=True,text=True)
  print(r.stdout.strip());entry=json.loads((out/name/'run.json').read_text());manifest['cases'][name]=entry;save()
  if r.returncode!=expected or entry['timed_out']:
@@ -168,7 +176,8 @@ run('host-link-argument-recovery',['clang',*strict,'-DNSO_PROFILE_ARGUMENT_TESTI
 run('host-argument-recovery',[out/'guest_process_argument_recovery.host','--arguments-recovery',out/'contract.nso'])
 run('host-invalid-query',[out/'guest_process_contract.host','--invalid-query'],134)
 if '[query-invalid]' not in (out/'host-invalid-query/stderr.log').read_text():raise RuntimeError('missing fatal invalid Query diagnostic')
-run('host-build-cli',['clang',*strict,'-DNSO_WITH_HOST_HLE=1','-DNSO_WITH_GUEST_PROFILE=1',cli,*host,'-lc++','-lpthread','-o',out/'nso_owned_startup.host'])
+run('host-compile-nso-boot-profile',['clang',*strict,'-DNSO_WITH_CXX_GUARDS=1','-DNSO_WITH_HOST_HLE=1','-DNSO_WITH_GUEST_PROFILE=1','-c',boot_source,'-o',out/'nso_boot.profile.host.o'])
+run('host-build-cli',['clang',*strict,'-DNSO_WITH_HOST_HLE=1','-DNSO_WITH_GUEST_PROFILE=1',cli,*host,out/'nso_boot.profile.host.o','-lc++','-lpthread','-o',out/'nso_owned_startup.host'])
 legacy=[v for v in host if v.stem not in ['guest_context.host','guest_process.host','guest_pages.host','native_boundary.host','guest_os_tls.host']]
 run('host-build-legacy-cli',['clang',*strict,'-DNSO_WITH_HOST_HLE=1',cli,*legacy,'-lc++','-lpthread','-o',out/'nso_legacy.host'])
 run('host-legacy-info',[out/'nso_legacy.host',out/'contract.nso','--info'])
@@ -1416,6 +1425,8 @@ for source in [*sources,*android_only_sources]:
  run('android-compile-'+source.stem,['clang',*common,'-c',source,'-o',obj])
 android.append(out/'native_boundary.assembly.android.o')
 run('android-compile-boundary-assembly',['clang',*common,'-c',boundary_assembly,'-o',android[-1]])
+run('android-compile-nso-boot-profile',['clang',*common,'-DNSO_WITH_HOST_HLE=1','-DNSO_WITH_GUEST_PROFILE=1','-c',boot_source,'-o',out/'nso_boot.profile.android.o'])
+android.append(out/'nso_boot.profile.android.o')
 run('android-compile-contract',['clang',*common,'-c',test,'-o',out/'contract.android.o'])
 run('android-compile-identity-recovery-contract',['clang',*common,'-fsanitize=shadow-call-stack','-DNSO_PROFILE_IDENTITY_TESTING=1','-c',test,'-o',out/'identity-recovery-contract.android.o'])
 run('android-compile-identity-recovery-provider',['clang',*common,'-fsanitize=shadow-call-stack','-DNSO_PROFILE_IDENTITY_TESTING=1','-c',hle/'guest_process.c','-o',out/'identity-recovery-provider.android.o'])
