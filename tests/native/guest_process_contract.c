@@ -3947,6 +3947,96 @@ static int nv_allocator_contract(const char *path) {
            c.native_marker?"true":"false");
     return 0;
 }
+
+/* nv::InitializeGraphics (main NSO import index 352).
+ *
+ * Takes the NVN initialisation parameter block and its size, and returns
+ * nothing: the single guest call site (0x1434cb4) loads x0 and x1 right
+ * before the call and never consumes the result. The guest passes its own
+ * parameter block at module offset 0x82d6000 and the size 0x800000.
+ *
+ * The stub records both values and does not claim that a graphics device
+ * exists. The fixture drives the real guest import path and passes its own
+ * parameter block, so the boundary has to accept the two-argument void
+ * signature or the guest never runs. */
+#define NV_INITIALIZE_GRAPHICS_MANGLED "_ZN2nv18InitializeGraphicsEPvm"
+/* The module offset of the parameter block the fixture guest passes; see
+ * the nv-initialize-graphics fixture assembly in
+ * scripts/runtime/build_guest_process_contract.sh. */
+#define NV_FIXTURE_PARAMS_OFF 0xc0
+/* The size the fixture guest passes, the same value the real guest uses. */
+#define NV_FIXTURE_GRAPHICS_SIZE 0x800000
+struct nv_initialize_graphics_case {
+    guest_process *process;
+    int resolved;
+    int native_ran,native_marker;
+    uintptr_t native_param;
+    uint64_t native_size;
+    int direct_record_ok;
+};
+static void *exercise_nv_initialize_graphics(guest_process *p,void *opaque) {
+    struct nv_initialize_graphics_case *c=opaque;
+    c->process=p;
+    typedef void (*nv_initialize_graphics_fn)(void *,uint64_t);
+    nv_initialize_graphics_fn init_graphics=(nv_initialize_graphics_fn)(uintptr_t)guest_process_resolve(0,NV_INITIALIZE_GRAPHICS_MANGLED);
+    c->resolved=init_graphics!=NULL;
+    expect_condition("nv-initialize-graphics-resolved",init_graphics!=NULL);
+    /* The real guest path: the fixture calls the import itself, so the
+     * boundary must accept the two-argument void signature or the guest
+     * never executes and the parameters are never observed. */
+    uint64_t output[2]={0xa5a5,0xa5a5},returned=0xa5a5;
+    uint64_t args[1]={(uintptr_t)output};
+    struct nso_result r=guest_process_call(p,0x20,args,1,&returned);
+#if defined(__ANDROID__) && defined(__aarch64__)
+    expect_value("nv-initialize-graphics-native-status",r.status,NSO_OK);
+    expect_value("nv-initialize-graphics-native-return",returned,0x91);
+    c->native_ran=1;
+    c->native_marker=output[0]==1;
+    expect_condition("nv-initialize-graphics-guest-call-returned",output[0]==1);
+    uint64_t base=nso_base(guest_process_module(p));
+    c->native_param=(uintptr_t)nso_host_nv_get_initialize_graphics_param();
+    c->native_size=nso_host_nv_get_initialize_graphics_size();
+    /* The guest's own parameter block reached the host unmoved. */
+    expect_value("nv-initialize-graphics-guest-param",c->native_param,base+NV_FIXTURE_PARAMS_OFF);
+    expect_value("nv-initialize-graphics-guest-size",c->native_size,NV_FIXTURE_GRAPHICS_SIZE);
+#else
+    /* No AArch64 executor on this host: the boundary is prepared but the raw
+     * guest entry cannot run here. Nothing may be faked in its place. */
+    expect_value("nv-initialize-graphics-native-unsupported",r.status,NSO_UNSUPPORTED);
+    expect_value("nv-initialize-graphics-native-no-raw-fallback",returned,0xa5a5);
+#endif
+    /* Direct host call: the parameters are recorded exactly as given. */
+    if(init_graphics) {
+        init_graphics((void *)(uintptr_t)0x1234,(uint64_t)0x20003);
+        uintptr_t param=(uintptr_t)nso_host_nv_get_initialize_graphics_param();
+        uint64_t size=nso_host_nv_get_initialize_graphics_size();
+        c->direct_record_ok=param==0x1234&&size==0x20003;
+        expect_value("nv-initialize-graphics-direct-param",param,0x1234);
+        expect_value("nv-initialize-graphics-direct-size",size,0x20003);
+    }
+    return &returned_token;
+}
+static int nv_initialize_graphics_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));
+    char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+    struct nv_initialize_graphics_case c={0};
+    void *value=NULL;
+    CHECK(succeeded(guest_process_run(p,exercise_nv_initialize_graphics,&c,&value)));
+    CHECK(value==&returned_token);
+    expect_condition("nv-initialize-graphics-resolved",c.resolved);
+    expect_condition("nv-initialize-graphics-direct-record",c.direct_record_ok);
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    /* The final gate. Every expect_* above must have passed; without this the
+     * contract could still exit 0 while the expectations had failed. */
+    CHECK(!errors);
+    /* The report states what this run observed, not a literal zero. */
+    printf("{\"nv_initialize_graphics_errors\":%u,\"resolved\":%s,\"direct_record_ok\":%s,"
+           "\"native_ran\":%s,\"guest_marker\":%s}\n",errors,
+           c.resolved?"true":"false",c.direct_record_ok?"true":"false",
+           c.native_ran?"true":"false",c.native_marker?"true":"false");
+    return 0;
+}
 int main(int argc,char **argv) {
     page=(size_t)sysconf(_SC_PAGESIZE);
     if(argc==2 && !strcmp(argv[1],"--tls-host-null")) {
@@ -3975,6 +4065,7 @@ int main(int argc,char **argv) {
     if(argc==3 && !strcmp(argv[1],"--ldn-get-state"))return ldn_state_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--oe-performance"))return oe_performance_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--nv-graphics-allocator"))return nv_allocator_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--nv-initialize-graphics"))return nv_initialize_graphics_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-fresh"))return tls_fresh_registration_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-null"))return tls_registration_contract(argv[2],1);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-repeat"))return tls_registration_contract(argv[2],2);

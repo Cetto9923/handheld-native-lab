@@ -682,6 +682,30 @@ nv_free_fn nso_host_nv_get_graphics_devtools_deallocator(void) { return s_nv_dev
 nv_realloc_fn nso_host_nv_get_graphics_devtools_reallocator(void) { return s_nv_devtools_realloc; }
 void *nso_host_nv_get_graphics_devtools_userdata(void) { return s_nv_devtools_userdata; }
 
+/* nv::InitializeGraphics (main NSO import index 352).
+ *
+ * The guest hands the NVN library its initialisation parameter block and
+ * the size of that block, and the call has a single site (0x1434cb4) whose
+ * result is never consumed, so the ABI is two arguments and no return:
+ * x0 is the parameter block (the guest passes its own data at module offset
+ * 0x82d6000) and x1 is the size (the guest passes 0x800000).
+ *
+ * The stub records both and does not claim that a graphics device exists:
+ * the real NVN device is the T04 Vulkan bridge, which is not in this runtime
+ * yet. The recorded values are what the guest actually asked for, so the
+ * evidence stays usable once that bridge lands. */
+static void *s_nv_initialize_graphics_param = NULL;
+static uint64_t s_nv_initialize_graphics_size = 0;
+
+void nso_host_nv_initialize_graphics(void *param,uint64_t size) {
+    s_nv_initialize_graphics_param=param;
+    s_nv_initialize_graphics_size=size;
+    fprintf(stderr,"[hle] nv::InitializeGraphics: param=%p size=0x%" PRIx64 " recorded (no NVN graphics device exists in this runtime yet)\n",param,size);
+}
+
+void *nso_host_nv_get_initialize_graphics_param(void) { return s_nv_initialize_graphics_param; }
+uint64_t nso_host_nv_get_initialize_graphics_size(void) { return s_nv_initialize_graphics_size; }
+
 static nn_fs_alloc_fn s_fs_alloc = NULL;
 static nn_fs_free_fn s_fs_free = NULL;
 
@@ -3135,6 +3159,8 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_nv_set_graphics_allocator;
     if(!strcmp(name,"_ZN2nv28SetGraphicsDevtoolsAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_"))
         return (uint64_t)(uintptr_t)&nso_host_nv_set_graphics_devtools_allocator;
+    if(!strcmp(name,"_ZN2nv18InitializeGraphicsEPvm"))
+        return (uint64_t)(uintptr_t)&nso_host_nv_initialize_graphics;
     if(!strcmp(name,"_ZN2nn2oe27SetPerformanceConfigurationENS0_15PerformanceModeEi"))
         return (uint64_t)(uintptr_t)&nso_host_oe_set_performance_configuration;
     if(!strcmp(name,"_ZN2nn2oe18GetPerformanceModeEv"))

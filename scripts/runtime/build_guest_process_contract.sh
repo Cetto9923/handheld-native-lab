@@ -880,6 +880,57 @@ nv_stderr=(out/'host-nv-graphics-allocator-contract'/'stderr.log').read_text()
 if '[hle] nv::SetGraphicsAllocator:' not in nv_stderr:raise RuntimeError('nv::SetGraphicsAllocator stub did not run')
 if '[hle] nv::SetGraphicsDevtoolsAllocator:' not in nv_stderr:raise RuntimeError('nv::SetGraphicsDevtoolsAllocator stub did not run')
 if '[boundary-unsupported]' in nv_stderr:raise RuntimeError('nv graphics allocator import signature was refused by the boundary')
+# nv::InitializeGraphics (main NSO import index 352) takes the NVN
+# initialisation parameter block and its size and returns nothing. The
+# fixture calls the import through the real guest import path and passes its
+# own parameter block, so the boundary has to accept the two-argument void
+# signature or the guest never runs.
+nv_init_assembly=out/'nv-initialize-graphics-fixture.S'
+nv_init_assembly.write_text(r''' .text
+.org 0x20
+.global fixture_entry
+fixture_entry:
+ stp x29, x30, [sp, #-32]!
+ str x19, [sp, #16]
+ mov x29, sp
+ mov x19, x0
+ adrp x16, fixture_got
+ add x16, x16, :lo12:fixture_got
+ ldr x17, [x16]
+ adr x0, params
+ mov w1, #0x800000
+ blr x17
+ mov x9, #1
+ str x9, [x19]
+ mov x0, #0x91
+ ldr x19, [sp, #16]
+ ldp x29, x30, [sp], #32
+ ret
+.org 0xc0
+.global params
+params: .zero 8
+.section .fixture_got,"aw"
+.global fixture_got
+fixture_got: .zero 8
+''')
+run('fixture-nv-initialize-graphics-assemble',['clang',*common,'-c',nv_init_assembly,'-o',out/'nv-initialize-graphics-fixture.o'])
+run('fixture-nv-initialize-graphics-link',['env',f'DYLD_LIBRARY_PATH={a.rust_root}/lib',ld,'--no-undefined','--build-id=none','--image-base=0','-Ttext=0','--section-start=.fixture_got=0x8200','-e','fixture_entry','--oformat=binary','-o',out/'nv-initialize-graphics-fixture.raw',out/'nv-initialize-graphics-fixture.o'])
+raw=(out/'nv-initialize-graphics-fixture.raw').read_bytes();data=bytearray((out/'contract.nso').read_bytes())
+data[0x200:0x300]=raw[:0x100].ljust(0x100,b'\0');struct.pack_into('<I',data,0x204,0x4000)
+names=b'\0_ZN2nv18InitializeGraphicsEPvm\0'
+data[0x1160:0x1160+len(names)]=names
+# One dynsym entry here, so the base RELA table (DT_RELASZ = 72, three
+# entries) is truncated to 24 bytes and only the first RELA stays: the two
+# later ones point at symbol 2, which this fixture does not define. Dynamic
+# index 5 is DT_RELASZ, not DT_RELAENT (index 6) - the base already carries
+# 24 there.
+struct.pack_into('<II',data,0x1080,1,2);struct.pack_into('<Q',data,0x2000+3*16+8,len(names));struct.pack_into('<Q',data,0x2000+5*16+8,24)
+(out/'nv-initialize-graphics.nso').write_bytes(data)
+manifest['generated_fixtures']['nv-initialize-graphics.nso']={'bytes':len(data),'sha256':digest(out/'nv-initialize-graphics.nso'),'kind':'self-authored single-import two-argument nv graphics initialisation fixture','assembly_sha256':digest(nv_init_assembly)}
+run('host-nv-initialize-graphics-contract',[out/'guest_process_contract.host','--nv-initialize-graphics',out/'nv-initialize-graphics.nso'])
+nv_init_stderr=(out/'host-nv-initialize-graphics-contract'/'stderr.log').read_text()
+if '[hle] nv::InitializeGraphics:' not in nv_init_stderr:raise RuntimeError('nv::InitializeGraphics stub did not run')
+if '[boundary-unsupported]' in nv_init_stderr:raise RuntimeError('nv graphics initialisation import signature was refused by the boundary')
 locale_assembly=out/'locale-fixture.S'
 locale_assembly.write_text(r''' .text
 .org 0x20

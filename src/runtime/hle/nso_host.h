@@ -121,6 +121,20 @@ nv_alloc_fn nso_host_nv_get_graphics_devtools_allocator(void);
 nv_free_fn nso_host_nv_get_graphics_devtools_deallocator(void);
 nv_realloc_fn nso_host_nv_get_graphics_devtools_reallocator(void);
 void *nso_host_nv_get_graphics_devtools_userdata(void);
+
+/* nv::InitializeGraphics (main NSO import index 352).
+ *
+ * Takes the NVN initialisation parameter block and its size, and returns
+ * nothing: the single guest call site (0x1434cb4) loads x0 and x1 right
+ * before the call and never consumes the result. The guest passes its own
+ * parameter block at module offset 0x82d6000 and the size 0x800000.
+ *
+ * The stub records both values and does not claim that a graphics device
+ * exists. The real NVN device is the T04 Vulkan bridge, which is not in this
+ * runtime yet. */
+void nso_host_nv_initialize_graphics(void *param,uint64_t size);
+void *nso_host_nv_get_initialize_graphics_param(void);
+uint64_t nso_host_nv_get_initialize_graphics_size(void);
 void *nso_host_movie_get_allocator_userdata(void);
 
 typedef void *(*nn_fs_alloc_fn)(size_t);

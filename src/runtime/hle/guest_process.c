@@ -1165,6 +1165,7 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
         "_ZN2nn2oe18GetPerformanceModeEv",
         "_ZN2nv20SetGraphicsAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_",
         "_ZN2nv28SetGraphicsDevtoolsAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_",
+        "_ZN2nv18InitializeGraphicsEPvm",
         "_ZN2nn4util11ReferSymbolEPKv","nnutilReferSymbol",
         "_ZN2nn2os15InitializeMutexEPNS0_9MutexTypeEbi","nnosInitializeMutex",
         "_ZN2nn2os13FinalizeMutexEPNS0_9MutexTypeE","nnosFinalizeMutex",
@@ -1415,6 +1416,11 @@ static int import_signature(const char *name,nb_signature *out) {
      * already bound movie::SetAllocator. */
     else if(!strcmp(name,"_ZN2nv20SetGraphicsAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_") ||
             !strcmp(name,"_ZN2nv28SetGraphicsDevtoolsAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_")) {arguments=4;returns=0;}
+    /* nv::InitializeGraphics: the NVN initialisation parameter block and
+     * its size, and no return. The Itanium mangling carries no return type,
+     * so the return type comes from the guest: the single call site leaves
+     * w0 unused right after the call. */
+    else if(!strcmp(name,"_ZN2nv18InitializeGraphicsEPvm")) {arguments=2;returns=0;}
     else if(!strcmp(name,"nnsslInitialize")) {arguments=0;returns=1;}
     else if(!strcmp(name,"nnsslFinalize")) {arguments=0;returns=1;}
     else if(!strcmp(name,"_ZN2nn4util12GenerateUuidEv")) {arguments=0;returns=2;}
