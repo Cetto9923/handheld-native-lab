@@ -141,6 +141,24 @@ self proof of the nine that already exist:
 | B | the same break, the final gate removed, the reported error count hardcoded to 0 | **exit 0** while the stdout still reports `errors:0` and the stderr carries the real `[check-fail]` |
 | C | the contract untouched, the recorder stops calling the guest | **exit 1** |
 
+## The evidence of this card
+
+| what | how | result |
+|---|---|---|
+| the host gate | `sh scripts/runtime/build_guest_process_contract.sh --out .local/build-p-mm-24c --toolchain .local/minimal-ndk/toolchain --resource-quota-bytes 16777216` | **exit 0**, 232 cases, `nvn_command_buffer_errors: 0` |
+| the case of this card | `tests/native/nvn_command_memory_contract.c` linked with the objects of that build, run with `--nvn-command-memory` | **exit 0**, `{"nvn_command_memory_errors":0,"packages":2,"callback_calls":132,"host_segments":66,"host_segment_bytes":0,"host_segment_bound":16777216,"records":41927,"refused_address":1}` |
+| the self proof | `FFRS_SELF_PROOF_BUILD=.local/build-p-mm-24c bash scripts/runtime/selfproof_nvn_command_memory.sh` | A **exit 1**, B **exit 0** (the stdout still reports `errors:0`, the stderr carries the real `[check-fail]`), C **exit 1** |
+
+The logs are `.local/logs/p-mm-24-command-memory-contract-selfproof.log`,
+`.local/logs/p-mm-24-command-memory-contract.stdout`,
+`.local/logs/p-mm-24-command-memory-contract.stderr` and
+`.local/logs/p-mm-24-host-gate.log` in the main checkout, and the manifest of
+the gate is `.worktrees/p-mm-24/.local/build-p-mm-24c/manifest.json`.
+
+The gate of this card does **not** run the case of this card: the build
+script is not this card's file, and the coordinator wires the second contract
+binary into it.
+
 ## What the card asked and what this card could not do as written
 
 Three points of the card do not hold against the code in this repository. The
