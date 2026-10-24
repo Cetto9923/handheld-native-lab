@@ -1,3 +1,29 @@
+# P-MM-22 闭环 / 九族自证修复｜2026-10-25 02:35 Asia/Shanghai — **命令录制已换成同款游戏参考树的真实记录格式**（handle → 不可变命令包、调用期拷贝、guest 回调走边界）；**九个 NVN 族自证全部恢复 A红/B假绿/C红**；**帧数仍为 0**
+
+- **结论**：命令录制不再是自造的平行格式，**换成 `.local/refs/nxnative/dm/gfx/nvn/nvn_obj.h` 里本游戏自己的记录格式**（`op_hdr{op,size}` + 载荷结构 + opcode 表），并且 **handle 现在指向一个不可变的命令包**。但**帧数仍是 0**：命令包**没有消费者**，没有 submit 路径，没有任何像素上过屏。**不声称标题画面、不声称可玩、不承诺第一章时间。**
+  1. **记录格式已对齐（worker 交付，已接线）**：`nvn_command_buffer.{h,c}` 重写为 `op_hdr{op,size}` + 载荷结构，**47/49 个 opcode 已写**，编号与参考树**一一对应**（`JUMP` 与 `BEGIN` 未写）；`nvn_command_buffer.generated.c` 重新生成；新增 `nvn_command_buffer_opcode_name()`。**族项新增 `status` 字段**：`NVN_CB_ENTRY_SIGNATURE_CONFIRMED` 与 `NVN_CB_ENTRY_DIAGNOSTIC_ONLY`——**16 个签名未证实的入口标为诊断专用**，dispatch 打印 `-> diagnostic recorder only (...)`，**不 trap**（guest 已经在调用，trap 会打断推进），但日志必须能区分。
+  2. **handle → 不可变命令包**：`nvn_command_package{handle,records,bytes,record_count}` + `nvn_command_buffer_get_package()`。**同一 buffer 再录、finalize、地址复用都不得覆盖旧包**；未知 handle 被拒。契约按新格式重写：检查 opcode、payload **持数据而不是持地址**、再录/复用不覆盖旧包、未知 handle 被拒。
+  3. **调用期拷贝**：带指针的入口在**调用期间**把数据拷走，`copies_bytes` 统计**所有**调用期拷贝（payload 拷贝也计入）。理由是硬的：**guest 在调用返回后随时可能覆写自己的内存**，只记地址的记录到执行时已不可读。记录/拷贝上限 4 KiB / 64 KiB，**超限拒绝不截断**。
+  4. **guest 回调边界**：`nvn_command_buffer_set_guest_call()` 注册式 hook，在 `prepare_boundary_locked()` 里 `boundary_initialized=1` 之后注册；调用走 `nb_call_from_host` + `guest_process_current_boundary()`。**没有 hook 时点名拒绝并计数，绝不直调 guest 指针**；边界拒绝时**没有 raw fallback**（这正是这个 hook 存在的理由）。
+  5. **宿主门（干净重建 `.local/build-p-mm-28`）exit 0**：契约报告 `nvn_command_buffer_errors:0`（names 156 / calls 4 / recorded 6 / handles 2 / packages 2 / copied_bytes 48）、`nvn_builder_errors:0`、`nvn_queue_errors:0`。**232 个用例全绿。**
+  6. **九个族自证全部恢复 A红 / B假绿 / C红**（在 `.local/build-p-mm-28` 上重跑，逐族逐变体核对过退出码与 check-fail 标签）：
+     | 族 | A（改期望，末门保留） | B（同处改坏 + 去末门 + 错误数硬编码 0） | C（契约不动，只改桩） |
+     |---|---|---|---|
+     | command_buffer / builder / queue / memory_pool / program / blend_state / render_state / sampler_pool / texture_pool | **exit 1** | **exit 0，且 stdout 谎报 `errors:0` 而 check-fail 确实存在** | **exit 1** |
+     变体 B 的退出码是 0，**但日志里同时有真实的 `[check-fail]` 行**，也就是说「假绿」是被实测出来的，不是被声称的。
+  7. **自证脚本坏过，原因已定位并写进记录**（中间那些关于自证的结论**没有跑过**，不能当作已验证）：
+     - **续行符写错**：`LIBOBJS` 的 `for object in ...` 里写成了 `\ `（反斜杠后跟空格）而不是**行尾续行** ⇒ shell 把反斜杠当字面量、对象名被拆开 ⇒ **9 个脚本全部 exit 127**。
+     - **被测族的真对象与 variant C 的桩一起链接** ⇒ 重复符号。正确形态是**族对象不进共享列表，按变体加**（A/B 加真对象，C 加桩），queue 脚本本来就是这么写的，builder 与 command_buffer 两个脚本不是。
+     - **漏了 `nvn_backend_none.host.o`**：builder / command_buffer 两个脚本没链它，而 `_nvn_device_default_backend` 的实现就在里面 ⇒ `ld: symbol(s) not found`。
+     - **变体 B 生成器改错了实参**：把 `errors` 换成 `(unsigned long long)count`，与格式串里的 `%zu` 不匹配 ⇒ 编译失败。正确做法是**丢掉 `errors` 那个实参**（格式串里已经是字面 0），其余实参保持原类型。
+     - **变体 C 的桩让静态函数变成未使用**：`apply_defaults(s);` → `(void)s;` 触发 `-Werror=unused-function` ⇒ 改成 `(void)apply_defaults; (void)s;`，函数仍被引用但不再生效。
+  8. **P-MM-23 仍在施工，设备锁未释放**：`.local/agent-pm/BOOT_LOCK_MM_A` 自 01:42 起被持有，其目标文件 `src/graphics/vulkan_probe/vulkan_shader_probe.c`、`scripts/graphics/build_vulkan_shader_probe_android.sh` 至今**未产出**。**我方因此暂不碰设备**，本轮只做宿主侧。
+- **本单未解决 / 风险**：**帧数仍为 0**；**命令包没有消费者**（replay 未实现，无 submit、无 present）；记录里仍是 **guest 的 SDK 字节副本**，不是参考树的 `tex_t/prog_t/dpool_t` 宿主模型，replay 需要自己解 guest 的 `NVNtexture`/`NVNprogram` 布局；**descriptor pool 基址 `tbase/sbase` 仍为 0**，纹理/采样器池编号未接进命令流；**downsample 记录的 region 为零**；**命令包从不释放**（256 MiB / 65536 个上限后点名拒绝，handle 生命周期未交代）；`GetCommandMemoryUsed` 报的是**我们写入的字节数**，与真实驱动口径不同；**NVN 陷阱仍是进程级终止**（`_exit(97)` 会带走整个 app，进入可玩形态前必须改成只终止 guest）；`nvnDeviceGetInteger` 的 53/105 依据仍只是 vendored 头描述；**shader 路径仍未被任何设备接受过**（无真机 `VkShaderModule`、无 `VkPipeline`、无 draw 消费）；`nn::hid` 输入族未动；368 个未绑定导入**不可当关键路径完成度**；vendored 头是**别的游戏**（Darksiders II）的 NVN 53.105 重建件 ⇒ **156 个命令入口里 140 个的签名未对本游戏证实**。
+- **下一项可证伪实验（按 guest 真实调用顺序）**：
+  1. **设备锁一释放就重跑真机**（≥300 秒窗口、独立日志目录）：看 guest 是否越过 `nvnSamplerBuilderSetDefaults`，并记下**下一个**第一致命；**guest 一旦开始设 program，就会吐出第一个真实 shader 的 content 键** ⇒ 与离线产出的 SPIR-V 对上。
+  2. **接缝的第一条**：命令包 → `nvnQueueSubmitCommands` / `nvnQueuePresentTexture`，走**同一个 VkDevice / queue**（`nvn_backend_vulkan.c` 里已建的真设备）。**第一帧必须是 guest 自己的命令流解释得出来的颜色，不是宿主探针色。**
+  3. **descriptor pool 与 handle 生命周期**：把 `tbase/sbase` 接进命令流，把命令包的释放做成可查的账，否则 replay 读到的是空池。
+
 # P-MM-20 闭环 / P-MM-21 与 P-MM-22 派工｜2026-10-25 01:55 Asia/Shanghai — **guest 越过 `nvnCommandBufferInitialize`**（命令缓冲族 156 名已接入）；新的第一致命是 **`nvnSamplerBuilderSetDefaults`**；**shader 身份已实测（content 键与 control 键同源可复现，全量碰撞 0）**；**`spirv-val` 结论已收窄为「默认环境 6/6，Vulkan 目标环境 4/6」**；**「上游已有完整 NVN ABI」的说法已撤回**
 
 - **结论**：命令缓冲族**确实把 guest 往前推了一段**（真机 transcript 见 `.local/logs/p-mm-22-guest-transcript.log`，57023 行）。**但帧数仍为 0**，未达标题画面、不可玩，不承诺第一章时间。本轮同时收到 Codex 的只读复核（`/Users/yuyan9923/Documents/Codex/2026-10-25/kiro-http-localhost-5476-chat-diagnosing/outputs/MiniMAX执行中复核-追加纠偏.md`），**四项结论已按复核收窄或撤回**，不再沿用旧说法。
