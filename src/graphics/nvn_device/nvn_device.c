@@ -18,6 +18,7 @@
  * starts, which is what lets the report name the call site.
  */
 #include "nvn_device.h"
+#include "nvn_queue.h"
 
 #include <inttypes.h>
 #include <stdio.h>
@@ -88,6 +89,17 @@ const nvn_backend *nvn_device_backend(void) {
     return s_backend;
 }
 
+nvn_device_state *nvn_device_state_handle(void) { return &s_device; }
+
+int nvn_device_is_ready(const void *device) {
+    if (!s_device.initialized || !s_device.real_device) return 0;
+    /* The guest passes its own device pointer, never NULL. A NULL pointer is
+     * therefore not a device, and saying so keeps "no device in the builder"
+     * distinguishable from "the device of this process". */
+    if (!device) return 0;
+    return device == s_device.guest_device;
+}
+
 /* ------------------------------------------------------------------ */
 /* The builder                                                         */
 /* ------------------------------------------------------------------ */
@@ -113,8 +125,8 @@ static uint64_t nvn_builder_read_flags(const void *builder) {
 /* An entry point that returns nothing leaves x0 at zero, so a caller that
  * inspects x0 after the call gets a defined value instead of a stale
  * pointer. The guest does not read x0 after these calls; the contract does,
- * and it wants a defined answer. */
-#define NVN_VOID_RETURN() __asm__ volatile("mov x0, xzr")
+ * and it wants a defined answer. The macro lives in nvn_device.h, because the
+ * other object families need it too. */
 
 void nvn_device_builder_set_defaults(void *builder) {
     nvn_builder_layout *b = (nvn_builder_layout *)builder;
@@ -157,6 +169,7 @@ uint64_t nvn_device_initialize(void *device, void *builder) {
      * for its own values right after this call. */
     s_device.flags = (uint32_t)nvn_builder_read_flags(builder);
     s_device.builder = builder;
+    s_device.guest_device = device;
     s_device.initialized = 1;
     if (backend && backend->create) {
         s_device.real_device = backend->create(&s_device, builder) ? 1 : 0;
@@ -499,6 +512,20 @@ void *nvn_device_get_proc_address(void *device, const char *name) {
             s_device.implemented_resolved++;
             fprintf(stderr, "[nvn] nvnDeviceGetProcAddress: \"%s\" -> implemented\n", name);
             return s_implemented[i].fn;
+        }
+    }
+    /* The other object families carry their own name tables, so that a family
+     * can grow without touching this dispatch. */
+    {
+        size_t count = nvn_queue_family_count();
+        for (i = 0; i < count; i++) {
+            const nvn_queue_family_entry *entry = nvn_queue_family_entry_at(i);
+            if (!entry || !entry->name) continue;
+            if (!strcmp(name, entry->name)) {
+                s_device.implemented_resolved++;
+                fprintf(stderr, "[nvn] nvnDeviceGetProcAddress: \"%s\" -> implemented\n", name);
+                return entry->fn;
+            }
         }
     }
     /* Not implemented yet. The guest never checks the result, so it gets a

@@ -29,11 +29,19 @@ static void nvn_backend_none_describe(const nvn_device_state *device, char *out,
     snprintf(out, out_size, "no Vulkan implementation in this runtime build");
 }
 
+static int nvn_backend_none_get_queue(nvn_device_state *device, void **out_queue) {
+    (void)device;
+    (void)out_queue;
+    /* There is no device in this build, so there is no queue either. */
+    return 0;
+}
+
 static const nvn_backend s_none_backend = {
     "none",
     nvn_backend_none_create,
     nvn_backend_none_destroy,
     nvn_backend_none_describe,
+    nvn_backend_none_get_queue,
 };
 
 const nvn_backend *nvn_device_default_backend(void) { return &s_none_backend; }

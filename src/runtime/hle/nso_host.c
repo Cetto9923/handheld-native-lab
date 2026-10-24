@@ -4,6 +4,7 @@
 #include "exit_registry.h"
 #include "guest_process.h"
 #include "guest_tp.h"
+#include "native_window.h"
 #include "../nso/native_boundary.h"
 #include "../nso/nso_loader.h"
 #include "../../graphics/nvn_device/nvn_device.h"
@@ -2546,6 +2547,276 @@ bool nso_host_os_is_event_signaled(void *event) {
 }
 
 /* ========================================================================= */
+/* nn::vi display bridge HLE Implementation                                  */
+/* ========================================================================= */
+
+/* The guest builds one display object and keeps the handles this bridge
+ * hands out: the display handle at +0x18, the native window at +0x20, the
+ * layer handle at +0x28 and the vsync event at +0x30 of its own 0x60 byte
+ * object. The guest never dereferences the handles, it only hands them back
+ * to the other four nn::vi calls, so they are opaque host tokens. The magic
+ * values below turn a wrong or stale handle into a detected error instead of
+ * a silently accepted pointer. */
+#define NN_VI_DISPLAY_MAGIC 0x56494453u /* "VIDS" */
+#define NN_VI_LAYER_MAGIC   0x56494C53u /* "VILS" */
+
+struct nso_vi_display {
+    uint32_t magic;
+    uint32_t reserved;
+    void *window;               /* the platform window bound when the display opened */
+    uint64_t window_generation; /* the window holder generation at that moment */
+    int32_t width;              /* 0: this layer cannot measure the platform window */
+    int32_t height;
+    void *vsync_event;          /* the guest's nn::os::SystemEventType object */
+};
+
+struct nso_vi_layer {
+    uint32_t magic;
+    uint32_t reserved;
+    struct nso_vi_display *display;
+};
+
+static pthread_mutex_t s_vi_mutex = PTHREAD_MUTEX_INITIALIZER;
+static bool s_vi_initialized = false;
+static void *s_vi_vsync_event = NULL;
+
+/* The handles this bridge issued.
+ *
+ * A handle is validated by comparing it against this table, not by reading a
+ * field of it: the guest passes the handle back, and a guest that hands over
+ * something else must not make the host dereference an address it never
+ * wrote. The magic values in the structs stay as a second line of defence,
+ * but they are only read for a handle this bridge issued. */
+#define NN_VI_MAX_HANDLES 16
+static nso_vi_display *s_vi_displays[NN_VI_MAX_HANDLES];
+static nso_vi_layer *s_vi_layers[NN_VI_MAX_HANDLES];
+
+static bool vi_display_is_valid(const nso_vi_display *display) {
+    bool valid = false;
+    if (!display) return false;
+    pthread_mutex_lock(&s_vi_mutex);
+    for (size_t i = 0; i < NN_VI_MAX_HANDLES; i++) {
+        if (s_vi_displays[i] == display) { valid = true; break; }
+    }
+    pthread_mutex_unlock(&s_vi_mutex);
+    return valid && display->magic == NN_VI_DISPLAY_MAGIC;
+}
+
+static bool vi_layer_is_valid(const nso_vi_layer *layer) {
+    bool valid = false;
+    if (!layer) return false;
+    pthread_mutex_lock(&s_vi_mutex);
+    for (size_t i = 0; i < NN_VI_MAX_HANDLES; i++) {
+        if (s_vi_layers[i] == layer) { valid = true; break; }
+    }
+    pthread_mutex_unlock(&s_vi_mutex);
+    return valid && layer->magic == NN_VI_LAYER_MAGIC;
+}
+
+/* Registers an issued handle. Returns 0 when the table is full, which is
+ * reported to the guest instead of handing out a handle that cannot be
+ * validated later. */
+static bool vi_register_display(nso_vi_display *display) {
+    bool registered = false;
+    pthread_mutex_lock(&s_vi_mutex);
+    for (size_t i = 0; i < NN_VI_MAX_HANDLES; i++) {
+        if (!s_vi_displays[i]) { s_vi_displays[i] = display; registered = true; break; }
+    }
+    pthread_mutex_unlock(&s_vi_mutex);
+    return registered;
+}
+
+static bool vi_register_layer(nso_vi_layer *layer) {
+    bool registered = false;
+    pthread_mutex_lock(&s_vi_mutex);
+    for (size_t i = 0; i < NN_VI_MAX_HANDLES; i++) {
+        if (!s_vi_layers[i]) { s_vi_layers[i] = layer; registered = true; break; }
+    }
+    pthread_mutex_unlock(&s_vi_mutex);
+    return registered;
+}
+
+void nso_host_vi_initialize(void) {
+    pthread_mutex_lock(&s_vi_mutex);
+    bool first = !s_vi_initialized;
+    s_vi_initialized = true;
+    pthread_mutex_unlock(&s_vi_mutex);
+    if (first) {
+        /* Bookkeeping only. There is no display device behind this call on
+         * Android: the window belongs to the Activity and reaches the guest
+         * through nn::vi::GetNativeWindow. Nothing is claimed here that does
+         * not exist. */
+        fprintf(stderr, "[hle] nn::vi::Initialize: display bridge initialised (bookkeeping only, no display device is opened here)\n");
+    } else {
+        fprintf(stderr, "[hle] nn::vi::Initialize: display bridge was already initialised\n");
+    }
+}
+
+void nso_host_vi_open_default_display(nso_vi_display **out_display) {
+    if (!out_display) {
+        fprintf(stderr, "[hle] nn::vi::OpenDefaultDisplay: null out_display, nothing written\n");
+        return;
+    }
+    struct nso_vi_display *display = (struct nso_vi_display *)calloc(1, sizeof(*display));
+    if (!display) {
+        *out_display = NULL;
+        fprintf(stderr, "[hle] nn::vi::OpenDefaultDisplay: out of memory -> *out_display=NULL, no display created\n");
+        return;
+    }
+    void *window = nso_host_native_window_get();
+    uint64_t generation = nso_host_native_window_generation();
+    display->magic = NN_VI_DISPLAY_MAGIC;
+    display->window = window;
+    display->window_generation = generation;
+    /* The HLE layer has no portable way to measure the platform window: the
+     * size belongs to the Android layer that owns the ANativeWindow
+     * (src/android/native/game_window_jni.cpp). A 0 here therefore means "not
+     * measured in this layer", not "a display without pixels". */
+    display->width = 0;
+    display->height = 0;
+    display->vsync_event = NULL;
+    if (!vi_register_display(display)) {
+        free(display);
+        *out_display = NULL;
+        fprintf(stderr, "[hle] nn::vi::OpenDefaultDisplay: no room for another display handle -> "
+                        "*out_display=NULL, no display created\n");
+        return;
+    }
+    *out_display = display;
+
+    fprintf(stderr, "[hle] nn::vi::OpenDefaultDisplay: display=%p bound to window=%p generation=%" PRIu64
+                    " size=%dx%d (0x0 means the size is not measurable in this layer)\n",
+            (void *)display, window, generation, display->width, display->height);
+}
+
+void nso_host_vi_get_display_vsync_event(void *event, nso_vi_display *display) {
+    if (!event) {
+        fprintf(stderr, "[hle] nn::vi::GetDisplayVsyncEvent: null event object, nothing written\n");
+        return;
+    }
+    if (!vi_display_is_valid(display)) {
+        fprintf(stderr, "[hle] nn::vi::GetDisplayVsyncEvent: display=%p is not a handle this bridge issued"
+                        " -> no event created, the guest's event object is left untouched and unsignalled\n",
+                (void *)display);
+        return;
+    }
+    /* A real nn::os event, built with the already bound nn::os event family
+     * so that nn::os::WaitEvent and nn::os::SignalEvent operate on the same
+     * object. It starts NOT signalled: the vsync event stands for a frame
+     * that was drawn, and this runtime has not presented a frame yet, so
+     * signalling it now would be a claim about frames that were never drawn.
+     * There is deliberately no timer driven vsync here either. */
+    nso_host_os_initialize_event(event, false, NN_OS_EVENT_CLEAR_MODE_MANUAL);
+    /* The guest's field is an nn::os::SystemEventType, so the object is also
+     * registered with the nn::os system event family that owns that type:
+     * nn::os::WaitSystemEvent then waits on a known event instead of an
+     * implicitly created one. That family owns the state and never rewrites
+     * the guest object. */
+    nso_system_event_entry *system_event = borrow_system_event(event);
+    if (system_event) {
+        pthread_mutex_lock(&s_system_event_mutex);
+        system_event->signaled = false;
+        system_event->initialized = true;
+        pthread_mutex_unlock(&s_system_event_mutex);
+    }
+    pthread_mutex_lock(&s_vi_mutex);
+    display->vsync_event = event;
+    s_vi_vsync_event = event;
+    pthread_mutex_unlock(&s_vi_mutex);
+
+    fprintf(stderr, "[hle] nn::vi::GetDisplayVsyncEvent: display=%p event=%p created, not signalled"
+                    " (no frame has been presented yet, so there is no vsync to report)\n",
+            (void *)display, event);
+}
+
+void nso_host_vi_create_layer(nso_vi_layer **out_layer, nso_vi_display *display) {
+    if (!out_layer) {
+        fprintf(stderr, "[hle] nn::vi::CreateLayer: null out_layer, nothing written\n");
+        return;
+    }
+    if (!vi_display_is_valid(display)) {
+        *out_layer = NULL;
+        fprintf(stderr, "[hle] nn::vi::CreateLayer: display=%p is not a handle this bridge issued"
+                        " -> *out_layer=NULL, no layer created\n",
+                (void *)display);
+        return;
+    }
+    struct nso_vi_layer *layer = (struct nso_vi_layer *)calloc(1, sizeof(*layer));
+    if (!layer) {
+        *out_layer = NULL;
+        fprintf(stderr, "[hle] nn::vi::CreateLayer: out of memory -> *out_layer=NULL, no layer created\n");
+        return;
+    }
+    layer->magic = NN_VI_LAYER_MAGIC;
+    layer->display = display;
+    if (!vi_register_layer(layer)) {
+        free(layer);
+        *out_layer = NULL;
+        fprintf(stderr, "[hle] nn::vi::CreateLayer: no room for another layer handle -> "
+                        "*out_layer=NULL, no layer created\n");
+        return;
+    }
+    *out_layer = layer;
+
+    fprintf(stderr, "[hle] nn::vi::CreateLayer: layer=%p bound to display=%p window=%p\n",
+            (void *)layer, (void *)display, display->window);
+}
+
+void nso_host_vi_get_native_window(void **out_window, nso_vi_layer *layer) {
+    if (!out_window) {
+        fprintf(stderr, "[hle] nn::vi::GetNativeWindow: null out_window, nothing written\n");
+        return;
+    }
+    if (!vi_layer_is_valid(layer)) {
+        *out_window = NULL;
+        fprintf(stderr, "[hle] nn::vi::GetNativeWindow: layer=%p is not a handle this bridge issued"
+                        " -> *out_window=NULL, no window written\n",
+                (void *)layer);
+        return;
+    }
+    nso_vi_display *display = layer->display;
+    void *window = nso_host_native_window_get();
+    if (!window) {
+        *out_window = NULL;
+        fprintf(stderr, "[hle] nn::vi::GetNativeWindow: layer=%p display=%p -> *out_window=NULL"
+                        " (the platform has published no window yet; no window is invented)\n",
+                (void *)layer, (void *)display);
+        return;
+    }
+    if (display && display->window != window) {
+        /* The window the display was opened against is not the window the
+         * platform publishes now: the Activity replaced its Surface. The live
+         * window is handed out, because the stale one may already have been
+         * released, and the mismatch is reported instead of being hidden. */
+        fprintf(stderr, "[hle] nn::vi::GetNativeWindow: layer=%p display=%p was bound to window=%p"
+                        " generation=%" PRIu64 ", the platform publishes window=%p now"
+                        " -> the live window is handed out\n",
+                (void *)layer, (void *)display, display->window, display->window_generation, window);
+    }
+    *out_window = window;
+
+    fprintf(stderr, "[hle] nn::vi::GetNativeWindow: layer=%p display=%p -> *out_window=%p"
+                    " (the platform window a Vulkan surface is created from)\n",
+            (void *)layer, (void *)display, window);
+}
+
+void nso_host_vi_signal_vsync_event(void) {
+    pthread_mutex_lock(&s_vi_mutex);
+    void *event = s_vi_vsync_event;
+    pthread_mutex_unlock(&s_vi_mutex);
+    if (!event) {
+        fprintf(stderr, "[hle] nn::vi: no vsync event has been requested by the guest, nothing signalled\n");
+        return;
+    }
+    /* Both families that can wait on the guest's event object are signalled,
+     * so the wake up does not depend on which one the guest uses. */
+    nso_host_os_signal_event(event);
+    nso_host_os_signal_system_event(event);
+
+    fprintf(stderr, "[hle] nn::vi: vsync event=%p signalled after a present\n", event);
+}
+
+/* ========================================================================= */
 /* posix_memalign / memalign HLE Implementation                              */
 /* ========================================================================= */
 
@@ -3232,6 +3503,20 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_hid_initialize_keyboard;
     if(!strcmp(name,"_ZN2nn3hid15InitializeMouseEv"))
         return (uint64_t)(uintptr_t)&nso_host_hid_initialize_mouse;
+    /* nn::vi display bridge: the five imports of the guest's display object
+     * constructor. The mangled names carry no return type, so the void
+     * return comes from the call sites (0x51eac4 to 0x51eaf0), where every
+     * call is followed by an x0 overwrite or an x1 load. */
+    if(!strcmp(name,"_ZN2nn2vi10InitializeEv"))
+        return (uint64_t)(uintptr_t)&nso_host_vi_initialize;
+    if(!strcmp(name,"_ZN2nn2vi18OpenDefaultDisplayEPPNS0_7DisplayE"))
+        return (uint64_t)(uintptr_t)&nso_host_vi_open_default_display;
+    if(!strcmp(name,"_ZN2nn2vi20GetDisplayVsyncEventEPNS_2os15SystemEventTypeEPNS0_7DisplayE"))
+        return (uint64_t)(uintptr_t)&nso_host_vi_get_display_vsync_event;
+    if(!strcmp(name,"_ZN2nn2vi11CreateLayerEPPNS0_5LayerEPNS0_7DisplayE"))
+        return (uint64_t)(uintptr_t)&nso_host_vi_create_layer;
+    if(!strcmp(name,"_ZN2nn2vi15GetNativeWindowEPPvPNS0_5LayerE"))
+        return (uint64_t)(uintptr_t)&nso_host_vi_get_native_window;
     if(!strcmp(name,"_ZN2nn2oe20GetCurrentFocusStateEv"))
         return (uint64_t)(uintptr_t)&nso_host_oe_get_current_focus_state;
     if(!strcmp(name,"_ZN2nn2oe44SetPerformanceModeChangedNotificationEnabledEb"))

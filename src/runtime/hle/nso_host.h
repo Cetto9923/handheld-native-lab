@@ -366,6 +366,38 @@ void nso_host_oe_set_performance_configuration(int32_t mode,int32_t clock);
 int32_t nso_host_oe_get_performance_mode(void);
 int32_t nso_host_oe_performance_clock(void);
 
+/* nn::vi display bridge (main NSO import indexes 228 to 232).
+ *
+ * The guest builds one display object (0x60 bytes) and calls these five
+ * imports in one straight-line block: Initialize, OpenDefaultDisplay,
+ * GetDisplayVsyncEvent, CreateLayer, GetNativeWindow. All five return
+ * nothing: after every one of them the next instruction overwrites x0 or
+ * loads x1 and none of them reads a result, so the Itanium mangling carries
+ * no return type.
+ *
+ * The guest stores the handles this bridge writes and hands them back to the
+ * other four calls; it never dereferences them. The handles are opaque host
+ * tokens that carry a magic value, so a wrong or stale handle is detected
+ * instead of being silently accepted.
+ *
+ * The platform window is never created here. It is the window the Activity
+ * published, read through nso_host_native_window_get(). */
+typedef struct nso_vi_display nso_vi_display;
+typedef struct nso_vi_layer nso_vi_layer;
+
+void nso_host_vi_initialize(void);
+void nso_host_vi_open_default_display(nso_vi_display **out_display);
+/* The event argument is the guest's own nn::os::SystemEventType object (the
+ * guest passes the address of its field), not a slot the host writes a
+ * pointer into. The host initialises that object in place. */
+void nso_host_vi_get_display_vsync_event(void *event, nso_vi_display *display);
+void nso_host_vi_create_layer(nso_vi_layer **out_layer, nso_vi_display *display);
+void nso_host_vi_get_native_window(void **out_window, nso_vi_layer *layer);
+/* Raises the vsync event of the display the guest opened. This is a host
+ * entry point, not a guest import: it may only be called after a real
+ * present, because the event stands for a frame that was actually drawn. */
+void nso_host_vi_signal_vsync_event(void);
+
 void nso_host_os_initialize_event(void *event, bool initially_signaled, int32_t clear_mode);
 void nso_host_os_finalize_event(void *event);
 void nso_host_os_signal_event(void *event);

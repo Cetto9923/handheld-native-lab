@@ -1154,6 +1154,13 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
         "_ZN2nn2oe15SetCpuBoostModeENS0_12CpuBoostModeE",
         "_ZN2nn3hid18InitializeKeyboardEv",
         "_ZN2nn3hid15InitializeMouseEv",
+        /* The nn::vi display bridge. The guest calls the five of them in one
+         * straight-line block, and none of them returns a value. */
+        "_ZN2nn2vi10InitializeEv",
+        "_ZN2nn2vi18OpenDefaultDisplayEPPNS0_7DisplayE",
+        "_ZN2nn2vi20GetDisplayVsyncEventEPNS_2os15SystemEventTypeEPNS0_7DisplayE",
+        "_ZN2nn2vi11CreateLayerEPPNS0_5LayerEPNS0_7DisplayE",
+        "_ZN2nn2vi15GetNativeWindowEPPvPNS0_5LayerE",
         "_ZN2nn2oe20GetCurrentFocusStateEv",
         "_ZN2nn2oe44SetPerformanceModeChangedNotificationEnabledEb",
         "_ZN2nn2oe42SetOperationModeChangedNotificationEnabledEb",
@@ -1383,6 +1390,17 @@ static int import_signature(const char *name,nb_signature *out) {
      * return type was settled from the two adjacent guest call sites
      * (0x51f618 and 0x51f61c), neither of which consumes a result. */
     else if(!strcmp(name,"_ZN2nn3hid18InitializeKeyboardEv") || !strcmp(name,"_ZN2nn3hid15InitializeMouseEv")) {arguments=0;returns=0;}
+    /* The nn::vi display bridge, called by the guest in one straight-line
+     * block at 0x51eac4 through 0x51eaf0. The Itanium mangling carries no
+     * return type, so the return type comes from the call sites: after every
+     * one of the five calls the next instruction overwrites x0 or loads x1,
+     * and none of them reads a result. The argument counts are the pointers
+     * those call sites set up: none, one, two, two, two. */
+    else if(!strcmp(name,"_ZN2nn2vi10InitializeEv")) {arguments=0;returns=0;}
+    else if(!strcmp(name,"_ZN2nn2vi18OpenDefaultDisplayEPPNS0_7DisplayE")) {arguments=1;returns=0;}
+    else if(!strcmp(name,"_ZN2nn2vi20GetDisplayVsyncEventEPNS_2os15SystemEventTypeEPNS0_7DisplayE")) {arguments=2;returns=0;}
+    else if(!strcmp(name,"_ZN2nn2vi11CreateLayerEPPNS0_5LayerEPNS0_7DisplayE")) {arguments=2;returns=0;}
+    else if(!strcmp(name,"_ZN2nn2vi15GetNativeWindowEPPvPNS0_5LayerE")) {arguments=2;returns=0;}
     /* nn::oe focus and notification setup, called by the guest in one
      * straight-line sequence at 0x51da10 through 0x51da50. GetCurrentFocusState
      * returns the u32 the guest stores and compares against 3; the three

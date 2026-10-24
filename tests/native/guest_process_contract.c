@@ -6,6 +6,7 @@
 #include "../../src/runtime/hle/guest_tp.h"
 #include "../../src/runtime/nso/native_boundary.h"
 #include "../../src/graphics/nvn_device/nvn_device.h"
+#include "../../src/graphics/nvn_device/nvn_queue.h"
 #include <errno.h>
 #include <ctype.h>
 #include <wctype.h>
@@ -4434,6 +4435,309 @@ static int nvn_device_contract(void) {
     return 0;
 }
 
+/* What this build has to be for the NVN queue family. The Android build has
+ * the Vulkan backend, so a queue can be created on a real device; the host
+ * build has no Vulkan implementation, so there is no device and the queue
+ * initialisation has to refuse. This is an expectation, not an input: it is
+ * deliberately a separate constant from NVN_EXPECT_REAL_DEVICE, so that a
+ * change in one does not silently change the other. */
+#if defined(__ANDROID__)
+#define NVN_QUEUE_EXPECT_REAL_QUEUE 1
+#else
+#define NVN_QUEUE_EXPECT_REAL_QUEUE 0
+#endif
+
+static int nvn_queue_contract(void) {
+    typedef void *(*bootstrap_fn)(const char *);
+    typedef void *(*lookup_fn)(void *, const char *);
+    typedef uint64_t (*init_fn)(void *, void *);
+    typedef void (*builder_set_defaults_fn)(void *);
+    typedef void (*builder_set_flags_fn)(void *, int);
+    typedef int (*builder_get_flags_fn)(const void *);
+    typedef void (*builder_set_device_fn)(void *, void *);
+    typedef void *(*builder_get_device_fn)(const void *);
+    typedef void (*builder_set_size_fn)(void *, uint64_t);
+    typedef uint64_t (*builder_get_size_fn)(const void *);
+    typedef void (*builder_set_memory_fn)(void *, void *, uint64_t);
+    typedef void *(*builder_get_memory_fn)(const void *);
+    typedef void (*builder_set_priority_fn)(void *, int);
+    typedef int (*builder_get_priority_fn)(const void *);
+    typedef int (*queue_initialize_fn)(void *, const void *, int);
+    typedef void (*queue_finalize_fn)(void *);
+    typedef int (*queue_get_error_fn)(const void *);
+    typedef uint64_t (*queue_get_used_fn)(const void *);
+    typedef void (*queue_reset_fn)(void *);
+    typedef void (*set_debug_label_fn)(void *, const char *);
+    nvn_queue_stats stats;
+    size_t i;
+
+    /* 1. The names have to resolve through the real device scoped lookup,
+     *    because that is the path the guest uses, and the same name has to
+     *    resolve to the same entry point every time. */
+    bootstrap_fn bootstrap =
+        (bootstrap_fn)(uintptr_t)guest_process_resolve(0, "nvnBootstrapLoader");
+    CHECK(bootstrap != NULL);
+    lookup_fn lookup = (lookup_fn)(uintptr_t)bootstrap("nvnDeviceGetProcAddress");
+    CHECK(lookup != NULL);
+    static const char *const queue_names[] = {
+        "nvnQueueBuilderSetDefaults",
+        "nvnQueueBuilderSetDevice",
+        "nvnQueueBuilderGetDevice",
+        "nvnQueueBuilderSetFlags",
+        "nvnQueueBuilderGetFlags",
+        "nvnQueueBuilderSetQueuePriority",
+        "nvnQueueBuilderGetQueuePriority",
+        "nvnQueueBuilderSetCommandMemorySize",
+        "nvnQueueBuilderGetCommandMemorySize",
+        "nvnQueueBuilderSetComputeMemorySize",
+        "nvnQueueBuilderGetComputeMemorySize",
+        "nvnQueueBuilderSetControlMemorySize",
+        "nvnQueueBuilderGetControlMemorySize",
+        "nvnQueueBuilderSetCommandFlushThreshold",
+        "nvnQueueBuilderGetCommandFlushThreshold",
+        "nvnQueueBuilderSetQueueMemory",
+        "nvnQueueBuilderGetQueueMemory",
+        "nvnQueueBuilderGetMemorySize",
+        "nvnQueueInitialize",
+        "nvnQueueFinalize",
+        "nvnQueueGetError",
+        "nvnQueueSetDebugLabel",
+        "nvnQueueFlush",
+        "nvnQueueFinish",
+        "nvnQueueGetTotalCommandMemoryUsed",
+        "nvnQueueGetTotalComputeMemoryUsed",
+        "nvnQueueGetTotalControlMemoryUsed",
+        "nvnQueueResetMemoryUsageCounts",
+    };
+    for (i = 0; i < sizeof(queue_names) / sizeof(queue_names[0]); i++) {
+        void *entry = lookup(NULL, queue_names[i]);
+        expect_condition("nvn-queue-name-resolves", entry != NULL);
+        expect_condition("nvn-queue-name-is-stable", entry == lookup(NULL, queue_names[i]));
+    }
+
+    /* 2. The builder round trips. The expected values are written out here
+     *    on purpose: they must not be the constants the implementation uses,
+     *    or the check would prove nothing. */
+    unsigned char builder[64];
+    memset(builder, 0xaa, sizeof(builder));
+    builder_set_defaults_fn set_defaults =
+        (builder_set_defaults_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderSetDefaults");
+    builder_set_flags_fn set_flags =
+        (builder_set_flags_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderSetFlags");
+    builder_get_flags_fn get_flags =
+        (builder_get_flags_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderGetFlags");
+    builder_set_device_fn set_device =
+        (builder_set_device_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderSetDevice");
+    builder_get_device_fn get_device =
+        (builder_get_device_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderGetDevice");
+    builder_set_size_fn set_size =
+        (builder_set_size_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderSetCommandMemorySize");
+    builder_get_size_fn get_size =
+        (builder_get_size_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderGetCommandMemorySize");
+    CHECK(set_defaults && set_flags && get_flags && set_device && get_device && set_size && get_size);
+    set_defaults(builder);
+    expect_value("nvn-queue-builder-defaults-clear-flags", (uint64_t)(uint32_t)get_flags(builder), 0);
+    set_flags(builder, 0x1234);
+    expect_value("nvn-queue-builder-flag-round-trip", (uint64_t)(uint32_t)get_flags(builder), 0x1234);
+    void *device_marker = (void *)(uintptr_t)0x5eed;
+    set_device(builder, device_marker);
+    expect_condition("nvn-queue-builder-device-round-trip", get_device(builder) == device_marker);
+    set_size(builder, 0x2000);
+    expect_value("nvn-queue-builder-command-memory-round-trip", get_size(builder), 0x2000);
+    set_defaults(builder);
+    expect_value("nvn-queue-builder-defaults-reset-flags", (uint64_t)(uint32_t)get_flags(builder), 0);
+    expect_condition("nvn-queue-builder-defaults-clear-device", get_device(builder) == NULL);
+
+    /* 3. The runtime keeps the builder state on the host, so it must not
+     *    write a single byte into the guest's builder. */
+    expect_condition("nvn-queue-builder-not-written", all_bytes(builder, sizeof(builder), 0xaa));
+
+    /* 4. The other builder fields round trip as well. */
+    builder_set_size_fn set_compute =
+        (builder_set_size_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderSetComputeMemorySize");
+    builder_get_size_fn get_compute =
+        (builder_get_size_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderGetComputeMemorySize");
+    builder_set_size_fn set_control =
+        (builder_set_size_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderSetControlMemorySize");
+    builder_get_size_fn get_control =
+        (builder_get_size_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderGetControlMemorySize");
+    builder_set_size_fn set_threshold =
+        (builder_set_size_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderSetCommandFlushThreshold");
+    builder_get_size_fn get_threshold =
+        (builder_get_size_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderGetCommandFlushThreshold");
+    builder_set_priority_fn set_priority =
+        (builder_set_priority_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderSetQueuePriority");
+    builder_get_priority_fn get_priority =
+        (builder_get_priority_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderGetQueuePriority");
+    builder_set_memory_fn set_memory =
+        (builder_set_memory_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderSetQueueMemory");
+    builder_get_memory_fn get_memory =
+        (builder_get_memory_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderGetQueueMemory");
+    builder_get_size_fn get_memory_size =
+        (builder_get_size_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderGetMemorySize");
+    CHECK(set_compute && get_compute && set_control && get_control && set_threshold && get_threshold);
+    CHECK(set_priority && get_priority && set_memory && get_memory && get_memory_size);
+    set_defaults(builder);
+    set_compute(builder, 0x3000);
+    expect_value("nvn-queue-builder-compute-memory-round-trip", get_compute(builder), 0x3000);
+    set_control(builder, 0x4000);
+    expect_value("nvn-queue-builder-control-memory-round-trip", get_control(builder), 0x4000);
+    set_threshold(builder, 0x50);
+    expect_value("nvn-queue-builder-flush-threshold-round-trip", get_threshold(builder), 0x50);
+    set_priority(builder, 3);
+    expect_value("nvn-queue-builder-priority-round-trip", (uint64_t)(uint32_t)get_priority(builder), 3);
+    unsigned char memory[16];
+    memset(memory, 0x5a, sizeof(memory));
+    set_memory(builder, memory, sizeof(memory));
+    expect_condition("nvn-queue-builder-queue-memory-round-trip", get_memory(builder) == memory);
+    expect_value("nvn-queue-builder-queue-memory-size-round-trip", get_memory_size(builder), sizeof(memory));
+
+    /* 5. The device. The queue may only exist when the device behind it
+     *    really exists, so the device is initialized first, with a device
+     *    pointer the guest would use. */
+    init_fn init = (init_fn)(uintptr_t)bootstrap("nvnDeviceInitialize");
+    CHECK(init != NULL);
+    void *guest_device = (void *)(uintptr_t)0x7000;
+    uint64_t init_result = init(guest_device, NULL);
+    nvn_device_stats device_stats;
+    nvn_device_get_stats(&device_stats);
+    expect_condition("nvn-queue-device-initialised-matches-reality",
+                     (init_result != 0) == (device_stats.real_device != 0));
+
+    /* 6. A queue that is built without a device must be refused. A queue
+     *    that exists without a device would submit work to nothing. */
+    queue_initialize_fn queue_initialize =
+        (queue_initialize_fn)(uintptr_t)lookup(NULL, "nvnQueueInitialize");
+    CHECK(queue_initialize != NULL);
+    unsigned char queue_object[64];
+    memset(queue_object, 0xaa, sizeof(queue_object));
+    unsigned char no_device_builder[64];
+    memset(no_device_builder, 0xaa, sizeof(no_device_builder));
+    set_defaults(no_device_builder);
+    expect_value("nvn-queue-init-without-device-refused", (uint64_t)(uint32_t)queue_initialize(queue_object, no_device_builder, 0), 0);
+    expect_condition("nvn-queue-init-without-device-not-written",
+                     all_bytes(queue_object, sizeof(queue_object), 0xaa));
+
+    /* 7. The queue with the device of the guest. It exists exactly when a
+     *    real device exists, which is what this build has to be. */
+    unsigned char device_builder[64];
+    memset(device_builder, 0xaa, sizeof(device_builder));
+    set_defaults(device_builder);
+    set_device(device_builder, guest_device);
+    set_size(device_builder, 0x2000);
+    memset(queue_object, 0xaa, sizeof(queue_object));
+    uint64_t queue_result = (uint64_t)(uint32_t)queue_initialize(queue_object, device_builder, 0);
+    expect_value("nvn-queue-init-matches-real-device", queue_result, NVN_QUEUE_EXPECT_REAL_QUEUE);
+    expect_condition("nvn-queue-object-not-written", all_bytes(queue_object, sizeof(queue_object), 0xaa));
+
+    /* 8. The queue state. */
+    queue_get_error_fn get_error = (queue_get_error_fn)(uintptr_t)lookup(NULL, "nvnQueueGetError");
+    queue_get_used_fn get_used =
+        (queue_get_used_fn)(uintptr_t)lookup(NULL, "nvnQueueGetTotalCommandMemoryUsed");
+    queue_reset_fn reset_counts = (queue_reset_fn)(uintptr_t)lookup(NULL, "nvnQueueResetMemoryUsageCounts");
+    queue_finalize_fn queue_finalize = (queue_finalize_fn)(uintptr_t)lookup(NULL, "nvnQueueFinalize");
+    set_debug_label_fn set_label = (set_debug_label_fn)(uintptr_t)lookup(NULL, "nvnQueueSetDebugLabel");
+    CHECK(get_error && get_used && reset_counts && queue_finalize && set_label);
+    expect_value("nvn-queue-error-is-zero", (uint64_t)(uint32_t)get_error(queue_object), 0);
+    expect_value("nvn-queue-command-memory-used-is-zero", get_used(queue_object), 0);
+    reset_counts(queue_object);
+    expect_value("nvn-queue-memory-usage-reset", get_used(queue_object), 0);
+    set_label(queue_object, "contract-queue");
+    queue_finalize(queue_object);
+    nvn_queue_get_stats(&stats);
+    expect_value("nvn-queue-finalized-is-not-live", (uint64_t)stats.live_queues, 0);
+
+    /* 9. The counters. */
+    nvn_queue_get_stats(&stats);
+    expect_condition("nvn-queue-stats-count-builder-calls", stats.builder_calls > 0);
+    expect_condition("nvn-queue-stats-initialized-matches-device",
+                     (stats.initialized > 0) == (NVN_QUEUE_EXPECT_REAL_QUEUE != 0));
+    expect_condition("nvn-queue-stats-count-refused", stats.refused > 0);
+    expect_value("nvn-queue-platform-queue-matches-device", (uint64_t)stats.platform_queue_present,
+                 (uint64_t)NVN_QUEUE_EXPECT_REAL_QUEUE);
+    expect_condition("nvn-queue-command-memory-requested-is-recorded",
+                     stats.command_memory_requested > 0);
+
+    /* The final gate. Without it the contract could exit 0 while the
+     * expectations had failed. */
+    CHECK(!errors);
+    printf("{\"nvn_queue_errors\":%u,\"real_queue\":%s,\"platform_queue\":%s,"
+           "\"initialized\":%llu,\"refused\":%llu,\"builder_calls\":%llu}\n",
+           errors, queue_result ? "true" : "false", stats.platform_queue_present ? "true" : "false",
+           (unsigned long long)stats.initialized, (unsigned long long)stats.refused,
+           (unsigned long long)stats.builder_calls);
+    return 0;
+}
+
+/* The nn::vi display bridge contract.
+ *
+ * The guest builds one display object and hands the handles back to the
+ * other four calls. The contract checks that the bridge hands out usable
+ * handles, that a handle it did not issue is refused, and that the vsync
+ * event starts unsignalled: no frame has been presented, so there is no
+ * vsync to report. */
+static int vi_display_contract(void) {
+    typedef void (*initialize_fn)(void);
+    typedef void (*open_display_fn)(void **);
+    typedef void (*get_vsync_fn)(void *, void *);
+    typedef void (*create_layer_fn)(void **, void *);
+    typedef void (*get_window_fn)(void **, void *);
+    void *display = NULL;
+    void *layer = NULL;
+    void *window = NULL;
+
+    initialize_fn initialize = (initialize_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2vi10InitializeEv");
+    open_display_fn open_display =
+        (open_display_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2vi18OpenDefaultDisplayEPPNS0_7DisplayE");
+    get_vsync_fn get_vsync =
+        (get_vsync_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2vi20GetDisplayVsyncEventEPNS_2os15SystemEventTypeEPNS0_7DisplayE");
+    create_layer_fn create_layer =
+        (create_layer_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2vi11CreateLayerEPPNS0_5LayerEPNS0_7DisplayE");
+    get_window_fn get_window =
+        (get_window_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2vi15GetNativeWindowEPPvPNS0_5LayerE");
+    CHECK(initialize && open_display && get_vsync && create_layer && get_window);
+
+    initialize();
+    initialize();  /* the guest may call it twice; it must stay harmless */
+
+    open_display(&display);
+    expect_condition("vi-display-issues-a-handle", display != NULL);
+    if (!display) return 1;
+
+    /* The event is the guest's own object. It starts unsignalled, because
+     * nothing has been presented yet. */
+    unsigned char event_object[32];
+    memset(event_object, 0, sizeof(event_object));
+    get_vsync(event_object, display);
+    expect_condition("vi-vsync-event-starts-unsignalled",
+                     !nso_host_os_is_event_signaled(event_object));
+
+    create_layer(&layer, display);
+    expect_condition("vi-layer-issues-a-handle", layer != NULL);
+
+    /* A handle the bridge did not issue is refused. */
+    void *bogus_display = (void *)(uintptr_t)0x1234;
+    void *bogus_layer = NULL;
+    create_layer(&bogus_layer, bogus_display);
+    expect_condition("vi-layer-refuses-a-bogus-display", bogus_layer == NULL);
+
+    /* The window is the one the platform published. In this process nothing
+     * published one, so the bridge has to say that instead of inventing a
+     * window. */
+    get_window(&window, layer);
+    expect_condition("vi-window-is-null-without-a-published-window", window == NULL);
+    void *bogus_window = (void *)(uintptr_t)0x5678;
+    get_window(&bogus_window, bogus_layer);
+    expect_condition("vi-window-refuses-a-bogus-layer", bogus_window == NULL);
+
+    CHECK(!errors);
+    printf("{\"vi_display_errors\":%u,\"display\":%s,\"layer\":%s,\"window\":%s,"
+           "\"vsync_signalled\":false}\n",
+           errors, display ? "true" : "false", layer ? "true" : "false",
+           window ? "true" : "false");
+    return 0;
+}
+
 int main(int argc,char **argv) {
     page=(size_t)sysconf(_SC_PAGESIZE);
     if(argc==2 && !strcmp(argv[1],"--tls-host-null")) {
@@ -4464,6 +4768,8 @@ int main(int argc,char **argv) {
     if(argc==3 && !strcmp(argv[1],"--nv-graphics-allocator"))return nv_allocator_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--nv-initialize-graphics"))return nv_initialize_graphics_contract(argv[2]);
     if(argc==2 && !strcmp(argv[1],"--nvn-device"))return nvn_device_contract();
+    if(argc==2 && !strcmp(argv[1],"--nvn-queue"))return nvn_queue_contract();
+    if(argc==2 && !strcmp(argv[1],"--vi-display"))return vi_display_contract();
     if(argc==3 && !strcmp(argv[1],"--nvn-bootstrap"))return nvn_bootstrap_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-fresh"))return tls_fresh_registration_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-null"))return tls_registration_contract(argv[2],1);

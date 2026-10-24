@@ -186,11 +186,21 @@ static void nvn_vulkan_describe(const nvn_device_state *device, char *out, size_
              st->driver_version, st->queue_family);
 }
 
+static int nvn_vulkan_get_queue(nvn_device_state *device, void **out_queue) {
+    nvn_vulkan_state *st = (nvn_vulkan_state *)device->backend_state;
+    if (!st || !st->queue || !out_queue) return 0;
+    /* This backend creates exactly one queue: the graphics queue of the
+     * logical device. */
+    *out_queue = (void *)(uintptr_t)st->queue;
+    return 1;
+}
+
 static const nvn_backend s_vulkan_backend = {
     "vulkan",
     nvn_vulkan_create,
     nvn_vulkan_destroy,
     nvn_vulkan_describe,
+    nvn_vulkan_get_queue,
 };
 
 const nvn_backend *nvn_device_default_backend(void) { return &s_vulkan_backend; }

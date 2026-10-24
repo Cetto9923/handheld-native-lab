@@ -49,6 +49,12 @@
  * names, so this leaves room for every one of them. */
 #define NVN_TRAP_SLOTS 640
 
+/* An entry point that returns nothing leaves x0 at zero, so a caller that
+ * inspects x0 after the call gets a defined value instead of a stale
+ * pointer. The guest does not read x0 after these calls; the contract does,
+ * and it wants a defined answer. */
+#define NVN_VOID_RETURN() __asm__ volatile("mov x0, xzr")
+
 typedef struct nvn_device_state nvn_device_state;
 
 /* The platform specific half of the device. On Android this is a real Vulkan
@@ -64,6 +70,11 @@ typedef struct nvn_backend {
     /* Write a factual description of the device into out[] for the log.
      * Never invents a name, a size or a capability. */
     void (*describe)(const nvn_device_state *device, char *out, size_t out_size);
+    /* Hand out the platform queue. Returns 1 when a real queue exists and
+     * writes its handle into out_queue; returns 0 when this backend has no
+     * queue at all. A queue that pretends to exist is worse than no queue,
+     * so a build without one says so. */
+    int (*get_queue)(nvn_device_state *device, void **out_queue);
 } nvn_backend;
 
 struct nvn_device_state {
@@ -73,6 +84,7 @@ struct nvn_device_state {
     uint32_t flags;               /* what the guest put into the builder */
     int initialized;              /* the guest's initialisation succeeded */
     int real_device;              /* a real device exists */
+    void *guest_device;           /* the device pointer the guest passed in */
     uint64_t resolved;            /* names the guest resolved */
     uint64_t implemented_resolved;
     uint64_t trapped_resolved;
@@ -94,6 +106,15 @@ struct nvn_device_state {
 const nvn_backend *nvn_device_default_backend(void);
 void nvn_device_set_backend(const nvn_backend *backend);
 const nvn_backend *nvn_device_backend(void);
+
+/* The device state of this process. The guest creates one device. */
+nvn_device_state *nvn_device_state_handle(void);
+
+/* True when the device is the one the guest initialized and a real device
+ * exists behind it. The other object families ask this before they promise
+ * anything, so that a queue is never created against a device that does not
+ * exist. A NULL device pointer means "the device of this process". */
+int nvn_device_is_ready(const void *device);
 
 /* Level 1: the bootstrap. It answers exactly the two names the guest asks
  * for and refuses everything else. */

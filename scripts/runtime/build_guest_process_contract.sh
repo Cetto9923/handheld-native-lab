@@ -20,7 +20,7 @@ if a.main and (not a.quota_bytes or not a.stack_bytes):p.error('main requires ex
 out.mkdir(parents=True,exist_ok=False)
 def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 nso=ROOT/'src/runtime/nso';hle=ROOT/'src/runtime/hle';nvn_device=ROOT/'src/graphics/nvn_device'
-core_sources=[nso/'nso_loader.c',*[hle/(s+'.c') for s in ['guest_context','guest_process','nso_host','address_region','mutex','exit_registry','module_tls','guest_tp']],nvn_device/'nvn_device.c']
+core_sources=[nso/'nso_loader.c',*[hle/(s+'.c') for s in ['guest_context','guest_process','nso_host','address_region','mutex','exit_registry','module_tls','guest_tp','native_window']],nvn_device/'nvn_device.c',nvn_device/'nvn_queue.c']
 # The NVN device layer has a portable half and a platform backend. The host
 # build has no Vulkan implementation, the Android build has the real one.
 host_only_sources=[nvn_device/'nvn_backend_none.c']
@@ -1058,6 +1058,18 @@ manifest['nvn_device_contract']=json.loads(nvn_device_stdout.splitlines()[-1])
 if manifest['nvn_device_contract']['nvn_device_errors']:raise RuntimeError('the NVN device contract failed')
 if not manifest['nvn_device_contract']['trapped']:raise RuntimeError('the NVN trap did not stop the run')
 if not manifest['nvn_device_contract']['named']:raise RuntimeError('the NVN trap did not name the missing API')
+# The NVN queue family: the builder round trip, the state that stays on the
+# host, and the honest refusal of a queue that has no real device behind it.
+run('host-nvn-queue-contract',[out/'guest_process_contract.host','--nvn-queue'])
+nvn_queue_stdout=(out/'host-nvn-queue-contract'/'stdout.log').read_text()
+manifest['nvn_queue_contract']=json.loads(nvn_queue_stdout.splitlines()[-1])
+if manifest['nvn_queue_contract']['nvn_queue_errors']:raise RuntimeError('the NVN queue contract failed')
+# The nn::vi display bridge: the handles it issues, the ones it refuses and
+# the vsync event that starts unsignalled because no frame was presented.
+run('host-vi-display-contract',[out/'guest_process_contract.host','--vi-display'])
+vi_display_stdout=(out/'host-vi-display-contract'/'stdout.log').read_text()
+manifest['vi_display_contract']=json.loads(vi_display_stdout.splitlines()[-1])
+if manifest['vi_display_contract']['vi_display_errors']:raise RuntimeError('the nn::vi display contract failed')
 locale_assembly=out/'locale-fixture.S'
 locale_assembly.write_text(r''' .text
 .org 0x20
