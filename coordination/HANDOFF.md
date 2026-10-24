@@ -1,3 +1,24 @@
+# P-MM-15 闭环｜2026-10-24 21:10 Asia/Shanghai — **E1 达成：guest 跑进了持窗进程**（`app_pid=7933` == `guest_pid=7933`），**app 进程内建成真 Vulkan 设备**（`nvnDeviceInitialize -> true`）；下一个卡点由进程边界换成 **NVN 绘制链本身**：`nvnQueueBuilderSetDefaults`（trap slot 11）
+
+- **结论**：P-MM-14 开题时定下的 E1（架构使能，最小可证伪）**已通过**，且通过的方式是可证伪的：**guest 与窗口在同一个 PID 里**，**真 Vulkan 设备在 app 进程内建成**，**romfs 在 app 进程内挂载成功**。**仍然没有游戏帧**：guest 紧接着就在第一个未实现的 API 上**被点名停下**——`nvnQueueBuilderSetDefaults`（trap slot 11）。**第一个阻塞换了**：不再是「guest 在窗口之外的进程」，而是「**NVN 的队列/命令缓冲/窗口/呈现这段根本不存在**」。
+  1. **做法（移动代码，不改行为）**：把自有 boot 序列从 CLI 里**抽成独立翻译单元** `src/runtime/nso/nso_boot.c` / `.h`（`nso_owned_profile()` + `nso_boot_run()`），CLI 退化成薄封装；Android 侧新增静态库 `ffrs_guest_runtime`，**编译的就是契约脚本同一批源文件**（loader + typed HLE + native boundary + NVN device 层），再由 `GameActivity` 的 JNI `nativeStartGuest()` 在**独立线程**上起 guest（**绝不在 UI 线程**，上游 d2r/nxnative 的同层约束）。guest 的 stdout/stderr 被重定向到 app 自己的外部目录（`guest_boot.log`），避免几万行把 logcat 冲掉。
+  2. **真机证据（RG477M / Android 14 / Mali-G615 MC6）**：
+     - `FFRS-GuestBoot: guest_boot start app_pid=7933 guest_tid=7975 image=/data/local/tmp/ffrs-.../main.nso romfs=/data/local/tmp/ffrs-.../romfs quota=1073741824 stack=2097152 resources=16777216`
+     - `pidof org.ffrs.gamewindow` → **`7933`** ⇒ **guest 与窗口同进程**（这是 P-MM-14 那条「`ANativeWindow` 是进程内句柄」推论的直接落地）
+     - `[profile] ... build=736837afd390442ed7c74a7de730e71b imports=651 unresolved=373` ⇒ **与 CLI 跑的是同一个 guest 镜像、同一套导入账**（CLI 侧数字完全一致）
+     - `[hle] nn::fs::MountRom: mounted 'rom' ... host_path='/data/local/tmp/ffrs-rg477m-efd1123620814764ae32529c18081259/romfs'` ⇒ **app 进程能读游戏数据**（做法：给游戏目录与 `main.nso` 放开读权限；**没有复制 8.5G romfs**）
+     - `[nvn] nvnDeviceInitialize: device=0x5639a03810 builder=0x5a39e80630 flags=0x100 -> true` ⇒ **真 Vulkan 设备在 app 进程内建成**（这一位在 CLI 里是 P-MM-13 才跨过去的）
+     - 末尾：`[nvn] unimplemented NVN entry "nvnQueueBuilderSetDefaults" was called (trap slot 11, caller lr=0x72158aaff0)` ⇒ **仍然诚实点名、仍然停下**
+     - transcript：`.local/logs/p-mm-15-e1-guest-transcript.log`（59559 行）；装机运行：`.local/logs/p-mm-15-e1-install-run.log`；APK sha256 `261d04a368f3ea9d0440f4b2428b8e69636f4a3ef61005bce3191ef1a93e4454`
+  3. **比 CLI 多走了一步的原因**：`SetDepthMode` 等设备家族语义在 P-MM-13 设备家族那笔（`89728b6`）已实现，所以 CLI 的 v65 停在 `nvnDeviceSetDepthMode`（trap slot 8），而这次停在**下一个**未实现 API（slot 11）。⇒ **卡点列表是活的**，不能沿用旧日志里的名字。
+  4. **构建侧真问题（运行期抓出来的，不是猜的）**：`.so` 链接时 `native_boundary.S` 用绝对寻址引用 `native_boundary.c` 的全局 `s_slots`，PIE 可行但**共享库不行**（`R_AARCH64_ADD_ABS_LO12_NC cannot be used against symbol 's_slots'`）。修法是**编译选项**（`-fvisibility=hidden` 让链接器本地绑定），**没有改冻结的 boundary 源码**；同时补上契约构建同款的 `-ffixed-x18 -fno-emulated-tls`（**x18 是 guest ABI 的平台寄存器，编译器不许碰**）。
+  5. **契约门**：宿主门 **193 例全过（EXIT=0）**。顺带修了一个**门本身的脆弱点**：单个 `-O2` 编译契约 TU 在本机负载下会超过 30 秒挂死保护（实测 30.2s 被 SIGKILL，单独跑 15.2s），把**挂死保护**从 30s 放宽到 300s —— 这是超时阈值，**不是任何断言**。
+- **已知后果（记录，不掩盖）**：NVN 陷阱目前是**进程级终止**（`_exit(97)`），所以在 app 里它**会连 app 一起带走**（本轮 app 进程确实因此消失，crash buffer 为空 ⇒ 是干净退出，不是崩溃）。这不影响 E1 的结论，但在「app 要长期开着跑游戏」的形态下必须改成**只终止 guest 运行**。当前开发迭代可接受（每轮重装重起），进入可玩形态前必须处理。
+- **下一项可证伪实验（E2 → E3，按 guest 依赖顺序）**：
+  1. **E2（显示桥）**：绑定 `nn::vi` 的 5 个导入（**228–232**），其中 `GetNativeWindow` 就是把 app 的 `ANativeWindow` 交给 guest 的接缝（`src/runtime/hle/native_window.c` 已有持有者，`nso_host.c` 侧尚未接进导入路径）。**判定**：guest 能拿到**同一个** `ANativeWindow` 指针（`0xb4000073eef8b330`）而不是自造一个。
+  2. **E3（最小 NVN 集，不铺满 534）**：按 guest 的实际调用顺序补 `nvnQueueBuilder*` / `nvnQueueInitialize` → `nvnCommandBuffer*` → `nvnWindowBuilder*` / `nvnWindowInitialize` → swapchain/present 家族；**未实现的一律继续「点名终止」**，禁止万能成功桩、禁止绕过 abort。**判定**：guest 自己的清屏经记录/回放上屏，**截图颜色必须可由 guest 的命令流解释**（不是宿主探针色）。
+  3. **E4（shader，后置但要早定）**：guest shader 是 NVN 二进制（IoStore 容器内），Vulkan 要 SPIR-V ⇒ **Maxwell → SPIR-V（离线翻译器）→ 目标语言** 这条链要先定，否则 E3 之后会卡死在 shader。
+- **本单未解决 / 风险**：`nvnDeviceGetInteger` 的 **53/105** 依据仍只是「vendored 头文件描述的规范版本」，**没有从 guest 的兼容检查反推** ⇒ **待复核**，不得当作已证事实；`SetDepthMode` 已有状态语义但**还没有管线消费它**，E3 的管线存在时必须真正生效；`nn::vi` 仍未绑定；输入族未动；**当前游戏帧数 = 0**，**不承诺第一章完成时间**。
 # P-MM-14 开题｜2026-10-24 20:40 Asia/Shanghai — 方向调整：**目标从「再过一个符号」改成「接通真实绘制链」**；先核对接线（**窗口与 guest 不在同一进程**），再证明 **RG477M 的呈现路径可用**（宿主探针，**不是游戏帧**）
 
 - **结论**：本单把成果口径改了：**不再以「又过一个符号 / unresolved 又少一个 / 契约 PASS」为主成果**，主成果改成 **真实 guest 调用 → NVN 状态与命令 → Vulkan 提交与完成同步 → 窗口呈现**。本轮做了三件事：① **核对运行时接线**（结论见下，**推翻了一个默认假设**）；② **证明 RG477M 上这条窗口的呈现路径可用**（宿主探针，**明确标注为宿主探针成功，不是游戏帧**）；③ **记录上游参考**（`docs/analysis/nvn_graphics_chain_references.md`）。
