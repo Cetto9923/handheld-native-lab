@@ -394,6 +394,36 @@ uint32_t nvn_memory_pool_get_flags(const void *pool) {
     return flags;
 }
 
+/* The host address behind a GPU address.
+ *
+ * The guest hands the device buffer addresses, never host pointers. To read
+ * the code area of a shader the runtime has to find the pool the address
+ * belongs to and turn it back into the host address of the same bytes. The
+ * pools are few and their ranges do not overlap, so the search is a walk over
+ * the table.
+ *
+ * The number of bytes that are readable from the returned address is reported
+ * as well, because the caller has to know how much of the area it may touch. */
+void *nvn_memory_pool_resolve_address(uint64_t address, size_t *available) {
+    size_t i;
+    void *resolved = NULL;
+    if (available) *available = 0;
+    pthread_mutex_lock(&s_pool_lock);
+    for (i = 0; i < NVN_MEMORY_POOL_MAX_POOLS; i++) {
+        nvn_memory_pool_state *p = &s_pools[i];
+        uint64_t offset;
+        if (!p->in_use || !p->initialized || !p->storage) continue;
+        if (address < p->buffer_address) continue;
+        offset = address - p->buffer_address;
+        if (offset >= p->size) continue;
+        resolved = (void *)(uintptr_t)((unsigned char *)p->storage + offset);
+        if (available) *available = (size_t)(p->size - offset);
+        break;
+    }
+    pthread_mutex_unlock(&s_pool_lock);
+    return resolved;
+}
+
 /* ------------------------------------------------------------------ */
 /* The names                                                           */
 /* ------------------------------------------------------------------ */

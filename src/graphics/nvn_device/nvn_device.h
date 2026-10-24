@@ -206,8 +206,11 @@ void nvn_device_finalize_command_handle(void *device, uint64_t handle);
 void nvn_device_walk_debug_database(void *device, int object_type, void *callback, void *userdata);
 
 /* The trap that an unimplemented entry point resolves to. It is reached
- * through the per-API trampoline table, so it knows which API was called. */
-void nvn_trampoline_handler(uint64_t index);
+ * through the per-API trampoline table, so it knows which API was called.
+ * The second argument is where the trampoline left the guest's own argument
+ * registers: the handler must read them there, because by the time it runs a
+ * C function the argument registers already hold something else. */
+void nvn_trampoline_handler(uint64_t index, const uint64_t *args);
 
 /* Statistics for the contract. */
 typedef struct nvn_device_stats {

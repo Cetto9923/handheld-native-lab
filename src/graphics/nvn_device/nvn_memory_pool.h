@@ -66,4 +66,9 @@ typedef struct nvn_memory_pool_stats {
 
 void nvn_memory_pool_get_stats(nvn_memory_pool_stats *out);
 
+/* The host address behind a GPU address, and how many bytes are readable from
+ * it. The address belongs to a pool the guest created; an address that belongs
+ * to no pool has no host address and the call says so by returning NULL. */
+void *nvn_memory_pool_resolve_address(uint64_t address, size_t *available);
+
 #endif /* FFRS_NVN_MEMORY_POOL_H */

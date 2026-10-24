@@ -5,9 +5,11 @@
 #include "../../src/runtime/hle/guest_pages.h"
 #include "../../src/runtime/hle/guest_tp.h"
 #include "../../src/runtime/nso/native_boundary.h"
+#include "../../src/graphics/nvn_device/nvn_blend_state.h"
 #include "../../src/graphics/nvn_device/nvn_device.h"
 #include "../../src/graphics/nvn_device/nvn_memory_pool.h"
 #include "../../src/graphics/nvn_device/nvn_queue.h"
+#include "../../src/graphics/nvn_device/nvn_render_state.h"
 #include "../../src/graphics/nvn_device/nvn_sampler_pool.h"
 #include "../../src/graphics/nvn_device/nvn_texture_pool.h"
 #include "../../src/graphics/nvn_device/nvn_window.h"
@@ -5429,6 +5431,688 @@ static int nvn_texture_pool_contract(void) {
     return 0;
 }
 
+/* The NVN blend state family.
+ *
+ * A blend state carries the guest's blend parameters. The contract checks
+ * that the defaults really reset the state, that every parameter round trips,
+ * and that the guest's state object is never written into. */
+static int nvn_blend_state_contract(void) {
+    typedef void *(*bootstrap_fn)(const char *);
+    typedef void *(*lookup_fn)(void *, const char *);
+    typedef void (*set_defaults_fn)(void *);
+    typedef void (*set_blend_target_fn)(void *, int);
+    typedef void (*set_blend_func_fn)(void *, int, int, int, int);
+    typedef void (*set_blend_equation_fn)(void *, int, int);
+    typedef void (*set_advanced_mode_fn)(void *, int);
+    typedef void (*set_advanced_overlap_fn)(void *, int);
+    typedef void (*set_advanced_premultiplied_src_fn)(void *, int);
+    typedef void (*set_advanced_normalized_dst_fn)(void *, int);
+    typedef int (*get_blend_target_fn)(const void *);
+    typedef void (*get_blend_func_fn)(const void *, int *, int *, int *, int *);
+    typedef void (*get_blend_equation_fn)(const void *, int *, int *);
+    typedef int (*get_advanced_mode_fn)(const void *);
+    typedef int (*get_advanced_overlap_fn)(const void *);
+    typedef int (*get_advanced_premultiplied_src_fn)(const void *);
+    typedef int (*get_advanced_normalized_dst_fn)(const void *);
+    nvn_blend_state_stats stats;
+    size_t i;
+
+    /* 1. Every name of the family has to resolve, and the same name has to
+     *    resolve to the same entry point every time. */
+    bootstrap_fn bootstrap =
+        (bootstrap_fn)(uintptr_t)guest_process_resolve(0, "nvnBootstrapLoader");
+    CHECK(bootstrap != NULL);
+    lookup_fn lookup = (lookup_fn)(uintptr_t)bootstrap("nvnDeviceGetProcAddress");
+    CHECK(lookup != NULL);
+    static const char *const blend_names[] = {
+        "nvnBlendStateSetDefaults",
+        "nvnBlendStateSetBlendTarget",
+        "nvnBlendStateSetBlendFunc",
+        "nvnBlendStateSetBlendEquation",
+        "nvnBlendStateSetAdvancedMode",
+        "nvnBlendStateSetAdvancedOverlap",
+        "nvnBlendStateSetAdvancedPremultipliedSrc",
+        "nvnBlendStateSetAdvancedNormalizedDst",
+        "nvnBlendStateGetBlendTarget",
+        "nvnBlendStateGetBlendFunc",
+        "nvnBlendStateGetBlendEquation",
+        "nvnBlendStateGetAdvancedMode",
+        "nvnBlendStateGetAdvancedOverlap",
+        "nvnBlendStateGetAdvancedPremultipliedSrc",
+        "nvnBlendStateGetAdvancedNormalizedDst",
+    };
+    for (i = 0; i < sizeof(blend_names) / sizeof(blend_names[0]); i++) {
+        void *entry = lookup(NULL, blend_names[i]);
+        expect_condition("nvn-blend-state-name-resolves", entry != NULL);
+        expect_condition("nvn-blend-state-name-is-stable", entry == lookup(NULL, blend_names[i]));
+    }
+
+    set_defaults_fn set_defaults = (set_defaults_fn)(uintptr_t)lookup(NULL, "nvnBlendStateSetDefaults");
+    set_blend_target_fn set_blend_target =
+        (set_blend_target_fn)(uintptr_t)lookup(NULL, "nvnBlendStateSetBlendTarget");
+    set_blend_func_fn set_blend_func =
+        (set_blend_func_fn)(uintptr_t)lookup(NULL, "nvnBlendStateSetBlendFunc");
+    set_blend_equation_fn set_blend_equation =
+        (set_blend_equation_fn)(uintptr_t)lookup(NULL, "nvnBlendStateSetBlendEquation");
+    set_advanced_mode_fn set_advanced_mode =
+        (set_advanced_mode_fn)(uintptr_t)lookup(NULL, "nvnBlendStateSetAdvancedMode");
+    set_advanced_overlap_fn set_advanced_overlap =
+        (set_advanced_overlap_fn)(uintptr_t)lookup(NULL, "nvnBlendStateSetAdvancedOverlap");
+    set_advanced_premultiplied_src_fn set_premultiplied =
+        (set_advanced_premultiplied_src_fn)(uintptr_t)lookup(NULL, "nvnBlendStateSetAdvancedPremultipliedSrc");
+    set_advanced_normalized_dst_fn set_normalized =
+        (set_advanced_normalized_dst_fn)(uintptr_t)lookup(NULL, "nvnBlendStateSetAdvancedNormalizedDst");
+    get_blend_target_fn get_blend_target =
+        (get_blend_target_fn)(uintptr_t)lookup(NULL, "nvnBlendStateGetBlendTarget");
+    get_blend_func_fn get_blend_func =
+        (get_blend_func_fn)(uintptr_t)lookup(NULL, "nvnBlendStateGetBlendFunc");
+    get_blend_equation_fn get_blend_equation =
+        (get_blend_equation_fn)(uintptr_t)lookup(NULL, "nvnBlendStateGetBlendEquation");
+    get_advanced_mode_fn get_advanced_mode =
+        (get_advanced_mode_fn)(uintptr_t)lookup(NULL, "nvnBlendStateGetAdvancedMode");
+    get_advanced_overlap_fn get_advanced_overlap =
+        (get_advanced_overlap_fn)(uintptr_t)lookup(NULL, "nvnBlendStateGetAdvancedOverlap");
+    get_advanced_premultiplied_src_fn get_premultiplied =
+        (get_advanced_premultiplied_src_fn)(uintptr_t)lookup(NULL, "nvnBlendStateGetAdvancedPremultipliedSrc");
+    get_advanced_normalized_dst_fn get_normalized =
+        (get_advanced_normalized_dst_fn)(uintptr_t)lookup(NULL, "nvnBlendStateGetAdvancedNormalizedDst");
+    CHECK(set_defaults && set_blend_target && set_blend_func && set_blend_equation);
+    CHECK(set_advanced_mode && set_advanced_overlap && set_premultiplied && set_normalized);
+    CHECK(get_blend_target && get_blend_func && get_blend_equation && get_advanced_mode);
+    CHECK(get_advanced_overlap && get_premultiplied && get_normalized);
+
+    /* 2. The defaults are the ones the specification gives. The expected
+     *    values are written out here on purpose: they must not be the
+     *    constants the implementation uses. */
+    unsigned char state[8];
+    memset(state, 0xaa, sizeof(state));
+    set_defaults(state);
+    expect_value("nvn-blend-state-default-blend-target", (uint64_t)(uint32_t)get_blend_target(state), 0);
+    int src_rgb = -1, dst_rgb = -1, src_alpha = -1, dst_alpha = -1;
+    get_blend_func(state, &src_rgb, &dst_rgb, &src_alpha, &dst_alpha);
+    expect_value("nvn-blend-state-default-src-rgb", (uint64_t)(uint32_t)src_rgb, 1);
+    expect_value("nvn-blend-state-default-dst-rgb", (uint64_t)(uint32_t)dst_rgb, 0);
+    expect_value("nvn-blend-state-default-src-alpha", (uint64_t)(uint32_t)src_alpha, 1);
+    expect_value("nvn-blend-state-default-dst-alpha", (uint64_t)(uint32_t)dst_alpha, 0);
+    int equation_rgb = -1, equation_alpha = -1;
+    get_blend_equation(state, &equation_rgb, &equation_alpha);
+    expect_value("nvn-blend-state-default-equation-rgb", (uint64_t)(uint32_t)equation_rgb, 0);
+    expect_value("nvn-blend-state-default-equation-alpha", (uint64_t)(uint32_t)equation_alpha, 0);
+    expect_value("nvn-blend-state-default-advanced-mode", (uint64_t)(uint32_t)get_advanced_mode(state), 0);
+    expect_value("nvn-blend-state-default-advanced-overlap",
+                 (uint64_t)(uint32_t)get_advanced_overlap(state), 0);
+    expect_value("nvn-blend-state-default-premultiplied-src",
+                 (uint64_t)(uint32_t)get_premultiplied(state), 0);
+    expect_value("nvn-blend-state-default-normalized-dst",
+                 (uint64_t)(uint32_t)get_normalized(state), 0);
+
+    /* 3. The runtime keeps the state on the host, so it must not write a
+     *    single byte into the guest's state object. */
+    expect_condition("nvn-blend-state-object-not-written", all_bytes(state, sizeof(state), 0xaa));
+
+    /* 4. Every parameter round trips. */
+    set_blend_target(state, 1);
+    expect_value("nvn-blend-state-blend-target-round-trip",
+                 (uint64_t)(uint32_t)get_blend_target(state), 1);
+    set_blend_func(state, 2, 3, 4, 5);
+    get_blend_func(state, &src_rgb, &dst_rgb, &src_alpha, &dst_alpha);
+    expect_value("nvn-blend-state-src-rgb-round-trip", (uint64_t)(uint32_t)src_rgb, 2);
+    expect_value("nvn-blend-state-dst-rgb-round-trip", (uint64_t)(uint32_t)dst_rgb, 3);
+    expect_value("nvn-blend-state-src-alpha-round-trip", (uint64_t)(uint32_t)src_alpha, 4);
+    expect_value("nvn-blend-state-dst-alpha-round-trip", (uint64_t)(uint32_t)dst_alpha, 5);
+    set_blend_equation(state, 2, 3);
+    get_blend_equation(state, &equation_rgb, &equation_alpha);
+    expect_value("nvn-blend-state-equation-rgb-round-trip", (uint64_t)(uint32_t)equation_rgb, 2);
+    expect_value("nvn-blend-state-equation-alpha-round-trip", (uint64_t)(uint32_t)equation_alpha, 3);
+    set_advanced_mode(state, 0x15);
+    expect_value("nvn-blend-state-advanced-mode-round-trip",
+                 (uint64_t)(uint32_t)get_advanced_mode(state), 0x15);
+    set_advanced_overlap(state, 2);
+    expect_value("nvn-blend-state-advanced-overlap-round-trip",
+                 (uint64_t)(uint32_t)get_advanced_overlap(state), 2);
+    set_premultiplied(state, 1);
+    expect_value("nvn-blend-state-premultiplied-src-round-trip",
+                 (uint64_t)(uint32_t)get_premultiplied(state), 1);
+    set_normalized(state, 1);
+    expect_value("nvn-blend-state-normalized-dst-round-trip",
+                 (uint64_t)(uint32_t)get_normalized(state), 1);
+
+    /* 5. The defaults really reset the state. A SetDefaults that did nothing
+     *    would leave the guest's renderer in the wrong state, and the guest
+     *    would only find out much later. */
+    set_defaults(state);
+    expect_value("nvn-blend-state-defaults-reset-blend-target",
+                 (uint64_t)(uint32_t)get_blend_target(state), 0);
+    expect_value("nvn-blend-state-defaults-reset-advanced-mode",
+                 (uint64_t)(uint32_t)get_advanced_mode(state), 0);
+    expect_value("nvn-blend-state-defaults-reset-premultiplied-src",
+                 (uint64_t)(uint32_t)get_premultiplied(state), 0);
+    get_blend_func(state, &src_rgb, &dst_rgb, &src_alpha, &dst_alpha);
+    expect_value("nvn-blend-state-defaults-reset-src-rgb", (uint64_t)(uint32_t)src_rgb, 1);
+    expect_value("nvn-blend-state-defaults-reset-dst-rgb", (uint64_t)(uint32_t)dst_rgb, 0);
+    expect_condition("nvn-blend-state-not-written-after-the-round-trip",
+                     all_bytes(state, sizeof(state), 0xaa));
+
+    /* 6. The counters. */
+    nvn_blend_state_get_stats(&stats);
+    expect_condition("nvn-blend-state-stats-count-builder-calls", stats.builder_calls > 0);
+    expect_condition("nvn-blend-state-stats-count-defaults", stats.defaults_applied > 0);
+    expect_condition("nvn-blend-state-stats-count-sets", stats.sets > 0);
+    expect_condition("nvn-blend-state-stats-count-gets", stats.gets > 0);
+    expect_condition("nvn-blend-state-stats-live-states", stats.live_states > 0);
+
+    /* The final gate. Without it the contract could exit 0 while the
+     * expectations had failed. */
+    CHECK(!errors);
+    printf("{\"nvn_blend_state_errors\":%u,\"defaults_applied\":%llu,\"sets\":%llu,"
+           "\"gets\":%llu,\"live_states\":%llu}\n",
+           errors, (unsigned long long)stats.defaults_applied, (unsigned long long)stats.sets,
+           (unsigned long long)stats.gets, (unsigned long long)stats.live_states);
+    return 0;
+}
+
+/* The NVN render state families.
+ *
+ * Seven families describe the fixed function state of a draw: the colour
+ * state, the channel mask state, the multisample state, the polygon state,
+ * the depth stencil state, the vertex attribute state and the vertex stream
+ * state. The contract checks that every name resolves, that the defaults
+ * really reset the state, that every parameter round trips and that the
+ * guest's state objects are never written into.
+ *
+ * The expected values are written out here on purpose: they must not be the
+ * constants the implementation uses. */
+static int nvn_render_state_contract(void) {
+    typedef void *(*bootstrap_fn)(const char *);
+    typedef void *(*lookup_fn)(void *, const char *);
+    typedef void (*set_defaults_fn)(void *);
+    typedef void (*set_int_fn)(void *, int);
+    typedef void (*set_bool_fn)(void *, uint32_t);
+    typedef void (*set_int_bool_fn)(void *, int, uint32_t);
+    typedef void (*set_channel_mask_fn)(void *, int, uint32_t, uint32_t, uint32_t, uint32_t);
+    typedef void (*set_int_int_fn)(void *, int, int);
+    typedef void (*set_stencil_op_fn)(void *, int, int, int, int);
+    typedef void (*set_format_fn)(void *, int, int64_t);
+    typedef void (*set_stride_fn)(void *, int64_t);
+    typedef void (*set_sample_locations_fn)(void *, int, int, const float *);
+    typedef int (*get_int_fn)(const void *);
+    typedef int (*get_int_int_fn)(const void *, int);
+    typedef int64_t (*get_int64_fn)(const void *);
+    typedef void (*get_channel_mask_fn)(const void *, int, int *, int *, int *, int *);
+    typedef void (*get_format_fn)(const void *, int *, int64_t *);
+    typedef void (*get_grid_fn)(const void *, int *, int *);
+    typedef void (*get_stencil_op_fn)(const void *, int, int *, int *, int *);
+    nvn_render_state_stats stats;
+    size_t i;
+
+    /* 1. Every name of the seven families has to resolve, and the same name
+     *    has to resolve to the same entry point every time. */
+    bootstrap_fn bootstrap =
+        (bootstrap_fn)(uintptr_t)guest_process_resolve(0, "nvnBootstrapLoader");
+    CHECK(bootstrap != NULL);
+    lookup_fn lookup = (lookup_fn)(uintptr_t)bootstrap("nvnDeviceGetProcAddress");
+    CHECK(lookup != NULL);
+    static const char *const render_state_names[] = {
+        "nvnColorStateSetDefaults",
+        "nvnColorStateSetBlendEnable",
+        "nvnColorStateSetLogicOp",
+        "nvnColorStateSetAlphaTest",
+        "nvnColorStateGetBlendEnable",
+        "nvnColorStateGetLogicOp",
+        "nvnColorStateGetAlphaTest",
+        "nvnChannelMaskStateSetDefaults",
+        "nvnChannelMaskStateSetChannelMask",
+        "nvnChannelMaskStateGetChannelMask",
+        "nvnMultisampleStateSetDefaults",
+        "nvnMultisampleStateSetMultisampleEnable",
+        "nvnMultisampleStateSetSamples",
+        "nvnMultisampleStateSetAlphaToCoverageEnable",
+        "nvnMultisampleStateSetAlphaToCoverageDither",
+        "nvnMultisampleStateGetMultisampleEnable",
+        "nvnMultisampleStateGetSamples",
+        "nvnMultisampleStateGetAlphaToCoverageEnable",
+        "nvnMultisampleStateGetAlphaToCoverageDither",
+        "nvnMultisampleStateSetRasterSamples",
+        "nvnMultisampleStateGetRasterSamples",
+        "nvnMultisampleStateSetCoverageModulationMode",
+        "nvnMultisampleStateGetCoverageModulationMode",
+        "nvnMultisampleStateSetCoverageToColorEnable",
+        "nvnMultisampleStateGetCoverageToColorEnable",
+        "nvnMultisampleStateSetCoverageToColorOutput",
+        "nvnMultisampleStateGetCoverageToColorOutput",
+        "nvnMultisampleStateSetSampleLocationsEnable",
+        "nvnMultisampleStateGetSampleLocationsEnable",
+        "nvnMultisampleStateGetSampleLocationsGrid",
+        "nvnMultisampleStateSetSampleLocationsGridEnable",
+        "nvnMultisampleStateGetSampleLocationsGridEnable",
+        "nvnMultisampleStateSetSampleLocations",
+        "nvnPolygonStateSetDefaults",
+        "nvnPolygonStateSetCullFace",
+        "nvnPolygonStateSetFrontFace",
+        "nvnPolygonStateSetPolygonMode",
+        "nvnPolygonStateSetPolygonOffsetEnables",
+        "nvnPolygonStateGetCullFace",
+        "nvnPolygonStateGetFrontFace",
+        "nvnPolygonStateGetPolygonMode",
+        "nvnPolygonStateGetPolygonOffsetEnables",
+        "nvnDepthStencilStateSetDefaults",
+        "nvnDepthStencilStateSetDepthTestEnable",
+        "nvnDepthStencilStateSetDepthWriteEnable",
+        "nvnDepthStencilStateSetDepthFunc",
+        "nvnDepthStencilStateSetStencilTestEnable",
+        "nvnDepthStencilStateSetStencilFunc",
+        "nvnDepthStencilStateSetStencilOp",
+        "nvnDepthStencilStateGetDepthTestEnable",
+        "nvnDepthStencilStateGetDepthWriteEnable",
+        "nvnDepthStencilStateGetDepthFunc",
+        "nvnDepthStencilStateGetStencilTestEnable",
+        "nvnDepthStencilStateGetStencilFunc",
+        "nvnDepthStencilStateGetStencilOp",
+        "nvnVertexAttribStateSetDefaults",
+        "nvnVertexAttribStateSetFormat",
+        "nvnVertexAttribStateSetStreamIndex",
+        "nvnVertexAttribStateGetFormat",
+        "nvnVertexAttribStateGetStreamIndex",
+        "nvnVertexStreamStateSetDefaults",
+        "nvnVertexStreamStateSetStride",
+        "nvnVertexStreamStateSetDivisor",
+        "nvnVertexStreamStateGetStride",
+        "nvnVertexStreamStateGetDivisor",
+    };
+    for (i = 0; i < sizeof(render_state_names) / sizeof(render_state_names[0]); i++) {
+        void *entry = lookup(NULL, render_state_names[i]);
+        expect_condition("nvn-render-state-name-resolves", entry != NULL);
+        expect_condition("nvn-render-state-name-is-stable", entry == lookup(NULL, render_state_names[i]));
+    }
+
+#define RS_LOOKUP(var, type, name) type var = (type)(uintptr_t)lookup(NULL, name)
+    RS_LOOKUP(color_defaults, set_defaults_fn, "nvnColorStateSetDefaults");
+    RS_LOOKUP(color_set_blend_enable, set_int_bool_fn, "nvnColorStateSetBlendEnable");
+    RS_LOOKUP(color_set_logic_op, set_int_fn, "nvnColorStateSetLogicOp");
+    RS_LOOKUP(color_set_alpha_test, set_int_fn, "nvnColorStateSetAlphaTest");
+    RS_LOOKUP(color_get_blend_enable, get_int_int_fn, "nvnColorStateGetBlendEnable");
+    RS_LOOKUP(color_get_logic_op, get_int_fn, "nvnColorStateGetLogicOp");
+    RS_LOOKUP(color_get_alpha_test, get_int_fn, "nvnColorStateGetAlphaTest");
+    RS_LOOKUP(mask_defaults, set_defaults_fn, "nvnChannelMaskStateSetDefaults");
+    RS_LOOKUP(mask_set_channel_mask, set_channel_mask_fn, "nvnChannelMaskStateSetChannelMask");
+    RS_LOOKUP(mask_get_channel_mask, get_channel_mask_fn, "nvnChannelMaskStateGetChannelMask");
+    RS_LOOKUP(ms_defaults, set_defaults_fn, "nvnMultisampleStateSetDefaults");
+    RS_LOOKUP(ms_set_enable, set_bool_fn, "nvnMultisampleStateSetMultisampleEnable");
+    RS_LOOKUP(ms_set_samples, set_int_fn, "nvnMultisampleStateSetSamples");
+    RS_LOOKUP(ms_set_a2c, set_bool_fn, "nvnMultisampleStateSetAlphaToCoverageEnable");
+    RS_LOOKUP(ms_set_a2c_dither, set_bool_fn, "nvnMultisampleStateSetAlphaToCoverageDither");
+    RS_LOOKUP(ms_get_enable, get_int_fn, "nvnMultisampleStateGetMultisampleEnable");
+    RS_LOOKUP(ms_get_samples, get_int_fn, "nvnMultisampleStateGetSamples");
+    RS_LOOKUP(ms_get_a2c, get_int_fn, "nvnMultisampleStateGetAlphaToCoverageEnable");
+    RS_LOOKUP(ms_get_a2c_dither, get_int_fn, "nvnMultisampleStateGetAlphaToCoverageDither");
+    RS_LOOKUP(ms_set_raster_samples, set_int_fn, "nvnMultisampleStateSetRasterSamples");
+    RS_LOOKUP(ms_get_raster_samples, get_int_fn, "nvnMultisampleStateGetRasterSamples");
+    RS_LOOKUP(ms_set_cov_mod, set_int_fn, "nvnMultisampleStateSetCoverageModulationMode");
+    RS_LOOKUP(ms_get_cov_mod, get_int_fn, "nvnMultisampleStateGetCoverageModulationMode");
+    RS_LOOKUP(ms_set_cov2color_en, set_bool_fn, "nvnMultisampleStateSetCoverageToColorEnable");
+    RS_LOOKUP(ms_get_cov2color_en, get_int_fn, "nvnMultisampleStateGetCoverageToColorEnable");
+    RS_LOOKUP(ms_set_cov2color_out, set_int_fn, "nvnMultisampleStateSetCoverageToColorOutput");
+    RS_LOOKUP(ms_get_cov2color_out, get_int_fn, "nvnMultisampleStateGetCoverageToColorOutput");
+    RS_LOOKUP(ms_set_sl_enable, set_bool_fn, "nvnMultisampleStateSetSampleLocationsEnable");
+    RS_LOOKUP(ms_get_sl_enable, get_int_fn, "nvnMultisampleStateGetSampleLocationsEnable");
+    RS_LOOKUP(ms_get_sl_grid, get_grid_fn, "nvnMultisampleStateGetSampleLocationsGrid");
+    RS_LOOKUP(ms_set_sl_grid_enable, set_bool_fn, "nvnMultisampleStateSetSampleLocationsGridEnable");
+    RS_LOOKUP(ms_get_sl_grid_enable, get_int_fn, "nvnMultisampleStateGetSampleLocationsGridEnable");
+    RS_LOOKUP(ms_set_sl, set_sample_locations_fn, "nvnMultisampleStateSetSampleLocations");
+    RS_LOOKUP(poly_defaults, set_defaults_fn, "nvnPolygonStateSetDefaults");
+    RS_LOOKUP(poly_set_cull_face, set_int_fn, "nvnPolygonStateSetCullFace");
+    RS_LOOKUP(poly_set_front_face, set_int_fn, "nvnPolygonStateSetFrontFace");
+    RS_LOOKUP(poly_set_mode, set_int_fn, "nvnPolygonStateSetPolygonMode");
+    RS_LOOKUP(poly_set_offset, set_int_fn, "nvnPolygonStateSetPolygonOffsetEnables");
+    RS_LOOKUP(poly_get_cull_face, get_int_fn, "nvnPolygonStateGetCullFace");
+    RS_LOOKUP(poly_get_front_face, get_int_fn, "nvnPolygonStateGetFrontFace");
+    RS_LOOKUP(poly_get_mode, get_int_fn, "nvnPolygonStateGetPolygonMode");
+    RS_LOOKUP(poly_get_offset, get_int_fn, "nvnPolygonStateGetPolygonOffsetEnables");
+    RS_LOOKUP(ds_defaults, set_defaults_fn, "nvnDepthStencilStateSetDefaults");
+    RS_LOOKUP(ds_set_depth_test, set_bool_fn, "nvnDepthStencilStateSetDepthTestEnable");
+    RS_LOOKUP(ds_set_depth_write, set_bool_fn, "nvnDepthStencilStateSetDepthWriteEnable");
+    RS_LOOKUP(ds_set_depth_func, set_int_fn, "nvnDepthStencilStateSetDepthFunc");
+    RS_LOOKUP(ds_set_stencil_test, set_bool_fn, "nvnDepthStencilStateSetStencilTestEnable");
+    RS_LOOKUP(ds_set_stencil_func, set_int_int_fn, "nvnDepthStencilStateSetStencilFunc");
+    RS_LOOKUP(ds_set_stencil_op, set_stencil_op_fn, "nvnDepthStencilStateSetStencilOp");
+    RS_LOOKUP(ds_get_depth_test, get_int_fn, "nvnDepthStencilStateGetDepthTestEnable");
+    RS_LOOKUP(ds_get_depth_write, get_int_fn, "nvnDepthStencilStateGetDepthWriteEnable");
+    RS_LOOKUP(ds_get_depth_func, get_int_fn, "nvnDepthStencilStateGetDepthFunc");
+    RS_LOOKUP(ds_get_stencil_test, get_int_fn, "nvnDepthStencilStateGetStencilTestEnable");
+    RS_LOOKUP(ds_get_stencil_func, get_int_int_fn, "nvnDepthStencilStateGetStencilFunc");
+    RS_LOOKUP(ds_get_stencil_op, get_stencil_op_fn, "nvnDepthStencilStateGetStencilOp");
+    RS_LOOKUP(va_defaults, set_defaults_fn, "nvnVertexAttribStateSetDefaults");
+    RS_LOOKUP(va_set_format, set_format_fn, "nvnVertexAttribStateSetFormat");
+    RS_LOOKUP(va_set_stream, set_int_fn, "nvnVertexAttribStateSetStreamIndex");
+    RS_LOOKUP(va_get_format, get_format_fn, "nvnVertexAttribStateGetFormat");
+    RS_LOOKUP(va_get_stream, get_int_fn, "nvnVertexAttribStateGetStreamIndex");
+    RS_LOOKUP(vs_defaults, set_defaults_fn, "nvnVertexStreamStateSetDefaults");
+    RS_LOOKUP(vs_set_stride, set_stride_fn, "nvnVertexStreamStateSetStride");
+    RS_LOOKUP(vs_set_divisor, set_int_fn, "nvnVertexStreamStateSetDivisor");
+    RS_LOOKUP(vs_get_stride, get_int64_fn, "nvnVertexStreamStateGetStride");
+    RS_LOOKUP(vs_get_divisor, get_int_fn, "nvnVertexStreamStateGetDivisor");
+    CHECK(color_defaults && color_set_blend_enable && color_set_logic_op && color_set_alpha_test);
+    CHECK(color_get_blend_enable && color_get_logic_op && color_get_alpha_test);
+    CHECK(mask_defaults && mask_set_channel_mask && mask_get_channel_mask);
+    CHECK(ms_defaults && ms_set_enable && ms_set_samples && ms_set_a2c && ms_set_a2c_dither);
+    CHECK(ms_get_enable && ms_get_samples && ms_get_a2c && ms_get_a2c_dither);
+    CHECK(ms_set_raster_samples && ms_get_raster_samples && ms_set_cov_mod && ms_get_cov_mod);
+    CHECK(ms_set_cov2color_en && ms_get_cov2color_en && ms_set_cov2color_out && ms_get_cov2color_out);
+    CHECK(ms_set_sl_enable && ms_get_sl_enable && ms_get_sl_grid);
+    CHECK(ms_set_sl_grid_enable && ms_get_sl_grid_enable && ms_set_sl);
+    CHECK(poly_defaults && poly_set_cull_face && poly_set_front_face && poly_set_mode);
+    CHECK(poly_set_offset && poly_get_cull_face && poly_get_front_face && poly_get_mode);
+    CHECK(poly_get_offset);
+    CHECK(ds_defaults && ds_set_depth_test && ds_set_depth_write && ds_set_depth_func);
+    CHECK(ds_set_stencil_test && ds_set_stencil_func && ds_set_stencil_op);
+    CHECK(ds_get_depth_test && ds_get_depth_write && ds_get_depth_func && ds_get_stencil_test);
+    CHECK(ds_get_stencil_func && ds_get_stencil_op);
+    CHECK(va_defaults && va_set_format && va_set_stream && va_get_format && va_get_stream);
+    CHECK(vs_defaults && vs_set_stride && vs_set_divisor && vs_get_stride && vs_get_divisor);
+
+    /* 2. The colour state. The defaults are blending off, the copy logic
+     *    operation and the always alpha test. */
+    unsigned char color_state[8];
+    unsigned char mask_state[8];
+    unsigned char ms_state[16];
+    unsigned char poly_state[8];
+    unsigned char ds_state[16];
+    unsigned char va_state[8];
+    unsigned char vs_state[8];
+    memset(color_state, 0xaa, sizeof(color_state));
+    memset(mask_state, 0xaa, sizeof(mask_state));
+    memset(ms_state, 0xaa, sizeof(ms_state));
+    memset(poly_state, 0xaa, sizeof(poly_state));
+    memset(ds_state, 0xaa, sizeof(ds_state));
+    memset(va_state, 0xaa, sizeof(va_state));
+    memset(vs_state, 0xaa, sizeof(vs_state));
+
+    color_defaults(color_state);
+    expect_value("nvn-render-state-color-default-blend-enable",
+                 (uint64_t)(uint32_t)color_get_blend_enable(color_state, 0), 0);
+    expect_value("nvn-render-state-color-default-logic-op",
+                 (uint64_t)(uint32_t)color_get_logic_op(color_state), 3);
+    expect_value("nvn-render-state-color-default-alpha-test",
+                 (uint64_t)(uint32_t)color_get_alpha_test(color_state), 8);
+
+    /* 3. The channel mask state. Every channel of every target is written
+     *    after the defaults. */
+    int red = -1, green = -1, blue = -1, alpha = -1;
+    mask_defaults(mask_state);
+    mask_get_channel_mask(mask_state, 0, &red, &green, &blue, &alpha);
+    expect_value("nvn-render-state-mask-default-red", (uint64_t)(uint32_t)red, 1);
+    expect_value("nvn-render-state-mask-default-green", (uint64_t)(uint32_t)green, 1);
+    expect_value("nvn-render-state-mask-default-blue", (uint64_t)(uint32_t)blue, 1);
+    expect_value("nvn-render-state-mask-default-alpha", (uint64_t)(uint32_t)alpha, 1);
+
+    /* 4. The multisample state. The defaults leave multisampling on with one
+     *    sample and everything else off. */
+    ms_defaults(ms_state);
+    expect_value("nvn-render-state-ms-default-enable",
+                 (uint64_t)(uint32_t)ms_get_enable(ms_state), 1);
+    expect_value("nvn-render-state-ms-default-samples",
+                 (uint64_t)(uint32_t)ms_get_samples(ms_state), 0);
+    expect_value("nvn-render-state-ms-default-alpha-to-coverage",
+                 (uint64_t)(uint32_t)ms_get_a2c(ms_state), 0);
+    expect_value("nvn-render-state-ms-default-alpha-to-coverage-dither",
+                 (uint64_t)(uint32_t)ms_get_a2c_dither(ms_state), 0);
+    expect_value("nvn-render-state-ms-default-raster-samples",
+                 (uint64_t)(uint32_t)ms_get_raster_samples(ms_state), 0);
+    expect_value("nvn-render-state-ms-default-coverage-modulation",
+                 (uint64_t)(uint32_t)ms_get_cov_mod(ms_state), 0);
+    expect_value("nvn-render-state-ms-default-coverage-to-color-enable",
+                 (uint64_t)(uint32_t)ms_get_cov2color_en(ms_state), 0);
+    expect_value("nvn-render-state-ms-default-coverage-to-color-output",
+                 (uint64_t)(uint32_t)ms_get_cov2color_out(ms_state), 0);
+    expect_value("nvn-render-state-ms-default-sample-locations-enable",
+                 (uint64_t)(uint32_t)ms_get_sl_enable(ms_state), 0);
+    expect_value("nvn-render-state-ms-default-sample-locations-grid-enable",
+                 (uint64_t)(uint32_t)ms_get_sl_grid_enable(ms_state), 0);
+
+    /* 5. The polygon state. The defaults cull nothing, take the counter
+     *    clockwise face as the front face and fill polygons. */
+    poly_defaults(poly_state);
+    expect_value("nvn-render-state-poly-default-cull-face",
+                 (uint64_t)(uint32_t)poly_get_cull_face(poly_state), 0);
+    expect_value("nvn-render-state-poly-default-front-face",
+                 (uint64_t)(uint32_t)poly_get_front_face(poly_state), 1);
+    expect_value("nvn-render-state-poly-default-mode",
+                 (uint64_t)(uint32_t)poly_get_mode(poly_state), 2);
+    expect_value("nvn-render-state-poly-default-offset-enables",
+                 (uint64_t)(uint32_t)poly_get_offset(poly_state), 0);
+
+    /* 6. The depth stencil state. The defaults leave the depth test off, the
+     *    depth write on, the less comparison and the always stencil function
+     *    with the keep operation. */
+    ds_defaults(ds_state);
+    expect_value("nvn-render-state-ds-default-depth-test",
+                 (uint64_t)(uint32_t)ds_get_depth_test(ds_state), 0);
+    expect_value("nvn-render-state-ds-default-depth-write",
+                 (uint64_t)(uint32_t)ds_get_depth_write(ds_state), 1);
+    expect_value("nvn-render-state-ds-default-depth-func",
+                 (uint64_t)(uint32_t)ds_get_depth_func(ds_state), 2);
+    expect_value("nvn-render-state-ds-default-stencil-test",
+                 (uint64_t)(uint32_t)ds_get_stencil_test(ds_state), 0);
+    expect_value("nvn-render-state-ds-default-stencil-func-front",
+                 (uint64_t)(uint32_t)ds_get_stencil_func(ds_state, 1), 8);
+    expect_value("nvn-render-state-ds-default-stencil-func-back",
+                 (uint64_t)(uint32_t)ds_get_stencil_func(ds_state, 2), 8);
+    int stencil_fail = -1, stencil_zfail = -1, stencil_zpass = -1;
+    ds_get_stencil_op(ds_state, 1, &stencil_fail, &stencil_zfail, &stencil_zpass);
+    expect_value("nvn-render-state-ds-default-stencil-op-fail",
+                 (uint64_t)(uint32_t)stencil_fail, 1);
+    expect_value("nvn-render-state-ds-default-stencil-op-zfail",
+                 (uint64_t)(uint32_t)stencil_zfail, 1);
+    expect_value("nvn-render-state-ds-default-stencil-op-zpass",
+                 (uint64_t)(uint32_t)stencil_zpass, 1);
+
+    /* 7. The vertex attribute and the vertex stream state. */
+    va_defaults(va_state);
+    int format = -1;
+    int64_t offset = -1;
+    va_get_format(va_state, &format, &offset);
+    expect_value("nvn-render-state-va-default-format", (uint64_t)(uint32_t)format, 0);
+    expect_value("nvn-render-state-va-default-offset", (uint64_t)offset, 0);
+    expect_value("nvn-render-state-va-default-stream", (uint64_t)(uint32_t)va_get_stream(va_state), 0);
+    vs_defaults(vs_state);
+    expect_value("nvn-render-state-vs-default-stride", (uint64_t)vs_get_stride(vs_state), 0);
+    expect_value("nvn-render-state-vs-default-divisor", (uint64_t)(uint32_t)vs_get_divisor(vs_state), 0);
+
+    /* 8. Every parameter round trips. */
+    color_set_blend_enable(color_state, 2, 1);
+    expect_value("nvn-render-state-color-blend-enable-round-trip",
+                 (uint64_t)(uint32_t)color_get_blend_enable(color_state, 2), 1);
+    expect_value("nvn-render-state-color-blend-enable-other-target-untouched",
+                 (uint64_t)(uint32_t)color_get_blend_enable(color_state, 3), 0);
+    color_set_logic_op(color_state, 6);
+    expect_value("nvn-render-state-color-logic-op-round-trip",
+                 (uint64_t)(uint32_t)color_get_logic_op(color_state), 6);
+    color_set_alpha_test(color_state, 4);
+    expect_value("nvn-render-state-color-alpha-test-round-trip",
+                 (uint64_t)(uint32_t)color_get_alpha_test(color_state), 4);
+
+    mask_set_channel_mask(mask_state, 1, 1, 0, 1, 0);
+    mask_get_channel_mask(mask_state, 1, &red, &green, &blue, &alpha);
+    expect_value("nvn-render-state-mask-red-round-trip", (uint64_t)(uint32_t)red, 1);
+    expect_value("nvn-render-state-mask-green-round-trip", (uint64_t)(uint32_t)green, 0);
+    expect_value("nvn-render-state-mask-blue-round-trip", (uint64_t)(uint32_t)blue, 1);
+    expect_value("nvn-render-state-mask-alpha-round-trip", (uint64_t)(uint32_t)alpha, 0);
+    mask_get_channel_mask(mask_state, 0, &red, &green, &blue, &alpha);
+    expect_value("nvn-render-state-mask-other-target-untouched",
+                 (uint64_t)(uint32_t)green, 1);
+
+    ms_set_enable(ms_state, 0);
+    expect_value("nvn-render-state-ms-enable-round-trip",
+                 (uint64_t)(uint32_t)ms_get_enable(ms_state), 0);
+    ms_set_samples(ms_state, 4);
+    expect_value("nvn-render-state-ms-samples-round-trip",
+                 (uint64_t)(uint32_t)ms_get_samples(ms_state), 4);
+    ms_set_a2c(ms_state, 1);
+    expect_value("nvn-render-state-ms-alpha-to-coverage-round-trip",
+                 (uint64_t)(uint32_t)ms_get_a2c(ms_state), 1);
+    ms_set_a2c_dither(ms_state, 1);
+    expect_value("nvn-render-state-ms-alpha-to-coverage-dither-round-trip",
+                 (uint64_t)(uint32_t)ms_get_a2c_dither(ms_state), 1);
+    ms_set_raster_samples(ms_state, 2);
+    expect_value("nvn-render-state-ms-raster-samples-round-trip",
+                 (uint64_t)(uint32_t)ms_get_raster_samples(ms_state), 2);
+    ms_set_cov_mod(ms_state, 3);
+    expect_value("nvn-render-state-ms-coverage-modulation-round-trip",
+                 (uint64_t)(uint32_t)ms_get_cov_mod(ms_state), 3);
+    ms_set_cov2color_en(ms_state, 1);
+    expect_value("nvn-render-state-ms-coverage-to-color-enable-round-trip",
+                 (uint64_t)(uint32_t)ms_get_cov2color_en(ms_state), 1);
+    ms_set_cov2color_out(ms_state, 1);
+    expect_value("nvn-render-state-ms-coverage-to-color-output-round-trip",
+                 (uint64_t)(uint32_t)ms_get_cov2color_out(ms_state), 1);
+    ms_set_sl_enable(ms_state, 1);
+    expect_value("nvn-render-state-ms-sample-locations-enable-round-trip",
+                 (uint64_t)(uint32_t)ms_get_sl_enable(ms_state), 1);
+    ms_set_sl_grid_enable(ms_state, 1);
+    expect_value("nvn-render-state-ms-sample-locations-grid-enable-round-trip",
+                 (uint64_t)(uint32_t)ms_get_sl_grid_enable(ms_state), 1);
+    {
+        static const float locations[4] = { 0.25f, 0.75f, -0.5f, 0.5f };
+        ms_set_sl(ms_state, 0, 2, locations);
+    }
+    int grid_width = -1, grid_height = -1;
+    ms_get_sl_grid(ms_state, &grid_width, &grid_height);
+    expect_condition("nvn-render-state-ms-sample-locations-grid-answers",
+                     grid_width >= 0 && grid_height >= 0);
+
+    poly_set_cull_face(poly_state, 2);
+    expect_value("nvn-render-state-poly-cull-face-round-trip",
+                 (uint64_t)(uint32_t)poly_get_cull_face(poly_state), 2);
+    poly_set_front_face(poly_state, 0);
+    expect_value("nvn-render-state-poly-front-face-round-trip",
+                 (uint64_t)(uint32_t)poly_get_front_face(poly_state), 0);
+    poly_set_mode(poly_state, 1);
+    expect_value("nvn-render-state-poly-mode-round-trip",
+                 (uint64_t)(uint32_t)poly_get_mode(poly_state), 1);
+    poly_set_offset(poly_state, 4);
+    expect_value("nvn-render-state-poly-offset-enables-round-trip",
+                 (uint64_t)(uint32_t)poly_get_offset(poly_state), 4);
+
+    ds_set_depth_test(ds_state, 1);
+    expect_value("nvn-render-state-ds-depth-test-round-trip",
+                 (uint64_t)(uint32_t)ds_get_depth_test(ds_state), 1);
+    ds_set_depth_write(ds_state, 0);
+    expect_value("nvn-render-state-ds-depth-write-round-trip",
+                 (uint64_t)(uint32_t)ds_get_depth_write(ds_state), 0);
+    ds_set_depth_func(ds_state, 7);
+    expect_value("nvn-render-state-ds-depth-func-round-trip",
+                 (uint64_t)(uint32_t)ds_get_depth_func(ds_state), 7);
+    ds_set_stencil_test(ds_state, 1);
+    expect_value("nvn-render-state-ds-stencil-test-round-trip",
+                 (uint64_t)(uint32_t)ds_get_stencil_test(ds_state), 1);
+    ds_set_stencil_func(ds_state, 1, 4);
+    expect_value("nvn-render-state-ds-stencil-func-front-round-trip",
+                 (uint64_t)(uint32_t)ds_get_stencil_func(ds_state, 1), 4);
+    expect_value("nvn-render-state-ds-stencil-func-back-untouched",
+                 (uint64_t)(uint32_t)ds_get_stencil_func(ds_state, 2), 8);
+    ds_set_stencil_func(ds_state, 2, 5);
+    expect_value("nvn-render-state-ds-stencil-func-back-round-trip",
+                 (uint64_t)(uint32_t)ds_get_stencil_func(ds_state, 2), 5);
+    ds_set_stencil_func(ds_state, 3, 6);
+    expect_value("nvn-render-state-ds-stencil-func-both-front",
+                 (uint64_t)(uint32_t)ds_get_stencil_func(ds_state, 1), 6);
+    expect_value("nvn-render-state-ds-stencil-func-both-back",
+                 (uint64_t)(uint32_t)ds_get_stencil_func(ds_state, 2), 6);
+    ds_set_stencil_op(ds_state, 1, 2, 3, 4);
+    ds_get_stencil_op(ds_state, 1, &stencil_fail, &stencil_zfail, &stencil_zpass);
+    expect_value("nvn-render-state-ds-stencil-op-fail-round-trip",
+                 (uint64_t)(uint32_t)stencil_fail, 2);
+    expect_value("nvn-render-state-ds-stencil-op-zfail-round-trip",
+                 (uint64_t)(uint32_t)stencil_zfail, 3);
+    expect_value("nvn-render-state-ds-stencil-op-zpass-round-trip",
+                 (uint64_t)(uint32_t)stencil_zpass, 4);
+
+    va_set_format(va_state, 0x25, 16);
+    va_get_format(va_state, &format, &offset);
+    expect_value("nvn-render-state-va-format-round-trip", (uint64_t)(uint32_t)format, 0x25);
+    expect_value("nvn-render-state-va-offset-round-trip", (uint64_t)offset, 16);
+    va_set_stream(va_state, 3);
+    expect_value("nvn-render-state-va-stream-round-trip",
+                 (uint64_t)(uint32_t)va_get_stream(va_state), 3);
+
+    vs_set_stride(vs_state, 32);
+    expect_value("nvn-render-state-vs-stride-round-trip", (uint64_t)vs_get_stride(vs_state), 32);
+    vs_set_divisor(vs_state, 2);
+    expect_value("nvn-render-state-vs-divisor-round-trip",
+                 (uint64_t)(uint32_t)vs_get_divisor(vs_state), 2);
+
+    /* 9. The runtime keeps the state on the host, so it must not write a
+     *    single byte into the guest's state objects. */
+    expect_condition("nvn-render-state-color-object-not-written",
+                     all_bytes(color_state, sizeof(color_state), 0xaa));
+    expect_condition("nvn-render-state-mask-object-not-written",
+                     all_bytes(mask_state, sizeof(mask_state), 0xaa));
+    expect_condition("nvn-render-state-ms-object-not-written",
+                     all_bytes(ms_state, sizeof(ms_state), 0xaa));
+    expect_condition("nvn-render-state-poly-object-not-written",
+                     all_bytes(poly_state, sizeof(poly_state), 0xaa));
+    expect_condition("nvn-render-state-ds-object-not-written",
+                     all_bytes(ds_state, sizeof(ds_state), 0xaa));
+    expect_condition("nvn-render-state-va-object-not-written",
+                     all_bytes(va_state, sizeof(va_state), 0xaa));
+    expect_condition("nvn-render-state-vs-object-not-written",
+                     all_bytes(vs_state, sizeof(vs_state), 0xaa));
+
+    /* 10. The defaults really reset the state. A SetDefaults that did nothing
+     *     would leave the guest's renderer in the wrong state, and the guest
+     *     would only find out much later. */
+    color_defaults(color_state);
+    expect_value("nvn-render-state-color-defaults-reset-logic-op",
+                 (uint64_t)(uint32_t)color_get_logic_op(color_state), 3);
+    expect_value("nvn-render-state-color-defaults-reset-blend-enable",
+                 (uint64_t)(uint32_t)color_get_blend_enable(color_state, 2), 0);
+    mask_defaults(mask_state);
+    mask_get_channel_mask(mask_state, 1, &red, &green, &blue, &alpha);
+    expect_value("nvn-render-state-mask-defaults-reset-green",
+                 (uint64_t)(uint32_t)green, 1);
+    ms_defaults(ms_state);
+    expect_value("nvn-render-state-ms-defaults-reset-enable",
+                 (uint64_t)(uint32_t)ms_get_enable(ms_state), 1);
+    expect_value("nvn-render-state-ms-defaults-reset-samples",
+                 (uint64_t)(uint32_t)ms_get_samples(ms_state), 0);
+    poly_defaults(poly_state);
+    expect_value("nvn-render-state-poly-defaults-reset-mode",
+                 (uint64_t)(uint32_t)poly_get_mode(poly_state), 2);
+    ds_defaults(ds_state);
+    expect_value("nvn-render-state-ds-defaults-reset-depth-func",
+                 (uint64_t)(uint32_t)ds_get_depth_func(ds_state), 2);
+    expect_value("nvn-render-state-ds-defaults-reset-stencil-func",
+                 (uint64_t)(uint32_t)ds_get_stencil_func(ds_state, 1), 8);
+    va_defaults(va_state);
+    va_get_format(va_state, &format, &offset);
+    expect_value("nvn-render-state-va-defaults-reset-format", (uint64_t)(uint32_t)format, 0);
+    expect_value("nvn-render-state-va-defaults-reset-stream",
+                 (uint64_t)(uint32_t)va_get_stream(va_state), 0);
+    vs_defaults(vs_state);
+    expect_value("nvn-render-state-vs-defaults-reset-stride",
+                 (uint64_t)vs_get_stride(vs_state), 0);
+    expect_value("nvn-render-state-vs-defaults-reset-divisor",
+                 (uint64_t)(uint32_t)vs_get_divisor(vs_state), 0);
+
+    /* 11. The counters. */
+    nvn_render_state_get_stats(&stats);
+    expect_condition("nvn-render-state-stats-count-calls", stats.calls > 0);
+    expect_condition("nvn-render-state-stats-count-defaults", stats.defaults_applied > 0);
+    expect_condition("nvn-render-state-stats-count-sets", stats.sets > 0);
+    expect_condition("nvn-render-state-stats-count-gets", stats.gets > 0);
+    expect_value("nvn-render-state-stats-live-states",
+                 (uint64_t)(uint32_t)stats.live_states, 7);
+
+    /* The final gate. Without it the contract could exit 0 while the
+     * expectations had failed. */
+    CHECK(!errors);
+    printf("{\"nvn_render_state_errors\":%u,\"defaults_applied\":%llu,\"sets\":%llu,"
+           "\"gets\":%llu,\"live_states\":%llu}\n",
+           errors, (unsigned long long)stats.defaults_applied, (unsigned long long)stats.sets,
+           (unsigned long long)stats.gets, (unsigned long long)stats.live_states);
+    return 0;
+}
+
 int main(int argc,char **argv) {
     page=(size_t)sysconf(_SC_PAGESIZE);
     if(argc==2 && !strcmp(argv[1],"--tls-host-null")) {
@@ -5464,6 +6148,8 @@ int main(int argc,char **argv) {
     if(argc==2 && !strcmp(argv[1],"--nvn-memory-pool"))return nvn_memory_pool_contract();
     if(argc==2 && !strcmp(argv[1],"--nvn-sampler-pool"))return nvn_sampler_pool_contract();
     if(argc==2 && !strcmp(argv[1],"--nvn-texture-pool"))return nvn_texture_pool_contract();
+    if(argc==2 && !strcmp(argv[1],"--nvn-blend-state"))return nvn_blend_state_contract();
+    if(argc==2 && !strcmp(argv[1],"--nvn-render-states"))return nvn_render_state_contract();
     if(argc==2 && !strcmp(argv[1],"--vi-display"))return vi_display_contract();
     if(argc==3 && !strcmp(argv[1],"--nvn-bootstrap"))return nvn_bootstrap_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-fresh"))return tls_fresh_registration_contract(argv[2]);

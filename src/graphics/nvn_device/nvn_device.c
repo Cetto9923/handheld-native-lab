@@ -18,8 +18,10 @@
  * starts, which is what lets the report name the call site.
  */
 #include "nvn_device.h"
+#include "nvn_blend_state.h"
 #include "nvn_memory_pool.h"
 #include "nvn_queue.h"
+#include "nvn_render_state.h"
 #include "nvn_sampler_pool.h"
 #include "nvn_texture_pool.h"
 #include "nvn_window.h"
@@ -44,13 +46,27 @@
 #define NVN_ASM_HANDLER "nvn_trampoline_handler"
 #endif
 
+/* The arguments the guest passed to a trapped entry point.
+ *
+ * The trampoline puts them on the stack before it touches any register. The
+ * handler that prints them is a C function, and its very first call already
+ * overwrites the argument registers, so reading them inside the handler would
+ * report the leftovers of the print instead of the guest's own values. The
+ * first argument is the object the call is about, which is the one that tells
+ * two calls of the same shape apart. */
 __asm__(
     ".text\n"
     ".align 3\n"
     ".global " NVN_ASM_TABLE "\n"
     NVN_ASM_TABLE ":\n"
     ".macro NVN_TRAMP idx\n"
+    "  sub sp, sp, #64\n"
+    "  stp x0, x1, [sp, #0]\n"
+    "  stp x2, x3, [sp, #16]\n"
+    "  stp x4, x5, [sp, #32]\n"
+    "  stp x6, x7, [sp, #48]\n"
     "  mov w0, #\\idx\n"
+    "  add x1, sp, #0\n"
     "  b " NVN_ASM_HANDLER "\n"
     ".endm\n"
     ".set nvn_trampoline_i, 0\n"
@@ -61,7 +77,7 @@ __asm__(
 
 #define NVN_TRAP_TABLE_PRESENT 1
 extern const char nvn_trampoline_table[];
-#define NVN_TRAP_STRIDE 8
+#define NVN_TRAP_STRIDE 32
 #else
 /* Without the table there is no way to tell the traps apart, so every
  * unimplemented name shares one trap that reports the slot count instead of
@@ -407,14 +423,38 @@ const char *nvn_device_trap_name(uint64_t index) {
     return s_trap_names[index];
 }
 
-void nvn_trampoline_handler(uint64_t index) {
+void nvn_trampoline_handler(uint64_t index, const uint64_t *args) {
     uint64_t caller_lr;
+    uint64_t a0 = 0, a1 = 0, a2 = 0, a3 = 0, a4 = 0, a5 = 0, a6 = 0, a7 = 0;
     /* x30 still holds the guest's return address: the trampoline branches
      * here instead of calling, so nothing has replaced it yet. */
     __asm__ volatile("mov %0, x30" : "=r"(caller_lr));
+    /* The arguments the guest really passed. The trampoline put them on the
+     * stack before it overwrote any register, so they are still the guest's
+     * own values here.
+     *
+     * The entry point the guest wanted is only known by name here, so the
+     * signature of the call is not known either. Printing the arguments is
+     * what makes the call site legible without guessing: the shape of the
+     * call can be read off the log. The first argument is the object the
+     * call is about, which is the one that identifies which of several same
+     * shaped calls this is. */
+    if (args) {
+        a0 = args[0];
+        a1 = args[1];
+        a2 = args[2];
+        a3 = args[3];
+        a4 = args[4];
+        a5 = args[5];
+        a6 = args[6];
+        a7 = args[7];
+    }
     s_device.unimplemented_calls++;
     fprintf(stderr, "[nvn] unimplemented NVN entry \"%s\" was called (trap slot %" PRIu64 ", caller lr=0x%" PRIx64 ")\n",
             nvn_device_trap_name(index), index, caller_lr);
+    fprintf(stderr, "[nvn]   args x0=0x%" PRIx64 " x1=0x%" PRIx64 " x2=0x%" PRIx64 " x3=0x%" PRIx64
+                    " x4=0x%" PRIx64 " x5=0x%" PRIx64 " x6=0x%" PRIx64 " x7=0x%" PRIx64 "\n",
+            a0, a1, a2, a3, a4, a5, a6, a7);
     fprintf(stderr, "[nvn] this runtime has no implementation for that API yet; stopping the run here "
                     "instead of pretending the call succeeded\n");
     fflush(NULL);
@@ -557,6 +597,18 @@ void *nvn_device_get_proc_address(void *device, const char *name) {
         }
     }
     {
+        size_t count = nvn_blend_state_family_count();
+        for (i = 0; i < count; i++) {
+            const nvn_blend_state_family_entry *entry = nvn_blend_state_family_entry_at(i);
+            if (!entry || !entry->name) continue;
+            if (!strcmp(name, entry->name)) {
+                s_device.implemented_resolved++;
+                fprintf(stderr, "[nvn] nvnDeviceGetProcAddress: \"%s\" -> implemented\n", name);
+                return entry->fn;
+            }
+        }
+    }
+    {
         size_t count = nvn_sampler_pool_family_count();
         for (i = 0; i < count; i++) {
             const nvn_sampler_pool_family_entry *entry = nvn_sampler_pool_family_entry_at(i);
@@ -572,6 +624,18 @@ void *nvn_device_get_proc_address(void *device, const char *name) {
         size_t count = nvn_texture_pool_family_count();
         for (i = 0; i < count; i++) {
             const nvn_texture_pool_family_entry *entry = nvn_texture_pool_family_entry_at(i);
+            if (!entry || !entry->name) continue;
+            if (!strcmp(name, entry->name)) {
+                s_device.implemented_resolved++;
+                fprintf(stderr, "[nvn] nvnDeviceGetProcAddress: \"%s\" -> implemented\n", name);
+                return entry->fn;
+            }
+        }
+    }
+    {
+        size_t count = nvn_render_state_family_count();
+        for (i = 0; i < count; i++) {
+            const nvn_render_state_family_entry *entry = nvn_render_state_family_entry_at(i);
             if (!entry || !entry->name) continue;
             if (!strcmp(name, entry->name)) {
                 s_device.implemented_resolved++;

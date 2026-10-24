@@ -17,7 +17,12 @@ set -u
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${ROOT}" || exit 99
 
-BUILD="${FFRS_SELF_PROOF_BUILD:-.local/build-p-mm-18}"
+BUILD="${FFRS_SELF_PROOF_BUILD:-}"
+# The contract file carries every NVN family, so the self-proof needs the
+# newest build and not the one of the round the family was written in.
+if [ -z "${BUILD}" ]; then
+    BUILD="$(ls -d .local/build-p-mm-* 2>/dev/null | sort -V | tail -1)"
+fi
 LOG="${FFRS_SELF_PROOF_LOG:-.local/logs/p-mm-18-texture-pool-contract-selfproof.log}"
 OUT="${FFRS_SELF_PROOF_DIR:-.local/selfproof}"
 STRICT="-std=c11 -O2 -g -fno-omit-frame-pointer -Wall -Wextra -Werror -I src/runtime/hle -I src/runtime/nso -I src/graphics/nvn_device"
@@ -46,7 +51,7 @@ python3 scripts/runtime/make_nvn_texture_pool_variants.py >> "${LOG}" 2>&1 || {
 LIBOBJS=""
 for object in nso_loader guest_context guest_process nso_host address_region mutex exit_registry \
               module_tls guest_tp guest_pages native_boundary guest_os_tls native_window nvn_device \
-              nvn_queue nvn_window nvn_memory_pool nvn_sampler_pool; do
+              nvn_queue nvn_window nvn_memory_pool nvn_sampler_pool nvn_render_state; do
     LIBOBJS="${LIBOBJS} ${BUILD}/${object}.host.o"
 done
 
