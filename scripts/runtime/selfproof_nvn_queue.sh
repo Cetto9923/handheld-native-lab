@@ -45,7 +45,7 @@ python3 scripts/runtime/make_nvn_queue_variants.py >> "${LOG}" 2>&1 || {
 
 LIBOBJS=""
 for object in nso_loader guest_context guest_process nso_host address_region mutex exit_registry \
-              module_tls guest_tp guest_pages native_boundary guest_os_tls nvn_device; do
+              module_tls guest_tp guest_pages native_boundary guest_os_tls native_window nvn_device; do
     LIBOBJS="${LIBOBJS} ${BUILD}/${object}.host.o"
 done
 
