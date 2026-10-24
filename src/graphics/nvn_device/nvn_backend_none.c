@@ -36,12 +36,33 @@ static int nvn_backend_none_get_queue(nvn_device_state *device, void **out_queue
     return 0;
 }
 
+static int nvn_backend_none_create_window_surface(nvn_device_state *device, void *native_window,
+                                                   uint32_t *out_width, uint32_t *out_height,
+                                                   void **out_surface, void **out_swapchain) {
+    (void)device;
+    (void)native_window;
+    if (out_width) *out_width = 0;
+    if (out_height) *out_height = 0;
+    if (out_surface) *out_surface = NULL;
+    if (out_swapchain) *out_swapchain = NULL;
+    /* There is no platform window in this build. */
+    return 0;
+}
+
+static void nvn_backend_none_destroy_window_surface(nvn_device_state *device, void *surface, void *swapchain) {
+    (void)device;
+    (void)surface;
+    (void)swapchain;
+}
+
 static const nvn_backend s_none_backend = {
     "none",
     nvn_backend_none_create,
     nvn_backend_none_destroy,
     nvn_backend_none_describe,
     nvn_backend_none_get_queue,
+    nvn_backend_none_create_window_surface,
+    nvn_backend_none_destroy_window_surface,
 };
 
 const nvn_backend *nvn_device_default_backend(void) { return &s_none_backend; }

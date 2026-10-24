@@ -7,6 +7,7 @@
 #include "../../src/runtime/nso/native_boundary.h"
 #include "../../src/graphics/nvn_device/nvn_device.h"
 #include "../../src/graphics/nvn_device/nvn_queue.h"
+#include "../../src/graphics/nvn_device/nvn_window.h"
 #include <errno.h>
 #include <ctype.h>
 #include <wctype.h>
@@ -4741,6 +4742,184 @@ static int vi_display_contract(void) {
     return 0;
 }
 
+static int nvn_window_contract(void) {
+    typedef void *(*bootstrap_fn)(const char *);
+    typedef void *(*lookup_fn)(void *, const char *);
+    typedef uint64_t (*init_fn)(void *, void *);
+    typedef void (*builder_set_defaults_fn)(void *);
+    typedef void (*builder_set_device_fn)(void *, void *);
+    typedef void *(*builder_get_device_fn)(const void *);
+    typedef void (*builder_set_native_window_fn)(void *, void *);
+    typedef void *(*builder_get_native_window_fn)(const void *);
+    typedef void (*builder_set_textures_fn)(void *, void *, int);
+    typedef int (*builder_get_num_textures_fn)(const void *);
+    typedef void *(*builder_get_texture_fn)(const void *, int);
+    typedef void (*builder_set_present_interval_fn)(void *, int);
+    typedef int (*builder_get_present_interval_fn)(const void *);
+    typedef void (*builder_set_num_active_fn)(void *, int);
+    typedef int (*builder_get_num_active_fn)(const void *);
+    typedef int (*window_initialize_fn)(void *, const void *, int);
+    typedef void *(*window_get_native_window_fn)(const void *);
+    typedef int (*window_get_num_textures_fn)(const void *);
+    typedef void (*window_finalize_fn)(void *);
+    nvn_window_stats stats;
+    size_t i;
+
+    bootstrap_fn bootstrap =
+        (bootstrap_fn)(uintptr_t)guest_process_resolve(0, "nvnBootstrapLoader");
+    CHECK(bootstrap != NULL);
+    lookup_fn lookup = (lookup_fn)(uintptr_t)bootstrap("nvnDeviceGetProcAddress");
+    CHECK(lookup != NULL);
+    static const char *const window_names[] = {
+        "nvnWindowBuilderSetDefaults",
+        "nvnWindowBuilderSetDevice",
+        "nvnWindowBuilderGetDevice",
+        "nvnWindowBuilderSetNativeWindow",
+        "nvnWindowBuilderGetNativeWindow",
+        "nvnWindowBuilderSetTextures",
+        "nvnWindowBuilderGetNumTextures",
+        "nvnWindowBuilderGetNumActiveTextures",
+        "nvnWindowBuilderGetTexture",
+        "nvnWindowBuilderSetPresentInterval",
+        "nvnWindowBuilderGetPresentInterval",
+        "nvnWindowBuilderSetNumActiveTextures",
+        "nvnWindowInitialize",
+        "nvnWindowFinalize",
+        "nvnWindowGetNativeWindow",
+        "nvnWindowGetNumTextures",
+        "nvnWindowGetNumActiveTextures",
+        "nvnWindowGetPresentInterval",
+        "nvnWindowSetNumActiveTextures",
+        "nvnWindowSetPresentInterval",
+        "nvnWindowSetCrop",
+        "nvnWindowGetCrop",
+        "nvnWindowSetDebugLabel",
+        "nvnWindowAcquireTexture",
+    };
+    for (i = 0; i < sizeof(window_names) / sizeof(window_names[0]); i++) {
+        void *entry = lookup(NULL, window_names[i]);
+        expect_condition("nvn-window-name-resolves", entry != NULL);
+        expect_condition("nvn-window-name-is-stable", entry == lookup(NULL, window_names[i]));
+    }
+
+    builder_set_defaults_fn set_defaults =
+        (builder_set_defaults_fn)(uintptr_t)lookup(NULL, "nvnWindowBuilderSetDefaults");
+    builder_set_device_fn set_device =
+        (builder_set_device_fn)(uintptr_t)lookup(NULL, "nvnWindowBuilderSetDevice");
+    builder_get_device_fn get_device =
+        (builder_get_device_fn)(uintptr_t)lookup(NULL, "nvnWindowBuilderGetDevice");
+    builder_set_native_window_fn set_native_window =
+        (builder_set_native_window_fn)(uintptr_t)lookup(NULL, "nvnWindowBuilderSetNativeWindow");
+    builder_get_native_window_fn get_native_window =
+        (builder_get_native_window_fn)(uintptr_t)lookup(NULL, "nvnWindowBuilderGetNativeWindow");
+    builder_set_textures_fn set_textures =
+        (builder_set_textures_fn)(uintptr_t)lookup(NULL, "nvnWindowBuilderSetTextures");
+    builder_get_num_textures_fn get_num_textures =
+        (builder_get_num_textures_fn)(uintptr_t)lookup(NULL, "nvnWindowBuilderGetNumTextures");
+    builder_get_texture_fn get_texture =
+        (builder_get_texture_fn)(uintptr_t)lookup(NULL, "nvnWindowBuilderGetTexture");
+    builder_set_present_interval_fn set_interval =
+        (builder_set_present_interval_fn)(uintptr_t)lookup(NULL, "nvnWindowBuilderSetPresentInterval");
+    builder_get_present_interval_fn get_interval =
+        (builder_get_present_interval_fn)(uintptr_t)lookup(NULL, "nvnWindowBuilderGetPresentInterval");
+    builder_set_num_active_fn set_active =
+        (builder_set_num_active_fn)(uintptr_t)lookup(NULL, "nvnWindowBuilderSetNumActiveTextures");
+    builder_get_num_active_fn get_active =
+        (builder_get_num_active_fn)(uintptr_t)lookup(NULL, "nvnWindowBuilderGetNumActiveTextures");
+    CHECK(set_defaults && set_device && get_device && set_native_window && get_native_window);
+    CHECK(set_textures && get_num_textures && get_texture && set_interval && get_interval);
+    CHECK(set_active && get_active);
+
+    /* 1. The builder round trips, and the guest's builder is never written
+     *    into: the state lives on the host. */
+    unsigned char builder[64];
+    memset(builder, 0xaa, sizeof(builder));
+    set_defaults(builder);
+    expect_value("nvn-window-builder-defaults-clear-device", (uint64_t)(uintptr_t)get_device(builder), 0);
+    void *device_marker = (void *)(uintptr_t)0x5eed;
+    set_device(builder, device_marker);
+    expect_condition("nvn-window-builder-device-round-trip", get_device(builder) == device_marker);
+    void *native_marker = (void *)(uintptr_t)0x7a7a;
+    set_native_window(builder, native_marker);
+    expect_condition("nvn-window-builder-native-window-round-trip",
+                     get_native_window(builder) == native_marker);
+    void *texture_handles[2] = { (void *)(uintptr_t)0x1111, (void *)(uintptr_t)0x2222 };
+    set_textures(builder, texture_handles, 2);
+    expect_value("nvn-window-builder-num-textures-round-trip", (uint64_t)(uint32_t)get_num_textures(builder), 2);
+    expect_condition("nvn-window-builder-texture-round-trip", get_texture(builder, 0) == texture_handles[0]);
+    expect_condition("nvn-window-builder-texture-round-trip-2", get_texture(builder, 1) == texture_handles[1]);
+    set_interval(builder, 2);
+    expect_value("nvn-window-builder-present-interval-round-trip", (uint64_t)(uint32_t)get_interval(builder), 2);
+    set_active(builder, 1);
+    expect_value("nvn-window-builder-active-textures-round-trip", (uint64_t)(uint32_t)get_active(builder), 1);
+    expect_condition("nvn-window-builder-not-written", all_bytes(builder, sizeof(builder), 0xaa));
+
+    /* 2. The device, so that the window has one to belong to. */
+    init_fn init = (init_fn)(uintptr_t)bootstrap("nvnDeviceInitialize");
+    CHECK(init != NULL);
+    void *guest_device = (void *)(uintptr_t)0x8000;
+    init(guest_device, NULL);
+
+    /* 3. A window that is built without a device must be refused. */
+    window_initialize_fn window_initialize =
+        (window_initialize_fn)(uintptr_t)lookup(NULL, "nvnWindowInitialize");
+    CHECK(window_initialize != NULL);
+    unsigned char window_object[64];
+    memset(window_object, 0xaa, sizeof(window_object));
+    unsigned char no_device_builder[64];
+    memset(no_device_builder, 0xaa, sizeof(no_device_builder));
+    set_defaults(no_device_builder);
+    expect_value("nvn-window-init-without-device-refused",
+                 (uint64_t)(uint32_t)window_initialize(window_object, no_device_builder, 0), 0);
+    expect_condition("nvn-window-init-without-device-not-written",
+                     all_bytes(window_object, sizeof(window_object), 0xaa));
+
+    /* 4. The window with the device of the guest. This process has no
+     *    platform window, so the window exists without a surface, and the
+     *    counters say so. The surface path is proven by the guest run, where
+     *    the Activity's window is the one that is presented into. */
+    unsigned char device_builder[64];
+    memset(device_builder, 0xaa, sizeof(device_builder));
+    set_defaults(device_builder);
+    set_device(device_builder, guest_device);
+    memset(window_object, 0xaa, sizeof(window_object));
+    uint64_t window_result = (uint64_t)(uint32_t)window_initialize(window_object, device_builder, 0);
+    expect_value("nvn-window-init-matches-real-device", window_result, NVN_QUEUE_EXPECT_REAL_QUEUE);
+    expect_condition("nvn-window-object-not-written", all_bytes(window_object, sizeof(window_object), 0xaa));
+    window_get_native_window_fn window_get_native_window =
+        (window_get_native_window_fn)(uintptr_t)lookup(NULL, "nvnWindowGetNativeWindow");
+    window_get_num_textures_fn window_get_num_textures =
+        (window_get_num_textures_fn)(uintptr_t)lookup(NULL, "nvnWindowGetNumTextures");
+    CHECK(window_get_native_window && window_get_num_textures);
+    expect_value("nvn-window-has-no-native-window", (uint64_t)(uintptr_t)window_get_native_window(window_object), 0);
+    expect_value("nvn-window-has-no-textures", (uint64_t)(uint32_t)window_get_num_textures(window_object), 0);
+
+    /* 5. The counters. */
+    nvn_window_get_stats(&stats);
+    expect_condition("nvn-window-stats-count-builder-calls", stats.builder_calls > 0);
+    expect_condition("nvn-window-stats-initialized-matches-device",
+                     (stats.initialized > 0) == (NVN_QUEUE_EXPECT_REAL_QUEUE != 0));
+    expect_condition("nvn-window-stats-count-refused", stats.refused > 0);
+    /* No platform window in this process, so no surface was created. */
+    expect_value("nvn-window-no-surface-without-a-platform-window",
+                 (uint64_t)stats.surface_present, 0);
+
+    /* 6. The window is finalized last. */
+    window_finalize_fn window_finalize = (window_finalize_fn)(uintptr_t)lookup(NULL, "nvnWindowFinalize");
+    CHECK(window_finalize != NULL);
+    window_finalize(window_object);
+    nvn_window_get_stats(&stats);
+    expect_value("nvn-window-finalized-is-not-live", (uint64_t)stats.live_windows, 0);
+
+    CHECK(!errors);
+    printf("{\"nvn_window_errors\":%u,\"real_window\":%s,\"surface\":%s,\"initialized\":%llu,"
+           "\"refused\":%llu,\"builder_calls\":%llu}\n",
+           errors, window_result ? "true" : "false", stats.surface_present ? "true" : "false",
+           (unsigned long long)stats.initialized, (unsigned long long)stats.refused,
+           (unsigned long long)stats.builder_calls);
+    return 0;
+}
+
 int main(int argc,char **argv) {
     page=(size_t)sysconf(_SC_PAGESIZE);
     if(argc==2 && !strcmp(argv[1],"--tls-host-null")) {
@@ -4772,6 +4951,7 @@ int main(int argc,char **argv) {
     if(argc==3 && !strcmp(argv[1],"--nv-initialize-graphics"))return nv_initialize_graphics_contract(argv[2]);
     if(argc==2 && !strcmp(argv[1],"--nvn-device"))return nvn_device_contract();
     if(argc==2 && !strcmp(argv[1],"--nvn-queue"))return nvn_queue_contract();
+    if(argc==2 && !strcmp(argv[1],"--nvn-window"))return nvn_window_contract();
     if(argc==2 && !strcmp(argv[1],"--vi-display"))return vi_display_contract();
     if(argc==3 && !strcmp(argv[1],"--nvn-bootstrap"))return nvn_bootstrap_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-fresh"))return tls_fresh_registration_contract(argv[2]);

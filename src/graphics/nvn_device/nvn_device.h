@@ -75,6 +75,17 @@ typedef struct nvn_backend {
      * queue at all. A queue that pretends to exist is worse than no queue,
      * so a build without one says so. */
     int (*get_queue)(nvn_device_state *device, void **out_queue);
+    /* Create the platform surface and the swapchain for a platform window.
+     * The window is an opaque handle here: on Android it is an ANativeWindow,
+     * and the backend that knows about that type does the conversion. The
+     * size of the created presentation path is written back, because the
+     * guest asks for it later. Returns 1 when both the surface and the
+     * swapchain exist; returns 0 and reports why when they do not. */
+    int (*create_window_surface)(nvn_device_state *device, void *native_window,
+                                 uint32_t *out_width, uint32_t *out_height,
+                                 void **out_surface, void **out_swapchain);
+    /* Release what create_window_surface() took. Safe to call without one. */
+    void (*destroy_window_surface)(nvn_device_state *device, void *surface, void *swapchain);
 } nvn_backend;
 
 struct nvn_device_state {

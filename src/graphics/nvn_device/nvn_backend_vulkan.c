@@ -23,6 +23,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+/* The Android surface and the present bits only exist when the platform is
+ * declared before the Vulkan header. */
+#define VK_USE_PLATFORM_ANDROID_KHR
+#include <android/native_window.h>
 #include <vulkan/vulkan.h>
 
 typedef struct {
@@ -58,9 +62,18 @@ static int nvn_vulkan_create(nvn_device_state *device, const void *builder) {
     app.engineVersion = 1;
     app.apiVersion = VK_API_VERSION_1_0;
 
+    /* The surface extensions are not optional here: without them there is no
+     * vkCreateAndroidSurfaceKHR, and therefore no window and no frame. This
+     * is the same fact the host probe had to find the hard way. */
+    static const char *const surface_extensions[] = {
+        VK_KHR_SURFACE_EXTENSION_NAME,
+        VK_KHR_ANDROID_SURFACE_EXTENSION_NAME,
+    };
     memset(&instance_info, 0, sizeof(instance_info));
     instance_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     instance_info.pApplicationInfo = &app;
+    instance_info.enabledExtensionCount = 2;
+    instance_info.ppEnabledExtensionNames = surface_extensions;
 
     st = (nvn_vulkan_state *)calloc(1, sizeof(*st));
     if (!st) {
@@ -195,12 +208,158 @@ static int nvn_vulkan_get_queue(nvn_device_state *device, void **out_queue) {
     return 1;
 }
 
+static int nvn_vulkan_create_window_surface(nvn_device_state *device, void *native_window,
+                                            uint32_t *out_width, uint32_t *out_height,
+                                            void **out_surface, void **out_swapchain) {
+    nvn_vulkan_state *st = (nvn_vulkan_state *)device->backend_state;
+    VkAndroidSurfaceCreateInfoKHR surface_info;
+    VkSurfaceKHR surface = VK_NULL_HANDLE;
+    VkSurfaceCapabilitiesKHR capabilities;
+    VkSurfaceFormatKHR format;
+    uint32_t format_count = 0;
+    VkSurfaceFormatKHR formats[16];
+    VkSwapchainCreateInfoKHR swapchain_info;
+    VkSwapchainKHR swapchain = VK_NULL_HANDLE;
+    VkResult result;
+    uint32_t width, height;
+    uint32_t image_count;
+    VkPresentModeKHR present_mode = VK_PRESENT_MODE_FIFO_KHR;
+    PFN_vkCreateAndroidSurfaceKHR create_android_surface;
+
+    if (!st || !native_window || !out_surface || !out_swapchain) return 0;
+
+    create_android_surface =
+        (PFN_vkCreateAndroidSurfaceKHR)vkGetInstanceProcAddr(st->instance, "vkCreateAndroidSurfaceKHR");
+    if (!create_android_surface) {
+        fprintf(stderr, "[nvn] vulkan: vkCreateAndroidSurfaceKHR is not available in this instance\n");
+        return 0;
+    }
+
+    memset(&surface_info, 0, sizeof(surface_info));
+    surface_info.sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR;
+    surface_info.window = (ANativeWindow *)native_window;
+    result = create_android_surface(st->instance, &surface_info, NULL, &surface);
+    if (result != VK_SUCCESS) {
+        fprintf(stderr, "[nvn] vulkan: vkCreateAndroidSurfaceKHR failed with %d\n", (int)result);
+        return 0;
+    }
+
+    /* Whether this queue family can present into this surface is asked from
+     * the driver, because the queue family was chosen before any surface
+     * existed. A family that cannot present is reported here instead of
+     * failing later in a way that says nothing. */
+    {
+        PFN_vkGetPhysicalDeviceSurfaceSupportKHR surface_support =
+            (PFN_vkGetPhysicalDeviceSurfaceSupportKHR)vkGetInstanceProcAddr(
+                st->instance, "vkGetPhysicalDeviceSurfaceSupportKHR");
+        VkBool32 supported = VK_FALSE;
+        if (surface_support &&
+            surface_support(st->physical, st->queue_family, surface, &supported) == VK_SUCCESS) {
+            fprintf(stderr, "[nvn] vulkan: queue family %u can present into this surface: %s\n",
+                    st->queue_family, supported ? "yes" : "no");
+        }
+    }
+
+    result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(st->physical, surface, &capabilities);
+    if (result != VK_SUCCESS) {
+        fprintf(stderr, "[nvn] vulkan: vkGetPhysicalDeviceSurfaceCapabilitiesKHR failed with %d\n", (int)result);
+        vkDestroySurfaceKHR(st->instance, surface, NULL);
+        return 0;
+    }
+
+    /* The size of the platform window is what the guest draws into. The
+     * capabilities say what the surface allows, so the window size is
+     * clamped into that range instead of being trusted blindly. */
+    width = ANativeWindow_getWidth((ANativeWindow *)native_window);
+    height = ANativeWindow_getHeight((ANativeWindow *)native_window);
+    if (width == 0 || height == 0) {
+        width = capabilities.currentExtent.width;
+        height = capabilities.currentExtent.height;
+    }
+    if (capabilities.currentExtent.width != 0xFFFFFFFFu) {
+        if (width < capabilities.currentExtent.width) width = capabilities.currentExtent.width;
+        if (height < capabilities.currentExtent.height) height = capabilities.currentExtent.height;
+    }
+    if (width > capabilities.maxImageExtent.width) width = capabilities.maxImageExtent.width;
+    if (height > capabilities.maxImageExtent.height) height = capabilities.maxImageExtent.height;
+    if (width < capabilities.minImageExtent.width) width = capabilities.minImageExtent.width;
+    if (height < capabilities.minImageExtent.height) height = capabilities.minImageExtent.height;
+
+    result = vkGetPhysicalDeviceSurfaceFormatsKHR(st->physical, surface, &format_count, NULL);
+    if (result != VK_SUCCESS || format_count == 0) {
+        fprintf(stderr, "[nvn] vulkan: the surface has no formats (result %d, count %u)\n",
+                (int)result, format_count);
+        vkDestroySurfaceKHR(st->instance, surface, NULL);
+        return 0;
+    }
+    if (format_count > 16) format_count = 16;
+    result = vkGetPhysicalDeviceSurfaceFormatsKHR(st->physical, surface, &format_count, formats);
+    if (result != VK_SUCCESS) {
+        fprintf(stderr, "[nvn] vulkan: vkGetPhysicalDeviceSurfaceFormatsKHR failed with %d\n", (int)result);
+        vkDestroySurfaceKHR(st->instance, surface, NULL);
+        return 0;
+    }
+    /* The format the surface offers is used as it is. The host probe showed
+     * that this display reads the buffer as RGBA, so a BGRA format would
+     * swap the colours on screen. */
+    format = formats[0];
+    for (uint32_t i = 0; i < format_count; i++) {
+        if (formats[i].format == VK_FORMAT_R8G8B8A8_UNORM) { format = formats[i]; break; }
+        if (formats[i].format == VK_FORMAT_B8G8R8A8_UNORM && format.format != VK_FORMAT_R8G8B8A8_UNORM)
+            format = formats[i];
+    }
+
+    image_count = capabilities.minImageCount + 1;
+    if (capabilities.maxImageCount > 0 && image_count > capabilities.maxImageCount)
+        image_count = capabilities.maxImageCount;
+
+    memset(&swapchain_info, 0, sizeof(swapchain_info));
+    swapchain_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+    swapchain_info.surface = surface;
+    swapchain_info.minImageCount = image_count;
+    swapchain_info.imageFormat = format.format;
+    swapchain_info.imageColorSpace = format.colorSpace;
+    swapchain_info.imageExtent.width = width;
+    swapchain_info.imageExtent.height = height;
+    swapchain_info.imageArrayLayers = 1;
+    swapchain_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    swapchain_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    swapchain_info.preTransform = capabilities.currentTransform;
+    swapchain_info.compositeAlpha = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
+    swapchain_info.presentMode = present_mode;
+    swapchain_info.clipped = VK_TRUE;
+    result = vkCreateSwapchainKHR(st->device, &swapchain_info, NULL, &swapchain);
+    if (result != VK_SUCCESS) {
+        fprintf(stderr, "[nvn] vulkan: vkCreateSwapchainKHR failed with %d\n", (int)result);
+        vkDestroySurfaceKHR(st->instance, surface, NULL);
+        return 0;
+    }
+
+    fprintf(stderr, "[nvn] vulkan: created a surface and a swapchain for the platform window: "
+                    "%ux%u, format %u, %u images, present mode FIFO\n",
+            width, height, (unsigned)format.format, image_count);
+    if (out_width) *out_width = width;
+    if (out_height) *out_height = height;
+    *out_surface = (void *)(uintptr_t)surface;
+    *out_swapchain = (void *)(uintptr_t)swapchain;
+    return 1;
+}
+
+static void nvn_vulkan_destroy_window_surface(nvn_device_state *device, void *surface, void *swapchain) {
+    nvn_vulkan_state *st = (nvn_vulkan_state *)device->backend_state;
+    if (!st) return;
+    if (swapchain) vkDestroySwapchainKHR(st->device, (VkSwapchainKHR)(uintptr_t)swapchain, NULL);
+    if (surface) vkDestroySurfaceKHR(st->instance, (VkSurfaceKHR)(uintptr_t)surface, NULL);
+}
+
 static const nvn_backend s_vulkan_backend = {
     "vulkan",
     nvn_vulkan_create,
     nvn_vulkan_destroy,
     nvn_vulkan_describe,
     nvn_vulkan_get_queue,
+    nvn_vulkan_create_window_surface,
+    nvn_vulkan_destroy_window_surface,
 };
 
 const nvn_backend *nvn_device_default_backend(void) { return &s_vulkan_backend; }
