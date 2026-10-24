@@ -178,8 +178,8 @@ int nso_owned_profile(const char *path,size_t quota,size_t stack,size_t resource
     if(r.status==NSO_OK) {
         nso_module *m=guest_process_module(p);
         char bid[33];nso_build_id(m,bid);
-        printf("[profile] explicit diagnostic port-policy quota=%zu stack=%zu image=%zu resource_quota=%zu guest_argc=%zu build=%s imports=%u unresolved=%u; CRT/TLS not initialized\n",
-            quota,stack,nso_image_size(m),resources,guest_argc,bid,nso_import_count(m),nso_unresolved_count(m));fflush(stdout);
+        printf("[profile] explicit diagnostic port-policy quota=%zu stack=%zu image=%zu resource_quota=%zu guest_argc=%zu build=%s imports=%u unresolved=%u module_base=0x%" PRIx64 "; CRT/TLS not initialized\n",
+            quota,stack,nso_image_size(m),resources,guest_argc,bid,nso_import_count(m),nso_unresolved_count(m),nso_base(m));fflush(stdout);
         void *returned=NULL;r=guest_process_run(p,run_profile_entry,entry,&returned);
     }
     if(r.status!=NSO_OK)fprintf(stderr,"[profile-error] status=%d native=%d cleanup=%d %s\n",r.status,r.native_error,r.cleanup_error,err);

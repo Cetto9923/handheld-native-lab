@@ -8,6 +8,8 @@
 #include "../../src/graphics/nvn_device/nvn_device.h"
 #include "../../src/graphics/nvn_device/nvn_memory_pool.h"
 #include "../../src/graphics/nvn_device/nvn_queue.h"
+#include "../../src/graphics/nvn_device/nvn_sampler_pool.h"
+#include "../../src/graphics/nvn_device/nvn_texture_pool.h"
 #include "../../src/graphics/nvn_device/nvn_window.h"
 #include <errno.h>
 #include <ctype.h>
@@ -5162,6 +5164,271 @@ static int nvn_memory_pool_contract(void) {
     return 0;
 }
 
+/* The NVN sampler pool family.
+ *
+ * A sampler pool is a slice of a memory pool that holds the samplers the
+ * guest draws with. The contract checks that the pool needs a memory pool and
+ * a size, that the values the guest handed over are answered back unchanged,
+ * that the samplers are registered by index, and that the guest's pool object
+ * is never written into. */
+static int nvn_sampler_pool_contract(void) {
+    typedef void *(*bootstrap_fn)(const char *);
+    typedef void *(*lookup_fn)(void *, const char *);
+    typedef int (*pool_initialize_fn)(void *, const void *, ptrdiff_t, int);
+    typedef void (*pool_set_debug_label_fn)(void *, const char *);
+    typedef void (*pool_finalize_fn)(void *);
+    typedef void (*pool_register_sampler_fn)(const void *, int, const void *);
+    typedef void (*pool_register_sampler_builder_fn)(const void *, int, const void *);
+    typedef void *(*pool_get_memory_pool_fn)(const void *);
+    typedef ptrdiff_t (*pool_get_memory_offset_fn)(const void *);
+    typedef int (*pool_get_size_fn)(const void *);
+    nvn_sampler_pool_stats stats;
+    size_t i;
+
+    /* 1. Every name of the family has to resolve, and the same name has to
+     *    resolve to the same entry point every time. */
+    bootstrap_fn bootstrap =
+        (bootstrap_fn)(uintptr_t)guest_process_resolve(0, "nvnBootstrapLoader");
+    CHECK(bootstrap != NULL);
+    lookup_fn lookup = (lookup_fn)(uintptr_t)bootstrap("nvnDeviceGetProcAddress");
+    CHECK(lookup != NULL);
+    static const char *const sampler_pool_names[] = {
+        "nvnSamplerPoolInitialize",
+        "nvnSamplerPoolSetDebugLabel",
+        "nvnSamplerPoolFinalize",
+        "nvnSamplerPoolRegisterSampler",
+        "nvnSamplerPoolRegisterSamplerBuilder",
+        "nvnSamplerPoolGetMemoryPool",
+        "nvnSamplerPoolGetMemoryOffset",
+        "nvnSamplerPoolGetSize",
+    };
+    for (i = 0; i < sizeof(sampler_pool_names) / sizeof(sampler_pool_names[0]); i++) {
+        void *entry = lookup(NULL, sampler_pool_names[i]);
+        expect_condition("nvn-sampler-pool-name-resolves", entry != NULL);
+        expect_condition("nvn-sampler-pool-name-is-stable", entry == lookup(NULL, sampler_pool_names[i]));
+    }
+
+    pool_initialize_fn pool_initialize =
+        (pool_initialize_fn)(uintptr_t)lookup(NULL, "nvnSamplerPoolInitialize");
+    pool_set_debug_label_fn pool_set_debug_label =
+        (pool_set_debug_label_fn)(uintptr_t)lookup(NULL, "nvnSamplerPoolSetDebugLabel");
+    pool_finalize_fn pool_finalize = (pool_finalize_fn)(uintptr_t)lookup(NULL, "nvnSamplerPoolFinalize");
+    pool_register_sampler_fn pool_register_sampler =
+        (pool_register_sampler_fn)(uintptr_t)lookup(NULL, "nvnSamplerPoolRegisterSampler");
+    pool_register_sampler_builder_fn pool_register_sampler_builder =
+        (pool_register_sampler_builder_fn)(uintptr_t)lookup(NULL, "nvnSamplerPoolRegisterSamplerBuilder");
+    pool_get_memory_pool_fn pool_get_memory_pool =
+        (pool_get_memory_pool_fn)(uintptr_t)lookup(NULL, "nvnSamplerPoolGetMemoryPool");
+    pool_get_memory_offset_fn pool_get_memory_offset =
+        (pool_get_memory_offset_fn)(uintptr_t)lookup(NULL, "nvnSamplerPoolGetMemoryOffset");
+    pool_get_size_fn pool_get_size = (pool_get_size_fn)(uintptr_t)lookup(NULL, "nvnSamplerPoolGetSize");
+    CHECK(pool_initialize && pool_set_debug_label && pool_finalize && pool_register_sampler);
+    CHECK(pool_register_sampler_builder && pool_get_memory_pool && pool_get_memory_offset && pool_get_size);
+
+    /* 2. A pool without a memory pool must be refused: a sampler pool is a
+     *    slice of a memory pool, so it has nothing to hold samplers without
+     *    one. */
+    unsigned char pool_object[32];
+    memset(pool_object, 0xaa, sizeof(pool_object));
+    expect_value("nvn-sampler-pool-init-without-a-memory-pool-refused",
+                 (uint64_t)(uint32_t)pool_initialize(pool_object, NULL, 0, 4), 0);
+    expect_condition("nvn-sampler-pool-init-without-a-memory-pool-not-written",
+                     all_bytes(pool_object, sizeof(pool_object), 0xaa));
+
+    /* 3. A pool with a size of zero is not an error: the guest is free to
+     *    create an empty pool and register into it later. The device run
+     *    showed the guest passing zero, so a refusal here would have turned
+     *    a value the guest chose into a failure it never asked for. */
+    void *memory_pool_marker = (void *)(uintptr_t)0x6600;
+    memset(pool_object, 0xaa, sizeof(pool_object));
+    uint64_t empty_pool_result = (uint64_t)(uint32_t)pool_initialize(pool_object, memory_pool_marker, 0, 0);
+    expect_value("nvn-sampler-pool-init-with-a-size-of-zero-succeeds", empty_pool_result, 1);
+    expect_value("nvn-sampler-pool-empty-size-round-trip",
+                 (uint64_t)(uint32_t)pool_get_size(pool_object), 0);
+    expect_condition("nvn-sampler-pool-empty-object-not-written",
+                     all_bytes(pool_object, sizeof(pool_object), 0xaa));
+
+    /* 4. The pool with the values the guest handed over. They have to be
+     *    answered back unchanged, because the guest uses them to address the
+     *    samplers inside the memory pool. */
+    memset(pool_object, 0xaa, sizeof(pool_object));
+    uint64_t pool_result = (uint64_t)(uint32_t)pool_initialize(pool_object, memory_pool_marker, 0x200, 16);
+    expect_value("nvn-sampler-pool-init-succeeds", pool_result, 1);
+    expect_condition("nvn-sampler-pool-object-not-written", all_bytes(pool_object, sizeof(pool_object), 0xaa));
+    expect_condition("nvn-sampler-pool-memory-pool-round-trip",
+                     pool_get_memory_pool(pool_object) == memory_pool_marker);
+    expect_value("nvn-sampler-pool-memory-offset-round-trip",
+                 (uint64_t)pool_get_memory_offset(pool_object), 0x200);
+    expect_value("nvn-sampler-pool-size-round-trip", (uint64_t)(uint32_t)pool_get_size(pool_object), 16);
+
+    /* 5. The samplers are registered by index. The pool keeps which index
+     *    holds which sampler, because the guest refers to them by index. */
+    void *sampler_marker = (void *)(uintptr_t)0x7788;
+    void *sampler_builder_marker = (void *)(uintptr_t)0x99aa;
+    pool_register_sampler(pool_object, 3, sampler_marker);
+    pool_register_sampler_builder(pool_object, 7, sampler_builder_marker);
+    pool_set_debug_label(pool_object, "contract-sampler-pool");
+
+    /* 6. The counters. */
+    nvn_sampler_pool_get_stats(&stats);
+    expect_condition("nvn-sampler-pool-stats-count-builder-calls", stats.builder_calls > 0);
+    expect_condition("nvn-sampler-pool-stats-initialized", stats.initialized > 0);
+    expect_condition("nvn-sampler-pool-stats-count-refused", stats.refused > 0);
+    expect_condition("nvn-sampler-pool-stats-count-samplers", stats.samplers_registered > 0);
+    expect_condition("nvn-sampler-pool-stats-count-sampler-builders", stats.sampler_builders_registered > 0);
+    expect_value("nvn-sampler-pool-stats-live-pools", (uint64_t)stats.live_pools, 1);
+
+    /* 7. The pool is finalized last, because a finalized pool is gone. */
+    pool_finalize(pool_object);
+    nvn_sampler_pool_get_stats(&stats);
+    expect_value("nvn-sampler-pool-finalized-is-not-live", (uint64_t)stats.live_pools, 0);
+    expect_value("nvn-sampler-pool-get-size-after-finalize",
+                 (uint64_t)(uint32_t)pool_get_size(pool_object), 0);
+    expect_condition("nvn-sampler-pool-get-memory-pool-after-finalize",
+                     pool_get_memory_pool(pool_object) == NULL);
+
+    /* The final gate. Without it the contract could exit 0 while the
+     * expectations had failed. */
+    CHECK(!errors);
+    printf("{\"nvn_sampler_pool_errors\":%u,\"initialized\":%llu,\"refused\":%llu,"
+           "\"samplers_registered\":%llu,\"sampler_builders_registered\":%llu}\n",
+           errors, (unsigned long long)stats.initialized, (unsigned long long)stats.refused,
+           (unsigned long long)stats.samplers_registered,
+           (unsigned long long)stats.sampler_builders_registered);
+    return 0;
+}
+
+/* The NVN texture pool family.
+ *
+ * A texture pool is a slice of a memory pool that holds the textures the
+ * guest draws with. The contract checks that the pool needs a memory pool,
+ * that the values the guest handed over are answered back unchanged, that the
+ * textures are registered by index, and that the guest's pool object is never
+ * written into. */
+static int nvn_texture_pool_contract(void) {
+    typedef void *(*bootstrap_fn)(const char *);
+    typedef void *(*lookup_fn)(void *, const char *);
+    typedef int (*pool_initialize_fn)(void *, const void *, ptrdiff_t, int);
+    typedef void (*pool_set_debug_label_fn)(void *, const char *);
+    typedef void (*pool_finalize_fn)(void *);
+    typedef void (*pool_register_texture_fn)(const void *, int, const void *, const void *);
+    typedef void (*pool_register_image_fn)(const void *, int, const void *, const void *);
+    typedef void *(*pool_get_memory_pool_fn)(const void *);
+    typedef ptrdiff_t (*pool_get_memory_offset_fn)(const void *);
+    typedef int (*pool_get_size_fn)(const void *);
+    nvn_texture_pool_stats stats;
+    size_t i;
+
+    /* 1. Every name of the family has to resolve, and the same name has to
+     *    resolve to the same entry point every time. */
+    bootstrap_fn bootstrap =
+        (bootstrap_fn)(uintptr_t)guest_process_resolve(0, "nvnBootstrapLoader");
+    CHECK(bootstrap != NULL);
+    lookup_fn lookup = (lookup_fn)(uintptr_t)bootstrap("nvnDeviceGetProcAddress");
+    CHECK(lookup != NULL);
+    static const char *const texture_pool_names[] = {
+        "nvnTexturePoolInitialize",
+        "nvnTexturePoolSetDebugLabel",
+        "nvnTexturePoolFinalize",
+        "nvnTexturePoolRegisterTexture",
+        "nvnTexturePoolRegisterImage",
+        "nvnTexturePoolGetMemoryPool",
+        "nvnTexturePoolGetMemoryOffset",
+        "nvnTexturePoolGetSize",
+    };
+    for (i = 0; i < sizeof(texture_pool_names) / sizeof(texture_pool_names[0]); i++) {
+        void *entry = lookup(NULL, texture_pool_names[i]);
+        expect_condition("nvn-texture-pool-name-resolves", entry != NULL);
+        expect_condition("nvn-texture-pool-name-is-stable", entry == lookup(NULL, texture_pool_names[i]));
+    }
+
+    pool_initialize_fn pool_initialize =
+        (pool_initialize_fn)(uintptr_t)lookup(NULL, "nvnTexturePoolInitialize");
+    pool_set_debug_label_fn pool_set_debug_label =
+        (pool_set_debug_label_fn)(uintptr_t)lookup(NULL, "nvnTexturePoolSetDebugLabel");
+    pool_finalize_fn pool_finalize = (pool_finalize_fn)(uintptr_t)lookup(NULL, "nvnTexturePoolFinalize");
+    pool_register_texture_fn pool_register_texture =
+        (pool_register_texture_fn)(uintptr_t)lookup(NULL, "nvnTexturePoolRegisterTexture");
+    pool_register_image_fn pool_register_image =
+        (pool_register_image_fn)(uintptr_t)lookup(NULL, "nvnTexturePoolRegisterImage");
+    pool_get_memory_pool_fn pool_get_memory_pool =
+        (pool_get_memory_pool_fn)(uintptr_t)lookup(NULL, "nvnTexturePoolGetMemoryPool");
+    pool_get_memory_offset_fn pool_get_memory_offset =
+        (pool_get_memory_offset_fn)(uintptr_t)lookup(NULL, "nvnTexturePoolGetMemoryOffset");
+    pool_get_size_fn pool_get_size = (pool_get_size_fn)(uintptr_t)lookup(NULL, "nvnTexturePoolGetSize");
+    CHECK(pool_initialize && pool_set_debug_label && pool_finalize && pool_register_texture);
+    CHECK(pool_register_image && pool_get_memory_pool && pool_get_memory_offset && pool_get_size);
+
+    /* 2. A pool without a memory pool must be refused: a texture pool is a
+     *    slice of a memory pool, so it has nothing to hold textures without
+     *    one. */
+    unsigned char pool_object[32];
+    memset(pool_object, 0xaa, sizeof(pool_object));
+    expect_value("nvn-texture-pool-init-without-a-memory-pool-refused",
+                 (uint64_t)(uint32_t)pool_initialize(pool_object, NULL, 0, 4), 0);
+    expect_condition("nvn-texture-pool-init-without-a-memory-pool-not-written",
+                     all_bytes(pool_object, sizeof(pool_object), 0xaa));
+
+    /* 3. A size of zero is not an error: it is a pool that holds no texture
+     *    yet, and the guest registers into it later. */
+    void *memory_pool_marker = (void *)(uintptr_t)0x6600;
+    memset(pool_object, 0xaa, sizeof(pool_object));
+    uint64_t empty_pool_result = (uint64_t)(uint32_t)pool_initialize(pool_object, memory_pool_marker, 0, 0);
+    expect_value("nvn-texture-pool-init-with-a-size-of-zero-succeeds", empty_pool_result, 1);
+    expect_value("nvn-texture-pool-empty-size-round-trip",
+                 (uint64_t)(uint32_t)pool_get_size(pool_object), 0);
+    expect_condition("nvn-texture-pool-empty-object-not-written",
+                     all_bytes(pool_object, sizeof(pool_object), 0xaa));
+
+    /* 4. The pool with the values the guest handed over. They have to be
+     *    answered back unchanged, because the guest uses them to address the
+     *    textures inside the memory pool. */
+    memset(pool_object, 0xaa, sizeof(pool_object));
+    uint64_t pool_result = (uint64_t)(uint32_t)pool_initialize(pool_object, memory_pool_marker, 0x400, 32);
+    expect_value("nvn-texture-pool-init-succeeds", pool_result, 1);
+    expect_condition("nvn-texture-pool-object-not-written", all_bytes(pool_object, sizeof(pool_object), 0xaa));
+    expect_condition("nvn-texture-pool-memory-pool-round-trip",
+                     pool_get_memory_pool(pool_object) == memory_pool_marker);
+    expect_value("nvn-texture-pool-memory-offset-round-trip",
+                 (uint64_t)pool_get_memory_offset(pool_object), 0x400);
+    expect_value("nvn-texture-pool-size-round-trip", (uint64_t)(uint32_t)pool_get_size(pool_object), 32);
+
+    /* 5. The textures are registered by index. */
+    void *texture_marker = (void *)(uintptr_t)0x1122;
+    void *view_marker = (void *)(uintptr_t)0x3344;
+    pool_register_texture(pool_object, 5, texture_marker, view_marker);
+    pool_register_image(pool_object, 6, texture_marker, view_marker);
+    pool_set_debug_label(pool_object, "contract-texture-pool");
+
+    /* 6. The counters. */
+    nvn_texture_pool_get_stats(&stats);
+    expect_condition("nvn-texture-pool-stats-count-builder-calls", stats.builder_calls > 0);
+    expect_condition("nvn-texture-pool-stats-initialized", stats.initialized > 0);
+    expect_condition("nvn-texture-pool-stats-count-refused", stats.refused > 0);
+    expect_condition("nvn-texture-pool-stats-count-textures", stats.textures_registered > 0);
+    expect_condition("nvn-texture-pool-stats-count-images", stats.images_registered > 0);
+    expect_value("nvn-texture-pool-stats-live-pools", (uint64_t)stats.live_pools, 1);
+
+    /* 7. The pool is finalized last, because a finalized pool is gone. */
+    pool_finalize(pool_object);
+    nvn_texture_pool_get_stats(&stats);
+    expect_value("nvn-texture-pool-finalized-is-not-live", (uint64_t)stats.live_pools, 0);
+    expect_value("nvn-texture-pool-get-size-after-finalize",
+                 (uint64_t)(uint32_t)pool_get_size(pool_object), 0);
+    expect_condition("nvn-texture-pool-get-memory-pool-after-finalize",
+                     pool_get_memory_pool(pool_object) == NULL);
+
+    /* The final gate. Without it the contract could exit 0 while the
+     * expectations had failed. */
+    CHECK(!errors);
+    printf("{\"nvn_texture_pool_errors\":%u,\"initialized\":%llu,\"refused\":%llu,"
+           "\"textures_registered\":%llu,\"images_registered\":%llu}\n",
+           errors, (unsigned long long)stats.initialized, (unsigned long long)stats.refused,
+           (unsigned long long)stats.textures_registered,
+           (unsigned long long)stats.images_registered);
+    return 0;
+}
+
 int main(int argc,char **argv) {
     page=(size_t)sysconf(_SC_PAGESIZE);
     if(argc==2 && !strcmp(argv[1],"--tls-host-null")) {
@@ -5195,6 +5462,8 @@ int main(int argc,char **argv) {
     if(argc==2 && !strcmp(argv[1],"--nvn-queue"))return nvn_queue_contract();
     if(argc==2 && !strcmp(argv[1],"--nvn-window"))return nvn_window_contract();
     if(argc==2 && !strcmp(argv[1],"--nvn-memory-pool"))return nvn_memory_pool_contract();
+    if(argc==2 && !strcmp(argv[1],"--nvn-sampler-pool"))return nvn_sampler_pool_contract();
+    if(argc==2 && !strcmp(argv[1],"--nvn-texture-pool"))return nvn_texture_pool_contract();
     if(argc==2 && !strcmp(argv[1],"--vi-display"))return vi_display_contract();
     if(argc==3 && !strcmp(argv[1],"--nvn-bootstrap"))return nvn_bootstrap_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-fresh"))return tls_fresh_registration_contract(argv[2]);

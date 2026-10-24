@@ -20,7 +20,7 @@ if a.main and (not a.quota_bytes or not a.stack_bytes):p.error('main requires ex
 out.mkdir(parents=True,exist_ok=False)
 def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 nso=ROOT/'src/runtime/nso';hle=ROOT/'src/runtime/hle';nvn_device=ROOT/'src/graphics/nvn_device'
-core_sources=[nso/'nso_loader.c',*[hle/(s+'.c') for s in ['guest_context','guest_process','nso_host','address_region','mutex','exit_registry','module_tls','guest_tp','native_window']],nvn_device/'nvn_device.c',nvn_device/'nvn_queue.c',nvn_device/'nvn_window.c',nvn_device/'nvn_memory_pool.c']
+core_sources=[nso/'nso_loader.c',*[hle/(s+'.c') for s in ['guest_context','guest_process','nso_host','address_region','mutex','exit_registry','module_tls','guest_tp','native_window']],nvn_device/'nvn_device.c',nvn_device/'nvn_queue.c',nvn_device/'nvn_window.c',nvn_device/'nvn_memory_pool.c',nvn_device/'nvn_sampler_pool.c',nvn_device/'nvn_texture_pool.c']
 # The NVN device layer has a portable half and a platform backend. The host
 # build has no Vulkan implementation, the Android build has the real one.
 host_only_sources=[nvn_device/'nvn_backend_none.c']
@@ -1076,6 +1076,18 @@ run('host-nvn-memory-pool-contract',[out/'guest_process_contract.host','--nvn-me
 nvn_memory_pool_stdout=(out/'host-nvn-memory-pool-contract'/'stdout.log').read_text()
 manifest['nvn_memory_pool_contract']=json.loads(nvn_memory_pool_stdout.splitlines()[-1])
 if manifest['nvn_memory_pool_contract']['nvn_memory_pool_errors']:raise RuntimeError('the NVN memory pool contract failed')
+# The NVN sampler pool family: the slice of a memory pool that holds the
+# samplers, the values the guest handed over and the registration by index.
+run('host-nvn-sampler-pool-contract',[out/'guest_process_contract.host','--nvn-sampler-pool'])
+nvn_sampler_pool_stdout=(out/'host-nvn-sampler-pool-contract'/'stdout.log').read_text()
+manifest['nvn_sampler_pool_contract']=json.loads(nvn_sampler_pool_stdout.splitlines()[-1])
+if manifest['nvn_sampler_pool_contract']['nvn_sampler_pool_errors']:raise RuntimeError('the NVN sampler pool contract failed')
+# The NVN texture pool family: the slice of a memory pool that holds the
+# textures, the values the guest handed over and the registration by index.
+run('host-nvn-texture-pool-contract',[out/'guest_process_contract.host','--nvn-texture-pool'])
+nvn_texture_pool_stdout=(out/'host-nvn-texture-pool-contract'/'stdout.log').read_text()
+manifest['nvn_texture_pool_contract']=json.loads(nvn_texture_pool_stdout.splitlines()[-1])
+if manifest['nvn_texture_pool_contract']['nvn_texture_pool_errors']:raise RuntimeError('the NVN texture pool contract failed')
 # The nn::vi display bridge: the handles it issues, the ones it refuses and
 # the vsync event that starts unsignalled because no frame was presented.
 run('host-vi-display-contract',[out/'guest_process_contract.host','--vi-display'])
