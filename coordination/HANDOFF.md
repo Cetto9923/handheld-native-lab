@@ -1,3 +1,21 @@
+# P-MM-32 纹理对象族 + view 族 + device 句柄族落地并接线｜2026-10-25 05:35 Asia/Shanghai — **guest 走向第一次 draw 途中的 48 个名字全部实现并接进 dispatch/构建/APK**；**宿主门 250 例、五个族契约 errors 全 0**；**帧数仍为 0**
+
+- **结论**：guest 从 sampler 走向第一次 draw 途中要问的 **48 个名字**（纹理对象 31 + view 14 + device 句柄 3）**全部落地**，并接进 dispatch、宿主契约构建和 APK。**帧数仍是 0** —— 这些是**状态**，不是画面：GPU 上还没有创建过一张纹理，replay 也还没发过一条 Vulkan 命令。
+  1. **P-MM-26 交付并集成**（`0beea2c` → 主树 `2bcf5ea` → 接线 `727bd59`），报告 `coordination/reports/T-TEXTURE-object-2026-10-25.md`。
+  2. **验收实测**（worker 自测，非声称）：**48 个名字**全部经 guest 自己的 `nvnDeviceGetProcAddress` 解析到、**每次解析到同一入口**、三张表**两两不重名、表内不重复**；契约 stdout `{"nvn_texture_errors":0,"names":31,...,"gets":39,"refused":3}` / `{"nvn_texture_view_errors":0,"names":14,...,"gets":19,"compared":3}`。**0xAA 哨兵**全程成立（builder / texture / view / pool 对象一个字节没被改）。**快照语义**：Initialize 之后改掉 builder 的 12 个字段，纹理 getter 仍返回旧值。**handle**：`GetTextureHandle(7,3) → 0x300007`、`(0,0) → 0`、`image(11) → 11`、`separate(11) → 11`，**没有**把池 base 加进去（base 在读 handle 时才加，`381f951`）。**三变体**：纹理与 view 各 baseline **exit 0** / A **exit 1**（真 `[check-fail]`）/ B **exit 0 且 stdout 谎报 `errors:0` 而 stderr 留真 `[check-fail]`（假绿被量出来）/ C **exit 1**，两个脚本都 exit 0。**NDK 交叉编译**（android34，`-Wall -Wextra -Werror`）两个文件 exit 0。
+  3. **宿主门 `.local/build-p-mm-39` 全绿**：**250 个用例**，`normal_contract.errors = 0`，**五个族契约 errors 全 0**：`nvn_command_memory_contract`、`nvn_command_replay_contract`、`nvn_sampler_contract`、`nvn_texture_contract`、`nvn_texture_view_contract`。
+  4. **工单与实测的两处出入（按实测为准，已点名）**：
+     - **参考树没有的名字只有 3 个**（不是我工单里列的那些）：`nvnTextureGetDebugID`、`nvnTextureGetSparseTileLayout`、`nvnTextureViewCompare`。工单点名的其余（`GetRawStorageClass`、`ViewGet/SetSwizzle`、`ViewGet/SetDepthStencilMode`、`WriteTexels*`、`FlushTexels`）**参考树都有**，逐名行号写进报告。
+     - **vendored 头里没有签名的只有 1 个**：`nvnTextureGetRawStorageClass`（按参考树的 `NVN_NOPROTO` 签名与返回值 1 实现，因为参考树调用点拿返回值和 1 比较）。
+     - 另有一处分歧按参考树走并点名：`nvnTextureGetMemoryPool` 返回**指针**（vendored 头写的是 256 字节结构按值返回；参考树与真实 SDK 都是指针）。
+  5. **接线（协调者侧，`727bd59`）**：`nvn_device.c` 加两个 include + **三个族块**（`nvn_texture_family_*` / `nvn_texture_view_family_*` / `nvn_device_handle_family_*`，三个 handle 函数在族块里，**没有另实现一遍**）；`build_guest_process_contract.sh` 的 `core_sources` 加 `nvn_texture.c` / `nvn_texture_view.c`（**链接需要**）；`src/android/native/CMakeLists.txt` 加同样两个文件。族契约的 glob 与开关是自动的，未改。
+- **本单未解决 / 风险**：**帧数仍为 0**；**纹理对象族与 view 族从未在设备上跑过**（全程没 adb、没装 APK），所以「接线后 guest 会越过 `nvnTextureInitialize`」**没有证据**；**GPU 上还没有创建过一张纹理**（纹理只是宿主上的一份描述）；**被拒绝的条目不是「实现了」**：`GetStorageSize` / `GetViewOffset` / `ReadTexels*` / `WriteTexels*` / `GetSparseTileLayout` 只是拒绝并记日志，guest 若依赖它们读像素会拿到旧数据；**`GetTextureAddress` 的「池地址+偏移」在宿主上没有真池可跑**（宿主无 Vulkan 设备 ⇒ 无 memory pool ⇒ 地址恒 0），只在 Android 构建上才会被跑到；**签名没有和真实 NVN SDK 逐字节比对过**（那份 vendored 重建件本身就有 `NVNmemoryPool` 处的错误）；**ZCull 公式是参考树的近似**（参考树自己说硬件公式未知）；**设备被 P-MM-27 占着**（`BOOT_LOCK_MM_A` 自 02:40），**本轮没重跑真机**；**图形管线一次都没建成过**（驱动 SIGSEGV，P-MM-27）；**呈现路径还没有 acquire/submit/present**（P-MM-28 在写）；**replay 读到号码后还不会把号码变成纹理**（池侧已有 `nvn_texture_pool_texture_at()`，接上即可）；**`Float64` 那种无用能力声明还没接进产物链**；**NVN 陷阱仍是进程级终止**（`_exit(97)` 会带走整个 app）；`nn::hid` 输入族未动；368 个未绑定导入**不可当关键路径完成度**；vendored 头是**别的游戏**（Darksiders II）的 NVN 53.105 重建件 ⇒ **156 个命令入口里 140 个签名未对本游戏证实**。
+- **下一项可证伪实验（按依赖顺序）**：
+  1. **设备一空出来就重跑真机**（≥300 秒、独立日志目录、锁先抢后删）：看**三件事**——**录制是否不再作废**、**`EndRecording` 是否交出 handle**、**guest 的第一致命是否已经往后挪**（期望从 `nvnSamplerInitialize` 挪到纹理/绑定那一步）。
+  2. **P-MM-27 交回**：拿到**实测成立的**图形管线状态后，S1-c 把包接到**同一个 VkDevice/queue**；**第一帧必须是 guest 自己的命令流解释得出来的颜色，不是宿主探针色**。
+  3. **P-MM-28 交回**：把 replay 的清屏颜色接到 `nvn_present_frame`，**先把 guest 的清屏命令送到屏幕**（这是「guest 的命令到了屏幕」，**不是**「游戏画面」）。
+  4. **replay 把号码变成纹理**：用 `nvn_texture_pool_texture_at()`。
+
 # P-MM-31 命令内存回调落地 / 句柄按池基址读取 / SPIR-V 能力按模块自身证据修正｜2026-10-25 05:10 Asia/Shanghai — **录制不再作废**（guest 回调在 guest 线程上直调 + 宿主借段）；**句柄终于按池的编号基址读了**；**SPIR-V 能力声明可按模块自身证据修正并被 spirv-val 验证**；**帧数仍为 0**
 
 - **结论**：命令流链上**最后一段「guest 要不到命令内存 ⇒ 录制作废 ⇒ 没有包」被拆掉了**。P-MM-24 把 guest 的命令内存回调改成**在 guest 线程上带三项显式校验直接调用**，两次不够就**借宿主段继续录**，**录制永不因内存作废**。同时我把**描述符池的编号基址接到了命令流的两头**：命令缓冲把绑定的池的 base 存进自己的状态、**单纹理绑定记录带上 base**，replay 读句柄时**加上 base**。另外把 P-MM-23 留在 `.local/` 里的两个能力脚本升级成**仓库里的正式工具**——它**不看清单、只看模块自己用了什么**，模块真用到的能力**不许删**（删就拒）。**帧数仍为 0：replay 仍不发一条 Vulkan 命令、不 present。**
