@@ -1101,7 +1101,8 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
         /* Registration is safe; finalize/exit can invoke guest callbacks and
          * require a separately supported callback/reentry boundary. */
         "atexit","__cxa_atexit","_Exit","_exit",
-        "posix_memalign","memalign","aligned_alloc","valloc","free",NULL};
+        "posix_memalign","memalign","aligned_alloc","valloc","free",
+        "__cxa_thread_atexit","__cxa_thread_atexit_impl",NULL};
     for(size_t i=0;typed[i];i++)if(!strcmp(name,typed[i]))return nso_host_resolve(index,name);
     if(!strcmp(name,"abort"))return (uintptr_t)&abort;
     return 0;
@@ -1172,7 +1173,8 @@ static int import_signature(const char *name,nb_signature *out) {
         "strcspn","strspn","strcat","memalign","aligned_alloc",NULL};
     static const char *const three[]={"memset","memcpy","memmove","memcmp","memchr","strncmp","strncpy","__cxa_atexit","strtol",
         "_ZN2nn4time12GetDayOfWeekEiii",
-        "strtoll","strtoull","strtoul","strncat","strncasecmp","posix_memalign",NULL};
+        "strtoll","strtoull","strtoul","strncat","strncasecmp","posix_memalign",
+        "__cxa_thread_atexit","__cxa_thread_atexit_impl",NULL};
     static const char *const void_one[]={"__cxa_guard_release","__cxa_guard_abort","_Exit","_exit","_ZN2nn2os11FreeTlsSlotENS0_7TlsSlotE",
         "_ZN2nn2os15QueryMemoryInfoEPNS0_10MemoryInfoE","_ZN2nn4util11ReferSymbolEPKv","nnutilReferSymbol",
         "_ZN2nn2os13FinalizeMutexEPNS0_9MutexTypeE","nnosFinalizeMutex",

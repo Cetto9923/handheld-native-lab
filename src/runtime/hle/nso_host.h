@@ -143,6 +143,11 @@ void *nso_host_memalign(size_t alignment, size_t size);
 void *nso_host_aligned_alloc(size_t alignment, size_t size);
 void *nso_host_valloc(size_t size);
 void nso_host_free(void *ptr);
+
+int nso_host_cxa_thread_atexit(void (*dtor)(void *), void *obj, void *dso_symbol);
+int nso_host_cxa_thread_atexit_impl(void (*dtor)(void *), void *obj, void *dso_symbol);
+size_t nso_exit_registry_thread_pending(void);
+void nso_exit_registry_thread_finalize(void);
 #ifdef __cplusplus
 }
 #endif

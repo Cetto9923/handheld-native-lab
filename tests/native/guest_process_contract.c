@@ -1908,6 +1908,77 @@ static int posix_memalign_contract(void) {
     puts("{\"posix_memalign_errors\":0,\"resolve\":true,\"invalid_params\":true,\"alloc_64\":true,\"alloc_page\":true,\"zero_size\":true,\"memalign\":true}");
     return 0;
 }
+
+static unsigned s_thread_atexit_events[16];
+static size_t s_thread_atexit_event_count = 0;
+static void thread_atexit_test_cb(void *arg) {
+    if (s_thread_atexit_event_count < 16) {
+        s_thread_atexit_events[s_thread_atexit_event_count++] = (unsigned)(uintptr_t)arg;
+    }
+}
+struct child_atexit_arg {
+    int (*cxa_fn)(void (*)(void *), void *, void *);
+    int result;
+};
+static void *child_thread_atexit_worker(void *param) {
+    struct child_atexit_arg *ca = (struct child_atexit_arg *)param;
+    if (ca->cxa_fn(thread_atexit_test_cb, (void *)1, NULL) != 0) ca->result = 1;
+    if (ca->cxa_fn(thread_atexit_test_cb, (void *)2, NULL) != 0) ca->result = 2;
+    if (nso_exit_registry_thread_pending() != 2) ca->result = 3;
+    return NULL;
+}
+
+static int cxa_thread_atexit_contract(void) {
+    typedef int (*cxa_thread_atexit_fn)(void (*)(void *), void *, void *);
+
+    cxa_thread_atexit_fn p_atexit = (cxa_thread_atexit_fn)(uintptr_t)guest_process_resolve(0, "__cxa_thread_atexit");
+    CHECK(p_atexit != NULL);
+    cxa_thread_atexit_fn p_impl = (cxa_thread_atexit_fn)(uintptr_t)guest_process_resolve(0, "__cxa_thread_atexit_impl");
+    CHECK(p_impl != NULL);
+
+    /* 1. Invalid params */
+    CHECK(p_atexit(NULL, (void *)0x1234, (void *)0x5678) == -1);
+
+    /* 2. LIFO execution on this thread */
+    s_thread_atexit_event_count = 0;
+    CHECK(p_atexit(thread_atexit_test_cb, (void *)100, NULL) == 0);
+    CHECK(p_atexit(thread_atexit_test_cb, (void *)200, NULL) == 0);
+    CHECK(p_atexit(thread_atexit_test_cb, (void *)300, NULL) == 0);
+    CHECK(nso_exit_registry_thread_pending() == 3);
+
+    nso_exit_registry_thread_finalize();
+    CHECK(nso_exit_registry_thread_pending() == 0);
+    CHECK(s_thread_atexit_event_count == 3);
+    CHECK(s_thread_atexit_events[0] == 300);
+    CHECK(s_thread_atexit_events[1] == 200);
+    CHECK(s_thread_atexit_events[2] == 100);
+
+    /* 3. Thread isolation & child automatic exit cleanup */
+    s_thread_atexit_event_count = 0;
+    CHECK(p_atexit(thread_atexit_test_cb, (void *)10, NULL) == 0);
+    CHECK(nso_exit_registry_thread_pending() == 1);
+
+    pthread_t child;
+    struct child_atexit_arg carg = {.cxa_fn = p_atexit};
+    CHECK(pthread_create(&child, NULL, child_thread_atexit_worker, &carg) == 0);
+    CHECK(pthread_join(child, NULL) == 0);
+    CHECK(carg.result == 0);
+
+    /* Child should have executed its 2 callbacks in LIFO order upon exit */
+    CHECK(s_thread_atexit_event_count == 2);
+    CHECK(s_thread_atexit_events[0] == 2);
+    CHECK(s_thread_atexit_events[1] == 1);
+
+    /* Main thread registration should still be intact and pending */
+    CHECK(nso_exit_registry_thread_pending() == 1);
+    nso_exit_registry_thread_finalize();
+    CHECK(nso_exit_registry_thread_pending() == 0);
+    CHECK(s_thread_atexit_event_count == 3);
+    CHECK(s_thread_atexit_events[2] == 10);
+
+    puts("{\"cxa_thread_atexit_errors\":0,\"resolve\":true,\"invalid_params\":true,\"lifo\":true,\"thread_isolation\":true,\"auto_exit\":true}");
+    return 0;
+}
 struct log_fixture_io {float input,output;uint64_t guest_x18;};
 _Static_assert(offsetof(struct log_fixture_io,output)==4 && offsetof(struct log_fixture_io,guest_x18)==8,"self-authored float fixture ABI");
 static void *exercise_logf_native(guest_process *p,void *opaque) {
@@ -2551,6 +2622,7 @@ int main(int argc,char **argv) {
     if(argc==2 && !strcmp(argv[1],"--fs-open-dir"))return fs_open_dir_contract();
     if(argc==2 && !strcmp(argv[1],"--os-event"))return os_event_contract();
     if(argc==2 && !strcmp(argv[1],"--posix-memalign"))return posix_memalign_contract();
+    if(argc==2 && !strcmp(argv[1],"--cxa-thread-atexit"))return cxa_thread_atexit_contract();
     if(argc==2 && !strcmp(argv[1],"--logf"))return logf_contract();
     if(argc==3 && !strcmp(argv[1],"--logf-native"))return logf_native_contract(argv[2]);
     if(argc==2 && !strcmp(argv[1],"--strcasecmp"))return strcasecmp_contract();

@@ -1925,6 +1925,8 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_movie_set_thread_priority;
     if(!strcmp(name,"atexit"))return (uint64_t)(uintptr_t)&nso_host_atexit;
     if(!strcmp(name,"__cxa_atexit"))return (uint64_t)(uintptr_t)&nso_host_cxa_atexit;
+    if(!strcmp(name,"__cxa_thread_atexit"))return (uint64_t)(uintptr_t)&nso_host_cxa_thread_atexit;
+    if(!strcmp(name,"__cxa_thread_atexit_impl"))return (uint64_t)(uintptr_t)&nso_host_cxa_thread_atexit_impl;
     if(!strcmp(name,"__cxa_finalize"))return (uint64_t)(uintptr_t)&nso_host_cxa_finalize;
     if(!strcmp(name,"_ZTHN13LowLevelTasks5FTask10ActiveTaskE") ||
        !strcmp(name,"_ZTHN13LowLevelTasks7Private20FOversubscriptionTls26bIsOversubscriptionAllowedE") ||

@@ -135,7 +135,114 @@ void nso_host_exit_scope_end(void *owner) {
     module_scope=NULL;
     pthread_mutex_unlock(&scope_mutex);
 }
+/* ========================================================================= */
+/* Thread-Local Exit Handlers (__cxa_thread_atexit)                          */
+/* ========================================================================= */
+
+struct thread_exit_node {
+    nso_cxa_callback fn;
+    void *arg;
+    void *dso;
+    struct thread_exit_node *next;
+};
+
+struct thread_exit_state {
+    struct thread_exit_node *head;
+    size_t pending;
+};
+
+static pthread_key_t thread_exit_key;
+static pthread_once_t thread_exit_once = PTHREAD_ONCE_INIT;
+static int thread_exit_key_created = 0;
+
+static void thread_exit_destructor(void *data) {
+    struct thread_exit_state *st = (struct thread_exit_state *)data;
+    if (!st) return;
+    while (st->head) {
+        struct thread_exit_node *curr = st->head;
+        st->head = curr->next;
+        if (st->pending > 0) st->pending--;
+        if (curr->fn) {
+            curr->fn(curr->arg);
+        }
+        free(curr);
+    }
+    free(st);
+}
+
+static void init_thread_exit_key(void) {
+    if (pthread_key_create(&thread_exit_key, thread_exit_destructor) == 0) {
+        thread_exit_key_created = 1;
+    }
+}
+
+static struct thread_exit_state *get_or_create_thread_state(void) {
+    if (pthread_once(&thread_exit_once, init_thread_exit_key) != 0 || !thread_exit_key_created) {
+        return NULL;
+    }
+    struct thread_exit_state *st = pthread_getspecific(thread_exit_key);
+    if (!st) {
+        st = calloc(1, sizeof(*st));
+        if (!st) return NULL;
+        if (pthread_setspecific(thread_exit_key, st) != 0) {
+            free(st);
+            return NULL;
+        }
+    }
+    return st;
+}
+
+int nso_host_cxa_thread_atexit(nso_cxa_callback fn, void *arg, void *dso) {
+    if (!fn) return -1;
+    struct thread_exit_state *st = get_or_create_thread_state();
+    if (!st) return -1;
+    struct thread_exit_node *node = malloc(sizeof(*node));
+    if (!node) return -1;
+    node->fn = fn;
+    node->arg = arg;
+    node->dso = dso;
+    node->next = st->head;
+    st->head = node;
+    st->pending++;
+    fprintf(stderr, "[hle] __cxa_thread_atexit: dtor=%p obj=%p dso=%p pending=%zu\n",
+            (void *)(uintptr_t)fn, arg, dso, st->pending);
+    return 0;
+}
+
+int nso_host_cxa_thread_atexit_impl(nso_cxa_callback fn, void *arg, void *dso) {
+    return nso_host_cxa_thread_atexit(fn, arg, dso);
+}
+
+size_t nso_exit_registry_thread_pending(void) {
+    if (!thread_exit_key_created) return 0;
+    struct thread_exit_state *st = pthread_getspecific(thread_exit_key);
+    return st ? st->pending : 0;
+}
+
+void nso_exit_registry_thread_finalize(void) {
+    if (!thread_exit_key_created) return;
+    struct thread_exit_state *st = pthread_getspecific(thread_exit_key);
+    if (!st) return;
+    pthread_setspecific(thread_exit_key, NULL);
+    thread_exit_destructor(st);
+}
+
+void nso_exit_registry_thread_discard(void) {
+    if (!thread_exit_key_created) return;
+    struct thread_exit_state *st = pthread_getspecific(thread_exit_key);
+    if (!st) return;
+    pthread_setspecific(thread_exit_key, NULL);
+    struct thread_exit_node *n = st->head;
+    while (n) {
+        struct thread_exit_node *next = n->next;
+        free(n);
+        n = next;
+    }
+    free(st);
+}
+
 _Noreturn void nso_host_exit(int status) {
+    nso_exit_registry_thread_finalize();
     nso_host_cxa_finalize(NULL);
     exit(status);
 }

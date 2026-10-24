@@ -1,8 +1,8 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-10-24T00:00:00.000000+00:00
-阶段：T02_POSIX_MEMALIGN_PASSED_CXA_THREAD_ATEXIT_REACHED_ON_RG477M: posix_memalign & aligned allocation verified on RG477M; GameThread advanced to __cxa_thread_atexit (symbol index 130, JMPREL reloc index 129, GOT 0x7772408, caller offset 0x221e8, lr offset 0x221ec)
-总控：Antigravity sole root coordinator — P-AG-14 posix_memalign closed; __cxa_thread_atexit reached (symbol index 130, GOT 0x7772408, exit 133); log .local/logs/rg477m-boot-v30-posixmemalign.log
+状态事件时间：2026-10-24T00:15:00.000000+00:00
+阶段：T02_CXA_THREAD_ATEXIT_PASSED_ABORT_IMPL_REACHED_ON_RG477M: __cxa_thread_atexit registered & verified on RG477M; GameThread spawned FHeartBeatThread, enumerated Paks, and advanced to _ZN2nn4diag6detail9AbortImplEv (symbol index 12, JMPREL reloc index 3996, GOT 0x7772058, caller offset 0x11b8, lr offset 0x11bc)
+总控：Antigravity sole root coordinator — P-AG-15 __cxa_thread_atexit closed; FHeartBeatThread spawned, Paks enumerated, AbortImpl reached (symbol index 12, GOT 0x7772058, exit 133); log .local/logs/rg477m-boot-v31-cxa-thread-atexit.log
 更新方式：按事件更新，没有后台自动刷新。
 
 | 任务 | 角色 | 状态 | 实际负责人 | 启动依赖 | 验收门禁 | 分支 |
