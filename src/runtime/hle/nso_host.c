@@ -1979,6 +1979,55 @@ bool nso_host_hid_mouse_initialized(void) {
     return s_hid_mouse_initialized;
 }
 
+static uint32_t s_oe_focus_state = 0;
+static bool s_oe_performance_mode_notification = false;
+static bool s_oe_operation_mode_notification = false;
+static int32_t s_oe_focus_handling_mode = 0;
+static bool s_oe_resume_notification = false;
+
+uint32_t nso_host_oe_get_current_focus_state(void) {
+    /* Stable and never 3: the guest treats 3 as "something else holds the
+     * foreground" and reacts to it, and a foreground Android app has neither
+     * an overlay nor a background transition to report. */
+    return s_oe_focus_state;
+}
+
+void nso_host_oe_set_performance_mode_changed_notification_enabled(bool enabled) {
+    s_oe_performance_mode_notification=enabled;
+    fprintf(stderr, "[hle] nn::oe::SetPerformanceModeChangedNotificationEnabled: enabled=%d recorded\n",enabled?1:0);
+}
+
+void nso_host_oe_set_operation_mode_changed_notification_enabled(bool enabled) {
+    s_oe_operation_mode_notification=enabled;
+    fprintf(stderr, "[hle] nn::oe::SetOperationModeChangedNotificationEnabled: enabled=%d recorded\n",enabled?1:0);
+}
+
+void nso_host_oe_set_focus_handling_mode(int32_t mode) {
+    s_oe_focus_handling_mode=mode;
+    fprintf(stderr, "[hle] nn::oe::SetFocusHandlingMode: mode=%d recorded\n",(int)mode);
+}
+
+void nso_host_oe_set_resume_notification_enabled(bool enabled) {
+    s_oe_resume_notification=enabled;
+    fprintf(stderr, "[hle] nn::oe::SetResumeNotificationEnabled: enabled=%d recorded\n",enabled?1:0);
+}
+
+bool nso_host_oe_performance_mode_changed_notification_enabled(void) {
+    return s_oe_performance_mode_notification;
+}
+
+bool nso_host_oe_operation_mode_changed_notification_enabled(void) {
+    return s_oe_operation_mode_notification;
+}
+
+int32_t nso_host_oe_focus_handling_mode(void) {
+    return s_oe_focus_handling_mode;
+}
+
+bool nso_host_oe_resume_notification_enabled(void) {
+    return s_oe_resume_notification;
+}
+
 /* ========================================================================= */
 /* nn::os::EventType HLE Implementation                                      */
 /* ========================================================================= */
@@ -2920,6 +2969,16 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_hid_initialize_keyboard;
     if(!strcmp(name,"_ZN2nn3hid15InitializeMouseEv"))
         return (uint64_t)(uintptr_t)&nso_host_hid_initialize_mouse;
+    if(!strcmp(name,"_ZN2nn2oe20GetCurrentFocusStateEv"))
+        return (uint64_t)(uintptr_t)&nso_host_oe_get_current_focus_state;
+    if(!strcmp(name,"_ZN2nn2oe44SetPerformanceModeChangedNotificationEnabledEb"))
+        return (uint64_t)(uintptr_t)&nso_host_oe_set_performance_mode_changed_notification_enabled;
+    if(!strcmp(name,"_ZN2nn2oe42SetOperationModeChangedNotificationEnabledEb"))
+        return (uint64_t)(uintptr_t)&nso_host_oe_set_operation_mode_changed_notification_enabled;
+    if(!strcmp(name,"_ZN2nn2oe20SetFocusHandlingModeENS0_17FocusHandlingModeE"))
+        return (uint64_t)(uintptr_t)&nso_host_oe_set_focus_handling_mode;
+    if(!strcmp(name,"_ZN2nn2oe28SetResumeNotificationEnabledEb"))
+        return (uint64_t)(uintptr_t)&nso_host_oe_set_resume_notification_enabled;
     if(!strcmp(name,"_ZN2nn4util11ReferSymbolEPKv") || !strcmp(name,"nnutilReferSymbol"))
         return (uint64_t)(uintptr_t)&refer_symbol;
     if(!strcmp(name,"_ZN2nn4util12GenerateUuidEv"))

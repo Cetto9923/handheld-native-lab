@@ -3422,6 +3422,128 @@ static int hid_init_contract(const char *path) {
            c.native_mouse_initialized?"true":"false");
     return 0;
 }
+
+/* nn::oe focus and notification setup (main NSO import indexes 222 to 226).
+ * The guest calls all five from one straight-line sequence, so every one of
+ * them has to be bound and has to carry a signature the boundary accepts.
+ * The fixture drives the real guest import path for the two shapes that
+ * matter: the zero-argument function that returns a value (222) and the
+ * one-argument setter (225). The boundary checks the signature of every bound
+ * import before the guest runs, so a successful guest call also proves the
+ * signatures of the other three were accepted. */
+#define OE_FOCUS_STATE_MANGLED "_ZN2nn2oe20GetCurrentFocusStateEv"
+#define OE_FOCUS_HANDLING_MANGLED "_ZN2nn2oe20SetFocusHandlingModeENS0_17FocusHandlingModeE"
+#define OE_PERF_NOTIFICATION_MANGLED "_ZN2nn2oe44SetPerformanceModeChangedNotificationEnabledEb"
+#define OE_OPERATION_NOTIFICATION_MANGLED "_ZN2nn2oe42SetOperationModeChangedNotificationEnabledEb"
+#define OE_RESUME_NOTIFICATION_MANGLED "_ZN2nn2oe28SetResumeNotificationEnabledEb"
+/* The focus handling mode the fixture guest passes to the import; see the
+ * oe-focus fixture assembly in scripts/runtime/build_guest_process_contract.sh. */
+#define OE_FIXTURE_FOCUS_HANDLING_MODE 2
+/* A different value for the direct host call, so the two observations cannot
+ * be satisfied by one constant. */
+#define OE_DIRECT_FOCUS_HANDLING_MODE 7
+struct oe_focus_case {
+    guest_process *process;
+    int resolved_focus_state,resolved_focus_handling;
+    int resolved_perf,resolved_operation,resolved_resume;
+    int direct_ok;
+    int native_ran,native_marker;
+    uint32_t native_focus_state;
+    int32_t native_focus_handling_mode;
+};
+static void *exercise_oe_focus(guest_process *p,void *opaque) {
+    struct oe_focus_case *c=opaque;
+    c->process=p;
+    typedef uint32_t (*oe_focus_state_fn)(void);
+    typedef void (*oe_focus_handling_fn)(int32_t);
+    typedef void (*oe_bool_fn)(bool);
+    oe_focus_state_fn focus_state=(oe_focus_state_fn)(uintptr_t)guest_process_resolve(0,OE_FOCUS_STATE_MANGLED);
+    oe_focus_handling_fn focus_handling=(oe_focus_handling_fn)(uintptr_t)guest_process_resolve(0,OE_FOCUS_HANDLING_MANGLED);
+    oe_bool_fn perf=(oe_bool_fn)(uintptr_t)guest_process_resolve(0,OE_PERF_NOTIFICATION_MANGLED);
+    oe_bool_fn operation=(oe_bool_fn)(uintptr_t)guest_process_resolve(0,OE_OPERATION_NOTIFICATION_MANGLED);
+    oe_bool_fn resume=(oe_bool_fn)(uintptr_t)guest_process_resolve(0,OE_RESUME_NOTIFICATION_MANGLED);
+    c->resolved_focus_state=focus_state!=NULL;
+    c->resolved_focus_handling=focus_handling!=NULL;
+    c->resolved_perf=perf!=NULL;
+    c->resolved_operation=operation!=NULL;
+    c->resolved_resume=resume!=NULL;
+    expect_condition("oe-focus-state-resolved",focus_state!=NULL);
+    expect_condition("oe-focus-handling-resolved",focus_handling!=NULL);
+    expect_condition("oe-focus-perf-notification-resolved",perf!=NULL);
+    expect_condition("oe-focus-operation-notification-resolved",operation!=NULL);
+    expect_condition("oe-focus-resume-notification-resolved",resume!=NULL);
+    /* The real guest path: the fixture calls the imports itself, so the
+     * boundary must accept the signatures or the guest never executes. */
+    uint64_t output[2]={0xa5a5,0xa5a5},returned=0xa5a5;
+    uint64_t args[1]={(uintptr_t)output};
+    struct nso_result r=guest_process_call(p,0x20,args,1,&returned);
+#if defined(__ANDROID__) && defined(__aarch64__)
+    expect_value("oe-focus-native-status",r.status,NSO_OK);
+    expect_value("oe-focus-native-return",returned,0x91);
+    c->native_ran=1;
+    c->native_marker=output[1]==1;
+    expect_condition("oe-focus-guest-call-returned",output[1]==1);
+    /* The value the guest actually received back from the focus state call. */
+    c->native_focus_state=(uint32_t)output[0];
+    expect_value("oe-focus-guest-focus-state",output[0],0);
+    /* The guest's own argument reached the setter unmoved. */
+    c->native_focus_handling_mode=nso_host_oe_focus_handling_mode();
+    expect_value("oe-focus-guest-focus-handling-mode",(uint64_t)(uint32_t)c->native_focus_handling_mode,(uint64_t)(uint32_t)OE_FIXTURE_FOCUS_HANDLING_MODE);
+#else
+    /* No AArch64 executor on this host: the boundary is prepared but the raw
+     * guest entry cannot run here. Nothing may be faked in its place. */
+    expect_value("oe-focus-native-unsupported",r.status,NSO_UNSUPPORTED);
+    expect_value("oe-focus-native-no-raw-fallback",returned,0xa5a5);
+#endif
+    /* Direct host calls: every stub must record exactly what it was given. */
+    if(focus_state&&focus_handling&&perf&&operation&&resume) {
+        perf(true);
+        operation(false);
+        resume(true);
+        focus_handling((int32_t)OE_DIRECT_FOCUS_HANDLING_MODE);
+        c->direct_ok=nso_host_oe_performance_mode_changed_notification_enabled()&&
+                     !nso_host_oe_operation_mode_changed_notification_enabled()&&
+                     nso_host_oe_resume_notification_enabled()&&
+                     nso_host_oe_focus_handling_mode()==OE_DIRECT_FOCUS_HANDLING_MODE&&
+                     nso_host_oe_get_current_focus_state()==0;
+        expect_condition("oe-focus-direct-perf-notification",nso_host_oe_performance_mode_changed_notification_enabled());
+        expect_condition("oe-focus-direct-operation-notification",!nso_host_oe_operation_mode_changed_notification_enabled());
+        expect_condition("oe-focus-direct-resume-notification",nso_host_oe_resume_notification_enabled());
+        expect_value("oe-focus-direct-focus-handling-mode",(uint64_t)(uint32_t)nso_host_oe_focus_handling_mode(),(uint64_t)(uint32_t)OE_DIRECT_FOCUS_HANDLING_MODE);
+        expect_value("oe-focus-direct-focus-state",nso_host_oe_get_current_focus_state(),0);
+    }
+    return &returned_token;
+}
+static int oe_focus_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));
+    char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+    struct oe_focus_case c={0};
+    void *value=NULL;
+    CHECK(succeeded(guest_process_run(p,exercise_oe_focus,&c,&value)));
+    CHECK(value==&returned_token);
+    expect_condition("oe-focus-state-resolved",c.resolved_focus_state);
+    expect_condition("oe-focus-handling-resolved",c.resolved_focus_handling);
+    expect_condition("oe-focus-perf-notification-resolved",c.resolved_perf);
+    expect_condition("oe-focus-operation-notification-resolved",c.resolved_operation);
+    expect_condition("oe-focus-resume-notification-resolved",c.resolved_resume);
+    expect_condition("oe-focus-direct-record",c.direct_ok);
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    /* The final gate. Every expect_* above must have passed; without this the
+     * contract could still exit 0 while the expectations had failed. */
+    CHECK(!errors);
+    /* The report states what this run observed, not a literal zero. */
+    printf("{\"oe_focus_errors\":%u,\"focus_state_resolved\":%s,\"focus_handling_resolved\":%s,"
+           "\"perf_notification_resolved\":%s,\"operation_notification_resolved\":%s,"
+           "\"resume_notification_resolved\":%s,\"direct_ok\":%s,\"native_ran\":%s,"
+           "\"guest_marker\":%s,\"guest_focus_state\":%d}\n",errors,
+           c.resolved_focus_state?"true":"false",c.resolved_focus_handling?"true":"false",
+           c.resolved_perf?"true":"false",c.resolved_operation?"true":"false",
+           c.resolved_resume?"true":"false",c.direct_ok?"true":"false",
+           c.native_ran?"true":"false",c.native_marker?"true":"false",
+           c.native_ran?(int)c.native_focus_state:-1);
+    return 0;
+}
 int main(int argc,char **argv) {
     page=(size_t)sysconf(_SC_PAGESIZE);
     if(argc==2 && !strcmp(argv[1],"--tls-host-null")) {
@@ -3445,6 +3567,7 @@ int main(int argc,char **argv) {
     if(argc==3 && !strcmp(argv[1],"--movie-allocator"))return movie_allocator_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--oe-cpu-boost"))return oe_cpu_boost_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--hid-init"))return hid_init_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--oe-focus"))return oe_focus_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-fresh"))return tls_fresh_registration_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-null"))return tls_registration_contract(argv[2],1);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-repeat"))return tls_registration_contract(argv[2],2);

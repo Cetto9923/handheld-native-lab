@@ -211,6 +211,39 @@ bool nso_host_hid_keyboard_initialized(void);
 void nso_host_hid_initialize_mouse(void);
 bool nso_host_hid_mouse_initialized(void);
 
+/* nn::oe focus and notification setup (main NSO import indexes 222 to 226).
+ *
+ * The guest calls these five from one straight-line, unconditional sequence
+ * (0x51da10, then 0x51da38, 0x51da40, 0x51da48 and 0x51da50 with only the
+ * already bound nn::oe::Initialize between them), so every one of them is
+ * provably reached on each boot.
+ *
+ * ABI, settled from the guest code rather than from the mangled name, because
+ * the Itanium mangling carries no return type:
+ *   222 nn::oe::GetCurrentFocusState()                            -> u32 in w0
+ *   223 nn::oe::SetPerformanceModeChangedNotificationEnabled(bool)  -> void
+ *   224 nn::oe::SetOperationModeChangedNotificationEnabled(bool)    -> void
+ *   225 nn::oe::SetFocusHandlingMode(FocusHandlingMode)              -> void
+ *   226 nn::oe::SetResumeNotificationEnabled(bool)                   -> void
+ * The three setters take their argument in w0 (the guest passes 1, 1 and 2)
+ * and their result is never consumed.
+ *
+ * GetCurrentFocusState reports 0 and never changes it. The guest compares the
+ * value only against 3 - the state it treats as "something else holds the
+ * foreground" - and separately compares it with the value it stored on the
+ * previous call, so a stable non-3 value is what a foreground Android app
+ * must report. The full enumerator list is not available in-tree, so the stub
+ * does not claim that 0 carries any particular name. */
+uint32_t nso_host_oe_get_current_focus_state(void);
+void nso_host_oe_set_performance_mode_changed_notification_enabled(bool enabled);
+void nso_host_oe_set_operation_mode_changed_notification_enabled(bool enabled);
+void nso_host_oe_set_focus_handling_mode(int32_t mode);
+void nso_host_oe_set_resume_notification_enabled(bool enabled);
+bool nso_host_oe_performance_mode_changed_notification_enabled(void);
+bool nso_host_oe_operation_mode_changed_notification_enabled(void);
+int32_t nso_host_oe_focus_handling_mode(void);
+bool nso_host_oe_resume_notification_enabled(void);
+
 void nso_host_os_initialize_event(void *event, bool initially_signaled, int32_t clear_mode);
 void nso_host_os_finalize_event(void *event);
 void nso_host_os_signal_event(void *event);

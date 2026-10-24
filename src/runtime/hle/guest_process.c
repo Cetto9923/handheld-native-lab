@@ -1154,6 +1154,11 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
         "_ZN2nn2oe15SetCpuBoostModeENS0_12CpuBoostModeE",
         "_ZN2nn3hid18InitializeKeyboardEv",
         "_ZN2nn3hid15InitializeMouseEv",
+        "_ZN2nn2oe20GetCurrentFocusStateEv",
+        "_ZN2nn2oe44SetPerformanceModeChangedNotificationEnabledEb",
+        "_ZN2nn2oe42SetOperationModeChangedNotificationEnabledEb",
+        "_ZN2nn2oe20SetFocusHandlingModeENS0_17FocusHandlingModeE",
+        "_ZN2nn2oe28SetResumeNotificationEnabledEb",
         "_ZN2nn4util11ReferSymbolEPKv","nnutilReferSymbol",
         "_ZN2nn2os15InitializeMutexEPNS0_9MutexTypeEbi","nnosInitializeMutex",
         "_ZN2nn2os13FinalizeMutexEPNS0_9MutexTypeE","nnosFinalizeMutex",
@@ -1370,6 +1375,15 @@ static int import_signature(const char *name,nb_signature *out) {
      * return type was settled from the two adjacent guest call sites
      * (0x51f618 and 0x51f61c), neither of which consumes a result. */
     else if(!strcmp(name,"_ZN2nn3hid18InitializeKeyboardEv") || !strcmp(name,"_ZN2nn3hid15InitializeMouseEv")) {arguments=0;returns=0;}
+    /* nn::oe focus and notification setup, called by the guest in one
+     * straight-line sequence at 0x51da10 through 0x51da50. GetCurrentFocusState
+     * returns the u32 the guest stores and compares against 3; the three
+     * setters take one argument in w0 and their result is never consumed. */
+    else if(!strcmp(name,"_ZN2nn2oe20GetCurrentFocusStateEv")) {arguments=0;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2oe44SetPerformanceModeChangedNotificationEnabledEb") ||
+            !strcmp(name,"_ZN2nn2oe42SetOperationModeChangedNotificationEnabledEb") ||
+            !strcmp(name,"_ZN2nn2oe20SetFocusHandlingModeENS0_17FocusHandlingModeE") ||
+            !strcmp(name,"_ZN2nn2oe28SetResumeNotificationEnabledEb")) {arguments=1;returns=0;}
     else if(!strcmp(name,"nnsslInitialize")) {arguments=0;returns=1;}
     else if(!strcmp(name,"nnsslFinalize")) {arguments=0;returns=1;}
     else if(!strcmp(name,"_ZN2nn4util12GenerateUuidEv")) {arguments=0;returns=2;}

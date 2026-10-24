@@ -1,3 +1,47 @@
+# P-MM-5 闭环｜2026-10-24 16:15 Asia/Shanghai — 绑定 `nn::oe` 焦点/通知组（import 222–226，**一次性 5 个**），真机**越过 v55 的 SIGTRAP**（unresolved 386 → 381，前沿推进到 `nn::oe::GetOperationMode` import 227）
+
+- **结论**：工单 P-MM-5 目标闭环。`nn::oe` 焦点/通知组 **5 个符号一次绑定**（import 222 `GetCurrentFocusState`、223 `SetPerformanceModeChangedNotificationEnabled`、224 `SetOperationModeChangedNotificationEnabled`、225 `SetFocusHandlingMode`、226 `SetResumeNotificationEnabled`），均为**如实记录**型桩；真机 v56 **不再**因这些符号触发 `[unresolved-import]` / `[fault] signal=5`，profile 行 `unresolved` 由 **386 → 381**（**正好 5 个**，即本单绑定数），新第一致命推进到 **import 227 `nn::oe::GetOperationMode()`**，exit **133**（SIGTRAP）。**未达标题画面 / 可玩**。
+  1. **本单方法升级（可复用的核心产出）**：此前只能「一刀一个导入」推进，因为没有工具回答「一段 guest 代码到底调了哪些导入」。本单新增 **`scripts/runtime/scan_import_range.py`**：重建 NSO 的 PLT→导入映射后，扫描任意 module-offset 区间，列出该区间调用的**全部**导入（按调用顺序）。用它扫 guest 初始化区 `0x51d000..0x51f800`，得到 **22 个不同导入**，并据此把「已证实触达」的符号**成组绑定**，把每个真机周期的推进量从 1 个提到 5 个。
+  2. **触达证据（不是推测）**：反汇编 `0x51d9f0..0x51da60` 证明 `0x51da10`(222) → `0x51da30`(80，已绑定) → `0x51da38`(223) → `0x51da40`(224) → `0x51da48`(225) → `0x51da50`(226) 是**一段无条件直线序列**（223–226 彼此仅隔 8 字节），其间无任何分支 ⇒ **5 个符号每次 boot 必然被调用**。
+  3. **返回值与实参由 guest 代码定论（mangling 不编码返回类型）**：
+     - 222 的返回值被 guest 存到 `[x19,#0x1108]`，随后**只与 3 比较**（`cmp w8, #0x3`；3 是 guest 认定的「有别的东西占据前台」的特例态），并与上一次存的值比较是否变化 ⇒ 前台 Android 应用应返回**非 3 的稳定值** ⇒ 桩返回 **0** 且永不变。仓库内无权威枚举定义，故桩**不宣称 0 对应任何名字**。
+     - 223/224/225/226 的实参由 guest 明确给出：`w0 = 1, 1, 2, 1`；四次调用的返回值**都未被消费**（下一条指令立即覆写 w0）⇒ `{arguments=1; returns=0}`。
+     - 222 ⇒ `{arguments=0; returns=1}`。
+  4. **刻意排除的符号（不夹带）**：`227 GetOperationMode`（返回值语义待证，下一刀）、`88 nn::ldn::GetState`（**条件分支**可达 ⇒ 不可证实触达）、`228–232 nn::vi`（显示/图层/原生窗口，语义重）、`233 TryPopNotificationMessage`、以及每帧输入读取族 236/237 与 Npad 族。
+  5. **契约（宿主 + 真机同测）**：新增 `--oe-focus` 契约，由自造 `oe-focus.nso` fixture 驱动**真实 guest 导入路径**，覆盖两种关键 ABI 形态：`222`（0 参、**有返回值**）与 `225`（1 参 void）。boundary 在 guest 运行前会校验**每一个**已绑定导入的签名，因此 guest 成功调用同时也证明另外三个 setter 的签名被接受。
+     - 宿主 PASS：`{"oe_focus_errors":0,...,"direct_ok":true,"native_ran":false,"guest_focus_state":-1}`（宿主无 AArch64 执行器，`-1` = 本次未观测，未伪造）。
+     - **RG477M 真机 PASS**：`{"oe_focus_errors":0,"focus_state_resolved":true,"focus_handling_resolved":true,"perf_notification_resolved":true,"operation_notification_resolved":true,"resume_notification_resolved":true,"direct_ok":true,"native_ran":true,"guest_marker":true,"guest_focus_state":0}`。
+     - 覆盖面：白名单门禁 ✓；**签名门禁**通过（真机 stderr `[boundary-ready] imports=2 actual-primary-owned`，`[boundary-unsupported]` 全程 **0**）✓；**guest 真实拿回返回值 0**（`output[0]`，经真实 thunk 往返）✓；**guest 传入的 `mode=2` 原样送达宿主桩** ✓；另断言直调前状态为初值、且直调后 4 个记录值逐项正确 ⇒ 预置/忽略实参的桩无法蒙混 ✓。
+  6. **两变体自证**（日志 `.local/logs/p-mm-5-contract-selfproof.log`，只把一处期望值 `7 → 8`）：
+     - **变体 A（当前源码形态：真实错误数 + 末尾 `CHECK(!errors)`）** → `[check-fail] oe-focus-direct-focus-handling-mode actual=0x7 expected=0x8`，**exit 1（红）**。
+     - **变体 B（修复前形态：去掉末尾 `CHECK(!errors)` 且错误数硬编码 0）** → 同样打印 `[check-fail]`，却 **exit 0（假绿）** 并输出 `"oe_focus_errors":0`。
+     ⇒ 证明契约能检出失败、且修复形态不假绿。
+  7. **验收 A（真机 v56）**：`.local/logs/rg477m-boot-v56-oe-focus.log`（**55831** 行，exit 133）实测 `[unresolved-import] index=222` **0 次**、`[boundary-unsupported]` **0 次**、`Aborted` **0 次**、`[snapshot-refused]` **0 次**；第 **55810–55813** 行依次为
+     ```
+     [hle] nn::oe::SetPerformanceModeChangedNotificationEnabled: enabled=1 recorded
+     [hle] nn::oe::SetOperationModeChangedNotificationEnabled: enabled=1 recorded
+     [hle] nn::oe::SetFocusHandlingMode: mode=2 recorded
+     [hle] nn::oe::SetResumeNotificationEnabled: enabled=1 recorded
+     ```
+     ⇒ **与静态预测的调用顺序、实参值逐一吻合**（这是对「静态邻接 ⇒ 已证实触达」这一判据的首次真机交叉验证）；profile 行 `imports=651 unresolved=381`。
+  8. **验收 B（新阻塞）**：第 **55815–55816** 行
+     ```
+     [fault] signal=5 pc=0x79b6cf1718 fa=0x79b6cf1718
+     [unresolved-import] index=227 name=_ZN2nn2oe16GetOperationModeEv caller_offset=0x51dc88
+     ```
+     exit **133**（SIGTRAP，未解析**代码**导入）。**新阻塞一句话**：guest 调用未解析的 `nn::oe::GetOperationMode()`（import 227，**零实参、有返回值**，2 个调用点 `0x51dc84` / `0x51ee40`，**两处都是无条件调用**）⇒ 运行时无该符号 typed HLE ⇒ SIGTRAP。**下一刀应攻 import 227**；guest 把返回值与 **1** 比较后存成一个字节全局标志，**该标志的语义必须先追到消费点再定值**，不得猜。
+  9. **产物与日志**：
+     - 构建：`.local/build-p-mm-5/`（exit 0；宿主全量契约 PASS；`manifest.json` 的 `source_sha256` 与工作树逐项一致、无源码漂移；`android_executed` 已置 true 并补 `device_contracts` / `device_boot` 证据块）。
+     - 启动二进制 `nso_owned_startup.android` sha256 前 8 位 `67ab6079`（设备端 `p-mm-5-nso_owned_startup.android-67ab6079`）；契约二进制 `guest_process_contract.android` 前 8 位 `857dfae2`；fixture `oe-focus.nso` 前 8 位 `ba78e1b8`（**自造 fixture，非游戏字节**）。
+     - 真机全量 boot：`.local/logs/rg477m-boot-v56-oe-focus.log` + 同名 `.exitcode` = **133**；run 目录与参数与 v47–v55 一致；runner 脚本 `.local/selfproof/boot_v56.sh`。
+     - 真机契约：`.local/logs/rg477m-contract-p-mm-5-oe-focus.stdout` / `.stderr`（exit 0）。
+     - 新工具：`scripts/runtime/scan_import_range.py`（区间→导入清单，**已入 git**）；诊断用 `.local/selfproof/got_probe.c`、`make_mm5_variants.py`、`selfproof_mm5.sh`。
+  10. **改动文件清单**（本单自有）：`src/runtime/hle/nso_host.c`、`src/runtime/hle/nso_host.h`、`src/runtime/hle/guest_process.c`、`tests/native/guest_process_contract.c`、`scripts/runtime/build_guest_process_contract.sh`、**`scripts/runtime/scan_import_range.py`（新增工具）**、`coordination/state.json`、`coordination/HANDOFF.md`（本段）、`coordination/STATUS.md`（脚本生成）。
+  11. **口径保持诚实**：`imports=651 unresolved=381` —— **仍有 381 个未绑定**。「unresolved-import 计数 = 0」仍仅指 boot 期没有因未解析导入而产生 fault。
+  12. **未达标题画面 / 可玩**；未伪造影片库 / 解码器 / 页表 / RSS / 按键状态 / 焦点枚举名；焦点/通知桩**只记录 guest 的真实请求**。
+
+---
+
 # P-MM-4 闭环｜2026-10-24 15:45 Asia/Shanghai — 绑定 `nn::hid::InitializeKeyboard` + `InitializeMouse`（import 234/235），真机**越过 v54 的 SIGTRAP**（unresolved 388 → 386，前沿推进到 `nn::oe::GetCurrentFocusState` import 222）
 
 - **结论**：工单 P-MM-4 目标闭环。`nn::hid::InitializeKeyboard`（import 234）与 `nn::hid::InitializeMouse`（import 235）已在 HLE 层绑定为**如实记录**初始化状态的宿主桩；真机 v55 **不再**因这两个符号触发 `[unresolved-import]` / `[fault] signal=5`，profile 行 `unresolved` 由 **388 → 386**（**正好 2 个**，即本单绑定的两个），新第一致命推进到 **import 222 `nn::oe::GetCurrentFocusState()`**，exit **133**（SIGTRAP）。**未达标题画面 / 可玩**。
