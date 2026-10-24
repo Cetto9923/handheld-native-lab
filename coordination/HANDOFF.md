@@ -1,3 +1,22 @@
+# 三角色并行收口（P-MM-1 派工 + 双写处置｜2026-10-24 14:20 Asia/Shanghai）
+
+- **双写冲突处置**：派工时发现 **Claude Code PID 44703（工单 P-CC-8，与 P-MM-1 同一任务、同一 `guest_process.c`）** 正在写入。**经用户裁定 MiniMax 接管写锁** → SIGTERM 优雅停止该进程（已退出），**保留其未提交 diff 并逐行复核后继承**（未 reset / clean / stash）。其策略实现复核为正确，予以保留；仅另修掉契约假绿缺陷。同源日志留存为 `.local/logs/rg477m-boot-v52-snapshot-thread.P-CC-8-build.log`。
+- **P-MM-1 闭环 @ HEAD `5423dac`**：真机 v52 **越过** `[snapshot-refused] reason=primary-thread` → `[va-resource-invalid]` → `Aborted`（exit 134 → **133**）；新阻塞 = **import 74 `movie::SetAllocator`**（SIGTRAP）。宿主 + 真机 `--snapshot-thread` 契约同 JSON PASS。详见下方 P-MM-1 闭环段。
+- **下一刀已升格为正式工单**：`coordination/prompts/P-MM-2-movie-setallocator.md`（`movie::SetAllocator`，import 74）。证据附录 `coordination/prompts/P-MM-2-DRAFT-movie-setallocator.md`（侦察 Agent B 只读产出；总控已更正其 v52 日志行号 —— DRAFT 里的行号来自被覆盖的旧 P-CC-8 那份日志，**源码行号有效、日志行号已作废**）。
+- **口径修正（排单必读）**：v52 profile 行 `imports=651 unresolved=390` —— **651 个导入里还有 390 个未绑定**。此前「unresolved-import 计数 = 0」指的是**boot 过程中没有因未解析导入而产生 fault**，**不是**全部导入已绑定。未绑定且有 BL 调用点的共 **341** 个 ⇒ 唯一可靠推进方式是「修一个 → 跑一次真机 → 看下一个」。
+- **P-MM-NVN 旁路进度**（Agent C，独立 worktree `task/T04-nvn-firstframe`，**未进主树**、未碰设备）：guest 在 `nvnDeviceInitialize` 成功后**立即**调用两个解析函数（`0x142dbe0` / `0x1430e10`），用 `nvnDeviceGetProcAddress` **一次性解析全部 534 个 NVN 名字**，两函数体各含 **534 条 `blr`、0 条 `cbz/cbnz/tbz/tbnz`**（**全程无 NULL 检查**）⇒ **任一名字解析不到即 NULL → SIGSEGV，第一帧必然出不来**。`nvnBootstrapLoader` = **import 353**，guest 仅 5 处调用、只传 2 个名字。证据：`docs/analysis/P-MM-NVN-firstframe-gaps.md`、`evidence/nvn/guest_nvn_resolution.json`（**在 NVN worktree 内**）。建议第一个可派工单元 = 放行 import 353 + 接线 534 名字注册器。
+
+---
+
+# 日间调度（看守｜2026-10-24 14:06 Asia/Shanghai）
+
+- **里程碑**：P-MM-1 已闭环 @ HEAD `5423dac`；真机 **v52** 越过 snapshot-refused（exit 134→133）；新阻塞 `movie::SetAllocator`（import 74，SIGTRAP exit 133）。证据：`.local/logs/rg477m-boot-v52-snapshot-thread.log`。
+- **写手**：P-CC-8 Claude PID 44703 已停（启动即 unrecognized_model）；实际闭环由 MiniMax P-MM-1 完成并提交。Antigravity 仍 429。
+- **本轮未新派**：`.local/scratch/p-mm-2/` 在 14:05–14:06 仍有实质侦察（ABI/callers/census），主路径实现写手已退但 MiniMax 团队仍在为下一刀取证；为避免再双写 `nso_host.c`/`guest_process.c`，本轮**不**另拉 Claude。下一张目标：`movie::SetAllocator`（及紧随 movie 族按需）。
+- **基线**：设备 RG477M01445122 在线；pak/ucas PASS；**未达**标题/可玩。
+
+---
+
 # P-MM-1 闭环｜2026-10-24 14:05 Asia/Shanghai — 内存/资源快照多线程策略：工作线程取快照放行，真机**越过 primary-thread snapshot abort**（exit 134 → 133），新前沿推进到 `movie::SetAllocator`（import 74）
 
 - **结论**：工单 P-MM-1 目标闭环。**真机彻底越过 `[snapshot-refused] reason=primary-thread` → `[va-resource-invalid]` → `Aborted`（exit 134）这条阻塞链**；guest 的 IOThreadPool 工作线程现在能取到内存/资源快照，新第一致命推进到**未解析的代码导入** `movie::SetAllocator`（import 74），exit **133**（SIGTRAP）。**未达标题画面 / 可玩**。

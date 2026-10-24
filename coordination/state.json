@@ -1,9 +1,9 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-10-24T05:58:21.954359+00:00",
- "phase": "T02_SNAPSHOT_WORKER_THREAD_POLICY_UNBLOCKED_ON_RG477M: nn::os::GetMemoryInfo and nn::os::GetVirtualAddressMemoryResourceUsage are now answered to any guest thread bound to this guest (the primary pthread, or a worker holding its own admitted guest OS TLS record) instead of the primary alone; the snapshot remains a read-only aggregate of the same primary-owned ledgers under the process owner mutex, so the numbers do not depend on the asking thread; an unbound host thread is still refused with a named reason and an untouched output; the obsolete tls.registered_threads==1 invariant is replaced by per-caller registration plus at-least-one-registered checks; the RG477M v52 boot shows the worker snapshot succeeding ([snapshot-thread-policy] caller=bound-worker registered_threads=18) with zero [snapshot-refused], zero [va-resource-invalid] and zero Aborted; new frontier is unresolved code import index 74 movie::SetAllocator (SIGTRAP, exit 133); title screen and playable remain unmet",
- "coordinator": "P-CC-7 (Claude Code): nn::socket event family landed (7 imports), host and RG477M device contracts PASS, RG477M boot logs .local/logs/rg477m-boot-v48-socket-eventfd.log (exit 133), .local/logs/rg477m-boot-v49-socket-poll.log and .local/logs/rg477m-boot-v50-socket-poll-diag.log (exit 134, zero unresolved imports); next frontier is the memory/resource snapshot thread policy, not the nn::socket family",
+ "updated_at": "2026-10-24T06:19:05.465454+00:00",
+ "phase": "T02_SNAPSHOT_WORKER_THREAD_POLICY_UNBLOCKED_ON_RG477M: the memory/resource snapshot is now answered to any guest thread bound to this guest (the primary pthread, or a worker holding its own admitted guest OS TLS record) instead of the primary alone; the snapshot remains a read-only aggregate of the same primary-owned ledgers under the process owner mutex; an unbound host thread is still refused with a named reason and an untouched output; the obsolete tls.registered_threads==1 invariant was replaced by per-caller registration plus at-least-one-registered checks; host and RG477M device --snapshot-thread contracts PASS with identical JSON and a two-variant self-proof shows the contract turns RED when a single expected value is broken; the RG477M v52 boot has zero [snapshot-refused], zero [va-resource-invalid] and zero Aborted, with the worker snapshot succeeding at line 52093; new frontier is unresolved code import index 74 movie::SetAllocator (SIGTRAP on the BRK import sentinel, exit 133), formally dispatched as P-MM-2; accounting correction: the v52 profile line reads imports=651 unresolved=390, so 390 imports remain unbound and \"unresolved-import count = 0\" only means no fault was produced by an unresolved import, not that every import is bound; 341 unbound imports have BL call sites, so the only reliable advance is one symbol per device boot; title screen and playable remain unmet",
+ "coordinator": "P-MM-1 / P-MM-2 (MiniMax Code coordinator): the memory/resource snapshot thread policy landed at 5423dac and the RG477M v52 boot cleared the primary-thread snapshot abort (exit 134 -> 133); host and RG477M device --snapshot-thread contracts PASS with identical JSON; new frontier is unresolved code import index 74 movie::SetAllocator, formally dispatched as P-MM-2 (coordination/prompts/P-MM-2-movie-setallocator.md) with the read-only reconnaissance appendix P-MM-2-DRAFT-movie-setallocator.md; the P-CC-8 / P-MM-1 double-write on guest_process.c was resolved by stopping the Claude Code process and inheriting its reviewed diff; import accounting corrected to imports=651 unresolved=390",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
  "active_writers": [
@@ -331,10 +331,12 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native",
    "branch": "work/rg477m-native",
    "acquired_at": "2026-10-24T05:58:21.954359+00:00",
-   "checkpoint": "P-MM-1",
+   "checkpoint": "5423dac",
    "objective": "Land the P-MM-1 snapshot thread policy: fix the snapshot-thread contract false-green defect, build to .local/build-p-mm-1, host AND RG477M device --snapshot-thread contract PASS, RG477M full boot v52 confirming the primary-thread abort is cleared, HANDOFF closure and commit",
-   "write_state": "ACTIVE",
-   "device_boot_lock": ".local/agent-pm/BOOT_LOCK_MM_A"
+   "write_state": "COMPLETE_HANDED_BACK",
+   "device_boot_lock": null,
+   "completed_at": "2026-10-24T06:18:28.098240+00:00",
+   "handoff": "coordination/HANDOFF.md P-MM-1 closure; host+RG477M --snapshot-thread contract PASS (identical JSON); v52 boot exit 133"
   },
   {
    "task": "P-MM-2-NEXT-BLOCKER-RECON",
@@ -346,10 +348,12 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native",
    "branch": "work/rg477m-native",
    "acquired_at": "2026-10-24T05:58:21.954359+00:00",
-   "checkpoint": "P-MM-2-draft",
+   "checkpoint": "P-MM-2-DRAFT-movie-setallocator.md",
    "objective": "Read-only next-blocker reconnaissance against the v52 log and evidence/coordinator/nso_imports_main.tsv; draft the P-MM-2 prompt for import index 74 movie::SetAllocator; must not touch any .c/.h and must not run device commands",
-   "write_state": "ACTIVE",
-   "device_boot_lock": null
+   "write_state": "COMPLETE_HANDED_BACK",
+   "device_boot_lock": null,
+   "completed_at": "2026-10-24T06:18:28.098240+00:00",
+   "handoff": "coordination/prompts/P-MM-2-DRAFT-movie-setallocator.md (evidence appendix; v52 log line numbers superseded by the coordinator formal ticket)"
   },
   {
    "task": "P-MM-NVN-FIRSTFRAME-PREP",
@@ -360,10 +364,32 @@
    "worktree": "/Users/yuyan9923/Documents/Codex/2026-10-24/task/ffrs-nvn-firstframe",
    "branch": "task/T04-nvn-firstframe",
    "acquired_at": "2026-10-24T05:58:21.954359+00:00",
-   "checkpoint": "P-MM-NVN-prep",
+   "checkpoint": "a5d86d7 + untracked deliverables in the NVN worktree",
    "objective": "NVN to Vulkan first-frame side-channel preparation in an isolated worktree: gap list, minimal patch plan and a dispatchable prompt draft; must not touch the main worktree HLE and must not use the RG477M device (boot lock belongs to Agent A)",
-   "write_state": "ACTIVE",
-   "device_boot_lock": null
+   "write_state": "COMPLETE_HANDED_BACK",
+   "device_boot_lock": null,
+   "completed_at": "2026-10-24T06:18:28.098240+00:00",
+   "handoff": "docs/analysis/P-MM-NVN-firstframe-gaps.md, docs/analysis/P-MM-NVN-firstframe-patch-plan.md, prompts/P-MM-NVN-firstframe-bootstrap-import.md, prompts/P-MM-NVN-firstframe-compat-abi.md, evidence/nvn/guest_nvn_resolution.json, scripts/runtime/nso_string_refs.py - all inside /Users/yuyan9923/Documents/Codex/2026-10-24/task/ffrs-nvn-firstframe, NOT merged into the main tree"
+  },
+  {
+   "task": "P-MM-2-MOVIE-SETALLOCATOR",
+   "owner": "PENDING_DISPATCH (single HLE writer required)",
+   "paths": [
+    "src/runtime/hle/nso_host.c",
+    "src/runtime/hle/guest_process.c",
+    "src/runtime/hle/guest_process.h",
+    "tests/native/guest_process_contract.c",
+    "scripts/runtime/build_guest_process_contract.sh",
+    ".local/build-p-mm-2/",
+    ".local/logs/rg477m-boot-v53-movie-setallocator.log"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native",
+   "branch": "work/rg477m-native",
+   "acquired_at": "2026-10-24T06:18:28.098240+00:00",
+   "checkpoint": "P-MM-1 @ 5423dac",
+   "objective": "Bind movie::SetAllocator (main NSO import index 74) with a faithful record-and-forward allocator registration stub: nso_host.c resolve+impl, guest_process.c typed[] whitelist and import_signature arguments=4/returns=0; contract must assert resolve!=0 and gp_arguments==4/gp_returns==0; RG477M boot v53 must clear the index-74 SIGTRAP and record the next frontier",
+   "write_state": "PENDING_DISPATCH",
+   "device_boot_lock": ".local/agent-pm/BOOT_LOCK_MM_A"
   }
  ],
  "tasks": [
