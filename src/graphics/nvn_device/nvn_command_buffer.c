@@ -28,6 +28,9 @@
  */
 #include "nvn_command_buffer.h"
 
+#include "nvn_sampler_pool.h"
+#include "nvn_texture_pool.h"
+
 #include <inttypes.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -135,6 +138,13 @@ typedef struct {
     int64_t copy_image_stride;
     uint64_t memory_callback;
     uint64_t memory_callback_data;
+
+    /* The numbering bases of the descriptor pools this buffer bound last.
+     * The reference keeps them in the command buffer's own state, and the
+     * single texture bind carries them, so that a handle in a record can be
+     * read with the numbering of the pool it was registered in. */
+    int32_t tex_base;
+    int32_t samp_base;
 
     /* The command memory of the recording that is running. It is a list of
      * segments: the command memory the guest handed over is the first one,
@@ -1255,17 +1265,51 @@ static void bind_handles(void *buffer, uint32_t op, int stage, int first, int co
     record->src = 0;
     memcpy(record->h, handles, (size_t)count * sizeof(uint64_t));
     count_copied((size_t)count * sizeof(uint64_t));
+    /* The array form of the bind has no room for the numbering bases, so a
+     * handle in it is read with the numbering of the pool as it was
+     * registered, without the base of the pool the buffer bound. The
+     * reference says so out loud, and so does this. */
+    {
+        int32_t tex_base = 0;
+        int32_t samp_base = 0;
+        pthread_mutex_lock(&s_lock);
+        {
+            nvn_cb_buffer *state = buffer_find(buffer, 0);
+            if (state) {
+                tex_base = state->tex_base;
+                samp_base = state->samp_base;
+            }
+        }
+        pthread_mutex_unlock(&s_lock);
+        if (tex_base || samp_base) {
+            fprintf(stderr, "[nvn] the handles bound in a batch are read at replay without the numbering "
+                            "base of the descriptor pools this buffer bound (texture pool base %d, sampler "
+                            "pool base %d); the single texture bind carries the bases\n",
+                    tex_base, samp_base);
+        }
+    }
 }
 
 void nvn_command_buffer_rec_bind_texture(void *buffer, int stage, int slot, uint64_t handle) {
     nvn_cb_p_bind_tex1 *record =
         (nvn_cb_p_bind_tex1 *)record_open(buffer, NVN_CB_OP_BIND_TEX1, sizeof(*record));
+    int32_t tex_base = 0;
+    int32_t samp_base = 0;
     if (!record) return;
+    pthread_mutex_lock(&s_lock);
+    {
+        nvn_cb_buffer *state = buffer_find(buffer, 0);
+        if (state) {
+            tex_base = state->tex_base;
+            samp_base = state->samp_base;
+        }
+    }
+    pthread_mutex_unlock(&s_lock);
     record->stage = stage;
     record->slot = slot;
     record->h = handle;
-    record->tbase = 0;
-    record->sbase = 0;
+    record->tbase = tex_base;
+    record->sbase = samp_base;
 }
 
 void nvn_command_buffer_rec_bind_textures(void *buffer, int stage, int first, int count,
@@ -1398,7 +1442,12 @@ void nvn_command_buffer_rec_set_texture_pool(void *buffer, const void *pool) {
     if (pool) {
         pthread_mutex_lock(&s_lock);
         slot = buffer_find(buffer, 0);
-        if (slot) copy = copy_guest_data(slot, pool, 0x20u);
+        if (slot) {
+            copy = copy_guest_data(slot, pool, 0x20u);
+            /* The numbering base of the pool is settled here and kept in
+             * the buffer's own state, the way the reference does it. */
+            slot->tex_base = nvn_texture_pool_base(pool);
+        }
         pthread_mutex_unlock(&s_lock);
         if (!copy) {
             s_stats.dropped++;
@@ -1417,7 +1466,12 @@ void nvn_command_buffer_rec_set_sampler_pool(void *buffer, const void *pool) {
     if (pool) {
         pthread_mutex_lock(&s_lock);
         slot = buffer_find(buffer, 0);
-        if (slot) copy = copy_guest_data(slot, pool, 0x20u);
+        if (slot) {
+            copy = copy_guest_data(slot, pool, 0x20u);
+            /* The samplers have a numbering of their own, apart from the
+             * numbering of the textures. */
+            slot->samp_base = nvn_sampler_pool_base(pool);
+        }
         pthread_mutex_unlock(&s_lock);
         if (!copy) {
             s_stats.dropped++;

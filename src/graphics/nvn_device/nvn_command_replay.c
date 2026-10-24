@@ -191,7 +191,8 @@ static int resolve_address(uint64_t address) {
  * number above them. The numbering bases of the descriptor pools are added
  * to them when the handle is read, so a handle without a pool bound cannot
  * be read and is refused by name. */
-static int read_handle(uint64_t handle, uint32_t *texture, uint32_t *sampler) {
+static int read_handle(uint64_t handle, int32_t tex_base, int32_t samp_base,
+                        uint32_t *texture, uint32_t *sampler) {
     uint32_t id = (uint32_t)(handle & 0xfffffu);
     uint32_t sid = (uint32_t)(handle >> 20);
     if (id && !s_state.tex_pool) {
@@ -212,8 +213,11 @@ static int read_handle(uint64_t handle, uint32_t *texture, uint32_t *sampler) {
                 sid);
         return 0;
     }
-    *texture = id;
-    *sampler = sid;
+    /* The handle holds the number inside the pool. The number in the
+     * numbering that all the pools share is that number plus the base of
+     * the pool that was bound, the way the reference reads it. */
+    *texture = (uint32_t)(id + (uint32_t)tex_base);
+    *sampler = (uint32_t)(sid + (uint32_t)samp_base);
     return 1;
 }
 
@@ -248,11 +252,13 @@ static void decode_one(uint32_t op, const uint8_t *payload) {
         const nvn_cb_p_bind_tex1 *record = (const nvn_cb_p_bind_tex1 *)payload;
         uint32_t texture = 0;
         uint32_t sampler = 0;
-        if (read_handle(record->h, &texture, &sampler)) {
+        if (read_handle(record->h, record->tbase, record->sbase, &texture, &sampler)) {
             pthread_mutex_lock(&s_lock);
             if (texture) s_stats.textures_bound++;
             if (sampler) s_stats.samplers_bound++;
             pthread_mutex_unlock(&s_lock);
+            s_state.last_texture = texture;
+            s_state.last_sampler = sampler;
         }
         break;
     }
@@ -264,7 +270,11 @@ static void decode_one(uint32_t op, const uint8_t *payload) {
         for (i = 0; i < (uint32_t)record->n && i < 32u; i++) {
             uint32_t texture = 0;
             uint32_t sampler = 0;
-            if (!read_handle(record->h[i], &texture, &sampler)) continue;
+            /* The batch form of the bind has no room for the bases, so the
+             * handles in it are read without them. */
+            if (!read_handle(record->h[i], 0, 0, &texture, &sampler)) continue;
+            s_state.last_texture = texture;
+            s_state.last_sampler = sampler;
             pthread_mutex_lock(&s_lock);
             if (texture) s_stats.textures_bound++;
             if (sampler) s_stats.samplers_bound++;

@@ -57,6 +57,8 @@ typedef uint64_t (*cb_end_recording_fn)(void *);
 typedef void (*cb_clear_fn)(void *, int, const float *, int);
 typedef void (*cb_bind_vertex_buffer_fn)(void *, int, uint64_t, uint64_t);
 typedef void (*cb_bind_texture_fn)(void *, int, int, uint64_t);
+typedef void (*cb_set_texture_pool_fn)(void *, const void *);
+typedef int (*tp_initialize_fn)(void *, const void *, long, int);
 
 int main(int argc,char **argv) {
     /* The family contracts have their own switch, so that two families can be
@@ -83,8 +85,13 @@ int main(int argc,char **argv) {
         (cb_bind_vertex_buffer_fn)(uintptr_t)lookup(NULL,"nvnCommandBufferBindVertexBuffer");
     cb_bind_texture_fn bind_texture =
         (cb_bind_texture_fn)(uintptr_t)lookup(NULL,"nvnCommandBufferBindTexture");
+    cb_set_texture_pool_fn set_texture_pool =
+        (cb_set_texture_pool_fn)(uintptr_t)lookup(NULL,"nvnCommandBufferSetTexturePool");
+    tp_initialize_fn texture_pool_initialize =
+        (tp_initialize_fn)(uintptr_t)lookup(NULL,"nvnTexturePoolInitialize");
     nvn_replay_stats final_stats;
     CHECK(initialize&&begin_recording&&end_recording&&clear&&bind_vertex_buffer&&bind_texture);
+    CHECK(set_texture_pool&&texture_pool_initialize);
 
     /* 1. A recording that the guest makes. The commands are the ones the
      *    guest would make: a clear with a colour of its own, a vertex buffer
@@ -142,7 +149,56 @@ int main(int argc,char **argv) {
         expect_value("replay-read-no-record-for-the-unknown-handle",after.records,before.records);
     }
 
-    /* 4. The replay does not walk into the guest's memory. The handle is the
+    /* 5. The numbering base of a descriptor pool. A handle holds the number
+     *    of the texture inside the pool; the number in the numbering that
+     *    all the pools share is that number plus the base of the pool, and
+     *    the base is given to a pool at its first Initialize. Two pools are
+     *    made here, so that the second one does not have the base of the
+     *    first one, and the recording binds a texture of the second one. */
+    {
+        unsigned char pool_a[64];
+        unsigned char pool_b[64];
+        unsigned char second_buffer[64];
+        unsigned char second_memory[4096];
+        unsigned char second_pool_b[64];
+        uint64_t second_handle;
+        memset(pool_a,0xaa,sizeof(pool_a));
+        memset(pool_b,0xaa,sizeof(pool_b));
+        memset(second_buffer,0xaa,sizeof(second_buffer));
+        memset(second_memory,0,sizeof(second_memory));
+        memset(second_pool_b,0xaa,sizeof(second_pool_b));
+        /* The first pool takes the numbering from zero and the numbering
+         * steps on by its size rounded up to a whole number of 256. */
+        expect_value("replay-the-first-pool-takes-the-numbering-from-zero",
+                     (uint64_t)(uint32_t)texture_pool_initialize(pool_a,(const void *)pool_a,0,300),1);
+        expect_value("replay-the-second-pool-gets-a-numbering-of-its-own",
+                     (uint64_t)(uint32_t)texture_pool_initialize(pool_b,(const void *)pool_a,0,10),1);
+        expect_value("replay-initialize-the-second-buffer-succeeds",
+                     (uint64_t)(uint32_t)initialize(second_buffer,NULL),1);
+        add_command_memory(second_buffer,second_memory,0,sizeof(second_memory));
+        begin_recording(second_buffer);
+        set_texture_pool(second_buffer,pool_b);
+        /* A texture handle is not a pointer: it is the texture's number in
+         * the low twenty bits. */
+        bind_texture(second_buffer,0,0,1u);
+        second_handle = end_recording(second_buffer);
+        expect_condition("replay-the-second-recording-hands-out-a-handle",second_handle!=0);
+        nvn_command_replay_reset();
+        expect_value("replay-reads-the-second-package",
+                     (uint64_t)(uint32_t)nvn_command_replay_run(second_handle),1);
+        {
+            nvn_replay_state second_state;
+            nvn_command_replay_get_state(&second_state);
+            /* The texture number of the second pool is the number in the
+             * pool plus the base the pool was given: one plus 256 rounded
+             * up from 300. */
+            expect_value("replay-adds-the-numbering-base-of-the-bound-pool",
+                         second_state.last_texture,513);
+        }
+    }
+
+
+    /* 6. The replay does not walk into the guest's memory. The handle is the
      *    only thing it is given, and the address in a record is the guest's
      *    buffer address, which is not a host pointer. */
     {

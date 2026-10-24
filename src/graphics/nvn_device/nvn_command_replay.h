@@ -42,6 +42,8 @@
  * without a pool bound is refused by name. */
 typedef struct nvn_replay_state {
     uint64_t tex_pool;       /* the texture pool the stream bound last */
+    uint64_t last_texture;   /* the number of the last texture the stream bound */
+    uint64_t last_sampler;   /* the number of the last sampler the stream bound */
     uint64_t samp_pool;      /* the sampler pool the stream bound last */
     uint64_t program;        /* the program the stream bound last */
     uint32_t render_targets; /* how many colour targets the stream draws into */
