@@ -55,6 +55,12 @@
  * and it wants a defined answer. */
 #define NVN_VOID_RETURN() __asm__ volatile("mov x0, xzr")
 
+/* An entry point that has a value to hand back puts it in the register the
+ * ABI puts it in. Used where the signature of the entry point is not in the
+ * header this runtime was built against, so the value cannot be returned
+ * through the C return type. */
+#define NVN_SET_RESULT(value) __asm__ volatile("mov x0, %0" : : "r"((uint64_t)(value)) : "x0")
+
 typedef struct nvn_device_state nvn_device_state;
 
 /* The platform specific half of the device. On Android this is a real Vulkan

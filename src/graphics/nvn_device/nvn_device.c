@@ -24,7 +24,9 @@
 #include "nvn_queue.h"
 #include "nvn_program.h"
 #include "nvn_render_state.h"
+#include "nvn_sampler_builder.h"
 #include "nvn_sampler_pool.h"
+#include "nvn_texture_builder.h"
 #include "nvn_texture_pool.h"
 #include "nvn_window.h"
 
@@ -662,6 +664,30 @@ void *nvn_device_get_proc_address(void *device, const char *name) {
         size_t count = nvn_command_buffer_family_count();
         for (i = 0; i < count; i++) {
             const nvn_command_buffer_family_entry *entry = nvn_command_buffer_family_entry_at(i);
+            if (!entry || !entry->name) continue;
+            if (!strcmp(name, entry->name)) {
+                s_device.implemented_resolved++;
+                fprintf(stderr, "[nvn] nvnDeviceGetProcAddress: \"%s\" -> implemented\n", name);
+                return entry->fn;
+            }
+        }
+    }
+    {
+        size_t count = nvn_sampler_builder_family_count();
+        for (i = 0; i < count; i++) {
+            const nvn_sampler_builder_family_entry *entry = nvn_sampler_builder_family_entry_at(i);
+            if (!entry || !entry->name) continue;
+            if (!strcmp(name, entry->name)) {
+                s_device.implemented_resolved++;
+                fprintf(stderr, "[nvn] nvnDeviceGetProcAddress: \"%s\" -> implemented\n", name);
+                return entry->fn;
+            }
+        }
+    }
+    {
+        size_t count = nvn_texture_builder_family_count();
+        for (i = 0; i < count; i++) {
+            const nvn_texture_builder_family_entry *entry = nvn_texture_builder_family_entry_at(i);
             if (!entry || !entry->name) continue;
             if (!strcmp(name, entry->name)) {
                 s_device.implemented_resolved++;

@@ -10,6 +10,8 @@
 #include "../../src/graphics/nvn_device/nvn_memory_pool.h"
 #include "../../src/graphics/nvn_device/nvn_program.h"
 #include "../../src/graphics/nvn_device/nvn_command_buffer.h"
+#include "../../src/graphics/nvn_device/nvn_sampler_builder.h"
+#include "../../src/graphics/nvn_device/nvn_texture_builder.h"
 #include "../../src/graphics/nvn_device/nvn_queue.h"
 #include "../../src/graphics/nvn_device/nvn_render_state.h"
 #include "../../src/graphics/nvn_device/nvn_sampler_pool.h"
@@ -6591,6 +6593,202 @@ static int nvn_command_buffer_contract(void) {
     return 0;
 }
 
+
+/* The NVN sampler builder family and the NVN texture builder family.
+ *
+ * The guest fills a builder and hands it to the sampler or texture create
+ * call. The values the guest puts into a builder are kept on the host, keyed
+ * by the address of the builder, so the contract checks that the values come
+ * back unchanged, that the defaults really reset, and that not one byte is
+ * written into the guest's builder. */
+static int nvn_builder_contract(void) {
+    typedef void *(*bootstrap_fn)(const char *);
+    typedef void *(*lookup_fn)(void *, const char *);
+    typedef void (*set_defaults_fn)(void *);
+    typedef void (*set_device_fn)(void *, void *);
+    typedef void (*set_min_mag_fn)(void *, int, int);
+    typedef void (*get_min_mag_fn)(void *, int *, int *);
+    typedef void (*set_wrap_fn)(void *, int, int, int);
+    typedef void (*get_wrap_fn)(void *, int *, int *, int *);
+    typedef void (*set_format_fn)(void *, int);
+    typedef void (*get_format_fn)(void *, int *);
+    typedef void (*set_width_fn)(void *, int);
+    typedef void (*get_width_fn)(void *, int *);
+    typedef void (*set_height_fn)(void *, int);
+    typedef void (*get_height_fn)(void *, int *);
+    nvn_sampler_builder_stats sampler_stats;
+    nvn_texture_builder_stats texture_stats;
+    size_t i;
+
+    /* 1. Every name of both families resolves, and resolves to the same
+     *    entry point every time. */
+    bootstrap_fn bootstrap = (bootstrap_fn)(uintptr_t)guest_process_resolve(0, "nvnBootstrapLoader");
+    CHECK(bootstrap != NULL);
+    lookup_fn lookup = (lookup_fn)(uintptr_t)bootstrap("nvnDeviceGetProcAddress");
+    CHECK(lookup != NULL);
+    size_t sampler_count = nvn_sampler_builder_family_count();
+    size_t texture_count = nvn_texture_builder_family_count();
+    expect_condition("nvn-builder-sampler-family-has-names", sampler_count >= 25);
+    expect_condition("nvn-builder-texture-family-has-names", texture_count >= 44);
+    for (i = 0; i < sampler_count; i++) {
+        const nvn_sampler_builder_family_entry *entry = nvn_sampler_builder_family_entry_at(i);
+        void *resolved;
+        if (!entry || !entry->name) continue;
+        resolved = lookup(NULL, entry->name);
+        expect_condition("nvn-builder-sampler-name-resolves", resolved != NULL);
+        expect_condition("nvn-builder-sampler-name-is-stable", resolved == lookup(NULL, entry->name));
+        expect_condition("nvn-builder-sampler-name-matches-the-table", resolved == entry->fn);
+    }
+    for (i = 0; i < texture_count; i++) {
+        const nvn_texture_builder_family_entry *entry = nvn_texture_builder_family_entry_at(i);
+        void *resolved;
+        if (!entry || !entry->name) continue;
+        resolved = lookup(NULL, entry->name);
+        expect_condition("nvn-builder-texture-name-resolves", resolved != NULL);
+        expect_condition("nvn-builder-texture-name-is-stable", resolved == lookup(NULL, entry->name));
+        expect_condition("nvn-builder-texture-name-matches-the-table", resolved == entry->fn);
+    }
+
+    set_defaults_fn sampler_defaults =
+        (set_defaults_fn)(uintptr_t)lookup(NULL, "nvnSamplerBuilderSetDefaults");
+    set_device_fn sampler_set_device =
+        (set_device_fn)(uintptr_t)lookup(NULL, "nvnSamplerBuilderSetDevice");
+    set_min_mag_fn sampler_set_min_mag =
+        (set_min_mag_fn)(uintptr_t)lookup(NULL, "nvnSamplerBuilderSetMinMagFilter");
+    get_min_mag_fn sampler_get_min_mag =
+        (get_min_mag_fn)(uintptr_t)lookup(NULL, "nvnSamplerBuilderGetMinMagFilter");
+    set_wrap_fn sampler_set_wrap =
+        (set_wrap_fn)(uintptr_t)lookup(NULL, "nvnSamplerBuilderSetWrapMode");
+    get_wrap_fn sampler_get_wrap =
+        (get_wrap_fn)(uintptr_t)lookup(NULL, "nvnSamplerBuilderGetWrapMode");
+    CHECK(sampler_defaults && sampler_set_device && sampler_set_min_mag && sampler_get_min_mag);
+    CHECK(sampler_set_wrap && sampler_get_wrap);
+
+    set_defaults_fn texture_defaults =
+        (set_defaults_fn)(uintptr_t)lookup(NULL, "nvnTextureBuilderSetDefaults");
+    set_device_fn texture_set_device =
+        (set_device_fn)(uintptr_t)lookup(NULL, "nvnTextureBuilderSetDevice");
+    set_format_fn texture_set_format =
+        (set_format_fn)(uintptr_t)lookup(NULL, "nvnTextureBuilderSetFormat");
+    get_format_fn texture_get_format =
+        (get_format_fn)(uintptr_t)lookup(NULL, "nvnTextureBuilderGetFormat");
+    set_width_fn texture_set_width =
+        (set_width_fn)(uintptr_t)lookup(NULL, "nvnTextureBuilderSetWidth");
+    get_width_fn texture_get_width =
+        (get_width_fn)(uintptr_t)lookup(NULL, "nvnTextureBuilderGetWidth");
+    set_height_fn texture_set_height =
+        (set_height_fn)(uintptr_t)lookup(NULL, "nvnTextureBuilderSetHeight");
+    get_height_fn texture_get_height =
+        (get_height_fn)(uintptr_t)lookup(NULL, "nvnTextureBuilderGetHeight");
+    CHECK(texture_defaults && texture_set_device && texture_set_format && texture_get_format);
+    CHECK(texture_set_width && texture_get_width && texture_set_height && texture_get_height);
+
+    /* 2. The guest's builder objects. The runtime keeps the values on the
+     *    host, so the guest's memory must come back untouched. */
+    unsigned char sampler_builder[64];
+    unsigned char texture_builder[64];
+    memset(sampler_builder, 0xaa, sizeof(sampler_builder));
+    memset(texture_builder, 0xaa, sizeof(texture_builder));
+
+    /* 3. The sampler builder: a value goes in and comes back unchanged. */
+    sampler_defaults(sampler_builder);
+    sampler_set_device(sampler_builder, (void *)(uintptr_t)0x5639a03810ULL);
+    sampler_set_min_mag(sampler_builder, 0x0 /* NEAREST */, 0x0 /* NEAREST */);
+    sampler_set_wrap(sampler_builder, 0x6, 0x6, 0x6 /* MIRRORED_REPEAT */);
+    int min_filter = -1;
+    int mag_filter = -1;
+    int wrap_s = -1;
+    int wrap_t = -1;
+    int wrap_r = -1;
+    sampler_get_min_mag(sampler_builder, &min_filter, &mag_filter);
+    sampler_get_wrap(sampler_builder, &wrap_s, &wrap_t, &wrap_r);
+    expect_value("nvn-builder-sampler-min-filter-round-trips", (uint64_t)(uint32_t)min_filter, 0x0);
+    expect_value("nvn-builder-sampler-mag-filter-round-trips", (uint64_t)(uint32_t)mag_filter, 0x0);
+    expect_value("nvn-builder-sampler-wrap-s-round-trips", (uint64_t)(uint32_t)wrap_s, 0x6);
+    expect_value("nvn-builder-sampler-wrap-t-round-trips", (uint64_t)(uint32_t)wrap_t, 0x6);
+    expect_value("nvn-builder-sampler-wrap-r-round-trips", (uint64_t)(uint32_t)wrap_r, 0x6);
+
+    /* 4. The defaults really reset. The reference host that runs this game
+     *    sets the min filter to NEAREST_MIPMAP_LINEAR, the mag filter to
+     *    LINEAR and the wrap mode to REPEAT on all three axes. */
+    sampler_defaults(sampler_builder);
+    sampler_get_min_mag(sampler_builder, &min_filter, &mag_filter);
+    sampler_get_wrap(sampler_builder, &wrap_s, &wrap_t, &wrap_r);
+    expect_value("nvn-builder-sampler-default-min-filter", (uint64_t)(uint32_t)min_filter, 0x4);
+    expect_value("nvn-builder-sampler-default-mag-filter", (uint64_t)(uint32_t)mag_filter, 0x1);
+    expect_value("nvn-builder-sampler-default-wrap-s", (uint64_t)(uint32_t)wrap_s, 0x1);
+    expect_value("nvn-builder-sampler-default-wrap-t", (uint64_t)(uint32_t)wrap_t, 0x1);
+    expect_value("nvn-builder-sampler-default-wrap-r", (uint64_t)(uint32_t)wrap_r, 0x1);
+
+    /* 5. The texture builder: a value goes in and comes back unchanged. */
+    texture_defaults(texture_builder);
+    texture_set_device(texture_builder, (void *)(uintptr_t)0x5639a03810ULL);
+    texture_set_format(texture_builder, 0x25 /* RGBA8 */);
+    texture_set_width(texture_builder, 1280);
+    texture_set_height(texture_builder, 720);
+    int format = -1;
+    int width = -1;
+    int height = -1;
+    texture_get_format(texture_builder, &format);
+    texture_get_width(texture_builder, &width);
+    texture_get_height(texture_builder, &height);
+    expect_value("nvn-builder-texture-format-round-trips", (uint64_t)(uint32_t)format, 0x25);
+    expect_value("nvn-builder-texture-width-round-trips", (uint64_t)(uint32_t)width, 1280);
+    expect_value("nvn-builder-texture-height-round-trips", (uint64_t)(uint32_t)height, 720);
+
+    /* 6. The defaults of the texture builder: the reference host sets the
+     *    target to 2D and the size and the level count to one. */
+    texture_defaults(texture_builder);
+    texture_get_width(texture_builder, &width);
+    texture_get_height(texture_builder, &height);
+    expect_value("nvn-builder-texture-default-width", (uint64_t)(uint32_t)width, 1);
+    expect_value("nvn-builder-texture-default-height", (uint64_t)(uint32_t)height, 1);
+
+    /* 7. The device the guest put into a builder comes back out of it. The
+     *    signature of that getter is not in the header this runtime was built
+     *    against, but handing back a null pointer is the one answer that can
+     *    crash the guest if it dereferences the result. */
+    sampler_set_device(sampler_builder, (void *)(uintptr_t)0x5639a03810ULL);
+    texture_set_device(texture_builder, (void *)(uintptr_t)0x5639a03810ULL);
+    expect_condition("nvn-builder-sampler-device-round-trips",
+                     nvn_sampler_builder_device_of(sampler_builder) == (void *)(uintptr_t)0x5639a03810ULL);
+    expect_condition("nvn-builder-texture-device-round-trips",
+                     nvn_texture_builder_device_of(texture_builder) == (void *)(uintptr_t)0x5639a03810ULL);
+
+    /* 8. The guest's builders were not written to. */
+    expect_condition("nvn-builder-sampler-object-not-written",
+                     all_bytes(sampler_builder, sizeof(sampler_builder), 0xaa));
+    expect_condition("nvn-builder-texture-object-not-written",
+                     all_bytes(texture_builder, sizeof(texture_builder), 0xaa));
+
+    /* 9. The counters. */
+    nvn_sampler_builder_get_stats(&sampler_stats);
+    nvn_texture_builder_get_stats(&texture_stats);
+    expect_condition("nvn-builder-sampler-stats-count-calls", sampler_stats.calls > 0);
+    expect_condition("nvn-builder-sampler-stats-count-set-defaults", sampler_stats.set_defaults > 0);
+    expect_condition("nvn-builder-sampler-stats-count-sets", sampler_stats.sets > 0);
+    expect_condition("nvn-builder-sampler-stats-count-gets", sampler_stats.gets > 0);
+    expect_condition("nvn-builder-sampler-stats-have-a-live-builder", sampler_stats.live_builders > 0);
+    expect_condition("nvn-builder-texture-stats-count-calls", texture_stats.calls > 0);
+    expect_condition("nvn-builder-texture-stats-count-set-defaults", texture_stats.set_defaults > 0);
+    expect_condition("nvn-builder-texture-stats-count-sets", texture_stats.sets > 0);
+    expect_condition("nvn-builder-texture-stats-count-gets", texture_stats.gets > 0);
+    expect_condition("nvn-builder-texture-stats-have-a-live-builder", texture_stats.live_builders > 0);
+
+    /* The final gate. Without it the contract could exit 0 while the
+     * expectations had failed. */
+    CHECK(!errors);
+    printf("{\"nvn_builder_errors\":%u,\"sampler_names\":%zu,\"texture_names\":%zu,"
+           "\"sampler_calls\":%llu,\"sampler_refused\":%llu,\"sampler_raw_calls\":%llu,"
+           "\"texture_calls\":%llu,\"texture_refused\":%llu,\"texture_raw_calls\":%llu}\n",
+           errors, sampler_count, texture_count,
+           (unsigned long long)sampler_stats.calls, (unsigned long long)sampler_stats.refused,
+           (unsigned long long)sampler_stats.raw_calls,
+           (unsigned long long)texture_stats.calls, (unsigned long long)texture_stats.refused,
+           (unsigned long long)texture_stats.raw_calls);
+    return 0;
+}
+
 int main(int argc,char **argv) {
     page=(size_t)sysconf(_SC_PAGESIZE);
     if(argc==2 && !strcmp(argv[1],"--tls-host-null")) {
@@ -6630,6 +6828,7 @@ int main(int argc,char **argv) {
     if(argc==2 && !strcmp(argv[1],"--nvn-render-states"))return nvn_render_state_contract();
     if(argc==2 && !strcmp(argv[1],"--nvn-program"))return nvn_program_contract();
     if(argc==2 && !strcmp(argv[1],"--nvn-command-buffer"))return nvn_command_buffer_contract();
+    if(argc==2 && !strcmp(argv[1],"--nvn-builder"))return nvn_builder_contract();
     if(argc==2 && !strcmp(argv[1],"--vi-display"))return vi_display_contract();
     if(argc==3 && !strcmp(argv[1],"--nvn-bootstrap"))return nvn_bootstrap_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-fresh"))return tls_fresh_registration_contract(argv[2]);
