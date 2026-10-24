@@ -6,6 +6,7 @@
 #include "guest_tp.h"
 #include "../nso/native_boundary.h"
 #include "../nso/nso_loader.h"
+#include "../../graphics/nvn_device/nvn_device.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -720,87 +721,58 @@ uint64_t nso_host_nv_get_initialize_graphics_size(void) { return s_nv_initialize
  * The loader has no mangled name, so it is a C function: one argument (the
  * name) and one result, a function pointer in x0.
  *
- * There is no NVN device in this runtime, so this is a null device backend
- * and nothing more: nvnDeviceInitialize reports failure, and every other NVN
- * entry point exists only so the guest never branches to a NULL function
- * pointer, and does nothing when it is called. No device, queue, surface or
- * frame is claimed to exist, and no frame is ever produced.
+ * The device itself lives in src/graphics/nvn_device: the two level
+ * dispatch, the builder, the timestamp and the platform backend (a real
+ * Vulkan device on Android). What is left here is the import binding and the
+ * counters the contract reads.
  *
  * The guest never checks the pointer it gets from nvnDeviceGetProcAddress
  * (the resolver at 0x1430e10 stores it and calls it later), so returning
- * NULL there would send the guest to pc=0. That is why the null device
- * backend serves the whole "nvn" namespace, and why every resolution is
- * logged: the resulting trace is the NVN surface this game actually uses,
- * which is what the T04 NVN to Vulkan bridge needs.
+ * NULL there would send the guest to pc=0. The device layer therefore never
+ * returns NULL for a name in the nvn namespace: a name it does not implement
+ * yet resolves to a trap that names the missing API and ends the run, and
+ * every resolution is logged, because the resulting trace is the NVN surface
+ * this game actually uses.
  */
-static uint64_t s_nvn_resolved_count = 0;
-static uint64_t s_nvn_call_count = 0;
-
-/* The null device entry point. Every NVN call the guest makes lands here.
- * It reports failure in both register classes: x0 = 0 for the integer and
- * pointer results, d0 = 0 for a float result. */
-static uint64_t host_nvn_null_entry(void *a0,void *a1,void *a2,void *a3,
-                                     void *a4,void *a5,void *a6,void *a7) {
-    (void)a0;(void)a1;(void)a2;(void)a3;(void)a4;(void)a5;(void)a6;(void)a7;
-    s_nvn_call_count++;
-    if(s_nvn_call_count<=32 || (s_nvn_call_count%1000)==0)
-        fprintf(stderr,"[hle] nvn null entry: call #%" PRIu64 " (no NVN device exists in this runtime; the call did nothing)\n",s_nvn_call_count);
-    __asm__ volatile("fmov d0, xzr" : : : "v0");
-    return 0;
-}
 
 /* nvnDeviceInitialize(nvnDevice*, nvnDeviceBuilder*): the guest reads the
  * low byte of the result and treats zero as failure
- * (0x14354b4: tst w0,#0xff). This runtime has no NVN device, so the honest
- * answer is failure.
+ * (0x14354b4: tst w0,#0xff).
  *
- * The v62 RG477M boot shows what the guest does with that failure: it is
- * fatal, not a soft error. Unreal Engine raises LowLevelFatalError at
- * NVNManager.cpp line 1246 ("nvnDeviceInitialize failed") and calls
- * nn::diag::detail::AbortImpl (main NSO import index 12) from the failure
- * path at 0x14355a0, whose branch at 0x14355c4 appears in the guest
- * backtrace. */
-static uint64_t host_nvn_device_initialize(void *device,void *builder) {
-    fprintf(stderr,"[hle] nvnDeviceInitialize: device=%p builder=%p -> false (no NVN device exists in this runtime)\n",device,builder);
-    return 0;
-}
+ * The device layer answers this. It reports success only when a real device
+ * was created: on Android that is a Vulkan device, and on a host build
+ * without a Vulkan implementation it reports failure, which is the truth
+ * there. When it does report failure the guest raises its own fatal error
+ * (Unreal Engine raises LowLevelFatalError at NVNManager.cpp line 1246,
+ * "nvnDeviceInitialize failed") and calls nn::diag::detail::AbortImpl (main
+ * NSO import index 12) from the failure path at 0x14355a0, whose branch at
+ * 0x14355c4 appears in the guest backtrace. */
 
-/* nvnDeviceFinalize(nvnDevice*): nothing to finalize without a device. */
-static uint64_t host_nvn_device_finalize(void *device) {
-    (void)device;
-    fprintf(stderr,"[hle] nvnDeviceFinalize: no NVN device exists in this runtime; nothing to finalize\n");
-    return 0;
-}
+/* nvnDeviceFinalize(nvnDevice*): also answered by the device layer. */
 
 /* nvnDeviceGetProcAddress(nvnDevice*, const char*): the guest looks every
  * other NVN entry point up by name through this, and never checks the
- * result, so the null device backend serves the whole "nvn" namespace and
- * refuses anything outside it. */
+ * result, so the device layer never answers NULL inside the nvn namespace. */
 void *nso_host_nvn_device_get_proc_address(void *device,const char *name) {
-    (void)device;
-    if(!name)return NULL;
-    if(strncmp(name,"nvn",3)!=0) {
-        fprintf(stderr,"[hle] nvnDeviceGetProcAddress: name=%s is outside the NVN namespace -> NULL\n",name);
-        return NULL;
-    }
-    s_nvn_resolved_count++;
-    fprintf(stderr,"[hle] nvnDeviceGetProcAddress: name=%s -> null device entry (no NVN device exists in this runtime)\n",name);
-    return (void *)(uintptr_t)host_nvn_null_entry;
+    return nvn_device_get_proc_address(device,name);
 }
 
 /* nvnBootstrapLoader(const char*): the guest asks for exactly two names.
  * Anything else is reported as not provided rather than silently answered. */
 void *nso_host_nvn_bootstrap_loader(const char *name) {
-    if(!name)return NULL;
-    if(!strcmp(name,"nvnDeviceGetProcAddress"))return (void *)(uintptr_t)nso_host_nvn_device_get_proc_address;
-    if(!strcmp(name,"nvnDeviceInitialize"))return (void *)(uintptr_t)host_nvn_device_initialize;
-    if(!strcmp(name,"nvnDeviceFinalize"))return (void *)(uintptr_t)host_nvn_device_finalize;
-    fprintf(stderr,"[hle] nvnBootstrapLoader: name=%s is not provided by this runtime -> NULL\n",name);
-    return NULL;
+    return nvn_bootstrap_loader(name);
 }
 
-uint64_t nso_host_nvn_resolved_count(void) { return s_nvn_resolved_count; }
-uint64_t nso_host_nvn_call_count(void) { return s_nvn_call_count; }
+uint64_t nso_host_nvn_resolved_count(void) {
+    nvn_device_stats stats;
+    nvn_device_get_stats(&stats);
+    return stats.resolved;
+}
+uint64_t nso_host_nvn_call_count(void) {
+    nvn_device_stats stats;
+    nvn_device_get_stats(&stats);
+    return stats.calls;
+}
 
 static nn_fs_alloc_fn s_fs_alloc = NULL;
 static nn_fs_free_fn s_fs_free = NULL;

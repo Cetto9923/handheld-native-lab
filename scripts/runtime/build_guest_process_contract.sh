@@ -19,8 +19,12 @@ if a.resource_quota_bytes<=0:p.error('resource quota must be positive')
 if a.main and (not a.quota_bytes or not a.stack_bytes):p.error('main requires explicit diagnostic quota/stack inputs')
 out.mkdir(parents=True,exist_ok=False)
 def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
-nso=ROOT/'src/runtime/nso';hle=ROOT/'src/runtime/hle'
-core_sources=[nso/'nso_loader.c',*[hle/(s+'.c') for s in ['guest_context','guest_process','nso_host','address_region','mutex','exit_registry','module_tls','guest_tp']]]
+nso=ROOT/'src/runtime/nso';hle=ROOT/'src/runtime/hle';nvn_device=ROOT/'src/graphics/nvn_device'
+core_sources=[nso/'nso_loader.c',*[hle/(s+'.c') for s in ['guest_context','guest_process','nso_host','address_region','mutex','exit_registry','module_tls','guest_tp']],nvn_device/'nvn_device.c']
+# The NVN device layer has a portable half and a platform backend. The host
+# build has no Vulkan implementation, the Android build has the real one.
+host_only_sources=[nvn_device/'nvn_backend_none.c']
+android_only_sources=[nvn_device/'nvn_backend_vulkan.c']
 pages_hle=a.pages_source_root.resolve()/'src/runtime/hle';pages_source=pages_hle/'guest_pages.c'
 if not pages_source.is_file() or not pages_source.with_suffix('.h').is_file():p.error('guest_pages component missing; integrate its frozen commit or provide --pages-source-root')
 sources=[*core_sources,pages_source]
@@ -32,7 +36,7 @@ os_hle=a.os_tls_source_root.resolve()/'src/runtime/hle';os_source=os_hle/'guest_
 if not os_source.is_file() or not os_source.with_suffix('.h').is_file():p.error('guest_os_tls component missing')
 sources.append(os_source)
 test=ROOT/'tests/native/guest_process_contract.c';cli=nso/'nso_call.c'
-inputs=[*core_sources,*[s.with_suffix('.h') for s in core_sources],test,cli,ROOT/'scripts/runtime/build_guest_process_contract.sh',ROOT/'tests/native/test_loader.py']
+inputs=[*core_sources,*[s.with_suffix('.h') for s in core_sources],*host_only_sources,*android_only_sources,test,cli,ROOT/'scripts/runtime/build_guest_process_contract.sh',ROOT/'tests/native/test_loader.py']
 manifest={'head':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
  'dirty':subprocess.check_output(['git','status','--short'],text=True),'host':platform.platform(),
  'compiler':subprocess.check_output(['clang','--version'],text=True),'cases':{},
@@ -78,7 +82,7 @@ strict=['-std=c11','-O2','-g','-fno-omit-frame-pointer','-Wall','-Wextra','-Werr
 run('host-reject-untyped-guards',['clang',*strict,'-c',hle/'guest_process.c','-o',out/'unsupported-guards.o'],1)
 if 'requires the real typed C++ guard runtime' not in (out/'host-reject-untyped-guards/stderr.log').read_text():raise RuntimeError('missing typed guard build constraint')
 host=[]
-for source in sources:
+for source in [*sources,*host_only_sources]:
  obj=out/(source.stem+'.host.o');host.append(obj)
  run('host-compile-'+source.stem,['clang',*strict,'-DNSO_WITH_CXX_GUARDS=1','-c',source,'-o',obj])
 run('host-build-normal',['clang',*strict,test,*host,'-lc++','-lpthread','-o',out/'guest_process_contract.host'])
@@ -1032,9 +1036,19 @@ struct.pack_into('<II',data,0x1080,1,2);struct.pack_into('<Q',data,0x2000+3*16+8
 manifest['generated_fixtures']['nvn-bootstrap.nso']={'bytes':len(data),'sha256':digest(out/'nvn-bootstrap.nso'),'kind':'self-authored single-import nvn bootstrap loader fixture','assembly_sha256':digest(nvn_assembly)}
 run('host-nvn-bootstrap-contract',[out/'guest_process_contract.host','--nvn-bootstrap',out/'nvn-bootstrap.nso'])
 nvn_stderr=(out/'host-nvn-bootstrap-contract'/'stderr.log').read_text()
-if '[hle] nvnBootstrapLoader:' not in nvn_stderr:raise RuntimeError('nvnBootstrapLoader stub did not run')
-if '[hle] nvnDeviceGetProcAddress:' not in nvn_stderr:raise RuntimeError('nvnDeviceGetProcAddress stub did not run')
+if '[nvn] nvnBootstrapLoader:' not in nvn_stderr:raise RuntimeError('nvnBootstrapLoader stub did not run')
+if '[nvn] nvnDeviceGetProcAddress:' not in nvn_stderr:raise RuntimeError('nvnDeviceGetProcAddress stub did not run')
 if '[boundary-unsupported]' in nvn_stderr:raise RuntimeError('nvn bootstrap import signature was refused by the boundary')
+# The NVN device layer itself: the two level dispatch, the builder, the
+# timestamp, the honest device initialisation and the per-API trap.
+run('host-nvn-device-contract',[out/'guest_process_contract.host','--nvn-device'])
+nvn_device_stderr=(out/'host-nvn-device-contract'/'stderr.log').read_text()
+if '[nvn] nvnDeviceGetProcAddress: "nvnContractApiThatIsNotImplemented" -> trap slot' not in nvn_device_stderr:raise RuntimeError('the NVN trap did not get the missing API')
+nvn_device_stdout=(out/'host-nvn-device-contract'/'stdout.log').read_text()
+manifest['nvn_device_contract']=json.loads(nvn_device_stdout.splitlines()[-1])
+if manifest['nvn_device_contract']['nvn_device_errors']:raise RuntimeError('the NVN device contract failed')
+if not manifest['nvn_device_contract']['trapped']:raise RuntimeError('the NVN trap did not stop the run')
+if not manifest['nvn_device_contract']['named']:raise RuntimeError('the NVN trap did not name the missing API')
 locale_assembly=out/'locale-fixture.S'
 locale_assembly.write_text(r''' .text
 .org 0x20
@@ -1397,7 +1411,7 @@ manifest['generated_fixtures']['identity.nso']={'bytes':len(data),'sha256':diges
 run('host-identity-native-unsupported',[out/'guest_process_contract.host','--identity-native',out/'identity.nso'])
 # End identity fixture.
 android=[]
-for source in sources:
+for source in [*sources,*android_only_sources]:
  obj=out/(source.stem+'.android.o');android.append(obj)
  run('android-compile-'+source.stem,['clang',*common,'-c',source,'-o',obj])
 android.append(out/'native_boundary.assembly.android.o')
@@ -1425,7 +1439,7 @@ for name,extra in [('guest_process_contract.android',out/'contract.android.o'),(
  if name=='guest_process_resource_recovery.android':objects=[v for v in android if v.name not in ['guest_context.android.o','address_region.android.o']]+[out/'resource-recovery-provider.android.o',out/'resource-vm-recovery.android.o']
  run('android-link-'+name,['env',f'DYLD_LIBRARY_PATH={a.rust_root}/lib',ld,'-pie','--dynamic-linker','/system/bin/linker64',
   '--no-undefined','--eh-frame-hdr','-z','max-page-size=16384','-z','relro','-z','now','-z','noexecstack','--build-id=sha1',
-  '-Map',out/(name+'.map'),'-o',binary,api/'crtbegin_dynamic.o',*objects,extra,'--start-group',*library_inputs,'--end-group','-L',api,'-lc','-lm','-ldl',api/'crtend_android.o'])
+  '-Map',out/(name+'.map'),'-o',binary,api/'crtbegin_dynamic.o',*objects,extra,'--start-group',*library_inputs,'--end-group','-L',api,'-lc','-lm','-ldl','-lvulkan',api/'crtend_android.o'])
  elf=run('android-inspect-'+name,[tc/'bin/llvm-readelf','--wide','--file-header','--program-headers','--sections','--dynamic','--symbols',binary])
  data=binary.read_bytes()
  if data[:6]!=b'\x7fELF\x02\x01' or struct.unpack_from('<H',data,18)[0]!=183:raise RuntimeError('not AArch64 ELF64')

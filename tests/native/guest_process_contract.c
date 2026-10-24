@@ -5,6 +5,7 @@
 #include "../../src/runtime/hle/guest_pages.h"
 #include "../../src/runtime/hle/guest_tp.h"
 #include "../../src/runtime/nso/native_boundary.h"
+#include "../../src/graphics/nvn_device/nvn_device.h"
 #include <errno.h>
 #include <ctype.h>
 #include <wctype.h>
@@ -29,6 +30,18 @@
 #include <mach/mach_vm.h>
 #endif
 #define CHECK(x) do {if(!(x)) {fprintf(stderr,"process contract line=%d: %s\n",__LINE__,#x);return 1;}} while(0)
+
+/* What this build has to be, for the NVN device layer contract. The Android
+ * build has the Vulkan backend, so a real device has to exist there; the host
+ * build has no Vulkan implementation, so there is no device and the device
+ * initialisation has to say so. This is an expectation, not an input: the
+ * value the runtime produces is whatever the device really is, and the
+ * expectation is what this build has to be. */
+#if defined(__ANDROID__)
+#define NVN_EXPECT_REAL_DEVICE 1
+#else
+#define NVN_EXPECT_REAL_DEVICE 0
+#endif
 static size_t page;
 static unsigned errors,calls,extension_calls;
 static int returned_token;
@@ -4144,10 +4157,15 @@ static void *exercise_nvn_bootstrap(guest_process *p,void *opaque) {
     c->native_marker=output[0]==1;
     expect_condition("nvn-bootstrap-guest-call-returned",output[0]==1);
     expect_value("nvn-bootstrap-guest-init-pointer",output[1],1);
-    /* The device initialisation reports failure: there is no NVN device. */
-    expect_value("nvn-bootstrap-guest-init-result",output[2],0);
+    /* The device initialisation reports the truth: it succeeds exactly when a
+     * real device exists, and this build either has one (Android, a Vulkan
+     * device) or has none (the host build, which has no Vulkan). The old
+     * expectation here was "must fail", which was the policy of a runtime
+     * without any NVN device; it is now the stronger statement that the
+     * result has to match the device that actually exists. */
+    expect_value("nvn-bootstrap-guest-init-result",output[2],NVN_EXPECT_REAL_DEVICE);
     expect_value("nvn-bootstrap-guest-lookup-pointer",output[3],1);
-    /* An NVN name is served with a do-nothing entry point. */
+    /* An NVN name is served with a real entry point. */
     expect_value("nvn-bootstrap-guest-entry-pointer",output[4],1);
     expect_value("nvn-bootstrap-guest-entry-result",output[5],0);
     /* A name outside the NVN namespace is refused. */
@@ -4173,7 +4191,13 @@ static void *exercise_nvn_bootstrap(guest_process *p,void *opaque) {
         void *lookup=loader("nvnDeviceGetProcAddress");
         void *missing=loader("nvnDeviceThatDoesNotExist");
         int ok=init!=NULL && lookup!=NULL && missing==NULL;
-        if(init)ok=ok && ((nvn_init_fn)(uintptr_t)init)(NULL,NULL)==0;
+        if(init) {
+            /* The result has to match the device that really exists. */
+            nvn_device_stats stats;
+            uint64_t init_result=((nvn_init_fn)(uintptr_t)init)(NULL,NULL);
+            nvn_device_get_stats(&stats);
+            ok=ok && ((init_result!=0)==(stats.real_device!=0));
+        }
         if(lookup)ok=ok && ((nvn_lookup_fn)(uintptr_t)lookup)(NULL,"nvnDeviceBuilderSetDefaults")!=NULL &&
                           ((nvn_lookup_fn)(uintptr_t)lookup)(NULL,"notAnNvnName")==NULL;
         c->direct_ok=ok;
@@ -4202,6 +4226,214 @@ static int nvn_bootstrap_contract(const char *path) {
            c.native_ran?"true":"false",c.native_marker?"true":"false");
     return 0;
 }
+/* The NVN device layer (src/graphics/nvn_device).
+ *
+ * The --nvn-bootstrap contract pins the import binding and the two level
+ * dispatch on the guest path. This contract pins the device layer itself:
+ *
+ *   - the bootstrap answers exactly the two names the guest asks for;
+ *   - the device scoped lookup answers the nvn namespace and refuses the rest;
+ *   - the builder round trips and stays inside the 64 bytes the guest
+ *     reserved for it;
+ *   - the timestamp is real, monotonic and written through the out pointer;
+ *   - the device initialisation reports the truth: it succeeds exactly when a
+ *     real device exists, and this build either has one (Android, a Vulkan
+ *     device) or has none (the host build, which has no Vulkan);
+ *   - an entry point that is not implemented yet stops the run and names the
+ *     API, instead of pretending the call succeeded.
+ */
+
+/* Names the guest really resolves, taken from
+ * evidence/nvn/guest_nvn_code_references.tsv. They cover the device, queue,
+ * window, memory pool, texture, sampler and buffer families. */
+static const char *const nvn_guest_names[] = {
+    "nvnDeviceInitialize",
+    "nvnDeviceGetProcAddress",
+    "nvnDeviceFinalize",
+    "nvnDeviceBuilderSetDefaults",
+    "nvnDeviceBuilderSetFlags",
+    "nvnDeviceBuilderGetFlags",
+    "nvnDeviceGetCurrentTimestampInNanoseconds",
+    "nvnQueueBuilderSetDevice",
+    "nvnQueueBuilderSetDefaults",
+    "nvnQueueBuilderSetFlags",
+    "nvnQueueInitialize",
+    "nvnWindowBuilderSetNativeWindow",
+    "nvnMemoryPoolBuilderSetDefaults",
+    "nvnTextureBuilderSetDefaults",
+    "nvnSamplerBuilderSetDefaults",
+    "nvnBufferBuilderSetDefaults",
+};
+
+static int nvn_device_contract(void) {
+    typedef void *(*bootstrap_fn)(const char *);
+    typedef void *(*lookup_fn)(void *, const char *);
+    typedef uint64_t (*init_fn)(void *, void *);
+    typedef void (*builder_set_defaults_fn)(void *);
+    typedef void (*builder_set_flags_fn)(void *, int);
+    typedef int (*builder_get_flags_fn)(const void *);
+    typedef void (*get_integer_fn)(void *, int, int *);
+    typedef uint64_t (*timestamp_fn)(void *);
+    nvn_device_stats stats;
+    size_t i;
+
+    /* 1. The import binding and the two level dispatch, through the real
+     *    import path the guest uses. */
+    bootstrap_fn bootstrap =
+        (bootstrap_fn)(uintptr_t)guest_process_resolve(0, "nvnBootstrapLoader");
+    CHECK(bootstrap != NULL);
+    void *p_init = bootstrap("nvnDeviceInitialize");
+    void *p_lookup = bootstrap("nvnDeviceGetProcAddress");
+    expect_condition("nvn-device-bootstrap-answers-initialize", p_init != NULL);
+    expect_condition("nvn-device-bootstrap-answers-get-proc-address", p_lookup != NULL);
+    /* The bootstrap answers exactly two names. The device scoped lookup is
+     * where the rest of the namespace is answered, so a third name here would
+     * mean the two levels had been merged. */
+    expect_condition("nvn-device-bootstrap-answers-only-two-names",
+                     bootstrap("nvnDeviceFinalize") == NULL);
+    expect_condition("nvn-device-bootstrap-refuses-other-names",
+                     bootstrap("notAnNvnName") == NULL);
+    expect_condition("nvn-device-bootstrap-refuses-null", bootstrap(NULL) == NULL);
+
+    lookup_fn lookup = (lookup_fn)(uintptr_t)p_lookup;
+    CHECK(lookup != NULL);
+
+    /* 2. The device scoped lookup answers the nvn namespace, including the
+     *    names the guest resolves through it, and refuses everything else. */
+    expect_condition("nvn-device-lookup-answers-initialize",
+                     lookup(NULL, "nvnDeviceInitialize") != NULL);
+    expect_condition("nvn-device-lookup-answers-builder-defaults",
+                     lookup(NULL, "nvnDeviceBuilderSetDefaults") != NULL);
+    expect_condition("nvn-device-lookup-refuses-outside-namespace",
+                     lookup(NULL, "notAnNvnName") == NULL);
+    expect_condition("nvn-device-lookup-refuses-null", lookup(NULL, NULL) == NULL);
+    for (i = 0; i < sizeof(nvn_guest_names) / sizeof(nvn_guest_names[0]); i++)
+        expect_condition("nvn-device-lookup-answers-guest-name",
+                         lookup(NULL, nvn_guest_names[i]) != NULL);
+    /* The same name has to resolve to the same entry point, because the
+     * guest stores the pointer and calls it later. */
+    expect_condition("nvn-device-lookup-is-stable",
+                     lookup(NULL, "nvnQueueBuilderSetDevice") ==
+                         lookup(NULL, "nvnQueueBuilderSetDevice"));
+
+    /* 3. The builder: it round trips, and it stays inside the 64 bytes the
+     *    guest reserved for it, because anything beyond that would land on
+     *    the guest's saved registers. */
+    unsigned char builder[NVN_DEVICE_BUILDER_SIZE + 16];
+    memset(builder, 0xaa, sizeof(builder));
+    builder_set_defaults_fn set_defaults =
+        (builder_set_defaults_fn)(uintptr_t)lookup(NULL, "nvnDeviceBuilderSetDefaults");
+    builder_set_flags_fn set_flags =
+        (builder_set_flags_fn)(uintptr_t)lookup(NULL, "nvnDeviceBuilderSetFlags");
+    builder_get_flags_fn get_flags =
+        (builder_get_flags_fn)(uintptr_t)lookup(NULL, "nvnDeviceBuilderGetFlags");
+    CHECK(set_defaults != NULL && set_flags != NULL && get_flags != NULL);
+    set_defaults(builder);
+    expect_value("nvn-device-builder-defaults-clear-flags",
+                 (uint64_t)(uint32_t)get_flags(builder), 0);
+    set_flags(builder, 0x1234);
+    expect_value("nvn-device-builder-round-trip",
+                 (uint64_t)(uint32_t)get_flags(builder), 0x1234);
+    set_defaults(builder);
+    expect_value("nvn-device-builder-defaults-reset-flags",
+                 (uint64_t)(uint32_t)get_flags(builder), 0);
+    expect_condition("nvn-device-builder-fits-64-bytes",
+                     all_bytes(builder + NVN_DEVICE_BUILDER_SIZE, 16, 0xaa));
+
+    /* 4. The device information query. The guest asks for the NVN API major
+     *    and minor version right after the device is initialized, at
+     *    0x14354e8 and 0x14354fc, with the value written through the third
+     *    argument. The expected version is written out here on purpose: it
+     *    must not be the same constant the implementation uses, or the check
+     *    would prove nothing. */
+    get_integer_fn get_integer =
+        (get_integer_fn)(uintptr_t)lookup(NULL, "nvnDeviceGetInteger");
+    CHECK(get_integer != NULL);
+    int api_major = 0, api_minor = 0;
+    get_integer(NULL, 0, &api_major);
+    get_integer(NULL, 1, &api_minor);
+    expect_condition("nvn-device-get-integer-writes-major", api_major > 0);
+    expect_condition("nvn-device-get-integer-writes-minor", api_minor > 0);
+    expect_value("nvn-device-get-integer-major", (uint64_t)(uint32_t)api_major, 53);
+    expect_value("nvn-device-get-integer-minor", (uint64_t)(uint32_t)api_minor, 105);
+
+    /* 5. The timestamp: the guest calls it with only the device in x0 and
+     *    reads the result from x0 right after the call, so it takes one
+     *    argument and returns the timestamp. */
+    timestamp_fn timestamp =
+        (timestamp_fn)(uintptr_t)lookup(NULL, "nvnDeviceGetCurrentTimestampInNanoseconds");
+    CHECK(timestamp != NULL);
+    uint64_t returned_first = timestamp(NULL);
+    uint64_t returned_second = timestamp(NULL);
+    expect_condition("nvn-device-timestamp-nonzero", returned_first != 0);
+    expect_condition("nvn-device-timestamp-monotonic", returned_second >= returned_first);
+
+    /* 6. The device initialisation reports the truth. It succeeds exactly
+     *    when a real device exists, and this build either has one or has
+     *    none; the expectation below is what this build has to be. */
+    init_fn init = (init_fn)(uintptr_t)p_init;
+    CHECK(init != NULL);
+    uint64_t init_result = init(NULL, NULL);
+    nvn_device_get_stats(&stats);
+    expect_condition("nvn-device-init-matches-real-device",
+                     (init_result != 0) == (stats.real_device != 0));
+    expect_value("nvn-device-real-device-expected", (uint64_t)stats.real_device,
+                 NVN_EXPECT_REAL_DEVICE);
+    expect_condition("nvn-device-description-matches-device",
+                     (stats.real_device != 0) == (strstr(stats.description, "Vulkan device") != NULL));
+
+    /* 7. An entry point that is not implemented yet must stop the run and
+     *    name the API. It is checked in a child process, because the trap
+     *    does not return. */
+    const char *trap_name = "nvnContractApiThatIsNotImplemented";
+    void *trap = lookup(NULL, trap_name);
+    expect_condition("nvn-device-unimplemented-resolves", trap != NULL);
+    FILE *capture = tmpfile();
+    CHECK(capture != NULL);
+    fflush(stderr);
+    pid_t child = fork();
+    CHECK(child >= 0);
+    if (child == 0) {
+        dup2(fileno(capture), fileno(stderr));
+        ((void (*)(void))(uintptr_t)trap)();
+        /* The trap came back. That is the failure this contract exists to
+         * catch, and the child says so with a distinct exit code. */
+        fflush(stderr);
+        _exit(0);
+    }
+    int status = 0;
+    CHECK(waitpid(child, &status, 0) == child);
+    fflush(capture);
+    fseek(capture, 0, SEEK_SET);
+    char report[8192];
+    size_t got = fread(report, 1, sizeof(report) - 1, capture);
+    report[got] = '\0';
+    fclose(capture);
+    int trapped = WIFEXITED(status) && WEXITSTATUS(status) == NVN_UNIMPLEMENTED_EXIT_CODE;
+    int named = strstr(report, trap_name) != NULL;
+    expect_condition("nvn-device-unimplemented-traps", trapped);
+    expect_condition("nvn-device-unimplemented-names-the-api", named);
+
+    /* 8. The counters the runtime keeps. */
+    nvn_device_get_stats(&stats);
+    expect_condition("nvn-device-stats-count-resolutions", stats.resolved > 0);
+    expect_condition("nvn-device-stats-count-traps", stats.trapped_resolved > 0);
+    expect_condition("nvn-device-stats-count-implemented",
+                     stats.implemented_resolved > 0);
+
+    /* The final gate. Every expect_* above must have passed; without this the
+     * contract could still exit 0 while the expectations had failed. */
+    CHECK(!errors);
+    /* The report states what this run observed, not a literal zero. */
+    printf("{\"nvn_device_errors\":%u,\"real_device\":%s,\"trapped\":%s,\"named\":%s,"
+           "\"resolved\":%llu,\"implemented\":%llu,\"traps\":%llu}\n",
+           errors, stats.real_device ? "true" : "false", trapped ? "true" : "false",
+           named ? "true" : "false", (unsigned long long)stats.resolved,
+           (unsigned long long)stats.implemented_resolved,
+           (unsigned long long)stats.trapped_resolved);
+    return 0;
+}
+
 int main(int argc,char **argv) {
     page=(size_t)sysconf(_SC_PAGESIZE);
     if(argc==2 && !strcmp(argv[1],"--tls-host-null")) {
@@ -4231,6 +4463,7 @@ int main(int argc,char **argv) {
     if(argc==3 && !strcmp(argv[1],"--oe-performance"))return oe_performance_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--nv-graphics-allocator"))return nv_allocator_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--nv-initialize-graphics"))return nv_initialize_graphics_contract(argv[2]);
+    if(argc==2 && !strcmp(argv[1],"--nvn-device"))return nvn_device_contract();
     if(argc==3 && !strcmp(argv[1],"--nvn-bootstrap"))return nvn_bootstrap_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-fresh"))return tls_fresh_registration_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-null"))return tls_registration_contract(argv[2],1);
@@ -4319,12 +4552,13 @@ int main(int argc,char **argv) {
         "__cxa_finalize","exit",NULL};
     for(size_t i=0;rejected[i];i++)CHECK(!guest_process_resolve(0,rejected[i]));
     /* nvnBootstrapLoader used to sit in the rejected list: the runtime had no
-     * business inventing an NVN device. It is now admitted as a null device
-     * backend, so the guard moves from "must not resolve" to "must never
-     * claim a device": the device initialisation has to answer failure, a
-     * name this runtime does not provide has to be refused, and a name
-     * outside the NVN namespace has to be refused as well. The full
-     * behaviour is pinned by the --nvn-bootstrap contract. */
+     * business inventing an NVN device. It is now admitted as the NVN device
+     * layer, so the guard moves from "must not resolve" to "must never claim
+     * a device that does not exist": the device initialisation has to answer
+     * exactly what the device really is, a name outside the NVN namespace has
+     * to be refused, and a name the bootstrap does not provide has to be
+     * refused as well. The full behaviour is pinned by the --nvn-device and
+     * --nvn-bootstrap contracts. */
     {
         typedef void *(*nvn_bootstrap_fn)(const char *);
         typedef uint64_t (*nvn_init_fn)(void *,void *);
@@ -4333,7 +4567,13 @@ int main(int argc,char **argv) {
         CHECK(loader!=NULL);
         void *init=loader("nvnDeviceInitialize");
         CHECK(init!=NULL);
-        CHECK(((nvn_init_fn)(uintptr_t)init)(NULL,NULL)==0);
+        {
+            /* The result has to match the device that really exists. */
+            nvn_device_stats stats;
+            uint64_t init_result=((nvn_init_fn)(uintptr_t)init)(NULL,NULL);
+            nvn_device_get_stats(&stats);
+            CHECK((init_result!=0)==(stats.real_device!=0));
+        }
         CHECK(loader("nvnDeviceThatDoesNotExist")==NULL);
         void *lookup=loader("nvnDeviceGetProcAddress");
         CHECK(lookup!=NULL);

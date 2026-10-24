@@ -1,0 +1,363 @@
+/* The NVN device layer implementation.
+ *
+ * See nvn_device.h for what this layer guarantees and why.
+ *
+ * The one thing that needs explaining here is the per-API trap table. The
+ * guest resolves every NVN entry point by name and never checks the pointer
+ * it gets back, so a name that this runtime does not implement yet cannot
+ * resolve to NULL (that would send the guest to pc=0) and must not resolve
+ * to a fake success either. It resolves to a trap instead: a small piece of
+ * code that knows which API was called, reports it, and ends the run.
+ *
+ * The table is eight bytes per API, built by the assembler below, with the
+ * API index baked into the instruction stream. It is ordinary static code,
+ * not writable memory and not generated at run time, so it needs no
+ * executable mapping tricks and it behaves the same on the host and on the
+ * device. The block branches to the handler with a branch rather than a
+ * call, so x30 still holds the guest's return address when the handler
+ * starts, which is what lets the report name the call site.
+ */
+#include "nvn_device.h"
+
+#include <inttypes.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <unistd.h>
+
+/* ------------------------------------------------------------------ */
+/* The per-API trap table                                              */
+/* ------------------------------------------------------------------ */
+
+#if defined(__aarch64__)
+#if defined(__APPLE__)
+#define NVN_ASM_TABLE "_nvn_trampoline_table"
+#define NVN_ASM_HANDLER "_nvn_trampoline_handler"
+#else
+#define NVN_ASM_TABLE "nvn_trampoline_table"
+#define NVN_ASM_HANDLER "nvn_trampoline_handler"
+#endif
+
+__asm__(
+    ".text\n"
+    ".align 3\n"
+    ".global " NVN_ASM_TABLE "\n"
+    NVN_ASM_TABLE ":\n"
+    ".macro NVN_TRAMP idx\n"
+    "  mov w0, #\\idx\n"
+    "  b " NVN_ASM_HANDLER "\n"
+    ".endm\n"
+    ".set nvn_trampoline_i, 0\n"
+    ".rept 640\n"
+    "  NVN_TRAMP nvn_trampoline_i\n"
+    "  .set nvn_trampoline_i, nvn_trampoline_i + 1\n"
+    ".endr\n");
+
+#define NVN_TRAP_TABLE_PRESENT 1
+extern const char nvn_trampoline_table[];
+#define NVN_TRAP_STRIDE 8
+#else
+/* Without the table there is no way to tell the traps apart, so every
+ * unimplemented name shares one trap that reports the slot count instead of
+ * the name. The build records which of the two this is. */
+#define NVN_TRAP_TABLE_PRESENT 0
+#define NVN_TRAP_STRIDE 0
+#endif
+
+static char s_trap_names[NVN_TRAP_SLOTS][96];
+static uint64_t s_trap_used;
+
+/* The device state. There is one device per process, which is what the guest
+ * creates. */
+static nvn_device_state s_device;
+
+/* ------------------------------------------------------------------ */
+/* The backend                                                         */
+/* ------------------------------------------------------------------ */
+
+static const nvn_backend *s_backend;
+
+const nvn_backend *nvn_device_default_backend(void);
+
+void nvn_device_set_backend(const nvn_backend *backend) { s_backend = backend; }
+
+const nvn_backend *nvn_device_backend(void) {
+    if (!s_backend) s_backend = nvn_device_default_backend();
+    s_device.backend = s_backend;
+    return s_backend;
+}
+
+/* ------------------------------------------------------------------ */
+/* The builder                                                         */
+/* ------------------------------------------------------------------ */
+
+/* Our own builder layout. The guest never reads or writes these fields; it
+ * only passes the address to the three builder functions and reuses the same
+ * stack area for other values right after the device is initialized. So the
+ * layout is this runtime's own, it only has to fit in the 64 bytes the guest
+ * reserved and to be consumed by the initialisation. */
+#define NVN_BUILDER_MAGIC 0x4e564e4445563031ULL /* "NVNDEV01" */
+
+typedef struct {
+    uint64_t magic;
+    uint64_t flags;
+} nvn_builder_layout;
+
+static uint64_t nvn_builder_read_flags(const void *builder) {
+    const nvn_builder_layout *b = (const nvn_builder_layout *)builder;
+    if (!b || b->magic != NVN_BUILDER_MAGIC) return 0;
+    return b->flags;
+}
+
+/* An entry point that returns nothing leaves x0 at zero, so a caller that
+ * inspects x0 after the call gets a defined value instead of a stale
+ * pointer. The guest does not read x0 after these calls; the contract does,
+ * and it wants a defined answer. */
+#define NVN_VOID_RETURN() __asm__ volatile("mov x0, xzr")
+
+void nvn_device_builder_set_defaults(void *builder) {
+    nvn_builder_layout *b = (nvn_builder_layout *)builder;
+    s_device.calls++;
+    if (b) {
+        b->magic = NVN_BUILDER_MAGIC;
+        b->flags = 0;
+    }
+    NVN_VOID_RETURN();
+}
+
+void nvn_device_builder_set_flags(void *builder, int flags) {
+    nvn_builder_layout *b = (nvn_builder_layout *)builder;
+    s_device.calls++;
+    if (b) {
+        b->magic = NVN_BUILDER_MAGIC;
+        b->flags = (uint64_t)(uint32_t)flags;
+    }
+    NVN_VOID_RETURN();
+}
+
+int nvn_device_builder_get_flags(const void *builder) {
+    s_device.calls++;
+    if (!builder) return 0;
+    return (int)(uint32_t)nvn_builder_read_flags(builder);
+}
+
+/* ------------------------------------------------------------------ */
+/* The implemented entry points                                        */
+/* ------------------------------------------------------------------ */
+
+uint64_t nvn_device_initialize(void *device, void *builder) {
+    const nvn_backend *backend = nvn_device_backend();
+    s_device.calls++;
+    if (s_device.initialized) {
+        fprintf(stderr, "[nvn] nvnDeviceInitialize called again; reporting the device that already exists\n");
+        return s_device.real_device ? 1 : 0;
+    }
+    /* The builder has to be consumed here: the guest reuses that stack area
+     * for its own values right after this call. */
+    s_device.flags = (uint32_t)nvn_builder_read_flags(builder);
+    s_device.builder = builder;
+    s_device.initialized = 1;
+    if (backend && backend->create) {
+        s_device.real_device = backend->create(&s_device, builder) ? 1 : 0;
+        if (backend->describe) backend->describe(&s_device, s_device.description, sizeof(s_device.description));
+    }
+    fprintf(stderr, "[nvn] nvnDeviceInitialize: device=%p builder=%p flags=0x%" PRIx32 " -> %s\n",
+            device, builder, s_device.flags, s_device.real_device ? "true" : "false");
+    if (s_device.real_device) fprintf(stderr, "[nvn] device: %s\n", s_device.description);
+    return s_device.real_device ? 1 : 0;
+}
+
+void nvn_device_finalize(void *device) {
+    const nvn_backend *backend = nvn_device_backend();
+    s_device.calls++;
+    if (s_device.real_device && backend && backend->destroy) backend->destroy(&s_device);
+    s_device.real_device = 0;
+    fprintf(stderr, "[nvn] nvnDeviceFinalize: device=%p\n", device);
+    NVN_VOID_RETURN();
+}
+
+/* nvnDeviceGetInteger(device, info, out).
+ *
+ * The guest calls this twice right after the device is initialized, at
+ * 0x14354e8 with (device, 0, sp) and at 0x14354fc with (device, 1, sp+0x5c),
+ * so it takes three arguments and writes the value through the third one.
+ * The two selectors it uses are the NVN API major and minor version, so the
+ * guest is asking this device which generation of the NVN API it speaks.
+ *
+ * The answer is the version of the specification this device layer
+ * implements, which is the one the vendored 53.105 header documents. It is
+ * not a claim that every entry point of that version is implemented: an entry
+ * point that is missing stops the run and names itself, so an incomplete
+ * device can never be mistaken for a complete one. */
+#define NVN_DEVICE_API_MAJOR_VERSION 53
+#define NVN_DEVICE_API_MINOR_VERSION 105
+
+void nvn_device_get_integer(void *device, int info, int *out_value) {
+    s_device.calls++;
+    (void)device;
+    if (out_value) {
+        if (info == 0) *out_value = NVN_DEVICE_API_MAJOR_VERSION;
+        else if (info == 1) *out_value = NVN_DEVICE_API_MINOR_VERSION;
+        else {
+            *out_value = 0;
+            fprintf(stderr, "[nvn] nvnDeviceGetInteger: unknown selector %d -> 0\n", info);
+        }
+    }
+    NVN_VOID_RETURN();
+}
+
+/* nvnDeviceGetCurrentTimestampInNanoseconds(device).
+ *
+ * The guest calls this at 0x1444b18, 0x1444b40, 0x1444b68 and 0x1444b90 with
+ * only the device in x0, and reads the result from x0 right after the call,
+ * so it takes one argument and returns the timestamp.
+ *
+ * The timestamp is the host's CLOCK_MONOTONIC. The guest uses it to measure
+ * intervals, so one host clock is the honest answer; the runtime does not
+ * claim to have a GPU clock. */
+uint64_t nvn_device_get_current_timestamp_in_nanoseconds(void *device) {
+    struct timespec ts;
+    uint64_t ns = 0;
+    s_device.calls++;
+    (void)device;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0)
+        ns = (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
+    return ns;
+}
+
+/* ------------------------------------------------------------------ */
+/* The trap                                                            */
+/* ------------------------------------------------------------------ */
+
+const char *nvn_device_trap_name(uint64_t index) {
+    if (index >= NVN_TRAP_SLOTS) return "<unknown>";
+    return s_trap_names[index];
+}
+
+void nvn_trampoline_handler(uint64_t index) {
+    uint64_t caller_lr;
+    /* x30 still holds the guest's return address: the trampoline branches
+     * here instead of calling, so nothing has replaced it yet. */
+    __asm__ volatile("mov %0, x30" : "=r"(caller_lr));
+    s_device.unimplemented_calls++;
+    fprintf(stderr, "[nvn] unimplemented NVN entry \"%s\" was called (trap slot %" PRIu64 ", caller lr=0x%" PRIx64 ")\n",
+            nvn_device_trap_name(index), index, caller_lr);
+    fprintf(stderr, "[nvn] this runtime has no implementation for that API yet; stopping the run here "
+                    "instead of pretending the call succeeded\n");
+    fflush(NULL);
+    _exit(NVN_UNIMPLEMENTED_EXIT_CODE);
+}
+
+/* The shared trap for a build without the per-API table. */
+static void nvn_shared_trap(void) {
+    uint64_t caller_lr;
+    __asm__ volatile("mov %0, x30" : "=r"(caller_lr));
+    s_device.unimplemented_calls++;
+    fprintf(stderr, "[nvn] an unimplemented NVN entry was called (caller lr=0x%" PRIx64 ", %" PRIu64
+                    " names resolved); this build has no per-API trap table\n",
+            caller_lr, s_device.resolved);
+    fflush(NULL);
+    _exit(NVN_UNIMPLEMENTED_EXIT_CODE);
+}
+
+static uint64_t nvn_trap_allocate(const char *name) {
+    uint64_t i;
+    for (i = 0; i < s_trap_used; i++)
+        if (!strcmp(s_trap_names[i], name)) return i;
+    if (s_trap_used >= NVN_TRAP_SLOTS) return UINT64_MAX;
+    i = s_trap_used++;
+    snprintf(s_trap_names[i], sizeof(s_trap_names[i]), "%s", name);
+    return i;
+}
+
+/* ------------------------------------------------------------------ */
+/* The two level dispatch                                              */
+/* ------------------------------------------------------------------ */
+
+typedef struct {
+    const char *name;
+    void *fn;
+} nvn_implemented_entry;
+
+static const nvn_implemented_entry s_implemented[] = {
+    { "nvnDeviceInitialize", (void *)(uintptr_t)nvn_device_initialize },
+    { "nvnDeviceGetProcAddress", (void *)(uintptr_t)nvn_device_get_proc_address },
+    { "nvnDeviceFinalize", (void *)(uintptr_t)nvn_device_finalize },
+    { "nvnDeviceBuilderSetDefaults", (void *)(uintptr_t)nvn_device_builder_set_defaults },
+    { "nvnDeviceBuilderSetFlags", (void *)(uintptr_t)nvn_device_builder_set_flags },
+    { "nvnDeviceBuilderGetFlags", (void *)(uintptr_t)nvn_device_builder_get_flags },
+    { "nvnDeviceGetInteger", (void *)(uintptr_t)nvn_device_get_integer },
+    { "nvnDeviceGetCurrentTimestampInNanoseconds",
+      (void *)(uintptr_t)nvn_device_get_current_timestamp_in_nanoseconds },
+};
+
+static const size_t s_implemented_count = sizeof(s_implemented) / sizeof(s_implemented[0]);
+
+void *nvn_bootstrap_loader(const char *name) {
+    if (!name) return NULL;
+    /* The guest asks the bootstrap for exactly two names, at five call sites
+     * (0x143541c, 0x1435438, 0x143544c, 0x143554c, 0x1435578). Anything else
+     * is not something this runtime provides. */
+    if (!strcmp(name, "nvnDeviceInitialize")) return (void *)(uintptr_t)nvn_device_initialize;
+    if (!strcmp(name, "nvnDeviceGetProcAddress")) return (void *)(uintptr_t)nvn_device_get_proc_address;
+    fprintf(stderr, "[nvn] nvnBootstrapLoader: \"%s\" is not one of the two names this runtime provides -> NULL\n",
+            name);
+    return NULL;
+}
+
+void *nvn_device_get_proc_address(void *device, const char *name) {
+    size_t i;
+    uint64_t slot;
+    (void)device;
+    s_device.resolved++;
+    if (!name) {
+        fprintf(stderr, "[nvn] nvnDeviceGetProcAddress: NULL name -> NULL\n");
+        return NULL;
+    }
+    if (strncmp(name, "nvn", 3) != 0) {
+        fprintf(stderr, "[nvn] nvnDeviceGetProcAddress: \"%s\" is outside the NVN namespace -> NULL\n", name);
+        return NULL;
+    }
+    for (i = 0; i < s_implemented_count; i++) {
+        if (!strcmp(name, s_implemented[i].name)) {
+            s_device.implemented_resolved++;
+            fprintf(stderr, "[nvn] nvnDeviceGetProcAddress: \"%s\" -> implemented\n", name);
+            return s_implemented[i].fn;
+        }
+    }
+    /* Not implemented yet. The guest never checks the result, so it gets a
+     * trap that names the API instead of a NULL. */
+    slot = nvn_trap_allocate(name);
+    s_device.trapped_resolved++;
+    if (slot == UINT64_MAX) {
+        fprintf(stderr, "[nvn] nvnDeviceGetProcAddress: \"%s\" -> shared trap (no trap slot left)\n", name);
+        return (void *)(uintptr_t)nvn_shared_trap;
+    }
+    fprintf(stderr, "[nvn] nvnDeviceGetProcAddress: \"%s\" -> trap slot %" PRIu64 " (not implemented yet)\n",
+            name, slot);
+#if NVN_TRAP_TABLE_PRESENT
+    return (void *)(uintptr_t)(nvn_trampoline_table + slot * NVN_TRAP_STRIDE);
+#else
+    return (void *)(uintptr_t)nvn_shared_trap;
+#endif
+}
+
+/* ------------------------------------------------------------------ */
+/* Statistics                                                          */
+/* ------------------------------------------------------------------ */
+
+void nvn_device_get_stats(nvn_device_stats *out) {
+    if (!out) return;
+    memset(out, 0, sizeof(*out));
+    out->resolved = s_device.resolved;
+    out->implemented_resolved = s_device.implemented_resolved;
+    out->trapped_resolved = s_device.trapped_resolved;
+    out->calls = s_device.calls;
+    out->unimplemented_calls = s_device.unimplemented_calls;
+    out->initialized = s_device.initialized;
+    out->real_device = s_device.real_device;
+    out->flags = s_device.flags;
+    out->trap_slots_used = s_trap_used;
+    memcpy(out->description, s_device.description, sizeof(out->description));
+}
