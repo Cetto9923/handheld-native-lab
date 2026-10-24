@@ -469,6 +469,9 @@ static void *exercise_os_wrappers(guest_process *process,void *opaque) {
     struct timeval test_tv;
     memset(&test_tv, 0, sizeof(test_tv));
     expect_condition("gettimeofday-returns-zero",gtod && gtod(&test_tv,NULL)==0 && test_tv.tv_sec>0);
+    typedef uint32_t (*get_process_handle_fn)(void);
+    get_process_handle_fn gph=(get_process_handle_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os23GetCurrentProcessHandleEv");
+    expect_condition("get-current-process-handle-live",gph && gph()==(uint32_t)getpid());
     struct guest_memory_info info;expect_condition("os-thread-query-still-live",succeeded(guest_process_memory_info(process,&info)) && info.thread_objects==1);
     return &returned_token;
 }
@@ -1668,6 +1671,22 @@ static int gettimeofday_contract(void) {
     puts("{\"gettimeofday_contract_errors\":0,\"valid_timeval\":true,\"tv_sec_positive\":true,\"tv_usec_bounded\":true,\"null_tv_rejected\":true,\"getpid_positive\":true}");
     return 0;
 }
+static int os_process_handle_contract(void) {
+    typedef uint32_t (*get_process_handle_fn)(void);
+    get_process_handle_fn fn1 = (get_process_handle_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os23GetCurrentProcessHandleEv");
+    CHECK(fn1 != NULL);
+    get_process_handle_fn fn2 = (get_process_handle_fn)(uintptr_t)guest_process_resolve(0, "nnosGetCurrentProcessHandle");
+    CHECK(fn2 != NULL);
+
+    uint32_t h1 = fn1();
+    uint32_t h2 = fn2();
+    CHECK(h1 != 0);
+    CHECK(h1 == h2);
+    CHECK(h1 == (uint32_t)getpid());
+
+    puts("{\"os_process_handle_contract_errors\":0,\"get_current_process_handle\":true,\"handle_positive\":true,\"matches_getpid\":true}");
+    return 0;
+}
 static int fs_open_dir_contract(void) {
     typedef int32_t (*open_dir_fn)(nn_fs_directory_handle *, const char *, int32_t);
     typedef int32_t (*get_count_fn)(int64_t *, nn_fs_directory_handle);
@@ -2790,6 +2809,7 @@ int main(int argc,char **argv) {
     if(argc==2 && !strcmp(argv[1],"--account"))return account_contract();
     if(argc==2 && !strcmp(argv[1],"--oe"))return oe_contract();
     if(argc==2 && !strcmp(argv[1],"--gettimeofday"))return gettimeofday_contract();
+    if(argc==2 && !strcmp(argv[1],"--os-process-handle"))return os_process_handle_contract();
     if(argc==2 && !strcmp(argv[1],"--fs-open-dir"))return fs_open_dir_contract();
     if(argc==2 && !strcmp(argv[1],"--os-event"))return os_event_contract();
     if(argc==2 && !strcmp(argv[1],"--posix-memalign"))return posix_memalign_contract();

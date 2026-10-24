@@ -1110,6 +1110,7 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
         "_ZN2nn2os17SetThreadCoreMaskEPNS0_10ThreadTypeEim","nnosSetThreadCoreMask",
         "_ZN2nn2os17GetThreadCoreMaskEPiPmPKNS0_10ThreadTypeE","nnosGetThreadCoreMask",
         "_ZN2nn2os26GetThreadAvailableCoreMaskEv",
+        "_ZN2nn2os23GetCurrentProcessHandleEv","nnosGetCurrentProcessHandle",
         "_ZN5movie17GetThreadPriorityEv",
         "_ZN5movie17SetThreadPriorityEi",
         "_ZN2nn4util12GenerateUuidEv",
@@ -1262,7 +1263,8 @@ static int import_signature(const char *name,nb_signature *out) {
             !strcmp(name,"_ZN2nn4nifm10InitializeEv") || !strcmp(name,"nnnifmInitialize") ||
             !strcmp(name,"_ZN2nn7account10InitializeEv") || !strcmp(name,"nnaccountInitialize") ||
             !strcmp(name,"_ZN2nn2oe10InitializeEv") || !strcmp(name,"nnoeInitialize") ||
-            !strcmp(name,"_ZN2nn2oe18GetDesiredLanguageEv") || !strcmp(name,"nnoeGetDesiredLanguage")) {arguments=0;returns=1;}
+            !strcmp(name,"_ZN2nn2oe18GetDesiredLanguageEv") || !strcmp(name,"nnoeGetDesiredLanguage") ||
+            !strcmp(name,"_ZN2nn2os23GetCurrentProcessHandleEv") || !strcmp(name,"nnosGetCurrentProcessHandle")) {arguments=0;returns=1;}
     else if(!strcmp(name,"_ZN2nn4util12GenerateUuidEv")) {arguments=0;returns=2;}
     else if(!strcmp(name,"strncasecmp_l") || !strcmp(name,"_ZN2nn4time14ToCalendarTimeEPNS0_12CalendarTimeEPNS0_22CalendarAdditionalInfoERKNS0_9PosixTimeERKNS0_12TimeZoneRuleE")) {arguments=4;returns=1;}
     else if(!strcmp(name,"_ZN2nn2os36GetVirtualAddressMemoryResourceUsageEv")) {arguments=0;returns=2;}

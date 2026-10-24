@@ -2134,6 +2134,13 @@ pid_t nso_host_getpid(void) {
     return pid;
 }
 
+uint32_t nso_host_get_current_process_handle(void) {
+    pid_t pid = getpid();
+    uint32_t handle = (uint32_t)pid;
+    fprintf(stderr, "[hle] nn::os::GetCurrentProcessHandle -> handle=0x%x (pid=%d)\n", handle, (int)pid);
+    return handle;
+}
+
 void nso_host_throw_system_error(int ev, const char *what_arg) {
     fprintf(stderr, "[hle] std::__throw_system_error: ev=%d what=%s\n", ev, what_arg ? what_arg : "(null)");
     abort();
@@ -2389,6 +2396,8 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_gettimeofday;
     if(!strcmp(name,"getpid"))
         return (uint64_t)(uintptr_t)&nso_host_getpid;
+    if(!strcmp(name,"_ZN2nn2os23GetCurrentProcessHandleEv") || !strcmp(name,"nnosGetCurrentProcessHandle"))
+        return (uint64_t)(uintptr_t)&nso_host_get_current_process_handle;
     if(!strcmp(name,"__cxa_pure_virtual"))
         return (uint64_t)(uintptr_t)&nso_host_cxa_pure_virtual;
     return extension_resolver?extension_resolver(index,name):0;

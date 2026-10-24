@@ -1,9 +1,9 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-10-24T03:08:00.000000+00:00",
- "phase": "T02_GETTIMEOFDAY_UNBLOCKED_NN_OS_PROCESS_HANDLE_ON_RG477M: gettimeofday (import 211) and getpid HLE landed and verified; boot advanced past gettimeofday calls, real VM mappings, further pak reads, and atexit 13,594; new frontier [unresolved-import] index=105 name=_ZN2nn2os23GetCurrentProcessHandleEv caller_offset=0x7f1f4 (exit 133)",
- "coordinator": "Antigravity sole root coordinator - P-AG-20 closed: gettimeofday & getpid landed, host/device contracts PASS, RG477M boot log .local/logs/rg477m-boot-v42-gettimeofday.log",
+ "updated_at": "2026-10-24T03:35:00.000000+00:00",
+ "phase": "T02_OS_PROCESS_HANDLE_UNBLOCKED_NN_RESULT_ON_RG477M: nn::os::GetCurrentProcessHandle (import 105) HLE landed and verified; boot advanced past process handle retrieval, 13,616 atexit callbacks, plugin pak inspections, secondary thread spawn (tid=26311); new frontier [unresolved-import] index=607 name=nnResultIsFailure caller_offset=0x5e663c0 (exit 133)",
+ "coordinator": "Antigravity sole root coordinator - P-AG-21 closed: nn::os::GetCurrentProcessHandle landed, host/device contracts PASS, RG477M boot log .local/logs/rg477m-boot-v43-os-process-handle.log",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
  "active_writers": [
@@ -22,8 +22,8 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native",
    "branch": "work/rg477m-native",
    "acquired_at": "2026-10-23T15:25:00.000000+00:00",
-   "checkpoint": "P-AG-20",
-   "objective": "Owned startup runtime: gettimeofday & getpid HLE and contract verification",
+   "checkpoint": "P-AG-21",
+   "objective": "Owned startup runtime: nn::os::GetCurrentProcessHandle HLE and contract verification",
    "write_state": "ACTIVE"
   },
   {

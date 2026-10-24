@@ -185,6 +185,7 @@ char *nso_host_nl_langinfo(int item);
 void nso_host_cxa_pure_virtual(void);
 int nso_host_gettimeofday(struct timeval *tv, void *tz);
 pid_t nso_host_getpid(void);
+uint32_t nso_host_get_current_process_handle(void);
 #ifdef __cplusplus
 }
 #endif

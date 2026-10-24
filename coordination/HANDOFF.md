@@ -1,3 +1,29 @@
+# P-AG-21 闭环｜2026-10-24 11:35 Asia/Shanghai — nn::os::GetCurrentProcessHandle（import 105）落地，真机推进至 nnResultIsFailure
+
+- **结论**：工单 P-AG-21 目标圆满闭环。
+  1. 落地最小可用 `nn::os::GetCurrentProcessHandle` HLE（Nintendo SDK 规范：无参，返回当前进程 `nn::os::NativeHandle`，映射宿主当前进程 pid 作为稳定句柄；清晰打印 `[hle] nn::os::GetCurrentProcessHandle -> handle=0x%x (pid=%d)` 归因日志）。
+  2. `guest_process.c` 中 `typed[]` 白名单与 `import_signature`（0 args, 1 return GP register）完整绑定 `_ZN2nn2os23GetCurrentProcessHandleEv` 与 `nnosGetCurrentProcessHandle`。
+  3. 宿主契约与 RG477M 真机契约测试均通过（`{"os_process_handle_contract_errors":0,"get_current_process_handle":true,"handle_positive":true,"matches_getpid":true}`）。
+  4. RG477M 真机实测彻底越过 index 105 `nn::os::GetCurrentProcessHandle`（被 UE 平台初始化流程成功调用并保存进程句柄），引擎继续注册 22 项 atexit 回调（总数攀升至 13,616），持续探测数十个插件 Pak 目录（CriWare、Paper2D、ControlRig、Metasound、Chaos、CommonUI 等），执行多段 4KB/24KB 虚存映射，校验 SDK link anchor（`nn::util::ReferSymbol`），并通过 `nn::os::CreateThread` 成功创建并调度子线程（tid=26311，entry=0x785096f450，stack=0x6eeaa1f000）。
+- **最新阻塞前沿**：
+  - `[fault] signal=5 pc=0x7af08462f8 fa=0x7af08462f8`
+  - `[unresolved-import] index=607 name=nnResultIsFailure caller_offset=0x5e663c0`（子线程执行中调用 `nnResultIsFailure`）
+  - 退出码 133（SIGTRAP，未解析导入触发）；基线日志 `.local/logs/rg477m-boot-v43-os-process-handle.log`（及 `.exitcode`=133）。
+- **未达**：标题画面 / 可玩（仍未进呈现阶段）。
+
+---
+
+# 日间调度（P-AG-21 启动｜2026-10-24 11:16 Asia/Shanghai）
+
+- **切换原因**：P-AG-20 agy PID 35135 已退出；HANDOFF 已写闭环 @ HEAD `6e8cbc1`；真机最新 v42 越过 `gettimeofday`/`getpid`，阻塞 `nn::os::GetCurrentProcessHandle`（import 105，exit 133）；主树无活跃 FFRS 主路径写手（P-CC-4 Claude PID 43082 并行 NVN 预研仍活跃，勿杀）。
+- **里程碑**：新 HEAD `6e8cbc1`；真机 v41→v42；gettimeofday import 211 消除；pak/VM/事件继续。
+- **已派**：P-AG-21 攻 `nn::os::GetCurrentProcessHandle`（及紧随进程/句柄族）；提词 `coordination/prompts/P-AG-get-current-process-handle.md`；agy PID **49431**（若 --dangerously-skip-permissions 弹出审批请点批准）；日志 `.local/agent-pm/agy-p-ag-21.log`
+- **并行**：P-CC-4 Claude PID 43082 @ `Documents/Codex/2026-10-24/task/ffrs-nvn-firstframe`（`task/T04-nvn-firstframe`）
+- **基线**：`.local/logs/rg477m-boot-v42-gettimeofday.log` exit 133；设备 RG477M01445122；pak/ucas PASS（`.local/romfs/FFRS/Content/Paks/`）
+- **未达**：标题 / 可玩
+
+---
+
 # P-AG-20 闭环｜2026-10-24 11:10 Asia/Shanghai — gettimeofday（import 211）与 getpid 落地，真机推进至 nn::os::GetCurrentProcessHandle
 
 - **结论**：工单 P-AG-20 目标圆满闭环。
