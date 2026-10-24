@@ -411,14 +411,31 @@ void *nvn_memory_pool_resolve_address(uint64_t address, size_t *available) {
     pthread_mutex_lock(&s_pool_lock);
     for (i = 0; i < NVN_MEMORY_POOL_MAX_POOLS; i++) {
         nvn_memory_pool_state *p = &s_pools[i];
+        uint64_t base;
         uint64_t offset;
         if (!p->in_use || !p->initialized || !p->storage) continue;
-        if (address < p->buffer_address) continue;
-        offset = address - p->buffer_address;
-        if (offset >= p->size) continue;
-        resolved = (void *)(uintptr_t)((unsigned char *)p->storage + offset);
-        if (available) *available = (size_t)(p->size - offset);
-        break;
+        /* The address the pool hands out. It is derived from the pool's own
+         * identity, so it is a place the guest can keep its own bookkeeping
+         * in; it is not the address of the bytes. */
+        base = p->buffer_address;
+        if (address >= base && address - base < p->size) {
+            offset = address - base;
+            resolved = (void *)(uintptr_t)((unsigned char *)p->storage + offset);
+            if (available) *available = (size_t)(p->size - offset);
+            break;
+        }
+        /* The address the guest really uses. The guest allocated the storage
+         * itself and addresses the pool with the host pointer, so the address
+         * that reaches the device is inside the storage. The guest and the
+         * runtime share the address space, so that pointer names the same
+         * bytes the guest wrote. */
+        base = (uint64_t)(uintptr_t)p->storage;
+        if (address >= base && address - base < p->size) {
+            offset = address - base;
+            resolved = (void *)(uintptr_t)((unsigned char *)p->storage + offset);
+            if (available) *available = (size_t)(p->size - offset);
+            break;
+        }
     }
     pthread_mutex_unlock(&s_pool_lock);
     return resolved;

@@ -52,7 +52,7 @@ LIBOBJS=""
 for object in nso_loader guest_context guest_process nso_host address_region mutex exit_registry \
               module_tls guest_tp guest_pages native_boundary guest_os_tls native_window nvn_device \
               nvn_queue nvn_window nvn_memory_pool nvn_sampler_pool nvn_texture_pool \
-              nvn_render_state; do
+              nvn_render_state nvn_program nvn_sha256; do
     LIBOBJS="${LIBOBJS} ${BUILD}/${object}.host.o"
 done
 

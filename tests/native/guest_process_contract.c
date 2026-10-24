@@ -8,6 +8,7 @@
 #include "../../src/graphics/nvn_device/nvn_blend_state.h"
 #include "../../src/graphics/nvn_device/nvn_device.h"
 #include "../../src/graphics/nvn_device/nvn_memory_pool.h"
+#include "../../src/graphics/nvn_device/nvn_program.h"
 #include "../../src/graphics/nvn_device/nvn_queue.h"
 #include "../../src/graphics/nvn_device/nvn_render_state.h"
 #include "../../src/graphics/nvn_device/nvn_sampler_pool.h"
@@ -6113,6 +6114,276 @@ static int nvn_render_state_contract(void) {
     return 0;
 }
 
+/* The NVN program family.
+ *
+ * A program carries the guest's shaders. This is where the guest's shader
+ * bytes enter the runtime. The contract checks that the eight names resolve,
+ * that the shaders of a program are taken over, that the control section is
+ * copied while the guest is still inside the call, that the key of a stage
+ * names the shader, and that the guest's program object is never written
+ * into.
+ *
+ * The key is a digest, so the contract does not carry a digest of its own: it
+ * checks the properties the key has to have, which is what the offline
+ * translator relies on as well.
+ *
+ * A shader only gets a key when its code area can be read, and the code area
+ * lives in a memory pool, and a memory pool only exists when a real device
+ * does. The expectations therefore differ between the host and the device. */
+#if defined(__ANDROID__)
+#define NVN_PROGRAM_EXPECT_REAL_DEVICE 1
+#else
+#define NVN_PROGRAM_EXPECT_REAL_DEVICE 0
+#endif
+
+static int nvn_program_contract(void) {
+    typedef void *(*bootstrap_fn)(const char *);
+    typedef void *(*lookup_fn)(void *, const char *);
+    typedef uint64_t (*init_fn)(void *, void *);
+    typedef uint64_t (*program_initialize_fn)(void *, void *);
+    typedef uint64_t (*program_set_shaders_fn)(void *, int, const void *);
+    typedef void (*program_finalize_fn)(void *);
+    typedef void (*program_set_debug_label_fn)(void *, const char *);
+    typedef uint64_t (*program_set_subroutine_linkage_fn)(void *, int, const void *);
+    typedef void (*program_set_sample_shading_fn)(void *, uint64_t, uint64_t);
+    typedef uint64_t (*program_get_subtile_size_fn)(void *);
+    typedef void (*pool_builder_set_defaults_fn)(void *);
+    typedef void (*pool_builder_set_device_fn)(void *, void *);
+    typedef void (*pool_builder_set_storage_fn)(void *, void *, uint64_t);
+    typedef void (*pool_builder_set_flags_fn)(void *, int);
+    typedef uint64_t (*pool_initialize_fn)(void *, void *);
+    typedef int (*program_get_stage_info_fn)(void *, int, char *, uint32_t *, uint32_t *);
+    typedef int (*program_get_stage_control_fn)(void *, int, void *, size_t);
+    nvn_program_stats stats;
+    size_t i;
+
+    /* 1. Every name of the family has to resolve, and the same name has to
+     *    resolve to the same entry point every time. */
+    bootstrap_fn bootstrap = (bootstrap_fn)(uintptr_t)guest_process_resolve(0, "nvnBootstrapLoader");
+    CHECK(bootstrap != NULL);
+    lookup_fn lookup = (lookup_fn)(uintptr_t)bootstrap("nvnDeviceGetProcAddress");
+    CHECK(lookup != NULL);
+    static const char *const program_names[] = {
+        "nvnProgramInitialize",
+        "nvnProgramFinalize",
+        "nvnProgramSetDebugLabel",
+        "nvnProgramSetShaders",
+        "nvnProgramSetShadersExt",
+        "nvnProgramSetSubroutineLinkage",
+        "nvnProgramSetSampleShading",
+        "nvnProgramGetSubtileSize",
+    };
+    for (i = 0; i < sizeof(program_names) / sizeof(program_names[0]); i++) {
+        void *entry = lookup(NULL, program_names[i]);
+        expect_condition("nvn-program-name-resolves", entry != NULL);
+        expect_condition("nvn-program-name-is-stable", entry == lookup(NULL, program_names[i]));
+    }
+
+    program_initialize_fn program_initialize =
+        (program_initialize_fn)(uintptr_t)lookup(NULL, "nvnProgramInitialize");
+    program_set_shaders_fn program_set_shaders =
+        (program_set_shaders_fn)(uintptr_t)lookup(NULL, "nvnProgramSetShaders");
+    program_set_shaders_fn program_set_shaders_ext =
+        (program_set_shaders_fn)(uintptr_t)lookup(NULL, "nvnProgramSetShadersExt");
+    program_finalize_fn program_finalize = (program_finalize_fn)(uintptr_t)lookup(NULL, "nvnProgramFinalize");
+    program_set_debug_label_fn program_set_debug_label =
+        (program_set_debug_label_fn)(uintptr_t)lookup(NULL, "nvnProgramSetDebugLabel");
+    program_set_subroutine_linkage_fn program_set_subroutine_linkage =
+        (program_set_subroutine_linkage_fn)(uintptr_t)lookup(NULL, "nvnProgramSetSubroutineLinkage");
+    program_set_sample_shading_fn program_set_sample_shading =
+        (program_set_sample_shading_fn)(uintptr_t)lookup(NULL, "nvnProgramSetSampleShading");
+    program_get_subtile_size_fn program_get_subtile_size =
+        (program_get_subtile_size_fn)(uintptr_t)lookup(NULL, "nvnProgramGetSubtileSize");
+    CHECK(program_initialize && program_set_shaders && program_set_shaders_ext);
+    CHECK(program_finalize && program_set_debug_label && program_set_subroutine_linkage);
+    CHECK(program_set_sample_shading && program_get_subtile_size);
+
+    /* 2. The device, so that a memory pool and with it a code area exist. */
+    init_fn init = (init_fn)(uintptr_t)lookup(NULL, "nvnDeviceInitialize");
+    CHECK(init != NULL);
+    void *guest_device = (void *)(uintptr_t)0xa000;
+    uint64_t init_result = init(guest_device, NULL);
+    nvn_device_stats device_stats;
+    nvn_device_get_stats(&device_stats);
+    expect_condition("nvn-program-device-initialised-matches-reality",
+                     (init_result != 0) == (device_stats.real_device != 0));
+
+    /* 3. The memory pool that holds the code area of the shader. The guest
+     *    owns the memory and addresses it with the host pointer. */
+    pool_builder_set_defaults_fn pool_set_defaults =
+        (pool_builder_set_defaults_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolBuilderSetDefaults");
+    pool_builder_set_device_fn pool_set_device =
+        (pool_builder_set_device_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolBuilderSetDevice");
+    pool_builder_set_storage_fn pool_set_storage =
+        (pool_builder_set_storage_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolBuilderSetStorage");
+    pool_builder_set_flags_fn pool_set_flags =
+        (pool_builder_set_flags_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolBuilderSetFlags");
+    pool_initialize_fn pool_initialize =
+        (pool_initialize_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolInitialize");
+    CHECK(pool_set_defaults && pool_set_device && pool_set_storage && pool_set_flags && pool_initialize);
+
+    static unsigned char storage[512];
+    static unsigned char control[0x880];
+    static unsigned char control_copy[0x880];
+    unsigned char pool_builder[64];
+    unsigned char pool_object[64];
+    memset(storage, 0x5a, sizeof(storage));
+    memset(control, 0x3c, sizeof(control));
+    /* The control section says how long it is and how long the code area is. */
+    uint32_t own_length = 0x880;
+    uint32_t code_length = 64;
+    memcpy(control + 0x20, &own_length, 4);
+    memcpy(control + 0x704, &code_length, 4);
+    memset(pool_builder, 0xaa, sizeof(pool_builder));
+    pool_set_defaults(pool_builder);
+    pool_set_device(pool_builder, guest_device);
+    pool_set_storage(pool_builder, storage, sizeof(storage));
+    pool_set_flags(pool_builder, 0x40);
+    memset(pool_object, 0xaa, sizeof(pool_object));
+    uint64_t pool_result = pool_initialize(pool_object, pool_builder);
+    expect_value("nvn-program-pool-matches-real-device", pool_result, NVN_PROGRAM_EXPECT_REAL_DEVICE);
+
+    /* 4. The program. */
+    unsigned char program_object[64];
+    memset(program_object, 0xaa, sizeof(program_object));
+    uint64_t initialize_result = program_initialize(program_object, guest_device);
+    expect_value("nvn-program-initialize-matches-real-device", initialize_result,
+                 NVN_PROGRAM_EXPECT_REAL_DEVICE);
+    program_set_debug_label(program_object, "contract-program");
+
+    /* 5. The shaders. */
+    struct {
+        uint64_t data;
+        const void *control;
+    } shader_data[1];
+    struct {
+        uint64_t data;
+        const void *control;
+        uint64_t extension;
+    } shader_data_ext[1];
+    shader_data[0].data = (uint64_t)(uintptr_t)storage;
+    shader_data[0].control = control;
+    shader_data_ext[0].data = (uint64_t)(uintptr_t)storage;
+    shader_data_ext[0].control = control;
+    shader_data_ext[0].extension = 0;
+
+    program_get_stage_info_fn get_stage_info =
+        (program_get_stage_info_fn)(uintptr_t)nvn_program_get_stage_info;
+    program_get_stage_control_fn get_stage_control =
+        (program_get_stage_control_fn)(uintptr_t)nvn_program_get_stage_control;
+    CHECK(get_stage_info && get_stage_control);
+
+    expect_value("nvn-program-set-shaders-succeeds",
+                 program_set_shaders(program_object, 1, shader_data), 1);
+
+    char key[17];
+    char key_again[17];
+    char key_other[17];
+    uint32_t stage_code_length = 0;
+    uint32_t stage_control_length = 0;
+    int keyed = get_stage_info(program_object, 0, key, &stage_code_length, &stage_control_length);
+    expect_value("nvn-program-stage-is-keyed-matches-reality", (uint64_t)(uint32_t)keyed,
+                 NVN_PROGRAM_EXPECT_REAL_DEVICE);
+    if (keyed) {
+        /* The key is sixteen lowercase hexadecimal characters. */
+        expect_value("nvn-program-key-length", (uint64_t)strlen(key), 16);
+        int hex = 1;
+        for (i = 0; i < strlen(key); i++) {
+            char c = key[i];
+            if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) hex = 0;
+        }
+        expect_condition("nvn-program-key-is-lowercase-hex", hex);
+        expect_value("nvn-program-code-length", (uint64_t)stage_code_length, code_length);
+        expect_value("nvn-program-control-length", (uint64_t)stage_control_length, own_length);
+    }
+
+    /* 6. The same shaders get the same key, and different shaders do not.
+     *    That is what makes the key a name: the offline translator writes it
+     *    down, and the runtime has to arrive at the same one. */
+    program_set_shaders(program_object, 1, shader_data);
+    int keyed_again = get_stage_info(program_object, 0, key_again, NULL, NULL);
+    expect_value("nvn-program-stage-is-keyed-again", (uint64_t)(uint32_t)keyed_again,
+                 NVN_PROGRAM_EXPECT_REAL_DEVICE);
+    if (keyed && keyed_again) {
+        expect_condition("nvn-program-key-is-stable", !strcmp(key, key_again));
+    }
+    storage[0] = (unsigned char)(storage[0] + 1);
+    program_set_shaders(program_object, 1, shader_data);
+    int keyed_other = get_stage_info(program_object, 0, key_other, NULL, NULL);
+    if (keyed && keyed_other) {
+        expect_condition("nvn-program-key-changes-with-the-code", strcmp(key, key_other) != 0);
+    }
+    storage[0] = (unsigned char)(storage[0] - 1);
+
+    /* 7. The control section is copied. The guest may overwrite its own
+     *    control section right after the call, because the SDK only promises
+     *    that it is valid during the call. The copy has to hold what the
+     *    guest handed over. */
+    memset(control, 0xaa, sizeof(control));
+    int copied = get_stage_control(program_object, 0, control_copy, sizeof(control_copy));
+    expect_value("nvn-program-control-section-was-copied", (uint64_t)(uint32_t)copied, 1);
+    if (copied) {
+        expect_condition("nvn-program-copy-is-not-the-guests-later-content",
+                         control_copy[0] != 0xaa);
+        expect_condition("nvn-program-copy-holds-the-guests-content",
+                         control_copy[0] == 0x3c || control_copy[1] == 0x3c);
+    }
+
+    /* 8. The extended entry names the same shader, because the extension
+     *    field is not part of the shader. */
+    memset(control, 0x3c, sizeof(control));
+    memcpy(control + 0x20, &own_length, 4);
+    memcpy(control + 0x704, &code_length, 4);
+    program_set_shaders_ext(program_object, 1, shader_data_ext);
+    char key_ext[17];
+    int keyed_ext = get_stage_info(program_object, 0, key_ext, NULL, NULL);
+    expect_value("nvn-program-extended-stage-is-keyed", (uint64_t)(uint32_t)keyed_ext,
+                 NVN_PROGRAM_EXPECT_REAL_DEVICE);
+    if (keyed && keyed_ext) {
+        expect_condition("nvn-program-extended-key-matches", !strcmp(key, key_ext));
+    }
+
+    /* 9. A stage count this runtime cannot carry is refused, not truncated. */
+    expect_value("nvn-program-too-many-stages-refused",
+                 program_set_shaders(program_object, 7, shader_data), 0);
+
+    /* 10. The other entry points of the family answer without pretending
+     *     that they know more than they do. */
+    program_set_subroutine_linkage(program_object, 1, NULL);
+    program_set_sample_shading(program_object, 1, 2);
+    expect_value("nvn-program-subtile-size-is-zero", program_get_subtile_size(program_object), 0);
+
+    /* 11. The runtime keeps the state on the host, so it must not write a
+     *     single byte into the guest's program object. */
+    expect_condition("nvn-program-object-not-written", all_bytes(program_object, sizeof(program_object), 0xaa));
+
+    /* 12. The counters. */
+    nvn_program_get_stats(&stats);
+    expect_condition("nvn-program-stats-count-calls", stats.calls > 0);
+    expect_condition("nvn-program-stats-count-shaders-set", stats.shaders_set > 0);
+    expect_condition("nvn-program-stats-count-shaders-ext-set", stats.shaders_ext_set > 0);
+    expect_condition("nvn-program-stats-count-stages", stats.stages > 0);
+    expect_condition("nvn-program-stats-count-refused", stats.refused > 0);
+    expect_condition("nvn-program-stats-keyed-matches-reality",
+                     (stats.keyed > 0) == (NVN_PROGRAM_EXPECT_REAL_DEVICE != 0));
+    expect_condition("nvn-program-stats-live-programs", stats.live_programs > 0);
+
+    /* 13. The program is finalized last, because a finalized program is gone. */
+    program_finalize(program_object);
+    nvn_program_get_stats(&stats);
+    expect_value("nvn-program-finalized-is-not-live", (uint64_t)stats.live_programs, 0);
+
+    /* The final gate. Without it the contract could exit 0 while the
+     * expectations had failed. */
+    CHECK(!errors);
+    printf("{\"nvn_program_errors\":%u,\"initialized\":%llu,\"shaders_set\":%llu,"
+           "\"shaders_ext_set\":%llu,\"stages\":%llu,\"keyed\":%llu,\"refused\":%llu}\n",
+           errors, (unsigned long long)stats.initialized, (unsigned long long)stats.shaders_set,
+           (unsigned long long)stats.shaders_ext_set, (unsigned long long)stats.stages,
+           (unsigned long long)stats.keyed, (unsigned long long)stats.refused);
+    return 0;
+}
+
 int main(int argc,char **argv) {
     page=(size_t)sysconf(_SC_PAGESIZE);
     if(argc==2 && !strcmp(argv[1],"--tls-host-null")) {
@@ -6150,6 +6421,7 @@ int main(int argc,char **argv) {
     if(argc==2 && !strcmp(argv[1],"--nvn-texture-pool"))return nvn_texture_pool_contract();
     if(argc==2 && !strcmp(argv[1],"--nvn-blend-state"))return nvn_blend_state_contract();
     if(argc==2 && !strcmp(argv[1],"--nvn-render-states"))return nvn_render_state_contract();
+    if(argc==2 && !strcmp(argv[1],"--nvn-program"))return nvn_program_contract();
     if(argc==2 && !strcmp(argv[1],"--vi-display"))return vi_display_contract();
     if(argc==3 && !strcmp(argv[1],"--nvn-bootstrap"))return nvn_bootstrap_contract(argv[2]);
     if(argc==3 && !strcmp(argv[1],"--tls-registration-fresh"))return tls_fresh_registration_contract(argv[2]);

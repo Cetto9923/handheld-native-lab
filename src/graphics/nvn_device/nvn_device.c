@@ -21,6 +21,7 @@
 #include "nvn_blend_state.h"
 #include "nvn_memory_pool.h"
 #include "nvn_queue.h"
+#include "nvn_program.h"
 #include "nvn_render_state.h"
 #include "nvn_sampler_pool.h"
 #include "nvn_texture_pool.h"
@@ -636,6 +637,18 @@ void *nvn_device_get_proc_address(void *device, const char *name) {
         size_t count = nvn_render_state_family_count();
         for (i = 0; i < count; i++) {
             const nvn_render_state_family_entry *entry = nvn_render_state_family_entry_at(i);
+            if (!entry || !entry->name) continue;
+            if (!strcmp(name, entry->name)) {
+                s_device.implemented_resolved++;
+                fprintf(stderr, "[nvn] nvnDeviceGetProcAddress: \"%s\" -> implemented\n", name);
+                return entry->fn;
+            }
+        }
+    }
+    {
+        size_t count = nvn_program_family_count();
+        for (i = 0; i < count; i++) {
+            const nvn_program_family_entry *entry = nvn_program_family_entry_at(i);
             if (!entry || !entry->name) continue;
             if (!strcmp(name, entry->name)) {
                 s_device.implemented_resolved++;

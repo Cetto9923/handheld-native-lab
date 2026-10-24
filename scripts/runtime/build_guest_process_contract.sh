@@ -20,7 +20,7 @@ if a.main and (not a.quota_bytes or not a.stack_bytes):p.error('main requires ex
 out.mkdir(parents=True,exist_ok=False)
 def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 nso=ROOT/'src/runtime/nso';hle=ROOT/'src/runtime/hle';nvn_device=ROOT/'src/graphics/nvn_device'
-core_sources=[nso/'nso_loader.c',*[hle/(s+'.c') for s in ['guest_context','guest_process','nso_host','address_region','mutex','exit_registry','module_tls','guest_tp','native_window']],nvn_device/'nvn_device.c',nvn_device/'nvn_queue.c',nvn_device/'nvn_window.c',nvn_device/'nvn_memory_pool.c',nvn_device/'nvn_sampler_pool.c',nvn_device/'nvn_texture_pool.c',nvn_device/'nvn_blend_state.c',nvn_device/'nvn_render_state.c']
+core_sources=[nso/'nso_loader.c',*[hle/(s+'.c') for s in ['guest_context','guest_process','nso_host','address_region','mutex','exit_registry','module_tls','guest_tp','native_window']],nvn_device/'nvn_device.c',nvn_device/'nvn_queue.c',nvn_device/'nvn_window.c',nvn_device/'nvn_memory_pool.c',nvn_device/'nvn_sampler_pool.c',nvn_device/'nvn_texture_pool.c',nvn_device/'nvn_blend_state.c',nvn_device/'nvn_render_state.c',nvn_device/'nvn_program.c',nvn_device/'nvn_sha256.c']
 # The NVN device layer has a portable half and a platform backend. The host
 # build has no Vulkan implementation, the Android build has the real one.
 host_only_sources=[nvn_device/'nvn_backend_none.c']
@@ -1100,6 +1100,12 @@ run('host-nvn-render-states-contract',[out/'guest_process_contract.host','--nvn-
 nvn_render_state_stdout=(out/'host-nvn-render-states-contract'/'stdout.log').read_text()
 manifest['nvn_render_state_contract']=json.loads(nvn_render_state_stdout.splitlines()[-1])
 if manifest['nvn_render_state_contract']['nvn_render_state_errors']:raise RuntimeError('the NVN render state contract failed')
+# The NVN program family: the shaders the guest hands over, the copy of the
+# control section and the key of a stage.
+run('host-nvn-program-contract',[out/'guest_process_contract.host','--nvn-program'])
+nvn_program_stdout=(out/'host-nvn-program-contract'/'stdout.log').read_text()
+manifest['nvn_program_contract']=json.loads(nvn_program_stdout.splitlines()[-1])
+if manifest['nvn_program_contract']['nvn_program_errors']:raise RuntimeError('the NVN program contract failed')
 # The nn::vi display bridge: the handles it issues, the ones it refuses and
 # the vsync event that starts unsignalled because no frame was presented.
 run('host-vi-display-contract',[out/'guest_process_contract.host','--vi-display'])
