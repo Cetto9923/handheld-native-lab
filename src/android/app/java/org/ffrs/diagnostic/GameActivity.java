@@ -122,6 +122,18 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 + " native_format=" + window[4]
                 + " native_generation=" + window[5]
                 + " error=" + snapshot.error);
+        // The Vulkan presentation probe runs off the UI thread: the driver
+        // calls must not happen on the thread that owns the SurfaceView.
+        Thread probe = new Thread(new VulkanProbeTask(), "ffrs-vk-probe");
+        probe.start();
+    }
+
+    /** A named task, so the dexer sees a plain class and not an anonymous one. */
+    private static final class VulkanProbeTask implements Runnable {
+        @Override public void run() {
+            int rc = GameWindowNative.nativeRunVulkanProbe();
+            Log.i(TAG, "vulkan_probe rc=" + rc + " (host probe, not a game frame)");
+        }
     }
 
     @Override public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {

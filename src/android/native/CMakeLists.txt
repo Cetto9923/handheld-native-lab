@@ -47,11 +47,11 @@ if(ANDROID)
     # the runtime-side holder in src/runtime/hle/native_window.c. No rendering,
     # no input and no nn::vi import binding happen in this library.
     set(FFRS_NATIVE_WINDOW_HLE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../runtime/hle" CACHE PATH "Native window holder source directory")
-    add_library(ffrs_game_window SHARED game_window_jni.cpp
+    add_library(ffrs_game_window SHARED game_window_jni.cpp game_vulkan_probe.cpp
         "${FFRS_NATIVE_WINDOW_HLE_DIR}/native_window.c")
     set_target_properties(ffrs_game_window PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
     target_include_directories(ffrs_game_window PRIVATE "${FFRS_NATIVE_WINDOW_HLE_DIR}")
-    target_link_libraries(ffrs_game_window PRIVATE android log)
+    target_link_libraries(ffrs_game_window PRIVATE android log vulkan)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
     foreach(target probe_rg477m nso_diagnostic ffrs_diagnostic ffrs_game_window)
         target_link_options(${target} PRIVATE "-Wl,-z,max-page-size=16384" "-Wl,--build-id=sha1" "-Wl,--eh-frame-hdr")

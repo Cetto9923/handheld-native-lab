@@ -21,4 +21,14 @@ public final class GameWindowNative {
     public static native void clearSurface();
     /** Returns {present, pointer, width, height, format, generation}. */
     public static native long[] describeWindow();
+    /**
+     * Runs the Vulkan presentation host probe against the published window:
+     * a surface from this Activity's own window, a swapchain, a clear, a
+     * submit, a real fence wait and a present.
+     *
+     * Returns 0 when the clear reached the screen. This is a host probe and
+     * never a game frame: the colour it draws is the probe's own, nothing
+     * comes from the guest.
+     */
+    public static native int nativeRunVulkanProbe();
 }
