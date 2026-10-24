@@ -193,6 +193,17 @@ closest correct thing was done and the difference is written down here.
    only given back when the recording that used it is over, so a package
    never changes.
 
+**One thing to know when this is integrated.** `nvn_command_package` and
+`nvn_recorded_command` grew: the package carries the map of its segments and
+a record carries the segment it is in. The new fields are at the end of the
+structures and the fields that were there keep their place, so a reader that
+walks `package.records` for `package.bytes` bytes still sees every record
+(the replay does exactly that and needs no change). But every consumer has to
+be built against the new header: an object that was built against the old
+one has a shorter `nvn_command_package` on its stack and would be written
+past. The replay card has an uncommitted copy of that reader, so it has to
+be rebuilt.
+
 ## What is not proven
 
 * **No device run.** The device is the coordinator's: the lock
