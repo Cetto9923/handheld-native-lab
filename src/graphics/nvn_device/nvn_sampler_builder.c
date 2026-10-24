@@ -831,3 +831,49 @@ void *nvn_sampler_builder_device_of(const void *builder) {
     pthread_mutex_unlock(&s_sampler_builder_lock);
     return device;
 }
+
+/* The parameters of a builder, copied out for the family that makes a sampler
+ * from a builder.
+ *
+ * Until now the parameters of a builder could not be read from outside this
+ * family: the sampler family has to take a snapshot of them when the guest
+ * hands the builder over to nvnSamplerInitialize, and it cannot ask the
+ * builder's own getters for them one by one, because a getter answers with
+ * the value the builder holds now and not with the value it held when the
+ * sampler was made. So this is the one way out: one copy, at the moment the
+ * sampler is made.
+ *
+ * The level of detail snap is not copied: the reference host that runs this
+ * very game ignores it (hle_nvn.c:548), and the sampler object has no getter
+ * for it. */
+int nvn_sampler_builder_copy_parameters(const void *builder, nvn_sampler_builder_parameters *out) {
+    nvn_sampler_builder_state *found;
+    int copied = 0;
+    if (!out) return 0;
+    pthread_mutex_lock(&s_sampler_builder_lock);
+    found = builder_find((void *)(uintptr_t)builder, 0);
+    if (found) {
+        out->device = found->device;
+        out->min_filter = (uint32_t)found->min_filter;
+        out->mag_filter = (uint32_t)found->mag_filter;
+        out->wrap_s = (uint32_t)found->wrap_s;
+        out->wrap_t = (uint32_t)found->wrap_t;
+        out->wrap_r = (uint32_t)found->wrap_r;
+        out->compare_mode = (uint32_t)found->compare_mode;
+        out->compare_func = (uint32_t)found->compare_func;
+        out->reduction_filter = (uint32_t)found->reduction_filter;
+        out->lod_min = found->lod_min;
+        out->lod_max = found->lod_max;
+        out->lod_bias = found->lod_bias;
+        out->max_anisotropy = found->max_anisotropy;
+        memcpy(out->border_color, found->border_color, sizeof(out->border_color));
+        memcpy(out->border_colori, found->border_colori, sizeof(out->border_colori));
+        memcpy(out->border_colorui, found->border_colorui, sizeof(out->border_colorui));
+        copied = 1;
+    }
+    pthread_mutex_unlock(&s_sampler_builder_lock);
+    if (!copied) {
+        fprintf(stderr, "[nvn] sampler builder %p was never prepared, so it has no parameters to copy\n", builder);
+    }
+    return copied;
+}

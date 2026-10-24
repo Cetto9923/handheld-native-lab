@@ -70,4 +70,41 @@ void nvn_sampler_builder_get_stats(nvn_sampler_builder_stats *out);
  * a builder can read it without guessing an ABI. */
 void *nvn_sampler_builder_device_of(const void *builder);
 
+/* The parameters of a sampler builder, as they leave this family.
+ *
+ * The values are the ones of the vendored header's enumerations, but they are
+ * carried as plain words here, so that this header stays free of the vendored
+ * NVN header and every family that reads it does not have to include it.
+ *
+ * The level of detail snap is not in this shape: the reference host that runs
+ * this very game ignores it (hle_nvn.c:548, "No Metal equivalent, ignored"),
+ * and the sampler object has no getter for it, so a sampler does not carry it
+ * either. */
+typedef struct nvn_sampler_builder_parameters {
+    void *device;              /* the device the guest put into the builder */
+    uint32_t min_filter;
+    uint32_t mag_filter;
+    uint32_t wrap_s;
+    uint32_t wrap_t;
+    uint32_t wrap_r;
+    uint32_t compare_mode;
+    uint32_t compare_func;
+    uint32_t reduction_filter;
+    float lod_min;
+    float lod_max;
+    float lod_bias;
+    float max_anisotropy;
+    float border_color[4];      /* the float form of the border colour */
+    int border_colori[4];      /* the int form, set with SetBorderColori */
+    uint32_t border_colorui[4]; /* the unsigned int form, SetBorderColorui */
+} nvn_sampler_builder_parameters;
+
+/* Copies the parameters of the builder into out.
+ *
+ * Returns 1 when the builder was prepared and the parameters were copied, and
+ * 0 when the builder was never prepared: a builder the guest did not fill has
+ * no parameters, and the family that makes a sampler from a builder must not
+ * invent them. */
+int nvn_sampler_builder_copy_parameters(const void *builder, nvn_sampler_builder_parameters *out);
+
 #endif /* FFRS_NVN_SAMPLER_BUILDER_H */
