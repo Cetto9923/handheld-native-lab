@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Standalone carrier for the game window form.
+     It carries its own application id so the existing diagnostic application
+     on the device is not replaced by this verification build. The Activity
+     itself lives in org.ffrs.diagnostic so it can move into the game
+     application unchanged. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="org.ffrs.gamewindow" android:versionCode="1" android:versionName="0.1-game-window-form">
+    <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="34" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.hardware.gamepad" android:required="false" />
+    <application android:label="@string/app_name" android:debuggable="true"
+        android:allowBackup="false" android:extractNativeLibs="true"
+        android:theme="@android:style/Theme.Material.NoActionBar">
+        <activity android:name="org.ffrs.diagnostic.GameActivity" android:exported="true"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation|uiMode|density|fontScale|locale|layoutDirection">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
