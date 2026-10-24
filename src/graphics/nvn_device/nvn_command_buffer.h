@@ -352,11 +352,17 @@ const nvn_command_buffer_family_entry *nvn_command_buffer_family_entry_at(size_t
  *
  * The op is the opcode of the reference's numbering and the size is the size
  * of the whole record, header included. The payload points into the command
- * memory of the recording, after the header. */
+ * memory of the recording, after the header.
+ *
+ * The segment is the segment of the command memory the record is in: the
+ * command memory the guest handed over is the segment zero, and the segments
+ * the host lent are the ones after it. A record therefore knows which memory
+ * it is in, and the guest's memory is never written to. */
 typedef struct nvn_recorded_command {
     uint32_t op;
     uint32_t size;
     const uint8_t *payload;
+    uint32_t segment;
 } nvn_recorded_command;
 
 /* The records of the recording that is running right now. The list belongs
@@ -389,6 +395,19 @@ int nvn_command_buffer_get_diagnostics(void *buffer, const nvn_diagnostic_comman
 /* The command package                                                 */
 /* ------------------------------------------------------------------ */
 
+/* One segment of the command memory of a package.
+ *
+ * The records of a package are in the order they were made. The first
+ * segment is the command memory the guest handed over; the ones after it are
+ * the segments of the host's own memory that the host lent when the guest
+ * could not add enough. */
+typedef struct nvn_command_package_segment {
+    size_t offset;        /* where the records of the segment start in the package */
+    size_t bytes;         /* how many bytes they hold */
+    size_t record_count;  /* how many records they are */
+    int host;             /* 1 = the host lent this memory */
+} nvn_command_package_segment;
+
 /* An immutable package of commands.
  *
  * The handle of a recording is the address of its first record in the host
@@ -396,12 +415,19 @@ int nvn_command_buffer_get_diagnostics(void *buffer, const nvn_diagnostic_comman
  * written once, at the end of the recording, and never written again. A
  * recording that is made later into the same buffer, a finalization and a
  * reuse of the guest's buffer address all leave the package of an earlier
- * handle untouched. */
+ * handle untouched.
+ *
+ * The records of a recording that ran out of the guest's command memory are
+ * in the segments after the first one, and the records of the segments are
+ * copied into the package in the order they were made, so the package is one
+ * piece of memory and a reader that walks it sees every record. */
 typedef struct nvn_command_package {
     uint64_t handle;        /* the address of the first record */
     const uint8_t *records; /* the command memory of the recording */
     size_t bytes;           /* how many bytes it holds */
     size_t record_count;    /* how many records it holds */
+    size_t segment_count;   /* how many segments the recording used */
+    const nvn_command_package_segment *segments; /* the segments, in order */
 } nvn_command_package;
 
 /* The package a handle names. Returns 0 when the registry does not know the
@@ -435,6 +461,16 @@ typedef struct nvn_command_buffer_stats {
     uint64_t callback_calls;  /* memory callbacks invoked through the guest boundary */
     uint64_t callback_failures; /* memory callbacks that could not be made */
     uint64_t callback_unavailable; /* memory callbacks refused: no boundary is registered */
+    uint64_t callback_absent;  /* memory callbacks that were not there: the guest set none */
+    uint64_t callback_refused_thread; /* refused: the caller is not the guest's own thread */
+    uint64_t callback_refused_pointer; /* refused: the guest's thread pointer is not bound */
+    uint64_t callback_refused_address; /* refused: the address is not in the module's text */
+    uint64_t host_segments;   /* segments of the host's memory the recordings used */
+    uint64_t host_segments_released; /* segments the guest gave back */
+    uint64_t host_segment_refused; /* requests for a segment that the bound refused */
+    uint64_t host_segment_bytes; /* the bytes of the host's memory the recordings hold */
+    uint64_t host_segment_bound; /* the bound of the host's lent memory, in bytes */
+    const char *void_reason; /* why the last recording could not be completed */
     uint64_t packages;        /* the immutable packages the registry holds */
     uint64_t package_bytes;   /* the bytes the packages hold */
     int live_buffers;
@@ -458,8 +494,23 @@ void nvn_command_buffer_get_stats(nvn_command_buffer_stats *out);
  * The hook is called with the address of the guest's callback, the register
  * values the guest is called with (the command buffer, the event, the size
  * the guest is asked for and the callback data), and the register values it
- * comes back with. It returns zero when the call was made. */
+ * comes back with. It returns one of the values below. */
 typedef int (*nvn_command_buffer_guest_call)(void *entry, const uint64_t *x, uint64_t *out_x);
+
+/* What the hook of the guest thread boundary answers.
+ *
+ * The three refusals are named, because each of them is a different thing
+ * that is wrong: the caller is not the guest's own thread, the guest's thread
+ * pointer is not bound on this thread, or the address the guest handed over
+ * is not inside the text of the guest's module. A pointer the guest made up
+ * is never called. */
+enum nvn_command_buffer_guest_call_result {
+    NVN_CB_GUEST_CALL_OK = 1,               /* the guest was called */
+    NVN_CB_GUEST_CALL_REFUSED = 0,          /* refused, for a reason of its own */
+    NVN_CB_GUEST_CALL_WRONG_THREAD = -1,    /* the caller is not the guest's own thread */
+    NVN_CB_GUEST_CALL_NO_THREAD_POINTER = -2, /* the guest's thread pointer is not bound */
+    NVN_CB_GUEST_CALL_BAD_ADDRESS = -3      /* the address is not inside the module's text */
+};
 
 /* Register the call of the guest thread boundary. Passing NULL takes it away
  * again, which is what a build without the boundary has. */

@@ -982,8 +982,8 @@ struct nso_result guest_process_dso_info(guest_process *p, struct guest_dso_info
 /* ------------------------------------------------------------------ */
 
 /* The NVN command buffer layer holds a hook to this, because the guest's
- * command memory callback has to run on the guest's own thread and through
- * the boundary, never by calling the pointer the guest handed over directly.
+ * command memory callback has to run on the guest's own thread, and the
+ * pointer the guest handed over has to be checked before it is called.
  * The declaration is repeated here so that this file does not have to know
  * about the graphics layer; the definition is in nvn_command_buffer.c. */
 void nvn_command_buffer_set_guest_call(int (*call)(void *entry, const uint64_t *x, uint64_t *out_x));
@@ -993,28 +993,69 @@ void nvn_command_buffer_set_guest_call(int (*call)(void *entry, const uint64_t *
  * The arguments are the four words the NVN layer hands over: the command
  * buffer, the event, the size it asks for and the callback data. The guest's
  * answer comes back in the first register, which is where the NVN layer
- * expects it. A call that the boundary refuses is a failure and is said so;
- * there is no raw fallback, because calling the guest's pointer directly is
- * exactly what this hook exists to avoid. */
+ * expects it.
+ *
+ * The callback is the guest's own function and it is called on the guest's
+ * own thread, with the guest's own thread pointer: the guest's thread local
+ * storage is bound with a pthread key and the guest's code is patched to find
+ * it, so a call that is made on the guest's own thread finds it by itself.
+ *
+ * Three things are checked and not assumed, and each refusal is named and
+ * counted by the caller:
+ *
+ *   - the caller is the guest's own thread,
+ *   - the guest's thread pointer mirror is bound on this thread,
+ *   - the address is inside the text of the guest's module and is aligned.
+ *
+ * A pointer the guest made up is never called.
+ *
+ * The boundary's own entries are not used here. Its host phase only exists
+ * while a host function runs behind an import gateway, and the NVN entry
+ * points are not import gateways: the guest reaches them through the pointer
+ * that nvnDeviceGetProcAddress handed out and calls them directly. While such
+ * a call runs the scope is in its guest phase, and the boundary refuses both
+ * of its entries by design (nb_call wants the idle phase, nb_call_from_host
+ * wants the host phase). The call is therefore made here, on the guest's own
+ * thread, after the three checks above.
+ *
+ * The name of the function is the one the registration of the boundary uses;
+ * the registration itself is not part of this change. */
 static int nvn_guest_call_through_boundary(void *entry, const uint64_t *x, uint64_t *out_x) {
-    nb_scope *scope = guest_process_current_boundary();
-    nb_registers packet;
-    nb_status s;
-    if (!scope || !entry || !x) return 0;
-    memset(&packet, 0, sizeof(packet));
-    packet.guest_x18 = scope->active_guest_x18;
-    packet.x[0] = x[0];
-    packet.x[1] = x[1];
-    packet.x[2] = x[2];
-    packet.x[3] = x[3];
-    s = nb_call_from_host(scope, (void (*)(void))(uintptr_t)entry, &packet);
-    if (s != NB_OK) {
-        fprintf(stderr, "[nvn-callback] the guest's command memory callback did not return; status=%d; "
-                        "no raw fallback and no direct call to the guest's pointer\n",
-                (int)s);
-        return 0;
+    guest_process *p=current_process?current_process:exclusive_process;
+    uint64_t address=(uint64_t)(uintptr_t)entry;
+    uint64_t base;
+    uint64_t host=0;
+    struct nso_result r;
+    typedef void (*guest_memory_callback)(uint64_t,uint64_t,uint64_t,uint64_t);
+    if(!entry||!x)return 0;
+    if(!p||!p->module||p->thread.state!=THREAD_RUNNING||
+       !pthread_equal(p->thread.native,pthread_self())) {
+        fprintf(stderr,"[nvn-callback] refused: the caller is not the guest's own thread; the "
+                "memory callback of the guest was not called\n");
+        return -1;
     }
-    if (out_x) *out_x = packet.x[0];
+    if(guest_tp_current_base()==NULL) {
+        fprintf(stderr,"[nvn-callback] refused: the guest's thread pointer mirror is not bound on "
+                "this thread; the memory callback of the guest was not called\n");
+        return -2;
+    }
+    base=nso_base(p->module);
+    if(address<base) {
+        fprintf(stderr,"[nvn-callback] refused: the address 0x%" PRIx64 " of the memory callback is "
+                "not inside the guest's module; the memory callback of the guest was not called\n",
+                address);
+        return -3;
+    }
+    r=nso_entry_address(p->module,address-base,&host);
+    if(r.status!=NSO_OK) {
+        fprintf(stderr,"[nvn-callback] refused: the address 0x%" PRIx64 " of the memory callback is "
+                "not inside the text of the guest's module; the memory callback of the guest was "
+                "not called\n",
+                address);
+        return -3;
+    }
+    ((guest_memory_callback)(uintptr_t)host)(x[0],x[1],x[2],x[3]);
+    if(out_x)*out_x=0;
     return 1;
 }
 

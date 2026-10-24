@@ -65,9 +65,19 @@
 #define NVN_CB_MAX_PACKAGES 65536
 #define NVN_CB_MAX_PACKAGE_BYTES (256u * 1024u * 1024u)
 
-/* How many times the guest's memory callback is asked for more memory
- * before the recording is given up. */
-#define NVN_CB_MAX_CALLBACK_TRIES 3
+/* How much memory the host lends a recording at a time when the guest's own
+ * command memory is not enough. The reference lends 256 KiB at a time. */
+#define NVN_CB_HOSTSEG_BYTES (256u * 1024u)
+
+/* How many such segments the host holds at once. This is the bound of the
+ * memory the host lends: a recording that needs more is refused by name, and
+ * the refusal says that a command does not fit. */
+#define NVN_CB_MAX_HOSTSEGMENTS 64
+
+/* How many times the guest's memory callback is asked for more command memory
+ * before the recording continues in a segment of the host's own memory. The
+ * reference asks twice and then lends a segment. */
+#define NVN_CB_MAX_CALLBACK_TRIES 2
 
 /* The view of a texture is the reference's own 16 byte structure. */
 _Static_assert(sizeof(nvn_cb_view) == 16, "the view of the reference is 16 bytes");
@@ -84,6 +94,30 @@ typedef struct nvn_cb_copy {
     size_t size;
     struct nvn_cb_copy *next;
 } nvn_cb_copy;
+
+/* A segment of the command memory of a recording.
+ *
+ * The first segment of a recording is the command memory the guest handed
+ * over. The ones after it are segments of the host's own memory, which the
+ * host lends when the guest's callback cannot add enough: the records this
+ * runtime writes are larger than the commands of a real device, so the budget
+ * the guest reserved for the real device runs out early. The reference says
+ * the same about this game: it is not an error state of the game but
+ * something that has to be caught.
+ *
+ * The bytes of a segment the host lent are the host's. The guest's memory is
+ * never written to. */
+typedef struct nvn_cb_segment {
+    uint8_t *mem;
+    size_t capacity;
+    size_t used;
+    size_t record_count;
+    int host;           /* 1 = the host lent this memory */
+    int dead;           /* the guest gave the memory back */
+    uint64_t guest_lo;  /* the guest's command memory the segment took over */
+    uint64_t guest_hi;
+    struct nvn_cb_segment *next;
+} nvn_cb_segment;
 
 /* The command buffer of the guest, as this runtime holds it. */
 typedef struct {
@@ -102,12 +136,11 @@ typedef struct {
     uint64_t memory_callback;
     uint64_t memory_callback_data;
 
-    /* The command memory of the recording that is running. It grows as the
-     * recording goes on and becomes the package when the recording ends. */
-    uint8_t *work;
-    size_t work_capacity;
-    size_t work_used;
-    size_t work_record_count;
+    /* The command memory of the recording that is running. It is a list of
+     * segments: the command memory the guest handed over is the first one,
+     * and the segments the host lent are the ones after it. */
+    nvn_cb_segment *segments;
+    size_t segment_count;
     nvn_cb_copy *copies;
 
     /* The records of the recording, seen from the outside. */
@@ -128,9 +161,23 @@ typedef struct nvn_cb_package {
     uint8_t *bytes;
     size_t bytes_used;
     size_t record_count;
+    nvn_command_package_segment *segments;
+    size_t segment_count;
     nvn_cb_copy *copies;
     struct nvn_cb_package *next;
 } nvn_cb_package;
+
+/* The segments of the host's own memory that the host lends.
+ *
+ * A segment is lent to one recording at a time and is given back when that
+ * recording is over: the package of the recording holds a copy of the
+ * records, so the memory of the segment is free again. The number of the
+ * segments is the bound of the memory the host lends. */
+typedef struct nvn_cb_pool_segment {
+    uint8_t *mem;
+    size_t capacity;
+    int lent;
+} nvn_cb_pool_segment;
 
 static pthread_mutex_t s_lock = PTHREAD_MUTEX_INITIALIZER;
 static nvn_cb_buffer s_buffers[NVN_CB_MAX_BUFFERS];
@@ -139,6 +186,8 @@ static uint64_t s_sequence;
 static nvn_cb_package *s_packages;
 static size_t s_package_count;
 static uint64_t s_package_bytes;
+static nvn_cb_pool_segment s_pool[NVN_CB_MAX_HOSTSEGMENTS];
+static size_t s_pool_bytes;
 
 /* The call of the guest thread boundary.
  *
@@ -159,6 +208,164 @@ void nvn_command_buffer_set_guest_call(nvn_command_buffer_guest_call call) {
 /* ------------------------------------------------------------------ */
 
 static size_t align8(size_t value) { return (value + 7u) & ~(size_t)7u; }
+
+/* ------------------------------------------------------------------ */
+/* The segments of a recording                                         */
+/* ------------------------------------------------------------------ */
+
+/* The segment the recording writes into right now. It is the last one of the
+ * list: the command memory the guest handed over first, and the segments the
+ * host lent after it. */
+static nvn_cb_segment *segment_current(nvn_cb_buffer *slot) {
+    nvn_cb_segment *segment = slot->segments;
+    if (!segment) return NULL;
+    while (segment->next) segment = segment->next;
+    return segment;
+}
+
+/* The segment with the given index. The index zero is the command memory the
+ * guest handed over, so a record knows which memory it is in. */
+static nvn_cb_segment *segment_at(nvn_cb_buffer *slot, size_t index) {
+    nvn_cb_segment *segment = slot->segments;
+    while (segment && index) {
+        segment = segment->next;
+        index--;
+    }
+    return segment;
+}
+
+/* The number of the segments a recording holds. */
+static size_t segment_index_of(nvn_cb_buffer *slot, const nvn_cb_segment *wanted) {
+    size_t index = 0;
+    nvn_cb_segment *segment = slot->segments;
+    while (segment && segment != wanted) {
+        segment = segment->next;
+        index++;
+    }
+    return segment ? index : 0;
+}
+
+/* The bytes the recording has written into the command memory the guest
+ * handed over. The guest's accounting is about those bytes only: the memory
+ * the host lends is not the guest's and is not counted against its budget. */
+static size_t segment_guest_used(nvn_cb_buffer *slot) {
+    nvn_cb_segment *first = slot->segments;
+    return first ? first->used : 0;
+}
+
+/* Give the segments of a recording back and drop them.
+ *
+ * The memory of a segment the host lent goes back to the pool of the host:
+ * the package of the recording holds a copy of the records, so the segment
+ * itself is not needed any more. The command memory the guest handed over is
+ * the package's memory when the recording ended, and is given back when the
+ * recording was abandoned. */
+static void segments_release(nvn_cb_buffer *slot, int keep_guest_memory) {
+    nvn_cb_segment *segment = slot->segments;
+    while (segment) {
+        nvn_cb_segment *next = segment->next;
+        if (segment->host) {
+            size_t i;
+            for (i = 0; i < NVN_CB_MAX_HOSTSEGMENTS; i++) {
+                if (s_pool[i].lent && s_pool[i].mem == segment->mem) {
+                    s_pool[i].lent = 0;
+                    if (s_pool_bytes >= s_pool[i].capacity) s_pool_bytes -= s_pool[i].capacity;
+                    break;
+                }
+            }
+        } else if (!keep_guest_memory) {
+            free(segment->mem);
+        }
+        free(segment);
+        segment = next;
+    }
+    slot->segments = NULL;
+    slot->segment_count = 0;
+}
+
+/* Take a segment of the host's own memory for a recording.
+ *
+ * The reference lends a segment of 256 KiB when the game's callback cannot
+ * add enough. The bytes are the host's: the guest's memory is never written
+ * to. The segment takes over the range of the guest's command memory the
+ * recording had occupied, so that the guest can give it back.
+ *
+ * The pool is bounded. A recording that needs a segment and finds none is
+ * refused by name, and the refusal says that a command does not fit: a
+ * recording is never void because of memory. */
+static nvn_cb_segment *hostseg_take(nvn_cb_buffer *slot) {
+    size_t i;
+    nvn_cb_segment *segment = NULL;
+    for (i = 0; i < NVN_CB_MAX_HOSTSEGMENTS; i++) {
+        nvn_cb_pool_segment *pool = &s_pool[i];
+        nvn_cb_segment *tail;
+        if (pool->lent) continue;
+        if (!pool->mem) {
+            pool->mem = (uint8_t *)malloc(NVN_CB_HOSTSEG_BYTES);
+            if (!pool->mem) break;
+            pool->capacity = NVN_CB_HOSTSEG_BYTES;
+        }
+        pool->lent = 1;
+        s_pool_bytes += pool->capacity;
+        segment = (nvn_cb_segment *)calloc(1, sizeof(*segment));
+        if (!segment) {
+            pool->lent = 0;
+            s_pool_bytes -= pool->capacity;
+            break;
+        }
+        segment->mem = pool->mem;
+        segment->capacity = pool->capacity;
+        segment->host = 1;
+        segment->guest_lo = 0;
+        segment->guest_hi = segment_guest_used(slot);
+        /* The segment goes to the end of the list, so that the records stay
+         * in the order they were made. */
+        tail = segment_current(slot);
+        if (tail) tail->next = segment;
+        else slot->segments = segment;
+        slot->segment_count++;
+        s_stats.host_segments++;
+        break;
+    }
+    if (segment) {
+        s_stats.host_segment_bytes = s_pool_bytes;
+        s_stats.host_segment_bound = (uint64_t)NVN_CB_MAX_HOSTSEGMENTS * NVN_CB_HOSTSEG_BYTES;
+    } else {
+        s_stats.host_segment_refused++;
+        fprintf(stderr, "[nvn] the host has no segment of command memory left: all %u segments of "
+                        "%u KiB are lent out and the bound of %u KiB is reached, so a command that "
+                        "does not fit was refused\n",
+                (unsigned)NVN_CB_MAX_HOSTSEGMENTS, (unsigned)(NVN_CB_HOSTSEG_BYTES >> 10),
+                (unsigned)(((size_t)NVN_CB_MAX_HOSTSEGMENTS * NVN_CB_HOSTSEG_BYTES) >> 10));
+    }
+    return segment;
+}
+
+/* The guest hands out command memory again.
+ *
+ * The guest's command memory is one area that the guest hands out in pieces:
+ * every grant is a window at the start of that area, and a recording that
+ * ran out of it hangs off the range of the area it occupied. When the guest
+ * hands out a window that covers that range, the guest gave that memory
+ * back, and the segments of the host's memory that took it over are released.
+ *
+ * The runtime does not see the addresses of the guest's pool, so the overlap
+ * is decided on the area of the guest's command memory and not on the
+ * guest's addresses. */
+static void hostseg_release(nvn_cb_buffer *slot, uint64_t grant) {
+    nvn_cb_segment *segment;
+    for (segment = slot->segments; segment; segment = segment->next) {
+        if (!segment->host || segment->dead) continue;
+        if (grant > segment->guest_lo && segment->guest_lo < segment->guest_hi) {
+            segment->dead = 1;
+            s_stats.host_segments_released++;
+            fprintf(stderr, "[nvn] the guest handed out %" PRIu64 " bytes of command memory again: "
+                            "the segment of the host's memory that took over the range %" PRIu64
+                            "..%" PRIu64 " of the guest's command memory was given back\n",
+                    grant, segment->guest_lo, segment->guest_hi);
+        }
+    }
+}
 
 /* The name of an opcode, for the log and for the tests. The name is the
  * command of the guest that the opcode stands for. */
@@ -241,7 +448,7 @@ static void copies_free(nvn_cb_copy *copies) {
  * command memory that an earlier handle names. */
 static nvn_cb_buffer *buffer_reset(nvn_cb_buffer *buffer, const void *object) {
     copies_free(buffer->copies);
-    free(buffer->work);
+    segments_release(buffer, 0);
     free(buffer->views);
     free(buffer->diagnostics);
     memset(buffer, 0, sizeof(*buffer));
@@ -354,38 +561,58 @@ static size_t work_limit(const nvn_cb_buffer *slot) {
     return (size_t)(slot->command_memory_size - 8u);
 }
 
-/* Room for one record of the given size in the command memory. */
-static int work_reserve(nvn_cb_buffer *slot, size_t total) {
-    size_t limit = work_limit(slot);
+/* Room for one record of the given size in the command memory the guest
+ * handed over.
+ *
+ * The memory grows with the budget the guest gives and never grows past it.
+ * The last eight bytes of the budget are kept for the end of the recording:
+ * a record that is not the end may not use them, and the end is the one
+ * record that may. */
+static int guest_reserve(nvn_cb_buffer *slot, size_t total, int is_end) {
+    nvn_cb_segment *segment = segment_at(slot, 0);
+    size_t budget = (size_t)slot->command_memory_size;
+    size_t limit = is_end ? budget : work_limit(slot);
     size_t want;
     uint8_t *grown;
-    if (total > limit) return 0;
-    if (slot->work_used + total <= slot->work_capacity) return 1;
-    want = slot->work_capacity ? slot->work_capacity * 2u : 256u;
-    if (want < slot->work_used + total) want = slot->work_used + total;
-    if (want > limit) want = limit;
-    if (want < slot->work_used + total) return 0;
-    grown = (uint8_t *)realloc(slot->work, want);
+    if (!segment) return 0;
+    if (segment->used + total > limit) return 0;
+    if (segment->used + total <= segment->capacity) return 1;
+    want = segment->capacity ? segment->capacity * 2u : 256u;
+    if (want < segment->used + total) want = segment->used + total;
+    if (want > budget) want = budget;
+    if (want < segment->used + total) return 0;
+    grown = (uint8_t *)realloc(segment->mem, want);
     if (!grown) return 0;
-    if (grown != slot->work && slot->view_count) {
+    if (grown != segment->mem && slot->view_count) {
         /* The views point into the command memory, so they move with it. */
-        ptrdiff_t delta = (ptrdiff_t)(grown - slot->work);
+        ptrdiff_t delta = (ptrdiff_t)(grown - segment->mem);
         size_t i;
         for (i = 0; i < slot->view_count; i++) {
+            if (slot->views[i].segment != 0) continue;
             slot->views[i].payload = (const uint8_t *)((ptrdiff_t)slot->views[i].payload + delta);
         }
     }
-    slot->work = grown;
-    slot->work_capacity = want;
+    segment->mem = grown;
+    segment->capacity = want;
     return 1;
 }
 
 /* The recording cannot be completed. Everything that was recorded into it
- * is lost, and the end of the recording will not hand out a handle. */
+ * is lost, and the end of the recording will not hand out a handle.
+ *
+ * A recording is never void because of memory: the memory the host runs out
+ * of is a segment of the host's own memory, and the bound of that memory is
+ * refused by name. The reason of a void recording is a command that does not
+ * fit. */
 static void recording_void(nvn_cb_buffer *slot, const char *reason) {
     if (!slot->void_recording) {
         slot->void_recording = 1;
         slot->void_reason = reason;
+        s_stats.void_reason = reason;
+        /* The records of a void recording are lost, so their memory goes
+         * back and the views of them are dropped with it. */
+        segments_release(slot, 0);
+        slot->view_count = 0;
         fprintf(stderr, "[nvn] the recording of the command buffer %p is void: %s; the records of "
                         "this recording are lost and its end will not hand out a handle\n",
                 slot->object, reason);
@@ -397,12 +624,20 @@ static void recording_void(nvn_cb_buffer *slot, const char *reason) {
  * The callback is the guest's own function, and it calls back into this
  * layer to add command memory, so the lock is not held while it runs. The
  * call goes through the hook of the boundary: the callback runs as guest code
- * with the guest's thread pointer, not as a host function that the host
- * calls. The guest's pointer is never called directly.
+ * on the guest's own thread, and the guest's pointer is never called
+ * directly.
+ *
+ * The hook answers with one of the values of
+ * nvn_command_buffer_guest_call_result. A refusal is counted under its own
+ * name: the caller was not the guest's own thread, the guest's thread
+ * pointer was not bound on this thread, or the address the guest handed over
+ * is not inside the text of the guest's module. A pointer the guest made up
+ * is never called.
  *
  * When no boundary is registered the callback is refused, said by name and
  * counted: a build without the boundary has no way to call the guest, and
- * pretending otherwise would be a lie. */
+ * pretending otherwise would be a lie. The recording is not void because of
+ * it: the host lends a segment of its own memory instead. */
 static int request_more_memory(void *buffer, uint64_t needed) {
     uint64_t callback = 0;
     uint64_t data = 0;
@@ -418,9 +653,9 @@ static int request_more_memory(void *buffer, uint64_t needed) {
     }
     pthread_mutex_unlock(&s_lock);
     if (!callback) {
-        fprintf(stderr, "[nvn] the command memory of the command buffer %p is exhausted and the "
-                        "guest set no memory callback, so the recording is void\n",
-                buffer);
+        pthread_mutex_lock(&s_lock);
+        s_stats.callback_absent++;
+        pthread_mutex_unlock(&s_lock);
         return 0;
     }
     if (!call) {
@@ -429,7 +664,8 @@ static int request_more_memory(void *buffer, uint64_t needed) {
         pthread_mutex_unlock(&s_lock);
         fprintf(stderr, "[nvn] the command memory of the command buffer %p is exhausted and the "
                         "guest thread boundary has not registered its call, so the memory callback "
-                        "of the guest was not called and the recording is void\n",
+                        "of the guest was not called; the host lends a segment of its own memory "
+                        "instead\n",
                 buffer);
         return 0;
     }
@@ -437,6 +673,7 @@ static int request_more_memory(void *buffer, uint64_t needed) {
         uint64_t x[9];
         uint64_t out_x[9];
         int i;
+        int rc;
         for (i = 0; i < 9; i++) {
             x[i] = 0;
             out_x[i] = 0;
@@ -445,12 +682,21 @@ static int request_more_memory(void *buffer, uint64_t needed) {
         x[1] = 0u; /* NVN_COMMAND_BUFFER_MEMORY_EVENT_OUT_OF_COMMAND_MEMORY */
         x[2] = needed;
         x[3] = data;
-        if (call((void *)(uintptr_t)callback, x, out_x) != 0) {
+        rc = call((void *)(uintptr_t)callback, x, out_x);
+        if (rc != NVN_CB_GUEST_CALL_OK) {
             pthread_mutex_lock(&s_lock);
-            s_stats.callback_failures++;
+            if (rc == NVN_CB_GUEST_CALL_WRONG_THREAD) {
+                s_stats.callback_refused_thread++;
+            } else if (rc == NVN_CB_GUEST_CALL_NO_THREAD_POINTER) {
+                s_stats.callback_refused_pointer++;
+            } else if (rc == NVN_CB_GUEST_CALL_BAD_ADDRESS) {
+                s_stats.callback_refused_address++;
+            } else {
+                s_stats.callback_failures++;
+            }
             pthread_mutex_unlock(&s_lock);
-            fprintf(stderr, "[nvn] the memory callback of the guest did not come back through the "
-                            "boundary, so the recording is void\n");
+            fprintf(stderr, "[nvn] the memory callback of the guest was refused and was not "
+                            "called; the host lends a segment of its own memory instead\n");
             return 0;
         }
     }
@@ -475,10 +721,12 @@ static int request_more_memory(void *buffer, uint64_t needed) {
 #define NVN_CB_RESERVE_REFUSED 2
 
 static int record_write_locked(nvn_cb_buffer *slot, uint32_t op, uint32_t payload_size,
-                                uint8_t **out) {
+                                int is_end, uint8_t **out) {
     size_t total;
     nvn_cb_op_hdr *header;
     uint8_t *at;
+    nvn_cb_segment *segment;
+    uint32_t index;
     *out = NULL;
     if (payload_size + 8u > NVN_CB_MAX_RECORD_BYTES) {
         s_stats.dropped++;
@@ -491,14 +739,33 @@ static int record_write_locked(nvn_cb_buffer *slot, uint32_t op, uint32_t payloa
         return NVN_CB_RESERVE_REFUSED;
     }
     total = align8((size_t)payload_size + 8u);
-    if (!work_reserve(slot, total)) return NVN_CB_RESERVE_FULL;
-    at = slot->work + slot->work_used;
+    segment = segment_current(slot);
+    if (!segment) {
+        /* The first segment of a recording is the command memory the guest
+         * handed over. It is made when the first record is written. */
+        segment = (nvn_cb_segment *)calloc(1, sizeof(*segment));
+        if (!segment) {
+            s_stats.dropped++;
+            return NVN_CB_RESERVE_REFUSED;
+        }
+        slot->segments = segment;
+        slot->segment_count = 1;
+    }
+    index = (uint32_t)segment_index_of(slot, segment);
+    if (segment->host) {
+        /* A segment of the host's memory has a fixed size: when it is full,
+         * the recording needs another one. */
+        if (segment->used + total > segment->capacity) return NVN_CB_RESERVE_FULL;
+    } else if (!guest_reserve(slot, total, is_end)) {
+        return NVN_CB_RESERVE_FULL;
+    }
+    at = segment->mem + segment->used;
     header = (nvn_cb_op_hdr *)at;
     header->op = op;
     header->size = (uint32_t)total;
     memset(at + 8, 0, total - 8u);
-    slot->work_used += total;
-    slot->work_record_count++;
+    segment->used += total;
+    segment->record_count++;
     if (slot->view_count >= NVN_CB_MAX_RECORDS) {
         s_stats.dropped++;
     } else {
@@ -519,6 +786,7 @@ static int record_write_locked(nvn_cb_buffer *slot, uint32_t op, uint32_t payloa
             slot->views[slot->view_count].op = op;
             slot->views[slot->view_count].size = (uint32_t)total;
             slot->views[slot->view_count].payload = at + 8;
+            slot->views[slot->view_count].segment = index;
             slot->view_count++;
         }
     }
@@ -530,10 +798,15 @@ static int record_write_locked(nvn_cb_buffer *slot, uint32_t op, uint32_t payloa
 /* Reserve one record in the command memory of the recording that is running.
  *
  * A command that is made outside a recording window does not enter the
- * command stream: it is counted and named. A command that does not fit into
- * the command memory asks the guest for more memory through its callback; if
- * that does not help, the recording is void: the end of the recording will
- * not hand out a handle, and a drop is never followed by a success. */
+ * command stream: it is counted and named.
+ *
+ * A command that does not fit into the command memory the guest handed over
+ * asks the guest for more memory through its callback, as the reference does.
+ * When the guest's callback cannot add enough, the recording continues in a
+ * segment of the host's own memory: a recording is never void because of
+ * memory, and the end of the recording still hands out a handle. Only when
+ * the bound of the host's lent memory is reached is a command refused, and
+ * that refusal is named. */
 static uint8_t *record_open(void *buffer, uint32_t op, uint32_t payload_size) {
     uint8_t *payload = NULL;
     int tries = 0;
@@ -552,7 +825,7 @@ static uint8_t *record_open(void *buffer, uint32_t op, uint32_t payload_size) {
             } else if (slot->void_recording) {
                 s_stats.dropped++;
             } else {
-                int result = record_write_locked(slot, op, payload_size, &payload);
+                int result = record_write_locked(slot, op, payload_size, 0, &payload);
                 if (result == NVN_CB_RESERVE_FULL) {
                     need_more = 1;
                     needed = align8((size_t)payload_size + 8u);
@@ -561,26 +834,40 @@ static uint8_t *record_open(void *buffer, uint32_t op, uint32_t payload_size) {
         }
         pthread_mutex_unlock(&s_lock);
         if (!need_more) return payload;
-        if (tries++ >= NVN_CB_MAX_CALLBACK_TRIES) {
+        /* The guest's callback is asked for more command memory, twice, as
+         * the reference does. */
+        if (tries < NVN_CB_MAX_CALLBACK_TRIES) {
+            tries++;
+            if (request_more_memory(buffer, needed)) continue;
+            /* The callback could not be made. The host lends a segment of its
+             * own memory instead, and the refusal was said by name. */
+        }
+        /* The guest's callback did not add enough: the recording continues in
+         * a segment of the host's own memory. */
+        {
+            int lent = 0;
             pthread_mutex_lock(&s_lock);
             {
                 nvn_cb_buffer *slot = buffer_find(buffer, 0);
-                if (slot) recording_void(slot, "the guest did not hand over more command memory");
+                if (slot && !slot->void_recording && hostseg_take(slot)) lent = 1;
             }
             pthread_mutex_unlock(&s_lock);
-            s_stats.overflow++;
-            return NULL;
+            if (lent) continue;
         }
-        if (!request_more_memory(buffer, needed)) {
-            pthread_mutex_lock(&s_lock);
-            {
-                nvn_cb_buffer *slot = buffer_find(buffer, 0);
-                if (slot) recording_void(slot, "the memory callback of the guest did not help");
+        /* The bound of the host's lent memory is reached. The refusal was
+         * named, and the recording says that a command does not fit: it is
+         * not void because of memory. */
+        pthread_mutex_lock(&s_lock);
+        {
+            nvn_cb_buffer *slot = buffer_find(buffer, 0);
+            if (slot) {
+                recording_void(slot, "a command does not fit into the command memory of the "
+                                     "recording");
             }
-            pthread_mutex_unlock(&s_lock);
-            s_stats.overflow++;
-            return NULL;
         }
+        pthread_mutex_unlock(&s_lock);
+        s_stats.overflow++;
+        return NULL;
     }
 }
 
@@ -1699,8 +1986,7 @@ int nvn_command_buffer_initialize(void *buffer) {
             slot->copy_image_stride = 0;
             slot->memory_callback = 0;
             slot->memory_callback_data = 0;
-            slot->work_used = 0;
-            slot->work_record_count = 0;
+            segments_release(slot, 0);
             slot->view_count = 0;
             slot->diagnostic_count = 0;
             s_stats.initialized++;
@@ -1745,8 +2031,10 @@ void nvn_command_buffer_begin_recording(void *buffer) {
             slot->recording = 1;
             slot->void_recording = 0;
             slot->void_reason = NULL;
-            slot->work_used = 0;
-            slot->work_record_count = 0;
+            /* The command memory of a recording that was never ended is of no
+             * use to anyone: the segments of the host's memory go back to the
+             * pool with it. */
+            segments_release(slot, 0);
             slot->view_count = 0;
             /* The copies of a recording that was never ended are of no use
              * to anyone; the copies of a recording that ended went to its
@@ -1756,6 +2044,71 @@ void nvn_command_buffer_begin_recording(void *buffer) {
         }
     }
     pthread_mutex_unlock(&s_lock);
+}
+
+/* The memory of the package.
+ *
+ * The package holds the command memory the guest handed over and the records
+ * of the segments the host lent, in the order they were made, in one piece of
+ * memory: a reader that walks the package sees every record. The records of
+ * the host's segments are copied into it, so the segment itself is free again
+ * when the recording is over.
+ *
+ * The views of the records follow their bytes. */
+static uint8_t *package_assemble(nvn_cb_buffer *slot, size_t total,
+                                  nvn_command_package_segment *segments) {
+    nvn_cb_segment *first = slot->segments;
+    nvn_cb_segment *segment;
+    uint8_t *block;
+    size_t offset;
+    size_t index = 0;
+    if (!first) return NULL;
+    if (total > first->capacity) {
+        uint8_t *grown = (uint8_t *)realloc(first->mem, total);
+        if (!grown) return NULL;
+        if (grown != first->mem && slot->view_count) {
+            ptrdiff_t delta = (ptrdiff_t)(grown - first->mem);
+            size_t i;
+            for (i = 0; i < slot->view_count; i++) {
+                if (slot->views[i].segment != 0) continue;
+                slot->views[i].payload = (const uint8_t *)((ptrdiff_t)slot->views[i].payload + delta);
+            }
+        }
+        first->mem = grown;
+        first->capacity = total;
+    }
+    block = first->mem;
+    offset = first->used;
+    segments[0].offset = 0;
+    segments[0].bytes = first->used;
+    segments[0].record_count = first->record_count;
+    segments[0].host = 0;
+    for (segment = first->next; segment; segment = segment->next) {
+        index++;
+        if (segment->used) memcpy(block + offset, segment->mem, segment->used);
+        segments[index].offset = offset;
+        segments[index].bytes = segment->used;
+        segments[index].record_count = segment->record_count;
+        segments[index].host = 1;
+        offset += segment->used;
+    }
+    /* The records that were in a segment of the host's memory are in the
+     * package now, and their views follow them. */
+    {
+        size_t i;
+        for (i = 0; i < slot->view_count; i++) {
+            uint32_t which = slot->views[i].segment;
+            nvn_cb_segment *source;
+            size_t within;
+            if (which == 0) continue;
+            source = segment_at(slot, which);
+            if (!source) continue;
+            within = (size_t)((slot->views[i].payload - sizeof(nvn_cb_op_hdr)) - source->mem);
+            slot->views[i].payload =
+                block + segments[which].offset + within + sizeof(nvn_cb_op_hdr);
+        }
+    }
+    return block;
 }
 
 uint64_t nvn_command_buffer_end_recording(void *buffer) {
@@ -1774,42 +2127,74 @@ uint64_t nvn_command_buffer_end_recording(void *buffer) {
         } else {
             /* The end of the recording is the last record of it, as in the
              * reference. It has to fit into the command memory the guest
-             * handed over; eight bytes of it are kept for exactly this. */
+             * handed over; eight bytes of it are kept for exactly this. When
+             * it does not fit, a segment of the host's memory takes it, and
+             * the recording is not void because of memory. */
             uint8_t *end = NULL;
-            if (record_write_locked(slot, NVN_CB_OP_END, 0, &end) != NVN_CB_RESERVE_OK) {
-                reason = "the end of the recording did not fit into the command memory";
+            int result = record_write_locked(slot, NVN_CB_OP_END, 0, 1, &end);
+            if (result == NVN_CB_RESERVE_FULL && hostseg_take(slot)) {
+                result = record_write_locked(slot, NVN_CB_OP_END, 0, 1, &end);
+            }
+            if (result != NVN_CB_RESERVE_OK) {
+                reason = "a command does not fit into the command memory of the recording";
                 s_stats.overflow++;
             }
         }
         if (!reason) {
             nvn_cb_package *package;
+            size_t total = 0;
+            size_t count = 0;
+            size_t segments = slot->segment_count;
+            nvn_cb_segment *segment;
+            nvn_command_package_segment *map = NULL;
+            uint8_t *block = NULL;
+            for (segment = slot->segments; segment; segment = segment->next) {
+                total += segment->used;
+                count += segment->record_count;
+            }
             if (s_package_count >= NVN_CB_MAX_PACKAGES ||
-                s_package_bytes + slot->work_used > NVN_CB_MAX_PACKAGE_BYTES) {
+                s_package_bytes + total > NVN_CB_MAX_PACKAGE_BYTES) {
                 reason = "the registry of the command packages is full";
+            } else if (!segments) {
+                reason = "the recording holds no command memory";
             } else {
-                package = (nvn_cb_package *)calloc(1, sizeof(*package));
-                if (!package) {
+                map = (nvn_command_package_segment *)calloc(segments, sizeof(*map));
+                package = map ? (nvn_cb_package *)calloc(1, sizeof(*package)) : NULL;
+                if (!map || !package) {
+                    free(map);
+                    free(package);
                     reason = "the package of the recording could not be allocated";
                 } else {
                     /* The command memory of the recording becomes the
                      * package: it is written once and never written again,
                      * so the handle names an immutable package of commands. */
-                    package->handle = (uint64_t)(uintptr_t)slot->work;
-                    package->bytes = slot->work;
-                    package->bytes_used = slot->work_used;
-                    package->record_count = slot->work_record_count;
-                    package->copies = slot->copies;
-                    package->next = s_packages;
-                    s_packages = package;
-                    s_package_count++;
-                    s_package_bytes += package->bytes_used;
-                    s_stats.packages++;
-                    s_stats.package_bytes = s_package_bytes;
-                    s_stats.handles++;
-                    handle = package->handle;
-                    slot->work = NULL;
-                    slot->work_capacity = 0;
-                    slot->copies = NULL;
+                    block = package_assemble(slot, total, map);
+                    if (!block) {
+                        free(map);
+                        free(package);
+                        reason = "the package of the recording could not be allocated";
+                    } else {
+                        package->handle = (uint64_t)(uintptr_t)block;
+                        package->bytes = block;
+                        package->bytes_used = total;
+                        package->record_count = count;
+                        package->segments = map;
+                        package->segment_count = segments;
+                        package->copies = slot->copies;
+                        package->next = s_packages;
+                        s_packages = package;
+                        s_package_count++;
+                        s_package_bytes += package->bytes_used;
+                        s_stats.packages++;
+                        s_stats.package_bytes = s_package_bytes;
+                        s_stats.handles++;
+                        handle = package->handle;
+                        slot->copies = NULL;
+                        /* The command memory is the package's now, and the
+                         * segments of the host's memory go back to the pool:
+                         * the package holds a copy of their records. */
+                        segments_release(slot, 1);
+                    }
                 }
             }
         }
@@ -1836,7 +2221,13 @@ void nvn_command_buffer_add_command_memory(void *buffer, uint64_t size) {
     pthread_mutex_lock(&s_lock);
     {
         nvn_cb_buffer *slot = buffer_find(buffer, 1);
-        if (slot) slot->command_memory_size += size;
+        if (slot) {
+            slot->command_memory_size += size;
+            /* The guest hands out command memory again: the segments of the
+             * host's memory that took over the range of the guest's command
+             * memory the recording occupied are given back. */
+            hostseg_release(slot, size);
+        }
     }
     pthread_mutex_unlock(&s_lock);
 }
@@ -1903,9 +2294,8 @@ uint64_t nvn_command_buffer_get_command_memory_free(const void *buffer) {
     {
         nvn_cb_buffer *slot = buffer_find(buffer, 0);
         if (slot) {
-            size = slot->command_memory_size > slot->work_used
-                       ? slot->command_memory_size - slot->work_used
-                       : 0;
+            uint64_t used = segment_guest_used(slot);
+            size = slot->command_memory_size > used ? slot->command_memory_size - used : 0;
         }
     }
     pthread_mutex_unlock(&s_lock);
@@ -1917,7 +2307,7 @@ uint64_t nvn_command_buffer_get_command_memory_used(const void *buffer) {
     pthread_mutex_lock(&s_lock);
     {
         nvn_cb_buffer *slot = buffer_find(buffer, 0);
-        if (slot) size = slot->work_used;
+        if (slot) size = segment_guest_used(slot);
     }
     pthread_mutex_unlock(&s_lock);
     return size;
@@ -2075,6 +2465,8 @@ int nvn_command_buffer_get_package(uint64_t handle, nvn_command_package *out) {
             out->records = package->bytes;
             out->bytes = package->bytes_used;
             out->record_count = package->record_count;
+            out->segment_count = package->segment_count;
+            out->segments = package->segments;
             found = 1;
         }
     }
@@ -2089,6 +2481,8 @@ void nvn_command_buffer_get_stats(nvn_command_buffer_stats *out) {
     *out = s_stats;
     out->live_buffers = 0;
     out->records = 0;
+    out->host_segment_bytes = s_pool_bytes;
+    out->host_segment_bound = (uint64_t)NVN_CB_MAX_HOSTSEGMENTS * NVN_CB_HOSTSEG_BYTES;
     for (i = 0; i < NVN_CB_MAX_BUFFERS; i++) {
         if (!s_buffers[i].in_use) continue;
         if (!s_buffers[i].finalized) out->live_buffers++;
