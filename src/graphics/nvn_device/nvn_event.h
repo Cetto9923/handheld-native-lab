@@ -51,6 +51,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "nvn_obj_ffrs.h"
+
 /* How many events the runtime tracks at the same time. The guest keeps its
  * events in a pool, so a handful is enough; a guest that wants more is told
  * so instead of being served silently. The table grows with the number of
@@ -73,6 +75,10 @@ typedef struct nvn_event_family_entry {
 
 size_t nvn_event_family_count(void);
 const nvn_event_family_entry *nvn_event_family_entry_at(size_t index);
+
+/* Where the value of an event lives, for the replay layer that writes it.
+ * Returns 0 when this runtime has no event at that address. */
+int nvn_event_value_address_of(const void *event, uint64_t *address);
 
 /* Statistics for the contract. */
 typedef struct nvn_event_stats {

@@ -10,6 +10,7 @@
  * log says why.
  */
 #include "nvn_queue.h"
+#include "nvn_sync.h"
 
 #include "nvn_command_buffer.h"
 #include "nvn_command_replay.h"
@@ -104,24 +105,6 @@ static nvn_queue_sync_state s_syncs[NVN_QUEUE_MAX_SYNCS];
  * run, not once per sync object: it is a static flag there. The same flag
  * lives here. */
 static int s_wait_without_fence_logged;
-
-static nvn_queue_sync_state *sync_find(void *sync, int create) {
-    size_t i;
-    nvn_queue_sync_state *free_slot = NULL;
-    if (!sync) return NULL;
-    for (i = 0; i < NVN_QUEUE_MAX_SYNCS; i++) {
-        if (s_syncs[i].in_use) {
-            if (s_syncs[i].sync == sync) return &s_syncs[i];
-        } else if (!free_slot) {
-            free_slot = &s_syncs[i];
-        }
-    }
-    if (!create || !free_slot) return NULL;
-    memset(free_slot, 0, sizeof(*free_slot));
-    free_slot->sync = sync;
-    free_slot->in_use = 1;
-    return free_slot;
-}
 
 /* The builder state for one guest builder address. A builder that was never
  * prepared has no state, and the functions that need one say so instead of
@@ -683,40 +666,26 @@ void nvn_queue_present_texture(void *queue, void *window, int index) {
 }
 
 void nvn_queue_fence_sync(void *queue, void *sync, int condition, int flags) {
-    nvn_queue_sync_state *s;
-    uint64_t fence;
+    /* The sync object and its fence belong to the sync family, and the queue
+     * asks that family for the fence. The queue used to keep a table of its
+     * own, and two tables about one sync object were two truths about it:
+     * the queue fenced one and the sync family waited on the other. */
     pthread_mutex_lock(&s_queue_lock);
-    s = sync_find(sync, 1);
-    if (!s) {
-        s_stats.refused++;
-        pthread_mutex_unlock(&s_queue_lock);
-        fprintf(stderr, "[nvn] nvnQueueFenceSync: no room for another sync object; the sync was not fenced\n");
-        return;
-    }
-    /* The fence value that is recorded is this runtime's own submission
-     * counter. The host has no GPU fence to hand out: the replay reads the
-     * packages and issues no command, so there is nothing that could be
-     * signalled. The log says so. */
-    fence = s_stats.packages_handed_to_replay;
-    s->fenced = 1;
-    s->fence = fence;
     s_stats.fences_taken++;
     pthread_mutex_unlock(&s_queue_lock);
-    fprintf(stderr, "[nvn] nvnQueueFenceSync: queue=%p sync=%p condition=%d flags=%d; the sync is marked as fenced "
-                    "with the submission counter %" PRIu64
-                    " (the host has no GPU fence yet: the replay issues no command)\n",
-            queue, sync, condition, flags, fence);
+    nvn_sync_family_fence(sync);
+    fprintf(stderr, "[nvn] nvnQueueFenceSync: queue=%p sync=%p condition=%d flags=%d; the sync object is fenced "
+                    "with the fence value of the last submission the host made\n",
+            queue, sync, condition, flags);
     NVN_VOID_RETURN();
 }
 
 int nvn_queue_wait_sync(void *queue, const void *sync) {
-    nvn_queue_sync_state *s;
     int fenced = 0;
     int log_it = 0;
 
     pthread_mutex_lock(&s_queue_lock);
-    s = sync_find((void *)(uintptr_t)sync, 0);
-    if (s) fenced = s->fenced;
+    fenced = nvn_sync_family_is_fenced(sync);
     s_stats.waits++;
     if (!fenced) {
         s_stats.waits_without_fence++;

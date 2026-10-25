@@ -9,6 +9,7 @@
  * computed: guessing it would produce a name that matches nothing.
  */
 #include "nvn_program.h"
+#include "nvn_obj_ffrs.h"
 
 #include "nvn_device.h"
 #include "nvn_memory_pool.h"
@@ -65,11 +66,17 @@ typedef struct {
         char key[NVN_SHA256_KEY_HEX_SIZE];
         unsigned char control[NVN_PROGRAM_CONTROL_SIZE];
     } stages[NVN_PROGRAM_MAX_STAGES];
+    /* The generation of this program object: the guest may initialize the
+     * same address again, and the replay layer has to see that as a different
+     * program. */
+    uint64_t serial;
     char debug_label[64];
     int in_use;
 } nvn_program_state;
 
 static pthread_mutex_t s_program_lock = PTHREAD_MUTEX_INITIALIZER;
+/* The generation of the programs of this runtime. */
+static uint64_t s_program_serial;
 static nvn_object_table s_programs = { NULL, 0, 0, sizeof(nvn_program_state) };
 static nvn_program_stats s_stats;
 
@@ -189,6 +196,7 @@ int nvn_program_initialize(void *program, void *device) {
         return 0;
     }
     p->stage_count = 0;
+    p->serial = ++s_program_serial;
     s_stats.initialized++;
     pthread_mutex_unlock(&s_program_lock);
     fprintf(stderr, "[nvn] nvnProgramInitialize: program=%p device=%p -> true\n", program, device);
@@ -331,6 +339,38 @@ int nvn_program_get_subtile_size(void *program) {
 }
 
 /* ------------------------------------------------------------------ */
+/* What this family knows about one program.
+ *
+ * The replay layer takes the shader of a stage from the control section that
+ * the guest handed over, and the control section is only valid while the
+ * guest is inside the call that hands it over. This runtime copied it when
+ * the shaders were set, so the copy is what the replay layer is given.
+ *
+ * The control section is copied whole, all 0x880 bytes of it, even when the
+ * section says that it is shorter: the name of a shader is the hash of the
+ * first 0x880 bytes of the control section, so the bytes after the shorter
+ * length are part of the name. */
+int nvn_program_info_of(const void *program, nvn_program_info *out) {
+    nvn_program_state *p;
+    int i;
+    if (!program || !out) return 0;
+    pthread_mutex_lock(&s_program_lock);
+    p = program_find((void *)(uintptr_t)program, 0);
+    if (!p || !p->in_use) {
+        pthread_mutex_unlock(&s_program_lock);
+        return 0;
+    }
+    memset(out, 0, sizeof(*out));
+    out->nstage = (uint32_t)(p->stage_count > 0 ? p->stage_count : 0);
+    out->serial = p->serial;
+    for (i = 0; i < NVN_PROGRAM_MAX_STAGES && i < 6; i++) {
+        out->sd[i].data = p->stages[i].data_address;
+        out->sd[i].control = &p->stages[i].control[0];
+    }
+    pthread_mutex_unlock(&s_program_lock);
+    return 1;
+}
+
 /* The names                                                           */
 /* ------------------------------------------------------------------ */
 

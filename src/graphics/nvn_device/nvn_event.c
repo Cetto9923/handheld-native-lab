@@ -55,6 +55,7 @@
  *     nvnBufferGetMemoryOffset (nvn.h:1249) do for a buffer.
  */
 #include "nvn_event.h"
+#include "nvn_obj_ffrs.h"
 
 #include "nvn_device.h"
 
@@ -634,4 +635,29 @@ void nvn_event_get_stats(nvn_event_stats *out) {
         if (entry && entry->in_use) out->live_builders++;
     }
     pthread_mutex_unlock(&s_event_lock);
+}
+
+/* Where the value of an event lives.
+ *
+ * The reference host puts the value into the memory the guest gave the
+ * event (hle_nvn.c:646), and the replay layer writes the value there when
+ * the GPU is done with it. This runtime keeps a copy of the value beside
+ * the rest of the event's state, but the address is the same one: the
+ * replay layer writes into the guest's own memory, which is where the guest
+ * reads it back from. */
+int nvn_event_value_address_of(const void *event, uint64_t *address) {
+    nvn_event_state *slot;
+    nvn_memory_pool_info info;
+    if (!event || !address) return 0;
+    pthread_mutex_lock(&s_event_lock);
+    slot = event_find((void *)(uintptr_t)event, 0);
+    if (!slot || !slot->initialized) {
+        pthread_mutex_unlock(&s_event_lock);
+        return 0;
+    }
+    pthread_mutex_unlock(&s_event_lock);
+    if (!nvn_memory_pool_info_of(slot->memory_pool, &info)) return 0;
+    if (!info.mem) return 0;
+    *address = (uint64_t)(uintptr_t)(info.mem + slot->memory_offset);
+    return 1;
 }

@@ -73,6 +73,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "nvn_obj_ffrs.h"
+
 /* How many sync objects the runtime tracks at the same time.
  *
  * The table grows with the number of sync objects the guest has, so this is a
@@ -108,6 +110,12 @@ const nvn_sync_family_entry *nvn_sync_family_entry_at(size_t index);
  * queue may fence a sync the guest has not made yet, and refusing that
  * would drop a fence the guest asked for. */
 void nvn_sync_family_fence(void *sync);
+
+/* The object of a sync object, for the replay layer that fences it.
+ *
+ * The object is the one this family keeps its own fence state in, so that
+ * the replay layer and this family are looking at the same fence. */
+ffrs_sync *nvn_sync_family_object(const void *sync);
 
 /* Whether a sync object has a fence. A sync object that does not exist has
  * none. */

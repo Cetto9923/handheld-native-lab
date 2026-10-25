@@ -37,6 +37,7 @@
  * claimed to agree with the reference, because the reference does not say.
  */
 #include "nvn_texture_view.h"
+#include "nvn_obj_ffrs.h"
 
 #include "nvn_device.h"
 
@@ -64,6 +65,8 @@ typedef struct {
     NVNtextureSwizzle swizzle[4];
     int set_dsmode;
     NVNtextureDepthStencilMode dsmode;
+    /* The generation of this view object. */
+    uint64_t serial;
     int in_use;
 } nvn_texture_view_state;
 
@@ -90,6 +93,8 @@ enum {
 };
 
 static pthread_mutex_t s_view_lock = PTHREAD_MUTEX_INITIALIZER;
+/* The generation of the views of this runtime. */
+static uint64_t s_view_serial;
 static nvn_object_table s_views = { NULL, 0, 0, sizeof(nvn_texture_view_state) };
 static nvn_texture_view_stats s_stats;
 static int s_logged[TV_NAME_COUNT];
@@ -113,7 +118,10 @@ static nvn_texture_view_state *view_find(void *view, int create) {
         nvn_texture_view_state *entry = (nvn_texture_view_state *)nvn_object_table_at(&s_views, i);
         if (!entry) continue;
         if (entry->in_use) {
-            if (entry->view == view) return entry;
+            if (entry->view == view) {
+                if (create) entry->serial = ++s_view_serial;
+                return entry;
+            }
         } else if (!free_slot) {
             free_slot = entry;
         }
@@ -126,6 +134,10 @@ static nvn_texture_view_state *view_find(void *view, int create) {
     *free_slot = default_state();
     free_slot->view = view;
     free_slot->in_use = 1;
+    /* A new generation: the guest is about to make this view say something
+     * else, and the copy the replay layer holds of it is no longer the one
+     * the guest means. */
+    free_slot->serial = ++s_view_serial;
     return free_slot;
 }
 
@@ -608,4 +620,41 @@ void nvn_texture_view_get_stats(nvn_texture_view_stats *out) {
         if (((nvn_texture_view_state *)nvn_object_table_at(&s_views, i))->in_use) out->live_views++;
     }
     pthread_mutex_unlock(&s_view_lock);
+}
+
+/* What this family knows about one view.
+ *
+ * The view is packed the way the newer SDK packs it: the flags are bits in
+ * the first byte and the numbers are as small as they can be, so that the
+ * whole view fits in the sixteen bytes the guest's own view object has. */
+int nvn_texture_view_info_of(const void *view, ffrs_view *out, uint64_t *serial) {
+    nvn_texture_view_state *slot;
+    int i;
+    if (!view || !out) return 0;
+    pthread_mutex_lock(&s_view_lock);
+    slot = view_find((void *)(uintptr_t)view, 0);
+    if (!slot || !slot->in_use) {
+        pthread_mutex_unlock(&s_view_lock);
+        return 0;
+    }
+    memset(out, 0, sizeof(*out));
+    out->set_levels = slot->set_levels ? 1 : 0;
+    out->set_layers = slot->set_layers ? 1 : 0;
+    out->set_format = slot->set_format ? 1 : 0;
+    out->set_target = slot->set_target ? 1 : 0;
+    out->set_swizzle = slot->set_swizzle ? 1 : 0;
+    out->set_dsmode = slot->set_dsmode ? 1 : 0;
+    out->dsmode = (uint8_t)(slot->dsmode & 0x3);
+    out->target = (uint8_t)slot->target;
+    out->base_level = (uint8_t)slot->base_level;
+    out->nlevels = (uint8_t)slot->nlevels;
+    out->format = (uint16_t)slot->format;
+    out->min_layer = (uint16_t)slot->min_layer;
+    out->nlayers = (uint16_t)slot->nlayers;
+    for (i = 0; i < 4; i++) out->swz[i] = (uint8_t)slot->swizzle[i];
+    /* The guest may set the same view object again; the copy has to know
+     * that it is a new view and not the one it already holds. */
+    if (serial) *serial = slot->serial;
+    pthread_mutex_unlock(&s_view_lock);
+    return 1;
 }

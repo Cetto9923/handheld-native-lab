@@ -99,8 +99,11 @@ typedef struct {
     uint64_t gl_sync; /* the opaque GL handle, when the sync came from one */
     int has_gl_sync;
     int initialized;
-    int fenced;
-    uint64_t fence;   /* the value the sync was fenced with */
+    /* The fence state of this sync object. It is an object of its own and
+     * not two fields, because the replay layer writes the fence into it when
+     * it reaches the point of the command stream where the guest fenced it:
+     * the host and the replay layer have to be looking at the same thing. */
+    ffrs_sync object;
     char debug_label[64];
     int in_use;
 } nvn_sync_state;
@@ -210,8 +213,8 @@ int nvnSyncInitialize(void *sync, void *device) {
         } else {
             slot->device = device;
             slot->initialized = 1;
-            slot->fenced = 0;
-            slot->fence = 0;
+            memset(&slot->object, 0, sizeof(slot->object));
+            slot->object.magic = FFRS_NVN_MAGIC('S', 'Y', 'N', 'C');
             slot->gl_sync = 0;
             slot->has_gl_sync = 0;
             slot->debug_label[0] = '\0';
@@ -256,8 +259,8 @@ void nvnSyncFinalize(void *sync) {
     found = sync_find(sync, 0);
     if (found) {
         found->initialized = 0;
-        found->fenced = 0;
-        found->fence = 0;
+        found->object.fenced = 0;
+        found->object.fence = 0;
         found->in_use = 0;
         s_stats.finalized++;
     } else {
@@ -354,7 +357,7 @@ NVNsyncWaitResult nvnSyncWait(const void *sync, uint64_t timeout) {
          * else (hle_nvn.c:639): a sync that the queue fenced answers the
          * signalled result even when the guest never initialized it, and
          * the queue may fence a sync the guest has not made yet. */
-        fenced = found->fenced;
+        fenced = found->object.fenced;
         if (found->initialized) known = 1;
     }
     if (!fenced) s_stats.waits_without_fence++;
@@ -455,8 +458,8 @@ int nvnSyncInitializeFromFencedGLSync(void *sync, void *gl_sync) {
         } else {
             slot->device = NULL;
             slot->initialized = 1;
-            slot->fenced = 1;
-            slot->fence = ++s_fence_sequence;
+            slot->object.fenced = 1;
+            slot->object.fence = ++s_fence_sequence;
             slot->gl_sync = (uint64_t)(uintptr_t)gl_sync;
             slot->has_gl_sync = 1;
             slot->debug_label[0] = '\0';
@@ -476,7 +479,7 @@ int nvnSyncInitializeFromFencedGLSync(void *sync, void *gl_sync) {
         fprintf(stderr, "[nvn] nvnSyncInitializeFromFencedGLSync: sync=%p gl_sync=%p -> the sync object is "
                         "initialized and fenced with the host's own fence sequence %" PRIu64
                         "; the GL handle is opaque here and was not dereferenced\n",
-                sync, gl_sync, slot ? slot->fence : 0);
+                sync, gl_sync, slot ? slot->object.fence : 0);
     }
     return ready ? 1 : 0;
 }
@@ -500,8 +503,8 @@ void nvn_sync_family_fence(void *sync) {
         refused = 1;
     } else {
         fence = ++s_fence_sequence;
-        slot->fenced = 1;
-        slot->fence = fence;
+        slot->object.fenced = 1;
+        slot->object.fence = fence;
         s_stats.fences_taken++;
     }
     pthread_mutex_unlock(&s_sync_lock);
@@ -512,13 +515,33 @@ void nvn_sync_family_fence(void *sync) {
     }
 }
 
+/* The object of a sync, for the replay layer.
+ *
+ * The replay layer fences a sync by writing the fence value into the object
+ * (the reference does the same, hle_nvn.c:7702), so the object has to be
+ * the one this family keeps its own state in. A sync that the guest has not
+ * made yet is made here: the queue may fence a sync the guest has not made
+ * yet, and the fence must not be dropped. */
+ffrs_sync *nvn_sync_family_object(const void *sync) {
+    nvn_sync_state *slot;
+    pthread_mutex_lock(&s_sync_lock);
+    slot = sync_find((void *)(uintptr_t)sync, 1);
+    if (!slot) {
+        pthread_mutex_unlock(&s_sync_lock);
+        return NULL;
+    }
+    if (!slot->object.magic) slot->object.magic = FFRS_NVN_MAGIC('S', 'Y', 'N', 'C');
+    pthread_mutex_unlock(&s_sync_lock);
+    return &slot->object;
+}
+
 int nvn_sync_family_is_fenced(const void *sync) {
     nvn_sync_state *found;
     int fenced = 0;
 
     pthread_mutex_lock(&s_sync_lock);
     found = sync_find((void *)(uintptr_t)sync, 0);
-    if (found) fenced = found->fenced;
+    if (found) fenced = found->object.fenced;
     pthread_mutex_unlock(&s_sync_lock);
     return fenced;
 }
@@ -529,7 +552,7 @@ uint64_t nvn_sync_family_fence_value(const void *sync) {
 
     pthread_mutex_lock(&s_sync_lock);
     found = sync_find((void *)(uintptr_t)sync, 0);
-    if (found) fence = found->fence;
+    if (found) fence = found->object.fence;
     pthread_mutex_unlock(&s_sync_lock);
     return fence;
 }
@@ -542,7 +565,7 @@ int nvn_sync_family_wait(const void *sync, int *logged) {
     if (logged) *logged = 0;
     pthread_mutex_lock(&s_sync_lock);
     found = sync_find((void *)(uintptr_t)sync, 0);
-    if (found) fenced = found->fenced;
+    if (found) fenced = found->object.fenced;
     s_stats.waits++;
     if (!fenced) {
         s_stats.waits_without_fence++;

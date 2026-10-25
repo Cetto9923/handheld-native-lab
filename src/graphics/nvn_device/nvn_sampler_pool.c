@@ -9,6 +9,7 @@
  * on the host, because the guest's sampler objects are never read here.
  */
 #include "nvn_sampler_pool.h"
+#include "nvn_obj_ffrs.h"
 
 #include "nvn_device.h"
 #include "nvn_memory_pool.h"
@@ -339,4 +340,22 @@ void nvn_sampler_pool_get_stats(nvn_sampler_pool_stats *out) {
         if (s_pools[i].in_use && s_pools[i].initialized) out->live_pools++;
     }
     pthread_mutex_unlock(&s_sampler_pool_lock);
+}
+
+/* What this family knows about one sampler pool: the memory pool the
+ * descriptors live in and how many of them there are. */
+int nvn_sampler_pool_info_of(const void *pool, nvn_pool_info *out) {
+    nvn_sampler_pool_state *slot;
+    if (!pool || !out) return 0;
+    pthread_mutex_lock(&s_sampler_pool_lock);
+    slot = pool_find((void *)(uintptr_t)pool, 0);
+    if (!slot || !slot->initialized) {
+        pthread_mutex_unlock(&s_sampler_pool_lock);
+        return 0;
+    }
+    out->memory_pool = slot->memory_pool;
+    out->memory_offset = slot->memory_offset;
+    out->size = slot->size;
+    pthread_mutex_unlock(&s_sampler_pool_lock);
+    return 1;
 }

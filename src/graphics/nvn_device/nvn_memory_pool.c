@@ -14,6 +14,7 @@
  * find that out much later, at a place where the cause is no longer visible.
  */
 #include "nvn_memory_pool.h"
+#include "nvn_obj_ffrs.h"
 
 #include "nvn_device.h"
 
@@ -489,4 +490,27 @@ void nvn_memory_pool_get_stats(nvn_memory_pool_stats *out) {
         }
     }
     pthread_mutex_unlock(&s_pool_lock);
+}
+
+/* What this family knows about one memory pool: the memory the guest gave
+ * it, its size and its flags.
+ *
+ * The GPU address of a range of a pool is the address of that range in the
+ * guest's own memory (the reference calls this the convention "GPU address =
+ * CPU address", dm/gfx/nvn/nvn_metal_mapping.md:9), so the storage address
+ * is what the pool holds. */
+int nvn_memory_pool_info_of(const void *pool, nvn_memory_pool_info *out) {
+    nvn_memory_pool_state *slot;
+    if (!pool || !out) return 0;
+    pthread_mutex_lock(&s_pool_lock);
+    slot = pool_find((void *)(uintptr_t)pool, 0);
+    if (!slot || !slot->initialized) {
+        pthread_mutex_unlock(&s_pool_lock);
+        return 0;
+    }
+    out->mem = (uint8_t *)slot->storage;
+    out->size = slot->size;
+    out->flags = slot->flags;
+    pthread_mutex_unlock(&s_pool_lock);
+    return 1;
 }

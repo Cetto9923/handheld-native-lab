@@ -84,6 +84,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <string.h>
+#include "nvn_obj_ffrs.h"
 #include "nvn_object_table.h"
 
 typedef struct {
@@ -104,6 +105,10 @@ typedef struct {
     NVNtextureDepthStencilMode depth_stencil_mode;
     size_t zcull_storage_size;
     uint64_t debug_id;
+    /* The generation of this texture object. The guest may initialize the
+     * same address again, and the replay layer has to see that as a different
+     * texture: the number is what tells the two apart. */
+    uint64_t serial;
     char debug_label[64];
     int initialized;
     int in_use;
@@ -149,6 +154,9 @@ enum {
 };
 
 static pthread_mutex_t s_texture_lock = PTHREAD_MUTEX_INITIALIZER;
+/* The generation of the textures of this runtime. It only has to grow: every
+ * initialization is a new generation. */
+static uint64_t s_texture_serial;
 static nvn_object_table s_textures = { NULL, 0, 0, sizeof(nvn_texture_state) };
 static nvn_texture_stats s_stats;
 static int s_logged[TX_NAME_COUNT];
@@ -361,6 +369,7 @@ int nvnTextureInitialize(void *texture, const void *builder) {
              * sequence and ignores its arguments. */
             taken.debug_id = nvn_device_generate_debug_domain_id(taken.device, "nvnTexture");
             taken.initialized = 1;
+            taken.serial = ++s_texture_serial;
             *slot = taken;
             s_stats.initialized++;
             ready = 1;
@@ -1235,6 +1244,42 @@ NVNtextureHandle nvnDeviceGetTexelFetchHandle(const void *device, int tex) {
 }
 
 /* ------------------------------------------------------------------ */
+/* What this family knows about one texture.
+ *
+ * The replay layer reads a texture's description out of a copy of the
+ * guest's object, so the description has to be the one the guest gave: the
+ * format, the shape and the flags come from the builder the guest
+ * initialized the texture from, and the storage comes from the memory pool
+ * the builder named. */
+int nvn_texture_info_of(const void *texture, nvn_texture_info *out) {
+    nvn_texture_state *slot;
+    if (!texture || !out) return 0;
+    pthread_mutex_lock(&s_texture_lock);
+    slot = texture_find((void *)(uintptr_t)texture, 0);
+    if (!slot || !slot->initialized) {
+        pthread_mutex_unlock(&s_texture_lock);
+        return 0;
+    }
+    memset(out, 0, sizeof(*out));
+    out->d.target = (int)slot->target;
+    out->d.format = (int)slot->format;
+    out->d.flags = (int)slot->flags;
+    out->d.samples = slot->samples;
+    out->d.width = (uint32_t)(slot->width > 0 ? slot->width : 0);
+    out->d.height = (uint32_t)(slot->height > 0 ? slot->height : 0);
+    out->d.depth = (uint32_t)(slot->depth > 0 ? slot->depth : 0);
+    out->d.levels = (uint32_t)(slot->levels > 0 ? slot->levels : 0);
+    out->d.stride = (uint32_t)(slot->stride > 0 ? slot->stride : 0);
+    /* The packaged layout is the automatic one: the guest never names the
+     * block height of the packed textures it hands over. */
+    out->d.pkg_block_h = 0;
+    out->memory_pool = slot->memory_pool;
+    out->memory_offset = slot->memory_offset;
+    out->serial = slot->serial;
+    pthread_mutex_unlock(&s_texture_lock);
+    return 1;
+}
+
 /* The names                                                            */
 /* ------------------------------------------------------------------ */
 

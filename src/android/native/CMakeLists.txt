@@ -93,6 +93,7 @@ if(ANDROID)
         "${FFRS_GUEST_NVN_DIR}/nvn_texture_view.c"
         "${FFRS_GUEST_NVN_DIR}/nvn_present.c"
         "${FFRS_GUEST_NVN_DIR}/nvn_buffer.c"
+        "${FFRS_GUEST_NVN_DIR}/nvn_bridge.c"
         "${FFRS_GUEST_NVN_DIR}/nvn_sync.c"
         "${FFRS_GUEST_NVN_DIR}/nvn_event.c"
         "${FFRS_GUEST_NVN_DIR}/nvn_backend_vulkan.c")

@@ -27,6 +27,9 @@
  * this runtime does not have.
  */
 #include "nvn_command_buffer.h"
+#include "nvn_sync.h"
+#include "nvn_event.h"
+#include "nvn_bridge.h"
 
 #include "nvn_sampler_pool.h"
 #include "nvn_texture_pool.h"
@@ -531,34 +534,6 @@ static void count_copied(size_t bytes) {
     s_stats.copies_bytes += bytes;
 }
 
-static void *copy_guest_data(nvn_cb_buffer *slot, const void *source, size_t size) {
-    nvn_cb_copy *copy;
-    void *bytes;
-    if (!source || !size) return NULL;
-    if (size > NVN_CB_MAX_COPY_BYTES) {
-        s_stats.copy_refused++;
-        return NULL;
-    }
-    bytes = malloc(size);
-    if (!bytes) {
-        s_stats.copy_refused++;
-        return NULL;
-    }
-    memcpy(bytes, source, size);
-    copy = (nvn_cb_copy *)calloc(1, sizeof(*copy));
-    if (!copy) {
-        free(bytes);
-        s_stats.copy_refused++;
-        return NULL;
-    }
-    copy->bytes = bytes;
-    copy->size = size;
-    copy->next = slot->copies;
-    slot->copies = copy;
-    count_copied(size);
-    return bytes;
-}
-
 /* ------------------------------------------------------------------ */
 /* The command memory of a recording                                   */
 /* ------------------------------------------------------------------ */
@@ -903,13 +878,24 @@ enum {
 /* The copy of a view. The reference reads the first sixteen bytes of the
  * guest's view object as its own view structure; the same sixteen bytes go
  * here, and nothing more is read. */
+/* The view of the guest's address, as the replay layer reads it.
+ *
+ * The guest's own view object is not read: this runtime keeps the state of
+ * the view on the host and does not write it into the guest's object, so the
+ * bytes there are not the view. The copy the bridge makes is in the layout
+ * the replay layer reads. */
 static void copy_view(nvn_cb_view *out, uint8_t *has, const void *view, size_t view_size) {
-    size_t size = sizeof(*out);
+    const ffrs_view *copy;
+    (void)view_size;
     *has = view != NULL;
     if (!view) return;
-    if (view_size < size) size = view_size;
-    memcpy(out, view, size);
-    count_copied(size);
+    copy = nvn_bridge_view(view);
+    if (!copy) {
+        *has = 0;
+        return;
+    }
+    memcpy(out, copy, sizeof(*out));
+    count_copied(sizeof(*out));
 }
 
 void nvn_command_buffer_rec_set_render_targets(void *buffer, int count, const void *const *colors,
@@ -917,6 +903,7 @@ void nvn_command_buffer_rec_set_render_targets(void *buffer, int count, const vo
                                                 size_t view_size, const void *depth,
                                                 const void *depth_view) {
     nvn_cb_p_set_rt *record;
+    (void)texture_size;
     void *color_copy[8];
     void *depth_copy = NULL;
     int i;
@@ -939,14 +926,18 @@ void nvn_command_buffer_rec_set_render_targets(void *buffer, int count, const vo
             for (i = 0; i < count; i++) {
                 const void *texture = colors ? colors[i] : NULL;
                 if (!texture) continue;
-                color_copy[i] = copy_guest_data(slot, texture, texture_size);
+                /* The target is the texture of the bridge: a copy of the
+                 * guest's object bytes would be the bytes of an object this
+                 * runtime never writes, and the replay layer would read a
+                 * texture that has no description. */
+                color_copy[i] = (void *)nvn_bridge_texture(texture);
                 if (!color_copy[i]) {
                     failed = 1;
                     break;
                 }
             }
             if (!failed && depth) {
-                depth_copy = copy_guest_data(slot, depth, texture_size);
+                depth_copy = (void *)nvn_bridge_texture(depth);
                 if (!depth_copy) failed = 1;
             }
         } else {
@@ -1088,13 +1079,12 @@ void nvn_command_buffer_rec_set_depth_range(void *buffer, float near_value, floa
 void nvn_command_buffer_rec_bind_program(void *buffer, const void *program, size_t program_size,
                                           int stages) {
     nvn_cb_p_bind_program *record;
-    nvn_cb_buffer *slot;
     void *copy = NULL;
+    (void)program_size;
     if (program) {
-        pthread_mutex_lock(&s_lock);
-        slot = buffer_find(buffer, 0);
-        if (slot) copy = copy_guest_data(slot, program, program_size);
-        pthread_mutex_unlock(&s_lock);
+        /* The program is the program of the bridge: the replay layer takes
+         * the shaders of a stage out of it. */
+        copy = (void *)nvn_bridge_program(program);
         if (!copy) {
             s_stats.dropped++;
             return;
@@ -1443,7 +1433,7 @@ void nvn_command_buffer_rec_set_texture_pool(void *buffer, const void *pool) {
         pthread_mutex_lock(&s_lock);
         slot = buffer_find(buffer, 0);
         if (slot) {
-            copy = copy_guest_data(slot, pool, 0x20u);
+            copy = (void *)nvn_bridge_texture_pool(pool);
             /* The numbering base of the pool is settled here and kept in
              * the buffer's own state, the way the reference does it. */
             slot->tex_base = nvn_texture_pool_base(pool);
@@ -1467,7 +1457,7 @@ void nvn_command_buffer_rec_set_sampler_pool(void *buffer, const void *pool) {
         pthread_mutex_lock(&s_lock);
         slot = buffer_find(buffer, 0);
         if (slot) {
-            copy = copy_guest_data(slot, pool, 0x20u);
+            copy = (void *)nvn_bridge_sampler_pool(pool);
             /* The samplers have a numbering of their own, apart from the
              * numbering of the textures. */
             slot->samp_base = nvn_sampler_pool_base(pool);
@@ -1518,7 +1508,7 @@ void nvn_command_buffer_rec_clear_texture(void *buffer, const void *texture, con
     }
     pthread_mutex_lock(&s_lock);
     slot = buffer_find(buffer, 0);
-    if (slot) texture_copy = copy_guest_data(slot, texture, 0xC0u);
+    if (slot) texture_copy = (void *)nvn_bridge_texture(texture);
     pthread_mutex_unlock(&s_lock);
     if (!texture_copy) {
         s_stats.dropped++;
@@ -1556,7 +1546,7 @@ void nvn_command_buffer_rec_copy_buffer_to_texture(void *buffer, uint64_t source
     }
     pthread_mutex_lock(&s_lock);
     slot = buffer_find(buffer, 0);
-    if (slot) texture_copy = copy_guest_data(slot, texture, 0xC0u);
+    if (slot) texture_copy = (void *)nvn_bridge_texture(texture);
     pthread_mutex_unlock(&s_lock);
     if (!texture_copy) {
         s_stats.dropped++;
@@ -1584,7 +1574,7 @@ void nvn_command_buffer_rec_copy_texture_to_buffer(void *buffer, const void *tex
     }
     pthread_mutex_lock(&s_lock);
     slot = buffer_find(buffer, 0);
-    if (slot) texture_copy = copy_guest_data(slot, texture, 0xC0u);
+    if (slot) texture_copy = (void *)nvn_bridge_texture(texture);
     pthread_mutex_unlock(&s_lock);
     if (!texture_copy) {
         s_stats.dropped++;
@@ -1616,8 +1606,8 @@ void nvn_command_buffer_rec_copy_texture_to_texture(void *buffer, const void *so
     pthread_mutex_lock(&s_lock);
     slot = buffer_find(buffer, 0);
     if (slot) {
-        source_copy = copy_guest_data(slot, source, 0xC0u);
-        destination_copy = copy_guest_data(slot, destination, 0xC0u);
+        source_copy = (void *)nvn_bridge_texture(source);
+        destination_copy = (void *)nvn_bridge_texture(destination);
     }
     pthread_mutex_unlock(&s_lock);
     if (!source_copy || !destination_copy) {
@@ -1698,14 +1688,12 @@ void nvn_command_buffer_rec_report_value(void *buffer, uint32_t value, uint64_t 
 void nvn_command_buffer_rec_signal_event(void *buffer, const void *event, uint32_t mode,
                                           uint32_t value) {
     uint8_t *record;
-    nvn_cb_buffer *slot;
-    void *copy = NULL;
+    uint64_t address = 0;
     if (event) {
-        pthread_mutex_lock(&s_lock);
-        slot = buffer_find(buffer, 1);
-        if (slot) copy = copy_guest_data(slot, event, 0x40u);
-        pthread_mutex_unlock(&s_lock);
-        if (!copy) {
+        /* The record names the address of the event's value, which is what
+         * the replay layer writes into when the GPU is done (the reference
+         * records the address too, hle_nvn.c:819). */
+        if (!nvn_event_value_address_of(event, &address)) {
             s_stats.dropped++;
             return;
         }
@@ -1713,8 +1701,7 @@ void nvn_command_buffer_rec_signal_event(void *buffer, const void *event, uint32
     record = (uint8_t *)record_open(buffer, NVN_CB_OP_SIGNAL_EVENT, 16);
     if (!record) return;
     {
-        uint64_t pointer = (uint64_t)(uintptr_t)copy;
-        memcpy(record, &pointer, sizeof(pointer));
+        memcpy(record, &address, sizeof(address));
         memcpy(record + 8, &mode, sizeof(mode));
         memcpy(record + 12, &value, sizeof(value));
     }
@@ -1722,14 +1709,14 @@ void nvn_command_buffer_rec_signal_event(void *buffer, const void *event, uint32
 
 void nvn_command_buffer_rec_fence_sync(void *buffer, const void *sync) {
     uint8_t *record;
-    nvn_cb_buffer *slot;
-    void *copy = NULL;
+    ffrs_sync *object = NULL;
     if (sync) {
-        pthread_mutex_lock(&s_lock);
-        slot = buffer_find(buffer, 1);
-        if (slot) copy = copy_guest_data(slot, sync, 0x40u);
-        pthread_mutex_unlock(&s_lock);
-        if (!copy) {
+        /* The record names the sync object that the replay layer fences by
+         * writing the fence value into it. It is the object the sync family
+         * keeps its own state in, so that the guest's wait and the replay
+         * layer's fence are looking at the same fence. */
+        object = nvn_sync_family_object(sync);
+        if (!object) {
             s_stats.dropped++;
             return;
         }
@@ -1737,7 +1724,7 @@ void nvn_command_buffer_rec_fence_sync(void *buffer, const void *sync) {
     record = (uint8_t *)record_open(buffer, NVN_CB_OP_FENCE_SYNC, 8);
     if (!record) return;
     {
-        uint64_t pointer = (uint64_t)(uintptr_t)copy;
+        uint64_t pointer = (uint64_t)(uintptr_t)object;
         memcpy(record, &pointer, sizeof(pointer));
     }
 }

@@ -38,6 +38,7 @@
  * no getter for it.
  */
 #include "nvn_sampler.h"
+#include "nvn_obj_ffrs.h"
 
 #include "nvn_device.h"
 #include "nvn_sampler_builder.h"
@@ -68,6 +69,10 @@ typedef struct {
     int border_colori[4];
     uint32_t border_colorui[4];
     uint64_t debug_id;
+    /* The generation of this sampler object: the guest may initialize the
+     * same address again, and the replay layer has to see that as a different
+     * sampler. */
+    uint64_t serial;
     char debug_label[64];
     int initialized;
     int in_use;
@@ -97,6 +102,8 @@ enum {
 };
 
 static pthread_mutex_t s_sampler_lock = PTHREAD_MUTEX_INITIALIZER;
+/* The generation of the samplers of this runtime. */
+static uint64_t s_sampler_serial;
 static nvn_object_table s_samplers = { NULL, 0, 0, sizeof(nvn_sampler_state) };
 static nvn_sampler_stats s_stats;
 static int s_logged[SP_NAME_COUNT];
@@ -218,6 +225,7 @@ int nvnSamplerInitialize(void *sampler, const void *builder) {
              * uses. The generator hands out an id from the device's own
              * sequence and ignores its arguments. */
             slot->debug_id = nvn_device_generate_debug_domain_id(params.device, "nvnSampler");
+            slot->serial = ++s_sampler_serial;
             slot->initialized = 1;
             s_stats.initialized++;
             ready = 1;
@@ -778,4 +786,38 @@ void nvn_sampler_get_stats(nvn_sampler_stats *out) {
         if (((nvn_sampler_state *)nvn_object_table_at(&s_samplers, i))->in_use && ((nvn_sampler_state *)nvn_object_table_at(&s_samplers, i))->initialized) out->live_samplers++;
     }
     pthread_mutex_unlock(&s_sampler_lock);
+}
+
+/* What this family knows about one sampler.
+ *
+ * The values are the guest's own enumerations, not the host's: the replay
+ * layer translates them into the ones of the graphics API it speaks, and it
+ * has to see the same numbers the guest gave. */
+int nvn_sampler_info_of(const void *sampler, ffrs_samp_par *out, uint64_t *serial) {
+    nvn_sampler_state *slot;
+    int i;
+    if (!sampler || !out) return 0;
+    pthread_mutex_lock(&s_sampler_lock);
+    slot = sampler_find((void *)(uintptr_t)sampler, 0);
+    if (!slot || !slot->initialized) {
+        pthread_mutex_unlock(&s_sampler_lock);
+        return 0;
+    }
+    memset(out, 0, sizeof(*out));
+    out->minf = (uint8_t)slot->min_filter;
+    out->magf = (uint8_t)slot->mag_filter;
+    out->ws = (uint8_t)slot->wrap_s;
+    out->wt = (uint8_t)slot->wrap_t;
+    out->wr = (uint8_t)slot->wrap_r;
+    out->cmp_mode = (uint8_t)slot->compare_mode;
+    out->cmp_func = (uint8_t)slot->compare_func;
+    out->reduction = (uint8_t)slot->reduction_filter;
+    out->lod_min = slot->lod_min;
+    out->lod_max = slot->lod_max;
+    out->lod_bias = slot->lod_bias;
+    out->aniso = slot->max_anisotropy;
+    for (i = 0; i < 4; i++) out->border[i] = slot->border_color[i];
+    if (serial) *serial = slot->serial;
+    pthread_mutex_unlock(&s_sampler_lock);
+    return 1;
 }
