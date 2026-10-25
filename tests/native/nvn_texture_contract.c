@@ -95,6 +95,8 @@ typedef struct {
     uint64_t value;
 } separate_texture_handle;
 typedef separate_texture_handle (*device_get_separate_texture_handle_fn)(const void *, int);
+typedef separate_texture_handle (*device_get_separate_sampler_handle_fn)(const void *, int);
+typedef uint64_t (*device_get_texel_fetch_handle_fn)(const void *, int);
 
 /* The builder family, which the texture is made from. Its signatures are the
  * ones of the same header (lines 1252-1277). */
@@ -215,6 +217,8 @@ static int nvn_texture_contract(void) {
     device_get_texture_handle_fn device_get_texture_handle;
     device_get_image_handle_fn device_get_image_handle;
     device_get_separate_texture_handle_fn device_get_separate_texture_handle;
+    device_get_separate_sampler_handle_fn device_get_separate_sampler_handle;
+    device_get_texel_fetch_handle_fn device_get_texel_fetch_handle;
     builder_set_defaults_fn builder_set_defaults;
     builder_set_device_fn builder_set_device;
     builder_set_format_fn builder_set_format;
@@ -309,7 +313,22 @@ static int nvn_texture_contract(void) {
     }
     {
         size_t handle_count = nvn_device_handle_family_count();
-        expect_condition("nvn-device-handle-family-has-three-names", handle_count == 3);
+        /* The guest resolves five device handle functions, not three: the
+         * separate sampler handle and the texel fetch handle were missing
+         * from the first card and are answered now. */
+        expect_condition("nvn-device-handle-family-has-five-names", handle_count == 5);
+        {
+            int has_separate_sampler = 0;
+            int has_texel_fetch = 0;
+            for (i = 0; i < handle_count; i++) {
+                const nvn_device_handle_family_entry *entry = nvn_device_handle_family_entry_at(i);
+                if (!entry || !entry->name) continue;
+                if (!strcmp(entry->name, "nvnDeviceGetSeparateSamplerHandle")) has_separate_sampler = 1;
+                if (!strcmp(entry->name, "nvnDeviceGetTexelFetchHandle")) has_texel_fetch = 1;
+            }
+            expect_condition("nvn-device-handle-family-has-the-separate-sampler-handle", has_separate_sampler);
+            expect_condition("nvn-device-handle-family-has-the-texel-fetch-handle", has_texel_fetch);
+        }
         for (i = 0; i < handle_count; i++) {
             const nvn_device_handle_family_entry *entry = nvn_device_handle_family_entry_at(i);
             void *resolved;
@@ -411,7 +430,12 @@ static int nvn_texture_contract(void) {
     device_get_image_handle = (device_get_image_handle_fn)(uintptr_t)lookup(NULL, "nvnDeviceGetImageHandle");
     device_get_separate_texture_handle =
         (device_get_separate_texture_handle_fn)(uintptr_t)lookup(NULL, "nvnDeviceGetSeparateTextureHandle");
+    device_get_separate_sampler_handle =
+        (device_get_separate_sampler_handle_fn)(uintptr_t)lookup(NULL, "nvnDeviceGetSeparateSamplerHandle");
+    device_get_texel_fetch_handle =
+        (device_get_texel_fetch_handle_fn)(uintptr_t)lookup(NULL, "nvnDeviceGetTexelFetchHandle");
     CHECK(device_get_texture_handle && device_get_image_handle && device_get_separate_texture_handle);
+    CHECK(device_get_separate_sampler_handle && device_get_texel_fetch_handle);
 
     /* The builder family, through the same lookup. */
     builder_set_defaults = (builder_set_defaults_fn)(uintptr_t)lookup(NULL, "nvnTextureBuilderSetDefaults");
@@ -616,6 +640,14 @@ static int nvn_texture_contract(void) {
     expect_condition("nvn-texture-handle-and-separate-texture-handle-differ", handle != (uint64_t)11);
     expect_value("nvn-texture-handle-does-not-carry-the-pool-base", device_get_texture_handle(device, 7, 3),
                  (uint64_t)7 | ((uint64_t)3 << 20));
+    /* The separate handle of a sampler is its number counted from bit twenty
+     * upwards, because the number of the texture of the pair lives in the
+     * bits below. A texel fetch handle names a texture and nothing else. */
+    separate = device_get_separate_sampler_handle(device, 11);
+    expect_value("nvn-separate-sampler-handle-counts-from-bit-twenty", separate.value,
+                 (uint64_t)11 << 20);
+    expect_value("nvn-texel-fetch-handle-is-the-number-alone",
+                 device_get_texel_fetch_handle(device, 11), 11);
 
     /* 8. The refusals. A texture that was never initialized does not exist,
      *    and the answers for it are the defaults and not values of a texture. */
