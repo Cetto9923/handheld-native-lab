@@ -127,8 +127,9 @@ Ln143）里，也就是说**游戏自己要它们**，但参考树**没有实现
 - 契约另外直接比对了**数值**：`address == (uint64_t)(uintptr_t)pool_storage + 256`，
   即地址确实是「池内存 + 偏移」。
 
-实测（baseline，host）：`address=0x16f999ad0`，期望 `pool_storage+256`；`resolve_address`
-解析成功、解析回来同一个指针、`available` 足够。
+实测（baseline，host）：地址等于 `pool_storage + 256`（数值直接比对通过；地址本身是栈上
+`pool_storage` 的地址，随每次运行变化，所以这里只给等式而不给一个会过期的数字），
+`resolve_address` 解析成功、解析回来同一个指针、`available` 足够。
 
 ---
 
