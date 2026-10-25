@@ -92,6 +92,32 @@ typedef struct nvn_backend {
                                  void **out_surface, void **out_swapchain);
     /* Release what create_window_surface() took. Safe to call without one. */
     void (*destroy_window_surface)(nvn_device_state *device, void *surface, void *swapchain);
+    /* The present path. The backend owns the whole path: the surface, the
+     * swapchain, the swapchain images, the views, the framebuffers, the render
+     * pass, the command pool, one command buffer per image and one fence per
+     * image. There is one present path per device; more than one window is
+     * not supported.
+     *
+     * Every method of the path returns 1 when it did its part and 0 when it
+     * did not. When it returns 0 it writes the concrete reason into reason,
+     * so that a failure is named instead of being counted and forgotten. The
+     * reason buffer may be NULL, in which case the reason is only logged.
+     */
+    /* Take the next swapchain image. Writes the index of the image and the
+     * image itself into out_index and out_image. */
+    int (*acquire_image)(nvn_device_state *device, uint32_t *out_index, void **out_image,
+                         char *reason, size_t reason_size);
+    /* Open the render pass on the image and clear it with the colour the
+     * caller gave. The colour is used bit for bit and is not changed. The
+     * render pass and the framebuffer are reused when they exist, so a new
+     * colour does not rebuild anything. */
+    int (*begin_render_pass)(nvn_device_state *device, uint32_t index, void *image,
+                              const float rgba[4], char *reason, size_t reason_size);
+    /* End the render pass, submit the command buffer, present the image and
+     * wait for the fence. The wait is bounded and the time it took is
+     * measured and logged. */
+    int (*submit_and_present)(nvn_device_state *device, uint32_t index, void *image,
+                               char *reason, size_t reason_size);
 } nvn_backend;
 
 struct nvn_device_state {
