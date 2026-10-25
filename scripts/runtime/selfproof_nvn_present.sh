@@ -15,9 +15,9 @@
 # The baseline run at the end is the unmutated contract with the real module:
 # it has to be green, otherwise the three variants prove nothing.
 #
-# The module of the present path is not part of the host build of the runtime,
-# so the contract brings its own copy of it by including the file of the tree.
-# The file in the tree is not touched.
+# The module of the present path is part of the host build of the runtime now,
+# so the contract is linked against the module of the tree instead of bringing
+# its own copy of it. The file in the tree is not touched.
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -58,9 +58,16 @@ clang ${STRICT} -c src/graphics/nvn_device/nvn_backend_none.c \
     exit 94
 }
 
+# The present path itself, the module of the tree.
+clang ${STRICT} -c src/graphics/nvn_device/nvn_present.c \
+    -o "${BUILD}/nvn_present.host.o" >> "${LOG}" 2>&1 || {
+    echo "could not compile the present path" >&2
+    exit 93
+}
+
 run_variant () {
     local name="$1" src="$2" expected="$3"
-    clang ${STRICT} "${src}" "${BUILD}/nvn_backend_none.host.o" -lpthread \
+    clang ${STRICT} "${src}" "${BUILD}/nvn_present.host.o" "${BUILD}/nvn_backend_none.host.o" -lpthread \
         -o "${OUT}/${name}.host" >> "${LOG}" 2>&1 || {
         echo "could not link ${name}" >&2
         exit 92

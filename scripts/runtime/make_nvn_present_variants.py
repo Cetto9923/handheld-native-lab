@@ -14,8 +14,11 @@ that claims success without showing anything has to be caught.
 
 The copies of the contract live in .local/selfproof/ and are used by the
 variants only; the file in the tree is not touched. The copies carry an
-absolute include of the module, because a copy that sits in another directory
-cannot reach the module with a relative path.
+absolute include of the header, because a copy that sits in another directory
+cannot reach the header with a relative path. The module itself is not
+included by the contract any more: the build script lists it among the
+sources of the host build, so the copies are linked against the module of the
+tree.
 
 Nothing is written outside .local/selfproof/.
 """
@@ -27,13 +30,13 @@ out = root / '.local/selfproof'
 out.mkdir(parents=True, exist_ok=True)
 
 src = (root / 'tests/native/nvn_present_contract.c').read_text()
-module = (root / 'src/graphics/nvn_device/nvn_present.c').resolve()
+header = (root / 'src/graphics/nvn_device/nvn_present.h').resolve()
 
-# The copies live in another directory, so the relative include of the
-# module has to become an absolute one.
-include_anchor = '#include "../../src/graphics/nvn_device/nvn_present.c"'
-assert src.count(include_anchor) == 1, 'the include of the present module is not unique'
-portable = src.replace(include_anchor, '#include "%s"' % module)
+# The copies live in another directory, so the relative include of the header
+# has to become an absolute one.
+include_anchor = '#include "../../src/graphics/nvn_device/nvn_present.h"'
+assert src.count(include_anchor) == 1, 'the include of the present header is not unique'
+portable = src.replace(include_anchor, '#include "%s"' % header)
 
 # ---------------------------------------------------------------------------
 # A and B: break the expectation only. The present path is untouched, so the

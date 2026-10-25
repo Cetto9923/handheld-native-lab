@@ -33,11 +33,13 @@
  * --nvn-present.
  */
 #define _GNU_SOURCE
-/* The present path of the device layer is not part of the host build of the
- * runtime, so the contract brings its own copy of the module. The module is
- * the one in the tree, not a copy of it: the file is included, not
- * rewritten. */
-#include "../../src/graphics/nvn_device/nvn_present.c"
+/* The present path is part of the runtime now: the build script lists
+ * nvn_present.c among the sources of the host build, so this contract links
+ * against the module that is in the tree, the same way the other family
+ * contracts do. The header is reached by a relative path, because the build
+ * script does not put the directory of the module on the include path. */
+
+#include "../../src/graphics/nvn_device/nvn_present.h"
 
 #include <inttypes.h>
 #include <stdio.h>
