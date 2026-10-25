@@ -24,12 +24,12 @@
  *     Its signatures are therefore NOT confirmed for this game, which is Unreal
  *     Engine 5.6.1.
  *   - The description that is copied is the one of the reference host's
- *     buf_builder_t (hle_nvn.c:1760): the device, the memory pool, the offset
+ *     buf_builder_t (hle_nvn.c:1761): the device, the memory pool, the offset
  *     inside the pool and the size of the buffer.
  *   - The defaults are the ones of the reference host (hle_nvn.c:1766):
  *     nvnBufferBuilderSetDefaults keeps the device and clears everything else.
  *   - The refusal of an initialization without storage is the one of the
- *     reference host (hle_nvn.c:1770): a builder whose pool has no memory
+ *     reference host (hle_nvn.c:1771): a builder whose pool has no memory
  *     cannot make a buffer, so the call answers false.
  *   - The flush and the invalidate are the ones of the reference host
  *     (hle_nvn.c:1784, 1785), which records them as empty operations and says
@@ -195,7 +195,7 @@ static void *memory_pool_map(const void *pool) {
 }
 
 /* The size of a pool, so that a buffer that reaches past the end of its pool
- * is named as the reference host names it (hle_nvn.c:1773). */
+ * is named as the reference host names it (hle_nvn.c:1772). */
 static uint64_t memory_pool_size(const void *pool) {
     typedef uint64_t (*pool_get_size_fn)(const void *);
     pool_get_size_fn fn = (pool_get_size_fn)(uintptr_t)memory_pool_entry("nvnMemoryPoolGetSize");
@@ -418,12 +418,12 @@ void *nvnBufferBuilderGetMemoryPool(const void *builder) {
  * object has a layout this runtime does not know.
  *
  * The reference host refuses a builder whose pool has no memory
- * (hle_nvn.c:1770): a buffer without storage is not a buffer. Here the pool's
+ * (hle_nvn.c:1771): a buffer without storage is not a buffer. Here the pool's
  * memory is asked of the memory pool family, and a pool that was never
  * initialized has none, so the call answers false and the log says why.
  *
  * The reference host names a buffer that reaches past the end of its pool
- * (hle_nvn.c:1773) and still makes it. Here the same thing happens: the
+ * (hle_nvn.c:1772) and still makes it. Here the same thing happens: the
  * buffer is made and the log says that it reaches past the end of its pool. */
 int nvnBufferInitialize(void *buffer, const void *builder) {
     nvn_buffer_builder_state *b = NULL;
