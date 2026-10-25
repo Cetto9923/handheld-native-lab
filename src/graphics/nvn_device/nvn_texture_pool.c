@@ -26,8 +26,19 @@ typedef struct {
     int size;
     int initialized;
     /* The registered textures, by index. A NULL entry means the index has
-     * not been registered yet. */
-    void *textures[NVN_TEXTURE_POOL_MAX_TEXTURES];
+     * not been registered yet.
+     *
+     * The table grows with the indexes the guest uses instead of being a
+     * fixed size, because the size of the pool is the guest's own choice: it
+     * sizes its pool by the limit this device reports for
+     * MAX_TEXTURE_POOL_SIZE (selector 36), which is 1048576. A fixed table
+     * of sixteen thousand would refuse the textures of a game that uses
+     * more, and a refused texture is a texture the guest draws with that
+     * this runtime does not know about. The cap is the number of indexes a
+     * texture handle can hold: the handle carries the index in its low
+     * twenty bits. */
+    void **textures;
+    int texture_capacity;
     char debug_label[64];
     int in_use;
 } nvn_texture_pool_state;
@@ -116,6 +127,31 @@ static int base_assign(const void *pool, int count) {
     return s_bases[s_base_count - 1].base;
 }
 
+/* The table of registered textures grows to hold an index the guest uses.
+ *
+ * It grows by doubling, so the cost of the growth is the same order as the
+ * size of the table. The cap is the number of indexes a handle can carry. A
+ * table that cannot grow is a refusal, and the refusal is logged with the
+ * index that could not be held. */
+static int texture_table_grow(nvn_texture_pool_state *p, int index) {
+    int capacity = p->texture_capacity ? p->texture_capacity : 256;
+    void **grown;
+    while (capacity <= index) {
+        if (capacity > NVN_TEXTURE_POOL_MAX_TEXTURES / 2) {
+            capacity = NVN_TEXTURE_POOL_MAX_TEXTURES;
+            break;
+        }
+        capacity *= 2;
+    }
+    if (index >= capacity) return 0;
+    grown = (void **)realloc(p->textures, (size_t)capacity * sizeof(*grown));
+    if (!grown) return 0;
+    memset(grown + p->texture_capacity, 0, (size_t)(capacity - p->texture_capacity) * sizeof(*grown));
+    p->textures = grown;
+    p->texture_capacity = capacity;
+    return 1;
+}
+
 /* nvnTexturePoolInitialize(pool, memoryPool, offset, size).
  *
  * The pool needs a memory pool it can take its storage from. The offset and
@@ -153,7 +189,13 @@ int nvn_texture_pool_initialize(void *pool, const void *memory_pool, ptrdiff_t o
     p->memory_offset = offset;
     p->size = size;
     p->initialized = 1;
-    memset(p->textures, 0, sizeof(p->textures));
+    /* The table of registered textures starts empty. It grows when the guest
+     * registers an index it has not used before, so that the size of the
+     * guest's pool decides how much memory is taken, and not a guess made
+     * here. */
+    free(p->textures);
+    p->textures = NULL;
+    p->texture_capacity = 0;
     /* The numbering of this pool is settled here, at its first Initialize,
      * and it does not change when the pool is finalized and initialized
      * again. */
@@ -185,7 +227,9 @@ void nvn_texture_pool_finalize(void *pool) {
         p->memory_pool = NULL;
         p->memory_offset = 0;
         p->size = 0;
-        memset(p->textures, 0, sizeof(p->textures));
+        free(p->textures);
+        p->textures = NULL;
+        p->texture_capacity = 0;
         p->in_use = 0;
         s_stats.finalized++;
     }
@@ -207,11 +251,17 @@ void nvn_texture_pool_register_texture(const void *pool, int index, const void *
     pthread_mutex_lock(&s_texture_pool_lock);
     p = pool_find((void *)(uintptr_t)pool, 0);
     if (p && p->initialized && index >= 0 && index < NVN_TEXTURE_POOL_MAX_TEXTURES) {
-        p->textures[index] = (void *)(uintptr_t)texture;
-        s_stats.textures_registered++;
+        if (index >= p->texture_capacity && !texture_table_grow(p, index)) {
+            fprintf(stderr, "[nvn] nvnTexturePoolRegisterTexture: index=%d could not be held; the texture was not "
+                            "registered\n",
+                    index);
+        } else {
+            p->textures[index] = (void *)(uintptr_t)texture;
+            s_stats.textures_registered++;
+        }
     } else if (p && p->initialized) {
-        fprintf(stderr, "[nvn] nvnTexturePoolRegisterTexture: index=%d is outside the %d textures this pool "
-                        "tracks; the texture was not registered\n",
+        fprintf(stderr, "[nvn] nvnTexturePoolRegisterTexture: index=%d is outside the %d textures a handle can "
+                        "address; the texture was not registered\n",
                 index, NVN_TEXTURE_POOL_MAX_TEXTURES);
     }
     pthread_mutex_unlock(&s_texture_pool_lock);
@@ -226,11 +276,17 @@ void nvn_texture_pool_register_image(const void *pool, int index, const void *te
     pthread_mutex_lock(&s_texture_pool_lock);
     p = pool_find((void *)(uintptr_t)pool, 0);
     if (p && p->initialized && index >= 0 && index < NVN_TEXTURE_POOL_MAX_TEXTURES) {
-        p->textures[index] = (void *)(uintptr_t)texture;
-        s_stats.images_registered++;
+        if (index >= p->texture_capacity && !texture_table_grow(p, index)) {
+            fprintf(stderr, "[nvn] nvnTexturePoolRegisterImage: index=%d could not be held; the image was not "
+                            "registered\n",
+                    index);
+        } else {
+            p->textures[index] = (void *)(uintptr_t)texture;
+            s_stats.images_registered++;
+        }
     } else if (p && p->initialized) {
-        fprintf(stderr, "[nvn] nvnTexturePoolRegisterImage: index=%d is outside the %d textures this pool "
-                        "tracks; the image was not registered\n",
+        fprintf(stderr, "[nvn] nvnTexturePoolRegisterImage: index=%d is outside the %d textures a handle can "
+                        "address; the image was not registered\n",
                 index, NVN_TEXTURE_POOL_MAX_TEXTURES);
     }
     pthread_mutex_unlock(&s_texture_pool_lock);
@@ -303,7 +359,7 @@ const void *nvn_texture_pool_texture_at(const void *pool, int index) {
     const void *texture = NULL;
     pthread_mutex_lock(&s_texture_pool_lock);
     p = pool_find((void *)(uintptr_t)pool, 0);
-    if (p && p->initialized && index >= 0 && index < NVN_TEXTURE_POOL_MAX_TEXTURES) {
+    if (p && p->initialized && index >= 0 && index < p->texture_capacity) {
         texture = p->textures[index];
     }
     pthread_mutex_unlock(&s_texture_pool_lock);

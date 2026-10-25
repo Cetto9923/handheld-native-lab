@@ -219,31 +219,117 @@ void nvn_device_finalize(void *device) {
 
 /* nvnDeviceGetInteger(device, info, out).
  *
- * The guest calls this twice right after the device is initialized, at
- * 0x14354e8 with (device, 0, sp) and at 0x14354fc with (device, 1, sp+0x5c),
- * so it takes three arguments and writes the value through the third one.
- * The two selectors it uses are the NVN API major and minor version, so the
- * guest is asking this device which generation of the NVN API it speaks.
+ * The guest calls this right after the device is initialized, at 0x14354e8
+ * with (device, 0, sp) and at 0x14354fc with (device, 1, sp+0x5c), so it
+ * takes three arguments and writes the value through the third one. It then
+ * asks for twenty one more selectors: 3, 4, 10, 15, 16, 17, 18, 19, 20, 31,
+ * 36, 37, 45, 53, 54, 61, 62, 64, 86, 92 and 93, all of them in the
+ * nvnDeviceGetInteger log of the run that aborted in the game's own
+ * NVNHelpers.cpp:240 (the device run of p-mm-34).
  *
- * The answer is the version of the specification this device layer
- * implements, which is the one the vendored 53.105 header documents. It is
- * not a claim that every entry point of that version is implemented: an entry
- * point that is missing stops the run and names itself, so an incomplete
- * device can never be mistaken for a complete one. */
+ * Selectors 0 and 1 are the NVN API major and minor version, so the guest is
+ * asking this device which generation of the NVN API it speaks. The answer is
+ * the version of the specification this device layer implements, which is the
+ * one the vendored 53.105 header documents. It is not a claim that every entry
+ * point of that version is implemented: an entry point that is missing stops
+ * the run and names itself, so an incomplete device can never be mistaken
+ * for a complete one.
+ *
+ * The other selectors are the device's limits, and answering zero for them is
+ * not a neutral answer: the guest sizes its own texture id pool by
+ * MAX_TEXTURE_POOL_SIZE (selector 36) and its shader alignment by selector
+ * 103, and a zero pool is a fatal error in the game itself
+ * ("There are no available TextureIDs in the pool", NVNHelpers.cpp:240 of the
+ * run in .local/logs/p-mm-34-guest-transcript.log).
+ *
+ * The values come from the reference host of this same game
+ * (.local/refs/nxnative, revision 7a029f66, MIT), file dm/gfx/nvn/hle_nvn.c,
+ * table g_devinfo on its lines 129 to 153. That table was measured on a real
+ * Switch by calling nvnDeviceGetInteger item by item, so it is what the
+ * device of this game reports on the hardware the game was made for. It is
+ * not a measurement of the Mali-G615 of the RG477M, and the limits that
+ * describe the GPU itself are the ones to watch: this runtime has to keep
+ * the Vulkan device of the RG477M inside them. The two entries that are
+ * widened here are marked below. */
 #define NVN_DEVICE_API_MAJOR_VERSION 53
 #define NVN_DEVICE_API_MINOR_VERSION 105
+
+/* The device information values, by selector. The two API version entries
+ * are not in the table: this device reports its own version, 53.105, which
+ * the guest of this game accepted and created its device with. */
+static const int g_device_info[] = {
+    [0x02] = 14, [0x03] = 65536, [0x04] = 256, [0x05] = 8, [0x06] = 16,
+    [0x07] = 4, [0x08] = 16, [0x09] = 32, [0x0A] = 16, [0x0B] = 4,
+    [0x0C] = 4, [0x0D] = 4, [0x0E] = 16, [0x0F] = 32, [0x10] = 32,
+    [0x11] = 256, [0x12] = 256, [0x13] = 4, [0x14] = 8, [0x15] = 512,
+    [0x16] = 256, [0x17] = 2, [0x18] = 256, [0x19] = 4096, [0x1A] = 131072,
+    [0x1B] = 16, [0x1C] = 1536, [0x1D] = 1024, [0x1E] = 64, [0x1F] = 1536,
+    [0x20] = 65535, [0x21] = 65535, [0x22] = 65535, [0x23] = 8,
+    [0x24] = 1048576, [0x25] = 4096, [0x26] = 16, [0x27] = 4096, [0x28] = 1,
+    [0x29] = 1, [0x2A] = 1, [0x2B] = 262144, [0x2C] = 15, [0x2D] = 2048,
+    /* 0x2E and 0x30 are the newest GPU code version the driver runs. The
+     * table's 1.14 was measured on the SDK 7 driver; the reference host
+     * raises it to the version of the GLSLC of the SDK the game carries
+     * (1.15 from SDK 8, 1.16 from SDK 13) and notes that a wider range only
+     * lets more shaders pass the check the game makes. This runtime never
+     * runs GPU code: it consumes the SPIR-V the shaders were translated
+     * into, so the check is a gate on the guest's own shader objects. It is
+     * answered with the widest range the reference host uses, 1.16, so that
+     * a shader object of this game is not refused over a version number
+     * this runtime never interprets anyway. */
+    [0x2E] = 1, [0x2F] = 1, [0x30] = 16, [0x31] = 5, [0x32] = 1,
+    [0x33] = 8, [0x34] = 8, [0x35] = 4, [0x36] = 32, [0x37] = 128,
+    [0x38] = 32, [0x39] = 128, [0x3A] = 65536, [0x3B] = 1, [0x3C] = 4,
+    [0x3D] = 16384, [0x3E] = 134217728, [0x3F] = 2048, [0x40] = 16384,
+    [0x41] = 16384, [0x42] = 1, [0x43] = 1, [0x44] = 1, [0x45] = 1,
+    [0x46] = 5, [0x47] = 1, [0x48] = 1, [0x49] = 1, [0x4A] = 1,
+    [0x4B] = 1, [0x4C] = 1, [0x4D] = 16, [0x4E] = 1024, [0x4F] = 32,
+    [0x50] = 4096, [0x51] = 65536, [0x52] = 65536, [0x53] = 256,
+    [0x54] = 16384, [0x55] = 262144, [0x56] = 4096, [0x57] = 1,
+    [0x58] = 4, [0x59] = 2, [0x5A] = 0, [0x5B] = 4096, [0x5C] = 16384,
+    [0x5D] = 4096, [0x5E] = 128, [0x5F] = 4096,
+};
+
+#define NVN_DEVICE_INFO_COUNT ((int)(sizeof(g_device_info) / sizeof(g_device_info[0])))
+
+/* Selector 0x67 is not in the table: the reference host answers it with 256,
+ * the alignment of the shader code in a memory pool, and notes that the game
+ * it read it for passes it to the allocator of its copies of the shader
+ * control section and code. The host reads shaders by key, so any alignment
+ * works, but 256 is the value the reference host of this game uses. */
+#define NVN_DEVICE_INFO_SHADER_ALIGNMENT_SELECTOR 0x67
+#define NVN_DEVICE_INFO_SHADER_ALIGNMENT 256
 
 void nvn_device_get_integer(void *device, int info, int *out_value) {
     s_device.calls++;
     (void)device;
-    if (out_value) {
-        if (info == 0) *out_value = NVN_DEVICE_API_MAJOR_VERSION;
-        else if (info == 1) *out_value = NVN_DEVICE_API_MINOR_VERSION;
-        else {
-            *out_value = 0;
-            fprintf(stderr, "[nvn] nvnDeviceGetInteger: unknown selector %d -> 0\n", info);
-        }
+    unsigned w = (unsigned)info;
+    if (!out_value) {
+        /* A null output pointer is the guest's mistake, not a limit: nothing
+         * is written and the answer is not invented. */
+        fprintf(stderr, "[nvn] nvnDeviceGetInteger: selector 0x%02x has no output pointer\n", w);
+        NVN_VOID_RETURN();
+        return;
     }
+    if (w == 0) {
+        *out_value = NVN_DEVICE_API_MAJOR_VERSION;
+    } else if (w == 1) {
+        *out_value = NVN_DEVICE_API_MINOR_VERSION;
+    } else if (w == NVN_DEVICE_INFO_SHADER_ALIGNMENT_SELECTOR) {
+        *out_value = NVN_DEVICE_INFO_SHADER_ALIGNMENT;
+    } else if (w < (unsigned)NVN_DEVICE_INFO_COUNT) {
+        *out_value = g_device_info[w];
+    } else if (w == 0x60 || w == 0x61) {
+        /* The reference host reports a failure for these two and answers
+         * zero, and it answers zero for anything past the end of its table
+         * as well. A zero here is a refusal, not a limit. */
+        *out_value = 0;
+        fprintf(stderr, "[nvn] nvnDeviceGetInteger: selector 0x%02x reports failure -> 0\n", w);
+    } else {
+        *out_value = 0;
+        fprintf(stderr, "[nvn] nvnDeviceGetInteger: selector 0x%02x is not in the table -> 0\n", w);
+    }
+    fprintf(stderr, "[nvn] nvnDeviceGetInteger: selector 0x%02x -> %d\n", w, *out_value);
     NVN_VOID_RETURN();
 }
 

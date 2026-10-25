@@ -4368,6 +4368,92 @@ static int nvn_device_contract(void) {
     expect_value("nvn-device-get-integer-major", (uint64_t)(uint32_t)api_major, 53);
     expect_value("nvn-device-get-integer-minor", (uint64_t)(uint32_t)api_minor, 105);
 
+    /* 4b. The device limits.
+     *
+     * The guest asked for twenty one of these in the run that aborted in the
+     * game's own NVNHelpers.cpp:240, and it sized its texture id pool by
+     * selector 36, so a zero there is a fatal error inside the game and not
+     * a neutral answer. The expected values are written out here on purpose:
+     * they must not come from the implementation's own table, or the check
+     * would prove nothing. They are the values the reference host of this
+     * game reports (dm/gfx/nvn/hle_nvn.c, table g_devinfo, measured on a
+     * real Switch by asking nvnDeviceGetInteger item by item).
+     *
+     * Every selector the guest asked for is pinned here, so that a table that
+     * answers the one selector the game dies on and zeros the rest cannot
+     * pass. The names are the ones of the vendored NVN header. */
+    int limit = 0;
+    get_integer(NULL, 3, &limit); /* MAX_UNIFORM_BUFFER_SIZE */
+    expect_value("nvn-device-get-integer-max-uniform-buffer-size", (uint64_t)(uint32_t)limit, 65536);
+    get_integer(NULL, 4, &limit); /* UNIFORM_BUFFER_ALIGNMENT */
+    expect_value("nvn-device-get-integer-uniform-buffer-alignment", (uint64_t)(uint32_t)limit, 256);
+    get_integer(NULL, 10, &limit); /* COUNTER_ALIGNMENT */
+    expect_value("nvn-device-get-integer-counter-alignment", (uint64_t)(uint32_t)limit, 16);
+    get_integer(NULL, 15, &limit); /* TEXTURE_DESCRIPTOR_SIZE */
+    expect_value("nvn-device-get-integer-texture-descriptor-size", (uint64_t)(uint32_t)limit, 32);
+    get_integer(NULL, 16, &limit); /* SAMPLER_DESCRIPTOR_SIZE */
+    expect_value("nvn-device-get-integer-sampler-descriptor-size", (uint64_t)(uint32_t)limit, 32);
+    get_integer(NULL, 17, &limit); /* RESERVED_TEXTURE_DESCRIPTORS */
+    expect_value("nvn-device-get-integer-reserved-texture-descriptors", (uint64_t)(uint32_t)limit, 256);
+    get_integer(NULL, 18, &limit); /* RESERVED_SAMPLER_DESCRIPTORS */
+    expect_value("nvn-device-get-integer-reserved-sampler-descriptors", (uint64_t)(uint32_t)limit, 256);
+    get_integer(NULL, 19, &limit); /* COMMAND_BUFFER_COMMAND_ALIGNMENT */
+    expect_value("nvn-device-get-integer-command-buffer-command-alignment",
+                 (uint64_t)(uint32_t)limit, 4);
+    get_integer(NULL, 20, &limit); /* COMMAND_BUFFER_CONTROL_ALIGNMENT */
+    expect_value("nvn-device-get-integer-command-buffer-control-alignment",
+                 (uint64_t)(uint32_t)limit, 8);
+    get_integer(NULL, 31, &limit); /* MAX_COMPUTE_WORK_GROUP_SIZE_THREADS */
+    expect_value("nvn-device-get-integer-max-compute-work-group-size-threads",
+                 (uint64_t)(uint32_t)limit, 1536);
+    get_integer(NULL, 36, &limit); /* MAX_TEXTURE_POOL_SIZE */
+    expect_value("nvn-device-get-integer-max-texture-pool-size", (uint64_t)(uint32_t)limit, 1048576);
+    get_integer(NULL, 37, &limit); /* MAX_SAMPLER_POOL_SIZE */
+    expect_value("nvn-device-get-integer-max-sampler-pool-size", (uint64_t)(uint32_t)limit, 4096);
+    get_integer(NULL, 45, &limit); /* MAX_TEXTURE_LAYERS */
+    expect_value("nvn-device-get-integer-max-texture-layers", (uint64_t)(uint32_t)limit, 2048);
+    get_integer(NULL, 53, &limit); /* INDIRECT_DISPATCH_ALIGNMENT */
+    expect_value("nvn-device-get-integer-indirect-dispatch-alignment", (uint64_t)(uint32_t)limit, 4);
+    get_integer(NULL, 54, &limit); /* ZCULL_SAVE_RESTORE_ALIGNMENT */
+    expect_value("nvn-device-get-integer-zcull-save-restore-alignment", (uint64_t)(uint32_t)limit, 32);
+    get_integer(NULL, 61, &limit); /* MAX_TEXTURE_SIZE */
+    expect_value("nvn-device-get-integer-max-texture-size", (uint64_t)(uint32_t)limit, 16384);
+    get_integer(NULL, 62, &limit); /* MAX_BUFFER_TEXTURE_SIZE */
+    expect_value("nvn-device-get-integer-max-buffer-texture-size",
+                 (uint64_t)(uint32_t)limit, 134217728);
+    get_integer(NULL, 64, &limit); /* MAX_CUBE_MAP_TEXTURE_SIZE */
+    expect_value("nvn-device-get-integer-max-cube-map-texture-size", (uint64_t)(uint32_t)limit, 16384);
+    get_integer(NULL, 86, &limit); /* QUEUE_COMMAND_MEMORY_MIN_FLUSH_THRESHOLD */
+    expect_value("nvn-device-get-integer-queue-command-memory-min-flush-threshold",
+                 (uint64_t)(uint32_t)limit, 4096);
+    get_integer(NULL, 92, &limit); /* QUEUE_CONTROL_MEMORY_DEFAULT_SIZE */
+    expect_value("nvn-device-get-integer-queue-control-memory-default-size",
+                 (uint64_t)(uint32_t)limit, 16384);
+    get_integer(NULL, 93, &limit); /* QUEUE_CONTROL_MEMORY_GRANULARITY */
+    expect_value("nvn-device-get-integer-queue-control-memory-granularity", (uint64_t)(uint32_t)limit, 4096);
+
+    /* The shader alignment is not in the table: the reference host answers it
+     * with 256 and notes that the game it read it for passes it to the
+     * allocator of its copies of the shader control section and code. */
+    get_integer(NULL, 0x67, &limit);
+    expect_value("nvn-device-get-integer-shader-alignment", (uint64_t)(uint32_t)limit, 256);
+
+    /* The two selectors the reference host reports a failure for, and
+     * anything past the end of the table, are answered with zero. Zero here
+     * is a refusal, and the guest has to be able to tell it from a limit. */
+    get_integer(NULL, 0x60, &limit);
+    expect_value("nvn-device-get-integer-debug-groups-domain-id-is-refused",
+                 (uint64_t)(uint32_t)limit, 0);
+    get_integer(NULL, 0x68, &limit);
+    expect_value("nvn-device-get-integer-past-the-table-is-zero", (uint64_t)(uint32_t)limit, 0);
+
+    /* The API version has to stay what it was: the guest accepted 53.105
+     * and created its device with it. */
+    get_integer(NULL, 0, &api_major);
+    get_integer(NULL, 1, &api_minor);
+    expect_value("nvn-device-get-integer-major-is-unchanged", (uint64_t)(uint32_t)api_major, 53);
+    expect_value("nvn-device-get-integer-minor-is-unchanged", (uint64_t)(uint32_t)api_minor, 105);
+
     /* 5. The timestamp: the guest calls it with only the device in x0 and
      *    reads the result from x0 right after the call, so it takes one
      *    argument and returns the timestamp. */
