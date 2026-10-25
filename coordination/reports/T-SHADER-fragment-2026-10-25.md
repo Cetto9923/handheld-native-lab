@@ -39,6 +39,20 @@ drop an extension declaration as well; `scripts/graphics/fix_spirv_fragment_inte
 
 ---
 
+## 0.5 The work order's three steps, answered
+
+| step | what the work order asked | measured | where |
+|---|---|---|---|
+| **1** | fix the capabilities with `fix_spirv_capabilities.py` and send the fragment module to the pipeline creation — does it build? | **No.** `VK_ERROR_INITIALIZATION_FAILED` (-3). The capability fix alone is not enough, because the `OpExtension` declaration survives it. | `E2-step1-small-capfix` in `exp04-device/`, `W1`/`W2` in `exp09-device/` |
+| **2** | change one thing at a time and find the change that makes the refusal disappear | The change that makes it disappear is **removing `OpExtension "SPV_EXT_fragment_shader_interlock"` together with the `FragmentShaderPixelInterlockEXT` capability**. Every other candidate, measured on its own, is **not** the reason: the `OpAccessChain` form, the `NoPerspective` mismatch and the missing input location all build. | `W1`/`W2`/`W3` in `exp09-device/` |
+| **3** | deliver a fragment module the device accepts, plus the script that makes it, and show one draw consumed by the GPU | The module and the script are in §2. The pipeline is `VK_SUCCESS` and the draw is consumed (`submit` and `wait` both `VK_SUCCESS`). | `W3` in `exp09-device/` |
+
+The exit codes of the tools are in the run directories: the interface tool
+returns **0** for every delivered module, and **2** when the coordinator's
+tool refuses to drop a capability the module uses.
+
+---
+
 ## 1. What was measured
 
 ### 1.1 The modules
