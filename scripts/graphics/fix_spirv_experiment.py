@@ -55,28 +55,16 @@ COMPUTE_KEYS = ["41b20b5f09269ad8", "86affd63144799de"]
 # The pipelines of the experiment.  Each line is one hypothesis.
 PIPELINES = [
     # id, fragment key, fragment variant, vertex key, vertex variant, question
-    ("A1-vert-base-trivial", "trivial_frag", "trivial", VERTEX_KEY, "base",
-     "is the game's own vertex module accepted at all?"),
+    ("X1-fs-nobody-synnp", "2ae58c692fb7fbb8", "fs_nobody", "synthetic_vert", "syn_np",
+     "the fragment module with an empty body: interface and descriptors only"),
+    ("X2-fs-bare-synnp", "2ae58c692fb7fbb8", "fs_bare", "synthetic_vert", "syn_np",
+     "the fragment module with an empty body and no descriptors at all"),
+    ("X3-fs-capfix-synnp", "2ae58c692fb7fbb8", "capfix", "synthetic_vert", "syn_np",
+     "control: the untouched fragment body"),
+    ("X4-fs-nobody-vert", "2ae58c692fb7fbb8", "fs_nobody", VERTEX_KEY, "capfix2",
+     "the empty fragment body with the game's own vertex module"),
     ("A2-vert-capfix-trivial", "trivial_frag", "trivial", VERTEX_KEY, "capfix",
-     "the vertex module without the capabilities it does not use"),
-    ("A3-vert-capfix2-trivial", "trivial_frag", "trivial", VERTEX_KEY, "capfix2",
-     "the vertex module without any capability but Shader"),
-    ("B1-small-capfix-synnp", "2ae58c692fb7fbb8", "capfix", "synthetic_vert", "syn_np",
-     "the fragment module with a vertex that matches its interface exactly"),
-    ("B2-small-capfix2-synnp", "2ae58c692fb7fbb8", "capfix2", "synthetic_vert", "syn_np",
-     "every unused capability gone and the interface matched"),
-    ("C1-small-capfix2-nonp-vert", "2ae58c692fb7fbb8", "capfix2_nonp", VERTEX_KEY, "capfix2",
-     "the real vertex module, NoPerspective taken off the fragment input"),
-    ("C2-small-capfix2-vert", "2ae58c692fb7fbb8", "capfix2", VERTEX_KEY, "capfix2",
-     "the real vertex module, the interpolation mismatch left in place"),
-    ("D1-big1-capfix2-syn", "174293a30c315aed", "capfix2", "synthetic_vert", "syn",
-     "the first large fragment module with a vertex that writes location 1"),
-    ("E1-ctrl-small-orig", "2ae58c692fb7fbb8", "base", VERTEX_KEY, "base",
-     "control: the untouched game modules"),
-    ("E2-step1-small-capfix", "2ae58c692fb7fbb8", "capfix", VERTEX_KEY, "capfix",
-     "step 1: only the capability declarations removed"),
-    ("E3-ctrl-big1-orig", "174293a30c315aed", "base", VERTEX_KEY, "base",
-     "control for the first large fragment module"),
+     "control: the game vertex module with the trivial fragment module"),
     ("F1-compute-1", "41b20b5f09269ad8", "capfix", "-", "-",
      "compute regression: the first compute module"),
     ("F2-compute-2", "86affd63144799de", "capfix", "-", "-",
@@ -239,6 +227,22 @@ def make_variants(spv_dir, out_dir, report, trivial_dir):
                         os.path.join(capfix2, VERTEX_KEY + ".spv")],
                        "report-%s-capfix2-nonp.json" % key)
 
+    # fs_nobody / fs_bare: the fragment module with its body removed, with and
+    # without the descriptor variables.  They say whether the driver objects to
+    # the code or to the interface and the descriptors.
+    fs_nobody = os.path.join(variants_dir, "fs_nobody")
+    os.makedirs(fs_nobody, exist_ok=True)
+    fs_bare = os.path.join(variants_dir, "fs_bare")
+    os.makedirs(fs_bare, exist_ok=True)
+    interface_tool(os.path.join(nonp2, "2ae58c692fb7fbb8.spv"),
+                   os.path.join(fs_nobody, "2ae58c692fb7fbb8.spv"),
+                   ["--strip-body"],
+                   "report-2ae58c692fb7fbb8-fs-nobody.json")
+    interface_tool(os.path.join(nonp2, "2ae58c692fb7fbb8.spv"),
+                   os.path.join(fs_bare, "2ae58c692fb7fbb8.spv"),
+                   ["--strip-body", "--strip-descriptor-variables"],
+                   "report-2ae58c692fb7fbb8-fs-bare.json")
+
     # syn / syn_np: the synthetic vertex that writes locations 0..5, smooth
     # and with the NoPerspective decoration.
     syn = os.path.join(variants_dir, "syn")
@@ -258,7 +262,7 @@ def make_variants(spv_dir, out_dir, report, trivial_dir):
     for name in ("trivial_vert.spv", "trivial_frag.spv"):
         copy_module(os.path.join(trivial_dir, name), os.path.join(trivial, name))
 
-    return [base, capfix, capfix2, nonp2, syn, syn_np, trivial]
+    return [base, capfix, capfix2, nonp2, fs_nobody, fs_bare, syn, syn_np, trivial]
 
 
 def rewrite_manifest(manifest_path, pipeline_lines):
@@ -321,8 +325,8 @@ def main(argv):
 
     directories = make_variants(spv_dir, out_dir, report,
                              os.path.join(local_root, "shader-verify/spv-trivialpair"))
-    variant_names = ["base", "capfix", "capfix2", "capfix2_nonp", "syn", "syn_np",
-                     "trivial"]
+    variant_names = ["base", "capfix", "capfix2", "capfix2_nonp", "fs_nobody", "fs_bare",
+                     "syn", "syn_np", "trivial"]
     report["variants"] = dict(zip(variant_names, directories))
 
     root = os.path.abspath(os.path.join(HERE, "..", ".."))

@@ -61,6 +61,10 @@ OP_DECORATE = 71
 OP_MEMBER_DECORATE = 72
 OP_GROUP_DECORATE = 73
 OP_VARIABLE = 59
+OP_FUNCTION = 54
+OP_FUNCTION_END = 56
+OP_LABEL = 248
+OP_RETURN = 253
 OP_TYPE_POINTER = 32
 OP_TYPE_VECTOR = 23
 
@@ -72,6 +76,11 @@ DEC_NO_PERSPECTIVE = 13
 
 STORAGE_INPUT = 1
 STORAGE_OUTPUT = 3
+STORAGE_UNIFORM_CONSTANT = 0
+STORAGE_UNIFORM = 2
+STORAGE_STORAGE_BUFFER = 12
+DESCRIPTOR_STORAGE_CLASSES = (STORAGE_UNIFORM_CONSTANT, STORAGE_UNIFORM,
+                              STORAGE_STORAGE_BUFFER)
 
 INTERPOLATION_NAMES = {
     DEC_FLAT: "Flat",
@@ -267,6 +276,91 @@ def drop_decorations(words, targets, decoration=None):
     return kept, removed
 
 
+def strip_function_body(words, entry_id):
+    """Leave the entry point's function with an empty body."""
+    out = list(words[:5])
+    index = 5
+    inside = False
+    dropped = 0
+    depth = 0
+    while index < len(words):
+        count = words[index] >> 16
+        opcode = words[index] & 0xFFFF
+        operands = words[index + 1:index + count]
+        if opcode == OP_FUNCTION and operands and operands[1] == entry_id:
+            inside = True
+            depth = 0
+            out.append(words[index])
+            out.extend(operands)
+            index += count
+            continue
+        if inside:
+            if opcode == OP_FUNCTION:
+                depth += 1
+            elif opcode == OP_FUNCTION_END:
+                if depth == 0:
+                    # The function is over: keep the OpReturn and the end.
+                    out.append(words[index])
+                    out.extend(operands)
+                    inside = False
+                    index += count
+                    continue
+                depth -= 1
+            if opcode == OP_LABEL and depth == 0:
+                out.append(words[index])
+                out.extend(operands)
+                index += count
+                continue
+            if opcode == OP_RETURN and depth == 0:
+                out.append(words[index])
+                out.extend(operands)
+                index += count
+                continue
+            if opcode != OP_FUNCTION_END or depth != 0:
+                dropped += 1
+            index += count
+            continue
+        out.append(words[index])
+        out.extend(operands)
+        index += count
+    return out, dropped
+
+
+def strip_descriptor_variables(words, facts):
+    """Remove the variables that hold descriptors, and their decorations."""
+    targets = set()
+    for variable, (storage, _) in facts["variables"].items():
+        if storage in DESCRIPTOR_STORAGE_CLASSES:
+            targets.add(variable)
+    if not targets:
+        return words, []
+    kept = list(words[:5])
+    removed = []
+    index = 5
+    while index < len(words):
+        count = words[index] >> 16
+        opcode = words[index] & 0xFFFF
+        operands = words[index + 1:index + count]
+        if opcode == OP_VARIABLE and operands and operands[1] in targets:
+            removed.append({"target": operands[1], "storage": operands[2]})
+            index += count
+            continue
+        if opcode == OP_DECORATE and operands and operands[0] in targets:
+            removed.append({"target": operands[0], "decoration": operands[1]})
+            index += count
+            continue
+        if opcode == OP_NAME and operands and operands[0] in targets:
+            # The name of a variable that no longer exists would be a forward
+            # reference to an undefined id.
+            removed.append({"target": operands[0], "name": True})
+            index += count
+            continue
+        kept.append(words[index])
+        kept.extend(operands)
+        index += count
+    return kept, removed
+
+
 def add_decoration(words, target, decoration):
     """Add one OpDecorate instruction, in the annotation section."""
     out = list(words[:5])
@@ -328,6 +422,8 @@ def main(argv):
     drop_capabilities = []
     add_capabilities = []
     drop_no_perspective = False
+    strip_body = False
+    strip_descriptors = False
     add_no_perspective_to_vertex = None
 
     index = 1
@@ -353,6 +449,10 @@ def main(argv):
             add_capabilities.append(argv[index])
         elif argument == "--drop-no-perspective":
             drop_no_perspective = True
+        elif argument == "--strip-body":
+            strip_body = True
+        elif argument == "--strip-descriptor-variables":
+            strip_descriptors = True
         elif argument == "--add-no-perspective-to-vertex-output":
             index += 1
             add_no_perspective_to_vertex = int(argv[index])
@@ -402,6 +502,8 @@ def main(argv):
 
         removed_decorations = []
         added_decorations = []
+        removed_body = 0
+        removed_descriptors = []
 
         if drop_no_perspective:
             targets = set()
@@ -410,6 +512,17 @@ def main(argv):
                     targets.add(row["id"])
             words, removed_decorations = drop_decorations(words, targets,
                                                           DEC_NO_PERSPECTIVE)
+
+        if strip_body:
+            entry_ids = [entry["id"] for entry in facts["entry_points"]]
+            if not entry_ids:
+                return fail("the module has no entry point", 3)
+            words, dropped = strip_function_body(words, entry_ids[0])
+            removed_body = dropped
+
+        if strip_descriptors:
+            facts_now = decode(words)
+            words, removed_descriptors = strip_descriptor_variables(words, facts_now)
 
         if add_no_perspective_to_vertex is not None:
             targets = set()
@@ -447,6 +560,8 @@ def main(argv):
             "capabilities_requested_dropped": drop_capabilities,
             "capabilities_requested_added": add_capabilities,
             "removed_decorations": removed_decorations,
+            "removed_body_instructions": removed_body,
+            "removed_descriptor_variables": removed_descriptors,
             "added_decorations": added_decorations,
             "fragment_interface_before": fragment_interface,
             "fragment_interface_after": interface_table(after),
