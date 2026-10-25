@@ -131,7 +131,9 @@ typedef int (*pool_initialize_fn)(const void *, const void *);
  * and the device is the coordinator's.
  *
  * On a build with a real graphics device (Android, with the Vulkan backend)
- * the real backend is left in place and the real device is used. */
+ * the real backend is left in place and the real device is used, and the
+ * backend of this contract is not even compiled. */
+#if !defined(__ANDROID__)
 static int contract_backend_create(nvn_device_state *device, const void *builder) {
     (void)device;
     (void)builder;
@@ -178,6 +180,7 @@ static const nvn_backend s_contract_backend = {
     contract_backend_create_window_surface,
     contract_backend_destroy_window_surface,
 };
+#endif /* !__ANDROID__ */
 
 /* Fill a builder with the values of this case. */
 static void fill_builder(builder_set_defaults_fn set_defaults, builder_set_device_fn set_device,
