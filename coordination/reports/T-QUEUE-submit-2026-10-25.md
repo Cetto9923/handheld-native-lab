@@ -86,6 +86,21 @@ NVN 只通过 sync 给两个队列排序，所以一个接一个地 replay 是�
 **没有**把 `s_queue_lock` 套在外面：`s_queue_lock` 护的是本族自己的计数器，
 `s_submit_lock` 护的是 replay 的调用；两者不嵌套，不会有锁序问题。
 
+**这个锁不是猜的，是量出来的。** 契约里 §5.5b 用两个线程提交两个**绑不同 texture pool** 的包：
+两个 run 重叠时，一个会清掉另一个的 pool 绑定，另一个的 texture 就被记成
+`refused_foreign_pool`（replay 里的名字是 *the handle is of a pool that is not bound*）。
+
+实测（宿主，同一个契约二进制）：
+
+| 构建 | 结果 |
+|---|---|
+| **有**提交锁 | **0 / 30** 次运行出错 |
+| **没有**提交锁 | **12 / 12** 次运行出错（错误数 2–17） |
+
+这个检查在加锁之前是**没有牙齿的**：原来只数包，去掉锁照样过（12 次全绿）。
+现在它测的是「两个线程有没有互相清掉对方的 pool 绑定」，
+去掉锁就红，加锁就绿。
+
 **没有写 guest 内存**：handle 只过 recorder 的注册表，从不解引用；
 队列对象、命令缓冲对象、handle 数组全部保持 0xAA 哨兵。
 
@@ -171,6 +186,26 @@ sync 对象、窗口对象、builder 对象。
   （**不再记日志**，跟参考树的 `static int once` 一样）；
 - 已 fence 的 sync → 返回 **1**，且**不计入** `waits_without_fence`。
 
+### 5.5b 两个线程同时提交（**本卡加的**，因为参考树记了这个故障）✅
+
+契约让**两个线程**各提交一个包，每个包**先绑自己的 texture pool、再绑自己的 texture**。
+两个 run 重叠时，一个会清掉另一个的 pool 绑定，于是另一个的 texture 被记成
+`refused_foreign_pool`。
+
+断言：**`refused_foreign_pool == 0`**，重复 200 轮。
+
+实测（同一个契约二进制，只换掉锁）：
+
+| 构建 | 结果 |
+|---|---|
+| **有**提交锁 | **0 / 30** 次运行出错（30 次全是 `errors:0`） |
+| **没有**提交锁 | **12 / 12** 次运行出错（错误数 2–17） |
+
+**所以这个断言不是恒真的**：去掉锁它就红。
+
+（这个检查在第一版里只数包数，去掉锁照样绿，所以那时它**不算检查**。
+改成查 `refused_foreign_pool` 之后才有牙齿。）
+
 ### 5.6 `nvnQueuePresentTexture` 不谎报成功 ✅
 
 `presents_requested` +1、`presents_performed` **恒为 0**、日志明写没接上。
@@ -207,7 +242,7 @@ sync 对象、窗口对象、builder 对象。
 它按文件名自动发现 `tests/native/nvn_*_contract.c`，**自动推导出开关 `--nvn-queue-submit`**
 （**没有改构建脚本**），全流程 **BUILD EXIT=0**，
 manifest 里 `family_contracts` 含 `nvn_queue_submit_contract`，
-报告为 `{"nvn_queue_submit_errors": 0, ...}`。
+报告为 `{"nvn_queue_submit_errors": 0, ...}`，`dirty: ''`（构建时树是干净的）。
 
 ### 5.9 报告 ✅
 
@@ -224,9 +259,11 @@ manifest 里 `family_contracts` 含 `nvn_queue_submit_contract`，
 | 契约 | `tests/native/nvn_queue_submit_contract.c` |
 | 自证脚本 | `scripts/runtime/selfproof_nvn_queue_submit.sh` |
 | 变体生成 | `scripts/runtime/make_nvn_queue_submit_variants.py` |
-| 自证日志 | `.local/logs/p-mm-32-queue-submit-selfproof.log`（工作树内），副本在主检出 `.local/logs/` |
-| 变体 stdout/stderr | `.local/selfproof/p-mm-32-<时间戳>/`（**每次运行独立目录**） |
-| 规范构建产物 | `.worktrees/p-mm-32/.local/build-p-mm-42/`（含 `manifest.json`） |
+| 自证日志 | **主检出** `.local/logs/p-mm-32-queue-submit-selfproof.log` |
+| 变体 stdout/stderr | **主检出** `.local/selfproof/p-mm-32-<时间戳>/`（**每次运行独立目录**） |
+| 规范构建 manifest | **主检出** `.local/selfproof/p-mm-32-build-manifest.json` |
+| 规范构建产物 | `.worktrees/p-mm-32/.local/build-p-mm-43/` |
+| 并发竞态探针（探索用，不在交付里） | `.worktrees/p-mm-32/.local/probe/queue_submit_race_probe.c` |
 
 ---
 
@@ -245,8 +282,8 @@ manifest 里 `family_contracts` 含 `nvn_queue_submit_contract`，
 7. **没有证明 `nvnQueueFenceSync` 记的 fence 值有 GPU 意义** —— 记的是提交计数器，
    因为宿主还没有 fence 可发。
 8. **没有证明「并发提交」在真机上不出问题。** 本卡在宿主上加了提交锁
-   （`s_submit_lock`，理由见 §2.1），但**只在宿主上验过**，
-   **没有在真机上用两个线程两个队列跑过**。参考树记录过这个故障模式
+   （`s_submit_lock`，理由见 §2.1），宿主上量过（§5.5b），
+   但**没有在真机上用两个线程两个队列跑过**。参考树记录过这个故障模式
    （*submit re-entered*，L1129）。
 9. **没有证明契约在别的构建配置下也过** —— 只在宿主（`-O2`）和 android34（`-O2`）两个配置下验过。
 10. **没有碰 guest 对象内存** —— 这一条是**证明了的**（0xAA 哨兵），列在这里是为了区分。
