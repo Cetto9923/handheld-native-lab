@@ -278,7 +278,7 @@ baseline 的 stdout（真的绿）：
 | 证据 | 路径 |
 |---|---|
 | 自证总日志（含四个退出码与假绿的量法） | `.local/logs/p-mm-46-event-contract-selfproof.log` |
-| 自证本次运行的原始 stdout/stderr | `.local/selfproof/run-20261025-093751-32987/`（四个变体各一份 `.stdout` / `.stderr`） |
+| 自证本次运行的原始 stdout/stderr | `.local/selfproof/run-20261025-094007-36196/`（四个变体各一份 `.stdout` / `.stderr`） |
 | 未接线的两种失败 | `.local/logs/p-mm-46-event-not-wired.log` |
 | NDK 产物 | `.local/build-nvn-event-ndk/nvn_event.ndk.o`、`nvn_event_contract.ndk.o`（ARM aarch64 ELF） |
 | 三个变体与接线版设备层 | `.local/selfproof/nvn_event_broken_fixed.c`、`nvn_event_broken_prefix.c`、`nvn_event_stub_no_signal_value.c`、`nvn_device_with_event_family.c` |
@@ -298,5 +298,7 @@ baseline 的 stdout（真的绿）：
 - commit：
   - `1439cb5` feat(nvn): the event family of eleven names, on the host
   - `ba2cd23` test(nvn): the contract of the event family, and the three variants
-  - `（本报告）docs(coordination): the report of the event family`
+  - `9b26461` docs(coordination): the report of the event family
+  - `（本条）docs(coordination): the evidence paths of the report`
+- 自证跑在**干净的 HEAD `9b26461`** 上（自证日志里 `dirty:` 为空）。
 - **没有 push。**
