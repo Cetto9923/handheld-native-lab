@@ -46,6 +46,7 @@ import struct
 import sys
 
 OP_CAPABILITY = 17
+OP_EXTENSION = 10
 OP_TYPE_INT = 21
 OP_TYPE_FLOAT = 22
 OP_TYPE_IMAGE = 25
@@ -163,6 +164,37 @@ def instructions(words):
         index += count
 
 
+def literal_string(operands):
+    """The string of a literal string instruction, the words after the length."""
+    text = b""
+    for word in operands[1:]:
+        text += struct.pack("<I", word)
+    end = text.find(b"\0")
+    if end >= 0:
+        text = text[:end]
+    return text.decode("utf-8", "replace")
+
+
+# What each extension enables, as far as this tool knows.
+#
+# An extension declaration is dropped only when the module uses nothing of
+# what the extension brings. That needs to know what the extension brings,
+# and this table is deliberately short: an extension that is not in it is
+# never dropped, because the tool cannot tell whether the module needs it.
+#
+# The entry for the interlock extension is the one that matters on the
+# RG477M. The three fragment modules of this game declare the
+# FragmentShaderPixelInterlockEXT capability and the extension that goes
+# with it, and the device provides neither: the Mali driver refuses the
+# pipeline with VK_ERROR_INITIALIZATION_FAILED. Dropping the capability
+# alone is not enough, the extension declaration has to go as well, which
+# was measured on the device (the card P-MM-29).
+EXTENSION_CAPABILITIES = {
+    "EXT_fragment_shader_interlock": [5378],   # FragmentShaderPixelInterlockEXT
+    "SPV_EXT_fragment_shader_interlock": [5378],
+}
+
+
 def read_module(path):
     data = open(path, "rb").read()
     if len(data) % 4:
@@ -176,6 +208,7 @@ def read_module(path):
 def analyse(words):
     """What the module declares and what it uses."""
     declared = []
+    extensions = []
     float_widths = set()
     int_widths = set()
     pointer_pointee = {}      # result id of OpTypePointer -> pointee type id
@@ -189,6 +222,8 @@ def analyse(words):
     for _, opcode, operands in instructions(words):
         if opcode == OP_CAPABILITY:
             declared.append(operands[0])
+        elif opcode == OP_EXTENSION:
+            extensions.append(literal_string(operands))
         elif opcode == OP_TYPE_FLOAT:
             float_widths.add(operands[1])
         elif opcode == OP_TYPE_INT:
@@ -268,6 +303,7 @@ def analyse(words):
 
     return {
         "declared": declared,
+        "extensions": extensions,
         "used": sorted(used),
         "float_widths": sorted(float_widths),
         "int_widths": sorted(int_widths),
@@ -277,11 +313,12 @@ def analyse(words):
     }
 
 
-def rewrite(words, add, drop):
-    """The module with the capabilities added and dropped. Returns (words, added, dropped)."""
+def rewrite(words, add, drop, drop_extension=()):
+    """The module with the capabilities added and dropped. Returns (words, added, dropped, extensions dropped)."""
     kept = list(words[:5])
     added = []
     dropped = []
+    removed_extensions = []
     index = 5
     while index < len(words):
         count = words[index] >> 16
@@ -289,6 +326,10 @@ def rewrite(words, add, drop):
         operands = words[index + 1:index + count]
         if opcode == OP_CAPABILITY and operands and operands[0] in drop:
             dropped.append(operands[0])
+            index += count
+            continue
+        if opcode == OP_EXTENSION and literal_string(operands) in drop_extension:
+            removed_extensions.append(literal_string(operands))
             index += count
             continue
         kept.append(words[index])
@@ -322,7 +363,7 @@ def rewrite(words, add, drop):
                 added.append(capability)
         kept = out
 
-    return kept, added, dropped
+    return kept, added, dropped, removed_extensions
 
 
 def main(argv):
@@ -331,6 +372,7 @@ def main(argv):
     report_path = None
     add = []
     drop = []
+    drop_extension = []
     index = 1
     while index < len(argv):
         argument = argv[index]
@@ -349,6 +391,9 @@ def main(argv):
         elif argument == "--drop":
             index += 1
             drop.append(resolve(argv[index]))
+        elif argument == "--drop-extension":
+            index += 1
+            drop_extension.append(argv[index])
         else:
             raise SystemExit("unknown argument: %s" % argument)
         index += 1
@@ -370,12 +415,32 @@ def main(argv):
         )
         return 2
 
+    # The same rule for the extensions. An extension is only dropped when the
+    # module uses nothing of what the extension brings, and the tool refuses
+    # an extension it does not know, because it cannot tell then.
+    for extension in drop_extension:
+        if extension not in EXTENSION_CAPABILITIES:
+            sys.stderr.write(
+                "%s: refusing to drop the extension %s: this tool does not know what it enables, so it cannot tell "
+                "whether the module needs it\n" % (source, extension)
+            )
+            return 2
+        needed = sorted(set(EXTENSION_CAPABILITIES[extension]) & set(facts["used"]))
+        if needed:
+            sys.stderr.write(
+                "%s: refusing to drop the extension %s: the module uses %s\n"
+                % (source, extension, ", ".join(capability_name(c) for c in needed))
+            )
+            return 2
+
     to_add = [c for c in add if c not in facts["declared"]]
     to_drop = [c for c in drop if c in facts["declared"]]
+    to_drop_extension = [e for e in drop_extension if e in facts["extensions"]]
 
     report = {
         "source": source,
         "declared": [capability_name(c) for c in facts["declared"]],
+        "extensions": facts["extensions"],
         "used": [capability_name(c) for c in facts["used"]],
         "float_widths": facts["float_widths"],
         "int_widths": facts["int_widths"],
@@ -383,14 +448,16 @@ def main(argv):
         "image_writes": facts["writes"],
         "added": [capability_name(c) for c in to_add],
         "dropped": [capability_name(c) for c in to_drop],
+        "dropped_extensions": to_drop_extension,
         "output": None,
     }
 
     if destination is not None:
-        kept, added, dropped = rewrite(words, to_add, to_drop)
+        kept, added, dropped, removed_extensions = rewrite(words, to_add, to_drop, to_drop_extension)
         open(destination, "wb").write(struct.pack("<%dI" % len(kept), *kept))
         report["added"] = [capability_name(c) for c in added]
         report["dropped"] = [capability_name(c) for c in dropped]
+        report["dropped_extensions"] = removed_extensions
         report["output"] = destination
 
     text = json.dumps(report, indent=1)
