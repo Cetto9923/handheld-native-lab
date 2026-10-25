@@ -55,41 +55,47 @@ COMPUTE_KEYS = ["41b20b5f09269ad8", "86affd63144799de"]
 # The pipelines of the experiment.  Each line is one hypothesis.
 PIPELINES = [
     # id, fragment key, fragment variant, vertex key, vertex variant, question
-    ("ctrl-small-orig", "2ae58c692fb7fbb8", "base", VERTEX_KEY, "base",
+    ("A1-vert-base-trivial", "trivial_frag", "trivial", VERTEX_KEY, "base",
+     "is the game's own vertex module accepted at all?"),
+    ("A2-vert-capfix-trivial", "trivial_frag", "trivial", VERTEX_KEY, "capfix",
+     "the vertex module without the capabilities it does not use"),
+    ("A3-vert-capfix2-trivial", "trivial_frag", "trivial", VERTEX_KEY, "capfix2",
+     "the vertex module without any capability but Shader"),
+    ("B1-small-capfix-synnp", "2ae58c692fb7fbb8", "capfix", "synthetic_vert", "syn_np",
+     "the fragment module with a vertex that matches its interface exactly"),
+    ("B2-small-capfix2-synnp", "2ae58c692fb7fbb8", "capfix2", "synthetic_vert", "syn_np",
+     "every unused capability gone and the interface matched"),
+    ("C1-small-capfix2-nonp-vert", "2ae58c692fb7fbb8", "capfix2_nonp", VERTEX_KEY, "capfix2",
+     "the real vertex module, NoPerspective taken off the fragment input"),
+    ("C2-small-capfix2-vert", "2ae58c692fb7fbb8", "capfix2", VERTEX_KEY, "capfix2",
+     "the real vertex module, the interpolation mismatch left in place"),
+    ("D1-big1-capfix2-syn", "174293a30c315aed", "capfix2", "synthetic_vert", "syn",
+     "the first large fragment module with a vertex that writes location 1"),
+    ("E1-ctrl-small-orig", "2ae58c692fb7fbb8", "base", VERTEX_KEY, "base",
      "control: the untouched game modules"),
-    ("step1-small-capfix", "2ae58c692fb7fbb8", "capfix", VERTEX_KEY, "capfix",
+    ("E2-step1-small-capfix", "2ae58c692fb7fbb8", "capfix", VERTEX_KEY, "capfix",
      "step 1: only the capability declarations removed"),
-    ("fix-small-nonp", "2ae58c692fb7fbb8", "capfix_nonp", VERTEX_KEY, "capfix",
-     "capabilities removed and NoPerspective taken off the fragment input"),
-    ("fix-small-vertnonp", "2ae58c692fb7fbb8", "capfix", VERTEX_KEY, "capfix_vertnonp",
-     "the other side: NoPerspective put on the vertex output instead"),
-    ("ctrl-small-synvert", "2ae58c692fb7fbb8", "capfix", "synthetic_vert", "syn",
-     "a smooth synthetic vertex: the interpolation mismatch must survive"),
-    ("caps-frag-only", "2ae58c692fb7fbb8", "base", VERTEX_KEY, "capfix",
-     "only the fragment's own capability declarations are removed"),
-    ("caps-vert-only", "2ae58c692fb7fbb8", "capfix", VERTEX_KEY, "base",
-     "only the vertex's own capability declarations are removed"),
-    ("ctrl-big1-orig", "174293a30c315aed", "base", VERTEX_KEY, "base",
+    ("E3-ctrl-big1-orig", "174293a30c315aed", "base", VERTEX_KEY, "base",
      "control for the first large fragment module"),
-    ("step1-big1-capfix", "174293a30c315aed", "capfix", VERTEX_KEY, "capfix",
-     "capabilities removed, the interface left as it is"),
-    ("loc-big1-synvert", "174293a30c315aed", "capfix", "synthetic_vert", "syn",
-     "a vertex that writes location 1 as well"),
-    ("ctrl-big2-orig", "3fefb8e379a30f64", "base", VERTEX_KEY, "base",
-     "control for the second large fragment module"),
-    ("step1-big2-capfix", "3fefb8e379a30f64", "capfix", VERTEX_KEY, "capfix",
-     "capabilities removed, the interface left as it is"),
-    ("loc-big2-synvert", "3fefb8e379a30f64", "capfix", "synthetic_vert", "syn",
-     "a vertex that writes location 1 as well"),
-    ("compute-1", "41b20b5f09269ad8", "capfix", "-", "-",
+    ("F1-compute-1", "41b20b5f09269ad8", "capfix", "-", "-",
      "compute regression: the first compute module"),
-    ("compute-2", "86affd63144799de", "capfix", "-", "-",
+    ("F2-compute-2", "86affd63144799de", "capfix", "-", "-",
      "compute regression: the second compute module"),
 ]
 
 # The capabilities the modules declare and do not use.  The tool refuses to
 # drop one the module uses, and that refusal is part of the evidence.
 UNUSED_CAPABILITIES = ["Float64", "FragmentShaderPixelInterlockEXT"]
+
+# Every capability the modules declare and do not use, including the ones the
+# coordinator's tool has no opinion about.  The device has no
+# VK_KHR_shader_subgroup_shuffle and the probe asks for a Vulkan 1.1
+# instance, so GroupNonUniformShuffle is a capability the device cannot
+# provide under that instance version.
+ALL_UNUSED_CAPABILITIES = UNUSED_CAPABILITIES + [
+    "GroupNonUniformBallot", "GroupNonUniformShuffle", "GroupNonUniformVote",
+    "ImageBuffer", "SampledBuffer", "ImageGatherExtended", "ImageQuery",
+]
 
 
 # --------------------------------------------------------------------------
@@ -108,7 +114,7 @@ def _instruction(opcode, operands):
     return [((len(operands) + 1) << 16) | opcode] + list(operands)
 
 
-def synthetic_vertex(locations, key="synthetic_vert"):
+def synthetic_vertex(locations, key="synthetic_vert", no_perspective=False):
     """A vertex module that writes a v4float at each of ``locations``."""
     words = [0x07230203, 0x00010000, 0, 0, 0]
 
@@ -130,6 +136,8 @@ def synthetic_vertex(locations, key="synthetic_vert"):
     words += _instruction(15, [0, ids["main"]] + _literal_string("main") + outputs)
     for location, output in zip(locations, outputs):
         words += _instruction(71, [output, 30, location])  # OpDecorate Location
+        if no_perspective:
+            words += _instruction(71, [output, 13])       # OpDecorate NoPerspective
     words += _instruction(22, [ids["float"], 32])      # OpTypeFloat 32
     words += _instruction(23, [ids["v4float"], ids["float"], 4])
     words += _instruction(19, [ids["void"]])             # OpTypeVoid
@@ -162,7 +170,7 @@ def copy_module(source, destination):
     shutil.copyfile(source, destination)
 
 
-def make_variants(spv_dir, out_dir, report):
+def make_variants(spv_dir, out_dir, report, trivial_dir):
     """Build the variant directories.  Returns the list of directory=variant."""
     variants_dir = os.path.join(out_dir, "variants")
     os.makedirs(variants_dir, exist_ok=True)
@@ -192,7 +200,7 @@ def make_variants(spv_dir, out_dir, report):
     # need the capability that says so; the fragment and vertex modules do not
     # write to a storage image and must not declare it.
     compute_caps = list(caps) + ["--add-capability", "StorageImageWriteWithoutFormat"]
-    vertex_source = os.path.join(spv_dir, VERTEX_KEY + ".spv")
+    vertex_source = os.path.join(spv_dir, VERTEX_KEY + ".spv")  # noqa: F841 (kept for the report)
 
     # capfix: the capabilities the modules declare and do not use are removed.
     capfix = os.path.join(variants_dir, "capfix")
@@ -203,33 +211,54 @@ def make_variants(spv_dir, out_dir, report):
                        compute_caps if key in COMPUTE_KEYS else caps,
                        "report-%s-capfix.json" % key)
 
-    # capfix_nonp: the fragment modules without the NoPerspective decoration.
-    nonp = os.path.join(variants_dir, "capfix_nonp")
-    os.makedirs(nonp, exist_ok=True)
+    # capfix2: every capability the module declares and does not use is gone,
+    # so only Shader is left (plus the storage image capability the compute
+    # modules really use).
+    caps2 = []
+    for capability in ALL_UNUSED_CAPABILITIES:
+        caps2.extend(["--drop-capability", capability])
+    compute_caps2 = list(caps2) + ["--add-capability", "StorageImageWriteWithoutFormat"]
+    capfix2 = os.path.join(variants_dir, "capfix2")
+    os.makedirs(capfix2, exist_ok=True)
+    for key in [VERTEX_KEY] + FRAGMENT_KEYS + COMPUTE_KEYS:
+        # The compute modules read SubgroupLocalInvocationId, so they need the
+        # subgroup capability that goes with it; they keep the capfix set and
+        # are only here as the regression check.
+        interface_tool(os.path.join(spv_dir, key + ".spv"),
+                       os.path.join(capfix2, key + ".spv"),
+                       compute_caps if key in COMPUTE_KEYS else caps2,
+                       "report-%s-capfix2.json" % key)
+
+    # capfix2_nonp: the fragment modules without the NoPerspective decoration.
+    nonp2 = os.path.join(variants_dir, "capfix2_nonp")
+    os.makedirs(nonp2, exist_ok=True)
     for key in FRAGMENT_KEYS:
-        interface_tool(os.path.join(capfix, key + ".spv"),
-                       os.path.join(nonp, key + ".spv"),
-                       ["--drop-no-perspective", "--vertex", vertex_source],
-                       "report-%s-nonp.json" % key)
+        interface_tool(os.path.join(capfix2, key + ".spv"),
+                       os.path.join(nonp2, key + ".spv"),
+                       ["--drop-no-perspective", "--vertex",
+                        os.path.join(capfix2, VERTEX_KEY + ".spv")],
+                       "report-%s-capfix2-nonp.json" % key)
 
-    # capfix_vertnonp: the vertex module with NoPerspective on its output.
-    vertnonp = os.path.join(variants_dir, "capfix_vertnonp")
-    os.makedirs(vertnonp, exist_ok=True)
-    capfix_vertex = os.path.join(capfix, VERTEX_KEY + ".spv")
-    interface_tool(capfix_vertex,
-                   os.path.join(vertnonp, VERTEX_KEY + ".spv"),
-                   ["--vertex", capfix_vertex,
-                    "--add-no-perspective-to-vertex-output", "0"],
-                   "report-%s-vertnonp.json" % VERTEX_KEY)
-
-    # syn: the synthetic vertex that writes locations 0..5.
+    # syn / syn_np: the synthetic vertex that writes locations 0..5, smooth
+    # and with the NoPerspective decoration.
     syn = os.path.join(variants_dir, "syn")
     os.makedirs(syn, exist_ok=True)
     words = synthetic_vertex([0, 1, 2, 3, 4, 5])
     open(os.path.join(syn, "synthetic_vert.spv"), "wb").write(
         struct.pack("<%dI" % len(words), *words))
+    syn_np = os.path.join(variants_dir, "syn_np")
+    os.makedirs(syn_np, exist_ok=True)
+    words = synthetic_vertex([0, 1, 2, 3, 4, 5], no_perspective=True)
+    open(os.path.join(syn_np, "synthetic_vert.spv"), "wb").write(
+        struct.pack("<%dI" % len(words), *words))
 
-    return [base, capfix, nonp, vertnonp, syn]
+    # trivial: the hand-written pair, used to test a stage on its own.
+    trivial = os.path.join(variants_dir, "trivial")
+    os.makedirs(trivial, exist_ok=True)
+    for name in ("trivial_vert.spv", "trivial_frag.spv"):
+        copy_module(os.path.join(trivial_dir, name), os.path.join(trivial, name))
+
+    return [base, capfix, capfix2, nonp2, syn, syn_np, trivial]
 
 
 def rewrite_manifest(manifest_path, pipeline_lines):
@@ -290,8 +319,10 @@ def main(argv):
     report = {"schema": "ffrs.vulkan.fragment.experiment.v1", "device": device,
               "spv_dir": spv_dir, "out_dir": out_dir, "local_root": local_root}
 
-    directories = make_variants(spv_dir, out_dir, report)
-    variant_names = ["base", "capfix", "capfix_nonp", "capfix_vertnonp", "syn"]
+    directories = make_variants(spv_dir, out_dir, report,
+                             os.path.join(local_root, "shader-verify/spv-trivialpair"))
+    variant_names = ["base", "capfix", "capfix2", "capfix2_nonp", "syn", "syn_np",
+                     "trivial"]
     report["variants"] = dict(zip(variant_names, directories))
 
     root = os.path.abspath(os.path.join(HERE, "..", ".."))
