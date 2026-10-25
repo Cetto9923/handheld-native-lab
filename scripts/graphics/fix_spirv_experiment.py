@@ -55,16 +55,20 @@ COMPUTE_KEYS = ["41b20b5f09269ad8", "86affd63144799de"]
 # The pipelines of the experiment.  Each line is one hypothesis.
 PIPELINES = [
     # id, fragment key, fragment variant, vertex key, vertex variant, question
-    ("X1-fs-nobody-synnp", "2ae58c692fb7fbb8", "fs_nobody", "synthetic_vert", "syn_np",
-     "the fragment module with an empty body: interface and descriptors only"),
-    ("X2-fs-bare-synnp", "2ae58c692fb7fbb8", "fs_bare", "synthetic_vert", "syn_np",
-     "the fragment module with an empty body and no descriptors at all"),
-    ("X3-fs-capfix-synnp", "2ae58c692fb7fbb8", "capfix", "synthetic_vert", "syn_np",
-     "control: the untouched fragment body"),
-    ("X4-fs-nobody-vert", "2ae58c692fb7fbb8", "fs_nobody", VERTEX_KEY, "capfix2",
-     "the empty fragment body with the game's own vertex module"),
-    ("A2-vert-capfix-trivial", "trivial_frag", "trivial", VERTEX_KEY, "capfix",
-     "control: the game vertex module with the trivial fragment module"),
+    ("W1-f64only-synnp", "2ae58c692fb7fbb8", "f64only", "synthetic_vert", "syn_np",
+     "only Float64 removed: the interlock capability and the extension stay"),
+    ("W2-noextcap-synnp", "2ae58c692fb7fbb8", "noextcap", "synthetic_vert", "syn_np",
+     "the extension removed, the interlock capability kept"),
+    ("W3-noext-vert", "2ae58c692fb7fbb8", "noext", VERTEX_KEY, "capfix",
+     "the real pairing: the game fragment and the game vertex, nothing else changed"),
+    ("W4-noext-nonp-vert", "2ae58c692fb7fbb8", "noext_nonp", VERTEX_KEY, "capfix",
+     "the real pairing with NoPerspective taken off the fragment input"),
+    ("W5-noext-vertnonp", "2ae58c692fb7fbb8", "noext", VERTEX_KEY, "capfix_vertnonp",
+     "the real pairing with NoPerspective put on the vertex output instead"),
+    ("W6-big2-noext-nonp-syn", "3fefb8e379a30f64", "noext_nonp", "synthetic_vert", "syn",
+     "the second large fragment module with a vertex that writes its locations"),
+    ("W7-big1-noext-nonp-vert", "174293a30c315aed", "noext_nonp", VERTEX_KEY, "capfix",
+     "the first large fragment module with the game vertex module"),
     ("F1-compute-1", "41b20b5f09269ad8", "capfix", "-", "-",
      "compute regression: the first compute module"),
     ("F2-compute-2", "86affd63144799de", "capfix", "-", "-",
@@ -166,7 +170,12 @@ def make_variants(spv_dir, out_dir, report, trivial_dir):
     base = os.path.join(variants_dir, "base")
     os.makedirs(base, exist_ok=True)
     for name in sorted(os.listdir(spv_dir)):
-        if name.endswith(".spv") or name.endswith(".res.json"):
+        # The reflection files are read out of the first variant directory,
+        # so they all have to be there; the modules themselves are only the
+        # ones a pipeline uses, because the probe has a limit of 32 modules.
+        if name.endswith(".res.json"):
+            copy_module(os.path.join(spv_dir, name), os.path.join(base, name))
+        elif name.endswith(".spv") and name[:-4] in [VERTEX_KEY] + FRAGMENT_KEYS:
             copy_module(os.path.join(spv_dir, name), os.path.join(base, name))
 
     def interface_tool(source, destination, extra, report_name):
@@ -227,6 +236,54 @@ def make_variants(spv_dir, out_dir, report, trivial_dir):
                         os.path.join(capfix2, VERTEX_KEY + ".spv")],
                        "report-%s-capfix2-nonp.json" % key)
 
+    # f64only: only Float64 removed, the interlock capability and the
+    # extension stay.  noextcap: the extension removed, the interlock
+    # capability kept.  The two say which of the two the driver objects to.
+    f64only = os.path.join(variants_dir, "f64only")
+    os.makedirs(f64only, exist_ok=True)
+    noextcap = os.path.join(variants_dir, "noextcap")
+    os.makedirs(noextcap, exist_ok=True)
+    for key in FRAGMENT_KEYS:
+        interface_tool(os.path.join(spv_dir, key + ".spv"),
+                       os.path.join(f64only, key + ".spv"),
+                       ["--drop-capability", "Float64"],
+                       "report-%s-f64only.json" % key)
+        interface_tool(os.path.join(spv_dir, key + ".spv"),
+                       os.path.join(noextcap, key + ".spv"),
+                       ["--drop-capability", "Float64",
+                        "--drop-extension", "SPV_EXT_fragment_shader_interlock"],
+                       "report-%s-noextcap.json" % key)
+
+    # capfix_vertnonp: the game's vertex module with NoPerspective on its
+    # location 0 output.
+    capfix_vertnonp = os.path.join(variants_dir, "capfix_vertnonp")
+    os.makedirs(capfix_vertnonp, exist_ok=True)
+    capfix_vertex = os.path.join(capfix, VERTEX_KEY + ".spv")
+    interface_tool(capfix_vertex,
+                   os.path.join(capfix_vertnonp, VERTEX_KEY + ".spv"),
+                   ["--vertex", capfix_vertex,
+                    "--add-no-perspective-to-vertex-output", "0"],
+                   "report-%s-vertnonp.json" % VERTEX_KEY)
+
+    # noext: the fragment module without the interlock capability and without
+    # the OpExtension that goes with it.
+    noext = os.path.join(variants_dir, "noext")
+    os.makedirs(noext, exist_ok=True)
+    noext_nonp = os.path.join(variants_dir, "noext_nonp")
+    os.makedirs(noext_nonp, exist_ok=True)
+    for key in FRAGMENT_KEYS:
+        interface_tool(os.path.join(spv_dir, key + ".spv"),
+                       os.path.join(noext, key + ".spv"),
+                       list(caps) + ["--drop-extension",
+                                     "SPV_EXT_fragment_shader_interlock"],
+                       "report-%s-noext.json" % key)
+    for key in FRAGMENT_KEYS:
+        interface_tool(os.path.join(noext, key + ".spv"),
+                       os.path.join(noext_nonp, key + ".spv"),
+                       ["--drop-no-perspective", "--vertex",
+                        os.path.join(spv_dir, VERTEX_KEY + ".spv")],
+                       "report-%s-noext-nonp.json" % key)
+
     # fs_nobody / fs_bare: the fragment module with its body removed, with and
     # without the descriptor variables.  They say whether the driver objects to
     # the code or to the interface and the descriptors.
@@ -262,7 +319,11 @@ def make_variants(spv_dir, out_dir, report, trivial_dir):
     for name in ("trivial_vert.spv", "trivial_frag.spv"):
         copy_module(os.path.join(trivial_dir, name), os.path.join(trivial, name))
 
-    return [base, capfix, capfix2, nonp2, fs_nobody, fs_bare, syn, syn_np, trivial]
+    return {"base": base, "capfix": capfix, "capfix2": capfix2, "capfix2_nonp": nonp2,
+            "f64only": f64only, "noextcap": noextcap, "noext": noext,
+            "noext_nonp": noext_nonp, "capfix_vertnonp": capfix_vertnonp,
+            "fs_nobody": fs_nobody, "fs_bare": fs_bare, "syn": syn, "syn_np": syn_np,
+            "trivial": trivial}
 
 
 def rewrite_manifest(manifest_path, pipeline_lines):
@@ -323,10 +384,18 @@ def main(argv):
     report = {"schema": "ffrs.vulkan.fragment.experiment.v1", "device": device,
               "spv_dir": spv_dir, "out_dir": out_dir, "local_root": local_root}
 
-    directories = make_variants(spv_dir, out_dir, report,
-                             os.path.join(local_root, "shader-verify/spv-trivialpair"))
-    variant_names = ["base", "capfix", "capfix2", "capfix2_nonp", "fs_nobody", "fs_bare",
-                     "syn", "syn_np", "trivial"]
+    all_variants = make_variants(spv_dir, out_dir, report,
+                                  os.path.join(local_root, "shader-verify/spv-trivialpair"))
+    # Only the variants the pipelines use are staged: the probe has a limit of
+    # 32 modules and the variant directories multiply the module count.
+    used = set()
+    for _, _, fragment_variant, _, vertex_variant, _ in PIPELINES:
+        used.add(fragment_variant)
+        used.add(vertex_variant)
+    used.discard("-")
+    used.add("base")
+    variant_names = [name for name in all_variants if name in used]
+    directories = [all_variants[name] for name in variant_names]
     report["variants"] = dict(zip(variant_names, directories))
 
     root = os.path.abspath(os.path.join(HERE, "..", ".."))

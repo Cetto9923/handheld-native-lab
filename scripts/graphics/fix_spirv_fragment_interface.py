@@ -21,9 +21,19 @@ This tool does two things, and only these two:
 1. it removes the capability declarations the module does not use, by calling
    the coordinator's ``fix_spirv_capabilities.py`` (which decides from the
    module's own evidence and refuses to drop a capability the module uses);
-2. it fixes the interpolation decoration of the interface, either on the
+2. it removes an extension declaration (``--drop-extension``).  This is the
+   half the coordinator's capability tool cannot do: the driver reads the
+   declaration, so a module that still declares
+   ``SPV_EXT_fragment_shader_interlock`` is refused even after the
+   capability is gone (measured on the RG477M, P-MM-29);
+3. it fixes the interpolation decoration of the interface, either on the
    fragment side (``--drop-no-perspective``) or on the vertex side
    (``--add-no-perspective-to-vertex-output``).
+
+It also has two switches that exist for bisection and change what the
+module does: ``--strip-body`` leaves the entry point's function empty and
+``--strip-descriptor-variables`` removes the variables that hold
+descriptors.
 
 It never touches the input file.  It never invents a producer for an input
 location the vertex stage does not write: that is a gap in the game's shader
@@ -276,6 +286,25 @@ def drop_decorations(words, targets, decoration=None):
     return kept, removed
 
 
+def drop_extensions(words, names):
+    """Remove the OpExtension instructions whose name is in ``names``."""
+    kept = list(words[:5])
+    removed = []
+    index = 5
+    while index < len(words):
+        count = words[index] >> 16
+        opcode = words[index] & 0xFFFF
+        operands = words[index + 1:index + count]
+        if opcode == OP_EXTENSION and literal_string(operands) in names:
+            removed.append(literal_string(operands))
+            index += count
+            continue
+        kept.append(words[index])
+        kept.extend(operands)
+        index += count
+    return kept, removed
+
+
 def strip_function_body(words, entry_id):
     """Leave the entry point's function with an empty body."""
     out = list(words[:5])
@@ -424,6 +453,7 @@ def main(argv):
     drop_no_perspective = False
     strip_body = False
     strip_descriptors = False
+    drop_extensions_requested = []
     add_no_perspective_to_vertex = None
 
     index = 1
@@ -453,6 +483,9 @@ def main(argv):
             strip_body = True
         elif argument == "--strip-descriptor-variables":
             strip_descriptors = True
+        elif argument == "--drop-extension":
+            index += 1
+            drop_extensions_requested.append(argv[index])
         elif argument == "--add-no-perspective-to-vertex-output":
             index += 1
             add_no_perspective_to_vertex = int(argv[index])
@@ -513,6 +546,10 @@ def main(argv):
             words, removed_decorations = drop_decorations(words, targets,
                                                           DEC_NO_PERSPECTIVE)
 
+        removed_extensions = []
+        if drop_extensions_requested:
+            words, removed_extensions = drop_extensions(words, drop_extensions_requested)
+
         if strip_body:
             entry_ids = [entry["id"] for entry in facts["entry_points"]]
             if not entry_ids:
@@ -562,6 +599,7 @@ def main(argv):
             "removed_decorations": removed_decorations,
             "removed_body_instructions": removed_body,
             "removed_descriptor_variables": removed_descriptors,
+            "removed_extensions": removed_extensions,
             "added_decorations": added_decorations,
             "fragment_interface_before": fragment_interface,
             "fragment_interface_after": interface_table(after),
