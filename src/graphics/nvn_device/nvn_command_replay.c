@@ -45,76 +45,72 @@ static nvn_cb_size_range record_size_of(uint32_t op) {
     nvn_cb_size_range range;
     range.min = 0;
     range.max = 0;
+    /* The size of a record is the header plus the payload, rounded up to
+     * eight bytes: the reference allocates it that way
+     * (hle_nvn.c:850, "sz = (8 + payload + 7) & ~7"), and the recorder of
+     * this runtime rounds the same way. A payload that is not a multiple of
+     * eight therefore makes the record longer than the payload, and a table
+     * that said "header plus payload" would refuse a perfectly good record:
+     * the barrier carries four bytes of bits in eight bytes of record.
+     *
+     * The counts are the ones the reference records by: a binding record
+     * with an array is allocated by the number of elements that are really in
+     * it, so its size is a range and not a number. */
     switch (op) {
-    case NVN_CB_OP_END: range.min = range.max = sizeof(nvn_cb_op_hdr); break;
-    case NVN_CB_OP_CALL: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(uint64_t); break;
-    case NVN_CB_OP_SIGNAL_EVENT: range.min = range.max = sizeof(nvn_cb_op_hdr) + 16u; break;
-    case NVN_CB_OP_REPORT_COUNTER: range.min = range.max = sizeof(nvn_cb_op_hdr) + 16u; break;
-    case NVN_CB_OP_RESET_COUNTER: range.min = range.max = sizeof(nvn_cb_op_hdr) + 8u; break;
-    case NVN_CB_OP_FENCE_SYNC: range.min = range.max = sizeof(nvn_cb_op_hdr) + 8u; break;
-    case NVN_CB_OP_BARRIER: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(int32_t); break;
-    case NVN_CB_OP_COPY_B2B: range.min = range.max = sizeof(nvn_cb_op_hdr) + 3u * sizeof(uint64_t); break;
+    case NVN_CB_OP_END: range.min = range.max = 8; break;
+    case NVN_CB_OP_CALL: range.min = range.max = 16; break;
+    case NVN_CB_OP_JUMP: range.min = range.max = 16; break;
+    case NVN_CB_OP_SIGNAL_EVENT: range.min = range.max = 24; break;
+    case NVN_CB_OP_REPORT_COUNTER: range.min = range.max = 24; break;
+    case NVN_CB_OP_RESET_COUNTER: range.min = range.max = 16; break;
+    case NVN_CB_OP_FENCE_SYNC: range.min = range.max = 16; break;
+    case NVN_CB_OP_BARRIER: range.min = range.max = 16; break;
+    case NVN_CB_OP_COPY_B2B: range.min = range.max = 32; break;
     /* The length of the payload of an update is in the record itself. */
-    case NVN_CB_OP_UPDATE_UB: range.min = sizeof(nvn_cb_op_hdr) + 16u; range.max = 0; break;
-    case NVN_CB_OP_SET_RT: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_set_rt); break;
-    case NVN_CB_OP_CLEAR_COLOR: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_clear_color); break;
-    case NVN_CB_OP_CLEAR_DS: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_clear_ds); break;
-    case NVN_CB_OP_RENDER_COND: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_render_cond); break;
-    case NVN_CB_OP_VIEWPORTS: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_viewports); break;
-    case NVN_CB_OP_SCISSOR: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_scissor); break;
-    case NVN_CB_OP_DEPTH_RANGE: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_depth_range); break;
-    case NVN_CB_OP_PRIM_RESTART: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_prim_restart); break;
-    case NVN_CB_OP_DEPTH_CLAMP: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_depth_clamp); break;
-    case NVN_CB_OP_VP_SWIZZLE: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_vp_swizzle); break;
-    case NVN_CB_OP_BIND_PROGRAM: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_bind_program); break;
-    case NVN_CB_OP_BIND_STATE: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_bind_state); break;
-    /* The ones with an array: the reference allocates them by the count. */
-    case NVN_CB_OP_BIND_VATTR:
-        range.min = sizeof(nvn_cb_op_hdr) + offsetof(nvn_cb_p_bind_vattr, st);
-        range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_bind_vattr);
-        break;
-    case NVN_CB_OP_BIND_VSTREAM:
-        range.min = sizeof(nvn_cb_op_hdr) + offsetof(nvn_cb_p_bind_vstream, st);
-        range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_bind_vstream);
-        break;
-    case NVN_CB_OP_BIND_VBUF:
-        range.min = sizeof(nvn_cb_op_hdr) + offsetof(nvn_cb_p_bind_vbuf, r);
-        range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_bind_vbuf);
-        break;
+    case NVN_CB_OP_UPDATE_UB: range.min = 32; range.max = 0; break;
+    /* The render targets carry their snapshots beside the record in the
+     * reference; this runtime keeps them beside the record as well, so the
+     * size of the record is the size of the payload. */
+    case NVN_CB_OP_SET_RT: range.min = range.max = 248; break;
+    case NVN_CB_OP_CLEAR_COLOR: range.min = range.max = 32; break;
+    case NVN_CB_OP_CLEAR_DS: range.min = range.max = 24; break;
+    case NVN_CB_OP_VIEWPORTS: range.min = range.max = 400; break;
+    case NVN_CB_OP_SCISSOR: range.min = range.max = 24; break;
+    case NVN_CB_OP_DEPTH_RANGE: range.min = range.max = 16; break;
+    case NVN_CB_OP_PRIM_RESTART: range.min = range.max = 16; break;
+    case NVN_CB_OP_DEPTH_CLAMP: range.min = range.max = 16; break;
+    case NVN_CB_OP_RAST_DISCARD: range.min = range.max = 16; break;
+    case NVN_CB_OP_BIND_PROGRAM: range.min = range.max = 24; break;
+    case NVN_CB_OP_BIND_STATE: range.min = range.max = 40; break;
+    case NVN_CB_OP_BIND_VATTR: range.min = 24; range.max = 80; break;
+    case NVN_CB_OP_BIND_VSTREAM: range.min = 24; range.max = 144; break;
+    case NVN_CB_OP_BIND_VBUF: range.min = 32; range.max = 272; break;
+    case NVN_CB_OP_BIND_UBO: range.min = range.max = 32; break;
+    case NVN_CB_OP_BIND_SSBO: range.min = range.max = 32; break;
+    case NVN_CB_OP_BIND_TEX1: range.min = range.max = 32; break;
     case NVN_CB_OP_BIND_TEX:
     case NVN_CB_OP_BIND_SAMP:
-    case NVN_CB_OP_BIND_IMG:
-        range.min = sizeof(nvn_cb_op_hdr) + offsetof(nvn_cb_p_bind_handles, h);
-        range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_bind_handles);
-        break;
-    case NVN_CB_OP_BIND_UBO: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_bind_buf); break;
-    case NVN_CB_OP_BIND_SSBO: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_bind_buf); break;
-    case NVN_CB_OP_BIND_TEX1: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_bind_tex1); break;
-    case NVN_CB_OP_STENCIL: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_stencil); break;
-    case NVN_CB_OP_POLY_OFFSET: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_poly_offset); break;
+    case NVN_CB_OP_BIND_IMG: range.min = 40; range.max = 288; break;
+    case NVN_CB_OP_STENCIL: range.min = range.max = 32; break;
+    case NVN_CB_OP_POLY_OFFSET: range.min = range.max = 24; break;
     /* A draw without indirect arguments stops before the fields that hold
      * them, exactly as the reference does. */
-    case NVN_CB_OP_DRAW:
-        range.min = sizeof(nvn_cb_op_hdr) + offsetof(nvn_cb_p_draw, ind);
-        range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_draw);
-        break;
-    case NVN_CB_OP_DRAW_IDX:
-        range.min = sizeof(nvn_cb_op_hdr) + offsetof(nvn_cb_p_draw_idx, ind);
-        range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_draw_idx);
-        break;
-    case NVN_CB_OP_DISPATCH: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_dispatch); break;
-    case NVN_CB_OP_SET_TEX_POOL: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_set_pool); break;
-    case NVN_CB_OP_SET_SAMP_POOL: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_set_pool); break;
-    case NVN_CB_OP_COPY_B2T: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_copy_b2t); break;
-    case NVN_CB_OP_COPY_T2B: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_copy_t2t); break;
-    case NVN_CB_OP_COPY_T2T: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_copy_t2t); break;
-    case NVN_CB_OP_COPY_STRIDE: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_copy_stride); break;
-    case NVN_CB_OP_CLEAR_TEX: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_clear_tex); break;
-    case NVN_CB_OP_CLEAR_BUF: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_clear_buf); break;
-    case NVN_CB_OP_BLEND_COLOR: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_blend_color); break;
-    case NVN_CB_OP_TF_BIND: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_tf_bind); break;
-    case NVN_CB_OP_TF_STATE: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_tf_state); break;
-    case NVN_CB_OP_RAST_DISCARD: range.min = range.max = sizeof(nvn_cb_op_hdr) + sizeof(nvn_cb_p_rast_discard); break;
+    case NVN_CB_OP_DRAW: range.min = 32; range.max = 56; break;
+    case NVN_CB_OP_DRAW_IDX: range.min = 40; range.max = 64; break;
+    case NVN_CB_OP_DISPATCH: range.min = range.max = 40; break;
+    case NVN_CB_OP_SET_TEX_POOL: range.min = range.max = 16; break;
+    case NVN_CB_OP_SET_SAMP_POOL: range.min = range.max = 16; break;
+    case NVN_CB_OP_COPY_B2T: range.min = range.max = 72; break;
+    case NVN_CB_OP_COPY_T2B: range.min = range.max = 72; break;
+    case NVN_CB_OP_COPY_T2T: range.min = range.max = 112; break;
+    case NVN_CB_OP_CLEAR_TEX: range.min = range.max = 80; break;
+    case NVN_CB_OP_CLEAR_BUF: range.min = range.max = 32; break;
+    case NVN_CB_OP_COPY_STRIDE: range.min = range.max = 24; break;
+    case NVN_CB_OP_BLEND_COLOR: range.min = range.max = 24; break;
+    case NVN_CB_OP_RENDER_COND: range.min = range.max = 24; break;
+    case NVN_CB_OP_TF_BIND: range.min = range.max = 32; break;
+    case NVN_CB_OP_TF_STATE: range.min = range.max = 24; break;
+    case NVN_CB_OP_VP_SWIZZLE: range.min = range.max = 80; break;
     default: break;
     }
     return range;
@@ -377,6 +373,11 @@ int nvn_command_replay_run(uint64_t handle) {
         return 0;
     }
 
+    /* What this one package holds, so that the log says what the guest's own
+     * frame is made of and not only what the counters add up to. */
+    uint64_t package_opcodes[NVN_CB_OP_COUNT];
+    memset(package_opcodes, 0, sizeof(package_opcodes));
+
     at = package.records;
     left = package.bytes;
     while (left >= sizeof(nvn_cb_op_hdr)) {
@@ -491,6 +492,7 @@ int nvn_command_replay_run(uint64_t handle) {
         s_stats.records++;
         s_stats.opcodes[header.op]++;
         pthread_mutex_unlock(&s_lock);
+        package_opcodes[header.op]++;
         switch (header.op) {
         case NVN_CB_OP_DRAW:
         case NVN_CB_OP_DRAW_IDX:
@@ -526,6 +528,18 @@ int nvn_command_replay_run(uint64_t handle) {
                         "package was not read further\n",
                 left);
         ok = 0;
+    }
+    {
+        int i;
+        fprintf(stderr, "[nvn-replay] the package holds %zu records:", package.record_count);
+        for (i = 0; i < NVN_CB_OP_COUNT; i++) {
+            if (!package_opcodes[i]) continue;
+            fprintf(stderr, " %s=%" PRIu64,
+                    nvn_command_buffer_opcode_name((uint32_t)i) ? nvn_command_buffer_opcode_name((uint32_t)i)
+                                                               : "of an unknown kind",
+                    package_opcodes[i]);
+        }
+        fprintf(stderr, "\n");
     }
     return ok;
 }
