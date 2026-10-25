@@ -54,6 +54,24 @@ typedef struct {
 } nvn_queue_state;
 
 static pthread_mutex_t s_queue_lock = PTHREAD_MUTEX_INITIALIZER;
+
+/* One submission at a time.
+ *
+ * The reference tree serializes the submissions for the same reason:
+ * .local/refs/nxnative/dm/gfx/nvn/hle_nvn.c L1129, where the host stopped
+ * with "submit re-entered" when a second thread submitted while the first
+ * was still being replayed.
+ *
+ * The reason is the same here. The replay keeps one state for the command
+ * stream that is running (the pools it bound, the program it bound, the
+ * targets it draws into) and it clears that state when a run begins. Two
+ * submissions that overlap would clear each other's state in the middle of
+ * a run.
+ *
+ * NVN orders the work of two queues only through syncs, so replaying the
+ * submissions one after the other is one valid order. */
+static pthread_mutex_t s_submit_lock = PTHREAD_MUTEX_INITIALIZER;
+
 static nvn_queue_builder_state s_builders[NVN_QUEUE_MAX_BUILDER_STATES];
 static nvn_queue_state s_queues[NVN_QUEUE_MAX_STATES];
 static nvn_queue_stats s_stats;
@@ -610,8 +628,15 @@ void nvn_queue_submit_commands(void *queue, int count, const uint64_t *handles) 
 
         /* The package is there, so the replay is called with it. The replay
          * reads the records and stops there: it issues no Vulkan command,
-         * so nothing is submitted to the GPU yet. */
+         * so nothing is submitted to the GPU yet.
+         *
+         * The lock is held around the replay and not only around the
+         * counters: the replay keeps one state for the stream that is
+         * running, and two submissions that overlap would clear each
+         * other's state. */
+        pthread_mutex_lock(&s_submit_lock);
         (void)nvn_command_replay_run(handle);
+        pthread_mutex_unlock(&s_submit_lock);
         handed++;
         pthread_mutex_lock(&s_queue_lock);
         s_stats.packages_handed_to_replay++;

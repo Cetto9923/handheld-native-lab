@@ -34,8 +34,10 @@
 #include "../../src/graphics/nvn_device/nvn_command_buffer.h"
 #include "../../src/graphics/nvn_device/nvn_command_replay.h"
 #include "../../src/graphics/nvn_device/nvn_queue.h"
+#include "../../src/graphics/nvn_device/nvn_texture_pool.h"
 
 #include <inttypes.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -69,6 +71,19 @@ typedef void (*cb_begin_recording_fn)(void *);
 typedef uint64_t (*cb_end_recording_fn)(void *);
 typedef void (*cb_clear_fn)(void *, int, const float *, int);
 typedef void (*cb_bind_vertex_buffer_fn)(void *, int, uint64_t, uint64_t);
+typedef void (*cb_set_texture_pool_fn)(void *, const void *);
+typedef void (*cb_bind_texture_fn)(void *, int, int, uint64_t);
+typedef int (*tp_initialize_fn)(void *, const void *, long, int);
+
+/* How many times the two threads submit at the same time. The overlap is a
+ * matter of timing, so the check is repeated: on this host the overlap is
+ * seen in about a tenth of the rounds without the submission lock, and in
+ * none of them with it. */
+#define QUEUE_SUBMIT_CONCURRENT_ROUNDS 200
+/* How many textures each package binds after its pool. The more of them
+ * there are, the longer the two runs overlap, and the overlap is what the
+ * race needs. */
+#define QUEUE_SUBMIT_BINDS_PER_PACKAGE 100
 
 /* The five names this card owns. */
 static const char *const s_names[5] = {
@@ -78,6 +93,22 @@ static const char *const s_names[5] = {
     "nvnQueueWaitSync",
     "nvnQueueBuilderGetMemory",
 };
+
+/* One submission, made from another thread. */
+typedef struct submit_job {
+    void *queue;
+    uint64_t handle;
+} submit_job;
+
+static submit_fn s_submit;
+
+static void *submit_thread(void *argument) {
+    submit_job *job = (submit_job *)argument;
+    uint64_t handles[1];
+    handles[0] = job->handle;
+    s_submit(job->queue, 1, handles);
+    return NULL;
+}
 
 int main(int argc,char **argv) {
     if(argc!=2 || strcmp(argv[1],"--nvn-queue-submit")) {
@@ -138,13 +169,14 @@ int main(int argc,char **argv) {
     builder_get_memory_fn builder_get_memory =
         (builder_get_memory_fn)(uintptr_t)lookup(NULL,"nvnQueueBuilderGetMemory");
     CHECK(submit&&present&&fence&&wait_sync&&builder_get_memory);
+    s_submit = submit;
 
     /* The guest's own objects. They are filled with the 0xAA sentinel and
      * are checked for that sentinel at the end: nothing is written into the
      * guest's memory. */
     unsigned char queue_object[64];
     unsigned char buffer_object[64];
-    unsigned char command_memory[4096];
+    unsigned char command_memory[16384];
     uint64_t handles[4];
     uint64_t unknown_handles[1];
     unsigned char handles_before[sizeof(handles)];
@@ -386,6 +418,118 @@ int main(int argc,char **argv) {
             expect_condition("queue-submit-the-builder-object-was-not-written",clean);
         }
     }
+
+/* ------------------------------------------------------------------ */
+/* 5b. Two submissions at the same time.                                */
+/* ------------------------------------------------------------------ */
+/* The reference tree serializes the submissions for the same reason:
+ * .local/refs/nxnative/dm/gfx/nvn/hle_nvn.c L1129, where the host stopped
+ * with "submit re-entered" when a second thread submitted while the first
+ * was still being replayed. The replay keeps one state for the stream that
+ * is running - the pools it bound, the program it bound - and it clears that
+ * state when a run begins. Two submissions that overlap clear each other's
+ * state.
+ *
+ * Two threads submit two packages here, and each package binds its own
+ * texture pool and then its own texture. When the two runs overlap, one of
+ * them clears the other's pool binding, and the other's texture is then
+ * refused as a handle of a pool that is not bound: the replay counts that
+ * as a refusal of a foreign pool.
+ *
+ * So the number of foreign pool refusals is the thing this case checks. It
+ * is zero when the submissions are serialized, and it is not zero when they
+ * are not. The check is repeated, because the overlap is a matter of
+ * timing and one run of it is not enough to see it. */
+{
+    unsigned char pool_a[64];
+    unsigned char pool_b[64];
+    unsigned char second_buffer[64];
+    unsigned char second_memory[16384];
+    uint64_t second_handle;
+    pthread_t threads[2];
+    submit_job jobs[2];
+    nvn_queue_stats queue_before;
+    nvn_queue_stats queue_after;
+    tp_initialize_fn texture_pool_initialize =
+        (tp_initialize_fn)(uintptr_t)lookup(NULL,"nvnTexturePoolInitialize");
+    cb_set_texture_pool_fn set_texture_pool =
+        (cb_set_texture_pool_fn)(uintptr_t)lookup(NULL,"nvnCommandBufferSetTexturePool");
+    cb_bind_texture_fn bind_texture =
+        (cb_bind_texture_fn)(uintptr_t)lookup(NULL,"nvnCommandBufferBindTexture");
+    int round;
+    int bind;
+
+    CHECK(texture_pool_initialize&&set_texture_pool&&bind_texture);
+
+    memset(pool_a,0xaa,sizeof(pool_a));
+    memset(pool_b,0xaa,sizeof(pool_b));
+    memset(second_buffer,0xaa,sizeof(second_buffer));
+    memset(second_memory,0,sizeof(second_memory));
+
+    /* Two pools with a numbering of their own, so that the texture of one
+     * is not the texture of the other. */
+    expect_value("queue-submit-the-first-pool-takes-the-numbering-from-zero",
+                 (uint64_t)(uint32_t)texture_pool_initialize(pool_a,(const void *)pool_a,0,300),1);
+    expect_value("queue-submit-the-second-pool-gets-a-numbering-of-its-own",
+                 (uint64_t)(uint32_t)texture_pool_initialize(pool_b,(const void *)pool_a,0,10),1);
+
+    /* The first package binds the first pool and then a texture of it. */
+    expect_value("queue-submit-the-first-pool-binding-records",
+                 (uint64_t)(uint32_t)initialize(buffer_object,NULL),1);
+    add_command_memory(buffer_object,command_memory,0,sizeof(command_memory));
+    begin_recording(buffer_object);
+    set_texture_pool(buffer_object,pool_a);
+    for (bind = 0; bind < QUEUE_SUBMIT_BINDS_PER_PACKAGE; bind++)
+        bind_texture(buffer_object,0,0,5u);
+    handles[0]=end_recording(buffer_object);
+    expect_condition("queue-submit-the-first-recording-hands-out-a-handle",handles[0]!=0);
+
+    /* The second package binds the second pool and then a texture of it. */
+    expect_value("queue-submit-the-second-buffer-initializes",
+                 (uint64_t)(uint32_t)initialize(second_buffer,NULL),1);
+    add_command_memory(second_buffer,second_memory,0,sizeof(second_memory));
+    begin_recording(second_buffer);
+    set_texture_pool(second_buffer,pool_b);
+    for (bind = 0; bind < QUEUE_SUBMIT_BINDS_PER_PACKAGE; bind++)
+        bind_texture(second_buffer,0,0,5u);
+    second_handle=end_recording(second_buffer);
+    expect_condition("queue-submit-the-second-recording-hands-out-a-handle",second_handle!=0);
+
+    /* The check, repeated. */
+    for (round = 0; round < QUEUE_SUBMIT_CONCURRENT_ROUNDS; round++) {
+        nvn_replay_stats stats;
+        nvn_command_replay_reset();
+        nvn_queue_get_stats(&queue_before);
+
+        jobs[0].queue=queue_object;
+        jobs[0].handle=handles[0];
+        jobs[1].queue=queue_object;
+        jobs[1].handle=second_handle;
+
+        pthread_create(&threads[0],NULL,submit_thread,&jobs[0]);
+        pthread_create(&threads[1],NULL,submit_thread,&jobs[1]);
+        pthread_join(threads[0],NULL);
+        pthread_join(threads[1],NULL);
+
+        nvn_command_replay_get_stats(&stats);
+        nvn_queue_get_stats(&queue_after);
+
+        /* Both packages were read. A submission that is lost would be a
+         * submission the guest made and the runtime dropped. */
+        expect_value("queue-submit-the-replay-read-both-packages-of-two-threads",
+                     stats.packages,2);
+        expect_value("queue-submit-the-queue-handed-both-packages-to-the-replay",
+                     queue_after.packages_handed_to_replay-queue_before.packages_handed_to_replay,2);
+        expect_value("queue-submit-the-queue-refused-nothing-of-two-threads",
+                     queue_after.packages_refused-queue_before.packages_refused,0);
+        /* And the two runs did not clear each other's pool binding: no
+         * texture was refused as a handle of a pool that is not bound. This
+         * is the check that has teeth: without the submission lock this
+         * number is not zero. */
+        expect_value("queue-submit-the-two-threads-did-not-clear-each-others-pool",
+                     stats.refused_foreign_pool,0);
+    }
+}
 
     {
         nvn_queue_stats final_stats;
