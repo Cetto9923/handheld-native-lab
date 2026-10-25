@@ -48,6 +48,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <string.h>
+#include "nvn_object_table.h"
 
 typedef struct {
     void *sampler;
@@ -96,7 +97,7 @@ enum {
 };
 
 static pthread_mutex_t s_sampler_lock = PTHREAD_MUTEX_INITIALIZER;
-static nvn_sampler_state s_samplers[NVN_SAMPLER_MAX_SAMPLERS];
+static nvn_object_table s_samplers = { NULL, 0, 0, sizeof(nvn_sampler_state) };
 static nvn_sampler_stats s_stats;
 static int s_logged[SP_NAME_COUNT];
 
@@ -126,14 +127,20 @@ static nvn_sampler_state *sampler_find(void *sampler, int create) {
     size_t i;
     nvn_sampler_state *free_slot = NULL;
     if (!sampler) return NULL;
-    for (i = 0; i < NVN_SAMPLER_MAX_SAMPLERS; i++) {
-        if (s_samplers[i].in_use) {
-            if (s_samplers[i].sampler == sampler) return &s_samplers[i];
+    for (i = 0; i < s_samplers.count; i++) {
+        nvn_sampler_state *entry = (nvn_sampler_state *)nvn_object_table_at(&s_samplers, i);
+        if (!entry) continue;
+        if (entry->in_use) {
+            if (entry->sampler == sampler) return entry;
         } else if (!free_slot) {
-            free_slot = &s_samplers[i];
+            free_slot = entry;
         }
     }
-    if (!create || !free_slot) return NULL;
+    if (!create) return NULL;
+    if (!free_slot) {
+        free_slot = (nvn_sampler_state *)nvn_object_table_new_entry(&s_samplers, NVN_SAMPLER_MAX_OBJECTS);
+        if (!free_slot) return NULL;
+    }
     *free_slot = default_state();
     free_slot->sampler = sampler;
     free_slot->in_use = 1;
@@ -767,8 +774,8 @@ void nvn_sampler_get_stats(nvn_sampler_stats *out) {
     pthread_mutex_lock(&s_sampler_lock);
     *out = s_stats;
     out->live_samplers = 0;
-    for (i = 0; i < NVN_SAMPLER_MAX_SAMPLERS; i++) {
-        if (s_samplers[i].in_use && s_samplers[i].initialized) out->live_samplers++;
+    for (i = 0; i < s_samplers.count; i++) {
+        if (((nvn_sampler_state *)nvn_object_table_at(&s_samplers, i))->in_use && ((nvn_sampler_state *)nvn_object_table_at(&s_samplers, i))->initialized) out->live_samplers++;
     }
     pthread_mutex_unlock(&s_sampler_lock);
 }

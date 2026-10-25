@@ -84,6 +84,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <string.h>
+#include "nvn_object_table.h"
 
 typedef struct {
     void *texture;
@@ -148,7 +149,7 @@ enum {
 };
 
 static pthread_mutex_t s_texture_lock = PTHREAD_MUTEX_INITIALIZER;
-static nvn_texture_state s_textures[NVN_TEXTURE_MAX_TEXTURES];
+static nvn_object_table s_textures = { NULL, 0, 0, sizeof(nvn_texture_state) };
 static nvn_texture_stats s_stats;
 static int s_logged[TX_NAME_COUNT];
 
@@ -176,14 +177,20 @@ static nvn_texture_state *texture_find(void *texture, int create) {
     size_t i;
     nvn_texture_state *free_slot = NULL;
     if (!texture) return NULL;
-    for (i = 0; i < NVN_TEXTURE_MAX_TEXTURES; i++) {
-        if (s_textures[i].in_use) {
-            if (s_textures[i].texture == texture) return &s_textures[i];
+    for (i = 0; i < s_textures.count; i++) {
+        nvn_texture_state *entry = (nvn_texture_state *)nvn_object_table_at(&s_textures, i);
+        if (!entry) continue;
+        if (entry->in_use) {
+            if (entry->texture == texture) return entry;
         } else if (!free_slot) {
-            free_slot = &s_textures[i];
+            free_slot = entry;
         }
     }
-    if (!create || !free_slot) return NULL;
+    if (!create) return NULL;
+    if (!free_slot) {
+        free_slot = (nvn_texture_state *)nvn_object_table_new_entry(&s_textures, NVN_TEXTURE_MAX_OBJECTS);
+        if (!free_slot) return NULL;
+    }
     *free_slot = default_state();
     free_slot->texture = texture;
     free_slot->in_use = 1;
@@ -1300,8 +1307,8 @@ void nvn_texture_get_stats(nvn_texture_stats *out) {
     pthread_mutex_lock(&s_texture_lock);
     *out = s_stats;
     out->live_textures = 0;
-    for (i = 0; i < NVN_TEXTURE_MAX_TEXTURES; i++) {
-        if (s_textures[i].in_use && s_textures[i].initialized) out->live_textures++;
+    for (i = 0; i < s_textures.count; i++) {
+        if (((nvn_texture_state *)nvn_object_table_at(&s_textures, i))->in_use && ((nvn_texture_state *)nvn_object_table_at(&s_textures, i))->initialized) out->live_textures++;
     }
     pthread_mutex_unlock(&s_texture_lock);
 }

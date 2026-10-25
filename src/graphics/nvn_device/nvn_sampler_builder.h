@@ -30,10 +30,13 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* How many sampler builders the runtime tracks at the same time. The guest
- * reuses its builders, so a handful is enough; a guest that wants more is told
- * so instead of being served silently. */
-#define NVN_SAMPLER_BUILDER_MAX_BUILDERS 32
+/* How many sampler builders the runtime tracks at the same time.
+ *
+ * The table grows with the number of builders the guest has, so this is a
+ * limit and not a guess: it is above the number of samplers the device
+ * allows, and a builder belongs to a sampler. A guest that runs out of them is
+ * told so instead of being served silently. */
+#define NVN_SAMPLER_BUILDER_MAX_OBJECTS 65536
 
 typedef struct nvn_sampler_builder_family_entry {
     const char *name;

@@ -36,10 +36,13 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* How many samplers the runtime tracks at the same time. The guest keeps its
- * samplers in a pool, so a handful is enough; a guest that wants more is told
- * so instead of being served silently. */
-#define NVN_SAMPLER_MAX_SAMPLERS 32
+/* How many samplers the runtime tracks at the same time.
+ *
+ * The table grows with the number of samplers the guest has, so this is a
+ * limit and not a guess: it is above the number of samplers the device
+ * allows (MAX_SAMPLER_POOL_SIZE is 4096), so a guest that runs out of them is
+ * told so instead of being served silently. */
+#define NVN_SAMPLER_MAX_OBJECTS 65536
 
 typedef struct nvn_sampler_family_entry {
     const char *name;

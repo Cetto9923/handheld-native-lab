@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "nvn_object_table.h"
 
 /* The enumeration values the NVN specification uses. Only the ones the
  * runtime needs are named; the rest are passed through as the numbers the
@@ -117,10 +118,12 @@ typedef struct {
     int in_use;
 } nvn_rs_value;
 
-#define NVN_RS_MAX_STATES 64
+/* How many render states the runtime tracks at the same time. The table grows
+ * with the number of states the guest has, so this is a limit and not a guess. */
+#define NVN_RS_MAX_OBJECTS 65536
 
 static pthread_mutex_t s_rs_lock = PTHREAD_MUTEX_INITIALIZER;
-static nvn_rs_value s_states[NVN_RS_MAX_STATES];
+static nvn_object_table s_states = { NULL, 0, 0, sizeof(nvn_rs_value) };
 static nvn_render_state_stats s_stats;
 
 /* The defaults of the specification. The identity of the state and the fact
@@ -184,14 +187,20 @@ static nvn_rs_value *state_find(const void *object, int family, int create) {
     size_t i;
     nvn_rs_value *free_slot = NULL;
     if (!object) return NULL;
-    for (i = 0; i < NVN_RS_MAX_STATES; i++) {
-        if (s_states[i].in_use) {
-            if (s_states[i].object == object && s_states[i].family == family) return &s_states[i];
+    for (i = 0; i < s_states.count; i++) {
+        nvn_rs_value *entry = (nvn_rs_value *)nvn_object_table_at(&s_states, i);
+        if (!entry) continue;
+        if (entry->in_use) {
+            if (entry->object == object && entry->family == family) return entry;
         } else if (!free_slot) {
-            free_slot = &s_states[i];
+            free_slot = entry;
         }
     }
-    if (!create || !free_slot) return NULL;
+    if (!create) return NULL;
+    if (!free_slot) {
+        free_slot = (nvn_rs_value *)nvn_object_table_new_entry(&s_states, NVN_RS_MAX_OBJECTS);
+        if (!free_slot) return NULL;
+    }
     memset(free_slot, 0, sizeof(*free_slot));
     free_slot->object = (void *)(uintptr_t)object;
     free_slot->family = family;
@@ -1065,8 +1074,8 @@ void nvn_render_state_get_stats(nvn_render_state_stats *out) {
     pthread_mutex_lock(&s_rs_lock);
     *out = s_stats;
     out->live_states = 0;
-    for (i = 0; i < NVN_RS_MAX_STATES; i++) {
-        if (s_states[i].in_use) out->live_states++;
+    for (i = 0; i < s_states.count; i++) {
+        if (((nvn_rs_value *)nvn_object_table_at(&s_states, i))->in_use) out->live_states++;
     }
     pthread_mutex_unlock(&s_rs_lock);
 }

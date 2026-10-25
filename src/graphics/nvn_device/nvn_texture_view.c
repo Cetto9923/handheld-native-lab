@@ -46,6 +46,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <string.h>
+#include "nvn_object_table.h"
 
 typedef struct {
     void *view;
@@ -89,7 +90,7 @@ enum {
 };
 
 static pthread_mutex_t s_view_lock = PTHREAD_MUTEX_INITIALIZER;
-static nvn_texture_view_state s_views[NVN_TEXTURE_VIEW_MAX_VIEWS];
+static nvn_object_table s_views = { NULL, 0, 0, sizeof(nvn_texture_view_state) };
 static nvn_texture_view_stats s_stats;
 static int s_logged[TV_NAME_COUNT];
 
@@ -108,14 +109,20 @@ static nvn_texture_view_state *view_find(void *view, int create) {
     size_t i;
     nvn_texture_view_state *free_slot = NULL;
     if (!view) return NULL;
-    for (i = 0; i < NVN_TEXTURE_VIEW_MAX_VIEWS; i++) {
-        if (s_views[i].in_use) {
-            if (s_views[i].view == view) return &s_views[i];
+    for (i = 0; i < s_views.count; i++) {
+        nvn_texture_view_state *entry = (nvn_texture_view_state *)nvn_object_table_at(&s_views, i);
+        if (!entry) continue;
+        if (entry->in_use) {
+            if (entry->view == view) return entry;
         } else if (!free_slot) {
-            free_slot = &s_views[i];
+            free_slot = entry;
         }
     }
-    if (!create || !free_slot) return NULL;
+    if (!create) return NULL;
+    if (!free_slot) {
+        free_slot = (nvn_texture_view_state *)nvn_object_table_new_entry(&s_views, NVN_TEXTURE_VIEW_MAX_OBJECTS);
+        if (!free_slot) return NULL;
+    }
     *free_slot = default_state();
     free_slot->view = view;
     free_slot->in_use = 1;
@@ -597,8 +604,8 @@ void nvn_texture_view_get_stats(nvn_texture_view_stats *out) {
     pthread_mutex_lock(&s_view_lock);
     *out = s_stats;
     out->live_views = 0;
-    for (i = 0; i < NVN_TEXTURE_VIEW_MAX_VIEWS; i++) {
-        if (s_views[i].in_use) out->live_views++;
+    for (i = 0; i < s_views.count; i++) {
+        if (((nvn_texture_view_state *)nvn_object_table_at(&s_views, i))->in_use) out->live_views++;
     }
     pthread_mutex_unlock(&s_view_lock);
 }

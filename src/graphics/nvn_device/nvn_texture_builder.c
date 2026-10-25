@@ -58,6 +58,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <string.h>
+#include "nvn_object_table.h"
 
 typedef struct {
     void *builder;
@@ -138,7 +139,7 @@ enum {
 };
 
 static pthread_mutex_t s_texture_builder_lock = PTHREAD_MUTEX_INITIALIZER;
-static nvn_texture_builder_state s_builders[NVN_TEXTURE_BUILDER_MAX_BUILDERS];
+static nvn_object_table s_builders = { NULL, 0, 0, sizeof(nvn_texture_builder_state) };
 static nvn_texture_builder_stats s_stats;
 static int s_logged[TB_NAME_COUNT];
 
@@ -182,14 +183,20 @@ static nvn_texture_builder_state *builder_find(void *builder, int create) {
     size_t i;
     nvn_texture_builder_state *free_slot = NULL;
     if (!builder) return NULL;
-    for (i = 0; i < NVN_TEXTURE_BUILDER_MAX_BUILDERS; i++) {
-        if (s_builders[i].in_use) {
-            if (s_builders[i].builder == builder) return &s_builders[i];
+    for (i = 0; i < s_builders.count; i++) {
+        nvn_texture_builder_state *entry = (nvn_texture_builder_state *)nvn_object_table_at(&s_builders, i);
+        if (!entry) continue;
+        if (entry->in_use) {
+            if (entry->builder == builder) return entry;
         } else if (!free_slot) {
-            free_slot = &s_builders[i];
+            free_slot = entry;
         }
     }
-    if (!create || !free_slot) return NULL;
+    if (!create) return NULL;
+    if (!free_slot) {
+        free_slot = (nvn_texture_builder_state *)nvn_object_table_new_entry(&s_builders, NVN_TEXTURE_BUILDER_MAX_OBJECTS);
+        if (!free_slot) return NULL;
+    }
     *free_slot = default_state();
     free_slot->builder = builder;
     free_slot->in_use = 1;
@@ -1306,8 +1313,8 @@ void nvn_texture_builder_get_stats(nvn_texture_builder_stats *out) {
     pthread_mutex_lock(&s_texture_builder_lock);
     *out = s_stats;
     out->live_builders = 0;
-    for (i = 0; i < NVN_TEXTURE_BUILDER_MAX_BUILDERS; i++) {
-        if (s_builders[i].in_use) out->live_builders++;
+    for (i = 0; i < s_builders.count; i++) {
+        if (((nvn_texture_builder_state *)nvn_object_table_at(&s_builders, i))->in_use) out->live_builders++;
     }
     pthread_mutex_unlock(&s_texture_builder_lock);
 }

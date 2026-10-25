@@ -5683,7 +5683,41 @@ static int nvn_blend_state_contract(void) {
     expect_condition("nvn-blend-state-not-written-after-the-round-trip",
                      all_bytes(state, sizeof(state), 0xaa));
 
-    /* 6. The counters. */
+    /* 6. The table of the family has to grow. A real game asks for thousands
+     *    of these: in the device run of p-mm-43 the guest asked for more than
+     *    sixteen hundred blend states within the first seconds, and the table
+     *    of sixteen slots refused the ones that did not fit. A refused state
+     *    is a state the guest draws with that this runtime does not know
+     *    about, so the table has to hold all of them.
+     *
+     *    The number here is four times the size the table used to have, so
+     *    this case fails against the old table and passes against the new
+     *    one. */
+    {
+        enum { NVN_BLEND_STATE_GROWTH_CASES = 64 };
+        void *many[NVN_BLEND_STATE_GROWTH_CASES];
+        unsigned long long live_before = 0;
+        nvn_blend_state_get_stats(&stats);
+        live_before = (unsigned long long)stats.live_states;
+        for (i = 0; i < NVN_BLEND_STATE_GROWTH_CASES; i++) {
+            /* A distinct address for every state, the way the guest hands out
+             * its own objects. */
+            many[i] = (void *)(uintptr_t)(0x51500000ull + (unsigned long long)i * 64ull);
+            set_defaults(many[i]);
+        }
+        nvn_blend_state_get_stats(&stats);
+        expect_value("nvn-blend-state-table-grows-with-the-guest",
+                     (uint64_t)(stats.live_states - live_before),
+                     (uint64_t)NVN_BLEND_STATE_GROWTH_CASES);
+        /* And every one of them is still there: a table that grew but forgot
+         * the entries would count the same. */
+        for (i = 0; i < NVN_BLEND_STATE_GROWTH_CASES; i++) {
+            expect_value("nvn-blend-state-grown-state-is-kept",
+                         (uint64_t)(uint32_t)get_blend_target(many[i]), 0);
+        }
+    }
+
+    /* 7. The counters. */
     nvn_blend_state_get_stats(&stats);
     expect_condition("nvn-blend-state-stats-count-builder-calls", stats.builder_calls > 0);
     expect_condition("nvn-blend-state-stats-count-defaults", stats.defaults_applied > 0);

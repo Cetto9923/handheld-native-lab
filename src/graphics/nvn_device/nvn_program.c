@@ -20,13 +20,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "nvn_object_table.h"
 
 /* How many stages a program can have and how large the control section of a
  * stage is. The control section of this generation of the SDK is 0x880 bytes
  * and its own length is written at its offset 0x20. */
 #define NVN_PROGRAM_MAX_STAGES 6
 #define NVN_PROGRAM_CONTROL_SIZE 0x880
-#define NVN_PROGRAM_MAX_PROGRAMS 16
+/* How many programs the runtime tracks at the same time. The table grows with
+ * the number of programs the guest has, so this is a limit and not a guess. */
+#define NVN_PROGRAM_MAX_OBJECTS 4096
 
 /* The offsets inside the control section. */
 #define NVN_PROGRAM_CONTROL_LENGTH_OFFSET 0x20
@@ -67,21 +70,27 @@ typedef struct {
 } nvn_program_state;
 
 static pthread_mutex_t s_program_lock = PTHREAD_MUTEX_INITIALIZER;
-static nvn_program_state s_programs[NVN_PROGRAM_MAX_PROGRAMS];
+static nvn_object_table s_programs = { NULL, 0, 0, sizeof(nvn_program_state) };
 static nvn_program_stats s_stats;
 
 static nvn_program_state *program_find(void *program, int create) {
     size_t i;
     nvn_program_state *free_slot = NULL;
     if (!program) return NULL;
-    for (i = 0; i < NVN_PROGRAM_MAX_PROGRAMS; i++) {
-        if (s_programs[i].in_use) {
-            if (s_programs[i].program == program) return &s_programs[i];
+    for (i = 0; i < s_programs.count; i++) {
+        nvn_program_state *entry = (nvn_program_state *)nvn_object_table_at(&s_programs, i);
+        if (!entry) continue;
+        if (entry->in_use) {
+            if (entry->program == program) return entry;
         } else if (!free_slot) {
-            free_slot = &s_programs[i];
+            free_slot = entry;
         }
     }
-    if (!create || !free_slot) return NULL;
+    if (!create) return NULL;
+    if (!free_slot) {
+        free_slot = (nvn_program_state *)nvn_object_table_new_entry(&s_programs, NVN_PROGRAM_MAX_OBJECTS);
+        if (!free_slot) return NULL;
+    }
     memset(free_slot, 0, sizeof(*free_slot));
     free_slot->program = program;
     free_slot->in_use = 1;
@@ -351,8 +360,8 @@ void nvn_program_get_stats(nvn_program_stats *out) {
     pthread_mutex_lock(&s_program_lock);
     *out = s_stats;
     out->live_programs = 0;
-    for (i = 0; i < NVN_PROGRAM_MAX_PROGRAMS; i++) {
-        if (s_programs[i].in_use) out->live_programs++;
+    for (i = 0; i < s_programs.count; i++) {
+        if (((nvn_program_state *)nvn_object_table_at(&s_programs, i))->in_use) out->live_programs++;
     }
     pthread_mutex_unlock(&s_program_lock);
 }

@@ -24,8 +24,8 @@
  * textures, maybe one for the upload staging. The table is small and fixed on
  * purpose; a guest that wants more is told so instead of being served
  * silently. */
-#define NVN_MEMORY_POOL_MAX_BUILDERS 8
-#define NVN_MEMORY_POOL_MAX_POOLS 8
+#define NVN_MEMORY_POOL_MAX_BUILDERS 64
+#define NVN_MEMORY_POOL_MAX_POOLS 64
 
 /* The memory pool flags, as the vendored NVN header documents them. The
  * runtime uses them to pick the CPU and GPU access it offers. */

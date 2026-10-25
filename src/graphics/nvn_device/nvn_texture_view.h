@@ -30,10 +30,13 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* How many views the runtime tracks at the same time. The guest reuses its
- * views, so a handful is enough; a guest that wants more is told so instead of
+/* How many texture views the runtime tracks at the same time.
+ *
+ * The table grows with the number of views the guest has, so this is a limit
+ * and not a guess: it is the number of textures the device allows, and a view
+ * belongs to a texture. A guest that runs out of them is told so instead of
  * being served silently. */
-#define NVN_TEXTURE_VIEW_MAX_VIEWS 32
+#define NVN_TEXTURE_VIEW_MAX_OBJECTS 1048576
 
 typedef struct nvn_texture_view_family_entry {
     const char *name;

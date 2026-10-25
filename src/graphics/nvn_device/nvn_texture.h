@@ -44,10 +44,13 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* How many textures the runtime tracks at the same time. The guest keeps its
- * textures in a pool, so a handful is enough; a guest that wants more is told
+/* How many textures the runtime tracks at the same time.
+ *
+ * The table grows with the number of textures the guest has, so this is a
+ * limit and not a guess: it is the number of textures the device allows
+ * (MAX_TEXTURE_POOL_SIZE is 1048576), so a guest that runs out of them is told
  * so instead of being served silently. */
-#define NVN_TEXTURE_MAX_TEXTURES 64
+#define NVN_TEXTURE_MAX_OBJECTS 1048576
 
 typedef struct nvn_texture_family_entry {
     const char *name;
