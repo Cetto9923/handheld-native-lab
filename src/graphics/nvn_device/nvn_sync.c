@@ -349,9 +349,13 @@ NVNsyncWaitResult nvnSyncWait(const void *sync, uint64_t timeout) {
     s_stats.calls++;
     s_stats.waits++;
     found = sync_find((void *)(uintptr_t)sync, 0);
-    if (found && found->initialized) {
-        known = 1;
+    if (found) {
+        /* The reference looks at the fence of the object and at nothing
+         * else (hle_nvn.c:639): a sync that the queue fenced answers the
+         * signalled result even when the guest never initialized it, and
+         * the queue may fence a sync the guest has not made yet. */
         fenced = found->fenced;
+        if (found->initialized) known = 1;
     }
     if (!fenced) s_stats.waits_without_fence++;
     result = fenced ? NVN_SYNC_WAIT_RESULT_ALREADY_SIGNALED : NVN_SYNC_WAIT_RESULT_TIMEOUT_EXPIRED;
@@ -359,9 +363,8 @@ NVNsyncWaitResult nvnSyncWait(const void *sync, uint64_t timeout) {
     pthread_mutex_unlock(&s_sync_lock);
 
     if (!known) {
-        fprintf(stderr, "[nvn] nvnSyncWait: sync=%p was never initialized, so it has no fence; the answer is %d "
-                        "(timeout expired)\n",
-                sync, (int)result);
+        fprintf(stderr, "[nvn] nvnSyncWait: sync=%p was never initialized by the guest; the answer is %d (%s)\n", sync,
+                (int)result, fenced ? "already signalled" : "timeout expired");
     } else if (first) {
         fprintf(stderr, "[nvn] nvnSyncWait: sync=%p timeout=%" PRIu64 " -> %d (%s); the host has no GPU work to wait "
                         "for\n",

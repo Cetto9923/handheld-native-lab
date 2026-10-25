@@ -21,11 +21,13 @@
 #include "nvn_blend_state.h"
 #include "nvn_buffer.h"
 #include "nvn_command_buffer.h"
+#include "nvn_event.h"
 #include "nvn_memory_pool.h"
 #include "nvn_queue.h"
 #include "nvn_program.h"
 #include "nvn_render_state.h"
 #include "nvn_sampler.h"
+#include "nvn_sync.h"
 #include "nvn_texture.h"
 #include "nvn_texture_view.h"
 #include "nvn_sampler_builder.h"
@@ -849,6 +851,30 @@ void *nvn_device_get_proc_address(void *device, const char *name) {
         size_t count = nvn_buffer_family_count();
         for (i = 0; i < count; i++) {
             const nvn_buffer_family_entry *entry = nvn_buffer_family_entry_at(i);
+            if (!entry || !entry->name) continue;
+            if (!strcmp(name, entry->name)) {
+                s_device.implemented_resolved++;
+                fprintf(stderr, "[nvn] nvnDeviceGetProcAddress: \"%s\" -> implemented\n", name);
+                return entry->fn;
+            }
+        }
+    }
+    {
+        size_t count = nvn_sync_family_count();
+        for (i = 0; i < count; i++) {
+            const nvn_sync_family_entry *entry = nvn_sync_family_entry_at(i);
+            if (!entry || !entry->name) continue;
+            if (!strcmp(name, entry->name)) {
+                s_device.implemented_resolved++;
+                fprintf(stderr, "[nvn] nvnDeviceGetProcAddress: \"%s\" -> implemented\n", name);
+                return entry->fn;
+            }
+        }
+    }
+    {
+        size_t count = nvn_event_family_count();
+        for (i = 0; i < count; i++) {
+            const nvn_event_family_entry *entry = nvn_event_family_entry_at(i);
             if (!entry || !entry->name) continue;
             if (!strcmp(name, entry->name)) {
                 s_device.implemented_resolved++;
