@@ -164,3 +164,94 @@ coordination/reports/T-PRESENT-path-2026-10-25.md
 
 1. `git commit`（分支 `task/P-MM-28-present-path`，**不 push**），只放第 4 节的文件
 2. 报告写完就**停下来**，最终回复给我：分支、commit、每个验收项的实测结果（含四个退出码）、证据路径、**没有**证明的东西
+
+---
+
+## 10. 第二次派工：设计已经定了，**先写代码**
+
+> 上一轮的 worker 把预算全花在设计推演上，**一个文件、一个提交都没留下**（worktree 干净、分支无提交）。
+> 这一轮**不许再从零做设计**。下面的设计**已经定好，照着写**。
+
+### 10.1 纪律（**违反这条等于没干活**）
+
+1. **第一条工具调用就是写文件**，不是搜索、不是读文档、不是思考。
+2. **先写最小可编译版本，立刻 `git commit`**，再一项一项补。**宁可有五个能编译的提交，也不要一个想清楚了但没写出来的提交。**
+3. 中途被压缩上下文时，**提交里要能看出进度**（检查点）。
+4. 预算过半还没提交 ⇒ **立刻提交**当前的能编译状态。
+
+### 10.2 虚表（`nvn_device.h`，只加这三个条目）
+
+```c
+int (*acquire_image)(nvn_device_state *device, uint32_t *out_index, void **out_image,
+                     char *reason, size_t reason_size);
+int (*begin_render_pass)(nvn_device_state *device, uint32_t index, void *image,
+                          const float rgba[4], char *reason, size_t reason_size);
+int (*submit_and_present)(nvn_device_state *device, uint32_t index, void *image,
+                           char *reason, size_t reason_size);
+```
+
+`reason` 是**失败被点名**的通道：失败时把**具体原因**写进去（不是 "failed"），由 `nvn_present.c` 记下来。`nvn_backend_none.c` 三个都要有，且**诚实拒绝**。
+
+### 10.3 Vulkan 后端自己持有呈现路径
+
+`nvn_vulkan_state` 增加：surface、swapchain、swapchain 格式、宽高、image_count、`VkImage*` 图像、`VkImageView*` 视图、`VkFramebuffer*` framebuffer、render_pass、command_pool、每图像一个 `VkCommandBuffer`、fence，以及 builds/reuses 计数。
+
+**单条呈现路径**（后端自己创建的那一条），多窗口不支持 —— **在报告里点명**，不要假装支持。
+
+### 10.4 ⚠️ 必须修的一个隐藏缺陷
+
+`nvn_backend_vulkan.c` **只启用了实例扩展**（`VK_KHR_surface` / `VK_KHR_android_surface`），**没有启用设备扩展 `VK_KHR_swapchain`**，却**直接调用** `vkCreateSwapchainKHR`。
+⇒ 在设备上这会 **失败**（`VK_ERROR_EXTENSION_NOT_PRESENT`）。
+**在 `nvn_vulkan_create` 里把 `VK_KHR_SWAPCHAIN` 加进设备扩展列表**（先问设备支不支持，不支持就**如实报告**）。
+
+### 10.5 render pass / framebuffer 的做法
+
+- **render pass 建一次就复用**：1 个颜色附件，格式 = swapchain 格式，`loadOp = CLEAR`，`storeOp = STORE`，`initialLayout = UNDEFINED`，`finalLayout = PRESENT_SRC_KHR`。
+  **颜色不在 render pass 里**，在 `VkRenderPassBeginInfo.pClearValues` 里 ⇒ **换颜色不需要重建 render pass**。
+- **每个 swapchain 图像一个 image view + 一个 framebuffer**，建好就缓存；**计数 builds 与 reuses**，第二次必须是 reuse。
+- **每个 swapchain 图像一个 command buffer**（从 command pool 分配），录制前 `vkResetCommandBuffer`。
+
+### 10.6 三个方法的分工
+
+| 方法 | 做什么 | 顺序要点 |
+|---|---|---|
+| `acquire_image` | `vkAcquireNextImageKHR`，交回 index 和 `VkImage` | 超时 / surface 没了 / swapchain 重建中 → **分别点名** |
+| `begin_render_pass` | 确保 render pass / view / framebuffer 存在（复用优先）→ 重置并开始记录该图像的 command buffer → `vkCmdBeginRenderPass`，`pClearValues[0].color.float32 = 调用方给的 rgba` | **颜色只在这里出现，且来自参数** |
+| `submit_and_present` | `vkCmdEndRenderPass` → `vkEndCommandBuffer` → `vkQueueSubmit`（带 fence）→ `vkQueuePresentKHR` → `vkWaitForFences` | **等待时间用 `clock_gettime(CLOCK_MONOTONIC)` 量出来记进日志**；等待超时**按失败点名**，不要无限等 |
+
+### 10.7 `nvn_present.c` 的形状
+
+```c
+int nvn_present_frame(nvn_device_state *device, const float rgba[4]);
+```
+
+- 参数为 NULL ⇒ 拒绝 + 点名 + 计数。
+- 后端没有这三个方法 ⇒ 拒绝 + 点名 + 计数。
+- 任一步失败 ⇒ 记下**那一步的 reason**、计数、返回 0。
+- 全程成功 ⇒ 计数 `frames_presented`、返回 1。
+- **这个文件里不许出现任何写死的颜色**（不许有 `0.0f` / `1.0f` 这类字面量）。
+- 诊断计数按**项目的房规**暴露一个 `nvn_present_get_stats()`（照 `nvn_sampler_get_stats` / `nvn_command_replay_get_stats` 的样子）。**对调用方的接口仍然只有 `nvn_present_frame` 一个**。
+
+### 10.8 契约（宿主没有 Vulkan ⇒ 用 `nvn_backend_none`）
+
+要证明的四件事，**各自独立**：
+
+1. **接口存在**：`nvn_backend_none` 的三个方法都在，且**直接调用时都返回 0 并给出 reason**。
+2. **参数被检查**：device / rgba / out 参数为 NULL 时**拒绝**，不是崩。
+3. **失败被点名**：`nvn_present_frame` 返回 0，**记录的 reason 里含具体步骤名**（如 "acquire"），且**stderr 里有同样的字样**。
+4. **失败不产生「已显示」的假象**：`frames_presented == 0`。
+
+再加一条**颜色确实来自调用方**的证明：在契约里放一个**只记录、不 present** 的假后端（`acquire_image` 收下颜色、`submit_and_present` **返回 0 拒绝 present**），断言它收到的颜色与契约传入的**逐位相同**，且**这一帧仍然没有被报告成已显示**。
+⚠️ 这个假后端**不许**假装 present 成功。
+
+### 10.9 三变体
+
+- **A**：改坏一个期望值 → **exit 1**，stderr 有真 `[check-fail]`。
+- **B**：同处改坏 **+ 去掉最终 CHECK **+ 把上报的错误数**硬编码 0** → **exit 0**，而 stdout 仍谎报 `errors:0`、stderr 留真 `[check-fail]`（**假绿要量出来**）。
+- **C**：契约一个字不改，**把桩改坏** —— 让假后端的三个方法**都返回 1**（谎称 present 成功）⇒ 契约必须抓到「报告了已显示但什么都没显示」⇒ **exit 1**。
+
+### 10.10 真机
+
+设备归 P-MM-27 的那轮已经结束，锁已释放，但**协调者现在占着设备**做真机重跑。
+你要真机时先 `ls .local/agent-pm/`：**有锁就停下报告，不要抢**。没有锁才 `touch .local/agent-pm/BOOT_LOCK_MM_A`，**结束必须删掉**。
+真机那部分只证明**「宿主探针成功」**（图像取到 / render pass 开了 / 提交 `VK_SUCCESS` / present `VK_SUCCESS` / fence 等到），**不证明** guest 的画面 —— 那一轮**做不到**。
