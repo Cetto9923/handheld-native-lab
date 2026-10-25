@@ -32,7 +32,7 @@ set, not something a module edit can repair.
 Usage:
     fix_spirv_fragment_interface.py --in frag.spv --out fixed.spv \\
         [--vertex vert.spv] \\
-        [--drop-capability NAME]... \\
+        [--drop-capability NAME]... [--add-capability NAME]... \\
         [--drop-no-perspective] \\
         [--add-no-perspective-to-vertex-output LOCATION] \\
         [--report report.json]
@@ -242,8 +242,12 @@ def compare_interfaces(fragment, vertex):
     return mismatches
 
 
-def drop_decorations(words, targets):
-    """Remove the OpDecorate instructions whose target is in ``targets``."""
+def drop_decorations(words, targets, decoration=None):
+    """Remove the OpDecorate instructions whose target is in ``targets``.
+
+    When ``decoration`` is given, only that decoration is removed and the
+    other decorations of the same variable (its Location, for one) stay.
+    """
     kept = list(words[:5])
     removed = []
     index = 5
@@ -251,7 +255,8 @@ def drop_decorations(words, targets):
         count = words[index] >> 16
         opcode = words[index] & 0xFFFF
         operands = words[index + 1:index + count]
-        if opcode == OP_DECORATE and operands and operands[0] in targets:
+        if (opcode == OP_DECORATE and operands and operands[0] in targets
+                and (decoration is None or operands[1] == decoration)):
             removed.append({"target": operands[0], "decoration": operands[1],
                             "literals": list(operands[2:])})
             index += count
@@ -296,8 +301,8 @@ def run_capability_tool(arguments, source, destination, report_path):
         raise ValueError("the coordinator's capability tool is missing: %s" % tool)
     command = [sys.executable, tool, "--in", source, "--out", destination,
                "--report", report_path]
-    for capability in arguments:
-        command.extend(["--drop", capability])
+    for kind, name in arguments:
+        command.extend(["--%s" % kind, name])
     completed = subprocess.run(command, capture_output=True, text=True)
     if completed.returncode != 0:
         raise CapabilityRefusal(completed.returncode, completed.stderr.strip())
@@ -321,6 +326,7 @@ def main(argv):
     report_path = None
     vertex_path = None
     drop_capabilities = []
+    add_capabilities = []
     drop_no_perspective = False
     add_no_perspective_to_vertex = None
 
@@ -342,6 +348,9 @@ def main(argv):
         elif argument == "--drop-capability":
             index += 1
             drop_capabilities.append(argv[index])
+        elif argument == "--add-capability":
+            index += 1
+            add_capabilities.append(argv[index])
         elif argument == "--drop-no-perspective":
             drop_no_perspective = True
         elif argument == "--add-no-perspective-to-vertex-output":
@@ -366,11 +375,13 @@ def main(argv):
     work = source
     workdir = None
     try:
-        if drop_capabilities:
+        capability_arguments = [("drop", name) for name in drop_capabilities]
+        capability_arguments += [("add", name) for name in add_capabilities]
+        if capability_arguments:
             workdir = tempfile.mkdtemp(prefix="ffrs-spirv-interface-")
             stripped = os.path.join(workdir, "stripped.spv")
             capability_report = run_capability_tool(
-                drop_capabilities, source, stripped,
+                capability_arguments, source, stripped,
                 os.path.join(workdir, "capabilities.json"))
             work = stripped
         words = read_words(work)
@@ -397,7 +408,8 @@ def main(argv):
             for row in fragment_interface:
                 if row["storage"] == "Input" and "NoPerspective" in row["interpolation"]:
                     targets.add(row["id"])
-            words, removed_decorations = drop_decorations(words, targets)
+            words, removed_decorations = drop_decorations(words, targets,
+                                                          DEC_NO_PERSPECTIVE)
 
         if add_no_perspective_to_vertex is not None:
             targets = set()
@@ -433,6 +445,7 @@ def main(argv):
             "vertex": vertex_path,
             "capability_tool": capability_report,
             "capabilities_requested_dropped": drop_capabilities,
+            "capabilities_requested_added": add_capabilities,
             "removed_decorations": removed_decorations,
             "added_decorations": added_decorations,
             "fragment_interface_before": fragment_interface,
