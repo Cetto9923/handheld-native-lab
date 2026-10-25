@@ -171,6 +171,37 @@ static void contract_backend_destroy_window_surface(nvn_device_state *device, vo
     (void)swapchain;
 }
 
+/* The three steps of the present path. This contract has no swapchain, so
+ * every step refuses and says why. A step that reported success would be a
+ * frame that was never shown. */
+static int contract_backend_acquire_image(nvn_device_state *device, uint32_t *out_index, void **out_image,
+                                          char *reason, size_t reason_size) {
+    (void)device;
+    if (out_index) *out_index = 0;
+    if (out_image) *out_image = NULL;
+    if (reason && reason_size) snprintf(reason, reason_size, "the contract backend has no swapchain");
+    return 0;
+}
+
+static int contract_backend_begin_render_pass(nvn_device_state *device, uint32_t index, void *image,
+                                              const float rgba[4], char *reason, size_t reason_size) {
+    (void)device;
+    (void)index;
+    (void)image;
+    (void)rgba;
+    if (reason && reason_size) snprintf(reason, reason_size, "the contract backend has no render pass");
+    return 0;
+}
+
+static int contract_backend_submit_and_present(nvn_device_state *device, uint32_t index, void *image,
+                                               char *reason, size_t reason_size) {
+    (void)device;
+    (void)index;
+    (void)image;
+    if (reason && reason_size) snprintf(reason, reason_size, "the contract backend never presents anything");
+    return 0;
+}
+
 static const nvn_backend s_contract_backend = {
     "buffer-contract",
     contract_backend_create,
@@ -179,6 +210,13 @@ static const nvn_backend s_contract_backend = {
     contract_backend_get_queue,
     contract_backend_create_window_surface,
     contract_backend_destroy_window_surface,
+    /* The present path of the device layer. This contract is about buffers
+     * and has no swapchain, so every step of the path refuses and says so.
+     * The three methods have to be there: a backend without them would have a
+     * vtable that does not match the one the runtime uses. */
+    contract_backend_acquire_image,
+    contract_backend_begin_render_pass,
+    contract_backend_submit_and_present,
 };
 #endif /* !__ANDROID__ */
 
