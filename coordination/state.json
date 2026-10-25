@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-10-24T18:53:16.392155+00:00",
- "phase": "The command memory callback of the guest now reaches the guest and the host lends it memory when the guest cannot add enough, so a recording is no longer void; the sampler object family is implemented and wired; the descriptor pools have their numbering bases and a handle is now read with the base of the pool that was bound. The replay has a package to read for the first time, but nothing consumes it yet: the replay does not send a Vulkan command and does not present. On the device the Vulkan facts are known and the compute path works, while creating a graphics pipeline crashes the Mali driver. The frame count is still zero.",
+ "updated_at": "2026-10-25T01:21:41.001832+00:00",
+ "phase": "The device limits the guest asks for are answered now: nvnDeviceGetInteger answers the twenty one selectors beyond the API version with the values the reference host of this game reports, and on the device the guest got past the fatal of the empty texture id pool (its own NVNHelpers.cpp:240). The next wall was the fixed size of the host side tables of the object families: the guest asked for more than sixteen hundred blend states and more than four thousand render states in the first seconds and the families refused the ones that did not fit, so the tables grow with the number of objects now. The present path of the device layer is in the runtime and in the APK, and the queue submission seam hands the package to the replay. The shader work found the reason the driver refuses the shaders of this game with measurements: the fragment modules declare the interlock capability and the interlock extension, and the vertex module declares Float64, and the device provides neither. The frame count is still zero: the replay decodes a package and does not send a Vulkan command.",
  "coordinator": "P-MM-1 through P-MM-11 (MiniMax Code coordinator): snapshot thread policy at 5423dac (v52, exit 134 -> 133); movie::SetAllocator import 74 at 1c8545f (v53, unresolved 390 -> 389); nn::oe::SetCpuBoostMode import 75 at 62290de (v54, 389 -> 388); nn::hid::InitializeKeyboard and InitializeMouse imports 234 and 235 at 53b78c5 (v55, 388 -> 386, with the root-caused and fixed DT_RELASZ truncation in the self-authored fixture); the nn::oe focus and notification group imports 222 to 226 at 51141e9 (v56, 386 -> 381); nn::oe::GetOperationMode import 227 at 5f5e211 (v57, 381 -> 380); nn::ldn::GetState import 88 at e2f2604 (v58, 380 -> 379); the nn::oe performance configuration pair imports 239 and 240 at e7a11c6 (v59, 379 -> 377); the NVN graphics allocator registrations imports 350 and 351 at a107e1d (v60, 377 -> 375); the NVN graphics initialisation import 352 at fd9bec9 (v61, 375 -> 374); the NVN bootstrap loader import 353 (v62, 374 -> 373). Host and RG477M device contracts PASS for --snapshot-thread, --movie-allocator, --oe-cpu-boost, --hid-init, --oe-focus, --oe-operation-mode, --ldn-get-state, --oe-performance, --nv-graphics-allocator, --nv-initialize-graphics and --nvn-bootstrap. Every binding carries a three-variant self-proof. Import accounting remains imports=651 with 373 unbound; plus the P-MM-11 follow-up recon (read-only), which produced docs/analysis/nvn_device_requirements.md, docs/analysis/display_bridge_requirements.md, scripts/runtime/nvn_name_references.py and evidence/nvn/guest_nvn_code_references.tsv, and corrected two assumptions in docs/analysis/nvn_surface.md: the dispatch is two levels rather than one, and the NVN device builder layout is not a blocker; plus P-MM-12, which makes a guest fatal error terminal (v63 boot exit 134, no fault line, the guest's own message as the last line) and the P-MM-11 follow-up recon, which produced docs/analysis/nvn_device_requirements.md, docs/analysis/display_bridge_requirements.md, scripts/runtime/nvn_name_references.py and evidence/nvn/guest_nvn_code_references.tsv, and corrected two assumptions in docs/analysis/nvn_surface.md: the dispatch is two levels rather than one, and the NVN device builder layout is not a blocker | P-MM-13 dispatched: the NVN device layer (src/graphics/nvn_device, src/runtime/hle/nso_host.c, tests/native/guest_process_contract.c, scripts/runtime/build_guest_process_contract.sh) and the Android game window form (src/android/**, src/runtime/hle/native_window.*, scripts/android/**) are now two cards with disjoint write scopes; the guest signature evidence for the first card is nvnDeviceGetCurrentTimestampInNanoseconds(device, clockSource, uint64_t* out), taken from the guest call sites at 0x14354e8 and 0x14354fc. | P-MM-13 closed: the NVN device layer (src/graphics/nvn_device) gives the guest a real Vulkan device on the RG477M, so nvnDeviceInitialize succeeds and the guest resolves all 534 NVN names; unimplemented entry points are named traps that stop the run with exit 97 (v64 nvnDeviceGetInteger, v65 nvnDeviceSetDepthMode, zero [fault] lines in both). P-MM-13A closed at a1f2013 with the Android game window form (ANativeWindow from a SurfaceView). A wrong attribution of ours was corrected by the run: global 0x82d2740 holds nvnDeviceGetInteger (3 arguments, selectors 0 and 1 are the NVN API major and minor version), not the timestamp, which is at 0x82d2748 with one argument and its result in x0. | P-MM-14: the graphics chain work started. The wiring was checked first and the answer is decisive: the Activity that owns the SurfaceView runs as its own PID and the guest started through adb shell is another PID, so the ANativeWindow cannot be reached from there; the guest has to run inside the application process, which is also what d2r-mobile and nxnative do. The Android presentation path of that window is proven on the device by a host probe (surface, swapchain, clear, submit, real fence, present, three frames, screenshot pixel equal to the probe colour), and the surface offers exactly R8G8B8A8_UNORM; forcing B8G8R8A8_UNORM swaps red and blue on screen. Upstream references recorded in docs/analysis/nvn_graphics_chain_references.md: d2r-mobile a8782ca and nxnative 7a029f6, both MIT. | P-MM-15 closed (E1): the guest runs in the window process. Evidence on the RG477M: guest_boot start app_pid=7933 guest_tid=7975 while pidof org.ffrs.gamewindow returned 7933, the romfs mounted from /data/local/tmp/ffrs-rg477m-efd1123620814764ae32529c18081259/romfs, the guest image build id 736837afd390442ed7c74a7de730e71b with imports=651 and unresolved=373 (identical to the standalone CLI), nvnDeviceInitialize returned true with flags=0x100 inside the app process, and the guest stopped by name at nvnQueueBuilderSetDefaults (trap slot 11). The host contract gate passes with 193 cases; the gate timeout was raised from 30 to 300 seconds because one -O2 compile of the contract translation unit takes over 30 seconds on a loaded host and being killed mid compile failed the gate for a reason unrelated to the code. Known consequence, recorded and not hidden: the named NVN trap still ends the process, so in the app it also ends the app; the guest run has to survive that before the app can stay up across guest failures. | P-MM-16 (E2 and E3.1): the nn::vi display bridge, the NVN queue family and the NVN window family are in, each with a contract case and a three-variant self-proof. The guest stops by name at nvnMemoryPoolBuilderSetDefaults. On the RG477M the queue is created with a real Vulkan queue (platform_queue=0xb4000073aef93ad0) and the window family is implemented. The instance now enables VK_KHR_surface and VK_KHR_android_surface, without which there is no surface at all. The window size comes from the surface capabilities, not from ANativeWindow_getWidth, so the graphics layer keeps no libandroid dependency. Two defects were caught by the contracts and not by reading the code: a handle of the display bridge was validated by reading a magic value out of the pointer, which crashed the host when the guest handed back something else, and it is now validated against the table of issued handles; and the queue contract read the platform queue counter after the queue had already been finalized, which the device run exposed. | P-MM-17 closed (E3.3): the NVN memory pool family (18 names) exists in src/graphics/nvn_device/nvn_memory_pool.{h,c} and is registered in nvnDeviceGetProcAddress, in the Android CMakeLists and in the contract build, so the contract and the device run compile the same sources. The contract case --nvn-memory-pool passes on the host (nvn_memory_pool_errors 0) and on the RG477M (real_pool true, initialized 1, refused 2, map_virtual_refused 1). The three-variant self-proof is in git: scripts/runtime/selfproof_nvn_memory_pool.sh with scripts/runtime/make_nvn_memory_pool_variants.py; A is red, B is the false green that still reports nvn_memory_pool_errors 0, and C is red when the pool layer claims a pool without a device. On the device the guest built a real memory pool and then stopped by name at nvnSamplerPoolInitialize (trap slot 23), so the next wall is the sampler pool, the texture pool and the buffer families, then the command buffer and the submit and present path. Static call site recovery was tried and does not work for this guest: the NVN lookup table lives in the 0x82d2000 page but the call sites read the slots through a different base register, so a static slot-read census reports all 533 names as never loaded; the device log is the authority. The lookup slot mapping is still recovered by the offline tools: nvnMemoryPoolBuilderSetStorage at 0x82d29e8, nvnMemoryPoolBuilderGetDevice at 0x82d29f8 and nvnMemoryPoolBuilderGetMemory at 0x82d2a00. | P-MM-17 closed (E3.3): the NVN memory pool family (18 names) exists in src/graphics/nvn_device/nvn_memory_pool.{h,c} and is registered in nvnDeviceGetProcAddress, in the Android CMakeLists and in the contract build, so the contract and the device run compile the same sources. The contract case --nvn-memory-pool passes on the host (nvn_memory_pool_errors 0) and on the RG477M (real_pool true, initialized 1, refused 2, map_virtual_refused 1). The three-variant self-proof is in git: scripts/runtime/selfproof_nvn_memory_pool.sh with scripts/runtime/make_nvn_memory_pool_variants.py; A is red, B is the false green that still reports nvn_memory_pool_errors 0, and C is red when the pool layer claims a pool without a device. On the device the guest built a real memory pool and then stopped by name at nvnSamplerPoolInitialize (trap slot 23), so the next wall is the sampler pool, the texture pool and the buffer families, then the command buffer and the submit and present path. Static call site recovery was tried and does not work for this guest: the NVN lookup table lives in the 0x82d2000 page but the call sites read the slots through a different base register, so a static slot-read census reports all 533 names as never loaded; the device log is the authority. The lookup slot mapping is still recovered by the offline tools: nvnMemoryPoolBuilderSetStorage at 0x82d29e8, nvnMemoryPoolBuilderGetDevice at 0x82d29f8 and nvnMemoryPoolBuilderGetMemory at 0x82d2a00.",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -729,6 +729,24 @@
    "acquired_at": "2026-10-24T13:10:00.000000+00:00",
    "checkpoint": "P-MM-15 dispatch after E1",
    "objective": "Build the NVN draw path inside the window process, in the order the guest needs it: the nn::vi display bridge that hands the guest the ANativeWindow, then the queue builder and queue, the command buffer, the window builder and window, and the present family. Every entry point that is not implemented keeps the named trap and stops the run; no universal success stub and no bypass of the guest abort. The guest's own clear has to reach the screen, and the pixels have to be explainable by the guest command stream.",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "P-MM-31-BUFFER-FAMILY",
+   "owner": "worker agent (sole writer for the NVN buffer family)",
+   "paths": [
+    "src/graphics/nvn_device/nvn_buffer.c",
+    "src/graphics/nvn_device/nvn_buffer.h",
+    "tests/native/nvn_buffer_contract.c",
+    "scripts/runtime/make_nvn_buffer_variants.py",
+    "scripts/runtime/selfproof_nvn_buffer.sh",
+    "coordination/reports/T-BUFFER-family-2026-10-25.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native/.worktrees/p-mm-31",
+   "branch": "task/P-MM-31-buffer-family",
+   "acquired_at": "2026-10-25T01:21:41.001832+00:00",
+   "checkpoint": "the code of the family is committed; the contract and the self proof are being written",
+   "objective": "The eighteen names of the NVN buffer object family, with the contract that proves them and the three variant self proof that proves the contract.",
    "write_state": "ACTIVE"
   }
  ],
@@ -3031,14 +3049,92 @@
   {
    "id": "P-MM-28-PRESENT-PATH",
    "role": "GRAPHICS_CHAIN_IMPLEMENTATION",
-   "status": "active",
+   "status": "closed",
    "dependencies": [],
    "pass_gates": [],
    "owner": "MiniMax Code coordinator",
    "branch": "task/P-MM-28-present-path",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native/.worktrees/p-mm-28",
    "scope": "The presentation path of the Vulkan backend: take a swapchain image, open a render pass, clear it with the colour the guest's own command stream asks for, submit and present. This is what the replay needs to reach the screen.",
-   "execution_status": "DISPATCHED | card coordination/prompts/P-MM-28-present-path.md, worker owns the two backends, the vtable entries, nvn_present.{h,c}, its contract, its self proof and its report.",
+   "execution_status": "CLOSED | the first dispatch handed in a blank sheet: the worktree was clean and the branch had no commit, because the whole budget went into the design. The card was rewritten with the design decided and the rule 'write the first file and commit it' and re-dispatched as P-MM-28B.",
+   "last_command_returncode": 0
+  },
+  {
+   "id": "P-MM-28B-PRESENT-PATH-V2",
+   "status": "closed",
+   "role": "GRAPHICS_CHAIN_IMPLEMENTATION",
+   "dependencies": [],
+   "pass_gates": [],
+   "owner": "worker agent, integrated by the coordinator",
+   "branch": "task/P-MM-28-present-path-v2",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native/.worktrees/p-mm-28b",
+   "scope": "The presentation path of the Vulkan backend: take a swapchain image, open a render pass, clear it with the colour the caller gave, submit and present.",
+   "execution_status": "CLOSED | five commits, cherry-picked into the main tree (8a09dc1, 1873f0c, 6c9b278, 347fe00, 5d8c20c) and wired into the host build and into the APK by the coordinator (00d8159). The module is a source of the host build and of the Android build now, and the contract links against the module of the tree instead of including it. Nothing calls the present path yet: the replay does not emit Vulkan commands.",
+   "last_command_returncode": 0
+  },
+  {
+   "id": "P-MM-29-FRAGMENT-SHADER",
+   "status": "closed",
+   "role": "GRAPHICS_CHAIN_IMPLEMENTATION",
+   "dependencies": [],
+   "pass_gates": [],
+   "owner": "worker agent, integrated by the coordinator",
+   "branch": "task/P-MM-29-fragment-shader",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native/.worktrees/p-mm-29",
+   "scope": "Why the Mali driver refuses the graphics pipelines of this game, and which modules the device accepts.",
+   "execution_status": "CLOSED | measured on the device, not inferred. The three fragment modules are refused because they declare the FragmentShaderPixelInterlockEXT capability and the SPV_EXT_fragment_shader_interlock extension, and the device provides neither; only dropping the capability is not enough, both have to go. The vertex module is refused because it declares Float64 and the device has no shaderFloat64. The three guesses of P-MM-27 were each measured and none of them is the cause. Six commits cherry-picked (ca6aa7a .. f1d1066). The runtime still feeds the driver the original modules, so the pipeline step is not through yet.",
+   "last_command_returncode": 0
+  },
+  {
+   "id": "P-MM-31-BUFFER-FAMILY",
+   "status": "active",
+   "role": "GRAPHICS_CHAIN_IMPLEMENTATION",
+   "dependencies": [],
+   "pass_gates": [],
+   "owner": "worker agent",
+   "branch": "task/P-MM-31-buffer-family",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native/.worktrees/p-mm-31",
+   "scope": "The NVN buffer object family of eighteen names, the family the guest needs between the texture and its first draw.",
+   "execution_status": "DISPATCHED | the code of the family is committed in the branch; the contract, the self proof and the report are being written.",
+   "last_command_returncode": 0
+  },
+  {
+   "id": "P-MM-32-QUEUE-SUBMIT-PRESENT",
+   "status": "closed",
+   "role": "GRAPHICS_CHAIN_IMPLEMENTATION",
+   "dependencies": [],
+   "pass_gates": [],
+   "owner": "worker agent",
+   "branch": "task/P-MM-32-queue-submit",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native/.worktrees/p-mm-32",
+   "scope": "The seam where the queue hands the command package to the replay, and the five names of the submit and present family.",
+   "execution_status": "CLOSED | six commits in the branch, not yet integrated. The seam reads the package of the handle the guest hands over and refuses an unknown handle by name. The worker found a real race on the way: the replay resets a shared global state on every run, so two submissions at the same time corrupt each other, and the reference tree records the same crash. With the submission lock 0 of 30 runs failed, without it 12 of 12 did. The worker's own concurrency check had no teeth at first and was replaced by one that counts the refused foreign pools.",
+   "last_command_returncode": 0
+  },
+  {
+   "id": "P-MM-43-DEVICE-INFO-TABLE",
+   "status": "closed",
+   "role": "GRAPHICS_CHAIN_IMPLEMENTATION",
+   "dependencies": [],
+   "pass_gates": [],
+   "owner": "MiniMax Code coordinator",
+   "branch": "work/rg477m-native",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native",
+   "scope": "The limits of the device, which the guest asks for and which a zero answer turns into a fatal error inside the game.",
+   "execution_status": "CLOSED | 2a3ce37. nvnDeviceGetInteger answers the twenty one selectors the guest asks for with the values the reference host of this game reports, the API version stays at 53.105 and the shader alignment outside the table is answered with 256. The contract pins every one of the twenty one with the expected values written out, and it caught the author of the change believing that selector 45 was SUPPORTS_ADVANCED_BLEND_MODES when it is MAX_TEXTURE_LAYERS. Self proof: A red, B the false green, C red.",
+   "last_command_returncode": 0
+  },
+  {
+   "id": "P-MM-44-OBJECT-TABLE-GROWTH",
+   "status": "closed",
+   "role": "GRAPHICS_CHAIN_IMPLEMENTATION",
+   "dependencies": [],
+   "pass_gates": [],
+   "owner": "MiniMax Code coordinator",
+   "branch": "work/rg477m-native",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native",
+   "scope": "The host side tables of the object families, which refused the objects of a real game.",
+   "execution_status": "CLOSED | e8518f7. Eight families shared one table that grows with the number of objects that are live, and the number that was the size of the array is now the limit of the table. The contract asks for sixty four blend states and checks that all of them are there; against the old table of sixteen it fails with actual=0xf expected=0x40.",
    "last_command_returncode": 0
   }
  ],
@@ -3053,9 +3149,9 @@
   "\u65e715e\u72ec\u7acbreview\u7684host guard\u5b8f\u5173\u95edextension P2\u5df2\u5728d4ded9\u6e90\u7801\u7528typed\u5f15\u7528/\u7f16\u8bd1\u524d\u7f6e\u6761\u4ef6\u5904\u7406\uff1b\u6307\u5b9aAndroid\u539f\u672c\u4e0d\u53d7\u5f71\u54cd\uff0cd4\u72ec\u7acbFINAL\u5df2\u95ed\u5408\u8be5P2\uff1b\u5f53\u524dProcess/pages WIP\u4ecd\u987b\u65b0freeze/review\uff0c\u4e0d\u80fd\u5916\u63a8\u65e7PASS\u3002",
   "P-AG-17 new frontier: guest SIGSEGV fa=0x4 at module offset 0x3cb84 on UE 'Background Worker (Standby #1)' (lock-free intrusive list push with corrupted node pointer 0xfffffffffffffffd). Not an unbound import and not a missing container; RG477M log .local/logs/rg477m-boot-v36-aoc-event.log.",
   "rom:/FFRS/Shaders and rom:/.nrr/ModuleInfo-Shipping.nrr are probed and absent, but neither appears in Manifest_UFSFiles_Switch.txt nor Manifest_NonUFSFiles_Switch.txt, so they are not extractable host files and not a root cause; the retail package carries no shader paths in either manifest.",
-  "P-MM-22: the command recording is a diagnostic aid, not a command stream. It stores an opcode index and eight raw argument words, it stores pointers instead of copies of the data behind them, its handle is an incrementing number that is not bound to any immutable command package, and a full list is dropped while the call still returns success. The guest therefore cannot hand a replay anything to consume, and the frame count is still zero.",
-  "P-MM-21: the guest stops by name at nvnSamplerBuilderSetDefaults (trap slot 116, caller lr=0x7214f08b04). The sampler builder and texture builder families (69 names) do not exist yet, so the guest cannot build the objects a draw needs.",
-  "P-MM-23: no shader has been created on the device yet. Six shaders translate and four of six pass the Vulkan target environments, but no VkShaderModule has ever been created on the RG477M, the device's shaderStorageImageWriteWithoutFormat support and enablement have not been measured, and the storage image format of the two compute shaders has not been taken out of the game's control section. Nothing says the GPU accepts these shaders."
+  "P-MM-44: the host side tables of the object families refused the objects of the game before they were made to grow. The tables are fixed now and the contract has a case with teeth for it, but the guest has not run on the device since, so it is not known whether the game gets past the sampler that stopped it.",
+  "P-MM-29: the shaders of the game are refused by the driver because of what they declare, and the fix is only made on copies in .local. The runtime still hands the driver the original modules, so the graphics pipeline of the game is still refused. The translator also does not produce the matching vertex for the two large fragment modules, so even a pipeline that is built would read an interface the vertex never writes.",
+  "P-MM-32: the queue submission seam is written and proved on the host, but it is not integrated into the main tree yet, and the replay still only decodes: it sends no Vulkan command and presents nothing."
  ],
  "verified": [
   "CURRENT_HANDOFF: a277 runtime sourcee305; actual originalstartup+OScleanup0/0, poststartup originalallocator0/0, HOST14expected, completeCRT515raw133. Earlier append-only bullets are historical stages and not current blockers.",
@@ -3153,7 +3249,12 @@
   "The guest's command memory callback is called on the guest thread with three explicit checks, and the host lends it a segment of memory when the guest cannot add enough, so a recording is never void. The host gate is green with 242 cases and the command memory family contract is at zero errors.",
   "A handle is read with the numbering base of the pool that was bound: the command buffer keeps the base of the pool it bound in its own state, the single texture bind carries the bases in its record, and the replay adds them when it reads the handle. The contract makes two texture pools and checks that the number the replay read is the number in the pool plus the base the pool was given.",
   "The capability declarations of a SPIR-V module can be corrected from the module itself: a capability the module uses is never dropped and the tool refuses instead. Measured on the six modules of this game with spirv-val --target-env vulkan1.1, the two compute modules fail before the correction and pass after it.",
-  "The 48 names the guest asks for between the sampler and its first draw are implemented and wired: the texture object family of 31 names, the texture view family of 14 names and the three device handle functions. They resolve through the guest own lookup, every name is stable and holds once, the texture keeps the values the builder had when it was initialized, the guest objects are not written, and the handle functions return the number inside the pool without the base of the pool. The host gate is green with 250 cases and both new family contracts are at zero errors."
+  "The 48 names the guest asks for between the sampler and its first draw are implemented and wired: the texture object family of 31 names, the texture view family of 14 names and the three device handle functions. They resolve through the guest own lookup, every name is stable and holds once, the texture keeps the values the builder had when it was initialized, the guest objects are not written, and the handle functions return the number inside the pool without the base of the pool. The host gate is green with 250 cases and both new family contracts are at zero errors.",
+  "The device limits the guest asks for are answered and the guest lives past the fatal of the empty texture id pool. On the device (the run of p-mm-43, the transcript .local/logs/p-mm-43-guest-transcript.log) the guest asked nvnDeviceGetInteger twenty three times and every answer came from the table: MAX_TEXTURE_POOL_SIZE 1048576, MAX_SAMPLER_POOL_SIZE 4096, MAX_TEXTURE_SIZE 16384 and the rest. The game got past its own NVNHelpers.cpp:240 and created memory pools, texture pools, sampler pools, textures, samplers, render states and blend states before it stopped.",
+  "The driver refuses the shaders of this game for two reasons, both measured on the device and neither of them the guess of P-MM-27: the three fragment modules declare the FragmentShaderPixelInterlockEXT capability and the SPV_EXT_fragment_shader_interlock extension, and the device has neither, so both have to be dropped; the vertex module declares Float64 and the device has no shaderFloat64, so that one word has to go. With the modules changed that way a graphics pipeline is built on the RG477M and a draw is consumed by the GPU.",
+  "The host side tables of the object families grow with the number of objects that are live. The contract asks for sixty four blend states, four times the size of the old table, and checks that all of them are there and still readable; against the old table of sixteen it fails with actual=0xf expected=0x40.",
+  "The presentation path of the device layer is a source of the host build and of the Android build now, so it is in the APK. Its contract passes with zero errors and its self proof measures the false green: variant B exits 0 while the log holds a real check failure.",
+  "The queue submission seam hands the command package of the handle the guest gives to the replay, and refuses an unknown handle by name. The worker measured a real race on the way: the replay resets a shared global state on every run, so two submissions at the same time corrupt each other; with the submission lock 0 of 30 runs failed and without it 12 of 12 did."
  ],
  "unverified": [
   "\u5b8c\u6574CRT/TLS/\u7ebf\u7a0b/guest\u5185\u5b58\u4e0a\u4e0b\u6587\u4e0e\u771f\u6b63\u5b8c\u6574\u5165\u53e3\uff0c\u6b63\u5f0fT02\u53c2\u8003\u884c\u4e3a\u9a8c\u6536\u3002",
@@ -3174,8 +3275,9 @@
   "The command buffer still writes the bases of the pools into the records as zero. The pools know their bases now, but the command buffer that binds a pool has not been taught to write them, so a handle that a recorded draw names cannot yet be turned into the texture it points at. The command buffer file belongs to the P-MM-24 worker at the moment.",
   "The graphics pipeline tier is still not reached. No graphics pipeline has ever been created on this handheld, so no draw has ever been submitted from a replayed command package and there is still no frame.",
   "The command packages now survive the guest's own recording, but no device run has been made since, so it is not known whether the guest reaches a draw, nor what the first fatal would be.",
-  "The replay reads a package and knows the number of a texture in the numbering that all the pools share, but it does not yet turn that number into the texture itself, and nothing consumes a replayed command yet.",
-  "The texture object family and the texture view family have never run on the device, so it is not known whether the guest gets past nvnTextureInitialize."
+  "The tables of the object families have not run on the device since they were made to grow, so it is not known how far the guest gets now, and it is not known whether the game asks for more objects than the new limits allow.",
+  "The graphics pipeline of the game is still refused by the driver: the fix of P-MM-29 is made on copies in .local and the runtime still feeds the driver the original modules.",
+  "The present path has never run on a device. The contract proves the behaviour of the interface on a host without Vulkan, and that is all it proves: no swapchain image, no submit and no present have happened on the RG477M."
  ],
  "execution_goal": {
   "objective": "Original unpatched nnMain past Query/TLS/CRT -> real graphics/title -> controllable scene -> game input/audio/saves/performance",

@@ -1,3 +1,33 @@
+# P-MM-43/44 devinfo 表落地 + 对象族表随游戏长大 + 呈现路径入包 + shader 拒收真因查明｜2026-10-25 09:50 Asia/Shanghai — **guest 越过「TextureID 池为空」的致命**；**新的第一致命 = 采样器对象表满了**；**驱动的 shader 拒收真因是「声明」不是「接口」**；**帧数仍为 0**
+
+- **结论**：这一轮把 guest 从「自己 abort」推到了「撞上我们自己的天花板」。**三件大事**：
+  1. **`nvnDeviceGetInteger` 的 devinfo 表落地**（`2a3ce37`）。guest 问的 **21 个选择器**（外加 API 版本共 23 次）现在全部按参考树实测表作答。**真机实测：guest 越过了自己的 `NVNHelpers.cpp:240`（"There are no available TextureIDs in the pool"）**，继续建了内存池 / 纹理池 / 采样器池 / 纹理 / 采样器 / 渲染状态 / 混合状态。
+  2. **新的第一致命 = 我们自己的表不够大**（`e8518f7`）：guest 在头几秒里要了 **1600+ 个混合状态、4359+ 个渲染状态**，而我们的表是定长的 16 / 64；**采样器族第 33 个采样器被拒**，guest 于是在自己的 `NVNState.cpp:224` abort（`NVN function 'SamplerState->Initialize(&Builder)' failed!`）。**八个族 + 内存池的表改成随对象数增长**，上限从「数组大小」变成「表的限额」。
+  3. **驱动的 shader 拒收真因是「声明」不是「接口」**（P-MM-29，实测）：fragment 模块声明了 `FragmentShaderPixelInterlockEXT` **能力**和 `SPV_EXT_fragment_shader_interlock` **扩展**，设备两者都没有，**两个都去掉才建成**（只去能力仍 -3）；vertex 模块则因声明 `Float64`（设备 `shaderFloat64=false`）被拒。**P-MM-27 的三个猜想逐条实测，全部不是原因**。
+  **帧数仍为 0**：replay 仍只解码，不发一条 Vulkan 命令；呈现路径虽已入包，但**还没有调用方**，真机上也从没跑过。
+  1. **devinfo 表（`2a3ce37`）**：
+     - 值取自**本游戏参考宿主** `.local/refs/nxnative`（`dm/gfx/nvn/hle_nvn.c` 的 `g_devinfo`，L129-153），该表是**在真 Switch 上逐项问 `nvnDeviceGetInteger` 量出来的**。API 版本仍报本机自己的 **53.105**（guest 已接受并建出设备），表外的 shader 对齐报 **256**（与参考树一致）。
+     - **契约钉死 guest 实际问的全部 21 个选择器**，期望值写死在契约里、不从实现常量派生。**契约当场抓到我自己写错的一处**：selector 45 是 `MAX_TEXTURE_LAYERS`（2048），我一度当成 `SUPPORTS_ADVANCED_BLEND_MODES`。
+     - **三变体自证**（`scripts/runtime/selfproof_nvn_device_info.sh`）：**A 期望改坏 → exit 1**；**B 同处改坏 + 去 CHECK + 硬编码 0 → exit 0 且 stdout 谎报 `nvn_device_errors:0`**（假绿被量出来）；**C 只改实现（表全回 0）→ exit 1**。
+  2. **表随游戏长大（`e8518f7`）**：
+     - 新增共享表 `src/graphics/nvn_device/nvn_object_table.h`；**八个族**（混合状态 / 渲染状态 / 采样器 / 纹理 / 纹理 view / program / 两个 builder）改用它，**内存池**的 8 个池与 8 个 builder 也放宽到 64。**内存只按真实存在的对象占用**。
+     - **契约有牙齿**：要 **64 个**混合状态（旧表是 16）并逐个读回；对着旧表实测 **actual=0xf expected=0x40 → exit 1**。
+  3. **呈现路径入包（P-MM-28b，协调者接线 `00d8159`）**：`nvn_present.{h,c}` 现在是宿主构建与 Android 构建的**源文件**，契约改为**链接树里的模块**（不再自带副本），自证同步改。**宿主门 6 个族契约 errors 全 0**。**但仍无调用方**：replay 不发命令，所以这一轮真机上**没有任何一帧**。
+  4. **P-MM-29 的 shader 结论（实测，不是推断）**：
+     | 模块 | 被拒原因 | 处理 |
+     |---|---|---|
+     | fragment ×3 | `FragmentShaderPixelInterlockEXT` 能力 + `SPV_EXT_fragment_shader_interlock` 扩展，设备两者皆无 | **两个都去**才 `VK_SUCCESS` |
+     | vertex | 声明 `Float64`，设备 `shaderFloat64=false` | 去这一个词才 `VK_SUCCESS` |
+     | compute | 声明未用的 `Float64` | 去 `Float64` 才建成 |
+     **P-MM-27 的三个猜想逐条实测全部证伪**：`OpAccessChain` 访问 `v4float` 分量（合法）、`NoPerspective` 插值不匹配、fragment 读 location 1 而 vertex 只写 0 —— **驱动都接受**。改完的模块**管线建成且一次 draw 被 GPU 消费**。
+  5. **P-MM-32（队列提交接缝，worker 已交回，未集成）**：把 handle 对应的**命令包交给 replay**（`packages +1`、`records 0→3`），未知 handle **点名拒绝并计数**。**worker 自己发现并修了一个真并发 bug**：replay 每次 run 会清空全局 `s_state`，两个提交并发会互相破坏（参考树记录过同样的崩溃）⇒ 加提交锁，**有锁 0/30 出错、无锁 12/12 出错**；**worker 发现自己的并发断言没牙齿**（去掉锁照样绿），改成数 `refused_foreign_pool` 后才有牙齿。
+- **本单未解决 / 风险**：**帧数仍为 0**；**表长大这一版还没上真机**（本轮装机跑的是 devinfo 那一版），所以「guest 会越过采样器」**没有证据**；**游戏的图形管线仍被驱动拒收**（P-MM-29 的修复只在 `.local` 的副本上，**运行时仍喂原始模块**）；**translator 还没补出与大 fragment 配对的 vertex**（两个大 fragment 写 5 个输出 location、读 vertex 从未写的 location 1 —— 驱动照收但值未定义）；**P-MM-32 还没集成**；**present 路径真机从未跑过**（无 swapchain 取图 / submit / present / fence 的真机数值）；**NVN 陷阱仍是进程级终止**（`_exit(97)` 带走整个 app）；`nn::hid` 输入族未动；368 个未绑定导入**不可当关键路径完成度**；vendored 头是**别的游戏**（Darksiders II）的 NVN 53.105 重建件 ⇒ **156 个命令入口里 140 个签名未对本游戏证实**；**纹理对象族 / view 族 / 缓冲族也还没在设备上跑过**（本轮只到采样器）。
+- **下一项可证伪实验（按依赖顺序）**：
+  1. **真机重跑**（表长大这一版）：看**新的第一致命**是否已经越过采样器族，并数**混合状态 / 渲染状态 / 纹理**的真实用量是否落在新上限内。
+  2. **把 P-MM-29 的「去能力 + 去扩展」接进产物链**：让 APK 里的 `.spv` 走修正工具（`fix_spirv_capabilities.py` 需加**去扩展声明**的能力，且**模块真用到的不许删**），而不是手工的 `spv-fixed/`。
+  3. **集成 P-MM-32**（队列提交接缝 + 提交锁），然后 **replay 发第一条 Vulkan 命令**（S1-c）：包 → `nvnQueueSubmitCommands` → **同一个 VkDevice / queue** → 呈现路径。**第一帧必须是 guest 自己的命令流解释得出来的颜色，不是宿主探针色。**
+  4. **P-MM-31（缓冲族）交回后集成**，再派 **event / sync 族 19 名**。
+
 # P-MM-32 纹理对象族 + view 族 + device 句柄族落地并接线｜2026-10-25 05:35 Asia/Shanghai — **guest 走向第一次 draw 途中的 48 个名字全部实现并接进 dispatch/构建/APK**；**宿主门 250 例、五个族契约 errors 全 0**；**帧数仍为 0**
 
 - **结论**：guest 从 sampler 走向第一次 draw 途中要问的 **48 个名字**（纹理对象 31 + view 14 + device 句柄 3）**全部落地**，并接进 dispatch、宿主契约构建和 APK。**帧数仍是 0** —— 这些是**状态**，不是画面：GPU 上还没有创建过一张纹理，replay 也还没发过一条 Vulkan 命令。
