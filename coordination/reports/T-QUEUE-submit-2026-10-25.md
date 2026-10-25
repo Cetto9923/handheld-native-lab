@@ -1,6 +1,6 @@
 # T-QUEUE-submit｜队列提交/呈现族（5 名）—— replay 的接缝
 
-> 分支：`task/P-MM-32-queue-submit`（基于 `work/rg477m-native` @ `6d6cbb1`）
+> 分支：`task/P-MM-32-queue-submit`（分叉点 `work/rg477m-native` @ `6d6cbb1`）
 > 工单：`coordination/prompts/P-MM-32-queue-submit.md`
 > 日期：2026-10-25
 > 设备：**本卡不需要真机**。没有 adb，没有 boot lock，没有碰设备。
@@ -292,7 +292,7 @@ manifest 里 `family_contracts` 含 `nvn_queue_submit_contract`，
 
 ## 8. 写范围核对
 
-**只改了工单第 5 节的六个文件**：
+**只改了工单第 5 节的六个文件**（对分叉点 `6d6cbb1` 求差集，结果就是这六个）：
 
 ```
 src/graphics/nvn_device/nvn_queue.h          ✓
@@ -303,9 +303,15 @@ scripts/runtime/make_nvn_queue_submit_variants.py ✓
 coordination/reports/T-QUEUE-submit-2026-10-25.md ✓
 ```
 
-**没有改**第 6 节保留的文件（`nvn_device.c`、`nvn_command_buffer.*`、`nvn_command_replay.*`、
-`nvn_present.*`、`nvn_backend_vulkan.c`、`nvn_window.*`、`nvn_texture.*`、`nvn_sampler*`、
+**没有改**第 6 节保留的文件（逐个对分叉点求差集确认）：
+`nvn_device.c`、`nvn_command_buffer.*`、`nvn_command_replay.*`、`nvn_present.*`、
+`nvn_backend_vulkan.c`、`nvn_window.*`、`nvn_texture.*`、`nvn_sampler*`、
 `src/android/native/CMakeLists.txt`、`scripts/runtime/build_guest_process_contract.sh`、
-`src/runtime/**`、`tests/native/guest_process_contract.c`）。
+`src/runtime/**`、`tests/native/guest_process_contract.c`。
+
+> 注：`work/rg477m-native` 在本卡开工期间被别的 Agent 推进了
+> （本卡分叉点是 `6d6cbb1`，该分支后来到了 `29e6b43`）。
+> 所以**校验范围要对着分叉点求差集**，不是对着 `work/rg477m-native` 的当前 HEAD ——
+> 后者会把别人的改动算到本卡头上。**本卡没有合并那个分支，也没有 push。**
 
 **没有** push、reset --hard、clean、stash。**没有**碰真机。
