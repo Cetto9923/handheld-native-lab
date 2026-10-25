@@ -18,9 +18,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* The guest registers its textures by index. A pool holds a handful; anything
- * beyond this is reported instead of silently dropped. */
-#define NVN_TEXTURE_POOL_MAX_TEXTURES 256
+/* The guest registers its textures by index. The reference host of this game
+ * reports pools of twelve thousand textures for a scene, so a cap of 256
+ * refused textures the guest had every right to register. */
+#define NVN_TEXTURE_POOL_MAX_TEXTURES 16384
 
 typedef struct nvn_texture_pool_family_entry {
     const char *name;

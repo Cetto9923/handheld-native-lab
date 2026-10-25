@@ -17,9 +17,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* The guest registers its samplers by index. A pool holds a handful; anything
- * beyond this is reported instead of silently dropped. */
-#define NVN_SAMPLER_POOL_MAX_SAMPLERS 64
+/* The guest registers its samplers by index. The pool of the device run of
+ * 2026-10-25 registered a sampler at index 256, and the reference host of
+ * this game reports pools of three thousand samplers, so a cap of 64 refused
+ * a sampler the guest had every right to register. */
+#define NVN_SAMPLER_POOL_MAX_SAMPLERS 4096
 
 typedef struct nvn_sampler_pool_family_entry {
     const char *name;

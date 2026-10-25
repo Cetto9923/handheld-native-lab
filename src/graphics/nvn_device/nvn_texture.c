@@ -1197,6 +1197,36 @@ NVNseparateTextureHandle nvnDeviceGetSeparateTextureHandle(const void *device, i
     return handle;
 }
 
+/* nvnDeviceGetSeparateSamplerHandle(device, id) -> separate sampler handle.
+ *
+ * The separate handle of a sampler is its number in the pool, counted from
+ * bit twenty upwards (hle_nvn.c:184), because the number of the texture of
+ * the pair lives in the bits below. The numbering base of the pool is not
+ * added here: the base is added where the handle is read. */
+NVNseparateSamplerHandle nvnDeviceGetSeparateSamplerHandle(const void *device, int id) {
+    NVNseparateSamplerHandle handle;
+    (void)device;
+    pthread_mutex_lock(&s_texture_lock);
+    s_stats.calls++;
+    s_stats.handle_calls++;
+    pthread_mutex_unlock(&s_texture_lock);
+    handle.value = (uint64_t)(uint32_t)id << 20;
+    return handle;
+}
+
+/* nvnDeviceGetTexelFetchHandle(device, tex) -> texel fetch handle.
+ *
+ * A texel fetch handle names a texture and nothing else, so it is the
+ * number of the texture in its pool (hle_nvn.c:2061). */
+NVNtextureHandle nvnDeviceGetTexelFetchHandle(const void *device, int tex) {
+    (void)device;
+    pthread_mutex_lock(&s_texture_lock);
+    s_stats.calls++;
+    s_stats.handle_calls++;
+    pthread_mutex_unlock(&s_texture_lock);
+    return (NVNtextureHandle)(uint64_t)(uint32_t)tex;
+}
+
 /* ------------------------------------------------------------------ */
 /* The names                                                            */
 /* ------------------------------------------------------------------ */
@@ -1242,6 +1272,8 @@ static const nvn_device_handle_family_entry s_device_handle_family[] = {
     { "nvnDeviceGetTextureHandle", (void *)(uintptr_t)nvnDeviceGetTextureHandle },
     { "nvnDeviceGetImageHandle", (void *)(uintptr_t)nvnDeviceGetImageHandle },
     { "nvnDeviceGetSeparateTextureHandle", (void *)(uintptr_t)nvnDeviceGetSeparateTextureHandle },
+    { "nvnDeviceGetSeparateSamplerHandle", (void *)(uintptr_t)nvnDeviceGetSeparateSamplerHandle },
+    { "nvnDeviceGetTexelFetchHandle", (void *)(uintptr_t)nvnDeviceGetTexelFetchHandle },
 };
 
 size_t nvn_texture_family_count(void) {
