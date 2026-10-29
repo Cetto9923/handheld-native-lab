@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-10-29T16:51:05.782435+08:00",
-  "phase": "P-OPT RG477M player-smoothness: game-mode verified, CG30/40 measured; app refresh candidate built, low-battery/thermal matched retest pending",
+  "updated_at": "2026-10-29T23:09:09.019682+08:00",
+  "phase": "RG477M game-mode 30Hz: the user's main package is restored to its backup a1c82634 (save untouched); the isolated package carries the diagnostic build 03b939b6. Measured: title-screen frame rate is dominated by the rotating background video (14.8-30.0 present/s for the same build family), so the title is not a valid acceptance window; the field/battle motion window is still open. Fixed two settings: a 30 FPS target no longer requests 60 Hz on the surface (19.3 -> 30.00 present/s measured on the 120 Hz panel), and the operation mode must stay Handheld (Docked renders 1920x1080 -> 17.3 fps). The Honor strict barrier is now behind the gfx-full-barrier marker. Audio: the paired AirPods Pro 3 are DISCONNECTED, so audio plays on the phone speaker at STREAM_MUSIC index 2/15 (~-30 dB) with zero AudioFlinger underruns - A2DP must be reconnected before the standing audio gate can be judged.",
   "coordinator": "Codex /root takeover",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
@@ -1194,14 +1194,38 @@
         "coordination/",
         ".local/rg477m-opt-30hz-game-mode/",
         "scripts/graphics/analyze_frame_metrics.py",
-        "tests/native/test_frame_metrics.py"
+        "tests/native/test_frame_metrics.py",
+        "src/graphics/nvn_vulkan/engine/xbg_probe.inc"
       ],
       "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native/.worktrees/codex-black-screen",
       "branch": "task/T02-codex-black-screen",
       "acquired_at": "2026-10-29T08:04:47.126270+00:00",
-      "checkpoint": "0444c81 dirty baseline; user confirmed Antigravity stopped",
-      "write_state": "ACTIVE",
-      "device_boot_lock": "RG477M01445122 only; isolated package preferred"
+      "checkpoint": "99b30c1 preserved;720p30 runtime measured; bounded per-reason sync diagnostic preparation",
+      "write_state": "RELEASED_USER_CONFIRMED_STOPPED",
+      "device_boot_lock": "RG477M01445122 only; isolated package preferred",
+      "released_at": "2026-10-29T10:01:27.032578+00:00",
+      "release_reason": "User confirmed stopped and authorized Honor-only takeover in current chat."
+    },
+    {
+      "task": "P-OPT-HONOR-GTPRO-30hz-game-mode",
+      "owner": "Codex /root",
+      "paths": [
+        "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+        "src/android/native/guest_boot_jni.cpp",
+        "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+        "src/graphics/nvn_vulkan/engine/xbg_probe.inc",
+        "coordination/",
+        ".local/honor-gtpro-opt-30hz-game-mode/",
+        "src/graphics/nvn_device/nvn_backend_vulkan.c"
+      ],
+      "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native/.worktrees/codex-black-screen",
+      "branch": "task/T02-codex-black-screen",
+      "acquired_at": "2026-10-29T10:01:27.032578+00:00",
+      "checkpoint": "7379 installed; visual/performance FAIL; PID29764 last observed; local ANTIGRAVITY-HANDOFF.md",
+      "write_state": "RELEASED_USER_REQUESTED_HANDOFF",
+      "device_boot_lock": "A42BBB5109000333 ONLY; RG477M prohibited",
+      "released_at": "2026-10-29T12:10:43.807720+00:00",
+      "release_reason": "User requests stop and Antigravity takeover; all dirty work preserved."
     }
   ],
   "tasks": [
@@ -3753,8 +3777,8 @@
       "branch": "task/T02-codex-black-screen",
       "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native/.worktrees/codex-black-screen",
       "status": "in_progress",
-      "execution_status": "User requests baseline backup+commit of adopted dirty WIP. Freeze source; game stopped and screen off at3% USB500mA. Full acceptance incomplete; new operation-mode0 vs1 confound recorded.",
-      "checkpoint_at": "2026-10-29T16:51:05.782435+08:00",
+      "execution_status": "Progress after baseline99b30c1: own-package JNI operation-mode candidate built and isolated signed APK1d71bacc ready. RG477M USB disconnected, not installed/tested. Full audio/visual/performance gates remain incomplete.",
+      "checkpoint_at": "2026-10-29T16:57:54.086380+08:00",
       "evidence": [
         ".local/rg477m-opt-30hz-game-mode/RESULT.md",
         ".local/rg477m-opt-30hz-game-mode/OSS-NOTES.md"

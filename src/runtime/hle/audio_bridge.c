@@ -41,6 +41,10 @@ typedef struct {
     uint64_t frames_written;
     struct ffrs_audio_stats stats;
     uint64_t last_log_frames,capture_frames;
+    /* Level window: 100 ms of stream time. Records how much of the guest's own
+     * PCM was silent and the longest silent run inside the window, which is
+     * what a listener hears as a stutter. */
+    uint64_t level_window_frames,level_window_nonzero,level_window_max_zero_run,level_zero_run,level_window_peak;
     FILE *capture;
 #if defined(__ANDROID__)
     AAudioStream *stream;
@@ -67,15 +71,40 @@ static void release_buffer(audio_output *out,audio_buffer *buffer) {
 static void scan_written(audio_output *out,const int16_t *pcm,uint64_t frames) {
     uint64_t samples=frames*(unsigned)out->channels;
     out->stats.frames_written+=frames;out->stats.samples_written+=samples;
-    for(uint64_t i=0;i<samples;i++){
-        int32_t value=pcm[i];uint32_t peak=(uint32_t)(value<0?-value:value);
-        if(value)out->stats.nonzero_samples++;if(peak>out->stats.peak)out->stats.peak=peak;
+    /* A frame is silent when every channel of it is zero. Counting frames
+     * instead of samples keeps the silent-run length a real time gap: with six
+     * channels one quiet channel would otherwise look like silence. */
+    uint64_t audible=0,max_run=out->level_window_max_zero_run,silent_run=out->level_zero_run,window_peak=out->level_window_peak;
+    const uint64_t channels=out->channels;
+    for(uint64_t f=0;f<frames;f++){
+        uint32_t frame_peak=0;int frame_audible=0;
+        for(uint64_t c=0;c<channels;c++){
+            int32_t value=pcm[f*channels+c];uint32_t peak=(uint32_t)(value<0?-value:value);
+            if(value){out->stats.nonzero_samples++;frame_audible=1;}
+            if(peak>frame_peak)frame_peak=peak;
+        }
+        if(frame_audible){audible++;silent_run=0;}
+        else{silent_run++;if(silent_run>max_run)max_run=silent_run;}
+        if(frame_peak>out->stats.peak)out->stats.peak=frame_peak;
+        if(frame_peak>window_peak)window_peak=frame_peak;
     }
-    if(out->capture&&out->capture_frames<3u*(uint64_t)out->rate){
-        uint64_t count=3u*(uint64_t)out->rate-out->capture_frames;if(count>frames)count=frames;
+    out->level_zero_run=silent_run;out->level_window_max_zero_run=max_run;out->level_window_peak=window_peak;
+    out->level_window_frames+=frames;out->level_window_nonzero+=audible;
+    if(out->level_window_frames>=(uint64_t)out->rate/10u){
+        fprintf(stderr,"[audio] level key=%p window_ms=%llu audible_frames=%llu frames=%llu max_silent_run_ms=%llu peak=%u\n",
+            out->key,(unsigned long long)(out->level_window_frames*1000ull/(uint64_t)out->rate),
+            (unsigned long long)out->level_window_nonzero,(unsigned long long)out->level_window_frames,
+            (unsigned long long)(out->level_window_max_zero_run*1000ull/(uint64_t)out->rate),(unsigned)out->level_window_peak);
+        out->level_window_frames=0;out->level_window_nonzero=0;out->level_window_max_zero_run=0;out->level_window_peak=0;
+    }
+    /* Three seconds only covered the silent start-up phase, where the title
+     * music has not started yet. Capture the first three minutes so the whole
+     * audible window can be analysed offline. */
+    if(out->capture&&out->capture_frames<180u*(uint64_t)out->rate){
+        uint64_t count=180u*(uint64_t)out->rate-out->capture_frames;if(count>frames)count=frames;
         size_t expected=(size_t)(count*out->channels),wrote=fwrite(pcm,sizeof(int16_t),expected,out->capture);
         out->capture_frames+=wrote/(unsigned)out->channels;
-        if(wrote!=expected||out->capture_frames==3u*(uint64_t)out->rate){fclose(out->capture);out->capture=NULL;}
+        if(wrote!=expected||out->capture_frames==180u*(uint64_t)out->rate){fclose(out->capture);out->capture=NULL;}
     }
 }
 static void log_stats(audio_output *out,const char *reason) {

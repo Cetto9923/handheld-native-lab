@@ -1,3 +1,93 @@
+## 23:15 复核检查点：备份已装回、卡顿成因与标题画面度量污染
+
+主包 `org.ffrs.gamewindow` 已装回用户原备份 a1c82634（`install -r`，存档未动）；隔离包 `org.ffrs.perfisolated`
+= 03b939b6（诊断构建：100 ms 音频电平日志、180 s PCM 采集、`gfx-full-barrier` marker）。快库 5683f7e 的 APK 与
+PERFISOL 私钥都在本地，可随时装回。
+
+**关键**：标题画面的背景视频每次不同，同族构建在同一时间测出 14.8~30.0 present/s（gpu_ms 24.7~38.3）。所以历史
+记录里“某构建 8~10FPS / 某构建 29.98FPS”的对比不成立，**标题不是验收窗口**，必须是野外/战斗持续运动。
+
+已修两处设置：30 FPS 目标不再请求 60 Hz（面板 120 Hz 时 33.3 ms/帧 = 30.00 present/s；请求 60 Hz 时 51.8 ms/帧
+= 19.3）；operation mode 必须 Handheld(0)（Docked → 1920x1080 → 17.3 fps）。荣耀严格屏障改为 `gfx-full-barrier=1`
+可开，默认 compute 域屏障并补齐 indirect/transfer 访问位（RG477M 实测无 fps 变化）。
+
+音频：配对的 AirPods Pro 3 **未连接**，输出是手机外放，STREAM_MUSIC=2/15（≈-30 dB），AudioFlinger underruns=0。
+A2DP 连上之前音频门无法判定。
+
+下一步：① 用屏内虚拟 PAD 驱动进章节，测野外/战斗持续运动的 present/s 与长帧；② 连上 A2DP 走常设音频清单；
+③ 在同一场景里复比 15:45 那次 xbg_game.cpp 改动。
+
+# 用户转交 Antigravity — 2026-10-29
+
+Codex停止修改及设备操作，写入占用已释放；未reset/clean/stash/commit/push。详见 `.local/honor-gtpro-opt-30hz-game-mode/ANTIGRAVITY-HANDOFF.md`。当前7379 APK，画面火焰及性能仍FAIL；仅场景黑底透明度问题有窄修复证据。声音暂缓。接管保留99b30c1+dirty全部内容，重新核实PID/标记；仅荣耀设备。
+
+# Honor compute visibility candidate / live install — 2026-10-29
+
+7379a1341ff2dfd38a6a98101c909e69904daaee3229766cbbf6553e97382b4d buildexit0 restoresexistingfullbarrieraftercompute(completevisibilityscope; noCPUwait). Installcmdsession41646confirmedlive; IncFStimoutline butAndroidinstaller scanningafterack. CurrentinstalledSHAstill0aafefe9; gameintentionallystoppedforinstall. Pollwrite_stdin41646 andinstalledSHA/installerstate; doNOTblindrestart. 0aafrollbackAPKverified. 7379NOT_RUN. FlamequeryWAITnotcure; valid20svideoconfirmsintermittentrightfire. Neednextinstallsuccess→verifySHA→plainlaunch→samefieldguardedA/B. NoRGdevice/nopush; sounddeferredbyuser.
+
+# Honor valid fire reproduction checkpoint — 2026-10-29
+
+Current0aafefe9 PID32299 verifybeforeuse. Guarded20svideoflame-0aaf.mp4 validgameforegroundbefore/after(exit0). Rightfiremostlyabsent0–14s,present16s,absent18s; userflameFAILconfirmed, queryWAITnotcure. AlphaRGBXfixremainsnarrowblackdisplayfix. CPUprofile1202–1213capturedtitle40draw/17dispatch,notfield737draw/135dispatch. Nextinspectcompute-to-indirectvisibility/barriers andcapturetargetparticleprovenance; nofakevisibility/noskipFX. Allrawmanifestsinlocal evidence. NoRGdevice/noreset/nopush; sounddeferred.
+
+# Honor query candidate installed — 2026-10-29
+
+0aafefe92c009ff7f9ab1ae108bae78d189e2685aead5e0ec0f372346302ac5b installsuccess+deviceSHAverified, plainlaunchstarted. QueryWAITvalidityfixandrichstagefatalcontext, opaqueRGBXretained. CPUprofilemarker1200/12, asyncpipelines0, probe0, target30/fence0/docked1/warp1. NeedverifyPID/foregroundbeforeeveryrecording; priorrecordwaslauncherbecauseappterminatedstage-5. FlameintermittencyremainsFAILuntilactualretest. NextContinueaftertitle, guardforeground, capture20s onlygame; inspectfatalcount/RT/shaders ifexit.
+
+# Honor flame FAIL / query candidate checkpoint — 2026-10-29
+
+User confirms someflamesintermittentlydisappear; notfullvisualPASS.6af1alpha fixrestoredscene but laterappterminatedFATALstage/depthstate-5. Recordinginvalidlauncherclip,notgame. New0aafefe9queryWAITcorrectnessfixandrichfatalcontext built0; installationexecsession1385pending.6af1rollbackAPKpulledandSHAverified locally. OnlyHonoroperated; sameprogramMali/Adreno semantics, noRGtest. Fulltarget30/1080 andeffectacceptanceUNMET; audio deferredbyuser. Nextresolveinstall,verifySHA,plainlaunch, guardedforegroundrecord andfaultcontext.
+
+# Honor actual visual fix checkpoint — 2026-10-29
+
+CurrentinstalledSHA6af1c301afd0e52638c2519215510f33e324a35bd971eb0325ac2c41cc094ac0, PID24725 verifybeforeuse. Normalframefinalreadback proved RGBscene+alpha0; nativeSurfaceViewRGBA letAndroid blendagainstblack. ChangedSurfaceViewRGBX, backendpreferssupportedOPAQUE elseINHERIT; HonorsupportsINHERITonly. Ordinaryopaque-field.png now shows scene/player/fire withoutcapture. This fixes narrowblackdisplay, notfullvisual/performanceacceptance. ~7–8present/s remains; mixedCSV allstalls retained. Nointernalalpha/effect/shadermodification andnoHonor-specificbranch; RGhardwareNOT_RUN/prohibited. Markerstarget30/fence0/operation1/warp1/metrics1/probe0/attachment1, bothno-cachemarkers movedaside. User prioritizespicture/stutter/fire and deferssound. Next predeclaredmotionwindow+CPU/GPUstageprofiling, verifyflamestability, no40/60.
+
+# Honor visual-first probe checkpoint — 2026-10-29
+
+User prioritizes picture/stutter/incomplete fire, defers sound work; one program must retain RG477M+Honor compatibility, Honor-only device operations. Current APKf7c67ac2 includes storage and diagnostic artifact-permission fixes only (plus preserved inherited WIP). Frame856 probe complete221groups/60MB, manifest in local evidence; finalRGBA readback shows fullscene, regularpre/post black. Probe alters fastpaths and synchronizes, no single cause proved. warp0 and attachment-barrier0 each failed tofix. Restoredwarp1/barrier1; testing gfx-no-descmemo1 now. CSV/probe adb extraction fixed and actually verified. Newest runtime PID must verify; no40/60.
+
+# Honor saved-scene comparison — 2026-10-29
+
+Old79e58bb3 also reproduces black3D+HUD after Continue. Current installed old backup, PID11136 verify live; markers target30/fence0/operation1/metrics1, original warp1 retained. New APK5e4d29cb storage changes compile/build/install successful but not current installed. Old1080source7.76–7.89; new720~9; not comparable resolution/performance A/B and neither acceptancePASS. Raw screenshots/logs under `.local/honor-gtpro-opt-30hz-game-mode/`; CSV pull/run-as denied; no valid CSV/percentiles. Next investigate common black3D scene before performance changes. External volume and Bluetooth full gates pending.
+
+# Honor first build/run checkpoint — 2026-10-29
+
+See `.local/honor-gtpro-opt-30hz-game-mode/RESULT.md`. Build exit0; installed SHA5e4d29cb verified. Plain launch autodiscovered primary FFRS, target30 confirmed, actual present source720p so1080P pending. Audio raw NONE=10 per actual NDK conflicts standing text0; preserved truth. Full performance/audio/visual/external acceptance pending. Current app launched PID8962 (verify before reuse). No RG477M operations.
+
+# Honor GT Pro 30Hz intake — 2026-10-29
+
+User confirmed previous RG477M writer stopped; Codex takes over existing 99b30c1+dirty without reset. Intake diff/status: `.local/honor-gtpro-opt-30hz-game-mode/`. Only A42BBB5109000333 authorized; currently adb device not found. No install or runtime change performed. Full audio standing checklist read; no gates passed. Goal remains active.
+
+## 身体半透明护罩定义已确认；诊断帧保存
+用户明确持续包身体的罩，不是紫环。旧5683单帧probe PID5362/frame1472完成END，134组，38.6MB，shield-frame-probe/manifest.json及trace-summary.json。before-arm黑魔道士+士兵、尚无白魔道士，故不支持完整两人受击缺失根因结论。诊断marker已恢复，已停游戏避免6%电耗尽；未改源码/未抬帧。后续分析透明/深度/中间纹理，并需对齐白魔道士加入后的护罩时段。
+
+## 最新目标：先稳30，修复所有特效；A/B无修复结论
+Goal创建失败（旧blocked目标未结束），未假完成。实际sameAPK5683附件延后off对照40秒已采完；10fps相位对齐发现on/off都有短暂紫环，稀疏抽帧差异不是修复，marker已恢复1，下次启动生效。shader/护罩根因未定；用户身体护罩形态问题待答。详情shield-barrier-ab/RESULT.md，勿把紫环误判新恢复。战斗音频FAIL和稳30仍需修复。
+
+## 护罩剧情精确取证完成
+按用户Continue→向前→下一剧情在旧5683f7e复现，PID27851，40秒录屏session62913exit0，battle-audio-fail/manifest.json含SHA。士兵攻击黑白魔道士，火焰/爆炸可见，抽帧未见应有身体护罩；完整视频保留，根因未定。旧包也存在，勿只归新JNI。当前audio新候选FAIL已回退，旧包战斗音频仍待复测。电9%，录屏开销不作性能。
+
+## 音频FAIL回退与护罩缺失复现
+用户确认1d71新候选战斗特效卡顿伴蓝牙断续，移动还好。已回退隔离5683f7e/SHA核实，仍30/fence0；完整战斗音频回退复验待做，不能称已恢复PASS。用户指出两法师护罩缺失，精确路径重启→继续→前走→下一段剧情；已授权重启，当前旧包PID27851取证中。新b26诊断APK未安装。
+
+## 等待现场耳听反馈
+设备仍online，隔离PID16536、电11%温34C，30Hz基线保持；无构建/采集长进程待运行。基线体验询问后已连续完成采样研究、诊断构建，当前用户反馈仍缺。已完成可独立推进事项；下一步需要用户确认当前1d71bacc包蓝牙音频连续/视觉情况，才能继续新候选现场复验与40/60。目标未完成，记录BLOCKED，不把旧CG耳听或xruns0当新包场景PASS。
+
+## 有界storage-sync诊断候选构建完成
+新增xbg_probe.inc每reason12条日志预算，原全局额度过早耗尽；不改同步/音频/游戏行为。标准构建33860exit0，隔离签名verify0；SHA及日志storage-sync-diagnostic/manifest.json。未安装，当前1d71bacc30Hz耳听待答，勿把新候选当运行过；勿无依据删pending CPU/GPU依赖。
+
+## 17:15 研究检查点
+resumed-720p/profile-manifest.json含真实采样SHA/命令/范围；12秒调用栈成功，首轮空文件失败已保留。同步已为completion_wait1/legacy_waitall0，不可重复宣称切新等待即可修复。战斗storage fallback why3约每帧一次，具体部分重叠范围待进一步诊断，未删同步。target30保持，蓝牙耳听待答，未抬40/60。
+
+## 17:12 隔离720P运行检查点
+候选1d71bacc已安装，仅perfisolated；PID16536，operation0，游戏内source1280x720确认。resumed-720p会话73117终止exit0：124.880秒混合野外/战斗转场28.347present/s，p5033.479/p9547.388/p9958.438/max729.606ms，9帧>100ms，未通过稳定30。野外/战斗截图出画，完整视觉/耳听/蓝牙断连/游戏速度门未通过。14→13%电，用户耳听问题待答，未抬40/60；保留30/fence0/FIFO。后续先人耳确认和分场景稳定性，再按用户新目标CG30游戏40/60继续。
+
+## 2026-10-29 17:08 RG477M恢复
+用户最新目标：CG稳定30为底线，游戏内先稳40，有余量再60。设备14%、游戏模式面板已确认、A2DP连接；开始隔离720P候选验证，未通过完整音视频门。
+
+## 基准99b30c1之后 operation-mode配置候选（构建通过，设备未测）
+
+JNI新增19行，从本包实际日志目录读oe-operation-mode，缺省Handheld0并设置现有FFRS_OPERATION_MODE，避免隔离包继承主包Docked1；没有改ROM/音频/Android性能档。标准完整APK构建exit0，隔离候选SHA1d71bacc…签名校验exit0；位于.local/rg477m-opt-30hz-game-mode/operation-mode-candidate/。RG477M01445122当前不在ADB，两次定向检查not found，尚未安装，不声称720/帧率修复。设备回连后按RESULT下一步先30全门，再60/0。用户基准提交及归档保留，不push。
+
 ## 用户要求冻结当前成果为基准提交（2026-10-29）
 
 本次明确授权保存已认领全部现有源码WIP及本轮修改，现分支task/T02-codex-black-screen父0444c81，不push。报告 `coordination/reports/P-OPT-RG477M-20261029-baseline.md` 含范围、产物SHA、实测与未通过门；本地备份路径记录 `.local/rg477m-opt-30hz-game-mode/baseline-backup-path.txt`。这不是完整验收通过。新发现旧包Handheld0/当前Docked1，先原样冻结，后续再修本包模式读取；用户目前仅电脑USB，电3%，游戏停止关屏充电。
