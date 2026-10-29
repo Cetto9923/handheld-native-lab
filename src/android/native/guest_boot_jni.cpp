@@ -112,6 +112,7 @@ void* GuestThreadMain(void* opaque) {
             } else fprintf(stderr, "[movie] diagnostic mkdir failed; decoding remains unchanged\n");
         }
         const std::string audio_marker = path + "/gfx-codex-audio-dump";
+        ffrs_audio_set_platform_directory(path.c_str());
         enabled = fopen(audio_marker.c_str(), "rb");
         const bool dump_audio = enabled && fgetc(enabled) == '1';
         if (enabled) fclose(enabled);

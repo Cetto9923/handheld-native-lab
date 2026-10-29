@@ -1,6 +1,7 @@
 /* Android's real default output endpoint. Device names are adapter-local
  * identifiers, not claims about the physical speaker/headphone route. */
 #include "audio_bridge.h"
+#include "audio_transport.h"
 #include "nso_host.h"
 #include <pthread.h>
 #include <stdio.h>
@@ -29,6 +30,7 @@ _Static_assert(sizeof(audio_buffer)==40&&offsetof(audio_buffer,data)==8&&
     offsetof(audio_buffer,capacity)==16&&offsetof(audio_buffer,bytes)==24&&
     offsetof(audio_buffer,offset)==32,"verified retail AudioOutBuffer ABI");
 static char diagnostic_directory[PATH_MAX];
+static char platform_directory[PATH_MAX];
 static unsigned diagnostic_serial;
 /* Opt-in wall-time evidence: PCM alone does not show gaps between writes.
  * Shared mapped records survive force-stop without per-record stdio or a
@@ -54,7 +56,15 @@ typedef struct {
     pthread_mutex_t mutex;
     pthread_cond_t condition;
     pthread_t worker;
+    pthread_t endpoint_worker;
     int closing, busy;
+    int paced,transport_busy,backend_started;
+    uint32_t warmup_frames;
+    uint64_t warmup_deadline_ns;
+    uint64_t endpoint_frames;
+    uint64_t endpoint_start_ns,arrival_ns[64];
+    ffrs_audio_fifo fifo;
+    ffrs_audio_sample_clock sample_clock;
     audio_buffer *pending[64], *released[64], *active;
     unsigned ph, pt, rh, rt;
     uint64_t frames_written;
@@ -166,6 +176,7 @@ static void scan_written(audio_output *out,const int16_t *pcm,uint64_t frames) {
 }
 static void log_stats(audio_output *out,const char *reason) {
 #if defined(__ANDROID__)
+    if(!out->stream){fprintf(stderr,"[audio] %s stream unavailable; worker retains queued PCM\n",reason);return;}
     fprintf(stderr,"[audio] PCM %s key=%p buffers=%llu released=%llu rejected=%llu submitted_frames=%llu written_frames=%llu nonzero=%llu samples=%llu peak=%u AAudio_state=%d device=%d xruns=%d stream_written=%lld played=%lld\n",
         reason,out->key,(unsigned long long)out->stats.appended_buffers,(unsigned long long)out->stats.released_buffers,
         (unsigned long long)out->stats.rejected_buffers,(unsigned long long)out->stats.submitted_frames,
@@ -222,9 +233,126 @@ static aaudio_result_t open_aaudio_stream(audio_output *out) {
     }
     return status;
 }
+/* The endpoint owns a real sample-rate clock; Android transport notification
+ * batching must not pull an entire burst out of the guest in a few microseconds.
+ * PCM is transferred verbatim to owned storage after each sampling interval.
+ * The physical endpoint adds transport latency; these completions are not
+ * assertions that the DAC has already played the samples. */
+static void *audio_endpoint_worker(void *argument) {
+    audio_output *out=argument;
+    pthread_mutex_lock(&out->mutex);
+    while(!out->closing){
+        while(!out->closing && (!atomic_load(&out->state) || out->ph==out->pt)){
+            pthread_cond_wait(&out->condition,&out->mutex);
+        }
+        if(out->closing)break;
+        uint64_t available=out->arrival_ns[out->ph%64];
+        if(available<out->endpoint_start_ns)available=out->endpoint_start_ns;
+        audio_buffer *buffer=out->pending[out->ph++%64];
+        out->active=buffer;out->busy=1;
+        uint64_t position=0,frames=buffer->bytes/(2u*out->channels);
+        audio_timing_record(out,2,audio_timing_begin(out),0,0,0);
+        while(position<frames && atomic_load(&out->state) && !out->closing){
+            uint32_t quantum=(uint32_t)out->rate/200u;
+            uint32_t chunk=frames-position>quantum?quantum:(uint32_t)(frames-position);
+            while(ffrs_audio_fifo_space(&out->fifo)<chunk &&
+                    atomic_load(&out->state) && !out->closing){
+                pthread_cond_wait(&out->condition,&out->mutex);
+            }
+            if(!atomic_load(&out->state) || out->closing)break;
+            uint64_t begin=audio_now_ns();
+            uint64_t deadline=ffrs_audio_clock_reserve(&out->sample_clock,position?0:available,chunk,(uint32_t)out->rate);
+            struct timespec when={(time_t)(deadline/1000000000ull),(long)(deadline%1000000000ull)};
+            while(atomic_load(&out->state) && !out->closing && audio_now_ns()<deadline)
+                pthread_cond_timedwait(&out->condition,&out->mutex,&when);
+            if(!atomic_load(&out->state) || out->closing)break;
+            if(!ffrs_audio_fifo_push(&out->fifo,(const int16_t*)buffer->data+position*out->channels,chunk))abort();
+            position+=chunk;out->endpoint_frames+=chunk;
+            audio_timing_record(out,6,begin,0,(int)chunk,chunk);
+            pthread_cond_broadcast(&out->condition);
+        }
+        out->active=NULL;out->busy=0;
+        release_buffer(out,buffer);
+        audio_timing_record(out,position==frames?5:8,audio_timing_begin(out),0,0,0);
+        pthread_cond_broadcast(&out->condition);
+        void *event=out->event;
+        pthread_mutex_unlock(&out->mutex);
+        if(event)nso_host_os_signal_system_event(event);
+        pthread_mutex_lock(&out->mutex);
+    }
+    pthread_mutex_unlock(&out->mutex);return NULL;
+}
+static void *audio_transport_worker(void *argument) {
+    audio_output *out=argument;int16_t scratch[1024*8];
+    pthread_mutex_lock(&out->mutex);
+    while(!out->closing){
+        while(!out->closing){
+            uint32_t have=ffrs_audio_fifo_size(&out->fifo);
+            if(!atomic_load(&out->state) || !have){
+                if(!out->backend_started)out->warmup_deadline_ns=0;
+                pthread_cond_wait(&out->condition,&out->mutex);continue;
+            }
+            if(!out->backend_started && have<out->warmup_frames){
+                uint64_t now=audio_now_ns();
+                if(!out->warmup_deadline_ns)
+                    out->warmup_deadline_ns=now+(uint64_t)out->warmup_frames*1000000000ull/(uint32_t)out->rate;
+                if(now<out->warmup_deadline_ns){
+                    struct timespec when={(time_t)(out->warmup_deadline_ns/1000000000ull),(long)(out->warmup_deadline_ns%1000000000ull)};
+                    pthread_cond_timedwait(&out->condition,&out->mutex,&when);continue;
+                }
+            }
+            break;
+        }
+        if(out->closing)break;
+        /* Only this worker reopens a paced stream. Stream getters and stop use
+         * this same mutex, so none can race the old stream's destruction. */
+        if(atomic_exchange(&out->device_changed,0) || !out->stream){
+            out->backend_started=0;open_aaudio_stream(out);
+        }
+        if(out->stream && !out->backend_started){
+            if(AAudioStream_requestStart(out->stream)==AAUDIO_OK)out->backend_started=1;
+        }
+        if(!out->stream || !out->backend_started){
+            uint64_t wake=audio_now_ns()+10000000ull;
+            struct timespec when={(time_t)(wake/1000000000ull),(long)(wake%1000000000ull)};
+            pthread_cond_timedwait(&out->condition,&out->mutex,&when);continue;
+        }
+        uint32_t ask=ffrs_audio_fifo_peek(&out->fifo,scratch,1024);
+        out->transport_busy=1;uint64_t begin=audio_timing_begin(out);
+        pthread_mutex_unlock(&out->mutex);
+        aaudio_result_t wrote=AAudioStream_write(out->stream,scratch,(int32_t)ask,100000000ll);
+        uint64_t end=begin?audio_now_ns():0;
+        pthread_mutex_lock(&out->mutex);
+        out->transport_busy=0;out->stats.write_calls++;
+        audio_timing_record(out,3,begin,end,wrote,ask);
+        if(wrote>0){
+            if((uint32_t)wrote>ask || !ffrs_audio_fifo_consume(&out->fifo,(uint32_t)wrote))abort();
+            scan_written(out,scratch,(uint32_t)wrote);out->frames_written+=(uint32_t)wrote;
+            if(!out->last_log_frames || out->stats.frames_written-out->last_log_frames>=(uint64_t)out->rate){
+                log_stats(out,"paced progress");out->last_log_frames=out->stats.frames_written;
+            }
+        }else if(wrote==0 || wrote==AAUDIO_ERROR_TIMEOUT){
+            out->stats.zero_writes++;
+        }else if(atomic_load(&out->state)){
+            out->stats.errors++;
+            fprintf(stderr,"[audio] paced write error=%d; retaining FIFO and reopening\n",(int)wrote);
+            out->backend_started=0;open_aaudio_stream(out);
+        }
+        pthread_cond_broadcast(&out->condition);
+        if(wrote<=0 && atomic_load(&out->state)){
+            uint64_t wake=audio_now_ns()+2000000ull;
+            struct timespec when={(time_t)(wake/1000000000ull),(long)(wake%1000000000ull)};
+            pthread_cond_timedwait(&out->condition,&out->mutex,&when);
+        }
+    }
+    pthread_mutex_unlock(&out->mutex);return NULL;
+}
 #endif
 static void *audio_worker(void *argument) {
     audio_output *out=argument;
+#if defined(__ANDROID__)
+    if(out->paced)return audio_transport_worker(argument);
+#endif
     pthread_mutex_lock(&out->mutex);
     while(!out->closing) {
         while(!out->closing && (!atomic_load(&out->state) || out->ph==out->pt)) {
@@ -331,19 +459,51 @@ static uint32_t open_output_event(void *key,void *event,const void *parameter) {
     audio_output *out=calloc(1,sizeof(*out));if(!out)return 0x2a2;
     atomic_init(&out->timing,NULL);
     out->key=key;out->event=event;out->rate=rate;out->channels=channels;
+    pthread_mutex_lock(&audio_lock);
+    if(platform_directory[0]){
+        char marker[PATH_MAX];int n=snprintf(marker,sizeof marker,"%s/gfx-audio-paced-transport",platform_directory);
+        FILE *f=n>0 && (size_t)n<sizeof marker?fopen(marker,"rb"):NULL;
+        out->paced=f && fgetc(f)=='1';if(f)fclose(f);
+    }
+    pthread_mutex_unlock(&audio_lock);
     aaudio_result_t status=open_aaudio_stream(out);
     if(status!=AAUDIO_OK || !out->stream) {
         fprintf(stderr,"[audio] AudioOut refused: rate=%d channels=%u AAudio=%d\n",rate,channels,status);
         if(out->stream)AAudioStream_close(out->stream);free(out);return 0x2a2;
     }
-    pthread_mutex_init(&out->mutex,NULL);pthread_cond_init(&out->condition,NULL);
+    pthread_mutex_init(&out->mutex,NULL);
+    pthread_condattr_t attr;pthread_condattr_init(&attr);
+    int condition_error=out->paced?pthread_condattr_setclock(&attr,CLOCK_MONOTONIC):0;
+    if(!condition_error)condition_error=pthread_cond_init(&out->condition,&attr);
+    pthread_condattr_destroy(&attr);
+    if(condition_error){pthread_mutex_destroy(&out->mutex);AAudioStream_close(out->stream);free(out);return 0x2a2;}
+    if(out->paced){
+        int32_t size=AAudioStream_getBufferSizeInFrames(out->stream);
+        uint64_t capacity=(uint64_t)(size>0?size:1920)*4u;
+        if(capacity<(uint32_t)rate/2u)capacity=(uint32_t)rate/2u;
+        if(capacity>(uint32_t)rate*2u){
+            pthread_cond_destroy(&out->condition);pthread_mutex_destroy(&out->mutex);
+            AAudioStream_close(out->stream);free(out);return 0x2a2;
+        }
+        out->fifo=(ffrs_audio_fifo){.capacity=(uint32_t)capacity,.channels=(uint32_t)channels};
+        out->fifo.pcm=calloc((size_t)capacity*channels,sizeof(int16_t));
+        if(!out->fifo.pcm){pthread_cond_destroy(&out->condition);pthread_mutex_destroy(&out->mutex);AAudioStream_close(out->stream);free(out);return 0x2a2;}
+        int32_t burst=AAudioStream_getFramesPerBurst(out->stream);
+        out->warmup_frames=(uint32_t)(burst>0?burst:rate/100);
+        if(out->warmup_frames>out->fifo.capacity)out->warmup_frames=out->fifo.capacity;
+        fprintf(stderr,"[audio] paced transport enabled fifo_frames=%u warmup_frames=%u rate=%d; physical latency pending validation\n",out->fifo.capacity,out->warmup_frames,rate);
+    }
     pthread_mutex_lock(&audio_lock);int slot=-1;
     for(int i=0;i<8;i++)if(!outputs[i]){slot=i;break;}
     if(slot>=0)outputs[slot]=out;
     pthread_mutex_unlock(&audio_lock);
-    if(slot<0 || pthread_create(&out->worker,NULL,audio_worker,out)) {
+    int worker_started=0,thread_error=slot<0;
+    if(!thread_error){thread_error=pthread_create(&out->worker,NULL,audio_worker,out);worker_started=!thread_error;}
+    if(!thread_error && out->paced)thread_error=pthread_create(&out->endpoint_worker,NULL,audio_endpoint_worker,out);
+    if(thread_error) {
+        if(worker_started){pthread_mutex_lock(&out->mutex);out->closing=1;pthread_cond_broadcast(&out->condition);pthread_mutex_unlock(&out->mutex);pthread_join(out->worker,NULL);}
         pthread_mutex_lock(&audio_lock);if(slot>=0)outputs[slot]=NULL;pthread_mutex_unlock(&audio_lock);
-        AAudioStream_close(out->stream);pthread_cond_destroy(&out->condition);pthread_mutex_destroy(&out->mutex);free(out);return 0x2a2;
+        AAudioStream_close(out->stream);pthread_cond_destroy(&out->condition);pthread_mutex_destroy(&out->mutex);free(out->fifo.pcm);free(out);return 0x2a2;
     }
     if(event)nso_host_os_bind_system_event(event);
     strcpy((char*)key+16,"AAudioDefaultOutput");
@@ -366,6 +526,14 @@ static uint32_t open_output_event(void *key,void *event,const void *parameter) {
 static uint32_t open_output(void *key,const void *parameter) {return open_output_event(key,NULL,parameter);}
 static uint32_t start_output(void *key) {
     audio_output *out=find_output(key);if(!out)return 0x2a2;
+    if(out->paced){
+        pthread_mutex_lock(&out->mutex);
+        if(!atomic_load(&out->state)){
+            out->endpoint_start_ns=audio_now_ns();out->sample_clock=(ffrs_audio_sample_clock){0};
+        }
+        atomic_store(&out->state,1);mirror_output(out);log_stats(out,"start");
+        pthread_cond_broadcast(&out->condition);pthread_mutex_unlock(&out->mutex);return 0;
+    }
 #if defined(__ANDROID__)
     if(AAudioStream_requestStart(out->stream)!=AAUDIO_OK)return 0x2a2;
 #endif
@@ -375,6 +543,18 @@ static uint32_t start_output(void *key) {
 static void stop_output(void *key) {
     audio_output *out=find_output(key);if(!out)return;
     atomic_store(&out->state,0);
+    if(out->paced){
+        pthread_mutex_lock(&out->mutex);pthread_cond_broadcast(&out->condition);
+#if defined(__ANDROID__)
+        if(out->stream)AAudioStream_requestStop(out->stream);
+#endif
+        while(out->busy || out->transport_busy)pthread_cond_wait(&out->condition,&out->mutex);
+        out->fifo.read=out->fifo.write=0;out->sample_clock=(ffrs_audio_sample_clock){0};out->backend_started=0;out->warmup_deadline_ns=0;
+        int returned=0;while(out->ph!=out->pt){release_buffer(out,out->pending[out->ph++%64]);returned=1;}
+        pthread_mutex_unlock(&out->mutex);mirror_output(out);
+        if(returned&&out->event)nso_host_os_signal_system_event(out->event);
+        return;
+    }
 #if defined(__ANDROID__)
     AAudioStream_requestStop(out->stream);
 #endif
@@ -387,6 +567,7 @@ static void close_output(void *key) {
     audio_output *out=find_output(key);if(!out)return;stop_output(key);
     pthread_mutex_lock(&out->mutex);out->closing=1;pthread_cond_broadcast(&out->condition);pthread_mutex_unlock(&out->mutex);
     pthread_join(out->worker,NULL);
+    if(out->paced)pthread_join(out->endpoint_worker,NULL);
     log_stats(out,"close");if(out->capture){fclose(out->capture);out->capture=NULL;}
     {audio_timing *t=atomic_exchange(&out->timing,NULL);if(t)munmap(t,sizeof(*t));}
 #if defined(__ANDROID__)
@@ -394,7 +575,7 @@ static void close_output(void *key) {
 #endif
     fprintf(stderr,"[audio] AudioOut closed key=%p real_frames_written=%llu\n",key,(unsigned long long)out->frames_written);
     pthread_mutex_lock(&audio_lock);for(int i=0;i<8;i++)if(outputs[i]==out)outputs[i]=NULL;pthread_mutex_unlock(&audio_lock);
-    pthread_cond_destroy(&out->condition);pthread_mutex_destroy(&out->mutex);free(out);
+    pthread_cond_destroy(&out->condition);pthread_mutex_destroy(&out->mutex);free(out->fifo.pcm);free(out);
 }
 static int get_rate(const void *key) {audio_output *out=find_output(key);return out?out->rate:0;}
 static int get_channels(const void *key) {audio_output *out=find_output(key);return out?out->channels:0;}
@@ -418,6 +599,7 @@ static int append_buffer(void *key,audio_buffer *buffer) {
     if(ok){
         buffer->next=NULL;buffer->offset=0; // original AudioBufferList::push_back
         out->stats.appended_buffers++;out->stats.submitted_frames+=buffer->bytes/(2u*out->channels);
+        if(out->paced)out->arrival_ns[out->pt%64]=atomic_load(&out->state)?audio_now_ns():0;
         out->pending[out->pt++%64]=buffer;pthread_cond_broadcast(&out->condition);
     }else{
         out->stats.rejected_buffers++;
@@ -444,6 +626,12 @@ int ffrs_audio_get_stats(const void *key,struct ffrs_audio_stats *stats,size_t b
 int ffrs_audio_set_diagnostics(const char *directory) {
     struct stat st;if(directory&&(directory[0]!='/'||strlen(directory)>=sizeof(diagnostic_directory)||stat(directory,&st)||!S_ISDIR(st.st_mode)))return -1;
     pthread_mutex_lock(&audio_lock);if(directory)strcpy(diagnostic_directory,directory);else diagnostic_directory[0]=0;pthread_mutex_unlock(&audio_lock);return 0;
+}
+int ffrs_audio_set_platform_directory(const char *directory) {
+    struct stat st;
+    if(!directory || directory[0]!='/' || strlen(directory)>=sizeof platform_directory ||
+       stat(directory,&st) || !S_ISDIR(st.st_mode))return -1;
+    pthread_mutex_lock(&audio_lock);strcpy(platform_directory,directory);pthread_mutex_unlock(&audio_lock);return 0;
 }
 static int output_channels(void) {
     pthread_mutex_lock(&audio_lock);

@@ -16,8 +16,11 @@ struct ffrs_audio_stats {
 };
 /* Actual source/AAudio-accepted PCM counters, not an assertion of audibility. */
 int ffrs_audio_get_stats(const void *key,struct ffrs_audio_stats *out,size_t bytes);
-/* Default off; existing private directory, at most three seconds per stream. */
+/* Default off; existing private directory, at most 180 seconds per stream. */
 int ffrs_audio_set_diagnostics(const char *directory);
+/* Own app files directory. Experimental transport remains off unless its
+ * explicit gfx-audio-paced-transport marker contains '1'. */
+int ffrs_audio_set_platform_directory(const char *directory);
 #ifdef __cplusplus
 }
 #endif
