@@ -12,6 +12,8 @@
 #include "nvn_window.h"
 
 #include "nvn_device.h"
+#include "nvn_engine.h"
+#include "nvn_sync.h"
 
 #include <inttypes.h>
 #include <pthread.h>
@@ -43,10 +45,16 @@ typedef struct {
     uint32_t num_textures;
     uint32_t num_active_textures;
     void *surface;
+    uint32_t next_texture;
     void *swapchain;
     uint32_t width;
     uint32_t height;
     uint32_t crop_x, crop_y, crop_width, crop_height;
+    /* The textures of the swapchain. They are the guest's own textures and
+     * the guest renders into them, so the present path has to show one of
+     * them and not a copy of its own. */
+    void *textures[NVN_WINDOW_MAX_TEXTURES];
+    uint64_t texture_fences[NVN_WINDOW_MAX_TEXTURES];
     char debug_label[64];
     int in_use;
 } nvn_window_state;
@@ -137,7 +145,7 @@ void nvn_window_builder_set_native_window(void *builder, void *native_window) {
     NVN_VOID_RETURN();
 }
 
-void nvn_window_builder_set_textures(void *builder, void *textures, int count) {
+void nvn_window_builder_set_textures(void *builder, int count, void *textures) {
     nvn_window_builder_state *b;
     pthread_mutex_lock(&s_window_lock);
     s_window_stats.builder_calls++;
@@ -158,6 +166,8 @@ void nvn_window_builder_set_textures(void *builder, void *textures, int count) {
         }
     }
     pthread_mutex_unlock(&s_window_lock);
+    fprintf(stderr, "[nvn] nvnWindowBuilderSetTextures: builder=%p count=%d textures=%p (recorded=%u)\n",
+            builder, count, textures, b ? b->num_textures : 0);
     if (count > NVN_WINDOW_MAX_TEXTURES)
         fprintf(stderr, "[nvn] nvnWindowBuilderSetTextures: %d textures requested, this layer keeps %d\n",
                 count, NVN_WINDOW_MAX_TEXTURES);
@@ -304,6 +314,15 @@ int nvn_window_initialize(void *window, const void *builder, int flags) {
     w->present_interval = b->present_interval;
     w->num_textures = b->num_textures;
     w->num_active_textures = b->num_active_textures;
+    w->next_texture = 0;
+    {
+        uint32_t i;
+        for (i = 0; i < NVN_WINDOW_MAX_TEXTURES; i++) {
+            w->textures[i] = (i < b->num_textures && b->num_textures <= NVN_WINDOW_MAX_TEXTURES)
+                                 ? b->textures[i]
+                                 : NULL;
+        }
+    }
     w->surface = NULL;
     w->swapchain = NULL;
     w->width = 0;
@@ -449,29 +468,65 @@ void nvn_window_set_debug_label(void *window, const char *label) {
     NVN_VOID_RETURN();
 }
 
-/* The guest asks for the next image of its window. The images of the
- * platform swapchain belong to the presentation path, which is not built
- * yet, so this entry point reports that there is no image to hand out
- * instead of returning a number that means nothing. */
-void *nvn_window_acquire_texture(void *window, int index) {
+void nvn_window_record_present(void *window, int index, uint64_t fence) {
     nvn_window_state *w;
-    void *texture = NULL;
+    if (index < 0 || index >= NVN_WINDOW_MAX_TEXTURES) return;
     pthread_mutex_lock(&s_window_lock);
     w = window_find(window, 0);
-    if (w && w->swapchain) {
-        /* The swapchain exists, but the guest's textures are its own objects
-         * and the mapping between them and the swapchain images belongs to
-         * the presentation path, which has not been built yet. */
-        fprintf(stderr, "[nvn] nvnWindowAcquireTexture: window=%p index=%d; the swapchain exists but the "
-                        "image mapping is not built yet, no texture is handed out\n",
-                window, index);
-    } else {
-        fprintf(stderr, "[nvn] nvnWindowAcquireTexture: window=%p index=%d; no swapchain for this window, "
-                        "no texture is handed out\n",
-                window, index);
+    if (w) {
+        w->texture_fences[index] = fence;
     }
     pthread_mutex_unlock(&s_window_lock);
-    return texture;
+}
+
+/* NVNwindowAcquireTextureResult (window, availableSync, int *textureIndex).
+ * These indices address the guest's textures, not Vulkan swapchain images.
+ * Presentation copies a completed guest image into the platform swapchain.
+ * Retire prior work for the specific requested texture rather than serializing
+ * the entire engine, enabling concurrent CPU recording and GPU rendering. */
+int nvn_window_acquire_texture(void *window, void *available_sync, int *texture_index) {
+    nvn_window_state *w;
+    uint32_t count;
+    int index;
+    if (!texture_index || !nvn_engine_ready()) return 1;
+    pthread_mutex_lock(&s_window_lock);
+    w = window_find(window, 0);
+    count = w ? (w->num_active_textures ? w->num_active_textures : w->num_textures) : 0;
+    if (!w || !w->swapchain || !count || count > w->num_textures ||
+        count > NVN_WINDOW_MAX_TEXTURES) {
+        pthread_mutex_unlock(&s_window_lock);
+        return 1; /* NVN_WINDOW_ACQUIRE_TEXTURE_RESULT_NATIVE_ERROR */
+    }
+    index = (int)(w->next_texture % count);
+    if (!w->textures[index]) {
+        pthread_mutex_unlock(&s_window_lock);
+        return 1;
+    }
+    uint64_t prev_fence = w->texture_fences[index];
+    pthread_mutex_unlock(&s_window_lock);
+
+    /* If this texture was previously presented, wait only for that texture's fence;
+     * otherwise wait for any prior submission to ensure initial readiness. */
+    uint64_t wait_fence = prev_fence > 0 ? prev_fence : nvn_engine_last_fence();
+    if (wait_fence > 0 && !nvn_engine_wait(wait_fence, UINT64_MAX)) return 1;
+
+    pthread_mutex_lock(&s_window_lock);
+    w = window_find(window, 0);
+    if (!w) {
+        pthread_mutex_unlock(&s_window_lock);
+        return 1;
+    }
+    w->next_texture++;
+    pthread_mutex_unlock(&s_window_lock);
+
+    *texture_index = index;
+    if (available_sync) nvn_sync_family_fence(available_sync);
+    static unsigned s_acq_log = 0;
+    if (s_acq_log++ < 20) {
+        fprintf(stderr, "[nvn] nvnWindowAcquireTexture: window=%p sync=%p -> guest texture %d/%u (fence=%" PRIu64 ")\n",
+                window, available_sync, index, count, prev_fence);
+    }
+    return 0; /* NVN_WINDOW_ACQUIRE_TEXTURE_RESULT_SUCCESS */
 }
 
 /* ------------------------------------------------------------------ */
@@ -527,4 +582,31 @@ void nvn_window_get_stats(nvn_window_stats *out) {
         }
     }
     pthread_mutex_unlock(&s_window_lock);
+}
+
+/* The present state of the guest's window.
+ *
+ * The crop is the part of the image the window shows; when the guest has
+ * not set one, the whole image is shown. */
+int nvn_window_present_state_of(const void *window, nvn_window_present_state *out) {
+    nvn_window_state *slot;
+    int i;
+    if (!window || !out) return 0;
+    pthread_mutex_lock(&s_window_lock);
+    slot = window_find((void *)(uintptr_t)window, 0);
+    if (!slot || !slot->in_use) {
+        pthread_mutex_unlock(&s_window_lock);
+        return 0;
+    }
+    memset(out, 0, sizeof(*out));
+    out->native_window = slot->native_window;
+    out->ntex = (int32_t)slot->num_textures;
+    out->interval = (int32_t)slot->present_interval;
+    out->crop[0] = (int32_t)slot->crop_x;
+    out->crop[1] = (int32_t)slot->crop_y;
+    out->crop[2] = (int32_t)slot->crop_width;
+    out->crop[3] = (int32_t)slot->crop_height;
+    for (i = 0; i < 4 && i < NVN_WINDOW_MAX_TEXTURES; i++) out->textures[i] = slot->textures[i];
+    pthread_mutex_unlock(&s_window_lock);
+    return 1;
 }

@@ -30,6 +30,7 @@
 #include "nvn_sync.h"
 #include "nvn_event.h"
 #include "nvn_bridge.h"
+#include "nvn_device.h"
 
 #include "nvn_sampler_pool.h"
 #include "nvn_texture_pool.h"
@@ -64,10 +65,8 @@
  * 12 KiB, so this is well above the objects the header declares. */
 #define NVN_CB_MAX_COPY_BYTES 65536
 
-/* How many packages the registry holds, and how many bytes they hold. The
- * packages are never given back: a handle has to stay valid for as long as
- * the guest may use it, and the guest may use it after the buffer was
- * finalized and its address reused. The bound is what keeps that honest. */
+/* Bounds of currently owned command packages. A handle survives recorder
+ * finalization, but not reuse of its actual source command-memory bytes. */
 #define NVN_CB_MAX_PACKAGES 65536
 #define NVN_CB_MAX_PACKAGE_BYTES (256u * 1024u * 1024u)
 
@@ -100,6 +99,14 @@ typedef struct nvn_cb_copy {
     size_t size;
     struct nvn_cb_copy *next;
 } nvn_cb_copy;
+typedef struct nvn_cb_source {
+    uintptr_t lo,hi;
+    struct nvn_cb_source *next;
+} nvn_cb_source;
+typedef struct nvn_cb_dependency {
+    uint64_t handle,generation;
+    struct nvn_cb_dependency *next;
+} nvn_cb_dependency;
 
 /* A segment of the command memory of a recording.
  *
@@ -155,6 +162,14 @@ typedef struct {
     nvn_cb_segment *segments;
     size_t segment_count;
     nvn_cb_copy *copies;
+    /* Source command-memory accounting is independent of the larger host
+     * record encoding. Only consumed bytes belong to a finished handle. */
+    uintptr_t source_base;
+    uintptr_t source_anchor_lo,source_anchor_hi;
+    uint64_t source_size,source_used;
+    int source_known,source_spilled;
+    nvn_cb_source *sources;
+    nvn_cb_dependency *dependencies;
 
     /* The records of the recording, seen from the outside. */
     nvn_recorded_command *views;
@@ -177,6 +192,11 @@ typedef struct nvn_cb_package {
     nvn_command_package_segment *segments;
     size_t segment_count;
     nvn_cb_copy *copies;
+    nvn_cb_source *sources;
+    nvn_cb_dependency *dependencies;
+    uint64_t generation;
+    size_t readers;
+    int retired;
     struct nvn_cb_package *next;
 } nvn_cb_package;
 
@@ -198,6 +218,9 @@ static nvn_command_buffer_stats s_stats;
 static uint64_t s_sequence;
 static nvn_cb_package *s_packages;
 static size_t s_package_count;
+static uint64_t s_package_generation;
+/* Component-only recorders need no Vulkan engine; production defines this. */
+extern void nvn_engine_pool_del(void *) __attribute__((weak));
 static uint64_t s_package_bytes;
 static nvn_cb_pool_segment s_pool[NVN_CB_MAX_HOSTSEGMENTS];
 static size_t s_pool_bytes;
@@ -452,6 +475,8 @@ static void copies_free(nvn_cb_copy *copies) {
         copies = next;
     }
 }
+static void sources_free(nvn_cb_source *p){while(p){nvn_cb_source *next=p->next;free(p);p=next;}}
+static void dependencies_free(nvn_cb_dependency *p){while(p){nvn_cb_dependency *next=p->next;free(p);p=next;}}
 
 /* The slot of one guest command buffer.
  *
@@ -461,6 +486,8 @@ static void copies_free(nvn_cb_copy *copies) {
  * command memory that an earlier handle names. */
 static nvn_cb_buffer *buffer_reset(nvn_cb_buffer *buffer, const void *object) {
     copies_free(buffer->copies);
+    sources_free(buffer->sources);
+    dependencies_free(buffer->dependencies);
     segments_release(buffer, 0);
     free(buffer->views);
     free(buffer->diagnostics);
@@ -515,9 +542,54 @@ static nvn_cb_package *package_find(uint64_t handle) {
     nvn_cb_package *package;
     if (!handle) return NULL;
     for (package = s_packages; package; package = package->next) {
-        if (package->handle == handle) return package;
+        if (package->handle == handle && !package->retired) return package;
     }
     return NULL;
+}
+/* No engine call occurs under the recorder lock. Active translation leases
+ * retain bytes until their synchronous consumers have returned. */
+static void packages_collect(void) {
+    nvn_cb_package *garbage=NULL;
+    pthread_mutex_lock(&s_lock);
+    nvn_cb_package **at=&s_packages;
+    while(*at){nvn_cb_package *p=*at;if(p->retired&&!p->readers){
+        *at=p->next;p->next=garbage;garbage=p;s_package_count--;s_package_bytes-=p->bytes_used;
+        s_stats.packages_reclaimed++;
+    }else at=&p->next;}
+    s_stats.package_bytes=s_package_bytes;
+    pthread_mutex_unlock(&s_lock);
+    while(garbage){nvn_cb_package *p=garbage;garbage=p->next;
+        if(nvn_engine_pool_del)nvn_engine_pool_del(p->bytes);
+        copies_free(p->copies);sources_free(p->sources);dependencies_free(p->dependencies);
+        free(p->segments);free(p->bytes);free(p);
+    }
+}
+static void packages_retire_range(uintptr_t lo,uintptr_t hi){
+    for(nvn_cb_package *p=s_packages;p;p=p->next)if(!p->retired)
+        for(nvn_cb_source *s=p->sources;s;s=s->next)if(lo<s->hi&&s->lo<hi){p->retired=1;break;}
+}
+static void source_account(nvn_cb_buffer *slot,size_t bytes){
+    if(!slot->source_known)return;
+    if(slot->source_spilled){
+        if(!slot->sources&&slot->source_anchor_hi>slot->source_anchor_lo){
+            nvn_cb_source *s=calloc(1,sizeof(*s));if(!s)abort();s->lo=slot->source_anchor_lo;s->hi=slot->source_anchor_hi;slot->sources=s;}
+        return;
+    }
+    uint64_t remaining=slot->source_size-slot->source_used;
+    /* Host overflow hangs off a JUMP-sized piece of the original grant, as
+     * in nxnative hostseg_take. The larger host records never write the pool. */
+    if(bytes>remaining){bytes=remaining<16?(size_t)remaining:16;slot->source_spilled=1;
+        uintptr_t end=slot->source_base+(uintptr_t)slot->source_used+bytes;
+        slot->source_anchor_hi=end;
+        slot->source_anchor_lo=end-(bytes?bytes:(slot->source_used<8?slot->source_used:8));}
+    if(!bytes){source_account(slot,0);return;}
+    uintptr_t lo=slot->source_base+(uintptr_t)slot->source_used,hi=lo+bytes;
+    nvn_cb_source *tail=slot->sources;
+    while(tail&&tail->next)tail=tail->next;
+    if(tail&&tail->hi==lo)tail->hi=hi;
+    else{nvn_cb_source *s=calloc(1,sizeof(*s));if(!s){fputs("[nvn] command source metadata allocation failed\n",stderr);abort();}
+        s->lo=lo;s->hi=hi;if(tail)tail->next=s;else slot->sources=s;}
+    slot->source_used+=bytes;
 }
 
 /* ------------------------------------------------------------------ */
@@ -560,6 +632,13 @@ static int guest_reserve(nvn_cb_buffer *slot, size_t total, int is_end) {
     size_t want;
     uint8_t *grown;
     if (!segment) return 0;
+    if(slot->source_known){
+        if(slot->source_spilled)return 0;
+        uint64_t remaining=slot->source_size-slot->source_used;
+        if(remaining>SIZE_MAX-segment->used)return 0;
+        budget=segment->used+(size_t)remaining;
+        limit=is_end?budget:(budget>=8?budget-8:0);
+    }
     if (segment->used + total > limit) return 0;
     if (segment->used + total <= segment->capacity) return 1;
     want = segment->capacity ? segment->capacity * 2u : 256u;
@@ -744,6 +823,7 @@ static int record_write_locked(nvn_cb_buffer *slot, uint32_t op, uint32_t payloa
     } else if (!guest_reserve(slot, total, is_end)) {
         return NVN_CB_RESERVE_FULL;
     }
+    source_account(slot,total);
     at = segment->mem + segment->used;
     header = (nvn_cb_op_hdr *)at;
     header->op = op;
@@ -1554,6 +1634,13 @@ void nvn_command_buffer_rec_copy_buffer_to_texture(void *buffer, uint64_t source
     }
     record = (nvn_cb_p_copy_b2t *)record_open(buffer, NVN_CB_OP_COPY_B2T, sizeof(*record));
     if (!record) return;
+    const int *reg = (const int *)region;
+    static unsigned s_copy_b2t_log_count = 0;
+    if (s_copy_b2t_log_count++ < 10) {
+        fprintf(stderr, "[nvn] CopyB2T: src=%#llx tex=%p view=%p r=[%d,%d,%d %dx%dx%d] flags=%d\n",
+                (unsigned long long)source, texture, view,
+                reg[0], reg[1], reg[2], reg[3], reg[4], reg[5], flags);
+    }
     record->src = source;
     record->tex = texture_copy;
     copy_view(&record->view, &record->has_view, view, 0x28u);
@@ -1841,6 +1928,7 @@ void nvn_command_buffer_rec_set_copy_stride(void *buffer, int64_t stride, int im
 
 void nvn_command_buffer_rec_call_commands(void *buffer, int count, const uint64_t *handles) {
     uint64_t *copied = NULL;
+    uint64_t *generations = NULL;
     int i;
     int unknown = 0;
     if (count < 0 || (count > 0 && !handles)) {
@@ -1851,7 +1939,9 @@ void nvn_command_buffer_rec_call_commands(void *buffer, int count, const uint64_
         /* The guest may write over the array of handles the moment the call
          * returns, so the array is copied before anything else happens. */
         copied = (uint64_t *)malloc((size_t)count * sizeof(uint64_t));
-        if (!copied) {
+        generations = (uint64_t *)calloc((size_t)count,sizeof(uint64_t));
+        if (!copied || !generations) {
+            free(copied);free(generations);
             s_stats.dropped++;
             return;
         }
@@ -1859,28 +1949,38 @@ void nvn_command_buffer_rec_call_commands(void *buffer, int count, const uint64_
     }
     pthread_mutex_lock(&s_lock);
     for (i = 0; i < count; i++) {
-        if (!package_find(copied[i])) {
+        nvn_cb_package *child=package_find(copied[i]);
+        if (!child) {
             unknown++;
             s_stats.unknown_handles++;
             fprintf(stderr, "[nvn] the call of a command handle %" PRIu64 " was refused: the "
                             "registry does not know it, and it was not dereferenced\n",
                     copied[i]);
-        }
+        }else generations[i]=child->generation;
     }
     pthread_mutex_unlock(&s_lock);
     if (unknown) {
         /* A handle that is not known refuses the whole call: the commands it
          * stands for are not known either. */
         free(copied);
+        free(generations);
         s_stats.dropped++;
         return;
     }
     for (i = 0; i < count; i++) {
+        nvn_cb_dependency *dependency=calloc(1,sizeof(*dependency));
+        if(!dependency){pthread_mutex_lock(&s_lock);nvn_cb_buffer *slot=buffer_find(buffer,0);
+            if(slot)recording_void(slot,"CALL dependency metadata allocation failed");pthread_mutex_unlock(&s_lock);break;}
+        dependency->handle=copied[i];dependency->generation=generations[i];
         uint8_t *record = (uint8_t *)record_open(buffer, NVN_CB_OP_CALL, sizeof(uint64_t));
-        if (!record) break;
+        if (!record){free(dependency);break;}
         memcpy(record, &copied[i], sizeof(uint64_t));
+        pthread_mutex_lock(&s_lock);nvn_cb_buffer *slot=buffer_find(buffer,0);
+        if(slot&&!slot->void_recording){dependency->next=slot->dependencies;slot->dependencies=dependency;dependency=NULL;}
+        pthread_mutex_unlock(&s_lock);free(dependency);
     }
     free(copied);
+    free(generations);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1922,6 +2022,23 @@ void nvn_command_buffer_record_unmapped(void *buffer, const char *name, const ui
                                         uint32_t arg_count, const uint8_t *unresolved) {
     uint32_t i;
     pthread_mutex_lock(&s_lock);
+    /* The generic first-32 diagnostic limit is exhausted by WaitSync before
+     * gameplay. Never let it hide an omitted geometry command: report each
+     * such entry point once, without changing command recording or execution. */
+    {
+        static uint32_t reported_draws;
+        uint32_t bit = !strcmp(name, "nvnCommandBufferMultiDrawArraysIndirectCount") ? 1u :
+                       !strcmp(name, "nvnCommandBufferMultiDrawElementsIndirectCount") ? 2u :
+                       !strcmp(name, "nvnCommandBufferDrawTransformFeedback") ? 4u :
+                       !strcmp(name, "nvnCommandBufferDrawTexture") ? 8u : 0u;
+        if (bit && !(reported_draws & bit)) {
+            reported_draws |= bit;
+            fprintf(stderr, "[nvn] CODEX_MISSING_DRAW %s args=", name);
+            for (i = 1; i < arg_count && i < 8u; i++)
+                fprintf(stderr, "%s%" PRIu64, i == 1 ? "" : ",", args[i]);
+            fputc('\n', stderr);
+        }
+    }
     s_stats.calls++;
     s_stats.unmapped++;
     for (i = 0; i < arg_count && i < 8u; i++) {
@@ -2027,6 +2144,10 @@ int nvn_command_buffer_initialize(void *buffer) {
             slot->copy_image_stride = 0;
             slot->memory_callback = 0;
             slot->memory_callback_data = 0;
+            sources_free(slot->sources);slot->sources=NULL;
+            dependencies_free(slot->dependencies);slot->dependencies=NULL;
+            slot->source_base=slot->source_anchor_lo=slot->source_anchor_hi=0;
+            slot->source_size=slot->source_used=0;slot->source_known=slot->source_spilled=0;
             segments_release(slot, 0);
             slot->view_count = 0;
             slot->diagnostic_count = 0;
@@ -2037,11 +2158,11 @@ int nvn_command_buffer_initialize(void *buffer) {
         }
     }
     pthread_mutex_unlock(&s_lock);
-    if (ok) {
+    if (ok && nvn_trace_enabled()) {
         fprintf(stderr, "[nvn] nvnCommandBufferInitialize: buffer=%p; the commands of this buffer "
                         "are recorded on the host in the format of the game\n",
                 buffer);
-    } else {
+    } else if(!ok) {
         fprintf(stderr, "[nvn] nvnCommandBufferInitialize: buffer=%p; the command buffer table is "
                         "full, so the buffer was not initialized\n",
                 buffer);
@@ -2082,6 +2203,8 @@ void nvn_command_buffer_begin_recording(void *buffer) {
              * package with it. */
             copies_free(slot->copies);
             slot->copies = NULL;
+            sources_free(slot->sources);slot->sources=NULL;
+            dependencies_free(slot->dependencies);slot->dependencies=NULL;
         }
     }
     pthread_mutex_unlock(&s_lock);
@@ -2222,6 +2345,9 @@ uint64_t nvn_command_buffer_end_recording(void *buffer) {
                         package->segments = map;
                         package->segment_count = segments;
                         package->copies = slot->copies;
+                        package->sources=slot->sources;
+                        package->dependencies=slot->dependencies;
+                        package->generation=++s_package_generation;
                         package->next = s_packages;
                         s_packages = package;
                         s_package_count++;
@@ -2231,6 +2357,8 @@ uint64_t nvn_command_buffer_end_recording(void *buffer) {
                         s_stats.handles++;
                         handle = package->handle;
                         slot->copies = NULL;
+                        slot->sources=NULL;
+                        slot->dependencies=NULL;
                         /* The command memory is the package's now, and the
                          * segments of the host's memory go back to the pool:
                          * the package holds a copy of their records. */
@@ -2249,7 +2377,7 @@ uint64_t nvn_command_buffer_end_recording(void *buffer) {
         if (slot) slot->recording = 0;
     }
     pthread_mutex_unlock(&s_lock);
-    if (handle) {
+    if (handle && nvn_trace_enabled()) {
         fprintf(stderr, "[nvn] nvnCommandBufferEndRecording: buffer=%p -> handle %" PRIu64
                         "; the handle is the address of the first record of the command memory of "
                         "this recording, and that memory is never written again\n",
@@ -2271,6 +2399,40 @@ void nvn_command_buffer_add_command_memory(void *buffer, uint64_t size) {
         }
     }
     pthread_mutex_unlock(&s_lock);
+}
+
+/* The actual NVN entry passes a pool and offset. A newly granted interval is
+ * the guest's explicit command-memory reuse boundary, not a frame heuristic.
+ * Cached handles outside this interval remain valid after recorder finalize. */
+void nvn_command_buffer_add_command_memory_storage(void *buffer,const void *pool,int64_t offset,uint64_t size){
+    if(!pool&&!size){nvn_command_buffer_add_command_memory(buffer,0);return;}
+    nvn_memory_pool_info info;
+    if(offset<0||!size||!nvn_memory_pool_info_of(pool,&info)||!info.mem||
+       (uint64_t)offset>info.size||size>info.size-(uint64_t)offset||
+       (uintptr_t)info.mem>UINTPTR_MAX-(uint64_t)offset||
+       size>UINTPTR_MAX-((uintptr_t)info.mem+(uint64_t)offset)){
+        fprintf(stderr,"[nvn] AddCommandMemory refused invalid pool/range pool=%p offset=%" PRId64 " size=%" PRIu64 "\n",pool,offset,size);return;
+    }
+    uintptr_t lo=(uintptr_t)info.mem+(uintptr_t)offset,hi=lo+(uintptr_t)size;
+    pthread_mutex_lock(&s_lock);
+    nvn_cb_buffer *slot=buffer_find(buffer,1);
+    if(slot){
+        packages_retire_range(lo,hi);
+        hostseg_release(slot,size);
+        if(!slot->recording)slot->view_count=0;
+        slot->source_known=1;slot->source_spilled=0;slot->source_base=lo;
+        slot->source_size=size;slot->source_used=0;slot->source_anchor_lo=slot->source_anchor_hi=0;
+        slot->command_memory_size=size;
+        s_stats.source_grants++;
+    }
+    pthread_mutex_unlock(&s_lock);
+    packages_collect();
+}
+void nvn_command_buffer_retire_source_memory(void *memory,size_t bytes){
+    if(!memory||!bytes)return;
+    uintptr_t lo=(uintptr_t)memory;if(bytes>UINTPTR_MAX-lo)abort();
+    pthread_mutex_lock(&s_lock);packages_retire_range(lo,lo+bytes);pthread_mutex_unlock(&s_lock);
+    packages_collect();
 }
 
 void nvn_command_buffer_add_control_memory(void *buffer, uint64_t size) {
@@ -2323,7 +2485,7 @@ uint64_t nvn_command_buffer_get_command_memory_size(const void *buffer) {
     pthread_mutex_lock(&s_lock);
     {
         nvn_cb_buffer *slot = buffer_find(buffer, 0);
-        if (slot) size = slot->command_memory_size;
+        if (slot) size = slot->source_known?slot->source_size:slot->command_memory_size;
     }
     pthread_mutex_unlock(&s_lock);
     return size;
@@ -2335,8 +2497,9 @@ uint64_t nvn_command_buffer_get_command_memory_free(const void *buffer) {
     {
         nvn_cb_buffer *slot = buffer_find(buffer, 0);
         if (slot) {
-            uint64_t used = segment_guest_used(slot);
-            size = slot->command_memory_size > used ? slot->command_memory_size - used : 0;
+            uint64_t used = slot->source_known?slot->source_used:segment_guest_used(slot);
+            uint64_t budget=slot->source_known?slot->source_size:slot->command_memory_size;
+            size = budget > used ? budget - used : 0;
         }
     }
     pthread_mutex_unlock(&s_lock);
@@ -2348,7 +2511,7 @@ uint64_t nvn_command_buffer_get_command_memory_used(const void *buffer) {
     pthread_mutex_lock(&s_lock);
     {
         nvn_cb_buffer *slot = buffer_find(buffer, 0);
-        if (slot) size = segment_guest_used(slot);
+        if (slot) size = slot->source_known?slot->source_used:segment_guest_used(slot);
     }
     pthread_mutex_unlock(&s_lock);
     return size;
@@ -2494,6 +2657,44 @@ int nvn_command_buffer_get_diagnostics(void *buffer, const nvn_diagnostic_comman
     return found;
 }
 
+static void package_snapshot(const nvn_cb_package *p,nvn_command_package *out){
+    *out=(nvn_command_package){p->handle,p->bytes,p->bytes_used,p->record_count,p->segment_count,p->segments};
+}
+typedef struct package_lease_owner {nvn_cb_package **packages;size_t count,capacity;} package_lease_owner;
+static int lease_visit(package_lease_owner *lease,nvn_cb_package *p,unsigned depth){
+    if(!p||p->retired||depth>=64)return 0;
+    for(size_t i=0;i<lease->count;i++)if(lease->packages[i]==p)return 1;
+    if(lease->count==lease->capacity){size_t cap=lease->capacity?lease->capacity*2:8;
+        if(cap>NVN_CB_MAX_PACKAGES)return 0;
+        nvn_cb_package **grown=realloc(lease->packages,cap*sizeof(*grown));if(!grown)return 0;
+        lease->packages=grown;lease->capacity=cap;}
+    lease->packages[lease->count++]=p;
+    for(nvn_cb_dependency *d=p->dependencies;d;d=d->next){nvn_cb_package *child=package_find(d->handle);
+        if(!child||child->generation!=d->generation||!lease_visit(lease,child,depth+1))return 0;}
+    return 1;
+}
+int nvn_command_buffer_package_acquire(uint64_t handle,nvn_command_package_lease *lease){
+    if(!lease||lease->owner)return 0;
+    package_lease_owner *owner=calloc(1,sizeof(*owner));if(!owner)return 0;
+    pthread_mutex_lock(&s_lock);int ok=lease_visit(owner,package_find(handle),0);
+    if(ok)for(size_t i=0;i<owner->count;i++)owner->packages[i]->readers++;
+    pthread_mutex_unlock(&s_lock);
+    if(!ok){free(owner->packages);free(owner);return 0;}
+    lease->owner=owner;return 1;
+}
+size_t nvn_command_buffer_package_lease_count(const nvn_command_package_lease *lease){
+    const package_lease_owner *owner=lease?lease->owner:NULL;return owner?owner->count:0;
+}
+int nvn_command_buffer_package_lease_at(const nvn_command_package_lease *lease,size_t index,nvn_command_package *out){
+    const package_lease_owner *owner=lease?lease->owner:NULL;if(!out||!owner||index>=owner->count)return 0;
+    package_snapshot(owner->packages[index],out);return 1;
+}
+void nvn_command_buffer_package_release(nvn_command_package_lease *lease){
+    package_lease_owner *owner=lease?lease->owner:NULL;if(!owner)return;
+    pthread_mutex_lock(&s_lock);
+    for(size_t i=0;i<owner->count;i++){if(!owner->packages[i]->readers)abort();owner->packages[i]->readers--;}
+    pthread_mutex_unlock(&s_lock);free(owner->packages);free(owner);lease->owner=NULL;packages_collect();
+}
 int nvn_command_buffer_get_package(uint64_t handle, nvn_command_package *out) {
     int found = 0;
     if (!out) return 0;
@@ -2501,13 +2702,11 @@ int nvn_command_buffer_get_package(uint64_t handle, nvn_command_package *out) {
     pthread_mutex_lock(&s_lock);
     {
         nvn_cb_package *package = package_find(handle);
+        /* Diagnostic replay during a pinned queue translation can still
+         * inspect a package whose source another thread has just reused. */
+        if(!package)for(nvn_cb_package *p=s_packages;p;p=p->next)if(p->handle==handle&&p->readers){package=p;break;}
         if (package) {
-            out->handle = package->handle;
-            out->records = package->bytes;
-            out->bytes = package->bytes_used;
-            out->record_count = package->record_count;
-            out->segment_count = package->segment_count;
-            out->segments = package->segments;
+            package_snapshot(package,out);
             found = 1;
         }
     }
@@ -2524,6 +2723,7 @@ void nvn_command_buffer_get_stats(nvn_command_buffer_stats *out) {
     out->records = 0;
     out->host_segment_bytes = s_pool_bytes;
     out->host_segment_bound = (uint64_t)NVN_CB_MAX_HOSTSEGMENTS * NVN_CB_HOSTSEG_BYTES;
+    out->live_packages=s_package_count;
     for (i = 0; i < NVN_CB_MAX_BUFFERS; i++) {
         if (!s_buffers[i].in_use) continue;
         if (!s_buffers[i].finalized) out->live_buffers++;

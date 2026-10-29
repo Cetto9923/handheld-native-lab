@@ -412,10 +412,10 @@ typedef struct nvn_command_package_segment {
  *
  * The handle of a recording is the address of its first record in the host
  * side command memory of that recording. The package is that memory: it is
- * written once, at the end of the recording, and never written again. A
- * recording that is made later into the same buffer, a finalization and a
- * reuse of the guest's buffer address all leave the package of an earlier
- * handle untouched.
+ * written once, at the end of the recording, and never written again. The
+ * recorder object may be finalized or reused without invalidating a handle.
+ * Regranting its occupied source command-memory bytes or destroying their
+ * memory pool retires that handle; active translation leases retain its bytes.
  *
  * The records of a recording that ran out of the guest's command memory are
  * in the segments after the first one, and the records of the segments are
@@ -430,9 +430,17 @@ typedef struct nvn_command_package {
     const nvn_command_package_segment *segments; /* the segments, in order */
 } nvn_command_package;
 
-/* The package a handle names. Returns 0 when the registry does not know the
- * handle; the handle is never dereferenced. */
+/* Borrowed diagnostic snapshot, valid only while caller excludes recorder
+ * mutation or holds a translation lease. The handle is never dereferenced. */
 int nvn_command_buffer_get_package(uint64_t handle, nvn_command_package *out);
+/* A synchronous translation lease owns all root and nested CALL packages.
+ * Source reuse may retire their public handles while existing lease snapshots
+ * remain readable. Release after the engine has consumed all command bytes. */
+typedef struct nvn_command_package_lease { void *owner; } nvn_command_package_lease;
+int nvn_command_buffer_package_acquire(uint64_t handle,nvn_command_package_lease *lease);
+size_t nvn_command_buffer_package_lease_count(const nvn_command_package_lease *lease);
+int nvn_command_buffer_package_lease_at(const nvn_command_package_lease *lease,size_t index,nvn_command_package *out);
+void nvn_command_buffer_package_release(nvn_command_package_lease *lease);
 
 /* ------------------------------------------------------------------ */
 /* Statistics for the contract                                         */
@@ -471,8 +479,11 @@ typedef struct nvn_command_buffer_stats {
     uint64_t host_segment_bytes; /* the bytes of the host's memory the recordings hold */
     uint64_t host_segment_bound; /* the bound of the host's lent memory, in bytes */
     const char *void_reason; /* why the last recording could not be completed */
-    uint64_t packages;        /* the immutable packages the registry holds */
+    uint64_t packages;        /* cumulative immutable recordings created */
     uint64_t package_bytes;   /* the bytes the packages hold */
+    uint64_t packages_reclaimed;
+    uint64_t live_packages;   /* owned, including retired packages still leased */
+    uint64_t source_grants;
     int live_buffers;
     int records;              /* the records the runtime holds right now */
 } nvn_command_buffer_stats;
@@ -532,6 +543,8 @@ void nvn_command_buffer_finalize(void *buffer);
 void nvn_command_buffer_begin_recording(void *buffer);
 uint64_t nvn_command_buffer_end_recording(void *buffer);
 void nvn_command_buffer_add_command_memory(void *buffer, uint64_t size);
+void nvn_command_buffer_add_command_memory_storage(void *buffer,const void *pool,int64_t offset,uint64_t size);
+void nvn_command_buffer_retire_source_memory(void *memory,size_t bytes);
 void nvn_command_buffer_add_control_memory(void *buffer, uint64_t size);
 void nvn_command_buffer_set_copy_row_stride(void *buffer, int64_t stride);
 void nvn_command_buffer_set_copy_image_stride(void *buffer, int64_t stride);

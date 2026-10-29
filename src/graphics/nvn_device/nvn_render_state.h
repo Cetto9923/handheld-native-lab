@@ -5,10 +5,9 @@
  * the depth stencil state, the vertex attribute state and the vertex stream
  * state.
  *
- * As with the queue, the window, the memory pool and the blend state, the
- * state lives on the host and is keyed by the guest's addresses. Nothing is
- * written into the guest's state object, because the layout of an NVN state
- * object is a property of the Nintendo SDK, which this runtime does not have.
+ * Small copied value fields use the runtime-private packed command ABI.
+ * Host records retain auxiliary metadata; guest object copies preserve the
+ * packed fixed-function state consumed by the renderer.
  */
 #ifndef FFRS_NVN_RENDER_STATE_H
 #define FFRS_NVN_RENDER_STATE_H

@@ -76,5 +76,7 @@ void nvn_texture_builder_get_stats(nvn_texture_builder_stats *out);
  * The value itself is kept here, where the families that build a texture from
  * a builder can read it without guessing an ABI. */
 void *nvn_texture_builder_device_of(const void *builder);
+int nvn_texture_builder_layout_of(const void *builder, uint64_t *size, uint32_t *alignment,
+                                  int *packaged_block_height);
 
 #endif /* FFRS_NVN_TEXTURE_BUILDER_H */

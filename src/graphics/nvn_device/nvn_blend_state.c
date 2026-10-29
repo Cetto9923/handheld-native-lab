@@ -1,6 +1,6 @@
 /* The NVN blend state family implementation.
  *
- * See nvn_blend_state.h for why the state lives on the host.
+ * Packed value fields live in the guest object so ordinary copies retain them.
  *
  * The defaults are the ones the NVN specification gives: blending off, the
  * identity function on all four channels, the add equation, no advanced mode
@@ -18,30 +18,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include "nvn_object_table.h"
+#include "nvn_packed_state.h"
+#include "../nvn/include/nvn/nvn.h"
 
-/* The blend function and equation values the NVN specification uses. Only
- * the ones the runtime needs to answer a query are named; the rest are
- * passed through as the numbers the guest gave. */
-#define NVN_BLEND_FUNC_ZERO 0x0
-#define NVN_BLEND_FUNC_ONE 0x1
-#define NVN_BLEND_FUNC_SRC_COLOR 0x2
-#define NVN_BLEND_FUNC_ONE_MINUS_SRC_COLOR 0x3
-#define NVN_BLEND_FUNC_SRC_ALPHA 0x4
-#define NVN_BLEND_FUNC_ONE_MINUS_SRC_ALPHA 0x5
-#define NVN_BLEND_FUNC_DST_COLOR 0x6
-#define NVN_BLEND_FUNC_ONE_MINUS_DST_COLOR 0x7
-#define NVN_BLEND_FUNC_DST_ALPHA 0x8
-#define NVN_BLEND_FUNC_ONE_MINUS_DST_ALPHA 0x9
-#define NVN_BLEND_FUNC_SRC_ALPHA_SATURATE 0xA
-
-#define NVN_BLEND_EQUATION_ADD 0x0
-#define NVN_BLEND_EQUATION_SUBTRACT 0x1
-#define NVN_BLEND_EQUATION_REVERSE_SUBTRACT 0x2
-#define NVN_BLEND_EQUATION_MIN 0x3
-#define NVN_BLEND_EQUATION_MAX 0x4
-
-#define NVN_BLEND_ADVANCED_MODE_NONE 0x0
-#define NVN_BLEND_ADVANCED_OVERLAP_NONE 0x0
+#define NVN_BLEND_ADVANCED_OVERLAP_NONE NVN_BLEND_ADVANCED_OVERLAP_UNCORRELATED
 
 typedef struct {
     void *state;
@@ -67,7 +47,21 @@ static pthread_mutex_t s_blend_lock = PTHREAD_MUTEX_INITIALIZER;
 static nvn_object_table s_states = { NULL, 0, 0, sizeof(nvn_blend_state_value) };
 static nvn_blend_state_stats s_stats;
 
+static void unpack_blend(nvn_blend_state_value *v) {
+    ffrs_blend_st p;
+    memcpy(&p, v->state, sizeof p);
+    v->blend_target=p.target; v->src_rgb=p.src_rgb; v->dst_rgb=p.dst_rgb;
+    v->src_alpha=p.src_a; v->dst_alpha=p.dst_a;
+    v->equation_rgb=p.eq_rgb; v->equation_alpha=p.eq_a;
+}
+static void pack_blend(const nvn_blend_state_value *v) {
+    if (!v) return;
+    ffrs_blend_st p={v->blend_target,v->src_rgb,v->dst_rgb,v->src_alpha,v->dst_alpha,v->equation_rgb,v->equation_alpha};
+    memcpy(v->state,&p,sizeof p);
+}
+
 static nvn_blend_state_value *state_find(void *state, int create) {
+    (void)create;
     size_t i;
     nvn_blend_state_value *free_slot = NULL;
     if (!state) return NULL;
@@ -75,12 +69,11 @@ static nvn_blend_state_value *state_find(void *state, int create) {
         nvn_blend_state_value *entry = (nvn_blend_state_value *)nvn_object_table_at(&s_states, i);
         if (!entry) continue;
         if (entry->in_use) {
-            if (entry->state == state) return entry;
+            if (entry->state == state) { unpack_blend(entry); return entry; }
         } else if (!free_slot) {
             free_slot = entry;
         }
     }
-    if (!create) return NULL;
     if (!free_slot) {
         free_slot = (nvn_blend_state_value *)nvn_object_table_new_entry(&s_states, NVN_BLEND_STATE_MAX_OBJECTS);
         if (!free_slot) return NULL;
@@ -88,6 +81,7 @@ static nvn_blend_state_value *state_find(void *state, int create) {
     memset(free_slot, 0, sizeof(*free_slot));
     free_slot->state = state;
     free_slot->in_use = 1;
+    unpack_blend(free_slot);
     return free_slot;
 }
 
@@ -115,6 +109,7 @@ void nvn_blend_state_set_defaults(void *state) {
         apply_defaults(v);
         s_stats.defaults_applied++;
     }
+    pack_blend(v);
     pthread_mutex_unlock(&s_blend_lock);
     if (!v) fprintf(stderr, "[nvn] nvnBlendStateSetDefaults: no room for another blend state (%p)\n", state);
     NVN_VOID_RETURN();
@@ -129,6 +124,7 @@ void nvn_blend_state_set_blend_target(void *state, int blend_target) {
         v->blend_target = blend_target;
         s_stats.sets++;
     }
+    pack_blend(v);
     pthread_mutex_unlock(&s_blend_lock);
     NVN_VOID_RETURN();
 }
@@ -146,6 +142,7 @@ void nvn_blend_state_set_blend_func(void *state, int src_rgb, int dst_rgb, int s
         v->dst_alpha = dst_alpha;
         s_stats.sets++;
     }
+    pack_blend(v);
     pthread_mutex_unlock(&s_blend_lock);
     NVN_VOID_RETURN();
 }
@@ -160,6 +157,7 @@ void nvn_blend_state_set_blend_equation(void *state, int equation_rgb, int equat
         v->equation_alpha = equation_alpha;
         s_stats.sets++;
     }
+    pack_blend(v);
     pthread_mutex_unlock(&s_blend_lock);
     NVN_VOID_RETURN();
 }
@@ -173,6 +171,7 @@ void nvn_blend_state_set_advanced_mode(void *state, int mode) {
         v->advanced_mode = mode;
         s_stats.sets++;
     }
+    pack_blend(v);
     pthread_mutex_unlock(&s_blend_lock);
     NVN_VOID_RETURN();
 }
@@ -186,6 +185,7 @@ void nvn_blend_state_set_advanced_overlap(void *state, int overlap) {
         v->advanced_overlap = overlap;
         s_stats.sets++;
     }
+    pack_blend(v);
     pthread_mutex_unlock(&s_blend_lock);
     NVN_VOID_RETURN();
 }
@@ -199,6 +199,7 @@ void nvn_blend_state_set_advanced_premultiplied_src(void *state, int premultipli
         v->advanced_premultiplied_src = premultiplied ? 1 : 0;
         s_stats.sets++;
     }
+    pack_blend(v);
     pthread_mutex_unlock(&s_blend_lock);
     NVN_VOID_RETURN();
 }
@@ -212,6 +213,7 @@ void nvn_blend_state_set_advanced_normalized_dst(void *state, int normalized) {
         v->advanced_normalized_dst = normalized ? 1 : 0;
         s_stats.sets++;
     }
+    pack_blend(v);
     pthread_mutex_unlock(&s_blend_lock);
     NVN_VOID_RETURN();
 }

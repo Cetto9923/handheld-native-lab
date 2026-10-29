@@ -10,7 +10,9 @@
  * log says why.
  */
 #include "nvn_queue.h"
+#include "nvn_engine.h"
 #include "nvn_sync.h"
+#include "nvn_window.h"
 
 #include "nvn_command_buffer.h"
 #include "nvn_command_replay.h"
@@ -91,6 +93,9 @@ static nvn_queue_stats s_stats;
  *
  * The guest creates a handful of syncs; the table is small and fixed. */
 #define NVN_QUEUE_MAX_SYNCS 16
+
+/* How many packages one submission may hand to the engine. */
+#define NVN_QUEUE_MAX_SUBMIT_HANDLES 64
 
 typedef struct {
     void *sync;
@@ -479,32 +484,19 @@ void nvn_queue_set_debug_label(void *queue, const char *label) {
     NVN_VOID_RETURN();
 }
 
+extern void xbg_legacy_finish(void);
+extern void xbg_legacy_flush(void);
+extern void gfx_drain(void);
+
 void nvn_queue_flush(void *queue) {
-    /* Nothing is submitted yet: the submit path belongs to the command buffer
-     * family. The call is answered honestly instead of pretending that work
-     * was flushed. */
-    nvn_queue_state *q;
-    int known = 0;
-    pthread_mutex_lock(&s_queue_lock);
-    q = queue_find(queue, 0);
-    known = q != NULL && q->initialized;
-    pthread_mutex_unlock(&s_queue_lock);
-    fprintf(stderr, "[nvn] nvnQueueFlush: queue=%p initialized=%d; no command buffer has been submitted yet, "
-                    "nothing to flush\n",
-            queue, known);
+    (void)queue;
+    xbg_legacy_flush();
     NVN_VOID_RETURN();
 }
 
 void nvn_queue_finish(void *queue) {
-    /* Same as the flush: there is no submitted work to wait for. */
-    nvn_queue_state *q;
-    int known = 0;
-    pthread_mutex_lock(&s_queue_lock);
-    q = queue_find(queue, 0);
-    known = q != NULL && q->initialized;
-    pthread_mutex_unlock(&s_queue_lock);
-    fprintf(stderr, "[nvn] nvnQueueFinish: queue=%p initialized=%d; no submitted work, nothing to wait for\n",
-            queue, known);
+    (void)queue;
+    xbg_legacy_finish();
     NVN_VOID_RETURN();
 }
 
@@ -554,6 +546,10 @@ void nvn_queue_reset_memory_usage_counts(void *queue) {
 /* ------------------------------------------------------------------ */
 /* The submission seam                                                  */
 /* ------------------------------------------------------------------ */
+static void submit_package_batch(uint64_t *handles,int count,nvn_command_package_lease *leases){
+    if(count&&!nvn_engine_submit(handles,count))fprintf(stderr,"[nvn] queue engine refused %d command packages\n",count);
+    for(int i=0;i<count;i++)nvn_command_buffer_package_release(&leases[i]);
+}
 
 void nvn_queue_submit_commands(void *queue, int count, const uint64_t *handles) {
     /* The reference tree runs the package of each handle here
@@ -567,6 +563,11 @@ void nvn_queue_submit_commands(void *queue, int count, const uint64_t *handles) 
     int i;
     int handed = 0;
     int refused = 0;
+    /* The handles the engine is given: the addresses of the first record of
+     * each package, in the order the guest gave them. */
+    uint64_t engine_handles[NVN_QUEUE_MAX_SUBMIT_HANDLES];
+    nvn_command_package_lease leases[NVN_QUEUE_MAX_SUBMIT_HANDLES]={{0}};
+    int engine_count = 0;
     uint64_t records_before = 0;
     uint64_t records_after = 0;
     uint64_t replay_refusals_before = 0;
@@ -579,7 +580,8 @@ void nvn_queue_submit_commands(void *queue, int count, const uint64_t *handles) 
     /* The counters of the replay are read before and after, so that what
      * this call made the replay do is counted here and not only inside the
      * replay. */
-    {
+    const int trace = nvn_trace_enabled();
+    if (trace) {
         nvn_replay_stats stats;
         nvn_command_replay_get_stats(&stats);
         records_before = stats.records;
@@ -597,7 +599,11 @@ void nvn_queue_submit_commands(void *queue, int count, const uint64_t *handles) 
          * package is refused here, by name, and counted. It is not skipped
          * silently and it is never counted as submitted. The handle is not
          * dereferenced: it goes through the registry of the recorder. */
-        have = nvn_command_buffer_get_package(handle, &package);
+        if(engine_count==NVN_QUEUE_MAX_SUBMIT_HANDLES){
+            submit_package_batch(engine_handles,engine_count,leases);engine_count=0;
+        }
+        have = nvn_command_buffer_package_acquire(handle,&leases[engine_count]);
+        if(have)have=nvn_command_buffer_package_lease_at(&leases[engine_count],0,&package);
         if (!have) {
             refused++;
             pthread_mutex_lock(&s_queue_lock);
@@ -609,59 +615,85 @@ void nvn_queue_submit_commands(void *queue, int count, const uint64_t *handles) 
             continue;
         }
 
-        /* The package is there, so the replay is called with it. The replay
-         * reads the records and stops there: it issues no Vulkan command,
-         * so nothing is submitted to the GPU yet.
+        /* The engine reads the package out of memory it knows, so the memory
+         * of the package is told to it. The handle is the address of the
+         * first record, so the engine can be given the handles of the guest
+         * as they are. */
+        for(size_t j=0;j<nvn_command_buffer_package_lease_count(&leases[engine_count]);j++){
+            nvn_command_package nested;
+            if(!nvn_command_buffer_package_lease_at(&leases[engine_count],j,&nested))abort();
+            nvn_engine_pool_add((void*)nested.records,nested.bytes);
+        }
+        engine_handles[engine_count++] = (uint64_t)(uintptr_t)package.records;
+
+        /* The replay reads the records as well, and stops there: it is the
+         * part of this runtime that says what the guest's stream holds. The
+         * work itself is the engine's.
          *
          * The lock is held around the replay and not only around the
          * counters: the replay keeps one state for the stream that is
          * running, and two submissions that overlap would clear each
          * other's state. */
-        pthread_mutex_lock(&s_submit_lock);
-        (void)nvn_command_replay_run(handle);
-        pthread_mutex_unlock(&s_submit_lock);
+        if (trace) {
+            pthread_mutex_lock(&s_submit_lock);
+            (void)nvn_command_replay_run(handle);
+            pthread_mutex_unlock(&s_submit_lock);
+        }
         handed++;
         pthread_mutex_lock(&s_queue_lock);
         s_stats.packages_handed_to_replay++;
         pthread_mutex_unlock(&s_queue_lock);
-        fprintf(stderr, "[nvn] nvnQueueSubmitCommands: the handle 0x%" PRIx64
-                        " names a package of %zu records; the package was read and the commands were not submitted\n",
-                handle, package.record_count);
     }
 
-    {
+    /* The engine turns the packages into real work on the queue of this
+     * runtime: the commands become Vulkan commands, and the GPU does what
+     * the guest asked for. */
+    submit_package_batch(engine_handles,engine_count,leases);
+
+    if (trace) {
         nvn_replay_stats stats;
         nvn_command_replay_get_stats(&stats);
         records_after = stats.records;
         replay_refusals_after = stats.refused_unknown_handle + stats.refused_bad_record +
                                 stats.refused_no_pool + stats.refused_out_of_range +
                                 stats.refused_foreign_pool;
+
+        pthread_mutex_lock(&s_queue_lock);
+        if (records_after > records_before) s_stats.records_read += records_after - records_before;
+        if (replay_refusals_after > replay_refusals_before)
+            s_stats.replay_refusals += replay_refusals_after - replay_refusals_before;
+        pthread_mutex_unlock(&s_queue_lock);
     }
 
-    pthread_mutex_lock(&s_queue_lock);
-    if (records_after > records_before) s_stats.records_read += records_after - records_before;
-    if (replay_refusals_after > replay_refusals_before)
-        s_stats.replay_refusals += replay_refusals_after - replay_refusals_before;
-    pthread_mutex_unlock(&s_queue_lock);
-
-    fprintf(stderr, "[nvn] nvnQueueSubmitCommands: queue=%p packages=%d handed_to_the_replay=%d refused=%d "
+    if(nvn_trace_enabled()||refused)fprintf(stderr, "[nvn] nvnQueueSubmitCommands: queue=%p packages=%d handed_to_the_replay=%d refused=%d "
                     "records_read=%" PRIu64 " replay_refusals=%" PRIu64
-                    "; the packages were read and the commands were not submitted to Vulkan\n",
+                    "; the %d packages were given to the engine\n",
             queue, count, handed, refused, records_after - records_before,
-            replay_refusals_after - replay_refusals_before);
+            replay_refusals_after - replay_refusals_before, engine_count);
     NVN_VOID_RETURN();
 }
 
+void nso_host_vi_signal_vsync_event(void);
+
 void nvn_queue_present_texture(void *queue, void *window, int index) {
-    /* The present path is not connected yet: the swapchain is the card that
-     * owns it (P-MM-28). The request is recorded, and the log says that
-     * nothing was presented. No success is reported that cannot be had. */
+    /* The engine owns the game's own render target and asks this runtime to
+     * show it: the image is copied into the swapchain and shown. */
     pthread_mutex_lock(&s_queue_lock);
     s_stats.presents_requested++;
     pthread_mutex_unlock(&s_queue_lock);
-    fprintf(stderr, "[nvn] nvnQueuePresentTexture: queue=%p window=%p index=%d; the request is recorded, "
-                    "the present path is not connected yet and nothing was presented\n",
-            queue, window, index);
+    if (nvn_engine_present(window, index)) {
+        pthread_mutex_lock(&s_queue_lock);
+        s_stats.presents_presented++;
+        pthread_mutex_unlock(&s_queue_lock);
+        nvn_window_record_present(window, index, nvn_engine_last_fence());
+        nso_host_vi_signal_vsync_event();
+        if(nvn_trace_enabled())fprintf(stderr, "[nvn] nvnQueuePresentTexture: queue=%p window=%p index=%d; the image of the guest's "
+                        "swapchain was presented\n",
+                queue, window, index);
+    } else {
+        fprintf(stderr, "[nvn] nvnQueuePresentTexture: queue=%p window=%p index=%d; the image was not presented\n",
+                queue, window, index);
+    }
     NVN_VOID_RETURN();
 }
 

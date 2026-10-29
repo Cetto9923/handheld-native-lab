@@ -31,6 +31,27 @@ typedef struct nvn_window_family_entry {
 size_t nvn_window_family_count(void);
 const nvn_window_family_entry *nvn_window_family_entry_at(size_t index);
 
+/* What the host has to know to show one of the window's images.
+ *
+ * The window is the guest's own: it names the textures of its swapchain and
+ * the part of them that is shown. The replay engine shows the image the
+ * guest asked for, so it has to be told which image it is and which part of
+ * it the window shows. */
+typedef struct nvn_window_present_state {
+    void *native_window;   /* the platform window, for the present path */
+    int32_t ntex;          /* how many images the swapchain has */
+    int32_t interval;      /* how many frames an image stays on the screen */
+    int32_t crop[4];       /* the part of the image that is shown */
+    void *textures[4];     /* the guest's textures of the swapchain */
+} nvn_window_present_state;
+
+/* The present state of the guest's window, or 0 when this runtime has no
+ * window at that address. */
+int nvn_window_present_state_of(const void *window, nvn_window_present_state *out);
+
+/* Record the submission fence associated with a presented texture index. */
+void nvn_window_record_present(void *window, int index, uint64_t fence);
+
 /* Statistics for the contract. */
 typedef struct nvn_window_stats {
     uint64_t builder_calls;

@@ -1,3 +1,228 @@
+## 用户要求冻结当前成果为基准提交（2026-10-29）
+
+本次明确授权保存已认领全部现有源码WIP及本轮修改，现分支task/T02-codex-black-screen父0444c81，不push。报告 `coordination/reports/P-OPT-RG477M-20261029-baseline.md` 含范围、产物SHA、实测与未通过门；本地备份路径记录 `.local/rg477m-opt-30hz-game-mode/baseline-backup-path.txt`。这不是完整验收通过。新发现旧包Handheld0/当前Docked1，先原样冻结，后续再修本包模式读取；用户目前仅电脑USB，电3%，游戏停止关屏充电。
+
+## 2026-10-29 16:46 候选30/actual60复测与供电事实
+
+用户说已改善供电并授权继续，实际短测候选723f82… target30、stable display60、FIFO/fence0；原数据五Paks再次确认。可见CG95.7秒25.70 present/s，>50ms3次/max51.16；用户蓝牙声音连续但仍细微卡顿；未达30/完整硬门。USB仍500mA运行4→3%，已停游戏。无线只读检查未启用，已询问是否可独立充电器+无线ADB；等待物理供电安排。源代码/指标/候选及日志均保留，主包/存档不改，不push。
+
+## 2026-10-29 稀有卡顿证据工具检查点
+
+供电仍5%/500mA，游戏保持停止。分析工具新增最慢20帧原始时间戳与40/50/66.667/100ms计数，6测试通过，现有三轮CSV全量和限定CG两种范围均重析，原始行未删。候选实际120仅setup验证，旧实际屏幕率缺同窗证据，不能宣称刷新请求已修CG。主包5存档独立有效备份/SHA已重建。完整性能/蓝牙场景/断连等仍未通过。
+
+## 2026-10-29 16:35 应用刷新候选与低电暂停实测
+
+用户授权60/不限帧按玩家流畅度选，不再硬禁40/60。游戏档UI确认。Java-only应用刷新候选723f82f9…安装隔离包；target40下实际display120已核实，缺数据Intent出setup未挂死。尚无该候选CG/FPS/蓝牙回归PASS。电5% USB500mA/热状态变化，已强停游戏且marker回30，等待供电稳定。主包五存档/config与接手备份SHA逐个一致。当前主包native隔离FIFO40 CG尾115秒25.53/s；不能与早轮31作因果比较。旧30后续signal11定位C++demangle但未修。完整门及源码自有补丁见RESULT。下一步供电/档位复核→候选固定新开档全流程60/0/30对照，每步耳听+视觉，保留全部长帧。未push。
+
+## 2026-10-29 16:24 CG40实测检查点
+
+游戏模式UI已核实。用户授权40并确认本轮CG蓝牙声音连续、画面差不多。旧隔离APK5683f7e…目标40实际124秒30.9298 present/s，未达40，已回30。先前30Hz流程后段signal11退出（抬帧前），完整稳定性FAIL。准备当前主包native/dex封装隔离APK036fcee…作版本对照；主包/原存档保持。RESULT与完整常设门仍未PASS。
+
+## 2026-10-29 16:17 新授权与CG检查点
+
+用户授权若能直接40则40；只读快捷面板已见游戏/开启(cpu_mode2)。30Hz隔离包CG134秒29.9835/s，max46.238ms；蓝牙CG用户耳听连续，完整常设音频仍未PASS。准备同APK仅target40实验，失败回30；未改系统档/源码/原存档，不push。证据 `.local/rg477m-opt-30hz-game-mode/RESULT.md`。
+
+## P-OPT-RG477M-30hz-game-mode 已接管（用户确认原进程停止）
+
+用户明确“我停止了它的进程了；你接手继续”。ps无Antigravity/构建/adb子命令；旧同树ACTIVE记录保留并标RELEASED_USER_CONFIRMED_STOPPED。Codex /root单写者，仅RG477M，保留0444c81 dirty，先备份现包/markers再隔离30Hz实测。此前所有权阻塞已解除，完整验收仍未通过。
+
+## P-OPT-RG477M-30hz-game-mode 接手预检（2026-10-29）
+
+指定树0444c81 dirty保留；现主包a1c82634… PID8732已锁30/fence0，CG最近60-present窗口8–10fps，非运动验收。五Paks/已知目录以app UID可读。NONE真实枚举=10/LOW_LATENCY=12，常设performance=0文案冲突有AOSP/NDK出处，未伪造日志。完整音频原清单与视觉/数据/性能未测项均在.local/rg477m-opt-30hz-game-mode/RESULT.md；OSS-NOTES.md/原始日志/截图/包SHA已落盘。未改源码、marker、APK、存档，无push。Antigravity该会话显示取消执行但1 active goal+queued message，旧ACTIVE占用未释放；已请求确认停止，未转移锁/双写。待确认后对齐现包与frame CSV诊断能力，再冷启/野外战斗A2DP≥2min/断连重开/运动帧时间验收。非可玩结论。
+
+## P-CX-50 只读同步归因完成
+197.6 submit/wait按现有counter可归到gpu_sync187.8+other8.8+present1；60窗口writeback resolve7080/60=118、query-only4215/60=70.25，sync_rb0。不是每次upload都强制读回，也不是重复preflight必双等；已排除两个泛化候选。单一待证候选：query-only在无相交CPU读和完成/条件渲染边界时延后；当前读集合/退役引用安全尚未证明，未改生产。engine owner实际登记/root/command_lifetime ACTIVE非MiniMax/P-MM49，不转移；只读无阻。详见coordination/reports/P-CX-50-readonly-sync-attribution.md。未动用户游戏。
+
+# P-CX-50 preflight离线契约阶段
+
+当前源码三函数提取编译：baseline0，隔离删gpu_sync反向测试-6，证实跳过wait会破坏写回可见性。空pending/重复调用/重入已有guard，不等于重复GPUwait；未找到可证明安全删除的真实等待，未作生产修复或提速声称。xbg_game.cpp仍登记RG16写者ACTIVE，指纹前后相同，未接管覆盖；运行中的用户游戏未碰。
+新增 tests/native/preflight_dependency_contract.cpp + scripts/runtime/check_preflight_dependencies.py。报告 coordination/reports/P-CX-50-preflight-dependency-contract.md。下一刀先协调引擎文件写入权，再做callsite/pending依赖最小审计；若需新APK验证先协调停止/替换当前用户游戏影响。无FPS/readback/RG16专项。
+
+# P-CX-50 30分钟复现已收口（非修复完成）
+
+- 同APK59 cf72f137…、original game_dir，PID18966，UTC14:11:18启动，约14:41:20达到30分钟上限仍alive；session80623已正常结束，采集已停止，未强停应用。
+- guest-limit.log完整快照511928603 bytes/3932282行，SHA bcaad4c0905c80e8ffeee3dcbb49e83e3e7b7ad961a089d50a42d9b6a2aa6b97；manifest/时间线/输入/同PIDlogcat/截图哈希见frozen-evidence-index.json。
+- 致命TIMEOUT、registry满、handle0拒提、abort全0；1620条SyncWait TIMEOUT全timeout0轮询。NOT_REPRODUCED≠FIXED；历史run59主因仍E/INCONCLUSIVE，run49 B→A不可套用。
+- 真实输入进入正式开场，多段叙事/场景变化有证；严重卡顿+显示异常，角色自由控制未验，不能称顺利/稳定可玩。
+- 只读定位：启用的preflight→resolve_pending→gpu_sync→submit_slots(true)可串行等待，CPU重叠访问也会触发。并非每次上传都必然wait；没有关闭同步或修改源码。
+- 下一刀建议先验证调用点/资源重叠与写回可见性契约；若实际优化预检/批次，父任务需明确允许小范围同步正确性/成本改进，仍禁FPS/readback/RG16扩展。无新测试/启动。
+- 完整报告 coordination/reports/P-CX-50-repro-30min-final.md；旧P-MM48半成功关闭、49未完转50不变，50持续待解。
+
+## P-CX-50 补充：严重卡顿，不能称顺利运行
+用户实机“比幻灯片还低”已记录。已有引擎日志显示大量submit/fence开销：一个60次引擎呈现窗口约27.5秒，约197次submit/wait每呈现，fence累计约271ms/呈现（非经验证游戏FPS，重叠时长不能相加）。654条同步TIMEOUT全为timeout0轮询，尚无非零等待致命复现；不能说与历史fatal同因。未做FPS专项/readback/RG16或假signal。原PID18966监测session80623继续；先读run manifest/timeline和终态日志。报告coordination/reports/P-CX-50-severe-stutter-checkpoint.md。
+
+# P-CX-50 同APK59复现运行中（检查点，非修复完成）
+
+APK cf72f137…，run .local/codex-runs/P-CX-50-repro，guest PID18966；已由真实按键进入正式水晶叙事并推进月夜废墟，尚无角色自由控制验收。未重现TIMEOUT，未作源码修复。exec session80623监测每2秒PID/每30秒日志，APP_GONE冻结guest-end.log；30分钟上限guest-limit.log，不会再启动。恢复先读manifest/timeline与现有日志，不重复安装/启动。报告coordination/reports/P-CX-50-repro-running.md。旧run59仍缺同pid尾部，run49因果不可套用。
+
+# P-CX-50 OPEN — GPU TIMEOUT 分类 E / INCONCLUSIVE
+
+- P-MM-48 CLOSED_HALF_SUCCESS：--gpu-proxy PASS exit0 SHA778ec5fe51771985686573ac09f6162fe79ec734b15a424924fae5338fe3dc47（约20:47 Asia/Shanghai）；APK59 cf72f13754a596dce629c7f40a3c51003072b06bf6bc1e370aa5c6763ee0ceb7，original game_dir。旧RG16 FATAL在现有run59=0；UI/3D甲板图07-scene-3d.png已阅，仍有标题覆盖层，不声称可玩/稳定。
+- P-MM-49 CLOSED_SUPERSEDED_INCOMPLETE → P-CX-50；旧MiniMax半截叙事不作修复证据。
+- 现场报告：pid5964约21:34:47→21:35:13 APP_GONE，NVNSubmission.cpp:315 TIMEOUT_EXPIRED。
+- 本轮事实：本地run59日志截断，无abort/TIMEOUT/null handle/registry full；shadow missing47条节流日志。pull完整设备文件成功，但属于不同decoded_only启动，不能当run59尾部。crash空、logcat无目标命中。run59完整尾部NOT_AVAILABLE。
+- timeout-window.txt已明确缺失并保存最后80行；run49对照另存，B registry满→A handle0→TIMEOUT仅对run49成立。主因E/INCONCLUSIVE，C/D也未证；不称随机驱动超时。
+- 最小修SKIPPED，无一行级根因证据。下一刀：同APK59原game_dir经授权复现一次，在APP_GONE瞬时冻结同pid完整日志并定位A–D；本轮未重启/安装/构建。
+- 报告 coordination/reports/P-CX-50-timeout-classification.md；日志 .local/codex-runs/59/P-CX-50-log-index.json。
+- 未做RG16重做/FPS/readback/push/reset/跨树修改；现有脏改保留。
+
+## Current live run55 existing60FPS-derived input; actualnextblock BC5 sampled-format support
+- Run54 originalimage passedwatchthreadexit+EventFinalize (noforcedsignals). Newactualscene loadednewVS/PSandsecondmovie butabortedGPU sampler linear filter: NVNfmt0x4b(RGTC2_UNORM),Vk77RG16UNORM features0xcd83,texture4622,min5/mag1/compare0. .local/codex-runs/54/guest-after-start.log. GuardedcaptureSKIP afterappgone, noforeignappcapturetreatedasFFRS.
+- ActualMaliquery: RG16_UNORM linear0,RGBA16_UNORM linear0,RG16_SFLOAT linear1,RG32_SFLOAT linear1,RGBA32_SFLOAT linear1,R16_UNORM linear1. .local/codex-layer/device-formats.log. command_lifetime ownsengine xbg_game.cpp/xbg_texture.c/.h/newbc5_filter_contract.cpp: normalized16bit->float32 RG32precisionpreservingfallback, allmips/layers/staging/view+CPU/GPUrealfilter contract, noADB, nootherknobs. Rootdoesnotbuilduntilfreeze.
+- Run55 sameAPK54 SHA3486b1ab..., --es game_dir /data/local/tmp/ffrs-codex-60fps-736837af-20261025-run54 launched153ms toverifyexisting60FPSpatchderivedcopy. Noinstall/newsourcecodein55; verifyactualmappedwordafterboot, collectquietbaseline. ProfileexactonewordandfilehashmanifestdeployedUIDverified. Patchdoesnotprove60performancebecauseWSIignoresinterval.
+- RootEventFinalizefix: linked/unlinkedregisteredholdersmayoutlivequiescentEvent; onlyactiveWait preventsfinalize. ffrs_multiwait_event_waitingguard. Hostquiescentexit0/activeSIGABRT-6,RGquiescent0/active134 bothpass. Ordinaryconditioncross-thread/nonconsume/timeoutsretained. NoallEventconcurrencylifetimeclaim.
+- Resourcecountactualexpected73483;2065files679MBUIDhashallzeroerrors. gpu_timeout_reviewnowreadonlyremaining13Layer/12zero-replacementdiagnosis,production/translatorfrozen. Layerwritesdynamic (InstanceIndex-BaseInstance)+bitcastcbuf0[0x644],not0,requiredcore12featureflagsnotyetenabledthoughphysicallysupported. Donotdropcapability/forcezero.
+- Currentusersteering: noadaptive, prioritizeexistingSwitchpatch. Continuousdeviceexclusiveauthorized; humanclosedotherdebugconversation, earlierFPSpossiblycontended. HumanheardFFRSsound; wholecutscenevoice/speednotaccepted.
+
+## Build54 original-image retest live; resource delta2065 verified; 60FPS derived copy ready-not-run
+- APK54 SHA3486b1ab926d7ed041449ecd7931bde96ff4c8d1cd0fddac53fdba85aa38fcf9 installed/launched originalgameimage toverifyquiescentEventFinalize cleanup afterThreadstateblackfix. HostandRGquiescentMultiWaitteardown exit0; activefinalize negativecase abort6/134 asrequired. Doesnotforcewatchend/altereventpredicate. Capturewith .local/codex-runs/capture_if_ffrs.py onlyifownPID+foregroundstablebefore/after.
+- 2065newshaderdelta679370716bytes HOSTSHAall+devicearchiveSHA+applicationUIDfiles2065/errors0; onlyabsenttargets,nooverwrite. Actualexpectedresourcecount73483/73496;12semanticrefused+Layer1remaining. .local/codex-shader-coverage/direct-all2077-v3/deployment2065-result.json. Noallresourcevisualpass.
+- User cancelsadaptive refresh, asksfor existingSwitchpatch. FoundauthorOhhhhNoes US1.0.1 publicsingleword interval1 patch; currentBuilddifferentbutexactfunctionatVA0144B210 CSINCw21 replacedMOVw21#1. ActualruntimeGet/SetWindowIntervalfunctionpointersprovedsemantics. Fixedprofileguardedcopytool17testsPASS; exact32byteBuildId/contextSHA/word/bounds +allotherbytesidentical.
+- Derivedmain.nso SHA09cc8f555ff63a920f678acecc4576a2c62bfe3d495bd1caac768b289527b72c exists ONLYnewprivatecopy, originalSHA6e6d1f3cd1672243e2ed344cc1b8849b85437d41bdecec81a5f9181e472d68a5 unchanged. DeployedappUIDSHAverified /data/local/tmp/ffrs-codex-60fps-736837af-20261025-run54 withread-onlyRomFSsymlink, NOT_LAUNCHED. After54baseline launchsameAPKwith --es game_dir thatnewdir asrun55, thenproveactualmappedword/intervalandmeasure; nativeWSIcurrentlyignoresintervalsoonepatchalone maynotimproveFPS. SourceURLin .local/codex-fps-patch/current-build-60fps/manifest.json; do notcallmodifiedcopyunmodifiedorhideoldNSOhash.
+- ActualphysicalVulkan1.2features query .local/codex-layer/device-probe.log: shaderOutputLayer1/ViewportIndex1/descriptorIndexing1/nonuniformsampled1/nonuniformtexel1 supportedonly; NOTenabled/currentbackenddoesnotenable12fields. Min=maxsubgroup16still. ProbehasnoVkDevice/GPUwork.
+
+## Device coordination correction from human
+- User: “进另一款游戏是因为另一个会话在安装调试 我已经给关了”. Otherconversationwasactivelyinstalling/debuggingothergame, nowclosed. Priorforeignscreens mustnotbeinterpretedasFFRSscene, and attributingforegroundsolelytoownappexitwasinference. ActualFFRSrun53logdidabortatEventFinalizeactive-referenceguard, independentlyconfirmed.
+- Fromnowrootsoledeviceoperator; priorrun51..53frameobservationspossiblycontended, notfinalperformanceacceptance. Preserveallframes/logs, annotateconditionsandretestquiet. HumanFFRSsoundconfirmationretainedbutfullsceneaudioacceptancestillpending.
+
+## Current live: build52 black at start-game; exact ThreadType ABI cause found; build53 pending worker freeze
+- User explicitly authorized continuous handheld occupancy and personally reproduced selectingdifficulty→black. User then confirmed “我听到声音了”; record .local/codex-runs/52/audibility-user-confirmed.json. Audio output audible, wholevoice/moviecontinuity/speed stillunverified.
+- User additionally explicitly requires original30FPS→60FPS, preservingoriginalspeed. Display0 actual120.00001Hz, supports60/90/120, noappframeoverride; cannotcallpanel60game60. NativeVI timer60pluspresent emitsadditional events (read-onlyauditworker investigating), do notspeedtick tofakeFPS.
+- build52 SHA3f8b3404e668cf3531fa9b72d7c5e3fd7031936e304f1ac87702cdb83594dec4 installed/run PID4696, trueoriginaltitle +settings +audio. Includes shortDRAW/DRAW_IDX boundeddecode fix+MultiWait diagnostic. Userphysicalactions concurrent during52title; do notattributeall52menuactions toautomation. Root askedhands-offforcontinuousrepro.
+- Exactblackcause evidence: main+5e14a00 readswatch ThreadType+40 andonlyvalue3 signalsvideoexit+WaitThread. HLEStarted2skippedthese thenDestroyThreadjoinedrunningwatch forever; globalregistryheld acrossjoin collateralblocksRHI. SDK exactstate Create1/Started3/Finished4 verified stores141b04/141d9c/141d18. .local/codex-thread-state/finding.json andsdkdisasm. OwnappUID PTRACE_SEIZE+GETREGSET thenimmediateDETACH successfullycapturedactualFPchains (no memorywrites/injection); main DestroyThread/watchWaitAny match. Five rawEventflags0; ddstdoutincludesprogress soonlyfirst40bytesmemory.
+- movie_decoder_review owns nso_host.c+tests/native/thread_destroy_contract.c implementingcorrectrawstates+registry-free join withrecordpins/joinowner/concurrentWait safety. Baselineactualnsohostfixtureblocked; newASan/UBSan underway. NoNSObinaryanalysisbyworker; rootprovidedexactstaticstatefacts. Waitfreeze, build53, realnewgame→sceneverify; noforceevent/nofakefinished.
+- gpu_timeout_review ownsprepare_ffrs_xlate.py/test_shader_direct_bindings.py/privatefork only:20samples fixedslotproof viaCFG/dominators/predicatedPhi.12independentadversarialcases pass;20generated/SPIRV/reflection/XGSreference bytespass; finalIRoperanddependency audit underway. Originaltranslator sometimesreplacedfailedfetchwith0; do notrequireold/new fetchcounts equal orclaimoldcorrect. No20deploymentyet, existing71418/73496unchanged.
+- command_lifetime shortDRAWfix handedback included52; auditshowsno-poolstate/CALLshadows stillincomplete, cannotjustsilence. Sameworkerread-only60FPSsourceaudit active.
+- RealGPUQueueFlush componentPASS3clears/192pixels/zero-timeoutpollproof, build51installedthenlaunched. Defaultlegacy1unchanged. PerformanceA/Blegacy0 NOT_RUN untilscenecrashfixed; no60pass. Run51all4320presents371.66smixedmenu/coldload/options,11.62FPS, P50=87.50ms/P95=100.85ms/P99=107.28ms/max=5106.59ms; notsteadyscene. Audio nonzero6ch from~21s, peak8630, noAAudioerrors.
+
+## Build51 launched: continuous test resumed under original user authorization
+- Prior async convenience question was optional coordination, not a new required approval; user already explicitly authorized device debugging and actual playtest. Root stated assumption and resumed ownFFRS only, otherapps not closed/cleared.
+- .local/codex-runs/51 launch Statusok/COLD165ms. Start baseline unchangedlegacy1 after genuineGPUFlush componentPASS. Need actualtitleaudio/control/scene, then legacy0 singlevariableA/B. Foreground occupied by ownFFRS now.
+
+## ActualGPU QueueFlush component PASS (no foreground/window/audio)
+- Corrected texture fixture MAGIC fourth byte from ASCII0x30 to NUL; Androidstrictcompile+realengine link rerun. Binary SHA ab2f07ac46d6a65c813bf6e0d7fd49d9eb34b259c404021b5531aeed92261fa1.
+- RG run exit0:3real GPUclear/readback rounds192pixels correct; preflush17/19/18 polls incomplete; postflush3/7/4 zero-timeoutpolls complete. No finish/positivewait/present/gameassets in progress proof. .local/codex-queue-flush/device-root-corrected.log +manifest.json.
+- This tiny no-window/no-audio independent component did not switch foreground other game; continuousFFRS foreground occupancy question remains pending. Build51 still NOT_LAUNCHED. Component permits controlled legacy_waitall0 A/B planning, not unmeasured defaultchange/gamepass.
+- STREAM_MUSIC currentvolume9/15 (read-only), so sourceallzero startupPCM notexplained by globalvolume0. .local/codex-runs/51/media-volume.json.
+
+## Current checkpoint: build51 installed-only, continuous handheld test reply pending
+- User final goal genuine stable60FPS plus real input/menu/scenes/story/resources/audio. Durable goal ACTIVE; no full playable/performance/audio acceptance.
+- Build51 SHA d31f628bde28ddb92dea0848a41ec2cddf4ec97a202512db078103f78593c69b, install-r success, NOT_LAUNCHED. Other game foreground preserved. Async occupancy question pending; do not foreground FFRS or run GPU/audio component until reply.
+- New QueueFlush calls actual xbg_legacy_flush -> gfx_drain + submit_slots(false) + poll_retire. Engine and APK buildpass, strong linked symbols verified. ActualGPU component compiled .local/codex-queue-flush/queue_flush_gpu_contract.android; NOT_RUN. Run on availability then only consider controlled legacy_waitall0 A/B. Defaults unchanged.
+- Build50 already incorporated command-package source-range/grantcursor/lease/CALLgeneration retirement, NVN poolword events, stable Sync generation slabs and AudioOut40byte/Started0ABI fixes. Component evidence exists, no full-game acceptance.
+- Run50 rendered243presents/17.66s mixed coldstartup,238workidentities+5unknown; P50=43.05ms P95=68.49ms P99=733.84ms max5049.22ms. No badframes removed; NOT steady60test. Actual app-request finish preceded surface-lost; do not call it spontaneous drivercrash. Native sine stereo/6ch PASS; actualgame initial3sPCM allzero and ongoing startup counterspeak0, requires longer title/scene retest.
+- 43newshaderbundles generated/spirv-val+XGS independentreadback PASS and appUID hashes43/errors0 verified; deployedabsenttargets only, nooverwrite. Now71418files,2078missing (2077DirectVS+1Layer/Viewport); Maliwarp32vs16 unresolved. Worker gpu_timeout_review readonly20representativeclassification now, productionfiles frozen.
+- FrameCSV analyzer strictschema/no badrowdeletion/seenimagewriter identity tests4PASS; shader rules7PASS+handleboundsPASS. New source includes QueueFlush/analyzer/43resource scripts since previouscheckpoint. Full gate/independentQA NOT_RUN.
+- Next after availability: push/execute actualGPUflush component; start51 (>30s realtitle/musicphase), retain exactlogs/capture/frameCSV; actual controls→difficultyNormal→scene/story, explicit phase times; inspect sourcePCM and actualroute/hearing; then onevariableperformance A/B. No install_run.py until available (autolaunch).
+
+## Goal raised to real stable60FPS; current implementation checkpoints
+- User explicitly requests full controls/menu/scenes/story/playthrough/resource loading plus fix silent game. Active durable goal created, not complete. docs/PROJECT.md records60FPS final target, original30FPS table historicalonly.
+- Last APK48/run49 GPUstep0/dump0: actualtitle/NewGame/difficulty screenshot. Steady menu11.36..23.77FPS; no60pass. Eventually command registry65536/256MiB exhausted -> losthandle0 -> actualguest GPU wait abort. Do not mislabel as random driver timeout. Originalrun48verylowFPS also had per-opGPUstep1.
+- Audio corrected two exact SDK ABIbugs:40byte buffer not24; started0/stopped1 were inverted. RealRGaudio50 native component stereo/6ch each24000sineframes, nonzero/peak8192/played24000/errors0. Actualgame sound pendingnextAPK; defaultoffmax3second PCMdiagnostics nowwiredJNI marker1 for nexttest.
+- NVNevent worker unifiedactualpoolword+15completiondrains/reentrantstats; RGcomponenterrors0 withcontrolledcompletionprovider, noactualGPUinthiscomponent. StillneedfullAPKruntest andstrong mtleventread symbolcheck.
+- Commandlifetimeworker active:actual sourcepoolranges/grantcursor/leases+CALLgenerations; host80k reuses live3packages96bytes, notfrozenyet. Rootnvn_memory_pool_finalize snapshot+retire_source_memory+enginepoolDel hook already wired outsidepoollock. Do notbuild untilfreeze.
+- Syncworker confirmed escapedembeddedffrs_sync tablegrowth UAF withASan oldexit134; stablegeneration slab fixongoing. Do notbuild untilfreeze.
+- Rootoptional frameCSV recordsactualgamepresenttime+imagewriter/draw/dispatch identities, defaultoffmarker now1 for nexttest. Successfulfront-end hotlog defaultoffFFRS_NVN_TRACE; errorsstillvisible.
+- Resourcefullaudit73496unique sourcekeys,71375hashverifiedgeneratedXGS,2121missing support:2077dynamictexturearray VS,43validator+1viewportlayer refusal. Readonlyresourceworker classifyingtruehandleprovenance; nofakeallresourcesPASS. Warp32 vsMali16stillunresolved correctnessgap.
+
+## APK47 real movie and MultiWait integration
+- APK SHA5b0525c1e348f38af42eb13245def82c44075ec580fb4d8ede6219cbbd7b0356 installed and launched in run47. Last run46 stopped missing MultiWait410, before codec input.
+- ActualRG component VP9 3frames+Flush+same3frames errors0; both first4608NV12bytes exactly match ffmpeg decode of same generatedfixture; MTK codec c2.mtk.vp9.decoder. Log .local/codex-movie/decoder47-device.log; manifest47.json. NOT full game video acceptance.
+- New EventType-only MultiWait8API production: condition wake after real EventSignal, non-consuming readiness verified SDK and main explicitClearEvent. RG+Machost contract errors0 including real registry, cross-thread wake, timeout,holdercanaries/lifecycle. EventFinalize refuses activeholderreferences. Host-only inherited nestedsetjmpdefinitions relocated file scope torestorecompilation; no setjmpbehavioracceptance.
+- IMPORTANT corrected decoder notification: exactsubsdk PLT34b550/sym290 is ordinarySignalEvent, notSystemEvent. Originalfirstanalysis was wrong, fixedbefore47.
+- 19 Decoder virtualtargets bound through same initialIDLE nb_scope with processownedbindinglifetimes; teardownrefusesliveDecodersbeforepages/modulefree. MediaData15typedimports+Buffer10/config3. ActualNDKdecoded NV12 copiedtoreal guestbuffer, metadata y/uvstrides+offsets. Unknownformats/modes/Extractor not supported, no skippedvideo.
+- Source .local/codex-checkpoints latest; next inspect run47 guest_boot.log/screens, bounded encodedchunksfiles/codex-movie-PID marker1. GPUstep1 diagnosticstillactive, no title/playable/perf/independentQA.
+
+## Live Decoder integration 2026-10-25T08:24:29.755756+00:00
+- Run43 actual original Unreal Engine logo displayed on RG477M after present fix. APK45 actual Vulkan feature enablement verified; run45 stopped Decoder import392. Buffer10+config stored/native buffer contract errors0; codec integration19 owned pre-guest virtual gates in progress. No title/playable/performance/independent QA.
+- Run44 APK6d05cb... native Buffer methods passed, then571 SetCoreMask. Run45 APK192f7a904c4ab6c5344e9a1862d91b5300c9e4a567014f9786dbe8cf12db7894 passes config then392 DecoderC1.
+- movie_decoder_review owns only movie_decoder.h/.cpp +tests/native/movie_decoder_contract.cpp. Root owns integration/CMake/JNI/Buffer and soleADB. 19virtuals bound initiallyIDLE in same process bindings array; retain all resources if live decoders prevent quiescent revoke.
+- RGactualsubgroup min=max16; existingtranslator does not correctly lower32warp to16, no correctflag found. Do not claimGPUtimeoutfixed by featureenable alone; run42timedout/43passed.
+
+## Codex real display milestone 20261025T080942Z
+- APK42 present blit Z=1, proper WSI acquire fence and per-image waits; run43 ORIGINAL Unreal Engine logo screenshot actualRG, then unresolved import403 movie::BufferC1 at5e14588. Run42 compute timeout intermittent remains. No title/playable/performance/independent QA pass. Full71375 generated shaders appUID hashes verified.
+- Latest APK SHA d4d95bbb5f2082a9840747090ea6d007d7678c5f657810a2e267b15d9c24fd63. Source checkpoint .local/codex-checkpoints/20261025T080942Z. GPUstep1 remains on, debug only.
+- Next implement actual movie Buffer/MediaData/decoder platform coverage from exact subsdk0 identity50c488fb55d497b2a50b75fb8dee6ef6e8eccc31cd45510b580011490014a058. No fake EOF or skip videos.
+
+## Resource extraction done; application-UID validation live
+- tar extraction completed exit0 at07:54:03UTC, stderr empty. Shell whole-set hash verifier checked71374 files/5,400,540,364bytes with no digest mismatches; one reported MISSING17005546 is actually mode0660 appUID-owned (verified appUID SHA25bb4359... matches). Do not call it real resource loss.
+- To verify actual application read access, copied native SHA verifier to package files/codex-debug/shader-verify and chmod700 only that own executable. Now running whole manifest as appUID via run-as; log .local/codex-shader-reflection/device-app-uid-verify.log, tool session98872. Manifest71375 expected current input+repaired resource SHA values; root originals unchanged. Do not restart game until this verification finishes.
+- Then install_run.py41 with same APK39 and all resources. GPUstep marker now readable644 and actual run39 log diagnosis1; debug remains on intentionally for initial full-resource boot, not performance acceptance.
+
+## Resource delta live extraction checkpoint
+- Backup COMPLETE: .local/codex-shader-reflection/device-existing-before.tar bytes970826752,7726 exact expected members, SHAae0353e68f78bcc9c00c0005ccb04ec1dedcdb38dd050fde1cb68839cbf4c7f4 (backup-manifest.json).
+- Delta transfer COMPLETE:4704686080 bytes,34.101s131.6MB/s. Device /data/local/tmp/ffrs-shader-delta.tar SHAe7fb3d75d514e67014afd72b53f330756ab06d2e9627aa455c51f447f3a40e27 matches host.
+- Extraction IN_PROGRESS with shell-owner tar -xmof (ignore owner and timestamp) into exactly package shaders dir. Using shell owner avoids prior run-as permission mismatch on existing shell-owned FUSE files. Host adb PID56632, command/log .local/codex-shader-reflection/extract-command.json and extract-device.log, tool session89528. No game process running during replacement. Must check exit and stderr, then inventory/critical hashes, then run41 same APK39.
+
+## Codex resource deployment checkpoint (after run40)
+- Critical current evidence: device20260 generated shader files vs host71375;51116 missing (3,694,713,052bytes). Missing17005546 supplied led directly to missingb33659227a17c1a9, so stopped one-at-a-time boot churn and audited full directory. Device29GB free.
+- Actual GPUstep enablement first confirmed run39 log line29004 diagnosis1. Prior run34/37/38 diagnosis0; cannot attribute prior progress to synchronous stepping. Keep historical correction above.
+- All71375 host XGS inspected:27907 invalid-range descriptor bundles. New repair_xgs_handle_bindings.cpp reads SPIRV OpName exact cbuf/handle identities and OpDecorate bindings, updates only XGS source/slot/sampler fields. Handles cp_t_tcb_48 sampled image alias correctly as IMAGE0 (original C2+120 image table), as verified by original translator/rebuild of2 affected shaders. Corrected original Python exporter in same way.
+- Final repair scanned71375, changed27909, failures0 (.local/codex-shader-reflection/repair-final.log). Every repaired file checked header, descriptor shape, identical all remaining bytes including SPIRV/constants.49 independently retranslated/spirv-val bundles match final repair byte-for-byte.
+- Delta union missing+corrected:58842 files,51116 new,7726 existing replacements. Archive .local/codex-shader-reflection/deployment-delta.tar bytes4704686080 SHAe7fb3d75d514e67014afd72b53f330756ab06d2e9627aa455c51f447f3a40e27; manifest deployment-delta.json, per-repair old/new SHA repair-final-sha256.json, basename lists deploy-device-names.txt and overwrite-device-names.txt. Root source directory untouched.
+- Before mutation, app-UID tar backup7726 existing shader files to host .local/codex-shader-reflection/device-existing-before.tar IN_PROGRESS, log backup-device.log, command backup-command.json. Do not deploy delta until backup command completes and tar member count verified.
+- Next: verify backup, adb push delta to /data/local/tmp/ffrs-shader-delta.tar, verify device SHA, app-UID tar -xof to package shaders (o ignores ownership). Preserve logs; verify actual counts/hashes then run41 same APK39. Do not clear original saves or modify root worktree.
+
+## Correction and checkpoint run38-39
+- Important correction to earlier blocks: CODEX_GPU step diagnosis=0 in runs34,37,38. Marker existed but mode0660 shell/ext_data_rw, app could not read it. run-as did not fix file ownership; adb shell chmod644 now succeeded. Do not claim per-op stepping caused progress or that batch hang is fixed. Run33 timeout remains an intermittent graphics defect pending causal evidence.
+- Run37 native game OOM: existing charged1001332736 bytes plus84058112 requested exceeded prior1GiB bounded guest quota. RG /proc/meminfo verifies12GiB total and>8GiB available. Android backing quota now3GiB (3221225472), metadata64MiB; exposed queries reflect actual owned limits. Build38 passed prior OOM and progressed through >1200 textures and save slots scan, then import380 IsSaveDataExisting for OTHER application010068b027e88000.
+- Current application ID verified actual NACP+3038/+3078/+30b0/+30b8 all0100b8a026f14000 (source SHA35cc8a08...). Implemented fs IsSaveDataExisting: only own current application+offline UID+actual own root directory can be true; foreign apps/users false, no external saves read. Native RG local_save39_contract errors0 includes own/foreign/user checks plus existing real file roundtrip/ROM write refusal.
+- Build39 APK SHA46a2f247393d70baffb1d3b6bff69f63aa75771ed628cf166f4ce34b932a89b1 installed/launch. Next pull run39 log and verify actual CODEX_GPU enabled1. Screens run38 still black; no title/gameplay passed. Check actual UI before acceptance.
+
+## Codex live checkpoint run32-37
+- Run31 metadata node exhaustion after21984 actual page maps,16MiB/256byte blocks with3records per map. Android bounded bookkeeping pool raised64MiB (guest backing quota remains1GiB). Page failures now log actual resource usage.
+- Run32 hit real NVN pool64 cap. Raised bounded host builder/pool bookkeeping4096 (not advertised hardware limit). Run33 passed but GPU fence wait timed out10seconds; app exited. screenshot home, no title acceptance.
+- Build34 opt-in files/gfx-codex-gpu-step='1': logs each NVN opcode and waits actual fence after each; no draws skipped. Run34 passed former GPU stall and reached main save setup; missing EnterExitRequestHandlingSection import474. Batch timeout cause not yet proven; synchronous diagnosis is not final performance state.
+- Added OE nested exit critical sections, request/ready bridge to Android onBackPressed deferring finish while save protection active. Native RG oe_exit_section_contract PASS errors0/nested deferral. Build35/36 Java compiled but D8 crashed on new inner Runnable class. Build37 uses existing Activity implementing Runnable; D8/APK success.35/36 not installed.
+- APK37 SHA4b25a68baaadfae6d58ce8931b223af326002033ea45c164c002d2ba04dddfb7. Run37 installed/launch, inspect its log next. Device marker GPUstep1 remains enabled and must be disabled or narrowed before performance acceptance.
+- Rebuilt all46 shaders actually loaded in run34; SPIRV and constants unchanged, only64619 descriptor table changed; app-UID copy and SHA verified. Evidence .local/codex-shader-reflection/deployment-run34.json. No root shader/input bytes modified.
+
+## Codex live run26-31 checkpoint
+- Program shader controls were dangling after realloc of nvn_object_table. Build26 deep-copies controls atomically into immutable bridge allocations, new serial per shader set. Fixed table growing on every insert instead of only capacity exhaustion. RG program_snapshot_contract PASS across140 programs/replacement; preserved old snapshot.
+- Run26/27 reached coalesced then partial page frees. New guest_pages_free_allocations preflights owned gapless backing, partitions tickets at boundaries with guest_charge_split (total charge unchanged), actual VM free then exact refunds. Existing exact API unchanged. RG page_union_contract PASS holes/refund/middlecut/remap preserving neighbors. Full existing host normal+6 recovery cases PASS .local/codex-page-regression-28/manifest.json. Build28 SHA4bde08a953e37ca808562775f23a394638cbc02f1848e2cde0798331062627a7.
+- Run28 shader64619ac90fe3dfa2 fragment had invalid texture257: offline decode_handle used byte span as count, so sampler words aliased texture table. Fixed two table counts /8. Rebuilt14 loaded shaders (one changed), validation plus SPIRV/constants unchanged .local/codex-shader-reflection/deployment.json. Root shader originals untouched, original backups in that dir.
+- Direct adb push failed fchown and removed target; run29 therefore invalid missing-shader deployment. Restored corrected shader via /data/local/tmp then run-as package cp. run-as sha256sum verified1f175463c02445419847944461bd33f3a696e18cf0f090e912abc38f05009e90; adb pull denied due owner0600, no permission broadening. Run30 passed corrected shader and reached 3D-volume attachment fatal.
+- Build31 adds core Vulkan1.1 VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT, correct mip-depth slice view ranges, 2D_ARRAY views, framebuffer layer counts/min intersection and cache keys. Geometry shader remains actual game code; no skipped draws. Reference https://docs.vulkan.org/spec/latest/chapters/resources.html and renderpass.html.
+- RG volume_attachment_contract PASS errors0: actual Vulkan3D image,4slice framebuffer clear, all256pixel GPU readback. Component only; game rendering not visually accepted. APK31 SHA061460bba6a1d8d3dba538fb3b0dfbf97ce180f8507da12c102b3a5de07bf045 installed. Pull run31 log next. No title/playable/performance/independent QA pass.
+
+## Codex checkpoint run22-25
+- Build22 SDK-verified sample-byte enum and C++ TLS re-registration drain; RG thread_exit_contract errors0 order231.
+- Build23/24 allowlist exact SDK native Resampler size2634e0/init263530/process263690/count2634f0. RG sdk_resampler_contract errors0,441 output frames, sinepeak10071, capacity443; SDK count is ceil(output)+2. Initial test had incorrect equality to actual count; corrected from disassembly, no production workaround.
+- Run24 passed these imports then game AbortImpl: MallocBinned3 free unrecognized b400 host pointer. Log connects exact pointer to host posix_memalign64/40 allocated at startup.
+- SDK posix_memalign573f10 calls interposed aligned_alloc via PLT64c7d0; memalign5b2950 tailcalls same. Main exports own aligned_alloc13350 -> UnrealMalloc. Run25 now resolves main export by symbol and uses nb_call_from_host (supports child slots), no host heap fallback during active module. Native RG adapter contract errors0/calls3 covers ownership dispatch, errno, invalid alignment and allocation failure output unchanged. Full game test pending.
+- Latest build25 APK SHA c174ee637c68696e1c07b97e249800c113db5c4bcd51f88464e079843186f48c installed-r RG477M01445122. Commands/logs .local/codex-build-25.log and .local/codex-runs/25. No saves cleared, no title/playable or independent QA pass.
+
+## Codex live checkpoint: run20 to run21, 2026-10-25
+- Worktree `.worktrees/codex-black-screen`, branch task/T02-codex-black-screen, HEAD0444c81 plus preserved WIP; no commits or main changes.
+- Build20 passed, SHA e2ccefdbee30e8698ed6d2bc56d2cc6ad651076d056d894edc9c6c959f6a7830. Device run20 passed real shader load fae0b835a11360e2(vertex),4746d49d8e2bbaab(fragment), actual draw-bearing submits and presents. Fixed guest copied value state packing and actual NVN blend default enums; did not bypass alpha guard.
+- Native RG packed_state_contract PASS errors0, copies/overwrite/canaries/default enums/vertex stride. Component only; advanced blend and sample location auxiliary metadata not covered.
+- Run20 fault host nb_import_gateway from tls_get after child return: exit_registry thread destructors called guest directly after TLS/slot unbind. Build21 adds explicit drain before guest TLS unbind and module-range-checked nb_call_child destructor invocation. SHA732ba5c175c2b84481cc670b349b6c3c272d7099b99c76fb9b6be22eb2c53554; install/launch evidence .local/codex-runs/21.
+- Continue: pull device guest_boot.log into run21, check fault and take screenshot if alive. No title/playable/performance/independent QA acceptance.
+
+# Codex checkpoint 2026-10-25T06:36:36.052493+00:00
+
+Active worktree `.worktrees/codex-black-screen`, branch `task/T02-codex-black-screen`, HEAD0444c81 + preserved Antigravity WIP + Codex dirty fixes. Original worktree untouched. Builds01–12 succeeded; build06 never installed; latest run12.
+
+Fixed: libc++ CV clockwait mapping (real baseline fail/fixed pass), WindowAcquireTexture ABI/output index + real GPU waits, texture storage size/alignment wired to existing Tegra layout, lifecycle focus queue/TryPop, offline local account and owned save root, NACP12MiB/1MiB size query, Android gamepad event bridge, exact SDK VibrationConverter data/native DSP, AAPCS64 vsnprintf, nn::os condition variables.
+
+Native RG contracts all passed: std_cv_clockwait, window_acquire, texture_storage, oe_notification, local_save, hid_bridge, sdk_vibration (160Hz peak0.599274), vsnprintf, os_condition. Coverage is components only. Original SDK SHA9dfd1cc6d3209d857dcafb191736265ac812401ddcc7b49dabf3bc0b114655a9; deployment `/sdcard/Android/data/org.ffrs.gamewindow/files/sdk.nso`; no game bytes in Git. REA Ghidra ctor evidence ev_29d5e67d045a9e6ae9434d2c18812b4be5f5a5fab4b7679a5b024aa0ae7f4b69.
+
+No title/draw/playable acceptance yet. Guest has real black clear/presents and advanced through save, input and audio-component initialization. Latest run12 awaits fresh log. Checkpoints `.local/codex-checkpoints/20261025T061541Z` and `20261025T063300Z`; build/run logs own `.local/codex-build-NN.log` and `.local/codex-runs/NN/`.
+
+Known limits: save Commit fsync only, no crash-atomic journal; rumble/gyro not advertised; WindowAcquire serializes prior GPU work; command-buffer WaitSync still diagnostic-only (acquire fence already completed by conservative wait); inherited unknown-format fallback remains unresolved; no independent QA or full legacy contract gate.
+
+Next: pull run12 guest log, find next actual stop; do not repeat graphics overhaul or fake menus. Two tiny condition error/static-finalize guards were changed after build12, so next build must include those before final acceptance.
+
+# Codex checkpoint 2026-10-25T06:08:46.436487+00:00
+
+Run02: real two black guest clears presented; no title/draw. CV timedwait and window acquire ABI fixed. Next unresolved import233 TryPopNotificationMessage.
+
+Source worktree `.worktrees/codex-black-screen`, inherited 0444c81 + preserved WIP. Own CV contract baseline exit1/fixed exit0; window ABI/timeline contract exit0 on RG477M. Build02 APK SHA77710068b2fdd36ebc6d60fb9e241c5726a0f8fa148edc2390d15fbf4a8eeb1e. Build/install exit0. App exits on unresolved import233, not a graphics stall. No title/playable acceptance. Next: complete lifecycle-backed TryPop binding, build03, install-r, launch, inspect fresh transcript.
+
+# Codex takeover — 2026-10-25
+
+User transferred execution to Codex. Source 0444c81 plus Antigravity staged/unstaged/untracked WIP preserved; original worktree unchanged. Active branch task/T02-codex-black-screen. Device RG477M01445122 PID30637: three initialization submissions, no draw/clear/present, event waits. No playable result. Android debuggerd refused without root; no root attempted.
+
 # P-MM-43/44 devinfo 表落地 + 对象族表随游戏长大 + 呈现路径入包 + shader 拒收真因查明｜2026-10-25 09:50 Asia/Shanghai — **guest 越过「TextureID 池为空」的致命**；**新的第一致命 = 采样器对象表满了**；**驱动的 shader 拒收真因是「声明」不是「接口」**；**帧数仍为 0**
 
 - **结论**：这一轮把 guest 从「自己 abort」推到了「撞上我们自己的天花板」。**三件大事**：
@@ -1157,3 +1382,28 @@
 | **__cxa_thread_atexit / __cxa_thread_atexit_impl** | **已越过并真机通过**：实测 3 次成功登记线程局部析构器，GameThread 顺利越过！ |
 | **nn::diag::detail::AbortImpl / GetBacktrace** | **已越过并真机通过**：实测越过 import 12，消除未链接导入 signal 5；完整捕获寄存器快照、栈帧回溯及 UTF-16 致命错误内容，彻底定位到 `GEngineLoop.PreInit()` 失败逻辑！ |
 | **当前阻塞前沿** | **确证为虚幻引擎 `GEngineLoop.PreInit()` 失败**（偏移 `0x3530920` 返回错误码，触发 `LaunchNintendo.cpp:241` 的 `LowLevelFatalError: PreInit() failed! Aborting`，最终到达 `0x11f8: udf #0`，signal 4 / exitcode 132，日志 `.local/logs/rg477m-boot-v32-abortimpl.log`）。 |
+
+
+## 2026-10-25 root checkpoint: BC5 component and wait-path A/B
+
+- Sound audibility confirmed by user. Existing60FPS-derived image instruction and actualwindowinterval1 verified(run55), not a real60FPS result.
+- SameAPK54 title30..90s after firstpresent/noinput: baseline legacy1 run55 12.196FPS, P95 91.316ms; run56 legacy0 14.111FPS, P95 81.338ms. All intervals retained, no actualscene acceptance. Restorelegacy1 for BC5 isolated regression.
+- BC5 frozen source + actualRG40GPUfiltered samples passed (.local/codex-bc5/device-root-3.log). Full engine Image path pending build57.
+- 2065 newshader bundles appUIDhash verified; expected73483/73496, 12semanticrefusal +1Layer remain. T02-DIRECT-BOOLEAN-PROOF assigned compiler/test/newv4fork only.
+- Root remains soleADB; user closed competing game conversation. No commits/main/originalgame/save mutation.
+
+
+## 2026-10-25 APK58 preparation checkpoint
+
+- APK57 SHA4127286ec7462f29be00a187fbc7e0ef232399c4cbe18c5d729005cbca28e9da actuallypassed BC5fullengineconversion8textures and previouswatch/Eventcleanup. Nextactualfatal uncompressedNVN0x12 RG16UNORM sampler min3mag1 texture29 (128x32). No actualscene/gameplay acceptance.
+- RG16 production frozen after independent staticreview; actualGPUcomponentpositivevaluespassed but counterfactualfixturefailed nearestseparation. Author strengthening self-owned pattern/testonly; originalfailure retained. Do notinstall beforecorrectfixture passes realGPU.
+- Poolgeneration actualRG nativeCPUcontract errors0,85add/del/retire; unchanged ffrsobjectABI, hostmetadata generations+immutablecacheversions. Oldsource fails samefixture. Oldmetadataretained processlifetime, not guestbackingownership or45minmemory PASS.
+- Shader remaining12 v4 root29tests +independentpayloadvalidatePASS, noclobbercreated12files inownappdir, each appUIDSHAverified; expected73495/73496. Layer1 remains, gameplaycorrectnessnotproved.
+- Root Cshadowonlydiagnosticaggregation and actualwall/threadCPUmeasurement added. Allchecks/counters retained, fulltrace available; perqueue/CALLshadowsemantics remainINCOMPLETE, engineactualvalidationunchanged. Host+ASan+NDK+actualRGcomponentpassed10000occurrences/shortDRAW/realbadindirect. No performanceimprovementclaim.
+- Frameadaptive explicitlycancelled; originalclockunchanged; exactexisting60FPSderivedmodule and73495shaders used in nextAPK58.
+
+
+## User priority update 2026-10-25
+
+- User accepted stable30FPS for phase1 and explicitlyprioritized playablegame beforeFPS. Paused/cancelled readbackcached A/B; cached1NOT_RUN, baseline notaccepted dueuserinputcondition.
+- User reports NewGame/difficulty exit oncurrentlyinstalled58; sameknown RG16attachment guard underrepair. NextAPK59 launch ORIGINAL unmodifiedmain/defaultgame_dir (restoreoriginal30FPS windowconfiguration; do notoverwrite60derivedcopy). NoFPSoptimizationuntilactualscene controllable.

@@ -230,6 +230,21 @@ struct guest_context_result guest_charge_reserve(guest_context *context,size_t b
     pthread_mutex_unlock(&context->mutex);
     return status;
 }
+/* Partition an existing charge without reserving/refunding backing bytes.
+ * Allocate metadata first; failures leave the original charge unchanged. */
+struct guest_context_result guest_charge_split(guest_charge_ticket *ticket,size_t left_bytes,guest_charge_ticket **right) {
+    if(!ticket || !right)return result(GUEST_CONTEXT_INVALID,0,0);
+    *right=NULL;guest_context *context=ticket->owner;
+    pthread_mutex_lock(&context->mutex);
+    struct guest_context_result status=success();guest_charge_ticket *part=NULL;
+    if(context->quarantined)status=result(GUEST_CONTEXT_QUARANTINED,0,0);
+    else if(!left_bytes || left_bytes>=ticket->bytes)status=result(GUEST_CONTEXT_INVALID,0,0);
+    else if((status=metadata_allocate_locked(context,GUEST_METADATA_TICKET,sizeof(*part),(void**)&part)).status==GUEST_CONTEXT_OK){
+        *part=(guest_charge_ticket){context,ticket->bytes-left_bytes,ticket->committed};
+        ticket->bytes=left_bytes;context->tickets++;*right=part;
+    }
+    pthread_mutex_unlock(&context->mutex);return status;
+}
 struct guest_context_result guest_charge_commit(guest_charge_ticket *ticket) {
     if(!ticket)return result(GUEST_CONTEXT_INVALID,0,0);
     guest_context *context=ticket->owner;

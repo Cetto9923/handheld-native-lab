@@ -231,9 +231,7 @@ typedef void (*PFNNVNCOMMANDBUFFERMEMORYCALLBACKPROC)(NVNcommandBuffer*,
 
 void nvnCommandBufferAddCommandMemory(NVNcommandBuffer *commandBuffer, const NVNmemoryPool *arg1,
                                       ptrdiff_t arg2, size_t arg3) {
-    (void)arg2;
-    (void)arg1;
-    nvn_command_buffer_add_command_memory(commandBuffer, (uint64_t)arg3);
+    nvn_command_buffer_add_command_memory_storage(commandBuffer, arg1, (int64_t)arg2, (uint64_t)arg3);
     NVN_VOID_RETURN();
 }
 
@@ -709,7 +707,7 @@ void nvnCommandBufferDrawArraysIndirect(NVNcommandBuffer *commandBuffer, NVNdraw
 
 void nvnCommandBufferDrawArraysInstanced(NVNcommandBuffer *commandBuffer, NVNdrawPrimitive arg1,
                                          int arg2, int arg3, int arg4, int arg5) {
-    nvn_command_buffer_rec_draw(commandBuffer, arg1, arg2, arg3, arg4, arg5, 0);
+    nvn_command_buffer_rec_draw(commandBuffer, arg1, arg2, arg3, arg5, arg4, 0);
     NVN_VOID_RETURN();
 }
 

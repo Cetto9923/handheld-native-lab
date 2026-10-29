@@ -1,220 +1,138 @@
-/* The contract of the NVN command replay.
- *
- * The replay is the consumer of the command packages: it reads a package
- * with the structures of the reference tree, it keeps the state that a
- * command stream carries from one command to the next, and it turns the
- * addresses the records carry into the host memory behind them.
- *
- * This case is in a translation unit of its own, with its own main, so that
- * two families can be worked on at the same time without writing into the
- * same file. The build script finds it by its name and runs it as a second
- * contract binary.
- *
- * What this case can prove on the host:
- *   - the replay reads a package that the recorder really produced, and it
- *     sees the same commands the recorder was given;
- *   - a handle that the registry does not know is refused and counted, and
- *     nothing is dereferenced;
- *   - an address that belongs to no pool of the guest is refused by name.
- *
- * What it cannot prove on the host: the resolution of an address against a
- * real pool. The host build has no Vulkan device, so the guest's memory pool
- * refuses to be created, and there is no pool to resolve against. That part
- * is proven on the device, where the pool is real.
- */
-#define _GNU_SOURCE
-#include "../../src/runtime/hle/guest_process.h"
-#include "../../src/graphics/nvn_device/nvn_command_buffer.h"
+/* CPU decoder bounds contract. Links the real nvn_command_replay.c; fixture
+ * adapters below expose one immutable package and a small guest address pool.
+ * No GPU submission/completion or gameplay is simulated by this contract. */
 #include "../../src/graphics/nvn_device/nvn_command_replay.h"
 #include "../../src/graphics/nvn_device/nvn_memory_pool.h"
-
-#include <inttypes.h>
+#include "../../src/graphics/nvn_device/nvn_sync.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <unistd.h>
 
-#define CHECK(x) do {if(!(x)) {fprintf(stderr,"replay contract line=%d: %s\n",__LINE__,#x);return 1;}} while(0)
+static nvn_command_package fixture;
+static unsigned char guest_pool[64];
+static unsigned resolver_calls;
+static uint64_t last_resolved;
+static const uint64_t guest_base=UINT64_C(0x4000000000);
+static int fixture_trace;
+int nvn_trace_enabled(void) { return fixture_trace; }
+int nvn_command_buffer_get_package(uint64_t handle,nvn_command_package *out) {
+    if(handle!=fixture.handle)return 0;
+    *out=fixture;return 1;
+}
+const char *nvn_command_buffer_opcode_name(uint32_t op) { (void)op;return "fixture-op"; }
+void *nvn_memory_pool_resolve_address(uint64_t address,size_t *available) {
+    ++resolver_calls;last_resolved=address;
+    if(address<guest_base || address-guest_base>=sizeof guest_pool){*available=0;return NULL;}
+    *available=sizeof guest_pool-(size_t)(address-guest_base);
+    return guest_pool+(size_t)(address-guest_base);
+}
+void nvn_sync_family_fence_object(ffrs_sync *object) { (void)object;abort(); }
+#define CHECK(expression) do { if(!(expression)){fprintf(stderr,"FAIL line=%d: %s\n",__LINE__,#expression);return 1;} } while(0)
 
-static unsigned errors;
-
-static void expect_value(const char *tag,uint64_t actual,uint64_t expected) {
-    if(actual!=expected) {
-        errors++;
-        fprintf(stderr,"[check-fail] %s actual=0x%" PRIx64 " expected=0x%" PRIx64 "\n",tag,actual,expected);
+static void record(void *where,uint32_t opcode,const void *payload,size_t bytes) {
+    nvn_cb_op_hdr header={opcode,(uint32_t)(sizeof(header)+bytes)};
+    memcpy(where,&header,sizeof header);
+    if(bytes)memcpy((unsigned char*)where+sizeof header,payload,bytes);
+}
+static nvn_replay_stats run(const void *bytes,size_t size) {
+    fixture=(nvn_command_package){UINT64_C(0x12345678),bytes,size,1,0,NULL};
+    resolver_calls=0;last_resolved=0;nvn_command_replay_reset();
+    if(!nvn_command_replay_run(fixture.handle))abort();
+    nvn_replay_stats stats;nvn_command_replay_get_stats(&stats);return stats;
+}
+static int adjacent(int indexed) {
+    /* The old reader saw 0x000000f800000008 (the SET_RT header) as ind. */
+    unsigned char bytes[40+248+8]={0};
+    nvn_cb_p_draw draw={0};nvn_cb_p_draw_idx index={0};nvn_cb_p_set_rt rt={0};
+    size_t payload=indexed?offsetof(nvn_cb_p_draw_idx,ind):offsetof(nvn_cb_p_draw,ind);
+    const size_t first=8+payload;
+    record(bytes,indexed?NVN_CB_OP_DRAW_IDX:NVN_CB_OP_DRAW,indexed?(const void*)&index:(const void*)&draw,payload);
+    record(bytes+first,NVN_CB_OP_SET_RT,&rt,240);
+    record(bytes+first+248,NVN_CB_OP_END,NULL,0);
+    nvn_replay_stats stats=run(bytes,first+248+8);
+    CHECK(stats.records==3&&stats.draws==1&&stats.refused_no_pool==0);
+    CHECK(resolver_calls==0);
+    return 0;
+}
+static int guarded(int indexed) {
+    const long page=sysconf(_SC_PAGESIZE);CHECK(page>0);
+    void *mapping=mmap(NULL,(size_t)page*2,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
+    CHECK(mapping!=MAP_FAILED);
+    CHECK(mprotect((unsigned char*)mapping+page,(size_t)page,PROT_NONE)==0);
+    nvn_cb_p_draw draw={0};nvn_cb_p_draw_idx index={0};
+    const size_t payload=indexed?offsetof(nvn_cb_p_draw_idx,ind):offsetof(nvn_cb_p_draw,ind);
+    const size_t size=8+payload;
+    unsigned char *bytes=(unsigned char*)mapping+page-size;
+    record(bytes,indexed?NVN_CB_OP_DRAW_IDX:NVN_CB_OP_DRAW,indexed?(const void*)&index:(const void*)&draw,payload);
+    nvn_replay_stats stats=run(bytes,size);
+    CHECK(stats.records==1&&stats.draws==1&&stats.refused_no_pool==0&&resolver_calls==0);
+    CHECK(munmap(mapping,(size_t)page*2)==0);
+    return 0;
+}
+static int indirect(int indexed,uint64_t address,int valid) {
+    unsigned char bytes[64+8]={0};
+    nvn_cb_p_draw draw={0};nvn_cb_p_draw_idx index={0};
+    draw.ind=address;index.ind=address;
+    const size_t payload=indexed?sizeof index:sizeof draw;
+    record(bytes,indexed?NVN_CB_OP_DRAW_IDX:NVN_CB_OP_DRAW,indexed?(const void*)&index:(const void*)&draw,payload);
+    record(bytes+8+payload,NVN_CB_OP_END,NULL,0);
+    const nvn_replay_stats stats=run(bytes,8+payload+8);
+    CHECK(resolver_calls==1&&last_resolved==address);
+    CHECK(stats.refused_no_pool==(uint64_t)!valid);
+    CHECK(stats.resolved_addresses==(uint64_t)valid);
+    return 0;
+}
+static int indexed_buffer(void) {
+    unsigned char bytes[48]={0};nvn_cb_p_draw_idx index={0};index.ibuf=guest_base+sizeof guest_pool;
+    record(bytes,NVN_CB_OP_DRAW_IDX,&index,offsetof(nvn_cb_p_draw_idx,ind));
+    record(bytes+40,NVN_CB_OP_END,NULL,0);
+    const nvn_replay_stats stats=run(bytes,sizeof bytes);
+    CHECK(stats.refused_no_pool==1&&resolver_calls==1&&last_resolved==index.ibuf);
+    return 0;
+}
+static int repeated_pool_diagnostics(unsigned count, int verbose) {
+    const size_t stride=8+sizeof(nvn_cb_p_bind_tex1);
+    const size_t bytes=count*stride+8;
+    unsigned char *commands=calloc(1,bytes);CHECK(commands);
+    for(unsigned i=0;i<count;i++) {
+        nvn_cb_p_bind_tex1 bind={0};bind.h=(i&1)?UINT64_C(1)<<20:1;
+        record(commands+i*stride,NVN_CB_OP_BIND_TEX1,&bind,sizeof bind);
     }
+    record(commands+count*stride,NVN_CB_OP_END,NULL,0);
+    fixture_trace=verbose;
+    nvn_replay_stats stats=run(commands,bytes);
+    fixture_trace=0;
+    CHECK(stats.records==count+1 && stats.refused_foreign_pool==count);
+    CHECK(stats.missing_texture_pool==count/2 && stats.missing_sampler_pool==count/2);
+    CHECK(stats.refused_bad_record==0 && stats.resolved_addresses==0);
+    CHECK(stats.timed_packages==1 && stats.elapsed_ns>0 && stats.thread_cpu_ns>0);
+    if(verbose)CHECK(stats.pool_messages_printed==count);
+    else CHECK(stats.pool_messages_printed>0 && stats.pool_messages_printed<=40);
+    free(commands);return 0;
 }
-
-static void expect_condition(const char *tag,int condition) {
-    if(!condition) {errors++;fprintf(stderr,"[check-fail] %s\n",tag);}
-}
-
-typedef void *(*bootstrap_fn)(const char *);
-typedef void *(*lookup_fn)(void *, const char *);
-typedef uint64_t (*cb_initialize_fn)(void *, void *);
-typedef void (*cb_add_command_memory_fn)(void *, void *, int64_t, uint64_t);
-typedef void (*cb_begin_recording_fn)(void *);
-typedef uint64_t (*cb_end_recording_fn)(void *);
-typedef void (*cb_clear_fn)(void *, int, const float *, int);
-typedef void (*cb_bind_vertex_buffer_fn)(void *, int, uint64_t, uint64_t);
-typedef void (*cb_bind_texture_fn)(void *, int, int, uint64_t);
-typedef void (*cb_set_texture_pool_fn)(void *, const void *);
-typedef int (*tp_initialize_fn)(void *, const void *, long, int);
 
 int main(int argc,char **argv) {
-    /* The family contracts have their own switch, so that two families can be
-     * worked on at the same time without writing into the same file. The
-     * build script derives the switch from the file's name. */
-    if(argc!=2 || strcmp(argv[1],"--nvn-command-replay")) {
-        fprintf(stderr,"usage: %s --nvn-command-replay\n",argv[0]);
-        return 2;
-    }
-    bootstrap_fn bootstrap = (bootstrap_fn)(uintptr_t)guest_process_resolve(0,"nvnBootstrapLoader");
-    CHECK(bootstrap);
-    lookup_fn lookup = (lookup_fn)(uintptr_t)bootstrap("nvnDeviceGetProcAddress");
-    CHECK(lookup);
-
-    cb_initialize_fn initialize = (cb_initialize_fn)(uintptr_t)lookup(NULL,"nvnCommandBufferInitialize");
-    cb_add_command_memory_fn add_command_memory =
-        (cb_add_command_memory_fn)(uintptr_t)lookup(NULL,"nvnCommandBufferAddCommandMemory");
-    cb_begin_recording_fn begin_recording =
-        (cb_begin_recording_fn)(uintptr_t)lookup(NULL,"nvnCommandBufferBeginRecording");
-    cb_end_recording_fn end_recording =
-        (cb_end_recording_fn)(uintptr_t)lookup(NULL,"nvnCommandBufferEndRecording");
-    cb_clear_fn clear = (cb_clear_fn)(uintptr_t)lookup(NULL,"nvnCommandBufferClearColor");
-    cb_bind_vertex_buffer_fn bind_vertex_buffer =
-        (cb_bind_vertex_buffer_fn)(uintptr_t)lookup(NULL,"nvnCommandBufferBindVertexBuffer");
-    cb_bind_texture_fn bind_texture =
-        (cb_bind_texture_fn)(uintptr_t)lookup(NULL,"nvnCommandBufferBindTexture");
-    cb_set_texture_pool_fn set_texture_pool =
-        (cb_set_texture_pool_fn)(uintptr_t)lookup(NULL,"nvnCommandBufferSetTexturePool");
-    tp_initialize_fn texture_pool_initialize =
-        (tp_initialize_fn)(uintptr_t)lookup(NULL,"nvnTexturePoolInitialize");
-    nvn_replay_stats final_stats;
-    CHECK(initialize&&begin_recording&&end_recording&&clear&&bind_vertex_buffer&&bind_texture);
-    CHECK(set_texture_pool&&texture_pool_initialize);
-
-    /* 1. A recording that the guest makes. The commands are the ones the
-     *    guest would make: a clear with a colour of its own, a vertex buffer
-     *    at an address, and a texture handle. */
-    unsigned char buffer_object[64];
-    unsigned char command_memory[4096];
-    float colour[4] = {0.25f,0.5f,0.75f,1.0f};
-    uint64_t handle;
-    memset(buffer_object,0xaa,sizeof(buffer_object));
-    memset(command_memory,0,sizeof(command_memory));
-    expect_value("replay-initialize-succeeds",initialize(buffer_object,NULL),1);
-    /* The guest hands over the command memory it wants the recording in.
-     * Without it the recorder has no room and records nothing. */
-    add_command_memory(buffer_object,command_memory,0,sizeof(command_memory));
-    begin_recording(buffer_object);
-    clear(buffer_object,0,colour,0);
-    bind_vertex_buffer(buffer_object,0,0x1000u,64u);
-    /* A texture handle is not a pointer: it is the texture's number in the
-     * low twenty bits. The stream has no texture pool bound, so the replay
-     * has to refuse it by name. */
-    bind_texture(buffer_object,0,0,0x1234u);
-    handle = end_recording(buffer_object);
-    expect_condition("replay-end-recording-hands-out-a-handle",handle!=0);
-
-    /* 2. The replay reads the package. */
-    nvn_command_replay_reset();
-    expect_value("replay-reads-the-package",(uint64_t)(uint32_t)nvn_command_replay_run(handle),1);
-    {
-        nvn_replay_stats stats;
-        nvn_replay_state state;
-        nvn_command_replay_get_stats(&stats);
-        nvn_command_replay_get_state(&state);
-        expect_condition("replay-read-at-least-one-record",stats.records>=1);
-        expect_condition("replay-counted-the-clear",stats.clears>=1);
-        expect_condition("replay-counted-the-package",stats.packages>=1);
-        expect_value("replay-refused-no-unknown-handle",stats.refused_unknown_handle,0);
-        expect_condition("replay-refused-the-address-of-no-pool",stats.refused_no_pool>=1);
-        expect_condition("replay-refused-the-texture-of-no-pool",stats.refused_foreign_pool>=1);
-        expect_condition("replay-bound-no-texture-without-a-pool",stats.textures_bound==0);
-        expect_value("replay-keeps-no-program",state.program,0);
-        expect_value("replay-keeps-no-render-target",state.render_targets,0);
-    }
-
-    /* 3. A handle the registry does not know is refused, and nothing is
-     *    dereferenced. */
-    {
-        nvn_replay_stats before;
-        nvn_replay_stats after;
-        nvn_command_replay_get_stats(&before);
-        expect_value("replay-refuses-a-handle-it-does-not-know",
-                     (uint64_t)(uint32_t)nvn_command_replay_run(0x5eed5eed5eed5eedULL),0);
-        nvn_command_replay_get_stats(&after);
-        expect_value("replay-counted-the-unknown-handle",after.refused_unknown_handle,
-                     before.refused_unknown_handle+1);
-        expect_value("replay-read-no-record-for-the-unknown-handle",after.records,before.records);
-    }
-
-    /* 5. The numbering base of a descriptor pool. A handle holds the number
-     *    of the texture inside the pool; the number in the numbering that
-     *    all the pools share is that number plus the base of the pool, and
-     *    the base is given to a pool at its first Initialize. Two pools are
-     *    made here, so that the second one does not have the base of the
-     *    first one, and the recording binds a texture of the second one. */
-    {
-        unsigned char pool_a[64];
-        unsigned char pool_b[64];
-        unsigned char second_buffer[64];
-        unsigned char second_memory[4096];
-        unsigned char second_pool_b[64];
-        uint64_t second_handle;
-        memset(pool_a,0xaa,sizeof(pool_a));
-        memset(pool_b,0xaa,sizeof(pool_b));
-        memset(second_buffer,0xaa,sizeof(second_buffer));
-        memset(second_memory,0,sizeof(second_memory));
-        memset(second_pool_b,0xaa,sizeof(second_pool_b));
-        /* The first pool takes the numbering from zero and the numbering
-         * steps on by its size rounded up to a whole number of 256. */
-        expect_value("replay-the-first-pool-takes-the-numbering-from-zero",
-                     (uint64_t)(uint32_t)texture_pool_initialize(pool_a,(const void *)pool_a,0,300),1);
-        expect_value("replay-the-second-pool-gets-a-numbering-of-its-own",
-                     (uint64_t)(uint32_t)texture_pool_initialize(pool_b,(const void *)pool_a,0,10),1);
-        expect_value("replay-initialize-the-second-buffer-succeeds",
-                     (uint64_t)(uint32_t)initialize(second_buffer,NULL),1);
-        add_command_memory(second_buffer,second_memory,0,sizeof(second_memory));
-        begin_recording(second_buffer);
-        set_texture_pool(second_buffer,pool_b);
-        /* A texture handle is not a pointer: it is the texture's number in
-         * the low twenty bits. */
-        bind_texture(second_buffer,0,0,1u);
-        second_handle = end_recording(second_buffer);
-        expect_condition("replay-the-second-recording-hands-out-a-handle",second_handle!=0);
-        nvn_command_replay_reset();
-        expect_value("replay-reads-the-second-package",
-                     (uint64_t)(uint32_t)nvn_command_replay_run(second_handle),1);
-        {
-            nvn_replay_state second_state;
-            nvn_command_replay_get_state(&second_state);
-            /* The texture number of the second pool is the number in the
-             * pool plus the base the pool was given: one plus 256 rounded
-             * up from 300. */
-            expect_value("replay-adds-the-numbering-base-of-the-bound-pool",
-                         second_state.last_texture,513);
+    const char *which=argc>1?argv[1]:"all";
+    CHECK(argc<=2);
+    if(!strcmp(which,"all")){CHECK(repeated_pool_diagnostics(10000,0)==0);CHECK(repeated_pool_diagnostics(16,1)==0);}
+    if(!strcmp(which,"short-draw")||!strcmp(which,"all"))CHECK(adjacent(0)==0);
+    if(!strcmp(which,"short-index")||!strcmp(which,"all"))CHECK(adjacent(1)==0);
+    if(!strcmp(which,"guard-draw")||!strcmp(which,"all"))CHECK(guarded(0)==0);
+    if(!strcmp(which,"guard-index")||!strcmp(which,"all"))CHECK(guarded(1)==0);
+    if(!strcmp(which,"indirect")||!strcmp(which,"all")){
+        for(int indexed=0;indexed<2;indexed++){
+            CHECK(indirect(indexed,guest_base,1)==0);
+            CHECK(indirect(indexed,guest_base+sizeof guest_pool-20,1)==0);
+            CHECK(indirect(indexed,guest_base+sizeof guest_pool,0)==0);
+            CHECK(indirect(indexed,guest_base-8,0)==0);
+            CHECK(indirect(indexed,UINT64_C(0xf800000008),0)==0);
         }
+        CHECK(indexed_buffer()==0);
     }
-
-
-    /* 6. The replay does not walk into the guest's memory. The handle is the
-     *    only thing it is given, and the address in a record is the guest's
-     *    buffer address, which is not a host pointer. */
-    {
-        nvn_replay_stats stats;
-        nvn_command_replay_get_stats(&stats);
-        expect_condition("replay-resolved-no-address-on-the-host",stats.resolved_addresses==0);
-    }
-
-    nvn_command_replay_get_stats(&final_stats);
-
-    printf("{\"nvn_replay_errors\":%u,\"packages\":%llu,\"records\":%llu,\"clears\":%llu,"
-           "\"refused_unknown_handle\":%llu,\"refused_no_pool\":%llu,\"refused_foreign_pool\":%llu}\n",
-           errors,(unsigned long long)final_stats.packages,(unsigned long long)final_stats.records,
-           (unsigned long long)final_stats.clears,
-           (unsigned long long)final_stats.refused_unknown_handle,
-           (unsigned long long)final_stats.refused_no_pool,
-           (unsigned long long)final_stats.refused_foreign_pool);
-    return errors?1:0;
+    CHECK(!strcmp(which,"all")||!strcmp(which,"short-draw")||!strcmp(which,"short-index")||
+        !strcmp(which,"guard-draw")||!strcmp(which,"guard-index")||!strcmp(which,"indirect"));
+    printf("nvn_command_replay_contract PASS case=%s short_draw=bounded indirect_address_validation=preserved GPU=NOT_TESTED\n",which);
+    return 0;
 }

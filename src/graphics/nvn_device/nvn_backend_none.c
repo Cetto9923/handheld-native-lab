@@ -101,6 +101,27 @@ static int nvn_backend_none_submit_and_present(nvn_device_state *device, uint32_
     return 0;
 }
 
+
+static int nvn_backend_none_get_device_queue(nvn_device_state *device, void **out_physical,
+                                             void **out_device, void **out_queue, uint32_t *out_family) {
+    (void)device;
+    if (out_physical) *out_physical = NULL;
+    if (out_device) *out_device = NULL;
+    if (out_queue) *out_queue = NULL;
+    if (out_family) *out_family = 0;
+    return 0;
+}
+
+static int nvn_backend_none_present_image(nvn_device_state *device, void *image, uint32_t format,
+                                          uint32_t width, uint32_t height, const int32_t crop[4],
+                                          int32_t interval, char *reason, size_t reason_size) {
+    (void)device; (void)image; (void)format; (void)width; (void)height; (void)crop; (void)interval;
+    if (reason && reason_size) {
+        snprintf(reason, reason_size, "this build has no graphics API, so there is nothing to present into");
+    }
+    return 0;
+}
+
 static const nvn_backend s_none_backend = {
     "none",
     nvn_backend_none_create,
@@ -112,6 +133,8 @@ static const nvn_backend s_none_backend = {
     nvn_backend_none_acquire_image,
     nvn_backend_none_begin_render_pass,
     nvn_backend_none_submit_and_present,
+    nvn_backend_none_get_device_queue,
+    nvn_backend_none_present_image,
 };
 
 const nvn_backend *nvn_device_default_backend(void) { return &s_none_backend; }

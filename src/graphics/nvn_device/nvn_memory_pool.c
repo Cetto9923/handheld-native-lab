@@ -14,6 +14,8 @@
  * find that out much later, at a place where the cause is no longer visible.
  */
 #include "nvn_memory_pool.h"
+#include "nvn_engine.h"
+extern void nvn_command_buffer_retire_source_memory(void *,size_t) __attribute__((weak));
 #include "nvn_obj_ffrs.h"
 
 #include "nvn_device.h"
@@ -40,6 +42,7 @@ typedef struct {
     uint64_t size;
     uint32_t flags;
     uint64_t buffer_address;
+    uint64_t generation;
     int initialized;
     int mapped;
     char debug_label[64];
@@ -47,7 +50,11 @@ typedef struct {
 } nvn_memory_pool_state;
 
 static pthread_mutex_t s_pool_lock = PTHREAD_MUTEX_INITIALIZER;
+static int s_synthetic_address;
 static nvn_memory_pool_builder_state s_builders[NVN_MEMORY_POOL_MAX_BUILDERS];
+/* This counter belongs to the process, not a reusable table slot. No reset:
+ * old recorded commands can still hold a bridge snapshot after Finalize. */
+static uint64_t s_generation;
 static nvn_memory_pool_state s_pools[NVN_MEMORY_POOL_MAX_POOLS];
 static nvn_memory_pool_stats s_stats;
 
@@ -207,6 +214,9 @@ int nvn_memory_pool_initialize(void *pool, const void *builder) {
     nvn_memory_pool_state *p;
     uint64_t buffer_address = 0;
     int ready = 0;
+    void *storage = NULL, *device = NULL;
+    uint64_t bytes = 0;
+    uint32_t flags = 0;
 
     pthread_mutex_lock(&s_pool_lock);
     s_stats.builder_calls++;
@@ -237,6 +247,12 @@ int nvn_memory_pool_initialize(void *pool, const void *builder) {
                 b->storage, b->size);
         return 0;
     }
+    if (s_generation == UINT64_MAX) {
+        s_stats.refused++;
+        pthread_mutex_unlock(&s_pool_lock);
+        fputs("[nvn] nvnMemoryPoolInitialize: generation exhausted; refusing identity reuse\n", stderr);
+        return 0;
+    }
     p = pool_find(pool, 1);
     if (!p) {
         s_stats.refused++;
@@ -248,22 +264,38 @@ int nvn_memory_pool_initialize(void *pool, const void *builder) {
     p->storage = b->storage;
     p->size = b->size;
     p->flags = b->flags;
+    p->generation = ++s_generation;
     p->initialized = 1;
     p->mapped = 0;
-    /* The buffer address has to be stable for the lifetime of the pool: the
-     * guest hands it back to the device for every access to the memory. It is
-     * derived from the pool's own identity, so the same pool always yields
-     * the same address and two pools never share one. */
-    buffer_address = 0x6d656d0000000000ull | ((uint64_t)(uintptr_t)pool & 0xffffffffull);
+    /* The buffer address is the address of the memory the guest gave the
+     * pool. The reference host answers the same (hle_nvn.c:222), and the
+     * convention behind it is that a GPU address is the CPU address of the
+     * same memory: the guest hands this address back for every access to
+     * the memory, and the graphics device has to be able to read and write
+     * it. An address of this runtime's own making would name memory that
+     * does not exist. */
+    if (s_synthetic_address) {
+        buffer_address = 0x6d656d0000000000ull | ((uint64_t)(uintptr_t)pool & 0xffffffffull);
+    } else {
+        buffer_address = (uint64_t)(uintptr_t)b->storage;
+    }
     if (!buffer_address) buffer_address = 1;
     p->buffer_address = buffer_address;
     s_stats.initialized++;
     ready = 1;
+    storage = p->storage; bytes = p->size; flags = p->flags; device = p->device;
     pthread_mutex_unlock(&s_pool_lock);
 
-    fprintf(stderr, "[nvn] nvnMemoryPoolInitialize: pool=%p builder=%p device=%p storage=%p size=%" PRIu64
-                    " flags=0x%" PRIx32 " -> %s\n",
-            pool, builder, b->device, b->storage, b->size, b->flags, ready ? "true" : "false");
+    /* The engine resolves the addresses of the guest through the pools it
+     * knows, so the memory of this pool has to be told to it. */
+    if (ready) nvn_engine_pool_add(storage, bytes);
+
+    static unsigned s_pool_init_log_count = 0;
+    if (s_pool_init_log_count++ < 20) {
+        fprintf(stderr, "[nvn] nvnMemoryPoolInitialize: pool=%p builder=%p device=%p storage=%p size=%" PRIu64
+                        " flags=0x%" PRIx32 " -> %s\n",
+                pool, builder, device, storage, bytes, flags, ready ? "true" : "false");
+    }
     return 1;
 }
 
@@ -278,9 +310,11 @@ void nvn_memory_pool_set_debug_label(void *pool, const char *label) {
 
 void nvn_memory_pool_finalize(void *pool) {
     nvn_memory_pool_state *p;
+    void *storage=NULL;size_t storage_bytes=0;
     pthread_mutex_lock(&s_pool_lock);
     p = pool_find(pool, 0);
     if (p) {
+        storage=p->storage;storage_bytes=(size_t)p->size;
         p->initialized = 0;
         p->mapped = 0;
         p->storage = NULL;
@@ -290,7 +324,18 @@ void nvn_memory_pool_finalize(void *pool) {
         s_stats.finalized++;
     }
     pthread_mutex_unlock(&s_pool_lock);
-    fprintf(stderr, "[nvn] nvnMemoryPoolFinalize: pool=%p\n", pool);
+    /* Storage remains guest-owned until this API returns. Retire source
+     * handles and engine registrations outside the pool-table lock. Never
+     * retain a table interior pointer across either callback. */
+    if(storage&&storage_bytes){
+        if(nvn_command_buffer_retire_source_memory)nvn_command_buffer_retire_source_memory(storage,storage_bytes);
+        else if(nvn_engine_ready()){fputs("[nvn] live engine missing command-source retirement provider\n",stderr);abort();}
+        nvn_engine_pool_del(storage);
+    }
+    static unsigned s_pool_fin_log_count = 0;
+    if (s_pool_fin_log_count++ < 20) {
+        fprintf(stderr, "[nvn] nvnMemoryPoolFinalize: pool=%p\n", pool);
+    }
     NVN_VOID_RETURN();
 }
 
@@ -350,6 +395,12 @@ void nvn_memory_pool_invalidate_mapped_range(const void *pool, ptrdiff_t offset,
 /* The GPU visible address of the pool. It is stable for the lifetime of the
  * pool, which is what the guest needs when it hands the address back to the
  * device for an access. */
+void nvn_memory_pool_set_synthetic_address(int synthetic) {
+    pthread_mutex_lock(&s_pool_lock);
+    s_synthetic_address = synthetic ? 1 : 0;
+    pthread_mutex_unlock(&s_pool_lock);
+}
+
 uint64_t nvn_memory_pool_get_buffer_address(const void *pool) {
     nvn_memory_pool_state *p;
     uint64_t address = 0;
@@ -508,6 +559,7 @@ int nvn_memory_pool_info_of(const void *pool, nvn_memory_pool_info *out) {
         pthread_mutex_unlock(&s_pool_lock);
         return 0;
     }
+    out->generation = slot->generation;
     out->mem = (uint8_t *)slot->storage;
     out->size = slot->size;
     out->flags = slot->flags;

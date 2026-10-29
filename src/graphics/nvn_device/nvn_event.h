@@ -22,13 +22,11 @@
  * an event that was already made, and every getter answers with the event's
  * own values.
  *
- * The value of an event lives on the host as well, and this is a deliberate
- * difference from the reference host: the reference host puts the value into
- * the guest's pool memory, at the offset of the event inside the pool
- * (hle_nvn.c:649), so that the GPU can write it. This runtime has no GPU
- * path for the event yet, and it does not write into the guest's memory at
- * all, so the value is kept beside the rest of the event's state. The
- * contract proves that the guest's pool memory is not touched either.
+ * The value lives in the memory pool at the builder's offset, shared by CPU
+ * and GPU accesses. Initialization preserves that word. Reads, CPU signals
+ * and lifecycle changes resolve pending GPU writes before touching it. Only
+ * this validated four-byte word may change; opaque event/builder bytes and
+ * the surrounding pool bytes remain untouched.
  *
  * Where the evidence comes from:
  *
@@ -77,7 +75,7 @@ size_t nvn_event_family_count(void);
 const nvn_event_family_entry *nvn_event_family_entry_at(size_t index);
 
 /* Where the value of an event lives, for the replay layer that writes it.
- * Returns 0 when this runtime has no event at that address. */
+ * Returns 0 for unknown events, unavailable pools or invalid four-byte storage. */
 int nvn_event_value_address_of(const void *event, uint64_t *address);
 
 /* Statistics for the contract. */

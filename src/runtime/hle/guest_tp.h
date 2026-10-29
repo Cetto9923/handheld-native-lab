@@ -94,7 +94,12 @@ const unsigned char *guest_tp_current_base(void);
 struct guest_tp_result guest_tp_scan_text(const void *text, size_t bytes,
                                           struct guest_tp_patch_report *report);
 
-/* Rewrite every MRS Xt, TPIDR_EL0 in text into the adapter trap. text must
+/* Rewrite every MRS Xt, TPIDR_EL0 in text into the adapter. Android AArch64
+ * uses immutable native TP-read thunks where reachable, with the existing trap
+ * on allocation/reach failure or an unavailable fast thread slot. Other hosts
+ * retain the trap path. Native thunks need 32 bytes of spare guest stack.
+ * Host TP is never changed. FFRS_GUEST_TP_FAST=0 retains only the trap path.
+ * text must
  * be writable and stay writable until the caller clears the instruction
  * cache. A range that also holds data words equal to that encoding may be
  * rewritten by mistake, so prefer guest_tp_patch_site for reviewed sites.

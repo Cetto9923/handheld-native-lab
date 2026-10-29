@@ -16,8 +16,22 @@ struct mutex_entry {
     uintptr_t owner_token;
     struct mutex_entry *next;
 };
+
+#define OBJECT_HASH_SIZE 2048
+#define OBJECT_HASH_MASK (OBJECT_HASH_SIZE - 1)
+static inline size_t object_hash(const void *obj) {
+    uintptr_t k = (uintptr_t)obj;
+    k = (~k) + (k << 18);
+    k = k ^ (k >> 31);
+    k = k * 21;
+    k = k ^ (k >> 11);
+    k = k + (k << 6);
+    k = k ^ (k >> 22);
+    return (size_t)(k & OBJECT_HASH_MASK);
+}
+
 static pthread_mutex_t registry_mutex=PTHREAD_MUTEX_INITIALIZER;
-static struct mutex_entry *registry;
+static struct mutex_entry *mutex_buckets[OBJECT_HASH_SIZE];
 static pthread_once_t identity_once=PTHREAD_ONCE_INIT;
 static pthread_key_t identity_key;
 static uint32_t next_handle;
@@ -55,8 +69,9 @@ static struct thread_identity *current_identity(void) {
 }
 uintptr_t nso_host_mutex_thread_token(void) {return (uintptr_t)current_identity()->token;}
 static struct mutex_entry *find(void *object) {
-    struct mutex_entry *e=registry;
-    while(e && e->object!=object)e=e->next;
+    size_t b = object_hash(object);
+    struct mutex_entry *e = mutex_buckets[b];
+    while(e && e->object != object) e = e->next;
     return e;
 }
 static struct mutex_entry *borrow(void *object) {
@@ -79,8 +94,9 @@ static struct mutex_entry *borrow(void *object) {
             pthread_mutexattr_destroy(&attr);
             if(error) fatal("pthread_mutex_init", error);
             e->object = object;
-            e->next = registry;
-            registry = e;
+            size_t idx = object_hash(object);
+            e->next = mutex_buckets[idx];
+            mutex_buckets[idx] = e;
         } else {
             fatal("unregistered MutexType", EINVAL);
         }
@@ -113,7 +129,9 @@ void nso_host_initialize_mutex(void *object,bool recursive,int level) {
     e->object=object;
     pthread_mutex_lock(&registry_mutex);
     if(find(object))fatal("duplicate InitializeMutex",EINVAL);
-    e->next=registry;registry=e;
+    size_t idx = object_hash(object);
+    e->next = mutex_buckets[idx];
+    mutex_buckets[idx] = e;
     unsigned char *bytes=object;
     bytes[1]=recursive;
     memcpy(bytes+4,&level,4);
@@ -124,8 +142,9 @@ void nso_host_initialize_mutex(void *object,bool recursive,int level) {
 void nso_host_finalize_mutex(void *object) {
     if(!object || ((uintptr_t)object & 7)) fatal("unaligned MutexType", EINVAL);
     pthread_mutex_lock(&registry_mutex);
-    struct mutex_entry **slot=&registry;
-    while(*slot && (*slot)->object!=object)slot=&(*slot)->next;
+    size_t idx = object_hash(object);
+    struct mutex_entry **slot = &mutex_buckets[idx];
+    while(*slot && (*slot)->object!=object) slot = &(*slot)->next;
     if(!*slot) {
         unsigned char *b = (unsigned char *)object;
         if(b && b[0] == 1) {
@@ -190,6 +209,105 @@ bool nso_host_is_mutex_locked_by_current_thread(const void *object) {
     return owned;
 }
 
+struct condition_entry {
+    void *object;
+    pthread_cond_t native;
+    unsigned users;
+    struct condition_entry *next;
+};
+static struct condition_entry *conditions[OBJECT_HASH_SIZE];
+static struct condition_entry *condition_borrow(void *object, int create) {
+    if (!object || ((uintptr_t)object & 3)) fatal("unaligned ConditionVariableType", EINVAL);
+    pthread_mutex_lock(&registry_mutex);
+    size_t bucket = object_hash(object);
+    struct condition_entry *entry = conditions[bucket];
+    while (entry && entry->object != object) entry = entry->next;
+    if (!entry && (create || *(unsigned char *)object == 1)) {
+        entry = calloc(1, sizeof(*entry));
+        if (!entry) fatal("condition allocation", ENOMEM);
+        pthread_condattr_t attr;
+        int error = pthread_condattr_init(&attr);
+        if (error) fatal("condition attributes", error);
+        if (!error) error = pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
+        if (!error) error = pthread_cond_init(&entry->native, &attr);
+        pthread_condattr_destroy(&attr);
+        if (error) fatal("condition init", error);
+        entry->object = object;
+        entry->next = conditions[bucket]; conditions[bucket] = entry;
+    } else if (entry && create) fatal("duplicate InitializeConditionVariable", EINVAL);
+    if (!entry) fatal("unregistered ConditionVariableType", EINVAL);
+    entry->users++;
+    pthread_mutex_unlock(&registry_mutex);
+    return entry;
+}
+static void condition_drop(struct condition_entry *entry) {
+    pthread_mutex_lock(&registry_mutex); entry->users--; pthread_mutex_unlock(&registry_mutex);
+}
+void nso_host_initialize_condition_variable(void *object) {
+    struct condition_entry *entry = condition_borrow(object, 1);
+    /* SDK20 initializer +0x13bbd0 writes initialized byte 0; the internal
+     * condition at +4 is a zeroed 32-bit wait word. Padding is untouched. */
+    *(uint32_t *)((unsigned char *)object + 4) = 0;
+    *(unsigned char *)object = 1;
+    condition_drop(entry);
+}
+void nso_host_finalize_condition_variable(void *object) {
+    if (!object) fatal("FinalizeConditionVariable null", EINVAL);
+    pthread_mutex_lock(&registry_mutex);
+    struct condition_entry **slot = &conditions[object_hash(object)];
+    while (*slot && (*slot)->object != object) slot = &(*slot)->next;
+    if (!*slot && *(unsigned char *)object == 1) {
+        *(unsigned char *)object = 0; pthread_mutex_unlock(&registry_mutex); return;
+    }
+    if (!*slot || (*slot)->users) fatal("FinalizeConditionVariable active/unregistered", EBUSY);
+    struct condition_entry *entry = *slot;
+    int error = pthread_cond_destroy(&entry->native);
+    if (error) fatal("condition destroy", error);
+    *slot = entry->next; *(unsigned char *)object = 0;
+    pthread_mutex_unlock(&registry_mutex); free(entry);
+}
+static bool condition_wait(void *object, void *mutex, int timed, int64_t nanoseconds) {
+    struct condition_entry *cv = condition_borrow(object, 0);
+    struct mutex_entry *m = borrow(mutex);
+    struct thread_identity *identity = current_identity();
+    struct timespec deadline;
+    if (timed) {
+        if (clock_gettime(CLOCK_MONOTONIC, &deadline)) fatal("condition clock", errno);
+        if (nanoseconds > 0) {
+            deadline.tv_sec += nanoseconds / INT64_C(1000000000);
+            deadline.tv_nsec += nanoseconds % INT64_C(1000000000);
+            if (deadline.tv_nsec >= 1000000000) { deadline.tv_nsec -= 1000000000; deadline.tv_sec++; }
+        }
+    }
+    pthread_mutex_lock(&registry_mutex);
+    if (m->depth != 1 || m->owner_handle != identity->handle)
+        fatal("condition wait requires single held mutex level", EPERM);
+    m->depth = 0; m->owner_handle = 0; m->owner_token = 0; mirror(m);
+    pthread_mutex_unlock(&registry_mutex);
+    int error = timed ? pthread_cond_timedwait(&cv->native, &m->native, &deadline)
+                      : pthread_cond_wait(&cv->native, &m->native);
+    pthread_mutex_lock(&registry_mutex);
+    if (m->depth || m->owner_handle) fatal("condition reacquire ownership", EINVAL);
+    m->depth = 1; m->owner_handle = identity->handle; m->owner_token = (uintptr_t)identity->token;
+    mirror(m); m->users--;
+    pthread_mutex_unlock(&registry_mutex);
+    condition_drop(cv);
+    if (error && error != ETIMEDOUT) fatal("condition wait", error);
+    /* SDK +0x149384 returns 0 on timeout; +0x14939c returns 1 on wake. */
+    return error == 0;
+}
+void nso_host_wait_condition_variable(void *condition, void *mutex) {
+    (void)condition_wait(condition, mutex, 0, 0);
+}
+bool nso_host_timed_wait_condition_variable(void *condition, void *mutex, int64_t nanoseconds) {
+    return condition_wait(condition, mutex, 1, nanoseconds);
+}
+void nso_host_signal_condition_variable(void *object) {
+    struct condition_entry *cv = condition_borrow(object, 0);
+    int error = pthread_cond_signal(&cv->native); condition_drop(cv);
+    if (error) fatal("condition signal", error);
+}
+
 struct rwlock_entry {
     void *object;
     pthread_rwlock_t native;
@@ -201,10 +319,11 @@ struct rwlock_entry {
     struct rwlock_entry *next;
 };
 static pthread_mutex_t rwlock_registry_mutex = PTHREAD_MUTEX_INITIALIZER;
-static struct rwlock_entry *rwlock_registry = NULL;
+static struct rwlock_entry *rwlock_buckets[OBJECT_HASH_SIZE];
 
 static struct rwlock_entry *find_rwlock(void *object) {
-    struct rwlock_entry *e = rwlock_registry;
+    size_t b = object_hash(object);
+    struct rwlock_entry *e = rwlock_buckets[b];
     while(e && e->object != object) e = e->next;
     return e;
 }
@@ -221,8 +340,9 @@ static struct rwlock_entry *borrow_rwlock(void *object) {
             int error = pthread_rwlock_init(&e->native, NULL);
             if(error) fatal("pthread_rwlock_init", error);
             e->object = object;
-            e->next = rwlock_registry;
-            rwlock_registry = e;
+            size_t idx = object_hash(object);
+            e->next = rwlock_buckets[idx];
+            rwlock_buckets[idx] = e;
         } else {
             fatal("unregistered ReaderWriterLockType", EINVAL);
         }
@@ -247,8 +367,9 @@ void nso_host_initialize_rwlock(void *object) {
     e->object = object;
     pthread_mutex_lock(&rwlock_registry_mutex);
     if(find_rwlock(object)) fatal("duplicate InitializeReaderWriterLock", EINVAL);
-    e->next = rwlock_registry;
-    rwlock_registry = e;
+    size_t idx = object_hash(object);
+    e->next = rwlock_buckets[idx];
+    rwlock_buckets[idx] = e;
     unsigned char *bytes = object;
     bytes[0x10] = 1;
     *(uintptr_t *)(bytes + 0x18) = 0;
@@ -260,7 +381,8 @@ void nso_host_initialize_rwlock(void *object) {
 void nso_host_finalize_rwlock(void *object) {
     if(!object || ((uintptr_t)object & 7)) fatal("unaligned ReaderWriterLockType", EINVAL);
     pthread_mutex_lock(&rwlock_registry_mutex);
-    struct rwlock_entry **slot = &rwlock_registry;
+    size_t idx = object_hash(object);
+    struct rwlock_entry **slot = &rwlock_buckets[idx];
     while(*slot && (*slot)->object != object) slot = &(*slot)->next;
     if(!*slot) {
         unsigned char *b = (unsigned char *)object;

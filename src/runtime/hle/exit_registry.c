@@ -155,6 +155,9 @@ static pthread_key_t thread_exit_key;
 static pthread_once_t thread_exit_once = PTHREAD_ONCE_INIT;
 static int thread_exit_key_created = 0;
 
+/* The runtime drains guest TLS destructors while guest TLS/OS records are
+ * still bound. Native unit-test callbacks keep their ordinary host ABI. */
+extern int guest_process_invoke_thread_exit(nso_cxa_callback,void *) __attribute__((weak));
 static void thread_exit_destructor(void *data) {
     struct thread_exit_state *st = (struct thread_exit_state *)data;
     if (!st) return;
@@ -163,7 +166,9 @@ static void thread_exit_destructor(void *data) {
         st->head = curr->next;
         if (st->pending > 0) st->pending--;
         if (curr->fn) {
-            curr->fn(curr->arg);
+            int handled=guest_process_invoke_thread_exit ? guest_process_invoke_thread_exit(curr->fn,curr->arg) : 0;
+            if (handled < 0) { fprintf(stderr,"[crt] guest TLS destructor boundary failed\n"); abort(); }
+            if (!handled) curr->fn(curr->arg);
         }
         free(curr);
     }
@@ -223,8 +228,11 @@ void nso_exit_registry_thread_finalize(void) {
     if (!thread_exit_key_created) return;
     struct thread_exit_state *st = pthread_getspecific(thread_exit_key);
     if (!st) return;
-    pthread_setspecific(thread_exit_key, NULL);
+    /* Keep this state published during callbacks: a destructor registering a
+     * new destructor appends to the same drain instead of escaping to Bionic
+     * teardown after the guest TLS domains have been unbound. */
     thread_exit_destructor(st);
+    pthread_setspecific(thread_exit_key, NULL);
 }
 
 void nso_exit_registry_thread_discard(void) {

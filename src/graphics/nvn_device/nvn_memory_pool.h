@@ -20,12 +20,17 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* The guest creates a few pools: one for the frame buffers, one for the
  * textures, maybe one for the upload staging. The table is small and fixed on
  * purpose; a guest that wants more is told so instead of being served
  * silently. */
-#define NVN_MEMORY_POOL_MAX_BUILDERS 64
-#define NVN_MEMORY_POOL_MAX_POOLS 64
+/* Bounded host bookkeeping capacity; not an NVN hardware capability claim. */
+#define NVN_MEMORY_POOL_MAX_BUILDERS 4096
+#define NVN_MEMORY_POOL_MAX_POOLS 4096
 
 /* The memory pool flags, as the vendored NVN header documents them. The
  * runtime uses them to pick the CPU and GPU access it offers. */
@@ -47,6 +52,16 @@ typedef struct nvn_memory_pool_family_entry {
 
 size_t nvn_memory_pool_family_count(void);
 const nvn_memory_pool_family_entry *nvn_memory_pool_family_entry_at(size_t index);
+
+/* Whether the buffer address of a pool is the address of its own memory or
+ * a number of this runtime's making.
+ *
+ * The reference answers with the address of the memory the guest gave the
+ * pool, and the convention behind it is that a GPU address is the CPU
+ * address of the same memory. The other answer was what this runtime gave
+ * before, and it names memory that does not exist. The switch exists so
+ * that the effect of the change can be told apart without a rebuild. */
+void nvn_memory_pool_set_synthetic_address(int synthetic);
 
 /* Statistics for the contract. */
 typedef struct nvn_memory_pool_stats {
@@ -70,5 +85,9 @@ void nvn_memory_pool_get_stats(nvn_memory_pool_stats *out);
  * it. The address belongs to a pool the guest created; an address that belongs
  * to no pool has no host address and the call says so by returning NULL. */
 void *nvn_memory_pool_resolve_address(uint64_t address, size_t *available);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* FFRS_NVN_MEMORY_POOL_H */

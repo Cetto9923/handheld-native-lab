@@ -12,6 +12,11 @@ bool nso_host_try_lock_mutex(void *object);
 void nso_host_unlock_mutex(void *object);
 bool nso_host_is_mutex_locked_by_current_thread(const void *object);
 uintptr_t nso_host_mutex_thread_token(void);
+void nso_host_initialize_condition_variable(void *condition);
+void nso_host_finalize_condition_variable(void *condition);
+void nso_host_wait_condition_variable(void *condition, void *mutex);
+bool nso_host_timed_wait_condition_variable(void *condition, void *mutex, int64_t nanoseconds);
+void nso_host_signal_condition_variable(void *condition);
 
 void nso_host_initialize_rwlock(void *object);
 void nso_host_finalize_rwlock(void *object);

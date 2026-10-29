@@ -15,6 +15,11 @@ import android.view.Surface;
 public final class GameWindowNative {
     static { System.loadLibrary("ffrs_game_window"); }
     private GameWindowNative() {}
+    /** Actual Activity focus: 1 focused, 2 unfocused, 3 background. */
+    public static native void setFocusState(int state);
+    public static native void setPadState(boolean connected, long buttons, int lx, int ly, int rx, int ry);
+    public static native void audioDevicesChanged();
+    public static native boolean hostExitReady(boolean request);
     /** Returns {present, pointer, width, height, format, generation}. */
     public static native long[] setSurface(Surface surface);
     /** Releases the published platform window reference. */

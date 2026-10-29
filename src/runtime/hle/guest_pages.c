@@ -208,11 +208,8 @@ done:
     return v;
 }
 
-struct guest_pages_result guest_pages_free_exact(guest_pages *p, uintptr_t address, size_t bytes) {
-    if (!p) return result(GUEST_PAGES_INVALID);
-    if (!valid_range(p, address, bytes)) return result(GUEST_PAGES_UNSUPPORTED);
+static struct guest_pages_result free_exact_locked(guest_pages *p,uintptr_t address,size_t bytes) {
     struct guest_pages_result v = result(GUEST_PAGES_OK);
-    pthread_mutex_lock(&p->mutex);
     struct page_region *r = containing(p, address, bytes);
     if (!r) { v.status = GUEST_PAGES_NOT_OWNED; goto done; }
     if (r->quarantined) { v.status = GUEST_PAGES_QUARANTINED; goto done; }
@@ -240,8 +237,60 @@ struct guest_pages_result guest_pages_free_exact(guest_pages *p, uintptr_t addre
     }
     *link = a->next; drop_node(p,GUEST_METADATA_PAGE_ALLOCATION,a); changed(p);
 done:
-    pthread_mutex_unlock(&p->mutex);
     return v;
+}
+struct guest_pages_result guest_pages_free_exact(guest_pages *p,uintptr_t address,size_t bytes) {
+    if(!p)return result(GUEST_PAGES_INVALID);
+    if(!valid_range(p,address,bytes))return result(GUEST_PAGES_UNSUPPORTED);
+    pthread_mutex_lock(&p->mutex);
+    struct guest_pages_result v=free_exact_locked(p,address,bytes);
+    pthread_mutex_unlock(&p->mutex);return v;
+}
+/* Refine a live allocation at an aligned boundary without changing backing
+ * or charged totals. New metadata is secured before publishing either half. */
+static struct guest_pages_result split_at_locked(guest_pages *p,struct page_region *r,uintptr_t cut) {
+    for(struct page_allocation *a=r->allocations;a;a=a->next){
+        if(cut<=a->address || cut-a->address>=a->bytes)continue;
+        struct page_allocation *right=page_node(p,GUEST_METADATA_PAGE_ALLOCATION,sizeof(*right));
+        if(!right)return result(GUEST_PAGES_NO_MEMORY);
+        guest_charge_ticket *ticket=NULL;
+        struct guest_context_result c=guest_charge_split(a->ticket,cut-a->address,&ticket);
+        if(c.status!=GUEST_CONTEXT_OK){drop_node(p,GUEST_METADATA_PAGE_ALLOCATION,right);struct guest_pages_result v=result(context_status(c.status));v.context=c;return v;}
+        *right=*a;right->address=cut;right->bytes=a->bytes-(cut-a->address);right->ticket=ticket;
+        a->bytes=cut-a->address;a->next=right;changed(p);break;
+    }
+    return result(GUEST_PAGES_OK);
+}
+/* Preflight gapless owned backing under one lock, partition accounting at
+ * the two range boundaries, then perform actual frees/refunds. A failed VM
+ * operation quarantines the region with all remaining identities retained. */
+struct guest_pages_result guest_pages_free_allocations(guest_pages *p,uintptr_t address,size_t bytes) {
+    if(!p)return result(GUEST_PAGES_INVALID);
+    if(!valid_range(p,address,bytes))return result(GUEST_PAGES_UNSUPPORTED);
+    pthread_mutex_lock(&p->mutex);
+    struct guest_pages_result v=result(GUEST_PAGES_OK);
+    struct page_region *r=containing(p,address,bytes);
+    if(!r){v.status=GUEST_PAGES_NOT_OWNED;goto done;}
+    if(r->quarantined){v.status=GUEST_PAGES_QUARANTINED;goto done;}
+    uintptr_t end=address+bytes;
+    for(uintptr_t at=address;at<end;){
+        struct page_allocation *a=r->allocations;
+        while(a && !(at>=a->address && at-a->address<a->bytes))a=a->next;
+        if(!a || !a->committed || !a->backed){v.status=GUEST_PAGES_UNSUPPORTED;goto done;}
+        uintptr_t next=a->address+a->bytes;at=next<end?next:end;
+    }
+    v=split_at_locked(p,r,address);if(v.status!=GUEST_PAGES_OK)goto done;
+    v=split_at_locked(p,r,end);if(v.status!=GUEST_PAGES_OK)goto done;
+    for(uintptr_t at=address;at<end;){
+        struct page_allocation *a=r->allocations;
+        while(a&&a->address!=at)a=a->next;
+        size_t count=a->bytes;
+        v=free_exact_locked(p,at,count);
+        if(v.status!=GUEST_PAGES_OK)goto done;
+        at+=count;
+    }
+done:
+    pthread_mutex_unlock(&p->mutex);return v;
 }
 
 /* Called with owner lock. A successful munmap precedes every refund. Keep a

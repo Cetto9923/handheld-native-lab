@@ -39,6 +39,8 @@
  * has to fit in those 64 bytes and to be consumed by the initialisation,
  * because the guest reuses the same stack area right afterwards. */
 #define NVN_DEVICE_BUILDER_SIZE 64
+/* Successful-call traces are opt-in. Failure diagnostics remain enabled. */
+int nvn_trace_enabled(void);
 
 /* Exit code for a guest call into an NVN entry point that is not implemented
  * yet. It is distinct from the guest's own fatal error (134) and from the
@@ -118,6 +120,22 @@ typedef struct nvn_backend {
      * measured and logged. */
     int (*submit_and_present)(nvn_device_state *device, uint32_t index, void *image,
                                char *reason, size_t reason_size);
+    /* The physical device, the device and the queue of this backend.
+     *
+     * The replay engine submits to the same queue as everything else, so it
+     * has to be the same device and the same queue: an image that one
+     * device created cannot be given to the queue of another one. */
+    int (*get_device_queue)(nvn_device_state *device, void **out_physical, void **out_device,
+                             void **out_queue, uint32_t *out_family);
+    /* Present an image that something else rendered into.
+     *
+     * The image is copied into the swapchain and shown. The copy keeps the
+     * shape of the game: the crop is the part of the game's image that the
+     * window shows, and the image is scaled into the swapchain with the
+     * shape it has, so that nothing of the game's picture is cut away. */
+    int (*present_image)(nvn_device_state *device, void *image, uint32_t format, uint32_t width,
+                          uint32_t height, const int32_t crop[4], int32_t interval, char *reason,
+                          size_t reason_size);
 } nvn_backend;
 
 struct nvn_device_state {

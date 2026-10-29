@@ -1,6 +1,6 @@
 /* The NVN render state family implementation.
  *
- * See nvn_render_state.h for why the state lives on the host.
+ * Packed value fields live in the guest object so ordinary copies retain them.
  *
  * The defaults are the ones the NVN specification gives. The guest asks for
  * the defaults explicitly, and it expects the state to really be the defaults
@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "nvn_object_table.h"
+#include "nvn_packed_state.h"
 
 /* The enumeration values the NVN specification uses. Only the ones the
  * runtime needs are named; the rest are passed through as the numbers the
@@ -126,6 +127,30 @@ static pthread_mutex_t s_rs_lock = PTHREAD_MUTEX_INITIALIZER;
 static nvn_object_table s_states = { NULL, 0, 0, sizeof(nvn_rs_value) };
 static nvn_render_state_stats s_stats;
 
+static void unpack_value(nvn_rs_value *v) {
+    switch(v->family) {
+    case NVN_RS_COLOR:{ffrs_color_st p;memcpy(&p,v->object,sizeof p);v->color_blend_enable=p.blend_en;v->color_logic_op=p.logic_op;v->color_alpha_test=p.alpha_func;break;}
+    case NVN_RS_CHANNEL_MASK:{ffrs_chmask_st p;memcpy(&p,v->object,sizeof p);v->channel_mask=p.mask;break;}
+    case NVN_RS_MULTISAMPLE:{ffrs_ms_st p;memcpy(&p,v->object,sizeof p);v->ms_enable=p.enable;v->ms_samples=p.samples;v->ms_alpha_to_coverage_enable=p.a2c;v->ms_alpha_to_coverage_dither=p.a2c_dither;v->ms_raster_samples=p.raster_samples;v->ms_coverage_modulation_mode=p.cov_mod;v->ms_coverage_to_color_enable=p.cov2color_en;v->ms_coverage_to_color_output=p.cov2color_out;v->ms_sample_locations_enable=p.sl_en;v->ms_sample_locations_grid_enable=p.sl_grid;break;}
+    case NVN_RS_POLYGON:{ffrs_poly_st p;memcpy(&p,v->object,sizeof p);v->polygon_cull_face=p.cull;v->polygon_front_face=p.front;v->polygon_mode=p.mode;v->polygon_offset_enables=p.offset_en;break;}
+    case NVN_RS_DEPTH_STENCIL:{ffrs_ds_st p;memcpy(&p,v->object,sizeof p);v->ds_depth_test_enable=p.dt;v->ds_depth_write_enable=p.dw;v->ds_depth_func=p.df;v->ds_stencil_test_enable=p.st;v->ds_stencil_func[0]=p.sf_f;v->ds_stencil_func[1]=p.sf_b;v->ds_stencil_op[0][0]=p.fail_f;v->ds_stencil_op[0][1]=p.zfail_f;v->ds_stencil_op[0][2]=p.zpass_f;v->ds_stencil_op[1][0]=p.fail_b;v->ds_stencil_op[1][1]=p.zfail_b;v->ds_stencil_op[1][2]=p.zpass_b;break;}
+    case NVN_RS_VERTEX_ATTRIB:{ffrs_va_st p;memcpy(&p,v->object,sizeof p);v->va_format=p.fmt;v->va_offset=p.offset;v->va_stream_index=p.stream;break;}
+    case NVN_RS_VERTEX_STREAM:{ffrs_vs_st p;memcpy(&p,v->object,sizeof p);v->vs_stride=p.stride;v->vs_divisor=p.divisor;break;}
+    }
+}
+static void pack_value(const nvn_rs_value *v) {
+    if(!v)return;
+    switch(v->family) {
+    case NVN_RS_COLOR:{ffrs_color_st p={v->color_blend_enable,v->color_logic_op,v->color_alpha_test};memcpy(v->object,&p,sizeof p);break;}
+    case NVN_RS_CHANNEL_MASK:{ffrs_chmask_st p={v->channel_mask};memcpy(v->object,&p,sizeof p);break;}
+    case NVN_RS_MULTISAMPLE:{ffrs_ms_st p={v->ms_enable,v->ms_samples,v->ms_alpha_to_coverage_enable,v->ms_alpha_to_coverage_dither,v->ms_raster_samples,v->ms_coverage_modulation_mode,v->ms_coverage_to_color_enable,v->ms_coverage_to_color_output,v->ms_sample_locations_enable,v->ms_sample_locations_grid_enable};memcpy(v->object,&p,sizeof p);break;}
+    case NVN_RS_POLYGON:{ffrs_poly_st p={v->polygon_cull_face,v->polygon_front_face,v->polygon_mode,v->polygon_offset_enables};memcpy(v->object,&p,sizeof p);break;}
+    case NVN_RS_DEPTH_STENCIL:{ffrs_ds_st p={v->ds_depth_test_enable,v->ds_depth_write_enable,v->ds_depth_func,v->ds_stencil_test_enable,v->ds_stencil_func[0],v->ds_stencil_func[1],v->ds_stencil_op[0][0],v->ds_stencil_op[0][1],v->ds_stencil_op[0][2],v->ds_stencil_op[1][0],v->ds_stencil_op[1][1],v->ds_stencil_op[1][2]};memcpy(v->object,&p,sizeof p);break;}
+    case NVN_RS_VERTEX_ATTRIB:{ffrs_va_st p={v->va_format,v->va_offset,v->va_stream_index};memcpy(v->object,&p,sizeof p);break;}
+    case NVN_RS_VERTEX_STREAM:{ffrs_vs_st p={v->vs_stride,v->vs_divisor};memcpy(v->object,&p,sizeof p);break;}
+    }
+}
+
 /* The defaults of the specification. The identity of the state and the fact
  * that the table slot is occupied are not part of the family, so they survive
  * the reset. */
@@ -184,6 +209,7 @@ static void apply_defaults(nvn_rs_value *v, int family) {
 }
 
 static nvn_rs_value *state_find(const void *object, int family, int create) {
+    (void)create;
     size_t i;
     nvn_rs_value *free_slot = NULL;
     if (!object) return NULL;
@@ -191,12 +217,11 @@ static nvn_rs_value *state_find(const void *object, int family, int create) {
         nvn_rs_value *entry = (nvn_rs_value *)nvn_object_table_at(&s_states, i);
         if (!entry) continue;
         if (entry->in_use) {
-            if (entry->object == object && entry->family == family) return entry;
+            if (entry->object == object && entry->family == family) {unpack_value(entry);return entry;}
         } else if (!free_slot) {
             free_slot = entry;
         }
     }
-    if (!create) return NULL;
     if (!free_slot) {
         free_slot = (nvn_rs_value *)nvn_object_table_new_entry(&s_states, NVN_RS_MAX_OBJECTS);
         if (!free_slot) return NULL;
@@ -206,6 +231,7 @@ static nvn_rs_value *state_find(const void *object, int family, int create) {
     free_slot->family = family;
     apply_defaults(free_slot, family);
     free_slot->in_use = 1;
+    unpack_value(free_slot);
     return free_slot;
 }
 
@@ -237,7 +263,8 @@ static nvn_rs_value *state_find(const void *object, int family, int create) {
         apply_defaults(&tmp, (rs_family));                                            \
     }
 
-#define RS_END() pthread_mutex_unlock(&s_rs_lock);
+#define RS_END_READ() pthread_mutex_unlock(&s_rs_lock);
+#define RS_END() do { pack_value(v); pthread_mutex_unlock(&s_rs_lock); } while(0);
 
 /* ------------------------------------------------------------------ */
 /* The colour state                                                    */
@@ -293,7 +320,7 @@ int nvn_render_state_color_get_blend_enable(const void *object, int target) {
     int value = 0;
     RS_BEGIN_READ(NVN_RS_COLOR)
     if (target >= 0 && target < NVN_RS_TARGETS && ((tmp.color_blend_enable >> target) & 1u)) value = 1;
-    RS_END()
+    RS_END_READ()
     s_stats.gets++;
     return value;
 }
@@ -302,7 +329,7 @@ int nvn_render_state_color_get_logic_op(const void *object) {
     int value = NVN_LOGIC_OP_COPY;
     RS_BEGIN_READ(NVN_RS_COLOR)
     value = tmp.color_logic_op;
-    RS_END()
+    RS_END_READ()
     s_stats.gets++;
     return value;
 }
@@ -311,7 +338,7 @@ int nvn_render_state_color_get_alpha_test(const void *object) {
     int value = NVN_ALPHA_FUNC_ALWAYS;
     RS_BEGIN_READ(NVN_RS_COLOR)
     value = tmp.color_alpha_test;
-    RS_END()
+    RS_END_READ()
     s_stats.gets++;
     return value;
 }
@@ -350,7 +377,7 @@ void nvn_render_state_channel_mask_get_channel_mask(const void *object, int targ
     uint32_t m = 0;
     RS_BEGIN_READ(NVN_RS_CHANNEL_MASK)
     if (target >= 0 && target < NVN_RS_TARGETS) m = (tmp.channel_mask >> (4 * target)) & 0xfu;
-    RS_END()
+    RS_END_READ()
     if (red) *red = (m & 1u) != 0;
     if (green) *green = (m & 2u) != 0;
     if (blue) *blue = (m & 4u) != 0;
@@ -504,7 +531,7 @@ int nvn_render_state_multisample_get_multisample_enable(const void *object) {
     int value = 0;
     RS_BEGIN_READ(NVN_RS_MULTISAMPLE)
     value = tmp.ms_enable;
-    RS_END()
+    RS_END_READ()
     s_stats.gets++;
     return value;
 }
@@ -513,7 +540,7 @@ int nvn_render_state_multisample_get_samples(const void *object) {
     int value = 0;
     RS_BEGIN_READ(NVN_RS_MULTISAMPLE)
     value = tmp.ms_samples;
-    RS_END()
+    RS_END_READ()
     s_stats.gets++;
     return value;
 }
@@ -522,7 +549,7 @@ int nvn_render_state_multisample_get_alpha_to_coverage_enable(const void *object
     int value = 0;
     RS_BEGIN_READ(NVN_RS_MULTISAMPLE)
     value = tmp.ms_alpha_to_coverage_enable;
-    RS_END()
+    RS_END_READ()
     s_stats.gets++;
     return value;
 }
@@ -531,7 +558,7 @@ int nvn_render_state_multisample_get_alpha_to_coverage_dither(const void *object
     int value = 0;
     RS_BEGIN_READ(NVN_RS_MULTISAMPLE)
     value = tmp.ms_alpha_to_coverage_dither;
-    RS_END()
+    RS_END_READ()
     s_stats.gets++;
     return value;
 }
@@ -540,7 +567,7 @@ int nvn_render_state_multisample_get_raster_samples(const void *object) {
     int value = 0;
     RS_BEGIN_READ(NVN_RS_MULTISAMPLE)
     value = tmp.ms_raster_samples;
-    RS_END()
+    RS_END_READ()
     s_stats.gets++;
     return value;
 }
@@ -549,7 +576,7 @@ int nvn_render_state_multisample_get_coverage_modulation_mode(const void *object
     int value = NVN_COVERAGE_MODULATION_MODE_NONE;
     RS_BEGIN_READ(NVN_RS_MULTISAMPLE)
     value = tmp.ms_coverage_modulation_mode;
-    RS_END()
+    RS_END_READ()
     s_stats.gets++;
     return value;
 }
@@ -558,7 +585,7 @@ int nvn_render_state_multisample_get_coverage_to_color_enable(const void *object
     int value = 0;
     RS_BEGIN_READ(NVN_RS_MULTISAMPLE)
     value = tmp.ms_coverage_to_color_enable;
-    RS_END()
+    RS_END_READ()
     s_stats.gets++;
     return value;
 }
@@ -567,7 +594,7 @@ int nvn_render_state_multisample_get_coverage_to_color_output(const void *object
     int value = 0;
     RS_BEGIN_READ(NVN_RS_MULTISAMPLE)
     value = tmp.ms_coverage_to_color_output;
-    RS_END()
+    RS_END_READ()
     s_stats.gets++;
     return value;
 }
@@ -576,7 +603,7 @@ int nvn_render_state_multisample_get_sample_locations_enable(const void *object)
     int value = 0;
     RS_BEGIN_READ(NVN_RS_MULTISAMPLE)
     value = tmp.ms_sample_locations_enable;
-    RS_END()
+    RS_END_READ()
     s_stats.gets++;
     return value;
 }
@@ -585,7 +612,7 @@ int nvn_render_state_multisample_get_sample_locations_grid_enable(const void *ob
     int value = 0;
     RS_BEGIN_READ(NVN_RS_MULTISAMPLE)
     value = tmp.ms_sample_locations_grid_enable;
-    RS_END()
+    RS_END_READ()
     s_stats.gets++;
     return value;
 }
@@ -597,7 +624,7 @@ void nvn_render_state_multisample_get_sample_locations_grid(const void *object, 
     RS_BEGIN_READ(NVN_RS_MULTISAMPLE)
     w = tmp.ms_sample_locations_grid[0];
     h = tmp.ms_sample_locations_grid[1];
-    RS_END()
+    RS_END_READ()
     if (width) *width = w;
     if (height) *height = h;
     s_stats.gets++;
@@ -662,7 +689,7 @@ int nvn_render_state_polygon_get_cull_face(const void *object) {
     int value = NVN_FACE_NONE;
     RS_BEGIN_READ(NVN_RS_POLYGON)
     value = tmp.polygon_cull_face;
-    RS_END()
+    RS_END_READ()
     s_stats.gets++;
     return value;
 }
@@ -671,7 +698,7 @@ int nvn_render_state_polygon_get_front_face(const void *object) {
     int value = NVN_FRONT_FACE_CCW;
     RS_BEGIN_READ(NVN_RS_POLYGON)
     value = tmp.polygon_front_face;
-    RS_END()
+    RS_END_READ()
     s_stats.gets++;
     return value;
 }
@@ -680,7 +707,7 @@ int nvn_render_state_polygon_get_polygon_mode(const void *object) {
     int value = NVN_POLYGON_MODE_FILL;
     RS_BEGIN_READ(NVN_RS_POLYGON)
     value = tmp.polygon_mode;
-    RS_END()
+    RS_END_READ()
     s_stats.gets++;
     return value;
 }
@@ -689,7 +716,7 @@ int nvn_render_state_polygon_get_polygon_offset_enables(const void *object) {
     int value = NVN_POLYGON_OFFSET_ENABLE_NONE;
     RS_BEGIN_READ(NVN_RS_POLYGON)
     value = tmp.polygon_offset_enables;
-    RS_END()
+    RS_END_READ()
     s_stats.gets++;
     return value;
 }
@@ -783,7 +810,7 @@ int nvn_render_state_depth_stencil_get_depth_test_enable(const void *object) {
     int value = 0;
     RS_BEGIN_READ(NVN_RS_DEPTH_STENCIL)
     value = tmp.ds_depth_test_enable;
-    RS_END()
+    RS_END_READ()
     s_stats.gets++;
     return value;
 }
@@ -792,7 +819,7 @@ int nvn_render_state_depth_stencil_get_depth_write_enable(const void *object) {
     int value = 0;
     RS_BEGIN_READ(NVN_RS_DEPTH_STENCIL)
     value = tmp.ds_depth_write_enable;
-    RS_END()
+    RS_END_READ()
     s_stats.gets++;
     return value;
 }
@@ -801,7 +828,7 @@ int nvn_render_state_depth_stencil_get_depth_func(const void *object) {
     int value = NVN_DEPTH_FUNC_LESS;
     RS_BEGIN_READ(NVN_RS_DEPTH_STENCIL)
     value = tmp.ds_depth_func;
-    RS_END()
+    RS_END_READ()
     s_stats.gets++;
     return value;
 }
@@ -810,7 +837,7 @@ int nvn_render_state_depth_stencil_get_stencil_test_enable(const void *object) {
     int value = 0;
     RS_BEGIN_READ(NVN_RS_DEPTH_STENCIL)
     value = tmp.ds_stencil_test_enable;
-    RS_END()
+    RS_END_READ()
     s_stats.gets++;
     return value;
 }
@@ -819,7 +846,7 @@ int nvn_render_state_depth_stencil_get_stencil_func(const void *object, int face
     int value = NVN_STENCIL_FUNC_ALWAYS;
     RS_BEGIN_READ(NVN_RS_DEPTH_STENCIL)
     value = tmp.ds_stencil_func[(face & NVN_FACE_BACK) ? 1 : 0];
-    RS_END()
+    RS_END_READ()
     s_stats.gets++;
     return value;
 }
@@ -836,7 +863,7 @@ void nvn_render_state_depth_stencil_get_stencil_op(const void *object, int face,
         zf = tmp.ds_stencil_op[index][1];
         zp = tmp.ds_stencil_op[index][2];
     }
-    RS_END()
+    RS_END_READ()
     if (fail) *fail = f;
     if (zfail) *zfail = zf;
     if (zpass) *zpass = zp;
@@ -885,7 +912,7 @@ void nvn_render_state_vertex_attrib_get_format(const void *object, int *format, 
     RS_BEGIN_READ(NVN_RS_VERTEX_ATTRIB)
     f = tmp.va_format;
     o = tmp.va_offset;
-    RS_END()
+    RS_END_READ()
     if (format) *format = f;
     if (offset) *offset = o;
     s_stats.gets++;
@@ -896,7 +923,7 @@ int nvn_render_state_vertex_attrib_get_stream_index(const void *object) {
     int value = 0;
     RS_BEGIN_READ(NVN_RS_VERTEX_ATTRIB)
     value = tmp.va_stream_index;
-    RS_END()
+    RS_END_READ()
     s_stats.gets++;
     return value;
 }
@@ -939,7 +966,7 @@ int64_t nvn_render_state_vertex_stream_get_stride(const void *object) {
     int64_t value = 0;
     RS_BEGIN_READ(NVN_RS_VERTEX_STREAM)
     value = tmp.vs_stride;
-    RS_END()
+    RS_END_READ()
     s_stats.gets++;
     return value;
 }
@@ -948,7 +975,7 @@ int nvn_render_state_vertex_stream_get_divisor(const void *object) {
     int value = 0;
     RS_BEGIN_READ(NVN_RS_VERTEX_STREAM)
     value = tmp.vs_divisor;
-    RS_END()
+    RS_END_READ()
     s_stats.gets++;
     return value;
 }

@@ -77,6 +77,9 @@ struct guest_context_result guest_context_destroy(guest_context *);
  * memory themselves and do not certify resident/physical bytes. The caller owns
  * each live ticket and must serialize operations on that ticket. */
 struct guest_context_result guest_charge_reserve(guest_context *,size_t,guest_charge_ticket **out);
+/* Split one live ticket into two same-state tickets. Total charge unchanged;
+ * metadata failure leaves the original unchanged. Caller owns both outputs. */
+struct guest_context_result guest_charge_split(guest_charge_ticket *,size_t left_bytes,guest_charge_ticket **right);
 struct guest_context_result guest_charge_commit(guest_charge_ticket *);
 struct guest_context_result guest_charge_cancel(guest_charge_ticket *);
 struct guest_context_result guest_charge_release(guest_charge_ticket *);

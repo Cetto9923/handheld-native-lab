@@ -233,6 +233,7 @@ static int set_shaders(void *program, int count, const void *shader_data, int ex
         return 0;
     }
     p->stage_count = count;
+    p->serial = ++s_program_serial; /* shader replacement is a new immutable snapshot */
     for (i = 0; i < count; i++) {
         uint64_t data;
         const void *control;
@@ -365,7 +366,8 @@ int nvn_program_info_of(const void *program, nvn_program_info *out) {
     out->serial = p->serial;
     for (i = 0; i < NVN_PROGRAM_MAX_STAGES && i < 6; i++) {
         out->sd[i].data = p->stages[i].data_address;
-        out->sd[i].control = &p->stages[i].control[0];
+        memcpy(out->control[i],p->stages[i].control,sizeof(out->control[i]));
+        out->sd[i].control = out->control[i];
     }
     pthread_mutex_unlock(&s_program_lock);
     return 1;

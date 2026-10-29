@@ -65,20 +65,18 @@ static inline void *nvn_object_table_at(nvn_object_table *table, size_t index) {
  * memory is gone. The caller has to say which, so it is told by the cap
  * being the reason: the caller knows the cap it passed in. */
 static inline void *nvn_object_table_new_entry(nvn_object_table *table, size_t max_entries) {
-    size_t capacity = table->capacity ? table->capacity * 2 : 64;
-    char *base;
-    void *grown;
-    if (table->count >= max_entries) return NULL;
-    if (capacity > max_entries) capacity = max_entries;
-    if (capacity <= table->count) return NULL;
-    grown = realloc(table->slots, capacity * table->entry_size);
-    if (!grown) return NULL;
-    base = (char *)grown;
-    memset(base + table->count * table->entry_size, 0,
-           (capacity - table->count) * table->entry_size);
-    table->slots = grown;
-    table->capacity = capacity;
-    return base + (table->count++) * table->entry_size;
+    if (!table || !table->entry_size || table->count >= max_entries) return NULL;
+    if (table->count == table->capacity) {
+        size_t capacity=table->capacity?table->capacity*2:64;
+        if(capacity<table->capacity || capacity>max_entries)capacity=max_entries;
+        if(capacity<=table->count || capacity>(size_t)-1/table->entry_size)return NULL;
+        void *grown=realloc(table->slots,capacity*table->entry_size);
+        if(!grown)return NULL;
+        table->slots=grown;table->capacity=capacity;
+    }
+    void *entry=(char*)table->slots+table->count*table->entry_size;
+    memset(entry,0,table->entry_size);table->count++;
+    return entry;
 }
 
 /* Give the memory of the table back. The family does this when it is torn

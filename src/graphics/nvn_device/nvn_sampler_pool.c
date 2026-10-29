@@ -9,6 +9,7 @@
  * on the host, because the guest's sampler objects are never read here.
  */
 #include "nvn_sampler_pool.h"
+#include "nvn_engine.h"
 #include "nvn_obj_ffrs.h"
 
 #include "nvn_device.h"
@@ -25,6 +26,7 @@ typedef struct {
     void *memory_pool;
     ptrdiff_t memory_offset;
     int size;
+    uint64_t generation;
     int initialized;
     /* The registered samplers, by index. A NULL entry means the index has
      * not been registered yet. */
@@ -34,6 +36,9 @@ typedef struct {
 } nvn_sampler_pool_state;
 
 static pthread_mutex_t s_sampler_pool_lock = PTHREAD_MUTEX_INITIALIZER;
+/* This counter belongs to the process, not a reusable table slot. No reset:
+ * old recorded commands can still hold a bridge snapshot after Finalize. */
+static uint64_t s_generation;
 static nvn_sampler_pool_state s_pools[8];
 
 /* The numbering base of a sampler pool.
@@ -144,6 +149,12 @@ int nvn_sampler_pool_initialize(void *pool, const void *memory_pool, ptrdiff_t o
                 pool);
         return 0;
     }
+    if (s_generation == UINT64_MAX) {
+        s_stats.refused++;
+        pthread_mutex_unlock(&s_sampler_pool_lock);
+        fputs("[nvn] nvnSamplerPoolInitialize: generation exhausted; refusing identity reuse\n", stderr);
+        return 0;
+    }
     p = pool_find(pool, 1);
     if (!p) {
         s_stats.refused++;
@@ -154,6 +165,7 @@ int nvn_sampler_pool_initialize(void *pool, const void *memory_pool, ptrdiff_t o
     p->memory_pool = (void *)(uintptr_t)memory_pool;
     p->memory_offset = offset;
     p->size = size;
+    p->generation = ++s_generation;
     p->initialized = 1;
     memset(p->samplers, 0, sizeof(p->samplers));
     /* The numbering of this pool is settled here, at its first Initialize,
@@ -204,17 +216,22 @@ void nvn_sampler_pool_finalize(void *pool) {
  * the samplers by index when it draws. */
 void nvn_sampler_pool_register_sampler(const void *pool, int index, const void *sampler) {
     nvn_sampler_pool_state *p;
+    int registered = 0;
     pthread_mutex_lock(&s_sampler_pool_lock);
     p = pool_find((void *)(uintptr_t)pool, 0);
     if (p && p->initialized && index >= 0 && index < NVN_SAMPLER_POOL_MAX_SAMPLERS) {
         p->samplers[index] = (void *)(uintptr_t)sampler;
         s_stats.samplers_registered++;
+        registered = 1;
     } else if (p && p->initialized) {
         fprintf(stderr, "[nvn] nvnSamplerPoolRegisterSampler: index=%d is outside the %d samplers this pool "
                         "tracks; the sampler was not registered\n",
                 index, NVN_SAMPLER_POOL_MAX_SAMPLERS);
     }
     pthread_mutex_unlock(&s_sampler_pool_lock);
+    if (registered) {
+        nvn_engine_register_sampler(pool, index, sampler);
+    }
     NVN_VOID_RETURN();
 }
 
@@ -353,6 +370,7 @@ int nvn_sampler_pool_info_of(const void *pool, nvn_pool_info *out) {
         pthread_mutex_unlock(&s_sampler_pool_lock);
         return 0;
     }
+    out->generation = slot->generation;
     out->memory_pool = slot->memory_pool;
     out->memory_offset = slot->memory_offset;
     out->size = slot->size;

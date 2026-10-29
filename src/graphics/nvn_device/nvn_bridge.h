@@ -29,6 +29,8 @@
  * texture there. The pointer stays the same for as long as the texture is
  * the same object. */
 const ffrs_tex *nvn_bridge_texture(const void *guest_texture);
+/* End one generation; recorded immutable copies remain allocated. */
+void nvn_bridge_texture_end(const void *guest_texture, uint64_t serial);
 
 /* The program of the guest's address, or NULL. */
 const ffrs_prog *nvn_bridge_program(const void *guest_program);

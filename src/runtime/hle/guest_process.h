@@ -137,6 +137,9 @@ uint32_t guest_process_nnmusl_init_dso(
 uint64_t guest_process_resolve(uint32_t,const char *);
 struct nb_scope;
 struct nb_scope *guest_process_current_boundary(void);
+/* Deleting destructor for an object allocated from main's interposed heap.
+ * Active module only; 1 completed actual free,0 no process,-1 refused. */
+int guest_process_interposed_free(void *pointer);
 struct guest_tp_template;
 int guest_process_current_tls_template(struct guest_tp_template *out);
 void guest_process_bind_child_thread(void);

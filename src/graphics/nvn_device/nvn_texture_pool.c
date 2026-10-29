@@ -9,6 +9,7 @@
  * guest's texture objects are never read here.
  */
 #include "nvn_texture_pool.h"
+#include "nvn_engine.h"
 #include "nvn_obj_ffrs.h"
 
 #include "nvn_device.h"
@@ -25,6 +26,7 @@ typedef struct {
     void *memory_pool;
     ptrdiff_t memory_offset;
     int size;
+    uint64_t generation;
     int initialized;
     /* The registered textures, by index. A NULL entry means the index has
      * not been registered yet.
@@ -65,6 +67,9 @@ typedef struct {
 #define NVN_TEXTURE_POOL_MAX_BASE_ENTRIES 16
 
 static pthread_mutex_t s_texture_pool_lock = PTHREAD_MUTEX_INITIALIZER;
+/* This counter belongs to the process, not a reusable table slot. No reset:
+ * old recorded commands can still hold a bridge snapshot after Finalize. */
+static uint64_t s_generation;
 static nvn_texture_pool_state s_pools[8];
 static nvn_texture_pool_base_entry s_bases[NVN_TEXTURE_POOL_MAX_BASE_ENTRIES];
 static int s_base_count;
@@ -179,6 +184,12 @@ int nvn_texture_pool_initialize(void *pool, const void *memory_pool, ptrdiff_t o
                 pool);
         return 0;
     }
+    if (s_generation == UINT64_MAX) {
+        s_stats.refused++;
+        pthread_mutex_unlock(&s_texture_pool_lock);
+        fputs("[nvn] nvnTexturePoolInitialize: generation exhausted; refusing identity reuse\n", stderr);
+        return 0;
+    }
     p = pool_find(pool, 1);
     if (!p) {
         s_stats.refused++;
@@ -189,6 +200,7 @@ int nvn_texture_pool_initialize(void *pool, const void *memory_pool, ptrdiff_t o
     p->memory_pool = (void *)(uintptr_t)memory_pool;
     p->memory_offset = offset;
     p->size = size;
+    p->generation = ++s_generation;
     p->initialized = 1;
     /* The table of registered textures starts empty. It grows when the guest
      * registers an index it has not used before, so that the size of the
@@ -248,6 +260,7 @@ void nvn_texture_pool_finalize(void *pool) {
  * it selects the part of the texture the guest means. */
 void nvn_texture_pool_register_texture(const void *pool, int index, const void *texture, const void *view) {
     nvn_texture_pool_state *p;
+    int registered = 0;
     (void)view;
     pthread_mutex_lock(&s_texture_pool_lock);
     p = pool_find((void *)(uintptr_t)pool, 0);
@@ -259,6 +272,7 @@ void nvn_texture_pool_register_texture(const void *pool, int index, const void *
         } else {
             p->textures[index] = (void *)(uintptr_t)texture;
             s_stats.textures_registered++;
+            registered = 1;
         }
     } else if (p && p->initialized) {
         fprintf(stderr, "[nvn] nvnTexturePoolRegisterTexture: index=%d is outside the %d textures a handle can "
@@ -266,6 +280,9 @@ void nvn_texture_pool_register_texture(const void *pool, int index, const void *
                 index, NVN_TEXTURE_POOL_MAX_TEXTURES);
     }
     pthread_mutex_unlock(&s_texture_pool_lock);
+    if (registered) {
+        nvn_engine_register_texture(pool, index, texture, view);
+    }
     NVN_VOID_RETURN();
 }
 
@@ -273,6 +290,7 @@ void nvn_texture_pool_register_texture(const void *pool, int index, const void *
  * handle twice when it wants two views of it. */
 void nvn_texture_pool_register_image(const void *pool, int index, const void *texture, const void *view) {
     nvn_texture_pool_state *p;
+    int registered = 0;
     (void)view;
     pthread_mutex_lock(&s_texture_pool_lock);
     p = pool_find((void *)(uintptr_t)pool, 0);
@@ -284,6 +302,7 @@ void nvn_texture_pool_register_image(const void *pool, int index, const void *te
         } else {
             p->textures[index] = (void *)(uintptr_t)texture;
             s_stats.images_registered++;
+            registered = 1;
         }
     } else if (p && p->initialized) {
         fprintf(stderr, "[nvn] nvnTexturePoolRegisterImage: index=%d is outside the %d textures a handle can "
@@ -291,6 +310,9 @@ void nvn_texture_pool_register_image(const void *pool, int index, const void *te
                 index, NVN_TEXTURE_POOL_MAX_TEXTURES);
     }
     pthread_mutex_unlock(&s_texture_pool_lock);
+    if (registered) {
+        nvn_engine_register_texture(pool, index, texture, view);
+    }
     NVN_VOID_RETURN();
 }
 
@@ -414,6 +436,7 @@ int nvn_texture_pool_info_of(const void *pool, nvn_pool_info *out) {
         pthread_mutex_unlock(&s_texture_pool_lock);
         return 0;
     }
+    out->generation = slot->generation;
     out->memory_pool = slot->memory_pool;
     out->memory_offset = slot->memory_offset;
     out->size = slot->size;

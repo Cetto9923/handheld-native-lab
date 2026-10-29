@@ -313,7 +313,8 @@ RECORDERS = {
     "nvnCommandBufferDrawArraysIndirect": (
         "nvn_command_buffer_rec_draw", ["arg1", "0", "0", "1", "0", "arg2"]),
     "nvnCommandBufferDrawArraysInstanced": (
-        "nvn_command_buffer_rec_draw", ["arg1", "arg2", "arg3", "arg4", "arg5", "0"]),
+        # NVN ABI: baseInstance, instanceCount; record: instances, base_instance.
+        "nvn_command_buffer_rec_draw", ["arg1", "arg2", "arg3", "arg5", "arg4", "0"]),
     "nvnCommandBufferDrawElements": (
         "nvn_command_buffer_rec_draw_indexed",
         ["arg1", "arg2", "arg3", "0", "0", "1", "arg4", "0"]),
@@ -394,7 +395,7 @@ RECORDERS = {
 # well as, recording a command.
 STATE_CALLS = {
     "nvnCommandBufferAddCommandMemory": [
-        "    nvn_command_buffer_add_command_memory(commandBuffer, (uint64_t)arg3);",
+        "    nvn_command_buffer_add_command_memory_storage(commandBuffer, arg1, (int64_t)arg2, (uint64_t)arg3);",
     ],
     "nvnCommandBufferAddControlMemory": [
         "    nvn_command_buffer_add_control_memory(commandBuffer, (uint64_t)arg2);",

@@ -6,8 +6,8 @@
  * signalled and its value read back. This case checks that the eleven names
  * of the family resolve through the guest's own lookup, that a signal is read
  * back with the value it was given, that an event is a snapshot of the builder
- * it was made from, and that the guest's own event, builder and pool memory is
- * not written.
+ * it was made from. Opaque event/builder bytes and surrounding pool canaries
+ * stay unchanged; CPU signals write only the selected four-byte pool word.
  *
  * This case is in a translation unit of its own, with its own main, so that
  * two families can be worked on at the same time without writing into the
@@ -261,7 +261,7 @@ static int nvn_event_contract(void) {
     unsigned char event_unknown[64];
     unsigned char pool_builder[64];
     unsigned char pool_object[64];
-    unsigned char pool_storage[TEST_POOL_SIZE];
+    _Alignas(4) unsigned char pool_storage[TEST_POOL_SIZE];
     void *device = (void *)(uintptr_t)0x9000;
     uint64_t init_result = 0;
     uint32_t pool_result = 0;
@@ -372,9 +372,8 @@ static int nvn_event_contract(void) {
     expect_value("nvn-event-memory-offset-round-trips", (uint64_t)(int64_t)event_get_memory_offset(event_one),
                  (uint64_t)(int64_t)TEST_MEMORY_OFFSET);
 
-    /* 5. The value of an event before it is signalled. The value lives on the
-     *    host, so there is nothing there yet. */
-    expect_value("nvn-event-value-before-a-signal-is-zero", (uint64_t)event_get_value(event_one), 0);
+    /* The reference initialization binds storage without zeroing it. */
+    expect_value("nvn-event-initialization-preserves-pool-word", (uint64_t)event_get_value(event_one), 0xccccccccu);
 
     /* 6. A signal is read back with the value it was given. This is the
      *    point of the family: the signal between the GPU and the CPU has to
@@ -389,17 +388,13 @@ static int nvn_event_contract(void) {
     expect_value("nvn-event-value-after-a-signal-in-another-mode", (uint64_t)event_get_value(event_one),
                  (uint64_t)TEST_VALUE_AFTER_OTHER);
 
-    /* 7. The guest's own objects were not written to. The layout of an event
-     *    and of a builder is a property of the Nintendo SDK, so the runtime
-     *    keeps its state on the host. The memory of the pool is the guest's
-     *    memory as well, and the value of the event is not written there
-     *    either: the reference host does write it there (hle_nvn.c:649) and
-     *    this runtime does not, which is the difference the two sentinels
-     *    below make visible. */
+    /* CPU signals change only the event's actual four-byte pool word. */
     expect_condition("nvn-event-builder-not-written", all_bytes(builder_one, sizeof(builder_one), 0xaa));
     expect_condition("nvn-event-object-not-written", all_bytes(event_one, sizeof(event_one), 0xaa));
-    expect_condition("nvn-event-pool-memory-not-written",
-                     all_bytes(pool_storage + TEST_MEMORY_OFFSET, 4, 0xcc));
+    { uint32_t word; memcpy(&word,pool_storage+TEST_MEMORY_OFFSET,4);
+      expect_value("nvn-event-signal-writes-selected-pool-word",word,TEST_VALUE_AFTER_OTHER); }
+    expect_condition("nvn-event-pool-prefix-canary",all_bytes(pool_storage,TEST_MEMORY_OFFSET,0xcc));
+    expect_condition("nvn-event-pool-suffix-canary",all_bytes(pool_storage+TEST_MEMORY_OFFSET+4,TEST_POOL_SIZE-TEST_MEMORY_OFFSET-4,0xcc));
 
     /* 8. An event is a snapshot of the builder it was made from. The builder
      *    changes here, and the event must not. */
@@ -419,7 +414,7 @@ static int nvn_event_contract(void) {
     expect_condition("nvn-event-initialize-succeeds-again", event_initialize(event_two, builder_two) == 1);
     expect_value("nvn-event-second-memory-offset-round-trips",
                  (uint64_t)(int64_t)event_get_memory_offset(event_two), (uint64_t)(int64_t)TEST_OTHER_OFFSET);
-    expect_value("nvn-event-second-value-starts-at-zero", (uint64_t)event_get_value(event_two), 0);
+    expect_value("nvn-event-second-value-preserves-pool-word", (uint64_t)event_get_value(event_two), 0xccccccccu);
     event_signal(event_two, TEST_SIGNAL_MODE_WRITE, TEST_SIGNAL_VALUE);
     expect_value("nvn-event-second-value-after-a-write-signal", (uint64_t)event_get_value(event_two),
                  (uint64_t)TEST_VALUE_AFTER_WRITE);
@@ -454,8 +449,13 @@ static int nvn_event_contract(void) {
                      all_bytes(event_one, sizeof(event_one), 0xaa) &&
                          all_bytes(event_two, sizeof(event_two), 0xaa) &&
                          all_bytes(event_unknown, sizeof(event_unknown), 0xaa));
-    expect_condition("nvn-event-pool-memory-not-written-afterwards",
-                     all_bytes(pool_storage + TEST_MEMORY_OFFSET, 4, 0xcc));
+    { uint32_t first_word,second_word;
+      memcpy(&first_word,pool_storage+TEST_MEMORY_OFFSET,4);memcpy(&second_word,pool_storage+TEST_OTHER_OFFSET,4);
+      expect_value("nvn-event-first-pool-word-afterwards",first_word,TEST_VALUE_AFTER_OTHER);
+      expect_value("nvn-event-finalize-preserves-second-pool-word",second_word,TEST_VALUE_AFTER_WRITE); }
+    expect_condition("nvn-event-prefix-canary-afterwards",all_bytes(pool_storage,TEST_MEMORY_OFFSET,0xcc));
+    expect_condition("nvn-event-between-canary-afterwards",all_bytes(pool_storage+TEST_MEMORY_OFFSET+4,TEST_OTHER_OFFSET-TEST_MEMORY_OFFSET-4,0xcc));
+    expect_condition("nvn-event-suffix-canary-afterwards",all_bytes(pool_storage+TEST_OTHER_OFFSET+4,TEST_POOL_SIZE-TEST_OTHER_OFFSET-4,0xcc));
 
     /* 13. The counters. */
     nvn_event_get_stats(&stats);

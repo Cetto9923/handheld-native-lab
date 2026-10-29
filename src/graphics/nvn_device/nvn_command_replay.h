@@ -67,6 +67,14 @@ typedef struct nvn_replay_stats {
     uint64_t clears;                /* clear commands the stream holds */
     uint64_t textures_bound;        /* texture handles the stream binds */
     uint64_t samplers_bound;        /* sampler handles the stream binds */
+    /* Diagnostic-only costs and repetitions. These do not alter validation,
+     * engine submission, GPU completion or the incomplete shadow context. */
+    uint64_t missing_texture_pool;
+    uint64_t missing_sampler_pool;
+    uint64_t pool_messages_printed;
+    uint64_t elapsed_ns;
+    uint64_t thread_cpu_ns;
+    uint64_t timed_packages;
 } nvn_replay_stats;
 
 /* Decode one package.

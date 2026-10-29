@@ -166,6 +166,7 @@ typedef struct nvn_program_info {
     uint32_t nstage;
     ffrs_shader_data sd[6];
     uint64_t serial; /* the generation of the program object */
+    unsigned char control[6][0x880]; /* atomic snapshot, no table interior pointers */
 } nvn_program_info;
 
 /* What a memory pool is: the memory the guest gave it and its size. */
@@ -173,6 +174,7 @@ typedef struct nvn_memory_pool_info {
     uint8_t *mem;
     uint64_t size;
     uint32_t flags;
+    uint64_t generation; /* process-lifetime identity; never reset on Finalize */
 } nvn_memory_pool_info;
 
 /* What a descriptor pool is: the memory pool it is bound to and how many
@@ -181,6 +183,7 @@ typedef struct nvn_pool_info {
     const void *memory_pool;
     int64_t memory_offset;
     int32_t size;
+    uint64_t generation; /* identity of this descriptor-pool initialization */
 } nvn_pool_info;
 
 int nvn_texture_info_of(const void *texture, nvn_texture_info *out);

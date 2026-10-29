@@ -33,6 +33,7 @@
 #include "../../src/runtime/hle/guest_process.h"
 #include "../../src/graphics/nvn_device/nvn_command_buffer.h"
 #include "../../src/graphics/nvn_device/nvn_memory_pool.h"
+#include "../../src/graphics/nvn_device/nvn_device.h"
 
 #include <inttypes.h>
 #include <stdio.h>
@@ -117,7 +118,14 @@ typedef void (*cb_clear_fn)(void *,int,const float *,int);
 typedef void (*cb_set_viewport_fn)(void *,int,int,int,int);
 typedef void (*pool_builder_set_defaults_fn)(void *);
 typedef void (*pool_builder_set_storage_fn)(void *,void *,uint64_t);
+typedef void (*pool_builder_set_device_fn)(void *,void *);
 typedef uint64_t (*pool_initialize_fn)(void *,void *);
+#if !defined(__ANDROID__)
+/* Explicit CPU ownership fixture, never evidence of a Vulkan device. */
+static int memory_backend_create(nvn_device_state *d,const void *b){(void)d;(void)b;return 1;}
+static void memory_backend_describe(const nvn_device_state *d,char *out,size_t size){(void)d;snprintf(out,size,"CPU-only command-memory contract fixture; no GPU execution");}
+static const nvn_backend memory_backend={.name="command-memory fixture",.create=memory_backend_create,.describe=memory_backend_describe};
+#endif
 
 static int nvn_command_memory_contract(void) {
     nvn_command_buffer_stats stats;
@@ -166,7 +174,22 @@ static int nvn_command_memory_contract(void) {
 
     static unsigned char command_memory[64];
     memset(command_memory,0x11,sizeof(command_memory));
-    add_command_memory(buffer_object,command_memory,0,sizeof(command_memory));
+    /* AddCommandMemory takes an NVN pool, not a raw storage pointer. The old
+     * fixture passed the latter and only worked because the wrapper discarded
+     * its pool/offset. Keep this actual pool valid for all recorder cases. */
+    unsigned char command_pool[64]={0},command_pool_builder[64]={0},command_device[64]={0};
+#if !defined(__ANDROID__)
+    nvn_device_set_backend(&memory_backend);
+#endif
+    CHECK(nvn_device_initialize(command_device,NULL));
+    pool_builder_set_defaults_fn command_defaults=(pool_builder_set_defaults_fn)(uintptr_t)lookup(NULL,"nvnMemoryPoolBuilderSetDefaults");
+    pool_builder_set_device_fn command_device_set=(pool_builder_set_device_fn)(uintptr_t)lookup(NULL,"nvnMemoryPoolBuilderSetDevice");
+    pool_builder_set_storage_fn command_storage=(pool_builder_set_storage_fn)(uintptr_t)lookup(NULL,"nvnMemoryPoolBuilderSetStorage");
+    pool_initialize_fn command_pool_init=(pool_initialize_fn)(uintptr_t)lookup(NULL,"nvnMemoryPoolInitialize");
+    CHECK(command_defaults&&command_device_set&&command_storage&&command_pool_init);
+    command_defaults(command_pool_builder);command_device_set(command_pool_builder,command_device);
+    command_storage(command_pool_builder,command_memory,sizeof command_memory);CHECK(command_pool_init(command_pool,command_pool_builder));
+    add_command_memory(buffer_object,command_pool,0,sizeof(command_memory));
 
     /* The guest's callback and the data it set. The callback data is a word
      * of the guest's own, and the recorder has to hand it back unchanged. */
@@ -299,7 +322,7 @@ static int nvn_command_memory_contract(void) {
     unsigned char second_buffer[64];
     memset(second_buffer,0xaa,sizeof(second_buffer));
     expect_value("command-memory-second-initialize-succeeds",initialize(second_buffer,NULL),1);
-    add_command_memory(second_buffer,command_memory,0,sizeof(command_memory));
+    add_command_memory(second_buffer,command_pool,0,sizeof(command_memory));
     const uint64_t bogus_entry = 0x7ffff00000000000ULL;
     set_memory_callback(second_buffer,bogus_entry);
     set_memory_callback_data(second_buffer,callback_data);
@@ -314,7 +337,7 @@ static int nvn_command_memory_contract(void) {
     /* The guest hands out command memory again while the recording runs in a
      * segment of the host's memory: the segment that took over the range of
      * the guest's command memory is given back. */
-    add_command_memory(second_buffer,command_memory,0,8);
+    add_command_memory(second_buffer,command_pool,0,8);
     uint64_t second_handle = end_recording(second_buffer);
     nvn_command_buffer_get_stats(&stats);
 
@@ -389,7 +412,7 @@ static int nvn_command_memory_contract(void) {
         unsigned char third_buffer[64];
         memset(third_buffer,0xaa,sizeof(third_buffer));
         expect_value("command-memory-third-initialize-succeeds",initialize(third_buffer,NULL),1);
-        add_command_memory(third_buffer,command_memory,0,sizeof(command_memory));
+        add_command_memory(third_buffer,command_pool,0,sizeof(command_memory));
         set_memory_callback(third_buffer,s_guest_entry);
         set_memory_callback_data(third_buffer,callback_data);
         begin_recording(third_buffer);

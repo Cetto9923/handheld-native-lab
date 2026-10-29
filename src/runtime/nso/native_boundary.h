@@ -3,6 +3,7 @@
 #define FFRS_NATIVE_BOUNDARY_H
 #include <stddef.h>
 #include <stdint.h>
+#include "native_boundary_limits.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -45,8 +46,6 @@ typedef struct nb_registers {
 } nb_registers;
 
 typedef struct nb_stack13 { uint64_t words[13]; } nb_stack13;
-
-enum { NB_MAX_GUEST_THREADS = 32 };
 
 typedef struct nb_thread_slot {
     uint64_t tpidr;             /* offset 0 */

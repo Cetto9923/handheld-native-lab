@@ -134,6 +134,7 @@ typedef struct nvn_queue_stats {
     uint64_t records_read;              /* records the replay decoded for us */
     uint64_t replay_refusals;           /* refusals the replay reported */
     uint64_t presents_requested;        /* present requests that were recorded */
+    uint64_t presents_presented;        /* the images that reached the screen */
     uint64_t presents_performed;        /* presents that really happened: none */
     uint64_t fences_taken;              /* sync objects that were fenced */
     uint64_t waits;                     /* waits on a sync object */

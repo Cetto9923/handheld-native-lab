@@ -22,6 +22,8 @@ module and works out what the module actually uses:
   its load or access chain to its image type.
 - ``FragmentShaderPixelInterlockEXT`` is used when the module has a barrier
   with the interlocked workgroup memory semantics.
+- Subgroup BuiltIns require their subgroup capability even without a subgroup
+  instruction (for example SubgroupLocalInvocationId requires GroupNonUniform).
 
 A capability is only dropped when the module does not use it. If a module
 does use a capability that was asked to be dropped, the tool refuses and
@@ -129,7 +131,10 @@ CAPABILITY_NAMES = {
     "GroupNonUniformShuffleRelative": 66,
     "GroupNonUniformClustered": 67,
     "GroupNonUniformQuad": 68,
+    "ShaderLayer": 69,
+    "ShaderViewportIndex": 70,
     "DrawParameters": 4427,
+    "ShaderViewportIndexLayerEXT": 5254,
     "FragmentShaderPixelInterlockEXT": 5378,
 }
 
@@ -165,9 +170,9 @@ def instructions(words):
 
 
 def literal_string(operands):
-    """The string of a literal string instruction, the words after the length."""
+    """Decode the literal words (OpExtension has no result id before them)."""
     text = b""
-    for word in operands[1:]:
+    for word in operands:
         text += struct.pack("<I", word)
     end = text.find(b"\0")
     if end >= 0:
@@ -218,9 +223,13 @@ def analyse(words):
     reads = []                # image ids of OpImageRead
     writes = []               # image ids of OpImageWrite
     interlocked_barrier = False
+    subgroup_builtins = set()
+    entry_models = set()
 
     for _, opcode, operands in instructions(words):
-        if opcode == OP_CAPABILITY:
+        if opcode == 15:  # OpEntryPoint
+            entry_models.add(operands[0])
+        elif opcode == OP_CAPABILITY:
             declared.append(operands[0])
         elif opcode == OP_EXTENSION:
             extensions.append(literal_string(operands))
@@ -252,6 +261,11 @@ def analyse(words):
             semantics = operands[-1]
             if semantics == INTERLOCKED_WORKGROUP_MEMORY:
                 interlocked_barrier = True
+        elif opcode in (71, 72):  # OpDecorate / OpMemberDecorate
+            decoration_at = 1 if opcode == 71 else 2
+            if (len(operands) > decoration_at + 1 and
+                    operands[decoration_at] == 11):  # BuiltIn
+                subgroup_builtins.add(operands[decoration_at + 1])
 
     image_formats = {}        # OpTypeImage result id -> image format
     for _, opcode, operands in instructions(words):
@@ -300,11 +314,31 @@ def analyse(words):
         used.add(55)      # StorageImageReadWithoutFormat
     if interlocked_barrier:
         used.add(5378)    # FragmentShaderPixelInterlockEXT
+    # A subgroup input needs its capability even without a subgroup opcode.
+    # In particular, the SwizzleAdd helper uses SubgroupLocalInvocationId.
+    if subgroup_builtins & {36, 38, 40, 41}:
+        used.add(61)      # GroupNonUniform
+    if subgroup_builtins & set(range(4416, 4421)):
+        used.add(64)      # GroupNonUniformBallot (the subgroup lane masks)
+
+    # Vertex/TES Layer and ViewportIndex need the output capability even
+    # without a special opcode. Legacy and core declarations are distinct;
+    # promotion must validate the complete SPIR-V version/interface change.
+    if entry_models & {0, 2}:
+        if subgroup_builtins & {9, 10} and 5254 in declared:
+            used.add(5254)
+        if 9 in subgroup_builtins and words[1] >= 0x00010500:
+            used.add(69)
+        if 10 in subgroup_builtins and words[1] >= 0x00010500:
+            used.add(70)
 
     return {
         "declared": declared,
         "extensions": extensions,
         "used": sorted(used),
+        "output_builtins": sorted(subgroup_builtins & {9, 10}),
+        "entry_models": sorted(entry_models),
+        "subgroup_builtins": sorted(subgroup_builtins & {36, 38, 40, 41, 4416, 4417, 4418, 4419, 4420}),
         "float_widths": sorted(float_widths),
         "int_widths": sorted(int_widths),
         "image_formats": {str(k): v for k, v in image_formats.items()},
@@ -315,6 +349,9 @@ def analyse(words):
 
 def rewrite(words, add, drop, drop_extension=()):
     """The module with the capabilities added and dropped. Returns (words, added, dropped, extensions dropped)."""
+    required = set(drop) & set(analyse(words)['used'])
+    if required:
+        raise SystemExit('refusing to drop used capabilities: ' + ','.join(capability_name(n) for n in sorted(required)))
     kept = list(words[:5])
     added = []
     dropped = []

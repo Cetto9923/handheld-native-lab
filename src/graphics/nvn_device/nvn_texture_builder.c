@@ -51,6 +51,7 @@
 #include "nvn_texture_builder.h"
 
 #include "nvn_device.h"
+#include "../nvn_vulkan/nvn/nvn_tex.h"
 
 #include "../nvn/include/nvn/nvn.h"
 
@@ -143,6 +144,87 @@ static nvn_object_table s_builders = { NULL, 0, 0, sizeof(nvn_texture_builder_st
 static nvn_texture_builder_stats s_stats;
 static int s_logged[TB_NAME_COUNT];
 
+#define NVN_BUILDER_MAGIC 0x424C4452u /* 'BLDR' */
+
+typedef struct nvn_builder_inline {
+    uint32_t magic;
+    uint32_t in_use;
+    void *device;
+    NVNformat format;
+    NVNtextureTarget target;
+    NVNtextureFlags flags;
+    int width;
+    int height;
+    int depth;
+    int levels;
+    int samples;
+    ptrdiff_t stride;
+    void *memory_pool;
+    ptrdiff_t memory_offset;
+    NVNtextureSwizzle swizzle[4];
+    int swizzle_set;
+    NVNtextureDepthStencilMode depth_stencil_mode;
+    uint32_t gl_texture_name;
+    const void *packaged_texture_data;
+    unsigned char packaged_layout[8];
+    int has_packaged_layout;
+    uint32_t packaged_block_height;
+} nvn_builder_inline;
+_Static_assert(sizeof(nvn_builder_inline) <= 128, "nvn_builder_inline must fit in NVNtextureBuilder (128 bytes)");
+
+static void sync_to_inline(void *builder, const nvn_texture_builder_state *s) {
+    if (!builder || !s) return;
+    nvn_builder_inline *inl = (nvn_builder_inline *)builder;
+    inl->magic = NVN_BUILDER_MAGIC;
+    inl->in_use = s->in_use;
+    inl->device = s->device;
+    inl->format = s->format;
+    inl->target = s->target;
+    inl->flags = s->flags;
+    inl->width = s->width;
+    inl->height = s->height;
+    inl->depth = s->depth;
+    inl->levels = s->levels;
+    inl->samples = s->samples;
+    inl->stride = s->stride;
+    inl->memory_pool = s->memory_pool;
+    inl->memory_offset = s->memory_offset;
+    memcpy(inl->swizzle, s->swizzle, sizeof(s->swizzle));
+    inl->swizzle_set = s->swizzle_set;
+    inl->depth_stencil_mode = s->depth_stencil_mode;
+    inl->gl_texture_name = s->gl_texture_name;
+    inl->packaged_texture_data = s->packaged_texture_data;
+    memcpy(inl->packaged_layout, s->packaged_layout, sizeof(s->packaged_layout));
+    inl->has_packaged_layout = s->has_packaged_layout;
+    inl->packaged_block_height = s->packaged_block_height;
+}
+
+static void sync_from_inline(nvn_texture_builder_state *s, const void *builder) {
+    if (!s || !builder) return;
+    const nvn_builder_inline *inl = (const nvn_builder_inline *)builder;
+    if (inl->magic != NVN_BUILDER_MAGIC || !inl->in_use) return;
+    s->device = inl->device;
+    s->format = inl->format;
+    s->target = inl->target;
+    s->flags = inl->flags;
+    s->width = inl->width;
+    s->height = inl->height;
+    s->depth = inl->depth;
+    s->levels = inl->levels;
+    s->samples = inl->samples;
+    s->stride = inl->stride;
+    s->memory_pool = inl->memory_pool;
+    s->memory_offset = inl->memory_offset;
+    memcpy(s->swizzle, inl->swizzle, sizeof(s->swizzle));
+    s->swizzle_set = inl->swizzle_set;
+    s->depth_stencil_mode = inl->depth_stencil_mode;
+    s->gl_texture_name = inl->gl_texture_name;
+    s->packaged_texture_data = inl->packaged_texture_data;
+    memcpy(s->packaged_layout, inl->packaged_layout, sizeof(s->packaged_layout));
+    s->has_packaged_layout = inl->has_packaged_layout;
+    s->packaged_block_height = inl->packaged_block_height;
+}
+
 /* The defaults of the reference tree (hle_nvn.c:280). */
 static nvn_texture_builder_state default_state(void) {
     nvn_texture_builder_state s;
@@ -179,27 +261,65 @@ static void apply_defaults(nvn_texture_builder_state *s) {
 /* The builder state for one guest builder address. A builder that was never
  * prepared has no state, and the functions that need one say so instead of
  * inventing a default. */
+/* Index hints only: validate the canonical slot under the family lock, and
+ * still synchronize copied inline builders on every hit. Indices survive
+ * object-table reallocations; collisions take the original scan. */
+static struct {
+    void *builder;
+    size_t index;
+} s_builder_lookup_cache[512];
 static nvn_texture_builder_state *builder_find(void *builder, int create) {
     size_t i;
     nvn_texture_builder_state *free_slot = NULL;
+    nvn_texture_builder_state *found = NULL;
     if (!builder) return NULL;
-    for (i = 0; i < s_builders.count; i++) {
+    size_t cache_index = (size_t)((((uint64_t)(uintptr_t)builder >> 4) * UINT64_C(11400714819323198485)) >> 55);
+    if (s_builder_lookup_cache[cache_index].builder == builder &&
+        s_builder_lookup_cache[cache_index].index < s_builders.count) {
+        nvn_texture_builder_state *entry = (nvn_texture_builder_state *)nvn_object_table_at(&s_builders, s_builder_lookup_cache[cache_index].index);
+        if (entry && entry->in_use && entry->builder == builder) found = entry;
+    }
+    for (i = 0; !found && i < s_builders.count; i++) {
         nvn_texture_builder_state *entry = (nvn_texture_builder_state *)nvn_object_table_at(&s_builders, i);
         if (!entry) continue;
         if (entry->in_use) {
-            if (entry->builder == builder) return entry;
+            if (entry->builder == builder) {
+                found = entry;
+                s_builder_lookup_cache[cache_index].builder = builder;
+                s_builder_lookup_cache[cache_index].index = i;
+                break;
+            }
         } else if (!free_slot) {
             free_slot = entry;
         }
     }
-    if (!create) return NULL;
+    const nvn_builder_inline *inl = (const nvn_builder_inline *)builder;
+    int is_copied = (inl && inl->magic == NVN_BUILDER_MAGIC && inl->in_use);
+    if (found) {
+        if (is_copied) {
+            sync_from_inline(found, builder);
+        }
+        return found;
+    }
+
+    if (!create && !is_copied) return NULL;
     if (!free_slot) {
         free_slot = (nvn_texture_builder_state *)nvn_object_table_new_entry(&s_builders, NVN_TEXTURE_BUILDER_MAX_OBJECTS);
         if (!free_slot) return NULL;
     }
-    *free_slot = default_state();
-    free_slot->builder = builder;
-    free_slot->in_use = 1;
+    if (is_copied) {
+        memset(free_slot, 0, sizeof(*free_slot));
+        free_slot->builder = builder;
+        free_slot->in_use = 1;
+        sync_from_inline(free_slot, builder);
+    } else {
+        *free_slot = default_state();
+        free_slot->builder = builder;
+        free_slot->in_use = 1;
+        sync_to_inline(builder, free_slot);
+    }
+    s_builder_lookup_cache[cache_index].builder = builder;
+    s_builder_lookup_cache[cache_index].index = (size_t)((char *)free_slot - (char *)s_builders.slots) / s_builders.entry_size;
     return free_slot;
 }
 
@@ -224,6 +344,7 @@ void nvnTextureBuilderSetDefaults(void *builder) {
     s = builder_find(builder, 1);
     if (s) {
         apply_defaults(s);
+        sync_to_inline(builder, s);
     } else {
         s_stats.refused++;
     }
@@ -248,6 +369,7 @@ void nvnTextureBuilderSetDevice(void *builder, void *device) {
     s = builder_find(builder, 1);
     if (s) {
         s->device = device;
+        sync_to_inline(builder, s);
     } else {
         s_stats.refused++;
     }
@@ -272,6 +394,7 @@ void nvnTextureBuilderSetFormat(void *builder, NVNformat format) {
     s = builder_find(builder, 1);
     if (s) {
         s->format = format;
+        sync_to_inline(builder, s);
     } else {
         s_stats.refused++;
     }
@@ -296,6 +419,7 @@ void nvnTextureBuilderSetTarget(void *builder, NVNtextureTarget target) {
     s = builder_find(builder, 1);
     if (s) {
         s->target = target;
+        sync_to_inline(builder, s);
     } else {
         s_stats.refused++;
     }
@@ -320,6 +444,7 @@ void nvnTextureBuilderSetFlags(void *builder, int flags) {
     s = builder_find(builder, 1);
     if (s) {
         s->flags = (NVNtextureFlags)(unsigned)flags;
+        sync_to_inline(builder, s);
     } else {
         s_stats.refused++;
     }
@@ -344,6 +469,7 @@ void nvnTextureBuilderSetWidth(void *builder, int width) {
     s = builder_find(builder, 1);
     if (s) {
         s->width = width;
+        sync_to_inline(builder, s);
     } else {
         s_stats.refused++;
     }
@@ -368,6 +494,7 @@ void nvnTextureBuilderSetHeight(void *builder, int height) {
     s = builder_find(builder, 1);
     if (s) {
         s->height = height;
+        sync_to_inline(builder, s);
     } else {
         s_stats.refused++;
     }
@@ -392,6 +519,7 @@ void nvnTextureBuilderSetDepth(void *builder, int depth) {
     s = builder_find(builder, 1);
     if (s) {
         s->depth = depth;
+        sync_to_inline(builder, s);
     } else {
         s_stats.refused++;
     }
@@ -416,6 +544,7 @@ void nvnTextureBuilderSetLevels(void *builder, int levels) {
     s = builder_find(builder, 1);
     if (s) {
         s->levels = levels;
+        sync_to_inline(builder, s);
     } else {
         s_stats.refused++;
     }
@@ -440,6 +569,7 @@ void nvnTextureBuilderSetSamples(void *builder, int samples) {
     s = builder_find(builder, 1);
     if (s) {
         s->samples = samples;
+        sync_to_inline(builder, s);
     } else {
         s_stats.refused++;
     }
@@ -464,6 +594,7 @@ void nvnTextureBuilderSetStride(void *builder, ptrdiff_t stride) {
     s = builder_find(builder, 1);
     if (s) {
         s->stride = stride;
+        sync_to_inline(builder, s);
     } else {
         s_stats.refused++;
     }
@@ -492,6 +623,7 @@ void nvnTextureBuilderSetStorage(void *builder, void *memory_pool, ptrdiff_t off
     if (s) {
         s->memory_pool = memory_pool;
         s->memory_offset = offset;
+        sync_to_inline(builder, s);
     } else {
         s_stats.refused++;
     }
@@ -521,6 +653,7 @@ void nvnTextureBuilderSetSize1D(void *builder, int width) {
         s->width = width;
         s->height = 1;
         s->depth = 1;
+        sync_to_inline(builder, s);
     } else {
         s_stats.refused++;
     }
@@ -547,6 +680,7 @@ void nvnTextureBuilderSetSize2D(void *builder, int width, int height) {
         s->width = width;
         s->height = height;
         s->depth = 1;
+        sync_to_inline(builder, s);
     } else {
         s_stats.refused++;
     }
@@ -573,6 +707,7 @@ void nvnTextureBuilderSetSize3D(void *builder, int width, int height, int depth)
         s->width = width;
         s->height = height;
         s->depth = depth;
+        sync_to_inline(builder, s);
     } else {
         s_stats.refused++;
     }
@@ -603,6 +738,7 @@ void nvnTextureBuilderSetSwizzle(void *builder, NVNtextureSwizzle red, NVNtextur
         s->swizzle[2] = blue;
         s->swizzle[3] = alpha;
         s->swizzle_set = 1;
+        sync_to_inline(builder, s);
     } else {
         s_stats.refused++;
     }
@@ -628,6 +764,7 @@ void nvnTextureBuilderSetDepthStencilMode(void *builder, NVNtextureDepthStencilM
     s = builder_find(builder, 1);
     if (s) {
         s->depth_stencil_mode = mode;
+        sync_to_inline(builder, s);
     } else {
         s_stats.refused++;
     }
@@ -653,6 +790,7 @@ void nvnTextureBuilderSetGLTextureName(void *builder, uint32_t name) {
     s = builder_find(builder, 1);
     if (s) {
         s->gl_texture_name = name;
+        sync_to_inline(builder, s);
     } else {
         s_stats.refused++;
     }
@@ -682,6 +820,7 @@ void nvnTextureBuilderSetPackagedTextureData(void *builder, const void *data) {
     s = builder_find(builder, 1);
     if (s) {
         s->packaged_texture_data = data;
+        sync_to_inline(builder, s);
     } else {
         s_stats.refused++;
     }
@@ -718,6 +857,7 @@ void nvnTextureBuilderSetPackagedTextureLayout(void *builder, const NVNpackagedT
             s->has_packaged_layout = 0;
             s->packaged_block_height = 0;
         }
+        sync_to_inline(builder, s);
     } else {
         s_stats.refused++;
     }
@@ -1057,37 +1197,48 @@ ptrdiff_t nvnTextureBuilderGetMemoryOffset(void *builder) {
  * on top of each other in its memory pool. The call is therefore refused by
  * name and the reason is written down. */
 size_t nvnTextureBuilderGetStorageSize(void *builder) {
-    int first = 0;
-    pthread_mutex_lock(&s_texture_builder_lock);
-    s_stats.calls++;
-    s_stats.gets++;
-    s_stats.refused++;
-    first = mark_logged(TB_GET_STORAGE_SIZE);
-    pthread_mutex_unlock(&s_texture_builder_lock);
-    if (first) {
-        fprintf(stderr, "[nvn] nvnTextureBuilderGetStorageSize: builder=%p -> 0; the storage layout of a texture "
-                        "is not computed by the builder family, so no size is invented here\n",
-                builder);
-    }
-    return 0;
+    uint64_t size = 0;
+    nvn_texture_builder_layout_of(builder, &size, NULL, NULL);
+    return (size_t)size;
 }
 
 /* The alignment of the storage of the texture. Refused for the same reason as
  * the storage size. */
 size_t nvnTextureBuilderGetStorageAlignment(void *builder) {
-    int first = 0;
+    uint32_t alignment = 0;
+    nvn_texture_builder_layout_of(builder, NULL, &alignment, NULL);
+    return alignment;
+}
+
+/* Use exactly the layout code the Vulkan bridge uses. Returning zero used
+ * to make the guest allocate every texture at the same pool offset. */
+int nvn_texture_builder_layout_of(const void *builder, uint64_t *size, uint32_t *alignment,
+                                  int *packaged_block_height) {
+    nvn_texture_builder_state *found;
+    nvn_texdesc d = {0};
+    nvn_texlayout layout = {0};
     pthread_mutex_lock(&s_texture_builder_lock);
     s_stats.calls++;
     s_stats.gets++;
-    s_stats.refused++;
-    first = mark_logged(TB_GET_STORAGE_ALIGNMENT);
-    pthread_mutex_unlock(&s_texture_builder_lock);
-    if (first) {
-        fprintf(stderr, "[nvn] nvnTextureBuilderGetStorageAlignment: builder=%p -> 0; the storage layout of a "
-                        "texture is not computed by the builder family, so no alignment is invented here\n",
-                builder);
+    found = builder_find((void *)builder, 0);
+    if (found) {
+        d = (nvn_texdesc){.target=found->target, .format=found->format, .flags=found->flags,
+            .samples=found->samples, .width=found->width, .height=found->height,
+            .depth=found->depth, .levels=found->levels, .stride=found->stride,
+            .pkg_block_h=found->packaged_block_height};
     }
-    return 0;
+    pthread_mutex_unlock(&s_texture_builder_lock);
+    if (!found) return 0;
+    nvn_tex_layout(&d, &layout);
+    if (!layout.bpb || !layout.size) {
+        fprintf(stderr, "[nvn] texture layout refused: builder=%p format=%#x size=%ux%ux%u\n",
+                builder, d.format, d.width, d.height, d.depth);
+        return 0;
+    }
+    if (size) *size = layout.size;
+    if (alignment) *alignment = layout.align;
+    if (packaged_block_height) *packaged_block_height = d.pkg_block_h;
+    return 1;
 }
 
 /* The storage class of the texture.

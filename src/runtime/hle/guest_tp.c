@@ -16,6 +16,10 @@ struct guest_tp_mirror {
  * Aligned to 64 bytes to satisfy ARM64 Bionic PT_TLS minimum alignment. */
 static _Thread_local _Alignas(64) guest_tp_mirror *guest_tp_thread_mirror;
 
+#if defined(__ANDROID__) && defined(__aarch64__)
+#include "guest_tp_fast.inc"
+#endif
+
 /* Live mirror count, so an integrator can prove that no thread outlived its
  * mirror. */
 static size_t guest_tp_live;
@@ -27,6 +31,9 @@ static pthread_once_t guest_tp_cleanup_once = PTHREAD_ONCE_INIT;
 static int guest_tp_cleanup_error;
 
 static void guest_tp_thread_exit(void *value) {
+#if defined(__ANDROID__) && defined(__aarch64__)
+    guest_tp_fast_unbind();
+#endif
     guest_tp_thread_mirror = NULL;
     guest_tp_mirror_free((guest_tp_mirror *)value);
 }
@@ -119,6 +126,9 @@ struct guest_tp_result guest_tp_bind_current(guest_tp_mirror *mirror) {
         return result;
     }
     guest_tp_thread_mirror = mirror;
+#if defined(__ANDROID__) && defined(__aarch64__)
+    guest_tp_fast_bind(mirror->view.anchor);
+#endif
     result.status = GUEST_TP_OK;
     return result;
 }
@@ -127,6 +137,9 @@ struct guest_tp_result guest_tp_unbind_current(void) {
     struct guest_tp_result result = {GUEST_TP_UNBOUND, 0};
     guest_tp_mirror *mirror = guest_tp_thread_mirror;
     if (!mirror) return result;
+#if defined(__ANDROID__) && defined(__aarch64__)
+    guest_tp_fast_unbind();
+#endif
     guest_tp_thread_mirror = NULL;
     pthread_setspecific(guest_tp_cleanup_key, NULL);
     guest_tp_mirror_free(mirror);
@@ -198,7 +211,11 @@ int guest_tp_text_contains(uintptr_t address) {
         if (!__atomic_load_n(&guest_tp_range_ready[index], __ATOMIC_ACQUIRE)) continue;
         if (address >= guest_tp_ranges[index].low && address < guest_tp_ranges[index].high) return 1;
     }
+#if defined(__ANDROID__) && defined(__aarch64__)
+    return guest_tp_fast_contains(address);
+#else
     return 0;
+#endif
 }
 
 struct guest_tp_result guest_tp_scan_text(const void *text, size_t bytes,
@@ -251,11 +268,21 @@ struct guest_tp_result guest_tp_patch_text(void *text, size_t bytes,
     if (report) memset(report, 0, sizeof(*report));
     uint32_t *words = (uint32_t *)text;
     size_t count = bytes / 4;
+#if defined(__ANDROID__) && defined(__aarch64__)
+    guest_tp_fast_block *fast=guest_tp_fast_prepare(words,bytes);
+    size_t fast_index=0,fast_patched=0;
+#endif
     for (size_t index = 0; index < count; index++) {
         uint32_t word = words[index];
         if (report) report->scanned_words++;
         if ((word & ~31u) == GUEST_TP_MRS_TPIDR_EL0) {
             uint32_t trap = guest_tp_trap_encode(word & 31u);
+#if defined(__ANDROID__) && defined(__aarch64__)
+            uint32_t jump;uintptr_t thunk=fast?(uintptr_t)fast->code+fast_index*GUEST_TP_FAST_BYTES:0;
+            if(fast && guest_tp_fast_branch((uintptr_t)&words[index],thunk,&jump) &&
+               ((const uint32_t*)thunk)[0]==guest_tp_fast_template[0]){trap=jump;fast_patched++;}
+            fast_index++;
+#endif
             memcpy(&words[index], &trap, sizeof(trap));
             if (report) {
                 report->patched++;
@@ -268,6 +295,9 @@ struct guest_tp_result guest_tp_patch_text(void *text, size_t bytes,
         }
     }
     __builtin___clear_cache((char *)text, (char *)text + bytes);
+#if defined(__ANDROID__) && defined(__aarch64__)
+    if(fast_index)fprintf(stderr,"[guest-tp] native TP reads=%zu signalFallback=%zu thunkBytes=%zu\n",fast_patched,fast_index-fast_patched,fast?fast->bytes:0);
+#endif
     result.status = GUEST_TP_OK;
     return result;
 }

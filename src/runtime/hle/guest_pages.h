@@ -54,6 +54,10 @@ struct guest_pages_result guest_pages_map(guest_pages *, uintptr_t address, size
 /* Only a single exact allocation identity may be freed. Partial, combined,
  * mixed, unknown or repeated frees are rejected without a VM call/refund. */
 struct guest_pages_result guest_pages_free_exact(guest_pages *, uintptr_t address, size_t bytes);
+/* Free a gapless page-aligned backed range in one owned region.
+ * Whole coverage is checked before VM operations; boundary tickets are split
+ * without changing total charge. Failures retain remaining owned identities. */
+struct guest_pages_result guest_pages_free_allocations(guest_pages *,uintptr_t,size_t);
 /* Whole reserve release first really unmaps, then drops ALL its live tickets,
  * including retained pending tickets. The existing lower whole-unmap failure
  * aborts; this component does not invent recoverability for that fatal path. */

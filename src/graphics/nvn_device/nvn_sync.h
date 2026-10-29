@@ -82,6 +82,13 @@
  * live, so a guest that runs out of them is told so instead of being served
  * silently. */
 #define NVN_SYNC_MAX_OBJECTS 65536
+/* Retained recorded-command generations. Stable 4096-object slabs consume
+ * at most16MiB of sync payload plus2KiB of slab pointers. Allocation failure
+ * or exhaustion refuses the new generation; an existing generation survives.
+ * Old recorded pointers live until process exit, because this family does
+ * not own command-package retirement. No per-frame generation is required
+ * merely to fence an existing initialized sync. */
+#define NVN_SYNC_MAX_GENERATIONS 1048576u
 
 /* The names of the family, so that the device dispatch can answer them
  * without a second table. */
@@ -111,10 +118,14 @@ const nvn_sync_family_entry *nvn_sync_family_entry_at(size_t index);
  * would drop a fence the guest asked for. */
 void nvn_sync_family_fence(void *sync);
 
-/* The object of a sync object, for the replay layer that fences it.
- *
- * The object is the one this family keeps its own fence state in, so that
- * the replay layer and this family are looking at the same fence. */
+/* Mark a sync object as fenced via its internal object pointer. */
+void nvn_sync_family_fence_object(ffrs_sync *object);
+
+/* Stable current-generation object for deferred replay. Table growth never
+ * moves it. Reinitialize publishes a different zero-fence generation;
+ * Finalize removes the key lookup but retains previously recorded pointers.
+ * This lifetime protection does not make premature guest Finalize valid NVN
+ * synchronization, nor does it signal any GPU work by itself. */
 ffrs_sync *nvn_sync_family_object(const void *sync);
 
 /* Whether a sync object has a fence. A sync object that does not exist has
@@ -149,6 +160,9 @@ typedef struct nvn_sync_stats {
     uint64_t fences_taken;         /* sync objects that were fenced */
     uint64_t refused;              /* the call could not be answered */
     int live_syncs;                /* sync objects the table holds */
+    uint64_t retained_generations; /* current plus old recorded generations */
+    uint64_t snapshot_bytes;       /* actual allocated stable slab payload */
+    uint64_t generation_limit;     /* explicit bounded retention policy */
 } nvn_sync_stats;
 
 void nvn_sync_get_stats(nvn_sync_stats *out);

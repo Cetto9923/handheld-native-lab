@@ -83,6 +83,7 @@
 #include "nvn_sync.h"
 
 #include "nvn_device.h"
+#include "nvn_engine.h"
 
 #include "../nvn/include/nvn/nvn.h"
 
@@ -90,6 +91,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include "nvn_object_table.h"
 
@@ -103,7 +105,8 @@ typedef struct {
      * not two fields, because the replay layer writes the fence into it when
      * it reaches the point of the command stream where the guest fenced it:
      * the host and the replay layer have to be looking at the same thing. */
-    ffrs_sync object;
+    ffrs_sync *object;
+    int object_exposed;
     char debug_label[64];
     int in_use;
 } nvn_sync_state;
@@ -126,6 +129,29 @@ static pthread_mutex_t s_sync_lock = PTHREAD_MUTEX_INITIALIZER;
 static nvn_object_table s_syncs = { NULL, 0, 0, sizeof(nvn_sync_state) };
 static nvn_sync_stats s_stats;
 static int s_logged[SY_NAME_COUNT];
+
+/* Command records serialize ffrs_sync*, so neither the reallocating key table
+ * nor a later Initialize owns the recorded object's storage. Slabs keep each
+ * generation stable and distinct, retained until process teardown. Budget:
+ * 256*64KiB payload +256 pointers, with no per-object allocator overhead. */
+enum { SYNC_SLAB_OBJECTS=4096, SYNC_SLAB_COUNT=NVN_SYNC_MAX_GENERATIONS/SYNC_SLAB_OBJECTS };
+static ffrs_sync *s_snapshot_slabs[SYNC_SLAB_COUNT];
+static uint64_t s_retained_generations,s_snapshot_bytes;
+static ffrs_sync *new_sync_object(void) {
+    if(s_retained_generations>=NVN_SYNC_MAX_GENERATIONS)return NULL;
+    size_t slab=(size_t)s_retained_generations/SYNC_SLAB_OBJECTS;
+    size_t offset=(size_t)s_retained_generations%SYNC_SLAB_OBJECTS;
+    if(!s_snapshot_slabs[slab]){
+        s_snapshot_slabs[slab]=calloc(SYNC_SLAB_OBJECTS,sizeof(ffrs_sync));
+        if(!s_snapshot_slabs[slab])return NULL;
+        s_snapshot_bytes+=SYNC_SLAB_OBJECTS*sizeof(ffrs_sync);
+        fprintf(stderr,"[nvn] sync snapshot slab allocated: retained=%" PRIu64 " payload_bytes=%" PRIu64 " generation_limit=%u\n",
+            s_retained_generations+1,s_snapshot_bytes,NVN_SYNC_MAX_GENERATIONS);
+    }
+    ffrs_sync *object=s_snapshot_slabs[slab]+offset;
+    memset(object,0,sizeof(*object));object->magic=FFRS_NVN_MAGIC('S','Y','N','C');
+    s_retained_generations++;return object;
+}
 
 /* The host's own fence sequence.
  *
@@ -165,9 +191,19 @@ static nvn_sync_state *sync_find(void *sync, int create) {
         if (!free_slot) return NULL;
     }
     memset(free_slot, 0, sizeof(*free_slot));
+    free_slot->object=new_sync_object();
+    if(!free_slot->object)return NULL;
     free_slot->sync = sync;
     free_slot->in_use = 1;
     return free_slot;
+}
+static int prepare_initialization(nvn_sync_state *slot) {
+    if(slot->initialized||slot->object_exposed||__atomic_load_n(&slot->object->fenced,__ATOMIC_ACQUIRE)){
+        ffrs_sync *next=new_sync_object();
+        if(!next)return 0; /* publish only after successful allocation */
+        slot->object=next;
+    }
+    return 1;
 }
 
 /* Mark a name as logged and say whether this call is the first one. Called
@@ -210,11 +246,13 @@ int nvnSyncInitialize(void *sync, void *device) {
         slot = sync_find(sync, 1);
         if (!slot) {
             why = "no room for another sync object";
+        } else if(!prepare_initialization(slot)) {
+            /* Keep a prior initialized object on allocation failure. */
+            why = "sync generation allocation failed";
         } else {
             slot->device = device;
             slot->initialized = 1;
-            memset(&slot->object, 0, sizeof(slot->object));
-            slot->object.magic = FFRS_NVN_MAGIC('S', 'Y', 'N', 'C');
+            slot->object_exposed=0;
             slot->gl_sync = 0;
             slot->has_gl_sync = 0;
             slot->debug_label[0] = '\0';
@@ -259,8 +297,9 @@ void nvnSyncFinalize(void *sync) {
     found = sync_find(sync, 0);
     if (found) {
         found->initialized = 0;
-        found->object.fenced = 0;
-        found->object.fence = 0;
+        /* Outstanding command records retain their original generation. */
+        found->object=NULL;
+        found->object_exposed=0;
         found->in_use = 0;
         s_stats.finalized++;
     } else {
@@ -346,6 +385,7 @@ NVNsyncWaitResult nvnSyncWait(const void *sync, uint64_t timeout) {
     int known = 0;
     int fenced = 0;
     int first = 0;
+    uint64_t fence = 0;
     NVNsyncWaitResult result;
 
     pthread_mutex_lock(&s_sync_lock);
@@ -357,7 +397,8 @@ NVNsyncWaitResult nvnSyncWait(const void *sync, uint64_t timeout) {
          * else (hle_nvn.c:639): a sync that the queue fenced answers the
          * signalled result even when the guest never initialized it, and
          * the queue may fence a sync the guest has not made yet. */
-        fenced = found->object.fenced;
+        fenced = __atomic_load_n(&found->object->fenced, __ATOMIC_ACQUIRE);
+        fence = found->object->fence;
         if (found->initialized) known = 1;
     }
     if (!fenced) s_stats.waits_without_fence++;
@@ -365,14 +406,47 @@ NVNsyncWaitResult nvnSyncWait(const void *sync, uint64_t timeout) {
     first = mark_logged(SY_WAIT);
     pthread_mutex_unlock(&s_sync_lock);
 
-    if (!known) {
+    if (fenced && nvn_engine_ready()) {
+        static int s_sync_gpu_wait = -1;
+        if (s_sync_gpu_wait < 0) {
+            FILE *f = fopen("/storage/emulated/0/Android/data/org.ffrs.gamewindow/files/gfx-sync-gpu-wait", "rb");
+            if (!f) f = fopen("/sdcard/Android/data/org.ffrs.gamewindow/files/gfx-sync-gpu-wait", "rb");
+            /* Default ON: answering ALREADY_SIGNALED before the GPU has read the
+             * buffers lets the guest overwrite data in flight (flicker, lost
+             * geometry). Marker content '0' (or FFRS_SYNC_GPU_WAIT=0) opts out
+             * for diagnostics only. */
+            s_sync_gpu_wait = 1;
+            if (f) {
+                s_sync_gpu_wait = (fgetc(f) != '0');
+                fclose(f);
+            } else {
+                const char *e = getenv("FFRS_SYNC_GPU_WAIT");
+                if (e) s_sync_gpu_wait = (atoi(e) != 0);
+            }
+            fprintf(stderr, "[nvn] sync GPU wait on nvnSyncWait = %d (marker gfx-sync-gpu-wait)\n", s_sync_gpu_wait);
+        }
+        if (s_sync_gpu_wait) {
+            if (nvn_engine_wait(fence, 0)) {
+                result = NVN_SYNC_WAIT_RESULT_ALREADY_SIGNALED;
+            } else if (timeout > 0 && nvn_engine_wait(fence, timeout)) {
+                result = NVN_SYNC_WAIT_RESULT_CONDITION_SATISFIED;
+            } else {
+                result = NVN_SYNC_WAIT_RESULT_TIMEOUT_EXPIRED;
+            }
+        } else {
+            result = NVN_SYNC_WAIT_RESULT_ALREADY_SIGNALED;
+        }
+    }
+
+    if(result==NVN_SYNC_WAIT_RESULT_TIMEOUT_EXPIRED && timeout > 0){
+        fprintf(stderr,"[nvn] nvnSyncWait: TIMEOUT sync=%p known=%d fenced=%d fence=%" PRIu64 " timeout=%" PRIu64 " engine=%d\n",
+            sync,known,fenced,fence,timeout,nvn_engine_ready());
+    } else if (!known) {
         fprintf(stderr, "[nvn] nvnSyncWait: sync=%p was never initialized by the guest; the answer is %d (%s)\n", sync,
                 (int)result, fenced ? "already signalled" : "timeout expired");
     } else if (first) {
-        fprintf(stderr, "[nvn] nvnSyncWait: sync=%p timeout=%" PRIu64 " -> %d (%s); the host has no GPU work to wait "
-                        "for\n",
-                sync, timeout, (int)result,
-                fenced ? "already signalled" : "timeout expired");
+        fprintf(stderr, "[nvn] nvnSyncWait: sync=%p fence=%" PRIu64 " timeout=%" PRIu64 " -> %d engine=%d\n",
+                sync, fence, timeout, (int)result, nvn_engine_ready());
     }
     return result;
 }
@@ -446,6 +520,7 @@ int nvnSyncInitializeFromFencedGLSync(void *sync, void *gl_sync) {
     int ready = 0;
     const char *why = NULL;
     int first = 0;
+    uint64_t fence_value=0;
 
     pthread_mutex_lock(&s_sync_lock);
     s_stats.calls++;
@@ -455,11 +530,15 @@ int nvnSyncInitializeFromFencedGLSync(void *sync, void *gl_sync) {
         slot = sync_find(sync, 1);
         if (!slot) {
             why = "no room for another sync object";
+        } else if(!prepare_initialization(slot)) {
+            why="sync generation allocation failed";
         } else {
             slot->device = NULL;
             slot->initialized = 1;
-            slot->object.fenced = 1;
-            slot->object.fence = ++s_fence_sequence;
+            slot->object_exposed=0;
+            slot->object->fenced = 1;
+            slot->object->fence = ++s_fence_sequence;
+            fence_value=slot->object->fence;
             slot->gl_sync = (uint64_t)(uintptr_t)gl_sync;
             slot->has_gl_sync = 1;
             slot->debug_label[0] = '\0';
@@ -479,7 +558,7 @@ int nvnSyncInitializeFromFencedGLSync(void *sync, void *gl_sync) {
         fprintf(stderr, "[nvn] nvnSyncInitializeFromFencedGLSync: sync=%p gl_sync=%p -> the sync object is "
                         "initialized and fenced with the host's own fence sequence %" PRIu64
                         "; the GL handle is opaque here and was not dereferenced\n",
-                sync, gl_sync, slot ? slot->object.fence : 0);
+                sync, gl_sync, fence_value);
     }
     return ready ? 1 : 0;
 }
@@ -502,9 +581,9 @@ void nvn_sync_family_fence(void *sync) {
         s_stats.refused++;
         refused = 1;
     } else {
-        fence = ++s_fence_sequence;
-        slot->object.fenced = 1;
-        slot->object.fence = fence;
+        fence = nvn_engine_ready() ? nvn_engine_last_fence() : ++s_fence_sequence;
+        slot->object->fence = fence;
+        __atomic_store_n(&slot->object->fenced, 1, __ATOMIC_RELEASE);
         s_stats.fences_taken++;
     }
     pthread_mutex_unlock(&s_sync_lock);
@@ -513,6 +592,15 @@ void nvn_sync_family_fence(void *sync) {
         fprintf(stderr, "[nvn] nvn_sync_family_fence: no room for another sync object; the sync %p was not fenced\n",
                 sync);
     }
+}
+
+void nvn_sync_family_fence_object(ffrs_sync *object) {
+    if (!object) return;
+    pthread_mutex_lock(&s_sync_lock);
+    object->fence = nvn_engine_ready() ? nvn_engine_last_fence() : ++s_fence_sequence;
+    __atomic_store_n(&object->fenced, 1, __ATOMIC_RELEASE);
+    s_stats.fences_taken++;
+    pthread_mutex_unlock(&s_sync_lock);
 }
 
 /* The object of a sync, for the replay layer.
@@ -530,9 +618,10 @@ ffrs_sync *nvn_sync_family_object(const void *sync) {
         pthread_mutex_unlock(&s_sync_lock);
         return NULL;
     }
-    if (!slot->object.magic) slot->object.magic = FFRS_NVN_MAGIC('S', 'Y', 'N', 'C');
+    ffrs_sync *object=slot->object;
+    slot->object_exposed=1;
     pthread_mutex_unlock(&s_sync_lock);
-    return &slot->object;
+    return object;
 }
 
 int nvn_sync_family_is_fenced(const void *sync) {
@@ -541,7 +630,7 @@ int nvn_sync_family_is_fenced(const void *sync) {
 
     pthread_mutex_lock(&s_sync_lock);
     found = sync_find((void *)(uintptr_t)sync, 0);
-    if (found) fenced = found->object.fenced;
+    if (found) fenced = __atomic_load_n(&found->object->fenced,__ATOMIC_ACQUIRE);
     pthread_mutex_unlock(&s_sync_lock);
     return fenced;
 }
@@ -552,7 +641,7 @@ uint64_t nvn_sync_family_fence_value(const void *sync) {
 
     pthread_mutex_lock(&s_sync_lock);
     found = sync_find((void *)(uintptr_t)sync, 0);
-    if (found) fence = found->object.fence;
+    if (found) fence = found->object->fence;
     pthread_mutex_unlock(&s_sync_lock);
     return fence;
 }
@@ -565,7 +654,7 @@ int nvn_sync_family_wait(const void *sync, int *logged) {
     if (logged) *logged = 0;
     pthread_mutex_lock(&s_sync_lock);
     found = sync_find((void *)(uintptr_t)sync, 0);
-    if (found) fenced = found->object.fenced;
+    if (found) fenced = __atomic_load_n(&found->object->fenced,__ATOMIC_ACQUIRE);
     s_stats.waits++;
     if (!fenced) {
         s_stats.waits_without_fence++;
@@ -614,6 +703,9 @@ void nvn_sync_get_stats(nvn_sync_stats *out) {
     if (!out) return;
     pthread_mutex_lock(&s_sync_lock);
     *out = s_stats;
+    out->retained_generations=s_retained_generations;
+    out->snapshot_bytes=s_snapshot_bytes;
+    out->generation_limit=NVN_SYNC_MAX_GENERATIONS;
     out->live_syncs = 0;
     for (i = 0; i < s_syncs.count; i++) {
         nvn_sync_state *entry = (nvn_sync_state *)nvn_object_table_at(&s_syncs, i);

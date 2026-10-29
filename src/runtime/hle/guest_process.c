@@ -3,6 +3,12 @@
 #error "owned startup profile requires the real typed C++ guard runtime"
 #endif
 #include "guest_process.h"
+#include "hid_bridge.h"
+#include "sdk_component.h"
+#include "movie_buffer.h"
+#include "movie_decoder.h"
+#include "multiwait.h"
+#include "audio_bridge.h"
 #include "guest_context.h"
 #include "guest_pages.h"
 #include "native_boundary.h"
@@ -37,6 +43,20 @@ extern int finite(double);
 extern int __cxa_guard_acquire(uint64_t *);
 extern void __cxa_guard_release(uint64_t *);
 extern void __cxa_guard_abort(uint64_t *);
+#if defined(__ANDROID__) && defined(__aarch64__)
+/* Experimental RTTI bridge for the actual game import ABI. */
+extern void *__dynamic_cast(const void *, const void *, const void *, ptrdiff_t);
+extern const unsigned char rtti_class_vtable[] __asm__("_ZTVN10__cxxabiv117__class_type_infoE");
+extern const unsigned char rtti_si_vtable[] __asm__("_ZTVN10__cxxabiv120__si_class_type_infoE");
+extern const unsigned char rtti_vmi_vtable[] __asm__("_ZTVN10__cxxabiv121__vmi_class_type_infoE");
+static void *guest_rtti_dynamic_cast(const void *object, const void *source, const void *target, ptrdiff_t hint) {
+    void *result=__dynamic_cast(object,source,target,hint);
+    static unsigned calls;
+    unsigned n=__atomic_fetch_add(&calls,1,__ATOMIC_RELAXED);
+    if(n<32)fprintf(stderr,"[rtti-bridge] call=%u object=%p source=%p target=%p hint=%td result=%p\n",n,object,source,target,hint,result);
+    return result;
+}
+#endif
 
 enum heap_state {HEAP_UNINITIALIZED,HEAP_READY_EMPTY};
 struct empty_heap_manager {enum heap_state state;size_t capacity,blocks;};
@@ -628,6 +648,9 @@ static uint32_t finish_page_service(guest_process *p,const char *operation,
     pthread_mutex_unlock(&p->mutex);
     if(r.status!=GUEST_PAGES_OK) {
         page_diagnostic(operation,address,bytes,r);
+        struct guest_resource_usage u={0};
+        struct guest_context_result cr=guest_context_resource_usage(p->context,&u);
+        fprintf(stderr,"[page-resource] status=%d valid=%d total=%zu used=%zu blocks=%zu counts=%zu/%zu/%zu/%zu/%zu\n",cr.status,u.valid,u.total_bytes,u.used_bytes,u.blocks,u.counts[1],u.counts[2],u.counts[3],u.counts[4],u.counts[5]);
         fputs("[page-unsupported] no unproved SDK Result mapping; owner/tickets retained until isolated process shutdown\n",stderr);
         abort();
     }
@@ -654,8 +677,8 @@ static uint32_t allocate_pages(uintptr_t address,size_t bytes) {
 }
 static uint32_t free_pages(uintptr_t address,size_t bytes) {
     guest_process *p=required_current();pthread_mutex_lock(&p->mutex);
-    struct guest_pages_result r=guest_pages_free_exact(p->pages,address,bytes);
-    return finish_page_service(p,"free-exact",address,bytes,r);
+    struct guest_pages_result r=guest_pages_free_allocations(p->pages,address,bytes);
+    return finish_page_service(p,"free-allocations",address,bytes,r);
 }
 static guest_process *tls_current(void) {
     guest_process *p=required_current();
@@ -1029,7 +1052,7 @@ static int nvn_guest_call_through_boundary(void *entry, const uint64_t *x, uint6
     typedef void (*guest_memory_callback)(uint64_t,uint64_t,uint64_t,uint64_t);
     if(!entry||!x)return 0;
     if(!p||!p->module||p->thread.state!=THREAD_RUNNING||
-       !pthread_equal(p->thread.native,pthread_self())) {
+       (!pthread_equal(p->thread.native,pthread_self()) && guest_tp_current_base()==NULL)) {
         fprintf(stderr,"[nvn-callback] refused: the caller is not the guest's own thread; the "
                 "memory callback of the guest was not called\n");
         return -1;
@@ -1095,6 +1118,43 @@ void guest_process_bind_child_thread(void) {
     }
     pthread_mutex_unlock(&exclusive_mutex);
 }
+/* SDK posix_memalign/memalign call the interposed aligned_alloc symbol.
+ * Main exports its own allocator; host allocations cannot be freed by it. */
+int guest_process_interposed_aligned_alloc(size_t alignment,size_t bytes,void **out) {
+    guest_process *p=current_process;
+    if(!p || !p->module)return 0;
+    uint32_t symbol=nso_find_symbol(p->module,"aligned_alloc");
+    uint64_t offset=symbol?nso_symbol_value(p->module,symbol):0,address=0;
+    if(!offset || nso_entry_address(p->module,offset,&address).status!=NSO_OK)return -1;
+    nb_registers packet={.x={alignment,bytes}};
+    nb_status r=nb_call_from_host(&p->boundary,(void(*)(void))(uintptr_t)address,&packet);
+    if(r!=NB_OK){fprintf(stderr,"[allocator-interpose] boundary=%d; refusing foreign heap fallback\n",r);return -1;}
+    *out=(void*)(uintptr_t)packet.x[0];return 1;
+}
+int guest_process_interposed_free(void *pointer) {
+    guest_process *p=current_process;
+    if(!p || !p->module)return 0;
+    if(!pointer)return 1;
+    uint32_t symbol=nso_find_symbol(p->module,"free");
+    uint64_t offset=symbol?nso_symbol_value(p->module,symbol):0,address=0;
+    if(!offset || nso_entry_address(p->module,offset,&address).status!=NSO_OK)return -1;
+    nb_registers packet={.x={(uintptr_t)pointer}};
+    nb_status r=nb_call_from_host(&p->boundary,(void(*)(void))(uintptr_t)address,&packet);
+    if(r!=NB_OK){fprintf(stderr,"[allocator-interpose] free boundary=%d; refusing foreign heap fallback\n",r);return -1;}
+    return 1;
+}
+/* Called after nb_call_child returns and before unbinding either TLS domain. */
+int guest_process_invoke_thread_exit(void (*destructor)(void *),void *value) {
+    guest_process *p=current_process;
+    if(!p || !p->module)return 0;
+    uintptr_t address=(uintptr_t)destructor,base=nso_base(p->module);
+    if(address<base || address-base>=nso_text_size(p->module))return 0;
+    if(!p->boundary_initialized || !current_os_thread || !guest_tp_current_base())return -1;
+    nb_registers packet={.x={(uintptr_t)value}};
+    nb_status r=nb_call_child(&p->boundary,(void(*)(void))destructor,&packet,0);
+    fprintf(stderr,"[crt] guest TLS destructor main+0x%" PRIxPTR " boundary=%d\n",address-base,r);
+    return r==NB_OK?1:-1;
+}
 void guest_process_unbind_child_thread(void) {
     pthread_mutex_lock(&exclusive_mutex);
     guest_process *p = current_process ? current_process : exclusive_process;
@@ -1119,6 +1179,12 @@ static void guest_vibration_converter_dtor(void *self) {
 }
 uint64_t guest_process_resolve(uint32_t index,const char *name) {
     if(!name)return 0;
+#if defined(__ANDROID__) && defined(__aarch64__)
+    if(!strcmp(name,"__dynamic_cast"))return (uintptr_t)&guest_rtti_dynamic_cast;
+    if(!strcmp(name,"_ZTVN10__cxxabiv117__class_type_infoE"))return (uintptr_t)rtti_class_vtable;
+    if(!strcmp(name,"_ZTVN10__cxxabiv120__si_class_type_infoE"))return (uintptr_t)rtti_si_vtable;
+    if(!strcmp(name,"_ZTVN10__cxxabiv121__vmi_class_type_infoE"))return (uintptr_t)rtti_vmi_vtable;
+#endif
     if(!strcmp(name,"_ZN2nn2os36GetVirtualAddressMemoryResourceUsageEv"))
         return exclusive_process && exclusive_process->resource_quota?(uintptr_t)&virtual_resource_usage:0;
 #define PURE(fn) if(!strcmp(name,#fn))return (uint64_t)(uintptr_t)&fn
@@ -1131,6 +1197,7 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
     PURE(isalpha);PURE(tolower);
     if(!strcmp(name,"finite"))return (uintptr_t)&guest_finite;
     if(!strcmp(name,"snprintf"))return (uintptr_t)&vsnprintf;
+    if(!strcmp(name,"vsnprintf"))return (uintptr_t)&nso_host_vsnprintf;
     PURE(logf); /* Standard float(float), current original caller uses s0. */
     PURE(pow);PURE(powf);
     PURE(atan2);PURE(atan2f);
@@ -1192,6 +1259,19 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
     if(!strcmp(name,"__cxa_guard_abort"))return (uintptr_t)&__cxa_guard_abort;
     /* Every entry is an existing typed branch, never the extension fallthrough.
      * No nvn/dlsym/unowned backing/thread/heap service is admitted. */
+    uint64_t hid = ffrs_hid_lookup(name, NULL, NULL);
+    if (hid) return hid;
+    uint64_t component = ffrs_sdk_component_lookup(name, NULL, NULL);
+    if (component) return component;
+    uint64_t movie = ffrs_movie_buffer_lookup(name, NULL, NULL);
+    if (movie) return movie;
+    if(!strcmp(name,"_ZN2nn2oe25GetProgramTotalActiveTimeEv"))return (uintptr_t)nso_host_oe_get_program_total_active_time;
+    movie = ffrs_movie_decoder_lookup(name, NULL, NULL);
+    if (movie) return movie;
+    movie = ffrs_multiwait_lookup(name, NULL, NULL);
+    if (movie) return movie;
+    uint64_t audio = ffrs_audio_lookup(name, NULL, NULL);
+    if (audio) return audio;
     static const char *const typed[]={
         "_ZN2nn2fs12SetAllocatorEPFPvmEPFvS1_mE","nnfsSetAllocator",
         "_ZN2nn2fs22QueryMountRomCacheSizeEPm","nnfsQueryMountRomCacheSize",
@@ -1228,9 +1308,32 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
         "_ZN2nn6socket11EventFdReadEiPm",
         "_ZN2nn6socket5CloseEi",
         "_ZN2nn6socket12GetLastErrorEv",
+        "nnsocketGetLastErrno",
+        "nnsocketSetLastErrno",
         "_ZN2nn6socket4PollEPNS0_6PollFdEmi",
         "nnsocketPoll",
         "_ZN2nn7account10InitializeEv","nnaccountInitialize",
+        "_ZN2nn7account22TryOpenPreselectedUserEPNS0_10UserHandleE",
+        "_ZN2nn7account9GetUserIdEPNS0_3UidERKNS0_10UserHandleE",
+        "_ZN2nn7account9CloseUserERKNS0_10UserHandleE",
+        "_ZN2nn7account13PushOpenUsersEv",
+        "_ZN2nn7account12PopOpenUsersEPiPNS0_10UserHandleEi",
+        "_ZN2nn2fs18IsSaveDataExistingENS_13ApplicationIdERKNS_7account3UidE",
+        "_ZN2nn2fs21MountSaveDataReadOnlyEPKcNS_13ApplicationIdERKNS_7account3UidE",
+        "_ZN2nn2fs14EnsureSaveDataERKNS_7account3UidE",
+        "_ZN2nn2fs13MountSaveDataEPKcRKNS_7account3UidE",
+        "_ZN2nn2fs14ExtendSaveDataERKNS_7account3UidEll",
+        "_ZN2nn2fs14CommitSaveDataEPKc",
+        "_ZN2nn2fs6CommitEPKc",
+        "_ZN2nn2fs10CreateFileEPKcl",
+        "_ZN2nn2fs15GetSaveDataSizeEPlS1_RKNS_7account3UidE",
+        "_ZN2nn2fs16GetFreeSpaceSizeEPlPKc",
+        "_ZN2nn2os27InitializeConditionVariableEPNS0_21ConditionVariableTypeE",
+        "_ZN2nn2os25FinalizeConditionVariableEPNS0_21ConditionVariableTypeE",
+        "_ZN2nn2os21WaitConditionVariableEPNS0_21ConditionVariableTypeEPNS0_9MutexTypeE",
+        "_ZN2nn2os26TimedWaitConditionVariableEPNS0_21ConditionVariableTypeEPNS0_9MutexTypeENS_8TimeSpanE",
+        "_ZN2nn2os23SignalConditionVariableEPNS0_21ConditionVariableTypeE",
+        "_ZN2nn2os18TryWaitSystemEventEPNS0_15SystemEventTypeE",
         "_ZN2nn2oe10InitializeEv","nnoeInitialize",
         "_ZN2nn2oe18GetDesiredLanguageEv","nnoeGetDesiredLanguage",
         "_ZN2nn2oe15SetCpuBoostModeENS0_12CpuBoostModeE",
@@ -1243,7 +1346,12 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
         "_ZN2nn2vi20GetDisplayVsyncEventEPNS_2os15SystemEventTypeEPNS0_7DisplayE",
         "_ZN2nn2vi11CreateLayerEPPNS0_5LayerEPNS0_7DisplayE",
         "_ZN2nn2vi15GetNativeWindowEPPvPNS0_5LayerE",
+        "_ZN2nn2vi20GetLatestFrameNumberEPmPKNS0_5LayerE",
+        "_ZN2nn2vi16ListFrameHistoryEPNS0_9FrameInfoEiPKNS0_5LayerE",
         "_ZN2nn2oe20GetCurrentFocusStateEv",
+        "_ZN2nn2oe31EnterExitRequestHandlingSectionEv",
+        "_ZN2nn2oe31LeaveExitRequestHandlingSectionEv",
+        "_ZN2nn2oe25TryPopNotificationMessageEPj",
         "_ZN2nn2oe44SetPerformanceModeChangedNotificationEnabledEb",
         "_ZN2nn2oe42SetOperationModeChangedNotificationEnabledEb",
         "_ZN2nn2oe20SetFocusHandlingModeENS0_17FocusHandlingModeE",
@@ -1312,6 +1420,7 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
         "_ZN2nn4time19ToCalendarTimeInUtcERKNS0_9PosixTimeE",
         "_ZN2nn4time12GetDayOfWeekEiii",
         "_ZN2nn2os22GetSystemTickFrequencyEv","nnosGetSystemTickFrequency",
+        "_ZN2nn2os17ConvertToTimeSpanENS0_4TickE",
         "_ZN2nn2os13GetSystemTickEv","nnosGetSystemTick",
         "_ZTHN13LowLevelTasks5FTask10ActiveTaskE",
         "_ZTHN13LowLevelTasks7Private20FOversubscriptionTls26bIsOversubscriptionAllowedE",
@@ -1342,12 +1451,59 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
          * and are never bound as a callable thunk. */
         "stdout","stdin","stderr",
         "printf","fprintf","sprintf","fflush","fwrite","fputs","fputc","puts",
+        "setjmp","_setjmp","longjmp","_longjmp","sigsetjmp","__sigsetjmp","siglongjmp",
         "__cxa_pure_virtual",NULL};
     for(size_t i=0;typed[i];i++)if(!strcmp(name,typed[i]))return nso_host_resolve(index,name);
     if(!strcmp(name,"abort"))return (uintptr_t)&abort;
     return 0;
 }
 static int import_signature(const char *name,nb_signature *out) {
+#if defined(__ANDROID__) && defined(__aarch64__)
+    if(!strcmp(name,"__dynamic_cast")){
+        *out=(nb_signature){.version=1,.flags=NB_SIG_REGISTER_ONLY,.gp_arguments=4,.gp_returns=1};return 1;
+    }
+#endif
+    if(!strcmp(name,"_ZN2nn2oe25GetProgramTotalActiveTimeEv")){
+        *out=(nb_signature){.version=1,.flags=NB_SIG_REGISTER_ONLY,.gp_arguments=0,.gp_returns=1};return 1;
+    }
+    unsigned audio_arguments, audio_returns;
+    if (ffrs_audio_lookup(name, &audio_arguments, &audio_returns)) {
+        *out=(nb_signature){.version=1,.flags=NB_SIG_REGISTER_ONLY,.gp_arguments=audio_arguments,.gp_returns=audio_returns};
+        return 1;
+    }
+    if(!strcmp(name,"_ZN2nn2os18TryWaitSystemEventEPNS0_15SystemEventTypeE")) {
+        *out=(nb_signature){.version=1,.flags=NB_SIG_REGISTER_ONLY,.gp_arguments=1,.gp_returns=1};return 1;
+    }
+    if(!strcmp(name,"vsnprintf")) {
+        *out=(nb_signature){.version=1,.flags=NB_SIG_REGISTER_ONLY,.gp_arguments=4,.gp_returns=1};
+        return 1;
+    }
+    unsigned hid_arguments, hid_returns;
+    if (ffrs_multiwait_lookup(name, &hid_arguments, &hid_returns)) {
+        *out = (nb_signature){.version=1,.flags=NB_SIG_REGISTER_ONLY,
+            .gp_arguments=hid_arguments,.gp_returns=hid_returns};
+        return 1;
+    }
+    if (ffrs_movie_decoder_lookup(name, &hid_arguments, &hid_returns)) {
+        *out = (nb_signature){.version=1,.flags=NB_SIG_REGISTER_ONLY,
+            .gp_arguments=hid_arguments,.gp_returns=hid_returns};
+        return 1;
+    }
+    if (ffrs_movie_buffer_lookup(name, &hid_arguments, &hid_returns)) {
+        *out = (nb_signature){.version=1,.flags=NB_SIG_REGISTER_ONLY,
+            .gp_arguments=hid_arguments,.gp_returns=hid_returns};
+        return 1;
+    }
+    if (ffrs_sdk_component_lookup(name, &hid_arguments, &hid_returns)) {
+        *out = (nb_signature){.version=1,.flags=NB_SIG_REGISTER_ONLY,
+            .gp_arguments=hid_arguments,.gp_returns=hid_returns};
+        return 1;
+    }
+    if (ffrs_hid_lookup(name, &hid_arguments, &hid_returns)) {
+        *out = (nb_signature){.version=1,.flags=NB_SIG_REGISTER_ONLY,
+            .gp_arguments=hid_arguments,.gp_returns=hid_returns};
+        return 1;
+    }
     if(!strcmp(name,"logf") || !strcmp(name,"log") || !strcmp(name,"log2") || !strcmp(name,"log2f") ||
        !strcmp(name,"log10") || !strcmp(name,"log10f") || !strcmp(name,"exp") || !strcmp(name,"expf") ||
        !strcmp(name,"sqrt") || !strcmp(name,"sqrtf") || !strcmp(name,"sin") || !strcmp(name,"sinf") ||
@@ -1456,6 +1612,7 @@ static int import_signature(const char *name,nb_signature *out) {
     else if(!strcmp(name,"_ZN2nn2os29IsVirtualAddressMemoryEnabledEv")) {arguments=0;returns=1;}
     else if(!strcmp(name,"_ZN2nn2os22GetSystemTickFrequencyEv") || !strcmp(name,"nnosGetSystemTickFrequency") ||
             !strcmp(name,"_ZN2nn2os13GetSystemTickEv") || !strcmp(name,"nnosGetSystemTick")) {arguments=0;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2os17ConvertToTimeSpanENS0_4TickE")) {arguments=1;returns=1;}
     else if(!strcmp(name,"_ZN2nn4time10InitializeEv") || !strcmp(name,"_ZN2nn4time13IsInitializedEv") ||
             !strcmp(name,"_ZN2nn4nifm10InitializeEv") || !strcmp(name,"nnnifmInitialize") ||
             !strcmp(name,"_ZN2nn7account10InitializeEv") || !strcmp(name,"nnaccountInitialize") ||
@@ -1483,11 +1640,34 @@ static int import_signature(const char *name,nb_signature *out) {
     else if(!strcmp(name,"_ZN2nn2vi20GetDisplayVsyncEventEPNS_2os15SystemEventTypeEPNS0_7DisplayE")) {arguments=2;returns=0;}
     else if(!strcmp(name,"_ZN2nn2vi11CreateLayerEPPNS0_5LayerEPNS0_7DisplayE")) {arguments=2;returns=0;}
     else if(!strcmp(name,"_ZN2nn2vi15GetNativeWindowEPPvPNS0_5LayerE")) {arguments=2;returns=0;}
+    else if(!strcmp(name,"_ZN2nn2vi20GetLatestFrameNumberEPmPKNS0_5LayerE")) {arguments=2;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2vi16ListFrameHistoryEPNS0_9FrameInfoEiPKNS0_5LayerE")) {arguments=3;returns=1;}
     /* nn::oe focus and notification setup, called by the guest in one
      * straight-line sequence at 0x51da10 through 0x51da50. GetCurrentFocusState
      * returns the u32 the guest stores and compares against 3; the three
      * setters take one argument in w0 and their result is never consumed. */
     else if(!strcmp(name,"_ZN2nn2oe20GetCurrentFocusStateEv")) {arguments=0;returns=1;}
+    else if(!strcmp(name,"_ZN2nn7account22TryOpenPreselectedUserEPNS0_10UserHandleE")) {arguments=1;returns=1;}
+    else if(!strcmp(name,"_ZN2nn7account9GetUserIdEPNS0_3UidERKNS0_10UserHandleE")) {arguments=2;returns=1;}
+    else if(!strcmp(name,"_ZN2nn7account9CloseUserERKNS0_10UserHandleE")) {arguments=1;returns=0;}
+    else if(!strcmp(name,"_ZN2nn7account13PushOpenUsersEv")) {arguments=0;returns=1;}
+    else if(!strcmp(name,"_ZN2nn7account12PopOpenUsersEPiPNS0_10UserHandleEi")) {arguments=3;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2fs21MountSaveDataReadOnlyEPKcNS_13ApplicationIdERKNS_7account3UidE")) {arguments=3;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2fs14ExtendSaveDataERKNS_7account3UidEll")) {arguments=3;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2fs14EnsureSaveDataERKNS_7account3UidE") ||
+            !strcmp(name,"_ZN2nn2fs14CommitSaveDataEPKc") || !strcmp(name,"_ZN2nn2fs6CommitEPKc")) {arguments=1;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2fs13MountSaveDataEPKcRKNS_7account3UidE")) {arguments=2;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2fs10CreateFileEPKcl")) {arguments=2;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2fs15GetSaveDataSizeEPlS1_RKNS_7account3UidE")) {arguments=3;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2fs16GetFreeSpaceSizeEPlPKc")) {arguments=2;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2os27InitializeConditionVariableEPNS0_21ConditionVariableTypeE") ||
+            !strcmp(name,"_ZN2nn2os25FinalizeConditionVariableEPNS0_21ConditionVariableTypeE") ||
+            !strcmp(name,"_ZN2nn2os23SignalConditionVariableEPNS0_21ConditionVariableTypeE")) {arguments=1;returns=0;}
+    else if(!strcmp(name,"_ZN2nn2os21WaitConditionVariableEPNS0_21ConditionVariableTypeEPNS0_9MutexTypeE")) {arguments=2;returns=0;}
+    else if(!strcmp(name,"_ZN2nn2os26TimedWaitConditionVariableEPNS0_21ConditionVariableTypeEPNS0_9MutexTypeENS_8TimeSpanE")) {arguments=3;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2fs18IsSaveDataExistingENS_13ApplicationIdERKNS_7account3UidE")){arguments=2;returns=1;}
+    else if(!strcmp(name,"_ZN2nn2oe31EnterExitRequestHandlingSectionEv") || !strcmp(name,"_ZN2nn2oe31LeaveExitRequestHandlingSectionEv")){arguments=0;returns=0;}
+    else if(!strcmp(name,"_ZN2nn2oe25TryPopNotificationMessageEPj")) {arguments=1;returns=1;}
     else if(!strcmp(name,"_ZN2nn2oe44SetPerformanceModeChangedNotificationEnabledEb") ||
             !strcmp(name,"_ZN2nn2oe42SetOperationModeChangedNotificationEnabledEb") ||
             !strcmp(name,"_ZN2nn2oe20SetFocusHandlingModeENS0_17FocusHandlingModeE") ||
@@ -1613,7 +1793,9 @@ static int import_signature(const char *name,nb_signature *out) {
     else if(!strcmp(name,"_ZN2nn6socket12EventFdWriteEim")) {arguments=2;returns=1;}
     else if(!strcmp(name,"_ZN2nn6socket11EventFdReadEiPm")) {arguments=2;returns=1;}
     else if(!strcmp(name,"_ZN2nn6socket5CloseEi")) {arguments=1;returns=1;}
-    else if(!strcmp(name,"_ZN2nn6socket12GetLastErrorEv")) {arguments=0;returns=1;}
+    else if(!strcmp(name,"_ZN2nn6socket12GetLastErrorEv") ||
+            !strcmp(name,"nnsocketGetLastErrno")) {arguments=0;returns=1;}
+    else if(!strcmp(name,"nnsocketSetLastErrno")) {arguments=1;returns=0;}
     else if(!strcmp(name,"_ZN2nn6socket4PollEPNS0_6PollFdEmi")) {arguments=3;returns=1;}
     else if(!strcmp(name,"nnsocketPoll")) {arguments=3;returns=1;}
     else if(!strcmp(name,"_ZN2nn2os32SetMemoryAllocatorForThreadLocalEPFPvmmEPFvS1_mE")) {arguments=2;returns=0;}
@@ -1631,6 +1813,10 @@ static int import_signature(const char *name,nb_signature *out) {
             .gp_arguments=3,.gp_returns=1,.variadic=1};
         return 1;
     }
+    else if(!strcmp(name,"setjmp") || !strcmp(name,"_setjmp")) {arguments=1;returns=1;}
+    else if(!strcmp(name,"longjmp") || !strcmp(name,"_longjmp")) {arguments=2;returns=0;}
+    else if(!strcmp(name,"sigsetjmp") || !strcmp(name,"__sigsetjmp")) {arguments=2;returns=1;}
+    else if(!strcmp(name,"siglongjmp")) {arguments=2;returns=0;}
     else if(!strcmp(name,"printf")) {
         /* One named argument (the format string); the gateway rebuilds the
          * variadic tail from the guest registers. */
@@ -1666,10 +1852,13 @@ static struct nso_result prepare_boundary_locked(guest_process *p) {
     if(p->boundary_prepared)return status(NSO_OK,0,0);
     if(p->boundary_initialized || p->bindings)return status(NSO_RETAINED,EBUSY,0);
     size_t count=nso_bound_import_count(p->module);
-    if(count>SIZE_MAX/sizeof(nb_import) || count>SIZE_MAX/sizeof(struct nso_import_target))return status(NSO_OWNER_ERROR,EOVERFLOW,0);
+    size_t virtual_count=0;
+    const struct ffrs_movie_virtual *virtuals=ffrs_movie_decoder_virtuals(&virtual_count);
+    if(virtual_count>64 || (virtual_count && !virtuals) || count>SIZE_MAX-virtual_count ||
+       count+virtual_count>SIZE_MAX/sizeof(nb_import) || count>SIZE_MAX/sizeof(struct nso_import_target))return status(NSO_OWNER_ERROR,EOVERFLOW,0);
     struct nso_import_target *targets=count?calloc(count,sizeof(*targets)):NULL;
-    nb_import *bindings=count?calloc(count,sizeof(*bindings)):NULL;
-    if(count && (!targets || !bindings)) {free(targets);free(bindings);return status(NSO_OWNER_ERROR,ENOMEM,0);}
+    nb_import *bindings=(count+virtual_count)?calloc(count+virtual_count,sizeof(*bindings)):NULL;
+    if((count && !targets) || ((count+virtual_count) && !bindings)) {free(targets);free(bindings);return status(NSO_OWNER_ERROR,ENOMEM,0);}
     /* A data import (STT_OBJECT) is addressed by the guest, never called: the
      * loader already wrote the resolved object address into the guest GOT
      * (R_GLOB_DAT, zero addend) and the guest loads the object value from
@@ -1687,6 +1876,16 @@ static struct nso_result prepare_boundary_locked(guest_process *p) {
             objects++;
             continue;
         }
+        /* Non-local jumps save and restore guest register/stack contexts directly.
+         * They must not be wrapped in boundary gateways that push host/gateway stack frames. */
+        if(!strcmp(targets[i].name,"setjmp") || !strcmp(targets[i].name,"_setjmp") ||
+           !strcmp(targets[i].name,"sigsetjmp") || !strcmp(targets[i].name,"__sigsetjmp") ||
+           !strcmp(targets[i].name,"longjmp") || !strcmp(targets[i].name,"_longjmp") ||
+           !strcmp(targets[i].name,"siglongjmp")) {
+            fprintf(stderr,"[boundary-direct-call] index=%u name=%s address=0x%" PRIx64 "; direct register transfer, no gateway wrapper\n",
+                targets[i].index,targets[i].name,targets[i].target);
+            continue;
+        }
         nb_signature signature;
         if(!import_signature(targets[i].name,&signature)) {
             fprintf(stderr, "[boundary-unsupported] index=%u name=%s\n", targets[i].index, targets[i].name);
@@ -1696,7 +1895,7 @@ static struct nso_result prepare_boundary_locked(guest_process *p) {
     }
     nb_status s=nb_scope_init(&p->boundary);
     if(s!=NB_OK) {free(targets);free(bindings);fprintf(stderr,"[boundary-error] scope-init status=%d; no guest execution\n",s);return status(s==NB_UNSUPPORTED?NSO_UNSUPPORTED:NSO_OWNER_ERROR,s==NB_UNSUPPORTED?ENOTSUP:EIO,0);}
-    p->boundary_initialized=1;p->bindings=bindings;p->bindings_count=callable;
+    p->boundary_initialized=1;p->bindings=bindings;p->bindings_count=callable+virtual_count;
     /* The NVN command buffer layer calls the guest through the boundary from now on. */
     nvn_command_buffer_set_guest_call(nvn_guest_call_through_boundary);
     struct nso_result r=status(NSO_OK,0,0);
@@ -1710,14 +1909,26 @@ static struct nso_result prepare_boundary_locked(guest_process *p) {
         }
         targets[i].target=(uintptr_t)nb_import_entry(&bindings[i]);
     }
+    /* Virtual calls originate in guest code too. Bind these while the actual
+     * primary boundary is IDLE, retain the mappings with all normal imports,
+     * and publish the entire vtable only after every gateway is executable. */
+    void *virtual_gates[64]={0};
+    if(r.status==NSO_OK)for(size_t i=0;i<virtual_count;i++) {
+        nb_signature sig={.version=1,.flags=NB_SIG_REGISTER_ONLY,
+            .gp_arguments=(uint8_t)virtuals[i].arguments,.gp_returns=(uint8_t)virtuals[i].returns};
+        s=nb_import_bind(&bindings[callable+i],&p->boundary,virtuals[i].target,&sig);
+        if(s!=NB_OK){fprintf(stderr,"[boundary-error] movie virtual=%zu status=%d; ownership retained\n",i,s);r=status(NSO_RETAINED,EIO,0);break;}
+        virtual_gates[i]=(void*)nb_import_entry(&bindings[callable+i]);
+    }
     if(r.status==NSO_OK)r=nso_retarget_imports(p->module,targets,callable);
+    if(r.status==NSO_OK && ffrs_movie_decoder_publish_virtuals(virtual_gates,virtual_count))r=status(NSO_RETAINED,EIO,0);
     free(targets);
     if(r.status!=NSO_OK) {
         fprintf(stderr,"[boundary-error] nso_retarget_imports failed status=%d native=%d\n",r.status,r.native_error);
         p->quarantined=1;return status(NSO_RETAINED,r.native_error,r.cleanup_error);
     }
     p->boundary_prepared=1;
-    fprintf(stderr,"[boundary-ready] imports=%zu actual-primary-owned; data objects=%zu; bindings retained through module unload\n",callable,objects);
+    fprintf(stderr,"[boundary-ready] imports=%zu movie_virtuals=%zu actual-primary-owned; data objects=%zu; bindings retained through module unload\n",callable,virtual_count,objects);
     return r;
 }
 struct nso_result guest_process_call(guest_process *p,uint64_t off,const uint64_t arguments[6],unsigned count,uint64_t *value) {
@@ -1884,6 +2095,12 @@ struct nso_result guest_process_destroy(guest_process **process) {
         pthread_mutex_unlock(&p->mutex);return status(NSO_RETAINED,EBUSY,0);
     }
     if(p->active_identity) {pthread_mutex_unlock(&p->mutex);return status(NSO_RETAINED,EBUSY,0);}
+    /* Media callbacks may still reference guest SystemEvent tokens. Retain
+     * pages, module, and gateways together until all decoders are gone. */
+    if(ffrs_movie_decoder_publish_virtuals(NULL,0)) {
+        p->quarantined=1;
+        pthread_mutex_unlock(&p->mutex);return status(NSO_RETAINED,EBUSY,0);
+    }
     while(p->identities) {
         struct primary_identity *id=p->identities;
         if(id->active || unmap_identity(id->token,id->bytes)) {

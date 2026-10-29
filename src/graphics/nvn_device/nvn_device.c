@@ -18,6 +18,7 @@
  * starts, which is what lets the report name the call site.
  */
 #include "nvn_device.h"
+#include "nvn_engine.h"
 #include "nvn_blend_state.h"
 #include "nvn_buffer.h"
 #include "nvn_command_buffer.h"
@@ -39,6 +40,14 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdatomic.h>
+int nvn_trace_enabled(void) {
+    static _Atomic int mode=-1;
+    int enabled=atomic_load_explicit(&mode,memory_order_relaxed);
+    if(enabled<0){const char *value=getenv("FFRS_NVN_TRACE");enabled=value&&value[0]=='1';
+        atomic_store_explicit(&mode,enabled,memory_order_relaxed);}
+    return enabled;
+}
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
@@ -204,6 +213,17 @@ uint64_t nvn_device_initialize(void *device, void *builder) {
     if (backend && backend->create) {
         s_device.real_device = backend->create(&s_device, builder) ? 1 : 0;
         if (backend->describe) backend->describe(&s_device, s_device.description, sizeof(s_device.description));
+    }
+    /* The engine that replays the commands needs the device and the queue
+     * of this runtime: it has to submit to the same queue, because an image
+     * that one device created cannot be given to the queue of another. */
+    if (s_device.real_device) {
+        char reason[256];
+        reason[0] = '\0';
+        if (!nvn_engine_initialize(&s_device, reason, sizeof(reason))) {
+            fprintf(stderr, "[nvn] nvnDeviceInitialize: the replay engine did not start: %s\n",
+                    reason[0] ? reason : "no reason given");
+        }
     }
     fprintf(stderr, "[nvn] nvnDeviceInitialize: device=%p builder=%p flags=0x%" PRIx32 " -> %s\n",
             device, builder, s_device.flags, s_device.real_device ? "true" : "false");

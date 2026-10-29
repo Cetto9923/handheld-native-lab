@@ -20,11 +20,12 @@ if a.main and (not a.quota_bytes or not a.stack_bytes):p.error('main requires ex
 out.mkdir(parents=True,exist_ok=False)
 def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 nso=ROOT/'src/runtime/nso';hle=ROOT/'src/runtime/hle';nvn_device=ROOT/'src/graphics/nvn_device'
-core_sources=[nso/'nso_loader.c',*[hle/(s+'.c') for s in ['guest_context','guest_process','nso_host','address_region','mutex','exit_registry','module_tls','guest_tp','native_window']],nvn_device/'nvn_device.c',nvn_device/'nvn_queue.c',nvn_device/'nvn_window.c',nvn_device/'nvn_memory_pool.c',nvn_device/'nvn_sampler_pool.c',nvn_device/'nvn_sampler_builder.c',nvn_device/'nvn_sampler.c',nvn_device/'nvn_texture_pool.c',nvn_device/'nvn_texture_builder.c',nvn_device/'nvn_texture.c',nvn_device/'nvn_texture_view.c',nvn_device/'nvn_blend_state.c',nvn_device/'nvn_render_state.c',nvn_device/'nvn_program.c',nvn_device/'nvn_sha256.c',nvn_device/'nvn_command_buffer.c',nvn_device/'nvn_command_buffer.generated.c',nvn_device/'nvn_command_replay.c',nvn_device/'nvn_present.c',nvn_device/'nvn_buffer.c']
+core_sources=[nso/'nso_loader.c',*[hle/(s+'.c') for s in ['guest_context','guest_process','nso_host','hid_bridge','sdk_component','movie_buffer','multiwait','audio_bridge','address_region','mutex','exit_registry','module_tls','guest_tp','native_window']],nvn_device/'nvn_device.c',nvn_device/'nvn_queue.c',nvn_device/'nvn_window.c',nvn_device/'nvn_memory_pool.c',nvn_device/'nvn_sampler_pool.c',nvn_device/'nvn_sampler_builder.c',nvn_device/'nvn_sampler.c',nvn_device/'nvn_texture_pool.c',nvn_device/'nvn_texture_builder.c',nvn_device/'nvn_texture.c',nvn_device/'nvn_texture_view.c',nvn_device/'nvn_blend_state.c',nvn_device/'nvn_render_state.c',nvn_device/'nvn_program.c',nvn_device/'nvn_sha256.c',nvn_device/'nvn_command_buffer.c',nvn_device/'nvn_command_buffer.generated.c',nvn_device/'nvn_command_replay.c',nvn_device/'nvn_present.c',nvn_device/'nvn_buffer.c']
 # The NVN device layer has a portable half and a platform backend. The host
 # build has no Vulkan implementation, the Android build has the real one.
 host_only_sources=[nvn_device/'nvn_backend_none.c']
 android_only_sources=[nvn_device/'nvn_backend_vulkan.c']
+android_cxx_sources=[hle/'movie_decoder.cpp']
 pages_hle=a.pages_source_root.resolve()/'src/runtime/hle';pages_source=pages_hle/'guest_pages.c'
 if not pages_source.is_file() or not pages_source.with_suffix('.h').is_file():p.error('guest_pages component missing; integrate its frozen commit or provide --pages-source-root')
 sources=[*core_sources,pages_source]
@@ -1506,6 +1507,10 @@ android=[]
 for source in [*sources,*android_only_sources]:
  obj=out/(source.stem+'.android.o');android.append(obj)
  run('android-compile-'+source.stem,['clang',*common,'-c',source,'-o',obj])
+for source in android_cxx_sources:
+ obj=out/(source.stem+'.android.o');android.append(obj)
+ cxx_common=['-std=c++17' if str(v)=='-std=c11' else v for v in common]
+ run('android-compile-'+source.stem,['clang++',*cxx_common,'-isystem',sysroot/'usr/include/c++/v1','-c',source,'-o',obj])
 android.append(out/'native_boundary.assembly.android.o')
 run('android-compile-boundary-assembly',['clang',*common,'-c',boundary_assembly,'-o',android[-1]])
 run('android-compile-nso-boot-profile',['clang',*common,'-DNSO_WITH_HOST_HLE=1','-DNSO_WITH_GUEST_PROFILE=1','-c',boot_source,'-o',out/'nso_boot.profile.android.o'])
@@ -1533,7 +1538,7 @@ for name,extra in [('guest_process_contract.android',out/'contract.android.o'),(
  if name=='guest_process_resource_recovery.android':objects=[v for v in android if v.name not in ['guest_context.android.o','address_region.android.o']]+[out/'resource-recovery-provider.android.o',out/'resource-vm-recovery.android.o']
  run('android-link-'+name,['env',f'DYLD_LIBRARY_PATH={a.rust_root}/lib',ld,'-pie','--dynamic-linker','/system/bin/linker64',
   '--no-undefined','--eh-frame-hdr','-z','max-page-size=16384','-z','relro','-z','now','-z','noexecstack','--build-id=sha1',
-  '-Map',out/(name+'.map'),'-o',binary,api/'crtbegin_dynamic.o',*objects,extra,'--start-group',*library_inputs,'--end-group','-L',api,'-lc','-lm','-ldl','-lvulkan',api/'crtend_android.o'])
+  '-Map',out/(name+'.map'),'-o',binary,api/'crtbegin_dynamic.o',*objects,extra,'--start-group',*library_inputs,'--end-group','-L',api,'-lc','-lm','-ldl','-lvulkan','-laaudio','-lmediandk',api/'crtend_android.o'])
  elf=run('android-inspect-'+name,[tc/'bin/llvm-readelf','--wide','--file-header','--program-headers','--sections','--dynamic','--symbols',binary])
  data=binary.read_bytes()
  if data[:6]!=b'\x7fELF\x02\x01' or struct.unpack_from('<H',data,18)[0]!=183:raise RuntimeError('not AArch64 ELF64')

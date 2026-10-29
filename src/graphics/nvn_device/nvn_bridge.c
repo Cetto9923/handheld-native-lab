@@ -14,14 +14,27 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "../nvn_vulkan/nvn/nvn_tex.h"
+
 /* One kind of object. The bridge keeps one table per kind, because the
  * guest's addresses of the different kinds are addresses of different
  * objects. */
+/* Pool versions own immutable copies until process teardown. Retaining their
+ * metadata makes publication idempotent even when concurrent readers captured
+ * different family generations. No reclamation/GPU lifetime claim is made. */
+typedef struct bridge_snapshot {
+    uint64_t generation;
+    const void *dependency;
+    void *object;
+    struct bridge_snapshot *next;
+} bridge_snapshot;
+
 typedef struct bridge_entry {
     const void *guest;   /* the address the guest named */
     uint64_t serial;     /* the generation of the object there */
     void *object;        /* the copy the replay layer reads */
     size_t size;         /* how many bytes the copy is */
+    bridge_snapshot *snapshots; /* pool/descriptor versions only */
 } bridge_entry;
 
 typedef struct bridge_table {
@@ -50,6 +63,7 @@ static bridge_entry *entry_find(bridge_table *table, const void *guest, int crea
     }
     if (!create) return NULL;
     if (table->count == table->capacity) {
+        if (table->capacity > SIZE_MAX / 2 / sizeof(*table->entries)) return NULL;
         size_t capacity = table->capacity ? table->capacity * 2 : 16;
         bridge_entry *grown = (bridge_entry *)realloc(table->entries, capacity * sizeof(*grown));
         if (!grown) return NULL;
@@ -78,6 +92,46 @@ static void entry_put(bridge_table *table, const void *guest, uint64_t serial, v
     entry->size = size;
 }
 
+/* Called with s_lock held; all returned objects are individually allocated.
+ * Table reallocations move only metadata, never an object captured in commands. */
+static void *snapshot_find(bridge_table *table, const void *guest, uint64_t generation,
+                           const void *dependency) {
+    bridge_entry *entry = entry_find(table, guest, 0);
+    if (entry) for (bridge_snapshot *v = entry->snapshots; v; v = v->next)
+        if (v->generation == generation && v->dependency == dependency) return v->object;
+    return NULL;
+}
+
+/* The losing concurrent creator frees only its unpublished private candidate.
+ * Failure to grow metadata is reported as NULL, never a transient uncached copy. */
+static void *snapshot_publish(bridge_table *table, const void *guest, uint64_t generation,
+                              const void *dependency, void *object, size_t size) {
+    void *existing = snapshot_find(table, guest, generation, dependency);
+    if (existing) { free(object); return existing; }
+    bridge_entry *entry = entry_find(table, guest, 1);
+    bridge_snapshot *v = entry ? malloc(sizeof(*v)) : NULL;
+    if (!v) { free(object); return NULL; }
+    v->generation = generation; v->dependency = dependency; v->object = object;
+    v->next = entry->snapshots; entry->snapshots = v;
+    if (entry->object) ++s_regenerated; else ++s_objects;
+    entry->serial = generation; entry->object = object; entry->size = size;
+    return object;
+}
+
+extern void xbg_texture_lifetime_end(const ffrs_tex *texture) __attribute__((weak));
+void nvn_bridge_texture_end(const void *guest_texture, uint64_t serial) {
+    const ffrs_tex *copy = NULL;
+    if (!guest_texture || !serial) return;
+    pthread_mutex_lock(&s_lock);
+    bridge_entry *entry = entry_find(&s_textures, guest_texture, 0);
+    if (entry && entry->serial == serial) copy = (const ffrs_tex *)entry->object;
+    pthread_mutex_unlock(&s_lock);
+    /* Never call the renderer under either object-table lock. The immutable
+     * copy stays alive for recorded commands and a generation mismatch must
+     * never release a newer object at the same guest address. */
+    if (copy && xbg_texture_lifetime_end) xbg_texture_lifetime_end(copy);
+}
+
 const ffrs_tex *nvn_bridge_texture(const void *guest_texture) {
     nvn_texture_info info;
     ffrs_tex *tex;
@@ -104,6 +158,10 @@ const ffrs_tex *nvn_bridge_texture(const void *guest_texture) {
         tex->off = info.memory_offset;
         tex->mem = pool->mem ? pool->mem + info.memory_offset : NULL;
     }
+    if (tex->d.format != 0) {
+        nvn_tex_layout((const nvn_texdesc *)&tex->d, (nvn_texlayout *)&tex->L);
+        tex->has_layout = 1;
+    }
     pthread_mutex_lock(&s_lock);
     entry_put(&s_textures, guest_texture, info.serial, tex, sizeof(*tex));
     pthread_mutex_unlock(&s_lock);
@@ -124,14 +182,17 @@ const ffrs_prog *nvn_bridge_program(const void *guest_program) {
     }
     pthread_mutex_unlock(&s_lock);
 
-    prog = (ffrs_prog *)calloc(1, sizeof(*prog));
+    prog = (ffrs_prog *)calloc(1, sizeof(*prog)+sizeof(info.control));
     if (!prog) return NULL;
     prog->magic = FFRS_NVN_MAGIC('P', 'R', 'G', 0);
     prog->nstage = info.nstage;
     memcpy(prog->sd, info.sd, sizeof(prog->sd));
+    unsigned char *control=(unsigned char*)(prog+1);
+    memcpy(control,info.control,sizeof(info.control));
+    for(unsigned i=0;i<6;i++)prog->sd[i].control=control+i*0x880;
     prog->serial = info.serial;
     pthread_mutex_lock(&s_lock);
-    entry_put(&s_programs, guest_program, info.serial, prog, sizeof(*prog));
+    entry_put(&s_programs, guest_program, info.serial, prog, sizeof(*prog)+sizeof(info.control));
     pthread_mutex_unlock(&s_lock);
     return prog;
 }
@@ -139,57 +200,45 @@ const ffrs_prog *nvn_bridge_program(const void *guest_program) {
 const ffrs_pool *nvn_bridge_pool(const void *guest_pool) {
     nvn_memory_pool_info info;
     ffrs_pool *pool;
-    bridge_entry *entry;
-    if (!guest_pool) return NULL;
-    if (!nvn_memory_pool_info_of(guest_pool, &info)) return NULL;
+    if (!guest_pool || !nvn_memory_pool_info_of(guest_pool, &info) || !info.generation) return NULL;
     pthread_mutex_lock(&s_lock);
-    entry = entry_find(&s_pools, guest_pool, 0);
-    if (entry && entry->object) {
-        pthread_mutex_unlock(&s_lock);
-        return (const ffrs_pool *)entry->object;
-    }
+    pool = snapshot_find(&s_pools, guest_pool, info.generation, NULL);
     pthread_mutex_unlock(&s_lock);
+    if (pool) return pool;
 
-    pool = (ffrs_pool *)calloc(1, sizeof(*pool));
+    pool = calloc(1, sizeof(*pool));
     if (!pool) return NULL;
     pool->magic = FFRS_NVN_MAGIC('P', 'O', 'O', 'L');
-    pool->flags = info.flags;
-    pool->mem = info.mem;
-    pool->size = info.size;
+    pool->flags = info.flags; pool->mem = info.mem; pool->size = info.size;
     pthread_mutex_lock(&s_lock);
-    entry_put(&s_pools, guest_pool, 0, pool, sizeof(*pool));
+    pool = snapshot_publish(&s_pools, guest_pool, info.generation, NULL, pool, sizeof(*pool));
     pthread_mutex_unlock(&s_lock);
     return pool;
 }
 
-/* The descriptor pool of the guest's address. The replay layer keys its
- * tables by the memory the pool's descriptors live in and by where in that
- * memory they start, so the copy itself does not have to stay. */
+/* Descriptor snapshots include the stable backing identity in the key. Family
+ * and bridge locks are never nested; no engine/GPU callback occurs here. */
 static const ffrs_dpool *dpool_of(const void *guest_pool, bridge_table *table, int texture_pool) {
     nvn_pool_info info;
     ffrs_dpool *dpool;
-    bridge_entry *entry;
+    const ffrs_pool *backing;
     if (!guest_pool) return NULL;
     if (texture_pool) {
         if (!nvn_texture_pool_info_of(guest_pool, &info)) return NULL;
     } else {
         if (!nvn_sampler_pool_info_of(guest_pool, &info)) return NULL;
     }
+    if (!info.generation || !(backing = nvn_bridge_pool(info.memory_pool))) return NULL;
     pthread_mutex_lock(&s_lock);
-    entry = entry_find(table, guest_pool, 0);
-    if (entry && entry->object) {
-        pthread_mutex_unlock(&s_lock);
-        return (const ffrs_dpool *)entry->object;
-    }
+    dpool = snapshot_find(table, guest_pool, info.generation, backing);
     pthread_mutex_unlock(&s_lock);
+    if (dpool) return dpool;
 
-    dpool = (ffrs_dpool *)calloc(1, sizeof(*dpool));
+    dpool = calloc(1, sizeof(*dpool));
     if (!dpool) return NULL;
-    dpool->pool = (ffrs_pool *)nvn_bridge_pool(info.memory_pool);
-    dpool->off = info.memory_offset;
-    dpool->n = info.size;
+    dpool->pool = backing; dpool->off = info.memory_offset; dpool->n = info.size;
     pthread_mutex_lock(&s_lock);
-    entry_put(table, guest_pool, 0, dpool, sizeof(*dpool));
+    dpool = snapshot_publish(table, guest_pool, info.generation, backing, dpool, sizeof(*dpool));
     pthread_mutex_unlock(&s_lock);
     return dpool;
 }

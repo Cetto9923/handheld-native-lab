@@ -7,6 +7,9 @@
 #include <pthread.h>
 
 #include "native_window.h"
+#include "nso_host.h"
+#include "hid_bridge.h"
+#include "audio_bridge.h"
 
 namespace {
 
@@ -65,6 +68,27 @@ void ReleasePublishedWindow() {
 }
 
 }  // namespace
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_ffrs_diagnostic_GameWindowNative_setFocusState(JNIEnv*, jclass, jint state) {
+    nso_host_oe_set_host_focus(static_cast<uint32_t>(state));
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_org_ffrs_diagnostic_GameWindowNative_hostExitReady(JNIEnv*, jclass, jboolean request) {
+    return nso_host_oe_host_exit_ready(request)?JNI_TRUE:JNI_FALSE;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_ffrs_diagnostic_GameWindowNative_audioDevicesChanged(JNIEnv*, jclass) {
+    ffrs_audio_devices_changed();
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_ffrs_diagnostic_GameWindowNative_setPadState(JNIEnv*, jclass, jboolean connected,
+        jlong buttons, jint lx, jint ly, jint rx, jint ry) {
+    ffrs_hid_publish(connected, static_cast<uint64_t>(buttons), lx, ly, rx, ry);
+}
 
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_org_ffrs_diagnostic_GameWindowNative_setSurface(JNIEnv* env, jclass, jobject surface) {

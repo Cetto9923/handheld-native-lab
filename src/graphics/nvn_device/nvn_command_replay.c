@@ -22,8 +22,11 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include "nvn_memory_pool.h"
+#include "nvn_sync.h"
+#include "nvn_device.h"
 
 /* The size of the record of an opcode, as the range the record may take.
  *
@@ -120,6 +123,27 @@ static pthread_mutex_t s_lock = PTHREAD_MUTEX_INITIALIZER;
 static nvn_replay_state s_state;
 static nvn_replay_stats s_stats;
 
+/* Keep every diagnostic occurrence, but avoid writing megabytes of repeated
+ * shadow-context messages. The shadow still resets per package and does not
+ * model CALL inheritance: these messages are not proof that the real engine
+ * refused a draw. FFRS_NVN_TRACE retains the full diagnostic stream. */
+static uint64_t count_missing_pool(int sampler, int *print) {
+    const int verbose = nvn_trace_enabled();
+    pthread_mutex_lock(&s_lock);
+    uint64_t n = sampler ? ++s_stats.missing_sampler_pool : ++s_stats.missing_texture_pool;
+    ++s_stats.refused_foreign_pool;
+    *print = verbose || n <= 8 || (n & (n - 1)) == 0;
+    if (*print) ++s_stats.pool_messages_printed;
+    pthread_mutex_unlock(&s_lock);
+    return n;
+}
+
+static uint64_t replay_clock_ns(clockid_t clock) {
+    struct timespec t;
+    if (clock_gettime(clock, &t) != 0) return 0;
+    return (uint64_t)t.tv_sec * UINT64_C(1000000000) + (uint64_t)t.tv_nsec;
+}
+
 /* The host memory behind a range of the guest's buffer address.
  *
  * The address is the guest's, and it is never a host pointer. The pool it
@@ -192,21 +216,17 @@ static int read_handle(uint64_t handle, int32_t tex_base, int32_t samp_base,
     uint32_t id = (uint32_t)(handle & 0xfffffu);
     uint32_t sid = (uint32_t)(handle >> 20);
     if (id && !s_state.tex_pool) {
-        pthread_mutex_lock(&s_lock);
-        s_stats.refused_foreign_pool++;
-        pthread_mutex_unlock(&s_lock);
-        fprintf(stderr, "[nvn-replay] the stream binds the texture %u but has no texture pool "
-                        "bound; the handle was refused\n",
-                id);
+        int print;
+        uint64_t n = count_missing_pool(0, &print);
+        if (print) fprintf(stderr, "[nvn-replay] shadow missing texture pool id=%u count=%" PRIu64
+                           "; actual engine validation unchanged\n", id, n);
         return 0;
     }
     if (sid && !s_state.samp_pool) {
-        pthread_mutex_lock(&s_lock);
-        s_stats.refused_foreign_pool++;
-        pthread_mutex_unlock(&s_lock);
-        fprintf(stderr, "[nvn-replay] the stream binds the sampler %u but has no sampler pool "
-                        "bound; the handle was refused\n",
-                sid);
+        int print;
+        uint64_t n = count_missing_pool(1, &print);
+        if (print) fprintf(stderr, "[nvn-replay] shadow missing sampler pool id=%u count=%" PRIu64
+                           "; actual engine validation unchanged\n", sid, n);
         return 0;
     }
     /* The handle holds the number inside the pool. The number in the
@@ -217,7 +237,7 @@ static int read_handle(uint64_t handle, int32_t tex_base, int32_t samp_base,
     return 1;
 }
 
-static void decode_one(uint32_t op, const uint8_t *payload) {
+static void decode_one(uint32_t op, const uint8_t *payload, size_t payload_bytes) {
     switch (op) {
     case NVN_CB_OP_SET_RT: {
         const nvn_cb_p_set_rt *record = (const nvn_cb_p_set_rt *)payload;
@@ -322,14 +342,19 @@ static void decode_one(uint32_t op, const uint8_t *payload) {
         break;
     }
     case NVN_CB_OP_DRAW: {
-        const nvn_cb_p_draw *record = (const nvn_cb_p_draw *)payload;
-        if (record->ind) resolve_address(record->ind);
+        /* Plain draws stop before ind. Reading a full structure here would
+         * interpret the next record's header as an indirect address (or read
+         * outside the package). Match the engine's zero-extended draw_rec. */
+        nvn_cb_p_draw record = {0};
+        memcpy(&record, payload, payload_bytes < sizeof(record) ? payload_bytes : sizeof(record));
+        if (record.ind) resolve_address(record.ind);
         break;
     }
     case NVN_CB_OP_DRAW_IDX: {
-        const nvn_cb_p_draw_idx *record = (const nvn_cb_p_draw_idx *)payload;
-        if (record->ind) resolve_address(record->ind);
-        if (record->ibuf) resolve_address(record->ibuf);
+        nvn_cb_p_draw_idx record = {0};
+        memcpy(&record, payload, payload_bytes < sizeof(record) ? payload_bytes : sizeof(record));
+        if (record.ind) resolve_address(record.ind);
+        if (record.ibuf) resolve_address(record.ibuf);
         break;
     }
     case NVN_CB_OP_DISPATCH: {
@@ -345,12 +370,20 @@ static void decode_one(uint32_t op, const uint8_t *payload) {
         resolve_range(destination, length);
         break;
     }
+    case NVN_CB_OP_FENCE_SYNC: {
+        uint64_t pointer = 0;
+        memcpy(&pointer, payload, sizeof(pointer));
+        if (pointer) {
+            nvn_sync_family_fence_object((ffrs_sync *)(uintptr_t)pointer);
+        }
+        break;
+    }
     default:
         break;
     }
 }
 
-int nvn_command_replay_run(uint64_t handle) {
+static int replay_package(uint64_t handle) {
     nvn_command_package package;
     const uint8_t *at;
     size_t left;
@@ -516,7 +549,8 @@ int nvn_command_replay_run(uint64_t handle) {
         default:
             break;
         }
-        if (size > sizeof(nvn_cb_op_hdr)) decode_one(header.op, at + sizeof(nvn_cb_op_hdr));
+        if (size > sizeof(nvn_cb_op_hdr))
+            decode_one(header.op, at + sizeof(nvn_cb_op_hdr), size - sizeof(nvn_cb_op_hdr));
         at += size;
         left -= size;
     }
@@ -529,7 +563,7 @@ int nvn_command_replay_run(uint64_t handle) {
                 left);
         ok = 0;
     }
-    {
+    if(nvn_trace_enabled()) {
         int i;
         fprintf(stderr, "[nvn-replay] the package holds %zu records:", package.record_count);
         for (i = 0; i < NVN_CB_OP_COUNT; i++) {
@@ -541,6 +575,33 @@ int nvn_command_replay_run(uint64_t handle) {
         }
         fprintf(stderr, "\n");
     }
+    return ok;
+}
+
+int nvn_command_replay_run(uint64_t handle) {
+    const uint64_t wall = replay_clock_ns(CLOCK_MONOTONIC);
+    const uint64_t cpu = replay_clock_ns(CLOCK_THREAD_CPUTIME_ID);
+    const int ok = replay_package(handle);
+    const uint64_t cpu_end = replay_clock_ns(CLOCK_THREAD_CPUTIME_ID);
+    const uint64_t wall_end = replay_clock_ns(CLOCK_MONOTONIC);
+    nvn_replay_stats report;
+    int print = 0;
+    pthread_mutex_lock(&s_lock);
+    if (wall && cpu && wall_end >= wall && cpu_end >= cpu) {
+        s_stats.elapsed_ns += wall_end - wall;
+        s_stats.thread_cpu_ns += cpu_end - cpu;
+        ++s_stats.timed_packages;
+        print = (s_stats.timed_packages & 4095) == 0;
+        if (print) report = s_stats;
+    }
+    pthread_mutex_unlock(&s_lock);
+    if (print) fprintf(stderr, "[nvn-replay] cost cumulative packages=%" PRIu64
+                       " elapsed_ns=%" PRIu64 " thread_cpu_ns=%" PRIu64
+                       " missing_texture=%" PRIu64 " missing_sampler=%" PRIu64
+                       " messages_printed=%" PRIu64 " semantic_context=incomplete\n",
+                       report.timed_packages, report.elapsed_ns, report.thread_cpu_ns,
+                       report.missing_texture_pool, report.missing_sampler_pool,
+                       report.pool_messages_printed);
     return ok;
 }
 

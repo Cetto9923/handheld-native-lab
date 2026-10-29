@@ -1,7 +1,17 @@
 package org.ffrs.diagnostic;
 
 import android.app.Activity;
+import android.media.AudioManager;
+import android.media.AudioDeviceCallback;
+import android.media.AudioDeviceInfo;
+import android.os.Handler;
+import android.os.Looper;
+import android.content.Context;
+import android.graphics.Canvas;
 import android.graphics.Insets;
+import android.graphics.Paint;
+import android.graphics.RectF;
+import android.hardware.input.InputManager;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.os.Build;
@@ -10,6 +20,9 @@ import android.os.SystemClock;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Display;
+import android.view.InputDevice;
+import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
@@ -18,6 +31,16 @@ import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
+import android.view.ViewGroup;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Environment;
+import android.provider.Settings;
+import android.view.Gravity;
+import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+import android.widget.FrameLayout;
 
 import java.io.File;
 
@@ -31,25 +54,605 @@ import java.io.File;
  * logged next to the geometry the native side reads back from the window, so
  * both can be compared against the existing display snapshot parameters.
  */
-public final class GameActivity extends Activity implements SurfaceHolder.Callback {
+public final class GameActivity extends Activity implements SurfaceHolder.Callback, Runnable {
     private static final String TAG = "FFRS-GameWindow";
     private SurfaceView surface_view;
     private DisplaySnapshot display_snapshot;
+    private boolean resumed;
+    private boolean padConnected;
+    private long padButtons, axisButtons;
+    private int padLx, padLy, padRx, padRy;
+    // Virtual (on-screen) pad state; merged with the physical pad in publishPad().
+    private long touchButtons;
+    private int touchLx, touchLy, touchRx, touchRy;
+    private TouchPad touchPad;
+    private InputManager inputManager;
+    private FrameLayout rootLayout;
+    private LinearLayout setupView;
+    private TextView setupText;
+    private boolean guestStarted, surfaceReady;
+    private AudioManager audioManager;
+    private final AudioDeviceCallback audioCallback = new GameAudioDeviceCallback();
+    private static final class GameAudioDeviceCallback extends AudioDeviceCallback {
+        @Override public void onAudioDevicesAdded(AudioDeviceInfo[] devices) { GameWindowNative.audioDevicesChanged(); }
+        @Override public void onAudioDevicesRemoved(AudioDeviceInfo[] devices) { GameWindowNative.audioDevicesChanged(); }
+    }
+
+    private void publishPad() {
+        boolean touchOn = touchPad != null && touchPad.shown;
+        GameWindowNative.setPadState(padConnected || touchOn, padButtons | axisButtons | touchButtons,
+                touchLx != 0 ? touchLx : padLx, touchLy != 0 ? touchLy : padLy,
+                touchRx != 0 ? touchRx : padRx, touchRy != 0 ? touchRy : padRy);
+    }
+
+    private void discoverPad() {
+        padConnected = false;
+        for (int id : InputDevice.getDeviceIds()) {
+            InputDevice device = InputDevice.getDevice(id);
+            if (device != null && ((device.getSources() & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD
+                    || (device.getSources() & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK)) {
+                padConnected = true;
+                Log.i(TAG, "game_input device=" + device.getName() + " id=" + id);
+                break;
+            }
+        }
+        updateTouchPadVisibility();
+        publishPad();
+    }
+
+    /** Marker files/touch-pad: "1" always show the virtual pad, "0" never show it, absent = auto (shown only without a physical pad). */
+    private int touchPadMarker() {
+        try {
+            File dir = getExternalFilesDir(null);
+            if (dir == null) return -1;
+            File f = new File(dir, "touch-pad");
+            if (!f.exists()) return -1;
+            java.io.FileInputStream in = new java.io.FileInputStream(f);
+            try { int c = in.read(); return c == '1' ? 1 : c == '0' ? 0 : -1; } finally { in.close(); }
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    private void updateTouchPadVisibility() {
+        if (touchPad == null) return;
+        int marker = touchPadMarker();
+        boolean show = marker == 1 || (marker < 0 && !padConnected);
+        touchPad.setShown(show);
+        Log.i(TAG, "game_input touch_pad=" + (show ? "shown" : "hidden") + " marker=" + marker + " physical_pad=" + padConnected);
+    }
+
+    /** Called by the on-screen PAD handle: flip the virtual pad and remember the choice in files/touch-pad ('1' / '0'). */
+    void userToggleTouchPad() {
+        if (touchPad == null) return;
+        boolean now = !touchPad.shown;
+        touchPad.setShown(now);
+        try {
+            File dir = getExternalFilesDir(null);
+            if (dir != null) {
+                java.io.FileOutputStream o = new java.io.FileOutputStream(new File(dir, "touch-pad"));
+                o.write(now ? '1' : '0');
+                o.close();
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "game_input touch_pad marker write failed: " + e.getMessage());
+        }
+        publishPad();
+        Log.i(TAG, "game_input touch_pad=" + (now ? "shown" : "hidden") + " by_user=1");
+    }
+
+    private final PadDeviceListener deviceListener = new PadDeviceListener(this);
+    // Static named class: d8 in this build setup rejects anonymous / inner listener classes here.
+    private static final class PadDeviceListener implements InputManager.InputDeviceListener {
+        private final GameActivity owner;
+        PadDeviceListener(GameActivity owner) { this.owner = owner; }
+        @Override public void onInputDeviceAdded(int id) { owner.discoverPad(); }
+        @Override public void onInputDeviceRemoved(int id) { owner.discoverPad(); }
+        @Override public void onInputDeviceChanged(int id) { owner.discoverPad(); }
+    }
+
+    /** Map RG477M gamepad events to game button bits, matching physical face-button labels. */
+    private static int buttonBit(int key) {
+        switch (key) {
+            case KeyEvent.KEYCODE_BUTTON_A: return 0;
+            case KeyEvent.KEYCODE_BUTTON_B: return 1;
+            case KeyEvent.KEYCODE_BUTTON_Y: return 3;
+            case KeyEvent.KEYCODE_BUTTON_X: return 2;
+            case KeyEvent.KEYCODE_BUTTON_THUMBL: return 4;
+            case KeyEvent.KEYCODE_BUTTON_THUMBR: return 5;
+            case KeyEvent.KEYCODE_BUTTON_L1: return 6;
+            case KeyEvent.KEYCODE_BUTTON_R1: return 7;
+            case KeyEvent.KEYCODE_BUTTON_L2: return 8;
+            case KeyEvent.KEYCODE_BUTTON_R2: return 9;
+            case KeyEvent.KEYCODE_BUTTON_START: return 10;
+            case KeyEvent.KEYCODE_BUTTON_SELECT: return 11;
+            case KeyEvent.KEYCODE_DPAD_LEFT: return 12;
+            case KeyEvent.KEYCODE_DPAD_UP: return 13;
+            case KeyEvent.KEYCODE_DPAD_RIGHT: return 14;
+            case KeyEvent.KEYCODE_DPAD_DOWN: return 15;
+            default: return -1;
+        }
+    }
+
+    @Override public boolean dispatchKeyEvent(KeyEvent event) {
+        int bit = buttonBit(event.getKeyCode());
+        if (bit < 0) return super.dispatchKeyEvent(event);
+        if (event.getAction() == KeyEvent.ACTION_DOWN) padButtons |= 1L << bit;
+        else if (event.getAction() == KeyEvent.ACTION_UP) padButtons &= ~(1L << bit);
+        else return super.dispatchKeyEvent(event);
+        publishPad();
+        Log.i(TAG, "game_input key=" + event.getKeyCode() + " action=" + event.getAction() + " nvn_bit=" + bit);
+        return true;
+    }
+
+    private static int stick(MotionEvent event, int axis) {
+        float value = event.getAxisValue(axis);
+        InputDevice device = event.getDevice();
+        InputDevice.MotionRange range = device == null ? null : device.getMotionRange(axis, event.getSource());
+        if (range != null && Math.abs(value) <= range.getFlat()) value = 0;
+        else if (range == null && Math.abs(value) < 0.1f) value = 0;
+        return Math.round(Math.max(-1f, Math.min(1f, value)) * 32767f);
+    }
+
+    private static boolean hasAxis(InputDevice device, int source, int axis) {
+        return device != null && device.getMotionRange(axis, source) != null;
+    }
+
+    @Override public boolean onGenericMotionEvent(MotionEvent event) {
+        if ((event.getSource() & InputDevice.SOURCE_JOYSTICK) != InputDevice.SOURCE_JOYSTICK
+                || event.getAction() != MotionEvent.ACTION_MOVE) return super.onGenericMotionEvent(event);
+        InputDevice dev = event.getDevice();
+        int src = event.getSource();
+        // Pads disagree on which axes carry the right stick and the analog triggers:
+        //   Xbox-style (Android default): right stick Z/RZ, triggers LTRIGGER/RTRIGGER (or BRAKE/GAS)
+        //   PlayStation-style:            right stick RX/RY, triggers Z/RZ (or BRAKE/GAS)
+        // Choose by the axes this device actually reports.
+        int rxAxis, ryAxis, ltAxis, rtAxis;
+        if (hasAxis(dev, src, MotionEvent.AXIS_RX) && hasAxis(dev, src, MotionEvent.AXIS_RY)) {
+            rxAxis = MotionEvent.AXIS_RX; ryAxis = MotionEvent.AXIS_RY;
+            if (hasAxis(dev, src, MotionEvent.AXIS_Z) && hasAxis(dev, src, MotionEvent.AXIS_RZ)) { ltAxis = MotionEvent.AXIS_Z; rtAxis = MotionEvent.AXIS_RZ; }
+            else if (hasAxis(dev, src, MotionEvent.AXIS_BRAKE) && hasAxis(dev, src, MotionEvent.AXIS_GAS)) { ltAxis = MotionEvent.AXIS_BRAKE; rtAxis = MotionEvent.AXIS_GAS; }
+            else { ltAxis = MotionEvent.AXIS_LTRIGGER; rtAxis = MotionEvent.AXIS_RTRIGGER; }
+        } else {
+            rxAxis = MotionEvent.AXIS_Z; ryAxis = MotionEvent.AXIS_RZ;
+            if (hasAxis(dev, src, MotionEvent.AXIS_LTRIGGER) && hasAxis(dev, src, MotionEvent.AXIS_RTRIGGER)) { ltAxis = MotionEvent.AXIS_LTRIGGER; rtAxis = MotionEvent.AXIS_RTRIGGER; }
+            else if (hasAxis(dev, src, MotionEvent.AXIS_BRAKE) && hasAxis(dev, src, MotionEvent.AXIS_GAS)) { ltAxis = MotionEvent.AXIS_BRAKE; rtAxis = MotionEvent.AXIS_GAS; }
+            else { ltAxis = MotionEvent.AXIS_LTRIGGER; rtAxis = MotionEvent.AXIS_RTRIGGER; }
+        }
+        padLx = stick(event, MotionEvent.AXIS_X); padLy = -stick(event, MotionEvent.AXIS_Y);
+        padRx = stick(event, rxAxis); padRy = -stick(event, ryAxis);
+        axisButtons = 0;
+        float hatX = event.getAxisValue(MotionEvent.AXIS_HAT_X), hatY = event.getAxisValue(MotionEvent.AXIS_HAT_Y);
+        if (hatX < -0.5f) axisButtons |= 1L << 12;
+        if (hatY < -0.5f) axisButtons |= 1L << 13;
+        if (hatX > 0.5f) axisButtons |= 1L << 14;
+        if (hatY > 0.5f) axisButtons |= 1L << 15;
+        // A key event for the same trigger ORs into the same bit, so reporting both is harmless.
+        if (event.getAxisValue(ltAxis) > 0.5f) axisButtons |= 1L << 8;
+        if (event.getAxisValue(rtAxis) > 0.5f) axisButtons |= 1L << 9;
+        publishPad();
+        return true;
+    }
+
+    /**
+     * On-screen pad drawn over the SurfaceView. Emits the same button bits as buttonBit().
+     * Tap the small PAD handle to show/hide; long-press it to edit: drag a control to move it,
+     * tap it then use the size slider, drag the opacity slider, Reset / Done. Saved in files/touch-pad.cfg.
+     */
+    private static final class TouchPad extends View {
+        private static final int T_BTN = 0, T_STICK = 1, T_DPAD = 2;
+        private static final class Ctl {
+            final String name; final int type; final int bit; final float hw, hh;   // half extents at scale 1, in u units
+            float fx, fy, scale = 1f;                                                // centre as fraction of the view, size factor
+            Ctl(String n, int t, int b, float hw, float hh) { name = n; type = t; bit = b; this.hw = hw; this.hh = hh; }
+        }
+        private static final class LongPress implements Runnable {
+            private final TouchPad pad;
+            LongPress(TouchPad p) { pad = p; }
+            @Override public void run() { pad.onLongPress(); }
+        }
+
+        private final GameActivity owner;
+        boolean shown;
+        private boolean editing, handleLong;
+        private float opacity = 1f;
+        private int selected = -1, dragMode;                 // dragMode: 1 opacity, 2 size, 3 move
+        private float dragDx, dragDy;
+        private final RectF handle = new RectF(), panel = new RectF(), opTrack = new RectF(), scTrack = new RectF();
+        private final RectF btnReset = new RectF(), btnDone = new RectF();
+        private int handleId = -1, lsId = -1, rsId = -1;
+        private float u, vw, vh, lsKx, lsKy, rsKx, rsKy;
+        private final Ctl[] ctls = new Ctl[13];
+        private long pressed;
+        private final Paint line = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Runnable longPress = new LongPress(this);
+
+        TouchPad(GameActivity owner) {
+            super(owner);
+            this.owner = owner;
+            line.setStyle(Paint.Style.STROKE); line.setStrokeWidth(3f);
+            fill.setStyle(Paint.Style.FILL);
+            text.setTextAlign(Paint.Align.CENTER);
+            ctls[0] = new Ctl("A", T_BTN, 0, 0.75f, 0.75f);
+            ctls[1] = new Ctl("B", T_BTN, 1, 0.75f, 0.75f);
+            ctls[2] = new Ctl("X", T_BTN, 2, 0.75f, 0.75f);
+            ctls[3] = new Ctl("Y", T_BTN, 3, 0.75f, 0.75f);
+            ctls[4] = new Ctl("L1", T_BTN, 6, 1.6f, 0.6f);
+            ctls[5] = new Ctl("L2", T_BTN, 8, 1.6f, 0.6f);
+            ctls[6] = new Ctl("R1", T_BTN, 7, 1.6f, 0.6f);
+            ctls[7] = new Ctl("R2", T_BTN, 9, 1.6f, 0.6f);
+            ctls[8] = new Ctl("-", T_BTN, 11, 1.1f, 0.55f);
+            ctls[9] = new Ctl("+", T_BTN, 10, 1.1f, 0.55f);
+            ctls[10] = new Ctl("DPAD", T_DPAD, -1, 1.6f, 1.6f);
+            ctls[11] = new Ctl("LS", T_STICK, -1, 1.9f, 1.9f);
+            ctls[12] = new Ctl("RS", T_STICK, -1, 1.5f, 1.5f);
+            setFocusable(false);
+        }
+
+        void setShown(boolean s) {
+            shown = s;
+            if (!s) { editing = false; clearInput(); }
+            invalidate();
+        }
+
+        private void clearInput() {
+            lsId = rsId = -1; pressed = 0; dragMode = 0;
+            owner.touchButtons = 0; owner.touchLx = owner.touchLy = owner.touchRx = owner.touchRy = 0;
+        }
+
+        private float cxOf(Ctl c) { return c.fx * vw; }
+        private float cyOf(Ctl c) { return c.fy * vh; }
+        private float hwOf(Ctl c) { return c.hw * u * c.scale; }
+        private float hhOf(Ctl c) { return c.hh * u * c.scale; }
+        private void place(int i, float px, float py) { ctls[i].fx = px / vw; ctls[i].fy = py / vh; ctls[i].scale = 1f; }
+
+        private void defaults() {
+            float w = vw, h = vh;
+            float fx = w - 3.1f * u, fy = h - 3.3f * u, d = 1.25f * u;
+            place(0, fx, fy + d); place(1, fx + d, fy); place(2, fx - d, fy); place(3, fx, fy - d);
+            place(4, 2.0f * u, 2.4f * u); place(5, 2.0f * u, 1.0f * u);
+            place(6, w - 2.0f * u, 2.4f * u); place(7, w - 2.0f * u, 1.0f * u);
+            place(8, w / 2f - 1.5f * u, h - 0.95f * u); place(9, w / 2f + 1.5f * u, h - 0.95f * u);
+            place(10, 2.9f * u, h - 9.4f * u); place(11, 2.9f * u, h - 3.3f * u); place(12, w - 3.1f * u, h - 9.0f * u);
+            opacity = 1f;
+        }
+
+        @Override protected void onSizeChanged(int w, int h, int ow, int oh) {
+            vw = w; vh = h; u = Math.min(w, h) / 15f;
+            defaults();
+            loadConfig();
+            handle.set(w / 2f - 0.8f * u, 0.05f * u, w / 2f + 0.8f * u, 0.6f * u);
+            float pw = Math.min(0.46f * w, 18f * u), ph = 7.2f * u;
+            panel.set(w / 2f - pw / 2f, h / 2f - ph / 2f, w / 2f + pw / 2f, h / 2f + ph / 2f);
+            opTrack.set(panel.left + 4.2f * u, panel.top + 2.6f * u - 0.15f * u, panel.right - 1.0f * u, panel.top + 2.6f * u + 0.15f * u);
+            scTrack.set(opTrack.left, panel.top + 4.3f * u - 0.15f * u, opTrack.right, panel.top + 4.3f * u + 0.15f * u);
+            btnReset.set(panel.left + 1.0f * u, panel.bottom - 1.7f * u, panel.centerX() - 0.5f * u, panel.bottom - 0.6f * u);
+            btnDone.set(panel.centerX() + 0.5f * u, panel.bottom - 1.7f * u, panel.right - 1.0f * u, panel.bottom - 0.6f * u);
+        }
+
+        // ---------------- persistence ----------------
+        private File cfgFile() { File d = owner.getExternalFilesDir(null); return d == null ? null : new File(d, "touch-pad.cfg"); }
+
+        private void saveConfig() {
+            try {
+                File f = cfgFile(); if (f == null) return;
+                StringBuilder sb = new StringBuilder("opacity ").append(opacity).append('\n');
+                for (Ctl c : ctls) sb.append(c.name).append(' ').append(c.fx).append(' ').append(c.fy).append(' ').append(c.scale).append('\n');
+                java.io.FileOutputStream o = new java.io.FileOutputStream(f); o.write(sb.toString().getBytes("UTF-8")); o.close();
+            } catch (Exception e) { Log.w(TAG, "touch_pad cfg save failed: " + e.getMessage()); }
+        }
+
+        private void loadConfig() {
+            try {
+                File f = cfgFile(); if (f == null || !f.exists()) return;
+                java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(new java.io.FileInputStream(f), "UTF-8"));
+                String ln;
+                while ((ln = r.readLine()) != null) {
+                    String[] t = ln.trim().split("\\s+");
+                    if (t.length == 2 && t[0].equals("opacity")) { opacity = Math.max(0.15f, Math.min(1f, Float.parseFloat(t[1]))); continue; }
+                    if (t.length != 4) continue;
+                    for (Ctl c : ctls) if (c.name.equals(t[0])) {
+                        c.fx = Math.max(0f, Math.min(1f, Float.parseFloat(t[1])));
+                        c.fy = Math.max(0f, Math.min(1f, Float.parseFloat(t[2])));
+                        c.scale = Math.max(0.5f, Math.min(2f, Float.parseFloat(t[3])));
+                    }
+                }
+                r.close();
+            } catch (Exception e) { Log.w(TAG, "touch_pad cfg load failed: " + e.getMessage()); }
+        }
+
+        private void resetDefaults() {
+            defaults();
+            File f = cfgFile(); if (f != null) f.delete();
+            selected = -1; invalidate();
+        }
+
+        // ---------------- edit mode ----------------
+        void onLongPress() {
+            handleLong = true;
+            shown = true; clearInput();
+            editing = true; selected = -1;
+            Log.i(TAG, "game_input touch_pad edit=on");
+            invalidate();
+        }
+
+        private void exitEdit() {
+            editing = false; dragMode = 0; selected = -1;
+            saveConfig();
+            Log.i(TAG, "game_input touch_pad edit=off opacity=" + opacity);
+            invalidate();
+        }
+
+        private boolean hit(Ctl c, float x, float y) {
+            float cx = cxOf(c), cy = cyOf(c);
+            if (c.type == T_BTN) return Math.abs(x - cx) <= hwOf(c) && Math.abs(y - cy) <= hhOf(c);
+            return Math.hypot(x - cx, y - cy) <= hwOf(c);
+        }
+
+        private float track(RectF t, float x) { return Math.max(0f, Math.min(1f, (x - t.left) / t.width())); }
+
+        private boolean onEditTouch(MotionEvent e) {
+            int act = e.getActionMasked(); float x = e.getX(), y = e.getY();
+            if (act == MotionEvent.ACTION_DOWN) {
+                if (panel.contains(x, y)) {
+                    if (btnDone.contains(x, y)) { exitEdit(); return true; }
+                    if (btnReset.contains(x, y)) { resetDefaults(); return true; }
+                    RectF o = new RectF(opTrack); o.inset(-0.4f * u, -0.6f * u);
+                    RectF sc = new RectF(scTrack); sc.inset(-0.4f * u, -0.6f * u);
+                    if (o.contains(x, y)) { dragMode = 1; opacity = 0.15f + 0.85f * track(opTrack, x); invalidate(); return true; }
+                    if (sc.contains(x, y) && selected >= 0) { dragMode = 2; ctls[selected].scale = 0.5f + 1.5f * track(scTrack, x); invalidate(); return true; }
+                    return true;
+                }
+                for (int i = ctls.length - 1; i >= 0; i--) if (hit(ctls[i], x, y)) {
+                    selected = i; dragMode = 3; dragDx = x - cxOf(ctls[i]); dragDy = y - cyOf(ctls[i]); invalidate(); return true;
+                }
+                selected = -1; invalidate(); return true;
+            }
+            if (act == MotionEvent.ACTION_MOVE) {
+                if (dragMode == 1) opacity = 0.15f + 0.85f * track(opTrack, x);
+                else if (dragMode == 2 && selected >= 0) ctls[selected].scale = 0.5f + 1.5f * track(scTrack, x);
+                else if (dragMode == 3 && selected >= 0) {
+                    Ctl c = ctls[selected];
+                    c.fx = Math.max(0f, Math.min(1f, (x - dragDx) / vw)); c.fy = Math.max(0f, Math.min(1f, (y - dragDy) / vh));
+                }
+                invalidate(); return true;
+            }
+            if (act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_CANCEL) dragMode = 0;
+            return true;
+        }
+
+        // ---------------- touch ----------------
+        @Override public boolean onTouchEvent(MotionEvent e) {
+            int act = e.getActionMasked(), idx = e.getActionIndex();
+            if ((act == MotionEvent.ACTION_DOWN || act == MotionEvent.ACTION_POINTER_DOWN)
+                    && handleId < 0 && handle.contains(e.getX(idx), e.getY(idx))) {
+                handleId = e.getPointerId(idx); handleLong = false;
+                postDelayed(longPress, 500);
+                invalidate();
+                return true;
+            }
+            if ((act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_POINTER_UP) && handleId >= 0 && e.getPointerId(idx) == handleId) {
+                removeCallbacks(longPress);
+                boolean inside = handle.contains(e.getX(idx), e.getY(idx));
+                handleId = -1;
+                if (!handleLong && inside) { if (editing) exitEdit(); else owner.userToggleTouchPad(); }
+                invalidate();
+                return true;
+            }
+            if (!shown) return false;
+            if (editing) return onEditTouch(e);
+            if (act == MotionEvent.ACTION_DOWN || act == MotionEvent.ACTION_POINTER_DOWN) {
+                int pid = e.getPointerId(idx); float x = e.getX(idx), y = e.getY(idx);
+                Ctl ls = ctls[11], rs = ctls[12];
+                if (lsId < 0 && Math.hypot(x - cxOf(ls), y - cyOf(ls)) < hwOf(ls) * 1.6f) lsId = pid;
+                else if (rsId < 0 && Math.hypot(x - cxOf(rs), y - cyOf(rs)) < hwOf(rs) * 1.6f) rsId = pid;
+            }
+            boolean up = act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_POINTER_UP, cancel = act == MotionEvent.ACTION_CANCEL;
+            if (up) { int pid = e.getPointerId(idx); if (pid == lsId) lsId = -1; if (pid == rsId) rsId = -1; }
+            long buttons = 0; int lx = 0, ly = 0, rx = 0, ry = 0;
+            Ctl ls = ctls[11], rs = ctls[12], dp = ctls[10];
+            lsKx = cxOf(ls); lsKy = cyOf(ls); rsKx = cxOf(rs); rsKy = cyOf(rs);
+            if (cancel) { lsId = rsId = -1; }
+            else {
+                for (int i = 0; i < e.getPointerCount(); i++) {
+                    if (up && i == idx) continue;
+                    int pid = e.getPointerId(i); float x = e.getX(i), y = e.getY(i);
+                    if (pid == lsId) {
+                        float r = hwOf(ls), nx = (x - cxOf(ls)) / r, ny = (y - cyOf(ls)) / r, len = (float) Math.hypot(nx, ny);
+                        if (len > 1f) { nx /= len; ny /= len; len = 1f; }
+                        if (len > 0.15f) { lx = Math.round(nx * 32767f); ly = Math.round(-ny * 32767f); }
+                        lsKx = cxOf(ls) + nx * r; lsKy = cyOf(ls) + ny * r;
+                    } else if (pid == rsId) {
+                        float r = hwOf(rs), nx = (x - cxOf(rs)) / r, ny = (y - cyOf(rs)) / r, len = (float) Math.hypot(nx, ny);
+                        if (len > 1f) { nx /= len; ny /= len; len = 1f; }
+                        if (len > 0.15f) { rx = Math.round(nx * 32767f); ry = Math.round(-ny * 32767f); }
+                        rsKx = cxOf(rs) + nx * r; rsKy = cyOf(rs) + ny * r;
+                    } else {
+                        for (int k = 0; k < 10; k++) if (hit(ctls[k], x, y)) buttons |= 1L << ctls[k].bit;
+                        float dx = x - cxOf(dp), dy = y - cyOf(dp), dist = (float) Math.hypot(dx, dy), R = hwOf(dp);
+                        if (dist < R * 1.1f && dist > R * 0.18f) {
+                            if (Math.abs(dx) > Math.abs(dy)) buttons |= dx < 0 ? 1L << 12 : 1L << 14;
+                            else buttons |= dy < 0 ? 1L << 13 : 1L << 15;
+                        }
+                    }
+                }
+            }
+            pressed = buttons;
+            if (buttons != owner.touchButtons || lx != owner.touchLx || ly != owner.touchLy || rx != owner.touchRx || ry != owner.touchRy) {
+                owner.touchButtons = buttons; owner.touchLx = lx; owner.touchLy = ly; owner.touchRx = rx; owner.touchRy = ry;
+                owner.publishPad();
+                Log.i(TAG, "game_input touch buttons=0x" + Long.toHexString(buttons) + " L=" + lx + "," + ly + " R=" + rx + "," + ry);
+            }
+            invalidate();
+            return true;
+        }
+
+        // ---------------- drawing ----------------
+        private int col(int alpha) { return (Math.max(0, Math.min(255, Math.round(alpha * opacity))) << 24) | 0xFFFFFF; }
+
+        @Override protected void onDraw(Canvas c) {
+            // Small, low-contrast handle (not affected by the opacity setting so it can always be found).
+            fill.setColor(handleId >= 0 ? 0x60FFFFFF : (shown ? 0x20FFFFFF : 0x10FFFFFF));
+            line.setColor(0x50FFFFFF); text.setColor(0x80FFFFFF); text.setTextSize(0.4f * u);
+            c.drawRoundRect(handle, handle.height() / 3f, handle.height() / 3f, fill);
+            c.drawRoundRect(handle, handle.height() / 3f, handle.height() / 3f, line);
+            c.drawText(editing ? "OK" : (shown ? "PAD -" : "PAD +"), handle.centerX(), handle.centerY() + text.getTextSize() / 3f, text);
+            if (!shown) return;
+            text.setTextSize(0.65f * u);
+            for (int i = 0; i < ctls.length; i++) drawCtl(c, i);
+            if (editing) drawPanel(c);
+        }
+
+        private void drawCtl(Canvas c, int i) {
+            Ctl k = ctls[i]; float cx = cxOf(k), cy = cyOf(k), hw = hwOf(k), hh = hhOf(k);
+            line.setColor(col(0xB0)); text.setColor(col(0xD0)); text.setTextSize(0.65f * u * Math.min(1.4f, k.scale));
+            if (k.type == T_BTN) {
+                boolean on = (pressed & (1L << k.bit)) != 0;
+                RectF r = new RectF(cx - hw, cy - hh, cx + hw, cy + hh);
+                fill.setColor(col(on ? 0x70 : 0x28));
+                c.drawRoundRect(r, hh / 1.5f, hh / 1.5f, fill); c.drawRoundRect(r, hh / 1.5f, hh / 1.5f, line);
+                c.drawText(k.name, cx, cy + text.getTextSize() / 3f, text);
+            } else if (k.type == T_STICK) {
+                fill.setColor(col(0x20)); c.drawCircle(cx, cy, hw, fill); c.drawCircle(cx, cy, hw, line);
+                float kx = i == 11 ? lsKx : rsKx, ky = i == 11 ? lsKy : rsKy;
+                if (editing || (i == 11 ? lsId : rsId) < 0) { kx = cx; ky = cy; }
+                fill.setColor(col(0x80)); c.drawCircle(kx, ky, hw * 0.4f, fill);
+            } else {
+                String[] arrow = {"<", "^", ">", "v"}; float[][] off = {{-1, 0}, {0, -1}, {1, 0}, {0, 1}};
+                for (int a = 0; a < 4; a++) {
+                    boolean on = (pressed & (1L << (12 + a))) != 0;
+                    float ax = cx + off[a][0] * hw * 0.6f, ay = cy + off[a][1] * hw * 0.6f, hs = hw * 0.3f;
+                    RectF r = new RectF(ax - hs, ay - hs, ax + hs, ay + hs);
+                    fill.setColor(col(on ? 0x70 : 0x28));
+                    c.drawRoundRect(r, hs / 2f, hs / 2f, fill); c.drawRoundRect(r, hs / 2f, hs / 2f, line);
+                    c.drawText(arrow[a], r.centerX(), r.centerY() + text.getTextSize() / 3f, text);
+                }
+            }
+            if (editing && i == selected) {
+                Paint.Style st = line.getStyle(); float sw = line.getStrokeWidth();
+                line.setColor(0xFFFFD040); line.setStrokeWidth(5f);
+                if (k.type == T_BTN) c.drawRect(cx - hw - 6, cy - hh - 6, cx + hw + 6, cy + hh + 6, line);
+                else c.drawCircle(cx, cy, hw + 6, line);
+                line.setStrokeWidth(sw); line.setStyle(st);
+            }
+        }
+
+        private void drawPanel(Canvas c) {
+            fill.setColor(0xD8101418); c.drawRoundRect(panel, u * 0.5f, u * 0.5f, fill);
+            line.setColor(0xA0FFFFFF); c.drawRoundRect(panel, u * 0.5f, u * 0.5f, line);
+            text.setColor(0xFFFFFFFF); text.setTextSize(0.5f * u);
+            c.drawText("\u62d6\u52a8\u6309\u952e\u79fb\u52a8\u4f4d\u7f6e\uff0c\u70b9\u9009\u540e\u8c03\u5927\u5c0f", panel.centerX(), panel.top + 1.1f * u, text);
+            Paint.Align al = text.getTextAlign(); text.setTextAlign(Paint.Align.LEFT);
+            c.drawText("\u900f\u660e\u5ea6", panel.left + 1.0f * u, opTrack.centerY() + 0.18f * u, text);
+            c.drawText(selected >= 0 ? "\u5927\u5c0f " + ctls[selected].name : "\u5927\u5c0f", panel.left + 1.0f * u, scTrack.centerY() + 0.18f * u, text);
+            text.setTextAlign(al);
+            drawSlider(c, opTrack, (opacity - 0.15f) / 0.85f, true);
+            drawSlider(c, scTrack, selected >= 0 ? (ctls[selected].scale - 0.5f) / 1.5f : 0f, selected >= 0);
+            for (int pass = 0; pass < 2; pass++) {
+                RectF r = pass == 0 ? btnReset : btnDone;
+                fill.setColor(0x40FFFFFF); c.drawRoundRect(r, u * 0.3f, u * 0.3f, fill);
+                line.setColor(0xA0FFFFFF); c.drawRoundRect(r, u * 0.3f, u * 0.3f, line);
+                text.setColor(0xFFFFFFFF); text.setTextSize(0.6f * u);
+                c.drawText(pass == 0 ? "\u91cd\u7f6e" : "\u5b8c\u6210", r.centerX(), r.centerY() + 0.2f * u, text);
+            }
+        }
+
+        private void drawSlider(Canvas c, RectF t, float v, boolean enabled) {
+            v = Math.max(0f, Math.min(1f, v));
+            fill.setColor(enabled ? 0x60FFFFFF : 0x20FFFFFF); c.drawRoundRect(t, t.height() / 2f, t.height() / 2f, fill);
+            fill.setColor(enabled ? 0xFFFFD040 : 0x40FFFFFF);
+            c.drawCircle(t.left + t.width() * v, t.centerY(), 0.45f * u, fill);
+        }
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        resumed = true;
+        discoverPad();
+        if (!guestStarted && surfaceReady) recheckGame();
+        GameWindowNative.setFocusState(hasWindowFocus() ? 1 : 2);
+    }
+
+    @Override protected void onPause() {
+        resumed = false;
+        padButtons = axisButtons = 0;
+        padLx = padLy = padRx = padRy = 0;
+        publishPad();
+        GameWindowNative.setFocusState(3);
+        super.onPause();
+    }
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        audioManager = (AudioManager)getSystemService(AUDIO_SERVICE);
+        if (audioManager != null) audioManager.registerAudioDeviceCallback(audioCallback, new Handler(Looper.getMainLooper()));
         configureWindow();
         surface_view = new SurfaceView(this);
         // RGBA_8888 is the buffer format a Vulkan surface can be created from.
         surface_view.getHolder().setFormat(PixelFormat.RGBA_8888);
-        setContentView(surface_view);
+        FrameLayout root = new FrameLayout(this);
+        rootLayout = root;
+        root.addView(surface_view, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        touchPad = new TouchPad(this);
+        root.addView(touchPad, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        buildSetupView();
+        setContentView(root);
+        inputManager = (InputManager)getSystemService(Context.INPUT_SERVICE);
+        if (inputManager != null) inputManager.registerInputDeviceListener(deviceListener, new Handler(Looper.getMainLooper()));
         surface_view.getHolder().addCallback(this);
     }
+
+    // Read the same per-package target marker as the native limiter. A changed
+    // target takes effect for display selection on the next Activity launch.
+    private int requestedGameFps() {
+        File dir = getExternalFilesDir(null);
+        if (dir != null) {
+            try (java.util.Scanner input = new java.util.Scanner(new File(dir, "gfx-target-fps"))) {
+                if (input.hasNextInt()) {
+                    int value = input.nextInt();
+                    if (value >= 0) return value;
+                }
+            } catch (java.io.FileNotFoundException ignored) {
+            }
+        }
+        return 30;
+    }
+
+    private float requestedDisplayHz = 60.0f;
 
     /** Full screen window so the SurfaceView covers the whole display. */
     private void configureWindow() {
         Window window = getWindow();
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        if (surface_view != null) surface_view.setKeepScreenOn(true);
+        try {
+            int cur = android.provider.Settings.System.getInt(getContentResolver(),
+                    android.provider.Settings.System.SCREEN_BRIGHTNESS, 128);
+            WindowManager.LayoutParams lp = window.getAttributes();
+            lp.screenBrightness = Math.max(0.05f, Math.min(1.0f, cur / 255.0f));
+            int target = requestedGameFps();
+            requestedDisplayHz = 60.0f;
+            Display display = getWindowManager().getDefaultDisplay();
+            if ((target == 0 || target > 30) && display != null) {
+                Display.Mode current = display.getMode();
+                for (Display.Mode mode : display.getSupportedModes()) {
+                    if (mode.getPhysicalWidth() == current.getPhysicalWidth()
+                            && mode.getPhysicalHeight() == current.getPhysicalHeight()
+                            && mode.getRefreshRate() > requestedDisplayHz) {
+                        requestedDisplayHz = mode.getRefreshRate();
+                        lp.preferredDisplayModeId = mode.getModeId();
+                    }
+                }
+            }
+            lp.preferredRefreshRate = requestedDisplayHz;
+            Log.i(TAG, "display_request: target_fps=" + target
+                    + " requested_hz=" + requestedDisplayHz
+                    + " mode_id=" + lp.preferredDisplayModeId);
+            window.setAttributes(lp);
+        } catch (Throwable ignored) {
+        }
         // Touch the decor view first: the window insets controller only exists
         // once the decor view is installed and attached.
         View decor = window.getDecorView();
@@ -67,6 +670,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
     @Override public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
+        GameWindowNative.setFocusState(resumed ? (hasFocus ? 1 : 2) : 3);
         if (!hasFocus) return;
         Window window = getWindow();
         View decor = window.getDecorView();
@@ -93,6 +697,14 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         if (surface == null || !surface.isValid()) {
             Log.e(TAG, "surface_created without a valid Surface; no window is published");
             return;
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            try {
+                surface.setFrameRate(requestedDisplayHz, Surface.FRAME_RATE_COMPATIBILITY_DEFAULT);
+                Log.i(TAG, "surface_frame_rate_request: hz=" + requestedDisplayHz);
+            } catch (IllegalArgumentException e) {
+                Log.w(TAG, "surface_frame_rate_request rejected", e);
+            }
         }
         display_snapshot = captureDisplaySnapshot();
         long[] window = GameWindowNative.setSurface(surface);
@@ -135,30 +747,173 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         // The guest runs in this process, because the window is a
         // process-local platform handle. It starts after the window is
         // published, so the display bridge finds a real window.
+        surfaceReady = true;
         if (getIntent() == null || getIntent().getBooleanExtra("run_guest", true)) {
-            startGuest();
+            if (!guestStarted) startGuest();
         }
     }
 
-    /** Where the owned guest image and its romfs live on this device. */
+    /** Legacy location, only writable through adb; kept so existing adb installs keep working. */
     private static final String DEFAULT_GAME_DIR =
+            "/data/local/tmp/ffrs-60fps";
+    private static final String RG477M_GAME_DIR =
             "/data/local/tmp/ffrs-rg477m-efd1123620814764ae32529c18081259";
-    /** Explicit guest resource policy, matching the standalone CLI runs. */
-    private static final long GUEST_QUOTA_BYTES = 1073741824L;
+
+    private static boolean hasGame(File dir) {
+        if (dir == null) return false;
+        File nso = new File(dir, "main.nso");
+        File rom = new File(dir, "romfs");
+        return nso.canRead() && (rom.isDirectory() || rom.canRead());
+    }
+
+    /** Candidate game folders, best first.  The user puts the whole FFRS folder (main.nso + romfs) on the phone's storage. */
+    private File[] candidateGameDirs() {
+        File ext = getExternalFilesDir(null);
+        java.util.ArrayList<File> list = new java.util.ArrayList<File>();
+        list.add(new File(RG477M_GAME_DIR));
+        list.add(new File(Environment.getExternalStorageDirectory(), "FFRS"));
+        if (ext != null) list.add(new File(ext, "game"));
+        list.add(new File(DEFAULT_GAME_DIR));
+        File tmp = new File("/data/local/tmp");
+        if (tmp.isDirectory()) {
+            File[] subs = tmp.listFiles();
+            if (subs != null) {
+                for (File s : subs) {
+                    if (s != null && s.isDirectory() && s.getName().startsWith("ffrs-") && !list.contains(s)) {
+                        list.add(s);
+                    }
+                }
+            }
+        }
+        return list.toArray(new File[0]);
+    }
+
+    private String resolveGameDir() {
+        String fromIntent = getIntent() == null ? null : getIntent().getStringExtra("game_dir");
+        if (fromIntent != null && !fromIntent.isEmpty()) return fromIntent;
+        for (File d : candidateGameDirs()) if (hasGame(d)) return d.getAbsolutePath();
+        return null;
+    }
+
+    private boolean allFilesAccess() {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager();
+    }
+
+    private void buildSetupView() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER);
+        box.setBackgroundColor(0xF0101418);
+        int pad = (int) (24 * getResources().getDisplayMetrics().density);
+        box.setPadding(pad, pad, pad, pad);
+        TextView t = new TextView(this);
+        t.setTextColor(0xFFFFFFFF);
+        t.setTextSize(18f);
+        t.setGravity(Gravity.CENTER);
+        box.addView(t, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        Button grant = new Button(this);
+        grant.setText("\u6388\u4e88\u6587\u4ef6\u8bbf\u95ee\u6743\u9650");
+        grant.setOnClickListener(new SetupClick(this, 0));
+        Button retry = new Button(this);
+        retry.setText("\u91cd\u65b0\u68c0\u67e5\u6e38\u620f\u6570\u636e");
+        retry.setOnClickListener(new SetupClick(this, 1));
+        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        bp.topMargin = pad / 2;
+        box.addView(grant, bp);
+        box.addView(retry, bp);
+        box.setVisibility(View.GONE);
+        box.setClickable(true);
+        setupView = box;
+        setupText = t;
+        rootLayout.addView(box, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
+    /** Named listener (not anonymous/inner): d8 in this build setup rejects those. */
+    private static final class SetupClick implements View.OnClickListener {
+        private final GameActivity owner; private final int action;
+        SetupClick(GameActivity o, int a) { owner = o; action = a; }
+        @Override public void onClick(View v) { if (action == 0) owner.requestFileAccess(); else owner.recheckGame(); }
+    }
+
+    void requestFileAccess() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Intent i = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:" + getPackageName()));
+                startActivity(i);
+            } else {
+                requestPermissions(new String[] { "android.permission.READ_EXTERNAL_STORAGE" }, 1);
+            }
+        } catch (Exception e) {
+            try { startActivity(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)); }
+            catch (Exception e2) { Log.w(TAG, "file access settings unavailable: " + e2.getMessage()); }
+        }
+    }
+
+    void recheckGame() {
+        if (guestStarted || !surfaceReady) { refreshSetup(); return; }
+        startGuest();
+    }
+
+    private void refreshSetup() {
+        if (setupView == null) return;
+        if (guestStarted) { setupView.setVisibility(View.GONE); return; }
+        File ext = getExternalFilesDir(null);
+        StringBuilder sb = new StringBuilder();
+        sb.append("\u672a\u627e\u5230\u6e38\u620f\u6570\u636e\n\n");
+        sb.append("\u8bf7\u628a\u6574\u4e2a FFRS \u6587\u4ef6\u5939\uff08\u5185\u542b main.nso \u548c romfs\uff09\u62f7\u8d1d\u5230\u624b\u673a\u5b58\u50a8\u7684\u6839\u76ee\u5f55\uff1a\n");
+        sb.append(Environment.getExternalStorageDirectory().getAbsolutePath()).append("/FFRS\n\n");
+        if (ext != null) sb.append("\u6216\u653e\u5230\u672c\u5e94\u7528\u4e13\u5c5e\u76ee\u5f55\uff08\u4e0d\u9700\u8981\u6743\u9650\uff09\uff1a\n").append(ext.getAbsolutePath()).append("/game\n\n");
+        if (!allFilesAccess()) sb.append("\u5f53\u524d\u5c1a\u672a\u6388\u4e88\u300c\u6240\u6709\u6587\u4ef6\u8bbf\u95ee\u300d\u6743\u9650\uff0c\u8bf7\u70b9\u4e0b\u9762\u7684\u6309\u94ae\u6388\u6743\uff0c\u56de\u6765\u540e\u518d\u68c0\u67e5\u3002");
+        else sb.append("\u5df2\u6388\u6743\u3002\u62f7\u8d1d\u5b8c\u6210\u540e\u70b9\u300c\u91cd\u65b0\u68c0\u67e5\u300d\u3002");
+        sb.append("\n\n\u68c0\u67e5\u7ed3\u679c\uff08").append(new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(new java.util.Date())).append("\uff09\uff1a\n");
+        for (File d : candidateGameDirs()) {
+            if (d == null) continue;
+            boolean nso = new File(d, "main.nso").canRead(), rom = new File(d, "romfs").isDirectory();
+            sb.append(d.getAbsolutePath()).append("  main.nso:").append(nso ? "\u2713" : "\u2717").append("  romfs:").append(rom ? "\u2713" : "\u2717").append("\n");
+        }
+        setupText.setText(sb.toString());
+        setupView.setVisibility(View.VISIBLE);
+    }
+    /** Explicit Android port resource policy; logs/queries report actual owned budgets. */
+    // Real startup exceeded the former 1 GiB diagnostic ceiling. RG477M
+    // reports 12 GiB RAM with >8 GiB available; reserve a bounded 3 GiB
+    // logical guest backing budget, reported truthfully through QueryMemoryInfo.
+    private static final long GUEST_QUOTA_BYTES = 3221225472L;
     private static final long GUEST_STACK_BYTES = 2097152L;
-    private static final long GUEST_RESOURCE_BYTES = 16777216L;
+    // Runtime page/ticket metadata: 16 MiB exhausted during real startup.
+    // This is a bounded host bookkeeping pool, separate from guest backing quota.
+    private static final long GUEST_RESOURCE_BYTES = 67108864L;
 
     /** Starts the owned guest on its own thread inside this app process. */
     private void startGuest() {
-        String game_dir = getIntent() == null ? null : getIntent().getStringExtra("game_dir");
-        if (game_dir == null || game_dir.isEmpty()) game_dir = DEFAULT_GAME_DIR;
+        String game_dir = resolveGameDir();
+        if (game_dir == null) {
+            Log.e(TAG, "guest_image_unreadable: no game folder found; showing setup screen");
+            refreshSetup();
+            return;
+        }
         String image = game_dir + "/main.nso";
         String romfs = game_dir + "/romfs";
         if (!new java.io.File(image).canRead()) {
             Log.e(TAG, "guest_image_unreadable path=" + image);
+            refreshSetup();
             return;
         }
+        guestStarted = true;
+        if (setupView != null) setupView.setVisibility(View.GONE);
+        Log.i(TAG, "game_dir=" + game_dir);
         File files = getExternalFilesDir(null);
+        String op_mode = getIntent() == null ? null : getIntent().getStringExtra("operation_mode");
+        if (op_mode != null && !op_mode.isEmpty() && files != null) {
+            try {
+                java.io.FileOutputStream fos = new java.io.FileOutputStream(new File(files, "oe-operation-mode"));
+                fos.write(op_mode.getBytes());
+                fos.close();
+                Log.i(TAG, "operation_mode configured from intent: " + op_mode);
+            } catch (Throwable t) {
+                Log.w(TAG, "failed to persist operation_mode: " + t.getMessage());
+            }
+        }
         String log_path = files == null ? null : new File(files, "guest_boot.log").getAbsolutePath();
         Thread guest = new Thread(new GuestBootTask(image, romfs, log_path), "ffrs-guest");
         guest.start();
@@ -207,7 +962,20 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         Log.i(TAG, "surface_destroyed native_window_cleared");
     }
 
+    private final Handler exitHandler = new Handler(Looper.getMainLooper());
+    @Override public void run() {
+        if (isFinishing() || isDestroyed()) return;
+        if (GameWindowNative.hostExitReady(false)) finish();
+        else exitHandler.postDelayed(this, 50);
+    }
+    @Override public void onBackPressed() {
+        if (GameWindowNative.hostExitReady(true)) finish();
+        else { exitHandler.removeCallbacks(this); exitHandler.postDelayed(this, 50); }
+    }
+
     @Override protected void onDestroy() {
+        exitHandler.removeCallbacks(this);
+        if (audioManager != null) audioManager.unregisterAudioDeviceCallback(audioCallback);
         // Safety net: the runtime must never keep a window of a dead Activity.
         GameWindowNative.clearSurface();
         super.onDestroy();

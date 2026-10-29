@@ -65,6 +65,12 @@ if(ANDROID)
         "${FFRS_GUEST_HLE_DIR}/guest_context.c"
         "${FFRS_GUEST_HLE_DIR}/guest_process.c"
         "${FFRS_GUEST_HLE_DIR}/nso_host.c"
+        "${FFRS_GUEST_HLE_DIR}/hid_bridge.c"
+        "${FFRS_GUEST_HLE_DIR}/sdk_component.c"
+        "${FFRS_GUEST_HLE_DIR}/movie_buffer.c"
+        "${FFRS_GUEST_HLE_DIR}/movie_decoder.cpp"
+        "${FFRS_GUEST_HLE_DIR}/multiwait.c"
+        "${FFRS_GUEST_HLE_DIR}/audio_bridge.c"
         "${FFRS_GUEST_HLE_DIR}/address_region.c"
         "${FFRS_GUEST_HLE_DIR}/mutex.c"
         "${FFRS_GUEST_HLE_DIR}/exit_registry.c"
@@ -94,6 +100,7 @@ if(ANDROID)
         "${FFRS_GUEST_NVN_DIR}/nvn_present.c"
         "${FFRS_GUEST_NVN_DIR}/nvn_buffer.c"
         "${FFRS_GUEST_NVN_DIR}/nvn_bridge.c"
+        "${FFRS_GUEST_NVN_DIR}/nvn_engine.c"
         "${FFRS_GUEST_NVN_DIR}/nvn_sync.c"
         "${FFRS_GUEST_NVN_DIR}/nvn_event.c"
         "${FFRS_GUEST_NVN_DIR}/nvn_backend_vulkan.c")
@@ -109,7 +116,48 @@ if(ANDROID)
     # ABI reserves, and -fno-emulated-tls keeps thread locals real.
     target_compile_options(ffrs_guest_runtime PRIVATE -Wall -Wextra -O2 -g
         -fno-omit-frame-pointer -ffixed-x18 -fno-emulated-tls -fvisibility=hidden)
-    target_link_libraries(ffrs_guest_runtime PUBLIC dl m log vulkan)
+    # The Vulkan engine that replays the guest's NVN commands.
+    #
+    # It is a separate library because it is written in C++ and because it
+    # has its own copy of the NVN headers of this game: the engine was
+    # written against them, and the objects it reads are in their layout.
+    set(FFRS_NVN_VULKAN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../graphics/nvn_vulkan" CACHE PATH "NVN Vulkan engine source directory")
+    add_library(ffrs_nvn_vulkan_engine STATIC
+        "${FFRS_NVN_VULKAN_DIR}/engine/xbg_command_clone.c"
+        "${FFRS_NVN_VULKAN_DIR}/engine/xbg_depth.c"
+        "${FFRS_NVN_VULKAN_DIR}/engine/xbg_draw_plan.c"
+        "${FFRS_NVN_VULKAN_DIR}/engine/xbg_framebuffer.c"
+        "${FFRS_NVN_VULKAN_DIR}/engine/xbg_quad.c"
+        "${FFRS_NVN_VULKAN_DIR}/engine/xbg_shader_key.c"
+        "${FFRS_NVN_VULKAN_DIR}/engine/xbg_texture.c"
+        "${FFRS_NVN_VULKAN_DIR}/engine/xbg_vertex.c"
+        "${FFRS_NVN_VULKAN_DIR}/nvn/nvn_tex.c"
+        "${FFRS_NVN_VULKAN_DIR}/tex/nvn_deswizzle.c"
+        "${FFRS_NVN_VULKAN_DIR}/xbg_host_bridge.c"
+        "${FFRS_NVN_VULKAN_DIR}/nvn_vk_adapter.c"
+        "${FFRS_NVN_VULKAN_DIR}/engine/xbg_blit.cpp"
+        "${FFRS_NVN_VULKAN_DIR}/engine/xbg_clear.cpp"
+        "${FFRS_NVN_VULKAN_DIR}/engine/xbg_game.cpp"
+        "${FFRS_NVN_VULKAN_DIR}/engine/xbg_nvn.cpp"
+        "${FFRS_NVN_VULKAN_DIR}/engine/xbg_sampler.cpp"
+        "${FFRS_NVN_VULKAN_DIR}/engine/xbg_spirv_ldc.cpp"
+        "${FFRS_NVN_VULKAN_DIR}/engine/xbg_spirv_quad.cpp"
+        "${FFRS_NVN_VULKAN_DIR}/engine/xbg_spirv_raster.cpp"
+        "${FFRS_NVN_VULKAN_DIR}/engine/xbg_spirv_temps.cpp"
+        "${FFRS_NVN_VULKAN_DIR}/engine/xbg_spirv_warp.cpp"
+        "${FFRS_NVN_VULKAN_DIR}/engine/xbg_stages.cpp"
+        "${FFRS_NVN_VULKAN_DIR}/engine/xbg_vulkan.cpp")
+    target_include_directories(ffrs_nvn_vulkan_engine PUBLIC
+        "${FFRS_NVN_VULKAN_DIR}" "${FFRS_NVN_VULKAN_DIR}/nvn" "${FFRS_NVN_VULKAN_DIR}/tex")
+    set_target_properties(ffrs_nvn_vulkan_engine PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON
+        POSITION_INDEPENDENT_CODE ON)
+    target_compile_options(ffrs_nvn_vulkan_engine PRIVATE -O2 -fno-strict-aliasing -Wall)
+    # The engine reads the guest's texture bytes as signed characters, which
+    # is not the default on arm64.
+    set_source_files_properties("${FFRS_NVN_VULKAN_DIR}/engine/xbg_texture.c"
+        PROPERTIES COMPILE_OPTIONS "-fsigned-char")
+    target_link_libraries(ffrs_nvn_vulkan_engine PUBLIC vulkan)
+    target_link_libraries(ffrs_guest_runtime PUBLIC dl m log vulkan aaudio mediandk ffrs_nvn_vulkan_engine)
     add_library(ffrs_game_window SHARED game_window_jni.cpp game_vulkan_probe.cpp guest_boot_jni.cpp)
     set_target_properties(ffrs_game_window PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
     target_include_directories(ffrs_game_window PRIVATE "${FFRS_NATIVE_WINDOW_HLE_DIR}" "${FFRS_GUEST_NSO_DIR}")

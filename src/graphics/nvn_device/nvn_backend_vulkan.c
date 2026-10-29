@@ -31,7 +31,10 @@
  * functions live in libandroid.so, and this layer deliberately does not call
  * them: the size of the window comes from the surface instead. */
 #include <android/native_window.h>
+#include <unistd.h>
 #include <vulkan/vulkan.h>
+#include "native_window.h"
+#include "nvn_vulkan_features.h"
 
 /* How long the wait for the fence of a frame may take. The wait is bounded,
  * so a frame that never finishes is a named failure and not a hang. */
@@ -46,11 +49,15 @@ typedef struct {
     VkQueue queue;
     uint32_t queue_family;
     uint32_t queue_flags;
+    uint32_t instance_api_version;
     uint32_t api_version;
     uint32_t driver_version;
     char gpu_name[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE];
     VkPhysicalDeviceFeatures features;         /* the features that were asked for */
     VkPhysicalDeviceFeatures enabled;         /* the features the device gave */
+    VkBool32 shader_draw_parameters_enabled;
+    VkBool32 shader_output_layer_supported,shader_output_viewport_index_supported;
+    VkBool32 shader_output_layer_enabled,shader_output_viewport_index_enabled;
     uint32_t storage_image_write_supported;   /* the device can write a storage image without a format */
     uint32_t storage_image_write_enabled;     /* and it was enabled on this device */
     uint32_t swapchain_supported;             /* the device has VK_KHR_swapchain */
@@ -72,9 +79,14 @@ typedef struct {
     VkFramebuffer *framebuffers;
     VkCommandBuffer *command_buffers;
     VkFence *fences;
+    VkSemaphore *render_semaphores;
+    VkSemaphore *acquire_semaphores;
+    uint32_t acquire_sem_index;
+    VkFence acquire_fence;
     VkRenderPass render_pass;
     VkCommandPool command_pool;
     uint32_t present_path_ready;
+    uint8_t *images_cleared;
 
     /* What the present path did. The render pass and the framebuffers are
      * built once and reused, so the two counters tell which of the two
@@ -102,6 +114,23 @@ typedef struct {
 /* The present path is released before the device goes away, and the release
  * is defined further down with the rest of the present path. */
 static void nvn_vulkan_release_present_path(nvn_vulkan_state *st);
+static const nvn_backend s_vulkan_backend;
+
+int nvn_vulkan_get_enabled_features(const nvn_device_state *device,
+                                    nvn_vulkan_enabled_features *out) {
+    if (!out) return 0;
+    memset(out, 0, sizeof(*out));
+    if (!device || device->backend != &s_vulkan_backend || !device->backend_state) return 0;
+    const nvn_vulkan_state *st = (const nvn_vulkan_state *)device->backend_state;
+    if (!st->device) return 0;
+    out->core = st->enabled;
+    out->shader_draw_parameters = st->shader_draw_parameters_enabled;
+    out->instance_api_version = st->instance_api_version;
+    out->physical_api_version = st->api_version;
+    out->shader_output_layer = st->shader_output_layer_enabled;
+    out->shader_output_viewport_index = st->shader_output_viewport_index_enabled;
+    return 1;
+}
 
 static int nvn_vulkan_create(nvn_device_state *device, const void *builder) {
     nvn_vulkan_state *st;
@@ -109,11 +138,25 @@ static int nvn_vulkan_create(nvn_device_state *device, const void *builder) {
     VkInstanceCreateInfo instance_info;
     VkDeviceQueueCreateInfo queue_info;
     VkDeviceCreateInfo device_info;
+    VkPhysicalDeviceShaderDrawParametersFeatures draw_parameters;
+    VkPhysicalDeviceVulkan12Features supported12,requested12;
+    int core12_route;
     VkPhysicalDevice *physicals = NULL;
     uint32_t physical_count = 0;
     uint32_t i;
     float priority = 1.0f;
     VkResult result;
+    uint32_t instance_version = VK_API_VERSION_1_0;
+    PFN_vkEnumerateInstanceVersion enumerate_instance_version =
+        (PFN_vkEnumerateInstanceVersion)vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkEnumerateInstanceVersion");
+
+    if (!enumerate_instance_version ||
+        enumerate_instance_version(&instance_version) != VK_SUCCESS ||
+        instance_version < VK_API_VERSION_1_1) {
+        fprintf(stderr, "[nvn] vulkan: Vulkan 1.1 instance support is required, loader reports %u.%u\n",
+                VK_VERSION_MAJOR(instance_version), VK_VERSION_MINOR(instance_version));
+        return 0;
+    }
 
     (void)builder;
     memset(&app, 0, sizeof(app));
@@ -122,7 +165,10 @@ static int nvn_vulkan_create(nvn_device_state *device, const void *builder) {
     app.applicationVersion = 1;
     app.pEngineName = "ffrs-rg477m-native";
     app.engineVersion = 1;
-    app.apiVersion = VK_API_VERSION_1_0;
+    /* The engine uses Vulkan 1.1 and optional physical-device 1.3 queries.
+     * Advertise the version actually supported by this loader, bounded by
+     * the newest core version used here. Physical support is checked below. */
+    app.apiVersion = instance_version < VK_API_VERSION_1_3 ? instance_version : VK_API_VERSION_1_3;
 
     /* The surface extensions are not optional here: without them there is no
      * vkCreateAndroidSurfaceKHR, and therefore no window and no frame. This
@@ -142,6 +188,7 @@ static int nvn_vulkan_create(nvn_device_state *device, const void *builder) {
         fprintf(stderr, "[nvn] vulkan: no memory for the device state\n");
         return 0;
     }
+    st->instance_api_version = app.apiVersion;
 
     result = vkCreateInstance(&instance_info, NULL, &st->instance);
     if (result != VK_SUCCESS) {
@@ -174,17 +221,21 @@ static int nvn_vulkan_create(nvn_device_state *device, const void *builder) {
     }
 
     for (i = 0; i < physical_count; i++) {
+        VkPhysicalDeviceProperties candidate_properties;
         uint32_t family_count = 0;
         VkQueueFamilyProperties *families = NULL;
         uint32_t f;
         int found = 0;
+        vkGetPhysicalDeviceProperties(physicals[i], &candidate_properties);
+        if (candidate_properties.apiVersion < VK_API_VERSION_1_1) continue;
         vkGetPhysicalDeviceQueueFamilyProperties(physicals[i], &family_count, NULL);
         if (family_count == 0) continue;
         families = (VkQueueFamilyProperties *)calloc(family_count, sizeof(*families));
         if (!families) continue;
         vkGetPhysicalDeviceQueueFamilyProperties(physicals[i], &family_count, families);
         for (f = 0; f < family_count; f++) {
-            if (families[f].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+            if ((families[f].queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) ==
+                (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) {
                 st->physical = physicals[i];
                 st->queue_family = f;
                 st->queue_flags = families[f].queueFlags;
@@ -197,7 +248,7 @@ static int nvn_vulkan_create(nvn_device_state *device, const void *builder) {
     }
     free(physicals);
     if (!st->physical) {
-        fprintf(stderr, "[nvn] vulkan: none of the %u physical devices has a graphics queue\n", physical_count);
+        fprintf(stderr, "[nvn] vulkan: none of the %u physical devices supports Vulkan 1.1 and a graphics/compute queue\n", physical_count);
         vkDestroyInstance(st->instance, NULL);
         free(st);
         return 0;
@@ -217,72 +268,71 @@ static int nvn_vulkan_create(nvn_device_state *device, const void *builder) {
     queue_info.queueCount = 1;
     queue_info.pQueuePriorities = &priority;
 
-    /* The features of the device.
-     *
-     * Two of the compute shaders of this game write into a storage image
-     * whose format the game never states: the format is a property of the
-     * bound texture and not of the shader, so there is nothing in the game's
-     * data to put into the module. The way the reference host that runs this
-     * game solves it is the same way: the module declares the capability
-     * StorageImageWriteWithoutFormat, and the device has to have the
-     * matching feature turned on.
-     *
-     * Support and enablement are two different facts and the log keeps them
-     * apart: a device that does not support the feature is not asked for it,
-     * and a device that supports it but was not given it says so. */
+    /* Query Vulkan12 only when BOTH the requested instance API and selected
+     * physical-device API permit that core structure. Loader/physical support
+     * cannot upgrade an already-created Vulkan1.1 instance. */
+    core12_route = st->instance_api_version >= VK_API_VERSION_1_2 && st->api_version >= VK_API_VERSION_1_2;
+    memset(&supported12, 0, sizeof(supported12));
+    supported12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+    memset(&requested12, 0, sizeof(requested12));
+    requested12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+
+    /* Enable the supported Vulkan 1.0 core set used by the replay engine.
+     * Previously only storage-image writes were enabled, while the engine
+     * was told the entire physical set was enabled. Keep the actual request
+     * and publish it only after successful device creation. */
     {
-        VkPhysicalDeviceFeatures supported;
+        VkPhysicalDeviceFeatures2 supported;
+        memset(&draw_parameters, 0, sizeof(draw_parameters));
+        draw_parameters.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES;
+        draw_parameters.pNext = core12_route ? &supported12 : NULL;
         memset(&supported, 0, sizeof(supported));
-        vkGetPhysicalDeviceFeatures(st->physical, &supported);
-        st->storage_image_write_supported = supported.shaderStorageImageWriteWithoutFormat ? 1 : 0;
-        if (st->storage_image_write_supported) {
-            st->features.shaderStorageImageWriteWithoutFormat = VK_TRUE;
-        }
+        supported.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        supported.pNext = &draw_parameters;
+        vkGetPhysicalDeviceFeatures2(st->physical, &supported);
+        st->features = supported.features;
+        st->storage_image_write_supported = supported.features.shaderStorageImageWriteWithoutFormat ? 1 : 0;
+        st->shader_output_layer_supported = supported12.shaderOutputLayer;
+        st->shader_output_viewport_index_supported = supported12.shaderOutputViewportIndex;
     }
+    /* Only the two proven output features are requested. Never forward all
+     * supported Vulkan12 bits (descriptor indexing, memory model, etc.). */
+    draw_parameters.pNext = core12_route ? &requested12 : NULL;
 
     memset(&device_info, 0, sizeof(device_info));
     device_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    device_info.pNext = &draw_parameters;
     device_info.queueCreateInfoCount = 1;
     device_info.pQueueCreateInfos = &queue_info;
     device_info.pEnabledFeatures = &st->features;
 
-    /* The swapchain extension is a device extension, and it is not optional:
-     * the swapchain of the window is created with it, and without it the
-     * creation of the swapchain fails with VK_ERROR_EXTENSION_NOT_PRESENT.
-     * The device is asked first, because "the device has it" and "the
-     * device was given it" are two different facts, and a device that does
-     * not have it is reported instead of being asked for it anyway. */
-    {
-        static const char *const swapchain_extension[] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
-        uint32_t extension_count = 0;
-        VkExtensionProperties *available = NULL;
-        uint32_t e;
-        VkResult extension_result = vkEnumerateDeviceExtensionProperties(st->physical, NULL, &extension_count, NULL);
-        if (extension_result == VK_SUCCESS && extension_count > 0) {
-            available = (VkExtensionProperties *)calloc(extension_count, sizeof(*available));
-            if (available) {
-                extension_result = vkEnumerateDeviceExtensionProperties(st->physical, NULL, &extension_count, available);
-                if (extension_result == VK_SUCCESS) {
-                    for (e = 0; e < extension_count; e++) {
-                        if (strcmp(available[e].extensionName, VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0) {
-                            st->swapchain_supported = 1;
-                            break;
-                        }
-                    }
-                }
-                free(available);
-            }
-        }
-        if (st->swapchain_supported) {
-            device_info.enabledExtensionCount = 1;
-            device_info.ppEnabledExtensionNames = swapchain_extension;
-            fprintf(stderr, "[nvn] vulkan: the device has %s and it is enabled on this device\n",
-                    VK_KHR_SWAPCHAIN_EXTENSION_NAME);
-        } else {
-            fprintf(stderr, "[nvn] vulkan: the device does not have %s, so this runtime cannot present\n",
-                    VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+    /* Request only the two promoted features. The target does not advertise
+     * VK_EXT_shader_viewport_index_layer and has multiViewport=false: original
+     * legacy SPIR-V is rejected; the validated core ShaderLayer module is used. */
+    if (nvn_vulkan_layer_output_route(st->instance_api_version,st->api_version,
+            supported12.shaderOutputLayer,supported12.shaderOutputViewportIndex)) {
+        requested12.shaderOutputLayer=VK_TRUE;
+        requested12.shaderOutputViewportIndex=VK_TRUE;
+    }
+    /* Extension names remain alive through vkCreateDevice. */
+    const char *device_extensions[1];
+    uint32_t extension_count = 0;
+    VkExtensionProperties *available = NULL;
+    VkResult extension_result = vkEnumerateDeviceExtensionProperties(st->physical, NULL, &extension_count, NULL);
+    if (extension_result == VK_SUCCESS && extension_count > 0) {
+        available = (VkExtensionProperties *)calloc(extension_count, sizeof(*available));
+        if (available) {
+            extension_result = vkEnumerateDeviceExtensionProperties(st->physical, NULL, &extension_count, available);
+            if (extension_result == VK_SUCCESS) for (uint32_t e=0;e<extension_count;e++)
+                if (!strcmp(available[e].extensionName,VK_KHR_SWAPCHAIN_EXTENSION_NAME)) st->swapchain_supported=1;
+            free(available);
         }
     }
+    if (st->swapchain_supported) device_extensions[device_info.enabledExtensionCount++]=VK_KHR_SWAPCHAIN_EXTENSION_NAME;
+    device_info.ppEnabledExtensionNames=device_info.enabledExtensionCount?device_extensions:NULL;
+    fprintf(stderr,"[nvn] vulkan: swapchain supported=%u requested=%u; Vulkan12 route=%u outputLayer supported=%u requested=%u outputViewportIndex supported=%u requested=%u\n",
+        st->swapchain_supported,st->swapchain_supported,core12_route,supported12.shaderOutputLayer,requested12.shaderOutputLayer,
+        supported12.shaderOutputViewportIndex,requested12.shaderOutputViewportIndex);
 
     result = vkCreateDevice(st->physical, &device_info, NULL, &st->device);
     if (result != VK_SUCCESS) {
@@ -291,29 +341,34 @@ static int nvn_vulkan_create(nvn_device_state *device, const void *builder) {
         free(st);
         return 0;
     }
-    /* What the device really has.
-     *
-     * The instance of this runtime is Vulkan 1.0, and that version has no
-     * query for the features of a logical device: a device is created with
-     * exactly the features that are asked for, and the creation fails with
-     * VK_ERROR_FEATURE_NOT_PRESENT if one of them is not supported. The
-     * creation above succeeded, so the features that were asked for are the
-     * features the device has. The supported set is asked of the physical
-     * device above, and the two numbers are logged apart so that "the device
-     * can do it" and "the device does it" are never the same claim. */
+    /* vkCreateDevice succeeded with precisely this feature request. There
+     * is no logical-device feature query: retain the successful request. */
     st->enabled = st->features;
+    st->shader_draw_parameters_enabled = draw_parameters.shaderDrawParameters;
+    st->shader_output_layer_enabled = requested12.shaderOutputLayer;
+    st->shader_output_viewport_index_enabled = requested12.shaderOutputViewportIndex;
+    fprintf(stderr,"[nvn] vulkan: successful device output features: shaderOutputLayer=%u shaderOutputViewportIndex=%u legacyLayerEXT=0 instanceAPI=%u.%u physicalAPI=%u.%u\n",
+        st->shader_output_layer_enabled,st->shader_output_viewport_index_enabled,
+        VK_VERSION_MAJOR(st->instance_api_version),VK_VERSION_MINOR(st->instance_api_version),
+        VK_VERSION_MAJOR(st->api_version),VK_VERSION_MINOR(st->api_version));
     st->storage_image_write_enabled = st->enabled.shaderStorageImageWriteWithoutFormat ? 1 : 0;
     vkGetDeviceQueue(st->device, st->queue_family, 0, &st->queue);
 
     device->backend_state = st;
     snprintf(device->description, sizeof(device->description),
              "Vulkan device \"%s\", instance API %u.%u, driver %u, graphics queue family %u",
-             st->gpu_name, VK_VERSION_MAJOR(st->api_version), VK_VERSION_MINOR(st->api_version),
+             st->gpu_name, VK_VERSION_MAJOR(st->instance_api_version), VK_VERSION_MINOR(st->instance_api_version),
              st->driver_version, st->queue_family);
     fprintf(stderr, "[nvn] vulkan: created %s\n", device->description);
     fprintf(stderr, "[nvn] vulkan: feature shaderStorageImageWriteWithoutFormat "
                     "supported=%u enabled=%u\n",
             st->storage_image_write_supported, st->storage_image_write_enabled);
+    fprintf(stderr, "[nvn] vulkan: successful device feature request: physical API=%u.%u.%u "
+                    "shaderDrawParameters=%u geometryShader=%u tessellationShader=%u "
+                    "samplerAnisotropy=%u independentBlend=%u multiDrawIndirect=%u\n",
+            VK_VERSION_MAJOR(st->api_version), VK_VERSION_MINOR(st->api_version), VK_VERSION_PATCH(st->api_version),
+            st->shader_draw_parameters_enabled, st->enabled.geometryShader, st->enabled.tessellationShader,
+            st->enabled.samplerAnisotropy, st->enabled.independentBlend, st->enabled.multiDrawIndirect);
     return 1;
 }
 
@@ -383,6 +438,19 @@ static void nvn_vulkan_release_present_path(nvn_vulkan_state *st) {
             if (st->fences[i]) vkDestroyFence(st->device, st->fences[i], NULL);
         }
     }
+    if (st->render_semaphores) {
+        for (i = 0; i < st->image_count; i++) {
+            if (st->render_semaphores[i]) vkDestroySemaphore(st->device, st->render_semaphores[i], NULL);
+        }
+    }
+    if (st->acquire_semaphores) {
+        for (i = 0; i < st->image_count; i++) {
+            if (st->acquire_semaphores[i]) vkDestroySemaphore(st->device, st->acquire_semaphores[i], NULL);
+        }
+        free(st->acquire_semaphores);
+        st->acquire_semaphores = NULL;
+    }
+    if(st->acquire_fence){vkDestroyFence(st->device,st->acquire_fence,NULL);st->acquire_fence=VK_NULL_HANDLE;}
     if (st->command_pool) {
         if (st->command_buffers) {
             vkFreeCommandBuffers(st->device, st->command_pool, st->image_count, st->command_buffers);
@@ -395,11 +463,15 @@ static void nvn_vulkan_release_present_path(nvn_vulkan_state *st) {
     free(st->framebuffers);
     free(st->command_buffers);
     free(st->fences);
+    free(st->render_semaphores);
+    free(st->images_cleared);
     st->images = NULL;
     st->views = NULL;
     st->framebuffers = NULL;
     st->command_buffers = NULL;
     st->fences = NULL;
+    st->render_semaphores = NULL;
+    st->images_cleared = NULL;
     st->render_pass = VK_NULL_HANDLE;
     st->command_pool = VK_NULL_HANDLE;
     st->image_count = 0;
@@ -438,7 +510,11 @@ static int nvn_vulkan_setup_present_path(nvn_vulkan_state *st, VkSurfaceKHR surf
     st->framebuffers = (VkFramebuffer *)calloc(image_count, sizeof(VkFramebuffer));
     st->command_buffers = (VkCommandBuffer *)calloc(image_count, sizeof(VkCommandBuffer));
     st->fences = (VkFence *)calloc(image_count, sizeof(VkFence));
-    if (!st->images || !st->views || !st->framebuffers || !st->command_buffers || !st->fences) {
+    st->render_semaphores = (VkSemaphore *)calloc(image_count, sizeof(VkSemaphore));
+    st->acquire_semaphores = (VkSemaphore *)calloc(image_count, sizeof(VkSemaphore));
+    st->acquire_sem_index = 0;
+    st->images_cleared = (uint8_t *)calloc(image_count, sizeof(uint8_t));
+    if (!st->images || !st->views || !st->framebuffers || !st->command_buffers || !st->fences || !st->render_semaphores || !st->acquire_semaphores || !st->images_cleared) {
         fprintf(stderr, "[nvn] vulkan: no memory for the %u images of the present path\n", image_count);
         return 0;
     }
@@ -478,13 +554,32 @@ static int nvn_vulkan_setup_present_path(nvn_vulkan_state *st, VkSurfaceKHR surf
         VkFenceCreateInfo fence_info;
         memset(&fence_info, 0, sizeof(fence_info));
         fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT; /* image command buffer initially idle */
         result = vkCreateFence(st->device, &fence_info, NULL, &st->fences[i]);
         if (result != VK_SUCCESS) {
             fprintf(stderr, "[nvn] vulkan: vkCreateFence failed with %d for image %u\n", (int)result, i);
             return 0;
         }
+
+        VkSemaphoreCreateInfo sem_info;
+        memset(&sem_info, 0, sizeof(sem_info));
+        sem_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+        result = vkCreateSemaphore(st->device, &sem_info, NULL, &st->render_semaphores[i]);
+        if (result != VK_SUCCESS) {
+            fprintf(stderr, "[nvn] vulkan: vkCreateSemaphore failed with %d for image %u\n", (int)result, i);
+            return 0;
+        }
+
+        result = vkCreateSemaphore(st->device, &sem_info, NULL, &st->acquire_semaphores[i]);
+        if (result != VK_SUCCESS) {
+            fprintf(stderr, "[nvn] vulkan: vkCreateSemaphore failed with %d for acquire semaphore %u\n", (int)result, i);
+            return 0;
+        }
     }
 
+    VkFenceCreateInfo acquire_info={0};
+    acquire_info.sType=VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    if(vkCreateFence(st->device,&acquire_info,NULL,&st->acquire_fence)!=VK_SUCCESS)return 0;
     st->present_path_ready = 1;
     fprintf(stderr, "[nvn] vulkan: the present path is ready: %u images, one command buffer and one fence per image\n",
             image_count);
@@ -714,6 +809,52 @@ static int nvn_vulkan_create_window_surface(nvn_device_state *device, void *nati
     if (capabilities.maxImageCount > 0 && image_count > capabilities.maxImageCount)
         image_count = capabilities.maxImageCount;
 
+    PFN_vkGetPhysicalDeviceSurfacePresentModesKHR get_surface_modes =
+        (PFN_vkGetPhysicalDeviceSurfacePresentModesKHR)vkGetInstanceProcAddr(
+            st->instance, "vkGetPhysicalDeviceSurfacePresentModesKHR");
+    if (get_surface_modes) {
+        uint32_t mode_count = 0;
+        if (get_surface_modes(st->physical, surface, &mode_count, NULL) == VK_SUCCESS && mode_count > 0) {
+            VkPresentModeKHR *modes = (VkPresentModeKHR *)calloc(mode_count, sizeof(VkPresentModeKHR));
+            if (modes && get_surface_modes(st->physical, surface, &mode_count, modes) == VK_SUCCESS) {
+                int has_mailbox = 0, has_relaxed = 0, has_immediate = 0;
+                for (uint32_t i = 0; i < mode_count; i++) {
+                    fprintf(stderr, "[nvn] vulkan: available present mode[%u] = %d\n", i, (int)modes[i]);
+                    if (modes[i] == VK_PRESENT_MODE_MAILBOX_KHR) has_mailbox = 1;
+                    if (modes[i] == VK_PRESENT_MODE_FIFO_RELAXED_KHR) has_relaxed = 1;
+                    if (modes[i] == VK_PRESENT_MODE_IMMEDIATE_KHR) has_immediate = 1;
+                }
+                if (has_mailbox) present_mode = VK_PRESENT_MODE_MAILBOX_KHR;
+                else if (has_relaxed) present_mode = VK_PRESENT_MODE_FIFO_RELAXED_KHR;
+                else present_mode = VK_PRESENT_MODE_FIFO_KHR;
+
+                const char *env_mode = getenv("FFRS_PRESENT_MODE");
+                if (env_mode && !strcmp(env_mode, "mailbox") && has_mailbox) present_mode = VK_PRESENT_MODE_MAILBOX_KHR;
+                else if (env_mode && !strcmp(env_mode, "relaxed") && has_relaxed) present_mode = VK_PRESENT_MODE_FIFO_RELAXED_KHR;
+                else if (env_mode && !strcmp(env_mode, "immediate") && has_immediate) present_mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+                else if (env_mode && !strcmp(env_mode, "fifo")) present_mode = VK_PRESENT_MODE_FIFO_KHR;
+
+                FILE *pm_f = fopen("/storage/emulated/0/Android/data/org.ffrs.perfscale/files/gfx-present-mode", "rb");
+                if (!pm_f) pm_f = fopen("/sdcard/Android/data/org.ffrs.perfscale/files/gfx-present-mode", "rb");
+                if (!pm_f) pm_f = fopen("/storage/emulated/0/Android/data/org.ffrs.perfisolated/files/gfx-present-mode", "rb");
+                if (!pm_f) pm_f = fopen("/sdcard/Android/data/org.ffrs.perfisolated/files/gfx-present-mode", "rb");
+                if (!pm_f) pm_f = fopen("/storage/emulated/0/Android/data/org.ffrs.gamewindow/files/gfx-present-mode", "rb");
+                if (!pm_f) pm_f = fopen("/sdcard/Android/data/org.ffrs.gamewindow/files/gfx-present-mode", "rb");
+                if (pm_f) {
+                    int c = fgetc(pm_f);
+                    fclose(pm_f);
+                    if (c == '0') present_mode = VK_PRESENT_MODE_FIFO_KHR;
+                    else if (c == '1' && has_relaxed) present_mode = VK_PRESENT_MODE_FIFO_RELAXED_KHR;
+                    else if (c == '2' && has_mailbox) present_mode = VK_PRESENT_MODE_MAILBOX_KHR;
+                    else if (c == '3' && has_immediate) present_mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+                }
+                fprintf(stderr, "[nvn] vulkan: selected present mode = %d (mailbox=%d relaxed=%d)\n",
+                        (int)present_mode, has_mailbox, has_relaxed);
+            }
+            free(modes);
+        }
+    }
+
     memset(&swapchain_info, 0, sizeof(swapchain_info));
     swapchain_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
     swapchain_info.surface = surface;
@@ -747,8 +888,8 @@ static int nvn_vulkan_create_window_surface(nvn_device_state *device, void *nati
     }
 
     fprintf(stderr, "[nvn] vulkan: created a surface and a swapchain for the platform window: "
-                    "%ux%u, format %u, %u images, present mode FIFO\n",
-            width, height, (unsigned)format.format, image_count);
+                    "%ux%u, format %u, %u images, present mode %d\n",
+            width, height, (unsigned)format.format, image_count, (int)present_mode);
     if (out_width) *out_width = width;
     if (out_height) *out_height = height;
     *out_surface = (void *)(uintptr_t)surface;
@@ -759,6 +900,9 @@ static int nvn_vulkan_create_window_surface(nvn_device_state *device, void *nati
 static void nvn_vulkan_destroy_window_surface(nvn_device_state *device, void *surface, void *swapchain) {
     nvn_vulkan_state *st = (nvn_vulkan_state *)device->backend_state;
     if (!st) return;
+    if (st->device != VK_NULL_HANDLE) {
+        vkDeviceWaitIdle(st->device);
+    }
     /* The present path is given back before the swapchain and the surface
      * it belongs to. */
     nvn_vulkan_release_present_path(st);
@@ -775,6 +919,36 @@ static void nvn_vulkan_destroy_window_surface(nvn_device_state *device, void *su
  * The wait is bounded, and the three ways it can go wrong are named apart:
  * the image did not come in time, the swapchain has to be rebuilt, and the
  * surface of the window is gone. */
+/* A real WSI acquire completion fence is required. Image index availability
+ * alone does not make presentation-engine reads complete. Serial host waits
+ * are conservative here; no unsignalled/reused in-flight sync is published. */
+static VkResult acquire_completed(nvn_vulkan_state *st,uint32_t *index,VkSemaphore *out_sem) {
+    if (out_sem && st->acquire_semaphores) {
+        uint32_t sem_idx = st->acquire_sem_index;
+        VkSemaphore sem = st->acquire_semaphores[sem_idx];
+        st->acquire_sem_index = (sem_idx + 1) % st->image_count;
+        VkResult r = vkAcquireNextImageKHR(st->device, st->swapchain, NVN_PRESENT_ACQUIRE_TIMEOUT_NS,
+                                           sem, VK_NULL_HANDLE, index);
+        if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR) return r;
+        if (*index >= st->image_count) return VK_ERROR_INITIALIZATION_FAILED;
+        VkResult acquired = r;
+        r = vkWaitForFences(st->device, 1, &st->fences[*index], VK_TRUE, NVN_PRESENT_FENCE_TIMEOUT_NS);
+        if (r != VK_SUCCESS) return r;
+        *out_sem = sem;
+        return acquired;
+    }
+    VkResult r=vkResetFences(st->device,1,&st->acquire_fence);
+    if(r!=VK_SUCCESS)return r;
+    r=vkAcquireNextImageKHR(st->device,st->swapchain,NVN_PRESENT_ACQUIRE_TIMEOUT_NS,VK_NULL_HANDLE,st->acquire_fence,index);
+    if(r!=VK_SUCCESS && r!=VK_SUBOPTIMAL_KHR)return r;
+    VkResult acquired=r;
+    r=vkWaitForFences(st->device,1,&st->acquire_fence,VK_TRUE,NVN_PRESENT_FENCE_TIMEOUT_NS);
+    if(r!=VK_SUCCESS)return r;
+    if(*index>=st->image_count)return VK_ERROR_INITIALIZATION_FAILED;
+    r=vkWaitForFences(st->device,1,&st->fences[*index],VK_TRUE,NVN_PRESENT_FENCE_TIMEOUT_NS);
+    return r==VK_SUCCESS?acquired:r;
+}
+
 static int nvn_vulkan_acquire_image(nvn_device_state *device, uint32_t *out_index, void **out_image,
                                     char *reason, size_t reason_size) {
     nvn_vulkan_state *st = (nvn_vulkan_state *)device->backend_state;
@@ -800,8 +974,7 @@ static int nvn_vulkan_acquire_image(nvn_device_state *device, uint32_t *out_inde
         return 0;
     }
 
-    result = vkAcquireNextImageKHR(st->device, st->swapchain, NVN_PRESENT_ACQUIRE_TIMEOUT_NS,
-                                   VK_NULL_HANDLE, VK_NULL_HANDLE, &index);
+    result = acquire_completed(st, &index, NULL);
     if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
         st->acquire_failures++;
         switch (result) {
@@ -840,6 +1013,271 @@ static int nvn_vulkan_acquire_image(nvn_device_state *device, uint32_t *out_inde
     st->images_acquired++;
     *out_index = index;
     *out_image = (void *)(uintptr_t)st->images[index];
+    return 1;
+}
+
+/* The physical device, the device and the queue of this backend.
+ *
+ * The replay engine submits to the same queue as everything else, so it has
+ * to be the same device and the same queue: an image that one device created
+ * cannot be given to the queue of another one. */
+static int nvn_vulkan_get_device_queue(nvn_device_state *device, void **out_physical, void **out_device,
+                                       void **out_queue, uint32_t *out_family) {
+    nvn_vulkan_state *st = (nvn_vulkan_state *)device->backend_state;
+    if (!st || st->device == VK_NULL_HANDLE || st->queue == VK_NULL_HANDLE) return 0;
+    if (out_physical) *out_physical = (void *)(uintptr_t)st->physical;
+    if (out_device) *out_device = (void *)(uintptr_t)st->device;
+    if (out_queue) *out_queue = (void *)(uintptr_t)st->queue;
+    if (out_family) *out_family = st->queue_family;
+    return 1;
+}
+
+/* Present an image that something else rendered.
+ *
+ * This is the path of the replay engine: the engine renders the game's own
+ * render target into an image of its own and hands that image over here.
+ * The image is copied into the swapchain and shown.
+ *
+ * The copy keeps the shape of the game: the crop is the part of the game's
+ * image the window shows, and the image is scaled into the swapchain with
+ * the shape it has, so that nothing of the game's picture is cut away. The
+ * bars that are left over are cleared, so that they do not show the picture
+ * of an earlier frame. */
+static int nvn_vulkan_present_image(nvn_device_state *device, void *image, uint32_t format,
+                                    uint32_t width, uint32_t height, const int32_t crop[4],
+                                    int32_t interval, char *reason, size_t reason_size) {
+    nvn_vulkan_state *st = (nvn_vulkan_state *)device->backend_state;
+    VkResult result;
+    VkCommandBuffer cmd;
+    uint32_t index = 0;
+    VkCommandBufferBeginInfo begin_info;
+    VkImageMemoryBarrier barrier;
+    VkImageBlit blit;
+    VkSubmitInfo submit_info;
+    VkPresentInfoKHR present_info;
+    VkClearColorValue black;
+    VkImageSubresourceRange range;
+    double scale;
+    int32_t source_x = 0, source_y = 0;
+    double source_w = width ? width : 1, source_h = height ? height : 1;
+    int32_t destination_x, destination_y, destination_w, destination_h;
+    char detail[NVN_VULKAN_REASON_SIZE];
+
+    (void)format;
+    (void)interval;
+    if (!st || !image) {
+        if (reason && reason_size) snprintf(reason, reason_size, "device or image is NULL");
+        return 1;
+    }
+
+    void *cur_win = nso_host_native_window_get();
+    if (!cur_win) {
+        /* App is in background or surface destroyed by Android lifecycle */
+        if (st->swapchain != VK_NULL_HANDLE) {
+            nvn_vulkan_destroy_window_surface(device, st->surface, st->swapchain);
+        }
+        usleep(16000);
+        return 1; /* Drop frame gracefully while in background */
+    }
+
+    if (!st->present_path_ready || st->swapchain == VK_NULL_HANDLE) {
+        uint32_t w = 0, h = 0;
+        void *surf = NULL, *sc = NULL;
+        if (!nvn_vulkan_create_window_surface(device, cur_win, &w, &h, &surf, &sc)) {
+            usleep(16000);
+            return 1; /* Wait for valid surface/swapchain */
+        }
+    }
+
+    VkSemaphore acquire_sem = VK_NULL_HANDLE;
+    result = acquire_completed(st, &index, &acquire_sem);
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_ERROR_SURFACE_LOST_KHR) {
+        nvn_vulkan_destroy_window_surface(device, st->surface, st->swapchain);
+        cur_win = nso_host_native_window_get();
+        if (cur_win) {
+            uint32_t w = 0, h = 0;
+            void *surf = NULL, *sc = NULL;
+            nvn_vulkan_create_window_surface(device, cur_win, &w, &h, &surf, &sc);
+        }
+        usleep(16000);
+        return 1; /* Frame dropped during swapchain rebuild */
+    }
+    if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+        snprintf(detail, sizeof(detail), "vkAcquireNextImageKHR non-fatal code: %d", (int)result);
+        if (reason && reason_size) snprintf(reason, reason_size, "%s", detail);
+        usleep(16000);
+        return 1;
+    }
+    if (index >= st->image_count) {
+        snprintf(detail, sizeof(detail), "the swapchain gave the image %u, which is not one of its %u images",
+                 index, st->image_count);
+        if (reason && reason_size) snprintf(reason, reason_size, "%s", detail);
+        usleep(16000);
+        return 1;
+    }
+
+    if (crop && crop[2] > 0 && crop[3] > 0) {
+        source_x = crop[0];
+        source_y = crop[1];
+        source_w = (double)crop[2];
+        source_h = (double)crop[3];
+    }
+    scale = (double)st->width / source_w;
+    if ((double)st->height / source_h < scale) scale = (double)st->height / source_h;
+    destination_w = (int32_t)(source_w * scale);
+    destination_h = (int32_t)(source_h * scale);
+    destination_x = (int32_t)(((double)st->width - destination_w) / 2.0);
+    destination_y = (int32_t)(((double)st->height - destination_h) / 2.0);
+
+    {
+        static uint32_t s_present_log_count = 0;
+        if (s_present_log_count < 5 || (s_present_log_count % 300 == 0 && s_present_log_count <= 1800)) {
+            fprintf(stderr, "[nvn] vulkan present #%u: source=%.0fx%.0f crop=(%d,%d,%d,%d) -> dst=%dx%d at (%d,%d) on swapchain %ux%u (scale=%.4f)\n",
+                    s_present_log_count, source_w, source_h,
+                    crop ? crop[0] : 0, crop ? crop[1] : 0, crop ? crop[2] : 0, crop ? crop[3] : 0,
+                    destination_w, destination_h, destination_x, destination_y,
+                    st->width, st->height, scale);
+        }
+        s_present_log_count++;
+    }
+
+    cmd = st->command_buffers[index];
+    vkResetCommandBuffer(cmd, 0);
+    memset(&begin_info, 0, sizeof(begin_info));
+    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    result = vkBeginCommandBuffer(cmd, &begin_info);
+    if (result != VK_SUCCESS) {
+        snprintf(detail, sizeof(detail), "vkBeginCommandBuffer failed with %d", (int)result);
+        if (reason && reason_size) snprintf(reason, reason_size, "%s", detail);
+        fprintf(stderr, "[nvn] vulkan: the present step failed: %s\n", detail);
+        return 0;
+    }
+
+    /* The swapchain image is the destination of the copy, so it has to be a
+     * destination first. */
+    memset(&barrier, 0, sizeof(barrier));
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.oldLayout = (st->images_cleared && st->images_cleared[index]) ?
+                        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR : VK_IMAGE_LAYOUT_UNDEFINED;
+    barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.srcAccessMask = 0;
+    barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barrier.image = st->images[index];
+    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.layerCount = 1;
+    vkCmdPipelineBarrier(cmd,
+                         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL,
+                         0, NULL, 1, &barrier);
+
+    /* The letterbox bars around the picture only need to be cleared once per
+     * swapchain image. Because the blit overwrites the destination rectangle on
+     * every frame, the bars stay black. Clearing the whole image every frame caused
+     * frame-to-frame flicker and brightness fluctuations on Mali TBDR. */
+    if (st->images_cleared && !st->images_cleared[index]) {
+        if (destination_x > 0 || destination_y > 0 ||
+            destination_w < (int32_t)st->width || destination_h < (int32_t)st->height) {
+            memset(&black, 0, sizeof(black));
+            memset(&range, 0, sizeof(range));
+            range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            range.levelCount = 1;
+            range.layerCount = 1;
+            vkCmdClearColorImage(cmd, st->images[index], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &black, 1, &range);
+            barrier.oldLayout = barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            barrier.srcAccessMask = barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                 0, 0, NULL, 0, NULL, 1, &barrier);
+        }
+        st->images_cleared[index] = 1;
+    }
+
+    memset(&blit, 0, sizeof(blit));
+    blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    blit.srcSubresource.layerCount = 1;
+    blit.srcOffsets[0].x = source_x;
+    blit.srcOffsets[0].y = source_y;
+    blit.srcOffsets[1].x = source_x + (int32_t)source_w;
+    blit.srcOffsets[1].y = source_y + (int32_t)source_h;
+    blit.srcOffsets[1].z = 1; /* a 2D blit has unit Z extent */
+    blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    blit.dstSubresource.layerCount = 1;
+    blit.dstOffsets[0].x = destination_x;
+    blit.dstOffsets[0].y = destination_y;
+    blit.dstOffsets[1].x = destination_x + destination_w;
+    blit.dstOffsets[1].y = destination_y + destination_h;
+    blit.dstOffsets[1].z = 1;
+    vkCmdBlitImage(cmd, (VkImage)(uintptr_t)image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, st->images[index],
+                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
+
+    memset(&barrier, 0, sizeof(barrier));
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = st->images[index];
+    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.layerCount = 1;
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, NULL,
+                         0, NULL, 1, &barrier);
+
+    result = vkEndCommandBuffer(cmd);
+    if (result != VK_SUCCESS) {
+        st->submit_failures++;
+        snprintf(detail, sizeof(detail), "vkEndCommandBuffer failed with %d", (int)result);
+        if (reason && reason_size) snprintf(reason, reason_size, "%s", detail);
+        fprintf(stderr, "[nvn] vulkan: the present step failed: %s\n", detail);
+        return 0;
+    }
+
+    vkResetFences(st->device, 1, &st->fences[index]);
+    memset(&submit_info, 0, sizeof(submit_info));
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &cmd;
+    VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT;
+    if (acquire_sem != VK_NULL_HANDLE) {
+        submit_info.waitSemaphoreCount = 1;
+        submit_info.pWaitSemaphores = &acquire_sem;
+        submit_info.pWaitDstStageMask = &wait_stage;
+    }
+    submit_info.signalSemaphoreCount = 1;
+    submit_info.pSignalSemaphores = &st->render_semaphores[index];
+    result = vkQueueSubmit(st->queue, 1, &submit_info, st->fences[index]);
+    if (result != VK_SUCCESS) {
+        st->submit_failures++;
+        snprintf(detail, sizeof(detail), "vkQueueSubmit failed with %d", (int)result);
+        if (reason && reason_size) snprintf(reason, reason_size, "%s", detail);
+        fprintf(stderr, "[nvn] vulkan: the present step failed: %s\n", detail);
+        return 0;
+    }
+
+    memset(&present_info, 0, sizeof(present_info));
+    present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    present_info.waitSemaphoreCount = 1;
+    present_info.pWaitSemaphores = &st->render_semaphores[index];
+    present_info.swapchainCount = 1;
+    present_info.pSwapchains = &st->swapchain;
+    present_info.pImageIndices = &index;
+    result = vkQueuePresentKHR(st->queue, &present_info);
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_ERROR_SURFACE_LOST_KHR) {
+        nvn_vulkan_destroy_window_surface(device, st->surface, st->swapchain);
+        return 1;
+    }
+    if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+        st->present_failures++;
+        snprintf(detail, sizeof(detail), "vkQueuePresentKHR failed with %d", (int)result);
+        if (reason && reason_size) snprintf(reason, reason_size, "%s", detail);
+        fprintf(stderr, "[nvn] vulkan: the present step warning: %s\n", detail);
+        return 1;
+    }
+    st->frames_presented++;
     return 1;
 }
 
@@ -1041,6 +1479,8 @@ static const nvn_backend s_vulkan_backend = {
     nvn_vulkan_acquire_image,
     nvn_vulkan_begin_render_pass,
     nvn_vulkan_submit_and_present,
+    nvn_vulkan_get_device_queue,
+    nvn_vulkan_present_image,
 };
 
 const nvn_backend *nvn_device_default_backend(void) { return &s_vulkan_backend; }

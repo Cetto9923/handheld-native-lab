@@ -79,6 +79,7 @@
 
 #include "nvn_memory_pool.h"
 #include "nvn_texture_builder.h"
+#include "../nvn_vulkan/nvn/nvn_tex.h"
 
 #include <inttypes.h>
 #include <pthread.h>
@@ -86,6 +87,7 @@
 #include <string.h>
 #include "nvn_obj_ffrs.h"
 #include "nvn_object_table.h"
+extern void nvn_bridge_texture_end(const void *texture, uint64_t serial) __attribute__((weak));
 
 typedef struct {
     void *texture;
@@ -98,6 +100,7 @@ typedef struct {
     int depth;
     int levels;
     int samples;
+    int packaged_block_height;
     ptrdiff_t stride;
     void *memory_pool;
     ptrdiff_t memory_offset;
@@ -181,15 +184,41 @@ static nvn_texture_state default_state(void) {
 /* The texture state for one guest texture address. A texture that was never
  * initialized has no state to answer with, and the functions that need one say
  * so instead of inventing one. */
+/* Texture address front cache, protected by s_texture_lock like the table.
+ * Keep indices rather than pointers: table growth can move its allocation.
+ * A finalized record keeps its address and can be initialized afresh; a slot
+ * reused for another address fails the canonical-key check and falls back. */
+static struct {
+    void *texture;
+    size_t index;
+} s_texture_lookup_cache[512];
 static nvn_texture_state *texture_find(void *texture, int create) {
     size_t i;
     nvn_texture_state *free_slot = NULL;
     if (!texture) return NULL;
+    size_t cache_index = (size_t)((((uint64_t)(uintptr_t)texture >> 4) * UINT64_C(11400714819323198485)) >> 55);
+    if (s_texture_lookup_cache[cache_index].texture == texture &&
+        s_texture_lookup_cache[cache_index].index < s_textures.count) {
+        nvn_texture_state *entry = (nvn_texture_state *)nvn_object_table_at(&s_textures, s_texture_lookup_cache[cache_index].index);
+        if (entry && entry->texture == texture) {
+            if (entry->in_use) return entry;
+            if (create) {
+                *entry = default_state();
+                entry->texture = texture;
+                entry->in_use = 1;
+                return entry;
+            }
+        }
+    }
     for (i = 0; i < s_textures.count; i++) {
         nvn_texture_state *entry = (nvn_texture_state *)nvn_object_table_at(&s_textures, i);
         if (!entry) continue;
         if (entry->in_use) {
-            if (entry->texture == texture) return entry;
+            if (entry->texture == texture) {
+                s_texture_lookup_cache[cache_index].texture = texture;
+                s_texture_lookup_cache[cache_index].index = i;
+                return entry;
+            }
         } else if (!free_slot) {
             free_slot = entry;
         }
@@ -202,6 +231,8 @@ static nvn_texture_state *texture_find(void *texture, int create) {
     *free_slot = default_state();
     free_slot->texture = texture;
     free_slot->in_use = 1;
+    s_texture_lookup_cache[cache_index].texture = texture;
+    s_texture_lookup_cache[cache_index].index = (size_t)((char *)free_slot - (char *)s_textures.slots) / s_textures.entry_size;
     return free_slot;
 }
 
@@ -330,9 +361,9 @@ static int snapshot_builder(nvn_texture_state *t, const void *builder) {
  * object has a layout this runtime does not know.
  *
  * The reference host releases the host texture of a texture object that is
- * initialized again without a Finalize (hle_nvn.c:438). This runtime has no
- * host texture, so there is nothing to release; the description of the new
- * builder replaces the old one all the same. */
+ * initialized again without a Finalize (hle_nvn.c:438). The bridge receives
+ * the old generation after unlocking; its optional renderer hook retires
+ * the cached host image without freeing recorded immutable object copies. */
 int nvnTextureInitialize(void *texture, const void *builder) {
     nvn_texture_state taken = default_state();
     nvn_texture_state *slot = NULL;
@@ -340,6 +371,7 @@ int nvnTextureInitialize(void *texture, const void *builder) {
     int copied = 0;
     const char *why = NULL;
     int first = 0;
+    uint64_t old_serial = 0;
 
     /* The copy is taken before the lock of this family is held: the builder
      * family has its own lock, and the copy is the only thing this call needs
@@ -348,6 +380,8 @@ int nvnTextureInitialize(void *texture, const void *builder) {
         taken.texture = texture;
         taken.in_use = 1;
         copied = snapshot_builder(&taken, builder);
+        if (copied && !nvn_texture_builder_layout_of(builder, NULL, NULL, &taken.packaged_block_height))
+            copied = 0;
     }
 
     pthread_mutex_lock(&s_texture_lock);
@@ -367,6 +401,7 @@ int nvnTextureInitialize(void *texture, const void *builder) {
              * generator, the same one every other object of this runtime
              * uses. The generator hands out an id from the device's own
              * sequence and ignores its arguments. */
+            if (slot->initialized) old_serial = slot->serial;
             taken.debug_id = nvn_device_generate_debug_domain_id(taken.device, "nvnTexture");
             taken.initialized = 1;
             taken.serial = ++s_texture_serial;
@@ -378,13 +413,15 @@ int nvnTextureInitialize(void *texture, const void *builder) {
     if (!ready) s_stats.refused++;
     first = mark_logged(TX_INITIALIZE);
     pthread_mutex_unlock(&s_texture_lock);
+    if (old_serial && nvn_bridge_texture_end) nvn_bridge_texture_end(texture, old_serial);
 
     if (!ready) {
         fprintf(stderr, "[nvn] nvnTextureInitialize: texture=%p builder=%p was refused: %s\n", texture, builder, why);
-    } else if (first) {
-        fprintf(stderr, "[nvn] nvnTextureInitialize: texture=%p builder=%p -> the description of the builder is "
-                        "copied into the texture's own state\n",
-                texture, builder);
+    } else if (first || taken.serial <= 16) {
+        fprintf(stderr, "[nvn] nvnTextureInitialize: serial=%llu tex=%p bld=%p tgt=%d fmt=%#x %ux%ux%u lv=%u pool=%p off=%zu\n",
+                (unsigned long long)taken.serial, texture, builder, (int)taken.target, (unsigned)taken.format,
+                (unsigned)taken.width, (unsigned)taken.height, (unsigned)taken.depth, (unsigned)taken.levels,
+                taken.memory_pool, (size_t)taken.memory_offset);
     }
     return ready ? 1 : 0;
 }
@@ -403,10 +440,12 @@ void nvnTextureFinalize(void *texture) {
     nvn_texture_state *found;
     int refused = 0;
     int first = 0;
+    uint64_t serial = 0;
     pthread_mutex_lock(&s_texture_lock);
     s_stats.calls++;
     found = texture_find(texture, 0);
     if (found) {
+        if (found->initialized) serial = found->serial;
         found->initialized = 0;
         found->in_use = 0;
         s_stats.finalized++;
@@ -416,6 +455,7 @@ void nvnTextureFinalize(void *texture) {
     }
     first = mark_logged(TX_FINALIZE);
     pthread_mutex_unlock(&s_texture_lock);
+    if (serial && nvn_bridge_texture_end) nvn_bridge_texture_end(texture, serial);
     if (refused) {
         fprintf(stderr, "[nvn] nvnTextureFinalize: texture=%p was never initialized, so there is nothing to "
                         "finalize\n",
@@ -840,25 +880,14 @@ int nvnTextureGetRawStorageClass(const void *texture) {
  * real one and would let the guest place two textures on top of each other in
  * its memory pool. */
 int nvnTextureGetStorageSize(const void *texture) {
-    nvn_texture_state t;
-    int refused = 0;
-    int first = 0;
-    pthread_mutex_lock(&s_texture_lock);
-    s_stats.calls++;
-    s_stats.gets++;
-    refused = !texture_state_locked(texture, &t);
-    first = mark_logged(TX_GET_STORAGE_SIZE);
-    pthread_mutex_unlock(&s_texture_lock);
-    if (refused) {
-        fprintf(stderr, "[nvn] nvnTextureGetStorageSize: texture=%p was never initialized; the answer is the "
-                        "default, not a value of this texture\n",
-                texture);
-    } else if (first) {
-        fprintf(stderr, "[nvn] nvnTextureGetStorageSize: texture=%p -> 0; the storage layout of a texture is not "
-                        "computed by this family, so no size is invented here\n",
-                texture);
-    }
-    return 0;
+    nvn_texture_info info;
+    nvn_texdesc desc;
+    nvn_texlayout layout = {0};
+    if (!nvn_texture_info_of(texture, &info)) return 0;
+    _Static_assert(sizeof(desc) == sizeof(info.d), "texture layout description drift");
+    memcpy(&desc, &info.d, sizeof(desc));
+    nvn_tex_layout(&desc, &layout);
+    return (int)layout.size;
 }
 
 /* The size of the ZCull save area of a texture (hle_nvn.c:489). */
@@ -1272,7 +1301,7 @@ int nvn_texture_info_of(const void *texture, nvn_texture_info *out) {
     out->d.stride = (uint32_t)(slot->stride > 0 ? slot->stride : 0);
     /* The packaged layout is the automatic one: the guest never names the
      * block height of the packed textures it hands over. */
-    out->d.pkg_block_h = 0;
+    out->d.pkg_block_h = slot->packaged_block_height;
     out->memory_pool = slot->memory_pool;
     out->memory_offset = slot->memory_offset;
     out->serial = slot->serial;

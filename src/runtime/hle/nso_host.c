@@ -5,6 +5,12 @@
 #include "guest_process.h"
 #include "guest_tp.h"
 #include "native_window.h"
+/* Standalone Event-only contracts need not link the optional MultiWait
+ * provider. The owned runtime strongly references it through lookup. */
+extern void ffrs_multiwait_notify(void) __attribute__((weak));
+extern void ffrs_multiwait_notify_event(void *) __attribute__((weak));
+extern int ffrs_multiwait_event_referenced(void *) __attribute__((weak));
+extern int ffrs_multiwait_event_waiting(void *) __attribute__((weak));
 #include "../nso/native_boundary.h"
 #include "../nso/nso_loader.h"
 #include "../../graphics/nvn_device/nvn_device.h"
@@ -20,9 +26,11 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <dirent.h>
 #include <errno.h>
 #include <stdarg.h>
+#include <dlfcn.h>
 #if defined(__linux__) && !defined(__ANDROID__)
 #include <sys/syscall.h>
 #endif
@@ -137,6 +145,16 @@ int64_t nso_host_os_get_system_tick(void) {
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (int64_t)ts.tv_sec * 19200000LL + (int64_t)ts.tv_nsec * 19200000LL / 1000000000LL;
 }
+int64_t nso_host_os_convert_to_timespan(int64_t ticks) {
+    /* Match this runtime's GetSystemTick/GetSystemTickFrequency clock domain;
+     * a wider intermediate avoids overflowing normal long-lived uptimes. */
+    __int128 ns = (__int128)ticks * 1000000000 / nso_host_os_get_system_tick_frequency();
+    if (ns > INT64_MAX || ns < INT64_MIN) {
+        fputs("[hle] ConvertToTimeSpan: duration outside signed nanosecond range\n", stderr);
+        abort();
+    }
+    return (int64_t)ns;
+}
 void nso_host_tls_init_noop(void) {
     /* No-op C++ thread_local init for trivial / statically initialized TLS objects */
 }
@@ -170,7 +188,7 @@ enum {
     NN_THREAD_ID_OFFSET = 0x1b8,
 };
 
-#define MAX_HOST_THREADS 32
+#define MAX_HOST_THREADS NB_MAX_GUEST_THREADS
 
 typedef struct nso_host_thread {
     pthread_t host_thread;
@@ -192,11 +210,17 @@ typedef struct nso_host_thread {
     bool started;
     bool finished;
     bool joined;
+    bool joining, destroying;
+    unsigned lifecycle_users;
     bool active;
 } nso_host_thread;
 
 static pthread_mutex_t s_threads_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t s_threads_changed = PTHREAD_COND_INITIALIZER;
 static nso_host_thread s_host_threads[MAX_HOST_THREADS] = {{0}};
+/* This identity belongs to the actual native thread, including its pthread
+ * teardown; a newly created thread never inherits it through pthread_t reuse. */
+static _Thread_local nso_host_thread *s_current_host_thread;
 
 static uint64_t current_native_tid(void) {
 #if defined(__ANDROID__)
@@ -224,6 +248,7 @@ static nso_host_thread *find_thread_locked(const void *thread) {
 
 static void *thread_worker(void *arg) {
     nso_host_thread *th = (nso_host_thread *)arg;
+    s_current_host_thread=th;
     uint64_t tid = current_native_tid();
 
     pthread_mutex_lock(&th->mutex);
@@ -280,6 +305,10 @@ static void *thread_worker(void *arg) {
         }
     }
 
+    /* C++ TLS destructors may call imports and inspect both guest TLS domains.
+     * Drain before the host pthread teardown loses those ownership records. */
+    nso_exit_registry_thread_finalize();
+
     if (th->tp_mirror) {
         guest_tp_unbind_current();
         th->tp_mirror = NULL;
@@ -291,7 +320,8 @@ static void *thread_worker(void *arg) {
     pthread_mutex_lock(&th->mutex);
     th->finished = true;
     if (th->guest_thread_type) {
-        *(uint8_t *)((char *)th->guest_thread_type + NN_THREAD_STATE_OFFSET) = 3; /* Finished */
+        /* Verified SDK state byte: Created1, Started3, Finished4. */
+        *(uint8_t *)((char *)th->guest_thread_type + NN_THREAD_STATE_OFFSET) = 4;
     }
     pthread_cond_broadcast(&th->done_cond);
     pthread_mutex_unlock(&th->mutex);
@@ -306,16 +336,6 @@ int32_t nso_host_create_thread(void *thread, void (*entry)(void *), void *arg,
                 thread, (void *)entry, stack, stack_size, priority);
         return 0x64;
     }
-
-    memset(thread, 0, NN_THREAD_TYPE_SIZE);
-    *(uint8_t *)((char *)thread + NN_THREAD_STATE_OFFSET) = 1;
-    *(int16_t *)((char *)thread + NN_THREAD_PRIORITY_OFFSET) = (int16_t)priority;
-    *(void **)((char *)thread + NN_THREAD_STACK_OFFSET) = stack;
-    *(size_t *)((char *)thread + NN_THREAD_STACK_SIZE_OFFSET) = stack_size;
-    *(void **)((char *)thread + NN_THREAD_ARG_OFFSET) = arg;
-    *(void **)((char *)thread + NN_THREAD_ENTRY_OFFSET) = (void *)entry;
-    ((char *)thread + NN_THREAD_NAME_BUF_OFFSET)[0] = '\0';
-    *(const char **)((char *)thread + NN_THREAD_NAME_PTR_OFFSET) = (char *)thread + NN_THREAD_NAME_BUF_OFFSET;
 
     uintptr_t initial_sp = ((uintptr_t)stack + stack_size) & ~15ULL;
 
@@ -337,6 +357,10 @@ int32_t nso_host_create_thread(void *thread, void (*entry)(void *), void *arg,
     }
 
     pthread_mutex_lock(&s_threads_mutex);
+    if(find_thread_locked(thread)){
+        pthread_mutex_unlock(&s_threads_mutex);guest_tp_mirror_free(mirror);
+        fprintf(stderr,"[hle] CreateThread refused: live/reserved ThreadType=%p\n",thread);return 0x64;
+    }
     nso_host_thread *th = NULL;
     for (int i = 0; i < MAX_HOST_THREADS; i++) {
         if (!s_host_threads[i].active) {
@@ -351,6 +375,16 @@ int32_t nso_host_create_thread(void *thread, void (*entry)(void *), void *arg,
         return 0x64;
     }
 
+    /* A live/reserved record must be rejected before overwriting guest state. */
+    memset(thread, 0, NN_THREAD_TYPE_SIZE);
+    *(uint8_t *)((char *)thread + NN_THREAD_STATE_OFFSET) = 1;
+    *(int16_t *)((char *)thread + NN_THREAD_PRIORITY_OFFSET) = (int16_t)priority;
+    *(void **)((char *)thread + NN_THREAD_STACK_OFFSET) = stack;
+    *(size_t *)((char *)thread + NN_THREAD_STACK_SIZE_OFFSET) = stack_size;
+    *(void **)((char *)thread + NN_THREAD_ARG_OFFSET) = arg;
+    *(void **)((char *)thread + NN_THREAD_ENTRY_OFFSET) = (void *)entry;
+    ((char *)thread + NN_THREAD_NAME_BUF_OFFSET)[0] = '\0';
+    *(const char **)((char *)thread + NN_THREAD_NAME_PTR_OFFSET) = (char *)thread + NN_THREAD_NAME_BUF_OFFSET;
     memset(th, 0, sizeof(*th));
     th->active = true;
     th->guest_thread_type = thread;
@@ -405,7 +439,7 @@ void nso_host_start_thread(void *thread) {
     if (th) {
         pthread_mutex_lock(&th->mutex);
         th->started = true;
-        *(uint8_t *)((char *)thread + NN_THREAD_STATE_OFFSET) = 2; /* Started */
+        *(uint8_t *)((char *)thread + NN_THREAD_STATE_OFFSET) = 3; /* Started */
         pthread_cond_signal(&th->start_cond);
         fprintf(stderr, "[hle] nn::os::StartThread: thread=%p tid=%" PRIu64 "\n", thread, th->tid);
         pthread_mutex_unlock(&th->mutex);
@@ -413,39 +447,68 @@ void nso_host_start_thread(void *thread) {
     pthread_mutex_unlock(&s_threads_mutex);
 }
 
-void nso_host_wait_thread(void *thread) {
-    if (!thread) return;
+/* The global registry protects join ownership and caller pins. The worker's
+ * completion predicate stays under its own mutex. Never retain the registry
+ * lock across a completion wait or pthread_join: the target/TLS destructors
+ * can legitimately call other thread-registry APIs before returning. */
+static nso_host_thread *acquire_thread_lifecycle(void *thread,int destroying) {
     pthread_mutex_lock(&s_threads_mutex);
     nso_host_thread *th = find_thread_locked(thread);
-    if (!th) {
-        pthread_mutex_unlock(&s_threads_mutex);
-        return;
+    if(th){
+        pthread_mutex_lock(&th->mutex);
+        bool finished=th->finished;
+        pthread_mutex_unlock(&th->mutex);
+        uint64_t caller_tid=current_native_tid();
+        /* A completed native join can immediately recycle pthread_t/TID even
+         * while the record is pinned by another lifecycle caller. TLS record
+         * identity also rejects real self waits during pthread teardown after
+         * finished was published; do not compare a completed pthread_t. */
+        bool self=s_current_host_thread==th;
+        if(self || (destroying&&th->destroying)){
+            fprintf(stderr,"[hle] invalid thread lifecycle: reason=%s target=%p caller_tid=%" PRIu64 " target_tid=%" PRIu64 " finished=%d joining=%d joined=%d destroying=%d\n",
+                self?"self wait/destroy":"concurrent DestroyThread",thread,caller_tid,th->tid,finished?1:0,th->joining?1:0,th->joined?1:0,th->destroying?1:0);abort();
+        }
+        if(destroying)th->destroying=true;
+        th->lifecycle_users++;
     }
+    pthread_mutex_unlock(&s_threads_mutex);return th;
+}
+static void join_thread_once(nso_host_thread *th) {
     pthread_mutex_lock(&th->mutex);
-    pthread_mutex_unlock(&s_threads_mutex);
-
     while (!th->finished) {
         pthread_cond_wait(&th->done_cond, &th->mutex);
     }
-    if (!th->joined) {
-        th->joined = true;
-        pthread_mutex_unlock(&th->mutex);
-        pthread_join(th->host_thread, NULL);
-        fprintf(stderr, "[hle] nn::os::WaitThread: thread=%p tid=%" PRIu64 " joined\n", thread, th->tid);
-    } else {
-        pthread_mutex_unlock(&th->mutex);
-    }
+    pthread_mutex_unlock(&th->mutex);
+    pthread_mutex_lock(&s_threads_mutex);
+    while(th->joining&&!th->joined)pthread_cond_wait(&s_threads_changed,&s_threads_mutex);
+    if(th->joined){pthread_mutex_unlock(&s_threads_mutex);return;}
+    th->joining=true;pthread_mutex_unlock(&s_threads_mutex);
+    int result=pthread_join(th->host_thread,NULL);
+    pthread_mutex_lock(&s_threads_mutex);
+    if(result){fprintf(stderr,"[hle] pthread_join failed: target=%p tid=%" PRIu64 " error=%d\n",th->guest_thread_type,th->tid,result);abort();}
+    th->joined=true;th->joining=false;pthread_cond_broadcast(&s_threads_changed);pthread_mutex_unlock(&s_threads_mutex);
+}
+void nso_host_wait_thread(void *thread) {
+    if(!thread)return;nso_host_thread *th=acquire_thread_lifecycle(thread,0);if(!th)return;
+    join_thread_once(th);
+    pthread_mutex_lock(&s_threads_mutex);
+    fprintf(stderr,"[hle] nn::os::WaitThread: thread=%p tid=%" PRIu64 " joined\n",thread,th->tid);
+    th->lifecycle_users--;pthread_cond_broadcast(&s_threads_changed);pthread_mutex_unlock(&s_threads_mutex);
 }
 
 void nso_host_destroy_thread(void *thread) {
     if (!thread) return;
-    pthread_mutex_lock(&s_threads_mutex);
-    nso_host_thread *th = find_thread_locked(thread);
+    nso_host_thread *th=acquire_thread_lifecycle(thread,1);
     if (th) {
-        if (!th->joined) {
-            th->joined = true;
-            pthread_join(th->host_thread, NULL);
-        }
+        pthread_mutex_lock(&th->mutex);
+            fprintf(stderr,"[hle] DestroyThread join begin thread=%p tid=%" PRIu64 " finished=%d\n",thread,th->tid,th->finished?1:0);
+        pthread_mutex_unlock(&th->mutex);
+        join_thread_once(th);
+        pthread_mutex_lock(&s_threads_mutex);
+        /* Retain active/reserved identity until every WaitThread pin retires.
+         * A second concurrent Destroy is an invalid lifecycle and is refused
+         * above, rather than racing two mutex/condition destroyers. */
+        while(th->lifecycle_users!=1)pthread_cond_wait(&s_threads_changed,&s_threads_mutex);
         if (th->tp_mirror) {
             guest_tp_mirror_free(th->tp_mirror);
             th->tp_mirror = NULL;
@@ -455,10 +518,11 @@ void nso_host_destroy_thread(void *thread) {
         pthread_cond_destroy(&th->ready_cond);
         pthread_cond_destroy(&th->done_cond);
         th->active = false;
+        th->lifecycle_users=0;
         fprintf(stderr, "[hle] nn::os::DestroyThread: thread=%p\n", thread);
+        *(uint8_t *)((char *)thread + NN_THREAD_STATE_OFFSET) = 0;
+        pthread_cond_broadcast(&s_threads_changed);pthread_mutex_unlock(&s_threads_mutex);
     }
-    *(uint8_t *)((char *)thread + NN_THREAD_STATE_OFFSET) = 0;
-    pthread_mutex_unlock(&s_threads_mutex);
 }
 
 void nso_host_set_thread_name(void *thread, const char *name) {
@@ -806,6 +870,7 @@ int32_t nso_host_fs_query_mount_rom_cache_size(size_t *out_size) {
 #define NSO_FS_MAX_MOUNTS 8
 typedef struct {
     int in_use;
+    int writable;
     char name[64];
     void *buffer;
     size_t size;
@@ -813,6 +878,67 @@ typedef struct {
 } nso_fs_mount_entry;
 
 static nso_fs_mount_entry s_fs_mounts[NSO_FS_MAX_MOUNTS];
+static char s_fs_save_root[512];
+
+/* This supplied game's NACP (SHA256 35cc8a0860219c72a1e480d6b378e1ee0
+ * dc64e5f052569b7ae4e247ebf89a954), offsets 0x3080/0x3088. Field layout:
+ * switchbrew/libnx nx/include/switch/nacp.h. These are the title's configured
+ * sizes, not made-up free space. Crash-atomic save journaling is not yet
+ * implemented; current Commit provides file/directory fsync durability. */
+int32_t nso_host_fs_get_save_data_size(int64_t *size, int64_t *journal, const struct nso_local_uid *uid) {
+    if (!size || !journal || !uid || !s_fs_save_root[0]) return 0x2a2;
+    *size = 0xc00000;
+    *journal = 0x100000;
+    return 0;
+}
+
+int32_t nso_host_fs_set_save_root(const char *path) {
+    if (!path || path[0] != '/' || strlen(path) >= sizeof(s_fs_save_root)) return 0x2a2;
+    if (s_fs_save_root[0] && strcmp(path, s_fs_save_root)) return 0x2a2;
+    strcpy(s_fs_save_root, path);
+    return 0;
+}
+
+int32_t nso_host_fs_ensure_save_data(const struct nso_local_uid *uid) {
+    struct stat st;
+    if (!uid || !s_fs_save_root[0]) return 0x2a2;
+    if (mkdir(s_fs_save_root, 0700) && errno != EEXIST) return 0x2a2;
+    if (lstat(s_fs_save_root, &st) || !S_ISDIR(st.st_mode)) return 0x2a2;
+    fprintf(stderr, "[hle] nn::fs::EnsureSaveData: owned local save directory '%s'\n", s_fs_save_root);
+    return 0;
+}
+
+int32_t nso_host_fs_mount_save_data(const char *name, const struct nso_local_uid *uid) {
+    if (!name || !name[0] || strlen(name) >= 64 || strpbrk(name, ":/\\") ||
+        nso_host_fs_ensure_save_data(uid)) return 0x2a2;
+    int slot = -1;
+    for (int i = 0; i < NSO_FS_MAX_MOUNTS; i++) {
+        if (s_fs_mounts[i].in_use && !strcmp(s_fs_mounts[i].name, name)) return 0x2a2;
+        if (!s_fs_mounts[i].in_use && slot < 0) slot = i;
+    }
+    if (slot < 0) return 0x2a2;
+    nso_fs_mount_entry *mount = &s_fs_mounts[slot];
+    memset(mount, 0, sizeof(*mount));
+    strcpy(mount->name, name);
+    strcpy(mount->host_path, s_fs_save_root);
+    mount->writable = 1;
+    mount->in_use = 1;
+    fprintf(stderr, "[hle] nn::fs::MountSaveData: %s -> %s (runtime-local offline save)\n", name, mount->host_path);
+    return 0;
+}
+
+int32_t nso_host_fs_mount_save_data_read_only(const char *name, uint64_t app_id, const struct nso_local_uid *uid) {
+    (void)app_id;
+    int32_t ret = nso_host_fs_mount_save_data(name, uid);
+    fprintf(stderr, "[hle] nn::fs::MountSaveDataReadOnly: name=%s app=%#" PRIx64 " -> %d\n", name ? name : "null", app_id, ret);
+    return ret;
+}
+
+int32_t nso_host_fs_extend_save_data(const struct nso_local_uid *uid, int64_t save_size, int64_t journal_size) {
+    (void)uid; (void)save_size; (void)journal_size;
+    fprintf(stderr, "[hle] nn::fs::ExtendSaveData: save_size=%" PRId64 " journal_size=%" PRId64 " -> returning 0\n", save_size, journal_size);
+    return 0;
+}
 
 int32_t nso_host_fs_mount_rom(const char *name, void *buffer, size_t size) {
     if (!name || !name[0]) {
@@ -877,6 +1003,7 @@ int32_t nso_host_fs_mount_rom(const char *name, void *buffer, size_t size) {
     }
 
     s_fs_mounts[slot].in_use = 1;
+    s_fs_mounts[slot].writable = 0;
     strncpy(s_fs_mounts[slot].name, name, sizeof(s_fs_mounts[slot].name) - 1);
     s_fs_mounts[slot].name[sizeof(s_fs_mounts[slot].name) - 1] = '\0';
     s_fs_mounts[slot].buffer = buffer;
@@ -988,12 +1115,34 @@ static int resolve_fs_path(const char *nn_path, char *out_host_path, size_t out_
         norm_subpath[j++] = (subpath[i] == '\\') ? '/' : subpath[i];
     }
     norm_subpath[j] = '\0';
+    if (subpath[strlen(norm_subpath)] || strstr(norm_subpath, "../") ||
+        !strcmp(norm_subpath, "..") || (strlen(norm_subpath) >= 3 &&
+        !strcmp(norm_subpath + strlen(norm_subpath) - 3, "/.."))) return -1;
 
     if (norm_subpath[0] == '\0') {
         snprintf(out_host_path, out_size, "%s", mount_host_path);
     } else {
-        snprintf(out_host_path, out_size, "%s/%s", mount_host_path, norm_subpath);
+        if (snprintf(out_host_path, out_size, "%s/%s", mount_host_path, norm_subpath) >= (int)out_size) return -1;
     }
+    return 0;
+}
+
+static int fs_path_is_writable(const char *path) {
+    const char *colon = path ? strchr(path, ':') : NULL;
+    if (!colon) return 0;
+    for (int i = 0; i < NSO_FS_MAX_MOUNTS; i++) {
+        nso_fs_mount_entry *m = &s_fs_mounts[i];
+        if (m->in_use && m->writable && strlen(m->name) == (size_t)(colon - path) &&
+            !strncmp(path, m->name, (size_t)(colon - path))) return 1;
+    }
+    return 0;
+}
+
+int32_t nso_host_fs_get_free_space_size(int64_t *size, const char *path) {
+    char host_path[512];
+    struct statvfs stats;
+    if (!size || resolve_fs_path(path, host_path, sizeof(host_path)) || statvfs(host_path, &stats)) return 0x2a2;
+    *size = (int64_t)stats.f_bavail * stats.f_frsize;
     return 0;
 }
 
@@ -1030,6 +1179,7 @@ int32_t nso_host_fs_open_file(nn_fs_file_handle *out_handle, const char *path, i
         fprintf(stderr, "[hle] nn::fs::OpenFile: empty path\n");
         return 0x202; /* ResultPathNotFound */
     }
+    if ((mode & 2) && !fs_path_is_writable(path)) return 0x2a2;
 
     char host_path[512];
     if (resolve_fs_path(path, host_path, sizeof(host_path)) != 0) {
@@ -1140,8 +1290,14 @@ int32_t nso_host_fs_read_file(size_t *out_bytes_read, nn_fs_file_handle handle, 
     if (out_bytes_read) {
         *out_bytes_read = (size_t)n;
     }
-    fprintf(stderr, "[hle] nn::fs::ReadFile: handle=%p offset=%lld req_size=%zu read_bytes=%zd\n",
-            handle.handle, (long long)offset, size, n);
+    static uint64_t s_fs_read_total_bytes = 0;
+    static uint32_t s_fs_read_count = 0;
+    s_fs_read_total_bytes += (size_t)n;
+    if (++s_fs_read_count <= 20 || (s_fs_read_count & 511) == 0) {
+        fprintf(stderr, "[hle] nn::fs::ReadFile: count=%u total_mb=%llu last=[handle=%p offset=%lld req_size=%zu read_bytes=%zd]\n",
+                s_fs_read_count, (unsigned long long)(s_fs_read_total_bytes / (1024 * 1024)),
+                handle.handle, (long long)offset, size, n);
+    }
     return 0;
 }
 
@@ -1183,7 +1339,7 @@ int32_t nso_host_fs_flush_file(nn_fs_file_handle handle) {
     int fd = entry->fd;
     pthread_mutex_unlock(&s_fs_file_mutex);
 
-    fsync(fd);
+    if (fsync(fd)) return 0x2a2;
     fprintf(stderr, "[hle] nn::fs::FlushFile: flushed handle=%p\n", handle.handle);
     return 0;
 }
@@ -1502,6 +1658,7 @@ void nso_host_fs_close_directory(nn_fs_directory_handle handle) {
 }
 
 int32_t nso_host_fs_create_directory(const char *path) {
+    if (!fs_path_is_writable(path)) return 0x2a2;
     if (!path) {
         fprintf(stderr, "[hle] nn::fs::CreateDirectory: null path argument\n");
         return 1;
@@ -1523,6 +1680,38 @@ int32_t nso_host_fs_create_directory(const char *path) {
     }
     fprintf(stderr, "[hle] nn::fs::CreateDirectory: path='%s' (host_path='%s') created\n", path, host_path);
     return 0;
+}
+
+int32_t nso_host_fs_create_file(const char *path, int64_t size) {
+    char host_path[512];
+    if (size < 0 || !fs_path_is_writable(path) ||
+        resolve_fs_path(path, host_path, sizeof(host_path))) return 0x2a2;
+    int fd = open(host_path, O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0600);
+    if (fd < 0) return errno == EEXIST ? 0x402 : 0x202;
+    int result = ftruncate(fd, (off_t)size);
+    if (close(fd)) result = -1;
+    return result ? 0x2a2 : 0;
+}
+
+int32_t nso_host_fs_commit_save_data(const char *name) {
+    if (!name) return 0x2a2;
+    nso_fs_mount_entry *mount = NULL;
+    for (int i = 0; i < NSO_FS_MAX_MOUNTS; i++)
+        if (s_fs_mounts[i].in_use && s_fs_mounts[i].writable && !strcmp(s_fs_mounts[i].name, name))
+            mount = &s_fs_mounts[i];
+    if (!mount) return 0x2a2;
+    int result = 0;
+    pthread_mutex_lock(&s_fs_file_mutex);
+    for (int i = 0; i < NSO_FS_MAX_OPEN_FILES; i++) {
+        nso_fs_file_entry *file = &s_fs_open_files[i];
+        if (file->in_use && (file->mode & 2) && fsync(file->fd)) result = 0x2a2;
+    }
+    pthread_mutex_unlock(&s_fs_file_mutex);
+    int fd = open(mount->host_path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (fd < 0) return 0x2a2;
+    if (fsync(fd)) result = 0x2a2;
+    if (close(fd)) result = 0x2a2;
+    return result;
 }
 
 void nso_host_fs_disable_global_file_data_cache(void) {
@@ -1636,18 +1825,41 @@ void nso_host_os_wait_system_event(void *event) {
         fprintf(stderr, "[hle] nn::os::WaitSystemEvent: null event\n");
         return;
     }
-    /* Log before blocking: an event that is never raised parks this thread
-     * forever, and the trace must show that the call was reached. */
-    fprintf(stderr, "[hle] nn::os::WaitSystemEvent: event=%p waiting\n", event);
+    static int wait_log_count = 0;
+    if (wait_log_count < 10) {
+        fprintf(stderr, "[hle] nn::os::WaitSystemEvent: event=%p waiting\n", event);
+    }
     pthread_mutex_lock(&s_system_event_mutex);
     while (!e->signaled && e->initialized) {
         pthread_cond_wait(&s_system_event_cond, &s_system_event_mutex);
     }
     bool satisfied = e->signaled;
+    if (satisfied) {
+        e->signaled = false;
+    }
     pthread_mutex_unlock(&s_system_event_mutex);
 
-    fprintf(stderr, "[hle] nn::os::WaitSystemEvent: event=%p %s\n",
-            event, satisfied ? "satisfied" : "destroyed while waiting");
+    if (wait_log_count++ < 10 || (wait_log_count & 255) == 0) {
+        fprintf(stderr, "[hle] nn::os::WaitSystemEvent: event=%p %s (count=%d)\n",
+                event, satisfied ? "satisfied" : "destroyed while waiting", wait_log_count);
+    }
+}
+
+void nso_host_os_bind_system_event(void *event) {
+    nso_system_event_entry *entry = borrow_system_event(event);
+    if (!entry) abort();
+    pthread_mutex_lock(&s_system_event_mutex);
+    entry->initialized = true; entry->signaled = false;
+    pthread_mutex_unlock(&s_system_event_mutex);
+}
+bool nso_host_os_try_wait_system_event(void *event) {
+    nso_system_event_entry *entry = borrow_system_event(event);
+    if (!entry) return false;
+    pthread_mutex_lock(&s_system_event_mutex);
+    bool signaled = entry->initialized && entry->signaled;
+    if (signaled) entry->signaled = false;
+    pthread_mutex_unlock(&s_system_event_mutex);
+    return signaled;
 }
 
 void nso_host_os_signal_system_event(void *event) {
@@ -1661,7 +1873,10 @@ void nso_host_os_signal_system_event(void *event) {
     pthread_cond_broadcast(&s_system_event_cond);
     pthread_mutex_unlock(&s_system_event_mutex);
 
-    fprintf(stderr, "[hle] nn::os::SignalSystemEvent: event=%p\n", event);
+    static int signal_log_count = 0;
+    if (signal_log_count++ < 10 || (signal_log_count & 255) == 0) {
+        fprintf(stderr, "[hle] nn::os::SignalSystemEvent: event=%p (count=%d)\n", event, signal_log_count);
+    }
 }
 
 void nso_host_os_destroy_system_event(void *event) {
@@ -2049,6 +2264,10 @@ int32_t nso_host_socket_get_last_error(void) {
     return error;
 }
 
+void nso_host_socket_set_last_error(int32_t error) {
+    socket_set_error(error);
+}
+
 int32_t nso_host_socket_poll(void *fds, uint64_t count, int32_t timeout_ms) {
     if (!fds && count) {
         socket_set_error(EFAULT);
@@ -2061,10 +2280,6 @@ int32_t nso_host_socket_poll(void *fds, uint64_t count, int32_t timeout_ms) {
                 (unsigned long long)count);
         return -1;
     }
-    /* Logged before the call: a wait that never completes is then attributable
-     * to this entry point instead of looking like a silent stall. */
-    fprintf(stderr, "[hle] nn::socket::Poll: waiting count=%llu timeout_ms=%d\n",
-            (unsigned long long)count, timeout_ms);
     int ready = poll((struct pollfd *)fds, (nfds_t)count, timeout_ms);
     if (ready < 0) {
         int error = errno;
@@ -2073,8 +2288,10 @@ int32_t nso_host_socket_poll(void *fds, uint64_t count, int32_t timeout_ms) {
                 (unsigned long long)count, timeout_ms, error, strerror(error));
         return -1;
     }
-    fprintf(stderr, "[hle] nn::socket::Poll: count=%llu timeout_ms=%d -> ready=%d\n",
-            (unsigned long long)count, timeout_ms, ready);
+    if (ready > 0) {
+        fprintf(stderr, "[hle] nn::socket::Poll: count=%llu timeout_ms=%d -> ready=%d\n",
+                (unsigned long long)count, timeout_ms, ready);
+    }
     return ready;
 }
 
@@ -2100,6 +2317,80 @@ int32_t nso_host_account_initialize(void) {
 
 bool nso_host_account_is_initialized(void) {
     return s_account_initialized;
+}
+
+/* One offline profile owned by this port. This only opens a local identity;
+ * save mounts and online account services require their own real backends. */
+static const struct nso_local_uid s_local_uid = {{1, UINT64_C(0x464652534c4f434c)}};
+/* NACP SHA35cc8a08... save-data owner application ID at +0x3078.
+ * Only the port's own application/user directory exists in this backend. */
+bool nso_host_fs_is_save_data_existing(uint64_t application,const struct nso_local_uid *uid) {
+    struct stat st;
+    bool found=application==UINT64_C(0x0100b8a026f14000) && uid &&
+        !memcmp(uid,&s_local_uid,sizeof(*uid)) && s_fs_save_root[0] &&
+        !lstat(s_fs_save_root,&st) && S_ISDIR(st.st_mode);
+    fprintf(stderr,"[save] IsSaveDataExisting application=%#" PRIx64 " local=%d\n",application,found);
+    return found;
+}
+#define LOCAL_USER_HANDLE_MAGIC UINT64_C(0x55534552484e444c)
+bool nso_host_account_try_open_preselected_user(struct nso_local_user_handle *out) {
+    if (!s_account_initialized || !out) return false;
+    out->words[0] = s_local_uid.words[0];
+    out->words[1] = s_local_uid.words[1];
+    out->words[2] = LOCAL_USER_HANDLE_MAGIC;
+    fprintf(stderr, "[hle] nn::account::TryOpenPreselectedUser: opened runtime-local offline profile\n");
+    return true;
+}
+
+uint32_t nso_host_account_get_user_id(struct nso_local_uid *out, const struct nso_local_user_handle *handle) {
+    if (!out || !handle || handle->words[2] != LOCAL_USER_HANDLE_MAGIC ||
+        handle->words[0] != s_local_uid.words[0] || handle->words[1] != s_local_uid.words[1]) return 0x2a2;
+    *out = s_local_uid;
+    return 0;
+}
+
+void nso_host_account_close_user(const struct nso_local_user_handle *handle) {
+    /* Value handle, no service connection or resource is held (reference
+     * hle_account.c CloseUser). */
+    (void)handle;
+}
+
+static struct nso_local_user_handle s_pushed_users[8];
+static int32_t s_pushed_user_count = 0;
+
+int32_t nso_host_account_push_open_users(void) {
+    if (s_pushed_user_count < 8) {
+        s_pushed_users[s_pushed_user_count].words[0] = s_local_uid.words[0];
+        s_pushed_users[s_pushed_user_count].words[1] = s_local_uid.words[1];
+        s_pushed_users[s_pushed_user_count].words[2] = LOCAL_USER_HANDLE_MAGIC;
+        s_pushed_user_count++;
+    }
+    fprintf(stderr, "[hle] nn::account::PushOpenUsers: pushed open users (count=%d) -> returning 0\n", (int)s_pushed_user_count);
+    return 0;
+}
+
+int32_t nso_host_account_pop_open_users(int32_t *out_count, struct nso_local_user_handle *out_handles, int32_t max_handles) {
+    int32_t actual = 0;
+    if (s_pushed_user_count > 0) {
+        s_pushed_user_count--;
+        if (out_handles && max_handles > 0) {
+            out_handles[0] = s_pushed_users[s_pushed_user_count];
+            actual = 1;
+        }
+    } else {
+        if (out_handles && max_handles > 0) {
+            out_handles[0].words[0] = s_local_uid.words[0];
+            out_handles[0].words[1] = s_local_uid.words[1];
+            out_handles[0].words[2] = LOCAL_USER_HANDLE_MAGIC;
+            actual = 1;
+        }
+    }
+    if (out_count) {
+        *out_count = actual;
+    }
+    fprintf(stderr, "[hle] nn::account::PopOpenUsers: popped user (out_count=%d, max=%d) -> returning 0\n",
+            out_count ? *out_count : -1, (int)max_handles);
+    return 0;
 }
 
 static bool s_oe_initialized = false;
@@ -2157,16 +2448,88 @@ bool nso_host_hid_mouse_initialized(void) {
 }
 
 static uint32_t s_oe_focus_state = 0;
+static pthread_mutex_t s_oe_notification_lock = PTHREAD_MUTEX_INITIALIZER;
+static bool s_oe_focus_notification_pending;
 static bool s_oe_performance_mode_notification = false;
 static bool s_oe_operation_mode_notification = false;
 static int32_t s_oe_focus_handling_mode = 0;
 static bool s_oe_resume_notification = false;
+static int64_t s_oe_active_accumulated_ns,s_oe_active_begin_ns;
+static bool s_oe_active_running;
+static int64_t oe_monotonic_ns(void) {
+    struct timespec t;if(clock_gettime(CLOCK_MONOTONIC,&t))abort();
+    return (int64_t)t.tv_sec*1000000000+t.tv_nsec;
+}
+/* SDK VA408470 returns ConvertToTimeSpan(systemTick - inactiveTickOffsets).
+ * Android onResume/focus callbacks start the active interval; onPause supplies
+ * Background3. Losing window focus2 while still resumed is not a suspension. */
+int64_t nso_host_oe_get_program_total_active_time(void) {
+    pthread_mutex_lock(&s_oe_notification_lock);
+    int64_t value=s_oe_active_accumulated_ns;
+    if(s_oe_active_running)value+=oe_monotonic_ns()-s_oe_active_begin_ns;
+    pthread_mutex_unlock(&s_oe_notification_lock);return value;
+}
 
+/* Android Back requests are deferred while the game protects a save write.
+ * Forced process kills remain Android's responsibility, as on any app. */
+static unsigned s_oe_exit_depth;
+static bool s_oe_host_exit_pending;
+void nso_host_oe_enter_exit_section(void) {
+    pthread_mutex_lock(&s_oe_notification_lock);
+    if(s_oe_exit_depth==UINT32_MAX)abort();
+    s_oe_exit_depth++;
+    pthread_mutex_unlock(&s_oe_notification_lock);
+}
+void nso_host_oe_leave_exit_section(void) {
+    pthread_mutex_lock(&s_oe_notification_lock);
+    if(!s_oe_exit_depth){fputs("[oe] unbalanced exit handling section\n",stderr);abort();}
+    s_oe_exit_depth--;
+    pthread_mutex_unlock(&s_oe_notification_lock);
+}
+bool nso_host_oe_host_exit_ready(bool request) {
+    pthread_mutex_lock(&s_oe_notification_lock);
+    if(request)s_oe_host_exit_pending=true;
+    bool ready=s_oe_host_exit_pending && s_oe_exit_depth==0;
+    pthread_mutex_unlock(&s_oe_notification_lock);return ready;
+}
 uint32_t nso_host_oe_get_current_focus_state(void) {
-    /* Stable and never 3: the guest treats 3 as "something else holds the
-     * foreground" and reacts to it, and a foreground Android app has neither
-     * an overlay nor a background transition to report. */
-    return s_oe_focus_state;
+    pthread_mutex_lock(&s_oe_notification_lock);
+    uint32_t state = s_oe_focus_state;
+    pthread_mutex_unlock(&s_oe_notification_lock);
+    return state;
+}
+
+/* The Android Activity is the producer. Focus 1/2/3 and message 15 follow
+ * nxnative dm/host/hle_oe.c: InFocus / OutOfFocus / Background. Only modes
+ * 1 and 2 request notifications; repeated state invalidations coalesce. */
+void nso_host_oe_set_host_focus(uint32_t state) {
+    if (state < 1 || state > 3) return;
+    pthread_mutex_lock(&s_oe_notification_lock);
+    if (s_oe_focus_state != state) {
+        bool active=state!=3;
+        if(active!=s_oe_active_running){
+            int64_t now=oe_monotonic_ns();
+            if(active)s_oe_active_begin_ns=now;
+            else s_oe_active_accumulated_ns+=now-s_oe_active_begin_ns;
+            s_oe_active_running=active;
+        }
+        s_oe_focus_state = state;
+        if (s_oe_focus_handling_mode == 1 || s_oe_focus_handling_mode == 2)
+            s_oe_focus_notification_pending = true;
+    }
+    pthread_mutex_unlock(&s_oe_notification_lock);
+}
+
+bool nso_host_oe_try_pop_notification_message(uint32_t *out) {
+    if (!out) return false;
+    pthread_mutex_lock(&s_oe_notification_lock);
+    bool available = s_oe_focus_notification_pending;
+    if (available) {
+        *out = 15;
+        s_oe_focus_notification_pending = false;
+    }
+    pthread_mutex_unlock(&s_oe_notification_lock);
+    return available;
 }
 
 void nso_host_oe_set_performance_mode_changed_notification_enabled(bool enabled) {
@@ -2180,7 +2543,9 @@ void nso_host_oe_set_operation_mode_changed_notification_enabled(bool enabled) {
 }
 
 void nso_host_oe_set_focus_handling_mode(int32_t mode) {
+    pthread_mutex_lock(&s_oe_notification_lock);
     s_oe_focus_handling_mode=mode;
+    pthread_mutex_unlock(&s_oe_notification_lock);
     fprintf(stderr, "[hle] nn::oe::SetFocusHandlingMode: mode=%d recorded\n",(int)mode);
 }
 
@@ -2236,6 +2601,12 @@ void nso_host_oe_set_performance_configuration(int32_t mode,int32_t clock) {
 }
 
 int32_t nso_host_oe_get_performance_mode(void) {
+    uint32_t op_mode = nso_host_oe_get_operation_mode();
+    if (op_mode == 0) {
+        fprintf(stderr, "[hle] nn::oe::GetPerformanceMode: mode=0 (clamped by Handheld operation mode)\n");
+        return 0;
+    }
+    fprintf(stderr, "[hle] nn::oe::GetPerformanceMode: mode=%d recorded\n", (int)s_oe_performance_mode);
     return s_oe_performance_mode;
 }
 
@@ -2246,25 +2617,22 @@ int32_t nso_host_oe_performance_clock(void) {
 static uint32_t s_oe_operation_mode = 1;
 
 uint32_t nso_host_oe_get_operation_mode(void) {
-    /* The guest calls this from two unconditional sites (0x51dc84 and
-     * 0x51ee40) and uses the result in exactly one way: it compares the
-     * value against 1 and caches the outcome as a byte flag at 0x7c90614
-     * (cset / strb at 0x51dc90-0x51dc94 and 0x51ee50-0x51ee58). That flag is
-     * the game's "operation mode is 1" state.
-     *
-     * The flag is read at four sites (0x51e98c, 0x51f06c, 0x523e98 and
-     * 0x525104) and each one picks the screen-size scale factor the same
-     * way: fcsel selects 0x3cf5c290 (0.026873588) when the flag is set and
-     * the default 0.0 when it is not. The factor multiplies the runtime
-     * screen width and height, so the flag-clear branch scales the screen
-     * size to zero and leaves the scaled size fields of the screen-info
-     * structure (offsets 0x40, 0x48, 0x60, 0x68, 0x70 and 0x78) degenerate.
-     *
-     * A released game cannot use that branch as its normal state, so the
-     * working state of the game is the one where the flag is set, which
-     * means the value returned here has to be 1. The enumerator name behind
-     * the value is not available in-tree and is not claimed; only the value
-     * the guest requires is implemented. */
+    /* Allow external control of Handheld (0, 720p) vs Docked (1, 1080p).
+     * If files/oe-operation-mode exists, its content ('0' or '1') overrides
+     * the mode. Default remains 1 (Docked). */
+    FILE *f = fopen("/storage/emulated/0/Android/data/org.ffrs.gamewindow/files/oe-operation-mode", "rb");
+    if (!f) f = fopen("/sdcard/Android/data/org.ffrs.gamewindow/files/oe-operation-mode", "rb");
+    if (f) {
+        int c = fgetc(f);
+        fclose(f);
+        if (c == '0') s_oe_operation_mode = 0;
+        else if (c == '1') s_oe_operation_mode = 1;
+    }
+    const char *env = getenv("FFRS_OPERATION_MODE");
+    if (env) {
+        if (env[0] == '0') s_oe_operation_mode = 0;
+        else if (env[0] == '1') s_oe_operation_mode = 1;
+    }
     fprintf(stderr,"[hle] nn::oe::GetOperationMode: mode=%u recorded\n",s_oe_operation_mode);
     return s_oe_operation_mode;
 }
@@ -2290,11 +2658,24 @@ struct nso_event_entry {
     struct nso_event_entry *next;
 };
 
+#define EVENT_HASH_SIZE 1024
+#define EVENT_HASH_MASK (EVENT_HASH_SIZE - 1)
+static inline size_t event_hash(const void *obj) {
+    uintptr_t k = (uintptr_t)obj;
+    k = (~k) + (k << 18);
+    k = k ^ (k >> 31);
+    k = k * 21;
+    k = k ^ (k >> 11);
+    k = k + (k << 6);
+    k = k ^ (k >> 22);
+    return (size_t)(k & EVENT_HASH_MASK);
+}
 static pthread_mutex_t s_event_registry_mutex = PTHREAD_MUTEX_INITIALIZER;
-static struct nso_event_entry *s_event_registry = NULL;
+static struct nso_event_entry *s_event_buckets[EVENT_HASH_SIZE];
 
 static struct nso_event_entry *find_event_locked(void *object) {
-    struct nso_event_entry *e = s_event_registry;
+    size_t b = event_hash(object);
+    struct nso_event_entry *e = s_event_buckets[b];
     while (e && e->object != object) e = e->next;
     return e;
 }
@@ -2323,8 +2704,9 @@ static struct nso_event_entry *borrow_event(void *object) {
         e->signaled = signaled;
         e->clear_mode = clear_mode;
         e->initialized = true;
-        e->next = s_event_registry;
-        s_event_registry = e;
+        size_t b_idx = event_hash(object);
+        e->next = s_event_buckets[b_idx];
+        s_event_buckets[b_idx] = e;
     }
     e->users++;
     pthread_mutex_unlock(&s_event_registry_mutex);
@@ -2360,8 +2742,9 @@ void nso_host_os_initialize_event(void *event, bool initially_signaled, int32_t 
         pthread_mutex_init(&e->mutex, NULL);
         pthread_cond_init(&e->cond, NULL);
         e->object = event;
-        e->next = s_event_registry;
-        s_event_registry = e;
+        size_t b_idx = event_hash(event);
+        e->next = s_event_buckets[b_idx];
+        s_event_buckets[b_idx] = e;
     } else {
         pthread_mutex_lock(&e->mutex);
         pthread_cond_broadcast(&e->cond);
@@ -2399,8 +2782,12 @@ void nso_host_os_finalize_event(void *event) {
         fprintf(stderr, "[hle] nn::os::FinalizeEvent: null event pointer\n");
         return;
     }
+    if(ffrs_multiwait_event_waiting && ffrs_multiwait_event_waiting(event)) {
+        fprintf(stderr,"[multiwait] refusing Event finalization during active wait\n");abort();
+    }
     pthread_mutex_lock(&s_event_registry_mutex);
-    struct nso_event_entry **slot = &s_event_registry;
+    size_t b_idx = event_hash(event);
+    struct nso_event_entry **slot = &s_event_buckets[b_idx];
     while (*slot && (*slot)->object != event) {
         slot = &(*slot)->next;
     }
@@ -2438,8 +2825,13 @@ void nso_host_os_signal_event(void *event) {
     }
     pthread_mutex_unlock(&e->mutex);
     release_event(e);
+    if(ffrs_multiwait_notify_event)ffrs_multiwait_notify_event(event);
+    else if(ffrs_multiwait_notify)ffrs_multiwait_notify();
 
-    fprintf(stderr, "[hle] nn::os::SignalEvent: event=%p\n", event);
+    static int signal_log_count = 0;
+    if (++signal_log_count <= 10 || (signal_log_count & 1023) == 0) {
+        fprintf(stderr, "[hle] nn::os::SignalEvent: event=%p (count=%d)\n", event, signal_log_count);
+    }
 }
 
 void nso_host_os_clear_event(void *event) {
@@ -2452,7 +2844,10 @@ void nso_host_os_clear_event(void *event) {
     pthread_mutex_unlock(&e->mutex);
     release_event(e);
 
-    fprintf(stderr, "[hle] nn::os::ClearEvent: event=%p\n", event);
+    static int clear_log_count = 0;
+    if (++clear_log_count <= 10 || (clear_log_count & 1023) == 0) {
+        fprintf(stderr, "[hle] nn::os::ClearEvent: event=%p (count=%d)\n", event, clear_log_count);
+    }
 }
 
 void nso_host_os_wait_event(void *event) {
@@ -2472,7 +2867,10 @@ void nso_host_os_wait_event(void *event) {
     pthread_mutex_unlock(&e->mutex);
     release_event(e);
 
-    fprintf(stderr, "[hle] nn::os::WaitEvent: event=%p satisfied\n", event);
+    static int wait_log_count = 0;
+    if (++wait_log_count <= 10 || (wait_log_count & 1023) == 0) {
+        fprintf(stderr, "[hle] nn::os::WaitEvent: event=%p satisfied (count=%d)\n", event, wait_log_count);
+    }
 }
 
 bool nso_host_os_try_wait_event(void *event) {
@@ -2498,9 +2896,20 @@ bool nso_host_os_timed_wait_event(void *event, int64_t timeout_ns) {
     struct nso_event_entry *e = borrow_event(event);
     if (!e) return false;
 
+    static int s_timed_wait_count = 0;
+    if (++s_timed_wait_count <= 20 || (s_timed_wait_count & 1023) == 0) {
+        fprintf(stderr, "[hle] TimedWaitEvent: count=%d event=%p timeout_ns=%" PRId64 "\n",
+                s_timed_wait_count, event, timeout_ns);
+    }
+
     struct timespec deadline;
     clock_gettime(CLOCK_REALTIME, &deadline);
-    deadline.tv_sec += timeout_ns / 1000000000LL;
+    // Guard against overflow when adding huge timeouts (e.g. TimeSpan::MaxValue)
+    int64_t sec_to_add = timeout_ns / 1000000000LL;
+    if (sec_to_add > 100000000LL) {
+        sec_to_add = 100000000LL; // Cap at ~3 years to prevent kernel timespec overflow
+    }
+    deadline.tv_sec += sec_to_add;
     deadline.tv_nsec += timeout_ns % 1000000000LL;
     if (deadline.tv_nsec >= 1000000000L) {
         deadline.tv_sec += 1;
@@ -2513,7 +2922,10 @@ bool nso_host_os_timed_wait_event(void *event, int64_t timeout_ns) {
         e->waiters++;
         int rc = pthread_cond_timedwait(&e->cond, &e->mutex, &deadline);
         e->waiters--;
-        if (rc == ETIMEDOUT) {
+        if (rc != 0) {
+            if (rc != ETIMEDOUT) {
+                fprintf(stderr, "[hle] TimedWaitEvent: pthread_cond_timedwait error rc=%d\n", rc);
+            }
             break;
         }
     }
@@ -2689,6 +3101,21 @@ void nso_host_vi_open_default_display(nso_vi_display **out_display) {
             (void *)display, window, generation, display->width, display->height);
 }
 
+static pthread_t s_vsync_thread;
+static volatile bool s_vsync_thread_started = false;
+
+static void *vsync_worker_thread(void *arg) {
+    (void)arg;
+    struct timespec ts;
+    ts.tv_sec = 0;
+    ts.tv_nsec = 16666667; // 60 Hz = ~16.67ms
+    while (1) {
+        nanosleep(&ts, NULL);
+        nso_host_vi_signal_vsync_event();
+    }
+    return NULL;
+}
+
 void nso_host_vi_get_display_vsync_event(void *event, nso_vi_display *display) {
     if (!event) {
         fprintf(stderr, "[hle] nn::vi::GetDisplayVsyncEvent: null event object, nothing written\n");
@@ -2702,10 +3129,7 @@ void nso_host_vi_get_display_vsync_event(void *event, nso_vi_display *display) {
     }
     /* A real nn::os event, built with the already bound nn::os event family
      * so that nn::os::WaitEvent and nn::os::SignalEvent operate on the same
-     * object. It starts NOT signalled: the vsync event stands for a frame
-     * that was drawn, and this runtime has not presented a frame yet, so
-     * signalling it now would be a claim about frames that were never drawn.
-     * There is deliberately no timer driven vsync here either. */
+     * object. */
     nso_host_os_initialize_event(event, false, NN_OS_EVENT_CLEAR_MODE_MANUAL);
     /* The guest's field is an nn::os::SystemEventType, so the object is also
      * registered with the nn::os system event family that owns that type:
@@ -2722,10 +3146,13 @@ void nso_host_vi_get_display_vsync_event(void *event, nso_vi_display *display) {
     pthread_mutex_lock(&s_vi_mutex);
     display->vsync_event = event;
     s_vi_vsync_event = event;
+    if (!s_vsync_thread_started) {
+        s_vsync_thread_started = true;
+        pthread_create(&s_vsync_thread, NULL, vsync_worker_thread, NULL);
+    }
     pthread_mutex_unlock(&s_vi_mutex);
 
-    fprintf(stderr, "[hle] nn::vi::GetDisplayVsyncEvent: display=%p event=%p created, not signalled"
-                    " (no frame has been presented yet, so there is no vsync to report)\n",
+    fprintf(stderr, "[hle] nn::vi::GetDisplayVsyncEvent: display=%p event=%p created, 60Hz ticker started\n",
             (void *)display, event);
 }
 
@@ -2800,26 +3227,61 @@ void nso_host_vi_get_native_window(void **out_window, nso_vi_layer *layer) {
             (void *)layer, (void *)display, window);
 }
 
+static uint64_t s_vi_frame_number = 1;
+
+uint32_t nso_host_vi_get_latest_frame_number(uint64_t *out_frame_number, const void *layer) {
+    pthread_mutex_lock(&s_vi_mutex);
+    uint64_t current = s_vi_frame_number;
+    pthread_mutex_unlock(&s_vi_mutex);
+    if (out_frame_number) {
+        *out_frame_number = current;
+    }
+    static int logged = 0;
+    if (logged++ < 10 || (current & 63) == 0) {
+        fprintf(stderr, "[hle] nn::vi::GetLatestFrameNumber: layer=%p -> frame_number=%" PRIu64 " rc=0\n",
+                layer, current);
+    }
+    return 0; // ResultSuccess
+}
+
+int nso_host_vi_list_frame_history(void *out_frame_infos, int count, const void *layer) {
+    static int once = 0;
+    if (!once++ || count > 0) {
+        fprintf(stderr, "[hle] nn::vi::ListFrameHistory: out=%p count=%d layer=%p -> returning 0\n",
+                out_frame_infos, count, layer);
+    }
+    return 0;
+}
+
 void nso_host_vi_signal_vsync_event(void) {
     pthread_mutex_lock(&s_vi_mutex);
+    s_vi_frame_number++;
     void *event = s_vi_vsync_event;
+    uint64_t frame = s_vi_frame_number;
     pthread_mutex_unlock(&s_vi_mutex);
     if (!event) {
-        fprintf(stderr, "[hle] nn::vi: no vsync event has been requested by the guest, nothing signalled\n");
         return;
     }
-    /* Both families that can wait on the guest's event object are signalled,
-     * so the wake up does not depend on which one the guest uses. */
-    nso_host_os_signal_event(event);
+    /* Signal the SystemEvent that Viewport Thread waits on */
     nso_host_os_signal_system_event(event);
 
-    fprintf(stderr, "[hle] nn::vi: vsync event=%p signalled after a present\n", event);
+    static int vsync_log_count = 0;
+    if (vsync_log_count++ < 10 || (vsync_log_count & 511) == 0) {
+        fprintf(stderr, "[hle] nn::vi: vsync event=%p signalled (tick=%d frame=%" PRIu64 ")\n",
+                event, vsync_log_count, frame);
+    }
 }
 
 /* ========================================================================= */
 /* posix_memalign / memalign HLE Implementation                              */
 /* ========================================================================= */
 
+extern int guest_process_interposed_aligned_alloc(size_t,size_t,void **) __attribute__((weak));
+static int try_game_aligned_alloc(size_t alignment,size_t bytes,void **out) {
+    int r=guest_process_interposed_aligned_alloc?guest_process_interposed_aligned_alloc(alignment,bytes,out):0;
+    if(r<0){fprintf(stderr,"[allocator-interpose] invalid guest allocator ownership\n");abort();}
+    return r;
+}
 int nso_host_posix_memalign(void **memptr, size_t alignment, size_t size) {
     if (!memptr) {
         fprintf(stderr, "[hle] posix_memalign: null memptr pointer\n");
@@ -2830,8 +3292,14 @@ int nso_host_posix_memalign(void **memptr, size_t alignment, size_t size) {
                 alignment, sizeof(void *));
         return EINVAL;
     }
-    size_t alloc_size = (size == 0) ? sizeof(void *) : size;
     void *ptr = NULL;
+    int saved_errno=errno;
+    if(try_game_aligned_alloc(alignment,size,&ptr)) {
+        errno=saved_errno;
+        if(!ptr && size)return ENOMEM;
+        *memptr=ptr;return 0;
+    }
+    size_t alloc_size = (size == 0) ? sizeof(void *) : size;
     int rc = posix_memalign(&ptr, alignment, alloc_size);
     if (rc != 0) {
         fprintf(stderr, "[hle] posix_memalign: allocation failed alignment=%zu size=%zu rc=%d\n",
@@ -2850,9 +3318,10 @@ void *nso_host_memalign(size_t alignment, size_t size) {
         fprintf(stderr, "[hle] memalign: invalid alignment %zu\n", alignment);
         return NULL;
     }
+    void *ptr = NULL;
+    if(try_game_aligned_alloc(alignment,size,&ptr))return ptr;
     size_t alloc_align = alignment < sizeof(void *) ? sizeof(void *) : alignment;
     size_t alloc_size = (size == 0) ? sizeof(void *) : size;
-    void *ptr = NULL;
     int rc = posix_memalign(&ptr, alloc_align, alloc_size);
     if (rc != 0) {
         fprintf(stderr, "[hle] memalign: allocation failed alignment=%zu size=%zu rc=%d\n",
@@ -3101,8 +3570,48 @@ uint64_t nso_host_steady_clock_now(void) {
 
 int nso_host_pthread_cond_clockwait(pthread_cond_t *cond, pthread_mutex_t *mutex,
                                     clockid_t clock_id, const struct timespec *abstime) {
-    (void)clock_id;
-    return pthread_cond_timedwait(cond, mutex, abstime);
+    /* libc++'s timed wait passes the same guest condition_variable and mutex
+     * as its imported lock/notify/untimed-wait calls. They are opaque keys:
+     * waiting on the guest bytes leaves the real host mutex locked forever,
+     * so the producer cannot acquire it to satisfy the predicate. */
+    if (!cond || !mutex || !abstime || abstime->tv_nsec < 0 ||
+        abstime->tv_nsec >= 1000000000L) return EINVAL;
+    pthread_cond_t *host_cond = get_std_cv(cond);
+    pthread_mutex_t *host_mutex = get_std_mutex(mutex);
+    if (!host_cond || !host_mutex) return EINVAL;
+    typedef int (*pfn_clockwait)(pthread_cond_t *, pthread_mutex_t *, clockid_t, const struct timespec *);
+    static pfn_clockwait s_clockwait = NULL;
+    static int s_clockwait_inited = 0;
+    if (!s_clockwait_inited) {
+        s_clockwait = (pfn_clockwait)dlsym(RTLD_DEFAULT, "pthread_cond_clockwait");
+        s_clockwait_inited = 1;
+    }
+    if (s_clockwait) {
+        return s_clockwait(host_cond, host_mutex, clock_id, abstime);
+    }
+    if (clock_id == CLOCK_MONOTONIC && abstime) {
+        struct timespec mono_now, real_now;
+        clock_gettime(CLOCK_MONOTONIC, &mono_now);
+        clock_gettime(CLOCK_REALTIME, &real_now);
+        int64_t diff_sec = (int64_t)abstime->tv_sec - (int64_t)mono_now.tv_sec;
+        int64_t diff_nsec = (int64_t)abstime->tv_nsec - (int64_t)mono_now.tv_nsec;
+        if (diff_sec < 0 || (diff_sec == 0 && diff_nsec <= 0)) {
+            return ETIMEDOUT;
+        }
+        struct timespec real_abstime;
+        real_abstime.tv_sec = real_now.tv_sec + diff_sec;
+        real_abstime.tv_nsec = real_now.tv_nsec + diff_nsec;
+        if (real_abstime.tv_nsec >= 1000000000L) {
+            real_abstime.tv_sec += real_abstime.tv_nsec / 1000000000L;
+            real_abstime.tv_nsec %= 1000000000L;
+        } else if (real_abstime.tv_nsec < 0) {
+            real_abstime.tv_sec -= 1;
+            real_abstime.tv_nsec += 1000000000L;
+        }
+        return pthread_cond_timedwait(host_cond, host_mutex, &real_abstime);
+    }
+    if (clock_id != CLOCK_REALTIME) return EINVAL;
+    return pthread_cond_timedwait(host_cond, host_mutex, abstime);
 }
 
 void nso_host_cxa_pure_virtual(void) {
@@ -3132,10 +3641,7 @@ int nso_host_gettimeofday(struct timeval *tv, void *tz) {
     if (!tv) {
         return -1;
     }
-    int rc = gettimeofday(tv, NULL);
-    fprintf(stderr, "[hle] gettimeofday: tv=%p tz=%p -> sec=%ld usec=%ld rc=%d\n",
-            (void *)tv, tz, (long)tv->tv_sec, (long)tv->tv_usec, rc);
-    return rc;
+    return gettimeofday(tv, NULL);
 }
 
 pid_t nso_host_getpid(void) {
@@ -3245,6 +3751,24 @@ bool nso_host_ssl_is_initialized(void) {
 #define NSO_STDIO_FORMAT_LIMIT 4096
 #define NSO_STDIO_TEXT_LIMIT 16384
 #define NSO_STDIO_OUTPUT_LIMIT 16384
+
+int nso_host_vsnprintf(char *out, size_t bytes, const char *format, const void *guest_va_list) {
+#if defined(__ANDROID__) && defined(__aarch64__)
+    /* Both SDK and Bionic use AAPCS64: stack/gr_top/vr_top pointers and two
+     * signed 32-bit offsets. A >16-byte va_list argument is passed indirectly.
+     * Copy it so libc cannot advance the guest's live descriptor. */
+    _Static_assert(sizeof(va_list) == 32, "verified AAPCS64 va_list size");
+    if ((!out && bytes) || !format || !guest_va_list) return -1;
+    va_list copy;
+    memcpy(&copy, guest_va_list, sizeof(copy));
+    int value = vsnprintf(out, bytes, format, copy);
+    va_end(copy);
+    return value;
+#else
+    (void)out; (void)bytes; (void)format; (void)guest_va_list;
+    return -1; /* Other host va_list layouts are not admitted. */
+#endif
+}
 
 struct nso_stdio_stream {
     const char *name;
@@ -3408,7 +3932,30 @@ void nso_host_libcpp_verbose_abort(const char *format, ...) {
 }
 
 void nso_host_set_extension_resolver(nso_import_fn resolver) {extension_resolver=resolver;}
+#if !defined(__ANDROID__) || !defined(__aarch64__)
+#include <setjmp.h>
+int nso_host_setjmp(void *env) {
+    return setjmp(*(jmp_buf *)env);
+}
+void nso_host_longjmp(void *env, int val) {
+    longjmp(*(jmp_buf *)env, val);
+}
+int nso_host_sigsetjmp(void *env, int savemask) {
+    (void)savemask;
+    return setjmp(*(jmp_buf *)env);
+}
+void nso_host_siglongjmp(void *env, int val) {
+    longjmp(*(jmp_buf *)env, val);
+}
+#endif
+
 uint64_t nso_host_resolve(uint32_t index,const char *name) {
+    if(name && !strcmp(name,"vsnprintf")) return (uintptr_t)&nso_host_vsnprintf;
+    if(!strcmp(name,"_ZN2nn2os27InitializeConditionVariableEPNS0_21ConditionVariableTypeE")) return (uintptr_t)&nso_host_initialize_condition_variable;
+    if(!strcmp(name,"_ZN2nn2os25FinalizeConditionVariableEPNS0_21ConditionVariableTypeE")) return (uintptr_t)&nso_host_finalize_condition_variable;
+    if(!strcmp(name,"_ZN2nn2os21WaitConditionVariableEPNS0_21ConditionVariableTypeEPNS0_9MutexTypeE")) return (uintptr_t)&nso_host_wait_condition_variable;
+    if(!strcmp(name,"_ZN2nn2os26TimedWaitConditionVariableEPNS0_21ConditionVariableTypeEPNS0_9MutexTypeENS_8TimeSpanE")) return (uintptr_t)&nso_host_timed_wait_condition_variable;
+    if(!strcmp(name,"_ZN2nn2os23SignalConditionVariableEPNS0_21ConditionVariableTypeE")) return (uintptr_t)&nso_host_signal_condition_variable;
     if(!name)return 0;
 #if defined(__ANDROID__) || (defined(NSO_WITH_CXX_GUARDS) && NSO_WITH_CXX_GUARDS)
     if(!strcmp(name,"__cxa_guard_acquire"))return (uint64_t)(uintptr_t)&__cxa_guard_acquire;
@@ -3421,6 +3968,23 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_fs_query_mount_rom_cache_size;
     if(!strcmp(name,"_ZN2nn2fs8MountRomEPKcPvm") || !strcmp(name,"nnfsMountRom"))
         return (uint64_t)(uintptr_t)&nso_host_fs_mount_rom;
+    if(!strcmp(name,"_ZN2nn2fs18IsSaveDataExistingENS_13ApplicationIdERKNS_7account3UidE"))return (uintptr_t)&nso_host_fs_is_save_data_existing;
+    if(!strcmp(name,"_ZN2nn2fs14EnsureSaveDataERKNS_7account3UidE"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_ensure_save_data;
+    if(!strcmp(name,"_ZN2nn2fs13MountSaveDataEPKcRKNS_7account3UidE"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_mount_save_data;
+    if(!strcmp(name,"_ZN2nn2fs21MountSaveDataReadOnlyEPKcNS_13ApplicationIdERKNS_7account3UidE"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_mount_save_data_read_only;
+    if(!strcmp(name,"_ZN2nn2fs14ExtendSaveDataERKNS_7account3UidEll"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_extend_save_data;
+    if(!strcmp(name,"_ZN2nn2fs14CommitSaveDataEPKc") || !strcmp(name,"_ZN2nn2fs6CommitEPKc"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_commit_save_data;
+    if(!strcmp(name,"_ZN2nn2fs10CreateFileEPKcl"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_create_file;
+    if(!strcmp(name,"_ZN2nn2fs15GetSaveDataSizeEPlS1_RKNS_7account3UidE"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_get_save_data_size;
+    if(!strcmp(name,"_ZN2nn2fs16GetFreeSpaceSizeEPlPKc"))
+        return (uint64_t)(uintptr_t)&nso_host_fs_get_free_space_size;
     if(!strcmp(name,"_ZN2nn2fs7UnmountEPKc") || !strcmp(name,"nnfsUnmount"))
         return (uint64_t)(uintptr_t)&nso_host_fs_unmount;
     if(!strcmp(name,"_ZN2nn2fs8OpenFileEPNS0_10FileHandleEPKci") || !strcmp(name,"nnfsOpenFile"))
@@ -3463,6 +4027,8 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_aoc_get_add_on_content_list_changed_event;
     if(!strcmp(name,"_ZN2nn2os15WaitSystemEventEPNS0_15SystemEventTypeE"))
         return (uint64_t)(uintptr_t)&nso_host_os_wait_system_event;
+    if(!strcmp(name,"_ZN2nn2os18TryWaitSystemEventEPNS0_15SystemEventTypeE"))
+        return (uintptr_t)&nso_host_os_try_wait_system_event;
     if(!strcmp(name,"_ZN2nn2os17SignalSystemEventEPNS0_15SystemEventTypeE"))
         return (uint64_t)(uintptr_t)&nso_host_os_signal_system_event;
     if(!strcmp(name,"_ZN2nn2os18DestroySystemEventEPNS0_15SystemEventTypeE"))
@@ -3485,14 +4051,26 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_socket_event_fd_read;
     if(!strcmp(name,"_ZN2nn6socket5CloseEi"))
         return (uint64_t)(uintptr_t)&nso_host_socket_close;
-    if(!strcmp(name,"_ZN2nn6socket12GetLastErrorEv"))
+    if(!strcmp(name,"_ZN2nn6socket12GetLastErrorEv") || !strcmp(name,"nnsocketGetLastErrno"))
         return (uint64_t)(uintptr_t)&nso_host_socket_get_last_error;
+    if(!strcmp(name,"nnsocketSetLastErrno"))
+        return (uint64_t)(uintptr_t)&nso_host_socket_set_last_error;
     if(!strcmp(name,"_ZN2nn6socket4PollEPNS0_6PollFdEmi"))
         return (uint64_t)(uintptr_t)&nso_host_socket_poll;
     if(!strcmp(name,"nnsocketPoll"))
         return (uint64_t)(uintptr_t)&nso_host_socket_poll_c;
     if(!strcmp(name,"_ZN2nn7account10InitializeEv") || !strcmp(name,"nnaccountInitialize"))
         return (uint64_t)(uintptr_t)&nso_host_account_initialize;
+    if(!strcmp(name,"_ZN2nn7account22TryOpenPreselectedUserEPNS0_10UserHandleE"))
+        return (uint64_t)(uintptr_t)&nso_host_account_try_open_preselected_user;
+    if(!strcmp(name,"_ZN2nn7account9GetUserIdEPNS0_3UidERKNS0_10UserHandleE"))
+        return (uint64_t)(uintptr_t)&nso_host_account_get_user_id;
+    if(!strcmp(name,"_ZN2nn7account9CloseUserERKNS0_10UserHandleE"))
+        return (uint64_t)(uintptr_t)&nso_host_account_close_user;
+    if(!strcmp(name,"_ZN2nn7account13PushOpenUsersEv"))
+        return (uint64_t)(uintptr_t)&nso_host_account_push_open_users;
+    if(!strcmp(name,"_ZN2nn7account12PopOpenUsersEPiPNS0_10UserHandleEi"))
+        return (uint64_t)(uintptr_t)&nso_host_account_pop_open_users;
     if(!strcmp(name,"_ZN2nn2oe10InitializeEv") || !strcmp(name,"nnoeInitialize"))
         return (uint64_t)(uintptr_t)&nso_host_oe_initialize;
     if(!strcmp(name,"_ZN2nn2oe18GetDesiredLanguageEv") || !strcmp(name,"nnoeGetDesiredLanguage"))
@@ -3517,8 +4095,16 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_vi_create_layer;
     if(!strcmp(name,"_ZN2nn2vi15GetNativeWindowEPPvPNS0_5LayerE"))
         return (uint64_t)(uintptr_t)&nso_host_vi_get_native_window;
+    if(!strcmp(name,"_ZN2nn2vi20GetLatestFrameNumberEPmPKNS0_5LayerE"))
+        return (uint64_t)(uintptr_t)&nso_host_vi_get_latest_frame_number;
+    if(!strcmp(name,"_ZN2nn2vi16ListFrameHistoryEPNS0_9FrameInfoEiPKNS0_5LayerE"))
+        return (uint64_t)(uintptr_t)&nso_host_vi_list_frame_history;
     if(!strcmp(name,"_ZN2nn2oe20GetCurrentFocusStateEv"))
         return (uint64_t)(uintptr_t)&nso_host_oe_get_current_focus_state;
+    if(!strcmp(name,"_ZN2nn2oe31EnterExitRequestHandlingSectionEv"))return (uintptr_t)&nso_host_oe_enter_exit_section;
+    if(!strcmp(name,"_ZN2nn2oe31LeaveExitRequestHandlingSectionEv"))return (uintptr_t)&nso_host_oe_leave_exit_section;
+    if(!strcmp(name,"_ZN2nn2oe25TryPopNotificationMessageEPj"))
+        return (uint64_t)(uintptr_t)&nso_host_oe_try_pop_notification_message;
     if(!strcmp(name,"_ZN2nn2oe44SetPerformanceModeChangedNotificationEnabledEb"))
         return (uint64_t)(uintptr_t)&nso_host_oe_set_performance_mode_changed_notification_enabled;
     if(!strcmp(name,"_ZN2nn2oe42SetOperationModeChangedNotificationEnabledEb"))
@@ -3563,6 +4149,8 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_time_get_day_of_week;
     if(!strcmp(name,"_ZN2nn2os22GetSystemTickFrequencyEv") || !strcmp(name,"nnosGetSystemTickFrequency"))
         return (uint64_t)(uintptr_t)&nso_host_os_get_system_tick_frequency;
+    if(!strcmp(name,"_ZN2nn2os17ConvertToTimeSpanENS0_4TickE"))
+        return (uintptr_t)&nso_host_os_convert_to_timespan;
     if(!strcmp(name,"_ZN2nn2os13GetSystemTickEv") || !strcmp(name,"nnosGetSystemTick"))
         return (uint64_t)(uintptr_t)&nso_host_os_get_system_tick;
     if(!strcmp(name,"_ZN2nn2os21AllocateAddressRegionEPmm"))
@@ -3747,7 +4335,17 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
         return (uint64_t)(uintptr_t)&nso_host_fputc;
     if(!strcmp(name,"puts"))
         return (uint64_t)(uintptr_t)&nso_host_puts;
+
+
     if(!strcmp(name,"__cxa_pure_virtual"))
         return (uint64_t)(uintptr_t)&nso_host_cxa_pure_virtual;
+    if(!strcmp(name,"setjmp") || !strcmp(name,"_setjmp"))
+        return (uint64_t)(uintptr_t)&nso_host_setjmp;
+    if(!strcmp(name,"longjmp") || !strcmp(name,"_longjmp"))
+        return (uint64_t)(uintptr_t)&nso_host_longjmp;
+    if(!strcmp(name,"sigsetjmp") || !strcmp(name,"__sigsetjmp"))
+        return (uint64_t)(uintptr_t)&nso_host_sigsetjmp;
+    if(!strcmp(name,"siglongjmp"))
+        return (uint64_t)(uintptr_t)&nso_host_siglongjmp;
     return extension_resolver?extension_resolver(index,name):0;
 }

@@ -7,12 +7,10 @@
  * moment of the initialization, so an event is a snapshot: the builder can
  * change afterwards without touching the event that was already made.
  *
- * The value of an event is kept on the host, beside the rest of the event's
- * state. The reference host puts it into the guest's pool memory, at the
- * offset of the event inside the pool (hle_nvn.c:649), because its GPU writes
- * it there. This runtime does not write into the guest's memory at all, so the
- * value stays here; the contract proves that the guest's pool memory is
- * untouched by a signal.
+ * CPU and GPU access the same uint32_t in the guest's pool, as in the
+ * reference host (hle_nvn.c:649-654). Initialization retains its existing
+ * value. CPU accesses and lifecycle changes first resolve pending GPU writes
+ * through mtl_event_read, without holding the object-table lock.
  *
  * The evidence for the values:
  *
@@ -65,6 +63,7 @@
 #include <inttypes.h>
 #include <pthread.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* The signal modes of the vendored header (nvn.h:661-665). The reference host
@@ -84,8 +83,8 @@ typedef struct {
     void *event;
     void *memory_pool;
     int64_t memory_offset;
-    uint32_t value;
-    int signaled;
+    uint64_t value_address;
+    uint64_t generation;
     int initialized;
     int in_use;
 } nvn_event_state;
@@ -110,6 +109,7 @@ enum {
 };
 
 static pthread_mutex_t s_event_lock = PTHREAD_MUTEX_INITIALIZER;
+static uint64_t s_event_generation;
 static nvn_object_table s_builders = { NULL, 0, 0, sizeof(nvn_event_builder_state) };
 static nvn_object_table s_events = { NULL, 0, 0, sizeof(nvn_event_state) };
 static nvn_event_stats s_stats;
@@ -179,28 +179,67 @@ static int mark_logged(int index) {
 /* Asking the memory pool family                                        */
 /* ------------------------------------------------------------------ */
 
-/* The entry point of the memory pool family, found by its name. The event
- * family does not reach into the memory pool family's tables: it asks the
- * memory pool family for the values, the same way the guest asks it. */
-static void *memory_pool_entry(const char *name) {
-    size_t i;
-    size_t count = nvn_memory_pool_family_count();
-    for (i = 0; i < count; i++) {
-        const nvn_memory_pool_family_entry *entry = nvn_memory_pool_family_entry_at(i);
-        if (entry && entry->name && strcmp(entry->name, name) == 0) return entry->fn;
+/* A component without a GPU may omit this hook. A running production engine
+ * may not: its adapter provides a strong mtl_event_read definition. */
+#if defined(__APPLE__)
+/* Mach-O requires weak definitions rather than unresolved weak references.
+ * The actual engine's strong definition replaces this no-GPU readiness. */
+__attribute__((weak)) int nvn_engine_ready(void) { return 0; }
+#else
+extern int nvn_engine_ready(void) __attribute__((weak));
+#endif
+
+/* A strong adapter definition replaces this no-GPU component fallback.
+ * Missing integration is fatal once a real engine is ready, never a silent
+ * skip of pending GPU results. */
+__attribute__((weak)) void mtl_event_read(const volatile uint32_t *address) {
+    (void)address;
+#if defined(__APPLE__)
+    int ready = nvn_engine_ready();
+#else
+    int ready = nvn_engine_ready && nvn_engine_ready();
+#endif
+    if (ready) {
+        fprintf(stderr, "[nvn] event: running GPU engine has no event completion hook\n");
+        abort();
     }
-    return NULL;
 }
 
-/* The CPU mapping of a pool, which is the memory the guest allocated for it.
- * This is the same thing as the reference host's pool->mem (hle_nvn.c:648), and
- * it is what decides whether an event can be made at all: the reference host
- * refuses an initialization whose pool has no memory. */
-static void *memory_pool_map(const void *pool) {
-    typedef void *(*pool_map_fn)(const void *);
-    pool_map_fn fn = (pool_map_fn)(uintptr_t)memory_pool_entry("nvnMemoryPoolMap");
-    if (!fn || !pool) return NULL;
-    return fn(pool);
+static void complete_value(uint64_t address) {
+    mtl_event_read((const volatile uint32_t *)(uintptr_t)address);
+}
+
+/* Never retain an interior object-table pointer across an unlock: another
+ * event creation can grow/reallocate that table. Pool lifetime must extend
+ * through its event users, just as for the recorded GPU commands. */
+static int event_snapshot(const void *event, nvn_event_state *out) {
+    int found = 0;
+    pthread_mutex_lock(&s_event_lock);
+    nvn_event_state *entry = event_find((void *)(uintptr_t)event, 0);
+    if (entry && entry->initialized) { *out = *entry; found = 1; }
+    pthread_mutex_unlock(&s_event_lock);
+    return found;
+}
+
+static int storage_address(const nvn_event_state *event, uint64_t *out) {
+    nvn_memory_pool_info pool;
+    if (!event->memory_pool || event->memory_offset < 0 ||
+        !nvn_memory_pool_info_of(event->memory_pool, &pool) || !pool.mem) return 0;
+    uint64_t offset = (uint64_t)event->memory_offset;
+    uintptr_t base = (uintptr_t)pool.mem;
+    if (offset > pool.size || pool.size - offset < sizeof(uint32_t) ||
+        offset > UINTPTR_MAX - base || UINTPTR_MAX - (base + offset) < sizeof(uint32_t) - 1) return 0;
+    uint64_t address = base + offset;
+    if ((address & (sizeof(uint32_t) - 1)) ||
+        (event->value_address && event->value_address != address)) return 0;
+    *out = address;
+    return 1;
+}
+
+static int event_current_locked(const nvn_event_state *snapshot) {
+    nvn_event_state *entry = event_find(snapshot->event, 0);
+    return entry && entry->initialized && entry->generation == snapshot->generation &&
+        entry->value_address == snapshot->value_address;
 }
 
 /* ------------------------------------------------------------------ */
@@ -369,167 +408,93 @@ ptrdiff_t nvnEventBuilderGetMemoryOffset(const void *builder) {
 /* The event                                                            */
 /* ------------------------------------------------------------------ */
 
-/* nvnEventInitialize(event, builder) -> NVNboolean.
- *
- * The reference host refuses an initialization whose builder has no storage or
- * whose pool has no memory (hle_nvn.c:646-650), and otherwise makes the event
- * out of the builder's description. The description is copied here as well, so
- * that an event is a snapshot of the builder it was made from.
- *
- * The value of the new event is zero: the reference host reads it out of the
- * guest's pool memory, which holds whatever the guest left there, and this
- * runtime keeps the value on the host, where there is nothing yet. */
+/* Reference hle_nvn.c:646-650 binds the existing pool word; it never
+ * initializes that word to zero. Old/new pending writes are completed before
+ * rebinding an existing event, without holding this family's lock. */
 int nvnEventInitialize(void *event, const void *builder) {
-    nvn_event_builder_state *b = NULL;
-    nvn_event_state *e = NULL;
-    void *pool = NULL;
-    int64_t offset = 0;
-    int result = 0;
-    int first = 0;
-    const char *why = NULL;
-
-    /* The description of the builder is copied out before the lock of this
-     * family is held, and the memory pool family is asked before the lock is
-     * taken again: the memory pool family has its own lock, and this family
-     * must not hold its own lock while it calls into that one. */
-    if (builder) {
-        pthread_mutex_lock(&s_event_lock);
-        b = builder_find((void *)(uintptr_t)builder, 0);
-        if (b) {
-            pool = b->memory_pool;
-            offset = b->memory_offset;
-        }
-        pthread_mutex_unlock(&s_event_lock);
-    }
-    /* The pool has to have memory, or the event has nowhere to live. This is
-     * the refusal of the reference host (hle_nvn.c:648). */
-    if (pool && !memory_pool_map(pool)) {
-        pool = NULL;
-    }
-
+    nvn_event_state next = {0}, previous = {0};
+    uint64_t address = 0, previous_address = 0;
+    int prepared = 0, had_previous = event_snapshot(event, &previous), result = 0;
     pthread_mutex_lock(&s_event_lock);
     s_stats.calls++;
-    if (!event) {
-        why = "there is no event to initialize";
-    } else if (!b) {
-        why = "the guest did not prepare this builder";
-    } else if (!pool) {
-        why = "the builder has no storage";
+    nvn_event_builder_state *b = builder_find((void *)(uintptr_t)builder, 0);
+    if (b) { next.memory_pool = b->memory_pool; next.memory_offset = b->memory_offset; prepared = 1; }
+    pthread_mutex_unlock(&s_event_lock);
+    if (!event || !prepared || !storage_address(&next, &address)) goto refused;
+    if (had_previous) {
+        if (!storage_address(&previous, &previous_address)) goto refused;
+        complete_value(previous_address);
+    }
+    if (!had_previous || address != previous_address) complete_value(address);
+    /* The completion hook can reenter table queries and create other events.
+     * Re-find entries after it, and refuse a concurrent lifecycle change. */
+    pthread_mutex_lock(&s_event_lock);
+    nvn_event_state *entry = event_find(event, 0);
+    if ((had_previous && !event_current_locked(&previous)) ||
+        (!had_previous && entry && entry->initialized) || s_event_generation == UINT64_MAX) {
+        s_stats.refused++;
     } else {
-        e = event_find(event, 1);
-        if (!e) {
-            why = "no room for another event";
-        } else {
-            e->memory_pool = pool;
-            e->memory_offset = offset;
-            e->value = 0;
-            e->signaled = 0;
-            e->initialized = 1;
-            s_stats.initialized++;
-            result = 1;
+        entry = event_find(event, 1);
+        if (!entry) s_stats.refused++;
+        else {
+            next.event = event; next.value_address = address; next.generation = ++s_event_generation;
+            next.initialized = next.in_use = 1; *entry = next;
+            s_stats.initialized++; result = 1;
         }
     }
-    if (!result) s_stats.refused++;
-    first = mark_logged(EVENT_INITIALIZE);
+    mark_logged(EVENT_INITIALIZE);
     pthread_mutex_unlock(&s_event_lock);
-
-    if (!result) {
-        fprintf(stderr, "[nvn] nvnEventInitialize: event=%p builder=%p was refused: %s\n", event, builder, why);
-    } else if (first) {
-        fprintf(stderr, "[nvn] nvnEventInitialize: event=%p builder=%p pool=%p offset=%" PRId64
-                        " -> the description of the builder is copied into the event's own state\n",
-                event, builder, pool, offset);
-    }
+    if (!result) fprintf(stderr, "[nvn] nvnEventInitialize: concurrent lifecycle change or allocation failure event=%p\n", event);
     return result;
+refused:
+    pthread_mutex_lock(&s_event_lock); s_stats.refused++; pthread_mutex_unlock(&s_event_lock);
+    fprintf(stderr, "[nvn] nvnEventInitialize: invalid builder/storage/range/alignment event=%p builder=%p\n", event, builder);
+    return 0;
 }
 
-/* nvnEventFinalize(event).
- *
- * The reference host clears the object (hle_nvn.c:651). The object here is
- * the guest's own memory, which this runtime does not write, so the event is
- * released here instead: its record is marked free and the slot is ready for
- * the next event. */
 void nvnEventFinalize(void *event) {
-    nvn_event_state *e;
-    int first = 0;
+    nvn_event_state snapshot; uint64_t address = 0;
+    int valid = event_snapshot(event, &snapshot) && storage_address(&snapshot, &address);
+    if (valid) complete_value(address);
     pthread_mutex_lock(&s_event_lock);
-    s_stats.calls++;
-    s_stats.finalized++;
-    e = event_find(event, 0);
-    if (e) {
-        memset(e, 0, sizeof(*e));
-    } else {
-        s_stats.refused++;
-    }
-    first = mark_logged(EVENT_FINALIZE);
+    s_stats.calls++; s_stats.finalized++;
+    if (valid && event_current_locked(&snapshot)) {
+        nvn_event_state *entry = event_find(event, 0); memset(entry, 0, sizeof(*entry));
+    } else s_stats.refused++;
+    mark_logged(EVENT_FINALIZE);
     pthread_mutex_unlock(&s_event_lock);
-    if (!e) {
-        fprintf(stderr, "[nvn] nvnEventFinalize: event=%p was never initialized\n", event);
-    } else if (first) {
-        fprintf(stderr, "[nvn] nvnEventFinalize: event=%p -> released\n", event);
-    }
+    if (!valid) fprintf(stderr, "[nvn] nvnEventFinalize: unknown event or unavailable storage event=%p\n", event);
     NVN_VOID_RETURN();
 }
 
-/* nvnEventSignal(event, mode, value).
- *
- * The reference host adds the value to the event's value when the mode is ADD
- * and writes it for every other mode (hle_nvn.c:653-654). The value is kept
- * on the host here, so the guest's pool memory is not touched. */
 void nvnEventSignal(void *event, int mode, uint32_t value) {
-    nvn_event_state *e;
-    int first = 0;
+    nvn_event_state snapshot; uint64_t address = 0;
+    int valid = event_snapshot(event, &snapshot) && storage_address(&snapshot, &address);
+    if (valid) complete_value(address);
     pthread_mutex_lock(&s_event_lock);
-    s_stats.calls++;
-    s_stats.signals++;
-    e = event_find(event, 0);
-    if (e) {
-        if (mode == NVN_EVENT_SIGNAL_MODE_ADD) {
-            e->value += value;
-        } else {
-            e->value = value;
-        }
-        e->signaled = 1;
-    } else {
-        s_stats.refused++;
-    }
-    first = mark_logged(EVENT_SIGNAL);
+    s_stats.calls++; s_stats.signals++;
+    if (valid && event_current_locked(&snapshot)) {
+        uint32_t *word = (uint32_t *)(uintptr_t)address;
+        if (mode == NVN_EVENT_SIGNAL_MODE_ADD) __atomic_fetch_add(word, value, __ATOMIC_SEQ_CST);
+        else __atomic_store_n(word, value, __ATOMIC_SEQ_CST);
+    } else { valid = 0; s_stats.refused++; }
+    mark_logged(EVENT_SIGNAL);
     pthread_mutex_unlock(&s_event_lock);
-    if (!e) {
-        fprintf(stderr, "[nvn] nvnEventSignal: event=%p was never initialized; the signal is refused\n", event);
-    } else if (first) {
-        fprintf(stderr, "[nvn] nvnEventSignal: event=%p mode=%d value=0x%" PRIx32 "\n", event, mode, value);
-    }
+    if (!valid) fprintf(stderr, "[nvn] nvnEventSignal: unknown event or unavailable storage event=%p\n", event);
     NVN_VOID_RETURN();
 }
 
-/* nvnEventGetValue(event) -> the value of the event.
- *
- * The reference host reads the value out of the guest's pool memory
- * (hle_nvn.c:652). Here the value is the one the host kept, so a signal is
- * read back as it was given. */
 uint32_t nvnEventGetValue(const void *event) {
-    nvn_event_state *e;
-    uint32_t value = 0;
-    int first = 0;
-    int refused = 0;
+    nvn_event_state snapshot; uint64_t address = 0; uint32_t value = 0;
+    int valid = event_snapshot(event, &snapshot) && storage_address(&snapshot, &address);
+    if (valid) complete_value(address);
     pthread_mutex_lock(&s_event_lock);
-    s_stats.calls++;
-    s_stats.gets++;
-    e = event_find((void *)(uintptr_t)event, 0);
-    if (e) {
-        value = e->value;
-    } else {
-        refused = 1;
-        s_stats.refused++;
-    }
-    first = mark_logged(EVENT_GET_VALUE);
+    s_stats.calls++; s_stats.gets++;
+    if (valid && event_current_locked(&snapshot)) value = __atomic_load_n((uint32_t *)(uintptr_t)address, __ATOMIC_SEQ_CST);
+    else { valid = 0; s_stats.refused++; }
+    mark_logged(EVENT_GET_VALUE);
     pthread_mutex_unlock(&s_event_lock);
-    if (refused) {
-        fprintf(stderr, "[nvn] nvnEventGetValue: event=%p was never initialized; the answer is 0\n", event);
-    } else if (first) {
-        fprintf(stderr, "[nvn] nvnEventGetValue: event=%p value=0x%" PRIx32 "\n", event, value);
-    }
+    if (!valid) fprintf(stderr, "[nvn] nvnEventGetValue: unknown event or unavailable storage event=%p\n", event);
     return value;
 }
 
@@ -637,27 +602,15 @@ void nvn_event_get_stats(nvn_event_stats *out) {
     pthread_mutex_unlock(&s_event_lock);
 }
 
-/* Where the value of an event lives.
- *
- * The reference host puts the value into the memory the guest gave the
- * event (hle_nvn.c:646), and the replay layer writes the value there when
- * the GPU is done with it. This runtime keeps a copy of the value beside
- * the rest of the event's state, but the address is the same one: the
- * replay layer writes into the guest's own memory, which is where the guest
- * reads it back from. */
+/* The recorder obtains the same validated pool word used by CPU APIs. This
+ * does not resolve GPU work: it records the future GPU signal address. */
 int nvn_event_value_address_of(const void *event, uint64_t *address) {
-    nvn_event_state *slot;
-    nvn_memory_pool_info info;
-    if (!event || !address) return 0;
+    nvn_event_state snapshot; uint64_t value;
+    if (!address || !event_snapshot(event, &snapshot) || !storage_address(&snapshot, &value)) return 0;
     pthread_mutex_lock(&s_event_lock);
-    slot = event_find((void *)(uintptr_t)event, 0);
-    if (!slot || !slot->initialized) {
-        pthread_mutex_unlock(&s_event_lock);
-        return 0;
-    }
+    int current = event_current_locked(&snapshot);
     pthread_mutex_unlock(&s_event_lock);
-    if (!nvn_memory_pool_info_of(slot->memory_pool, &info)) return 0;
-    if (!info.mem) return 0;
-    *address = (uint64_t)(uintptr_t)(info.mem + slot->memory_offset);
+    if (!current) return 0;
+    *address = value;
     return 1;
 }

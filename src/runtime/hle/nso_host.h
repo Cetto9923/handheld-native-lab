@@ -20,6 +20,7 @@ void nso_host_set_extension_resolver(nso_import_fn resolver);
  * Link libc++abi (plus its platform dependencies); no dlsym export is required.
  * Other hosts can exercise the same path with NSO_WITH_CXX_GUARDS=1. */
 uint64_t nso_host_resolve(uint32_t index,const char *name);
+int nso_host_vsnprintf(char *out, size_t bytes, const char *format, const void *guest_va_list);
 struct nn_uuid { uint64_t w0, w1; };
 struct nn_uuid nso_host_generate_uuid(void);
 struct nn_location_name { char name[36]; };
@@ -31,6 +32,7 @@ uint32_t nso_host_time_load_timezone_rule(void *rule, const struct nn_location_n
 int nso_host_time_get_day_of_week(int y, int m, int d);
 int64_t nso_host_os_get_system_tick_frequency(void);
 int64_t nso_host_os_get_system_tick(void);
+int64_t nso_host_os_convert_to_timespan(int64_t ticks);
 struct nn_calendar_time {
     int16_t year;
     int8_t month;
@@ -161,6 +163,17 @@ int32_t nso_host_fs_mount_rom(const char *name, void *buffer, size_t size);
 int nso_host_fs_is_rom_mounted(const char *name);
 const char *nso_host_fs_get_rom_mount_path(const char *name);
 int32_t nso_host_fs_unmount(const char *name);
+struct nso_local_uid;
+int32_t nso_host_fs_set_save_root(const char *path);
+bool nso_host_fs_is_save_data_existing(uint64_t application,const struct nso_local_uid *uid);
+int32_t nso_host_fs_ensure_save_data(const struct nso_local_uid *uid);
+int32_t nso_host_fs_mount_save_data(const char *name, const struct nso_local_uid *uid);
+int32_t nso_host_fs_mount_save_data_read_only(const char *name, uint64_t app_id, const struct nso_local_uid *uid);
+int32_t nso_host_fs_extend_save_data(const struct nso_local_uid *uid, int64_t save_size, int64_t journal_size);
+int32_t nso_host_fs_commit_save_data(const char *name);
+int32_t nso_host_fs_create_file(const char *path, int64_t size);
+int32_t nso_host_fs_get_save_data_size(int64_t *size, int64_t *journal, const struct nso_local_uid *uid);
+int32_t nso_host_fs_get_free_space_size(int64_t *size, const char *path);
 
 typedef struct {
     void *handle;
@@ -205,6 +218,8 @@ int32_t nso_host_fs_mount_add_on_content(const char *name, int32_t target_index,
 void nso_host_aoc_get_add_on_content_list_changed_event(void *out_event);
 
 void nso_host_os_wait_system_event(void *event);
+void nso_host_os_bind_system_event(void *event);
+bool nso_host_os_try_wait_system_event(void *event);
 void nso_host_os_signal_system_event(void *event);
 void nso_host_os_destroy_system_event(void *event);
 
@@ -247,11 +262,26 @@ int32_t nso_host_socket_event_fd_write(int32_t fd, uint64_t value);
 int32_t nso_host_socket_event_fd_read(int32_t fd, uint64_t *out_value);
 int32_t nso_host_socket_close(int32_t fd);
 int32_t nso_host_socket_get_last_error(void);
+void nso_host_socket_set_last_error(int32_t error);
 int32_t nso_host_socket_poll(void *fds, uint64_t count, int32_t timeout_ms);
 int32_t nso_host_socket_poll_c(void *fds, int32_t count, int32_t timeout_ms);
 
 int32_t nso_host_account_initialize(void);
 bool nso_host_account_is_initialized(void);
+/* Runtime-local offline profile, not a Nintendo account or credential. The
+ * 16-byte UID and 24-byte handle match nxnative's SDK account bridge. */
+struct nso_local_uid { uint64_t words[2]; };
+struct nso_local_user_handle { uint64_t words[3]; };
+bool nso_host_account_try_open_preselected_user(struct nso_local_user_handle *out);
+uint32_t nso_host_account_get_user_id(struct nso_local_uid *out, const struct nso_local_user_handle *handle);
+void nso_host_account_close_user(const struct nso_local_user_handle *handle);
+int32_t nso_host_account_push_open_users(void);
+int32_t nso_host_account_pop_open_users(int32_t *out_count, struct nso_local_user_handle *out_handles, int32_t max_handles);
+
+int nso_host_setjmp(void *env);
+void nso_host_longjmp(void *env, int val);
+int nso_host_sigsetjmp(void *env, int savemask);
+void nso_host_siglongjmp(void *env, int val);
 
 typedef struct {
     char code[8];
@@ -309,13 +339,17 @@ bool nso_host_hid_mouse_initialized(void);
  * The three setters take their argument in w0 (the guest passes 1, 1 and 2)
  * and their result is never consumed.
  *
- * GetCurrentFocusState reports 0 and never changes it. The guest compares the
- * value only against 3 - the state it treats as "something else holds the
- * foreground" - and separately compares it with the value it stored on the
- * previous call, so a stable non-3 value is what a foreground Android app
- * must report. The full enumerator list is not available in-tree, so the stub
- * does not claim that 0 carries any particular name. */
+ * Android focus callbacks now supply 1 (focused), 2 (unfocused), or 3
+ * (background), matching the reference host. Focus notifications are queued
+ * only when requested; an empty TryPop returns false and leaves output alone.
+ * Operation/performance changes have no host producer yet. */
+void nso_host_oe_enter_exit_section(void);
+void nso_host_oe_leave_exit_section(void);
+bool nso_host_oe_host_exit_ready(bool request);
 uint32_t nso_host_oe_get_current_focus_state(void);
+int64_t nso_host_oe_get_program_total_active_time(void);
+void nso_host_oe_set_host_focus(uint32_t state);
+bool nso_host_oe_try_pop_notification_message(uint32_t *out);
 void nso_host_oe_set_performance_mode_changed_notification_enabled(bool enabled);
 void nso_host_oe_set_operation_mode_changed_notification_enabled(bool enabled);
 void nso_host_oe_set_focus_handling_mode(int32_t mode);
@@ -393,6 +427,8 @@ void nso_host_vi_open_default_display(nso_vi_display **out_display);
 void nso_host_vi_get_display_vsync_event(void *event, nso_vi_display *display);
 void nso_host_vi_create_layer(nso_vi_layer **out_layer, nso_vi_display *display);
 void nso_host_vi_get_native_window(void **out_window, nso_vi_layer *layer);
+uint32_t nso_host_vi_get_latest_frame_number(uint64_t *out_frame_number, const void *layer);
+int nso_host_vi_list_frame_history(void *out_frame_infos, int count, const void *layer);
 /* Raises the vsync event of the display the guest opened. This is a host
  * entry point, not a guest import: it may only be called after a real
  * present, because the event stands for a frame that was actually drawn. */
