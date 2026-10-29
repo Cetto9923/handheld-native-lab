@@ -1,0 +1,64 @@
+--- a/src/graphics/nvn_vulkan/engine/xbg_game.cpp
++++ b/src/graphics/nvn_vulkan/engine/xbg_game.cpp
+@@ -1734,6 +1734,45 @@
+ bool read_preflight=true;
+ bool defer_query_preflight=true;
+ void preflight_cpu_reads(){if(read_preflight && (!pending_writebacks.empty() || (!defer_query_preflight && !pending_reports.empty())))resolve_pending();}
++// A small CPU write needs its producers, reports and events to finish, but
++// does not require unrelated work in the current command buffer to be submitted.
++// Use the same queue-ordered slot retirement as guest fence completion. Mode 2
++// additionally performs the original full drain and compares the CPU bytes.
++int clear_range_wait_mode=0;
++uint64_t clear_range_waits=0,clear_range_checks=0,clear_range_mismatches=0;
++bool retire_cpu_write_producers(uint64_t address,uint64_t bytes){
++    if(!clear_range_wait_mode || bytes>65536 || capture.active || capture.probe || provenance_file)return false;
++    bool image=false;for_images_overlapping(address,bytes,[&](Image &){image=true;});if(image)return false;
++    std::vector<Slot*> targets;
++    auto add=[&](const void *slot){Slot *s=const_cast<Slot*>(static_cast<const Slot*>(slot));
++        if(!s || s->recording || !s->pending)return false;
++        if(std::find(targets.begin(),targets.end(),s)==targets.end())targets.push_back(s);return true;};
++    for(auto &w:pending_writebacks)if(xbg_wb_overlaps(address,bytes,w.addr,w.bytes)){
++        if(w.owner || !add(w.slot))return false;
++    }
++    if(targets.empty())return false;
++    for(auto &r:pending_reports)if(xbg_wb_overlaps(address,bytes,r.addr,sizeof(NVNcounterData)) && !add(r.slot))return false;
++    for(auto *events:{&pending_events,&recording_events})
++        for(auto &e:*events)if(xbg_wb_overlaps(address,bytes,e.addr,4) && !add(e.slot))return false;
++    const bool recording=slots[slot_index].recording;uint64_t start=timing_clock();unsigned retired=0;
++    while(std::any_of(targets.begin(),targets.end(),[](Slot *s){return s->pending;}) && retired<slot_count){
++        Slot *oldest=oldest_pending();if(!oldest)return false;
++        SiteScope site(SITE_GPU_SYNC,true);retire_slot(*oldest);++retired;
++    }
++    for(auto &w:pending_writebacks)if(xbg_wb_overlaps(address,bytes,w.addr,w.bytes))return false;
++    for(auto &r:pending_reports)if(xbg_wb_overlaps(address,bytes,r.addr,sizeof(NVNcounterData)))return false;
++    for(auto *events:{&pending_events,&recording_events})
++        for(auto &e:*events)if(xbg_wb_overlaps(address,bytes,e.addr,4))return false;
++    ++clear_range_waits;
++    if(clear_range_wait_mode==2){
++        std::vector<uint8_t> expected(size_t(bytes),0);memcpy(expected.data(),reinterpret_cast<const void*>(address),size_t(bytes));
++        resolve_pending();submit_slots(true);++clear_range_checks;
++        if(memcmp(expected.data(),reinterpret_cast<const void*>(address),size_t(bytes))){++clear_range_mismatches;clear_range_wait_mode=0;}
++    }
++    if(clear_range_waits<=12 || !(clear_range_waits%120) || clear_range_mismatches)
++        xbg_logf("NVN CLEAR_RANGE_WAIT calls=%llu mode=%d retired=%u currentRecording=%u bytes=%llu wait_ms=%.3f checks=%llu mismatches=%llu",(unsigned long long)clear_range_waits,clear_range_wait_mode,retired,unsigned(recording),(unsigned long long)bytes,double(timing_clock()-start)/1e6,(unsigned long long)clear_range_checks,(unsigned long long)clear_range_mismatches);
++    return !clear_range_mismatches;
++}
+ void cpu_access(uint64_t address,uint64_t bytes,unsigned why){
+     if(!bytes)return;
+     need(xbg_wb_range_valid(address,bytes),"CPU access range overflow");
+@@ -1747,6 +1786,7 @@
+             }
+         }
+     }
++    if(why==4 && retire_cpu_write_producers(address,bytes)){++perf.why_access;++perf.access_by[why];++perf.sync_writeback;return;}
+     for(auto &w:pending_writebacks)if(xbg_wb_overlaps(address,bytes,w.addr,w.bytes)){probe_cpu_sync(address,bytes,why,w.addr,w.bytes);++perf.why_access;if(why<12)++perf.access_by[why];resolve_pending();return;}
+     // GPU reads of counter memory (snapshots) see the last resolved report, i.e.
+     // one frame of latency for occlusion-driven effects instead of a full stall.
+@@ -4548,6 +4588,7 @@
+     fold_completion_wait_stats();completion_wait_enabled=completion_wait_default;
+     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *f=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-owned-input-copy").c_str(),"rb");owned_input_copy_enabled=true;if(f){owned_input_copy_enabled=fgetc(f)!='0';fclose(f);}xbg_logf("NVN owned indexed input copy=%d",int(owned_input_copy_enabled));}
+     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *f=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-clear-overwrite-probe").c_str(),"rb");clear_overwrite_probe=false;if(f){clear_overwrite_probe=fgetc(f)=='1';fclose(f);}xbg_logf("NVN temporary clear-overwrite diagnostic=%d",int(clear_overwrite_probe));}
++    {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *f=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-clear-range-wait").c_str(),"rb");clear_range_wait_mode=0;if(f){int v=fgetc(f);if(v=='1' || v=='2')clear_range_wait_mode=v-'0';fclose(f);}clear_range_waits=clear_range_checks=clear_range_mismatches=0;xbg_logf("NVN clear range wait mode=%d (0=original,1=producer,2=validate)",clear_range_wait_mode);}
+     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *f=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-texture-lifecycle").c_str(),"rb");texture_lifecycle_enabled=true;if(f){texture_lifecycle_enabled=fgetc(f)!='0';fclose(f);}xbg_logf("NVN texture lifecycle retirement=%d",int(texture_lifecycle_enabled));}
+     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');std::string base=cut==std::string::npos?dir:dir.substr(0,cut);FILE *g=fopen((base+"/gfx-indexed-resident").c_str(),"rb");gpu_indexed_enabled=true;gpu_indexed_draws=0;if(g){gpu_indexed_enabled=fgetc(g)!='0';fclose(g);}FILE *m=fopen((base+"/gfx-indirect-proof").c_str(),"rb");indirect_diag_enabled=false;indirect_proof_checks=indirect_proof_mismatches=0;if(m){indirect_diag_enabled=fgetc(m)=='1';fclose(m);}indirect_proof_enabled=gpu_indexed_enabled || indirect_diag_enabled;xbg_logf("NVN indirect-template proof=%d GPU-indexed-resident=%d",int(indirect_proof_enabled),int(gpu_indexed_enabled));}
+     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-attachment-barrier").c_str(),"rb");attachment_barrier_enabled=true;attachment_barriers_deferred=0;if(m){attachment_barrier_enabled=fgetc(m)!='0';fclose(m);}xbg_logf("NVN attachment-only barrier defer=%d",int(attachment_barrier_enabled));}
