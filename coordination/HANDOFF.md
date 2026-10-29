@@ -1,3 +1,29 @@
+## 23:50 P0 崩溃已修；野外实测 17 present/s（30Hz 门未达）
+
+**P0**：屏幕熄灭（或 Anbernic 控制面板抢焦点）→ Activity 立刻 onPause → SurfaceView 的 surface 被销毁 →
+`nn::vi::GetNativeWindow` 把空窗口交给 guest → guest 解引用 → SIGSEGV → 每次启动都黑屏死掉。
+证据：guest 日志 `*out_window=NULL` → `nvnWindowInitialize: no platform surface` → `[fault] signal=11`；
+logcat `onPause` 42ms after `onResume` + `surface_destroyed`；`dumpsys power` 显示 `mScreenState=OFF`。
+**修复**：`native_window.c` 新增 `nso_host_native_window_wait_stable()`；`nso_host.c` 的 GetNativeWindow 改等
+稳定窗口（200ms 稳定/60s 上限）不再交 NULL；`nvn_window.c` 的窗口初始化取活的平台窗口。
+修后：屏幕关着不再死，屏幕亮着正常进标题/读档/进战场。
+
+**运动中实测**（屏内 PAD d-pad 连续行走，帧 CSV 取自 guest 自己写的 present 记录）：
+本刀当前树 **17.12 present/s**（p50 46.7ms，42 帧 >100ms）；已知顺滑 5683f7e 在**同一包/同一存档/同一场景**
+**16.71 present/s**（p50 42.4ms，40 帧 >100ms）→ **两个构建一样**，30Hz 门两个都没达到，瓶颈在场景本身。
+标题画面测到的 30.00fps 不可信（背景视频每次不同，同族构建 14.8~30.0）。
+每帧时间：gpu 24.3~29.7ms + submit_cpu 11.4~12.6ms + 快照 ~980 hit/~703 miss 每帧（3.6MB/帧）→ 下一个杠杆是快照 miss。
+
+**音频**：guest 的 PCM 连续（有声帧 0.726，最长静音 24ms 均值/37ms 峰值），AudioFlinger underruns=0；
+用户听到的断续在输出端 —— AirPods Pro 3 **未连接**，走手机外放且 STREAM_MUSIC 在 **2/15（≈-30dB）**。
+连上耳机才能判 A2DP 门。
+
+**设备**：主包 7849f7ae（本刀修复版，存档未动；用户原备份 a1c82634 存 .local/…/backup-a1c82634-gamewindow.apk），
+隔离包 de7de719（同代码）。`svc power stayon` 已改回 false。
+
+**未提交**：GameActivity.java 与 xbg_game.cpp 仍混有荣耀那条线的改动，按规矩没有 git add .
+（本次自己新增的 native_window.c/.h、nso_host.c、nvn_window.c 与协调记录已提交）。
+
 ## 23:15 复核检查点：备份已装回、卡顿成因与标题画面度量污染
 
 主包 `org.ffrs.gamewindow` 已装回用户原备份 a1c82634（`install -r`，存档未动）；隔离包 `org.ffrs.perfisolated`

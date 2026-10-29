@@ -3202,11 +3202,18 @@ void nso_host_vi_get_native_window(void **out_window, nso_vi_layer *layer) {
         return;
     }
     nso_vi_display *display = layer->display;
-    void *window = nso_host_native_window_get();
+    /* The guest dereferences this pointer, so a NULL answer is a fault, not a
+     * reply. The Activity publishes the window from surfaceCreated, and the
+     * SurfaceView's surface is torn down and published again when the window
+     * is re-laid out, so the guest can ask in the gap. Wait for the live
+     * window instead of handing out a null one; the wait is bounded and
+     * reported, never silent. */
+    void *window = nso_host_native_window_wait_stable(200, 60000);
     if (!window) {
         *out_window = NULL;
         fprintf(stderr, "[hle] nn::vi::GetNativeWindow: layer=%p display=%p -> *out_window=NULL"
-                        " (the platform has published no window yet; no window is invented)\n",
+                        " (no platform window stayed published for 200 ms within 60 s;"
+                        " the guest will fault on it)\n",
                 (void *)layer, (void *)display);
         return;
     }

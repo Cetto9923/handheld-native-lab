@@ -15,9 +15,12 @@
 #include "nvn_engine.h"
 #include "nvn_sync.h"
 
+#include "native_window.h"
+
 #include <inttypes.h>
 #include <pthread.h>
 #include <stdio.h>
+#include <time.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -309,7 +312,22 @@ int nvn_window_initialize(void *window, const void *builder, int flags) {
         return 0;
     }
     w->device = b->device;
-    w->native_window = b->native_window;
+    /* The guest hands over the window it got from nn::vi::GetNativeWindow. The
+     * Activity replaces its Surface when an overlay takes the foreground, so
+     * that window can already be gone when the guest builds its window. Take
+     * the live platform window instead, and wait for one to appear rather
+     * than initialising a window that has nowhere to present. */
+    void *native_window = b->native_window;
+    if (!native_window) {
+        native_window = nso_host_native_window_wait_stable(200, 60000);
+        if (native_window)
+            fprintf(stderr, "[nvn] nvnWindowInitialize: the guest's window was gone; the live platform"
+                            " window %p is used instead\n", native_window);
+        else
+            fprintf(stderr, "[nvn] nvnWindowInitialize: no platform window stayed published for 200 ms"
+                            " within 60 s; the window is initialised without a surface\n");
+    }
+    w->native_window = native_window;
     w->flags = (uint32_t)flags;
     w->present_interval = b->present_interval;
     w->num_textures = b->num_textures;
@@ -327,8 +345,8 @@ int nvn_window_initialize(void *window, const void *builder, int flags) {
     w->swapchain = NULL;
     w->width = 0;
     w->height = 0;
-    if (b->native_window && backend && backend->create_window_surface) {
-        if (backend->create_window_surface(nvn_device_state_handle(), b->native_window, &width, &height,
+    if (native_window && backend && backend->create_window_surface) {
+        if (backend->create_window_surface(nvn_device_state_handle(), native_window, &width, &height,
                                            &surface, &swapchain)) {
             w->surface = surface;
             w->swapchain = swapchain;
@@ -347,7 +365,7 @@ int nvn_window_initialize(void *window, const void *builder, int flags) {
 
     fprintf(stderr, "[nvn] nvnWindowInitialize: window=%p builder=%p device=%p native_window=%p "
                     "textures=%u active=%u present_interval=%u surface=%p swapchain=%p size=%ux%u -> true\n",
-            window, builder, b->device, b->native_window, b->num_textures, b->num_active_textures,
+            window, builder, b->device, native_window, b->num_textures, b->num_active_textures,
             b->present_interval, surface, swapchain, width, height);
     if (!created_surface)
         fprintf(stderr, "[nvn] nvnWindowInitialize: no platform surface for this window; a frame has "
