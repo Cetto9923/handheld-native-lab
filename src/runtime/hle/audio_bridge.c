@@ -13,8 +13,11 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <time.h>
+#include <sys/mman.h>
 #if defined(__ANDROID__)
 #include <aaudio/AAudio.h>
+#include <sys/syscall.h>
 #endif
 static pthread_mutex_t audio_lock = PTHREAD_MUTEX_INITIALIZER;
 static void *device_events[8];
@@ -27,6 +30,22 @@ _Static_assert(sizeof(audio_buffer)==40&&offsetof(audio_buffer,data)==8&&
     offsetof(audio_buffer,offset)==32,"verified retail AudioOutBuffer ABI");
 static char diagnostic_directory[PATH_MAX];
 static unsigned diagnostic_serial;
+/* Opt-in wall-time evidence: PCM alone does not show gaps between writes.
+ * Shared mapped records survive force-stop without per-record stdio or a
+ * change to the stream's buffering, timeout, or completion behavior. */
+typedef struct {
+    uint64_t begin_ns,end_ns,written_frames,submitted_frames;
+    int32_t event,result;
+    uint32_t ask,pending,released,busy,state,tid;
+} audio_timing_row;
+typedef struct {
+    char magic[8];
+    uint32_t row_bytes,max_rows,written,dropped;
+    uint64_t start_ns,reserved[4];
+    audio_timing_row rows[65536];
+} audio_timing;
+_Static_assert(sizeof(audio_timing_row)==64 && offsetof(audio_timing,rows)==64,
+               "audio timing file layout");
 typedef struct {
     void *key, *event;
     int channels, rate;
@@ -46,10 +65,48 @@ typedef struct {
      * what a listener hears as a stutter. */
     uint64_t level_window_frames,level_window_nonzero,level_window_max_zero_run,level_zero_run,level_window_peak;
     FILE *capture;
+    _Atomic(audio_timing *) timing;
 #if defined(__ANDROID__)
     AAudioStream *stream;
 #endif
 } audio_output;
+static uint64_t audio_now_ns(void) {
+    struct timespec ts;clock_gettime(CLOCK_MONOTONIC,&ts);
+    return (uint64_t)ts.tv_sec*1000000000ull+(uint64_t)ts.tv_nsec;
+}
+static uint64_t audio_timing_begin(audio_output *out) {
+    return atomic_load_explicit(&out->timing,memory_order_acquire)?audio_now_ns():0;
+}
+/* Called under out->mutex; event1 append,2 take,3 write,4 empty/state wait,5 release. */
+static void audio_timing_record(audio_output *out,int event,uint64_t begin,uint64_t end,int result,uint32_t ask) {
+    audio_timing *t=atomic_load_explicit(&out->timing,memory_order_acquire);
+    if(!t)return;
+    uint32_t row=__atomic_load_n(&t->written,__ATOMIC_RELAXED);
+    if(row>=t->max_rows){t->dropped++;return;}
+    uint32_t tid=0;
+#if defined(__ANDROID__)
+    tid=(uint32_t)syscall(SYS_gettid);
+#endif
+    t->rows[row]=(audio_timing_row){begin,end?end:audio_now_ns(),out->stats.frames_written,
+        out->stats.submitted_frames,event,result,ask,out->pt-out->ph,out->rt-out->rh,
+        (uint32_t)out->busy,(uint32_t)atomic_load(&out->state),tid};
+    __atomic_store_n(&t->written,row+1,__ATOMIC_RELEASE);
+}
+#if defined(__ANDROID__)
+static void audio_timing_open(audio_output *out,unsigned serial) {
+    char path[PATH_MAX];
+    int n=snprintf(path,sizeof path,"%s/audio-timing-%u.bin",diagnostic_directory,serial);
+    if(n<0 || (size_t)n>=sizeof path)return;
+    int fd=open(path,O_RDWR|O_CREAT|O_EXCL|O_CLOEXEC,0600);if(fd<0)return;
+    if(ftruncate(fd,sizeof(audio_timing))){close(fd);return;}
+    audio_timing *t=mmap(NULL,sizeof(*t),PROT_READ|PROT_WRITE,MAP_SHARED,fd,0);close(fd);
+    if(t==MAP_FAILED)return;
+    memcpy(t->magic,"FFAU001",8);t->row_bytes=sizeof(audio_timing_row);
+    t->max_rows=65536;t->start_ns=audio_now_ns();
+    atomic_store_explicit(&out->timing,t,memory_order_release);
+    fprintf(stderr,"[audio] wall timing path=%s rows=%u row_bytes=%u\n",path,t->max_rows,t->row_bytes);
+}
+#endif
 static audio_output *outputs[8];
 static audio_output *find_output(const void *key) {
     pthread_mutex_lock(&audio_lock);
@@ -170,10 +227,14 @@ static void *audio_worker(void *argument) {
     audio_output *out=argument;
     pthread_mutex_lock(&out->mutex);
     while(!out->closing) {
-        while(!out->closing && (!atomic_load(&out->state) || out->ph==out->pt))
+        while(!out->closing && (!atomic_load(&out->state) || out->ph==out->pt)) {
+            uint64_t begin=audio_timing_begin(out);
             pthread_cond_wait(&out->condition,&out->mutex);
+            audio_timing_record(out,4,begin,0,0,0);
+        }
         if(out->closing)break;
         audio_buffer *buffer=out->pending[out->ph++%64];out->active=buffer;out->busy=1;
+        audio_timing_record(out,2,audio_timing_begin(out),0,0,0);
         pthread_mutex_unlock(&out->mutex);
         uint64_t position=0;
 #if defined(__ANDROID__)
@@ -204,8 +265,11 @@ static void *audio_worker(void *argument) {
             int32_t ask=(int32_t)(frames-position>1024?1024:frames-position);
             int64_t timeout_ns = 100000000ll; /* 100ms: generous for Bluetooth A2DP packet scheduling */
 
+            uint64_t write_begin=audio_timing_begin(out);
             aaudio_result_t wrote=AAudioStream_write(out->stream,(const int16_t*)buffer->data+position*out->channels,ask,timeout_ns);
+            uint64_t write_end=write_begin?audio_now_ns():0;
             pthread_mutex_lock(&out->mutex);out->stats.write_calls++;
+            audio_timing_record(out,3,write_begin,write_end,wrote,(uint32_t)ask);
             if(wrote == AAUDIO_ERROR_TIMEOUT) {
                 out->stats.zero_writes++;
                 pthread_mutex_unlock(&out->mutex);
@@ -247,6 +311,7 @@ static void *audio_worker(void *argument) {
         pthread_mutex_lock(&out->mutex);
         out->frames_written+=position;out->active=NULL;out->busy=0;
         release_buffer(out,buffer);
+        audio_timing_record(out,5,audio_timing_begin(out),0,0,0);
         pthread_cond_broadcast(&out->condition);
         void *event=out->event;
         pthread_mutex_unlock(&out->mutex);
@@ -264,6 +329,7 @@ static uint32_t open_output_event(void *key,void *event,const void *parameter) {
     if(!rate)rate=48000;if(!channels)channels=2;
     if(rate<8000 || rate>192000 || channels>8)return 0x2a2;
     audio_output *out=calloc(1,sizeof(*out));if(!out)return 0x2a2;
+    atomic_init(&out->timing,NULL);
     out->key=key;out->event=event;out->rate=rate;out->channels=channels;
     aaudio_result_t status=open_aaudio_stream(out);
     if(status!=AAUDIO_OK || !out->stream) {
@@ -285,6 +351,7 @@ static uint32_t open_output_event(void *key,void *event,const void *parameter) {
     if(diagnostic_directory[0]){
         char path[PATH_MAX];int n=snprintf(path,sizeof(path),"%s/audio-%u-%dHz-%dch-s16le.pcm",diagnostic_directory,++diagnostic_serial,rate,channels);
         if(n>0&&(size_t)n<sizeof(path)){int fd=open(path,O_WRONLY|O_CREAT|O_EXCL|O_CLOEXEC,0600);if(fd>=0){out->capture=fdopen(fd,"wb");if(!out->capture)close(fd);}}
+        audio_timing_open(out,diagnostic_serial);
     }
     pthread_mutex_unlock(&audio_lock);
     mirror_output(out);
@@ -321,6 +388,7 @@ static void close_output(void *key) {
     pthread_mutex_lock(&out->mutex);out->closing=1;pthread_cond_broadcast(&out->condition);pthread_mutex_unlock(&out->mutex);
     pthread_join(out->worker,NULL);
     log_stats(out,"close");if(out->capture){fclose(out->capture);out->capture=NULL;}
+    {audio_timing *t=atomic_exchange(&out->timing,NULL);if(t)munmap(t,sizeof(*t));}
 #if defined(__ANDROID__)
     AAudioStream_close(out->stream);
 #endif
@@ -340,6 +408,7 @@ static uint64_t buffer_capacity(const audio_buffer *b) {return b?b->capacity:0;}
 static int append_buffer(void *key,audio_buffer *buffer) {
     audio_output *out=find_output(key);
     if(!out)return 0;
+    uint64_t append_begin=audio_timing_begin(out);
     pthread_mutex_lock(&out->mutex);
     int ok=buffer&&buffer->data&&buffer->bytes&&buffer->bytes<=buffer->capacity&&
         buffer->bytes%(2u*out->channels)==0&&!out->closing&&
@@ -355,6 +424,7 @@ static int append_buffer(void *key,audio_buffer *buffer) {
         if(out->stats.rejected_buffers<=8)fprintf(stderr,"[audio] append rejected key=%p buffer=%p data=%p capacity=%llu bytes=%llu pending=%u released=%u active=%u\n",key,(void*)buffer,buffer?buffer->data:NULL,
             (unsigned long long)(buffer?buffer->capacity:0),(unsigned long long)(buffer?buffer->bytes:0),out->pt-out->ph,out->rt-out->rh,out->busy);
     }
+    audio_timing_record(out,1,append_begin,0,ok,0);
     pthread_mutex_unlock(&out->mutex);return ok;
 }
 static audio_buffer *released_buffer(void *key) {
