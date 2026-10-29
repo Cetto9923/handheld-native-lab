@@ -4,7 +4,7 @@ struct ProbeSurface {
     std::shared_ptr<Image> image;view_t view{};bool has_view=false;std::string role;
 };
 struct ProbeState {
-    bool waiting=false,lut=false;std::string base,group;unsigned groups=0,draws=0,snapshots=0;
+    bool waiting=false,lut=false;std::string base,group;unsigned groups=0,draws=0,snapshots=0;uint64_t extra_buffer_bytes=0;
     std::vector<ProbeSurface> outputs,inputs;std::map<std::vector<uint64_t>,std::string> saved;
 } probe;
 bool probe_is_active(){return capture.probe && capture.trace && stats.presents.load()+1==capture.frame;}
@@ -113,6 +113,14 @@ void probe_draw_begin(int count,unsigned instances,unsigned base_instance){
     for(int i=0;i<state.rt.n;i++)key+=":"+std::to_string(state.rt.color[i]?state.rt.color[i]->serial:0);
     key+=":depth:"+std::to_string(state.rt.depth?state.rt.depth->serial:0);
     if(key!=probe.group){probe_flush();probe.group=key;++probe.groups;capture.events=probe.groups;capture_log("PROBE_GROUP group=%u kind=draw vs=%s fs=%s colors=%d depth=%llu mask=%#x depthTest=%u depthWrite=%u depthFunc=%u viewport=%g,%g,%g,%g",probe.groups,state.shader[0]?state.shader[0]->key.c_str():"none",state.shader[4]?state.shader[4]->key.c_str():"none",state.rt.n,(unsigned long long)(state.rt.depth?state.rt.depth->serial:0),state.mask.mask,unsigned(state.ds.dt),unsigned(state.ds.dw),unsigned(state.ds.df),state.viewport.x,state.viewport.y,state.viewport.width,state.viewport.height);}
+    capture_log("PROBE_COLOR_STATE group=%u draw=%u blendEnable=%#x logicOp=%u alphaFunc=%u constants=%g,%g,%g,%g",probe.groups,probe.draws+1,unsigned(state.color.blend_en),unsigned(state.color.logic_op),unsigned(state.color.alpha_func),state.blend_color[0],state.blend_color[1],state.blend_color[2],state.blend_color[3]);
+    for(int i=0;i<state.rt.n;i++){
+        const blend_st &b=state.blend[i];xbg_draw2d converted{};
+        uint32_t mask=state.shader[4]?((state.mask.mask>>(4*i))&15):0;
+        int rc=xbg_2d_blend_from_nvn(&converted,(state.color.blend_en>>i)&1,b.src_rgb,b.dst_rgb,b.src_a,b.dst_a,b.eq_rgb,b.eq_a,mask);
+        const auto &v=converted.blend;
+        capture_log("PROBE_BLEND group=%u draw=%u target=%d enabled=%u nvnRGB=%u/%u/%u nvnAlpha=%u/%u/%u mask=%#x conversion=%d vkRGB=%u/%u/%u vkAlpha=%u/%u/%u",probe.groups,probe.draws+1,i,unsigned((state.color.blend_en>>i)&1),unsigned(b.src_rgb),unsigned(b.dst_rgb),unsigned(b.eq_rgb),unsigned(b.src_a),unsigned(b.dst_a),unsigned(b.eq_a),mask,rc,unsigned(v.srcColorBlendFactor),unsigned(v.dstColorBlendFactor),unsigned(v.colorBlendOp),unsigned(v.srcAlphaBlendFactor),unsigned(v.dstAlphaBlendFactor),unsigned(v.alphaBlendOp));
+    }
     ++probe.draws;capture_log("PROBE_DRAW group=%u count=%d instances=%u baseInstance=%u gs=%s stencil=%u sf=%u/%u ref=%u/%u cmpMask=%#x/%#x writeMask=%#x/%#x opsF=%u/%u/%u opsB=%u/%u/%u",probe.groups,count,instances,base_instance,state.shader[3]?state.shader[3]->key.c_str():"none",unsigned(state.ds.st),unsigned(state.ds.sf_f),unsigned(state.ds.sf_b),state.stencil_ref[0],state.stencil_ref[1],state.stencil_compare[0],state.stencil_compare[1],state.stencil_write[0],state.stencil_write[1],unsigned(state.ds.fail_f),unsigned(state.ds.zfail_f),unsigned(state.ds.zpass_f),unsigned(state.ds.fail_b),unsigned(state.ds.zfail_b),unsigned(state.ds.zpass_b));
 }
 void probe_draw_end(Pass &pass){
@@ -127,7 +135,16 @@ void probe_draw_end(Pass &pass){
     }
 }
 void probe_buffer(const std::string &shader,unsigned stage,unsigned binding,unsigned element,const void *data,size_t bytes){
-    if(!probe_is_active() || (!probe.lut && shader!="062df44b75d37d76"))return;
+    if(!probe_is_active())return;
+    const bool effect=shader=="f62f4204ee4db0da" || shader=="9b0acd9875f7c44a" || shader=="5fe1d12402b04134" || shader=="b0284572b5f180f2" || shader=="1e222af40b26bd25" || shader=="9528f530e1c95ce5";
+    if(!probe.lut && shader!="062df44b75d37d76"){
+        if(!effect || bytes>65536 || bytes>8ull*1024*1024-probe.extra_buffer_bytes)return;
+        // GPU-resident storage is not necessarily coherent in the CPU mapping.
+        // Capture only the already-owned uniform/support snapshots here.
+        if(!state.shader[stage])return;
+        for(const auto &b:state.shader[stage]->bindings)if(b.binding==binding && b.type==VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)return;
+        probe.extra_buffer_bytes+=bytes;
+    }
     char label[160];snprintf(label,sizeof(label),"probe-ub-g%u-d%u-s%u-b%u-e%u",probe.groups,probe.draws,stage,binding,element);
     capture_log("PROBE_BUFFER group=%u shader=%s stage=%u binding=%u element=%u bytes=%zu label=%s",probe.groups,shader.c_str(),stage,binding,element,bytes,label);
     capture.active=true;capture_data(label,data,bytes);capture.active=false;
@@ -193,7 +210,7 @@ void probe_start(uint64_t frame,bool lut){
     const std::string directory=probe.base+"/codex-probe-"+std::to_string(getpid());
     if(mkdir(directory.c_str(),0700) && errno!=EEXIST){xbg_logf("CODEX_PROBE mkdir failed errno=%d",errno);probe.waiting=false;return;}
     FILE *trace=fopen((directory+"/capture.txt").c_str(),"wb");if(!trace){probe.waiting=false;return;}
-    probe.waiting=false;probe.lut=lut;probe.group.clear();probe.groups=probe.draws=probe.snapshots=0;probe.outputs.clear();probe.inputs.clear();probe.saved.clear();
+    probe.waiting=false;probe.lut=lut;probe.group.clear();probe.groups=probe.draws=probe.snapshots=0;probe.extra_buffer_bytes=0;probe.outputs.clear();probe.inputs.clear();probe.saved.clear();
     capture.directory=directory;capture.trace=trace;capture.frame=frame;capture.bytes=0;capture.events=0;capture.active=false;capture.probe=true;
     capture_log("PROBE version=3 frame=%llu lutProducer=%u rawReadback=full sampleGridMax=128x72x32 maxSnapshots=1024 maxFileBytes=%llu",(unsigned long long)capture.frame,unsigned(lut),(unsigned long long)capture_limit);
     xbg_logf("CODEX_PROBE armed frame=%llu directory=%s lutProducer=%u",(unsigned long long)capture.frame,directory.c_str(),unsigned(lut));

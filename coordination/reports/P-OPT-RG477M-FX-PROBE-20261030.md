@@ -1,0 +1,15 @@
+# RG477M shield diagnosis: bounded default-off state capture
+
+The body-enclosing translucent shield remains unresolved. This checkpoint adds diagnostic data only; it does not change materials, blend conversion, guest code, normal rendering, or game time.
+
+The existing one-frame probe now records each draw's NVN RGB/alpha blend factors, operations, mask, constants, and the existing converter's Vulkan result. It can additionally capture owned uniform/support snapshots for three selected transparent VS/FS pairs, bounded to 64KiB per binding and 8MiB extra within the existing 64MiB total budget. It deliberately skips GPU-resident storage because a CPU mapping alone does not establish coherence. All new work is guarded by the explicit active probe.
+
+Public basis consulted before modification: Khronos Vulkan-Docs v1.3.296, immutable commit `7353f6ced118815d61852a739b9eae6f0055d77a`, [framebuffer/blending](https://github.com/KhronosGroup/Vulkan-Docs/blob/7353f6ced118815d61852a739b9eae6f0055d77a/chapters/framebuffer.adoc), Apache-2.0/CC-BY-4.0 as applicable. No upstream source copied. The [Unity producer's soft-particle depth issue](https://issuetracker.unity3d.com/issues/quest-materials-are-not-rendering-in-player-when-single-pass-instanced-slash-multi-view-is-selected-and-surface-type-is-set-to-transparent) is a cross-engine investigation lesson, not game compatibility evidence.
+
+Actual RG477M01445122 results: same prior isolated372a candidate, paced audio1, target30, fence0, legacywaitall0. Source PCM and captured system output improved substantially (audio report a7eb0ed). Baseline runtime already reports async pipelines0/skips0, so the requested async0 replay is not a valid ON/OFF pair. Depth-aspect1→0 replay completed without confirming restoration of the shield; restored1. No full visual or A2DP pass.
+
+Blend-only diagnostic APK `2c60e8bc4fe9c46ed320d3438b1f4d85cc7f88da4369491cb3ec03afb44318a8`, build92348 exit0, installed SHA verified. Probe frame1982/PID13620: END confirmed, 130 groups, 34,826,136 bytes, 342 blend records. White mage and fallen black mage are in view, but the pre-arm screenshot is outside the purple flash. This cannot establish a flash-specific root cause. One RGBA16F transparent target has zero RGB/alpha1; that alone does not identify it as the shield. Scene viewport1024x576 and final1280x720 recorded separately. Diagnostic stalls do not count as audio/FPS acceptance.
+
+Uniform diagnostic build9309 exit0, APK `7b32be80a9d6a151ef50bb2acc2a474c4d628b60966244abaa68ac071f09ba4a`, signature/device SHA verified. A second capture triggers from actual purple pixels, retaining every detector image and timestamp. Local evidence/commands/manifests: `.local/rg477m-opt-30hz-game-mode/audio-paced-transport-20261030/fx-probe/`, `shield-probe25/`, and `shield-probe-flash/`.
+
+Main original APK and saves were not replaced or cleared. Existing unrelated WIP preserved. Root is sole writer/operator. No push; no playable claim. Full standing audio checklist remains in local RESULT; physical A/V sync, A2DP ear/route reopening, moving field/battle 30Hz, full effects and body shield gates remain open.
