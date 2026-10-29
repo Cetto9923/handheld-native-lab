@@ -136,7 +136,7 @@ void probe_draw_end(Pass &pass){
 }
 void probe_buffer(const std::string &shader,unsigned stage,unsigned binding,unsigned element,const void *data,size_t bytes){
     if(!probe_is_active())return;
-    const bool effect=shader=="f62f4204ee4db0da" || shader=="9b0acd9875f7c44a" || shader=="5fe1d12402b04134" || shader=="b0284572b5f180f2" || shader=="1e222af40b26bd25" || shader=="9528f530e1c95ce5";
+    const bool effect=shader=="f62f4204ee4db0da" || shader=="9b0acd9875f7c44a" || shader=="5fe1d12402b04134" || shader=="b0284572b5f180f2" || shader=="1e222af40b26bd25" || shader=="9528f530e1c95ce5" || shader=="c2ca757a9f517e96" || shader=="6018ff2b44b763d7";
     if(!probe.lut && shader!="062df44b75d37d76"){
         if(!effect || bytes>65536 || bytes>8ull*1024*1024-probe.extra_buffer_bytes)return;
         // GPU-resident storage is not necessarily coherent in the CPU mapping.
