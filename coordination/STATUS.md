@@ -1,6 +1,6 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-10-30T14:18:55.296017+08:00
+状态事件时间：2026-10-30T14:25:49.296654+08:00
 阶段：USER BASELINE FROZEN: d66706e tag rg477m-baseline-2026.10.30; complete local runtime/source/data backup verified; PRIVATE GitHub source-only snapshot f08cc73 and tag verified. Remaining audio/flicker/battle/full30 gates OPEN; next installer stage recorded.
 总控：Codex /root takeover
 更新方式：按事件更新，没有后台自动刷新。

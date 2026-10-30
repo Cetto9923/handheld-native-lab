@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-10-30T14:18:55.296017+08:00",
+  "updated_at": "2026-10-30T14:25:49.296654+08:00",
   "phase": "USER BASELINE FROZEN: d66706e tag rg477m-baseline-2026.10.30; complete local runtime/source/data backup verified; PRIVATE GitHub source-only snapshot f08cc73 and tag verified. Remaining audio/flicker/battle/full30 gates OPEN; next installer stage recorded.",
   "coordinator": "Codex /root takeover",
   "integration_branch": "work/rg477m-native",
@@ -4324,7 +4324,8 @@
       "full standing audio/A2DP/disconnect/AV sync",
       "battle/full30Hz and longframes",
       "internal720P",
-      "future one-folder multi-device installer"
+      "future one-folder multi-device installer",
+      "screen-off Surface startup lifecycle; asleep launch failed, wake-before-start sameAPK succeeded, not fixed"
     ],
     "source_commit": "d66706e7e521ad295ac17d965c6ed66cbf23d465",
     "published_baseline_commit": "f08cc731e6699be793d98634d1a2acc20923ae00",
@@ -4334,6 +4335,13 @@
     "source_bundle_verify_exit": 0,
     "archive_verify_exit": 0,
     "remote_tree_verified": true,
-    "report": "coordination/reports/P-BASELINE-PRIVATE-20261030.md"
+    "report": "coordination/reports/P-BASELINE-PRIVATE-20261030.md",
+    "final_device_check": {
+      "pid": 18388,
+      "present_rows": 1080,
+      "awake_launch": "title confirmed, target30, probe0, paced1, NONE10",
+      "asleep_launch": "no Surface60s then signal11 offset1455f34, preserved not fixed",
+      "evidence": ".local/baselines/rg477m-baseline-2026.10.30/final-device-check.json"
+    }
   }
 }
