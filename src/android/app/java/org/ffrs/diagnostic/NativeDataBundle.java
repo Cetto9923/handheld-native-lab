@@ -193,6 +193,7 @@ public final class NativeDataBundle {
                 if (progress != null) progress.update(done, total, row.path);
             }
         }
+        cancelled(cancel);
         if (done != total || !required.isEmpty()) throw new IOException("Installed data incomplete");
         return new Installed(root, id, total);
     }

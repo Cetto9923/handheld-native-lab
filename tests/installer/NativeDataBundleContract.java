@@ -152,6 +152,15 @@ public final class NativeDataBundleContract {
         } catch (InterruptedIOException e) { checksumCancelled = true; }
         check(checksumCancelled && stamp == new File(resumed.root,"main.nso").lastModified()
                 && names == resumed.root.list().length, "in-file checksum cancel failed or wrote data"); passed++;
+        final boolean[] cancelAtEnd = {false};
+        boolean endCancelled = false;
+        try {
+            NativeDataBundle.verifyDirectory(resumed.root, mid.contract, true,
+                new NativeDataBundle.Progress() {
+                    public void update(long done, long total, String path) { if (done == total) cancelAtEnd[0] = true; }
+                }, new NativeDataBundle.Cancel() { public boolean requested() { return cancelAtEnd[0]; } });
+        } catch (InterruptedIOException e) { endCancelled = true; }
+        check(endCancelled, "cancellation at final checksum progress was ignored"); passed++;
         File sdk = new File(resumed.root,"sdk.nso"), heldSdk = new File(resumed.root,"sdk.nso.held");
         check(sdk.renameTo(heldSdk), "fixture rename failed");
         boolean missingRejected = false;
