@@ -38,7 +38,8 @@ void probe_flush_queries(){
 }
 void probe_texel_buffer(const std::string &shader,unsigned stage,unsigned binding,unsigned element,
                         const Buffer &source,VkFormat format,uint64_t guest,uint64_t full_bytes,bool resident){
-    if(!probe_is_active() || shader!="b0284572b5f180f2" || stage!=0 || binding!=48 || element!=0)return;
+    const bool geometry=binding==12 || binding==18 || binding==24 || binding==30 || binding==36 || binding==42 || binding==48;
+    if(!probe_is_active() || shader!="b0284572b5f180f2" || stage!=0 || !geometry || element!=0)return;
     const size_t bytes=size_t(std::min<uint64_t>(full_bytes,65536))&~size_t(3);
     if(!source.buffer || (source.offset&3) || !bytes || bytes>source.size ||
        probe.extra_buffer_bytes>8ull*1024*1024 || bytes>8ull*1024*1024-probe.extra_buffer_bytes){
@@ -66,7 +67,7 @@ void probe_flush_texels(){
     for(auto &t:probe.texels){
         t.owned->view.invalidate();char label[160];
         snprintf(label,sizeof(label),"probe-texel-g%u-d%u-s%u-b%u-e%u",t.group,t.draw,t.stage,t.binding,t.element);
-        capture_log("PROBE_TEXEL_DATA group=%u draw=%u shader=%s stage=%u binding=%u element=%u vk=%u guest=%#llx fullBytes=%llu capturedBytes=%zu resident=%u label=%s",t.group,t.draw,t.shader.c_str(),t.stage,t.binding,t.element,unsigned(t.format),(unsigned long long)t.guest,(unsigned long long)t.full_bytes,t.bytes,unsigned(t.resident),label);
+        capture_log("PROBE_TEXEL_DATA group=%u draw=%u shader=%s stage=%u binding=%u element=%u vk=%u guest=%#llx fullBytes=%llu capturedBytes=%zu resident=%u storage=%u label=%s",t.group,t.draw,t.shader.c_str(),t.stage,t.binding,t.element,unsigned(t.format),(unsigned long long)t.guest,(unsigned long long)t.full_bytes,t.bytes,unsigned(t.resident),unsigned(t.binding==12),label);
         capture.active=true;capture_data(label,t.owned->view.mapped,t.bytes);capture.active=false;
     }
     probe.texels.clear(); // Copy fence signalled before allocation destruction.

@@ -2957,6 +2957,10 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                 if(capture.active){char label[100];snprintf(label,sizeof(label),"st%u-bind%u-el%u-buffer",st,b.binding,element);capture_log("BUFFER label=%s shader=%s nvnStage=%u sourceKind=%u slot=%u guest=%p copied=%zu descriptorBytes=%zu bufferOffset=%zu",label,shader.key.c_str(),ns,b.source,slot,data,copy,n,buffer_offset);capture_data(label,static_cast<const uint8_t*>(buffer->mapped)+buffer_offset,n);}
                 if(out.indirect_input && b.binding==41 && b.source==XBG_SOURCE_UNIFORM && element==0 && copy>=16 && indirect_cpu_clean(uint64_t(data),16)){memcpy(out.indirect_input->params,static_cast<const uint8_t*>(buffer->mapped)+buffer_offset,16);out.indirect_input->params_valid=true;}
                 probe_buffer(shader.key,st,b.binding,element,static_cast<const uint8_t*>(buffer->mapped)+buffer_offset,n);
+                if(is_storage && probe_is_active() && buffer_offset<=buffer->size && n<=buffer->size-buffer_offset){
+                    Buffer source=*buffer;source.offset+=buffer_offset;source.size=n;
+                    probe_texel_buffer(shader.key,st,b.binding,element,source,VK_FORMAT_R32_UINT,uint64_t(data),n,false);
+                }
             }else{
                 DESC_SCOPE(ImageLookup);
                 bool img_fast=false,img_cacheable=false;ImgKey ikey{};
