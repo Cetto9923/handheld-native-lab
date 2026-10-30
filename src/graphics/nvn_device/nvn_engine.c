@@ -61,16 +61,18 @@ static int engine_present(void *userdata, void *native_window, VkImage image, Vk
     char reason[256];
     reason[0] = '\0';
     if (!backend || !backend->present_image) {
-        return 0;
+        return -1;
     }
-    if (!backend->present_image(device, (void *)(uintptr_t)image, (uint32_t)format, width, height, crop,
-                                interval, reason, sizeof(reason))) {
+    int outcome = backend->present_image(device, (void *)(uintptr_t)image, (uint32_t)format, width, height, crop,
+                                         interval, reason, sizeof(reason));
+    if (outcome == NVN_PRESENT_SKIPPED) return 1;
+    if (outcome != NVN_PRESENT_QUEUED) {
         static unsigned err_count = 0;
         if (err_count++ < 10) {
             fprintf(stderr, "[nvn] the engine present skipped: %s\n",
                     reason[0] ? reason : "frame dropped");
         }
-        return 0;
+        return -1;
     }
     (void)native_window;
     return 0;

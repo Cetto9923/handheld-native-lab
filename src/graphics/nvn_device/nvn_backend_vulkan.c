@@ -1071,7 +1071,7 @@ static int nvn_vulkan_present_image(nvn_device_state *device, void *image, uint3
     (void)interval;
     if (!st || !image) {
         if (reason && reason_size) snprintf(reason, reason_size, "device or image is NULL");
-        return 1;
+        return NVN_PRESENT_FAILED;
     }
 
     void *cur_win = nso_host_native_window_get();
@@ -1081,7 +1081,7 @@ static int nvn_vulkan_present_image(nvn_device_state *device, void *image, uint3
             nvn_vulkan_destroy_window_surface(device, st->surface, st->swapchain);
         }
         usleep(16000);
-        return 1; /* Drop frame gracefully while in background */
+        return NVN_PRESENT_SKIPPED; /* Drop frame gracefully while in background */
     }
 
     if (!st->present_path_ready || st->swapchain == VK_NULL_HANDLE) {
@@ -1089,7 +1089,7 @@ static int nvn_vulkan_present_image(nvn_device_state *device, void *image, uint3
         void *surf = NULL, *sc = NULL;
         if (!nvn_vulkan_create_window_surface(device, cur_win, &w, &h, &surf, &sc)) {
             usleep(16000);
-            return 1; /* Wait for valid surface/swapchain */
+            return NVN_PRESENT_SKIPPED; /* Wait for valid surface/swapchain */
         }
     }
 
@@ -1104,20 +1104,20 @@ static int nvn_vulkan_present_image(nvn_device_state *device, void *image, uint3
             nvn_vulkan_create_window_surface(device, cur_win, &w, &h, &surf, &sc);
         }
         usleep(16000);
-        return 1; /* Frame dropped during swapchain rebuild */
+        return NVN_PRESENT_SKIPPED; /* Frame dropped during swapchain rebuild */
     }
     if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
         snprintf(detail, sizeof(detail), "vkAcquireNextImageKHR non-fatal code: %d", (int)result);
         if (reason && reason_size) snprintf(reason, reason_size, "%s", detail);
         usleep(16000);
-        return 1;
+        return NVN_PRESENT_FAILED;
     }
     if (index >= st->image_count) {
         snprintf(detail, sizeof(detail), "the swapchain gave the image %u, which is not one of its %u images",
                  index, st->image_count);
         if (reason && reason_size) snprintf(reason, reason_size, "%s", detail);
         usleep(16000);
-        return 1;
+        return NVN_PRESENT_FAILED;
     }
 
     if (crop && crop[2] > 0 && crop[3] > 0) {
@@ -1155,7 +1155,7 @@ static int nvn_vulkan_present_image(nvn_device_state *device, void *image, uint3
         snprintf(detail, sizeof(detail), "vkBeginCommandBuffer failed with %d", (int)result);
         if (reason && reason_size) snprintf(reason, reason_size, "%s", detail);
         fprintf(stderr, "[nvn] vulkan: the present step failed: %s\n", detail);
-        return 0;
+        return NVN_PRESENT_FAILED;
     }
 
     /* The swapchain image is the destination of the copy, so it has to be a
@@ -1237,7 +1237,7 @@ static int nvn_vulkan_present_image(nvn_device_state *device, void *image, uint3
         snprintf(detail, sizeof(detail), "vkEndCommandBuffer failed with %d", (int)result);
         if (reason && reason_size) snprintf(reason, reason_size, "%s", detail);
         fprintf(stderr, "[nvn] vulkan: the present step failed: %s\n", detail);
-        return 0;
+        return NVN_PRESENT_FAILED;
     }
 
     vkResetFences(st->device, 1, &st->fences[index]);
@@ -1259,7 +1259,7 @@ static int nvn_vulkan_present_image(nvn_device_state *device, void *image, uint3
         snprintf(detail, sizeof(detail), "vkQueueSubmit failed with %d", (int)result);
         if (reason && reason_size) snprintf(reason, reason_size, "%s", detail);
         fprintf(stderr, "[nvn] vulkan: the present step failed: %s\n", detail);
-        return 0;
+        return NVN_PRESENT_FAILED;
     }
 
     memset(&present_info, 0, sizeof(present_info));
@@ -1272,17 +1272,17 @@ static int nvn_vulkan_present_image(nvn_device_state *device, void *image, uint3
     result = vkQueuePresentKHR(st->queue, &present_info);
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_ERROR_SURFACE_LOST_KHR) {
         nvn_vulkan_destroy_window_surface(device, st->surface, st->swapchain);
-        return 1;
+        return NVN_PRESENT_SKIPPED;
     }
     if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
         st->present_failures++;
         snprintf(detail, sizeof(detail), "vkQueuePresentKHR failed with %d", (int)result);
         if (reason && reason_size) snprintf(reason, reason_size, "%s", detail);
         fprintf(stderr, "[nvn] vulkan: the present step warning: %s\n", detail);
-        return 1;
+        return NVN_PRESENT_FAILED;
     }
     st->frames_presented++;
-    return 1;
+    return NVN_PRESENT_QUEUED;
 }
 
 /* Step two of the present path: open the render pass on the image and clear

@@ -68,6 +68,9 @@ typedef struct nvn_device_state nvn_device_state;
 /* The platform specific half of the device. On Android this is a real Vulkan
  * device; on a host build without a Vulkan implementation it reports that
  * there is no device, which is the truth there. */
+/* present_image outcome; skipped is nonfatal but no image was queued. */
+enum { NVN_PRESENT_FAILED = 0, NVN_PRESENT_QUEUED = 1, NVN_PRESENT_SKIPPED = 2 };
+
 typedef struct nvn_backend {
     const char *name;
     /* Create the real device. Returns 1 when a real device exists and 0 on an
@@ -128,6 +131,7 @@ typedef struct nvn_backend {
     int (*get_device_queue)(nvn_device_state *device, void **out_physical, void **out_device,
                              void **out_queue, uint32_t *out_family);
     /* Present an image that something else rendered into.
+     * Returns NVN_PRESENT_FAILED / QUEUED / SKIPPED, not a boolean.
      *
      * The image is copied into the swapchain and shown. The copy keeps the
      * shape of the game: the crop is the part of the game's image that the

@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Analyze recorded game presents; retain long frames and identify repeats.
 
-Clock: CLOCK_MONOTONIC, recorded after real presentation callback succeeds.
+Clock: CLOCK_MONOTONIC, recorded after each presentation attempt.
+New traces include queued/skipped/failed outcomes; legacy traces cannot prove
+presentation success. Queueing is not proof of physical display scanout.
 Percentiles use nearest rank. No acceptance decision or automatic warm-up cut.
 Explicit timestamps select a predeclared test phase, never a frame-time filter.
 """
@@ -18,6 +20,7 @@ FIELDS = ('frame', 'monotonic_ns', 'texture_serial', 'image_writer',
 def analyze(rows, label, start_ns=None, end_ns=None):
     parsed = []
     previous = None
+    outcome_recorded = None
     for line, row in enumerate(rows, 2):
         try:
             r = {key: int(row[key]) for key in FIELDS}
@@ -28,16 +31,32 @@ def analyze(rows, label, start_ns=None, end_ns=None):
         if previous and (r['frame'] <= previous['frame'] or
                          r['monotonic_ns'] < previous['monotonic_ns']):
             raise ValueError(f'nonmonotonic frame/time at line {line}')
+        has_outcome = 'present_result' in row
+        if outcome_recorded is not None and has_outcome != outcome_recorded:
+            raise ValueError(f'mixed outcome/legacy trace at line {line}')
+        outcome_recorded = has_outcome
+        if has_outcome:
+            try:
+                r['present_result'] = int(row['present_result'])
+            except (ValueError, TypeError) as exc:
+                raise ValueError(f'invalid presentation result at line {line}') from exc
+            if r['present_result'] not in (-1, 0, 1):
+                raise ValueError(f'unknown presentation result at line {line}')
         previous = r
         if start_ns is not None and r['monotonic_ns'] < start_ns:
             continue
         if end_ns is not None and r['monotonic_ns'] > end_ns:
             continue
         parsed.append(r)
+    attempts = parsed
+    # Keep the full observed time window, including skipped/failed attempts.
+    duration = ((attempts[-1]['monotonic_ns'] - attempts[0]['monotonic_ns']) / 1e9
+                if len(attempts) > 1 else 0)
+    if outcome_recorded:
+        parsed = [r for r in attempts if r['present_result'] == 0]
     intervals = [(b['monotonic_ns'] - a['monotonic_ns']) / 1e6
                  for a, b in zip(parsed, parsed[1:])]
-    duration = ((parsed[-1]['monotonic_ns'] - parsed[0]['monotonic_ns']) / 1e9
-                if len(parsed) > 1 else 0)
+    confirmed = bool(outcome_recorded)
     rendered = []
     seen = set()
     unknown = 0
@@ -68,13 +87,20 @@ def analyze(rows, label, start_ns=None, end_ns=None):
 
     return {
         'label': label, 'clock': 'CLOCK_MONOTONIC',
-        'measurement': 'after successful real game presentation callback',
+        'measurement': ('successful presentation queue callbacks; not physical scanout'
+                        if confirmed else 'legacy callback attempts; success outcome unrecorded'),
+        'outcome_evidence': 'RECORDED' if confirmed else 'UNRECORDED_LEGACY',
+        'attempts': len(attempts),
+        'queued_presents': len(parsed) if confirmed else None,
+        'skipped_attempts': sum(r['present_result'] == 1 for r in attempts) if confirmed else None,
+        'failed_attempts': sum(r['present_result'] == -1 for r in attempts) if confirmed else None,
+        'attempt_fps': (len(attempts) - 1) / duration if duration else None,
         'percentile_method': 'nearest-rank', 'acceptance_decision': 'NOT_EVALUATED',
-        'presents': len(parsed), 'distinct_render_work_frames': len(rendered),
+        'presents': len(parsed) if confirmed else None, 'distinct_render_work_frames': len(rendered),
         'repeated_presents': len(parsed) - len(rendered) - unknown,
         'unknown_work_presents': unknown, 'duration_seconds': duration,
-        'present_fps': (len(parsed) - 1) / duration if duration else None,
-        'distinct_render_work_fps': max(0, len(rendered) - 1) / duration if duration else None,
+        'present_fps': max(0, len(parsed) - 1) / duration if duration and confirmed else None,
+        'distinct_render_work_fps': max(0, len(rendered) - 1) / duration if duration and confirmed else None,
         'interval_ms': {'p50': percentile(.50), 'p95': percentile(.95),
                         'p99': percentile(.99), 'max': max(intervals) if intervals else None},
         'over_100ms': sum(v > 100 for v in intervals),
@@ -85,7 +111,7 @@ def analyze(rows, label, start_ns=None, end_ns=None):
         'first_monotonic_ns': parsed[0]['monotonic_ns'] if parsed else None,
         'last_monotonic_ns': parsed[-1]['monotonic_ns'] if parsed else None,
         'rows_removed_for_frame_time': 0,
-        'limits': 'Work identity is rendering evidence; scene/logic/audio speed and cold/warm phase require separate observations.',
+        'limits': 'Legacy work/interval counts refer to attempts only. Recorded success proves queue acceptance, not physical scanout; scene/logic/audio speed and cold/warm phase require separate observations.',
     }
 
 
