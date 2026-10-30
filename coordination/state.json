@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-10-30T14:07:55.084458+08:00",
-  "phase": "USER FREEZE BASELINE: effects visually acceptable provisionally; stop FX changes. Local commit/tag/full runtime backup, create neutral-name PRIVATE GitHub source repository explicitly authorized. Prior no-push superseded only for new private repository.",
+  "updated_at": "2026-10-30T14:18:55.296017+08:00",
+  "phase": "USER BASELINE FROZEN: d66706e tag rg477m-baseline-2026.10.30; complete local runtime/source/data backup verified; PRIVATE GitHub source-only snapshot f08cc73 and tag verified. Remaining audio/flicker/battle/full30 gates OPEN; next installer stage recorded.",
   "coordinator": "Codex /root takeover",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
@@ -1251,8 +1251,9 @@
         "docs/PACKAGING-NEXT.md"
       ],
       "acquired_at": "2026-10-30T02:58:54.783329+08:00",
-      "checkpoint": "a925977 + bounded sprite observation WIP built b373. sprite29 invalid virtualpad mismatch; corrected29b exit0/4190 actual fallen-mage scene, two static atlases+11UBOs captured; root cause OPEN. User now asks freeze/tag/localbackup/privateGitHub, no further FX changes. No runtime diagnostic active. Need backup all exact app shaders/markers/APK/module/data and safe code-only publication.",
-      "write_state": "ACTIVE"
+      "checkpoint": "d66706e baseline tag saved; b373 APK/shader7d20/localgameinputs full backup20968 exit0; archive93818 entries verified14238 exit0; private GitHub f08cc73 +tag verified22048 exit0. User froze effects; full audio/flicker/battle/perf remain OPEN. No active diagnostic/controller, app baseline relaunched. Next one-folder multi-device installer is documented, not implemented.",
+      "write_state": "FROZEN_BASELINE_SAVED",
+      "released_at": "2026-10-30T14:18:55.296017+08:00"
     }
   ],
   "tasks": [
@@ -4317,13 +4318,22 @@
     "local_backup": ".local/baselines/rg477m-baseline-2026.10.30",
     "runtime_backup_session": 20968,
     "publication": "new PRIVATE Cetto9923/handheld-native-lab source-only initial snapshot, no game-art PNG or old history",
-    "status": "PREPARING_VERIFY_MANIFESTS_BEFORE_CLAIM",
+    "status": "COMPLETE_LOCAL_BACKUP_AND_PRIVATE_SOURCE_PUBLICATION",
     "open": [
       "fallen-character flicker cause",
       "full standing audio/A2DP/disconnect/AV sync",
       "battle/full30Hz and longframes",
       "internal720P",
       "future one-folder multi-device installer"
-    ]
+    ],
+    "source_commit": "d66706e7e521ad295ac17d965c6ed66cbf23d465",
+    "published_baseline_commit": "f08cc731e6699be793d98634d1a2acc20923ae00",
+    "repository_url": "https://github.com/Cetto9923/handheld-native-lab",
+    "private_verified": true,
+    "backup_exit": 0,
+    "source_bundle_verify_exit": 0,
+    "archive_verify_exit": 0,
+    "remote_tree_verified": true,
+    "report": "coordination/reports/P-BASELINE-PRIVATE-20261030.md"
   }
 }
