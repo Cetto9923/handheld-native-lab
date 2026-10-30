@@ -1,3 +1,5 @@
+- 发布后补充：一次Asleep状态启动无Surface并signal11，已保存原始日志；唤醒后同APK PID18388/1080present、标题和配置复核通过。下一阶段须修启动生命周期；基线不动，详见发布报告末尾。
+
 ## 2026-10-30 已完成：本地TAG/完整备份/新私有源码仓库
 
 - 基线工程 `d66706e`，TAG `rg477m-baseline-2026.10.30`；完整本地恢复目录 `.local/baselines/rg477m-baseline-2026.10.30/`，各manifest/RESTORE.md已写，备份/数据SHA/归档遍历/Git bundle均通过。
