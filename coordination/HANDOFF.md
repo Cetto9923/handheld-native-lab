@@ -1,3 +1,155 @@
+## 2026-10-30 用户冻结基线并授权新建私有GitHub仓库
+
+- 用户肉眼认为特效可暂收口，要求当前版本地TAG/完整备份，再发布自有源码到新私有项目；后续再做一目录、多机型的简易安装包+匹配数据包。不继续改效果，不把未验收项改成PASS。
+- 基线tag `rg477m-baseline-2026.10.30`；当前实际隔离APK b3730d59（默认关闭sprite诊断）+外部shader9528 7d20ab51；主包/原存档未改。原有脏改在唯一写者核对后随本次基线保存，未混入untracked荣耀工单。
+- 本地备份 `.local/baselines/rg477m-baseline-2026.10.30/`，runtime备份20968进行中（PID/命令/日志/manifest同目录），包含实际APK、app SDK/所有shader/配置/cache/save、实际guest main、独立APFS clone数据副本及SHA核对；源码commit/tag/bundle随后完成。
+- 计划新私有仓库 `Cetto9923/handheld-native-lab`，只传代码与清理后记录；新初始历史，原6张游戏美术图标不上传，改自制vector。原主树/分支不漂移，不forcepush。用户本条授权取代此前仅限新仓库的“不push”。
+- corrected sprite-probe29b/4190已exit0，实际破盾倒地场景捕获2张atlas+11份uniform；29初次虚拟pad状态导致错误场景，已标作废。人物条纹原因OPEN；没有加深度/透明hack。正常路径29.967Hz移动、剧情至下战引入29.264Hz，仍有长帧；音频常设全门、战斗、全流程及内部720P未全部通过。
+- 下一阶段要求见 docs/PACKAGING-NEXT.md。恢复时先核本地TAG+APK/外部shader/数据manifest，禁止覆盖此基线。
+
+## 2026-10-30 接力：身体护罩已恢复，正常路径回归中
+
+- 实际画面 `audio-paced-transport-20261030/shield-9528-upstream17/story-25.png` 显示两名法师的身体半透明蜂窝罩；只重译原游戏 VS9528，未改变深度/透明度。来源 nxnative8e0916b（MIT），生成物与回滚在 `.local/rg477m-opt-30hz-game-mode/audio-paced-transport-20261030/shield-candidate/DEPLOY.json`。
+- 隔离包 APK43188234 + 外部 shader9528 SHA7d20ab51 为一组，主包/存档未动。目标30/fence0/paced1，原缓冲/NONE保留。
+- 正常路径回归 session26765，脚本 `shield_clean_regression_repeat.py`，日志 `shield-clean-motion-cg-repeat/controller.log`，先核实 title/field 截图再写 review gate。原2898标题检查超时退出，无有效测量，保留失败。不得把旧 d227 帧率或旧录音充作新 shader 验收。
+- 全部特效、战斗帧率/音频、真实A2DP及断连等常设门仍未通过。无 push，无可玩声明。
+
+## RG477M 9528 diagnostic and private translator stage
+CurrentHEADa557c0c. Single b028 upstream trial67635 COMPLETE/cleanup0, shader+cache independent SHA restored. NO shieldfix confirmed; F62query0both. NowTEMPONLY 9528VS bundle SHA7d20ab51... trial86835, MUSTpoll and verifycleanuporiginalshader+two cache SHA, no-warm absent, normalrestartbeforeacceptance. Originals in shield-9528-upstream17/original-files.json. Main/save/altgametree untouched. Upstream3VS build71075:9528OK extra1read;1e222+6018 rejected runtimearrays, NOTdeployed. Privateexistingguarded-Phi adapter86538 building, actualsourcepatch recorded; algorithmunchanged/noBooleanextension/no forcedarray removal. Need audit/validation, do notcallfullPASS.
+
+## RG477M current single-key overlay diagnostic
+TEMP single XGS overlay ACTIVE ONLY isolated43188234: shaders/b0284572b5f180f2.xgs candidateSHA67778f21..., from pinnedupstream8e091 on sameinputc55d, newbinding66=slot130 missingread. trial67635 inprogress; MUSTpoll samehandle and independently verify cleanup.json original shader+two caches exactSHA restored, own gfx-no-warm removed, then normal restart verify oldshaderbeforeacceptance. Original-files.json containsbackup paths/hash. No SPVoverrides active. Source build62869diagnosticHEADa557c0c; originalmain/save/gamealtshader untouched. SDK10.0.403SHA512 verified+private translator/decoderbuilddone, singlekey translation1/1 validated. No FXfix/PASS yet.
+
+## RG477M geometry checkpoint (normal restored)
+# F62 GPU几何输入与整数纹理读取核对
+
+默认关闭的原GPU读回诊断扩大到已经观察到的 VS b0284572b5f180f2 binding18/24/30/36/42/48 与storage12。每绑定≤64KiB、共享8MiB预算不变；独立buffer、现有命令队列复制、真实fence/invalidate；storage使用实际descriptor offset/range并先检查界限。无正常帧行为/音频/材质更改。storage12日志vk98只是原始uint字节表示，不代表storage descriptor本身有VkBufferView格式。
+
+RG477M01445122，隔离包SHA256 `43188234bcbdade1fb0f3a09dc818fc2c7809f934514e4eb54a6c590ad5d7212`；构建62869 exit0，安装SHA核对。trial11035 exit0，PID31654/frame5126/group108/END148groups、42,609,176bytes。两次F62 query都SUCCESS/available1/samples0。storage12为16字节全零；binding18完整32768字节，R32_UINT(98)，内容2441种uint值；b30完整200字节R32_SFLOAT、b36完整1904字节RGBA8_SNORM、b42完整1904字节RG16_SNORM、b48完整952字节RGBA8_UNORM；b24仅2字节不足4字节复制界限，明确SKIP，未捏造数据。
+
+VS原SPV binding18为floatBuffer，实际R32_UINT不匹配；当前运行时integer-rewrite事实表不包含VS该项。Khronos VUID-vkCmdDraw-format-07753要求一致。两次绘制的实际索引分别3/4与0/1，GPU源数据这四项恰好均0，因此不能仅凭类型不匹配解释本轮缺失。
+
+临时单VS shader override仅将该绑定改为uint fetch，再bitcast回原float4寄存器，不修改原计算/输出/深度/剔除。原与候选spirv-val Vulkan1.3均0；候选SHA256 `48698f79ee7130499ffbbb42ae06f193adcd2490ef503b02258221696ea44805`。trial25066 exit0/PID4211，runtime与warm都确认载入72445words候选，但F62两次query仍0，未恢复身体护罩。此更改未纳入生产实现；启用文件已移出override目录并验证不存在，重新启动正常shader实际加载后日志无override，restore-normal/VERIFIED.json已确认；app停止。
+
+另外读到上游同款游戏粒子网格塌缩案例：[nxnative8e0916b shader文档](https://github.com/seedds/nxnative/blob/8e0916bf04f6fb8542c52ed01b166a8796158ca0/docs/reference/shaders.md#bindless-reads-whose-handle-phi-also-carries-other-values)，描述phi混合句柄被删读取、scale0，记录3197个shader修复及未解决26次读取。它是源码线索，不证明当前shader已中该问题；本机旧reference是7a029f6，现已在本刀.local独立取8e0916b参考，仅准备单key翻译对照，未替换游戏资源或批量shader。MIT核对，无外部源码并入本仓库。
+
+本地原件与可恢复命令在 .local/rg477m-opt-30hz-game-mode/audio-paced-transport-20261030/{fx-geometry-inputs,shield-f62-geometry17,fx-typed-fetch,shield-f62-typed17,retranslate}/。APK/SPV/GPU字节/录像不入Git。新护罩/战斗效果修复未通过；30Hz运动与系统音频证据另报告。所有常设硬门继续保留，未push、未声称可玩。
+
+## RG477M typed fetch diagnostic checkpoint
+TEMPORARY VS override ACTIVE until trial25066 cleanup. Own active path spv-override/b0284572b5f180f2.spv SHA48698f79ee7130499ffbbb42ae06f193adcd2490ef503b02258221696ea44805. Only typedbinding18 UIntfetch+bitcast; original/candidate validator0. MUSTpoll25066/verifyactivefileabsent+normalrestart afterterminal. Currentisolated43188234; controllerPID 25091. Geometrytrial11035done query0both, actualb18R32UINT vs SPVfloatBuffer, currentintegerrewriterdoesNOTcoverVS. Upstream8e091FFRSphi-zero particlecollapse case separatehypothesis. No fix/PASS claim.
+
+## RG477M 3ad21a8 checkpoint
+F62 both real queries stay zero with capture-only cull/depth bypass. Experiment hunks reversed; d227 native restored/SHAverified and source hashes match. No shield fix; next geometric position/identity. Audio135 output capture INVALID: only6.997s/allzero because observed media stream mute0; native sends nonzero. Preserve failure, do not call continuous. Trying15s documented playback capture while volume unchanged. User asleep; no ear gate assumed. .local/.../audio-story-135s/capture-invalid.json.
+
+## RG477M actual raster evidence 2026-10-30
+Query trial72652 exit0; two F62 existing precise queries actually available1/VK_SUCCESS/samples0. Not globally clipped by scissor/discard/conditional state. Body-shield identity remains unproved. Capture-only cull/depth counterfactual next, normal marker0; build47681. Evidence fx-raster-state/CHECKPOINT.md. No shaderoverride active, main/save untouched, noFPS/audioPASS from capture.
+
+## RG477M continuation 2026-10-30T10:33:16.817690+08:00
+# Normal shader restored — 2026-10-30T10:33:16.817690+08:00
+Temporary override cleaned and active path absent. New normal PID13298 actually loaded F62 in field; field.log contains no F62 override record. VERIFIED.json and normal-story.png in restore-normal/. Original XGS/APK/save untouched, no production shader patch adopted.
+
+Red diagnostic trial7326 completed exit0. Compared actual F62 group113 vs preceding112 on SAME color target1606348: 128x72 whole-viewport grid and 341x288 center ROI are byte-identical. Stencil ROI identical (whole-target histogram zero). This does not prove all full-resolution pixels invisible, or establish F62 identity as body shield; it does rule out only looking for a red patch in screenshots. Need actual raster/depth/cull state and geometry coverage next. Detailed hashes shield-f62-red17/coverage-compare.json.
+
+Actual vp_c6 Binding66, not84 (vp_c5). Color index maskFFFFFFFF is pervertex; RGBA8 color alpha gradient intact. Do not repeat allzero/constantindex inference.
+
+## 补充：C2已有像素贡献，转向F62实例颜色来源核验
+
+# IMPORTANT newest finding: C2 is NOT globally invisible; F62 mesh pair stronger candidate
+
+Postcapture exactbefore/afterC2group111->112 sameRGBA16Ftarget1682 ROI:10,688changedpixels, maxRGBA delta2.1875/2.03066/1.47742/.71802, bboximage551..681/341..450. Visiblewhitecloud inprobe-g112-n270-color0-s1682-roi.png. Therefore doNOT pursueglobalC2alpha/depthfix orassertC2isnotrendering. Identityasbodyshieldstillunknown. No shaderoverride made.
+
+Newcontributiontable all-hdr-contributions.json includesVK122B10G11R11(mainHDR) aswellasVK97. F62FSf62f4204ee4db0da /VSb0284572b5f180f2 two1188-index,2-instance draws: onloadg105 ANDblackattackt17g106 show0changedROI pixels AND0changedwholeviewport128x72samplegridpixels(beforeg104/g105respectively). Cannotinferfullresolution0becausegridcoarse, butstrongercandidatefor2bodymeshshields. Other9b/7916/C2drawschange pixels. DoNOTclaimF62identityproven.
+
+F62VS pulledbundle b028... into.privatefx-probe/shaders; offlineoptimizedSPIRVonly, nooverride. VSinputcount1(location0 position), otherinstanceattributesfetchedfromtexelBuffers. FSalpha=clamp(depth-fade*mask...*VSLocation3.w), andVSLocation3.w sourcedfrom Bufferimage vp_t_cb196610_10578068, stage0binding48, fourthfloat viaOpImageFetch. ExistingUBsnapshots DO NOTcapturetheseGPUtexelbuffers. ExistingPROBE_TEXEL_BIND log is inside!res path, so memoizedTexelResidentpath logsnone; absenceisNOTmissingdescriptor. AllF62VStexelbindsappearres-memo path, actualbuffercoloralphaneedGPUreadback notCPUmemcpy.
+
+详细安全读回计划在.local/.../fx-c2-uniforms/CHECKPOINT.md第一节；尚未实现。所有长进程已退出，app停/probe禁用，目标ACTIVE，未push。
+
+# f317325：新透明绘制参数到位，135秒场景录音已检查，目标仍未完成
+
+更新 2026-10-30T07:42:33.377147+08:00。最新本地提交 f317325（只扩展probe-only有界uniform白名单2个实际shader，并记录捕获），前一提交9b04d8e保存未应用的两项性能研究补丁与场景录音报告。未push，保留所有其他WIP。COW／范围等待生产改动已全部逐段撤下，未引入默认性能路径。
+
+- 实际系统输出录音134.912秒：仅前214ms内64/128ms两段空白，之后无>=20ms双声道空白；录音与统计原件见range-wait/output-field-135s。录制临时改变路由，不替代A2DP耳听、内容保真或物理A/V同步验收。
+- 同包120秒运动OFF29.9662Hz／ON29.9824Hz，p95无改善且各1帧>100ms，不采纳等待优化，不以此宣布稳定30；19.43慢轮仍保留。
+- 两次固定时刻probe未覆盖C2绘制；改由首次实际shader加载日志触发成功。最终session5076 exit0、PID29847、frame6897、154groups、44,143,512bytes、END完整；目标group112片元7份、顶点9份快照已取得。身体护罩身份与根因仍未证实，未改shader或材质。离线spirv-opt副本未部署。片元alpha含深度淡出，下一步核对实际输入/覆盖与结果。uniform按float查看有bitfield/未使用字，NaN字样不当损坏证据。
+- 当前isolated APK43ea0c2157c29d5dc0b5e1babeb64699319c17f49bd4bbc4c408ae659106e00c，只有新probe诊断，原568wrapper。所有构建、录音、抓帧控制器均已终止；两包停止、dump0、实际probe标记已disabled，target30/fence0/paced1/legacy0/async0/depth1保留。原gamewindow a1未再动、存档未清。
+- 全常设音频原文与全部硬门仍在本文件下方：A2DP野外/战斗耳听各>=2分钟、真断连自愈、物理AVsync、战斗稳30、身体护罩/全视觉、缺Paks setup负例未过。不声称可玩。数据三候选/Intent/source保持，已确认冷启Continue实际场景；未做负例不冒充通过。
+
+精确恢复和下一步在audio-paced-transport-20261030/fx-c2-uniforms/CHECKPOINT.md；捕获数据在shield-c2-onload/。当前没有待审批或用户提问，用户睡眠，目标继续保持ACTIVE。
+
+---
+
+## 9b04d8e：性能试验未采纳，135秒场景输出录音完成，C2诊断在跑
+
+本轮记录时间 2026-10-30T07:22:11.027447+08:00。HEAD **9b04d8e**（仅新增研究补丁与证据报告），未 push。COW 与范围等待两条试验路径均已从生产源码撤下，逐字核对恢复到实验前保留的脏改；未 reset/clean/stash。实验补丁只保存在 coordination/experiments/，没有启用默认性能改动。
+
+同一隔离 APK6204d4c 的真实场景120秒移动对照：OFF 124.140秒 **29.9662Hz/p95 33.6557ms/max173.048ms**；ON 124.073秒 **29.9824Hz/p95 33.8731ms/max106.518ms**。各有1帧>100ms，未删慢帧。没有足够证据认定新等待路径更稳，明确不采纳；先前19.43Hz慢轮仍保留，不宣布稳30完成。原窗口固定120／取消偏好实验还混有加载阶段，不能作干净因果对照。
+
+真实燃烧台阶场景的系统输出录音完成：**134.912秒，48kHz双声道 FLAC**，6,795,345bytes，SHA256 ab0445026ac9c5fea3ae47916e90ae0cf3136a1a2fdf15c87a0f8999538600a9。仅在启动前214ms内有64/128ms两段共同空白，之后无>=20ms双声道空白；原始录音全部保留。该录制会临时改变输出路由，且不是内容保真、A2DP耳听、物理A/V同步或干净FPS验收。未向睡眠中的用户再询问。
+
+原生 PCM 诊断有180秒上限：先前7f一次手动确认耗时较长，field起点估算182.35秒，录音并未覆盖该轮运动，明确 **NOT_RUN**，不可用其零段统计宣称场景音频通过。其他raw42..180也可能混有加载静音，需按phase覆盖解释；无记录删除。可选波形图缺依赖未生成，核心统计脚本独立exit0。
+
+当前安装隔离包 **org.ffrs.perfisolated SHA256 43ea0c2157c29d5dc0b5e1babeb64699319c17f49bd4bbc4c408ae659106e00c**：原568 manifest/resources/classes，仅新native的C2/6018 probe-only有界uniform诊断，所有性能试验代码已去除。原主包a1与存档未再动。NONE实际10／6150帧缓冲／100ms写／TIMEOUT重试／DISCONNECTED重开／fence0保留，target30、paced1、legacy0、async0、depth1；系统游戏档未改，最近UI确认游戏/开启、读值cpu_mode2。
+
+身体半透明护罩未修。新诊断仅扩充实际观察到的一对shader的uniform快照，未改shader、材质、混合、画质或游戏时钟。当前session42693 `probe_c2_timed.py shield-c2-t24 0 1 24` 正在boot/场景确认阶段；必须 root 读截图后写title-reviewed/field-reviewed，再走动触发剧情，24秒预置抓帧，60秒视频，结束自动停包/禁probe。日志 fx-c2-uniforms/t24-host.log。GPU抓帧不是性能/音频验收。
+
+**全硬门仍未通过**：A2DP野外/战斗各>=2分钟耳听、真实断连自愈、物理A/V同步、战斗稳定30、身体护罩/全部视觉、缺Paks setup负例仍未过；不声称可玩。完整常设音频原文及NONE枚举冲突说明继续保留在下方。三候选/Intent/hasGame/resolveGameDir源码未变，已冷启继续进入场景，未验证的负例不冒充通过。当前实际内部viewport1024×576、输出1280×720、屏幕1280×960分别记录。
+
+详细命令、构建哈希、退出码和原始证据见 audio-paced-transport-20261030/{range-wait,clear-clone,fx-c2-uniforms}/ 与 coordination/reports/P-OPT-RG477M-RANGE-WAIT-20261030.md。后续优先验证战斗和新uniform实际phase，避免继续堆未证明有益的性能代码。
+
+## 最新检查点 71d29ae：完整复跑30.0001Hz，先前19.43差异仍未解
+
+全部进程已停；仅RG477M，游戏模式UI已读确认，未改档。相同isolated7b32be80再跑真实移动120秒，CSV124秒/3720intervals=30.000135Hz，p9533.8597/p9934.8359/max78.5317ms，2帧>50ms/0帧>100ms；四个30秒块均约30。sourcePCM124.770秒全帧非零、无空白。早先同包首轮123.515秒19.4308Hz保留，一致性未知；不能总称稳帧通过。A2DP耳听/真断连/AVsync、身体护罩仍未过。
+
+IMPORTANT correction：PERF括号第四项是access_by4，非3。marker3/session11056已取12次why4/op39，即128字节ClearBuffer覆盖43008字节跨slot待回写结果；不是storage绑定reason3。错误storage合并提议被否决，未实现。已有gpu_clear_pending_buffer只current-slot快路；gfx-clear-overwrite-probe默认0，勿盲开或把pool0xe2当CPUNOACCESS。可评估copy-on-write整段GPU拷贝+局部fill，旧producer数据不改、保留CPU回写/slot-owner寿命/真实query；先byteoracle和生命周期验证。public nxnative7a029f66...mtl_sub_fill已读，确实queuedGPUblitfill；MIT，无源代码复制。
+
+本轮28次遥测只解析HAL Current：CPU50.283..81.337C/skin33.993..43.462C/GPUcooling0；Cached82C是陈旧记录。GPU频率EACCES，未提权，CPU频率已存。无法据此给19vs30差异定因。所有session2235/11056/16119、capture34540/51658、build92348/9309均终止；设备两包已停，dump0/probe禁用，target30/fence0/paced1/legacy0保留。原主包未换/未清存档，不push。完整精确恢复/后续步骤在.local/rg477m-opt-30hz-game-mode/audio-paced-transport-20261030/CHECKPOINT.md；RESULT顶端与全常设门已同步。
+
+## 最新：运动30Hz门FAIL，音频源修复已本地提交
+
+HEAD71d29ae，a7eb0ed音频按采样时钟/拥有PCM FIFO默认OFF、71d29ae默认OFF透明混合/有界UB诊断；未push，其他WIP保留。当前isolated7b32be80，主包a1未再动。真实120秒来回走动CSV123.515s/2400intervals=19.4308Hz，p95=67.732ms，max122.764ms，门FAIL，不能用title/战斗等待30替代。同窗sourcePCM124.948s无>=20ms全声道零段，最长1sample；系统输出录音启动256ms后约59.7s无同类零段。实际UI05:14游戏/开启，未改档。NONE10/6150buffer/100ms/fence0保持，A2DP耳听与真断连仍NOT_RUN。
+
+护罩未修。depth0未恢复、已还原；基线实际async0/skips0，不是有效异步ON/OFF因果对照。紫色像素触发probe session34540exit0/pid15869，frame1976/140groups/40,319,272bytes/190UBrecords/END，已停并禁用probe；新增FS7916c383e766ba64/497574de651780b8/c2ca757a9f517e96需继续分析，不能先认定哪个是护罩。内部scene1024x576/final1280x720单独记录。
+
+当前仅session11056 field-sync-diag在跑（原marker3只记重叠，不抓GPU），结束后自动stop/dump0/probe改名disabled。Field PERF每帧一次storage cpu_access reason3→resolve_pending GPU全排空，submitCPU~38ms/GPU~35ms。下一步先读具体CODEX_CPU_SYNC why3和producer，考虑默认OFF有界GPU部分范围拼接，保留CPU洞/最新GPU结果、slot/owner寿命和真实query。公开上游a8782caa xbg_game.cpp整段GPUcopy/partialfallback已读，尚未实现/未认领新文件。精确计划.local/rg477m-opt-30hz-game-mode/audio-paced-transport-20261030/gpu-partial-merge-plan.md。完整常设清单和所有未过门已置于RESULT顶端。
+
+## 2026-10-30 Checkpoint a7eb0ed, real output recorded; FX unresolved
+
+Paced prototype committed a7eb0ed (7 own files; mixed WIP preserved). Same372a paced1+legacy0+target30: title source zero-run426to0, later110s field/story PCM no>=20ms zeros. One60s battle waiting/firstspell sample~30Hz; not fullmoving/spellgate. OutputFLAC59.989s has149/85ms zeros only in initial256ms recorder-route startup, then no>=20ms zeros; raw retained, diagnosticroute notA2DPear. Actualquicksettings05:14游戏/开启 confirmed, no mode writes. Maina1stopped/unchanged. PID3155stopped. async0 replay76372exit0 shows shortpurpleglow only; baseline actualasync0/skips0, so notvalidasyncON/OFF nor cause. One asleep/INVALID_LAYER_STACK failedrun retained separately. Currentdepth0 replay67512 in progress, same372a; scriptassertAwake/framepresent/actualflags, finally restoresdump0/async1/depth1/stops. Fullstandingaudio gates,bodyshield,A/Vsync,2minmoving30 notyetpassed.
+
+## 2026-10-30 Paired PCM improvement confirmed, full gates still open
+
+Same372a9924isolatedAPK OFF/ON80s:25..70s musicwindow OFF68.568%nonzero,426zeros>=20ms,max46.67ms; ON99.9999537%,0zeros>=10ms,max1sample. Endpoint47991.92frames/s/65.561s; NONE10/6150buffer/100ms/fence0 preserved. Independentreal-sampleclockconsumer+ownedboundedFIFO changedcompletion, nozero-removal/gameclockchange. HostASanUBSan +RGfakebackend fullbridgeerrors0; independentstaticreviewclockfixbeforeinstall. PhysicalAVlatency/A2DPearstillunverified, title24Hznot30gate. Pairedsession43301exit0; gameoff/dump0/paced0 restored. Nextsamecandidatepaced1+target30+realper-targetGPUwaitlegacy0, Continue+field/story shield/audio+visualregression. Details.local/rg477m-opt-30hz-game-mode/audio-paced-transport-20261030/RESULT.md includesfullstandingaudio. UnrelatedWIPpreserved/nopush.
+
+## 2026-10-30 Audio PCM fault localized; diagnostic checkpoint9b355a9
+
+User asleep, authorizes autonomousrecording/continue, no moreearprompts now. Confirmed nativegameaudio stutters AND exactPCMreplay retainsstutter. SixchannelCRIADX stream, appendactorrequestedprio1; UE2ch allzero/no relevance. Timing:240frames writesbatch,~80ms blocking, maxinterwrite5.5ms. PCMcommon31/32mszero runs. Actualoutput40sFLACnonzero capturevaliddiagnostic (reroutesaudio); playbackduprecordingallzero INVALIDretained. Sourceaudiooptindiagnostics committed9b355a9 only2selfownedfiles, allotherWIPpreserved. Currentisolated25614867 diagnostic, maina1 untouched. Currentgame stopped/dump0; noactivejobs. Niceattemptsession2249 exit1 EACCES at60s, actualnice0 neverchanged, notanA/Bresult. BaselinePCMretained.
+
+Independentread-only agent audio_transport_review finished, noedits/noADB. AOSP15 pin1863cb0...3075 notification=6150/2; copyingintoAAudio !=AudioOutendpointcompletion; oneplayed-fenceworkerwoulddeadlock720startframes vsnormalmixerthreshold. Next minimaloptinprototype: independentreal48kendpointconsumer + boundedownPCMtransportqueue + current100msblockingwriter. No deletingzeroPCM, no changinggameclock, preserveNONE/buffers/fence0/reopen. Must testdataownership/start/stop/backpressure/disconnect andrecordA/Vlatency; compatibilitygapnotsole-rootcauseproof. Exactnextplan .local/rg477m-opt-30hz-game-mode/audio-feed-timing-20261030/NEXT.md. Bodyshield andstablefield/battle30 stillunresolved; nostableplayableclaim/nopush.
+
+## 2026-10-30 concurrent tone confirms game-specific audio stutter
+
+Same568 game legacy1 restored and running PID25374 (reverifybeforeuse). Standalone2ch/6ch8stone both continuous; withgame user 测试音连续，游戏声音卡. ShellUID differs from appUID, narrows generation/feed/scheduling but not specificrootcause. Tone sessions18611/98721 exit0, no workerleft. No source/APK changes. Old568 only3sPCMdiagnostic misses audible title; next need actualwalltime supply/writegaps with relevant PCM. Audio gateFAIL, bodyshieldunresolved, fieldstable30notpassed. Detailed RESULTS updated, earlier erroneous lowvolume/outputcause and snapshotmiss=readback assertions corrected inRESULT.
+
+## 2026-10-30 GPU wait A/B reached title30 but audio FAIL; rolled back
+
+Same original568 isolated APK, existing legacy_waitall0 gave720frames/24.00048s=29.9994present/s,p5033.318ms,p9534.244ms,max42.112ms (0>50ms), same39draw/17dispatch windows30. User 画面还好 声音卡 => rejected immediately, marker moved aside, originallegacy1 runtimeverified. User afterrollback 仍然卡(audio). Neither path audioPASS; causality notisolated. Routeactualspeakerdevice3/music7/15,NONE10,burst3075,buffer6150. Next independentAAudiotone2ch/6ch8s each, session18611 bounded25s, gameforcestopped. Evidence audio-tone-20261030/PLAN.md/run.log. Ear feedback pending. No source edits, no APK install, no game clock/buffer cuts.
+
+## 2026-10-30 Title stutter: old APK rollback not sufficient
+
+User explicitly confirms original568 title STILL stutters. No source edits. Baseline same568 runtime legacy_waitall1:840frames/35.099s=23.932present/s,p5041.906ms,p9552.796ms,max69.283ms.8s atrace exit0 shows queuepresent avg0.77ms,max1.18ms, acquire avg0.25ms; GPU sync aggregate~26ms/frame. CPU capacity mostly idle, critical-path waits remain. Battery84%30C,display120Hz,CPUmode2. Existing correct per-target-fence path legacy_waitall0 enabled on same isolated APK for bounded diagnostic A/B; retains target30,fence0,all real waits and audio buffers. Evidence .local/rg477m-opt-30hz-game-mode/title-trace-20261030. Not an audio/FX/stable30 PASS; body shield unresolved.
+
+## 2026-10-30 标题也卡：切回最早隔离5683对照
+用户指明原先标题顺滑现在标题也卡，不能只用场景复杂解释。主包a1保留但停；隔离5683f7e已install-r+SHA核实，原缓存1保留、probe0归档旁移，未新装候选。下一先验标题手感与实际配置/相位。独立Vulkan2MiB微基准已完成exit0/allbytes，readback-microbench/RESULT.json；CPUcopyuncached0.666ms/cached0.123ms，三段copy端到端1.239ms，不足解释game11ms，需检查真实目标内存/同步，不称已修复。
+
+## 旧a1仍卡；缓存回读试验已回滚
+用户实测旧a1仍很卡。未继续换APK。cached1使writeback11→1.3ms但GPU28→40–51ms，神殿静止49.68s10.869present/s，比cached0约14更差；已恢复原marker0660并重启a1。不能将局部复制改善称优化成功。源码未改。下一采GPU频率及CPU/walltime同窗，明确瓶颈；仍须30/音频/特效全门。
+
+## 2026-10-30 用户要求优先恢复旧版对照
+用户明确过去备份没这么卡，反对继续叠加。已保存7849完整APK并核SHA，install-r恢复主包a1c82634，设备SHA核实，未卸载/清数据；PID7831 operation0 target30，已Continue到原存档。缓存回读试验尚未到神殿取数，先撤回其权限660，不能声称性能改善。暂不再装候选，先等待用户旧包手感确认。temple-profile-20261030有真实12s15140samples，GameThread nvnSyncWait→retire_slot→memcpy约12%全部CPU，writeback约11ms/frame2.2MB，cached0；仅诊断方向未修复。
+
+## 2026-10-30 配置读取修正，卡顿仍未修复
+用户目标stable30+audio/FX。15b1def+dirty保留，主包7849f7ae实际验证。神殿静止15–16present/s。probe文件移开无改善，不归因diagnostic。关键bug：shell markers0660/runas能读但实际App无ext_data_rw，初始frameCSV未生成；修正4个marker0644后PID3348日志app-marker及CODEX_FRAME生成实证。probe-overhead-20261030/RESULT.md详证据；未声称30PASS。下一用真实CSV和同场景CPU/渲染等待定位；不可把snapshotmiss当GPUreadback、不可把低音量当音频断续已证根因。
+
 ## 23:50 P0 崩溃已修；野外实测 17 present/s（30Hz 门未达）
 
 **P0**：屏幕熄灭（或 Anbernic 控制面板抢焦点）→ Activity 立刻 onPause → SurfaceView 的 surface 被销毁 →

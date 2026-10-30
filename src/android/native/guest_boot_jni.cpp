@@ -100,6 +100,25 @@ void* GuestThreadMain(void* opaque) {
         size_t slash = path.find_last_of('/');
         if (slash == std::string::npos) return nullptr;
         path.resize(slash);
+        // Each APK owns its port configuration. Do not inherit the main
+        // package's docked profile when this runtime runs in an isolated APK.
+        // RG477M's fixed handheld profile is the 720p baseline; this is not
+        // the Android CPU/GPU game-mode switch and does not change game time.
+        const std::string operation_marker = path + "/oe-operation-mode";
+        int operation_mode = 0;
+        const char *operation_source = "default-handheld";
+        FILE *operation_file = fopen(operation_marker.c_str(), "rb");
+        if (operation_file) {
+            int value = fgetc(operation_file);
+            fclose(operation_file);
+            if (value == '0' || value == '1') {
+                operation_mode = value - '0';
+                operation_source = "app-marker";
+            } else fprintf(stderr, "[port] invalid operation-mode marker; using handheld\n");
+        }
+        setenv("FFRS_OPERATION_MODE", operation_mode ? "1" : "0", 1);
+        fprintf(stderr, "[port] operation_mode=%d source=%s marker=%s\n",
+                operation_mode, operation_source, operation_marker.c_str());
         const std::string marker = path + "/gfx-codex-movie-dump";
         FILE *enabled = fopen(marker.c_str(), "rb");
         const bool dump_movie = enabled && fgetc(enabled) == '1';

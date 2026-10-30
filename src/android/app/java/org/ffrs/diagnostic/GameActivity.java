@@ -569,6 +569,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
     @Override protected void onResume() {
         super.onResume();
+        Log.i(TAG, "lifecycle onResume");
         resumed = true;
         discoverPad();
         if (!guestStarted && surfaceReady) recheckGame();
@@ -576,6 +577,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     }
 
     @Override protected void onPause() {
+        Log.i(TAG, "lifecycle onPause");
         resumed = false;
         padButtons = axisButtons = 0;
         padLx = padLy = padRx = padRy = 0;
@@ -590,7 +592,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         if (audioManager != null) audioManager.registerAudioDeviceCallback(audioCallback, new Handler(Looper.getMainLooper()));
         configureWindow();
         surface_view = new SurfaceView(this);
-        // RGBA_8888 is the buffer format a Vulkan surface can be created from.
+        // A/B: RGBA_8888 is the format the 30 FPS build used.
         surface_view.getHolder().setFormat(PixelFormat.RGBA_8888);
         FrameLayout root = new FrameLayout(this);
         rootLayout = root;
@@ -633,7 +635,16 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             WindowManager.LayoutParams lp = window.getAttributes();
             lp.screenBrightness = Math.max(0.05f, Math.min(1.0f, cur / 255.0f));
             int target = requestedGameFps();
-            requestedDisplayHz = 60.0f;
+            // A rate request is a request, not a hint. Asking this surface for
+            // 60 Hz on a 120 Hz panel was measured at 51.8 ms per frame
+            // (19.3 present/s): the 33.3 ms frame budget lands on the 16.7 ms
+            // grid and the producer misses the buffer release. Asking for the
+            // panel rate explicitly (120 Hz) measured the same 19.3 present/s,
+            // while the same build without any rate request held 33.3 ms per
+            // frame (30.00 present/s). So for a 30 FPS target the window takes
+            // the panel rate as it is; only the higher targets, which need a
+            // rate of their own, ask for one.
+            requestedDisplayHz = 0.0f;
             Display display = getWindowManager().getDefaultDisplay();
             if ((target == 0 || target > 30) && display != null) {
                 Display.Mode current = display.getMode();
@@ -645,8 +656,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                         lp.preferredDisplayModeId = mode.getModeId();
                     }
                 }
+                lp.preferredRefreshRate = requestedDisplayHz;
             }
-            lp.preferredRefreshRate = requestedDisplayHz;
             Log.i(TAG, "display_request: target_fps=" + target
                     + " requested_hz=" + requestedDisplayHz
                     + " mode_id=" + lp.preferredDisplayModeId);
@@ -698,7 +709,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             Log.e(TAG, "surface_created without a valid Surface; no window is published");
             return;
         }
-        if (Build.VERSION.SDK_INT >= 30) {
+        if (Build.VERSION.SDK_INT >= 30 && requestedDisplayHz > 0.0f) {
             try {
                 surface.setFrameRate(requestedDisplayHz, Surface.FRAME_RATE_COMPATIBILITY_DEFAULT);
                 Log.i(TAG, "surface_frame_rate_request: hz=" + requestedDisplayHz);
@@ -759,20 +770,68 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     private static final String RG477M_GAME_DIR =
             "/data/local/tmp/ffrs-rg477m-efd1123620814764ae32529c18081259";
 
+    private static final String[] REQUIRED_PAKS = {
+            "FFRS-Switch.pak",
+            "FFRS-Switch.ucas",
+            "FFRS-Switch.utoc",
+            "global.ucas",
+            "global.utoc"
+    };
+
+    static java.util.List<String> findMissingPaks(File gameDir) {
+        java.util.ArrayList<String> missing = new java.util.ArrayList<String>();
+        if (gameDir == null) return missing;
+        File paksDir = new File(gameDir, "romfs/FFRS/Content/Paks");
+        for (String name : REQUIRED_PAKS) {
+            File f = new File(paksDir, name);
+            if (!f.isFile() || f.length() == 0) {
+                missing.add(name);
+            }
+        }
+        return missing;
+    }
+
     private static boolean hasGame(File dir) {
         if (dir == null) return false;
         File nso = new File(dir, "main.nso");
         File rom = new File(dir, "romfs");
-        return nso.canRead() && (rom.isDirectory() || rom.canRead());
+        if (!nso.canRead() || (!rom.isDirectory() && !rom.canRead())) return false;
+        return findMissingPaks(dir).isEmpty();
     }
 
     /** Candidate game folders, best first.  The user puts the whole FFRS folder (main.nso + romfs) on the phone's storage. */
     private File[] candidateGameDirs() {
-        File ext = getExternalFilesDir(null);
         java.util.ArrayList<File> list = new java.util.ArrayList<File>();
+        // Public roots come from Android, not a device model or a fixed SD UUID.
+        java.util.LinkedHashSet<File> roots = new java.util.LinkedHashSet<File>();
+        roots.add(Environment.getExternalStorageDirectory());
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            android.os.storage.StorageManager manager =
+                    (android.os.storage.StorageManager) getSystemService(STORAGE_SERVICE);
+            if (manager != null) {
+                for (android.os.storage.StorageVolume volume : manager.getStorageVolumes()) {
+                    File root = volume.getDirectory();
+                    if (root != null && (Environment.MEDIA_MOUNTED.equals(volume.getState())
+                            || Environment.MEDIA_MOUNTED_READ_ONLY.equals(volume.getState()))) {
+                        roots.add(root);
+                    }
+                }
+            }
+        }
+        // Bounded common paths: never recursively walk game assets or the disk.
+        String[] common = {"FFRS", "ffrs", "Games/FFRS", "games/FFRS",
+                "Download/FFRS", "Documents/FFRS"};
+        for (File root : roots) {
+            for (String child : common) list.add(new File(root, child));
+            list.add(root); // Data copied directly to a removable volume root.
+        }
+        for (File ext : getExternalFilesDirs(null)) {
+            if (ext != null) {
+                list.add(new File(ext, "game"));
+                list.add(new File(ext, "FFRS"));
+            }
+        }
         list.add(new File(RG477M_GAME_DIR));
-        list.add(new File(Environment.getExternalStorageDirectory(), "FFRS"));
-        if (ext != null) list.add(new File(ext, "game"));
         list.add(new File(DEFAULT_GAME_DIR));
         File tmp = new File("/data/local/tmp");
         if (tmp.isDirectory()) {
@@ -869,7 +928,16 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         for (File d : candidateGameDirs()) {
             if (d == null) continue;
             boolean nso = new File(d, "main.nso").canRead(), rom = new File(d, "romfs").isDirectory();
-            sb.append(d.getAbsolutePath()).append("  main.nso:").append(nso ? "\u2713" : "\u2717").append("  romfs:").append(rom ? "\u2713" : "\u2717").append("\n");
+            sb.append(d.getAbsolutePath()).append("  main.nso:").append(nso ? "\u2713" : "\u2717").append("  romfs:").append(rom ? "\u2713" : "\u2717");
+            if (nso && rom) {
+                java.util.List<String> missing = findMissingPaks(d);
+                if (!missing.isEmpty()) {
+                    sb.append("  missing paks: ").append(missing.toString());
+                } else {
+                    sb.append("  paks:\u2713");
+                }
+            }
+            sb.append("\n");
         }
         setupText.setText(sb.toString());
         setupView.setVisibility(View.VISIBLE);
@@ -892,6 +960,12 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             refreshSetup();
             return;
         }
+        java.util.List<String> missingPaks = findMissingPaks(new File(game_dir));
+        if (!missingPaks.isEmpty()) {
+            Log.e(TAG, "guest_paks_missing in " + game_dir + ": " + missingPaks);
+            refreshSetup();
+            return;
+        }
         String image = game_dir + "/main.nso";
         String romfs = game_dir + "/romfs";
         if (!new java.io.File(image).canRead()) {
@@ -900,7 +974,9 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             return;
         }
         guestStarted = true;
+        Log.i(TAG, "guest_start hide_setup_view");
         if (setupView != null) setupView.setVisibility(View.GONE);
+        Log.i(TAG, "guest_start setup_view_hidden");
         Log.i(TAG, "game_dir=" + game_dir);
         File files = getExternalFilesDir(null);
         String op_mode = getIntent() == null ? null : getIntent().getStringExtra("operation_mode");
@@ -958,6 +1034,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     }
 
     @Override public void surfaceDestroyed(SurfaceHolder holder) {
+        Log.i(TAG, "surface_destroyed entering");
         GameWindowNative.clearSurface();
         Log.i(TAG, "surface_destroyed native_window_cleared");
     }
@@ -973,7 +1050,13 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         else { exitHandler.removeCallbacks(this); exitHandler.postDelayed(this, 50); }
     }
 
+    @Override protected void onStop() {
+        Log.i(TAG, "lifecycle onStop");
+        super.onStop();
+    }
+
     @Override protected void onDestroy() {
+        Log.i(TAG, "lifecycle onDestroy");
         exitHandler.removeCallbacks(this);
         if (audioManager != null) audioManager.unregisterAudioDeviceCallback(audioCallback);
         // Safety net: the runtime must never keep a window of a dead Activity.

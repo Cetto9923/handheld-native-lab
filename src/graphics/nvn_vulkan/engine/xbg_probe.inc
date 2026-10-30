@@ -85,9 +85,11 @@ void probe_guest_barrier(uint32_t bits){
     ++logged;xbg_logf("CODEX_BARRIER_FLAGS frame=%llu bits=%#x attachments=%zu depth=%u stateColors=%d vs=%s fs=%s write_seq=%llu barrier_seq=%llu",(unsigned long long)stats.presents.load(),bits,open_pass.images.size(),unsigned(open_pass.depth_attached),state.rt.n,state.shader[0]?state.shader[0]->key.c_str():"none",state.shader[4]?state.shader[4]->key.c_str():"none",(unsigned long long)write_seq,(unsigned long long)barrier_seq);
 }
 void probe_cpu_sync(uint64_t address,uint64_t bytes,unsigned why,uint64_t pending_address,uint64_t pending_bytes){
-    static unsigned logged=0;if(!probe.waiting || capture.trace || logged>=120)return;
+    // Keep early CPU overwrites from consuming the storage-read diagnostic budget.
+    // At most 12 records per access reason, enabled only by the existing marker 3.
+    static unsigned logged[12]={};if(!probe.waiting || capture.trace || why>=12 || logged[why]>=12)return;
     FILE *file=fopen((probe.base+"/gfx-codex-probe").c_str(),"rb");int value=file?fgetc(file):'0';if(file)fclose(file);if(value!='3')return;
-    ++logged;xbg_logf("CODEX_CPU_SYNC frame=%llu op=%u why=%u address=%#llx bytes=%llu pending=%#llx pending_bytes=%llu covers=%u cs=%s vs=%s fs=%s",(unsigned long long)stats.presents.load(),cur_op,why,(unsigned long long)address,(unsigned long long)bytes,(unsigned long long)pending_address,(unsigned long long)pending_bytes,unsigned(address<=pending_address && address+bytes>=pending_address+pending_bytes),state.shader[5]?state.shader[5]->key.c_str():"none",state.shader[0]?state.shader[0]->key.c_str():"none",state.shader[4]?state.shader[4]->key.c_str():"none");
+    ++logged[why];xbg_logf("CODEX_CPU_SYNC frame=%llu op=%u why=%u address=%#llx bytes=%llu pending=%#llx pending_bytes=%llu covers=%u cs=%s vs=%s fs=%s",(unsigned long long)stats.presents.load(),cur_op,why,(unsigned long long)address,(unsigned long long)bytes,(unsigned long long)pending_address,(unsigned long long)pending_bytes,unsigned(address<=pending_address && address+bytes>=pending_address+pending_bytes),state.shader[5]?state.shader[5]->key.c_str():"none",state.shader[0]?state.shader[0]->key.c_str():"none",state.shader[4]?state.shader[4]->key.c_str():"none");
     for(auto w=pending_writebacks.rbegin();w!=pending_writebacks.rend();++w)if(w->addr==pending_address && w->bytes==pending_bytes){const Slot *s=static_cast<const Slot*>(w->slot);int producer=int(s-slots);int done=s->pending?int(vkGetFenceStatus(cfg.device,s->fence)==VK_SUCCESS):-1;
         xbg_logf("CODEX_CPU_PRODUCER frame=%llu op=%u why=%u currentSlot=%u producerSlot=%d recording=%u pending=%u fenceDone=%d covers=%llu commands=%llu offset=%llu bytes=%llu",(unsigned long long)stats.presents.load(),cur_op,why,slot_index,producer,unsigned(s->recording),unsigned(s->pending),done,(unsigned long long)s->covers,(unsigned long long)s->ops,(unsigned long long)w->buffer.offset,(unsigned long long)w->buffer.size);break;}
     static bool guard_logged=false;if(why==5 && cur_op==27 && state.shader[5] && !guard_logged){
@@ -150,6 +152,14 @@ void probe_snapshot(const ProbeSurface &surface){
     char label[160];snprintf(label,sizeof(label),"probe-g%u-n%u-%s-s%llu",probe.groups,++probe.snapshots,surface.role.c_str(),(unsigned long long)im.source.serial);
     capture_log("PROBE_PIXELS group=%u role=%s label=%s serial=%llu image=%p guest=%p guestBytes=%llu nvnFormat=%#x vk=%u viewVk=%u aspect=%u mip=%u layer=%u width=%u height=%u depth=%u sampleWidth=%u sampleHeight=%u sampleDepth=%u bpp=%u version=%llu layout=%u nonzeroBytes=%zu bytes=%zu",probe.groups,surface.role.c_str(),label,(unsigned long long)im.source.serial,(void*)im.image,im.source.mem,(unsigned long long)im.source.L.size,im.source.d.format,unsigned(im.fmt),unsigned(im.view_format(v)),plane,mip,layer,w,h,z,nx,ny,nz,bpp,(unsigned long long)im.content_version,unsigned(im.layout),nonzero,sample.size());
     capture.active=true;capture_data(label,sample.data(),sample.size());capture.active=false;
+    // The two diffuse/normal sprite atlases are static CPU uploads, so the
+    // regular GPU-input sampling omits them. Preserve their exact texels only
+    // in this explicit one-frame probe; never alter the draw or its bindings.
+    if((surface.role=="spriteAtlas10" || surface.role=="spriteAtlas22") && z==1 && bytes<=1024*1024){
+        std::string full_label=std::string(label)+"-full";
+        capture_log("PROBE_SPRITE_ATLAS group=%u serial=%llu label=%s width=%u height=%u vk=%u bytes=%llu",probe.groups,(unsigned long long)im.source.serial,full_label.c_str(),w,h,unsigned(im.fmt),(unsigned long long)bytes);
+        capture.active=true;capture_data(full_label.c_str(),raw,size_t(bytes));capture.active=false;
+    }
     if(z==1 && w>=1000 && h>=500 && (surface.role=="color0" || surface.role=="color3")){
         const uint32_t x=w/3,y=h/2,rw=w/3,rh=h/2;std::vector<uint8_t> roi(size_t(rw)*rh*bpp);
         for(uint32_t row=0;row<rh;row++)memcpy(roi.data()+size_t(row)*rw*bpp,raw+(size_t(y+row)*w+x)*bpp,size_t(rw)*bpp);
@@ -204,8 +214,9 @@ void probe_draw_end(Pass &pass){
 void probe_buffer(const std::string &shader,unsigned stage,unsigned binding,unsigned element,const void *data,size_t bytes){
     if(!probe_is_active())return;
     const bool effect=shader=="f62f4204ee4db0da" || shader=="9b0acd9875f7c44a" || shader=="5fe1d12402b04134" || shader=="b0284572b5f180f2" || shader=="1e222af40b26bd25" || shader=="9528f530e1c95ce5" || shader=="c2ca757a9f517e96" || shader=="6018ff2b44b763d7";
+    const bool sprite=shader=="b5e9ec0ba0af7aaa" || shader=="18a37643faef3594";
     if(!probe.lut && shader!="062df44b75d37d76"){
-        if(!effect || bytes>65536 || bytes>8ull*1024*1024-probe.extra_buffer_bytes)return;
+        if((!effect && !sprite) || bytes>65536 || bytes>8ull*1024*1024-probe.extra_buffer_bytes)return;
         // GPU-resident storage is not necessarily coherent in the CPU mapping.
         // Capture only the already-owned uniform/support snapshots here.
         if(!state.shader[stage])return;
@@ -259,7 +270,8 @@ void probe_bind(Image &im,const view_t *v,bool storage,uint32_t stage,uint32_t b
     capture_log("PROBE_VIEW_MODE group=%u shader=%s binding=%u serial=%llu setDs=%u ds=%u texStencil=%u setSwz=%u swz=%u/%u/%u/%u texSetSwz=%u texSwz=%#x",probe.groups,shader.c_str(),binding,(unsigned long long)im.source.serial,unsigned(v&&v->set_dsmode),v?unsigned(v->dsmode):0,unsigned(im.source.stencil),unsigned(v&&v->set_swizzle),v?unsigned(v->swz[0]):0,v?unsigned(v->swz[1]):0,v?unsigned(v->swz[2]):0,v?unsigned(v->swz[3]):0,unsigned(im.source.set_swz),unsigned(im.source.swz));
     capture_log("PROBE_VIEW_ASPECT group=%u binding=%u sampledAspect=%u",probe.groups,binding,unsigned(im.sampled_aspects(v)));
     capture_log("PROBE_BIND group=%u shader=%s stage=%u binding=%u storage=%u serial=%llu image=%p view=%p guest=%p guestBytes=%llu nvnFormat=%#x vk=%u viewVk=%u layout=%u mip=%u levels=%u layer=%u layers=%u gpuWritten=%u rg16Proxy=%u filteredImage=%p",probe.groups,shader.c_str(),stage,binding,unsigned(storage),(unsigned long long)im.source.serial,(void*)im.image,(void*)image_view,im.source.mem,(unsigned long long)im.source.L.size,im.source.d.format,unsigned(im.fmt),unsigned(im.view_format(v, !storage)),unsigned(im.layout),v&&v->set_levels?v->base_level:0,v&&v->set_levels?v->nlevels:im.levels,v&&v->set_layers?v->min_layer:0,v&&v->set_layers?v->nlayers:im.layers,unsigned(im.gpu_written),unsigned(im.rg16_proxy),(void*)(im.filtered?im.filtered->image:VK_NULL_HANDLE));
-    if(storage)probe_add(probe.outputs,im,v,"storage"+std::to_string(binding));
+    if(!storage && shader=="b5e9ec0ba0af7aaa" && (binding==10 || binding==22))probe_add(probe.inputs,im,v,"spriteAtlas"+std::to_string(binding));
+    else if(storage)probe_add(probe.outputs,im,v,"storage"+std::to_string(binding));
     else if(im.gpu_written || im.depth>1)probe_add(probe.inputs,im,v,"input"+std::to_string(stage)+"b"+std::to_string(binding));
 }
 void probe_volume_copy(Image &im,uint64_t source,size_t bytes,size_t row,size_t stride){
@@ -275,7 +287,7 @@ void probe_init(){
 }
 void probe_start(uint64_t frame,bool lut){
     const std::string directory=probe.base+"/codex-probe-"+std::to_string(getpid());
-    if(mkdir(directory.c_str(),0700) && errno!=EEXIST){xbg_logf("CODEX_PROBE mkdir failed errno=%d",errno);probe.waiting=false;return;}
+    if(mkdir(directory.c_str(),0755) && errno!=EEXIST){xbg_logf("CODEX_PROBE mkdir failed errno=%d",errno);probe.waiting=false;return;}
     FILE *trace=fopen((directory+"/capture.txt").c_str(),"wb");if(!trace){probe.waiting=false;return;}
     probe.waiting=false;probe.lut=lut;probe.group.clear();probe.groups=probe.draws=probe.snapshots=0;probe.extra_buffer_bytes=0;probe.outputs.clear();probe.inputs.clear();probe.saved.clear();
     capture.directory=directory;capture.trace=trace;capture.frame=frame;capture.bytes=0;capture.events=0;capture.active=false;capture.probe=true;
@@ -285,6 +297,18 @@ void probe_start(uint64_t frame,bool lut){
 void probe_present(Image &present){
     if(probe_is_active()){probe_flush();ProbeSurface final{probe_keep(present),{},false,"present"};if(final.image)probe_snapshot(final);return;}
     if(!probe.waiting || capture.trace)return;
-    FILE *file=fopen((probe.base+"/gfx-codex-probe").c_str(),"rb");int value=file?fgetc(file):'0';if(file)fclose(file);if(value!='1')return;
+    FILE *file=fopen((probe.base+"/gfx-codex-probe").c_str(),"rb");int value=file?fgetc(file):'0';if(file)fclose(file);
+    if(value=='4'){
+        // Diagnose the normal frame after recording, without disabling its
+        // descriptor/indirect fast paths or reading every intermediate pass.
+        probe_start(stats.presents.load()+1,false);
+        if(!capture.trace)return;
+        capture.probe=false;
+        capture_log("FINAL_ONLY normalFrameRecording=1");
+        ProbeSurface final{probe_keep(present),{},false,"present"};
+        if(final.image)probe_snapshot(final);
+        return;
+    }
+    if(value!='1')return;
     probe_start(stats.presents.load()+2,false);
 }

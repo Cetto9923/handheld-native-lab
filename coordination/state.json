@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-10-29T23:47:27.518347+08:00",
-  "phase": "RG477M 30Hz: the P0 launch crash is fixed (the guest was handed an empty platform window when the screen was off or an Anbernic overlay took the focus; nn::vi::GetNativeWindow and nvnWindowInitialize now wait for a stable live window). Motion measured with the on-screen pad d-pad walk: the current tree gives 17.12 present/s (p50 46.7 ms) and the known-good 5683f7e gives 16.71 present/s in the same package, save and scene, so the 30 Hz gate is missed by both and the cost is the scene (gpu 24-30 ms + submit 11-13 ms per frame, ~980 snapshot hits/~703 misses per frame). Title-screen numbers were scene-confounded (14.8-30.0 present/s for the same builds). Audio: the guest PCM is continuous (audible frame ratio 0.726, longest silence 37 ms) and AudioFlinger reports no underruns; the paired AirPods Pro 3 are disconnected so the output is the phone speaker at STREAM_MUSIC index 2/15 (~-30 dB), which is what the listener hears as stutter. Main package now runs the fixed build 7849f7ae with the user's save intact; the previous backup a1c82634 is kept in .local/rg477m-opt-30hz-game-mode/backup-a1c82634-gamewindow.apk.",
+  "updated_at": "2026-10-30T14:07:55.084458+08:00",
+  "phase": "USER FREEZE BASELINE: effects visually acceptable provisionally; stop FX changes. Local commit/tag/full runtime backup, create neutral-name PRIVATE GitHub source repository explicitly authorized. Prior no-push superseded only for new private repository.",
   "coordinator": "Codex /root takeover",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
@@ -1226,6 +1226,33 @@
       "device_boot_lock": "A42BBB5109000333 ONLY; RG477M prohibited",
       "released_at": "2026-10-29T12:10:43.807720+00:00",
       "release_reason": "User requests stop and Antigravity takeover; all dirty work preserved."
+    },
+    {
+      "task": "P-OPT-RG477M-30-STABILITY-20261030",
+      "owner": "Codex /root",
+      "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native/.worktrees/codex-black-screen",
+      "branch": "task/T02-codex-black-screen",
+      "paths": [
+        "coordination/",
+        ".local/rg477m-opt-30hz-game-mode/",
+        "src/runtime/hle/audio_bridge.c",
+        "src/runtime/hle/audio_bridge.h",
+        "src/runtime/hle/audio_transport.h",
+        "src/android/native/guest_boot_jni.cpp",
+        "tests/native/audio_transport_contract.c",
+        "tests/native/audio_bridge_transport_contract.c",
+        "src/graphics/nvn_vulkan/engine/xbg_probe.inc",
+        "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+        "scripts/graphics/prepare_rg477m_effect_xlate.py",
+        ".local/baselines/",
+        "README.md",
+        "NOTICE.md",
+        "docs/BASELINE-20261030.md",
+        "docs/PACKAGING-NEXT.md"
+      ],
+      "acquired_at": "2026-10-30T02:58:54.783329+08:00",
+      "checkpoint": "a925977 + bounded sprite observation WIP built b373. sprite29 invalid virtualpad mismatch; corrected29b exit0/4190 actual fallen-mage scene, two static atlases+11UBOs captured; root cause OPEN. User now asks freeze/tag/localbackup/privateGitHub, no further FX changes. No runtime diagnostic active. Need backup all exact app shaders/markers/APK/module/data and safe code-only publication.",
+      "write_state": "ACTIVE"
     }
   ],
   "tasks": [
@@ -4281,5 +4308,22 @@
     "readonly_attribution": "coordination/reports/P-CX-50-readonly-sync-attribution.md",
     "candidate": "Query-only preflight deferral only after complete disjoint read-set + completion-boundary proof; NOT proven safe yet",
     "owner_identity": "ACTIVE /root/command_lifetime T02-RG16-CANONICAL-PROXY, not identified as killed MiniMax/P-MM-49"
+  },
+  "baseline_freeze_20261030": {
+    "user_requested": true,
+    "tag": "rg477m-baseline-2026.10.30",
+    "runtime_apk": "b3730d59b015a97759f708e126d87e76de6bff11c0b289850c139d07311c07e0",
+    "shader9528": "7d20ab511ded85d5d1bb43f3d0ab43c2eaa5ac4b6caf786c5d65eec9a6db125d",
+    "local_backup": ".local/baselines/rg477m-baseline-2026.10.30",
+    "runtime_backup_session": 20968,
+    "publication": "new PRIVATE Cetto9923/handheld-native-lab source-only initial snapshot, no game-art PNG or old history",
+    "status": "PREPARING_VERIFY_MANIFESTS_BEFORE_CLAIM",
+    "open": [
+      "fallen-character flicker cause",
+      "full standing audio/A2DP/disconnect/AV sync",
+      "battle/full30Hz and longframes",
+      "internal720P",
+      "future one-folder multi-device installer"
+    ]
   }
 }

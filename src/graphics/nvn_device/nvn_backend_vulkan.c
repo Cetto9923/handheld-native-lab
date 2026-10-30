@@ -867,7 +867,11 @@ static int nvn_vulkan_create_window_surface(nvn_device_state *device, void *nati
     swapchain_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     swapchain_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     swapchain_info.preTransform = capabilities.currentTransform;
+    /* A/B: INHERIT is the composite alpha the 30 FPS build used. */
     swapchain_info.compositeAlpha = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
+    fprintf(stderr, "[nvn] vulkan: composite alpha selected=%#x supported=%#x (opaque game layer)\n",
+            (unsigned)swapchain_info.compositeAlpha,
+            (unsigned)capabilities.supportedCompositeAlpha);
     swapchain_info.presentMode = present_mode;
     swapchain_info.clipped = VK_TRUE;
     result = vkCreateSwapchainKHR(st->device, &swapchain_info, NULL, &swapchain);
