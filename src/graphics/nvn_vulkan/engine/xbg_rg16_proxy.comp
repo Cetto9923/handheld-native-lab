@@ -1,0 +1,29 @@
+// Self-owned native RG16_UNORM -> sampled RG32_SFLOAT proxy conversion.
+// Canonical image writes/blending remain UNORM. No storage-image format feature
+// is required: exact decoded texels go through a vec2 SSBO and a transfer copy.
+#version 450
+#ifndef PROXY_DIM
+#define PROXY_DIM 2
+#endif
+layout(local_size_x=64) in;
+#if PROXY_DIM == 1
+layout(set=0,binding=0) uniform sampler1DArray canonical_image;
+#elif PROXY_DIM == 3
+layout(set=0,binding=0) uniform sampler3D canonical_image;
+#else
+layout(set=0,binding=0) uniform sampler2DArray canonical_image;
+#endif
+layout(set=0,binding=1,std430) writeonly buffer Decoded { vec2 rg[]; } decoded;
+void main() {
+    uint i=gl_GlobalInvocationID.x+gl_GlobalInvocationID.y*gl_NumWorkGroups.x*64u;
+#if PROXY_DIM == 1
+    ivec2 size=textureSize(canonical_image,0);
+    if(i>=uint(size.x)*uint(size.y))return;
+    ivec2 p=ivec2(int(i%uint(size.x)),int(i/uint(size.x)));
+#else
+    ivec3 size=textureSize(canonical_image,0);
+    if(i>=uint(size.x)*uint(size.y)*uint(size.z))return;
+    ivec3 p=ivec3(int(i%uint(size.x)),int((i/uint(size.x))%uint(size.y)),int(i/(uint(size.x)*uint(size.y))));
+#endif
+    decoded.rg[i]=texelFetch(canonical_image,p,0).rg;
+}

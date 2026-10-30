@@ -1,0 +1,27 @@
+{
+  "relocation_format": "ELF64 DT_RELA + modern packed DT_RELR",
+  "mod0_address": "0x5e6b058",
+  "dynamic_address": "0x7767328",
+  "rela_summary": {
+    "entry_count": 3985,
+    "type_distribution": {
+      "257": 3972,
+      "1025": 13
+    }
+  },
+  "relr_summary": {
+    "packed_size_bytes": 260736,
+    "decoded_relocations_count": 1370974,
+    "data_start": "0x67d5000",
+    "data_end": "0x77c29f8",
+    "first_reloc": "0x67d5000",
+    "last_reloc": "0x77c29e8"
+  },
+  "needed_dependencies": [
+    "nnSdk.nss",
+    "nnrtld.nss",
+    "multimedia.nss"
+  ],
+  "pie_relocatable_verdict": true,
+  "verdict_explanation": "Binary contains complete DT_RELR (1,370,974 base-relative relocations) and DT_RELA tables. It can be mapped and executed at arbitrary 64-bit base addresses."
+}

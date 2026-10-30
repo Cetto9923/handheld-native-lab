@@ -1,0 +1,82 @@
+/* The NVN texture builder family of the FFRS RG477M native runtime.
+ *
+ * The guest fills a texture builder and then hands that builder to
+ * nvnTextureInitialize. The builder is a piece of the guest's own memory and
+ * its layout belongs to the Nintendo SDK, which this runtime does not have, so
+ * every value the guest puts into it is kept on the host and keyed by the
+ * address of the builder. Nothing is ever written into the guest's builder.
+ *
+ * The same shape as the queue, the window, the memory pool, the render state
+ * and the blend state families: a fixed table of states, a defaults routine
+ * that really resets the fields it owns, and setters and getters that answer
+ * with exactly what the guest put in.
+ *
+ * The builder records the description of a texture. It does not create one:
+ * no GPU memory is allocated here, because that is the work of the texture
+ * creation stage, which does not exist yet.
+ *
+ * Where the evidence comes from:
+ *
+ *   - the argument order of the setters and getters is the one of the vendored
+ *     NVN header (src/graphics/nvn/include/nvn/nvn.h). That header is a
+ *     reconstruction of NVN 53.105 taken from another game (Darksiders II),
+ *     so its signatures are not confirmed for this game.
+ *   - the default values come from the reference host that runs this very
+ *     game: .local/refs/nxnative/dm/gfx/nvn/hle_nvn.c, the
+ *     nvnTextureBuilderSetDefaults of nxnative (MIT).
+ *   - the names the vendored header has no signature for are recorded argument
+ *     by argument and are not answered with an invented value; see
+ *     nvn_texture_builder.c.
+ */
+#ifndef FFRS_NVN_TEXTURE_BUILDER_H
+#define FFRS_NVN_TEXTURE_BUILDER_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+/* How many texture builders the runtime tracks at the same time.
+ *
+ * The table grows with the number of builders the guest has, so this is a
+ * limit and not a guess: it is above the number of textures the device
+ * allows, and a builder belongs to a texture. A guest that runs out of them is
+ * told so instead of being served silently. */
+#define NVN_TEXTURE_BUILDER_MAX_OBJECTS 65536
+
+typedef struct nvn_texture_builder_family_entry {
+    const char *name;
+    void *fn;
+} nvn_texture_builder_family_entry;
+
+/* The shape of the entry points whose signature is not in the vendored header.
+ * They take their arguments as plain words, write them down as they came and
+ * answer with zero; nothing is dereferenced. */
+typedef void (*nvn_texture_builder_raw_proc)(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3,
+                                              uint64_t arg4, uint64_t arg5, uint64_t arg6, uint64_t arg7);
+
+size_t nvn_texture_builder_family_count(void);
+const nvn_texture_builder_family_entry *nvn_texture_builder_family_entry_at(size_t index);
+
+/* Statistics for the contract. */
+typedef struct nvn_texture_builder_stats {
+    uint64_t calls;          /* every entry point of this family */
+    uint64_t set_defaults;   /* the defaults were asked for */
+    uint64_t sets;           /* a setter ran */
+    uint64_t gets;           /* a getter ran */
+    uint64_t refused;        /* the call could not be answered */
+    uint64_t raw_calls;      /* names with no signature in the vendored header */
+    int live_builders;       /* builders the guest has prepared */
+} nvn_texture_builder_stats;
+
+void nvn_texture_builder_get_stats(nvn_texture_builder_stats *out);
+
+/* The device the guest put into a builder.
+ *
+ * The guest visible getter nvnTextureBuilderGetDevice has no signature in the
+ * vendored header, so it stays an argument recorder and answers with zero.
+ * The value itself is kept here, where the families that build a texture from
+ * a builder can read it without guessing an ABI. */
+void *nvn_texture_builder_device_of(const void *builder);
+int nvn_texture_builder_layout_of(const void *builder, uint64_t *size, uint32_t *alignment,
+                                  int *packaged_block_height);
+
+#endif /* FFRS_NVN_TEXTURE_BUILDER_H */

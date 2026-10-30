@@ -1,0 +1,105 @@
+{
+  "collected_at": "2026-10-23T04:14:23.167369+00:00",
+  "scope": "read-only host PATH/standard SDK paths and PFS0 outer tables; no target execution",
+  "tools_found_on_PATH": {
+    "rea": "/Users/yuyan9923/.local/bin/rea",
+    "hactool": "/Users/yuyan9923/.local/bin/hactool",
+    "ghidra-headless": "/Users/yuyan9923/.local/bin/ghidra-headless",
+    "clang++": "/usr/bin/clang++",
+    "cmake": null,
+    "ninja": "/opt/anaconda3/bin/ninja",
+    "java": "/usr/bin/java",
+    "adb": "/opt/homebrew/bin/adb"
+  },
+  "sdk_paths": [
+    {
+      "path": "/Users/yuyan9923/Library/Android/sdk",
+      "exists": true,
+      "ndk_candidates": []
+    }
+  ],
+  "packages": [
+    {
+      "path": "/Users/yuyan9923/Downloads/SwitchGame/[最终幻想：共鸣][FINAL FANTASY RESONANCE]/[升级档v1.0.1][0100B8A026F14800][22.5.0][中文][HK].nsp",
+      "size": 143005520,
+      "outer_format": "PFS0",
+      "entries": [
+        {
+          "name": "0100b8a026f148000000000000000016.tik",
+          "size": 704,
+          "file_offset": 400
+        },
+        {
+          "name": "0100b8a026f148000000000000000016.cert",
+          "size": 1792,
+          "file_offset": 1104
+        },
+        {
+          "name": "7fae2931fd7424ff2576df6a23c8c33c.cnmt.nca",
+          "size": 4096,
+          "file_offset": 2896
+        },
+        {
+          "name": "4c6ce89189041d7f9e1336d7b3775285.nca",
+          "size": 142443008,
+          "file_offset": 6992
+        },
+        {
+          "name": "5c5809ab2e665b1f0732e584cb7d0915.nca",
+          "size": 401920,
+          "file_offset": 142450000
+        },
+        {
+          "name": "ed5d82be2d6a9e8bf10bcdd1c70eb3c8.nca",
+          "size": 153600,
+          "file_offset": 142851920
+        }
+      ],
+      "pfs0_header_sha256": "c8642c0b26c7e861da872b7b6bfe30b3fb7d73b46c9909484b352fbabcccbc1c",
+      "digest_scope": "outer header/table/names only; NOT whole-package digest",
+      "internal_identity_engine_code_resources": "NOT_VERIFIED"
+    },
+    {
+      "path": "/Users/yuyan9923/Downloads/SwitchGame/[最终幻想：共鸣][FINAL FANTASY RESONANCE]/[本体v1.0.0][0100B8A026F14000][22.1.0][中文][HK].nsp",
+      "size": 9061339984,
+      "outer_format": "PFS0",
+      "entries": [
+        {
+          "name": "0100b8a026f140000000000000000016.tik",
+          "size": 704,
+          "file_offset": 400
+        },
+        {
+          "name": "0100b8a026f140000000000000000016.cert",
+          "size": 1792,
+          "file_offset": 1104
+        },
+        {
+          "name": "59ad695f173ffa2d06b5dd0594a6db05.cnmt.nca",
+          "size": 3584,
+          "file_offset": 2896
+        },
+        {
+          "name": "786609ae20a88b04b4901b09a4e400f9.nca",
+          "size": 9060777984,
+          "file_offset": 6480
+        },
+        {
+          "name": "6d439989edb47d981ef3f908e0955c5f.nca",
+          "size": 401920,
+          "file_offset": 9060784464
+        },
+        {
+          "name": "f85eb584c08c55c4d5ace94a6ee85279.nca",
+          "size": 153600,
+          "file_offset": 9061186384
+        }
+      ],
+      "pfs0_header_sha256": "08f541f8daa574367ea6717a4e589a9c99923b2287f4ae3f8f9a93aeb983fb5e",
+      "digest_scope": "outer header/table/names only; NOT whole-package digest",
+      "internal_identity_engine_code_resources": "NOT_VERIFIED"
+    }
+  ],
+  "device": "NOT_CONNECTED_OR_PROBED",
+  "native_game_implementation": "NOT_STARTED"
+}

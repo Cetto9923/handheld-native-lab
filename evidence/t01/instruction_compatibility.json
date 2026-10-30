@@ -1,0 +1,19 @@
+{
+  "svc_instructions": {
+    "total_count": 0,
+    "conclusion": "Zero direct SVC calls; binary strictly relies on external dynamic imports for all OS interactions."
+  },
+  "mrs_instructions": {
+    "tpidr_el0_0x5e82": 1489,
+    "other_registers": {
+      "0x5a20": 13,
+      "0x5a10": 3,
+      "0x5a21": 1
+    }
+  },
+  "msr_instructions": {
+    "0x5a20": 24,
+    "0x5a10": 3,
+    "0x5a21": 1
+  }
+}

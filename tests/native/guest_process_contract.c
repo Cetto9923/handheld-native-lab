@@ -1,0 +1,7147 @@
+#define _GNU_SOURCE
+#include "../../src/runtime/hle/guest_process.h"
+#include "../../src/runtime/hle/guest_context.h"
+#include "../../src/runtime/hle/nso_host.h"
+#include "../../src/runtime/hle/guest_pages.h"
+#include "../../src/runtime/hle/guest_tp.h"
+#include "../../src/runtime/nso/native_boundary.h"
+#include "../../src/graphics/nvn_device/nvn_blend_state.h"
+#include "../../src/graphics/nvn_device/nvn_device.h"
+#include "../../src/graphics/nvn_device/nvn_memory_pool.h"
+#include "../../src/graphics/nvn_device/nvn_program.h"
+#include "../../src/graphics/nvn_device/nvn_command_buffer.h"
+#include "../../src/graphics/nvn_device/nvn_sampler_builder.h"
+#include "../../src/graphics/nvn_device/nvn_texture_builder.h"
+#include "../../src/graphics/nvn_device/nvn_queue.h"
+#include "../../src/graphics/nvn_device/nvn_render_state.h"
+#include "../../src/graphics/nvn_device/nvn_sampler_pool.h"
+#include "../../src/graphics/nvn_device/nvn_texture_pool.h"
+#include "../../src/graphics/nvn_device/nvn_window.h"
+#include <errno.h>
+#include <ctype.h>
+#include <wctype.h>
+#include <inttypes.h>
+#include <stdbool.h>
+#include <limits.h>
+#include <float.h>
+#include <math.h>
+#include <pthread.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#if defined(__APPLE__)
+#include <mach/mach.h>
+#include <mach/mach_vm.h>
+#endif
+#define CHECK(x) do {if(!(x)) {fprintf(stderr,"process contract line=%d: %s\n",__LINE__,#x);return 1;}} while(0)
+
+/* What this build has to be, for the NVN device layer contract. The Android
+ * build has the Vulkan backend, so a real device has to exist there; the host
+ * build has no Vulkan implementation, so there is no device and the device
+ * initialisation has to say so. This is an expectation, not an input: the
+ * value the runtime produces is whatever the device really is, and the
+ * expectation is what this build has to be. */
+#if defined(__ANDROID__)
+#define NVN_EXPECT_REAL_DEVICE 1
+#else
+#define NVN_EXPECT_REAL_DEVICE 0
+#endif
+static size_t page;
+static unsigned errors,calls,extension_calls;
+static int returned_token;
+static uint64_t extension(uint32_t i,const char *n) {(void)i;(void)n;extension_calls++;return 1;}
+static int succeeded(struct nso_result r) {
+    if(r.status==NSO_OK)return 1;
+    fprintf(stderr,"process status=%d native=%d cleanup=%d\n",r.status,r.native_error,r.cleanup_error);return 0;
+}
+static int all_bytes(const void *p,size_t n,unsigned char value) {
+    const unsigned char *b=p;for(size_t i=0;i<n;i++)if(b[i]!=value)return 0;return 1;
+}
+static void expect_value(const char *tag,uint64_t actual,uint64_t expected) {
+    if(actual!=expected) {
+        errors++;
+        fprintf(stderr,"[check-fail] %s actual=0x%" PRIx64 " expected=0x%" PRIx64 "\n",tag,actual,expected);
+    }
+}
+static void expect_condition(const char *tag,int condition) {
+    if(!condition) {errors++;fprintf(stderr,"[check-fail] %s\n",tag);}
+}
+static int inaccessible(uintptr_t address) {
+#if defined(__APPLE__)
+    mach_vm_address_t base=address;mach_vm_size_t bytes=0;
+    vm_region_basic_info_data_64_t info;mach_msg_type_number_t count=VM_REGION_BASIC_INFO_COUNT_64;
+    mach_port_t object=MACH_PORT_NULL;
+    kern_return_t r=mach_vm_region(mach_task_self(),&base,&bytes,VM_REGION_BASIC_INFO_64,(vm_region_info_t)&info,&count,&object);
+    if(object!=MACH_PORT_NULL)mach_port_deallocate(mach_task_self(),object);
+    return r==KERN_SUCCESS && base<=address && address-base<bytes && info.protection==VM_PROT_NONE;
+#else
+    FILE *maps=fopen("/proc/self/maps","r");if(!maps)return 0;
+    char line[1024],permissions[5];uintptr_t base,end;int found=0;
+    while(fgets(line,sizeof(line),maps))if(sscanf(line,"%" SCNxPTR "-%" SCNxPTR " %4s",&base,&end,permissions)==3 && base<=address && address<end) {
+        found=permissions[0]=='-' && permissions[1]=='-' && permissions[2]=='-';break;
+    }
+    fclose(maps);return found;
+#endif
+}
+struct callback_input {size_t quota,image,live_page_bytes;};
+static void *exercise(guest_process *process,void *opaque) {
+    struct callback_input *input=opaque;calls++;
+    struct guest_memory_info info;
+    memset(&info,0xa5,sizeof(info));
+    if(!succeeded(guest_process_memory_info(process,&info))) {expect_condition("query-initial-status",0);return NULL;}
+    expect_value("query-total",info.total,input->quota);
+    expect_value("query-used",info.used,input->image+page+65536+input->live_page_bytes);
+    expect_value("query-heap-capacity",info.heap_capacity,0);
+    expect_value("query-heap-blocks",info.heap_blocks,0);
+    expect_value("query-baseline",info.baseline,input->image+page);
+    expect_value("query-stack-bytes",info.stack_bytes,65536);
+    expect_value("query-thread-count",info.thread_objects,1);
+    expect_condition("query-initial-padding",all_bytes((unsigned char *)&info+0x34,sizeof(info)-0x34,0xa5));
+    uintptr_t stack_low,stack_high,sp;
+#if defined(__APPLE__)
+    stack_high=(uintptr_t)pthread_get_stackaddr_np(pthread_self());
+    stack_low=stack_high-pthread_get_stacksize_np(pthread_self());
+#else
+    pthread_attr_t attr;void *stack;size_t bytes;
+    int getattr_error=pthread_getattr_np(pthread_self(),&attr);
+    if(getattr_error) {fprintf(stderr,"[check-fail] pthread-getattr error=%d\n",getattr_error);errors++;return NULL;}
+    int getstack_error=pthread_attr_getstack(&attr,&stack,&bytes);
+    int attr_destroy_error=pthread_attr_destroy(&attr);
+    if(getstack_error) {fprintf(stderr,"[check-fail] pthread-getstack error=%d\n",getstack_error);errors++;return NULL;}
+    expect_value("pthread-attr-destroy",(uint64_t)attr_destroy_error,0);
+    stack_low=(uintptr_t)stack;stack_high=stack_low+bytes;
+#endif
+#if defined(__aarch64__)
+    __asm__ volatile("mov %0, sp":"=r"(sp));
+#else
+#error "this ordinary SP contract requires the selected AArch64 target"
+#endif
+    fprintf(stderr,"[check-values] native-stack call=%u low=0x%" PRIxPTR " high=0x%" PRIxPTR
+        " reported_bytes=%" PRIuPTR " expected_owned_bytes=65536 sp=0x%" PRIxPTR " local=0x%" PRIxPTR "\n",
+        calls,stack_low,stack_high,stack_high-stack_low,sp,(uintptr_t)&info);
+    struct guest_primary_stack owned;
+    struct nso_result owned_status=guest_process_primary_stack(process,&owned);
+    expect_condition("owned-stack-descriptor",succeeded(owned_status));
+    if(owned_status.status!=NSO_OK)return NULL;
+    fprintf(stderr,"[check-values] owned-stack logical=(0x%" PRIxPTR ",%zu) raw=(0x%" PRIxPTR ",%zu) native=(0x%" PRIxPTR ",%zu) admin=%zu attempts=%u\n",
+        owned.address,owned.bytes,owned.allocation_address,owned.allocation_bytes,
+        owned.native_address,owned.native_bytes,owned.administrative_bytes,owned.capacity_attempts);
+    expect_value("logical-guest-stack-bytes",owned.bytes,65536);
+    expect_condition("pthread-capacity-at-least-logical",stack_high-stack_low>=owned.bytes);
+    expect_value("pthread-reported-native-base",stack_low,owned.native_address);
+    expect_value("pthread-reported-native-bytes",stack_high-stack_low,owned.native_bytes);
+    expect_condition("logical-window-in-native",owned.address>=stack_low && owned.address+owned.bytes==stack_high);
+    expect_condition("native-in-raw-allocation",stack_low>=owned.allocation_address && stack_high<=owned.allocation_address+owned.allocation_bytes);
+    expect_value("raw-logical-admin-accounting",owned.allocation_bytes,owned.bytes+owned.administrative_bytes);
+    expect_condition("bounded-admin",owned.administrative_bytes<=4*page && owned.capacity_attempts<=3);
+    expect_condition("sp-in-exact-logical-window",sp>=owned.address && sp-owned.address<owned.bytes);
+    expect_condition("local-in-exact-logical-window",(uintptr_t)&info>=owned.address && (uintptr_t)&info-owned.address<owned.bytes);
+    expect_condition("raw-lower-guard",inaccessible(owned.allocation_address-owned.guard_bytes));
+    expect_condition("raw-upper-guard",inaccessible(owned.allocation_address+owned.allocation_bytes));
+    expect_condition("sp-in-pthread-reported-stack",sp>=stack_low && sp<stack_high);
+    expect_condition("local-in-pthread-reported-stack",(uintptr_t)&info>=stack_low && (uintptr_t)&info<stack_high);
+    stack_t alternate;
+    memset(&alternate,0,sizeof(alternate));
+    int alternate_result=sigaltstack(NULL,&alternate),alternate_error=errno;
+    fprintf(stderr,"[check-values] altstack result=%d errno=%d address=%p bytes=%zu flags=0x%x\n",
+        alternate_result,alternate_error,alternate.ss_sp,alternate.ss_size,alternate.ss_flags);
+    expect_value("altstack-read-result",(uint64_t)alternate_result,0);
+    expect_condition("altstack-enabled",!(alternate.ss_flags&SS_DISABLE));
+    typedef uint32_t (*allocate_fn)(uintptr_t *,size_t);
+    typedef uint32_t (*free_fn)(uintptr_t);
+    allocate_fn allocate=(allocate_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os21AllocateAddressRegionEPmm");
+    free_fn release=(free_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os17FreeAddressRegionEm");
+    uintptr_t first=0,second=0;
+    expect_condition("va-allocate-binding",allocate!=NULL);expect_condition("va-free-binding",release!=NULL);
+    if(allocate && release) {
+        expect_value("va-allocate-first-result",allocate(&first,2*page),0);
+        expect_value("va-allocate-second-result",allocate(&second,2*page),0);
+    }
+    struct guest_memory_info after;
+    struct nso_result after_result=guest_process_memory_info(process,&after);
+    expect_condition("query-after-va-status",succeeded(after_result));
+    if(after_result.status==NSO_OK)expect_condition("query-after-va-unchanged",!memcmp(&info,&after,0x34));
+    if(second && release)expect_value("va-free-second-result",release(second),0);
+    /* first remains genuinely owned PROT_NONE; process destroy must release it. */
+    typedef void (*query_fn)(struct guest_memory_info *);
+    query_fn query=(query_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os15QueryMemoryInfoEPNS0_10MemoryInfoE");
+    expect_condition("query-guest-binding",query!=NULL);
+    if(query) {memset(&after,0x5a,sizeof(after));query(&after);
+        expect_condition("query-guest-fields",!memcmp(&after,&info,0x34));
+        expect_condition("query-guest-padding",all_bytes((unsigned char *)&after+0x34,sizeof(after)-0x34,0x5a));}
+    typedef uint32_t (*pages_fn)(uintptr_t,size_t);
+    pages_fn map=(pages_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os19AllocateMemoryPagesEmm");
+    pages_fn unmap=(pages_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os15FreeMemoryPagesEmm");
+    expect_condition("pages-map-binding",map!=NULL);expect_condition("pages-free-binding",unmap!=NULL);
+    if(first && query && map && unmap) {
+        size_t mapped=2*page;
+        expect_value("pages-map-result",map(first,mapped),0);
+        volatile unsigned char *memory=(volatile unsigned char *)first;
+        memory[0]=0x37;memory[mapped-1]=0x81;
+        expect_condition("pages-pattern-rw",memory[0]==0x37 && memory[mapped-1]==0x81);
+        struct guest_memory_info expected=info;expected.used+=mapped;
+        memset(&after,0x5a,sizeof(after));query(&after);
+        expect_condition("query-adds-real-page-backing",!memcmp(&after,&expected,0x34));
+        expect_condition("query-mapped-padding",all_bytes((unsigned char *)&after+0x34,sizeof(after)-0x34,0x5a));
+        expect_value("pages-free-exact-result",unmap(first,mapped),0);
+        query(&after);expect_condition("query-refunds-decommitted-pages",!memcmp(&after,&info,0x34));
+        expect_value("pages-recommit-result",map(first,mapped),0);
+        expect_condition("pages-recommit-zero",memory[0]==0 && memory[mapped-1]==0);
+        memory[0]=0x6d;memory[mapped-1]=0x29;
+        query(&after);expect_condition("query-retains-live-page-charge",!memcmp(&after,&expected,0x34));
+        input->live_page_bytes+=mapped;
+        /* Keep a real allocation alive: whole owner destroy must unmap it
+         * before refund, not just clear a duplicate profile ledger. */
+    }
+    return &returned_token;
+}
+#if defined(NSO_LOADER_TESTING)
+struct ownership_probe {
+    guest_context *context;guest_charge_ticket *ticket;size_t bytes;
+    void *image,*source;int committed,unloads,pending_observed;
+    int fail_map,fail_protect,fail_image_unmap,fail_source_unmap;
+};
+static struct ownership_probe *probe;
+static struct nso_result owner_status(struct guest_context_result r) {
+    return (struct nso_result){r.status==GUEST_CONTEXT_OK?NSO_OK:r.status==GUEST_CONTEXT_LIMIT?NSO_LIMIT:NSO_OWNER_ERROR,r.native_error,r.cleanup_error};
+}
+static struct nso_result reserve(void *o,size_t n,void **out) {
+    struct ownership_probe *p=o;p->bytes=n;
+    struct nso_result r=owner_status(guest_charge_reserve(p->context,n,&p->ticket));
+    *out=p->ticket;return r;
+}
+static struct nso_result commit(void *o,void *ticket) {
+    struct ownership_probe *p=o;struct nso_result r=owner_status(guest_charge_commit(ticket));
+    if(r.status==NSO_OK)p->committed=1;return r;
+}
+static struct nso_result drop(void *o,void *ticket,int committed) {
+    struct ownership_probe *p=o;
+    struct nso_result r=owner_status(committed?guest_charge_release(ticket):guest_charge_cancel(ticket));
+    if(r.status==NSO_OK) {p->ticket=NULL;p->committed=0;}return r;
+}
+static struct nso_result cancel(void *o,void *ticket) {return drop(o,ticket,0);}
+static struct nso_result release(void *o,void *ticket) {return drop(o,ticket,1);}
+static const struct nso_owner_ops ops={reserve,commit,cancel,release};
+static void *map_probe(size_t n,int protection,int fd) {
+    if(fd<0 && !probe->image) {
+        struct guest_context_usage usage;
+        if(guest_context_usage(probe->context,&usage).status!=GUEST_CONTEXT_OK ||
+           usage.pending_bytes!=n || usage.charged_bytes || usage.tickets!=1)errors++;
+        else probe->pending_observed++;
+        if(probe->fail_map) {probe->fail_map=0;errno=ENOMEM;return MAP_FAILED;}
+    }
+    void *mapped=mmap(NULL,n,protection,MAP_PRIVATE|(fd<0?MAP_ANONYMOUS:0),fd,0);
+    if(mapped!=MAP_FAILED) {
+        if(fd>=0)probe->source=mapped;
+        else if(!probe->image)probe->image=mapped;
+    }
+    return mapped;
+}
+static int protect_probe(void *p,size_t n,int protection) {
+    if(probe->fail_protect) {probe->fail_protect=0;errno=EACCES;return -1;}
+    return mprotect(p,n,protection);
+}
+static int unmap_probe(void *p,size_t n) {
+    if((p==probe->image && probe->fail_image_unmap-- >0) ||
+       (p==probe->source && probe->fail_source_unmap-- >0)) {errno=EBUSY;return -1;}
+    return munmap(p,n);
+}
+static void observer(void *user) {
+    nso_module *m=user;uint64_t value;
+    memcpy(&value,(void *)(uintptr_t)nso_addr(m,0x8208),8);
+    if(value!=nso_base(m)+0x1234)errors++;
+    probe->unloads++;
+}
+static int empty_accounting(guest_context *context) {
+    struct guest_context_usage usage;
+    return guest_context_usage(context,&usage).status==GUEST_CONTEXT_OK &&
+        !usage.pending_bytes && !usage.charged_bytes && !usage.tickets;
+}
+static int owner_contract(const char *path) {
+    struct guest_context_config config={1024*1024,65536};
+    for(int phase=0;phase<5;phase++) {
+        struct ownership_probe state={0};probe=&state;
+        CHECK(guest_context_create(&config,&state.context).status==GUEST_CONTEXT_OK);
+        if(phase==1)state.fail_map=1;
+        if(phase==2) {state.fail_protect=1;state.fail_image_unmap=1;}
+        if(phase==3)state.fail_source_unmap=2;
+        if(phase==4) {
+            guest_context_destroy(state.context);config.quota_bytes=page;
+            CHECK(guest_context_create(&config,&state.context).status==GUEST_CONTEXT_OK);
+        }
+        nso_loader_test_vm(map_probe,protect_probe,unmap_probe);
+        char err[256]={0};
+        struct nso_load_result loaded=nso_load_file_owned(path,NULL,&ops,&state,err,sizeof(err));
+        if(phase==0) {
+            CHECK(succeeded(loaded.result) && loaded.module && state.pending_observed==1);
+            CHECK(state.bytes==nso_image_size(loaded.module) && state.committed);
+            nso_set_unload_observer(loaded.module,observer,loaded.module);
+            state.fail_image_unmap=1;
+            struct nso_result retained=nso_release(&loaded.module);
+            CHECK(retained.status==NSO_RETAINED && retained.cleanup_error==EBUSY && loaded.module && state.unloads==1);
+            struct guest_context_usage usage;
+            CHECK(guest_context_usage(state.context,&usage).status==GUEST_CONTEXT_OK);
+            CHECK(usage.charged_bytes==state.bytes && usage.tickets==1);
+        } else if(phase==1) {
+            CHECK(loaded.result.status==NSO_LOAD_ERROR && loaded.result.native_error==ENOMEM && !loaded.module && state.pending_observed==1);
+        } else if(phase==2) {
+            CHECK(loaded.result.status==NSO_RETAINED && loaded.result.native_error==EACCES && loaded.result.cleanup_error==EBUSY && loaded.module && state.ticket);
+        } else if(phase==3) {
+            CHECK(loaded.result.status==NSO_RETAINED && loaded.module && !state.ticket);
+        } else CHECK(loaded.result.status==NSO_LIMIT && !loaded.module && !state.pending_observed);
+        CHECK(succeeded(nso_release(&loaded.module)) && !loaded.module);
+        CHECK(empty_accounting(state.context));
+        CHECK(guest_context_destroy(state.context).status==GUEST_CONTEXT_OK);
+        if(!phase)CHECK(state.unloads==1);
+        nso_loader_test_vm(NULL,NULL,NULL);
+    }
+    return 0;
+}
+#endif
+static unsigned executed_calls;
+#if defined(NSO_PROFILE_BOUNDARY_TESTING)
+static unsigned boundary_protect_failures,boundary_unmap_failures,boundary_unmap_attempts,boundary_unmap_successes;
+int guest_boundary_test_protect(void *address,size_t bytes,int protection) {
+    if(boundary_protect_failures) {boundary_protect_failures--;errno=EACCES;return -1;}
+    return mprotect(address,bytes,protection);
+}
+int guest_boundary_test_unmap(void *address,size_t bytes) {
+    boundary_unmap_attempts++;
+    if(boundary_unmap_failures) {boundary_unmap_failures--;errno=EBUSY;return -1;}
+    int r=munmap(address,bytes);if(!r)boundary_unmap_successes++;return r;
+}
+static void *retained_boundary_callback(guest_process *process,void *opaque) {
+    (void)opaque;const uint64_t arguments[6]={0};uint64_t value=0xa5a5;
+    struct nso_result r=guest_process_call(process,0x20,arguments,0,&value);
+    expect_value("boundary-failed-bind-retained",r.status,NSO_RETAINED);
+    expect_value("boundary-failed-bind-did-not-execute",value,0xa5a5);
+    return &returned_token;
+}
+static int boundary_retained_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *process=NULL;
+    CHECK(succeeded(guest_process_create(&config,&process)));
+    char err[128]={0};CHECK(succeeded(guest_process_load(process,path,err,sizeof(err))));
+    boundary_protect_failures=1;boundary_unmap_failures=2;
+    void *value=NULL;CHECK(succeeded(guest_process_run(process,retained_boundary_callback,NULL,&value)));
+    CHECK(value==&returned_token && !errors && boundary_unmap_attempts==1 && !boundary_unmap_successes);
+    CHECK(guest_process_destroy(&process).status==NSO_RETAINED && process);
+    CHECK(boundary_unmap_attempts==2 && !boundary_unmap_successes);
+    CHECK(succeeded(guest_process_destroy(&process)) && !process);
+    CHECK(boundary_unmap_attempts==3 && boundary_unmap_successes==1);
+    CHECK(succeeded(guest_process_create(&config,&process)) && succeeded(guest_process_destroy(&process)));
+    puts("{\"boundary_retained_errors\":0,\"unmap_attempts\":3,\"actual_unmaps\":1,\"guest_executed\":false,\"retry_cleanup\":true}");return 0;
+}
+#endif
+static void *execute_boundary(guest_process *process,void *opaque) {
+    unsigned phase=*(unsigned *)opaque;
+    const uint64_t arguments[6]={0x1234};uint64_t value=UINT64_C(0xa5a5a5a5);
+    for(unsigned i=0;i<2;i++) {
+        struct nso_result r=guest_process_call(process,0x20,arguments,1,&value);
+#if defined(__ANDROID__) && defined(__aarch64__)
+        if(!phase) {expect_value("boundary-call-status",r.status,NSO_OK);expect_value("boundary-result-and-guest-x18",value,0x91);executed_calls++;}
+        else {expect_value("boundary-ended-session-rejected",r.status,NSO_UNSUPPORTED);expect_value("boundary-rejected-output",value,UINT64_C(0xa5a5a5a5));}
+#else
+        (void)phase;expect_value("boundary-host-explicit-unsupported",r.status,NSO_UNSUPPORTED);
+        expect_value("boundary-unsupported-output",value,UINT64_C(0xa5a5a5a5));
+#endif
+    }
+    return &returned_token;
+}
+static int boundary_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *process=NULL;
+    CHECK(succeeded(guest_process_create(&config,&process)));
+    char err[128]={0};CHECK(succeeded(guest_process_load(process,path,err,sizeof(err))));
+    const uint64_t arguments[6]={0};uint64_t untouched=0xa5a5;
+    CHECK(guest_process_call(process,0x20,arguments,0,&untouched).status==NSO_INVALID && untouched==0xa5a5);
+    for(unsigned phase=0;phase<2;phase++) {
+        void *value=NULL;struct nso_result run=guest_process_run(process,execute_boundary,&phase,&value);
+#if defined(__ANDROID__) && defined(__aarch64__)
+        if(phase) {CHECK(run.status==NSO_UNSUPPORTED && !value);continue;}
+#endif
+        CHECK(succeeded(run));
+        CHECK(value==&returned_token && !errors);
+    }
+    CHECK(succeeded(guest_process_destroy(&process)) && !process);
+    printf("{\"boundary_errors\":%u,\"executed_calls\":%u,\"raw_fallback\":false,\"ended_session_rejected\":%s}\n",errors,executed_calls,
+#if defined(__ANDROID__) && defined(__aarch64__)
+        "true"
+#else
+        "null"
+#endif
+    );
+    return 0;
+}
+#if !defined(__ANDROID__)
+static void *register_unsupported_destructor(guest_process *process,void *opaque) {
+    (void)opaque;typedef uint32_t(*allocate_fn)(uint32_t *,uint64_t);
+    allocate_fn allocate=(allocate_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os15AllocateTlsSlotEPNS0_7TlsSlotEPFvmE");
+    uint32_t slot=99;uint32_t result=allocate(&slot,nso_addr(guest_process_module(process),0x20));
+    expect_value("os-tls-register-before-unsupported-provider",result,0);
+    return &returned_token;
+}
+static int unsupported_tls_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *process=NULL;
+    CHECK(succeeded(guest_process_create(&config,&process)));
+    char err[128];CHECK(succeeded(guest_process_load(process,path,err,sizeof(err))));
+    void *value=NULL;(void)guest_process_run(process,register_unsupported_destructor,NULL,&value);
+    fputs("unexpected return after unsupported guest provider\n",stderr);return 1;
+}
+#endif
+static uint64_t retarget_target(uint64_t a) {return a+1;}
+static uint64_t replacement_target(uint64_t a) {return a+2;}
+static uint64_t retarget_resolver(uint32_t index,const char *name) {
+    (void)index;return !strcmp(name,"host_sum")?(uintptr_t)&retarget_target:0;
+}
+static unsigned init_count,init_fail_at;
+static struct nso_result count_initializer(void *user,nso_module *module,uint64_t off,const uint64_t args[6],uint64_t *value) {
+    (void)user;(void)module;
+    if((off!=0x20 && off!=0x40 && off!=0x60) || args[0] || args[5])return (struct nso_result){NSO_INVALID,EINVAL,0};
+    init_count++;*value=0;return (struct nso_result){init_count==init_fail_at?NSO_OWNER_ERROR:NSO_OK,0,0};
+}
+static int retarget_contract(const char *path) {
+    char err[128];nso_module *module=nso_load_file(path,retarget_resolver,err,sizeof(err));CHECK(module);
+    CHECK(nso_bound_import_count(module)==1);
+    struct nso_import_target target;CHECK(succeeded(nso_bound_import_at(module,0,&target)));
+    CHECK(target.index==1 && target.target==(uintptr_t)&retarget_target && !strcmp(target.name,"host_sum"));
+    const uint64_t *slot=(const uint64_t *)(uintptr_t)nso_addr(module,0x8200);
+    CHECK(*slot==target.target);target.target=(uintptr_t)&replacement_target;
+    struct nso_import_target duplicate[2]={target,target};
+    CHECK(nso_retarget_imports(module,duplicate,2).status==NSO_INVALID && *slot==(uintptr_t)&retarget_target);
+    CHECK(succeeded(nso_retarget_imports(module,&target,1)) && *slot==target.target);
+    CHECK(succeeded(nso_retarget_imports(module,&target,1)) && *slot==target.target);
+    *(uint64_t *)slot=(uintptr_t)&retarget_target;
+    CHECK(nso_retarget_imports(module,&target,1).status==NSO_RETAINED && *slot==(uintptr_t)&retarget_target);
+    CHECK(succeeded(nso_run_init_execute(module,NSO_INIT_ELF,count_initializer,NULL)) && init_count==3);
+    init_count=0;CHECK(succeeded(nso_run_init_execute(module,NSO_INIT_DT_INIT_OWNS_ARRAY,count_initializer,NULL)) && init_count==1);
+    init_count=0;init_fail_at=2;
+    CHECK(nso_run_init_execute(module,NSO_INIT_ELF,count_initializer,NULL).status==NSO_OWNER_ERROR && init_count==2);
+    init_fail_at=0;
+    CHECK(succeeded(nso_release(&module)) && !module);
+    puts("{\"retarget_errors\":0,\"recorded_import_only\":true,\"init_elf_calls\":3,\"init_wrapper_calls\":1}");return 0;
+}
+static int readonly_retarget_contract(const char *path) {
+    char err[128];nso_module *module=nso_load_file(path,retarget_resolver,err,sizeof(err));CHECK(module);
+    struct nso_import_target target;CHECK(succeeded(nso_bound_import_at(module,0,&target)));
+    const uint64_t *slot=(const uint64_t *)(uintptr_t)nso_addr(module,0x4200);
+    CHECK(*slot==(uintptr_t)&retarget_target);target.target=(uintptr_t)&replacement_target;
+    CHECK(nso_retarget_imports(module,&target,1).status==NSO_UNSUPPORTED && *slot==(uintptr_t)&retarget_target);
+    CHECK(succeeded(nso_release(&module)) && !module);
+    puts("{\"readonly_retarget_errors\":0,\"unsupported\":true,\"no_write\":true}");return 0;
+}
+struct child_tls_test_data {
+    uint32_t slot;
+    uint64_t initial;
+    uint64_t after_set;
+    uint64_t (*get)(uint32_t);
+    void (*set)(uint32_t,uint64_t);
+};
+static void *child_tls_worker(void *arg) {
+    struct child_tls_test_data *d=(struct child_tls_test_data *)arg;
+    guest_process_bind_child_thread();
+    d->initial=d->get(d->slot);
+    d->set(d->slot,0x123456);
+    d->after_set=d->get(d->slot);
+    guest_process_unbind_child_thread();
+    return NULL;
+}
+static void *exercise_os_wrappers(guest_process *process,void *opaque) {
+    (void)opaque;
+    typedef uint32_t(*allocate_fn)(uint32_t *,uint64_t);typedef uint64_t(*get_fn)(uint32_t);
+    typedef void(*set_fn)(uint32_t,uint64_t);typedef void(*free_fn)(uint32_t);
+    allocate_fn allocate=(allocate_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os15AllocateTlsSlotEPNS0_7TlsSlotEPFvmE");
+    get_fn get=(get_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os11GetTlsValueENS0_7TlsSlotE");
+    set_fn set=(set_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os11SetTlsValueENS0_7TlsSlotEm");
+    free_fn release=(free_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os11FreeTlsSlotENS0_7TlsSlotE");
+    uint32_t slots[16];
+    for(unsigned i=0;i<16;i++) {expect_value("os-app-allocate",allocate(&slots[i],0),0);expect_value("os-app-search-order",slots[i],i);expect_value("os-initial-zero",get(slots[i]),0);}
+    uint32_t untouched=0xabc;expect_value("os-app-exhaust-sdk-result",allocate(&untouched,0),0x1203);expect_value("os-exhaust-output",untouched,0xabc);
+    set(slots[0],0x99);
+    struct child_tls_test_data cd={slots[0],0xdead,0xdead,get,set};
+    pthread_t cth;
+    expect_condition("child-create-success",pthread_create(&cth,NULL,child_tls_worker,&cd)==0);
+    expect_condition("child-join-success",pthread_join(cth,NULL)==0);
+    expect_value("child-os-tls-isolated-initial-zero",cd.initial,0);
+    expect_value("child-os-tls-after-set",cd.after_set,0x123456);
+    expect_value("primary-os-tls-untouched-by-child",get(slots[0]),0x99);
+    release(slots[0]);expect_value("os-free-retains-value-no-hostfree",get(slots[0]),0x99);
+    expect_value("os-reallocate",allocate(&slots[0],0),0);expect_value("os-reallocate-clears",get(slots[0]),0);
+    for(unsigned i=0;i<16;i++)release(slots[i]);
+    typedef void (*std_lock_fn)(void *);
+    typedef void (*std_unlock_fn)(void *);
+    typedef void (*std_notify_all_fn)(void *);
+    typedef uint64_t (*std_now_fn)(void);
+    std_lock_fn std_lock=(std_lock_fn)(uintptr_t)guest_process_resolve(0,"_ZNSt3__15mutex4lockEv");
+    std_unlock_fn std_unlock=(std_unlock_fn)(uintptr_t)guest_process_resolve(0,"_ZNSt3__15mutex6unlockEv");
+    std_notify_all_fn std_notify_all=(std_notify_all_fn)(uintptr_t)guest_process_resolve(0,"_ZNSt3__118condition_variable10notify_allEv");
+    std_now_fn std_now=(std_now_fn)(uintptr_t)guest_process_resolve(0,"_ZNSt3__16chrono12steady_clock3nowEv");
+    uint64_t dummy_m=0,dummy_cv=0;
+    std_lock(&dummy_m);
+    std_unlock(&dummy_m);
+    std_notify_all(&dummy_cv);
+    expect_condition("std-steady-clock-now-positive",std_now()>0);
+    typedef char *(*setlocale_fn)(int, const char *);
+    setlocale_fn sl=(setlocale_fn)(uintptr_t)guest_process_resolve(0,"setlocale");
+    expect_condition("setlocale-returns-c",sl && sl(0,NULL) && !strcmp(sl(0,NULL),"C"));
+    typedef int (*gtod_fn)(struct timeval *, void *);
+    gtod_fn gtod=(gtod_fn)(uintptr_t)guest_process_resolve(0,"gettimeofday");
+    struct timeval test_tv;
+    memset(&test_tv, 0, sizeof(test_tv));
+    expect_condition("gettimeofday-returns-zero",gtod && gtod(&test_tv,NULL)==0 && test_tv.tv_sec>0);
+    typedef uint32_t (*get_process_handle_fn)(void);
+    get_process_handle_fn gph=(get_process_handle_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os23GetCurrentProcessHandleEv");
+    expect_condition("get-current-process-handle-live",gph && gph()==(uint32_t)getpid());
+    typedef uint32_t (*is_fail_fn)(uint32_t);
+    is_fail_fn is_fail = (is_fail_fn)(uintptr_t)guest_process_resolve(0, "nnResultIsFailure");
+    expect_condition("nn-result-is-failure-live", is_fail && is_fail(0) == 0 && is_fail(1) == 1);
+    struct guest_memory_info info;expect_condition("os-thread-query-still-live",succeeded(guest_process_memory_info(process,&info)) && info.thread_objects==1);
+    return &returned_token;
+}
+static int os_wrapper_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *process=NULL;
+    CHECK(succeeded(guest_process_create(&config,&process)));char err[128];
+    CHECK(succeeded(guest_process_load(process,path,err,sizeof(err))));
+    for(unsigned i=0;i<2;i++) {void *value=NULL;CHECK(succeeded(guest_process_run(process,exercise_os_wrappers,NULL,&value)));CHECK(value==&returned_token && !errors);}
+    CHECK(succeeded(guest_process_destroy(&process)) && !process);
+    puts("{\"os_wrapper_errors\":0,\"native_primary_records\":2,\"exhaust_result\":4611,\"free_keeps_value\":true,\"no_hostfree\":true}");return 0;
+}
+struct os_fixture_output {
+    uint64_t initial,stale,cleared,calls_a,calls_b,first_a,second_a,value_b,seen_a;
+    uint64_t thread_count,stack_bytes,order,errors,returned;
+    uint64_t argument_count,argument_vector,argument_byte,expected_argument_vector;
+};
+_Static_assert(offsetof(struct os_fixture_output,returned)==104 && offsetof(struct os_fixture_output,order)==88,"self-authored fixture output ABI");
+static void *execute_os_fixture(guest_process *process,void *opaque) {
+    struct os_fixture_output *output=opaque;
+    typedef char **(*vector_fn)(void);
+    vector_fn get_vector=(vector_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os11GetHostArgvEv");
+    output->expected_argument_vector=(uintptr_t)get_vector();
+    const uint64_t arguments[6]={(uintptr_t)output};uint64_t value=0;
+    struct nso_result r=guest_process_call(process,0x20,arguments,1,&value);
+#if defined(__ANDROID__) && defined(__aarch64__)
+    expect_value("os-fixture-entry-status",r.status,NSO_OK);expect_value("os-fixture-entry-result",value,0x91);
+    expect_value("os-callback-deferred-a",output->calls_a,0);expect_value("os-callback-deferred-b",output->calls_b,0);
+    expect_value("os-entry-returned",output->returned,1);
+#else
+    expect_value("os-fixture-unsupported",r.status,NSO_UNSUPPORTED);
+#endif
+    return &returned_token;
+}
+static int os_callback_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *process=NULL;
+    const char *arguments[]={"ffrs","callback-lifetime"};
+    CHECK(succeeded(guest_process_create_with_arguments(&config,2,arguments,&process)));char err[128];
+    CHECK(succeeded(guest_process_load(process,path,err,sizeof(err))));
+    struct os_fixture_output output={0};void *value=NULL;
+    CHECK(succeeded(guest_process_run(process,execute_os_fixture,&output,&value)) && value==&returned_token && !errors);
+#if defined(__ANDROID__) && defined(__aarch64__)
+    CHECK(output.initial==0 && output.stale==0x99 && output.cleared==0);
+    CHECK(output.calls_a==2 && output.calls_b==1 && output.first_a==0 && output.second_a==5 && output.value_b==9);
+    CHECK(output.argument_count==2 && output.argument_vector==output.expected_argument_vector && output.argument_byte=='c');
+    CHECK(output.seen_a==0 && output.thread_count==1 && output.stack_bytes==65536 && output.order==0x121 && !output.errors);
+#endif
+    CHECK(succeeded(guest_process_destroy(&process)) && !process);
+    printf("{\"os_callback_errors\":%u,\"calls_a\":%" PRIu64 ",\"calls_b\":%" PRIu64 ",\"first_a\":%" PRIu64 ",\"second_a\":%" PRIu64 ",\"value_b\":%" PRIu64 ",\"order\":%" PRIu64 "}\n",errors,output.calls_a,output.calls_b,output.first_a,output.second_a,output.value_b,output.order);return 0;
+}
+/* The ordinary storage contract and the self-authored guest fixture exercise
+ * the same getters. A borrowed vector never transfers its allocation owner. */
+struct argument_input {size_t count,bytes;const char *expected[3];char **borrowed;int native,mutate;};
+static void *exercise_arguments(guest_process *process,void *opaque) {
+    struct argument_input *input=opaque;
+    typedef int (*count_fn)(void);typedef char **(*vector_fn)(void);
+    count_fn get_count=(count_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os11GetHostArgcEv");
+    vector_fn get_vector=(vector_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os11GetHostArgvEv");
+    expect_condition("argv-getters-bound",get_count && get_vector);
+    if(!get_count || !get_vector)return NULL;
+    expect_value("argv-owned-count",(uint64_t)get_count(),input->count);
+    char **vector=get_vector();input->borrowed=vector;
+    expect_condition("argv-nonnull-even-empty",vector!=NULL);
+    if(!vector)return NULL;
+    expect_condition("argv-null-tail",vector[input->count]==NULL);
+    expect_condition("argv-stable-vector",get_vector()==vector);
+    for(size_t i=0;i<input->count;i++) {
+        expect_condition("argv-copied-string",!strcmp(vector[i],input->expected[i]));
+        expect_condition("argv-string-in-owned-extent",(uintptr_t)vector[i]>=(uintptr_t)vector+(input->count+1)*sizeof(*vector) &&
+            (uintptr_t)vector[i]-(uintptr_t)vector<input->bytes && strlen(vector[i])+1<=input->bytes-((uintptr_t)vector[i]-(uintptr_t)vector));
+    }
+    struct guest_memory_info info;memset(&info,0xa5,sizeof(info));
+    expect_condition("argv-query-status",succeeded(guest_process_memory_info(process,&info)));
+    size_t image=nso_image_size(guest_process_module(process));
+    expect_value("argv-query-backing-charge",info.used,image+65536+input->bytes);
+    expect_value("argv-query-baseline",info.baseline,image+input->bytes);
+    expect_condition("argv-query-padding",all_bytes((unsigned char *)&info+0x34,sizeof(info)-0x34,0xa5));
+    if(input->native) {
+        uint64_t output[3]={UINT64_C(0xa5a5),UINT64_C(0xa5a5),UINT64_C(0xa5a5)};
+        const uint64_t arguments[6]={(uintptr_t)output};uint64_t returned=0xa5a5;
+        struct nso_result r=guest_process_call(process,0x20,arguments,1,&returned);
+#if defined(__ANDROID__) && defined(__aarch64__)
+        expect_value("argv-native-call",r.status,NSO_OK);
+        expect_value("argv-native-return",returned,0x91);
+        expect_value("argv-native-w0-count",output[0],input->count);
+        expect_value("argv-native-x0-vector",output[1],(uintptr_t)vector);
+        expect_value("argv-native-guest-x18-preserved",output[2],0x55);
+        executed_calls++;
+#else
+        expect_value("argv-native-host-unsupported",r.status,NSO_UNSUPPORTED);
+        expect_value("argv-no-raw-fallback",returned,0xa5a5);
+        expect_value("argv-no-guest-output",output[0],0xa5a5);
+#endif
+    }
+    if(input->mutate && input->count) {
+        vector[0][0]='X';vector[0]=vector[input->count-1];
+        expect_value("argv-count-independent-of-mutable-vector",(uint64_t)get_count(),input->count);
+        expect_condition("argv-base-independent-of-mutable-vector",get_vector()==vector);
+    }
+    return &returned_token;
+}
+static int argument_contract(const char *path,int native) {
+    struct guest_process_config config={1024*1024,65536};
+    for(unsigned phase=0;phase<3;phase++) {
+        char first[]="ffrs",last[]="option=123";const char *source[]={first,"",last};
+        char *large=NULL;
+        struct argument_input input={.count=phase==0?0:phase==1?3:1,.bytes=page,.native=native,.mutate=phase==1};
+        if(phase==1) {input.expected[0]="ffrs";input.expected[1]="";input.expected[2]="option=123";}
+        if(phase==2) {
+            large=malloc(page+14);CHECK(large);memset(large,'q',page+13);large[page+13]=0;
+            source[0]=large;input.expected[0]=large;input.bytes=2*page;
+        }
+        guest_process *process=NULL;
+        CHECK(succeeded(guest_process_create_with_arguments(&config,input.count,input.count?source:NULL,&process)));
+        if(phase==1) {first[0]='!';last[0]='!';source[0]="caller vector changed";}
+        char err[128]={0};CHECK(succeeded(guest_process_load(process,path,err,sizeof(err))));
+        void *value=NULL;CHECK(succeeded(guest_process_run(process,exercise_arguments,&input,&value)));
+        CHECK(value==&returned_token && !errors);
+        /* Guest mutations above must not change the private munmap base. */
+        CHECK(succeeded(guest_process_destroy(&process)) && !process);free(large);
+    }
+    printf("{\"argument_errors\":%u,\"cases\":3,\"empty_charged_page\":true,\"copied_mutable_vector\":true,\"null_tail\":true,\"multi_page\":true,\"native_calls\":%u,\"raw_fallback\":false}\n",errors,executed_calls);return 0;
+}
+#if defined(NSO_PROFILE_ARGUMENT_TESTING)
+static unsigned argument_maps,argument_unmaps,argument_actual_unmaps;
+static int argument_fail_map,argument_fail_unmap;
+static void *argument_raw_base;
+static void *argument_map_probe(size_t bytes,size_t pending) {
+    argument_maps++;expect_value("argv-pending-before-mmap",pending,bytes);
+    if(argument_fail_map) {argument_fail_map=0;errno=ENOMEM;return MAP_FAILED;}
+    void *result=mmap(NULL,bytes,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
+    if(result!=MAP_FAILED)argument_raw_base=result;
+    return result;
+}
+static int argument_unmap_probe(void *address,size_t bytes) {
+    argument_unmaps++;expect_condition("argv-unmap-private-base",address==argument_raw_base);
+    expect_value("argv-unmap-rounded-extent",bytes,page);
+    if(argument_fail_unmap) {argument_fail_unmap=0;errno=EBUSY;return -1;}
+    int r=munmap(address,bytes);if(!r)argument_actual_unmaps++;return r;
+}
+static int argument_recovery_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *process=NULL,*extra=NULL;
+    const char *source[]={"retained-argv"};
+    guest_process_test_argument_vm(argument_map_probe,argument_unmap_probe);
+    CHECK(guest_process_create_with_arguments(&config,(size_t)INT_MAX+1,NULL,&process).status==NSO_INVALID && !process);
+    CHECK(guest_process_create_with_arguments(&config,1,NULL,&process).status==NSO_INVALID && !process);
+    const char *bad[]={NULL};
+    CHECK(guest_process_create_with_arguments(&config,1,bad,&process).status==NSO_INVALID && !process);
+    struct guest_process_config limited={page-1,65536};
+    CHECK(guest_process_create(&limited,&process).status==NSO_LIMIT && !process && !argument_maps);
+    argument_fail_map=1;
+    struct nso_result r=guest_process_create_with_arguments(&config,1,source,&process);
+    CHECK(r.status==NSO_OWNER_ERROR && r.native_error==ENOMEM && !process && argument_maps==1 && !argument_unmaps);
+    CHECK(succeeded(guest_process_create_with_arguments(&config,1,source,&process)));
+    char err[128]={0};CHECK(succeeded(guest_process_load(process,path,err,sizeof(err))));
+    struct argument_input input={.count=1,.bytes=page,.expected={"retained-argv"}};
+    void *value=NULL;CHECK(succeeded(guest_process_run(process,exercise_arguments,&input,&value)) && value==&returned_token && !errors);
+    argument_fail_unmap=1;r=guest_process_destroy(&process);
+    CHECK(r.status==NSO_RETAINED && r.cleanup_error==EBUSY && process && argument_unmaps==1 && !argument_actual_unmaps);
+    CHECK(input.borrowed==argument_raw_base && !strcmp(input.borrowed[0],"retained-argv") && !input.borrowed[1]);
+    CHECK(guest_process_create(&config,&extra).status!=NSO_OK && !extra);
+    CHECK(succeeded(guest_process_destroy(&process)) && !process && argument_unmaps==2 && argument_actual_unmaps==1);
+    guest_process_test_argument_vm(NULL,NULL);
+    CHECK(succeeded(guest_process_create(&config,&process)) && succeeded(guest_process_destroy(&process)));
+    CHECK(!errors);
+    puts("{\"argument_recovery_errors\":0,\"precharge_observed\":true,\"quota_refusal_before_map\":true,\"map_failure_cancelled\":true,\"retained_readable\":true,\"unmap_attempts\":2,\"actual_unmaps\":1,\"retry_cleanup\":true}");return 0;
+}
+#endif
+static int32_t ascii_reference(const unsigned char *a,const unsigned char *b,uint64_t n) {
+    for(uint64_t i=0;i<n;i++) {
+        unsigned x=a[i],y=b[i];
+        x=(x>=65 && x<=90)?x+32:x;y=(y>=65 && y<=90)?y+32:y;
+        if(x!=y || !x)return (int32_t)x-(int32_t)y;
+    }
+    return 0;
+}
+static int locale_contract(void) {
+    typedef int32_t(*compare_fn)(const char *,const char *,uint64_t,uintptr_t);
+    compare_fn compare=(compare_fn)(uintptr_t)guest_process_resolve(0,"strncasecmp_l");CHECK(compare);
+    CHECK(compare(NULL,NULL,0,UINTPTR_MAX)==0);
+    unsigned checked=0;
+    for(unsigned a=0;a<256;a++)for(unsigned b=0;b<256;b++) {
+        unsigned char x[3]={(unsigned char)a,0,0x81},y[3]={(unsigned char)b,0,0x82};
+        CHECK(compare((const char *)x,(const char *)y,1,(checked&1)?0:UINTPTR_MAX)==ascii_reference(x,y,1));checked++;
+    }
+    const unsigned char a[]={'A','b',0,0x81},b[]={'a','B',0,0x82};
+    for(uint64_t n=0;n<8;n++)CHECK(compare((const char *)a,(const char *)b,n,UINTPTR_MAX)==0);
+    CHECK(compare("ab","ac",UINT64_C(0x100000001),UINTPTR_MAX)==-1);
+    CHECK(compare("abcd","ABce",3,0)==0 && compare("abcd","ABce",4,UINTPTR_MAX)==-1);
+    printf("{\"locale_errors\":0,\"unsigned_pairs\":%u,\"zero_count_no_load\":true,\"opaque_locale_ignored\":true,\"exact_ascii_difference\":true}\n",checked);return 0;
+}
+static void *exercise_locale_native(guest_process *p,void *opaque) {
+    (void)opaque;
+    const unsigned char a[][5]={{'A','b',0},{'x',0},{0xff,0},{'a',0},{'z',0},{0,0x81}};
+    const unsigned char b[][5]={{'a','C',0},{'Z',0},{0x80,0},{'b',0},{'a',0},{0,0x82}};
+    for(unsigned i=0;i<6;i++) {
+        uint64_t n=i==0?UINT64_C(0x100000001):4;
+        uint64_t output[2]={0xa5a5,0xa5a5},value=0xa5a5;
+        uint64_t arguments[6]={(uintptr_t)output,(uintptr_t)a[i],(uintptr_t)b[i],n,i&1?0:UINTPTR_MAX};
+        struct nso_result r=guest_process_call(p,0x20,arguments,5,&value);
+#if defined(__ANDROID__) && defined(__aarch64__)
+        expect_value("locale-native-call",r.status,NSO_OK);expect_value("locale-native-return",value,0x91);
+        expect_value("locale-native-exact-signed-difference",output[0],(uint64_t)(int64_t)ascii_reference(a[i],b[i],n));
+        expect_value("locale-native-x18",output[1],0x55);executed_calls++;
+#else
+        expect_value("locale-native-unsupported",r.status,NSO_UNSUPPORTED);expect_value("locale-no-raw-fallback",value,0xa5a5);
+#endif
+    }
+    return &returned_token;
+}
+static int locale_native_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(!locale_contract());CHECK(succeeded(guest_process_create(&config,&p)));
+    char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+    void *value=NULL;CHECK(succeeded(guest_process_run(p,exercise_locale_native,NULL,&value)) && value==&returned_token && !errors);
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    printf("{\"locale_native_errors\":%u,\"native_calls\":%u,\"raw_fallback\":false}\n",errors,executed_calls);return 0;
+}
+static int strcasecmp_contract(void) {
+    typedef int32_t(*compare_fn)(const char *,const char *);
+    compare_fn compare=(compare_fn)(uintptr_t)guest_process_resolve(0,"strcasecmp");CHECK(compare);
+    unsigned checked=0;
+    for(unsigned a=0;a<256;a++)for(unsigned b=0;b<256;b++) {
+        unsigned char x[2]={(unsigned char)a,0},y[2]={(unsigned char)b,0};
+        CHECK(compare((const char *)x,(const char *)y)==ascii_reference(x,y,2));checked++;
+    }
+    CHECK(compare("LongEqualPrefixAbc","longequalprefixabD")==-1);
+    CHECK(compare("", "z")==-'z' && compare("Z","")=='z');
+    CHECK(compare("same","SAME")==0);
+    printf("{\"strcasecmp_errors\":0,\"unsigned_pairs\":%u,\"exact_signed_difference\":true,\"nul_termination\":true}\n",checked);return 0;
+}
+static void *exercise_strcasecmp_native(guest_process *p,void *opaque) {
+    (void)opaque;
+    const unsigned char a[][24]={{'A','b',0},{'x',0},{0xff,0},{'a',0},{'z',0},{0,0x81}};
+    const unsigned char b[][24]={{'a','C',0},{'Z',0},{0x80,0},{'b',0},{'a',0},{0,0x82}};
+    for(unsigned i=0;i<6;i++) {
+        uint64_t output[2]={0xa5a5,0xa5a5},value=0xa5a5;
+        uint64_t arguments[6]={(uintptr_t)output,(uintptr_t)a[i],(uintptr_t)b[i]};
+        struct nso_result r=guest_process_call(p,0x20,arguments,3,&value);
+#if defined(__ANDROID__) && defined(__aarch64__)
+        expect_value("strcasecmp-native-call",r.status,NSO_OK);expect_value("strcasecmp-native-return",value,0x91);
+        expect_value("strcasecmp-native-exact-difference",output[0],(uint64_t)(int64_t)ascii_reference(a[i],b[i],24));
+        expect_value("strcasecmp-native-x18",output[1],0x55);executed_calls++;
+#else
+        expect_value("strcasecmp-native-unsupported",r.status,NSO_UNSUPPORTED);expect_value("strcasecmp-no-raw-fallback",value,0xa5a5);
+#endif
+    }
+    return &returned_token;
+}
+static int strcasecmp_native_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(!strcasecmp_contract());CHECK(succeeded(guest_process_create(&config,&p)));
+    char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+    void *value=NULL;CHECK(succeeded(guest_process_run(p,exercise_strcasecmp_native,NULL,&value)) && value==&returned_token && !errors);
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    printf("{\"strcasecmp_native_errors\":%u,\"native_calls\":%u,\"raw_fallback\":false}\n",errors,executed_calls);return 0;
+}
+struct va_enabled_input {int policy,native;};
+static void verify_va_enabled(guest_process *p,const struct va_enabled_input *input,const char *stage) {
+    int enabled=0x5a;struct nso_result r=guest_process_va_enabled(p,&enabled);
+    expect_condition(stage,succeeded(r));expect_value("va-enabled-canonical-policy",(uint64_t)enabled,(uint64_t)input->policy);
+    typedef uint32_t(*enabled_fn)(void);
+    enabled_fn query=(enabled_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os29IsVirtualAddressMemoryEnabledEv");
+    expect_condition("va-enabled-binding",query!=NULL);
+    if(query)expect_value("va-enabled-typed-getter",query(),(uint64_t)input->policy);
+    if(input->native) {
+        uint64_t output[2]={0xa5a5,0xa5a5},value=0xa5a5;
+        uint64_t arguments[6]={(uintptr_t)output};r=guest_process_call(p,0x20,arguments,1,&value);
+#if defined(__ANDROID__) && defined(__aarch64__)
+        expect_value("va-enabled-native-call",r.status,NSO_OK);expect_value("va-enabled-native-return",value,0x91);
+        expect_value("va-enabled-native-canonical-w0",output[0],(uint64_t)input->policy);
+        expect_value("va-enabled-native-guest-x18",output[1],0x55);executed_calls++;
+#else
+        expect_value("va-enabled-native-unsupported",r.status,NSO_UNSUPPORTED);expect_value("va-enabled-no-raw-fallback",value,0xa5a5);
+#endif
+    }
+}
+static void *exercise_va_enabled(guest_process *p,void *opaque) {
+    struct va_enabled_input *input=opaque;
+    verify_va_enabled(p,input,"va-enabled-empty-live-owner");
+    typedef uint32_t (*reserve_fn)(uintptr_t *,size_t);typedef uint32_t(*release_fn)(uintptr_t);
+    typedef uint32_t(*pages_fn)(uintptr_t,size_t);
+    reserve_fn reserve=(reserve_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os21AllocateAddressRegionEPmm");
+    release_fn release=(release_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os17FreeAddressRegionEm");
+    pages_fn map=(pages_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os19AllocateMemoryPagesEmm");
+    pages_fn unmap=(pages_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os15FreeMemoryPagesEmm");
+    uintptr_t base=0;expect_value("va-enabled-reserve",reserve(&base,2*page),0);
+    verify_va_enabled(p,input,"va-enabled-live-reservation");
+    expect_value("va-enabled-real-map",map(base,page),0);*(volatile unsigned char *)base=0x39;
+    verify_va_enabled(p,input,"va-enabled-live-backed-allocation");
+    expect_value("va-enabled-rw-pattern",*(volatile unsigned char *)base,0x39);
+    expect_value("va-enabled-real-free",unmap(base,page),0);
+    verify_va_enabled(p,input,"va-enabled-after-decommit");
+    expect_value("va-enabled-real-release",release(base),0);
+    verify_va_enabled(p,input,"va-enabled-empty-after-release");
+    return &returned_token;
+}
+static int va_enabled_contract(const char *path,int native) {
+    int untouched=0x5a;CHECK(guest_process_va_enabled(NULL,&untouched).status==NSO_INVALID && untouched==0x5a);
+    struct guest_process_config config={1024*1024,65536};
+    for(int policy=0;policy<=1;policy++) {
+        guest_process *p=NULL;
+        struct nso_result r=policy?guest_process_create_with_resources(&config,1024*1024,0,NULL,&p):guest_process_create(&config,&p);
+        CHECK(succeeded(r));untouched=0x5a;
+        CHECK(guest_process_va_enabled(p,&untouched).status==NSO_INVALID && untouched==0x5a);
+        char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+        struct va_enabled_input input={policy,native};void *value=NULL;
+        CHECK(succeeded(guest_process_run(p,exercise_va_enabled,&input,&value)) && value==&returned_token && !errors);
+        untouched=0x5a;CHECK(guest_process_va_enabled(p,&untouched).status==NSO_INVALID && untouched==0x5a);
+        CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    }
+    printf("{\"va_enabled_errors\":%u,\"explicit_enabled_policy\":true,\"unconfigured_false\":true,\"actual_vm_stages\":5,\"invalid_untouched\":true,\"native_calls\":%u,\"raw_fallback\":false}\n",errors,executed_calls);return 0;
+}
+struct log_case {float input;double expected;};
+static const struct log_case log_cases[]={
+    {0.125f,-2.0794415416798359283},{0.5f,-0.69314718055994530942},
+    {1.0f,0.0},{2.0f,0.69314718055994530942},{3.5f,1.2527629684953679957},
+    {10.0f,2.3025850929940456840},{65536.0f,11.090354888959124951},
+    {FLT_MIN,-87.336544750553108986},{FLT_MAX,88.722839052068353053},
+    {0x1p-149f,-103.27892990343185110}
+};
+static int log_close(float result,double expected) {
+    return isfinite(result) && fabs((double)result-expected)<=0.000002*fmax(1.0,fabs(expected));
+}
+static int log_special_matches(float result,float reference) {
+    if(isnan(reference))return isnan(result);
+    if(isinf(reference))return isinf(result) && !!signbit(result)==!!signbit(reference);
+    return result==reference && (result!=0.0f || !!signbit(result)==!!signbit(reference));
+}
+static int logf_contract(void) {
+    typedef float (*log_fn)(float);log_fn logarithm=(log_fn)(uintptr_t)guest_process_resolve(0,"logf");CHECK(logarithm);
+    for(size_t i=0;i<sizeof(log_cases)/sizeof(log_cases[0]);i++)CHECK(log_close(logarithm(log_cases[i].input),log_cases[i].expected));
+    const float special[]={0.0f,-0.0f,-1.0f,INFINITY,NAN};
+    for(size_t i=0;i<sizeof(special)/sizeof(special[0]);i++)CHECK(log_special_matches(logarithm(special[i]),logf(special[i])));
+    puts("{\"logf_errors\":0,\"positive_boundary_values\":10,\"ieee_observations\":5,\"dynamic_values\":true,\"implementation\":\"system-libm\",\"fp_control_mode_changed_by_test\":false}");return 0;
+}
+static int snprintf_contract(void) {
+    uint64_t target = guest_process_resolve(0, "snprintf");
+    CHECK(target == (uintptr_t)&vsnprintf);
+    char buf[128];
+    /* 1. Integers */
+    int r = snprintf(buf, sizeof(buf), "%d %u 0x%x %d %d", 12345, 67890U, 0xabcd, INT_MIN, INT_MAX);
+    CHECK(r > 0 && strstr(buf, "12345 67890 0xabcd"));
+    /* 2. Pointers */
+    void *ptr = (void *)0xdeadbeef;
+    r = snprintf(buf, sizeof(buf), "%p %p", NULL, ptr);
+    CHECK(r > 0 && strstr(buf, "deadbeef"));
+    /* 3. Strings */
+    r = snprintf(buf, sizeof(buf), "%s and '%s'", "hello", "");
+    CHECK(r == 12 && !strcmp(buf, "hello and ''"));
+    /* 4. Floats */
+    r = snprintf(buf, sizeof(buf), "%.2f %.4f %g", 3.14159, 2.71828, 1e-4);
+    CHECK(r > 0 && strstr(buf, "3.14 2.7183"));
+    /* 5. Length modifiers */
+    long long ll = 123456789012345LL;
+    size_t sz = 999;
+    r = snprintf(buf, sizeof(buf), "%lld %zu %hhd", ll, sz, (char)42);
+    CHECK(r > 0 && strstr(buf, "123456789012345 999 42"));
+    /* 6. Buffer truncation & return values */
+    const char *trunc_input = "abcdef";
+    r = snprintf(NULL, 0, "test %s", "123");
+    CHECK(r == 8);
+    char small[4];
+    r = snprintf(small, 4, "%s", trunc_input);
+    CHECK(r == 6 && !strcmp(small, "abc"));
+    /* 7. Stack arguments (10 arguments: > 5 variadic GP args) */
+    r = snprintf(buf, sizeof(buf), "%d %d %d %d %d %d %d %d %d %d",
+                 1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+    CHECK(r > 0 && !strcmp(buf, "1 2 3 4 5 6 7 8 9 10"));
+    /* 8. Mixed FP and stack arguments */
+    r = snprintf(buf, sizeof(buf), "%d %.1f %d %.1f %d %d %d %d %d %d",
+                 10, 1.5, 20, 2.5, 30, 40, 50, 60, 70, 80);
+    CHECK(r > 0 && !strcmp(buf, "10 1.5 20 2.5 30 40 50 60 70 80"));
+#if defined(__ANDROID__) && defined(__aarch64__)
+    /* Test actual native boundary gateway */
+    nb_scope scope;
+    memset(&scope, 0, sizeof(scope));
+    CHECK(nb_scope_init(&scope) == NB_OK);
+    nb_import binding = {0};
+    nb_signature sig = {
+        .version = 3, .flags = NB_SIG_VARIADIC_SNPRINTF,
+        .gp_arguments = 3, .gp_returns = 1, .variadic = 1
+    };
+    CHECK(nb_import_bind(&binding, &scope, (void(*)(void))(uintptr_t)&vsnprintf, &sig) == NB_OK);
+    typedef int (*snp_fn)(char *, size_t, const char *, ...);
+    snp_fn gateway_snprintf = (snp_fn)nb_import_entry(&binding);
+    CHECK(gateway_snprintf != NULL);
+    scope.phase = 1; /* NB_PHASE_GUEST */
+    r = gateway_snprintf(buf, sizeof(buf), "%d %d %d %d %d %d %d %d %d %d",
+                         11, 22, 33, 44, 55, 66, 77, 88, 99, 100);
+    CHECK(r > 0 && !strcmp(buf, "11 22 33 44 55 66 77 88 99 100"));
+    r = gateway_snprintf(buf, sizeof(buf), "pi=%.4f e=%.4f s=%s p=%p",
+                         3.14159, 2.71828, "verified", ptr);
+    CHECK(r > 0 && strstr(buf, "pi=3.1416 e=2.7183 s=verified"));
+    r = gateway_snprintf(small, 4, "gateway_truncation");
+    CHECK(r == 18 && !strcmp(small, "gat"));
+    scope.phase = 0;
+    CHECK(nb_import_unbind(&binding) == NB_OK);
+    CHECK(nb_scope_close(&scope) == NB_OK);
+#endif
+    puts("{\"snprintf_errors\":0,\"integers\":true,\"pointers\":true,\"strings\":true,\"floats\":true,\"length_modifiers\":true,\"truncation\":true,\"stack_arguments\":true,\"gateway_tested\":true}");
+    return 0;
+}
+struct rwlock_test_thread_arg {
+    void *lock;
+    int phase;
+    int result;
+};
+static void *rwlock_test_thread(void *arg) {
+    struct rwlock_test_thread_arg *a = arg;
+    typedef bool (*try_acquire_fn)(void *);
+    typedef void (*release_fn)(void *);
+
+    release_fn rel_read = (release_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os15ReleaseReadLockEPNS0_20ReaderWriterLockTypeE");
+    try_acquire_fn try_write = (try_acquire_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os19TryAcquireWriteLockEPNS0_20ReaderWriterLockTypeE");
+    try_acquire_fn try_read = (try_acquire_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os18TryAcquireReadLockEPNS0_20ReaderWriterLockTypeE");
+
+    if (a->phase == 1) {
+        if (try_write(a->lock)) { a->result = 101; return NULL; }
+        if (try_read(a->lock)) { a->result = 102; return NULL; }
+        a->result = 0;
+    } else if (a->phase == 2) {
+        if (try_write(a->lock)) { a->result = 201; return NULL; }
+        if (!try_read(a->lock)) { a->result = 202; return NULL; }
+        rel_read(a->lock);
+        a->result = 0;
+    }
+    return NULL;
+}
+static int rwlock_contract(void) {
+    typedef void (*init_fn)(void *);
+    typedef void (*fini_fn)(void *);
+    typedef void (*acquire_fn)(void *);
+    typedef bool (*try_acquire_fn)(void *);
+    typedef void (*release_fn)(void *);
+    typedef bool (*query_fn)(const void *);
+
+    init_fn init = (init_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os26InitializeReaderWriterLockEPNS0_20ReaderWriterLockTypeE");
+    fini_fn fini = (fini_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os24FinalizeReaderWriterLockEPNS0_20ReaderWriterLockTypeE");
+    acquire_fn acq_read = (acquire_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os15AcquireReadLockEPNS0_20ReaderWriterLockTypeE");
+    release_fn rel_read = (release_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os15ReleaseReadLockEPNS0_20ReaderWriterLockTypeE");
+    acquire_fn acq_write = (acquire_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os16AcquireWriteLockEPNS0_20ReaderWriterLockTypeE");
+    try_acquire_fn try_write = (try_acquire_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os19TryAcquireWriteLockEPNS0_20ReaderWriterLockTypeE");
+    release_fn rel_write = (release_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os16ReleaseWriteLockEPNS0_20ReaderWriterLockTypeE");
+    query_fn is_owner = (query_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os29IsReaderWriterLockOwnerThreadEPKNS0_20ReaderWriterLockTypeE");
+    query_fn is_read_held = (query_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os14IsReadLockHeldEPKNS0_20ReaderWriterLockTypeE");
+
+    CHECK(init && fini && acq_read && rel_read && acq_write && try_write && rel_write && is_owner && is_read_held);
+
+    _Alignas(8) unsigned char lock[64];
+    memset(lock, 0, sizeof(lock));
+    init(lock);
+    CHECK(lock[0x10] == 1);
+    CHECK(!is_owner(lock));
+    CHECK(!is_read_held(lock));
+
+    /* 1. Test Write Lock */
+    acq_write(lock);
+    CHECK(is_owner(lock));
+    CHECK(*(uintptr_t*)(lock + 0x18) != 0);
+
+    /* Test concurrent exclusion from another thread */
+    pthread_t thread;
+    struct rwlock_test_thread_arg arg = { .lock = lock, .phase = 1, .result = -1 };
+    CHECK(pthread_create(&thread, NULL, rwlock_test_thread, &arg) == 0);
+    CHECK(pthread_join(thread, NULL) == 0);
+    CHECK(arg.result == 0);
+
+    rel_write(lock);
+    CHECK(!is_owner(lock));
+    CHECK(*(uintptr_t*)(lock + 0x18) == 0);
+
+    /* 2. Test Read Lock */
+    acq_read(lock);
+    CHECK(is_read_held(lock));
+    CHECK(!is_owner(lock));
+
+    arg.phase = 2;
+    arg.result = -1;
+    CHECK(pthread_create(&thread, NULL, rwlock_test_thread, &arg) == 0);
+    CHECK(pthread_join(thread, NULL) == 0);
+    CHECK(arg.result == 0);
+
+    rel_read(lock);
+    CHECK(!is_read_held(lock));
+
+    /* 3. Finalize */
+    fini(lock);
+    CHECK(lock[0x10] == 0);
+
+    puts("{\"rwlock_errors\":0,\"initialized\":true,\"write_exclusive\":true,\"read_shared\":true,\"owner_tracked\":true,\"finalized\":true}");
+    return 0;
+}
+static int uuid_contract(void) {
+    uint64_t target = guest_process_resolve(0, "_ZN2nn4util12GenerateUuidEv");
+    CHECK(target != 0);
+    typedef struct nn_uuid (*gen_fn)(void);
+    gen_fn generate = (gen_fn)(uintptr_t)target;
+    struct nn_uuid u1 = generate();
+    struct nn_uuid u2 = generate();
+    CHECK(u1.w0 != 0 || u1.w1 != 0);
+    CHECK(u2.w0 != 0 || u2.w1 != 0);
+    CHECK(u1.w0 != u2.w0 || u1.w1 != u2.w1);
+
+#if defined(__ANDROID__) && defined(__aarch64__)
+    nb_scope scope;
+    memset(&scope, 0, sizeof(scope));
+    CHECK(nb_scope_init(&scope) == NB_OK);
+    nb_import binding = {0};
+    nb_signature sig = {
+        .version = 1, .flags = NB_SIG_REGISTER_ONLY,
+        .gp_arguments = 0, .gp_returns = 2
+    };
+    CHECK(nb_import_bind(&binding, &scope, (void(*)(void))(uintptr_t)target, &sig) == NB_OK);
+    gen_fn gateway_gen = (gen_fn)nb_import_entry(&binding);
+    CHECK(gateway_gen != NULL);
+    scope.phase = 1;
+    struct nn_uuid gu1 = gateway_gen();
+    struct nn_uuid gu2 = gateway_gen();
+    CHECK(gu1.w0 != 0 || gu1.w1 != 0);
+    CHECK(gu2.w0 != 0 || gu2.w1 != 0);
+    CHECK(gu1.w0 != gu2.w0 || gu1.w1 != gu2.w1);
+    scope.phase = 0;
+    CHECK(nb_import_unbind(&binding) == NB_OK);
+    CHECK(nb_scope_close(&scope) == NB_OK);
+#endif
+
+    puts("{\"uuid_errors\":0,\"generated\":true,\"distinct\":true,\"two_gp_returns\":true,\"gateway_tested\":true}");
+    return 0;
+}
+static int time_contract(void) {
+    typedef uint32_t (*time_init_fn)(void);
+    typedef bool (*time_is_init_fn)(void);
+    typedef uint32_t (*get_time_fn)(int64_t *);
+    typedef uint32_t (*loc_fn)(struct nn_location_name *);
+    typedef int (*dow_fn)(int, int, int);
+
+    time_init_fn init = (time_init_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn4time10InitializeEv");
+    time_is_init_fn is_init = (time_is_init_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn4time13IsInitializedEv");
+    get_time_fn get_time = (get_time_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn4time23StandardUserSystemClock14GetCurrentTimeEPNS0_9PosixTimeE");
+    loc_fn get_loc = (loc_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn4time21GetDeviceLocationNameEPNS0_12LocationNameE");
+    dow_fn dow = (dow_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn4time12GetDayOfWeekEiii");
+    typedef uint32_t (*to_cal_fn)(struct nn_calendar_time *, struct nn_calendar_additional_info *, const int64_t *, const void *);
+    typedef uint64_t (*to_utc_fn)(const int64_t *);
+    to_cal_fn to_cal = (to_cal_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn4time14ToCalendarTimeEPNS0_12CalendarTimeEPNS0_22CalendarAdditionalInfoERKNS0_9PosixTimeERKNS0_12TimeZoneRuleE");
+    to_utc_fn to_utc = (to_utc_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn4time19ToCalendarTimeInUtcERKNS0_9PosixTimeE");
+
+    CHECK(init && is_init && get_time && get_loc && dow && to_cal && to_utc);
+    CHECK(init() == 0);
+    CHECK(is_init());
+
+    int64_t now = 0;
+    CHECK(get_time(&now) == 0 && now > 1700000000);
+
+    struct nn_location_name loc;
+    memset(&loc, 0, sizeof(loc));
+    CHECK(get_loc(&loc) == 0 && strlen(loc.name) > 0);
+
+    CHECK(dow(2026, 10, 24) == 6);
+
+    struct nn_calendar_time cal;
+    struct nn_calendar_additional_info info;
+    int64_t sample_time = 1700000000;
+    CHECK(to_cal(&cal, &info, &sample_time, NULL) == 0);
+    CHECK(cal.year == 2023 && cal.month == 11 && cal.day == 14 && cal.hour == 22 && cal.minute == 13 && cal.second == 20);
+    CHECK(info.day_of_week == 2);
+    uint64_t utc_val = to_utc(&sample_time);
+    struct nn_calendar_time *utc_cal = (struct nn_calendar_time *)&utc_val;
+    CHECK(utc_cal->year == 2023 && utc_cal->month == 11 && utc_cal->day == 14);
+
+    puts("{\"time_errors\":0,\"initialized\":true,\"current_time_valid\":true,\"location_name\":true,\"day_of_week\":true,\"to_calendar_time\":true,\"to_calendar_time_utc\":true}");
+    return 0;
+}
+static int tick_contract(void) {
+    typedef int64_t (*get_freq_fn)(void);
+    typedef int64_t (*get_tick_fn)(void);
+    get_freq_fn get_freq = (get_freq_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os22GetSystemTickFrequencyEv");
+    get_tick_fn get_tick = (get_tick_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os13GetSystemTickEv");
+    CHECK(get_freq && get_tick);
+    int64_t freq = get_freq();
+    CHECK(freq == 19200000LL);
+    int64_t t1 = get_tick();
+    CHECK(t1 > 0);
+    int64_t t2 = get_tick();
+    CHECK(t2 >= t1);
+    puts("{\"tick_errors\":0,\"frequency_19_2mhz\":true,\"ticks_monotonic\":true}");
+    return 0;
+}
+static int ctype_contract(void) {
+    typedef int (*iswxdigit_fn)(wint_t);
+    typedef int (*iswdigit_fn)(wint_t);
+    typedef int (*isspace_fn)(int);
+    typedef int (*tolower_fn)(int);
+    iswxdigit_fn fn_xdigit = (iswxdigit_fn)(uintptr_t)guest_process_resolve(0, "iswxdigit");
+    iswdigit_fn fn_digit = (iswdigit_fn)(uintptr_t)guest_process_resolve(0, "iswdigit");
+    isspace_fn fn_space = (isspace_fn)(uintptr_t)guest_process_resolve(0, "isspace");
+    tolower_fn fn_tolower = (tolower_fn)(uintptr_t)guest_process_resolve(0, "tolower");
+    CHECK(fn_xdigit && fn_digit && fn_space && fn_tolower);
+    CHECK(fn_xdigit(L'a') && fn_xdigit(L'F') && fn_xdigit(L'0') && !fn_xdigit(L'g'));
+    CHECK(fn_digit(L'5') && !fn_digit(L'a'));
+    CHECK(fn_space(' ') && fn_space('\t') && !fn_space('x'));
+    CHECK(fn_tolower('A') == 'a');
+    puts("{\"ctype_errors\":0,\"iswxdigit\":true,\"iswdigit\":true,\"isspace\":true,\"tolower\":true}");
+    return 0;
+}
+struct tp_test_worker_arg {
+    unsigned id;
+    int errors;
+    uintptr_t base;
+};
+static pthread_mutex_t s_tp_test_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t s_tp_test_cond = PTHREAD_COND_INITIALIZER;
+static unsigned s_tp_test_ready = 0;
+static unsigned s_tp_test_release = 0;
+
+static void *tp_test_worker(void *arg) {
+    struct tp_test_worker_arg *a = arg;
+    unsigned char tpl_bytes[0x220];
+    memset(tpl_bytes, 0x42 + a->id, sizeof(tpl_bytes));
+    guest_tp_template src = {
+        .initialized_data = tpl_bytes,
+        .initialized_size = 0x220,
+        .total_size = 0x1019,
+        .alignment = 8,
+        .reserved_header_size = 0x10,
+    };
+    guest_tp_mirror *mirror = NULL;
+    if (guest_tp_mirror_create(&src, &mirror).status != GUEST_TP_OK || !mirror) { a->errors++; return NULL; }
+    if (guest_tp_bind_current(mirror).status != GUEST_TP_OK) { a->errors++; guest_tp_mirror_free(mirror); return NULL; }
+    const unsigned char *base = guest_tp_current_base();
+    if (base != guest_tp_mirror_base(mirror)) a->errors++;
+    a->base = (uintptr_t)base;
+    if (guest_tp_mirror_span(mirror) != 0x1030) a->errors++;
+    guest_tp_mirror_payload(mirror)[0] = (unsigned char)(a->id + 1);
+
+    /* Hold mirror until all workers are ready so memory is not recycled */
+    pthread_mutex_lock(&s_tp_test_mutex);
+    s_tp_test_ready++;
+    pthread_cond_broadcast(&s_tp_test_cond);
+    while (!s_tp_test_release) {
+        pthread_cond_wait(&s_tp_test_cond, &s_tp_test_mutex);
+    }
+    pthread_mutex_unlock(&s_tp_test_mutex);
+
+    if (guest_tp_unbind_current().status != GUEST_TP_OK) a->errors++;
+    return NULL;
+}
+static int guest_tp_test_contract(void) {
+    /* 1. Test mirror model with game's template facts */
+    unsigned char template_data[0x220];
+    for (size_t i = 0; i < 0x220; i++) template_data[i] = (unsigned char)(i * 31 + 7);
+    guest_tp_template source = {
+        .initialized_data = template_data,
+        .initialized_size = 0x220,
+        .total_size = 0x1019,
+        .alignment = 8,
+        .reserved_header_size = 0x10,
+    };
+    guest_tp_mirror *mirror = NULL;
+    CHECK(guest_tp_mirror_create(&source, &mirror).status == GUEST_TP_OK && mirror);
+    const unsigned char *base = guest_tp_mirror_base(mirror);
+    const unsigned char *payload = guest_tp_mirror_payload(mirror);
+    CHECK(base != NULL && payload == base + 0x10);
+    CHECK(guest_tp_mirror_span(mirror) == 0x1030);
+    CHECK((uintptr_t)base % 8 == 0);
+    for (size_t i = 0; i < 0x10; i++) CHECK(base[i] == 0);
+    CHECK(memcmp(payload, template_data, 0x220) == 0);
+    for (size_t i = 0x220; i < 0x1019; i++) CHECK(payload[i] == 0);
+
+    CHECK(guest_tp_bind_current(mirror).status == GUEST_TP_OK);
+    CHECK(guest_tp_current_base() == base);
+    /* Duplicate bind is rejected */
+    guest_tp_mirror *second = NULL;
+    CHECK(guest_tp_mirror_create(&source, &second).status == GUEST_TP_OK && second);
+    CHECK(guest_tp_bind_current(second).status == GUEST_TP_BUSY);
+    guest_tp_mirror_free(second);
+    CHECK(guest_tp_unbind_current().status == GUEST_TP_OK);
+    CHECK(guest_tp_current_base() == NULL);
+
+    /* 2. Test patching model */
+    uint32_t words[8] = {
+        0xd53bd048u, /* MRS x8, TPIDR_EL0 */
+        0xd53bd054u, /* MRS x20, TPIDR_EL0 */
+        0xd53bd060u, /* MRS TPIDRRO_EL0 */
+        0xd51bd040u, /* MSR TPIDR_EL0 */
+        0xd2a00000u, /* MOVZ x0, #0 */
+        0xd65f03c0u, /* RET */
+        0, 0
+    };
+    struct guest_tp_patch_report report;
+    CHECK(guest_tp_scan_text(words, sizeof(words), &report).status == GUEST_TP_OK);
+    CHECK(report.scanned_words == 8 && report.registers[8] == 1 && report.registers[20] == 1);
+    CHECK(guest_tp_patch_text(words, sizeof(words), &report).status == GUEST_TP_OK);
+    CHECK(report.patched == 2);
+    CHECK(words[0] == guest_tp_trap_encode(8));
+    CHECK(words[1] == guest_tp_trap_encode(20));
+    CHECK(words[2] == 0xd53bd060u);
+    CHECK(words[3] == 0xd51bd040u);
+
+    /* 3. Test trap decision */
+    unsigned dest = 0; int advance = 0;
+    enum guest_tp_trap_decision dec = guest_tp_trap_decide(1, words[0], 0xd503201fu, base, &dest, &advance);
+    CHECK(dec == GUEST_TP_TRAP_RESOLVE && dest == 8 && advance == 1);
+    dec = guest_tp_trap_decide(1, 0xd503201fu, words[0], base, &dest, &advance);
+    CHECK(dec == GUEST_TP_TRAP_RESOLVE && dest == 8 && advance == 0);
+
+    /* 4. Multi-thread isolation */
+    enum { TP_THREADS = 8 };
+    pthread_t th[TP_THREADS];
+    struct tp_test_worker_arg args[TP_THREADS];
+    memset(args, 0, sizeof(args));
+    s_tp_test_ready = 0;
+    s_tp_test_release = 0;
+    for (unsigned i = 0; i < TP_THREADS; i++) {
+        args[i].id = i;
+        CHECK(pthread_create(&th[i], NULL, tp_test_worker, &args[i]) == 0);
+    }
+    pthread_mutex_lock(&s_tp_test_mutex);
+    while (s_tp_test_ready != TP_THREADS) {
+        pthread_cond_wait(&s_tp_test_cond, &s_tp_test_mutex);
+    }
+    for (unsigned i = 0; i < TP_THREADS; i++) {
+        for (unsigned j = 0; j < i; j++) {
+            CHECK(args[i].base != args[j].base);
+        }
+    }
+    s_tp_test_release = 1;
+    pthread_cond_broadcast(&s_tp_test_cond);
+    pthread_mutex_unlock(&s_tp_test_mutex);
+    for (unsigned i = 0; i < TP_THREADS; i++) {
+        CHECK(pthread_join(th[i], NULL) == 0);
+        CHECK(args[i].errors == 0);
+    }
+    CHECK(guest_tp_live_mirrors() == 0);
+
+    /* 5. Test _ZTH weak TLS symbol resolution */
+    uint64_t zth_fn = guest_process_resolve(150, "_ZTHN13LowLevelTasks5FTask10ActiveTaskE");
+    CHECK(zth_fn != 0);
+    typedef void (*tls_init_fn)(void);
+    ((tls_init_fn)(uintptr_t)zth_fn)();
+
+    puts("{\"guest_tp_errors\":0,\"mirror_model\":true,\"patch_model\":true,\"trap_decision\":true,\"isolation\":true,\"zth_resolved\":true,\"live_mirrors\":0}");
+    return 0;
+}
+struct test_thread_context {
+    uint64_t magic;
+    uint64_t value;
+    uint64_t observed_tp;
+    uint64_t thread_id;
+};
+static void test_thread_worker(void *arg) {
+    struct test_thread_context *ctx = (struct test_thread_context *)arg;
+    ctx->value = 0x12345678;
+    ctx->observed_tp = (uint64_t)(uintptr_t)guest_tp_current_base();
+}
+static int threads_contract(void) {
+    typedef int32_t (*create_thread_fn)(void *, void (*)(void *), void *, void *, size_t, int32_t);
+    typedef void (*start_thread_fn)(void *);
+    typedef void (*wait_thread_fn)(void *);
+    typedef void (*destroy_thread_fn)(void *);
+    typedef void (*set_name_fn)(void *, const char *);
+    typedef const char *(*get_name_fn)(const void *);
+    typedef int32_t (*get_priority_fn)(const void *);
+    typedef uint64_t (*get_id_fn)(const void *);
+    typedef void (*sleep_fn)(int64_t);
+    typedef void (*yield_fn)(void);
+    typedef uint64_t (*get_cores_fn)(void);
+
+    create_thread_fn create = (create_thread_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os12CreateThreadEPNS0_10ThreadTypeEPFvPvES3_S3_mi");
+    start_thread_fn start = (start_thread_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os11StartThreadEPNS0_10ThreadTypeE");
+    wait_thread_fn wait = (wait_thread_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os10WaitThreadEPNS0_10ThreadTypeE");
+    destroy_thread_fn destroy = (destroy_thread_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os13DestroyThreadEPNS0_10ThreadTypeE");
+    set_name_fn set_name = (set_name_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os13SetThreadNameEPNS0_10ThreadTypeEPKc");
+    get_name_fn get_name = (get_name_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os20GetThreadNamePointerEPKNS0_10ThreadTypeE");
+    get_priority_fn get_prio = (get_priority_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os17GetThreadPriorityEPKNS0_10ThreadTypeE");
+    get_id_fn get_id = (get_id_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os11GetThreadIdEPKNS0_10ThreadTypeE");
+    sleep_fn sleep_th = (sleep_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os11SleepThreadENS_8TimeSpanE");
+    yield_fn yield_th = (yield_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os11YieldThreadEv");
+    get_cores_fn get_cores = (get_cores_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os26GetThreadAvailableCoreMaskEv");
+
+    CHECK(create && start && wait && destroy && set_name && get_name && get_prio && get_id && sleep_th && yield_th && get_cores);
+
+    CHECK(get_cores() == 0x7ULL);
+    sleep_th(1000);
+    yield_th();
+
+    _Alignas(16) unsigned char thread_obj[0x1c0];
+    memset(thread_obj, 0, sizeof(thread_obj));
+
+    _Alignas(16) unsigned char stack[65536];
+    struct test_thread_context ctx = { .magic = 0xfeedface, .value = 0, .observed_tp = 0, .thread_id = 0 };
+
+    int32_t rc = create(thread_obj, test_thread_worker, &ctx, stack, sizeof(stack), 16);
+    CHECK(rc == 0);
+
+    CHECK(get_prio(thread_obj) == 16);
+    uint64_t tid = get_id(thread_obj);
+    CHECK(tid != 0);
+
+    set_name(thread_obj, "TestThread");
+    CHECK(!strcmp(get_name(thread_obj), "TestThread"));
+
+    start(thread_obj);
+    wait(thread_obj);
+
+    CHECK(ctx.value == 0x12345678);
+    CHECK(ctx.observed_tp != 0);
+
+    destroy(thread_obj);
+
+    puts("{\"thread_errors\":0,\"create\":true,\"start\":true,\"wait\":true,\"destroy\":true,\"name\":true,\"priority\":true,\"tid\":true,\"tp_mirror\":true}");
+    return 0;
+}
+static void *dummy_fs_alloc(size_t size) {
+    return (void *)(uintptr_t)(0x1000 + size);
+}
+static void dummy_fs_free(void *ptr, size_t size) {
+    (void)ptr;
+    (void)size;
+}
+static int fs_allocator_contract(void) {
+    typedef void (*set_allocator_fn)(void *(*)(size_t), void (*)(void *, size_t));
+    set_allocator_fn set_alloc = (set_allocator_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs12SetAllocatorEPFPvmEPFvS1_mE");
+    CHECK(set_alloc != NULL);
+
+    set_alloc(dummy_fs_alloc, dummy_fs_free);
+
+    CHECK(nso_host_fs_get_allocator() == dummy_fs_alloc);
+    CHECK(nso_host_fs_get_deallocator() == dummy_fs_free);
+
+    puts("{\"fs_allocator_errors\":0,\"set\":true,\"callbacks_saved\":true}");
+    return 0;
+}
+static int fs_query_cache_contract(void) {
+    typedef int32_t (*query_fn)(size_t *);
+    query_fn query = (query_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs22QueryMountRomCacheSizeEPm");
+    CHECK(query != NULL);
+
+    int32_t err = query(NULL);
+    CHECK(err != 0);
+
+    size_t size = 0;
+    int32_t ok = query(&size);
+    CHECK(ok == 0);
+    CHECK(size >= 32);
+
+    puts("{\"fs_query_cache_errors\":0,\"query\":true,\"size_valid\":true}");
+    return 0;
+}
+static int fs_mount_rom_contract(void) {
+    typedef int32_t (*mount_fn)(const char *, void *, size_t);
+    typedef int32_t (*unmount_fn)(const char *);
+
+    mount_fn mount = (mount_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs8MountRomEPKcPvm");
+    CHECK(mount != NULL);
+
+    mount_fn mount_alias = (mount_fn)(uintptr_t)guest_process_resolve(0, "nnfsMountRom");
+    CHECK(mount_alias != NULL);
+
+    unmount_fn unmount = (unmount_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs7UnmountEPKc");
+    CHECK(unmount != NULL);
+
+    unmount_fn unmount_alias = (unmount_fn)(uintptr_t)guest_process_resolve(0, "nnfsUnmount");
+    CHECK(unmount_alias != NULL);
+
+    /* Null name rejection */
+    int32_t err = mount(NULL, (void *)0x1000, 0x10000);
+    CHECK(err != 0);
+
+    /* Empty name rejection */
+    err = mount("", (void *)0x1000, 0x10000);
+    CHECK(err != 0);
+
+    /* Null buffer rejection */
+    err = mount("rom", NULL, 0x10000);
+    CHECK(err != 0);
+
+    /* Buffer too small rejection (< 64KB) */
+    err = mount("rom", (void *)0x1000, 0x8000);
+    CHECK(err != 0);
+
+    /* Valid mount */
+    char dummy_buf[64];
+    int32_t ok = mount("rom", dummy_buf, 0x10000);
+    CHECK(ok == 0);
+    CHECK(nso_host_fs_is_rom_mounted("rom") == 1);
+    CHECK(nso_host_fs_get_rom_mount_path("rom") != NULL);
+
+    /* Valid unmount */
+    int32_t unmount_ok = unmount("rom");
+    CHECK(unmount_ok == 0);
+    CHECK(nso_host_fs_is_rom_mounted("rom") == 0);
+
+    /* Unmount invalid/non-existent returns clean */
+    unmount("non_existent");
+
+    puts("{\"fs_mount_rom_errors\":0,\"mount\":true,\"unmount\":true,\"validation\":true}");
+    return 0;
+}
+static int fs_open_file_contract(void) {
+    typedef int32_t (*open_fn)(nn_fs_file_handle *, const char *, int32_t);
+    typedef int32_t (*get_size_fn)(int64_t *, nn_fs_file_handle);
+    typedef int32_t (*read_fn)(size_t *, nn_fs_file_handle, int64_t, void *, size_t);
+    typedef int32_t (*read_no_out_fn)(nn_fs_file_handle, int64_t, void *, size_t);
+    typedef void (*close_fn)(nn_fs_file_handle);
+    typedef int32_t (*get_entry_type_fn)(int32_t *, const char *);
+
+    open_fn open_file = (open_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs8OpenFileEPNS0_10FileHandleEPKci");
+    CHECK(open_file != NULL);
+
+    open_fn open_file_alias = (open_fn)(uintptr_t)guest_process_resolve(0, "nnfsOpenFile");
+    CHECK(open_file_alias != NULL);
+
+    get_size_fn get_file_size = (get_size_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs11GetFileSizeEPlNS0_10FileHandleE");
+    CHECK(get_file_size != NULL);
+
+    get_size_fn get_file_size_alias = (get_size_fn)(uintptr_t)guest_process_resolve(0, "nnfsGetFileSize");
+    CHECK(get_file_size_alias != NULL);
+
+    read_fn read_file = (read_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs8ReadFileEPmNS0_10FileHandleElPvm");
+    CHECK(read_file != NULL);
+
+    read_fn read_file_alias = (read_fn)(uintptr_t)guest_process_resolve(0, "nnfsReadFile");
+    CHECK(read_file_alias != NULL);
+
+    read_no_out_fn read_file_no_out = (read_no_out_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs8ReadFileENS0_10FileHandleElPvm");
+    CHECK(read_file_no_out != NULL);
+
+    close_fn close_file = (close_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs9CloseFileENS0_10FileHandleE");
+    CHECK(close_file != NULL);
+
+    close_fn close_file_alias = (close_fn)(uintptr_t)guest_process_resolve(0, "nnfsCloseFile");
+    CHECK(close_file_alias != NULL);
+
+    get_entry_type_fn get_entry_type = (get_entry_type_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs12GetEntryTypeEPNS0_18DirectoryEntryTypeEPKc");
+    CHECK(get_entry_type != NULL);
+
+    get_entry_type_fn get_entry_type_alias = (get_entry_type_fn)(uintptr_t)guest_process_resolve(0, "nnfsGetEntryType");
+    CHECK(get_entry_type_alias != NULL);
+
+    /* Parameter validation */
+    nn_fs_file_handle handle = {0};
+    CHECK(open_file(NULL, "rom:/test.txt", 1) != 0);
+    CHECK(open_file(&handle, NULL, 1) != 0);
+    CHECK(open_file(&handle, "", 1) != 0);
+
+    /* Ensure 'rom' is mounted for contract testing */
+    if (!nso_host_fs_is_rom_mounted("rom")) {
+        static char cache_buf[0x10000];
+        nso_host_fs_mount_rom("rom", cache_buf, sizeof(cache_buf));
+    }
+
+    /* Non-existent file */
+    CHECK(open_file(&handle, "rom:/non_existent_file_xyz_123.bin", 1) != 0);
+
+    /* Create a temporary test file inside the mounted romfs directory */
+    const char *mount_root = nso_host_fs_get_rom_mount_path("rom");
+    char full_test_path[512];
+    snprintf(full_test_path, sizeof(full_test_path), "%s/romfs_contract_test.tmp", mount_root ? mount_root : ".");
+    FILE *fp = fopen(full_test_path, "wb");
+    CHECK(fp != NULL);
+    const char test_data[] = "Hello RG477M RomFS!";
+    size_t test_len = sizeof(test_data) - 1;
+    CHECK(fwrite(test_data, 1, test_len, fp) == test_len);
+    fclose(fp);
+
+    /* Open the temporary file via rom:/ path */
+    int32_t ok = open_file(&handle, "rom:/romfs_contract_test.tmp", 1);
+    CHECK(ok == 0);
+    CHECK(handle.handle != NULL);
+
+    /* Query size */
+    int64_t size = 0;
+    CHECK(get_file_size(&size, handle) == 0);
+    CHECK(size == (int64_t)test_len);
+
+    /* Read with out_bytes_read */
+    char read_buf[64] = {0};
+    size_t bytes_read = 0;
+    CHECK(read_file(&bytes_read, handle, 0, read_buf, sizeof(read_buf)) == 0);
+    CHECK(bytes_read == test_len);
+    CHECK(memcmp(read_buf, test_data, test_len) == 0);
+
+    /* Read with offset using 4-arg ReadFile */
+    memset(read_buf, 0, sizeof(read_buf));
+    CHECK(read_file_no_out(handle, 6, read_buf, 6) == 0);
+    CHECK(memcmp(read_buf, "RG477M", 6) == 0);
+
+    /* Close file */
+    close_file(handle);
+
+    /* Operations on closed handle must fail */
+    CHECK(get_file_size(&size, handle) != 0);
+
+    /* GetEntryType on file */
+    int32_t entry_type = -1;
+    CHECK(get_entry_type(&entry_type, "rom:/romfs_contract_test.tmp") == 0);
+    CHECK(entry_type == 1); /* File */
+
+    /* GetEntryType on directory */
+    CHECK(get_entry_type(&entry_type, "rom:/") == 0);
+    CHECK(entry_type == 0); /* Directory */
+
+    /* Clean up temporary file */
+    unlink(full_test_path);
+
+    /* Test real game asset if present */
+    nn_fs_file_handle game_handle = {0};
+    if (open_file(&game_handle, "rom:/UECommandLine.txt", 1) == 0) {
+        int64_t gsz = 0;
+        CHECK(get_file_size(&gsz, game_handle) == 0);
+        CHECK(gsz == 38);
+        char gbuf[64] = {0};
+        size_t gread = 0;
+        CHECK(read_file(&gread, game_handle, 0, gbuf, sizeof(gbuf)) == 0);
+        CHECK(gread == 38);
+        CHECK(strncmp(gbuf, "-project=", 9) == 0);
+        close_file(game_handle);
+    }
+
+    puts("{\"fs_open_file_errors\":0,\"open\":true,\"read\":true,\"size\":true,\"close\":true,\"entry_type\":true,\"validation\":true}");
+    return 0;
+}
+static int aoc_contract(void) {
+    typedef int32_t (*count_fn)(void);
+    typedef int32_t (*list_fn)(int32_t *, int32_t, int32_t);
+    typedef int32_t (*query_cache_fn)(size_t *, int32_t);
+    typedef int32_t (*mount_aoc_fn)(const char *, int32_t, void *, size_t);
+
+    count_fn count_aoc = (count_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn3aoc17CountAddOnContentEv");
+    CHECK(count_aoc != NULL);
+
+    count_fn count_aoc_alias = (count_fn)(uintptr_t)guest_process_resolve(0, "nnaocCountAddOnContent");
+    CHECK(count_aoc_alias != NULL);
+
+    list_fn list_aoc = (list_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn3aoc16ListAddOnContentEPiii");
+    CHECK(list_aoc != NULL);
+
+    list_fn list_aoc_alias = (list_fn)(uintptr_t)guest_process_resolve(0, "nnaocListAddOnContent");
+    CHECK(list_aoc_alias != NULL);
+
+    query_cache_fn query_cache = (query_cache_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs31QueryMountAddOnContentCacheSizeEPmi");
+    CHECK(query_cache != NULL);
+
+    query_cache_fn query_cache_alias = (query_cache_fn)(uintptr_t)guest_process_resolve(0, "nnfsQueryMountAddOnContentCacheSize");
+    CHECK(query_cache_alias != NULL);
+
+    mount_aoc_fn mount_aoc = (mount_aoc_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs17MountAddOnContentEPKciPvm");
+    CHECK(mount_aoc != NULL);
+
+    mount_aoc_fn mount_aoc_alias = (mount_aoc_fn)(uintptr_t)guest_process_resolve(0, "nnfsMountAddOnContent");
+    CHECK(mount_aoc_alias != NULL);
+
+    /* Test CountAddOnContent: baseline returns 0 without crash */
+    int32_t c = count_aoc();
+    CHECK(c == 0);
+    c = count_aoc_alias();
+    CHECK(c == 0);
+
+    /* Test ListAddOnContent: returns 0 when no addon content */
+    int32_t indices[8] = {0};
+    int32_t listed = list_aoc(indices, 0, 8);
+    CHECK(listed == 0);
+    listed = list_aoc_alias(indices, 0, 8);
+    CHECK(listed == 0);
+
+    /* Test QueryMountAddOnContentCacheSize: writes 0 to out_size */
+    size_t cache_size = 9999;
+    CHECK(query_cache(NULL, 1) != 0);
+    CHECK(query_cache(&cache_size, 1) == 0);
+    CHECK(cache_size == 0);
+    cache_size = 9999;
+    CHECK(query_cache_alias(&cache_size, 1) == 0);
+    CHECK(cache_size == 0);
+
+    /* Test MountAddOnContent: returns error because no addon is available */
+    char dummy_buf[64];
+    CHECK(mount_aoc("aoc", 1, dummy_buf, sizeof(dummy_buf)) != 0);
+    CHECK(mount_aoc_alias("aoc", 1, dummy_buf, sizeof(dummy_buf)) != 0);
+
+    puts("{\"aoc_contract_errors\":0,\"count\":true,\"list\":true,\"query_cache\":true,\"mount\":true,\"baseline_zero\":true}");
+    return 0;
+}
+static int nifm_contract(void) {
+    typedef int32_t (*init_fn)(void);
+
+    init_fn init_nifm = (init_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn4nifm10InitializeEv");
+    CHECK(init_nifm != NULL);
+
+    init_fn init_nifm_alias = (init_fn)(uintptr_t)guest_process_resolve(0, "nnnifmInitialize");
+    CHECK(init_nifm_alias != NULL);
+
+    /* Test Initialize: baseline returns 0 without crash */
+    int32_t res = init_nifm();
+    CHECK(res == 0);
+    res = init_nifm_alias();
+    CHECK(res == 0);
+
+    puts("{\"nifm_contract_errors\":0,\"initialize\":true,\"baseline_zero\":true}");
+    return 0;
+}
+static int socket_contract(void) {
+    typedef int32_t (*init_fn)(void *work_buffer, size_t work_buffer_size, size_t allocator_size, int32_t concurrency);
+
+    init_fn init_sock = (init_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn6socket10InitializeEPvmmi");
+    CHECK(init_sock != NULL);
+
+    init_fn init_sock_alias = (init_fn)(uintptr_t)guest_process_resolve(0, "nnsocketInitialize");
+    CHECK(init_sock_alias != NULL);
+
+    /* Test Initialize: baseline returns 0 without crash */
+    static char dummy_buf[1024];
+    int32_t res = init_sock(dummy_buf, sizeof(dummy_buf), 256, 4);
+    CHECK(res == 0);
+    CHECK(nso_host_socket_is_initialized());
+
+    res = init_sock_alias(dummy_buf, sizeof(dummy_buf), 256, 4);
+    CHECK(res == 0);
+
+    puts("{\"socket_contract_errors\":0,\"initialize\":true,\"baseline_zero\":true}");
+    return 0;
+}
+/* nn::socket event family. Retail ABI (Nintendo SDK NSO): EventFd(initval,
+ * flags) returns a descriptor or -1; EventFdWrite/EventFdRead move exactly
+ * eight bytes and answer 0 or -1. The guest posts one signal and drains it
+ * with a single read, so the contract asserts the auto-reset behaviour, the
+ * empty-read error and the pollability of the descriptor. */
+static int socket_eventfd_contract(void) {
+    typedef int32_t (*event_fd_fn)(uint64_t, int32_t);
+    typedef int32_t (*event_fd_write_fn)(int32_t, uint64_t);
+    typedef int32_t (*event_fd_read_fn)(int32_t, uint64_t *);
+    typedef int32_t (*close_fn)(int32_t);
+    typedef int32_t (*get_last_error_fn)(void);
+    typedef int32_t (*poll_fn)(void *, uint64_t, int32_t);
+
+    event_fd_fn event_fd = (event_fd_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn6socket7EventFdEmNS0_12EventFdFlagsE");
+    CHECK(event_fd != NULL);
+    event_fd_write_fn event_fd_write = (event_fd_write_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn6socket12EventFdWriteEim");
+    CHECK(event_fd_write != NULL);
+    event_fd_read_fn event_fd_read = (event_fd_read_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn6socket11EventFdReadEiPm");
+    CHECK(event_fd_read != NULL);
+    close_fn socket_close = (close_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn6socket5CloseEi");
+    CHECK(socket_close != NULL);
+    get_last_error_fn get_last_error = (get_last_error_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn6socket12GetLastErrorEv");
+    CHECK(get_last_error != NULL);
+    poll_fn socket_poll = (poll_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn6socket4PollEPNS0_6PollFdEmi");
+    CHECK(socket_poll != NULL);
+    poll_fn socket_poll_c = (poll_fn)(uintptr_t)guest_process_resolve(0, "nnsocketPoll");
+    CHECK(socket_poll_c != NULL);
+
+    /* The guest's own call shape: EventFd(0, 4). */
+    int32_t fd = event_fd(0, 4);
+    CHECK(fd >= 0);
+
+    /* A read with nothing posted must fail instead of parking the caller. */
+    uint64_t value = 0xdeadbeef;
+    CHECK(event_fd_read(fd, &value) == -1);
+    CHECK(get_last_error() != 0);
+
+    /* A null output pointer is rejected, matching the retail null check. */
+    CHECK(event_fd_read(fd, NULL) == -1);
+
+    /* Post and drain: one read consumes exactly one posted signal. */
+    CHECK(event_fd_write(fd, 1) == 0);
+    CHECK(event_fd_read(fd, &value) == 0);
+    CHECK(value == 1);
+
+    /* Two posts, two drains: the second read must not report the first post. */
+    CHECK(event_fd_write(fd, 1) == 0);
+    CHECK(event_fd_write(fd, 1) == 0);
+    CHECK(event_fd_read(fd, &value) == 0);
+    CHECK(value == 1);
+    CHECK(event_fd_read(fd, &value) == 0);
+    CHECK(value == 1);
+    CHECK(event_fd_read(fd, &value) == -1);
+
+    /* The descriptor is pollable, which is how the guest waits for a signal. */
+    struct { int fd; short events; short revents; } descriptors[1];
+    descriptors[0].fd = fd;
+    descriptors[0].events = 1;   /* POLLIN */
+    descriptors[0].revents = 0;
+    CHECK(socket_poll(descriptors, 1, 0) == 0);
+    CHECK(descriptors[0].revents == 0);
+    CHECK(event_fd_write(fd, 1) == 0);
+    descriptors[0].revents = 0;
+    CHECK(socket_poll(descriptors, 1, 0) == 1);
+    CHECK((descriptors[0].revents & 1) == 1);
+    /* The C entry point polls the same array and reports the same readiness. */
+    descriptors[0].revents = 0;
+    CHECK(socket_poll_c(descriptors, 1, 0) == 1);
+    CHECK((descriptors[0].revents & 1) == 1);
+
+    CHECK(socket_close(fd) == 0);
+
+    puts("{\"socket_eventfd_contract_errors\":0,\"create\":true,\"write\":true,\"read_roundtrip\":true,"
+         "\"read_empty_rejected\":true,\"null_output_rejected\":true,\"auto_reset\":true,"
+         "\"pollable\":true,\"close\":true}");
+    return 0;
+}
+static int account_contract(void) {
+    typedef int32_t (*init_fn)(void);
+
+    init_fn init_acc = (init_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn7account10InitializeEv");
+    CHECK(init_acc != NULL);
+
+    init_fn init_acc_alias = (init_fn)(uintptr_t)guest_process_resolve(0, "nnaccountInitialize");
+    CHECK(init_acc_alias != NULL);
+
+    /* Test Initialize: baseline returns 0 without crash */
+    int32_t res = init_acc();
+    CHECK(res == 0);
+    CHECK(nso_host_account_is_initialized());
+
+    res = init_acc_alias();
+    CHECK(res == 0);
+
+    puts("{\"account_contract_errors\":0,\"initialize\":true,\"baseline_zero\":true}");
+    return 0;
+}
+static int oe_contract(void) {
+    typedef int32_t (*init_fn)(void);
+    typedef nn_settings_language_code (*lang_fn)(void);
+
+    init_fn init_oe = (init_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2oe10InitializeEv");
+    CHECK(init_oe != NULL);
+
+    init_fn init_oe_alias = (init_fn)(uintptr_t)guest_process_resolve(0, "nnoeInitialize");
+    CHECK(init_oe_alias != NULL);
+
+    lang_fn get_lang = (lang_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2oe18GetDesiredLanguageEv");
+    CHECK(get_lang != NULL);
+
+    lang_fn get_lang_alias = (lang_fn)(uintptr_t)guest_process_resolve(0, "nnoeGetDesiredLanguage");
+    CHECK(get_lang_alias != NULL);
+
+    /* Test Initialize: baseline returns 0 without crash */
+    int32_t res = init_oe();
+    CHECK(res == 0);
+    CHECK(nso_host_oe_is_initialized());
+
+    res = init_oe_alias();
+    CHECK(res == 0);
+
+    /* Test GetDesiredLanguage: returns "en-US" */
+    nn_settings_language_code lc = get_lang();
+    CHECK(!strcmp(lc.code, "en-US"));
+
+    nn_settings_language_code lc_alias = get_lang_alias();
+    CHECK(!strcmp(lc_alias.code, "en-US"));
+
+    puts("{\"oe_contract_errors\":0,\"initialize\":true,\"get_desired_language\":true,\"baseline_locale\":\"en-US\"}");
+    return 0;
+}
+static int gettimeofday_contract(void) {
+    typedef int (*gtod_fn)(struct timeval *, void *);
+    typedef pid_t (*getpid_fn)(void);
+
+    gtod_fn gtod = (gtod_fn)(uintptr_t)guest_process_resolve(0, "gettimeofday");
+    CHECK(gtod != NULL);
+
+    struct timeval tv;
+    memset(&tv, 0, sizeof(tv));
+    int rc = gtod(&tv, NULL);
+    CHECK(rc == 0);
+    CHECK(tv.tv_sec > 1700000000);
+    CHECK(tv.tv_usec >= 0 && tv.tv_usec < 1000000);
+
+    /* Test null pointer returns -1 */
+    CHECK(gtod(NULL, NULL) == -1);
+
+    getpid_fn gpid = (getpid_fn)(uintptr_t)guest_process_resolve(0, "getpid");
+    CHECK(gpid != NULL);
+    CHECK(gpid() > 0);
+
+    puts("{\"gettimeofday_contract_errors\":0,\"valid_timeval\":true,\"tv_sec_positive\":true,\"tv_usec_bounded\":true,\"null_tv_rejected\":true,\"getpid_positive\":true}");
+    return 0;
+}
+static int os_process_handle_contract(void) {
+    typedef uint32_t (*get_process_handle_fn)(void);
+    get_process_handle_fn fn1 = (get_process_handle_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os23GetCurrentProcessHandleEv");
+    CHECK(fn1 != NULL);
+    get_process_handle_fn fn2 = (get_process_handle_fn)(uintptr_t)guest_process_resolve(0, "nnosGetCurrentProcessHandle");
+    CHECK(fn2 != NULL);
+
+    uint32_t h1 = fn1();
+    uint32_t h2 = fn2();
+    CHECK(h1 != 0);
+    CHECK(h1 == h2);
+    CHECK(h1 == (uint32_t)getpid());
+
+    puts("{\"os_process_handle_contract_errors\":0,\"get_current_process_handle\":true,\"handle_positive\":true,\"matches_getpid\":true}");
+    return 0;
+}
+static int nn_result_contract(void) {
+    typedef uint32_t (*is_fail_fn)(uint32_t);
+    typedef uint32_t (*is_succ_fn)(uint32_t);
+    typedef uint32_t (*get_mod_fn)(uint32_t);
+    typedef uint32_t (*get_desc_fn)(uint32_t);
+    typedef uint32_t (*succ_fn)(void);
+
+    is_fail_fn is_fail = (is_fail_fn)(uintptr_t)guest_process_resolve(0, "nnResultIsFailure");
+    CHECK(is_fail != NULL);
+    is_succ_fn is_succ = (is_succ_fn)(uintptr_t)guest_process_resolve(0, "nnResultIsSuccess");
+    CHECK(is_succ != NULL);
+    get_mod_fn get_mod = (get_mod_fn)(uintptr_t)guest_process_resolve(0, "nnResultGetModule");
+    CHECK(get_mod != NULL);
+    get_desc_fn get_desc = (get_desc_fn)(uintptr_t)guest_process_resolve(0, "nnResultGetDescription");
+    CHECK(get_desc != NULL);
+    succ_fn succ = (succ_fn)(uintptr_t)guest_process_resolve(0, "nnResultSuccess");
+    CHECK(succ != NULL);
+
+    CHECK(is_fail(0) == 0);
+    CHECK(is_fail(1) == 1);
+    CHECK(is_fail(0x202) == 1);
+    CHECK(is_fail(0x80000000) == 1);
+
+    CHECK(is_succ(0) == 1);
+    CHECK(is_succ(1) == 0);
+    CHECK(is_succ(0x202) == 0);
+
+    /* 0x202 = Module 2 (fs), Description 1 (PathNotFound) */
+    CHECK(get_mod(0x202) == 2);
+    CHECK(get_desc(0x202) == 1);
+
+    /* 0x402 = Module 2 (fs), Description 2 (PathAlreadyExists) */
+    CHECK(get_mod(0x402) == 2);
+    CHECK(get_desc(0x402) == 2);
+
+    /* 0x7b | (0x65 << 9) = 123 | (101 << 9) */
+    uint32_t ssl_err = 0x7b | (0x65 << 9);
+    CHECK(get_mod(ssl_err) == 0x7b);
+    CHECK(get_desc(ssl_err) == 0x65);
+
+    CHECK(succ() == 0);
+
+    puts("{\"nn_result_contract_errors\":0,\"is_failure_works\":true,\"is_success_works\":true,\"get_module_works\":true,\"get_description_works\":true,\"success_constant_zero\":true}");
+    return 0;
+}
+static int nnssl_contract(void) {
+    typedef int32_t (*init_fn)(void);
+    typedef int32_t (*finalize_fn)(void);
+
+    init_fn ssl_init = (init_fn)(uintptr_t)guest_process_resolve(0, "nnsslInitialize");
+    CHECK(ssl_init != NULL);
+    finalize_fn ssl_fin = (finalize_fn)(uintptr_t)guest_process_resolve(0, "nnsslFinalize");
+    CHECK(ssl_fin != NULL);
+
+    /* nnsslInitialize returns nn::Result (0 = success) */
+    int32_t rc = ssl_init();
+    CHECK(rc == 0);
+
+    /* nnsslFinalize returns a masked nn::Result in w0, not void: the retail SDK
+     * wrapper (sdk module_offset 0x433620) ends with "and w0, w0, #0x3fffff".
+     * The import gateway forwards w0 unchanged, so a void stub would hand the
+     * guest an indeterminate Result. */
+    int32_t fin_rc = ssl_fin();
+    CHECK(fin_rc == 0);
+
+    puts("{\"nnssl_contract_errors\":0,\"initialize\":true,\"finalize\":true,\"baseline_zero\":true,\"finalize_result_zero\":true}");
+    return 0;
+}
+static int stdio_contract(void) {
+    typedef int (*fflush_fn)(FILE *);
+    typedef size_t (*fwrite_fn)(const void *,size_t,size_t,FILE *);
+    typedef int (*fputs_fn)(const char *,FILE *);
+    typedef int (*fputc_fn)(int,FILE *);
+    typedef int (*puts_fn)(const char *);
+
+    /* Data imports: the resolved value is the address of a host object the
+     * guest dereferences (stdout is a FILE* variable in the guest's libc), so
+     * it must never be a callable entry or a sentinel slot. */
+    uint64_t stdout_object=guest_process_resolve(0,"stdout");
+    uint64_t stdin_object=guest_process_resolve(0,"stdin");
+    uint64_t stderr_object=guest_process_resolve(0,"stderr");
+    CHECK(stdout_object!=0 && stdin_object!=0 && stderr_object!=0);
+    CHECK(*(FILE **)(uintptr_t)stdout_object==stdout);
+    CHECK(*(FILE **)(uintptr_t)stdin_object==stdin);
+    CHECK(*(FILE **)(uintptr_t)stderr_object==stderr);
+    CHECK(stdout_object!=stdin_object && stdout_object!=stderr_object && stdin_object!=stderr_object);
+    /* The object slot is writable and holds exactly one host stream pointer. */
+    FILE *mirror=*(FILE **)(uintptr_t)stdout_object;
+    CHECK(mirror==stdout);
+
+    fflush_fn flush=(fflush_fn)(uintptr_t)guest_process_resolve(0,"fflush");
+    fwrite_fn write_bytes=(fwrite_fn)(uintptr_t)guest_process_resolve(0,"fwrite");
+    fputs_fn put_string=(fputs_fn)(uintptr_t)guest_process_resolve(0,"fputs");
+    fputc_fn put_char=(fputc_fn)(uintptr_t)guest_process_resolve(0,"fputc");
+    puts_fn put_line=(puts_fn)(uintptr_t)guest_process_resolve(0,"puts");
+    CHECK(flush&&write_bytes&&put_string&&put_char&&put_line);
+    CHECK(guest_process_resolve(0,"printf")!=0);
+    CHECK(guest_process_resolve(0,"fprintf")!=0);
+    CHECK(guest_process_resolve(0,"sprintf")!=0);
+
+    /* Round trip through a scratch host file: the write entry points must
+     * deliver the guest bytes and return the libc results. */
+    FILE *scratch=tmpfile();
+    CHECK(scratch!=NULL);
+    const char payload[]="stdio-contract";
+    CHECK(write_bytes(payload,1,sizeof(payload)-1,scratch)==sizeof(payload)-1);
+    CHECK(put_string("fputs",scratch)>=0);
+    CHECK(put_char('!',scratch)=='!');
+    CHECK(flush(scratch)==0);
+    rewind(scratch);
+    char readback[64];
+    memset(readback,0,sizeof(readback));
+    size_t got=fread(readback,1,sizeof(readback)-1,scratch);
+    CHECK(got==sizeof(payload)-1+5+1);
+    CHECK(!strncmp(readback,payload,sizeof(payload)-1));
+    CHECK(!strcmp(readback+sizeof(payload)-1,"fputs!"));
+
+    /* puts writes to the process stdout: capture it so the contract output
+     * stays machine readable and the written line can be verified. */
+    int saved=dup(fileno(stdout));
+    CHECK(saved>=0);
+    CHECK(dup2(fileno(scratch),fileno(stdout))>=0);
+    int line_result=put_line("line");
+    fflush(stdout);
+    CHECK(dup2(saved,fileno(stdout))>=0);
+    close(saved);
+    CHECK(line_result>=0);
+    fflush(scratch);
+    fseek(scratch,0,SEEK_END);
+    long size=ftell(scratch);
+    CHECK(size==(long)(sizeof(payload)-1+5+1+5));
+    fseek(scratch,0,SEEK_SET);
+    memset(readback,0,sizeof(readback));
+    got=fread(readback,1,sizeof(readback)-1,scratch);
+    CHECK(got==(size_t)(sizeof(payload)-1+5+1+5));
+    CHECK(!strcmp(readback+sizeof(payload)-1+5+1,"line\n"));
+    fclose(scratch);
+
+#if defined(__ANDROID__) && defined(__aarch64__)
+    /* Real native boundary gateways: the variadic tail is rebuilt from the
+     * guest registers, including the arguments that did not fit in registers
+     * and are read from the caller's stack. */
+    nb_scope scope;
+    memset(&scope,0,sizeof(scope));
+    CHECK(nb_scope_init(&scope)==NB_OK);
+    nb_import binding={0};
+    nb_signature one={.version=4,.flags=NB_SIG_VARIADIC_STDIO,.gp_arguments=1,.gp_returns=1,.variadic=1};
+    CHECK(nb_import_bind(&binding,&scope,(void(*)(void))(uintptr_t)&nso_host_vprintf,&one)==NB_OK);
+    nb_import binding_two={0};
+    nb_signature two={.version=4,.flags=NB_SIG_VARIADIC_STDIO,.gp_arguments=2,.gp_returns=1,.variadic=1};
+    CHECK(nb_import_bind(&binding_two,&scope,(void(*)(void))(uintptr_t)&nso_host_vfprintf,&two)==NB_OK);
+    typedef int (*gateway_one_fn)(const char *,...);
+    typedef int (*gateway_two_fn)(FILE *,const char *,...);
+    gateway_one_fn gateway_one=(gateway_one_fn)nb_import_entry(&binding);
+    gateway_two_fn gateway_two=(gateway_two_fn)nb_import_entry(&binding_two);
+    CHECK(gateway_one&&gateway_two);
+    scope.phase=1;
+    scratch=tmpfile();
+    CHECK(scratch!=NULL);
+    int result=gateway_two(scratch,"contract %d %s %.2f %d %d %d %d %d %d %d %d\n",
+        7,"text",1.5,1,2,3,4,5,6,7,8);
+    CHECK(result>0);
+    fflush(scratch);
+    rewind(scratch);
+    memset(readback,0,sizeof(readback));
+    got=fread(readback,1,sizeof(readback)-1,scratch);
+    CHECK(got>0);
+    CHECK(got==37);
+    CHECK(!memcmp(readback,"contract 7 text 1.50 1 2 3 4 5 6 7 8\n",37));
+    /* One named argument: the first variadic argument is the second
+     * general register, so the rebuilt list starts there. */
+    saved=dup(fileno(stdout));
+    CHECK(saved>=0);
+    CHECK(dup2(fileno(scratch),fileno(stdout))>=0);
+    result=gateway_one("one %d %s\n",42,"tail");
+    fflush(stdout);
+    CHECK(dup2(saved,fileno(stdout))>=0);
+    close(saved);
+    CHECK(result>0);
+    fflush(scratch);
+    fseek(scratch,0,SEEK_END);
+    size=ftell(scratch);
+    CHECK(size>0);
+    fseek(scratch,0,SEEK_SET);
+    memset(readback,0,sizeof(readback));
+    got=fread(readback,1,sizeof(readback)-1,scratch);
+    CHECK(got>0);
+    CHECK(strstr(readback,"one 42 tail")!=NULL);
+    fclose(scratch);
+    scope.phase=0;
+    CHECK(nb_import_unbind(&binding)==NB_OK);
+    CHECK(nb_import_unbind(&binding_two)==NB_OK);
+    CHECK(nb_scope_close(&scope)==NB_OK);
+#endif
+    puts("{\"stdio_contract_errors\":0,\"objects_bound\":true,\"object_holds_host_stream\":true,\"writable_mirror\":true,\"fwrite_roundtrip\":true,\"fputs_roundtrip\":true,\"fputc_roundtrip\":true,\"puts_roundtrip\":true,\"fflush_roundtrip\":true,\"callables_bound\":true}");
+    return 0;
+}
+static int fs_open_dir_contract(void) {
+    typedef int32_t (*open_dir_fn)(nn_fs_directory_handle *, const char *, int32_t);
+    typedef int32_t (*get_count_fn)(int64_t *, nn_fs_directory_handle);
+    typedef int32_t (*read_dir_fn)(int64_t *, nn_fs_directory_entry *, nn_fs_directory_handle, int64_t);
+    typedef void (*close_dir_fn)(nn_fs_directory_handle);
+    typedef int32_t (*create_dir_fn)(const char *);
+
+    open_dir_fn open_dir = (open_dir_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs13OpenDirectoryEPNS0_15DirectoryHandleEPKci");
+    CHECK(open_dir != NULL);
+
+    open_dir_fn open_dir_alias = (open_dir_fn)(uintptr_t)guest_process_resolve(0, "nnfsOpenDirectory");
+    CHECK(open_dir_alias != NULL);
+
+    get_count_fn get_count = (get_count_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs22GetDirectoryEntryCountEPlNS0_15DirectoryHandleE");
+    CHECK(get_count != NULL);
+
+    get_count_fn get_count_alias = (get_count_fn)(uintptr_t)guest_process_resolve(0, "nnfsGetDirectoryEntryCount");
+    CHECK(get_count_alias != NULL);
+
+    read_dir_fn read_dir = (read_dir_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs13ReadDirectoryEPlPNS0_14DirectoryEntryENS0_15DirectoryHandleEl");
+    CHECK(read_dir != NULL);
+
+    read_dir_fn read_dir_alias = (read_dir_fn)(uintptr_t)guest_process_resolve(0, "nnfsReadDirectory");
+    CHECK(read_dir_alias != NULL);
+
+    close_dir_fn close_dir = (close_dir_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs14CloseDirectoryENS0_15DirectoryHandleE");
+    CHECK(close_dir != NULL);
+
+    close_dir_fn close_dir_alias = (close_dir_fn)(uintptr_t)guest_process_resolve(0, "nnfsCloseDirectory");
+    CHECK(close_dir_alias != NULL);
+
+    create_dir_fn create_dir = (create_dir_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2fs15CreateDirectoryEPKc");
+    CHECK(create_dir != NULL);
+
+    create_dir_fn create_dir_alias = (create_dir_fn)(uintptr_t)guest_process_resolve(0, "nnfsCreateDirectory");
+    CHECK(create_dir_alias != NULL);
+
+    /* Parameter validation */
+    nn_fs_directory_handle handle = {0};
+    CHECK(open_dir(NULL, "rom:/", 3) != 0);
+    CHECK(open_dir(&handle, NULL, 3) != 0);
+    CHECK(open_dir(&handle, "", 3) != 0);
+
+    /* Ensure 'rom' is mounted for contract testing */
+    if (!nso_host_fs_is_rom_mounted("rom")) {
+        static char cache_buf[0x10000];
+        nso_host_fs_mount_rom("rom", cache_buf, sizeof(cache_buf));
+    }
+
+    /* Non-existent directory */
+    CHECK(open_dir(&handle, "rom:/non_existent_dir_contract_xyz", 3) != 0);
+
+    /* Setup a dedicated temporary directory with test files & subdirectories */
+    const char *mount_root = nso_host_fs_get_rom_mount_path("rom");
+    char test_dir_path[512];
+    snprintf(test_dir_path, sizeof(test_dir_path), "%s/dir_test_fixture", mount_root ? mount_root : ".");
+    mkdir(test_dir_path, 0755);
+
+    char sub_dir_path[512];
+    snprintf(sub_dir_path, sizeof(sub_dir_path), "%s/sub_dir", test_dir_path);
+    mkdir(sub_dir_path, 0755);
+
+    char file1_path[512];
+    snprintf(file1_path, sizeof(file1_path), "%s/file1.txt", test_dir_path);
+    FILE *fp1 = fopen(file1_path, "wb");
+    if (fp1) { fputs("file1 contents", fp1); fclose(fp1); }
+
+    char file2_path[512];
+    snprintf(file2_path, sizeof(file2_path), "%s/file2.bin", test_dir_path);
+    FILE *fp2 = fopen(file2_path, "wb");
+    if (fp2) { fputs("longer file2 contents here", fp2); fclose(fp2); }
+
+    /* Test 1: Open Directory mode 1 (Directories only) */
+    int32_t ok = open_dir(&handle, "rom:/dir_test_fixture", 1);
+    CHECK(ok == 0);
+    CHECK(handle.handle != NULL);
+
+    int64_t count = 0;
+    CHECK(get_count(&count, handle) == 0);
+    CHECK(count == 1);
+
+    nn_fs_directory_entry entries[4];
+    memset(entries, 0, sizeof(entries));
+    int64_t read_count = 0;
+    CHECK(read_dir(&read_count, entries, handle, 4) == 0);
+    CHECK(read_count == 1);
+    CHECK(entries[0].type == 0); /* Directory */
+    CHECK(strcmp(entries[0].name, "sub_dir") == 0);
+    CHECK(entries[0].file_size == 0);
+
+    /* End of enumeration */
+    CHECK(read_dir(&read_count, entries, handle, 4) == 0);
+    CHECK(read_count == 0);
+
+    close_dir(handle);
+
+    /* Test 2: Open Directory mode 2 (Files only) */
+    ok = open_dir_alias(&handle, "rom:/dir_test_fixture", 2);
+    CHECK(ok == 0);
+    CHECK(handle.handle != NULL);
+
+    CHECK(get_count_alias(&count, handle) == 0);
+    CHECK(count == 2);
+
+    memset(entries, 0, sizeof(entries));
+    CHECK(read_dir_alias(&read_count, entries, handle, 4) == 0);
+    CHECK(read_count == 2);
+    CHECK(entries[0].type == 1); /* File */
+    CHECK(entries[1].type == 1); /* File */
+    CHECK(entries[0].file_size > 0);
+    CHECK(entries[1].file_size > 0);
+
+    close_dir_alias(handle);
+
+    /* Test 3: Open Directory mode 3 (All: files and directories) */
+    ok = open_dir(&handle, "rom:/dir_test_fixture", 3);
+    CHECK(ok == 0);
+    CHECK(handle.handle != NULL);
+
+    CHECK(get_count(&count, handle) == 0);
+    CHECK(count == 3);
+
+    /* Read in chunks of 2 */
+    memset(entries, 0, sizeof(entries));
+    CHECK(read_dir(&read_count, entries, handle, 2) == 0);
+    CHECK(read_count == 2);
+
+    CHECK(read_dir(&read_count, entries + 2, handle, 2) == 0);
+    CHECK(read_count == 1);
+
+    close_dir(handle);
+
+    /* Operations on closed handle must fail */
+    CHECK(get_count(&count, handle) != 0);
+    CHECK(read_dir(&read_count, entries, handle, 1) != 0);
+
+    /* Clean up temporary fixture directory */
+    unlink(file1_path);
+    unlink(file2_path);
+    rmdir(sub_dir_path);
+    rmdir(test_dir_path);
+
+    /* If rom:/ exists, test opening root rom directory */
+    nn_fs_directory_handle root_dir = {0};
+    if (open_dir(&root_dir, "rom:/", 3) == 0) {
+        int64_t root_count = 0;
+        CHECK(get_count(&root_count, root_dir) == 0);
+        close_dir(root_dir);
+    }
+
+    puts("{\"fs_open_dir_errors\":0,\"open\":true,\"count\":true,\"read\":true,\"close\":true,\"validation\":true}");
+    return 0;
+}
+struct event_signal_thread_arg {
+    void (*signal_fn)(void *);
+    void *event;
+    int delay_ms;
+};
+
+static void *event_signal_worker(void *param) {
+    struct event_signal_thread_arg *arg = (struct event_signal_thread_arg *)param;
+    usleep(arg->delay_ms * 1000);
+    arg->signal_fn(arg->event);
+    return NULL;
+}
+
+static int os_event_contract(void) {
+    typedef void (*init_event_fn)(void *, bool, int32_t);
+    typedef void (*finalize_event_fn)(void *);
+    typedef void (*signal_event_fn)(void *);
+    typedef void (*clear_event_fn)(void *);
+    typedef void (*wait_event_fn)(void *);
+    typedef bool (*try_wait_event_fn)(void *);
+    typedef bool (*timed_wait_event_fn)(void *, int64_t);
+
+    init_event_fn init_event = (init_event_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os15InitializeEventEPNS0_9EventTypeEbNS0_14EventClearModeE");
+    CHECK(init_event != NULL);
+    init_event_fn init_event_alias = (init_event_fn)(uintptr_t)guest_process_resolve(0, "nnosInitializeEvent");
+    CHECK(init_event_alias != NULL);
+
+    finalize_event_fn finalize_event = (finalize_event_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os13FinalizeEventEPNS0_9EventTypeE");
+    CHECK(finalize_event != NULL);
+    finalize_event_fn finalize_event_alias = (finalize_event_fn)(uintptr_t)guest_process_resolve(0, "nnosFinalizeEvent");
+    CHECK(finalize_event_alias != NULL);
+
+    signal_event_fn signal_event = (signal_event_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os11SignalEventEPNS0_9EventTypeE");
+    CHECK(signal_event != NULL);
+    signal_event_fn signal_event_alias = (signal_event_fn)(uintptr_t)guest_process_resolve(0, "nnosSignalEvent");
+    CHECK(signal_event_alias != NULL);
+
+    clear_event_fn clear_event = (clear_event_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os10ClearEventEPNS0_9EventTypeE");
+    CHECK(clear_event != NULL);
+
+    wait_event_fn wait_event = (wait_event_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os9WaitEventEPNS0_9EventTypeE");
+    CHECK(wait_event != NULL);
+    wait_event_fn wait_event_alias = (wait_event_fn)(uintptr_t)guest_process_resolve(0, "nnosWaitEvent");
+    CHECK(wait_event_alias != NULL);
+
+    try_wait_event_fn try_wait_event = (try_wait_event_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os12TryWaitEventEPNS0_9EventTypeE");
+    CHECK(try_wait_event != NULL);
+
+    timed_wait_event_fn timed_wait_event = (timed_wait_event_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os14TimedWaitEventEPNS0_9EventTypeENS_8TimeSpanE");
+    CHECK(timed_wait_event != NULL);
+
+    /* 1. Null / unaligned parameter safety checks */
+    init_event(NULL, false, 1);
+    signal_event(NULL);
+    clear_event(NULL);
+    wait_event(NULL);
+    CHECK(try_wait_event(NULL) == false);
+    CHECK(timed_wait_event(NULL, 1000000) == false);
+    finalize_event(NULL);
+
+    /* 2. AutoClear mode contract (EventClearMode_AutoClear = 1) */
+    uint8_t auto_event_buf[64] __attribute__((aligned(8))) = {0};
+    init_event(auto_event_buf, false, 1);
+
+    /* Check mirrored ABI bytes */
+    CHECK(auto_event_buf[0x10] == 0); /* signaled = false */
+    CHECK(auto_event_buf[0x11] == 0); /* initially_signaled = false */
+    CHECK(auto_event_buf[0x12] == 1); /* clear_mode = AutoClear (1) */
+    CHECK(auto_event_buf[0x13] == 1); /* state = initialized (1) */
+
+    CHECK(try_wait_event(auto_event_buf) == false);
+    /* Timed wait should timeout when not signaled */
+    CHECK(timed_wait_event(auto_event_buf, 5000000) == false); /* 5ms */
+
+    /* Signal event */
+    signal_event(auto_event_buf);
+    CHECK(auto_event_buf[0x10] == 1);
+
+    /* In AutoClear mode, try_wait succeeds and auto-clears signaled state */
+    CHECK(try_wait_event(auto_event_buf) == true);
+    CHECK(auto_event_buf[0x10] == 0);
+    CHECK(try_wait_event(auto_event_buf) == false);
+
+    /* Signal again and test timed_wait success */
+    signal_event(auto_event_buf);
+    CHECK(timed_wait_event(auto_event_buf, 100000000) == true); /* 100ms */
+    CHECK(auto_event_buf[0x10] == 0); /* auto-cleared */
+
+    finalize_event(auto_event_buf);
+    CHECK(auto_event_buf[0x13] == 0); /* state = uninitialized */
+
+    /* 3. ManualClear mode contract (EventClearMode_ManualClear = 0) */
+    uint8_t manual_event_buf[64] __attribute__((aligned(8))) = {0};
+    init_event_alias(manual_event_buf, true, 0); /* initially signaled */
+
+    CHECK(manual_event_buf[0x10] == 1); /* signaled = true */
+    CHECK(manual_event_buf[0x11] == 1); /* initially_signaled = true */
+    CHECK(manual_event_buf[0x12] == 0); /* clear_mode = ManualClear (0) */
+    CHECK(manual_event_buf[0x13] == 1);
+
+    /* In ManualClear mode, try_wait does NOT clear signaled state */
+    CHECK(try_wait_event(manual_event_buf) == true);
+    CHECK(manual_event_buf[0x10] == 1);
+    CHECK(try_wait_event(manual_event_buf) == true);
+    CHECK(manual_event_buf[0x10] == 1);
+
+    /* ClearEvent resets signaled */
+    clear_event(manual_event_buf);
+    CHECK(manual_event_buf[0x10] == 0);
+    CHECK(try_wait_event(manual_event_buf) == false);
+
+    finalize_event_alias(manual_event_buf);
+    CHECK(manual_event_buf[0x13] == 0);
+
+    /* 4. Cross-thread WaitEvent notification */
+    uint8_t thread_event_buf[64] __attribute__((aligned(8))) = {0};
+    init_event(thread_event_buf, false, 1); /* AutoClear */
+
+    pthread_t thread;
+    struct event_signal_thread_arg thread_arg = {
+        .signal_fn = signal_event,
+        .event = thread_event_buf,
+        .delay_ms = 10,
+    };
+    int pth_rc = pthread_create(&thread, NULL, event_signal_worker, &thread_arg);
+    CHECK(pth_rc == 0);
+
+    wait_event(thread_event_buf);
+    /* Successfully woke up! With AutoClear, signaled is reset */
+    CHECK(thread_event_buf[0x10] == 0);
+
+    pthread_join(thread, NULL);
+    finalize_event(thread_event_buf);
+
+    puts("{\"os_event_errors\":0,\"init\":true,\"auto_clear\":true,\"manual_clear\":true,\"timed_wait\":true,\"cross_thread\":true,\"finalize\":true}");
+    return 0;
+}
+
+static int posix_memalign_contract(void) {
+    typedef int (*posix_memalign_fn)(void **, size_t, size_t);
+    typedef void *(*memalign_fn)(size_t, size_t);
+
+    posix_memalign_fn p_memalign = (posix_memalign_fn)(uintptr_t)guest_process_resolve(0, "posix_memalign");
+    CHECK(p_memalign != NULL);
+    memalign_fn m_align = (memalign_fn)(uintptr_t)guest_process_resolve(0, "memalign");
+    CHECK(m_align != NULL);
+
+    /* 1. Invalid parameter checks */
+    void *ptr = (void *)0xdeadbeef;
+    CHECK(p_memalign(NULL, 64, 128) == EINVAL);
+    CHECK(p_memalign(&ptr, 3, 128) == EINVAL);
+    CHECK(p_memalign(&ptr, 4, 128) == EINVAL);
+    CHECK(p_memalign(&ptr, 7, 128) == EINVAL);
+    CHECK(m_align(3, 128) == NULL);
+    CHECK(m_align(0, 128) == NULL);
+
+    /* 2. Normal allocation matching UE4 caller (alignment=64, size=40) */
+    ptr = NULL;
+    int rc = p_memalign(&ptr, 64, 40);
+    CHECK(rc == 0);
+    CHECK(ptr != NULL);
+    CHECK(((uintptr_t)ptr & 63) == 0);
+    memset(ptr, 0xaa, 40);
+    free(ptr);
+
+    /* 3. Page alignment (4096, 8192) */
+    ptr = NULL;
+    rc = p_memalign(&ptr, 4096, 8192);
+    CHECK(rc == 0);
+    CHECK(ptr != NULL);
+    CHECK(((uintptr_t)ptr & 4095) == 0);
+    memset(ptr, 0x55, 8192);
+    free(ptr);
+
+    /* 4. Zero size allocation */
+    ptr = NULL;
+    rc = p_memalign(&ptr, 16, 0);
+    CHECK(rc == 0);
+    CHECK(ptr != NULL);
+    CHECK(((uintptr_t)ptr & 15) == 0);
+    free(ptr);
+
+    /* 5. memalign direct allocation */
+    void *m_ptr = m_align(64, 128);
+    CHECK(m_ptr != NULL);
+    CHECK(((uintptr_t)m_ptr & 63) == 0);
+    memset(m_ptr, 0x33, 128);
+    free(m_ptr);
+
+    puts("{\"posix_memalign_errors\":0,\"resolve\":true,\"invalid_params\":true,\"alloc_64\":true,\"alloc_page\":true,\"zero_size\":true,\"memalign\":true}");
+    return 0;
+}
+
+static unsigned s_thread_atexit_events[16];
+static size_t s_thread_atexit_event_count = 0;
+static void thread_atexit_test_cb(void *arg) {
+    if (s_thread_atexit_event_count < 16) {
+        s_thread_atexit_events[s_thread_atexit_event_count++] = (unsigned)(uintptr_t)arg;
+    }
+}
+struct child_atexit_arg {
+    int (*cxa_fn)(void (*)(void *), void *, void *);
+    int result;
+};
+static void *child_thread_atexit_worker(void *param) {
+    struct child_atexit_arg *ca = (struct child_atexit_arg *)param;
+    if (ca->cxa_fn(thread_atexit_test_cb, (void *)1, NULL) != 0) ca->result = 1;
+    if (ca->cxa_fn(thread_atexit_test_cb, (void *)2, NULL) != 0) ca->result = 2;
+    if (nso_exit_registry_thread_pending() != 2) ca->result = 3;
+    return NULL;
+}
+
+static int cxa_thread_atexit_contract(void) {
+    typedef int (*cxa_thread_atexit_fn)(void (*)(void *), void *, void *);
+
+    cxa_thread_atexit_fn p_atexit = (cxa_thread_atexit_fn)(uintptr_t)guest_process_resolve(0, "__cxa_thread_atexit");
+    CHECK(p_atexit != NULL);
+    cxa_thread_atexit_fn p_impl = (cxa_thread_atexit_fn)(uintptr_t)guest_process_resolve(0, "__cxa_thread_atexit_impl");
+    CHECK(p_impl != NULL);
+
+    /* 1. Invalid params */
+    CHECK(p_atexit(NULL, (void *)0x1234, (void *)0x5678) == -1);
+
+    /* 2. LIFO execution on this thread */
+    s_thread_atexit_event_count = 0;
+    CHECK(p_atexit(thread_atexit_test_cb, (void *)100, NULL) == 0);
+    CHECK(p_atexit(thread_atexit_test_cb, (void *)200, NULL) == 0);
+    CHECK(p_atexit(thread_atexit_test_cb, (void *)300, NULL) == 0);
+    CHECK(nso_exit_registry_thread_pending() == 3);
+
+    nso_exit_registry_thread_finalize();
+    CHECK(nso_exit_registry_thread_pending() == 0);
+    CHECK(s_thread_atexit_event_count == 3);
+    CHECK(s_thread_atexit_events[0] == 300);
+    CHECK(s_thread_atexit_events[1] == 200);
+    CHECK(s_thread_atexit_events[2] == 100);
+
+    /* 3. Thread isolation & child automatic exit cleanup */
+    s_thread_atexit_event_count = 0;
+    CHECK(p_atexit(thread_atexit_test_cb, (void *)10, NULL) == 0);
+    CHECK(nso_exit_registry_thread_pending() == 1);
+
+    pthread_t child;
+    struct child_atexit_arg carg = {.cxa_fn = p_atexit};
+    CHECK(pthread_create(&child, NULL, child_thread_atexit_worker, &carg) == 0);
+    CHECK(pthread_join(child, NULL) == 0);
+    CHECK(carg.result == 0);
+
+    /* Child should have executed its 2 callbacks in LIFO order upon exit */
+    CHECK(s_thread_atexit_event_count == 2);
+    CHECK(s_thread_atexit_events[0] == 2);
+    CHECK(s_thread_atexit_events[1] == 1);
+
+    /* Main thread registration should still be intact and pending */
+    CHECK(nso_exit_registry_thread_pending() == 1);
+    nso_exit_registry_thread_finalize();
+    CHECK(nso_exit_registry_thread_pending() == 0);
+    CHECK(s_thread_atexit_event_count == 3);
+    CHECK(s_thread_atexit_events[2] == 10);
+
+    puts("{\"cxa_thread_atexit_errors\":0,\"resolve\":true,\"invalid_params\":true,\"lifo\":true,\"thread_isolation\":true,\"auto_exit\":true}");
+    return 0;
+}
+
+/* nn::diag::detail::AbortImpl (main NSO import index 12).
+ *
+ * A guest fatal error must end the run. The guest does not expect this call
+ * to return: the RG477M v62 boot shows it falling straight through into the
+ * udf #0 trap at module offset 0x11f8, because the stub used to print the
+ * message and hand control back.
+ *
+ * The abort therefore runs in a child process - the whole point is that the
+ * call does not come back, so it cannot be observed in process - and two
+ * things are checked: the child left with the abort exit code instead of
+ * returning, and the game's own message reached stderr. The message is
+ * passed the way the SDK passes it, in x22, so the report plumbing is checked
+ * as well and not only the exit.
+ */
+static const char diag_abort_message[]="contract abort message";
+static uint16_t diag_abort_utf16[64];
+static void diag_abort_call(void (*target)(void)) {
+#if defined(__aarch64__)
+    /* One asm block, so nothing can change x22 between setting it and the
+     * call. The call is expected not to return. */
+    __asm__ volatile(
+        "mov x22, %1\n\t"
+        "blr %0\n\t"
+        :
+        : "r"(target), "r"(diag_abort_utf16)
+        : "x22","x0","x1","x2","x3","x4","x5","memory");
+#else
+    (void)target;
+    nso_host_diag_abort_impl();
+#endif
+}
+static int diag_abort_contract(void) {
+    typedef uint64_t (*abort_impl_fn)(void);
+    typedef int32_t (*get_backtrace_fn)(uintptr_t *, int32_t);
+
+    abort_impl_fn p_abort = (abort_impl_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn4diag6detail9AbortImplEv");
+    CHECK(p_abort != NULL);
+
+    get_backtrace_fn p_bt = (get_backtrace_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn4diag12GetBacktraceEPmi");
+    CHECK(p_bt != NULL);
+
+    /* 1. GetBacktrace invalid params */
+    CHECK(p_bt(NULL, 10) == 0);
+    CHECK(p_bt((uintptr_t *)0x1234, 0) == 0);
+    CHECK(p_bt((uintptr_t *)0x1234, -1) == 0);
+
+    /* 2. GetBacktrace captures non-negative depth */
+    uintptr_t bt[16] = {0};
+    int32_t count = p_bt(bt, 16);
+    CHECK(count >= 0);
+
+    /* 3. The abort ends the run instead of returning to the guest. */
+    size_t i=0;
+    for(;i+1<sizeof(diag_abort_utf16)/sizeof(diag_abort_utf16[0]) && diag_abort_message[i];i++)
+        diag_abort_utf16[i]=(uint16_t)(unsigned char)diag_abort_message[i];
+    diag_abort_utf16[i]=0;
+    FILE *capture=tmpfile();
+    CHECK(capture!=NULL);
+    fflush(stderr);
+    pid_t child=fork();
+    CHECK(child>=0);
+    if(child==0) {
+        dup2(fileno(capture),fileno(stderr));
+        diag_abort_call((void (*)(void))(uintptr_t)p_abort);
+        /* The abort came back. That is the failure this contract exists to
+         * catch, and the child says so with a distinct exit code. */
+        fflush(stderr);
+        _exit(0);
+    }
+    int status=0;
+    CHECK(waitpid(child,&status,0)==child);
+    fflush(capture);
+    fseek(capture,0,SEEK_SET);
+    char report[8192];
+    size_t got=fread(report,1,sizeof(report)-1,capture);
+    report[got]='\0';
+    fclose(capture);
+    int aborted=WIFEXITED(status) && WEXITSTATUS(status)==NN_DIAG_ABORT_EXIT_CODE;
+    int message_reported=strstr(report,diag_abort_message)!=NULL;
+    int report_line=strstr(report,"[guest-abort]")!=NULL;
+    expect_condition("diag-abort-does-not-return",aborted);
+    expect_condition("diag-abort-message-reported",message_reported);
+    expect_condition("diag-abort-report-line",report_line);
+    /* The final gate. Every expect_* above must have passed; without this the
+     * contract could still exit 0 while the expectations had failed. */
+    CHECK(!errors);
+    printf("{\"diag_abort_errors\":%u,\"resolve\":true,\"backtrace\":true,\"aborted\":%s,\"message_reported\":%s}\n",
+           errors,aborted?"true":"false",message_reported?"true":"false");
+    return 0;
+}
+
+static int diag_aoc_event_contract(void) {
+    typedef void (*event_fn)(void *);
+
+    event_fn p_get = (event_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn3aoc31GetAddOnContentListChangedEventEPNS_2os11SystemEventE");
+    CHECK(p_get != NULL);
+    event_fn p_wait = (event_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os15WaitSystemEventEPNS0_15SystemEventTypeE");
+    CHECK(p_wait != NULL);
+    event_fn p_signal = (event_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os17SignalSystemEventEPNS0_15SystemEventTypeE");
+    CHECK(p_signal != NULL);
+    event_fn p_destroy = (event_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2os18DestroySystemEventEPNS0_15SystemEventTypeE");
+    CHECK(p_destroy != NULL);
+
+    /* The host owns the signalling state and must not rewrite the guest
+     * nn::os::SystemEvent object: the game keeps its own layout. */
+    uint8_t guest_object[64];
+    for (size_t i = 0; i < sizeof guest_object; i++) guest_object[i] = (uint8_t)(i * 7u + 3u);
+    uint8_t before[64];
+    memcpy(before, guest_object, sizeof before);
+    p_get(guest_object);
+    CHECK(memcmp(before, guest_object, sizeof before) == 0);
+
+    /* A raised event releases a waiter instead of blocking forever. */
+    p_signal(guest_object);
+    p_wait(guest_object);
+
+    /* Null objects are reported, not dereferenced. */
+    p_get(NULL);
+    p_wait(NULL);
+    p_signal(NULL);
+    p_destroy(NULL);
+    p_destroy(guest_object);
+
+    puts("{\"diag_aoc_event_errors\":0,\"resolve\":true,\"guest_object_untouched\":true,\"signal_wait_roundtrip\":true}");
+    return 0;
+}
+struct log_fixture_io {float input,output;uint64_t guest_x18;};
+_Static_assert(offsetof(struct log_fixture_io,output)==4 && offsetof(struct log_fixture_io,guest_x18)==8,"self-authored float fixture ABI");
+static void *exercise_logf_native(guest_process *p,void *opaque) {
+    (void)opaque;
+    const float special[]={0.0f,-0.0f,-1.0f,INFINITY,NAN};
+    size_t normal_count=sizeof(log_cases)/sizeof(log_cases[0]);
+    for(size_t i=0;i<normal_count+sizeof(special)/sizeof(special[0]);i++) {
+        float input=i<normal_count?log_cases[i].input:special[i-normal_count];
+        struct log_fixture_io io={input,12345.0f,UINT64_C(0xa5a5)};
+        const uint64_t arguments[6]={(uintptr_t)&io};uint64_t result=0xa5a5;
+        struct nso_result r=guest_process_call(p,0x20,arguments,1,&result);
+#if defined(__ANDROID__) && defined(__aarch64__)
+        expect_value("logf-native-call",r.status,NSO_OK);expect_value("logf-native-return",result,0x91);
+        expect_value("logf-native-guest-x18",io.guest_x18,0x55);
+        expect_condition("logf-fixture-input-preserved",!memcmp(&io.input,&input,sizeof(input)));
+        if(i<normal_count)expect_condition("logf-fp-argument-return-value",log_close(io.output,log_cases[i].expected));
+        else expect_condition("logf-ieee-system-behavior",log_special_matches(io.output,logf(input)));
+        executed_calls++;
+#else
+        expect_value("logf-native-host-unsupported",r.status,NSO_UNSUPPORTED);
+        expect_value("logf-no-raw-fallback",result,0xa5a5);
+        expect_condition("logf-no-fake-fp-result",io.output==12345.0f && io.guest_x18==0xa5a5);
+#endif
+    }
+    return &returned_token;
+}
+static int logf_native_contract(const char *path) {
+    CHECK(!logf_contract());struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+    void *value=NULL;CHECK(succeeded(guest_process_run(p,exercise_logf_native,NULL,&value)) && value==&returned_token && !errors);
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    printf("{\"logf_native_errors\":%u,\"native_calls\":%u,\"fp_arguments\":1,\"fp_returns\":1,\"gp_float_arguments\":0,\"raw_fallback\":false}\n",errors,executed_calls);return 0;
+}
+static void *exercise_tls_registration(guest_process *p,void *opaque) {
+    uintptr_t phase=(uintptr_t)opaque;
+    uint64_t a=nso_addr(guest_process_module(p),0x20),f=nso_addr(guest_process_module(p),0x40);
+    struct guest_tls_allocator_info info;
+    expect_value("tls-reg-empty",guest_process_tls_allocator_info(p,&info).status,NSO_OK);
+    expect_value("tls-reg-not-initialized",info.initialized,0);
+    expect_value("tls-uninitialized-null-free",guest_process_free_thread_local(p,NULL,123).status,NSO_OK);
+    typedef void(*set_fn)(uint64_t,uint64_t);
+    set_fn set=(set_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os32SetMemoryAllocatorForThreadLocalEPFPvmmEPFvS1_mE");
+    if(phase==1) {set(0,f);return NULL;}
+    expect_value("tls-reg-null-reject",guest_process_register_tls_allocator(p,0,f).status,NSO_INVALID);
+    expect_value("tls-reg-data-reject",guest_process_register_tls_allocator(p,nso_addr(guest_process_module(p),0x8000),f).status,NSO_INVALID);
+    expect_value("tls-reg-first",guest_process_register_tls_allocator(p,a,f).status,NSO_OK);
+    if(phase==2) {set(a,f);return NULL;}
+    expect_value("tls-reg-repeat-reject",guest_process_register_tls_allocator(p,a,f).status,NSO_INVALID);
+    expect_value("tls-reg-info",guest_process_tls_allocator_info(p,&info).status,NSO_OK);
+    expect_value("tls-reg-saved-allocate",info.allocate_callback,a);expect_value("tls-reg-saved-free",info.free_callback,f);
+    expect_value("tls-reg-no-consumption",info.allocations,0);
+    typedef uint32_t(*initialized_fn)(void);
+    initialized_fn initialized=(initialized_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os40MemoryAllocatorForThreadLocalInitializedEv");
+    expect_value("tls-reg-initialized",initialized(),1);
+    void *untouched=(void *)(uintptr_t)0xa5a5;
+    expect_value("tls-consumer-unprepared-unsupported",guest_process_allocate_thread_local(p,48,&untouched).status,NSO_UNSUPPORTED);
+    expect_value("tls-consumer-output-untouched",(uintptr_t)untouched,0xa5a5);
+    return &returned_token;
+}
+static int tls_registration_contract(const char *path,uintptr_t phase) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+    CHECK(guest_process_register_tls_allocator(p,1,2).status==NSO_INVALID);
+    void *value=NULL;CHECK(succeeded(guest_process_run(p,exercise_tls_registration,(void *)phase,&value)) && value==&returned_token && !errors);
+    struct guest_tls_allocator_info info;CHECK(succeeded(guest_process_tls_allocator_info(p,&info)) && info.initialized && !info.allocations);
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    puts("{\"tls_registration_errors\":0,\"once_nonnull\":true,\"module_owned_targets\":true,\"registration_callback_calls\":0,\"no_raw_fallback\":true}");return 0;
+}
+static int tls_fresh_registration_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};
+    for(unsigned phase=0;phase<2;phase++) {
+        guest_process *p=NULL;CHECK(succeeded(guest_process_create(&config,&p)) && p);
+        CHECK(!guest_process_module(p));
+        struct nso_result r=guest_process_register_tls_allocator(p,1,2);
+        CHECK(r.status==NSO_INVALID && r.native_error==EINVAL && !r.cleanup_error);
+        CHECK(!guest_process_module(p));
+        struct guest_tls_allocator_info state;
+        CHECK(succeeded(guest_process_tls_allocator_info(p,&state)) && !state.initialized &&
+            !state.allocate_callback && !state.free_callback && !state.allocations &&
+            !state.uncertain_allocations && !state.busy);
+        struct guest_memory_info info,untouched;memset(&info,0xa5,sizeof(info));untouched=info;
+        CHECK(guest_process_memory_info(p,&info).status==NSO_INVALID && !memcmp(&info,&untouched,sizeof(info)));
+        void *output=(void *)(uintptr_t)0xa5a5;
+        CHECK(guest_process_allocate_thread_local(p,48,&output).status==NSO_INVALID && (uintptr_t)output==0xa5a5);
+        CHECK(guest_process_free_thread_local(p,NULL,0).status==NSO_INVALID);
+        if(phase) {
+            char error[128];CHECK(succeeded(guest_process_load(p,path,error,sizeof(error))));
+            void *value=NULL;CHECK(succeeded(guest_process_run(p,exercise_tls_registration,NULL,&value)) && value==&returned_token && !errors);
+        }
+        CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    }
+    puts("{\"tls_fresh_registration_errors\":0,\"created_without_module_rejected\":true,\"status\":1,\"errno\":22,\"sentinels_untouched\":true,\"no_registration_side_effect\":true,\"fresh_destroy\":true,\"subsequent_load_run_destroy\":true}");return 0;
+}
+struct tls_fixture_io {
+    uint64_t allocate_calls,free_calls,sizes[4],alignments[4],freed_pointers[4],freed_sizes[4];
+    uint64_t entry_x18,allocate_x18,free_x18,initialized_before,initialized_after;
+    struct guest_memory_info query;
+    uint64_t host_pointer,host_zero_pointer,host_null_result,host_x18,host_complete,allocate_seed,free_seed;
+};
+struct identity_io {
+    uint64_t token_a,token_b,tid_a,tid_b,guest_x18;
+    uint64_t cleanup_token,cleanup_tid,cleanup_value,cleanup_x18,cleanup_calls;
+};
+struct identity_input {struct identity_io io;uintptr_t retired;uint64_t native_tid;int native;};
+static uint64_t actual_tid(void) {
+#if defined(__ANDROID__)
+    return (uint64_t)gettid();
+#else
+    uint64_t tid=0;if(pthread_threadid_np(NULL,&tid))return 0;return tid;
+#endif
+}
+static void identity_inactive(guest_process *p,uintptr_t token) {
+    uintptr_t untouched=0xa5a5;uint64_t tid=0xa5a5;
+    expect_value("identity-inactive-current",guest_process_current_thread(p,&untouched).status,NSO_INVALID);
+    expect_value("identity-inactive-current-output",untouched,0xa5a5);
+    expect_value("identity-inactive-id",guest_process_thread_id(p,token,&tid).status,NSO_INVALID);
+    expect_value("identity-inactive-id-output",tid,0xa5a5);
+}
+static void *identity_foreign(void *opaque) {identity_inactive(opaque,0);return NULL;}
+static unsigned identity_callbacks;
+static void *exercise_identity(guest_process *p,void *opaque) {
+    struct identity_input *input=opaque;identity_callbacks++;
+    uintptr_t a=0,b=0;uint64_t tid=0,again=0,foreign=0xa5a5;
+    expect_value("identity-current",guest_process_current_thread(p,&a).status,NSO_OK);
+    expect_value("identity-current-repeat",guest_process_current_thread(p,&b).status,NSO_OK);
+    expect_condition("identity-token-stable-nonzero",a && a==b);
+    expect_condition("identity-token-unreadable",inaccessible(a));
+    expect_value("identity-id",guest_process_thread_id(p,a,&tid).status,NSO_OK);
+    expect_value("identity-id-repeat",guest_process_thread_id(p,b,&again).status,NSO_OK);
+    expect_value("identity-real-native-id",tid,actual_tid());expect_value("identity-id-stable",again,tid);
+    expect_condition("identity-real-id-nonzero",tid!=0);
+    expect_value("identity-foreign-token",guest_process_thread_id(p,(uintptr_t)&tid,&foreign).status,NSO_INVALID);
+    expect_value("identity-foreign-output",foreign,0xa5a5);
+    if(input->retired) {
+        expect_condition("identity-retired-address-reserved",inaccessible(input->retired));
+        expect_condition("identity-new-generation-different",a!=input->retired);
+        expect_value("identity-retired-token-rejected",guest_process_thread_id(p,input->retired,&foreign).status,NSO_INVALID);
+        expect_value("identity-retired-output",foreign,0xa5a5);
+    }
+    pthread_t helper;int e=pthread_create(&helper,NULL,identity_foreign,p);
+    expect_value("identity-host-helper-create",(uint64_t)e,0);
+    if(!e)expect_value("identity-host-helper-join",(uint64_t)pthread_join(helper,NULL),0);
+    input->native_tid=tid;input->retired=a;
+    if(input->native) {
+        uint64_t result=0xa5a5;const uint64_t args[6]={(uintptr_t)&input->io};
+        struct nso_result r=guest_process_call(p,0x20,args,1,&result);
+#if defined(__ANDROID__) && defined(__aarch64__)
+        expect_value("identity-native-status",r.status,NSO_OK);expect_value("identity-native-return",result,0x91);
+        expect_value("identity-native-token",input->io.token_a,a);expect_value("identity-native-token-repeat",input->io.token_b,a);
+        expect_value("identity-native-tid64",input->io.tid_a,tid);expect_value("identity-native-tid64-repeat",input->io.tid_b,tid);
+        expect_value("identity-native-x18",input->io.guest_x18,0x55);executed_calls++;
+#else
+        expect_value("identity-native-unsupported",r.status,NSO_UNSUPPORTED);expect_value("identity-native-no-raw-output",result,0xa5a5);
+#endif
+    }
+    return &returned_token;
+}
+static int identity_contract(const char *path,int native) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));identity_inactive(p,0);
+    char error[128];CHECK(succeeded(guest_process_load(p,path,error,sizeof(error))));
+    struct identity_input input={.native=native};
+    for(unsigned i=0;i<(native?1u:2u);i++) {
+        void *value=NULL;CHECK(succeeded(guest_process_run(p,exercise_identity,&input,&value)) && value==&returned_token && !errors);
+        identity_inactive(p,input.retired);
+        CHECK(inaccessible(input.retired)); /* Retired token remains reserved until destroy. */
+    }
+#if defined(__ANDROID__) && defined(__aarch64__)
+    if(native) {
+        CHECK(input.io.cleanup_calls==1 && input.io.cleanup_token==input.retired && input.io.cleanup_tid==input.native_tid);
+        CHECK(!input.io.cleanup_value && input.io.cleanup_x18==0x55);executed_calls++;
+    }
+#endif
+    CHECK(succeeded(guest_process_destroy(&p)) && !p && !errors);
+    printf("{\"identity_errors\":%u,\"actual_primaries\":%u,\"native_calls\":%u,\"tid_bits\":64,\"token_PROT_NONE\":true,\"retired_token_no_reuse\":true,\"raw_fallback\":false,\"SDK_ThreadType_layout\":false}\n",errors,identity_callbacks,executed_calls);return 0;
+}
+#if defined(NSO_PROFILE_IDENTITY_TESTING)
+static unsigned identity_map_failure,identity_unmap_failure,identity_maps,identity_unmaps,identity_actual_unmaps;
+static void *identity_map_probe(size_t bytes) {
+    identity_maps++;
+    if(identity_map_failure) {identity_map_failure--;errno=ENOMEM;return MAP_FAILED;}
+    return mmap(NULL,bytes,PROT_NONE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
+}
+static int identity_unmap_probe(void *token,size_t bytes) {
+    identity_unmaps++;
+    if(identity_unmap_failure) {identity_unmap_failure--;errno=EBUSY;return -1;}
+    int r=munmap(token,bytes);if(!r)identity_actual_unmaps++;return r;
+}
+static int identity_recovery_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));char error[128];CHECK(succeeded(guest_process_load(p,path,error,sizeof(error))));
+    guest_process_test_identity_vm(identity_map_probe,identity_unmap_probe);identity_map_failure=1;
+    struct identity_input input={0};void *value=(void *)(uintptr_t)0xa5a5;
+    struct nso_result r=guest_process_run(p,exercise_identity,&input,&value);
+    CHECK(r.status==NSO_OWNER_ERROR && r.native_error==ENOMEM && !value && !identity_callbacks && identity_maps==1);
+    for(unsigned i=0;i<2;i++) {
+        CHECK(succeeded(guest_process_run(p,exercise_identity,&input,&value)) && value==&returned_token && !errors);
+        identity_inactive(p,input.retired);
+    }
+    identity_unmap_failure=1;nso_module *module=guest_process_module(p);
+    r=guest_process_destroy(&p);
+    CHECK(r.status==NSO_RETAINED && r.cleanup_error==EBUSY && p && guest_process_module(p)==module);
+    CHECK(identity_unmaps==1 && !identity_actual_unmaps && inaccessible(input.retired));
+    CHECK(succeeded(guest_process_destroy(&p)) && !p && identity_unmaps==3 && identity_actual_unmaps==2);
+    guest_process_test_identity_vm(NULL,NULL);
+    puts("{\"identity_recovery_errors\":0,\"failed_map_callback_calls\":0,\"protected_maps\":2,\"retired_generations\":2,\"unmap_attempts\":3,\"actual_unmaps\":2,\"retained_retry\":true}");return 0;
+}
+#endif
+_Static_assert(offsetof(struct tls_fixture_io,entry_x18)==144 && offsetof(struct tls_fixture_io,query)==184,"self-authored TLS provider fixture ABI");
+#if defined(NSO_PROFILE_TLS_ALLOCATOR_TESTING) && defined(__ANDROID__) && defined(__aarch64__)
+static unsigned tls_host_rejections;
+static void tls_host_probe(guest_process *p) {
+    void *untouched=(void *)(uintptr_t)0xa5a5;
+    struct nso_result r=guest_process_allocate_thread_local(p,48,&untouched);
+    expect_value("tls-HOST-busy-unsupported",r.status,NSO_UNSUPPORTED);expect_value("tls-HOST-busy-errno",r.native_error,EBUSY);
+    expect_value("tls-HOST-output-untouched",(uintptr_t)untouched,0xa5a5);
+    expect_value("tls-HOST-free-unsupported",guest_process_free_thread_local(p,NULL,0).status,NSO_UNSUPPORTED);
+    struct guest_tls_allocator_info state;
+    expect_value("tls-HOST-owner-info",guest_process_tls_allocator_info(p,&state).status,NSO_OK);
+    expect_condition("tls-HOST-inflight-owner-retained",state.busy && state.allocations);
+    tls_host_rejections++;
+}
+#endif
+struct tls_provider_input {struct tls_fixture_io io;int retain;};
+static void *exercise_tls_provider(guest_process *p,void *opaque) {
+    struct tls_provider_input *input=opaque;struct tls_fixture_io *io=&input->io;
+#if defined(__ANDROID__) && defined(__aarch64__)
+    uint64_t host_x18_before,host_x18_after;
+    __asm__ volatile("mov %0, x18":"=r"(host_x18_before));
+#endif
+    const uint64_t args[6]={(uintptr_t)io};uint64_t result=0xa5a5;
+    struct nso_result r=guest_process_call(p,0x20,args,1,&result);
+#if defined(__ANDROID__) && defined(__aarch64__)
+    expect_value("tls-native-register-call",r.status,NSO_OK);expect_value("tls-native-register-return",result,0x91);
+    __asm__ volatile("mov %0, x18":"=r"(host_x18_after));
+    expect_value("tls-register-host-x18",host_x18_after,host_x18_before);
+    expect_value("tls-native-before",io->initialized_before,0);expect_value("tls-native-after",io->initialized_after,1);
+    expect_value("tls-native-entry-x18",io->entry_x18,0x55);
+    expect_value("tls-registration-no-allocate",io->allocate_calls,0);expect_value("tls-registration-no-free",io->free_calls,0);
+    expect_value("tls-null-free-no-call",guest_process_free_thread_local(p,NULL,123).status,NSO_OK);
+    void *a=(void *)(uintptr_t)0xa5a5,*b=NULL;
+#if defined(NSO_PROFILE_TLS_ALLOCATOR_TESTING)
+    guest_process_test_tls_allocator(1,tls_host_probe);
+    r=guest_process_allocate_thread_local(p,37,&a);
+    expect_value("tls-metadata-before-side-effect",r.status,NSO_OWNER_ERROR);expect_value("tls-metadata-ENOMEM",r.native_error,ENOMEM);
+    expect_value("tls-metadata-no-guest-call",io->allocate_calls,0);expect_value("tls-metadata-output-untouched",(uintptr_t)a,0xa5a5);
+#endif
+    expect_value("tls-first-allocate",guest_process_allocate_thread_local(p,37,&a).status,NSO_OK);
+    expect_value("tls-second-allocate",guest_process_allocate_thread_local(p,93,&b).status,NSO_OK);
+    __asm__ volatile("mov %0, x18":"=r"(host_x18_after));
+    expect_value("tls-allocate-host-x18",host_x18_after,host_x18_before);
+    if(!a || !b || a==b) {expect_condition("tls-real-distinct-pointers",0);return NULL;}
+    expect_condition("tls-return-alignment",!((uintptr_t)a&15) && !((uintptr_t)b&15));
+    expect_value("tls-actual-storage-a",*(unsigned char *)a,0x5a);expect_value("tls-actual-storage-b",*(unsigned char *)b,0x5a);
+    expect_value("tls-actual-tail-a",((unsigned char *)a)[36],0x5a);expect_value("tls-actual-tail-b",((unsigned char *)b)[92],0x5a);
+    expect_value("tls-first-size",io->sizes[0],37);expect_value("tls-second-size",io->sizes[1],93);
+    expect_value("tls-first-align",io->alignments[0],16);expect_value("tls-second-align",io->alignments[1],16);
+    expect_value("tls-allocate-x18",io->allocate_x18,0x55);
+    struct guest_tls_allocator_info state;expect_value("tls-live-info",guest_process_tls_allocator_info(p,&state).status,NSO_OK);
+    expect_value("tls-two-owned-suballocations",state.allocations,2);
+    expect_value("tls-no-uncertain",state.uncertain_allocations,0);
+    if(input->retain)return &returned_token;
+    void *untouched=(void *)(uintptr_t)0xa5a5;
+    expect_value("tls-actual-null-allocation",guest_process_allocate_thread_local(p,4096,&untouched).status,NSO_LIMIT);
+    expect_value("tls-null-output-untouched",(uintptr_t)untouched,0xa5a5);
+    expect_value("tls-free-wrong-size-rejected",guest_process_free_thread_local(p,a,38).status,NSO_UNSUPPORTED);
+    expect_value("tls-free-unknown-identity-rejected",guest_process_free_thread_local(p,(unsigned char *)a+16,21).status,NSO_UNSUPPORTED);
+    expect_value("tls-no-wrong-size-callback",io->free_calls,0);
+    expect_value("tls-real-free-second",guest_process_free_thread_local(p,b,93).status,NSO_OK);
+    expect_value("tls-real-free-first",guest_process_free_thread_local(p,a,37).status,NSO_OK);
+    __asm__ volatile("mov %0, x18":"=r"(host_x18_after));
+    expect_value("tls-free-host-x18",host_x18_after,host_x18_before);
+    expect_value("tls-no-repeat-free",guest_process_free_thread_local(p,a,37).status,NSO_UNSUPPORTED);
+    expect_value("tls-free-count",io->free_calls,2);expect_value("tls-free-first-address",io->freed_pointers[0],(uintptr_t)b);
+    expect_value("tls-free-second-address",io->freed_pointers[1],(uintptr_t)a);expect_value("tls-free-first-size",io->freed_sizes[0],93);
+    expect_value("tls-free-second-size",io->freed_sizes[1],37);expect_value("tls-free-x18",io->free_x18,0x55);
+    expect_value("tls-free-final-info",guest_process_tls_allocator_info(p,&state).status,NSO_OK);expect_value("tls-live-final-zero",state.allocations,0);
+    expect_value("tls-reentrant-query-thread",io->query.thread_objects,1);expect_value("tls-reentrant-query-stack",io->query.stack_bytes,65536);
+#if defined(NSO_PROFILE_TLS_ALLOCATOR_TESTING)
+    expect_value("tls-real-HOST-rejections",tls_host_rejections,5);
+    guest_process_test_tls_allocator(0,NULL);
+#endif
+    executed_calls+=6; /* register + 3 alloc + 2 free; null/wrong/repeat never enter guest. */
+#else
+    expect_value("tls-native-host-unsupported",r.status,NSO_UNSUPPORTED);expect_value("tls-no-raw-result",result,0xa5a5);
+    expect_value("tls-no-fake-registration",io->initialized_after,0);
+    (void)input;
+#endif
+    return &returned_token;
+}
+static int tls_provider_contract(const char *path,int retain) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+    struct tls_provider_input input={.retain=retain};void *value=NULL;
+    CHECK(succeeded(guest_process_run(p,exercise_tls_provider,&input,&value)) && value==&returned_token && !errors);
+#if defined(__ANDROID__) && defined(__aarch64__)
+    if(retain) {
+        nso_module *module=guest_process_module(p);struct guest_tls_allocator_info before,after;
+        CHECK(succeeded(guest_process_tls_allocator_info(p,&before)) && before.allocations==2 && before.initialized);
+        CHECK(guest_process_destroy(&p).status==NSO_RETAINED && p && guest_process_module(p)==module);
+        CHECK(succeeded(guest_process_tls_allocator_info(p,&after)) && before.allocate_callback==after.allocate_callback &&
+            before.free_callback==after.free_callback && before.allocations==after.allocations &&
+            before.uncertain_allocations==after.uncertain_allocations && before.initialized==after.initialized && before.busy==after.busy);
+        puts("{\"tls_live_retained_errors\":0,\"allocations\":2,\"module_and_callbacks_retained\":true,\"cleanup_complete\":false,\"no_host_free\":true,\"lifetime\":\"until isolated process shutdown\"}");return 0;
+    }
+#else
+    (void)retain;
+#endif
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    printf("{\"tls_provider_errors\":%u,\"native_calls\":%u,\"callbacks_use_native_boundary\":true,\"reentrant_Query\":true,\"raw_fallback\":false,\"ELF_TLS_initialized\":false}\n",errors,executed_calls);return 0;
+}
+static void *exercise_tls_host_consumer(guest_process *p,void *opaque) {
+    int mode=*(int *)opaque;struct tls_fixture_io io={0};uint64_t value=0xa5a5;
+    const uint64_t args[6]={(uintptr_t)&io};
+#if defined(__ANDROID__) && defined(__aarch64__)
+    uint64_t host_before,host_after;__asm__ volatile("mov %0, x18":"=r"(host_before));
+#endif
+    struct nso_result r=guest_process_call(p,mode<0?0x500:0x20,args,1,&value);
+#if defined(__ANDROID__) && defined(__aarch64__)
+    expect_value("tls-HOST-register-status",r.status,NSO_OK);
+    if(mode>=0)expect_value("tls-HOST-register-return",value,0x91);
+#if defined(NSO_PROFILE_TLS_ALLOCATOR_TESTING)
+    guest_process_test_tls_allocator(0,tls_host_probe);
+#endif
+    const uint64_t host_args[6]={(uint64_t)mode};
+    r=guest_process_call(p,mode<0?0x500:0x300,host_args,1,&value);
+    expect_value("tls-HOST-consumer-status",r.status,NSO_OK);expect_value("tls-HOST-consumer-return",value,0x91);
+    __asm__ volatile("mov %0, x18":"=r"(host_after));expect_value("tls-HOST-caller-SCS-x18",host_after,host_before);
+    expect_condition("tls-HOST-real-distinct-storage",io.host_pointer && io.host_zero_pointer && io.host_pointer!=io.host_zero_pointer);
+    expect_value("tls-HOST-callback-null",io.host_null_result,0);expect_value("tls-HOST-outer-A-x18",io.host_x18,0x41);
+    expect_value("tls-HOST-allocate-B-x18",io.allocate_x18,0x66);expect_value("tls-HOST-free-C-x18",io.free_x18,0x77);
+    expect_value("tls-HOST-allocate-actual-A-seed",io.allocate_seed,0x41);expect_value("tls-HOST-free-actual-A-seed",io.free_seed,0x41);
+    expect_value("tls-HOST-completed",io.host_complete,1);expect_value("tls-HOST-allocate-count",io.allocate_calls,3);
+    expect_value("tls-HOST-size",io.sizes[0],48);expect_value("tls-HOST-zero-size",io.sizes[1],0);expect_value("tls-HOST-OOM-size",io.sizes[2],4096);
+    for(unsigned i=0;i<3;i++)expect_value("tls-HOST-fixed-align16",io.alignments[i],16);
+    expect_value("tls-HOST-free-count",io.free_calls,2);expect_value("tls-HOST-zero-free-pointer",io.freed_pointers[0],io.host_zero_pointer);
+    expect_value("tls-HOST-zero-free-size",io.freed_sizes[0],0);expect_value("tls-HOST-free-pointer",io.freed_pointers[1],io.host_pointer);
+    expect_value("tls-HOST-free-size",io.freed_sizes[1],48);
+    struct guest_tls_allocator_info state;expect_value("tls-HOST-final-info",guest_process_tls_allocator_info(p,&state).status,NSO_OK);
+    expect_condition("tls-HOST-all-owned-records-freed",!state.allocations && !state.busy && !state.uncertain_allocations);
+    expect_value("tls-HOST-reentrant-query-thread",io.query.thread_objects,1);
+#if defined(NSO_PROFILE_TLS_ALLOCATOR_TESTING)
+    expect_value("tls-HOST-busy-queries",tls_host_rejections,5);guest_process_test_tls_allocator(0,NULL);
+#endif
+    executed_calls+=7;
+#else
+    expect_value("tls-HOST-native-unsupported",r.status,NSO_UNSUPPORTED);expect_value("tls-HOST-no-raw-result",value,0xa5a5);
+#endif
+    return &returned_token;
+}
+static int tls_host_consumer_contract(const char *path,int mode) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));char error[128];CHECK(succeeded(guest_process_load(p,path,error,sizeof(error))));
+    void *value=NULL;CHECK(succeeded(guest_process_run(p,exercise_tls_host_consumer,&mode,&value)) && value==&returned_token && !errors);
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    printf("{\"tls_host_consumer_errors\":%u,\"native_calls\":%u,\"raw_fallback\":false,\"ELF_TLS_initialized\":false}\n",errors,executed_calls);return 0;
+}
+struct resource_input {size_t quota;int native;};
+static uint64_t resource_reported(size_t total,size_t occupied) {
+    return occupied>total || total-occupied<0x80000?total:occupied+0x80000;
+}
+static void *exercise_resource(guest_process *p,void *opaque) {
+    struct resource_input *input=opaque;
+    struct guest_virtual_resource_usage before,after;
+    expect_condition("resource-initial-snapshot",succeeded(guest_process_resource_info(p,&before)));
+    expect_value("resource-explicit-total",before.total,input->quota);
+    expect_value("resource-three-real-tickets-and-margin",before.used,resource_reported(input->quota,3*256));
+    typedef __uint128_t (*resource_fn)(void);
+    resource_fn getter=(resource_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os36GetVirtualAddressMemoryResourceUsageEv");
+    expect_condition("resource-getter-bound",getter!=NULL);
+    if(getter) {
+        __uint128_t pair=getter();expect_value("resource-direct-low-total",(uint64_t)pair,before.total);
+        expect_value("resource-direct-high-used",(uint64_t)(pair>>64),before.used);
+    }
+    if(input->native) {
+        uint64_t output[3]={0xa5a5,0xa5a5,0xa5a5},returned=0xa5a5;
+        uint64_t args[6]={(uintptr_t)output};struct nso_result r=guest_process_call(p,0x20,args,1,&returned);
+#if defined(__ANDROID__) && defined(__aarch64__)
+        expect_value("resource-native-call",r.status,NSO_OK);expect_value("resource-native-result",returned,0x91);
+        expect_value("resource-native-x0-total",output[0],before.total);
+        expect_value("resource-native-x1-used",output[1],before.used);
+        expect_value("resource-native-guest-x18",output[2],0x55);executed_calls++;
+#else
+        expect_value("resource-native-unsupported",r.status,NSO_UNSUPPORTED);
+        expect_value("resource-native-no-raw-fallback",returned,0xa5a5);
+#endif
+    }
+    typedef uint32_t (*reserve_fn)(uintptr_t *,size_t);typedef uint32_t (*release_fn)(uintptr_t);
+    typedef uint32_t (*pages_fn)(uintptr_t,size_t);
+    reserve_fn reserve=(reserve_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os21AllocateAddressRegionEPmm");
+    release_fn release=(release_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os17FreeAddressRegionEm");
+    pages_fn map=(pages_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os19AllocateMemoryPagesEmm");
+    pages_fn unmap=(pages_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os15FreeMemoryPagesEmm");
+    uintptr_t address=0;expect_value("resource-reserve",reserve(&address,page),0);
+    expect_condition("resource-reserved-snapshot",succeeded(guest_process_resource_info(p,&after)));
+    expect_value("resource-two-real-reservation-nodes",after.used,resource_reported(input->quota,5*256));
+    expect_value("resource-map",map(address,page),0);
+    *(volatile unsigned char *)address=0x49;
+    expect_condition("resource-mapped-snapshot",succeeded(guest_process_resource_info(p,&after)));
+    expect_value("resource-three-real-page-nodes",after.used,resource_reported(input->quota,8*256));
+    expect_value("resource-real-page-content",*(volatile unsigned char *)address,0x49);
+    expect_value("resource-free-page",unmap(address,page),0);
+    expect_condition("resource-after-decommit",succeeded(guest_process_resource_info(p,&after)));
+    expect_value("resource-page-nodes-returned",after.used,resource_reported(input->quota,5*256));
+    expect_value("resource-release-region",release(address),0);
+    expect_condition("resource-after-release",succeeded(guest_process_resource_info(p,&after)));
+    expect_value("resource-all-transient-nodes-returned",after.used,before.used);
+    return &returned_token;
+}
+static int resource_process_contract(const char *path,int native) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(guest_process_create_with_resources(&config,0,0,NULL,&p).status==NSO_INVALID && !p);
+    for(unsigned phase=1;phase<=3;phase++) {
+        struct resource_input input={phase==3?page:phase*1024*1024,native};
+        CHECK(succeeded(guest_process_create_with_resources(&config,input.quota,0,NULL,&p)));
+        struct guest_virtual_resource_usage untouched;memset(&untouched,0xa5,sizeof(untouched));
+        CHECK(guest_process_resource_info(p,&untouched).status!=NSO_OK && all_bytes(&untouched,sizeof(untouched),0xa5));
+        char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+        void *returned=NULL;CHECK(succeeded(guest_process_run(p,exercise_resource,&input,&returned)) && returned==&returned_token && !errors);
+        CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    }
+    printf("{\"resource_errors\":%u,\"explicit_quotas\":3,\"real_nodes\":true,\"separate_data_quota\":true,\"sdk_margin\":524288,\"native_calls\":%u,\"raw_fallback\":false}\n",errors,executed_calls);return 0;
+}
+struct metadata_worker {guest_context *context;unsigned errors;};
+static void *metadata_worker(void *opaque) {
+    struct metadata_worker *w=opaque;
+    for(unsigned i=0;i<1000;i++) {
+        void *p=NULL;struct guest_resource_usage use;
+        if(guest_metadata_allocate(w->context,GUEST_METADATA_PAGE_ALLOCATION,64,&p).status!=GUEST_CONTEXT_OK) {w->errors++;continue;}
+        memset(p,(int)(i&255),64);
+        if(guest_context_resource_usage(w->context,&use).status!=GUEST_CONTEXT_OK || !use.valid || !use.used_bytes)w->errors++;
+        if(guest_metadata_release(w->context,GUEST_METADATA_PAGE_ALLOCATION,p).status!=GUEST_CONTEXT_OK)w->errors++;
+    }
+    return NULL;
+}
+struct page_metadata_worker {guest_pages *owner;unsigned errors;};
+static void *page_metadata_worker(void *opaque) {
+    struct page_metadata_worker *w=opaque;
+    for(unsigned i=0;i<50;i++) {
+        uintptr_t range=0;
+        if(guest_pages_reserve(w->owner,page,&range).status!=GUEST_PAGES_OK) {w->errors++;continue;}
+        struct guest_pages_usage use;
+        if(guest_pages_usage(w->owner,&use).status!=GUEST_PAGES_OK || !use.ledger_valid || !use.resources.valid)w->errors++;
+        if(guest_pages_release_region(w->owner,range).status!=GUEST_PAGES_OK)w->errors++;
+    }
+    return NULL;
+}
+static int resource_owner_contract(void) {
+    struct guest_context_config config={1024*1024,65536};guest_context *c=NULL;
+    CHECK(guest_context_create_with_resources(&config,0,&c).status==GUEST_CONTEXT_INVALID && !c);
+    CHECK(guest_context_create_with_resources(&config,page-1,&c).status==GUEST_CONTEXT_INVALID && !c);
+    CHECK(guest_context_create_with_resources(&config,page,&c).status==GUEST_CONTEXT_OK);
+    guest_pages *owner=NULL;CHECK(guest_pages_create(c,&owner).status==GUEST_PAGES_OK);
+    guest_charge_ticket *pending=NULL;CHECK(guest_charge_reserve(c,1,&pending).status==GUEST_CONTEXT_OK);
+    size_t capacity=page/256+1,count=0;uintptr_t *ranges=calloc(capacity,sizeof(*ranges));CHECK(ranges);
+    struct guest_pages_result r={0};
+    for(;count<capacity;count++) {
+        r=guest_pages_reserve(owner,page,&ranges[count]);
+        if(r.status!=GUEST_PAGES_OK)break;
+    }
+    CHECK(count<capacity && r.status==GUEST_PAGES_VM_ERROR && r.region_result==0x1003 && !ranges[count]);
+    struct guest_pages_usage use;CHECK(guest_pages_usage(owner,&use).status==GUEST_PAGES_OK);
+    CHECK(use.region_count==count && use.vm.region_count==count && use.resources.valid);
+    CHECK(use.resources.blocks==1+2*count && use.resources.used_bytes==(1+2*count)*256 && use.context.pending_bytes==1);
+    CHECK(guest_charge_cancel(pending).status==GUEST_CONTEXT_OK);
+    for(size_t i=0;i<count;i++)CHECK(guest_pages_release_region(owner,ranges[i]).status==GUEST_PAGES_OK);
+    free(ranges);CHECK(guest_pages_destroy(owner).status==GUEST_PAGES_OK);
+    struct guest_resource_usage resources;CHECK(guest_context_resource_usage(c,&resources).status==GUEST_CONTEXT_OK && resources.valid && !resources.used_bytes);
+    void *first=NULL,*second=NULL;CHECK(guest_metadata_allocate(c,GUEST_METADATA_VA_INTERVAL,24,&first).status==GUEST_CONTEXT_OK);
+    CHECK(guest_metadata_release(c,GUEST_METADATA_VA_INTERVAL,first).status==GUEST_CONTEXT_OK);
+    CHECK(guest_metadata_allocate(c,GUEST_METADATA_VA_INTERVAL,24,&second).status==GUEST_CONTEXT_OK && second==first);
+    CHECK(guest_metadata_release(c,GUEST_METADATA_VA_INTERVAL,second).status==GUEST_CONTEXT_OK);
+    pthread_t threads[8];struct metadata_worker workers[8];
+    for(unsigned i=0;i<8;i++) {workers[i]=(struct metadata_worker){c,0};CHECK(!pthread_create(&threads[i],NULL,metadata_worker,&workers[i]));}
+    for(unsigned i=0;i<8;i++) {CHECK(!pthread_join(threads[i],NULL));CHECK(!workers[i].errors);}
+    CHECK(guest_context_resource_usage(c,&resources).status==GUEST_CONTEXT_OK && !resources.used_bytes && !resources.blocks);
+    CHECK(guest_context_destroy(c).status==GUEST_CONTEXT_OK);
+    CHECK(guest_context_create_with_resources(&config,8*page,&c).status==GUEST_CONTEXT_OK);
+    CHECK(guest_pages_create(c,&owner).status==GUEST_PAGES_OK);
+    struct page_metadata_worker page_workers[8];
+    for(unsigned i=0;i<8;i++) {page_workers[i]=(struct page_metadata_worker){owner,0};CHECK(!pthread_create(&threads[i],NULL,page_metadata_worker,&page_workers[i]));}
+    for(unsigned i=0;i<8;i++) {CHECK(!pthread_join(threads[i],NULL));CHECK(!page_workers[i].errors);}
+    CHECK(guest_pages_usage(owner,&use).status==GUEST_PAGES_OK && !use.region_count && !use.resources.used_bytes);
+    CHECK(guest_pages_destroy(owner).status==GUEST_PAGES_OK && guest_context_destroy(c).status==GUEST_CONTEXT_OK);
+    puts("{\"resource_owner_errors\":0,\"exhausted_before_vm\":true,\"metadata_rollback\":true,\"reuse\":true,\"threads\":8,\"iterations\":8000,\"concurrent_va_snapshots\":400,\"final_used\":0}");return 0;
+}
+#if defined(GUEST_RESOURCE_TESTING)
+static unsigned resource_map_calls,resource_unmap_calls,resource_unmap_success;
+static int resource_map_failure,resource_unmap_failure;
+static void *resource_map_probe(size_t bytes) {
+    resource_map_calls++;
+    if(resource_map_failure) {resource_map_failure=0;errno=ENOMEM;return MAP_FAILED;}
+    return mmap(NULL,bytes,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
+}
+static int resource_unmap_probe(void *p,size_t bytes) {
+    resource_unmap_calls++;
+    if(resource_unmap_failure) {resource_unmap_failure=0;errno=EBUSY;return -1;}
+    int r=munmap(p,bytes);if(!r)resource_unmap_success++;return r;
+}
+#if defined(NSO_OWNED_PAGES_TESTING)
+static int fail_resource_protect(void *p,size_t n,int protection) {
+    (void)p;(void)n;(void)protection;errno=EACCES;return -1;
+}
+static int resource_page_quarantine(void) {
+    struct guest_context_config config={1024*1024,65536};guest_context *c=NULL;guest_pages *p=NULL;
+    CHECK(guest_context_create_with_resources(&config,page,&c).status==GUEST_CONTEXT_OK);
+    CHECK(guest_pages_create(c,&p).status==GUEST_PAGES_OK);
+    uintptr_t base=0;CHECK(guest_pages_reserve(p,page,&base).status==GUEST_PAGES_OK);
+    nso_host_owned_pages_test_vm(fail_resource_protect,NULL);
+    struct guest_pages_result mapped=guest_pages_map(p,base,page);
+    CHECK(mapped.status==GUEST_PAGES_QUARANTINED && mapped.vm.native_errno==EACCES && mapped.vm.restore_errno==EACCES);
+    struct guest_pages_usage use;CHECK(guest_pages_usage(p,&use).status==GUEST_PAGES_QUARANTINED);
+    CHECK(!use.backing_valid && use.quarantined_regions==1 && use.ticket_count==1 && use.pending_bytes==page && use.resources.used_bytes==4*256);
+    nso_host_owned_pages_test_vm(NULL,NULL);
+    CHECK(guest_pages_destroy(p).status==GUEST_PAGES_OK);
+    struct guest_resource_usage resources;CHECK(guest_context_resource_usage(c,&resources).status==GUEST_CONTEXT_OK && !resources.used_bytes);
+    CHECK(guest_context_destroy(c).status==GUEST_CONTEXT_OK);return 0;
+}
+#endif
+static int resource_recovery_contract(void) {
+    struct guest_context_config config={1024*1024,65536};guest_context *c=NULL;
+#if defined(NSO_OWNED_PAGES_TESTING)
+    CHECK(!resource_page_quarantine());
+#endif
+    guest_context_resource_test_vm(resource_map_probe,resource_unmap_probe);
+    resource_map_failure=1;CHECK(guest_context_create_with_resources(&config,page,&c).status==GUEST_CONTEXT_SYSTEM_ERROR && !c);
+    CHECK(guest_context_create_with_resources(&config,page,&c).status==GUEST_CONTEXT_OK);
+    void *node=NULL;CHECK(guest_metadata_allocate(c,GUEST_METADATA_VA_REGION,64,&node).status==GUEST_CONTEXT_OK);
+    CHECK(guest_context_destroy(c).status==GUEST_CONTEXT_BUSY && resource_unmap_calls==0);
+    CHECK(guest_metadata_release(c,GUEST_METADATA_VA_REGION,node).status==GUEST_CONTEXT_OK);
+    resource_unmap_failure=1;CHECK(guest_context_destroy(c).status==GUEST_CONTEXT_QUARANTINED && resource_unmap_calls==1 && !resource_unmap_success);
+    struct guest_resource_usage untouched;CHECK(guest_context_resource_usage(c,&untouched).status==GUEST_CONTEXT_QUARANTINED && !untouched.valid);
+    CHECK(guest_context_destroy(c).status==GUEST_CONTEXT_OK && resource_unmap_calls==2 && resource_unmap_success==1);
+    guest_context_resource_test_vm(NULL,NULL);
+    CHECK(resource_map_calls==2);
+    puts("{\"resource_recovery_errors\":0,\"map_failure\":true,\"live_nodes_block_destroy\":true,\"retained_invalid\":true,\"unmap_attempts\":2,\"actual_unmaps\":1}");return 0;
+}
+#endif
+static void *exercise_dso_registration(guest_process *process,void *opaque) {
+    (void)opaque;
+    nso_module *m=guest_process_module(process);
+    uint64_t base=nso_base(m);
+    uint32_t bad_base=guest_process_nnmusl_init_dso(
+        base+0x1000,base+0x10,base+0x20,base+0x30,base+8,
+        base+0x28,base+0x30,base+0x40,base+8,base+0x38,
+        base+0x50,base+0x60,base+0x70,base+0x80,base,base,
+        base+0x90,base+0xa0,base,base,base+0xb0);
+    expect_value("dso-bad-base-result",bad_base,2);
+    uint32_t bad_bounds=guest_process_nnmusl_init_dso(
+        base,base+0x10,base+0x30,base+0x20,base+8,
+        base+0x38,base+0x20,base+0x40,base+8,base+0x28,
+        base+0x50,base+0x60,base+0x70,base+0x80,base,base,
+        base+0x90,base+0xa0,base,base,base+0xb0);
+    expect_value("dso-bad-bounds-result",bad_bounds,2);
+    uint64_t tls_start=base+0x1000;
+    uint64_t tls_init_end=tls_start+0x220;
+    uint64_t tls_total_end=tls_start+0x1019;
+    uint32_t ok=guest_process_nnmusl_init_dso(
+        base,base+0x500,tls_start,tls_init_end,base+8,
+        tls_start+8,tls_init_end,tls_total_end,base+8,tls_init_end+8,
+        base+0x3000,base+0x3500,base+0x4000,base+0x4500,base,base,
+        base+0x4500,base+0x4800,base,base,base+0x5000);
+    expect_value("dso-normal-result",ok,1);
+    struct guest_dso_info info={0};
+    struct nso_result r=guest_process_dso_info(process,&info);
+    expect_value("dso-info-status",r.status,NSO_OK);
+    expect_value("dso-registered",info.registered,1);
+    expect_value("dso-base",info.base,base);
+    expect_value("dso-tls-start",info.tls_start,tls_start);
+    expect_value("dso-tls-init-size",info.tls_init_size,0x220);
+    expect_value("dso-tls-total-size",info.tls_total_size,0x1019);
+    expect_value("dso-tls-align",info.tls_alignment,8);
+    expect_condition("dso-tls-anchor-nonnull",info.tls_anchor!=0);
+    expect_condition("dso-tls-payload-offset",info.tls_payload==info.tls_anchor+16);
+    expect_condition("dso-tls-storage-size",info.tls_storage_size>=16+0x1019);
+    uint32_t repeat=guest_process_nnmusl_init_dso(
+        base,base+0x500,tls_start,tls_init_end,base+8,
+        tls_start+8,tls_init_end,tls_total_end,base+8,tls_init_end+8,
+        base+0x3000,base+0x3500,base+0x4000,base+0x4500,base,base,
+        base+0x4500,base+0x4800,base,base,base+0x5000);
+    expect_value("dso-repeat-result",repeat,1);
+    return &returned_token;
+}
+static int dso_registration_contract(const char *path) {
+    uint32_t outside=guest_process_nnmusl_init_dso(
+        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
+    CHECK(outside==2);
+    struct guest_process_config config={1024*1024,65536};guest_process *process=NULL;
+    CHECK(succeeded(guest_process_create(&config,&process)));char err[128];
+    CHECK(succeeded(guest_process_load(process,path,err,sizeof(err))));
+    void *value=NULL;
+    CHECK(succeeded(guest_process_run(process,exercise_dso_registration,NULL,&value)));
+    CHECK(value==&returned_token && !errors);
+    CHECK(succeeded(guest_process_destroy(&process)) && !process);
+    puts("{\"dso_registration_errors\":0,\"dso_registered\":true,\"tls_init_size\":544,\"tls_total_size\":4121,\"tls_align\":8,\"repeat_idempotent\":true}");
+    return 0;
+}
+/* Snapshot thread policy.
+ *
+ * The guest asks for the memory/resource snapshot from more than one of its
+ * own threads - on RG477M the engine's IOThreadPool workers do exactly that.
+ * The runtime must answer a worker that bound to this guest with the same
+ * numbers the primary sees, and must still refuse a host thread that never
+ * bound, with a named reason and an untouched output. */
+struct snapshot_thread_case {
+    guest_process *process;
+    struct guest_memory_info primary_info;
+    struct guest_virtual_resource_usage primary_resource;
+    int primary_va_enabled;
+    int primary_memory_ok,primary_resource_ok,primary_va_ok;
+    struct nso_result worker_memory_status,worker_resource_status,worker_va_status;
+    struct guest_memory_info worker_info;
+    struct guest_virtual_resource_usage worker_resource;
+    int worker_va_enabled;
+    struct nso_result unbound_memory_status;
+    struct guest_memory_info unbound_info;
+    int unbound_untouched;
+};
+static void *snapshot_thread_bound_worker(void *arg) {
+    struct snapshot_thread_case *c=(struct snapshot_thread_case *)arg;
+    memset(&c->worker_info,0xa5,sizeof(c->worker_info));
+    /* Binding registers this worker's own OS-TLS record in the guest's
+     * manager, exactly like the runtime does for a guest-created thread. */
+    guest_process_bind_child_thread();
+    c->worker_memory_status=guest_process_memory_info(c->process,&c->worker_info);
+    c->worker_resource_status=guest_process_resource_info(c->process,&c->worker_resource);
+    c->worker_va_status=guest_process_va_enabled(c->process,&c->worker_va_enabled);
+    guest_process_unbind_child_thread();
+    return NULL;
+}
+static void *snapshot_thread_unbound_worker(void *arg) {
+    struct snapshot_thread_case *c=(struct snapshot_thread_case *)arg;
+    memset(&c->unbound_info,0xa5,sizeof(c->unbound_info));
+    /* No bind: this host thread never became a thread of this guest. */
+    c->unbound_memory_status=guest_process_memory_info(c->process,&c->unbound_info);
+    c->unbound_untouched=all_bytes((unsigned char *)&c->unbound_info,sizeof(c->unbound_info),0xa5);
+    return NULL;
+}
+static void *exercise_snapshot_thread(guest_process *process,void *opaque) {
+    struct snapshot_thread_case *c=(struct snapshot_thread_case *)opaque;
+    c->process=process;
+    c->primary_memory_ok=succeeded(guest_process_memory_info(process,&c->primary_info));
+    c->primary_resource_ok=succeeded(guest_process_resource_info(process,&c->primary_resource));
+    c->primary_va_ok=succeeded(guest_process_va_enabled(process,&c->primary_va_enabled));
+    pthread_t worker,unbound;
+    expect_condition("snapshot-worker-create",pthread_create(&worker,NULL,snapshot_thread_bound_worker,c)==0);
+    expect_condition("snapshot-unbound-create",pthread_create(&unbound,NULL,snapshot_thread_unbound_worker,c)==0);
+    expect_condition("snapshot-worker-join",pthread_join(worker,NULL)==0);
+    expect_condition("snapshot-unbound-join",pthread_join(unbound,NULL)==0);
+    return &returned_token;
+}
+static int snapshot_thread_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *process=NULL;
+    CHECK(succeeded(guest_process_create_with_resources(&config,1024*1024,0,NULL,&process)));
+    char err[128];
+    CHECK(succeeded(guest_process_load(process,path,err,sizeof(err))));
+    struct snapshot_thread_case c={0};
+    void *value=NULL;
+    CHECK(succeeded(guest_process_run(process,exercise_snapshot_thread,&c,&value)));
+    /* The error count is checked at the END of this contract, after every
+     * expect_* below has run. Checking it here would swallow the failures
+     * recorded by the expectations that follow. */
+    CHECK(value==&returned_token);
+    /* The primary still answers for itself. */
+    expect_condition("snapshot-primary-memory-ok",c.primary_memory_ok);
+    expect_condition("snapshot-primary-resource-ok",c.primary_resource_ok);
+    expect_condition("snapshot-primary-va-ok",c.primary_va_ok);
+    /* A bound worker gets the same answer out of the same ledger. */
+    expect_condition("snapshot-worker-memory-ok",c.worker_memory_status.status==NSO_OK);
+    expect_condition("snapshot-worker-resource-ok",c.worker_resource_status.status==NSO_OK);
+    expect_condition("snapshot-worker-va-ok",c.worker_va_status.status==NSO_OK);
+    expect_value("snapshot-worker-total-matches-primary",c.worker_info.total,c.primary_info.total);
+    expect_value("snapshot-worker-used-matches-primary",c.worker_info.used,c.primary_info.used);
+    expect_value("snapshot-worker-baseline-matches-primary",c.worker_info.baseline,c.primary_info.baseline);
+    expect_value("snapshot-worker-stack-matches-primary",c.worker_info.stack_bytes,c.primary_info.stack_bytes);
+    expect_value("snapshot-worker-thread-objects-matches-primary",c.worker_info.thread_objects,c.primary_info.thread_objects);
+    expect_value("snapshot-worker-resource-total-matches-primary",c.worker_resource.total,c.primary_resource.total);
+    expect_value("snapshot-worker-resource-used-matches-primary",c.worker_resource.used,c.primary_resource.used);
+    expect_value("snapshot-worker-va-matches-primary",(uint64_t)(c.worker_va_enabled?1:0),(uint64_t)(c.primary_va_enabled?1:0));
+    expect_value("snapshot-worker-va-enabled",(uint64_t)(c.worker_va_enabled?1:0),1);
+    /* A host thread that never bound to this guest is still refused. */
+    expect_condition("snapshot-unbound-refused",c.unbound_memory_status.status!=NSO_OK);
+    expect_condition("snapshot-unbound-output-untouched",c.unbound_untouched);
+    CHECK(succeeded(guest_process_destroy(&process)) && !process);
+    /* The final gate. Every expect_* above must have passed; without this the
+     * contract could still exit 0 while the expectations had failed. */
+    CHECK(!errors);
+    /* The report states what this run observed, not a literal zero: a failed
+     * expectation has to be visible in the number the caller reads. */
+    int worker_matches_primary=c.worker_info.total==c.primary_info.total
+        && c.worker_info.used==c.primary_info.used
+        && c.worker_info.baseline==c.primary_info.baseline
+        && c.worker_info.stack_bytes==c.primary_info.stack_bytes
+        && c.worker_info.thread_objects==c.primary_info.thread_objects
+        && c.worker_resource.total==c.primary_resource.total
+        && c.worker_resource.used==c.primary_resource.used
+        && c.worker_va_enabled==c.primary_va_enabled;
+    printf("{\"snapshot_thread_errors\":%u,\"primary_memory_ok\":%s,\"primary_resource_ok\":%s,"
+         "\"primary_va_ok\":%s,\"bound_worker_memory_ok\":%s,\"bound_worker_resource_ok\":%s,"
+         "\"bound_worker_va_ok\":%s,\"worker_matches_primary\":%s,"
+         "\"unbound_caller_refused\":%s,\"unbound_output_untouched\":%s}\n",errors,
+         c.primary_memory_ok?"true":"false",c.primary_resource_ok?"true":"false",
+         c.primary_va_ok?"true":"false",
+         c.worker_memory_status.status==NSO_OK?"true":"false",
+         c.worker_resource_status.status==NSO_OK?"true":"false",
+         c.worker_va_status.status==NSO_OK?"true":"false",
+         worker_matches_primary?"true":"false",
+         c.unbound_memory_status.status!=NSO_OK?"true":"false",
+         c.unbound_untouched?"true":"false");
+    return 0;
+}
+/* movie::SetAllocator binding contract.
+ *
+ * The guest registers its own allocator with the SDK movie library. The
+ * runtime must bind the symbol, accept its four-argument void signature and
+ * record the registration faithfully instead of dropping it. The recorded
+ * values are read back from the host state, so a wrong argument order or a
+ * dropped fourth argument is observable rather than silent. The fixture NSO
+ * drives the real guest import path, so the boundary has to accept the
+ * signature or the guest never runs at all. */
+#define MOVIE_SET_ALLOCATOR_MANGLED "_ZN5movie12SetAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_"
+/* Callback addresses inside the fixture NSO; see the movie-allocator fixture
+ * assembly in scripts/runtime/build_guest_process_contract.sh. */
+#define MOVIE_FIXTURE_CB_ALLOC_OFF 0x80
+#define MOVIE_FIXTURE_CB_FREE_OFF 0x84
+#define MOVIE_FIXTURE_CB_REALLOC_OFF 0x88
+struct movie_allocator_case {
+    guest_process *process;
+    int resolved;
+    int direct_record_ok;
+    uintptr_t direct_alloc,direct_free,direct_realloc,direct_userdata;
+    int native_ran,native_marker,native_userdata_null;
+    uintptr_t native_alloc,native_free,native_realloc;
+};
+static void *exercise_movie_allocator(guest_process *p,void *opaque) {
+    struct movie_allocator_case *c=opaque;
+    c->process=p;
+    typedef void (*movie_set_allocator_fn)(movie_alloc_fn,movie_free_fn,movie_realloc_fn,void *);
+    movie_set_allocator_fn setter=(movie_set_allocator_fn)(uintptr_t)guest_process_resolve(0,MOVIE_SET_ALLOCATOR_MANGLED);
+    c->resolved=setter!=NULL;
+    expect_condition("movie-allocator-resolved",setter!=NULL);
+    /* The real guest path: the fixture calls the import itself, so the
+     * boundary must accept the four-argument void signature or the guest
+     * never executes and the registration is never observed. */
+    uint64_t output[2]={0xa5a5,0xa5a5},returned=0xa5a5;
+    uint64_t args[1]={(uintptr_t)output};
+    struct nso_result r=guest_process_call(p,0x20,args,1,&returned);
+#if defined(__ANDROID__) && defined(__aarch64__)
+    expect_value("movie-allocator-native-status",r.status,NSO_OK);
+    expect_value("movie-allocator-native-return",returned,0x91);
+    c->native_ran=1;
+    c->native_marker=output[0]==1;
+    expect_condition("movie-allocator-guest-call-returned",output[0]==1);
+    uint64_t base=nso_base(guest_process_module(p));
+    c->native_alloc=(uintptr_t)nso_host_movie_get_allocator();
+    c->native_free=(uintptr_t)nso_host_movie_get_deallocator();
+    c->native_realloc=(uintptr_t)nso_host_movie_get_reallocator();
+    c->native_userdata_null=nso_host_movie_get_allocator_userdata()==NULL;
+    expect_value("movie-allocator-guest-alloc-pointer",c->native_alloc,base+MOVIE_FIXTURE_CB_ALLOC_OFF);
+    expect_value("movie-allocator-guest-free-pointer",c->native_free,base+MOVIE_FIXTURE_CB_FREE_OFF);
+    expect_value("movie-allocator-guest-realloc-pointer",c->native_realloc,base+MOVIE_FIXTURE_CB_REALLOC_OFF);
+    expect_condition("movie-allocator-guest-userdata-null",c->native_userdata_null);
+#else
+    /* No AArch64 executor on this host: the boundary is prepared but the raw
+     * guest entry cannot run here. Nothing may be faked in its place. */
+    expect_value("movie-allocator-native-unsupported",r.status,NSO_UNSUPPORTED);
+    expect_value("movie-allocator-native-no-raw-fallback",returned,0xa5a5);
+#endif
+    /* Direct host call: the registration is stored exactly as given,
+     * including the fourth argument. */
+    if(setter) {
+        setter((movie_alloc_fn)(uintptr_t)0x1111,(movie_free_fn)(uintptr_t)0x2222,
+               (movie_realloc_fn)(uintptr_t)0x3333,(void *)(uintptr_t)0x4444);
+        c->direct_alloc=(uintptr_t)nso_host_movie_get_allocator();
+        c->direct_free=(uintptr_t)nso_host_movie_get_deallocator();
+        c->direct_realloc=(uintptr_t)nso_host_movie_get_reallocator();
+        c->direct_userdata=(uintptr_t)nso_host_movie_get_allocator_userdata();
+        c->direct_record_ok=c->direct_alloc==0x1111&&c->direct_free==0x2222&&
+                           c->direct_realloc==0x3333&&c->direct_userdata==0x4444;
+        expect_value("movie-allocator-direct-alloc",c->direct_alloc,0x1111);
+        expect_value("movie-allocator-direct-free",c->direct_free,0x2222);
+        expect_value("movie-allocator-direct-realloc",c->direct_realloc,0x3333);
+        expect_value("movie-allocator-direct-userdata",c->direct_userdata,0x4444);
+    }
+    return &returned_token;
+}
+static int movie_allocator_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));
+    char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+    struct movie_allocator_case c={0};
+    void *value=NULL;
+    CHECK(succeeded(guest_process_run(p,exercise_movie_allocator,&c,&value)));
+    CHECK(value==&returned_token);
+    expect_condition("movie-allocator-resolved",c.resolved);
+    expect_condition("movie-allocator-direct-record",c.direct_record_ok);
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    /* The final gate. Every expect_* above must have passed; without this the
+     * contract could still exit 0 while the expectations had failed. */
+    CHECK(!errors);
+    /* The report states what this run observed, not a literal zero. */
+    printf("{\"movie_allocator_errors\":%u,\"resolved\":%s,\"direct_record_ok\":%s,"
+           "\"native_ran\":%s,\"guest_marker\":%s,\"guest_userdata_null\":%s}\n",errors,
+           c.resolved?"true":"false",c.direct_record_ok?"true":"false",
+           c.native_ran?"true":"false",c.native_marker?"true":"false",
+           c.native_userdata_null?"true":"false");
+    return 0;
+}
+
+/* nn::oe::SetCpuBoostMode (main NSO import index 75) takes one enum argument
+ * and returns nothing. The runtime must bind the symbol, accept the
+ * one-argument void signature at the boundary and record the requested mode
+ * faithfully instead of dropping it. The fixture NSO drives the real guest
+ * import path, so the boundary has to accept the signature or the guest never
+ * runs and the mode is never observed. The guest call uses mode 1 and the
+ * direct host call uses mode 5, so a stub that ignored its argument could not
+ * satisfy both observations. */
+#define OE_SET_CPU_BOOST_MODE_MANGLED "_ZN2nn2oe15SetCpuBoostModeENS0_12CpuBoostModeE"
+/* The mode the fixture guest passes to the import; see the oe-cpu-boost
+ * fixture assembly in scripts/runtime/build_guest_process_contract.sh. */
+#define OE_FIXTURE_GUEST_MODE 1
+/* A different value for the direct host call, so the two observations cannot
+ * be satisfied by one constant. */
+#define OE_DIRECT_HOST_MODE 5
+struct oe_cpu_boost_case {
+    guest_process *process;
+    int resolved;
+    int direct_record_ok;
+    nn_oe_cpu_boost_mode direct_mode;
+    int native_ran,native_marker;
+    nn_oe_cpu_boost_mode native_mode;
+};
+static void *exercise_oe_cpu_boost(guest_process *p,void *opaque) {
+    struct oe_cpu_boost_case *c=opaque;
+    c->process=p;
+    typedef void (*oe_set_cpu_boost_fn)(nn_oe_cpu_boost_mode);
+    oe_set_cpu_boost_fn setter=(oe_set_cpu_boost_fn)(uintptr_t)guest_process_resolve(0,OE_SET_CPU_BOOST_MODE_MANGLED);
+    c->resolved=setter!=NULL;
+    expect_condition("oe-cpu-boost-resolved",setter!=NULL);
+    /* The real guest path: the fixture calls the import itself, so the
+     * boundary must accept the one-argument void signature or the guest never
+     * executes and the mode is never observed. */
+    uint64_t output[2]={0xa5a5,0xa5a5},returned=0xa5a5;
+    uint64_t args[1]={(uintptr_t)output};
+    struct nso_result r=guest_process_call(p,0x20,args,1,&returned);
+#if defined(__ANDROID__) && defined(__aarch64__)
+    expect_value("oe-cpu-boost-native-status",r.status,NSO_OK);
+    expect_value("oe-cpu-boost-native-return",returned,0x91);
+    c->native_ran=1;
+    c->native_marker=output[0]==1;
+    expect_condition("oe-cpu-boost-guest-call-returned",output[0]==1);
+    c->native_mode=nso_host_oe_get_cpu_boost_mode();
+    expect_value("oe-cpu-boost-guest-mode",(uint64_t)(uint32_t)c->native_mode,(uint64_t)(uint32_t)OE_FIXTURE_GUEST_MODE);
+#else
+    /* No AArch64 executor on this host: the boundary is prepared but the raw
+     * guest entry cannot run here. Nothing may be faked in its place. */
+    expect_value("oe-cpu-boost-native-unsupported",r.status,NSO_UNSUPPORTED);
+    expect_value("oe-cpu-boost-native-no-raw-fallback",returned,0xa5a5);
+#endif
+    /* Direct host call: the requested mode is recorded exactly as given. */
+    if(setter) {
+        setter((nn_oe_cpu_boost_mode)OE_DIRECT_HOST_MODE);
+        c->direct_mode=nso_host_oe_get_cpu_boost_mode();
+        c->direct_record_ok=c->direct_mode==OE_DIRECT_HOST_MODE;
+        expect_value("oe-cpu-boost-direct-mode",(uint64_t)(uint32_t)c->direct_mode,(uint64_t)(uint32_t)OE_DIRECT_HOST_MODE);
+    }
+    return &returned_token;
+}
+static int oe_cpu_boost_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));
+    char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+    struct oe_cpu_boost_case c={0};
+    void *value=NULL;
+    CHECK(succeeded(guest_process_run(p,exercise_oe_cpu_boost,&c,&value)));
+    CHECK(value==&returned_token);
+    expect_condition("oe-cpu-boost-resolved",c.resolved);
+    expect_condition("oe-cpu-boost-direct-record",c.direct_record_ok);
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    /* The final gate. Every expect_* above must have passed; without this the
+     * contract could still exit 0 while the expectations had failed. */
+    CHECK(!errors);
+    /* The report states what this run observed, not a literal zero. guest_mode
+     * is -1 when the raw guest entry could not run on this host. */
+    printf("{\"oe_cpu_boost_errors\":%u,\"resolved\":%s,\"direct_record_ok\":%s,"
+           "\"native_ran\":%s,\"guest_marker\":%s,\"guest_mode\":%d}\n",errors,
+           c.resolved?"true":"false",c.direct_record_ok?"true":"false",
+           c.native_ran?"true":"false",c.native_marker?"true":"false",
+           c.native_ran?(int)c.native_mode:-1);
+    return 0;
+}
+
+/* nn::hid::InitializeKeyboard() and nn::hid::InitializeMouse() (main NSO
+ * import indexes 234 and 235) take no arguments and return nothing. The
+ * runtime must bind both symbols, accept the zero-argument void signature at
+ * the boundary and record that the subsystem was initialised. The fixture NSO
+ * drives the real guest import path with both imports, so the boundary has to
+ * accept the signature or the guest never runs. Before the direct host call
+ * the host state must still be untouched, so a stub that pre-sets the flags
+ * cannot pass. */
+#define HID_INIT_KEYBOARD_MANGLED "_ZN2nn3hid18InitializeKeyboardEv"
+#define HID_INIT_MOUSE_MANGLED "_ZN2nn3hid15InitializeMouseEv"
+struct hid_init_case {
+    guest_process *process;
+    int resolved_keyboard,resolved_mouse;
+    int direct_ok;
+    int native_ran,native_marker;
+    int native_keyboard_initialized,native_mouse_initialized;
+};
+static void *exercise_hid_init(guest_process *p,void *opaque) {
+    struct hid_init_case *c=opaque;
+    c->process=p;
+    typedef void (*hid_init_fn)(void);
+    hid_init_fn keyboard=(hid_init_fn)(uintptr_t)guest_process_resolve(0,HID_INIT_KEYBOARD_MANGLED);
+    hid_init_fn mouse=(hid_init_fn)(uintptr_t)guest_process_resolve(0,HID_INIT_MOUSE_MANGLED);
+    c->resolved_keyboard=keyboard!=NULL;
+    c->resolved_mouse=mouse!=NULL;
+    expect_condition("hid-init-keyboard-resolved",keyboard!=NULL);
+    expect_condition("hid-init-mouse-resolved",mouse!=NULL);
+    /* The stubs record an initialisation; they do not start out initialised. */
+    expect_condition("hid-init-keyboard-not-preinitialised",!nso_host_hid_keyboard_initialized());
+    expect_condition("hid-init-mouse-not-preinitialised",!nso_host_hid_mouse_initialized());
+    /* The real guest path: the fixture calls both imports itself. */
+    uint64_t output[2]={0xa5a5,0xa5a5},returned=0xa5a5;
+    uint64_t args[1]={(uintptr_t)output};
+    struct nso_result r=guest_process_call(p,0x20,args,1,&returned);
+#if defined(__ANDROID__) && defined(__aarch64__)
+    expect_value("hid-init-native-status",r.status,NSO_OK);
+    expect_value("hid-init-native-return",returned,0x91);
+    c->native_ran=1;
+    c->native_marker=output[0]==1;
+    expect_condition("hid-init-guest-call-returned",output[0]==1);
+    c->native_keyboard_initialized=nso_host_hid_keyboard_initialized();
+    c->native_mouse_initialized=nso_host_hid_mouse_initialized();
+    expect_condition("hid-init-guest-keyboard-initialised",c->native_keyboard_initialized);
+    expect_condition("hid-init-guest-mouse-initialised",c->native_mouse_initialized);
+#else
+    /* No AArch64 executor on this host: the boundary is prepared but the raw
+     * guest entry cannot run here. Nothing may be faked in its place. */
+    expect_value("hid-init-native-unsupported",r.status,NSO_UNSUPPORTED);
+    expect_value("hid-init-native-no-raw-fallback",returned,0xa5a5);
+#endif
+    /* Direct host call: both stubs must actually record the initialisation. */
+    if(keyboard&&mouse) {
+        keyboard();
+        mouse();
+        c->direct_ok=nso_host_hid_keyboard_initialized()&&nso_host_hid_mouse_initialized();
+        expect_condition("hid-init-direct-keyboard",nso_host_hid_keyboard_initialized());
+        expect_condition("hid-init-direct-mouse",nso_host_hid_mouse_initialized());
+    }
+    return &returned_token;
+}
+static int hid_init_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));
+    char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+    struct hid_init_case c={0};
+    void *value=NULL;
+    CHECK(succeeded(guest_process_run(p,exercise_hid_init,&c,&value)));
+    CHECK(value==&returned_token);
+    expect_condition("hid-init-keyboard-resolved",c.resolved_keyboard);
+    expect_condition("hid-init-mouse-resolved",c.resolved_mouse);
+    expect_condition("hid-init-direct-record",c.direct_ok);
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    /* The final gate. Every expect_* above must have passed; without this the
+     * contract could still exit 0 while the expectations had failed. */
+    CHECK(!errors);
+    /* The report states what this run observed, not a literal zero. */
+    printf("{\"hid_init_errors\":%u,\"keyboard_resolved\":%s,\"mouse_resolved\":%s,"
+           "\"direct_ok\":%s,\"native_ran\":%s,\"guest_marker\":%s,"
+           "\"guest_keyboard_initialized\":%s,\"guest_mouse_initialized\":%s}\n",errors,
+           c.resolved_keyboard?"true":"false",c.resolved_mouse?"true":"false",
+           c.direct_ok?"true":"false",c.native_ran?"true":"false",
+           c.native_marker?"true":"false",
+           c.native_keyboard_initialized?"true":"false",
+           c.native_mouse_initialized?"true":"false");
+    return 0;
+}
+
+/* nn::oe focus and notification setup (main NSO import indexes 222 to 226).
+ * The guest calls all five from one straight-line sequence, so every one of
+ * them has to be bound and has to carry a signature the boundary accepts.
+ * The fixture drives the real guest import path for the two shapes that
+ * matter: the zero-argument function that returns a value (222) and the
+ * one-argument setter (225). The boundary checks the signature of every bound
+ * import before the guest runs, so a successful guest call also proves the
+ * signatures of the other three were accepted. */
+#define OE_FOCUS_STATE_MANGLED "_ZN2nn2oe20GetCurrentFocusStateEv"
+#define OE_FOCUS_HANDLING_MANGLED "_ZN2nn2oe20SetFocusHandlingModeENS0_17FocusHandlingModeE"
+#define OE_PERF_NOTIFICATION_MANGLED "_ZN2nn2oe44SetPerformanceModeChangedNotificationEnabledEb"
+#define OE_OPERATION_NOTIFICATION_MANGLED "_ZN2nn2oe42SetOperationModeChangedNotificationEnabledEb"
+#define OE_RESUME_NOTIFICATION_MANGLED "_ZN2nn2oe28SetResumeNotificationEnabledEb"
+/* The focus handling mode the fixture guest passes to the import; see the
+ * oe-focus fixture assembly in scripts/runtime/build_guest_process_contract.sh. */
+#define OE_FIXTURE_FOCUS_HANDLING_MODE 2
+/* A different value for the direct host call, so the two observations cannot
+ * be satisfied by one constant. */
+#define OE_DIRECT_FOCUS_HANDLING_MODE 7
+struct oe_focus_case {
+    guest_process *process;
+    int resolved_focus_state,resolved_focus_handling;
+    int resolved_perf,resolved_operation,resolved_resume;
+    int direct_ok;
+    int native_ran,native_marker;
+    uint32_t native_focus_state;
+    int32_t native_focus_handling_mode;
+};
+static void *exercise_oe_focus(guest_process *p,void *opaque) {
+    struct oe_focus_case *c=opaque;
+    c->process=p;
+    typedef uint32_t (*oe_focus_state_fn)(void);
+    typedef void (*oe_focus_handling_fn)(int32_t);
+    typedef void (*oe_bool_fn)(bool);
+    oe_focus_state_fn focus_state=(oe_focus_state_fn)(uintptr_t)guest_process_resolve(0,OE_FOCUS_STATE_MANGLED);
+    oe_focus_handling_fn focus_handling=(oe_focus_handling_fn)(uintptr_t)guest_process_resolve(0,OE_FOCUS_HANDLING_MANGLED);
+    oe_bool_fn perf=(oe_bool_fn)(uintptr_t)guest_process_resolve(0,OE_PERF_NOTIFICATION_MANGLED);
+    oe_bool_fn operation=(oe_bool_fn)(uintptr_t)guest_process_resolve(0,OE_OPERATION_NOTIFICATION_MANGLED);
+    oe_bool_fn resume=(oe_bool_fn)(uintptr_t)guest_process_resolve(0,OE_RESUME_NOTIFICATION_MANGLED);
+    c->resolved_focus_state=focus_state!=NULL;
+    c->resolved_focus_handling=focus_handling!=NULL;
+    c->resolved_perf=perf!=NULL;
+    c->resolved_operation=operation!=NULL;
+    c->resolved_resume=resume!=NULL;
+    expect_condition("oe-focus-state-resolved",focus_state!=NULL);
+    expect_condition("oe-focus-handling-resolved",focus_handling!=NULL);
+    expect_condition("oe-focus-perf-notification-resolved",perf!=NULL);
+    expect_condition("oe-focus-operation-notification-resolved",operation!=NULL);
+    expect_condition("oe-focus-resume-notification-resolved",resume!=NULL);
+    /* The real guest path: the fixture calls the imports itself, so the
+     * boundary must accept the signatures or the guest never executes. */
+    uint64_t output[2]={0xa5a5,0xa5a5},returned=0xa5a5;
+    uint64_t args[1]={(uintptr_t)output};
+    struct nso_result r=guest_process_call(p,0x20,args,1,&returned);
+#if defined(__ANDROID__) && defined(__aarch64__)
+    expect_value("oe-focus-native-status",r.status,NSO_OK);
+    expect_value("oe-focus-native-return",returned,0x91);
+    c->native_ran=1;
+    c->native_marker=output[1]==1;
+    expect_condition("oe-focus-guest-call-returned",output[1]==1);
+    /* The value the guest actually received back from the focus state call. */
+    c->native_focus_state=(uint32_t)output[0];
+    expect_value("oe-focus-guest-focus-state",output[0],0);
+    /* The guest's own argument reached the setter unmoved. */
+    c->native_focus_handling_mode=nso_host_oe_focus_handling_mode();
+    expect_value("oe-focus-guest-focus-handling-mode",(uint64_t)(uint32_t)c->native_focus_handling_mode,(uint64_t)(uint32_t)OE_FIXTURE_FOCUS_HANDLING_MODE);
+#else
+    /* No AArch64 executor on this host: the boundary is prepared but the raw
+     * guest entry cannot run here. Nothing may be faked in its place. */
+    expect_value("oe-focus-native-unsupported",r.status,NSO_UNSUPPORTED);
+    expect_value("oe-focus-native-no-raw-fallback",returned,0xa5a5);
+#endif
+    /* Direct host calls: every stub must record exactly what it was given. */
+    if(focus_state&&focus_handling&&perf&&operation&&resume) {
+        perf(true);
+        operation(false);
+        resume(true);
+        focus_handling((int32_t)OE_DIRECT_FOCUS_HANDLING_MODE);
+        c->direct_ok=nso_host_oe_performance_mode_changed_notification_enabled()&&
+                     !nso_host_oe_operation_mode_changed_notification_enabled()&&
+                     nso_host_oe_resume_notification_enabled()&&
+                     nso_host_oe_focus_handling_mode()==OE_DIRECT_FOCUS_HANDLING_MODE&&
+                     nso_host_oe_get_current_focus_state()==0;
+        expect_condition("oe-focus-direct-perf-notification",nso_host_oe_performance_mode_changed_notification_enabled());
+        expect_condition("oe-focus-direct-operation-notification",!nso_host_oe_operation_mode_changed_notification_enabled());
+        expect_condition("oe-focus-direct-resume-notification",nso_host_oe_resume_notification_enabled());
+        expect_value("oe-focus-direct-focus-handling-mode",(uint64_t)(uint32_t)nso_host_oe_focus_handling_mode(),(uint64_t)(uint32_t)OE_DIRECT_FOCUS_HANDLING_MODE);
+        expect_value("oe-focus-direct-focus-state",nso_host_oe_get_current_focus_state(),0);
+    }
+    return &returned_token;
+}
+static int oe_focus_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));
+    char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+    struct oe_focus_case c={0};
+    void *value=NULL;
+    CHECK(succeeded(guest_process_run(p,exercise_oe_focus,&c,&value)));
+    CHECK(value==&returned_token);
+    expect_condition("oe-focus-state-resolved",c.resolved_focus_state);
+    expect_condition("oe-focus-handling-resolved",c.resolved_focus_handling);
+    expect_condition("oe-focus-perf-notification-resolved",c.resolved_perf);
+    expect_condition("oe-focus-operation-notification-resolved",c.resolved_operation);
+    expect_condition("oe-focus-resume-notification-resolved",c.resolved_resume);
+    expect_condition("oe-focus-direct-record",c.direct_ok);
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    /* The final gate. Every expect_* above must have passed; without this the
+     * contract could still exit 0 while the expectations had failed. */
+    CHECK(!errors);
+    /* The report states what this run observed, not a literal zero. */
+    printf("{\"oe_focus_errors\":%u,\"focus_state_resolved\":%s,\"focus_handling_resolved\":%s,"
+           "\"perf_notification_resolved\":%s,\"operation_notification_resolved\":%s,"
+           "\"resume_notification_resolved\":%s,\"direct_ok\":%s,\"native_ran\":%s,"
+           "\"guest_marker\":%s,\"guest_focus_state\":%d}\n",errors,
+           c.resolved_focus_state?"true":"false",c.resolved_focus_handling?"true":"false",
+           c.resolved_perf?"true":"false",c.resolved_operation?"true":"false",
+           c.resolved_resume?"true":"false",c.direct_ok?"true":"false",
+           c.native_ran?"true":"false",c.native_marker?"true":"false",
+           c.native_ran?(int)c.native_focus_state:-1);
+    return 0;
+}
+
+/* nn::oe::GetOperationMode() (main NSO import index 227).
+ *
+ * Zero arguments, one 32-bit result. The guest calls it from two
+ * unconditional sites (0x51dc84 and 0x51ee40) and uses the result in
+ * exactly one way: it compares the value against 1 and caches the outcome
+ * as a byte flag at 0x7c90614. The four readers of that flag each pick a
+ * screen-size scale factor of 0.026873588 (flag set) or 0.0 (flag clear),
+ * and the factor multiplies the runtime screen width and height, so the
+ * flag-clear branch leaves the scaled screen size degenerate at zero.
+ * The working state of the game is therefore the flag-set one, so the
+ * value the guest requires is 1. The enumerator name behind that value is
+ * not available in-tree and is not claimed here.
+ *
+ * The fixture drives the real guest import path: the guest calls the
+ * import itself and writes the returned word into the output slot, so the
+ * boundary has to accept the zero-argument signature with a return value or
+ * the guest never runs. */
+#define OE_OPERATION_MODE_MANGLED "_ZN2nn2oe16GetOperationModeEv"
+/* The operation mode value the guest code requires, see the comment above. */
+#define OE_EXPECTED_OPERATION_MODE 1
+struct oe_operation_mode_case {
+    guest_process *process;
+    int resolved;
+    int native_ran,native_marker;
+    uint32_t native_operation_mode;
+};
+static void *exercise_oe_operation_mode(guest_process *p,void *opaque) {
+    struct oe_operation_mode_case *c=opaque;
+    c->process=p;
+    typedef uint32_t (*oe_operation_mode_fn)(void);
+    oe_operation_mode_fn operation_mode=(oe_operation_mode_fn)(uintptr_t)guest_process_resolve(0,OE_OPERATION_MODE_MANGLED);
+    c->resolved=operation_mode!=NULL;
+    expect_condition("oe-operation-mode-resolved",operation_mode!=NULL);
+    /* The real guest path: the fixture calls the import itself. */
+    uint64_t output[2]={0xa5a5,0xa5a5},returned=0xa5a5;
+    uint64_t args[1]={(uintptr_t)output};
+    struct nso_result r=guest_process_call(p,0x20,args,1,&returned);
+#if defined(__ANDROID__) && defined(__aarch64__)
+    expect_value("oe-operation-mode-native-status",r.status,NSO_OK);
+    expect_value("oe-operation-mode-native-return",returned,0x91);
+    c->native_ran=1;
+    c->native_marker=output[1]==1;
+    expect_condition("oe-operation-mode-guest-call-returned",output[1]==1);
+    /* The value the guest actually received back from the operation mode
+     * call, observed through the real import path. */
+    c->native_operation_mode=(uint32_t)output[0];
+    expect_value("oe-operation-mode-guest-value",output[0],OE_EXPECTED_OPERATION_MODE);
+#else
+    /* No AArch64 executor on this host: the boundary is prepared but the raw
+     * guest entry cannot run here. Nothing may be faked in its place. */
+    expect_value("oe-operation-mode-native-unsupported",r.status,NSO_UNSUPPORTED);
+    expect_value("oe-operation-mode-native-no-raw-fallback",returned,0xa5a5);
+#endif
+    /* Direct host call: the stub must report the same value it hands to the
+     * guest, and it must not drift from it. */
+    if(operation_mode) {
+        uint32_t direct=operation_mode();
+        expect_value("oe-operation-mode-direct-value",(uint64_t)direct,(uint64_t)OE_EXPECTED_OPERATION_MODE);
+        expect_value("oe-operation-mode-host-recorded",(uint64_t)nso_host_oe_get_operation_mode(),(uint64_t)OE_EXPECTED_OPERATION_MODE);
+    }
+    return &returned_token;
+}
+static int oe_operation_mode_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));
+    char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+    struct oe_operation_mode_case c={0};
+    void *value=NULL;
+    CHECK(succeeded(guest_process_run(p,exercise_oe_operation_mode,&c,&value)));
+    CHECK(value==&returned_token);
+    expect_condition("oe-operation-mode-resolved",c.resolved);
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    /* The final gate. Every expect_* above must have passed; without this the
+     * contract could still exit 0 while the expectations had failed. */
+    CHECK(!errors);
+    /* The report states what this run observed, not a literal zero. */
+    printf("{\"oe_operation_mode_errors\":%u,\"resolved\":%s,\"native_ran\":%s,"
+           "\"guest_marker\":%s,\"guest_operation_mode\":%d}\n",errors,
+           c.resolved?"true":"false",c.native_ran?"true":"false",
+           c.native_marker?"true":"false",
+           c.native_ran?(int)c.native_operation_mode:-1);
+    return 0;
+}
+
+/* nn::ldn::GetState() (main NSO import index 88).
+ *
+ * Zero arguments, one 32-bit result. All four guest call sites read the
+ * result in w0 and all of them agree that 0 means "no Nintendo local
+ * wireless session": the refresh helper at 0x15bc0 only continues into the
+ * internet path on state 0, the two classification sites at 0x51dca8 and
+ * 0x51ecb8 turn the state into "internet / local wireless / neither", and
+ * the address site at 0x943198 only asks for a local wireless IPv4 address
+ * for the states 3 and 5.
+ *
+ * The RG477M has no Nintendo local wireless radio and runs no local wireless
+ * session, so 0 is the state it has to report. The fixture drives the real
+ * guest import path: the guest calls the import itself and keeps the
+ * returned word. */
+#define LDN_STATE_MANGLED "_ZN2nn3ldn8GetStateEv"
+/* The local wireless state the guest code requires on a device without a
+ * local wireless session; see the comment above. */
+#define LDN_EXPECTED_STATE 0
+struct ldn_state_case {
+    guest_process *process;
+    int resolved;
+    int native_ran,native_marker;
+    uint32_t native_state;
+};
+static void *exercise_ldn_state(guest_process *p,void *opaque) {
+    struct ldn_state_case *c=opaque;
+    c->process=p;
+    typedef int32_t (*ldn_state_fn)(void);
+    ldn_state_fn state=(ldn_state_fn)(uintptr_t)guest_process_resolve(0,LDN_STATE_MANGLED);
+    c->resolved=state!=NULL;
+    expect_condition("ldn-state-resolved",state!=NULL);
+    /* The real guest path: the fixture calls the import itself. */
+    uint64_t output[2]={0xa5a5,0xa5a5},returned=0xa5a5;
+    uint64_t args[1]={(uintptr_t)output};
+    struct nso_result r=guest_process_call(p,0x20,args,1,&returned);
+#if defined(__ANDROID__) && defined(__aarch64__)
+    expect_value("ldn-state-native-status",r.status,NSO_OK);
+    expect_value("ldn-state-native-return",returned,0x91);
+    c->native_ran=1;
+    c->native_marker=output[1]==1;
+    expect_condition("ldn-state-guest-call-returned",output[1]==1);
+    /* The value the guest actually received back from the state call,
+     * observed through the real import path. */
+    c->native_state=(uint32_t)output[0];
+    expect_value("ldn-state-guest-value",output[0],LDN_EXPECTED_STATE);
+#else
+    /* No AArch64 executor on this host: the boundary is prepared but the raw
+     * guest entry cannot run here. Nothing may be faked in its place. */
+    expect_value("ldn-state-native-unsupported",r.status,NSO_UNSUPPORTED);
+    expect_value("ldn-state-native-no-raw-fallback",returned,0xa5a5);
+#endif
+    /* Direct host call: the stub must report the same value it hands to the
+     * guest. */
+    if(state) {
+        int32_t direct=state();
+        expect_value("ldn-state-direct-value",(uint64_t)(uint32_t)direct,(uint64_t)(uint32_t)LDN_EXPECTED_STATE);
+        expect_value("ldn-state-host-recorded",(uint64_t)(uint32_t)nso_host_ldn_get_state(),(uint64_t)(uint32_t)LDN_EXPECTED_STATE);
+    }
+    return &returned_token;
+}
+static int ldn_state_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));
+    char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+    struct ldn_state_case c={0};
+    void *value=NULL;
+    CHECK(succeeded(guest_process_run(p,exercise_ldn_state,&c,&value)));
+    CHECK(value==&returned_token);
+    expect_condition("ldn-state-resolved",c.resolved);
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    /* The final gate. Every expect_* above must have passed; without this the
+     * contract could still exit 0 while the expectations had failed. */
+    CHECK(!errors);
+    /* The report states what this run observed, not a literal zero. */
+    printf("{\"ldn_state_errors\":%u,\"resolved\":%s,\"native_ran\":%s,"
+           "\"guest_marker\":%s,\"guest_ldn_state\":%d}\n",errors,
+           c.resolved?"true":"false",c.native_ran?"true":"false",
+           c.native_marker?"true":"false",
+           c.native_ran?(int)c.native_state:-1);
+    return 0;
+}
+
+/* nn::oe performance configuration (main NSO import indexes 239 and 240).
+ *
+ * nn::oe::SetPerformanceConfiguration(PerformanceMode, int) takes two 32-bit
+ * arguments and returns nothing; nn::oe::GetPerformanceMode() takes none and
+ * returns the 32-bit mode. The guest asks for a mode and then reads it back,
+ * and that round trip is what the fixture drives through the real guest
+ * import path: the guest sets a configuration and then reads the mode back
+ * through the second import, so the boundary has to accept both signatures
+ * or the guest never runs.
+ *
+ * The fixture passes a mode and a clock that differ from the values the
+ * real guest uses, so a stub that ignores its arguments cannot satisfy both
+ * the guest path and the direct host calls. */
+#define OE_PERFORMANCE_SET_MANGLED "_ZN2nn2oe27SetPerformanceConfigurationENS0_15PerformanceModeEi"
+#define OE_PERFORMANCE_GET_MANGLED "_ZN2nn2oe18GetPerformanceModeEv"
+/* The mode and clock the fixture guest passes through the import path. */
+#define OE_FIXTURE_PERFORMANCE_MODE 5
+#define OE_FIXTURE_PERFORMANCE_CLOCK 0x20003
+/* Different values for the direct host call, so the two observations cannot
+ * be satisfied by one constant. */
+#define OE_DIRECT_PERFORMANCE_MODE 7
+#define OE_DIRECT_PERFORMANCE_CLOCK 0x10001
+/* The values the host has to report back after the direct call above. They
+ * are spelled out separately on purpose: an expectation derived from the
+ * input would change together with it, and the contract could then no
+ * longer tell a stub that records its arguments from one that ignores them.
+ * The self-proof breaks exactly these two constants. */
+#define OE_EXPECTED_DIRECT_MODE 7
+#define OE_EXPECTED_DIRECT_CLOCK 0x10001
+struct oe_performance_case {
+    guest_process *process;
+    int resolved_set,resolved_get;
+    int native_ran,native_marker;
+    uint32_t native_performance_mode;
+    int direct_ok;
+};
+static void *exercise_oe_performance(guest_process *p,void *opaque) {
+    struct oe_performance_case *c=opaque;
+    c->process=p;
+    typedef void (*oe_performance_set_fn)(int32_t,int32_t);
+    typedef int32_t (*oe_performance_get_fn)(void);
+    oe_performance_set_fn set_config=(oe_performance_set_fn)(uintptr_t)guest_process_resolve(0,OE_PERFORMANCE_SET_MANGLED);
+    oe_performance_get_fn get_mode=(oe_performance_get_fn)(uintptr_t)guest_process_resolve(0,OE_PERFORMANCE_GET_MANGLED);
+    c->resolved_set=set_config!=NULL;
+    c->resolved_get=get_mode!=NULL;
+    expect_condition("oe-performance-set-resolved",set_config!=NULL);
+    expect_condition("oe-performance-get-resolved",get_mode!=NULL);
+    /* The real guest path: the fixture calls the imports itself. */
+    uint64_t output[2]={0xa5a5,0xa5a5},returned=0xa5a5;
+    uint64_t args[1]={(uintptr_t)output};
+    struct nso_result r=guest_process_call(p,0x20,args,1,&returned);
+#if defined(__ANDROID__) && defined(__aarch64__)
+    expect_value("oe-performance-native-status",r.status,NSO_OK);
+    expect_value("oe-performance-native-return",returned,0x91);
+    c->native_ran=1;
+    c->native_marker=output[1]==1;
+    expect_condition("oe-performance-guest-call-returned",output[1]==1);
+    /* The mode the guest read back through the second import, after it set a
+     * configuration through the first one. */
+    c->native_performance_mode=(uint32_t)output[0];
+    expect_value("oe-performance-guest-mode-readback",output[0],OE_FIXTURE_PERFORMANCE_MODE);
+    /* The clock the guest asked for reached the host unmoved. */
+    expect_value("oe-performance-guest-clock",(uint64_t)(uint32_t)nso_host_oe_performance_clock(),(uint64_t)(uint32_t)OE_FIXTURE_PERFORMANCE_CLOCK);
+#else
+    /* No AArch64 executor on this host: the boundary is prepared but the raw
+     * guest entry cannot run here. Nothing may be faked in its place. */
+    expect_value("oe-performance-native-unsupported",r.status,NSO_UNSUPPORTED);
+    expect_value("oe-performance-native-no-raw-fallback",returned,0xa5a5);
+#endif
+    /* Direct host calls: every stub must record exactly what it was given. */
+    if(set_config&&get_mode) {
+        set_config((int32_t)OE_DIRECT_PERFORMANCE_MODE,(int32_t)OE_DIRECT_PERFORMANCE_CLOCK);
+        c->direct_ok=nso_host_oe_get_performance_mode()==OE_EXPECTED_DIRECT_MODE &&
+                     nso_host_oe_performance_clock()==OE_EXPECTED_DIRECT_CLOCK &&
+                     get_mode()==OE_EXPECTED_DIRECT_MODE;
+        expect_condition("oe-performance-direct-mode",nso_host_oe_get_performance_mode()==OE_EXPECTED_DIRECT_MODE);
+        expect_value("oe-performance-direct-clock",(uint64_t)(uint32_t)nso_host_oe_performance_clock(),(uint64_t)(uint32_t)OE_EXPECTED_DIRECT_CLOCK);
+        expect_value("oe-performance-direct-get-mode",(uint64_t)(uint32_t)get_mode(),(uint64_t)(uint32_t)OE_EXPECTED_DIRECT_MODE);
+    }
+    return &returned_token;
+}
+static int oe_performance_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));
+    char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+    struct oe_performance_case c={0};
+    void *value=NULL;
+    CHECK(succeeded(guest_process_run(p,exercise_oe_performance,&c,&value)));
+    CHECK(value==&returned_token);
+    expect_condition("oe-performance-set-resolved",c.resolved_set);
+    expect_condition("oe-performance-get-resolved",c.resolved_get);
+    expect_condition("oe-performance-direct-record",c.direct_ok);
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    /* The final gate. Every expect_* above must have passed; without this the
+     * contract could still exit 0 while the expectations had failed. */
+    CHECK(!errors);
+    /* The report states what this run observed, not a literal zero. */
+    printf("{\"oe_performance_errors\":%u,\"set_resolved\":%s,\"get_resolved\":%s,"
+           "\"direct_ok\":%s,\"native_ran\":%s,\"guest_marker\":%s,"
+           "\"guest_performance_mode\":%d}\n",errors,
+           c.resolved_set?"true":"false",c.resolved_get?"true":"false",
+           c.direct_ok?"true":"false",c.native_ran?"true":"false",
+           c.native_marker?"true":"false",
+           c.native_ran?(int)c.native_performance_mode:-1);
+    return 0;
+}
+
+/* nv::SetGraphicsAllocator and nv::SetGraphicsDevtoolsAllocator (main NSO
+ * import indexes 350 and 351).
+ *
+ * Both take the same four arguments as the already bound movie::SetAllocator
+ * (import 74): an allocation callback, a free callback, a realloc callback
+ * and a userdata pointer, and neither returns anything. The guest calls the
+ * two of them back to back in one straight-line block (0x1434c90 and
+ * 0x1434ca4), so both are reached on every boot.
+ *
+ * The fixture drives both through the real guest import path and passes its
+ * own callbacks, so the boundary has to accept both four-argument void
+ * signatures or the guest never runs. The host has to record the guest's
+ * callbacks unmoved: the NVN graphics heap will be allocated through them,
+ * so a stub that dropped or rewrote a pointer would break the graphics path
+ * later on. */
+#define NV_SET_GRAPHICS_ALLOCATOR_MANGLED "_ZN2nv20SetGraphicsAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_"
+#define NV_SET_GRAPHICS_DEVTOOLS_MANGLED "_ZN2nv28SetGraphicsDevtoolsAllocatorEPFPvmmS0_EPFvS0_S0_EPFS0_S0_mS0_ES0_"
+/* The module offsets the fixture guest puts its three callbacks at; see the
+ * nv-graphics-allocator fixture assembly in
+ * scripts/runtime/build_guest_process_contract.sh. */
+#define NV_FIXTURE_CB_ALLOC_OFF 0xc0
+#define NV_FIXTURE_CB_FREE_OFF 0xc4
+#define NV_FIXTURE_CB_REALLOC_OFF 0xc8
+struct nv_allocator_case {
+    guest_process *process;
+    int resolved_graphics,resolved_devtools;
+    int native_ran,native_marker;
+    uintptr_t native_alloc,native_free,native_realloc,native_userdata;
+    uintptr_t native_devtools_alloc,native_devtools_free,native_devtools_realloc,native_devtools_userdata;
+    int direct_record_ok;
+};
+static void *exercise_nv_allocator(guest_process *p,void *opaque) {
+    struct nv_allocator_case *c=opaque;
+    c->process=p;
+    typedef void (*nv_set_allocator_fn)(nv_alloc_fn,nv_free_fn,nv_realloc_fn,void *);
+    nv_set_allocator_fn set_graphics=(nv_set_allocator_fn)(uintptr_t)guest_process_resolve(0,NV_SET_GRAPHICS_ALLOCATOR_MANGLED);
+    nv_set_allocator_fn set_devtools=(nv_set_allocator_fn)(uintptr_t)guest_process_resolve(0,NV_SET_GRAPHICS_DEVTOOLS_MANGLED);
+    c->resolved_graphics=set_graphics!=NULL;
+    c->resolved_devtools=set_devtools!=NULL;
+    expect_condition("nv-allocator-graphics-resolved",set_graphics!=NULL);
+    expect_condition("nv-allocator-devtools-resolved",set_devtools!=NULL);
+    /* The real guest path: the fixture calls the imports itself, so the
+     * boundary must accept the four-argument void signature or the guest
+     * never executes and the registration is never observed. */
+    uint64_t output[2]={0xa5a5,0xa5a5},returned=0xa5a5;
+    uint64_t args[1]={(uintptr_t)output};
+    struct nso_result r=guest_process_call(p,0x20,args,1,&returned);
+#if defined(__ANDROID__) && defined(__aarch64__)
+    expect_value("nv-allocator-native-status",r.status,NSO_OK);
+    expect_value("nv-allocator-native-return",returned,0x91);
+    c->native_ran=1;
+    c->native_marker=output[0]==1;
+    expect_condition("nv-allocator-guest-call-returned",output[0]==1);
+    uint64_t base=nso_base(guest_process_module(p));
+    c->native_alloc=(uintptr_t)nso_host_nv_get_graphics_allocator();
+    c->native_free=(uintptr_t)nso_host_nv_get_graphics_deallocator();
+    c->native_realloc=(uintptr_t)nso_host_nv_get_graphics_reallocator();
+    c->native_userdata=(uintptr_t)nso_host_nv_get_graphics_allocator_userdata();
+    c->native_devtools_alloc=(uintptr_t)nso_host_nv_get_graphics_devtools_allocator();
+    c->native_devtools_free=(uintptr_t)nso_host_nv_get_graphics_devtools_deallocator();
+    c->native_devtools_realloc=(uintptr_t)nso_host_nv_get_graphics_devtools_reallocator();
+    c->native_devtools_userdata=(uintptr_t)nso_host_nv_get_graphics_devtools_userdata();
+    /* The guest's own callbacks reached the host unmoved. */
+    expect_value("nv-allocator-guest-alloc-pointer",c->native_alloc,base+NV_FIXTURE_CB_ALLOC_OFF);
+    expect_value("nv-allocator-guest-free-pointer",c->native_free,base+NV_FIXTURE_CB_FREE_OFF);
+    expect_value("nv-allocator-guest-realloc-pointer",c->native_realloc,base+NV_FIXTURE_CB_REALLOC_OFF);
+    expect_condition("nv-allocator-guest-userdata-null",c->native_userdata==0);
+    /* The devtools registration is a separate one and is recorded separately. */
+    expect_value("nv-allocator-devtools-alloc-pointer",c->native_devtools_alloc,base+NV_FIXTURE_CB_ALLOC_OFF);
+    expect_value("nv-allocator-devtools-free-pointer",c->native_devtools_free,base+NV_FIXTURE_CB_FREE_OFF);
+    expect_value("nv-allocator-devtools-realloc-pointer",c->native_devtools_realloc,base+NV_FIXTURE_CB_REALLOC_OFF);
+    expect_condition("nv-allocator-devtools-userdata-null",c->native_devtools_userdata==0);
+#else
+    /* No AArch64 executor on this host: the boundary is prepared but the raw
+     * guest entry cannot run here. Nothing may be faked in its place. */
+    expect_value("nv-allocator-native-unsupported",r.status,NSO_UNSUPPORTED);
+    expect_value("nv-allocator-native-no-raw-fallback",returned,0xa5a5);
+#endif
+    /* Direct host calls: the registration is stored exactly as given,
+     * including the fourth argument. */
+    if(set_graphics&&set_devtools) {
+        set_graphics((nv_alloc_fn)(uintptr_t)0x1111,(nv_free_fn)(uintptr_t)0x2222,
+                     (nv_realloc_fn)(uintptr_t)0x3333,(void *)(uintptr_t)0x4444);
+        set_devtools((nv_alloc_fn)(uintptr_t)0x5555,(nv_free_fn)(uintptr_t)0x6666,
+                     (nv_realloc_fn)(uintptr_t)0x7777,(void *)(uintptr_t)0x8888);
+        uintptr_t da=(uintptr_t)nso_host_nv_get_graphics_allocator();
+        uintptr_t df=(uintptr_t)nso_host_nv_get_graphics_deallocator();
+        uintptr_t dr=(uintptr_t)nso_host_nv_get_graphics_reallocator();
+        uintptr_t du=(uintptr_t)nso_host_nv_get_graphics_allocator_userdata();
+        uintptr_t ta=(uintptr_t)nso_host_nv_get_graphics_devtools_allocator();
+        uintptr_t tf=(uintptr_t)nso_host_nv_get_graphics_devtools_deallocator();
+        uintptr_t tr=(uintptr_t)nso_host_nv_get_graphics_devtools_reallocator();
+        uintptr_t tu=(uintptr_t)nso_host_nv_get_graphics_devtools_userdata();
+        c->direct_record_ok=da==0x1111&&df==0x2222&&dr==0x3333&&du==0x4444&&
+                            ta==0x5555&&tf==0x6666&&tr==0x7777&&tu==0x8888;
+        expect_value("nv-allocator-direct-alloc",da,0x1111);
+        expect_value("nv-allocator-direct-free",df,0x2222);
+        expect_value("nv-allocator-direct-realloc",dr,0x3333);
+        expect_value("nv-allocator-direct-userdata",du,0x4444);
+        expect_value("nv-allocator-direct-devtools-alloc",ta,0x5555);
+        expect_value("nv-allocator-direct-devtools-free",tf,0x6666);
+        expect_value("nv-allocator-direct-devtools-realloc",tr,0x7777);
+        expect_value("nv-allocator-direct-devtools-userdata",tu,0x8888);
+    }
+    return &returned_token;
+}
+static int nv_allocator_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));
+    char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+    struct nv_allocator_case c={0};
+    void *value=NULL;
+    CHECK(succeeded(guest_process_run(p,exercise_nv_allocator,&c,&value)));
+    CHECK(value==&returned_token);
+    expect_condition("nv-allocator-graphics-resolved",c.resolved_graphics);
+    expect_condition("nv-allocator-devtools-resolved",c.resolved_devtools);
+    expect_condition("nv-allocator-direct-record",c.direct_record_ok);
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    /* The final gate. Every expect_* above must have passed; without this the
+     * contract could still exit 0 while the expectations had failed. */
+    CHECK(!errors);
+    /* The report states what this run observed, not a literal zero. */
+    printf("{\"nv_allocator_errors\":%u,\"graphics_resolved\":%s,\"devtools_resolved\":%s,"
+           "\"direct_record_ok\":%s,\"native_ran\":%s,\"guest_marker\":%s}\n",errors,
+           c.resolved_graphics?"true":"false",c.resolved_devtools?"true":"false",
+           c.direct_record_ok?"true":"false",c.native_ran?"true":"false",
+           c.native_marker?"true":"false");
+    return 0;
+}
+
+/* nv::InitializeGraphics (main NSO import index 352).
+ *
+ * Takes the NVN initialisation parameter block and its size, and returns
+ * nothing: the single guest call site (0x1434cb4) loads x0 and x1 right
+ * before the call and never consumes the result. The guest passes its own
+ * parameter block at module offset 0x82d6000 and the size 0x800000.
+ *
+ * The stub records both values and does not claim that a graphics device
+ * exists. The fixture drives the real guest import path and passes its own
+ * parameter block, so the boundary has to accept the two-argument void
+ * signature or the guest never runs. */
+#define NV_INITIALIZE_GRAPHICS_MANGLED "_ZN2nv18InitializeGraphicsEPvm"
+/* The module offset of the parameter block the fixture guest passes; see
+ * the nv-initialize-graphics fixture assembly in
+ * scripts/runtime/build_guest_process_contract.sh. */
+#define NV_FIXTURE_PARAMS_OFF 0xc0
+/* The size the fixture guest passes, the same value the real guest uses. */
+#define NV_FIXTURE_GRAPHICS_SIZE 0x800000
+struct nv_initialize_graphics_case {
+    guest_process *process;
+    int resolved;
+    int native_ran,native_marker;
+    uintptr_t native_param;
+    uint64_t native_size;
+    int direct_record_ok;
+};
+static void *exercise_nv_initialize_graphics(guest_process *p,void *opaque) {
+    struct nv_initialize_graphics_case *c=opaque;
+    c->process=p;
+    typedef void (*nv_initialize_graphics_fn)(void *,uint64_t);
+    nv_initialize_graphics_fn init_graphics=(nv_initialize_graphics_fn)(uintptr_t)guest_process_resolve(0,NV_INITIALIZE_GRAPHICS_MANGLED);
+    c->resolved=init_graphics!=NULL;
+    expect_condition("nv-initialize-graphics-resolved",init_graphics!=NULL);
+    /* The real guest path: the fixture calls the import itself, so the
+     * boundary must accept the two-argument void signature or the guest
+     * never executes and the parameters are never observed. */
+    uint64_t output[2]={0xa5a5,0xa5a5},returned=0xa5a5;
+    uint64_t args[1]={(uintptr_t)output};
+    struct nso_result r=guest_process_call(p,0x20,args,1,&returned);
+#if defined(__ANDROID__) && defined(__aarch64__)
+    expect_value("nv-initialize-graphics-native-status",r.status,NSO_OK);
+    expect_value("nv-initialize-graphics-native-return",returned,0x91);
+    c->native_ran=1;
+    c->native_marker=output[0]==1;
+    expect_condition("nv-initialize-graphics-guest-call-returned",output[0]==1);
+    uint64_t base=nso_base(guest_process_module(p));
+    c->native_param=(uintptr_t)nso_host_nv_get_initialize_graphics_param();
+    c->native_size=nso_host_nv_get_initialize_graphics_size();
+    /* The guest's own parameter block reached the host unmoved. */
+    expect_value("nv-initialize-graphics-guest-param",c->native_param,base+NV_FIXTURE_PARAMS_OFF);
+    expect_value("nv-initialize-graphics-guest-size",c->native_size,NV_FIXTURE_GRAPHICS_SIZE);
+#else
+    /* No AArch64 executor on this host: the boundary is prepared but the raw
+     * guest entry cannot run here. Nothing may be faked in its place. */
+    expect_value("nv-initialize-graphics-native-unsupported",r.status,NSO_UNSUPPORTED);
+    expect_value("nv-initialize-graphics-native-no-raw-fallback",returned,0xa5a5);
+#endif
+    /* Direct host call: the parameters are recorded exactly as given. */
+    if(init_graphics) {
+        init_graphics((void *)(uintptr_t)0x1234,(uint64_t)0x20003);
+        uintptr_t param=(uintptr_t)nso_host_nv_get_initialize_graphics_param();
+        uint64_t size=nso_host_nv_get_initialize_graphics_size();
+        c->direct_record_ok=param==0x1234&&size==0x20003;
+        expect_value("nv-initialize-graphics-direct-param",param,0x1234);
+        expect_value("nv-initialize-graphics-direct-size",size,0x20003);
+    }
+    return &returned_token;
+}
+static int nv_initialize_graphics_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));
+    char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+    struct nv_initialize_graphics_case c={0};
+    void *value=NULL;
+    CHECK(succeeded(guest_process_run(p,exercise_nv_initialize_graphics,&c,&value)));
+    CHECK(value==&returned_token);
+    expect_condition("nv-initialize-graphics-resolved",c.resolved);
+    expect_condition("nv-initialize-graphics-direct-record",c.direct_record_ok);
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    /* The final gate. Every expect_* above must have passed; without this the
+     * contract could still exit 0 while the expectations had failed. */
+    CHECK(!errors);
+    /* The report states what this run observed, not a literal zero. */
+    printf("{\"nv_initialize_graphics_errors\":%u,\"resolved\":%s,\"direct_record_ok\":%s,"
+           "\"native_ran\":%s,\"guest_marker\":%s}\n",errors,
+           c.resolved?"true":"false",c.direct_record_ok?"true":"false",
+           c.native_ran?"true":"false",c.native_marker?"true":"false");
+    return 0;
+}
+
+/* nvnBootstrapLoader (main NSO import index 353).
+ *
+ * The only NVN symbol the main NSO imports dynamically; every other NVN
+ * entry point is looked up by name through the nvnDeviceGetProcAddress it
+ * hands out. It carries no mangled name, so it is a C function: one argument
+ * (the entry point name) and one result (a function pointer in x0).
+ *
+ * The guest code is Unreal Engine's Switch NVNRHI (NVNManager.cpp) and it
+ * drives the loader from five call sites with exactly two names. The fixture
+ * reproduces that: it asks for the two names the guest uses, calls the
+ * device initialisation (which must report failure, because this runtime has
+ * no NVN device), looks one NVN entry point up by name (which must be
+ * served, because the guest never checks that pointer and would branch to
+ * pc=0 otherwise), and asks for a name outside the NVN namespace and a name
+ * this runtime does not provide (both must be refused).
+ */
+#define NVN_BOOTSTRAP_MANGLED "nvnBootstrapLoader"
+struct nvn_bootstrap_case {
+    guest_process *process;
+    int resolved;
+    int native_ran,native_marker;
+    int direct_ok;
+};
+static void *exercise_nvn_bootstrap(guest_process *p,void *opaque) {
+    struct nvn_bootstrap_case *c=opaque;
+    c->process=p;
+    typedef void *(*nvn_bootstrap_fn)(const char *);
+    nvn_bootstrap_fn loader=(nvn_bootstrap_fn)(uintptr_t)guest_process_resolve(0,NVN_BOOTSTRAP_MANGLED);
+    c->resolved=loader!=NULL;
+    expect_condition("nvn-bootstrap-resolved",loader!=NULL);
+    /* The real guest path: the fixture calls the import itself, so the
+     * boundary has to accept the one-argument pointer-returning signature
+     * or the guest never runs. */
+    uint64_t output[8]={0},returned=0xa5a5,args[1]={(uintptr_t)output};
+    struct nso_result r=guest_process_call(p,0x20,args,1,&returned);
+#if defined(__ANDROID__) && defined(__aarch64__)
+    expect_value("nvn-bootstrap-native-status",r.status,NSO_OK);
+    expect_value("nvn-bootstrap-native-return",returned,0x91);
+    c->native_ran=1;
+    c->native_marker=output[0]==1;
+    expect_condition("nvn-bootstrap-guest-call-returned",output[0]==1);
+    expect_value("nvn-bootstrap-guest-init-pointer",output[1],1);
+    /* The device initialisation reports the truth: it succeeds exactly when a
+     * real device exists, and this build either has one (Android, a Vulkan
+     * device) or has none (the host build, which has no Vulkan). The old
+     * expectation here was "must fail", which was the policy of a runtime
+     * without any NVN device; it is now the stronger statement that the
+     * result has to match the device that actually exists. */
+    expect_value("nvn-bootstrap-guest-init-result",output[2],NVN_EXPECT_REAL_DEVICE);
+    expect_value("nvn-bootstrap-guest-lookup-pointer",output[3],1);
+    /* An NVN name is served with a real entry point. */
+    expect_value("nvn-bootstrap-guest-entry-pointer",output[4],1);
+    expect_value("nvn-bootstrap-guest-entry-result",output[5],0);
+    /* A name outside the NVN namespace is refused. */
+    expect_value("nvn-bootstrap-guest-outside-namespace",output[6],0);
+    /* A name this runtime does not provide is refused. */
+    expect_value("nvn-bootstrap-guest-missing-name",output[7],0);
+    /* The guest really went through the name lookup and really called the
+     * entry point it got back. */
+    expect_condition("nvn-bootstrap-guest-resolved-nvn-names",nso_host_nvn_resolved_count()>0);
+    expect_condition("nvn-bootstrap-guest-called-null-entry",nso_host_nvn_call_count()>0);
+#else
+    /* No AArch64 executor on this host: the boundary is prepared but the raw
+     * guest entry cannot run here. Nothing may be faked in its place. */
+    expect_value("nvn-bootstrap-native-unsupported",r.status,NSO_UNSUPPORTED);
+    expect_value("nvn-bootstrap-native-no-raw-fallback",returned,0xa5a5);
+#endif
+    /* Direct host calls: the loader answers by name and refuses the rest.
+     * The values here are the ones this runtime must really produce. */
+    if(loader) {
+        typedef uint64_t (*nvn_init_fn)(void *,void *);
+        typedef void *(*nvn_lookup_fn)(void *,const char *);
+        void *init=loader("nvnDeviceInitialize");
+        void *lookup=loader("nvnDeviceGetProcAddress");
+        void *missing=loader("nvnDeviceThatDoesNotExist");
+        int ok=init!=NULL && lookup!=NULL && missing==NULL;
+        if(init) {
+            /* The result has to match the device that really exists. */
+            nvn_device_stats stats;
+            uint64_t init_result=((nvn_init_fn)(uintptr_t)init)(NULL,NULL);
+            nvn_device_get_stats(&stats);
+            ok=ok && ((init_result!=0)==(stats.real_device!=0));
+        }
+        if(lookup)ok=ok && ((nvn_lookup_fn)(uintptr_t)lookup)(NULL,"nvnDeviceBuilderSetDefaults")!=NULL &&
+                          ((nvn_lookup_fn)(uintptr_t)lookup)(NULL,"notAnNvnName")==NULL;
+        c->direct_ok=ok;
+        expect_condition("nvn-bootstrap-direct-name-dispatch",ok);
+    }
+    return &returned_token;
+}
+static int nvn_bootstrap_contract(const char *path) {
+    struct guest_process_config config={1024*1024,65536};guest_process *p=NULL;
+    CHECK(succeeded(guest_process_create(&config,&p)));
+    char err[128];CHECK(succeeded(guest_process_load(p,path,err,sizeof(err))));
+    struct nvn_bootstrap_case c={0};
+    void *value=NULL;
+    CHECK(succeeded(guest_process_run(p,exercise_nvn_bootstrap,&c,&value)));
+    CHECK(value==&returned_token);
+    expect_condition("nvn-bootstrap-resolved",c.resolved);
+    expect_condition("nvn-bootstrap-direct-ok",c.direct_ok);
+    CHECK(succeeded(guest_process_destroy(&p)) && !p);
+    /* The final gate. Every expect_* above must have passed; without this the
+     * contract could still exit 0 while the expectations had failed. */
+    CHECK(!errors);
+    /* The report states what this run observed, not a literal zero. */
+    printf("{\"nvn_bootstrap_errors\":%u,\"resolved\":%s,\"direct_ok\":%s,"
+           "\"native_ran\":%s,\"guest_marker\":%s}\n",errors,
+           c.resolved?"true":"false",c.direct_ok?"true":"false",
+           c.native_ran?"true":"false",c.native_marker?"true":"false");
+    return 0;
+}
+/* The NVN device layer (src/graphics/nvn_device).
+ *
+ * The --nvn-bootstrap contract pins the import binding and the two level
+ * dispatch on the guest path. This contract pins the device layer itself:
+ *
+ *   - the bootstrap answers exactly the two names the guest asks for;
+ *   - the device scoped lookup answers the nvn namespace and refuses the rest;
+ *   - the builder round trips and stays inside the 64 bytes the guest
+ *     reserved for it;
+ *   - the timestamp is real, monotonic and written through the out pointer;
+ *   - the device initialisation reports the truth: it succeeds exactly when a
+ *     real device exists, and this build either has one (Android, a Vulkan
+ *     device) or has none (the host build, which has no Vulkan);
+ *   - an entry point that is not implemented yet stops the run and names the
+ *     API, instead of pretending the call succeeded.
+ */
+
+/* Names the guest really resolves, taken from
+ * evidence/nvn/guest_nvn_code_references.tsv. They cover the device, queue,
+ * window, memory pool, texture, sampler and buffer families. */
+static const char *const nvn_guest_names[] = {
+    "nvnDeviceInitialize",
+    "nvnDeviceGetProcAddress",
+    "nvnDeviceFinalize",
+    "nvnDeviceBuilderSetDefaults",
+    "nvnDeviceBuilderSetFlags",
+    "nvnDeviceBuilderGetFlags",
+    "nvnDeviceGetCurrentTimestampInNanoseconds",
+    "nvnQueueBuilderSetDevice",
+    "nvnQueueBuilderSetDefaults",
+    "nvnQueueBuilderSetFlags",
+    "nvnQueueInitialize",
+    "nvnWindowBuilderSetNativeWindow",
+    "nvnMemoryPoolBuilderSetDefaults",
+    "nvnTextureBuilderSetDefaults",
+    "nvnSamplerBuilderSetDefaults",
+    "nvnBufferBuilderSetDefaults",
+};
+
+static int nvn_device_contract(void) {
+    typedef void *(*bootstrap_fn)(const char *);
+    typedef void *(*lookup_fn)(void *, const char *);
+    typedef uint64_t (*init_fn)(void *, void *);
+    typedef void (*builder_set_defaults_fn)(void *);
+    typedef void (*builder_set_flags_fn)(void *, int);
+    typedef int (*builder_get_flags_fn)(const void *);
+    typedef void (*get_integer_fn)(void *, int, int *);
+    typedef uint64_t (*timestamp_fn)(void *);
+    nvn_device_stats stats;
+    size_t i;
+
+    /* 1. The import binding and the two level dispatch, through the real
+     *    import path the guest uses. */
+    bootstrap_fn bootstrap =
+        (bootstrap_fn)(uintptr_t)guest_process_resolve(0, "nvnBootstrapLoader");
+    CHECK(bootstrap != NULL);
+    void *p_init = bootstrap("nvnDeviceInitialize");
+    void *p_lookup = bootstrap("nvnDeviceGetProcAddress");
+    expect_condition("nvn-device-bootstrap-answers-initialize", p_init != NULL);
+    expect_condition("nvn-device-bootstrap-answers-get-proc-address", p_lookup != NULL);
+    /* The bootstrap answers exactly two names. The device scoped lookup is
+     * where the rest of the namespace is answered, so a third name here would
+     * mean the two levels had been merged. */
+    expect_condition("nvn-device-bootstrap-answers-only-two-names",
+                     bootstrap("nvnDeviceFinalize") == NULL);
+    expect_condition("nvn-device-bootstrap-refuses-other-names",
+                     bootstrap("notAnNvnName") == NULL);
+    expect_condition("nvn-device-bootstrap-refuses-null", bootstrap(NULL) == NULL);
+
+    lookup_fn lookup = (lookup_fn)(uintptr_t)p_lookup;
+    CHECK(lookup != NULL);
+
+    /* 2. The device scoped lookup answers the nvn namespace, including the
+     *    names the guest resolves through it, and refuses everything else. */
+    expect_condition("nvn-device-lookup-answers-initialize",
+                     lookup(NULL, "nvnDeviceInitialize") != NULL);
+    expect_condition("nvn-device-lookup-answers-builder-defaults",
+                     lookup(NULL, "nvnDeviceBuilderSetDefaults") != NULL);
+    expect_condition("nvn-device-lookup-refuses-outside-namespace",
+                     lookup(NULL, "notAnNvnName") == NULL);
+    expect_condition("nvn-device-lookup-refuses-null", lookup(NULL, NULL) == NULL);
+    for (i = 0; i < sizeof(nvn_guest_names) / sizeof(nvn_guest_names[0]); i++)
+        expect_condition("nvn-device-lookup-answers-guest-name",
+                         lookup(NULL, nvn_guest_names[i]) != NULL);
+    /* The same name has to resolve to the same entry point, because the
+     * guest stores the pointer and calls it later. */
+    expect_condition("nvn-device-lookup-is-stable",
+                     lookup(NULL, "nvnQueueBuilderSetDevice") ==
+                         lookup(NULL, "nvnQueueBuilderSetDevice"));
+
+    /* 3. The builder: it round trips, and it stays inside the 64 bytes the
+     *    guest reserved for it, because anything beyond that would land on
+     *    the guest's saved registers. */
+    unsigned char builder[NVN_DEVICE_BUILDER_SIZE + 16];
+    memset(builder, 0xaa, sizeof(builder));
+    builder_set_defaults_fn set_defaults =
+        (builder_set_defaults_fn)(uintptr_t)lookup(NULL, "nvnDeviceBuilderSetDefaults");
+    builder_set_flags_fn set_flags =
+        (builder_set_flags_fn)(uintptr_t)lookup(NULL, "nvnDeviceBuilderSetFlags");
+    builder_get_flags_fn get_flags =
+        (builder_get_flags_fn)(uintptr_t)lookup(NULL, "nvnDeviceBuilderGetFlags");
+    CHECK(set_defaults != NULL && set_flags != NULL && get_flags != NULL);
+    set_defaults(builder);
+    expect_value("nvn-device-builder-defaults-clear-flags",
+                 (uint64_t)(uint32_t)get_flags(builder), 0);
+    set_flags(builder, 0x1234);
+    expect_value("nvn-device-builder-round-trip",
+                 (uint64_t)(uint32_t)get_flags(builder), 0x1234);
+    set_defaults(builder);
+    expect_value("nvn-device-builder-defaults-reset-flags",
+                 (uint64_t)(uint32_t)get_flags(builder), 0);
+    expect_condition("nvn-device-builder-fits-64-bytes",
+                     all_bytes(builder + NVN_DEVICE_BUILDER_SIZE, 16, 0xaa));
+
+    /* 4. The device information query. The guest asks for the NVN API major
+     *    and minor version right after the device is initialized, at
+     *    0x14354e8 and 0x14354fc, with the value written through the third
+     *    argument. The expected version is written out here on purpose: it
+     *    must not be the same constant the implementation uses, or the check
+     *    would prove nothing. */
+    get_integer_fn get_integer =
+        (get_integer_fn)(uintptr_t)lookup(NULL, "nvnDeviceGetInteger");
+    CHECK(get_integer != NULL);
+    int api_major = 0, api_minor = 0;
+    get_integer(NULL, 0, &api_major);
+    get_integer(NULL, 1, &api_minor);
+    expect_condition("nvn-device-get-integer-writes-major", api_major > 0);
+    expect_condition("nvn-device-get-integer-writes-minor", api_minor > 0);
+    expect_value("nvn-device-get-integer-major", (uint64_t)(uint32_t)api_major, 53);
+    expect_value("nvn-device-get-integer-minor", (uint64_t)(uint32_t)api_minor, 105);
+
+    /* 4b. The device limits.
+     *
+     * The guest asked for twenty one of these in the run that aborted in the
+     * game's own NVNHelpers.cpp:240, and it sized its texture id pool by
+     * selector 36, so a zero there is a fatal error inside the game and not
+     * a neutral answer. The expected values are written out here on purpose:
+     * they must not come from the implementation's own table, or the check
+     * would prove nothing. They are the values the reference host of this
+     * game reports (dm/gfx/nvn/hle_nvn.c, table g_devinfo, measured on a
+     * real Switch by asking nvnDeviceGetInteger item by item).
+     *
+     * Every selector the guest asked for is pinned here, so that a table that
+     * answers the one selector the game dies on and zeros the rest cannot
+     * pass. The names are the ones of the vendored NVN header. */
+    int limit = 0;
+    get_integer(NULL, 3, &limit); /* MAX_UNIFORM_BUFFER_SIZE */
+    expect_value("nvn-device-get-integer-max-uniform-buffer-size", (uint64_t)(uint32_t)limit, 65536);
+    get_integer(NULL, 4, &limit); /* UNIFORM_BUFFER_ALIGNMENT */
+    expect_value("nvn-device-get-integer-uniform-buffer-alignment", (uint64_t)(uint32_t)limit, 256);
+    get_integer(NULL, 10, &limit); /* COUNTER_ALIGNMENT */
+    expect_value("nvn-device-get-integer-counter-alignment", (uint64_t)(uint32_t)limit, 16);
+    get_integer(NULL, 15, &limit); /* TEXTURE_DESCRIPTOR_SIZE */
+    expect_value("nvn-device-get-integer-texture-descriptor-size", (uint64_t)(uint32_t)limit, 32);
+    get_integer(NULL, 16, &limit); /* SAMPLER_DESCRIPTOR_SIZE */
+    expect_value("nvn-device-get-integer-sampler-descriptor-size", (uint64_t)(uint32_t)limit, 32);
+    get_integer(NULL, 17, &limit); /* RESERVED_TEXTURE_DESCRIPTORS */
+    expect_value("nvn-device-get-integer-reserved-texture-descriptors", (uint64_t)(uint32_t)limit, 256);
+    get_integer(NULL, 18, &limit); /* RESERVED_SAMPLER_DESCRIPTORS */
+    expect_value("nvn-device-get-integer-reserved-sampler-descriptors", (uint64_t)(uint32_t)limit, 256);
+    get_integer(NULL, 19, &limit); /* COMMAND_BUFFER_COMMAND_ALIGNMENT */
+    expect_value("nvn-device-get-integer-command-buffer-command-alignment",
+                 (uint64_t)(uint32_t)limit, 4);
+    get_integer(NULL, 20, &limit); /* COMMAND_BUFFER_CONTROL_ALIGNMENT */
+    expect_value("nvn-device-get-integer-command-buffer-control-alignment",
+                 (uint64_t)(uint32_t)limit, 8);
+    get_integer(NULL, 31, &limit); /* MAX_COMPUTE_WORK_GROUP_SIZE_THREADS */
+    expect_value("nvn-device-get-integer-max-compute-work-group-size-threads",
+                 (uint64_t)(uint32_t)limit, 1536);
+    get_integer(NULL, 36, &limit); /* MAX_TEXTURE_POOL_SIZE */
+    expect_value("nvn-device-get-integer-max-texture-pool-size", (uint64_t)(uint32_t)limit, 1048576);
+    get_integer(NULL, 37, &limit); /* MAX_SAMPLER_POOL_SIZE */
+    expect_value("nvn-device-get-integer-max-sampler-pool-size", (uint64_t)(uint32_t)limit, 4096);
+    get_integer(NULL, 45, &limit); /* MAX_TEXTURE_LAYERS */
+    expect_value("nvn-device-get-integer-max-texture-layers", (uint64_t)(uint32_t)limit, 2048);
+    get_integer(NULL, 53, &limit); /* INDIRECT_DISPATCH_ALIGNMENT */
+    expect_value("nvn-device-get-integer-indirect-dispatch-alignment", (uint64_t)(uint32_t)limit, 4);
+    get_integer(NULL, 54, &limit); /* ZCULL_SAVE_RESTORE_ALIGNMENT */
+    expect_value("nvn-device-get-integer-zcull-save-restore-alignment", (uint64_t)(uint32_t)limit, 32);
+    get_integer(NULL, 61, &limit); /* MAX_TEXTURE_SIZE */
+    expect_value("nvn-device-get-integer-max-texture-size", (uint64_t)(uint32_t)limit, 16384);
+    get_integer(NULL, 62, &limit); /* MAX_BUFFER_TEXTURE_SIZE */
+    expect_value("nvn-device-get-integer-max-buffer-texture-size",
+                 (uint64_t)(uint32_t)limit, 134217728);
+    get_integer(NULL, 64, &limit); /* MAX_CUBE_MAP_TEXTURE_SIZE */
+    expect_value("nvn-device-get-integer-max-cube-map-texture-size", (uint64_t)(uint32_t)limit, 16384);
+    get_integer(NULL, 86, &limit); /* QUEUE_COMMAND_MEMORY_MIN_FLUSH_THRESHOLD */
+    expect_value("nvn-device-get-integer-queue-command-memory-min-flush-threshold",
+                 (uint64_t)(uint32_t)limit, 4096);
+    get_integer(NULL, 92, &limit); /* QUEUE_CONTROL_MEMORY_DEFAULT_SIZE */
+    expect_value("nvn-device-get-integer-queue-control-memory-default-size",
+                 (uint64_t)(uint32_t)limit, 16384);
+    get_integer(NULL, 93, &limit); /* QUEUE_CONTROL_MEMORY_GRANULARITY */
+    expect_value("nvn-device-get-integer-queue-control-memory-granularity", (uint64_t)(uint32_t)limit, 4096);
+
+    /* The shader alignment is not in the table: the reference host answers it
+     * with 256 and notes that the game it read it for passes it to the
+     * allocator of its copies of the shader control section and code. */
+    get_integer(NULL, 0x67, &limit);
+    expect_value("nvn-device-get-integer-shader-alignment", (uint64_t)(uint32_t)limit, 256);
+
+    /* The two selectors the reference host reports a failure for, and
+     * anything past the end of the table, are answered with zero. Zero here
+     * is a refusal, and the guest has to be able to tell it from a limit. */
+    get_integer(NULL, 0x60, &limit);
+    expect_value("nvn-device-get-integer-debug-groups-domain-id-is-refused",
+                 (uint64_t)(uint32_t)limit, 0);
+    get_integer(NULL, 0x68, &limit);
+    expect_value("nvn-device-get-integer-past-the-table-is-zero", (uint64_t)(uint32_t)limit, 0);
+
+    /* The API version has to stay what it was: the guest accepted 53.105
+     * and created its device with it. */
+    get_integer(NULL, 0, &api_major);
+    get_integer(NULL, 1, &api_minor);
+    expect_value("nvn-device-get-integer-major-is-unchanged", (uint64_t)(uint32_t)api_major, 53);
+    expect_value("nvn-device-get-integer-minor-is-unchanged", (uint64_t)(uint32_t)api_minor, 105);
+
+    /* 5. The timestamp: the guest calls it with only the device in x0 and
+     *    reads the result from x0 right after the call, so it takes one
+     *    argument and returns the timestamp. */
+    timestamp_fn timestamp =
+        (timestamp_fn)(uintptr_t)lookup(NULL, "nvnDeviceGetCurrentTimestampInNanoseconds");
+    CHECK(timestamp != NULL);
+    uint64_t returned_first = timestamp(NULL);
+    uint64_t returned_second = timestamp(NULL);
+    expect_condition("nvn-device-timestamp-nonzero", returned_first != 0);
+    expect_condition("nvn-device-timestamp-monotonic", returned_second >= returned_first);
+
+    /* 6. The device initialisation reports the truth. It succeeds exactly
+     *    when a real device exists, and this build either has one or has
+     *    none; the expectation below is what this build has to be. */
+    init_fn init = (init_fn)(uintptr_t)p_init;
+    CHECK(init != NULL);
+    uint64_t init_result = init(NULL, NULL);
+    nvn_device_get_stats(&stats);
+    expect_condition("nvn-device-init-matches-real-device",
+                     (init_result != 0) == (stats.real_device != 0));
+    expect_value("nvn-device-real-device-expected", (uint64_t)stats.real_device,
+                 NVN_EXPECT_REAL_DEVICE);
+    expect_condition("nvn-device-description-matches-device",
+                     (stats.real_device != 0) == (strstr(stats.description, "Vulkan device") != NULL));
+
+    /* 7. An entry point that is not implemented yet must stop the run and
+     *    name the API. It is checked in a child process, because the trap
+     *    does not return. */
+    const char *trap_name = "nvnContractApiThatIsNotImplemented";
+    void *trap = lookup(NULL, trap_name);
+    expect_condition("nvn-device-unimplemented-resolves", trap != NULL);
+    FILE *capture = tmpfile();
+    CHECK(capture != NULL);
+    fflush(stderr);
+    pid_t child = fork();
+    CHECK(child >= 0);
+    if (child == 0) {
+        dup2(fileno(capture), fileno(stderr));
+        ((void (*)(void))(uintptr_t)trap)();
+        /* The trap came back. That is the failure this contract exists to
+         * catch, and the child says so with a distinct exit code. */
+        fflush(stderr);
+        _exit(0);
+    }
+    int status = 0;
+    CHECK(waitpid(child, &status, 0) == child);
+    fflush(capture);
+    fseek(capture, 0, SEEK_SET);
+    char report[8192];
+    size_t got = fread(report, 1, sizeof(report) - 1, capture);
+    report[got] = '\0';
+    fclose(capture);
+    int trapped = WIFEXITED(status) && WEXITSTATUS(status) == NVN_UNIMPLEMENTED_EXIT_CODE;
+    int named = strstr(report, trap_name) != NULL;
+    expect_condition("nvn-device-unimplemented-traps", trapped);
+    expect_condition("nvn-device-unimplemented-names-the-api", named);
+
+    /* 8. The counters the runtime keeps. */
+    nvn_device_get_stats(&stats);
+    expect_condition("nvn-device-stats-count-resolutions", stats.resolved > 0);
+    expect_condition("nvn-device-stats-count-traps", stats.trapped_resolved > 0);
+    expect_condition("nvn-device-stats-count-implemented",
+                     stats.implemented_resolved > 0);
+
+    /* The final gate. Every expect_* above must have passed; without this the
+     * contract could still exit 0 while the expectations had failed. */
+    CHECK(!errors);
+    /* The report states what this run observed, not a literal zero. */
+    printf("{\"nvn_device_errors\":%u,\"real_device\":%s,\"trapped\":%s,\"named\":%s,"
+           "\"resolved\":%llu,\"implemented\":%llu,\"traps\":%llu}\n",
+           errors, stats.real_device ? "true" : "false", trapped ? "true" : "false",
+           named ? "true" : "false", (unsigned long long)stats.resolved,
+           (unsigned long long)stats.implemented_resolved,
+           (unsigned long long)stats.trapped_resolved);
+    return 0;
+}
+
+/* What this build has to be for the NVN queue family. The Android build has
+ * the Vulkan backend, so a queue can be created on a real device; the host
+ * build has no Vulkan implementation, so there is no device and the queue
+ * initialisation has to refuse. This is an expectation, not an input: it is
+ * deliberately a separate constant from NVN_EXPECT_REAL_DEVICE, so that a
+ * change in one does not silently change the other. */
+#if defined(__ANDROID__)
+#define NVN_QUEUE_EXPECT_REAL_QUEUE 1
+#else
+#define NVN_QUEUE_EXPECT_REAL_QUEUE 0
+#endif
+
+static int nvn_queue_contract(void) {
+    typedef void *(*bootstrap_fn)(const char *);
+    typedef void *(*lookup_fn)(void *, const char *);
+    typedef uint64_t (*init_fn)(void *, void *);
+    typedef void (*builder_set_defaults_fn)(void *);
+    typedef void (*builder_set_flags_fn)(void *, int);
+    typedef int (*builder_get_flags_fn)(const void *);
+    typedef void (*builder_set_device_fn)(void *, void *);
+    typedef void *(*builder_get_device_fn)(const void *);
+    typedef void (*builder_set_size_fn)(void *, uint64_t);
+    typedef uint64_t (*builder_get_size_fn)(const void *);
+    typedef void (*builder_set_memory_fn)(void *, void *, uint64_t);
+    typedef void *(*builder_get_memory_fn)(const void *);
+    typedef void (*builder_set_priority_fn)(void *, int);
+    typedef int (*builder_get_priority_fn)(const void *);
+    typedef int (*queue_initialize_fn)(void *, const void *, int);
+    typedef void (*queue_finalize_fn)(void *);
+    typedef int (*queue_get_error_fn)(const void *);
+    typedef uint64_t (*queue_get_used_fn)(const void *);
+    typedef void (*queue_reset_fn)(void *);
+    typedef void (*set_debug_label_fn)(void *, const char *);
+    nvn_queue_stats stats;
+    size_t i;
+
+    /* 1. The names have to resolve through the real device scoped lookup,
+     *    because that is the path the guest uses, and the same name has to
+     *    resolve to the same entry point every time. */
+    bootstrap_fn bootstrap =
+        (bootstrap_fn)(uintptr_t)guest_process_resolve(0, "nvnBootstrapLoader");
+    CHECK(bootstrap != NULL);
+    lookup_fn lookup = (lookup_fn)(uintptr_t)bootstrap("nvnDeviceGetProcAddress");
+    CHECK(lookup != NULL);
+    static const char *const queue_names[] = {
+        "nvnQueueBuilderSetDefaults",
+        "nvnQueueBuilderSetDevice",
+        "nvnQueueBuilderGetDevice",
+        "nvnQueueBuilderSetFlags",
+        "nvnQueueBuilderGetFlags",
+        "nvnQueueBuilderSetQueuePriority",
+        "nvnQueueBuilderGetQueuePriority",
+        "nvnQueueBuilderSetCommandMemorySize",
+        "nvnQueueBuilderGetCommandMemorySize",
+        "nvnQueueBuilderSetComputeMemorySize",
+        "nvnQueueBuilderGetComputeMemorySize",
+        "nvnQueueBuilderSetControlMemorySize",
+        "nvnQueueBuilderGetControlMemorySize",
+        "nvnQueueBuilderSetCommandFlushThreshold",
+        "nvnQueueBuilderGetCommandFlushThreshold",
+        "nvnQueueBuilderSetQueueMemory",
+        "nvnQueueBuilderGetQueueMemory",
+        "nvnQueueBuilderGetMemorySize",
+        "nvnQueueInitialize",
+        "nvnQueueFinalize",
+        "nvnQueueGetError",
+        "nvnQueueSetDebugLabel",
+        "nvnQueueFlush",
+        "nvnQueueFinish",
+        "nvnQueueGetTotalCommandMemoryUsed",
+        "nvnQueueGetTotalComputeMemoryUsed",
+        "nvnQueueGetTotalControlMemoryUsed",
+        "nvnQueueResetMemoryUsageCounts",
+    };
+    for (i = 0; i < sizeof(queue_names) / sizeof(queue_names[0]); i++) {
+        void *entry = lookup(NULL, queue_names[i]);
+        expect_condition("nvn-queue-name-resolves", entry != NULL);
+        expect_condition("nvn-queue-name-is-stable", entry == lookup(NULL, queue_names[i]));
+    }
+
+    /* 2. The builder round trips. The expected values are written out here
+     *    on purpose: they must not be the constants the implementation uses,
+     *    or the check would prove nothing. */
+    unsigned char builder[64];
+    memset(builder, 0xaa, sizeof(builder));
+    builder_set_defaults_fn set_defaults =
+        (builder_set_defaults_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderSetDefaults");
+    builder_set_flags_fn set_flags =
+        (builder_set_flags_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderSetFlags");
+    builder_get_flags_fn get_flags =
+        (builder_get_flags_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderGetFlags");
+    builder_set_device_fn set_device =
+        (builder_set_device_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderSetDevice");
+    builder_get_device_fn get_device =
+        (builder_get_device_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderGetDevice");
+    builder_set_size_fn set_size =
+        (builder_set_size_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderSetCommandMemorySize");
+    builder_get_size_fn get_size =
+        (builder_get_size_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderGetCommandMemorySize");
+    CHECK(set_defaults && set_flags && get_flags && set_device && get_device && set_size && get_size);
+    set_defaults(builder);
+    expect_value("nvn-queue-builder-defaults-clear-flags", (uint64_t)(uint32_t)get_flags(builder), 0);
+    set_flags(builder, 0x1234);
+    expect_value("nvn-queue-builder-flag-round-trip", (uint64_t)(uint32_t)get_flags(builder), 0x1234);
+    void *device_marker = (void *)(uintptr_t)0x5eed;
+    set_device(builder, device_marker);
+    expect_condition("nvn-queue-builder-device-round-trip", get_device(builder) == device_marker);
+    set_size(builder, 0x2000);
+    expect_value("nvn-queue-builder-command-memory-round-trip", get_size(builder), 0x2000);
+    set_defaults(builder);
+    expect_value("nvn-queue-builder-defaults-reset-flags", (uint64_t)(uint32_t)get_flags(builder), 0);
+    expect_condition("nvn-queue-builder-defaults-clear-device", get_device(builder) == NULL);
+
+    /* 3. The runtime keeps the builder state on the host, so it must not
+     *    write a single byte into the guest's builder. */
+    expect_condition("nvn-queue-builder-not-written", all_bytes(builder, sizeof(builder), 0xaa));
+
+    /* 4. The other builder fields round trip as well. */
+    builder_set_size_fn set_compute =
+        (builder_set_size_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderSetComputeMemorySize");
+    builder_get_size_fn get_compute =
+        (builder_get_size_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderGetComputeMemorySize");
+    builder_set_size_fn set_control =
+        (builder_set_size_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderSetControlMemorySize");
+    builder_get_size_fn get_control =
+        (builder_get_size_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderGetControlMemorySize");
+    builder_set_size_fn set_threshold =
+        (builder_set_size_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderSetCommandFlushThreshold");
+    builder_get_size_fn get_threshold =
+        (builder_get_size_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderGetCommandFlushThreshold");
+    builder_set_priority_fn set_priority =
+        (builder_set_priority_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderSetQueuePriority");
+    builder_get_priority_fn get_priority =
+        (builder_get_priority_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderGetQueuePriority");
+    builder_set_memory_fn set_memory =
+        (builder_set_memory_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderSetQueueMemory");
+    builder_get_memory_fn get_memory =
+        (builder_get_memory_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderGetQueueMemory");
+    builder_get_size_fn get_memory_size =
+        (builder_get_size_fn)(uintptr_t)lookup(NULL, "nvnQueueBuilderGetMemorySize");
+    CHECK(set_compute && get_compute && set_control && get_control && set_threshold && get_threshold);
+    CHECK(set_priority && get_priority && set_memory && get_memory && get_memory_size);
+    set_defaults(builder);
+    set_compute(builder, 0x3000);
+    expect_value("nvn-queue-builder-compute-memory-round-trip", get_compute(builder), 0x3000);
+    set_control(builder, 0x4000);
+    expect_value("nvn-queue-builder-control-memory-round-trip", get_control(builder), 0x4000);
+    set_threshold(builder, 0x50);
+    expect_value("nvn-queue-builder-flush-threshold-round-trip", get_threshold(builder), 0x50);
+    set_priority(builder, 3);
+    expect_value("nvn-queue-builder-priority-round-trip", (uint64_t)(uint32_t)get_priority(builder), 3);
+    unsigned char memory[16];
+    memset(memory, 0x5a, sizeof(memory));
+    set_memory(builder, memory, sizeof(memory));
+    expect_condition("nvn-queue-builder-queue-memory-round-trip", get_memory(builder) == memory);
+    expect_value("nvn-queue-builder-queue-memory-size-round-trip", get_memory_size(builder), sizeof(memory));
+
+    /* 5. The device. The queue may only exist when the device behind it
+     *    really exists, so the device is initialized first, with a device
+     *    pointer the guest would use. */
+    init_fn init = (init_fn)(uintptr_t)bootstrap("nvnDeviceInitialize");
+    CHECK(init != NULL);
+    void *guest_device = (void *)(uintptr_t)0x7000;
+    uint64_t init_result = init(guest_device, NULL);
+    nvn_device_stats device_stats;
+    nvn_device_get_stats(&device_stats);
+    expect_condition("nvn-queue-device-initialised-matches-reality",
+                     (init_result != 0) == (device_stats.real_device != 0));
+
+    /* 6. A queue that is built without a device must be refused. A queue
+     *    that exists without a device would submit work to nothing. */
+    queue_initialize_fn queue_initialize =
+        (queue_initialize_fn)(uintptr_t)lookup(NULL, "nvnQueueInitialize");
+    CHECK(queue_initialize != NULL);
+    unsigned char queue_object[64];
+    memset(queue_object, 0xaa, sizeof(queue_object));
+    unsigned char no_device_builder[64];
+    memset(no_device_builder, 0xaa, sizeof(no_device_builder));
+    set_defaults(no_device_builder);
+    expect_value("nvn-queue-init-without-device-refused", (uint64_t)(uint32_t)queue_initialize(queue_object, no_device_builder, 0), 0);
+    expect_condition("nvn-queue-init-without-device-not-written",
+                     all_bytes(queue_object, sizeof(queue_object), 0xaa));
+
+    /* 7. The queue with the device of the guest. It exists exactly when a
+     *    real device exists, which is what this build has to be. */
+    unsigned char device_builder[64];
+    memset(device_builder, 0xaa, sizeof(device_builder));
+    set_defaults(device_builder);
+    set_device(device_builder, guest_device);
+    set_size(device_builder, 0x2000);
+    memset(queue_object, 0xaa, sizeof(queue_object));
+    uint64_t queue_result = (uint64_t)(uint32_t)queue_initialize(queue_object, device_builder, 0);
+    expect_value("nvn-queue-init-matches-real-device", queue_result, NVN_QUEUE_EXPECT_REAL_QUEUE);
+    expect_condition("nvn-queue-object-not-written", all_bytes(queue_object, sizeof(queue_object), 0xaa));
+
+    /* 8. The queue state. */
+    queue_get_error_fn get_error = (queue_get_error_fn)(uintptr_t)lookup(NULL, "nvnQueueGetError");
+    queue_get_used_fn get_used =
+        (queue_get_used_fn)(uintptr_t)lookup(NULL, "nvnQueueGetTotalCommandMemoryUsed");
+    queue_reset_fn reset_counts = (queue_reset_fn)(uintptr_t)lookup(NULL, "nvnQueueResetMemoryUsageCounts");
+    queue_finalize_fn queue_finalize = (queue_finalize_fn)(uintptr_t)lookup(NULL, "nvnQueueFinalize");
+    set_debug_label_fn set_label = (set_debug_label_fn)(uintptr_t)lookup(NULL, "nvnQueueSetDebugLabel");
+    CHECK(get_error && get_used && reset_counts && queue_finalize && set_label);
+    expect_value("nvn-queue-error-is-zero", (uint64_t)(uint32_t)get_error(queue_object), 0);
+    expect_value("nvn-queue-command-memory-used-is-zero", get_used(queue_object), 0);
+    reset_counts(queue_object);
+    expect_value("nvn-queue-memory-usage-reset", get_used(queue_object), 0);
+    set_label(queue_object, "contract-queue");
+
+    /* 9. The counters. */
+    nvn_queue_get_stats(&stats);
+    expect_condition("nvn-queue-stats-count-builder-calls", stats.builder_calls > 0);
+    expect_condition("nvn-queue-stats-initialized-matches-device",
+                     (stats.initialized > 0) == (NVN_QUEUE_EXPECT_REAL_QUEUE != 0));
+    expect_condition("nvn-queue-stats-count-refused", stats.refused > 0);
+    expect_value("nvn-queue-platform-queue-matches-device", (uint64_t)stats.platform_queue_present,
+                 (uint64_t)NVN_QUEUE_EXPECT_REAL_QUEUE);
+    expect_condition("nvn-queue-command-memory-requested-is-recorded",
+                     stats.command_memory_requested > 0);
+
+    /* 10. The queue is finalized last, because a finalized queue is gone
+     *     and its platform queue with it. */
+    queue_finalize(queue_object);
+    nvn_queue_get_stats(&stats);
+    expect_value("nvn-queue-finalized-is-not-live", (uint64_t)stats.live_queues, 0);
+
+    /* The final gate. Without it the contract could exit 0 while the
+     * expectations had failed. */
+    CHECK(!errors);
+    printf("{\"nvn_queue_errors\":%u,\"real_queue\":%s,\"platform_queue\":%s,"
+           "\"initialized\":%llu,\"refused\":%llu,\"builder_calls\":%llu}\n",
+           errors, queue_result ? "true" : "false", stats.platform_queue_present ? "true" : "false",
+           (unsigned long long)stats.initialized, (unsigned long long)stats.refused,
+           (unsigned long long)stats.builder_calls);
+    return 0;
+}
+
+/* The nn::vi display bridge contract.
+ *
+ * The guest builds one display object and hands the handles back to the
+ * other four calls. The contract checks that the bridge hands out usable
+ * handles, that a handle it did not issue is refused, and that the vsync
+ * event starts unsignalled: no frame has been presented, so there is no
+ * vsync to report. */
+static int vi_display_contract(void) {
+    typedef void (*initialize_fn)(void);
+    typedef void (*open_display_fn)(void **);
+    typedef void (*get_vsync_fn)(void *, void *);
+    typedef void (*create_layer_fn)(void **, void *);
+    typedef void (*get_window_fn)(void **, void *);
+    void *display = NULL;
+    void *layer = NULL;
+    void *window = NULL;
+
+    initialize_fn initialize = (initialize_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2vi10InitializeEv");
+    open_display_fn open_display =
+        (open_display_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2vi18OpenDefaultDisplayEPPNS0_7DisplayE");
+    get_vsync_fn get_vsync =
+        (get_vsync_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2vi20GetDisplayVsyncEventEPNS_2os15SystemEventTypeEPNS0_7DisplayE");
+    create_layer_fn create_layer =
+        (create_layer_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2vi11CreateLayerEPPNS0_5LayerEPNS0_7DisplayE");
+    get_window_fn get_window =
+        (get_window_fn)(uintptr_t)guest_process_resolve(0, "_ZN2nn2vi15GetNativeWindowEPPvPNS0_5LayerE");
+    CHECK(initialize && open_display && get_vsync && create_layer && get_window);
+
+    initialize();
+    initialize();  /* the guest may call it twice; it must stay harmless */
+
+    open_display(&display);
+    expect_condition("vi-display-issues-a-handle", display != NULL);
+    if (!display) return 1;
+
+    /* The event is the guest's own object. It starts unsignalled, because
+     * nothing has been presented yet. */
+    unsigned char event_object[32];
+    memset(event_object, 0, sizeof(event_object));
+    get_vsync(event_object, display);
+    expect_condition("vi-vsync-event-starts-unsignalled",
+                     !nso_host_os_is_event_signaled(event_object));
+
+    create_layer(&layer, display);
+    expect_condition("vi-layer-issues-a-handle", layer != NULL);
+
+    /* A handle the bridge did not issue is refused. */
+    void *bogus_display = (void *)(uintptr_t)0x1234;
+    void *bogus_layer = NULL;
+    create_layer(&bogus_layer, bogus_display);
+    expect_condition("vi-layer-refuses-a-bogus-display", bogus_layer == NULL);
+
+    /* The window is the one the platform published. In this process nothing
+     * published one, so the bridge has to say that instead of inventing a
+     * window. */
+    get_window(&window, layer);
+    expect_condition("vi-window-is-null-without-a-published-window", window == NULL);
+    void *bogus_window = (void *)(uintptr_t)0x5678;
+    get_window(&bogus_window, bogus_layer);
+    expect_condition("vi-window-refuses-a-bogus-layer", bogus_window == NULL);
+
+    CHECK(!errors);
+    printf("{\"vi_display_errors\":%u,\"display\":%s,\"layer\":%s,\"window\":%s,"
+           "\"vsync_signalled\":false}\n",
+           errors, display ? "true" : "false", layer ? "true" : "false",
+           window ? "true" : "false");
+    return 0;
+}
+
+static int nvn_window_contract(void) {
+    typedef void *(*bootstrap_fn)(const char *);
+    typedef void *(*lookup_fn)(void *, const char *);
+    typedef uint64_t (*init_fn)(void *, void *);
+    typedef void (*builder_set_defaults_fn)(void *);
+    typedef void (*builder_set_device_fn)(void *, void *);
+    typedef void *(*builder_get_device_fn)(const void *);
+    typedef void (*builder_set_native_window_fn)(void *, void *);
+    typedef void *(*builder_get_native_window_fn)(const void *);
+    typedef void (*builder_set_textures_fn)(void *, void *, int);
+    typedef int (*builder_get_num_textures_fn)(const void *);
+    typedef void *(*builder_get_texture_fn)(const void *, int);
+    typedef void (*builder_set_present_interval_fn)(void *, int);
+    typedef int (*builder_get_present_interval_fn)(const void *);
+    typedef void (*builder_set_num_active_fn)(void *, int);
+    typedef int (*builder_get_num_active_fn)(const void *);
+    typedef int (*window_initialize_fn)(void *, const void *, int);
+    typedef void *(*window_get_native_window_fn)(const void *);
+    typedef int (*window_get_num_textures_fn)(const void *);
+    typedef void (*window_finalize_fn)(void *);
+    nvn_window_stats stats;
+    size_t i;
+
+    bootstrap_fn bootstrap =
+        (bootstrap_fn)(uintptr_t)guest_process_resolve(0, "nvnBootstrapLoader");
+    CHECK(bootstrap != NULL);
+    lookup_fn lookup = (lookup_fn)(uintptr_t)bootstrap("nvnDeviceGetProcAddress");
+    CHECK(lookup != NULL);
+    static const char *const window_names[] = {
+        "nvnWindowBuilderSetDefaults",
+        "nvnWindowBuilderSetDevice",
+        "nvnWindowBuilderGetDevice",
+        "nvnWindowBuilderSetNativeWindow",
+        "nvnWindowBuilderGetNativeWindow",
+        "nvnWindowBuilderSetTextures",
+        "nvnWindowBuilderGetNumTextures",
+        "nvnWindowBuilderGetNumActiveTextures",
+        "nvnWindowBuilderGetTexture",
+        "nvnWindowBuilderSetPresentInterval",
+        "nvnWindowBuilderGetPresentInterval",
+        "nvnWindowBuilderSetNumActiveTextures",
+        "nvnWindowInitialize",
+        "nvnWindowFinalize",
+        "nvnWindowGetNativeWindow",
+        "nvnWindowGetNumTextures",
+        "nvnWindowGetNumActiveTextures",
+        "nvnWindowGetPresentInterval",
+        "nvnWindowSetNumActiveTextures",
+        "nvnWindowSetPresentInterval",
+        "nvnWindowSetCrop",
+        "nvnWindowGetCrop",
+        "nvnWindowSetDebugLabel",
+        "nvnWindowAcquireTexture",
+    };
+    for (i = 0; i < sizeof(window_names) / sizeof(window_names[0]); i++) {
+        void *entry = lookup(NULL, window_names[i]);
+        expect_condition("nvn-window-name-resolves", entry != NULL);
+        expect_condition("nvn-window-name-is-stable", entry == lookup(NULL, window_names[i]));
+    }
+
+    builder_set_defaults_fn set_defaults =
+        (builder_set_defaults_fn)(uintptr_t)lookup(NULL, "nvnWindowBuilderSetDefaults");
+    builder_set_device_fn set_device =
+        (builder_set_device_fn)(uintptr_t)lookup(NULL, "nvnWindowBuilderSetDevice");
+    builder_get_device_fn get_device =
+        (builder_get_device_fn)(uintptr_t)lookup(NULL, "nvnWindowBuilderGetDevice");
+    builder_set_native_window_fn set_native_window =
+        (builder_set_native_window_fn)(uintptr_t)lookup(NULL, "nvnWindowBuilderSetNativeWindow");
+    builder_get_native_window_fn get_native_window =
+        (builder_get_native_window_fn)(uintptr_t)lookup(NULL, "nvnWindowBuilderGetNativeWindow");
+    builder_set_textures_fn set_textures =
+        (builder_set_textures_fn)(uintptr_t)lookup(NULL, "nvnWindowBuilderSetTextures");
+    builder_get_num_textures_fn get_num_textures =
+        (builder_get_num_textures_fn)(uintptr_t)lookup(NULL, "nvnWindowBuilderGetNumTextures");
+    builder_get_texture_fn get_texture =
+        (builder_get_texture_fn)(uintptr_t)lookup(NULL, "nvnWindowBuilderGetTexture");
+    builder_set_present_interval_fn set_interval =
+        (builder_set_present_interval_fn)(uintptr_t)lookup(NULL, "nvnWindowBuilderSetPresentInterval");
+    builder_get_present_interval_fn get_interval =
+        (builder_get_present_interval_fn)(uintptr_t)lookup(NULL, "nvnWindowBuilderGetPresentInterval");
+    builder_set_num_active_fn set_active =
+        (builder_set_num_active_fn)(uintptr_t)lookup(NULL, "nvnWindowBuilderSetNumActiveTextures");
+    builder_get_num_active_fn get_active =
+        (builder_get_num_active_fn)(uintptr_t)lookup(NULL, "nvnWindowBuilderGetNumActiveTextures");
+    CHECK(set_defaults && set_device && get_device && set_native_window && get_native_window);
+    CHECK(set_textures && get_num_textures && get_texture && set_interval && get_interval);
+    CHECK(set_active && get_active);
+
+    /* 1. The builder round trips, and the guest's builder is never written
+     *    into: the state lives on the host. */
+    unsigned char builder[64];
+    memset(builder, 0xaa, sizeof(builder));
+    set_defaults(builder);
+    expect_value("nvn-window-builder-defaults-clear-device", (uint64_t)(uintptr_t)get_device(builder), 0);
+    void *device_marker = (void *)(uintptr_t)0x5eed;
+    set_device(builder, device_marker);
+    expect_condition("nvn-window-builder-device-round-trip", get_device(builder) == device_marker);
+    void *native_marker = (void *)(uintptr_t)0x7a7a;
+    set_native_window(builder, native_marker);
+    expect_condition("nvn-window-builder-native-window-round-trip",
+                     get_native_window(builder) == native_marker);
+    void *texture_handles[2] = { (void *)(uintptr_t)0x1111, (void *)(uintptr_t)0x2222 };
+    set_textures(builder, texture_handles, 2);
+    expect_value("nvn-window-builder-num-textures-round-trip", (uint64_t)(uint32_t)get_num_textures(builder), 2);
+    expect_condition("nvn-window-builder-texture-round-trip", get_texture(builder, 0) == texture_handles[0]);
+    expect_condition("nvn-window-builder-texture-round-trip-2", get_texture(builder, 1) == texture_handles[1]);
+    set_interval(builder, 2);
+    expect_value("nvn-window-builder-present-interval-round-trip", (uint64_t)(uint32_t)get_interval(builder), 2);
+    set_active(builder, 1);
+    expect_value("nvn-window-builder-active-textures-round-trip", (uint64_t)(uint32_t)get_active(builder), 1);
+    expect_condition("nvn-window-builder-not-written", all_bytes(builder, sizeof(builder), 0xaa));
+
+    /* 2. The device, so that the window has one to belong to. */
+    init_fn init = (init_fn)(uintptr_t)bootstrap("nvnDeviceInitialize");
+    CHECK(init != NULL);
+    void *guest_device = (void *)(uintptr_t)0x8000;
+    init(guest_device, NULL);
+
+    /* 3. A window that is built without a device must be refused. */
+    window_initialize_fn window_initialize =
+        (window_initialize_fn)(uintptr_t)lookup(NULL, "nvnWindowInitialize");
+    CHECK(window_initialize != NULL);
+    unsigned char window_object[64];
+    memset(window_object, 0xaa, sizeof(window_object));
+    unsigned char no_device_builder[64];
+    memset(no_device_builder, 0xaa, sizeof(no_device_builder));
+    set_defaults(no_device_builder);
+    expect_value("nvn-window-init-without-device-refused",
+                 (uint64_t)(uint32_t)window_initialize(window_object, no_device_builder, 0), 0);
+    expect_condition("nvn-window-init-without-device-not-written",
+                     all_bytes(window_object, sizeof(window_object), 0xaa));
+
+    /* 4. The window with the device of the guest. This process has no
+     *    platform window, so the window exists without a surface, and the
+     *    counters say so. The surface path is proven by the guest run, where
+     *    the Activity's window is the one that is presented into. */
+    unsigned char device_builder[64];
+    memset(device_builder, 0xaa, sizeof(device_builder));
+    set_defaults(device_builder);
+    set_device(device_builder, guest_device);
+    memset(window_object, 0xaa, sizeof(window_object));
+    uint64_t window_result = (uint64_t)(uint32_t)window_initialize(window_object, device_builder, 0);
+    expect_value("nvn-window-init-matches-real-device", window_result, NVN_QUEUE_EXPECT_REAL_QUEUE);
+    expect_condition("nvn-window-object-not-written", all_bytes(window_object, sizeof(window_object), 0xaa));
+    window_get_native_window_fn window_get_native_window =
+        (window_get_native_window_fn)(uintptr_t)lookup(NULL, "nvnWindowGetNativeWindow");
+    window_get_num_textures_fn window_get_num_textures =
+        (window_get_num_textures_fn)(uintptr_t)lookup(NULL, "nvnWindowGetNumTextures");
+    CHECK(window_get_native_window && window_get_num_textures);
+    expect_value("nvn-window-has-no-native-window", (uint64_t)(uintptr_t)window_get_native_window(window_object), 0);
+    expect_value("nvn-window-has-no-textures", (uint64_t)(uint32_t)window_get_num_textures(window_object), 0);
+
+    /* 5. The counters. */
+    nvn_window_get_stats(&stats);
+    expect_condition("nvn-window-stats-count-builder-calls", stats.builder_calls > 0);
+    expect_condition("nvn-window-stats-initialized-matches-device",
+                     (stats.initialized > 0) == (NVN_QUEUE_EXPECT_REAL_QUEUE != 0));
+    expect_condition("nvn-window-stats-count-refused", stats.refused > 0);
+    /* No platform window in this process, so no surface was created. */
+    expect_value("nvn-window-no-surface-without-a-platform-window",
+                 (uint64_t)stats.surface_present, 0);
+
+    /* 6. The window is finalized last. */
+    window_finalize_fn window_finalize = (window_finalize_fn)(uintptr_t)lookup(NULL, "nvnWindowFinalize");
+    CHECK(window_finalize != NULL);
+    window_finalize(window_object);
+    nvn_window_get_stats(&stats);
+    expect_value("nvn-window-finalized-is-not-live", (uint64_t)stats.live_windows, 0);
+
+    CHECK(!errors);
+    printf("{\"nvn_window_errors\":%u,\"real_window\":%s,\"surface\":%s,\"initialized\":%llu,"
+           "\"refused\":%llu,\"builder_calls\":%llu}\n",
+           errors, window_result ? "true" : "false", stats.surface_present ? "true" : "false",
+           (unsigned long long)stats.initialized, (unsigned long long)stats.refused,
+           (unsigned long long)stats.builder_calls);
+    return 0;
+}
+
+/* The NVN memory pool family.
+ *
+ * A memory pool is built from memory that the guest itself allocated, so the
+ * pool records that range and uses it as the CPU mapping. The contract checks
+ * the builder round trip, that the guest's builder and pool objects are never
+ * written into, that a pool without a real device is refused, and that the
+ * buffer address of a pool is stable. */
+#if defined(__ANDROID__)
+#define NVN_MEMORY_POOL_EXPECT_REAL_POOL 1
+#else
+#define NVN_MEMORY_POOL_EXPECT_REAL_POOL 0
+#endif
+
+static int nvn_memory_pool_contract(void) {
+    typedef void *(*bootstrap_fn)(const char *);
+    typedef void *(*lookup_fn)(void *, const char *);
+    typedef uint64_t (*init_fn)(void *, void *);
+    typedef void (*builder_set_defaults_fn)(void *);
+    typedef void (*builder_set_device_fn)(void *, void *);
+    typedef void *(*builder_get_device_fn)(const void *);
+    typedef void (*builder_set_storage_fn)(void *, void *, uint64_t);
+    typedef void *(*builder_get_memory_fn)(const void *);
+    typedef uint64_t (*builder_get_size_fn)(const void *);
+    typedef void (*builder_set_flags_fn)(void *, int);
+    typedef uint32_t (*builder_get_flags_fn)(const void *);
+    typedef int (*pool_initialize_fn)(void *, const void *);
+    typedef void (*pool_set_debug_label_fn)(void *, const char *);
+    typedef void (*pool_finalize_fn)(void *);
+    typedef void *(*pool_map_fn)(const void *);
+    typedef void (*pool_flush_fn)(const void *, ptrdiff_t, size_t);
+    typedef void (*pool_invalidate_fn)(const void *, ptrdiff_t, size_t);
+    typedef uint64_t (*pool_get_buffer_address_fn)(const void *);
+    typedef int (*pool_map_virtual_fn)(void *, int, const void *);
+    typedef uint64_t (*pool_get_size_fn)(const void *);
+    typedef uint32_t (*pool_get_flags_fn)(const void *);
+    nvn_memory_pool_stats stats;
+    size_t i;
+
+    /* 1. Every name of the family has to resolve through the device scoped
+     *    lookup, and the same name has to resolve to the same entry point
+     *    every time. */
+    bootstrap_fn bootstrap =
+        (bootstrap_fn)(uintptr_t)guest_process_resolve(0, "nvnBootstrapLoader");
+    CHECK(bootstrap != NULL);
+    lookup_fn lookup = (lookup_fn)(uintptr_t)bootstrap("nvnDeviceGetProcAddress");
+    CHECK(lookup != NULL);
+    static const char *const pool_names[] = {
+        "nvnMemoryPoolBuilderSetDevice",
+        "nvnMemoryPoolBuilderSetDefaults",
+        "nvnMemoryPoolBuilderSetStorage",
+        "nvnMemoryPoolBuilderSetFlags",
+        "nvnMemoryPoolBuilderGetDevice",
+        "nvnMemoryPoolBuilderGetMemory",
+        "nvnMemoryPoolBuilderGetSize",
+        "nvnMemoryPoolBuilderGetFlags",
+        "nvnMemoryPoolInitialize",
+        "nvnMemoryPoolSetDebugLabel",
+        "nvnMemoryPoolFinalize",
+        "nvnMemoryPoolMap",
+        "nvnMemoryPoolFlushMappedRange",
+        "nvnMemoryPoolInvalidateMappedRange",
+        "nvnMemoryPoolGetBufferAddress",
+        "nvnMemoryPoolMapVirtual",
+        "nvnMemoryPoolGetSize",
+        "nvnMemoryPoolGetFlags",
+    };
+    for (i = 0; i < sizeof(pool_names) / sizeof(pool_names[0]); i++) {
+        void *entry = lookup(NULL, pool_names[i]);
+        expect_condition("nvn-memory-pool-name-resolves", entry != NULL);
+        expect_condition("nvn-memory-pool-name-is-stable", entry == lookup(NULL, pool_names[i]));
+    }
+
+    builder_set_defaults_fn set_defaults =
+        (builder_set_defaults_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolBuilderSetDefaults");
+    builder_set_device_fn set_device =
+        (builder_set_device_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolBuilderSetDevice");
+    builder_get_device_fn get_device =
+        (builder_get_device_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolBuilderGetDevice");
+    builder_set_storage_fn set_storage =
+        (builder_set_storage_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolBuilderSetStorage");
+    builder_get_memory_fn get_memory =
+        (builder_get_memory_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolBuilderGetMemory");
+    builder_get_size_fn builder_get_pool_size =
+        (builder_get_size_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolBuilderGetSize");
+    builder_set_flags_fn set_flags =
+        (builder_set_flags_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolBuilderSetFlags");
+    builder_get_flags_fn get_flags =
+        (builder_get_flags_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolBuilderGetFlags");
+    CHECK(set_defaults && set_device && get_device && set_storage && get_memory);
+    CHECK(builder_get_pool_size && set_flags && get_flags);
+
+    /* 2. The builder round trips. The expected values are written out here
+     *    on purpose: they must not be the constants the implementation uses,
+     *    or the check would prove nothing. */
+    unsigned char builder[64];
+    memset(builder, 0xaa, sizeof(builder));
+    set_defaults(builder);
+    expect_value("nvn-memory-pool-builder-defaults-clear-device", (uint64_t)(uintptr_t)get_device(builder), 0);
+    expect_value("nvn-memory-pool-builder-defaults-clear-flags", (uint64_t)(uint32_t)get_flags(builder), 0);
+    expect_value("nvn-memory-pool-builder-defaults-clear-size", builder_get_pool_size(builder), 0);
+    expect_condition("nvn-memory-pool-builder-defaults-clear-memory", get_memory(builder) == NULL);
+
+    void *device_marker = (void *)(uintptr_t)0x5eed;
+    set_device(builder, device_marker);
+    expect_condition("nvn-memory-pool-builder-device-round-trip", get_device(builder) == device_marker);
+
+    /* The storage is host memory the guest owns. The runtime records it; it
+     * must not copy it, because the guest writes into the range it handed
+     * over. */
+    unsigned char storage[256];
+    memset(storage, 0x5a, sizeof(storage));
+    set_storage(builder, storage, sizeof(storage));
+    expect_condition("nvn-memory-pool-builder-memory-round-trip", get_memory(builder) == storage);
+    expect_value("nvn-memory-pool-builder-size-round-trip", builder_get_pool_size(builder), sizeof(storage));
+
+    set_flags(builder, 0x24);
+    expect_value("nvn-memory-pool-builder-flag-round-trip", (uint64_t)(uint32_t)get_flags(builder), 0x24);
+
+    /* 3. The runtime keeps the state on the host, so it must not write a
+     *    single byte into the guest's builder. */
+    expect_condition("nvn-memory-pool-builder-not-written", all_bytes(builder, sizeof(builder), 0xaa));
+
+    /* 4. The device, so that the pool has one to belong to. */
+    init_fn init = (init_fn)(uintptr_t)bootstrap("nvnDeviceInitialize");
+    CHECK(init != NULL);
+    void *guest_device = (void *)(uintptr_t)0x9000;
+    uint64_t init_result = init(guest_device, NULL);
+    nvn_device_stats device_stats;
+    nvn_device_get_stats(&device_stats);
+    expect_condition("nvn-memory-pool-device-initialised-matches-reality",
+                     (init_result != 0) == (device_stats.real_device != 0));
+
+    pool_initialize_fn pool_initialize =
+        (pool_initialize_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolInitialize");
+    pool_map_fn pool_map = (pool_map_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolMap");
+    pool_flush_fn pool_flush = (pool_flush_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolFlushMappedRange");
+    pool_invalidate_fn pool_invalidate =
+        (pool_invalidate_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolInvalidateMappedRange");
+    pool_get_buffer_address_fn pool_get_buffer_address =
+        (pool_get_buffer_address_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolGetBufferAddress");
+    pool_map_virtual_fn pool_map_virtual =
+        (pool_map_virtual_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolMapVirtual");
+    pool_get_size_fn pool_get_size = (pool_get_size_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolGetSize");
+    pool_get_flags_fn pool_get_flags = (pool_get_flags_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolGetFlags");
+    pool_set_debug_label_fn pool_set_debug_label =
+        (pool_set_debug_label_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolSetDebugLabel");
+    pool_finalize_fn pool_finalize = (pool_finalize_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolFinalize");
+    CHECK(pool_initialize && pool_map && pool_flush && pool_invalidate && pool_get_buffer_address);
+    CHECK(pool_map_virtual && pool_get_size && pool_get_flags && pool_set_debug_label && pool_finalize);
+
+    /* 5. A pool that is built without a device must be refused. A pool
+     *    without a device is memory that no graphics device can use. */
+    unsigned char pool_object[256];
+    memset(pool_object, 0xaa, sizeof(pool_object));
+    unsigned char no_device_builder[64];
+    memset(no_device_builder, 0xaa, sizeof(no_device_builder));
+    set_defaults(no_device_builder);
+    set_storage(no_device_builder, storage, sizeof(storage));
+    expect_value("nvn-memory-pool-init-without-device-refused",
+                 (uint64_t)(uint32_t)pool_initialize(pool_object, no_device_builder), 0);
+    expect_condition("nvn-memory-pool-init-without-device-not-written",
+                     all_bytes(pool_object, sizeof(pool_object), 0xaa));
+
+    /* 6. A pool without storage must be refused too: the guest allocates the
+     *    memory itself, and a runtime that invented a buffer here would give
+     *    the guest memory it never asked for. */
+    unsigned char no_storage_builder[64];
+    memset(no_storage_builder, 0xaa, sizeof(no_storage_builder));
+    set_defaults(no_storage_builder);
+    set_device(no_storage_builder, guest_device);
+    expect_value("nvn-memory-pool-init-without-storage-refused",
+                 (uint64_t)(uint32_t)pool_initialize(pool_object, no_storage_builder), 0);
+    expect_condition("nvn-memory-pool-init-without-storage-not-written",
+                     all_bytes(pool_object, sizeof(pool_object), 0xaa));
+
+    /* 7. The pool with the device of the guest and the storage the guest
+     *    owns. It exists exactly when a real device exists. */
+    unsigned char device_builder[64];
+    memset(device_builder, 0xaa, sizeof(device_builder));
+    set_defaults(device_builder);
+    set_device(device_builder, guest_device);
+    set_storage(device_builder, storage, sizeof(storage));
+    set_flags(device_builder, 0x24);
+    memset(pool_object, 0xaa, sizeof(pool_object));
+    uint64_t pool_result = (uint64_t)(uint32_t)pool_initialize(pool_object, device_builder);
+    expect_value("nvn-memory-pool-init-matches-real-device", pool_result, NVN_MEMORY_POOL_EXPECT_REAL_POOL);
+    expect_condition("nvn-memory-pool-object-not-written", all_bytes(pool_object, sizeof(pool_object), 0xaa));
+
+    /* 8. The pool state. The mapping is the storage the guest handed over,
+     *    so that the guest writes into the memory it knows. */
+    if (NVN_MEMORY_POOL_EXPECT_REAL_POOL) {
+        expect_condition("nvn-memory-pool-map-is-the-guest-storage", pool_map(pool_object) == storage);
+        expect_value("nvn-memory-pool-size-matches-the-builder", pool_get_size(pool_object), sizeof(storage));
+        expect_value("nvn-memory-pool-flags-match-the-builder", (uint64_t)(uint32_t)pool_get_flags(pool_object), 0x24);
+        /* The buffer address has to be stable: the guest hands it back to the
+         * device for every access to the memory. */
+        uint64_t address_first = pool_get_buffer_address(pool_object);
+        uint64_t address_second = pool_get_buffer_address(pool_object);
+        expect_condition("nvn-memory-pool-buffer-address-is-not-zero", address_first != 0);
+        expect_condition("nvn-memory-pool-buffer-address-is-stable", address_first == address_second);
+    } else {
+        /* Without a device there is no pool, so there is no mapping either. */
+        expect_condition("nvn-memory-pool-map-is-null-without-a-device", pool_map(pool_object) == NULL);
+        expect_value("nvn-memory-pool-size-is-zero-without-a-device", pool_get_size(pool_object), 0);
+    }
+    pool_set_debug_label(pool_object, "contract-pool");
+    pool_flush(pool_object, 0, sizeof(storage));
+    pool_invalidate(pool_object, 0, sizeof(storage));
+
+    /* 9. The virtual mapping is refused and named, because this runtime does
+     *    not build a page table for the guest. */
+    expect_value("nvn-memory-pool-map-virtual-refused",
+                 (uint64_t)(uint32_t)pool_map_virtual(pool_object, 0, NULL), 0);
+
+    /* 10. The counters. */
+    nvn_memory_pool_get_stats(&stats);
+    expect_condition("nvn-memory-pool-stats-count-builder-calls", stats.builder_calls > 0);
+    expect_condition("nvn-memory-pool-stats-initialized-matches-device",
+                     (stats.initialized > 0) == (NVN_MEMORY_POOL_EXPECT_REAL_POOL != 0));
+    expect_condition("nvn-memory-pool-stats-count-refused", stats.refused > 0);
+    expect_condition("nvn-memory-pool-stats-count-storage", stats.storage_recorded > 0);
+    expect_condition("nvn-memory-pool-stats-count-map-virtual-refusal", stats.map_virtual_refused > 0);
+
+    /* 11. The pool is finalized last, because a finalized pool is gone. */
+    pool_finalize(pool_object);
+    nvn_memory_pool_get_stats(&stats);
+    expect_value("nvn-memory-pool-finalized-is-not-live", (uint64_t)stats.live_pools, 0);
+    expect_condition("nvn-memory-pool-map-is-null-after-finalize", pool_map(pool_object) == NULL);
+
+    /* The final gate. Without it the contract could exit 0 while the
+     * expectations had failed. */
+    CHECK(!errors);
+    printf("{\"nvn_memory_pool_errors\":%u,\"real_pool\":%s,\"initialized\":%llu,"
+           "\"refused\":%llu,\"builder_calls\":%llu,\"map_virtual_refused\":%llu}\n",
+           errors, pool_result ? "true" : "false",
+           (unsigned long long)stats.initialized, (unsigned long long)stats.refused,
+           (unsigned long long)stats.builder_calls,
+           (unsigned long long)stats.map_virtual_refused);
+    return 0;
+}
+
+/* The NVN sampler pool family.
+ *
+ * A sampler pool is a slice of a memory pool that holds the samplers the
+ * guest draws with. The contract checks that the pool needs a memory pool and
+ * a size, that the values the guest handed over are answered back unchanged,
+ * that the samplers are registered by index, and that the guest's pool object
+ * is never written into. */
+static int nvn_sampler_pool_contract(void) {
+    typedef void *(*bootstrap_fn)(const char *);
+    typedef void *(*lookup_fn)(void *, const char *);
+    typedef int (*pool_initialize_fn)(void *, const void *, ptrdiff_t, int);
+    typedef void (*pool_set_debug_label_fn)(void *, const char *);
+    typedef void (*pool_finalize_fn)(void *);
+    typedef void (*pool_register_sampler_fn)(const void *, int, const void *);
+    typedef void (*pool_register_sampler_builder_fn)(const void *, int, const void *);
+    typedef void *(*pool_get_memory_pool_fn)(const void *);
+    typedef ptrdiff_t (*pool_get_memory_offset_fn)(const void *);
+    typedef int (*pool_get_size_fn)(const void *);
+    nvn_sampler_pool_stats stats;
+    size_t i;
+
+    /* 1. Every name of the family has to resolve, and the same name has to
+     *    resolve to the same entry point every time. */
+    bootstrap_fn bootstrap =
+        (bootstrap_fn)(uintptr_t)guest_process_resolve(0, "nvnBootstrapLoader");
+    CHECK(bootstrap != NULL);
+    lookup_fn lookup = (lookup_fn)(uintptr_t)bootstrap("nvnDeviceGetProcAddress");
+    CHECK(lookup != NULL);
+    static const char *const sampler_pool_names[] = {
+        "nvnSamplerPoolInitialize",
+        "nvnSamplerPoolSetDebugLabel",
+        "nvnSamplerPoolFinalize",
+        "nvnSamplerPoolRegisterSampler",
+        "nvnSamplerPoolRegisterSamplerBuilder",
+        "nvnSamplerPoolGetMemoryPool",
+        "nvnSamplerPoolGetMemoryOffset",
+        "nvnSamplerPoolGetSize",
+    };
+    for (i = 0; i < sizeof(sampler_pool_names) / sizeof(sampler_pool_names[0]); i++) {
+        void *entry = lookup(NULL, sampler_pool_names[i]);
+        expect_condition("nvn-sampler-pool-name-resolves", entry != NULL);
+        expect_condition("nvn-sampler-pool-name-is-stable", entry == lookup(NULL, sampler_pool_names[i]));
+    }
+
+    pool_initialize_fn pool_initialize =
+        (pool_initialize_fn)(uintptr_t)lookup(NULL, "nvnSamplerPoolInitialize");
+    pool_set_debug_label_fn pool_set_debug_label =
+        (pool_set_debug_label_fn)(uintptr_t)lookup(NULL, "nvnSamplerPoolSetDebugLabel");
+    pool_finalize_fn pool_finalize = (pool_finalize_fn)(uintptr_t)lookup(NULL, "nvnSamplerPoolFinalize");
+    pool_register_sampler_fn pool_register_sampler =
+        (pool_register_sampler_fn)(uintptr_t)lookup(NULL, "nvnSamplerPoolRegisterSampler");
+    pool_register_sampler_builder_fn pool_register_sampler_builder =
+        (pool_register_sampler_builder_fn)(uintptr_t)lookup(NULL, "nvnSamplerPoolRegisterSamplerBuilder");
+    pool_get_memory_pool_fn pool_get_memory_pool =
+        (pool_get_memory_pool_fn)(uintptr_t)lookup(NULL, "nvnSamplerPoolGetMemoryPool");
+    pool_get_memory_offset_fn pool_get_memory_offset =
+        (pool_get_memory_offset_fn)(uintptr_t)lookup(NULL, "nvnSamplerPoolGetMemoryOffset");
+    pool_get_size_fn pool_get_size = (pool_get_size_fn)(uintptr_t)lookup(NULL, "nvnSamplerPoolGetSize");
+    CHECK(pool_initialize && pool_set_debug_label && pool_finalize && pool_register_sampler);
+    CHECK(pool_register_sampler_builder && pool_get_memory_pool && pool_get_memory_offset && pool_get_size);
+
+    /* 2. A pool without a memory pool must be refused: a sampler pool is a
+     *    slice of a memory pool, so it has nothing to hold samplers without
+     *    one. */
+    unsigned char pool_object[32];
+    memset(pool_object, 0xaa, sizeof(pool_object));
+    expect_value("nvn-sampler-pool-init-without-a-memory-pool-refused",
+                 (uint64_t)(uint32_t)pool_initialize(pool_object, NULL, 0, 4), 0);
+    expect_condition("nvn-sampler-pool-init-without-a-memory-pool-not-written",
+                     all_bytes(pool_object, sizeof(pool_object), 0xaa));
+
+    /* 3. A pool with a size of zero is not an error: the guest is free to
+     *    create an empty pool and register into it later. The device run
+     *    showed the guest passing zero, so a refusal here would have turned
+     *    a value the guest chose into a failure it never asked for. */
+    void *memory_pool_marker = (void *)(uintptr_t)0x6600;
+    memset(pool_object, 0xaa, sizeof(pool_object));
+    uint64_t empty_pool_result = (uint64_t)(uint32_t)pool_initialize(pool_object, memory_pool_marker, 0, 0);
+    expect_value("nvn-sampler-pool-init-with-a-size-of-zero-succeeds", empty_pool_result, 1);
+    expect_value("nvn-sampler-pool-empty-size-round-trip",
+                 (uint64_t)(uint32_t)pool_get_size(pool_object), 0);
+    expect_condition("nvn-sampler-pool-empty-object-not-written",
+                     all_bytes(pool_object, sizeof(pool_object), 0xaa));
+
+    /* 4. The pool with the values the guest handed over. They have to be
+     *    answered back unchanged, because the guest uses them to address the
+     *    samplers inside the memory pool. */
+    memset(pool_object, 0xaa, sizeof(pool_object));
+    uint64_t pool_result = (uint64_t)(uint32_t)pool_initialize(pool_object, memory_pool_marker, 0x200, 16);
+    expect_value("nvn-sampler-pool-init-succeeds", pool_result, 1);
+    expect_condition("nvn-sampler-pool-object-not-written", all_bytes(pool_object, sizeof(pool_object), 0xaa));
+    expect_condition("nvn-sampler-pool-memory-pool-round-trip",
+                     pool_get_memory_pool(pool_object) == memory_pool_marker);
+    expect_value("nvn-sampler-pool-memory-offset-round-trip",
+                 (uint64_t)pool_get_memory_offset(pool_object), 0x200);
+    expect_value("nvn-sampler-pool-size-round-trip", (uint64_t)(uint32_t)pool_get_size(pool_object), 16);
+
+    /* 5. The samplers are registered by index. The pool keeps which index
+     *    holds which sampler, because the guest refers to them by index. */
+    void *sampler_marker = (void *)(uintptr_t)0x7788;
+    void *sampler_builder_marker = (void *)(uintptr_t)0x99aa;
+    pool_register_sampler(pool_object, 3, sampler_marker);
+    pool_register_sampler_builder(pool_object, 7, sampler_builder_marker);
+    pool_set_debug_label(pool_object, "contract-sampler-pool");
+
+    /* 6. The counters. */
+    nvn_sampler_pool_get_stats(&stats);
+    expect_condition("nvn-sampler-pool-stats-count-builder-calls", stats.builder_calls > 0);
+    expect_condition("nvn-sampler-pool-stats-initialized", stats.initialized > 0);
+    expect_condition("nvn-sampler-pool-stats-count-refused", stats.refused > 0);
+    expect_condition("nvn-sampler-pool-stats-count-samplers", stats.samplers_registered > 0);
+    expect_condition("nvn-sampler-pool-stats-count-sampler-builders", stats.sampler_builders_registered > 0);
+    expect_value("nvn-sampler-pool-stats-live-pools", (uint64_t)stats.live_pools, 1);
+
+    /* 7. The pool is finalized last, because a finalized pool is gone. */
+    pool_finalize(pool_object);
+    nvn_sampler_pool_get_stats(&stats);
+    expect_value("nvn-sampler-pool-finalized-is-not-live", (uint64_t)stats.live_pools, 0);
+    expect_value("nvn-sampler-pool-get-size-after-finalize",
+                 (uint64_t)(uint32_t)pool_get_size(pool_object), 0);
+    expect_condition("nvn-sampler-pool-get-memory-pool-after-finalize",
+                     pool_get_memory_pool(pool_object) == NULL);
+
+    /* The final gate. Without it the contract could exit 0 while the
+     * expectations had failed. */
+    CHECK(!errors);
+    printf("{\"nvn_sampler_pool_errors\":%u,\"initialized\":%llu,\"refused\":%llu,"
+           "\"samplers_registered\":%llu,\"sampler_builders_registered\":%llu}\n",
+           errors, (unsigned long long)stats.initialized, (unsigned long long)stats.refused,
+           (unsigned long long)stats.samplers_registered,
+           (unsigned long long)stats.sampler_builders_registered);
+    return 0;
+}
+
+/* The NVN texture pool family.
+ *
+ * A texture pool is a slice of a memory pool that holds the textures the
+ * guest draws with. The contract checks that the pool needs a memory pool,
+ * that the values the guest handed over are answered back unchanged, that the
+ * textures are registered by index, and that the guest's pool object is never
+ * written into. */
+static int nvn_texture_pool_contract(void) {
+    typedef void *(*bootstrap_fn)(const char *);
+    typedef void *(*lookup_fn)(void *, const char *);
+    typedef int (*pool_initialize_fn)(void *, const void *, ptrdiff_t, int);
+    typedef void (*pool_set_debug_label_fn)(void *, const char *);
+    typedef void (*pool_finalize_fn)(void *);
+    typedef void (*pool_register_texture_fn)(const void *, int, const void *, const void *);
+    typedef void (*pool_register_image_fn)(const void *, int, const void *, const void *);
+    typedef void *(*pool_get_memory_pool_fn)(const void *);
+    typedef ptrdiff_t (*pool_get_memory_offset_fn)(const void *);
+    typedef int (*pool_get_size_fn)(const void *);
+    nvn_texture_pool_stats stats;
+    size_t i;
+
+    /* 1. Every name of the family has to resolve, and the same name has to
+     *    resolve to the same entry point every time. */
+    bootstrap_fn bootstrap =
+        (bootstrap_fn)(uintptr_t)guest_process_resolve(0, "nvnBootstrapLoader");
+    CHECK(bootstrap != NULL);
+    lookup_fn lookup = (lookup_fn)(uintptr_t)bootstrap("nvnDeviceGetProcAddress");
+    CHECK(lookup != NULL);
+    static const char *const texture_pool_names[] = {
+        "nvnTexturePoolInitialize",
+        "nvnTexturePoolSetDebugLabel",
+        "nvnTexturePoolFinalize",
+        "nvnTexturePoolRegisterTexture",
+        "nvnTexturePoolRegisterImage",
+        "nvnTexturePoolGetMemoryPool",
+        "nvnTexturePoolGetMemoryOffset",
+        "nvnTexturePoolGetSize",
+    };
+    for (i = 0; i < sizeof(texture_pool_names) / sizeof(texture_pool_names[0]); i++) {
+        void *entry = lookup(NULL, texture_pool_names[i]);
+        expect_condition("nvn-texture-pool-name-resolves", entry != NULL);
+        expect_condition("nvn-texture-pool-name-is-stable", entry == lookup(NULL, texture_pool_names[i]));
+    }
+
+    pool_initialize_fn pool_initialize =
+        (pool_initialize_fn)(uintptr_t)lookup(NULL, "nvnTexturePoolInitialize");
+    pool_set_debug_label_fn pool_set_debug_label =
+        (pool_set_debug_label_fn)(uintptr_t)lookup(NULL, "nvnTexturePoolSetDebugLabel");
+    pool_finalize_fn pool_finalize = (pool_finalize_fn)(uintptr_t)lookup(NULL, "nvnTexturePoolFinalize");
+    pool_register_texture_fn pool_register_texture =
+        (pool_register_texture_fn)(uintptr_t)lookup(NULL, "nvnTexturePoolRegisterTexture");
+    pool_register_image_fn pool_register_image =
+        (pool_register_image_fn)(uintptr_t)lookup(NULL, "nvnTexturePoolRegisterImage");
+    pool_get_memory_pool_fn pool_get_memory_pool =
+        (pool_get_memory_pool_fn)(uintptr_t)lookup(NULL, "nvnTexturePoolGetMemoryPool");
+    pool_get_memory_offset_fn pool_get_memory_offset =
+        (pool_get_memory_offset_fn)(uintptr_t)lookup(NULL, "nvnTexturePoolGetMemoryOffset");
+    pool_get_size_fn pool_get_size = (pool_get_size_fn)(uintptr_t)lookup(NULL, "nvnTexturePoolGetSize");
+    CHECK(pool_initialize && pool_set_debug_label && pool_finalize && pool_register_texture);
+    CHECK(pool_register_image && pool_get_memory_pool && pool_get_memory_offset && pool_get_size);
+
+    /* 2. A pool without a memory pool must be refused: a texture pool is a
+     *    slice of a memory pool, so it has nothing to hold textures without
+     *    one. */
+    unsigned char pool_object[32];
+    memset(pool_object, 0xaa, sizeof(pool_object));
+    expect_value("nvn-texture-pool-init-without-a-memory-pool-refused",
+                 (uint64_t)(uint32_t)pool_initialize(pool_object, NULL, 0, 4), 0);
+    expect_condition("nvn-texture-pool-init-without-a-memory-pool-not-written",
+                     all_bytes(pool_object, sizeof(pool_object), 0xaa));
+
+    /* 3. A size of zero is not an error: it is a pool that holds no texture
+     *    yet, and the guest registers into it later. */
+    void *memory_pool_marker = (void *)(uintptr_t)0x6600;
+    memset(pool_object, 0xaa, sizeof(pool_object));
+    uint64_t empty_pool_result = (uint64_t)(uint32_t)pool_initialize(pool_object, memory_pool_marker, 0, 0);
+    expect_value("nvn-texture-pool-init-with-a-size-of-zero-succeeds", empty_pool_result, 1);
+    expect_value("nvn-texture-pool-empty-size-round-trip",
+                 (uint64_t)(uint32_t)pool_get_size(pool_object), 0);
+    expect_condition("nvn-texture-pool-empty-object-not-written",
+                     all_bytes(pool_object, sizeof(pool_object), 0xaa));
+
+    /* 4. The pool with the values the guest handed over. They have to be
+     *    answered back unchanged, because the guest uses them to address the
+     *    textures inside the memory pool. */
+    memset(pool_object, 0xaa, sizeof(pool_object));
+    uint64_t pool_result = (uint64_t)(uint32_t)pool_initialize(pool_object, memory_pool_marker, 0x400, 32);
+    expect_value("nvn-texture-pool-init-succeeds", pool_result, 1);
+    expect_condition("nvn-texture-pool-object-not-written", all_bytes(pool_object, sizeof(pool_object), 0xaa));
+    expect_condition("nvn-texture-pool-memory-pool-round-trip",
+                     pool_get_memory_pool(pool_object) == memory_pool_marker);
+    expect_value("nvn-texture-pool-memory-offset-round-trip",
+                 (uint64_t)pool_get_memory_offset(pool_object), 0x400);
+    expect_value("nvn-texture-pool-size-round-trip", (uint64_t)(uint32_t)pool_get_size(pool_object), 32);
+
+    /* 5. The textures are registered by index. */
+    void *texture_marker = (void *)(uintptr_t)0x1122;
+    void *view_marker = (void *)(uintptr_t)0x3344;
+    pool_register_texture(pool_object, 5, texture_marker, view_marker);
+    pool_register_image(pool_object, 6, texture_marker, view_marker);
+    pool_set_debug_label(pool_object, "contract-texture-pool");
+
+    /* 6. The counters. */
+    nvn_texture_pool_get_stats(&stats);
+    expect_condition("nvn-texture-pool-stats-count-builder-calls", stats.builder_calls > 0);
+    expect_condition("nvn-texture-pool-stats-initialized", stats.initialized > 0);
+    expect_condition("nvn-texture-pool-stats-count-refused", stats.refused > 0);
+    expect_condition("nvn-texture-pool-stats-count-textures", stats.textures_registered > 0);
+    expect_condition("nvn-texture-pool-stats-count-images", stats.images_registered > 0);
+    expect_value("nvn-texture-pool-stats-live-pools", (uint64_t)stats.live_pools, 1);
+
+    /* 7. The pool is finalized last, because a finalized pool is gone. */
+    pool_finalize(pool_object);
+    nvn_texture_pool_get_stats(&stats);
+    expect_value("nvn-texture-pool-finalized-is-not-live", (uint64_t)stats.live_pools, 0);
+    expect_value("nvn-texture-pool-get-size-after-finalize",
+                 (uint64_t)(uint32_t)pool_get_size(pool_object), 0);
+    expect_condition("nvn-texture-pool-get-memory-pool-after-finalize",
+                     pool_get_memory_pool(pool_object) == NULL);
+
+    /* The final gate. Without it the contract could exit 0 while the
+     * expectations had failed. */
+    CHECK(!errors);
+    printf("{\"nvn_texture_pool_errors\":%u,\"initialized\":%llu,\"refused\":%llu,"
+           "\"textures_registered\":%llu,\"images_registered\":%llu}\n",
+           errors, (unsigned long long)stats.initialized, (unsigned long long)stats.refused,
+           (unsigned long long)stats.textures_registered,
+           (unsigned long long)stats.images_registered);
+    return 0;
+}
+
+/* The NVN blend state family.
+ *
+ * A blend state carries the guest's blend parameters. The contract checks
+ * that the defaults really reset the state, that every parameter round trips,
+ * and that the guest's state object is never written into. */
+static int nvn_blend_state_contract(void) {
+    typedef void *(*bootstrap_fn)(const char *);
+    typedef void *(*lookup_fn)(void *, const char *);
+    typedef void (*set_defaults_fn)(void *);
+    typedef void (*set_blend_target_fn)(void *, int);
+    typedef void (*set_blend_func_fn)(void *, int, int, int, int);
+    typedef void (*set_blend_equation_fn)(void *, int, int);
+    typedef void (*set_advanced_mode_fn)(void *, int);
+    typedef void (*set_advanced_overlap_fn)(void *, int);
+    typedef void (*set_advanced_premultiplied_src_fn)(void *, int);
+    typedef void (*set_advanced_normalized_dst_fn)(void *, int);
+    typedef int (*get_blend_target_fn)(const void *);
+    typedef void (*get_blend_func_fn)(const void *, int *, int *, int *, int *);
+    typedef void (*get_blend_equation_fn)(const void *, int *, int *);
+    typedef int (*get_advanced_mode_fn)(const void *);
+    typedef int (*get_advanced_overlap_fn)(const void *);
+    typedef int (*get_advanced_premultiplied_src_fn)(const void *);
+    typedef int (*get_advanced_normalized_dst_fn)(const void *);
+    nvn_blend_state_stats stats;
+    size_t i;
+
+    /* 1. Every name of the family has to resolve, and the same name has to
+     *    resolve to the same entry point every time. */
+    bootstrap_fn bootstrap =
+        (bootstrap_fn)(uintptr_t)guest_process_resolve(0, "nvnBootstrapLoader");
+    CHECK(bootstrap != NULL);
+    lookup_fn lookup = (lookup_fn)(uintptr_t)bootstrap("nvnDeviceGetProcAddress");
+    CHECK(lookup != NULL);
+    static const char *const blend_names[] = {
+        "nvnBlendStateSetDefaults",
+        "nvnBlendStateSetBlendTarget",
+        "nvnBlendStateSetBlendFunc",
+        "nvnBlendStateSetBlendEquation",
+        "nvnBlendStateSetAdvancedMode",
+        "nvnBlendStateSetAdvancedOverlap",
+        "nvnBlendStateSetAdvancedPremultipliedSrc",
+        "nvnBlendStateSetAdvancedNormalizedDst",
+        "nvnBlendStateGetBlendTarget",
+        "nvnBlendStateGetBlendFunc",
+        "nvnBlendStateGetBlendEquation",
+        "nvnBlendStateGetAdvancedMode",
+        "nvnBlendStateGetAdvancedOverlap",
+        "nvnBlendStateGetAdvancedPremultipliedSrc",
+        "nvnBlendStateGetAdvancedNormalizedDst",
+    };
+    for (i = 0; i < sizeof(blend_names) / sizeof(blend_names[0]); i++) {
+        void *entry = lookup(NULL, blend_names[i]);
+        expect_condition("nvn-blend-state-name-resolves", entry != NULL);
+        expect_condition("nvn-blend-state-name-is-stable", entry == lookup(NULL, blend_names[i]));
+    }
+
+    set_defaults_fn set_defaults = (set_defaults_fn)(uintptr_t)lookup(NULL, "nvnBlendStateSetDefaults");
+    set_blend_target_fn set_blend_target =
+        (set_blend_target_fn)(uintptr_t)lookup(NULL, "nvnBlendStateSetBlendTarget");
+    set_blend_func_fn set_blend_func =
+        (set_blend_func_fn)(uintptr_t)lookup(NULL, "nvnBlendStateSetBlendFunc");
+    set_blend_equation_fn set_blend_equation =
+        (set_blend_equation_fn)(uintptr_t)lookup(NULL, "nvnBlendStateSetBlendEquation");
+    set_advanced_mode_fn set_advanced_mode =
+        (set_advanced_mode_fn)(uintptr_t)lookup(NULL, "nvnBlendStateSetAdvancedMode");
+    set_advanced_overlap_fn set_advanced_overlap =
+        (set_advanced_overlap_fn)(uintptr_t)lookup(NULL, "nvnBlendStateSetAdvancedOverlap");
+    set_advanced_premultiplied_src_fn set_premultiplied =
+        (set_advanced_premultiplied_src_fn)(uintptr_t)lookup(NULL, "nvnBlendStateSetAdvancedPremultipliedSrc");
+    set_advanced_normalized_dst_fn set_normalized =
+        (set_advanced_normalized_dst_fn)(uintptr_t)lookup(NULL, "nvnBlendStateSetAdvancedNormalizedDst");
+    get_blend_target_fn get_blend_target =
+        (get_blend_target_fn)(uintptr_t)lookup(NULL, "nvnBlendStateGetBlendTarget");
+    get_blend_func_fn get_blend_func =
+        (get_blend_func_fn)(uintptr_t)lookup(NULL, "nvnBlendStateGetBlendFunc");
+    get_blend_equation_fn get_blend_equation =
+        (get_blend_equation_fn)(uintptr_t)lookup(NULL, "nvnBlendStateGetBlendEquation");
+    get_advanced_mode_fn get_advanced_mode =
+        (get_advanced_mode_fn)(uintptr_t)lookup(NULL, "nvnBlendStateGetAdvancedMode");
+    get_advanced_overlap_fn get_advanced_overlap =
+        (get_advanced_overlap_fn)(uintptr_t)lookup(NULL, "nvnBlendStateGetAdvancedOverlap");
+    get_advanced_premultiplied_src_fn get_premultiplied =
+        (get_advanced_premultiplied_src_fn)(uintptr_t)lookup(NULL, "nvnBlendStateGetAdvancedPremultipliedSrc");
+    get_advanced_normalized_dst_fn get_normalized =
+        (get_advanced_normalized_dst_fn)(uintptr_t)lookup(NULL, "nvnBlendStateGetAdvancedNormalizedDst");
+    CHECK(set_defaults && set_blend_target && set_blend_func && set_blend_equation);
+    CHECK(set_advanced_mode && set_advanced_overlap && set_premultiplied && set_normalized);
+    CHECK(get_blend_target && get_blend_func && get_blend_equation && get_advanced_mode);
+    CHECK(get_advanced_overlap && get_premultiplied && get_normalized);
+
+    /* 2. The defaults are the ones the specification gives. The expected
+     *    values are written out here on purpose: they must not be the
+     *    constants the implementation uses. */
+    unsigned char state[8];
+    memset(state, 0xaa, sizeof(state));
+    set_defaults(state);
+    expect_value("nvn-blend-state-default-blend-target", (uint64_t)(uint32_t)get_blend_target(state), 0);
+    int src_rgb = -1, dst_rgb = -1, src_alpha = -1, dst_alpha = -1;
+    get_blend_func(state, &src_rgb, &dst_rgb, &src_alpha, &dst_alpha);
+    expect_value("nvn-blend-state-default-src-rgb", (uint64_t)(uint32_t)src_rgb, 1);
+    expect_value("nvn-blend-state-default-dst-rgb", (uint64_t)(uint32_t)dst_rgb, 0);
+    expect_value("nvn-blend-state-default-src-alpha", (uint64_t)(uint32_t)src_alpha, 1);
+    expect_value("nvn-blend-state-default-dst-alpha", (uint64_t)(uint32_t)dst_alpha, 0);
+    int equation_rgb = -1, equation_alpha = -1;
+    get_blend_equation(state, &equation_rgb, &equation_alpha);
+    expect_value("nvn-blend-state-default-equation-rgb", (uint64_t)(uint32_t)equation_rgb, 0);
+    expect_value("nvn-blend-state-default-equation-alpha", (uint64_t)(uint32_t)equation_alpha, 0);
+    expect_value("nvn-blend-state-default-advanced-mode", (uint64_t)(uint32_t)get_advanced_mode(state), 0);
+    expect_value("nvn-blend-state-default-advanced-overlap",
+                 (uint64_t)(uint32_t)get_advanced_overlap(state), 0);
+    expect_value("nvn-blend-state-default-premultiplied-src",
+                 (uint64_t)(uint32_t)get_premultiplied(state), 0);
+    expect_value("nvn-blend-state-default-normalized-dst",
+                 (uint64_t)(uint32_t)get_normalized(state), 0);
+
+    /* 3. The runtime keeps the state on the host, so it must not write a
+     *    single byte into the guest's state object. */
+    expect_condition("nvn-blend-state-object-not-written", all_bytes(state, sizeof(state), 0xaa));
+
+    /* 4. Every parameter round trips. */
+    set_blend_target(state, 1);
+    expect_value("nvn-blend-state-blend-target-round-trip",
+                 (uint64_t)(uint32_t)get_blend_target(state), 1);
+    set_blend_func(state, 2, 3, 4, 5);
+    get_blend_func(state, &src_rgb, &dst_rgb, &src_alpha, &dst_alpha);
+    expect_value("nvn-blend-state-src-rgb-round-trip", (uint64_t)(uint32_t)src_rgb, 2);
+    expect_value("nvn-blend-state-dst-rgb-round-trip", (uint64_t)(uint32_t)dst_rgb, 3);
+    expect_value("nvn-blend-state-src-alpha-round-trip", (uint64_t)(uint32_t)src_alpha, 4);
+    expect_value("nvn-blend-state-dst-alpha-round-trip", (uint64_t)(uint32_t)dst_alpha, 5);
+    set_blend_equation(state, 2, 3);
+    get_blend_equation(state, &equation_rgb, &equation_alpha);
+    expect_value("nvn-blend-state-equation-rgb-round-trip", (uint64_t)(uint32_t)equation_rgb, 2);
+    expect_value("nvn-blend-state-equation-alpha-round-trip", (uint64_t)(uint32_t)equation_alpha, 3);
+    set_advanced_mode(state, 0x15);
+    expect_value("nvn-blend-state-advanced-mode-round-trip",
+                 (uint64_t)(uint32_t)get_advanced_mode(state), 0x15);
+    set_advanced_overlap(state, 2);
+    expect_value("nvn-blend-state-advanced-overlap-round-trip",
+                 (uint64_t)(uint32_t)get_advanced_overlap(state), 2);
+    set_premultiplied(state, 1);
+    expect_value("nvn-blend-state-premultiplied-src-round-trip",
+                 (uint64_t)(uint32_t)get_premultiplied(state), 1);
+    set_normalized(state, 1);
+    expect_value("nvn-blend-state-normalized-dst-round-trip",
+                 (uint64_t)(uint32_t)get_normalized(state), 1);
+
+    /* 5. The defaults really reset the state. A SetDefaults that did nothing
+     *    would leave the guest's renderer in the wrong state, and the guest
+     *    would only find out much later. */
+    set_defaults(state);
+    expect_value("nvn-blend-state-defaults-reset-blend-target",
+                 (uint64_t)(uint32_t)get_blend_target(state), 0);
+    expect_value("nvn-blend-state-defaults-reset-advanced-mode",
+                 (uint64_t)(uint32_t)get_advanced_mode(state), 0);
+    expect_value("nvn-blend-state-defaults-reset-premultiplied-src",
+                 (uint64_t)(uint32_t)get_premultiplied(state), 0);
+    get_blend_func(state, &src_rgb, &dst_rgb, &src_alpha, &dst_alpha);
+    expect_value("nvn-blend-state-defaults-reset-src-rgb", (uint64_t)(uint32_t)src_rgb, 1);
+    expect_value("nvn-blend-state-defaults-reset-dst-rgb", (uint64_t)(uint32_t)dst_rgb, 0);
+    expect_condition("nvn-blend-state-not-written-after-the-round-trip",
+                     all_bytes(state, sizeof(state), 0xaa));
+
+    /* 6. The table of the family has to grow. A real game asks for thousands
+     *    of these: in the device run of p-mm-43 the guest asked for more than
+     *    sixteen hundred blend states within the first seconds, and the table
+     *    of sixteen slots refused the ones that did not fit. A refused state
+     *    is a state the guest draws with that this runtime does not know
+     *    about, so the table has to hold all of them.
+     *
+     *    The number here is four times the size the table used to have, so
+     *    this case fails against the old table and passes against the new
+     *    one. */
+    {
+        enum { NVN_BLEND_STATE_GROWTH_CASES = 64 };
+        void *many[NVN_BLEND_STATE_GROWTH_CASES];
+        unsigned long long live_before = 0;
+        nvn_blend_state_get_stats(&stats);
+        live_before = (unsigned long long)stats.live_states;
+        for (i = 0; i < NVN_BLEND_STATE_GROWTH_CASES; i++) {
+            /* A distinct address for every state, the way the guest hands out
+             * its own objects. */
+            many[i] = (void *)(uintptr_t)(0x51500000ull + (unsigned long long)i * 64ull);
+            set_defaults(many[i]);
+        }
+        nvn_blend_state_get_stats(&stats);
+        expect_value("nvn-blend-state-table-grows-with-the-guest",
+                     (uint64_t)(stats.live_states - live_before),
+                     (uint64_t)NVN_BLEND_STATE_GROWTH_CASES);
+        /* And every one of them is still there: a table that grew but forgot
+         * the entries would count the same. */
+        for (i = 0; i < NVN_BLEND_STATE_GROWTH_CASES; i++) {
+            expect_value("nvn-blend-state-grown-state-is-kept",
+                         (uint64_t)(uint32_t)get_blend_target(many[i]), 0);
+        }
+    }
+
+    /* 7. The counters. */
+    nvn_blend_state_get_stats(&stats);
+    expect_condition("nvn-blend-state-stats-count-builder-calls", stats.builder_calls > 0);
+    expect_condition("nvn-blend-state-stats-count-defaults", stats.defaults_applied > 0);
+    expect_condition("nvn-blend-state-stats-count-sets", stats.sets > 0);
+    expect_condition("nvn-blend-state-stats-count-gets", stats.gets > 0);
+    expect_condition("nvn-blend-state-stats-live-states", stats.live_states > 0);
+
+    /* The final gate. Without it the contract could exit 0 while the
+     * expectations had failed. */
+    CHECK(!errors);
+    printf("{\"nvn_blend_state_errors\":%u,\"defaults_applied\":%llu,\"sets\":%llu,"
+           "\"gets\":%llu,\"live_states\":%llu}\n",
+           errors, (unsigned long long)stats.defaults_applied, (unsigned long long)stats.sets,
+           (unsigned long long)stats.gets, (unsigned long long)stats.live_states);
+    return 0;
+}
+
+/* The NVN render state families.
+ *
+ * Seven families describe the fixed function state of a draw: the colour
+ * state, the channel mask state, the multisample state, the polygon state,
+ * the depth stencil state, the vertex attribute state and the vertex stream
+ * state. The contract checks that every name resolves, that the defaults
+ * really reset the state, that every parameter round trips and that the
+ * guest's state objects are never written into.
+ *
+ * The expected values are written out here on purpose: they must not be the
+ * constants the implementation uses. */
+static int nvn_render_state_contract(void) {
+    typedef void *(*bootstrap_fn)(const char *);
+    typedef void *(*lookup_fn)(void *, const char *);
+    typedef void (*set_defaults_fn)(void *);
+    typedef void (*set_int_fn)(void *, int);
+    typedef void (*set_bool_fn)(void *, uint32_t);
+    typedef void (*set_int_bool_fn)(void *, int, uint32_t);
+    typedef void (*set_channel_mask_fn)(void *, int, uint32_t, uint32_t, uint32_t, uint32_t);
+    typedef void (*set_int_int_fn)(void *, int, int);
+    typedef void (*set_stencil_op_fn)(void *, int, int, int, int);
+    typedef void (*set_format_fn)(void *, int, int64_t);
+    typedef void (*set_stride_fn)(void *, int64_t);
+    typedef void (*set_sample_locations_fn)(void *, int, int, const float *);
+    typedef int (*get_int_fn)(const void *);
+    typedef int (*get_int_int_fn)(const void *, int);
+    typedef int64_t (*get_int64_fn)(const void *);
+    typedef void (*get_channel_mask_fn)(const void *, int, int *, int *, int *, int *);
+    typedef void (*get_format_fn)(const void *, int *, int64_t *);
+    typedef void (*get_grid_fn)(const void *, int *, int *);
+    typedef void (*get_stencil_op_fn)(const void *, int, int *, int *, int *);
+    nvn_render_state_stats stats;
+    size_t i;
+
+    /* 1. Every name of the seven families has to resolve, and the same name
+     *    has to resolve to the same entry point every time. */
+    bootstrap_fn bootstrap =
+        (bootstrap_fn)(uintptr_t)guest_process_resolve(0, "nvnBootstrapLoader");
+    CHECK(bootstrap != NULL);
+    lookup_fn lookup = (lookup_fn)(uintptr_t)bootstrap("nvnDeviceGetProcAddress");
+    CHECK(lookup != NULL);
+    static const char *const render_state_names[] = {
+        "nvnColorStateSetDefaults",
+        "nvnColorStateSetBlendEnable",
+        "nvnColorStateSetLogicOp",
+        "nvnColorStateSetAlphaTest",
+        "nvnColorStateGetBlendEnable",
+        "nvnColorStateGetLogicOp",
+        "nvnColorStateGetAlphaTest",
+        "nvnChannelMaskStateSetDefaults",
+        "nvnChannelMaskStateSetChannelMask",
+        "nvnChannelMaskStateGetChannelMask",
+        "nvnMultisampleStateSetDefaults",
+        "nvnMultisampleStateSetMultisampleEnable",
+        "nvnMultisampleStateSetSamples",
+        "nvnMultisampleStateSetAlphaToCoverageEnable",
+        "nvnMultisampleStateSetAlphaToCoverageDither",
+        "nvnMultisampleStateGetMultisampleEnable",
+        "nvnMultisampleStateGetSamples",
+        "nvnMultisampleStateGetAlphaToCoverageEnable",
+        "nvnMultisampleStateGetAlphaToCoverageDither",
+        "nvnMultisampleStateSetRasterSamples",
+        "nvnMultisampleStateGetRasterSamples",
+        "nvnMultisampleStateSetCoverageModulationMode",
+        "nvnMultisampleStateGetCoverageModulationMode",
+        "nvnMultisampleStateSetCoverageToColorEnable",
+        "nvnMultisampleStateGetCoverageToColorEnable",
+        "nvnMultisampleStateSetCoverageToColorOutput",
+        "nvnMultisampleStateGetCoverageToColorOutput",
+        "nvnMultisampleStateSetSampleLocationsEnable",
+        "nvnMultisampleStateGetSampleLocationsEnable",
+        "nvnMultisampleStateGetSampleLocationsGrid",
+        "nvnMultisampleStateSetSampleLocationsGridEnable",
+        "nvnMultisampleStateGetSampleLocationsGridEnable",
+        "nvnMultisampleStateSetSampleLocations",
+        "nvnPolygonStateSetDefaults",
+        "nvnPolygonStateSetCullFace",
+        "nvnPolygonStateSetFrontFace",
+        "nvnPolygonStateSetPolygonMode",
+        "nvnPolygonStateSetPolygonOffsetEnables",
+        "nvnPolygonStateGetCullFace",
+        "nvnPolygonStateGetFrontFace",
+        "nvnPolygonStateGetPolygonMode",
+        "nvnPolygonStateGetPolygonOffsetEnables",
+        "nvnDepthStencilStateSetDefaults",
+        "nvnDepthStencilStateSetDepthTestEnable",
+        "nvnDepthStencilStateSetDepthWriteEnable",
+        "nvnDepthStencilStateSetDepthFunc",
+        "nvnDepthStencilStateSetStencilTestEnable",
+        "nvnDepthStencilStateSetStencilFunc",
+        "nvnDepthStencilStateSetStencilOp",
+        "nvnDepthStencilStateGetDepthTestEnable",
+        "nvnDepthStencilStateGetDepthWriteEnable",
+        "nvnDepthStencilStateGetDepthFunc",
+        "nvnDepthStencilStateGetStencilTestEnable",
+        "nvnDepthStencilStateGetStencilFunc",
+        "nvnDepthStencilStateGetStencilOp",
+        "nvnVertexAttribStateSetDefaults",
+        "nvnVertexAttribStateSetFormat",
+        "nvnVertexAttribStateSetStreamIndex",
+        "nvnVertexAttribStateGetFormat",
+        "nvnVertexAttribStateGetStreamIndex",
+        "nvnVertexStreamStateSetDefaults",
+        "nvnVertexStreamStateSetStride",
+        "nvnVertexStreamStateSetDivisor",
+        "nvnVertexStreamStateGetStride",
+        "nvnVertexStreamStateGetDivisor",
+    };
+    for (i = 0; i < sizeof(render_state_names) / sizeof(render_state_names[0]); i++) {
+        void *entry = lookup(NULL, render_state_names[i]);
+        expect_condition("nvn-render-state-name-resolves", entry != NULL);
+        expect_condition("nvn-render-state-name-is-stable", entry == lookup(NULL, render_state_names[i]));
+    }
+
+#define RS_LOOKUP(var, type, name) type var = (type)(uintptr_t)lookup(NULL, name)
+    RS_LOOKUP(color_defaults, set_defaults_fn, "nvnColorStateSetDefaults");
+    RS_LOOKUP(color_set_blend_enable, set_int_bool_fn, "nvnColorStateSetBlendEnable");
+    RS_LOOKUP(color_set_logic_op, set_int_fn, "nvnColorStateSetLogicOp");
+    RS_LOOKUP(color_set_alpha_test, set_int_fn, "nvnColorStateSetAlphaTest");
+    RS_LOOKUP(color_get_blend_enable, get_int_int_fn, "nvnColorStateGetBlendEnable");
+    RS_LOOKUP(color_get_logic_op, get_int_fn, "nvnColorStateGetLogicOp");
+    RS_LOOKUP(color_get_alpha_test, get_int_fn, "nvnColorStateGetAlphaTest");
+    RS_LOOKUP(mask_defaults, set_defaults_fn, "nvnChannelMaskStateSetDefaults");
+    RS_LOOKUP(mask_set_channel_mask, set_channel_mask_fn, "nvnChannelMaskStateSetChannelMask");
+    RS_LOOKUP(mask_get_channel_mask, get_channel_mask_fn, "nvnChannelMaskStateGetChannelMask");
+    RS_LOOKUP(ms_defaults, set_defaults_fn, "nvnMultisampleStateSetDefaults");
+    RS_LOOKUP(ms_set_enable, set_bool_fn, "nvnMultisampleStateSetMultisampleEnable");
+    RS_LOOKUP(ms_set_samples, set_int_fn, "nvnMultisampleStateSetSamples");
+    RS_LOOKUP(ms_set_a2c, set_bool_fn, "nvnMultisampleStateSetAlphaToCoverageEnable");
+    RS_LOOKUP(ms_set_a2c_dither, set_bool_fn, "nvnMultisampleStateSetAlphaToCoverageDither");
+    RS_LOOKUP(ms_get_enable, get_int_fn, "nvnMultisampleStateGetMultisampleEnable");
+    RS_LOOKUP(ms_get_samples, get_int_fn, "nvnMultisampleStateGetSamples");
+    RS_LOOKUP(ms_get_a2c, get_int_fn, "nvnMultisampleStateGetAlphaToCoverageEnable");
+    RS_LOOKUP(ms_get_a2c_dither, get_int_fn, "nvnMultisampleStateGetAlphaToCoverageDither");
+    RS_LOOKUP(ms_set_raster_samples, set_int_fn, "nvnMultisampleStateSetRasterSamples");
+    RS_LOOKUP(ms_get_raster_samples, get_int_fn, "nvnMultisampleStateGetRasterSamples");
+    RS_LOOKUP(ms_set_cov_mod, set_int_fn, "nvnMultisampleStateSetCoverageModulationMode");
+    RS_LOOKUP(ms_get_cov_mod, get_int_fn, "nvnMultisampleStateGetCoverageModulationMode");
+    RS_LOOKUP(ms_set_cov2color_en, set_bool_fn, "nvnMultisampleStateSetCoverageToColorEnable");
+    RS_LOOKUP(ms_get_cov2color_en, get_int_fn, "nvnMultisampleStateGetCoverageToColorEnable");
+    RS_LOOKUP(ms_set_cov2color_out, set_int_fn, "nvnMultisampleStateSetCoverageToColorOutput");
+    RS_LOOKUP(ms_get_cov2color_out, get_int_fn, "nvnMultisampleStateGetCoverageToColorOutput");
+    RS_LOOKUP(ms_set_sl_enable, set_bool_fn, "nvnMultisampleStateSetSampleLocationsEnable");
+    RS_LOOKUP(ms_get_sl_enable, get_int_fn, "nvnMultisampleStateGetSampleLocationsEnable");
+    RS_LOOKUP(ms_get_sl_grid, get_grid_fn, "nvnMultisampleStateGetSampleLocationsGrid");
+    RS_LOOKUP(ms_set_sl_grid_enable, set_bool_fn, "nvnMultisampleStateSetSampleLocationsGridEnable");
+    RS_LOOKUP(ms_get_sl_grid_enable, get_int_fn, "nvnMultisampleStateGetSampleLocationsGridEnable");
+    RS_LOOKUP(ms_set_sl, set_sample_locations_fn, "nvnMultisampleStateSetSampleLocations");
+    RS_LOOKUP(poly_defaults, set_defaults_fn, "nvnPolygonStateSetDefaults");
+    RS_LOOKUP(poly_set_cull_face, set_int_fn, "nvnPolygonStateSetCullFace");
+    RS_LOOKUP(poly_set_front_face, set_int_fn, "nvnPolygonStateSetFrontFace");
+    RS_LOOKUP(poly_set_mode, set_int_fn, "nvnPolygonStateSetPolygonMode");
+    RS_LOOKUP(poly_set_offset, set_int_fn, "nvnPolygonStateSetPolygonOffsetEnables");
+    RS_LOOKUP(poly_get_cull_face, get_int_fn, "nvnPolygonStateGetCullFace");
+    RS_LOOKUP(poly_get_front_face, get_int_fn, "nvnPolygonStateGetFrontFace");
+    RS_LOOKUP(poly_get_mode, get_int_fn, "nvnPolygonStateGetPolygonMode");
+    RS_LOOKUP(poly_get_offset, get_int_fn, "nvnPolygonStateGetPolygonOffsetEnables");
+    RS_LOOKUP(ds_defaults, set_defaults_fn, "nvnDepthStencilStateSetDefaults");
+    RS_LOOKUP(ds_set_depth_test, set_bool_fn, "nvnDepthStencilStateSetDepthTestEnable");
+    RS_LOOKUP(ds_set_depth_write, set_bool_fn, "nvnDepthStencilStateSetDepthWriteEnable");
+    RS_LOOKUP(ds_set_depth_func, set_int_fn, "nvnDepthStencilStateSetDepthFunc");
+    RS_LOOKUP(ds_set_stencil_test, set_bool_fn, "nvnDepthStencilStateSetStencilTestEnable");
+    RS_LOOKUP(ds_set_stencil_func, set_int_int_fn, "nvnDepthStencilStateSetStencilFunc");
+    RS_LOOKUP(ds_set_stencil_op, set_stencil_op_fn, "nvnDepthStencilStateSetStencilOp");
+    RS_LOOKUP(ds_get_depth_test, get_int_fn, "nvnDepthStencilStateGetDepthTestEnable");
+    RS_LOOKUP(ds_get_depth_write, get_int_fn, "nvnDepthStencilStateGetDepthWriteEnable");
+    RS_LOOKUP(ds_get_depth_func, get_int_fn, "nvnDepthStencilStateGetDepthFunc");
+    RS_LOOKUP(ds_get_stencil_test, get_int_fn, "nvnDepthStencilStateGetStencilTestEnable");
+    RS_LOOKUP(ds_get_stencil_func, get_int_int_fn, "nvnDepthStencilStateGetStencilFunc");
+    RS_LOOKUP(ds_get_stencil_op, get_stencil_op_fn, "nvnDepthStencilStateGetStencilOp");
+    RS_LOOKUP(va_defaults, set_defaults_fn, "nvnVertexAttribStateSetDefaults");
+    RS_LOOKUP(va_set_format, set_format_fn, "nvnVertexAttribStateSetFormat");
+    RS_LOOKUP(va_set_stream, set_int_fn, "nvnVertexAttribStateSetStreamIndex");
+    RS_LOOKUP(va_get_format, get_format_fn, "nvnVertexAttribStateGetFormat");
+    RS_LOOKUP(va_get_stream, get_int_fn, "nvnVertexAttribStateGetStreamIndex");
+    RS_LOOKUP(vs_defaults, set_defaults_fn, "nvnVertexStreamStateSetDefaults");
+    RS_LOOKUP(vs_set_stride, set_stride_fn, "nvnVertexStreamStateSetStride");
+    RS_LOOKUP(vs_set_divisor, set_int_fn, "nvnVertexStreamStateSetDivisor");
+    RS_LOOKUP(vs_get_stride, get_int64_fn, "nvnVertexStreamStateGetStride");
+    RS_LOOKUP(vs_get_divisor, get_int_fn, "nvnVertexStreamStateGetDivisor");
+    CHECK(color_defaults && color_set_blend_enable && color_set_logic_op && color_set_alpha_test);
+    CHECK(color_get_blend_enable && color_get_logic_op && color_get_alpha_test);
+    CHECK(mask_defaults && mask_set_channel_mask && mask_get_channel_mask);
+    CHECK(ms_defaults && ms_set_enable && ms_set_samples && ms_set_a2c && ms_set_a2c_dither);
+    CHECK(ms_get_enable && ms_get_samples && ms_get_a2c && ms_get_a2c_dither);
+    CHECK(ms_set_raster_samples && ms_get_raster_samples && ms_set_cov_mod && ms_get_cov_mod);
+    CHECK(ms_set_cov2color_en && ms_get_cov2color_en && ms_set_cov2color_out && ms_get_cov2color_out);
+    CHECK(ms_set_sl_enable && ms_get_sl_enable && ms_get_sl_grid);
+    CHECK(ms_set_sl_grid_enable && ms_get_sl_grid_enable && ms_set_sl);
+    CHECK(poly_defaults && poly_set_cull_face && poly_set_front_face && poly_set_mode);
+    CHECK(poly_set_offset && poly_get_cull_face && poly_get_front_face && poly_get_mode);
+    CHECK(poly_get_offset);
+    CHECK(ds_defaults && ds_set_depth_test && ds_set_depth_write && ds_set_depth_func);
+    CHECK(ds_set_stencil_test && ds_set_stencil_func && ds_set_stencil_op);
+    CHECK(ds_get_depth_test && ds_get_depth_write && ds_get_depth_func && ds_get_stencil_test);
+    CHECK(ds_get_stencil_func && ds_get_stencil_op);
+    CHECK(va_defaults && va_set_format && va_set_stream && va_get_format && va_get_stream);
+    CHECK(vs_defaults && vs_set_stride && vs_set_divisor && vs_get_stride && vs_get_divisor);
+
+    /* 2. The colour state. The defaults are blending off, the copy logic
+     *    operation and the always alpha test. */
+    unsigned char color_state[8];
+    unsigned char mask_state[8];
+    unsigned char ms_state[16];
+    unsigned char poly_state[8];
+    unsigned char ds_state[16];
+    unsigned char va_state[8];
+    unsigned char vs_state[8];
+    memset(color_state, 0xaa, sizeof(color_state));
+    memset(mask_state, 0xaa, sizeof(mask_state));
+    memset(ms_state, 0xaa, sizeof(ms_state));
+    memset(poly_state, 0xaa, sizeof(poly_state));
+    memset(ds_state, 0xaa, sizeof(ds_state));
+    memset(va_state, 0xaa, sizeof(va_state));
+    memset(vs_state, 0xaa, sizeof(vs_state));
+
+    color_defaults(color_state);
+    expect_value("nvn-render-state-color-default-blend-enable",
+                 (uint64_t)(uint32_t)color_get_blend_enable(color_state, 0), 0);
+    expect_value("nvn-render-state-color-default-logic-op",
+                 (uint64_t)(uint32_t)color_get_logic_op(color_state), 3);
+    expect_value("nvn-render-state-color-default-alpha-test",
+                 (uint64_t)(uint32_t)color_get_alpha_test(color_state), 8);
+
+    /* 3. The channel mask state. Every channel of every target is written
+     *    after the defaults. */
+    int red = -1, green = -1, blue = -1, alpha = -1;
+    mask_defaults(mask_state);
+    mask_get_channel_mask(mask_state, 0, &red, &green, &blue, &alpha);
+    expect_value("nvn-render-state-mask-default-red", (uint64_t)(uint32_t)red, 1);
+    expect_value("nvn-render-state-mask-default-green", (uint64_t)(uint32_t)green, 1);
+    expect_value("nvn-render-state-mask-default-blue", (uint64_t)(uint32_t)blue, 1);
+    expect_value("nvn-render-state-mask-default-alpha", (uint64_t)(uint32_t)alpha, 1);
+
+    /* 4. The multisample state. The defaults leave multisampling on with one
+     *    sample and everything else off. */
+    ms_defaults(ms_state);
+    expect_value("nvn-render-state-ms-default-enable",
+                 (uint64_t)(uint32_t)ms_get_enable(ms_state), 1);
+    expect_value("nvn-render-state-ms-default-samples",
+                 (uint64_t)(uint32_t)ms_get_samples(ms_state), 0);
+    expect_value("nvn-render-state-ms-default-alpha-to-coverage",
+                 (uint64_t)(uint32_t)ms_get_a2c(ms_state), 0);
+    expect_value("nvn-render-state-ms-default-alpha-to-coverage-dither",
+                 (uint64_t)(uint32_t)ms_get_a2c_dither(ms_state), 0);
+    expect_value("nvn-render-state-ms-default-raster-samples",
+                 (uint64_t)(uint32_t)ms_get_raster_samples(ms_state), 0);
+    expect_value("nvn-render-state-ms-default-coverage-modulation",
+                 (uint64_t)(uint32_t)ms_get_cov_mod(ms_state), 0);
+    expect_value("nvn-render-state-ms-default-coverage-to-color-enable",
+                 (uint64_t)(uint32_t)ms_get_cov2color_en(ms_state), 0);
+    expect_value("nvn-render-state-ms-default-coverage-to-color-output",
+                 (uint64_t)(uint32_t)ms_get_cov2color_out(ms_state), 0);
+    expect_value("nvn-render-state-ms-default-sample-locations-enable",
+                 (uint64_t)(uint32_t)ms_get_sl_enable(ms_state), 0);
+    expect_value("nvn-render-state-ms-default-sample-locations-grid-enable",
+                 (uint64_t)(uint32_t)ms_get_sl_grid_enable(ms_state), 0);
+
+    /* 5. The polygon state. The defaults cull nothing, take the counter
+     *    clockwise face as the front face and fill polygons. */
+    poly_defaults(poly_state);
+    expect_value("nvn-render-state-poly-default-cull-face",
+                 (uint64_t)(uint32_t)poly_get_cull_face(poly_state), 0);
+    expect_value("nvn-render-state-poly-default-front-face",
+                 (uint64_t)(uint32_t)poly_get_front_face(poly_state), 1);
+    expect_value("nvn-render-state-poly-default-mode",
+                 (uint64_t)(uint32_t)poly_get_mode(poly_state), 2);
+    expect_value("nvn-render-state-poly-default-offset-enables",
+                 (uint64_t)(uint32_t)poly_get_offset(poly_state), 0);
+
+    /* 6. The depth stencil state. The defaults leave the depth test off, the
+     *    depth write on, the less comparison and the always stencil function
+     *    with the keep operation. */
+    ds_defaults(ds_state);
+    expect_value("nvn-render-state-ds-default-depth-test",
+                 (uint64_t)(uint32_t)ds_get_depth_test(ds_state), 0);
+    expect_value("nvn-render-state-ds-default-depth-write",
+                 (uint64_t)(uint32_t)ds_get_depth_write(ds_state), 1);
+    expect_value("nvn-render-state-ds-default-depth-func",
+                 (uint64_t)(uint32_t)ds_get_depth_func(ds_state), 2);
+    expect_value("nvn-render-state-ds-default-stencil-test",
+                 (uint64_t)(uint32_t)ds_get_stencil_test(ds_state), 0);
+    expect_value("nvn-render-state-ds-default-stencil-func-front",
+                 (uint64_t)(uint32_t)ds_get_stencil_func(ds_state, 1), 8);
+    expect_value("nvn-render-state-ds-default-stencil-func-back",
+                 (uint64_t)(uint32_t)ds_get_stencil_func(ds_state, 2), 8);
+    int stencil_fail = -1, stencil_zfail = -1, stencil_zpass = -1;
+    ds_get_stencil_op(ds_state, 1, &stencil_fail, &stencil_zfail, &stencil_zpass);
+    expect_value("nvn-render-state-ds-default-stencil-op-fail",
+                 (uint64_t)(uint32_t)stencil_fail, 1);
+    expect_value("nvn-render-state-ds-default-stencil-op-zfail",
+                 (uint64_t)(uint32_t)stencil_zfail, 1);
+    expect_value("nvn-render-state-ds-default-stencil-op-zpass",
+                 (uint64_t)(uint32_t)stencil_zpass, 1);
+
+    /* 7. The vertex attribute and the vertex stream state. */
+    va_defaults(va_state);
+    int format = -1;
+    int64_t offset = -1;
+    va_get_format(va_state, &format, &offset);
+    expect_value("nvn-render-state-va-default-format", (uint64_t)(uint32_t)format, 0);
+    expect_value("nvn-render-state-va-default-offset", (uint64_t)offset, 0);
+    expect_value("nvn-render-state-va-default-stream", (uint64_t)(uint32_t)va_get_stream(va_state), 0);
+    vs_defaults(vs_state);
+    expect_value("nvn-render-state-vs-default-stride", (uint64_t)vs_get_stride(vs_state), 0);
+    expect_value("nvn-render-state-vs-default-divisor", (uint64_t)(uint32_t)vs_get_divisor(vs_state), 0);
+
+    /* 8. Every parameter round trips. */
+    color_set_blend_enable(color_state, 2, 1);
+    expect_value("nvn-render-state-color-blend-enable-round-trip",
+                 (uint64_t)(uint32_t)color_get_blend_enable(color_state, 2), 1);
+    expect_value("nvn-render-state-color-blend-enable-other-target-untouched",
+                 (uint64_t)(uint32_t)color_get_blend_enable(color_state, 3), 0);
+    color_set_logic_op(color_state, 6);
+    expect_value("nvn-render-state-color-logic-op-round-trip",
+                 (uint64_t)(uint32_t)color_get_logic_op(color_state), 6);
+    color_set_alpha_test(color_state, 4);
+    expect_value("nvn-render-state-color-alpha-test-round-trip",
+                 (uint64_t)(uint32_t)color_get_alpha_test(color_state), 4);
+
+    mask_set_channel_mask(mask_state, 1, 1, 0, 1, 0);
+    mask_get_channel_mask(mask_state, 1, &red, &green, &blue, &alpha);
+    expect_value("nvn-render-state-mask-red-round-trip", (uint64_t)(uint32_t)red, 1);
+    expect_value("nvn-render-state-mask-green-round-trip", (uint64_t)(uint32_t)green, 0);
+    expect_value("nvn-render-state-mask-blue-round-trip", (uint64_t)(uint32_t)blue, 1);
+    expect_value("nvn-render-state-mask-alpha-round-trip", (uint64_t)(uint32_t)alpha, 0);
+    mask_get_channel_mask(mask_state, 0, &red, &green, &blue, &alpha);
+    expect_value("nvn-render-state-mask-other-target-untouched",
+                 (uint64_t)(uint32_t)green, 1);
+
+    ms_set_enable(ms_state, 0);
+    expect_value("nvn-render-state-ms-enable-round-trip",
+                 (uint64_t)(uint32_t)ms_get_enable(ms_state), 0);
+    ms_set_samples(ms_state, 4);
+    expect_value("nvn-render-state-ms-samples-round-trip",
+                 (uint64_t)(uint32_t)ms_get_samples(ms_state), 4);
+    ms_set_a2c(ms_state, 1);
+    expect_value("nvn-render-state-ms-alpha-to-coverage-round-trip",
+                 (uint64_t)(uint32_t)ms_get_a2c(ms_state), 1);
+    ms_set_a2c_dither(ms_state, 1);
+    expect_value("nvn-render-state-ms-alpha-to-coverage-dither-round-trip",
+                 (uint64_t)(uint32_t)ms_get_a2c_dither(ms_state), 1);
+    ms_set_raster_samples(ms_state, 2);
+    expect_value("nvn-render-state-ms-raster-samples-round-trip",
+                 (uint64_t)(uint32_t)ms_get_raster_samples(ms_state), 2);
+    ms_set_cov_mod(ms_state, 3);
+    expect_value("nvn-render-state-ms-coverage-modulation-round-trip",
+                 (uint64_t)(uint32_t)ms_get_cov_mod(ms_state), 3);
+    ms_set_cov2color_en(ms_state, 1);
+    expect_value("nvn-render-state-ms-coverage-to-color-enable-round-trip",
+                 (uint64_t)(uint32_t)ms_get_cov2color_en(ms_state), 1);
+    ms_set_cov2color_out(ms_state, 1);
+    expect_value("nvn-render-state-ms-coverage-to-color-output-round-trip",
+                 (uint64_t)(uint32_t)ms_get_cov2color_out(ms_state), 1);
+    ms_set_sl_enable(ms_state, 1);
+    expect_value("nvn-render-state-ms-sample-locations-enable-round-trip",
+                 (uint64_t)(uint32_t)ms_get_sl_enable(ms_state), 1);
+    ms_set_sl_grid_enable(ms_state, 1);
+    expect_value("nvn-render-state-ms-sample-locations-grid-enable-round-trip",
+                 (uint64_t)(uint32_t)ms_get_sl_grid_enable(ms_state), 1);
+    {
+        static const float locations[4] = { 0.25f, 0.75f, -0.5f, 0.5f };
+        ms_set_sl(ms_state, 0, 2, locations);
+    }
+    int grid_width = -1, grid_height = -1;
+    ms_get_sl_grid(ms_state, &grid_width, &grid_height);
+    expect_condition("nvn-render-state-ms-sample-locations-grid-answers",
+                     grid_width >= 0 && grid_height >= 0);
+
+    poly_set_cull_face(poly_state, 2);
+    expect_value("nvn-render-state-poly-cull-face-round-trip",
+                 (uint64_t)(uint32_t)poly_get_cull_face(poly_state), 2);
+    poly_set_front_face(poly_state, 0);
+    expect_value("nvn-render-state-poly-front-face-round-trip",
+                 (uint64_t)(uint32_t)poly_get_front_face(poly_state), 0);
+    poly_set_mode(poly_state, 1);
+    expect_value("nvn-render-state-poly-mode-round-trip",
+                 (uint64_t)(uint32_t)poly_get_mode(poly_state), 1);
+    poly_set_offset(poly_state, 4);
+    expect_value("nvn-render-state-poly-offset-enables-round-trip",
+                 (uint64_t)(uint32_t)poly_get_offset(poly_state), 4);
+
+    ds_set_depth_test(ds_state, 1);
+    expect_value("nvn-render-state-ds-depth-test-round-trip",
+                 (uint64_t)(uint32_t)ds_get_depth_test(ds_state), 1);
+    ds_set_depth_write(ds_state, 0);
+    expect_value("nvn-render-state-ds-depth-write-round-trip",
+                 (uint64_t)(uint32_t)ds_get_depth_write(ds_state), 0);
+    ds_set_depth_func(ds_state, 7);
+    expect_value("nvn-render-state-ds-depth-func-round-trip",
+                 (uint64_t)(uint32_t)ds_get_depth_func(ds_state), 7);
+    ds_set_stencil_test(ds_state, 1);
+    expect_value("nvn-render-state-ds-stencil-test-round-trip",
+                 (uint64_t)(uint32_t)ds_get_stencil_test(ds_state), 1);
+    ds_set_stencil_func(ds_state, 1, 4);
+    expect_value("nvn-render-state-ds-stencil-func-front-round-trip",
+                 (uint64_t)(uint32_t)ds_get_stencil_func(ds_state, 1), 4);
+    expect_value("nvn-render-state-ds-stencil-func-back-untouched",
+                 (uint64_t)(uint32_t)ds_get_stencil_func(ds_state, 2), 8);
+    ds_set_stencil_func(ds_state, 2, 5);
+    expect_value("nvn-render-state-ds-stencil-func-back-round-trip",
+                 (uint64_t)(uint32_t)ds_get_stencil_func(ds_state, 2), 5);
+    ds_set_stencil_func(ds_state, 3, 6);
+    expect_value("nvn-render-state-ds-stencil-func-both-front",
+                 (uint64_t)(uint32_t)ds_get_stencil_func(ds_state, 1), 6);
+    expect_value("nvn-render-state-ds-stencil-func-both-back",
+                 (uint64_t)(uint32_t)ds_get_stencil_func(ds_state, 2), 6);
+    ds_set_stencil_op(ds_state, 1, 2, 3, 4);
+    ds_get_stencil_op(ds_state, 1, &stencil_fail, &stencil_zfail, &stencil_zpass);
+    expect_value("nvn-render-state-ds-stencil-op-fail-round-trip",
+                 (uint64_t)(uint32_t)stencil_fail, 2);
+    expect_value("nvn-render-state-ds-stencil-op-zfail-round-trip",
+                 (uint64_t)(uint32_t)stencil_zfail, 3);
+    expect_value("nvn-render-state-ds-stencil-op-zpass-round-trip",
+                 (uint64_t)(uint32_t)stencil_zpass, 4);
+
+    va_set_format(va_state, 0x25, 16);
+    va_get_format(va_state, &format, &offset);
+    expect_value("nvn-render-state-va-format-round-trip", (uint64_t)(uint32_t)format, 0x25);
+    expect_value("nvn-render-state-va-offset-round-trip", (uint64_t)offset, 16);
+    va_set_stream(va_state, 3);
+    expect_value("nvn-render-state-va-stream-round-trip",
+                 (uint64_t)(uint32_t)va_get_stream(va_state), 3);
+
+    vs_set_stride(vs_state, 32);
+    expect_value("nvn-render-state-vs-stride-round-trip", (uint64_t)vs_get_stride(vs_state), 32);
+    vs_set_divisor(vs_state, 2);
+    expect_value("nvn-render-state-vs-divisor-round-trip",
+                 (uint64_t)(uint32_t)vs_get_divisor(vs_state), 2);
+
+    /* 9. The runtime keeps the state on the host, so it must not write a
+     *    single byte into the guest's state objects. */
+    expect_condition("nvn-render-state-color-object-not-written",
+                     all_bytes(color_state, sizeof(color_state), 0xaa));
+    expect_condition("nvn-render-state-mask-object-not-written",
+                     all_bytes(mask_state, sizeof(mask_state), 0xaa));
+    expect_condition("nvn-render-state-ms-object-not-written",
+                     all_bytes(ms_state, sizeof(ms_state), 0xaa));
+    expect_condition("nvn-render-state-poly-object-not-written",
+                     all_bytes(poly_state, sizeof(poly_state), 0xaa));
+    expect_condition("nvn-render-state-ds-object-not-written",
+                     all_bytes(ds_state, sizeof(ds_state), 0xaa));
+    expect_condition("nvn-render-state-va-object-not-written",
+                     all_bytes(va_state, sizeof(va_state), 0xaa));
+    expect_condition("nvn-render-state-vs-object-not-written",
+                     all_bytes(vs_state, sizeof(vs_state), 0xaa));
+
+    /* 10. The defaults really reset the state. A SetDefaults that did nothing
+     *     would leave the guest's renderer in the wrong state, and the guest
+     *     would only find out much later. */
+    color_defaults(color_state);
+    expect_value("nvn-render-state-color-defaults-reset-logic-op",
+                 (uint64_t)(uint32_t)color_get_logic_op(color_state), 3);
+    expect_value("nvn-render-state-color-defaults-reset-blend-enable",
+                 (uint64_t)(uint32_t)color_get_blend_enable(color_state, 2), 0);
+    mask_defaults(mask_state);
+    mask_get_channel_mask(mask_state, 1, &red, &green, &blue, &alpha);
+    expect_value("nvn-render-state-mask-defaults-reset-green",
+                 (uint64_t)(uint32_t)green, 1);
+    ms_defaults(ms_state);
+    expect_value("nvn-render-state-ms-defaults-reset-enable",
+                 (uint64_t)(uint32_t)ms_get_enable(ms_state), 1);
+    expect_value("nvn-render-state-ms-defaults-reset-samples",
+                 (uint64_t)(uint32_t)ms_get_samples(ms_state), 0);
+    poly_defaults(poly_state);
+    expect_value("nvn-render-state-poly-defaults-reset-mode",
+                 (uint64_t)(uint32_t)poly_get_mode(poly_state), 2);
+    ds_defaults(ds_state);
+    expect_value("nvn-render-state-ds-defaults-reset-depth-func",
+                 (uint64_t)(uint32_t)ds_get_depth_func(ds_state), 2);
+    expect_value("nvn-render-state-ds-defaults-reset-stencil-func",
+                 (uint64_t)(uint32_t)ds_get_stencil_func(ds_state, 1), 8);
+    va_defaults(va_state);
+    va_get_format(va_state, &format, &offset);
+    expect_value("nvn-render-state-va-defaults-reset-format", (uint64_t)(uint32_t)format, 0);
+    expect_value("nvn-render-state-va-defaults-reset-stream",
+                 (uint64_t)(uint32_t)va_get_stream(va_state), 0);
+    vs_defaults(vs_state);
+    expect_value("nvn-render-state-vs-defaults-reset-stride",
+                 (uint64_t)vs_get_stride(vs_state), 0);
+    expect_value("nvn-render-state-vs-defaults-reset-divisor",
+                 (uint64_t)(uint32_t)vs_get_divisor(vs_state), 0);
+
+    /* 11. The counters. */
+    nvn_render_state_get_stats(&stats);
+    expect_condition("nvn-render-state-stats-count-calls", stats.calls > 0);
+    expect_condition("nvn-render-state-stats-count-defaults", stats.defaults_applied > 0);
+    expect_condition("nvn-render-state-stats-count-sets", stats.sets > 0);
+    expect_condition("nvn-render-state-stats-count-gets", stats.gets > 0);
+    expect_value("nvn-render-state-stats-live-states",
+                 (uint64_t)(uint32_t)stats.live_states, 7);
+
+    /* The final gate. Without it the contract could exit 0 while the
+     * expectations had failed. */
+    CHECK(!errors);
+    printf("{\"nvn_render_state_errors\":%u,\"defaults_applied\":%llu,\"sets\":%llu,"
+           "\"gets\":%llu,\"live_states\":%llu}\n",
+           errors, (unsigned long long)stats.defaults_applied, (unsigned long long)stats.sets,
+           (unsigned long long)stats.gets, (unsigned long long)stats.live_states);
+    return 0;
+}
+
+/* The NVN program family.
+ *
+ * A program carries the guest's shaders. This is where the guest's shader
+ * bytes enter the runtime. The contract checks that the eight names resolve,
+ * that the shaders of a program are taken over, that the control section is
+ * copied while the guest is still inside the call, that the key of a stage
+ * names the shader, and that the guest's program object is never written
+ * into.
+ *
+ * The key is a digest, so the contract does not carry a digest of its own: it
+ * checks the properties the key has to have, which is what the offline
+ * translator relies on as well.
+ *
+ * A shader only gets a key when its code area can be read, and the code area
+ * lives in a memory pool, and a memory pool only exists when a real device
+ * does. The expectations therefore differ between the host and the device. */
+#if defined(__ANDROID__)
+#define NVN_PROGRAM_EXPECT_REAL_DEVICE 1
+#else
+#define NVN_PROGRAM_EXPECT_REAL_DEVICE 0
+#endif
+
+static int nvn_program_contract(void) {
+    typedef void *(*bootstrap_fn)(const char *);
+    typedef void *(*lookup_fn)(void *, const char *);
+    typedef uint64_t (*init_fn)(void *, void *);
+    typedef uint64_t (*program_initialize_fn)(void *, void *);
+    typedef uint64_t (*program_set_shaders_fn)(void *, int, const void *);
+    typedef void (*program_finalize_fn)(void *);
+    typedef void (*program_set_debug_label_fn)(void *, const char *);
+    typedef uint64_t (*program_set_subroutine_linkage_fn)(void *, int, const void *);
+    typedef void (*program_set_sample_shading_fn)(void *, uint64_t, uint64_t);
+    typedef uint64_t (*program_get_subtile_size_fn)(void *);
+    typedef void (*pool_builder_set_defaults_fn)(void *);
+    typedef void (*pool_builder_set_device_fn)(void *, void *);
+    typedef void (*pool_builder_set_storage_fn)(void *, void *, uint64_t);
+    typedef void (*pool_builder_set_flags_fn)(void *, int);
+    typedef uint64_t (*pool_initialize_fn)(void *, void *);
+    typedef int (*program_get_stage_info_fn)(void *, int, char *, uint32_t *, uint32_t *);
+    typedef int (*program_get_stage_control_fn)(void *, int, void *, size_t);
+    nvn_program_stats stats;
+    size_t i;
+
+    /* 1. Every name of the family has to resolve, and the same name has to
+     *    resolve to the same entry point every time. */
+    bootstrap_fn bootstrap = (bootstrap_fn)(uintptr_t)guest_process_resolve(0, "nvnBootstrapLoader");
+    CHECK(bootstrap != NULL);
+    lookup_fn lookup = (lookup_fn)(uintptr_t)bootstrap("nvnDeviceGetProcAddress");
+    CHECK(lookup != NULL);
+    static const char *const program_names[] = {
+        "nvnProgramInitialize",
+        "nvnProgramFinalize",
+        "nvnProgramSetDebugLabel",
+        "nvnProgramSetShaders",
+        "nvnProgramSetShadersExt",
+        "nvnProgramSetSubroutineLinkage",
+        "nvnProgramSetSampleShading",
+        "nvnProgramGetSubtileSize",
+    };
+    for (i = 0; i < sizeof(program_names) / sizeof(program_names[0]); i++) {
+        void *entry = lookup(NULL, program_names[i]);
+        expect_condition("nvn-program-name-resolves", entry != NULL);
+        expect_condition("nvn-program-name-is-stable", entry == lookup(NULL, program_names[i]));
+    }
+
+    program_initialize_fn program_initialize =
+        (program_initialize_fn)(uintptr_t)lookup(NULL, "nvnProgramInitialize");
+    program_set_shaders_fn program_set_shaders =
+        (program_set_shaders_fn)(uintptr_t)lookup(NULL, "nvnProgramSetShaders");
+    program_set_shaders_fn program_set_shaders_ext =
+        (program_set_shaders_fn)(uintptr_t)lookup(NULL, "nvnProgramSetShadersExt");
+    program_finalize_fn program_finalize = (program_finalize_fn)(uintptr_t)lookup(NULL, "nvnProgramFinalize");
+    program_set_debug_label_fn program_set_debug_label =
+        (program_set_debug_label_fn)(uintptr_t)lookup(NULL, "nvnProgramSetDebugLabel");
+    program_set_subroutine_linkage_fn program_set_subroutine_linkage =
+        (program_set_subroutine_linkage_fn)(uintptr_t)lookup(NULL, "nvnProgramSetSubroutineLinkage");
+    program_set_sample_shading_fn program_set_sample_shading =
+        (program_set_sample_shading_fn)(uintptr_t)lookup(NULL, "nvnProgramSetSampleShading");
+    program_get_subtile_size_fn program_get_subtile_size =
+        (program_get_subtile_size_fn)(uintptr_t)lookup(NULL, "nvnProgramGetSubtileSize");
+    CHECK(program_initialize && program_set_shaders && program_set_shaders_ext);
+    CHECK(program_finalize && program_set_debug_label && program_set_subroutine_linkage);
+    CHECK(program_set_sample_shading && program_get_subtile_size);
+
+    /* 2. The device, so that a memory pool and with it a code area exist. */
+    init_fn init = (init_fn)(uintptr_t)lookup(NULL, "nvnDeviceInitialize");
+    CHECK(init != NULL);
+    void *guest_device = (void *)(uintptr_t)0xa000;
+    uint64_t init_result = init(guest_device, NULL);
+    nvn_device_stats device_stats;
+    nvn_device_get_stats(&device_stats);
+    expect_condition("nvn-program-device-initialised-matches-reality",
+                     (init_result != 0) == (device_stats.real_device != 0));
+
+    /* 3. The memory pool that holds the code area of the shader. The guest
+     *    owns the memory and addresses it with the host pointer. */
+    pool_builder_set_defaults_fn pool_set_defaults =
+        (pool_builder_set_defaults_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolBuilderSetDefaults");
+    pool_builder_set_device_fn pool_set_device =
+        (pool_builder_set_device_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolBuilderSetDevice");
+    pool_builder_set_storage_fn pool_set_storage =
+        (pool_builder_set_storage_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolBuilderSetStorage");
+    pool_builder_set_flags_fn pool_set_flags =
+        (pool_builder_set_flags_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolBuilderSetFlags");
+    pool_initialize_fn pool_initialize =
+        (pool_initialize_fn)(uintptr_t)lookup(NULL, "nvnMemoryPoolInitialize");
+    CHECK(pool_set_defaults && pool_set_device && pool_set_storage && pool_set_flags && pool_initialize);
+
+    static unsigned char storage[512];
+    static unsigned char control[0x880];
+    static unsigned char control_copy[0x880];
+    unsigned char pool_builder[64];
+    unsigned char pool_object[64];
+    memset(storage, 0x5a, sizeof(storage));
+    memset(control, 0x3c, sizeof(control));
+    /* The control section says how long it is and how long the code area is. */
+    uint32_t own_length = 0x880;
+    uint32_t code_length = 64;
+    memcpy(control + 0x20, &own_length, 4);
+    memcpy(control + 0x704, &code_length, 4);
+    memset(pool_builder, 0xaa, sizeof(pool_builder));
+    pool_set_defaults(pool_builder);
+    pool_set_device(pool_builder, guest_device);
+    pool_set_storage(pool_builder, storage, sizeof(storage));
+    pool_set_flags(pool_builder, 0x40);
+    memset(pool_object, 0xaa, sizeof(pool_object));
+    uint64_t pool_result = pool_initialize(pool_object, pool_builder);
+    expect_value("nvn-program-pool-matches-real-device", pool_result, NVN_PROGRAM_EXPECT_REAL_DEVICE);
+
+    /* 4. The program. */
+    unsigned char program_object[64];
+    memset(program_object, 0xaa, sizeof(program_object));
+    uint64_t initialize_result = program_initialize(program_object, guest_device);
+    expect_value("nvn-program-initialize-matches-real-device", initialize_result,
+                 NVN_PROGRAM_EXPECT_REAL_DEVICE);
+    program_set_debug_label(program_object, "contract-program");
+
+    /* 5. The shaders. */
+    struct {
+        uint64_t data;
+        const void *control;
+    } shader_data[1];
+    struct {
+        uint64_t data;
+        const void *control;
+        uint64_t extension;
+    } shader_data_ext[1];
+    shader_data[0].data = (uint64_t)(uintptr_t)storage;
+    shader_data[0].control = control;
+    shader_data_ext[0].data = (uint64_t)(uintptr_t)storage;
+    shader_data_ext[0].control = control;
+    shader_data_ext[0].extension = 0;
+
+    program_get_stage_info_fn get_stage_info =
+        (program_get_stage_info_fn)(uintptr_t)nvn_program_get_stage_info;
+    program_get_stage_control_fn get_stage_control =
+        (program_get_stage_control_fn)(uintptr_t)nvn_program_get_stage_control;
+    CHECK(get_stage_info && get_stage_control);
+
+    expect_value("nvn-program-set-shaders-succeeds",
+                 program_set_shaders(program_object, 1, shader_data), 1);
+
+    char key[17];
+    char key_again[17];
+    char key_other[17];
+    uint32_t stage_code_length = 0;
+    uint32_t stage_control_length = 0;
+    int keyed = get_stage_info(program_object, 0, key, &stage_code_length, &stage_control_length);
+    expect_value("nvn-program-stage-is-keyed-matches-reality", (uint64_t)(uint32_t)keyed,
+                 NVN_PROGRAM_EXPECT_REAL_DEVICE);
+    if (keyed) {
+        /* The key is sixteen lowercase hexadecimal characters. */
+        expect_value("nvn-program-key-length", (uint64_t)strlen(key), 16);
+        int hex = 1;
+        for (i = 0; i < strlen(key); i++) {
+            char c = key[i];
+            if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) hex = 0;
+        }
+        expect_condition("nvn-program-key-is-lowercase-hex", hex);
+        expect_value("nvn-program-code-length", (uint64_t)stage_code_length, code_length);
+        expect_value("nvn-program-control-length", (uint64_t)stage_control_length, own_length);
+    }
+
+    /* 6. The same shaders get the same key, and different shaders do not.
+     *    That is what makes the key a name: the offline translator writes it
+     *    down, and the runtime has to arrive at the same one. */
+    program_set_shaders(program_object, 1, shader_data);
+    int keyed_again = get_stage_info(program_object, 0, key_again, NULL, NULL);
+    expect_value("nvn-program-stage-is-keyed-again", (uint64_t)(uint32_t)keyed_again,
+                 NVN_PROGRAM_EXPECT_REAL_DEVICE);
+    if (keyed && keyed_again) {
+        expect_condition("nvn-program-key-is-stable", !strcmp(key, key_again));
+    }
+    storage[0] = (unsigned char)(storage[0] + 1);
+    program_set_shaders(program_object, 1, shader_data);
+    int keyed_other = get_stage_info(program_object, 0, key_other, NULL, NULL);
+    if (keyed && keyed_other) {
+        expect_condition("nvn-program-key-changes-with-the-code", strcmp(key, key_other) != 0);
+    }
+    storage[0] = (unsigned char)(storage[0] - 1);
+
+    /* 7. The control section is copied. The guest may overwrite its own
+     *    control section right after the call, because the SDK only promises
+     *    that it is valid during the call. The copy has to hold what the
+     *    guest handed over. */
+    memset(control, 0xaa, sizeof(control));
+    int copied = get_stage_control(program_object, 0, control_copy, sizeof(control_copy));
+    expect_value("nvn-program-control-section-was-copied", (uint64_t)(uint32_t)copied, 1);
+    if (copied) {
+        expect_condition("nvn-program-copy-is-not-the-guests-later-content",
+                         control_copy[0] != 0xaa);
+        expect_condition("nvn-program-copy-holds-the-guests-content",
+                         control_copy[0] == 0x3c || control_copy[1] == 0x3c);
+    }
+
+    /* 8. The extended entry names the same shader, because the extension
+     *    field is not part of the shader. */
+    memset(control, 0x3c, sizeof(control));
+    memcpy(control + 0x20, &own_length, 4);
+    memcpy(control + 0x704, &code_length, 4);
+    program_set_shaders_ext(program_object, 1, shader_data_ext);
+    char key_ext[17];
+    int keyed_ext = get_stage_info(program_object, 0, key_ext, NULL, NULL);
+    expect_value("nvn-program-extended-stage-is-keyed", (uint64_t)(uint32_t)keyed_ext,
+                 NVN_PROGRAM_EXPECT_REAL_DEVICE);
+    if (keyed && keyed_ext) {
+        expect_condition("nvn-program-extended-key-matches", !strcmp(key, key_ext));
+    }
+
+    /* 9. A stage count this runtime cannot carry is refused, not truncated. */
+    expect_value("nvn-program-too-many-stages-refused",
+                 program_set_shaders(program_object, 7, shader_data), 0);
+
+    /* 10. The other entry points of the family answer without pretending
+     *     that they know more than they do. */
+    program_set_subroutine_linkage(program_object, 1, NULL);
+    program_set_sample_shading(program_object, 1, 2);
+    expect_value("nvn-program-subtile-size-is-zero", program_get_subtile_size(program_object), 0);
+
+    /* 11. The runtime keeps the state on the host, so it must not write a
+     *     single byte into the guest's program object. */
+    expect_condition("nvn-program-object-not-written", all_bytes(program_object, sizeof(program_object), 0xaa));
+
+    /* 12. The counters. */
+    nvn_program_get_stats(&stats);
+    expect_condition("nvn-program-stats-count-calls", stats.calls > 0);
+    expect_condition("nvn-program-stats-count-shaders-set", stats.shaders_set > 0);
+    expect_condition("nvn-program-stats-count-shaders-ext-set", stats.shaders_ext_set > 0);
+    expect_condition("nvn-program-stats-count-stages", stats.stages > 0);
+    expect_condition("nvn-program-stats-count-refused", stats.refused > 0);
+    expect_condition("nvn-program-stats-keyed-matches-reality",
+                     (stats.keyed > 0) == (NVN_PROGRAM_EXPECT_REAL_DEVICE != 0));
+    expect_condition("nvn-program-stats-live-programs", stats.live_programs > 0);
+
+    /* 13. The program is finalized last, because a finalized program is gone. */
+    program_finalize(program_object);
+    nvn_program_get_stats(&stats);
+    expect_value("nvn-program-finalized-is-not-live", (uint64_t)stats.live_programs, 0);
+
+    /* The final gate. Without it the contract could exit 0 while the
+     * expectations had failed. */
+    CHECK(!errors);
+    printf("{\"nvn_program_errors\":%u,\"initialized\":%llu,\"shaders_set\":%llu,"
+           "\"shaders_ext_set\":%llu,\"stages\":%llu,\"keyed\":%llu,\"refused\":%llu}\n",
+           errors, (unsigned long long)stats.initialized, (unsigned long long)stats.shaders_set,
+           (unsigned long long)stats.shaders_ext_set, (unsigned long long)stats.stages,
+           (unsigned long long)stats.keyed, (unsigned long long)stats.refused);
+    return 0;
+}
+
+/* The NVN command buffer family.
+ *
+ * A command buffer is a recorder in the real SDK as well: the guest records
+ * the commands it wants and the device runs them later. So the contract is
+ * about the recording, and about the runtime keeping its state on the host
+ * instead of writing into the guest's object. */
+static int nvn_command_buffer_contract(void) {
+    typedef void *(*bootstrap_fn)(const char *);
+    typedef void *(*lookup_fn)(void *, const char *);
+    typedef uint64_t (*cb_initialize_fn)(void *, void *);
+    typedef void (*cb_finalize_fn)(void *);
+    typedef void (*cb_begin_recording_fn)(void *);
+    typedef uint64_t (*cb_end_recording_fn)(void *);
+    typedef uint64_t (*cb_add_command_memory_fn)(void *, void *, int64_t, uint64_t);
+    typedef uint64_t (*cb_get_command_memory_size_fn)(const void *);
+    typedef uint64_t (*cb_get_command_memory_free_fn)(const void *);
+    typedef int (*cb_is_recording_fn)(const void *);
+    typedef void (*cb_draw_elements_fn)(void *, int, int, int, uint64_t);
+    typedef void (*cb_clear_fn)(void *, int, const float *, int);
+    typedef void (*cb_set_viewport_fn)(void *, int, int, int, int);
+    nvn_command_buffer_stats stats;
+    size_t i;
+
+    /* 1. The family table holds every name of the family, once each. */
+    size_t count = nvn_command_buffer_family_count();
+    expect_condition("nvn-command-buffer-family-has-names", count > 100);
+    for (i = 0; i < count; i++) {
+        const nvn_command_buffer_family_entry *entry = nvn_command_buffer_family_entry_at(i);
+        size_t j;
+        expect_condition("nvn-command-buffer-family-entry-has-a-name",
+                         entry != NULL && entry->name != NULL && entry->name[0] != 0);
+        expect_condition("nvn-command-buffer-family-entry-has-a-function",
+                         entry != NULL && entry->fn != NULL);
+        if (!entry || !entry->name) continue;
+        for (j = i + 1; j < count; j++) {
+            const nvn_command_buffer_family_entry *other = nvn_command_buffer_family_entry_at(j);
+            if (!other || !other->name) continue;
+            expect_condition("nvn-command-buffer-family-name-is-unique",
+                             strcmp(entry->name, other->name) != 0);
+        }
+    }
+
+    /* 2. Every name of the family resolves through the guest's own lookup,
+     *    and resolves to the same entry point every time. */
+    bootstrap_fn bootstrap = (bootstrap_fn)(uintptr_t)guest_process_resolve(0, "nvnBootstrapLoader");
+    CHECK(bootstrap != NULL);
+    lookup_fn lookup = (lookup_fn)(uintptr_t)bootstrap("nvnDeviceGetProcAddress");
+    CHECK(lookup != NULL);
+    for (i = 0; i < count; i++) {
+        const nvn_command_buffer_family_entry *entry = nvn_command_buffer_family_entry_at(i);
+        void *resolved;
+        if (!entry || !entry->name) continue;
+        resolved = lookup(NULL, entry->name);
+        expect_condition("nvn-command-buffer-name-resolves", resolved != NULL);
+        expect_condition("nvn-command-buffer-name-is-stable", resolved == lookup(NULL, entry->name));
+        expect_condition("nvn-command-buffer-name-matches-the-table", resolved == entry->fn);
+    }
+
+    /* 3. The command buffer of the guest. The runtime keeps its state on the
+     *    host, so the guest's object must come back untouched. */
+    cb_initialize_fn initialize = (cb_initialize_fn)(uintptr_t)lookup(NULL, "nvnCommandBufferInitialize");
+    cb_finalize_fn finalize = (cb_finalize_fn)(uintptr_t)lookup(NULL, "nvnCommandBufferFinalize");
+    cb_begin_recording_fn begin_recording =
+        (cb_begin_recording_fn)(uintptr_t)lookup(NULL, "nvnCommandBufferBeginRecording");
+    cb_end_recording_fn end_recording =
+        (cb_end_recording_fn)(uintptr_t)lookup(NULL, "nvnCommandBufferEndRecording");
+    cb_add_command_memory_fn add_command_memory =
+        (cb_add_command_memory_fn)(uintptr_t)lookup(NULL, "nvnCommandBufferAddCommandMemory");
+    cb_get_command_memory_size_fn get_command_memory_size =
+        (cb_get_command_memory_size_fn)(uintptr_t)lookup(NULL, "nvnCommandBufferGetCommandMemorySize");
+    cb_get_command_memory_free_fn get_command_memory_free =
+        (cb_get_command_memory_free_fn)(uintptr_t)lookup(NULL, "nvnCommandBufferGetCommandMemoryFree");
+    cb_is_recording_fn is_recording =
+        (cb_is_recording_fn)(uintptr_t)lookup(NULL, "nvnCommandBufferIsRecording");
+    cb_draw_elements_fn draw_elements =
+        (cb_draw_elements_fn)(uintptr_t)lookup(NULL, "nvnCommandBufferDrawElements");
+    cb_clear_fn clear = (cb_clear_fn)(uintptr_t)lookup(NULL, "nvnCommandBufferClearColor");
+    cb_set_viewport_fn set_viewport =
+        (cb_set_viewport_fn)(uintptr_t)lookup(NULL, "nvnCommandBufferSetViewport");
+    CHECK(initialize && finalize && begin_recording && end_recording);
+    CHECK(add_command_memory && get_command_memory_size && get_command_memory_free && is_recording);
+    CHECK(draw_elements && clear && set_viewport);
+
+    unsigned char buffer_object[64];
+    memset(buffer_object, 0xaa, sizeof(buffer_object));
+    expect_value("nvn-command-buffer-initialize-succeeds", initialize(buffer_object, NULL), 1);
+    expect_condition("nvn-command-buffer-object-not-written",
+                     all_bytes(buffer_object, sizeof(buffer_object), 0xaa));
+
+    /* 4. The command memory the guest hands over is remembered as it was
+     *    given, and the answer about what is free cannot be a measurement,
+     *    because the guest writes into that memory itself. */
+    static unsigned char command_memory[4096];
+    memset(command_memory, 0x11, sizeof(command_memory));
+    add_command_memory(buffer_object, command_memory, 0, sizeof(command_memory));
+    expect_value("nvn-command-buffer-command-memory-size", get_command_memory_size(buffer_object),
+                 sizeof(command_memory));
+    expect_value("nvn-command-buffer-command-memory-free-is-the-whole-memory",
+                 get_command_memory_free(buffer_object), sizeof(command_memory));
+
+    /* 5. Recording. The guest is not recording yet. */
+    expect_value("nvn-command-buffer-is-not-recording-yet", (uint64_t)(uint32_t)is_recording(buffer_object), 0);
+    begin_recording(buffer_object);
+    expect_value("nvn-command-buffer-is-recording", (uint64_t)(uint32_t)is_recording(buffer_object), 1);
+
+    /* How many records there are before the three commands below. The count
+     * itself is not written down here, so the check afterwards does not depend
+     * on how many commands the family records on its own. */
+    const nvn_recorded_command *records = NULL;
+    size_t record_count = 0;
+    expect_value("nvn-command-buffer-has-records",
+                 (uint64_t)(uint32_t)nvn_command_buffer_get_records(buffer_object, &records, &record_count), 1);
+    size_t records_before = record_count;
+
+    /* 6. The commands. The colour is an array in the guest's own memory, and
+     *    the viewport is four numbers, and the index buffer is an address. */
+    static float clear_color[4] = {0.25f, 0.5f, 0.75f, 1.0f};
+    clear(buffer_object, 0, clear_color, 0);
+    set_viewport(buffer_object, 0, 0, 1280, 720);
+    draw_elements(buffer_object, 3, 1, 6, 0x12345000ULL);
+
+    records = NULL;
+    record_count = 0;
+    expect_value("nvn-command-buffer-has-records-again",
+                 (uint64_t)(uint32_t)nvn_command_buffer_get_records(buffer_object, &records, &record_count), 1);
+    expect_value("nvn-command-buffer-three-commands-were-recorded",
+                 (uint64_t)record_count, (uint64_t)(records_before + 3));
+    if (records && record_count >= 3) {
+        const nvn_recorded_command *last = &records[record_count - 3];
+        expect_value("nvn-command-buffer-first-record-is-the-clear",
+                     (uint64_t)last[0].op, (uint64_t)NVN_CB_OP_CLEAR_COLOR);
+        expect_value("nvn-command-buffer-second-record-is-the-viewport",
+                     (uint64_t)last[1].op, (uint64_t)NVN_CB_OP_VIEWPORTS);
+        expect_condition("nvn-command-buffer-third-record-is-a-draw",
+                         last[2].op == NVN_CB_OP_DRAW_IDX || last[2].op == NVN_CB_OP_DRAW);
+        expect_condition("nvn-command-buffer-opcode-has-a-name",
+                         nvn_command_buffer_opcode_name(last[0].op) != NULL);
+
+        /* 7. The record holds the data, not an address of the guest's
+         *    memory. The guest may write over that memory the moment it
+         *    returns, so a record that only names the address would be
+         *    unreadable by the time the command is run. */
+        if (last[0].payload && last[0].size >= sizeof(nvn_cb_p_clear_color)) {
+            const nvn_cb_p_clear_color *color = (const nvn_cb_p_clear_color *)last[0].payload;
+            float expected[4] = {0.25f, 0.5f, 0.75f, 1.0f};
+            int k;
+            int equal = 1;
+            for (k = 0; k < 4; k++) {
+                if (color->rgba[k] != expected[k]) equal = 0;
+            }
+            expect_condition("nvn-command-buffer-record-holds-the-colour", equal);
+        } else {
+            expect_condition("nvn-command-buffer-clear-record-has-a-payload", 0);
+        }
+        if (last[1].payload && last[1].size >= sizeof(nvn_cb_p_viewports)) {
+            const nvn_cb_p_viewports *viewports = (const nvn_cb_p_viewports *)last[1].payload;
+            expect_condition("nvn-command-buffer-record-holds-the-viewport",
+                             viewports->n == 1 && viewports->v[0][2] == 1280.0f &&
+                                 viewports->v[0][3] == 720.0f);
+        } else {
+            expect_condition("nvn-command-buffer-viewport-record-has-a-payload", 0);
+        }
+    }
+
+    /* 8. The record does not follow the guest's memory. The guest writes over
+     *    its colour right after the call, and the record must not change. */
+    if (records && record_count >= 3) {
+        const nvn_recorded_command *again = NULL;
+        size_t again_count = 0;
+        memset(clear_color, 0x99, sizeof(clear_color));
+        expect_value("nvn-command-buffer-records-are-still-there",
+                     (uint64_t)(uint32_t)nvn_command_buffer_get_records(buffer_object, &again, &again_count), 1);
+        expect_condition("nvn-command-buffer-record-count-is-unchanged", again_count == record_count);
+        if (again && again_count >= 3 && again[record_count - 3].payload &&
+            again[record_count - 3].size >= sizeof(nvn_cb_p_clear_color)) {
+            const nvn_cb_p_clear_color *color =
+                (const nvn_cb_p_clear_color *)again[record_count - 3].payload;
+            expect_condition("nvn-command-buffer-record-does-not-follow-the-guest-memory",
+                             color->rgba[0] == 0.25f && color->rgba[1] == 0.5f);
+        }
+    }
+
+    /* 9. Ending the recording hands out a handle of the runtime, and the
+     *    handle names an immutable package. */
+    uint64_t handle = end_recording(buffer_object);
+    expect_condition("nvn-command-buffer-end-recording-hands-out-a-handle", handle != 0);
+    nvn_command_package package;
+    memset(&package, 0, sizeof(package));
+    expect_value("nvn-command-buffer-handle-names-a-package",
+                 (uint64_t)(uint32_t)nvn_command_buffer_get_package(handle, &package), 1);
+    expect_condition("nvn-command-buffer-package-has-records", package.record_count >= 3);
+    expect_condition("nvn-command-buffer-package-has-bytes", package.bytes > 0);
+    expect_condition("nvn-command-buffer-package-handle-matches", package.handle == handle);
+
+    /* 10. The package is immutable. Recording again into the same buffer, and
+     *     reusing the guest's address for another buffer, both leave it alone. */
+    unsigned char package_bytes[64];
+    size_t package_copy = package.bytes < sizeof(package_bytes) ? package.bytes : sizeof(package_bytes);
+    if (package.records && package_copy) memcpy(package_bytes, package.records, package_copy);
+    begin_recording(buffer_object);
+    clear(buffer_object, 0, clear_color, 0);
+    uint64_t second_handle = end_recording(buffer_object);
+    expect_condition("nvn-command-buffer-second-recording-has-its-own-handle",
+                     second_handle != 0 && second_handle != handle);
+    nvn_command_package second_package;
+    memset(&second_package, 0, sizeof(second_package));
+    expect_value("nvn-command-buffer-second-handle-names-a-package",
+                 (uint64_t)(uint32_t)nvn_command_buffer_get_package(second_handle, &second_package), 1);
+    nvn_command_package again_package;
+    memset(&again_package, 0, sizeof(again_package));
+    expect_value("nvn-command-buffer-first-handle-still-names-its-package",
+                 (uint64_t)(uint32_t)nvn_command_buffer_get_package(handle, &again_package), 1);
+    expect_condition("nvn-command-buffer-first-package-is-unchanged",
+                     again_package.bytes == package.bytes && again_package.record_count == package.record_count &&
+                         (again_package.records == package.records ||
+                          (again_package.records && package.records &&
+                           !memcmp(again_package.records, package_bytes, package_copy))));
+
+    /* 11. A handle the registry does not know is refused, never followed. */
+    nvn_command_package unknown;
+    memset(&unknown, 0, sizeof(unknown));
+    expect_value("nvn-command-buffer-unknown-handle-is-refused",
+                 (uint64_t)(uint32_t)nvn_command_buffer_get_package(0xfeedfacecafef00dULL, &unknown), 0);
+
+    /* 12. The counters. */
+    nvn_command_buffer_get_stats(&stats);
+    expect_condition("nvn-command-buffer-stats-count-calls", stats.calls > 0);
+    expect_condition("nvn-command-buffer-stats-count-records", stats.recorded >= 3);
+    expect_condition("nvn-command-buffer-stats-count-handles", stats.handles >= 2);
+    expect_condition("nvn-command-buffer-stats-count-initialized", stats.initialized > 0);
+    expect_condition("nvn-command-buffer-stats-count-packages", stats.packages >= 2);
+    expect_condition("nvn-command-buffer-stats-copied-bytes", stats.copies_bytes > 0);
+    expect_condition("nvn-command-buffer-stats-have-a-live-buffer", stats.live_buffers > 0);
+
+    /* 13. The buffer is finalized last, because a finalized buffer is gone. */
+    finalize(buffer_object);
+    nvn_command_buffer_get_stats(&stats);
+    expect_condition("nvn-command-buffer-finalized-is-not-live", stats.live_buffers == 0);
+
+    /* The final gate. Without it the contract could exit 0 while the
+     * expectations had failed. */
+    CHECK(!errors);
+    printf("{\"nvn_command_buffer_errors\":%u,\"names\":%zu,\"calls\":%llu,\"recorded\":%llu,"
+           "\"handles\":%llu,\"packages\":%llu,\"copied_bytes\":%llu,\"initialized\":%llu,\"finalized\":%llu}\n",
+           errors, count, (unsigned long long)stats.calls, (unsigned long long)stats.recorded,
+           (unsigned long long)stats.handles, (unsigned long long)stats.packages,
+           (unsigned long long)stats.copies_bytes, (unsigned long long)stats.initialized,
+           (unsigned long long)stats.finalized);
+    return 0;
+}
+
+
+/* The NVN sampler builder family and the NVN texture builder family.
+ *
+ * The guest fills a builder and hands it to the sampler or texture create
+ * call. The values the guest puts into a builder are kept on the host, keyed
+ * by the address of the builder, so the contract checks that the values come
+ * back unchanged, that the defaults really reset, and that not one byte is
+ * written into the guest's builder. */
+static int nvn_builder_contract(void) {
+    typedef void *(*bootstrap_fn)(const char *);
+    typedef void *(*lookup_fn)(void *, const char *);
+    typedef void (*set_defaults_fn)(void *);
+    typedef void (*set_device_fn)(void *, void *);
+    typedef void (*set_min_mag_fn)(void *, int, int);
+    typedef void (*get_min_mag_fn)(void *, int *, int *);
+    typedef void (*set_wrap_fn)(void *, int, int, int);
+    typedef void (*get_wrap_fn)(void *, int *, int *, int *);
+    typedef void (*set_format_fn)(void *, int);
+    /* The texture builder getters hand the value back, the sampler builder
+     * getters write through their arguments. That difference is the one of the
+     * vendored header. */
+    typedef int (*get_format_fn)(void *);
+    typedef void (*set_width_fn)(void *, int);
+    typedef int (*get_width_fn)(void *);
+    typedef void (*set_height_fn)(void *, int);
+    typedef int (*get_height_fn)(void *);
+    nvn_sampler_builder_stats sampler_stats;
+    nvn_texture_builder_stats texture_stats;
+    size_t i;
+
+    /* 1. Every name of both families resolves, and resolves to the same
+     *    entry point every time. */
+    bootstrap_fn bootstrap = (bootstrap_fn)(uintptr_t)guest_process_resolve(0, "nvnBootstrapLoader");
+    CHECK(bootstrap != NULL);
+    lookup_fn lookup = (lookup_fn)(uintptr_t)bootstrap("nvnDeviceGetProcAddress");
+    CHECK(lookup != NULL);
+    size_t sampler_count = nvn_sampler_builder_family_count();
+    size_t texture_count = nvn_texture_builder_family_count();
+    expect_condition("nvn-builder-sampler-family-has-names", sampler_count >= 25);
+    expect_condition("nvn-builder-texture-family-has-names", texture_count >= 44);
+    for (i = 0; i < sampler_count; i++) {
+        const nvn_sampler_builder_family_entry *entry = nvn_sampler_builder_family_entry_at(i);
+        void *resolved;
+        if (!entry || !entry->name) continue;
+        resolved = lookup(NULL, entry->name);
+        expect_condition("nvn-builder-sampler-name-resolves", resolved != NULL);
+        expect_condition("nvn-builder-sampler-name-is-stable", resolved == lookup(NULL, entry->name));
+        expect_condition("nvn-builder-sampler-name-matches-the-table", resolved == entry->fn);
+    }
+    for (i = 0; i < texture_count; i++) {
+        const nvn_texture_builder_family_entry *entry = nvn_texture_builder_family_entry_at(i);
+        void *resolved;
+        if (!entry || !entry->name) continue;
+        resolved = lookup(NULL, entry->name);
+        expect_condition("nvn-builder-texture-name-resolves", resolved != NULL);
+        expect_condition("nvn-builder-texture-name-is-stable", resolved == lookup(NULL, entry->name));
+        expect_condition("nvn-builder-texture-name-matches-the-table", resolved == entry->fn);
+    }
+
+    set_defaults_fn sampler_defaults =
+        (set_defaults_fn)(uintptr_t)lookup(NULL, "nvnSamplerBuilderSetDefaults");
+    set_device_fn sampler_set_device =
+        (set_device_fn)(uintptr_t)lookup(NULL, "nvnSamplerBuilderSetDevice");
+    set_min_mag_fn sampler_set_min_mag =
+        (set_min_mag_fn)(uintptr_t)lookup(NULL, "nvnSamplerBuilderSetMinMagFilter");
+    get_min_mag_fn sampler_get_min_mag =
+        (get_min_mag_fn)(uintptr_t)lookup(NULL, "nvnSamplerBuilderGetMinMagFilter");
+    set_wrap_fn sampler_set_wrap =
+        (set_wrap_fn)(uintptr_t)lookup(NULL, "nvnSamplerBuilderSetWrapMode");
+    get_wrap_fn sampler_get_wrap =
+        (get_wrap_fn)(uintptr_t)lookup(NULL, "nvnSamplerBuilderGetWrapMode");
+    CHECK(sampler_defaults && sampler_set_device && sampler_set_min_mag && sampler_get_min_mag);
+    CHECK(sampler_set_wrap && sampler_get_wrap);
+
+    set_defaults_fn texture_defaults =
+        (set_defaults_fn)(uintptr_t)lookup(NULL, "nvnTextureBuilderSetDefaults");
+    set_device_fn texture_set_device =
+        (set_device_fn)(uintptr_t)lookup(NULL, "nvnTextureBuilderSetDevice");
+    set_format_fn texture_set_format =
+        (set_format_fn)(uintptr_t)lookup(NULL, "nvnTextureBuilderSetFormat");
+    get_format_fn texture_get_format =
+        (get_format_fn)(uintptr_t)lookup(NULL, "nvnTextureBuilderGetFormat");
+    set_width_fn texture_set_width =
+        (set_width_fn)(uintptr_t)lookup(NULL, "nvnTextureBuilderSetWidth");
+    get_width_fn texture_get_width =
+        (get_width_fn)(uintptr_t)lookup(NULL, "nvnTextureBuilderGetWidth");
+    set_height_fn texture_set_height =
+        (set_height_fn)(uintptr_t)lookup(NULL, "nvnTextureBuilderSetHeight");
+    get_height_fn texture_get_height =
+        (get_height_fn)(uintptr_t)lookup(NULL, "nvnTextureBuilderGetHeight");
+    CHECK(texture_defaults && texture_set_device && texture_set_format && texture_get_format);
+    CHECK(texture_set_width && texture_get_width && texture_set_height && texture_get_height);
+
+    /* 2. The guest's builder objects. The runtime keeps the values on the
+     *    host, so the guest's memory must come back untouched. */
+    unsigned char sampler_builder[64];
+    unsigned char texture_builder[64];
+    memset(sampler_builder, 0xaa, sizeof(sampler_builder));
+    memset(texture_builder, 0xaa, sizeof(texture_builder));
+
+    /* 3. The sampler builder: a value goes in and comes back unchanged. */
+    sampler_defaults(sampler_builder);
+    sampler_set_device(sampler_builder, (void *)(uintptr_t)0x5639a03810ULL);
+    sampler_set_min_mag(sampler_builder, 0x0 /* NEAREST */, 0x0 /* NEAREST */);
+    sampler_set_wrap(sampler_builder, 0x6, 0x6, 0x6 /* MIRRORED_REPEAT */);
+    int min_filter = -1;
+    int mag_filter = -1;
+    int wrap_s = -1;
+    int wrap_t = -1;
+    int wrap_r = -1;
+    sampler_get_min_mag(sampler_builder, &min_filter, &mag_filter);
+    sampler_get_wrap(sampler_builder, &wrap_s, &wrap_t, &wrap_r);
+    expect_value("nvn-builder-sampler-min-filter-round-trips", (uint64_t)(uint32_t)min_filter, 0x0);
+    expect_value("nvn-builder-sampler-mag-filter-round-trips", (uint64_t)(uint32_t)mag_filter, 0x0);
+    expect_value("nvn-builder-sampler-wrap-s-round-trips", (uint64_t)(uint32_t)wrap_s, 0x6);
+    expect_value("nvn-builder-sampler-wrap-t-round-trips", (uint64_t)(uint32_t)wrap_t, 0x6);
+    expect_value("nvn-builder-sampler-wrap-r-round-trips", (uint64_t)(uint32_t)wrap_r, 0x6);
+
+    /* 4. The defaults really reset. The reference host that runs this game
+     *    sets the min filter to NEAREST_MIPMAP_LINEAR, the mag filter to
+     *    LINEAR and the wrap mode to REPEAT on all three axes. */
+    sampler_defaults(sampler_builder);
+    sampler_get_min_mag(sampler_builder, &min_filter, &mag_filter);
+    sampler_get_wrap(sampler_builder, &wrap_s, &wrap_t, &wrap_r);
+    expect_value("nvn-builder-sampler-default-min-filter", (uint64_t)(uint32_t)min_filter, 0x4);
+    expect_value("nvn-builder-sampler-default-mag-filter", (uint64_t)(uint32_t)mag_filter, 0x1);
+    expect_value("nvn-builder-sampler-default-wrap-s", (uint64_t)(uint32_t)wrap_s, 0x1);
+    expect_value("nvn-builder-sampler-default-wrap-t", (uint64_t)(uint32_t)wrap_t, 0x1);
+    expect_value("nvn-builder-sampler-default-wrap-r", (uint64_t)(uint32_t)wrap_r, 0x1);
+
+    /* 5. The texture builder: a value goes in and comes back unchanged. */
+    texture_defaults(texture_builder);
+    texture_set_device(texture_builder, (void *)(uintptr_t)0x5639a03810ULL);
+    texture_set_format(texture_builder, 0x25 /* RGBA8 */);
+    texture_set_width(texture_builder, 1280);
+    texture_set_height(texture_builder, 720);
+    int format = texture_get_format(texture_builder);
+    int width = texture_get_width(texture_builder);
+    int height = texture_get_height(texture_builder);
+    expect_value("nvn-builder-texture-format-round-trips", (uint64_t)(uint32_t)format, 0x25);
+    expect_value("nvn-builder-texture-width-round-trips", (uint64_t)(uint32_t)width, 1280);
+    expect_value("nvn-builder-texture-height-round-trips", (uint64_t)(uint32_t)height, 720);
+
+    /* 6. The defaults of the texture builder: the reference host sets the
+     *    target to 2D and the size and the level count to one. */
+    texture_defaults(texture_builder);
+    width = texture_get_width(texture_builder);
+    height = texture_get_height(texture_builder);
+    expect_value("nvn-builder-texture-default-width", (uint64_t)(uint32_t)width, 1);
+    expect_value("nvn-builder-texture-default-height", (uint64_t)(uint32_t)height, 1);
+
+    /* 7. The device the guest put into a builder comes back out of it. The
+     *    signature of that getter is not in the header this runtime was built
+     *    against, but handing back a null pointer is the one answer that can
+     *    crash the guest if it dereferences the result. */
+    sampler_set_device(sampler_builder, (void *)(uintptr_t)0x5639a03810ULL);
+    texture_set_device(texture_builder, (void *)(uintptr_t)0x5639a03810ULL);
+    expect_condition("nvn-builder-sampler-device-round-trips",
+                     nvn_sampler_builder_device_of(sampler_builder) == (void *)(uintptr_t)0x5639a03810ULL);
+    expect_condition("nvn-builder-texture-device-round-trips",
+                     nvn_texture_builder_device_of(texture_builder) == (void *)(uintptr_t)0x5639a03810ULL);
+
+    /* 8. The guest's builders were not written to. */
+    expect_condition("nvn-builder-sampler-object-not-written",
+                     all_bytes(sampler_builder, sizeof(sampler_builder), 0xaa));
+    expect_condition("nvn-builder-texture-object-not-written",
+                     all_bytes(texture_builder, sizeof(texture_builder), 0xaa));
+
+    /* 9. The counters. */
+    nvn_sampler_builder_get_stats(&sampler_stats);
+    nvn_texture_builder_get_stats(&texture_stats);
+    expect_condition("nvn-builder-sampler-stats-count-calls", sampler_stats.calls > 0);
+    expect_condition("nvn-builder-sampler-stats-count-set-defaults", sampler_stats.set_defaults > 0);
+    expect_condition("nvn-builder-sampler-stats-count-sets", sampler_stats.sets > 0);
+    expect_condition("nvn-builder-sampler-stats-count-gets", sampler_stats.gets > 0);
+    expect_condition("nvn-builder-sampler-stats-have-a-live-builder", sampler_stats.live_builders > 0);
+    expect_condition("nvn-builder-texture-stats-count-calls", texture_stats.calls > 0);
+    expect_condition("nvn-builder-texture-stats-count-set-defaults", texture_stats.set_defaults > 0);
+    expect_condition("nvn-builder-texture-stats-count-sets", texture_stats.sets > 0);
+    expect_condition("nvn-builder-texture-stats-count-gets", texture_stats.gets > 0);
+    expect_condition("nvn-builder-texture-stats-have-a-live-builder", texture_stats.live_builders > 0);
+
+    /* The final gate. Without it the contract could exit 0 while the
+     * expectations had failed. */
+    CHECK(!errors);
+    printf("{\"nvn_builder_errors\":%u,\"sampler_names\":%zu,\"texture_names\":%zu,"
+           "\"sampler_calls\":%llu,\"sampler_refused\":%llu,\"sampler_raw_calls\":%llu,"
+           "\"texture_calls\":%llu,\"texture_refused\":%llu,\"texture_raw_calls\":%llu}\n",
+           errors, sampler_count, texture_count,
+           (unsigned long long)sampler_stats.calls, (unsigned long long)sampler_stats.refused,
+           (unsigned long long)sampler_stats.raw_calls,
+           (unsigned long long)texture_stats.calls, (unsigned long long)texture_stats.refused,
+           (unsigned long long)texture_stats.raw_calls);
+    return 0;
+}
+
+int main(int argc,char **argv) {
+    page=(size_t)sysconf(_SC_PAGESIZE);
+    if(argc==2 && !strcmp(argv[1],"--tls-host-null")) {
+        typedef void(*free_fn)(void *,size_t);
+        free_fn release=(free_fn)(uintptr_t)guest_process_resolve(0,"nnosFreeMemoryForThreadLocal");CHECK(release);
+        release(NULL,SIZE_MAX);puts("{\"tls_host_null_errors\":0,\"no_primary_or_pair_required\":true,\"callback_calls\":0}");return 0;
+    }
+    if(argc==2 && !strcmp(argv[1],"--tls-host-invalid")) {
+        typedef void*(*allocate_fn)(size_t);
+        allocate_fn allocate=(allocate_fn)(uintptr_t)guest_process_resolve(0,"nnosAllocateMemoryForThreadLocal");CHECK(allocate);
+        (void)allocate(48);return 9;
+    }
+    if(argc==3 && !strcmp(argv[1],"--identity"))return identity_contract(argv[2],0);
+    if(argc==3 && !strcmp(argv[1],"--identity-native"))return identity_contract(argv[2],1);
+#if defined(NSO_PROFILE_IDENTITY_TESTING)
+    if(argc==3 && !strcmp(argv[1],"--identity-recovery"))return identity_recovery_contract(argv[2]);
+#endif
+    if(argc==3 && !strcmp(argv[1],"--tls-registration"))return tls_registration_contract(argv[2],0);
+    if(argc==3 && !strcmp(argv[1],"--dso-registration"))return dso_registration_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--snapshot-thread"))return snapshot_thread_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--movie-allocator"))return movie_allocator_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--oe-cpu-boost"))return oe_cpu_boost_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--hid-init"))return hid_init_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--oe-focus"))return oe_focus_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--oe-operation-mode"))return oe_operation_mode_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--ldn-get-state"))return ldn_state_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--oe-performance"))return oe_performance_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--nv-graphics-allocator"))return nv_allocator_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--nv-initialize-graphics"))return nv_initialize_graphics_contract(argv[2]);
+    if(argc==2 && !strcmp(argv[1],"--nvn-device"))return nvn_device_contract();
+    if(argc==2 && !strcmp(argv[1],"--nvn-queue"))return nvn_queue_contract();
+    if(argc==2 && !strcmp(argv[1],"--nvn-window"))return nvn_window_contract();
+    if(argc==2 && !strcmp(argv[1],"--nvn-memory-pool"))return nvn_memory_pool_contract();
+    if(argc==2 && !strcmp(argv[1],"--nvn-sampler-pool"))return nvn_sampler_pool_contract();
+    if(argc==2 && !strcmp(argv[1],"--nvn-texture-pool"))return nvn_texture_pool_contract();
+    if(argc==2 && !strcmp(argv[1],"--nvn-blend-state"))return nvn_blend_state_contract();
+    if(argc==2 && !strcmp(argv[1],"--nvn-render-states"))return nvn_render_state_contract();
+    if(argc==2 && !strcmp(argv[1],"--nvn-program"))return nvn_program_contract();
+    if(argc==2 && !strcmp(argv[1],"--nvn-command-buffer"))return nvn_command_buffer_contract();
+    if(argc==2 && !strcmp(argv[1],"--nvn-builder"))return nvn_builder_contract();
+    if(argc==2 && !strcmp(argv[1],"--vi-display"))return vi_display_contract();
+    if(argc==3 && !strcmp(argv[1],"--nvn-bootstrap"))return nvn_bootstrap_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--tls-registration-fresh"))return tls_fresh_registration_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--tls-registration-null"))return tls_registration_contract(argv[2],1);
+    if(argc==3 && !strcmp(argv[1],"--tls-registration-repeat"))return tls_registration_contract(argv[2],2);
+    if(argc==3 && !strcmp(argv[1],"--tls-provider"))return tls_provider_contract(argv[2],0);
+    if(argc==3 && !strcmp(argv[1],"--tls-provider-live"))return tls_provider_contract(argv[2],1);
+    if(argc==3 && !strcmp(argv[1],"--tls-host-consumer"))return tls_host_consumer_contract(argv[2],1);
+    if(argc==3 && !strcmp(argv[1],"--tls-host-busy"))return tls_host_consumer_contract(argv[2],2);
+    if(argc==3 && !strcmp(argv[1],"--tls-host-uninitialized"))return tls_host_consumer_contract(argv[2],-1);
+    if(argc==2 && !strcmp(argv[1],"--snprintf"))return snprintf_contract();
+    if(argc==2 && !strcmp(argv[1],"--rwlock"))return rwlock_contract();
+    if(argc==2 && !strcmp(argv[1],"--uuid"))return uuid_contract();
+    if(argc==2 && !strcmp(argv[1],"--time"))return time_contract();
+    if(argc==2 && !strcmp(argv[1],"--tick"))return tick_contract();
+    if(argc==2 && !strcmp(argv[1],"--ctype"))return ctype_contract();
+    if(argc==2 && !strcmp(argv[1],"--guest-tp"))return guest_tp_test_contract();
+    if(argc==2 && !strcmp(argv[1],"--threads"))return threads_contract();
+    if(argc==2 && !strcmp(argv[1],"--fs-allocator"))return fs_allocator_contract();
+    if(argc==2 && !strcmp(argv[1],"--fs-query-cache"))return fs_query_cache_contract();
+    if(argc==2 && !strcmp(argv[1],"--fs-mount-rom"))return fs_mount_rom_contract();
+    if(argc==2 && !strcmp(argv[1],"--fs-open-file"))return fs_open_file_contract();
+    if(argc==2 && !strcmp(argv[1],"--aoc"))return aoc_contract();
+    if(argc==2 && !strcmp(argv[1],"--nifm"))return nifm_contract();
+    if(argc==2 && !strcmp(argv[1],"--socket"))return socket_contract();
+    if(argc==2 && !strcmp(argv[1],"--socket-eventfd"))return socket_eventfd_contract();
+    if(argc==2 && !strcmp(argv[1],"--account"))return account_contract();
+    if(argc==2 && !strcmp(argv[1],"--oe"))return oe_contract();
+    if(argc==2 && !strcmp(argv[1],"--gettimeofday"))return gettimeofday_contract();
+    if(argc==2 && !strcmp(argv[1],"--os-process-handle"))return os_process_handle_contract();
+    if(argc==2 && !strcmp(argv[1],"--nn-result"))return nn_result_contract();
+    if(argc==2 && !strcmp(argv[1],"--nnssl"))return nnssl_contract();
+    if(argc==2 && !strcmp(argv[1],"--stdio"))return stdio_contract();
+    if(argc==2 && !strcmp(argv[1],"--fs-open-dir"))return fs_open_dir_contract();
+    if(argc==2 && !strcmp(argv[1],"--os-event"))return os_event_contract();
+    if(argc==2 && !strcmp(argv[1],"--posix-memalign"))return posix_memalign_contract();
+    if(argc==2 && !strcmp(argv[1],"--cxa-thread-atexit"))return cxa_thread_atexit_contract();
+    if(argc==2 && !strcmp(argv[1],"--diag-abort"))return diag_abort_contract();
+    if(argc==2 && !strcmp(argv[1],"--diag-aoc-event"))return diag_aoc_event_contract();
+    if(argc==2 && !strcmp(argv[1],"--logf"))return logf_contract();
+    if(argc==3 && !strcmp(argv[1],"--logf-native"))return logf_native_contract(argv[2]);
+    if(argc==2 && !strcmp(argv[1],"--strcasecmp"))return strcasecmp_contract();
+    if(argc==3 && !strcmp(argv[1],"--strcasecmp-native"))return strcasecmp_native_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--va-enabled"))return va_enabled_contract(argv[2],0);
+    if(argc==3 && !strcmp(argv[1],"--va-native"))return va_enabled_contract(argv[2],1);
+    if(argc==2 && !strcmp(argv[1],"--invalid-va-enabled")) {
+        typedef uint32_t(*enabled_fn)(void);
+        enabled_fn query=(enabled_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os29IsVirtualAddressMemoryEnabledEv");
+        (void)query();return 9;
+    }
+    if(argc==2 && !strcmp(argv[1],"--locale"))return locale_contract();
+    if(argc==3 && !strcmp(argv[1],"--locale-native"))return locale_native_contract(argv[2]);
+    if(argc==2 && !strcmp(argv[1],"--resource-owner"))return resource_owner_contract();
+    if(argc==3 && !strcmp(argv[1],"--resource"))return resource_process_contract(argv[2],0);
+    if(argc==3 && !strcmp(argv[1],"--resource-native"))return resource_process_contract(argv[2],1);
+#if defined(GUEST_RESOURCE_TESTING)
+    if(argc==2 && !strcmp(argv[1],"--resource-recovery"))return resource_recovery_contract();
+#endif
+    if(argc==3 && !strcmp(argv[1],"--arguments"))return argument_contract(argv[2],0);
+    if(argc==3 && !strcmp(argv[1],"--arguments-native"))return argument_contract(argv[2],1);
+#if defined(NSO_PROFILE_ARGUMENT_TESTING)
+    if(argc==3 && !strcmp(argv[1],"--arguments-recovery"))return argument_recovery_contract(argv[2]);
+#endif
+#if defined(NSO_PROFILE_BOUNDARY_TESTING)
+    if(argc==3 && !strcmp(argv[1],"--boundary-retained"))return boundary_retained_contract(argv[2]);
+#endif
+    if(argc==3 && !strcmp(argv[1],"--boundary"))return boundary_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--retarget"))return retarget_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--retarget-readonly"))return readonly_retarget_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--os-tls"))return os_wrapper_contract(argv[2]);
+    if(argc==3 && !strcmp(argv[1],"--os-tls-callback"))return os_callback_contract(argv[2]);
+#if !defined(__ANDROID__)
+    if(argc==3 && !strcmp(argv[1],"--tls-unsupported"))return unsupported_tls_contract(argv[2]);
+#endif
+    if(argc==2 && !strcmp(argv[1],"--invalid-query")) {
+        struct guest_memory_info untouched;memset(&untouched,0xa5,sizeof(untouched));
+        typedef void (*query_fn)(struct guest_memory_info *);
+        query_fn query=(query_fn)(uintptr_t)guest_process_resolve(0,"_ZN2nn2os15QueryMemoryInfoEPNS0_10MemoryInfoE");
+        query(&untouched);return 9;
+    }
+    CHECK(argc==2 && page>0);
+#if defined(NSO_LOADER_TESTING)
+    CHECK(!owner_contract(argv[1]));
+#endif
+    nso_host_set_extension_resolver(extension);
+    const char *const rejected[]={"strdup","malloc","calloc","mmap","mprotect","pthread_create",
+        "__cxa_finalize","exit",NULL};
+    for(size_t i=0;rejected[i];i++)CHECK(!guest_process_resolve(0,rejected[i]));
+    /* nvnBootstrapLoader used to sit in the rejected list: the runtime had no
+     * business inventing an NVN device. It is now admitted as the NVN device
+     * layer, so the guard moves from "must not resolve" to "must never claim
+     * a device that does not exist": the device initialisation has to answer
+     * exactly what the device really is, a name outside the NVN namespace has
+     * to be refused, and a name the bootstrap does not provide has to be
+     * refused as well. The full behaviour is pinned by the --nvn-device and
+     * --nvn-bootstrap contracts. */
+    {
+        typedef void *(*nvn_bootstrap_fn)(const char *);
+        typedef uint64_t (*nvn_init_fn)(void *,void *);
+        typedef void *(*nvn_lookup_fn)(void *,const char *);
+        nvn_bootstrap_fn loader=(nvn_bootstrap_fn)(uintptr_t)guest_process_resolve(0,"nvnBootstrapLoader");
+        CHECK(loader!=NULL);
+        void *init=loader("nvnDeviceInitialize");
+        CHECK(init!=NULL);
+        {
+            /* The result has to match the device that really exists. */
+            nvn_device_stats stats;
+            uint64_t init_result=((nvn_init_fn)(uintptr_t)init)(NULL,NULL);
+            nvn_device_get_stats(&stats);
+            CHECK((init_result!=0)==(stats.real_device!=0));
+        }
+        CHECK(loader("nvnDeviceThatDoesNotExist")==NULL);
+        void *lookup=loader("nvnDeviceGetProcAddress");
+        CHECK(lookup!=NULL);
+        CHECK(((nvn_lookup_fn)(uintptr_t)lookup)(NULL,"nvnDeviceBuilderSetDefaults")!=NULL);
+        CHECK(((nvn_lookup_fn)(uintptr_t)lookup)(NULL,"notAnNvnName")==NULL);
+    }
+    CHECK(!extension_calls);
+    guest_process *process=NULL,*extra=NULL;
+    struct guest_process_config config={1024*1024,65536};
+    CHECK(succeeded(guest_process_create(&config,&process)));
+    CHECK(guest_process_create(&config,&extra).status!=NSO_OK && !extra);
+    struct guest_memory_info untouched;
+    memset(&untouched,0xa5,sizeof(untouched));
+    CHECK(guest_process_memory_info(process,&untouched).status==NSO_INVALID && all_bytes(&untouched,sizeof(untouched),0xa5));
+    char err[256]={0};CHECK(succeeded(guest_process_load(process,argv[1],err,sizeof(err))));
+    struct callback_input input={.quota=config.quota_bytes,.image=nso_image_size(guest_process_module(process))};
+    struct sigaction before[4],after;const int sigs[4]={SIGSEGV,SIGBUS,SIGILL,SIGTRAP};
+    for(int i=0;i<4;i++)CHECK(!sigaction(sigs[i],NULL,&before[i]));
+    for(int i=0;i<2;i++) {
+        void *value=NULL;CHECK(succeeded(guest_process_run(process,exercise,&input,&value)));
+        fprintf(stderr,"[check-values] callback-joined run=%d returned=%p expected=%p errors=%u calls=%u\n",
+            i,value,(void *)&returned_token,errors,calls);
+        CHECK(value==&returned_token && !errors);
+        memset(&untouched,0xa5,sizeof(untouched));
+        CHECK(guest_process_memory_info(process,&untouched).status==NSO_INVALID && all_bytes(&untouched,sizeof(untouched),0xa5));
+        for(int j=0;j<4;j++) {CHECK(!sigaction(sigs[j],NULL,&after));CHECK(before[j].sa_sigaction==after.sa_sigaction && before[j].sa_flags==after.sa_flags);}
+    }
+    CHECK(succeeded(guest_process_destroy(&process)) && !process);
+    CHECK(succeeded(guest_process_create(&config,&process)) && succeeded(guest_process_destroy(&process)));
+    nso_host_set_extension_resolver(NULL);
+    CHECK(!extension_calls && !errors && calls==2 && input.live_page_bytes==4*page);
+    printf("{\"errors\":%u,\"calls\":%u,\"extension_calls\":%u,\"stack_bytes\":65536,\"query_fields\":7,\"padding_preserved\":true,\"thread_record_joined\":true,\"signal_dispositions_restored\":true,\"pages_accounted\":true,\"recommit_zero\":true,\"whole_owner_release\":true,\"cleanup_failure_cases\":%d}\n",
+        errors,calls,extension_calls,
+#if defined(NSO_LOADER_TESTING)
+        5
+#else
+        0
+#endif
+    );return 0;
+}

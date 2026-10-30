@@ -1,0 +1,38 @@
+== NSO0 header ==
+file size        : 12076520 (0xb845e8)
+flags            : 0x00000038
+seg0 file=0x00000100 mem=0x00000000 size=0x00662fd0 aux=0x00000100  (aux=module_offset)
+seg1 file=0x00663100 mem=0x00663000 size=0x004cb21c aux=0x00000000  (aux=module_size)
+seg2 file=0x00b2f100 mem=0x00b2f000 size=0x000554e8 aux=0x000cfb18  (aux=bss_size)
+build id (BE)    : 000000000000000000000000fd8c1cf70aaf723761c47b5f79cd3061b0a12300
+module image size: 0xc54000 (12926976 bytes, incl. bss)
+
+== BuildInfo (rodata+0) ==
+  +0x00: 0x00000001
+  +0x04: 0x0000001c
+  +0x08: 0x00000050
+  +0x0c: 0x00000000
+  +0x10: 0x00000005
+  MOD0 block      : rodata+0x1c
+
+== relocation table ==
+  file offset     : 0x663160
+  entries         : 19027
+  types           : ABS64=10135 ABS32=0 GLOB_DAT=1079 JUMP_SLOT=7813 RELATIVE=0
+  symbol index    : 1 .. 23041
+
+== dynamic tables ==
+  base            : 0x663000 (.rodata start)
+  dynstr          : off=0x1239e8 size=0x170843 file=0x786ae8 printable=96%
+  dynsym          : off=0x9c9b8 size=0x87030 file=0x6ffab8 entries=23042
+  symbols         : 23041 undefined(import)=8 defined=23033
+
+== import table (undefined dynsym entries) ==
+     1  __nnDetailNintendoSdkRuntimeObjectFile
+     2  free
+     3  malloc
+     4  calloc
+     5  realloc
+     6  nnMain
+     7  nninitStartup
+     8  aligned_alloc

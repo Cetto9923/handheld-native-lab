@@ -1,0 +1,1226 @@
+# T02 runtime checkpoint — 2026-10-23
+
+Branch: task/T02-codex-runtime. Starting commit: d26d3f683e3cf93fa857c1306e31e29912310a67.
+Scope: native AArch64 loader and behavior experiments on macOS arm64.
+This is an implementation self-test, not independent QA, Android execution,
+game startup, graphics, or playability acceptance. T02 remains IN_PROGRESS.
+The host mathematical comparison does not satisfy the acceptance rule requiring
+Switch hardware or a trusted emulator reference. No acceptance gate was lowered.
+
+## Observed result
+
+An unmodified, private main NSO loads at a host-assigned address with 651 imports,
+4,612 RELA entries and 1,370,974 RELR targets. The existing RELR algorithm was
+retained and bounded; it was not replaced with pointer guessing.
+
+The original instructions at module offset 0x694bd0 (44 bytes) execute natively.
+A handwritten mathematical oracle checks 16,875 combinations of signed integer
+inputs and flag bits, with zero mismatches. The routine computes the unsigned
+bit length of (signed_max(a,b,(flags & 1) ? c : 1) | 1). Its engine-facing name
+and original source declaration remain unknown.
+
+| Inputs (a,b,c,flags) | Original native output | Independent oracle |
+|---|---:|---:|
+| (0,0,0,0) | 1 | 1 |
+| (3,9,100,0) | 4 | 4 |
+| (3,9,100,1) | 7 | 7 |
+| (255,256,0,0) | 9 | 9 |
+| (-8,-2,-1,1) | 32 | 32 |
+| (7,8,1024,2) | 4 | 4 |
+
+Module SHA-256: 6e6d1f3cd1672243e2ed344cc1b8849b85437d41bdecec81a5f9181e472d68a5.
+Build ID (first 16 bytes): 736837afd390442ed7c74a7de730e71b.
+Leaf SHA-256: 8a6e3c4fbd3164c966e2d164e0b59f140a162be1a4cf260b60beefae9921c9c9.
+The experiment verifies both hashes and checks the input hash again afterwards.
+No target instructions or generated game code are committed.
+
+## Why earlier entry failures were misleading
+
+The old loader stored import_fn without invoking it. Unknown functions were
+bound to a generic function with an incompatible signature that returned zero.
+The caller therefore continued after unsupported OS/CRT operations.
+
+| Experiment | Before (d26d3f6) | Strict import resolution |
+|---|---|---|
+| Structural --info | exit 0, imports incorrectly 652 | exit 0, imports 651 |
+| malloc(4096) | exit 139, PC +0xb705c, fault address 0x30 | exit 133: QueryMemoryInfo, symbol 65, caller +0x1398c |
+| nninitStartup | real exit 1, no result logged | exit 133: AllocateTlsSlot, symbol 59, caller +0x133a0 |
+| nnMain | exit 139, PC +0x27928, fault address 0x10000 | exit 133: ReferSymbol, symbol 363, caller +0x352f178 |
+| DT_INIT | exit 139, PC +0xb705c | exit 133: __nnmusl_init_dso, symbol 515, caller +0x5920a34 |
+
+The first checkpoint bound 22 host imports, including three FILE globals whose
+cross-libc structure layout was not established. Review removed stdin/stdout/
+stderr object binding; these remain unresolved until an explicit CRT bridge.
+The strict resolver now binds 19 imports (632 unresolved), with no broad C++
+layout claim. Optional byte-evidenced ReferSymbol adds one (631 unresolved).
+nvnBootstrapLoader remains an explicit optional dlsym allowlist entry.
+
+## Implemented changes
+
+- The import callback returns a typed target function/object address from
+  (symbol_index, name). The four-argument nso_load_file interface is unchanged.
+- Each unknown function gets an identifiable fatal BRK sentinel. Unknown object
+  imports point into an inaccessible mapping; reads produce the symbol identity.
+  No trap returns a fabricated successful result. Sentinels do not interpret or
+  translate any target instructions.
+- MOD0 and dynamic offsets resolve in the mapped virtual image, instead of
+  assuming every segment shares a constant file/virtual delta.
+- Segment, string/symbol, dynamic, RELA/RELR and initializer extents are checked.
+  DT_HASH supplies the exact symbol count; GNU-hash-only NSOs use a matching exact
+  NSO dynsym header extent. There is no estimated-symbol-count fallback.
+- R_AARCH64_RELATIVE writes base + addend. The prior extra r_offset was wrong;
+  a positive independent fixture exercises this (main has no RELATIVE RELA).
+  Symbolic relocation addends are retained.
+- Fault logging no longer reads past x28, and bounds frame traversal to the
+  current thread stack. An alternate signal stack is provided. Bionic/Linux
+  AArch64 uses uc_mcontext.pc/regs rather than nonexistent gregs/REG_PC fields.
+- Unsupported SVC handling remains fatal and cannot resume the same PC forever.
+- CLI parsing rejects unknown options, malformed numbers and surplus arguments;
+  debug reads from hard-coded game addresses were removed.
+- The legacy static probe checks header/segment extents before reading them.
+  No blocked malformed-input security-probe flow was resumed in this task.
+
+## Initialization and TLS evidence
+
+Static evidence comes from exact supplied binaries and existing clang/
+llvm-objdump, not REA Evidence records. The REA MCP inventory was empty; the
+installed launcher attempted npm package resolution and failed with ENOTFOUND.
+No REA/client configuration, package, credential, or network setting was changed.
+
+SDK SHA-256: 9dfd1cc6d3209d857dcafb191736265ac812401ddcc7b49dabf3bc0b114655a9.
+
+- main nninitStartup +0x352f150 branches to +0x13370, not +0x2013370 as an older
+  report claimed. Its first unsupported call allocates an nn OS TLS slot.
+- SDK ReferSymbol +0x86670 and its C alias +0x86680 are each exactly one RET.
+  A void link-anchor adapter can reproduce these observed specific semantics,
+  but that would not establish game initialization success.
+- SDK AllocateTlsSlot +0x143b60 returns zero on success and 0x1203 on exhaustion.
+  It calls TlsManager::AllocateTlsSlot +0x144eb8, which enforces an application
+  allocation count below 16 and writes a 32-bit slot value to the output pointer.
+- SDK GetTlsValue +0x143c10 and SetTlsValue +0x143c30 read TPIDRRO_EL0, load the
+  thread object at TLS +0x1f8, then access thread +0x80 + slot*8.
+- main contains 1,489 MRS TPIDR_EL0 sites and no MRS TPIDRRO_EL0 sites. SDK contains
+  124 MRS TPIDRRO_EL0, two MRS TPIDR_EL0, and three MSR TPIDR_EL0 instructions.
+  Reading the same architectural register does not establish compatible layouts.
+  No host thread pointer is written or replaced by this implementation.
+- SDK QueryMemoryInfo implementation +0x14711c writes offsets +0,+8,+0x10,+0x18,
+  +0x20,+0x28 and a 32-bit field at +0x30. It depends on GetInfo types 0x16/0x15
+  and SDK memory-manager state. Output is not just two invented memory totals.
+- SDK __nnmusl_init_dso +0x98e30 is 0x9d8 bytes, uses more than eight arguments,
+  and maintains CRT/DSO state. No zero-return DSO initialization adapter is added.
+
+## Reproduction and retained local evidence
+
+Run from this worktree; every --out must be a new directory.
+
+    python3 scripts/runtime/run_experiments.py --out .local/runtime/repro-next
+    python3 tests/native/test_loader.py --out .local/runtime/contract-next
+    python3 scripts/runtime/inspect_nso.py .local/uncompressed/main.bin \
+      --out .local/runtime/static-main-next --slice 0x694bd0:44
+    python3 scripts/runtime/inspect_nso.py .local/uncompressed/sdk.bin \
+      --out .local/runtime/static-sdk-next --slice 0x143c10:52
+
+- .local/runtime/baseline/{info,malloc,startup,main,init}: old executable and
+  baseline commands, true return codes and separate stdout/stderr logs.
+- .local/runtime/checkpoint-v1/manifest.json: compiler, host, input hashes,
+  starting HEAD/dirty paths and complete commands/results.
+- .local/runtime/checkpoint-v1/leaf-sample: exit 0, 16,875 cases, zero failures.
+- .local/runtime/checkpoint-v1/{info,malloc,startup,main,constructors}: actual
+  post-fix boundary runs; no timeout, exact outcomes in the table above.
+- .local/runtime/contract-v1: positive synthetic NSO with distinct file/virtual
+  segment offsets. Native imported sum(20,22)=42; resolver called exactly twice;
+  RELATIVE plus direct/bitmap RELR checked. A separate ordinary unknown import
+  produces its correct name and exit 133. The fixture is not game evidence.
+- .local/runtime/static-{main,sdk}-v1/inspection.json: identities, dynamic tags,
+  complete symbols, exact TLS opcode counts and requested slice hashes.
+  Derived .S/.o/disassembly files stay local. Slice disassembly addresses begin
+  at zero; add the recorded module_offset when interpreting them.
+
+The first attempted strict build failed at the macOS ucontext include; strict/
+and strict-v2/ preserve that intermediate history. Final checkpoint-v1 builds
+pass -Wall -Wextra -Werror. Conclusions use checkpoint-v1 and contract-v1,
+not failed intermediate launches.
+
+## Remaining work
+
+Game CRT/DSO registration, guest TLS context, memory manager, threading, graphics
+and other OS surfaces are incomplete. Native initialization and nnMain stop at
+the named unsupported calls above. Full game startup is BLOCKED, not passed.
+RG477M execution/performance and independent QA were not run by this agent.
+
+## Second checkpoint: narrowly evidenced HLE and portable leaf artifact
+
+The optional NSO_WITH_HOST_HLE build resolves only ReferSymbol and its C alias to
+a correctly typed void adapter. It logs the link reference; the supplied SDK's
+single RET established the API has no OS initialization work in this build.
+An exact-name extension resolver hook permits later typed graphics integration
+without depending on graphics headers.
+
+With this adapter, nnMain advances to nn::os::AllocateAddressRegion, symbol 68,
+caller +0x13e70, x1=0xf80000000 (virtual reservation size), then exits 133.
+No memory allocation success, physical memory budget or page contents are
+fabricated. nninitStartup, malloc and DSO constructors remain at their previous
+explicit boundaries. Command:
+
+    python3 scripts/runtime/run_experiments.py --host-hle       --out .local/runtime/repro-hle-next
+
+Guest TLS storage is a separate PoC, not bound to AllocateTlsSlot or any game
+TLS access. Eight simultaneous native threads each own 16 slots; 128,000 value
+checks pass, main-thread storage stays zero, an unrelated pthread key retains
+its identity, and TPIDRRO_EL0 remains unchanged. No code writes a thread-pointer
+register. This proves host-owned storage isolation only, not the guest ELF TLS
+layout, SDK ThreadType layout, destructor policy, or a register-preserving
+instruction adaptation.
+
+An initial test incorrectly assumed TPIDR_EL0 also stays constant across host
+scheduling: seven threads failed that assertion. A host-only control, which
+does not call the guest storage APIs, independently observed seven changes.
+The final test records TPIDR_EL0 changes as observations (four in the guest run)
+and asserts actual slot isolation, host pthread-key identity and TPIDRRO_EL0.
+The failed experiment is retained at .local/runtime/tls-poc-v1; the control and
+corrected checks are .local/runtime/tls-poc-v2/{control,run}, both exit 0.
+No claim of TPIDR_EL0 invariance is made.
+
+Fault context, frame bounds and alternate-stack storage are now thread-local.
+Freeing the installing thread's current module clears its diagnostic pointer
+and restores its prior alternate-stack state. A positive contract test found
+macOS rejects restoring its initial disabled zero-size stack with ENOMEM;
+restoration now retains SS_DISABLE while supplying MINSIGSTKSZ, and passes.
+Final restoration/named-import evidence: .local/runtime/contract-v5 (ordinary
+functional contract exit 0; intentional missing platform call exit 133).
+Earlier contract-v2/v3/v4 failures remain on disk.
+
+Signal dispositions are still process-wide, and the fatal experiment handler
+still uses stdio, which is not async-signal-safe. Installation is opt-in;
+a guest must join its threads before freeing shared modules. This facility
+does not implement recoverable production game exceptions or arbitrary
+cross-thread module unloading.
+
+### Android-target shared library
+
+    python3 scripts/runtime/build_leaf_library.py       --out .local/runtime/leaf-libraries-next
+
+The generator validates full input and leaf SHA-256, emits the original 44
+bytes only into the private output, then builds two exports:
+ffrs_leaf_694bd0 (original instructions) and ffrs_leaf_reference (60-byte compiled
+mathematical oracle). A corresponding macOS dylib compares original code,
+compiled C and Python mathematics over the same 16,875 cases, with zero mismatch.
+
+Final artifact: .local/runtime/leaf-libraries-v3/libffrs_leaf.so.
+Size 2,176 bytes; SHA-256:
+8008f3722db61346eabc02969ff5a37aab9fc405409ed891f65036d7649704d8.
+Format ELF64 little-endian, ET_DYN=3, Machine AArch64=183, no NEEDED entries.
+The exported original function's size is 44 and its code SHA-256 remains
+8a6e3c4fbd3164c966e2d164e0b59f140a162be1a4cf260b60beefae9921c9c9.
+Full headers, symbols, native disassembly and build return codes are retained
+beside manifest.json. This artifact contains no interpreter/JIT or stream
+client; its two native code bodies are visible in disassembly.
+
+Toolchain: existing Apple clang targeting aarch64-linux-android34 plus existing
+rust-lld. The first linker invocation failed to find its bundled libLLVM; the
+working command supplies the existing toolchain lib directory in a child-only
+DYLD_LIBRARY_PATH, without changing installation or global configuration.
+The failed link is retained in leaf-libraries-v1. This is a genuine freestanding
+Android-target cross-build, not official NDK compiler acceptance or Android
+execution. NSPRE-2/NSPRE-3/device gates and full T02 remain unmet.
+
+## Third checkpoint: real address-space reservation
+
+The next HLE implementation is deliberately limited to the observed
+AllocateAddressRegion/FreeAddressRegion interface. It does not implement
+AllocateMemoryBlock, MapPhysicalMemory, heap size, or QueryMemoryInfo.
+
+Current SDK byte evidence:
+
+- AllocateAddressRegion +0x144800 delegates to VammManager +0x145da0 (0x178 bytes).
+  Its parameters are output uint64 pointer and size_t; the result is in w0.
+  The implementation finds and inserts an interval in its address-region tree;
+  it contains no physical-page commit operation.
+- Success returns 0; metadata-node exhaustion returns 0x1003 and lack of an
+  address interval returns 0x1803. Requested sizes below 2 MiB use 64 KiB
+  alignment; larger sizes use 2 MiB alignment. Candidate ranges retain at least
+  a 4 KiB gap on each side.
+- FreeAddressRegion +0x144860 delegates to +0x146680 (0x108 bytes). It takes the
+  address, finds the recorded size, invokes SVC 0x2d, removes the interval, and
+  returns a Result. An unregistered address returns 0xe03. No syscall name is
+  inferred beyond the directly observed SVC number.
+- Full static byte/disassembly evidence:
+  .local/runtime/static-sdk-vamm-v1 and .local/runtime/static-sdk-free-v1.
+
+The host implementation reserves mmap(PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS),
+with MAP_NORESERVE where defined. A side table records the exact owned mapping,
+including host-page guards and alignment padding, for matching munmap. On hosts
+with pages larger than 4 KiB, inaccessible guards use the host page size. The
+supported normal size contract is nonzero and a multiple of 4 KiB. Unsupported
+contracts are diagnosed, not silently treated as success. No MAP_FIXED, writable
+large mapping, page-touch loop, or physical-memory total is introduced.
+
+The independent normal contract reserves four simultaneous ranges: 4 KiB,
+64 KiB, 2 MiB and 0xf80000000 bytes (62 GiB / 66,571,993,088 bytes). The
+macOS mach_vm_region API independently confirms PROT_NONE at both ends of every
+requested interval. The returned addresses meet the observed alignment rules;
+matching release succeeds for all four. No reserved byte is read or written.
+getrusage maxrss is 1,671,168 before and after (native host units, observed only).
+Build and run exit 0; exact logs:
+.local/runtime/address-region-v1/{build,run}.
+
+    clang -g -O2 -Wall -Wextra -Werror \
+      src/runtime/hle/address_region.c tests/native/address_region_contract.c \
+      -lpthread -o .local/runtime/address_region_contract
+    python3 scripts/runtime/run_capture.py \
+      --out .local/runtime/address-region-next --timeout 10 \
+      -- .local/runtime/address_region_contract
+
+With the optional HLE resolver, nnMain now performs the actual 62-GiB virtual
+reservation, then reaches unresolved symbol 7:
+nn::os::InitializeMutex(MutexType*,bool,int), caller +0x277d8, x1=1, x2=0.
+The child exits 133 with the full register/frame diagnostic. The reservation
+has PROT_NONE and no physical contents are fabricated; the process exit releases
+its remaining virtual mappings. No mutex layout is guessed to advance further.
+Final command set: .local/runtime/checkpoint-v4-region/manifest.json.
+All builds and the 16,875-case leaf comparison exit 0. Structural info still
+reports 651 imports, 4,612 RELA and 1,370,974 RELR targets (630 unresolved with
+these optional HLE adapters). malloc, startup and constructors stop at their
+existing QueryMemoryInfo, AllocateTlsSlot and __nnmusl_init_dso boundaries.
+
+The third checkpoint changes only new HLE address-region sources, its exact-name
+resolver registration, the native contract, the optional experiment build list,
+and this report. The shared loader API does not change. Full T02, real Android
+execution, SDK TLS/CRT, mutex/threading, game startup and graphics remain open.
+
+## Fourth checkpoint: byte-evidenced Mutex family
+
+Starting HEAD was rechecked clean at 0b98b5a. Current SDK function-call ABI:
+
+| API | SDK offset | Return |
+|---|---:|---|
+| InitializeMutex(MutexType*, bool, int) | 0x13f4f0 | void |
+| FinalizeMutex(MutexType*) | 0x13f540 | void |
+| LockMutex(MutexType*) | 0x13f550 | void |
+| TryLockMutex(MutexType*) | 0x13f5a0 | bool in w0 |
+| UnlockMutex(MutexType*) | 0x13f610 | void |
+| IsMutexLockedByCurrentThread(const MutexType*) | 0x13f630 | bool in w0 |
+
+InitializeMutex's observed stores establish state byte +0, recursive byte +1,
+signed level +4, recursion count u32 +8, owner pointer +0x10 and critical word
+u32 +0x18. Its nested CriticalSection::Initialize +0x1498b4 writes one zero u32.
+Padding at +2/+3, +0xc..+0xf and +0x1c..+0x1f is not written. FinalizeMutex
+clears the state byte only. Lock/TryLock update depth and owner; Unlock clears
+owner and releases the critical section only when depth reaches zero.
+
+C aliases at SDK +0x141190/+0x1411a0/+0x1411b0/+0x1411c0/+0x1411d0 are each
+a tail branch through an exact GOT relocation to Initialize/Finalize/Lock/Try/
+Unlock respectively. Evidence: .local/runtime/mutex-aliases-v1.json.
+
+The first main allocator constructor at +0x27780 passes its embedded mutex at
+object +8 and directly clears these same metadata fields before InitializeMutex.
+It is therefore incorrect to assume the guest struct is completely opaque.
+The adapter mirrors the observed fields and preserves all padding.
+
+The implementation uses POSIX normal/recursive mutexes in a side table keyed by
+the guest object's address. It performs real blocking, recursion, trylock and
+release, and destroys native resources at Finalize. Registry references prevent
+destruction while operations are active. Native errors and unsupported object
+lifecycle operations are fatal, not generic successful returns.
+
+Owner identity uses a dedicated inaccessible mapping per host thread; it is not
+a host pthread pointer or host TLS address, and is not advertised as a complete
+Switch ThreadType. The synthetic critical-word handle reserves bit 30 for
+contention, matching observed critical-section instructions. Direct guest
+dereference of this opaque owner token cannot silently read host thread fields.
+GetCurrentThread, condition-variable waits and other ThreadType services remain
+unresolved. This is a compatibility boundary, not a claim that all inline SDK
+operations can run.
+
+A full 99,000,832-byte main-text scan identifies 14,496 direct B/BL sites to the
+nine Mutex imports: 1,218 Initialize, 4,119 Try, 3,950 Lock, 4,096 Unlock, 1,089
+Finalize, plus 24 C-alias calls. Two additional direct sites reference condition
+variable waits and remain unsupported. The scan resolves bounded PLT ADRP/LDR
+GOT references, not arbitrary indirect calls or whole-program field alias flow.
+No MRS TPIDRRO_EL0 instruction appears in main, but this does not establish ELF
+TLS compatibility or prove absence of every inline field access. Main's 1,489
+TPIDR_EL0 reads remain a separate unresolved issue.
+
+Reproduction:
+
+    python3 scripts/runtime/inspect_mutex_abi.py \
+      --out .local/runtime/mutex-abi-next
+    clang -g -O2 -Wall -Wextra -Werror src/runtime/hle/mutex.c \
+      tests/native/mutex_contract.c -lpthread -o .local/runtime/mutex_contract
+    python3 scripts/runtime/run_capture.py --out .local/runtime/mutex-next \
+      --timeout 15 -- .local/runtime/mutex_contract
+    python3 scripts/runtime/run_experiments.py --host-hle \
+      --out .local/runtime/repro-mutex-next
+
+Local static evidence:
+.local/runtime/static-sdk-mutex-v1,
+.local/runtime/static-sdk-critical-init-v1,
+.local/runtime/static-main-mutex-first-v1,
+.local/runtime/mutex-abi-v2/mutex-abi.json.
+The JSON includes exact input/code hashes, function addresses and all direct
+call-site offsets. The first selected constructor's field stores are preserved
+in the private disassembly. This is bounded static analysis, not a proof of
+complete compatibility across every object and call path.
+
+Normal native contract .local/runtime/mutex-v2/{build,run} exits 0:
+eight simultaneous threads perform 80,000 protected increments, zero overlapping
+critical sections, correct recursive depth three, trylock false for a current
+nonrecursive owner and another owning thread, trylock true after release,
+100 destroy/reinitialize cycles at the same address, unchanged object padding
+and unchanged per-thread TPIDRRO_EL0. The adapter writes no thread-pointer
+register and calls only host pthread interfaces for synchronization.
+
+Real main now passes the observed mutex initialization calls and stops at
+unresolved atexit, symbol 6, caller +0x13ed4, with callback +0x3680.
+The actual exit is 133, not a timeout. Logs and build commands:
+.local/runtime/checkpoint-v5-mutex/manifest.json.
+The original 16,875-case leaf comparison and structural loader remain exit 0;
+startup/malloc/constructors retain their previously identified boundaries.
+There is no game startup, Android execution, full CRT or full ThreadType PASS.
+
+## Fifth checkpoint: functional exit registration, not fabricated SDK DSO init
+
+Local SDK evidence establishes the public atexit calling convention at
++0x56c400: the incoming void callback moves into x1, a thunk at +0x56c420
+(which branches to x0) becomes the argument-taking callback in x0, and x2 is
+zero. The module-local helper at +0x5c0 stores 24-byte callback/argument/DSO
+tuples and returns 0 or -1. In the current static bytes that helper explicitly
+rejects a null DSO field. Therefore the missing SDK module/DSO initialization
+and route cannot be declared understood or reproduced. The helper at +0x650
+walks matching DSO records in reverse and accounts for registration during
+cleanup. None of these static observations execute the SDK CRT.
+
+The new implementation is a functional HLE replacement for C exit registration
+and the C++ ABI callback interface, not a precise reconstruction of that missing
+SDK CRT module context. The locally installed cxxabi.h explicitly documents
+int __cxa_atexit(void (*)(void *), void *, void *) and
+void __cxa_finalize(void *) under Runtime API 3.3.5.3.
+DSO values in this replacement are opaque comparison keys; no SDK DSO handle
+layout or __nnmusl_init_dso result is invented. __cxa_thread_atexit remains
+unresolved because thread-exit lifecycle and real guest TLS are not implemented.
+
+Implementation and lifecycle:
+
+- Registration allocates and inserts a real typed record, returning 0 only on
+  acceptance and -1 on failure. Plain void callbacks and callbacks with a void
+  argument have separate types; no generic six-argument callback is used.
+- Finalization selects records in LIFO order, optionally matching a DSO key.
+  Records are removed before invocation. The list lock is released around guest
+  calls, while a separate recursive finalization mutex serializes drainers.
+  Reentrant/repeated finalization does not repeat a consumed registration;
+  callbacks registered by another callback are subsequently processed.
+- Only a genuine call to the typed guest exit adapter or __cxa_finalize executes
+  callbacks. Normal exit drains then calls host exit(status); _Exit/_exit use
+  immediate host termination without draining. Probe startup/registration never
+  triggers cleanup merely to move the entry point forward.
+- The CLI resolves HLE before its host dlsym allowlist. Its prior exit allowlist
+  can no longer bypass the typed guest exit path in HLE builds.
+- One current guest-module exit scope is supported. A second simultaneous scope
+  or a scope entered while unrelated callbacks are pending is explicitly rejected.
+  The optional host unload observer is installed after loading the CLI module;
+  nso_free invokes it before unmapping. It discards pending exit records without
+  invoking guest code, preventing retained callbacks into that unloaded image.
+- Module scope teardown requires joined/quiescent guest threads. General
+  concurrent module unloading, multiple guest processes in one host process,
+  dynamic SDK DSO initialization and arbitrary cross-module callback ownership
+  are not implemented. A probe call returning is treated as an abandoned probe
+  scope, not as proof of a normally completed game process.
+- The unload observer cleans EXIT REGISTRATIONS ONLY. Mutex and AddressRegion
+  side tables are not associated with modules or generally cleaned by this
+  observer. The whole HLE is consequently not advertised as supporting repeated
+  arbitrary module loading/unloading or multiple games. The APK does not bind
+  these HLE functions.
+
+Static evidence:
+.local/runtime/static-sdk-exit-v1,
+.local/runtime/static-sdk-crt-adapters-v1,
+.local/runtime/static-sdk-finalize-v1,
+.local/runtime/static-main-exit-v1.
+The first real main callback +0x3680 restores an allocator vtable and tail-calls
+the FinalizeMutex import for its embedded object. It is recorded, not executed
+during these game entry experiments.
+
+Normal functional verification:
+
+    python3 tests/native/test_exit_registry.py \
+      --out .local/runtime/exit-registry-next
+    python3 tests/native/test_loader.py \
+      --out .local/runtime/loader-unload-next
+    python3 scripts/runtime/run_experiments.py --host-hle \
+      --out .local/runtime/repro-exit-next
+
+.local/runtime/exit-registry-v5 records zero errors for LIFO, argument delivery,
+DSO filtering, repeated/reentrant finalization, newly registered callbacks during
+cleanup, 4,000 registrations across eight threads, concurrent finalizers, and
+scope discard without execution. Normal native exit returns the requested 23
+and executes one callback; immediate exit returns the requested 24 and executes
+none. These nonzero statuses are intentional successful contract outcomes.
+
+A well-formed synthetic AArch64 NSO additionally runs through the actual CLI
+resolver and unload observer, not a duplicate resolver in the test. Its typed
+guest exit returns 23 with exactly one native callback; _Exit returns 24 without
+a callback; a returning register-only probe unloads with zero callbacks executed.
+The test explicitly checks that resolving exit yields the guest adapter rather
+than the host dlsym result. This fixture is infrastructure evidence, not game
+code or game-startup acceptance. The earlier exit-registry-v2 launch did not run
+its contract because its executable path collided with its log directory;
+the runner was corrected, with the failed directory retained.
+
+.local/runtime/contract-v6-exit validates the positive loader fixture, exact-once
+host unload observation while mapped data is still readable, alternate-stack
+restoration and named unknown imports. The ordinary contract exits 0; the
+intentional unsupported import exits 133.
+
+Final real-module evidence:
+.local/runtime/checkpoint-v7-exit-final/manifest.json.
+nnMain logs a successful real atexit registration (one pending callback, deferred)
+and next stops at QueryMemoryInfo, symbol 65, caller +0x27a50, exit 133.
+No registered game callback runs at this boundary. The module remains byte-
+identical; its 16,875-case leaf and structural load both exit 0, with imports
+651 / unresolved 620 / RELA 4,612 / RELR 1,370,974.
+
+Current independent frontiers:
+
+| Probe | First remaining unsupported call | Caller offset | Exit |
+|---|---|---:|---:|
+| nnMain | QueryMemoryInfo | 0x27a50 | 133 |
+| malloc(4096) | QueryMemoryInfo | 0x1398c | 133 |
+| nninitStartup | AllocateTlsSlot | 0x133a0 | 133 |
+| DT_INIT | __nnmusl_init_dso | 0x5920a34 | 133 |
+
+QueryMemoryInfo still requires a coherent guest-owned memory model and accounting
+backed by real allocations, not invented total/free RAM. Guest ELF TLS, SDK thread
+state and DSO/CRT initialization remain separate unresolved layouts/lifecycles.
+There is no full game startup, Android execution or complete T02 PASS.
+
+
+## Sixth checkpoint: real CRT gate and explicit initializer ownership
+
+This unit starts at 5e165d08a22d6b19826467ef0ed861ce168bb5fb. It does not add
+__nnmusl_init_dso to the HLE resolver. The true main initialization still stops
+at import 515, caller +0x5920a34, exit 133. A separate, explicitly terminating
+diagnostic establishes what the original SDK would do at its first gate.
+
+### Actual machine arguments and original SDK result
+
+Main's DT_INIT +0x5920950 prepares 21 fixed GP words: x0..x7 and thirteen
+8-byte stack arguments at sp+0 through sp+96. Its BL at +0x5920a30 calls PLT
++0x5e699d0, whose relocation identifies __nnmusl_init_dso. The test's fixed-word
+C signature is a diagnostic for that observed machine ABI, not a recovered
+source prototype or permission to use a six-argument generic wrapper here.
+
+All 21 input GOT slots are DT_RELR targets. Every received argument is B plus
+the corresponding original GOT word, where B is the main mapping base. This
+includes the words 0 and 8: their actual arguments are B and B+8, not null or
+a literal scalar alignment value. The native observer checks each actual
+argument against its actual relocated GOT slot.
+
+| Argument | Register / stack byte offset | GOT slot | Value minus B |
+|---:|---|---:|---:|
+| 0 | x0 | 0x776f120 | 0 |
+| 1 | x1 | 0x776f128 | 0x5e67aa4 |
+| 2 | x2 | 0x776f130 | 0x7767108 |
+| 3 | x3 | 0x776f138 | 0x7767328 |
+| 4 | x4 | 0x776f140 | 8 |
+| 5 | x5 | 0x776f148 | 0x7767110 |
+| 6 | x6 | 0x776f158 | 0x7767328 |
+| 7 | x7 | 0x776f160 | 0x7768121 |
+| 8 | sp+0 | 0x776f170 | 8 |
+| 9 | sp+8 | 0x776f168 | 0x7767330 |
+| 10 | sp+16 | 0x776f118 | 0x7771fe8 |
+| 11 | sp+24 | 0x776f150 | 0x7773398 |
+| 12 | sp+32 | 0x776f110 | 0x5e6b098 |
+| 13 | sp+40 | 0x776f108 | 0x5e82630 |
+| 14 | sp+48 | 0x776f100 | 0 |
+| 15 | sp+56 | 0x776f0f8 | 0 |
+| 16 | sp+64 | 0x776f0f0 | 0x5e82630 |
+| 17 | sp+72 | 0x776f0e8 | 0x5e860f8 |
+| 18 | sp+80 | 0x776f0e0 | 0 |
+| 19 | sp+88 | 0x776f0d8 | 0 |
+| 20 | sp+96 | 0x776f0d0 | 0x7767328 |
+
+Arguments 3, 6 and 20 coincide with this main's verified DT_DYNAMIC address.
+The callee field writes provide stronger semantic evidence than names guessed
+from adjacent data. At SDK +0x98e30 relative offsets +0xb4..+0xd4 it computes
+(a5-a2)=8, a4-(a5-a2)=B, and (a9-a6)=8. At +0x1f4..+0x218 it writes a2,
+(a3-a2)=0x220, (a7-a2)=0x1019 and maximum alignment 8 into the first four
+64-bit fields of its allocated 0x148-byte record. Interpreting these as a TLS
+template pointer, initialized size 544, aggregate size 4,121 and alignment 8 is
+an inference from field use; the original parameter/structure declarations
+remain unavailable. The dynamic-table parser adds the derived B to table
+pointer values. These findings do not establish a complete guest thread layout.
+
+The original SDK's first dependency is
+nn::os::MemoryAllocatorForThreadLocalInitialized() at +0x144620, reached through
+its own PLT. The getter checks an SDK-owned allocator function pointer. The
+setter +0x1445e0 accepts non-null allocate/free pointers, rejects reinitialization,
+and stores both; no setter is invoked by this experiment. With a fresh mapped
+SDK, the getter actually returns 0. Calling the original, unmodified
+__nnmusl_init_dso with all 21 captured main arguments then actually returns 2
+through its early-return branch. SDK DT_INIT, SDK constructors, DSO allocation,
+TLS setup and callbacks have not executed.
+
+The observer exits 86 immediately after logging this result, before main
+consumes it or enters ProtectRelro/constructors. This nonzero status is an
+intentional diagnostic stop, not a game or CRT success result. Both capture-only
+and SDK-gate modes pass their observations with exactly 21 matching arguments;
+both return 86, with no timeout. The normal strict resolver continues to leave
+__nnmusl_init_dso unsupported.
+
+Going further by merely setting the allocator would be unsafe and semantically
+incomplete. The subsequent path uses SdkMutexType, allocates DSO tables/records,
+counts TLS relocations and computes thread storage. Its internal helper at SDK
++0x99930 contains MRS TPIDRRO_EL0 at +0x99b4c, a store to [TPIDRRO_EL0+0x1f0] at
++0x99b50 and MSR TPIDR_EL0 at +0x99b54. These instructions were inspected
+statically only. They are not executed on the host. No host TP register or host
+TLS memory is replaced, and gate=false is never bound as fabricated CRT success.
+
+### Constructor ownership is now explicit
+
+This main's DT_INIT wrapper already walks its DT_INIT_ARRAY: after the DSO call
+it skips its remaining work when w0==1; otherwise it calls ProtectRelro, then
+walks from the GOT-derived array start 0x67d5000 to end 0x67d8b10. These exactly
+match dynamic array offset 0x67d5000 and size 0x3b10 (1,890 entries). The SDK's
+own DT_INIT +0x400 uses the same wrapper pattern. Running a generic ELF
+DT_INIT-then-array walk after either wrapper can therefore duplicate constructor
+execution once the current earlier platform boundaries are resolved.
+
+The loader now exposes nso_run_init_policy with NSO_INIT_ELF and
+NSO_INIT_DT_INIT_OWNS_ARRAY. The latter runs DT_INIT and leaves its array to the
+verified wrapper. With no DT_INIT, either strategy explicitly walks the array
+once. Legacy nso_run_init remains documented as the generic ELF strategy; it is
+not used for this main. No strategy skips CRT initialization or invents its
+state.
+
+The CLI requires the caller to choose --init-wrapper or --init-elf. Ambiguous
+--init is rejected with exit 2; it does not infer a strategy for an unidentified
+NSO. The reviewed main experiment and CRT diagnostic explicitly select the
+wrapper strategy. The stale nso_enable_svc_trap API was removed: its old
+implementation only printed a message and installed no SVC compatibility, while
+its header misleadingly claimed interception. Fatal SVC behavior is unchanged.
+
+A valid synthetic native fixture has a DT_INIT wrapper report event 1 and call
+its array function (event 2). Wrapper policy reports [1,2], count 2; explicit
+ELF and legacy generic policies report [1,2,2], count 3. Array-only fixtures
+report [2], count 1 for both strategies. These are deliberately ordinary
+lifecycle examples, not game bytes or a malformed-input/security QA flow.
+
+### Reproduction, evidence and next feasible host work
+
+    python3 scripts/runtime/probe_crt_init.py \
+      --out .local/runtime/crt-init-next
+    python3 tests/native/test_init_policy.py \
+      --out .local/runtime/init-policy-next
+    python3 scripts/runtime/run_experiments.py --host-hle \
+      --out .local/runtime/entry-policy-next
+
+Evidence directories:
+
+- .local/runtime/crt-init-v3/manifest.json: input identities, code-range hashes,
+  all argument/GOT values, build exit 0, capture exit 86 and SDK-gate exit 86.
+- .local/runtime/init-policy-v1: both native policy counts, legacy semantics,
+  array-only fallback, strict CLI rejection. Functional cases/builds exit 0;
+  ambiguous --init exits the expected 2; no timeouts.
+- .local/runtime/static-main-dso-v1: exact caller +0x5920900 instruction slice.
+- .local/runtime/static-sdk-dso-v1: entire exported +0x98e30 implementation.
+- .local/runtime/static-sdk-dso-gate-v1: getter/setter and SDK DT_INIT wrapper.
+- .local/runtime/static-sdk-dso-mutex-v1: SdkMutexType calls and the internal
+  helper containing the guest TP write sites, inspected without execution.
+- .local/runtime/checkpoint-v8-init-policy: new host builds and the actual
+  --init-wrapper path. Leaf 16,875 comparisons and --info exit 0; all four game
+  entry boundary probes still exit 133. No boundary is recategorized as startup.
+
+The next meaningful host step is a separately owned, bounded per-thread guest
+TLS image: confirm template/zero-fill/alignment and all thread-relative offsets,
+then test copy/zero-fill/isolation and host TLS preservation without executing
+game accesses. Connecting that storage to original code additionally requires
+an evidenced native adaptation for every relevant TP read/write site, preserving
+registers and return state. The SDK helper above must not execute its host-TP
+writes. SDK object/DSO ownership, private mutex/allocator dependencies and
+startup order also require an explicit process context. Mapping the SDK and
+letting its native CRT continue is not presently safe or compatible.
+
+This bounded TLS/context research is feasible without a device. Full game CRT
+startup has not become feasible merely from the gate observation; it still
+needs substantive platform adaptation. No Android execution, game initialization,
+RG477M performance, independent acceptance or overall T02 PASS is claimed.
+
+
+## Seventh checkpoint: independent module TLS template storage
+
+Starting HEAD: 92c7b9bb5408e8c01060813c1b9ec05040288db9. The new
+src/runtime/hle/module_tls.c/h implements reusable owned storage, not a guest
+thread runtime or an SDK initialization adapter. The existing 16-slot guest_tls
+PoC and nso_host_resolve are unchanged. No allocator gate is set to true.
+
+A descriptor supplies an already-relocated initialized-data pointer, initialized
+length, total length, payload alignment and reserved prefix length. Synchronous
+nso_module_tls_create allocates a real image, zeroes its storage and copies
+exactly the initialized bytes. It returns 0 only on successful allocation/copy,
+or a POSIX error value, with explicit parameter/size-overflow checks. No template,
+module or current-thread pointer is retained. The caller must keep the source
+readable and its module alive until create returns. Afterwards the image owns
+its copy independently of the source.
+
+The opaque instance exposes a const metadata view with mutable anchor/payload
+storage. The payload obeys the requested power-of-two alignment; host allocation
+alignment is at least pointer alignment. Extra allocation padding may precede
+the anchor when the requested prefix is not a multiple of that alignment. The
+reported storage_size is the rounded anchor-to-end span, not those preceding
+host allocation bytes. Free releases the instance and allocation without running
+callbacks. Callers must quiesce image users first; sharing an image requires
+ordinary caller synchronization. There are no global image pointers, pthread
+keys, automatic destructors, register writes or instruction rewrites in this
+component.
+
+For the evidenced main descriptor, the prefix is 16, initialized size 0x220,
+total size 0x1019 and alignment 8. The resulting storage span is 0x1030:
+
+| Anchor-relative bytes | Contents | Length |
+|---|---|---:|
+| [0,0x10) | Zero-filled reserved prefix; TCB/header semantics unmodeled | 16 |
+| [0x10,0x230) | Copy of initialized module template | 544 |
+| [0x230,0x1029) | Zero-filled module TLS/BSS tail | 3,577 |
+| [0x1029,0x1030) | Zero-filled allocation padding | 7 |
+
+The anchor models only the candidate address relation payload=anchor+0x10.
+Neither it nor its first 16 bytes is a complete SDK ThreadPointer/TCB. No host
+TP register is directed at this image, and no original game instruction reads
+or writes through it during these experiments.
+
+### Normal functional and lifetime evidence
+
+    python3 tests/native/test_module_tls.py \
+      --main .local/uncompressed/main.bin \
+      --out .local/runtime/module-tls-next
+
+The ordinary C contract uses a nontrivial synthetic initialized template and
+valid empty/all-initialized/zero-initialized templates, including alignments
+1, 8, 64 and 256. Prefix-to-payload distance and payload alignment are checked;
+copying remains valid after the source buffer is overwritten and freed.
+
+Eight simultaneous threads create separate main-sized images. While all images
+are live, their anchor-to-end ranges are checked for non-overlap. Each verifies
+the template, reserved prefix, zero tail and allocation padding, then writes
+its own values at payload offsets 0, 0x21f, 0x220 and 0x1018. The last is
+anchor+0x1028, the highest directly evidenced main TLS byte. Repeated payload
+checks total 32,968,000 expected byte values, with zero errors. The shared
+source remains unchanged. Unrelated pthread-key values and compiler TLS canaries
+remain correct; TPIDRRO_EL0 is unchanged for all eight threads. Seven observed
+TPIDR_EL0 changes are recorded, consistent with the previously retained host-only
+scheduling control; that register is not written by this component or assumed
+constant across scheduling.
+
+The private-source harness loads main with the native loader, so relocation has
+already completed, and copies the actual mapped [0x7767108,0x7767328) template.
+It does not call main, DT_INIT, constructors or any original game instruction.
+Two images are created while the module is alive; the module is then freed.
+Both copied images remain correct, one image's mutation does not affect the
+other, and the second remains valid after the first is freed. The Python byte
+oracle independently checks the complete 4,144-byte image against zero prefix,
+exact source template, zero tail and zero padding. It never copies the module's
+ordinary dynamic/GOT bytes after 0x7767328 as TLS data.
+
+Here "valid" means the owned storage bytes remain readable. A relocated template
+can itself contain pointer values into a module or DSO; copying their values
+does not retain their pointees or executable code. Later use of embedded
+pointers still requires the corresponding module/DSO lifecycle. The source-
+module lifetime requirement in module_tls.h describes readable copying, not
+general guest execution or safe pointee access after module unloading.
+
+Final local evidence: .local/runtime/module-tls-v2/manifest.json. Both host
+builds, synthetic threaded contract, Android-target object compilation and
+mapped-main copy/lifetime test exit 0, with no timeout. Source main SHA-256 before
+and after is unchanged at
+6e6d1f3cd1672243e2ed344cc1b8849b85437d41bdecec81a5f9181e472d68a5.
+The 544-byte template contains 11 nonzero bytes and has SHA-256
+2236311146eecaa733a64cda6108fece94e6693159ba1d3add9bb3f0899834bf.
+
+Private artifacts, retained only under that experiment directory:
+
+- private/loaded-template.bin: 544 bytes, template hash above.
+- private/copied-image.bin: 4,144 bytes, SHA-256
+  0516b0ba6d9225c86451c81d5b7ca2bffc493b3a7a711fe5ef76180d4995b111.
+- module_tls.android.o: 2,056 bytes, SHA-256
+  25dee6da71f41b6d0d916482510a0cb21ccba0e045ffd9fbb06741e6a76bd805.
+  This is ELF64 little-endian AArch64 ET_REL, produced by existing AppleClang 21
+  targeting aarch64-linux-android34 with the previously supplied official NDK
+  sysroot headers. The driver accepts that existing sysroot through
+  --android-sysroot. This unit does not link a new NDK runtime or execute Android.
+
+### Remaining integration boundary
+
+The first 16 header bytes, full ThreadType/TCB structure, SDK DSO tables and
+module/thread ownership are still unmodeled. Main's actual TLS constructor at
++0x34a0 reaches __cxa_thread_atexit at +0x34e8; storage alone does not implement
+that destructor lifecycle. This component registers no thread-exit callback and
+does not reuse ordinary process atexit as a substitute.
+
+The 1,489 main TPIDR_EL0 reads and SDK TP read/write sites still require an
+accurate native adaptation. The separate caller research resolved constant
+patterns at 1,440 sites; 49 non-adjacent uses remain without complete data-flow
+verification. The unsafe original SDK helper identified in the sixth checkpoint
+is not executed. Existing CRT/nnMain boundaries remain unresolved; this storage
+component is not bound into the HLE resolver, does not enable __nnmusl_init_dso,
+and does not change APK behavior or any acceptance gate. T02 remains IN_PROGRESS.
+
+
+## Eighth checkpoint: linked compiler-runtime C++ guards
+
+Starting HEAD: 3124895f06ea3f589c3334a61abb91ca4eb7232d. The coordinator's real
+Android C-only HLE CLI had stopped before the Mac boundary because dlsym could
+not find __cxa_guard_acquire. The executable linked libc/libm/libdl without a
+C++ ABI runtime. This unit supplies an explicit typed binding to a real linked
+compiler runtime; it does not implement another guard state machine.
+
+### Local official runtime and caller ABI evidence
+
+The existing partial official NDK r27d cache contains libc++abi.a, libc++_static.a
+and libc++_shared.so. The supplied validated-members.json identifies Google's
+android-ndk-r27d-darwin.zip and per-member ZIP CRC/size validation. The prototype
+recomputes CRC32, sizes and SHA-256 of all used headers/libraries before building
+and checks SHA-256 again afterwards. It makes no network request or installation.
+The partial package's whole-archive checksum remains NOT_VERIFIED.
+
+Official cxxabi.h declares int __cxa_guard_acquire(uint64_t*) and void
+__cxa_guard_release/abort(uint64_t*) for this AArch64 target. Its 32-bit guard
+branch is selected by _LIBCXXABI_GUARD_ABI_ARM; __cxxabi_config.h enables that for
+__arm__, wasm32 or ARM64_8_32, not the current aarch64-linux-android target.
+Compile-time type/size/alignment checks in the C++ contract corroborate the
+64-bit interface. The header's license is Apache-2.0 WITH LLVM-exception.
+
+libc++abi.a is 765,120 bytes, ZIP CRC32 08356d14, SHA-256
+90d5d4835e2f4c214a8c3c6e1fd87655e12f46012998767f176b7593b1ee7259.
+Its actual cxa_guard.cpp.o member defines all three functions. That member is
+8,464 bytes, SHA-256 fcc1541d51f21d7d074243edc174e4a7caaf94a046aa3ef3f91f273e771ac3ee.
+The retained symbol/disassembly evidence identifies real global-mutex/condition-
+variable synchronization and a platform thread-ID check. Acquire loads the
+first byte with LDARB; release publishes 1 with STLRB. Private pending/waiter/
+owner fields are operated on only by this compiler runtime. No archive bytes,
+upstream implementation source or derived instructions are committed.
+
+At the two observed main failure sites:
+
+| Caller | Guard address minus main base | Original fast path | Acquire return address |
+|---|---:|---|---:|
+| nnMain prerequisite | 0x7c04618 | LDARB +0x13e7c; TBZ bit 0 +0x13e80 | 0x13e98 |
+| malloc prerequisite | 0x7c18908 | LDARB +0xb7074; TBZ bit 0 +0xb707c | 0xb70ac |
+
+Both guard addresses are 8-byte aligned in the zero-filled BSS. Main imports
+acquire/release/abort as symbols 4, 5 and 253. The supplied SDK's own definitions
+(+0x63a2e0/+0x63a364/+0x63a3cc) independently load the first byte with acquire
+semantics, publish 1 with release semantics and use byte +1 for pending state.
+The host implementation is not a copy of the SDK's private Horizon mutex or
+owner layout. The observed caller-facing 64-bit ABI and first-byte convention
+are the compatibility surface; all three imported guard functions consistently
+use one host runtime.
+
+Static slices: .local/runtime/static-main-guard-v1 and
+.local/runtime/static-sdk-guard-v2. These bind the exact supplied main/SDK hashes
+already recorded above. The earlier static-sdk-guard-v1 slice used an unrelated
+initial address; the corrected v2 slice is the guard implementation evidence.
+
+### Binding, linking and normal behavior
+
+Android nso_host_resolve now strongly references the exact typed compiler
+runtime functions and returns their addresses for only these three names. A
+64-bit ABI assertion prevents accidentally building this bridge for a 32-bit
+layout. Other hosts can opt into the same path with NSO_WITH_CXX_GUARDS=1.
+Android removes these names from the generic dlsym allowlist, so a non-HLE
+Android probe cannot accidentally bind some external runtime by global lookup.
+The resolver never writes guard bytes, returns a constant initialization claim,
+or substitutes a pthread mutex layout for the guard object.
+
+The actual successful standalone Android link prototype retains the existing
+six C sources and adds this archive group before Android system libraries:
+
+    --start-group libc++abi.a libc++_static.a libunwind.a \
+      libclang_rt.builtins-aarch64-android.a --end-group -lc -lm -ldl
+
+The script supplies full paths, Android CRT begin/end objects, API28, Rust LLD,
+no undefined symbols, PIE, 16-KiB load-page alignment and relro/now/noexecstack.
+Strong references pull the required archive member; no whole-archive, global
+export flag or extra dlsym search is needed. Link maps explicitly identify
+libc++abi.a(cxa_guard.cpp.o). ELF symbols show all three functions defined, and
+nso_host.android.o has direct guard-address relocations. The executables need
+only libc.so/libm.so/libdl.so dynamically; libc++_shared.so is not required by
+these artifacts. Android worker scripts/CMake were not modified by this agent.
+
+The normal C++ contract checks that the resolver addresses equal the linked
+runtime's typed functions. A fresh guard acquires, aborts, reacquires, releases
+and subsequently returns already-initialized. Eight threads make 80,000 calls
+to a genuine compiler-generated local static; its constructor runs exactly once.
+A second test aborts an in-progress owner with eight competing acquires; exactly
+one contender initializes and all see the published value. A throwing local-
+static constructor invokes the compiler's actual abort path and retries once:
+two attempts, one completed object. Host result is exit 0 and errors 0.
+
+A host C-only HLE CLI explicitly linked with libc++ and the typed guard path
+executes the real module again. nnMain and malloc still stop at named
+QueryMemoryInfo, caller +0x27a50 and +0x1398c respectively, both exit 133. The
+private main input hash is identical before/after. No initializer or guest TLS
+gate is bypassed to obtain those results.
+
+### Frozen prototype artifacts and remaining boundary
+
+    python3 scripts/runtime/build_cxx_guard.py \
+      --toolchain /path/to/existing/minimal-ndk/toolchain \
+      --main .local/uncompressed/main.bin \
+      --out .local/runtime/cxx-guard-next
+
+Final manifest: .local/runtime/cxx-guard-v3/manifest.json. Host/Android builds,
+ABI archive inspection, ELF inspection and host guard contract all exit 0, no
+timeouts. The two intentional real host platform-boundary runs exit 133.
+
+- nso_runtime_hle_guards: Android ELF64 AArch64 PIE, 555,856 bytes, SHA-256
+  0adc6631502641ce63d8953d742ae284dfe73e57c4ca758503c644badf746674.
+- guard_contract.android: same typed resolver and compiler-runtime contract,
+  536,288 bytes, SHA-256
+  eca1fba733de8870a915a50de1db69142e017abd3d8f159122a0fb895d04f4d9.
+
+This agent does not select/start a VM or execute Android; the frozen artifacts
+are ready for the coordinator's separately authorized Android run. Cross-linking
+alone does not establish the new Android nnMain/malloc boundary.
+
+The binding currently belongs to one standalone executable/compiler runtime.
+A live guard object must not alternate between SDK/host or multiple independent
+compiler-runtime instances: their private synchronization/owner state can differ.
+Multiple guest modules can use these functions only while their guard storage
+and all initialized objects/code remain live and all callers share that same
+runtime. This is not a general cross-game or dynamic-DSO lifecycle manager.
+Module unload requires all guard users/waiters to have quiesced. The normal
+pthread tests establish host-thread behavior, not Horizon thread creation,
+thread-local layout, native TP adaptation or guest thread exit semantics.
+
+Original CRT, AllocateTlsSlot, QueryMemoryInfo, embedded-pointer/module lifetime
+and the unsafe original SDK TP writes remain separate unsupported boundaries.
+No guard change enables the SDK allocator gate, runs the original TP-writing
+helper, or claims complete C++ ABI compatibility/game startup. The module_tls
+header/report now explicitly distinguish copied byte-storage lifetime from the
+lifetime of any copied module pointers and their pointees/code.
+
+
+## Ninth checkpoint: discoverable Android exception metadata
+
+The coordinator executed the eighth checkpoint's frozen v3 artifacts on its
+ARM64 Android API34 VM. The strict CLI passed __cxa_guard_acquire and reached
+QueryMemoryInfo in both nnMain (+0x27a50) and malloc (+0x1398c), each exit 133;
+--info exited 0. CRT and startup retained __nnmusl_init_dso/AllocateTlsSlot
+boundaries, exit 133. These are the coordinator's runs, not this agent's device
+execution.
+
+The complete Android guard contract did NOT pass: it exited 134 with
+"libc++abi: terminating due to uncaught exception of type int" and no stdout.
+The eighth checkpoint claimed host contract success and cross-link success only;
+this new Android failure must remain visible. The exception test is retained.
+Coordinator evidence is .local/emulator/pvz2-arm64-session3/guard-execution.json
+and guard-guard-contract.stderr in its original delivery checkout.
+
+Inspection of the actual v3 ELF found .gcc_except_table and .eh_frame, plus the
+expected __gxx_personality_v0/_Unwind_Resume/__cxa_throw relocations in the test
+object. However, the executable lacked both .eh_frame_hdr and PT_GNU_EH_FRAME.
+The hand-written direct LLD invocation had omitted --eh-frame-hdr; it does not
+inherit compiler-driver link defaults. Missing discoverable executable FDE
+metadata is a concrete build defect and the leading explanation for the uncaught
+exception. Causality still requires the coordinator's Android rerun.
+
+The prototype now passes --eh-frame-hdr to LLD for both Android executables and
+rejects output missing either the header section or GNU_EH_FRAME program header.
+The test additionally flushes phase markers after manual acquire/abort/release,
+compiler-generated local-static initialization, and contended abort. It still
+requires the actual integer exception to be caught and the local-static
+constructor to retry successfully; no test is skipped or converted to success.
+
+Final evidence: .local/runtime/cxx-guard-v4/manifest.json. Host contract and all
+cross-build/static checks exit 0. The host phase markers show constructor counts
+1/1 and errors 0; the final exception-retry count remains 2, errors 0. Real host
+main/malloc still exit 133 at the same QueryMemoryInfo callers. The new Android
+contract has a read-only GNU_EH_FRAME segment covering .eh_frame_hdr (offset
+0xfb08, size 0x1654), and both executables pass the new static gate.
+
+Frozen v4 artifacts, awaiting coordinator Android execution at this checkpoint:
+
+- nso_runtime_hle_guards: 561,936 bytes, SHA-256
+  aa3df1dceb8e30e034969e36a2afb459d7cd3d0458d6d8f71bdb9e2f3c48c380.
+- guard_contract.android: 542,984 bytes, SHA-256
+  0b627417417bf09595e7b869f0501efd26087a2144c0aa15a53fc02c77bec14c.
+
+The same EH-header option should be used by other hand-written Android C++ LLD
+links. This agent has not edited Android-owned scripts/CMake or started/selected
+a VM. The fix covers host ELF test/compiler-runtime unwind metadata; it does not
+register the separately mapped game's NSO unwind tables or prove cross-guest
+exception/DSO unwinding compatibility. Actual Android execution was pending at
+this checkpoint; the subsequent coordinator results are recorded below.
+
+### Paused QueryMemoryInfo investigation recovery point
+
+No QueryMemoryInfo HLE binding or host mapping-query component was added. The
+export at SDK+0x143710 tail-branches through the PLT to
+nn::os::detail::DebugImplByHorizon::QueryMemoryInfo at +0x14711c (0xc0 bytes).
+It calls the native SVC #0x29 wrapper at +0x17570c with an output u64 pointer,
+Info IDs 0x16 then 0x15, w2=0xffff8001 and x3=0. Nonzero SVC status branches to
+nn::diag::detail::AbortImpl(Result const*), not a normal error return to main.
+
+Output writes are u64 at +0 (Info 0x15), +8 (Info 0x16), +0x10 (resource manager
++0x3f8), +0x18 (manager+0x400), +0x20 (a cached value initially derived as
+Info0x16 - manager[0x3f8] - manager[0x150]), +0x28 (manager+0x2d0) and u32 at
++0x30 (manager+0x2d8). The manager is the defined SDK object
+nn::os::detail::g_OsResourceManagerStorage at +0xb91018, size 0x470. The cache is
+at SDK+0xb915a0. Final padding and original C field names are not established.
+
+The malloc caller passes sp+8, leaving 0x38 bytes before saved frame data, and
+uses output field +0 to size internal heap metadata in GiB units. The nnMain
+allocator constructor reads fields +0/+8 and subtracts the latter from the
+former to initialize its available-growth accounting. Neither observed caller
+checks a normal QueryMemoryInfo return status. Host /proc mappings or available
+physical RAM are not equivalent to these process-budget/resource-manager fields.
+A coherent guest-owned heap/physical-allocation budget and the related manager
+accounting are required before a truthful adapter can replace unsupported.
+
+Retained static recovery evidence:
+.local/runtime/static-main-query-info-v1 (caller slices +0x13940/+0x27a10),
+.local/runtime/static-sdk-query-info-v1 (+0x14711c), and
+.local/runtime/static-sdk-query-info-v2 (export +0x143710 and SVC wrapper
++0x17570c). The guard exception-link defect took priority before further field
+semantics/budget-provider research. None of these SDK routines were executed.
+
+## Tenth checkpoint: QueryMemoryInfo fields and real budget boundary
+
+This unit adds static evidence and a reproducible inspection script only. It does
+not add a QueryMemoryInfo resolver binding or execute SDK thread initialization.
+
+### Subsequent coordinator Android execution
+
+The coordinator executed the frozen a22d0dc guard contract on its ARM64 API34 VM
+and then on the actual RG477M. Both returned 0: 8 threads, 80,000 compiler local
+static calls, one constructor, one contended-abort winner, two exception-retry
+attempts, errors 0. This closes the earlier v3 uncaught-int contract failure for
+the corrected host executable. It does not register guest NSO unwind tables or
+prove general guest/DSO exceptions.
+
+The agent read the following coordinator-produced JSON files without operating
+ADB or any device:
+
+- ffrs-integration/.local/emulator/pvz2-arm64-session3/guard-eh-execution.json,
+  2,004 bytes, SHA-256
+  135773017ffae5b6508e6698fa09cae2877ecc3f41a9a0bb3d9eea6bb1e9a384.
+- ffrs-integration/.local/device/rg477m-session1/runtime-execution.json,
+  4,496 bytes, SHA-256
+  ea5a85b902979abb5752bce6eefa281e82ac14ec3180450af767174949a64eeb.
+
+The RG477M production CLI source is coordinator integration 8b817b6; its artifact
+is 558,000 bytes, SHA-256
+5cf82020353e061f3c2cef4fd2dd4cb417dbb3eb883460ecd688bb1b1ff89853.
+It returned info=0, nnMain=133 at QueryMemoryInfo caller +0x27a50,
+malloc(4096)=133 at +0x1398c, init-wrapper=133 at __nnmusl_init_dso caller
++0x5920a34, and startup=133 at AllocateTlsSlot caller +0x133a0. No timeout or
+complete game-startup success was reported.
+
+### Seven writes, arguments and error path
+
+SDK export +0x143710 tail-branches via PLT to +0x14711c. x0 is the sole observed
+output argument and is retained in x19. Both observed main callers provide an
+8-aligned 0x38-byte stack area. The table describes proven uses, not recovered
+original SDK C field names:
+
+| Offset | Width | Source and meaning | SDK write PC |
+|---|---|---|---|
+| +0 | u64 | GetInfo(21), total process non-system memory budget | 0x14719c, STP first |
+| +8 | u64 | GetInfo(22), used process non-system memory | 0x14719c, STP second |
+| +0x10 | u64 | resource[0x3f8], SDK heap capacity | 0x1471ac |
+| +0x18 | u64 | resource[0x400], SDK allocated heap-block bytes | 0x1471b4 |
+| +0x20 | u64 | baseline cache at SDK+0xb915a0 | 0x1471a0 |
+| +0x28 | u64 | resource[0x2d0], registered thread objects' aggregate stack sizes | 0x1471bc |
+| +0x30 | u32 | resource[0x2d8], registered thread object count | 0x1471c4 |
+
+The callee does not write the final +0x34..+0x37 bytes. Original padding contents
+and source-level field names are not established. It reuses a nonzero baseline
+cache; otherwise it assigns used_non_system - heap_capacity - initial_stack_size
+with unsigned 64-bit subtraction. A zero result is recomputed on the next call.
+This is an initialization snapshot, not a live sum of all nonheap allocations.
+
+GetInfo calls at +0x147144/+0x147164 use IDs 22 then 21, w2=0xffff8001,
+x3=0 and a local u64 output. Wrapper +0x17570c executes SVC #0x29 and preserves
+its Result in w0. Either failure calls AbortImpl(Result const*) at +0x1471d8
+before any MemoryInfo field is written. The observed main callers do not consume
+a normal return status; the symbol mangling does not establish its C return type.
+An incidental successful SVC Result in w0 is not proof of a Result-returning API.
+
+The official libnx v4.12.0 header identifies these IDs as
+TotalNonSystemMemorySize and UsedNonSystemMemorySize: process memory budget/usage
+excluding process memory management. It also defines this current-process pseudo
+handle. This cross-check names the locally proven SVC numbers; it does not supply
+the private SDK struct or initialize it. Sources actually read:
+[release header](https://github.com/switchbrew/libnx/blob/v4.12.0/nx/include/switch/kernel/svc.h),
+[official generated documentation](https://switchbrew.github.io/libnx/svc_8h.html).
+The tag-commit API was unavailable, so no unverified immutable commit hash or
+external implementation is introduced.
+
+### Proven state writers
+
+g_OsResourceManagerStorage is SDK+0xb91018, size 0x470. Its relocated GOT entry
+is +0xb68db8. ThreadManager starts at resource+0xf0; MemoryHeapManager starts at
+resource+0x3f0. GetMemoryHeapSize (+0x143f00) directly reads resource+0x3f8.
+SetHeapSize (+0x145260) updates that capacity after its real platform heap call.
+AllocateFromHeap (+0x145480) adds the allocated block's requested bytes to
+manager+0x10 at +0x145580; ReleaseToHeap (+0x1455c0) subtracts them at +0x14574c
+after range/free-list handling. This is block accounting, not RSS or reserved VA.
+
+ThreadManager constructs the initial ThreadType at TM+8. Its platform constructor
+(+0x147f4c) queries the mapping containing its current frame using SVC QueryMemory
+#6, then passes its base/size to SetupThreadObjectUnsafe (+0x141880). That routine
+stores the size at ThreadType+0x58. Thus TM+0x60 == resource+0x150 is the initial
+thread's stack size used by the baseline formula. GetThreadStackInfo (+0x144710)
+independently reads that size on the direct nonfiber path.
+
+The constructor increments the initial count at +0x142270 and stack sum at
++0x142278. Successful CreateThread adds an object and its stack size at
++0x141c44/+0x141c50; DestroyThreadObject subtracts them at +0x141f68/+0x141f74.
+The count includes the initial thread and objects not yet destroyed, not just
+currently running threads. nnosInitialize constructs these managers and calls
+QueryMemoryInfo at +0x1494b4, naturally establishing the baseline at that point.
+Calling those original constructors is unsafe on the host: +0x142214 stores
+through TPIDRRO+0x1f8 and +0x147ff0 writes TPIDR_EL0. They were not executed.
+
+### Missing provider and next native prerequisite
+
+Main reads +0 to size malloc metadata in GiB units, and +0 minus +8 to initialize
+allocator available-growth accounting. Its actual imports include
+AllocateMemoryPages (#71) and FreeMemoryPages (#72), rather than SDK
+SetMemoryHeapSize/AllocateMemoryBlock. The SDK page paths validate owned reserved
+ranges, then invoke MapPhysicalMemory/UnmapPhysicalMemory SVC #0x2c/#0x2d.
+GetVirtualAddressMemoryResourceUsage is separate: it queries Info16/17, the
+process memory-management resource budget/usage, not Query's Info21/22.
+
+The current runtime has no enforced guest process-memory budget provider, no
+physical-page commit/decommit accounting and no complete initial-thread /
+thread-lifecycle context. A 62-GiB PROT_NONE reservation supplies none of those
+physical totals. Host RAM, available RAM, mappings and RSS are not substitutes.
+The minimal Query blocker is the absent coherent provider/context; output byte
+offsets are no longer the uncertainty. A native implementation can build real
+page ownership/accounting and an explicit enforced guest-instance budget policy
+before binding Query. It must not choose a total merely to advance startup.
+CRT/DSO/TLR/TP and thread destruction remain separate blockers.
+
+Reproduce all bounded slices without executing target code:
+
+    python3 scripts/runtime/inspect_memory_info.py \
+      --out .local/runtime/query-memory-analysis-next
+
+The script requires the supplied module hashes, restricts derived output to this
+checkout's .local, records commands/PIDs/real exits and verifies input hashes
+again afterwards. Evidence for this source version is
+.local/runtime/query-memory-analysis-v2/manifest.json. Both SDK/main static
+commands and the outer capture exited 0 with no timeout; source hashes remained
+the main/SDK values recorded above. No Query resolver or page implementation was
+added in this analysis checkpoint. T02 and full game startup remain in progress.
+
+## Eleventh checkpoint: internal owned native page mappings
+
+This implements a native prerequisite behind the existing address-region owner
+table. It does not register AllocateMemoryPages/FreeMemoryPages, implement
+QueryMemoryInfo or change CRT/TLS initialization. Its internal status enum is
+explicitly separate from SDK Results; no guessed SVC error mapping is returned.
+
+The previously established public ABI is (address x0, byte size x1) -> Result
+w0 at SDK+0x144840/+0x144880. Methods +0x1464f0/+0x146790 validate a reserved
+interval and invoke SVC #0x2c/#0x2d at +0x17572c/+0x175734. A static direct-BL
+scan found main allocation calls +0x27ee4/+0x27f8c and free call +0x281ec;
+all check w0 before normal allocator accounting. This does not prove arbitrary
+repeat/overlap/hole behavior of the original kernel service. Private caller
+evidence and the reviewed plan remain in .local/runtime/page-management-plan-v1.
+
+### Native ownership and failure behavior
+
+address_region.c/h now provide three internal functions: owned_pages_map,
+owned_pages_free and owned_pages_usage, all with the nso_host_ prefix. One
+region_mutex serializes owner lookup, interval changes, VM operations, snapshots
+and whole-region release. Ranges must fit the requested guest interval, excluding
+rounded padding and guards, and meet both 4-KiB guest and host-page alignment.
+The code does not widen a guest request. The owner table, not an arbitrary host
+address query, is the authority for all permission changes and replacements.
+
+Mapping supports disjoint inaccessible spans only. An interval node is allocated
+before mprotect(PROT_READ|PROT_WRITE). A failed mprotect may have changed a prefix,
+so the implementation attempts to restore the complete attempted span to
+PROT_NONE. Successful restoration returns SYSTEM_ERROR with the original native
+errno and preserves the ledger. Failed restoration returns QUARANTINED with both
+the original and restoration errno; the reservation permits only whole release.
+
+Free requires a completely covered accessible span, including adjacent recorded
+intervals. A strict middle split allocates its right-hand node before the host VM
+operation. The checked interior is replaced with fresh anonymous PROT_NONE at
+the same address using MAP_FIXED while holding the owner lock. This discards its
+old contents while preserving address ownership. Only that verified owned span
+is replaced; unaffected left/right data is retained. A failed replacement may
+have destructive consequences, so the code captures its errno immediately and
+quarantines the region instead of guessing a data-restoring rollback or reporting
+the old count as complete. Unexpected replacement addresses are also quarantined.
+
+Successful operations publish exact accessible interval bytes. Unsupported
+repeat/overlap mapping or mixed-hole free returns an explicit UNSUPPORTED detail,
+without a VM operation or SDK success. Whole FreeAddressRegion releases the full
+original mapping, including split VM intervals, then discards all ledger nodes.
+An OS failure during whole release is diagnosed and fatal as before.
+
+Usage reports region count, requested reserved bytes and mapped_guest_bytes.
+If any reservation is quarantined, mapped_guest_bytes_valid is false and the
+numeric mapped field is zero/unknown, not a claim of zero or the old complete
+sum. The quarantined-region count remains visible. This API does not synchronize
+guest reads/writes themselves; callers must quiesce data users before freeing.
+The existing single-guest/process scope and module-lifetime limitations remain:
+these side tables are not attached to SDK DSO unload or guest thread teardown.
+
+Host anonymous mappings may populate physical pages lazily or overcommit.
+mapped_guest_bytes counts host-accessible guest spans, not resident memory or a
+Horizon physical budget. Successful RW mappings and real small byte reads/writes
+are evidence for this limited component only. No inferred process budget, SDK
+allocator gate, thread header or TP adaptation was added.
+
+### Normal contracts and controlled native failure checks
+
+The production contract verifies actual zero-initialized RW bytes, nonzero
+patterns, prefix/suffix/middle free, preservation of still-mapped sides, zero
+contents after successful recommit, adjacent-interval removal and whole-region
+ledger cleanup. Independent host permission checks inspect the requested address
+using Mach VM on macOS or a bounded /proc/self/maps lookup in the Linux/Android
+test only. They never read PROT_NONE or freed data. There is no generic host
+mapping-query component in the runtime.
+
+Eight native threads each run 32 independent small-reservation cycles. Another
+32 normal map-vs-whole-release races accept either owner-lock ordering and never
+dereference the raced address. All final region/mapped counters return to zero.
+The large 62-GiB reservation test maps/touches exactly one host page; the rest
+remains inaccessible. On this Mac, that page is 16,384 bytes, not 62 GiB.
+
+A separate host-only test build enables NSO_OWNED_PAGES_TESTING hooks. Three
+controlled syscall-error cases verify partial-permission restoration, failed
+restoration quarantine and replacement-error quarantine, preserving original
+errno details. The partial-change hook performs a real small prefix mprotect;
+the restore case independently verifies PROT_NONE afterwards. No target module,
+malformed input, signal fault or previously interrupted security-QA workflow is
+used. Production objects and the Android contract contain no test hook symbol.
+
+Reproduce the strict host builds, normal/recovery executions, original reservation
+regression and offline Android cross-link:
+
+    python3 scripts/runtime/test_owned_pages.py \
+      --toolchain /path/to/existing/minimal-ndk/toolchain \
+      --out .local/runtime/owned-pages-next
+
+Evidence: .local/runtime/owned-pages-v3/manifest.json. All ten build/run/inspect
+steps exited 0 without timeout. Both host contracts report errors=0,
+mapped_guest_bytes=0, valid=true, 8 threads x 32 cycles and 32 release races;
+the recovery build additionally reports three controlled VM failure cases.
+The original PROT_NONE-only address-region contract still returns 0.
+
+The C sources compile with -std=c11 -O2 -Wall -Wextra -Werror. The cross-build
+uses AppleClang 21, verified installed r27d headers/CRT/libc/compiler-rt and LLD,
+target aarch64-linux-android28, PIE, 16-KiB maximum segment alignment, RELRO/NOW
+and no executable stack. It requires no C++ runtime. Frozen Android contract:
+.local/runtime/owned-pages-v3/owned_pages_contract.android, 89,936 bytes,
+SHA-256 d95b592eedbcd35b9c30283a529222860f38f232e81f8dc0d5a96e697ea45a94.
+This agent has not executed that artifact on Android or operated a device.
+Coordinator device execution and independent review remain pending. The game
+still stops at the verified QueryMemoryInfo/CRT/TLS boundaries; full T02 and game
+startup are not passed by this internal page component.

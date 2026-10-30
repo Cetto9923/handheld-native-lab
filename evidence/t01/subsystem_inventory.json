@@ -1,0 +1,100 @@
+{
+  "subsystem_fingerprints": {
+    "RHI_NVN": {
+      "occurrences": 15,
+      "first_offset": "0x63a1d9f"
+    },
+    "RHI_Vulkan": {
+      "occurrences": 0,
+      "first_offset": null
+    },
+    "RHI_Null": {
+      "occurrences": 0,
+      "first_offset": null
+    },
+    "Allocator_MallocBinned3": {
+      "occurrences": 1,
+      "first_offset": "0x63a7b4c"
+    },
+    "Allocator_MallocAnsi": {
+      "occurrences": 0,
+      "first_offset": null
+    },
+    "Audio_CriWare": {
+      "occurrences": 30,
+      "first_offset": "0x633bc1b"
+    },
+    "Audio_CriAtom": {
+      "occurrences": 67,
+      "first_offset": "0x63a6272"
+    },
+    "Audio_NintendoAudioMixer": {
+      "occurrences": 2,
+      "first_offset": "0x63a3d31"
+    },
+    "Physics_Chaos": {
+      "occurrences": 536,
+      "first_offset": "0x631390c"
+    },
+    "Physics_ChaosVD": {
+      "occurrences": 303,
+      "first_offset": "0x631390c"
+    },
+    "Physics_PhysX": {
+      "occurrences": 1,
+      "first_offset": "0x640cefe"
+    },
+    "Input_EnhancedInput": {
+      "occurrences": 24,
+      "first_offset": "0x632239a"
+    },
+    "Input_SixAxis": {
+      "occurrences": 12,
+      "first_offset": "0x5ecf040"
+    },
+    "Platform_HAL_Memory": {
+      "occurrences": 1,
+      "first_offset": "0x63a1cf2"
+    },
+    "Platform_HAL_TLS": {
+      "occurrences": 1,
+      "first_offset": "0x63a7a08"
+    },
+    "Platform_HAL_Thread": {
+      "occurrences": 1,
+      "first_offset": "0x63eea71"
+    },
+    "Platform_HAL_Save": {
+      "occurrences": 1,
+      "first_offset": "0x63a6ab4"
+    },
+    "Platform_HAL_Launch": {
+      "occurrences": 1,
+      "first_offset": "0x63a514e"
+    }
+  },
+  "embedded_platform_sources": [
+    ".\\../Platforms/Nintendo/Source/Runtime/Core/Private/NintendoPathManager.cpp",
+    ".\\../Platforms/Nintendo/Source/Runtime/Core/Private/NintendoPlatformMemory.cpp",
+    ".\\../Platforms/Nintendo/Source/Runtime/Core/Private/NintendoPlatformTLS.cpp",
+    ".\\../Platforms/Nintendo/Source/Runtime/Core/Private/NintendoRunnableThread.h",
+    ".\\../Platforms/Nintendo/Source/Runtime/Core/Private/ShortenedPathManager.cpp",
+    ".\\../Platforms/Nintendo/Source/Runtime/Launch/Private/LaunchNintendo.cpp",
+    ".\\../Platforms/Nintendo/Source/Runtime/NintendoAudioMixer/Private/NintendoAudioMixer.cpp",
+    ".\\../Platforms/Nintendo/Source/Runtime/NintendoPlatformFeatures/Private/NintendoSaveGameSystemBase.cpp",
+    ".\\../Platforms/Switch/Source/Runtime/NVNRHI/Private/NVNCommands.cpp",
+    ".\\../Platforms/Switch/Source/Runtime/NVNRHI/Private/NVNContextCommon.cpp",
+    ".\\../Platforms/Switch/Source/Runtime/NVNRHI/Private/NVNDebug.cpp",
+    ".\\../Platforms/Switch/Source/Runtime/NVNRHI/Private/NVNHelpers.cpp",
+    ".\\../Platforms/Switch/Source/Runtime/NVNRHI/Private/NVNManager.cpp",
+    ".\\../Platforms/Switch/Source/Runtime/NVNRHI/Private/NVNMemory.cpp",
+    ".\\../Platforms/Switch/Source/Runtime/NVNRHI/Private/NVNQuery.cpp",
+    ".\\../Platforms/Switch/Source/Runtime/NVNRHI/Private/NVNRHI.cpp",
+    ".\\../Platforms/Switch/Source/Runtime/NVNRHI/Private/NVNRenderTarget.cpp",
+    ".\\../Platforms/Switch/Source/Runtime/NVNRHI/Private/NVNShaders.cpp",
+    ".\\../Platforms/Switch/Source/Runtime/NVNRHI/Private/NVNState.cpp",
+    ".\\../Platforms/Switch/Source/Runtime/NVNRHI/Private/NVNSubmission.cpp",
+    ".\\../Platforms/Switch/Source/Runtime/NVNRHI/Private/NVNTexture.cpp",
+    ".\\../Platforms/Switch/Source/Runtime/NVNRHI/Private/NVNVertexDeclaration.cpp"
+  ]
+}

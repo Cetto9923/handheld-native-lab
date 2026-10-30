@@ -1,0 +1,16 @@
+{
+  "project": "Handheld Native Lab",
+  "visibility": "private",
+  "source_commit": "d66706e7e521ad295ac17d965c6ed66cbf23d465",
+  "source_tag": "rg477m-baseline-2026.10.30",
+  "source_branch": "task/T02-codex-black-screen",
+  "publication_history": "new source-only initial snapshot; original history excluded",
+  "publication_adjustments": [
+    "exclude six original game-art launcher PNGs",
+    "self-authored neutral launcher vector",
+    "neutral launcher display name",
+    "this provenance manifest"
+  ],
+  "game_runtime_artifacts": "excluded; local backup only",
+  "acceptance": "provisional visual baseline; not full audio/performance/playability PASS"
+}

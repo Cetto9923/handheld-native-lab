@@ -1,0 +1,99 @@
+{
+  "timestamp": "2026-10-23T12:28:00+08:00",
+  "packages": {
+    "base": {
+      "path": "/Users/yuyan9923/Downloads/SwitchGame/[最终幻想：共鸣][FINAL FANTASY RESONANCE]/[本体v1.0.0][0100B8A026F14000][22.1.0][中文][HK].nsp",
+      "size": 9061339984,
+      "sha256": "02b61f9fe88cb8b04e948dffbfa15eaadbd7f8a6bd45b53960a66812cf8a325e"
+    },
+    "update": {
+      "path": "/Users/yuyan9923/Downloads/SwitchGame/[最终幻想：共鸣][FINAL FANTASY RESONANCE]/[升级档v1.0.1][0100B8A026F14800][22.5.0][中文][HK].nsp",
+      "size": 143005520,
+      "sha256": "a31ebd0a1f416321da0b32ec0e519b337f0b322d9f00209d6bc1695a14cde06b"
+    },
+    "dlc": {
+      "path": "/Users/yuyan9923/Downloads/SwitchGame/[最终幻想：共鸣][FINAL FANTASY RESONANCE]/1DLC/[DLC][0100B8A026F15002][v0][HK][見習騎士起步衝刺包].nsp",
+      "size": 121040,
+      "sha256": "17631319c1fad16a93ef5cdda58713a5e9b61b1601d7de6cf52b8e26b2fb4a49"
+    }
+  },
+  "exefs": {
+    "main": {
+      "size": 65285909,
+      "sha256": "5fd6cfaf554672d1364f519d0a93b33cffdd81a3e3f0cf96b8ddc599f579b570"
+    },
+    "main.npdm": {
+      "size": 1620,
+      "sha256": "a39b66ed07bcb7b2730a9bbd37ec9afe968dd28d6e3d5f4d7794c3528c1b3f95"
+    },
+    "rtld": {
+      "size": 10109,
+      "sha256": "4a520d568bbc0e584bc2da5f3250f81f28d09562f7b4b5f57365b970907b709c"
+    },
+    "sdk": {
+      "size": 6200384,
+      "sha256": "56af5073788dc1975b5186afafcdcbc0ab0f2f9b40b9d483e8747fd649bd8f8e"
+    },
+    "subsdk0": {
+      "size": 3367524,
+      "sha256": "017fa4eea05892b997ef749077a9c38ebede7bafa648c7a4a794d297d5e58be3"
+    }
+  },
+  "metadata": {
+    "nacp": {
+      "title_id": "0100B8A026F14000",
+      "display_version": "1.0.0",
+      "titles": {
+        "Korean": {
+          "title": "FINAL FANTASY RESONANCE",
+          "publisher": "SQUARE ENIX"
+        },
+        "TraditionalChinese": {
+          "title": "FINAL FANTASY RESONANCE",
+          "publisher": "SQUARE ENIX"
+        },
+        "SimplifiedChinese": {
+          "title": "FINAL FANTASY RESONANCE",
+          "publisher": "SQUARE ENIX"
+        }
+      }
+    }
+  },
+  "engine": {
+    "engine_family": "Unreal Engine 5",
+    "engine_version_estimate": "UE 5.4",
+    "project_name": "mucha",
+    "shipping_binary": "FFRS-Switch-Shipping.nss",
+    "target_title": "FFRS (FINAL FANTASY RESONANCE)",
+    "modules_identified": [
+      "Runtime/Core",
+      "Runtime/Engine",
+      "Runtime/Slate",
+      "EnhancedInput",
+      "EnhancedUI",
+      "CommonLoadingScreen",
+      "CommonUI",
+      "IrisCore",
+      "ChaosVDRuntime",
+      "NNE",
+      "CriWareRuntime",
+      "OodleNetworkHandlerComponent"
+    ],
+    "graphics_api": "NVN (nvnDeviceInitialize, nvnQueueInitialize)",
+    "audio_middleware": "CRIWARE CriAtom / CriMana",
+    "compression": "Oodle LZ / Network"
+  },
+  "toolchain": {
+    "hactool": "/Users/yuyan9923/.local/bin/hactool",
+    "ghidra_headless": "/Users/yuyan9923/.local/bin/ghidra-headless",
+    "rea": "/Users/yuyan9923/.local/bin/rea",
+    "clangxx": "/usr/bin/clang++",
+    "ninja": "/opt/anaconda3/bin/ninja",
+    "adb": "/opt/homebrew/bin/adb",
+    "android_sdk": "/Users/yuyan9923/Library/Android/sdk",
+    "sdkmanager": "/Users/yuyan9923/Library/Android/sdk/cmdline-tools/latest/bin/sdkmanager",
+    "ndk_status": "NOT_INSTALLED (ready for T03 via sdkmanager)",
+    "target_device": "RG477M (Dimensity 8300, Mali-G615 MC6, Android 14, 1280x960 4:3)",
+    "device_connection": "NOT_CONNECTED (BLOCKED_DEVICE)"
+  }
+}

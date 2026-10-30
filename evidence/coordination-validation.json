@@ -1,0 +1,18 @@
+[
+  {
+    "scope": "coordination_script_only_not_game_test",
+    "T04": "in_progress",
+    "T03B": "blocked_device",
+    "accepted": true,
+    "expected": true,
+    "error": null
+  },
+  {
+    "scope": "coordination_script_only_not_game_test",
+    "T04": "passed",
+    "T03B": "blocked_device",
+    "accepted": false,
+    "expected": false,
+    "error": "T04: unmet acceptance gates ['T03B']"
+  }
+]

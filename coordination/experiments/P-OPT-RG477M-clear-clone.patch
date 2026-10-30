@@ -1,0 +1,94 @@
+--- a/src/graphics/nvn_vulkan/engine/xbg_game.cpp
++++ b/src/graphics/nvn_vulkan/engine/xbg_game.cpp
+@@ -3985,6 +3985,75 @@
+ // the destination pending too, instead of stalling for the CPU memmove.
+ // 保守门暂时使 pending-view 链接回退CPU；恢复前须证明源readback跨退役仍存活。
+ // The conservative gate temporarily falls back to CPU for pending-view chains; restore only after proving source readback lifetime across retirement.
++// Opt-in cross-slot clear. Never modify an older submission's storage: its
++// fence still promises the old bytes to CPU consumers. Clone its complete
++// newest range, then fill only the requested words in the current submission.
++// Mode 2 drains and compares against the original CPU writeback, then uses the
++// original CPU clear; it is a correctness diagnostic, not a performance mode.
++int clear_clone_mode=0;
++uint64_t clear_clone_copies=0,clear_clone_checks=0,clear_clone_mismatches=0;
++bool gpu_clone_pending_clear(const p_clear_buf &p){
++    if(!clear_clone_mode || !p.size || (p.addr&3) || (p.size&3) || p.addr+p.size<p.addr ||
++       capture.active || capture.probe || provenance_file || !nvn_memory_pool_resolve_address)return false;
++    Slot &s=recording_slot(); // May retire slots and change pending_writebacks.
++    PendingWriteback prior{};bool found=false;
++    for(auto w=pending_writebacks.rbegin();w!=pending_writebacks.rend();++w){
++        if(!xbg_wb_overlaps(p.addr,p.size,w->addr,w->bytes))continue;
++        if(w->slot==&s || !w->bytes || w->bytes>64ull*1024*1024 ||
++           w->addr+w->bytes<w->addr || (w->addr&3) || (w->bytes&3) ||
++           p.addr<w->addr || p.addr+p.size>w->addr+w->bytes)return false;
++        prior=*w;found=true;break;
++    }
++    if(!found)return false;
++    bool image_alias=false;for_images_overlapping(prior.addr,prior.bytes,[&](Image &){image_alias=true;});
++    if(image_alias)return false;
++    for(auto &r:pending_reports)if(xbg_wb_overlaps(prior.addr,prior.bytes,r.addr,sizeof(NVNcounterData)))return false;
++    for(auto *events:{&pending_events,&recording_events})
++        for(auto &e:*events)if(xbg_wb_overlaps(prior.addr,prior.bytes,e.addr,4)){
++            static unsigned notes=0;if(notes++<8)xbg_logf("NVN CLEAR_CLONE_REJECT event range=%#llx+%llu clear=%#llx+%llu event=%#llx mode=%u value=%u producerSlot=%d eventSlot=%d",(unsigned long long)prior.addr,(unsigned long long)prior.bytes,(unsigned long long)p.addr,(unsigned long long)p.size,(unsigned long long)e.addr,e.mode,e.v,int(static_cast<const Slot*>(prior.slot)-slots),int(static_cast<const Slot*>(e.slot)-slots));
++            return false;
++        }
++    size_t available=0;void *base=nvn_memory_pool_resolve_address(prior.addr,&available);
++    if(uint64_t(base)!=prior.addr || prior.bytes>available)return false;
++    Buffer source;
++    // Also rejects any newer partial writer elsewhere inside the full range;
++    // acquires the existing owner or cross-slot arena lifetime protection.
++    if(!pending_view(prior.addr,prior.bytes,4,source) || source.buffer!=prior.buffer.buffer ||
++       source.offset!=prior.buffer.offset)return false;
++    Commands c;Buffer clone=readback_buffer(prior.bytes);
++    need(source.buffer!=clone.buffer || source.offset+prior.bytes<=clone.offset ||
++         clone.offset+prior.bytes<=source.offset,"Clear clone storage overlaps source");
++    VkMemoryBarrier ready{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
++    ready.srcAccessMask=VK_ACCESS_MEMORY_WRITE_BIT;ready.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT|VK_ACCESS_TRANSFER_WRITE_BIT;
++    vkCmdPipelineBarrier(c.command,VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,1,&ready,0,nullptr,0,nullptr);
++    VkBufferCopy copy{source.offset,clone.offset,prior.bytes};vkCmdCopyBuffer(c.command,source.buffer,clone.buffer,1,&copy);
++    VkMemoryBarrier overwrite{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
++    overwrite.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;overwrite.dstAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;
++    vkCmdPipelineBarrier(c.command,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,1,&overwrite,0,nullptr,0,nullptr);
++    const uint64_t delta=p.addr-prior.addr;
++    vkCmdFillBuffer(c.command,clone.buffer,clone.offset+delta,p.size,p.value);
++    ++write_seq;c.finish(); // Do not let the barrier de-duplicator elide this write.
++    if(clear_clone_mode==2){
++        // No clone writeback is registered yet: resolve_pending produces the
++        // unmodified CPU oracle. Arena storage remains allocated until the next
++        // recording_slot, so inspect clone before any subsequent allocation.
++        resolve_pending();clone.invalidate();++clear_clone_checks;
++        const auto *expected=reinterpret_cast<const uint8_t*>(prior.addr);
++        const auto *actual=static_cast<const uint8_t*>(clone.mapped);
++        bool equal=!memcmp(actual,expected,size_t(delta)) &&
++            !memcmp(actual+delta+p.size,expected+delta+p.size,size_t(prior.bytes-delta-p.size));
++        for(uint64_t i=0;equal && i<p.size;i+=4){uint32_t word=0;memcpy(&word,actual+delta+i,4);equal=word==p.value;}
++        if(!equal){++clear_clone_mismatches;clear_clone_mode=0;}
++        if(clear_clone_checks<=12 || !(clear_clone_checks%120) || !equal)
++            xbg_logf("NVN CLEAR_CLONE_VALIDATE checks=%llu mismatches=%llu bytes=%llu clear=%llu equal=%d",(unsigned long long)clear_clone_checks,(unsigned long long)clear_clone_mismatches,(unsigned long long)prior.bytes,(unsigned long long)p.size,int(equal));
++        return false; // Original CPU clear remains the validation path.
++    }
++    snapshot_invalidate(prior.addr,prior.bytes);
++    pending_writebacks.push_back({prior.addr,prior.bytes,clone,&s});
++    if(++clear_clone_copies<=12 || !(clear_clone_copies%600))
++        xbg_logf("NVN CLEAR_CLONE copies=%llu bytes=%llu clear=%llu sourceSlot=%d targetSlot=%d",(unsigned long long)clear_clone_copies,(unsigned long long)prior.bytes,(unsigned long long)p.size,int(static_cast<const Slot*>(prior.slot)-slots),int(&s-slots));
++    return true;
++}
+ bool gpu_clear_pending_buffer(const p_clear_buf &p){
+     static unsigned diagnostics=0;if(gpu_indexed_enabled && probe.waiting && !capture.trace && diagnostics<12){
+         FILE *f=fopen((probe.base+"/gfx-codex-probe").c_str(),"rb");int mode=f?fgetc(f):0;if(f)fclose(f);
+@@ -3996,6 +4065,7 @@
+     if((p.addr&3) || (p.size&3) || capture.active || capture.probe || provenance_file)return false;
+     bool image_alias=false;for_images_overlapping(p.addr,p.size,[&](Image &){image_alias=true;});if(image_alias)return false;
+     if(!current_pending_range(p.addr,p.size,4)){
++        if(gpu_clone_pending_clear(p))return true;
+         if(!clear_overwrite_probe || !nvn_memory_pool_resolve_address || !p.size || p.size>64ull*1024*1024 || p.addr+p.size<p.addr)return false;
+         bool overlap=false;for(auto &w:pending_writebacks)if(xbg_wb_overlaps(p.addr,p.size,w.addr,w.bytes))overlap=true;if(!overlap)return false;
+         for(auto &r:pending_reports)if(xbg_wb_overlaps(p.addr,p.size,r.addr,sizeof(NVNcounterData)))return false;
+@@ -4548,6 +4618,7 @@
+     fold_completion_wait_stats();completion_wait_enabled=completion_wait_default;
+     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *f=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-owned-input-copy").c_str(),"rb");owned_input_copy_enabled=true;if(f){owned_input_copy_enabled=fgetc(f)!='0';fclose(f);}xbg_logf("NVN owned indexed input copy=%d",int(owned_input_copy_enabled));}
+     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *f=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-clear-overwrite-probe").c_str(),"rb");clear_overwrite_probe=false;if(f){clear_overwrite_probe=fgetc(f)=='1';fclose(f);}xbg_logf("NVN temporary clear-overwrite diagnostic=%d",int(clear_overwrite_probe));}
++    {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *f=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-clear-clone").c_str(),"rb");clear_clone_mode=0;if(f){int v=fgetc(f);if(v=='1' || v=='2')clear_clone_mode=v-'0';fclose(f);}clear_clone_copies=clear_clone_checks=clear_clone_mismatches=0;xbg_logf("NVN clear clone mode=%d (0=original,1=GPU,2=validate)",clear_clone_mode);}
+     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *f=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-texture-lifecycle").c_str(),"rb");texture_lifecycle_enabled=true;if(f){texture_lifecycle_enabled=fgetc(f)!='0';fclose(f);}xbg_logf("NVN texture lifecycle retirement=%d",int(texture_lifecycle_enabled));}
+     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');std::string base=cut==std::string::npos?dir:dir.substr(0,cut);FILE *g=fopen((base+"/gfx-indexed-resident").c_str(),"rb");gpu_indexed_enabled=true;gpu_indexed_draws=0;if(g){gpu_indexed_enabled=fgetc(g)!='0';fclose(g);}FILE *m=fopen((base+"/gfx-indirect-proof").c_str(),"rb");indirect_diag_enabled=false;indirect_proof_checks=indirect_proof_mismatches=0;if(m){indirect_diag_enabled=fgetc(m)=='1';fclose(m);}indirect_proof_enabled=gpu_indexed_enabled || indirect_diag_enabled;xbg_logf("NVN indirect-template proof=%d GPU-indexed-resident=%d",int(indirect_proof_enabled),int(gpu_indexed_enabled));}
+     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-attachment-barrier").c_str(),"rb");attachment_barrier_enabled=true;attachment_barriers_deferred=0;if(m){attachment_barrier_enabled=fgetc(m)!='0';fclose(m);}xbg_logf("NVN attachment-only barrier defer=%d",int(attachment_barrier_enabled));}
