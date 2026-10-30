@@ -35,6 +35,9 @@ extern "C" int xbg_completion_wait_selftest(char *report,size_t bytes);
 #include "../nvn/nvn_cover.h"
 extern "C" {
 #include "../tex/nvn_deswizzle.h"
+#include "../../nvn_device/nvn_texture.h"
+__attribute__((weak)) void nvn_texture_get_stats(nvn_texture_stats *out);
+__attribute__((weak)) void nvn_bridge_get_stats(uint64_t *objects,uint64_t *regenerated);
 // The HLE's write-protect dirty-page tracker over the guest memory pools (dm/gfx/nvn/nvn_dirty.c). Weak: hosts and tests
 // without it simply do not get the cross-frame vertex/index cache.
 __attribute__((weak)) int nvn_dirty_tracked(const void *addr,size_t len);
@@ -4494,6 +4497,15 @@ void log_memory_profile_counts(){
     xbg_logf("NVN MEMORY_COUNTS pools=%zu spare_sets=%zu used_sets=%zu pinned_sets=%zu descriptor_records=%zu free_records=%zu arena_chunks=%zu arena_bytes=%llu image_bytes=%lld",
              pools,spare,used,pinned,desc_all.size(),desc_free.size(),arena_chunks,
              (unsigned long long)arena_bytes,(long long)image_bytes_live);
+    // Read existing family counters only in the opt-in memory profile. These
+    // distinguish guest generation churn from growth of live texture objects.
+    if(nvn_texture_get_stats && nvn_bridge_get_stats){
+        nvn_texture_stats t{};uint64_t objects=0,regenerated=0;
+        nvn_texture_get_stats(&t);nvn_bridge_get_stats(&objects,&regenerated);
+        xbg_logf("NVN TEXTURE_LIFETIME initialized=%llu finalized=%llu live=%d bridge_objects=%llu bridge_regenerated=%llu",
+                 (unsigned long long)t.initialized,(unsigned long long)t.finalized,t.live_textures,
+                 (unsigned long long)objects,(unsigned long long)regenerated);
+    }
 }
 void destroy_slots(){
     poolreset::drain();for(auto &s:active_slots())s.reset_queued=false;
