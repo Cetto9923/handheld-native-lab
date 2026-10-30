@@ -35,6 +35,7 @@ typedef struct bridge_entry {
     void *object;        /* the copy the replay layer reads */
     size_t size;         /* how many bytes the copy is */
     bridge_snapshot *snapshots; /* pool/descriptor versions only */
+    int retained; /* texture pointer escaped into a recorded command */
 } bridge_entry;
 
 typedef struct bridge_table {
@@ -120,52 +121,84 @@ static void *snapshot_publish(bridge_table *table, const void *guest, uint64_t g
 
 extern void xbg_texture_lifetime_end(const ffrs_tex *texture) __attribute__((weak));
 void nvn_bridge_texture_end(const void *guest_texture, uint64_t serial) {
-    const ffrs_tex *copy = NULL;
+    ffrs_tex copy;
+    int found = 0;
     if (!guest_texture || !serial) return;
     pthread_mutex_lock(&s_lock);
     bridge_entry *entry = entry_find(&s_textures, guest_texture, 0);
-    if (entry && entry->serial == serial) copy = (const ffrs_tex *)entry->object;
+    if (entry && entry->serial == serial && entry->object) {
+        copy = *(const ffrs_tex *)entry->object; found = 1;
+    }
     pthread_mutex_unlock(&s_lock);
     /* Never call the renderer under either object-table lock. The immutable
      * copy stays alive for recorded commands and a generation mismatch must
      * never release a newer object at the same guest address. */
-    if (copy && xbg_texture_lifetime_end) xbg_texture_lifetime_end(copy);
+    if (found && xbg_texture_lifetime_end) xbg_texture_lifetime_end(&copy);
 }
 
-const ffrs_tex *nvn_bridge_texture(const void *guest_texture) {
+/* Descriptor registration consumes a value immediately. Reuse the latest
+ * unescaped copy at an address; once a command borrows a pointer, that copy
+ * becomes immutable and is retained under the existing command lifetime rule.
+ * All reads/copies of reusable storage occur under s_lock. */
+static const ffrs_tex *texture_get(const void *guest_texture, ffrs_tex *out, int retain) {
     nvn_texture_info info;
-    ffrs_tex *tex;
+    ffrs_tex value, *tex;
     const ffrs_pool *pool;
     bridge_entry *entry;
-    if (!guest_texture) return NULL;
-    if (!nvn_texture_info_of(guest_texture, &info)) return NULL;
+    if (!guest_texture || !nvn_texture_info_of(guest_texture, &info)) return NULL;
     pthread_mutex_lock(&s_lock);
     entry = entry_find(&s_textures, guest_texture, 0);
     if (entry && entry->object && entry->serial == info.serial) {
+        tex = entry->object;
+        if (retain) entry->retained = 1;
+        if (out) *out = *tex;
         pthread_mutex_unlock(&s_lock);
-        return (const ffrs_tex *)entry->object;
+        return tex;
     }
     pthread_mutex_unlock(&s_lock);
 
-    tex = (ffrs_tex *)calloc(1, sizeof(*tex));
-    if (!tex) return NULL;
-    tex->magic = FFRS_NVN_MAGIC('T', 'E', 'X', 0);
-    tex->d = info.d;
-    tex->serial = info.serial;
+    memset(&value, 0, sizeof(value));
+    value.magic = FFRS_NVN_MAGIC('T', 'E', 'X', 0);
+    value.d = info.d;
+    value.serial = info.serial;
     pool = nvn_bridge_pool(info.memory_pool);
     if (pool) {
-        tex->pool = (ffrs_pool *)pool;
-        tex->off = info.memory_offset;
-        tex->mem = pool->mem ? pool->mem + info.memory_offset : NULL;
+        value.pool = (ffrs_pool *)pool;
+        value.off = info.memory_offset;
+        value.mem = pool->mem ? pool->mem + info.memory_offset : NULL;
     }
-    if (tex->d.format != 0) {
-        nvn_tex_layout((const nvn_texdesc *)&tex->d, (nvn_texlayout *)&tex->L);
-        tex->has_layout = 1;
+    if (value.d.format != 0) {
+        nvn_tex_layout((const nvn_texdesc *)&value.d, (nvn_texlayout *)&value.L);
+        value.has_layout = 1;
     }
     pthread_mutex_lock(&s_lock);
-    entry_put(&s_textures, guest_texture, info.serial, tex, sizeof(*tex));
+    entry = entry_find(&s_textures, guest_texture, 1);
+    if (!entry) { pthread_mutex_unlock(&s_lock); return NULL; }
+    /* Another reader may have published this generation while we resolved
+     * its pool. Return that canonical object rather than leaking a duplicate. */
+    if (entry->object && entry->serial == info.serial) {
+        tex = entry->object;
+        if (retain) entry->retained = 1;
+    } else {
+        tex = entry->object && !entry->retained ? entry->object : calloc(1, sizeof(*tex));
+        if (!tex) { pthread_mutex_unlock(&s_lock); return NULL; }
+        if (entry->object) ++s_regenerated; else ++s_objects;
+        *tex = value;
+        entry->object = tex; entry->serial = info.serial; entry->size = sizeof(*tex);
+        entry->retained = retain;
+    }
+    if (out) *out = *tex;
     pthread_mutex_unlock(&s_lock);
     return tex;
+}
+
+const ffrs_tex *nvn_bridge_texture(const void *guest_texture) {
+    return texture_get(guest_texture, NULL, 1);
+}
+
+int nvn_bridge_texture_copy(const void *guest_texture, ffrs_tex *out) {
+    if (!out) return 0;
+    return texture_get(guest_texture, out, 0) != NULL;
 }
 
 const ffrs_prog *nvn_bridge_program(const void *guest_program) {
