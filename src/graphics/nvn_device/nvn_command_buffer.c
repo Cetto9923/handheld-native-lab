@@ -965,16 +965,18 @@ enum {
  * bytes there are not the view. The copy the bridge makes is in the layout
  * the replay layer reads. */
 static void copy_view(nvn_cb_view *out, uint8_t *has, const void *view, size_t view_size) {
-    const ffrs_view *copy;
+    ffrs_view copy;
+    uint64_t serial;
     (void)view_size;
     *has = view != NULL;
     if (!view) return;
-    copy = nvn_bridge_view(view);
-    if (!copy) {
+    /* The command owns these bytes. Do not allocate a process-lifetime bridge
+     * pointer merely to copy it immediately into the record. */
+    if (!nvn_texture_view_info_of(view, &copy, &serial)) {
         *has = 0;
         return;
     }
-    memcpy(out, copy, sizeof(*out));
+    memcpy(out, &copy, sizeof(*out));
     count_copied(sizeof(*out));
 }
 

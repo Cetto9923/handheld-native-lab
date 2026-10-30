@@ -4485,18 +4485,18 @@ void execute(const uint8_t *pc,unsigned depth,uint64_t &budget){
 }
 PerfCounts perf_counts(){return {pipeline_objects.size(),layout_cache.size(),sampler_cache.size(),render_pass_cache.size(),images.size(),host_segments.size(),host_bytes};}
 void log_memory_profile_counts(){
-    size_t pools=0,spare=0,used=0,pinned=0,arena_chunks=0;uint64_t arena_bytes=0;
+    size_t pools=0,spare=0,used=0,pinned=0,memo_entries=0,arena_chunks=0;uint64_t arena_bytes=0;
     auto add_arena=[&](const Arena &a){arena_chunks+=a.chunks.size();for(const auto &chunk:a.chunks)arena_bytes+=chunk.allocation_size;};
     for(unsigned i=0;i<slot_count;i++){
         const Slot &s=slots[i];pools+=s.pools.size();
         for(const auto &entry:s.spare_sets)spare+=entry.second.size();
         for(const auto &entry:s.used_sets)used+=entry.second.size();
-        pinned+=memo_pinned[i].size();add_arena(s.stream);add_arena(s.readback);
+        pinned+=memo_pinned[i].size();memo_entries+=desc_memo_slot[i].size();add_arena(s.stream);add_arena(s.readback);
     }
     add_arena(static_arena);
-    xbg_logf("NVN MEMORY_COUNTS pools=%zu spare_sets=%zu used_sets=%zu pinned_sets=%zu descriptor_records=%zu free_records=%zu arena_chunks=%zu arena_bytes=%llu image_bytes=%lld",
+    xbg_logf("NVN MEMORY_COUNTS pools=%zu spare_sets=%zu used_sets=%zu pinned_sets=%zu descriptor_records=%zu free_records=%zu arena_chunks=%zu arena_bytes=%llu image_bytes=%lld memo_entries=%zu",
              pools,spare,used,pinned,desc_all.size(),desc_free.size(),arena_chunks,
-             (unsigned long long)arena_bytes,(long long)image_bytes_live);
+             (unsigned long long)arena_bytes,(long long)image_bytes_live,memo_entries);
     // Read existing family counters only in the opt-in memory profile. These
     // distinguish guest generation churn from growth of live texture objects.
     if(nvn_texture_get_stats && nvn_bridge_get_stats){
