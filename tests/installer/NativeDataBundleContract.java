@@ -118,10 +118,27 @@ public final class NativeDataBundleContract {
         check(interrupted && stop[0] && Arrays.equals(before, Files.readAllBytes(new File(store,"active.properties").toPath())), "mid-copy cancellation changed active data");
         check(!new File(store, mid.id).exists(), "cancelled payload was published");
         passed++;
+        NativeDataBundle.Installed resumed = NativeDataBundle.install(new ByteArrayInputStream(mid.zip("")), store, mid.contract, null, null);
+        check(Files.size(new File(resumed.root,"romfs/text data.txt").toPath()) == 1024 * 1024, "resume lost partial data");
+        passed++;
         Fixture b = new Fixture("upgrade", null);
         NativeDataBundle.Installed upgraded = NativeDataBundle.install(new ByteArrayInputStream(b.zip("")), store, b.contract, null, null);
         check(!upgraded.id.equals(installed.id) && installed.root.isDirectory(), "upgrade removed old version");
         check(new String(Files.readAllBytes(new File(store,"active.properties").toPath()), StandardCharsets.UTF_8).contains(upgraded.id), "active pointer not updated");
+        passed++;
+        NativeDataBundle.Installed rollback = NativeDataBundle.recover(store, a.contract, null, null);
+        check(rollback.id.equals(installed.id) && upgraded.root.isDirectory(), "rollback lost prior version");
+        check(new String(Files.readAllBytes(new File(store,"active.properties").toPath()), StandardCharsets.UTF_8).contains(installed.id), "rollback pointer wrong");
+        passed++;
+        NativeDataBundle.Installed repeated = NativeDataBundle.install(new ByteArrayInputStream(a.zip("")), store, a.contract, null, null);
+        check(repeated.id.equals(installed.id), "same version recovery failed"); passed++;
+        File modified = new File(upgraded.root, "main.nso");
+        byte[] tampered = Files.readAllBytes(modified.toPath()); tampered[0] ^= 1;
+        Files.write(modified.toPath(), tampered);
+        before = Files.readAllBytes(new File(store, "active.properties").toPath());
+        boolean refused = false;
+        try { NativeDataBundle.recover(store, b.contract, null, null); } catch (IOException e) { refused = true; }
+        check(refused && Arrays.equals(before, Files.readAllBytes(new File(store,"active.properties").toPath())), "corrupt recovery changed active data");
         passed++;
         check(!new File(store.getParentFile(), "escape").exists(), "path escaped store");
         System.out.println("actual extractor contracts passed=" + passed + "; all fixture content self-authored, no game/runtime acceptance");

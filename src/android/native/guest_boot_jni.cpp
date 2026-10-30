@@ -190,12 +190,11 @@ std::string ToStdString(JNIEnv* env, jstring value) {
 
 }  // namespace
 
-extern "C" JNIEXPORT jlong JNICALL
-Java_org_ffrs_diagnostic_GameWindowNative_nativeStartGuest(JNIEnv* env, jclass,
+static jlong StartGuest(JNIEnv* env,
                                                             jstring image, jstring romfs,
                                                             jstring log_path, jlong quota,
                                                             jlong stack, jlong resources,
-                                                            jobjectArray guest_args) {
+                                                            jobjectArray guest_args, jstring save_root) {
     pthread_mutex_lock(&g_boot_lock);
     if (g_boot_started) {
         pthread_mutex_unlock(&g_boot_lock);
@@ -215,11 +214,14 @@ Java_org_ffrs_diagnostic_GameWindowNative_nativeStartGuest(JNIEnv* env, jclass,
     request->romfs = ToStdString(env, romfs);
     request->log_path = ToStdString(env, log_path);
     {
-        std::string save = request->log_path;
-        size_t slash = save.find_last_of('/');
-        if (slash == std::string::npos) return -1;
-        save.resize(slash);
-        save += "/codex-local-save";
+        std::string save = ToStdString(env, save_root);
+        if (save.empty()) {
+            save = request->log_path;
+            size_t slash = save.find_last_of('/');
+            if (slash == std::string::npos) { delete request; return -1; }
+            save.resize(slash);
+            save += "/codex-local-save";
+        }
         if (nso_host_fs_set_save_root(save.c_str())) return -1;
     }
     {
@@ -301,4 +303,21 @@ Java_org_ffrs_diagnostic_GameWindowNative_nativeStartGuest(JNIEnv* env, jclass,
     }
     pthread_detach(thread);
     return static_cast<jlong>(thread);
+}
+
+// Preserve the existing ABI for all frozen APKs. Managed installs supply a
+// stable app-owned save path independently of the replaceable data version.
+extern "C" JNIEXPORT jlong JNICALL
+Java_org_ffrs_diagnostic_GameWindowNative_nativeStartGuest(JNIEnv* env, jclass,
+        jstring image, jstring romfs, jstring log_path, jlong quota,
+        jlong stack, jlong resources, jobjectArray guest_args) {
+    return StartGuest(env, image, romfs, log_path, quota, stack, resources, guest_args, nullptr);
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_org_ffrs_diagnostic_GameWindowNative_nativeStartInstalledGuest(JNIEnv* env, jclass,
+        jstring image, jstring romfs, jstring log_path, jlong quota,
+        jlong stack, jlong resources, jobjectArray guest_args, jstring save_root) {
+    if (save_root == nullptr || ToStdString(env, save_root).empty()) return -1;
+    return StartGuest(env, image, romfs, log_path, quota, stack, resources, guest_args, save_root);
 }

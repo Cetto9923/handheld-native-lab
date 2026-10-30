@@ -48,4 +48,7 @@ public final class GameWindowNative {
      */
     public static native long nativeStartGuest(String image, String romfs, String logPath,
             long quota, long stack, long resources, String[] guestArgs);
+    /** Managed data versions share this app-owned save directory across upgrades. */
+    public static native long nativeStartInstalledGuest(String image, String romfs, String logPath,
+            long quota, long stack, long resources, String[] guestArgs, String saveRoot);
 }

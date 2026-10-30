@@ -104,3 +104,7 @@ Two newly translated effect VS retained runtime texture arrays which XGS reflect
 官方 [AOSP SurfaceView lifecycle](https://source.android.google.cn/docs/core/graphics/arch-sv-glsv?hl=en) 明确surfaceCreated可能在onPause之后，熄屏可能仅onPause无surfaceDestroyed；[SurfaceView API](https://developer.android.com/reference/android/view/SurfaceView)限定Surface有效期。因此先将guest首启约束为resumed+window focus+interactive+valid Surface，surfaceDestroyed明确复位surfaceReady，恢复路径统一重检；不改游戏时间/音频/GPU等待。资料为官方API/说明，非引入上游源码，无额外第三方代码许可证。
 
 数据导入按 [Android SAF官方说明](https://developer.android.com/training/data-storage/shared/documents-files)，计划ACTION_OPEN_DOCUMENT只读流式导入app私有目录，不依赖Android/data目录选择或所有文件权限；[Android Zip Path Traversal](https://developer.android.com/privacy-and-security/risks/zip-path-traversal)要求拒绝越界路径。后续实现需校验manifest/版本/空间/大小/SHA、暂存完整后切换、保留旧版本与存档，不能仅凭扩展名或盲解压。此处记录设计来源，尚未宣称导入或多机型通过。
+
+### 2026-10-30 安卓本机导入实现
+
+再次实际阅读 [Android app-specific files](https://developer.android.com/training/data-storage/app-specific) 和 [SAF](https://developer.android.com/training/data-storage/shared/documents-files)：通过getExternalFilesDirs枚举实际挂载且可写的应用专属卷，按实际剩余空间呈现/切换，不硬编码SD UUID，不请求MANAGE_EXTERNAL_STORAGE；ACTION_OPEN_DOCUMENT只获取用户选中文件的只读流。应用卸载会删除专属目录，UI明确提示升级覆盖安装、先备份存档。官方API说明为依据，无外部源码引入。APK内携带清理后的可信数据索引摘要，原生库摘要由实际安装APK计算；不信任包自身声明。版本根与内部稳定saveRoot分离，保留旧nativeStartGuest ABI；恢复只接受当前APK合同匹配的完整版本。

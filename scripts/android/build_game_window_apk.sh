@@ -97,15 +97,19 @@ mkdir -p "${FFRS_PACKAGE_DIR}/classes" "${FFRS_PACKAGE_DIR}/dex" \
 step javac javac --release 8 -classpath "${FFRS_ANDROID_JAR}" -g -d "${FFRS_PACKAGE_DIR}/classes" \
     "${FFRS_APP_JAVA}/GameActivity.java" \
     "${FFRS_APP_JAVA}/GameWindowNative.java" \
-    "${FFRS_APP_JAVA}/DisplaySnapshot.java"
+    "${FFRS_APP_JAVA}/DisplaySnapshot.java" \
+    "${FFRS_APP_JAVA}/NativeDataBundle.java" \
+    "${FFRS_APP_JAVA}/DataBundleInstaller.java"
 step jar jar cf "${FFRS_PACKAGE_DIR}/classes.jar" -C "${FFRS_PACKAGE_DIR}/classes" .
 step d8 "${FFRS_BUILD_TOOLS}/d8" --min-api 28 --lib "${FFRS_ANDROID_JAR}" \
     --output "${FFRS_PACKAGE_DIR}/dex" "${FFRS_PACKAGE_DIR}/classes.jar"
 step aapt2-compile "${FFRS_BUILD_TOOLS}/aapt2" compile --dir "${FFRS_APP_RES}" \
     -o "${FFRS_PACKAGE_DIR}/res/resources.zip"
+FFRS_ASSET_ARGS=()
+if [[ -n "${FFRS_APP_ASSETS:-}" ]]; then FFRS_ASSET_ARGS=(-A "${FFRS_APP_ASSETS}"); fi
 step aapt2-link "${FFRS_BUILD_TOOLS}/aapt2" link \
     -o "${FFRS_PACKAGE_DIR}/base.apk" -I "${FFRS_ANDROID_JAR}" \
-    --manifest "${FFRS_APP_MANIFEST}" "${FFRS_PACKAGE_DIR}/res/resources.zip"
+    --manifest "${FFRS_APP_MANIFEST}" "${FFRS_ASSET_ARGS[@]}" "${FFRS_PACKAGE_DIR}/res/resources.zip"
 
 cp "${FFRS_PACKAGE_DIR}/dex/classes.dex" "${FFRS_PACKAGE_DIR}/payload/classes.dex"
 step strip "${FFRS_LLVM}/bin/llvm-strip" --strip-debug \

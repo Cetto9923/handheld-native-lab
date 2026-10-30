@@ -33,6 +33,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--out', required=True, type=Path)
     ap.add_argument('--version-code', type=int, default=1)
+    ap.add_argument('--data-index', type=Path, help='prepared local index; only sanitized contract enters APK')
     args = ap.parse_args()
     if not 1 <= args.version_code <= 2147483647:
         ap.error('invalid Android version code')
@@ -47,6 +48,9 @@ def main():
     tree.getroot().set('package', PACKAGE)
     tree.getroot().set(ANDROID + 'versionCode', str(args.version_code))
     tree.getroot().set(ANDROID + 'versionName', '0.2.0-preview.' + str(args.version_code))
+    if args.data_index:
+        for permission in list(tree.getroot().findall('uses-permission')):
+            tree.getroot().remove(permission)
     manifest = out / 'AndroidManifest.xml'
     tree.write(manifest, encoding='utf-8', xml_declaration=True)
     resources = out / 'res'
@@ -59,12 +63,22 @@ def main():
     env.update(FFRS_APP_MANIFEST=str(manifest), FFRS_APP_RES=str(resources),
                FFRS_APK_DIR=str(out), FFRS_APK_NAME='handheld-native-lab-preview.apk',
                FFRS_ANDROID_LOG_DIR=str(out / 'build-logs'))
+    if args.data_index:
+        prepared = json.loads((args.data_index / 'index.json').read_text())
+        raw_index = (args.data_index / 'files.tsv').read_bytes()
+        if digest(raw_index) != prepared['index_sha256']:
+            raise ValueError('prepared data index changed')
+        assets = out / 'assets'
+        assets.mkdir()
+        contract = {k: prepared[k] for k in ['format', 'abi', 'index_sha256', 'file_count', 'payload_bytes', 'required']}
+        (assets / 'data-contract.json').write_text(json.dumps(contract, indent=2))
+        env['FFRS_APP_ASSETS'] = str(assets)
     cmd = ['bash', 'scripts/android/build_game_window_apk.sh']
     plan = {'cwd': str(ROOT), 'command': cmd, 'package': PACKAGE,
             'controller_pid': os.getpid(), 'build_log': str(out / 'build.log'),
             'output': str(out), 'scope': 'new preview only; no device install or game-data copy',
             'environment_overrides': {k: env[k] for k in ['FFRS_APP_MANIFEST', 'FFRS_APP_RES',
-                'FFRS_APK_DIR', 'FFRS_APK_NAME', 'FFRS_ANDROID_LOG_DIR']}}
+                'FFRS_APK_DIR', 'FFRS_APK_NAME', 'FFRS_ANDROID_LOG_DIR'] + (['FFRS_APP_ASSETS'] if args.data_index else [])}}
     (out / 'plan.json').write_text(json.dumps(plan, indent=2))
     with (out / 'build.log').open('wb') as log:
         result = subprocess.run(cmd, cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)
@@ -76,7 +90,9 @@ def main():
         native = z.read('lib/arm64-v8a/libffrs_game_window.so')
     sources = ['src/android/app/java/org/ffrs/diagnostic/GameActivity.java',
                'scripts/android/build_game_window_apk.sh',
-               'src/android/native/guest_boot_jni.cpp', 'src/runtime/hle/audio_bridge.c']
+               'src/android/native/guest_boot_jni.cpp', 'src/runtime/hle/audio_bridge.c',
+               'src/android/app/java/org/ffrs/diagnostic/NativeDataBundle.java',
+               'src/android/app/java/org/ffrs/diagnostic/DataBundleInstaller.java']
     record = {'package': PACKAGE, 'version_code': args.version_code,
               'apk_sha256': digest(apk.read_bytes()), 'apk_bytes': apk.stat().st_size,
               'native_sha256': digest(native),

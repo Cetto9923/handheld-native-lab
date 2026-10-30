@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-10-30T16:31:50.543519+08:00",
-  "phase": "Next-stage milestone: preview1320fb92/native unchanged; full-shader lifecycle003 passed asleep80s -> original brightness -> title in same PID. Data-core16 contracts and Python/Java Unicode interop passed. Full input index prepared15.19GB; Android SAF/managed install/real ZIP64 import/recovery and all full-game gates remain OPEN. Durable goal NOT_ARMED.",
+  "updated_at": "2026-10-30T16:44:39.679247+08:00",
+  "phase": "Persistent installer goal ARMED after user cleared old goal. Android-only APK+SAF data import confirmed. Continue from ec51587: UI/trusted contract/managed save paths and full15.19GB ZIP64 import/recovery next; baseline unchanged.",
   "coordinator": "Codex /root takeover",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
@@ -1270,10 +1270,12 @@
         "tests/installer/",
         ".local/installer-20261030/",
         "src/android/app/java/org/ffrs/diagnostic/NativeDataBundle.java",
-        "docs/DATA-BUNDLE-FORMAT.md"
+        "docs/DATA-BUNDLE-FORMAT.md",
+        "src/android/app/java/org/ffrs/diagnostic/GameWindowNative.java",
+        "src/android/native/guest_boot_jni.cpp"
       ],
       "acquired_at": "2026-10-30T15:16:47.536209+08:00",
-      "checkpoint": "First source/checkpoint report P-INSTALL-FIRST-20261030.md. Build45857 exit0 APK1320fb92/native7246 baseline; live003/28841 exit0 PID27833/one guest start/1020presents afterwake, actualbrightness and title reviewed. Prior001/002 failures retained, full73495XGS+SDK6.099GB staged only newpreview. Real data index52338 exit0 73511files15.192GB da8f5877. Core16 host checks/Unicode interop pass; not yet Android UI/contract/save-root wired. No pushes or tag/backup changes. Goal oldpaused creation failed; user action pending.",
+      "checkpoint": "SAF preview002 build51180/install29402 exit0 APK74d5d4c6/native56c50ff3; 20 core contracts and Unicode interop pass. Full 10.964GB bundle SHA65fe180c packed90150 exit0; SD transfer13459 running. Android SAF wrong-version/ZIP64 import pending. Active persistent goal confirmed; baseline untouched.",
       "write_state": "ACTIVE"
     }
   ],

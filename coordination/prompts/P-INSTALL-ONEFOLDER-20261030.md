@@ -2,7 +2,7 @@
 
 角色：Codex /root，唯一协调与Android写者，唯一RG477M操作员；不虚构独立QA或并行执行。
 
-目标：保存冻结基线，交付同目录APK、匹配的合法本地数据包及简单安装/恢复入口，实现可见的导入/版本/空间/权限错误、可靠启动与设备适配。默认Android本机完成导入；用户安装方式偏好另核。完整要求见 docs/PACKAGING-NEXT.md，不能以脚本生成成功替代端到端安装/真实游戏验收。
+目标：保存冻结基线，交付同目录APK、匹配的合法本地数据包及简单安装/恢复入口，实现可见的导入/版本/空间/权限错误、可靠启动与设备适配。用户已确认Android本机完成安装与导入，无电脑/ADB/root作为最终用户条件。完整要求见 docs/PACKAGING-NEXT.md，不能以脚本生成成功替代端到端安装/真实游戏验收。
 
 输入：原工作树task/T02-codex-black-screen @572b0d5；TAG rg477m-baseline-2026.10.30 @d66706e；.local/baselines/rg477m-baseline-2026.10.30/ 的SHA已核备份；用户本地游戏输入；Android官方Surface/SAF/Zip资料，见OSS-NOTES。
 
@@ -18,4 +18,4 @@
 
 恢复点：原TAG与完整备份始终不动；候选包独立数据，不覆盖基线包。只回退本任务具体变更，禁止reset/clean/stash。长进程先记录命令/cwd/日志再补PID/session；每个原子修改/实际构建测试后更新state/HANDOFF并生成STATUS。
 
-目标工具：本轮create_goal仅一次，因旧unfinished+paused目标失败；工具无resume接口，CUA拒绝Codex app操作。持久目标未启用，不以工程记录假冒目标引擎，施工按用户授权继续。
+目标工具：用户已在界面清除旧目标；本轮get_goal=null后create_goal一次成功，持久目标ACTIVE。旧阻塞记录作为历史保留，不再作为当前状态。

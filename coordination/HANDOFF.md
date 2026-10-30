@@ -1,3 +1,13 @@
+## P-INSTALL SAF候选002构建完成，完整导入验证中
+
+源码基于ec51587脏改；20项真实文件系统组件检查和Python→Java Unicode互操作通过（data-contract-v3.log / bundle-interop-v3.log）。候选preview002 APK74d5d4c6/native56c50ff3已安装到唯一新包dev.handheldnativelab.preview，原包/存档/TAG不动。Android系统选择器可用，SD显示117.39GB；新manifest不请求所有文件权限。完整数据包10964190474B SHA65fe180c，对应73511files/15192663714B indexda8f5877，仍NOT_DEVICE_ACCEPTED。
+
+传输session13459，完整bundle只写SD的HandheldNativeLab-Preview-002目录；pack90150已exit0；build51180exit0/install29402exit0。普通计划和日志均在.local/installer-20261030/，进程PID再核transfer-plan。当前文件选择器位于SD本任务目录，先用wrong-version.hnldata验证拒绝，再选完整包，须保存XML/截图/logcat/退出码。独立QA未运行，音频/视觉/场景30Hz仍OPEN。持久目标已ACTIVE。
+
+## 2026-10-30 持久目标已成功开启
+
+用户确认安卓本机安装并SAF导入；旧目标已由用户界面清除，本轮get_goal=null后create_goal成功。工程由ec51587继续，基线TAG/备份不动，原P-INSTALL占用保持唯一写者。接下来接入导入界面/可信APK合同资源/稳定存档与版本根路径，实际15.19GB包和RG完整验收。新增GameWindowNative.java与guest_boot_jni.cpp写入范围已登记，旧JNI签名保留。
+
 ## P-INSTALL：首个可复核工程检查点
 
 见 coordination/reports/P-INSTALL-FIRST-20261030.md。独立preview001 APK1320fb92（native7246与基线同）实现首启resumed/focus/interactive/valid-Surface门控；003/28841 exit0，熄屏80秒未启动guest，唤醒同PID27833只启一次，1020present，核实原作首次亮度设置，再确认进入真实标题。001符号链接SELinux拒绝和002部分shader缺亮度模块两次失败均留存。完整73495XGS+SDK已部署新包。

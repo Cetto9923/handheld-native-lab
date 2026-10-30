@@ -41,6 +41,7 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.FrameLayout;
+import android.widget.ScrollView;
 
 import java.io.File;
 
@@ -54,7 +55,7 @@ import java.io.File;
  * logged next to the geometry the native side reads back from the window, so
  * both can be compared against the existing display snapshot parameters.
  */
-public final class GameActivity extends Activity implements SurfaceHolder.Callback, Runnable {
+public final class GameActivity extends Activity implements SurfaceHolder.Callback, Runnable, DataBundleInstaller.Listener {
     private static final String TAG = "FFRS-GameWindow";
     private SurfaceView surface_view;
     private DisplaySnapshot display_snapshot;
@@ -70,6 +71,9 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     private FrameLayout rootLayout;
     private LinearLayout setupView;
     private TextView setupText;
+    private DataBundleInstaller dataInstaller;
+    private Button importButton, storageButton, recoverButton, cancelButton;
+    private static final int PICK_DATA_BUNDLE = 4701;
     private boolean guestStarted, surfaceReady;
     private AudioManager audioManager;
     private final AudioDeviceCallback audioCallback = new GameAudioDeviceCallback();
@@ -175,6 +179,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     }
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
+        if (!guestStarted && dataInstaller != null && dataInstaller.managed) return super.dispatchKeyEvent(event);
         int bit = buttonBit(event.getKeyCode());
         if (bit < 0) return super.dispatchKeyEvent(event);
         if (event.getAction() == KeyEvent.ACTION_DOWN) padButtons |= 1L << bit;
@@ -588,6 +593,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        dataInstaller = DataBundleInstaller.get(this);
+        dataInstaller.attach(this);
         audioManager = (AudioManager)getSystemService(AUDIO_SERVICE);
         if (audioManager != null) audioManager.registerAudioDeviceCallback(audioCallback, new Handler(Looper.getMainLooper()));
         configureWindow();
@@ -851,6 +858,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     private String resolveGameDir() {
         String fromIntent = getIntent() == null ? null : getIntent().getStringExtra("game_dir");
         if (fromIntent != null && !fromIntent.isEmpty()) return fromIntent;
+        if (dataInstaller != null && dataInstaller.managed)
+            return dataInstaller.root == null ? null : dataInstaller.root.getAbsolutePath();
         for (File d : candidateGameDirs()) if (hasGame(d)) return d.getAbsolutePath();
         return null;
     }
@@ -870,7 +879,9 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         t.setTextColor(0xFFFFFFFF);
         t.setTextSize(18f);
         t.setGravity(Gravity.CENTER);
-        box.addView(t, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(t);
+        box.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
         Button grant = new Button(this);
         grant.setText("\u6388\u4e88\u6587\u4ef6\u8bbf\u95ee\u6743\u9650");
         grant.setOnClickListener(new SetupClick(this, 0));
@@ -879,8 +890,15 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         retry.setOnClickListener(new SetupClick(this, 1));
         LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         bp.topMargin = pad / 2;
-        box.addView(grant, bp);
-        box.addView(retry, bp);
+        if (dataInstaller != null && dataInstaller.managed) {
+            importButton = setupButton("选择同目录的数据包", 2, box);
+            storageButton = setupButton("切换导入位置", 3, box);
+            recoverButton = setupButton("验证并恢复已导入版本", 4, box);
+            cancelButton = setupButton("取消导入", 5, box);
+        } else {
+            box.addView(grant, bp);
+            box.addView(retry, bp);
+        }
         box.setVisibility(View.GONE);
         box.setClickable(true);
         setupView = box;
@@ -888,11 +906,50 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         rootLayout.addView(box, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
+    private Button setupButton(String label, int action, LinearLayout box) {
+        Button button = new Button(this);
+        button.setText(label);
+        button.setOnClickListener(new SetupClick(this, action));
+        box.addView(button, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        return button;
+    }
+
+    @Override public void onDataStateChanged() {
+        if (isFinishing() || isDestroyed() || guestStarted) return;
+        refreshSetup();
+        if (!dataInstaller.busy && dataInstaller.root != null) recheckGame();
+    }
+
+    private void chooseDataBundle() {
+        if (dataInstaller.busy) return;
+        Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        pick.addCategory(Intent.CATEGORY_OPENABLE);
+        pick.setType("*/*");
+        pick.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        try { startActivityForResult(pick, PICK_DATA_BUNDLE); }
+        catch (android.content.ActivityNotFoundException e) {
+            setupText.setText("此设备没有系统文件选择器，请先启用系统文件管理器。数据未改动。");
+        }
+    }
+
+    @Override protected void onActivityResult(int request, int result, Intent data) {
+        super.onActivityResult(request, result, data);
+        if (request == PICK_DATA_BUNDLE && result == RESULT_OK && data != null && data.getData() != null)
+            dataInstaller.install(data.getData());
+    }
+
     /** Named listener (not anonymous/inner): d8 in this build setup rejects those. */
     private static final class SetupClick implements View.OnClickListener {
         private final GameActivity owner; private final int action;
         SetupClick(GameActivity o, int a) { owner = o; action = a; }
-        @Override public void onClick(View v) { if (action == 0) owner.requestFileAccess(); else owner.recheckGame(); }
+        @Override public void onClick(View v) {
+            if (action == 0) owner.requestFileAccess();
+            else if (action == 1) owner.recheckGame();
+            else if (action == 2) owner.chooseDataBundle();
+            else if (action == 3) owner.dataInstaller.cycleStorage();
+            else if (action == 4) owner.dataInstaller.recover();
+            else if (action == 5) owner.dataInstaller.cancel();
+        }
     }
 
     void requestFileAccess() {
@@ -917,6 +974,16 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     private void refreshSetup() {
         if (setupView == null) return;
         if (guestStarted) { setupView.setVisibility(View.GONE); return; }
+        if (dataInstaller != null && dataInstaller.managed) {
+            setupText.setText("Handheld Native Lab · Preview\n\n" + dataInstaller.message
+                    + "\n\n" + dataInstaller.storageText());
+            importButton.setEnabled(!dataInstaller.busy);
+            storageButton.setEnabled(!dataInstaller.busy);
+            recoverButton.setEnabled(!dataInstaller.busy);
+            cancelButton.setVisibility(dataInstaller.busy ? View.VISIBLE : View.GONE);
+            setupView.setVisibility(View.VISIBLE);
+            return;
+        }
         File ext = getExternalFilesDir(null);
         StringBuilder sb = new StringBuilder();
         sb.append("\u672a\u627e\u5230\u6e38\u620f\u6570\u636e\n\n");
@@ -955,6 +1022,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
     /** Starts the owned guest on its own thread inside this app process. */
     private void startGuest() {
+        if (dataInstaller != null && dataInstaller.managed && dataInstaller.busy) { refreshSetup(); return; }
         if (guestStarted || (getIntent() != null
                 && !getIntent().getBooleanExtra("run_guest", true))) return;
         // Surface callbacks may arrive after onPause. A Surface alone does
@@ -995,7 +1063,10 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         if (setupView != null) setupView.setVisibility(View.GONE);
         Log.i(TAG, "guest_start setup_view_hidden");
         Log.i(TAG, "game_dir=" + game_dir);
-        File files = getExternalFilesDir(null);
+        boolean managed = dataInstaller != null && dataInstaller.managed && dataInstaller.root != null
+                && dataInstaller.root.getAbsolutePath().equals(game_dir);
+        File files = managed ? dataInstaller.root : getExternalFilesDir(null);
+        String saveRoot = managed ? new File(getFilesDir(), "saves").getAbsolutePath() : null;
         String op_mode = getIntent() == null ? null : getIntent().getStringExtra("operation_mode");
         if (op_mode != null && !op_mode.isEmpty() && files != null) {
             try {
@@ -1008,7 +1079,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             }
         }
         String log_path = files == null ? null : new File(files, "guest_boot.log").getAbsolutePath();
-        Thread guest = new Thread(new GuestBootTask(image, romfs, log_path), "ffrs-guest");
+        Thread guest = new Thread(new GuestBootTask(image, romfs, log_path, saveRoot), "ffrs-guest");
         guest.start();
     }
 
@@ -1016,15 +1087,18 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     private static final class GuestBootTask implements Runnable {
         private final String image;
         private final String romfs;
-        private final String log_path;
-        GuestBootTask(String image, String romfs, String log_path) {
+        private final String log_path, saveRoot;
+        GuestBootTask(String image, String romfs, String log_path, String saveRoot) {
             this.image = image;
             this.romfs = romfs;
             this.log_path = log_path;
+            this.saveRoot = saveRoot;
         }
         @Override public void run() {
-            long thread = GameWindowNative.nativeStartGuest(image, romfs, log_path,
-                    GUEST_QUOTA_BYTES, GUEST_STACK_BYTES, GUEST_RESOURCE_BYTES, new String[0]);
+            long thread = saveRoot == null ? GameWindowNative.nativeStartGuest(image, romfs, log_path,
+                    GUEST_QUOTA_BYTES, GUEST_STACK_BYTES, GUEST_RESOURCE_BYTES, new String[0])
+                    : GameWindowNative.nativeStartInstalledGuest(image, romfs, log_path,
+                    GUEST_QUOTA_BYTES, GUEST_STACK_BYTES, GUEST_RESOURCE_BYTES, new String[0], saveRoot);
             Log.i(TAG, "guest_start thread=" + thread + " guest_in_app_process=true"
                     + " transcript=" + log_path);
         }
@@ -1065,6 +1139,11 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         else exitHandler.postDelayed(this, 50);
     }
     @Override public void onBackPressed() {
+        if (!guestStarted) {
+            if (dataInstaller != null && dataInstaller.busy) dataInstaller.cancel();
+            else finish();
+            return;
+        }
         if (GameWindowNative.hostExitReady(true)) finish();
         else { exitHandler.removeCallbacks(this); exitHandler.postDelayed(this, 50); }
     }
@@ -1077,6 +1156,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     @Override protected void onDestroy() {
         Log.i(TAG, "lifecycle onDestroy");
         exitHandler.removeCallbacks(this);
+        if (dataInstaller != null) dataInstaller.detach(this);
         if (audioManager != null) audioManager.unregisterAudioDeviceCallback(audioCallback);
         // Safety net: the runtime must never keep a window of a dead Activity.
         GameWindowNative.clearSurface();

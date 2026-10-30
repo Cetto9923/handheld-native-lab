@@ -117,6 +117,71 @@ public final class NativeDataBundle {
         try (FileOutputStream out = new FileOutputStream(f)) { out.write(b); out.getFD().sync(); }
     }
 
+    public static String versionId(Contract c) throws IOException {
+        return hexBytes(digest().digest((c.indexSha + "\n" + c.nativeSha).getBytes(StandardCharsets.UTF_8)));
+    }
+
+    private static String fileSha(File file, Cancel cancel) throws IOException {
+        MessageDigest d = digest();
+        try (InputStream in = new FileInputStream(file)) {
+            byte[] b = new byte[128 * 1024]; int n;
+            while ((n = in.read(b)) != -1) { cancelled(cancel); d.update(b, 0, n); }
+        }
+        return hexBytes(d.digest());
+    }
+
+    /** Checks the receipt and every indexed length; optionally re-hashes all data for recovery. */
+    public static Installed verify(File store, Contract c, boolean full, Progress progress, Cancel cancel) throws IOException {
+        String id = versionId(c);
+        File root = new File(store, id), index = new File(root, ".hnl-index.tsv");
+        if (Files.isSymbolicLink(store.toPath()) || Files.isSymbolicLink(root.toPath())
+                || !index.isFile() || index.length() > MAX_INDEX || !c.indexSha.equals(fileSha(index, cancel)))
+            throw new IOException("Installed data index missing or changed");
+        Properties receipt = new Properties();
+        try (InputStream in = new FileInputStream(new File(root, "ready.properties"))) { receipt.load(in); }
+        if (!id.equals(receipt.getProperty("bundle_id")) || !c.nativeSha.equals(receipt.getProperty("native_sha256"))
+                || !c.indexSha.equals(receipt.getProperty("index_sha256"))) throw new IOException("Installed data version mismatch");
+        long total = number(receipt.getProperty("payload_bytes"), MAX_PAYLOAD), done = 0;
+        int count = 0; String previous = "";
+        Set<String> required = new HashSet<String>(c.required.keySet());
+        try (BufferedReader rows = reader(index)) {
+            String line;
+            while ((line = rows.readLine()) != null) {
+                cancelled(cancel);
+                Row row = new Row(line); File file = new File(root, row.path);
+                if (++count > MAX_FILES || row.path.compareTo(previous) <= 0 || row.size > total - done
+                        || !file.getCanonicalPath().equals(file.getAbsolutePath()) || !file.isFile() || file.length() != row.size)
+                    throw new IOException("Installed data missing or changed: " + row.path);
+                previous = row.path;
+                String requiredSha = c.required.get(row.path);
+                if (requiredSha != null) {
+                    if (!requiredSha.equals(row.sha)) throw new IOException("Installed required input mismatch");
+                    required.remove(row.path);
+                }
+                if (full && !row.sha.equals(fileSha(file, cancel))) throw new IOException("Installed data checksum mismatch: " + row.path);
+                done += row.size;
+                if (progress != null) progress.update(done, total, row.path);
+            }
+        }
+        if (done != total || !required.isEmpty()) throw new IOException("Installed data incomplete");
+        return new Installed(root, id, total);
+    }
+
+    private static void activate(File store, Installed installed, Contract c) throws IOException {
+        String receipt = "bundle_id=" + installed.id + "\nnative_sha256=" + c.nativeSha
+                + "\nindex_sha256=" + c.indexSha + "\npayload_bytes=" + installed.bytes + "\n";
+        File pending = new File(store, ".hnl-active-" + UUID.randomUUID().toString());
+        syncWrite(pending, receipt.getBytes(StandardCharsets.UTF_8));
+        Files.move(pending.toPath(), new File(store, "active.properties").toPath(),
+                StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    /** Re-selects only the version trusted by this APK, e.g. after reinstalling an older APK. */
+    public static Installed recover(File store, Contract c, Progress progress, Cancel cancel) throws IOException {
+        Installed result = verify(store, c, true, progress, cancel);
+        cancelled(cancel); activate(store, result, c); return result;
+    }
+
     /** Contract comes from the installed APK, not the untrusted archive header. */
     public static Installed install(InputStream source, File store, Contract contract,
                                     Progress progress, Cancel cancel) throws IOException {
@@ -127,22 +192,24 @@ public final class NativeDataBundle {
             Map<String, String> meta = properties(bounded(zip, 4096));
             if (!"hnl-native-data/1".equals(meta.get("format")) || !"arm64-v8a".equals(meta.get("abi")))
                 throw new IOException("Unsupported data format or ABI");
-            String id = hexBytes(digest().digest((contract.indexSha + "\n" + contract.nativeSha)
-                    .getBytes(StandardCharsets.UTF_8)));
+            String id = versionId(contract);
             if (!contract.nativeSha.equals(meta.get("native_sha256"))
                     || !contract.indexSha.equals(meta.get("index_sha256"))
                     || !id.equals(meta.get("bundle_id")))
                 throw new IOException("Application and data package versions do not match");
             long count = number(meta.get("file_count"), MAX_FILES);
             long total = number(meta.get("payload_bytes"), MAX_PAYLOAD);
-            long reserve = Math.max(256L * 1024 * 1024, total / 20);
-            if (store.getUsableSpace() < total + reserve) throw new IOException("Not enough storage for verified import");
             cancelled(cancel);
             File destination = new File(store, id);
-            // Never silently merge into a prior complete or incomplete version.
-            if (destination.exists()) throw new IOException("This data version already exists; keep it or use recovery");
-            File stage = new File(store, ".hnl-import-" + UUID.randomUUID().toString());
-            if (!stage.mkdir()) throw new IOException("Cannot create import staging directory");
+            if (destination.exists()) return recover(store, contract, progress, cancel);
+            File stage = new File(store, ".hnl-import-" + id);
+            if (Files.isSymbolicLink(stage.toPath()) || (!stage.isDirectory() && !stage.mkdir()))
+                throw new IOException("Cannot create import staging directory");
+            long reserve = Math.max(256L * 1024 * 1024, total / 20);
+            // A restart can re-use only verified files, without requiring a second full copy.
+            long staged = stageBytes(stage);
+            if (store.getUsableSpace() < Math.max(0, total - staged) + reserve)
+                throw new IOException("Not enough storage for verified import");
             File index = new File(stage, ".hnl-index.tsv");
             next(zip, INDEX);
             MessageDigest indexDigest = digest();
@@ -187,15 +254,19 @@ public final class NativeDataBundle {
                         throw new IOException("Archive path escapes import directory");
                     File parent = file.getParentFile();
                     if (!parent.isDirectory() && !parent.mkdirs()) throw new IOException("Cannot create data directory");
+                    if (Files.isSymbolicLink(file.toPath())) throw new IOException("Linked import file refused");
+                    boolean reuse = file.isFile() && file.length() == r.size && r.sha.equals(fileSha(file, cancel));
                     MessageDigest fileDigest = digest(); long written = 0;
-                    try (FileOutputStream out = new FileOutputStream(file)) {
+                    try (OutputStream out = reuse ? new ByteArrayOutputStream(0) : new FileOutputStream(file)) {
                         byte[] b = new byte[128 * 1024]; int n;
                         while ((n = zip.read(b)) != -1) {
                             cancelled(cancel);
                             if (n > r.size - written) throw new IOException("Data entry exceeds declared size: " + r.path);
-                            out.write(b, 0, n); fileDigest.update(b, 0, n); written += n;
+                            if (!reuse) out.write(b, 0, n);
+                            fileDigest.update(b, 0, n); written += n;
                             if (progress != null) progress.update(done + written, total, r.path);
                         }
+                        if (out instanceof FileOutputStream) ((FileOutputStream)out).getFD().sync();
                     }
                     if (written != r.size || !r.sha.equals(hexBytes(fileDigest.digest())))
                         throw new IOException("Data entry incomplete or corrupt: " + r.path);
@@ -208,11 +279,20 @@ public final class NativeDataBundle {
                     + "\nindex_sha256=" + contract.indexSha + "\npayload_bytes=" + total + "\n";
             syncWrite(new File(stage, "ready.properties"), receipt.getBytes(StandardCharsets.UTF_8));
             if (!stage.renameTo(destination)) throw new IOException("Cannot publish completed data directory");
-            File active = new File(store, "active.properties");
-            File pending = new File(store, ".hnl-active-" + UUID.randomUUID().toString());
-            syncWrite(pending, receipt.getBytes(StandardCharsets.UTF_8));
-            Files.move(pending.toPath(), active.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            return new Installed(destination, id, total);
+            Installed installed = new Installed(destination, id, total);
+            activate(store, installed, contract);
+            return installed;
         } catch (IllegalArgumentException e) { throw new IOException("Invalid local data package", e); }
+    }
+
+    private static long stageBytes(File dir) throws IOException {
+        long total = 0;
+        File[] files = dir.listFiles();
+        if (files == null) throw new IOException("Cannot read staging directory");
+        for (File f : files) {
+            if (Files.isSymbolicLink(f.toPath())) throw new IOException("Linked staging content refused");
+            total += f.isDirectory() ? stageBytes(f) : f.length();
+        }
+        return total;
     }
 }
