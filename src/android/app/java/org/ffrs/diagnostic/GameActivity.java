@@ -900,7 +900,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 storageButton = setupButton("切换导入位置", 3, box);
                 recoverButton = setupButton("验证并恢复已导入版本", 4, box);
             }
-            cancelButton = setupButton("取消导入", 5, box);
+            cancelButton = setupButton(dataInstaller.directoryMode ? "取消检查" : "取消导入", 5, box);
         } else {
             box.addView(grant, bp);
             box.addView(retry, bp);

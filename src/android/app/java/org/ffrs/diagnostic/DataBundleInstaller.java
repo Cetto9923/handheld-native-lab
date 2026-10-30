@@ -252,7 +252,7 @@ public final class DataBundleInstaller implements Runnable {
             long now = SystemClock.elapsedRealtime();
             if (now - owner.lastProgress >= 200) {
                 owner.lastProgress = now;
-                owner.message = String.format(Locale.ROOT, "正在校验导入 %.1f%%\n%s / %s\n%s", done * 100.0 / total, size(done), size(total), path);
+                owner.message = String.format(Locale.ROOT, (owner.directoryMode ? "正在检查游戏数据 %.1f%%\n%s / %s\n%s" : "正在校验导入 %.1f%%\n%s / %s\n%s"), done * 100.0 / total, size(done), size(total), path);
                 owner.changed();
             }
         }
@@ -275,8 +275,13 @@ public final class DataBundleInstaller implements Runnable {
                 }
             } catch (Exception e) {
                 owner.root = null;
-                owner.message = (e instanceof InterruptedIOException ? "导入已取消。" : "检查或导入失败：" + e.getMessage())
-                        + "\n旧版本和存档保留。可重新选择同一数据包继续，或验证恢复已导入版本。";
+                if (owner.directoryMode) {
+                    owner.message = (e instanceof InterruptedIOException ? "检查已取消。" : "游戏数据检查失败：" + e.getMessage())
+                            + "\n游戏目录和存档未改动。请检查文件是否拷贝完整，再点“重新查找并检查目录”。";
+                } else {
+                    owner.message = (e instanceof InterruptedIOException ? "导入已取消。" : "检查或导入失败：" + e.getMessage())
+                            + "\n旧版本和存档保留。可重新选择同一数据包继续，或验证恢复已导入版本。";
+                }
                 Log.e("HNL-Installer", "data action=" + action + " failed", e);
             } finally { owner.busy = false; owner.changed(); }
         }
