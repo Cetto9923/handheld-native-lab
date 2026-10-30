@@ -1,3 +1,10 @@
+## 2026-10-30 已完成：本地TAG/完整备份/新私有源码仓库
+
+- 基线工程 `d66706e`，TAG `rg477m-baseline-2026.10.30`；完整本地恢复目录 `.local/baselines/rg477m-baseline-2026.10.30/`，各manifest/RESTORE.md已写，备份/数据SHA/归档遍历/Git bundle均通过。
+- 新私有 https://github.com/Cetto9923/handheld-native-lab ，初始源码快照 `f08cc73`，默认 `codex/rg477m-baseline`，同名TAG已推且核远端；669源码/记录文件，不含原Git历史、游戏/生成模块/APK/存档/密钥/游戏图标。品牌副本中性化差异见PUBLICATION.json。只推用户新授权仓库，无forcepush。
+- 详情 coordination/reports/P-BASELINE-PRIVATE-20261030.md。源TAG不移动，后续本完成记录独立提交。设备保留b373+shader7d20，诊断关闭，已重新打开隔离包。
+- 用户仅阶段性接受特效；人物条纹、完整蓝牙音频门、战斗/转场长帧、内部720P仍OPEN，不宣称可玩。写入占用冻结释放；下一阶段一目录多机型安装方案见docs/PACKAGING-NEXT.md。
+
 ## 2026-10-30 用户冻结基线并授权新建私有GitHub仓库
 
 - 用户肉眼认为特效可暂收口，要求当前版本地TAG/完整备份，再发布自有源码到新私有项目；后续再做一目录、多机型的简易安装包+匹配数据包。不继续改效果，不把未验收项改成PASS。
