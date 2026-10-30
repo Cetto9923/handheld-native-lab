@@ -783,6 +783,9 @@ void begin_occlusion_query(VkCommandBuffer cmd,VkQueryPool pool,uint32_t index){
 bool end_open_pass(){if(open_pass.cmd){end_occlusion_query();vkCmdEndRenderPass(open_pass.cmd);if(open_pass.depth_attached && !open_pass.depth_used){++depth_idle_passes;pass_prof_depth_idle(open_pass.cmd);}pass_prof_end(open_pass.cmd);open_pass=OpenPass{};++pass_end_by[cur_op<64?cur_op:63];return true;}return false;}
 struct PerfCounts{size_t pipelines,layouts,samplers,passes,images,host_segments,host_bytes;};
 PerfCounts perf_counts();
+// Opt-in counts only: resource counts do not attribute driver or guest memory.
+bool memory_profile_counts=false;
+void log_memory_profile_counts();
 struct Perf {
     uint64_t frames=0,submits=0,waits=0,sync_writeback=0,sync_readback=0,sync_query=0,sync_other=0,gpu_ns=0,gpu_samples=0,
         submit_cpu_ns=0,present_cpu_ns=0,passes=0,draws=0,dispatches=0,snapshot_hits=0,snapshot_misses=0,pending_views=0,access_by[12]={},folded_clears=0,why_wait=0,why_poll=0,why_access=0,why_cmdwait=0,why_finish=0,why_slot=0,snapshot_bytes=0,arena_peak=0,window_start=0,ops=0;
@@ -1057,6 +1060,7 @@ void perf_frame(){
     if(pipelines_unsaved && stats.presents.load()>=pipeline_save_frame+300){pipeline_save_frame=stats.presents.load();save_pipeline_cache();}
     uint64_t now=timing_clock();if(!perf.window_start){perf.window_start=now;perf.frames=0;return;}
     if(++perf.frames<60)return;
+    if(memory_profile_counts)log_memory_profile_counts();
     double wall=double(now-perf.window_start)/1e6,f=double(perf.frames);
     if(poolreset::enabled){xbg_logf("NVN PERF poolreset queued=%.2f waits=%.2f wait_ms=%.3f",poolreset::queued/f,poolreset::waits/f,poolreset::wait_ns/1e6/f);poolreset::queued=poolreset::waits=poolreset::wait_ns=0;}
     const double tf=perf_timed_frames?double(perf_timed_frames):1.0;   // parts and descriptor timers come from the timed frames only
@@ -4477,6 +4481,20 @@ void execute(const uint8_t *pc,unsigned depth,uint64_t &budget){
     }
 }
 PerfCounts perf_counts(){return {pipeline_objects.size(),layout_cache.size(),sampler_cache.size(),render_pass_cache.size(),images.size(),host_segments.size(),host_bytes};}
+void log_memory_profile_counts(){
+    size_t pools=0,spare=0,used=0,pinned=0,arena_chunks=0;uint64_t arena_bytes=0;
+    auto add_arena=[&](const Arena &a){arena_chunks+=a.chunks.size();for(const auto &chunk:a.chunks)arena_bytes+=chunk.allocation_size;};
+    for(unsigned i=0;i<slot_count;i++){
+        const Slot &s=slots[i];pools+=s.pools.size();
+        for(const auto &entry:s.spare_sets)spare+=entry.second.size();
+        for(const auto &entry:s.used_sets)used+=entry.second.size();
+        pinned+=memo_pinned[i].size();add_arena(s.stream);add_arena(s.readback);
+    }
+    add_arena(static_arena);
+    xbg_logf("NVN MEMORY_COUNTS pools=%zu spare_sets=%zu used_sets=%zu pinned_sets=%zu descriptor_records=%zu free_records=%zu arena_chunks=%zu arena_bytes=%llu image_bytes=%lld",
+             pools,spare,used,pinned,desc_all.size(),desc_free.size(),arena_chunks,
+             (unsigned long long)arena_bytes,(long long)image_bytes_live);
+}
 void destroy_slots(){
     poolreset::drain();for(auto &s:active_slots())s.reset_queued=false;
     for(unsigned i=0;i<kMaxSlots;i++) texel_evict(i,true);
@@ -4589,6 +4607,9 @@ extern "C" int xbg_rg16_proxy_contract(const uint32_t *vs_code,size_t vs_bytes,c
 extern "C" int xbg_game_initialize(const xbg_game_config *c,char *error,size_t bytes){
     if(!c || c->size!=sizeof(*c) || !c->physical || !c->device || !c->queue || !c->shader_directory || !c->fence_timeout_ns){if(error&&bytes)snprintf(error,bytes,"Invalid xbg_game_config");return -1;}
     std::lock_guard<std::recursive_mutex> lock(mutex);if(initialized){if(error&&bytes)snprintf(error,bytes,"Game graphics already initialized");return -1;}
+    {std::string dir=c->shader_directory;size_t cut=dir.find_last_of('/');
+     std::string path=(cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-memory-profile";
+     FILE *f=fopen(path.c_str(),"rb");memory_profile_counts=f && fgetc(f)=='1';if(f)fclose(f);}
 #ifdef DM_COMPLETION_WAIT_SELFTEST
     if(const char *test=getenv("DM_GFX_COMPLETION_WAIT_TEST"))if(!strcmp(test,"1")){
         // 隔离测试在资源/线程初始化前只跑一次；失败不准进入游戏，不污染真实 completed。
