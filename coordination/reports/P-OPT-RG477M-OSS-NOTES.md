@@ -116,3 +116,68 @@ Two newly translated effect VS retained runtime texture arrays which XGS reflect
 EasyRPG [GameBrowserHelper](https://github.com/EasyRPG/Player/blob/096c004def987f3545198304b1b7a8352f284a50/builds/android/app/src/main/java/org/easyrpg/player/game_browser/GameBrowserHelper.java)与同revision COPYING(GPLv3)实际读取：ACTION_OPEN_DOCUMENT_TREE+持久URI授权。ScummVM [Android指南](https://docs.scummvm.org/en/latest/other_platforms/android.html)同样先选游戏目录授权。它们有自己的SAF文件系统；本项目现有native stdio/mmap不能把content URI直接伪装成绝对路径授权。
 
 [Android11存储约束](https://developer.android.com/about/versions/11/privacy/storage)、[all-files官方API](https://developer.android.com/training/data-storage/manage-all-files)实际读取：target>=30的requestLegacyExternalStorage无效；公共目录NDK直读需要相应权限，不能读他包Android/data。当前私有侧载候选优先固定HandheldNativeLab/data的有界查找+一次显式系统文件授权，保留SAF导入为可选路径；不扫描无关全盘/凭据，不改target绕限制。原数据只读，日志/cache/profile与稳定存档放app自有目录。只借鉴交互与API，无上游源代码引入。
+
+### 目录拷贝测试的传输停滞（不冒充游戏卡顿）
+
+源目录73513文件(含2metadata)，tar发送子进程已Z，设备tar638仍等待且只见60文件；没有认为已完成。改传输方式前查读AOSP [shell_service.cpp](https://android.googlesource.com/platform/system/core/+/46c313b/adb/shell_service.cpp) raw/PTY协议说明与 [ADB手册](https://android.googlesource.com/platform/packages/modules/adb/+/HEAD/docs/user/adb.1.md)，主机实际adb37.0.1help核对push --sync。尚不能断言是PTY/EOF哪种原因；仅终止本任务tar638，保留半目录和失败日志，再用官方sync协议续传本任务数据，应用保持停止，最终由APK初次全SHA验证。此处ADB仅为测试布置，不成为用户安装条件。
+
+### 2026-10-30 小文件交付调查（尚未修改渲染）
+
+本项目 `xbg_game.cpp` 的 shader_open 通过 `<key>.xgs` fopen，并支持 FFRS_SHADER_ALT 目录回退；当前73500余个分散文件在设备续传中非常慢。行业线索：[Android官方资产打包说明](https://developer.android.com/games/optimize/game-size)和 [ScarletNX shader cache 文档](https://github.com/scarletnx/ScarletNX/blob/main/docs/USAGE.md)描述合并资产/着色器包按需读取；这是研究方向，不证明我们的格式、性能或游戏兼容。尚未引入代码、修改运行时或决定迁移，正式方案须核对上游不可变revision/许可证、错误处理、原XGS字节一致性和RG音画帧率回归。现有续传保持单写。
+
+补充：`open_shader_bundle` 有两个实际调用点，主加载按FILE长度完整读取，预热路径也依赖FILE接口；因此包方案不能只改目录路径，须同时验证两个调用点、索引边界及字节等价。公开仓库 ScarletNX main 查询到 revision 8efbf9c44dd8f1b4368ced2b87179bb09a124795，但对应固定revision文档/许可证在本次浏览返回 cache miss；许可证和对应实现未核实，不能据此复制代码或当成已验证上游。当前仅记录研究，不修改渲染。
+
+后续通过 GitHub API 和固定revision raw 实际确认 ScarletNX 根 LICENSE 为 GPL-3.0（https://github.com/scarletnx/ScarletNX/blob/8efbf9c44dd8f1b4368ced2b87179bb09a124795/LICENSE）。此处仅研究公开设计，不复制其代码或引入依赖；固定revision USAGE 内容仍待直接核实，不能把搜索摘要当成本项目运行证据。
+
+固定revision USAGE 已通过 raw 实际读取：https://raw.githubusercontent.com/scarletnx/ScarletNX/8efbf9c44dd8f1b4368ced2b87179bb09a124795/docs/USAGE.md；文档确有预先准备的 vkshipped 单文件和首次绘制按需读取描述。该项目及格式与本项目不同，仍不能推断本游戏兼容或速度改善。
+
+### 2026-10-30 目录直读候选战斗内存崩溃调查资料
+- Android 官方内存管理 https://developer.android.com/topic/performance/memory-overview ：内存压力下分配失败可导致 native SIGABRT；需结合现场证据，不能据此断言单一根因。
+- Android 官方 native 内存分析 https://developer.android.com/topic/performance/memory/guide/native-memory ：heapprofd 可采样原生分配与释放；需 profileable 或 debuggable 构建。后续仅对隔离候选采集并对照冷暖缓存与长时间驻留，先量测再改；不能由此推断 shader 或安装代码必然泄漏。
+- Perfetto 官方原生堆采样与周期快照：https://perfetto.dev/docs/data-sources/native-heap-profiler ，按包名可覆盖启动时 malloc/new；采样不覆盖所有 mmap/GPU 分配，采样运行不能当作性能验收。004 隔离包以 65536 字节采样、每 60 秒 dump 做独立诊断。
+- Perfetto TracePacket 官方枚举 https://perfetto.dev/docs/reference/trace-packet-proto#profilepacketprocessheapsamplesclienterror 定义 client_error=2 为 INVALID_STACK_BOUNDS；本轮 004 采样报此错误且仅一份早期快照，不可据此定位 GB 级增长。Python trace processor 用官方 https://perfetto.dev/docs/analysis/trace-processor-python ，本地 venv perfetto 0.59.1 与清单固定 v59.1 mac-arm64 预构建 SHA 校验后运行，未更改全局环境。
+- Linux 内核 `/proc/PID/smaps` 描述 https://docs.kernel.org/filesystems/proc.html 与 Android 官方工具概览 https://developer.android.com/topic/performance/memory/guide/tools-overview ：按映射汇总 PSS、RSS、swap 可作为堆采样失效时的补充；映射名称不提供分配栈，GPU/驱动内存未必完整包含，读取中映射变化也可能造成偏差。工具只读，不将结果等同泄漏证明。
+- Vulkan 官方描述符池生命周期及同步要求：https://docs.vulkan.org/spec/latest/chapters/descriptorsets.html ；官方性能样例讨论按帧回收和缓存：https://docs.vulkan.org/samples/latest/samples/performance/descriptor_management/README.html 。本次仅增加默认关闭的资源计数，不重置/释放池，也不把对象数量当字节数或内存根因。
+- 命令池对照依据：Vulkan规范 https://docs.vulkan.org/spec/latest/chapters/cmdbuffers.html 定义reset复用资源和RELEASE_RESOURCES归还系统资源；官方性能样例 https://docs.vulkan.org/samples/latest/samples/performance/command_buffer_usage/README.html 区分pool reset与buffer reset及性能权衡。只据此设计既有gfx-no-slot-pools隔离对照，不能推断当前Mali驱动存在某缺陷。
+- Android NDK 官方 app-local wrap.sh：https://developer.android.com/ndk/guides/wrap-script ，仅debuggable APK且native lib目录打包；Bionic固定revision malloc_debug文档：https://android.googlesource.com/platform/bionic/+/94657009839a4918337ac069652085906e3ee322/libc/malloc_debug/README.md ，支持backtrace_enable_on_signal=16和dump_prefix。新诊断构建不改全局setprop；默认采样关闭，短窗口记录的开销不用于性能或音频验收。
+
+## 2026-10-31 公开案例复核：采用目录优先、首次授权、原位读取
+
+用户最新指令：数据预先解压，用户拷贝到手机或储存卡，安装APK后自动检索加载。此次为资料与现有实现核对，无设备操作、无APK重建、无渲染/音频修改。
+
+证据：
+- ScummVM Android官方文档 https://docs.scummvm.org/en/latest/other_platforms/android.html 明确支持microSD/USB拷贝游戏文件，然后通过系统选择目录并授权。借鉴的是文件交付与授权流程，不是其运行引擎。
+- 固定源码 revision 38af1883a2eb7a622c31bfc3708888bbcc47db48（v2.9.0解引用commit，git ls-remote实际返回）：https://github.com/scummvm/scummvm/blob/38af1883a2eb7a622c31bfc3708888bbcc47db48/backends/platform/android/org/scummvm/scummvm/SAFFSTree.java 。实际读取确认持久URI授权与ContentResolver桥接，不是把content URI转为任意文件路径。根COPYING为GPLv3文本：https://github.com/scummvm/scummvm/blob/38af1883a2eb7a622c31bfc3708888bbcc47db48/COPYING 。仅参考设计，无复制源码或新增依赖。
+- Android官方全文件访问 https://developer.android.com/training/data-storage/manage-all-files ：Android11+需要用户显式允许；可访问共享存储及SD/OTG根，不能借此访问其他app私有Android/data；上架Play另有严格用途限制。当前侧载目录直读可以使用该明确授权，不保证任意分发渠道均适用。
+- Android官方SAF https://developer.android.com/training/data-storage/shared/documents-files ：选择目录获得URI访问，持久化授权可供后续使用；Android11限制选储存根/Download根及Android/data、obb，应该选HandheldNativeLab子目录。SAF直读需适配现有native fopen/mmap路径，现有ZIP导入备选不等于已经实现SAF目录原位读取。
+
+落实口径：
+1. 交付 HandheldNativeLab/，内含APK、data/、简短说明和版本清单。用户整目录拷贝到手机或SD卡根，或Games/、Download/下，安装APK后打开。
+2. 首次先有界检查这些约定目录，不递归扫全盘、不假设知道APK安装前所在目录、不硬编码SD UUID。找到有效唯一匹配数据后校验并原位读，不再复制整份大数据。
+3. 无权限时明确引导首次授权；拒绝可以返回/重试，不循环弹窗、不黑屏。未找到、缺文件、错误版本、SD移除均显示具体恢复办法。多个匹配目录的选择规则需验收，不能任意选过期目录。
+4. 首次完整SHA显示进度；后续快速检查有明确边界，数据更新后重新验证。存档、缓存和日志放app自己的独立目录，覆盖升级保留存档；卸载会清除app私有存档，应先提供备份路径。
+5. 当前DataBundleInstaller已有手机/SD卷枚举+三个约定目录+合同校验原位读取。此轮不另造一套安装器。SAF目录原位访问仍是后续兼容方案，不能承诺目前各种机型均可零授权启动。
+6. 验收补充：手机/SD、根/Games/Download位置；新装无权限/同意/拒绝/重开；目录缺失/不完整/不匹配/移除；覆盖升级存档；首检进度和暖启动。只有实际测过的设备进入支持矩阵。安装流程通过不替代仍开放的30Hz、音频、视觉及内存增长门。
+
+### 2026-10-31 CPU纹理注册描述的所有权修复
+公开资料复核：https://docs.vulkan.org/samples/latest/samples/performance/descriptor_management/README.html （Khronos官方，关于移动端高频描述符分配/更新的CPU成本及复用；未复制代码，不能将其示例FPS套到本游戏）。本修复不复用尚在使用的VkDescriptorSet、不改GPU资源回收或图像内容，而是消除本项目桥接CPU值的多余永久分配。
+直接代码依据：本地d8733d8的xbg_register_texture与register_texture_record在同步路径把texture/view按值放入RegisteredTexture，异步路径lambda也按值捕获；guest_boot007显示约63秒initialized/finalized各+1229748、live1065不变，Scudo PSS+190908KiB。旧bridge_texture永久分配被热注册路径调用，具有明确可减的CPU副本持有。新增caller-owned texture_copy仅在engine注册路径使用；命令录制原bridge_texture继续返回永久不可变指针。最新未逃逸描述可覆盖复用，逃逸后永不覆盖；retirement先在锁内复制再回调，避免复用期间读取可变存储。CPU合同与旧路径反例、ASan/UBSan日志在.local/installer-20261030/texture-snapshot-fix/，不替代设备音画或稳定30Hz验收。
+
+### 2026-10-31 命令视图按值快照
+沿用已实际复核的Khronos CPU描述符管理资料 https://docs.vulkan.org/samples/latest/samples/performance/descriptor_management/README.html ，仅参考减少热路径重复分配的原则，未复制上游代码。直接问题证据为本地010有效堆栈：nvn_bridge_view→copy_view→SetRenderTargets，16B×12535存活分配；旧7c50987 copy_view随后立即memcpy16B进命令，不保留指针。自有修复e723f84改为直接从family取得值再memcpy，null/未知view仍has=0；没有改变纹理/GPU对象回收。真实command recorder CPU合同10000代逐16B比对+null/未知view+零永久getter调用，ASan/UBSan退出0；旧代码同一永久getter断言失败。另加默认关闭profile中的memo_entries计数，用于检验缓存增长是否最终趋稳，不降低既有pin阈值或更改cache策略。
+
+### 2026-10-31 大文件SHA进度
+Android AOSP固定revision299fe6f5d6fc6f1af7c3411dcf4e5efdf7217368（android-14.0.0_r1解引用commit，ls-remote实际核对）：https://github.com/aosp-mirror/platform_frameworks_base/blob/299fe6f5d6fc6f1af7c3411dcf4e5efdf7217368/core/java/android/os/FileUtils.java ，文件头Apache-2.0；固定revision raw已实际读取。该实现周期上报真实已处理字节并检查取消，而非等整个文件完成。本项目仅参考进度原则，不复制其代码或调用hidden API。现场011校验到59.9%后等待大shader归档时，旧verifyAt仅在整文件结束回调；新fileSha在读取中每512KiB上报真实byte（UI仍200ms节流），保留每128KiB取消点及完整SHA比较，长度变化提前拒绝。实际Java25项合同含文件内进度/范围单调性/中途取消只读，旧代码同测试在无文件内进度断言失败；不以主机fixture替代Android界面复验。
+
+## 目录交付方案再次核对（2026-10-31）
+
+本轮实际重新读取ScummVM Android文档、固定38af1883a2eb7a622c31bfc3708888bbcc47db48的SAFFSTree.java和Android官方manage-all-files/documents-files页面，URL及许可证沿用前述完整来源。结论保持目录优先：整目录拷贝→安装APK→首次必要授权→有界自动发现→首次完整校验→原位读取。不能承诺无授权扫描任意路径；SAF树授权不能自动变成native普通文件路径，尚未实现该原位桥接。不新增安装器或音画改动。
+
+当前源码900ab5d实读：DataBundleInstaller.directoryCandidates枚举实际挂载卷，在根/Games/Download下找HandheldNativeLab/data；scanDirectory跳过校验失败项，首次完整SHA、同路径同合同后续长度/索引检查。多份有效匹配按候选顺序取首份，尚无用户选择器，作为开放验收项，不能描述为已解决多目录冲突。GameActivity保留明确setup/授权/重试入口。当前013系统安装与SD直读证据已在RESULT记录；其他手机未测试。
+
+### 2026-10-31 present结果必须与尝试分开
+官方Vulkan vkQueuePresentKHR参考 https://docs.vulkan.org/refpages/latest/refpages/source/vkQueuePresentKHR.html 实读：SUCCESS/SUBOPTIMAL为成功，OUT_OF_DATE/SURFACE_LOST等不能当成功展示；调用成功也只证明排队，非显示屏扫描输出。固定Vulkan-Docs v1.3.280解引用commit69ba4fefbafa045d0fd1b07060b768b3b1c115cc（本轮git ls-remote实核）：https://github.com/KhronosGroup/Vulkan-Docs/blob/69ba4fefbafa045d0fd1b07060b768b3b1c115cc/chapters/VK_KHR_surface/wsi.adoc 。仅引用规范、不复制实现。
+现场013 HOME五秒→同PID恢复截图成功，但CSV在后台仍增长；源码backend无窗口/重建/错误分支return1，engine又将所有结果return0，trace不记录结果。拟保留非致命跳过策略和尝试计数，增加明确成功/跳过/失败状态至CSV；旧CSV只能作无结果状态的尝试时序，不能冒称逐帧确认成功。修复不改变限帧、绘制、音频、游戏时间或后台策略。
+另查官方管线管理 https://docs.vulkan.org/samples/latest/samples/performance/pipeline_cache/README.html 与 https://docs.vulkan.org/guide/latest/pipeline_cache.html ：首次创建/持久缓存是卡顿排查方向。013首暴雷尝试窗口14.58s/24.96fps/max1521.777ms，附近created6/1160.6ms及created7/631.7ms，属相关线索，未实证单一根因；先修度量与暖重复，不启用丢特效的异步策略。
+
+Vulkan-Docs fixed69ba4fefbafa045d0fd1b07060b768b3b1c115cc LICENSE.adoc read: specification documents CC-BY-4.0. URL https://raw.githubusercontent.com/KhronosGroup/Vulkan-Docs/69ba4fefbafa045d0fd1b07060b768b3b1c115cc/LICENSE.adoc . Specification reference only; no implementation copied.

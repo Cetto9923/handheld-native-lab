@@ -1,3 +1,136 @@
+## Candidate015 functional directory workflow verified (latest)
+
+2026-10-31T05:44:33.509434+08:00 | Source7f05665, local source commits9284035(outcomes) and7f05665(permission guidance).015 APK ef0cd534f91f4bc93e2c2036d11b2994565f172512cfaae56cc13d352dc5f5a9; native same014 a3e34b6198124e061de3040e8f391380a95ab18f4b0068b58ff47a166ac00c5a. Build7593/export7984 both exit0;17payloads/15195015570B verified. Clean local directory: .local/installer-20261030/directory-permission-guide-015/HandheldNativeLab/. SD mainAPK015 SHA checked, metadata unchanged/matching014 native;13/14 APK backups retained. BaselineTAGd66706e and original user packages untouched; no push.
+
+Actual015 install was ADB diagnostic upgrade, not a fresh/GUI-install claim. Installed APK SHA verified. Existing system settings page cached version14 after upgrade; closed that page and reopened to prove version15 before changing its permission. Via actual system UI: revoke -> readable setup with grant/retry and no raw EACCES path noise -> app grant button -> correct system page -> re-enable -> back -> auto scan full_sha=false -> real title screenshot.3 save files SHA exactly equal. PID20088 stopped after evidence; no active app/controller. Battery8%/31C/USB500mA. Markers read back target30/fence0/async-pipelines0. Native speaker streams performance10(NONE), burst3075/buffer6150, no buffer cuts. All A2DP ear/disconnect and gameplay/audio/visual acceptance remains OPEN. Evidence android-install-015/{result.json,installed-sha.txt,runtime-markers.json,setup-denied-clean.png,warm-title.png,own-logcat.txt,guest_boot.log}.
+
+014 fullSHA permission recovery and samePID HOME-return passed as described below. Actual native CSV had338queued/142skipped/0failed, so skipped background work is separated from accepted presentation queues. Do not call these title/lifecycle numbers gameplay FPS.013 battle long frames remain evidence of a performance gap; old CSV success is unrecorded, corrected report retains attempt timings. Next: same-scene warm pipeline replay after adequate charge and current-mode confirmation; field/battle30, full audio+visual gates; data missing/mismatch/SD removal/error recovery; full optional SAF import and actual other-device evidence. Keep goal ACTIVE.
+
+## 014 full SHA and native outcome probe complete;015 built (latest)
+
+2026-10-31T05:40:24.965343+08:00 | Observer50136 exit0, PID14917 stopped by its finally. Real system permission revoke -> setup, app grant button -> matching settings toggle -> back -> automatic fullSHA=true verified15.20GB and real title. HOME5s -> samePID return screenshot success. NewCSV480 rows: queued338/skipped142/failed0; HOME segment16queued/136skipped, so background work no longer inflates verified queues. Three save files content SHA exactly equal before/after. Raw proof android-install-014/{result.json,saves-comparison.json,lifecycle-phase.json,frames.csv,own-logcat-final.txt,title-after-home.png}. Functional test only at8% battery/USB500mA, no audio or gameplay-performance pass.
+
+7f05665 removes duplicate raw EACCES path noise from permission-denied setup only; full scan errors remain in Log.w and authorized-data errors remain visible.015 build7593 exit0; APK ef0cd534f91f4bc93e2c2036d11b2994565f172512cfaae56cc13d352dc5f5a9; native unchanged from014 a3e34b6198124e061de3040e8f391380a95ab18f4b0068b58ff47a166ac00c5a; runtime/data contract same014.015 not installed or UI-retested yet. Current device014 stopped; SD mainAPK+receipt014 matching,13 pair backed. Original baselineTAG d66706e untouched. All gameplay30/audio/visual/full-import/other-device gates remain OPEN. Next short015 denied-permission UI/warm resume regression, then stop candidate to charge; no sustained low-battery performance test.
+
+## 014 permission-recovery/native metric probe in progress (latest)
+
+2026-10-31T05:36:55.698118+08:00 | HEAD9284035. Actual013 first battle: thunder spell then dark spell, screenshots/video in gameplay-013/battle. First thunder window14.582s/365 callbacks/attempt_fps24.962/max1521.777ms/5 intervals>100ms. Legacy CSV has no queue result; corrected first-thunder-summary-outcome-corrected.json sets present_fps=null. Original evidence retained. Second spell video has recorder overhead; not a fair performance run. Black sphere during dark spell is not classified as a regression without reference comparison.013 HOME5s -> samePID21760 returned to story, Surface recreated; only a functional return result. Backend was dropping background frames while legacy CSV still counted attempts.013 stopped after saves+warm-cache backup5,327,360B; SHA in lifecycle-013/stop-receipt.json. Battery9%, USB500mA; no performance acceptance.
+
+9284035 separates backend failed0/queued1/skipped2, engine callback -1/0/1 and CSV present_result; retains original nonfatal/rendering/audio/30Hz policy. PERF count=attempts. Analyzer keeps full time window, reports skip/fail, identifies legacy success as unrecorded; success means queued, not physical scanout.9 analyzer tests and actual adapter/writer2 ASan/UBSan tests pass. Original engine fails skip assertion; original analyzer2fail/1error against new cases. NDK full native compile/link session35437 exit0. Tests/logs in present-outcome-fix; public spec fixed revision+license in OSS-NOTES.
+
+014 build70961 exit0, source9284035, package dev.handheldnativelab.preview/version14. APK dc19ea5808695b397e2c9d7fa3dfd53b41a35e4f1b62ffe504c51276decfeef2, native a3e34b6198124e061de3040e8f391380a95ab18f4b0068b58ff47a166ac00c5a. Export44823 exit0,17 payloads/15195015570B fully hashed; runtime15b8294bfe639d14e7afb2c271fab9bfa43fa9b65822b907c673fa7acfbc597c.014 installed through ADB for diagnosis, not a GUI-install claim. SD mainAPK+receipt synced and hashes checked;013 pair additionally backed up on SD and android-install-014. Payload unchanged, baseline tagd66706e unchanged.
+
+Real system all-files toggle revoked -> actionable setup with grant/retry, no guest launch/hang; app grant button -> correct system settings -> toggle false-to-true -> return samePID14917 auto rescan. Observer50136/OS77764 confirmed running, fullSHA pending: poll same handle, do not restart/install over it. Script will take short title HOME-return probe, require queued+skipped rows, preserve saves, then stop only samePID in finally. Raw plan/log/screens in android-install-014. Clean install/unknown-source first grant/full ZIP64 SAF/field stable30/A2DP ear+disconnect/all visual gates/other models OPEN. No push.
+
+## 目录成熟方案复核及013场景检查点（最新）
+
+2026-10-31T05:19:13.888278+08:00｜900ab5d/APK013; directory-first industry sources rechecked, native SAF path bridge not implemented; SD install+direct read locally verified. Gameplay mode tile 游戏/开启 screenshot; X120s not validated motion; Y120s triggered story, mixed26.995fps/max1476.762ms/31>100ms, not stable30 PASS. Speaker only, full A2DP gates open. Device pid21760 live at latest read; no capture controller. No push.
+来源/限制见OSS-NOTES目录交付再次核对；原始场景证据.local/installer-20261030/gameplay-013/。下一步battle/ready.png需先检查，任何输入先核前台及唯一PID，不盲发；此轮研究未发送游戏输入或更改权限。原基线/存档保留。
+
+## 013真实SD安装/自动启动/字节SHA已验，整体验收OPEN（最新）
+
+HEAD900ab5d(只读mono helper)，013APK源码61e84f1/native同011。系统Files→SD/Games/HNL→APK→系统安装器更新/打开，来源确为DocumentsUI/PackageInstaller，实机version13+SHA核对，3存档内容相同，自动找到目录到标题。另仅移除一个校验缓存键做13完整SHA，截图同UCAS25.5→35.3→45.0%，28850退出0/fullsha=true，偏好值自动恢复一致，已停同包；uiautomator非idle报错XML无效，截图/日志为证据。011长采20527退出0/506.7s仍+81308KiB，无平台；同APK no-xmemo29652退出0/169s只+1224KiB，marker已移出并在013确认默认enabled1恢复，非永久方案。无活动控制器/游戏进程。详细SHA/路径/恢复点见.local/installer-20261030/RESULT.md首段及末节。下一步只读确认游戏模式、关闭memory-profile诊断后用mono边界测运动30Hz并补战斗/完整音频/视觉/生命周期；禁止从此局部安装验证推完整可玩。不push。
+
+## 011 soak20527运行、013待安装（最新）
+
+011 UI取消重试完整SHA已过/14084 exit0；火场长采20527仍live（25x20s约8min，PID30348，结束finally停同包），已有63s PSS+10000KiB，后段未平台。不要重复启动或中途装包。098b5c0/61e84f1按真实字节更新SHA进度并处理末次取消，26项Java合同+Python互操作通过，两个旧代码反例失败。013构建58875 exit0、native同011；导出9779运行，未安装。先poll20527/9779再后续。文档AOSP固定revision来源及精确证据见.local/installer-20261030/RESULT.md末节。全验收门开放，不push。
+
+## 011首SHA重试中、取消UI已验证（最新）
+
+e723f84改命令view按值取16B，消除010堆栈已证的永久getter路径，真实recorder10k字节/null/未知view+ASan/UBSan通过，旧代码反例失败。011构建/导出/安装exit0，安装+SD主APK SHA已核一致，009额外保留；匹配debugELF已保存。设备PID30348首SHA观察controller14084实际live；本轮UI取消→明确提示/重试可用→重试进度恢复，3存档SHA相同，最终fullSHA仍待过。先poll14084勿重启。010诊断完成并恢复009的历史及011精确恢复009命令见.local/installer-20261030/RESULT.md末节。下一步同场景PSS+memo_entries长采；全部音画/30Hz等门开放，不push。
+
+## 009实机A/B减少约92%增长（最新）
+
+007/009同一静止火场63s对照，Scudo PSS增量190908→14756KiB，速率-92.28%，live1065恒定、创建销毁数接近；不是零增长或bad_alloc全部解决。009 controller87150退出0/已停包，完整SHA42125退出0，3存档内容SHA相同，安装APK实机SHA核对一致。SD主APK已同步009并SHA核，005APK/receipt额外保留，当前APK/数据匹配。源码a8e7482，文档7c50987。旧family合同加入显式no-GPU renderer seam后ASan/UBSan errors0，首轮缺符号失败保留。完整音频9项门已写RESULT但耳听/蓝牙连断仍NOT_RUN；30Hz运动/战斗/视觉门开放。下一步009剩余增长分配栈或较长soak，不盲free命令；无活动进程/控制器。详见.local/installer-20261030/texture-copy-009-test/及RESULT末节。
+
+## 009纹理值快照修复待真机对照（最新）
+
+36ac6c1修正目录检查文案；a8e7482修复热注册永久副本：未逃逸纹理可复用、命令指针仍不可变，retirement锁内复制，view按值。主机100000代1份分配/旧指针/retirement/8线程ASan+UBSan通过，旧路径反例失败；009构建/主机全SHA导出/安装exit0。设备PID19991首SHA，controller42125实际live，先poll该handle勿重启。原007实际63秒live1065恒定但PSS+190908KiB，数据见RESULT。009尚无实机场景对照，无修复PASS；SD receipt009与APK005临时组合不交付。完整恢复005命令及artifactSHA见.local/installer-20261030/RESULT.md末节。全部门开放。
+
+## 生命周期007首校验运行中（最新）
+
+d8733d8只增加默认关闭诊断下的既有纹理统计；007构建/主机SHA导出/安装均exit0。设备PID14336正在完整校验，wait-start.py controller15177确认live；日志与恢复005精确命令见.local/installer-20261030/RESULT.md末节，不能重复启动。当前SD候选receipt007、SD APK仍005是临时诊断组合，不交付。真实场景计数尚未采，全部门开放。
+
+## 有效malloc栈及恢复005（最新）
+
+62f1112仅增加opt-in诊断wrapper。006 streamed安装使wrap生效，场景短窗81964×128B存活分配指向nvn_bridge_texture→register；匹配debug ELF hash已核。不是全GB增长归因，bridge旧copy被命令持有，禁止盲free。field控制器44618退出0并停包，现已恢复005安装65720退出0、version5，三存档内容SHA相同，包停止。证据.local/installer-20261030/malloc-006-test/及RESULT。下一步生命周期合同与持有者核对，生产纹理代码未改；全验收门开放。
+
+## 目录安装公开案例复核（最新）
+
+2026-10-31T03:46:36.093093+08:00：按用户最新偏好，复核ScummVM固定commit及Android官方存储规则，保留已有目录自动发现/原位读取主路径；首次显式权限不可绕过，SAF目录原位访问不能冒充已实现。设计、来源、验收补充见docs/PACKAGING-NEXT.md及OSS-NOTES末节。本轮只改文档，无设备操作/构建/音画策略变更。a0fdfc9及既有malloc006构建脚本脏改原样保留；诊断未完成，不将006称为交付基线。30Hz/音频/视觉/内存门仍开放。
+
+## 命令池对照未改善（最新）
+
+正确005b日志slot pools0，约153秒Scudo primary仍+513MiB；默认开关已恢复，脚本停包。首轮空marker未生效标INVALID。两个现有模式对照均未去除增长，应转分配栈，不猜改缓存。证据RESULT与no-slot-pools-005b/。
+
+## xmemo关闭对照（最新）
+
+同一005仅切既有诊断开关；pinned_sets=0，但Scudo约154秒仍+481MiB，增长近似此前，不能把跨提交缓存当根因。原开关已移出启用名并核对，脚本停包。场景截图及完整帧日志保留；短尾日志未见计数不能判渲染停顿。音频/稳定30Hz等门仍开放，见RESULT。
+
+## 005 计数实机线索（最新）
+
+005已装隔离包，旧004 receipt/APK保存，payload一致、存档已备份。计数显示末段arena/image分配稳定，但pinned descriptor sets增长；同期30秒Scudo primary PSS +91.7MiB。尚非因果证明；12快照采集退出0并finally停包。未改slot/cache策略，音画帧率仍未过。详见 RESULT 与 memory-counts-005/。
+
+## 真实原生堆增长线索（最新）
+
+现有004受控采集：标题90秒Scudo约+5MiB；一次守卫Continue后样本1→3约61秒Scudo primary PSS +184MiB，匿名约+0.8MiB。映射只定位allocator管理内存，不能定分配栈；此轮未保存进入场景截图。两次脚本结束均自行停包，无未知停止；005未安装。详见 smaps-field-004 与 RESULT。
+
+## 内存计数候选（最新）
+
+本地 a0fdfc9 增加默认关闭的 Vulkan 资源计数，不改变资源生命周期；005 APK/匹配17项目录已构建导出，未安装、未实机验收。004 曾 bad_alloc，根因未明；另一轮来源不明 FORCE STOP，设备操作者问题等待用户答复。无游戏控制或设备写操作，详见 RESULT。
+
+## 内存映射只读分析（最新）
+
+已本地提交 a0407b4：smaps 按名称汇总与双快照对比，8 合成测试与 RG 系统 shell 只读格式冒烟通过；未采到游戏进程映射，不能判根因。上次 preview 被来源不明命令停止，须核实设备占用再发送输入；用户主包与存档保留。见 RESULT。
+
+## 实验代码本地检查点（最新）
+
+本任务源码和测试已单独提交 581d396，未 push；004 APK 实际构建自 d28f35d 加脏改，不冒充干净提交构建。17 项设备 SHA、合并包 fd、续档首战有证据，后续 bad_alloc；Perfetto 栈边界错误采样无效，preview 被来源不明的 PID9483 强制停止。需先核对设备占用再继续实机；详情 RESULT。
+
+## 堆采样结果与设备占用核查（最新）
+
+误投移动输入打开过设备已有其他应用，已停止，未再向其输入；preview PID7887 后被来源未明的 PID9483 强制停止，先核查设备操作者、防双写。自有 Perfetto trace 已 SIGINT 保存；解析只有早期快照、client_error=2 INVALID_STACK_BOUNDS，无法确定内存根因。详情 RESULT 与 heap-profile-004/。004 工程改动未提交，旧基线完整。
+
+## 004 实机与内存崩溃（最新）
+
+17文件候选已装隔离包；设备全 SHA、合并包 fd、暖启动、续档、首战完成有证据，随后 PID23330 exit134，日志 std::bad_alloc、系统可用内存和 swap 明显下降，退出 PSS 8.7GB；根因未明。移动测试在进程退出后才发送输入，数据作废，脚本已加前台/PID 保护未真机测试。日志/采样及复制恢复细节见 .local/installer-20261030/RESULT.md。音画、稳定30Hz、系统模式均未过。
+
+## 归档组件实数据对照（最新）
+
+未提交的新 archive reader/packer：合成读取器 13 项、打包器 4 项通过；真实 73495 条 XGS 由 C++ 读取器与原文件逐字节对照全部一致。包 SHA 529aede4...，真实包和日志在 shader-pack-research-001。尚未接入渲染或 Android，音画验收开放。
+
+## 着色器包开发占用
+
+P-INSTALL 唯一写者 /root 已在 active_writers 增加 xbg_shader_archive.h 与 xbg_game.cpp；将先实现和测试边界安全、线程安全的只读 archive，再接入两个加载路径。旧散文件优先级、音频和基线均需保留；未完成不可宣称通过。
+
+## 着色器单文件实验（最新）
+
+现有 73495 个 shader 共 6.09 GB；本地主机合并并全量随机 seek 对照原 SHA 通过。RG477M SD 单文件拷贝 47.246s，设备 SHA 一致；暖/未知缓存连续 SHA 80.384s。实验未接入运行时，不能代表游戏性能/画面。战斗内存崩溃尚未解决，详见 .local/installer-20261030/RESULT.md 和 shader-pack-research-001/。设备充电中，preview 已停止。
+
+## 内存采样与供电（最新）
+
+隔离包暖启动采样 120 次，session8466 exit0；status VmRSS 与 smaps RSS 差异明显，未复现崩溃、场景未确认，不能判泄漏。采样到时后应用未自动退出，电量降至12%才手动停止；已修采样脚本增加 ≤15% 和时限自动停隔离包（仅语法检查）。设备继续充电；采样及完整局限见 .local/installer-20261030/RESULT.md。不得在低电量盲目复现战斗。
+
+## 第一战斗内存崩溃（最新）
+
+目录已全 SHA 验证，进入标题、开场、首场景、第一战斗；21:22:39 RHIThread SIGABRT，Scudo NO MEMORY requesting 4KB，附近 lowmemorykiller 表明系统压力，证据 android-directory-003/battle-restart-logcat.txt / guest-boot-crash.log。攻击后发生但因果未知，隔离包已停止、保护日志和电量。战斗未过；30Hz/完整音画/生命周期仍开放。先按 OSS-NOTES 官方 native 内存资料分析，不擅改缓冲或断言泄漏。
+
+## 目录直读实机首次校验及开场（当前）
+
+SD 续传 session71499 退出码 0；预期 73513 文件全部存在，另有 36 个 AppleDouble 文件保留；APK SHA 1b39328a。隔离包自动找到 SD 目录，full_sha=true 校验 15192663714 字节成功，随后实际进入标题和新游戏开场；日志及截图在 .local/installer-20261030/android-directory-003/。30Hz target、fence_spin=0 已见日志；游戏模式、实景稳定帧、完整蓝牙音频、战斗、冷暖恢复仍未验收。原精确计数脚本因额外文件退出 1，文件对比及完整 SHA 是实际证据。
+
+## 着色器小文件调查
+
+目录续传71499仍运行。只读核实正常加载和预热两个 open_shader_bundle 调用点均依赖FILE接口；公开ScarletNX固定revision 8efbf9c的USAGE和GPL-3.0 LICENSE已实际读取，按需单包为研究线索，不是本游戏性能或兼容证据。未改渲染，详见OSS-NOTES。
+
+## 同步中断后恢复
+
+原PID71277/session28336已不存在，无成功退出结果；设备在线，目录有38423文件。已按同一任务路径续传，PID1888/session71499，计划与日志为 android-directory-003/sync-retry2-plan.json / sync-retry2.log；完成后核退出码、文件数、APK和完整数据SHA。
+
+## 目录同步重试
+
+上次sync日志报告EOF且进程已结束；设备重新核实online。本轮仅对任务目录重试 adb push --sync，session28336、PID71277，命令和日志在 .local/installer-20261030/android-directory-003/sync-retry-plan.json。仍须核对退出码、完整文件数量与APK首次全SHA，再启动游戏。
+
 ## 目录直读003：完整目录准备完，真机拷贝中
 
 本地候选APK1b39328a/native56c50ff3，与002原生库完全一致，仅Java目录与runtime路径改变；23项核心检查(data-contract-v5.log)通过，包含目录只读校验、缺SDK和元数据symlink拒绝。新目录在.local/installer-20261030/directory-003/HandheldNativeLab/，73511files/15192663714B逐文件SHA核对，用户只需整文件夹拷贝到手机/SD根目录。原数据只读，runtime/cache/log在app内部runtime/<id>，稳定save在app内部saves/。
