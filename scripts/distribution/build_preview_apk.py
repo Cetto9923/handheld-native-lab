@@ -35,6 +35,7 @@ def main():
     ap.add_argument('--version-code', type=int, default=1)
     ap.add_argument('--data-index', type=Path, help='prepared local index; only sanitized contract enters APK')
     ap.add_argument('--directory-layout', action='store_true', help='directory-first private sideload variant with explicit file-access grant')
+    ap.add_argument('--malloc-backtrace', action='store_true', help='diagnostic only: package signal-controlled malloc backtraces; never performance acceptance')
     args = ap.parse_args()
     if args.directory_layout and not args.data_index:
         ap.error('--directory-layout requires --data-index')
@@ -66,6 +67,11 @@ def main():
     env.update(FFRS_APP_MANIFEST=str(manifest), FFRS_APP_RES=str(resources),
                FFRS_APK_DIR=str(out), FFRS_APK_NAME='handheld-native-lab-preview.apk',
                FFRS_ANDROID_LOG_DIR=str(out / 'build-logs'))
+    if args.malloc_backtrace:
+        wrap = out / 'wrap.sh'
+        wrap.write_text('#!/system/bin/sh\nLIBC_DEBUG_MALLOC_OPTIONS="backtrace_enable_on_signal=16 backtrace_dump_prefix=/data/user/0/' + PACKAGE + '/files/hnl-malloc" logwrapper "$@"\n')
+        wrap.chmod(0o755)
+        env['FFRS_APP_WRAP_SCRIPT'] = str(wrap)
     if args.data_index:
         prepared = json.loads((args.data_index / 'index.json').read_text())
         raw_index = (args.data_index / 'files.tsv').read_bytes()
@@ -82,7 +88,7 @@ def main():
             'controller_pid': os.getpid(), 'build_log': str(out / 'build.log'),
             'output': str(out), 'scope': 'new preview only; no device install or game-data copy',
             'environment_overrides': {k: env[k] for k in ['FFRS_APP_MANIFEST', 'FFRS_APP_RES',
-                'FFRS_APK_DIR', 'FFRS_APK_NAME', 'FFRS_ANDROID_LOG_DIR'] + (['FFRS_APP_ASSETS'] if args.data_index else [])}}
+                'FFRS_APK_DIR', 'FFRS_APK_NAME', 'FFRS_ANDROID_LOG_DIR'] + (['FFRS_APP_ASSETS'] if args.data_index else []) + (['FFRS_APP_WRAP_SCRIPT'] if args.malloc_backtrace else [])}}
     (out / 'plan.json').write_text(json.dumps(plan, indent=2))
     with (out / 'build.log').open('wb') as log:
         result = subprocess.run(cmd, cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)
@@ -104,7 +110,8 @@ def main():
               'source_status': subprocess.check_output(['git', 'status', '--short'], cwd=ROOT, text=True),
               'source_hashes': {f: digest((ROOT / f).read_bytes()) for f in sources},
               'status': 'BUILT_NOT_INSTALLED_OR_ACCEPTED',
-              'branding': 'self-authored vector and neutral name; no game art'}
+              'branding': 'self-authored vector and neutral name; no game art',
+              'malloc_backtrace_diagnostic': args.malloc_backtrace}
     (out / 'manifest.json').write_text(json.dumps(record, indent=2))
     print(json.dumps(record, indent=2))
     return 0

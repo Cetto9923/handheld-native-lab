@@ -115,6 +115,11 @@ cp "${FFRS_PACKAGE_DIR}/dex/classes.dex" "${FFRS_PACKAGE_DIR}/payload/classes.de
 step strip "${FFRS_LLVM}/bin/llvm-strip" --strip-debug \
     -o "${FFRS_PACKAGE_DIR}/payload/lib/arm64-v8a/libffrs_game_window.so" \
     "${FFRS_BUILD}/libffrs_game_window.so"
+if [[ -n "${FFRS_APP_WRAP_SCRIPT:-}" ]]; then
+    [[ -f "${FFRS_APP_WRAP_SCRIPT}" ]] || { echo "Missing diagnostic wrap script" >&2; exit 2; }
+    cp "${FFRS_APP_WRAP_SCRIPT}" "${FFRS_PACKAGE_DIR}/payload/lib/arm64-v8a/wrap.sh"
+    chmod 755 "${FFRS_PACKAGE_DIR}/payload/lib/arm64-v8a/wrap.sh"
+fi
 cp "${FFRS_PACKAGE_DIR}/base.apk" "${FFRS_PACKAGE_DIR}/unsigned.apk"
 step payload-zip bash -c 'cd "$1" && zip -q -r "$2" classes.dex lib' \
     _ "${FFRS_PACKAGE_DIR}/payload" "${FFRS_PACKAGE_DIR}/unsigned.apk"
