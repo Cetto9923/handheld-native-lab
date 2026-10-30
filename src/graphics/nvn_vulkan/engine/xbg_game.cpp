@@ -1527,6 +1527,7 @@ void probe_guest_barrier(uint32_t bits);
 void probe_image_read_barrier(const Image &image,bool in_open,VkImageAspectFlags read_aspects);
 VkStencilOpState stencil(bool back);
 void probe_buffer(const std::string &shader,unsigned stage,unsigned binding,unsigned element,const void *data,size_t bytes);
+void probe_texel_buffer(const std::string &shader,unsigned stage,unsigned binding,unsigned element,const Buffer &source,VkFormat format,uint64_t guest,uint64_t full_bytes,bool resident);
 void probe_bind(Image &im,const view_t *view,bool storage,uint32_t stage,uint32_t binding,VkImageView image_view,const std::string &shader);
 // Address-ordered index of image storage, rebuilt lazily when images change.
 struct ImageRange {uint64_t begin,end;Image *image;};
@@ -2986,12 +2987,14 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                     if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER && texel_memo_enabled && !compute){Buffer pv;
                         if(!pending_view(uint64_t(texture.mem),texture.L.size,1,pv))res=texel_acquire(uint64_t(texture.mem),texture.L.size,format(texture.d.format));
                         if(res){if(desc_memo_recording)desc_memo_texel.push_back({record,record->revision,uint64_t(texture.mem),uint64_t(texture.L.size),res->gen,uint32_t(format(texture.d.format))});
-                            texel_views.push_back(res->view);write.pTexelBufferView=&texel_views.back();}
+                            texel_views.push_back(res->view);write.pTexelBufferView=&texel_views.back();
+                            if(probe_is_active())probe_texel_buffer(shader.key,st,b.binding,element,res->buffer,format(texture.d.format),uint64_t(texture.mem),texture.L.size,true);}
                         else desc_memo_texel_fail=true;}   // the set then holds a per-frame view: not memoized
                     if(!res){
                     Buffer *buf=nullptr;uint64_t base=uint64_t(texture.mem),bytes=texture.L.size;
                     if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER){Buffer view;if(pending_view(base,bytes,1,view)){buf=out.keep(readback_buffer(bytes));VkCommandBuffer cmd=recording_slot().cmd;end_open_pass();VkBufferCopy region{view.offset,buf->offset,bytes};vkCmdCopyBuffer(cmd,view.buffer,buf->buffer,1,&region);full_barrier(cmd);}else{cpu_access(base,bytes,8);buf=out.keep(readback_buffer(bytes,texture.mem,bytes));}out.storage.push_back({{base,bytes},buf});out.written.push_back({{base,bytes},buf});}
                     else{snap_site=4;buf=out.keep(snapshot(base,bytes,properties.limits.minTexelBufferOffsetAlignment));snap_site=0;texel_frame_keys.insert((base<<12)^bytes);++texel_binds;}
+                    if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER && probe_is_active())probe_texel_buffer(shader.key,st,b.binding,element,*buf,format(texture.d.format),base,bytes,false);
                     if(out.indirect_input && element==0 && format(texture.d.format)==VK_FORMAT_R32_UINT){
                         if(b.binding==11 && b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER && bytes<=65536 && !(bytes&3) && indirect_cpu_clean(base,bytes)){out.indirect_input->words.resize(size_t(bytes/4));memcpy(out.indirect_input->words.data(),buf->mapped,size_t(bytes));}
                         if(b.binding==29 && b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER){out.indirect_input->address=base;out.indirect_input->bytes=bytes;}

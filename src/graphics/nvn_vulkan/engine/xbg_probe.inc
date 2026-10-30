@@ -3,11 +3,56 @@
 struct ProbeSurface {
     std::shared_ptr<Image> image;view_t view{};bool has_view=false;std::string role;
 };
+struct ProbeTexelSnapshot {
+    std::shared_ptr<OwnedIndirectBuffer> owned;
+    std::string shader;
+    unsigned stage,binding,element,group,draw;
+    VkFormat format;
+    uint64_t guest,full_bytes;
+    size_t bytes;
+    bool resident;
+};
 struct ProbeState {
     bool waiting=false,lut=false;std::string base,group;unsigned groups=0,draws=0,snapshots=0;uint64_t extra_buffer_bytes=0;
     std::vector<ProbeSurface> outputs,inputs;std::map<std::vector<uint64_t>,std::string> saved;
+    std::vector<ProbeTexelSnapshot> texels;
 } probe;
 bool probe_is_active(){return capture.probe && capture.trace && stats.presents.load()+1==capture.frame;}
+void probe_texel_buffer(const std::string &shader,unsigned stage,unsigned binding,unsigned element,
+                        const Buffer &source,VkFormat format,uint64_t guest,uint64_t full_bytes,bool resident){
+    if(!probe_is_active() || shader!="b0284572b5f180f2" || stage!=0 || binding!=48 || element!=0)return;
+    const size_t bytes=size_t(std::min<uint64_t>(full_bytes,65536))&~size_t(3);
+    if(!source.buffer || (source.offset&3) || !bytes || bytes>source.size ||
+       probe.extra_buffer_bytes>8ull*1024*1024 || bytes>8ull*1024*1024-probe.extra_buffer_bytes){
+        capture_log("PROBE_TEXEL_SKIP group=%u shader=%s binding=%u bytes=%llu sourceBytes=%zu",probe.groups,shader.c_str(),binding,(unsigned long long)full_bytes,source.size);return;
+    }
+    // Record only: submitting/retiring here would invalidate draw/descriptor
+    // references. Independent storage survives the later slot retirement.
+    auto owned=std::make_shared<OwnedIndirectBuffer>(bytes);
+    Slot &slot=slots[slot_index];need(slot.recording,"Texel probe requires a recording command buffer");
+    end_open_pass();
+    VkMemoryBarrier before{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+    before.srcAccessMask=VK_ACCESS_MEMORY_WRITE_BIT;before.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT;
+    vkCmdPipelineBarrier(slot.cmd,VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,1,&before,0,nullptr,0,nullptr);
+    VkBufferCopy copy{source.offset,owned->view.offset,bytes};
+    vkCmdCopyBuffer(slot.cmd,source.buffer,owned->view.buffer,1,&copy);
+    VkMemoryBarrier after{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+    after.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;after.dstAccessMask=VK_ACCESS_HOST_READ_BIT;
+    vkCmdPipelineBarrier(slot.cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,1,&after,0,nullptr,0,nullptr);
+    probe.extra_buffer_bytes+=bytes;
+    probe.texels.push_back({std::move(owned),shader,stage,binding,element,probe.groups,probe.draws,format,guest,full_bytes,bytes,resident});
+}
+void probe_flush_texels(){
+    if(probe.texels.empty())return;
+    end_open_pass();gpu_sync(perf.sync_readback);
+    for(auto &t:probe.texels){
+        t.owned->view.invalidate();char label[160];
+        snprintf(label,sizeof(label),"probe-texel-g%u-d%u-s%u-b%u-e%u",t.group,t.draw,t.stage,t.binding,t.element);
+        capture_log("PROBE_TEXEL_DATA group=%u draw=%u shader=%s stage=%u binding=%u element=%u vk=%u guest=%#llx fullBytes=%llu capturedBytes=%zu resident=%u label=%s",t.group,t.draw,t.shader.c_str(),t.stage,t.binding,t.element,unsigned(t.format),(unsigned long long)t.guest,(unsigned long long)t.full_bytes,t.bytes,unsigned(t.resident),label);
+        capture.active=true;capture_data(label,t.owned->view.mapped,t.bytes);capture.active=false;
+    }
+    probe.texels.clear(); // Copy fence signalled before allocation destruction.
+}
 void probe_image_read_barrier(const Image &im,bool in_open,VkImageAspectFlags read_aspects){
     static unsigned logged=0;if(!attachment_barrier_enabled || !probe.waiting || capture.trace || !in_open || logged>=120)return;
     FILE *file=fopen((probe.base+"/gfx-codex-probe").c_str(),"rb");int value=file?fgetc(file):'0';if(file)fclose(file);if(value!='3')return;
@@ -98,6 +143,7 @@ void probe_snapshot(const ProbeSurface &surface){
 void probe_flush(){
     if(!probe_is_active())return;
     capture_log("PROBE_GROUP_END group=%u draws=%u outputs=%zu inputs=%zu",probe.groups,probe.draws,probe.outputs.size(),probe.inputs.size());
+    probe_flush_texels();
     for(auto &s:probe.outputs)probe_snapshot(s);for(auto &s:probe.inputs)probe_snapshot(s);
     probe.outputs.clear();probe.inputs.clear();probe.draws=0;
 }
