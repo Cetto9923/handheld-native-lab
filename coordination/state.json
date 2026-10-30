@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-10-30T14:25:49.296654+08:00",
-  "phase": "USER BASELINE FROZEN: d66706e tag rg477m-baseline-2026.10.30; complete local runtime/source/data backup verified; PRIVATE GitHub source-only snapshot f08cc73 and tag verified. Remaining audio/flicker/battle/full30 gates OPEN; next installer stage recorded.",
+  "updated_at": "2026-10-30T16:31:50.543519+08:00",
+  "phase": "Next-stage milestone: preview1320fb92/native unchanged; full-shader lifecycle003 passed asleep80s -> original brightness -> title in same PID. Data-core16 contracts and Python/Java Unicode interop passed. Full input index prepared15.19GB; Android SAF/managed install/real ZIP64 import/recovery and all full-game gates remain OPEN. Durable goal NOT_ARMED.",
   "coordinator": "Codex /root takeover",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
@@ -1254,6 +1254,27 @@
       "checkpoint": "d66706e baseline tag saved; b373 APK/shader7d20/localgameinputs full backup20968 exit0; archive93818 entries verified14238 exit0; private GitHub f08cc73 +tag verified22048 exit0. User froze effects; full audio/flicker/battle/perf remain OPEN. No active diagnostic/controller, app baseline relaunched. Next one-folder multi-device installer is documented, not implemented.",
       "write_state": "FROZEN_BASELINE_SAVED",
       "released_at": "2026-10-30T14:18:55.296017+08:00"
+    },
+    {
+      "task": "P-INSTALL-ONEFOLDER-20261030",
+      "owner": "Codex /root",
+      "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native/.worktrees/codex-black-screen",
+      "branch": "task/T02-codex-black-screen",
+      "paths": [
+        "coordination/",
+        "docs/PACKAGING-NEXT.md",
+        "scripts/android/build_game_window_apk.sh",
+        "scripts/distribution/",
+        "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+        "src/android/app/java/org/ffrs/diagnostic/DataBundleInstaller.java",
+        "tests/installer/",
+        ".local/installer-20261030/",
+        "src/android/app/java/org/ffrs/diagnostic/NativeDataBundle.java",
+        "docs/DATA-BUNDLE-FORMAT.md"
+      ],
+      "acquired_at": "2026-10-30T15:16:47.536209+08:00",
+      "checkpoint": "First source/checkpoint report P-INSTALL-FIRST-20261030.md. Build45857 exit0 APK1320fb92/native7246 baseline; live003/28841 exit0 PID27833/one guest start/1020presents afterwake, actualbrightness and title reviewed. Prior001/002 failures retained, full73495XGS+SDK6.099GB staged only newpreview. Real data index52338 exit0 73511files15.192GB da8f5877. Core16 host checks/Unicode interop pass; not yet Android UI/contract/save-root wired. No pushes or tag/backup changes. Goal oldpaused creation failed; user action pending.",
+      "write_state": "ACTIVE"
     }
   ],
   "tasks": [
@@ -3818,6 +3839,26 @@
         "visual regression",
         "player smoothness under confirmed game mode; user-authorized 30/40/60/unthrottled comparisons with full audio/visual/speed gates"
       ]
+    },
+    {
+      "id": "P-INSTALL-ONEFOLDER-20261030",
+      "role": "Android installer and native lifecycle coordinator",
+      "owner": "Codex /root",
+      "status": "in_progress",
+      "dependencies": [],
+      "pass_gates": [],
+      "branch": "task/T02-codex-black-screen",
+      "objective": "User requested next-stage one-directory APK and matched local data pack, installer/error recovery and verified device adaptation; full standing acceptance required before completion",
+      "inputs": [
+        "rg477m-baseline-2026.10.30",
+        "docs/PACKAGING-NEXT.md"
+      ],
+      "outputs": [
+        "scripts/distribution/",
+        "docs/PACKAGING-NEXT.md",
+        ".local/installer-20261030/RESULT.md"
+      ],
+      "acceptance": "No tag/backup changes; real RG477M install/import/cold+awake+sleep startup/Continue/motion/cutscene/battle/audio/visual/recovery; no universal or playable claim from partial tests."
     }
   ],
   "blockers": [

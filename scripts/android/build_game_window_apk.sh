@@ -14,18 +14,18 @@ export FFRS_ANDROID_LOG_DIR="${FFRS_ANDROID_LOG_DIR:-${FFRS_ROOT}/.local/logs/an
 # shellcheck source=../device/android_env.sh
 source "${FFRS_ROOT}/scripts/device/android_env.sh"
 
-FFRS_APK_DIR="${FFRS_ROOT}/.local/android-apk"
+FFRS_APK_DIR="${FFRS_APK_DIR:-${FFRS_ROOT}/.local/android-apk}"
 FFRS_BUILD_TOOLS="${FFRS_BUILD_TOOLS:-${FFRS_SDK}/build-tools/34.0.0}"
 FFRS_ANDROID_JAR="${FFRS_ANDROID_JAR:-${FFRS_SDK}/platforms/android-34/android.jar}"
-FFRS_APP_MANIFEST="${FFRS_ROOT}/src/android/app/gamewindow/AndroidManifest.xml"
-FFRS_APP_RES="${FFRS_ROOT}/src/android/app/gamewindow/res"
+FFRS_APP_MANIFEST="${FFRS_APP_MANIFEST:-${FFRS_ROOT}/src/android/app/gamewindow/AndroidManifest.xml}"
+FFRS_APP_RES="${FFRS_APP_RES:-${FFRS_ROOT}/src/android/app/gamewindow/res}"
 FFRS_APP_JAVA="${FFRS_ROOT}/src/android/app/java/org/ffrs/diagnostic"
 FFRS_HLE_DIR="${FFRS_ROOT}/src/runtime/hle"
 FFRS_NATIVE_WINDOW_SOURCE="${FFRS_HLE_DIR}/native_window.c"
 FFRS_NATIVE_WINDOW_HEADER="${FFRS_HLE_DIR}/native_window.h"
 mkdir -p "${FFRS_ROOT}/.local/build"
 FFRS_PACKAGE_DIR="$(mktemp -d "${FFRS_ROOT}/.local/build/game-window-apk.XXXXXX")"
-FFRS_APK_NAME="ffrs-game-window-debug.apk"
+FFRS_APK_NAME="${FFRS_APK_NAME:-ffrs-game-window-debug.apk}"
 
 # Runs one build step, keeps its full output, and reports the real exit code.
 step() {

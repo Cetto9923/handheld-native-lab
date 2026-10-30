@@ -572,7 +572,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         Log.i(TAG, "lifecycle onResume");
         resumed = true;
         discoverPad();
-        if (!guestStarted && surfaceReady) recheckGame();
+        if (!guestStarted) recheckGame();
         GameWindowNative.setFocusState(hasWindowFocus() ? 1 : 2);
     }
 
@@ -683,6 +683,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         super.onWindowFocusChanged(hasFocus);
         GameWindowNative.setFocusState(resumed ? (hasFocus ? 1 : 2) : 3);
         if (!hasFocus) return;
+        if (!guestStarted) recheckGame();
         Window window = getWindow();
         View decor = window.getDecorView();
         if (Build.VERSION.SDK_INT >= 30) {
@@ -909,7 +910,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     }
 
     void recheckGame() {
-        if (guestStarted || !surfaceReady) { refreshSetup(); return; }
+        if (guestStarted) return;
         startGuest();
     }
 
@@ -954,6 +955,22 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
     /** Starts the owned guest on its own thread inside this app process. */
     private void startGuest() {
+        if (guestStarted || (getIntent() != null
+                && !getIntent().getBooleanExtra("run_guest", true))) return;
+        // Surface callbacks may arrive after onPause. A Surface alone does
+        // not mean an interactive Activity owns a presentable window yet.
+        android.os.PowerManager power =
+                (android.os.PowerManager)getSystemService(POWER_SERVICE);
+        Surface surface = surface_view == null ? null : surface_view.getHolder().getSurface();
+        boolean interactive = power != null && power.isInteractive();
+        boolean valid = surfaceReady && surface != null && surface.isValid()
+                && surface_view.getWidth() > 0 && surface_view.getHeight() > 0;
+        if (!resumed || !hasWindowFocus() || !interactive || !valid) {
+            Log.i(TAG, "guest_start deferred resumed=" + resumed + " focused=" + hasWindowFocus()
+                    + " interactive=" + interactive + " surfaceReady=" + surfaceReady
+                    + " validSurface=" + valid);
+            return;
+        }
         String game_dir = resolveGameDir();
         if (game_dir == null) {
             Log.e(TAG, "guest_image_unreadable: no game folder found; showing setup screen");
@@ -1031,10 +1048,12 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                     + " width_px=" + window[2] + " height_px=" + window[3]
                     + " format=" + window[4] + " generation=" + window[5]);
         }
+        if (!guestStarted) recheckGame();
     }
 
     @Override public void surfaceDestroyed(SurfaceHolder holder) {
         Log.i(TAG, "surface_destroyed entering");
+        surfaceReady = false;
         GameWindowNative.clearSurface();
         Log.i(TAG, "surface_destroyed native_window_cleared");
     }

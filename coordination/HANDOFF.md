@@ -1,3 +1,17 @@
+## P-INSTALL：首个可复核工程检查点
+
+见 coordination/reports/P-INSTALL-FIRST-20261030.md。独立preview001 APK1320fb92（native7246与基线同）实现首启resumed/focus/interactive/valid-Surface门控；003/28841 exit0，熄屏80秒未启动guest，唤醒同PID27833只启一次，1020present，核实原作首次亮度设置，再确认进入真实标题。001符号链接SELinux拒绝和002部分shader缺亮度模块两次失败均留存。完整73495XGS+SDK已部署新包。
+
+NativeDataBundle纯Java流式验证/版本提交核心16项host合同和Python→Java Unicode互通通过；真实15.192GB/73511文件索引已生成。当前不是一键安装成品，下一步接APK可信合同资产、SAF导入/进度/空间/错误恢复和稳定存档/版本路径，再测完整ZIP64导入。原TAG d667、备份、主包/旧隔离包数据和私有远端不动；旧游戏进程可停避免双跑，未装其他设备。新代码本地保存，未推送。目标引擎仍NOT_ARMED，旧unfinished+paused拦截且CUA不允许Codex app；已异步请用户处理旧目标，不虚报持久目标启用。
+
+## P-INSTALL首轮实机：不得标完整PASS
+
+预览APK1320fb92/native7246与基线native相同，仅Java首启门控/中性独立包dev.handheldnativelab.preview。两个测试的熄屏80s均存活且未开guest。001唤醒因原60fps/romfs符号链接SELinux拒绝，明确setup，未启动guest；改用mainSHA同为09cc8f55的真实原目录，002启动后FATAL缺首次亮度/设置shader b33659227a17c1a9（部分fixture296文件没包含），不是完整数据包。原始失败保留 .local/installer-20261030/lifecycle-{001,002}/。34803正在从冻结archive一次展开全部canonicalXGS+SDK作为完整数据输入；不得挑shader/跳绘制或假称首启修复已完成。基线/主包不覆盖。
+
+## 2026-10-30 下一阶段已认领：P-INSTALL-ONEFOLDER-20261030
+
+用户要求开启目标模式并开始下一阶段。工具create_goal仅尝试一次，被旧的unfinished+paused目标拒绝；无resume接口，CUA明确不允许操作Codex app，故持久目标未启动，不绕过/不虚报。实际工程继续：RG477M在线，572b0d5，无其他ACTIVE写者/构建，现有TAG与完整备份不动。先修“暂停/熄屏Surface回调先后导致启动无窗口”的首启门控，随后数据包/SAF导入/适配与实机验收。默认安卓端无电脑/root；安装方式偏好已异步询问，独立工作不等待。新代码/目录写入已在state认领，不碰主包、基线隔离包和荣耀工单。
+
 - 发布后补充：一次Asleep状态启动无Surface并signal11，已保存原始日志；唤醒后同APK PID18388/1080present、标题和配置复核通过。下一阶段须修启动生命周期；基线不动，详见发布报告末尾。
 
 ## 2026-10-30 已完成：本地TAG/完整备份/新私有源码仓库

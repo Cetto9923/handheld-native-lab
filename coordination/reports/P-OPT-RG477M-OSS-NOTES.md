@@ -98,3 +98,9 @@ Two newly translated effect VS retained runtime texture arrays which XGS reflect
 ### 2026-10-30 sprite深度预通道的验证线索
 
 原抓帧存在同样24 indices的深度预通道 VS5b2f/FSade50 与 base pass VS18a3/FSb5e9，后者depthFunc3(EQUAL)、写FragDepth，故需验证其深度一致性；目前只是候选原因。依据 [Khronos invariance](https://docs.vulkan.org/spec/latest/appendices/invariance.html) 规则5和 [GLSL invariant条件](https://docs.vulkan.org/glsl/latest/chapters/variables.html)，任意带像素深度偏移的独立shader并不自动保证等值深度。不改比较函数、不加偏移去掩盖；先用原始atlas与完整draw证据判断。两份base pass shader经上游8e091重译与设备原XGS逐字节完全相同，单独升编译器不构成修复。
+
+### 2026-10-30 一目录安装与Surface首启
+
+官方 [AOSP SurfaceView lifecycle](https://source.android.google.cn/docs/core/graphics/arch-sv-glsv?hl=en) 明确surfaceCreated可能在onPause之后，熄屏可能仅onPause无surfaceDestroyed；[SurfaceView API](https://developer.android.com/reference/android/view/SurfaceView)限定Surface有效期。因此先将guest首启约束为resumed+window focus+interactive+valid Surface，surfaceDestroyed明确复位surfaceReady，恢复路径统一重检；不改游戏时间/音频/GPU等待。资料为官方API/说明，非引入上游源码，无额外第三方代码许可证。
+
+数据导入按 [Android SAF官方说明](https://developer.android.com/training/data-storage/shared/documents-files)，计划ACTION_OPEN_DOCUMENT只读流式导入app私有目录，不依赖Android/data目录选择或所有文件权限；[Android Zip Path Traversal](https://developer.android.com/privacy-and-security/risks/zip-path-traversal)要求拒绝越界路径。后续实现需校验manifest/版本/空间/大小/SHA、暂存完整后切换、保留旧版本与存档，不能仅凭扩展名或盲解压。此处记录设计来源，尚未宣称导入或多机型通过。
