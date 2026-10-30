@@ -236,6 +236,8 @@ public final class DataBundleInstaller implements Runnable {
         marker(data, "gfx-legacy-waitall", "0\n"); marker(data, "gfx-async-pipelines", "0\n");
         marker(data, "gfx-depth-aspect", "1\n"); marker(data, "gfx-audio-paced-transport", "1\n");
         marker(data, "gfx-codex-audio-dump", "0\n"); marker(data, "gfx-codex-frame-metrics", "1\n");
+        // Only an APK contract that names the archive may enable the native fallback.
+        marker(data, "gfx-shader-archive", contract.required.containsKey("shaders.hnla") ? "1\n" : "0\n");
     }
     private static final class Stop implements NativeDataBundle.Cancel {
         private final DataBundleInstaller owner;

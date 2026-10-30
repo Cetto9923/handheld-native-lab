@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <time.h>
 #include "xbg_game_internal.h"
+#include "xbg_shader_archive.h"
 #include "xbg_cpu_timing.h"
 #include "xbg_completion_wait.h"
 #ifdef DM_COMPLETION_WAIT_SELFTEST
@@ -2194,6 +2195,28 @@ FILE *open_shader_bundle(const std::string &key,std::string *used){
     if(!f){if(const char *alt=getenv("FFRS_SHADER_ALT")){if(*alt){std::string p2=std::string(alt)+"/"+key+".xgs";f=fopen(p2.c_str(),"rb");if(f)path=p2;}}}
     if(used)*used=path;return f;
 }
+// Loose overrides remain authoritative; archive is an explicitly configured fallback.
+// The shared reader owns its descriptor until in-flight warm-up reads finish.
+bool read_shader_bundle(const std::string &key,std::vector<uint8_t> &bytes,std::string *used){
+    std::string path; FILE *f=open_shader_bundle(key,&path);
+    if(f){
+        bool ok=fseek(f,0,SEEK_END)==0; long n=ok?ftell(f):-1;
+        if(ok) ok=n>=32 && n<=16*1024*1024 && fseek(f,0,SEEK_SET)==0;
+        if(ok){std::vector<uint8_t> b(static_cast<size_t>(n));ok=fread(b.data(),1,b.size(),f)==b.size();if(ok)bytes.swap(b);}
+        fclose(f);if(used)*used=path;return ok;
+    }
+    const char *configured=getenv("FFRS_SHADER_ARCHIVE");
+    if(!configured || !*configured){if(used)*used=path;return false;}
+    static std::mutex archive_mu; static std::string archive_path;
+    static std::shared_ptr<XbgShaderArchive> archive; static bool attempted=false;
+    std::shared_ptr<XbgShaderArchive> current;
+    {std::lock_guard<std::mutex> lock(archive_mu);
+     if(archive_path!=configured){archive_path=configured;archive.reset();attempted=false;}
+     if(!attempted){attempted=true;auto candidate=std::make_shared<XbgShaderArchive>();if(candidate->open(archive_path.c_str()))archive=std::move(candidate);}
+     current=archive;}
+    if(used)*used=std::string(configured)+":"+key;
+    return current && current->read(key,bytes)==XbgShaderArchive::Result::Found;
+}
 bool spv_override(const std::string &key,std::vector<uint32_t> &words){
     std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');std::string path=(cut==std::string::npos?dir:dir.substr(0,cut))+"/spv-override/"+key+".spv";
     FILE *f=fopen(path.c_str(),"rb");if(!f)return false;fseek(f,0,SEEK_END);long n=ftell(f);rewind(f);if(n<20 || n%4){fclose(f);return false;}
@@ -2203,8 +2226,7 @@ bool spv_override(const std::string &key,std::vector<uint32_t> &words){
 Shader *load_shader(const void *control){
     std::string key=control_key(control);auto found=shaders.find(key);if(found!=shaders.end())return found->second.get();
     const uint64_t load_t0=timing_clock();
-    std::string path;FILE *f=open_shader_bundle(key,&path);if(!f)xbg_fatalf("Missing genuine shader bundle %s",path.c_str());
-    fseek(f,0,SEEK_END);long length=ftell(f);rewind(f);need(length>=32 && length<=16*1024*1024,"Invalid shader bundle length");std::vector<uint8_t> bytes(length);need(fread(bytes.data(),1,bytes.size(),f)==bytes.size(),"Shader bundle read failed");fclose(f);
+    std::string path;std::vector<uint8_t> bytes;if(!read_shader_bundle(key,bytes,&path))xbg_fatalf("Missing or invalid shader bundle %s",path.c_str());
     xbg_shader_header h;memcpy(&h,bytes.data(),sizeof(h));need(h.magic==0x31534758 && h.version==1 && h.stage<6 && h.binding_count<=256 && h.input_count<=16 && h.c1_bytes<=65536 && h.spirv_bytes%4==0,"Invalid shader bundle header");
     size_t offset=sizeof(h),expected=offset+size_t(h.binding_count)*sizeof(xbg_shader_binding)+size_t(h.input_count)*4+h.c1_bytes+h.spirv_bytes;need(expected==bytes.size(),"Shader bundle extent mismatch");
     // 载入各段耗时（读文件、SPIR-V 改写、分析、建模块），写进下面的 loaded 行。
@@ -2333,8 +2355,7 @@ bool keep_rewritten=false;std::unordered_map<std::string,std::vector<uint32_t>> 
 bool take_rewritten(const std::string &key,std::vector<uint32_t> &out){std::lock_guard<std::mutex> l(mu);auto it=rewritten.find(key);if(it==rewritten.end())return false;out.swap(it->second);rewritten.erase(it);return true;}
 VkShaderModule load_module(const std::string &key){
     {std::lock_guard<std::mutex> l(mu);auto it=modules.find(key);if(it!=modules.end())return it->second;}
-    FILE *f=open_shader_bundle(key,nullptr);if(!f)return VK_NULL_HANDLE;
-    fseek(f,0,SEEK_END);long n=ftell(f);rewind(f);if(n<32 || n>16*1024*1024){fclose(f);return VK_NULL_HANDLE;}std::vector<uint8_t> b(static_cast<size_t>(n));bool ok=fread(b.data(),1,b.size(),f)==b.size();fclose(f);if(!ok)return VK_NULL_HANDLE;
+    std::vector<uint8_t> b;if(!read_shader_bundle(key,b,nullptr))return VK_NULL_HANDLE;
     xbg_shader_header h;memcpy(&h,b.data(),sizeof(h));if(h.magic!=0x31534758 || h.version!=1 || h.spirv_bytes%4)return VK_NULL_HANDLE;
     size_t off=sizeof(h)+size_t(h.binding_count)*sizeof(xbg_shader_binding)+size_t(h.input_count)*4+h.c1_bytes;if(off+h.spirv_bytes!=b.size())return VK_NULL_HANDLE;
     std::vector<uint32_t> w(h.spirv_bytes/4);memcpy(w.data(),b.data()+off,h.spirv_bytes);spv_override(key,w);stencil_rewrite(w,h.stage,key.c_str(),"warm");quad_rewrite(w,h.stage,key.c_str(),"warm");warp_rewrite(w,h.stage,key.c_str(),"warm");tidy_rewrite(w);

@@ -247,6 +247,19 @@ static jlong StartGuest(JNIEnv* env,
                 }
             }
         }
+        // Managed installer enables this only when the trusted data contract names the archive.
+        unsetenv("FFRS_SHADER_ARCHIVE");
+        std::string marker = shaders.substr(0, shaders.size() - strlen("/shaders")) + "/gfx-shader-archive";
+        FILE *enabled = fopen(marker.c_str(), "rb");
+        bool use_archive = enabled && fgetc(enabled) == '1';
+        if (enabled) fclose(enabled);
+        if (use_archive) {
+            size_t slash = request->image.find_last_of('/');
+            if (slash != std::string::npos) {
+                std::string archive = request->image.substr(0, slash) + "/shaders.hnla";
+                setenv("FFRS_SHADER_ARCHIVE", archive.c_str(), 1);
+            }
+        }
         nvn_engine_set_shader_directory(shaders.c_str());
     }
     {
