@@ -122,11 +122,29 @@ public final class NativeDataBundle {
     }
 
     private static String fileSha(File file, Cancel cancel) throws IOException {
+        return fileSha(file, cancel, null, 0, 0, null, -1);
+    }
+
+    private static String fileSha(File file, Cancel cancel, Progress progress,
+                                  long base, long total, String path, long expected) throws IOException {
         MessageDigest d = digest();
+        long read = 0, reported = 0;
         try (InputStream in = new FileInputStream(file)) {
             byte[] b = new byte[128 * 1024]; int n;
-            while ((n = in.read(b)) != -1) { cancelled(cancel); d.update(b, 0, n); }
+            while ((n = in.read(b)) != -1) {
+                cancelled(cancel);
+                if (expected >= 0 && n > expected - read)
+                    throw new IOException("Installed data length changed during checksum: " + path);
+                d.update(b, 0, n); read += n;
+                // Report bytes actually read, not a time-based estimate. The
+                // Activity throttles display updates; cancellation remains per read.
+                if (progress != null && (read - reported >= 512 * 1024 || read == expected)) {
+                    progress.update(base + read, total, path); reported = read;
+                }
+            }
         }
+        if (expected >= 0 && read != expected)
+            throw new IOException("Installed data length changed during checksum: " + path);
         return hexBytes(d.digest());
     }
 
@@ -170,7 +188,7 @@ public final class NativeDataBundle {
                     if (!requiredSha.equals(row.sha)) throw new IOException("Installed required input mismatch");
                     required.remove(row.path);
                 }
-                if (full && !row.sha.equals(fileSha(file, cancel))) throw new IOException("Installed data checksum mismatch: " + row.path);
+                if (full && !row.sha.equals(fileSha(file, cancel, progress, done, total, row.path, row.size))) throw new IOException("Installed data checksum mismatch: " + row.path);
                 done += row.size;
                 if (progress != null) progress.update(done, total, row.path);
             }

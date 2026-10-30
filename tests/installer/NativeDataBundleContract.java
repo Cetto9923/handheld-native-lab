@@ -128,6 +128,30 @@ public final class NativeDataBundleContract {
         NativeDataBundle.Installed direct = NativeDataBundle.verifyDirectory(resumed.root, mid.contract, true, null, null);
         check(direct.root.equals(resumed.root) && stamp == new File(resumed.root,"main.nso").lastModified()
                 && names == resumed.root.list().length, "direct verification wrote data"); passed++;
+        final long fileStart = mid.files.get("main.nso").length;
+        final long fileEnd = fileStart + mid.files.get("romfs/text data.txt").length;
+        final long[] last = {0}; final int[] partial = {0};
+        NativeDataBundle.Progress byteProgress = new NativeDataBundle.Progress() {
+            public void update(long done, long total, String path) {
+                check(done >= last[0] && done <= total, "checksum progress out of range/order");
+                last[0] = done;
+                if (path.equals("romfs/text data.txt") && done > fileStart && done < fileEnd) partial[0]++;
+            }
+        };
+        NativeDataBundle.verifyDirectory(resumed.root, mid.contract, true, byteProgress, null);
+        check(partial[0] > 0 && last[0] == direct.bytes, "large-file checksum showed no in-file progress"); passed++;
+        final boolean[] cancelHash = {false};
+        boolean checksumCancelled = false;
+        try {
+            NativeDataBundle.verifyDirectory(resumed.root, mid.contract, true,
+                new NativeDataBundle.Progress() {
+                    public void update(long done, long total, String path) {
+                        if (path.equals("romfs/text data.txt") && done > fileStart && done < fileEnd) cancelHash[0] = true;
+                    }
+                }, new NativeDataBundle.Cancel() { public boolean requested() { return cancelHash[0]; } });
+        } catch (InterruptedIOException e) { checksumCancelled = true; }
+        check(checksumCancelled && stamp == new File(resumed.root,"main.nso").lastModified()
+                && names == resumed.root.list().length, "in-file checksum cancel failed or wrote data"); passed++;
         File sdk = new File(resumed.root,"sdk.nso"), heldSdk = new File(resumed.root,"sdk.nso.held");
         check(sdk.renameTo(heldSdk), "fixture rename failed");
         boolean missingRejected = false;
