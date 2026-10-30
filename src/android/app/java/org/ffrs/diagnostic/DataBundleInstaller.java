@@ -178,10 +178,11 @@ public final class DataBundleInstaller implements Runnable {
             catch (IOException e) { errors.append(path).append(": ").append(e.getMessage()).append("\n"); }
         }
         boolean permission = Build.VERSION.SDK_INT < 30 || Environment.isExternalStorageManager();
+        if (errors.length() != 0) Log.w("HNL-Installer", "directory scan failures: " + errors);
         message = "请将整个 HandheldNativeLab 文件夹拷贝到手机或 SD 卡根目录，再打开本应用。\n"
                 + "也支持 Games/HandheldNativeLab 或 Download/HandheldNativeLab。\n"
                 + (permission ? "尚未找到完整匹配的数据。请检查 data 文件夹是否拷贝完整。" : "新版安卓需要首次允许文件访问；授权后自动重新查找。")
-                + (errors.length() == 0 ? "" : "\n已发现目录但检查失败：\n" + errors);
+                + (errors.length() == 0 || !permission ? "" : "\n已发现目录但检查失败：\n" + errors);
     }
     private static String size(long value) { return String.format(Locale.ROOT, "%.2f GB", value / 1000000000.0); }
     public String storageText() {
