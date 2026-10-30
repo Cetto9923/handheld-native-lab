@@ -24,3 +24,9 @@ python3 tests/installer/check_bundle_interop.py
 ```
 
 `index.json` contains private local source paths for the build host and never ships inside the data archive or GitHub. The APK contract contains only cleaned metadata/digests. SAF UI, sanitized trusted APK assets, per-volume space display, cancellation/recovery, and stable internal save/runtime path wiring are implemented in preview002. Actual full ZIP64 import and end-to-end managed startup are under test; component checks alone are not device acceptance. All full game/audio/performance/device gates remain mandatory beyond these component checks.
+
+## Directory-first variant (user preference, 2026-10-30)
+
+`export_data_directory.py --index <prepared> --apk <directory-mode-apk> --out .local/<new>` verifies the APK contract and source inventory, creates a new `HandheldNativeLab/` containing APK, `data/` and a Chinese readme, and hashes every exported file. No saves or private source inventory are exported. Visible `data/hnl-index.tsv` and `hnl-data.properties` identify the compatible data; directory validation is read-only. The app checks a bounded set of fixed locations on actual Android storage volumes, never a recursive whole-disk search. Modern private sideload builds expose an explicit system all-files access page as required for native direct paths; ZIP/SAF remains an alternative build.
+
+The first successful directory use fully hashes all indexed files. A remembered path+contract permits subsequent length/index checks; this is not a per-launch full corruption scan. Runtime markers/cache/logs are separate under the app internal runtime/<versionID>, shader fallback and SDK use the read-only copied data, and saves remain at internal files/saves. Actual SD startup/performance and whole-game gates remain pending.

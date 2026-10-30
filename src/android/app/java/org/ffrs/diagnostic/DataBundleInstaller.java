@@ -26,7 +26,8 @@ public final class DataBundleInstaller implements Runnable {
     private final Context context;
     private final Handler main = new Handler(Looper.getMainLooper());
     private Listener listener;
-    public final boolean managed;
+    public final boolean managed, directoryMode;
+    public volatile File runtimeRoot;
     public volatile boolean busy;
     public volatile String message = "正在检查安装数据…";
     public volatile long done, total;
@@ -43,6 +44,19 @@ public final class DataBundleInstaller implements Runnable {
         try { for (String name : c.getAssets().list("")) if (name.equals("data-contract.json")) found = true; }
         catch (IOException e) { found = true; }
         managed = found;
+        boolean directory = false;
+        if (found) {
+            try (InputStream in = c.getAssets().open("data-contract.json")) {
+                ByteArrayOutputStream b = new ByteArrayOutputStream();
+                byte[] buffer = new byte[4096]; int n;
+                while ((n = in.read(buffer)) != -1) {
+                    if (b.size() + n > 32768) break;
+                    b.write(buffer, 0, n);
+                }
+                directory = "directory-v1".equals(new JSONObject(new String(b.toByteArray(), StandardCharsets.UTF_8)).optString("delivery"));
+            } catch (Exception ignored) {}
+        }
+        directoryMode = directory;
         if (managed) { busy = true; new Thread(new Job(this, 0, null), "hnl-data-check").start(); }
         else message = "";
     }
@@ -81,6 +95,7 @@ public final class DataBundleInstaller implements Runnable {
         try (ZipFile apk = new ZipFile(context.getApplicationInfo().sourceDir);
              InputStream in = apk.getInputStream(apk.getEntry("lib/arm64-v8a/libffrs_game_window.so"))) { nativeSha = hash(in); }
         contract = new NativeDataBundle.Contract(nativeSha, spec.getString("index_sha256"), required);
+        if (directoryMode) { scanDirectory(); return; }
         for (File ext : context.getExternalFilesDirs(null)) {
             if (ext != null && Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState(ext)))
                 stores.add(new File(ext, "hnl-data-v1"));
@@ -110,8 +125,67 @@ public final class DataBundleInstaller implements Runnable {
             break;
         }
     }
+    private ArrayList<File> directoryCandidates() {
+        LinkedHashSet<File> volumes = new LinkedHashSet<File>();
+        volumes.add(Environment.getExternalStorageDirectory());
+        if (Build.VERSION.SDK_INT >= 30) {
+            android.os.storage.StorageManager sm = (android.os.storage.StorageManager)context.getSystemService(Context.STORAGE_SERVICE);
+            if (sm != null) for (android.os.storage.StorageVolume v : sm.getStorageVolumes()) {
+                File dir = v.getDirectory();
+                if (dir != null && (Environment.MEDIA_MOUNTED.equals(v.getState())
+                        || Environment.MEDIA_MOUNTED_READ_ONLY.equals(v.getState()))) volumes.add(dir);
+            }
+        } else {
+            // Own app directories expose the physical volumes without hard-coded UUIDs.
+            for (File ext : context.getExternalFilesDirs(null)) {
+                if (ext == null) continue;
+                File androidDir = ext.getParentFile().getParentFile().getParentFile();
+                if ("Android".equals(androidDir.getName())) volumes.add(androidDir.getParentFile());
+            }
+        }
+        ArrayList<File> result = new ArrayList<File>();
+        String[] common = {"HandheldNativeLab/data", "Games/HandheldNativeLab/data", "Download/HandheldNativeLab/data"};
+        for (File volume : volumes) for (String child : common) result.add(new File(volume, child));
+        for (File ext : context.getExternalFilesDirs(null)) if (ext != null) result.add(new File(ext, "game"));
+        return result;
+    }
+    public void rescanDirectory() {
+        if (!directoryMode || busy || contract == null || root != null) return;
+        busy = true; cancel = false; done = 0;
+        message = "正在查找已拷贝的游戏目录…"; changed();
+        new Thread(new Job(this, 3, null), "hnl-directory-check").start();
+    }
+    private void scanDirectory() throws Exception {
+        ArrayList<File> paths = directoryCandidates();
+        StringBuilder errors = new StringBuilder();
+        android.content.SharedPreferences prefs = context.getSharedPreferences("hnl-install", 0);
+        for (File path : paths) {
+            if (!new File(path, "hnl-index.tsv").isFile()) continue;
+            message = "正在校验游戏目录…\n" + path; changed();
+            try {
+                String key = path.getCanonicalPath() + "\n" + NativeDataBundle.versionId(contract);
+                boolean verified = key.equals(prefs.getString("verified-directory", ""));
+                NativeDataBundle.Installed data = NativeDataBundle.verifyDirectory(path, contract, !verified,
+                        new Updates(this), new Stop(this));
+                if (data.bytes != total) throw new IOException("APK 与目录总长度不匹配");
+                prepare(data.root);
+                if (!prefs.edit().putString("verified-directory", key).commit()) throw new IOException("无法保存目录检查结果");
+                root = data.root;
+                message = "目录校验完成，正在等待前台窗口启动。";
+                Log.i("HNL-Installer", "directory verified root=" + root + " full_sha=" + !verified + " bytes=" + data.bytes);
+                return;
+            } catch (InterruptedIOException e) { throw e; }
+            catch (IOException e) { errors.append(path).append(": ").append(e.getMessage()).append("\n"); }
+        }
+        boolean permission = Build.VERSION.SDK_INT < 30 || Environment.isExternalStorageManager();
+        message = "请将整个 HandheldNativeLab 文件夹拷贝到手机或 SD 卡根目录，再打开本应用。\n"
+                + "也支持 Games/HandheldNativeLab 或 Download/HandheldNativeLab。\n"
+                + (permission ? "尚未找到完整匹配的数据。请检查 data 文件夹是否拷贝完整。" : "新版安卓需要首次允许文件访问；授权后自动重新查找。")
+                + (errors.length() == 0 ? "" : "\n已发现目录但检查失败：\n" + errors);
+    }
     private static String size(long value) { return String.format(Locale.ROOT, "%.2f GB", value / 1000000000.0); }
     public String storageText() {
+        if (directoryMode) return "目录直接读取，不再复制一份数据。首次会校验文件，后续自动检查加载。\n存档独立保存在应用内，更新请覆盖安装；卸载前先备份存档。";
         if (stores.isEmpty()) return "";
         File store = stores.get(selected);
         boolean removable = false;
@@ -126,7 +200,7 @@ public final class DataBundleInstaller implements Runnable {
     }
     public void cancel() { cancel = true; message = "正在安全停止；旧版本和存档保留…"; changed(); }
     public void install(Uri uri) {
-        if (busy || contract == null) return;
+        if (busy || contract == null || stores.isEmpty()) return;
         busy = true; cancel = false; done = 0; root = null;
         message = "正在打开数据包…"; changed();
         new Thread(new Job(this, 1, uri), "hnl-data-import").start();
@@ -150,6 +224,13 @@ public final class DataBundleInstaller implements Runnable {
         try (FileOutputStream out = new FileOutputStream(new File(root, name))) { out.write(value.getBytes(StandardCharsets.UTF_8)); }
     }
     private void prepare(File data) throws IOException {
+        // Data remains read-only. Runtime settings, logs and caches are app-owned.
+        File runtime = new File(context.getFilesDir(), "runtime/" + NativeDataBundle.versionId(contract));
+        if (!runtime.isDirectory() && !runtime.mkdirs()) throw new IOException("无法创建运行目录");
+        File shaders = new File(runtime, "shaders");
+        if (!shaders.isDirectory() && !shaders.mkdir()) throw new IOException("无法创建运行缓存目录");
+        runtimeRoot = runtime;
+        data = runtime;
         // Match the frozen runtime profile; do not import diagnostic flags from archives.
         marker(data, "gfx-target-fps", "30\n"); marker(data, "gfx-fence-spin-us", "0\n");
         marker(data, "gfx-legacy-waitall", "0\n"); marker(data, "gfx-async-pipelines", "0\n");
@@ -180,6 +261,7 @@ public final class DataBundleInstaller implements Runnable {
         @Override public void run() {
             try {
                 if (action == 0) owner.initialize();
+                else if (action == 3) owner.scanDirectory();
                 else if (action == 2) owner.complete(NativeDataBundle.recover(owner.stores.get(owner.selected), owner.contract,
                         new Updates(owner), new Stop(owner)));
                 else {

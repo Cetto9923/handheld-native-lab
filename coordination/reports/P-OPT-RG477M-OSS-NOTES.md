@@ -108,3 +108,11 @@ Two newly translated effect VS retained runtime texture arrays which XGS reflect
 ### 2026-10-30 安卓本机导入实现
 
 再次实际阅读 [Android app-specific files](https://developer.android.com/training/data-storage/app-specific) 和 [SAF](https://developer.android.com/training/data-storage/shared/documents-files)：通过getExternalFilesDirs枚举实际挂载且可写的应用专属卷，按实际剩余空间呈现/切换，不硬编码SD UUID，不请求MANAGE_EXTERNAL_STORAGE；ACTION_OPEN_DOCUMENT只获取用户选中文件的只读流。应用卸载会删除专属目录，UI明确提示升级覆盖安装、先备份存档。官方API说明为依据，无外部源码引入。APK内携带清理后的可信数据索引摘要，原生库摘要由实际安装APK计算；不信任包自身声明。版本根与内部稳定saveRoot分离，保留旧nativeStartGuest ABI；恢复只接受当前APK合同匹配的完整版本。
+
+### 2026-10-30 用户改为解压目录直读：公开成熟实现核对
+
+用户要求优先“解压目录→拷贝到手机/SD→安装APK→自动找路径运行”，ZIP导入改为备选。本轮实际读取Xash3D [README](https://github.com/FWGS/xash3d-fwgs/blob/3daa67eca9a9f9651b37d63babe6dfc8ec6961ac/README.md)及 [AndroidManifest](https://github.com/FWGS/xash3d-fwgs/blob/3daa67eca9a9f9651b37d63babe6dfc8ec6961ac/android/app/src/main/AndroidManifest.xml)、[XashActivity](https://github.com/FWGS/xash3d-fwgs/blob/3daa67eca9a9f9651b37d63babe6dfc8ec6961ac/android/app/src/main/java/su/xash/engine/XashActivity.java)：固定xash目录、可显式basedir、声明MANAGE_EXTERNAL_STORAGE；并非无条件自动读取任意路径。其 [2187](https://github.com/FWGS/xash3d-fwgs/issues/2187)直接讨论避免SAF复制， [2266](https://github.com/FWGS/xash3d-fwgs/issues/2266)外部卷卡顿是用户报告且维护者提出其他原因，不能当成本项目实测结论。只借鉴路径/权限方式，无代码复制；根LICENSE请求404，后续真实许可证路径再核，不以此认定许可证。
+
+EasyRPG [GameBrowserHelper](https://github.com/EasyRPG/Player/blob/096c004def987f3545198304b1b7a8352f284a50/builds/android/app/src/main/java/org/easyrpg/player/game_browser/GameBrowserHelper.java)与同revision COPYING(GPLv3)实际读取：ACTION_OPEN_DOCUMENT_TREE+持久URI授权。ScummVM [Android指南](https://docs.scummvm.org/en/latest/other_platforms/android.html)同样先选游戏目录授权。它们有自己的SAF文件系统；本项目现有native stdio/mmap不能把content URI直接伪装成绝对路径授权。
+
+[Android11存储约束](https://developer.android.com/about/versions/11/privacy/storage)、[all-files官方API](https://developer.android.com/training/data-storage/manage-all-files)实际读取：target>=30的requestLegacyExternalStorage无效；公共目录NDK直读需要相应权限，不能读他包Android/data。当前私有侧载候选优先固定HandheldNativeLab/data的有界查找+一次显式系统文件授权，保留SAF导入为可选路径；不扫描无关全盘/凭据，不改target绕限制。原数据只读，日志/cache/profile与稳定存档放app自有目录。只借鉴交互与API，无上游源代码引入。

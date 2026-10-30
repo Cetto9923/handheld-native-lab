@@ -1275,7 +1275,7 @@
         "src/android/native/guest_boot_jni.cpp"
       ],
       "acquired_at": "2026-10-30T15:16:47.536209+08:00",
-      "checkpoint": "SAF preview002 build51180/install29402 exit0 APK74d5d4c6/native56c50ff3; 20 core contracts and Unicode interop pass. Full 10.964GB bundle SHA65fe180c packed90150 exit0; SD transfer13459 running. Android SAF wrong-version/ZIP64 import pending. Active persistent goal confirmed; baseline untouched.",
+      "checkpoint": "Directory003 APK1b39328a/native56c50ff3 built99536 exit0+installed (isolated preview only). 23 core tests pass; full local raw export15998 exit0,73511files15.19GB SHA verified. Android34 all-files already allowed; system settings inspected only. SD root target absent before new tar deployment90475; see android-directory-003/transfer-plan.json. No guest active; next actual raw discovery/full initial hash/startup/perf/audio/visual. Baseline intact, active goal.",
       "write_state": "ACTIVE"
     }
   ],

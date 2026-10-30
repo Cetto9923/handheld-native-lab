@@ -121,6 +121,27 @@ public final class NativeDataBundleContract {
         NativeDataBundle.Installed resumed = NativeDataBundle.install(new ByteArrayInputStream(mid.zip("")), store, mid.contract, null, null);
         check(Files.size(new File(resumed.root,"romfs/text data.txt").toPath()) == 1024 * 1024, "resume lost partial data");
         passed++;
+        Files.copy(new File(resumed.root,".hnl-index.tsv").toPath(), new File(resumed.root,"hnl-index.tsv").toPath());
+        Files.copy(new File(resumed.root,"ready.properties").toPath(), new File(resumed.root,"hnl-data.properties").toPath());
+        long stamp = new File(resumed.root,"main.nso").lastModified();
+        int names = resumed.root.list().length;
+        NativeDataBundle.Installed direct = NativeDataBundle.verifyDirectory(resumed.root, mid.contract, true, null, null);
+        check(direct.root.equals(resumed.root) && stamp == new File(resumed.root,"main.nso").lastModified()
+                && names == resumed.root.list().length, "direct verification wrote data"); passed++;
+        File sdk = new File(resumed.root,"sdk.nso"), heldSdk = new File(resumed.root,"sdk.nso.held");
+        check(sdk.renameTo(heldSdk), "fixture rename failed");
+        boolean missingRejected = false;
+        try { NativeDataBundle.verifyDirectory(resumed.root, mid.contract, false, null, null); }
+        catch (IOException e) { missingRejected = true; }
+        finally { check(heldSdk.renameTo(sdk), "fixture restore failed"); }
+        check(missingRejected, "direct missing SDK accepted"); passed++;
+        File receipt = new File(resumed.root,"hnl-data.properties"), heldReceipt = new File(resumed.root,"receipt.held");
+        check(receipt.renameTo(heldReceipt), "fixture metadata rename failed");
+        Files.createSymbolicLink(receipt.toPath(), heldReceipt.toPath());
+        boolean linkRejected = false;
+        try { NativeDataBundle.verifyDirectory(resumed.root, mid.contract, true, null, null); }
+        catch (IOException e) { linkRejected = true; }
+        check(linkRejected, "linked directory metadata accepted"); passed++;
         Fixture b = new Fixture("upgrade", null);
         NativeDataBundle.Installed upgraded = NativeDataBundle.install(new ByteArrayInputStream(b.zip("")), store, b.contract, null, null);
         check(!upgraded.id.equals(installed.id) && installed.root.isDirectory(), "upgrade removed old version");

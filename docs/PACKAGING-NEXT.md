@@ -13,3 +13,7 @@ Required behavior for the next task:
 5. Demonstrate cold start, Continue, movement, cutscene, battle, suspend/resume, data-error recovery and reinstall/upgrade on every claimed model. Publish only the tested compatibility matrix and known limits; do not label an untested universal installer ready.
 
 The first action when resuming is to restore/verify this baseline, then design the installer around the recorded acceptance gaps. Do not overwrite the baseline tag, APK or data backup while developing the next version.
+
+## User refinement: directory-first delivery
+
+2026-10-30 user prefers an already-extracted `HandheldNativeLab/` directory containing APK + `data/`, copied once to phone or SD root. Prioritize bounded automatic discovery and direct native reads after an explicit first-use file-access grant when Android requires it. Do not force a second full import/copy. Keep ZIP/SAF import as an optional fallback. A directory must match the APK index/ABI/runtime and contain all SDK/shaders/Paks; missing data must show setup. Preserve existing Intent/legacy candidate behavior. Save/cache/log/profile directories remain app-owned and separate from copied data. Modern Android cannot silently read arbitrary shared directories without applicable access; no fake URI-to-path grant or lowered target SDK workaround.

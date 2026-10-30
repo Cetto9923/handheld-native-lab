@@ -132,13 +132,25 @@ public final class NativeDataBundle {
 
     /** Checks the receipt and every indexed length; optionally re-hashes all data for recovery. */
     public static Installed verify(File store, Contract c, boolean full, Progress progress, Cancel cancel) throws IOException {
+        if (Files.isSymbolicLink(store.toPath())) throw new IOException("Linked data store refused");
+        File root = new File(store, versionId(c));
+        return verifyAt(root, new File(root, ".hnl-index.tsv"), new File(root, "ready.properties"), c, full, progress, cancel);
+    }
+
+    /** Read-only verification of an extracted folder; never writes receipts or game files. */
+    public static Installed verifyDirectory(File root, Contract c, boolean full, Progress progress, Cancel cancel) throws IOException {
+        return verifyAt(root, new File(root, "hnl-index.tsv"), new File(root, "hnl-data.properties"), c, full, progress, cancel);
+    }
+
+    private static Installed verifyAt(File root, File index, File receiptFile, Contract c,
+                                      boolean full, Progress progress, Cancel cancel) throws IOException {
         String id = versionId(c);
-        File root = new File(store, id), index = new File(root, ".hnl-index.tsv");
-        if (Files.isSymbolicLink(store.toPath()) || Files.isSymbolicLink(root.toPath())
-                || !index.isFile() || index.length() > MAX_INDEX || !c.indexSha.equals(fileSha(index, cancel)))
+        if (Files.isSymbolicLink(root.toPath()) || Files.isSymbolicLink(index.toPath())
+                || Files.isSymbolicLink(receiptFile.toPath()) || !index.isFile() || index.length() > MAX_INDEX || !c.indexSha.equals(fileSha(index, cancel)))
             throw new IOException("Installed data index missing or changed");
         Properties receipt = new Properties();
-        try (InputStream in = new FileInputStream(new File(root, "ready.properties"))) { receipt.load(in); }
+        if (!receiptFile.isFile() || receiptFile.length() > 4096) throw new IOException("Data version metadata missing");
+        try (InputStream in = new FileInputStream(receiptFile)) { receipt.load(in); }
         if (!id.equals(receipt.getProperty("bundle_id")) || !c.nativeSha.equals(receipt.getProperty("native_sha256"))
                 || !c.indexSha.equals(receipt.getProperty("index_sha256"))) throw new IOException("Installed data version mismatch");
         long total = number(receipt.getProperty("payload_bytes"), MAX_PAYLOAD), done = 0;

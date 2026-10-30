@@ -1,3 +1,15 @@
+## 目录直读003：完整目录准备完，真机拷贝中
+
+本地候选APK1b39328a/native56c50ff3，与002原生库完全一致，仅Java目录与runtime路径改变；23项核心检查(data-contract-v5.log)通过，包含目录只读校验、缺SDK和元数据symlink拒绝。新目录在.local/installer-20261030/directory-003/HandheldNativeLab/，73511files/15192663714B逐文件SHA核对，用户只需整文件夹拷贝到手机/SD根目录。原数据只读，runtime/cache/log在app内部runtime/<id>，稳定save在app内部saves/。
+
+设备已更新仅preview包版本3，Android34 all-files当前原本已allow（没有appops改写），系统设置页已截图，未宣称从拒绝到首次授权已测。无数据setup明确；当前进程已停止。SD根目标HandheldNativeLab确认此前不存在，new-only tar流式拷贝session90475正在运行；精确命令/cwd/PID/log在android-directory-003/transfer-plan.json。结束后必须检查exit并首次启动完整校验、真实游戏冷暖回归，不能继承旧帧率/音频PASS。
+
+## 用户最新调整：目录直读优先（当前主流程）
+
+用户要求行业参考后简化为“解压目录→拷贝手机/SD→APK自动查找启动”，已查官方Android、Xash3D固定目录+all-files manifest、EasyRPG/ScummVM SAF，immutable revisions与边界已写OSS-NOTES。不强制再导入15GB副本，ZIP作为备选；旧目标描述由用户最新指令细化，目标仍ACTIVE。8508a7e保存SAF候选工程；本轮新增目录直读、只读校验、独立runtime/save待做。
+
+preview002真实系统SAF wrong-version拒绝、internal10.35GB不足15.19GB明确拒绝，XML/截图/logcat在android-import-002；完整ZIP10.964GB传输13459exit0（459s）仅备选未解包，已force-stop新候选避免空转。原APK/存档/TAG不动。
+
 ## P-INSTALL SAF候选002构建完成，完整导入验证中
 
 源码基于ec51587脏改；20项真实文件系统组件检查和Python→Java Unicode互操作通过（data-contract-v3.log / bundle-interop-v3.log）。候选preview002 APK74d5d4c6/native56c50ff3已安装到唯一新包dev.handheldnativelab.preview，原包/存档/TAG不动。Android系统选择器可用，SD显示117.39GB；新manifest不请求所有文件权限。完整数据包10964190474B SHA65fe180c，对应73511files/15192663714B indexda8f5877，仍NOT_DEVICE_ACCEPTED。

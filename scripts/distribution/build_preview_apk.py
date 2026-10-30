@@ -34,7 +34,10 @@ def main():
     ap.add_argument('--out', required=True, type=Path)
     ap.add_argument('--version-code', type=int, default=1)
     ap.add_argument('--data-index', type=Path, help='prepared local index; only sanitized contract enters APK')
+    ap.add_argument('--directory-layout', action='store_true', help='directory-first private sideload variant with explicit file-access grant')
     args = ap.parse_args()
+    if args.directory_layout and not args.data_index:
+        ap.error('--directory-layout requires --data-index')
     if not 1 <= args.version_code <= 2147483647:
         ap.error('invalid Android version code')
     out = args.out.resolve()
@@ -48,7 +51,7 @@ def main():
     tree.getroot().set('package', PACKAGE)
     tree.getroot().set(ANDROID + 'versionCode', str(args.version_code))
     tree.getroot().set(ANDROID + 'versionName', '0.2.0-preview.' + str(args.version_code))
-    if args.data_index:
+    if args.data_index and not args.directory_layout:
         for permission in list(tree.getroot().findall('uses-permission')):
             tree.getroot().remove(permission)
     manifest = out / 'AndroidManifest.xml'
@@ -71,6 +74,7 @@ def main():
         assets = out / 'assets'
         assets.mkdir()
         contract = {k: prepared[k] for k in ['format', 'abi', 'index_sha256', 'file_count', 'payload_bytes', 'required']}
+        contract['delivery'] = 'directory-v1' if args.directory_layout else 'import-v1'
         (assets / 'data-contract.json').write_text(json.dumps(contract, indent=2))
         env['FFRS_APP_ASSETS'] = str(assets)
     cmd = ['bash', 'scripts/android/build_game_window_apk.sh']

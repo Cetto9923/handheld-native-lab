@@ -577,6 +577,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         Log.i(TAG, "lifecycle onResume");
         resumed = true;
         discoverPad();
+        if (!guestStarted && dataInstaller != null) dataInstaller.rescanDirectory();
         if (!guestStarted) recheckGame();
         GameWindowNative.setFocusState(hasWindowFocus() ? 1 : 2);
     }
@@ -872,7 +873,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setGravity(Gravity.CENTER);
-        box.setBackgroundColor(0xF0101418);
+        box.setBackgroundColor(0xFF101418);
         int pad = (int) (24 * getResources().getDisplayMetrics().density);
         box.setPadding(pad, pad, pad, pad);
         TextView t = new TextView(this);
@@ -891,9 +892,14 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         bp.topMargin = pad / 2;
         if (dataInstaller != null && dataInstaller.managed) {
-            importButton = setupButton("选择同目录的数据包", 2, box);
-            storageButton = setupButton("切换导入位置", 3, box);
-            recoverButton = setupButton("验证并恢复已导入版本", 4, box);
+            if (dataInstaller.directoryMode) {
+                importButton = setupButton("允许读取游戏目录", 0, box);
+                recoverButton = setupButton("重新查找并检查目录", 6, box);
+            } else {
+                importButton = setupButton("选择同目录的数据包", 2, box);
+                storageButton = setupButton("切换导入位置", 3, box);
+                recoverButton = setupButton("验证并恢复已导入版本", 4, box);
+            }
             cancelButton = setupButton("取消导入", 5, box);
         } else {
             box.addView(grant, bp);
@@ -949,6 +955,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             else if (action == 3) owner.dataInstaller.cycleStorage();
             else if (action == 4) owner.dataInstaller.recover();
             else if (action == 5) owner.dataInstaller.cancel();
+            else if (action == 6) owner.dataInstaller.rescanDirectory();
         }
     }
 
@@ -978,7 +985,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             setupText.setText("Handheld Native Lab · Preview\n\n" + dataInstaller.message
                     + "\n\n" + dataInstaller.storageText());
             importButton.setEnabled(!dataInstaller.busy);
-            storageButton.setEnabled(!dataInstaller.busy);
+            if (storageButton != null) storageButton.setEnabled(!dataInstaller.busy);
             recoverButton.setEnabled(!dataInstaller.busy);
             cancelButton.setVisibility(dataInstaller.busy ? View.VISIBLE : View.GONE);
             setupView.setVisibility(View.VISIBLE);
@@ -1065,7 +1072,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         Log.i(TAG, "game_dir=" + game_dir);
         boolean managed = dataInstaller != null && dataInstaller.managed && dataInstaller.root != null
                 && dataInstaller.root.getAbsolutePath().equals(game_dir);
-        File files = managed ? dataInstaller.root : getExternalFilesDir(null);
+        File files = managed ? dataInstaller.runtimeRoot : getExternalFilesDir(null);
         String saveRoot = managed ? new File(getFilesDir(), "saves").getAbsolutePath() : null;
         String op_mode = getIntent() == null ? null : getIntent().getStringExtra("operation_mode");
         if (op_mode != null && !op_mode.isEmpty() && files != null) {
