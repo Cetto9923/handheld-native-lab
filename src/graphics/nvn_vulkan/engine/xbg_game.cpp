@@ -3426,6 +3426,7 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
         vkCmdBindVertexBuffers(c.command,b.first,1,&b.second->buffer,&off);if(b.first<16){bc.vb[b.first]=b.second->buffer;bc.vbo[b.first]=off;}}
     pass_prof_draw(c.command);
     if(indexed){if(bc.ib!=ib->buffer || bc.ibo!=ib->offset || bc.it!=index_type){vkCmdBindIndexBuffer(c.command,ib->buffer,ib->offset,index_type);bc.ib=ib->buffer;bc.ibo=ib->offset;bc.it=index_type;}else ++binds_skipped;if(gpu_args){retire_object(gpu_args->owned);vkCmdDrawIndexedIndirect(c.command,gpu_args->owned->view.buffer,gpu_args->offset,1,20);++gpu_indexed_draws;if(gpu_indexed_draws<=12 || !(gpu_indexed_draws%600))xbg_logf("NVN GPU indexed resident issued=%llu frame=%llu",(unsigned long long)gpu_indexed_draws,(unsigned long long)stats.presents.load());}else vkCmdDrawIndexed(c.command,count,indexed->instances,0,indexed->base_vertex,indexed->base_instance);}else vkCmdDraw(c.command,count,instances,first,first_instance);
+    if(probe_is_active())probe_draw_occlusion();
     if(attachment_barrier_enabled){
         open_pass.attachment_only=open_pass.attachment_only && graphics_attachment_only();
         auto stencil_writes=[](const VkStencilOpState &s){return s.writeMask && (s.failOp!=VK_STENCIL_OP_KEEP || s.passOp!=VK_STENCIL_OP_KEEP || s.depthFailOp!=VK_STENCIL_OP_KEEP);};

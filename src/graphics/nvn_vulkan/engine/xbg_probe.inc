@@ -12,12 +12,30 @@ struct ProbeTexelSnapshot {
     size_t bytes;
     bool resident;
 };
+struct ProbeQuerySnapshot {VkQueryPool pool;uint32_t index;unsigned group,draw;};
 struct ProbeState {
     bool waiting=false,lut=false;std::string base,group;unsigned groups=0,draws=0,snapshots=0;uint64_t extra_buffer_bytes=0;
     std::vector<ProbeSurface> outputs,inputs;std::map<std::vector<uint64_t>,std::string> saved;
     std::vector<ProbeTexelSnapshot> texels;
+    std::vector<ProbeQuerySnapshot> queries;
 } probe;
 bool probe_is_active(){return capture.probe && capture.trace && stats.presents.load()+1==capture.frame;}
+void probe_draw_occlusion(){
+    if(!probe_is_active() || !state.shader[4] || state.shader[4]->key!="f62f4204ee4db0da")return;
+    capture_log("PROBE_QUERY_RECORDED group=%u draw=%u active=%u countSamples=%u batch=%u index=%u",probe.groups,probe.draws,unsigned(open_occlusion.cmd!=VK_NULL_HANDLE),unsigned(state.count_samples),unsigned(occlusion_batch_enabled),open_occlusion.index);
+    if(open_occlusion.cmd && probe.queries.size()<64)probe.queries.push_back({open_occlusion.pool,open_occlusion.index,probe.groups,probe.draws});
+}
+void probe_flush_queries(){
+    if(probe.queries.empty())return;
+    // Read before any probe image command can reuse a slot and reset its pools.
+    // Observe existing queries only; a batched value is not a per-draw count.
+    end_open_pass();gpu_sync(perf.sync_readback);
+    for(const auto &q:probe.queries){
+        uint64_t result[2]{};VkResult rc=vkGetQueryPoolResults(cfg.device,q.pool,q.index,1,sizeof(result),result,sizeof(result),VK_QUERY_RESULT_64_BIT|VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
+        capture_log("PROBE_QUERY_RESULT group=%u draw=%u index=%u result=%d available=%llu samples=%llu",q.group,q.draw,q.index,int(rc),(unsigned long long)result[1],(unsigned long long)result[0]);
+    }
+    probe.queries.clear();
+}
 void probe_texel_buffer(const std::string &shader,unsigned stage,unsigned binding,unsigned element,
                         const Buffer &source,VkFormat format,uint64_t guest,uint64_t full_bytes,bool resident){
     if(!probe_is_active() || shader!="b0284572b5f180f2" || stage!=0 || binding!=48 || element!=0)return;
@@ -143,6 +161,7 @@ void probe_snapshot(const ProbeSurface &surface){
 void probe_flush(){
     if(!probe_is_active())return;
     capture_log("PROBE_GROUP_END group=%u draws=%u outputs=%zu inputs=%zu",probe.groups,probe.draws,probe.outputs.size(),probe.inputs.size());
+    probe_flush_queries();
     probe_flush_texels();
     for(auto &s:probe.outputs)probe_snapshot(s);for(auto &s:probe.inputs)probe_snapshot(s);
     probe.outputs.clear();probe.inputs.clear();probe.draws=0;
@@ -168,6 +187,7 @@ void probe_draw_begin(int count,unsigned instances,unsigned base_instance){
         capture_log("PROBE_BLEND group=%u draw=%u target=%d enabled=%u nvnRGB=%u/%u/%u nvnAlpha=%u/%u/%u mask=%#x conversion=%d vkRGB=%u/%u/%u vkAlpha=%u/%u/%u",probe.groups,probe.draws+1,i,unsigned((state.color.blend_en>>i)&1),unsigned(b.src_rgb),unsigned(b.dst_rgb),unsigned(b.eq_rgb),unsigned(b.src_a),unsigned(b.dst_a),unsigned(b.eq_a),mask,rc,unsigned(v.srcColorBlendFactor),unsigned(v.dstColorBlendFactor),unsigned(v.colorBlendOp),unsigned(v.srcAlphaBlendFactor),unsigned(v.dstAlphaBlendFactor),unsigned(v.alphaBlendOp));
     }
     ++probe.draws;capture_log("PROBE_DRAW group=%u count=%d instances=%u baseInstance=%u gs=%s stencil=%u sf=%u/%u ref=%u/%u cmpMask=%#x/%#x writeMask=%#x/%#x opsF=%u/%u/%u opsB=%u/%u/%u",probe.groups,count,instances,base_instance,state.shader[3]?state.shader[3]->key.c_str():"none",unsigned(state.ds.st),unsigned(state.ds.sf_f),unsigned(state.ds.sf_b),state.stencil_ref[0],state.stencil_ref[1],state.stencil_compare[0],state.stencil_compare[1],state.stencil_write[0],state.stencil_write[1],unsigned(state.ds.fail_f),unsigned(state.ds.zfail_f),unsigned(state.ds.zpass_f),unsigned(state.ds.fail_b),unsigned(state.ds.zfail_b),unsigned(state.ds.zpass_b));
+    capture_log("PROBE_RASTER group=%u draw=%u discard=%u tf=%u cull=%u front=%u polyMode=%u depthClamp=%u depthRange=%g/%g depthBounds=%u/%g/%g scissor=%d/%d/%u/%u swizzle=%u/%u/%u/%u conditionalSkip=%u",probe.groups,probe.draws,unsigned(state.rast_discard),unsigned(state.tf_on),unsigned(state.poly.cull),unsigned(state.poly.front),unsigned(state.poly.mode),unsigned(state.depth_clamp),state.viewport.minDepth,state.viewport.maxDepth,unsigned(state.bounds.enable),state.bounds.minimum,state.bounds.maximum,state.scissor.offset.x,state.scissor.offset.y,state.scissor.extent.width,state.scissor.extent.height,unsigned(state.vp_sw[0][0]),unsigned(state.vp_sw[0][1]),unsigned(state.vp_sw[0][2]),unsigned(state.vp_sw[0][3]),unsigned(state.render_cond_skip));
 }
 void probe_draw_end(Pass &pass){
     if(!probe_is_active())return;

@@ -1,0 +1,27 @@
+--- a/src/graphics/nvn_vulkan/engine/xbg_game.cpp
++++ b/src/graphics/nvn_vulkan/engine/xbg_game.cpp
+@@ -3388,2 +3388,4 @@
+     VkPipelineDepthStencilStateCreateInfo ds{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};ds.depthTestEnable=state.ds.dt;ds.depthWriteEnable=state.ds.dw;ds.depthCompareOp=VkCompareOp(state.ds.df-1);ds.stencilTestEnable=state.ds.st;ds.front=stencil(false);ds.back=stencil(true);ds.depthBoundsTestEnable=state.bounds.enable;ds.minDepthBounds=state.bounds.minimum;ds.maxDepthBounds=state.bounds.maximum;need(!ds.depthBoundsTestEnable || cfg.enabled_core.depthBounds,"Depth bounds feature disabled");
++    const unsigned raster_isolate=probe_raster_isolation();
++    if(raster_isolate){if(raster_isolate&1)rs.cullMode=VK_CULL_MODE_NONE;if(raster_isolate&2)ds.depthTestEnable=VK_FALSE;capture_log("PROBE_RASTER_ISOLATE group=%u draw=%u mode=%u cull=%u depthTest=%u diagnosticOnly=1",probe.groups,probe.draws,raster_isolate,unsigned(rs.cullMode),unsigned(ds.depthTestEnable));}
+     need(!(ds.depthTestEnable || ds.stencilTestEnable) || state.rt.depth,"Depth/stencil state requires attachment");
+@@ -3395,3 +3397,3 @@
+     PipelineLease pipeline;{CPU_SCOPE(Pipeline);
+-        static std::vector<uint32_t> fast;fast.clear();bool use_fast=pipeline_fast_enabled && !ab_off("pipefast") && d.entry->definition.valid && p.definition->valid;
++        static std::vector<uint32_t> fast;fast.clear();bool use_fast=!raster_isolate && pipeline_fast_enabled && !ab_off("pipefast") && d.entry->definition.valid && p.definition->valid;
+         bool memo=use_fast && pipe_memo && !ab_off("pipememo");
+--- a/src/graphics/nvn_vulkan/engine/xbg_probe.inc
++++ b/src/graphics/nvn_vulkan/engine/xbg_probe.inc
+@@ -16,3 +16,3 @@
+ struct ProbeState {
+-    bool waiting=false,lut=false;std::string base,group;unsigned groups=0,draws=0,snapshots=0;uint64_t extra_buffer_bytes=0;
++    bool waiting=false,lut=false;std::string base,group;unsigned groups=0,draws=0,snapshots=0,raster_isolate=0;uint64_t extra_buffer_bytes=0;
+     std::vector<ProbeSurface> outputs,inputs;std::map<std::vector<uint64_t>,std::string> saved;
+@@ -22,2 +22,3 @@
+ bool probe_is_active(){return capture.probe && capture.trace && stats.presents.load()+1==capture.frame;}
++unsigned probe_raster_isolation(){return probe_is_active() && state.shader[4] && state.shader[4]->key=="f62f4204ee4db0da"?probe.raster_isolate:0;}
+ void probe_draw_occlusion(){
+@@ -280,2 +281,3 @@
+     FILE *trace=fopen((directory+"/capture.txt").c_str(),"wb");if(!trace){probe.waiting=false;return;}
++    probe.raster_isolate=0;FILE *raster=fopen((probe.base+"/gfx-codex-probe-raster").c_str(),"rb");if(raster){unsigned mode=0;if(fscanf(raster,"%u",&mode)==1 && mode<=3)probe.raster_isolate=mode;fclose(raster);}
+     probe.waiting=false;probe.lut=lut;probe.group.clear();probe.groups=probe.draws=probe.snapshots=0;probe.extra_buffer_bytes=0;probe.outputs.clear();probe.inputs.clear();probe.saved.clear();
