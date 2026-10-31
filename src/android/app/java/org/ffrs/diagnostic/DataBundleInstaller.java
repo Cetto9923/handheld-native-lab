@@ -230,6 +230,7 @@ public final class DataBundleInstaller implements Runnable {
         if (!runtime.isDirectory() && !runtime.mkdirs()) throw new IOException("无法创建运行目录");
         File shaders = new File(runtime, "shaders");
         if (!shaders.isDirectory() && !shaders.mkdir()) throw new IOException("无法创建运行缓存目录");
+        NativeDataBundle.stagePipelineWarmSeed(data, runtime, contract, new Stop(this));
         runtimeRoot = runtime;
         data = runtime;
         // Match the frozen runtime profile; do not import diagnostic flags from archives.

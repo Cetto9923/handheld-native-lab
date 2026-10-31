@@ -121,6 +121,43 @@ public final class NativeDataBundle {
         return hexBytes(digest().digest((c.indexSha + "\n" + c.nativeSha).getBytes(StandardCharsets.UTF_8)));
     }
 
+    /** Stage only a contract-pinned warm list; never replace learned runtime history. */
+    public static void stagePipelineWarmSeed(File data, File runtime, Contract c, Cancel cancel) throws IOException {
+        String expected = c.required.get("pipeline-warm-list.bin");
+        if (expected == null) return;
+        cancelled(cancel);
+        File history = new File(runtime, "vk-pipeline-list.bin");
+        if (Files.isSymbolicLink(history.toPath())) throw new IOException("Linked pipeline history refused");
+        if (history.isFile()) return;
+        File source = new File(data, "pipeline-warm-list.bin");
+        long size = source.length();
+        if (Files.isSymbolicLink(source.toPath()) || !source.isFile() || size < 1 || size >= 64L * 1024 * 1024)
+            throw new IOException("Warm-up data missing or too large: pipeline-warm-list.bin");
+        File shaders = new File(runtime, "shaders");
+        if (Files.isSymbolicLink(shaders.toPath()) || !shaders.isDirectory())
+            throw new IOException("Runtime shader directory unavailable");
+        File seed = new File(shaders, "vk-pipeline-list.seed");
+        if (Files.isSymbolicLink(seed.toPath())) throw new IOException("Linked pipeline seed refused");
+        File temp = File.createTempFile(".warm-seed-", ".tmp", shaders);
+        try {
+            MessageDigest hash = digest(); long copied = 0;
+            try (InputStream in = new FileInputStream(source); FileOutputStream out = new FileOutputStream(temp)) {
+                byte[] buffer = new byte[128 * 1024]; int n;
+                while ((n = in.read(buffer)) != -1) {
+                    cancelled(cancel);
+                    if (n > size - copied) throw new IOException("Warm-up data length changed");
+                    out.write(buffer, 0, n); hash.update(buffer, 0, n); copied += n;
+                }
+                if (copied != size || !expected.equals(hexBytes(hash.digest())))
+                    throw new IOException("Warm-up data checksum mismatch: pipeline-warm-list.bin");
+                out.getFD().sync();
+            }
+            cancelled(cancel);
+            Files.move(temp.toPath(), seed.toPath(), StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING);
+        } finally { Files.deleteIfExists(temp.toPath()); }
+    }
+
     private static String fileSha(File file, Cancel cancel) throws IOException {
         return fileSha(file, cancel, null, 0, 0, null, -1);
     }
