@@ -1,0 +1,11 @@
+# Honor ADPF diagnostic control, not a production fix
+
+The optional Android API 33 adapter was tested on Honor A42BBB5109000333 only. It changed no shaders, GPU synchronization, game clocks, audio buffers or saves. Core API symbols loaded dynamically; Android28 linkage had no mandatory new imports. Explicit marker/default-off, session lifetime, thread/target changes and bounded error fallback were tested.
+
+Candidate APK `65f3d6018e2f3435c66651f5eb23ae50d6635284586c9e0bd5088b8edf879876` measured 51.9177 / 52.0336 / 52.1293 distinct frames/s in an off/on/off stationary-field test, each about45s. No measurable benefit from this hint implementation was found. The original2a4 package restored afterward measured38.0693fps. Different CPU placement, window lifecycle and observed power conditions prevent attributing cross-APK rates to code. Neither result meets60.
+
+The reporting interval covers first submit through pre-pacing presentation, not the following GPU wait. This only tests that interval/adapter; it does not disprove every possible ADPF integration. No default-on or production code was retained. The exact experimental source inputs, builds, device logs, CSV and failures remain in `.local/honor-device-profiles/flame-20261104/dark-shader-retranslate-20261107/postbaseline-20261108/adpf-trial/`. Ordinary2a4 and the graphics source baseline remain the restore point.
+
+`engine-integration.patch` is an archived, rejected zero-context integration against commitab4bf6c (`git apply --unidiff-zero` when deliberately reproducing it). The original context patch is preserved privately; zero context avoids changing blank context bytes to satisfy repository whitespace checks. It expects the accompanying header under the original engine path; do not apply it automatically. The standalone lifecycle contract can be reproduced with `c++ -std=c++17 -Wall -Wextra -Werror test_performance_hint.cpp -o /tmp/honor-adpf-contract` from this directory. It proves API sequencing, not FPS or sound acceptance.
+
+Primary references: [Android performance hints](https://source.android.com/docs/core/perf/performance-hint-api), [NDK API](https://developer.android.com/ndk/reference/group/a-performance-hint). This code uses public C declarations; no upstream implementation is copied. AUDIO remains NOT_RUN by user instruction.

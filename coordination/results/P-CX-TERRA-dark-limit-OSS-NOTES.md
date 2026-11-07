@@ -38,3 +38,11 @@ Honor400Pro packaging reference: [manufacturer specs](https://www.honor.com/cn/p
 - [固定c081f1b的VulkanResourcesUtil](https://raw.githubusercontent.com/LunarG/gfxreconstruct/c081f1b/framework/graphics/vulkan_resources_util.cpp)：CopyImageBuffer采用rowLength/imageHeight=0；子资源步距来自临时image分配尺寸。[VkBufferImageCopy](https://docs.vulkan.org/refpages/latest/refpages/source/VkBufferImageCopy.html)说明0表示按extent紧密排列。此次也核对了现用1d30 APK实际ARM64零值写入，不能仅因源码相似继承结论。逻辑前缀与分配尾分别核算，后者不作像素。
 - [固定c081f1b DumpImageToFile](https://raw.githubusercontent.com/LunarG/gfxreconstruct/c081f1b/framework/decode/vulkan_replay_dump_resources_common.cpp)原版跳过stencil；现用1d30二进制已加raw条件，且两组8个stencil文件实际存在。以上游原版代替修改后工具作出的“stencil缺失”推断已否定。实际binary-layout-contract/88文件核验位于postbaseline-20261108/raw-layout-audit。只做离线解出现有APK，没有重建/下载工具。
 - [固定c081f1b资源导出说明](https://raw.githubusercontent.com/LunarG/gfxreconstruct/c081f1b/vulkan_dump_resources.md)的功能范围是重放；本次两组附件仍均属重放，原运行独立附件/世代链缺口不能据此改为CAPTURE_COMPLETE。
+
+## 2026-11-08 ADPF受控性能候选（默认关，未作交付）
+
+- 已读Android官方[性能提示说明](https://source.android.com/docs/core/perf/performance-hint-api)与[NDK API](https://developer.android.com/ndk/reference/group/a-performance-hint)：为周期性工作线程组创建session，报告真实完成时长并更新目标；由系统决定调度/热策略。只作当前35fps稳态调度假设的候选，不能把API可创建称作性能PASS。未采用固定核心/忙循环或改变游戏时间。
+- 自有xbg_performance_hint.h按实际submit/present的Linux TID建组、在主机pace前取monotonic真实区间；缺API/nullsession/调用错误有界退回普通路径，显式gfx-performance-hint且仅Honor735可启用、默认关。公共C签名通过本机NDK26.1以API33静态类型核对；实际Android28应用通过dlsym可选加载，ELF没有必需的APerformanceHint导入。API28签名检查首次因新函数标记不可用失败属预期编译可用性，原错误保留后改API33只做声明核验。
+- 候选APK65f3d601...正常构建exit0/install-r保留数据，GPUshader/FS/深度/同步/音频/存档未改；ABI与host生命周期用例不替代实机稳态FPS、视觉或人耳验收。数据和旧普通2a4恢复包完整保留。
+
+ADPF最终状态（2026-11-08T01:48:43.369145+08:00）：同候选ABA51.9177/52.0336/52.1293无可辨识收益，且该取时缺present后的GPU等待，仅为本入口负对照。原2a4恢复后38.0693，跨包CPU/core/power/window差异未定因，不能归因API或源码布局。自有候选header/test/glue已移coordination/experiments/honor-adpf-20261108，生产源恢复27摘要匹配，未作默认/交付修复。

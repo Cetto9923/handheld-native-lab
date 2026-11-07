@@ -1,3 +1,15 @@
+# Honor ADPF负对照结束；原包/生产源码已恢复 — 2026-11-08T01:48:43.369145+08:00
+
+同一候选65f3d6018e2f3435c66651f5eb23ae50d6635284586c9e0bd5088b8edf879876（3736978B）已正常构建/保留数据install-r。实际官方API session创建成功，RHIThread TID23002一线程组、target16666666ns，report无错误。但同场每段约45秒、无录屏/输入的关→开→关分别51.917712 / 52.033621 / 52.129284独立新帧/s，无重复/失败/跳过；没有可辨识的该提示入口收益，不作为修复。取时只涵盖firstsubmit到pace前，未含之后GPU等待，故只否定本挂接方式，不能外推所有ADPF实现。host生命周期与实际NDK33签名通过；实际app仍API28可选dlsym，无必需新API导入。首构建probe声明顺序错误已修，首次API28声明检查因33可用性失败也保留原始错误，非额度错误。
+
+恢复原普通2a4c811d88eb0271fd1c5039bc9a98eaac2c5d95f95499f8f22787b1a1108201后，同Continue野外45.706070138秒、1741独立新帧，38.069342fps，p50 27.681927ms/p95 31.425937/p99 33.917761/max53.803697，无丢弃卡顿；仍不达60。恢复包实际/data/app/base.apk SHA已核对，PID24343，GameActivity实场全屏/PAD隐藏，无后台输入/录屏脚本。gfx-performance-hint已改名保留为gfx-performance-hint-aba-20261108（内容0），CPUprofile旧marker也仅备份，probe0/target60/defer0/fence0。未改11XGS、数据自动发现/存档/其它包/全局显示或电源设置；冷启因系统freeform旧bounds，仅操作本应用Task1013和自己caption恢复全屏。
+
+候选关闭状态约52与原包35–38的跨进程差异未解释：观察到充电图标变化/后来AC+USBtrue，候选结束prime频率2803200、原包RHI在big核且prime480000；这些是调度/条件线索，未证明因果，不把不同窗口生命周期/CPU落点夸成代码提速。两包draw约407.2/dispatch93一致，GPU约13ms，CPU提交候选约10ms/原包约16ms。CSV按mod32分组显示诊断采样帧平均额外约1.5ms/32帧，只是小开销，不虚称是35→60主因；未再为此堆APK。
+
+生产CPP只反向应用本刀自有ADPF patch，未reset/clean/stash或覆盖WIP；新header/test移入自有源码档案coordination/experiments/honor-adpf-20261108/，含README、可独立重跑的host契约及拒绝的integration patch。恢复后27个原source-build-manifest记录摘要全部匹配，git无生产src变更。APK65与完整原始源码/失败/CSV/日志仍在上述adpf-trial目录，不重打graphics tag/不替换已交付APK/dataZIP。图形基线commit214fd79、tag honor-graphics-20261107保持。
+
+CAPTURE_COMPLETE=NO、VIEW_VALIDITY=NOT_FIXED全范围、FIRST_WRONG此前三处GPU结论不变；VISUAL_DARK/LIMIT/BOSS有限自测PASS，新增guard/fire/Bahamut有限PASS，shield魔法/最初短闪全闭合/独立QA/400Pro实测仍未完成。AUDIO依用户NOT_RUN；验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md，NONE(enum10)/fence0/burst缓冲/TIMEOUT重试/变更重开均未改，不能整刀PASS。下一项回到原运行同draw完整附件缺口，已有22附件88文件紧密行/分配尾审计结果可复用，不重建导出器或重下载旧大捕获。唯一writer继续。
+
 # Honor 稳定实场仍35.22fps；已有CPU计时完成并恢复普通状态 — 2026-11-08T01:09:42.038814+08:00
 
 同普通APK2a4/source214fd79、marker0/target60/defer0/fence0，正常Continue同一野外、PAD隐藏。新45.996758629秒无录屏/无输入稳定窗口1621独立新帧，0重复/失败/跳过，35.219873fps；p50 28.20849ms/p95 31.279583/p99 32.945052/max37.122084。全部卡顿保留，结果cpu-profile/stable-result.json及原CSV/bootlog，不能用初进入场景/带计时器窗口约50fps替代暖场结论。

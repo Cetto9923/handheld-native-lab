@@ -1,0 +1,71 @@
+--- a/src/graphics/nvn_vulkan/engine/xbg_game.cpp
++++ b/src/graphics/nvn_vulkan/engine/xbg_game.cpp
+@@ -11,0 +12 @@
++#include "xbg_performance_hint.h"
+@@ -249,0 +251,52 @@
++// Diagnostic ADPF experiment: explicit Honor-only marker, default off. Android
++// owns scheduling/thermal policy. Neither an API error nor missing support is fatal.
++XbgPerformanceHint performance_hint;
++bool performance_hint_profile=false;
++uint64_t performance_hint_poll_at=0;
++std::string performance_hint_marker;
++static bool performance_hint_load(){
++#if defined(__ANDROID__)
++    static bool attempted=false;
++    if(attempted)return performance_hint.api.ready();
++    attempted=true;void *library=dlopen("libandroid.so",RTLD_NOW|RTLD_LOCAL);
++    if(!library)return false;
++    auto get=reinterpret_cast<APerformanceHintManager*(*)()>(dlsym(library,"APerformanceHint_getManager"));
++    auto &a=performance_hint.api;
++    a.create=reinterpret_cast<decltype(a.create)>(dlsym(library,"APerformanceHint_createSession"));
++    a.close=reinterpret_cast<decltype(a.close)>(dlsym(library,"APerformanceHint_closeSession"));
++    a.update=reinterpret_cast<decltype(a.update)>(dlsym(library,"APerformanceHint_updateTargetWorkDuration"));
++    a.report=reinterpret_cast<decltype(a.report)>(dlsym(library,"APerformanceHint_reportActualWorkDuration"));
++    if(get && a.create && a.close && a.update && a.report)a.manager=get();
++    if(!a.ready()){a={};dlclose(library);return false;}
++    // Keep the library reference for the resolved function pointers' lifetime.
++    return true;
++#else
++    return false;
++#endif
++}
++static void performance_hint_submit(uint64_t begin){
++    uint64_t frame=stats.presents.load();
++    if(frame>=performance_hint_poll_at){
++        performance_hint_poll_at=frame+30;bool requested=false;
++        if(performance_hint_profile){FILE *f=fopen(performance_hint_marker.c_str(),"rb");if(f){requested=fgetc(f)=='1';fclose(f);}}
++        if(requested!=performance_hint.enabled){
++            if(requested)performance_hint_load();
++            performance_hint.enable(requested);
++            xbg_logf("NVN ADPF requested=%u api=%u profile=%u marker=gfx-performance-hint",unsigned(requested),unsigned(performance_hint.api.ready()),unsigned(performance_hint_profile));
++        }
++    }
++#if defined(__ANDROID__)
++    if(performance_hint.enabled && !performance_hint.failed)performance_hint.submit(int32_t(gettid()),begin);
++#endif
++}
++static void performance_hint_frame(uint64_t target){
++#if defined(__ANDROID__)
++    if(!performance_hint.enabled || performance_hint.failed)return;
++    uint64_t before=performance_hint.creates;
++    bool sent=performance_hint.frame(int32_t(gettid()),timing_clock(),target);
++    if(performance_hint.failed || (sent && (before!=performance_hint.creates || performance_hint.reports%300==1)))
++        xbg_logf("NVN ADPF active=%u error=%d creates=%llu reports=%llu target_ns=%llu threads=%u,%u count=%zu",unsigned(performance_hint.session!=nullptr),performance_hint.last_error,(unsigned long long)performance_hint.creates,(unsigned long long)performance_hint.reports,(unsigned long long)performance_hint.target_ns,unsigned(performance_hint.session_tids[0]),unsigned(performance_hint.session_tids[1]),performance_hint.session_count);
++#else
++    (void)target;
++#endif
++}
+@@ -5604,0 +5658,4 @@
++    performance_hint.enable(false);performance_hint.reports=performance_hint.creates=0;performance_hint_poll_at=0;
++    {const char *tablet=getenv("FFRS_PROFILE_TABLET");performance_hint_profile=tablet && tablet[0]=='1' && properties.vendorID==0x5143 && !strcmp(properties.deviceName,"Adreno (TM) 735");}
++    {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');performance_hint_marker=(cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-performance-hint";}
++
+@@ -5819 +5876 @@
+-extern "C" int xbg_game_shutdown(){gfx_drain();gfx_async_stop();std::lock_guard<std::recursive_mutex> lock(mutex);if(!initialized)return 0;timing_report("shutdown-partial");provenance_close("SHUTDOWN");resolve_pending();submit_slots(true);save_pipeline_cache();pending_writebacks.clear();recent_indirect_batches.clear();pending_reports.clear();pending_events.clear();recording_events.clear();epochs.clear();VkResult r=vkQueueWaitIdle(cfg.queue);if(r!=VK_SUCCESS)return r;wtrack::release();destroy_slots();clear_pipeline_objects();cache_save_join();warm::shutdown();bright::shutdown();shutdown_rg16_proxy();clear_descriptor_caches();clear_render_pass_cache();images.clear();++images_epoch;for(auto &f:persistent_framebuffers)vkDestroyFramebuffer(cfg.device,f.second,nullptr);persistent_framebuffers.clear();image_index.clear();image_index_dirty=true;program_cache.clear();shaders.clear();textures.clear();texture_pool_cache=nullptr;samplers.clear();null_textures.clear();texture_pool_cache=nullptr;pools.clear();host_segments.clear();host_ranges.clear();host_bytes=0;cmd_range_lo=0;cmd_range_bytes=0;vkDestroyPipelineCache(cfg.device,pipeline_cache,nullptr);pipeline_cache=VK_NULL_HANDLE;vkDestroyCommandPool(cfg.device,command_pool,nullptr);command_pool=VK_NULL_HANDLE;if(submit_sem_inited && cfg.device){for(unsigned i=0;i<kMaxSlots;i++){if(submit_semaphores[i]!=VK_NULL_HANDLE)vkDestroySemaphore(cfg.device,submit_semaphores[i],nullptr);submit_semaphores[i]=VK_NULL_HANDLE;submit_sem_signaled[i]=false;}submit_sem_inited=false;last_signal_sem=VK_NULL_HANDLE;last_signal_slot=-1;}initialized=false;return 0;}
++extern "C" int xbg_game_shutdown(){gfx_drain();gfx_async_stop();std::lock_guard<std::recursive_mutex> lock(mutex);if(!initialized)return 0;performance_hint.enable(false);timing_report("shutdown-partial");provenance_close("SHUTDOWN");resolve_pending();submit_slots(true);save_pipeline_cache();pending_writebacks.clear();recent_indirect_batches.clear();pending_reports.clear();pending_events.clear();recording_events.clear();epochs.clear();VkResult r=vkQueueWaitIdle(cfg.queue);if(r!=VK_SUCCESS)return r;wtrack::release();destroy_slots();clear_pipeline_objects();cache_save_join();warm::shutdown();bright::shutdown();shutdown_rg16_proxy();clear_descriptor_caches();clear_render_pass_cache();images.clear();++images_epoch;for(auto &f:persistent_framebuffers)vkDestroyFramebuffer(cfg.device,f.second,nullptr);persistent_framebuffers.clear();image_index.clear();image_index_dirty=true;program_cache.clear();shaders.clear();textures.clear();texture_pool_cache=nullptr;samplers.clear();null_textures.clear();texture_pool_cache=nullptr;pools.clear();host_segments.clear();host_ranges.clear();host_bytes=0;cmd_range_lo=0;cmd_range_bytes=0;vkDestroyPipelineCache(cfg.device,pipeline_cache,nullptr);pipeline_cache=VK_NULL_HANDLE;vkDestroyCommandPool(cfg.device,command_pool,nullptr);command_pool=VK_NULL_HANDLE;if(submit_sem_inited && cfg.device){for(unsigned i=0;i<kMaxSlots;i++){if(submit_semaphores[i]!=VK_NULL_HANDLE)vkDestroySemaphore(cfg.device,submit_semaphores[i],nullptr);submit_semaphores[i]=VK_NULL_HANDLE;submit_sem_signaled[i]=false;}submit_sem_inited=false;last_signal_sem=VK_NULL_HANDLE;last_signal_slot=-1;}initialized=false;return 0;}
+@@ -5876 +5933 @@
+-   TimingRoot timing_root;CPU_SCOPE(Other);need(initialized && !failed,"Game Vulkan backend not initialized/healthy");uint64_t begin=timing_clock();snapshot_reset();uint64_t budget=0;
++   TimingRoot timing_root;CPU_SCOPE(Other);need(initialized && !failed,"Game Vulkan backend not initialized/healthy");uint64_t begin=timing_clock();performance_hint_submit(begin);snapshot_reset();uint64_t budget=0;
+@@ -6129 +6186 @@
+-static void xbg_present_texture_now(const win_t *window,const tex_t *texture){std::lock_guard<std::recursive_mutex> lock(mutex);preflight_cpu_reads();{SiteScope site(SITE_PRESENT);cur_op=61;TimingRoot timing_root;CPU_SCOPE(Other);need(initialized&&cfg.present,"Game presentation callback not installed");uint64_t present_begin=timing_clock();Image &im=get_image(texture,false);need(im.gpu_written,"Game tried to present a texture never rendered");probe_present(im);Commands c;im.transition(c.command,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);fire_trace_present(im,c.command);c.finish();if(flame_diag_enabled)flame_diag_roi_record(im);submit_slots(false);if(flame_diag_enabled){gpu_sync(perf.sync_readback);flame_diag_roi_read();}uint64_t pace_ns=xbg_frame_pace();int r;{CPU_SCOPE(Present);r=cfg.present(cfg.userdata,window->native,im.image,im.fmt,im.width,im.height,window->crop,window->interval);}if(r){static unsigned err_n=0;if(err_n++<10)xbg_logf("Game presentation dropped/warning: %d",r);}++stats.presents;if(flame_diag_enabled){fdiag_present=texture->serial;fdiag_present_mem=uint64_t(uintptr_t(texture->mem));
++static void xbg_present_texture_now(const win_t *window,const tex_t *texture){std::lock_guard<std::recursive_mutex> lock(mutex);preflight_cpu_reads();{SiteScope site(SITE_PRESENT);cur_op=61;TimingRoot timing_root;CPU_SCOPE(Other);need(initialized&&cfg.present,"Game presentation callback not installed");uint64_t present_begin=timing_clock();Image &im=get_image(texture,false);need(im.gpu_written,"Game tried to present a texture never rendered");probe_present(im);Commands c;im.transition(c.command,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);fire_trace_present(im,c.command);c.finish();if(flame_diag_enabled)flame_diag_roi_record(im);submit_slots(false);if(flame_diag_enabled){gpu_sync(perf.sync_readback);flame_diag_roi_read();}performance_hint_frame(s_target_frame_ns);uint64_t pace_ns=xbg_frame_pace();int r;{CPU_SCOPE(Present);r=cfg.present(cfg.userdata,window->native,im.image,im.fmt,im.width,im.height,window->crop,window->interval);}if(r){static unsigned err_n=0;if(err_n++<10)xbg_logf("Game presentation dropped/warning: %d",r);}++stats.presents;if(flame_diag_enabled){fdiag_present=texture->serial;fdiag_present_mem=uint64_t(uintptr_t(texture->mem));

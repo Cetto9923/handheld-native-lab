@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-11-08T01:09:42.038814+08:00",
+  "updated_at": "2026-11-08T01:48:43.369145+08:00",
   "phase": "Honor dark VS dropped-read cause localized in replay; production shader and Limit/audio gates open",
   "coordinator": "Codex /root takeover",
   "integration_branch": "work/rg477m-native",
@@ -1515,16 +1515,19 @@
         ".local/honor-delivery-20261107/",
         "BASELINE-HONOR-20261107.md",
         "coordination/results/HONOR-EFFECT-BUNDLES-20261107.json",
-        "scripts/graphics/audit_gfxr_attachment_prefix.py"
+        "scripts/graphics/audit_gfxr_attachment_prefix.py",
+        "src/graphics/nvn_vulkan/engine/xbg_performance_hint.h",
+        "tests/device/test_performance_hint.cpp",
+        "coordination/experiments/honor-adpf-20261108/"
       ],
       "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
       "branch": "work/honor-gtpro-30hz",
       "acquired_at": "2026-11-07T09:31:51.768908+08:00",
-      "checkpoint": "CPUprofile30frames complete, ordinary2a4 clean45.9968s1621newframes35.219873fps; original marker backedup/inactive, PID17815 field/PADhidden. Captureraw22/88 auditedactualbinary tightrow/stencil, guard/fire/summon limitedPASS. Next bounded ADPF on/off candidate after checkpoint commit; no perfsourceyet, no audio acceptance.",
+      "checkpoint": "ADPF ABA51.9177/52.0336/52.1293 no measurable adapter benefit, limited prepace interval; source archived experiments/honor-adpf, ownedCPP reversepatch restores27sourcehashes/zero production diff. Original2a4 actualbaseAPKsha verifiedPID24343 fullfield/PADhidden,45.706s38.069fps; markers0backups/inactive. Graphicsbaseline214/tag unchanged, captureNO/viewfullNOTFIXED/audioNOTRUN. Next original-run sameDraw fullattachments viaexistingoptin appprobe, no exporterrebuild or oldtrace download.",
       "write_state": "ACTIVE",
       "ownership_retained": true,
       "device_authority": "Latest user: device idle, can debug any time without asking; stop only actual conflict/disconnect. Honor only, preserve data.",
-      "checkpoint_at": "2026-11-08T01:09:42.038814+08:00",
+      "checkpoint_at": "2026-11-08T01:48:43.369145+08:00",
       "source_baseline_commit": "214fd794fb436de14155e8954908685ae2120c21",
       "source_baseline_tag": "honor-graphics-20261107"
     }
@@ -5334,19 +5337,20 @@
     "updated_at": "2026-11-08T00:06:40.658359+08:00"
   },
   "honor_postbaseline_20261108": {
-    "updated_at": "2026-11-08T01:09:42.038814+08:00",
+    "updated_at": "2026-11-08T01:48:43.369145+08:00",
     "guard": "PASS limited Defend+hit",
     "fire": "PASS limited Explosion",
     "summon": "PASS limited Bahamut summon+first assist",
     "shield_magic": "NOT_RUN",
     "audio": "NOT_RUN user",
-    "device_state": "PID17815 ordinary2a4 full-screen stationary same field/PADhidden; CPUmarker renamed gfx-cpu-profile-measured-20261108, no active profile/recorder/input script",
+    "device_state": "PID24343 actualbaseAPK2a4 verified, full-screen stationaryfield/PADhidden; no input/recording wrapper; hint and CPU markers backedup/inactive",
     "evidence": ".local/honor-device-profiles/flame-20261104/dark-shader-retranslate-20261107/postbaseline-20261108",
     "CAPTURE_COMPLETE": "NO",
     "VIEW_VALIDITY": "NOT_FIXED",
-    "fps60": "NOT_MET35.219873 latest45.9968s1621newframes",
+    "fps60": "NOT_MET38.069342 restored2a4; prior35.219873; candidateOFF/ON/OFF~52 confounded acrossprocess and no withinAPKHINT benefit",
     "raw_layout_audit": "22attachments/88files; tightrow verified actual binary, allocation tail excluded; rawstencil8files percondition present",
     "cpu_profile": "DONE30frames, typedscope counters; no direct speedup",
-    "next": "bounded opt-in official ADPF hint candidate, not implemented yet"
+    "next": "original-run same-draw full attachment closure, existing native probe and existing GFXR source capture; no tool rebuild/download",
+    "ADPF": "REJECTED_THIS_ADAPTER; archived own source, production restored27manifesthashes"
   }
 }
