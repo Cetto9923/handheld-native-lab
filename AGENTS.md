@@ -42,3 +42,7 @@
 - 项目完成不等于某阶段完成。只验证一段流程时，称该流程验证版，不声称完整游戏兼容。原生方案是否可行、性能是否达标尚待实证。
 - 自有源码、脚本、任务与交接记录进 Git；游戏、生成的游戏代码、密钥、固件、APK、存档、完整资源和大型原始证据进 .local/，不提交或上传。关键本地产物要有路径、大小、摘要和再生成命令；Git 只保存清理后的索引。
 - 不承诺后台刷新。每次派工、交回、阻塞、阶段推进或交接时更新 state.json、HANDOFF.md，并运行 python3 scripts/project_status.py --write。
+
+
+---
+See also AGENTS-HONOR.md for Honor-only device isolation rules.

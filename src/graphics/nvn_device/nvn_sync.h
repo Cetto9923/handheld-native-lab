@@ -127,6 +127,10 @@ void nvn_sync_family_fence_object(ffrs_sync *object);
  * This lifetime protection does not make premature guest Finalize valid NVN
  * synchronization, nor does it signal any GPU work by itself. */
 ffrs_sync *nvn_sync_family_object(const void *sync);
+/* Managed reference for a command recording/package. The pointer stays valid
+ * until the matching release, even if the guest reinitializes/finalizes. */
+ffrs_sync *nvn_sync_family_managed_acquire(const void *sync,void **token);
+void nvn_sync_family_managed_release(void *token);
 
 /* Whether a sync object has a fence. A sync object that does not exist has
  * none. */

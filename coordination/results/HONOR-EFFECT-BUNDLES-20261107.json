@@ -1,0 +1,65 @@
+{
+  "schema": "honor-effect-bundle-index-v1",
+  "input_game_version": "retail main.nso / existing user-supplied FFRS data; exact component hashes in private source-hashes-complete.json",
+  "runtime_shader_rewrite_source": "src/graphics/nvn_vulkan/engine/xbg_spirv_stencil.h + xbg_compaction_sum.h; natural XGS, not replay-mapped/probe shaders",
+  "translator_revision": "nxnative 8e0916bf04f6fb8542c52ed01b166a8796158ca0",
+  "pinned_source_notice": "coordination/results/P-CX-TERRA-dark-limit-OSS-NOTES.md",
+  "bundles": [
+    {
+      "path": "FFRS/shaders/41a5a80e5242a26c.xgs",
+      "bytes": 264500,
+      "sha256": "920bd097145794a616d8ca3db3fadf53b8eb280044d2ac3fe870284e8f647e68"
+    },
+    {
+      "path": "FFRS/shaders/55703bda012e6143.xgs",
+      "bytes": 265064,
+      "sha256": "57d4b77c34b14998f5fa3e6da63c612303d09790c38155c959168f62de41661e"
+    },
+    {
+      "path": "FFRS/shaders/632c207422d773c5.xgs",
+      "bytes": 221640,
+      "sha256": "f357cce8dd504409bc2fc6360e94129d85b36e59d8c75dd0d68cf0e01d513632"
+    },
+    {
+      "path": "FFRS/shaders/85e1ac91e6c257c9.xgs",
+      "bytes": 265092,
+      "sha256": "07bb4a590fd749cdc620e5da098004da6f36e07324c448e761fc0408688fa95a"
+    },
+    {
+      "path": "FFRS/shaders/8771a4b045b64a8d.xgs",
+      "bytes": 423664,
+      "sha256": "865482340615721f247d5a4fd6cebf4fec3d14aaff8f8a992c618a4a0ca872fa"
+    },
+    {
+      "path": "FFRS/shaders/8fad1c673a152dcf.xgs",
+      "bytes": 423648,
+      "sha256": "31c7ef8367ef8c70e0b73e2d6d06c6f23a7797b2e4fa1b6b6268ffece88740c1"
+    },
+    {
+      "path": "FFRS/shaders/92bc83108242870a.xgs",
+      "bytes": 265064,
+      "sha256": "57d4b77c34b14998f5fa3e6da63c612303d09790c38155c959168f62de41661e"
+    },
+    {
+      "path": "FFRS/shaders/ae837eccb9eff189.xgs",
+      "bytes": 208644,
+      "sha256": "1541730bb1c759f78ca31028d4c202296abbb9622c8a6590027f0a9ee6b4480b"
+    },
+    {
+      "path": "FFRS/shaders/c10d897690572731.xgs",
+      "bytes": 423664,
+      "sha256": "865482340615721f247d5a4fd6cebf4fec3d14aaff8f8a992c618a4a0ca872fa"
+    },
+    {
+      "path": "FFRS/shaders/d1d6ceeb3a7b2c18.xgs",
+      "bytes": 220808,
+      "sha256": "62d51057373b7d52ee418b7906bc144ffa0f3e90daffcf78f3dea3c7322a5c86"
+    },
+    {
+      "path": "FFRS/shaders/db559389b69f3033.xgs",
+      "bytes": 254752,
+      "sha256": "7e0723610e7b6d146ccf85541fa2cb734b1230ed4a1ee0ce2192dd969d2cb6a7"
+    }
+  ],
+  "reproduction": "Use retained .local/honor-device-profiles/flame-20261104/dark-shader-retranslate-20261107 translation manifests/jobs and original translator/bin/dmsh_xlate; Limit tail translate_pre.py/translate_colors.py. Do not deploy replay remap or terminal probes. Exact input Maxwell/C1 recovery and commands are indexed in RESULT. Game-derived inputs/outputs remain private."
+}

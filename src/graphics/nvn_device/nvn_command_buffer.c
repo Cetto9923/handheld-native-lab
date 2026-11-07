@@ -107,6 +107,14 @@ typedef struct nvn_cb_dependency {
     uint64_t handle,generation;
     struct nvn_cb_dependency *next;
 } nvn_cb_dependency;
+typedef struct nvn_cb_sync_ref {
+    void *token;
+    ffrs_sync *object;
+    struct nvn_cb_sync_ref *next;
+} nvn_cb_sync_ref;
+static void sync_refs_free(nvn_cb_sync_ref *ref){
+    while(ref){nvn_cb_sync_ref *next=ref->next;nvn_sync_family_managed_release(ref->token);free(ref);ref=next;}
+}
 
 /* A segment of the command memory of a recording.
  *
@@ -170,6 +178,7 @@ typedef struct {
     int source_known,source_spilled;
     nvn_cb_source *sources;
     nvn_cb_dependency *dependencies;
+    nvn_cb_sync_ref *sync_refs;
 
     /* The records of the recording, seen from the outside. */
     nvn_recorded_command *views;
@@ -194,6 +203,7 @@ typedef struct nvn_cb_package {
     nvn_cb_copy *copies;
     nvn_cb_source *sources;
     nvn_cb_dependency *dependencies;
+    nvn_cb_sync_ref *sync_refs;
     uint64_t generation;
     size_t readers;
     int retired;
@@ -297,6 +307,7 @@ static size_t segment_guest_used(nvn_cb_buffer *slot) {
  * the package's memory when the recording ended, and is given back when the
  * recording was abandoned. */
 static void segments_release(nvn_cb_buffer *slot, int keep_guest_memory) {
+    if(!keep_guest_memory){sync_refs_free(slot->sync_refs);slot->sync_refs=NULL;}
     nvn_cb_segment *segment = slot->segments;
     while (segment) {
         nvn_cb_segment *next = segment->next;
@@ -550,6 +561,8 @@ static nvn_cb_package *package_find(uint64_t handle) {
  * retain bytes until their synchronous consumers have returned. */
 static void packages_collect(void) {
     nvn_cb_package *garbage=NULL;
+    uint64_t census_reclaimed=0,census_created=0,census_live=0,census_bytes=0,census_grants=0;
+    static uint64_t last_census_bucket=0; /* protected by s_lock */
     pthread_mutex_lock(&s_lock);
     nvn_cb_package **at=&s_packages;
     while(*at){nvn_cb_package *p=*at;if(p->retired&&!p->readers){
@@ -557,10 +570,18 @@ static void packages_collect(void) {
         s_stats.packages_reclaimed++;
     }else at=&p->next;}
     s_stats.package_bytes=s_package_bytes;
+    uint64_t bucket=s_stats.packages_reclaimed/4096u;
+    if(bucket>last_census_bucket){
+        last_census_bucket=bucket;census_reclaimed=s_stats.packages_reclaimed;
+        census_created=s_stats.packages;census_live=s_package_count;
+        census_bytes=s_package_bytes;census_grants=s_stats.source_grants;
+    }
     pthread_mutex_unlock(&s_lock);
+    if(census_reclaimed)fprintf(stderr,"[nvn] command package census: created=%" PRIu64 " reclaimed=%" PRIu64 " live=%" PRIu64 " bytes=%" PRIu64 " grants=%" PRIu64 "\n",
+        census_created,census_reclaimed,census_live,census_bytes,census_grants);
     while(garbage){nvn_cb_package *p=garbage;garbage=p->next;
         if(nvn_engine_pool_del)nvn_engine_pool_del(p->bytes);
-        copies_free(p->copies);sources_free(p->sources);dependencies_free(p->dependencies);
+        copies_free(p->copies);sources_free(p->sources);dependencies_free(p->dependencies);sync_refs_free(p->sync_refs);
         free(p->segments);free(p->bytes);free(p);
     }
 }
@@ -872,7 +893,7 @@ static int record_write_locked(nvn_cb_buffer *slot, uint32_t op, uint32_t payloa
  * memory, and the end of the recording still hands out a handle. Only when
  * the bound of the host's lent memory is reached is a command refused, and
  * that refusal is named. */
-static uint8_t *record_open(void *buffer, uint32_t op, uint32_t payload_size) {
+static uint8_t *record_open_owned(void *buffer, uint32_t op, uint32_t payload_size,nvn_cb_sync_ref *sync_ref) {
     uint8_t *payload = NULL;
     int tries = 0;
     s_stats.calls++;
@@ -891,6 +912,10 @@ static uint8_t *record_open(void *buffer, uint32_t op, uint32_t payload_size) {
                 s_stats.dropped++;
             } else {
                 int result = record_write_locked(slot, op, payload_size, 0, &payload);
+                if(result==NVN_CB_RESERVE_OK && sync_ref){
+                    uint64_t pointer=(uint64_t)(uintptr_t)sync_ref->object;
+                    memcpy(payload,&pointer,sizeof(pointer));sync_ref->next=slot->sync_refs;slot->sync_refs=sync_ref;
+                }
                 if (result == NVN_CB_RESERVE_FULL) {
                     need_more = 1;
                     needed = align8((size_t)payload_size + 8u);
@@ -934,6 +959,10 @@ static uint8_t *record_open(void *buffer, uint32_t op, uint32_t payload_size) {
         s_stats.overflow++;
         return NULL;
     }
+}
+
+static uint8_t *record_open(void *buffer,uint32_t op,uint32_t payload_size){
+    return record_open_owned(buffer,op,payload_size,NULL);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1797,24 +1826,15 @@ void nvn_command_buffer_rec_signal_event(void *buffer, const void *event, uint32
 }
 
 void nvn_command_buffer_rec_fence_sync(void *buffer, const void *sync) {
-    uint8_t *record;
-    ffrs_sync *object = NULL;
-    if (sync) {
-        /* The record names the sync object that the replay layer fences by
-         * writing the fence value into it. It is the object the sync family
-         * keeps its own state in, so that the guest's wait and the replay
-         * layer's fence are looking at the same fence. */
-        object = nvn_sync_family_object(sync);
-        if (!object) {
-            s_stats.dropped++;
-            return;
-        }
-    }
-    record = (uint8_t *)record_open(buffer, NVN_CB_OP_FENCE_SYNC, 8);
-    if (!record) return;
-    {
-        uint64_t pointer = (uint64_t)(uintptr_t)object;
-        memcpy(record, &pointer, sizeof(pointer));
+    if(!sync){(void)record_open(buffer,NVN_CB_OP_FENCE_SYNC,8);return;}
+    nvn_cb_sync_ref *ref=calloc(1,sizeof(*ref));
+    if(!ref){s_stats.dropped++;return;}
+    ref->object=nvn_sync_family_managed_acquire(sync,&ref->token);
+    if(!ref->object){free(ref);s_stats.dropped++;return;}
+    /* Payload and ownership are published together while the recorder is
+     * locked. A rejected record still belongs to the caller and is released. */
+    if(!record_open_owned(buffer,NVN_CB_OP_FENCE_SYNC,8,ref)){
+        nvn_sync_family_managed_release(ref->token);free(ref);
     }
 }
 
@@ -2349,6 +2369,7 @@ uint64_t nvn_command_buffer_end_recording(void *buffer) {
                         package->copies = slot->copies;
                         package->sources=slot->sources;
                         package->dependencies=slot->dependencies;
+                        package->sync_refs=slot->sync_refs;
                         package->generation=++s_package_generation;
                         package->next = s_packages;
                         s_packages = package;
@@ -2361,6 +2382,7 @@ uint64_t nvn_command_buffer_end_recording(void *buffer) {
                         slot->copies = NULL;
                         slot->sources=NULL;
                         slot->dependencies=NULL;
+                        slot->sync_refs=NULL;
                         /* The command memory is the package's now, and the
                          * segments of the host's memory go back to the pool:
                          * the package holds a copy of their records. */

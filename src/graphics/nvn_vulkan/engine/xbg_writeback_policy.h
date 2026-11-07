@@ -3,6 +3,7 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 inline bool xbg_wb_range_valid(uint64_t address,uint64_t bytes) {
     return bytes && bytes<=UINT64_MAX-address;
@@ -13,6 +14,35 @@ inline bool xbg_wb_contains(uint64_t outer,uint64_t outer_bytes,uint64_t inner,u
 }
 inline bool xbg_wb_overlaps(uint64_t a,uint64_t a_bytes,uint64_t b,uint64_t b_bytes) {
     return xbg_wb_range_valid(a,a_bytes) && xbg_wb_range_valid(b,b_bytes) && a<b+b_bytes && b<a+a_bytes;
+}
+// pending_view chooses the newest overlapping writeback. If it only covers
+// part of a requested storage texel, the host must merge on the CPU before
+// acquiring a command slot or any resources that slot retirement can release.
+template<class Pending>
+bool xbg_wb_needs_partial_merge(const Pending &pending,uint64_t address,uint64_t bytes){
+    for(auto it=pending.rbegin();it!=pending.rend();++it)
+        if(xbg_wb_overlaps(address,bytes,it->addr,it->bytes))
+            return !xbg_wb_contains(it->addr,it->bytes,address,bytes);
+    return false;
+}
+// Plan oldest-to-newest overlays onto a CPU baseline. This only describes
+// ranges; the caller must separately validate GPU buffer lifetime, barriers,
+// pending reports, and VkBuffer copy alignment before recording any command.
+struct XbgWritebackOverlay {size_t index;uint64_t source_offset,dest_offset,bytes;};
+template<class Pending>
+bool xbg_wb_overlay_plan(const Pending &pending,uint64_t address,uint64_t bytes,std::vector<XbgWritebackOverlay> &out){
+    if(!xbg_wb_range_valid(address,bytes) || (bytes&3u))return false;
+    std::vector<XbgWritebackOverlay> plan;
+    for(size_t i=0;i<pending.size();++i){
+        const auto &w=pending[i];if(!xbg_wb_range_valid(w.addr,w.bytes))return false;
+        if(!xbg_wb_overlaps(address,bytes,w.addr,w.bytes))continue;
+        const uint64_t begin=address>w.addr?address:w.addr;
+        const uint64_t end=(address+bytes)<(w.addr+w.bytes)?address+bytes:w.addr+w.bytes;
+        XbgWritebackOverlay copy{i,begin-w.addr,begin-address,end-begin};
+        if((copy.source_offset|copy.dest_offset|copy.bytes)&3u)return false;
+        plan.push_back(copy);
+    }
+    if(plan.empty())return false;out.swap(plan);return true;
 }
 template<class Pending,class Flags,class Aliases>
 bool xbg_wb_superseded(const Pending &pending,size_t index,bool enabled,Flags flags,Aliases aliases) {

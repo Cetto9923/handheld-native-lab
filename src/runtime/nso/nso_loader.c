@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include "nso_loader.h"
 #include <errno.h>
+#include <dlfcn.h>
 #include <fcntl.h>
 #include <inttypes.h>
 #include <pthread.h>
@@ -521,6 +522,13 @@ static void fault_handler(int sig,siginfo_t *si,void *context) {
     nso_module *m=fault_module?fault_module:fault_scope_owner;
     fprintf(stderr,"[fault] signal=%d pc=0x%" PRIx64 " fa=0x%" PRIx64,sig,pc,fa);
     if(m && range(pc-nso_base(m),1,m->image_size))fprintf(stderr," module_offset=0x%" PRIx64,pc-nso_base(m));
+    {
+        Dl_info dli={0};
+        if(dladdr((void*)(uintptr_t)pc,&dli))
+            fprintf(stderr," pc_dso=%s base=%p sym=%s off=0x%" PRIx64,dli.dli_fname?dli.dli_fname:"?",dli.dli_fbase,dli.dli_sname?dli.dli_sname:"?",(uint64_t)(pc-(uintptr_t)dli.dli_fbase));
+        if(dladdr((void*)(uintptr_t)lr,&dli))
+            fprintf(stderr," lr_dso=%s base=%p sym=%s off=0x%" PRIx64,dli.dli_fname?dli.dli_fname:"?",dli.dli_fbase,dli.dli_sname?dli.dli_sname:"?",(uint64_t)(lr-(uintptr_t)dli.dli_fbase));
+    }
     fputc('\n',stderr);
     if(m) {
         int i=sentinel_index(m->import_traps,m->trap_size,pc);

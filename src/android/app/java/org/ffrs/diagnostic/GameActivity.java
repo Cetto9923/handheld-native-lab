@@ -75,6 +75,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     private Button importButton, storageButton, recoverButton, cancelButton;
     private static final int PICK_DATA_BUNDLE = 4701;
     private boolean guestStarted, surfaceReady;
+    private DeviceProfile selectedDeviceProfile;
     private AudioManager audioManager;
     private final AudioDeviceCallback audioCallback = new GameAudioDeviceCallback();
     private static final class GameAudioDeviceCallback extends AudioDeviceCallback {
@@ -598,10 +599,31 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         dataInstaller.attach(this);
         audioManager = (AudioManager)getSystemService(AUDIO_SERVICE);
         if (audioManager != null) audioManager.registerAudioDeviceCallback(audioCallback, new Handler(Looper.getMainLooper()));
+        selectedDeviceProfile = deviceProfile();
         configureWindow();
         surface_view = new SurfaceView(this);
-        // A/B: RGBA_8888 is the format the 30 FPS build used.
-        surface_view.getHolder().setFormat(PixelFormat.RGBA_8888);
+        /* The surface format decides whether the compositor reads an alpha
+         * channel out of the frame the Vulkan presenter copies into it. The
+         * game's final frame carries alpha zero over the whole 3D world and
+         * uses alpha only for the HUD pass, so a surface with a real alpha
+         * channel makes the compositor blend the world away and only the
+         * mini-map survives.
+         *
+         * The tablet profile asks for an opaque surface: PixelFormat.OPAQUE
+         * lets the platform pick a format with no alpha bits, and
+         * RGBX_8888 is the explicit opaque-colour variant of RGBA_8888.
+         * The community port of this game (d2r-mobile, revision
+         * f1e4b081af8ea65d95f0bf490a568cb657c3917e, MIT) does not call
+         * setFormat at all and lets the surface keep its default opaque
+         * format, and it creates the swapchain with
+         * VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR.
+         *
+         * The handheld keeps RGBA_8888, the format it has always used. */
+        if (selectedDeviceProfile != null && selectedDeviceProfile.usesDockedRendering()) {
+            surface_view.getHolder().setFormat(PixelFormat.RGBX_8888);
+        } else {
+            surface_view.getHolder().setFormat(PixelFormat.RGBA_8888);
+        }
         FrameLayout root = new FrameLayout(this);
         rootLayout = root;
         root.addView(surface_view, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -612,6 +634,30 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         inputManager = (InputManager)getSystemService(Context.INPUT_SERVICE);
         if (inputManager != null) inputManager.registerInputDeviceListener(deviceListener, new Handler(Looper.getMainLooper()));
         surface_view.getHolder().addCallback(this);
+    }
+
+    private DeviceProfile deviceProfile() {
+        String override = "";
+        File dir = getExternalFilesDir(null);
+        if (dir != null) {
+            try (java.util.Scanner input = new java.util.Scanner(new File(dir, "device-profile"))) {
+                if (input.hasNext()) override = input.next();
+            } catch (java.io.FileNotFoundException ignored) { }
+        }
+        String soc = Build.VERSION.SDK_INT >= 31 ? Build.SOC_MODEL : Build.HARDWARE;
+        int smallestWidthDp = getResources().getConfiguration().smallestScreenWidthDp;
+        DeviceProfile profile = DeviceProfile.select(soc, smallestWidthDp, override);
+        Display display = getWindowManager().getDefaultDisplay();
+        Display.Mode mode = display == null ? null : display.getMode();
+        Log.i(TAG, "device_profile id=" + profile.id + " soc=" + soc
+                + " override=" + (override.isEmpty() ? "none" : override)
+                + " smallest_width_dp=" + smallestWidthDp
+                + " target_short_edge=" + profile.targetShortEdge
+                + " target_fps=" + profile.targetFps
+                + " display_short_edge=" + (mode == null ? 0 : Math.min(mode.getPhysicalWidth(), mode.getPhysicalHeight()))
+                + " display_hz=" + (mode == null ? 0 : mode.getRefreshRate())
+                + " gpu=see_vulkan_device_log render_resolution=unapplied");
+        return profile;
     }
 
     // Read the same per-package target marker as the native limiter. A changed
@@ -627,7 +673,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             } catch (java.io.FileNotFoundException ignored) {
             }
         }
-        return 30;
+        return selectedDeviceProfile.targetFps;
     }
 
     private float requestedDisplayHz = 60.0f;
@@ -656,9 +702,28 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             Display display = getWindowManager().getDefaultDisplay();
             if ((target == 0 || target > 30) && display != null) {
                 Display.Mode current = display.getMode();
+                boolean compatibleOnly = false;
+                File dataDir = getExternalFilesDir(null);
+                if (selectedDeviceProfile.usesDockedRendering() && target > 0 && dataDir != null) {
+                    try (java.io.FileInputStream marker = new java.io.FileInputStream(new File(dataDir, "gfx-display-compatible"))) {
+                        compatibleOnly = marker.read() == '1';
+                    } catch (java.io.IOException ignored) { }
+                }
+                if (compatibleOnly) {
+                    boolean found = false;
+                    for (Display.Mode mode : display.getSupportedModes()) {
+                        float multiple = mode.getRefreshRate() / target;
+                        if (mode.getPhysicalWidth() == current.getPhysicalWidth()
+                                && mode.getPhysicalHeight() == current.getPhysicalHeight()
+                                && multiple >= 1.0f && Math.abs(multiple - Math.round(multiple)) < 0.01f) found = true;
+                    }
+                    compatibleOnly = found;
+                }
                 for (Display.Mode mode : display.getSupportedModes()) {
+                    float multiple = target > 0 ? mode.getRefreshRate() / target : 0;
                     if (mode.getPhysicalWidth() == current.getPhysicalWidth()
                             && mode.getPhysicalHeight() == current.getPhysicalHeight()
+                            && (!compatibleOnly || (multiple >= 1.0f && Math.abs(multiple - Math.round(multiple)) < 0.01f))
                             && mode.getRefreshRate() > requestedDisplayHz) {
                         requestedDisplayHz = mode.getRefreshRate();
                         lp.preferredDisplayModeId = mode.getModeId();
@@ -808,9 +873,36 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         return findMissingPaks(dir).isEmpty();
     }
 
-    /** Candidate game folders, best first.  The user puts the whole FFRS folder (main.nso + romfs) on the phone's storage. */
+    /** Bounded shallow scan searching for directories named "FFRS" (case-insensitive) under roots. */
+    private static void shallowScanForFfrs(File dir, int depth, int maxDepth, java.util.List<File> results, int[] counter, int maxEntries) {
+        if (dir == null || depth > maxDepth || counter[0] >= maxEntries) return;
+        File[] children = dir.listFiles();
+        if (children == null) return;
+        for (File child : children) {
+            if (counter[0] >= maxEntries) break;
+            if (child == null || !child.isDirectory()) continue;
+            counter[0]++;
+            String name = child.getName();
+            if (name.startsWith(".") || name.equalsIgnoreCase("Android") || name.equalsIgnoreCase("DCIM")
+                    || name.equalsIgnoreCase("Pictures") || name.equalsIgnoreCase("Movies")
+                    || name.equalsIgnoreCase("Music") || name.equalsIgnoreCase("Alarms")
+                    || name.equalsIgnoreCase("Podcasts") || name.equalsIgnoreCase("Ringtones")
+                    || name.equalsIgnoreCase("Notifications") || name.equalsIgnoreCase("Recordings")
+                    || name.equalsIgnoreCase("MIUI") || name.equalsIgnoreCase("ColorOS")
+                    || name.equalsIgnoreCase("Huawei") || name.equalsIgnoreCase("Honor")) {
+                continue;
+            }
+            if (name.equalsIgnoreCase("FFRS")) {
+                if (!results.contains(child)) results.add(child);
+            } else if (depth < maxDepth) {
+                shallowScanForFfrs(child, depth + 1, maxDepth, results, counter, maxEntries);
+            }
+        }
+    }
+
+    /** Candidate game folders, best first. The user puts the whole FFRS folder (main.nso + romfs) on the storage. */
     private File[] candidateGameDirs() {
-        java.util.ArrayList<File> list = new java.util.ArrayList<File>();
+        java.util.LinkedHashSet<File> list = new java.util.LinkedHashSet<File>();
         // Public roots come from Android, not a device model or a fixed SD UUID.
         java.util.LinkedHashSet<File> roots = new java.util.LinkedHashSet<File>();
         roots.add(Environment.getExternalStorageDirectory());
@@ -827,19 +919,78 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 }
             }
         }
-        // Bounded common paths: never recursively walk game assets or the disk.
-        String[] common = {"FFRS", "ffrs", "Games/FFRS", "games/FFRS",
-                "Download/FFRS", "Documents/FFRS"};
+        // Also discover storage volume roots across all Android versions via getExternalFilesDirs.
+        for (File ext : getExternalFilesDirs(null)) {
+            if (ext != null) {
+                String path = ext.getAbsolutePath();
+                int idx = path.indexOf("/Android/data");
+                if (idx > 0) {
+                    File r = new File(path.substring(0, idx));
+                    if (r.isDirectory() && r.canRead()) roots.add(r);
+                }
+            }
+        }
+        // Direct examination of mounted storage locations (e.g. SD cards, USB OTG).
+        File storageRoot = new File("/storage");
+        if (storageRoot.isDirectory()) {
+            File[] subs = storageRoot.listFiles();
+            if (subs != null) {
+                for (File s : subs) {
+                    if (s != null && s.isDirectory() && s.canRead()) {
+                        String name = s.getName();
+                        if (!name.equals("self") && !name.equals("knox")) {
+                            roots.add(s);
+                        }
+                    }
+                }
+            }
+        }
+        File mntMediaRw = new File("/mnt/media_rw");
+        if (mntMediaRw.isDirectory()) {
+            File[] subs = mntMediaRw.listFiles();
+            if (subs != null) {
+                for (File s : subs) {
+                    if (s != null && s.isDirectory() && s.canRead()) {
+                        roots.add(s);
+                    }
+                }
+            }
+        }
+
+        // Bounded common paths: standard directory structures on internal/external volumes.
+        String[] common = {
+            "FFRS", "ffrs",
+            "Games/FFRS", "games/FFRS", "Games/ffrs", "games/ffrs",
+            "Download/FFRS", "download/FFRS", "Download/ffrs", "download/ffrs",
+            "Documents/FFRS", "documents/FFRS", "Documents/ffrs", "documents/ffrs",
+            "ROMs/FFRS", "roms/FFRS", "ROMs/ffrs", "roms/ffrs",
+            "Switch/FFRS", "switch/FFRS", "Switch/ffrs", "switch/ffrs",
+            "ROMs/Switch/FFRS", "roms/switch/FFRS"
+        };
         for (File root : roots) {
             for (String child : common) list.add(new File(root, child));
             list.add(root); // Data copied directly to a removable volume root.
         }
+
+        // App-specific external storage: works out-of-the-box without MANAGE_EXTERNAL_STORAGE permission.
         for (File ext : getExternalFilesDirs(null)) {
             if (ext != null) {
                 list.add(new File(ext, "game"));
                 list.add(new File(ext, "FFRS"));
+                list.add(new File(ext, "ffrs"));
+                list.add(ext);
             }
         }
+
+        // Bounded shallow scan for FFRS directories located 1-2 levels down from roots.
+        java.util.ArrayList<File> shallowFound = new java.util.ArrayList<File>();
+        int[] counter = new int[]{0};
+        for (File root : roots) {
+            shallowScanForFfrs(root, 1, 2, shallowFound, counter, 64);
+        }
+        for (File f : shallowFound) list.add(f);
+
+        // Retain development and baseline RG477M candidate directories.
         list.add(new File(RG477M_GAME_DIR));
         list.add(new File(DEFAULT_GAME_DIR));
         File tmp = new File("/data/local/tmp");
@@ -858,10 +1009,25 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
     private String resolveGameDir() {
         String fromIntent = getIntent() == null ? null : getIntent().getStringExtra("game_dir");
-        if (fromIntent != null && !fromIntent.isEmpty()) return fromIntent;
-        if (dataInstaller != null && dataInstaller.managed)
-            return dataInstaller.root == null ? null : dataInstaller.root.getAbsolutePath();
-        for (File d : candidateGameDirs()) if (hasGame(d)) return d.getAbsolutePath();
+        if (fromIntent != null && !fromIntent.isEmpty()) {
+            Log.i(TAG, "resolveGameDir: intent override game_dir=" + fromIntent);
+            return fromIntent;
+        }
+        if (dataInstaller != null && dataInstaller.managed) {
+            String dir = dataInstaller.root == null ? null : dataInstaller.root.getAbsolutePath();
+            if (dir != null) {
+                Log.i(TAG, "resolveGameDir: managed installer root=" + dir);
+                return dir;
+            }
+        }
+        for (File d : candidateGameDirs()) {
+            if (hasGame(d)) {
+                String resolved = d.getAbsolutePath();
+                Log.i(TAG, "resolveGameDir: autodiscovered game_dir=" + resolved);
+                return resolved;
+            }
+        }
+        Log.w(TAG, "resolveGameDir: no valid game directory found in candidates");
         return null;
     }
 
@@ -993,26 +1159,73 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         }
         File ext = getExternalFilesDir(null);
         StringBuilder sb = new StringBuilder();
-        sb.append("\u672a\u627e\u5230\u6e38\u620f\u6570\u636e\n\n");
-        sb.append("\u8bf7\u628a\u6574\u4e2a FFRS \u6587\u4ef6\u5939\uff08\u5185\u542b main.nso \u548c romfs\uff09\u62f7\u8d1d\u5230\u624b\u673a\u5b58\u50a8\u7684\u6839\u76ee\u5f55\uff1a\n");
-        sb.append(Environment.getExternalStorageDirectory().getAbsolutePath()).append("/FFRS\n\n");
-        if (ext != null) sb.append("\u6216\u653e\u5230\u672c\u5e94\u7528\u4e13\u5c5e\u76ee\u5f55\uff08\u4e0d\u9700\u8981\u6743\u9650\uff09\uff1a\n").append(ext.getAbsolutePath()).append("/game\n\n");
-        if (!allFilesAccess()) sb.append("\u5f53\u524d\u5c1a\u672a\u6388\u4e88\u300c\u6240\u6709\u6587\u4ef6\u8bbf\u95ee\u300d\u6743\u9650\uff0c\u8bf7\u70b9\u4e0b\u9762\u7684\u6309\u94ae\u6388\u6743\uff0c\u56de\u6765\u540e\u518d\u68c0\u67e5\u3002");
-        else sb.append("\u5df2\u6388\u6743\u3002\u62f7\u8d1d\u5b8c\u6210\u540e\u70b9\u300c\u91cd\u65b0\u68c0\u67e5\u300d\u3002");
-        sb.append("\n\n\u68c0\u67e5\u7ed3\u679c\uff08").append(new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(new java.util.Date())).append("\uff09\uff1a\n");
-        for (File d : candidateGameDirs()) {
+        sb.append("【最终幻想：共鸣 · 数据安装与自动发现】\n\n");
+
+        File[] candidates = candidateGameDirs();
+        java.util.ArrayList<File> partialDirs = new java.util.ArrayList<File>();
+        for (File d : candidates) {
             if (d == null) continue;
-            boolean nso = new File(d, "main.nso").canRead(), rom = new File(d, "romfs").isDirectory();
-            sb.append(d.getAbsolutePath()).append("  main.nso:").append(nso ? "\u2713" : "\u2717").append("  romfs:").append(rom ? "\u2713" : "\u2717");
-            if (nso && rom) {
+            boolean nso = new File(d, "main.nso").canRead();
+            boolean rom = new File(d, "romfs").isDirectory();
+            if (nso || rom) partialDirs.add(d);
+        }
+
+        if (!partialDirs.isEmpty()) {
+            for (File d : partialDirs) {
+                boolean nso = new File(d, "main.nso").canRead();
+                boolean rom = new File(d, "romfs").isDirectory();
                 java.util.List<String> missing = findMissingPaks(d);
-                if (!missing.isEmpty()) {
-                    sb.append("  missing paks: ").append(missing.toString());
-                } else {
-                    sb.append("  paks:\u2713");
+                if (nso && rom && !missing.isEmpty()) {
+                    sb.append("⚠️ 【数据包不完整】发现目录：").append(d.getAbsolutePath()).append("\n");
+                    sb.append("缺少以下关键 Pak 文件（位于 romfs/FFRS/Content/Paks/）：\n");
+                    for (String name : missing) {
+                        sb.append("   ❌ ").append(name).append("\n");
+                    }
+                    sb.append("请将缺失文件放入对应目录后，点击下方「重新检查游戏数据」。\n\n");
+                } else if (!nso || !rom) {
+                    sb.append("⚠️ 【发现部分文件】").append(d.getAbsolutePath())
+                            .append("\n  main.nso: ").append(nso ? "✓ 正常" : "❌ 未找到")
+                            .append("\n  romfs: ").append(rom ? "✓ 正常" : "❌ 未找到")
+                            .append("\n请确保 FFRS 文件夹内同时包含 main.nso 与完整的 romfs/ 目录。\n\n");
                 }
             }
-            sb.append("\n");
+        } else {
+            sb.append("未在设备常见路径中检测到完整游戏数据。\n\n");
+        }
+
+        if (!allFilesAccess()) {
+            sb.append("⚠️ 【尚未授予所有文件访问权限】\n");
+            sb.append("Android 11+ 系统限制访问共享存储。\n");
+            sb.append("若将游戏放在手机内置存储或外置存储卡，请点击下方「授予文件访问权限」按钮，在系统设置中允许本应用管理所有文件。\n\n");
+        } else {
+            sb.append("✓ 已获取「所有文件访问」权限。\n\n");
+        }
+
+        sb.append("【支持的数据放置路径】（拷入其一即可自动识别）：\n");
+        sb.append("1. 内部存储根目录：\n   ").append(Environment.getExternalStorageDirectory().getAbsolutePath()).append("/FFRS\n");
+        sb.append("2. 常用游戏目录：\n   ").append(Environment.getExternalStorageDirectory().getAbsolutePath()).append("/Games/FFRS\n");
+        sb.append("3. 外置存储卡 / USB OTG：\n   <外置存储根目录>/FFRS 或 <外置存储根目录>/Games/FFRS\n");
+        if (ext != null) {
+            sb.append("4. 应用专属目录（免权限）：\n   ").append(ext.getAbsolutePath()).append("/game\n");
+        }
+
+        sb.append("\n检查时间：").append(new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(new java.util.Date())).append("\n");
+        sb.append("已检查候选路径：\n");
+        int count = 0;
+        for (File d : candidates) {
+            if (d == null) continue;
+            boolean nso = new File(d, "main.nso").canRead(), rom = new File(d, "romfs").isDirectory();
+            sb.append(" • ").append(d.getAbsolutePath()).append(" [nso:").append(nso ? "✓" : "✗").append(" rom:").append(rom ? "✓" : "✗");
+            if (nso && rom) {
+                java.util.List<String> missing = findMissingPaks(d);
+                if (!missing.isEmpty()) sb.append(" 缺Pak:").append(missing.size()).append("个");
+                else sb.append(" 完整✓");
+            }
+            sb.append("]\n");
+            if (++count >= 8 && partialDirs.isEmpty()) {
+                sb.append(" • ... 其余 ").append(candidates.length - count).append(" 个候选路径\n");
+                break;
+            }
         }
         setupText.setText(sb.toString());
         setupView.setVisibility(View.VISIBLE);
@@ -1085,6 +1298,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 Log.w(TAG, "failed to persist operation_mode: " + t.getMessage());
             }
         }
+        GameWindowNative.setProfileTargetFps(selectedDeviceProfile.targetFps,
+                selectedDeviceProfile.usesDockedRendering());
         String log_path = files == null ? null : new File(files, "guest_boot.log").getAbsolutePath();
         Thread guest = new Thread(new GuestBootTask(image, romfs, log_path, saveRoot), "ffrs-guest");
         guest.start();

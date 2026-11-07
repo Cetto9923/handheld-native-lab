@@ -14,14 +14,199 @@ struct ProbeTexelSnapshot {
 };
 struct ProbeQuerySnapshot {VkQueryPool pool;uint32_t index;unsigned group,draw;};
 struct ProbeState {
+    unsigned repeat_captures=0;bool repeat_mode=false,compact=false,spell_depth_test=false,spell_cull_test=false,spell_no_tests=false,spell_empty_fragment=false,spell_prepass_no_depth_write=false;
     bool waiting=false,lut=false;std::string base,group;unsigned groups=0,draws=0,snapshots=0;uint64_t extra_buffer_bytes=0;
     std::vector<ProbeSurface> outputs,inputs;std::map<std::vector<uint64_t>,std::string> saved;
     std::vector<ProbeTexelSnapshot> texels;
     std::vector<ProbeQuerySnapshot> queries;
 } probe;
+// Short, opt-in CPU-uniform trace. It does not submit commands, read GPU
+// buffers, or wait for a fence. Descriptor memo is bypassed while recording
+// so the captured values are the actual per-draw uniform snapshots.
+struct FireUniformTrace {
+    FILE *file=nullptr;uint64_t first=0,last=0,frame=~0ull;unsigned ordinal=0;
+    uint32_t mask=0,instances=0,c5=0,c0=0,c1=0,pos[3]{};bool draw=false;
+    uint64_t texel_frame=~0ull,image_frame=~0ull,compute_frame=~0ull;unsigned compute_ordinal=0,compute_kind=0;bool compute_active=false,compute_bound=false;Buffer compute_buffer{},sort_outputs[2]{};uint64_t compute_guest=0,sort_guest[2]{};bool sort_bound[2]{};std::string binary_path;
+} fire_uniform_trace;
+bool fire_trace_active(){return fire_uniform_trace.file!=nullptr;}
+bool fire_trace_overlap(uint64_t addr,uint64_t bytes){auto &t=fire_uniform_trace;return t.file && t.compute_guest && xbg_wb_overlaps(addr,bytes,t.compute_guest,32768);}
+void fire_trace_tick(){
+    auto &t=fire_uniform_trace;uint64_t frame=stats.presents.load();
+    if(t.file && frame>=t.last){xbg_logf("FIRE_UB_TRACE end frame=%llu",(unsigned long long)frame);fclose(t.file);t.file=nullptr;t.draw=false;}
+    if(t.file)return;
+    static uint64_t poll=0;if(frame<poll)return;poll=frame+30;
+    std::string marker=probe.base+"/gfx-fire-ub-trace";FILE *m=fopen(marker.c_str(),"rb");if(!m)return;
+    unsigned n=0;int ok=fscanf(m,"%u",&n);fclose(m);remove(marker.c_str());
+    if(ok!=1 || n<1 || n>300)return;
+    std::string path=probe.base+"/fire-ub-"+std::to_string(getpid())+"-f"+std::to_string(frame)+".csv";
+    t.file=fopen(path.c_str(),"wb");if(!t.file){xbg_logf("FIRE_UB_TRACE open failed errno=%d",errno);return;}
+    t.first=frame;t.last=frame+n;t.frame=~0ull;t.ordinal=0;t.texel_frame=t.image_frame=t.compute_frame=~0ull;t.compute_ordinal=0;t.compute_active=t.compute_bound=false;
+    t.binary_path=probe.base+"/fire-async-"+std::to_string(getpid())+"-f"+std::to_string(frame)+".bin";
+    fprintf(t.file,"frame,monotonic_ns,draw,instances,mask,c5_40,c0_1604,c1_12,posx_bits,posy_bits,posz_bits\n");
+    xbg_logf("FIRE_UB_TRACE start frame=%llu end=%llu path=%s",(unsigned long long)t.first,(unsigned long long)t.last,path.c_str());
+}
+void fire_trace_draw_begin(unsigned instances){
+    auto &t=fire_uniform_trace;t.draw=false;if(!t.file || !state.shader[0] || state.shader[0]->key!="8b27994fdc0e32c9")return;
+    uint64_t f=stats.presents.load()+1;if(t.frame!=f){t.frame=f;t.ordinal=0;}++t.ordinal;
+    t.instances=instances;t.mask=t.c5=t.c0=t.c1=0;memset(t.pos,0,sizeof t.pos);t.draw=true;
+}
+void fire_trace_buffer(const std::string &shader,unsigned stage,unsigned binding,unsigned element,const void *data,size_t bytes){
+    auto &t=fire_uniform_trace;if(!t.draw || shader!="8b27994fdc0e32c9" || stage!=0 || element || !data)return;
+    auto word=[&](size_t off,uint32_t &out,uint32_t bit){if(off<=bytes && bytes-off>=4){memcpy(&out,static_cast<const uint8_t*>(data)+off,4);t.mask|=bit;}};
+    if(binding==60)word(40,t.c5,1);else if(binding==72)word(1604,t.c0,2);else if(binding==6)word(12,t.c1,4);
+    else if(binding==78 && bytes>=28){memcpy(t.pos,static_cast<const uint8_t*>(data)+16,12);t.mask|=8;}
+}
+void fire_trace_draw_end(){
+    auto &t=fire_uniform_trace;if(!t.draw || !t.file)return;
+    fprintf(t.file,"%llu,%llu,%u,%u,%u,%u,%u,%u,%u,%u,%u\n",(unsigned long long)t.frame,(unsigned long long)timing_clock(),t.ordinal,t.instances,t.mask,t.c5,t.c0,t.c1,t.pos[0],t.pos[1],t.pos[2]);t.draw=false;
+}
+// Diagnostic copies retire with the existing slot fence; no explicit GPU wait.
+void fire_trace_save(Slot &slot,Buffer out,uint32_t kind,uint64_t frame,uint32_t w,uint32_t h,uint32_t fmt){
+    std::string path=fire_uniform_trace.binary_path;
+    slot.retire.handles.push_back([out,path,kind,frame,w,h,fmt]() mutable {
+        out.invalidate();FILE *f=fopen(path.c_str(),"ab");if(!f)return;
+        uint32_t header[8]={0x46545241,1,kind,uint32_t(frame),w,h,fmt,uint32_t(out.size)};
+        fwrite(header,sizeof header,1,f);fwrite(out.mapped,1,out.size,f);fclose(f);
+    });
+}
+void fire_trace_texel(const std::string &shader,unsigned stage,unsigned binding,unsigned element,const Buffer &src,uint64_t bytes,uint64_t guest){
+    auto &t=fire_uniform_trace;uint64_t frame=stats.presents.load()+1;
+    if(!t.file || t.texel_frame==frame || shader!="8b27994fdc0e32c9" || stage || binding!=12 || element || bytes!=32768 || !src.buffer || src.size<bytes || (src.offset&3))return;
+    Slot &slot=recording_slot();end_open_pass();Buffer out=readback_buffer(size_t(bytes));
+    if(src.buffer==out.buffer && src.offset<out.offset+bytes && out.offset<src.offset+bytes)return;
+    VkMemoryBarrier before{VK_STRUCTURE_TYPE_MEMORY_BARRIER};before.srcAccessMask=VK_ACCESS_MEMORY_WRITE_BIT;before.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT;
+    vkCmdPipelineBarrier(slot.cmd,VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,1,&before,0,nullptr,0,nullptr);
+    VkBufferCopy copy{src.offset,out.offset,bytes};vkCmdCopyBuffer(slot.cmd,src.buffer,out.buffer,1,&copy);
+    VkMemoryBarrier after{VK_STRUCTURE_TYPE_MEMORY_BARRIER};after.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;after.dstAccessMask=VK_ACCESS_HOST_READ_BIT;
+    vkCmdPipelineBarrier(slot.cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,1,&after,0,nullptr,0,nullptr);
+    t.texel_frame=frame;fire_trace_save(slot,out,1,frame,t.ordinal,uint32_t(guest),uint32_t(guest>>32));
+}
+void fire_trace_uniform_gpu(const std::string &shader,unsigned stage,unsigned binding,unsigned element,const Buffer &src,size_t offset,size_t bytes){
+    auto &t=fire_uniform_trace;if(!t.file || !t.draw || shader!="8b27994fdc0e32c9" || stage || element || (binding!=60 && binding!=72))return;
+    size_t word=binding==60?40:1604;if(word+4>bytes || !src.buffer || ((src.offset+offset+word)&3))return;
+    Slot &slot=recording_slot();end_open_pass();Buffer out=readback_buffer(4);
+    VkMemoryBarrier before{VK_STRUCTURE_TYPE_MEMORY_BARRIER};before.srcAccessMask=VK_ACCESS_MEMORY_WRITE_BIT;before.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT;
+    vkCmdPipelineBarrier(slot.cmd,VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,1,&before,0,nullptr,0,nullptr);
+    VkBufferCopy copy{src.offset+offset+word,out.offset,4};vkCmdCopyBuffer(slot.cmd,src.buffer,out.buffer,1,&copy);
+    VkMemoryBarrier after{VK_STRUCTURE_TYPE_MEMORY_BARRIER};after.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;after.dstAccessMask=VK_ACCESS_HOST_READ_BIT;
+    vkCmdPipelineBarrier(slot.cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,1,&after,0,nullptr,0,nullptr);
+    fire_trace_save(slot,out,3,stats.presents.load()+1,t.ordinal,binding,0);
+}
+// Snapshot the exact indirect command consumed by the later draw. CPU-side
+// draw metadata deliberately contains zero instances for this GPU path.
+void fire_trace_indirect(const GpuIndexedArgs *args){
+    auto &t=fire_uniform_trace;if(!t.file || !t.draw || !args || !args->owned)return;
+    const Buffer &src=args->owned->view;size_t off=size_t(args->offset);
+    if((off&3) || off>src.size || src.size-off<20)return;
+    Slot &slot=recording_slot();end_open_pass();Buffer out=readback_buffer(20);
+    VkMemoryBarrier before{VK_STRUCTURE_TYPE_MEMORY_BARRIER};before.srcAccessMask=VK_ACCESS_MEMORY_WRITE_BIT;before.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT;
+    vkCmdPipelineBarrier(slot.cmd,VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,1,&before,0,nullptr,0,nullptr);
+    VkBufferCopy copy{src.offset+off,out.offset,20};vkCmdCopyBuffer(slot.cmd,src.buffer,out.buffer,1,&copy);
+    VkMemoryBarrier after{VK_STRUCTURE_TYPE_MEMORY_BARRIER};after.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;after.dstAccessMask=VK_ACCESS_HOST_READ_BIT;
+    vkCmdPipelineBarrier(slot.cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,1,&after,0,nullptr,0,nullptr);
+    fire_trace_save(slot,out,4,stats.presents.load()+1,t.ordinal,0,0);
+}
+void fire_trace_compute_begin(){
+    auto &t=fire_uniform_trace;t.compute_active=false;t.compute_bound=false;t.sort_bound[0]=t.sort_bound[1]=false;
+    if(!t.file || !state.shader[5] || (state.shader[5]->key!="b673e10f3da2451c" && state.shader[5]->key!="70a97cd190a8738f" && state.shader[5]->key!="ef4326df31036d24" && state.shader[5]->key!="527f4a4f540bfc19"))return;
+    t.compute_kind=state.shader[5]->key=="b673e10f3da2451c"?5:state.shader[5]->key=="70a97cd190a8738f"?6:state.shader[5]->key=="ef4326df31036d24"?11:12;
+    uint64_t frame=stats.presents.load()+1;if(t.compute_frame!=frame){t.compute_frame=frame;t.compute_ordinal=0;}++t.compute_ordinal;t.compute_active=true;
+}
+void fire_trace_compute_bind(const std::string &shader,unsigned stage,unsigned binding,unsigned element,const Buffer &src,size_t offset,size_t bytes,uint64_t guest){
+    auto &t=fire_uniform_trace;if(!t.file || !t.compute_active || stage!=5 || element || bytes<4096 || (offset&3))return;
+    if(t.compute_kind==5 && (shader!="b673e10f3da2451c" || binding!=47))return;
+    if(t.compute_kind==6 && (shader!="70a97cd190a8738f" || binding!=35 || guest!=t.compute_guest))return;
+    t.compute_buffer=src;t.compute_buffer.offset=offset;t.compute_buffer.size=4096;t.compute_guest=guest;t.compute_bound=true;
+}
+void fire_trace_last_input(const std::string &shader,unsigned stage,unsigned binding,unsigned element,const Buffer &src,size_t offset,size_t bytes,uint64_t guest){
+    auto &t=fire_uniform_trace;if(!t.file || !t.compute_active || t.compute_kind!=6 || shader!="70a97cd190a8738f" || stage!=5 || binding!=23 || element || bytes<4096 || guest!=t.compute_guest || (offset&3))return;
+    Slot &slot=recording_slot();end_open_pass();Buffer out=readback_buffer(4096);
+    VkMemoryBarrier before{VK_STRUCTURE_TYPE_MEMORY_BARRIER};before.srcAccessMask=VK_ACCESS_MEMORY_WRITE_BIT;before.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT;
+    vkCmdPipelineBarrier(slot.cmd,VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,1,&before,0,nullptr,0,nullptr);
+    VkBufferCopy copy{offset,out.offset,4096};vkCmdCopyBuffer(slot.cmd,src.buffer,out.buffer,1,&copy);
+    VkMemoryBarrier after{VK_STRUCTURE_TYPE_MEMORY_BARRIER};after.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;after.dstAccessMask=VK_ACCESS_HOST_READ_BIT;
+    vkCmdPipelineBarrier(slot.cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,1,&after,0,nullptr,0,nullptr);
+    fire_trace_save(slot,out,7,stats.presents.load()+1,t.compute_ordinal,uint32_t(guest),uint32_t(guest>>32));
+}
+// Preserve both ping-pong inputs at bind and both outputs after dispatch.
+void fire_trace_sort_buffer(const std::string &shader,unsigned stage,unsigned binding,unsigned element,const Buffer &src,size_t offset,size_t bytes,uint64_t guest,bool output){
+    auto &t=fire_uniform_trace;if(!t.file || !t.compute_active || t.compute_kind!=6 || shader!="70a97cd190a8738f" || stage!=5 || element || bytes<4096 || (offset&3))return;
+    if(output){if((binding!=29 && binding!=35) || bytes<32768)return;unsigned i=binding==29?0:1;t.sort_outputs[i]=src;t.sort_outputs[i].offset=offset;t.sort_outputs[i].size=32768;t.sort_guest[i]=guest;t.sort_bound[i]=true;return;}
+    if(binding!=11 && binding!=17 && binding!=23)return;size_t n=binding==11?4096:32768;if(bytes<n)return;Slot &slot=recording_slot();end_open_pass();Buffer out=readback_buffer(n);
+    VkMemoryBarrier b{VK_STRUCTURE_TYPE_MEMORY_BARRIER};b.srcAccessMask=VK_ACCESS_MEMORY_WRITE_BIT;b.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT;
+    vkCmdPipelineBarrier(slot.cmd,VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,1,&b,0,nullptr,0,nullptr);
+    VkBufferCopy copy{offset,out.offset,n};vkCmdCopyBuffer(slot.cmd,src.buffer,out.buffer,1,&copy);
+    VkMemoryBarrier a{VK_STRUCTURE_TYPE_MEMORY_BARRIER};a.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;a.dstAccessMask=VK_ACCESS_HOST_READ_BIT;
+    vkCmdPipelineBarrier(slot.cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,1,&a,0,nullptr,0,nullptr);
+    fire_trace_save(slot,out,8,stats.presents.load()+1,t.compute_ordinal*100+binding,uint32_t(guest),uint32_t(guest>>32));
+}
+void fire_trace_sort_uniform(const std::string &shader,unsigned stage,unsigned binding,unsigned element,const Buffer &src,size_t offset,size_t bytes){
+    auto &t=fire_uniform_trace;if(!t.file || !t.compute_active || t.compute_kind!=6 || shader!="70a97cd190a8738f" || stage!=5 || binding!=41 || element || bytes<32 || ((src.offset+offset)&3))return;
+    Slot &slot=recording_slot();end_open_pass();Buffer out=readback_buffer(32);
+    VkMemoryBarrier b{VK_STRUCTURE_TYPE_MEMORY_BARRIER};b.srcAccessMask=VK_ACCESS_MEMORY_WRITE_BIT;b.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT;
+    vkCmdPipelineBarrier(slot.cmd,VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,1,&b,0,nullptr,0,nullptr);
+    VkBufferCopy copy{src.offset+offset,out.offset,32};vkCmdCopyBuffer(slot.cmd,src.buffer,out.buffer,1,&copy);
+    VkMemoryBarrier a{VK_STRUCTURE_TYPE_MEMORY_BARRIER};a.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;a.dstAccessMask=VK_ACCESS_HOST_READ_BIT;
+    vkCmdPipelineBarrier(slot.cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,1,&a,0,nullptr,0,nullptr);
+    fire_trace_save(slot,out,10,stats.presents.load()+1,t.compute_ordinal,0,0);
+}
+void fire_trace_sort_end(VkCommandBuffer cmd){
+    auto &t=fire_uniform_trace;if(!t.file || !t.compute_active || t.compute_kind!=6)return;Slot &slot=recording_slot();if(slot.cmd!=cmd)return;
+    for(unsigned i=0;i<2;i++)if(t.sort_bound[i]){Buffer src=t.sort_outputs[i],out=readback_buffer(32768);
+        VkMemoryBarrier b{VK_STRUCTURE_TYPE_MEMORY_BARRIER};b.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT;b.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT;
+        vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,1,&b,0,nullptr,0,nullptr);
+        VkBufferCopy copy{src.offset,out.offset,32768};vkCmdCopyBuffer(cmd,src.buffer,out.buffer,1,&copy);
+        VkMemoryBarrier a{VK_STRUCTURE_TYPE_MEMORY_BARRIER};a.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;a.dstAccessMask=VK_ACCESS_HOST_READ_BIT;
+        vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,1,&a,0,nullptr,0,nullptr);
+        fire_trace_save(slot,out,9,stats.presents.load()+1,t.compute_ordinal*100+(i?35:29),uint32_t(t.sort_guest[i]),uint32_t(t.sort_guest[i]>>32));}
+}
+void fire_trace_hist_buffer(const std::string &shader,unsigned stage,unsigned binding,unsigned element,const Buffer &src,size_t offset,size_t bytes,uint64_t guest,bool output){
+    auto &t=fire_uniform_trace;if(!t.file || !t.compute_active || (t.compute_kind!=11 && t.compute_kind!=12) || stage!=5 || element || (offset&3) || bytes<4096)return;
+    if(shader!="ef4326df31036d24" && shader!="527f4a4f540bfc19")return;
+    if(output){if(binding!=17)return;t.sort_outputs[0]=src;t.sort_outputs[0].offset=offset;t.sort_outputs[0].size=4096;t.sort_guest[0]=guest;t.sort_bound[0]=true;return;}
+    if(binding!=11)return;Slot &slot=recording_slot();end_open_pass();Buffer out=readback_buffer(4096);
+    VkMemoryBarrier b{VK_STRUCTURE_TYPE_MEMORY_BARRIER};b.srcAccessMask=VK_ACCESS_MEMORY_WRITE_BIT;b.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT;
+    vkCmdPipelineBarrier(slot.cmd,VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,1,&b,0,nullptr,0,nullptr);
+    VkBufferCopy copy{offset,out.offset,4096};vkCmdCopyBuffer(slot.cmd,src.buffer,out.buffer,1,&copy);
+    VkMemoryBarrier a{VK_STRUCTURE_TYPE_MEMORY_BARRIER};a.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;a.dstAccessMask=VK_ACCESS_HOST_READ_BIT;
+    vkCmdPipelineBarrier(slot.cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,1,&a,0,nullptr,0,nullptr);
+    fire_trace_save(slot,out,t.compute_kind==11?11:13,stats.presents.load()+1,t.compute_ordinal,uint32_t(guest),uint32_t(guest>>32));
+}
+void fire_trace_hist_end(VkCommandBuffer cmd){
+    auto &t=fire_uniform_trace;if(!t.file || !t.compute_active || (t.compute_kind!=11 && t.compute_kind!=12) || !t.sort_bound[0])return;
+    Slot &slot=recording_slot();if(slot.cmd!=cmd)return;Buffer src=t.sort_outputs[0],out=readback_buffer(4096);
+    VkMemoryBarrier b{VK_STRUCTURE_TYPE_MEMORY_BARRIER};b.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT;b.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT;
+    vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,1,&b,0,nullptr,0,nullptr);
+    VkBufferCopy copy{src.offset,out.offset,4096};vkCmdCopyBuffer(cmd,src.buffer,out.buffer,1,&copy);
+    VkMemoryBarrier a{VK_STRUCTURE_TYPE_MEMORY_BARRIER};a.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;a.dstAccessMask=VK_ACCESS_HOST_READ_BIT;
+    vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,1,&a,0,nullptr,0,nullptr);
+    fire_trace_save(slot,out,t.compute_kind==11?12:14,stats.presents.load()+1,t.compute_ordinal,uint32_t(t.sort_guest[0]),uint32_t(t.sort_guest[0]>>32));
+}
+void fire_trace_compute_end(VkCommandBuffer cmd){
+    auto &t=fire_uniform_trace;if(!t.file || !t.compute_active || !t.compute_bound)return;
+    Buffer src=t.compute_buffer;Slot &slot=recording_slot();if(slot.cmd!=cmd)return;Buffer out=readback_buffer(4096);
+    VkMemoryBarrier before{VK_STRUCTURE_TYPE_MEMORY_BARRIER};before.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT;before.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT;
+    vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,1,&before,0,nullptr,0,nullptr);
+    VkBufferCopy copy{src.offset,out.offset,4096};vkCmdCopyBuffer(cmd,src.buffer,out.buffer,1,&copy);
+    VkMemoryBarrier after{VK_STRUCTURE_TYPE_MEMORY_BARRIER};after.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;after.dstAccessMask=VK_ACCESS_HOST_READ_BIT;
+    vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,1,&after,0,nullptr,0,nullptr);
+    fire_trace_save(slot,out,t.compute_kind,stats.presents.load()+1,t.compute_ordinal,uint32_t(t.compute_guest),uint32_t(t.compute_guest>>32));t.compute_active=false;
+}
+void fire_trace_present(Image &im,VkCommandBuffer cmd){
+    auto &t=fire_uniform_trace;uint64_t frame=stats.presents.load()+1;
+    if(!t.file || t.image_frame==frame || im.width<512 || im.height<512 || im.bpp!=4 || im.samples!=VK_SAMPLE_COUNT_1_BIT || !(im.usage&VK_IMAGE_USAGE_TRANSFER_SRC_BIT))return;
+    uint32_t x=im.width*255/1000,y=im.height*600/1000,w=im.width*84/1000,h=im.height*119/1000;
+    Slot &slot=recording_slot();if(slot.cmd!=cmd)return;Buffer out=readback_buffer(size_t(w)*h*4);
+    VkBufferImageCopy region{};region.bufferOffset=out.offset;region.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};region.imageOffset={int32_t(x),int32_t(y),0};region.imageExtent={w,h,1};
+    vkCmdCopyImageToBuffer(cmd,im.image,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,out.buffer,1,&region);
+    VkMemoryBarrier after{VK_STRUCTURE_TYPE_MEMORY_BARRIER};after.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;after.dstAccessMask=VK_ACCESS_HOST_READ_BIT;
+    vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,1,&after,0,nullptr,0,nullptr);
+    t.image_frame=frame;fire_trace_save(slot,out,2,frame,w,h,unsigned(im.fmt));
+}
 bool probe_is_active(){return capture.probe && capture.trace && stats.presents.load()+1==capture.frame;}
 void probe_draw_occlusion(){
-    if(!probe_is_active() || !state.shader[4] || state.shader[4]->key!="f62f4204ee4db0da")return;
+    if(!probe_is_active() || !state.shader[4] || (state.shader[4]->key!="f62f4204ee4db0da" &&
+       !(probe.compact && (state.shader[4]->key=="c0adc062e4b8e8fa" || state.shader[4]->key=="b7dd0f48aea00196"))))return;
     capture_log("PROBE_QUERY_RECORDED group=%u draw=%u active=%u countSamples=%u batch=%u index=%u",probe.groups,probe.draws,unsigned(open_occlusion.cmd!=VK_NULL_HANDLE),unsigned(state.count_samples),unsigned(occlusion_batch_enabled),open_occlusion.index);
     if(open_occlusion.cmd && probe.queries.size()<64)probe.queries.push_back({open_occlusion.pool,open_occlusion.index,probe.groups,probe.draws});
 }
@@ -39,9 +224,22 @@ void probe_flush_queries(){
 void probe_texel_buffer(const std::string &shader,unsigned stage,unsigned binding,unsigned element,
                         const Buffer &source,VkFormat format,uint64_t guest,uint64_t full_bytes,bool resident){
     const bool geometry=binding==12 || binding==18 || binding==24 || binding==30 || binding==36 || binding==42 || binding==48;
-    if(!probe_is_active() || shader!="b0284572b5f180f2" || stage!=0 || !geometry || element!=0)return;
-    const size_t bytes=size_t(std::min<uint64_t>(full_bytes,65536))&~size_t(3);
-    if(!source.buffer || (source.offset&3) || !bytes || bytes>source.size ||
+    const bool dark_pair=probe.compact && (shader=="db5f1e2dd1c9ef3d" || shader=="41a5a80e5242a26c");
+    if(!probe_is_active() || (shader!="b0284572b5f180f2" && !(probe.repeat_mode && flame_diag_key(shader)>=0) && !dark_pair) || stage!=0 || !geometry || element!=0)return;
+    if(dark_pair && binding==18 && full_bytes && full_bytes<4){
+        char label[96];snprintf(label,sizeof(label),"probe-smalltexel-g%u-d%u-b%u",probe.groups,probe.draws,binding);
+        capture_log("PROBE_SMALL_TEXEL group=%u draw=%u shader=%s binding=%u guest=%#llx vk=%u bytes=%llu resident=%u mapped=%u label=%s",probe.groups,probe.draws,shader.c_str(),binding,(unsigned long long)guest,unsigned(format),(unsigned long long)full_bytes,unsigned(resident),unsigned(source.mapped!=nullptr),label);
+        if(source.mapped && full_bytes<=source.size){capture.active=true;capture_data(label,source.mapped,size_t(full_bytes));capture.active=false;}
+    }
+    size_t bytes=size_t(std::min<uint64_t>(full_bytes,65536))&~size_t(3);
+    bool padded_small=false;
+    // A resident texel is an arena view. Vulkan copies require four-byte
+    // alignment; prove the enclosing VkBuffer has room before copying padding.
+    if(dark_pair && binding==18 && resident && full_bytes==2 && !(source.offset&3)){
+        for(const auto &arena:texel_arena)for(const auto &chunk:arena.chunks)
+            if(chunk.buffer==source.buffer && source.offset<=chunk.size && chunk.size-source.offset>=4){bytes=4;padded_small=true;}
+    }
+    if(!source.buffer || (source.offset&3) || !bytes || (!padded_small && bytes>source.size) ||
        probe.extra_buffer_bytes>8ull*1024*1024 || bytes>8ull*1024*1024-probe.extra_buffer_bytes){
         capture_log("PROBE_TEXEL_SKIP group=%u shader=%s binding=%u bytes=%llu sourceBytes=%zu",probe.groups,shader.c_str(),binding,(unsigned long long)full_bytes,source.size);return;
     }
@@ -59,6 +257,7 @@ void probe_texel_buffer(const std::string &shader,unsigned stage,unsigned bindin
     after.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;after.dstAccessMask=VK_ACCESS_HOST_READ_BIT;
     vkCmdPipelineBarrier(slot.cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,1,&after,0,nullptr,0,nullptr);
     probe.extra_buffer_bytes+=bytes;
+    if(padded_small)capture_log("PROBE_TEXEL_PADDED group=%u binding=%u validBytes=2 copiedBytes=4",probe.groups,binding);
     probe.texels.push_back({std::move(owned),shader,stage,binding,element,probe.groups,probe.draws,format,guest,full_bytes,bytes,resident});
 }
 void probe_flush_texels(){
@@ -78,6 +277,18 @@ void probe_image_read_barrier(const Image &im,bool in_open,VkImageAspectFlags re
     bool depth=open_pass.depth_attached && !open_pass.images.empty() && open_pass.images[open_pass.images.size()-1]==&im;
     VkStencilOpState f=stencil(false),b=stencil(true);++logged;
     xbg_logf("CODEX_IMAGE_READ frame=%llu op=%u image=%p serial=%llu vk=%u aspects=%#x readAspects=%#x depthAlias=%u prevAnyDSMayWrite=%u prevDepthMayWrite=%u prevStencilMayWrite=%u nextDT=%u nextDW=%u nextST=%u front=%u/%u/%u/%#x back=%u/%u/%u/%#x attachments=%zu fs=%s last_write=%llu barrier_seq=%llu",(unsigned long long)stats.presents.load(),cur_op,(const void*)im.image,(unsigned long long)im.source.serial,unsigned(im.fmt),unsigned(im.aspects),unsigned(read_aspects),unsigned(depth),unsigned(open_pass.depth_may_write),unsigned(open_pass.depth_writes),unsigned(open_pass.stencil_writes),unsigned(state.ds.dt),unsigned(state.ds.dw),unsigned(state.ds.st),unsigned(f.failOp),unsigned(f.passOp),unsigned(f.depthFailOp),f.writeMask,unsigned(b.failOp),unsigned(b.passOp),unsigned(b.depthFailOp),b.writeMask,open_pass.images.size(),state.shader[4]?state.shader[4]->key.c_str():"none",(unsigned long long)im.last_write,(unsigned long long)barrier_seq);
+}
+// Bounded, opt-in observation of the moon's depth sampling decision. Unlike
+// the frame probe this does not add GPU readback, barriers or submissions.
+void probe_depth_decision(const Image &im,bool in_open,bool needs_barrier,bool keep){
+    static unsigned logged=0;
+    if(logged>=80 || !probe.waiting || capture.trace || !state.shader[4] ||
+       state.shader[4]->key!="afaac670a96887d1")return;
+    FILE *file=fopen((probe.base+"/gfx-codex-probe").c_str(),"rb");
+    int value=file?fgetc(file):'0';if(file)fclose(file);if(value!='3')return;
+    ++logged;
+    xbg_logf("MOON_DEPTH_DECISION frame=%llu serial=%llu inOpen=%u needsBarrier=%u keep=%u enabled=%u previousDepthWrites=%u depthVisible=%u attachmentOnly=%u nextDepthWrite=%u nextStencil=%u layout=%u lastWrite=%llu barrierSeq=%llu",
+        (unsigned long long)stats.presents.load(),(unsigned long long)im.source.serial,unsigned(in_open),unsigned(needs_barrier),unsigned(keep),unsigned(depth_aspect_enabled),unsigned(open_pass.depth_writes),unsigned(open_pass.depth_sample_visible),unsigned(open_pass.attachment_only),unsigned(state.ds.dw),unsigned(state.ds.st),unsigned(im.layout),(unsigned long long)im.last_write,(unsigned long long)barrier_seq);
 }
 void probe_guest_barrier(uint32_t bits){
     static unsigned logged=0;if(!probe.waiting || capture.trace || !open_pass.cmd || logged>=120)return;
@@ -120,14 +331,14 @@ void probe_stencil(Image &im,uint32_t mip,uint32_t layer){
     char label[128];snprintf(label,sizeof(label),"probe-stencil-g%u-n%u-s%llu-m%u",probe.groups,probe.snapshots,(unsigned long long)im.source.serial,mip);
     capture_log("PROBE_STENCIL group=%u serial=%llu label=%s width=%u height=%u x=%u y=%u roiWidth=%u roiHeight=%u",probe.groups,(unsigned long long)im.source.serial,label,w,h,x,y,rw,rh);
     for(unsigned value=0;value<256;value++)if(counts[value])capture_log("PROBE_STENCIL_HIST group=%u value=%u count=%llu",probe.groups,value,(unsigned long long)counts[value]);
-    capture.active=true;capture_data(label,roi.data(),roi.size());capture.active=false;
+    if(!probe.compact){capture.active=true;capture_data(label,roi.data(),roi.size());capture.active=false;}
 }
 void probe_snapshot(const ProbeSurface &surface){
     Image &im=*surface.image;const view_t *v=surface.has_view?&surface.view:nullptr;
     const uint32_t mip=v && v->set_levels?v->base_level:0,layer=v && v->set_layers?v->min_layer:0;
     if(mip>=im.levels || layer>=im.layers || im.samples!=VK_SAMPLE_COUNT_1_BIT || im.layout==VK_IMAGE_LAYOUT_UNDEFINED){capture_log("PROBE_SKIP role=%s reason=uninitialized-or-range",surface.role.c_str());return;}
     std::vector<uint64_t> key{uint64_t(im.image),im.content_version,mip,layer};
-    auto prior=probe.saved.find(key);if(prior!=probe.saved.end()){capture_log("PROBE_REF group=%u role=%s serial=%llu image=%p version=%llu fileLabel=%s",probe.groups,surface.role.c_str(),(unsigned long long)im.source.serial,(void*)im.image,(unsigned long long)im.content_version,prior->second.c_str());return;}
+    auto prior=probe.saved.find(key);if(prior!=probe.saved.end() && surface.role!="present"){capture_log("PROBE_REF group=%u role=%s serial=%llu image=%p version=%llu fileLabel=%s",probe.groups,surface.role.c_str(),(unsigned long long)im.source.serial,(void*)im.image,(unsigned long long)im.content_version,prior->second.c_str());return;}
     if(probe.snapshots>=1024 && surface.role!="present"){capture_log("PROBE_SKIP role=%s reason=1024-snapshot-limit",surface.role.c_str());return;}
     const uint32_t w=std::max(1u,im.width>>mip),h=std::max(1u,im.height>>mip),z=std::max(1u,im.depth>>mip);
     VkImageAspectFlags plane=(im.aspects&VK_IMAGE_ASPECT_DEPTH_BIT)?VK_IMAGE_ASPECT_DEPTH_BIT:im.aspects;
@@ -160,7 +371,7 @@ void probe_snapshot(const ProbeSurface &surface){
         capture_log("PROBE_SPRITE_ATLAS group=%u serial=%llu label=%s width=%u height=%u vk=%u bytes=%llu",probe.groups,(unsigned long long)im.source.serial,full_label.c_str(),w,h,unsigned(im.fmt),(unsigned long long)bytes);
         capture.active=true;capture_data(full_label.c_str(),raw,size_t(bytes));capture.active=false;
     }
-    if(z==1 && w>=1000 && h>=500 && (surface.role=="color0" || surface.role=="color3")){
+    if(!probe.compact && z==1 && w>=1000 && h>=500 && (surface.role=="color0" || surface.role=="color3")){
         const uint32_t x=w/3,y=h/2,rw=w/3,rh=h/2;std::vector<uint8_t> roi(size_t(rw)*rh*bpp);
         for(uint32_t row=0;row<rh;row++)memcpy(roi.data()+size_t(row)*rw*bpp,raw+(size_t(y+row)*w+x)*bpp,size_t(rw)*bpp);
         std::string roi_label=std::string(label)+"-roi";capture_log("PROBE_ROI group=%u role=%s serial=%llu label=%s vk=%u x=%u y=%u width=%u height=%u bpp=%u",probe.groups,surface.role.c_str(),(unsigned long long)im.source.serial,roi_label.c_str(),unsigned(im.fmt),x,y,rw,rh,bpp);
@@ -212,8 +423,9 @@ void probe_draw_end(Pass &pass){
     }
 }
 void probe_buffer(const std::string &shader,unsigned stage,unsigned binding,unsigned element,const void *data,size_t bytes){
+    fire_trace_buffer(shader,stage,binding,element,data,bytes);
     if(!probe_is_active())return;
-    const bool effect=shader=="f62f4204ee4db0da" || shader=="9b0acd9875f7c44a" || shader=="5fe1d12402b04134" || shader=="b0284572b5f180f2" || shader=="1e222af40b26bd25" || shader=="9528f530e1c95ce5" || shader=="c2ca757a9f517e96" || shader=="6018ff2b44b763d7";
+    const bool effect=shader=="db5f1e2dd1c9ef3d" || shader=="41a5a80e5242a26c" || shader=="c0adc062e4b8e8fa" || shader=="b7dd0f48aea00196" || shader=="f62f4204ee4db0da" || shader=="9b0acd9875f7c44a" || shader=="5fe1d12402b04134" || shader=="b0284572b5f180f2" || shader=="1e222af40b26bd25" || shader=="9528f530e1c95ce5" || shader=="c2ca757a9f517e96" || shader=="6018ff2b44b763d7" || (probe.repeat_mode && stage!=5 && state.shader[0] && flame_diag_key(state.shader[0]->key)>=0);
     const bool sprite=shader=="b5e9ec0ba0af7aaa" || shader=="18a37643faef3594";
     if(!probe.lut && shader!="062df44b75d37d76"){
         if((!effect && !sprite) || bytes>65536 || bytes>8ull*1024*1024-probe.extra_buffer_bytes)return;
@@ -272,7 +484,7 @@ void probe_bind(Image &im,const view_t *v,bool storage,uint32_t stage,uint32_t b
     capture_log("PROBE_BIND group=%u shader=%s stage=%u binding=%u storage=%u serial=%llu image=%p view=%p guest=%p guestBytes=%llu nvnFormat=%#x vk=%u viewVk=%u layout=%u mip=%u levels=%u layer=%u layers=%u gpuWritten=%u rg16Proxy=%u filteredImage=%p",probe.groups,shader.c_str(),stage,binding,unsigned(storage),(unsigned long long)im.source.serial,(void*)im.image,(void*)image_view,im.source.mem,(unsigned long long)im.source.L.size,im.source.d.format,unsigned(im.fmt),unsigned(im.view_format(v, !storage)),unsigned(im.layout),v&&v->set_levels?v->base_level:0,v&&v->set_levels?v->nlevels:im.levels,v&&v->set_layers?v->min_layer:0,v&&v->set_layers?v->nlayers:im.layers,unsigned(im.gpu_written),unsigned(im.rg16_proxy),(void*)(im.filtered?im.filtered->image:VK_NULL_HANDLE));
     if(!storage && shader=="b5e9ec0ba0af7aaa" && (binding==10 || binding==22))probe_add(probe.inputs,im,v,"spriteAtlas"+std::to_string(binding));
     else if(storage)probe_add(probe.outputs,im,v,"storage"+std::to_string(binding));
-    else if(im.gpu_written || im.depth>1)probe_add(probe.inputs,im,v,"input"+std::to_string(stage)+"b"+std::to_string(binding));
+    else if(im.gpu_written || im.depth>1 || (probe.repeat_mode && stage==4 && state.shader[0] && flame_diag_key(state.shader[0]->key)>=0))probe_add(probe.inputs,im,v,"input"+std::to_string(stage)+"b"+std::to_string(binding));
 }
 void probe_volume_copy(Image &im,uint64_t source,size_t bytes,size_t row,size_t stride){
     if((!probe.waiting && !probe_is_active()) || im.source.d.format!=0x27 || im.depth<2 || bytes>65536)return;
@@ -286,7 +498,7 @@ void probe_init(){
     xbg_logf("CODEX_PROBE enabled=%d marker=gfx-codex-probe (0 waits; 1 captures next complete frame)",int(probe.waiting));
 }
 void probe_start(uint64_t frame,bool lut){
-    const std::string directory=probe.base+"/codex-probe-"+std::to_string(getpid());
+    const std::string directory=probe.base+"/codex-probe-"+std::to_string(getpid())+(probe.repeat_mode?"-f"+std::to_string(frame):"");
     if(mkdir(directory.c_str(),0755) && errno!=EEXIST){xbg_logf("CODEX_PROBE mkdir failed errno=%d",errno);probe.waiting=false;return;}
     FILE *trace=fopen((directory+"/capture.txt").c_str(),"wb");if(!trace){probe.waiting=false;return;}
     probe.waiting=false;probe.lut=lut;probe.group.clear();probe.groups=probe.draws=probe.snapshots=0;probe.extra_buffer_bytes=0;probe.outputs.clear();probe.inputs.clear();probe.saved.clear();
@@ -296,8 +508,20 @@ void probe_start(uint64_t frame,bool lut){
 }
 void probe_present(Image &present){
     if(probe_is_active()){probe_flush();ProbeSurface final{probe_keep(present),{},false,"present"};if(final.image)probe_snapshot(final);return;}
+    // Each capture still requires a fresh marker write. Allow retries within
+    // one process when a short effect is missed, while retaining a hard cap.
+    if(probe.repeat_mode && !capture.trace && probe.repeat_captures<16)probe.waiting=true;
     if(!probe.waiting || capture.trace)return;
     FILE *file=fopen((probe.base+"/gfx-codex-probe").c_str(),"rb");int value=file?fgetc(file):'0';if(file)fclose(file);
+    // Honor-only manual paired-frame diagnosis. Consume each request so a
+    // stale marker cannot continuously stall gameplay or overwrite evidence.
+    const char *tablet=getenv("FFRS_PROFILE_TABLET");
+    if((value=='5' || value=='6' || value=='7' || value=='8' || value=='9' || value=='A' || value=='B' || value=='C') && tablet && tablet[0]=='1' && probe.repeat_captures<16){
+        probe.repeat_mode=true;probe.compact=value!='5';probe.spell_depth_test=value=='7';probe.spell_cull_test=value=='8' || value=='B';probe.spell_no_tests=value=='9';probe.spell_empty_fragment=value=='A' || value=='B';probe.spell_prepass_no_depth_write=value=='C';++probe.repeat_captures;
+        FILE *reset=fopen((probe.base+"/gfx-codex-probe").c_str(),"wb");
+        if(reset){fputc('0',reset);fclose(reset);}
+        probe_start(stats.presents.load()+2,false);return;
+    }
     if(value=='4'){
         // Diagnose the normal frame after recording, without disabling its
         // descriptor/indirect fast paths or reading every intermediate pass.

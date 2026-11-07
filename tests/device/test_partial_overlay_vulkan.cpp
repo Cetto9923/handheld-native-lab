@@ -1,0 +1,56 @@
+// Standalone GPU experiment: ordered partial writeback copies across two
+// submissions. It does not exercise the game engine's slot lifetime rules.
+#include "src/graphics/nvn_vulkan/engine/xbg_writeback_policy.h"
+#include "tests/device/overlay_consumer_spv.h"
+#include <vulkan/vulkan.h>
+#include <algorithm>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <vector>
+
+#define CHECK(x) do { VkResult r=(x); if(r!=VK_SUCCESS){std::fprintf(stderr,"%s: %d\n",#x,int(r));return 1;} } while(0)
+struct Range {uint64_t addr,bytes;};
+struct Allocation {VkBuffer buffer{};VkDeviceMemory memory{};void *mapped{};};
+int main(int argc,char **argv){
+ VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};app.pApplicationName="overlay-contract";app.apiVersion=VK_API_VERSION_1_1;
+ VkInstanceCreateInfo ii{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};ii.pApplicationInfo=&app;VkInstance instance{};CHECK(vkCreateInstance(&ii,nullptr,&instance));
+ uint32_t count=0;CHECK(vkEnumeratePhysicalDevices(instance,&count,nullptr));if(!count)return 2;std::vector<VkPhysicalDevice> devices(count);CHECK(vkEnumeratePhysicalDevices(instance,&count,devices.data()));VkPhysicalDevice physical=devices[0];
+ VkPhysicalDeviceProperties props{};vkGetPhysicalDeviceProperties(physical,&props);VkPhysicalDeviceMemoryProperties mp{};vkGetPhysicalDeviceMemoryProperties(physical,&mp);
+ uint32_t nq=0;vkGetPhysicalDeviceQueueFamilyProperties(physical,&nq,nullptr);std::vector<VkQueueFamilyProperties> qp(nq);vkGetPhysicalDeviceQueueFamilyProperties(physical,&nq,qp.data());uint32_t q=0;while(q<nq && !(qp[q].queueFlags&VK_QUEUE_GRAPHICS_BIT))++q;if(q==nq)return 3;
+ float priority=1;VkDeviceQueueCreateInfo qi{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};qi.queueFamilyIndex=q;qi.queueCount=1;qi.pQueuePriorities=&priority;VkDeviceCreateInfo di{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};di.queueCreateInfoCount=1;di.pQueueCreateInfos=&qi;VkDevice device{};CHECK(vkCreateDevice(physical,&di,nullptr,&device));VkQueue queue{};vkGetDeviceQueue(device,q,0,&queue);
+ bool scene_sized=false,delayed=false,battle=false,consume=false,negative=false;for(int i=1;i<argc;++i){scene_sized|=std::strcmp(argv[i],"--scene-sized")==0;delayed|=std::strcmp(argv[i],"--delayed-producer")==0;battle|=std::strcmp(argv[i],"--battle-sized")==0;consume|=std::strcmp(argv[i],"--consume")==0;negative|=std::strcmp(argv[i],"--negative-control")==0;}
+ const VkDeviceSize size=battle?262144:scene_sized?1179648:256;Allocation buffers[4]{};
+ for(auto &a:buffers){VkBufferCreateInfo ci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};ci.size=size;ci.usage=VK_BUFFER_USAGE_TRANSFER_SRC_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT;ci.sharingMode=VK_SHARING_MODE_EXCLUSIVE;CHECK(vkCreateBuffer(device,&ci,nullptr,&a.buffer));VkMemoryRequirements req{};vkGetBufferMemoryRequirements(device,a.buffer,&req);uint32_t type=0;while(type<mp.memoryTypeCount && (!(req.memoryTypeBits&(1u<<type)) || (mp.memoryTypes[type].propertyFlags&(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))!=(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)))++type;if(type==mp.memoryTypeCount)return 4;VkMemoryAllocateInfo mi{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};mi.allocationSize=req.size;mi.memoryTypeIndex=type;CHECK(vkAllocateMemory(device,&mi,nullptr,&a.memory));CHECK(vkBindBufferMemory(device,a.buffer,a.memory,0));CHECK(vkMapMemory(device,a.memory,0,VK_WHOLE_SIZE,0,&a.mapped));std::memset(a.mapped,0,size);}
+ auto *dst=static_cast<uint8_t*>(buffers[3].mapped);for(VkDeviceSize i=0;i<size;++i)dst[i]=uint8_t(i);
+ std::vector<Range> writes=battle?std::vector<Range>{{0,146432},{131072,32768},{180224,32768}}:scene_sized?std::vector<Range>{{0,146432},{131072,32768},{1114112,4096}}:std::vector<Range>{{48,80},{104,96},{192,48}};
+ const uint64_t address=battle?32768:scene_sized?122880:64,requested=battle?163840:scene_sized?983040:128;
+ std::vector<XbgWritebackOverlay> plan;if(!xbg_wb_overlay_plan(writes,address,requested,plan) || plan.size()!=(battle?3u:2u))return 5;
+ std::vector<uint8_t> expected(dst,dst+size);const uint8_t values[]={0x11,0x22,0x33};for(const auto &c:plan)std::fill(expected.begin()+c.dest_offset,expected.begin()+c.dest_offset+c.bytes,values[c.index]);
+ if(consume)for(size_t i=0;i<requested;++i)expected[i]^=0xa5;
+ if(negative)expected[0]^=1;
+ VkBufferView view{};VkDescriptorSetLayout layout{};VkPipelineLayout pipeline_layout{};VkDescriptorPool desc_pool{};VkDescriptorSet set{};VkShaderModule shader{};VkPipeline pipeline{};
+ if(consume){
+  VkFormatProperties fp{};vkGetPhysicalDeviceFormatProperties(physical,VK_FORMAT_R32_UINT,&fp);if(!(fp.bufferFeatures&VK_FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_BIT) || requested/4>props.limits.maxTexelBufferElements)return 8;
+  VkBufferViewCreateInfo vi{VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO};vi.buffer=buffers[3].buffer;vi.format=VK_FORMAT_R32_UINT;vi.range=requested;CHECK(vkCreateBufferView(device,&vi,nullptr,&view));
+  VkDescriptorSetLayoutBinding binding{};binding.binding=0;binding.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;binding.descriptorCount=1;binding.stageFlags=VK_SHADER_STAGE_COMPUTE_BIT;
+  VkDescriptorSetLayoutCreateInfo li{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};li.bindingCount=1;li.pBindings=&binding;CHECK(vkCreateDescriptorSetLayout(device,&li,nullptr,&layout));
+  VkPushConstantRange range{VK_SHADER_STAGE_COMPUTE_BIT,0,4};VkPipelineLayoutCreateInfo pli{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};pli.setLayoutCount=1;pli.pSetLayouts=&layout;pli.pushConstantRangeCount=1;pli.pPushConstantRanges=&range;CHECK(vkCreatePipelineLayout(device,&pli,nullptr,&pipeline_layout));
+  VkDescriptorPoolSize ps{VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER,1};VkDescriptorPoolCreateInfo dpi{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};dpi.maxSets=1;dpi.poolSizeCount=1;dpi.pPoolSizes=&ps;CHECK(vkCreateDescriptorPool(device,&dpi,nullptr,&desc_pool));VkDescriptorSetAllocateInfo dai{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};dai.descriptorPool=desc_pool;dai.descriptorSetCount=1;dai.pSetLayouts=&layout;CHECK(vkAllocateDescriptorSets(device,&dai,&set));
+  VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};write.dstSet=set;write.dstBinding=0;write.descriptorCount=1;write.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;write.pTexelBufferView=&view;vkUpdateDescriptorSets(device,1,&write,0,nullptr);
+  VkShaderModuleCreateInfo sm{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};sm.codeSize=sizeof(overlay_consumer_spv);sm.pCode=overlay_consumer_spv;CHECK(vkCreateShaderModule(device,&sm,nullptr,&shader));VkComputePipelineCreateInfo cp{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};cp.layout=pipeline_layout;cp.stage={VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};cp.stage.stage=VK_SHADER_STAGE_COMPUTE_BIT;cp.stage.module=shader;cp.stage.pName="main";CHECK(vkCreateComputePipelines(device,VK_NULL_HANDLE,1,&cp,nullptr,&pipeline));
+ }
+ VkCommandPoolCreateInfo pi{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};pi.queueFamilyIndex=q;VkCommandPool pool{};CHECK(vkCreateCommandPool(device,&pi,nullptr,&pool));VkCommandBufferAllocateInfo ai{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};ai.commandPool=pool;ai.level=VK_COMMAND_BUFFER_LEVEL_PRIMARY;ai.commandBufferCount=2;VkCommandBuffer cmd[2]{};CHECK(vkAllocateCommandBuffers(device,&ai,cmd));
+ VkEvent event{};if(delayed){VkEventCreateInfo ei{VK_STRUCTURE_TYPE_EVENT_CREATE_INFO};CHECK(vkCreateEvent(device,&ei,nullptr,&event));}
+ VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};CHECK(vkBeginCommandBuffer(cmd[0],&begin));if(delayed)vkCmdWaitEvents(cmd[0],1,&event,VK_PIPELINE_STAGE_HOST_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,nullptr,0,nullptr,0,nullptr);for(unsigned i=0;i<3;++i)vkCmdFillBuffer(cmd[0],buffers[i].buffer,0,size,uint32_t(values[i])*0x01010101u);CHECK(vkEndCommandBuffer(cmd[0]));
+ CHECK(vkBeginCommandBuffer(cmd[1],&begin));VkMemoryBarrier barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};barrier.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;barrier.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT|VK_ACCESS_TRANSFER_WRITE_BIT;vkCmdPipelineBarrier(cmd[1],VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,1,&barrier,0,nullptr,0,nullptr);
+ for(const auto &c:plan){VkBufferCopy copy{c.source_offset,c.dest_offset,c.bytes};vkCmdCopyBuffer(cmd[1],buffers[c.index].buffer,buffers[3].buffer,1,&copy);vkCmdPipelineBarrier(cmd[1],VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,1,&barrier,0,nullptr,0,nullptr);}
+ if(consume){barrier.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT|VK_ACCESS_HOST_WRITE_BIT;barrier.dstAccessMask=VK_ACCESS_SHADER_READ_BIT|VK_ACCESS_SHADER_WRITE_BIT;vkCmdPipelineBarrier(cmd[1],VK_PIPELINE_STAGE_TRANSFER_BIT|VK_PIPELINE_STAGE_HOST_BIT,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,0,1,&barrier,0,nullptr,0,nullptr);uint32_t n=uint32_t(requested/4);vkCmdBindPipeline(cmd[1],VK_PIPELINE_BIND_POINT_COMPUTE,pipeline);vkCmdBindDescriptorSets(cmd[1],VK_PIPELINE_BIND_POINT_COMPUTE,pipeline_layout,0,1,&set,0,nullptr);vkCmdPushConstants(cmd[1],pipeline_layout,VK_SHADER_STAGE_COMPUTE_BIT,0,4,&n);vkCmdDispatch(cmd[1],(n+63)/64,1,1);barrier.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT;barrier.dstAccessMask=VK_ACCESS_HOST_READ_BIT;vkCmdPipelineBarrier(cmd[1],VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,1,&barrier,0,nullptr,0,nullptr);}
+ else{barrier.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;barrier.dstAccessMask=VK_ACCESS_HOST_READ_BIT;vkCmdPipelineBarrier(cmd[1],VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,1,&barrier,0,nullptr,0,nullptr);}CHECK(vkEndCommandBuffer(cmd[1]));
+ VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};submit.commandBufferCount=1;submit.pCommandBuffers=&cmd[0];CHECK(vkQueueSubmit(queue,1,&submit,VK_NULL_HANDLE));VkFenceCreateInfo fi{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};VkFence fence{};CHECK(vkCreateFence(device,&fi,nullptr,&fence));submit.pCommandBuffers=&cmd[1];CHECK(vkQueueSubmit(queue,1,&submit,fence));
+ if(delayed){if(vkGetFenceStatus(device,fence)!=VK_NOT_READY || static_cast<const uint8_t*>(buffers[0].mapped)[0]!=0){std::fprintf(stderr,"producer unexpectedly completed before event\n");return 7;}CHECK(vkSetEvent(device,event));}
+ CHECK(vkWaitForFences(device,1,&fence,VK_TRUE,10000000000ull));
+ if(std::memcmp(dst,expected.data(),size)){std::fprintf(stderr,"GPU overlay mismatch\n");return 6;}
+ std::printf("GPU overlay PASS device=%s copies=%zu submissions=2 bytes=%llu region=%llu delayed=%d consumer=%d; engine-slot-lifetime=NOT_TESTED\n",props.deviceName,plan.size(),(unsigned long long)size,(unsigned long long)requested,int(delayed),int(consume));
+ if(consume){vkDestroyPipeline(device,pipeline,nullptr);vkDestroyShaderModule(device,shader,nullptr);vkDestroyDescriptorPool(device,desc_pool,nullptr);vkDestroyPipelineLayout(device,pipeline_layout,nullptr);vkDestroyDescriptorSetLayout(device,layout,nullptr);vkDestroyBufferView(device,view,nullptr);}if(event)vkDestroyEvent(device,event,nullptr);vkDestroyFence(device,fence,nullptr);vkDestroyCommandPool(device,pool,nullptr);for(auto &a:buffers){vkUnmapMemory(device,a.memory);vkDestroyBuffer(device,a.buffer,nullptr);vkFreeMemory(device,a.memory,nullptr);}vkDestroyDevice(device,nullptr);vkDestroyInstance(instance,nullptr);return 0;
+}

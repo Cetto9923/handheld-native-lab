@@ -19,6 +19,7 @@ public final class GameWindowNative {
     public static native void setFocusState(int state);
     public static native void setPadState(boolean connected, long buttons, int lx, int ly, int rx, int ry);
     public static native void audioDevicesChanged();
+    public static native void setProfileTargetFps(int fps, boolean docked);
     public static native boolean hostExitReady(boolean request);
     /** Returns {present, pointer, width, height, format, generation}. */
     public static native long[] setSurface(Surface surface);

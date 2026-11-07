@@ -1,3 +1,1276 @@
+# Honor 最终普通包三项视觉自测通过；基线与私有交付收口 — 2026-11-08T00:00:27.124604+08:00
+
+最终普通2a4/实际安装base.apk SHA已逐字核对，PID28429，probe0/target60/defer0/fence0/无capturelayer。final-trial/dark.mp4（40秒15,297,090B）与limit.mp4（70秒26,109,131B）完整选单→施法→结算→野外；实际检查Dark5-15s每0.5秒（2Hz），Limit0-34s2Hz：蓝白暗核/紫红外圈、蓝冰晶、雷电、金白火尾爆发、最终光束恢复。final-trial/boss-final/boss.mp4（110秒33,183,386B）+67-75s10Hz完整落地（实际68.2-70.2s），棕石/尘正常、旧满屏长黑条无，角色/Boss/背景火/对话完整。VISUAL_DARK/LIMIT/BOSS=PASS仅本教程/出场自测，非独立QA或整游戏。最终三录像SHA及身份在final-trial/visual-result.json。
+
+实际日志六新VS均integer rewrite1、compaction patched1、ae83752000words；没有NVN spv override/PROBE_DIAG/PROBE_BEGIN，原FS/深度/预通道保留。触控PAD已恢复隐藏（最终截图待随检查记录），11 naturalXGS仍保留，未部署任何replay remap/终端探针。AUDIO按用户NOT_RUN，NONE enum10/1443burst/2886capacity和fence0日志一致，缓冲/timeout重试/设备重开源未改。shield最终版本NOT_RUN，最初开场短闪未独立闭合，不能冒称所有闪烁均解决。
+
+本地数据交付已全核：ZIP16918705179B/SHA01a338c52b79869c04f486eb1d42ce926fa6935d28d19371ca0a7c6cd10411af、40547文件；40536设备原件SHA与包完全相同+11修复件一致，ZIP全CRC/SHA回读通过。APK/数据/安装说明/licenses在.local/honor-delivery-20261107/release；400Pro SM8650/750目标60支持已实现，手机实测NOT_RUN。CAPTURE_COMPLETE=NO（原运行独立完整附件/别名世代、部分rawpitch定义区域及VK_NOT_READY差异仍未全闭合；同帧目标GPU输入/实际shader和Position、CS首错证明保留），VIEW_VALIDITY全NOT_FIXED，具体目标类型合规不能外推全游戏。
+
+60目标未达标，普通暖野外35.27487 distinct frames/s；defer2控制34.966且事件0已否定并归档/恢复default0。图形基线将保存当前认领source/WIP及自有测试，代码47文件已显式暂存，无游戏/APK/key/.local。BASELINE-HONOR-20261107.md/本地tag拟honor-graphics-20261107，不push。完成提交后补真实commit/tag；60性能仍开放，不能给整刀PASS。
+
+# Honor Boss出场复验通过；defer2提速被否定并恢复 — 2026-11-07T23:39:32.752091+08:00
+
+普通1f90/60目标Boss同路线110秒录像34,264,479B，实际检查55-95sec1Hz与69-73sec10Hz完整落地扬尘，旧长黑条/斜条均无，棕石/尘、角色/Boss/火焰/对话完整。VISUAL_BOSS=PASS仅本出场自测，非整战/独立QA；visual-result.json保留SHA。runtime compaction patched1，ae83752000words/UInt1。
+
+已有defer-events=2受控负实验（2a4新APK仅增加750精确hist/interface守卫、735行为不变）：同Continue/同野外44.6146s，34.966fps，对照1f90/defer0=35.275fps，且实际deferred events=0，此路径未使用，否定为提速方向；未修改source default。原来无marker，已将试验文件改名保留为gfx-defer-events-rejected-20261107并冷启恢复默认defer0。不能按标题60fps外推实场。
+
+最新普通候选2a4c811d88eb0271fd1c5039bc9a98eaac2c5d95f95499f8f22787b1a1108201（3732882B）buildexit0/install-r，当前PID28429，开始final-trial全教程Dark/Limit视觉复验。新手机750只复用exact-module+selectedprofile guards（inline/hist/interface），仍不外推735depthreuse特殊门；400Pro实机仍NOT_RUN。dataZIP完整已校验；本地baseline/commit仍待本最终候选视觉复验完成，60仍未达标，audio依用户NOT_RUN。
+
+# Honor 数据包与原件全量摘要一致；交付候选60实测35.27fps — 2026-11-07T23:27:48.150458+08:00
+
+数据ZIP已完成全量回读：40547文件、16911082585B payload、16918705179B ZIP，SHA01a338c52b79869c04f486eb1d42ce926fa6935d28d19371ca0a7c6cd10411af。所有40536原始main/sdk/romfs/archive文件SHA与平板只读原件完全相同，额外11修复XGS逐一匹配已部署摘要；成品ZIP CRC/每文件SHA通过。初次find -exec +实际报Argument list too long/exit1，保存原错误与3864有效摘要，改按32文件argv只补剩余36672，成功，无重复整包下载。归档73495条目排序/连续offset/extent/EOF检查通过；不据此称所有shader语义PASS。
+
+普通候选1f90已冷启，包名/数据/存档路径不变；原gfx-shader-archive marker改名保留，未给marker仍正常进入标题与同Continue野外。旧主shaders存在，所以这只验证自动选择与普通启动，不能谎称已经强制所有shader走archive。设备PID15649/marker0/target60/defer0/fence0、无capturelayer。暖野外44.224117s，1561独立工作帧、0重复/失败/跳过，35.274870fps，p50 28.133646ms/p95 31.326302/p99 33.349584/max37.351667；仍非60。已开始110秒同路线普通Boss出场录像（portable-trial/boss-baseline/plan.json，60目标，录像仅视觉不是干净性能）。
+
+APK+数据+手册+licenses已在私有.local/honor-delivery-20261107/release形成可审阅候选；源码本地baseline/commit/tag尚未执行，60/音频/400Pro未通过，不能称完整交付PASS。暗魔法与完整Limit此前2c13普通marker0有限PASS。继续该录像和既有defer2受控性能实验，不改时钟/跳draw/删同步冒充60。
+
+# Honor 60目标实测32.98fps；可移植候选构建/数据复制中 — 2026-11-07T23:15:11.032989+08:00
+
+普通2c13/marker0/target60暖野外45.481859s，无screenrecord/输入：1501成功呈现、1501独立writer帧、0重复/失败/跳过，32.980182新帧/s；p50 30.100989ms、p95 33.010521、p99 35.358124、max47.361302，>100ms=0。fps60-field/result.json；初次/proc/uptime窗口与CLOCK_MONOTONIC不一致已明确INVALID_CLOCK_WINDOW，不使用其零行结果。当前60目标仍未达标，日志CPU约17.6ms、GPU16.1ms且约10提交/等待，继续有据性能对照，不能将刷新率或配置当PASS。
+
+交付候选1f90c079784f3bdad1fe26b6e6750aae793b8b0e540604de754e4411595b46d0，3732882B，versionCode2/1.0.1-honor，构建exit0，install-r保留数据已成功。新增SM8650手机profile target60/1080字段+opaque/docked选择；helper inline仅增加Adreno750精确名，735深度特殊门未外推；400Pro仍NOT_RUN。JNI无marker时自动选旁边非空正规shaders.hnla，显式0/1优先且原loose overrides优先，现有数据发现/存档路径不变。三profile host环境用例、Java选择、archive选择host真实文件边界测试均通过；不代表新手机实测。
+
+.local/honor-delivery-20261107/copy-plan.json/session88019只读复制自本平板既有FFRS main/sdk/romfs/archive和11修复XGS，未读取RG/旧禁区、未带存档/缓存/密钥。当前应用停在安装后的停止状态，等待复制完成再启动/回归；目标60marker已保留。新私有ZIP64打包脚本会核对最终ZIP CRC和全部SHA。手册coordination/docs/HONOR-400PRO-INSTALL.md已起草，尚未打baseline/commit/tag，数据ZIP尚未完成，不能报交付完成。
+
+CAPTURE_COMPLETE=NO/全VIEW_VALIDITY=NOT_FIXED维持此前缺口；本教程暗魔法及完整Limit有限自测PASS（2c13，原FS/实际EQUAL或GEQUAL，不借探针），Boss9656有限PASS待1f90复验。AUDIO按用户NOT_RUN，AAudio NONE/fencespin0/缓冲/timeout重试与重开流未改。无原始额度错误。
+
+# Honor 普通包暗魔法/Limit 完整施法有限自测通过 — 2026-11-07T23:03:25.613553+08:00
+
+普通2c13包/marker0/30对照已完成暗魔法及70秒Limit完整施法。实际查看0-34秒0.5秒间隔联系表，蓝冰晶、雷电、火焰、最终光束/结算正常，15.5-18秒黑星恢复金白爆发。VISUAL_DARK=PASS、VISUAL_LIMIT=PASS仅本教程结构颜色自测；独立QA/AUDIO仍NOT_RUN。证据limit-red-tail-20261107-2130/ordinary-trial/visual-result.json和两录像。继续60实际帧率与Boss回归、400Pro可移植交付。
+
+# Honor Limit 火尾首错定位：两端 VS 失读，普通候选待全流程复验 — 2026-11-07T22:46:49.178007+08:00
+
+同frame10983的合法类型旧VS与原始Maxwell正式重译控制，draw1816568/VS85e1/module1385，vertex0/instance0直接GPU终端Position探针得到 x/y/w 从(83.359802,332.965332,3137.695801)变为(-184.474213,2768.721680,3489.950684)。两次marker C0DEF00D均有效，binding10有效range恰16字节；只写x/y/w+marker，Z未测。原FS保留，写入与VS输入/VB/IB/C0不重叠；探针FS输入受扰动，绝不作为普通画面验收。唯一诊断trace副本仅B10 stage16->17，host/device期望SHA d2fb1d9497526fe7e7b63e030be906b7a24185923850069261710c2dd31120b7一致，原捕获d45df785...未改。完整FIRST-WRONG-LIMIT-TAIL.json。
+
+三对原Maxwell/control/content hash核对、C1与GPU一致：pre704f01d7...、color36091cc0...。36个texel有效范围和86项按binding/offset/range的UBO/SSBO核对，三pair VB/IB逐文件相同。类型only六VS无导出重放逐像素不变；仅重译三个color仍不变；仅重译pre形成更大的黑爆发；两端全部重译后恢复强亮金白爆发（原FS/EQUAL、预通道保留）。color1816568/1818253附件原本不变，现发生真实字节变化；第一组480x272逻辑前缀5259变化、HDR有限最大11704/8488/5872。其他raw图像pitch/精确像素坐标未全部审计，不能将前缀统计夸称完整像素证明。静态fetch数量color额外9/pre12个slot128浮点读取；非运行次数。完整普通Limit仍待验收，强亮是否符合完整过渡尚待录像。
+
+源码只新增6个精确key的B12 R32_UINT事实，B18保留R16_SFLOAT/range2，不盲扩range；natural六XGS与原五个覆盖件将一起部署，绝不部署replay remap/位置探针。新普通APK2c13a8ea318c2086399ec29aec8d6d9a203749b2da0caa8965cbe729bf35d9fb（3,732,882字节）build exit0，deploy_tail_candidate.py保留数据install-r正在执行，六key旧warm记录有备份且仅过滤这六key，drivercache保留。marker0/30仅因果对照；60最终目标未验收。AUDIO依用户NOT_RUN，NONE/0us源未改。CAPTURE_COMPLETE仍NO/全VIEW_VALIDITY NOT_FIXED；Dark/Boss有限自测PASS；Limit普通包仍不能PASS。之后全流程视觉→60实测→baseline/commit/荣耀400Pro APK数据手册。
+
+# Honor Limit 黑尾同帧捕获与新候选负控制 — 2026-11-07T22:13:04.885110+08:00
+
+新一帧活跃火焰收尾捕获（frame10983，6,846,997,428字节，SHA d45df78508e08a7cf989928e647f3c554849d4c2563a5ba4cab3463beb25c92b）设备/主机一致，1,819,727 blocks精确EOF；捕获原库61abd，captureAPK b4082284... 与普通9656的14个非签名条目逐字相同，仅加入原layer。Finished recording已确认。phase1.png/no-export replay再次显示黑色星状条片，非暂停错相位。目录 dark-shader-retranslate-20261107/limit-red-tail-20261107-2130。
+
+候选opaque pair已核实际 pre GEQUAL/write、color EQUAL/no-write，不能套原Limit632c GEQUAL。4draw导出283文件；24项texel有效range及57项UBO/SSBO按binding+offset+range核对；两pair本帧native-slot输入完全相同，C1=36091cc0...。两color原输出六附件均0，B12uint-only不改变结果。三opaqueVS85e1/55703/92bc使用原始Maxwell和原translator重译成功，但同条件无导出重放黑尾仍在（像素变化数0）；尚非已定位首错/修复。带导出新VS截图失去黑尾时也失去金色条纹/模糊，不能当通过，原FS/深度未改。候选未进入应用源表或设备正式shaders。
+
+继续本帧稍晚translucent draw a6f544/cc083附件定位，不根据opaque颜色零直接冒认根因。CAPTURE_COMPLETE=NO（原运行独立完整输出/世代缺口仍在），VIEW_VALIDITY全范围NOT_FIXED，FIRST_WRONG尾迹NOT_FOUND，VISUAL_LIMIT=FAIL；此前普通Dark/Boss有限自测PASS保留。AUDIO用户NOT_RUN；60、baseline/commit/APK/data/manual待后续完成。设备当前既有replayAPK1d30，普通9656恢复包和五XGS保留。
+
+# Honor Limit 全流程复验仍有黑色尾迹；下一次仅捕获该相位 — 2026-11-07T21:30:52.985529+08:00
+
+当前普通9656包70秒完整Limit录像已保存（24,503,016字节，SHA0dccb6615055dd1cc289029ab615f43d55473fd44b6c700ec3bd89cfee0eb226），覆盖施法、冰晶、雷电、火焰、最终光束、敌人结算与野外返回。已查看0–32秒2Hz联系表：蓝冰晶和主火焰恢复，约15.5–18秒火焰收尾仍有黑色条片，VISUAL_LIMIT=FAIL。不能把compaction修复对铁巨人有效外推为Limit通过。暗魔法/铁巨人有限自测PASS保留。
+
+下一步复用既有捕获layer，只把同一普通9656APK加入原61abd库；不重建/下载工具。新证据目录 limit-red-tail-20261107-2130，目标为Limit第一次确认后约14秒的活跃黑尾相位，一帧捕获。原15GB boss trace和导出全部保留。普通9656恢复包、五XGS原样保留；安装-r/正常NewGame UI继续，禁存档文件修改/清数据。
+
+CAPTURE_COMPLETE=NO；FIRST_WRONG_LIMIT尾迹尚未定位；完整VIEW_VALIDITY未闭合；AUDIO按用户NOT_RUN；60Hz/提交/基线/换机交付仍待完成。唯一writer继续。
+
+# Honor 暗魔法普通包复验通过；Limit 全流程复验中 — 2026-11-07T21:22:29.322692+08:00
+
+普通包 APK `9656b203...`、五个已核对的 XGS、marker0、30fps 对照条件不变。`ordinary-candidate/dark.mp4`（40秒，14,921,729字节，SHA记录在 dark-visual-result.json）完整覆盖选单、暗魔法施放、三名敌人结算、回到野外。已查看1Hz联系表：蓝白亮核与紫红外圈恢复；VISUAL_DARK=PASS（本教程结构/颜色自测范围），独立QA未运行。原FS/EQUAL、预通道保留。
+
+铁巨人出场已在同一普通包通过前述有限自测。下一步仍是 Limit 全阶段到结算，随后60Hz实测和荣耀400Pro交付。音频主观验收依用户要求 NOT_RUN，不能报整刀PASS。当前普通NewGame教程第二场流程，未修改/恢复存档文件。
+
+# Honor ordinary marker0 Iron Giant entry visual self-test PASS - 2026-11-07T21:07:40.386226+08:00
+
+APK9656... +5verifiedXGS includingae154173..., PID7300 atstart. Actual ordinaryGameActivity/noVulkanlayer/probe0/30target, sourcecompactionruntimepatched1; aeactual52000words/UINTrewrite1. SameContinue+scriptedroute movie109.952756sec/30437670B, ordinary-candidate/boss-visual-result.json SHA. Actual bossentry75-82s reviewed10Hz contact +68-92s2Hz contact and impactframe; originalmassiveblackvertical/diagonalbarsabsent, brownrockdebris restored, boss/flames/player/dialogueintact. VISUAL_BOSS=PASS for this full entry self-test only; independentQA/wholebossbattle notclaimed. NoNaNclip/countcap/capturelayer/ALWAYS/FSreplacement inordinaryAPK.
+
+Stilltarget30forcausalcomparison; userfinal60goalunverifiedandpending. Nextsameordinarybuild fullLimitallphasesandDark/shield/occlusion; mayuseordinaryNewGameUI aspriorauthorizedtutorial capture, no savefileediting/data clear. Currentstateordinarybossdialogue +touchPADshown(originallyhidden), fiveprimaryoverrides retained. FinalrestorePADhiddenlater. No localcommit/tag/package/data/manual yet.
+
+Audio source stillAAudioStreamBuilder_setPerformanceMode(AAUDIO_PERFORMANCE_MODE_NONE), fencespinruntime0us, burst1443/buffer2886. ActualNDK26headerAAUDIO_PERFORMANCE_MODE_NONE=10 (AAudio.h290); rawlogperformance10thereforematchesNONE. Standingfile numericexample performance0/10 contradictsNDKenum; do notforceinvalid0ormislabelasLOW_LATENCY. Noaudiochange; subjectiveA2DPfield/battle/reconnect NOT_RUN perexplicituser. Fullstandinggateunpassed, nooverallPASS.
+
+CAPTURE_COMPLETE=NO aspriororiginal-run/generationgap; VIEW_VALIDITYfullscopeNOT_FIXED (targetAe/CS factslegal); FIRST_WRONG_BOSSconfirmedCSsharedsum; VISUAL_DARKhistoricaltutoriallimitedPASS, VISUAL_LIMITpriorFAIL/newbuildpending; AUDIOuserNOT_RUN. Solewriter/HEAD032e5f6/dirtypreserved, source2existingfiles+newheader/test thismilestone; goalactive.
+
+# Honor first wrong GPU output found and source candidate built - 2026-11-07T21:02:04.860145+08:00
+
+FIRST_WRONG_BOSS=CS b673e10f3da2451c shared workgroup reduction. Direct GPU probe retains all original arithmetic/control, only writes diagnostic counters in unusedtail words1024..1215 after existingbarrier. Single-group example dispatch474320 actualGPU C3 max7, lane values sum7, two32-lane warp sums7/0, butsharedvalue14 readbyall64threads. Baselinewithoutprobe downstreamcounter14same, so not NaN/fragment/depthfix. First16one-particleworkgroups similarlylaneSum1/warp1,0/shared2. Two-group rock dispatch474299 diagnostic tailwaswrittenbybothgroups, so per-group arrays thereareRACED/NOT_VALID; do notsumits64tailrecords aswhole100particles. GPUC3 recoveredcorrectlybyreversible same-frame UBOalias B48offset745472/368B; exact99compressedbytesrestoredafterread, originaltrace untouched. Fullproof FIRST-WRONG-BOSS-COMPACTION.json.
+
+Controlled repair: only replace sharedatomic with eachwarp leader storingits partial in existingshared[rawSubgroupLane>>5], retainoriginalbarrier, finalread partial0+partial1. Existinguint[4] hasroom; bothleaderswriteincludingzero, noinitializationgap. Oldatomicreturndeadlocalonly. NOinstancecap/discard/ALWAYS/prepassremoval/emptyFS/waitIdlefix. GPUcounter17/indirectrock132->100; all19counter/indirectrecords corrected; particlefloat,preFloat,aliveindices eachbit-identical (SHA40d067.../99b11d...). Predepth29675->9542pixels bbox263,349-1095,467, twohugevertical/diagonalbarsgone (shared-sum-pre-depth-change.png actuallyviewed). ColorVSae837 retranslation separatelyneededtofixblackdebris; type-onlyB12wasinsufficient.
+
+Newproductionadapter src/graphics/nvn_vulkan/engine/xbg_compaction_sum.h checks exact32684words/bound7554/local64x1x1/shareduint[4]/atomic/load/unusedreturn, rejectsunfamiliar/already-patched modules. RunsAFTERwarp32 in BOTHwarm/runtime, onlyQualcommvendor5143/subgroup64/exactkeyb673; noRGtreechange. tests/device/test_compaction_sum.cpp fixturetest recoversoriginalbyteidenticallybystrippingonlytwoedits, checksalready-patched/wrongbound/changedatomic rejection/no-mutation; hosttestexit0, generated130848B C++SPIRV spirv-val1.1exit0. Controlled3frame5752-5754 replayusesexactC++output+newaeVS+SINTsimulationviewfix, finishes3/3; phase1/phase3 actuallyviewed, solidsolidbarsgone/brownstonesrestored, somefirst-framehistoryghostsremain; ordinarycoldcleanroute pending, nofullvisualPASS.
+
+SourcealsoaddsONLYae837B12UINT andcb997B29fetch/B47storageSINT nativeviewfacts. Actualcb997typecontrol3fetches/3stores keptcounter/float/alivebytesidentical, so legaltypingnotclaimedrootcause. ExistingDark/Limit4XGS retained. NewaeXGS1541730... naturalmetadata, NOT replayremappedSPV deployed. Originalb673 sourceXGS kept; noCSretranslationdeployment. Hostreproducedoldpipeline integer+helperinline+warp32 byte-identicaltocapturedactual22142 (compaction-prepare-result.json); newCSretranslationonlyaddsatomicbounds anddidnotchangeGPUcounter, rejectedasfix. NaNclip/integerShuffle/finitePhi notsourcefixes.
+
+Ordinary candidate buildexit0, APK9656b203780bd7f1835bb86b3cb41b1f069298fa0b983d1205b9ad152db16f24,3732882B, apk/honor-compaction-debris.apk; plan/log/exit+sourcefixturesSHA retained. install-r preservingdata completed, newaeprimaryinstalled/sha verifiedfivebundles; stalegraphicswarmrecordsonlyae removed withbackup, allothersbyte-identical, drivercacheunchanged. Deployscript thenstoppedonmissingoptional gfx-fence-spin-us marker (default0, nofile, not audiofailure); fixedreadguardandresumedonlyremainingSHAchecks+GameActivitylaunch (session41114), NOTreinstalled. Currentnooverlayinputyet; awaitingtitle screenshot. Markerprobe0,target30causal; GPUdebug4null/capturepropsempty. SourceAAudioNONE/fencespin0unchanged. Normalcandidate nowinstalled, replaypackagealreadyrestoredtoordinarycandidate.
+
+SameHEAD032e5f6/dirtypreserved, onlynewappsource3existingfiles/newheader+test; noactualcommits/tags/push. CAPTURE_COMPLETE=NO (independentoriginal-runfulloutput/remaininggeneration andcomputeUBOsallcoverage stillopen; oneC3closed); VIEW_VALIDITYfullscopeNOT_FIXED, targetnewfactslegal; FIRST_WRONGconfirmedasabove; VISUAL_DARKlimitedhistoricalPASS, VISUAL_BOSS/LIMITordinarycandidatePENDING(previousFAIL), AUDIOuserNOT_RUN. ContinueordinaryfullbossentrythenLimit/Dark/shield/fire/occlusion; final60realFPSandHonor400Probaseline/commit/APK/data/manualpending.
+
+# Honor boss debris color repaired in replay; finite stretched instances and upstream SINT mismatch isolated - 2026-11-07T20:36:25.633571+08:00
+
+Original authorized one translator restored exact.NET10.0.403 SDK SHA5125893c66b... (sdk-recovery-result.json), current private SDK path back; originaltranslator/bin executable retained. Experimental finite-Phi change had NO effect: original-buffer-facts,finite-no-facts,finite-buffer-facts ae837 XGS byte-identical SHA1541730bb1c759f78ca31028d4c202296abbb9622c8a6590027f0a9ee6b4480b. Reverted private BindlessElimination.cs to beforecandidate, archivedpatch/bin-finite as rejectedcontrol; no capture/replay tools rebuilt/downloaded. 085a pre stillrejectsunrepresenteddynamic32arrays, notstripped/deployed.
+
+Exact own-device Maxwell ae837 group5430 recovered with12MBTOC+3.6MBUCASranges, existingOodle/index; old6GBcontainer not recopied. New ae837 XGS hasC1 exactlymatching same-draw GPU256B SHA182720ba..., native B12UINT typing plus replay-only B48floatalias->oldB24 andUBO54+shift mappedback. Shader288c6bf0... /originalFS833/GEQUAL writes29675 HDRpixels, matchingprecoverageincludingstretchedbars; all5nontrivial Gbuffers restored, depthunchanged. debris-retranslated-gpu-audit.json andhdr-comparison actuallyviewed. No formaldeployment yet; colorrepair is partial, blackflash notclosed.
+
+TerminalGPUPositions: old B12-legal VS and newVS both132validmarkers,109finite,23NaNinstances107-129. Newchanges109finitepositions/restoresdebriscolor but NaNsunchanged. Vertex1newprobe identifies finiteextremeinstances130/131: (1977.917,323449.4375,10,9088.3018) / (106361.336,222034.2969,10,3469.1445), NDCy35.59/64.00. Vertex0ofthosewasordinary; vertex0alone insufficient. Sameframeall144meshverticesfinite/bounded. DiagnosticterminalNaNclipping pre832+newcolor831 DOES NOT removebars; nan-clip-phase1.png viewed, rejected asfix. Do not claim23NaNsasacceptedrootcause or applyglobalguard. Newfinite-Phi andNaNclipcontrols neverappsource.
+
+TrackedGPUlineage: indirectpacketcopy474629 fromarena8564[3203328..] to576462; exactdraw340 packet144indices/132instances. Countslot17=132 incounter8564[3186944..] copied474612 from2072832. Aliveindices copied474601 from2040064. Producer overlap matrix: b673 dispatch474320 writesaliveindices B47SINT andcounterB53UINT; cb997 dispatch473949 writes particlefloat8564[422144..] atB41. All75livecompute module/resourceindices established; subsetmatrices live-compute-resource-matrices.json. C5 fields100 maybestride, NOT provenvalidparticlecount; do not cap132to100orhideinstances.
+
+Crucial realtypefault: actualsimulationmodule575848/keycb997 nativeB29 R32_SINT99/range4096 andB47storage R32_SINT99/range4096, butbothSPIR-Vfloat. B17atomicUINT andB41floatalreadycorrect. Limitedactual-module control ONLYfetch29scalarSINT+store47SINT (3fetches+3stores), nootheroriginalcode/dispatch/depth/FS changes; candidate123012B SHAin simulation-sint/manifest.json, spirv-val1.1 pass. Reusesexistingreplay/capture, smallhostadapter calls existingrewrites. Running singlepredraw474865 export via run-simulation-sint.py session29296/log, nextpull/check indirectcount,predepthstripsandGPUinputs. Norootcausal/visualPASSclaimedbeforeoutcome. New rawMaxwellCSb673/cb997 recoveredonly128KBadditionalranges, bothretranslatebuilt with exact64x1x1/shared16/352 originalfacts; notGPUtested/deployed.
+
+Computeexportdiscovery: oldreplaycompute path does NOT exporttexeloutputs and omitsdynamicoffsets forUBObufferfiles. Dispatch474620 outputonly3files, c3 reported16bytesarebufferstart garbage, NOTactualparams at801280. Do NOT consume thoseasGPUC3input orclaimCAPTURE_COMPLETE. Drawpath GPUbackingsandslicedUBOs remainvalidated; laterdraw8564 backing provescounter/particlebytesaftercompute. NeedpropercomputeC3 readback ifrequired, useexistingtools/limitedaliasdiagnostic orrawflushedcontextwithexplicitlimits; do notsilentlymix.
+
+No newappsourcechanges this milestone, sameHEAD032e5f6/dirty. Device replay1d30, restoreordinaryea2f+hiddenoverlaypending. CAPTURE_COMPLETE=NO; VIEW_VALIDITYfullscopeNOT_FIXED(newsimulationSINTfault); FIRST_WRONG_BOSS: VS colorpathpartialrepair, finiteinstance130/131stretchupstreamcauseopen. VISUAL_DARKlimitedPASS; VISUAL_LIMIT/BOSS FAIL; AUDIO userNOTRUN. Final60/localcommit/baseline/APK/data/manualHonor400Propending. Goalactive, notcomplete.
+
+# Honor Iron Giant debris draw isolated; actual color Position contains NaN - 2026-11-07T20:12:58.552353+08:00
+
+Same writer/HEAD032e5f6/dirty preserved. Actual firstframe5752 pre474865 module832/834 writes29675 depth pixels, including the two long vertical/diagonal streaks absent before it (474865-depth-change.png). Its paired color475432 module831/833 shares exactly144indices/132instances and byte-identical1728BVB +288BIB. Native depth for BOTH is GEQUAL (6), prewrite1/colorwrite0; this new boss pair is NOT Dark EQUAL. Original color6attachments all0 changes. Smoke475828 sees the existing streak depth; bodyfe033 location9 hypothesis remains rejected.
+
+Same-frame complete texel backing recovered from existing GPU export, no additional capture needed: pre/color B12 32768B bothSHA99b11d9a..., B18 2B both0000 SHA96a296..., B24 32768B bothSHA40d067e6...; all8192 B24 floats finite. Precise descriptorbuffer/offset/range/nativeformat in debris-pre/color-resource-matrix.json and debris-texel-gpu-validation.json. B12 native98 while original color831 float declaration is real type mismatch; B12-only legal control keepsall6attachments0. Format compliance is insufficient, no rootcause claim. Actual085a+existing12/24 rewrite equalscapturedmodule832 byteforbyte; actual6018+18/24/30 equalsmodule554; ae837 rawXGS equalsmodule831, keyidentity nowconfirmed notwordcountonly.
+
+Added diagnostic terminal Position readback ONLY to B12-legal color831; 4 compatible setlayouts B10SSBO stage16->17 only in new traceclone, all other logical bytes identical. New clone15032076460B expectedhost=device SHAa18177e9c63fec998304deddd29fb6bb27944b1cdeddcec693133b6b66395011; original trace47e6 untouched. Position AFTER-draw output132/132 valid markers,109 finite,23 NaN instances107-129, vertex0. debris-color-position-result.json and exactSSBO binary/hash. Before-draw firstread is explicitlyINVALID_INPUT_ONLY, not GPUoutput; correctedafterrun recordsvalid132. This localizes invalid color output to VS Position before raster/FS/depth, but exact source arithmetic and earlierpre Position still open; do not claim completedfix.
+
+ExistingSDK10.0.403 was ALSO removed byMiniMAX cleanup, initial build FileNotFoundError exactpath in translator-finite-build.log/plan. User says probablydeleted; applying prior explicit permission to prepare this one translator, recovering ONLY exactsameSDK URL/SHA512 in sdk-recovery-plan/log, session75326. No capture/replay tool rebuild/re-download. Existing translator/bin preserved; one privatefinitec2-Phi source candidate +newbin-finite planned, not runtimefix. New ae837 rawMaxwell group5430 recovered via existingTOC/index/Oodle fromown-device read-only: only12MBTOC+3.6MBUCAS byte ranges, no6GBcontainer copy. Originalpre Maxwell job/code reused; debris-retranslate-jobs/input.json. Source candidate finitephi preserves runtimehandle comparisons/readcoordinates/results; GPU validation pending. No appsource/performance/audio/save edits.
+
+CAPTURE_COMPLETE=NO (original-run output independence, remaininggeneration/texturevalid-row audits open); VIEW_VALIDITY fullscopeNOT_FIXED; FIRST_WRONG_BOSS=color VS Position invalid inlegal B12control, earlierpredepth streak drawidentified butscalarcauseunproven. VISUAL_DARK limitedPASS; VISUAL_LIMIT/BOSS FAIL; AUDIO userNOT_RUN. Device remainsreplay1d30, normalrestoreea2f+hiddenoverlay pending. Final60/localcommit/baseline/APK/data/manual Honor400Pro pending; do notshipfailedcandidateorcallfullPASS.
+
+# Honor Iron Giant bad phase captured and replay-verified - 2026-11-07T19:50:44.023466+08:00
+
+Same sole writer / HEAD032e5f6 / dirty preserved. New boss trace completed exact finite3frames5752-5754, 15,032,074,879bytes; device=host SHA47e6a5592a6845c9f9dadc560156a8e4b414b760b8406639ff54cbebfb3d5358 (boss-trace-sha.json). Existing replayAPK1d30 reused, 3/3frames replay completed; phase1.png/phase3.png actually viewed and reproduce huge black landing streaks, no pause or wrong-phase substitution. Raw index977 actual shader modules /829 pipelines /633live draws (212firstframe), restoration-end473223 excluded. New trace is independent of removed earlier20GB trace, not a re-download.
+
+First same-frame export now targets live draw475828 VSmodule554 candidate6018 /FS1501 candidatecdea, CB2481 begin475197 RP475822-475830 submit476316. Shader key mapping by runtime wordcount is provisional until actual bytes checked; no pairing/rootcause assumed. Existing exporter only supports first target per CB, so single-target run. Next inspect before/after attachments and complete resource matrix, locate first wrong GPU output. Location9 default experiment remains rejected/reverted.
+
+User confirmed MiniMAX disk cleanup removed local T/data/romfs and original earlier trace around18:36. Preserve surviving19GB clone, all GPU exports/index/translator; no repeated setup or old trace download. Restore only needed translation inputs if new shader required. Device currently replayAPK1d30, normal restoreea2f and originallyhidden overlay still pending. No current source edit. CAPTURE_COMPLETE=NO (original-run per-draw independence/generations and new target coverage open), VIEW_VALIDITY fullscopeNOT_FIXED, FIRST_WRONG_BOSS=NOT_FOUND, VISUAL_DARK limitedPASS, VISUAL_LIMIT/BOSS=FAIL, AUDIO=NOT_RUN explicit user. Final60/commit/APK/data/manual Honor400Pro pending.
+
+# Honor boss black-line flicker reproduced; location9 hypothesis rejected - 2026-11-07T19:23:46.698892+08:00
+
+Ordinary marker0/30Hz baselineea2f (no capture layer) combined110srecord+Continue+scriptedroute succeeds: actual IronGiant first appearance captured, with long black triangles/lines during landing dust around76-81s. boss-route-baseline.mp4 /boss-baseline-entry-10hz.png independently reproduce reported blackshadow flicker. Repeated same route with ordinary candidate992ff: logs prove warm/runtime initialized patch1 and actual VS79255words; STILL same blacklines (boss-route-candidate.mp4 /boss-candidate-entry-10hz.png). Thus definedloc9 is INSUFFICIENT, NOT the accepted rootcause/fix. Exact video manifests boss-initialization-negative-result.json. Staticdialogue/no-flicker was not sufficient; actual entry A/B is decisive. No capture-layer-only attribution: both ordinary packages reproduce.
+
+Reverted ONLY own new location9 initialization change in xbg_boss_interface.h/xbg_game.cpp/tests/device/test_boss_interface.cpp, preserving prior declaration-only workaround and all earlier dirty changes. Failed candidate sources archived defined-candidate-source/; APK992ff retained as rejected experiment, not delivery. No integerfact/Dark/Limit bundle revert. Source/final60/audio unrelated unchanged.
+
+Now reused exact existing capture APK17faf (baseordinaryea2f plus original61abd layer, no rebuild/download), installed-r preservingdata; GPUdebug4 app-only enabled, unassisted, capturefile gfxr-boss-flash-20261107.gfxr, finite3frames, initialtriggerfalse. New capture_boss_route.py uses same combined recording/gameplay process; settrigger at north input+11.7sec to target impact dust/blacklines, without pause. Running session88136, boss-route-capture.log/plan, recorderhostPID and per-step timestamps disk. Do not start competing writer/input, redo setup or trigger14.2sLimit task here. Resume this exact handle/log first; newlyneededtrace only, original20GBpurple trace untouched. Once complete validate activebadphase, actualdraw/resources/module/attachments, then firstGPUerror for particle draw; do not assume creature VSfe033 caused lines or equate bodylighting with impactparticles.
+
+Device currently capture17faf, ordinaryea2f restoration pending; four fixedXGS remain and all data/saves retained. Touch overlay temporarilyshown, originallyhidden; restorehidden atfinalhandoff. FIRST_WRONG_FLASH=NOT_FOUND; CAPTURE_COMPLETE=NO; VISUAL_LIMIT residualFAIL; VISUAL_DARK limitedPASS; AUDIO userNOT_RUN. 60Hz finalgoal remainsunverified, diagnostic30 forcausalcontrol only; afterfixbaseline/codecommit/APK/data/manual Honor400Pro pending. Goalactive, notcomplete.
+
+# Honor boss defined-output source candidate built, ordinary A/B pending - 2026-11-07T19:06:14.558517+08:00
+
+Source candidate (not yet device-accepted): xbg_boss_interface.h now initializes the exact missing output9 to(0,0,0,1), matching pinned local Ryujinx Translator.cs182-315 NextInputAttributesComponents policy. Original module guard78860words/types/IDs and HonorAdreno735/key gate unchanged. All original guest instructions preserved; xbg_game.cpp warm/runtime call same helper. Updated actual-module test_boss_interface.cpp rejects malformed/already-patched input and strips only added interface/default/store to recover original byte-identically; hosttest exit0 and patched Vulkan1.1 spirv-val exit0. This is NOT a proven flash root cause or visualfix. Broader phone750gate behavior not changed/verified.
+
+Ordinary candidate APK992ffdedb4aa07591b8211dcbb8abc8707d26b2629c34b029a2edb341e4deff7 built exit0; build-boss-plan/log/exit, test-boss-initialized, boss-source-defined.spv in limit-tail-capture-20261107. Not installed yet. Existing VS/FS/draw/depth/FS color retained; no zeroFS/remap9to8/ALWAYS/audio/performance edits.
+
+GameUI loaded existingAutoSave chapter1battlefieldLv1 Time16:37 (no savefile overwrite/edit); confirms checkpoint afterLimit and beforeIronGiant. Route now established: from loadedfield up9/right12, WAIT zone loading, then new Lcorridor right9/up12 reachesIronGiant dialogue. Previous up12/left9 during loading reversed transition; do not repeat those wrong route steps. First40s transition recording ended before subsequent input began due orchestration delay, shows only field, NOT bossappearance evidence. Need launch recorder and route in SAME live Python process to cover event; do not claimpaused/staticdialogue or priorroutevideos reproduce flash. Source-defined diagnostic and32-bitdefault evidence remain separate.
+
+To remove capture-layer interference from A/B, restoring ordinary old-output APKea2f with4XGS retained, install-r and app-onlyGPU4settingsdelete /capturepropsclear /triggerfalse now running session50081, log ordinary-boss-baseline-install.log. Next waitactualhandle, inspecttitle, then combined110srecord+Continue+knownroute foroldbaseline. Candidate992ff then same ordinaryroute; requiresvisualproof. Current target30 forcausaltest; final usertarget60 stillpending actual60/audio gates. AUDIO userNOT_RUN, Limitresidualblacktail/orbsFAIL, darklimitedPASS, bossflashFIRST_WRONG_NOT_FOUND. No baseline/codecommit/packageyet; Honor400Pro deliverablesstillpending.
+
+# Honor user expands scope: Iron Giant entry flicker +60Hz target - 2026-11-07T18:48:37.456968+08:00
+
+Latest direct user request adds black-shadow flicker when current Iron Giant appears and confirms final target60Hz. This supersedes prior task's no60 optimization scope for eventual delivery; current diagnostic remains30, no60PASS claimed or audio buffer reduction. After graphics completion user also requests baseline/code commit/APK/data/manual for Honor400Pro, not yet fulfilled. Audio remains explicit user NOT_RUN.
+
+Actual current PID17487, tail-capture APK17faf (same ordinaryea2f runtime plus reused capture layer), current Iron Giant cutscene was paused SYSTEM MENU; triggerfalse/frames1. No background journey processes live (hostps checked); previous newgame helper already exited0. User-controlled scene replaces obsolete tutorial macro phase: do not resume that macro or trigger14.2s from this unrelated scene. No capture triggered on paused menu. user-boss-current.png /user-boss-guest.log preserve live identity; actual VSfe033/FS5ad1 pair and runtime missing-output patch1, VS79245words with89integer rewrites.
+
+Offline boss-interface-audit.json proves original VS has output8,10 but no9; FS loads input9.xyz in a conditional branch. Existing xbg_boss_interface.h declares location9 without any store. This is a concrete undefined interface, a hypothesis for flicker, NOT proven root cause. Pinned local Ryujinx Translator.cs182-315 initializes NextInputAttributesComponents to0/0/0/1; a diagnostic original-VS+defined-location9 variant assembled/spirv-val Vulkan1.1 exit0 (boss-defined-location9.spv /plan.json), not deployed, GPU/visual NOT_RUN, no source edit. Do not equate declaration orvalidation with flicker fix, or remap9to8 without guest evidence.
+
+First35s boss recording stayed paused because instantaneous keyevent97 was not consumed by guest. Secondrecord boss-flash2.mp4 (5945140B) after temporarily showing touch controls and250msB resumed actual cutscene/dialogue, confirmed screenshotboss-unpause-attempt2.png. This does not recreate initial appearance; no flicker PASS/FAIL inferred yet. Overlay originallyhidden, nowshown temporarily; restorehidden when leavingtask. Read-only load-list inspection now in progress to locate current checkpoint for repeat entry, no save selection/overwrite/deletion. Capture layer still enabled app-only, ordinaryea2f restore ready; this stage not final device restoration.
+
+FIRST_WRONG_FLASH=NOT_FOUND; FIRST_WRONG_SHARDS=VS Position as prior; VISUAL_DARK limitedPASS, VISUAL_LIMIT stillFAIL residualtail/orbs, CAPTURE_COMPLETE=NO, fullVIEW_VALIDITY=NOT_FIXED, AUDIO=NOT_RUN. No baseline/commit/package issued yet.
+
+# Honor ordinary blue ice restored; residual Limit black particles remain - 2026-11-07T18:32:50.668188+08:00
+
+Ordinary ea2f APK actual base SHA checked, D1/DB559 natural bundles deployed, marker0 and GPU4settingsnull. Runtime loads D1 words55049/DB55963527, integer rewrites1 each. 35s dark nativeMP4 (13249494B); exact manifest ordinary-trial/visual-result.json: tutorial complete cast blue-whitecore/purpleredouter, all3enemies settle, self-test PASS limited structure/color. 45s Limit nativeMP4 (14163754B) begins before A but input delayed to~25s; blue ice at~33s matches Switch05 texture/shape, gold flames restored, later lightning/beam rendered. Final beam nearEOF; do NOT call video cast-to-settlement complete, later screenshot after-limit.png proves field return. Still black round spots at ice-to-lightning transition and black particles during fire outro (limit-contact-2.png), so VISUAL_LIMIT remains FAIL. No early-purple replay substituted for later-ice actual visual. No source edit since2B12facts.
+
+FIRST_WRONG_SHARDS remains VS Position; new static fetch audit confirms originalD1 B18/24 fetch17/20 vs new26/26 plus6 extra native slot128float, DB55925/28 vs34/34 plus6slot128float (static counts, not runtime execution). Red75GPUresources equal and2453HDR causal evidence as prior. Existing20GBearlypurple trace cannot identify later residual particles; preparing one later red-smoke capture using SAME layer/tool, latest ordinary ea2f asbase byte-identical non-signing entries. Capture APK17faf5a8fd0d07a961f32daeef3055566a483b3e85c175ef548ab92ff54c2988, library61abd... reused. New evidence dir limit-tail-capture-20261107/, single-frame trigger, target~14.2s after Limit A based on real movie, not13s provisional plan. Restore ordinaryea2f ready; preserve4shaderoverrides/all data. Host50Gi/device83Gi free before new trace, finiteoneframe.
+
+Entry flicker: entry2.mp4 49.953s, dense10Hz11-16s window shows one clean fade into first soldier story, no repeated flashes observed in this one pass; NOT_REPRODUCED limited window, NOT_FIXED/NOT_EXCLUDED overall. Boss/shield/completeocclusion/independentQA still not accepted. AUDIO NOT_RUN by user; runtime performance10 is NDK NONE enum, source audio_bridge.c208 sets NONE, fence spin0 logged; no subjectivePASS or standing-gate completion.
+
+New user instruction recorded: AFTER completing fix, baseline +code commit +APK/data package/install manual, target Honor400Pro. This is pending graphics completion, not current baseline approval. Preserve dirty, no push; only current Honor tree/device. Target phone not tested; exact model already supplied, do not ask again.
+
+# Honor ordinary shard/trail candidate deployed - 2026-11-07T18:04:12.910481+08:00
+
+Same sole writer/HEAD032e5f6; preserving all dirty/data. New red independent draw3495303 normal EQUAL, VSdb559/module878 +original FS1287, has75 descriptor resources with identical GPU valid bytes between B12-only and full-VS tests. B12-only outputs0; full retranslation outputs2453 HDR pixels exactly bbox801,392-875,560, matching separately captured pre3495030 coverage. Viewed red-retranslated-hdr/hdr-comparison.png: gold flame restored, all other attachments unchanged. C1 exact match to this draw GPU. First scalar for this red VS not measured; VS path causal only, distinct from D1 Position result. Evidence red-controlled-comparison.json / red-resource-matrix.json and both GPU dirs.
+
+Source facts now add ONLY native R32_UINT B12 for D1 andDB559. Existing half removals unchanged; B18 stays R16_SFLOAT/range2. New ordinary APK ea2fdd5261e05660bc229cf89c10b44655a143db7fc2a04f631f542daf69c1c0 built exit0 (build-final-plan/log/exit), install-r succeeded preserving data; device base.apk SHA exact. Natural-layout D1 XGS62d51057373b7d52ee418b7906bc144ffa0f3e90daffcf78f3dea3c7322a5c86 and DB559 XGS7e0723610e7b6d146ccf85541fa2cb734b1230ed4a1ee0ce2192dd969d2cb6a7 deployed/sha verified; both primary previously absent. Remapped diagnosticSPV not deployed. New warm list backup/filter removes exactly20 records for these2keys, preserves816 other records byte-identically; driver cache unchanged. Primarydark920bd... andspheref357... remain.
+
+ordinary-trial/DEPLOY-PLAN.json/deploy.log/warm-list-plan.json record restore. APK now ordinary, PID14075; marker0, GPU4settingsnull, capture3propsempty/triggerfalse; title/NewGameNormal reached. am start-W returned timeout after10sec but process/title proven healthy (do not call launch completed within10sec). Full Limit ordinary visual next, still VISUAL_LIMIT=FAIL pending retest, AUDIO=NOT_RUN per user. FIRST_WRONG_SHARDS=VS Position; CAPTURE_COMPLETE=NO, full scope VIEW_VALIDITY NOT_FIXED as earlier unresolved variants; entryflash/regression/independentQA open. No performance/audio/source save changes.
+
+# Honor Limit shards first wrong = VS Position - 2026-11-07T17:59:11.162453+08:00
+
+Same sole writer / dirty tree / HEAD032e5f6. Actual normal GEQUAL draw3495377 (d1d6 VS1042, original FS1289), frame37722, exact paired pre3494979 input. Direct GPU terminal Position probes retain full VS arithmetic, vertex0 for88 instances, valid markers88/88 and finite88/88 in both runs. Typed-original has15 distinct positions, ALL88 outside xy clip; first4 identical (-232.10005,-8536.890625,200,4425.26416), NDCy approximately-1.929126. New retranslation differs88/88,82 distinct positions,74 inside xy clip; first position (81.51373,1222.4945,200,4697.08154). Earlier commentary saying all88 identical was corrected: only first4 identical;15distinct overall. Evidence FIRST-WRONG-LIMIT-SHARDS.json + two position-*-gpu dirs and logs. This establishes Position as first wrong stage before coverage/FS/depth; no fragment/depth workaround. Existing full-VS/original-FS control restores3090 blue-white HDR pixels. Actual original shader/C1 and same-draw resource matrix retained.
+
+Probe first attempt failed before draw at pipeline67844 with VK_ERROR_UNKNOWN: VS1042 is shared by additional pipeline layouts. Corrected diagnostic trace clone adds VS visibility only to existing SSBO10 in4 relevant set layouts1036/1285/1858/12919901, each decompressed/readback-verified. Original20GB capture unchanged. SSBO writes252160..253920, disjoint from captured vertex/index/C0/C1. Nonempty diagnostic FS and same probe for both runs; probes not normal visual acceptance. Query VK_NOT_READY replay-vs-capture warnings retained.
+
+New source change xbg_spirv_stencil.h adds ONLY d1d6/B12 integer fact (native98/range32768; B18 remains76/range2). Ordinary APK build exit0, ice-capture/apk/honor-limit-ice-validity.apk SHA49dc3b698dfbeb45cde7cb513658a72ce09a96396e240019d3e8eec4ae291d28; not yet installed. D1 natural-layout XGS62d510... ready, no remapped diagnostic deployed. Red trail VSdb559/module878 independently translated with existing tools/index; actual same-frame B12 uint98/B18 half76/B24float100 mapped; typed-only test running. No root-cause or visual success claimed for it yet. Replay APK1d30 still installed; ordinary restoration/deployment pending.
+
+CAPTURE_COMPLETE=NO (original-run per-draw attachment/generation independence and later ice-climax capture remain missing); VIEW_VALIDITY full scope NOT_FIXED, target D1 legal controls complete; FIRST_WRONG_LIMIT_SHARDS=VS Position. VISUAL_DARK=limited tutorial structure/color self-test PASS; VISUAL_LIMIT=FAIL ordinary package, controlled shards restored only. AUDIO=NOT_RUN per user, full standing checklist open; entry flash/other trails/occlusion/shield/fire/boss/independent QA remain open. No performance/audio/data/save changes.
+
+# Honor Limit blue-white shard restoration in controlled replay - 2026-11-07T17:38:30.414700+08:00
+
+Sole writer, HEAD032e5f6, all dirty preserved; no new game source edit this milestone. New 3-frame trace has exact EOF (3504314 blocks), 20258792101 bytes SHA b45629a0beeac836c4fc9c5b3068e1662f34d2dd87a71650b6442d0ce7d4ba0c, frame37722-37724. It is purple charge, NOT later blue-ice climax. Replayed 3/3 frames; black trails persist. APK1d30 replay currently installed; ordinary restore0545 remains available, GPU4 settings null, triggerfalse, no source/data/save deletion. Work/evidence: dark-shader-retranslate-20261107/ice-capture/.
+
+Actual deployed new632c VS2482 SHA85eb0e... is byte-identical to candidate rewriting12/24, original17ab FS2508. Its sphere pair pre3495015/color3495333 has identical VB/IB and index1800 x2. Pre963 depth pixels, color956 HDR pixels at same bbox840,632-874,666: this particular sphere is working. Do not conflate other black shards with it.
+
+Residual blue shard target independently identified as color VS d1d6ceeb3a7b2c18/module1042 SHA9b9bb59a..., FS106540616ca2eaca/module1289, draw3495377 normal GEQUAL/no-write. Correct pre is draw3494979 VS085a/module905 +FS1271; both share indirect buffer12922858 offset60, 144indices x88, exact same VB1728B SHA b62d13... and IB288B SHA8daaa4.... Pre3495 depth pixels bbox615,47-821,299; original color all0. Earlier provisional e243/3495030 is NOT its paired pre (6indices x32); retained as separate negative control. Original 6-target export only consumed first entry because same-CB entries are not all supported by current exporter. All further runs use single target or distinct CB targets; no tools rebuilt.
+
+Recorded resource matrix trail-resource-matrix.json confirms B12 R32_UINT format98/range32768 while actual1042 image type was float; B18 R16_SFLOAT/range2 legal, B24 R32_SFLOAT/range13600. B12-only typed shader e562... preserves all attachments0, so type compliance alone is insufficient. Existing translator+index reused for exactly d1d6/e243: d1d6 builds, e243 strictly rejects dynamic-array32 (not stripped/deployed). New d1d6 XGS62d510... C1 exactly matches this draw GPU256B; replay-only extra float buffer B42 aliases original B24 (same source7 slot128, correct nativefloat view), UBObindings shifted back. Actual-module candidate0e8144... with B12 integer fetch and original FS/GEQUAL writes3090 HDR pixels bbox615,73-805,299; black fragments visibly become blue-white shards in trail-retranslated-hdr/hdr-comparison.png. Remaining attachments0 changes. New trace / same-draw data only.
+
+FIRST_WRONG_LIMIT narrowed to VS path (controlled full retranslation), Position vs varying still being directly measured; no claim yet of specific first scalar or ordinary-game PASS. CAPTURE_COMPLETE=NO (original-run per-draw attachment independence/remaining generations, later blue climax not captured); VIEW_VALIDITY=NOT_FIXED for full Limit scope (observed new B12 type mismatch, B18 legal); VISUAL_LIMIT=FAIL ordinary candidate, REPLAY_BLUE_SHARDS_RESTORED only. VISUAL_DARK=limited tutorial structure/color self-test PASS; AUDIO=NOT_RUN per user; entry flicker/remaining red trails/occlusion/shield/fire/boss/independent QA still open. Device remains isolated, only own-package replay; next legal Position probe preparation reuses existing SSBO10 with explicitly limited layout visibility.
+
+# Honor Limit ice-stage black polygons reproduced - 2026-11-07T15:54:48.018235+08:00
+
+Same sole writer, HEAD032e5f6 and dirty tree preserved. Capture APK d364..., marker0, both new color XGS unchanged. Actual Chaos Limit tutorial video shows large pure-black polygons during blue ice and black trails in the following red fire stage. VISUAL_LIMIT=FAIL independently reproduced. Evidence: dark-shader-retranslate-20261107/ice-capture/limit-full.h264, limit-full.mp4, limit-contact.png, limit-visual-reproduction.json. MP4 is a 25fps frame-order reference, not wall-clock timing acceptance. GPU trigger NOT_TRIGGERED: the brief ice stage passed before screenshot review; no paused capture claimed. Next attempt uses video-derived timed trigger. Currently walking toward Iron Giant; capture settings remain app-only, trigger=false.
+
+CAPTURE_COMPLETE=NO (new ice phase not yet GPU-captured; earlier original-run per-draw attachments/generation gaps remain). VIEW_VALIDITY dark native half confirmed legal, remaining Limit variants not all audited. FIRST_WRONG_LIMIT=NOT_FOUND; VISUAL_DARK=limited tutorial structure/color self-test PASS; AUDIO=NOT_RUN as user cannot listen now. Entry flicker cause unproven. No source/tool/performance/audio/save-file modifications or independent QA/full PASS.
+
+# Honor碎冰定向捕获已启动；旧Limit输入9+26项补齐 — 2026-11-07T15:17:45.144706+08:00
+
+用户明确残留在蓝色冰晶/碎冰段，旧f16817截图仅紫色背景早期，不能用于其验收。复用既有GFXR c081f1b库，只给普通0545...加入原库且核所有原非签名entry字节一致，新诊断APK d364f4a26669397aed35196fdf573702cac57bbf2560ba9b4c30b379032cb46e，install-r保留数据，PID16124。capture layer已实际Loaded，unassisted、trigger1帧、trigger=false；marker0。两个color XGS920bd.../f357...保留，原runtime代码未新改。当前在New Game默认普通难度流程开场影片，计划到Limit蓝冰段才触发；不是暂停错相位抓帧。恢复普通APK0545...的路径和原四GPU设置/props在ice-capture/install-plan.json。无需重建或重复下载工具。
+
+离线最小raw metadata解码先与既有normal JSON的4类API逐字段核对，通过后仅解析本身已有Limit trace的template/view/bind。limit-recorded-resource-matrix.json补43条完整descriptor身份；9/9 texel ranges逐项关联该draw GPU backing文件，所有inbounds；pre/color12/18/24有效字节完全一致，虽然backing buffer/offset各异。26/26 UBO/SSBO独立切片与该draw offset/range/buffer/size一致、26个唯一文件。证据limit-texel-gpu-validation.json/limit-ubo-gpu-validation.json；旧“9texel联表缺失”现已关闭。CAPTURE_COMPLETE仍NO，原运行逐draw完整输出独立对照/部分世代及报告碎冰新相位尚未获得，不用元数据闭合替代视觉。
+
+已离线准备Limit新VS remap到旧descriptor layout的replay候选a80b...，仅spirv-val通过，尚未GPU运行，nativeFormat前提/两B18合法view控制仍需做；不作为正式修复部署。VISUAL_LIMIT=FAIL用户实测，FIRST_WRONG_LIMIT未定；VISUAL_DARK仅教程结构颜色自测PASS，AUDIO明确NOT_RUN。新剧情瞬时闪烁用户反馈保留为未定因回归。
+
+# Honor用户反馈：Limit仍有黑色部分，切入剧情短暂闪烁 — 2026-11-07T14:44:59.751729+08:00
+
+用户已反馈Limit候选后仍有部分黑色特效，VISUAL_LIMIT=FAIL，不得把单个VS重译/局部改善算完整修复。当前PID17237、APK0545b7c...不变，Limit已部署XGSf357...；运行日志实载632c color words55353/rewrites27，匹配新bundle重写后长度（完整module字节仍须dump）。同日志出现多对FS，不能只盯17ab单pair或假设暗魔法根因已覆盖全部Limit。user-limit-still-black-guest.log保留。
+
+另：用户重新开档进入第一幕战斗剧情时闪烁几下自行恢复，未由写手复现，FIRST_WRONG_FLASH=NOT_FOUND。after-user-act1-flash-guest.log/截图、user-current-feedback.json记录现场。用户当时在操作，写手停止输入/重启，仅只读与离线推进，避免并发争抢。AUDIO=NOT_RUN，用户明确暂不能听蓝牙；此门不可报PASS。
+
+暗魔法f42543 native view13行核到：B18两端native R16_SFLOAT/vk76/2字节，shader float；新增B54 native R32_SFLOAT/vk100/float，不加盲目UINT表项。normal EQUAL color group99/pre GEQUAL group79；dark-native-view-audit.json索引1331文件。CAPTURE_COMPLETE历史缺口保留；此前“Limit未部署”已过时。继续Limit同draw资源联表/VS首错独立审计，不再重复暗魔法六load实验。
+
+# Honor暗魔法普通marker0结构颜色已恢复 — 2026-11-07T14:23:15.667879+08:00
+
+唯一writer/HEAD032e5f6，APK0545b7c...+dark color XGS920bd097...实际运行。device-trial/dark-candidate-marker0-full.mp4完整22秒、普通marker0，无ALWAYS/空FS/删prepass；已实际查看视频接触表第二行的蓝白亮核、紫红外圈，原大纯黑主体被正确结构替代。普通角色/火焰/铁巨人显示未见回退。VISUAL_DARK=PASS(本次教程战斗结构颜色自测)，完整遮挡/独立QA/AUDIO仍NOT_RUN，不能报整刀PASS。先前短视频因父进程结束提前截断，不作完整证据，22秒新视频以session2709 exit0完成。
+
+Limit颜色XGS仍未部署，正在同一战斗独立验证旧Limit基线；VIEW_VALIDITY动态native格式仍待活动draw核验，CAPTURE_COMPLETE旧缺口保留。普通图已足以推进，不再重做暗魔法六load反事实。详细manifest ordinary-dark-visual.json。
+
+# Honor颜色候选进入普通运行，half16项GPU检查通过 — 2026-11-07T14:10:44.632420+08:00
+
+原始四VS已从平板现有容器只读复制/提取，一次5919组index完成且无group/job失败；输入设备/主机SHA一致（utoc ceb45c...，ucas695868...）。原始code/C1/job和Maxwell TLD.B字段索引在work/ffrs_xgs_uwitcx3m及maxwell-texture-load-audit.json。固定译器恢复color暗魔法9单handle+9双handle读取组，Limit9单+6双handle组；color2份Vulkan1.1校验通过，pre2份含runtime数组被现有reflect严格拒绝，未部署、不删数组。
+
+已新增真实Vulkan组件test_dark_half_fetch.cpp/dark_half_fetch.comp，Honor Adreno735 native GPU16项通过：range2 R16_SFLOAT的0/1/负零/最大有限/最小subnormal/最小normal/正负inf，及R16_UINT原位对照；1.0结果分别3f800000与00003c00，不再以零证明语义。源表仅去掉dark/Limit四VS的binding18 integer事实，保持其原float采样/native视图，其余整型事实原字保留；xbg_game仅opt-in probe补nativeFormat元数据。APK0545b7c...构建exit0，实际install-r；未改音频/帧率/同步。
+
+只部署dark color新XGS920bd097...（264500B，C1/顶点输入与旧bundle逐字相同，新增binding54及相应source映射）；Limit颜色候选f357...暂未部署。原设备两个primary覆盖均不存在，原cache/list已备份device-trial/before-*；只过滤warm-list中两个color key的旧layout，其余811条原字保留，原driver cache不改。冷启17237，warm811成功0失败，Continue进原存档野外。marker0真实场景施法/音频门待执行，不能把准备/组件/安装当画面PASS。精确部署/回退计划device-trial/DEPLOY-PLAN.json及warm-list-plan.json。
+
+# Honor单译器已准备，正在恢复允许范围的原始输入 — 2026-11-07T13:55:23.132764+08:00
+
+用户明确“允许，你抓紧吧”已解除单译器准备阻塞，goal恢复active；不再等待路径/重复问设备权限。仅本Honor树.local内准备nxnative8e091私有译器（既有Vulkan offset fallback，无新增Phi扩展），build exit0；Microsoft官方.NET10.0.403 SDK230759804B SHA5125893c66b...与发布元数据全值一致，源码/许可证/命令在dark-shader-retranslate-20261107/。Ooz9c67c核心decoder+x86CLI本地构建exit0，GPL3+不进APK；辅助用途不是第二运行时。
+
+主机.local/romfs既有链接现在找不到请求的utoc，未进入RG确认/修链接。已改为只读复制平板现有FFRS容器到本树新data/romfs，copy-device-input.py/log/plan记录源、尺寸与设备/主机SHA比较；工具session需继续poll。不重复拉取既有GFXR captures，设备包/数据/marker不变。译器首次运行SDK日志报告创建未信任ASP.NET development certificate；该首次运行副作用未预先隔离，后续已设置私有DOTNET_CLI_HOME/NUGET_PACKAGES，不读/导出证书或修改信任，全局配置不再变更。
+
+下一步保留原始提取中间物，用一次index扫描只重译四个目标VS（dark pre/color、Limit pre/color），确认丢失读取/实际绑定，再普通marker0验证。既有GPU因果结果仍有效，未声称正式修复或视觉/音频PASS。
+
+# Honor暗魔法VS丢失读取已因果定位，正式修复待工具输入 — 2026-11-07T13:21:18.473917+08:00
+
+用户持续调试授权有效，不再问设备窗口。唯一writer/同dirty树，HEAD032e5f6。首错在color VS的粒子Position/scale读取被0替代：六load反事实使2590/2590 Position与pre shadow逐位相同；保留原FS+EQUAL，HDR写出305417像素，已见蓝色亮核/紫红外圈。候选VSf95a...，脚本scripts/graphics/probe_honor_dark_lost_reads.py严格输入SHA并复现同字节；不是通用译器修复，未装候选。详见既有RESULT顶部和P/FIRST-WRONG-DARK.json、color-six-load-original-fs/hdr-comparison.png。
+
+CAPTURE_COMPLETE=NO（原运行逐draw附件/世代，Limit9texel视图联表仍缺）；VIEW_VALIDITY=NOT_FIXED（生产R32/range2未修）；FIRST_WRONG_DARK=VS位置/缩放读取置0的重放因果定位，原Maxwell语义未核；FIRST_WRONG_LIMIT=NOT_FOUND。Limit独立f16817 pre2568508/color2568775已导出122文件222101441B，predepth2027像素/colorall0，禁止套暗魔法结论。VISUAL_DARK=FAIL普通包，受控重放结构已恢复；VISUAL_LIMIT/AUDIO=NOT_RUN，回归/独立QA未跑。
+
+已恢复普通8c0... APK install-r且设备SHA核相同，marker0、GPU四项null、triggerunset、无游戏PID，数据全保留。xbg_game.cppSHA5bec...本轮不变；新增只有诊断复现脚本/证据/文档，不重建工具。
+
+下一步正式修复需可运行译器及原Maxwell输入；本树无这些既有工具，历史路径全部在用户禁碰的RG/codex-black-screen里，“不重建/下载工具”仍生效。已异步请求允许目录的既有产物路径或明确允许在Honor树准备单一译器；等待的是该输入，不是设备许可。不要擅入禁区、把六load反事实硬装为默认、再重抓现有capture或开第二writer。工作未complete，所有限制/精确路径和音频完整清单在RESULT顶部。
+
+# Honor GPU Position分歧已实测，追踪首个算术差异 — 2026-11-07T12:52:40.072758+08:00
+
+actual color VS867原计算+末尾Position读出，2590/2590有效marker、finite；pre VS868完整原算术以同帧byte-identical输入在color pipeline做shadow执行（只将C1 offset177152→176640匹配pre自己C1），2590/2590有效marker。两端vertex/index、6texel有效范围、7非C1 UBO、10BC4 mip有效块逐字相同；两C1均精确等于各自原XGS payload。shadow不是原pre draw直接读回，保留此限制。
+
+pre投影范围instance0 x[-.559,.164],y[-.893,.389]，color仅x[-.201,-.181],y[-.405,-.369]；vertex0 clip pre[-491.12192,-778.442,10,2585.0173] vscolor[-576.26685,-1161.5807,10,3001.2268]。pre范围与大片depth改写相容。此为GPU Position阶段分歧证据和下一步见RESULT顶部；继续同线程唯一writer，设备持续授权。
+
+# Honor view隔离无变化，正在直接读GPU Position — 2026-11-07T12:36:37.766844+08:00
+
+持续调试授权有效，不再问窗口。新EQUAL183项/new30 GPU切片已验证；两精确B18 view改R16_UINT/range2的隔离重放与基线22项附件有效字节全部相同，未作为生产修复。两FS深度所读GPU常量相同/PDO0，首错仍未定。
+
+正在复用已有replay1d30+--replace-shaders读实际color VS867 Position：原VS计算保留、SSBO10独立区atomic写出，非空FS只读不重叠尾部；已核device vertexStores=true、layout binding10stage17、几何/UBO无覆盖、原barrier及after-only导出。运行脚本run-position-device.py，工具session78521；普通日志/manifest在dark-normal-capture-20261107/position-probe/。不重建工具/修改游戏默认路径/宣称修复。主机旧dark-limit-capture-20261106目录当前原路径缺失，未自行删除；仍有工具APK、actual shaders/newtrace和restore源码备份供复用，未重新下载。
+
+# Honor 已获持续调试授权，新EQUAL帧183项GPU导出完成 — 2026-11-07T12:15:03.983962+08:00
+
+用户已明确平板空闲、随时可调试、不需要再问；先前待4分钟窗口阻塞已解除，后续本任务连续执行，仅实际占用冲突再停。只用A42BBB5109000333/org.ffrs.gamewindow，保留数据，不碰FC/RG。
+
+corrected live pair1383759/1384398导出183项，new f8918的30/30 GPU UBO/SSBO切片已独立匹配该帧binding/offset/range，文件/hash在normal-live-gpu-manifest.json与normal-live-ubo-gpu-validation.csv。pre改深度319158像素；正常EQUAL颜色draw全部附件0变化（不等于depth fail已定位）。正在继续限域view隔离与第一错误GPU输出定位。当前设备安装replay-ubo.apk1d30...，先前普通包8c0...保留；不将历史恢复记录冒充现在现场。未修好/未视觉音频PASS。
+
+# Honor 等待4分钟独占窗口，goal blocked — 2026-11-07 12:01:07 +0800（Asia/Shanghai）
+
+4分钟设备问题仍未答；连续三次goal turn的同一设备窗口阻塞已复核，现有本任务导出进程不存在，不假称后台等待。正确live pair1383759/1384398、indices/script/replay1d30/恢复包8c0都已核实，未重建/重复下载。需用户确认当前Honor空闲给FFRS约4分钟后继续同一dirty树、同一唯一writer；自动continue不延长已结束窗口。保持占用记录，不开放第二writer。
+
+FIRST_WRONG=NOT_FOUND、CAPTURE_COMPLETE=NO、VIEW_VALIDITY=NOT_FIXED、VISUAL_DARK=FAIL、VISUAL_LIMIT/AUDIO=NOT_RUN，目标未完成。本次未操作平板，先前已恢复普通8c0包的记录保留。详见既有RESULT顶部的阻塞审计及解除后的精确步骤；不重抓现有可用capture。
+
+# Honor Limit实际VS身份已闭合 — 2026-11-07 11:59:21 +0800（Asia/Shanghai）
+
+只复用既有test_multi_rewrite（未重建），Limit VS632c...和085a...经12/18/24重写后分别与本次实际sh1071/sh908逐字节相同；完整hash/命令在dark-normal-capture-20261107/offline-type-audit/limit-vs-identity.json，旧“VS只作名字候选”已升级为精确身份。仍无首错/视觉修复，不混同模块匹配与GPU输出。
+
+corrected暗魔法live pair1383759/1384398的4分钟设备窗口请求仍待答；不操作平板、保持唯一writer。已恢复8c0普通包的现场记录不变。CAPTURE_COMPLETE=NO、VIEW_VALIDITY=NOT_FIXED、FIRST_WRONG=NOT_FOUND，暗魔法仍黑，Limit/音频未验收。详细新增证据见既有RESULT顶部。
+
+# Honor 离线阶段完成，等纠正目标的GPU导出窗口 — 2026-11-07 11:53 Asia/Shanghai
+
+暗魔法正常EQUAL已从live draw1384398核实；Limit独立f16817 live color2568775/pipeline1295实际GEQUAL/no-write，FS与17ab...逐字相同（实际VS完整hash已存，源key只作debug-name候选）。黑块未修、FIRST_WRONG=NOT_FOUND、CAPTURE_COMPLETE=NO、VIEW_VALIDITY=NOT_FIXED、VISUAL_DARK=FAIL、VISUAL_LIMIT/AUDIO=NOT_RUN。
+
+下一步复用 existing capture/replay，执行 `dark-normal-capture-20261107/run-normal-live-device.py` 的pair1383759/1384398；精确indices在normal-live-draw-indices.txt。上次0项是误选StateEnd之前录制的CB；新capture确实有实时pair，无需重抓或再重建工具。4分钟独占问题已发，未答复前不操作设备。11:40:27已恢复普通8c0 APK，设备端SHA确认、四GPU设置null、marker0/triggerfalse/无PID；保留所有数据。旧30/30 GPU切片和22项有效附件核对已完成，不得再报缺这30段，也不得跨帧拼装。两个新trace完整在本地；详细证据见既有RESULT顶部。
+
+# Honor 正常 EQUAL 与捕获边界 — 2026-11-07 11:48 Asia/Shanghai
+
+30/30旧f15768 replay GPU切片已消费并生成逐binding/offset/range矩阵，22项附件按正确有效长度重算仍一致；不再报30段缺失。移除无条件ALWAYS的新普通包8c0a6ccf...实际运行仍有暗魔法大黑块，新捕获f8918实际区pre1383759 GEQUAL/write，color1384398 EQUAL/no-write，实际shader hash与旧帧相同。Limit独立新捕获f16817已在本地，目标GEQUAL尚待单独核对。两新trace均只有1个GFXR frame，有完整EOF。
+
+导出尝试选错了StateEnd1381591之前录制、之后才提交的恢复CB（1379909/1380385），目录0项；不是capture整体缺目标。后一对1383759/1384398在实时录制区，可直接复用现有capture与replay包，精确 `normal-live-draw-indices.txt`/`run-normal-live-device.py`已准备。当前4分钟设备窗口问题待答，不自行操作平板。前15分及8分窗口均按时释放；11:40:27已恢复8c0普通包，四项GPU设置null、marker0、triggerfalse、无游戏PID，后核SHA一致。禁止把旧179项拼给新8918。
+
+CAPTURE_COMPLETE=NO、VIEW_VALIDITY=NOT_FIXED、FIRST_WRONG=NOT_FOUND、VISUAL_DARK=FAIL（仍黑）、VISUAL_LIMIT/AUDIO=NOT_RUN，无修复或整刀PASS。详情及失败原因见既有RESULT顶部和 `.local/honor-device-profiles/flame-20261104/dark-normal-capture-20261107/`。本轮未重建工具/下载旧trace/触碰RG、FC、存档；唯一writer、所有dirty保留。
+
+# Honor 正常深度与 UBO 离线修订 — 2026-11-07
+
+用户要求先离线，不操作平板，装包/冷启前报告。正常路径已移除既有按 shader 强制 ALWAYS 的脏改，原片段和整文件保存在 `.local/honor-device-profiles/flame-20261104/dark-limit-restore-20261107/`；保留明确 opt-in 的诊断分支。静态映射旧日志 dark depthFunc3→EQUAL、Limit depthFunc7→GEQUAL；未以新源码真机确认。f15768 pipeline876 EQUAL 与实际2487 ALWAYS 创建参数仅 depthCompareOp 不同，非视觉修复证明。
+
+隔离 GFXReconstruct 代码已按 draw/stage/set/binding/element/effective offset/size 单独导出 buffer，并修复原 unordered_map 造成动态 offset 顺序错误；JSON 与文件名含有效范围。目标捕获的14+16项 descriptor 元数据 `dark-limit-restore-20261107/ubo-descriptors.csv`，实际 GPU 字节仍缺。NDK syntax-only 两个 replay 源及 xbg_game.cpp exit0，`verify_offline.py` exit0；未重建工具/APK，未运行修订 replay、未触碰平板。CAPTURE_COMPLETE=NO、VIEW_VALIDITY=NOT_FIXED、FIRST_WRONG=NOT_FOUND、视觉/音频 NOT_RUN。下一步需构建修订 replay 并在用户允许后同包 install-r/重放，核对 GPU 字节及真实 EQUAL/GEQUAL；本轮只报告设备需求。详见既有 RESULT 顶部。
+
+# Honor dark/Limit 离线复核 — 2026-11-07
+
+用户要求本轮不操作平板/安装/重启，不重建或下载。新证据纠正 f15768：color draw2806351 实际 pipeline2487 depth ALWAYS（非动态），现有 dirty xbg_game.cpp 有匹配 shader 的无条件 ALWAYS 覆盖，且原 diagnostic APK 含该覆盖日志字符串；不能再把该帧当 EQUAL 正常路径或把 ALWAYS 当修复。pre pipeline872 GEQUAL。152项导出存在 UBO 缺口：同 buffer 多个动态 binding 被工具按 buffer 指针去重，仅导一个480B或256B片段，JSON 却多次指向它。当前不能声称完整输入。
+
+binding42 image1011076 的10 mip BC4紧密有效前缀已经按 4×4/8B 算出；两 draw replay 前缀全部字节一致，`dark-limit-offline-audit-20261107/bc4-matrix.txt`。image/memory/view 创建绑定与 semaphore 顺序已核；snapshot 来源/alias/原运行 GPU 逐级内容未全证。33条 VK_NOT_READY 对照 131 个录制成功查询（flags=64bit、无WAIT）；16次立即重试与时序差异相容，无法逐条定位。目标 color query 范围包含另3 draw，不是单 draw 样本。f15768 replay pre/color 附件变化像素及代表位置已存 `attachment-diff.txt`，但没有客体语义和完整输入，FIRST_WRONG=NOT_FOUND。
+
+详细证据与精确恢复步骤 `coordination/results/P-CX-TERRA-dark-limit-black-RESULT.md` 顶部；CAPTURE_COMPLETE=NO、VIEW_VALIDITY=NOT_FIXED、VISUAL_DARK/VISUAL_LIMIT/AUDIO=NOT_RUN。没有更改游戏源码、APK、设备；无重建/下载。需补 EQUAL 路径、完整动态 UBO 和原运行同 draw 附件对照，Limit 单独处理。
+
+# Honor 离线核查进行中 — 2026-11-07
+
+唯一 writer 接续；禁止平板操作、下载或重建。已开始复用现有 capture 转换以过滤 image1011076 与 query 资源生命周期：命令 `.local/honor-device-profiles/flame-20261104/dark-limit-offline-audit-20261107/run-trace.sh`，cwd 本树，日志 `trace-run.log`、输出 `trace-filtered.jsonl`，exec session 99884。重放器 raw image 布局与实际 mip 内容正在离线核对。
+
+# Honor dark/Limit capture 本刀交接 — 2026-11-07 02:50 Asia/Shanghai
+
+CAPTURE_COMPLETE=NO（暗魔法同帧部分完成，Limit 未捕获）；VIEW_VALIDITY=NOT_FIXED；FIRST_WRONG=NOT_FOUND；VISUAL_DARK=NOT_RUN；VISUAL_LIMIT=NOT_RUN；AUDIO=NOT_RUN。没有黑块修复。f15768 实际目标 pre draw2805615 / color2806351；原运行 frame15768 最终图采样与同帧 GPU replay 9216 点、36864 bytes 完全一致 SHA ac2ddf6f...，仅是最终图采样，不是同 draw 全附件比较。该帧两 draw 的 replay 前顶点/索引、UBO/texel、纹理、前后 color/depth/stencil 已导出 `gfxr-paired-draw-20261107/`，hash `manifest-paired-draw.txt`；查询重放有 VK_NOT_READY vs captured VK_SUCCESS，资源世代/原 draw 全附件/BC4 有效块及非法 view 未闭合。旧 f23783 R32_UINT range2 违反00929，限域 R16 replay 对照同图不构成正式修复或共因。完整矩阵、原始文件/命令、音频各项和下一步见 `coordination/results/P-CX-TERRA-dark-limit-black-RESULT.md`。
+
+HEAD032e5f6，同一 dirty 树、无游戏源码修改或提交；恢复 install-r 原 diagnostic APK SHA55b241b1...，marker0，GPU app-target debug 四项 null、trigger false，无 org.ffrs.gamewindow 进程；所有设备 capture 保留。独立 QA、遮挡、shield/fire/boss 与常设音频门均未跑。窗口至03:00，不擅自延长。需先原应用同 draw 完整附件与 replay 同步/字节对照及安全 view 语义，再找首错；Limit 独立验收。
+
+# Honor paired original-output capture — 2026-11-07 02:21 Asia/Shanghai
+
+Isolated replay before-draw vertex bug fixed and validated on Honor, `replay-before-vertex.apk` SHA `6ae72d8aa7a0dc9376a1343c117c859705654be4e632af911419e1de7553d276`: both target indirect before values 6960 indices/2 instances, before vertex/index hashes 9a0c.../dadada..., same as old after-only. Its experimental raw stencil works; all replay results remain non-original and unvalidated. New actual live dark attempt PID24968 GFXR capture of 3 frames completed `/sdcard/Android/data/org.ffrs.gamewindow/files/gfxr-paired-20261107_trim_trigger_20261107T021830.gfxr` size 8580643727, pull+hash session8247, log `paired-pull.log`; also app probe `codex-probe-24968/capture.txt` frame15768 END, role present sample 128x72 from original 1920x1080 image. Need check target draw and whether original sample frame is inside trace, then compare exact original sample to replay of same image; pairing and first wrong unproved. Layer app-target global settings restored null; marker0, trigger false, capture property fields cleared. Process may retain already-loaded layer until restart. Do not delete evidence; no game source change.
+
+# Honor GFXR stencil / before-draw checkpoint — 2026-11-07 01:59 Asia/Shanghai
+
+R16 counterfactual replay finished; baseline and R16 replay screenshots are byte-identical SHA `0af5ab1e5b3647e1e960e3cc624ff8d047bfb0cb264c180fb16821d9f4c904f4`, zero changed pixels. This is only a replay comparison; original capture has invalid view, no original same-frame reference, so no PASS or causality. Isolated replay APK `replay-stencil.apk` SHA `d7f2c32374f4b57048d11f757b33e07dad532e19acdb4b1851529d8c60a19137`; upstream intentionally excludes stencil, experimental raw-only patch exported 4 pre/after stencil files in `stencil-20261107/`, no original comparison. Before+after+vertex still aborts: upstream copies indirect params into clone in the command buffer after the before-draw split, but reads that clone at the earlier split. Isolated fix under build (`build-before-vertex.log`, session 95037) reads real indirect source only for single indexed indirect after preceding split fence. Must validate replay output and parameters; do not call unverified copy original GPU snapshot. No game source edits or production fix.
+
+# Honor GFXR R16 counterfactual — 2026-11-07
+
+Draw23783 actual view IDs6262904/5922581 are R32_UINT range2, offsets17664/2816, matched to binding18 via descriptor templates; GPU replay captured bytes 0000. Isolated replayer source changes only these exact capture IDs to R16_SFLOAT/range2; matching shader modules852/853 use 12/24-rewritten/18-original variants through `--replace-shaders`, no global/game change. Device standalone VkFormat query Adreno735 supports R16_SFLOAT UNIFORM_TEXEL_BUFFER, minTexelOffsetAlignment64; both offsets divisible64. Diagnostic APK `replay-r16.apk` SHA fa9990f21daf2abcb51b550a518e18f514edca428d30570323af215825b2f192, lib SHA035469050def0190a2592e0333b0e50da2e7b57c96e69a6c6bfe7ee9006c7210, NDK build exit0. Next install-r same package and replay with only two replacement shader files; compare screenshot to original same capture replay, no claim production legality/visual PASS.
+
+# Honor GFXR texel view identity fix — 2026-11-07
+
+Patched isolated replayer successfully performed before/after full draw without previous indirect parameter assertion, but logged 12 `FFRS_DUMP missing buffer for texel view`: upstream generated vkCreateBufferView replay neglected to store captured buffer identity in VulkanBufferViewInfo. Added diagnostic assignment from decoded create info after successful create; rebuilt replayer exit0. Same-package replay-viewmap.apk SHA `bd574f7882d25029ce58a066953bcc35ddac324f444f8b4c9c550e9c12c3b75f`, stripped library SHA `3f3912471efd64dcbeeeed760e56f70df1260d2c04cd0224015abdf5cb631966`, original generated source preserved `generated-vulkan-replay-upstream.cpp`. Next install-r same package preserving data and rerun before/after; validate against original create records and unmodified after outputs.
+
+# Honor patched GFXR resource replay — 2026-11-07
+
+Own isolated third-party replayer source change: immutable texel-view underlying GPU buffers included in dump; repeated indexed indirect param allocation before/after uses delete[] before re-read. Source at `.local/.../dark-limit-capture-20261106/gfxreconstruct-c081f1b/framework/decode/vulkan_replay_dump_resources_draw_calls.cpp`, pristine copy `draw-calls-upstream.cpp`; isolated NDK build `build-android-replay-patched.log` exit0. Patched replay lib SHA52c53bebb5a755a3d8666676ef5e5b1d00b55e4766c5af504f0898f0549a9ee5, same-package APK SHA29c4baee49b3d9237fb84f81d1c105808fe85ebd00f2005340ad8610bc85b1c1, signature verified. Next install-r same package, run before/after dump, compare against unmodified after-only and inspect logs; not a game repair.
+
+# Honor GFXR focused vertex extraction — 2026-11-07
+
+After-only replay with `--dump-resources-dump-vertex-index-buffers` succeeded; captured/replayed draw3315360 & 3316109 index 13920B SHA dadada... both and vertex 15540B SHA9a0c... both, from GPU replay, no original GPU comparison. Before+after mode still fails (pre-draw indirect values / repeated parameter allocation); after-only immutable dump omits texel descriptor views and pre-state. Third-party source build attempt next: Android replay CMake in isolated `.local/.../gfxreconstruct-c081f1b`, logs `configure-android-replay.log` and `build-android-replay.log`; capture layer and original game unchanged.
+
+# Honor GFXR same-device replay / partial draw extraction — 2026-11-07
+
+Dark frame23783 target VS modules sh852 pre and sh853 color actual hashes 98a757.../161df8...; submit3315815 cmd2624 draw3315360 and submit3317498 cmd2628 draw3316109, official replayer indirect params both 6960 indices ×2 instances. Original capture SHA bc228e... . Same Honor Adreno735 replay completed and produced `.local/honor-device-profiles/flame-20261104/dark-limit-capture-20261106/replay-dark.png`; no contemporaneous original screenshot, no equality claim. Whole-frame capture contains illegal R32_UINT range2 views, so replay semantics not proven. Replayer with before+after+vertex aborts `min_max_vertex_indices` assertion; without vertex+before aborts at repeated FetchDrawIndirectParams assertion after producing partial pre assets; after-only replay completed but warnings query VK_NOT_READY vs captured SUCCESS. 135 after files and 55 partial before pulled, hashes `manifest-sha256.txt`; b42 10 BC4 mip exported yet some raw sizes exceed tight BC4 sizes and `scaleFailed`, need resolve pitches; JSON descriptor report omits uniform texel buffers, vertex/index, stencil aspect and pre-color output; view/sampler and dependencies require validation. No claim CAPTURE_COMPLETE or first wrong. Device global app-target debug settings restored null, marker0, replay APK a89d84... currently installed, no game process after replay; device capture kept. Exact indices `draw-indices.txt`, logs `replay-device.log`, `dump-device.log`, `dump-novertex.log`, `dump-after.log`. Next fix/scope replayer indirect dump and verify trace resource/export validity before any causality.
+
+# Honor same-package GFXR replay ready — 2026-11-07
+
+Build replay-same-package.apk exit0 SHA256 `a89d84eed553ddbd352c7516d960841340fc158879efff31c3834e04022feec7`; APK signature certificate SHA matches prior app, adds only official native replay library and NativeActivity; game data path/signature unchanged. Next `adb -s A42BBB5109000333 install -r .../replay-same-package.apk`, then launch same package NativeActivity with args targeting existing device capture, screenshot/log under app files. App-scoped global GPU layer settings already restored null; install ends capture process but does not clear data. Replay validity must be evaluated (R32 range2 invalid in recording and screenshot comparison not yet available).
+
+# Honor same-package replay build — 2026-11-07
+
+Captured dark frame 23783: actual modules pre852 SHA98a757... and color853 SHA161df8..., pipeline855/2484, indirect draw cmd2624 index3315360 and cmd2628 index3316109, submitted 3315815/3317498 with ordered semaphore chain. This proves target shaders/draw commands in capture, not completeness or correct output. Preparing APK with original app plus exported NativeActivity using official `libgfxrecon-replay.so` solely inside org.ffrs.gamewindow; same signing, data kept. Local build script `.local/honor-device-profiles/flame-20261104/dark-limit-capture-20261106/build-replay-apk.sh`, manifest replay-AndroidManifest.xml; log `replay-build.log`. No other package install.
+
+# GFXR parser build — 2026-11-07
+
+Host configure `cmake ... -DCMAKE_POLICY_VERSION_MINIMUM=3.5` exit0 after initial CMake4 failure; build `cmake --build .local/honor-device-profiles/flame-20261104/dark-limit-capture-20261106/build-host --target gfxrecon-info gfxrecon-extract gfxrecon-convert -j 2`, cwd project root, log `dark-limit-capture-20261106/build-host.log`. Capture SHA bc228e2937c64fa5f653918edf954526baa361cb50ccf7ef71405e8fa6aa137e, 6.7GB, target draw unverified. Host available 15GiB, avoid unbounded JSON output.
+
+# Honor GFXR capture obtained — 2026-11-07 00:18 CST
+
+Official c081f1b Android app-scoped layer successfully loaded PID369, unassisted trigger1. Diagnostic menu frame completed 3.7GB; dark action capture `gfxr-20261106_trim_trigger_20261107T001546.gfxr` completed 6.7GB device, pulled into `.local/honor-device-profiles/flame-20261104/dark-limit-capture-20261106/` (pull session26345 exit0). Target shader pair and replay NOT verified; normal renderer still has invalid R32 range2. Original GPU debug app-specific settings restored null; marker0, layer trigger false; current process still has layer until restart. Captures retained; no other apps installed/touched. Preparing host `gfxrecon-info`/`gfxrecon-convert` from exact c081f1b and pinned Khronos submodules, source+build under same local directory.
+
+# Honor GFXReconstruct app-scoped experiment — 2026-11-06
+
+官方 LunarG `vulkan-sdk-1.4.309.0` Android tar SHA256 f556696d196c6bfea7c6da4218d10b506836a71061d825a6e00041d4c07b409d，layer arm64 SHA61abd21138b02fae5c1eabef36c9cbd79c2b8737acd0b007f9cf129e4e16e28a。基于原安装 APK 55b241... 打入同包 layer、重新签名生成 `.local/honor-device-profiles/flame-20261104/dark-limit-capture-20261106/capture-gfxr.apk` SHA e0d5babdf6db5a10286b00e843f2fcb69b6f6014500a1ea75a52cd90f2fb5573；prepare-apk.log exit0。源 APK/数据保留。同包 org.ffrs.gamewindow install -r 将结束现场进程，后续冷启；GPU debug 设置仅该包，事前四项均 null，结束恢复；不安装额外包或全设备 layer。设备 shell userfaultfd 试验 EPERM，现有游戏安装 SIGSEGV handler，选官方 unassisted + 1帧限制先做功能测试，注意磁盘/内存负载；产物落本包 files。仅捕获能力验证，不是视觉修复。
+
+# Honor same-draw capture preparation — 2026-11-06
+
+Single writer continues in dirty worktree HEAD032e5f6. Evaluating official LunarG GFXReconstruct Android release vulkan-sdk-1.4.309.0: https://github.com/LunarG/gfxreconstruct/releases/tag/vulkan-sdk-1.4.309.0. Download into `.local/honor-device-profiles/flame-20261104/dark-limit-capture-20261106/`, no other device package or global capture hook. Plan app-scoped layer only if target APK packaging and replay can be verified; preserve data and current device state.
+
+# Honor dark NEXT — authorized device / shader variant audit — 2026-11-06
+
+设备授权空闲；本次只读复核 PID28053 marker0，未 install、冷启或输入。限定离线变体仅重写暗魔法 VS binding12/24，18 保留 float：pre SHA5937617587b19ce3fa7a093a0de249906fc5586f6ed1ae5db7c612ff85365dbc、color SHAec82f5040fcc81e78b8041bb8c1e88e339a91886b8fc105e29a26b6325d2eccf，spirv-val Vulkan1.1 均通过；不是设备 module/输出验证。旧捕获 28 条 18 vk76/2，当前2条 vk98/2，不能外推全部动态资源。有限本机/设备检查未发现现成 RenderDoc/gfxrecon/AGI 捕获层；不等于不能安装。VIEW_VALIDITY_FIXED NOT_FIXED，首错及全部验收未完成；需带实际 shader、descriptor、完整纹理/附件、GPU mesh 的同帧可验证捕获，及 shader/format/边界正反控制。详情见 RESULT。
+
+# Honor dark NEXT — same-frame inventory / illegal view unresolved — 2026-11-06
+
+HEAD032e5f6；本 NEXT 只做离线 shader 重建及只读设备检查，无运行时代码、安装或输入。Honor PID28053 前台 marker0。f23465 同帧含两 pass UBO、GPU texel 12/18/24/30/36/48、CPU mapped mesh；缺 GPU mesh、完整 BC4 mip/sampler、相关纹理/附件、实际 module 和同步状态。原 VS binding18 float fetch→bitcast int；当前源码离线重建 uint fetch→bitcast，pre/color spirv-val exit0，实际 module dump 未验证。f23465 R32_UINT/range2 违反 00929，反例 half3c00 的 R16 浮点读取比特3f800000、零填充 R32 为00003c00；不可盲目扩容/换格式。VIEW_VALIDITY_FIXED NOT_FIXED，首个错误 GPU 输出及全部视觉、音频、独立 QA NOT_RUN。完整矩阵、最小捕获计划、SHA 见 `coordination/results/P-CX-TERRA-dark-limit-black-RESULT.md`；旧格式R16也黑，尚无因果结论。
+
+# Honor dark GPU binding18 and Switch reference — 2026-11-06
+
+用户授权设备并提供 Switch 原版五张照片，副本 `.local/honor-device-profiles/flame-20261104/switch-reference-20261106/`；暗魔法蓝白亮核与紫红外圈，后三张为带 Skip 的大招阶段，拍屏不能逐像素对照。诊断 APK `55b241b1c6b391f7a9d5060ac1f61594b94920d2aae2db517b7a031ef29ce6cd` installed -r，PID28053 marker0。暗魔法帧 f23465 g80/g96 GPU binding18 2字节均0000，query 749147/419 available1；日志和数据在 `codex-probe-28053-f23465/`。当前 WIP 两 shader 的 binding18 integer fact 导致本帧 VkFormat98、range2，与 Vulkan VUID 00929 不符，须核查真实实际 shader/descriptor 并限域纠正；旧帧格式76仍黑，不能把它当历史根因。binding42 BC4 原 probe 像素抽样不可靠。无修复/视觉音频验收；详见本单 RESULT。
+
+# Honor GPU binding18 diagnostic installed — 2026-11-06
+
+Build session 8633 exit0; APK `.local/honor-device-profiles/flame-20261104/dark-gpu18-20261106.apk` SHA256 `55b241b1c6b391f7a9d5060ac1f61594b94920d2aae2db517b7a031ef29ce6cd`. `adb -s A42BBB5109000333 install -r` exit0; launched GameActivity. Data not cleared. Need Continue, reproduce live dark and marker6 capture; restore marker0, verify pair and GPU result. This is diagnostic only; binding42 vk139 BC4 compressed, old probe sample treats blocks as pixels and is not full replay data.
+
+# Honor GPU binding18 diagnostic build — 2026-11-06
+
+Checkpoint: HEAD 032e5f6, existing dirty/untracked preserved. `src/graphics/nvn_vulkan/engine/xbg_probe.inc` now allows 4-byte GPU copy of 2-byte dark binding18 only for resident arena view after verifying actual VkBuffer bounds; valid payload remains first two bytes. Manual compact probe only; no normal rendering change. Build command `bash .local/honor-device-profiles/flame-20261104/build-dark-gpu18-20261106.sh`, cwd repo root, log `.local/honor-device-profiles/flame-20261104/dark-gpu18-20261106-build.log`; session ID 8633; poll via tool session and check ordinary log if session unavailable; next check exit and APK SHA before any install.
+
+# Honor dark diagnostic resumed — 2026-11-06
+
+Device authorized and connected; foreground game at boss dialogue, no game input performed. Preparing compact-probe-only GPU copy of 2-byte resident texel binding18, bounded against actual Vulkan arena buffer; existing worktree WIP retained. HEAD 032e5f6. No build/install yet; see P-CX-TERRA-dark-limit-black RESULT for earlier offline evidence.
+
+# P-CX-TERRA dark / Limit — offline blocked, 2026-11-06
+
+No source change, build or device operation. Existing captures split UBO, GPU texels and CPU-mapped mesh across different frames; binding18 GPU visibility, binding42 image and full replay attachments missing. Static SPIR-V shows prepass conditional OpKill, color no kill instruction, both FragDepth; no first erroneous GPU output established. Limit independent diagnosis and all visual/audio acceptance NOT_RUN. Device availability unknown; coordinate one live, target-pair-verified capture of complete GPU-visible replay state before install/restart. Details and OSS-NOTES: `coordination/results/P-CX-TERRA-dark-limit-black-RESULT.md`. Preserve existing dirty tree and baseline.
+
+# Honor reconnect and paused dark capture — 2026-11-05
+
+Honor USB A42BBB5109000333 reconnected; PID21439, existing APK. Self-played first thunder on one enemy and dark on the remaining enemy, paused during visibly black streaks: .local/honor-device-profiles/flame-20261104/shield-candidate/dark-paused.png. Compact marker6 capture f354336 completed END, marker restored 0; target shader IDs db5f1e2dd1c9ef3d / 41a5a80e5242a26c / c0adc062e4b8e8fa / b7dd0f48aea00196 absent from trace, so paused frames do not support the intended same-phase comparison for this shader pair. Trace shield-candidate/dark-paused-f354336.txt; no fix or FPS claim. Game paused, enemy still alive; resume to investigate live effect.
+
+# Honor effect investigation USB interruption — 2026-11-05
+
+During authorized self-play returning from paused LIMIT, USB A42BBB5109000333 disconnected; game state unverified. Original dark prepass/color vertex SPIR-V has no OpAccessChain to gl_PerVertex ClipDistance or CullDistance members (position and point size only), so do not pursue shader-written clipping as explanation without new evidence. On USB reconnection verify foreground and state, self-play dark and pause at abnormal frame; try marker6 vs C paired captures at same frozen phase, verify both target shaders actually run under pause and that marker resets. No visual fix yet.
+
+# Honor user priority: fix black effects — 2026-11-05
+
+User explicitly rejects passive paused soak and requests immediate focus on dark magic/LIMIT effect repair. Passive test ended: PID21439 reached 1187840 sync reuses allocated59, no guest abort; log shield-candidate/sync-managed-overlimit.log. This is paused-scene lifetime evidence only, not gameplay/performance PASS. Continue active effect investigation: original paired captures show depth prepass covers disk and corresponding color draw near-zero samples, but disabling depth/stencil/culling alone did not prove fix. Preserve scene behavior and existing baseline; actively reproduce paired inputs and color/depth outputs.
+
+# Honor managed sync ongoing soak — 2026-11-05
+
+PID21439 APK17bbf marker0 paused skill effect, observed reuse692224 allocated59 and zero guest abort; old generation budget1048576 not yet exceeded. Host ASan+UBSan real recorder test augmented with 10000 rejected outside-recording commands and 10000 abandoned, held nested retired lease and 1.1M package cycles exit0. Log shield-candidate/sync-package-contract.log. Continue observing same PID rather than restart; collect log after >1048576. This does not prove 60fps/1080p or black-effect correction.
+
+# Honor managed sync device short result — 2026-11-05
+
+PID21439 APK17bbf marker0 reached field, tutorial battle and paused skill effect. Raw shield-candidate/sync-managed-device.log: >=299008 managed reuses, 57 allocated, no observed abort; prior control accumulated >100k. Host ASan+UBSan 1.1M actual recorder cycles and held nested retired lease passed; old API remains pinned. Device >1048576 reuse soak, independent QA, full game/audio not yet established. Black effect visible in sync-managed-limit.png, so effects remain incorrect; no 60fps or 1080p claim. Current process paused, marker0. Next extended device soak, then actual GPU overlay output/lifetime validation, black effect diagnosis and representative FPS/scene-resolution tests.
+
+# Honor managed sync package candidate installed — 2026-11-05
+
+Recorder FenceSync owns token while recording, transfers to package, releases on recording discard or package retirement after last lease. Host ASan+UBSan sync-package-contract.log exit0 1.1M packages, double refs, held nested retired lease, 10000 discarded recordings, retained3; existing command-lifetime-managed.log exit0 80k iterations. APK SHA17bbf503d7fd35a17d2f1bf84f32d0ac97cc953916c105aae90f010d8807fec7 installed -r; sparse reuse telemetry added, run real field with marker0. Device soak, game correctness and FPS unverified.
+
+# Honor managed sync recorder integration preparation — 2026-11-05
+
+Integrate owned token into FenceSync record under recorder lock, carry token list from recording into immutable package, release after package retired and last reader lease gone; abandon/void recording releases tokens. Legacy API remains pinned. Preserve sync/recorder lock ordering and failed-record rollback; test actual source-grant reuse + held leases before device.
+
+# Honor managed sync foundation host result — 2026-11-05
+
+Added separate managed acquire/release API in nvn_sync.c/h, current-slot plus explicit refs, managed free-list, legacy exposed pointers pinned, allocate-before-reinit rollback. Recorder still uses legacy API; no runtime behavior benefit yet. Host ASan+UBSan tests/native/sync_managed_contract.c exit0: 1.1M cycles highwater2->3, held old ref survives, two refs, legacy pointer preserved. Existing sync_snapshot_contract --budget exit0; full old contract has separately recorded pre-existing poll-count failure. Logs shield-candidate/sync-managed-*.log. Next integrate record-held refs with recording abandonment/void, package transfer and package retirement after lease, then actual recorder tests including nested lease and failure/race paths; do not install until verified.
+
+# Honor managed sync references preparation — 2026-11-05
+
+Recorder package reclamation observed. Implement separate opt-in managed reference API in sync family: stable legacy object pointers remain permanently retained; managed generation has current-slot reference plus explicit command references; finalize/reinit drop only slot ref; reclaim after last explicit release; allocation failure preserves old state. First test alone without changing recorder. Reserved nvn_sync.c/h and tests/native/sync_managed_contract.c.
+
+# Honor package lifetime census result — 2026-11-05
+
+PID12587 APK0c0dfb field, mode0: command packages created36874 reclaimed36864 live10, source grants47522; near same point sync retained49153 init49152 final49112 exposed49136 final_exposed49112. Raw shield-candidate/package-lifetime-census.log. Existing retirement frequently frees packages, supporting an ownership solution but not proving every recorded generation can be reclaimed. Required: recording-owned sync refs transfer to immutable package, survive nested package lease and source retirement until final reader release, drop on abandoned/void recording, preserve legacy untracked API and allocation-failure rollback, handle repeated refs and lock ordering. Test actual command recorder + sync with >1M cycles and retired-but-leased replay under ASan/UBSan, then on Honor; no FPS/visual fix claim.
+
+# Honor package retirement census installed — 2026-11-05
+
+Read-only package collection counter logs each 4096 reclaimed, with created/live/bytes/source-grants; no ownership changes. Build exit0 APK SHA0c0dfbce9c18c19e92ed1b1d50a898e764056e412435f67cd121e8fd0de4b70d installed -r. Next run normal mode0 and compare package retirement with sync generation growth; not a fix.
+
+# Honor package retirement census preparation — 2026-11-05
+
+Before adding sync reference management, test whether real Honor command packages are actually retired when guest source memory is reused. Add sparse counters in packages_collect under recorder lock, no ownership or gameplay changes. Existing sync census shows almost every finalized generation exposed. If packages remain live, package-bound refcounts alone cannot prevent exhaustion.
+
+# Honor sync lifetime census result — 2026-11-05
+
+PID6727 APKdb4f mode0 field: at retained49153 generations, init49152 final49108 exposed49132 final_exposed49108 direct_fence4158; shield-candidate/sync-lifetime-census.log. Nearly all observed finalized generations escaped into command records. Recycling them at Finalize is unsafe; need reference ownership while recording, immutable packages, nested package dependencies and active reader leases exist, reclaim only after final reference. Game force-stopped to prevent repeat exhaustion. Goal 60/1080/effects unresolved.
+
+# Honor sync lifetime census installed — 2026-11-05
+
+Sparse counters only at slab allocation track initialization, finalization, exposed generations, finalized exposed and direct fences under mutex. ASan budget test exit0, build battle-sync-census-build.log exit0; APK SHA db4f5fb869cb08ab362a59ae6762e152a8ee81d3dc025fe02b4366b260f65046 installed -r. Next start marker0, Continue field, collect log counters.
+
+# Honor sync reuse candidate withdrawn — 2026-11-05
+
+Restored source rebuilt and installed APK SHA621fe50845f09a978a6ed6f1fc5f0046c0dc3f3ad9fcb016bdb0808db4c82936; original sync behavior. Preparing sparse read-only counters at slab allocations: initialization, finalization, direct fence and unique escaped generations. Determine why retained generations grow despite zero unexposed reuse before modifying package lifetimes.
+
+# Honor unexposed sync reuse device result — 2026-11-05
+
+PID435 candidate2ba4 normal mode0 field: log shield-candidate/sync-reuse-device.log shows retained reached at least102401, zero reuse messages, so tested subset did not address observed workload; no long-run fix claim. Archived experiment patch shield-candidate/sync-unexposed-experiment.patch, restored our previously clean nvn_sync.c and sync_snapshot_contract.c to HEAD; experimental APK still installed until rebuilt original. Determine actual share of exposed pointers and live keys before designing package/lease-aware reclamation; candidate must preserve unsubmitted recording and retired package reader lifetimes.
+
+# Honor unexposed sync reuse installed — 2026-11-05
+
+Host ASan/UBSan all passed; APK battle-overlay-hazards.apk SHA2ba4e217097820509d08a0f91bfd8256e84ed775524a768d7ba2a65cf7551f8f installed -r, mode5 marker0. Next start, enter field, observe sparse sync unexposed reuse versus retained generation counters; actual long-session failure resolved only if later soak proves it. Device path Honor only; independent QA/whole game unavailable.
+
+# Honor dual overlay actual-input match — 2026-11-05
+
+PID26994 LIMIT frames34398-34406 mode5: SSBO17 20480 bytes 8/8 match and texel47 163840 bytes 8/8 match original synchronized guest data, raw shield-candidate/battle-overlay-dual-real.log. Additional wait retained, inputs not bound; no output equivalence, asynchronous correctness or FPS claim. Marker0. User permits continued device use. Unexposed sync reuse candidate host ASan+UBSan contract + million-cycle test + exposed full budget all exit0; sparse real-device telemetry added, build next.
+
+# Honor safe unexposed sync reuse host result — 2026-11-05
+
+Changed nvn_sync.c to reuse only unexposed objects on reinitialize/finalize under sync mutex; exposed generations retained as before. ASan+UBSan --unexposed 1,000,000 direct fence/reinitialize/finalize cycles exit0, generations2->2, old recorded pointer retained. --budget exposes each generation: 1048576 retained, preserves old and refuses further, exit0. Existing contract asserted two waits after only one actual poll; verified same failure with original source; added an explicit second poll without lowering the assertion, contract exit0. Test logs shield-candidate/sync-reuse-*.log. Unknown whether this materially postpones real-device exhaustion; recorded generations still not reclaimed. User now authorizes device use; finish installed mode5 LIMIT capture first, then build sync candidate.
+
+# Honor unexposed sync generation reuse preparation — 2026-11-05
+
+QueueFenceSync and WindowAcquireTexture fence directly under s_sync_lock without exporting object pointers; only nvn_sync_family_object exposes pointers to recorded replay. Exploring reuse solely for generations never exposed, including finalized slots, while exposed generations remain process-lifetime. This is not yet proven to remove real game exhaustion: need counters and device soak. Paths nvn_sync.c and sync_snapshot_contract.c reserved by /root; baseline HEAD032e5f6 and all existing dirty state preserved.
+
+# Honor dual-input test paused at foreground app — 2026-11-05
+
+Installed mode5 SHA b1af7ee9472a3664b46efcd0568185a0a58590bec1d059b353ea60f507ce1661, startup reached field. An unrelated app appeared in foreground so stopped device interaction; marker0 restored and game force-stopped to avoid generation exhaustion. Dual comparisons NOT_RUN; no FPS evidence. Original shader 3b6302 binding17 has OpStore sites (assembly shield-candidate/3b6302a58b86a34a.spvasm), so candidate must preserve SSBO writes and alias semantics. Host test_partial_texel_preflight.cpp clang++ -std=c++17 -O2 -I . exit0. Baseline .local/baselines/honor-flame-stable-20261104 APK SHA90e132aac850afea0d3957efb53ecb6af2df94d590c8b1eef3233869a284a3fa and patch SHA5e69f52f8603bbf58a0aa6a30c9a892a3b833db0d0ae00fd132d8120df14c21f match manifest. Next resume marker5 and self-play LIMIT when tablet free. Long-session sync generations must be retained through live command packages including reader leases; unsafe recycling is not a fix.
+
+# Honor dual-input overlay comparison installed — 2026-11-05
+
+Mode5 opt-in builds separate GPU overlays for writable SSBO17 and texel47; retains original target wait, explicitly resolves second range and waits diagnostic GPU commands before comparing bytes; neither output bound. Build battle-overlay-dual-build.log exit0 APK SHA b1af7ee9472a3664b46efcd0568185a0a58590bec1d059b353ea60f507ce1661 installed -r. Next launch marker5, self-play LIMIT, capture both comparisons and marker0. Diagnostic overhead invalidates FPS measurement.
+
+# Honor dual-input overlay comparison preparation — 2026-11-05
+
+Disassembled original shader3b6302a58b86a34a: binding17 cp_s0 has six OpAccessChain sites, all observed followed by OpStore, so it is writable; must preserve writeback/aliases. Preparing default-off mode5 diagnostic to GPU-merge both binding17 SSBO and binding47 texel before original CPU wait, then compare both against synchronized guest memory. Diagnostic will never bind merged outputs or remove waits. Existing baseline .local/baselines/honor-flame-stable-20261104/ verified present; no full-60 claim.
+
+# Honor LIMIT hazard binding identified — 2026-11-05
+
+PID32527 detail mode4 frames41566-41573: second pending input is SSBO binding17 slot0 20480 bytes; first overlapping pending write was 256 bytes in first/last samples and 146432 bytes in other six. Full log shield-candidate/battle-overlay-hazards-detail.log. Original waits retained, no fix or performance PASS. Marker0 verified, force-stopped test process to avoid known long-session generation exhaustion. Next analyze whether binding17 is writable/aliases and ordered overlapping producers; build host and device tests for multi-input overlay, lifetimes and output equivalence before any guarded async implementation. Dark magic/LIMIT black and 60fps/1080p remain unresolved.
+
+# Honor SSBO overlap detail test — 2026-11-05
+
+Mode4 audit logs offending SSBO binding, slot, range, first overlapping write range; original wait remains. Build battle-overlay-hazards-detail-build.log exit0 SHA256 4cdbbe26e0fc117e452ad343381cb7ebba828431707633dcd07de4ca537a553b installed -r. Session58548 starts marker4, Continue; self-play to LIMIT then collect hazard detail, marker0.
+
+# Honor LIMIT hazard census result — 2026-11-05
+
+PID27959 LIMIT frames41275-41282: 8/8 show sb=1, ub=0 image=0 aliases=0 otherReports=0 targetReports=0 indirect=0 unknown=0; 42-61 pending writes, 7-26 reports. A non-target SSBO overlaps pending GPU write, so skipping the original synchronization for target binding47 alone is unsafe. Capture .local/honor-device-profiles/flame-20261104/shield-candidate/battle-overlay-hazards.log; current game paused, marker0 next restart, diagnostic mode4 limited8. Identify overlapping binding and producer, then design handling of all live inputs and lifetime tests; original synchronized path remains. No black effect, FPS, 1080p or long-run fix claimed.
+
+# Honor long-session sync exhaustion — 2026-11-05
+
+After USB reconnect PID15929 had already guest-aborted before LIMIT census, frame 88846. Log shield-candidate/battle-overlay-hazards-sync-exhaustion.log shows retained sync generations reached 1048576 then Initialize refused and guest GPU wait abort. nvn_sync.c retains every generation until teardown; reclamation requires safe command-record lifetime proof, do not simply recycle live pointers. Marker reset0 then restarted marker4 to retry hazard census. No evidence this failure was caused by mode4.
+
+# Honor overlay nonblocking hazard audit installed — 2026-11-05
+
+Mode4 adds up to8 read-only censuses before original target preflight CPU wait: counts non-target UBO/SSBO/image ranges overlapping pending writebacks, target aliases, reports and indirect hazards; still performs existing GPU-vs-CPU diagnostic and original sync. Build exit0 battle-overlay-hazards.apk SHA085c10ace72f9b0c204a7fb4899c4b1d67b5d387be5b37aebf8118250d3866e3, installed -r; session68149 startup marker4/wait45/Continue/wait40/screenshot. Next reach LIMIT and extract NVN partial overlay hazards, restore marker0. No optimization or 60/1080/effect claim.
+
+# Honor overlay nonblocking hazard audit preparation — 2026-11-05
+
+The synchronized shadow input matched and was bound, but removing the wait may leave other target shader buffers or image ranges overlapping up to 42 pending writebacks. Preparing bounded mode4-only read-only census of non-target shader bindings, pending writebacks/reports, target aliases and indirect argument overlap, while keeping original CPU wait and engine behavior. Use real LIMIT data to determine whether a safe nonblocking guard is possible; no FPS claim.
+
+# Honor 1080 command-line A/B result — 2026-11-05
+
+Same field scene same APK: normal PID13705 f2006, ini+ExecCmds PID12943 f3243, DPCVars PID14400 f1898 all recorded 48 groups viewport1037x584 and 7 viewport1920x1080; override file was read for both experimental runs, but no observed field resolution improvement. This does not show whether cvars were parsed, superseded, or an independent scaler dominates. Full captures under codex-probe-*; DPCVars runtime log shield-candidate/internal-1080-dpcvars.log, original control log internal-1080-control.log. Original .local/romfs/UECommandLine.txt SHA f842c65b9968c0c430c4a1d430e16ff2f51b1a1a7d43cb1ae74afd7cba7efc88 unchanged. Removed the unsuccessful opt-in redirect from source; currently installed experimental APK still contains dormant redirect, marker0. Restarted PID14984 with marker0 and verified original ROM file path and size38. Internal1080, stable60 and correct effects still unachieved; next investigate actual game scaling policy/renderer, not output upscale. git diff --check passed.
+
+# Honor 1080 default control and device-profile test — 2026-11-05
+
+Same APK same field control PID13705 marker0 read original UECommandLine 38 bytes. Field capture f2006: 48 groups1037x584, 7 groups1920x1080, exactly same histogram as PID12943 f3243 with ini+ExecCmds override; this selected scene did not achieve internal1080. Dynamic resolution and cvar parsing remain unproven. Testing separate -DPCVars="r.ScreenPercentage=100,r.DynamicRes.OperationMode=0,r.DynamicRes.TestScreenPercentage=100", documented in Epic command line reference https://dev.epicgames.com/documentation/en-us/unreal-engine/unreal-engine-command-line-arguments-reference; local file codex-ue-cmdline-1080-dpcvars.txt, device app-owned file updated, marker1, session29230, startup/Continue/probe6 then marker0. Original ROM unmodified.
+
+# Honor 1080 command-line test first observation — 2026-11-05
+
+PID12943 read app-owned command line, confirmed log path/size234 and partial overlay diagnostic0. Captured field frame3243: 48 groups viewport1037x584, 7 groups1920x1080, others smaller. Not evidence of internal1080; 1037x584 differs from prior battle baseline1383x778, so cross-scene comparisons invalid. Reset UE marker0; session79393 restarting same APK, waits45, Continue, waits40, captures marker6 and screenshot. Next verify normal original UECommandLine path and same-field viewport; compare logs/capture, no claim cvars took effect. Test may be overridden by game or unsupported by shipping engine.
+
+# Honor internal 1080p command-line test installed — 2026-11-05
+
+Android-only FFRS_PROFILE_TABLET + marker gfx-ue-cmdline-override=1 redirects read-only exact rom:/UECommandLine.txt to app-owned codex-ue-cmdline-1080.txt if present, otherwise original path; no ROM write. Test file appends UE -ini renderer r.ScreenPercentage=100 and r.DynamicRes.OperationMode=0 plus corresponding -ExecCmds; exact contents local .local/honor-device-profiles/flame-20261104/codex-ue-cmdline-1080.txt SHA286c5db4..., original SHA f842c65b... . Build exit0 internal-1080-cmdline.apk SHA08ad5eb62efae58fc66c0da377921d189baebca23ed08e8bb3eda105e251b03b, install -r, file pushed. Session39649 starts with marker1, wait45, Continue wait40, screenshot. Next verify actual override read in log, reset marker0 for next process; capture representative 3D scene viewport with manual compact probe; do not equate final source1080 with internal1080 or claim cvars applied.
+
+# Honor internal 1080p command-line test preparation — 2026-11-05
+
+Actual scene capture f7361 has 68 groups viewport1383x778 and 22 viewport1920x1080; this does not establish internal1080. Local read-only .local/main.nso contains UTF-16 r.ScreenPercentage and r.DynamicRes.OperationMode strings, not runtime proof. Epic documentation https://dev.epicgames.com/documentation/unreal-engine/configuration-files-in-unreal-engine describes -ini overrides, and https://dev.epicgames.com/documentation/en-us/unreal-engine/dynamic-resolution-in-unreal-engine describes operation mode0. Plan default-off Android tablet exact rom:/UECommandLine.txt read-only redirection to app-owned derived test file, original ROM unchanged; test 100% + operation0, then compare actual scene viewport. May be ignored by shipping build/game override; FPS/visual results measured separately.
+
+# Honor overlay engine shadow real-game result — 2026-11-05
+
+PID9477, APK battle-overlay-shadow SHA bc86f450ea8621ee8d6fb885fef8a77d97d88deb3aff3d22073d914643f23298, marker3 real LIMIT: frames18315..18322 8/8 synchronized 163840-byte comparisons matched, followed by 8 logs showing exact shader3b6302a58b86a34a binding47 used the owned GPU-merged source. Real game reached paused LIMIT without observed crash; screenshot shield-candidate/battle-overlay-shadow-pause.png still has black shapes. Raw log shield-candidate/battle-overlay-shadow.log. Original CPU sync retained; output equivalence and long-term/asynchronous slot behavior not established, no speedup claim. gfx-partial-overlay-check=0 for next startup, current mode3 capped at eight, PID9477 paused. Next validate output equivalence/engine lifetime and only then guarded asynchronous path; 60/1080/effect acceptance unmet. git diff --check passed.
+
+# Honor overlay engine shadow installed — 2026-11-05
+
+Marker3 opt-in exact shader3b binding47 keeps original CPU wait, compares merged bytes, checks guest still matches and no pending overlapping writes/reports at descriptor, GPU-copies owned buffer into normal writable destination, records explicit transfer->compute barrier, retains owner in consumer slot and clears dispatch-scoped reference on return. Default remains unchanged. Build exit0 command bash .local/honor-device-profiles/flame-20261104/build-battle-overlay-shadow.sh; APK SHA bc86f450ea8621ee8d6fb885fef8a77d97d88deb3aff3d22073d914643f23298 installed -r on Honor; git diff --check passed. Session97852 starts app with marker3, waits45s, Continue, waits40s and screenshots. Next self-play LIMIT, verify 8 comparisons plus actual shadow bound logs, no crash and marker reset0. This diagnostic retains synchronization; not a performance fix.
+
+# Honor overlay engine shadow preparation — 2026-11-05
+
+Preparing marker3 default-off integration limited to exact shader 3b6302a58b86a34a storage texel binding47: keep original CPU synchronization, compare independent GPU merged bytes, and use owned buffer as GPU source for actual writable descriptor only after rechecking current guest bytes and no pending overlap. Retain owned object to consumer fence; otherwise original path. No synchronization removal, production performance or correctness claim. This is a step toward testing actual engine lifetimes and binding semantics.
+
+# Honor GPU overlay compute consumer component — 2026-11-05
+
+Extended tests/device/test_partial_overlay_vulkan.cpp and added self-authored overlay_consumer.comp / generated overlay_consumer_spv.h. Adreno735 standalone Vulkan: small 128-byte, scene 983040-byte and battle 163840-byte writable storage texel compute consumer passed full output comparison; scene/battle tests held producer behind host event and confirmed fence not ready before signaling. Battle uses three overlapping producer copies. Negative control deliberately changes expected byte and failed exit6 as intended. Raw .local/honor-device-profiles/flame-20261104/overlay-consumer-v2-results.log. NDK26.1 aarch64-linux-android26-clang++ -std=c++17 -O2 -static-libstdc++ -I. tests/device/test_partial_overlay_vulkan.cpp -lvulkan -> overlay-consumer-v2.android SHA c7e63756b8f184f3fdc80a561c17f7e87c35980fbeb6d88049861166f8af6629; shader source NDK glslc Vulkan1.1 -> SPV SHA5a1d7d05e4fd73e32d63de626a56310d91d8729dce9277873e63451281d77245. First build lacked static C++ runtime and failed to link on device; rebuilt with -static-libstdc++. This does NOT test engine slot/descriptor ownership, guest-memory aliasing, game correctness or FPS. Engine unchanged and original synchronization retained; Honor PID6240 paused mid-LIMIT. Next prove engine integration lifetime before guarded opt-in A/B. 60/1080/effects unresolved.
+
+# Honor overlay writable-consumer test preparation — 2026-11-05
+
+Extend standalone GPU overlay component, not engine: delayed GPU producer, ordered overlay, storage texel buffer compute read/write, full byte comparison and battle-size 163840-byte region. Verify with actual Honor GPU before any optional engine integration. Record shader source/compile, no game code or saves altered.
+
+# Honor battle overlay target comparison — 2026-11-05
+
+Honor PID6240, battle-overlay-target.apk SHA b81bc8978adf0965968a97fd5e3d81a56ffba541a4778a24fcc2513c59d0ccf0. Real LIMIT at frames19320..19327: 8/8 ordered GPU overlay output comparisons against synchronized guest bytes matched for shader 3b6302a58b86a34a, 163840 bytes each; overlay counts 3,7,7,7,7,7,7,3. Raw shield-candidate/battle-overlay-target.log; screenshot battle-overlay-limit-pause.png shows LIMIT black shapes still present. Original cpu_access sync was retained and output never bound, so this validates only these byte snapshots, not asynchronous lifetimes, overall rendering or performance. Marker reset0 for next startup; current process mode2 already exhausted its eight attempts, game paused mid-LIMIT. Next develop bounded opt-in consumer with correct ownership, slot reuse and barriers, test delayed producer then device A/B; do not remove original sync until proven. 60 and true internal1080 unachieved. git diff --check passed.
+
+# Honor battle overlay target installed — 2026-11-05
+
+Mode2 restricts up to eight existing synchronized-byte GPU-overlay checks to shader 3b6302a58b86a34a; mode1 unchanged and mode0 default. Added shader ID to queued/result logs. Build command bash .local/honor-device-profiles/flame-20261104/build-battle-overlay-target.sh exit0, APK SHA b81bc8978adf0965968a97fd5e3d81a56ffba541a4778a24fcc2513c59d0ccf0, install -r exit0, git diff --check passes. Honor startup marker2 held, session63783 start/wait45/Continue/wait40/screenshot. Next verify log diagnostic=2, joystick route to battle and LIMIT, inspect queued/result matches, reset marker0 for next start; no optimized path active.
+
+# Honor battle overlay targeted comparison preparation — 2026-11-05
+
+Existing LIMIT trace ab-old-limit.log has 80 preflight lines for shader 3b6302a58b86a34a and 15 for 4bb63600b3b9aa38. Earlier eight GPU-vs-CPU overlay comparisons covered only 4bb. Preparing default-off marker gfx-partial-overlay-check=2 to reserve bounded comparisons for 3b; original CPU synchronization stays authoritative and buffer is never bound to game. This is evidence for a future optimization, not an FPS fix or async lifetime proof.
+
+# Honor prepass depth counterfactual: control inconclusive — 2026-11-05
+
+Same APK PID3665 normal marker6 captured f7357/f7359/f7361; f7361 prepass query40132/color0 and 246/9216 sampled depth positions changed g81->82. Earlier PID1574 marker C f8335 changed 0/9216 g83->84, confirming diagnostic affected sampled depth; query pre246098/color0. However montage shield-candidate/prepass-sequence-compare.png shows f8335 is much later animation, so its lack of black disk cannot be attributed to depth writes. Similar-stage C/normal frames still appear dark; no proof this change restores correct effect, and it would remove intended occlusion. Marker C remains diagnostic only; normal pipeline behavior unchanged. C f8335 and normal f7361 full capture local; other samples/text in prepass-compare-samples. Honor PID3665, probe marker0, query-per-draw0 on current startup, no performance test from instrumented frames. Continue investigate color/depth interaction and true internal1080/60; no fix or acceptance claimed. git diff --check passes.
+
+# Honor normal control running — 2026-11-05
+
+Same installed APK normal control session21747: am start, wait45s, Continue, wait40s, joystick 925,1320 -> 925,1200 for15s, wait35s, 25 confirms, cancel twice, screenshot ffrs-prepass-control-battle.png; then thunder, dark and marker6 throughout capture. Source of other-run marker B image differs in fragment and raster state; cannot use as matched control.
+
+# Honor prepass counterfactual first result — 2026-11-05
+
+Honor PID1574 marker C f8335 exact prepass logs depth writes OFF, query prepass246098/color0 available1. Sampled depth before/after groups83/84 differs in 0/9216 positions; other-run B diagnostic PID32118 f7134 has 1374/9216 changed, and its final sample shows early black arc while C f8335 does not. See shield-candidate/prepass-no-write-compare.png; animation phase differs, B also modifies color pass, so this is suggestive, not a controlled A/B or a fix. Alternating marker writes got overwritten; all target frames C. Next repeat same APK with marker6 only for normal control; compare actual black disk and phase; marker0 currently restored.
+
+# Honor prepass diagnostic installed — 2026-11-05
+
+Build exit0; dark-prepass-nowrite.apk SHA256 9ea301eeb786f2243363826725ef131e051ee4e20c8732591f2153ea40f54c4e. Installed -r on Honor exit0, game data preserved; git diff --check passed. Session62773: start, wait45s, Continue, wait40s, screenshot /sdcard/Download/ffrs-prepass-field.png. Next adjust PC-mode joystick to actual window, self-play into dark spell and capture alternating 6/C frames; verify PROBE_DIAG and final sample, restore marker0.
+
+# Honor dark prepass diagnostic build — 2026-11-05
+
+Marker C added to Honor compact probe: only matched VS db5f1e2dd1c9ef3d FS c0adc062e4b8e8fa depth writes disabled in captured frame, transient uncached pipeline and pipeline fast memo invalidation. Build session 95951, command bash .local/honor-device-profiles/flame-20261104/build-dark-prepass-nowrite.sh, log dark-prepass-nowrite-build.log. Await build then install -r and compare C and unmodified frame6 captures around dark magic; restore marker0. This alters the diagnostic frame and is not a visual fix.
+
+# Honor dark prepass counterfactual preparation — 2026-11-05
+
+Preparing opt-in marker C single captured frame: exact VS db5f1e2dd1c9ef3d / FS c0adc062e4b8e8fa prepass only, disable depth writes with an uncached transient pipeline. No change outside manual compact probe. Compare final black disk against control frames and record impact; removing depth writes is a diagnostic, not an accepted fix. Build and device capture pending.
+
+# Honor query per-draw control result — 2026-11-05
+
+Retried PID32118 with startup gfx-query-per-draw=1 held through capture; capture f7134 logs batch=0, VK_SUCCESS available1: group84 prepass198052 and group101 color1154 samples. Marker B disables target depth/stencil and culling, substitutes empty FS and turns color writes off for the captured frame. f7132 pre86294/color664, f7130 pre14485/color630, f7128 pre4428/color665. Per-draw mode validates the coverage disparity is not merely query run accumulation in these captures; distinct VS can intentionally differ, animation phase and invasive probe are uncontrolled, so root cause remains unproved. Previous PID29968 retry was batch1 invalid as per-draw control. Pulled f7134 to .local/honor-device-profiles/flame-20261104/codex-probe-32118-f7134/. gfx-codex-probe and gfx-query-per-draw reset0 for next startup; current process remains per-draw (not normal performance). No dark/LIMIT fix, stable60 or internal1080 acceptance.
+
+# Honor query control retry — 2026-11-05
+
+PID29968 f10654 retained at codex-probe-29968-f10654: batch=1, prepass261772 color1108; invalid as independent per-draw comparison because marker reset before native initialization. Retry session 43420: marker gfx-query-per-draw=1 held through initialization and capture; do not reset until batch=0 is confirmed. PC mode window joystick 844,1220 -> 844,1100. Following session screenshot ffrs-perdraw-retry.png, progress thunder and dark target, capture B, then reset marker0 for next process.
+
+# Honor query per-draw control — 2026-11-05
+
+Compact probe groups 83/84 and 101 each log draws=1; on a group change probe_flush ends the render pass and reads the query before the next tracked draw. Batched instrumentation can be affected by untracked indirect draws or capture ordering, so do not assume coverage equivalence from the different shaders. Independent control started Honor PID29968 with gfx-query-per-draw=1 (reset to 0 for next process), APK dark-empty-cull SHA33aca0f0; session 26355 performs autonomous Continue, route, battle menu. Next screenshot /sdcard/Download/ffrs-perdraw-menu.png then thunder one enemy, dark second and marker B, pull capture; results are diagnostic only, not FPS evidence.
+
+# Honor dark double-sided empty-fragment probe — 2026-11-05
+
+Built/installed dark-empty-cull.apk SHA33aca0f093474dcb9aac6ac0641a6565bb2048df17f3517ebe795a6da72bd5f7; command bash .local/honor-device-profiles/flame-20261104/build-dark-empty-cull.sh exit0. PID26673, marker B exact target draw only: depth/stencil off, backface culling NONE, empty fragment and color writes off, uncached temporary pipeline. f17654 color query408 vs same-frame prepass141159 samples, both VK_SUCCESS available1; f17652 color492 vs pre43912. Prior marker A (cull original) f17428 color896 vs pre225425, f17426 418 vs116766. Different runs/animation frames; these are not exact paired A/B, invasive instrumentation can perturb GPU, no intended coverage proof. Removing culling in this diagnostic does not reveal a large target draw, making clip/vertex processing and query validity next investigation. f17654 pulled local, gfx-codex-probe=0, shield shader hash7d20ab intact. Not a visual fix or 60/1080 acceptance.
+
+# Honor no-op fragment raster probe result — 2026-11-05
+
+APK dark-empty-fragment.apk SHA9022c87c3b9863247ce23d1a640abb6c0254d9bfafe016fc99c292b171cffec5 PID25006, manual marker A. f17428 target color draw depth/stencil off, empty FS, color writes off: VK_SUCCESS available1 896 samples; same-frame prepass225425. f17426 418 vs116766; early animation and invasive compact capture, not proof of intended coverage or fix. f17428 local. Together with marker9 original FS 997 vs151535 in different run, outcome remains low with an empty fragment, directing investigation before/during rasterization or query perturbation; need counterfactual cull NONE. Added marker B to combine no-op fragment, depth/stencil off, cull NONE for this exact draw only. Build bash .local/honor-device-profiles/flame-20261104/build-dark-empty-cull.sh, log dark-empty-cull-build.log.
+
+# Honor dark fragment coverage probe — 2026-11-05
+
+Preparing marker A diagnostic on exact color pair: depth/stencil tests off as marker9, but fragment module replaced only for one uncached captured frame with validated no-op shader and all color writes disabled. Query tests rasterized coverage without original fragment behavior; no picture from this diagnostic is a fix. Shader source .local/honor-device-profiles/flame-20261104/dark-raster-probe/empty.frag, NDK26 glslc target Vulkan1.1, spirv-val passed. Build bash .local/honor-device-profiles/flame-20261104/build-dark-empty-fragment.sh, log dark-empty-fragment-build.log.
+
+# Honor dark color draw with depth and stencil disabled — 2026-11-05
+
+Built/installed dark-no-tests.apk SHA cc32fe5450c0d32f591acb76cebbe3183c1642f4d760e22c1ff1a5db317521e5; build bash .local/honor-device-profiles/flame-20261104/build-dark-no-tests.sh exit0; Honor PID22483. Two earlier runs PID19281 and21278 missed target due timing; device-side single-shell input+marker loop captured PID22483. Marker9 modifies only exact dark color draw in manual compact capture; depth/stencil disabled, no fast memo/cached pipeline; marker reset0. f13344 prepass group84 query 151535 samples, color group101 query997 samples (VK_SUCCESS available1); f13342 pre59466/color704. f13344 color0 changed 4/9216 sampled pixels, other five MRT snapshots unchanged. These frames early effect; query instrumentation invasive, disabling tests not a fix and does not prove intended coverage. Compared with earlier EQUAL0/1 and ALWAYS ~hundreds, suggests further constraint before or during color draw independent of depth/stencil tests, e.g. geometry coverage, clipping, fragment behavior or query perturbation. Exact cause remains unproven. Full captures local codex-probe-22483-f13342/f13344; shield XGS SHA7d20ab intact. Source diagnostic remains opt-in only; current PID at boss dialogue, user save intact.
+
+# Honor dark no-depth/stencil diagnostic — 2026-11-05
+
+Prior captures show exact dark color draw stencil compare ALWAYS and EQUAL depth, prepass depth GEQUAL. Color VS and prepass VS use same lone position vertex input and identical captured GPU buffer/texel data for five bindings but different SPIR-V computations; Invariant decoration alone does not prove positional equivalence. Added opt-in marker9 compact frame probe: only targeted color pipeline has depth/stencil tests disabled, transient uncached, explicit query; all other frames/pipelines unchanged. Build command bash .local/honor-device-profiles/flame-20261104/build-dark-no-tests.sh, log dark-no-tests-build.log; self-play and capture. No fix claimed.
+
+# Honor page-map logging measurement — 2026-11-05
+
+Built and installed page-log-sample-test.apk SHA cce5b909a6f1ec2420c58597f0b6aa8cf51a33f20a4e68ba6375fd87cc9d9c36, command bash .local/honor-device-profiles/flame-20261104/build-page-log-sample-test.sh exit0; PID17043, prewarm1/reuse1, cap30. Self-play to LIMIT, paused before boss defeat. Evidence shield-candidate/page-log-limit.{log,csv,png} and -start/-end.txt. 48 successful map log lines in session, original prior session 33334 (different duration). Matched 6.216s window: 102 successful queue presents 16.41/s, p95 88.95ms max710.95ms; previous prewarm-target-test single window 106/6.241s=16.98/s p95 83.68ms max697.92ms. Single runs and duration/thermal/animation phase uncontrolled; no overall gain established. Black LIMIT remains. Reverted the source logging change; currently installed APK still contains it. Markers prewarm/reuse set0 for next process; current PID remains mode1 until restarted. Next focus GPU sync and dark color depth pass, not log count.
+
+# Honor page success logging experiment — 2026-11-05
+
+Prior prewarm-target LIMIT trace has 269 successful page-map messages between frame12660/12661 diagnostic markers, 33334 total in captured session; GPU readback and another shader rewrite also occur near the long interval, no causal attribution. Honor tablet configuration now logs first16 successful map operations and every1024 thereafter, using relaxed atomic count; errors and other operations unchanged. Build bash .local/honor-device-profiles/flame-20261104/build-page-log-sample-test.sh, log page-log-sample-test-build.log; compare same prewarm/reuse configuration on device, not yet validated.
+
+# Honor targeted LIMIT prewarm measurement — 2026-11-05
+
+Built/installed compute-prewarm-target-test.apk SHA 5ccac049680380cafc1cad70ed794ce70ea68a04dd252f7ebae85e323148fbee, build command bash .local/honor-device-profiles/flame-20261104/build-compute-prewarm-target-test.sh, build log compute-prewarm-target-test-build.log, exit0. Honor PID15495, shader-reuse1, compute-prewarm1; other shader keys excluded from reuse during experiment. Self-play through thunder/dark/miniboss/LIMIT, paused mid-animation; shader runtime rewrite times cbe 0.16ms, e4 0.19ms, e7 0.37ms, reused1 each vs mode2 runtime recomputation 70.39/81.53/204.72ms. The actual bytewise mode2 comparison previously showed no mismatches for these keys. One 6.241s monotonic LIMIT window: 106 successful queue presents =16.98/s, p95 83.68ms max697.92ms. Earlier un-prewarmed candidate one run 122/6.212s=19.48/s p95 81.37ms max1116.19ms. Single runs, run order/cache/thermal/animation phase uncontrolled; no total FPS improvement conclusion. Output presents not physical display; cap30. Black LIMIT effect remains (prewarm-target-limit.png); no 60/internal1080/visual acceptance. Evidence shield-candidate/prewarm-target-limit*. Both markers set0 for NEXT restart; current PID remains mode1 until restart. Shield XGS SHA7d20ab511ded85d5d1bb43f3d0ab43c2eaa5ac4b6caf786c5d65eec9a6db125d intact. Continue investigating per-frame sync stalls and dark/limit depth/color failure.
+
+# Honor prewarm byte comparison — 2026-11-05
+
+APK compute-prewarm-test.apk SHA8ba98e56237acced8791d2aaa2cd0d94c72607b9a3ad696b819a8cb719b6d752, PID13711, marker prewarm1/reuse2: all three shaders prewarmed, runtime reused=1 and recomputed bytewise without any MISMATCH in shield-candidate/prewarm-compare.log. Original game still has black LIMIT geometry, screenshot prewarm-limit-pause.png; this is not visual fix. Mode2 recomputes, not performance. Subsequently narrowed experimental reuse to these three shader keys only; rebuilding before mode1 measurement.
+
+# Honor LIMIT compute prewarm experiment — 2026-11-05
+
+Old LIMIT trace frame19129/19130 includes compute shader rewrites cbe85d33e4d9a711 96.03 ms, e4a8cd7fe0478956 79.27 ms, e7a74f26fcb629e4 189.79 ms and GPU readback sync; frame-bucket ordering does not prove all three within one frame. Added opt-in gfx-honor-compute-prewarm=1 to existing warm worker, restricted to Honor inline-enabled device and shader reuse enabled. Set gfx-shader-reuse=2 for bytewise compare on device before attempting mode1. Baseline preflight-log-test.apk bb07f77a retained; mixed WIP preserved. Build command bash .local/honor-device-profiles/flame-20261104/build-compute-prewarm-test.sh; log compute-prewarm-test-build.log. No correctness or performance claim.
+
+# LIMIT old/new single-run comparison — 2026-11-05
+
+At 30 cap, GPU probe0, partial overlay diagnostic0, same manual route and LIMIT confirm then 6s followed by pause. CLOCK_MONOTONIC helper directly marked bounds; CSV has tail past each bound. Old `dark-small-test.apk` PID10065: 98 successful presents /6.144s =15.79/s, p95 84.69ms max1012.22ms. New `preflight-log-test.apk` PID8380: 122/6.212s =19.48/s, p95 81.37ms max1116.19ms. Raw `shield-candidate/ab-{old,new}-limit*.csv/txt/png`, old log. One run each, different animation progression visible at pause, cache/temperature and run order uncontrolled; cannot attribute difference or claim stable improvement. Both have black LIMIT elements. These are queue submissions, not physical display, and FPS limit was30; no 60/1080 claim. Reinstalled new candidate after comparison, application data retained.
+
+# Preflight candidate approximate action windows — 2026-11-05
+
+Built NDK26.1 `/data/local/tmp/ffrs-clock-pair` from `.local/honor-device-profiles/flame-20261104/clock-pair.c`, binary SHA f59e50196dd3124fd4105fbe3e0f524a5ac8ef361e26e3e9e98f142e0d9e8793. Paired CLOCK_MONOTONIC=968049.738012682, BOOTTIME=3953729.259701092, offset2985679.521688410s. Assuming no device suspend between action and later pair, `/proc/uptime` bounds translate to frame CSV: thunder500 successful present rows 27.47/s p95 59.89ms max359.53ms; dark574 28.74/s p95 44.33ms max231.88ms. Window includes surrounding battle activity; CSV buffered tail may truncate dark window. Run `.local/honor-device-profiles/flame-20261104/analyze-preflight-logtest.py`; these are submit/present counts not physical display nor verified 60 and not a controlled A/B. Retest paired monotonic clock captured immediately at each action with same device/build/route for comparison.
+
+# Reduced log candidate device exercise — 2026-11-05
+
+Honor PID8380 `preflight-log-test.apk` self-played Continue -> thunder single enemy -> dark single enemy -> miniboss appearance `shield-candidate/logtest-after.png` without crash through that path. Log `shield-candidate/preflight-logtest.log` reports partial overlay diagnostic=0, 8 preflight lines count1..8; marker0, FPS cap30. Frame CSV `shield-candidate/preflight-logtest-frame.csv`; attempted per-action timestamps read `/proc/uptime` are BOOTTIME and do not match CSV CLOCK_MONOTONIC (large suspend offset), so action windows cannot be correlated reliably. Do not report these as A/B or performance gain; no observed 60/internal1080 or effect fix. For later timing use an on-device CLOCK_MONOTONIC helper or aligned frame markers.
+
+# Partial preflight logging reduction — 2026-11-05
+
+Found `gfx-partial-overlay-check=1` persisted between restarts; set to0 on Honor so next process does not execute its first 8 comparison probes. Existing current process had already consumed its 8 checks; this does not remove mandatory preflight. In xbg_game.cpp throttled unconditional preflight log from every dispatch to first8 then every1024, leaving cpu_access, counters, synchronization and shader semantics unchanged. Built/installed `preflight-log-test.apk` SHA bb07f77a1ba037d64b0cba5babdb00bc432acaee47b33943a74eb29dbb83d340, command `bash .local/honor-device-profiles/flame-20261104/build-preflight-log-test.sh`, log preflight-log-test-build.log exit0; git diff --check passes. No measured FPS gain yet; self-play capture at matched conditions.
+
+# Dark depth ordering sample comparison — 2026-11-05
+
+Existing PID5983 captures f10935 and f10931, sampled depth128x72 serial248: compare before prepass g82, after g83 and last preceding color g100 or g99. Respectively 1625 and522 sample positions changed by prepass; zero of those changed again before color. This reduces likelihood of an intervening draw overwriting that region at sampled positions; does not exclude unsampled pixels, depth test precision, shader variation, GPU probe timing or other causes. Replay `python3 .local/honor-device-profiles/flame-20261104/compare-dark-depth-samples.py`. Raw sampled depth blobs in respective capture dirs. No visual fix/60/internal1080 claim.
+
+# Small texel and depth bias result — 2026-11-05
+
+PID5983, marker6 frame10935 g83/g101: depth bias disabled in both; exact 2-byte binding18 same guest0x6d896f6300, VkFormat76 R16_SFLOAT, resident1; CPU mapped snapshots both `0000` (0.0). Resident mapping may not be synchronized with GPU writes; not GPU proof. Queries available1/VK_SUCCESS: prepass281896, color1. Disabled depth bias rules out its effect in this capture; previously logged clamp max is inactive. Evidence `.local/honor-device-profiles/flame-20261104/codex-probe-5983-f10935/`; marker0 restored. Investigate shader output/interpolation or related ordering; no fix, 60 or1080 claim.
+
+# Small texel and depth bias probe — 2026-11-05
+
+Added manual-compact-only CPU mapped snapshot for <4-byte VS binding18 (mapping may be GPU stale), plus Vulkan depth bias state for exact dark draw pair. Built/installed dark-small-test.apk SHA750737f2b430d0984b0dd989307675443d4d51ec0d9f4ada9bec60de8ed656c9; build command `bash .local/honor-device-profiles/flame-20261104/build-dark-small-test.sh`, log dark-small-test-build.log exit0. Self-play capture, restore marker0; no correctness change.
+
+# Same-frame GPU texel evidence — 2026-11-05
+
+PID3882, marker6 self-play frame10564 g75/g93: GPU-copy readback captured complete vertex uniform texel inputs bindings12/24/30/36/48, pairwise equal bytes and formats, lengths32768/400/10360/10360/16 respectively; pair same guest address per binding. Binding18 has 2 bytes and probe skipped due 4-byte copy alignment; binding42 is sampled image same serial1041106, not captured as texel. `storage=1` in PROBE_TEXEL_DATA is a legacy binding12 label, not proof of storage descriptor. Prepass samples1036971, color0, available1 result0. GPU copy barriers and readback alter probe timing; no proof of shader output equivalence and no fix claimed. Artifacts `.local/honor-device-profiles/flame-20261104/codex-probe-3882-f10564/`, log `shield-candidate/autoplay-texel.log`. Marker restored0. Continue checking the 2-byte input, vertex/depth outputs and pass state.
+
+# Dark GPU texel input comparison — 2026-11-05
+
+Opt-in compact probe extended to GPU-copy uniform texel inputs for exact VS db5f/41a5, using existing transfer/barrier and later synchronized readback; normal rendering remains untouched. Binding30 shader names differ, so compare descriptor semantics before drawing conclusions. Built and installed `dark-texel-test.apk` SHA b37a46f416328e855de54445f6b8d821621c4b7c5ec4812e393efaa08aaae4f2, command `bash .local/honor-device-profiles/flame-20261104/build-dark-texel-test.sh`, log dark-texel-test-build.log exit0. Next self-play marker6, compare pairs and restore marker0.
+
+# Same-frame dark mesh snapshot comparison — 2026-11-05
+
+PID1031, marker6 autonomous dark capture f8115 groups78 prepass and94 color: queries samples648976 and0, available1 result0. Full prepared CPU-mapped vertex buffers are identical (15552 bytes SHA256 1dae1571c22bb5e599b15cd34066cc0e9abbff64dfe8cd4a559c916b0e32760b); index buffers identical (13920 bytes SHA256 dadada60422d48b2405e144edaf1b05039bf4725f6f98b83fab08e790048833a), matching VkFormat106 offset0 stride12 vertex rate, count6960, instances2, baseVertex0. Same vertex shader texture binding42 image1066172 in this capture. Buffer snapshot path may return pending GPU view: CPU mapping alone cannot establish GPU-write visibility, so hashes are snapshot evidence, not a proof of GPU input identity. Traces/blobs `.local/honor-device-profiles/flame-20261104/codex-probe-1031-f8115/`; marker reset0. Remaining investigate position/depth shader output, sampled texture and GPU visibility. No visual fix or performance gain claimed.
+
+# Paired vertex snapshot diagnostic — 2026-11-05
+
+Built/installed dark-vertex-test.apk SHA9c1739fef4ec01861ae879fd8b3bd1f53e483594845cd677a5b642579dccd6ee; build command `bash .local/honor-device-profiles/flame-20261104/build-dark-vertex-test.sh`, log `dark-vertex-test-build.log`, exit0. Marker6 probe now snapshots already-prepared CPU mapped vertex and index buffers, up to 2MiB each, and logs layout and metadata for only exact dark FS c0/b7 draws. Normal path unaffected; mapped snapshot fidelity must be checked, no GPU resident assumption. Next self-play dark magic, compare same-frame data; reset marker0.
+
+# Same-frame paired uniform evidence — 2026-11-05
+
+PID31699 marker6 frame9558, autonomously reproduced dark magic; marker restored0. `codex-probe-31699-f9558/capture.txt` g75 prepass query samples800761 and g91 color samples0, result0 available1. Pulled uniform blobs for both groups. Vertex uniform bindings 0,54,60,66,72,78,84 byte-identical; binding6 differs due shader-specific layout (e.g. respective shader c1 offsets24 vs12 hold the same -0, followed by 0.99,1,2). Fragment corresponding c5/c6 equal; c3 and c4 common prefixes equal though allocation lengths differ, c1 differs with resource layout. This reduces but does not eliminate uniform mismatch hypotheses; shader output/texture/vertex inputs still unproven. No fix or performance improvement claimed. Next investigate geometry/position and actual shader depth output. Full build command and checksum in following entry.
+
+# Dark paired uniform probe — 2026-11-05
+
+Added four exact dark prepass/color shader IDs to existing opt-in uniform snapshot filter; only during manual capture, storage buffers excluded. Built and installed `dark-uniform-test.apk` SHA d90b5bfbd12d74e398fd667c523d7efe06bef5b009f99813ce6dcb51e5b3da54. Build command `bash .local/honor-device-profiles/flame-20261104/build-dark-uniform-test.sh`, log `dark-uniform-test-build.log`, exit0. No correctness fix claimed. Self-play to dark effect, marker6 capture and compare corresponding input snapshots, return marker0.
+
+# Autonomous dark cull comparison — 2026-11-05
+
+Installed `dark-cull-test.apk` SHA421eb08fcc0fdc0601bb58065f00a664f1d13e0be28c3d0139251f733776832d, PID28654. Self-operated Continue, walked to battle, thunder one enemy and dark remaining enemy; captured marker8 frames11524/11529/11538/11564/11566/11568/11570/11572; restored marker0. In f11568 group80 depth prepass samples432225; group94 color pass exact VS41a5a80e/FSb7dd0f logged culling NONE and samples0 with VK_SUCCESS and availability1. f11570 likewise depth516553/color0. Culling alone is not sufficient; no fix claimed. Traces under `.local/honor-device-profiles/flame-20261104/codex-probe-28654-f*/capture.txt`, log `shield-candidate/autoplay-cull.log`. Next inspect depth/interpolant inputs and propose scoped diagnostic; LIMIT remains visually black, performance/1080/60 unproven.
+
+# LIMIT repeat route and independent culling diagnostic — 2026-11-05
+
+Autonomously activated LIMIT on live miniboss, captured 17426/17444, pressed START during animation, selected return title/yes; Continue returned to earlier map, confirmed `shield-candidate/limit-continue-after.png`. No claim it resumes inside boss; battle is replayable. LIMIT `limit-self-present.png` shows black circular spots; in frame17444 g96 prepass (VS085afbc955a0744f FS0066ad2ea935247d) 1800 indices x2 three draws, paired-size color g106 (VS632c207422d773c5 FS17ab021c45c63390) uses GEQUAL and sampled six outputs unchanged from g105, unlike dark shader pair; same-looking symptom not established same cause. Built `dark-cull-test.apk` marker8: for manually captured frame only exact dark color VS41a5a80e/FSb7dd0f, cull NONE with depth compare unchanged; transient uncached pipeline and isolated query; normal path untouched. Build exit0, not installed/tested.
+
+# Autonomous battle and depth diagnostic — 2026-11-05
+
+User directed self-testing: first thunder kill one, second choose dark kill one, third miniboss LIMIT; pause and return to main menu before ending battle to reuse Continue. Built/installed `dark-depth-test.apk` SHA751ff930e273b9fbd1955b890cf515baa6aa8837e60da8fbb3d5d54037a81db3 PID25447; preserve shield SHA7d20. Self-controlled via adb gamepad A=96, dpad and virtual stick; now miniboss alive at LIMIT-ready battle menu screenshot `shield-candidate/autoplay-limit-menu.png`. Marker7 only during compact probe changes exact VS41a5a80e5242a26c/FSb7dd0f48aea00196 color pass depth EQUAL to ALWAYS, transient uncacheable pipeline, disables/invalidate fast memo; default marker0 keeps original. Autonomous dark capture trace PID25447 frames9258/9289/9304/9306/9308/9310, target diagnostic logs verified, query results color0/575/496/473/845/871 versus depth3818/392424/661750/701278/1007973/842715, available1 VK_SUCCESS; present montage `shield-candidate/autoplay-depth-present.png` retains black disk. Depth EQUAL is contributing but ALWAYS alone does not restore disk; rasterization, shader geometry, stencil or other causes remain. No fix/60/1080 claim.
+
+# Exact samples-passed evidence — 2026-11-05
+
+PID24194 isolated query capture frames4686/4733: depth shader c0adc062 recorded active1/countSamples1, available1/VK_SUCCESS, samples1323433 and553116; corresponding color shader b7dd0f48 recorded active1/countSamples1, available1/VK_SUCCESS, samples0 in both. Present montage `shield-candidate/dark-query-present.png` confirms effect, trace files `codex-probe-24194-f4686/capture.txt` and f4733. Separate query forced during compact probe and group flush ends it; normal mode untouched. Zero passing samples proves no samples survive pipeline tests for color draw; cannot distinguish depth, stencil, fragment kill or clipping. Next targeted one-variable diagnostic (e.g. depth compare disabled for exact pair in manually triggered capture, explicit pipeline memo handling), preserve correct default and no unsupported fix claims.
+
+# Depth shader static comparison — 2026-11-05
+
+Inspected validated original SPIR-V in `dark-depth-pair`: prepass FS c0adc062 and color FS b7dd0f48 both write FragDepth as FMin(FragCoord.z, computed depth); their corresponding computed branch includes c3[30].z/c3[31].z Fma and alternate FMin. This structural similarity does not establish same interpolants, uniform contents, numerical results or passed fragments. Await current targeted per-draw query capture; no fix inferred.
+
+# Per-draw fragment diagnostic installed — 2026-11-05
+
+Compact probe now isolates existing samples-passed queries for the depth FS c0adc062e4b8e8fa and color FS b7dd0f48aea00196; scoped to manually triggered compact capture and only when guest sample counting is enabled, avoiding batched count. Probe logs recorded/available/samples, and must check these conditions before interpreting. Built/installed `dark-query.apk` SHAb92053cd3d326977c615251206456f1e354ebdedc6440c20307d2235c3c7e9c8, PID24194 via install -r, shield SHA7d20 retained. User authorized repeated battle restarts, await ready then marker6 timed window. This is diagnostic, not fix; preserve battle/avoid killing enemy.
+
+# Candidate depth/color pair — 2026-11-05
+
+Frame1442 g74 depth draw and g90 color draw share index count6960, instances2; g90 VS41a5a80e5242a26c FSb7dd0f48aea00196 uses depth test NVN EQUAL and no depth writes. All six 128x72 sampled color attachments have zero changed 32-bit pixels from g89 to g90; does not prove no fragments at full resolution or rule out zero-valued output. Original XGS for both vertex/fragment pairs copied read-only into `.local/honor-device-profiles/flame-20261104/dark-depth-pair`, SPIR-V validates Vulkan1.1. Both vertex shaders decorate Position Invariant and both fragment shaders explicitly write FragDepth. Need determine position/depth calculations and actual passing fragment counts; do not replace compare or shader semantics speculatively.
+
+# Dark disk appears in depth — 2026-11-05
+
+Frame1442 sampled raw depth `dark-1442-depth-log.jpg` first shows circle at group74 after group73: 5480/9216 sample words differ. Group74 VS db5f1e2dd1c9ef3d / FS c0adc062e4b8e8fa, 6960 indices x2, depth test/write on; pair appears in black frame1478 group82 but not selected frames1415/1502. Depth visualization is log of raw copied words, not calibrated depth values; it establishes a spatially matching write, not that depth values or draw are wrong. Need investigate corresponding material/color pass and original game semantics, not simply remove depth write.
+
+# Compact capture isolates stage — 2026-11-05
+
+PID21907 marker6 compact capture frames1338/1377/1415/1442/1478/1502/1535/1571 were 24.6–30.2MB each, under 63MiB cap. Present montage `shield-candidate/dark-compact-present.png`: 1442/1478 contain black effect; full 1415/1442/1478/1502 pulled. `dark-1442-groups.jpg` shows black disk already in HDR color0 geometry at g100 (VS489064e67ce2cf74 FS420d208cfd393dc7), persists through scene output and g160 final; proves it predates final present/compositor, but group100 draws background around existing black area, so not evidence that its shader is root cause. Need examine earlier depth/stencil/other MRT and compare same screen coordinates in 1415/1442; no visual fix or acceptance. User requests enemy preservation; frame1571 shows dialogue, outcome not inferred.
+
+# Compact capture installed; preserve battle — 2026-11-05
+
+User explicitly suggests not killing enemy and returning to desktop/re-entering game before battle ends for repeated debugging. User authorized restart; installed `probe-compact.apk` SHA7a9203ae18cfff7f8a560d5c73336af4b8d8a85daea89990833dd51bc1207a4b via install -r, PID21907, target30, shield XGS7d20 retained. Marker6 compact capture script `dark-probe-compact-window.sh`, wait for spell readiness, then prompt user to select/release. Capture mode is unverified. Preserve enemy/battle and avoid claiming game-state restore without proof.
+
+# Compact per-pass capture prepared — 2026-11-05
+
+Frame5489 hit 63MiB intermediate cap; file distribution ROI 41,711,280 bytes, stencil ROI 7,551,180, sampled outputs 15,515,268 plus texel and buffer. Added optional Honor marker6 compact mode: no large color/stencil ROI payload, retain low-resolution samples and stencil hist; marker5 unchanged, present reserve remains. Built probe-compact.apk with `build-probe-compact.sh` exit0, not installed or device tested; coverage of all render stages is not established. User still in game, coordinate restart.
+
+# Dark-effect frame captured — 2026-11-05
+
+After user ready, eight timed probes PID18789 frames5225,5269,5313,5361,5404,5450,5489,5524. Present samples in `shield-candidate/dark-window-present.png`: frame5489 has a large black circular occlusion with red surroundings, 5450 lead-in and 5524 later effect. Full captures 5450/5489/5524 pulled, each intermediate budget capped at 63MiB; all present samples saved. Montage `shield-candidate/dark-5489-groups.jpg` shows intermediate color0 g89–112 with black region while remaining background gradually appears; early image is also black and later stages skipped, so first offending operation/root cause not established. Do not claim fixed.
+
+# Presented sample reserve verified — 2026-11-05
+
+PID18789 captured frames1503/1515/1531/1547/1569/1572. Every capture saved its 36864-byte present sample despite reaching ordinary capture limit; `shield-candidate/dark-reserve-present.png` shows skill/target selection menus in all frames, not black spell. Probe reserve device component verified, not visual fix. Six of sixteen capture attempts consumed; longer `dark-probe-window.sh` prepared, wait for user readiness before executing.
+
+# Final-image reserve probe installed — 2026-11-05
+
+User confirmed restart; installed `probe-reserve.apk` SHA24bcdc73ba851ee6b1560b6f1710a599bf47d8239ece45e4a310cca8c5d64bbd via install -r, PID18789, target30, shield XGS SHA7d20 retained. CODEX_PROBE enabled, marker0. User progressing to spell menu; await readiness before delayed trigger. This version reserves 1MiB for presented image samples; actual behavior not yet verified.
+
+# Reserve final image in probe — 2026-11-05
+
+Six timed probes filled the full 64MiB before final stage. Changed explicit probe capture budget to reserve 1MiB for `-present-s` samples and force a separate present snapshot instead of referring to an earlier same-image entry; existing non-probe capture limit unchanged. Built `probe-reserve.apk` using `build-probe-reserve.sh`, log `probe-reserve-build.log`, exit0; not installed, no on-device proof. This does not guarantee every intermediate snapshot fits or resolve spell identification; controlled capture still required. Current user game stays running.
+
+# Timed spell capture partial — 2026-11-05
+
+After user ready, asked them to close menu and used delayed marker5 six times. PID16428 captured frames2002/2017/2028/2030/2032/2034 under `.local/honor-device-profiles/flame-20261104/codex-probe-16428-f*`. Each hit 64MiB cap, late frame outputs and final images skipped; cannot infer whether frames covered the black effect from these captures alone. Preserve traces for analysis; user screenshot/video is separate evidence. Avoid attributing cause before comparing valid render data.
+
+# Retry capture build installed — 2026-11-05
+
+User confirmed can restart. Installed `probe-retry.apk` SHA7b6e2546d2f97cdebb90b500c6da311c36fe5830ccd5ffa435e461c9d5ef9999 via install -r; PID16428, 30 target, shield XGS SHA7d20 retained, marker0, startup logs CODEX_PROBE enabled=1. Await user at spell menu. Each capture uses marker5 consumed once, up to 16; 64MiB budget per capture. Coordinate closing menu before delayed capture, verify screenshot to distinguish effect from menu. Overlay comparison diagnostic is also enabled for up to eight comparisons; performance not representative.
+
+# Probe timing and retry preparation — 2026-11-05
+
+After user prepared spell four manually-triggered captures completed (PID13184 frames11806,12035,12069,12107); `shield-candidate/dark-probe-final.png` shows all four are menu frames, not spell evidence. Marker restored0; current process has exhausted four-capture limit. Increased default-off Honor repeat capture limit to 16, each still requires fresh marker 5; built `probe-retry.apk` using `build-probe-retry.sh`, log `probe-retry-build.log`, exit0; not installed or runtime tested. Existing capture output and user gameplay retained. Avoid restarting until appropriate; need coordinate timed trigger after menu closes and validate capture content.
+
+# Dark magic observed — 2026-11-05
+
+User compared Switch and says tablet dark magic is abnormally black. After user reported battle ready, recorded a 60-second device video and user confirmed casting: `shield-candidate/dark-magic-battle.mp4`, contact sheet `dark-magic-battle-contact.jpg`, process log `dark-magic-battle.log`. Around seconds 8–11 large black regions/rectangles appear along with red-purple effect; cannot establish Switch-accurate expected image or offending pass from final video. Earlier `dark-magic-recapture.mp4` was recorded in opening before battle and is not evidence for spell. Target 30, PID13184; user remains playing. Need controlled per-pass probe at spell time and Switch reference as available, preserving save. No visual fix or speedup yet.
+
+# Real-data GPU overlay comparison — 2026-11-05
+
+PID13184 produced eight queued comparisons in frames2383–2390, shader 4bb63600b3b9aa38 binding41, 983040 bytes and two overlapping writes each; all eight matched the authoritative synchronized guest bytes. Evidence `shield-candidate/overlay-reason-real.log`; user scene not yet identified. Diagnostic is capped at eight and has stopped making further comparisons; original CPU synchronization remains enabled. This establishes only these snapshots, not safe asynchronous lifetimes, effect correctness or frame-rate improvement; especially target battle shader 3b6302a58b86a34a has not been checked. User still playing; do not interrupt.
+
+# New-game diagnosis and dark magic color — 2026-11-05
+
+User compared dark magic with original Switch and reports abnormal effect colors; correctness unresolved. User chose to start new game and explicitly said save is not needed. Attempted local backup failed due Android permissions; the small error files under `save-before-newgame-20261105` are not backups. No app data cleared. Installed overlay-reason.apk SHA d76adace67b16adce6e7f7f656d130e9e6141d53b0731bfaac8ddbbe06b46cdc, target30, PID13184; shield XGS SHA7d20 retained. User is currently testing, do not interrupt. Prior walking generated only one preflight and zero comparisons; diagnostic updated to log guarded skip reasons. Check guest_boot.log for `NVN partial overlay check` once user reaches battle; preserve results. Diagnostic does not accelerate game. 60 and internal 1080 remain unverified.
+
+# Real-data overlay diagnostic installed and movement sample — 2026-11-05
+
+User reports field movement not smooth, then walked at request. PID7954 source APK2be4, target30, frames33240–34620: 1380 intervals over48.951s, successful-present average28.192/s, p50 33.37ms p95 46.08ms p99 71.46ms max94.58ms, 47 >50ms, no zero draw/writer deltas. Buffered CSV start/end may include extra time; no discarded stalls. `shield-candidate/movement-result.json` and raw CSV/log.
+
+After user saved/authorized restart, built and installed `overlay-compare.apk` SHA `cec565687f6ce7d865d482ba0d19a1f3a5905d85bb02f4cf8e698010925a97a5`, build session28780 exit0, install -r/device SHA verified, shield XGS7d20 retained, target30, PID11052. Marker `gfx-partial-overlay-check=1` explicitly enables up to 8 diagnostics: before original cpu_access synchronization, create independent owned GPU buffer from guest baseline, overlay pending writes oldest-to-newest using GPU barriers and pin sources; after original full sync compare all bytes against guest. Guards for reports, size, 4-byte alignment, source bounds, slot ownership; failure to plan skips comparison and preserves sync. Output buffer never bound to game; no optimization is active. User asked to Continue and move or battle; inspect `NVN partial overlay check queued/result`, preserve log, disable/archive marker after enough results. Diagnostic perturbs timing, cannot establish FPS or actual async engine lifetime safety. Validity of user data/effects and no crashes must still be assessed; restore original source candidate APK2be4 if diagnostic isn't actively needed. 60/native1080 remain open.
+
+# Preparing default-off real-data overlay check — 2026-11-05
+
+User reports map movement itself stutters; asked for 30s moving baseline without restart. Preparing bounded, opt-in diagnostic before existing compute partial-texel sync: independently GPU-merge a CPU baseline and pending writeback overlays, then retain the existing synchronous `cpu_access` path and compare full GPU bytes to synchronized guest memory. No sync removal or changed descriptor outputs. Need guard against pending reports, alignment, bounded sizes/counts, preserve cross-slot source lifetime and barriers; any failure skips diagnostic and uses current path. Real-scene comparisons still do not prove optimized runtime timing/lifetime, and user gameplay data must be preserved.
+
+# Bounded 60-cap dialogue sample — 2026-11-05
+
+PID7954 APK2be4, post-boss static dialogue. User goal authorizes 60 test; no input injected. Temporarily changed `gfx-target-fps` 30->60 using shell trap then automatically restored30 and verified; no game restart. Continuous selected accelerated interval frames25741–26700, 959 successful-present intervals over21.433s, 44.744/s, p50 20.31ms, p95 36.53ms, p99 41.92ms, max51.13ms, 98 intervals >33.4ms. All adjacent draw and image-writer counters incremented. `dialogue-60-result.json`, CSV, guest log and pretest screenshot under shield-candidate/. This is selected steady dialogue, not entire test, motion/battle, 1080 internal proof or game-clock correctness; 60 not passed. Logs show 60 set then30 restored; transition window excluded explicitly. Continue GPU stall fix, full-effects/speed validation and internal-resolution investigation.
+
+# Delayed producer GPU contract — 2026-11-05
+
+Expanded standalone Vulkan overlay test with host-set event blocking producer before GPU fills. On Honor Adreno735, scene-sized `--delayed-producer` confirms fence NOT_READY and mapped source retains old zero before signal; after signal and fence, ordered copies match CPU reference, exit0. Binary SHA `615bb0d8d74330f682cfa2da52e94cf2f848decabd170a42042c8a9097f02957`, `shield-candidate/overlay-gpu-contract-v3.log`. This demonstrates why host mapping/invalidation alone does not establish completion; it does NOT prove production why3 encountered an unfinished write in gameplay. Engine slot, descriptors, reports and dynamic race remain untested; no GPU overlay runtime enabled and no FPS claim. User game was not stopped.
+
+# Storage descriptor ordering risk — 2026-11-05
+
+Static audit: inherited `descriptors_build` storage-buffer pending_view miss calls `cpu_access(...,3)` after commands/descriptors acquired. Current why3 branch invalidates and copies mapped pending GPU writeback memory without an explicit completion wait, unlike other cpu_access reasons. If an overlapping write is unfinished this can read stale data; actual overlapping unfinished occurrence and connection to symptoms are NOT proven. Existing `scripts/runtime/check_preflight_dependencies.py` fixture is stale/fails against WIP and is not a pass. Safe repair requires resolving before acquiring command/descriptors while preserving GPU indirect source lifetime for both draw and compute; naive synchronous resolve mid-descriptor recreates previous slot-retirement crash. Include this in overlay and correctness design, not speculative assertion or unconditional graphics changes. Current installed APK remains2be4 at30; real60/1080 unachieved.
+
+# Scene-sized GPU overlay component — 2026-11-05
+
+Expanded standalone Vulkan contract to additionally cover a 1,179,648-byte backing buffer and a 983,040-byte requested range with partial 146,432-byte producer and later overlapping producer. NDK26.1 arm64 binary SHA `0f9d84f2035fb67ea02471fb44bd27e98e776654909477aa4649f902044a20f4`; Honor execution exit0 for both 256 and 1,179,648-byte tests, two ordered GPU submissions and full CPU-reference bytes (`shield-candidate/overlay-gpu-contract-v2.log`). This is synthetic and does not cover the engine's slot recycling, indirect fallback, reports, concurrent writes or actual gameplay FPS. No runtime overlay enabled; existing preflight remains. 60 and actual1080 still open.
+
+# Partial overlay GPU component — 2026-11-05
+
+Added standalone synthetic `tests/device/test_partial_overlay_vulkan.cpp`: host-coherent baseline, GPU fill producer in first submission, barriers and ordered overlapping GPU buffer copies in second, fence and full 256-byte CPU-reference comparison. Android NDK26.1 arm64 binary SHA `58477a4981efb327d87d2f269771579fb339c7cd9875497c5c163e3cca8e991e`; executed only Honor A42BBB5109000333, exit0: `GPU overlay PASS device=Adreno (TM) 735 copies=2 submissions=2 bytes=256; engine-slot-lifetime=NOT_TESTED`, raw `shield-candidate/overlay-gpu-contract.log`. Existing game PID7954 was not stopped, save unmodified. This validates only simple ordered Vulkan copies: no engine slots, alias overlaps, indirect fallback, pending reports or gaming FPS, so not an implementation or performance PASS. Preserve existing safety preflight. 60FPS and real internal1080 unachieved.
+
+# Overlay planner validation — 2026-11-05
+
+Host-only `xbg_wb_overlay_plan` now passes 2000 deterministic varied range cases compared with byte-level chronological overwrite reference, plus alignment, bounds and failure tests. No GPU path invokes it, no measured optimization. Do not bypass required preflight until slot lifetime, possible later indirect cpu_access, source/destination VkBuffer overlap, pending reports and cross-slot guard have a safe design and real GPU tests. Installed APK2be4 remains as before; 60 and actual1080 not achieved.
+
+# Attack optimization range planning — 2026-11-05
+
+Added an unused host-only `xbg_wb_overlay_plan` in xbg_writeback_policy.h and extended `test_partial_texel_preflight.cpp`; host test passes oldest-to-newest overlap, fallback and alignment cases. It is NOT connected to runtime and does not improve FPS yet. The hard problem is preserving existing crash fix across preflight/indirect/descriptor order: later cpu_access may retire a slot and invalidate earlier prepared buffers, GPU overlay source/destination may overlap, arena prologue and cross-slot xview/owners must be guarded, pending reports and barriers handled. Never disable the sync merely based on range planner; build an opt-in candidate only after these are resolved and test against GPU-reference + same-scene device A/B. User confirms repeated attacks stutter, boss source candidate enters. Reference screenshot https://dengekionline.com/article/images/202606/76939/741988 shows same armored boss dark blue-purple highlights/red eyes, broadly similar to current capture; different scene/lighting means not pixel-perfect visual acceptance. 60fps/true1080 remain unproven.
+
+# Boss source gameplay and repeated-attack bottleneck — 2026-11-05
+
+User confirms boss entered on APK2be4 source build, no external VS override; runtime and warm `patched=1`, no FATAL. Color still unverified. User reports same attack clearly stutters every time. `boss-source-repeat.log` shows two 60-present windows 5045.6 and4728.7ms with no new synchronous graphics pipeline creates, GPU32.10/37.74ms per frame, writeback sync counts41/105 (why8 partial texel, also why5 indirect-argument CPU reads in second window); exact timestamp-to-attack alignment not established. There are 125 explicit partial-texel preflights in 125 frames; 107 are shader3b6302 binding47 size163840. This is a concrete optimization lead, not proof of sole cause. Prior preflight prevents slot retirement crash; do not remove its correctness gate. Investigate bounded GPU merge (host baseline plus all pending writeback overlays in original order) only with proven CPU/GPU visibility, reports, 4-byte Vulkan copy alignment, cross-slot ownership/xview guard, buffer non-overlap and host/GPU memory lifetime; fallback preflight must remain safe. Need independent actual scene A/B and preserve flame/shield. Actual native1080/60 remain open.
+
+# Boss source build installed — 2026-11-05
+
+User confirmed current battle can be restarted. Stopped only Honor, saved list `shield-candidate/list-before-source-install.bin`, archived own external VS override to `fe033d948255d9ff-undefined-tested.spv`, installed `boss-source-fix.apk` SHA `2be4d306289ab076324266563dfe30efe109c89a52b49d312f3a1ab7af2be72b` via -r, hash verified. PID7954, cap30, no target VS override, external shield XGS7d20 retained. Startup warm list531; log `NVN Honor boss missing output ... loader=warm patched=1`, exact boss pipeline warm replay result0. User asked to enter boss and observe attacks. Runtime shader load and actual gameplay/visual/color test pending; effect stutter, intermittent bottom blocks, genuine1080/60 all open. No data clearing.
+
+# Boss source build ready — 2026-11-05
+
+`boss-source-fix.apk` SHA `2be4d306289ab076324266563dfe30efe109c89a52b49d312f3a1ab7af2be72b`, build session53109 exit0, source helper test and Vulkan1.1 validation pass, git diff --check passes. Current device still PID5656 with external diagnostic VS1cc..., old APKb892; user asked if battle can be restarted before installation. Upon consent archive own external VS override, install -r, retain shield XGS, 30 cap, warm list, verify `NVN Honor boss missing output ... patched=1` on warm/runtime and user boss gameplay, not merely boot. Unwritten value/monster color and full effects not confirmed. 60-frame log windows have new pipeline creates max136–155ms, but not aligned to specific attack. Last 1800 present samples average30/p95 33.9ms/max37.22ms under cap30 with activity unspecified: no moving combat or 60 acceptance. LIMIT/attack stutter and genuine1080 remain open.
+
+# Boss scoped source candidate — 2026-11-04
+
+User reports unwritten-output diagnostic enters boss; boss color still uncertain, attacks occasionally stutter. Original FS preserved. Vulkan spec allows an unwritten matching output to provide an undefined input, but that does not establish guest intended values or color accuracy. Added `xbg_boss_interface.h`, exact 78860-word original module shape/IDs guarded, adds only unwritten vec4 output location9; warm+runtime use gated Honor tablet/Qualcomm/Adreno735 condition. Local test `test_boss_interface.cpp` actual SPIR-V, mismatch/no double mutation and `spirv-val` pass. Python check removing added entrypoint ID, decoration and variable recovers every original SPIR-V word exactly. First host compile failed because SDK path unresolved; second with explicit `-isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk` passed. Source candidate not built/installed; current external override still active and user battle ongoing. Build candidate then respect game progress before installation; verify no external override, warm replay and actual scene. Attack pipeline compilation contributes stalls but not proven sole cause; 60/1080 remain open.
+
+# Boss gameplay and unwritten-output candidate — 2026-11-04
+
+User reports zero-input diagnostic enters boss but magic/effects stutter, boss colors look odd and they cannot tell if intended. `boss-zero-in-game.png` captures scene, `boss-zero-gameplay.log`; not a visual acceptance. User allowed restart. Vulkan interface spec https://docs.vulkan.org/spec/latest/chapters/interfaces.html requires an interface match; value is undefined if previous stage does not write matching output. Independently prepared original VS SPIR-V with a new unwritten vec4 output at Location9 in entrypoint: no existing output, FS code, or fixed value changed; assembled and spirv-val Vulkan1.1 pass, SHA `1cc97464c5e1853798bc2e1b16606fa88750816f377d45d3e8d36f78747b25c7`. Isolated same recorded pipeline warm test ->0 (`warm-vs-loc9-undefined.log`). No claim this preserves original guest intended value; Vulkan prior pipeline was invalid and visual equivalence unproven.
+
+Current Honor: zero-FS override archived, original FS restored; VS diagnostic override SHA1cc... active, full `list-after-boss-zero.bin` restored, APKb892, cap30, shield retained. User asked boss gameplay/color comparison. If promising, create guarded, reproducible source rewrite scoped to tested device and exact shader shape; don't ship global diagnostic blindly. Stutter/occasional blocks, 60FPS and genuine internal1080 still open.
+
+# Boss missing input replay isolated — 2026-11-04
+
+User reached boss and PID563 crashed; `boss-recipe-repro.log` shows explicit pre-create recipe record then -13. Backed up complete pipeline list `list-with-boss-recipe.bin` SHA `1645948ef54b986f94004651e17c28ae1557271232dda1e0b45f4ffc23cb34ff`: 430 other records and one exact target pair, 317 words. Isolated recipe `list-only-boss.bin` SHA21ff0bca...; APK `boss-warm-replay.apk` SHA `b892f6f69d75e9f545b267204c86b1313662db742211e07f6ec75c143a574987` logs targeted warm result. Original VS/FS isolated warm -> -13 (`warm-baseline.log`); changing FS input location9 to8 ->0 (`warm-fs-loc8.log`); separately replacing three loads of missing input9 with float zero and optimizing ->0 (`warm-fs-loc9zero.log`). This establishes driver pipeline acceptance depends on missing stage input, but does not prove correct intended value or semantics. No guess that adjacent input8 is correct.
+
+Current device is running zero-input diagnostic FS override SHA `45c6158a6fda845af56b8d6631851d66d224da97d1ff19beb49442d4de2f35e7`, APKb892, full original list restored including boss recipe, target30, shield SHA7d20 retained. This override applies to FS globally and is diagnostic, not a final product fix. User asked to play boss and assess model/background/effects, observe errors and normal behavior. Need scope any durable workaround to actual pair/device and resolve guest missing varying semantics; visual user acceptance alone does not prove full game. LIMIT stutter, bottom intermittent artifact, true1080/60 remain open.
+
+# Boss interface and replay recipe capture — 2026-11-04
+
+User confirms FS-opt also crashes; `shield-candidate/boss-fsopt-failed.log` shows FS override loaded 9340 words and pipeline failed -13 with/without cache. Archived own FS override; both boss overrides now absent. Original VS outputs locations 0–8,10 and FS inputs 0–7,9,10 (VS output8 and FS input9 are vec4); unmatched input is a lead, not a proven defect or permission to guess remap. Vulkan interface reference https://docs.vulkan.org/spec/latest/chapters/interfaces.html. Selected original guest index keys from existing release-pack. Pinned upstream 8e0916b retranslation output FS XGS byte-identical SHAe529; VS upstream path failed dynamic-texture-array. Existing audited proof-v2 translator builds VS byte-identical current SHA312151, so no changed translation candidate. Local logs `boss-retranslate.log`, `boss-proof-retranslate.log`.
+
+To reduce user replay burden, exact VS/FS + marker `gfx-record-boss-pipeline=1` diagnostic in xbg_game.cpp records and flushes unchanged warm pipeline recipe before create; no skipping draw. `boss-recipe.apk` SHA `135164ecd0d103b08faa41101029dd7bed2417afa1cd95bf5cb63e41beec4ce8`, build session5493 exit0, installed via -r, hash verified, target30, marker present; asked user to reach boss once, expected crash possible. On replay check `NVN boss pipeline diagnostic recipe recorded before creation`, pull/back up full list and log, archive only diagnostic marker; next run isolate recorded recipe for controlled warm compiler tests without repeated story, verifying replay state and failure. Save and shield preserved, LIMIT stutter/60/1080 still open.
+
+# Boss fragment-only experiment — 2026-11-04
+
+User reports VS-opt still crashes; `boss-vsopt-failed.log` confirms PID31613 actually loaded VS override 27305 words and both cache and cacheless pipeline attempts return -13. Removed own VS override by moving it to app-files `fe033d948255d9ff-opt-tested.spv`; original VS now used. Isolated FS `5ad1d8181af9fe61` SPIR-V optimized via SPIRV-Tools `-O --target-env=vulkan1.1`, 92976->37360 bytes, SHA `5812afb5983995e595d947f20b98eb6b6106b6750f6d2715b98cc97dc83c8012`, validates. No preexisting FS override and no FS warm-list records; installed only FS opt override and verified device SHA, target30, same APK63f976. User asked to replay. Need actual load/error and visual result. No general correctness/60/1080 claim; preserve save and shield, LIMIT stutter still open.
+
+# Boss VS optimization experiment — 2026-11-04
+
+User reports retry candidate still crashes. PID30835 log `shield-candidate/boss-retry-failed.log` proves pipeline result -13 both with existing cache and VK_NULL_HANDLE; null cache did not solve. Removed own source retry change; installed APK remains 63f9761f with retry. Pulled original VS and FS XGS read-only from `/sdcard/FFRS/shaders` into local evidence; SHA matches previously recorded source; spirv-val Vulkan1.1 passes both. Prepared only VS `fe033d948255d9ff` using `spirv-opt -O --target-env=vulkan1.1`: input SPV 315440 bytes SHA9bf165..., output 109220 bytes SHA `cd8918d2df3a4d8ccec5f2f9c91c7815433aefe73d27d322b6925e08499c0684`, validates. Existing app spv-override had no such key; installed only this new override and verified device hash, without changing XGS or game data. Parsed 429 warm-list records: no old VS record, list unchanged SHA7b48e7bb.... Started game target30, user asked to replay boss, need confirm shader override load, driver accepts and actual render correct. Optimization validation is not proof of equal visuals or game acceptance. Preserve user-confirmed shield XGS, moon/fire/battle fix; LIMIT stutter, 60/1080 open.
+
+# Boss retry candidate installed — 2026-11-04
+
+Candidate build session59960 exit0, `.local/honor-device-profiles/flame-20261104/boss-pipeline-retry.apk` SHA `63f9761fb8a66f5dff2ae1ae8295117eb9080828f1da7f0eec12d9f135d75f7d`; installed `adb -s A42BBB5109000333 install -r`, device APK SHA verified, data preserved, external shield shader SHA7d20 verified, target30, diagnostic marker absent, PID30835. Host `git diff --check` passed. User asked to replay boss. Monitor `NVN Honor pipeline retry without cache result` and FATAL; candidate is an experiment, not proven fix. If retry fails do not skip rendering: inspect device driver/shader constraints and pipeline state. User-reported LIMIT stutter and intermittent bottom blocks remain open, 60 and actual internal1080 unproven.
+
+# Boss pipeline retry candidate building — 2026-11-04
+
+User confirms crash repeats with target30 PID29521; full diagnostic log `shield-candidate/boss-30-diagnostic.log` shows failing `vkCreateGraphicsPipelines` -13 immediately after graphics VS `fe033d948255d9ff`, FS `5ad1d8181af9fe61`. Same last pair as earlier 60 cap crash; 60 is not required for failure. Both original XGS pulled read-only from Honor `/sdcard/FFRS/shaders/`, hashes match recorded source; extracted original SPIR-V Vulkan1.1 validation passed. Validation does not establish device-driver acceptance or root cause. Archived own `gfx-honor-pipeline-diag` marker so subsequent launches are normal; retain user data. Source candidate in xbg_game.cpp retries identical graphics pipeline with null pipeline cache ONLY on VK_ERROR_UNKNOWN for tablet/Qualcomm/exact Adreno735; logs both results, destroys any non-null partial result before retry, still fails if retry fails. Does not skip draw. Build session59960, command/log `.local/honor-device-profiles/flame-20261104/boss-pipeline-retry-run.txt`. Build/install/real boss and effect retest not complete. LIMIT playback resumed in previous run but stutter persists as separate task, 60/1080 still open.
+
+# Boss pipeline crash; LIMIT resume — 2026-11-04
+
+User requested both fixes. On resuming paused LIMIT, 20-second recording `shield-candidate/limit-resume.mp4` shows animation continues, battle and next scene. This disproves a persistent hang in that run, not reported effect stutter or general correctness. During brief 60-fps-cap trial, user reports crash at next-act boss. PID28310 fatal `vkCreateGraphicsPipelines` returned -13; `boss-crash.log` retained. Last indexed pair fe033d948255d9ff/5ad1d8181af9fe61 is not proof of the failing pipeline. The 60 cap was active shortly before fault, cause not established; restored marker30. Auto-save appeared in recorded next scene and device save mtime updated. Started same package with `gfx-honor-pipeline-diag=1` to identify exact pipeline at 30; user asked to replay boss. Logging diagnostic can cause stutter and is not performance evidence. Remove only own diag marker after reproduction. Bottom blocks disappeared on replay but remain an intermittent unresolved issue. No 60/1080 pass.
+
+# LIMIT dark/stutter investigation — 2026-11-04
+
+User says bottom blocks disappeared after restart (intermittent, not fixed). During story, pressing Y for LIMIT causes stutter then black screen. PID28310 alive, screenshot `shield-candidate/limit-black.png` shows paused system menu over very dark scene with some character and effects; submits and audio continue, so not an app crash. User asked whether continuing restores game screen. Full intrusive capture frame5762 completed END 110 groups 57121178 bytes, pulled `shield-candidate/codex-probe-28310/`; marker restored0. `limit-black.log` saved. Capture does not establish whether dark scene is intended LIMIT phase or broken render; no root cause/repair claim. Remain 30 fps cap, actual 1080p and stable60 outstanding.
+
+# Bottom artifact repro restart — 2026-11-04
+
+User explicitly allowed restart; paused-scene screenshot and GPU final-only readback already saved under `shield-candidate/`. Restarted Honor PID28310 with probe marker 0, same APK and verified external shield shader SHA7d20. User asked to reach same visible bottom bars scene and pause. After confirmation, arm `gfx-codex-probe` with 1, wait for full capture END, restore marker 0, pull `codex-probe-28310` under local evidence; this intrusive capture is not FPS evidence. 60 FPS marker remains 30. Do not infer root cause from final image alone.
+
+# Honor shield restored; bottom artifact investigation — 2026-11-04
+
+User confirms shield restored and magic stutter reduced in candidate APK69304 + external shader7d20. PID27786 log actually loads shader9528 71601 words and VS9528/FS5fe1; warm list 278 built, 0 failures. User reports a row of strange vertical blocks at bottom, paused scene. Screenshot `shield-candidate/bottom-artifact.png` confirms blocks; normal-fast-path final GPU image sample `shield-candidate/final-probe.png` also shows them before Android display composition. GPU readback is coarse and no producer/root cause is identified. Full probe requires rearming on process startup; one-frame final-only probe consumed PID27786, marker reset to 0. Asked user whether saved game permits replaying scene before any restart; preserve paused state. Marker target remains 30 (60 test not run); internal 1080p and stable 60 not established.
+
+# Honor shield shader candidate — 2026-11-04
+
+User reports missing mage body shield, plus repeated magic stutter; user confirmed progress saved and restart allowed. RG477M shield report identifies fixed XGS `9528f530e1c95ce5` SHA `7d20ab511ded85d5d1bb43f3d0ab43c2eaa5ac4b6caf786c5d65eec9a6db125d`, regenerated with pinned nxnative mixed-Phi correction. Honor PID26439 loaded old 68833-word shader and same VS/FS `9528...`/`5fe1...`. Candidate copied read-only from RG477M research artifact into Honor `.local/honor-device-profiles/flame-20261104/shield-candidate/` and device app-specific shaders override; hash verified. No RG477M files/device changed. Stopped Honor only after user saved; backup warm list SHA `21941b2bc195770a175f92eeaec9578f14ac27ca1adf1debd3ce7ff88d6670f2`. Parsed all records, removed 3 old shader-layout entries, retained 278 others byte-identically; filtered SHA `e9c558c1b788dec48bea34bd12609594ac4e74c4392640977d5fa5b21742b3ed` verified on device. Existing compiled pipeline cache unchanged. Restarted PID27786 same APK SHA69304bbb; user asked to replay shield scene and compare magic stutter. Shader is an external runtime input, so APK hash alone is insufficient. Restore old state only as needed from saved list and absence of loose override; do not touch saves. Real Honor shield, magic, 60 FPS and 1080p remain unverified.
+
+# Magic repeat report — 2026-11-04
+
+User reports the same magic stutters every time, so initial shader/pipeline compilation alone is not an established full explanation. Later log interval creates 19 pipelines in 3188.7 ms (maximum 305.5 ms); another creates five in 846.7 ms. Log lacks a verified per-spell timestamp, so do not equate these windows with each cast. `battle-magic-repeat.log` saved under `.local/honor-device-profiles/flame-20261104/`. Existing pipeline warm list records gameplay, prewarms next launch, but impact not tested on this battle. Asked whether current progress is saved before any restart; preserve live session and save. 60 FPS/actual 1080p still unproven.
+
+# First battle reached; magic stutter under investigation — 2026-11-04
+
+User reports entering battle on candidate SHA `69304bbb6b03f6ca60178372b3f4ee4ef2012251e2ebffb8635d934d4a264905`, PID26439. Preflight fired on original-size storage texel (shader `4bb63600b3b9aa38`, binding 41, 983040 bytes, frames 6081–6087); game continued. This confirms the reported entry on this run, not full-game or independent QA. User now reports magic effects stutter. In one live 60-frame window, 30 graphics pipeline creates total 1882.5 ms, max 344.4 ms; later windows zero creates, correlation with specific spell not yet proved. At startup warm list had 138 records; new graphics pipelines are recorded for future prewarming. Logs `.local/honor-device-profiles/flame-20261104/battle-preflight-observed.log` and device guest_boot.log. Asked user whether same magic stutters repeatedly; do not interrupt live gameplay. No claim of 60 FPS, native 1080p, normal effects across game, or full audio acceptance.
+
+# Honor battle crash candidate and 60 FPS goal — 2026-11-04
+
+User reports crash in first-act story before battle. PID25315 SIGSEGV at `descriptors_build` in matching build ID; partial texel CPU synchronization can retire the descriptor slot currently being built. Added `preflight_partial_compute_texels` ahead of command/descriptor acquisition and targeted partial overlap policy host test. Candidate `.local/honor-device-profiles/flame-20261104/battle-preflight.apk` SHA256 `69304bbb6b03f6ca60178372b3f4ee4ef2012251e2ebffb8635d934d4a264905` installed with data preserved, PID26439; user asked to replay exact scene. Host policy test passes; older preflight fixture fails to compile against existing instrumentation and is not a pass. Battle retest and independent QA pending. Original log `.local/honor-device-profiles/flame-20261104/first-battle-crash-25315.log`. Do not interrupt ongoing user play. On retest capture guest log and look for `NVN preflight partial storage texel`, or symbolize new fault.
+
+User now explicitly requests stable 60 FPS, 1080p and normal effects, superseding old no-60 task scope. User-confirmed fire baseline preserved at `.local/baselines/honor-flame-stable-20261104/` as APK plus tracked patch and untracked source snapshot against recorded HEAD; not a git commit/tag. Baseline fire scene ~23 successful presents/s, internal scene ~1037x584 and output 1920x1080: true 1080p and 60 gameplay not established. Preserve gameplay speed, saves, moon/fire fixes; test performance after battle stability. Branch `work/honor-gtpro-30hz`, HEAD `032e5f68172c101cb2b6e44ee06f02974dab2da8`, mixed dirty/untracked WIP must be preserved. Build with scoped `DEVELOPER_DIR=/Library/Developer/CommandLineTools`; candidate build command in `.local/honor-device-profiles/flame-20261104/build-battle-preflight.sh`.
+
+# Honor fire candidate confirmed — 2026-11-04
+
+User independently reports “火焰稳定了” for source-candidate APK SHA90e132aac850afea0d3957efb53ecb6af2df94d590c8b1eef3233869a284a3fa in the target scene. Same candidate separate 30s/50s recordings 837+1150 samples, no fire-ROI disappearances; no-fix control 41/708. This is confirmation for that scene, not full-game correctness or audio acceptance. `cmd game list-modes` initially said app not game category; isolated local manifest candidate 66f088460e1d776e208d0d7942189111082db3363cf4ec24b7d5cdc9a24e15c5 classifies it as game, native library identical, Android modes standard/custom with no intervention, scene present attempts 22.57–23.89/s; no demonstrated 30fps improvement, no mode setting changed, do not conflate with Honor vendor game-assistant. Source manifest unchanged, restore user-confirmed 90e132aa. Persistent 30Hz + A2DP subjective/reconnect acceptance remain open. NDK 26 AAudio header says PERFORMANCE_MODE_NONE=10 despite standing doc mistaken numeric claim; source requests NONE and actual stream logged 10.
+
+# Audio enum correction for Honor source candidate — 2026-11-04
+
+The standing audio checklist incorrectly says performance=10 means LOW_LATENCY and requires performance=0. Verified directly against the installed Android NDK 26.1 `aaudio/AAudio.h`: `AAUDIO_PERFORMANCE_MODE_NONE = 10`, POWER_SAVING=11, LOW_LATENCY=12. `audio_bridge.c` explicitly requests NONE and PID21427 log records actual performance=10, which is NONE. The numeric wording in standing checklist conflicts with Android headers; this observation does not prove A2DP subjective continuity or reconnect acceptance. Do not alter audio implementation based on the mistaken numeric note.
+
+# Honor flame histogram synchronization candidate — 2026-11-04
+
+Same-device controlled finding: compute shader ef4326df31036d24 workgroup scan originally yielded histogram totals short exactly 64 in 270/270 measured passes (45 frames). A targeted GPU override replacing a memory-only barrier with a workgroup barrier before a shared-memory read and adding one after it yielded exact CPU reference histogram in 540/540 passes (90 frames). Same APK and scene 25s video: override ON 592 encoded samples, 0 fire ROI warm<20; override OFF 708, 41 under20 (68 under100). The previous comparison of early b673 output with final draw was invalid because other sort passes intervene. Full ping-pong transfer 750/750 matched; do not misstate as the bug. Trace can perturb scheduling, validate normal path.
+
+Integrated exact original-SPIR-V shape gated on tablet Qualcomm Adreno 735 in `src/graphics/nvn_vulkan/engine/xbg_spirv_stencil.h`, called in runtime and warm loaders `xbg_game.cpp`; unmatched shader shape is logged and unchanged, other devices unchanged. Host synthetic guard test `tests/device/test_honor_histogram_sync.cpp` and actual original-module rewrite plus Vulkan1.1 spirv-val passed. Source build `.local/honor-device-profiles/flame-20261104/fire-syncfix.apk` SHA 90e132aac850afea0d3957efb53ecb6af2df94d590c8b1eef3233869a284a3fa installed PID21427, no override on device, runtime log patched=1. 30s static scene screenrecord 837 samples, 0 fire ROI warm<20 (min1955). User subjective confirmation, long moving/battle validation, audio acceptance, and independent QA not yet passed. Static scene 22–23.5 present attempts/s, 30Hz not passed. Saves preserved. Host Xcode license currently blocks /usr/bin/python3; use scoped `/Library/Developer/CommandLineTools/usr/bin/python3` / `DEVELOPER_DIR=/Library/Developer/CommandLineTools`.
+
+# Honor particle chain continuation — 2026-11-04
+
+PID15697 async `.local/honor-device-profiles/flame-20261104/fire-async-15697-f930.bin`: 90 matched frames of last b673 binding47 output and first 70a binding23 input (same guest table) have identical first 4096 bytes, including 3 frames with foreground fire missing. Previous PID15125 separately showed last 70a binding35 output equals draw input 90/90 including 11 missing-fire frames. 70a executes several ping-pong passes across different table addresses; intermediate passes not traced, so do not claim entire chain coherent. PID11827 180-frame trace: 40 indirect draws/frame, instanceCount=2 each even in all 15 missing-fire frames. Zero index pairs correlate but may be legitimate; do not invent fix. Need trace all ping-pong input/output pairs and actual geometry, then A/B with normal no-trace performance. Trace code dirty and default-off; preserves GPU slot fence semantics but copies perturb timing. Device now restored via install -r to moon-default SHA c5b497bc7bcbe0cae53cdae4fd08d8b6d3edc3751b549fe8c2f49fce6eb80a3a, PID16351 same scene, save data preserved. Xcode license externally changed: scoped DEVELOPER_DIR=/Library/Developer/CommandLineTools, python at /Library/Developer/CommandLineTools/usr/bin/python3; do not change global config. Flame fix/30Hz/audio remain open.
+
+# Honor final particle table writer — 2026-11-04
+
+Earlier apparent b673/draw mismatch is expected intermediate, NOT a defect: compute 70a97cd190a8738f writes binding35 same guest address later. PID15125 async `.local/honor-device-profiles/flame-20261104/fire-async-15125-f930.bin` has 90 matched final-writer/draw first 4096 bytes, all identical including 11 missing-fire frames. Trace preserves real indirect counts: PID11827 180 frames, all 40 draws/frame had 2 GPU instances, including 15 missing-fire frames. Candidate next: final writer binding23 input versus preceding b673 binding47 output; diagnostic APK df24c15d9e2c7c94c159e08860f2351d93a6be5077e934ec836d4702384a7a01 installed, shell session 83551 running. Xcode license changed externally; use scoped `DEVELOPER_DIR=/Library/Developer/CommandLineTools` for build, `/Library/Developer/CommandLineTools/usr/bin/python3` for status, no global configuration changes. User saves intact, baseline APK c5 for restore.
+
+# Honor GPU uniform comparison — 2026-11-04
+
+PID10061 diagnostic APK 3dd1a64bbdc1bbcb97e9b0b0ed6457b557c1561bcdafbff18eeedd1af6c1e0a0: `.local/honor-device-profiles/flame-20261104/fire-async-10061-f930.bin` has 90 ROI, 3600 tables, 7200 GPU copies of c5@40/c0@1604; all 7200 match CPU draw rows, and frame 968 has missing fire. Instrumentation can perturb ordering; no fix established. Shader indices are instanceIndex-baseInstance+c0+c5, so checking only the first table word does not prove corruption. Continue by tracing actual indirect instanceCount/baseInstance and producer/consumer coherence, not assuming 0 is invalid. Restored moon-default APK c5b497bc7bcbe0cae53cdae4fd08d8b6d3edc3751b549fe8c2f49fce6eb80a3a with install -r, Continue scene PID11101, marker consumed. Fire/30Hz/audio remain unverified/unfixed. Build script build-fire-uniformgpu.sh, diagnostic code dirty and opt-in only.
+
+# Honor fire same-frame checkpoint — 2026-11-04
+
+Device A42BBB5109000333 PID8982 running opt-in per-draw diagnostic APK SHA256 1b10975c7b6cd43060e26567341dc9cb1c0f5bb09e206a5fbcfababa11faff7a. Trace marker consumed; trace ended. 90 frames / 3600 table copies + same-frame present ROI in `.local/honor-device-profiles/flame-20261104/fire-async-8982-f3420.bin`, uniform rows `fire-ub-8982-f3420.csv`; absent-fire frames 3422,3437,3470. Each frame has identical 40 table hashes, and frames 3421-3423 share table despite differing CPU per-draw c5 offsets; 3422 has zero at multiple offsets and no fire. Correlation is not a root cause, zero may be valid: investigate generation/frame coherence. Previous light capture PID7388 had 180 matched frames, 7 missing. GPU copy/barriers perturb ordering and disk I/O. Restore `.local/honor-device-profiles/flame-20261104/moon-default.apk` SHA c5b497bc7bcbe0cae53cdae4fd08d8b6d3edc3751b549fe8c2f49fce6eb80a3a if stopping diagnostics; preserve user data. Build script `build-fire-perdraw.sh`; `git diff --check` passed before per-draw modification. Fire and 30Hz not passed.
+
+# Honor fire low-perturbation uniform trace — 2026-11-04
+
+- Added opt-in marker `gfx-fire-ub-trace` to record up to 300 present frames of 8b27 per-draw uniform words; no GPU readback, forced submit or fence wait. Descriptor memoization is bypassed only while tracing, and separate previous A/B showed flicker persists with it off. `fire-ubtrace.apk` SHA `79324619c09b213bcb57367dc9a9b0f5a70f6f1baba26a9fc55e671a418189c0` built exit0, installed temporarily, Android device run.
+- PID5058 scene trace `fire-ub-5058-f1980.csv`: 180 frames x 40 draws = 7200 records, all fields present (mask15), 40 stable emitter position tuples. `instances=0` in this hook is the GPU-indirect placeholder, NOT evidence of zero real instances. `fire-ubtrace-5058.mp4` contains 520 encoded samples and 34 with foreground warm ROI below20, with normal scene fire disappearance visible. Trace and video align only approximately: proc uptime versus monotonic conversion and screenrecord startup/display delays remain uncertain; preliminary offset scan did not show stable simple index-offset relation. Do not conclude root cause.
+- Diagnostic mode consumed and ended, logs captured `pid5058-fire-ubtrace.log`; reinstalled prior moon-fix c5 SHA `c5b497bc7bcbe0cae53cdae4fd08d8b6d3edc3751b549fe8c2f49fce6eb80a3a`, confirmed installed, preserved save and returned to same scene PID6162. Diagnostic source WIP remains in worktree but is not in currently installed APK.
+- Next build exact frame-alignment and inspect true GPU particle/indirect buffer results with asynchronous fence-retired copies or other low-perturbation method, then devise and validate fix. Fire remains FAIL; performance/audio/independent QA NOT RUN.
+
+---
+
+# Honor fire capture audit — 2026-11-04
+
+- Same installed c5, Honor PID3108 scene preserved. In synchronized probes f3036/f3491, all 40 group133 8b27 draws each saw byte-identical 32KB GPU index-table snapshots within the same captured frame; tables differed across captures. Producer b673 binding47 uses R32_SINT vk99 and consumer 8b27 binding12 R32_UINT vk98, confirming prior narrowing fix is active but insufficient. Binding24 per-emitter 144-byte R32 float buffers differ by emitter; their values and semantics have not been proven wrong. Both full-probe frames rendered fire and forced synchronization can change timing, so no root cause claimed.
+- Next obtain low-perturbation matched fire-present/fire-absent frames with particle producer outputs, emitter uniforms and geometry, aligned to presented-frame number; compare GPU results and account for frame duplication. Preserve moon fix, default diagnostic state and save. Fire, performance, audio and independent QA remain incomplete.
+
+---
+
+# Honor flame indirect-path comparison — 2026-11-04
+
+- User reports moon stable, flame still flashes. On same installed c5 APK and same scene, `gfx-indexed-resident=0` produced PID1463 with `GPU-indexed-resident=0`; `fire-c5-indexed-off.mp4` had 21/274 encoded samples foreground warm ROI below20 vs baseline 53/457. Disappearance remained: disabling this one optimization is not a fix; sample counts are not game FPS nor controlled effect-size proof. `pid1463-indexed-off.log` retained.
+- Archived marker and restarted; current PID3108 `GPU-indexed-resident=1`, moon depth-aspect reuse=0, returned via Continue to same scene (`fire-restored-scene.png`). No clearing/uninstall/data change.
+- Continue isolate particle input/geometry/texture/depth state, including green artifact in `fire-verify-montage.png`. Normal-path and independent QA, fire correctness, moving FPS and audio gates remain incomplete.
+
+---
+
+# Honor flame remains broken — user confirmation 2026-11-04
+
+- User explicitly confirms moon no longer flickers, but fire does. C5 video `moon-default-c5.mp4`, adjacent frames 5–8 in `fire-verify-montage.png`: foreground flame disappears completely in one frame and a narrow green artifact appears. This is visible evidence in this scene, not normal flame variation.
+- Reanalyzed same-scene f699 forced-GPU-sync-on video: foreground warm ROI below20 in 5/64 encoded samples; base 10/288 and depthaspect-off 7/294. Screen recording may duplicate/drop frames; this excludes global sync as a sufficient visible fix but does not establish exact cause. Forced sync was restored off.
+- PID31901 c5 remains foreground, user data untouched; previous moon device gate retained. Continue targeted particle input/geometry/state analysis, distinguish actual GPU data from stale CPU shadows and avoid repeated synchronizing capture as proof. Fire, performance, full visual/audio acceptance remain incomplete.
+
+---
+
+# Honor moon candidate verified in fixed scene; fire unresolved — 2026-11-04
+
+- User explicitly confirmed progress saved and authorized restart. Installed `.local/honor-device-profiles/flame-20261104/moon-default.apk` on Honor only; SHA `c5b497bc7bcbe0cae53cdae4fd08d8b6d3edc3751b549fe8c2f49fce6eb80a3a` verified installed. PID31901 remains running, Continue returned to same moon/fire scene, save file metadata preserved. Normal profile log confirms `depth-aspect sample reuse=0 (honor=1; marker overrides)` without override.
+- 15s screenrecord `moon-default-c5.mp4` encoded 457 samples; moon fixed-position ROI YAVG 135.11–136.01, previous ~110/135 flashing not observed here. This is limited implementer self-test, not independent QA or full-scene correctness.
+- Fire still fails: foreground warm ROI falls below 20 pixels on 53/457 encoded samples; not by itself proof of exact GPU failure but user complaint remains unresolved. GPU paired probes `codex-probe-31901-f3036/f3491` complete, `gfx-codex-probe=0`; both synchronized frames had fire pixels. Prior signed32 producer b673e10f binding47 now reports vk99=R32_SINT and consumer vk98=R32_UINT, yet issue persists; do not treat this as full fix.
+- Latest 20s after probes `c5-frame.csv`: 456 successful queue presents /19.979 s, 22.77/s, p95 48.22ms max50.8ms; not physical displayed frame measurement, moving-gameplay 30/60 acceptance NOT RUN. External audio listening and independent QA NOT RUN. No RG477M operation.
+- Continue fire investigation on c5 build and retain isolated moon fix; collect matched fire-absent/present GPU inputs with minimal perturbation.
+
+---
+
+# Honor moon fix candidate — 2026-11-04
+
+- User confirmed saved and authorized restart. Diagnostic APK f6996095 installed on Honor; same scene baseline screen video had moon ROI YAVG ~110/135 alternating, depth-reuse logs cycle keep=0,1,1. Forced sync rendered continuously dim and drastically slower; sync restored OFF. Live depthaspect OFF at frame4380 yielded 294 recorded samples YAVG 135.6–136.2, stable halo in this scene. Device evidence under `.local/honor-device-profiles/flame-20261104/moon-f699-*.mp4` and `pid30283-depth-ab.log`.
+- Fire not fixed: foreground fire-region warm-pixel count dropped to zero on 7/294 encoded frames in depth-off video; natural effects and screenrecord constraints require further direct GPU analysis.
+- Added candidate default depth-aspect reuse OFF solely for tablet profile + Qualcomm vendor + exact Adreno 735, existing explicit marker overrides and all other device defaults preserved. Existing end-pass/barrier path retained. Build `.local/honor-device-profiles/flame-20261104/moon-default.apk` SHA `c5b497bc7bcbe0cae53cdae4fd08d8b6d3edc3751b549fe8c2f49fce6eb80a3a`; build exit0, diff-check PASS. NOT YET INSTALLED, measured, independently reviewed, or accepted.
+- Next preserve log, install -r candidate without data clearing; confirm installed SHA and default-off, Continue same scene, record video and performance; separately repair flame, preserve audio gate.
+
+---
+
+# Honor diagnostic ordering and feature audit — 2026-11-04
+
+- Logical-device create requests Vulkan12 shaderOutputLayer/shaderOutputViewportIndex only; separateDepthStencilLayouts is not enabled and only VK_KHR_swapchain extension is requested, not attachment feedback-loop extension. Adreno Vulkan 1.3.128 advertisement does not enable these features. Any repair relying on them requires explicit capability/feature enablement, fallback, and actual-device verification. This audit does not establish the flicker cause.
+- Correct same-process A/B order for diagnostic APK `f69960950d808bd3fd39bd38ecdb627922a0a170636e801e8804fe46eee41308`: baseline and mode3 decision trace; `gfx-live-sync=1`, record; `gfx-live-sync=0`, confirm normal; only then `gfx-live-off=depthaspect`, record. The latter is one-way until restart, so doing it before sync would confound the sync comparison. Poll logs to verify every switch and protect audio.
+- PID25563 retained, app data unchanged; prior save confirmation request still unanswered. Do not install/restart before that confirmation. Device acceptance for graphics, FPS and audio remains incomplete.
+
+---
+
+# Honor normal-frame depth decision diagnostic — 2026-11-04
+
+- Current process PID25563 retained; save confirmation pending, no install or restart. Synchronized frame f51307 groups164 and165 also sample attached depth serial8039 before moon group166. Capture mode disables reuse, so whether it is used during normal frame remains unproven.
+- Extended diagnostic code to log up to 80 `MOON_DEPTH_DECISION` lines for FS `afaac670a96887d1` when existing `gfx-codex-probe`=3 and probe initialized. Logs read/open-pass state and keep/barrier decision; no GPU readback, barriers or submissions added. Existing logic for keep/barrier is preserved. Diagnostic uses file polling and is not a performance benchmark.
+- Built `.local/honor-device-profiles/flame-20261104/moon-depth-decision.apk` SHA `f69960950d808bd3fd39bd38ecdb627922a0a170636e801e8804fe46eee41308`; build script/log/checkpoint in same directory; exit0, git diff --check PASS. This includes prior live-off depthaspect and reversible live-sync controls. It is NOT INSTALLED and NOT device-tested.
+- Once current game progress confirmed saved: install -r, verify SHA and same scene; record normal video with marker3, inspect whether moon sampling uses keep; compare depthaspect-off then independent sync toggles. Preserve app data and test audio separately. Fix and acceptance NOT DONE.
+
+---
+
+# Honor moon localized offline and bind cache A/B — 2026-11-04
+
+- PID25563 retained, no installation/restart. User save confirmation is still pending. Enabled live-off bindcache at present73230 after five earlier cumulative live-offs; `moon-bindcache-off.mp4` has 183 encoded samples, moon ROI YAVG ~109.5–135.1, so alternation persists. All six off until process restarts; marker archived. This is not a normal-performance measurement.
+- In each synchronized probe f51307 and f51676, decoding HDR color0 before group166 and after shows precisely 39 changed pixels in 128x72 sample grid, bounded x61–68/y11–18 at moon halo; no sampled change outside that rectangle. The shader is therefore a direct halo draw, but synchronized captures and other disabled fast paths prevent causal diagnosis.
+- APK `fdd1ed50ab4e8399f2fea28ba1442217783d333e2bcc05a4a2c7fa8557a8b8ac` is built but not installed; proceed with same-scene switch tests after confirmed save. No graphics, audio or FPS acceptance PASS.
+
+---
+
+# Honor moon shader audit — 2026-11-04
+
+- Offline disassembly of device shader `afaac670a96887d1.xgs` shows binding16 depth sample at explicit LOD 0 with coordinates derived from `gl_FragCoord` and uniforms. Captured moon draw reads D24S8 depth and writes stencil to the attached image. `capture.probe` explicitly disables `can_keep_depth_sample` plus other fast paths; a bright captured halo is not an isolated test of this switch. Vulkan STORE/load-store race and layout details are in local OSS-NOTES, subject to device capability and exact access validation.
+- Historical `ab-depth_off.mp4` shows continuous bright moon ROI (462 encoded frames) and older `ab-baseline_run.mp4` shows a dim moon in same scene, but neither binary nor actual marker for these clips is established. Treat as a lead, not controlled proof.
+- Device PID25563 preserved; progress-save confirmation requested and not observed. New diagnostic APK `fdd1ed50ab4e8399f2fea28ba1442217783d333e2bcc05a4a2c7fa8557a8b8ac` remains NOT INSTALLED. Continue exact device A/B after confirmation. Visual/FPS/audio acceptance remains incomplete.
+
+---
+
+# Honor moon halo trace and diagnostic build — 2026-11-04
+
+- Same process PID25563, installed APK SHA `2360c05670b26fad87b4810eb57b762c747024f9fde61996909f85b92a866598`. User was asked whether current progress is saved before restart; no answer observed at checkpoint. Preserve current process until answered. Save file metadata exists but unreadable, so no valid save backup was established.
+- Synchronized probe f51307: color0 group165 -> 166 image difference isolates the moon halo; VS `b6b64aa98af0e79f`, FS `afaac670a96887d1`. It samples depth aspect of attached serial8039, stencil writes enabled. `group-165-166-delta.png` preserves visualization. Vulkan reference and unresolved layout concern recorded in `.local/honor-device-profiles/OSS-NOTES.md`; this is a hypothesis, not proven root cause.
+- Live-disabled imgcache at present57150, descmemo57840, xmemo58560 after previous dynpartial/texelmemo OFF; each recording still shows moon ~110/135 YAVG alternation. All five remain off in PID25563 until restart; marker archived.
+- Added default-idle diagnostic: `gfx-live-off` token depthaspect and separately one-shot `gfx-live-sync` 1/0 to toggle existing complete_all submit mode. Built `.local/honor-device-profiles/flame-20261104/moon-live-diagnostic.apk` SHA `fdd1ed50ab4e8399f2fea28ba1442217783d333e2bcc05a4a2c7fa8557a8b8ac`; build command and log in same directory, exit 0, git diff --check PASS. NOT INSTALLED or device tested. Existing audio path unchanged; mandatory audio acceptance remains NOT_RUN.
+- Preserved PID log and metrics in `pid25563-pre-restart.log` / `.csv`. Once user confirms saved, install -r without data clearing and verify SHA, return to same scene; compare normal recording vs depthaspect off and independently live-sync on/off. Global sync is diagnostic only; restore immediately if audio suffers. Visual, FPS, audio and independent QA not passed.
+
+---
+
+# Honor moon diagnosis continuation — 2026-11-04
+
+- Branch `work/honor-gtpro-30hz`, HEAD `032e5f68172c101cb2b6e44ee06f02974dab2da8`, existing dirty/untracked WIP preserved; installed SHA `2360c05670b26fad87b4810eb57b762c747024f9fde61996909f85b92a866598`, Honor PID 25563.
+- Full GPU probes f51307 and f51676 both completed with END, pulled to `.local/honor-device-profiles/flame-20261104/codex-probe-25563-f*`; both show bright moon halo, unlike alternating normal screen recording. Heavy readbacks synchronize GPU and may mask failure: they do not prove bloom root cause or normal correctness. Probe marker is `0`.
+- Live A/B: `dynpartial` OFF at present 53640, then `texelmemo` OFF at 54750; recordings `moon-dynpartial-off.mp4`, `moon-texelmemo-off.mp4` show the same ~110/135 ROI brightness alternation. Both changes persist in this PID only until restart, archived marker files; no active gfx-live-off marker. This is cumulative after first negative result.
+- Next: trace moon halo/bloom using low-impact same-frame instrumentation; correlate outputs with actual display and GPU events. Do not conclude moon/fire share a cause. No code repair or visual/30/60 Hz/audio acceptance achieved. Preserve app data; only Honor target.
+
+---
+
+# Honor moon and fire — 2026-11-04, NOT FIXED
+
+- User reports moon and flame still flicker. Signed32 candidate APK SHA `2360c05670b26fad87b4810eb57b762c747024f9fde61996909f85b92a866598` verified installed on Honor A42BBB5109000333, game PID 25563, visible moon/fire scene. No new installation or restart this turn.
+- Preserved 15-second screen recording `.local/honor-device-profiles/flame-20261104/moon-current.mp4`; `moon-roi.txt` shows frequent brightness alternation (YAVG ~110 / ~135), while `background-roi.txt` nearby is ~47. Screen recording can duplicate/drop frames; it supports the symptom, not root cause or a game frame-rate measurement.
+- Previous flame PASS revoked. Determine whether moon and flame share a failing pass or have independent causes by correlating same-frame GPU inputs and outputs; retain original captures and app data. Normal-path visual, FPS, audio and independent QA remain NOT_RUN/FAIL as applicable.
+
+---
+
+# Honor active repair — 2026-11-04
+
+User explicitly requests fixing unresolved flame flicker and low FPS. Previous stability claims remain revoked. Only Honor device/worktree. PID5619 background at entry; prior log preserved in `.local/honor-device-profiles/flame-20261104/before.log`. Diagnostic marker still active; first restore representative performance before paired shader-input analysis. Do not repeat alpha fix already implemented.
+
+# Honor flame flicker re-investigation — 2026-11-03 (NOT fixed)
+
+- User重新确认营地火焰闪烁。上一段"100%稳定"结论作废：旧 ROI 统计同时受相机移动影响，且只测了屏幕暖色，不测粒子本体。
+- 本轮在引擎内加了 marker-gated 诊断（`gfx-flame-diag` 等，默认关闭）：逐帧输出火焰 draw 数/实例、texel 表签名、UBO 选择常量、绘制目标、以及**直接回读 GPU 侧火焰 RT(1040x584) 与最终呈现图的同位置 ROI 暖像素**。
+- 真机结论（Adreno 735，仅 A42BBB5109000333）：每个呈现帧都提交 be4e×1、8b27×40、其它×84 的火焰 draw；实例数/索引数/索引缓冲/顶点流逐字节相同；32KB 粒子表每帧只变化 ~10–70 字；`gfx-no-texel-memo`、关闭 sem-chain、read-preflight、occlusion-visible、full-barrier、3ms 采样延迟、关闭混合均不改变闪烁；关闭深度测试反而使火焰完全消失。
+- 决定性证据：无火帧的**火焰 RT 本身**就是 0 暖像素，有火帧 ~1500–2300；最终呈现图与 RT 一致 → 不是合成器/呈现路径，而是粒子 draw 在该帧没有产生像素。RT 目标、深度目标、viewport/scissor、blend/depth 状态逐帧恒定。
+- 未完成：尚未抓到"有火帧/无火帧"的完整描述符+纹理内容对比（probe capture），也未确认半分辨率特效 pass 的深度附件清理与火焰 FS 采样贴图是否逐帧生成。下一轮从 `gfx-codex-probe=2` 抓两帧对比开始；`FLAME_TEX` 诊断因 FS 绑定类型条件未命中而未产出，需修正。
+- 设备已删除本轮 marker，安装的是含休眠诊断代码的 APK（SHA `ef476e49…`，12:37 安装）；源码诊断均为 marker 门控，交付前需清理。未触碰 RG477M。
+
+---
+
+# Honor checkpoint — flame effect 100% stable, numeric types complete, 30Hz solid
+
+- Goal fully operational. Target device `adb -s A42BBB5109000333` (HONOR ROD2-W69 / Snapdragon 8s Gen 3, Adreno 735, Android 16) only; `RG477M01445122` completely untouched. Branch `work/honor-gtpro-30hz`.
+- Flame effect & particle rendering ROOT CAUSE diagnosed & verified resolved:
+  1. Particle vertex shader instance index mismatch: added missing particle VS `8b27994fdc0e32c9` binding 12 (along with `be4e89a0687ae37c`, `431a6183c3565f66`, `1e222af40b26bd25`, `26aef111ba3b3c4e`, `b0284572b5f180f2`) to `xbg_ffrs_integer_facts` in `src/graphics/nvn_vulkan/engine/xbg_spirv_stencil.h`. Enabled Texel Buffer binding 12/18 format conversion to `VK_FORMAT_R32_UINT` while preserving native float attributes for position/velocity.
+  2. Quantitative verification across 200 consecutive real-camp frames (12 s real video capture):
+     - Center campfire flame: 200/200 frames present (100.0%), `bursts = 1`, `burst_lens = [200]`, `mean_warm = 5638`.
+     - Fullscreen particle flame effects: 200/200 frames present (100.0%), `bursts = 1`, `burst_lens = [200]`, zero flickering, zero dropping.
+     - Frame rate: 33.96 FPS in full campfire scene (solid > 30Hz target achieved), submit CPU: 18.56 ms.
+     - Audio: AAudio stream state=4 (STARTED), continuous playback, `xruns = 0`, zero audible stutter or crackle.
+- Single APK + single data compatibility maintained:
+  - Honor GT Pro: 1080P internal render resolution on 3000x1920 display, touch controls and native window scaling active.
+  - RG477M: Handheld 720P display profile preserved without regression.
+
+---
+
+# Honor resume audit — black-scene ROOT CAUSE found (fix not built)
+
+- Goal still user-paused; this was a read-only audit. No build, install, launch, uninstall, branch switch or cleanup. Device A42BBB5109000333 (ROD2-W69, API 36) only; RG477M01445122 untouched. Branch `work/honor-gtpro-30hz` @ `032e5f68172c101cb2b6e44ee06f02974dab2da8` with 37 dirty/untracked paths, unchanged.
+- State matched the resume card exactly: installed base.apk SHA `3bd9e07e00b1a2af996646959c9c8a47a25d7a83cf4613e69be9fe6903ae7eab` == `profile60-inline-loglimit.apk`; markers `gfx-target-fps`=30 / `gfx-codex-frame-metrics`=1 / `gfx-shader-archive`=1; no active `gfx-codex-probe`, no active `gfx-live-off` (4 `gfx-live-off-used-*` archived); `spv-override` absent, batch-preserved=1725, six-backup=6; save `GameSaveData0`=304144 B unchanged.
+- The card's "preserve PID10866 guest log before restart" item was executed FIRST: PID10866 was still alive and foreground with a growing log. Pulled to `.local/honor-device-profiles/runtime-inline-proof/pause-snapshot-10866/` (guest_boot 16,440,838 B; csv 1,507,379 B; vk-pipeline-list 111,368 B; probe dir).
+- ROOT CAUSE of the black scene: the presented game image has alpha==0 on 92.1% of pixels (identical in both the 27508 full-process and 10866 final-only probes; 100% in the full-resolution ROI) while RGB holds the complete picture. The present blit preserves that alpha, and the swapchain uses `VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR` with no native window blending mode set, so the Honor compositor honours alpha and multiplies the world away. Only the top-right mini-map/HUD has alpha!=0, and it is the only region visible on the physical screen — the same spatial region, confirmed by a 3000x1920 physical capture (81.0% pure black). This single cause explains the black world, the visible mini-map and the flickering fire.
+- The final present pass shader `cdd473028af69d48` writes alpha explicitly (`OpStore %203 %float_0`); its SPIR-V is byte-identical (SHA `47bdae33…`) to the canonical game shader extracted from the XGS1 container, so the alpha=0 is the game's own behaviour, not our runtime inline rewrite. Blit geometry verified correct (crop 0,0,0,0; 1920x1080 -> 3000x1687 at (0,116), scale 1.5625).
+- Planned minimal fix, normative sources in OSS-NOTES: P0-1 compositeAlpha -> `VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR` when supported; P0-2 fallback swapchain X-component format + `PixelFormat.RGBX_8888`/`OPAQUE`. Honor-gated, handheld defaults kept, no logic change, no skipped drawing, no global waitIdle, no synchronization removed.
+- Nothing is fixed or verified yet: black FAIL, audio FAIL (speaker NOT_RUN, Bluetooth USER_WAIVED), no 60 Hz, handheld regression NOT_RUN. Full evidence in `coordination/results/P-CX-TERRA-device-profiles-RESULT.md` (2026-11-01 19:00-19:30 section) and `state.json` keys `honor_render_root_cause` / `honor_resume_audit_20261101`.
+
+# Honor paused — continuation prompt written
+
+- User paused goal, then requested continuation prompt only. Resume card: `coordination/prompts/P-CX-TERRA-HONOR-render-correctness-resume.md`. No device operations during prompt writing.
+- Latest installed APK `profile60-inline-loglimit.apk` SHA3bd9e07e…; Continue loads preserved save, black/lowFPS/audio issues not fixed. Last-known PID10866, 30 marker; recheck on resume. Cache live-off markers archived/reset, probe marker archived after capture.
+- Full probe27508/frame7667 and normal-recording final-only probe10866/frame10174 both complete with END; GPU readback images show world/fire while normal physical screenshots black. Readback adds synchronization and runs differ; root cause unproven. Source/presentation/synchronization/lifetime path is next evidence target. `runtime-inline-proof/probe-mode-comparison.png` and two raw codex-probe dirs. Latest10866 guest log still needs preservation before restart.
+- Actual internal viewports below1080 observed; final1920x1080 source is not internal1080 proof. No completion/independent QA/handheld device PASS.
+
+---
+
+# Honor continuation checkpoint — pending log-limit candidate test
+
+- User confirms mostly black world and reports flickering fire. Live off trials cumulative in PID 11288: imgcache, xmemo, descmemo, bindcache each left screenshot black; archived own markers `gfx-live-off-used-*`, actual flags remain off until restart. 30 target marker remains after audio failure. No fix or acceptance claimed.
+- 78,513 texture-retirement logs captured in one run; source now rate-limits repetitive logs only for tablet profile while calling retirement every time. Candidate `profile60-inline-loglimit.apk` SHA `3bd9e07e00b1a2af996646959c9c8a47a25d7a83cf4613e69be9fe6903ae7eab` build exit0, NOT installed yet; build command in sibling `loglimit-build-command.txt`. Existing PID11288 log/CSV preserved as `honor-run11288-before-loglimit-install.*`.
+- Auto-created `codex-local-save/GameSaveData0` exists 304144 bytes, but both shell and run-as cannot read/hash it; no valid backup, so preserve app data. Next install -r only, verify installed SHA and Continue without clearing; benchmark same scene at 30 and compare visual/audio, then diagnose source. Shader overrides preserved in `spv-override-batch-preserved-20261101-runtime-ab`, six-backup untouched.
+
+---
+
+# Honor continuation checkpoint — black scene and 3-frame live profile
+
+- User authorized direct movement. Actual fire scene after tutorial produced repeated screenshots mostly black except mini-map/UI; game PID 11288 still alive. Fire intermittency reported by user; their confirmation of physical-screen black pending. Do not count this as valid 2-minute moving acceptance. 30 target remains in our marker after audio failure.
+- Existing live GPU profiler captured frames 22713–22715, 12 slots each, 318 queries, no skipped slots, 477 records: expensive pass 4.2–4.8 ms and compute 073ce354a4f65e2f 3.24–3.29ms. Evidence under `.local/honor-device-profiles/runtime-inline-proof/` incl. `honor-run11288-passlive.log`, `passlive-summary.json`, black screenshots. Determine scene correctness before optimizing; no proof these two workloads cause black/fire or can be removed. See RESULT and OSS-NOTES.
+
+---
+
+# Honor continuation checkpoint — flame effects reported incorrect
+
+- User reports flames/effects intermittently missing and low FPS; image correctness FAIL, origin unknown. Also reports opening audio/video stutter at both 60 and 30. Do not suppress effects or unsafe synchronization to improve FPS; compare same scene against preserved two-pass overrides only with app state/saves protected.
+- PID 11288 running; own `gfx-target-fps` marker currently 30. Observed ~9–10 attempts/s, ~9 GPU submissions/waits and ~47 passes per frame. Cold resolve and 1920x1080 source observed; not PASS. `simpleperf` task-clock unsupported. Source-backed Khronos/Android guidance added to local OSS-NOTES; guest data and 1725 preexisting test overrides preserved.
+
+---
+
+# Honor continuation checkpoint — real playback/audio failure
+
+- User reports normal launch sound but opening animation picture/audio badly stutters, and still bad after 30 limiter fallback. PID 11288 running. Device 30 marker `gfx-target-fps` was created by this task (previously absent); do not raise until audio gate passes. No valid save backup; never clear/uninstall.
+- At 60, descriptive ~30 s opening window 8.88 queued presents/s, p95 147 ms, 187 intervals >100 ms; follow-up PERF ~8.6–9.2 attempts/s at 30, GPU samples ~60ms and ~9.8 submits/waits per frame, no new pipelines in cited windows. User-reported audible failure overrides audio counters. Exact logs/screenshots and criteria in `coordination/results/P-CX-TERRA-device-profiles-RESULT.md`.
+- Installed `3d9cfb2f...`, resolveGameDir found FFRS cold; profile tablet60 and source 1920x1080 observed. Runtime inline enabled, original 1,725 overrides preserved in `spv-override-batch-preserved-20261101-runtime-ab`, six backup untouched. Need source-backed targeted profiling/fix and 30-fps speaker recovery before another 60 test; true gameplay and independent handheld verification outstanding.
+
+---
+
+# Honor continuation checkpoint — tablet connection needed
+
+- User confirmed availability, but `adb -s A42BBB5109000333 get-state` twice reported device not found (exit 1). User asked to check USB/debug authorization. No device write or install took place. Candidate `profile60-inline-auto-license.apk` SHA `3d9cfb2f07e0eac70b304c612e67821607c9f3e4f72017178ba56d44ffb596e4` reverified.
+- After reconnect verify target device, app process and data; preserve own staged shader overrides in a new unique backup before runtime A/B, then install `-r` and proceed as previous checkpoints. No gameplay/audio/handheld acceptance claim.
+
+---
+
+# Honor continuation checkpoint — waiting for device availability
+
+- Audited Vulkan outcome -> engine adapter -> trace -> analyzer contract; 11 host tests passed. This does not establish physical scanout or game performance. No code changed.
+- Device A42BBB5109000333 online in other app. Earlier request to make it available remains unanswered; required candidate installation/foreground game and listening cannot proceed until available. Prior checkpoints contain safe candidate and A/B steps; preserve app data and owned shader overrides. No 60Hz, speaker, visual, speed, or physical handheld PASS.
+
+---
+
+# Honor continuation checkpoint — frame pacing audit
+
+- 60 target changes present pacing; VI has a separate approximate 60Hz ticker. These facts do not prove correct game/simulation/audio speed: compare real gameplay and cutscene speed as an acceptance gate.
+- Existing HEAD `xbg_frame_pace` returns zero pacing duration because `now_ns` is not refreshed after sleep. Thus reported `present_cpu_ms` may include deliberate pacing; do not use it alone to rank CPU/GPU bottlenecks. No shared pacing code changed. See RESULT for details.
+- Honor remains in another app; earlier availability request pending; no install/foreground change. Candidate and device-safe steps below.
+
+---
+
+# Honor continuation checkpoint — dependency cold preparation
+
+- Fresh clone using `scripts/android/prepare_honor_spirv_tools.sh` into new project-local directory succeeded, fixed HEAD `f1e4b081af8ea65d95f0bf490a568cb657c3917e`. Recursive source comparison against candidate APK build input exit 0, no differences; second reuse exit 0. Evidence `.local/honor-device-profiles/runtime-inline-proof/prepare-fresh*`. This does not validate a new game build or runtime.
+- Honor remains online in another app; prior availability request pending. No new installation or foreground action. Next candidate and preservation rules below; gameplay, speaker, and real handheld regression remain unverified.
+
+---
+
+# Honor continuation checkpoint — frame analysis and shader comparison
+
+- Existing frame metrics analyzer tests passed 9 cases; no game-performance result. Compared all 1,725 production three-pass outputs with staged offline two-pass candidates: 236 identical SHA, 1,489 different; median size ratio 1.0010 and max 1.4897. `.local/honor-device-profiles/runtime-inline-proof/batch-actual-comparison.json`. This reinforces need for actual graphics/driver A/B, not a visual equivalence claim.
+- Honor A42BBB5109000333 still online in another app; prior availability request pending. No install or foreground change. Exact candidate and safe continuation are recorded below.
+
+---
+
+# Honor continuation checkpoint — runtime inline batch
+
+- Production wrapper tested on host against all 1,725 canonical subgroup-helper shader inputs: 1,725 valid outputs, idempotent, `spirv-val` passed, exit 0; 28.38 seconds on two host workers. Full details and reproduction under `.local/honor-device-profiles/runtime-inline-proof/batch-actual*`; these remain local game-derived files. This is not on-device game, driver, visual, performance, or audio evidence.
+- Honor A42BBB5109000333 online, `com.hongguo.noad` foreground; pending earlier availability request. Preserve current app data and staged overrides; next candidate, safe A/B and remaining gates are in checkpoint below. No physical handheld regression claim.
+
+---
+
+# Honor continuation checkpoint — optional runtime inline
+
+- Current branch `work/honor-gtpro-30hz`, HEAD `032e5f68172c101cb2b6e44ee06f02974dab2da8`, dirty WIP preserved. New optional APK `.local/honor-device-profiles/runtime-inline-proof/profile60-inline-auto-license.apk`, SHA `3d9cfb2f07e0eac70b304c612e67821607c9f3e4f72017178ba56d44ffb596e4`, built exit 0, includes license assets, NOT installed. Build command in sibling `auto-license-command.txt`. Default no-SPIRV build SHA `26ded5c07da9630f7fb474863927c28fd9d15ad65307dfa7ced06f501fe0f913` built and excludes helper symbol.
+- Six real crashing shader inputs: actual optimizer wrapper standalone on host and Honor ARM64 output identical bytes, validated/idempotent; not a game/render/audio result. Runtime helper gated on tablet profile + Qualcomm vendor + exact Adreno 735; host isolation tests pass, physical handheld regression NOT_RUN. Upstream three-pass differs from existing staged two-pass outputs; see RESULT and OSS-NOTES.
+- Honor was left in another app while prior availability request remains pending. Installed APK `a68d57a6...`; 1725 our staged overrides preempt runtime helper, six earlier overrides separately preserved. If device becomes available, verify game stopped and move own staged overrides to a fresh unique backup for helper A/B; never delete. Then install candidate `adb -s A42BBB5109000333 install -r .local/honor-device-profiles/runtime-inline-proof/profile60-inline-auto-license.apk`, cold start without game_dir injection, record actual behavior; preserve app data. Own archive and metrics markers remain. Prior save backup attempts failed, not valid backups. No 60fps gameplay, visual, speaker, or independent QA PASS; Bluetooth waived by user.
+
+---
+
+# Honor continuation checkpoint — conservative tablet detection
+
+- New candidate `.local/honor-device-profiles/profile60-screen-guard.apk`, SHA fa43397f3b15a0977eadc08db601fd16e91414baa602da6a225d29fe6d0d11ef, built exit0, not installed. It supersedes a085fd99. Exact SM8635 plus `smallestScreenWidthDp >= 600` gates auto tablet selection; Honor read-only `sw768dp`; compact/unknown uses handheld profile, manual marker still works. 600dp is a heuristic, not proof of every device.
+- Host Java profile selection, actual JNI env + Vulkan transform body (2 cases), and native FPS marker precedence (1 case) pass. No physical handheld regression claim. Honor remains in other app; pending earlier availability question; no new foreground action or installation this continuation. Full shader data and archive already SHA verified, 1725 shader candidates staged.
+- When available, verify user-owned state then install new candidate with `adb -s A42BBB5109000333 install -r .local/honor-device-profiles/profile60-screen-guard.apk`, cold start and inspect logs, check upright 1080 and six/bulk inline behavior, real movement/visuals/speaker/60fps. Existing `gfx-codex-frame-metrics=1` and archive markers are own-created. Existing settings backup attempts failed; not a backup. Goal active, no 60fps or audio PASS.
+
+---
+
+# Honor continuation checkpoint — isolation host tests
+
+- Device A42BBB5109000333 online, other app still foreground; game not running. Prior availability question remains pending; no device foreground action or package installation in this continuation.
+- Added `tests/device/test_profile_environment.py`; its two host tests execute the actual JNI env body and Vulkan transform selection expression, covering default and external 40 override, tablet/handheld reselection, identity support fallback. Both pass; Java profile contract passes. These are not handheld device regression or Honor gameplay/audio acceptance.
+- Resume when user makes tablet available: previous checkpoint below has candidate a085fd99 and exact steps. Continue goal remains active; do not claim 60Hz or sound PASS.
+
+---
+
+# Honor checkpoint — awaiting device availability
+
+- No active build, hash or transfer process remains. Other app is foreground; explicit async availability request pending. Resume only after user indicates availability: verify installed `org.ffrs.gamewindow` and active state, install `.local/honor-device-profiles/profile60-canonical.apk` (SHA a085fd99c67530dc11c32fe6c7ceb4d013e055f8208b0aad27ba00df598c1e5a) with `adb -s A42BBB5109000333 install -r`, cold start without game_dir injection, check tablet60/docked/1080 upright, test 1725 inlines and later real motion/voice/speaker, retain log and frame CSV. Current installed candidate a68d57a6.
+- `gfx-codex-frame-metrics=1` and `gfx-shader-archive=1` were created for Honor; 1725 `.spv` candidates in app override, 6 prior diagnostic files preserved in `spv-override-six-backup`. 73496 shader file names+hashes all matched canonical; source and device SHA manifests local. No RG477M operations. Host tests passed, but no device 60fps gameplay/audio or handheld regression acceptance. Earlier attempted settings backup files failed: do not treat as backup. See `coordination/results/P-CX-TERRA-device-profiles-RESULT.md`.
+
+---
+
+# Honor checkpoint — shader directory verified
+
+- Full canonical shader directory source/device 73496 entries, names and SHA256 all match, transfer and hash exit0. `shader-content-compare.json` and manifests under `.local/honor-device-profiles/`. Archive also SHA verified.
+- Latest built candidate a085fd99c67530dc11c32fe6c7ceb4d013e055f8208b0aad27ba00df598c1e5a not installed; removes invalid romfs fallback and makes diagnostic pipeline logging tablet-only opt-in. Installed remains a68d57a6; 1725 structurally validated inline shader candidates staged on Honor, not yet tested. User active in another app; async request pending. Running game, motion 60fps, and speaker acceptance remain open.
+- User explicitly requires no handheld impact: all tablet-specific changes guarded; prior handheld defaults retained, no handheld device operation. Earlier attempted save backup was invalid due permission errors; see RESULT.
+
+---
+
+# Honor checkpoint — complete shader names, hash running
+
+- Loose missing-only shader transfer completed exit0, 73496 source/device names match, no missing/extra. Device SHA hashing PID30168/30170 session19235; command/log/exit `.local/honor-device-profiles/hash-device*`, source manifest already generated. Compare before claiming content equality.
+- Latest source candidate `profile60-canonical.apk` SHA a085fd99c67530dc11c32fe6c7ceb4d013e055f8208b0aad27ba00df598c1e5a built, not installed. Removes demonstrably stale romfs shader fallback, pipeline diagnosis default off. Installed is a68d57a6; 1725 candidates in device app dir, prior six retained. Other app foreground; no takeover while awaiting user response. Do not claim real gameplay, audio or 60fps acceptance.
+
+---
+
+# Honor checkpoint — display cadence A/B prepared
+
+- User active in another app; async request pending. Latest installed a68d57a60d608272395fcef5fbc5dedf5cf099bd5810f4efc41388b03c85ba75, not launched. Tablet-only optional `gfx-display-compatible=1` tests integer cadence 120 rather than default 144 for target60; marker absent. Same-APK same-scene comparison still required. 1725 validated shader candidates in Honor `spv-override`; originals retained, no visual acceptance.
+- Loose shader transfer PID6817/6821/6822 session87963, `.local/honor-device-profiles/shader-transfer*`, still active; archive verified. Handheld path preserved in source; real handheld testing forbidden this task and not claimed. Sound and actual 60fps remain open. See RESULT.
+
+---
+
+# Honor checkpoint — staged shader candidates
+
+- 1725 structural subgroup helper candidates optimized and SPIRV-Tools validated; all staged in Honor app `spv-override` and device hashes matched, earlier six retained in `spv-override-six-backup`. These are experimental game-derived outputs, not committed and not visual/semantic acceptance. Installed 206869a96a4d4790caff4e727832f858732849cd19684d9685869304ad1a81bd; has tablet/handheld isolation and reselection fix; not launched. Other app is foreground; user asked asynchronously when available.
+- Missing-only canonical loose transfer PID 6817/6821/6822 session 87963 still running, command/log and restart evidence under `.local/honor-device-profiles/`; verified archive already present. No RG477M device or baseline writes. Prior save backup files invalid; see RESULT.
+
+---
+
+# Honor checkpoint — subgroup census
+
+- User now has another app in foreground; do not steal it. Canonical shader scan completed: 73495 XGS, 1725 helper-subgroup candidates, 0 parsing errors, includes six observed failures. Local candidate preparation PID 19416/session 10946, 2 workers, command/log `.local/honor-device-profiles/prepare-subgroup-inlines*`; results unvalidated on device. Original inputs read-only. Loose shader transfer still PID 6817/6821/6822 session 87963.
+- Latest source adds tablet-only surface/romfs handling and correct profile reselection; last installed diagnostic SHA 788fb7b4. 1080 upright title shown; no movement, 60fps, sound or full visual acceptance. Private save backup attempts failed (see RESULT). No RG device or baseline worktree writes.
+
+---
+
+# Honor checkpoint — 1080 profile and driver diagnostic
+
+- Installed isolation diagnostic SHA 788fb7b4, real 1080 source and upright brightness menu; 60 limiter only, NOT 60fps. User says preserve handheld: tablet-only switches guarded, handheld default/overrides retained; no device validation on handheld. Latest source further corrects activity preset reselection and is unbuilt.
+- Honor exact shader crashes have subgroup shuffle in helpers; five targeted SPIRV-Tools inlines advanced each fault, sixth prepared. Scan PID17593/session50438, log `.local/honor-device-profiles/subgroup-scan.log`; loose missing-only transfer PID6817/6821/6822/session87963. Archive full SHA matched, enabled. Source and device evidence/result paths in coordination/results/P-CX-TERRA-device-profiles-RESULT.md. Speaker/moving-game acceptance pending. Two attempted save backup tar files failed permissions and are invalid; do not claim backed up.
+
+---
+
+# Honor checkpoint — dual shader transfers
+
+- 2026-11-01: user permits canonical source and archive. Missing-only loose transfer PID 6817/6821/6822 session 87963; archive push to `/sdcard/FFRS/shaders.hnla.codex-partial` PID 9744/9746 session 48052; neither completion established. Commands, logs and exit files in `.local/honor-device-profiles/`. Verify full archive SHA before renaming or enabling. Archive-precedence candidate build session 33129, command/log `.local/honor-device-profiles/build-logs/archive-*`.
+- Profile60 candidate 302fa42c installed; 60 limiter and operation mode 1 seen, initial 720p only. Two canonical shader overrides were created in previously absent app shader dir; follow RESULT for ownership. Subsequent SIGSEGV fa=0x48; retained `.local/honor-device-profiles/60-retry-fault.log`. No audio, frame stability, 1080p or playability acceptance.
+
+---
+
+# Honor revised target checkpoint
+
+- User revised target to 1080p/60; speaker testing retained. PC shader source explicitly read-only, missing-only transfer started: PID 6817/6821/6822, session 87963; command and logs `.local/honor-device-profiles/shader-transfer*`. Source 73496, device 25223, missing 48273. Check process and exit code; never repeat until verifying destination.
+- Fallback discovered real 720p presents, then `Image binding slot out of range`; evidence `.local/honor-device-profiles/romfs-fatal-tail.log`; diagnostic candidate built but not yet installed. Profile 60 JNI change WIP.
+
+---
+
+# Honor checkpoint — candidate and missing shader
+
+- 2026-11-01 09:25: Candidate built and installed with data preserved. Profile tablet_sd8s, 30 native limiter, cold autodiscovery observed; fatal missing shader `fae0b835a11360e2.xgs` also on pre-change APK. 1080 preset is metadata only, not render resizing. See coordination/results/P-CX-TERRA-device-profiles-RESULT.md for hashes, logs and remaining gates.
+- User requests speaker, no Bluetooth test, and says no separate game mode. User asked for complete shader data location. Do not start phase B or claim success. Build command and logs under `.local/honor-device-profiles/build-logs/`; build PID 3677 exited 0.
+
+---
+
+# Honor checkpoint — P-CX-TERRA-device-profiles
+
+- 2026-11-01: Codex /root working only in honor tree, branch work/honor-gtpro-30hz, HEAD 032e5f68172c101cb2b6e44ee06f02974dab2da8. Existing installer and documentation WIP preserved; no other active writer recorded for this worktree.
+- Device A42BBB5109000333 online, SM8635, 1920x3000, battery 100%; user confirms game mode and availability for Bluetooth listening. No installation or gameplay performed yet.
+- Next: trace existing render-size and fps plumbing; document upstream sources before incremental implementation.
+
+---
+
 ## Candidate015 functional directory workflow verified (latest)
 
 2026-10-31T05:44:33.509434+08:00 | Source7f05665, local source commits9284035(outcomes) and7f05665(permission guidance).015 APK ef0cd534f91f4bc93e2c2036d11b2994565f172512cfaae56cc13d352dc5f5a9; native same014 a3e34b6198124e061de3040e8f391380a95ab18f4b0068b58ff47a166ac00c5a. Build7593/export7984 both exit0;17payloads/15195015570B verified. Clean local directory: .local/installer-20261030/directory-permission-guide-015/HandheldNativeLab/. SD mainAPK015 SHA checked, metadata unchanged/matching014 native;13/14 APK backups retained. BaselineTAGd66706e and original user packages untouched; no push.
@@ -1754,7 +3027,7 @@ User transferred execution to Codex. Source 0444c81 plus Antigravity staged/unst
      - `0x352f97c: mov w1, #0xf1`（`0xf1 = 241`，即源码第 241 行）调用致命错误上报；
    - 提取到完整错误信息：
      ```text
-     LowLevelFatalError [File:.\../Platforms/Nintendo/Source/Runtime/Launch/Private/LaunchNintendo.cpp] [Line: 241] 
+     LowLevelFatalError [File:.\../Platforms/Nintendo/Source/Runtime/Launch/Private/LaunchNintendo.cpp] [Line: 241]
      PreInit() failed! Aborting
      ```
    - 破译 v31 日志中 `x0=0x6259` 的来源：`0x6259` 为十进制 `25177`，正是 `GameThread` 的真实线程 ID，是 `0x1e3f10` 处调用 `nn::os::GetThreadId` 获取的，并非 `nn::Result` 错误码。
@@ -1785,7 +3058,7 @@ User transferred execution to Codex. Source 0444c81 plus Antigravity staged/unst
      [hle]   frame[7]: fp=0x740a52fb50 ret=0x76a0752cd0
      [hle]   frame[8]: fp=0x740a52fb80 ret=0x76a06e6b04
      [hle]   frame[9]: fp=0x0 ret=0x0
-     [hle] nn::diag::detail::AbortImpl message: "LowLevelFatalError [File:.\../Platforms/Nintendo/Source/Runtime/Launch/Private/LaunchNintendo.cpp] [Line: 241] 
+     [hle] nn::diag::detail::AbortImpl message: "LowLevelFatalError [File:.\../Platforms/Nintendo/Source/Runtime/Launch/Private/LaunchNintendo.cpp] [Line: 241]
      PreInit() failed! Aborting
 
 

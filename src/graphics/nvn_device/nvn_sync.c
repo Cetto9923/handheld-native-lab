@@ -95,6 +95,7 @@
 
 #include "nvn_object_table.h"
 
+typedef struct sync_ref sync_ref;
 typedef struct {
     void *sync;       /* the key: the address the guest gave */
     void *device;     /* the device the guest gave at the initialization */
@@ -106,6 +107,7 @@ typedef struct {
      * it reaches the point of the command stream where the guest fenced it:
      * the host and the replay layer have to be looking at the same thing. */
     ffrs_sync *object;
+    sync_ref *ref;
     int object_exposed;
     char debug_label[64];
     int in_use;
@@ -135,22 +137,47 @@ static int s_logged[SY_NAME_COUNT];
  * generation stable and distinct, retained until process teardown. Budget:
  * 256*64KiB payload +256 pointers, with no per-object allocator overhead. */
 enum { SYNC_SLAB_OBJECTS=4096, SYNC_SLAB_COUNT=NVN_SYNC_MAX_GENERATIONS/SYNC_SLAB_OBJECTS };
+struct sync_ref { ffrs_sync *object; uint32_t refs; int managed,legacy_pinned; struct sync_ref *next; };
 static ffrs_sync *s_snapshot_slabs[SYNC_SLAB_COUNT];
+static sync_ref *s_ref_slabs[SYNC_SLAB_COUNT],*s_managed_free;
+static uint64_t s_managed_recycled,s_managed_free_count;
 static uint64_t s_retained_generations,s_snapshot_bytes;
-static ffrs_sync *new_sync_object(void) {
+/* Sparse, lock-protected census for long-running device sessions. */
+static uint64_t s_exposed_generations,s_direct_fences,s_finalized_exposed;
+/* All reference operations are serialized by s_sync_lock. Only generations
+ * explicitly opted into managed ownership may enter the reuse list. */
+static void sync_ref_drop(sync_ref *ref){
+    if(!ref || !ref->refs)abort();
+    if(--ref->refs==0 && ref->managed && !ref->legacy_pinned){
+        ref->next=s_managed_free;s_managed_free=ref;++s_managed_free_count;
+    }
+}
+static ffrs_sync *new_sync_object(sync_ref **out_ref) {
+    sync_ref *ref=s_managed_free;
+    if(ref){
+        s_managed_free=ref->next;--s_managed_free_count;++s_managed_recycled;
+        if(s_managed_recycled==1 || (s_managed_recycled%4096u)==0)
+            fprintf(stderr,"[nvn] sync managed reuse=%" PRIu64 " allocated=%" PRIu64 " free=%" PRIu64 "\n",s_managed_recycled,s_retained_generations,s_managed_free_count);
+        ffrs_sync *object=ref->object;memset(ref,0,sizeof(*ref));ref->object=object;ref->refs=1;
+        memset(object,0,sizeof(*object));object->magic=FFRS_NVN_MAGIC('S','Y','N','C');
+        *out_ref=ref;return object;
+    }
     if(s_retained_generations>=NVN_SYNC_MAX_GENERATIONS)return NULL;
     size_t slab=(size_t)s_retained_generations/SYNC_SLAB_OBJECTS;
     size_t offset=(size_t)s_retained_generations%SYNC_SLAB_OBJECTS;
     if(!s_snapshot_slabs[slab]){
-        s_snapshot_slabs[slab]=calloc(SYNC_SLAB_OBJECTS,sizeof(ffrs_sync));
-        if(!s_snapshot_slabs[slab])return NULL;
+        ffrs_sync *objects=calloc(SYNC_SLAB_OBJECTS,sizeof(ffrs_sync));
+        sync_ref *refs=calloc(SYNC_SLAB_OBJECTS,sizeof(sync_ref));
+        if(!objects || !refs){free(objects);free(refs);return NULL;}
+        s_snapshot_slabs[slab]=objects;s_ref_slabs[slab]=refs;
         s_snapshot_bytes+=SYNC_SLAB_OBJECTS*sizeof(ffrs_sync);
-        fprintf(stderr,"[nvn] sync snapshot slab allocated: retained=%" PRIu64 " payload_bytes=%" PRIu64 " generation_limit=%u\n",
-            s_retained_generations+1,s_snapshot_bytes,NVN_SYNC_MAX_GENERATIONS);
+        fprintf(stderr,"[nvn] sync snapshot slab allocated: retained=%" PRIu64 " payload_bytes=%" PRIu64 " generation_limit=%u init=%" PRIu64 " final=%" PRIu64 " exposed=%" PRIu64 " final_exposed=%" PRIu64 " direct_fence=%" PRIu64 "\n",
+            s_retained_generations+1,s_snapshot_bytes,NVN_SYNC_MAX_GENERATIONS,s_stats.initialized,s_stats.finalized,s_exposed_generations,s_finalized_exposed,s_direct_fences);
     }
     ffrs_sync *object=s_snapshot_slabs[slab]+offset;
+    ref=&s_ref_slabs[slab][offset];ref->object=object;ref->refs=1;
     memset(object,0,sizeof(*object));object->magic=FFRS_NVN_MAGIC('S','Y','N','C');
-    s_retained_generations++;return object;
+    s_retained_generations++;*out_ref=ref;return object;
 }
 
 /* The host's own fence sequence.
@@ -191,7 +218,7 @@ static nvn_sync_state *sync_find(void *sync, int create) {
         if (!free_slot) return NULL;
     }
     memset(free_slot, 0, sizeof(*free_slot));
-    free_slot->object=new_sync_object();
+    free_slot->object=new_sync_object(&free_slot->ref);
     if(!free_slot->object)return NULL;
     free_slot->sync = sync;
     free_slot->in_use = 1;
@@ -199,9 +226,10 @@ static nvn_sync_state *sync_find(void *sync, int create) {
 }
 static int prepare_initialization(nvn_sync_state *slot) {
     if(slot->initialized||slot->object_exposed||__atomic_load_n(&slot->object->fenced,__ATOMIC_ACQUIRE)){
-        ffrs_sync *next=new_sync_object();
+        sync_ref *next_ref=NULL;ffrs_sync *next=new_sync_object(&next_ref);
         if(!next)return 0; /* publish only after successful allocation */
-        slot->object=next;
+        if(slot->ref->managed)sync_ref_drop(slot->ref);
+        slot->object=next;slot->ref=next_ref;
     }
     return 1;
 }
@@ -297,7 +325,11 @@ void nvnSyncFinalize(void *sync) {
     found = sync_find(sync, 0);
     if (found) {
         found->initialized = 0;
-        /* Outstanding command records retain their original generation. */
+        if(found->object_exposed)++s_finalized_exposed;
+        /* Legacy exposed objects remain pinned. Managed command references
+         * own their generations independently of this current slot. */
+        if(found->ref->managed)sync_ref_drop(found->ref);
+        found->ref=NULL;
         found->object=NULL;
         found->object_exposed=0;
         found->in_use = 0;
@@ -582,6 +614,7 @@ void nvn_sync_family_fence(void *sync) {
         refused = 1;
     } else {
         fence = nvn_engine_ready() ? nvn_engine_last_fence() : ++s_fence_sequence;
+        ++s_direct_fences;
         slot->object->fence = fence;
         __atomic_store_n(&slot->object->fenced, 1, __ATOMIC_RELEASE);
         s_stats.fences_taken++;
@@ -619,9 +652,27 @@ ffrs_sync *nvn_sync_family_object(const void *sync) {
         return NULL;
     }
     ffrs_sync *object=slot->object;
-    slot->object_exposed=1;
+    if(!slot->object_exposed)++s_exposed_generations;
+    slot->object_exposed=1;slot->ref->legacy_pinned=1;
     pthread_mutex_unlock(&s_sync_lock);
     return object;
+}
+
+/* Managed callers must release the token only after the final command reader
+ * has stopped using the pointer; the token is never a guest-visible handle. */
+ffrs_sync *nvn_sync_family_managed_acquire(const void *sync,void **token){
+    if(!token)return NULL;*token=NULL;
+    pthread_mutex_lock(&s_sync_lock);
+    nvn_sync_state *slot=sync_find((void *)(uintptr_t)sync,1);
+    if(!slot || slot->ref->refs==UINT32_MAX){pthread_mutex_unlock(&s_sync_lock);return NULL;}
+    sync_ref *ref=slot->ref;ref->managed=1;++ref->refs;
+    if(!slot->object_exposed)++s_exposed_generations;slot->object_exposed=1;
+    *token=ref;ffrs_sync *object=slot->object;
+    pthread_mutex_unlock(&s_sync_lock);return object;
+}
+void nvn_sync_family_managed_release(void *token){
+    if(!token)return;
+    pthread_mutex_lock(&s_sync_lock);sync_ref_drop((sync_ref *)token);pthread_mutex_unlock(&s_sync_lock);
 }
 
 int nvn_sync_family_is_fenced(const void *sync) {
