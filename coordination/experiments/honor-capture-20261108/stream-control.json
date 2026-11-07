@@ -1,0 +1,140 @@
+{
+  "time": "2026-11-08T06:41:28.227706+08:00",
+  "result": "PASS_TITLE_TRANSPORT_COMPRESSION_REPLAY_CONTROL_ONLY",
+  "capture_game_apk": "245d521c1e0ef6f5a4665d585b3907ec084dfd70e6c1393c8f11aa09aa2d6a91",
+  "capture_layer": "61abd21138b02fae5c1eabef36c9cbd79c2b8737acd0b007f9cf129e4e16e28a",
+  "original_game_runtime": "All14 nonsigning entries including manifest identical to final4a91;13 runtime contents unchanged",
+  "capture_pid": 32410,
+  "native_frame": 19203,
+  "framing": {
+    "time": "2026-11-08T06:32:21.875735+08:00",
+    "bytes": 426316667,
+    "sha256": "ca14a19504f98918ff81a9d5e8c6211ac7cdc0311d9034a47941325f5be2331b",
+    "blocks": 18002,
+    "exact_eof": true,
+    "types": {
+      "3": 10,
+      "5": 1,
+      "2": 2,
+      "2147483652": 15437,
+      "4": 1873,
+      "2147483651": 678,
+      "1": 1
+    },
+    "boundaries": [
+      {
+        "index": 3,
+        "offset": 9634,
+        "kind": 2,
+        "marker_type": 1,
+        "native_frame": 19203
+      },
+      {
+        "index": 16907,
+        "offset": 84710393,
+        "kind": 2,
+        "marker_type": 2,
+        "native_frame": 19203
+      },
+      {
+        "index": 18001,
+        "offset": 426316643,
+        "kind": 1,
+        "marker_type": 2,
+        "native_frame": 19203
+      }
+    ],
+    "header": {
+      "magic": "GFXR",
+      "words": [
+        0,
+        0,
+        1,
+        1,
+        3
+      ]
+    },
+    "reader_wait": "Parent timed out45sec; capture Finished at45.5sec. Reader PID68594 absent on recheck, no restart. Exit code not observed, do not invent0.",
+    "next": "Validate compressed payloads and actual one title frame before restore/replay decision"
+  },
+  "ZSTD": {
+    "time": "2026-11-08T06:35:16.370224+08:00",
+    "all_compressed_blocks_ZSTD_decoded": true,
+    "by_base_kind": {
+      "4": 15437,
+      "3": 678
+    },
+    "payload_offsets": {
+      "(4, 20)": 15437,
+      "(3, 36)": 473,
+      "(3, 56)": 66,
+      "(3, 104)": 110,
+      "(3, 96)": 3,
+      "(3, 64)": 2,
+      "(3, 128)": 11,
+      "(3, 136)": 4,
+      "(3, 88)": 3,
+      "(3, 120)": 2,
+      "(3, 144)": 4
+    },
+    "uncompressed_bytes": 16138169110,
+    "maximum_block_bytes": 33554432,
+    "exact_eof": true,
+    "scope": "Transport/compression title control only; not effect capture completeness or shader semantic acceptance"
+  },
+  "replay_apk": "1d30b246bbce2455c74f7d6faeea516e5aefe5fbce59231bb8d217315ed780a9",
+  "replay_pid": 1965,
+  "replay_result": "Log finishes one frame19203 and writes frame1 PNG; viewed actual title",
+  "replay_png_bytes": 3341263,
+  "replay_png_sha256": "495a5f9c6f774f3f426c3348b3cba7c11d15cd072ee1f78b67bacd6f9ff1dab8",
+  "limits": "No Dark/Limit draw in title, no original same-frame output equality asserted; CAPTURE_COMPLETE remainsNO for effects",
+  "errors_retained": [
+    "45sec reader wait shorter than actual45.5sec completion; reader status not observed, EOF verified without restart",
+    "Initial payload-header scan128 invalid for variable-length image init; corrected to unique exact-ended ZSTD frames; source contract unchanged"
+  ],
+  "next": "Fresh fixed-runtime paired native + two-frame ZSTD/FIFO effect capture, same original61abd and1d30. Need exact same native frame in API, actual formats/generations, then single-target replay outputs; no renderer/tool rebuild. Check artifact size before pushing and leave >=1GiB device margin. Native marker only D/E finite, no pause or depth overrides.",
+  "restored_ordinary": {
+    "time": "2026-11-08T06:43:08.609783+08:00",
+    "scope": "Post-stream-control ordinary restore, no game acceptance inferred",
+    "pid": {
+      "exit": 0,
+      "value": "4491"
+    },
+    "marker": {
+      "exit": 0,
+      "value": "0"
+    },
+    "trigger": {
+      "exit": 0,
+      "value": "false"
+    },
+    "capture_compression": {
+      "exit": 0,
+      "value": ""
+    },
+    "capture_timestamp": {
+      "exit": 0,
+      "value": ""
+    },
+    "enable_gpu_debug_layers": "null",
+    "gpu_debug_app": "null",
+    "gpu_debug_layers": "null",
+    "gpu_debug_layer_app": "null",
+    "installed_sha256": "4a91b71cf13689029b13156ab831b9387890ff8443cf171657f6a9bb42cc1002"
+  },
+  "next_plan": {
+    "time": "2026-11-08T06:42:19.200326+08:00",
+    "purpose": "Close postfix same-frame API gap, using newly verified FIFO/ZSTD, not repeating old failing phases",
+    "reuse_APK": "v3-stream-layer.apk SHA245d521c1e0ef6f5a4665d585b3907ec084dfd70e6c1393c8f11aa09aa2d6a91",
+    "same_game_runtime": "source6a90ed1 / ordinary4a91, all14 non-signature entries equal; exact old61abd layer added only",
+    "capture_settings": "same verified properties but unique new FIFO basename and trigger_frames2, ZSTD/unassisted/timestampfalse/assetfalse",
+    "lifetime": "Start one reader, log hostPID/file progress; allow>=600sec overall, poll verified same handle with <=60sec tool waits; never restart on observation timeout",
+    "route": "Ordinary title -> existing known NewGame->Dark, D+trigger same request packet; collect2frames so native D frame likely second, verify actual frame identity instead of assuming. Later independentLimit E normally GEQUAL. No pause, noALWAYS, originalFS/prepass retained.",
+    "storage": "FIFO keeps no bulk device capture file; host33GiB. Exact newartifact size before push; leave>=1GiB device margin including nativeGPU/readback outputs. No deletion/move of prior traces/data/probes",
+    "audit": "Native end/missing0/all actualGPU inputs/shaders/attachments; newAPI shaderwords,pipeline,descriptor effectiveoffset/range/view/generation and badview submitted use; single target per replay prevents previous truncation interference. Extend existing index decompressor for ZSTD using installed libzstd, no tool rebuild/download.",
+    "restore": "After controlled work exact ordinary4a91 install-r, all four layer settings previousnull, triggerfalse/marker0/PADhidden; preserve data",
+    "ninth_key": "fe033 original source Float32/scalar0 alone not proof; only change if actual producer format/range/use observed in failing/invalid new trace",
+    "remaining_acceptance": "AUDIO humanNOT_RUN per user; shieldspell unavailable;60unmet/400Pro independentQA wholegameNOT_RUN. No overall completion from capture."
+  },
+  "artifact_root": ".local/honor-device-profiles/flame-20261104/dark-shader-retranslate-20261107/postbaseline-20261108/full-native-capture/half-fact-fix/stream-control"
+}

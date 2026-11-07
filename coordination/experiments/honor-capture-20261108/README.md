@@ -37,3 +37,12 @@ paths and an output directory. Old facts fail exit4; corrected facts preserve
 all eight float half fetches and other raw uint bindings. Validate all eight
 outputs with `spirv-val --target-env vulkan1.1`. The existing on-device
 `test-dark-half` executable also passed all16 numeric half/raw cases again.
+
+`stream-control.json` records the actual existing61abd layer FIFO/ZSTD title
+capture and unmodified existing1d30 replay proof. `audit_zstd_blocks.py` is an
+owned read-only format audit: copy it to the private stream-control directory
+with title-stream.gfxr and run Python3 using existing libzstd. It checks exact
+EOF, unique complete ZSTD frames ending at each compressed block boundary,
+and the declared original size for API packets. Metadata image-init headers
+are variable length, not limited to128bytes. A title control is not effect
+input/output equality and does not change CAPTURE_COMPLETE for Dark/Limit.
