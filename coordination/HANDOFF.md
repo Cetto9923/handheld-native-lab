@@ -1,3 +1,43 @@
+# Honor 捕获闭合、half 类型与小窗启动修正已提交；1.0.2 成品 — 2026-11-08T05:26:04.613396+08:00
+
+代码提交 `6a90ed1ed30bedc2c368cde64eed18d6a2e32106`（本分支work/honor-gtpro-30hz，仅7个自有源/测试文件）；捕获能力提交仍1b8b3f6。最终普通APK`4a91b71cf13689029b13156ab831b9387890ff8443cf171657f6a9bb42cc1002`，3749266B，versionCode3/1.0.2-honor，保留数据install-r已成功、实际新PID26073已在同小窗冷启进入标题；13个非签名内容条目与实测27fa逐字节相同，只有版本清单变化。未push/切树/reset/clean/stash，未碰RG或其他包。原214fd794/honor-graphics-20261107基线、2a4旧包保留。最终安装身份/前台核对已完成（2026-11-08T05:32:19.713660+08:00）：base.apk SHA与交付4a91完全一致，versionCode3、PID26073普通野外，PAD隐藏；gfx-codex-probe=0，debug.gfxrecon.capture_android_trigger=false，四app-only layer设置均null，实际硬件768dp/tablet/inline1。原始核对位于half-fact-fix/final-device-state.json、final-guest-external.log及final-field-pad-hidden.png。证据文档与复验脚本随本地检查点标签`honor-graphics-20261108-view-facts`保存，旧标签不移动；保持同线程唯一writer。
+
+本轮原生数据/重放结果：旧正常Dark8691的190个独立GPU读回全部闭合（pre78/78，唯一变量color-only112/112）；Limit17938独立126个读回也闭合（pre22/22、color115/115，含11条别名语义引用）。实际四pipeline/八module和GPU UBO/TBO按binding/offset/range/代数关联（Dark43、Limit36个buffer绑定逐项一致），完整可达BC4块/mip及color/depth/stencil附件前后保留。旧双目标导出的14项附件差异由先前目标CB尾部被截断导致；color-only原trace复放全部一致，不再把合法遮挡少2455像素当新shader错误。VK_NOT_READY警告保留，数据一致性不能夸成所有返回码一致。
+
+VUID风险限域修：只移除26ae/8b27/9528的B18和be4e/431a/1e22/b028/6018的B24误标UInt事实，保留每个shader其它raw绑定及未观测fe033 B24。现有归档按loose优先读取，8个真实源SPIR-V均Float32、metadata scalar0；源slot实际分别129/129/130/132/132/131/131/132，不统一假设129。设备实际archive索引及8个选中entry/loose override只读分段SHA与输入一致，无重复shader下载/工具重建。旧事实负控制exit4；新8个host重写模块保留half Float和其它UInt、spirv-val全0；复用已有Honor GPU half合约16/16非零/负零/边界PASS。
+
+新27fa native23325命中Dark7771052/7771111、submit194927/194928、slotGeneration218287/218288，count6960；190/190写出、missing0/IO0、END86895216B，8个修正half在同帧全部观测native76/scalar0/range2，未扩渲染view。4个实际target module与旧8691逐字节相同，全部spirv-val0；这8个外围view修正不能冒认原黑块根因。新帧只做native捕获，未与旧帧UBO/mesh拼接，也未冒称新帧已做完整未改API重放。
+
+小窗启动附带正确性修正：同小窗580dp，候选与旧2a4都会被旧档位逻辑选handheld_mid/inline0，在libllvm-qgl+0x476434退出。关闭warm、新cache文件两负控制仍同故障，已撤销所有临时cache源码/marker；未人为清理或移动缓存，应用正常缓存写入照常。用物理显示尺寸/稳定密度识别硬件档位、显式override保留，现为768dp/tablet/inline1，原cache与warm启用，重复冷启/实际场景正常。Java边界/手机/未知值/override测试PASS。
+
+普通视觉：`.local/honor-device-profiles/flame-20261104/dark-shader-retranslate-20261107/postbaseline-20261108/full-native-capture/half-fact-fix/dark-verified-ordinary/dark-verified-ordinary.mp4`130秒/47185154B，在72..109.5秒2Hz实际检查完整施法86..92秒，88..89.5秒蓝白核+紫红圈，96秒回野外；此前只录野外/标题的录像均明确NOT_HIT，不充验收。`limit-ordinary.mp4`70秒/26907872B，0..39.5秒2Hz检查蓝白冰晶7.5..8.5秒、碎冰、雷电、火尾和终光束；两片全程marker0、无layer。VISUAL_DARK=PASS、VISUAL_LIMIT=PASS，均限实现者教程自测。普通背景火/角色/遮挡在上述范围正常；新包Boss/shield魔法/独立QA/全游戏/400Pro未重跑，旧2a4 Boss有限PASS保留，首战短闪未作全覆盖闭合。
+
+**验收字段**：NATIVE_DATA_COMPLETE=YES（指定两对的完整GPU数据、实际shader与前后附件/原始输出核对均具备）；CAPTURE_COMPLETE=NO（严格全范围：历史完整trace仍含外围非法view，修正后新帧的独立全API/重放未运行；不隐去UB后宣称整帧语义合规）。VIEW_VALIDITY=FIXED、VIEW_VALIDITY_FIXED=YES，仅本刀8个已观测half及目标23个texel绑定；全游戏/未观测类型NOT_RUN，历史坏view保留原样。FIRST_WRONG=原Dark/Limit分别VS丢失buffer读→Position；Boss另为64lane共享归约双计数；不是ALWAYS/空FS/删prepass或全局waitIdle修复。AUDIO=NOT_RUN（用户明确暂不能听），NONE(enum10)/fence0/burst缓冲/timeout重试/设备变更重开未改。60目标**未达到**：本轮暖野外最后30秒32.66594 distinct新帧/s，不用屏幕90Hz、目标60或统计相等充PASS；跨场景/温度不做性能归因。整体验收未通过，持续目标不标complete。
+
+私有安装交付位于`.local/honor-delivery-20261107/release/`：新增FFRS-Honor-1.0.2.apk及sha、1.0.2-build-manifest.json，安装说明md/txt已同步；旧1.0.1 APK及交付索引副本保留。数据仍同一FFRS-data.zip（16918705179B/SHA01a338c52b79869c04f486eb1d42ce926fa6935d28d19371ca0a7c6cd10411af，40547文件/11修复件不变），复用此前全CRC/逐文件SHA核验，不重复打17GB包。源码安装手册coordination/docs/HONOR-400PRO-INSTALL.md。不得将此图形检查点称作稳定60/音频/400Pro或完整游戏通过版。
+
+复现实验脚本/清理后索引已保存coordination/experiments/honor-capture-20261108；实际全部构建、失败driver负控制、被拒绝的错相位录像、源SHA、模块/读回清单在上述full-native-capture/half-fact-fix。下步若继续60，复用该图形恢复点，从真实帧CPU/GPU等待/调度有证据的瓶颈推进，不重复已闭合shader试验或重建捕获工具；新大trace前检查设备空间（约4GiB），不得删旧probe/游戏数据。无实际额度错误，不虚构耗尽。
+
+# Honor 同 draw 两对数据闭合；外围 half 类型和小窗档位修正验证中 — 2026-11-08T04:19:28.784513+08:00
+
+Dark native8691共190/190独立GPU读回闭合；Limit native17938共126/126独立GPU读回闭合（单目标pre22/22、color115/115语义比较，11条是别名引用）。原trace未改，device/host SHA分别9ea6d528…efd0与bf9bd036…c7b0；实际四pipeline/八module、全部UBO/TBO offset/range、可达BC4完整块和D/S附件前后已同帧关联。Limit新增36个buffer binding逐项一致，Dark43；同buffer不同offset/range不去重。Dark联合导出的14附件差异经唯一变量color-only复放消失，属于导出截断干扰，非新游戏首错。证据和复现脚本索引`coordination/experiments/honor-capture-20261108/`；所有原始大件保留在postbaseline-20261108/full-native-capture。VK_NOT_READY警告继续如实保留，不把数据一致说成返回码全一致。
+
+目标23个texel binding实际type/format/range均合法；全trace仍发现Dark16、Limit14个R32+range2创建，Dark135条实际submitted命令活跃引用、Limit0。原生PROBE_TEXEL_NATIVE定位另外8个旧half误标事实（26ae/8b27/9528 B18，be4e/431a/1e22/b028/6018 B24），仅移除这8行误标，保留raw索引/查表绑定及未观测fe033 B24。旧代码真实SPIRV负控制exit4，新代码8个编译shader保留half Float/其它UInt、fetch数量不变、spirv-val全0；复用已有16case真机half合约全PASS（含非零/负零/边界）。不扩range、不重建捕获工具，不冒认黑效根因。
+
+候选ef028启动2次和已知旧2a4对照均在libllvm-qgl+0x476434退出。关闭warm仍同故障；新cache namespace仍同故障，两个假设否定，临时cache源码改动及新建marker已移除，旧cache未清/移动。实际日志共同点是SM8635被freeform窗口580dp误判handheld_mid、inline0。改为物理显示像素+稳定密度识别硬件档位，显式override保留；Java边界/手机/未知值测试PASS。候选27fac9d8e13d681d96d72ffbef64f9f8dc1bcee5bbd369b8989e902cbb66e796实际在相同窗口580dp选tablet768dp、inline1、原cache20711064B/warm829正常开启，并稳定进入标题页；已只最大化本包task1025，PID15485，继续普通新游戏Dark/完整Limit复验和原生类型观测。该APK未提升为交付基线。
+
+CAPTURE_COMPLETE=NO（两对NATIVE_DATA_COMPLETE=YES，资源/输出缺项已清；全场景非法view修正尚在真机验收）；VIEW_VALIDITY=NOT_FIXED全范围，具体目标合法、8外围修正待复验。FIRST_WRONG原Dark/Limit VS读取丢失→Position、Boss共享归约双计数证据不变，未把view合规冒充黑色根因。VISUAL_DARK/LIMIT/BOSS上一普通2a4范围PASS保留，本候选NOT_RUN；AUDIO依用户NOT_RUN（NONE enum10、fence0、burst缓冲、timeout重试/变更重开未动）；独立QA/400Pro/60帧未完成。唯一writer继续，无实际额度错误，不虚构quota耗尽。
+
+# Honor Dark同draw闭合；定位到双目标导出截断干扰 — 2026-11-08T03:26:33.976778+08:00
+
+新native8691实际190份GPU读回已全部按同帧actualAPI和GPU导出核对。TBO并非缺GPU文件：现有1d30导出器只漏JSON descriptor条目，整VkBuffer的rp_0.bin实际存在。13段TBO（含两端B18有效2B）按actual view bufferId+offset+range各自切片，全部与nativeGPU原读回字节相同，未按同buffer指针去重。初联合pre+color导出的190项中176相同、14附件项不同，差异是color前已存在；pre前后三平面完全相同，color前depth竟逐像素等于pre刚结束depth，缺Native之后16768个角色/场景深度写入。
+
+唯一变量改为只请求color1047825（同原始trace、同1d30、无shader/工具/原trace修改），112/112项（含7段TBO、完整mip/附件before-after）原运行与重放全部一致，missing0；pre另78项原已全部一致，合计Dark190份GPU读回闭合。D24仅比较定义的24bits，allocation tails剔除；VB导出15540B对应实际indexed可达前缀，native完整bound15552B的末12B未被此次索引读取，非伪称全bound回放读出。原生pre覆盖388882，实际color写386427，合法遮挡少2455；联合导出错误增到388882，不能把这2455差异或覆盖不同重新归成shader/depth bug。该受控结果定位到现有dump请求截断先前目标CB后续工作；同CB最后requested draw之后的命令不应再作为下一个目标的原场景输入。后续每次只导一个目标，禁止把联合导出前后附件当原运行金标准。VK_NOT_READY警告仍单列保留，不声称全修。
+
+实际pipeline创建字节独立解出Dark840 pre GEQUAL/write1，2394 color EQUAL/write0/stencil1；Limit1245 pre GEQUAL/write1、2419 color GEQUAL/write0/stencil1，与native正常状态一致，非当前源码猜测。四个pipeline的actual module bytehash与native精确pCode一致，见actual-pipeline-depth-states.json。新Limit22.556GB已device/host SHA一致bf9bd03611b90323e7ce0bb0a15fdac959538e86e3956bb2445894b912edc7b0，2308406 blocks精确EOF，17938..17940，actual目标2296771/2297991在StateEnd2294227之后，排除了旧恢复CB错相位。Limit pre-only已22/22读回全相同/missing0，color-only原trace重放进行中session51575启动记录已保存。
+
+CAPTURE_COMPLETE总体仍NO，仅剩Limit color原始输出对照及汇总/恢复普通包；Dark原生全部GPU输入+实际shader/state+完整附件和未改trace单目标重放已闭合。全VIEW_VALIDITY=NOT_FIXED，目标B18实际R16+range2合法，不外推全游戏；FIRST_WRONG原游戏三处GPU根因不变，新增FIRST_WRONG_REPLAY记录导出干扰，不冒认新游戏bug。VISUAL_DARK/LIMIT/BOSS普通2a4有限PASS沿用，AUDIO依用户NOT_RUN、60仍未达/400Pro未测。源码capture能力本地commit1b8b3f6，当前设备临时1d30 NativeActivity重放，四layer设置null/triggerfalse/marker0，结束须restore2a4/PADhidden。唯一writer继续。
+
 # Honor Dark/Limit native原始捕获两端已齐；转原trace一致性验收 — 2026-11-08T02:55:36.028988+08:00
 
 同捕获APK769d1d28/PID29937的Limit frame17938独立命中pre draw6671711/submit154037/slotGeneration172078与color6671726/154038/172079，count1800。pre/color均实际NVN7(GEQUAL)，color不写深度；正常FS、非ALWAYS。126/126GPU读回（86 image子资源+40 buffer切片），无缺项/IO，binary85982740B，132bin+trace共133文件，完整END；host audit PASS、四实际module均spirv-val0。preVS7a04879d7cdb4febfd5fd9b4d61c944fe6990ea86886e0c0cc4c3a9b517a703b，colorVS85eb0efe0491f1878bf9f6600f6d79ca4b626a39fa8fd8a7da93d4d958f80e0e，FS原始hash/index见limit-native-key-evidence.json。B18两pass实际R16_SFLOAT76/range2。截图limit-during.png是活跃紫色阶段，非暂停。新Limit trace22556150669B，02:44:40 Finished recording，deviceSHAbf9bd03611b90323e7ce0bb0a15fdac959538e86e3956bb2445894b912edc7b0；唯一一次pull进行中（session20909/PID27108），transfer-plan/pull.log落盘。设备剩5.1GiB，禁再抓大trace/不删旧文件；现有两帧已足以继续。
