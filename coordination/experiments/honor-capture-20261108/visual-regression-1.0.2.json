@@ -1,0 +1,248 @@
+{
+  "time": "2026-11-08T06:03:37.110106+08:00",
+  "source_commit": "6a90ed1ed30bedc2c368cde64eed18d6a2e32106",
+  "APK_sha256": "4a91b71cf13689029b13156ab831b9387890ff8443cf171657f6a9bb42cc1002",
+  "device": "A42BBB5109000333",
+  "PID": 26073,
+  "conditions": "Final ordinary1.0.2; marker0, triggerfalse, four GPU-layer settings null; target60 unchanged; no install/rebuild/source mutation in this continuation",
+  "VISUAL_DARK": "Earlier27fa scopedPASS retained,13 runtime contents equal final4a91; not rerun a third time",
+  "VISUAL_LIMIT": "PASS_SCOPED_IMPLEMENTER actual final1.0.2; ice9..10.5s, lightning/fire/beam in40s recording",
+  "VISUAL_BOSS": "PASS_SCOPED_IMPLEMENTER actual final1.0.2;110s route; all251 encoded frames66..71s and2Hz55..79.5s reviewed, debris/dust,no old full-height bars",
+  "guard": "PASS_SCOPED_IMPLEMENTER Defend/actual195damage HP5199->5004,40samples0..19.5s",
+  "fire": "PASS_SCOPED_IMPLEMENTER Explosion orange/gold3.25..4.5s,total5775;64samples0..15.75s",
+  "summon": "PASS_SCOPED_IMPLEMENTER Bahamut entry/space/dragon/bluewhite beam,purple shards,first companion attack;64samples0..31.5s",
+  "shield_magic": "NOT_RUN: prologue Moves only Dark/Explosion/Ice/Thunder; four Down inputs wrap to Dark. Defend is not a substitute.",
+  "first_entry_flash": "NOT_REPRODUCED_SCOPED: reused27fa video72..79s all186 encoded frames viewed; square dissolve/black load/monotonic fade; not universal closure",
+  "normal_scene": "PASS_SCOPED background fires,characters/outlines,opaque and translucent overlap during selected casts; no all-game claim",
+  "AUDIO": "NOT_RUN_USER_EXPLICIT; see regression-audio-gates.json",
+  "FPS60": "Prior field32.66594 unmet; these screen recordings are not clean performance measurements",
+  "Honor400Pro": "NOT_RUN",
+  "independent_QA": "NOT_RUN",
+  "whole_game": "NOT_RUN",
+  "CAPTURE_COMPLETE": "NO_STRICT_GLOBAL_POSTFIX_WHOLE_API_REPLAY_NOT_RUN",
+  "NATIVE_DATA_COMPLETE": "YES_PREVIOUS_BOUNDED_DARK_LIMIT_PAIRS",
+  "VIEW_VALIDITY": "FIXED_PREVIOUS_EIGHT_OBSERVED_HALF_AND_TARGET23_ONLY; ninth fe033 source-only audit does not justify change",
+  "FIRST_WRONG": "Previous Dark/Limit missing VS buffer reads -> Position, independent Boss CS64lane reduction; no new failing GPU output found in these visual windows",
+  "artifact_root": ".local/honor-device-profiles/flame-20261104/dark-shader-retranslate-20261107/postbaseline-20261108/full-native-capture/half-fact-fix/regression-1.0.2",
+  "postflight": {
+    "time": "2026-11-08T06:02:04.569797+08:00",
+    "source_commit": "6a90ed1ed30bedc2c368cde64eed18d6a2e32106",
+    "APK_sha256": "4a91b71cf13689029b13156ab831b9387890ff8443cf171657f6a9bb42cc1002",
+    "package": "org.ffrs.gamewindow",
+    "foreground": "ordinary Boss battle command menu with Bahamut, PAD hidden",
+    "no_install_or_source_change_this_continuation": true,
+    "pid": {
+      "exit_code": 0,
+      "value": "26073"
+    },
+    "marker": {
+      "exit_code": 0,
+      "value": "0"
+    },
+    "capture_trigger": {
+      "exit_code": 0,
+      "value": "false"
+    },
+    "enable_gpu_debug_layers": {
+      "exit_code": 0,
+      "value": "null"
+    },
+    "gpu_debug_app": {
+      "exit_code": 0,
+      "value": "null"
+    },
+    "gpu_debug_layers": {
+      "exit_code": 0,
+      "value": "null"
+    },
+    "gpu_debug_layer_app": {
+      "exit_code": 0,
+      "value": "null"
+    },
+    "device_space": {
+      "exit_code": 0,
+      "value": "Filesystem       Size Used Avail Use% Mounted on\n/dev/block/dm-31 455G 451G  4.3G 100% /data/user/0"
+    },
+    "screenshot_sha256": "7fc18eaca08c0ee210807ecc161036098521841803bf99487edcf33219115f0d"
+  },
+  "files": [
+    {
+      "file": "limit-v3.mp4",
+      "bytes": 19958291,
+      "sha256": "9461a279aa4937c75776be79cf9fc83b13f3b9f69dd3fe742224da16452f5e15",
+      "acceptance": "SCOPED reviewed as above"
+    },
+    {
+      "file": "boss-entry-v3.mp4",
+      "bytes": 34001872,
+      "sha256": "ea247d5c93185b95bd6bd6c17d66ca3e9a73e1a647ff0116e477643c0e010112",
+      "acceptance": "SCOPED reviewed as above"
+    },
+    {
+      "file": "defend-v3.mp4",
+      "bytes": 7572664,
+      "sha256": "4096e2356d13c0251ffe1e33bb5f49b902b18a6d8c8c9f37c336e574398e11d6",
+      "acceptance": "SCOPED reviewed as above"
+    },
+    {
+      "file": "fire-v3.mp4",
+      "bytes": 11398632,
+      "sha256": "e19e587b324aef4960083be081cfaa512b45690f47616265cd31f7307f6d124f",
+      "acceptance": "SCOPED reviewed as above"
+    },
+    {
+      "file": "summon-v3.mp4",
+      "bytes": 24417630,
+      "sha256": "f37d54539b19cf541f9b67bf55d470d7ac8a02f70961fa2d6533adef5b2023c1",
+      "acceptance": "SCOPED reviewed as above"
+    },
+    {
+      "file": "final-move-v3.mp4",
+      "bytes": 6020340,
+      "sha256": "a9d7fd0a09958a77edad094d7d3fd3ac29dafa6e14f08b79d87389178b61f164",
+      "acceptance": "NOT_HIT dialogue only"
+    }
+  ],
+  "next": "Save graphics regression checkpoint; inspect existing capture writer/storage feasibility offline for remaining postfix whole-API gap. Human A2DP acceptance remains unavailable; no speculative frame-rate changes.",
+  "stream_feasibility": {
+    "platform_smoke": {
+      "time": "2026-11-08T06:08:16.981037+08:00",
+      "purpose": "Only platform named-pipe feasibility with1MiB zeros in new own app internal directory; no game/layer/install/source/setting change. Not capture streaming acceptance.",
+      "setup": [
+        "adb",
+        "-s",
+        "A42BBB5109000333",
+        "shell",
+        "run-as",
+        "org.ffrs.gamewindow",
+        "sh",
+        "-c",
+        "'test ! -e files/capture-stream-smoke-20261108 && mkdir files/capture-stream-smoke-20261108 && mkfifo -m 600 files/capture-stream-smoke-20261108/smoke.fifo'"
+      ],
+      "read": [
+        "adb",
+        "-s",
+        "A42BBB5109000333",
+        "exec-out",
+        "run-as",
+        "org.ffrs.gamewindow",
+        "cat",
+        "files/capture-stream-smoke-20261108/smoke.fifo"
+      ],
+      "write": [
+        "adb",
+        "-s",
+        "A42BBB5109000333",
+        "shell",
+        "run-as",
+        "org.ffrs.gamewindow",
+        "sh",
+        "-c",
+        "'head -c 1048576 /dev/zero > files/capture-stream-smoke-20261108/smoke.fifo'"
+      ],
+      "setup_result": {
+        "exit": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      "reader_host_pid": 55585,
+      "writer_host_pid": 55586,
+      "reader_exit": 0,
+      "writer_exit": 0,
+      "writer_stdout": "",
+      "writer_stderr": "",
+      "bytes": 1048576,
+      "sha256": "30e14955ebf1352266dc2ff8067e68104607e750abb9d3b36582b8af909fcb58",
+      "expected_sha256": "30e14955ebf1352266dc2ff8067e68104607e750abb9d3b36582b8af909fcb58",
+      "zero_bytes_exact": true
+    },
+    "layer_inventory": [
+      {
+        "entry": "lib/arm64-v8a/libVkLayer_gfxreconstruct.so",
+        "bytes": 68068840,
+        "sha256": "61abd21138b02fae5c1eabef36c9cbd79c2b8737acd0b007f9cf129e4e16e28a",
+        "ZSTD_markers": true,
+        "fwrite_marker": true,
+        "note": "String presence not executable behavior proof; FIFO not yet tested with layer"
+      }
+    ],
+    "old_trace_offsets": [
+      {
+        "file": "original-dark.gfxr",
+        "bytes": 12508482890,
+        "blocks": 1057625,
+        "boundaries": [
+          {
+            "index": 3,
+            "offset": 9634,
+            "kind": 2,
+            "rawhex": "01000000f221000000000000"
+          },
+          {
+            "index": 1037915,
+            "offset": 627472604,
+            "kind": 2,
+            "rawhex": "02000000f221000000000000"
+          },
+          {
+            "index": 1043205,
+            "offset": 4232322759,
+            "kind": 1,
+            "rawhex": "02000000f221000000000000"
+          },
+          {
+            "index": 1052152,
+            "offset": 8906528662,
+            "kind": 1,
+            "rawhex": "02000000f321000000000000"
+          },
+          {
+            "index": 1057624,
+            "offset": 12508482866,
+            "kind": 1,
+            "rawhex": "02000000f421000000000000"
+          }
+        ]
+      },
+      {
+        "file": "original-limit.gfxr",
+        "bytes": 22556150669,
+        "blocks": 2308406,
+        "boundaries": [
+          {
+            "index": 3,
+            "offset": 9634,
+            "kind": 2,
+            "rawhex": "010000001246000000000000"
+          },
+          {
+            "index": 2294227,
+            "offset": 900002422,
+            "kind": 2,
+            "rawhex": "020000001246000000000000"
+          },
+          {
+            "index": 2300919,
+            "offset": 9281575549,
+            "kind": 1,
+            "rawhex": "020000001246000000000000"
+          },
+          {
+            "index": 2304684,
+            "offset": 15921307065,
+            "kind": 1,
+            "rawhex": "020000001346000000000000"
+          },
+          {
+            "index": 2308405,
+            "offset": 22556150645,
+            "kind": 1,
+            "rawhex": "020000001446000000000000"
+          }
+        ]
+      }
+    ],
+    "actual_layer_FIFO": "NOT_RUN",
+    "next": "Reuse existing half GPU helper and original61abd layer for small FIFO control; no rebuild/download"
+  }
+}

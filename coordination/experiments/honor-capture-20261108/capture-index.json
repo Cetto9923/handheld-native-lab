@@ -2654,6 +2654,7 @@
       },
       "final_apk": "4a91b71cf13689029b13156ab831b9387890ff8443cf171657f6a9bb42cc1002",
       "final_equivalence": "all13 nonsigning content entries byte identical, manifest version only"
-    }
+    },
+    "regression_index": "visual-regression-1.0.2.json"
   }
 }

@@ -1532,11 +1532,11 @@
       "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
       "branch": "work/honor-gtpro-30hz",
       "acquired_at": "2026-11-07T09:31:51.768908+08:00",
-      "checkpoint": "Source6a90ed1 committed, graphics evidence localtag honor-graphics-20261108-view-facts; ordinary1.0.2 4a91 installed SHA/version verified PID26073, field/PADhidden/marker0/triggerfalse/layers null. Dark+Limit pure marker0 scopedPASS; all13 runtime entries equivalent. Native paired data complete, postfix fullAPIreplay NOT_RUN.8half/profile fixed. AudioNOTRUN/60NOTMET32.66594/400ProNOTRUN; APK+reusedZIP+manual complete. No overall PASS, no second writer.",
+      "checkpoint": "Final1.0.2 source6a90/APK4a91 unchanged; actual Limit/Boss(all251entryframes)/Defend/fire/Bahamut ordinary scopedPASS. First-entry reused186encodedframes NOT_REPRODUCED. Shield spell unavailable, human audioNOTRUN,60NOTMET. PID26073 ordinaryBoss/Bahamut/PADhidden/marker0/triggerfalse/layers null. Device4.3GiB; no newtrace. Next offline existingwriter storage/stream feasibility for strict postfix API gap; unique writer retained. FIFO platform1MiB exactPASS/exits0; actual61abd_layer_FIFO_NOT_RUN. Oldtrace snapshot627/900MB and real per-frame size audited. Next existing GPU half helper plus original layer small FIFO control, no package/setting change yet.",
       "write_state": "ACTIVE",
       "ownership_retained": true,
       "device_authority": "Latest user: device idle, can debug any time without asking; stop only actual conflict/disconnect. Honor only, preserve data.",
-      "checkpoint_at": "2026-11-08T05:32:19.713660+08:00",
+      "checkpoint_at": "2026-11-08T06:12:12.576774+08:00",
       "source_baseline_commit": "214fd794fb436de14155e8954908685ae2120c21",
       "source_baseline_tag": "honor-graphics-20261107"
     }
@@ -5363,7 +5363,7 @@
     "ADPF": "REJECTED_THIS_ADAPTER; archived own source, production restored27manifesthashes"
   },
   "honor_capture_checkpoint_20261108": {
-    "time": "2026-11-08T05:32:19.713660+08:00",
+    "time": "2026-11-08T06:12:12.576774+08:00",
     "source_commit": "6a90ed1ed30bedc2c368cde64eed18d6a2e32106",
     "APK_sha256": "4a91b71cf13689029b13156ab831b9387890ff8443cf171657f6a9bb42cc1002",
     "native_data_complete": "YES_BOUNDED_PAIRS",
@@ -5377,7 +5377,15 @@
     "Honor400Pro": "NOT_RUN",
     "artifact_root": ".local/honor-device-profiles/flame-20261104/dark-shader-retranslate-20261107/postbaseline-20261108/full-native-capture/half-fact-fix",
     "graphics_checkpoint_tag": "honor-graphics-20261108-view-facts",
-    "final_device": "PID26073 ordinary1.0.2 field/PADhidden; installed SHA4a91 exact; marker0/triggerfalse/four layers null",
-    "acceptance": "NOT_PASSED:60 unmet/audio phone whole-game independentQA NOT_RUN"
+    "final_device": "PID26073 ordinary1.0.2 Boss command menu/Bahamut/PADhidden/marker0/triggerfalse/layers null",
+    "acceptance": "NOT_PASSED:60 unmet/audio phone whole-game independentQA NOT_RUN",
+    "VISUAL_BOSS": "PASS_SCOPED_FINAL1.0.2",
+    "guard": "PASS_SCOPED",
+    "fire": "PASS_SCOPED",
+    "summon": "PASS_SCOPED",
+    "shield_magic": "NOT_RUN_PROLOGUE_UNAVAILABLE",
+    "first_entry_flash": "NOT_REPRODUCED_SCOPED186_ENCODED_FRAMES",
+    "regression_index": "coordination/experiments/honor-capture-20261108/visual-regression-1.0.2.json",
+    "stream_feasibility": "PLATFORM_FIFO1MiB_PASS; actual61abd_layer_FIFO_NOT_RUN; no blind large capture"
   }
 }

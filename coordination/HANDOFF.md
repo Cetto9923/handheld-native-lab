@@ -1,3 +1,20 @@
+# Honor 1.0.2 普通回归补齐：BOSS／防御／爆炎／召唤 — 2026-11-08T06:03:37.110106+08:00
+
+上一轮分类PROGRESS：真实源码6a90ed1、证据30a1a20及交付检查点已经落盘。本轮不装包、不重建工具、不重复下载或抓大型trace，复用同一最终普通APK `4a91b71cf13689029b13156ab831b9387890ff8443cf171657f6a9bb42cc1002`、PID26073、正常游戏路线，新增最终1.0.2本身的Limit40s、BOSS入场110s、防御40s、爆炎40s及巴哈姆特40s录像。代码/签名/数据ZIP均未变，不把新录像当新的性能测试。
+
+结果：Limit实际蓝白冰晶9..10.5s、碎冰/雷电/火尾/光束完整，64样本0..31.5s自测PASS；BOSS实际落地约67.5..69s，66..71s共251个编码帧逐帧检查，棕色碎石/尘雾与角色正常，无旧贯穿画面黑条，55..79.5s另2Hz查看；Defend真实执行后受击195、HP5199→5004，无黑块；爆炎3.25..4.5s橙金火焰、Total5775，随后敌方光柱与角色/场景保持；召唤蓝白入场/紫碎片/太空龙体/光束和第一次协战均正常。均仅实现者有限视觉自测，未冒称独立QA/全游戏。原Dark27fa普通130s scopedPASS及13个runtime内容与最终4a91逐字节一致证据沿用，不再重做已经闭合的施法实验。
+
+首战短闪补查：复用既有Dark普通录像72..79s，全部186个编码帧已查看（先前只有2Hz）；所见为方块消隐→黑场加载→战斗单向淡入，无反复明暗或巨大几何，该次NOT_REPRODUCED，不能外推所有首次入场。护盾魔法仍NOT_RUN：当前序章四招暗/爆炎/冰/雷，下4次回首项，未找到护盾；Defend不得替代护盾魔法。额外只读核对未观测fe033源B24确Float32/scalar0/slot132，但没有实际producer格式/range/use现场，未据此删第9项或全局删表。
+
+完整索引与SHA：`coordination/experiments/honor-capture-20261108/visual-regression-1.0.2.json`；原录像/输入命令/计划/所有逐帧图在`.local/honor-device-profiles/flame-20261104/dark-shader-retranslate-20261107/postbaseline-20261108/full-native-capture/half-fact-fix/regression-1.0.2/`。final-move-v3录像只推进对话，明确NOT_HIT，真正召唤以summon-v3录像为准。当前现场PID26073普通BOSS战斗菜单与巴哈姆特同屏，PAD隐藏、marker0、triggerfalse、四layer值null，设备余4.3GiB；截图与实际查询postflight.json/png。没有清理或移动任何旧probe/数据/存档，没有RG或其他包操作。
+
+CAPTURE_COMPLETE=NO（修后独立整帧API/原始重放尚未做，历史坏view不被隐藏）；NATIVE_DATA_COMPLETE=YES限此前指定两对；VIEW_VALIDITY=FIXED限8已观测half及目标23；FIRST_WRONG既有三处GPU根因不变，当前回归未找到新首错。VISUAL_DARK=PASS沿用等价runtime、VISUAL_LIMIT=PASS最终1.0.2，VISUAL_BOSS/guard/fire/summon=PASS限上述窗口。AUDIO=NOT_RUN，用户明确“暂时不能，音频记未验收”，A2DP野外/战斗各≥2分钟主观连续、蓝牙连接/断开恢复均未做；NONE(enum10)/burst*2/TIMEOUT重试/设备变更重开/fence0均未改，不能以机器日志顶替人耳。60仍未达（此前32.66594新帧/s），本轮无pacing/hint/affinity改动；400Pro、完整游戏、独立QA未测，持续目标不标complete。
+
+下一步先离线核对既有capture writer是否有可复用流式/更小原始捕获路径，以免4.3GiB余量下盲抓12.5GB以上trace；不重建导出器、不删除旧证据、不因材料缺失伪称全CAPTURE_COMPLETE。人耳A2DP门仍需外部条件，遵循用户无需重复询问授权的指令。交付APK/ZIP/手册与旧本地标签保持不变，补充回归索引进入后续证据提交，不移动旧tag。
+
+Stream feasibility 2026-11-08T06:12:12.576774+08:00: old raw block offsets show Dark state snapshot627MB and frame payloads3.605/4.674/3.602GB, Limit snapshot900MB and frame payloads8.382/6.640/6.635GB. Most bytes are per-frame unassisted writes, not the initial snapshot. Existing61abd layer68068840B contains ZSTD symbols (presence is not execution proof). In a new owned internal app directory, a1MiB zero-data FIFO run-as/head/cat smoke passed exact size/SHA and both exits0; no package/layer setting/game data changed. FIFO node retained, both helper processes finished. Actual layer-to-FIFO and compressed replay remain NOT_RUN. Host free33GiB/device4.3GiB. Next reuse existing half GPU helper and original layer for a small actual streaming control before any game capture. No tool rebuild/download; CAPTURE_COMPLETE unchanged.
+
+
 # Honor 捕获闭合、half 类型与小窗启动修正已提交；1.0.2 成品 — 2026-11-08T05:26:04.613396+08:00
 
 代码提交 `6a90ed1ed30bedc2c368cde64eed18d6a2e32106`（本分支work/honor-gtpro-30hz，仅7个自有源/测试文件）；捕获能力提交仍1b8b3f6。最终普通APK`4a91b71cf13689029b13156ab831b9387890ff8443cf171657f6a9bb42cc1002`，3749266B，versionCode3/1.0.2-honor，保留数据install-r已成功、实际新PID26073已在同小窗冷启进入标题；13个非签名内容条目与实测27fa逐字节相同，只有版本清单变化。未push/切树/reset/clean/stash，未碰RG或其他包。原214fd794/honor-graphics-20261107基线、2a4旧包保留。最终安装身份/前台核对已完成（2026-11-08T05:32:19.713660+08:00）：base.apk SHA与交付4a91完全一致，versionCode3、PID26073普通野外，PAD隐藏；gfx-codex-probe=0，debug.gfxrecon.capture_android_trigger=false，四app-only layer设置均null，实际硬件768dp/tablet/inline1。原始核对位于half-fact-fix/final-device-state.json、final-guest-external.log及final-field-pad-hidden.png。证据文档与复验脚本随本地检查点标签`honor-graphics-20261108-view-facts`保存，旧标签不移动；保持同线程唯一writer。
