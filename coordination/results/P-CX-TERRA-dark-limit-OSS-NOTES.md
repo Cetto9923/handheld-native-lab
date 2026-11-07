@@ -46,3 +46,7 @@ Honor400Pro packaging reference: [manufacturer specs](https://www.honor.com/cn/p
 - 候选APK65f3d601...正常构建exit0/install-r保留数据，GPUshader/FS/深度/同步/音频/存档未改；ABI与host生命周期用例不替代实机稳态FPS、视觉或人耳验收。数据和旧普通2a4恢复包完整保留。
 
 ADPF最终状态（2026-11-08T01:48:43.369145+08:00）：同候选ABA51.9177/52.0336/52.1293无可辨识收益，且该取时缺present后的GPU等待，仅为本入口负对照。原2a4恢复后38.0693，跨包CPU/core/power/window差异未定因，不能归因API或源码布局。自有候选header/test/glue已移coordination/experiments/honor-adpf-20261108，生产源恢复27摘要匹配，未作默认/交付修复。
+
+## 2026-11-08 native full raw capture
+
+Own default-off D/E implementation reuses original c081f1b/61abd GFXR layer and existing1d30 replay APK; no upstream binary rebuild/download. Raw image rows use zero rowLength/imageHeight and distinct D/S aspects; BC4 Vk139 is4×4/8B blocks. Buffer diagnostic alignment padding is permitted only within proven VkBuffer object extent, never inferred from VkMemory requirements; final shader view range is unchanged. Primary references verified: [VkBufferImageCopy](https://docs.vulkan.org/refpages/latest/refpages/source/VkBufferImageCopy.html), [copy buffer ranges](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdCopyBuffer.html), [format definitions](https://docs.vulkan.org/refpages/latest/refpages/source/VkFormat.html). Unknown formats/samples/ranges explicitly fail capture completeness. Native frame8691 raw subresource/binding/file audit passed; actual API identity and replay agreement remain separate pending gates.

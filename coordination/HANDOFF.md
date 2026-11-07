@@ -1,3 +1,31 @@
+# Honor Dark/Limit native原始捕获两端已齐；转原trace一致性验收 — 2026-11-08T02:55:36.028988+08:00
+
+同捕获APK769d1d28/PID29937的Limit frame17938独立命中pre draw6671711/submit154037/slotGeneration172078与color6671726/154038/172079，count1800。pre/color均实际NVN7(GEQUAL)，color不写深度；正常FS、非ALWAYS。126/126GPU读回（86 image子资源+40 buffer切片），无缺项/IO，binary85982740B，132bin+trace共133文件，完整END；host audit PASS、四实际module均spirv-val0。preVS7a04879d7cdb4febfd5fd9b4d61c944fe6990ea86886e0c0cc4c3a9b517a703b，colorVS85eb0efe0491f1878bf9f6600f6d79ca4b626a39fa8fd8a7da93d4d958f80e0e，FS原始hash/index见limit-native-key-evidence.json。B18两pass实际R16_SFLOAT76/range2。截图limit-during.png是活跃紫色阶段，非暂停。新Limit trace22556150669B，02:44:40 Finished recording，deviceSHAbf9bd03611b90323e7ce0bb0a15fdac959538e86e3956bb2445894b912edc7b0；唯一一次pull进行中（session20909/PID27108），transfer-plan/pull.log落盘。设备剩5.1GiB，禁再抓大trace/不删旧文件；现有两帧已足以继续。
+
+Dark12.5GB新trace已设备/host SHA一致9ea6d528ce031d7e4afaaa72d2e067ff76ac7ab516baeac7b9943f4b60dbefd0，1057625 blocks精确EOF，frame8690..8692；native8691在其中第二帧。复用旧index/parser只改输入，1039modules/829pipelines保留。actual pre API1046335（pipeline840/VS803/FS805）与color1047825（pipeline2394/VS2388/FS2390），count6960/instance1，与native唯一目标一致；4module全部精确bytehash一致，缓存有同字节重复module也明确保留。两draw43个buffer binding的effective offset/range/format与native逐项匹配，未按buffer指针去重，实际view仍R16 range2。
+
+已临时保留数据install-r-d原1d30b246bbce2455c74f7d6faeea516e5aefe5fbce59231bb8d217315ed780a9重放APK（版本2→1，仅本包debuggable诊断，非卸载/清数据），app-only四layer设置恢复此前null、triggerfalse。第一次裸draw编号文件被现有导出器报Bad --dump-resources parameter:1046335并SIGABRT1575/1901；原始logcat/exit-info已保存，不能冒认游戏崩溃或额度错误。现复用旧target_indices.py从实际API流生成BeginCommandBuffer/RenderPass/QueueSubmit定位，启动v2重放（session1586）；未改工具或原捕获。安装source与失败/恢复命令全部full-native-capture目录。完成后须恢复普通2a4/marker0/PADhidden。
+
+CAPTURE_COMPLETE仍NO：Dark+Limit native raw完整性各PASS，Dark actualAPI module/buffer定位通过，原始/replay定义区域逐项一致性未完成，Limit API索引待新trace完成传输。全VIEW_VALIDITY仍NOT_FIXED，不把目标B18合法化外推整帧；FIRST_WRONG已有三处GPU根因不变；普通2a4 VISUAL_DARK/LIMIT/BOSS及guard/fire/Bahamut有限PASS记录保留，本新诊断不代替普通视觉/遮挡验收。AUDIO依用户NOT_RUN，常设NONE(enum10)/burst缓冲/2026-11-08T02:55:36.028988+08:00OUT重试/变更重开/fence0均未改；60不达、400Pro/独立QA未验。代码诊断能力将本地checkpoint提交，不改既有graphics214fd79/tag/交付2a4/dataZIP。唯一writer继续。
+
+# Honor 暗魔法原运行完整读回已通过，API/重放闭合进行中 — 2026-11-08T02:40:14.030200+08:00
+
+同APK769d1d28/PID29937，正常NewGame→首战暗魔法、无暂停，D与原61abd GFXR三帧trigger同请求。native frame8691命中pre全局draw2269459/submit71759/slotGeneration80482与color2269518/71760/80483；count6960/instances1。实际记录pre GEQUAL(NVN7)、color EQUAL(NVN3)，无ALWAYS等覆写。GPU原格式读回190/190（143图像子资源+47 buffer切片），缺项0/IO0，196bin+capture.txt共197文件；binary总86895216B，完整FULL_BEGIN/FULL_END/END。严格auditor对实际文件、尺寸/SHA、每binding有效offset/range、全部mip/layer/aspect、VB/IB、模块和附件前后覆盖给native_readback_audit=PASS；这不等于全CAPTURE_COMPLETE。
+
+同帧B42 Vk139 BC4确为10mip0..9，每pass174776B原压缩块（实际512×512基面，非host契约512×256示例），无缩样；B18实际R16_SFLOAT76/range2两端0000。诊断copy4在已证32MiB VkBuffer对象内，最终文件只存有效2字节，渲染view未扩大。同帧四个最终module words全部spirv-val Vulkan1.1 exit0；preVS5937617587b19ce3fa7a093a0de249906fc5586f6ed1ae5db7c612ff85365dbc、colorVSf7f5e743abd002a9a3853bb8610483499393b358f8b92b6006a679e85a0a29a7，其余FS与逐文件SHA见dark-native-key-evidence.json/dark-native-audit.json。截图during-capture.png已看为活跃蓝白核/紫红外圈。首个主机audit Python3.9缺hashlib.file_digest原始AttributeError已保留，改流式SHA后重跑通过；无额度错误。
+
+新原运行trace12508482890B，设备SHA9ea6d528ce031d7e4afaaa72d2e067ff76ac7ab516baeac7b9943f4b60dbefd0，layer日志02:34:35 Finished recording；正在唯一一次pull至full-native-capture/original-dark.gfxr，session58781/hostpullPID19892，transfer-plan/pull.log已落盘，未完成前不解析成正式证据。新capture/auditor代码未再改游戏行为/音频/11XGS。下一步同进程正常第二战Thunder→Limit教程，E独立抓球体；然后复用原1d30重放包，核实际API模块/资源世代/输出，不重建导出器、不重复下载旧trace。
+
+CAPTURE_COMPLETE=NO（Dark native读回已PASS，实际API对应/未扰动replay定义区域一致性仍待验；Limit native待捕），全VIEW_VALIDITY=NOT_FIXED；FIRST_WRONG既有三处GPU结论不变；VISUAL_DARK/LIMIT此前普通2a4有限PASS，不把本诊断截图代替普通验收；AUDIO依用户NOT_RUN，常设NONE(enum10)/burst缓冲/2026-11-08T02:40:14.030200+08:00OUT重试/变更重开/fence0未改。60/400Pro/独立QA仍未过，普通2a4恢复点保留。唯一writer继续。
+
+# Honor 同draw完整捕获实现已构建，开始验证 — 2026-11-08T02:28:57.037073+08:00
+
+沿原xbg_probe扩展Honor显式D/E，首个精确暗魔法或Limit球体pre/color各一次、最多2draw/256MiB。捕获最终实际UBO/SSBO/TBO的stage/binding/element/offset/range，实际VB/IB/indirect、全部已绑定image view可达mip/layer/aspect（BC1–7块布局，D/S分面），attachment before/after；独立GPU readback所有者跨slot保持，只在present安全点fence/invalidate/落盘。默认marker0不录额外GPUcopy，D/E明确清所有ALWAYS/cull/空FS/prepass写禁用。保留目标8module最终vkCreateShaderModule实参words并记录pipeline/动态/布局状态；实际pipeline创建与资源世代仍须同帧GFXR校核，不以当前effective key替代实际cache命中证据。渲染view range未扩大；诊断copy padding必须在证明的VkBuffer对象范围内，allocation_size不是buffer上界。未知格式/样本/资源、缺pair或I/O错显式FULL_MISSING/完整性否。
+
+新源xbg_full_capture.inc/xbg_capture_layout.h及既有cpp/probe限域接入，host raw布局/溢出/小范围padding契约PASS、git diff --check通过；完整普通游戏构建两次exit0（第二次仅补attachmentCount/正确日志），最终base56e62bfe12d22cdc982f0cb00d842d18150011f7d671ad46b0ad26f9a9ed8982。同base14非签名条目逐字保持，只加入原61abd21138b02fae5c1eabef36c9cbd79c2b8737acd0b007f9cf129e4e16e28a捕获layer，APK769d1d28c0d36b984a94541e51f846541f99bddc52a9fe4f26b7e0e05429a5df/71812586B；未重建或下载导出器。build命令/源SHA/日志/exit/prepare索引在dark-shader-retranslate-20261107/postbaseline-20261108/full-native-capture/。严格落盘auditor scripts/graphics/audit_honor_full_capture.py已实现，尚未真机通过。先做未命中负控，再活跃Dark/Limit定向帧，与既有重放包做定义区域对照；不能只靠文件都有称完整。
+
+装前实时PID24343全屏普通野外已截图确认，用户最新无限设备授权；install-plan记录769d入场，仅org.ffrs.gamewindow install-r/冷启、app-only layer、3帧触发false。device ONLY A42BBB5109000333，数据/存档/11XGS/音频常设门不变，restore普通2a4已保留。CAPTURE_COMPLETE=NO，VIEW_VALIDITY=NOT_FIXED全范围，FIRST_WRONG已有GPU定位不变，VISUAL_DARK/LIMIT/BOSS既有有限PASS未外推新构建；AUDIO依用户NOT_RUN，NONE(enum10)/burst缓冲/2026-11-08T02:28:57.037073+08:00OUT重试/变更重开/fence0未改。60未达、400Pro实机/独立QA未验。唯一writer继续，下一步完成capture负控/活跃帧，不能提前打整刀PASS。
+
 # Honor ADPF负对照结束；原包/生产源码已恢复 — 2026-11-08T01:48:43.369145+08:00
 
 同一候选65f3d6018e2f3435c66651f5eb23ae50d6635284586c9e0bd5088b8edf879876（3736978B）已正常构建/保留数据install-r。实际官方API session创建成功，RHIThread TID23002一线程组、target16666666ns，report无错误。但同场每段约45秒、无录屏/输入的关→开→关分别51.917712 / 52.033621 / 52.129284独立新帧/s，无重复/失败/跳过；没有可辨识的该提示入口收益，不作为修复。取时只涵盖firstsubmit到pace前，未含之后GPU等待，故只否定本挂接方式，不能外推所有ADPF实现。host生命周期与实际NDK33签名通过；实际app仍API28可选dlsym，无必需新API导入。首构建probe声明顺序错误已修，首次API28声明检查因33可用性失败也保留原始错误，非额度错误。

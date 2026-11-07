@@ -20,6 +20,7 @@ struct ProbeState {
     std::vector<ProbeTexelSnapshot> texels;
     std::vector<ProbeQuerySnapshot> queries;
 } probe;
+#include "xbg_full_capture.inc"
 // Short, opt-in CPU-uniform trace. It does not submit commands, read GPU
 // buffers, or wait for a fence. Descriptor memo is bypassed while recording
 // so the captured values are the actual per-draw uniform snapshots.
@@ -205,6 +206,7 @@ void fire_trace_present(Image &im,VkCommandBuffer cmd){
 }
 bool probe_is_active(){return capture.probe && capture.trace && stats.presents.load()+1==capture.frame;}
 void probe_draw_occlusion(){
+    if(probe_full())return;
     if(!probe_is_active() || !state.shader[4] || (state.shader[4]->key!="f62f4204ee4db0da" &&
        !(probe.compact && (state.shader[4]->key=="c0adc062e4b8e8fa" || state.shader[4]->key=="b7dd0f48aea00196"))))return;
     capture_log("PROBE_QUERY_RECORDED group=%u draw=%u active=%u countSamples=%u batch=%u index=%u",probe.groups,probe.draws,unsigned(open_occlusion.cmd!=VK_NULL_HANDLE),unsigned(state.count_samples),unsigned(occlusion_batch_enabled),open_occlusion.index);
@@ -223,6 +225,7 @@ void probe_flush_queries(){
 }
 void probe_texel_buffer(const std::string &shader,unsigned stage,unsigned binding,unsigned element,
                         const Buffer &source,VkFormat format,uint64_t guest,uint64_t full_bytes,bool resident){
+    if(probe_full())return;
     const bool geometry=binding==12 || binding==18 || binding==24 || binding==30 || binding==36 || binding==42 || binding==48;
     const bool dark_pair=probe.compact && (shader=="db5f1e2dd1c9ef3d" || shader=="41a5a80e5242a26c");
     if(!probe_is_active() || (shader!="b0284572b5f180f2" && !(probe.repeat_mode && flame_diag_key(shader)>=0) && !dark_pair) || stage!=0 || !geometry || element!=0)return;
@@ -382,6 +385,7 @@ void probe_snapshot(const ProbeSurface &surface){
 }
 void probe_flush(){
     if(!probe_is_active())return;
+    if(probe_full())return; // full destinations are fenced and written at present
     capture_log("PROBE_GROUP_END group=%u draws=%u outputs=%zu inputs=%zu",probe.groups,probe.draws,probe.outputs.size(),probe.inputs.size());
     probe_flush_queries();
     probe_flush_texels();
@@ -396,10 +400,11 @@ void probe_draw_begin(int count,unsigned instances,unsigned base_instance){
         if(c=='2')probe_start(stats.presents.load()+1,true);break;
     }}
     if(!probe_is_active())return;
+    if(full_draw_begin(count,instances,base_instance))return;
     std::string key="draw:"+(state.shader[0]?state.shader[0]->key:"none")+":"+(state.shader[4]?state.shader[4]->key:"none");
     for(int i=0;i<state.rt.n;i++)key+=":"+std::to_string(state.rt.color[i]?state.rt.color[i]->serial:0);
     key+=":depth:"+std::to_string(state.rt.depth?state.rt.depth->serial:0);
-    if(key!=probe.group){probe_flush();probe.group=key;++probe.groups;capture.events=probe.groups;capture_log("PROBE_GROUP group=%u kind=draw vs=%s fs=%s colors=%d depth=%llu mask=%#x depthTest=%u depthWrite=%u depthFunc=%u viewport=%g,%g,%g,%g",probe.groups,state.shader[0]?state.shader[0]->key.c_str():"none",state.shader[4]?state.shader[4]->key.c_str():"none",state.rt.n,(unsigned long long)(state.rt.depth?state.rt.depth->serial:0),state.mask.mask,unsigned(state.ds.dt),unsigned(state.ds.dw),unsigned(state.ds.df),state.viewport.x,state.viewport.y,state.viewport.width,state.viewport.height);}
+    if(key!=probe.group){probe_flush();probe.group=key;if(!probe_full())++probe.groups;capture.events=probe.groups;capture_log("PROBE_GROUP group=%u kind=draw vs=%s fs=%s colors=%d depth=%llu mask=%#x depthTest=%u depthWrite=%u depthFunc=%u viewport=%g,%g,%g,%g",probe.groups,state.shader[0]?state.shader[0]->key.c_str():"none",state.shader[4]?state.shader[4]->key.c_str():"none",state.rt.n,(unsigned long long)(state.rt.depth?state.rt.depth->serial:0),state.mask.mask,unsigned(state.ds.dt),unsigned(state.ds.dw),unsigned(state.ds.df),state.viewport.x,state.viewport.y,state.viewport.width,state.viewport.height);}
     capture_log("PROBE_COLOR_STATE group=%u draw=%u blendEnable=%#x logicOp=%u alphaFunc=%u constants=%g,%g,%g,%g",probe.groups,probe.draws+1,unsigned(state.color.blend_en),unsigned(state.color.logic_op),unsigned(state.color.alpha_func),state.blend_color[0],state.blend_color[1],state.blend_color[2],state.blend_color[3]);
     for(int i=0;i<state.rt.n;i++){
         const blend_st &b=state.blend[i];xbg_draw2d converted{};
@@ -413,6 +418,7 @@ void probe_draw_begin(int count,unsigned instances,unsigned base_instance){
 }
 void probe_draw_end(Pass &pass){
     if(!probe_is_active())return;
+    if(probe_full()){full_after_draw(pass);return;}
     if(probe.lut)capture_log("PROBE_FRAMEBUFFER group=%u layers=%u width=%u height=%u",probe.groups,pass.layers,pass.width,pass.height);
     for(int i=0;i<9;i++){const tex_t *t=i==8?state.rt.depth:(i<state.rt.n?state.rt.color[i]:nullptr);if(!t)continue;
         auto found=images.find(t->serial);if(found==images.end())continue;Image &im=*found->second;
@@ -423,6 +429,7 @@ void probe_draw_end(Pass &pass){
     }
 }
 void probe_buffer(const std::string &shader,unsigned stage,unsigned binding,unsigned element,const void *data,size_t bytes){
+    if(probe_full())return; // actual final GPU bindings use probe_full_buffer
     fire_trace_buffer(shader,stage,binding,element,data,bytes);
     if(!probe_is_active())return;
     const bool effect=shader=="db5f1e2dd1c9ef3d" || shader=="41a5a80e5242a26c" || shader=="c0adc062e4b8e8fa" || shader=="b7dd0f48aea00196" || shader=="f62f4204ee4db0da" || shader=="9b0acd9875f7c44a" || shader=="5fe1d12402b04134" || shader=="b0284572b5f180f2" || shader=="1e222af40b26bd25" || shader=="9528f530e1c95ce5" || shader=="c2ca757a9f517e96" || shader=="6018ff2b44b763d7" || (probe.repeat_mode && stage!=5 && state.shader[0] && flame_diag_key(state.shader[0]->key)>=0);
@@ -440,6 +447,7 @@ void probe_buffer(const std::string &shader,unsigned stage,unsigned binding,unsi
     capture.active=true;capture_data(label,data,bytes);capture.active=false;
 }
 void probe_dispatch_begin(){
+    if(probe_full()){full_capture.target=false;return;}
     if(!probe_is_active())return;probe_flush();probe.group="dispatch";++probe.groups;capture.events=probe.groups;
     capture_log("PROBE_GROUP group=%u kind=dispatch cs=%s",probe.groups,state.shader[5]?state.shader[5]->key.c_str():"none");
 }
@@ -470,6 +478,7 @@ void probe_indirect_arguments(const p_draw_idx &p,const uint32_t *a){
     xbg_logf("CODEX_INDIRECT_ARGUMENT frame=%llu address=%#llx count=%u instances=%u firstIndex=%u baseVertexBits=%u baseInstance=%u index=%#llx indexType=%d prim=%d",(unsigned long long)stats.presents.load(),(unsigned long long)p.ind,a[0],a[1],a[2],a[3],a[4],(unsigned long long)p.ibuf,p.itype,p.prim);
 }
 void probe_bind(Image &im,const view_t *v,bool storage,uint32_t stage,uint32_t binding,VkImageView image_view,const std::string &shader){
+    if(probe_full())return; // array-aware final binding hook records every actual view
     if((probe.waiting || probe_is_active()) && storage && im.source.d.format==0x27 && im.depth>1)
         xbg_logf("CODEX_VOLUME_WRITER shader=%s stage=%u binding=%u serial=%llu guest=%p extent=%ux%ux%u viewVk=%u",shader.c_str(),stage,binding,(unsigned long long)im.source.serial,im.source.mem,im.width,im.height,im.depth,unsigned(im.view_format(v)));
     if(!probe_is_active())return;
@@ -502,11 +511,13 @@ void probe_start(uint64_t frame,bool lut){
     if(mkdir(directory.c_str(),0755) && errno!=EEXIST){xbg_logf("CODEX_PROBE mkdir failed errno=%d",errno);probe.waiting=false;return;}
     FILE *trace=fopen((directory+"/capture.txt").c_str(),"wb");if(!trace){probe.waiting=false;return;}
     probe.waiting=false;probe.lut=lut;probe.group.clear();probe.groups=probe.draws=probe.snapshots=0;probe.extra_buffer_bytes=0;probe.outputs.clear();probe.inputs.clear();probe.saved.clear();
-    capture.directory=directory;capture.trace=trace;capture.frame=frame;capture.bytes=0;capture.events=0;capture.active=false;capture.probe=true;
-    capture_log("PROBE version=3 frame=%llu lutProducer=%u rawReadback=full sampleGridMax=128x72x32 maxSnapshots=1024 maxFileBytes=%llu",(unsigned long long)capture.frame,unsigned(lut),(unsigned long long)capture_limit);
+    capture.directory=directory;capture.trace=trace;capture.frame=frame;capture.bytes=0;capture.events=0;capture.errors=0;capture.active=false;capture.probe=true;capture.full=full_capture.family!=0;
+    if(capture.full){unsigned family=full_capture.family;full_capture=FullCapture{};full_capture.family=family;capture_log("FULL_BEGIN version=1 family=%u frame=%llu maxBytes=268435456 maxTargetDraws=2 allDiagnosticOverrides=0 fenceAtPresentOnly=1",family,(unsigned long long)frame);}
+    if(!capture.full)capture_log("PROBE version=3 frame=%llu lutProducer=%u rawReadback=full sampleGridMax=128x72x32 maxSnapshots=1024 maxFileBytes=%llu",(unsigned long long)capture.frame,unsigned(lut),(unsigned long long)capture_limit);
     xbg_logf("CODEX_PROBE armed frame=%llu directory=%s lutProducer=%u",(unsigned long long)capture.frame,directory.c_str(),unsigned(lut));
 }
 void probe_present(Image &present){
+    if(probe_full()){full_present(present);return;}
     if(probe_is_active()){probe_flush();ProbeSurface final{probe_keep(present),{},false,"present"};if(final.image)probe_snapshot(final);return;}
     // Each capture still requires a fresh marker write. Allow retries within
     // one process when a short effect is missed, while retaining a hard cap.
@@ -516,6 +527,14 @@ void probe_present(Image &present){
     // Honor-only manual paired-frame diagnosis. Consume each request so a
     // stale marker cannot continuously stall gameplay or overwrite evidence.
     const char *tablet=getenv("FFRS_PROFILE_TABLET");
+    if((value=='D' || value=='E') && tablet && tablet[0]=='1' && probe.repeat_captures<16){
+        probe.repeat_mode=true;probe.compact=false;
+        probe.spell_depth_test=probe.spell_cull_test=probe.spell_no_tests=probe.spell_empty_fragment=probe.spell_prepass_no_depth_write=false;
+        full_capture.family=value=='D'?1:2;++probe.repeat_captures;
+        FILE *reset=fopen((probe.base+"/gfx-codex-probe").c_str(),"wb");if(!reset){probe.waiting=false;return;}fputc('0',reset);fclose(reset);
+        probe_start(stats.presents.load()+2,false);return;
+    }
+    full_capture.family=0;
     if((value=='5' || value=='6' || value=='7' || value=='8' || value=='9' || value=='A' || value=='B' || value=='C') && tablet && tablet[0]=='1' && probe.repeat_captures<16){
         probe.repeat_mode=true;probe.compact=value!='5';probe.spell_depth_test=value=='7';probe.spell_cull_test=value=='8' || value=='B';probe.spell_no_tests=value=='9';probe.spell_empty_fragment=value=='A' || value=='B';probe.spell_prepass_no_depth_write=value=='C';++probe.repeat_captures;
         FILE *reset=fopen((probe.base+"/gfx-codex-probe").c_str(),"wb");

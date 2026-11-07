@@ -36,6 +36,7 @@ extern "C" int xbg_completion_wait_selftest(char *report,size_t bytes);
 #include "xbg_spirv_stencil.h"
 #include "xbg_boss_interface.h"
 #include "xbg_compaction_sum.h"
+#include "xbg_capture_layout.h"
 #include "xbg_indirect_template.h"
 #include "../nvn/nvn_cover.h"
 extern "C" {
@@ -169,7 +170,7 @@ bool storage_without_format_listed(VkFormat f){
 uint64_t last_attachment_trace=UINT64_MAX;
 struct Capture {
     std::string directory;FILE *trace=nullptr;uint64_t frame=0,bytes=0;
-    unsigned events=0;bool active=false,probe=false;
+    unsigned events=0,errors=0;bool active=false,probe=false,full=false;
     ~Capture(){if(trace)fclose(trace);}
 } capture;
 constexpr uint64_t capture_limit=64ull*1024*1024;
@@ -187,12 +188,13 @@ void capture_data(const char *label,const void *data,size_t bytes){
     // Reserve space for the presented image in explicit multi-pass probes;
     // early intermediate ROIs must not consume the complete capture budget.
     const bool presented=capture.probe && strstr(label,"-present-s");
-    const uint64_t budget=capture.probe && !presented?capture_limit-1024u*1024u:capture_limit;
-    if(capture.bytes>budget || bytes>budget-capture.bytes){capture_log("SKIP label=%s bytes=%zu reason=capture-budget",label,bytes);return;}
+    const uint64_t budget=capture.full?256ull*1024*1024:capture.probe && !presented?capture_limit-1024u*1024u:capture_limit;
+    if(capture.bytes>budget || bytes>budget-capture.bytes){++capture.errors;capture_log("SKIP label=%s bytes=%zu reason=capture-budget",label,bytes);return;}
     char leaf[256];snprintf(leaf,sizeof(leaf),"f%llu-e%u-%s.bin",(unsigned long long)capture.frame,capture.events,label);
     std::string path=capture.directory+"/"+leaf;FILE *file=fopen(path.c_str(),"wb");
-    if(!file){capture_log("IO_ERROR file=%s",leaf);return;}
+    if(!file){++capture.errors;capture_log("IO_ERROR file=%s",leaf);return;}
     size_t written=fwrite(data,1,bytes,file);int closed=fclose(file);capture.bytes+=written;
+    if(written!=bytes || closed)++capture.errors;
     capture_log("FILE name=%s bytes=%zu requested=%zu closed=%d",leaf,written,bytes,closed);
 }
 // Diagnostic reads must remain available after runtime's fatal callback performs
@@ -1749,6 +1751,9 @@ void fire_trace_hist_buffer(const std::string &,unsigned,unsigned,unsigned,const
 void fire_trace_sort_uniform(const std::string &,unsigned,unsigned,unsigned,const Buffer &,size_t,size_t);
 void probe_texel_buffer(const std::string &shader,unsigned stage,unsigned binding,unsigned element,const Buffer &source,VkFormat format,uint64_t guest,uint64_t full_bytes,bool resident);
 void probe_bind(Image &im,const view_t *view,bool storage,uint32_t stage,uint32_t binding,VkImageView image_view,const std::string &shader);
+void probe_full_buffer(const std::string &,unsigned,unsigned,unsigned,const Buffer &,uint64_t,uint64_t,VkFormat,bool);
+void probe_full_image(Image &,VkImageView,unsigned,unsigned,unsigned,bool,const std::string &);
+bool probe_full_target();
 // Address-ordered index of image storage, rebuilt lazily when images change.
 struct ImageRange {uint64_t begin,end;Image *image;};
 std::vector<ImageRange> image_index;bool image_index_dirty=true;uint64_t image_index_maxlen=0;
@@ -2231,7 +2236,8 @@ const RegisteredTexture &null_texture(const xbg_shader_binding &b){
 
 /* SHA-256 over the original NVN 0x880-byte control segment. */
 std::string control_key(const void *data){char key[17];need(xbg_shader_control_key(data,key)==0,"Missing shader control segment");return key;}
-struct Shader {std::string key;uint32_t stage;VkShaderModule module{};std::vector<xbg_shader_binding> bindings;std::vector<uint32_t> inputs,input_classes;std::vector<uint8_t> c1;
+bool probe_shader_requested(const std::string &key);
+struct Shader {std::string key;uint32_t stage;VkShaderModule module{};std::vector<xbg_shader_binding> bindings;std::vector<uint32_t> inputs,input_classes,probe_words;std::vector<uint8_t> c1;
     std::set<uint32_t> storage_writes; // Vulkan bindings of storage buffers the SPIR-V may write
     bool discards=true; // fragment shader may kill/demote (conservative default)
     XbgRasterFacts raster; // position input (vertex), declared outputs and SampleMask (fragment): first_draw_covers
@@ -2511,6 +2517,9 @@ Shader *load_shader(const void *control){
     {bool unknown=false;p->storage_writes=spirv_storage_writes(words,unknown);if(unknown){for(auto &b:p->bindings)if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)p->storage_writes.insert(b.binding);}}
     if(h.stage==0){p->input_classes.resize(p->inputs.size());need(xbg_vertex_input_classes(words.data(),words.size(),p->inputs.data(),p->inputs.size(),p->input_classes.data())==0,"Unsupported vertex input scalar interface");}
     load_t3=timing_clock();
+    // Retain the exact final bytes passed below, only for the explicit Honor
+    // diagnostic's eight target modules. Never reconstruct a cache hit offline.
+    if(probe_shader_requested(key))p->probe_words=words;
     VkShaderModuleCreateInfo ci{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};ci.codeSize=words.size()*4;ci.pCode=words.data();VK(vkCreateShaderModule(cfg.device,&ci,nullptr,&p->module));warm::register_module(p->module,key);Shader *out=p.get();shaders.emplace(key,std::move(p));++stats.shader_loads;++hud::shaders;const uint64_t load_t4=timing_clock();hud::shader_ns+=load_t4-load_t0;
     xbg_logf("NVN shader %s stage=%u loaded words=%zu ms read=%.2f rewrite=%.2f analyse=%.2f module=%.2f reused=%d",key.c_str(),h.stage,words.size(),(load_t1-load_t0)/1e6,(load_t2-load_t1)/1e6,(load_t3-load_t2)/1e6,(load_t4-load_t3)/1e6,int(have_reused));return out;
 }
@@ -3311,6 +3320,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                 if(capture.active){char label[100];snprintf(label,sizeof(label),"st%u-bind%u-el%u-buffer",st,b.binding,element);capture_log("BUFFER label=%s shader=%s nvnStage=%u sourceKind=%u slot=%u guest=%p copied=%zu descriptorBytes=%zu bufferOffset=%zu",label,shader.key.c_str(),ns,b.source,slot,data,copy,n,buffer_offset);capture_data(label,static_cast<const uint8_t*>(buffer->mapped)+buffer_offset,n);}
                 if(out.indirect_input && b.binding==41 && b.source==XBG_SOURCE_UNIFORM && element==0 && copy>=16 && indirect_cpu_clean(uint64_t(data),16)){memcpy(out.indirect_input->params,static_cast<const uint8_t*>(buffer->mapped)+buffer_offset,16);out.indirect_input->params_valid=true;}
                 probe_buffer(shader.key,st,b.binding,element,static_cast<const uint8_t*>(buffer->mapped)+buffer_offset,n);
+                probe_full_buffer(shader.key,st,b.binding,element,*buffer,buffer->offset+buffer_offset,n,VK_FORMAT_UNDEFINED,is_storage && shader.storage_writes.count(b.binding));
                 if(fire_trace_active())fire_trace_uniform_gpu(shader.key,st,b.binding,element,*buffer,buffer_offset,n);
                 if(fire_trace_active())fire_trace_sort_uniform(shader.key,st,b.binding,element,*buffer,buffer_offset,n);
                 // #region agent log
@@ -3366,6 +3376,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                         if(res){if(desc_memo_recording)desc_memo_texel.push_back({record,record->revision,uint64_t(texture.mem),uint64_t(texture.L.size),res->gen,uint32_t(tf)});
                             texel_views.push_back(res->view);write.pTexelBufferView=&texel_views.back();
                             if(probe_is_active())probe_texel_buffer(shader.key,st,b.binding,element,res->buffer,tf,uint64_t(texture.mem),texture.L.size,true);
+                            probe_full_buffer(shader.key,st,b.binding,element,res->buffer,res->buffer.offset,texture.L.size,tf,false);
                             if(fire_trace_active()){if(shader.key=="8b27994fdc0e32c9" && st==0 && b.binding==12 && !element)xbg_logf("FIRE_SOURCE frame=%llu resident=1 guesthash=%llx srchash=%llx",(unsigned long long)stats.presents.load(),(unsigned long long)hash_memory(texture.mem,4096),(unsigned long long)hash_memory(res->buffer.mapped,4096));fire_trace_texel(shader.key,st,b.binding,element,res->buffer,texture.L.size,uint64_t(texture.mem));}}
                         else desc_memo_texel_fail=true;}   // the set then holds a per-frame view: not memoized
                     // gfx-flame-diag: census of the raw particle data the flame vertex shaders fetch (the binding the
@@ -3514,6 +3525,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                     }
                     // #region agent log
                     // Is the buffer the GPU reads the same bytes the guest holds right now? (read-only texel buffers)
+                    probe_full_buffer(shader.key,st,b.binding,element,*buf,buf_offset,bytes,tf,b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER);
                     if(flame_diag_enabled && b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER && buf->mapped && base && bytes && bytes<=65536){unsigned ci=compute?1:0;const uint8_t *gp=static_cast<const uint8_t*>(buf->mapped)+(buf_offset-buf->offset),*hp=reinterpret_cast<const uint8_t*>(uintptr_t(base));
                         ++fdiag_mm[ci][0];if(gp==hp)++fdiag_mm[ci][1];else if(memcmp(gp,hp,size_t(bytes))!=0){if(!fdiag_mm[ci][2])fdiag_mm[ci][3]=b.binding;++fdiag_mm[ci][2];}}
                     // #endregion
@@ -3540,6 +3552,8 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                             if((b.flags&1) && !(listed && cfg.enabled_core.shaderStorageImageWriteWithoutFormat))xbg_fatalf("Image format %d lacks formatless-write support without VK_KHR_format_feature_flags2 (shader=%s listedWithStorageImage=%d shaderStorageImageWriteWithoutFormat=%u)",int(viewed),shader.key.c_str(),int(listed),unsigned(cfg.enabled_core.shaderStorageImageWriteWithoutFormat));
                             if((b.flags&2) && !(listed && cfg.enabled_core.shaderStorageImageReadWithoutFormat))xbg_fatalf("Image format %d lacks formatless-read support without VK_KHR_format_feature_flags2 (shader=%s listedWithStorageImage=%d shaderStorageImageReadWithoutFormat=%u)",int(viewed),shader.key.c_str(),int(listed),unsigned(cfg.enabled_core.shaderStorageImageReadWithoutFormat));}im.gpu_written=true,provenance_write(im,__LINE__);im.last_write=++write_seq;}
                     probe_bind(im,registered.has_view?&registered.view:nullptr,b.type==VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,st,b.binding,ii.imageView,shader.key);
+                    probe_full_image(im,ii.imageView,st,b.binding,element,b.type==VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,shader.key);
+                    if(probe_full_target())capture_log("FULL_SAMPLER_BIND event=%u stage=%u binding=%u element=%u sampler=%p imageView=%p layout=%u",capture.events,st,b.binding,element,(void*)ii.sampler,(void*)ii.imageView,unsigned(ii.imageLayout));
                     image_infos.push_back(ii);write.pImageInfo=&image_infos.back();
                     if(img_cacheable){img_cache.emplace(ikey,ImgEntry{&texture,&im,ii.imageView,ii.sampler,record,record->revision});++img_cache_misses;}
                 }
@@ -3895,7 +3909,7 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
         prim=4;first=0;count=triangles.count;indexed=&quad_indexed;
     }
     need(!indexed || indexed->base_instance>=0,"Negative indexed draw base instance");
-    if(!gpu_args)probe_draw_begin(count,indexed?unsigned(indexed->instances):instances,indexed?unsigned(indexed->base_instance):first_instance);
+    if(!gpu_args || probe_full())probe_draw_begin(count,indexed?unsigned(indexed->instances):instances,indexed?unsigned(indexed->base_instance):first_instance);
     draw_base_instance=indexed?uint32_t(indexed->base_instance):first_instance;
     if(capture_begin("draw",stats.presents))capture_log("DRAW number=%llu vs=%s ps=%s prim=%d first=%d count=%d indexed=%u instances=%u baseInstance=%u baseVertex=%d",(unsigned long long)stats.draws.load(),state.shader[0]->key.c_str(),state.shader[4]?state.shader[4]->key.c_str():"none",prim,first,count,indexed!=nullptr,indexed?indexed->instances:instances,indexed?indexed->base_instance:first_instance,indexed?indexed->base_vertex:0);
     double ui_uy=0,ui_vs=1;g_ui_moff=0;g_ui_moff_addr=0;
@@ -4013,6 +4027,22 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
             if(ib->mapped && n){capture.active=true;capture_data(label,ib->mapped,n);capture.active=false;}
         }
     }
+    if(probe_full_target()){
+        capture_log("FULL_GEOMETRY event=%u pipeline=%p layout=%p set=%p primitive=%d first=%d count=%d indexed=%u indexType=%u baseVertex=%d indirect=%u",capture.events,(void*)pipeline.pipeline,(void*)d.pipeline_layout,(void*)d.set,prim,first,count,unsigned(indexed!=nullptr),unsigned(index_type),indexed?indexed->base_vertex:0,unsigned(gpu_args!=nullptr));
+        for(const auto &a:attributes)capture_log("FULL_ATTRIBUTE event=%u location=%u binding=%u format=%u offset=%u",capture.events,a.location,a.binding,unsigned(a.format),a.offset);
+        for(const auto &b:bindings)capture_log("FULL_VERTEX_LAYOUT event=%u binding=%u stride=%u rate=%u",capture.events,b.binding,b.stride,unsigned(b.inputRate));
+        for(const auto &s:stages)capture_log("FULL_PIPELINE_STAGE event=%u stage=%u module=%p",capture.events,unsigned(s.stage),(void*)s.module);
+        XbgPipelineKey definition;
+        if(xbg_graphics_pipeline_key(definition,ci,d.entry->definition.view(),p.definition->view())){
+            const std::string label="full-g"+std::to_string(capture.events)+"-effective-pipeline-key";
+            capture_log("FULL_PIPELINE_KEY event=%u label=%s words=%u actualCreationRequiresApiMatch=1",capture.events,label.c_str(),definition.count);
+            capture.active=true;capture_data(label.c_str(),definition.words,size_t(definition.count)*4);capture.active=false;
+        }else full_missing("pipeline-key","unsupported-definition");
+        for(const auto &v:vertex_buffers)full_capture.buffers.push_back({*v.second,v.second->offset,v.second->size,full_buffer_extent(*v.second),"vertex"+std::to_string(v.first),false});
+        if(ib)full_capture.buffers.push_back({*ib,ib->offset,ib->size,full_buffer_extent(*ib),"index",false});
+        if(gpu_args)full_capture.buffers.push_back({gpu_args->owned->view,gpu_args->offset,20,gpu_args->owned->chunk.size,"indirect",false});
+        full_before_draw(c.command,p);
+    }
     VkQueryPool occlusion{};uint32_t occlusion_index=0;const bool counting=state.count_samples && !no_occlusion_queries && !ab_off("occ");
     const bool spell_probe=probe_is_active() && probe.compact && state.shader[4] &&
         (state.shader[4]->key=="c0adc062e4b8e8fa" || state.shader[4]->key=="b7dd0f48aea00196");
@@ -4049,6 +4079,7 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
     if(ui_uy>0 || ui_vs!=1){long so=g_ui_moff!=0?lround(ui_uy*p.height):0;int64_t y0=sc.offset.y<=0?0:sc.offset.y+so,y1=ui_vs!=1?int64_t(p.height):int64_t(sc.offset.y)+sc.extent.height+so;   // 剪裁跟着下移；从顶边起的不动（宿主上提的贴顶控件） | the scissor moves down with it; ones starting at the top edge stay (controls the host lifted to the top)
         if(y1>int64_t(p.height))y1=p.height;if(y1<y0)y1=y0;sc.offset.y=int32_t(y0);sc.extent.height=uint32_t(y1-y0);}
     if(!bc.has_sc || memcmp(&bc.sc,&sc,sizeof sc)){vkCmdSetScissor(c.command,0,1,&sc);bc.sc=sc;bc.has_sc=true;}else ++binds_skipped;
+    if(probe_full_target())capture_log("FULL_DYNAMIC event=%u viewport=%g/%g/%g/%g/%g/%g scissor=%d/%d/%u/%u",capture.events,viewport.x,viewport.y,viewport.width,viewport.height,viewport.minDepth,viewport.maxDepth,sc.offset.x,sc.offset.y,sc.extent.width,sc.extent.height);
     for(auto &b:vertex_buffers){VkDeviceSize off=b.second->offset;if(b.first<16 && bc.vb[b.first]==b.second->buffer && bc.vbo[b.first]==off){++binds_skipped;continue;}
         vkCmdBindVertexBuffers(c.command,b.first,1,&b.second->buffer,&off);if(b.first<16){bc.vb[b.first]=b.second->buffer;bc.vbo[b.first]=off;}}
     pass_prof_draw(c.command);
@@ -6210,7 +6241,7 @@ static void xbg_present_texture_now(const win_t *window,const tex_t *texture){st
             }
         }
         memset(fdiag_draws,0,sizeof fdiag_draws);memset(fdiag_inst,0,sizeof fdiag_inst);memset(fdiag_binds,0,sizeof fdiag_binds);memset(fdiag_zero,0,sizeof fdiag_zero);memset(fdiag_nz,0,sizeof fdiag_nz);memset(fdiag_sig,0,sizeof fdiag_sig);memset(fdiag_mem,0,sizeof fdiag_mem);memset(fdiag_bytes,0,sizeof fdiag_bytes);fdiag_skip=0;fdiag_state_seen=false;fdiag_c5mask=0;fdiag_c5min=0xffffffffull;fdiag_c5max=0;fdiag_c5n=0;fdiag_tab_n=0;fdiag_ibuf=fdiag_ibytes=0;memset(fdiag_small_mem,0,sizeof fdiag_small_mem);memset(fdiag_small_bytes,0,sizeof fdiag_small_bytes);fdiag_b18=~0u;fdiag_rthash=1469598103934665603ull;fdiag_texhash=0;fdiag_geom_seen=false;memset(fdiag_vb_addr,0,sizeof fdiag_vb_addr);memset(fdiag_vb_size,0,sizeof fdiag_vb_size);memset(fdiag_big_bytes,0,sizeof fdiag_big_bytes);memset(fdiag_big_mem,0,sizeof fdiag_big_mem);memset(fdiag_big_nz,0,sizeof fdiag_big_nz);memset(fdiag_big_pending,0,sizeof fdiag_big_pending);fdiag_img_logged=false;fdiag_ds_tex=nullptr;fdiag_clear_color=fdiag_clear_depth=0;fdiag_clear_dv=-1.f;fdiag_fs_n=0;fdiag_u15w=fdiag_u15x=fdiag_u31w=~0u;fdiag_fetch_n=0;fdiag_fetch_mem=0;fdiag_c1w=fdiag_raw_c5=fdiag_raw_c0=~0u;fdiag_c5s_n=fdiag_w_small=fdiag_w_huge=0;fdiag_b18_mem=fdiag_b18_bytes=fdiag_b18_sig=fdiag_b18_nz=0;memset(fdiag_tb,0,sizeof fdiag_tb);fdiag_b24_dead=fdiag_b24_live=fdiag_b24_best=fdiag_b24_sane=0;fdiag_8b_nt=0;
-    }frame_trace_record(texture->serial,im.last_write,r);if(pass_prof_enabled && stats.presents.load()==pass_prof_frame)xbg_logf("NVN GPASS boundary frame=%llu slots=%u skipped_slots=%u reserved_queries=%u max_queries=%u max_slots=%u",(unsigned long long)pass_prof_frame,pass_prof_slots,pass_prof_skipped_slots,pass_prof_queries,pass_prof_query_limit,pass_prof_slot_limit);uint64_t total_present_ns=timing_clock()-present_begin;perf.present_cpu_ns+=(total_present_ns>pace_ns?total_present_ns-pace_ns:0);perf_frame();if(provenance_file && stats.presents.load()>=provenance.target)provenance_close("END");if(capture.trace && stats.presents==capture.frame){capture_log("END frame=%llu events=%u bytes=%llu presentedSerial=%llu image=%p",(unsigned long long)capture.frame,capture.events,(unsigned long long)capture.bytes,(unsigned long long)texture->serial,(void*)im.image);fclose(capture.trace);capture.trace=nullptr;capture.active=false;capture.probe=false;xbg_logf("NVN one-frame capture complete frame=%llu events=%u bytes=%llu",(unsigned long long)capture.frame,capture.events,(unsigned long long)capture.bytes);}}timing_boundary();}
+    }frame_trace_record(texture->serial,im.last_write,r);if(pass_prof_enabled && stats.presents.load()==pass_prof_frame)xbg_logf("NVN GPASS boundary frame=%llu slots=%u skipped_slots=%u reserved_queries=%u max_queries=%u max_slots=%u",(unsigned long long)pass_prof_frame,pass_prof_slots,pass_prof_skipped_slots,pass_prof_queries,pass_prof_query_limit,pass_prof_slot_limit);uint64_t total_present_ns=timing_clock()-present_begin;perf.present_cpu_ns+=(total_present_ns>pace_ns?total_present_ns-pace_ns:0);perf_frame();if(provenance_file && stats.presents.load()>=provenance.target)provenance_close("END");if(capture.trace && stats.presents==capture.frame){capture_log("END frame=%llu events=%u bytes=%llu presentedSerial=%llu image=%p",(unsigned long long)capture.frame,capture.events,(unsigned long long)capture.bytes,(unsigned long long)texture->serial,(void*)im.image);fclose(capture.trace);capture.trace=nullptr;capture.active=false;capture.probe=false;capture.full=false;xbg_logf("NVN one-frame capture complete frame=%llu events=%u bytes=%llu",(unsigned long long)capture.frame,capture.events,(unsigned long long)capture.bytes);}}timing_boundary();}
 extern "C" void xbg_legacy_read_texels(const tex_t *t,unsigned level,unsigned layer,const NVNcopyRegion *r,uint8_t *dst,size_t row,size_t image){gfx_drain();std::lock_guard<std::recursive_mutex> lock(mutex);preflight_cpu_reads();need(t&&r&&dst,"Invalid ReadTexels arguments");auto found=images.find(t->serial);
     if(found==images.end() && t->d.format==0x12 && t->mem){
         bool gpu_alias=false;
