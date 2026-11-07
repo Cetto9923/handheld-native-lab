@@ -18,6 +18,16 @@ final class DeviceProfile {
         return id.equals("tablet_sd8s") || id.equals("phone_sd8g3");
     }
 
+    // A freeform window can be narrower than 600dp on the Honor tablet. Its
+    // size must not disable the device's required GPU compatibility path.
+    static int formFactorWidthDp(int physicalWidth, int physicalHeight, int stableDensityDpi,
+                                 int windowWidthDp) {
+        if (physicalWidth <= 0 || physicalHeight <= 0 || stableDensityDpi <= 0)
+            return windowWidthDp;
+        return (int)Math.min(Integer.MAX_VALUE,
+                (long)Math.min(physicalWidth, physicalHeight) * 160 / stableDensityDpi);
+    }
+
     static DeviceProfile select(String soc, int smallestWidthDp, String override) {
         String id = override == null ? "" : override.trim().toLowerCase(Locale.ROOT);
         if (id.equals("handheld_mid")) return new DeviceProfile(id, 720, 30);

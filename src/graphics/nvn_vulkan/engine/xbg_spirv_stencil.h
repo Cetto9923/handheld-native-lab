@@ -61,12 +61,12 @@ inline constexpr XbgFfrsIntegerFact xbg_ffrs_integer_facts[]={
     {"3b6302a58b86a34a",47,1,true},
     {"da4ffe0a328303aa",17,1,true},
     // Particle vertex shaders (stage 0): Niagara raw uint instance index buffers
-    // Group A (campfire flame & spell dome/slash): binding 12, 18, 24
+    // Group A: raw instance/lookup words at B12/B24. Original-run captures
+    // 8691/23325 identify B18 as native R16_SFLOAT/range2 for 26ae,
+    // 8b27 and 9528: leave that numeric half fetch float, like the pairs below.
     {"26aef111ba3b3c4e",12,1,false},
-    {"26aef111ba3b3c4e",18,1,false},
     {"26aef111ba3b3c4e",24,1,false},
     {"8b27994fdc0e32c9",12,1,false},
-    {"8b27994fdc0e32c9",18,1,false},
     {"8b27994fdc0e32c9",24,1,false},
     // These spell/LIMIT slot129 descriptors are half-float attributes, not raw
     // instance words. Keep binding18 float so its native R16_SFLOAT/range2
@@ -96,23 +96,19 @@ inline constexpr XbgFfrsIntegerFact xbg_ffrs_integer_facts[]={
     {"c10d897690572731",12,1,false},
     {"92bc83108242870a",12,1,false},
     {"9528f530e1c95ce5",12,1,false},
-    {"9528f530e1c95ce5",18,1,false},
     {"9528f530e1c95ce5",24,1,false},
-    // Group B (particle effects): binding 18, 24, 30
+    // Group B: the five observed particle shaders have raw B18/B30 but numeric
+    // R16_SFLOAT/range2 B24 (same captures). Do not extend this fact to fe033,
+    // whose B24 was not observed; retain its separate existing mapping below.
     {"be4e89a0687ae37c",18,1,false},
-    {"be4e89a0687ae37c",24,1,false},
     {"be4e89a0687ae37c",30,1,false},
     {"431a6183c3565f66",18,1,false},
-    {"431a6183c3565f66",24,1,false},
     {"431a6183c3565f66",30,1,false},
     {"1e222af40b26bd25",18,1,false},
-    {"1e222af40b26bd25",24,1,false},
     {"1e222af40b26bd25",30,1,false},
     {"b0284572b5f180f2",18,1,false},
-    {"b0284572b5f180f2",24,1,false},
     {"b0284572b5f180f2",30,1,false},
     {"6018ff2b44b763d7",18,1,false},
-    {"6018ff2b44b763d7",24,1,false},
     {"6018ff2b44b763d7",30,1,false},
     {"fe033d948255d9ff",18,1,false},
     {"fe033d948255d9ff",24,1,false},

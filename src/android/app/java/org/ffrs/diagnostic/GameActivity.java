@@ -646,12 +646,17 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         }
         String soc = Build.VERSION.SDK_INT >= 31 ? Build.SOC_MODEL : Build.HARDWARE;
         int smallestWidthDp = getResources().getConfiguration().smallestScreenWidthDp;
-        DeviceProfile profile = DeviceProfile.select(soc, smallestWidthDp, override);
         Display display = getWindowManager().getDefaultDisplay();
         Display.Mode mode = display == null ? null : display.getMode();
+        int formFactorWidthDp = DeviceProfile.formFactorWidthDp(
+                mode == null ? 0 : mode.getPhysicalWidth(),
+                mode == null ? 0 : mode.getPhysicalHeight(),
+                DisplayMetrics.DENSITY_DEVICE_STABLE, smallestWidthDp);
+        DeviceProfile profile = DeviceProfile.select(soc, formFactorWidthDp, override);
         Log.i(TAG, "device_profile id=" + profile.id + " soc=" + soc
                 + " override=" + (override.isEmpty() ? "none" : override)
                 + " smallest_width_dp=" + smallestWidthDp
+                + " form_factor_width_dp=" + formFactorWidthDp
                 + " target_short_edge=" + profile.targetShortEdge
                 + " target_fps=" + profile.targetFps
                 + " display_short_edge=" + (mode == null ? 0 : Math.min(mode.getPhysicalWidth(), mode.getPhysicalHeight()))

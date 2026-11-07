@@ -6,6 +6,16 @@ public class DeviceProfileContract {
             throw new AssertionError(soc + ": " + p.id);
     }
     public static void main(String[] args) {
+        int tabletWidth = DeviceProfile.formFactorWidthDp(3000, 1920, 400, 580);
+        if (tabletWidth != 768) throw new AssertionError("Honor physical width");
+        check("SM8635", tabletWidth, "", "tablet_sd8s", 1080, 60);
+        check("SM8635", DeviceProfile.formFactorWidthDp(1920, 3000, 400, 420), "", "tablet_sd8s", 1080, 60);
+        check("SM8635", DeviceProfile.formFactorWidthDp(1080, 2400, 420, 580), "", "handheld_mid", 720, 30);
+        check("SM8635", tabletWidth, "handheld_mid", "handheld_mid", 720, 30);
+        if (DeviceProfile.formFactorWidthDp(0, 0, 320, 580) != 580
+                || DeviceProfile.formFactorWidthDp(3000, 1920, 0, 580) != 580
+                || DeviceProfile.formFactorWidthDp(1200, 2000, 320, 0) != 600)
+            throw new AssertionError("physical form factor fallback/boundary");
         check("SM8635", 768, "", "tablet_sd8s", 1080, 60);
         check("MT6897", 420, "", "handheld_mid", 720, 30);
         check(null, 0, null, "handheld_mid", 720, 30);

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="org.ffrs.gamewindow" android:versionCode="2" android:versionName="1.0.1-honor">
+    package="org.ffrs.gamewindow" android:versionCode="3" android:versionName="1.0.2-honor">
     <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="34" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
