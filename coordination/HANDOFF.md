@@ -1,3 +1,27 @@
+# Honor 稳定实场仍35.22fps；已有CPU计时完成并恢复普通状态 — 2026-11-08T01:09:42.038814+08:00
+
+同普通APK2a4/source214fd79、marker0/target60/defer0/fence0，正常Continue同一野外、PAD隐藏。新45.996758629秒无录屏/无输入稳定窗口1621独立新帧，0重复/失败/跳过，35.219873fps；p50 28.20849ms/p95 31.279583/p99 32.945052/max37.122084。全部卡顿保留，结果cpu-profile/stable-result.json及原CSV/bootlog，不能用初进入场景/带计时器窗口约50fps替代暖场结论。
+
+已有CPU计时6002..6031共30帧完成，描述符4.180031ms/帧、snapshot1.255060、draw1.357583、other2.636567；elapsed时钟不等于线程CPU利用率。CreateThread+SetThreadName把25124对应RHIThread，单次ps lifetime84.3%仅作为候选线索，不作瞬时利用率。run-as taskset只读查询实际Permission denied，未设置affinity或绕权限。拟以Android官方PerformanceHint的有开关候选继续区分稳态调度与工作量成本，尚未实现/验证，不能预报提升。
+
+PID17815实际正常启动；第一次pidof1只是异步启动检查过早，不冒认崩溃。系统窗口模式已通过FFRS自身暴露的最大化按钮恢复全屏，未改其他包/全局模式，也没有证据断言另一writer抢占。CPU触发marker已改名保留为gfx-cpu-profile-measured-20261108，当前不再启用，PAD隐藏。无新install，基线APK/数据ZIP/tag不变；新增脚本仅离线分析，不进APK。
+
+本阶段22附件/88文件raw布局审计和防御/爆炎/召唤有限自测见下一条。CAPTURE_COMPLETE=NO、全VIEW_VALIDITY=NOT_FIXED、既有FIRST_WRONG结论及Dark/Limit/Boss有限PASS不变；shield魔法/独立QA/400Pro实机仍NOT_RUN。AUDIO依用户NOT_RUN，常设NONE(enum10)/fence0/缓冲/timeout重试/重开流保持，整刀未PASS，60仍开放。唯一writer继续，没有原始额度错误。
+
+# Honor 追加实战回归与实际导出器离线审计 — 2026-11-08T00:59:52.768136+08:00
+
+源码基线214fd794fb436de14155e8954908685ae2120c21/tag honor-graphics-20261107与普通APK2a4c811d88eb0271fd1c5039bc9a98eaac2c5d95f95499f8f22787b1a1108201不变；本阶段未装包/改生产渲染/声音/存档，唯一writer继续。新证据在 `.local/honor-device-profiles/flame-20261104/dark-shader-retranslate-20261107/postbaseline-20261108/`。
+
+同普通marker0/target60/defer0实战新增有限自测：Defend确认后受击197、HP5199→5002；独立爆炎橙金火焰与5718伤害；巴哈姆特召唤蓝白光束/紫色碎片/第一次协同攻击可见，未见旧大黑条。各录像大小/SHA/检查时段在boss-battle/visual-result.json。防御动作不等于护盾魔法（当前菜单没有后者，仍NOT_RUN），召唤无Switch原版独立对照，不作全战/全游戏PASS。首150秒boss-battle.mp4仅对话/入战，实际防御在shield.mp4；followup/final-move两片仅到后续对话/召唤教程，真正召唤在summon.mp4，避免错报相位。最初入第一幕短闪仍未全闭合。
+
+离线直接解出现有replay-ubo.apk（SHA1d30b246...、40,732,155B）的libgfxrecon-replay.so（167,629,824B，SHA20698afc9264251ec00699fe826b57c19187c4b6cbdd447eff7a7d6498e0cccf），没有重建/下载捕获工具。实际ARM64 CopyImageBuffer0x1c0277c/780将rowLength/imageHeight置0后push区域，核实紧密行；GetImageResourceSizesOptimal使用临时image分配尺寸作为子资源步距，额外文件尾不是像素。actual DumpImageToFile0x15fd888/894/898已有raw-stencil条件，区别于上游无条件skip；先前“现用导出器漏stencil”的临时推断已被二进制和各组8个真实stencil文件否定，不能沿用。
+
+新离线只读脚本scripts/graphics/audit_gfxr_attachment_prefix.py对同trace原VS重放original-gpu与双方重译both-full-gpu核22个附件身份、88个文件，排除分配尾部。color1816568从0写出恢复5259个像素单元，color1818253从0恢复145165；前者HDR有效区域NaN0/Inf0/max11704。1384×780×4逻辑长度4318080，文件4444160的126080尾字节不参与比较。D24只按存储单元统计，未把未用bit或未初始化源区域当数值深度证明。raw-layout-audit/attachment-prefixes.json、binary-layout-contract.json、实际反汇编/命令与失败的symbol-only首尝试均保留。原始捕获未改，两个对照均是重放输出，不能冒充原运行独立附件。
+
+CAPTURE_COMPLETE=NO（原运行独立before/after、全别名/写世代和VK_NOT_READY差异仍未闭合；本次关闭的是这些文件的raw行距/尾部疑点）。VIEW_VALIDITY=NOT_FIXED全范围；FIRST_WRONG保留此前Dark/Limit丢失buffer读取→VS Position，Boss精确CS共享归约重复计数证据，不引入新根因。VISUAL_DARK/LIMIT/BOSS原有限PASS保留；GUARD/FIRE/SUMMON本新增范围有限PASS，shield魔法/独立QA/400Pro实机NOT_RUN。AUDIO用户明确NOT_RUN；NONE(enum10)、fence0、burst缓冲、TIMEOUT重试/变更重开未动，不报整刀PASS。
+
+60仍未达标（前次暖场35.27487）；本阶段用现有CPU计时入口6000/30，仅同APK冷启/Continue，不跳同步或重建工具。首次立即pidof返回1并不代表崩溃，后来PID17815活着；冷启进入系统窗口模式被其他窗口盖住，amstart仅投递existing task未改模式，已只点击FFRS自己暴露的最大化按钮恢复全屏，未操作其他包。标题Continue已实际查看并正常确认、PAD隐藏；有效实场计时结果仍待读取，不用遮盖/加载/菜单窗作FPS。
+
 # Honor 图形修复基线已提交，APK/数据/手册已制作 — 2026-11-08T00:06:40.658359+08:00
 
 代码基线已实际本地提交 `214fd794fb436de14155e8954908685ae2120c21`（64个显式文件，包含已认领的Honor dirty依赖与本刀修复）；本地annotated tag `honor-graphics-20261107` 指向同提交。未push、未切分支/新树、未reset/clean/stash、未碰RG工作树/设备。源码检查通过；原Markdown双空格换行保持，未为消除格式检查改写任务提词。安装APK仍精确为2a4c811d88eb0271fd1c5039bc9a98eaac2c5d95f95499f8f22787b1a1108201，提交前后所有实际build输入源码SHA保持一致。

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-11-07T22:46:49.178007+08:00",
+  "updated_at": "2026-11-08T01:09:42.038814+08:00",
   "phase": "Honor dark VS dropped-read cause localized in replay; production shader and Limit/audio gates open",
   "coordinator": "Codex /root takeover",
   "integration_branch": "work/rg477m-native",
@@ -1514,16 +1514,17 @@
         "scripts/distribution/package_honor_portable.py",
         ".local/honor-delivery-20261107/",
         "BASELINE-HONOR-20261107.md",
-        "coordination/results/HONOR-EFFECT-BUNDLES-20261107.json"
+        "coordination/results/HONOR-EFFECT-BUNDLES-20261107.json",
+        "scripts/graphics/audit_gfxr_attachment_prefix.py"
       ],
       "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
       "branch": "work/honor-gtpro-30hz",
       "acquired_at": "2026-11-07T09:31:51.768908+08:00",
-      "checkpoint": "Graphics baseline commit214fd794/taghonor-graphics-20261107 created/no push; exact2a4 APK ordinarymarker0 target60 Dark/fullLimit/Bossentry selftestPASS, audio/phone/QA/shield/openingflash notclosed. Private16.918GB ZIP/all40547CRC-SHA and40536deviceequal+11patch verified, releaseAPK/manual ready; data excludedGit. DevicePID28429 Bossdialogue PADhidden/deferdefault0/no backgroundinput.60NOTMET35.27fps, continue from profiling not capture repeats. Solewriter retained.",
+      "checkpoint": "CPUprofile30frames complete, ordinary2a4 clean45.9968s1621newframes35.219873fps; original marker backedup/inactive, PID17815 field/PADhidden. Captureraw22/88 auditedactualbinary tightrow/stencil, guard/fire/summon limitedPASS. Next bounded ADPF on/off candidate after checkpoint commit; no perfsourceyet, no audio acceptance.",
       "write_state": "ACTIVE",
       "ownership_retained": true,
       "device_authority": "Latest user: device idle, can debug any time without asking; stop only actual conflict/disconnect. Honor only, preserve data.",
-      "checkpoint_at": "2026-11-08T00:06:40.658359+08:00",
+      "checkpoint_at": "2026-11-08T01:09:42.038814+08:00",
       "source_baseline_commit": "214fd794fb436de14155e8954908685ae2120c21",
       "source_baseline_tag": "honor-graphics-20261107"
     }
@@ -5327,9 +5328,25 @@
     "data_sha256": "01a338c52b79869c04f486eb1d42ce926fa6935d28d19371ca0a7c6cd10411af",
     "delivery_directory": ".local/honor-delivery-20261107/release",
     "visual_scope": "ordinary tutorial Dark/fullLimit/Bossentry selftest PASS; no whole-game/independent QA",
-    "fps60": "NOT_MET35.27487",
+    "fps60": "NOT_MET35.219873 latest same2a4",
     "audio": "NOT_RUN user",
     "Honor400Pro": "NOT_RUN",
     "updated_at": "2026-11-08T00:06:40.658359+08:00"
+  },
+  "honor_postbaseline_20261108": {
+    "updated_at": "2026-11-08T01:09:42.038814+08:00",
+    "guard": "PASS limited Defend+hit",
+    "fire": "PASS limited Explosion",
+    "summon": "PASS limited Bahamut summon+first assist",
+    "shield_magic": "NOT_RUN",
+    "audio": "NOT_RUN user",
+    "device_state": "PID17815 ordinary2a4 full-screen stationary same field/PADhidden; CPUmarker renamed gfx-cpu-profile-measured-20261108, no active profile/recorder/input script",
+    "evidence": ".local/honor-device-profiles/flame-20261104/dark-shader-retranslate-20261107/postbaseline-20261108",
+    "CAPTURE_COMPLETE": "NO",
+    "VIEW_VALIDITY": "NOT_FIXED",
+    "fps60": "NOT_MET35.219873 latest45.9968s1621newframes",
+    "raw_layout_audit": "22attachments/88files; tightrow verified actual binary, allocation tail excluded; rawstencil8files percondition present",
+    "cpu_profile": "DONE30frames, typedscope counters; no direct speedup",
+    "next": "bounded opt-in official ADPF hint candidate, not implemented yet"
   }
 }

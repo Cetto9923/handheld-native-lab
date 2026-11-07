@@ -32,3 +32,9 @@ Honor400Pro packaging reference: [manufacturer specs](https://www.honor.com/cn/p
 - 官方 Honor 400 Pro [区域规格页](https://www.honor.com/sd/phones/honor-400-pro/spec/)本会话已读：Snapdragon 8 Gen 3、Adreno 750。据此增加SM8650配置选择及精确Adreno750 helper-inline门，并复用已有精确模块形状守卫的histogram/interface修复；不外推735的深度复用特殊处理；本机未连接400Pro，HOST选择测试不是实机验收。
 - JNI保留现有游戏数据自动发现/存档根，只在未给显式gfx-shader-archive marker时选择NSO旁已有非空正规shaders.hnla。数据源不变，显式0仍禁用；loose app shaders、loose game shaders均先于归档。已有XbgShaderArchive::open严格检查magic/sorted keys/无重叠连续extent/文件末尾，缺项不伪造。
 - 60目标暖野外实测32.980182 distinct work fps，未达标；无重复呈现、跳过、失败。CPU/GPU串行等待只提供性能线索，不能据此删同步。后续已有defer-events=2 opt-in只作受控对照，不自动成为修复或交付默认。
+
+## 2026-11-08 raw附件布局与实际导出器核对
+
+- [固定c081f1b的VulkanResourcesUtil](https://raw.githubusercontent.com/LunarG/gfxreconstruct/c081f1b/framework/graphics/vulkan_resources_util.cpp)：CopyImageBuffer采用rowLength/imageHeight=0；子资源步距来自临时image分配尺寸。[VkBufferImageCopy](https://docs.vulkan.org/refpages/latest/refpages/source/VkBufferImageCopy.html)说明0表示按extent紧密排列。此次也核对了现用1d30 APK实际ARM64零值写入，不能仅因源码相似继承结论。逻辑前缀与分配尾分别核算，后者不作像素。
+- [固定c081f1b DumpImageToFile](https://raw.githubusercontent.com/LunarG/gfxreconstruct/c081f1b/framework/decode/vulkan_replay_dump_resources_common.cpp)原版跳过stencil；现用1d30二进制已加raw条件，且两组8个stencil文件实际存在。以上游原版代替修改后工具作出的“stencil缺失”推断已否定。实际binary-layout-contract/88文件核验位于postbaseline-20261108/raw-layout-audit。只做离线解出现有APK，没有重建/下载工具。
+- [固定c081f1b资源导出说明](https://raw.githubusercontent.com/LunarG/gfxreconstruct/c081f1b/vulkan_dump_resources.md)的功能范围是重放；本次两组附件仍均属重放，原运行独立附件/世代链缺口不能据此改为CAPTURE_COMPLETE。
