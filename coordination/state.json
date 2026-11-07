@@ -1519,11 +1519,13 @@
       "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
       "branch": "work/honor-gtpro-30hz",
       "acquired_at": "2026-11-07T09:31:51.768908+08:00",
-      "checkpoint": "Final ordinary2a4 actualinstalledSHA verified PID28429/probe0/target60/defer0/fence0/no layer; fullDark/Limit/Boss entry scopedselftest PASS on exactAPK; shield/openingflash/QA/400Pro/audioNOTRUN. PrivateZIP16918705179B/full40547CRC+SHA/40536deviceequal+11fix. Source47files staged, baseline commit/tag pending; sourcebaseline draft;60NOTMET35.27fps; solewriter retained.",
+      "checkpoint": "Graphics baseline commit214fd794/taghonor-graphics-20261107 created/no push; exact2a4 APK ordinarymarker0 target60 Dark/fullLimit/Bossentry selftestPASS, audio/phone/QA/shield/openingflash notclosed. Private16.918GB ZIP/all40547CRC-SHA and40536deviceequal+11patch verified, releaseAPK/manual ready; data excludedGit. DevicePID28429 Bossdialogue PADhidden/deferdefault0/no backgroundinput.60NOTMET35.27fps, continue from profiling not capture repeats. Solewriter retained.",
       "write_state": "ACTIVE",
       "ownership_retained": true,
       "device_authority": "Latest user: device idle, can debug any time without asking; stop only actual conflict/disconnect. Honor only, preserve data.",
-      "checkpoint_at": "2026-11-08T00:00:27.124604+08:00"
+      "checkpoint_at": "2026-11-08T00:06:40.658359+08:00",
+      "source_baseline_commit": "214fd794fb436de14155e8954908685ae2120c21",
+      "source_baseline_tag": "honor-graphics-20261107"
     }
   ],
   "tasks": [
@@ -5317,5 +5319,17 @@
     "phone": "Honor400Pro",
     "audio": "NOT_RUN user deferred",
     "push": false
+  },
+  "honor_graphics_delivery": {
+    "source_baseline_commit": "214fd794fb436de14155e8954908685ae2120c21",
+    "source_baseline_tag": "honor-graphics-20261107",
+    "apk_sha256": "2a4c811d88eb0271fd1c5039bc9a98eaac2c5d95f95499f8f22787b1a1108201",
+    "data_sha256": "01a338c52b79869c04f486eb1d42ce926fa6935d28d19371ca0a7c6cd10411af",
+    "delivery_directory": ".local/honor-delivery-20261107/release",
+    "visual_scope": "ordinary tutorial Dark/fullLimit/Bossentry selftest PASS; no whole-game/independent QA",
+    "fps60": "NOT_MET35.27487",
+    "audio": "NOT_RUN user",
+    "Honor400Pro": "NOT_RUN",
+    "updated_at": "2026-11-08T00:06:40.658359+08:00"
   }
 }

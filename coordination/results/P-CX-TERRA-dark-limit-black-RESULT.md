@@ -1,3 +1,15 @@
+# Honor 图形修复基线已提交，APK/数据/手册已制作 — 2026-11-08T00:06:40.658359+08:00
+
+代码基线已实际本地提交 `214fd794fb436de14155e8954908685ae2120c21`（64个显式文件，包含已认领的Honor dirty依赖与本刀修复）；本地annotated tag `honor-graphics-20261107` 指向同提交。未push、未切分支/新树、未reset/clean/stash、未碰RG工作树/设备。源码检查通过；原Markdown双空格换行保持，未为消除格式检查改写任务提词。安装APK仍精确为2a4c811d88eb0271fd1c5039bc9a98eaac2c5d95f95499f8f22787b1a1108201，提交前后所有实际build输入源码SHA保持一致。
+
+私有可安装交付：`.local/honor-delivery-20261107/release/FFRS-Honor-1.0.1.apk`、`FFRS-data.zip`（16918705179字节，SHA01a338c52b79869c04f486eb1d42ce926fa6935d28d19371ca0a7c6cd10411af）、`安装说明.md`、清单/校验文件/licenses。ZIP40547文件CRC及逐文件SHA全部回读，40536设备原件摘要匹配+11修复件一致；不含存档/密钥/诊断缓存。本树staging可用于重建，勿自动清理正在使用的产物。手册建议电脑解压后将整个FFRS复制手机内部存储根目录，避免FFRS/FFRS双层；直接覆盖安装保留数据。
+
+最终同APK普通marker0/target60/defer0三项视觉有限自测PASS：Dark40秒、Limit70秒完整施法/结算/野外，Boss110秒全出场+67-75秒10Hz检查；证据final-trial/visual-result.json及三录像，实际安装base.apk SHA一致、最终触控PAD隐藏截图已查看。设备唯一A42BBB5109000333，org.ffrs.gamewindow GameActivity/PID28429留在Boss对话；无后台输入/捕获脚本。原FS、DarkEQUAL及各Limit实际EQUAL/GEQUAL、预通道均保留。
+
+验收字段：CAPTURE_COMPLETE=NO（原运行独立完整附件/别名世代等既有缺项仍保留，不能将范围内GPU首错证明夸成全量独立捕获）；VIEW_VALIDITY=NOT_FIXED全范围（具体目标合法类型事实已校核，不盲扩range）。FIRST_WRONG=Dark/Limit VS丢失buffer读取导致Position错误；Boss精确CS64-lane共享归约重复计数，详见前述GPU数值与FIRST-WRONG文件。VISUAL_DARK=PASS、VISUAL_LIMIT=PASS、VISUAL_BOSS=PASS，仅本流程实现者自测；shield/原开场短闪闭合/全游戏/独立QA未完成。AUDIO=NOT_RUN（用户明确暂不能听），AAudio NONE(enum10)、fence0/缓冲/超时重试/设备重开保持。Honor400Pro=NOT_RUN，配置支持不能替代手机验收。
+
+**整体验收未通过，60目标仍开放**：暖实场35.27487独立新帧/s，defer2负对照34.966且事件0，已恢复默认。后续不要重复下载/重建捕获工具、重做已闭合图形试验或把标题/刷新率当60；从CPU/GPU串行等待和真实场景受控性能定位继续，保留本tag及私有成品作为恢复点。现有所有者仍是本线程唯一writer，不允许另起writer抢树。没有实际额度错误，不虚构额度耗尽。
+
 # Honor 最终普通包三项视觉自测通过；基线与私有交付收口 — 2026-11-08T00:00:27.124604+08:00
 
 最终普通2a4/实际安装base.apk SHA已逐字核对，PID28429，probe0/target60/defer0/fence0/无capturelayer。final-trial/dark.mp4（40秒15,297,090B）与limit.mp4（70秒26,109,131B）完整选单→施法→结算→野外；实际检查Dark5-15s每0.5秒（2Hz），Limit0-34s2Hz：蓝白暗核/紫红外圈、蓝冰晶、雷电、金白火尾爆发、最终光束恢复。final-trial/boss-final/boss.mp4（110秒33,183,386B）+67-75s10Hz完整落地（实际68.2-70.2s），棕石/尘正常、旧满屏长黑条无，角色/Boss/背景火/对话完整。VISUAL_DARK/LIMIT/BOSS=PASS仅本教程/出场自测，非独立QA或整游戏。最终三录像SHA及身份在final-trial/visual-result.json。
