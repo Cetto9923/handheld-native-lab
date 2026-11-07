@@ -170,7 +170,13 @@ void full_present(Image &present){
     if(!f.pending.empty()){
         end_open_pass();gpu_sync(perf.sync_readback);unsigned saved_event=capture.events;
         for(auto &r:f.pending){r.owned->view.invalidate();capture.events=r.event;unsigned errors=capture.errors;
-            capture.active=true;capture_data(r.label.c_str(),static_cast<const uint8_t*>(r.owned->view.mapped)+r.offset,r.bytes);capture.active=false;
+            // A capture layer may protect mapped shadow pages to track CPU reads.
+            // fwrite can hand those pages directly to write(2), which cannot
+            // service a userspace page-guard fault. Read after the existing fence
+            // and invalidate into ordinary heap memory before crossing into I/O.
+            std::vector<uint8_t> bytes(r.bytes);
+            memcpy(bytes.data(),static_cast<const uint8_t*>(r.owned->view.mapped)+r.offset,r.bytes);
+            capture.active=true;capture_data(r.label.c_str(),bytes.data(),bytes.size());capture.active=false;
             if(errors==capture.errors)++f.written;
         }capture.events=saved_event;f.pending.clear();f.reserved=0;
     }
