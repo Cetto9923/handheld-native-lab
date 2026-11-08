@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-11-08T10:25:21.651576+08:00",
+  "updated_at": "2026-11-08T10:34:30.761373+08:00",
   "phase": "Honor dark VS dropped-read cause localized in replay; production shader and Limit/audio gates open",
   "coordinator": "Codex /root takeover",
   "integration_branch": "work/rg477m-native",
@@ -1529,16 +1529,19 @@
         "tests/device/test_half_numeric_facts.cpp",
         "coordination/experiments/honor-capture-20261108/",
         "tests/device/test_capture_mapped_io.cpp",
-        "coordination/docs/HONOR-400PRO-INSTALL.txt"
+        "coordination/docs/HONOR-400PRO-INSTALL.txt",
+        "src/android/app/java/org/ffrs/diagnostic/RegressionSaveRoot.java",
+        "tests/device/RegressionSaveRootContract.java",
+        "scripts/android/build_game_window_apk.sh"
       ],
       "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
       "branch": "work/honor-gtpro-30hz",
       "acquired_at": "2026-11-07T09:31:51.768908+08:00",
-      "checkpoint": "Correct prior102B: actual GameSaveData0 stat304368B mode0600 mtime2026-11-08 09:35;102B was Permission denied stdout despite adb exit0, run-as readtest1. Historical Nov2 stat304144B; no readable content/backup, causeunknown. Currentturn onlymetadata/readattempt. Protect original; inspect safe independent saveRoot before Shield regression. Audio waived,60unmet/400ProNOTRUN.",
-      "write_state": "CHECKPOINT_STOPPED",
+      "checkpoint": "Prepare opt-in debug-only fresh app-private save root for shield regression; no copying/reading/moving existing save. Default autodiscovery and save selection unchanged; synthetic sentinel and fail-closed contract first, then build/validate actual device before any gameplay.",
+      "write_state": "ACTIVE",
       "ownership_retained": true,
       "device_authority": "Latest user: device idle, can debug any time without asking; stop only actual conflict/disconnect. Honor only, preserve data.",
-      "checkpoint_at": "2026-11-08T10:25:21.651576+08:00",
+      "checkpoint_at": "2026-11-08T10:34:30.761373+08:00",
       "source_baseline_commit": "214fd794fb436de14155e8954908685ae2120c21",
       "source_baseline_tag": "honor-graphics-20261107"
     }

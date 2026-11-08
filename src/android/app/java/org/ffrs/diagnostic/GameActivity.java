@@ -1283,15 +1283,27 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             refreshSetup();
             return;
         }
+        boolean managed = dataInstaller != null && dataInstaller.managed && dataInstaller.root != null
+                && dataInstaller.root.getAbsolutePath().equals(game_dir);
+        File files = managed ? dataInstaller.runtimeRoot : getExternalFilesDir(null);
+        String saveRoot = managed ? new File(getFilesDir(), "saves").getAbsolutePath() : null;
+        boolean isolatedSave = getIntent() != null
+                && getIntent().getBooleanExtra("isolated_regression_save", false);
+        try {
+            saveRoot = RegressionSaveRoot.select(saveRoot, isolatedSave,
+                    (getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0,
+                    getFilesDir(), getIntent() == null ? null
+                            : getIntent().getStringExtra("isolated_regression_resume"));
+        } catch (java.io.IOException | SecurityException e) {
+            Log.e(TAG, "isolated regression save unavailable; guest start aborted", e);
+            return;
+        }
+        if (isolatedSave) Log.i(TAG, "isolated regression save root=" + saveRoot);
         guestStarted = true;
         Log.i(TAG, "guest_start hide_setup_view");
         if (setupView != null) setupView.setVisibility(View.GONE);
         Log.i(TAG, "guest_start setup_view_hidden");
         Log.i(TAG, "game_dir=" + game_dir);
-        boolean managed = dataInstaller != null && dataInstaller.managed && dataInstaller.root != null
-                && dataInstaller.root.getAbsolutePath().equals(game_dir);
-        File files = managed ? dataInstaller.runtimeRoot : getExternalFilesDir(null);
-        String saveRoot = managed ? new File(getFilesDir(), "saves").getAbsolutePath() : null;
         String op_mode = getIntent() == null ? null : getIntent().getStringExtra("operation_mode");
         if (op_mode != null && !op_mode.isEmpty() && files != null) {
             try {

@@ -1,3 +1,17 @@
+# 剧情色块第一次轨迹未命中 — 2026-11-08 12:12 +08:00
+
+用户确认剧情画面方块而非正常战斗；用户后观察画面似乎修好但帧率低，尚未构成该缺陷修复证据。首个 gfxreconstruct 单帧 .local/shield-save-isolation-20261108/resume-contract/scene.gfxr 513883697B SHA256 2b9f82400b8ffa188340c42d885fb8851146a24d3b6985ade29148703b95f9fd；全部838308个压缩块解码、EOF和一帧边界完整，frame15250；同包1d30真机原样重放 screenshot replayed-scene.png 显示战斗时间轴教程而非用户指定剧情镜头，明确 NOT_HIT，不用于首错。原因是观察截图后触发过晚，下一次将同步脚本在自动前进到剧情后立刻触发；不能在暂停/错相位取得截图冒充目标帧。已有用户确认图 advance3.png 和视频保留。此前普通包经 SHA4a91、设置四 null/triggerfalse 恢复；当前同包1d30 replay正运行，后续需再次恢复。第一次 install -r 重放包被版本降级拒绝，按既有方案 -r -d 后成功，未删数据。
+
+# 开场剧情矩形色块复现、隔离存档可继续 — 2026-11-08 11:05 +08:00
+
+用户明确：进入首次战斗前的剧情画面出现多处半透明颜色不一致方框，顶部和底部均有；当前战斗画面正常。用户亲自确认 .local/shield-save-isolation-20261108/advance3.png（SHA256 23d2215821f84b06e6d87998883f72b27c29fd3cb34d882e0098ae105d4b0695）就是缺陷画面；连续录像 opening-first-full.h264 SHA256 909a435222c6cbab4ee5203db518ab574aff9489aa88cac56e182d40db373a64。不得按 PASS 或护盾施法验收；首错未定位。
+
+新隔离调试路径 first 实机写入 settings，正常 save 的 ls 仍304368B/09:35（不等于字节校验）。第二版选择仅 debug 且显式允许的严格格式 shield-regression-[0-9]+ app私有目录，并拒绝符号链接/越界，合成测试PASS；APK .local/shield-save-isolation-20261108/resume-contract/apk/shield-resume-debug.apk SHA256 153b7e5ce8d040179b631bc4926200cbfd5b15397c464a084c020d3d44f4cb18，install-r 后 log 实际 root shield-regression-1761428033271459419，Continue 确实回到剧情前道路，用户不必反复新建。当前平板 PID22306，此诊断APK，剧情前道路，marker0；与交付包 native 库哈希不同，不能直接冒充交付包验收。下一步复用既有 gfxreconstruct 层/重放工具，在可重复回到的剧情镜头抓实际 GPU 状态并定位色块，禁止错相位暂停。完成后恢复普通4a91、四层null等；60目标尚未达、Honor400Pro未测；音频 WAIVED_BY_USER_NOT_TESTED。
+
+# 开场护盾回归：隔离新存档准备 — 2026-11-08 10:38 +08:00
+
+用户确认护盾只在开场动画见过。新增仅显式调试参数 isolated_regression_save 启用的空 app 私有存档根，普通启动返回原 saveRoot；非调试构建或创建失败时中止启动，不回退原存档。合成合同通过：默认 null/managed 根不变、非 debug 拒绝、两次隔离根不同、模拟原存档字节不变、创建失败中止。真机还未测试，护盾仍 NOT_RUN；不复制真实存档。构建 .local/shield-save-isolation-20261108/apk/shield-isolation-debug.apk SHA256 43ecbd8df39cdfc7abe9f90c640069489acb5031159a453236d79842ad4f4ee9，plan/build-logs 同目录；替换前原存档仅可 stat 为 304368B/09:35，不声称内容已有备份或字节未变。下一步 install -r 并以隔离参数启动核实实际根，再观看开场；结束恢复普通 4a91。音频 WAIVED_BY_USER_NOT_TESTED，60Hz 与 400Pro 未验证保持原状态。
+
 # 存档只读结果纠正 — 2026-11-08T10:25:21.651576+08:00
 
 纠正上一条“GameSaveData0 102B”：实机ls显示该文件实际304368B、mode0600、时间2026-11-08 09:35；102B是adb exec-out cat的权限拒绝消息，而该adb命令本地退出码仍为0。应用run-as对该外部文件test -r也返回1，不能将错误文本当存档字节、不能判断章节或是否可施护盾。本轮仅查元数据/尝试只读，没有写入、复制或移动存档。

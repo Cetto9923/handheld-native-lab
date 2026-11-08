@@ -100,6 +100,7 @@ mkdir -p "${FFRS_PACKAGE_DIR}/classes" "${FFRS_PACKAGE_DIR}/dex" \
     "${FFRS_PACKAGE_DIR}/payload/lib/arm64-v8a" "${FFRS_PACKAGE_DIR}/res"
 step javac javac --release 8 -classpath "${FFRS_ANDROID_JAR}" -g -d "${FFRS_PACKAGE_DIR}/classes" \
     "${FFRS_APP_JAVA}/GameActivity.java" \
+    "${FFRS_APP_JAVA}/RegressionSaveRoot.java" \
     "${FFRS_APP_JAVA}/DeviceProfile.java" \
     "${FFRS_APP_JAVA}/GameWindowNative.java" \
     "${FFRS_APP_JAVA}/DisplaySnapshot.java" \
