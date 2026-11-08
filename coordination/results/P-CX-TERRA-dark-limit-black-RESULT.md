@@ -1,3 +1,13 @@
+# Honor 修后暗魔法同帧重放闭合；Limit有界中点捕获 — 2026-11-08T08:51:35.609121+08:00
+
+Dark9836/537c实际native174份GPU输入/附件已与原始559294482B trace逐项一致：pre-only71/71、color-only103/103，missing0；174个native COPY文件一一覆盖，无跨帧拼装。API1159530/1160967、四实际module、43个buffer binding offset/range/type与资源世代及正常GEQUAL/EQUAL均匹配。29696个view创建无R32非法range、无实际submitted坏view；仅此VUID范围，非全VUID。CAPTURE_DARK=YES_BOUNDED_SAME_FRAME；VK_NOT_READY返回码差异原样保留，D24定义24bits、VB可达15540/完整bound15552范围明确。第一次replay因遗漏创建dump目录在WriteBuffer前失败No suchfile，原log保留；唯一变量新建自有目录后同工具/trace/target重跑成功。
+
+Limit17676(2.6sec)与38166(0.9sec)两份完整trace均在StateEnd后实际pair0，nativeEND/selected0，明确NOT_HIT。最新38166 trace778852750B/SHAa64a4ece6fa3d0fbcaece8acf3668475c5dc7df87d0594e03260c979450558d2、2691206blocks/exactEOF、42082view创建0坏R32/0live，不能拿它补旧17938输入。当前唯一有界中点实验1.7sec，复用537c原工具，PID9927实际标题已看，正常NewGame路线；新目录active/limit-midpoint，FIFO capture-limit-midpoint-20261108。之后不重复盲试。
+
+当前CAPTURE_COMPLETE=NO只缺修后Limit实际pair+同帧GPU/replay；Dark新帧已闭合。既有FIRST_WRONG Position/sharedsum、普通4a91视觉scopedPASS不变；AUDIO用户NOT_RUN，60未达/400Pro/独立QA/护盾魔法NOT_RUN。无工具下载重建、无quota错误；hostPython3.9无file_digest小错已保留并改流式SHA。装包/全局settings只限org.ffrs.gamewindow，数据保留。
+
+下一步中点捕获按pair+END判据；成功则实际索引/世代/UBO范围/模块/合法view并独立每target1d30重放；无命中不拼帧，准确留缺项。最后restore普通4a91、marker0/triggerfalse/四layernull/先前props/PADhidden，再更新既有RESULT/HANDOFF/state并停刀。整体持续目标未完。
+
 # Honor protected capture I/O fixed; paired closure in progress - 2026-11-08T08:15:41.615738+08:00
 
 Post3272 capture: unassisted/ZSTD/FIFO PID6699 Dark6248 aborted with exact guest GameThread timed out waiting for RenderThread after120secs, exit134. API2080603698B is truncated; native lacksEND. page_guard same245d PID8407 Dark13313 API complete735773659B/2frames, actual GEQUAL/EQUAL/modules/25+31bindings,57948viewcreates0badR32/0live; native186queued112written74IO FAIL. All original failures retained, not quota or new graphics-root claims.

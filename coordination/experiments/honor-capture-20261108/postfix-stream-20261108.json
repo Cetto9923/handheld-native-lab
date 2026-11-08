@@ -1,5 +1,5 @@
 {
-  "time": "2026-11-08T08:20:42.522750+08:00",
+  "time": "2026-11-08T08:50:57.815121+08:00",
   "source_commit": "febedab8859153ef07064f68d2ae28fbfa36f96d",
   "source_scope": "Only opt-in full_present stages readback into ordinary heap before fileIO; default renderer/audio unchanged",
   "capture_apk": "537cce8cbf0dbd7944a29d3c44edb8971d794fe60e3896f8f35682c241bcc430",
@@ -98,9 +98,95 @@
     "view_creates": 29696,
     "invalid_R32_ranges": 0,
     "submitted_bad_view_commands": 0,
-    "GPU_replay_agreement": "NOT_RUN"
+    "GPU_replay_agreement": {
+      "time": "2026-11-08T08:50:37.731442+08:00",
+      "CAPTURE_DARK": "YES_BOUNDED_SAME_FRAME",
+      "native_frame": 9836,
+      "uniqueGPUcopies": 174,
+      "logical_comparisons": 174,
+      "exact": 174,
+      "missing": 0,
+      "actualAPI_draws": [
+        1159530,
+        1160967
+      ],
+      "single_target_replays": [
+        {
+          "event": 1,
+          "comparisons": 71,
+          "exact": 71
+        },
+        {
+          "event": 2,
+          "comparisons": 103,
+          "exact": 103
+        }
+      ],
+      "scope": "Complete original nativeinput/output GPU copies mapped one-for-one to independent unmodified sameframe originalAPI/shader replay; fullactualbound resources+subresources, offsets/ranges/types, actualpipeline/dynamicstate. D24 defined24bits/reachableVB15540 of15552 only; allocationtails not claimed",
+      "returncodes": "VK_NOT_READY vs capturedSUCCESS warnings retained; data agreement does not assert returncodes identical",
+      "R32_view_creations": 29696,
+      "invalid_R32_range": 0,
+      "limitations": "R32 explicit range legality audited, not all VulkanVUIDs or whole-game acceptance; separate Limitpostfix target still NOT_HIT; original failed directory run retained"
+    }
   },
   "limit_latest": {
+    "time": "2026-11-08T08:45:28.436682+08:00",
+    "native_frame": 38166,
+    "bytes": 778852750,
+    "sha256": "a64a4ece6fa3d0fbcaece8acf3668475c5dc7df87d0594e03260c979450558d2",
+    "framing": {
+      "bytes": 778852750,
+      "blocks": 2691206,
+      "exact_eof": true,
+      "boundaries": [
+        {
+          "index": 3,
+          "kind": 2,
+          "rawhex": "010000001695000000000000"
+        },
+        {
+          "index": 2686076,
+          "kind": 2,
+          "rawhex": "020000001695000000000000"
+        },
+        {
+          "index": 2688877,
+          "kind": 1,
+          "rawhex": "020000001695000000000000"
+        },
+        {
+          "index": 2691205,
+          "kind": 1,
+          "rawhex": "020000001795000000000000"
+        }
+      ]
+    },
+    "native_status": "NOT_HIT selected=0 pairMask=0; END present; not merged with another frame",
+    "phase": "0.9sec after second A350, vs earlier2.6sec also NOT_HIT",
+    "PID": 12962,
+    "reader_exit": 0,
+    "actual_target_draws_after_state_end": 0,
+    "R32_view_creations": 42082,
+    "invalid_R32_ranges": 0,
+    "submitted_bad_views": 0
+  },
+  "previous_failures": {
+    "unassisted": "PID6699 native6248 guest RenderThread120sec watchdog134;2080603698B truncated, native noEND; hostreader0 not capture success",
+    "pageguard_direct_io": "PID8407 native13313, native186queued112written74IO, APIcomplete; no GPU agreement claimed",
+    "heap_menu": "PID23495 native8485,523060832B complete, no cast NOT_HIT",
+    "return_title": "PID23495 exitSIG9 cause unknown; stray next route before launcher verification logged; ownGameActivity restarted12962 actualtitle observed",
+    "host_test": "FirstSIGBUS138 on Darwin, test signalcoverage corrected; finalEFAULT14+guardedCPUcopy262144B exactPASS"
+  },
+  "CAPTURE_COMPLETE": "NO",
+  "VIEW_VALIDITY": "FIXED scoped observedhalf fact/ranges only",
+  "FIRST_WRONG": "prior formal VSPosition/sharedsum roots retained; added captureIO protectedmapping->kernelwrite mechanism",
+  "VISUAL": "prior ordinary4a91 scopedPASS retained; currentdiagnostic not ordinary acceptance",
+  "AUDIO": "NOT_RUN userexplicit",
+  "FPS60": "UNMET",
+  "Honor400Pro": "NOT_RUN",
+  "restore_apk": "4a91b71cf13689029b13156ab831b9387890ff8443cf171657f6a9bb42cc1002",
+  "next": "Dark174/174 originalAPI independent per-target GPUcomparisonPASS. Limit one final bounded1.7sec midpoint between actual0.9initialfield and2.6laterblue, same537c/PID9927. Restore ordinary4a91 aftercapture/replay; no tools rebuilt/downloaded.",
+  "limit_previous": {
     "native_frame": 17676,
     "PID": 23495,
     "trace": {
@@ -139,21 +225,5 @@
     },
     "native": "NOT_HIT selected0/pairMask0, laterbluephase",
     "retry": "SameAPK newPID12962; normal route in limit-retry/route-pid12962, Edelay0.9vs2.6 sec; no new readertrigger yet"
-  },
-  "previous_failures": {
-    "unassisted": "PID6699 native6248 guest RenderThread120sec watchdog134;2080603698B truncated, native noEND; hostreader0 not capture success",
-    "pageguard_direct_io": "PID8407 native13313, native186queued112written74IO, APIcomplete; no GPU agreement claimed",
-    "heap_menu": "PID23495 native8485,523060832B complete, no cast NOT_HIT",
-    "return_title": "PID23495 exitSIG9 cause unknown; stray next route before launcher verification logged; ownGameActivity restarted12962 actualtitle observed",
-    "host_test": "FirstSIGBUS138 on Darwin, test signalcoverage corrected; finalEFAULT14+guardedCPUcopy262144B exactPASS"
-  },
-  "CAPTURE_COMPLETE": "NO",
-  "VIEW_VALIDITY": "FIXED scoped observedhalf fact/ranges only",
-  "FIRST_WRONG": "prior formal VSPosition/sharedsum roots retained; added captureIO protectedmapping->kernelwrite mechanism",
-  "VISUAL": "prior ordinary4a91 scopedPASS retained; currentdiagnostic not ordinary acceptance",
-  "AUDIO": "NOT_RUN userexplicit",
-  "FPS60": "UNMET",
-  "Honor400Pro": "NOT_RUN",
-  "restore_apk": "4a91b71cf13689029b13156ab831b9387890ff8443cf171657f6a9bb42cc1002",
-  "next": "FinishLimit earlierE, single-target existing1d30 replay for bothpairs, compare sameframeGPU, restoreordinary4a91/marker0/triggerfalse/layersnull/PADhidden. Preserve all old artifacts, no source/tool rebuild or download planned."
+  }
 }

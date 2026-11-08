@@ -46,3 +46,31 @@ EOF, unique complete ZSTD frames ending at each compressed block boundary,
 and the declared original size for API packets. Metadata image-init headers
 are variable length, not limited to128bytes. A title control is not effect
 input/output equality and does not change CAPTURE_COMPLETE for Dark/Limit.
+
+
+Post-fix streamed closure (source `febedab`, capture APK `537cce8c`):
+`postfix-stream-20261108.json` is the cleaned index; private files are under
+`half-fact-fix/fixed-stream-20261108/heap-readback/active`.
+The new Dark9836 original GPU copies are all accounted for one-for-one:
+pre-only71/71 and color-only103/103, total174 distinct copies, missing0.
+Actual API targets1159530/1160967, four module hashes and43 stage/binding/
+element/offset/range/type buffer rows match. All29696 actual view creates
+have no invalid explicit R32 range; this checks VUID00929 scope, not allVUIDs.
+VK_NOT_READY return-code warnings remain separate from the exact byte result.
+
+The `postfix/` scripts are the owned read-only parser/comparison sources used
+for this result. Copy them back to the private active directory, retaining the
+dark-api subdirectory. They use existing libzstd for the actual compressed
+format. The index, discover_targets, target_indices, audit_target_views sequence
+produces actual frame/submit/CB/draw identities and resource matrices.
+`check_buffer_matrix.py dark 9836` verifies every native buffer binding row.
+`compare_one_target.py dark 9836 1 1159530` and
+`compare_one_target.py dark 9836 2 1160967` consume the independent exports in
+dark-e1-gpu/dark-e2-gpu; they never read an old frame's resources.
+The existing replay1d30 was used unchanged. Its export directory must exist
+before launch: an initial missing-directory failure is retained in the private
+log, followed by a run changing only directory creation. Use one requested
+target per run to avoid the previously proved command-buffer tail truncation.
+The complete original native COPY filename set was checked against the union
+of both comparison reports. D24 X bits and unused VB tail remain excluded as
+explicitly documented above; no all-return-code or whole-game claim follows.

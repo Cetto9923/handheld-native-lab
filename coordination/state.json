@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-11-08T02:10:11.114896+08:00",
+  "updated_at": "2026-11-08T08:51:35.609121+08:00",
   "phase": "Honor dark VS dropped-read cause localized in replay; production shader and Limit/audio gates open",
   "coordinator": "Codex /root takeover",
   "integration_branch": "work/rg477m-native",
@@ -1533,11 +1533,11 @@
       "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
       "branch": "work/honor-gtpro-30hz",
       "acquired_at": "2026-11-07T09:31:51.768908+08:00",
-      "checkpoint": "febedab diagnostic; Dark9836 native174/174PASS/API559MB/legalviews, replaypending. Limit17676 NOTHIT; retry0.9sec same537c/PID12962 normalNewGame, no reader yet. Restore4a91 after1d30single-targetreplay. audioNOTRUN/60unmet/400ProNOTRUN; all failures retained.",
+      "checkpoint": "Dark9836 original/replay174/174PASS pertarget71+103, no missing/legalR32. Limit17676/38166 NOT_HIT. Finalbounded1.7sec midpoint same537c/PID9927 actualtitle verified; newFIFO/normalNewGame. Restore4a91 aftercapture/replay; audioNOTRUN/60unmet/400ProNOTRUN.",
       "write_state": "ACTIVE",
       "ownership_retained": true,
       "device_authority": "Latest user: device idle, can debug any time without asking; stop only actual conflict/disconnect. Honor only, preserve data.",
-      "checkpoint_at": "2026-11-08T08:15:41.615738+08:00",
+      "checkpoint_at": "2026-11-08T08:51:35.609121+08:00",
       "source_baseline_commit": "214fd794fb436de14155e8954908685ae2120c21",
       "source_baseline_tag": "honor-graphics-20261107"
     }
@@ -5388,6 +5388,7 @@
     "first_entry_flash": "NOT_REPRODUCED_SCOPED186_ENCODED_FRAMES",
     "regression_index": "coordination/experiments/honor-capture-20261108/visual-regression-1.0.2.json",
     "stream_feasibility": "ACTUAL61abd_FIFO_ZSTD_TITLE_CONTROL_PASS, existing1d30 replay1frame19203+PNG; effectsCAPTURE_COMPLETE stillNO",
-    "stream_index": "coordination/experiments/honor-capture-20261108/stream-control.json"
+    "stream_index": "coordination/experiments/honor-capture-20261108/stream-control.json",
+    "postfix_stream": "Dark9836 174/174 sameframe GPU original/replay PASS; Limitpostfix pair NOT_HIT2samples, finite1.7midpoint in progress"
   }
 }
