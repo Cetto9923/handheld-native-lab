@@ -36,7 +36,7 @@
     "returncodes": "VK_NOT_READY vs capturedSUCCESS warnings retained; data agreement does not assert returncodes identical",
     "R32_view_creations": 29696,
     "invalid_R32_range": 0,
-    "limitations": "R32 explicit range legality audited, not all VulkanVUIDs or whole-game acceptance; separate Limitpostfix target still NOT_HIT; original failed directory run retained"
+    "limitations": "R32 explicit range legality audited, not all VulkanVUIDs or whole-game acceptance; original missing-export-directory run retained. Embedded Dark report was recorded before the independent Limit closure, which is now recorded in limit."
   },
   "limit": {
     "time": "2026-11-08T09:49:23.130446+08:00",
@@ -77,7 +77,7 @@
   "guard_fire_summon": "PASS_SCOPED_ORDINARY_1.0.2",
   "shield_magic": "NOT_RUN_PROLOGUE_UNAVAILABLE",
   "first_battle_entry_flash": "NOT_REPRODUCED_SCOPED186_ENCODED_FRAMES",
-  "AUDIO": "NOT_RUN_USER_EXPLICIT",
+  "AUDIO": "WAIVED_BY_USER_NOT_TESTED",
   "audio_checklist": {
     "default_AAudio_NONE": "Preserved actualNDKenum10, not LOW_LATENCY12",
     "A2DP_field_at_least2min": "NOT_RUN_USER_NO_HUMAN_CONDITION",
@@ -94,7 +94,7 @@
   "FPS60": "NOT_MET lastordinaryfield32.66593962495253distinctnewframes/s; no performancechange or newperformancePASS",
   "Honor400Pro": "NOT_RUN",
   "independent_QA": "NOT_RUN",
-  "overall_acceptance": "NOT_PASSED_AUDIO_AND_OTHER_GATES",
+  "overall_acceptance": "GRAPHICS_VALIDATION_SCOPED; AUDIO_WAIVED_BY_USER; FPS60_UNMET/Honor400Pro_UNTESTED/independentQA_NOT_RUN",
   "artifact_root": ".local/honor-device-profiles/flame-20261104/dark-shader-retranslate-20261107/postbaseline-20261108/full-native-capture/half-fact-fix/fixed-stream-20261108/heap-readback/active",
   "limit_artifact": "limit-purple",
   "restored_device": {
@@ -124,5 +124,11 @@
   },
   "not_hit_controls": "8485menu;17676earlyblue2.6s;38166initialfield0.9s;10761initialblue1.7s;9748lowlightblockedmenu. Falsephasebracket explicitly corrected using existingordinaryLimitvideo; no inputs spliced",
   "failures_retained": "Unassisted6248RenderThread120sec watchdog134/truncatedtrace/noEND; pageguard13313directmappedfwrite74IO; hostDarwinSIGBUS138 initialtest corrected; missingexportdirectoryfirstrun; oldexacttwo-draw discoveryassertion corrected to nativefirstperpair rule; Python3.9file_digestAttributeError correctedstreamSHA. No quota error.",
-  "stop": "Current captureknife complete andordinarytitle/PADhidden restored; originalRESULT/HANDOFF/state updated. Overallgoal notcomplete: AUDIO/60/400Pro/independentQA gates remain."
+  "stop": "Current captureknife complete andordinarytitle/PADhidden restored; originalRESULT/HANDOFF/state updated. Overallgoal notcomplete: AUDIO/60/400Pro/independentQA gates remain.",
+  "audio_acceptance_requirement": {
+    "status": "WAIVED_BY_USER",
+    "tested": false,
+    "time": "2026-11-08T10:13:27.443201+08:00",
+    "user_instruction": "音频 验收不需要了"
+  }
 }

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-11-08T09:56:56.016545+08:00",
+  "updated_at": "2026-11-08T10:13:27.443201+08:00",
   "phase": "Honor dark VS dropped-read cause localized in replay; production shader and Limit/audio gates open",
   "coordinator": "Codex /root takeover",
   "integration_branch": "work/rg477m-native",
@@ -1528,16 +1528,17 @@
         "tests/device/half_numeric_fact.vert",
         "tests/device/test_half_numeric_facts.cpp",
         "coordination/experiments/honor-capture-20261108/",
-        "tests/device/test_capture_mapped_io.cpp"
+        "tests/device/test_capture_mapped_io.cpp",
+        "coordination/docs/HONOR-400PRO-INSTALL.txt"
       ],
       "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
       "branch": "work/honor-gtpro-30hz",
       "acquired_at": "2026-11-07T09:31:51.768908+08:00",
-      "checkpoint": "CAPTURE_COMPLETE=YES boundedpostfix Dark9836 174/174 andLimit19659 126/126 sameframe original/unmodifiedper-targetreplay, aliasesexplicit/missing0/IO0. R32scopeFIXED. Ordinary4a91 restoredactualSHA/PID13049/title/PADhidden/marker0/triggerfalse/layersnull. Currentknife stopped afterreports/commit; audioNOTRUN/60unmet/400Pro/QA NOTRUN, overallgoalnotcomplete.",
+      "checkpoint": "UseraudioacceptanceWAIVED_NOT_TESTED. ConciseUTF8 TXT manual1106B/aff0eb86 publishedrelease+source, no oldversion references; MD copies synchronized. APK/dataZIP/device unchanged. Capture e381fcd preserved;60unmet/400ProNOTRUN.",
       "write_state": "CHECKPOINT_STOPPED",
       "ownership_retained": true,
       "device_authority": "Latest user: device idle, can debug any time without asking; stop only actual conflict/disconnect. Honor only, preserve data.",
-      "checkpoint_at": "2026-11-08T09:56:56.016545+08:00",
+      "checkpoint_at": "2026-11-08T10:13:27.443201+08:00",
       "source_baseline_commit": "214fd794fb436de14155e8954908685ae2120c21",
       "source_baseline_tag": "honor-graphics-20261107"
     }
@@ -5353,10 +5354,11 @@
       "graphics_tag": "honor-graphics-20261108-view-facts",
       "CAPTURE_COMPLETE": "YES_BOUNDED_FIRST_PAIRS_POSTFIX",
       "capture_index": "coordination/experiments/honor-capture-20261108/postfix-closure.json",
-      "AUDIO": "NOT_RUN_USER_EXPLICIT",
+      "AUDIO": "WAIVED_BY_USER_NOT_TESTED",
       "FPS60": "UNMET32.66594",
       "Honor400Pro": "NOT_RUN",
-      "device_PID": 13049
+      "device_PID": 13049,
+      "manual": "coordination/docs/HONOR-400PRO-INSTALL.txt"
     }
   },
   "honor_postbaseline_20261108": {
@@ -5386,13 +5388,13 @@
     "FIRST_WRONG": "Dark/Limit independent VS missing buffer reads -> Position; Boss CS reduction independent",
     "VISUAL_DARK": "PASS_SCOPED",
     "VISUAL_LIMIT": "PASS_SCOPED",
-    "AUDIO": "NOT_RUN_USER",
+    "AUDIO": "WAIVED_BY_USER_NOT_TESTED",
     "FPS60": "NOT_MET32.66594",
     "Honor400Pro": "NOT_RUN",
     "artifact_root": ".local/honor-device-profiles/flame-20261104/dark-shader-retranslate-20261107/postbaseline-20261108/full-native-capture/half-fact-fix",
     "graphics_checkpoint_tag": "honor-graphics-20261108-view-facts",
     "final_device": "PID13049 ordinary4a91 actualtitle/PADhidden/marker0/triggerfalse/alllayernull; actualinstalledSHAexact",
-    "acceptance": "NOT_PASSED_AUDIO_USER_NOTRUN_60UNMET_400PRO_QA_NOTRUN",
+    "acceptance": "GRAPHICS_VALIDATION_SCOPED;AUDIO_WAIVED;60UNMET/400PRO_QA_NOTRUN",
     "VISUAL_BOSS": "PASS_SCOPED_FINAL1.0.2",
     "guard": "PASS_SCOPED",
     "fire": "PASS_SCOPED",
@@ -5405,6 +5407,8 @@
     "postfix_stream": "Dark174/174 exact;Limit126/126 exact (137semantic/11aliases). Eachfirstpair only; no extra6Limitinstances/fullgame/allVUID claim",
     "capture_source_commit": "febedab8859153ef07064f68d2ae28fbfa36f96d",
     "closure_index": "coordination/experiments/honor-capture-20261108/postfix-closure.json",
-    "next": "Stopcurrentknife; remainingaudio/60/400Pro/shieldmagic/fullgame gatesnotcomplete. No new performancechanges under unavailableaudiohumancondition."
+    "next": "TXTmanual complete; audio gate explicitly waived. No repeats of completed graphicscapture/visualexperiments; 60goal remains unmet and phone untested.",
+    "audio_requirement": "Waived by explicit user request; not PASS; do not block on human audio condition",
+    "installation_manual": "coordination/docs/HONOR-400PRO-INSTALL.txt"
   }
 }

@@ -6,7 +6,7 @@
 
 `febedab`仅修opt-in诊断的保护映射读回写文件：现有fence/invalidate后先CPU memcpy到普通heap再fwrite，避免page_guard下内核I/O的EFAULT；普通marker0渲染/声音路径不变，交付APK无需替换为诊断537c。既有VS Position/CS归约黑效根因保持独立，不把view合规或捕获I/O当原黑块根因。
 
-普通1.0.2的Limit/Boss/防御/爆炎/召唤有限视觉自测PASS、Dark等价runtime自测PASS；音频依用户明确要求NOT_RUN、400Pro/独立QA/护盾魔法未验。60未达，最后暖野外32.66594个distinct新帧/s；没有修改游戏速度或用重复呈现帧充60。整体仍未验收通过。下文为2026-11-07初始冻结记录，旧身份/旧缺项只作历史，当前状态以上述补记和RESULT/HANDOFF顶部为准。
+普通1.0.2的Limit/Boss/防御/爆炎/召唤有限视觉自测PASS、Dark等价runtime自测PASS；音频未测试，用户已明确免除本次音频验收；400Pro/独立QA/护盾魔法未验。60未达，最后暖野外32.66594个distinct新帧/s；没有修改游戏速度或用重复呈现帧充60。整体仍未验收通过。下文为2026-11-07初始冻结记录，旧身份/旧缺项只作历史，当前状态以上述补记和RESULT/HANDOFF顶部为准。
 
 # Honor 图形修复基线（2026-11-07）
 

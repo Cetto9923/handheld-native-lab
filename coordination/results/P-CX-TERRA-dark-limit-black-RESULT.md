@@ -1,3 +1,11 @@
+# TXT安装说明已重写；音频验收按用户要求免除 — 2026-11-08T10:13:27.443201+08:00
+
+用户最新指令“音频 验收不需要了，手册重写下 用TXT，不要提旧版本，言简意赅说清楚这数据包怎么放和怎么安装和使用就行”已执行。音频状态为WAIVED_BY_USER_NOT_TESTED：未做人耳测试的事实保留，音频验收不再作为本次交付门槛，不重复索要耳机/听测。常设音频源码保护不变，未将免验冒写成音频PASS。
+
+正式说明为coordination/docs/HONOR-400PRO-INSTALL.txt，交付文件.local/honor-delivery-20261107/release/安装说明.txt（UTF-8，1106B，SHAaff0eb86fd4a268525705e6d40f2d8d44aefc0154ade9452d3b9925d968d559f）。只说明电脑解压ZIP、FFRS放手机内部存储根目录、安装APK/授予文件权限、标题选择与PAD/手柄使用；无版本历史、调试或验收段落。已有MD副本同步为相同简短内容，避免入口显示过时说明；APK/17GB数据ZIP未改、未重打。
+
+此前持续目标离线完成审计确认6段普通视觉回归录像SHA仍一致、Dark与最终普通APK的13个非签名runtime条目实际逐字节一致；不冒充新视觉/音频实测。审计.local/honor-device-profiles/flame-20261104/dark-shader-retranslate-20261107/postbaseline-20261108/full-native-capture/half-fact-fix/goal-completion-audit-20261108/artifact-and-gates.json中的“需人耳”阻塞已被本次用户免验指令解除。捕获闭合e381fcd及旧tag保留；60帧仍未达、400Pro未实测等事实不因免音频而改变。本次仅文档/元数据改动，没有操作平板、安装或改音频/渲染代码。
+
 # Honor 修后双pair捕获／原始重放闭合，已恢复普通1.0.2 — 2026-11-08T09:56:56.016545+08:00
 
 **CAPTURE_COMPLETE=YES**，限指定暗魔法9836与独立Limit19659各首个pre/color draw：实际GPU输入、实际下发四module/每对、全部绑定可达mip/layer/aspect、color/depth/stencil前后附件与实际pipeline/dynamic/descriptor/lifecycle状态已具备；每target单独重放未改API/shader，Dark174/174独立COPY逐一一致（pre71/color103），Limit126/126独立COPY逐一一致（pre22/color115，137语义比较含11别名）。missing0/IO0/完整END，native全部COPY文件名集合与比较集合严格相等。Limit同帧共每pair4次matching，按原生f.seen只采首个；另6实例保留全API，不冒称native覆盖。D24仅定义24bits、VB可达前缀/未用bound尾部、allocationpadding范围均明示；VK_NOT_READY返回码差异保留，不能从字节相同推成返回码全一致。
@@ -8,7 +16,7 @@
 
 代码／构建：普通运行时代码6a90ed1ed30bedc2c368cde64eed18d6a2e32106，捕获诊断代码febedab8859153ef07064f68d2ae28fbfa36f96d，Dark证据1ec04b9。临时captureAPK537cce8cbf0dbd7944a29d3c44edb8971d794fe60e3896f8f35682c241bcc430、原61abd层及既有1d30重放包已复用；没有重建/下载工具、没有删旧trace/数据/存档。所有失败/负控制保留：6248 watchdog134/truncated无END；13313直接mappedIO74错；8485/9748菜单和17676/38166/10761早期时相NOT_HIT；错误蓝阶段夹逼推断由原普通录像纠正后4.0sec命中。初export目录缺失、Python3.9file_digest、DarwinSIGBUS测试覆盖、恰2匹配draw假设错误均保留原日志并修正；均非额度错误，没有虚构quota耗尽。
 
-普通视觉沿用精确4a91最终1.0.2回归及13runtime条目相同的Dark样本：**VISUAL_DARK=PASS_SCOPED，VISUAL_LIMIT=PASS_SCOPED，VISUAL_BOSS=PASS_SCOPED**；guard/fire/summon范围PASS，shield魔法NOT_RUN（防御不替代）；首战闪烁只在186编码帧范围NOT_REPRODUCED。当前诊断截图不充普通视觉或独立QA。**AUDIO=NOT_RUN_USER_EXPLICIT**；AAudio NONE实际NDKenum10/fence0/burst*2/2026-11-08T09:56:56.016545+08:00OUT重试/设备变化重开保持；A2DP野外及战斗各>=2分钟人耳连续、连接/断开恢复均NOT_RUN，xruns不当PASS。本刀无抬帧改动。60未达（此前32.66594 distinct新帧/s），400Pro/独立QA/全游戏NOT_RUN；整体未验收通过，持续总目标不标complete。
+普通视觉沿用精确4a91最终1.0.2回归及13runtime条目相同的Dark样本：**VISUAL_DARK=PASS_SCOPED，VISUAL_LIMIT=PASS_SCOPED，VISUAL_BOSS=PASS_SCOPED**；guard/fire/summon范围PASS，shield魔法NOT_RUN（防御不替代）；首战闪烁只在186编码帧范围NOT_REPRODUCED。当前诊断截图不充普通视觉或独立QA。**AUDIO=NOT_RUN_USER_EXPLICIT**；AAudio NONE实际NDKenum10/fence0/burst*2/TIMEOUT重试/设备变化重开保持；A2DP野外及战斗各>=2分钟人耳连续、连接/断开恢复均NOT_RUN，xruns不当PASS。本刀无抬帧改动。60未达（此前32.66594 distinct新帧/s），400Pro/独立QA/全游戏NOT_RUN；整体未验收通过，持续总目标不标complete。
 
 恢复已核：只用adb -s A42BBB5109000333与org.ffrs.gamewindow，install-r保留数据恢复普通FFRS-Honor-1.0.2.apk（3749266B/SHA4a91b71cf13689029b13156ab831b9387890ff8443cf171657f6a9bb42cc1002）；实际base.apk SHA完全一致。PID13049、GameActivity实际标题、PADhidden截图ordinary-final.png已查看；marker0/triggerfalse/四app-onlylayer设置均null，先前capture_file/frames3/unassisted与空compression/timestamp/asset属性全部还原。场景停在标题，不再操作平板；同包数据/全部旧证据保留，未碰RG/其他包/kill-server/卸载/清数据。
 
