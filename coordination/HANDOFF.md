@@ -1,3 +1,9 @@
+# 剧情轨迹已命中镜头，色块尚未定位 — 2026-11-08 13:13 +08:00
+
+第二次从隔离自动存档 Continue，连续前进后立即触发，未暂停。scene2.gfxr 432168276B，SHA256 e5ef529bf67e46dd9beb4c8706992356e89cbe8f701be14f6da15b156cadbd24；frame5399、318910 blocks、精确 EOF、310965 压缩块均解码。同包重放 replayed-scene2.png 确认为首次战斗前剧情镜头，但不是用户指定 advance3.png 的同一瞬间；色块是否命中及首个错误 GPU 输出待分析，未修复。首次误抓教程记录保留。用户观察当前画面似乎好了但帧率低；捕获层影响速度，此前普通包约 32.66594 distinct fps，60 目标未达。
+
+已恢复普通 APK 4a91，四图形层设置 null、trigger false；原 GameSaveData0 元数据仍 304368B/09:35，无法据此证明字节一致。音频 WAIVED_BY_USER_NOT_TESTED。独立存档入口默认不改变原路径，仅 debug 显式启用，合成测试和真机 Continue 通过；不在交付 APK 内。下一步分析 scene2 实际 draw，必要时重抓用户确认的精确瞬间；60Hz、Honor 400 Pro 和新增缺陷均未完成。
+
 # 剧情色块第一次轨迹未命中 — 2026-11-08 12:12 +08:00
 
 用户确认剧情画面方块而非正常战斗；用户后观察画面似乎修好但帧率低，尚未构成该缺陷修复证据。首个 gfxreconstruct 单帧 .local/shield-save-isolation-20261108/resume-contract/scene.gfxr 513883697B SHA256 2b9f82400b8ffa188340c42d885fb8851146a24d3b6985ade29148703b95f9fd；全部838308个压缩块解码、EOF和一帧边界完整，frame15250；同包1d30真机原样重放 screenshot replayed-scene.png 显示战斗时间轴教程而非用户指定剧情镜头，明确 NOT_HIT，不用于首错。原因是观察截图后触发过晚，下一次将同步脚本在自动前进到剧情后立刻触发；不能在暂停/错相位取得截图冒充目标帧。已有用户确认图 advance3.png 和视频保留。此前普通包经 SHA4a91、设置四 null/triggerfalse 恢复；当前同包1d30 replay正运行，后续需再次恢复。第一次 install -r 重放包被版本降级拒绝，按既有方案 -r -d 后成功，未删数据。
