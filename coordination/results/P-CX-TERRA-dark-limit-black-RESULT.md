@@ -1,3 +1,35 @@
+# Honor 修后双pair捕获／原始重放闭合，已恢复普通1.0.2 — 2026-11-08T09:56:56.016545+08:00
+
+**CAPTURE_COMPLETE=YES**，限指定暗魔法9836与独立Limit19659各首个pre/color draw：实际GPU输入、实际下发四module/每对、全部绑定可达mip/layer/aspect、color/depth/stencil前后附件与实际pipeline/dynamic/descriptor/lifecycle状态已具备；每target单独重放未改API/shader，Dark174/174独立COPY逐一一致（pre71/color103），Limit126/126独立COPY逐一一致（pre22/color115，137语义比较含11别名）。missing0/IO0/完整END，native全部COPY文件名集合与比较集合严格相等。Limit同帧共每pair4次matching，按原生f.seen只采首个；另6实例保留全API，不冒称native覆盖。D24仅定义24bits、VB可达前缀/未用bound尾部、allocationpadding范围均明示；VK_NOT_READY返回码差异保留，不能从字节相同推成返回码全一致。
+
+实际身份：Dark API1159530/1160967、GEQUAL/EQUAL、43个buffer binding/offset/range/type逐项相符，原trace559294482B/SHA37ef9e5e3918b521adcff0f52d6ead159d75f2f9581cb31b65a5643b22f2cc3b；B42本帧256x256/9mip完整BC4块每端43704B，不套旧512/10mip。Limit API2175722/2176830在StateEnd2174897后、均GEQUAL、36个buffer绑定逐项相符，trace744085458B/SHAa516d8a1eefa28df63ff1691558182083edaf6fe6066466dd2337f4664da18d3，frame19659..60。两份API精确EOF、所有压缩块完整ZSTD解码；四实际module各与native准确bytehash相同。完整moduleSHA、资源/世代矩阵、日志、复验命令见清理后索引coordination/experiments/honor-capture-20261108/postfix-closure.json及postfix-stream-20261108.json；私有根为half-fact-fix/fixed-stream-20261108/heap-readback/active（Limit在limit-purple）。未跨帧拼UBO/texel/mesh。
+
+**VIEW_VALIDITY=FIXED，VIEW_VALIDITY_FIXED=YES**，限8已观测half误标事实/其实际类型及当前R32explicit range审计：Dark29696/Limit39263次创建均0坏range、0实际submitted坏引用；既有非零/负零/边界16case合约与8实际源类型证据保留。不扩range，不全局删UInt表，不外推全VUID/全游戏。历史非法trace原样保留，不拿view合规冒认黑效根因。**FIRST_WRONG**仍为先前各自正式Maxwell重译证明的VS丢失buffer读取→Position；Boss另为CS共享归约双计数。此次未找到新游戏GPU首错；新增的是诊断page_guard映射直接交fwrite的内核I/O失败，源码febedab在既有fence/invalidate后先CPU复制普通heap，174/126真机原生读回和重放现已验证，默认marker0渲染/声音语义不变。
+
+代码／构建：普通运行时代码6a90ed1ed30bedc2c368cde64eed18d6a2e32106，捕获诊断代码febedab8859153ef07064f68d2ae28fbfa36f96d，Dark证据1ec04b9。临时captureAPK537cce8cbf0dbd7944a29d3c44edb8971d794fe60e3896f8f35682c241bcc430、原61abd层及既有1d30重放包已复用；没有重建/下载工具、没有删旧trace/数据/存档。所有失败/负控制保留：6248 watchdog134/truncated无END；13313直接mappedIO74错；8485/9748菜单和17676/38166/10761早期时相NOT_HIT；错误蓝阶段夹逼推断由原普通录像纠正后4.0sec命中。初export目录缺失、Python3.9file_digest、DarwinSIGBUS测试覆盖、恰2匹配draw假设错误均保留原日志并修正；均非额度错误，没有虚构quota耗尽。
+
+普通视觉沿用精确4a91最终1.0.2回归及13runtime条目相同的Dark样本：**VISUAL_DARK=PASS_SCOPED，VISUAL_LIMIT=PASS_SCOPED，VISUAL_BOSS=PASS_SCOPED**；guard/fire/summon范围PASS，shield魔法NOT_RUN（防御不替代）；首战闪烁只在186编码帧范围NOT_REPRODUCED。当前诊断截图不充普通视觉或独立QA。**AUDIO=NOT_RUN_USER_EXPLICIT**；AAudio NONE实际NDKenum10/fence0/burst*2/2026-11-08T09:56:56.016545+08:00OUT重试/设备变化重开保持；A2DP野外及战斗各>=2分钟人耳连续、连接/断开恢复均NOT_RUN，xruns不当PASS。本刀无抬帧改动。60未达（此前32.66594 distinct新帧/s），400Pro/独立QA/全游戏NOT_RUN；整体未验收通过，持续总目标不标complete。
+
+恢复已核：只用adb -s A42BBB5109000333与org.ffrs.gamewindow，install-r保留数据恢复普通FFRS-Honor-1.0.2.apk（3749266B/SHA4a91b71cf13689029b13156ab831b9387890ff8443cf171657f6a9bb42cc1002）；实际base.apk SHA完全一致。PID13049、GameActivity实际标题、PADhidden截图ordinary-final.png已查看；marker0/triggerfalse/四app-onlylayer设置均null，先前capture_file/frames3/unassisted与空compression/timestamp/asset属性全部还原。场景停在标题，不再操作平板；同包数据/全部旧证据保留，未碰RG/其他包/kill-server/卸载/清数据。
+
+交付仍为.local/honor-delivery-20261107/release/中的普通1.0.2 APK、同一16918705179B数据ZIP（SHA01a338c52b79869c04f486eb1d42ce926fa6935d28d19371ca0a7c6cd10411af，40547文件含11修复XGS）、安装说明md/txt；数据全CRC/逐文件SHA验证复用，不重复打17GB包。源码手册coordination/docs/HONOR-400PRO-INSTALL.md，BASELINE-HONOR-20261107.md顶部已补当前1.0.2/捕获状态，旧包/tag不移动。此次停刀前只提交自有复验脚本/清理索引/报告；不推送。后续最小工作是剩余外部验收和有证据的60性能工作，不能把本捕获闭合外推为60/音频/400Pro通过。
+
+# Limit修后同帧捕获已命中；独立重放准备 — 2026-11-08T09:42:32.714742+08:00
+
+已按普通录像真实紫球阶段4.0sec触发，同537c/PID20608，无新构建/下载/安装。native19659首次pre+color126/126GPU读回，missing0/IO0/pairMask3/完整END14840740B，strictauditPASS。API744085458B/SHAa516d8a1eefa28df63ff1691558182083edaf6fe6066466dd2337f4664da18d3、2181766blocks精确EOF/frame19659..60。实际draw2175722/2176830在StateEnd2174897之后，pipeline1248/2421，四module与native字节hash匹配；36个buffer stage/binding/element/offset/range/type逐项一致。实际preGEQUAL/write1，colorGEQUAL/write0/stencil1；39263次view创建0坏R32range/0submitted坏引用。
+
+本帧同module共8个matchingdraw（每pair4次）；旧discovery恰2断言失败原log保留。已按native full_draw_begin的f.seen只捕每pair首次规则选择第一pre/第一color，其余6次完整保留在API，未冒称native覆盖；新的discovery选择由全部36个绑定进一步核对，不是放宽错误输入检查。无跨帧拼装。native附件本次实际部分480x272，随实际格式/尺寸审计，不套用旧native17938的bound或像素数；没有本刀主动降分辨率。
+
+Dark9836原始GPU与未改API单目标重放174/174已闭合commit1ec04b9。Limit目前同帧native/API/view合规通过，原始GPU/replay输出仍PENDING，CAPTURE_COMPLETE仍NO。原FIRST_WRONG Position/sharedsum/诊断IO根因、普通4a91范围视觉PASS保持；AUDIO用户NOT_RUN/60未达/400Pro/独立QA/护盾魔法NOT_RUN。当前复用1d30准备单目标重放、restore先前properties/layers，744MB推送前设备3.4GiB足够留1GiB；原数据/旧捕获保留。结束须restore普通4a91/marker0/triggerfalse/四layernull/PADhidden，并更新RESULT/HANDOFF/state。
+
+# Limit时相纠正／不合并错帧 — 2026-11-08T09:08:30.339570+08:00
+
+暗魔法修后9836原生/原API单目标重放174/174一致（证据commit1ec04b9）。Limit实际1.7sec中点样本10761依然NOT_HIT：662281519B/SHA8d296894b46a2ebd0fe46cab44fb15b25067f3b9143b426082237d68e928107e、完整1377395blocks、frame10761..62、nativeEND/selected0。前一663381656B样本被低光提醒挡住施法，仍在菜单，独立负控制；未当有效phase实验。
+
+纠正前文“0.9早/2.6晚”的推断：复查已验普通limit-v3.mp4的limit-sheet-0.jpg，蓝圆环4s/蓝柱4.5..5s在紫球5.5..7.5s之前；1.7新截图也正是初始蓝环。不是两端夹逼，先前推断不成立。下一次唯一变量改为确认返回后4.0sec，对应录像约6s紫球；同537c/原layer/FIFO，新目录active/limit-purple，普通NewGame前同包amstart-S冷启；无新工具/源码构建、无新下载或删旧件。若该明确时相仍无pair，不能继续凭蓝色猜时机或冒称Limit修后CAPTURE_COMPLETE。
+
+CAPTURE_COMPLETE总体仍NO；DarkYES有界，Limit当前postfix缺目标pair。VIEW/FIRST_WRONG/普通视觉旧结果、AUDIO用户NOT_RUN/60未达/400ProNOT_RUN不变。最终必须恢复普通4a91/marker0/triggerfalse/四layernull/先前props/PADhidden，更新RESULT/HANDOFF/state后停刀；持续总目标不标complete。
+
 # Honor 修后暗魔法同帧重放闭合；Limit有界中点捕获 — 2026-11-08T08:51:35.609121+08:00
 
 Dark9836/537c实际native174份GPU输入/附件已与原始559294482B trace逐项一致：pre-only71/71、color-only103/103，missing0；174个native COPY文件一一覆盖，无跨帧拼装。API1159530/1160967、四实际module、43个buffer binding offset/range/type与资源世代及正常GEQUAL/EQUAL均匹配。29696个view创建无R32非法range、无实际submitted坏view；仅此VUID范围，非全VUID。CAPTURE_DARK=YES_BOUNDED_SAME_FRAME；VK_NOT_READY返回码差异原样保留，D24定义24bits、VB可达15540/完整bound15552范围明确。第一次replay因遗漏创建dump目录在WriteBuffer前失败No suchfile，原log保留；唯一变量新建自有目录后同工具/trace/target重跑成功。

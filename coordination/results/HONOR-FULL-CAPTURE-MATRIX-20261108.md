@@ -1,3 +1,27 @@
+# Current post-fix bounded first-pair closure — 2026-11-08T09:56:56.016545+08:00
+
+CAPTURE_COMPLETE=YES within the two selected firstpre/color pairs, not all instances/allVUIDs/fullgame. Later historical PENDING rows below are retained as the implementation plan.
+
+| Check | Dark9836 | Limit19659 |
+|---|---|---|
+| Actual API draws |1159530 /1160967|2175722 /2176830|
+| Native COPY coverage |174/174;127images+47buffers|126/126;86images+40buffers|
+| Native bytes |85117552|14840740|
+| Effective buffer binding/offset/range/type rows |43 exact|36 exact|
+| Per-target unmodified replay |71+103 exact|22+115 exact;11aliases explicit|
+| Actual depth compare |preGEQUAL/colorEQUAL|preGEQUAL/colorGEQUAL|
+| Actual shader bytehash vs native |4/4 exact|4/4 exact|
+| Bound image mip/layer/aspect/BC4 and attachment before/after |All;B42 actual256x256/9mips43704B perpass|All actual;someRT480x272, not inferredoldsize|
+| Resource generation/alias /submit-CB identities |Actual API and native slot/imagegenerations|Actual API and native slot/imagegenerations|
+| R32 explicit invalid ranges/submitted uses |0 of29696 creates /0live|0 of39263 creates /0live|
+| Strict native audit /file-set replay audit |PASS/174distinct COPYfiles exactlycovered|PASS/126distinct COPYfiles exactlycovered|
+| Original trace/EOF/all ZSTD blocks |559294482B /PASS|744085458B /PASS|
+| Missing /I/O |0/0 completeEND|0/0 completeEND|
+
+Limit has four matchingdraws perpair in this frame; native f.seen selects the first of each pair, leaving sixotherinstances outside the bounded nativecomparison. The API retains allinstances. UBOs are never deduplicated by buffer pointer; D24 only defined24bits and reachableVBprefix/unusedboundtail are explicit. VK_NOT_READY returncode differences remain, independent of exact GPUbyte agreement. Neither viewlegality nor diagnosticIO fix is the prior blackeffect root.
+
+Clean hashes/commands/source identity/limitations: coordination/experiments/honor-capture-20261108/postfix-closure.json and postfix-stream-20261108.json; owned parser sources in postfix/. AudioNOT_RUN_USER,60unmet/400Pro/independentQA NOT_RUN; no overallPASS. Exactordinary4a91 restored/PID13049/title/PADhidden/marker0/triggerfalse/layersnull. All previousraw evidence retained; no tools rebuilt/downloaded.
+
 # Honor original-run full-draw capture matrix (implementation in progress)
 
 Source checkpoint96e3b33; graphics baseline214fd79/ordinaryAPK2a4 remains intact. Sole writer Codex/root; deviceA42BBB5109000333 only. Existing native probe and original61abd GFXR layer/replay1d30 are reused. Normal game APK compilation is allowed; no exporter/tool rebuild or old large capture redownload. Default capture is off. This document records a plan, not completed evidence.

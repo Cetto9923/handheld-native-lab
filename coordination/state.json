@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-11-08T08:51:35.609121+08:00",
+  "updated_at": "2026-11-08T09:56:56.016545+08:00",
   "phase": "Honor dark VS dropped-read cause localized in replay; production shader and Limit/audio gates open",
   "coordinator": "Codex /root takeover",
   "integration_branch": "work/rg477m-native",
@@ -1533,11 +1533,11 @@
       "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
       "branch": "work/honor-gtpro-30hz",
       "acquired_at": "2026-11-07T09:31:51.768908+08:00",
-      "checkpoint": "Dark9836 original/replay174/174PASS pertarget71+103, no missing/legalR32. Limit17676/38166 NOT_HIT. Finalbounded1.7sec midpoint same537c/PID9927 actualtitle verified; newFIFO/normalNewGame. Restore4a91 aftercapture/replay; audioNOTRUN/60unmet/400ProNOTRUN.",
-      "write_state": "ACTIVE",
+      "checkpoint": "CAPTURE_COMPLETE=YES boundedpostfix Dark9836 174/174 andLimit19659 126/126 sameframe original/unmodifiedper-targetreplay, aliasesexplicit/missing0/IO0. R32scopeFIXED. Ordinary4a91 restoredactualSHA/PID13049/title/PADhidden/marker0/triggerfalse/layersnull. Currentknife stopped afterreports/commit; audioNOTRUN/60unmet/400Pro/QA NOTRUN, overallgoalnotcomplete.",
+      "write_state": "CHECKPOINT_STOPPED",
       "ownership_retained": true,
       "device_authority": "Latest user: device idle, can debug any time without asking; stop only actual conflict/disconnect. Honor only, preserve data.",
-      "checkpoint_at": "2026-11-08T08:51:35.609121+08:00",
+      "checkpoint_at": "2026-11-08T09:56:56.016545+08:00",
       "source_baseline_commit": "214fd794fb436de14155e8954908685ae2120c21",
       "source_baseline_tag": "honor-graphics-20261107"
     }
@@ -5344,7 +5344,20 @@
     "fps60": "NOT_MET35.219873 latest same2a4",
     "audio": "NOT_RUN user",
     "Honor400Pro": "NOT_RUN",
-    "updated_at": "2026-11-08T00:06:40.658359+08:00"
+    "updated_at": "2026-11-08T00:06:40.658359+08:00",
+    "record_scope": "Initial20261107 frozenbaseline retained; current1.0.2 identity in current",
+    "current": {
+      "time": "2026-11-08T09:56:56.016545+08:00",
+      "source_commit": "6a90ed1ed30bedc2c368cde64eed18d6a2e32106",
+      "APK_sha256": "4a91b71cf13689029b13156ab831b9387890ff8443cf171657f6a9bb42cc1002",
+      "graphics_tag": "honor-graphics-20261108-view-facts",
+      "CAPTURE_COMPLETE": "YES_BOUNDED_FIRST_PAIRS_POSTFIX",
+      "capture_index": "coordination/experiments/honor-capture-20261108/postfix-closure.json",
+      "AUDIO": "NOT_RUN_USER_EXPLICIT",
+      "FPS60": "UNMET32.66594",
+      "Honor400Pro": "NOT_RUN",
+      "device_PID": 13049
+    }
   },
   "honor_postbaseline_20261108": {
     "updated_at": "2026-11-08T01:48:43.369145+08:00",
@@ -5364,12 +5377,12 @@
     "ADPF": "REJECTED_THIS_ADAPTER; archived own source, production restored27manifesthashes"
   },
   "honor_capture_checkpoint_20261108": {
-    "time": "2026-11-08T06:44:45.204454+08:00",
+    "time": "2026-11-08T09:56:56.016545+08:00",
     "source_commit": "6a90ed1ed30bedc2c368cde64eed18d6a2e32106",
     "APK_sha256": "4a91b71cf13689029b13156ab831b9387890ff8443cf171657f6a9bb42cc1002",
     "native_data_complete": "YES_BOUNDED_PAIRS",
-    "CAPTURE_COMPLETE": "NO_STRICT_GLOBAL_POSTFIX_API_REPLAY_NOT_RUN",
-    "VIEW_VALIDITY": "FIXED_OBSERVED_EIGHT_HALF_AND_TARGET23; globalNOT_RUN",
+    "CAPTURE_COMPLETE": "YES_BOUNDED_POSTFIX_FIRST_PAIRS",
+    "VIEW_VALIDITY": "FIXED_OBSERVED_EIGHT_HALF_AND_CURRENT_R32_RANGE_VUID_SCOPE",
     "FIRST_WRONG": "Dark/Limit independent VS missing buffer reads -> Position; Boss CS reduction independent",
     "VISUAL_DARK": "PASS_SCOPED",
     "VISUAL_LIMIT": "PASS_SCOPED",
@@ -5378,8 +5391,8 @@
     "Honor400Pro": "NOT_RUN",
     "artifact_root": ".local/honor-device-profiles/flame-20261104/dark-shader-retranslate-20261107/postbaseline-20261108/full-native-capture/half-fact-fix",
     "graphics_checkpoint_tag": "honor-graphics-20261108-view-facts",
-    "final_device": "PID4491 ordinary1.0.2 title/PADhidden, installedSHA4a91, marker0 triggerfalse layersnull; capture compression/timestamp restoredempty",
-    "acceptance": "NOT_PASSED:60 unmet/audio phone whole-game independentQA NOT_RUN",
+    "final_device": "PID13049 ordinary4a91 actualtitle/PADhidden/marker0/triggerfalse/alllayernull; actualinstalledSHAexact",
+    "acceptance": "NOT_PASSED_AUDIO_USER_NOTRUN_60UNMET_400PRO_QA_NOTRUN",
     "VISUAL_BOSS": "PASS_SCOPED_FINAL1.0.2",
     "guard": "PASS_SCOPED",
     "fire": "PASS_SCOPED",
@@ -5389,6 +5402,9 @@
     "regression_index": "coordination/experiments/honor-capture-20261108/visual-regression-1.0.2.json",
     "stream_feasibility": "ACTUAL61abd_FIFO_ZSTD_TITLE_CONTROL_PASS, existing1d30 replay1frame19203+PNG; effectsCAPTURE_COMPLETE stillNO",
     "stream_index": "coordination/experiments/honor-capture-20261108/stream-control.json",
-    "postfix_stream": "Dark9836 174/174 sameframe GPU original/replay PASS; Limitpostfix pair NOT_HIT2samples, finite1.7midpoint in progress"
+    "postfix_stream": "Dark174/174 exact;Limit126/126 exact (137semantic/11aliases). Eachfirstpair only; no extra6Limitinstances/fullgame/allVUID claim",
+    "capture_source_commit": "febedab8859153ef07064f68d2ae28fbfa36f96d",
+    "closure_index": "coordination/experiments/honor-capture-20261108/postfix-closure.json",
+    "next": "Stopcurrentknife; remainingaudio/60/400Pro/shieldmagic/fullgame gatesnotcomplete. No new performancechanges under unavailableaudiohumancondition."
   }
 }

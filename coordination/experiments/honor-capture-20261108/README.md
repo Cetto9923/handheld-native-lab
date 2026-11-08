@@ -74,3 +74,28 @@ target per run to avoid the previously proved command-buffer tail truncation.
 The complete original native COPY filename set was checked against the union
 of both comparison reports. D24 X bits and unused VB tail remain excluded as
 explicitly documented above; no all-return-code or whole-game claim follows.
+
+
+The new post-fix Limit19659 trace is a separate capture, not combined with old
+Limit17938. Its native first pre/color pair has126 unique GPU copies,
+missing0/IO0/END, and36 exact buffer binding rows against the original API.
+The selected actual draw identities are2175722/2176830, with GEQUAL on both
+actual pipelines. This frame contains four matching instances per pair.
+`postfix/limit-api/discover_first_per_pair.py` preserves every actual match
+and selects the first of each pair, exactly matching `full_draw_begin`'s
+`f.seen` capture rule. The earlier exactly-two assertion failure is retained
+as an index-selection assumption failure, not a GPU error. The other six
+instances are retained in the full API trace and are not claimed native-covered.
+
+Copy `postfix/limit-api` under the private `active/limit-purple` directory.
+Use its unchanged existing api-known-control.json as the format control;
+no pipeline bytes or game payload are committed here. The native directory is
+limit-native-f19659. The trace is744085458B SHA
+a516d8a1eefa28df63ff1691558182083edaf6fe6066466dd2337f4664da18d3.
+The individual replay outputs use the postfix-purple-limit remote prefix,
+and the native comparisons remain one target per run. Target attachment
+dimensions are read from this capture (including480x272), never inferred
+from old captures' dimensions.
+
+
+Finalpostfix result: Dark174/174 andLimit126/126 distinct nativeCOPYfiles are all exact to independent unmodifiedsameframe replay (Limit137 semanticitems including11aliases). Bothhave0missing/IO and completeEND. Current authoritative index is postfix-closure.json; historical oldframe/unfixedview and earlierPENDING sections above remain history. Ordinary4a91/PID13049 actualtitle/PADhidden restored with marker0/triggerfalse/priorlayersnull. AUDIO userNOT_RUN,60unmet/400Pro/QA NOT_RUN; boundedcapture completion is not overallacceptance.

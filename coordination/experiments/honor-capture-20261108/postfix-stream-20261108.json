@@ -1,5 +1,5 @@
 {
-  "time": "2026-11-08T08:50:57.815121+08:00",
+  "time": "2026-11-08T09:53:03.565483+08:00",
   "source_commit": "febedab8859153ef07064f68d2ae28fbfa36f96d",
   "source_scope": "Only opt-in full_present stages readback into ordinary heap before fileIO; default renderer/audio unchanged",
   "capture_apk": "537cce8cbf0dbd7944a29d3c44edb8971d794fe60e3896f8f35682c241bcc430",
@@ -127,48 +127,121 @@
       "R32_view_creations": 29696,
       "invalid_R32_range": 0,
       "limitations": "R32 explicit range legality audited, not all VulkanVUIDs or whole-game acceptance; separate Limitpostfix target still NOT_HIT; original failed directory run retained"
+    },
+    "binding42": {
+      "format": "Vk139 BC4",
+      "base": [
+        256,
+        256
+      ],
+      "levels": 9,
+      "bytes_per_pass": 43704,
+      "native_resource_serial": "2668321",
+      "native_version": "11",
+      "all_bound_blocks_exact_to_replay": true,
+      "scope": "Current actual9mips; not old512x512/10mips"
     }
   },
   "limit_latest": {
-    "time": "2026-11-08T08:45:28.436682+08:00",
-    "native_frame": 38166,
-    "bytes": 778852750,
-    "sha256": "a64a4ece6fa3d0fbcaece8acf3668475c5dc7df87d0594e03260c979450558d2",
-    "framing": {
-      "bytes": 778852750,
-      "blocks": 2691206,
+    "time": "2026-11-08T09:40:51.319447+08:00",
+    "PID": 20608,
+    "native_frame": 19659,
+    "trace_bytes": 744085458,
+    "trace_sha256": "a516d8a1eefa28df63ff1691558182083edaf6fe6066466dd2337f4664da18d3",
+    "API": {
+      "bytes": 744085458,
+      "blocks": 2181766,
       "exact_eof": true,
       "boundaries": [
         {
           "index": 3,
           "kind": 2,
-          "rawhex": "010000001695000000000000"
+          "rawhex": "01000000cb4c000000000000"
         },
         {
-          "index": 2686076,
+          "index": 2174897,
           "kind": 2,
-          "rawhex": "020000001695000000000000"
+          "rawhex": "02000000cb4c000000000000"
         },
         {
-          "index": 2688877,
+          "index": 2179227,
           "kind": 1,
-          "rawhex": "020000001695000000000000"
+          "rawhex": "02000000cb4c000000000000"
         },
         {
-          "index": 2691205,
+          "index": 2181764,
           "kind": 1,
-          "rawhex": "020000001795000000000000"
+          "rawhex": "02000000cc4c000000000000"
         }
       ]
     },
-    "native_status": "NOT_HIT selected=0 pairMask=0; END present; not merged with another frame",
-    "phase": "0.9sec after second A350, vs earlier2.6sec also NOT_HIT",
-    "PID": 12962,
-    "reader_exit": 0,
-    "actual_target_draws_after_state_end": 0,
-    "R32_view_creations": 42082,
-    "invalid_R32_ranges": 0,
-    "submitted_bad_views": 0
+    "targets": [
+      {
+        "index": 2175722,
+        "event": 1,
+        "frame": 19659,
+        "pipeline": 1248,
+        "cb": 2628,
+        "rawhex": "440a0000000000000807000001000000000000000000000000000000",
+        "api": 69739
+      },
+      {
+        "index": 2176830,
+        "event": 2,
+        "frame": 19659,
+        "pipeline": 2421,
+        "cb": 2632,
+        "rawhex": "480a0000000000000807000001000000000000000000000000000000",
+        "api": 69739
+      }
+    ],
+    "selection_rule": "Native full_draw_start f.seen selects first occurrence of each pair within captured nativeframe; all other matching draws retained, not conflated",
+    "scope": "First occurrence of both pairs in exactsame frame, actual36 buffer binding slices matched. Other6matching draws not captured by first-per-pair nativefeature, retained in API manifest; no input splicing. ExplicitR32 range bad0 of39263create,0submitteduses; not allVUID/fullgame. Native126/126END/missing0/IO0; GPU replay pending",
+    "actual_depth_states": [
+      {
+        "event": 1,
+        "draw": 2175722,
+        "pipeline": 1248,
+        "depthTest": 1,
+        "depthWrite": 1,
+        "compare": 6,
+        "stencilTest": 0,
+        "depth_struct_offset": 480
+      },
+      {
+        "event": 2,
+        "draw": 2176830,
+        "pipeline": 2421,
+        "depthTest": 1,
+        "depthWrite": 0,
+        "compare": 6,
+        "stencilTest": 1,
+        "depth_struct_offset": 480
+      }
+    ],
+    "native_audit": "PASS126/126/missing0/IO0/END",
+    "buffer_binding_rows": 36,
+    "GPU_replay_agreement": {
+      "time": "2026-11-08T09:49:23.130446+08:00",
+      "CAPTURE_LIMIT": "YES_BOUNDED_SAME_FRAME_FIRST_PER_PAIR",
+      "native_frame": 19659,
+      "uniqueGPUcopies": 126,
+      "logical_comparisons": 137,
+      "exact": 137,
+      "missing": 0,
+      "actualAPI_draws": [
+        2175722,
+        2176830
+      ],
+      "per_target_counts": [
+        22,
+        115
+      ],
+      "native_bytes": 14840740,
+      "returncodes": "VK_NOT_READY vs capturedSUCCESS warnings preserved; byte equality does not claim identical returncodes",
+      "selection": "first pair occurrence matches native f.seen; other6matching sameframe draw instances not claimed nativecovered",
+      "scope": "All126nativeCOPYfiles mapped one-for-one to union of independent unmodifiedsameframe exports; aliases remain explicit. ActualUBO/TBO offsets/ranges/format/generation and actualmodulehashes matched; D24 only defined24bits and reachableVB prefix; no otherframe inputs. 39263viewcreates0R32 range errors/0submittedbad; not allVUID or whole-game acceptance"
+    }
   },
   "previous_failures": {
     "unassisted": "PID6699 native6248 guest RenderThread120sec watchdog134;2080603698B truncated, native noEND; hostreader0 not capture success",
@@ -177,7 +250,7 @@
     "return_title": "PID23495 exitSIG9 cause unknown; stray next route before launcher verification logged; ownGameActivity restarted12962 actualtitle observed",
     "host_test": "FirstSIGBUS138 on Darwin, test signalcoverage corrected; finalEFAULT14+guardedCPUcopy262144B exactPASS"
   },
-  "CAPTURE_COMPLETE": "NO",
+  "CAPTURE_COMPLETE": "YES_BOUNDED_FIRST_PAIRS_POSTFIX",
   "VIEW_VALIDITY": "FIXED scoped observedhalf fact/ranges only",
   "FIRST_WRONG": "prior formal VSPosition/sharedsum roots retained; added captureIO protectedmapping->kernelwrite mechanism",
   "VISUAL": "prior ordinary4a91 scopedPASS retained; currentdiagnostic not ordinary acceptance",
@@ -185,7 +258,7 @@
   "FPS60": "UNMET",
   "Honor400Pro": "NOT_RUN",
   "restore_apk": "4a91b71cf13689029b13156ab831b9387890ff8443cf171657f6a9bb42cc1002",
-  "next": "Dark174/174 originalAPI independent per-target GPUcomparisonPASS. Limit one final bounded1.7sec midpoint between actual0.9initialfield and2.6laterblue, same537c/PID9927. Restore ordinary4a91 aftercapture/replay; no tools rebuilt/downloaded.",
+  "next": "Captured/replayed bothfixedruntimefirstpairs; restoreordinarytitle/PADhidden andfinalreport only; AUDIO userNOTRUN/60unmet/400ProNOTRUN.",
   "limit_previous": {
     "native_frame": 17676,
     "PID": 23495,
@@ -225,5 +298,44 @@
     },
     "native": "NOT_HIT selected0/pairMask0, laterbluephase",
     "retry": "SameAPK newPID12962; normal route in limit-retry/route-pid12962, Edelay0.9vs2.6 sec; no new readertrigger yet"
-  }
+  },
+  "limit_midpoint": {
+    "time": "2026-11-08T09:07:24.902081+08:00",
+    "frame": 10761,
+    "PID": 9927,
+    "bytes": 662281519,
+    "sha256": "8d296894b46a2ebd0fe46cab44fb15b25067f3b9143b426082237d68e928107e",
+    "API": {
+      "bytes": 662281519,
+      "blocks": 1377395,
+      "exact_eof": true,
+      "boundaries": [
+        {
+          "index": 3,
+          "kind": 2,
+          "rawhex": "01000000092a000000000000"
+        },
+        {
+          "index": 1372391,
+          "kind": 2,
+          "rawhex": "02000000092a000000000000"
+        },
+        {
+          "index": 1375038,
+          "kind": 1,
+          "rawhex": "02000000092a000000000000"
+        },
+        {
+          "index": 1377393,
+          "kind": 1,
+          "rawhex": "020000000a2a000000000000"
+        }
+      ]
+    },
+    "native": "NOT_HIT pairMask0 selected0/END",
+    "classification": "Actualcast initialbluecircle, same1.7phase; not root or input completeness",
+    "hypothesis_correction": "Prior phase bracket was wrong: finalordinaryLimit v3 contact sheet0 shows bluecircle4s,bluepillar4.5..5s BEFORE purplespheres5.5..7.5s. Lastconfirm return approx2s on same normalroute; target delay4.0s not between0.9 and2.6. Noinputsplicing. One laterphase capture planned; no tool/sourcebuild."
+  },
+  "limit_phase_correction": "0.9/2.6 bothbeforepurple, not a bracket; existingordinaryvideo blue4..5/purple5.5..7.5, nextfinite4.0sec same537c/noinstallbuild/newdownload",
+  "closure_index": "coordination/experiments/honor-capture-20261108/postfix-closure.json"
 }

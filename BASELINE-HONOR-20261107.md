@@ -1,3 +1,13 @@
+# 当前普通交付与捕获闭合补记（2026-11-08）
+
+普通交付已推进至 **1.0.2-honor / versionCode3**，运行时代码 `6a90ed1ed30bedc2c368cde64eed18d6a2e32106`，本地检查点 `honor-graphics-20261108-view-facts`。APK `4a91b71cf13689029b13156ab831b9387890ff8443cf171657f6a9bb42cc1002`，3,749,266B；数据ZIP仍为下文同一 `01a338c5…10411af`，16,918,705,179B。安装手册已指向1.0.2，旧包/旧tag保留，不移动。
+
+修后暗魔法9836与Limit19659分别完成同draw完整原生GPU输入/实际shader/附件捕获及未改API单目标重放：Dark174/174独立读回、Limit126/126独立读回（137项含11别名）全部一致。**CAPTURE_COMPLETE=YES**仅限指定首个pre/color pair；Limit同帧另外6个matching实例保留在API、不冒称native覆盖。R32explicit range实际创建审计Dark29696/Limit39263均0非法、0submitted坏引用；VIEW_VALIDITY=FIXED限已观测类型/该VUID，非全VUID或全游戏。清理后索引 `coordination/experiments/honor-capture-20261108/postfix-closure.json`。
+
+`febedab`仅修opt-in诊断的保护映射读回写文件：现有fence/invalidate后先CPU memcpy到普通heap再fwrite，避免page_guard下内核I/O的EFAULT；普通marker0渲染/声音路径不变，交付APK无需替换为诊断537c。既有VS Position/CS归约黑效根因保持独立，不把view合规或捕获I/O当原黑块根因。
+
+普通1.0.2的Limit/Boss/防御/爆炎/召唤有限视觉自测PASS、Dark等价runtime自测PASS；音频依用户明确要求NOT_RUN、400Pro/独立QA/护盾魔法未验。60未达，最后暖野外32.66594个distinct新帧/s；没有修改游戏速度或用重复呈现帧充60。整体仍未验收通过。下文为2026-11-07初始冻结记录，旧身份/旧缺项只作历史，当前状态以上述补记和RESULT/HANDOFF顶部为准。
+
 # Honor 图形修复基线（2026-11-07）
 
 范围为本 Honor 工作树现有 dirty 代码及本线程接续修复，父提交 `032e5f68172c101cb2b6e44ee06f02974dab2da8`，分支 `work/honor-gtpro-30hz`。源基线由本地标签 `honor-graphics-20261107` 标识；不推送、不修改 RG 工作树/main。任务唯一 writer 为当前线程 Codex /root。

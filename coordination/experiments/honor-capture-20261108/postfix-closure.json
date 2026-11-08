@@ -1,0 +1,128 @@
+{
+  "time": "2026-11-08T09:56:56.016545+08:00",
+  "task": "P-CX-TERRA-dark-limit-capture-20261106",
+  "runtime_source_commit": "6a90ed1ed30bedc2c368cde64eed18d6a2e32106",
+  "capture_IO_source_commit": "febedab8859153ef07064f68d2ae28fbfa36f96d",
+  "ordinary_apk_sha256": "4a91b71cf13689029b13156ab831b9387890ff8443cf171657f6a9bb42cc1002",
+  "capture_apk_sha256": "537cce8cbf0dbd7944a29d3c44edb8971d794fe60e3896f8f35682c241bcc430",
+  "replay_apk_sha256": "1d30b246bbce2455c74f7d6faeea516e5aefe5fbce59231bb8d217315ed780a9",
+  "CAPTURE_COMPLETE": "YES",
+  "scope": "Bounded first pre/color pair for Dark9836 and independently Limit19659; fullsame-draw GPU input, actualmodules/state, allbound reachable subresources/attachments and original-vs-unmodifiedper-targetreplay. Not allpairinstances/allVUIDs/allframes/wholegame/independentQA",
+  "dark": {
+    "time": "2026-11-08T08:50:37.731442+08:00",
+    "CAPTURE_DARK": "YES_BOUNDED_SAME_FRAME",
+    "native_frame": 9836,
+    "uniqueGPUcopies": 174,
+    "logical_comparisons": 174,
+    "exact": 174,
+    "missing": 0,
+    "actualAPI_draws": [
+      1159530,
+      1160967
+    ],
+    "single_target_replays": [
+      {
+        "event": 1,
+        "comparisons": 71,
+        "exact": 71
+      },
+      {
+        "event": 2,
+        "comparisons": 103,
+        "exact": 103
+      }
+    ],
+    "scope": "Complete original nativeinput/output GPU copies mapped one-for-one to independent unmodified sameframe originalAPI/shader replay; fullactualbound resources+subresources, offsets/ranges/types, actualpipeline/dynamicstate. D24 defined24bits/reachableVB15540 of15552 only; allocationtails not claimed",
+    "returncodes": "VK_NOT_READY vs capturedSUCCESS warnings retained; data agreement does not assert returncodes identical",
+    "R32_view_creations": 29696,
+    "invalid_R32_range": 0,
+    "limitations": "R32 explicit range legality audited, not all VulkanVUIDs or whole-game acceptance; separate Limitpostfix target still NOT_HIT; original failed directory run retained"
+  },
+  "limit": {
+    "time": "2026-11-08T09:49:23.130446+08:00",
+    "CAPTURE_LIMIT": "YES_BOUNDED_SAME_FRAME_FIRST_PER_PAIR",
+    "native_frame": 19659,
+    "uniqueGPUcopies": 126,
+    "logical_comparisons": 137,
+    "exact": 137,
+    "missing": 0,
+    "actualAPI_draws": [
+      2175722,
+      2176830
+    ],
+    "per_target_counts": [
+      22,
+      115
+    ],
+    "native_bytes": 14840740,
+    "returncodes": "VK_NOT_READY vs capturedSUCCESS warnings preserved; byte equality does not claim identical returncodes",
+    "selection": "first pair occurrence matches native f.seen; other6matching sameframe draw instances not claimed nativecovered",
+    "scope": "All126nativeCOPYfiles mapped one-for-one to union of independent unmodifiedsameframe exports; aliases remain explicit. ActualUBO/TBO offsets/ranges/format/generation and actualmodulehashes matched; D24 only defined24bits and reachableVB prefix; no otherframe inputs. 39263viewcreates0R32 range errors/0submittedbad; not allVUID or whole-game acceptance"
+  },
+  "limit_actual_modules": {
+    "f19659-e1-full-g1-shader-s0.bin": "7a04879d7cdb4febfd5fd9b4d61c944fe6990ea86886e0c0cc4c3a9b517a703b",
+    "f19659-e1-full-g1-shader-s4.bin": "b90acafd55c462dbc4a2a9dcaf11dddf6e469aa119354df0b4c109d2d28cec17",
+    "f19659-e2-full-g2-shader-s0.bin": "85eb0efe0491f1878bf9f6600f6d79ca4b626a39fa8fd8a7da93d4d958f80e0e",
+    "f19659-e2-full-g2-shader-s4.bin": "c96a5c7a7aef61298741743b97a0aff476019025433b9265697ba5bc4477c36c"
+  },
+  "native_missing": 0,
+  "native_IO_errors": 0,
+  "VIEW_VALIDITY": "FIXED",
+  "VIEW_VALIDITY_FIXED": "YES",
+  "view_scope": "Eight observed wronghalf facts corrected, actual nativeR16F/range2 and numeric16case contract retained; submittedscene R32explicit ranges:Dark0/29696,Limit0/39263 and0submittedbaduses. Not all VulkanVUIDs/globalgame legality. Historicalinvalidtraces retained unchanged. Not blackeffect rootcause.",
+  "FIRST_WRONG": "Prior Dark/Limit independent formal VS lostbufferreads -> Position; Boss independentCS sharedreduction doublecount. Thisclosure adds diagnosticprotectedmapping-to-kernelIO fix, not newgameGPU error. No ALWAYS/emptyFS/prepassdelete/rangewiden/waitIdle fix",
+  "VISUAL_DARK": "PASS_SCOPED_ORDINARY_RUNTIME_EQUIVALENCE",
+  "VISUAL_LIMIT": "PASS_SCOPED_ORDINARY_1.0.2",
+  "VISUAL_BOSS": "PASS_SCOPED_ORDINARY_1.0.2_251_ENCODED_FRAMES",
+  "guard_fire_summon": "PASS_SCOPED_ORDINARY_1.0.2",
+  "shield_magic": "NOT_RUN_PROLOGUE_UNAVAILABLE",
+  "first_battle_entry_flash": "NOT_REPRODUCED_SCOPED186_ENCODED_FRAMES",
+  "AUDIO": "NOT_RUN_USER_EXPLICIT",
+  "audio_checklist": {
+    "default_AAudio_NONE": "Preserved actualNDKenum10, not LOW_LATENCY12",
+    "A2DP_field_at_least2min": "NOT_RUN_USER_NO_HUMAN_CONDITION",
+    "A2DP_battle_at_least2min": "NOT_RUN_USER_NO_HUMAN_CONDITION",
+    "connect_disconnect_reopen_subjective": "NOT_RUN",
+    "fence_spin_default0": "Preserved",
+    "TIMEOUT_retry": "Preservedsource, no newsubjectiveaudioPASS",
+    "DISCONNECTED_devicechange_reopen": "Preservedsource, connectdisconnecttestNOT_RUN",
+    "burst_buffer": "Preserved2bursts; no reduction",
+    "xruns": "Not acceptance evidence",
+    "APK_identity": "Exactordinary4a91 restored, actualbaseSHAverified; visuals/pidtracked",
+    "audio_bad_restore_rule": "No newhumanfailure orperformanceexperiment; knownordinary4a91 restored"
+  },
+  "FPS60": "NOT_MET lastordinaryfield32.66593962495253distinctnewframes/s; no performancechange or newperformancePASS",
+  "Honor400Pro": "NOT_RUN",
+  "independent_QA": "NOT_RUN",
+  "overall_acceptance": "NOT_PASSED_AUDIO_AND_OTHER_GATES",
+  "artifact_root": ".local/honor-device-profiles/flame-20261104/dark-shader-retranslate-20261107/postbaseline-20261108/full-native-capture/half-fact-fix/fixed-stream-20261108/heap-readback/active",
+  "limit_artifact": "limit-purple",
+  "restored_device": {
+    "time": "2026-11-08T09:49:27.623967+08:00",
+    "PID": "13049",
+    "properties": {
+      "debug.gfxrecon.capture_file": "/sdcard/Android/data/org.ffrs.gamewindow/files/gfxr-full-original-dark-20261108.gfxr",
+      "debug.gfxrecon.capture_file_timestamp": "",
+      "debug.gfxrecon.capture_trigger_frames": "3",
+      "debug.gfxrecon.capture_compression_type": "",
+      "debug.gfxrecon.capture_use_asset_file": "",
+      "debug.gfxrecon.capture_android_trigger": "false",
+      "debug.gfxrecon.memory_tracking_mode": "unassisted"
+    },
+    "global_settings": {
+      "enable_gpu_debug_layers": "null",
+      "gpu_debug_app": "null",
+      "gpu_debug_layers": "null",
+      "gpu_debug_layer_app": "null"
+    },
+    "installed_SHA256": "4a91b71cf13689029b13156ab831b9387890ff8443cf171657f6a9bb42cc1002",
+    "final_time": "2026-11-08T09:54:20.974658+08:00",
+    "scene": "ordinary1.0.2 actualtitle, PADhidden screenshot ordinary-final.png",
+    "marker": "0",
+    "final_PID": "13049",
+    "focus": "    topResumedActivity=ActivityRecord{154101583 u0 org.ffrs.gamewindow/org.ffrs.diagnostic.GameActivity t1046}"
+  },
+  "not_hit_controls": "8485menu;17676earlyblue2.6s;38166initialfield0.9s;10761initialblue1.7s;9748lowlightblockedmenu. Falsephasebracket explicitly corrected using existingordinaryLimitvideo; no inputs spliced",
+  "failures_retained": "Unassisted6248RenderThread120sec watchdog134/truncatedtrace/noEND; pageguard13313directmappedfwrite74IO; hostDarwinSIGBUS138 initialtest corrected; missingexportdirectoryfirstrun; oldexacttwo-draw discoveryassertion corrected to nativefirstperpair rule; Python3.9file_digestAttributeError correctedstreamSHA. No quota error.",
+  "stop": "Current captureknife complete andordinarytitle/PADhidden restored; originalRESULT/HANDOFF/state updated. Overallgoal notcomplete: AUDIO/60/400Pro/independentQA gates remain."
+}
