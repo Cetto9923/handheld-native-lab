@@ -1,3 +1,7 @@
+# 主机证据及交付数据包消失 — 2026-11-08
+
+13:45 后发现 .local/shield-save-isolation-20261108 整个目录不存在，.local/honor-delivery-20261107/release/FFRS-data.zip 也不存在；此前两者确实存在，本代理没有删除，原因及是否被移动未知。主机空余从约20GiB变为234GiB，不得据此归因。APK 和安装说明仍在。平板本应用 files/scene-blocks-20261108.gfxr（513883697B）与 scene-blocks2-20261108.gfxr（432168276B）仍在，原存档 ls 304368B/09:35，平板空余约1.2G；其他新截图/诊断 APK/本地导出消失，手机中画面截图是否仍可恢复尚未核实。用户确认的 advance3 原图当前路径也消失，不能再引用该路径存在。已告知用户检查并暂停对该工作树的清理，在排除并发清理前不要重建或覆盖证据。手机400Pro闪退日志仍待用户；缺 ZIP 时不得声称数据包可交付。此前用户见图反馈本身和已提交摘要仍有效，但丢失文件不得冒称已验证可用。
+
 # 剧情单 draw 导出及设备空间 — 2026-11-08
 
 已纠正本代理漏建输出目录的问题：复用同包 replay 和 scene2 后，draw317584（frame5399，queue submit318276）导出了一个 B10G11R11_UFLOAT_PACK32 颜色附件，标称 1384×780，文件 4444160B，见 .local/shield-save-isolation-20261108/resume-contract/scene2-api/one-output；重放产生 VK_NOT_READY 与 capture VK_SUCCESS 差异，不能当相同返回码。文件大于 1384×780×4，原始布局/尾部尚未核实，直接 reshape 失败，禁止把尾部填充冒认图像或声称定位色块。该单点不是首错证明，原用户截图 advance3 的同一瞬间未捕获。复核输出目录前曾误用普通包启动 NativeActivity 失败，另有两次未建目录 SIGABRT，均为诊断操作失败，不是表哥手机闪退原因。
