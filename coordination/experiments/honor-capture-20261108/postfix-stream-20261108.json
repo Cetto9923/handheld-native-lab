@@ -1,0 +1,159 @@
+{
+  "time": "2026-11-08T08:20:42.522750+08:00",
+  "source_commit": "febedab8859153ef07064f68d2ae28fbfa36f96d",
+  "source_scope": "Only opt-in full_present stages readback into ordinary heap before fileIO; default renderer/audio unchanged",
+  "capture_apk": "537cce8cbf0dbd7944a29d3c44edb8971d794fe60e3896f8f35682c241bcc430",
+  "layer_sha256": "61abd21138b02fae5c1eabef36c9cbd79c2b8737acd0b007f9cf129e4e16e28a",
+  "existing_replay_sha256": "1d30b246bbce2455c74f7d6faeea516e5aefe5fbce59231bb8d217315ed780a9",
+  "evidence_root": ".local/honor-device-profiles/flame-20261104/dark-shader-retranslate-20261107/postbaseline-20261108/full-native-capture/half-fact-fix/fixed-stream-20261108/heap-readback/active",
+  "dark": {
+    "trace": {
+      "bytes": 559294482,
+      "sha256": "37ef9e5e3918b521adcff0f52d6ead159d75f2f9581cb31b65a5643b22f2cc3b",
+      "frame": 9836,
+      "reader_exit": 0,
+      "native_complete": true,
+      "API": {
+        "bytes": 559294482,
+        "blocks": 1167504,
+        "exact_eof": true,
+        "boundaries": [
+          {
+            "index": 3,
+            "kind": 2,
+            "rawhex": "010000006c26000000000000"
+          },
+          {
+            "index": 1156788,
+            "kind": 2,
+            "rawhex": "020000006c26000000000000"
+          },
+          {
+            "index": 1163416,
+            "kind": 1,
+            "rawhex": "020000006c26000000000000"
+          },
+          {
+            "index": 1167502,
+            "kind": 1,
+            "rawhex": "020000006d26000000000000"
+          }
+        ]
+      }
+    },
+    "native_frame": 9836,
+    "native_PID": 23495,
+    "native_count": 174,
+    "images": 127,
+    "buffers": 47,
+    "native_bytes": 85117552,
+    "native_audit": "PASS",
+    "missing": 0,
+    "IO": 0,
+    "native_module_sha256": {
+      "f9836-e2-full-g2-shader-s0.bin": "f7f5e743abd002a9a3853bb8610483499393b358f8b92b6006a679e85a0a29a7",
+      "f9836-e2-full-g2-shader-s4.bin": "c9de616a2536b41e2f3e83b68c65cf983da9e1da8a600f07943baf2cc25c952f",
+      "f9836-e1-full-g1-shader-s0.bin": "5937617587b19ce3fa7a093a0de249906fc5586f6ed1ae5db7c612ff85365dbc",
+      "f9836-e1-full-g1-shader-s4.bin": "4aeb46118d54f664ad5d5cb116a83c15cda1fa25637d3d61f57cd8f059e56f0f"
+    },
+    "targets": [
+      {
+        "index": 1159530,
+        "event": 1,
+        "frame": 9836,
+        "pipeline": 874,
+        "cb": 2634,
+        "api": 69739
+      },
+      {
+        "index": 1160967,
+        "event": 2,
+        "frame": 9836,
+        "pipeline": 2393,
+        "cb": 97,
+        "api": 69739
+      }
+    ],
+    "depth": [
+      {
+        "event": 1,
+        "draw": 1159530,
+        "pipeline": 874,
+        "depthTest": 1,
+        "depthWrite": 1,
+        "compare": 6,
+        "stencilTest": 0
+      },
+      {
+        "event": 2,
+        "draw": 1160967,
+        "pipeline": 2393,
+        "depthTest": 1,
+        "depthWrite": 0,
+        "compare": 2,
+        "stencilTest": 1
+      }
+    ],
+    "buffer_bindings_matched": 43,
+    "view_creates": 29696,
+    "invalid_R32_ranges": 0,
+    "submitted_bad_view_commands": 0,
+    "GPU_replay_agreement": "NOT_RUN"
+  },
+  "limit_latest": {
+    "native_frame": 17676,
+    "PID": 23495,
+    "trace": {
+      "bytes": 705304466,
+      "sha256": "a25c959ab2211f86045768a7c0d71c651f50e51e8abea401ca7dabe8ed203130",
+      "frame": 17676,
+      "reader_exit": 0,
+      "API": {
+        "bytes": 705304466,
+        "blocks": 1885791,
+        "exact_eof": true,
+        "boundaries": [
+          {
+            "index": 3,
+            "kind": 2,
+            "rawhex": "010000000c45000000000000"
+          },
+          {
+            "index": 1880765,
+            "kind": 2,
+            "rawhex": "020000000c45000000000000"
+          },
+          {
+            "index": 1883476,
+            "kind": 1,
+            "rawhex": "020000000c45000000000000"
+          },
+          {
+            "index": 1885789,
+            "kind": 1,
+            "rawhex": "020000000d45000000000000"
+          }
+        ]
+      },
+      "native": "selected0/mask0 NOT_HIT no actual target pair; never combine with old17938 inputs"
+    },
+    "native": "NOT_HIT selected0/pairMask0, laterbluephase",
+    "retry": "SameAPK newPID12962; normal route in limit-retry/route-pid12962, Edelay0.9vs2.6 sec; no new readertrigger yet"
+  },
+  "previous_failures": {
+    "unassisted": "PID6699 native6248 guest RenderThread120sec watchdog134;2080603698B truncated, native noEND; hostreader0 not capture success",
+    "pageguard_direct_io": "PID8407 native13313, native186queued112written74IO, APIcomplete; no GPU agreement claimed",
+    "heap_menu": "PID23495 native8485,523060832B complete, no cast NOT_HIT",
+    "return_title": "PID23495 exitSIG9 cause unknown; stray next route before launcher verification logged; ownGameActivity restarted12962 actualtitle observed",
+    "host_test": "FirstSIGBUS138 on Darwin, test signalcoverage corrected; finalEFAULT14+guardedCPUcopy262144B exactPASS"
+  },
+  "CAPTURE_COMPLETE": "NO",
+  "VIEW_VALIDITY": "FIXED scoped observedhalf fact/ranges only",
+  "FIRST_WRONG": "prior formal VSPosition/sharedsum roots retained; added captureIO protectedmapping->kernelwrite mechanism",
+  "VISUAL": "prior ordinary4a91 scopedPASS retained; currentdiagnostic not ordinary acceptance",
+  "AUDIO": "NOT_RUN userexplicit",
+  "FPS60": "UNMET",
+  "Honor400Pro": "NOT_RUN",
+  "restore_apk": "4a91b71cf13689029b13156ab831b9387890ff8443cf171657f6a9bb42cc1002",
+  "next": "FinishLimit earlierE, single-target existing1d30 replay for bothpairs, compare sameframeGPU, restoreordinary4a91/marker0/triggerfalse/layersnull/PADhidden. Preserve all old artifacts, no source/tool rebuild or download planned."
+}

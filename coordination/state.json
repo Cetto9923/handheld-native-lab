@@ -1527,16 +1527,17 @@
         "scripts/graphics/audit_honor_full_capture.py",
         "tests/device/half_numeric_fact.vert",
         "tests/device/test_half_numeric_facts.cpp",
-        "coordination/experiments/honor-capture-20261108/"
+        "coordination/experiments/honor-capture-20261108/",
+        "tests/device/test_capture_mapped_io.cpp"
       ],
       "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
       "branch": "work/honor-gtpro-30hz",
       "acquired_at": "2026-11-07T09:31:51.768908+08:00",
-      "checkpoint": "Source6a90 unchanged; regression6b0c12f scopedPASS finalLimit/Boss/guard/fire/Bahamut. Actual FIFO/ZSTD title control245d+61abd PID32410/frame19203 426MB exactEOF16115blocks decoded; existing1d30 PID1965 replay+titlePNG PASS. Parent45sec timeout resolved EOF/no restart, reader exit unknown. Restoredordinary4a91 PID4491 title/PADhidden/marker0/triggerfalse/layersnull/propsrestored. Next effect-stream-next.json fresh2frame D/E ZSTD/FIFO native+API closure, no tool rebuild/download, device>=1GiB margin; audioNOTRUN/60unmet/400ProNOTRUN; unique writer.",
+      "checkpoint": "febedab diagnostic; Dark9836 native174/174PASS/API559MB/legalviews, replaypending. Limit17676 NOTHIT; retry0.9sec same537c/PID12962 normalNewGame, no reader yet. Restore4a91 after1d30single-targetreplay. audioNOTRUN/60unmet/400ProNOTRUN; all failures retained.",
       "write_state": "ACTIVE",
       "ownership_retained": true,
       "device_authority": "Latest user: device idle, can debug any time without asking; stop only actual conflict/disconnect. Honor only, preserve data.",
-      "checkpoint_at": "2026-11-08T06:44:45.204454+08:00",
+      "checkpoint_at": "2026-11-08T08:15:41.615738+08:00",
       "source_baseline_commit": "214fd794fb436de14155e8954908685ae2120c21",
       "source_baseline_tag": "honor-graphics-20261107"
     }
