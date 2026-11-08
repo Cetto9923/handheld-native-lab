@@ -1,3 +1,15 @@
+# 剧情单 draw 导出及设备空间 — 2026-11-08
+
+已纠正本代理漏建输出目录的问题：复用同包 replay 和 scene2 后，draw317584（frame5399，queue submit318276）导出了一个 B10G11R11_UFLOAT_PACK32 颜色附件，标称 1384×780，文件 4444160B，见 .local/shield-save-isolation-20261108/resume-contract/scene2-api/one-output；重放产生 VK_NOT_READY 与 capture VK_SUCCESS 差异，不能当相同返回码。文件大于 1384×780×4，原始布局/尾部尚未核实，直接 reshape 失败，禁止把尾部填充冒认图像或声称定位色块。该单点不是首错证明，原用户截图 advance3 的同一瞬间未捕获。复核输出目录前曾误用普通包启动 NativeActivity 失败，另有两次未建目录 SIGABRT，均为诊断操作失败，不是表哥手机闪退原因。
+
+重放后 install-r 已恢复普通 4a91；平板/data空余先后观测 790M、1.2G，停止大型设备写入并保留数据，未删除存档或证据。期间首次 adb 命令报告 daemon 未运行后自动启动，本代理未执行 kill-server，原因未知。导出图/数据和两个 scene trace 均在 .local；后续先离线审计 raw 行距和 padding，并核对平板余量，不在空间不足时扩大抓取。60Hz仍未达到。荣耀400Pro闪退待用户提供日志，无根因结论；音频免验。
+
+# 用户反馈荣耀 400 Pro 闪退 — 2026-11-08
+
+用户表哥实际安装交付包后，手机到 SQUARE ENIX 标志后退出。截图仅证明标志出现，原因未知；该机此前未实机验收，不能推断数据、内存、驱动或兼容问题。已请用户先复制手机内部存储 Android/data/org.ffrs.gamewindow/files/guest_boot.log 再重启：GuestThreadMain 的 RedirectOutput 用 O_TRUNC，重复启动可能覆盖日志；不清数据、不卸载。日志是否存在和可读尚待手机实际确认，仅当前 Honor 平板 A42 可通过本代理操作；未连接或操作表哥手机。400Pro 状态 USER_REPORTED_CRASH，仍待日志/设备核实，60Hz 未达。
+
+剧情色块抽样重放开始时两次退出，crash buffer 的实际原因是输出目录不存在，属于本次诊断操作错误，不是游戏崩溃根因；已保存先前 trace 和重放结果。随后为重试新建独立输出目录，但当时安装的已是普通包，NativeActivity 不存在，未完成重试。当前已恢复普通 APK 4a91（install-r 成功），四图形层设置 null、trigger false；无其他包操作。下次可在充足空间下安装既有同包 replay，先核对目录，再重放 scene2-api/sample-one.txt，完成后恢复普通包；原用户截图中的方块与 scene2 实际 draw 关联仍未证明。
+
 # 剧情轨迹已命中镜头，色块尚未定位 — 2026-11-08 13:13 +08:00
 
 第二次从隔离自动存档 Continue，连续前进后立即触发，未暂停。scene2.gfxr 432168276B，SHA256 e5ef529bf67e46dd9beb4c8706992356e89cbe8f701be14f6da15b156cadbd24；frame5399、318910 blocks、精确 EOF、310965 压缩块均解码。同包重放 replayed-scene2.png 确认为首次战斗前剧情镜头，但不是用户指定 advance3.png 的同一瞬间；色块是否命中及首个错误 GPU 输出待分析，未修复。首次误抓教程记录保留。用户观察当前画面似乎好了但帧率低；捕获层影响速度，此前普通包约 32.66594 distinct fps，60 目标未达。
