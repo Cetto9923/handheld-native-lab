@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-11-08T10:13:27.443201+08:00",
+  "updated_at": "2026-11-08T10:20:57.607684+08:00",
   "phase": "Honor dark VS dropped-read cause localized in replay; production shader and Limit/audio gates open",
   "coordinator": "Codex /root takeover",
   "integration_branch": "work/rg477m-native",
@@ -1534,11 +1534,11 @@
       "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
       "branch": "work/honor-gtpro-30hz",
       "acquired_at": "2026-11-07T09:31:51.768908+08:00",
-      "checkpoint": "UseraudioacceptanceWAIVED_NOT_TESTED. ConciseUTF8 TXT manual1106B/aff0eb86 publishedrelease+source, no oldversion references; MD copies synchronized. APK/dataZIP/device unchanged. Capture e381fcd preserved;60unmet/400ProNOTRUN.",
+      "checkpoint": "Audio waiver remains; sixordinaryvisual evidence hashes and13runtime APKentries verified. Shieldmagic NOT_RUN: readonly device legacy codex-local-save/GameSaveData0 exists102B; chapterunknown; managed files/saves absent does not imply lostsave. Inspect existing nativeStartInstalledGuest/savecontract for isolated non-overwriting regression; no save changed or copied. 60unmet/400ProNOTRUN.",
       "write_state": "CHECKPOINT_STOPPED",
       "ownership_retained": true,
       "device_authority": "Latest user: device idle, can debug any time without asking; stop only actual conflict/disconnect. Honor only, preserve data.",
-      "checkpoint_at": "2026-11-08T10:13:27.443201+08:00",
+      "checkpoint_at": "2026-11-08T10:20:57.607684+08:00",
       "source_baseline_commit": "214fd794fb436de14155e8954908685ae2120c21",
       "source_baseline_tag": "honor-graphics-20261107"
     }
@@ -5409,6 +5409,7 @@
     "closure_index": "coordination/experiments/honor-capture-20261108/postfix-closure.json",
     "next": "TXTmanual complete; audio gate explicitly waived. No repeats of completed graphicscapture/visualexperiments; 60goal remains unmet and phone untested.",
     "audio_requirement": "Waived by explicit user request; not PASS; do not block on human audio condition",
-    "installation_manual": "coordination/docs/HONOR-400PRO-INSTALL.txt"
+    "installation_manual": "coordination/docs/HONOR-400PRO-INSTALL.txt",
+    "shield_regression_next": "NOT_RUN; inspect existing local_save_contract and independent saveRoot mechanism before any isolated regression; original save untouched, 102B actual chapter unknown."
   }
 }
