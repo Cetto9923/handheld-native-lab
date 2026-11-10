@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-11-11T03:55:35.272461+08:00",
-  "phase": "Async pool reset error propagation candidate built offline; other game remains foreground",
+  "updated_at": "2026-11-11T04:05:45.316012+08:00",
+  "phase": "Identified two expensive initial compute shader rewrites; prewarm candidate requires correctness and device test",
   "coordinator": "Codex /root shrine takeover",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
@@ -1559,7 +1559,7 @@
       "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
       "branch": "task/T-honor-shrine-20261111",
       "acquired_at": "2026-11-11T01:31:38.119199+08:00",
-      "checkpoint": "Offline follow-up: in upload-pressure drain, wait for any async command-pool reset job and check its reset_result before overwriting/resetting the pool, matching existing recording_slot error handling. 1-line change, branch task/T-honor-shrine-20261111, base cac9803. Android ARM64 build FFRS-Shrine-Reset-Check.apk exit0 SHA256 cf3d186952c9782d31ed7215fa31bc428913b628c78cf13d81b2f5e63c73acbf, build log .local/shrine-takeover-20261111/async-reset-check-build.log. Build-only, failure injection and device regression NOT_RUN, not installed; foreground still other game. Currently installed e7 uses async-pool-reset=0, so do not claim this resolves a reproduced crash or improves FPS. Future verify async enabled/error propagation and normal shrine path when device available.",
+      "checkpoint": "Offline timing audit of 298 actual shader loads in final-regression-guest.log: total read284.19ms, rewrite314.39ms, analysis151.12ms, not per-frame; two compute rewrites b673e10f3da2451c=76.62ms and 876dd0820a7ad8fa=48.02ms. Current runtime shader-reuse=0; postrun vk-pipeline-list binary has zero occurrences of both, while it contains f6e83a04db2d4b7b four times. Postrun list is not startup list, occurrence alone not proof warm/reuse; current optional compute prewarm list excludes both. Candidate for stutter reduction: test explicit prewarm + shader-reuse compare mode 2, validate identical SPIR-V and actual-device cold/warm behavior/effects/memory before enabling. No source/marker/installed-APK changes. Full input SHA/stats .local/shrine-takeover-20261111/shader-load-investigation.json; other game remains foreground.",
       "write_state": "ACTIVE"
     }
   ],
@@ -4169,7 +4169,7 @@
       ],
       "acceptance": "Same scene enters and survives on Honor A42 with bounded GPU memory; no skipped shader/draw; independent QA NOT_RUN unless actually run",
       "recovery_point": "21d270e + saved cursor-wip.patch, preserve all existing data",
-      "checkpoint": "Offline follow-up: in upload-pressure drain, wait for any async command-pool reset job and check its reset_result before overwriting/resetting the pool, matching existing recording_slot error handling. 1-line change, branch task/T-honor-shrine-20261111, base cac9803. Android ARM64 build FFRS-Shrine-Reset-Check.apk exit0 SHA256 cf3d186952c9782d31ed7215fa31bc428913b628c78cf13d81b2f5e63c73acbf, build log .local/shrine-takeover-20261111/async-reset-check-build.log. Build-only, failure injection and device regression NOT_RUN, not installed; foreground still other game. Currently installed e7 uses async-pool-reset=0, so do not claim this resolves a reproduced crash or improves FPS. Future verify async enabled/error propagation and normal shrine path when device available."
+      "checkpoint": "Offline timing audit of 298 actual shader loads in final-regression-guest.log: total read284.19ms, rewrite314.39ms, analysis151.12ms, not per-frame; two compute rewrites b673e10f3da2451c=76.62ms and 876dd0820a7ad8fa=48.02ms. Current runtime shader-reuse=0; postrun vk-pipeline-list binary has zero occurrences of both, while it contains f6e83a04db2d4b7b four times. Postrun list is not startup list, occurrence alone not proof warm/reuse; current optional compute prewarm list excludes both. Candidate for stutter reduction: test explicit prewarm + shader-reuse compare mode 2, validate identical SPIR-V and actual-device cold/warm behavior/effects/memory before enabling. No source/marker/installed-APK changes. Full input SHA/stats .local/shrine-takeover-20261111/shader-load-investigation.json; other game remains foreground."
     }
   ],
   "blockers": [
