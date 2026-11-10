@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-11-11T02:40:20.428641+08:00",
-  "phase": "Shrine ordinary e7 APK actual load/exit/reenter and rectangle repair verified; movement29.86FPS, pacing/fullgame effects remain open",
+  "updated_at": "2026-11-11T02:54:50.034009+08:00",
+  "phase": "Shrine e7 load/exit/reenter and rectangle fix verified; Ice/Fire blackmagic+full encounter victory+map return survived; smooth frame pacing remains open",
   "coordinator": "Codex /root shrine takeover",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
@@ -1559,7 +1559,7 @@
       "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
       "branch": "task/T-honor-shrine-20261111",
       "acquired_at": "2026-11-11T01:31:38.119199+08:00",
-      "checkpoint": "Ordinary e7c3f82 installed hash verified. PID27357 Continue->interior->entrance->interior->moving survived, rectangles absent; frameCSV780intervals26.118s29.864FPS P9547.059ms max81.377ms; notstable60/fullgame/independentQA. Report coordination/results/HONOR-SHRINE-OOM-20261111.md. Next profile descriptor/snapshot + GPU wait and more transitions.",
+      "checkpoint": "Sourcecommit e878532; ordinary installed e7c3f82 APK samePID27357 survived shrine load/exit/reenter/movement and random encounter Ice+Fire blackmagic/attacks/victory/map return, no broad rectangles/blackFX in scoped video. Earlier movement29.864FPS/P9547.059ms; notstable60. LaterCPUprofile includes encounter/menu, FPcallchainsunreliable; no perfchange fromit. GlobalGPU0late60s4.859..4.916GB not process/transitionpeak. report updated; sourceclean. Next real continuous movement/action profile then minimal optimization; fullgame/audio/independentQA NOT_RUN.",
       "write_state": "ACTIVE"
     }
   ],
@@ -4169,7 +4169,7 @@
       ],
       "acceptance": "Same scene enters and survives on Honor A42 with bounded GPU memory; no skipped shader/draw; independent QA NOT_RUN unless actually run",
       "recovery_point": "21d270e + saved cursor-wip.patch, preserve all existing data",
-      "checkpoint": "Ordinary e7c3f82 installed hash verified. PID27357 Continue->interior->entrance->interior->moving survived, rectangles absent; frameCSV780intervals26.118s29.864FPS P9547.059ms max81.377ms; notstable60/fullgame/independentQA. Report coordination/results/HONOR-SHRINE-OOM-20261111.md. Next profile descriptor/snapshot + GPU wait and more transitions."
+      "checkpoint": "Sourcecommit e878532; ordinary installed e7c3f82 APK samePID27357 survived shrine load/exit/reenter/movement and random encounter Ice+Fire blackmagic/attacks/victory/map return, no broad rectangles/blackFX in scoped video. Earlier movement29.864FPS/P9547.059ms; notstable60. LaterCPUprofile includes encounter/menu, FPcallchainsunreliable; no perfchange fromit. GlobalGPU0late60s4.859..4.916GB not process/transitionpeak. report updated; sourceclean. Next real continuous movement/action profile then minimal optimization; fullgame/audio/independentQA NOT_RUN."
     }
   ],
   "blockers": [

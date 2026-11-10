@@ -17,7 +17,7 @@ Cursor run9..13 退出记录为 LOW_MEMORY；GPU Memory 旧轨迹达到111730442
 
 修复在 `src/graphics/nvn_vulkan/engine/xbg_game.cpp`。不在 get_image 内等待/重置，因为其调用者可能持有当前录制的命令缓冲。没有删 mip、跳绘制或改分辨率。最初的合并 CPU mip 写入实验已弃用并保留归档，不能把该实验的4.57GB峰值归给最终包。
 
-最终60秒内存捕获 `codex-shrine-final.pftrace` 仅覆盖移动后段/静态窗口，未收到进程 GPU Memory counter，不能据此报告最终过图 GPU 峰值。`final-memory-metrics.json` 记录该限制。实测路由每次检查均存活，可用内存最低采样约2.4GB，不能替代完整峰值轨迹。
+最终60秒内存捕获 `codex-shrine-final.pftrace` 仅覆盖移动后段/静态窗口，GPU0全局计数在4859207680..4915900416 B之间（3649次采样）；无按进程计数，不能据此报告本进程最终过图峰值。`final-memory-metrics.json` 记录该限制。实测路由每次检查均存活，可用内存最低采样约2.4GB，不能替代完整峰值轨迹。
 
 ### 地面大方块
 
@@ -40,4 +40,16 @@ Cursor run9..13 退出记录为 LOW_MEMORY；GPU Memory 旧轨迹达到111730442
 
 用户关闭 Cursor 后接手，原 Cursor WIP 完整归档 `cursor-wip.patch`、`xbg_game.cursor.cpp`，未混入最终生产源码。预存未跟踪 `FFRS/`、`FFRS-data.zip` 未变更/暂存。没有修改或操作 RG477M、原始游戏模块、数据包、存档，没有推送。
 
-下一步：以同一普通包、同一真实移动路线分析 CPU descriptor/snapshot 与 GPU 等待开销，保留全部卡顿；继续验证更多过图和战斗特效。当前目标仍 in_progress。
+## 后续真机技能及战斗验证
+
+同一普通 e7 APK、同一 PID27357，实际随机遇敌：拉斯韦尔释放冰结、雷因释放火焰黑魔法、敌方受击/攻击、普通物理攻击、胜利结算并返回地图，本轮未退出。录像抽帧可见蓝色冰晶/碎片、橙红火焰/爆炸及受击粒子，无先前整块矩形异常或整片黑效果；仅覆盖这两个技能和这一场战斗，不代表全部技能/LIMIT/全游戏验收。截图 `battle-*-skills.png`、`battle-ice-target.png`、`battle-end.png`、`after-battle-map.png`，原日志 `battle-guest.log`。
+
+- `battle-ice.mp4`：8218737 B，SHA256 `7b0182ff1929bb6d15468b8f996759a4b11f7d6ddf18bfc09ea868918458ec70`。
+- `battle-fire.mp4`：8898923 B，SHA256 `f5ccb99a1576670accd7deba07cb5b5d27e428e4ffcc03be5d6e7d1128db6941`。
+- 采集命令/hostPID/退出码在 `battle-{ice,fire}-{plan,launch,record}.txt/log`；录像期间不做无采集开销FPS结论。抽帧：`ffmpeg -v error -i <video> -vf 'fps=2,scale=750:-1,tile=5x4' -frames:v 1 <contact.png>`。
+- 运行输入模块 Build ID（实际 boot log）：`736837afd390442ed7c74a7de730e71b`，image162869248 B，651 imports；Vulkan driver0x802fa02e，Android ARM64，NDK26.1.10909125 RelWithDebInfo。
+- 战斗后 MemAvailable 1828744kB、SwapFree12643756kB，仅时点采样。日志实际音频 performance=10；未改音频源码，但不能声称满足 NONE/蓝牙音频门。
+
+另尝试实际路线CPU采样：首个 simpleperf --app 报15474samples但外部输出0B，导出失败原记录保留；run-as重试取得12331samples（RHI6292），途中触发随机遇敌，包含战斗转场/菜单，不能作为连续移动性能结论。FP错误调用链11138，inclusive百分比不可用；仅leaf PC提示descriptor和内存拷贝值得后续研究。`profile-scope.json`、`profile-move2.data`及report/source-line索引保留；没有因此改动性能参数或源码。
+
+下一步：单独记录明确连续移动/动作窗口，避免战斗菜单冒充性能验收；针对真实瓶颈再做最小优化。继续更多过图和技能，稳定帧率、全部特效和独立QA仍未完成。当前目标仍 in_progress。

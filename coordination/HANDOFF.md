@@ -1,8 +1,14 @@
+# 2026-11-11 Shrine fixes saved, scoped actual battle verified
+
+Sourcecommit e878532; ordinary installed e7c3f82 APK samePID27357 survived shrine load/exit/reenter/movement and random encounter Ice+Fire blackmagic/attacks/victory/map return, no broad rectangles/blackFX in scoped video. Earlier movement29.864FPS/P9547.059ms; notstable60. LaterCPUprofile includes encounter/menu, FPcallchainsunreliable; no perfchange fromit. GlobalGPU0late60s4.859..4.916GB not process/transitionpeak. report updated; sourceclean. Next real continuous movement/action profile then minimal optimization; fullgame/audio/independentQA NOT_RUN.
+
+Current runtime ordinaryGameActivity/PID27357 same installed3753362B APK, no capturelayer, default16slots. after-battle-map.png is current observed map. Ownedmetricsmarker1 still in place for next profile; own2slotbackup remains inactive. No process reboots after final install. Main fix in e878532; currentdocs checkpoint is postvalidation. Do not reinterpret paused/menu profile as moving60Hz. See coordination/results/HONOR-SHRINE-OOM-20261111.md.
+
 # 2026-11-11 ordinary Shrine repair actual-device checkpoint
 
 Ordinary e7c3f82 installed hash verified. PID27357 Continue->interior->entrance->interior->moving survived, rectangles absent; frameCSV780intervals26.118s29.864FPS P9547.059ms max81.377ms; notstable60/fullgame/independentQA. Report coordination/results/HONOR-SHRINE-OOM-20261111.md. Next profile descriptor/snapshot + GPU wait and more transitions.
 
-APK .local/android-apk/FFRS-Shrine-Fix.apk SHAe7c3f82c2c3113a1446fbedf7a574524c3ef5515769f2d9d523462a6f6c5095c. Default16slots; ordinaryGameActivity no layer; captureproperties/settings restored. No data/save changes. Audio subjective and independentQA NOT_RUN. Memory trace late60s has no GPUcounter; no finalpeak claim. CursorWIP backedup. Goal active: smooth frame pacing, transitions, effects.
+APK .local/android-apk/FFRS-Shrine-Fix.apk SHAe7c3f82c2c3113a1446fbedf7a574524c3ef5515769f2d9d523462a6f6c5095c. Default16slots; ordinaryGameActivity no layer; captureproperties/settings restored. No data/save changes. Audio subjective and independentQA NOT_RUN. Memory trace late60s GPU0 global4.859..4.916GB, no per-process counter or finaltransitionpeak claim. CursorWIP backedup. Goal active: smooth frame pacing, transitions, effects.
 
 # Ordinary minimal Shrine fix built / installed
 
