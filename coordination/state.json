@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-11-11T04:05:45.316012+08:00",
-  "phase": "Identified two expensive initial compute shader rewrites; prewarm candidate requires correctness and device test",
+  "updated_at": "2026-11-11T04:12:09.342873+08:00",
+  "phase": "Opt-in slow compute shader prewarm candidate built; real-device comparison pending",
   "coordinator": "Codex /root shrine takeover",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
@@ -1559,7 +1559,7 @@
       "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
       "branch": "task/T-honor-shrine-20261111",
       "acquired_at": "2026-11-11T01:31:38.119199+08:00",
-      "checkpoint": "Offline timing audit of 298 actual shader loads in final-regression-guest.log: total read284.19ms, rewrite314.39ms, analysis151.12ms, not per-frame; two compute rewrites b673e10f3da2451c=76.62ms and 876dd0820a7ad8fa=48.02ms. Current runtime shader-reuse=0; postrun vk-pipeline-list binary has zero occurrences of both, while it contains f6e83a04db2d4b7b four times. Postrun list is not startup list, occurrence alone not proof warm/reuse; current optional compute prewarm list excludes both. Candidate for stutter reduction: test explicit prewarm + shader-reuse compare mode 2, validate identical SPIR-V and actual-device cold/warm behavior/effects/memory before enabling. No source/marker/installed-APK changes. Full input SHA/stats .local/shrine-takeover-20261111/shader-load-investigation.json; other game remains foreground.",
+      "checkpoint": "Added opt-in only gfx-honor-compute-prewarm=2: preserves mode1 existing three keys and appends b673e10f3da2451c/876dd0820a7ad8fa; requires existing honor_inline_enabled and shader_reuse enabled. Use gfx-shader-reuse=2 for experiment: runtime independently rewrites and compares, retains runtime result even on mismatch. Existing default remains off. ARM64 build exit0 .local/android-apk/FFRS-Shrine-Prewarm-Experiment.apk SHA256 46f3c11dd8eaec9694f7c2f209aba4062df3ce4becb8d2e87b0b483ee8f8510b; log compute-prewarm-build.log. No install/markers/device run while other app foreground. Actual equality, cache hits, FPS/hitch improvement, memory and graphics/audio all NOT_RUN; experiment is not delivery. Installed e7 unchanged.",
       "write_state": "ACTIVE"
     }
   ],
@@ -4169,7 +4169,7 @@
       ],
       "acceptance": "Same scene enters and survives on Honor A42 with bounded GPU memory; no skipped shader/draw; independent QA NOT_RUN unless actually run",
       "recovery_point": "21d270e + saved cursor-wip.patch, preserve all existing data",
-      "checkpoint": "Offline timing audit of 298 actual shader loads in final-regression-guest.log: total read284.19ms, rewrite314.39ms, analysis151.12ms, not per-frame; two compute rewrites b673e10f3da2451c=76.62ms and 876dd0820a7ad8fa=48.02ms. Current runtime shader-reuse=0; postrun vk-pipeline-list binary has zero occurrences of both, while it contains f6e83a04db2d4b7b four times. Postrun list is not startup list, occurrence alone not proof warm/reuse; current optional compute prewarm list excludes both. Candidate for stutter reduction: test explicit prewarm + shader-reuse compare mode 2, validate identical SPIR-V and actual-device cold/warm behavior/effects/memory before enabling. No source/marker/installed-APK changes. Full input SHA/stats .local/shrine-takeover-20261111/shader-load-investigation.json; other game remains foreground."
+      "checkpoint": "Added opt-in only gfx-honor-compute-prewarm=2: preserves mode1 existing three keys and appends b673e10f3da2451c/876dd0820a7ad8fa; requires existing honor_inline_enabled and shader_reuse enabled. Use gfx-shader-reuse=2 for experiment: runtime independently rewrites and compares, retains runtime result even on mismatch. Existing default remains off. ARM64 build exit0 .local/android-apk/FFRS-Shrine-Prewarm-Experiment.apk SHA256 46f3c11dd8eaec9694f7c2f209aba4062df3ce4becb8d2e87b0b483ee8f8510b; log compute-prewarm-build.log. No install/markers/device run while other app foreground. Actual equality, cache hits, FPS/hitch improvement, memory and graphics/audio all NOT_RUN; experiment is not delivery. Installed e7 unchanged."
     }
   ],
   "blockers": [

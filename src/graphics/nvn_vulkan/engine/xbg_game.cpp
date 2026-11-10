@@ -2745,7 +2745,10 @@ void start(){
     seed();
     compute_prewarm_keys.clear();
 #ifdef XBG_HAVE_SPIRV_OPT
-    if(honor_inline_enabled && keep_rewritten){std::string path=list_path();path=path.substr(0,path.find_last_of('/'))+"/gfx-honor-compute-prewarm";FILE *f=fopen(path.c_str(),"rb");bool on=f && fgetc(f)=='1';if(f)fclose(f);if(on)compute_prewarm_keys={"cbe85d33e4d9a711","e4a8cd7fe0478956","e7a74f26fcb629e4"};}
+    if(honor_inline_enabled && keep_rewritten){std::string path=list_path();path=path.substr(0,path.find_last_of('/'))+"/gfx-honor-compute-prewarm";FILE *f=fopen(path.c_str(),"rb");int mode=f?fgetc(f):0;if(f)fclose(f);
+        if(mode=='1' || mode=='2')compute_prewarm_keys={"cbe85d33e4d9a711","e4a8cd7fe0478956","e7a74f26fcb629e4"};
+        // Opt-in Shrine experiment: expensive first-use compute rewrites, proven by runtime timings.
+        if(mode=='2'){compute_prewarm_keys.push_back("b673e10f3da2451c");compute_prewarm_keys.push_back("876dd0820a7ad8fa");}}
 #endif
     xbg_logf("NVN Honor compute prewarm count=%zu",compute_prewarm_keys.size());
     FILE *f=fopen(list_path().c_str(),"rb");if(f){fseek(f,0,SEEK_END);long n=ftell(f);rewind(f);std::vector<uint8_t> b(n>0 && n<(64l<<20)?size_t(n):0);bool ok=b.empty() || fread(b.data(),1,b.size(),f)==b.size();fclose(f);
