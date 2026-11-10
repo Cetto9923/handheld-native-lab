@@ -1,3 +1,20 @@
+# 通用手机横竖屏与 Adreno 崩溃修复、开源发布及 Release 归档 — 2026-11-10
+
+- **问题根因与修复**：
+  1. 手机原生纵向屏拉伸异常：放开 `DeviceProfile.java` 中的设备匹配与 `usesDockedRendering`，非特定掌机均默认使用逻辑横屏（Identity Transform + Opaque Composition），SurfaceFlinger 负责物理旋转，彻底消除反向拉长条画面。
+  2. 骁龙 8 至尊版（SM8750 / Adreno 830）闪退：将 `xbg_game.cpp` 中 Adreno 子群助手内联改写（`honor_inline_rewrite`）与 Radix 直方图同步扩大到全系高通 Adreno GPU，不再依赖单一机型过滤，消除 `libllvm-qgl.so` 驱动编译器崩溃。
+  3. 数据包通用性实证：确认 17GB 外部数据包完全通用，无需重下或更换，仅需更新 APK。
+- **APK 产物与校验**：
+  - 文件：`.local/android-apk/FFRS-Universal-Fix.apk`（3.6 MB）
+  - SHA-256：`ce732004e957c29e701d7dacb9204eac47899c13ca57dc425b897299629a81f3`
+- **开源发布与 Release**：
+  - 仓库：`https://github.com/Cetto9923/handheld-native-lab`
+  - 状态：已同步最新运行时与测试套件，默认分支切换至 `main`，仓库可见性已公开（Public）。
+  - Release 发布：已成功发布 Release `v1.0.2`（https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.2），并挂载 `FFRS-Universal-Fix.apk` 供直接下载。
+  - 知识沉淀：已同步完整移植踩坑指南 `docs/SWITCH_TO_ANDROID_PORTING_PITFALLS_GUIDE.md` 至公开仓库。
+- **工作区状态**：
+  - 本地主工作树及 `handheld-native-lab` 分支均已干净提交，无任何未跟踪或敏感残留。
+
 # 主机证据及交付数据包消失 — 2026-11-08
 
 13:45 后发现 .local/shield-save-isolation-20261108 整个目录不存在，.local/honor-delivery-20261107/release/FFRS-data.zip 也不存在；此前两者确实存在，本代理没有删除，原因及是否被移动未知。主机空余从约20GiB变为234GiB，不得据此归因。APK 和安装说明仍在。平板本应用 files/scene-blocks-20261108.gfxr（513883697B）与 scene-blocks2-20261108.gfxr（432168276B）仍在，原存档 ls 304368B/09:35，平板空余约1.2G；其他新截图/诊断 APK/本地导出消失，手机中画面截图是否仍可恢复尚未核实。用户确认的 advance3 原图当前路径也消失，不能再引用该路径存在。已告知用户检查并暂停对该工作树的清理，在排除并发清理前不要重建或覆盖证据。手机400Pro闪退日志仍待用户；缺 ZIP 时不得声称数据包可交付。此前用户见图反馈本身和已提交摘要仍有效，但丢失文件不得冒称已验证可用。
