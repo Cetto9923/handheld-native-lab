@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-11-11T03:46:53.645721+08:00",
-  "phase": "Honor foreground changed to another game; stop device inputs and continue read-only analysis",
+  "updated_at": "2026-11-11T03:55:35.272461+08:00",
+  "phase": "Async pool reset error propagation candidate built offline; other game remains foreground",
   "coordinator": "Codex /root shrine takeover",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
@@ -1559,7 +1559,7 @@
       "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
       "branch": "task/T-honor-shrine-20261111",
       "acquired_at": "2026-11-11T01:31:38.119199+08:00",
-      "checkpoint": "Actual e7 game PID27357 progressed down two flights and triggered a third random battle, victory shown lower-battle-victory.png; battle-to-map return NOT VERIFIED. Following two A presses foreground switched to org.snk.the1st.gamewindow GameActivity (different game), observed title screenshot lower-after-battle.png; PID27357 remains alive but is background. Input stopped immediately on observation; do not take foreground or send further inputs while other game is in use. It is unknown whether prior A presses affected other app; screenshot showed its New Game menu highlighted, no evidence of launch. No data deletion. Continue non-device source work and recheck foreground before testing. FPS/fullgame/independentQA open.",
+      "checkpoint": "Offline follow-up: in upload-pressure drain, wait for any async command-pool reset job and check its reset_result before overwriting/resetting the pool, matching existing recording_slot error handling. 1-line change, branch task/T-honor-shrine-20261111, base cac9803. Android ARM64 build FFRS-Shrine-Reset-Check.apk exit0 SHA256 cf3d186952c9782d31ed7215fa31bc428913b628c78cf13d81b2f5e63c73acbf, build log .local/shrine-takeover-20261111/async-reset-check-build.log. Build-only, failure injection and device regression NOT_RUN, not installed; foreground still other game. Currently installed e7 uses async-pool-reset=0, so do not claim this resolves a reproduced crash or improves FPS. Future verify async enabled/error propagation and normal shrine path when device available.",
       "write_state": "ACTIVE"
     }
   ],
@@ -4169,7 +4169,7 @@
       ],
       "acceptance": "Same scene enters and survives on Honor A42 with bounded GPU memory; no skipped shader/draw; independent QA NOT_RUN unless actually run",
       "recovery_point": "21d270e + saved cursor-wip.patch, preserve all existing data",
-      "checkpoint": "Actual e7 game PID27357 progressed down two flights and triggered a third random battle, victory shown lower-battle-victory.png; battle-to-map return NOT VERIFIED. Following two A presses foreground switched to org.snk.the1st.gamewindow GameActivity (different game), observed title screenshot lower-after-battle.png; PID27357 remains alive but is background. Input stopped immediately on observation; do not take foreground or send further inputs while other game is in use. It is unknown whether prior A presses affected other app; screenshot showed its New Game menu highlighted, no evidence of launch. No data deletion. Continue non-device source work and recheck foreground before testing. FPS/fullgame/independentQA open."
+      "checkpoint": "Offline follow-up: in upload-pressure drain, wait for any async command-pool reset job and check its reset_result before overwriting/resetting the pool, matching existing recording_slot error handling. 1-line change, branch task/T-honor-shrine-20261111, base cac9803. Android ARM64 build FFRS-Shrine-Reset-Check.apk exit0 SHA256 cf3d186952c9782d31ed7215fa31bc428913b628c78cf13d81b2f5e63c73acbf, build log .local/shrine-takeover-20261111/async-reset-check-build.log. Build-only, failure injection and device regression NOT_RUN, not installed; foreground still other game. Currently installed e7 uses async-pool-reset=0, so do not claim this resolves a reproduced crash or improves FPS. Future verify async enabled/error propagation and normal shrine path when device available."
     }
   ],
   "blockers": [

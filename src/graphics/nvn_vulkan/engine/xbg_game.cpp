@@ -4598,6 +4598,7 @@ void copy_texture_buffer(const p_copy_b2t &request,bool to_buffer){preflight_cpu
         upload_batch_bytes=0;gpu_sync(perf.sync_readback);
         for(auto &slot:active_slots()){
             poolreset::finish(slot);
+            if(slot.reset_queued)VK(slot.reset_result);
             if(slot.pool){VK(vkResetCommandPool(cfg.device,slot.pool,VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT));slot.reset_queued=false;}
             else if(slot.cmd){VK(vkResetCommandBuffer(slot.cmd,VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT));if(slot.pro)VK(vkResetCommandBuffer(slot.pro,VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT));}
         }
