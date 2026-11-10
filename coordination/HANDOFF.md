@@ -1,3 +1,7 @@
+# 2026-11-11 east shrine route checkpoint
+
+Ordinary e7 APK PID27357 advanced from fog overlook via second random battle, victory/level-up and real map return to east crystal landing and descended first staircase. Captures east-battle*.png, east-after-return.png, east-path2..7.png, raw east-route-guest.log in .local/shrine-takeover-20261111. No exit observed; same shrine not distinct map load, no new FPS acceptance and no whole-game claim. Character progressed to level 2 by authorized normal play. Next descend remaining staircase and test lower-floor route, while pursuing safe FPS optimization.
+
 # 2026-11-11 deeper shrine progression
 
 Advanced actual ordinary e7 APK samePID27357 from lower shrine hallway up staircase to elevated platform facing fog gap; no crash observed, further map area and light/fog rendered. Captures .local/shrine-takeover-20261111/advance-room1..4.png, deeper-shrine-guest.log. Bright yellow rectangular doorway matches location and description in https://allthings.how/final-fantasy-resonance-earth-shrine-walkthrough/ (lines89–94); this suggests a deliberate doorway, not proof of pixel-perfect effect. Device MemAvailable1718708kB/SwapFree11154692kB sampled once; no complete peak or fullgame acceptance. Further transition, effect and smooth-FPS validation remain.
