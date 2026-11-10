@@ -156,6 +156,18 @@ if(ANDROID)
     # is not the default on arm64.
     set_source_files_properties("${FFRS_NVN_VULKAN_DIR}/engine/xbg_texture.c"
         PROPERTIES COMPILE_OPTIONS "-fsigned-char")
+    # Optional development build: pinned SPIRV-Tools subset is obtained separately.
+    # With no source directory, the existing engine and handheld build stay unchanged.
+    set(FFRS_SPIRV_TOOLS_SOURCE "" CACHE PATH "Pinned SPIRV-Tools CMake source")
+    if(FFRS_SPIRV_TOOLS_SOURCE)
+        if(NOT EXISTS "${FFRS_SPIRV_TOOLS_SOURCE}/CMakeLists.txt")
+            message(FATAL_ERROR "FFRS_SPIRV_TOOLS_SOURCE is not a complete source directory")
+        endif()
+        add_subdirectory("${FFRS_SPIRV_TOOLS_SOURCE}" "${CMAKE_CURRENT_BINARY_DIR}/ffrs-spirv-tools")
+        target_sources(ffrs_nvn_vulkan_engine PRIVATE "${FFRS_NVN_VULKAN_DIR}/engine/xbg_spirv_inline.cpp")
+        target_compile_definitions(ffrs_nvn_vulkan_engine PRIVATE XBG_HAVE_SPIRV_OPT=1)
+        target_link_libraries(ffrs_nvn_vulkan_engine PUBLIC dm_spirv_opt)
+    endif()
     target_link_libraries(ffrs_nvn_vulkan_engine PUBLIC vulkan)
     target_link_libraries(ffrs_guest_runtime PUBLIC dl m log vulkan aaudio mediandk ffrs_nvn_vulkan_engine)
     add_library(ffrs_game_window SHARED game_window_jni.cpp game_vulkan_probe.cpp guest_boot_jni.cpp)

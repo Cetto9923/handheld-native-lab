@@ -61,16 +61,18 @@ static int engine_present(void *userdata, void *native_window, VkImage image, Vk
     char reason[256];
     reason[0] = '\0';
     if (!backend || !backend->present_image) {
-        return 0;
+        return -1;
     }
-    if (!backend->present_image(device, (void *)(uintptr_t)image, (uint32_t)format, width, height, crop,
-                                interval, reason, sizeof(reason))) {
+    int outcome = backend->present_image(device, (void *)(uintptr_t)image, (uint32_t)format, width, height, crop,
+                                         interval, reason, sizeof(reason));
+    if (outcome == NVN_PRESENT_SKIPPED) return 1;
+    if (outcome != NVN_PRESENT_QUEUED) {
         static unsigned err_count = 0;
         if (err_count++ < 10) {
             fprintf(stderr, "[nvn] the engine present skipped: %s\n",
                     reason[0] ? reason : "frame dropped");
         }
-        return 0;
+        return -1;
     }
     (void)native_window;
     return 0;
@@ -245,18 +247,20 @@ void nvn_engine_pool_del(void *memory) {
 int nvn_engine_register_texture(const void *guest_pool, int id, const void *guest_texture,
                                 const void *guest_view) {
     const ffrs_dpool *pool;
-    const ffrs_tex *texture;
+    ffrs_tex texture;
+    ffrs_view view_value;
+    uint64_t view_serial;
     const ffrs_view *view = NULL;
     if (!nvn_engine_ready()) return 0;
     pool = nvn_bridge_texture_pool(guest_pool);
-    texture = nvn_bridge_texture(guest_texture);
-    if (!pool || !texture) {
+    int have_texture = nvn_bridge_texture_copy(guest_texture, &texture);
+    if (!pool || !have_texture) {
         fprintf(stderr, "[engine] the texture %d of a pool could not be registered: %s\n", id,
                 !pool ? "the pool is unknown" : "the texture is unknown");
         return 0;
     }
-    if (guest_view) view = nvn_bridge_view(guest_view);
-    xbg_register_texture((const dpool_t *)pool, id, (const tex_t *)texture, (const view_t *)view);
+    if (guest_view && nvn_texture_view_info_of(guest_view, &view_value, &view_serial)) view = &view_value;
+    xbg_register_texture((const dpool_t *)pool, id, (const tex_t *)&texture, (const view_t *)view);
     return 1;
 }
 

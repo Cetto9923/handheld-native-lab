@@ -10,10 +10,51 @@ spec.loader.exec_module(metrics)
 
 def row(frame, ns, work):
     return dict(frame=frame, monotonic_ns=ns, texture_serial=1, image_writer=work,
-                draws=work, dispatches=0, submissions=work)
+                draws=work, dispatches=0, submissions=work, present_result=0)
 
 
 class FrameMetrics(unittest.TestCase):
+    def test_skipped_failed_work_cannot_inflate_present_fps(self):
+        rows = [row(i + 1, i * 10_000_000, i + 1) for i in range(5)]
+        rows[1]['present_result'] = 1
+        rows[2]['present_result'] = -1
+        result = metrics.analyze(rows, 'drops')
+        self.assertEqual(result['attempts'], 5)
+        self.assertEqual(result['queued_presents'], 3)
+        self.assertEqual(result['skipped_attempts'], 1)
+        self.assertEqual(result['failed_attempts'], 1)
+        self.assertEqual(result['present_fps'], 50)
+        self.assertEqual(result['attempt_fps'], 100)
+        self.assertEqual(result['worst_intervals'][0]['interval_ms'], 30)
+        self.assertEqual(result['distinct_render_work_frames'], 3)
+        self.assertEqual(result['rows_removed_for_frame_time'], 0)
+
+    def test_legacy_trace_has_no_verified_present_rate(self):
+        rows = [row(1, 0, 1), row(2, 10_000_000, 2)]
+        for r in rows:
+            del r['present_result']
+        result = metrics.analyze(rows, 'legacy')
+        self.assertIsNone(result['present_fps'])
+        self.assertIsNone(result['presents'])
+        self.assertEqual(result['attempt_fps'], 100)
+        self.assertEqual(result['outcome_evidence'], 'UNRECORDED_LEGACY')
+
+    def test_all_skipped_and_invalid_or_mixed_outcomes(self):
+        rows = [row(1, 0, 1), row(2, 10_000_000, 2)]
+        for r in rows:
+            r['present_result'] = 1
+        result = metrics.analyze(rows, 'background')
+        self.assertEqual(result['present_fps'], 0)
+        self.assertEqual(result['presents'], 0)
+        self.assertEqual(result['worst_intervals'], [])
+        rows[0]['present_result'] = 99
+        with self.assertRaises(ValueError):
+            metrics.analyze(rows, 'invalid')
+        rows[0]['present_result'] = 0
+        del rows[1]['present_result']
+        with self.assertRaises(ValueError):
+            metrics.analyze(rows, 'mixed')
+
     def test_sixty_frames_with_no_drop(self):
         rows = [row(i + 1, round(i * 1e9 / 60), i + 1) for i in range(121)]
         result = metrics.analyze(rows, 'fixed fixture')

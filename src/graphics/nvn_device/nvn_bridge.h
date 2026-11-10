@@ -29,6 +29,8 @@
  * texture there. The pointer stays the same for as long as the texture is
  * the same object. */
 const ffrs_tex *nvn_bridge_texture(const void *guest_texture);
+/* Caller owns the value. No pointer to reusable bridge storage escapes. */
+int nvn_bridge_texture_copy(const void *guest_texture, ffrs_tex *out);
 /* End one generation; recorded immutable copies remain allocated. */
 void nvn_bridge_texture_end(const void *guest_texture, uint64_t serial);
 

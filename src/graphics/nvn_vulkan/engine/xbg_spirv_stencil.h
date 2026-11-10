@@ -5,6 +5,28 @@
 #include <unordered_map>
 #include <unordered_set>
 
+// The exact FFRS histogram kernel scans workgroup memory. On Adreno 735 its
+// memory-only barrier omitted 64 entries in measured frames; workgroup execution
+// barriers before and after the shared load preserve all lanes. Match the
+// original bundle's precise instruction IDs and constants, so an unfamiliar
+// shader or user override is left untouched rather than patched by guesswork.
+inline bool xbg_ffrs_histogram_workgroup_sync(std::vector<uint32_t> &w){
+    if(w.size()<5 || w[0]!=0x07230203u)return false;
+    size_t mem=size_t(-1),load=size_t(-1);bool scope=false,sem=false,oldsem=false;
+    for(size_t i=5;i<w.size();){uint32_t n=w[i]>>16,op=w[i]&65535u;if(!n || i+n>w.size())return false;
+        if(op==43 && n==4 && w[i+1]==1){if(w[i+2]==2179 && w[i+3]==2)scope=true;if(w[i+2]==2180 && w[i+3]==264)sem=true;if(w[i+2]==4618 && w[i+3]==3400)oldsem=true;}
+        if(op==225 && n==3 && w[i+1]==2179 && w[i+2]==4618){if(mem!=size_t(-1))return false;mem=i;}
+        if(op==61 && n==4 && w[i+1]==1 && w[i+2]==4629 && w[i+3]==4628){if(load!=size_t(-1))return false;load=i;}
+        i+=n;
+    }
+    if(!scope || !sem || !oldsem || mem==size_t(-1) || load==size_t(-1) || load<=mem || load-mem>80)return false;
+    std::vector<uint32_t> out;out.reserve(w.size()+5);
+    out.insert(out.end(),w.begin(),w.begin()+mem);
+    const uint32_t barrier[]={4u<<16|224u,2179,2179,2180};out.insert(out.end(),barrier,barrier+4);
+    out.insert(out.end(),w.begin()+mem+3,w.begin()+load+4);out.insert(out.end(),barrier,barrier+4);
+    out.insert(out.end(),w.begin()+load+4,w.end());w.swap(out);return true;
+}
+
 // FFRS texel-buffer numeric facts observed on the real device. These kernels
 // use raw Maxwell register bits, but the translator's sampler declarations
 // default to FP32. Only the observed bindings are specialized; float/half
@@ -18,6 +40,10 @@ inline constexpr XbgFfrsIntegerFact xbg_ffrs_integer_facts[]={
     {"b673e10f3da2451c",35,2,false},
     {"b673e10f3da2451c",41,1,true},
     {"b673e10f3da2451c",47,2,true},
+    // Honor frame5752 simulation: native signed attribute input/output views.
+    // This closes their type mismatch; it does not fix the compaction sum.
+    {"cb997f17e1c89c8b",29,2,false},
+    {"cb997f17e1c89c8b",47,2,true},
     {"5b0df93f0a696a7f",11,1,true},
     {"ef4326df31036d24",11,1,false},
     {"ef4326df31036d24",17,1,true},
@@ -33,10 +59,63 @@ inline constexpr XbgFfrsIntegerFact xbg_ffrs_integer_facts[]={
     {"9bee7f09d6c655c3",29,1,true},
     {"9bee7f09d6c655c3",35,1,true},
     {"3b6302a58b86a34a",47,1,true},
-    {"da4ffe0a328303aa",17,1,true}
+    {"da4ffe0a328303aa",17,1,true},
+    // Particle vertex shaders (stage 0): Niagara raw uint instance index buffers
+    // Group A: raw instance/lookup words at B12/B24. Original-run captures
+    // 8691/23325 identify B18 as native R16_SFLOAT/range2 for 26ae,
+    // 8b27 and 9528: leave that numeric half fetch float, like the pairs below.
+    {"26aef111ba3b3c4e",12,1,false},
+    {"26aef111ba3b3c4e",24,1,false},
+    {"8b27994fdc0e32c9",12,1,false},
+    {"8b27994fdc0e32c9",24,1,false},
+    // These spell/LIMIT slot129 descriptors are half-float attributes, not raw
+    // instance words. Keep binding18 float so its native R16_SFLOAT/range2
+    // view converts half values correctly (including nonzero and negative zero).
+    {"41a5a80e5242a26c",12,1,false},
+    {"41a5a80e5242a26c",24,1,false},
+    {"db5f1e2dd1c9ef3d",12,1,false},
+    {"db5f1e2dd1c9ef3d",24,1,false},
+    // LIMIT break vertex shaders (stage 0): Niagara raw uint instance index buffers
+    {"632c207422d773c5",12,1,false},
+    {"632c207422d773c5",24,1,false},
+    {"085afbc955a0744f",12,1,false},
+    {"085afbc955a0744f",24,1,false},
+    // LIMIT ice shards: frame37722/draw3495377 binds R32_UINT at B12.
+    // Preserve raw instance-index bits; B18 remains native R16_SFLOAT.
+    {"d1d6ceeb3a7b2c18",12,1,false},
+    // LIMIT trails: the same frame's draw3495303 has native R32_UINT B12.
+    {"db559389b69f3033",12,1,false},
+    // Iron Giant landing debris: frame5752/color475432 raw instance indices.
+    {"ae837eccb9eff189",12,1,false},
+    // LIMIT fire outro, frame10983: all three pre/color pairs use native
+    // R32_UINT instance indices at B12. B18 stays R16_SFLOAT/range2.
+    {"8fad1c673a152dcf",12,1,false},
+    {"85e1ac91e6c257c9",12,1,false},
+    {"8771a4b045b64a8d",12,1,false},
+    {"55703bda012e6143",12,1,false},
+    {"c10d897690572731",12,1,false},
+    {"92bc83108242870a",12,1,false},
+    {"9528f530e1c95ce5",12,1,false},
+    {"9528f530e1c95ce5",24,1,false},
+    // Group B: the five observed particle shaders have raw B18/B30 but numeric
+    // R16_SFLOAT/range2 B24 (same captures). Do not extend this fact to fe033,
+    // whose B24 was not observed; retain its separate existing mapping below.
+    {"be4e89a0687ae37c",18,1,false},
+    {"be4e89a0687ae37c",30,1,false},
+    {"431a6183c3565f66",18,1,false},
+    {"431a6183c3565f66",30,1,false},
+    {"1e222af40b26bd25",18,1,false},
+    {"1e222af40b26bd25",30,1,false},
+    {"b0284572b5f180f2",18,1,false},
+    {"b0284572b5f180f2",30,1,false},
+    {"6018ff2b44b763d7",18,1,false},
+    {"6018ff2b44b763d7",30,1,false},
+    {"fe033d948255d9ff",18,1,false},
+    {"fe033d948255d9ff",24,1,false},
+    {"fe033d948255d9ff",30,1,false}
 };
 inline uint32_t xbg_ffrs_integer_fact(uint32_t stage,const char *key,uint32_t binding){
-    if(stage==5 && key)for(const auto &f:xbg_ffrs_integer_facts)
+    if((stage==5 || stage==0) && key)for(const auto &f:xbg_ffrs_integer_facts)
         if(binding==f.binding && !std::strcmp(key,f.key))return f.scalar;
     return 0;
 }
@@ -197,7 +276,7 @@ inline int xbg_spirv_uint_store(std::vector<uint32_t> &w,uint32_t binding){
 // vec4 result. This exact bundle is proven by runtime STENCIL+RRRR bindings.
 // Return 0 for other modules, 1 for the repair, -1 for an unexpected bundle.
 inline int xbg_spirv_ffrs_stencil(std::vector<uint32_t> &words,uint32_t stage,const char *key){
-    if(stage==5 && key){
+    if((stage==5 || stage==0) && key){
         int changed=0;
         for(const auto &f:xbg_ffrs_integer_facts)if(!std::strcmp(key,f.key)){
             int n=f.storage?xbg_spirv_integer_storage(words,f.binding,f.scalar):xbg_spirv_integer_fetch(words,f.binding,f.scalar);if(n<1)return -1;changed+=n;

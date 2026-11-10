@@ -866,12 +866,50 @@ static int nvn_vulkan_create_window_surface(nvn_device_state *device, void *nati
     swapchain_info.imageArrayLayers = 1;
     swapchain_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     swapchain_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    swapchain_info.preTransform = capabilities.currentTransform;
-    /* A/B: INHERIT is the composite alpha the 30 FPS build used. */
-    swapchain_info.compositeAlpha = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
-    fprintf(stderr, "[nvn] vulkan: composite alpha selected=%#x supported=%#x (opaque game layer)\n",
+    /* This blit writes in window orientation, without applying a device pre-rotation.
+     * Ask the presentation engine to perform the transform when identity is supported. */
+    const char *tablet_profile = getenv("FFRS_PROFILE_TABLET");
+    swapchain_info.preTransform = (tablet_profile && tablet_profile[0] == '1' &&
+                                  (capabilities.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR))
+        ? VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR : capabilities.currentTransform;
+    fprintf(stderr, "[nvn] surface transform current=%#x supported=%#x requested=%#x\n",
+            (unsigned)capabilities.currentTransform, (unsigned)capabilities.supportedTransforms,
+            (unsigned)swapchain_info.preTransform);
+    /* The presentation path copies the guest's own render target into the
+     * swapchain with a blit, and that copy keeps the alpha channel of the
+     * source. The game draws its final frame with alpha zero for the whole
+     * 3D world and uses alpha only for the HUD pass, so a swapchain that
+     * lets the compositor read that alpha shows a black world with only the
+     * mini-map visible. OPAQUE tells the presentation engine to ignore the
+     * alpha component and to treat the image as if its alpha were 1.0.
+     *
+     * The community port of this game (d2r-mobile, dm/android/vulkan_present.cpp,
+     * revision f1e4b081af8ea65d95f0bf490a568cb657c3917e, MIT) creates its
+     * swapchain with VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR for the same reason,
+     * and falls back to the first mode the device reports when OPAQUE is not
+     * offered. That fallback is kept here.
+     *
+     * Only the tablet profile changes. The handheld presents by rendering
+     * straight into the swapchain image, so no blit carries an alpha channel
+     * there, and its composite alpha stays exactly as it was. */
+    if (tablet_profile && tablet_profile[0] == '1') {
+        swapchain_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+        if (!(capabilities.supportedCompositeAlpha & swapchain_info.compositeAlpha)) {
+            for (uint32_t bit = 1; bit <= 8; bit <<= 1) {
+                if (capabilities.supportedCompositeAlpha & bit) {
+                    swapchain_info.compositeAlpha = (VkCompositeAlphaFlagBitsKHR)bit;
+                    break;
+                }
+            }
+        }
+    } else {
+        swapchain_info.compositeAlpha = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
+    }
+    fprintf(stderr, "[nvn] vulkan: composite alpha selected=%#x supported=%#x "
+                    "(tablet=%d; opaque game layer ignores the alpha of the copied frame)\n",
             (unsigned)swapchain_info.compositeAlpha,
-            (unsigned)capabilities.supportedCompositeAlpha);
+            (unsigned)capabilities.supportedCompositeAlpha,
+            (tablet_profile && tablet_profile[0] == '1') ? 1 : 0);
     swapchain_info.presentMode = present_mode;
     swapchain_info.clipped = VK_TRUE;
     result = vkCreateSwapchainKHR(st->device, &swapchain_info, NULL, &swapchain);
@@ -1071,7 +1109,7 @@ static int nvn_vulkan_present_image(nvn_device_state *device, void *image, uint3
     (void)interval;
     if (!st || !image) {
         if (reason && reason_size) snprintf(reason, reason_size, "device or image is NULL");
-        return 1;
+        return NVN_PRESENT_FAILED;
     }
 
     void *cur_win = nso_host_native_window_get();
@@ -1081,7 +1119,7 @@ static int nvn_vulkan_present_image(nvn_device_state *device, void *image, uint3
             nvn_vulkan_destroy_window_surface(device, st->surface, st->swapchain);
         }
         usleep(16000);
-        return 1; /* Drop frame gracefully while in background */
+        return NVN_PRESENT_SKIPPED; /* Drop frame gracefully while in background */
     }
 
     if (!st->present_path_ready || st->swapchain == VK_NULL_HANDLE) {
@@ -1089,7 +1127,7 @@ static int nvn_vulkan_present_image(nvn_device_state *device, void *image, uint3
         void *surf = NULL, *sc = NULL;
         if (!nvn_vulkan_create_window_surface(device, cur_win, &w, &h, &surf, &sc)) {
             usleep(16000);
-            return 1; /* Wait for valid surface/swapchain */
+            return NVN_PRESENT_SKIPPED; /* Wait for valid surface/swapchain */
         }
     }
 
@@ -1104,20 +1142,20 @@ static int nvn_vulkan_present_image(nvn_device_state *device, void *image, uint3
             nvn_vulkan_create_window_surface(device, cur_win, &w, &h, &surf, &sc);
         }
         usleep(16000);
-        return 1; /* Frame dropped during swapchain rebuild */
+        return NVN_PRESENT_SKIPPED; /* Frame dropped during swapchain rebuild */
     }
     if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
         snprintf(detail, sizeof(detail), "vkAcquireNextImageKHR non-fatal code: %d", (int)result);
         if (reason && reason_size) snprintf(reason, reason_size, "%s", detail);
         usleep(16000);
-        return 1;
+        return NVN_PRESENT_FAILED;
     }
     if (index >= st->image_count) {
         snprintf(detail, sizeof(detail), "the swapchain gave the image %u, which is not one of its %u images",
                  index, st->image_count);
         if (reason && reason_size) snprintf(reason, reason_size, "%s", detail);
         usleep(16000);
-        return 1;
+        return NVN_PRESENT_FAILED;
     }
 
     if (crop && crop[2] > 0 && crop[3] > 0) {
@@ -1155,7 +1193,7 @@ static int nvn_vulkan_present_image(nvn_device_state *device, void *image, uint3
         snprintf(detail, sizeof(detail), "vkBeginCommandBuffer failed with %d", (int)result);
         if (reason && reason_size) snprintf(reason, reason_size, "%s", detail);
         fprintf(stderr, "[nvn] vulkan: the present step failed: %s\n", detail);
-        return 0;
+        return NVN_PRESENT_FAILED;
     }
 
     /* The swapchain image is the destination of the copy, so it has to be a
@@ -1237,7 +1275,7 @@ static int nvn_vulkan_present_image(nvn_device_state *device, void *image, uint3
         snprintf(detail, sizeof(detail), "vkEndCommandBuffer failed with %d", (int)result);
         if (reason && reason_size) snprintf(reason, reason_size, "%s", detail);
         fprintf(stderr, "[nvn] vulkan: the present step failed: %s\n", detail);
-        return 0;
+        return NVN_PRESENT_FAILED;
     }
 
     vkResetFences(st->device, 1, &st->fences[index]);
@@ -1259,7 +1297,7 @@ static int nvn_vulkan_present_image(nvn_device_state *device, void *image, uint3
         snprintf(detail, sizeof(detail), "vkQueueSubmit failed with %d", (int)result);
         if (reason && reason_size) snprintf(reason, reason_size, "%s", detail);
         fprintf(stderr, "[nvn] vulkan: the present step failed: %s\n", detail);
-        return 0;
+        return NVN_PRESENT_FAILED;
     }
 
     memset(&present_info, 0, sizeof(present_info));
@@ -1272,17 +1310,17 @@ static int nvn_vulkan_present_image(nvn_device_state *device, void *image, uint3
     result = vkQueuePresentKHR(st->queue, &present_info);
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_ERROR_SURFACE_LOST_KHR) {
         nvn_vulkan_destroy_window_surface(device, st->surface, st->swapchain);
-        return 1;
+        return NVN_PRESENT_SKIPPED;
     }
     if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
         st->present_failures++;
         snprintf(detail, sizeof(detail), "vkQueuePresentKHR failed with %d", (int)result);
         if (reason && reason_size) snprintf(reason, reason_size, "%s", detail);
         fprintf(stderr, "[nvn] vulkan: the present step warning: %s\n", detail);
-        return 1;
+        return NVN_PRESENT_FAILED;
     }
     st->frames_presented++;
-    return 1;
+    return NVN_PRESENT_QUEUED;
 }
 
 /* Step two of the present path: open the render pass on the image and clear

@@ -27,6 +27,7 @@ typedef struct xbg_game_config {
      * Restore that layout and complete all external GPU use before returning.
      * Return zero only when presentation was actually submitted/completed.
      * crop={0,0,0,0} means full image. Native window is the game's opaque token. */
+    /* 0: queued for presentation; 1: nonfatal skip; -1: failed. Not scanout proof. */
     int (*present)(void *userdata,void *native_window,VkImage image,VkFormat format,
         uint32_t width,uint32_t height,const int32_t crop[4],int32_t interval);
     void (*log)(void *userdata,const char *message);

@@ -14,18 +14,21 @@ export FFRS_ANDROID_LOG_DIR="${FFRS_ANDROID_LOG_DIR:-${FFRS_ROOT}/.local/logs/an
 # shellcheck source=../device/android_env.sh
 source "${FFRS_ROOT}/scripts/device/android_env.sh"
 
-FFRS_APK_DIR="${FFRS_ROOT}/.local/android-apk"
+FFRS_APK_DIR="${FFRS_APK_DIR:-${FFRS_ROOT}/.local/android-apk}"
 FFRS_BUILD_TOOLS="${FFRS_BUILD_TOOLS:-${FFRS_SDK}/build-tools/34.0.0}"
 FFRS_ANDROID_JAR="${FFRS_ANDROID_JAR:-${FFRS_SDK}/platforms/android-34/android.jar}"
-FFRS_APP_MANIFEST="${FFRS_ROOT}/src/android/app/gamewindow/AndroidManifest.xml"
-FFRS_APP_RES="${FFRS_ROOT}/src/android/app/gamewindow/res"
+FFRS_APP_MANIFEST="${FFRS_APP_MANIFEST:-${FFRS_ROOT}/src/android/app/gamewindow/AndroidManifest.xml}"
+FFRS_APP_RES="${FFRS_APP_RES:-${FFRS_ROOT}/src/android/app/gamewindow/res}"
 FFRS_APP_JAVA="${FFRS_ROOT}/src/android/app/java/org/ffrs/diagnostic"
 FFRS_HLE_DIR="${FFRS_ROOT}/src/runtime/hle"
 FFRS_NATIVE_WINDOW_SOURCE="${FFRS_HLE_DIR}/native_window.c"
 FFRS_NATIVE_WINDOW_HEADER="${FFRS_HLE_DIR}/native_window.h"
 mkdir -p "${FFRS_ROOT}/.local/build"
 FFRS_PACKAGE_DIR="$(mktemp -d "${FFRS_ROOT}/.local/build/game-window-apk.XXXXXX")"
-FFRS_APK_NAME="ffrs-game-window-debug.apk"
+FFRS_APK_NAME="${FFRS_APK_NAME:-ffrs-game-window-debug.apk}"
+if [[ -z "${FFRS_SPIRV_TOOLS_SOURCE:-}" && -f "${FFRS_ROOT}/scripts/android/prepare_honor_spirv_tools.sh" ]]; then
+    FFRS_SPIRV_TOOLS_SOURCE="$(bash "${FFRS_ROOT}/scripts/android/prepare_honor_spirv_tools.sh" 2>/dev/null || true)"
+fi
 
 # Runs one build step, keeps its full output, and reports the real exit code.
 step() {
@@ -78,7 +81,8 @@ step host-compile-native-window \
 step cmake-configure "${FFRS_CMAKE}" -S "${FFRS_ROOT}/src/android/native" -B "${FFRS_BUILD}" \
     -G 'Unix Makefiles' -DCMAKE_TOOLCHAIN_FILE="${FFRS_NDK}/build/cmake/android.toolchain.cmake" \
     -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-28 -DANDROID_STL=c++_static \
-    -DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
+    -DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DFFRS_SPIRV_TOOLS_SOURCE="${FFRS_SPIRV_TOOLS_SOURCE:-}"
 step cmake-build-game-window \
     "${FFRS_CMAKE}" --build "${FFRS_BUILD}" --target ffrs_game_window -j "${FFRS_BUILD_JOBS:-4}"
 step android-elf-header \
@@ -96,21 +100,57 @@ mkdir -p "${FFRS_PACKAGE_DIR}/classes" "${FFRS_PACKAGE_DIR}/dex" \
     "${FFRS_PACKAGE_DIR}/payload/lib/arm64-v8a" "${FFRS_PACKAGE_DIR}/res"
 step javac javac --release 8 -classpath "${FFRS_ANDROID_JAR}" -g -d "${FFRS_PACKAGE_DIR}/classes" \
     "${FFRS_APP_JAVA}/GameActivity.java" \
+    "${FFRS_APP_JAVA}/RegressionSaveRoot.java" \
+    "${FFRS_APP_JAVA}/DeviceProfile.java" \
     "${FFRS_APP_JAVA}/GameWindowNative.java" \
-    "${FFRS_APP_JAVA}/DisplaySnapshot.java"
+    "${FFRS_APP_JAVA}/DisplaySnapshot.java" \
+    "${FFRS_APP_JAVA}/NativeDataBundle.java" \
+    "${FFRS_APP_JAVA}/DataBundleInstaller.java"
 step jar jar cf "${FFRS_PACKAGE_DIR}/classes.jar" -C "${FFRS_PACKAGE_DIR}/classes" .
 step d8 "${FFRS_BUILD_TOOLS}/d8" --min-api 28 --lib "${FFRS_ANDROID_JAR}" \
     --output "${FFRS_PACKAGE_DIR}/dex" "${FFRS_PACKAGE_DIR}/classes.jar"
 step aapt2-compile "${FFRS_BUILD_TOOLS}/aapt2" compile --dir "${FFRS_APP_RES}" \
     -o "${FFRS_PACKAGE_DIR}/res/resources.zip"
-step aapt2-link "${FFRS_BUILD_TOOLS}/aapt2" link \
-    -o "${FFRS_PACKAGE_DIR}/base.apk" -I "${FFRS_ANDROID_JAR}" \
-    --manifest "${FFRS_APP_MANIFEST}" "${FFRS_PACKAGE_DIR}/res/resources.zip"
+# An optimizer-enabled APK must carry its dependency notices even when the
+# caller did not supply an assets directory. Merge only into package staging.
+if [[ -n "${FFRS_SPIRV_TOOLS_SOURCE:-}" ]]; then
+    FFRS_NOTICE_ASSETS="${FFRS_PACKAGE_DIR}/notice-assets"
+    mkdir -p "${FFRS_NOTICE_ASSETS}"
+    if [[ -n "${FFRS_APP_ASSETS:-}" ]]; then
+        cp -R "${FFRS_APP_ASSETS}/." "${FFRS_NOTICE_ASSETS}/"
+    fi
+    FFRS_NOTICE_DIR="${FFRS_NOTICE_ASSETS}/licenses/ffrs-subgroup-inline"
+    if [[ -e "${FFRS_NOTICE_DIR}" ]]; then
+        echo "BLOCKED_ASSETS: license asset path already exists: ${FFRS_NOTICE_DIR}" >&2
+        exit 2
+    fi
+    FFRS_SPIRV_REPO="$(git -C "${FFRS_SPIRV_TOOLS_SOURCE}" rev-parse --show-toplevel)"
+    mkdir -p "${FFRS_NOTICE_DIR}"
+    cp "${FFRS_ROOT}/NOTICE.md" "${FFRS_NOTICE_DIR}/FFRS-NOTICE.md"
+    cp "${FFRS_SPIRV_REPO}/LICENSE" "${FFRS_NOTICE_DIR}/d2r-mobile-MIT.txt"
+    cp "${FFRS_SPIRV_TOOLS_SOURCE}/LICENSE" "${FFRS_NOTICE_DIR}/SPIRV-Tools-Apache-2.0.txt"
+    cp "${FFRS_SPIRV_TOOLS_SOURCE}/spirv-headers/LICENSE" "${FFRS_NOTICE_DIR}/SPIRV-Headers-license.txt"
+    FFRS_APP_ASSETS="${FFRS_NOTICE_ASSETS}"
+fi
+if [[ -n "${FFRS_APP_ASSETS:-}" ]]; then
+    step aapt2-link "${FFRS_BUILD_TOOLS}/aapt2" link \
+        -o "${FFRS_PACKAGE_DIR}/base.apk" -I "${FFRS_ANDROID_JAR}" \
+        --manifest "${FFRS_APP_MANIFEST}" -A "${FFRS_APP_ASSETS}" "${FFRS_PACKAGE_DIR}/res/resources.zip"
+else
+    step aapt2-link "${FFRS_BUILD_TOOLS}/aapt2" link \
+        -o "${FFRS_PACKAGE_DIR}/base.apk" -I "${FFRS_ANDROID_JAR}" \
+        --manifest "${FFRS_APP_MANIFEST}" "${FFRS_PACKAGE_DIR}/res/resources.zip"
+fi
 
 cp "${FFRS_PACKAGE_DIR}/dex/classes.dex" "${FFRS_PACKAGE_DIR}/payload/classes.dex"
 step strip "${FFRS_LLVM}/bin/llvm-strip" --strip-debug \
     -o "${FFRS_PACKAGE_DIR}/payload/lib/arm64-v8a/libffrs_game_window.so" \
     "${FFRS_BUILD}/libffrs_game_window.so"
+if [[ -n "${FFRS_APP_WRAP_SCRIPT:-}" ]]; then
+    [[ -f "${FFRS_APP_WRAP_SCRIPT}" ]] || { echo "Missing diagnostic wrap script" >&2; exit 2; }
+    cp "${FFRS_APP_WRAP_SCRIPT}" "${FFRS_PACKAGE_DIR}/payload/lib/arm64-v8a/wrap.sh"
+    chmod 755 "${FFRS_PACKAGE_DIR}/payload/lib/arm64-v8a/wrap.sh"
+fi
 cp "${FFRS_PACKAGE_DIR}/base.apk" "${FFRS_PACKAGE_DIR}/unsigned.apk"
 step payload-zip bash -c 'cd "$1" && zip -q -r "$2" classes.dex lib' \
     _ "${FFRS_PACKAGE_DIR}/payload" "${FFRS_PACKAGE_DIR}/unsigned.apk"

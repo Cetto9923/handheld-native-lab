@@ -89,6 +89,18 @@ static void vibration_info(uint32_t *out, const uint32_t *handle) {
 }
 static void vibration_send(const uint32_t *handle, const void *value) { (void)value; unsupported_device(handle); }
 static void gyro_mode(const uint32_t *handle, const int32_t *mode) { (void)mode; unsupported_device(handle); }
+static void controller_support_set_default(void *arg) {
+    if (arg) memset(arg, 0, 128);
+}
+static uint32_t show_controller_support(void *result_info, const void *arg) {
+    (void)arg;
+    if (result_info) {
+        memset(result_info, 0, 16);
+        ((uint8_t*)result_info)[0] = 1;
+    }
+    fprintf(stderr, "[hle] nn::hid::ShowControllerSupport: bypassed modal dialog\n");
+    return 0;
+}
 
 typedef struct { const char *name; void (*fn)(void); unsigned arguments, returns; } entry;
 #define B(name,fn,args,rets) {name,(void (*)(void))fn,args,rets}
@@ -115,6 +127,8 @@ static const entry entries[] = {
  B("_ZN2nn3hid18StartSixAxisSensorERKNS0_19SixAxisSensorHandleE",unsupported_device,1,0),
  B("_ZN2nn3hid17StopSixAxisSensorERKNS0_19SixAxisSensorHandleE",unsupported_device,1,0),
  B("_ZN2nn3hid25SetGyroscopeZeroDriftModeERKNS0_19SixAxisSensorHandleERKNS0_22GyroscopeZeroDriftModeE",gyro_mode,2,0),
+ B("_ZN2nn3hid20ControllerSupportArg10SetDefaultEv",controller_support_set_default,1,0),
+ B("_ZN2nn3hid21ShowControllerSupportEPNS0_27ControllerSupportResultInfoERKNS0_20ControllerSupportArgE",show_controller_support,2,1),
 };
 uint64_t ffrs_hid_lookup(const char *name, unsigned *arguments, unsigned *returns) {
     if (!name) return 0;
