@@ -1,3 +1,7 @@
+# 2026-11-11 snapshot tracker availability verified
+
+Snapshot optimization investigation: actual movement logs show vertex copies ~6.9–7.6MB/frame and index ~1.27–1.34MB/frame; source xbg_host_bridge.c nvn_dirty_since is stub always0, and installed build llvm-readelf shows nvn_dirty_now/protect/tracked weak undefined. vcache lookup explicitly requires all four, so enabling existing marker cannot activate it; init log tracker=1 tests only since and is misleading. tex_dirty similarly requires all. Do not enable cache or fabricate tracker. Next assess feasible correct concurrent dirty tracking or alternative untracked-safe snapshot optimization; independent validation/actual-device A/B needed. Shrine fix installed unchanged.
+
 # 2026-11-11 movement copy caller sample
 
 Second same-scene movement profile with DWARF 9s, 3386 samples/0 lost, video confirms four swipes and no battle. RHI 1996 samples; memmove 154 samples (7.72%). In memmove caller report stream_buffer accounts 24.35% of the filtered memmove sample weight, followed by vkCmdBindDescriptorSets 8.44%; remainder is unresolved/other. stream_buffer includes snapshots/uniform snapshots; cannot safely bypass copies or infer big speedup. Recording + sampling overhead; no acceptance FPS. Evidence .local/shrine-takeover-20261111/move-profile4*. Next compare current snapshot cache/tracker invariants and use exact target device A/B only if correctness proven. Installed Shrine fix unchanged.

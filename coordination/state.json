@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-11-11T03:04:29.260713+08:00",
-  "phase": "Second movement CPU call-stack sample captured; FPS optimization in progress",
+  "updated_at": "2026-11-11T03:07:05.267668+08:00",
+  "phase": "Movement snapshot-cache optimization requires missing dirty-write tracker; evaluating safe alternatives",
   "coordinator": "Codex /root shrine takeover",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
@@ -1559,7 +1559,7 @@
       "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
       "branch": "task/T-honor-shrine-20261111",
       "acquired_at": "2026-11-11T01:31:38.119199+08:00",
-      "checkpoint": "Second same-scene movement profile with DWARF 9s, 3386 samples/0 lost, video confirms four swipes and no battle. RHI 1996 samples; memmove 154 samples (7.72%). In memmove caller report stream_buffer accounts 24.35% of the filtered memmove sample weight, followed by vkCmdBindDescriptorSets 8.44%; remainder is unresolved/other. stream_buffer includes snapshots/uniform snapshots; cannot safely bypass copies or infer big speedup. Recording + sampling overhead; no acceptance FPS. Evidence .local/shrine-takeover-20261111/move-profile4*. Next compare current snapshot cache/tracker invariants and use exact target device A/B only if correctness proven. Installed Shrine fix unchanged.",
+      "checkpoint": "Snapshot optimization investigation: actual movement logs show vertex copies ~6.9–7.6MB/frame and index ~1.27–1.34MB/frame; source xbg_host_bridge.c nvn_dirty_since is stub always0, and installed build llvm-readelf shows nvn_dirty_now/protect/tracked weak undefined. vcache lookup explicitly requires all four, so enabling existing marker cannot activate it; init log tracker=1 tests only since and is misleading. tex_dirty similarly requires all. Do not enable cache or fabricate tracker. Next assess feasible correct concurrent dirty tracking or alternative untracked-safe snapshot optimization; independent validation/actual-device A/B needed. Shrine fix installed unchanged.",
       "write_state": "ACTIVE"
     }
   ],
@@ -4169,7 +4169,7 @@
       ],
       "acceptance": "Same scene enters and survives on Honor A42 with bounded GPU memory; no skipped shader/draw; independent QA NOT_RUN unless actually run",
       "recovery_point": "21d270e + saved cursor-wip.patch, preserve all existing data",
-      "checkpoint": "Second same-scene movement profile with DWARF 9s, 3386 samples/0 lost, video confirms four swipes and no battle. RHI 1996 samples; memmove 154 samples (7.72%). In memmove caller report stream_buffer accounts 24.35% of the filtered memmove sample weight, followed by vkCmdBindDescriptorSets 8.44%; remainder is unresolved/other. stream_buffer includes snapshots/uniform snapshots; cannot safely bypass copies or infer big speedup. Recording + sampling overhead; no acceptance FPS. Evidence .local/shrine-takeover-20261111/move-profile4*. Next compare current snapshot cache/tracker invariants and use exact target device A/B only if correctness proven. Installed Shrine fix unchanged."
+      "checkpoint": "Snapshot optimization investigation: actual movement logs show vertex copies ~6.9–7.6MB/frame and index ~1.27–1.34MB/frame; source xbg_host_bridge.c nvn_dirty_since is stub always0, and installed build llvm-readelf shows nvn_dirty_now/protect/tracked weak undefined. vcache lookup explicitly requires all four, so enabling existing marker cannot activate it; init log tracker=1 tests only since and is misleading. tex_dirty similarly requires all. Do not enable cache or fabricate tracker. Next assess feasible correct concurrent dirty tracking or alternative untracked-safe snapshot optimization; independent validation/actual-device A/B needed. Shrine fix installed unchanged."
     }
   ],
   "blockers": [
