@@ -1,3 +1,7 @@
+# 2026-11-11 other game foreground: no device input
+
+Actual e7 game PID27357 progressed down two flights and triggered a third random battle, victory shown lower-battle-victory.png; battle-to-map return NOT VERIFIED. Following two A presses foreground switched to org.snk.the1st.gamewindow GameActivity (different game), observed title screenshot lower-after-battle.png; PID27357 remains alive but is background. Input stopped immediately on observation; do not take foreground or send further inputs while other game is in use. It is unknown whether prior A presses affected other app; screenshot showed its New Game menu highlighted, no evidence of launch. No data deletion. Continue non-device source work and recheck foreground before testing. FPS/fullgame/independentQA open.
+
 # 2026-11-11 east shrine route checkpoint
 
 Ordinary e7 APK PID27357 advanced from fog overlook via second random battle, victory/level-up and real map return to east crystal landing and descended first staircase. Captures east-battle*.png, east-after-return.png, east-path2..7.png, raw east-route-guest.log in .local/shrine-takeover-20261111. No exit observed; same shrine not distinct map load, no new FPS acceptance and no whole-game claim. Character progressed to level 2 by authorized normal play. Next descend remaining staircase and test lower-floor route, while pursuing safe FPS optimization.
