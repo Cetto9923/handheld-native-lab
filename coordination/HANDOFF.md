@@ -1,3 +1,37 @@
+# 2026-11-11 ordinary Shrine repair actual-device checkpoint
+
+Ordinary e7c3f82 installed hash verified. PID27357 Continue->interior->entrance->interior->moving survived, rectangles absent; frameCSV780intervals26.118s29.864FPS P9547.059ms max81.377ms; notstable60/fullgame/independentQA. Report coordination/results/HONOR-SHRINE-OOM-20261111.md. Next profile descriptor/snapshot + GPU wait and more transitions.
+
+APK .local/android-apk/FFRS-Shrine-Fix.apk SHAe7c3f82c2c3113a1446fbedf7a574524c3ef5515769f2d9d523462a6f6c5095c. Default16slots; ordinaryGameActivity no layer; captureproperties/settings restored. No data/save changes. Audio subjective and independentQA NOT_RUN. Memory trace late60s has no GPUcounter; no finalpeak claim. CursorWIP backedup. Goal active: smooth frame pacing, transitions, effects.
+
+# Ordinary minimal Shrine fix built / installed
+
+Final ordinary APK .local/android-apk/FFRS-Shrine-Fix.apk SHAe7c3f82c2c3113a1446fbedf7a574524c3ef5515769f2d9d523462a6f6c5095c; buildexit0, install-r preservesdata. Activeproductiondiffonly13line uploadpressure+idlepoolrelease,7line exactFS97ae B64rawuint fetch fix; noCursorPTRACE diagnostics in activeengine (fullbackup retained). Self-authored tests/device/reflection_uint_fetch.spvasm + test_reflection_uint_fetch.cpp pass ASan/UBSan, negativekey/stage/binding controls, spirvval. Actualcaptureproductionhelperoutput matches causalGPUoverride byteforbyte. Current deviceordinaryfinal starting,titlechecksession32826; no visualruntimePASSyet. Capture props/settings restored before replay; no newmods besides ownedgfx-codex-frame-metrics1 for freshdistinctframeCSV; temporary2slotmarker movedto ownedbackup, default16slots. Need actualshrinevisual + transitioncycles + timedframeevidence; notwholegame60orindependentQA.
+
+# Causal rectangle fix proven on same GPU frame
+
+First visible floor rectangle: pass131702 lastdraw131709 (prior131679 clear), FS97ae64dbc5e7ff26 module1871 SHA6ff4a0d86654323c6e4692e8208c6f5214bd7febfced670169293a5c216e130e; actual B64view134910 VkFormat74R16_UINT buffer2407 offset903168 range696320 (API parsed+nativeexportmatched). SPIRV had2float ImageFetch thenbitcastInt->index. Existing integerfetch helper switched onlyB64 toUInt, leavingdescriptorR16/range/allAPI unchanged. Sameframe replay override sh1871 => new screenshot shrine-fixed-index_frame_1.png removeslargegroundrectangles whilebeam/fog/savepointretained. spirvvalVulkan1.1pass. This is causalreplay, notordinaryacceptance. Current device temporarysamepackage replay c4ec55; restore finalordinary after integrating two sourcefiles. Source atbudget3 has16slotdefault actualshrinestaticloadsurvival; remove diagnostic WIP onlyafterbackingup. OriginalCursorWIP andcoalesce/budgetexperiments archived .local.
+
+# Shrine capture saved / replay prepared
+
+blocks.gfxr185956748B, exactEOF132645blocks/frame1358, actual entrance screenshot captured and verified.1031SPV/708pipes/67pass lastdraw indices saved under .local/shrine-takeover-20261111/blocks-api. Capture layer removed/restored previousapp-onlysettings+properties. Currentsource64MiB drain+idle pool RELEASE_RESOURCES, ordinarybudget3 installed withdefault16slots (temporary2slot marker movedto owned backup); firsttimedContinue missedtitle, actualobservedContinue pressednow (no shrinePASSyet). Official LunarG AndroidSDK1.4.363.0 replaytool downloaded because oldreplay binaries had disappeared; sha46f1e88ec3601c540f8ba88a36f65d58ae288c1ce2458f4c9b17ee9dcd7444cc,22.8MBreplayAPK;samepackage temporarynativeactivityrepack ready .local/.../shrine-replay.apk, notinstalled. All plans/logs local.
+
+# Shrine OOM / rectangle separation checkpoint
+
+Original upload order budget2 (33ed18) with16slots still OOM; changing owned gfx-slot-count override to2 lets original order load shrine and exit entrance. budget-exit.png clearly reproduces same broad floor/light rectangles, so coalescing alone did not introduce them. Temporary2slot diagnostic NOT smoothFPS acceptance. Current capture APK a191665 = budget33ed18 nonsigning contents identical plus existing gfxrecon61abd layer; singleframe entrance capture, settings restore in .local/shrine-takeover-20261111/capture-plan.json, original settings all recorded. New session log paths same local folder. Source currently budget2, coalesce source archived xbg_game.coalesce.cpp, Cursor pristine WIP xbg_game.cursor.cpp. Need investigate first wrong render pass, keep no artifact acceptance open.
+
+# Shrine candidate NOT ACCEPTED: visible rectangular artifacts
+
+Candidate76f709 reached actual interior tutorial and movement on PID7244, no immediate LOW_MEMORY. User reports many rectangles; user-blocks-now.png shows broad ground/lighting rectangles at entrance, not merely glowing crystals. Preserve raw logs/screenshot. Need compare baseline on same scene and repair visible artifacts before claiming fixed. ASan/UBSan production guest-write extracted fixture passed3formats7mips plus partial writes; this does not prove GPU visual correctness. Ordinary delivery not yet built, Cursor diagnostics retained.
+
+# Shrine candidate checkpoint
+
+Moved eager partial-copy preservation after CPU-backed guest_texture_write paths (native BC already preserves in GPU fallback). Initial symptom: serial431722 2048x2048/12 levels uploaded21MiB 12 times in ~0.85sec, other mip chains similarly repeated. Candidate should coalesce CPU writes without dropping any mip; GPU-owned partial copies/depth/readback preserve prior behavior. Build session97987, ordinary log .local/shrine-takeover-20261111/build.log. Real shrine result pending; no PASS.
+
+# 2026-11-11 Earth Shrine OOM takeover
+
+User closed Cursor and authorized direct repair. Root sole device operator on A42BBB5109000333. Cursor worktree has xbg_game.cpp diagnostics WIP, backed up under .local/shrine-takeover-20261111. FFRS/ and FFRS-data.zip are preexisting; untouched. HEAD 21d270e, branch work/honor-gtpro-30hz. Existing run9/10 GPU trajectories and run12 log reused; no new build yet. Historical task state preserved. Target: identify driver-side memory growth then behavior-preserving fix and real shrine regression. No claim of root cause or fix yet.
+
 # 通用手机横竖屏与 Adreno 崩溃修复、开源发布及 Release 归档 — 2026-11-10
 
 - **问题根因与修复**：

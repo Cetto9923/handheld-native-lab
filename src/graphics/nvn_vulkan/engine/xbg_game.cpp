@@ -776,6 +776,7 @@ uint64_t xviews=0,xview_races=0,xview_guarded=0,xview_guarded_bytes=0;bool xview
 // (each end makes a tiling GPU write the pass's attachments out and read them back). Counted: uploads in the prologue, uploads still in
 // the command buffer, and those of them that ended an open pass.
 uint64_t uploads_prologue=0,uploads_inpass=0,uploads_broke_pass=0;bool upload_prologue=false;
+uint64_t upload_batch_bytes=0; // pressure since last bounded loading drain
 // gfx-shader-reuse（标记 1 / 0 / 2，否则 DM_GFX_SHADER_REUSE；A/B 目标 shreuse）：着色器载入直接用预热线程改写好的 SPIR-V（quad、warp、
 // tidy 之后），不在提交线程上再改写；Redmi K50 Ultra 上改写占载入时间的约 80%，大的片段着色器一个 6-9 ms。2：照样改写并比对，用改写的结果。
 // gfx-shader-reuse (marker 1 / 0 / 2, else DM_GFX_SHADER_REUSE; A/B target shreuse): a shader load takes the SPIR-V the warm-up threads
@@ -2205,6 +2206,7 @@ Image &get_image_slow(const tex_t *t,bool upload){CPU_SCOPE(Image);
             Commands c;im.transition(c.command,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);vkCmdCopyBufferToImage(c.command,staging.buffer,im.image,im.layout,copies.size(),copies.data());im.transition(c.command,VK_IMAGE_LAYOUT_GENERAL);c.finish();}
         im.uploaded=true;provenance_write(im,__LINE__);im.cpu_hash=hash_memory(t->mem,t->L.size);im.checked_submission=stats.submissions;
         if(reupload)++hud::reuploads;else ++hud::uploads;hud::upload_bytes+=linear.size();hud::upload_ns+=timing_clock()-up_t0;
+        upload_batch_bytes+=linear.size();
     }
     provenance_image(upload?"GET_UPLOAD":"GET",t,im);im.slot_use=slot_serial;return im;
 }
@@ -4589,6 +4591,17 @@ bool guest_texture_write(const tex_t *t,unsigned level,unsigned layer,const NVNc
     return true;
 }
 void copy_texture_buffer(const p_copy_b2t &request,bool to_buffer){preflight_cpu_reads();probe_boundary("copy-texture-buffer");
+    // Adreno can retain large image-copy staging allocations in all slot command
+    // pools during mip-chain loads. Bound them without changing texture contents
+    // or copy order. Drain only here: get_image callers may hold live command buffers.
+    if(upload_batch_bytes>=(64ull<<20)){
+        upload_batch_bytes=0;gpu_sync(perf.sync_readback);
+        for(auto &slot:active_slots()){
+            poolreset::finish(slot);
+            if(slot.pool){VK(vkResetCommandPool(cfg.device,slot.pool,VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT));slot.reset_queued=false;}
+            else if(slot.cmd){VK(vkResetCommandBuffer(slot.cmd,VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT));if(slot.pro)VK(vkResetCommandBuffer(slot.pro,VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT));}
+        }
+    }
     need(request.tex,"Null buffer image texture");
     tex_t stable=*request.tex;p_copy_b2t p=request;p.tex=&stable;
     if(p.tex->d.format == 0 && p.has_view && p.view.set_format && p.view.format != 0){

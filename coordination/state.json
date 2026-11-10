@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-11-08T10:34:30.761373+08:00",
-  "phase": "Honor dark VS dropped-read cause localized in replay; production shader and Limit/audio gates open",
-  "coordinator": "Codex /root takeover",
+  "updated_at": "2026-11-11T02:40:20.428641+08:00",
+  "phase": "Shrine ordinary e7 APK actual load/exit/reenter and rectangle repair verified; movement29.86FPS, pacing/fullgame effects remain open",
+  "coordinator": "Codex /root shrine takeover",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
   "active_writers": [
@@ -1544,6 +1544,23 @@
       "checkpoint_at": "2026-11-08T10:34:30.761373+08:00",
       "source_baseline_commit": "214fd794fb436de14155e8954908685ae2120c21",
       "source_baseline_tag": "honor-graphics-20261107"
+    },
+    {
+      "task": "HONOR-SHRINE-OOM-20261111",
+      "owner": "Codex /root",
+      "paths": [
+        "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+        ".local/shrine-takeover-20261111/",
+        "coordination/results/HONOR-SHRINE-OOM-20261111.md",
+        "src/graphics/nvn_vulkan/engine/xbg_spirv_stencil.h",
+        "tests/device/test_reflection_uint_fetch.cpp",
+        "tests/device/reflection_uint_fetch.spvasm"
+      ],
+      "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+      "branch": "task/T-honor-shrine-20261111",
+      "acquired_at": "2026-11-11T01:31:38.119199+08:00",
+      "checkpoint": "Ordinary e7c3f82 installed hash verified. PID27357 Continue->interior->entrance->interior->moving survived, rectangles absent; frameCSV780intervals26.118s29.864FPS P9547.059ms max81.377ms; notstable60/fullgame/independentQA. Report coordination/results/HONOR-SHRINE-OOM-20261111.md. Next profile descriptor/snapshot + GPU wait and more transitions.",
+      "write_state": "ACTIVE"
     }
   ],
   "tasks": [
@@ -4128,6 +4145,31 @@
         ".local/installer-20261030/RESULT.md"
       ],
       "acceptance": "No tag/backup changes; real RG477M install/import/cold+awake+sleep startup/Continue/motion/cutscene/battle/audio/visual/recovery; no universal or playable claim from partial tests."
+    },
+    {
+      "id": "HONOR-SHRINE-OOM-20261111",
+      "role": "coordinator/graphics",
+      "owner": "Codex /root",
+      "status": "in_progress",
+      "dependencies": [],
+      "pass_gates": [],
+      "branch": "task/T-honor-shrine-20261111",
+      "goal": "Locate and repair Earth Shrine GPU memory spike without lost rendering or save changes",
+      "inputs": [
+        "Cursor transcript 0176203f-8620-4011-97b9-7ed045b98454",
+        ".local/shrine-oom-20261111/run9 through run13"
+      ],
+      "outputs": [
+        "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+        ".local/shrine-takeover-20261111/",
+        "coordination/results/HONOR-SHRINE-OOM-20261111.md",
+        "src/graphics/nvn_vulkan/engine/xbg_spirv_stencil.h",
+        "tests/device/test_reflection_uint_fetch.cpp",
+        "tests/device/reflection_uint_fetch.spvasm"
+      ],
+      "acceptance": "Same scene enters and survives on Honor A42 with bounded GPU memory; no skipped shader/draw; independent QA NOT_RUN unless actually run",
+      "recovery_point": "21d270e + saved cursor-wip.patch, preserve all existing data",
+      "checkpoint": "Ordinary e7c3f82 installed hash verified. PID27357 Continue->interior->entrance->interior->moving survived, rectangles absent; frameCSV780intervals26.118s29.864FPS P9547.059ms max81.377ms; notstable60/fullgame/independentQA. Report coordination/results/HONOR-SHRINE-OOM-20261111.md. Next profile descriptor/snapshot + GPU wait and more transitions."
     }
   ],
   "blockers": [
