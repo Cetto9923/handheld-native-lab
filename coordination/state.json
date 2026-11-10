@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-11-11T04:27:06.388423+08:00",
-  "phase": "Real compute rewrite component passed Android ARM64 plus host byte comparison; in-game prewarm test pending",
+  "updated_at": "2026-11-11T04:32:49.669886+08:00",
+  "phase": "Verified archived shader instruction inputs; descriptor metadata difference requires in-game validation",
   "coordinator": "Codex /root shrine takeover",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
@@ -1559,7 +1559,7 @@
       "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
       "branch": "task/T-honor-shrine-20261111",
       "acquired_at": "2026-11-11T01:31:38.119199+08:00",
-      "checkpoint": "Independent native ARM64 process on Honor A42: built check.android with NDK26 and linked experimental libffrs_game_window.so, pushed into unique /data/local/tmp/codex-shrine-component-20261111a; no Activity, installation, app restart, settings or inputs. Each real stage5 shader b673e10f3da2451c and 876dd0820a7ad8fa independently rewritten twice via production stencil/inline/warp64/compaction routines: process exits0, byte-identical repeat, output32712/26857 words. Pulled Android outputs both byte-identical to previous macOS outputs and spirv-val Vulkan1.1 exit0. Evidence prewarm-host/android-plan.txt/android-run.json/android-validate.json/check.cpp under .local/shrine-takeover-20261111. Other org.snk.the1st.gamewindow remains topResumedActivity. This is isolated CPU component, not actual game warm/runtime comparison, Vulkan rendering, observed prewarm hit, memory/FPS or acceptance. Experimental APK46f3c11 not installed; current e7 unchanged.",
+      "checkpoint": "Verified component shader inputs against actual Honor /sdcard/FFRS/shaders.hnla exact archive slices, read-only; primary app shaders files absent for targets and /sdcard/FFRS/main.nso + archive exist, but actual runtime source logging not established. b673 archive full XGS SHA c0d359da... matches local loose. 876 archive XGS SHA42221625... differs from local loose5809b105... by exactly 2 metadata bytes (before byte672); embedded SPIR-V is byte-identical SHA39f00c14... to component input. Thus ARM64 SPIR-V component test covers archived instruction bytes, NOT descriptor metadata equivalence or in-game shader behavior. Evidence prewarm-host/device-archive-targets.json and 876dd-version-diff.json, archive slice retained .local. No other app interaction or installation; device mode2 still required.",
       "write_state": "ACTIVE"
     }
   ],
@@ -4169,7 +4169,7 @@
       ],
       "acceptance": "Same scene enters and survives on Honor A42 with bounded GPU memory; no skipped shader/draw; independent QA NOT_RUN unless actually run",
       "recovery_point": "21d270e + saved cursor-wip.patch, preserve all existing data",
-      "checkpoint": "Independent native ARM64 process on Honor A42: built check.android with NDK26 and linked experimental libffrs_game_window.so, pushed into unique /data/local/tmp/codex-shrine-component-20261111a; no Activity, installation, app restart, settings or inputs. Each real stage5 shader b673e10f3da2451c and 876dd0820a7ad8fa independently rewritten twice via production stencil/inline/warp64/compaction routines: process exits0, byte-identical repeat, output32712/26857 words. Pulled Android outputs both byte-identical to previous macOS outputs and spirv-val Vulkan1.1 exit0. Evidence prewarm-host/android-plan.txt/android-run.json/android-validate.json/check.cpp under .local/shrine-takeover-20261111. Other org.snk.the1st.gamewindow remains topResumedActivity. This is isolated CPU component, not actual game warm/runtime comparison, Vulkan rendering, observed prewarm hit, memory/FPS or acceptance. Experimental APK46f3c11 not installed; current e7 unchanged."
+      "checkpoint": "Verified component shader inputs against actual Honor /sdcard/FFRS/shaders.hnla exact archive slices, read-only; primary app shaders files absent for targets and /sdcard/FFRS/main.nso + archive exist, but actual runtime source logging not established. b673 archive full XGS SHA c0d359da... matches local loose. 876 archive XGS SHA42221625... differs from local loose5809b105... by exactly 2 metadata bytes (before byte672); embedded SPIR-V is byte-identical SHA39f00c14... to component input. Thus ARM64 SPIR-V component test covers archived instruction bytes, NOT descriptor metadata equivalence or in-game shader behavior. Evidence prewarm-host/device-archive-targets.json and 876dd-version-diff.json, archive slice retained .local. No other app interaction or installation; device mode2 still required."
     }
   ],
   "blockers": [
