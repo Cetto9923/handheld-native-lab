@@ -1,3 +1,7 @@
+# 2026-11-11 movement copy caller sample
+
+Second same-scene movement profile with DWARF 9s, 3386 samples/0 lost, video confirms four swipes and no battle. RHI 1996 samples; memmove 154 samples (7.72%). In memmove caller report stream_buffer accounts 24.35% of the filtered memmove sample weight, followed by vkCmdBindDescriptorSets 8.44%; remainder is unresolved/other. stream_buffer includes snapshots/uniform snapshots; cannot safely bypass copies or infer big speedup. Recording + sampling overhead; no acceptance FPS. Evidence .local/shrine-takeover-20261111/move-profile4*. Next compare current snapshot cache/tracker invariants and use exact target device A/B only if correctness proven. Installed Shrine fix unchanged.
+
 # 2026-11-11 actual movement CPU profile
 
 Actual shrine movement 4 swipes with 12s video and 9s simpleperf (5257 samples, 3051 RHI; zero lost), no encounter observed. RHI leaf CPU samples memmove8.55%, descriptors7.15%, descriptors_build5.28%, texel_acquire3.05%, hash2.95%; recording/profiling overhead present, not acceptance FPS. Artifacts .local/shrine-takeover-20261111/move-profile3*. Continue targeted descriptor/texture analysis; no performance changes yet. Shrine scoped fix remains installed e7c3f82.
