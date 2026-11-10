@@ -1,3 +1,7 @@
+# 2026-11-11 deeper shrine progression
+
+Advanced actual ordinary e7 APK samePID27357 from lower shrine hallway up staircase to elevated platform facing fog gap; no crash observed, further map area and light/fog rendered. Captures .local/shrine-takeover-20261111/advance-room1..4.png, deeper-shrine-guest.log. Bright yellow rectangular doorway matches location and description in https://allthings.how/final-fantasy-resonance-earth-shrine-walkthrough/ (lines89–94); this suggests a deliberate doorway, not proof of pixel-perfect effect. Device MemAvailable1718708kB/SwapFree11154692kB sampled once; no complete peak or fullgame acceptance. Further transition, effect and smooth-FPS validation remain.
+
 # 2026-11-11 snapshot tracker availability verified
 
 Snapshot optimization investigation: actual movement logs show vertex copies ~6.9–7.6MB/frame and index ~1.27–1.34MB/frame; source xbg_host_bridge.c nvn_dirty_since is stub always0, and installed build llvm-readelf shows nvn_dirty_now/protect/tracked weak undefined. vcache lookup explicitly requires all four, so enabling existing marker cannot activate it; init log tracker=1 tests only since and is misleading. tex_dirty similarly requires all. Do not enable cache or fabricate tracker. Next assess feasible correct concurrent dirty tracking or alternative untracked-safe snapshot optimization; independent validation/actual-device A/B needed. Shrine fix installed unchanged.
