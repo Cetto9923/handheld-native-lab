@@ -25,6 +25,35 @@ Android ARM64 原生运行时、图形/音频兼容层与多设备移植工程�
 - **群公告已置顶**：群内已置顶分享夸克网盘一键下载链接（内含已配齐的 17GB 通用数据包 `FFRS_Data_Universal.zip` 及详细安装说明）。
 - **交流与反馈**：欢迎群内交流各种安卓设备（一加、荣耀、红米、小米等）的运行表现、按键手柄映射与后续移植体验！
 
+## ⚖️ 免责声明 (Legal Disclaimer)
+
+1. **学术与技术研究用途**：本项目代码及相关文档仅供计算机软硬件体系结构兼容性、ARM64 原生运行时执行与 Vulkan 图形 API 桥接的技术研究、教学与个人学习使用，严禁用于任何商业目的。
+2. **版权归属**：游戏本体《FINAL FANTASY RESONANCE》、涉及的游戏代码、美术资源、音乐音效、商标及一切知识产权均归原版权方（包括 Square Enix、Nintendo 等）所有。本项目与原厂商无任何商业合作、赞助或官方隶属关系。
+3. **使用者义务与正版倡议**：使用者应自行通过正规合法渠道购买正版游戏软件。群内提供之兼容性测试整合资源仅供研究与尝鲜评测，测试完成后请于 24 小时内自行删除。
+4. **禁止牟利**：任何个人或组织严禁将本项目源码、打包 APK、群聊资格或相关测试资源用于任何形式的收费、倒卖、捆绑销售或广告商业牟利，违者须自行承担全部法律后果。
+
+## 📂 项目目录架构说明
+
+```
+handheld-native-lab/
+├── src/                          # 核心源码
+│   ├── android/                  # Android NativeActivity、JNI 桥接与机型画像适配（DeviceProfile）
+│   ├── graphics/                 # NVN ↔ Vulkan 图形翻译层、SPIR-V 动态子群助手重写器、着色器管道
+│   └── runtime/                  # AArch64 HLE 运行时、POSIX/TLS 线程环境模拟层、NSO 加载器
+├── scripts/                      # 工具与构建脚本
+│   ├── android/                  # APK 自动化编译与机型签名脚本
+│   ├── graphics/                 # Vulkan 着色器提取与帧率/管线分析工具
+│   └── distribution/             # 数据包契约验证与自动化部署导出工具
+├── tests/                        # 自动化测试套件
+│   ├── device/                   # 多机型屏幕方向、Adreno 驱动画像合同单元测试
+│   └── native/                   # 核心运行时 ABI 与图形契约测试
+├── docs/                         # 项目技术文档
+│   ├── PROJECT.md                # 架构设计、渲染分辨率与性能验收门禁
+│   └── SWITCH_TO_ANDROID_PORTING_PITFALLS_GUIDE.md # Switch 移植 Android 完整避坑指南
+├── NOTICE.md                     # 第三方依赖与开源许可证声明
+└── AGENTS.md                     # 项目工程总控与代码协作规范
+```
+
 ## Antigravity 开始
 
 1. 在 Antigravity 打开本文件所在项目目录。
