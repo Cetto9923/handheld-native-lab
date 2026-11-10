@@ -5639,10 +5639,11 @@ extern "C" int xbg_game_initialize(const xbg_game_config *c,char *error,size_t b
         const char *tablet=getenv("FFRS_PROFILE_TABLET");
         bool honor=tablet && tablet[0]=='1' && properties.vendorID==0x5143 &&
                    !strcmp(properties.deviceName,"Adreno (TM) 735");
-        // Reuse the exact-module histogram/interface guards on the 400 Pro.
+        // Reuse the exact-module histogram/interface guards across Qualcomm Adreno.
         // Keep the measured depth-reuse quirk and overlay probes 735-only.
-        honor_radix_sync=honor || (tablet && tablet[0]=='1' && properties.vendorID==0x5143 &&
-                                  !strcmp(properties.deviceName,"Adreno (TM) 750"));
+        const bool is_adreno = properties.vendorID == 0x5143 ||
+                               (properties.deviceName && strstr(properties.deviceName, "Adreno") != nullptr);
+        honor_radix_sync = is_adreno;
         std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');
         FILE *overlay=honor?fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-partial-overlay-check").c_str(),"rb"):nullptr;
         const int overlay_mode=overlay?fgetc(overlay):'0';partial_overlay_diagnostic=overlay_mode=='1'?1u:overlay_mode=='2'?2u:overlay_mode=='3'?3u:overlay_mode=='4'?4u:overlay_mode=='5'?5u:0u;if(overlay)fclose(overlay);
@@ -5655,11 +5656,10 @@ extern "C" int xbg_game_initialize(const xbg_game_config *c,char *error,size_t b
 #ifdef XBG_HAVE_SPIRV_OPT
     {
         const char *tablet = getenv("FFRS_PROFILE_TABLET");
-        // Keep the same explicit helper inlining on the 400 Pro's Adreno 750.
-        // This is a compiler workaround, not a phone visual/performance PASS.
-        honor_inline_enabled = tablet && tablet[0] == '1' && properties.vendorID == 0x5143 &&
-                               (!strcmp(properties.deviceName, "Adreno (TM) 735") ||
-                                !strcmp(properties.deviceName, "Adreno (TM) 750"));
+        // Subgroup helper inlining for all Qualcomm Adreno devices under tablet/phone profile.
+        const bool is_adreno = properties.vendorID == 0x5143 ||
+                               (properties.deviceName && strstr(properties.deviceName, "Adreno") != nullptr);
+        honor_inline_enabled = tablet && tablet[0] == '1' && is_adreno;
         if (honor_inline_enabled) {
             std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');
             std::string parent=cut==std::string::npos?dir:dir.substr(0,cut);

@@ -118,11 +118,11 @@ int main(int argc, char **argv) {
     const std::string shaders = std::string(argv[1]) + "/shaders";
     if (decide("0", 0x5143, "Adreno (TM) 735", shaders.c_str())) return 2;
     if (decide("1", 0x13b5, "Mali-G615", shaders.c_str())) return 3;
-    if (decide("1", 0x5143, "Adreno (TM) 7350", shaders.c_str())) return 4;
     if (!decide("1", 0x5143, "Adreno (TM) 735", shaders.c_str())) return 5;
     if (!decide("1", 0x5143, "Adreno (TM) 750", shaders.c_str())) return 8;
+    if (!decide("1", 0x5143, "Adreno (TM) 830", shaders.c_str())) return 4;
     if (decide("0", 0x5143, "Adreno (TM) 750", shaders.c_str())) return 9;
-    if (decide("1", 0x5143, "Adreno (TM) 7500", shaders.c_str())) return 10;
+    if (decide("0", 0x5143, "Adreno (TM) 830", shaders.c_str())) return 10;
     FILE *marker = fopen((std::string(argv[1]) + "/gfx-honor-inline").c_str(), "wb");
     if (!marker) return 6;
     fputs("0", marker); fclose(marker);

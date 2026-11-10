@@ -27,6 +27,7 @@ public class DeviceProfileContract {
         check("SM8635", 0, "", "handheld_mid", 720, 30);
         check("SM8635", 420, "tablet_sd8s", "tablet_sd8s", 1080, 60);
         check("SM8650", 420, "", "phone_sd8g3", 1080, 60);
+        check("SM8750", 420, "", "phone_sd8g3", 1080, 60);
         check("SM86500", 420, "", "handheld_mid", 720, 30);
         check("SM8650", 420, "handheld_mid", "handheld_mid", 720, 30);
         if (!DeviceProfile.select("SM8650", 420, "").usesDockedRendering()

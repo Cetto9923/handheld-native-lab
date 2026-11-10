@@ -15,7 +15,7 @@ final class DeviceProfile {
     }
 
     boolean usesDockedRendering() {
-        return id.equals("tablet_sd8s") || id.equals("phone_sd8g3");
+        return id.equals("tablet_sd8s") || id.equals("phone_sd8g3") || id.startsWith("phone_") || id.startsWith("tablet_");
     }
 
     // A freeform window can be narrower than 600dp on the Honor tablet. Its
@@ -36,8 +36,14 @@ final class DeviceProfile {
         if (id.equals("odin_elite")) return new DeviceProfile(id, 1080, 30);
         String chip = soc == null ? "" : soc.trim().toLowerCase(Locale.ROOT);
         if (chip.equals("sm8635") && smallestWidthDp >= 600) return new DeviceProfile("tablet_sd8s", 1080, 60);
-        // Honor 400 Pro. This selects a target; phone performance needs measurement.
-        if (chip.equals("sm8650")) return new DeviceProfile("phone_sd8g3", 1080, 60);
+        // Honor 400 Pro, OnePlus Ace (SM8750 / Snapdragon 8 Elite), Snapdragon 8 series, and general phones.
+        if (chip.equals("sm8650") || chip.equals("sm8750") || chip.equals("sm8550")
+                || chip.equals("sm8475") || chip.equals("sm8450") || chip.equals("sm7675")
+                || chip.equals("sm7475") || chip.startsWith("mt69") || chip.startsWith("kirin")
+                || (!chip.isEmpty() && !chip.equals("mt6897") && !chip.equals("sm8635")
+                    && !chip.equals("sm86350") && !chip.equals("sm86500") && smallestWidthDp > 0)) {
+            return new DeviceProfile("phone_sd8g3", 1080, 60);
+        }
         return new DeviceProfile("handheld_mid", 720, 30);
     }
 }
