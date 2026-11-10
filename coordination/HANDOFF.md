@@ -1,3 +1,7 @@
+# 2026-11-11 actual movement CPU profile
+
+Actual shrine movement 4 swipes with 12s video and 9s simpleperf (5257 samples, 3051 RHI; zero lost), no encounter observed. RHI leaf CPU samples memmove8.55%, descriptors7.15%, descriptors_build5.28%, texel_acquire3.05%, hash2.95%; recording/profiling overhead present, not acceptance FPS. Artifacts .local/shrine-takeover-20261111/move-profile3*. Continue targeted descriptor/texture analysis; no performance changes yet. Shrine scoped fix remains installed e7c3f82.
+
 # 2026-11-11 Shrine fixes saved, scoped actual battle verified
 
 Sourcecommit e878532; ordinary installed e7c3f82 APK samePID27357 survived shrine load/exit/reenter/movement and random encounter Ice+Fire blackmagic/attacks/victory/map return, no broad rectangles/blackFX in scoped video. Earlier movement29.864FPS/P9547.059ms; notstable60. LaterCPUprofile includes encounter/menu, FPcallchainsunreliable; no perfchange fromit. GlobalGPU0late60s4.859..4.916GB not process/transitionpeak. report updated; sourceclean. Next real continuous movement/action profile then minimal optimization; fullgame/audio/independentQA NOT_RUN.
