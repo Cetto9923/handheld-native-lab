@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-11-11T04:21:08.660637+08:00",
-  "phase": "Compute prewarm real-shader host deterministic component check passed; device comparison pending",
+  "updated_at": "2026-11-11T04:27:06.388423+08:00",
+  "phase": "Real compute rewrite component passed Android ARM64 plus host byte comparison; in-game prewarm test pending",
   "coordinator": "Codex /root shrine takeover",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
@@ -1559,7 +1559,7 @@
       "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
       "branch": "task/T-honor-shrine-20261111",
       "acquired_at": "2026-11-11T01:31:38.119199+08:00",
-      "checkpoint": "Host real-input component audit: extracted stage5 SPIR-V from local game shader bundles b673e10f3da2451c and 876dd0820a7ad8fa into .local/shrine-takeover-20261111/prewarm-host. Applied actual production stencil, inline, warp64, compaction rewrite sequence twice independently using host Homebrew SPIRV-Tools; byte-identical both, input+output spirv-val Vulkan1.1 exit0. Output words32712 and26857 match runtime log counts. result.json contains SHA/exits, check.cpp and command retained. Host optimizer/version/platform and custom driver differ from Android warm/runtime callers; this proves component determinism only, not actual prewarm hit/equality/device effect/performance. Experimental APK 46f3c11 not installed; other app remains foreground. Next actual mode2 comparison when device available.",
+      "checkpoint": "Independent native ARM64 process on Honor A42: built check.android with NDK26 and linked experimental libffrs_game_window.so, pushed into unique /data/local/tmp/codex-shrine-component-20261111a; no Activity, installation, app restart, settings or inputs. Each real stage5 shader b673e10f3da2451c and 876dd0820a7ad8fa independently rewritten twice via production stencil/inline/warp64/compaction routines: process exits0, byte-identical repeat, output32712/26857 words. Pulled Android outputs both byte-identical to previous macOS outputs and spirv-val Vulkan1.1 exit0. Evidence prewarm-host/android-plan.txt/android-run.json/android-validate.json/check.cpp under .local/shrine-takeover-20261111. Other org.snk.the1st.gamewindow remains topResumedActivity. This is isolated CPU component, not actual game warm/runtime comparison, Vulkan rendering, observed prewarm hit, memory/FPS or acceptance. Experimental APK46f3c11 not installed; current e7 unchanged.",
       "write_state": "ACTIVE"
     }
   ],
@@ -4169,7 +4169,7 @@
       ],
       "acceptance": "Same scene enters and survives on Honor A42 with bounded GPU memory; no skipped shader/draw; independent QA NOT_RUN unless actually run",
       "recovery_point": "21d270e + saved cursor-wip.patch, preserve all existing data",
-      "checkpoint": "Host real-input component audit: extracted stage5 SPIR-V from local game shader bundles b673e10f3da2451c and 876dd0820a7ad8fa into .local/shrine-takeover-20261111/prewarm-host. Applied actual production stencil, inline, warp64, compaction rewrite sequence twice independently using host Homebrew SPIRV-Tools; byte-identical both, input+output spirv-val Vulkan1.1 exit0. Output words32712 and26857 match runtime log counts. result.json contains SHA/exits, check.cpp and command retained. Host optimizer/version/platform and custom driver differ from Android warm/runtime callers; this proves component determinism only, not actual prewarm hit/equality/device effect/performance. Experimental APK 46f3c11 not installed; other app remains foreground. Next actual mode2 comparison when device available."
+      "checkpoint": "Independent native ARM64 process on Honor A42: built check.android with NDK26 and linked experimental libffrs_game_window.so, pushed into unique /data/local/tmp/codex-shrine-component-20261111a; no Activity, installation, app restart, settings or inputs. Each real stage5 shader b673e10f3da2451c and 876dd0820a7ad8fa independently rewritten twice via production stencil/inline/warp64/compaction routines: process exits0, byte-identical repeat, output32712/26857 words. Pulled Android outputs both byte-identical to previous macOS outputs and spirv-val Vulkan1.1 exit0. Evidence prewarm-host/android-plan.txt/android-run.json/android-validate.json/check.cpp under .local/shrine-takeover-20261111. Other org.snk.the1st.gamewindow remains topResumedActivity. This is isolated CPU component, not actual game warm/runtime comparison, Vulkan rendering, observed prewarm hit, memory/FPS or acceptance. Experimental APK46f3c11 not installed; current e7 unchanged."
     }
   ],
   "blockers": [
