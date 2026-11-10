@@ -1559,7 +1559,7 @@
       "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
       "branch": "task/T-honor-shrine-20261111",
       "acquired_at": "2026-11-11T01:31:38.119199+08:00",
-      "checkpoint": "Verified component shader inputs against actual Honor /sdcard/FFRS/shaders.hnla exact archive slices, read-only; primary app shaders files absent for targets and /sdcard/FFRS/main.nso + archive exist, but actual runtime source logging not established. b673 archive full XGS SHA c0d359da... matches local loose. 876 archive XGS SHA42221625... differs from local loose5809b105... by exactly 2 metadata bytes (before byte672); embedded SPIR-V is byte-identical SHA39f00c14... to component input. Thus ARM64 SPIR-V component test covers archived instruction bytes, NOT descriptor metadata equivalence or in-game shader behavior. Evidence prewarm-host/device-archive-targets.json and 876dd-version-diff.json, archive slice retained .local. No other app interaction or installation; device mode2 still required.",
+      "checkpoint": "876dd binding29 archive slot129 vs loose slot257; rewrite-only component evidence; other app foreground; device experiment NOT_RUN",
       "write_state": "ACTIVE"
     }
   ],

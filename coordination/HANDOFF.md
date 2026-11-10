@@ -1,3 +1,7 @@
+# 2026-11-11 shader metadata binding reconciliation
+
+For 876dd0820a7ad8fa, bytes 180–181 are slot in binding 29, source TEXTURE: device archive slot129; local loose slot257. Runtime descriptor code requires texture slot <256, so loose metadata would fail if used; primary device shader file absent, archive fallback inferred but runtime source not directly logged. SPIR-V byte-identical, so existing component tests remain valid only for rewrites, not binding or device behavior. Evidence .local/shrine-takeover-20261111/prewarm-host/876dd-binding-diff.json. No APK or game data changed. Device foreground other app; game experiments remain NOT_RUN.
+
 # 2026-11-11 device archive shader input reconciliation
 
 Verified component shader inputs against actual Honor /sdcard/FFRS/shaders.hnla exact archive slices, read-only; primary app shaders files absent for targets and /sdcard/FFRS/main.nso + archive exist, but actual runtime source logging not established. b673 archive full XGS SHA c0d359da... matches local loose. 876 archive XGS SHA42221625... differs from local loose5809b105... by exactly 2 metadata bytes (before byte672); embedded SPIR-V is byte-identical SHA39f00c14... to component input. Thus ARM64 SPIR-V component test covers archived instruction bytes, NOT descriptor metadata equivalence or in-game shader behavior. Evidence prewarm-host/device-archive-targets.json and 876dd-version-diff.json, archive slice retained .local. No other app interaction or installation; device mode2 still required.
