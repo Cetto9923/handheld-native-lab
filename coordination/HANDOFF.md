@@ -1,3 +1,7 @@
+# 2026-11-11 frame timing and wait-path audit
+
+Startup log specifies target_fps=60, legacy_waitall=0 and completion_wait=1; do not mistake 29.86 actual movement FPS for a proven 30 FPS cap or re-enable the older wait path. Last 10 later 60-attempt engine windows indexed in .local/shrine-takeover-20261111/late-perf-window-audit.json; they are not precisely aligned with the movement marks. CPU submit, GPU and wait durations can overlap, cannot be added or establish sole bottleneck. Actual optimization and same-scene A/B still require device access. Another app remains foreground; no interaction.
+
 # 2026-11-11 shader metadata binding reconciliation
 
 For 876dd0820a7ad8fa, bytes 180–181 are slot in binding 29, source TEXTURE: device archive slot129; local loose slot257. Runtime descriptor code requires texture slot <256, so loose metadata would fail if used; primary device shader file absent, archive fallback inferred but runtime source not directly logged. SPIR-V byte-identical, so existing component tests remain valid only for rewrites, not binding or device behavior. Evidence .local/shrine-takeover-20261111/prewarm-host/876dd-binding-diff.json. No APK or game data changed. Device foreground other app; game experiments remain NOT_RUN.
