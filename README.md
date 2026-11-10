@@ -1,6 +1,13 @@
-# Handheld Native Lab
+# Handheld Native Lab: Final Fantasy Resonance (最终幻想：共鸣) Android Native Port
 
-Android ARM64 原生运行时、图形/音频兼容层与多设备移植工程实践。本项目独立开发，旨在探索主机/掌机原生 AArch64 代码在通用 Android 设备上的原生执行与 Vulkan 图形重构。
+[![Release](https://img.shields.io/github/v/release/Cetto9923/handheld-native-lab)](https://github.com/Cetto9923/handheld-native-lab/releases)
+[![Platform](https://img.shields.io/badge/Platform-Android%20ARM64-green.svg)](https://github.com/Cetto9923/handheld-native-lab)
+[![Graphics](https://img.shields.io/badge/Graphics-Vulkan%201.1+-orange.svg)](https://github.com/Cetto9923/handheld-native-lab)
+[![License](https://img.shields.io/badge/License-MIT%20%2F%20Custom-blue.svg)](NOTICE.md)
+
+An independent, open-source Android ARM64 native runtime, dynamic HLE compatibility layer, and Vulkan graphics renderer for **Final Fantasy: Resonance (最终幻想：共鸣)**. Supports Anbernic RG477M, Snapdragon 8 Elite / 8 Gen 3 / 8 Gen 2 / 7+ Gen 3, Dimensity devices, and standard Android smartphones & tablets.
+
+> **中文简介**：本项目为《最终幻想：共鸣》独立研发的 Android 原生运行时与 Vulkan 兼容层。采用原生 AArch64 代码执行（非模拟器架构），具备全机型屏幕比例与方向自适应、高通骁龙 Adreno 着色器动态内联修复、以及多存储卷免权限数据包自动识别能力。
 
 **最新成果：v1.0.2 通用版已发布**
 - **全机型屏幕旋转与比例自适应**：解耦原生纵向屏幕限制，针对各品牌手机/平板（包括一加、荣耀、小米等）统一采用系统级逻辑横屏（Identity Transform + Opaque Composition），杜绝反向拉伸与画面黑边条。
