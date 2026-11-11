@@ -1373,16 +1373,26 @@ void nso_host_fs_close_file(nn_fs_file_handle handle) {
     strncpy(path, entry->nn_path, sizeof(path) - 1);
     path[sizeof(path) - 1] = '\0';
 
+    int mode = entry->mode;
+    int dirty = entry->dirty;
+    /* closing is already set, and validate_file_handle rejects a closing
+     * entry, so no new read can pin fd. Sync outside the global lock. */
+    pthread_mutex_unlock(&s_fs_file_mutex);
+    int sync_error = 0;
     if (fd >= 0) {
-        if ((entry->mode & 2) && entry->dirty && fsync(fd)) {
-            s_fs_closed_write_error = 1;
+        if ((mode & 2) && dirty && fsync(fd)) {
+            sync_error = 1;
             fprintf(stderr, "[hle] nn::fs::CloseFile: writable file sync failed errno=%d\n", errno);
         }
-        if (close(fd) && (entry->mode & 2)) s_fs_closed_write_error = 1;
+        if (close(fd) && (mode & 2)) sync_error = 1;
     }
+    pthread_mutex_lock(&s_fs_file_mutex);
+    if (sync_error) s_fs_closed_write_error = 1;
     entry->in_use = 0;
     entry->fd = -1;
     entry->dirty = 0;
+    entry->closing = 0;
+    pthread_cond_broadcast(&s_fs_file_cond);
     pthread_mutex_unlock(&s_fs_file_mutex);
     fprintf(stderr, "[hle] nn::fs::CloseFile: closed handle=%p (path='%s')\n", handle.handle, path);
 }
@@ -1396,8 +1406,15 @@ int32_t nso_host_fs_flush_file(nn_fs_file_handle handle) {
         return 1;
     }
     int fd = entry->fd;
+    /* Pin the entry the same way a read does, so Close waits instead of
+     * reusing fd while this sync is outside the lock. */
+    entry->active_reads++;
+    pthread_mutex_unlock(&s_fs_file_mutex);
     int result = fsync(fd);
-    if (!result) entry->dirty = 0;
+    pthread_mutex_lock(&s_fs_file_mutex);
+    if (entry->active_reads) entry->active_reads--;
+    if (entry->closing && !entry->active_reads) pthread_cond_broadcast(&s_fs_file_cond);
+    if (!result && entry->in_use && entry->fd == fd) entry->dirty = 0;
     pthread_mutex_unlock(&s_fs_file_mutex);
     if (result) return 0x2a2;
     fprintf(stderr, "[hle] nn::fs::FlushFile: flushed handle=%p\n", handle.handle);
@@ -1769,12 +1786,38 @@ int32_t nso_host_fs_commit_save_data(const char *name) {
     if (!mount) return 0x2a2;
     pthread_mutex_lock(&s_fs_file_mutex);
     int result = s_fs_closed_write_error ? 0x2a2 : 0;
+    for (;;) {
+        int closing_writers = 0;
+        for (int i = 0; i < NSO_FS_MAX_OPEN_FILES; i++) {
+            nso_fs_file_entry *file = &s_fs_open_files[i];
+            if (file->in_use && (file->mode & 2) && file->closing) closing_writers++;
+        }
+        if (!closing_writers) break;
+        pthread_cond_wait(&s_fs_file_cond, &s_fs_file_mutex);
+    }
+    int fds[NSO_FS_MAX_OPEN_FILES];
+    nso_fs_file_entry *pinned[NSO_FS_MAX_OPEN_FILES];
+    int pinned_count = 0;
     for (int i = 0; i < NSO_FS_MAX_OPEN_FILES; i++) {
         nso_fs_file_entry *file = &s_fs_open_files[i];
-        if (file->in_use && (file->mode & 2)) {
-            if (fsync(file->fd)) result = 0x2a2;
-            else file->dirty = 0;
-        }
+        if (!(file->in_use && (file->mode & 2) && !file->closing && file->fd >= 0)) continue;
+        file->active_reads++;
+        fds[pinned_count] = file->fd;
+        pinned[pinned_count] = file;
+        pinned_count++;
+    }
+    pthread_mutex_unlock(&s_fs_file_mutex);
+    int synced[NSO_FS_MAX_OPEN_FILES] = {0};
+    for (int i = 0; i < pinned_count; i++) {
+        if (fsync(fds[i])) result = 0x2a2;
+        else synced[i] = 1;
+    }
+    pthread_mutex_lock(&s_fs_file_mutex);
+    for (int i = 0; i < pinned_count; i++) {
+        nso_fs_file_entry *file = pinned[i];
+        if (synced[i] && file->in_use && file->fd == fds[i]) file->dirty = 0;
+        if (file->active_reads) file->active_reads--;
+        if (file->closing && !file->active_reads) pthread_cond_broadcast(&s_fs_file_cond);
     }
     pthread_mutex_unlock(&s_fs_file_mutex);
     int fd = open(mount->host_path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
