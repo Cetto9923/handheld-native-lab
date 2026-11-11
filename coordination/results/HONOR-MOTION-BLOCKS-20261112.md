@@ -1,6 +1,26 @@
 # Honor Pad rendering and movement regression
 
-## Current checkpoint
+## CPU cache deployment update
+
+Source d465e3f caches immutable family getter function addresses with pthread_once and looks up existing Shader variants by sorted binding/format pairs before constructing a text identity. Underlying getter calls, missing-entry handling, bindings, resource lifetimes and stable ib1 identities are preserved. Host8-thread value-changing cache tests and source review passed.
+
+Build5 and preserving-data install-r exited0. APK .local/android-apk/FFRS-Integer-Buffer-CPU.apk SHA-2560db386552bf4ab01f8ca9b513f592f43b581db7ef47b913812ca52a3cff802d4 matches installed base.apk. New PID31064, GPU marker1, startup warm1212failed0 in2879ms. saves-before-cpu-cache.tar preserves preinstall saves.
+
+CPU profiling collected3542 RHI user-cycle samples with frame-pointer chains. Many chains failed, so children percentages are not used as a benefit estimate. Flat self samples include memcpy6.09percent, strcmp4.60percent, descriptors_build4.10percent, descriptors3.16percent andIntegerBufferSelection1.99percent. A separate DWARF run collected3464samples. Among119strcmp samples,48.86percent of sampled cost has a recovered TextureInitialize parent. Unexpanded stacks remain uncertain. Immutable lookup scans in actual source provide the independent optimization rationale. CPU-clock and cpu-cycles kernel-inclusive attempts were unsupported. cpu-cycles:u recording succeeded without security-setting changes. Raw PMU, command plans and reports are retained locally.
+
+The game moved from Shrine entry to an inn and then a narrow passage during the prior process. New Continue restores a cave passage with an equip-phantom objective. These are separate workloads. Current field30FPS log windows do not prove same-scene improvement over the heavy entry movement test. Actual moving, battle and transition regression continues. New corridor first movement282distinct frames29.7757FPS, P9533.6885ms, max83.4826ms,3above50ms and0above100ms. This lighter corridor has roughly125draws/frame and does not establish a gain at the987draw heavy Shrine entry. Readable persistent regression tests/installer/texture_family_lookup_contract.c was separately compiled and rerun by root under ASan/UBSan in normal/missing-builder/missing-pool modes, all exit0.
+
+## Guarded deployment update
+
+Source checkpoint d5a3340 built successfully. Installed .local/android-apk/FFRS-Integer-Buffer-Resident.apk with SHA-2561e2ca2121aa0e9c3fca3628e8d7f30c73b01c36e89899c99df62722cab05b56e, verified against installed base.apk. PID28177, preserving-data install-r succeeded. gfx-indexed-resident is now1. Normal Continue restored the Shrine entry.
+
+First guarded no-record moving test234 distinct frames24.993FPS, P9553.294ms, max103.125ms,21 above50ms. Warm repeat242frames25.560FPS, P9558.720ms, max84.922ms,23 above50ms. Screenshots verify actual forward/backward displacement. This entry camera has approximately987draws/frame, while the earlier bridge camera had approximately608. Those measurements are different workloads. Existing liveGPU29FPS numbers cannot establish guarded entry-scene acceptance.
+
+Current route reports sync_wb0, roughly10submissions/frame, no new pipeline creation, CPU23–24ms and GPU16–18ms in nearby windows. Startup warm1212 successful, failed0 in3146ms. Pulled warm list has1212unique records and15specialized identities, including21ee and63a5. Inspector validates all identities and framing. Actual warm reconstruction succeeded on this device.
+
+RHIThread was92.5%CPU in a bounded top snapshot. User-only cpu-cycles profiling is in progress. Initial simpleperf cpu-clock/cpu-cycles attempts were unsupported, while cpu-cycles:u runs without security-setting changes. Further CPU bottleneck work and battle/transition regression continue.
+
+## Previous checkpoint
 
 Work remains in progress. Device A42BBB5109000333 is ROD2-W69, SM8635, Adreno 735. The active worktree is /Users/yuyan9923/GitHub/ff-resonance-honor-gtpro on task/T-honor-shrine-20261111. Other writers and the separate stability worktree are preserved. No RG477M operation or remote push occurred.
 

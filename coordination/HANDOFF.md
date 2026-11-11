@@ -1,3 +1,15 @@
+# 2026-11-12 CPU cache candidate deployed
+
+CPU cacheAPK0db386552bf4ab01f8ca9b513f592f43b581db7ef47b913812ca52a3cff802d4 build5/install-r exit0 installedbaseverified PID31064. GPUmarker1, warm1212failed0 2879ms. CurrentnormalContinue cavepassage withequipphantom objective. No claimedFPSbenefit yet, scenechanged fromheavyShrineentry toinn/passageroute during priorprocess. Familylookup13once/52000dynamicgettercalls concurrenthostpass, sourcecommitd465e3f.
+
+Normal game-state change was observed between captures. Avoid assuming current map from an earlier frame. Public type repair visual regression, same-scene FPS, actual battle and transitions remain the active goal. Raw PMU and reports saved locally. FPcallchain errors limit attribution. DWARF strcmp119samples recovers48.86percent callerTextureInitialize, remaining stacks uncertain.
+
+# 2026-11-12 guarded build deployed, continue CPU bottleneck
+
+Guarded build4 exit0/install-r exit0 SHA1e2ca2121aa0e9c3fca3628e8d7f30c73b01c36e89899c99df62722cab05b56e installedbase verified PID28177. PersistentGPUindexed1. Warm1212 failed0 3146ms,15formatvariantidentities in learnedlist. Actualmovement at Shrine entry24.99/25.56FPS, nativeGPUrouteissued andsync_wb0, no30PASS. RHIThread92.5%CPU, simpleperf usercycles recording session80631 with no securitychanges; original cpu-clock/cpu-cycles unsupported. Sourceguard d5a3340 clean.
+
+Previous bridge29FPS numbers used another camera position and an unguarded temporary runtime. Current guarded entry-scene moving results take precedence. Ordinary save restored, input remains authorized. No pause.
+
 # 2026-11-12 guarded resident follow-up
 
 APK594898 deployed PID23697 verified; current21ee/63a5 integer format variants active, inspected views clear. No-record actual motion CPU25.965FPS vs liveGPU29.207/29.298, stable30 notpassed. New latest-pending-proof and roundedUBO guards hostchecked, build4 session47784 log.local/honor-motion-20261112/build4.log. CurrentGPUtrue onlyruntime, persistentmarker0. No new LLDB attach with rebuilt symbols before installing matched APK.

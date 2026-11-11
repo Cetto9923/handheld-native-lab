@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-12T03:18:04.554863+08:00",
- "phase": "Honor public integer-buffer candidate deployed PID23697, matched movement CPU25.97 versus liveGPU29.21/29.30FPS, guarded build4 in progress",
+ "updated_at": "2026-11-12T03:42:07.295287+08:00",
+ "phase": "CPU cache d465e3f built and installed APK0db386 PID31064, real movement and battle regression continuing",
  "coordinator": "Codex /root shrine takeover",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -1630,12 +1630,14 @@
     "src/graphics/nvn_vulkan/engine/xbg_spirv_integer_buffer.h",
     "scripts/distribution/inspect_pipeline_warm_list.py",
     "tests/device/test_reflection_uint_fetch.cpp",
-    "tests/device/reflection_uint_fetch.spvasm"
+    "tests/device/reflection_uint_fetch.spvasm",
+    "src/graphics/nvn_device/nvn_texture.c",
+    "tests/installer/texture_family_lookup_contract.c"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-honor-shrine-20261111",
    "acquired_at": "2026-11-12T01:08:27.178041+08:00",
-   "checkpoint": "APK594898 deployed PID23697 verified; current21ee/63a5 integer format variants active, inspected views clear. No-record actual motion CPU25.965FPS vs liveGPU29.207/29.298, stable30 notpassed. New latest-pending-proof and roundedUBO guards hostchecked, build4 session47784 log.local/honor-motion-20261112/build4.log. CurrentGPUtrue onlyruntime, persistentmarker0. No new LLDB attach with rebuilt symbols before installing matched APK.",
+   "checkpoint": "CPU cacheAPK0db386552bf4ab01f8ca9b513f592f43b581db7ef47b913812ca52a3cff802d4 build5/install-r exit0 installedbaseverified PID31064. GPUmarker1, warm1212failed0 2879ms. CurrentnormalContinue cavepassage withequipphantom objective. No claimedFPSbenefit yet, scenechanged fromheavyShrineentry toinn/passageroute during priorprocess. Familylookup13once/52000dynamicgettercalls concurrenthostpass, sourcecommitd465e3f.",
    "write_state": "ACTIVE"
   },
   {
@@ -1663,6 +1665,19 @@
    "branch": "task/T-honor-shrine-20261111",
    "acquired_at": "2026-11-12T02:40:16.389518+08:00",
    "checkpoint": "Completed worker confirmed by collaboration status. Root integration ownership.",
+   "write_state": "RELEASED_HANDED_BACK"
+  },
+  {
+   "task": "HONOR-TEXTURE-LOOKUP-CACHE",
+   "owner": "Codex /root/combat_perf_audit",
+   "paths": [
+    "tests/installer/texture_family_lookup_contract.c",
+    ".local/honor-motion-20261112/texture-lookup-tests/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-honor-shrine-20261111",
+   "acquired_at": "2026-11-12T03:28:04.834268+08:00",
+   "checkpoint": "Source committedd465e3f, readable persistent test3modes sanitizerspassed. Worker frozen.",
    "write_state": "RELEASED_HANDED_BACK"
   }
  ],
@@ -4296,7 +4311,7 @@
    "acceptance": "Actual movement screenshots/video, distinct-frame CPU/GPU metrics cold/warm, visual+audio regression; independent QA NOT_RUN",
    "recovery_point": "63d3652 clean, install-r only, do not clear data",
    "branch": "task/T-honor-shrine-20261111",
-   "checkpoint": "APK594898 deployed PID23697 verified; current21ee/63a5 integer format variants active, inspected views clear. No-record actual motion CPU25.965FPS vs liveGPU29.207/29.298, stable30 notpassed. New latest-pending-proof and roundedUBO guards hostchecked, build4 session47784 log.local/honor-motion-20261112/build4.log. CurrentGPUtrue onlyruntime, persistentmarker0. No new LLDB attach with rebuilt symbols before installing matched APK."
+   "checkpoint": "CPU cacheAPK0db386552bf4ab01f8ca9b513f592f43b581db7ef47b913812ca52a3cff802d4 build5/install-r exit0 installedbaseverified PID31064. GPUmarker1, warm1212failed0 2879ms. CurrentnormalContinue cavepassage withequipphantom objective. No claimedFPSbenefit yet, scenechanged fromheavyShrineentry toinn/passageroute during priorprocess. Familylookup13once/52000dynamicgettercalls concurrenthostpass, sourcecommitd465e3f."
   },
   {
    "id": "HONOR-INTEGER-FETCH-SEMANTICS",
@@ -4341,6 +4356,28 @@
    "acceptance": "Correct original/UInt variant switching, distinct memo keys, stable warm recipe identity and backward compatible16keyrecords; root owns build/device",
    "recovery_point": "9d0e9c4 engine clean; no device/cache/data changes by worker",
    "checkpoint": "Worker completed and frozen. Host structural/identity tests passed. Root integrating build/device regression."
+  },
+  {
+   "id": "HONOR-TEXTURE-LOOKUP-CACHE",
+   "owner": "Codex /root/combat_perf_audit",
+   "role": "CPU optimization implementer",
+   "branch": "task/T-honor-shrine-20261111",
+   "status": "implemented",
+   "goal": "Cache immutable texture-builder and memory-pool family function resolution, retain getter and lifetime semantics",
+   "inputs": [
+    "d5a3340",
+    "simpleperf-rhi-dwarf-strcmp119samples48.86percentrecoverablecallerTextureInitialize"
+   ],
+   "outputs": [
+    "src/graphics/nvn_device/nvn_texture.c",
+    ".local/honor-motion-20261112/texture-lookup-tests/",
+    "tests/installer/texture_family_lookup_contract.c"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "acceptance": "Concurrent first-use resolution, existing getter/failed-family semantics, host contract checks; root owns APK and actual-device before/after",
+   "recovery_point": "d5a3340 texture source unchanged, do not touch other files",
+   "checkpoint": "d465e3f deployed PID31064, persistent concurrency regression passed. Device performance acceptance belongsroot."
   }
  ],
  "blockers": [
