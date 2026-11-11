@@ -1,3 +1,7 @@
+# 2026-11-11 用户复现：地面方块仍在，撤回此前回放结论
+
+Honor A42 真机前台 PID27357、安装 APK SHA256 e7c3f82c2c3113a1446fbedf7a574524c3ef5515769f2d9d523462a6f6c5095c；当前截图 .local/shrine-takeover-20261111/exterior-user-current.png，地面台阶上方有横向矩形。旧 GPU capture 同场景 pass131679 无该矩形、pass131709 出现并延续，裁图 exterior-pass-crops.png。此前 shrine-original_frame_1.png 与 shrine-fixed-index_frame_1.png SHA256 均为 c7e0e92d0bb92323f34d0b169116337153d914368efb8489a881c568c4268992，故原报告的“同一 capture 替换 shader 即消除方块”结论无效；这两张文件无法证明着色器替换生效或有效。运行画面也仍有方块，先前称已修复错误。release v1.0.3 说明已更正；APK 未修改。不同相机位置或回放条件不构成精确 A/B；原因尚未证实。继续以完整保留光效为前提做 draw131709 资源及同帧可验证 A/B，避免覆盖游戏进程或存档。
+
 # 2026-11-11 神殿外方块未解决
 
 用户报告已发布 v1.0.3 神殿外仍有方块；先前 capture 只证明特定 draw 修复，不代表整个室外通过。发布说明已更正，未修改已发布 APK。用户称已连接且停在问题现场，但 adb devices 无任何设备，system_profiler SPUSBDataType 亦未匹配设备；未触碰游戏或存档，等待 USB 数据连接及调试授权。定位前不能断言与原方块相同或不同。

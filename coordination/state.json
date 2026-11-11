@@ -1559,7 +1559,7 @@
       "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
       "branch": "task/T-honor-shrine-20261111",
       "acquired_at": "2026-11-11T01:31:38.119199+08:00",
-      "checkpoint": "User reports outdoor squares persist; release notes corrected; USB/adb device not detected; wait for connection then capture actual screen without restart",
+      "checkpoint": "User outdoor squares reproduced e7 APK PID27357; old original/fixed replay PNG identical, prior causal claim withdrawn; examine draw131709, no valid fix yet",
       "write_state": "ACTIVE"
     }
   ],
