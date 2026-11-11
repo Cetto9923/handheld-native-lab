@@ -2735,7 +2735,8 @@ bool async_request(const VkGraphicsPipelineCreateInfo &ci,const XbgPipelineKey &
 // before the first fight instead of in it; records a device cannot build fail in the warm-up (warm_failed).
 void seed(){
     const std::string list=list_path();if(FILE *f=fopen(list.c_str(),"rb")){fclose(f);return;}
-    const std::string from=std::string(cfg.shader_directory)+"/vk-pipeline-list.seed";FILE *in=fopen(from.c_str(),"rb");if(!in)return;
+    const char *env_seed=getenv("FFRS_WARM_LIST_SEED");
+    const std::string from=(env_seed && *env_seed)?env_seed:(std::string(cfg.shader_directory)+"/vk-pipeline-list.seed");FILE *in=fopen(from.c_str(),"rb");if(!in)return;
     const std::string tmp=list+".tmp";FILE *out=fopen(tmp.c_str(),"wb");bool ok=out!=nullptr;size_t total=0;
     for(char buf[65536];ok;){size_t n=fread(buf,1,sizeof buf,in);if(!n)break;ok=fwrite(buf,1,n,out)==n;total+=n;}
     fclose(in);if(out)ok=fclose(out)==0 && ok;if(ok)ok=rename(tmp.c_str(),list.c_str())==0;if(!ok)remove(tmp.c_str());
@@ -2751,12 +2752,22 @@ void start(){
         if(mode=='2'){compute_prewarm_keys.push_back("b673e10f3da2451c");compute_prewarm_keys.push_back("876dd0820a7ad8fa");}}
 #endif
     xbg_logf("NVN Honor compute prewarm count=%zu",compute_prewarm_keys.size());
-    FILE *f=fopen(list_path().c_str(),"rb");if(f){fseek(f,0,SEEK_END);long n=ftell(f);rewind(f);std::vector<uint8_t> b(n>0 && n<(64l<<20)?size_t(n):0);bool ok=b.empty() || fread(b.data(),1,b.size(),f)==b.size();fclose(f);
+    auto load_records=[&](const std::string &path){
+        if(path.empty())return;
+        FILE *f=fopen(path.c_str(),"rb");if(!f)return;
+        fseek(f,0,SEEK_END);long n=ftell(f);rewind(f);std::vector<uint8_t> b(n>0 && n<(64l<<20)?size_t(n):0);
+        bool ok=b.empty() || fread(b.data(),1,b.size(),f)==b.size();fclose(f);
         size_t i=0;auto get=[&](uint32_t &v){if(i+4>b.size())return false;memcpy(&v,b.data()+i,4);i+=4;return true;};
+        size_t added=0;
         while(ok && i<b.size()){uint32_t magic,ns,count;if(!get(magic)||magic!=0x57504c58||!get(ns)||ns>5)break;Rec r;bool good=true;
             for(uint32_t s=0;s<ns && good;s++){uint32_t len;if(!get(len)||len>256||i+len>b.size()){good=false;break;}r.keys.emplace_back(reinterpret_cast<const char*>(b.data()+i),len);i+=len;}
             if(!good||!get(count)||count>XbgPipelineKey::Capacity||i+size_t(count)*4>b.size())break;r.words.resize(count);memcpy(r.words.data(),b.data()+i,size_t(count)*4);i+=size_t(count)*4;
-            if(known.insert(std::string(reinterpret_cast<const char*>(r.words.data()),r.words.size()*4)).second)recs.push_back(std::move(r));}}
+            if(known.insert(std::string(reinterpret_cast<const char*>(r.words.data()),r.words.size()*4)).second){recs.push_back(std::move(r));++added;}}
+        xbg_logf("NVN warm list loaded path=%s bytes=%ld added=%zu",path.c_str(),n,added);
+    };
+    load_records(list_path());
+    load_records(std::string(cfg.shader_directory)+"/vk-pipeline-list.seed");
+    if(const char *seed_env=getenv("FFRS_WARM_LIST_SEED")){if(strcmp(seed_env,list_path().c_str())!=0)load_records(seed_env);}
     xbg_logf("NVN warm list=%zu enabled=%d",recs.size(),int(enabled));
     if(!enabled || (recs.empty() && compute_prewarm_keys.empty()))return;stop=false;next=0;unsigned n=std::min<unsigned>(3,std::max(1u,std::thread::hardware_concurrency()/3));
     for(unsigned i=0;i<n;i++)threads.emplace_back(worker);

@@ -701,6 +701,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         File dir = getExternalFilesDir(null);
         if (dir == null) return;
         writeMarkerIfMissing(new File(dir, "gfx-legacy-waitall"), "0\n");
+        writeMarkerIfMissing(new File(dir, "gfx-readback-cached"), "1\n");
         writeMarkerIfMissing(new File(dir, "gfx-target-fps"), (selectedDeviceProfile != null ? selectedDeviceProfile.targetFps : 30) + "\n");
         writeMarkerIfMissing(new File(dir, "gfx-depth-aspect"), "1\n");
         writeMarkerIfMissing(new File(dir, "gfx-async-pipelines"), "0\n");

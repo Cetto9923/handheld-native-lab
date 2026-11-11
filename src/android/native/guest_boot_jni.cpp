@@ -121,6 +121,7 @@ void* GuestThreadMain(void* opaque) {
     setenv("DM_GFX_NOLOAD", "1", 1);
     setenv("DM_GFX_PIPE_MEMO", "1", 1);
     setenv("DM_GFX_CLEAR_OVERWRITE", "1", 1);
+    setenv("DM_GFX_READBACK_CACHED", "1", 1);
     const char *profile_tablet = getenv("FFRS_PROFILE_TABLET");
     if (profile_tablet && profile_tablet[0] == '1') {
         setenv("DM_GFX_WARP32", "1", 1);
@@ -286,9 +287,12 @@ static jlong StartGuest(JNIEnv* env,
         // Keep explicit marker 0/1 precedence; loose bundles remain preferred.
         unsetenv("FFRS_SHADER_ARCHIVE");
         std::string archive;
+        std::string warm_seed;
         const size_t image_slash = request->image.find_last_of('/');
-        if (image_slash != std::string::npos)
+        if (image_slash != std::string::npos) {
             archive = request->image.substr(0, image_slash) + "/shaders.hnla";
+            warm_seed = request->image.substr(0, image_slash) + "/pipeline-warm-list.bin";
+        }
         std::string marker = shaders.substr(0, shaders.size() - strlen("/shaders")) + "/gfx-shader-archive";
         FILE *enabled = fopen(marker.c_str(), "rb");
         struct stat archive_stat;
@@ -298,6 +302,8 @@ static jlong StartGuest(JNIEnv* env,
         if (enabled) fclose(enabled);
         if (use_archive && !archive.empty())
             setenv("FFRS_SHADER_ARCHIVE", archive.c_str(), 1);
+        if (!warm_seed.empty() && access(warm_seed.c_str(), R_OK) == 0)
+            setenv("FFRS_WARM_LIST_SEED", warm_seed.c_str(), 1);
         nvn_engine_set_shader_directory(shaders.c_str());
     }
     {
