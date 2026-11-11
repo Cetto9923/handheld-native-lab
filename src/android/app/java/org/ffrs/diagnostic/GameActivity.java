@@ -657,7 +657,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             text.setColor(0xFFFFFFFF); text.setTextSize(0.52f * u);
             String[] labels = {
                     "\u5bfc\u51fa\u5b58\u6863",              // export save
-                    "\u91d1\u6307\u6307",                    // cheat
+                    "\u91d1\u6307\u5931",                    // cheat
                     "\u7f16\u8f91\u6309\u952e\u5e03\u5c40"   // layout editor
             };
             for (int i = 0; i < menuItems.length; i++) {
