@@ -2440,7 +2440,10 @@ void compaction_sum_rewrite(std::vector<uint32_t> &words,uint32_t stage,const ch
 }
 int stencil_rewrite(std::vector<uint32_t> &words,uint32_t stage,const char *key,const char *loader){
     int result=xbg_spirv_ffrs_stencil(words,stage,key);need(result>=0,"FFRS integer image SPIR-V shape changed");
-    if(result)xbg_logf("NVN integer image types shader=%s stage=%u loader=%s rewrites=%d",key,stage,loader,result);return result;
+    /* Stage 4 is the clustered lighting stage: every bundle that reaches it is
+     * logged, rewritten or not, so a device run can show whether the repair
+     * for a given key actually fired. */
+    if(result||stage==4)xbg_logf("NVN integer image types shader=%s stage=%u loader=%s rewrites=%d",key,stage,loader,result);return result;
 }
 // Diagnostic (files/dm/spv-override/<key>.spv): this SPIR-V replaces the bundle's, for offline-optimized test modules.
 // Opens <shader_directory>/<key>.xgs; if it is not there, falls back to $FFRS_SHADER_ALT/<key>.xgs (the shaders folder shipped inside the

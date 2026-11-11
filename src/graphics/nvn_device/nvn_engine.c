@@ -78,9 +78,34 @@ static int engine_present(void *userdata, void *native_window, VkImage image, Vk
     return 0;
 }
 
+/* The stderr of an Android app process cannot be read back from the
+ * device, so the engine log is also written to a file the app owns. This is
+ * the only way to see what the translator did to a shader on the device. */
+static FILE *engine_log_sink(void) {
+    static FILE *sink;
+    static pthread_mutex_t sink_lock = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_lock(&sink_lock);
+    if (!sink) {
+        sink = fopen("/storage/emulated/0/Android/data/org.ffrs.gamewindow/files/engine.log", "ab");
+        if (!sink) sink = fopen("/sdcard/Android/data/org.ffrs.gamewindow/files/engine.log", "ab");
+    }
+    FILE *out = sink;
+    pthread_mutex_unlock(&sink_lock);
+    return out;
+}
+
 static void engine_log(void *userdata, const char *message) {
     (void)userdata;
-    fprintf(stderr, "[engine] %s\n", message ? message : "");
+    const char *text = message ? message : "";
+    fprintf(stderr, "[engine] %s\n", text);
+    FILE *sink = engine_log_sink();
+    if (sink) {
+        static pthread_mutex_t write_lock = PTHREAD_MUTEX_INITIALIZER;
+        pthread_mutex_lock(&write_lock);
+        fprintf(sink, "[engine] %s\n", text);
+        fflush(sink);
+        pthread_mutex_unlock(&write_lock);
+    }
 }
 
 static void engine_fatal(void *userdata, const char *message) {
