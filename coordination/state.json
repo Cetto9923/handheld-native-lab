@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-12T06:02:23.272034+08:00",
- "phase": "World structural candidate7229b02 deployed PID7534, actualworld moving sample underreview; continue battle/coldwarm validation",
+ "updated_at": "2026-11-11T22:24:53.466280+00:00",
+ "phase": "FAIL currentShrine room stillregularlightingrectangles inPID7534, preservecamera andfirstbadgroupcapture; spellstutteralsoopen",
  "coordinator": "Codex /root shrine takeover",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -1639,7 +1639,7 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-honor-shrine-20261111",
    "acquired_at": "2026-11-12T01:08:27.178041+08:00",
-   "checkpoint": "PID7534 worldeast independentlyconfirmed159newintervals5.300s29.999FPS P9533.522 max84.920ms2>50. Actualwarmcache first-use清霜75intervals2.750s27.268FPS max159.306ms;消失突袭107intervals4.797s22.304FPS max247.551ms, menus/tutorialexcluded. NativeGPUactualfieldproofchecks>=320newrows mismatches0 afterlegacy110, actualinstancecounts951/108, ownedcopiesnofatal, diagnosticrestoredGPUtrue/diagfalse/TracerPid0. ContinueShrinerenderregressionand同进程repeatspell; nooverall30PASS.",
+   "checkpoint": "Shrine visual FAIL remains. Same-camera compact frame87091 all167groups/27.29MB/zero budget skips,99 color0 files indexed. Priorframe68629 missing lateROIs cannot prove clean pass. SelectiveROI capture running with bounded diagnostic-only probe.compact callback, no gameplay/restart. Fire action still58why5 waits inone60frameblock plus15newcompute/481ms load/417ms rewrite, actual steady repeat pending.",
    "write_state": "ACTIVE"
   },
   {
@@ -4356,7 +4356,7 @@
    "acceptance": "Actual movement screenshots/video, distinct-frame CPU/GPU metrics cold/warm, visual+audio regression; independent QA NOT_RUN",
    "recovery_point": "63d3652 clean, install-r only, do not clear data",
    "branch": "task/T-honor-shrine-20261111",
-   "checkpoint": "PID7534 worldeast independentlyconfirmed159newintervals5.300s29.999FPS P9533.522 max84.920ms2>50. Actualwarmcache first-use清霜75intervals2.750s27.268FPS max159.306ms;消失突袭107intervals4.797s22.304FPS max247.551ms, menus/tutorialexcluded. NativeGPUactualfieldproofchecks>=320newrows mismatches0 afterlegacy110, actualinstancecounts951/108, ownedcopiesnofatal, diagnosticrestoredGPUtrue/diagfalse/TracerPid0. ContinueShrinerenderregressionand同进程repeatspell; nooverall30PASS."
+   "checkpoint": "Shrine visual FAIL remains. Same-camera compact frame87091 all167groups/27.29MB/zero budget skips,99 color0 files indexed. Priorframe68629 missing lateROIs cannot prove clean pass. SelectiveROI capture running with bounded diagnostic-only probe.compact callback, no gameplay/restart. Fire action still58why5 waits inone60frameblock plus15newcompute/481ms load/417ms rewrite, actual steady repeat pending."
   },
   {
    "id": "HONOR-INTEGER-FETCH-SEMANTICS",
