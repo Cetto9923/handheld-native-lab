@@ -1,3 +1,11 @@
+# 2026-11-12 build7 deployed, actual native producer view verified
+
+Build7 genericwidthproduction installed-r SHA6f4b6847 verified PID17589. OrdinaryContinuepreservedShrineentry. Actualframe13483 all167groups/27.29MB zero budgetskips, CS3b630B47 scalar1 native74 actual74 andFS97aeB64sameguest/range74, viewport1383x778. First3.5sforward raw26.705FPS max101.417ms needsmediaclassification, heavy30notpassed. Rootdoingwarmmoving+nextroom/spells. Warmgenericimplementationagentsoleenginewriter.
+
+# 2026-11-12 learned compute warm task dispatched
+
+Engine solewriter now combat_perf_audit for HONOR-LEARNED-COMPUTE-WARM-20261112. Root continues build7 PID17589 gameplay/performance/capture, no source edits until explicit handback. Root sole device/build operator.
+
 # 2026-11-12 fresh original control clean, build7 ready
 
 Build7 source280e2ac exit0 SHA6f4b68478b7fc37ad6046e3d4eca27a6803eea95c54423449c115f40d419cc72. Fresh originalbuild6 PID16062 installedSHAverified, ContinueShrineentry andfirstroom+nextroomcurrentlyclean, originalvisualfailurefreshreproNOT_ESTABLISHED. Do notclaimcompletedABArootcause. Widthlayoutdefect/actualGPUcontractproven andgenericcandidate readyfordata-preservinginstall/crosssceneacceptance.

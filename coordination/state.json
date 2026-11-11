@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-11T22:43:40.591913+00:00",
+ "updated_at": "2026-11-11T22:52:59.748702+00:00",
  "phase": "FAIL currentShrine room stillregularlightingrectangles inPID7534, preservecamera andfirstbadgroupcapture; spellstutteralsoopen",
  "coordinator": "Codex /root shrine takeover",
  "integration_branch": "work/rg477m-native",
@@ -1626,7 +1626,6 @@
     ".local/honor-motion-20261112/",
     "coordination/results/HONOR-MOTION-BLOCKS-20261112.md",
     "src/android/native/guest_boot_jni.cpp",
-    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
     "src/graphics/nvn_vulkan/engine/xbg_spirv_integer_buffer.h",
     "scripts/distribution/inspect_pipeline_warm_list.py",
     "tests/device/test_reflection_uint_fetch.cpp",
@@ -1639,7 +1638,7 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-honor-shrine-20261111",
    "acquired_at": "2026-11-12T01:08:27.178041+08:00",
-   "checkpoint": "Build7 source280e2ac exit0 SHA6f4b68478b7fc37ad6046e3d4eca27a6803eea95c54423449c115f40d419cc72. Fresh originalbuild6 PID16062 installedSHAverified, ContinueShrineentry andfirstroom+nextroomcurrentlyclean, originalvisualfailurefreshreproNOT_ESTABLISHED. Do notclaimcompletedABArootcause. Widthlayoutdefect/actualGPUcontractproven andgenericcandidate readyfordata-preservinginstall/crosssceneacceptance.",
+   "checkpoint": "Build7 genericwidthproduction installed-r SHA6f4b6847 verified PID17589. OrdinaryContinuepreservedShrineentry. Actualframe13483 all167groups/27.29MB zero budgetskips, CS3b630B47 scalar1 native74 actual74 andFS97aeB64sameguest/range74, viewport1383x778. First3.5sforward raw26.705FPS max101.417ms needsmediaclassification, heavy30notpassed. Rootdoingwarmmoving+nextroom/spells. Warmgenericimplementationagentsoleenginewriter.",
    "write_state": "ACTIVE"
   },
   {
@@ -1738,6 +1737,19 @@
    "acquired_at": "2026-11-11T22:31:07.137120+00:00",
    "checkpoint": "Worker frozen. Root ran exactdevicefixture exit0 twice and owns integration.",
    "write_state": "RELEASED_HANDED_BACK"
+  },
+  {
+   "task": "HONOR-LEARNED-COMPUTE-WARM-20261112",
+   "owner": "Codex /root/combat_perf_audit",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    ".local/honor-motion-20261112/learned-compute-warm/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-honor-shrine-20261111",
+   "acquired_at": "2026-11-11T22:50:54.640235+00:00",
+   "checkpoint": "Root explicitly transfers sole xbg_game.cpp ownership after clean280e2ac+92fbd0f; no root source edits until worker handback. Root sole device/build operator.",
+   "write_state": "ACTIVE"
   }
  ],
  "tasks": [
@@ -4370,7 +4382,7 @@
    "acceptance": "Actual movement screenshots/video, distinct-frame CPU/GPU metrics cold/warm, visual+audio regression; independent QA NOT_RUN",
    "recovery_point": "63d3652 clean, install-r only, do not clear data",
    "branch": "task/T-honor-shrine-20261111",
-   "checkpoint": "Build7 source280e2ac exit0 SHA6f4b68478b7fc37ad6046e3d4eca27a6803eea95c54423449c115f40d419cc72. Fresh originalbuild6 PID16062 installedSHAverified, ContinueShrineentry andfirstroom+nextroomcurrentlyclean, originalvisualfailurefreshreproNOT_ESTABLISHED. Do notclaimcompletedABArootcause. Widthlayoutdefect/actualGPUcontractproven andgenericcandidate readyfordata-preservinginstall/crosssceneacceptance."
+   "checkpoint": "Build7 genericwidthproduction installed-r SHA6f4b6847 verified PID17589. OrdinaryContinuepreservedShrineentry. Actualframe13483 all167groups/27.29MB zero budgetskips, CS3b630B47 scalar1 native74 actual74 andFS97aeB64sameguest/range74, viewport1383x778. First3.5sforward raw26.705FPS max101.417ms needsmediaclassification, heavy30notpassed. Rootdoingwarmmoving+nextroom/spells. Warmgenericimplementationagentsoleenginewriter."
   },
   {
    "id": "HONOR-INTEGER-FETCH-SEMANTICS",
@@ -4555,6 +4567,31 @@
    ],
    "branch": "task/T-honor-shrine-20261111",
    "checkpoint": "Root actualAdreno735 fixture exit0 twice, R16/R32 exactlayout+tails checked. Not sceneacceptance."
+  },
+  {
+   "id": "HONOR-LEARNED-COMPUTE-WARM-20261112",
+   "role": "graphics-performance",
+   "owner": "Codex /root/combat_perf_audit",
+   "status": "in_progress",
+   "goal": "Reuse existing warm records for learned compute pipelines and optimized base/variant modules to remove demonstrated first-use repeat work",
+   "inputs": [
+    "280e2ac nativewidthcandidate",
+    "actual fire15compute481ms/rewrite417ms",
+    "existingkind2computepipelinekey"
+   ],
+   "outputs": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    ".local/honor-motion-20261112/learned-compute-warm/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "branch": "task/T-honor-shrine-20261111",
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    ".local/honor-motion-20261112/learned-compute-warm/"
+   ],
+   "acceptance": "Backward graphics/mixedrecord parsing, exactstage/layout/identity, boundedinprocesswords, mismatch disableswarmtake, sameinput runtime+warmmode2 byte comparisons and actualcold/warmdevice tests byroot",
+   "recovery_point": "Build7 installedSHA6f4b6847 PID17589. Commit280e2ac clean source beforewarmchange."
   }
  ],
  "blockers": [
