@@ -299,10 +299,10 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             line.setStyle(Paint.Style.STROKE); line.setStrokeWidth(3f);
             fill.setStyle(Paint.Style.FILL);
             text.setTextAlign(Paint.Align.CENTER);
-            ctls[0] = new Ctl("A", T_BTN, 0, 0.75f, 0.75f);
-            ctls[1] = new Ctl("B", T_BTN, 1, 0.75f, 0.75f);
-            ctls[2] = new Ctl("X", T_BTN, 2, 0.75f, 0.75f);
-            ctls[3] = new Ctl("Y", T_BTN, 3, 0.75f, 0.75f);
+            ctls[0] = new Ctl("A", T_BTN, 0, 0.60f, 0.60f);
+            ctls[1] = new Ctl("B", T_BTN, 1, 0.60f, 0.60f);
+            ctls[2] = new Ctl("X", T_BTN, 2, 0.60f, 0.60f);
+            ctls[3] = new Ctl("Y", T_BTN, 3, 0.60f, 0.60f);
             ctls[4] = new Ctl("L1", T_BTN, 6, 1.6f, 0.6f);
             ctls[5] = new Ctl("L2", T_BTN, 8, 1.6f, 0.6f);
             ctls[6] = new Ctl("R1", T_BTN, 7, 1.6f, 0.6f);
@@ -335,7 +335,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
         private void defaults() {
             float w = vw, h = vh;
-            float fx = w - 3.1f * u, fy = h - 3.3f * u, d = 1.25f * u;
+            float fx = w - 3.4f * u, fy = h - 3.4f * u, d = 1.45f * u;
             place(0, fx, fy + d); place(1, fx + d, fy); place(2, fx - d, fy); place(3, fx, fy - d);
             place(4, 2.0f * u, 2.4f * u); place(5, 2.0f * u, 1.0f * u);
             place(6, w - 2.0f * u, 2.4f * u); place(7, w - 2.0f * u, 1.0f * u);
