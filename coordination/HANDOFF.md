@@ -1,3 +1,12 @@
+# 2026-11-11 Honor 基线与设备上正在跑的包对齐
+
+- 本地标签 `baseline-honor-20261111` 指向 `df3e108`。没有推送。旧标签 `v1.0.5-stable-baseline` 仍指向 `05e4930`，那不是设备上的包。
+- 设备 `A42BBB5109000333` 前台 PID `31943` 仍是 `FFRS-v1.1.1-stable.apk`（SHA256 `f6cdd25c…`）。so 与 `df3e108` 的原生源码一致，dex 不含 `37de946`。教程还在，不要重装，不要改 marker。
+- 外部采集在 `.local/baseline-freeze-20261111/`。这是教程主菜单观察，不是场景验收。完整数字、marker 和后续对照命令见 `coordination/results/BASELINE-AND-STABILITY-20261111.md`。
+- 过期的 ACTIVE 占用已标成 `RELEASED_SUPERSEDED`。现在唯一 ACTIVE 是 `T-STABILITY-20261111`，工作区 `.worktrees/stability-20261111`，分支 `task/T-stability-20261111`，HEAD `58901a8`。不要删除这个 worktree。
+- 稳定修复还没有 cherry-pick 到共享分支。热点文件 `xbg_game.cpp`、Java 界面和出包脚本保持冻结。
+- slot 对照和 compute prewarm 是 NOT_RUN。RG477M 是 BLOCKED。
+
 # 2026-11-11 间接绘制管线卡顿根除与真机满 30.00 FPS 锁定验证（大地图/战斗全场景顺滑）
 
 - **性能瓶颈与实测根因**：
