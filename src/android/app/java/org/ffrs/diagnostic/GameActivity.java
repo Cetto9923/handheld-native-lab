@@ -283,7 +283,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         private final RectF handle = new RectF(), panel = new RectF(), opTrack = new RectF(), scTrack = new RectF();
         private final RectF btnReset = new RectF(), btnDone = new RectF();
         private final RectF menuPanel = new RectF();
-        private final RectF[] menuItems = new RectF[5];
+        private final RectF[] menuItems = new RectF[7];
         private int handleId = -1, lsId = -1, rsId = -1;
         private float u, vw, vh, lsKx, lsKy, rsKx, rsKy;
         private final Ctl[] ctls = new Ctl[13];
@@ -358,11 +358,14 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             float bw = 2.8f * u, bh = 0.9f * u, by = panel.bottom - 1.5f * u;
             btnReset.set(panel.left + 1.1f * u, by, panel.left + 1.1f * u + bw, by + bh);
             btnDone.set(panel.right - 1.1f * u - 2.2f * u, by, panel.right - 1.1f * u, by + bh);
-            float mw = Math.min(0.34f * w, 11f * u), mh = 12.0f * u;
+            float mw = Math.min(0.34f * w, 11f * u), mh = Math.min(16.0f * u, 0.90f * h);
             menuPanel.set(w / 2f - mw / 2f, h / 2f - mh / 2f, w / 2f + mw / 2f, h / 2f + mh / 2f);
+            // The rows share whatever height is left, so more entries still fit.
+            float spacing = (mh - 2.0f * u) / menuItems.length;
+            float ih = Math.max(0.9f * u, spacing - 0.4f * u);
             for (int i = 0; i < menuItems.length; i++) {
-                float iy = menuPanel.top + 1.2f * u + i * 2.0f * u;
-                menuItems[i].set(menuPanel.left + 1.2f * u, iy, menuPanel.right - 1.2f * u, iy + 1.5f * u);
+                float iy = menuPanel.top + 1.0f * u + i * spacing;
+                menuItems[i].set(menuPanel.left + 1.2f * u, iy, menuPanel.right - 1.2f * u, iy + ih);
             }
         }
 
@@ -463,7 +466,9 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 if (i == 0) owner.exportSaves();
                 else if (i == 1) owner.openCheatDialog();
                 else if (i == 2) owner.restoreSave();
-                else if (i == 3) enterEdit();
+                else if (i == 3) owner.quickSave();
+                else if (i == 4) owner.quickLoad();
+                else if (i == 5) enterEdit();
                 else owner.userToggleTouchPad();
                 return true;
             }
@@ -644,6 +649,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                     "导出存档",        // export save
                     "金手指",          // cheat
                     "还原存档",        // restore save
+                    "即时存档",        // quick save
+                    "即时读档",        // quick load
                     "编辑按键布局",    // layout editor
                     "隐藏手柄"         // hide the pad
             };
@@ -931,6 +938,18 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 sb.append("== roster blob fragment at plain+").append(at).append(" hits=").append(blobHits.length).append('\n');
                 for (long h : blobHits) sb.append("  blob @").append(hex(h)).append('\n');
             }
+            // The game draws the character names, so the Chinese names are in
+            // the guest memory as well. A known name leads to the name table.
+            for (String name : NAME_HINTS) {
+                byte[] needle = utf16(name);
+                long[] nameHits = GuestMemory.find(needle, 6);
+                sb.append("== name '").append(name).append("' hits=").append(nameHits.length).append('\n');
+                for (long h : nameHits) {
+                    sb.append("  name @").append(hex(h)).append('\n');
+                    byte[] window = GuestMemory.peek(h - 2048, 8192);
+                    if (window != null) sb.append("    text:").append(text(window)).append('\n');
+                }
+            }
             for (SaveCheater.Unit u : roster) {
                 byte[] id = int32(u.unitId);
                 long[] hits = GuestMemory.find(id, 12);
@@ -940,7 +959,10 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 for (long h : hits) {
                     byte[] ctx = GuestMemory.peek(h - 32, 96);
                     sb.append("  hit @").append(hex(h)).append('\n');
-                    if (ctx != null) sb.append("    ints:").append(ints(ctx)).append('\n');
+                    if (ctx != null) {
+                        sb.append("    ints:").append(ints(ctx)).append('\n');
+                        sb.append("    text:").append(text(ctx)).append('\n');
+                    }
                 }
             }
             File out = new File(owner.getExternalFilesDir(null), "guest-unit-scan.txt");
@@ -961,6 +983,29 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                     (byte) ((v >> 16) & 0xff), (byte) ((v >> 24) & 0xff)};
         }
         private static String hex(long v) { return String.format("0x%016x", v); }
+        /** The character names the game shows; the first one is confirmed on screen. */
+        private static final String[] NAME_HINTS = {"拉斯韦尔"};
+        private static byte[] utf16(String s) {
+            byte[] out = new byte[s.length() * 2];
+            for (int i = 0; i < s.length(); i++) {
+                char c = s.charAt(i);
+                out[i * 2] = (byte) (c & 0xff);
+                out[i * 2 + 1] = (byte) ((c >> 8) & 0xff);
+            }
+            return out;
+        }
+        /** The printable UTF-16LE runs inside a byte window. */
+        private static String text(byte[] b) {
+            StringBuilder sb = new StringBuilder();
+            StringBuilder run = new StringBuilder();
+            for (int i = 0; i + 1 < b.length; i += 2) {
+                char c = (char) ((b[i] & 0xff) | ((b[i + 1] & 0xff) << 8));
+                if (c >= 0x20 && c != 0x7f && c != 0xffff && !Character.isSurrogate(c)) run.append(c);
+                else { if (run.length() >= 2) sb.append('[').append(run).append(']'); run.setLength(0); }
+            }
+            if (run.length() >= 2) sb.append('[').append(run).append(']');
+            return sb.toString();
+        }
         /** The bytes as little endian int32 values. */
         private static String ints(byte[] b) {
             StringBuilder s = new StringBuilder();
@@ -1122,6 +1167,88 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
      * manager shows it as empty and a player cannot hand the file over.
      * The export gives the player a plain file they can send.
      */
+    /**
+     * Snapshots the live save directory.
+     *
+     * The guest writes its own slots, so this captures the state the game has
+     * written down, not the current frame: it is the safety net for a crash or
+     * a bad edit, and the way back to a known good point.
+     */
+    void quickSave() {
+        File root = liveSaveRoot;
+        if (root == null) {
+            toast("找不到存档目录，请等游戏进入标题画面后再试");
+            return;
+        }
+        File dest = quickSaveDir();
+        if (dest == null) {
+            toast("无法创建即时存档目录");
+            return;
+        }
+        int count = 0;
+        long bytes = 0;
+        for (File f : root.listFiles()) {
+            if (!f.isFile()) continue;
+            if (f.getName().endsWith(".cheat.tmp") || f.getName().endsWith(".orig")) continue;
+            try {
+                java.io.InputStream in = new java.io.FileInputStream(f);
+                java.io.FileOutputStream out = new java.io.FileOutputStream(new File(dest, f.getName()));
+                try {
+                    byte[] buf = new byte[65536];
+                    int n;
+                    while ((n = in.read(buf)) > 0) { out.write(buf, 0, n); bytes += n; }
+                } finally { in.close(); out.close(); }
+                count++;
+            } catch (Exception e) {
+                Log.w(TAG, "quick save failed for " + f.getName() + ": " + e.getMessage());
+            }
+        }
+        toast("已即时存档: " + count + " 个文件，" + (bytes / 1024) + " KB\n位置 " + dest.getAbsolutePath());
+        Log.i(TAG, "quick save: " + count + " files " + bytes + " bytes");
+    }
+
+    /**
+     * Puts the quick save back over the live slots.
+     *
+     * The guest keeps its own copy of the roster, so the restored values show
+     * up after the save is loaded again in game.
+     */
+    void quickLoad() {
+        File root = liveSaveRoot;
+        File src = quickSaveDir();
+        if (root == null || src == null || !src.isDirectory()) {
+            toast("还没有即时存档，先执行一次即时存档");
+            return;
+        }
+        int count = 0;
+        for (File f : src.listFiles()) {
+            if (!f.isFile()) continue;
+            try {
+                java.io.InputStream in = new java.io.FileInputStream(f);
+                java.io.FileOutputStream out = new java.io.FileOutputStream(new File(root, f.getName()));
+                try {
+                    byte[] buf = new byte[65536];
+                    int n;
+                    while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                } finally { in.close(); out.close(); }
+                count++;
+            } catch (Exception e) {
+                Log.w(TAG, "quick load failed for " + f.getName() + ": " + e.getMessage());
+            }
+        }
+        toast("已即时读档: 写回 " + count + " 个文件\n回标题画面 Load Game 后生效");
+        Log.i(TAG, "quick load: " + count + " files");
+    }
+
+    /** Where the quick save snapshot lives. */
+    private File quickSaveDir() {
+        File dir = getExternalFilesDir(null);
+        if (dir == null) return null;
+        File q = new File(dir, "ffrs-quicksave");
+        if (!q.isDirectory() && !q.mkdirs()) return null;
+        return q;
+    }
+
     /**
      * Restores the save slot from the backup taken before the first cheat edit.
      *
