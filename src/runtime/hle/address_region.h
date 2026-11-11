@@ -7,6 +7,7 @@
  * Nonzero, 4-KiB-multiple sizes are the supported contract. */
 uint32_t nso_host_allocate_address_region(uintptr_t *out,size_t size);
 uint32_t nso_host_free_address_region(uintptr_t address);
+int nso_host_is_guest_memory(uintptr_t address);
 
 /* Install/remove only with an empty ledger and externally quiescent APIs.
  * One page owner holds the allocator alive until all real VA/node release.

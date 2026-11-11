@@ -418,6 +418,9 @@ FdiagEv fdiag_ev[160]{};uint32_t fdiag_ev_n=0,fdiag_ev_over=0;uint64_t fdiag_pre
 uint32_t fdiag_c5all[64]={},fdiag_c5all_n=0;uint64_t fdiag_tab_last=0;
 struct FdiagEmp{const uint8_t *p;uint8_t d[208];};FdiagEmp fdiag_emp[96];uint32_t fdiag_emp_n=0;uint32_t fdiag_ub[2][4]={};uint32_t fdiag_ub_log=0;
 uint32_t fdiag_mm[2][4]={};   // [compute?][bind, alias(same pointer), mismatch(bytes differ), first mismatch binding]
+// Screen-space tile divisor probe. The guest FS computes U=(gl_FragCoord.xy/S)*fp_c3[152].zw and the atlas tile is trunc(U*fp_c3[152].xy).
+// For the atlas UV to be normalised against the draw target S must satisfy S=fp_c3[152].z*W=fp_c3[152].w*H (W,H = draw target size).
+std::string fdiag_tile_key[24];uint32_t fdiag_tile_w[24]={},fdiag_tile_h[24]={};int fdiag_tile_n=0;
 void fdiag_event(char t,const char *a,const char *b){
     if(fdiag_ev_n && fdiag_ev[fdiag_ev_n-1].t==t && strncmp(fdiag_ev[fdiag_ev_n-1].a,a,8)==0 && strncmp(fdiag_ev[fdiag_ev_n-1].b,b,8)==0){++fdiag_ev[fdiag_ev_n-1].n;return;}
     if(fdiag_ev_n>=160){++fdiag_ev_over;return;}
@@ -434,16 +437,16 @@ std::atomic<uint64_t> completed{0};uint64_t submitted=0; // guest fence values: 
 // 关着时发布点与原来一样直接写 completed。
 // Completion notification (on by default on HarmonyOS; DM_GFX_COMPLETION_WAIT=0/1 overrides): a game thread waiting on a fence is woken at the publish point as soon as its
 // batch completes, instead of queueing for the engine lock behind later submits. Off, the publish point writes completed directly, as before.
-// ifdef __OHOS__
-#ifdef __OHOS__
+// ifdef __OHOS__ or __ANDROID__
+#if defined(__OHOS__) || defined(__ANDROID__)
 constexpr bool completion_wait_default=true;
 #else
 constexpr bool completion_wait_default=false;
 #endif
 bool completion_wait_enabled=completion_wait_default;
-// 栅栏等待是否持引擎锁（旧路径）：鸿蒙缺省不持，标记 gfx-legacy-waitall = 1 退回
-// ifdef __OHOS__
-#ifdef __OHOS__
+// 栅栏等待是否持引擎锁（旧路径）：鸿蒙/Android缺省不持，标记 gfx-legacy-waitall = 1 退回
+// ifdef __OHOS__ or __ANDROID__
+#if defined(__OHOS__) || defined(__ANDROID__)
 bool legacy_waitall=false;
 #else
 bool legacy_waitall=true;
@@ -3867,6 +3870,26 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
         for(uint32_t i=0;i<fdiag_dr_n;i++)if(fdiag_dr[i].mem==cm && strncmp(fdiag_dr[i].vs,vk,8)==0 && strncmp(fdiag_dr[i].fs,fk,8)==0){slot=i;break;}
         if(slot<64){if(slot==fdiag_dr_n){memset(&fdiag_dr[slot],0,sizeof fdiag_dr[slot]);strncpy(fdiag_dr[slot].vs,vk,8);strncpy(fdiag_dr[slot].fs,fk,8);fdiag_dr[slot].mem=cm;fdiag_dr[slot].w=state.rt.color[0]->d.width;++fdiag_dr_n;}fdiag_dr[slot].n++;fdiag_dr[slot].inst+=indexed?uint64_t(indexed->instances):uint64_t(instances);}else ++fdiag_dr_over;}
     // #endregion
+    // #region agent log: shrine ground rectangle probe (support[5][0] divisor vs fp_c3[152])
+    if(flame_diag_enabled && state.shader[4]){
+        unsigned ns=nvn_stage[4];
+        for(auto &b:state.shader[4]->bindings){
+            if(b.source!=XBG_SOURCE_UNIFORM||b.binding!=82)continue;
+            auto r=state.ub[ns][b.slot];
+            if(!r.address||r.size<2448)break;
+            float c[4];memcpy(c,reinterpret_cast<const uint8_t*>(uintptr_t(r.address))+2432,16);
+            uint32_t tw=state.rt.color[0]?state.rt.color[0]->d.width:0,th=state.rt.color[0]?state.rt.color[0]->d.height:0;
+            bool dup=false;for(int i=0;i<fdiag_tile_n;i++)if(fdiag_tile_key[i]==state.shader[4]->key&&fdiag_tile_w[i]==tw&&fdiag_tile_h[i]==th){dup=true;break;}
+            if(!dup&&fdiag_tile_n<24){
+                fdiag_tile_key[fdiag_tile_n]=state.shader[4]->key;fdiag_tile_w[fdiag_tile_n]=tw;fdiag_tile_h[fdiag_tile_n]=th;++fdiag_tile_n;
+                float S=0.0f;Buffer &sb=support_block();if(sb.mapped)memcpy(&S,static_cast<const uint8_t*>(sb.mapped)+192,4);
+                xbg_logf("TILEPROBE fs=%s c3_152=(%.9g,%.9g,%.9g,%.9g) target=%ux%u vp=%ux%u S=%.9g zW=%.9g wH=%.9g invW=%.9g invH=%.9g",
+                    state.shader[4]->key.c_str(),c[0],c[1],c[2],c[3],tw,th,state.viewport.width,state.viewport.height,S,c[2]*float(tw?tw:1),c[3]*float(th?th:1),1.0f/float(tw?tw:1),1.0f/float(th?th:1));
+            }
+            break;
+        }
+    }
+    // #endregion
     if(flame_diag_enabled && state.shader[0]){int fi=flame_diag_key(state.shader[0]->key);if(fi>=0){if(flame_diag_delay_us && !fdiag_state_seen){usleep(flame_diag_delay_us);}++fdiag_draws[fi];fdiag_inst[fi]+=indexed?uint64_t(indexed->instances):uint64_t(instances);fdiag_dt=state.ds.dt;fdiag_dw=state.ds.dw;fdiag_df=state.ds.df;fdiag_blend=state.color.blend_en&1u;fdiag_src=state.blend[0].src_rgb;fdiag_dst=state.blend[0].dst_rgb;
         {uint64_t rt=state.rt.color[0]?uint64_t(uintptr_t(state.rt.color[0]->mem)):0,ds=state.rt.depth?uint64_t(uintptr_t(state.rt.depth->mem)):0;
          fdiag_rthash=(fdiag_rthash^rt)*1099511628211ull;fdiag_rthash=(fdiag_rthash^ds)*1099511628211ull;fdiag_rthash=(fdiag_rthash^uint64_t(uint32_t(prim)))*1099511628211ull;}
@@ -6078,11 +6101,25 @@ static uint64_t xbg_frame_pace() {
 
     if (now_ns < s_next_present_ns) {
         uint64_t diff = s_next_present_ns - now_ns;
-        if (diff > 500000ull) {
+        if (diff > 1500000ull) {
+            uint64_t sleep_ns = diff - 1200000ull;
             struct timespec req;
-            req.tv_sec = (time_t)(diff / 1000000000ull);
-            req.tv_nsec = (long)(diff % 1000000000ull);
+            req.tv_sec = (time_t)(sleep_ns / 1000000000ull);
+            req.tv_nsec = (long)(sleep_ns % 1000000000ull);
             nanosleep(&req, nullptr);
+            clock_gettime(CLOCK_MONOTONIC, &ts);
+            now_ns = (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
+        }
+        while (now_ns < s_next_present_ns) {
+#if defined(__aarch64__)
+            __asm__ volatile("isb" ::: "memory");
+#elif defined(__arm__)
+            __asm__ volatile("yield" ::: "memory");
+#elif defined(__x86_64__) || defined(_M_X64)
+            __builtin_ia32_pause();
+#endif
+            clock_gettime(CLOCK_MONOTONIC, &ts);
+            now_ns = (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
         }
     }
 

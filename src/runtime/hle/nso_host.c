@@ -4,6 +4,8 @@
 #include "exit_registry.h"
 #include "guest_process.h"
 #include "guest_tp.h"
+#include "heap_owner.h"
+#include "heap_owner.h"
 #include "native_window.h"
 /* Standalone Event-only contracts need not link the optional MultiWait
  * provider. The owned runtime strongly references it through lookup. */
@@ -3372,6 +3374,9 @@ int nso_host_posix_memalign(void **memptr, size_t alignment, size_t size) {
     if(try_game_aligned_alloc(alignment,size,&ptr)) {
         errno=saved_errno;
         if(!ptr && size)return ENOMEM;
+        /* The guest allocated this from its own page heap. It must go back
+         * to that heap, never to the host allocator. */
+        heap_owner_record(ptr,size,HEAP_OWNER_GUEST_PAGE);
         *memptr=ptr;return 0;
     }
     size_t alloc_size = (size == 0) ? sizeof(void *) : size;
@@ -3382,6 +3387,9 @@ int nso_host_posix_memalign(void **memptr, size_t alignment, size_t size) {
         return rc;
     }
     memset(ptr, 0, alloc_size);
+    /* Host chunk handed to the guest. The ledger remembers that it must be
+     * released with the host free() and never with nn::os::FreeMemoryPages. */
+    heap_owner_record(ptr,alloc_size,HEAP_OWNER_HOST_SCUdo);
     *memptr = ptr;
     fprintf(stderr, "[hle] posix_memalign: memptr=%p alignment=%zu (0x%zx) size=%zu (0x%zx) -> *memptr=%p rc=0\n",
             (void *)memptr, alignment, alignment, size, size, ptr);
@@ -3394,7 +3402,10 @@ void *nso_host_memalign(size_t alignment, size_t size) {
         return NULL;
     }
     void *ptr = NULL;
-    if(try_game_aligned_alloc(alignment,size,&ptr))return ptr;
+    if(try_game_aligned_alloc(alignment,size,&ptr)){
+        heap_owner_record(ptr,size,HEAP_OWNER_GUEST_PAGE);
+        return ptr;
+    }
     size_t alloc_align = alignment < sizeof(void *) ? sizeof(void *) : alignment;
     size_t alloc_size = (size == 0) ? sizeof(void *) : size;
     int rc = posix_memalign(&ptr, alloc_align, alloc_size);
@@ -3404,6 +3415,7 @@ void *nso_host_memalign(size_t alignment, size_t size) {
         return NULL;
     }
     memset(ptr, 0, alloc_size);
+    heap_owner_record(ptr,alloc_size,HEAP_OWNER_HOST_SCUdo);
     fprintf(stderr, "[hle] memalign: alignment=%zu (0x%zx) size=%zu (0x%zx) -> %p\n",
             alignment, alignment, size, size, ptr);
     return ptr;
@@ -3417,10 +3429,37 @@ void *nso_host_valloc(size_t size) {
     return nso_host_memalign(4096, size);
 }
 
+extern int guest_process_is_guest_memory(uintptr_t) __attribute__((weak));
+extern int guest_process_interposed_free(void *) __attribute__((weak));
+
 void nso_host_free(void *ptr) {
-    if (ptr) {
-        free(ptr);
+    if (!ptr) {
+        return;
     }
+    /* The host free() must never see a guest page/heap address. Scudo aborts
+     * with "corrupted chunk header" when it is asked to release a block its
+     * own allocator never produced. */
+    size_t bytes=0;
+    enum heap_owner_kind owner=heap_owner_lookup(ptr,&bytes);
+    int is_guest=(owner==HEAP_OWNER_GUEST_PAGE) ||
+                 (guest_process_is_guest_memory ? guest_process_is_guest_memory((uintptr_t)ptr) : 0);
+    if(is_guest) {
+        heap_owner_forget(ptr);
+        if(guest_process_interposed_free && guest_process_interposed_free(ptr)==1) {
+            return;
+        }
+        if(owner==HEAP_OWNER_GUEST_PAGE && guest_process_release_guest_page_block) {
+            if(guest_process_release_guest_page_block(ptr,bytes)==0) return;
+        }
+        return;
+    }
+    if(owner==HEAP_OWNER_HOST_SCUdo)heap_owner_forget(ptr);
+    free(ptr);
+}
+
+void nso_host_sized_delete(void *ptr, size_t size) {
+    (void)size;
+    nso_host_free(ptr);
 }
 
 static int is_readable(const void *ptr, size_t len) {
@@ -4340,6 +4379,10 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
     if(!strcmp(name,"aligned_alloc"))return (uint64_t)(uintptr_t)&nso_host_aligned_alloc;
     if(!strcmp(name,"valloc"))return (uint64_t)(uintptr_t)&nso_host_valloc;
     if(!strcmp(name,"free"))return (uint64_t)(uintptr_t)&nso_host_free;
+    if(!strcmp(name,"_ZdlPv") || !strcmp(name,"_ZdaPv"))
+        return (uint64_t)(uintptr_t)&nso_host_free;
+    if(!strcmp(name,"_ZdlPvm") || !strcmp(name,"_ZdaPvm") || !strcmp(name,"snk_sized_delete"))
+        return (uint64_t)(uintptr_t)&nso_host_sized_delete;
     if(!strcmp(name,"_ZN2nn4diag6detail9AbortImplEv") || !strcmp(name,"nndetailDiagAbortImpl"))
         return (uint64_t)(uintptr_t)&nso_host_diag_abort_impl;
     if(!strcmp(name,"_ZN2nn4diag12GetBacktraceEPmi"))

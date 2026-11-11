@@ -311,6 +311,12 @@ def cmd_cheat(args):
                 struct.pack_into('<i', plain, off, new)
                 edits.append(('guest/party', name, old, new))
 
+    if args.money is not None:
+        for name, val, off in find_int_tags(plain, {'currentMoney'}):
+            if val != args.money:
+                struct.pack_into('<i', plain, off, args.money)
+                edits.append(('wallet', name, val, args.money))
+
     if not edits:
         print('nothing to change')
     else:
@@ -331,7 +337,7 @@ def cmd_cheat(args):
     print('wrote %s  (%d bytes, sha1_ok=True, round trip ok)' % (args.out, len(out)))
 
     if args.push:
-        push_to_device(out, args.device, args.restart)
+        push_to_device(args.out, args.device, args.restart)
 
 
 def main(argv=None):
@@ -353,6 +359,7 @@ def main(argv=None):
     p_cheat.add_argument('--max-hp', type=int)
     p_cheat.add_argument('--max-mp', type=int)
     p_cheat.add_argument('--exp', type=int)
+    p_cheat.add_argument('--money', type=int)
     p_cheat.add_argument('--unit', type=int)
     p_cheat.add_argument('--push', action='store_true',
                          help='install the edited slot on the tablet')

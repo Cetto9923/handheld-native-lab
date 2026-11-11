@@ -97,6 +97,13 @@ static struct reservation *find_owner(uintptr_t address,size_t size) {
                 size<=r->requested_size-(address-r->address))return r;
     return NULL;
 }
+int nso_host_is_guest_memory(uintptr_t address) {
+    if(!address)return 0;
+    pthread_mutex_lock(&region_mutex);
+    struct reservation *r=find_owner(address,1);
+    pthread_mutex_unlock(&region_mutex);
+    return r!=NULL;
+}
 uint32_t nso_host_allocate_address_region(uintptr_t *out,size_t size) {
     /* SDK VammManager +0x145da0: 64-KiB alignment below 2 MiB,
      * 2-MiB alignment otherwise, with gaps of at least 4 KiB.

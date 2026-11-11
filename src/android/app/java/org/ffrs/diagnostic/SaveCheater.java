@@ -73,6 +73,8 @@ public final class SaveCheater {
     public static final class Result {
         public boolean ok;
         public String message = "";
+        /** True when this run wrote the untouched slot aside first. */
+        public boolean backupCreated;
         public final List<String> edits = new ArrayList<>();
         public final List<Unit> units = new ArrayList<>();
         public String savePath;
@@ -327,6 +329,23 @@ public final class SaveCheater {
      */
     public static Result apply(File file, Integer hp, Integer maxHp, Integer mp, Integer maxMp,
                                Integer exp, Integer level) {
+        return apply(file, hp, maxHp, mp, maxMp, exp, level, null);
+    }
+
+    /**
+     * Apply the requested edits to a save slot in place.
+     *
+     * @param file      the slot to edit (GameSaveData0)
+     * @param hp        current HP, or null to leave it alone
+     * @param maxHp     HP cap, or null
+     * @param mp        current MP, or null
+     * @param maxMp     MP cap, or null
+     * @param exp       experience, or null
+     * @param level     level, or null
+     * @param onlyUnit  unit id to restrict the edit to, or null for every unit
+     */
+    public static Result apply(File file, Integer hp, Integer maxHp, Integer mp, Integer maxMp,
+                               Integer exp, Integer level, Integer onlyUnit) {
         Result result = new Result();
         result.savePath = file == null ? null : file.getAbsolutePath();
         byte[] key = key();
@@ -386,6 +405,7 @@ public final class SaveCheater {
         }
 
         for (Unit u : units) {
+            if (onlyUnit != null && u.unitId != onlyUnit) continue;
             if (hp != null) put(plain, u.hitPointOffset, hp, result, u.unitId, "HP");
             if (maxHp != null) put(plain, u.maxHitPointOffset, maxHp, result, u.unitId, "HP上限");
             if (mp != null) put(plain, u.magicPointOffset, mp, result, u.unitId, "MP");
@@ -418,20 +438,136 @@ public final class SaveCheater {
             return result;
         }
 
-        // The slot file may belong to another uid (an adb pushed file keeps the
-        // shell owner), and then opening it for write fails with EACCES. Writing
-        // a fresh file in the same directory and renaming it over the slot only
-        // needs write permission on the directory, which the app owns.
+        // Keep the untouched slot aside before the first edit, so the
+        // function menu can roll the change back.
+        ensureBackup(file, result);
+
+        if (!install(file, out, result)) return result;
+
+        // Round trip check on the produced file.
+        try {
+            byte[] check = readAll(new FileInputStream(file));
+            byte[] checkBody = new byte[check.length - HEADER_LEN];
+            System.arraycopy(check, HEADER_LEN, checkBody, 0, checkBody.length);
+            byte[] checkPlain = aes(key, checkBody, true);
+            if (!java.util.Arrays.equals(checkPlain, plain)) {
+                result.message = "回读校验失败";
+                return result;
+            }
+        } catch (Exception e) {
+            result.message = "回读校验失败: " + e.getMessage();
+            return result;
+        }
+
+        result.ok = true;
+        if (result.edits.isEmpty()) result.message = "没有需要修改的数值";
+        else result.message = "已修改 " + result.edits.size() + " 项"
+                + (result.backupCreated ? "（已备份原存档，可用菜单还原）" : "");
+        return result;
+    }
+
+    /** The copy of the slot that was taken before the first cheat edit. */
+    public static File backupFile(File file) {
+        return new File(file.getParentFile(), file.getName() + ".orig");
+    }
+
+    /**
+     * Copies the slot aside before the first edit.
+     *
+     * The backup is written once and then kept: later edits still roll back to
+     * the original save, not to the previously cheated one.
+     */
+    private static void ensureBackup(File file, Result result) {
+        File backup = backupFile(file);
+        if (backup.exists()) return;
+        InputStream in = null;
+        OutputStream out = null;
+        try {
+            in = new FileInputStream(file);
+            out = new FileOutputStream(backup);
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            out.flush();
+            result.backupCreated = true;
+            warn("save backup written: " + backup.getAbsolutePath());
+        } catch (IOException e) {
+            warn("save backup failed: " + e.getMessage());
+            close(in); close(out);
+            backup.delete();
+        } finally {
+            close(in); close(out);
+        }
+    }
+
+    /**
+     * Puts the backup copy back over the slot.
+     *
+     * The guest keeps its own copy of the roster, so the game has to be
+     * restarted before the restored values are visible in game.
+     */
+    public static Result restore(File file) {
+        Result result = new Result();
+        result.savePath = file == null ? null : file.getAbsolutePath();
+        if (file == null || !file.exists()) {
+            result.message = "存档文件不存在";
+            return result;
+        }
+        File backup = backupFile(file);
+        if (!backup.exists()) {
+            result.message = "没有还原备份（首次修改前会自动备份原存档）";
+            return result;
+        }
+        byte[] raw;
+        InputStream in = null;
+        try {
+            in = new FileInputStream(backup);
+            raw = readAll(in);
+        } catch (IOException e) {
+            result.message = "读取备份失败: " + e.getMessage();
+            return result;
+        } finally {
+            close(in);
+        }
+        if (raw.length < HEADER_LEN || raw[0] != MAGIC[0] || raw[1] != MAGIC[1]
+                || raw[2] != MAGIC[2] || raw[3] != MAGIC[3]) {
+            result.message = "备份文件不是有效的 SVHD 存档";
+            return result;
+        }
+        byte[] body = new byte[raw.length - HEADER_LEN];
+        System.arraycopy(raw, HEADER_LEN, body, 0, body.length);
+        byte[] digest = new byte[20];
+        System.arraycopy(raw, 8, digest, 0, 20);
+        if (!sha1(body).equals(bytesToHex(digest))) {
+            result.message = "备份文件校验不通过（SHA-1 不匹配）";
+            return result;
+        }
+        if (!install(file, raw, result)) return result;
+        result.ok = true;
+        result.message = "已还原存档（重启游戏后生效）";
+        result.edits.add("已从 " + backup.getName() + " 还原");
+        return result;
+    }
+
+    /**
+     * Writes the slot back.
+     *
+     * The slot file may belong to another uid (an adb pushed file keeps the
+     * shell owner), and then opening it for write fails with EACCES. Writing
+     * a fresh file in the same directory and renaming it over the slot only
+     * needs write permission on the directory, which the app owns.
+     */
+    private static boolean install(File file, byte[] data, Result result) {
         File temp = new File(file.getParentFile(), file.getName() + ".cheat.tmp");
         OutputStream os = null;
         try {
             os = new FileOutputStream(temp);
-            os.write(out);
+            os.write(data);
             os.flush();
         } catch (IOException e) {
             close(os);
             result.message = "写入存档失败: " + e.getMessage();
-            return result;
+            return false;
         } finally {
             close(os);
         }
@@ -452,29 +588,10 @@ public final class SaveCheater {
                 } finally { close(src); close(dst); }
             } catch (IOException e2) {
                 result.message = "写入存档失败: " + e2.getMessage();
-                return result;
+                return false;
             }
         }
-
-        // Round trip check on the produced file.
-        try {
-            byte[] check = readAll(new FileInputStream(file));
-            byte[] checkBody = new byte[check.length - HEADER_LEN];
-            System.arraycopy(check, HEADER_LEN, checkBody, 0, checkBody.length);
-            byte[] checkPlain = aes(key, checkBody, true);
-            if (!java.util.Arrays.equals(checkPlain, plain)) {
-                result.message = "回读校验失败";
-                return result;
-            }
-        } catch (Exception e) {
-            result.message = "回读校验失败: " + e.getMessage();
-            return result;
-        }
-
-        result.ok = true;
-        if (result.edits.isEmpty()) result.message = "没有需要修改的数值";
-        else result.message = "已修改 " + result.edits.size() + " 项";
-        return result;
+        return true;
     }
 
     private static void put(byte[] plain, int offset, int value, Result result, int unitId, String label) {

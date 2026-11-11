@@ -65,6 +65,7 @@ if(ANDROID)
         "${FFRS_GUEST_HLE_DIR}/guest_context.c"
         "${FFRS_GUEST_HLE_DIR}/guest_process.c"
         "${FFRS_GUEST_HLE_DIR}/nso_host.c"
+        "${FFRS_GUEST_HLE_DIR}/heap_owner.c"
         "${FFRS_GUEST_HLE_DIR}/hid_bridge.c"
         "${FFRS_GUEST_HLE_DIR}/sdk_component.c"
         "${FFRS_GUEST_HLE_DIR}/movie_buffer.c"
@@ -190,6 +191,7 @@ if(ANDROID)
         set(FFRS_HLE_DIR "${FFRS_RUNTIME_DIR}/../hle" CACHE PATH "Typed runtime HLE source directory")
         add_executable(nso_runtime_hle "${FFRS_RUNTIME_DIR}/nso_call.c"
             "${FFRS_RUNTIME_DIR}/nso_loader.c" "${FFRS_HLE_DIR}/nso_host.c"
+            "${FFRS_HLE_DIR}/heap_owner.c"
             "${FFRS_HLE_DIR}/address_region.c" "${FFRS_HLE_DIR}/mutex.c"
             "${FFRS_HLE_DIR}/exit_registry.c")
         set_target_properties(nso_runtime_hle PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)

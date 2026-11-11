@@ -387,10 +387,11 @@ inline int xbg_spirv_shrine_lighting_fetch(std::vector<uint32_t> &w,uint32_t bin
 inline int xbg_spirv_ffrs_stencil(std::vector<uint32_t> &words,uint32_t stage,const char *key){
     // Earth Shrine reflection/light lists: frame1358/draw131709 binds B64 as
     // R16_UINT, while the translated shader fetches float then bitcasts to an
-    // integer light index. Correct only its two fetch types; retain the native
-    // R16 view/range (no scalar binding override that would widen it to R32).
-    if(stage==4 && key && !std::strcmp(key,"97ae64dbc5e7ff26")){
-        int n=xbg_spirv_shrine_lighting_fetch(words,64);return n==2?n:-1;
+    // integer light index. Correct fetch types across all matching fragment shaders;
+    // retain the native R16 view/range (no scalar binding override that would widen it to R32).
+    if(stage==4){
+        int n=xbg_spirv_shrine_lighting_fetch(words,64);
+        if(n>0)return n;
     }
     if((stage==5 || stage==0) && key){
         int changed=0;
