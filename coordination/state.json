@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-11T22:39:56.776736+00:00",
+ "updated_at": "2026-11-11T22:43:40.591913+00:00",
  "phase": "FAIL currentShrine room stillregularlightingrectangles inPID7534, preservecamera andfirstbadgroupcapture; spellstutteralsoopen",
  "coordinator": "Codex /root shrine takeover",
  "integration_branch": "work/rg477m-native",
@@ -1639,7 +1639,7 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-honor-shrine-20261111",
    "acquired_at": "2026-11-12T01:08:27.178041+08:00",
-   "checkpoint": "Firstbad highROI g106 FS97ae confirmed. Producer nativeR16 widenedR32, consumer sameguestR16. LiveA->B nativeviewclear, restoredactualR32stillclean soABA NOT_PASS; fresh unchangedbuild6 PID16062 control underway. Adreno735 standalone GPU R16/R32 byte-layout+sentinels PASS exit0, productionpolicy310 sanitizercasesPASS. Genericnativeintegerwidth candidate source reviewed, build/deploy pending.",
+   "checkpoint": "Build7 source280e2ac exit0 SHA6f4b68478b7fc37ad6046e3d4eca27a6803eea95c54423449c115f40d419cc72. Fresh originalbuild6 PID16062 installedSHAverified, ContinueShrineentry andfirstroom+nextroomcurrentlyclean, originalvisualfailurefreshreproNOT_ESTABLISHED. Do notclaimcompletedABArootcause. Widthlayoutdefect/actualGPUcontractproven andgenericcandidate readyfordata-preservinginstall/crosssceneacceptance.",
    "write_state": "ACTIVE"
   },
   {
@@ -4370,7 +4370,7 @@
    "acceptance": "Actual movement screenshots/video, distinct-frame CPU/GPU metrics cold/warm, visual+audio regression; independent QA NOT_RUN",
    "recovery_point": "63d3652 clean, install-r only, do not clear data",
    "branch": "task/T-honor-shrine-20261111",
-   "checkpoint": "Firstbad highROI g106 FS97ae confirmed. Producer nativeR16 widenedR32, consumer sameguestR16. LiveA->B nativeviewclear, restoredactualR32stillclean soABA NOT_PASS; fresh unchangedbuild6 PID16062 control underway. Adreno735 standalone GPU R16/R32 byte-layout+sentinels PASS exit0, productionpolicy310 sanitizercasesPASS. Genericnativeintegerwidth candidate source reviewed, build/deploy pending."
+   "checkpoint": "Build7 source280e2ac exit0 SHA6f4b68478b7fc37ad6046e3d4eca27a6803eea95c54423449c115f40d419cc72. Fresh originalbuild6 PID16062 installedSHAverified, ContinueShrineentry andfirstroom+nextroomcurrentlyclean, originalvisualfailurefreshreproNOT_ESTABLISHED. Do notclaimcompletedABArootcause. Widthlayoutdefect/actualGPUcontractproven andgenericcandidate readyfordata-preservinginstall/crosssceneacceptance."
   },
   {
    "id": "HONOR-INTEGER-FETCH-SEMANTICS",

@@ -1,3 +1,7 @@
+# 2026-11-12 fresh original control clean, build7 ready
+
+Build7 source280e2ac exit0 SHA6f4b68478b7fc37ad6046e3d4eca27a6803eea95c54423449c115f40d419cc72. Fresh originalbuild6 PID16062 installedSHAverified, ContinueShrineentry andfirstroom+nextroomcurrentlyclean, originalvisualfailurefreshreproNOT_ESTABLISHED. Do notclaimcompletedABArootcause. Widthlayoutdefect/actualGPUcontractproven andgenericcandidate readyfordata-preservinginstall/crosssceneacceptance.
+
 # 2026-11-12 texel-width candidate, fresh baseline control required
 
 Firstbad highROI g106 FS97ae confirmed. Producer nativeR16 widenedR32, consumer sameguestR16. LiveA->B nativeviewclear, restoredactualR32stillclean soABA NOT_PASS; fresh unchangedbuild6 PID16062 control underway. Adreno735 standalone GPU R16/R32 byte-layout+sentinels PASS exit0, productionpolicy310 sanitizercasesPASS. Genericnativeintegerwidth candidate source reviewed, build/deploy pending.
