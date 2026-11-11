@@ -1,6 +1,9 @@
 package org.ffrs.diagnostic;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
+import java.util.ArrayList;
 import android.media.AudioManager;
 import android.media.AudioDeviceCallback;
 import android.media.AudioDeviceInfo;
@@ -1039,15 +1042,66 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
      * has to be restarted before the restored values show up in game.
      */
     void restoreSave() {
-        File slot = primarySaveSlot();
-        if (slot == null) {
-            Log.w(TAG, "save_restore skipped: no live save slot");
-            toast("找不到存档文件，请等游戏进入标题画面后再试");
+        File root = liveSaveRoot;
+        if (root == null) {
+            File dir = getExternalFilesDir(null);
+            if (dir != null) {
+                File candidate = new File(dir, "codex-local-save");
+                if (candidate.isDirectory()) root = candidate;
+            }
+        }
+        if (root == null) {
+            File slot = primarySaveSlot();
+            if (slot != null) root = slot.getParentFile();
+        }
+        if (root == null) {
+            Log.w(TAG, "save_restore skipped: no live save root");
+            toast("找不到存档目录，请等游戏进入标题画面后再试");
             return;
         }
-        SaveCheater.Result r = SaveCheater.restore(slot);
-        toast(r.ok ? r.message : ("还原失败：" + r.message));
-        Log.i(TAG, "save_restore ok=" + r.ok + " " + r.message);
+
+        final File saveRoot = root;
+        final List<File> backups = SaveRestorer.listBackupDirectories();
+        final File cheatBak = new File(saveRoot, "GameSaveData0.bak");
+        final boolean hasCheatBak = cheatBak.isFile();
+
+        if (backups.isEmpty() && !hasCheatBak) {
+            toast("在 Download 目录未找到导出的备份 (FFRS-save-*)");
+            return;
+        }
+
+        List<String> items = new ArrayList<String>();
+        final List<File> targets = new ArrayList<File>();
+
+        for (File b : backups) {
+            items.add("备份目录: " + b.getName());
+            targets.add(b);
+        }
+        if (hasCheatBak) {
+            items.add("金手指本地单文件备份 (GameSaveData0.bak)");
+            targets.add(cheatBak);
+        }
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("选择要恢复的存档");
+        builder.setItems(items.toArray(new CharSequence[0]), new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                File chosen = targets.get(which);
+                if (chosen.equals(cheatBak)) {
+                    File slot = primarySaveSlot();
+                    if (slot != null) {
+                        SaveCheater.Result r = SaveCheater.restore(slot);
+                        toast(r.ok ? (r.message + "，请重启游戏生效") : ("还原失败：" + r.message));
+                    }
+                } else {
+                    toast("正在恢复存档…");
+                    new Thread(new SaveRestoreTask(GameActivity.this, chosen, saveRoot), "ffrs-save-restore").start();
+                }
+            }
+        });
+        builder.setNegativeButton("取消", null);
+        builder.show();
     }
 
     private void exportSaves() {
@@ -1094,6 +1148,36 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                     ? "存档已导出到 " + result.directory.getAbsolutePath()
                             + "\n共 " + result.fileCount + " 个文件，" + result.totalBytes + " 字节"
                     : "导出失败：" + result.error);
+        }
+    }
+
+    private static final class SaveRestoreTask implements Runnable {
+        private final GameActivity owner;
+        private final File backupDir;
+        private final File targetDir;
+        SaveRestoreTask(GameActivity owner, File backupDir, File targetDir) {
+            this.owner = owner; this.backupDir = backupDir; this.targetDir = targetDir;
+        }
+        @Override public void run() {
+            final SaveRestorer.Result result = SaveRestorer.restore(owner, backupDir, targetDir);
+            new Handler(Looper.getMainLooper()).post(new SaveRestoreReport(owner, result));
+        }
+    }
+
+    private static final class SaveRestoreReport implements Runnable {
+        private final GameActivity owner;
+        private final SaveRestorer.Result result;
+        SaveRestoreReport(GameActivity owner, SaveRestorer.Result result) {
+            this.owner = owner; this.result = result;
+        }
+        @Override public void run() {
+            Log.i(TAG, "save_restore " + result.describe());
+            if (owner.setupText != null) owner.setupText.setText("Save restore: " + result.describe());
+            if (result.ok()) {
+                owner.toast("存档恢复成功！\n共恢复 " + result.fileCount + " 个文件，请重启游戏生效");
+            } else {
+                owner.toast("恢复失败：" + result.error);
+            }
         }
     }
 
@@ -1564,6 +1648,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         // Always available: the player needs a way to hand the saves over
         // without a computer, whatever state the data check is in.
         setupButton("导出存档到 Download", 7, box);
+        setupButton("从 Download 恢复存档", 8, box);
         box.setVisibility(View.GONE);
         box.setClickable(true);
         setupView = box;
@@ -1616,6 +1701,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             else if (action == 5) owner.dataInstaller.cancel();
             else if (action == 6) owner.dataInstaller.rescanDirectory();
             else if (action == 7) owner.exportSaves();
+            else if (action == 8) owner.restoreSave();
         }
     }
 
