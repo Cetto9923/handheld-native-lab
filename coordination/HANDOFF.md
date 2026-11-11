@@ -1,3 +1,7 @@
+# 2026-11-11 用户授权发布 Shrine 修复版
+
+Public GitHub release https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.3 published, APK FFRS-Shrine-Fix.apk 3753362 B remote SHA256 e7c3f82c2c3113a1446fbedf7a574524c3ef5515769f2d9d523462a6f6c5095c matches earlier tested APK; tag points e48159fea5d0ce3628574b48ba29e40d621ce5f5, source branch codex/shrine-release-20261111 pushed. Two touched engine files hash-match original source commit e878532; self-authored fixture ASan/UBSan + original/fixed spirv-val PASS in public worktree. Previous APK signing certificate matches; APK internal version still 1.0.2-honor versionCode3. Release notes state limited Honor testing and 29.9 FPS, no full compatibility/60 FPS claim. Honor device adb unavailable during publication; no new device test. Public main untouched; original untracked FFRS data preserved.
+
 # 2026-11-11 frame timing and wait-path audit
 
 Startup log specifies target_fps=60, legacy_waitall=0 and completion_wait=1; do not mistake 29.86 actual movement FPS for a proven 30 FPS cap or re-enable the older wait path. Last 10 later 60-attempt engine windows indexed in .local/shrine-takeover-20261111/late-perf-window-audit.json; they are not precisely aligned with the movement marks. CPU submit, GPU and wait durations can overlap, cannot be added or establish sole bottleneck. Actual optimization and same-scene A/B still require device access. Another app remains foreground; no interaction.
