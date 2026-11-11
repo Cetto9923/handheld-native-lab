@@ -74,6 +74,9 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     private TextView setupText;
     private DataBundleInstaller dataInstaller;
     private Button importButton, storageButton, recoverButton, cancelButton;
+    // The directory the guest actually writes its saves into. Kept so the
+    // export action can hand the files to the player.
+    private File liveSaveRoot;
     private static final int PICK_DATA_BUNDLE = 4701;
     private boolean guestStarted, guestStartFailed, surfaceReady;
     private int guestTerminalState;
@@ -652,6 +655,70 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         if (startState == GuestStartState.STARTED) startGuestWatch();
     }
 
+    /**
+     * Returns the directory the guest writes its saves into.
+     *
+     * An explicit save root wins. Otherwise the native side derives one from
+     * the directory that holds the guest log, exactly like
+     * guest_boot_jni.cpp does, so the export looks in the same place.
+     */
+    private File resolveLiveSaveRoot(String saveRoot, File files) {
+        if (saveRoot != null && !saveRoot.isEmpty()) {
+            File explicitRoot = new File(saveRoot);
+            if (explicitRoot.isDirectory()) return explicitRoot;
+        }
+        if (files == null) return null;
+        File derived = new File(files, "codex-local-save");
+        return derived.isDirectory() ? derived : null;
+    }
+
+    /**
+     * Copies the guest saves into the public Download collection.
+     *
+     * The runtime keeps the save directory private, so the platform file
+     * manager shows it as empty and a player cannot hand the file over.
+     * The export gives the player a plain file they can send.
+     */
+    private void exportSaves() {
+        File root = liveSaveRoot;
+        if (root == null) {
+            Log.w(TAG, "save_export skipped: no live save root");
+            if (setupText != null) setupText.setText("Save export: no save directory found yet.");
+            return;
+        }
+        new Thread(new SaveExportTask(this, root), "ffrs-save-export").start();
+    }
+
+    /**
+     * Runs the save export off the UI thread and reports the outcome.
+     *
+     * A named class instead of an anonymous one: the dex shape of an
+     * anonymous class that captures a local variable trips an internal
+     * error in the build tool's dex step.
+     */
+    private static final class SaveExportTask implements Runnable {
+        private final GameActivity owner;
+        private final File root;
+        SaveExportTask(GameActivity owner, File root) { this.owner = owner; this.root = root; }
+        @Override public void run() {
+            final SaveExporter.Result result = SaveExporter.export(owner, root);
+            new Handler(Looper.getMainLooper()).post(new SaveExportReport(owner, result));
+        }
+    }
+
+    /** Reports the export outcome on the UI thread. */
+    private static final class SaveExportReport implements Runnable {
+        private final GameActivity owner;
+        private final SaveExporter.Result result;
+        SaveExportReport(GameActivity owner, SaveExporter.Result result) {
+            this.owner = owner; this.result = result;
+        }
+        @Override public void run() {
+            Log.i(TAG, "save_export " + result.describe());
+            if (owner.setupText != null) owner.setupText.setText("Save export: " + result.describe());
+        }
+    }
+
     private DeviceProfile deviceProfile() {
         String override = "";
         File dir = getExternalFilesDir(null);
@@ -1116,6 +1183,9 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             box.addView(grant, bp);
             box.addView(retry, bp);
         }
+        // Always available: the player needs a way to hand the saves over
+        // without a computer, whatever state the data check is in.
+        box.addView(setupButton("导出存档到 Download", 7, box), bp);
         box.setVisibility(View.GONE);
         box.setClickable(true);
         setupView = box;
@@ -1167,6 +1237,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             else if (action == 4) owner.dataInstaller.recover();
             else if (action == 5) owner.dataInstaller.cancel();
             else if (action == 6) owner.dataInstaller.rescanDirectory();
+            else if (action == 7) owner.exportSaves();
         }
     }
 
@@ -1347,6 +1418,11 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             return;
         }
         if (isolatedSave) Log.i(TAG, "isolated regression save root=" + saveRoot);
+        /* The guest derives its own save directory from the log directory when
+         * no explicit root was given, so the export must look in the same
+         * place the native side used. */
+        liveSaveRoot = resolveLiveSaveRoot(saveRoot, files);
+        Log.i(TAG, "live_save_root=" + (liveSaveRoot == null ? "null" : liveSaveRoot.getAbsolutePath()));
         guestStarted = true;
         Log.i(TAG, "guest_start hide_setup_view");
         if (setupView != null) setupView.setVisibility(View.GONE);
@@ -1480,6 +1556,10 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
     @Override protected void onStop() {
         Log.i(TAG, "lifecycle onStop");
+        /* Leaving the app is the moment a player stops playing, so this is
+         * the moment the saves are worth handing over. The export runs on
+         * its own thread and never blocks the lifecycle. */
+        if (liveSaveRoot != null) exportSaves();
         super.onStop();
     }
 

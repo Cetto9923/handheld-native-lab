@@ -269,6 +269,115 @@ inline int xbg_spirv_uint_store(std::vector<uint32_t> &w,uint32_t binding){
     return xbg_spirv_integer_storage(w,binding,1);
 }
 
+// Clustered lighting texel fetch repair (Earth Shrine exterior draw 131709, shader 97ae64dbc5e7ff26).
+// Binding 64 is a texel buffer view (VK_FORMAT_R16_UINT) holding light index offsets and indices.
+// The translator originally fetched float then bitcast to int via a float Function variable.
+// Storing small integers (1, 2, ...) as float bits creates subnormal (denormal) IEEE floats,
+// which mobile GPU ALU registers in FTZ (Flush-To-Zero) mode flush to 0.0f, corrupting
+// every light index to 0 and creating square block anomalies on the ground.
+// This function retargets the image to OpTypeImage %uint Buffer, fetches uint4, extracts
+// uint, stores to uint variables, and loads as uint before the existing OpBitcast %int.
+inline int xbg_spirv_shrine_lighting_fetch(std::vector<uint32_t> &w,uint32_t binding){
+    if(w.size()<5 || w[0]!=0x07230203u)return -1;
+    std::unordered_map<uint32_t,size_t> def;
+    uint32_t variable=0,uint32=0,float4=0,uint4=0,ptr_func_uint=0;
+    for(size_t i=5;i<w.size();){
+        uint32_t n=w[i]>>16,op=w[i]&65535u;
+        if(!n || i+n>w.size())return -1;
+        if(op>=19 && op<=33 && n>=2)def[w[i+1]]=i;
+        if(op==59 && n>=4)def[w[i+2]]=i;
+        if(op==71 && n==4 && w[i+2]==33 && w[i+3]==binding)variable=w[i+1];
+        if(op==21 && n==4 && w[i+2]==32 && w[i+3]==0)uint32=w[i+1];
+        if(op==32 && n==4 && w[i+2]==7 && uint32 && w[i+3]==uint32)ptr_func_uint=w[i+1];
+        i+=n;
+    }
+    if(!variable || !uint32 || !def.count(variable))return -1;
+    if(!ptr_func_uint){
+        for(size_t i=5;i<w.size();){
+            uint32_t n=w[i]>>16,op=w[i]&65535u;
+            if(op==32 && n==4 && w[i+2]==7 && w[i+3]==uint32){ptr_func_uint=w[i+1];break;}
+            i+=n;
+        }
+    }
+    size_t vi=def[variable];if((w[vi]&65535u)!=59 || !def.count(w[vi+1]))return -1;
+    size_t pi=def[w[vi+1]];if((w[pi]&65535u)!=32 || !def.count(w[pi+3]))return -1;
+    size_t si=def[w[pi+3]];if((w[si]&65535u)!=27 || !def.count(w[si+2]))return -1;
+    size_t ii=def[w[si+2]];if((w[ii]&65535u)!=25 || !def.count(w[ii+2]))return -1;
+    size_t fi=def[w[ii+2]];if((w[fi]&65535u)!=22 || w[fi+2]!=32)return -1;
+    for(size_t i=5;i<w.size();){
+        uint32_t n=w[i]>>16,op=w[i]&65535u;
+        if(op==23 && n==4 && w[i+3]==4){
+            if(w[i+2]==w[ii+2])float4=w[i+1];
+            if(w[i+2]==uint32)uint4=w[i+1];
+        }
+        i+=n;
+    }
+    if(!float4)return -1;
+    uint32_t bound=w[3];
+    auto types=xbg_integer_image_types(w,ii,pi,vi,uint32,true,bound);
+    uint32_t image=types.image,sampled=types.sampled,pointer=types.pointer;
+    bool add_vector=!uint4;if(add_vector)uint4=bound++;
+    bool add_ptr_func=!ptr_func_uint;if(add_ptr_func)ptr_func_uint=bound++;
+
+    std::unordered_set<uint32_t> loads,images;
+    for(size_t i=5;i<w.size();){
+        uint32_t n=w[i]>>16,op=w[i]&65535u;
+        if(op==61 && n>=4 && w[i+3]==variable)loads.insert(w[i+2]);
+        if(op==100 && n==4 && loads.count(w[i+3]))images.insert(w[i+2]);
+        i+=n;
+    }
+
+    std::unordered_set<uint32_t> fetch_ids,target_vars;
+    for(size_t i=5;i<w.size();){
+        uint32_t n=w[i]>>16,op=w[i]&65535u;
+        if(op==95 && n>=5 && images.count(w[i+3])){
+            uint32_t fid=w[i+2];fetch_ids.insert(fid);
+            size_t next_i=i+n;
+            if(next_i<w.size() && (w[next_i]&65535u)==81 && (w[next_i]>>16)>=5 && w[next_i+3]==fid){
+                uint32_t ext_id=w[next_i+2];
+                size_t store_i=next_i+(w[next_i]>>16);
+                if(store_i<w.size() && (w[store_i]&65535u)==62 && (w[store_i]>>16)>=3 && w[store_i+2]==ext_id){
+                    target_vars.insert(w[store_i+1]);
+                }
+            }
+        }
+        i+=n;
+    }
+
+    int fetches=0;
+    std::vector<uint32_t> out(w.begin(),w.begin()+5);
+    for(size_t i=5;i<w.size();){
+        uint32_t n=w[i]>>16,op=w[i]&65535u;
+        if(types.moved.count(i)){i+=n;continue;}
+        if(i==vi){
+            out.insert(out.end(),types.declarations.begin(),types.declarations.end());
+            if(add_vector)out.insert(out.end(),{(4u<<16)|23u,uint4,uint32,4u});
+            if(add_ptr_func)out.insert(out.end(),{(4u<<16)|32u,ptr_func_uint,7u,uint32});
+        }
+        size_t at=out.size();
+        out.insert(out.end(),w.begin()+i,w.begin()+i+n);
+        if(i==vi)out[at+1]=pointer;
+        if(op==61 && loads.count(w[i+2]))out[at+1]=sampled;
+        if(op==100 && images.count(w[i+2]))out[at+1]=image;
+        if(op==59 && target_vars.count(w[i+2]))out[at+1]=ptr_func_uint;
+        if(op==95 && n>=5 && images.count(w[i+3])){
+            if(w[i+1]!=float4)return -1;
+            out[at+1]=uint4;++fetches;
+        }
+        if(op==81 && n>=5 && fetch_ids.count(w[i+3])){
+            out[at+1]=uint32;
+        }
+        if(op==61 && n>=4 && target_vars.count(w[i+3])){
+            out[at+1]=uint32;
+        }
+        i+=n;
+    }
+    if(fetches<1)return -1;
+    out[3]=bound;
+    w.swap(out);
+    return fetches;
+}
+
 // FFRS's stencil-channel extractor fetches an integer stencil texel through a
 // translator-declared float image, then bitcasts the fetched bits back to int.
 // Vulkan requires a uint sampled type for a stencil-aspect image view. Preserve
@@ -281,7 +390,7 @@ inline int xbg_spirv_ffrs_stencil(std::vector<uint32_t> &words,uint32_t stage,co
     // integer light index. Correct only its two fetch types; retain the native
     // R16 view/range (no scalar binding override that would widen it to R32).
     if(stage==4 && key && !std::strcmp(key,"97ae64dbc5e7ff26")){
-        int n=xbg_spirv_uint_fetch(words,64);return n==2?n:-1;
+        int n=xbg_spirv_shrine_lighting_fetch(words,64);return n==2?n:-1;
     }
     if((stage==5 || stage==0) && key){
         int changed=0;
