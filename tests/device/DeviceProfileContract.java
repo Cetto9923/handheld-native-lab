@@ -18,6 +18,10 @@ public class DeviceProfileContract {
             throw new AssertionError("physical form factor fallback/boundary");
         check("SM8635", 768, "", "tablet_sd8s", 1080, 60);
         check("MT6897", 420, "", "handheld_mid", 720, 30);
+        check("dimensity 8300", 420, "", "handheld_mid", 720, 30);
+        DeviceProfile rg = DeviceProfile.select("unknown", "RG477M", 420, "");
+        if (!rg.id.equals("handheld_mid") || rg.targetShortEdge != 720 || rg.targetFps != 30)
+            throw new AssertionError("RG477M model selection");
         check(null, 0, null, "handheld_mid", 720, 30);
         check("SM8635", 768, "handheld_mid", "handheld_mid", 720, 30);
         check("MT6897", 420, "odin_elite", "odin_elite", 1080, 30);

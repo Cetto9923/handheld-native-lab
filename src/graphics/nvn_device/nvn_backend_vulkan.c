@@ -69,6 +69,7 @@ typedef struct {
      * than one window is not supported. */
     VkSurfaceKHR surface;
     VkSwapchainKHR swapchain;
+    uint64_t surface_window_generation;
     VkFormat surface_format;
     VkColorSpaceKHR color_space;
     uint32_t width;
@@ -452,9 +453,8 @@ static void nvn_vulkan_release_present_path(nvn_vulkan_state *st) {
     }
     if(st->acquire_fence){vkDestroyFence(st->device,st->acquire_fence,NULL);st->acquire_fence=VK_NULL_HANDLE;}
     if (st->command_pool) {
-        if (st->command_buffers) {
-            vkFreeCommandBuffers(st->device, st->command_pool, st->image_count, st->command_buffers);
-        }
+        /* Destroying the pool frees its allocated buffers. In a partial
+         * setup the array can exist even if allocation never succeeded. */
         vkDestroyCommandPool(st->device, st->command_pool, NULL);
     }
     if (st->render_pass) vkDestroyRenderPass(st->device, st->render_pass, NULL);
@@ -476,6 +476,16 @@ static void nvn_vulkan_release_present_path(nvn_vulkan_state *st) {
     st->command_pool = VK_NULL_HANDLE;
     st->image_count = 0;
     st->present_path_ready = 0;
+}
+
+/* A failed setup has submitted no work, but may own partial allocations. */
+static void nvn_vulkan_abort_present_setup(nvn_vulkan_state *st, VkSurfaceKHR surface,
+                                          VkSwapchainKHR swapchain) {
+    nvn_vulkan_release_present_path(st);
+    if (swapchain) vkDestroySwapchainKHR(st->device, swapchain, NULL);
+    if (surface) vkDestroySurfaceKHR(st->instance, surface, NULL);
+    st->surface = VK_NULL_HANDLE;
+    st->swapchain = VK_NULL_HANDLE;
 }
 
 /* Take the images of the swapchain, make one command buffer and one fence
@@ -924,10 +934,13 @@ static int nvn_vulkan_create_window_surface(nvn_device_state *device, void *nati
      * and the framebuffers are kept for the frames that follow. */
     if (!nvn_vulkan_setup_present_path(st, surface, swapchain, format.format, format.colorSpace, width, height)) {
         fprintf(stderr, "[nvn] vulkan: the present path could not be set up, so there is nothing to present\n");
-        vkDestroySwapchainKHR(st->device, swapchain, NULL);
-        vkDestroySurfaceKHR(st->instance, surface, NULL);
+        nvn_vulkan_abort_present_setup(st, surface, swapchain);
         return 0;
     }
+
+    /* Callers create under the holder lease, so this generation belongs to
+     * the window used above and cannot change until the lease is released. */
+    st->surface_window_generation = nso_host_native_window_generation();
 
     fprintf(stderr, "[nvn] vulkan: created a surface and a swapchain for the platform window: "
                     "%ux%u, format %u, %u images, present mode %d\n",
@@ -939,9 +952,40 @@ static int nvn_vulkan_create_window_surface(nvn_device_state *device, void *nati
     return 1;
 }
 
+typedef struct {
+    nvn_device_state *device;
+    int created;
+} nvn_vulkan_live_create;
+
+static void nvn_vulkan_create_live_callback(void *window, void *opaque) {
+    nvn_vulkan_live_create *request = (nvn_vulkan_live_create *)opaque;
+    uint32_t width = 0, height = 0;
+    void *surface = NULL, *swapchain = NULL;
+    request->created = nvn_vulkan_create_window_surface(request->device, window,
+        &width, &height, &surface, &swapchain);
+}
+
+/* Protect the borrowed platform window until Vulkan acquires its own ref. */
+static int nvn_vulkan_create_current_window_surface(nvn_device_state *device) {
+    nvn_vulkan_live_create request = {device, 0};
+    return nso_host_native_window_use(nvn_vulkan_create_live_callback, &request) && request.created;
+}
+
+static int nvn_vulkan_surface_window_changed(const nvn_vulkan_state *st) {
+    return st->swapchain != VK_NULL_HANDLE &&
+           st->surface_window_generation != nso_host_native_window_generation();
+}
+
 static void nvn_vulkan_destroy_window_surface(nvn_device_state *device, void *surface, void *swapchain) {
     nvn_vulkan_state *st = (nvn_vulkan_state *)device->backend_state;
     if (!st) return;
+    /* A window may still retain handles from before an out-of-date rebuild.
+     * Its later finalize must not destroy them again or clear the live path. */
+    if ((surface && (VkSurfaceKHR)(uintptr_t)surface != st->surface) ||
+        (swapchain && (VkSwapchainKHR)(uintptr_t)swapchain != st->swapchain)) {
+        fprintf(stderr, "[nvn] vulkan: ignored stale surface teardown request\n");
+        return;
+    }
     if (st->device != VK_NULL_HANDLE) {
         vkDeviceWaitIdle(st->device);
     }
@@ -1122,10 +1166,14 @@ static int nvn_vulkan_present_image(nvn_device_state *device, void *image, uint3
         return NVN_PRESENT_SKIPPED; /* Drop frame gracefully while in background */
     }
 
+    /* A replacement may happen entirely between frames, so observing a
+     * non-null window does not mean the existing swapchain belongs to it. */
+    if (nvn_vulkan_surface_window_changed(st)) {
+        nvn_vulkan_destroy_window_surface(device, st->surface, st->swapchain);
+    }
+
     if (!st->present_path_ready || st->swapchain == VK_NULL_HANDLE) {
-        uint32_t w = 0, h = 0;
-        void *surf = NULL, *sc = NULL;
-        if (!nvn_vulkan_create_window_surface(device, cur_win, &w, &h, &surf, &sc)) {
+        if (!nvn_vulkan_create_current_window_surface(device)) {
             usleep(16000);
             return NVN_PRESENT_SKIPPED; /* Wait for valid surface/swapchain */
         }
@@ -1135,12 +1183,7 @@ static int nvn_vulkan_present_image(nvn_device_state *device, void *image, uint3
     result = acquire_completed(st, &index, &acquire_sem);
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_ERROR_SURFACE_LOST_KHR) {
         nvn_vulkan_destroy_window_surface(device, st->surface, st->swapchain);
-        cur_win = nso_host_native_window_get();
-        if (cur_win) {
-            uint32_t w = 0, h = 0;
-            void *surf = NULL, *sc = NULL;
-            nvn_vulkan_create_window_surface(device, cur_win, &w, &h, &surf, &sc);
-        }
+        nvn_vulkan_create_current_window_surface(device);
         usleep(16000);
         return NVN_PRESENT_SKIPPED; /* Frame dropped during swapchain rebuild */
     }

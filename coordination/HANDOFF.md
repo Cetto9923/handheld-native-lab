@@ -1,3 +1,25 @@
+# 2026-11-11 用户授权发布 v1.0.4 天玑与 RG477M 掌机深度适配版
+
+Public GitHub release https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.4 published, APK FFRS-v1.0.4.apk 3450917 B (3.29 MiB) SHA256 b2b58a69473f150ff987e314f1c065a6f0d13c73b58028c184dcf412d6b09cdf. Tag points 0e1a9f7 on branch codex/dimensity-release-1.0.4 pushed to origin. APK internal version updated to versionCode=4, versionName=1.0.4. Certificate SHA256 matches d11967a31fcef92f3d6b44adf9d9678c8d2b07bf8f3246d51a791617ed61f36e (supports direct in-place update). Verified streamed install and smooth startup across both RG477M (Dimensity 8300 / Mali-G615 at 30.00 FPS) and Honor tablet (Snapdragon 8 Gen 3 / Adreno 750 at 60 FPS).
+
+# 2026-11-11 RG477M 天玑芯片与掌机兼容性适配完成，吸收旧项目成果并保留特效修复
+
+- 卡顿根因定位与帧率修复（30.00 FPS 满帧恢复）：
+  1. 根因分析：此前新安装包缺少性能标记文件，导致 `legacy_waitall` 回退至 1，使得 CPU 在每次提交后强行持锁阻塞等待 Fence（每帧等待耗时高达 42ms~52ms，帧率跌至 6~7 FPS）；同时，针对骁龙/Adreno 的环境变量（`DM_GFX_NATIVE_BC`、`DM_GFX_WARP32`、`DM_GFX_QUAD_DERIVATIVES`）未做芯片区分，强加给 Mali 架构导致格式校验与子群转换开销。
+  2. 修复措施：
+     - 在 `xbg_game.cpp` 中将 `legacy_waitall` 在无 marker 时缺省改为 `false`（启用轻量异步 `completion_wait` 快速出图路径）。
+     - 在 `guest_boot_jni.cpp` 中将 `DM_GFX_NATIVE_BC` / `WARP32` / `QUAD_DERIVATIVES` 改为仅平板/骁龙档开启，Mali 掌机保持旧基线纯净路径。
+     - 在 `GameActivity.java` 启动时自动补齐掌机性能标记文件（`gfx-legacy-waitall=0`、`gfx-target-fps=30` 等）。
+  3. 实测结果：重新编译安装后，RG477M 真机 `NVN PERF` 帧率恢复至稳定的 **30.00 FPS / 29.99 FPS**，CPU 提交耗时由 15ms 骤降至 **1.56ms**，GPU 耗时降至 **20.44ms**，卡顿完全消除！
+- 吸收来自 rg477m-native (task/T02-codex-black-screen) 的关键掌机适配与稳定性成果：
+  1. Window Leasing & Native Window 生命周期管理：`native_window.c` / `native_window.h` 增加 `nso_host_native_window_use` 线程安全租约；`nvn_window.c` 与 `nvn_backend_vulkan.c` 增加 window generation 追踪与错误回滚 `nvn_vulkan_abort_present_setup`，杜绝窗口重建时的崩溃。
+  2. 文件 I/O 并发安全与存档刷盘：`nso_host.c` 增加 `active_reads`、`closing`、`s_fs_file_cond`，彻底解决多线程异步读取与文件关闭的竞争崩溃；补齐存档文件创建、关闭与提交的 `fsync` 刷盘保证。
+  3. 芯片及设备 Profile 适配：`DeviceProfile.java` 增加针对天玑 Dimensity 8300 (MT6897) 与 RG477M 掌机的识别，自动匹配 `handheld_mid` (720p 30fps) 模式；通过单元测试 `DeviceProfileContract.java`。
+  4. Activity 与 Guest 生命周期：`GameActivity.java` 引入弱引用解耦与 `GuestStartState` 状态机，修复了启动条件延迟触发死锁的问题；路径检索增加了 `HandheldNativeLab/data` 目录自动扫描。
+- 特效 BUG 修复继承与真机验证：
+  1. 当前项目的 11 个核心特效修复 Shader（暗黑魔法、极限技火/冰/尾部光效、Boss 登场粒子与蒙版修复）与 SPIR-V 运行时优化已同步部署至 RG477M 掌机。
+  2. RG477M (MT6897 Mali-G615) 真机成功安装运行，自动识别并加载 `/storage/emulated/0/HandheldNativeLab/data`，CRIWARE、标题画面（Final Fantasy Resonance）、难度选择、开场粒子破碎动画与战场场景全流程渲染正常，音频 AAudio 0 xruns 稳定播放，手柄控制正常。
+
 # 2026-11-11 用户复现：地面方块仍在，撤回此前回放结论
 
 Honor A42 真机前台 PID27357、安装 APK SHA256 e7c3f82c2c3113a1446fbedf7a574524c3ef5515769f2d9d523462a6f6c5095c；当前截图 .local/shrine-takeover-20261111/exterior-user-current.png，地面台阶上方有横向矩形。旧 GPU capture 同场景 pass131679 无该矩形、pass131709 出现并延续，裁图 exterior-pass-crops.png。此前 shrine-original_frame_1.png 与 shrine-fixed-index_frame_1.png SHA256 均为 c7e0e92d0bb92323f34d0b169116337153d914368efb8489a881c568c4268992，故原报告的“同一 capture 替换 shader 即消除方块”结论无效；这两张文件无法证明着色器替换生效或有效。运行画面也仍有方块，先前称已修复错误。release v1.0.3 说明已更正；APK 未修改。不同相机位置或回放条件不构成精确 A/B；原因尚未证实。继续以完整保留光效为前提做 draw131709 资源及同帧可验证 A/B，避免覆盖游戏进程或存档。

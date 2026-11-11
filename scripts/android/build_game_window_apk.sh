@@ -102,6 +102,7 @@ step javac javac --release 8 -classpath "${FFRS_ANDROID_JAR}" -g -d "${FFRS_PACK
     "${FFRS_APP_JAVA}/GameActivity.java" \
     "${FFRS_APP_JAVA}/RegressionSaveRoot.java" \
     "${FFRS_APP_JAVA}/DeviceProfile.java" \
+    "${FFRS_APP_JAVA}/GuestStartState.java" \
     "${FFRS_APP_JAVA}/GameWindowNative.java" \
     "${FFRS_APP_JAVA}/DisplaySnapshot.java" \
     "${FFRS_APP_JAVA}/NativeDataBundle.java" \

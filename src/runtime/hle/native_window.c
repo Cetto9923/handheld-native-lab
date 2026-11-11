@@ -6,24 +6,39 @@
 #include "native_window.h"
 
 #include <stdatomic.h>
+#include <pthread.h>
 
 #include <time.h>
 
 static _Atomic(void *) g_native_window;
 static _Atomic(uint64_t) g_native_window_generation;
+static pthread_mutex_t g_native_window_use_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void *nso_host_native_window_get(void) {
     return atomic_load_explicit(&g_native_window, memory_order_acquire);
 }
 
 void nso_host_native_window_set(void *window) {
+    pthread_mutex_lock(&g_native_window_use_lock);
     atomic_store_explicit(&g_native_window, window, memory_order_release);
     atomic_fetch_add_explicit(&g_native_window_generation, 1, memory_order_relaxed);
+    pthread_mutex_unlock(&g_native_window_use_lock);
 }
 
 void nso_host_native_window_clear(void) {
+    pthread_mutex_lock(&g_native_window_use_lock);
     atomic_store_explicit(&g_native_window, NULL, memory_order_release);
     atomic_fetch_add_explicit(&g_native_window_generation, 1, memory_order_relaxed);
+    pthread_mutex_unlock(&g_native_window_use_lock);
+}
+
+bool nso_host_native_window_use(void (*fn)(void *, void *), void *context) {
+    if (!fn) return false;
+    pthread_mutex_lock(&g_native_window_use_lock);
+    void *window = atomic_load_explicit(&g_native_window, memory_order_acquire);
+    if (window) fn(window, context);
+    pthread_mutex_unlock(&g_native_window_use_lock);
+    return window != NULL;
 }
 
 uint64_t nso_host_native_window_generation(void) {

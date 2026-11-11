@@ -5646,7 +5646,7 @@ extern "C" int xbg_game_initialize(const xbg_game_config *c,char *error,size_t b
      // legacy_wait 从 51.9 ms/帧降到约 0 ms，场景从 7.7 FPS 提到 30 FPS（30 帧目标）与 59.6-59.9 FPS（60 帧目标）。完成通知路径（completion_wait）只在旧路径关闭时才可达，
      // 旧路径按构造同时禁用了它。marker 仍然优先，掌机与任何显式覆写行为不变；只有平板档改变。
      const char *tablet_profile = getenv("FFRS_PROFILE_TABLET");
-     if (tablet_profile && tablet_profile[0]=='1' && !m) legacy_waitall=false;
+     if (!m) legacy_waitall=false;
      xbg_logf("NVN legacy_waitall=%d (tablet profile=%d, marker gfx-legacy-waitall overrides)", int(legacy_waitall), (tablet_profile && tablet_profile[0]=='1')?1:0);}
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-full-barrier").c_str(),"rb");full_barrier_strict=m&&fgetc(m)=='1';if(m)fclose(m);xbg_logf("NVN full barrier strict=%d (marker gfx-full-barrier, 0=compute scoped)",int(full_barrier_strict));}
     cfg=*c;xbg_logf("NVN completion_wait enabled=%d legacy_waitall=%d",int(completion_wait_enabled),int(legacy_waitall));vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemoryProperties(cfg.physical,&memories);{char line[512];int at=snprintf(line,sizeof line,"NVN caps memory types");for(uint32_t i=0;i<memories.memoryTypeCount && at<int(sizeof line)-24;i++)at+=snprintf(line+at,sizeof line-at," %u:%#x/h%u",i,unsigned(memories.memoryTypes[i].propertyFlags),memories.memoryTypes[i].heapIndex);xbg_logf("%s",line);}

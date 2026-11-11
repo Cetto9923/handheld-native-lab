@@ -21,6 +21,10 @@ void *nso_host_native_window_get(void);
 void nso_host_native_window_set(void *window);
 /* Drops the published window without touching the platform reference. */
 void nso_host_native_window_clear(void);
+/* Invoke fn with the currently published window while publication is locked.
+ * The callback must not call set/clear/use, and must not retain the borrowed
+ * pointer. Returns false without calling fn when no window is published. */
+bool nso_host_native_window_use(void (*fn)(void *window, void *context), void *context);
 /* Counts set/clear transitions so a reader can tell a fresh window from a
  * stale pointer without dereferencing anything. */
 uint64_t nso_host_native_window_generation(void);
