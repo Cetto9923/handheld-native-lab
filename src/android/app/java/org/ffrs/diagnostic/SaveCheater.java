@@ -501,6 +501,35 @@ public final class SaveCheater {
         }
     }
 
+    /** True when the untouched copy of the slot is on disk. */
+    public static boolean hasOriginal(File file) {
+        return file != null && backupFile(file).isFile();
+    }
+
+    /**
+     * The roster as it was before any cheat edit.
+     *
+     * Reads the untouched copy that the first cheat edit left behind. When
+     * that copy is missing the current slot is the best guess there is, and
+     * the message says so instead of pretending the numbers are original.
+     */
+    public static Result original(File file) {
+        if (file == null) {
+            Result empty = new Result();
+            empty.message = "存档文件不存在";
+            return empty;
+        }
+        File backup = backupFile(file);
+        if (backup.isFile()) {
+            Result result = inspect(backup);
+            result.message = "来自原存档备份 " + backup.getName();
+            return result;
+        }
+        Result result = inspect(file);
+        result.message = "没有原存档备份，当前值即原始值";
+        return result;
+    }
+
     /**
      * Puts the backup copy back over the slot.
      *

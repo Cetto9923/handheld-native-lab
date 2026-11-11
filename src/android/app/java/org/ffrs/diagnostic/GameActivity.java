@@ -286,7 +286,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         private final RectF menuBtn = new RectF();
         private final RectF btnReset = new RectF(), btnDone = new RectF();
         private final RectF menuPanel = new RectF();
-        private final RectF[] menuItems = new RectF[7];
+        private final RectF[] menuItems = new RectF[8];
         private int handleId = -1, lsId = -1, rsId = -1, menuId = -1;
         private float u, vw, vh, lsKx, lsKy, rsKx, rsKy;
         private final Ctl[] ctls = new Ctl[13];
@@ -490,7 +490,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 else if (i == 3) owner.quickSave();
                 else if (i == 4) owner.quickLoad();
                 else if (i == 5) enterEdit();
-                else owner.userToggleTouchPad();
+                else if (i == 6) owner.userToggleTouchPad();
+                else owner.startGuestScan();
                 return true;
             }
             return true;
@@ -692,7 +693,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                     "即时存档",        // quick save
                     "即时读档",        // quick load
                     "编辑按键布局",    // layout editor
-                    "隐藏手柄"         // hide the pad
+                    "隐藏手柄",        // hide the pad
+                    "扫描实时数据"     // guest memory scan
             };
             for (int i = 0; i < menuItems.length; i++) {
                 RectF r = menuItems[i];
@@ -869,10 +871,18 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
         final Spinner picker = new Spinner(this);
         final List<SaveCheater.Unit> roster = info.units;
+        // The names come from a table that the guest memory scan produced, so
+        // they can be refreshed without rebuilding the app.
+        final java.util.Map<Integer, String> nameMap = unitNames();
+        final SaveCheater.Result originalInfo = SaveCheater.original(slot);
+        final java.util.Map<Integer, SaveCheater.Unit> originalById = new java.util.HashMap<>();
+        for (SaveCheater.Unit u : originalInfo.units) originalById.put(u.unitId, u);
         String[] names = new String[roster.size()];
         for (int i = 0; i < roster.size(); i++) {
             SaveCheater.Unit u = roster.get(i);
-            names[i] = "单位" + u.unitId + "  HP " + u.hitPoint + "/" + u.maxHitPoint
+            String label = nameMap.get(u.unitId);
+            names[i] = (label != null ? label : "单位" + u.unitId)
+                    + "  HP " + u.hitPoint + "/" + u.maxHitPoint
                     + "  MP " + u.magicPoint + "/" + u.maxMagicPoint
                     + "  EXP " + u.experience;
         }
@@ -895,8 +905,15 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         addCheatField(box, "经验", expField, 0);
         addCheatField(box, "等级", levelField, 1);
 
+        // The values the unit had before any cheat edit.
+        TextView originalView = new TextView(this);
+        originalView.setTextSize(12f);
+        box.addView(originalView);
+
         // Picking a role loads its current values into the fields.
         final CheatFields fields = new CheatFields(this, hpField, maxHpField, mpField, maxMpField, expField, levelField);
+        fields.setOriginalView(originalView);
+        fields.setOriginals(originalById);
         picker.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
                 if (position < 0 || position >= roster.size()) return;
@@ -930,6 +947,11 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         scan.setOnClickListener(new CheatScan(this, slot, roster));
         buttons.addView(scan);
 
+        Button restore = new Button(this);
+        restore.setText("恢复原始数值");
+        restore.setOnClickListener(new CheatRestore(this, slot));
+        buttons.addView(restore);
+
         new android.app.AlertDialog.Builder(this)
                 .setTitle("金手指")
                 .setView(scroll)
@@ -956,6 +978,100 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         }
     }
 
+    /**
+     * Puts the untouched copy of the slot back over the edited one.
+     *
+     * The backup is the copy the first cheat edit left behind, so this undoes
+     * every cheat at once and leaves the save exactly as it was found.
+     */
+    private static final class CheatRestore implements View.OnClickListener {
+        private final GameActivity owner;
+        private final File slot;
+        CheatRestore(GameActivity o, File s) { owner = o; slot = s; }
+        @Override public void onClick(View v) {
+            if (!SaveCheater.hasOriginal(slot)) {
+                owner.toast("没有原存档备份，无法恢复");
+                return;
+            }
+            SaveCheater.Result r = SaveCheater.restore(slot);
+            owner.toast(r.ok ? "已恢复原始数值\n" + r.message : "恢复失败：" + r.message);
+            Log.i(TAG, "cheat restored ok=" + r.ok + " " + r.message);
+        }
+    }
+
+    /**
+     * Harvests the localized strings the guest holds.
+     *
+     * The game keeps its whole text table in memory, including the Chinese
+     * character names it draws on screen. A block that holds Chinese text is
+     * written out in full, so the keys that sit next to the names come with
+     * them.
+     */
+    private static final class StringHarvester implements GuestMemory.ChunkSink {
+        private static final int BLOCK = 64 * 1024;
+        private static final int MAX_LINES = 80000;
+        private final java.io.PrintWriter out;
+        private int lines = 0;
+        private int blocks = 0;
+
+        StringHarvester(File file) throws Exception {
+            out = new java.io.PrintWriter(new java.io.OutputStreamWriter(
+                    new java.io.FileOutputStream(file), "UTF-8"));
+        }
+
+        @Override public void onChunk(long address, byte[] data, int length) {
+            for (int off = 0; off < length; off += BLOCK) {
+                int len = Math.min(BLOCK, length - off);
+                blocks++;
+                if (!hasCjk(data, off, len)) continue;
+                dump(address, data, off, len);
+            }
+        }
+
+        /** True when the block holds a run of three or more Chinese characters. */
+        private boolean hasCjk(byte[] b, int off, int len) {
+            int run = 0;
+            for (int i = off; i + 1 < off + len; i += 2) {
+                int c = (b[i] & 0xff) | ((b[i + 1] & 0xff) << 8);
+                if (c >= 0x4e00 && c <= 0x9fff) { run++; if (run >= 3) return true; }
+                else run = 0;
+            }
+            return false;
+        }
+
+        /** Writes every text run of the block with its address. */
+        private void dump(long base, byte[] b, int off, int len) {
+            int end = off + len;
+            int i = off;
+            while (i + 1 < end && lines < MAX_LINES) {
+                if (!isText((b[i] & 0xff) | ((b[i + 1] & 0xff) << 8))) { i += 2; continue; }
+                int start = i;
+                StringBuilder sb = new StringBuilder();
+                while (i + 1 < end) {
+                    int c = (b[i] & 0xff) | ((b[i + 1] & 0xff) << 8);
+                    if (!isText(c)) break;
+                    sb.append((char) c);
+                    i += 2;
+                    if (sb.length() >= 160) break;
+                }
+                if (sb.length() >= 2) {
+                    out.println(String.format("%012x", base + start) + "\t" + sb);
+                    lines++;
+                }
+            }
+        }
+
+        private static boolean isText(int c) {
+            return c >= 0x20 && c != 0x7f && c != 0xffff && !(c >= 0xd800 && c <= 0xdfff);
+        }
+
+        void close() {
+            out.flush();
+            out.close();
+            Log.i(TAG, "string harvest lines=" + lines + " blocks=" + blocks);
+        }
+    }
+
     /** The memory walk; it must not run on the UI thread. */
     private static final class ScanTask implements Runnable {
         private final GameActivity owner;
@@ -965,6 +1081,16 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
         @Override public void run() {
             Log.i(TAG, "guest scan start");
+            try {
+                scan();
+            } catch (Throwable t) {
+                Log.e(TAG, "guest scan failed", t);
+                owner.toast("扫描失败: " + t);
+            }
+        }
+
+        /** The walk itself; a failure here must not take the app down. */
+        private void scan() {
             StringBuilder sb = new StringBuilder();
             byte[] plain = SaveCheater.plaintext(slot);
             sb.append("slot=").append(slot.getName())
@@ -1013,6 +1139,19 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             } catch (Exception e) {
                 owner.toast("扫描报告写入失败: " + e.getMessage());
                 return;
+            }
+            // The game keeps its whole text table in memory, so the Chinese
+            // character names are in there too. Every block that holds Chinese
+            // text is written out in full, keys included.
+            File strOut = new File(owner.getExternalFilesDir(null), "guest-strings.txt");
+            try {
+                StringHarvester harvester = new StringHarvester(strOut);
+                GuestMemory.walk(harvester);
+                harvester.close();
+                sb.append("== strings -> ").append(strOut.getAbsolutePath()).append('\n');
+                Log.i(TAG, "guest strings: " + strOut.getAbsolutePath());
+            } catch (Exception e) {
+                Log.w(TAG, "string harvest failed: " + e.getMessage());
             }
             owner.toast("扫描完成: " + out.getAbsolutePath());
             Log.i(TAG, "guest scan report: " + out.getAbsolutePath());
@@ -1068,6 +1207,10 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             owner = o; this.hp = hp; this.maxHp = maxHp; this.mp = mp;
             this.maxMp = maxMp; this.exp = exp; this.level = level;
         }
+        private TextView originalView;
+        private java.util.Map<Integer, SaveCheater.Unit> originalById = new java.util.HashMap<>();
+        void setOriginalView(TextView v) { originalView = v; }
+        void setOriginals(java.util.Map<Integer, SaveCheater.Unit> m) { originalById = m; }
         /** Loads the unit's current values into the fields. */
         void fill(SaveCheater.Unit u) {
             hp.setText(String.valueOf(u.hitPoint));
@@ -1076,6 +1219,13 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             maxMp.setText(String.valueOf(u.maxMagicPoint));
             exp.setText(String.valueOf(u.experience));
             level.setText(String.valueOf(u.level));
+            if (originalView == null) return;
+            SaveCheater.Unit o = originalById.get(u.unitId);
+            originalView.setText(o == null
+                    ? "原值: 无记录"
+                    : "原值  HP " + o.hitPoint + "/" + o.maxHitPoint
+                      + "  MP " + o.magicPoint + "/" + o.maxMagicPoint
+                      + "  EXP " + o.experience + "  等级 " + o.level);
         }
         Integer hpValue() { return parseField(hp); }
         Integer maxHpValue() { return parseField(maxHp); }
@@ -1177,6 +1327,55 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         try { return Integer.valueOf(s); } catch (NumberFormatException e) { return null; }
     }
 
+    /**
+     * The character names of the units, when a name table was written.
+     *
+     * The table is a plain text file with one "id<TAB>name" pair per line.
+     * It comes out of the guest memory scan, so the names can be refreshed
+     * without rebuilding the app.
+     */
+    private java.util.Map<Integer, String> unitNames() {
+        java.util.Map<Integer, String> map = new java.util.HashMap<>();
+        try {
+            File dir = getExternalFilesDir(null);
+            if (dir == null) return map;
+            File f = new File(dir, "unit-names.txt");
+            if (!f.isFile()) return map;
+            java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(
+                    new java.io.FileInputStream(f), "UTF-8"));
+            try {
+                String line;
+                while ((line = r.readLine()) != null) {
+                    int tab = line.indexOf('\t');
+                    if (tab <= 0) continue;
+                    try {
+                        int id = Integer.parseInt(line.substring(0, tab).trim());
+                        String name = line.substring(tab + 1).trim();
+                        if (!name.isEmpty()) map.put(id, name);
+                    } catch (NumberFormatException ignored) { }
+                }
+            } finally { r.close(); }
+        } catch (Exception e) {
+            Log.w(TAG, "unit names unreadable: " + e.getMessage());
+        }
+        return map;
+    }
+
+    /**
+     * Runs the guest memory scan from the function menu.
+     *
+     * The scan reads hundreds of megabytes of guest memory, so it runs on its
+     * own thread and the report lands in the app files directory.
+     */
+    void startGuestScan() {
+        File slot = primarySaveSlot();
+        if (slot == null) { toast("找不到存档文件"); return; }
+        SaveCheater.Result info = SaveCheater.inspect(slot);
+        if (!info.ok || info.units.isEmpty()) { toast("存档里没有单位数据"); return; }
+        new Thread(new ScanTask(this, slot, info.units), "ffrs-cheat-scan").start();
+        toast("正在扫描 guest 内存，稍候…");
+    }
+
     /** The save slot the game is currently using. */
     private File primarySaveSlot() {
         File root = liveSaveRoot;
@@ -1220,7 +1419,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             toast("找不到存档目录，请等游戏进入标题画面后再试");
             return;
         }
-        File dest = quickSaveDir();
+        File dest = nextSnapshotDir();
         if (dest == null) {
             toast("无法创建即时存档目录");
             return;
@@ -1231,20 +1430,111 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             if (!f.isFile()) continue;
             if (f.getName().endsWith(".cheat.tmp") || f.getName().endsWith(".orig")) continue;
             try {
-                java.io.InputStream in = new java.io.FileInputStream(f);
-                java.io.FileOutputStream out = new java.io.FileOutputStream(new File(dest, f.getName()));
-                try {
-                    byte[] buf = new byte[65536];
-                    int n;
-                    while ((n = in.read(buf)) > 0) { out.write(buf, 0, n); bytes += n; }
-                } finally { in.close(); out.close(); }
+                copyFile(f, new File(dest, f.getName()));
+                bytes += f.length();
                 count++;
             } catch (Exception e) {
                 Log.w(TAG, "quick save failed for " + f.getName() + ": " + e.getMessage());
             }
         }
-        toast("已即时存档: " + count + " 个文件，" + (bytes / 1024) + " KB\n位置 " + dest.getAbsolutePath());
-        Log.i(TAG, "quick save: " + count + " files " + bytes + " bytes");
+        // The picture of the game at this moment is the thumbnail of the card.
+        captureThumbnail(new File(dest, "thumb.png"));
+        writeText(new File(dest, "meta.txt"), snapshotNote(dest));
+        toast("已即时存档: " + dest.getName() + "（" + count + " 个文件，" + (bytes / 1024) + " KB）");
+        Log.i(TAG, "quick save: " + dest.getName() + " " + count + " files " + bytes + " bytes");
+    }
+
+    /** The folder the next snapshot goes into. */
+    private File nextSnapshotDir() {
+        File dir = quickSaveDir();
+        if (dir == null) return null;
+        int n = 1;
+        File[] kids = dir.listFiles();
+        if (kids != null) {
+            for (File f : kids) {
+                if (!f.isDirectory() || !f.getName().startsWith("save-")) continue;
+                try { n = Math.max(n, Integer.parseInt(f.getName().substring(5)) + 1); }
+                catch (NumberFormatException ignored) { }
+            }
+        }
+        File target = new File(dir, String.format("save-%03d", n));
+        return target.mkdirs() ? target : null;
+    }
+
+    /** The snapshots, oldest first. */
+    private java.util.List<File> snapshots() {
+        java.util.List<File> out = new java.util.ArrayList<>();
+        File dir = quickSaveDir();
+        if (dir == null) return out;
+        File[] kids = dir.listFiles();
+        if (kids == null) return out;
+        java.util.Arrays.sort(kids);
+        for (File f : kids) if (f.isDirectory() && f.getName().startsWith("save-")) out.add(f);
+        return out;
+    }
+
+    /** The note of a snapshot: when it was taken and what the party looked like. */
+    private String snapshotNote(File snap) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("time=").append(timeStamp(snap.lastModified())).append('\n');
+        File slot = primarySaveSlot();
+        if (slot != null) {
+            SaveCheater.Result info = SaveCheater.inspect(slot);
+            if (info.ok) {
+                java.util.Map<Integer, String> names = unitNames();
+                for (SaveCheater.Unit u : info.units) {
+                    String name = names.get(u.unitId);
+                    sb.append("unit ").append(u.unitId);
+                    if (name != null) sb.append(' ').append(name);
+                    sb.append(' ').append(u.hitPoint).append('/').append(u.maxHitPoint)
+                      .append(' ').append(u.magicPoint).append('/').append(u.maxMagicPoint)
+                      .append(' ').append(u.experience).append('\n');
+                }
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Grabs the current frame of the game surface.
+     *
+     * The picture of the game at the moment the save was taken is the only
+     * thumbnail available without the game writing one itself.
+     */
+    private void captureThumbnail(final File dest) {
+        final int w = surface_view.getWidth(), h = surface_view.getHeight();
+        if (w <= 0 || h <= 0) return;
+        final android.graphics.Bitmap shot =
+                android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888);
+        try {
+            android.view.PixelCopy.request(surface_view, shot, new ThumbCopy(dest, shot),
+                    new Handler(Looper.getMainLooper()));
+        } catch (Exception e) {
+            Log.w(TAG, "thumbnail request failed: " + e.getMessage());
+        }
+    }
+
+    /** Writes the grabbed frame into the snapshot folder. */
+    private static final class ThumbCopy implements android.view.PixelCopy.OnPixelCopyFinishedListener {
+        private final File dest;
+        private final android.graphics.Bitmap source;
+        ThumbCopy(File d, android.graphics.Bitmap s) { dest = d; source = s; }
+        @Override public void onPixelCopyFinished(int result) {
+            if (result != android.view.PixelCopy.SUCCESS) {
+                Log.w(TAG, "thumbnail copy failed: " + result);
+                return;
+            }
+            try {
+                java.io.FileOutputStream os = new java.io.FileOutputStream(dest);
+                android.graphics.Bitmap small = android.graphics.Bitmap.createScaledBitmap(
+                        source, 480, 307, true);
+                small.compress(android.graphics.Bitmap.CompressFormat.PNG, 90, os);
+                os.close();
+                small.recycle();
+            } catch (Exception e) {
+                Log.w(TAG, "thumbnail write failed: " + e.getMessage());
+            }
+        }
     }
 
     /**
@@ -1254,30 +1544,168 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
      * up after the save is loaded again in game.
      */
     void quickLoad() {
-        File root = liveSaveRoot;
-        File src = quickSaveDir();
-        if (root == null || src == null || !src.isDirectory()) {
+        openSaveCards();
+    }
+
+    /**
+     * The save cards.
+     *
+     * Every snapshot is a card with the picture of the game at that moment,
+     * the time it was taken and the party that was in the save. Tap a card to
+     * read that save back, long press to throw it away.
+     */
+    void openSaveCards() {
+        final java.util.List<File> snaps = snapshots();
+        if (snaps.isEmpty()) {
             toast("还没有即时存档，先执行一次即时存档");
             return;
         }
-        int count = 0;
-        for (File f : src.listFiles()) {
-            if (!f.isFile()) continue;
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(24, 24, 24, 24);
+        scroll.addView(box);
+        TextView hint = new TextView(this);
+        hint.setText("点卡片读档，长按删除");
+        hint.setTextSize(12f);
+        box.addView(hint);
+        for (File snap : snaps) box.addView(saveCard(snap));
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("即时存档")
+                .setView(scroll)
+                .setPositiveButton("关闭", null)
+                .show();
+    }
+
+    /** One card of the save list. */
+    private View saveCard(final File snap) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(8, 12, 8, 12);
+        android.widget.ImageView shot = new android.widget.ImageView(this);
+        android.graphics.Bitmap bmp = android.graphics.BitmapFactory.decodeFile(
+                new File(snap, "thumb.png").getAbsolutePath());
+        if (bmp != null) shot.setImageBitmap(bmp);
+        row.addView(shot, new LinearLayout.LayoutParams(480, 307));
+        LinearLayout text = new LinearLayout(this);
+        text.setOrientation(LinearLayout.VERTICAL);
+        text.setPadding(24, 0, 0, 0);
+        TextView title = new TextView(this);
+        title.setText(snap.getName() + "  " + timeStamp(snap.lastModified()));
+        title.setTextSize(16f);
+        text.addView(title);
+        TextView note = new TextView(this);
+        note.setText(cardNote(snap));
+        note.setTextSize(12f);
+        text.addView(note);
+        row.addView(text);
+        row.setOnClickListener(new SaveCardClick(this, snap));
+        row.setOnLongClickListener(new SaveCardLongClick(this, snap));
+        return row;
+    }
+
+    /** The party line under the title of a card. */
+    private String cardNote(File snap) {
+        File meta = new File(snap, "meta.txt");
+        if (!meta.isFile()) return "";
+        StringBuilder sb = new StringBuilder();
+        try {
+            java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(
+                    new java.io.FileInputStream(meta), "UTF-8"));
             try {
-                java.io.InputStream in = new java.io.FileInputStream(f);
-                java.io.FileOutputStream out = new java.io.FileOutputStream(new File(root, f.getName()));
-                try {
-                    byte[] buf = new byte[65536];
-                    int n;
-                    while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
-                } finally { in.close(); out.close(); }
-                count++;
-            } catch (Exception e) {
-                Log.w(TAG, "quick load failed for " + f.getName() + ": " + e.getMessage());
+                String line;
+                int shown = 0;
+                while ((line = r.readLine()) != null) {
+                    if (!line.startsWith("unit ")) continue;
+                    if (shown++ >= 6) break;
+                    sb.append(line.substring(5)).append('\n');
+                }
+            } finally { r.close(); }
+        } catch (Exception e) {
+            Log.w(TAG, "snapshot meta unreadable: " + e.getMessage());
+        }
+        return sb.toString().trim();
+    }
+
+    /**
+     * Reads a snapshot back into the game.
+     *
+     * The slots are written back first, so the save on disk is the snapshot.
+     * The running game keeps its own copy of the roster, so the values show
+     * up after the save is loaded again in game.
+     */
+    void loadSnapshot(File snap) {
+        File root = liveSaveRoot;
+        if (root == null) { toast("找不到存档目录"); return; }
+        int count = 0;
+        File[] kids = snap.listFiles();
+        if (kids != null) {
+            for (File f : kids) {
+                if (!f.isFile()) continue;
+                String n = f.getName();
+                if (n.equals("thumb.png") || n.equals("meta.txt")) continue;
+                try { copyFile(f, new File(root, n)); count++; }
+                catch (Exception e) { Log.w(TAG, "quick load failed for " + n + ": " + e.getMessage()); }
             }
         }
-        toast("已即时读档: 写回 " + count + " 个文件\n回标题画面 Load Game 后生效");
-        Log.i(TAG, "quick load: " + count + " files");
+        toast("已读档 " + snap.getName() + ": 写回 " + count + " 个文件\n回标题画面 Load Game 后生效");
+        Log.i(TAG, "quick load: " + snap.getName() + " " + count + " files");
+    }
+
+    /** Reads the snapshot of a card back into the game. */
+    private static final class SaveCardClick implements View.OnClickListener {
+        private final GameActivity owner;
+        private final File snap;
+        SaveCardClick(GameActivity o, File s) { owner = o; snap = s; }
+        @Override public void onClick(View v) { owner.loadSnapshot(snap); }
+    }
+
+    /** Throws a save card away. */
+    private static final class SaveCardLongClick implements View.OnLongClickListener {
+        private final GameActivity owner;
+        private final File snap;
+        SaveCardLongClick(GameActivity o, File s) { owner = o; snap = s; }
+        @Override public boolean onLongClick(View v) {
+            deleteTree(snap);
+            owner.toast("已删除 " + snap.getName());
+            Log.i(TAG, "snapshot deleted: " + snap.getName());
+            return true;
+        }
+    }
+
+    /** Copies one file. */
+    private static void copyFile(File from, File to) throws java.io.IOException {
+        java.io.InputStream in = new java.io.FileInputStream(from);
+        java.io.FileOutputStream out = new java.io.FileOutputStream(to);
+        try {
+            byte[] buf = new byte[65536];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+        } finally { in.close(); out.close(); }
+    }
+
+    /** Removes a folder and everything in it. */
+    private static void deleteTree(File dir) {
+        File[] kids = dir.listFiles();
+        if (kids != null) for (File f : kids) deleteTree(f);
+        dir.delete();
+    }
+
+    /** Writes a text file. */
+    private static void writeText(File file, String text) {
+        try {
+            java.io.FileOutputStream os = new java.io.FileOutputStream(file);
+            os.write(text.getBytes("UTF-8"));
+            os.close();
+        } catch (Exception e) {
+            Log.w(TAG, "text write failed: " + e.getMessage());
+        }
+    }
+
+    /** A time in a form a player can read. */
+    private static String timeStamp(long when) {
+        return new java.text.SimpleDateFormat("MM-dd HH:mm:ss", java.util.Locale.CHINA)
+                .format(new java.util.Date(when));
     }
 
     /** Where the quick save snapshot lives. */

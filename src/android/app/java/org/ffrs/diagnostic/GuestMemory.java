@@ -85,8 +85,7 @@ public final class GuestMemory {
         if (pattern == null || pattern.length == 0) return none;
         long started = System.currentTimeMillis();
         List<Long> hits = new ArrayList<>();
-        final int chunk = 1 << 22;
-        final String needle = latin1(pattern);
+        final int chunk = 1 << 20;
         byte[] buf = new byte[chunk + pattern.length];
         long scanned = 0;
         try (RandomAccessFile mem = new RandomAccessFile("/proc/self/mem", "r")) {
@@ -102,8 +101,7 @@ public final class GuestMemory {
                     } catch (IOException e) { got = -1; }
                     if (got <= 0) break;
                     scanned += got;
-                    String hay = latin1(java.util.Arrays.copyOf(buf, got));
-                    int idx = hay.indexOf(needle);
+                    int idx = indexOf(buf, got, pattern, 0);
                     while (idx >= 0) {
                         hits.add(pos + idx);
                         if (hits.size() >= maxHits) {
@@ -111,7 +109,7 @@ public final class GuestMemory {
                                     + (System.currentTimeMillis() - started));
                             return toArray(hits);
                         }
-                        idx = hay.indexOf(needle, idx + 1);
+                        idx = indexOf(buf, got, pattern, idx + 1);
                     }
                     if (got < want) break;
                     int keep = pattern.length - 1;
@@ -154,10 +152,72 @@ public final class GuestMemory {
         }
     }
 
+    /**
+     * Receives the chunks of a single guest memory walk.
+     *
+     * The scan needs several answers out of one pass over the memory, and the
+     * callback keeps the walk independent of what is being looked for.
+     */
+    public interface ChunkSink {
+        /** Called with the address of the chunk and the bytes that were read. */
+        void onChunk(long address, byte[] data, int length);
+    }
+
+    /**
+     * Walks the resident guest memory once and hands every chunk to the sink.
+     *
+     * One walk is far cheaper than one walk per question: the guest holds
+     * hundreds of megabytes of resident pages.
+     */
+    public static void walk(ChunkSink sink) {
+        if (sink == null) return;
+        final int chunk = 1 << 22;
+        byte[] buf = new byte[chunk];
+        long scanned = 0;
+        long started = System.currentTimeMillis();
+        try (RandomAccessFile mem = new RandomAccessFile("/proc/self/mem", "r")) {
+            for (Region r : regions()) {
+                long pos = r.start;
+                while (pos < r.end) {
+                    int want = (int) Math.min(chunk, r.end - pos);
+                    int got;
+                    try { mem.seek(pos); got = mem.read(buf, 0, want); } catch (IOException e) { got = -1; }
+                    if (got <= 0) break;
+                    scanned += got;
+                    sink.onChunk(pos, buf, got);
+                    if (got < want) break;
+                    pos += got;
+                }
+            }
+        } catch (IOException e) {
+            Log.w(TAG, "mem walk failed: " + e.getMessage());
+        }
+        Log.i(TAG, "walk done scanned=" + (scanned >> 10) + "K ms=" + (System.currentTimeMillis() - started));
+    }
+
     private static long[] toArray(List<Long> v) {
         long[] out = new long[v.size()];
         for (int i = 0; i < out.length; i++) out[i] = v.get(i);
         return out;
+    }
+
+    /**
+     * The first position of the needle in the buffer, or -1.
+     *
+     * The search stays on the bytes: turning a four megabyte chunk into a
+     * string for every needle costs more time than the walk itself.
+     */
+    private static int indexOf(byte[] hay, int len, byte[] needle, int from) {
+        final int n = needle.length;
+        final int last = len - n;
+        final byte first = needle[0];
+        for (int i = from; i <= last; i++) {
+            if (hay[i] != first) continue;
+            int j = 1;
+            while (j < n && hay[i + j] == needle[j]) j++;
+            if (j == n) return i;
+        }
+        return -1;
     }
 
     /** ISO-8859-1 keeps every byte value, so byte patterns stay byte exact. */
