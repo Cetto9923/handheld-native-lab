@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-11-11T04:32:49.669886+08:00",
-  "phase": "Verified archived shader instruction inputs; descriptor metadata difference requires in-game validation",
+  "updated_at": "2026-11-11T11:00:00.000000+08:00",
+  "phase": "Dual-device verified: RG477M locked at 30.00 FPS (stutter fixed), Honor tablet locked at 60.00 FPS (no regressions)",
   "coordinator": "Codex /root shrine takeover",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
