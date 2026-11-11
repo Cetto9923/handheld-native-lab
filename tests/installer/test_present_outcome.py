@@ -53,7 +53,7 @@ int main() {
     def test_actual_engine_adapter_does_not_turn_drop_into_success(self):
         source = (ROOT / 'src/graphics/nvn_device/nvn_engine.c').read_text()
         start = source.index('static int engine_present(')
-        body = source[start:source.index('\nstatic void engine_log', start)]
+        body = source[start:source.index('\nstatic const char *engine_log_default_paths', start)]
         fixture = r'''#include <stdint.h>
 #include <stdio.h>
 #include <assert.h>
