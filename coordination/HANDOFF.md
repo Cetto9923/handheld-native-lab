@@ -1,3 +1,9 @@
+# 2026-11-12 structural world indirect candidate checkpoint
+
+Structural instance-only SPIRV metadata integration and depth-only readiness hostchecked. Two review P1s fixed: raw write descriptor aliases before merge, CPUclean guest snapshot avoids unsubmitted mapped GPUcopy. Latest pending/owned lifecycle unchanged. Build6 next, APK0db386 PID31064 remains live. Actual worldbattle clear ice+fire assault executed, severe firstfire longframes retained, tutorial aftereffect excluded.
+
+No per-scene shader-key addition. Analyzer proves actual storage Buffer atomic writes only word1 atWorkgroupID.axis*5+1 and caches on finalmodule. Actual dispatch dimension providesrowcount, CPUclean snapshot providesotherfourwords, actualGPU preservesinstancecount. Strictunknown/alias/unsupported fallbacks retained.
+
 # 2026-11-12 independent corridor media review
 
 Reviewer verified recorded sustained south motion conservative113new intervals/3.766s about30FPS, max33.727ms. No wall/menu/dialogue/load in chosen middle. Full364video frames and105480CSV rows reviewed. Device executionQA NOT_RUN. Now Mitra town, continue exterior/actual battle.

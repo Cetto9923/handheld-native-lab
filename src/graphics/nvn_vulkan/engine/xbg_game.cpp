@@ -18,6 +18,7 @@ extern "C" int xbg_completion_wait_selftest(char *report,size_t bytes);
 #include "xbg_provenance.h"
 #include "xbg_pipeline_key.h"
 #include "xbg_spirv_integer_buffer.h"
+#include "xbg_spirv_indirect_instances.h"
 #include "xbg_vulkan.h"
 #include "xbg_depth.h"
 #include "xbg_sampler.h"
@@ -619,7 +620,14 @@ struct PendingEvent {uint64_t addr;uint32_t mode,v;const void *slot;};
 std::vector<PendingEvent> pending_events,recording_events;   // recording_events: mode 2, slot not yet submitted
 int defer_events=0;uint64_t events_deferred=0,event_reads=0;
 struct IndirectTemplateBatch {uint64_t address=0,bytes=0;std::vector<XbgIndirectTemplateRow> rows;std::shared_ptr<OwnedIndirectBuffer> owned;};
-struct IndirectTemplateInput {uint32_t params[4]{};bool params_valid=false;std::vector<uint32_t> words;uint64_t address=0,bytes=0;};
+struct IndirectTemplateInput {
+    uint32_t params[4]{};
+    bool params_valid=false,instances_only=false;
+    uint32_t binding=29,axis=2;
+    std::vector<uint32_t> words;
+    std::vector<std::pair<uint64_t,uint64_t>> other_writes;
+    uint64_t address=0,bytes=0;
+};
 bool indirect_proof_enabled=false,indirect_diag_enabled=false,gpu_indexed_enabled=true,texture_lifecycle_enabled=true,clear_overwrite_probe=false,owned_input_copy_enabled=true;uint64_t indirect_proof_checks=0,indirect_proof_mismatches=0,gpu_indexed_draws=0;
 struct GpuIndexedArgs {std::shared_ptr<OwnedIndirectBuffer> owned;VkDeviceSize offset=0;size_t index_bytes=0;};
 // owner denotes an independent allocation, never a view into the slot arena.
@@ -2236,6 +2244,7 @@ bool probe_shader_requested(const std::string &key);
 using IntegerBufferFormats=std::vector<std::pair<uint32_t,uint32_t>>;
 struct Shader {std::string key;std::string identity;
     std::vector<uint32_t> integer_buffer_bindings,float_buffer_bindings,variant_source;
+    std::vector<XbgIndirectInstanceField> indirect_instance_fields;
     std::set<uint32_t> unsupported_integer_buffers;
     std::map<IntegerBufferFormats,std::unique_ptr<Shader>> variants;
     uint32_t stage;VkShaderModule module{};std::vector<xbg_shader_binding> bindings;std::vector<uint32_t> inputs,input_classes,probe_words;std::vector<uint8_t> c1;
@@ -2578,6 +2587,11 @@ Shader *load_shader(const void *control){
     {auto extent=spirv_uniform_extent(words);uint32_t trimmed=0;for(auto &b:p->bindings)if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER && b.source==XBG_SOURCE_UNIFORM){auto e=extent.find(b.binding);uint32_t declared=b.bytes?b.bytes:65536;if(e!=extent.end() && e->second<declared){b.bytes=e->second;++trimmed;}}uniform_trimmed+=trimmed;}
     {bool kill=false;for(size_t i=5;i<words.size();){uint32_t n=words[i]>>16,op=words[i]&0xffff;if(op==252||op==4416||op==5380){kill=true;break;}if(!n)break;i+=n;}p->discards=kill;}
     p->raster=xbg_spirv_raster_facts(words.data(),words.size(),h.stage);
+    if(h.stage==5){
+        xbg_spirv_indirect_instances(words,p->indirect_instance_fields);
+        for(const auto &field:p->indirect_instance_fields)
+            xbg_logf("NVN indirect instance-field shader=%s binding=%u axis=%u",key.c_str(),field.binding,field.axis);
+    }
     {bool unknown=false;p->storage_writes=spirv_storage_writes(words,unknown);if(unknown){for(auto &b:p->bindings)if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)p->storage_writes.insert(b.binding);}}
     if(h.stage==0){p->input_classes.resize(p->inputs.size());need(xbg_vertex_input_classes(words.data(),words.size(),p->inputs.data(),p->inputs.size(),p->input_classes.data())==0,"Unsupported vertex input scalar interface");}
     load_t3=timing_clock();
@@ -2659,6 +2673,7 @@ Shader *integer_buffer_variant(Shader &base){
     variant->key=base.key;variant->identity=identity;variant->stage=base.stage;
     variant->bindings=base.bindings;variant->inputs=base.inputs;variant->input_classes=base.input_classes;
     variant->c1=base.c1;variant->storage_writes=base.storage_writes;variant->discards=base.discards;variant->raster=base.raster;
+    if(base.stage==5)xbg_spirv_indirect_instances(words,variant->indirect_instance_fields);
     variant->probe_words=words;
     VkShaderModuleCreateInfo info{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};info.codeSize=words.size()*4;info.pCode=words.data();
     VK(vkCreateShaderModule(cfg.device,&info,nullptr,&variant->module));
@@ -3137,9 +3152,31 @@ std::shared_ptr<IndirectTemplateBatch> indirect_template_batch(const Descriptors
     for(auto &w:d.written)if(xbg_wb_overlaps(i.address,i.bytes,w.first.first,w.first.second)){
         if(w.first.first!=i.address || w.first.second!=i.bytes || ++matches>1)return {};
     }
-    if(matches!=1 || p.x<=0 || p.y!=1 || p.z!=1)return {};
+    if(matches!=1)return {};
     auto result=std::make_shared<IndirectTemplateBatch>();result->address=i.address;result->bytes=i.bytes;
-    if(!xbg_indirect_templates(result->rows,i.words,i.params,i.address,i.bytes,uint32_t(p.x),uint32_t(p.y),uint32_t(p.z)))return {};
+    if(i.instances_only){
+        // Descriptor ranges are recorded before the normal alias merge/dedup.
+        for(const auto &write:i.other_writes)
+            if(!write.first || !write.second || write.first+write.second<write.first ||
+               xbg_wb_overlaps(i.address,i.bytes,write.first,write.second))return {};
+        const int32_t groups[]={p.x,p.y,p.z};
+        if(i.axis>=3 || groups[i.axis]<=0 || !i.address || (i.address&3) ||
+           i.bytes<20 || i.bytes>65536 || i.address+i.bytes<i.address)return {};
+        const uint32_t rows=uint32_t(groups[i.axis]);
+        if(rows>i.bytes/20 || uint64_t(rows)*5>i.words.size())return {};
+        result->rows.reserve(rows);
+        for(uint32_t row=0;row<rows;++row){
+            const uint32_t *args=i.words.data()+size_t(row)*5;
+            if(args[0]>INT32_MAX || args[2]>INT32_MAX || args[3] || args[4])return {};
+            result->rows.push_back({i.address+uint64_t(row)*20,args[0],args[2]});
+        }
+        static unsigned instance_notes=0;
+        if(instance_notes++<8)xbg_logf("NVN indirect instance metadata binding=%u axis=%u rows=%u address=%#llx bytes=%llu",
+            i.binding,i.axis,rows,(unsigned long long)i.address,(unsigned long long)i.bytes);
+    }else{
+        if(p.x<=0 || p.y!=1 || p.z!=1 ||
+           !xbg_indirect_templates(result->rows,i.words,i.params,i.address,i.bytes,uint32_t(p.x),uint32_t(p.y),uint32_t(p.z)))return {};
+    }
     static unsigned diag_tmpl_log=0;
     if(diag_tmpl_log++<5){
         for(size_t j=0; j<i.words.size()/5; j++){
@@ -3343,7 +3380,19 @@ void texel_evict(unsigned si,bool all){
     if(all || texel_hole_bytes[si]>8ull*1024*1024){for(auto &e:map)vkDestroyBufferView(cfg.device,e.second.view,nullptr);map.clear();texel_arena[si].release();texel_hole_bytes[si]=texel_live_bytes[si]=0;}
 }
 void descriptors(Descriptors &out,Commands &commands,bool compute){
-    out.indirect_input.reset();if(indirect_proof_enabled && compute && state.shader[5] && state.shader[5]->key=="9bee7f09d6c655c3")out.indirect_input=std::make_shared<IndirectTemplateInput>();
+    out.indirect_input.reset();
+    if(indirect_proof_enabled && compute && state.shader[5]){
+        const auto &facts=state.shader[5]->indirect_instance_fields;
+        if(facts.size()==1){
+            out.indirect_input=std::make_shared<IndirectTemplateInput>();
+            out.indirect_input->instances_only=true;
+            out.indirect_input->params_valid=true;
+            out.indirect_input->binding=facts[0].binding;
+            out.indirect_input->axis=facts[0].axis;
+        }else if(state.shader[5]->key=="9bee7f09d6c655c3"){
+            out.indirect_input=std::make_shared<IndirectTemplateInput>();
+        }
+    }
     sampled_rg16_images.clear();storage_rg16_images.clear();
     draw_depth_reads.clear();
     need(!read_preflight || (pending_writebacks.empty() && (defer_query_preflight || pending_reports.empty())),"Unresolved CPU reads at descriptor entry");
@@ -3470,7 +3519,10 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
         key.push_back(b.binding);key.push_back(UBO_DYN(dmode,b)?VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:b.type);key.push_back(b.count);key.push_back(1u<<st);
         if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_BUFFER && (b.source==XBG_SOURCE_STORAGE || b.source==XBG_SOURCE_UNIFORM)){bool written=state.shader[st]->storage_writes.count(b.binding)!=0;for(unsigned i=0;i<b.count;i++){
             need(b.slot+i<16,"Storage descriptor slot out of bounds");auto r=b.source==XBG_SOURCE_STORAGE?state.sb[nvn_stage[st]][b.slot+i]:state.ub[nvn_stage[st]][b.slot+i];
-            need(r.address && r.size && r.size<=properties.limits.maxStorageBufferRange && r.address+r.size>=r.address,"Invalid storage descriptor address/range");ranges.push_back({r.address,r.address+r.size,written});
+            need(r.address && r.size && r.size<=properties.limits.maxStorageBufferRange && r.address+r.size>=r.address,"Invalid storage descriptor address/range");
+            if(written && out.indirect_input && out.indirect_input->instances_only)
+                out.indirect_input->other_writes.push_back({r.address,r.size});
+            ranges.push_back({r.address,r.address+r.size,written});
         }}
     }
     std::sort(ranges.begin(),ranges.end(),[](const Range &a,const Range &b){return a.begin<b.begin;});
@@ -3524,7 +3576,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                 if(write.descriptorType==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC){buffer_infos.push_back({buffer->buffer,0,n});if(desc_memo_recording)desc_memo_dyn.push_back({(uint64_t(b.binding)<<32)|element,buffer->buffer,uint32_t(buffer->offset+buffer_offset),b.source==XBG_SOURCE_UNIFORM,uint8_t(b.source),uint8_t(ns),uint8_t(b.source==XBG_SOURCE_DRIVER0?0:1)});dynamic_list.push_back({(uint64_t(b.binding)<<32)|element,uint32_t(buffer->offset+buffer_offset)});}
                 else buffer_infos.push_back({buffer->buffer,buffer->offset+buffer_offset,n});write.pBufferInfo=&buffer_infos.back();
                 if(capture.active){char label[100];snprintf(label,sizeof(label),"st%u-bind%u-el%u-buffer",st,b.binding,element);capture_log("BUFFER label=%s shader=%s nvnStage=%u sourceKind=%u slot=%u guest=%p copied=%zu descriptorBytes=%zu bufferOffset=%zu",label,shader.key.c_str(),ns,b.source,slot,data,copy,n,buffer_offset);capture_data(label,static_cast<const uint8_t*>(buffer->mapped)+buffer_offset,n);}
-                if(out.indirect_input && b.binding==41 && b.source==XBG_SOURCE_UNIFORM && element==0 && copy>=16 && indirect_cpu_clean(uint64_t(data),16)){memcpy(out.indirect_input->params,static_cast<const uint8_t*>(buffer->mapped)+buffer_offset,16);out.indirect_input->params_valid=true;}
+                if(out.indirect_input && !out.indirect_input->instances_only && b.binding==41 && b.source==XBG_SOURCE_UNIFORM && element==0 && copy>=16 && indirect_cpu_clean(uint64_t(data),16)){memcpy(out.indirect_input->params,static_cast<const uint8_t*>(buffer->mapped)+buffer_offset,16);out.indirect_input->params_valid=true;}
                 probe_buffer(shader.key,st,b.binding,element,static_cast<const uint8_t*>(buffer->mapped)+buffer_offset,n);
                 probe_full_buffer(shader.key,st,b.binding,element,*buffer,buffer->offset+buffer_offset,n,VK_FORMAT_UNDEFINED,is_storage && shader.storage_writes.count(b.binding));
                 if(fire_trace_active())fire_trace_uniform_gpu(shader.key,st,b.binding,element,*buffer,buffer_offset,n);
@@ -3563,6 +3615,10 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                 if(id==0 || (state.texture_pool.n>0 && id>=state.texture_pool.n))record=&null_texture(b);
                 else{PoolKey pk=pool_key(&state.texture_pool);if(!texture_pool_cache || !(pk==texture_pool_cache_key)){auto pool=textures.find(pk);texture_pool_cache=pool==textures.end()?&legacy_textures:&pool->second;texture_pool_cache_key=pk;}auto tex=texture_pool_cache->find(id);if(tex==texture_pool_cache->end())xbg_fatalf("Unregistered texture descriptor id=%d stage=%u slot=%u",id,ns,slot);record=&tex->second;}
                 const auto &registered=*record;const tex_t &texture=registered.texture;
+                if(out.indirect_input && out.indirect_input->instances_only &&
+                   (b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER || b.type==VK_DESCRIPTOR_TYPE_STORAGE_IMAGE) &&
+                   !(b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER && b.binding==out.indirect_input->binding && b.count==1 && element==0))
+                    out.indirect_input->other_writes.push_back({uint64_t(texture.mem),texture.L.size});
                 if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER || b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER){need(texture.d.target==10 && texture.mem && texture.L.size,"Invalid buffer texture");
                     VkFormat tf=texel_view_format(registered);
                     if(probe_is_active())capture_log("PROBE_TEXEL_NATIVE shader=%s stage=%u binding=%u element=%u nvnFormat=%#x nativeVk=%u scalar=%u guest=%#llx bytes=%llu",shader.key.c_str(),st,b.binding,element,texture.d.format,unsigned(tf),(b.flags>>16)&3,(unsigned long long)uintptr_t(texture.mem),(unsigned long long)texture.L.size);
@@ -3733,8 +3789,17 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                     if(fire_trace_active())fire_trace_hist_buffer(shader.key,st,b.binding,element,*buf,buf_offset,size_t(bytes),base,b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER);
                     if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER && fire_trace_active())fire_trace_compute_bind(shader.key,st,b.binding,element,*buf,buf_offset,size_t(bytes),base);
                     if(out.indirect_input && element==0 && tf==VK_FORMAT_R32_UINT){
-                        if(b.binding==11 && b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER && bytes<=65536 && !(bytes&3) && indirect_cpu_clean(base,bytes)){out.indirect_input->words.resize(size_t(bytes/4));memcpy(out.indirect_input->words.data(),static_cast<const uint8_t*>(buf->mapped)+(buf_offset-buf->offset),size_t(bytes));}
-                        if(b.binding==29 && b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER){out.indirect_input->address=base;out.indirect_input->bytes=bytes;}
+                        if(!out.indirect_input->instances_only && b.binding==11 && b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER && bytes<=65536 && !(bytes&3) && indirect_cpu_clean(base,bytes)){out.indirect_input->words.resize(size_t(bytes/4));memcpy(out.indirect_input->words.data(),static_cast<const uint8_t*>(buf->mapped)+(buf_offset-buf->offset),size_t(bytes));}
+                        if(b.binding==out.indirect_input->binding && b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER && b.count==1){
+                            out.indirect_input->address=base;out.indirect_input->bytes=bytes;
+                            if(out.indirect_input->instances_only && bytes<=65536 && !(bytes&3) && indirect_cpu_clean(base,bytes)){
+                                out.indirect_input->words.resize(size_t(bytes/4));
+                                // readback_buffer may defer its upload behind an arena guard.
+                                // The clean guest input is the source of that exact upload.
+                                evguard::EngineRead read(texture.mem,size_t(bytes));
+                                memcpy(out.indirect_input->words.data(),texture.mem,size_t(bytes));
+                            }
+                        }
                     }
                     VkBufferViewCreateInfo v{VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO};v.buffer=buf->buffer;v.offset=buf_offset;v.format=tf;v.range=bytes;VkBufferView bv;{auto &cache=recording_slot().texel_views;std::array<uint64_t,4> key{uint64_t(v.buffer),v.offset,v.range,uint64_t(v.format)};auto f=cache.find(key);if(f!=cache.end())bv=f->second;else{VK(vkCreateBufferView(cfg.device,&v,nullptr,&bv));cache.emplace(key,bv);}}texel_views.push_back(bv);write.pTexelBufferView=&texel_views.back();if(probe_is_active())capture_log("PROBE_TEXEL_BIND shader=%s stage=%u binding=%u element=%u type=%u scalar=%u serial=%llu nvnFormat=%#x vk=%u guest=%#llx bytes=%llu",shader.key.c_str(),st,b.binding,element,unsigned(b.type),(b.flags>>16)&3,(unsigned long long)texture.serial,texture.d.format,unsigned(v.format),(unsigned long long)base,(unsigned long long)bytes);}}
                 else{if(aspect(texture.d.format)!=VK_IMAGE_ASPECT_COLOR_BIT){auto prior=images.find(texture.serial);if(prior==images.end() || (!prior->second->uploaded && !prior->second->gpu_written))xbg_logf("NVN initial depth descriptor shader=%s stage=%u slot=%u id=%d serial=%llu format=%#x",shader.key.c_str(),ns,slot,id,(unsigned long long)texture.serial,texture.d.format);}
@@ -5278,7 +5343,7 @@ struct IndexedInputFailure {const char *why="none";uint32_t stage=UINT32_MAX,bin
 bool indexed_graphics_ready(const p_draw_idx &a,size_t index_bytes,IndexedInputFailure *failure=nullptr){
     auto reject=[&](const char *why,uint32_t st=UINT32_MAX,uint32_t binding=UINT32_MAX,uint64_t address=0,uint64_t bytes=0){if(failure)*failure={why,st,binding,address,bytes};return false;};
     if(read_preflight || capture.active || capture.probe || provenance_file || pass_prof_enabled || draw_detail ||
-       state.rast_discard || state.tf_on || !state.shader[0] || !state.shader[4] || state.shader[1] || state.shader[2] || state.shader[3])return reject("state");
+       state.rast_discard || state.tf_on || !state.shader[0] || (!state.shader[4] && !state.rt.depth) || state.shader[1] || state.shader[2] || state.shader[3])return reject("state");
     if(!indexed_range_ready(a.ibuf,index_bytes,4))return reject("index",0,0,a.ibuf,index_bytes);
     for(auto loc:state.shader[0]->inputs){if(loc>=16)return reject("vertex-location");va_st v;memcpy(&v,&state.attrib[loc],4);if(!v.fmt)continue;if(v.stream>=16)return reject("vertex-stream");auto r=state.vb[v.stream];if(!indexed_range_ready(r.address,r.size,4))return reject("vertex",0,v.stream,r.address,r.size);}
     for(unsigned st=0;st<5;st++)if(state.shader[st]){auto &shader=*state.shader[st];unsigned ns=nvn_stage[st];if(!shader.storage_writes.empty())return reject("storage-write",st);
