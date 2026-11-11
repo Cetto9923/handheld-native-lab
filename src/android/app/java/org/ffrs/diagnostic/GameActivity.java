@@ -38,6 +38,7 @@ import android.os.Environment;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.FrameLayout;
@@ -268,15 +269,29 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             @Override public void run() { pad.onLongPress(); }
         }
 
+        /** Long press on a single control: opens that control's own size/position editor. */
+        private static final class CtlLongPress implements Runnable {
+            private final TouchPad pad;
+            private final int index;
+            CtlLongPress(TouchPad p, int i) { pad = p; index = i; }
+            @Override public void run() { pad.onCtlLongPress(index); }
+        }
+
         private final GameActivity owner;
         boolean shown;
-        private boolean editing, handleLong;
+        private boolean editing, handleLong, menuOpen;
         private float opacity = 1f;
         private int selected = -1, dragMode;                 // dragMode: 1 opacity, 2 size, 3 move
         private float dragDx, dragDy;
         private final RectF handle = new RectF(), panel = new RectF(), opTrack = new RectF(), scTrack = new RectF();
         private final RectF btnReset = new RectF(), btnDone = new RectF();
+        private final RectF menuPanel = new RectF();
+        private final RectF[] menuItems = new RectF[3];
         private int handleId = -1, lsId = -1, rsId = -1;
+        // Per-button long press: which control is being pressed, and how long it has been held.
+        private int pressCtl = -1;
+        private long pressStart;
+        private static final long PRESS_LONG_MS = 500;
         private float u, vw, vh, lsKx, lsKy, rsKx, rsKy;
         private final Ctl[] ctls = new Ctl[13];
         private long pressed;
@@ -284,6 +299,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Runnable longPress = new LongPress(this);
+        private Runnable ctlLongPress;
 
         TouchPad(GameActivity owner) {
             super(owner);
@@ -304,6 +320,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             ctls[10] = new Ctl("DPAD", T_DPAD, -1, 1.6f, 1.6f);
             ctls[11] = new Ctl("LS", T_STICK, -1, 1.9f, 1.9f);
             ctls[12] = new Ctl("RS", T_STICK, -1, 1.5f, 1.5f);
+            for (int i = 0; i < menuItems.length; i++) menuItems[i] = new RectF();
             setFocusable(false);
         }
 
@@ -346,6 +363,12 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             scTrack.set(opTrack.left, panel.top + 4.3f * u - 0.15f * u, opTrack.right, panel.top + 4.3f * u + 0.15f * u);
             btnReset.set(panel.left + 1.0f * u, panel.bottom - 1.7f * u, panel.centerX() - 0.5f * u, panel.bottom - 0.6f * u);
             btnDone.set(panel.centerX() + 0.5f * u, panel.bottom - 1.7f * u, panel.right - 1.0f * u, panel.bottom - 0.6f * u);
+            float mw = Math.min(0.34f * w, 11f * u), mh = 8.4f * u;
+            menuPanel.set(w / 2f - mw / 2f, h / 2f - mh / 2f, w / 2f + mw / 2f, h / 2f + mh / 2f);
+            for (int i = 0; i < menuItems.length; i++) {
+                float iy = menuPanel.top + 1.4f * u + i * 2.2f * u;
+                menuItems[i].set(menuPanel.left + 1.2f * u, iy, menuPanel.right - 1.2f * u, iy + 1.6f * u);
+            }
         }
 
         // ---------------- persistence ----------------
@@ -385,12 +408,38 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             selected = -1; invalidate();
         }
 
-        // ---------------- edit mode ----------------
+        // ---------------- menu mode ----------------
+        /**
+         * Long press on the PAD handle opens the function menu.
+         *
+         * The menu holds the save export, the cheat editor and the layout
+         * editor; the layout editor used to be the long press target itself.
+         */
         void onLongPress() {
             handleLong = true;
             shown = true; clearInput();
-            editing = true; selected = -1;
-            Log.i(TAG, "game_input touch_pad edit=on");
+            menuOpen = true; editing = false; selected = -1;
+            Log.i(TAG, "game_input touch_pad menu=on");
+            invalidate();
+        }
+
+        private void closeMenu() {
+            menuOpen = false;
+            Log.i(TAG, "game_input touch_pad menu=off");
+            invalidate();
+        }
+
+        // ---------------- edit mode ----------------
+        /** Long press on one control: open the layout editor with that control selected. */
+        void onCtlLongPress(int index) {
+            if (index < 0 || index >= ctls.length) return;
+            pressCtl = -1;
+            removeCallbacks(ctlLongPress);
+            clearInput();
+            menuOpen = false;
+            editing = true;
+            selected = index;
+            Log.i(TAG, "game_input touch_pad edit=on ctl=" + ctls[index].name);
             invalidate();
         }
 
@@ -399,6 +448,29 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             saveConfig();
             Log.i(TAG, "game_input touch_pad edit=off opacity=" + opacity);
             invalidate();
+        }
+
+        /**
+         * Touch handling while the function menu is open.
+         *
+         * The three entries are save export, the cheat editor and the layout
+         * editor. A tap outside the panel closes the menu.
+         */
+        private boolean onMenuTouch(MotionEvent e) {
+            int act = e.getActionMasked();
+            if (act != MotionEvent.ACTION_DOWN) return true;
+            float x = e.getX(), y = e.getY();
+            if (!menuPanel.contains(x, y)) { closeMenu(); return true; }
+            for (int i = 0; i < menuItems.length; i++) {
+                if (!menuItems[i].contains(x, y)) continue;
+                menuOpen = false;
+                invalidate();
+                if (i == 0) owner.exportSaves();
+                else if (i == 1) owner.openCheatDialog();
+                else { editing = true; selected = -1; invalidate(); }
+                return true;
+            }
+            return true;
         }
 
         private boolean hit(Ctl c, float x, float y) {
@@ -449,6 +521,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 invalidate();
                 return true;
             }
+            // The function menu swallows every touch while it is open.
+            if (menuOpen) return onMenuTouch(e);
             if ((act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_POINTER_UP) && handleId >= 0 && e.getPointerId(idx) == handleId) {
                 removeCallbacks(longPress);
                 boolean inside = handle.contains(e.getX(idx), e.getY(idx));
@@ -464,9 +538,28 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 Ctl ls = ctls[11], rs = ctls[12];
                 if (lsId < 0 && Math.hypot(x - cxOf(ls), y - cyOf(ls)) < hwOf(ls) * 1.6f) lsId = pid;
                 else if (rsId < 0 && Math.hypot(x - cxOf(rs), y - cyOf(rs)) < hwOf(rs) * 1.6f) rsId = pid;
+                else {
+                    // A long press on a single control opens that control's editor.
+                    for (int i = 0; i < ctls.length; i++) {
+                        if (i == 11 || i == 12) continue;      // the sticks keep their drag behaviour
+                        if (!hit(ctls[i], x, y)) continue;
+                        pressCtl = i;
+                        pressStart = SystemClock.uptimeMillis();
+                        if (ctlLongPress == null) ctlLongPress = new CtlLongPress(this, i);
+                        else ctlLongPress = new CtlLongPress(this, i);
+                        postDelayed(ctlLongPress, PRESS_LONG_MS);
+                        break;
+                    }
+                }
             }
             boolean up = act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_POINTER_UP, cancel = act == MotionEvent.ACTION_CANCEL;
             if (up) { int pid = e.getPointerId(idx); if (pid == lsId) lsId = -1; if (pid == rsId) rsId = -1; }
+            if (up || cancel) {
+                // The long press either already opened the editor (pressCtl cleared)
+                // or was a normal tap, so the pending timer has to go.
+                if (ctlLongPress != null) removeCallbacks(ctlLongPress);
+                if (pressCtl >= 0) pressCtl = -1;
+            }
             long buttons = 0; int lx = 0, ly = 0, rx = 0, ry = 0;
             Ctl ls = ctls[11], rs = ctls[12], dp = ctls[10];
             lsKx = cxOf(ls); lsKy = cyOf(ls); rsKx = cxOf(rs); rsKy = cyOf(rs);
@@ -519,6 +612,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             text.setTextSize(0.65f * u);
             for (int i = 0; i < ctls.length; i++) drawCtl(c, i);
             if (editing) drawPanel(c);
+            if (menuOpen) drawMenu(c);
         }
 
         private void drawCtl(Canvas c, int i) {
@@ -553,6 +647,28 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 else c.drawCircle(cx, cy, hw + 6, line);
                 line.setStrokeWidth(sw); line.setStyle(st);
             }
+        }
+
+        /** The function menu: save export, cheat editor, layout editor. */
+        private void drawMenu(Canvas c) {
+            fill.setColor(0xE0101418); c.drawRoundRect(menuPanel, u * 0.5f, u * 0.5f, fill);
+            line.setColor(0xA0FFFFFF); c.drawRoundRect(menuPanel, u * 0.5f, u * 0.5f, line);
+            text.setTextAlign(Paint.Align.CENTER);
+            text.setColor(0xFFFFFFFF); text.setTextSize(0.52f * u);
+            String[] labels = {
+                    "\u5bfc\u51fa\u5b58\u6863",              // export save
+                    "\u91d1\u6307\u6307",                    // cheat
+                    "\u7f16\u8f91\u6309\u952e\u5e03\u5c40"   // layout editor
+            };
+            for (int i = 0; i < menuItems.length; i++) {
+                RectF r = menuItems[i];
+                fill.setColor(0x40FFFFFF); c.drawRoundRect(r, u * 0.3f, u * 0.3f, fill);
+                line.setColor(0xA0FFFFFF); c.drawRoundRect(r, u * 0.3f, u * 0.3f, line);
+                text.setColor(0xFFFFFFFF); text.setTextSize(0.62f * u);
+                c.drawText(labels[i], r.centerX(), r.centerY() + 0.2f * u, text);
+            }
+            text.setTextSize(0.42f * u); text.setColor(0x90FFFFFF);
+            c.drawText("\u70b9\u51fb\u5176\u4ed6\u5904\u53d6\u6d88", menuPanel.centerX(), menuPanel.bottom - 0.5f * u, text);
         }
 
         private void drawPanel(Canvas c) {
@@ -673,6 +789,174 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     }
 
     /**
+     * Opens the cheat editor.
+     *
+     * The editor rewrites the live save slot in place: it decrypts the
+     * SVHD container, patches the unit roster and the guest/party caps and
+     * writes the file back. The guest keeps running; it reads the edited
+     * values the next time the roster is loaded.
+     */
+    void openCheatDialog() {
+        if (!SaveCheater.available()) {
+            toast("金手指不可用：存档密钥未随包提供");
+            Log.w(TAG, "cheat unavailable: no save key in assets");
+            return;
+        }
+        final File slot = primarySaveSlot();
+        if (slot == null) {
+            toast("找不到存档文件");
+            return;
+        }
+        final SaveCheater.Result info = SaveCheater.inspect(slot);
+        if (!info.ok) {
+            toast("读取存档失败：" + info.message);
+            return;
+        }
+
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(32, 24, 32, 24);
+        scroll.addView(box);
+
+        TextView infoView = new TextView(this);
+        StringBuilder sb = new StringBuilder("存档槽: ").append(slot.getName()).append('\n');
+        sb.append("单位数: ").append(info.units.size()).append('\n');
+        for (SaveCheater.Unit u : info.units) {
+            sb.append("单位").append(u.unitId)
+              .append("  HP ").append(u.hitPoint).append('/').append(u.maxHitPoint)
+              .append("  MP ").append(u.magicPoint).append('/').append(u.maxMagicPoint)
+              .append("  EXP ").append(u.experience).append('\n');
+        }
+        infoView.setText(sb.toString());
+        infoView.setTextSize(13f);
+        box.addView(infoView);
+
+        // One editable field per cheat value.
+        final EditText hpField = new EditText(this);
+        final EditText maxHpField = new EditText(this);
+        final EditText mpField = new EditText(this);
+        final EditText maxMpField = new EditText(this);
+        final EditText expField = new EditText(this);
+        final EditText levelField = new EditText(this);
+        addCheatField(box, "生命值 HP（当前）", hpField, info.units.isEmpty() ? 0 : info.units.get(0).hitPoint);
+        addCheatField(box, "生命上限", maxHpField, info.units.isEmpty() ? 0 : info.units.get(0).maxHitPoint);
+        addCheatField(box, "魔法值 MP（当前）", mpField, info.units.isEmpty() ? 0 : info.units.get(0).magicPoint);
+        addCheatField(box, "魔法上限", maxMpField, info.units.isEmpty() ? 0 : info.units.get(0).maxMagicPoint);
+        addCheatField(box, "经验", expField, info.units.isEmpty() ? 0 : info.units.get(0).experience);
+        addCheatField(box, "等级", levelField, info.units.isEmpty() ? 1 : info.units.get(0).level);
+
+        LinearLayout buttons = new LinearLayout(this);
+        buttons.setOrientation(LinearLayout.HORIZONTAL);
+        box.addView(buttons);
+
+        Button apply = new Button(this);
+        apply.setText("应用");
+        apply.setOnClickListener(new CheatApply(this, slot, hpField, maxHpField, mpField, maxMpField, expField, levelField));
+        buttons.addView(apply);
+
+        Button preset = new Button(this);
+        preset.setText("一键满状态");
+        preset.setOnClickListener(new CheatPreset(this, slot));
+        buttons.addView(preset);
+
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("金手指")
+                .setView(scroll)
+                .setPositiveButton("关闭", null)
+                .show();
+    }
+
+    /**
+     * Named listeners (not anonymous/inner): the dex step of this build setup
+     * trips an internal error on a lambda or an anonymous class that captures
+     * a local variable.
+     */
+    private static final class CheatApply implements View.OnClickListener {
+        private final GameActivity owner;
+        private final File slot;
+        private final EditText hp, maxHp, mp, maxMp, exp, level;
+        CheatApply(GameActivity o, File s, EditText hp, EditText maxHp, EditText mp,
+                   EditText maxMp, EditText exp, EditText level) {
+            owner = o; slot = s; this.hp = hp; this.maxHp = maxHp; this.mp = mp;
+            this.maxMp = maxMp; this.exp = exp; this.level = level;
+        }
+        @Override public void onClick(View v) {
+            Integer hpValue = parseField(hp), maxHpValue = parseField(maxHp);
+            Integer mpValue = parseField(mp), maxMpValue = parseField(maxMp);
+            Integer expValue = parseField(exp), levelValue = parseField(level);
+            if (hpValue == null && maxHpValue == null && mpValue == null
+                    && maxMpValue == null && expValue == null && levelValue == null) {
+                owner.toast("没有填写任何数值");
+                return;
+            }
+            SaveCheater.Result r = SaveCheater.apply(slot, hpValue, maxHpValue, mpValue,
+                    maxMpValue, expValue, levelValue);
+            owner.toast(describeCheat(r));
+            Log.i(TAG, "cheat applied: " + r.message + " " + r.edits);
+        }
+    }
+
+    private static final class CheatPreset implements View.OnClickListener {
+        private final GameActivity owner;
+        private final File slot;
+        CheatPreset(GameActivity o, File s) { owner = o; slot = s; }
+        @Override public void onClick(View v) {
+            SaveCheater.Result r = SaveCheater.apply(slot, 99999, 99999, 999, 999, 9999999, 99);
+            owner.toast(describeCheat(r));
+            Log.i(TAG, "cheat preset applied: " + r.message + " " + r.edits);
+        }
+    }
+
+    /** Renders a cheat result as one message: summary line plus every change. */
+    private static String describeCheat(SaveCheater.Result r) {
+        StringBuilder msg = new StringBuilder(r.message);
+        for (String e : r.edits) msg.append('\n').append(e);
+        return msg.toString();
+    }
+
+    /** Adds a labelled numeric input to the cheat dialog. */
+    private void addCheatField(LinearLayout box, String label, EditText field, int initial) {
+        TextView caption = new TextView(this);
+        caption.setText(label);
+        caption.setTextSize(13f);
+        box.addView(caption);
+        field.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_FLAG_SIGNED);
+        if (initial > 0) field.setText(String.valueOf(initial));
+        box.addView(field);
+    }
+
+    /** Parses an optional integer; an empty or invalid field means "leave alone". */
+    private static Integer parseField(EditText field) {
+        String s = field.getText().toString().trim();
+        if (s.isEmpty()) return null;
+        try { return Integer.valueOf(s); } catch (NumberFormatException e) { return null; }
+    }
+
+    /** The save slot the game is currently using. */
+    private File primarySaveSlot() {
+        File root = liveSaveRoot;
+        if (root == null) return null;
+        File slot = new File(root, "GameSaveData0");
+        return slot.exists() ? slot : null;
+    }
+
+    /** Shows a short message without stealing the game focus. */
+    void toast(final String message) {
+        new Handler(Looper.getMainLooper()).post(new ToastTask(this, message));
+    }
+
+    /** Named task: the dex step of this build setup trips on an anonymous class that captures a local. */
+    private static final class ToastTask implements Runnable {
+        private final GameActivity owner;
+        private final String message;
+        ToastTask(GameActivity o, String m) { owner = o; message = m; }
+        @Override public void run() {
+            android.widget.Toast.makeText(owner, message, android.widget.Toast.LENGTH_LONG).show();
+        }
+    }
+
+    /**
      * Copies the guest saves into the public Download collection.
      *
      * The runtime keeps the save directory private, so the platform file
@@ -771,7 +1055,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         writeMarkerIfMissing(new File(dir, "gfx-readback-cached"), "1\n");
         writeMarkerIfMissing(new File(dir, "gfx-target-fps"), (selectedDeviceProfile != null ? selectedDeviceProfile.targetFps : 30) + "\n");
         writeMarkerIfMissing(new File(dir, "gfx-depth-aspect"), "1\n");
-        writeMarkerIfMissing(new File(dir, "gfx-async-pipelines"), "0\n");
+        writeMarkerIfMissing(new File(dir, "gfx-async-pipelines"), "1\n");
         writeMarkerIfMissing(new File(dir, "gfx-fence-spin-us"), "0\n");
         writeMarkerIfMissing(new File(dir, "gfx-audio-paced-transport"), "1\n");
         writeMarkerIfMissing(new File(dir, "gfx-codex-audio-dump"), "0\n");
