@@ -462,7 +462,8 @@ public final class SaveCheater {
         result.ok = true;
         if (result.edits.isEmpty()) result.message = "没有需要修改的数值";
         else result.message = "已修改 " + result.edits.size() + " 项"
-                + (result.backupCreated ? "（已备份原存档，可用菜单还原）" : "");
+                + (result.backupCreated ? "（已备份原存档，可用菜单还原）" : "")
+                + "\n回标题画面 Load Game 重新读档后生效";
         return result;
     }
 
@@ -628,6 +629,37 @@ public final class SaveCheater {
             }
         }
         result.edits.add("单位" + u.unitId + " 等级 未找到可写字段（已跳过）");
+    }
+
+    /**
+     * The decrypted save body, or null when the slot is missing or its digest
+     * does not match. The guest memory scan uses it to look for the live copy.
+     */
+    public static byte[] plaintext(File file) {
+        byte[] key = key();
+        if (key == null || file == null || !file.exists()) return null;
+        byte[] raw;
+        InputStream in = null;
+        try {
+            in = new FileInputStream(file);
+            raw = readAll(in);
+        } catch (IOException e) {
+            return null;
+        } finally {
+            close(in);
+        }
+        if (raw.length < HEADER_LEN || raw[0] != MAGIC[0] || raw[1] != MAGIC[1]
+                || raw[2] != MAGIC[2] || raw[3] != MAGIC[3]) return null;
+        byte[] digest = new byte[20];
+        System.arraycopy(raw, 8, digest, 0, 20);
+        byte[] body = new byte[raw.length - HEADER_LEN];
+        System.arraycopy(raw, HEADER_LEN, body, 0, body.length);
+        if (!sha1(body).equals(bytesToHex(digest))) return null;
+        try {
+            return aes(key, body, true);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** Read the current unit roster without changing anything. */

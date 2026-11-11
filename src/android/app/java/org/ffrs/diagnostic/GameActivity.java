@@ -878,11 +878,98 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         all.setOnClickListener(new CheatAll(this, slot));
         buttons.addView(all);
 
+        Button scan = new Button(this);
+        scan.setText("扫描实时数据");
+        scan.setOnClickListener(new CheatScan(this, slot, roster));
+        buttons.addView(scan);
+
         new android.app.AlertDialog.Builder(this)
                 .setTitle("金手指")
                 .setView(scroll)
                 .setPositiveButton("关闭", null)
                 .show();
+    }
+
+    /**
+     * Looks for the live unit values in the guest memory.
+     *
+     * Editing the save file only changes what the next load reads; the running
+     * game keeps its own copy. This walks the guest memory and reports the
+     * neighbourhood of every unit id so the live layout can be recognised, and
+     * whether the serialized roster blob is in memory as well.
+     */
+    private static final class CheatScan implements View.OnClickListener {
+        private final GameActivity owner;
+        private final File slot;
+        private final List<SaveCheater.Unit> roster;
+        CheatScan(GameActivity o, File s, List<SaveCheater.Unit> r) { owner = o; slot = s; roster = r; }
+        @Override public void onClick(View v) {
+            new Thread(new ScanTask(owner, slot, roster), "ffrs-cheat-scan").start();
+            owner.toast("正在扫描 guest 内存，稍候…");
+        }
+    }
+
+    /** The memory walk; it must not run on the UI thread. */
+    private static final class ScanTask implements Runnable {
+        private final GameActivity owner;
+        private final File slot;
+        private final List<SaveCheater.Unit> roster;
+        ScanTask(GameActivity o, File s, List<SaveCheater.Unit> r) { owner = o; slot = s; roster = r; }
+
+        @Override public void run() {
+            Log.i(TAG, "guest scan start");
+            StringBuilder sb = new StringBuilder();
+            byte[] plain = SaveCheater.plaintext(slot);
+            sb.append("slot=").append(slot.getName())
+              .append(" plain=").append(plain == null ? "null" : Integer.toString(plain.length)).append('\n');
+            if (plain != null && !roster.isEmpty() && roster.get(0).hitPointOffset > 16) {
+                // Does the guest keep the serialized roster blob in memory?
+                int at = roster.get(0).hitPointOffset - 16;
+                byte[] frag = new byte[32];
+                System.arraycopy(plain, at, frag, 0, 32);
+                long[] blobHits = GuestMemory.find(frag, 8);
+                sb.append("== roster blob fragment at plain+").append(at).append(" hits=").append(blobHits.length).append('\n');
+                for (long h : blobHits) sb.append("  blob @").append(hex(h)).append('\n');
+            }
+            for (SaveCheater.Unit u : roster) {
+                byte[] id = int32(u.unitId);
+                long[] hits = GuestMemory.find(id, 12);
+                sb.append("== unit ").append(u.unitId).append(" id hits=").append(hits.length)
+                  .append(" (file: hp=").append(u.hitPoint).append(" mp=").append(u.magicPoint)
+                  .append(" exp=").append(u.experience).append(')').append('\n');
+                for (long h : hits) {
+                    byte[] ctx = GuestMemory.peek(h - 32, 96);
+                    sb.append("  hit @").append(hex(h)).append('\n');
+                    if (ctx != null) sb.append("    ints:").append(ints(ctx)).append('\n');
+                }
+            }
+            File out = new File(owner.getExternalFilesDir(null), "guest-unit-scan.txt");
+            try {
+                java.io.FileOutputStream os = new java.io.FileOutputStream(out);
+                os.write(sb.toString().getBytes("UTF-8"));
+                os.close();
+            } catch (Exception e) {
+                owner.toast("扫描报告写入失败: " + e.getMessage());
+                return;
+            }
+            owner.toast("扫描完成: " + out.getAbsolutePath());
+            Log.i(TAG, "guest scan report: " + out.getAbsolutePath());
+        }
+
+        private static byte[] int32(int v) {
+            return new byte[]{(byte) (v & 0xff), (byte) ((v >> 8) & 0xff),
+                    (byte) ((v >> 16) & 0xff), (byte) ((v >> 24) & 0xff)};
+        }
+        private static String hex(long v) { return String.format("0x%016x", v); }
+        /** The bytes as little endian int32 values. */
+        private static String ints(byte[] b) {
+            StringBuilder s = new StringBuilder();
+            for (int i = 0; i + 4 <= b.length; i += 4) {
+                int v = (b[i] & 0xff) | ((b[i + 1] & 0xff) << 8) | ((b[i + 2] & 0xff) << 16) | ((b[i + 3] & 0xff) << 24);
+                s.append(' ').append(v);
+            }
+            return s.toString();
+        }
     }
 
     /**
