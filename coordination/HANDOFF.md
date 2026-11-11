@@ -1,3 +1,7 @@
+# 2026-11-12 independent corridor media review
+
+Reviewer verified recorded sustained south motion conservative113new intervals/3.766s about30FPS, max33.727ms. No wall/menu/dialogue/load in chosen middle. Full364video frames and105480CSV rows reviewed. Device executionQA NOT_RUN. Now Mitra town, continue exterior/actual battle.
+
 # 2026-11-12 actual field progression checkpoint
 
 PID31064 current APK0db386. Completed equip tutorial via normalUI and traversed cave to inn to Mitra town. New full-stick south recording has raw CLOCK_MONOTONIC overlay matching frame CSV, first4s movement review pending. Earlier29.7757 dialogue and mixed30.0007 remain excluded. Continue exterior/battle/transition regression, no overall30PASS.
