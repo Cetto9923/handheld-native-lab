@@ -260,6 +260,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
      * On-screen pad drawn over the SurfaceView. Emits the same button bits as buttonBit().
      * Tap the small PAD handle to show/hide; long-press it to edit: drag a control to move it,
      * tap it then use the size slider, drag the opacity slider, Reset / Done. Saved in files/touch-pad.cfg.
+     * The function menu (export / cheat / quick save / layout) has its own
+     * small button next to the PAD handle, so it stays one tap away.
      */
     private static final class TouchPad extends View {
         private static final int T_BTN = 0, T_STICK = 1, T_DPAD = 2;
@@ -281,10 +283,11 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         private int selected = -1, dragMode;                 // dragMode: 1 opacity, 2 size, 3 move
         private float dragDx, dragDy;
         private final RectF handle = new RectF(), panel = new RectF(), opTrack = new RectF(), scTrack = new RectF();
+        private final RectF menuBtn = new RectF();
         private final RectF btnReset = new RectF(), btnDone = new RectF();
         private final RectF menuPanel = new RectF();
         private final RectF[] menuItems = new RectF[7];
-        private int handleId = -1, lsId = -1, rsId = -1;
+        private int handleId = -1, lsId = -1, rsId = -1, menuId = -1;
         private float u, vw, vh, lsKx, lsKy, rsKx, rsKy;
         private final Ctl[] ctls = new Ctl[13];
         private long pressed;
@@ -349,6 +352,10 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             defaults();
             loadConfig();
             handle.set(w / 2f - 0.8f * u, 0.05f * u, w / 2f + 0.8f * u, 0.6f * u);
+            // The function menu keeps its own button next to the PAD handle,
+            // so it stays one tap away and the long press stays free for the
+            // layout editor.
+            menuBtn.set(w / 2f + 1.1f * u, 0.05f * u, w / 2f + 2.5f * u, 0.6f * u);
             float pw = Math.min(0.46f * w, 18f * u), ph = 7.2f * u;
             panel.set(w / 2f - pw / 2f, h / 2f - ph / 2f, w / 2f + pw / 2f, h / 2f + ph / 2f);
             opTrack.set(panel.left + 4.2f * u, panel.top + 2.6f * u - 0.15f * u, panel.right - 1.0f * u, panel.top + 2.6f * u + 0.15f * u);
@@ -408,15 +415,25 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
         // ---------------- menu mode ----------------
         /**
-         * Long press on the PAD handle opens the function menu.
+         * Long press on the PAD handle opens the layout editor.
          *
-         * The menu holds the save export, the cheat editor and the layout
-         * editor; the layout editor used to be the long press target itself.
+         * The long press used to open the function menu, which pushed the
+         * editor onto a second tap and made a tap turn into an edit instead
+         * of a plain show/hide. The editor is the deliberate gesture now:
+         * tap shows or hides the pad, long press edits the layout.
+         *
+         * The function menu stays reachable through the small button next to
+         * the handle.
          */
         void onLongPress() {
             handleLong = true;
+            enterEdit();
+        }
+
+        /** Opens the function menu from its own button. */
+        private void openMenu() {
             shown = true; clearInput();
-            menuOpen = true; editing = false; selected = -1;
+            menuOpen = true;
             Log.i(TAG, "game_input touch_pad menu=on");
             invalidate();
         }
@@ -436,6 +453,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
          */
         void enterEdit() {
             shown = true; editing = true; selected = -1; dragMode = 0;
+            menuOpen = false;
             clearInput();
             Log.i(TAG, "game_input touch_pad edit=on");
             invalidate();
@@ -462,6 +480,9 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             for (int i = 0; i < menuItems.length; i++) {
                 if (!menuItems[i].contains(x, y)) continue;
                 menuOpen = false;
+                // The menu is raised from inside the editor, so leave the
+                // editor before the action runs and keep the pad usable.
+                if (editing) exitEdit();
                 invalidate();
                 if (i == 0) owner.exportSaves();
                 else if (i == 1) owner.openCheatDialog();
@@ -516,6 +537,22 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         // ---------------- touch ----------------
         @Override public boolean onTouchEvent(MotionEvent e) {
             int act = e.getActionMasked(), idx = e.getActionIndex();
+            // The function menu swallows every touch while it is open, so a
+            // tap outside it closes the menu instead of reaching the handle.
+            if (menuOpen) return onMenuTouch(e);
+            if ((act == MotionEvent.ACTION_DOWN || act == MotionEvent.ACTION_POINTER_DOWN)
+                    && menuId < 0 && menuBtn.contains(e.getX(idx), e.getY(idx))) {
+                menuId = e.getPointerId(idx);
+                invalidate();
+                return true;
+            }
+            if ((act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_POINTER_UP || act == MotionEvent.ACTION_CANCEL)
+                    && menuId >= 0 && e.getPointerId(idx) == menuId) {
+                menuId = -1;
+                if (act != MotionEvent.ACTION_CANCEL) openMenu();
+                invalidate();
+                return true;
+            }
             if ((act == MotionEvent.ACTION_DOWN || act == MotionEvent.ACTION_POINTER_DOWN)
                     && handleId < 0 && handle.contains(e.getX(idx), e.getY(idx))) {
                 handleId = e.getPointerId(idx); handleLong = false;
@@ -523,19 +560,16 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 invalidate();
                 return true;
             }
-            // The function menu swallows every touch while it is open.
-            if (menuOpen) return onMenuTouch(e);
             if ((act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_POINTER_UP) && handleId >= 0 && e.getPointerId(idx) == handleId) {
                 removeCallbacks(longPress);
                 boolean inside = handle.contains(e.getX(idx), e.getY(idx));
                 handleId = -1;
                 if (!handleLong && inside) {
-                    // Tap the handle: bring the pad back when it is hidden,
-                    // otherwise toggle the layout editor. The function menu
-                    // stays on the long press.
-                    if (!shown) owner.userToggleTouchPad();
-                    else if (editing) exitEdit();
-                    else enterEdit();
+                    // Tap the handle: show the pad when it is hidden, hide it
+                    // when it is shown. A tap never opens the editor, so it
+                    // cannot interrupt a fight by accident.
+                    if (editing) exitEdit();
+                    else owner.userToggleTouchPad();
                 }
                 invalidate();
                 return true;
@@ -598,6 +632,12 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             c.drawRoundRect(handle, handle.height() / 3f, handle.height() / 3f, fill);
             c.drawRoundRect(handle, handle.height() / 3f, handle.height() / 3f, line);
             c.drawText(editing ? "OK" : (shown ? "PAD -" : "PAD +"), handle.centerX(), handle.centerY() + text.getTextSize() / 3f, text);
+            // Function menu button, always visible so the menu is reachable
+            // even while the pad itself is hidden.
+            fill.setColor(menuOpen ? 0x50FFFFFF : 0x20FFFFFF);
+            c.drawRoundRect(menuBtn, menuBtn.height() / 3f, menuBtn.height() / 3f, fill);
+            c.drawRoundRect(menuBtn, menuBtn.height() / 3f, menuBtn.height() / 3f, line);
+            c.drawText("≡", menuBtn.centerX(), menuBtn.centerY() + text.getTextSize() / 3f, text);
             if (!shown) return;
             text.setTextSize(0.65f * u);
             for (int i = 0; i < ctls.length; i++) drawCtl(c, i);
