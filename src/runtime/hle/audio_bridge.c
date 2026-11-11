@@ -288,11 +288,11 @@ static void *audio_transport_worker(void *argument) {
     while(!out->closing){
         while(!out->closing){
             uint32_t have=ffrs_audio_fifo_size(&out->fifo);
-            if(!atomic_load(&out->state) || !have){
+            if(!atomic_load(&out->device_changed) && (!atomic_load(&out->state) || !have)){
                 if(!out->backend_started)out->warmup_deadline_ns=0;
                 pthread_cond_wait(&out->condition,&out->mutex);continue;
             }
-            if(!out->backend_started && have<out->warmup_frames){
+            if(!atomic_load(&out->device_changed) && !out->backend_started && have<out->warmup_frames){
                 uint64_t now=audio_now_ns();
                 if(!out->warmup_deadline_ns)
                     out->warmup_deadline_ns=now+(uint64_t)out->warmup_frames*1000000000ull/(uint32_t)out->rate;
@@ -304,10 +304,14 @@ static void *audio_transport_worker(void *argument) {
             break;
         }
         if(out->closing)break;
-        /* Only this worker reopens a paced stream. Stream getters and stop use
-         * this same mutex, so none can race the old stream's destruction. */
+        /* Reopen outside the mutex. A device-change callback only
+         * needs the mutex to wake this worker, not to wait out AAudio. */
         if(atomic_exchange(&out->device_changed,0) || !out->stream){
-            out->backend_started=0;open_aaudio_stream(out);
+            out->backend_started=0;
+            pthread_mutex_unlock(&out->mutex);
+            open_aaudio_stream(out);
+            pthread_mutex_lock(&out->mutex);
+            if(out->closing)break;
         }
         if(out->stream && !out->backend_started){
             if(AAudioStream_requestStart(out->stream)==AAUDIO_OK)out->backend_started=1;
@@ -336,7 +340,11 @@ static void *audio_transport_worker(void *argument) {
         }else if(atomic_load(&out->state)){
             out->stats.errors++;
             fprintf(stderr,"[audio] paced write error=%d; retaining FIFO and reopening\n",(int)wrote);
-            out->backend_started=0;open_aaudio_stream(out);
+            out->backend_started=0;
+            pthread_mutex_unlock(&out->mutex);
+            open_aaudio_stream(out);
+            pthread_mutex_lock(&out->mutex);
+            if(out->closing)break;
         }
         pthread_cond_broadcast(&out->condition);
         if(wrote<=0 && atomic_load(&out->state)){
