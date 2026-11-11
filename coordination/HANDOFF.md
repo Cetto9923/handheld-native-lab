@@ -1,3 +1,7 @@
+# 2026-11-12 bounded cache scheduling candidate
+
+Build8current24336 M2 stilllearningactualskills. Exact8variantidentitiesalreadyinoldlist;42compute newlylearned. Latestsourceprioritizesmostrecentlylearnedrecords beforesupplementalseed, addsretained/deniedbudget/peak +M2identitydenials. 3sanitizerspassed actualbudgetassertions. Sourcecandidatewithpositive-nodecache readybuild9, notinstalled. Fullfire recordingstilltoberepeatedproperly; nofirstfireFPSfrominvalid7attempt.
+
 # 2026-11-12 build8 live, lookup candidate reviewed
 
 Build8 SHA958c installedverifiedPID24336 mode2. Warm1293/0fail;125exactequal0mismatch. 42compute newlylearned,8variantsalreadyinoldrecipesbutretainedwordsmissing; budget/orderdiagnosispending. Validbuild7denseice18.187FPSmax201.642ms,firstfireINVALID missedrecord. New20linepositiveRegisteredTexture lookupcandidate1028sanitizercases+indepreview+syntaxpassed, notinstalled. Rootlearningactualbattlecurrentbuild8.

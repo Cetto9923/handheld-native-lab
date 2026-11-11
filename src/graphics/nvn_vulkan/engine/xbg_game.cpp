@@ -683,7 +683,7 @@ namespace wtrack{extern uint64_t copied_bytes,dirty_pages,mismatches,fallbacks;}
 constexpr unsigned kMaxSlots=16;
 extern std::atomic<uint64_t> memo_epoch;extern uint64_t key_diff[14];extern uint64_t memo_bump[5];extern uint64_t xmemo_hits,xmemo_drops;struct PinRef{VkDescriptorSetLayout layout;uint32_t refs;};extern std::unordered_map<VkDescriptorSet,PinRef> memo_pinned[kMaxSlots];
 extern uint64_t memo_front_hits;extern uint64_t desc_memo_hits,desc_memo_misses,desc_memo_why[6],desc_ns[6],noload_passes,img_cache_hits,img_cache_misses,noload_why[8],binds_skipped,set_binds,set_bind_offsets,set_binds_offsets_only,offset_changes[10],offset_changed_at[32];
-namespace warm{extern uint64_t hits,creates,create_ns,create_max_ns,compute_hits,compute_creates,compute_create_ns,compute_create_max_ns;extern std::atomic<uint64_t> built,failed,build_ns,async_built,async_skips,compiled;extern bool async_on;void flush();void register_module(VkShaderModule m,const std::string &key);
+namespace warm{extern uint64_t hits,creates,create_ns,create_max_ns,compute_hits,compute_creates,compute_create_ns,compute_create_max_ns;extern std::atomic<uint64_t> built,failed,build_ns,async_built,async_skips,compiled,rewritten_retained,rewritten_denied_budget,rewritten_peak_bytes;extern bool async_on;void flush();void register_module(VkShaderModule m,const std::string &key);
     extern bool keep_rewritten;bool take_rewritten(const std::string &key,const std::vector<uint32_t> &input,std::vector<uint32_t> &out);void reject_reuse();}
 // 长帧日志的读数（nvn_vk.c 把它们接到 hle_nvn.c 的 mtl_create_* / mtl_pkg_stats / mtl_upload_* / mtl_gpu_ms）：自启动起的累计，图形线程写、
 // 游戏线程读。只算帧里同步做的：管线现建（预热和后台建的不算）、着色器载入（读文件、SPIR-V 改写、建模块）、贴图整份上传（含解交错与 BC 解码）。
@@ -1290,6 +1290,7 @@ void perf_frame(){
     }
     xbg_logf("NVN PERF integer_texture_lookup ab=%u hits=%llu misses=%llu",unsigned(ab_frame_on),(unsigned long long)integer_texture_lookup_hits,(unsigned long long)integer_texture_lookup_misses);
     integer_texture_lookup_hits=integer_texture_lookup_misses=0;
+    if(shader_reuse)xbg_logf("NVN PERF shader_reuse_cache retained=%llu denied_budget=%llu peak_bytes=%llu",(unsigned long long)warm::rewritten_retained.load(),(unsigned long long)warm::rewritten_denied_budget.load(),(unsigned long long)warm::rewritten_peak_bytes.load());
     if(shaders_reused || shader_reuse_mismatches){xbg_logf("NVN PERF shader_reuse window reused=%llu mismatches=%llu",(unsigned long long)shaders_reused,(unsigned long long)shader_reuse_mismatches);shaders_reused=shader_reuse_mismatches=0;}
     if(wb_skip){xbg_logf("NVN PERF wbskip ab=%d skipped=%.1f (%.2fMB)",int(ab_frame_on),wb_skipped/f,wb_skipped_bytes/1048576.0/f);wb_skipped=wb_skipped_bytes=0;}
     if(pipe_memo){xbg_logf("NVN PERF pipememo ab=%d hits=%.1f misses=%.1f",int(ab_frame_on),pipe_memo_hits/f,pipe_memo_misses/f);pipe_memo_hits=pipe_memo_misses=0;}
@@ -2884,13 +2885,20 @@ struct RewrittenShader {std::vector<uint32_t> input,output;};
 std::unordered_map<std::string,RewrittenShader> rewritten;
 constexpr size_t rewritten_limit=64u*1024u*1024u;
 size_t rewritten_bytes=0;
+std::atomic<uint64_t> rewritten_retained{0},rewritten_denied_budget{0},rewritten_peak_bytes{0};
 void reject_reuse(){std::lock_guard<std::mutex> lock(mu);reuse_rejected=true;}
 void retain_rewritten(const std::string &key,std::vector<uint32_t> input,const std::vector<uint32_t> &output){
     const size_t bytes=(input.size()+output.size())*sizeof(uint32_t);
     std::lock_guard<std::mutex> lock(mu);
-    if(reuse_rejected || rewritten.count(key) || bytes>rewritten_limit-rewritten_bytes)return;
+    if(reuse_rejected || rewritten.count(key))return;
+    if(bytes>rewritten_limit-rewritten_bytes){
+        ++rewritten_denied_budget;
+        if(shader_reuse==2)xbg_logf("NVN shader reuse cache-budget identity=%s used_bytes=%zu request_bytes=%zu limit_bytes=%zu",key.c_str(),rewritten_bytes,bytes,rewritten_limit);
+        return;
+    }
     rewritten.emplace(key,RewrittenShader{std::move(input),output});
-    rewritten_bytes+=bytes;
+    rewritten_bytes+=bytes;++rewritten_retained;
+    rewritten_peak_bytes.store(std::max(rewritten_peak_bytes.load(),uint64_t(rewritten_bytes)));
 }
 bool take_rewritten(const std::string &key,const std::vector<uint32_t> &input,std::vector<uint32_t> &out){
     std::lock_guard<std::mutex> lock(mu);
@@ -3123,6 +3131,9 @@ void start(){
         xbg_logf("NVN warm list loaded path=%s bytes=%ld added=%zu",path.c_str(),n,added);
     };
     load_records(list_path());
+    // Prioritize the most recently learned records within the bounded word
+    // cache. Supplemental seeds remain available after the learned work.
+    std::reverse(recs.begin(),recs.end());
     load_records(std::string(cfg.shader_directory)+"/vk-pipeline-list.seed");
     if(const char *seed_env=getenv("FFRS_WARM_LIST_SEED")){if(strcmp(seed_env,list_path().c_str())!=0)load_records(seed_env);}
     xbg_logf("NVN warm list=%zu enabled=%d",recs.size(),int(enabled));
