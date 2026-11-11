@@ -1,3 +1,26 @@
+# 2026-11-11 v1.0.5 稳定基线锁定（全员破防闪退根治、虚拟手柄布局优化、快速存取档、双端同步）
+
+- **基线版本信息**：
+  - **Git 提交**：[`b548cdf3c1945de1a7975c49353a34d58988c68c`](file:///Users/yuyan9923/GitHub/ff-resonance-honor-gtpro)
+  - **Git 标签**：`v1.0.5-stable-baseline`
+  - **分支**：[`task/T-honor-shrine-20261111`](file:///Users/yuyan9923/GitHub/ff-resonance-honor-gtpro)
+  - **APK 产物**：`.local/android-apk/FFRS-v1.0.5-stable-baseline.apk`
+  - **APK SHA256**：`54d1e04281dfbf20831d17aa897736b30b1fb8c7387a2c7c9604dc114dafdd63`
+  - **版本号**：versionCode 5, versionName "1.0.5"
+
+- **核心包含内容**：
+  1. **FullBreak 战斗必崩根治**：
+     - `Arena::make()` / `alloc()` 与 `readback_buffer()` 增加 `mapped` 空指针防御，杜绝零地址解引用崩溃；
+     - `cpu_access(why=8)` 支持在线拷贝，禁止当前未决槽提前提交退役；
+     - `create_graphics_pipeline_resilient` / `create_compute_pipeline_resilient` 捕获 Adreno 驱动 -13 报错，转为安全跳过，防止致命 abort 中断游戏。
+  2. **虚拟按键人机工程优化**：
+     - XYAB 按键半径从 0.75u 缩至 0.60u，中心十字间距从 1.25u 增至 1.45u，彻底消除相邻按键几何重叠误触。
+  3. **存档还原与快速存取（QuickSave / QuickLoad）**：
+     - 实装 `SaveRestorer.java`，支持从 Download 目录备份列表一键还原存档；
+     - 虚拟手柄菜单实装“快速存盘”与“快速读盘”，方便测试随时回滚状态。
+  4. **代码与分支整洁**：
+     - 45 个无用历史临时分支与残留 worktree 已彻底清理，仅保留主干 `work/rg477m-native` 与当前开发分支。
+
 # 2026-11-11 土之神殿外地面小方块 BUG 根治与双机实机验证 PASS（帧率提升至锁定 60 FPS）
 
 - **BUG 现象与根因定位**：
