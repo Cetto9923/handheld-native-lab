@@ -987,7 +987,10 @@ static void nvn_vulkan_destroy_window_surface(nvn_device_state *device, void *su
         return;
     }
     if (st->device != VK_NULL_HANDLE) {
-        vkDeviceWaitIdle(st->device);
+        VkResult idle = vkDeviceWaitIdle(st->device);
+        if (idle != VK_SUCCESS) {
+            fprintf(stderr, "[nvn] vulkan: vkDeviceWaitIdle returned %d during surface teardown\n", (int)idle);
+        }
     }
     /* The present path is given back before the swapchain and the surface
      * it belongs to. */
@@ -1201,7 +1204,20 @@ static int nvn_vulkan_present_image(nvn_device_state *device, void *image, uint3
         return NVN_PRESENT_FAILED;
     }
 
-    if (crop && crop[2] > 0 && crop[3] > 0) {
+    if (crop && crop[2] > 0 && crop[3] > 0 && width > 0 && height > 0) {
+        int32_t x0 = crop[0] < 0 ? 0 : crop[0];
+        int32_t y0 = crop[1] < 0 ? 0 : crop[1];
+        int32_t x1 = crop[0] + crop[2];
+        int32_t y1 = crop[1] + crop[3];
+        if (x1 > (int32_t)width) x1 = (int32_t)width;
+        if (y1 > (int32_t)height) y1 = (int32_t)height;
+        if (x1 > x0 && y1 > y0) {
+            source_x = x0;
+            source_y = y0;
+            source_w = (double)(x1 - x0);
+            source_h = (double)(y1 - y0);
+        }
+    } else if (crop && crop[2] > 0 && crop[3] > 0) {
         source_x = crop[0];
         source_y = crop[1];
         source_w = (double)crop[2];
