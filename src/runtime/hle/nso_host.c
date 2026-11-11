@@ -23,6 +23,7 @@ extern int ffrs_multiwait_event_waiting(void *) __attribute__((weak));
 #include <time.h>
 #include <sys/time.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <sched.h>
 #include <inttypes.h>
 #include <unistd.h>
@@ -2768,6 +2769,7 @@ struct nso_event_entry {
     bool initialized;
     uint32_t waiters;
     uint32_t users;
+    bool dying;                  /* Finalize is waiting to free this entry. */
     struct nso_event_entry *next;
 };
 
@@ -2784,6 +2786,7 @@ static inline size_t event_hash(const void *obj) {
     return (size_t)(k & EVENT_HASH_MASK);
 }
 static pthread_mutex_t s_event_registry_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t s_event_release_cond = PTHREAD_COND_INITIALIZER;
 static struct nso_event_entry *s_event_buckets[EVENT_HASH_SIZE];
 
 static struct nso_event_entry *find_event_locked(void *object) {
@@ -2830,7 +2833,14 @@ static void release_event(struct nso_event_entry *e) {
     if (!e) return;
     pthread_mutex_lock(&s_event_registry_mutex);
     if (e->users > 0) e->users--;
+    if (e->users == 0) pthread_cond_broadcast(&s_event_release_cond);
     pthread_mutex_unlock(&s_event_registry_mutex);
+}
+
+/* Called with the entry mutex held. The last waiter wakes Finalize. */
+static void event_waiter_leave(struct nso_event_entry *e) {
+    if (e->waiters > 0) e->waiters--;
+    if (e->dying && e->waiters == 0) pthread_cond_signal(&e->cond);
 }
 
 void nso_host_os_initialize_event(void *event, bool initially_signaled, int32_t clear_mode) {
@@ -2904,19 +2914,31 @@ void nso_host_os_finalize_event(void *event) {
     while (*slot && (*slot)->object != event) {
         slot = &(*slot)->next;
     }
-    if (*slot) {
-        struct nso_event_entry *e = *slot;
-        *slot = e->next;
-        pthread_mutex_lock(&e->mutex);
-        e->initialized = false;
-        pthread_cond_broadcast(&e->cond);
-        pthread_mutex_unlock(&e->mutex);
-        pthread_cond_destroy(&e->cond);
-        pthread_mutex_destroy(&e->mutex);
-        free(e);
+    struct nso_event_entry *e = *slot;
+    if (!e) {
+        ((uint8_t *)event)[0x13] = 0;
+        pthread_mutex_unlock(&s_event_registry_mutex);
+        fprintf(stderr, "[hle] nn::os::FinalizeEvent: event=%p (no entry)\n", event);
+        return;
     }
-    /* Clear guest initialized state */
+    *slot = e->next;
+    e->dying = true;
     ((uint8_t *)event)[0x13] = 0;
+    pthread_mutex_unlock(&s_event_registry_mutex);
+
+    /* Drop the registry lock before waiting. Waiters leave through
+     * release_event, which needs that lock. */
+    pthread_mutex_lock(&e->mutex);
+    e->initialized = false;
+    pthread_cond_broadcast(&e->cond);
+    while (e->waiters) pthread_cond_wait(&e->cond, &e->mutex);
+    pthread_mutex_unlock(&e->mutex);
+
+    pthread_mutex_lock(&s_event_registry_mutex);
+    while (e->users) pthread_cond_wait(&s_event_release_cond, &s_event_registry_mutex);
+    pthread_cond_destroy(&e->cond);
+    pthread_mutex_destroy(&e->mutex);
+    free(e);
     pthread_mutex_unlock(&s_event_registry_mutex);
 
     fprintf(stderr, "[hle] nn::os::FinalizeEvent: event=%p\n", event);
@@ -2941,9 +2963,10 @@ void nso_host_os_signal_event(void *event) {
     if(ffrs_multiwait_notify_event)ffrs_multiwait_notify_event(event);
     else if(ffrs_multiwait_notify)ffrs_multiwait_notify();
 
-    static int signal_log_count = 0;
-    if (++signal_log_count <= 10 || (signal_log_count & 1023) == 0) {
-        fprintf(stderr, "[hle] nn::os::SignalEvent: event=%p (count=%d)\n", event, signal_log_count);
+    static atomic_int signal_log_count;
+    int signal_count = atomic_fetch_add(&signal_log_count, 1) + 1;
+    if (signal_count <= 10 || (signal_count & 1023) == 0) {
+        fprintf(stderr, "[hle] nn::os::SignalEvent: event=%p (count=%d)\n", event, signal_count);
     }
 }
 
@@ -2957,9 +2980,10 @@ void nso_host_os_clear_event(void *event) {
     pthread_mutex_unlock(&e->mutex);
     release_event(e);
 
-    static int clear_log_count = 0;
-    if (++clear_log_count <= 10 || (clear_log_count & 1023) == 0) {
-        fprintf(stderr, "[hle] nn::os::ClearEvent: event=%p (count=%d)\n", event, clear_log_count);
+    static atomic_int clear_log_count;
+    int clear_count = atomic_fetch_add(&clear_log_count, 1) + 1;
+    if (clear_count <= 10 || (clear_count & 1023) == 0) {
+        fprintf(stderr, "[hle] nn::os::ClearEvent: event=%p (count=%d)\n", event, clear_count);
     }
 }
 
@@ -2971,7 +2995,7 @@ void nso_host_os_wait_event(void *event) {
     while (!e->signaled && e->initialized) {
         e->waiters++;
         pthread_cond_wait(&e->cond, &e->mutex);
-        e->waiters--;
+        event_waiter_leave(e);
     }
     if (e->clear_mode == NN_OS_EVENT_CLEAR_MODE_AUTO) {
         e->signaled = false;
@@ -2980,9 +3004,10 @@ void nso_host_os_wait_event(void *event) {
     pthread_mutex_unlock(&e->mutex);
     release_event(e);
 
-    static int wait_log_count = 0;
-    if (++wait_log_count <= 10 || (wait_log_count & 1023) == 0) {
-        fprintf(stderr, "[hle] nn::os::WaitEvent: event=%p satisfied (count=%d)\n", event, wait_log_count);
+    static atomic_int wait_log_count;
+    int wait_count = atomic_fetch_add(&wait_log_count, 1) + 1;
+    if (wait_count <= 10 || (wait_count & 1023) == 0) {
+        fprintf(stderr, "[hle] nn::os::WaitEvent: event=%p satisfied (count=%d)\n", event, wait_count);
     }
 }
 
@@ -3009,10 +3034,11 @@ bool nso_host_os_timed_wait_event(void *event, int64_t timeout_ns) {
     struct nso_event_entry *e = borrow_event(event);
     if (!e) return false;
 
-    static int s_timed_wait_count = 0;
-    if (++s_timed_wait_count <= 20 || (s_timed_wait_count & 1023) == 0) {
+    static atomic_int s_timed_wait_count;
+    int timed_count = atomic_fetch_add(&s_timed_wait_count, 1) + 1;
+    if (timed_count <= 20 || (timed_count & 1023) == 0) {
         fprintf(stderr, "[hle] TimedWaitEvent: count=%d event=%p timeout_ns=%" PRId64 "\n",
-                s_timed_wait_count, event, timeout_ns);
+                timed_count, event, timeout_ns);
     }
 
     struct timespec deadline;
@@ -3034,7 +3060,7 @@ bool nso_host_os_timed_wait_event(void *event, int64_t timeout_ns) {
     while (!e->signaled && e->initialized) {
         e->waiters++;
         int rc = pthread_cond_timedwait(&e->cond, &e->mutex, &deadline);
-        e->waiters--;
+        event_waiter_leave(e);
         if (rc != 0) {
             if (rc != ETIMEDOUT) {
                 fprintf(stderr, "[hle] TimedWaitEvent: pthread_cond_timedwait error rc=%d\n", rc);
