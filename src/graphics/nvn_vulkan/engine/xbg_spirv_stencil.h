@@ -388,8 +388,11 @@ inline int xbg_spirv_ffrs_stencil(std::vector<uint32_t> &words,uint32_t stage,co
     // Earth Shrine reflection/light lists: frame1358/draw131709 binds B64 as
     // R16_UINT, while the translated shader fetches float then bitcasts to an
     // integer light index. Binding numbers are local to each shader, so restrict
-    // this repair to the captured bundle and retain its native R16 view/range.
-    if(stage==4 && key && !std::strcmp(key,"97ae64dbc5e7ff26")){
+    // this repair to the captured bundles and retain their native R16 view/range.
+    // 63a540158580d1d5: live Pad frame47807/group97 also binds B64 R16_UINT
+    // and introduces rectangular ground lighting after the clean group94.
+    if(stage==4 && key && (!std::strcmp(key,"97ae64dbc5e7ff26") ||
+                           !std::strcmp(key,"63a540158580d1d5"))){
         int n=xbg_spirv_shrine_lighting_fetch(words,64);return n==2?n:-1;
     }
     if((stage==5 || stage==0) && key){

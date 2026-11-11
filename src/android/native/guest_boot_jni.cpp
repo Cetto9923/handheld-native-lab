@@ -116,6 +116,9 @@ void* GuestThreadMain(void* opaque) {
     if (!request->romfs.empty()) {
         setenv("NN_FS_ROM_PATH", request->romfs.c_str(), 1);
     }
+    // Keep periodic per-scope clock sampling opt-in on Android.
+    // Explicit environment settings and gfx-perf-sample still override this default.
+    setenv("DM_GFX_PERF_SAMPLE", "0", 0);
     setenv("DM_GFX_COMPLETION_WAIT", "1", 1);
     setenv("DM_GFX_WB_SKIP", "1", 1);
     setenv("DM_GFX_NOLOAD", "1", 1);
