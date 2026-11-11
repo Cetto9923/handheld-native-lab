@@ -1,7 +1,7 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-11T22:27:38.354280+08:00
-阶段：Dual-device verified: Earth Shrine block artifact resolved, Honor tablet locked at 59.77 FPS, RG477M locked at 29.96 FPS with 822 pre-warmed pipelines
+状态事件时间：2026-11-12T01:32:30.872912+08:00
+阶段：Honor Pad stationary character-foot blocks reproduced by user, preserve live scene PID20700; battle stutter unresolved
 总控：Codex /root shrine takeover
 更新方式：按事件更新，没有后台自动刷新。
 
@@ -111,6 +111,7 @@
 | P-OPT-RG477M-30hz-game-mode | coordinator-intake | in_progress | Codex /root | 无 | 无额外门禁 | task/T02-codex-black-screen |
 | P-INSTALL-ONEFOLDER-20261030 | Android installer and native lifecycle coordinator | in_progress | Codex /root | 无 | 无额外门禁 | task/T02-codex-black-screen |
 | HONOR-SHRINE-OOM-20261111 | coordinator/graphics | in_progress | Codex /root | 无 | 无额外门禁 | task/T-honor-shrine-20261111 |
+| HONOR-MOTION-BLOCKS-20261112 | coordinator/graphics | in_progress | Codex /root | 无 | 无额外门禁 | task/T-honor-shrine-20261111 |
 
 ## 独占写入
 
@@ -197,6 +198,7 @@
 - {"task": "HONOR-SHRINE-OOM-20261111", "owner": "Codex /root", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", ".local/shrine-takeover-20261111/", "coordination/results/HONOR-SHRINE-OOM-20261111.md", "src/graphics/nvn_vulkan/engine/xbg_spirv_stencil.h", "tests/device/test_reflection_uint_fetch.cpp", "tests/device/reflection_uint_fetch.spvasm"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-honor-shrine-20261111", "acquired_at": "2026-11-11T01:31:38.119199+08:00", "checkpoint": "User outdoor squares reproduced e7 APK PID27357; old original/fixed replay PNG identical, prior causal claim withdrawn; examine draw131709, no valid fix yet", "write_state": "RELEASED_SUPERSEDED", "released_at": "2026-11-11T19:12:51.875440+08:00", "release_reason": "2026-11-11 baseline freeze at df3e108: recorded branch/worktree is not the live tree, and the working tree was clean. Released so a new writer can be registered without pretending the old session is still editing."}
 - {"task": "BASELINE-FREEZE-20261111", "owner": "baseline freeze (no feature writer)", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", "src/android/app/java/org/ffrs/diagnostic/GameActivity.java", "src/android/app/java/org/ffrs/diagnostic/SaveCheater.java", "src/android/app/java/org/ffrs/diagnostic/GuestMemory.java", "src/android/app/java/org/ffrs/diagnostic/UnitNames.java", "scripts/android/build_game_window_apk.sh", "src/android/app/gamewindow/AndroidManifest.xml"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-honor-shrine-20261111", "acquired_at": "2026-11-11T19:12:51.875440+08:00", "checkpoint": "df3e108", "objective": "Frozen at the recorded baseline. No feature edits until one new writer is registered for a single path.", "write_state": "FROZEN"}
 - {"task": "T-STABILITY-20261111", "owner": "Cursor stability worktree", "paths": ["tests/", "scripts/verify_host.py", "src/runtime/hle/nso_host.c", "src/runtime/hle/nso_host.h", "src/graphics/nvn_device/nvn_engine.c", "src/graphics/nvn_device/nvn_backend_vulkan.c", "src/runtime/hle/audio_bridge.c"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/stability-20261111", "branch": "task/T-stability-20261111", "acquired_at": "2026-11-11T19:12:51.875440+08:00", "checkpoint": "58901a8", "objective": "Host-testable stability fixes are committed on task/T-stability-20261111 at 58901a8. Do not edit xbg_game.cpp or the Java UI. Do not delete this worktree. Device checks for the save sync and the paced audio reopen are NOT_RUN.", "write_state": "ACTIVE"}
+- {"task": "HONOR-MOTION-BLOCKS-20261112", "owner": "Codex /root motion investigation", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", "src/graphics/nvn_vulkan/engine/xbg_spirv_stencil.h", ".local/honor-motion-20261112/", "coordination/results/HONOR-MOTION-BLOCKS-20261112.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-honor-shrine-20261111", "acquired_at": "2026-11-12T01:08:27.178041+08:00", "checkpoint": "63d3652 clean; stability worktree preserved", "write_state": "ACTIVE"}
 
 ## 阻塞
 

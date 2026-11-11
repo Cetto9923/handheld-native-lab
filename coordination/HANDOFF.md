@@ -1,3 +1,15 @@
+# 2026-11-12 correction, preserve stationary artifact scene
+
+User now confirms deaa9b3 candidate still has moving ring blocks and stationary rectangles below character. Earlier user-confirmed clear is limited and superseded. PID20700 A42 Pad remains live. No input/restart/scene transition until current evidence captured and diagnosis ready. Raw .local/honor-motion-20261112/user-stopped-blocks.png and feet-crop.png, screenshot visibly has ground light/dark rectangular patches below/right of character. Battlefield action420newframes22.34FPS P9581.07ms max230.37ms, no30PASS. Stop north-wall movement, next route right per minimap/user. Prior 14 unverified shaders altered by broad B64 rewrite include unrelated2D/3D images, while 21ee/63a5 are Buffer2fetch variants potentially needing equivalent repair. No GPU cause yet proven.
+
+# 2026-11-12 motion fix and combat checkpoint
+
+deaa9b3 scopes integer rewrite to captured shader97ae. Installed APK36739797 PID20700 on A42 ROD2-W69 Pad. User confirms grid gone in current scene. Actual move baseline29.57FPS P9538.94ms max66.97ms. Candidate first movement29.08FPS, warmed next movement23.47FPS max818.85ms, includes potential traversal load. Two cavalry combat now reached, next scene still pending. One observed pipeline create127ms does not explain all slow windows. Legacy synthetic test fails before change, actual capture sh1871 ASan/UBSan + spirv-val passed. Ordinary engine logs append previous sessions, filter using current frame/time. See .local/honor-motion-20261112/checkpoint.json and evidence. Stability worktree untouched, no independent QA/audio acceptance.
+
+# 2026-11-12 movement artifact investigation
+
+Root owns HONOR-MOTION-BLOCKS-20261112 on clean 63d3652, actual installed 1.0.8 PID17545. Only A42 device. Stability worktree remains untouched. Capture baseline before modifications.
+
 # 2026-11-11 Honor 基线与设备上正在跑的包对齐
 
 - 本地标签 `baseline-honor-20261111` 指向 `df3e108`。没有推送。旧标签 `v1.0.5-stable-baseline` 仍指向 `05e4930`，那不是设备上的包。

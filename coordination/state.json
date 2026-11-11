@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-11T22:27:38.354280+08:00",
- "phase": "Dual-device verified: Earth Shrine block artifact resolved, Honor tablet locked at 59.77 FPS, RG477M locked at 29.96 FPS with 822 pre-warmed pipelines",
+ "updated_at": "2026-11-12T01:32:30.872912+08:00",
+ "phase": "Honor Pad stationary character-foot blocks reproduced by user, preserve live scene PID20700; battle stutter unresolved",
  "coordinator": "Codex /root shrine takeover",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -1616,6 +1616,21 @@
    "acquired_at": "2026-11-11T19:12:51.875440+08:00",
    "checkpoint": "58901a8",
    "objective": "Host-testable stability fixes are committed on task/T-stability-20261111 at 58901a8. Do not edit xbg_game.cpp or the Java UI. Do not delete this worktree. Device checks for the save sync and the paced audio reopen are NOT_RUN.",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "HONOR-MOTION-BLOCKS-20261112",
+   "owner": "Codex /root motion investigation",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_stencil.h",
+    ".local/honor-motion-20261112/",
+    "coordination/results/HONOR-MOTION-BLOCKS-20261112.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-honor-shrine-20261111",
+   "acquired_at": "2026-11-12T01:08:27.178041+08:00",
+   "checkpoint": "63d3652 clean; stability worktree preserved",
    "write_state": "ACTIVE"
   }
  ],
@@ -4226,6 +4241,30 @@
    "acceptance": "Same scene enters and survives on Honor A42 with bounded GPU memory; no skipped shader/draw; independent QA NOT_RUN unless actually run",
    "recovery_point": "21d270e + saved cursor-wip.patch, preserve all existing data",
    "checkpoint": "Verified component shader inputs against actual Honor /sdcard/FFRS/shaders.hnla exact archive slices, read-only; primary app shaders files absent for targets and /sdcard/FFRS/main.nso + archive exist, but actual runtime source logging not established. b673 archive full XGS SHA c0d359da... matches local loose. 876 archive XGS SHA42221625... differs from local loose5809b105... by exactly 2 metadata bytes (before byte672); embedded SPIR-V is byte-identical SHA39f00c14... to component input. Thus ARM64 SPIR-V component test covers archived instruction bytes, NOT descriptor metadata equivalence or in-game shader behavior. Evidence prewarm-host/device-archive-targets.json and 876dd-version-diff.json, archive slice retained .local. No other app interaction or installation; device mode2 still required."
+  },
+  {
+   "id": "HONOR-MOTION-BLOCKS-20261112",
+   "role": "coordinator/graphics",
+   "owner": "Codex /root",
+   "status": "in_progress",
+   "goal": "Reproduce movement grid artifacts and achieve true 30 FPS on Honor without save/data loss",
+   "inputs": [
+    "installed 1.0.8 PID17545",
+    "63d3652",
+    "prior shrine lighting and indirect sync fixes"
+   ],
+   "outputs": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_stencil.h",
+    ".local/honor-motion-20261112/",
+    "coordination/results/HONOR-MOTION-BLOCKS-20261112.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "acceptance": "Actual movement screenshots/video, distinct-frame CPU/GPU metrics cold/warm, visual+audio regression; independent QA NOT_RUN",
+   "recovery_point": "63d3652 clean, install-r only, do not clear data",
+   "branch": "task/T-honor-shrine-20261111",
+   "checkpoint": "deaa9b3 installed APK36739797 PID20700. Artifact and combat30 remain unresolved. Current stationary foot-block screenshot/crop captured. Preserve scene, no input/restart. Exact device63a5/21ee Buffer B64 static transforms validate, no causal rendering. Report coordination/results/HONOR-MOTION-BLOCKS-20261112.md."
   }
  ],
  "blockers": [
