@@ -1996,8 +1996,8 @@ void cpu_access(uint64_t address,uint64_t bytes,unsigned why){
             }
         }
     }
-    if(why==3 || why==5 || why==8){
-        // Storage/texel descriptor preparation and indirect argument decoding cannot resolve_pending (which submits/retires the recording slot).
+    if(why==3 || why==8){
+        // Storage/texel descriptor preparation cannot resolve_pending (which submits/retires the recording slot).
         // Instead, copy any overlapping pending writebacks from mapped GPU buffers to host memory in place.
         for(auto &w:pending_writebacks){
             if(xbg_wb_overlaps(address,bytes,w.addr,w.bytes)){
