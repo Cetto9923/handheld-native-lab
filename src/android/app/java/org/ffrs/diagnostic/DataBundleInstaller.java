@@ -33,6 +33,9 @@ public final class DataBundleInstaller implements Runnable {
     public volatile long done, total;
     public volatile File root;
     private volatile boolean cancel;
+    // Main-thread only: a resume while a directory scan is running is replayed once.
+    private boolean pendingDirectoryRescan;
+    private volatile boolean initialized;
     private NativeDataBundle.Contract contract;
     private final ArrayList<File> stores = new ArrayList<File>();
     private int selected;
@@ -95,7 +98,7 @@ public final class DataBundleInstaller implements Runnable {
         try (ZipFile apk = new ZipFile(context.getApplicationInfo().sourceDir);
              InputStream in = apk.getInputStream(apk.getEntry("lib/arm64-v8a/libffrs_game_window.so"))) { nativeSha = hash(in); }
         contract = new NativeDataBundle.Contract(nativeSha, spec.getString("index_sha256"), required);
-        if (directoryMode) { scanDirectory(); return; }
+        if (directoryMode) { initialized = true; scanDirectory(); return; }
         for (File ext : context.getExternalFilesDirs(null)) {
             if (ext != null && Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState(ext)))
                 stores.add(new File(ext, "hnl-data-v1"));
@@ -108,6 +111,7 @@ public final class DataBundleInstaller implements Runnable {
             if (!store.isDirectory() && !store.mkdirs()) continue;
             if (store.getUsableSpace() > most) { most = store.getUsableSpace(); selected = i; }
         }
+        initialized = true;
         message = "请选择与 APK 同目录的 .hnldata 数据包。导入期间请保持本页在前台。\n可取消；重新选同一包可继续校验导入。";
         for (File store : stores) {
             if (!store.getAbsolutePath().equals(remembered)) continue;
@@ -144,16 +148,31 @@ public final class DataBundleInstaller implements Runnable {
             }
         }
         ArrayList<File> result = new ArrayList<File>();
-        String[] common = {"HandheldNativeLab/data", "Games/HandheldNativeLab/data", "Download/HandheldNativeLab/data"};
+        String[] common = {
+            "HandheldNativeLab/data", "Games/HandheldNativeLab/data", "Download/HandheldNativeLab/data",
+            "FFRS", "Games/FFRS", "Download/FFRS"
+        };
         for (File volume : volumes) for (String child : common) result.add(new File(volume, child));
         for (File ext : context.getExternalFilesDirs(null)) if (ext != null) result.add(new File(ext, "game"));
         return result;
     }
     public void rescanDirectory() {
-        if (!directoryMode || busy || contract == null || root != null) return;
+        if (!directoryMode || root != null) return;
+        if (busy) { pendingDirectoryRescan = true; return; }
+        if (!initialized) { retryInitialization(); return; }
+        pendingDirectoryRescan = false;
         busy = true; cancel = false; done = 0;
         message = "正在查找已拷贝的游戏目录…"; changed();
         new Thread(new Job(this, 3, null), "hnl-directory-check").start();
+    }
+    public boolean needsInitialization() { return managed && !initialized; }
+    public void retryInitialization() {
+        if (!managed || busy || initialized) return;
+        pendingDirectoryRescan = false;
+        contract = null; stores.clear(); selected = 0;
+        busy = true; cancel = false; done = 0;
+        message = "正在重新检查应用数据…"; changed();
+        new Thread(new Job(this, 0, null), "hnl-data-check").start();
     }
     private void scanDirectory() throws Exception {
         ArrayList<File> paths = directoryCandidates();
@@ -246,6 +265,16 @@ public final class DataBundleInstaller implements Runnable {
         Stop(DataBundleInstaller o) { owner = o; }
         @Override public boolean requested() { return owner.cancel; }
     }
+    private static final class DeferredRescan implements Runnable {
+        private final DataBundleInstaller owner;
+        DeferredRescan(DataBundleInstaller owner) { this.owner = owner; }
+        @Override public void run() {
+            if (!owner.pendingDirectoryRescan) return;
+            owner.pendingDirectoryRescan = false;
+            if (!owner.cancel) owner.rescanDirectory();
+        }
+    }
+
     private static final class Updates implements NativeDataBundle.Progress {
         private final DataBundleInstaller owner;
         Updates(DataBundleInstaller o) { owner = o; }
@@ -285,7 +314,11 @@ public final class DataBundleInstaller implements Runnable {
                             + "\n旧版本和存档保留。可重新选择同一数据包继续，或验证恢复已导入版本。";
                 }
                 Log.e("HNL-Installer", "data action=" + action + " failed", e);
-            } finally { owner.busy = false; owner.changed(); }
+            } finally {
+                owner.busy = false;
+                owner.changed();
+                if (owner.pendingDirectoryRescan) owner.main.post(new DeferredRescan(owner));
+            }
         }
     }
 }

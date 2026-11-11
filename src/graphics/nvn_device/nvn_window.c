@@ -278,6 +278,21 @@ void *nvn_window_builder_get_texture(const void *builder, int index) {
 /* The window                                                          */
 /* ------------------------------------------------------------------ */
 
+typedef struct {
+    const nvn_backend *backend;
+    uint32_t *width, *height;
+    void **surface, **swapchain;
+    void *used_window;
+    int created;
+} nvn_window_surface_request;
+
+static void nvn_window_create_with_live(void *window, void *opaque) {
+    nvn_window_surface_request *request = (nvn_window_surface_request *)opaque;
+    request->used_window = window;
+    request->created = request->backend->create_window_surface(nvn_device_state_handle(), window,
+        request->width, request->height, request->surface, request->swapchain);
+}
+
 int nvn_window_initialize(void *window, const void *builder, int flags) {
     nvn_window_builder_state *b;
     nvn_window_state *w;
@@ -345,9 +360,18 @@ int nvn_window_initialize(void *window, const void *builder, int flags) {
     w->swapchain = NULL;
     w->width = 0;
     w->height = 0;
-    if (native_window && backend && backend->create_window_surface) {
-        if (backend->create_window_surface(nvn_device_state_handle(), native_window, &width, &height,
-                                           &surface, &swapchain)) {
+    if (backend && backend->create_window_surface) {
+        nvn_window_surface_request request = {backend, &width, &height, &surface, &swapchain, NULL, 0};
+        int had_live = nso_host_native_window_use(nvn_window_create_with_live, &request);
+#ifndef __ANDROID__
+        /* Host test backends may use a synthetic builder handle without a platform window. */
+        if (!had_live && native_window)
+            nvn_window_create_with_live(native_window, &request);
+#else
+        (void)had_live;
+#endif
+        if (request.used_window) native_window = request.used_window;
+        if (request.created) {
             w->surface = surface;
             w->swapchain = swapchain;
             w->width = width;

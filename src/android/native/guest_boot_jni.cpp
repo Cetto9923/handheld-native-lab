@@ -22,6 +22,8 @@
 
 #include <string>
 #include <vector>
+#include <atomic>
+#include <memory>
 
 #include <new>
 
@@ -50,6 +52,29 @@ struct GuestBootRequest {
 
 pthread_mutex_t g_boot_lock = PTHREAD_MUTEX_INITIALIZER;
 bool g_boot_started = false;
+/* 0: not started, 1: thread active, 2: completed, 3: failed. */
+std::atomic<int> g_guest_thread_state{0};
+
+struct GuestThreadCompletion {
+    int result = -1;
+    ~GuestThreadCompletion() { g_guest_thread_state.store(result == 0 ? 2 : 3, std::memory_order_release); }
+};
+
+/* Once a guest thread exists, the process must never start another one.
+ * Earlier failures own no guest thread and must release the reservation. */
+class BootReservation {
+public:
+    ~BootReservation() {
+        if (!committed_) {
+            pthread_mutex_lock(&g_boot_lock);
+            g_boot_started = false;
+            pthread_mutex_unlock(&g_boot_lock);
+        }
+    }
+    void commit() { committed_ = true; }
+private:
+    bool committed_ = false;
+};
 
 int CurrentThreadId() { return static_cast<int>(syscall(__NR_gettid)); }
 
@@ -74,7 +99,9 @@ void RedirectOutput(const std::string& path) {
 }
 
 void* GuestThreadMain(void* opaque) {
-    GuestBootRequest* request = static_cast<GuestBootRequest*>(opaque);
+    GuestThreadCompletion completion;
+    std::unique_ptr<GuestBootRequest> request_owner(static_cast<GuestBootRequest*>(opaque));
+    GuestBootRequest* request = request_owner.get();
     int app_pid = getpid();
     int guest_tid = CurrentThreadId();
 
@@ -94,9 +121,12 @@ void* GuestThreadMain(void* opaque) {
     setenv("DM_GFX_NOLOAD", "1", 1);
     setenv("DM_GFX_PIPE_MEMO", "1", 1);
     setenv("DM_GFX_CLEAR_OVERWRITE", "1", 1);
-    setenv("DM_GFX_WARP32", "1", 1);
-    setenv("DM_GFX_QUAD_DERIVATIVES", "1", 1);
-    setenv("DM_GFX_NATIVE_BC", "1", 1);
+    const char *profile_tablet = getenv("FFRS_PROFILE_TABLET");
+    if (profile_tablet && profile_tablet[0] == '1') {
+        setenv("DM_GFX_WARP32", "1", 1);
+        setenv("DM_GFX_QUAD_DERIVATIVES", "1", 1);
+        setenv("DM_GFX_NATIVE_BC", "1", 1);
+    }
     RedirectOutput(request->log_path);
     {
         std::string path = request->log_path;
@@ -176,10 +206,10 @@ void* GuestThreadMain(void* opaque) {
     options.guest_argv = argv.empty() ? nullptr : argv.data();
 
     int rc = nso_boot_run(&options);
+    completion.result = rc;
 
     __android_log_print(ANDROID_LOG_INFO, kLogTag,
         "guest_boot finished rc=%d app_pid=%d guest_tid=%d", rc, app_pid, guest_tid);
-    delete request;
     return nullptr;
 }
 
@@ -208,6 +238,7 @@ static jlong StartGuest(JNIEnv* env,
     }
     g_boot_started = true;
     pthread_mutex_unlock(&g_boot_lock);
+    BootReservation reservation;
 
     GuestBootRequest* request = new (std::nothrow) GuestBootRequest();
     if (request == nullptr) {
@@ -226,7 +257,7 @@ static jlong StartGuest(JNIEnv* env,
             save.resize(slash);
             save += "/codex-local-save";
         }
-        if (nso_host_fs_set_save_root(save.c_str())) return -1;
+        if (nso_host_fs_set_save_root(save.c_str())) { delete request; return -1; }
     }
     {
         /* The shader bundles live beside the guest's log: the engine reads
@@ -316,13 +347,21 @@ static jlong StartGuest(JNIEnv* env,
     /* The guest blocks for the whole session, so it never runs on the UI
      * thread that owns the SurfaceView. */
     pthread_t thread;
+    g_guest_thread_state.store(1, std::memory_order_release);
     if (pthread_create(&thread, nullptr, GuestThreadMain, request) != 0) {
+        g_guest_thread_state.store(0, std::memory_order_release);
         __android_log_print(ANDROID_LOG_ERROR, kLogTag, "guest_boot thread creation failed");
         delete request;
         return -1;
     }
+    reservation.commit();
     pthread_detach(thread);
     return static_cast<jlong>(thread);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_org_ffrs_diagnostic_GameWindowNative_nativeGuestThreadState(JNIEnv*, jclass) {
+    return static_cast<jint>(g_guest_thread_state.load(std::memory_order_acquire));
 }
 
 // Preserve the existing ABI for all frozen APKs. Managed installs supply a

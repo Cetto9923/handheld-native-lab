@@ -44,6 +44,7 @@ import android.widget.FrameLayout;
 import android.widget.ScrollView;
 
 import java.io.File;
+import java.lang.ref.WeakReference;
 
 /**
  * Game window form only.
@@ -74,7 +75,13 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     private DataBundleInstaller dataInstaller;
     private Button importButton, storageButton, recoverButton, cancelButton;
     private static final int PICK_DATA_BUNDLE = 4701;
-    private boolean guestStarted, surfaceReady;
+    private boolean guestStarted, guestStartFailed, surfaceReady;
+    private int guestTerminalState;
+    private final Handler guestWatchHandler = new Handler(Looper.getMainLooper());
+    private final Runnable guestWatch = new GuestWatch(this);
+    private static final GuestStartState GUEST_START = new GuestStartState();
+    private static WeakReference<GameActivity> currentActivity = new WeakReference<GameActivity>(null);
+    private static WeakReference<GameActivity> surfaceOwner = new WeakReference<GameActivity>(null);
     private DeviceProfile selectedDeviceProfile;
     private AudioManager audioManager;
     private final AudioDeviceCallback audioCallback = new GameAudioDeviceCallback();
@@ -588,18 +595,25 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         resumed = false;
         padButtons = axisButtons = 0;
         padLx = padLy = padRx = padRy = 0;
-        publishPad();
-        GameWindowNative.setFocusState(3);
+        if (currentActivity.get() == this) {
+            publishPad();
+            GameWindowNative.setFocusState(3);
+        }
         super.onPause();
     }
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        currentActivity = new WeakReference<GameActivity>(this);
+        int startState = GUEST_START.get();
+        guestStarted = startState == GuestStartState.STARTING || startState == GuestStartState.STARTED;
+        guestStartFailed = startState == GuestStartState.FAILED;
         dataInstaller = DataBundleInstaller.get(this);
         dataInstaller.attach(this);
         audioManager = (AudioManager)getSystemService(AUDIO_SERVICE);
         if (audioManager != null) audioManager.registerAudioDeviceCallback(audioCallback, new Handler(Looper.getMainLooper()));
         selectedDeviceProfile = deviceProfile();
+        ensureDefaultMarkers();
         configureWindow();
         surface_view = new SurfaceView(this);
         /* The surface format decides whether the compositor reads an alpha
@@ -631,9 +645,11 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         root.addView(touchPad, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         buildSetupView();
         setContentView(root);
+        refreshSetup();
         inputManager = (InputManager)getSystemService(Context.INPUT_SERVICE);
         if (inputManager != null) inputManager.registerInputDeviceListener(deviceListener, new Handler(Looper.getMainLooper()));
         surface_view.getHolder().addCallback(this);
+        if (startState == GuestStartState.STARTED) startGuestWatch();
     }
 
     private DeviceProfile deviceProfile() {
@@ -652,7 +668,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 mode == null ? 0 : mode.getPhysicalWidth(),
                 mode == null ? 0 : mode.getPhysicalHeight(),
                 DisplayMetrics.DENSITY_DEVICE_STABLE, smallestWidthDp);
-        DeviceProfile profile = DeviceProfile.select(soc, formFactorWidthDp, override);
+        DeviceProfile profile = DeviceProfile.select(soc, Build.MODEL, formFactorWidthDp, override);
         Log.i(TAG, "device_profile id=" + profile.id + " soc=" + soc
                 + " override=" + (override.isEmpty() ? "none" : override)
                 + " smallest_width_dp=" + smallestWidthDp
@@ -679,6 +695,27 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             }
         }
         return selectedDeviceProfile.targetFps;
+    }
+
+    private void ensureDefaultMarkers() {
+        File dir = getExternalFilesDir(null);
+        if (dir == null) return;
+        writeMarkerIfMissing(new File(dir, "gfx-legacy-waitall"), "0\n");
+        writeMarkerIfMissing(new File(dir, "gfx-target-fps"), (selectedDeviceProfile != null ? selectedDeviceProfile.targetFps : 30) + "\n");
+        writeMarkerIfMissing(new File(dir, "gfx-depth-aspect"), "1\n");
+        writeMarkerIfMissing(new File(dir, "gfx-async-pipelines"), "0\n");
+        writeMarkerIfMissing(new File(dir, "gfx-fence-spin-us"), "0\n");
+        writeMarkerIfMissing(new File(dir, "gfx-audio-paced-transport"), "1\n");
+        writeMarkerIfMissing(new File(dir, "gfx-codex-audio-dump"), "0\n");
+        writeMarkerIfMissing(new File(dir, "gfx-codex-frame-metrics"), "1\n");
+    }
+
+    private static void writeMarkerIfMissing(File file, String content) {
+        if (file.exists()) return;
+        try (java.io.FileOutputStream fos = new java.io.FileOutputStream(file)) {
+            fos.write(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (Throwable ignored) {
+        }
     }
 
     private float requestedDisplayHz = 60.0f;
@@ -802,6 +839,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             Log.e(TAG, "surface_created: native window call returned null");
             return;
         }
+        surfaceOwner = new WeakReference<GameActivity>(this);
         DisplaySnapshot snapshot = display_snapshot;
         Log.i(TAG, "window_form"
                 + " display_width_px=" + snapshot.width_px
@@ -965,6 +1003,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         // Bounded common paths: standard directory structures on internal/external volumes.
         String[] common = {
             "FFRS", "ffrs",
+            "HandheldNativeLab/data", "HandheldNativeLab",
             "Games/FFRS", "games/FFRS", "Games/ffrs", "games/ffrs",
             "Download/FFRS", "download/FFRS", "Download/ffrs", "download/ffrs",
             "Documents/FFRS", "documents/FFRS", "Documents/ffrs", "documents/ffrs",
@@ -1283,6 +1322,14 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             refreshSetup();
             return;
         }
+        if (!GUEST_START.begin()) {
+            int state = GUEST_START.get();
+            guestStarted = state == GuestStartState.STARTING || state == GuestStartState.STARTED;
+            guestStartFailed = state == GuestStartState.FAILED;
+            refreshSetup();
+            return;
+        }
+        guestStarted = true;
         boolean managed = dataInstaller != null && dataInstaller.managed && dataInstaller.root != null
                 && dataInstaller.root.getAbsolutePath().equals(game_dir);
         File files = managed ? dataInstaller.runtimeRoot : getExternalFilesDir(null);
@@ -1334,12 +1381,51 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             this.saveRoot = saveRoot;
         }
         @Override public void run() {
-            long thread = saveRoot == null ? GameWindowNative.nativeStartGuest(image, romfs, log_path,
-                    GUEST_QUOTA_BYTES, GUEST_STACK_BYTES, GUEST_RESOURCE_BYTES, new String[0])
-                    : GameWindowNative.nativeStartInstalledGuest(image, romfs, log_path,
-                    GUEST_QUOTA_BYTES, GUEST_STACK_BYTES, GUEST_RESOURCE_BYTES, new String[0], saveRoot);
+            long thread = -1;
+            try {
+                thread = saveRoot == null ? GameWindowNative.nativeStartGuest(image, romfs, log_path,
+                        GUEST_QUOTA_BYTES, GUEST_STACK_BYTES, GUEST_RESOURCE_BYTES, new String[0])
+                        : GameWindowNative.nativeStartInstalledGuest(image, romfs, log_path,
+                        GUEST_QUOTA_BYTES, GUEST_STACK_BYTES, GUEST_RESOURCE_BYTES, new String[0], saveRoot);
+            } catch (RuntimeException | LinkageError | OutOfMemoryError error) {
+                Log.e(TAG, "guest_start native call failed", error);
+            }
             Log.i(TAG, "guest_start thread=" + thread + " guest_in_app_process=true"
                     + " transcript=" + log_path);
+            GUEST_START.finish(thread != -1);
+            new Handler(Looper.getMainLooper()).post(new GuestStartChanged());
+        }
+    }
+
+    /** Resolve the current Activity when the worker finishes, not the one it started with. */
+    private static final class GuestStartChanged implements Runnable {
+        @Override public void run() {
+            GameActivity activity = currentActivity.get();
+            if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
+            int state = GUEST_START.get();
+            activity.guestStarted = state == GuestStartState.STARTING || state == GuestStartState.STARTED;
+            activity.guestStartFailed = state == GuestStartState.FAILED;
+            activity.refreshSetup();
+            if (state == GuestStartState.STARTED) activity.startGuestWatch();
+        }
+    }
+
+    private void startGuestWatch() {
+        guestWatchHandler.removeCallbacks(guestWatch);
+        guestWatchHandler.post(guestWatch);
+    }
+
+    private static final class GuestWatch implements Runnable {
+        private final WeakReference<GameActivity> activity;
+        GuestWatch(GameActivity owner) { activity = new WeakReference<GameActivity>(owner); }
+        @Override public void run() {
+            GameActivity owner = activity.get();
+            if (owner == null || currentActivity.get() != owner || owner.isFinishing() || owner.isDestroyed()) return;
+            int state = GameWindowNative.nativeGuestThreadState();
+            if (state == 2 || state == 3) {
+                owner.guestTerminalState = state;
+                owner.refreshSetup();
+            } else if (owner.guestStarted) owner.guestWatchHandler.postDelayed(this, 500);
         }
     }
 
@@ -1352,6 +1438,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     }
 
     @Override public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+        if (currentActivity.get() != this) return;
         Log.i(TAG, "surface_changed format=" + format
                 + " width_px=" + width + " height_px=" + height);
         long[] window = GameWindowNative.describeWindow();
@@ -1361,14 +1448,17 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                     + " width_px=" + window[2] + " height_px=" + window[3]
                     + " format=" + window[4] + " generation=" + window[5]);
         }
-        if (!guestStarted) recheckGame();
+        if (!guestStarted) startGuest();
     }
 
     @Override public void surfaceDestroyed(SurfaceHolder holder) {
         Log.i(TAG, "surface_destroyed entering");
         surfaceReady = false;
-        GameWindowNative.clearSurface();
-        Log.i(TAG, "surface_destroyed native_window_cleared");
+        if (surfaceOwner.get() == this) {
+            GameWindowNative.clearSurface();
+            surfaceOwner.clear();
+            Log.i(TAG, "surface_destroyed native_window_cleared");
+        }
     }
 
     private final Handler exitHandler = new Handler(Looper.getMainLooper());
@@ -1395,10 +1485,14 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     @Override protected void onDestroy() {
         Log.i(TAG, "lifecycle onDestroy");
         exitHandler.removeCallbacks(this);
+        guestWatchHandler.removeCallbacks(guestWatch);
         if (dataInstaller != null) dataInstaller.detach(this);
         if (audioManager != null) audioManager.unregisterAudioDeviceCallback(audioCallback);
-        // Safety net: the runtime must never keep a window of a dead Activity.
-        GameWindowNative.clearSurface();
+        if (surfaceOwner.get() == this) {
+            GameWindowNative.clearSurface();
+            surfaceOwner.clear();
+        }
+        if (currentActivity.get() == this) currentActivity.clear();
         super.onDestroy();
     }
 

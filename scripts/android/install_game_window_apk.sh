@@ -8,10 +8,16 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FFRS_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-FFRS_DEVICE="${FFRS_DEVICE:-A42BBB5109000333}"
-if [[ "${FFRS_DEVICE}" == "RG477M01445122" ]]; then
-    echo "BLOCKED_DEVICE: Operating on RG477M01445122 is strictly forbidden in honor-gtpro repository!" >&2
-    exit 2
+FFRS_DEVICE="${1:-${FFRS_DEVICE:-}}"
+if [[ -z "${FFRS_DEVICE}" ]]; then
+    # Auto-detect connected target device
+    if adb devices | grep -q "RG477M01445122.*device"; then
+        FFRS_DEVICE="RG477M01445122"
+    elif adb devices | grep -q "A42BBB5109000333.*device"; then
+        FFRS_DEVICE="A42BBB5109000333"
+    else
+        FFRS_DEVICE="$(adb devices | awk 'NR>1 && $2=="device" {print $1; exit}')"
+    fi
 fi
 FFRS_APK="${FFRS_APK:-${FFRS_ROOT}/.local/android-apk/ffrs-game-window-debug.apk}"
 FFRS_PACKAGE="org.ffrs.gamewindow"

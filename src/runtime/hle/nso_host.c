@@ -1060,6 +1060,9 @@ typedef struct {
     int in_use;
     int fd;
     int mode;
+    int dirty;
+    int closing;
+    uint32_t active_reads;
     int64_t file_size;
     char nn_path[256];
     char host_path[512];
@@ -1067,6 +1070,12 @@ typedef struct {
 
 static nso_fs_file_entry s_fs_open_files[NSO_FS_MAX_OPEN_FILES];
 static pthread_mutex_t s_fs_file_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t s_fs_file_cond = PTHREAD_COND_INITIALIZER;
+static uint64_t s_fs_read_total_bytes;
+static uint32_t s_fs_read_count;
+/* CloseFile has no error return. Do not report a successful later commit if
+ * an earlier closed writable file could not be synchronized. */
+static int s_fs_closed_write_error;
 
 static int resolve_fs_path(const char *nn_path, char *out_host_path, size_t out_size) {
     if (!nn_path || !out_host_path || out_size == 0) return -1;
@@ -1151,6 +1160,9 @@ static nso_fs_file_entry *allocate_file_slot(void) {
         if (!s_fs_open_files[i].in_use) {
             s_fs_open_files[i].in_use = 1;
             s_fs_open_files[i].fd = -1;
+            s_fs_open_files[i].dirty = 0;
+            s_fs_open_files[i].closing = 0;
+            s_fs_open_files[i].active_reads = 0;
             return &s_fs_open_files[i];
         }
     }
@@ -1165,7 +1177,7 @@ static nso_fs_file_entry *validate_file_handle(nn_fs_file_handle handle) {
     if (ptr < base || ptr >= base + NSO_FS_MAX_OPEN_FILES * size) return NULL;
     if ((ptr - base) % size != 0) return NULL;
     nso_fs_file_entry *entry = (nso_fs_file_entry *)handle.handle;
-    if (!entry->in_use || entry->fd < 0) return NULL;
+    if (!entry->in_use || entry->closing || entry->fd < 0) return NULL;
     return entry;
 }
 
@@ -1262,6 +1274,27 @@ int32_t nso_host_fs_get_file_size(int64_t *out_size, nn_fs_file_handle handle) {
     return 0;
 }
 
+typedef struct {
+    nso_fs_file_entry *entry;
+    ssize_t bytes;
+    uint64_t total_bytes;
+    uint32_t count;
+} nso_fs_read_scope;
+
+/* Also runs if a host thread is cancelled in pread, so close can progress. */
+static void nso_fs_finish_read(void *opaque) {
+    nso_fs_read_scope *scope = (nso_fs_read_scope *)opaque;
+    pthread_mutex_lock(&s_fs_file_mutex);
+    scope->entry->active_reads--;
+    if (scope->entry->closing && !scope->entry->active_reads) pthread_cond_broadcast(&s_fs_file_cond);
+    if (scope->bytes >= 0) {
+        s_fs_read_total_bytes += (uint64_t)scope->bytes;
+        scope->total_bytes = s_fs_read_total_bytes;
+        scope->count = ++s_fs_read_count;
+    }
+    pthread_mutex_unlock(&s_fs_file_mutex);
+}
+
 int32_t nso_host_fs_read_file(size_t *out_bytes_read, nn_fs_file_handle handle, int64_t offset, void *buffer, size_t size) {
     if (!buffer) {
         fprintf(stderr, "[hle] nn::fs::ReadFile: null buffer pointer\n");
@@ -1278,24 +1311,33 @@ int32_t nso_host_fs_read_file(size_t *out_bytes_read, nn_fs_file_handle handle, 
         fprintf(stderr, "[hle] nn::fs::ReadFile: invalid file handle %p\n", handle.handle);
         return 1;
     }
+    if (entry->active_reads == UINT32_MAX) {
+        pthread_mutex_unlock(&s_fs_file_mutex);
+        return 1;
+    }
     int fd = entry->fd;
+    entry->active_reads++;
+    nso_fs_read_scope scope = {entry, -1, 0, 0};
     pthread_mutex_unlock(&s_fs_file_mutex);
 
-    ssize_t n = pread(fd, buffer, size, (off_t)offset);
+    ssize_t n;
+    int read_errno;
+    pthread_cleanup_push(nso_fs_finish_read, &scope);
+    n = pread(fd, buffer, size, (off_t)offset);
+    read_errno = errno;
+    scope.bytes = n;
+    pthread_cleanup_pop(1);
     if (n < 0) {
         fprintf(stderr, "[hle] nn::fs::ReadFile: pread failed fd=%d offset=%lld size=%zu errno=%d (%s)\n",
-                fd, (long long)offset, size, errno, strerror(errno));
+                fd, (long long)offset, size, read_errno, strerror(read_errno));
         return 1;
     }
     if (out_bytes_read) {
         *out_bytes_read = (size_t)n;
     }
-    static uint64_t s_fs_read_total_bytes = 0;
-    static uint32_t s_fs_read_count = 0;
-    s_fs_read_total_bytes += (size_t)n;
-    if (++s_fs_read_count <= 20 || (s_fs_read_count & 511) == 0) {
+    if (scope.count <= 20 || (scope.count & 511) == 0) {
         fprintf(stderr, "[hle] nn::fs::ReadFile: count=%u total_mb=%llu last=[handle=%p offset=%lld req_size=%zu read_bytes=%zd]\n",
-                s_fs_read_count, (unsigned long long)(s_fs_read_total_bytes / (1024 * 1024)),
+                scope.count, (unsigned long long)(scope.total_bytes / (1024 * 1024)),
                 handle.handle, (long long)offset, size, n);
     }
     return 0;
@@ -1303,6 +1345,13 @@ int32_t nso_host_fs_read_file(size_t *out_bytes_read, nn_fs_file_handle handle, 
 
 int32_t nso_host_fs_read_file_no_out(nn_fs_file_handle handle, int64_t offset, void *buffer, size_t size) {
     return nso_host_fs_read_file(NULL, handle, offset, buffer, size);
+}
+
+/* pthread_cond_wait reacquires the mutex before cancellation cleanup. */
+static void nso_fs_cancel_close_wait(void *opaque) {
+    nso_fs_file_entry *entry = (nso_fs_file_entry *)opaque;
+    entry->closing = 0;
+    pthread_mutex_unlock(&s_fs_file_mutex);
 }
 
 void nso_host_fs_close_file(nn_fs_file_handle handle) {
@@ -1314,17 +1363,25 @@ void nso_host_fs_close_file(nn_fs_file_handle handle) {
         return;
     }
     int fd = entry->fd;
+    entry->closing = 1;
+    pthread_cleanup_push(nso_fs_cancel_close_wait, entry);
+    while (entry->active_reads) pthread_cond_wait(&s_fs_file_cond, &s_fs_file_mutex);
+    pthread_cleanup_pop(0);
     char path[256];
     strncpy(path, entry->nn_path, sizeof(path) - 1);
     path[sizeof(path) - 1] = '\0';
 
+    if (fd >= 0) {
+        if ((entry->mode & 2) && entry->dirty && fsync(fd)) {
+            s_fs_closed_write_error = 1;
+            fprintf(stderr, "[hle] nn::fs::CloseFile: writable file sync failed errno=%d\n", errno);
+        }
+        if (close(fd) && (entry->mode & 2)) s_fs_closed_write_error = 1;
+    }
     entry->in_use = 0;
     entry->fd = -1;
+    entry->dirty = 0;
     pthread_mutex_unlock(&s_fs_file_mutex);
-
-    if (fd >= 0) {
-        close(fd);
-    }
     fprintf(stderr, "[hle] nn::fs::CloseFile: closed handle=%p (path='%s')\n", handle.handle, path);
 }
 
@@ -1337,9 +1394,10 @@ int32_t nso_host_fs_flush_file(nn_fs_file_handle handle) {
         return 1;
     }
     int fd = entry->fd;
+    int result = fsync(fd);
+    if (!result) entry->dirty = 0;
     pthread_mutex_unlock(&s_fs_file_mutex);
-
-    if (fsync(fd)) return 0x2a2;
+    if (result) return 0x2a2;
     fprintf(stderr, "[hle] nn::fs::FlushFile: flushed handle=%p\n", handle.handle);
     return 0;
 }
@@ -1357,6 +1415,7 @@ int32_t nso_host_fs_set_file_size(nn_fs_file_handle handle, int64_t size) {
     int res = ftruncate(fd, (off_t)size);
     if (res == 0) {
         entry->file_size = size;
+        if (entry->mode & 2) entry->dirty = 1;
     }
     pthread_mutex_unlock(&s_fs_file_mutex);
     fprintf(stderr, "[hle] nn::fs::SetFileSize: handle=%p size=%lld res=%d\n", handle.handle, (long long)size, res);
@@ -1374,9 +1433,9 @@ int32_t nso_host_fs_write_file(nn_fs_file_handle handle, int64_t offset, const v
         return 1;
     }
     int fd = entry->fd;
-    pthread_mutex_unlock(&s_fs_file_mutex);
-
+    if (entry->mode & 2) entry->dirty = 1;
     ssize_t n = pwrite(fd, data, size, (off_t)offset);
+    pthread_mutex_unlock(&s_fs_file_mutex);
     if (n < 0 || (size_t)n != size) {
         fprintf(stderr, "[hle] nn::fs::WriteFile: pwrite failed fd=%d size=%zu written=%zd\n", fd, size, n);
         return 1;
@@ -1689,7 +1748,13 @@ int32_t nso_host_fs_create_file(const char *path, int64_t size) {
     int fd = open(host_path, O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0600);
     if (fd < 0) return errno == EEXIST ? 0x402 : 0x202;
     int result = ftruncate(fd, (off_t)size);
+    if (!result && fsync(fd)) result = -1;
     if (close(fd)) result = -1;
+    if (result) {
+        pthread_mutex_lock(&s_fs_file_mutex);
+        s_fs_closed_write_error = 1;
+        pthread_mutex_unlock(&s_fs_file_mutex);
+    }
     return result ? 0x2a2 : 0;
 }
 
@@ -1700,11 +1765,14 @@ int32_t nso_host_fs_commit_save_data(const char *name) {
         if (s_fs_mounts[i].in_use && s_fs_mounts[i].writable && !strcmp(s_fs_mounts[i].name, name))
             mount = &s_fs_mounts[i];
     if (!mount) return 0x2a2;
-    int result = 0;
     pthread_mutex_lock(&s_fs_file_mutex);
+    int result = s_fs_closed_write_error ? 0x2a2 : 0;
     for (int i = 0; i < NSO_FS_MAX_OPEN_FILES; i++) {
         nso_fs_file_entry *file = &s_fs_open_files[i];
-        if (file->in_use && (file->mode & 2) && fsync(file->fd)) result = 0x2a2;
+        if (file->in_use && (file->mode & 2)) {
+            if (fsync(file->fd)) result = 0x2a2;
+            else file->dirty = 0;
+        }
     }
     pthread_mutex_unlock(&s_fs_file_mutex);
     int fd = open(mount->host_path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);

@@ -2745,7 +2745,10 @@ void start(){
     seed();
     compute_prewarm_keys.clear();
 #ifdef XBG_HAVE_SPIRV_OPT
-    if(honor_inline_enabled && keep_rewritten){std::string path=list_path();path=path.substr(0,path.find_last_of('/'))+"/gfx-honor-compute-prewarm";FILE *f=fopen(path.c_str(),"rb");bool on=f && fgetc(f)=='1';if(f)fclose(f);if(on)compute_prewarm_keys={"cbe85d33e4d9a711","e4a8cd7fe0478956","e7a74f26fcb629e4"};}
+    if(honor_inline_enabled && keep_rewritten){std::string path=list_path();path=path.substr(0,path.find_last_of('/'))+"/gfx-honor-compute-prewarm";FILE *f=fopen(path.c_str(),"rb");int mode=f?fgetc(f):0;if(f)fclose(f);
+        if(mode=='1' || mode=='2')compute_prewarm_keys={"cbe85d33e4d9a711","e4a8cd7fe0478956","e7a74f26fcb629e4"};
+        // Opt-in Shrine experiment: expensive first-use compute rewrites, proven by runtime timings.
+        if(mode=='2'){compute_prewarm_keys.push_back("b673e10f3da2451c");compute_prewarm_keys.push_back("876dd0820a7ad8fa");}}
 #endif
     xbg_logf("NVN Honor compute prewarm count=%zu",compute_prewarm_keys.size());
     FILE *f=fopen(list_path().c_str(),"rb");if(f){fseek(f,0,SEEK_END);long n=ftell(f);rewind(f);std::vector<uint8_t> b(n>0 && n<(64l<<20)?size_t(n):0);bool ok=b.empty() || fread(b.data(),1,b.size(),f)==b.size();fclose(f);
@@ -4598,6 +4601,7 @@ void copy_texture_buffer(const p_copy_b2t &request,bool to_buffer){preflight_cpu
         upload_batch_bytes=0;gpu_sync(perf.sync_readback);
         for(auto &slot:active_slots()){
             poolreset::finish(slot);
+            if(slot.reset_queued)VK(slot.reset_result);
             if(slot.pool){VK(vkResetCommandPool(cfg.device,slot.pool,VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT));slot.reset_queued=false;}
             else if(slot.cmd){VK(vkResetCommandBuffer(slot.cmd,VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT));if(slot.pro)VK(vkResetCommandBuffer(slot.pro,VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT));}
         }
@@ -5642,7 +5646,7 @@ extern "C" int xbg_game_initialize(const xbg_game_config *c,char *error,size_t b
      // legacy_wait 从 51.9 ms/帧降到约 0 ms，场景从 7.7 FPS 提到 30 FPS（30 帧目标）与 59.6-59.9 FPS（60 帧目标）。完成通知路径（completion_wait）只在旧路径关闭时才可达，
      // 旧路径按构造同时禁用了它。marker 仍然优先，掌机与任何显式覆写行为不变；只有平板档改变。
      const char *tablet_profile = getenv("FFRS_PROFILE_TABLET");
-     if (tablet_profile && tablet_profile[0]=='1' && !m) legacy_waitall=false;
+     if (!m) legacy_waitall=false;
      xbg_logf("NVN legacy_waitall=%d (tablet profile=%d, marker gfx-legacy-waitall overrides)", int(legacy_waitall), (tablet_profile && tablet_profile[0]=='1')?1:0);}
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-full-barrier").c_str(),"rb");full_barrier_strict=m&&fgetc(m)=='1';if(m)fclose(m);xbg_logf("NVN full barrier strict=%d (marker gfx-full-barrier, 0=compute scoped)",int(full_barrier_strict));}
     cfg=*c;xbg_logf("NVN completion_wait enabled=%d legacy_waitall=%d",int(completion_wait_enabled),int(legacy_waitall));vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemoryProperties(cfg.physical,&memories);{char line[512];int at=snprintf(line,sizeof line,"NVN caps memory types");for(uint32_t i=0;i<memories.memoryTypeCount && at<int(sizeof line)-24;i++)at+=snprintf(line+at,sizeof line-at," %u:%#x/h%u",i,unsigned(memories.memoryTypes[i].propertyFlags),memories.memoryTypes[i].heapIndex);xbg_logf("%s",line);}
