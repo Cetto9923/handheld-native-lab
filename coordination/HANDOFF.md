@@ -1,3 +1,9 @@
+# 2026-11-12 world movement, actual spell and GPU proof checkpoint
+
+PID7534 worldeast independentlyconfirmed159newintervals5.300s29.999FPS P9533.522 max84.920ms2>50. Actualwarmcache first-use清霜75intervals2.750s27.268FPS max159.306ms;消失突袭107intervals4.797s22.304FPS max247.551ms, menus/tutorialexcluded. NativeGPUactualfieldproofchecks>=320newrows mismatches0 afterlegacy110, actualinstancecounts951/108, ownedcopiesnofatal, diagnosticrestoredGPUtrue/diagfalse/TracerPid0. ContinueShrinerenderregressionand同进程repeatspell; nooverall30PASS.
+
+CurrentordinaryworldpathapproachingShrinenorth, video world-structure-shrine-road-moving running. Bothfirstwarmingreplaysretainfullnegativeevidence. ActualSPV/fixedargproofsuccess is correctnesscomponent, notwholegameacceptance.
+
 # 2026-11-12 structural world candidate deployed and evidence corrections
 
 Build6/install-r exit0 SHA bc04fcdeed20bb165fa05cc214654971e5078ee8fd741b63b922d087e955bf44 installedbaseverified, PID7534. Continue restoredactualworldvillage. Structuralmetadata actualbinding29 axisZ23rows observed, sync_wb0 nearby30FPS logs. Recorded6s worldeast182newintervals rawabout30FPS max84.92ms, mediareviewpending. PriorPID31064 CSV capped120000 at1443886310319549, laterworld/fireCSV unavailable. Earlierbackups invalid permission-error text; correctedverified shelltar986844B4files SHA07c8...createdafterinstall-r beforefurtherplay. Data-preserving install andContinue verified.
