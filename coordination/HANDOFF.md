@@ -1,3 +1,7 @@
+# 2026-11-11 神殿外方块未解决
+
+用户报告已发布 v1.0.3 神殿外仍有方块；先前 capture 只证明特定 draw 修复，不代表整个室外通过。发布说明已更正，未修改已发布 APK。用户称已连接且停在问题现场，但 adb devices 无任何设备，system_profiler SPUSBDataType 亦未匹配设备；未触碰游戏或存档，等待 USB 数据连接及调试授权。定位前不能断言与原方块相同或不同。
+
 # 2026-11-11 用户授权发布 Shrine 修复版
 
 Public GitHub release https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.3 published, APK FFRS-Shrine-Fix.apk 3753362 B remote SHA256 e7c3f82c2c3113a1446fbedf7a574524c3ef5515769f2d9d523462a6f6c5095c matches earlier tested APK; tag points e48159fea5d0ce3628574b48ba29e40d621ce5f5, source branch codex/shrine-release-20261111 pushed. Two touched engine files hash-match original source commit e878532; self-authored fixture ASan/UBSan + original/fixed spirv-val PASS in public worktree. Previous APK signing certificate matches; APK internal version still 1.0.2-honor versionCode3. Release notes state limited Honor testing and 29.9 FPS, no full compatibility/60 FPS claim. Honor device adb unavailable during publication; no new device test. Public main untouched; original untracked FFRS data preserved.

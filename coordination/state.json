@@ -1559,7 +1559,7 @@
       "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
       "branch": "task/T-honor-shrine-20261111",
       "acquired_at": "2026-11-11T01:31:38.119199+08:00",
-      "checkpoint": "User-authorized v1.0.3 published; remote APK SHA verified; e48159f public source branch; device offline; broad acceptance pending",
+      "checkpoint": "User reports outdoor squares persist; release notes corrected; USB/adb device not detected; wait for connection then capture actual screen without restart",
       "write_state": "ACTIVE"
     }
   ],
