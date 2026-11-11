@@ -91,7 +91,7 @@ final class SaveExporter {
             }
             // A manifest makes the hand-over self-explanatory: the receiving
             // side knows which files are saves and which device produced them.
-            writeManifest(new File(target, "README.txt"), saveRoot, count, bytes);
+            writeManifest(new File(target, "README.txt"), context, saveRoot, count, bytes);
             Log.i(TAG, "export result: count=" + count + " bytes=" + bytes + " target=" + target.getAbsolutePath());
             return new Result(target, count, bytes, count == 0 ? "no save files found in " + saveRoot.getAbsolutePath() : null);
         } catch (Throwable t) {
@@ -119,20 +119,30 @@ final class SaveExporter {
         }
     }
 
-    private static void writeManifest(File manifest, File saveRoot, int count, long bytes) {
+    private static void writeManifest(File manifest, Context context, File saveRoot, int count, long bytes) {
         try (OutputStream out = new FileOutputStream(manifest)) {
             String text = "FFRS save export\n"
                     + "created: " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(new Date()) + "\n"
                     + "source: " + saveRoot.getAbsolutePath() + "\n"
                     + "files: " + count + "\n"
                     + "bytes: " + bytes + "\n"
-                    + "package: " + manifest.getClass().getPackage().getName() + "\n"
+                    + "package: " + packageName(context) + "\n"
+                    + "device: " + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL + "\n"
                     + "\nGameSaveDataN are the save slots, OptionSaveData holds the options\n"
                     + "and EnhancedInputUserSettings holds the input settings.\n";
             out.write(text.getBytes("UTF-8"));
             out.flush();
         } catch (IOException | SecurityException e) {
             Log.w(TAG, "manifest write failed: " + e.getMessage());
+        }
+    }
+
+    /** The application id of the running app, or "unknown". */
+    private static String packageName(Context context) {
+        try {
+            return context.getPackageName();
+        } catch (Throwable t) {
+            return "unknown";
         }
     }
 }
