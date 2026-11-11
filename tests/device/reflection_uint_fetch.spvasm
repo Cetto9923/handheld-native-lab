@@ -1,0 +1,36 @@
+; Self-authored two-fetch fragment fixture. B70 shares float types with B64.
+OpCapability Shader
+OpCapability SampledBuffer
+OpMemoryModel Logical GLSL450
+OpEntryPoint Fragment %main "main" %out
+OpExecutionMode %main OriginUpperLeft
+OpDecorate %indices DescriptorSet 0
+OpDecorate %indices Binding 64
+OpDecorate %other DescriptorSet 0
+OpDecorate %other Binding 70
+OpDecorate %out Location 0
+%void = OpTypeVoid
+%float = OpTypeFloat 32
+%uint = OpTypeInt 32 0
+%int = OpTypeInt 32 1
+%v4 = OpTypeVector %float 4
+%image = OpTypeImage %float Buffer 0 0 0 1 Unknown
+%sampled = OpTypeSampledImage %image
+%pointer = OpTypePointer UniformConstant %sampled
+%indices = OpVariable %pointer UniformConstant
+%other = OpVariable %pointer UniformConstant
+%output = OpTypePointer Output %v4
+%out = OpVariable %output Output
+%zero = OpConstant %int 0
+%one = OpConstant %int 1
+%fn = OpTypeFunction %void
+%main = OpFunction %void None %fn
+%label = OpLabel
+%s = OpLoad %sampled %indices
+%i = OpImage %image %s
+%a = OpImageFetch %v4 %i %zero None
+%b = OpImageFetch %v4 %i %one None
+%sum = OpFAdd %v4 %a %b
+OpStore %out %sum
+OpReturn
+OpFunctionEnd
