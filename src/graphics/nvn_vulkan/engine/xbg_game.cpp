@@ -2845,8 +2845,23 @@ void pipeline_lookup(PipelineLease &out,const XbgPipelineKey &key,bool cacheable
             const bool requested=f && fgetc(f)=='1';if(f)fclose(f);
             if(requested){warm::record(g,key);warm::flush();xbg_logf("NVN boss pipeline diagnostic recipe recorded before creation");}
         }
-        VK(create_graphics_pipeline_resilient(cfg.device,pipeline_cache,1,&g,nullptr,&out.pipeline));if(pipe_stats)pstat_log(out.pipeline);uint64_t dt=timing_clock()-t0;if(dt>=compile_ns)++pipelines_unsaved;++warm::creates;warm::create_ns+=dt;++hud::pipelines;hud::pipeline_ns+=dt;warm::create_max_ns=std::max(warm::create_max_ns,dt);if(cacheable)warm::record(*graphics,key);}
-    else{if(honor_pipeline_diagnostics)xbg_logf("DIAG pipeline begin compute shaders=%s",pstat_what().c_str());uint64_t t0=timing_clock();VkComputePipelineCreateInfo cc=*compute;if(pipe_stats)cc.flags|=VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR;VK(create_compute_pipeline_resilient(cfg.device,pipeline_cache,1,&cc,nullptr,&out.pipeline));++pipelines_unsaved;++hud::pipelines;hud::pipeline_ns+=timing_clock()-t0;if(pipe_stats)pstat_log(out.pipeline);}
+        VkResult pr = create_graphics_pipeline_resilient(cfg.device,pipeline_cache,1,&g,nullptr,&out.pipeline);
+        if(pr != VK_SUCCESS){
+            xbg_logf("NVN pipeline_lookup: graphics pipeline creation failed (%d) for shaders=%s, skipping draw safely", int(pr), pstat_what().c_str());
+            out.pipeline = VK_NULL_HANDLE;
+            out.transient = true;
+            return;
+        }
+        if(pipe_stats)pstat_log(out.pipeline);uint64_t dt=timing_clock()-t0;if(dt>=compile_ns)++pipelines_unsaved;++warm::creates;warm::create_ns+=dt;++hud::pipelines;hud::pipeline_ns+=dt;warm::create_max_ns=std::max(warm::create_max_ns,dt);if(cacheable)warm::record(*graphics,key);}
+    else{if(honor_pipeline_diagnostics)xbg_logf("DIAG pipeline begin compute shaders=%s",pstat_what().c_str());uint64_t t0=timing_clock();VkComputePipelineCreateInfo cc=*compute;if(pipe_stats)cc.flags|=VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR;
+        VkResult pr = create_compute_pipeline_resilient(cfg.device,pipeline_cache,1,&cc,nullptr,&out.pipeline);
+        if(pr != VK_SUCCESS){
+            xbg_logf("NVN pipeline_lookup: compute pipeline creation failed (%d) for shaders=%s, skipping dispatch safely", int(pr), pstat_what().c_str());
+            out.pipeline = VK_NULL_HANDLE;
+            out.transient = true;
+            return;
+        }
+        ++pipelines_unsaved;++hud::pipelines;hud::pipeline_ns+=timing_clock()-t0;if(pipe_stats)pstat_log(out.pipeline);}
     if(!cacheable){out.transient=true;return;}
     if(pipeline_objects.size()==pipeline_object_limit){
         // All prior draws/dispatches waited their fence. This lookup occurs
@@ -4474,7 +4489,7 @@ void dispatch(p_dispatch p,uint64_t indirect_address=0){overlay_shadow={};struct
     // Indirect group counts stay on the GPU. Capture/profiling use the CPU fallback
     // so their grid metadata is genuine; no guessed dimensions are published.
     if(!gpu_indirect){need(p.x>=0 && p.y>=0 && p.z>=0,"Negative compute dispatch");if(!p.x||!p.y||!p.z)return;need(uint32_t(p.x)<=properties.limits.maxComputeWorkGroupCount[0] && uint32_t(p.y)<=properties.limits.maxComputeWorkGroupCount[1] && uint32_t(p.z)<=properties.limits.maxComputeWorkGroupCount[2],"Compute dispatch exceeds device limit");}probe_dispatch_begin();
-    uint64_t indirect_serial=slot_serial;Commands c;fire_trace_compute_begin();Descriptors &d=acquire_descriptors();descriptors(d,c,true);need(!gpu_indirect || (slot_serial==indirect_serial && slots[slot_index].cmd==c.command),"Indirect dispatch source slot retired during descriptor preparation");for(auto *im:storage_rg16_images)need(std::find(sampled_rg16_images.begin(),sampled_rg16_images.end(),im)==sampled_rg16_images.end(),"RG16 same-dispatch sampled/storage feedback requires explicit supported subresource semantics");VkComputePipelineCreateInfo ci{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};ci.stage={VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};ci.stage.stage=VK_SHADER_STAGE_COMPUTE_BIT;ci.stage.module=state.shader[5]->module;ci.stage.pName="main";ci.layout=d.pipeline_layout;PipelineLease pipeline;{CPU_SCOPE(Pipeline);XbgPipelineKey key;bool cacheable=xbg_compute_pipeline_key(key,ci,d.entry->definition.view());pipeline_lookup(pipeline,key,cacheable,nullptr,&ci);}vkCmdBindPipeline(c.command,VK_PIPELINE_BIND_POINT_COMPUTE,pipeline.pipeline);vkCmdBindDescriptorSets(c.command,VK_PIPELINE_BIND_POINT_COMPUTE,d.pipeline_layout,0,1,&d.set,uint32_t(d.dynamic_offsets.size()),d.dynamic_offsets.data());int prof_dispatch=pass_prof_compute_begin(c.command,p);
+    uint64_t indirect_serial=slot_serial;Commands c;fire_trace_compute_begin();Descriptors &d=acquire_descriptors();descriptors(d,c,true);need(!gpu_indirect || (slot_serial==indirect_serial && slots[slot_index].cmd==c.command),"Indirect dispatch source slot retired during descriptor preparation");for(auto *im:storage_rg16_images)need(std::find(sampled_rg16_images.begin(),sampled_rg16_images.end(),im)==sampled_rg16_images.end(),"RG16 same-dispatch sampled/storage feedback requires explicit supported subresource semantics");VkComputePipelineCreateInfo ci{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};ci.stage={VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};ci.stage.stage=VK_SHADER_STAGE_COMPUTE_BIT;ci.stage.module=state.shader[5]->module;ci.stage.pName="main";ci.layout=d.pipeline_layout;PipelineLease pipeline;{CPU_SCOPE(Pipeline);XbgPipelineKey key;bool cacheable=xbg_compute_pipeline_key(key,ci,d.entry->definition.view());pipeline_lookup(pipeline,key,cacheable,nullptr,&ci);}if(!pipeline.pipeline){c.finish();return;}vkCmdBindPipeline(c.command,VK_PIPELINE_BIND_POINT_COMPUTE,pipeline.pipeline);vkCmdBindDescriptorSets(c.command,VK_PIPELINE_BIND_POINT_COMPUTE,d.pipeline_layout,0,1,&d.set,uint32_t(d.dynamic_offsets.size()),d.dynamic_offsets.data());int prof_dispatch=pass_prof_compute_begin(c.command,p);
     auto indirect_proof=indirect_template_batch(d,p,gpu_indirect);probe_indirect_template(p);
     if(gpu_indirect){vkCmdDispatchIndirect(c.command,indirect.buffer,indirect.offset);static unsigned notes=0;if(notes++<8)xbg_logf("NVN GPU indirect dispatch shader=%s address=%#llx sourceSlotSerial=%llu",state.shader[5]->key.c_str(),(unsigned long long)indirect_address,(unsigned long long)indirect_serial);}
     else vkCmdDispatch(c.command,p.x,p.y,p.z);
