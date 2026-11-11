@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-11T22:52:59.748702+00:00",
+ "updated_at": "2026-11-11T23:12:11.596061+00:00",
  "phase": "FAIL currentShrine room stillregularlightingrectangles inPID7534, preservecamera andfirstbadgroupcapture; spellstutteralsoopen",
  "coordinator": "Codex /root shrine takeover",
  "integration_branch": "work/rg477m-native",
@@ -1633,12 +1633,13 @@
     "src/graphics/nvn_device/nvn_texture.c",
     "tests/installer/texture_family_lookup_contract.c",
     "src/graphics/nvn_vulkan/engine/xbg_spirv_indirect_instances.h",
-    "tests/device/test_spirv_indirect_instances.cpp"
+    "tests/device/test_spirv_indirect_instances.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-honor-shrine-20261111",
    "acquired_at": "2026-11-12T01:08:27.178041+08:00",
-   "checkpoint": "Build7 genericwidthproduction installed-r SHA6f4b6847 verified PID17589. OrdinaryContinuepreservedShrineentry. Actualframe13483 all167groups/27.29MB zero budgetskips, CS3b630B47 scalar1 native74 actual74 andFS97aeB64sameguest/range74, viewport1383x778. First3.5sforward raw26.705FPS max101.417ms needsmediaclassification, heavy30notpassed. Rootdoingwarmmoving+nextroom/spells. Warmgenericimplementationagentsoleenginewriter.",
+   "checkpoint": "Rootretakesfrozenenginewarmcandidate; actualbuild7PID17589 stillincrystaltemple, heavy3s movingraw16.983fps. StaticboundedCPU13timedframes+8secRHIprofile saved, noframesacceptanceclaimed.",
    "write_state": "ACTIVE"
   },
   {
@@ -1748,8 +1749,8 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-honor-shrine-20261111",
    "acquired_at": "2026-11-11T22:50:54.640235+00:00",
-   "checkpoint": "Root explicitly transfers sole xbg_game.cpp ownership after clean280e2ac+92fbd0f; no root source edits until worker handback. Root sole device/build operator.",
-   "write_state": "ACTIVE"
+   "checkpoint": "Frozen SHA1767b15c, hostsanitizer+NDKsyntax pass; root integration, independentreview pending.",
+   "write_state": "RELEASED_HANDED_BACK"
   }
  ],
  "tasks": [
@@ -4572,7 +4573,7 @@
    "id": "HONOR-LEARNED-COMPUTE-WARM-20261112",
    "role": "graphics-performance",
    "owner": "Codex /root/combat_perf_audit",
-   "status": "in_progress",
+   "status": "implemented",
    "goal": "Reuse existing warm records for learned compute pipelines and optimized base/variant modules to remove demonstrated first-use repeat work",
    "inputs": [
     "280e2ac nativewidthcandidate",
@@ -4591,7 +4592,30 @@
     ".local/honor-motion-20261112/learned-compute-warm/"
    ],
    "acceptance": "Backward graphics/mixedrecord parsing, exactstage/layout/identity, boundedinprocesswords, mismatch disableswarmtake, sameinput runtime+warmmode2 byte comparisons and actualcold/warmdevice tests byroot",
-   "recovery_point": "Build7 installedSHA6f4b6847 PID17589. Commit280e2ac clean source beforewarmchange."
+   "recovery_point": "Build7 installedSHA6f4b6847 PID17589. Commit280e2ac clean source beforewarmchange.",
+   "checkpoint": "Independent source review no blocking finding, extracted3sanitizers1182oldrecords/33corrupt/8threads/64MiB pass. Rootaddedmode2 attempted/missingobservability andmixedkind2inspector 1182old+1compute+7negativespass. Device mode2 coverage and cold/warm stillNOT_RUN."
+  },
+  {
+   "id": "HONOR-LEARNED-COMPUTE-WARM-REVIEW-20261112",
+   "role": "independentsource-review",
+   "owner": "Codex /root/upstream_semantics",
+   "status": "passed",
+   "goal": "Review frozen warm implementation beforedevicebuild",
+   "inputs": [
+    "engineSHA1767b15c",
+    "source2331b87parent",
+    "exacthostregression.py"
+   ],
+   "outputs": [
+    "review in chat and currentreport"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "branch": "task/T-honor-shrine-20261111",
+   "acceptance": "Read actual normal compute/cache/variant/mismatch/lifetime paths andrerunASanUBSan hostcontract, identify blockers, deviceacceptance separate",
+   "recovery_point": "No edits ordeviceoperations",
+   "write_scope": [],
+   "checkpoint": "No blockingbugidentified. Mode2 partialcoverage mustreportexplicitly, rootaddedattempted/missing counters."
   }
  ],
  "blockers": [

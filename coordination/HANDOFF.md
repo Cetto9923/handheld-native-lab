@@ -1,3 +1,7 @@
+# 2026-11-12 warm source reviewed, sustained dense-room performance open
+
+Rootownsengineagain. Genericlearnedcompute/base+variantwordreuse source reviewed andhostsanitizerspassed, rootinspectorintegrationpassed. Devicebuildnext. Existingbuild7PID17589 remainslive, crystalroomrawmoving16.98FPS andsteady17..26 gap hasno graphicscreation/CPUreadback cause. RHIprofile+boundedCPUscopes saved, samplingrestored0/TracerPid0. Continue warmcandidateactualmode2/skills andsustainedCPUdiagnosis.
+
 # 2026-11-12 build7 deployed, actual native producer view verified
 
 Build7 genericwidthproduction installed-r SHA6f4b6847 verified PID17589. OrdinaryContinuepreservedShrineentry. Actualframe13483 all167groups/27.29MB zero budgetskips, CS3b630B47 scalar1 native74 actual74 andFS97aeB64sameguest/range74, viewport1383x778. First3.5sforward raw26.705FPS max101.417ms needsmediaclassification, heavy30notpassed. Rootdoingwarmmoving+nextroom/spells. Warmgenericimplementationagentsoleenginewriter.

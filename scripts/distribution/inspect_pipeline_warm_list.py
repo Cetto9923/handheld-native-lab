@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only inspection of this runtime's graphics warm-list records.
+"""Read-only inspection of this runtime's graphics and compute warm-list records.
 
 Checks framing, bounded extents and shader-key identities. Does not establish
 Vulkan create-info validity, GPU support, cache portability or performance.
@@ -78,6 +78,8 @@ def inspect(data, available_keys=None):
     records = 0
     unique = set()
     shaders = set()
+    graphics_records = 0
+    compute_records = 0
 
     def take(size):
         nonlocal at
@@ -110,20 +112,35 @@ def inspect(data, available_keys=None):
             raise ValueError('invalid pipeline word count')
         raw = take(count * 4)
         words = struct.unpack('<' + 'I' * count, raw)
-        if words[0] != 1:
-            raise ValueError('unsupported graphics key version')
-        # Prefix: version, layout piece, render-pass piece, flags, subpass,
-        # stage count, then flags/stage/module-id for each shader stage.
+        kind = words[0]
+        if kind not in (1, 2):
+            raise ValueError('unsupported pipeline key kind')
+        # Both kinds contain a layout piece. Graphics adds a render-pass
+        # piece and a subpass/stage count before the stage descriptions.
         pos = 1
-        for _ in range(2):
+        for _ in range(2 if kind == 1 else 1):
             if pos >= count or words[pos] > count - pos - 1:
                 raise ValueError('invalid pipeline key piece')
             pos += 1 + words[pos]
-        if count - pos < 3 + stages * 4 or words[pos + 2] != stages:
+        prefix = 3 if kind == 1 else 1
+        if count - pos < prefix + stages * 4:
             raise ValueError('pipeline stage prefix mismatch')
-        pos += 3
+        if kind == 1:
+            if words[pos + 2] != stages:
+                raise ValueError('pipeline stage count mismatch')
+            graphics_records += 1
+        else:
+            if stages != 1 or count - pos != 5 or words[pos] & 4:
+                raise ValueError('invalid compute pipeline extent or derivative flag')
+            compute_records += 1
+        pos += prefix
         for key in keys:
+            stage = words[pos + 1]
             identity = words[pos + 2] | (words[pos + 3] << 32)
+            if not stage or stage & (stage - 1) or stage > 32:
+                raise ValueError('invalid shader stage')
+            if (kind == 2) != (stage == 32):
+                raise ValueError('shader stage does not match pipeline kind')
             if identity != module_id(key):
                 raise ValueError('pipeline shader identity mismatch')
             pos += 4
@@ -132,6 +149,7 @@ def inspect(data, available_keys=None):
     missing = sorted(shaders - available_keys) if available_keys is not None else None
     return dict(bytes=len(data), sha256=hashlib.sha256(data).hexdigest(),
                 records=records, unique_records=len(unique), shader_keys=len(shaders),
+                graphics_records=graphics_records, compute_records=compute_records,
                 missing_shader_keys=missing,
                 validation='record framing and shader identities only; not GPU or performance acceptance',
                 archive_validation='index only, no payload SHA' if available_keys is not None else 'NOT_RUN')

@@ -683,8 +683,8 @@ namespace wtrack{extern uint64_t copied_bytes,dirty_pages,mismatches,fallbacks;}
 constexpr unsigned kMaxSlots=16;
 extern std::atomic<uint64_t> memo_epoch;extern uint64_t key_diff[14];extern uint64_t memo_bump[5];extern uint64_t xmemo_hits,xmemo_drops;struct PinRef{VkDescriptorSetLayout layout;uint32_t refs;};extern std::unordered_map<VkDescriptorSet,PinRef> memo_pinned[kMaxSlots];
 extern uint64_t memo_front_hits;extern uint64_t desc_memo_hits,desc_memo_misses,desc_memo_why[6],desc_ns[6],noload_passes,img_cache_hits,img_cache_misses,noload_why[8],binds_skipped,set_binds,set_bind_offsets,set_binds_offsets_only,offset_changes[10],offset_changed_at[32];
-namespace warm{extern uint64_t hits,creates,create_ns,create_max_ns;extern std::atomic<uint64_t> built,failed,build_ns,async_built,async_skips,compiled;extern bool async_on;void flush();void register_module(VkShaderModule m,const std::string &key);
-    extern bool keep_rewritten;bool take_rewritten(const std::string &key,std::vector<uint32_t> &out);}
+namespace warm{extern uint64_t hits,creates,create_ns,create_max_ns,compute_hits,compute_creates,compute_create_ns,compute_create_max_ns;extern std::atomic<uint64_t> built,failed,build_ns,async_built,async_skips,compiled;extern bool async_on;void flush();void register_module(VkShaderModule m,const std::string &key);
+    extern bool keep_rewritten;bool take_rewritten(const std::string &key,const std::vector<uint32_t> &input,std::vector<uint32_t> &out);void reject_reuse();}
 // 长帧日志的读数（nvn_vk.c 把它们接到 hle_nvn.c 的 mtl_create_* / mtl_pkg_stats / mtl_upload_* / mtl_gpu_ms）：自启动起的累计，图形线程写、
 // 游戏线程读。只算帧里同步做的：管线现建（预热和后台建的不算）、着色器载入（读文件、SPIR-V 改写、建模块）、贴图整份上传（含解交错与 BC 解码）。
 // Readings for the long-frame log (nvn_vk.c wires them to hle_nvn.c's mtl_create_* / mtl_pkg_stats / mtl_upload_* / mtl_gpu_ms): totals since
@@ -787,6 +787,8 @@ uint64_t upload_batch_bytes=0; // pressure since last bounded loading drain
 // already rewrote (after quad, warp and tidy) instead of rewriting it again on the submit thread; on the Redmi K50 Ultra the rewrites
 // are about 80% of a load, 6-9 ms for a large fragment shader. 2: rewrite as well and compare, using the rewritten result.
 int shader_reuse=0;uint64_t shaders_reused=0,shader_reuse_mismatches=0;
+struct ShaderReuseComparison {uint64_t attempted=0,missing=0,compared=0,equal=0,mismatch=0;};
+ShaderReuseComparison shader_reuse_comparisons[6][2];
 // Command pool resets off the render thread. vkResetCommandPool took ~0.4 ms of every frame on the Redmi K50 Ultra's render
 // thread. After a slot is submitted, the reset thread waits for its fence and resets its pool; retiring the slot first waits
 // for that job, so vkResetFences never overlaps the thread's wait (concurrent waits are allowed), and reusing the slot skips
@@ -1252,6 +1254,8 @@ void perf_frame(){
     if(tex_dirty){xbg_logf("NVN PERF texdirty tracked=%.1f checks=%.1f changed=%.1f",tex_dirty_tracked/f,tex_dirty_checks/f,tex_dirty_changed/f);tex_dirty_tracked=tex_dirty_checks=tex_dirty_changed=0;}
     if(vcache::enabled){xbg_logf("NVN PERF vcache hits=%.1f (%.2fMB) fills=%.1f (%.2fMB) refills=%.2f volatile=%llu untracked=%llu flushes=%llu entries=%zu arena=%.1fMB pools=%d",vcache::hits/f,vcache::hit_bytes/1048576.0/f,vcache::fills/f,vcache::fill_bytes/1048576.0/f,vcache::refills/f,(unsigned long long)vcache::volatiles,(unsigned long long)vcache::untracked,(unsigned long long)vcache::flushes,vcache::live(),vcache::arena_bytes()/1048576.0,[]{int live=0,used=0;uint64_t adds=0;if(nvn_dirty_slot_stats)nvn_dirty_slot_stats(&live,&used,&adds);return used;}());vcache::hits=vcache::hit_bytes=vcache::fills=vcache::fill_bytes=vcache::refills=0;}
     {static uint64_t pm=0,pe=0;xbg_logf("NVN PERF pipelines_new=%llu evicted=%llu warm_hits=%llu created=%llu create_ms=%.1f create_max_ms=%.1f warm_built=%llu warm_failed=%llu warm_ms=%.0f async_skips=%llu async_built=%llu",(unsigned long long)(pipeline_counts.misses-pm),(unsigned long long)(pipeline_counts.evictions-pe),(unsigned long long)warm::hits,(unsigned long long)warm::creates,warm::create_ns/1e6,warm::create_max_ns/1e6,(unsigned long long)warm::built.load(),(unsigned long long)warm::failed.load(),warm::build_ns.load()/1e6,(unsigned long long)warm::async_skips.exchange(0),(unsigned long long)warm::async_built.load());warm::hits=warm::creates=warm::create_ns=warm::create_max_ns=0;pm=pipeline_counts.misses;pe=pipeline_counts.evictions;}
+    xbg_logf("NVN PERF compute_pipelines warm_hits=%llu created=%llu create_ms=%.2f create_max_ms=%.2f",(unsigned long long)warm::compute_hits,(unsigned long long)warm::compute_creates,warm::compute_create_ns/1e6,warm::compute_create_max_ns/1e6);
+    warm::compute_hits=warm::compute_creates=warm::compute_create_ns=warm::compute_create_max_ns=0;
     xbg_logf("NVN PERF setcache ab=%d hits=%.1f misses=%.1f template=%.1f plain=%.1f memo_hits=%.1f memo_misses=%.1f memo_front=%.1f why=texel%.1f/simg%.1f/dm%.1f/dynbuf%.1f/store%.1f",int(ab_frame_on),set_cache_hits/f,set_cache_misses/f,template_updates/f,plain_updates/f,desc_memo_hits/f,desc_memo_misses/f,memo_front_hits/f,desc_memo_why[0]/f,desc_memo_why[1]/f,desc_memo_why[2]/f,desc_memo_why[3]/f,desc_memo_why[4]/f);desc_memo_hits=desc_memo_misses=memo_front_hits=0;for(auto &w:desc_memo_why)w=0;xbg_logf("NVN PERF keydiff shader%.0f pool%.0f ubo%.0f uaddr%.0f size%.0f vp%.0f alpha%.0f drv%.0f tex%.0f samp%.0f saddr%.0f same%.0f new%.0f len%.0f",key_diff[0]/tf,key_diff[1]/tf,key_diff[2]/tf,key_diff[3]/tf,key_diff[4]/tf,key_diff[5]/tf,key_diff[6]/tf,key_diff[7]/tf,key_diff[8]/tf,key_diff[9]/tf,key_diff[10]/tf,key_diff[11]/tf,key_diff[12]/tf,key_diff[13]/tf);for(auto &k:key_diff)k=0;   // per timed frame
     xbg_logf("NVN PERF binds_skipped_per_frame=%.1f xmemo_hits=%.1f drops=%llu bumps=%llu/%llu/%llu/%llu/%llu pinned=%zu/%zu",binds_skipped/f,xmemo_hits/f,(unsigned long long)xmemo_drops,(unsigned long long)memo_bump[0],(unsigned long long)memo_bump[1],(unsigned long long)memo_bump[2],(unsigned long long)memo_bump[3],(unsigned long long)memo_bump[4],memo_pinned[0].size(),memo_pinned[1].size());binds_skipped=0;{char top[160]="";int at=0;bool used[32]={};
      for(int r=0;r<4;r++){int best=-1;for(int k=0;k<32;k++)if(!used[k] && offset_changed_at[k] && (best<0 || offset_changed_at[k]>offset_changed_at[best]))best=k;if(best<0)break;used[best]=true;at+=snprintf(top+at,sizeof(top)-size_t(at),"%s%d:%.1f",r?",":"",best,offset_changed_at[best]/f);}
@@ -1278,6 +1282,11 @@ void perf_frame(){
     xbg_logf("NVN PERF cleanup_ms_per_frame queries=%.2f writebacks=%.2f(%.1fMB) views=%.2f retire=%.2f arena_pools=%.2f",cleanup_ns[0]/1e6/f,cleanup_ns[1]/1e6/f,writeback_bytes/1048576.0/f,cleanup_ns[2]/1e6/f,cleanup_ns[3]/1e6/f,cleanup_ns[4]/1e6/f);for(auto &c:cleanup_ns)c=0;writeback_bytes=0;
     xbg_logf("NVN PERF xview views=%.2f races=%.2f guarded=%.2f guarded_kb=%.1f",xviews/f,xview_races/f,xview_guarded/f,xview_guarded_bytes/1024.0/f);xviews=xview_races=xview_guarded=xview_guarded_bytes=0;
     if(uploads_prologue || uploads_inpass){xbg_logf("NVN PERF uploads window prologue=%llu inpass=%llu broke_pass=%llu",(unsigned long long)uploads_prologue,(unsigned long long)uploads_inpass,(unsigned long long)uploads_broke_pass);uploads_prologue=uploads_inpass=uploads_broke_pass=0;}
+    for(unsigned stage=0;stage<6;++stage)for(unsigned variant=0;variant<2;++variant){
+        auto &comparison=shader_reuse_comparisons[stage][variant];
+        if(comparison.attempted)xbg_logf("NVN PERF shader_reuse compare stage=%u variant=%u attempted=%llu missing=%llu compared=%llu equal=%llu mismatch=%llu",stage,variant,(unsigned long long)comparison.attempted,(unsigned long long)comparison.missing,(unsigned long long)comparison.compared,(unsigned long long)comparison.equal,(unsigned long long)comparison.mismatch);
+        comparison=ShaderReuseComparison{};
+    }
     if(shaders_reused || shader_reuse_mismatches){xbg_logf("NVN PERF shader_reuse window reused=%llu mismatches=%llu",(unsigned long long)shaders_reused,(unsigned long long)shader_reuse_mismatches);shaders_reused=shader_reuse_mismatches=0;}
     if(wb_skip){xbg_logf("NVN PERF wbskip ab=%d skipped=%.1f (%.2fMB)",int(ab_frame_on),wb_skipped/f,wb_skipped_bytes/1048576.0/f);wb_skipped=wb_skipped_bytes=0;}
     if(pipe_memo){xbg_logf("NVN PERF pipememo ab=%d hits=%.1f misses=%.1f",int(ab_frame_on),pipe_memo_hits/f,pipe_memo_misses/f);pipe_memo_hits=pipe_memo_misses=0;}
@@ -2561,9 +2570,46 @@ bool specialize_integer_buffers(std::vector<uint32_t> &words,const IntegerBuffer
     }
     words.swap(changed);return true;
 }
+// Inputs are already structurally repaired and specialized at both callers.
+// Warm candidates belong to this process's immutable optimizer configuration.
+bool optimize_runtime_shader(std::vector<uint32_t> &words,uint32_t stage,const std::string &base,const std::string &identity,const char *loader){
+    std::vector<uint32_t> reused;
+    const bool found=shader_reuse && !ab_off("shreuse") && warm::take_rewritten(identity,words,reused);
+    if(shader_reuse==2){
+        auto &comparison=shader_reuse_comparisons[stage][identity!=base];
+        ++comparison.attempted;
+        if(!found)++comparison.missing;
+    }
+    if(found && shader_reuse!=2)words.swap(reused);
+    else{
+        optimize_shader_words(words,stage,base,loader);
+        if(found){
+            const bool equal=reused==words;
+            auto &comparison=shader_reuse_comparisons[stage][identity!=base];
+            ++comparison.compared;
+            if(equal)++comparison.equal;
+            else{
+                ++comparison.mismatch;++shader_reuse_mismatches;
+                warm::reject_reuse();
+            }
+            xbg_logf("NVN shader reuse compare identity=%s stage=%u variant=%u equal=%u warmWords=%zu runtimeWords=%zu",identity.c_str(),stage,unsigned(identity!=base),unsigned(equal),reused.size(),words.size());
+        }
+    }
+    if(found)++shaders_reused;
+    return found;
+}
+uint64_t shader_monotonic_ns(){
+    timespec now{};clock_gettime(CLOCK_MONOTONIC,&now);
+    return uint64_t(now.tv_sec)*1000000000ull+uint64_t(now.tv_nsec);
+}
+void shader_load_anchor(const std::string &identity,uint32_t stage,uint64_t frame,uint64_t begin){
+    const uint64_t end=shader_monotonic_ns();
+    if(end-begin>=5000000ull)
+        xbg_logf("NVN shader slow-load identity=%s stage=%u frame=%llu monotonic_begin_ns=%llu monotonic_end_ns=%llu total_ms=%.2f",identity.c_str(),stage,(unsigned long long)frame,(unsigned long long)begin,(unsigned long long)end,(end-begin)/1e6);
+}
 Shader *load_shader(const void *control){
     std::string key=control_key(control);auto found=shaders.find(key);if(found!=shaders.end())return found->second.get();
-    const uint64_t load_t0=timing_clock();
+    const uint64_t load_t0=timing_clock(),load_monotonic=shader_monotonic_ns(),load_frame=stats.presents.load();
     std::string path;std::vector<uint8_t> bytes;if(!read_shader_bundle(key,bytes,&path))xbg_fatalf("Missing or invalid shader bundle %s",path.c_str());
     xbg_shader_header h;memcpy(&h,bytes.data(),sizeof(h));need(h.magic==0x31534758 && h.version==1 && h.stage<6 && h.binding_count<=256 && h.input_count<=16 && h.c1_bytes<=65536 && h.spirv_bytes%4==0,"Invalid shader bundle header");
     size_t offset=sizeof(h),expected=offset+size_t(h.binding_count)*sizeof(xbg_shader_binding)+size_t(h.input_count)*4+h.c1_bytes+h.spirv_bytes;need(expected==bytes.size(),"Shader bundle extent mismatch");
@@ -2577,12 +2623,7 @@ Shader *load_shader(const void *control){
     if(!p->integer_buffer_bindings.empty())p->variant_source=words;
     // gfx-shader-reuse：预热线程已改写过这个着色器时直接取用；2 时照样改写，与取来的逐字比对。
     // gfx-shader-reuse: take the warm-up threads' rewrite of this shader when there is one; with 2, rewrite as well and compare word by word.
-    std::vector<uint32_t> reused;const bool have_reused=shader_reuse && !ab_off("shreuse") && warm::take_rewritten(key,reused);
-    if(!have_reused || shader_reuse==2){
-        optimize_shader_words(words,h.stage,key,"runtime");
-        if(have_reused && reused!=words){++shader_reuse_mismatches;xbg_logf("NVN shader reuse MISMATCH %s stage=%u words=%zu/%zu",key.c_str(),h.stage,reused.size(),words.size());}}
-    else words.swap(reused);
-    if(have_reused)++shaders_reused;
+    const bool have_reused=optimize_runtime_shader(words,h.stage,key,key,"runtime");
     load_t2=timing_clock();
     {auto extent=spirv_uniform_extent(words);uint32_t trimmed=0;for(auto &b:p->bindings)if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER && b.source==XBG_SOURCE_UNIFORM){auto e=extent.find(b.binding);uint32_t declared=b.bytes?b.bytes:65536;if(e!=extent.end() && e->second<declared){b.bytes=e->second;++trimmed;}}uniform_trimmed+=trimmed;}
     {bool kill=false;for(size_t i=5;i<words.size();){uint32_t n=words[i]>>16,op=words[i]&0xffff;if(op==252||op==4416||op==5380){kill=true;break;}if(!n)break;i+=n;}p->discards=kill;}
@@ -2599,7 +2640,7 @@ Shader *load_shader(const void *control){
     // diagnostic's eight target modules. Never reconstruct a cache hit offline.
     if(probe_shader_requested(key))p->probe_words=words;
     VkShaderModuleCreateInfo ci{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};ci.codeSize=words.size()*4;ci.pCode=words.data();VK(vkCreateShaderModule(cfg.device,&ci,nullptr,&p->module));warm::register_module(p->module,key);Shader *out=p.get();shaders.emplace(key,std::move(p));++stats.shader_loads;++hud::shaders;const uint64_t load_t4=timing_clock();hud::shader_ns+=load_t4-load_t0;
-    xbg_logf("NVN shader %s stage=%u loaded words=%zu ms read=%.2f rewrite=%.2f analyse=%.2f module=%.2f reused=%d",key.c_str(),h.stage,words.size(),(load_t1-load_t0)/1e6,(load_t2-load_t1)/1e6,(load_t3-load_t2)/1e6,(load_t4-load_t3)/1e6,int(have_reused));return out;
+    xbg_logf("NVN shader %s stage=%u loaded words=%zu ms read=%.2f rewrite=%.2f analyse=%.2f module=%.2f reused=%d",key.c_str(),h.stage,words.size(),(load_t1-load_t0)/1e6,(load_t2-load_t1)/1e6,(load_t3-load_t2)/1e6,(load_t4-load_t3)/1e6,int(have_reused));shader_load_anchor(key,h.stage,load_frame,load_monotonic);return out;
 }
 // Scalar flags describe signedness, independently of texel width and components.
 // Formatless storage and sampled buffers can use their matching native integer view.
@@ -2683,9 +2724,10 @@ Shader *integer_buffer_variant(Shader &base){
         xbg_logf("NVN integer buffer UNSUPPORTED shader=%s reason=identity-size unchanged=1",base.key.c_str());
         return &base;
     }
+    const uint64_t load_monotonic=shader_monotonic_ns(),load_frame=stats.presents.load();
     std::vector<uint32_t> words=base.variant_source;
     need(specialize_integer_buffers(words,formats),"Integer buffer specialization shape changed");
-    optimize_shader_words(words,base.stage,base.key,"runtime-variant");
+    const bool reused=optimize_runtime_shader(words,base.stage,base.key,identity,"runtime-variant");
     auto variant=std::make_unique<Shader>();
     variant->key=base.key;variant->identity=identity;variant->stage=base.stage;
     variant->bindings=base.bindings;variant->inputs=base.inputs;variant->input_classes=base.input_classes;
@@ -2696,7 +2738,8 @@ Shader *integer_buffer_variant(Shader &base){
     VK(vkCreateShaderModule(cfg.device,&info,nullptr,&variant->module));
     warm::register_module(variant->module,identity);
     Shader *selected=variant.get();base.variants.emplace(formats,std::move(variant));
-    xbg_logf("NVN integer buffer variant shader=%s identity=%s",base.key.c_str(),identity.c_str());
+    xbg_logf("NVN integer buffer variant shader=%s identity=%s reused=%u",base.key.c_str(),identity.c_str(),unsigned(reused));
+    shader_load_anchor(identity,base.stage,load_frame,load_monotonic);
     return selected;
 }
 struct IntegerBufferSelection {
@@ -2779,7 +2822,7 @@ void report_pipeline_cache(){
 }
 // Pipeline warm-up (the "precompiled shader cache" of console emulators). The Maleoon driver does not grow the
 // VkPipelineCache, so every launch recompiled each graphics pipeline on first use, inside the frame (~100+ ms each).
-// Every newly created graphics pipeline is appended to files/vk-pipeline-list.bin (shader bundle keys + the exact
+// Every newly created cacheable graphics or compute pipeline is appended to files/vk-pipeline-list.bin (shader bundle keys + the exact
 // serialized create-info key, with shader modules identified by a stable hash of their bundle key). At start-up,
 // background threads rebuild those pipelines from the list; a draw that needs one takes it ready-made.
 // files/gfx-no-warm disables building (recording continues).
@@ -2794,37 +2837,91 @@ std::vector<Rec> recs;std::unordered_set<std::string> known;std::vector<uint8_t>
 // Explicitly enabled Honor experiment: precompute the LIMIT shaders seen in the device trace.
 std::vector<std::string> compute_prewarm_keys;
 std::unordered_map<std::string,VkPipeline> ready;std::vector<std::thread> threads;std::atomic<bool> stop{false};std::atomic<size_t> next{0};
-std::atomic<uint64_t> built{0},failed{0},build_ns{0},compiled{0};uint64_t hits=0,creates=0,create_ns=0,create_max_ns=0;bool enabled=true;
-std::unordered_map<std::string,VkShaderModule> modules;std::unordered_map<std::string,VkPipelineLayout> layouts;std::unordered_map<std::string,VkRenderPass> passes;
+std::atomic<uint64_t> built{0},failed{0},build_ns{0},compiled{0};uint64_t hits=0,creates=0,create_ns=0,create_max_ns=0,compute_hits=0,compute_creates=0,compute_create_ns=0,compute_create_max_ns=0;bool enabled=true;
+struct WarmModule {VkShaderModule module;uint32_t stage;};
+std::unordered_map<std::string,WarmModule> modules;std::unordered_map<std::string,VkPipelineLayout> layouts;std::unordered_map<std::string,VkRenderPass> passes;
 std::vector<VkDescriptorSetLayout> set_layouts;
 std::string list_path(){std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');return (cut==std::string::npos?dir:dir.substr(0,cut))+"/vk-pipeline-list.bin";}
-void record(const VkGraphicsPipelineCreateInfo &ci,const XbgPipelineKey &key){
+void record(const VkPipelineShaderStageCreateInfo *stages,uint32_t count,const XbgPipelineKey &key){
+    if(!key.valid || !key.count || !count || count>5)return;
     std::string bytes(reinterpret_cast<const char*>(key.words),size_t(key.count)*4);
-    std::vector<std::string> keys;{std::lock_guard<std::mutex> l(mu);if(!known.insert(bytes).second)return;
-        for(uint32_t i=0;i<ci.stageCount;i++){auto it=ids.find(ci.pStages[i].module);if(it==ids.end())return;keys.push_back(id_keys[it->second]);}}
-    auto put=[](uint32_t v){for(int i=0;i<4;i++)pending.push_back(uint8_t(v>>(8*i)));};
-    put(0x57504c58);put(uint32_t(keys.size()));for(auto &k:keys){put(uint32_t(k.size()));pending.insert(pending.end(),k.begin(),k.end());}
+    std::lock_guard<std::mutex> lock(mu);
+    std::vector<std::string> keys;
+    for(uint32_t i=0;i<count;++i){
+        auto found=ids.find(stages[i].module);
+        if(found==ids.end())return;
+        keys.push_back(id_keys.at(found->second));
+    }
+    if(!known.insert(bytes).second)return;
+    auto put=[](uint32_t value){for(unsigned i=0;i<4;++i)pending.push_back(uint8_t(value>>(8*i)));};
+    put(0x57504c58);put(uint32_t(keys.size()));
+    for(const auto &shader_key:keys){put(uint32_t(shader_key.size()));pending.insert(pending.end(),shader_key.begin(),shader_key.end());}
     put(key.count);pending.insert(pending.end(),bytes.begin(),bytes.end());
 }
+void record(const VkGraphicsPipelineCreateInfo &ci,const XbgPipelineKey &key){record(ci.pStages,ci.stageCount,key);}
+void record(const VkComputePipelineCreateInfo &ci,const XbgPipelineKey &key){record(&ci.stage,1,key);}
 void flush(){if(pending.empty())return;FILE *f=fopen(list_path().c_str(),"ab");if(!f)return;bool ok=fwrite(pending.data(),1,pending.size(),f)==pending.size();ok=fclose(f)==0&&ok;if(ok)pending.clear();}
 // gfx-shader-reuse：预热改写好的 SPIR-V，按着色器键留到 load_shader 取走（取走即删）；没用到的随 shutdown 释放。
 // gfx-shader-reuse: SPIR-V the warm-up rewrote, kept by shader key until load_shader takes it (taking removes it); unused entries
 // are freed at shutdown.
-bool keep_rewritten=false;std::unordered_map<std::string,std::vector<uint32_t>> rewritten;
-bool take_rewritten(const std::string &key,std::vector<uint32_t> &out){std::lock_guard<std::mutex> l(mu);if(!compute_prewarm_keys.empty() && std::find(compute_prewarm_keys.begin(),compute_prewarm_keys.end(),key)==compute_prewarm_keys.end())return false;auto it=rewritten.find(key);if(it==rewritten.end())return false;out.swap(it->second);rewritten.erase(it);return true;}
-VkShaderModule load_module(const std::string &key){
-    {std::lock_guard<std::mutex> l(mu);auto it=modules.find(key);if(it!=modules.end())return it->second;}
+bool keep_rewritten=false,reuse_rejected=false;
+struct RewrittenShader {std::vector<uint32_t> input,output;};
+std::unordered_map<std::string,RewrittenShader> rewritten;
+constexpr size_t rewritten_limit=64u*1024u*1024u;
+size_t rewritten_bytes=0;
+void reject_reuse(){std::lock_guard<std::mutex> lock(mu);reuse_rejected=true;}
+void retain_rewritten(const std::string &key,std::vector<uint32_t> input,const std::vector<uint32_t> &output){
+    const size_t bytes=(input.size()+output.size())*sizeof(uint32_t);
+    std::lock_guard<std::mutex> lock(mu);
+    if(reuse_rejected || rewritten.count(key) || bytes>rewritten_limit-rewritten_bytes)return;
+    rewritten.emplace(key,RewrittenShader{std::move(input),output});
+    rewritten_bytes+=bytes;
+}
+bool take_rewritten(const std::string &key,const std::vector<uint32_t> &input,std::vector<uint32_t> &out){
+    std::lock_guard<std::mutex> lock(mu);
+    if(reuse_rejected)return false;
+    auto found=rewritten.find(key);
+    if(found==rewritten.end())return false;
+    const bool same=found->second.input==input;
+    rewritten_bytes-=(found->second.input.size()+found->second.output.size())*sizeof(uint32_t);
+    if(same)out.swap(found->second.output);
+    else{
+        reuse_rejected=true;
+        xbg_logf("NVN shader reuse INPUT MISMATCH identity=%s warm pipeline reuse disabled",key.c_str());
+    }
+    rewritten.erase(found);
+    return same;
+}
+VkShaderModule load_module(const std::string &key,uint32_t expected_stage=0){
+    {
+        std::lock_guard<std::mutex> lock(mu);
+        auto found=modules.find(key);
+        if(found!=modules.end()){
+            if(expected_stage && found->second.stage!=expected_stage)return VK_NULL_HANDLE;
+            return found->second.module;
+        }
+    }
     std::string base;IntegerBufferFormats formats;
     if(!shader_identity(key,base,formats))return VK_NULL_HANDLE;
     std::vector<uint8_t> b;if(!read_shader_bundle(base,b,nullptr))return VK_NULL_HANDLE;
-    xbg_shader_header h;memcpy(&h,b.data(),sizeof(h));if(h.magic!=0x31534758 || h.version!=1 || h.spirv_bytes%4)return VK_NULL_HANDLE;
+    xbg_shader_header h;memcpy(&h,b.data(),sizeof(h));if(h.magic!=0x31534758 || h.version!=1 || h.stage>=6 || h.binding_count>256 || h.input_count>16 || h.c1_bytes>65536 || h.spirv_bytes%4)return VK_NULL_HANDLE;
+    if(expected_stage && expected_stage!=(1u<<h.stage))return VK_NULL_HANDLE;
     size_t off=sizeof(h)+size_t(h.binding_count)*sizeof(xbg_shader_binding)+size_t(h.input_count)*4+h.c1_bytes;if(off+h.spirv_bytes!=b.size())return VK_NULL_HANDLE;
     std::vector<uint32_t> w(h.spirv_bytes/4);memcpy(w.data(),b.data()+off,h.spirv_bytes);spv_override(base,w);boss_interface_rewrite(w,h.stage,base.c_str(),"warm");histogram_sync_rewrite(w,h.stage,base.c_str(),"warm");stencil_rewrite(w,h.stage,base.c_str(),"warm");
     if(!specialize_integer_buffers(w,formats))return VK_NULL_HANDLE;
+    std::vector<uint32_t> rewrite_input;
+    if(keep_rewritten)rewrite_input=w;
     optimize_shader_words(w,h.stage,base,"warm");
-    if(keep_rewritten){std::lock_guard<std::mutex> l(mu);rewritten.emplace(key,w);}
+    if(keep_rewritten)retain_rewritten(key,std::move(rewrite_input),w);
     VkShaderModuleCreateInfo ci{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};ci.codeSize=w.size()*4;ci.pCode=w.data();VkShaderModule m;if(vkCreateShaderModule(cfg.device,&ci,nullptr,&m)!=VK_SUCCESS)return VK_NULL_HANDLE;
-    std::lock_guard<std::mutex> l(mu);auto ins=modules.emplace(key,m);if(!ins.second){vkDestroyShaderModule(cfg.device,m,nullptr);return ins.first->second;}return m;
+    std::lock_guard<std::mutex> lock(mu);
+    auto inserted=modules.emplace(key,WarmModule{m,1u<<h.stage});
+    if(!inserted.second){
+        vkDestroyShaderModule(cfg.device,m,nullptr);
+        if(expected_stage && inserted.first->second.stage!=expected_stage)return VK_NULL_HANDLE;
+        return inserted.first->second.module;
+    }
+    return m;
 }
 struct Reader{const uint32_t *w;size_t n,i=0;bool bad=false;uint32_t u(){if(i>=n){bad=true;return 0;}return w[i++];}uint64_t q(){uint64_t lo=u();return lo|(uint64_t(u())<<32);}float f(){uint32_t b=u();float x;memcpy(&x,&b,4);return x;}};
 VkPipelineLayout make_layout(const uint32_t *w,uint32_t n){
@@ -2848,12 +2945,36 @@ VkRenderPass make_pass(const uint32_t *w,uint32_t n){
     VkRenderPass rp;if(vkCreateRenderPass(cfg.device,&p,nullptr,&rp)!=VK_SUCCESS)return VK_NULL_HANDLE;
     std::lock_guard<std::mutex> l(mu);auto ins=passes.emplace(k,rp);if(!ins.second){vkDestroyRenderPass(cfg.device,rp,nullptr);return ins.first->second;}return rp;
 }
+bool build_compute(const Rec &rec,Reader &reader,VkPipelineLayout layout){
+    if(rec.keys.size()!=1)return false;
+    VkComputePipelineCreateInfo info{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+    info.layout=layout;info.flags=reader.u();
+    info.stage.sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    info.stage.flags=reader.u();info.stage.stage=VkShaderStageFlagBits(reader.u());
+    const uint64_t identity=reader.q();
+    if(reader.bad || reader.i!=reader.n || info.stage.stage!=VK_SHADER_STAGE_COMPUTE_BIT || identity!=fnv(rec.keys[0]) ||
+       (info.flags&VK_PIPELINE_CREATE_DERIVATIVE_BIT))return false;
+    info.stage.module=load_module(rec.keys[0],VK_SHADER_STAGE_COMPUTE_BIT);info.stage.pName="main";
+    if(!info.stage.module)return false;
+    VkPipeline pipeline=VK_NULL_HANDLE;
+    const uint64_t begin=timing_clock();
+    VkResult result=vkCreateComputePipelines(cfg.device,pipeline_cache,1,&info,nullptr,&pipeline);
+    if(result!=VK_SUCCESS){if(pipeline)vkDestroyPipeline(cfg.device,pipeline,nullptr);return false;}
+    if(timing_clock()-begin>=compile_ns)++compiled;
+    std::string bytes(reinterpret_cast<const char*>(rec.words.data()),rec.words.size()*4);
+    std::lock_guard<std::mutex> lock(mu);
+    if(!ready.emplace(bytes,pipeline).second)vkDestroyPipeline(cfg.device,pipeline,nullptr);
+    return true;
+}
 bool build(const Rec &rec){
-    Reader r{rec.words.data(),rec.words.size()};if(r.u()!=1)return false;
-    uint32_t ln=r.u();if(r.i+ln>r.n)return false;VkPipelineLayout layout=make_layout(r.w+r.i,ln);r.i+=ln;
+    Reader r{rec.words.data(),rec.words.size()};const uint32_t kind=r.u();
+    if(kind!=1 && kind!=2)return false;
+    uint32_t ln=r.u();if(ln>r.n-r.i)return false;VkPipelineLayout layout=make_layout(r.w+r.i,ln);r.i+=ln;
+    if(!layout)return false;
+    if(kind==2)return build_compute(rec,r,layout);
     uint32_t pn=r.u();if(r.i+pn>r.n)return false;VkRenderPass pass=make_pass(r.w+r.i,pn);r.i+=pn;if(!layout || !pass)return false;
     VkGraphicsPipelineCreateInfo ci{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};ci.flags=r.u();ci.subpass=r.u();uint32_t ns=r.u();if(ns>5 || ns!=rec.keys.size())return false;
-    VkPipelineShaderStageCreateInfo st[5]{};for(uint32_t i=0;i<ns;i++){st[i].sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;st[i].flags=r.u();st[i].stage=VkShaderStageFlagBits(r.u());uint64_t id=r.q();if(id!=fnv(rec.keys[i]))return false;st[i].module=load_module(rec.keys[i]);if(!st[i].module)return false;st[i].pName="main";}
+    VkPipelineShaderStageCreateInfo st[5]{};for(uint32_t i=0;i<ns;i++){st[i].sType=VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;st[i].flags=r.u();st[i].stage=VkShaderStageFlagBits(r.u());uint64_t id=r.q();if(id!=fnv(rec.keys[i]))return false;st[i].module=load_module(rec.keys[i],st[i].stage);if(!st[i].module)return false;st[i].pName="main";}
     VkPipelineVertexInputStateCreateInfo v{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};v.flags=r.u();uint32_t nvb=r.u();if(nvb>32)return false;std::vector<VkVertexInputBindingDescription> vb(nvb);for(auto &x:vb){x.binding=r.u();x.stride=r.u();x.inputRate=VkVertexInputRate(r.u());}
     uint32_t nva=r.u();if(nva>32)return false;std::vector<VkVertexInputAttributeDescription> va(nva);for(auto &x:va){x.location=r.u();x.binding=r.u();x.format=VkFormat(r.u());x.offset=r.u();}
     v.vertexBindingDescriptionCount=nvb;v.pVertexBindingDescriptions=vb.data();v.vertexAttributeDescriptionCount=nva;v.pVertexAttributeDescriptions=va.data();
@@ -2905,7 +3026,7 @@ void async_worker(){
 // Queue the build of this draw's pipeline (once); false when the caller should build it now: a module without a bundle key,
 // a record that failed to build in the background before, or the warm-up threads stopped.
 bool async_request(const VkGraphicsPipelineCreateInfo &ci,const XbgPipelineKey &key,const std::string &bytes){
-    {std::lock_guard<std::mutex> l(mu);if(async_pending.count(bytes))return true;if(stop.load() || async_failed.count(bytes))return false;Rec r;
+    {std::lock_guard<std::mutex> l(mu);if(reuse_rejected)return false;if(async_pending.count(bytes))return true;if(stop.load() || async_failed.count(bytes))return false;Rec r;
         for(uint32_t i=0;i<ci.stageCount;i++){auto it=ids.find(ci.pStages[i].module);if(it==ids.end())return false;r.keys.push_back(id_keys[it->second]);}
         r.words.assign(key.words,key.words+key.count);async_pending.insert(bytes);async_q.push_back(std::move(r));}
     if(!async_thread.joinable())async_thread=std::thread(async_worker);
@@ -2925,6 +3046,43 @@ void seed(){
     fclose(in);if(out)ok=fclose(out)==0 && ok;if(ok)ok=rename(tmp.c_str(),list.c_str())==0;if(!ok)remove(tmp.c_str());
     xbg_logf("NVN warm list seeded from %s bytes=%zu ok=%d",from.c_str(),total,int(ok));
 }
+bool read_record(const std::vector<uint8_t> &bytes,size_t &at,Rec &record){
+    auto get=[&](uint32_t &value){
+        if(at>bytes.size() || bytes.size()-at<4)return false;
+        memcpy(&value,bytes.data()+at,4);at+=4;return true;
+    };
+    record=Rec{};
+    uint32_t magic,stages,count;
+    if(!get(magic) || magic!=0x57504c58 || !get(stages) || !stages || stages>5)return false;
+    for(uint32_t i=0;i<stages;++i){
+        uint32_t length;
+        if(!get(length) || length<16 || length>256 || length>bytes.size()-at)return false;
+        std::string key(reinterpret_cast<const char*>(bytes.data()+at),length);at+=length;
+        std::string base;IntegerBufferFormats formats;
+        if(!shader_identity(key,base,formats))return false;
+        record.keys.push_back(std::move(key));
+    }
+    if(!get(count) || !count || count>XbgPipelineKey::Capacity || size_t(count)*4>bytes.size()-at)return false;
+    record.words.resize(count);memcpy(record.words.data(),bytes.data()+at,size_t(count)*4);at+=size_t(count)*4;
+    Reader reader{record.words.data(),record.words.size()};
+    const uint32_t kind=reader.u();
+    if(kind!=1 && kind!=2)return false;
+    const unsigned pieces=kind==1?2:1;
+    for(unsigned i=0;i<pieces;++i){
+        const uint32_t length=reader.u();
+        if(reader.bad || length>reader.n-reader.i)return false;
+        reader.i+=length;
+    }
+    reader.u(); // Pipeline flags.
+    if(kind==1){reader.u();if(reader.u()!=stages)return false;}
+    else if(stages!=1)return false;
+    for(const auto &key:record.keys){
+        reader.u();const uint32_t stage=reader.u();const uint64_t identity=reader.q();
+        if(reader.bad || identity!=fnv(key) || !stage || (stage&(stage-1)) || stage>VK_SHADER_STAGE_COMPUTE_BIT ||
+           (kind==2?stage!=VK_SHADER_STAGE_COMPUTE_BIT:stage==VK_SHADER_STAGE_COMPUTE_BIT))return false;
+    }
+    return !reader.bad && (kind==1 || reader.i==reader.n);
+}
 void start(){
     seed();
     compute_prewarm_keys.clear();
@@ -2940,12 +3098,13 @@ void start(){
         FILE *f=fopen(path.c_str(),"rb");if(!f)return;
         fseek(f,0,SEEK_END);long n=ftell(f);rewind(f);std::vector<uint8_t> b(n>0 && n<(64l<<20)?size_t(n):0);
         bool ok=b.empty() || fread(b.data(),1,b.size(),f)==b.size();fclose(f);
-        size_t i=0;auto get=[&](uint32_t &v){if(i+4>b.size())return false;memcpy(&v,b.data()+i,4);i+=4;return true;};
-        size_t added=0;
-        while(ok && i<b.size()){uint32_t magic,ns,count;if(!get(magic)||magic!=0x57504c58||!get(ns)||ns>5)break;Rec r;bool good=true;
-            for(uint32_t s=0;s<ns && good;s++){uint32_t len;if(!get(len)||len>256||i+len>b.size()){good=false;break;}r.keys.emplace_back(reinterpret_cast<const char*>(b.data()+i),len);i+=len;}
-            if(!good||!get(count)||count>XbgPipelineKey::Capacity||i+size_t(count)*4>b.size())break;r.words.resize(count);memcpy(r.words.data(),b.data()+i,size_t(count)*4);i+=size_t(count)*4;
-            if(known.insert(std::string(reinterpret_cast<const char*>(r.words.data()),r.words.size()*4)).second){recs.push_back(std::move(r));++added;}}
+        size_t i=0,added=0;
+        while(ok && i<b.size()){
+            Rec record;
+            if(!read_record(b,i,record)){xbg_logf("NVN warm list rejected path=%s offset=%zu",path.c_str(),i);break;}
+            std::string key(reinterpret_cast<const char*>(record.words.data()),record.words.size()*4);
+            if(known.insert(key).second){recs.push_back(std::move(record));++added;}
+        }
         xbg_logf("NVN warm list loaded path=%s bytes=%ld added=%zu",path.c_str(),n,added);
     };
     load_records(list_path());
@@ -2957,8 +3116,8 @@ void start(){
 }
 void shutdown(){{std::lock_guard<std::mutex> l(mu);stop=true;}async_cv.notify_all();for(auto &t:threads)if(t.joinable())t.join();threads.clear();if(async_thread.joinable())async_thread.join();std::lock_guard<std::mutex> l(mu);async_q.clear();async_pending.clear();async_failed.clear();
     for(auto &p:ready)vkDestroyPipeline(cfg.device,p.second,nullptr);ready.clear();for(auto &p:layouts)vkDestroyPipelineLayout(cfg.device,p.second,nullptr);layouts.clear();for(auto s:set_layouts)vkDestroyDescriptorSetLayout(cfg.device,s,nullptr);set_layouts.clear();
-    for(auto &p:passes)vkDestroyRenderPass(cfg.device,p.second,nullptr);passes.clear();for(auto &m:modules)vkDestroyShaderModule(cfg.device,m.second,nullptr);modules.clear();ids.clear();id_keys.clear();recs.clear();known.clear();rewritten.clear();}
-bool take(const std::string &bytes,VkPipeline &out){std::lock_guard<std::mutex> l(mu);auto it=ready.find(bytes);if(it==ready.end())return false;out=it->second;ready.erase(it);return true;}
+    for(auto &p:passes)vkDestroyRenderPass(cfg.device,p.second,nullptr);passes.clear();for(auto &m:modules)vkDestroyShaderModule(cfg.device,m.second.module,nullptr);modules.clear();ids.clear();id_keys.clear();recs.clear();known.clear();rewritten.clear();rewritten_bytes=0;}
+bool take(const std::string &bytes,VkPipeline &out){std::lock_guard<std::mutex> l(mu);if(reuse_rejected)return false;auto it=ready.find(bytes);if(it==ready.end())return false;out=it->second;ready.erase(it);return true;}
 }
 // Diagnostic (marker gfx-pipe-stats, with the warm-up off): the driver's statistics of each pipeline as it is created, and
 // the draws per frame of each pipeline over frames 3000-3059.
@@ -3008,7 +3167,7 @@ void pipeline_lookup(PipelineLease &out,const XbgPipelineKey &key,bool cacheable
         if(found!=pipeline_objects.end()){++pipeline_counts.hits;found->second.last_used=++pipeline_tick;out.pipeline=found->second.pipeline;return;}
         ++pipeline_counts.misses;
     }else ++pipeline_counts.bypass;
-    if(graphics && cacheable && warm::take(bytes,out.pipeline)){++warm::hits;}
+    if(cacheable && warm::take(bytes,out.pipeline)){if(graphics)++warm::hits;else ++warm::compute_hits;}
     // A draw that may be skipped gets no pipeline while its build is queued (warm::async_request); it is not cached.
     else if(graphics && cacheable && may_skip && warm::async_request(*graphics,key,bytes)){out.pipeline=VK_NULL_HANDLE;out.transient=true;++warm::async_skips;return;}
     else if(graphics){if(honor_pipeline_diagnostics)xbg_logf("DIAG pipeline begin graphics shaders=%s",pstat_what().c_str());uint64_t t0=timing_clock();VkGraphicsPipelineCreateInfo g=*graphics;if(pipe_stats)g.flags|=VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR;
@@ -3036,7 +3195,12 @@ void pipeline_lookup(PipelineLease &out,const XbgPipelineKey &key,bool cacheable
             out.transient = true;
             return;
         }
-        ++pipelines_unsaved;++hud::pipelines;hud::pipeline_ns+=timing_clock()-t0;if(pipe_stats)pstat_log(out.pipeline);}
+        const uint64_t elapsed=timing_clock()-t0;
+        ++pipelines_unsaved;++hud::pipelines;hud::pipeline_ns+=elapsed;
+        ++warm::compute_creates;warm::compute_create_ns+=elapsed;
+        warm::compute_create_max_ns=std::max(warm::compute_create_max_ns,elapsed);
+        if(pipe_stats)pstat_log(out.pipeline);
+        if(cacheable)warm::record(*compute,key);}
     if(!cacheable){out.transient=true;return;}
     if(pipeline_objects.size()==pipeline_object_limit){
         // All prior draws/dispatches waited their fence. This lookup occurs
