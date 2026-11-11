@@ -1,7 +1,7 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-11T11:00:00.000000+08:00
-阶段：Dual-device verified: RG477M locked at 30.00 FPS (stutter fixed), Honor tablet locked at 60.00 FPS (no regressions)
+状态事件时间：2026-11-11T11:40:00.000000+08:00
+阶段：Dual-device verified: Earth Shrine block artifact resolved, Honor tablet locked at 59.77 FPS, RG477M locked at 29.96 FPS with 822 pre-warmed pipelines
 总控：Codex /root shrine takeover
 更新方式：按事件更新，没有后台自动刷新。
 

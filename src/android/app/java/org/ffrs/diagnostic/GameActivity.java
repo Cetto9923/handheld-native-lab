@@ -1185,7 +1185,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         }
         // Always available: the player needs a way to hand the saves over
         // without a computer, whatever state the data check is in.
-        box.addView(setupButton("导出存档到 Download", 7, box), bp);
+        setupButton("导出存档到 Download", 7, box);
         box.setVisibility(View.GONE);
         box.setClickable(true);
         setupView = box;

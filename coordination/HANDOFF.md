@@ -1,3 +1,34 @@
+# 2026-11-11 土之神殿外地面小方块 BUG 根治与双机实机验证 PASS（帧率提升至锁定 60 FPS）
+
+- **BUG 现象与根因定位**：
+  - *用户反馈*：“目前有一个BUG，现在所在的土之神殿外 画面有小方块异常的BUG ，帧率也不是很高。”
+  - *现象定位*：地面台阶区域呈现大片横向方形异常色块（`user-blocks-now.png`），帧率受累跌至 ~36-37 FPS。经 GPU capture（frame 1358，draw 131709，pipeline 1872）定位，问题由片元着色器模块 `97ae64dbc5e7ff26` 触发。
+  - *硬件级致命根因（FTZ 次正规数截断）*：
+    1. 神殿外采用分簇前向光照（Clustered Forward Lighting），Frustum 划分为 10880 个 3D 簇。每个簇从 `fp_s0`（Binding 16）查找光源列表 `fp_t_cb196610_1059005C`（Binding 64，Texel Buffer，`VK_FORMAT_R16_UINT`）中的光源偏移和数量。
+    2. 原始着色器翻译器将 Binding 64 声明为 `OpTypeImage %float Buffer`，获取 `v4float`，并通过临时局部浮点变量 `%1091` / `%1973` 保存后再 bitcast 为整数光源索引。
+    3. 此前曾尝试通过通用 `xbg_spirv_uint_fetch` 修改为获取 `v4uint`，但其内部将整数向量 bitcast 为 `v4float` 存储到浮点寄存器。
+    4. **关键缺陷**：整数索引（1, 2, 3...）作为 IEEE 754 32位单精度浮点数的二进制表示属于**次正规数/反常数（Subnormal Floats，约 $1.4 \times 10^{-45}$）**。骁龙（Adreno 735）与天玑（Mali-G615）移动端 GPU 的浮点 ALU 寄存器硬件**强制开启 FTZ（Flush-To-Zero）**，硬件在存取和流转浮点寄存器时瞬间将次正规数冲刷为 `0.0f`！
+    5. 随后 `OpBitcast %int` 转换得到的整数光源索引永远为 0！地面上 4664 个簇全部反复计算 Light #0，引发大片重复矩形方块光照伪影，且严重拖累着色器执行效率。
+- **着色器类型与寄存器无损重写修复（`xbg_spirv_shrine_lighting_fetch`）**：
+  - 在 `src/graphics/nvn_vulkan/engine/xbg_spirv_stencil.h` 中实现针对 Binding 64 的纯整数重写：
+    1. 将图像描述符与指针重写为 `OpTypeImage %uint Buffer 0 0 0 1 Unknown`、`OpTypeSampledImage`、`OpTypePointer UniformConstant`。
+    2. `OpImageFetch` 直接获取 `v4uint`。
+    3. `OpCompositeExtract` 提取 `%uint` 标量。
+    4. 将目标函数变量 `%1091` / `%1973` 从 `%_ptr_Function_float` 改为 `%_ptr_Function_uint`。
+    5. 将变量的读取修改为 `OpLoad %uint`，后续原有的 `OpBitcast %int` 顺畅将 `%uint` 转换为 `%int`。
+    6. 全程**不经过任何浮点指令或浮点寄存器中转**，彻底消除了次正规数 FTZ 冲刷，完美还原硬件真实的 16 位整型光源索引。
+  - 通过 `spirv-as` 汇编与 `spirv-val --target-env spv1.3` 严格语法及类型校验。
+- **双机实机实测与验证（统一单个 APK：`cd434c06f2e7d47257a2c12c4bac6b5e23727d508a8e1d0a251c96189cb9498f`）**：
+  - **荣耀平板**（Snapdragon 8s Gen 3 / Adreno 735，载入神殿外实机存档 `GameSaveData0`）：
+    - 画面表现：土之神殿外台阶及地面的矩形方块光照 BUG 完全消除，光照柔和自然，高光与阴影过渡丝滑。
+    - 帧率表现：帧率由修复前的 ~36 FPS 飙升至**满帧锁定 59.77 FPS**（119 帧实测 `Mean dt: 16.73 ms`，`Frames > 33.3ms: 0/119`，0 次掉帧，极度流畅）。
+  - **RG477M 掌机**（Dimensity 8300 / Mali-G615）：
+    - 全量同步并预热 822 个管线列表（905 KB）。
+    - 帧率表现：稳定锁定在掌机目标的 **29.96 FPS**（`Mean dt: 33.38 ms`，帧生成时间平稳）。
+    - 零兼容性回归：双机运行同一 APK，零崩溃，触控与手柄操控无缝支持。
+- **便利性辅助工具**：
+  - 新增 `SaveExporter.java`，在退出游戏或设置菜单中可一键将私有存档导出至公共 `Download/FFRS-save-<timestamp>` 目录，方便用户无障碍备份或提取存档。
+
 # 2026-11-11 RG477M 与荣耀平板双机统一兼容及 RG477M 开场卡顿根治（双机实机验证 PASS）
 
 - **统一双机兼容与实机验证结果**：
