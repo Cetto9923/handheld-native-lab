@@ -1996,8 +1996,8 @@ void cpu_access(uint64_t address,uint64_t bytes,unsigned why){
             }
         }
     }
-    if(why==3 || why==8){
-        // Storage/texel descriptor preparation cannot resolve_pending (which submits/retires the recording slot).
+    if(why==3 || why==5 || why==8){
+        // Storage/texel descriptor preparation and indirect argument decoding cannot resolve_pending (which submits/retires the recording slot).
         // Instead, copy any overlapping pending writebacks from mapped GPU buffers to host memory in place.
         for(auto &w:pending_writebacks){
             if(xbg_wb_overlaps(address,bytes,w.addr,w.bytes)){
@@ -5146,7 +5146,7 @@ bool indexed_range_ready(uint64_t address,uint64_t bytes,VkDeviceSize alignment)
 struct IndexedInputFailure {const char *why="none";uint32_t stage=UINT32_MAX,binding=UINT32_MAX;uint64_t address=0,bytes=0;};
 bool indexed_graphics_ready(const p_draw_idx &a,size_t index_bytes,IndexedInputFailure *failure=nullptr){
     auto reject=[&](const char *why,uint32_t st=UINT32_MAX,uint32_t binding=UINT32_MAX,uint64_t address=0,uint64_t bytes=0){if(failure)*failure={why,st,binding,address,bytes};return false;};
-    if(read_preflight || capture.active || capture.probe || provenance_file || pass_prof_enabled || draw_detail || warm::async_on ||
+    if(read_preflight || capture.active || capture.probe || provenance_file || pass_prof_enabled || draw_detail ||
        state.rast_discard || state.tf_on || !state.shader[0] || !state.shader[4] || state.shader[1] || state.shader[2] || state.shader[3])return reject("state");
     if(!indexed_range_ready(a.ibuf,index_bytes,4))return reject("index",0,0,a.ibuf,index_bytes);
     for(auto loc:state.shader[0]->inputs){if(loc>=16)return reject("vertex-location");va_st v;memcpy(&v,&state.attrib[loc],4);if(!v.fmt)continue;if(v.stream>=16)return reject("vertex-stream");auto r=state.vb[v.stream];if(!indexed_range_ready(r.address,r.size,4))return reject("vertex",0,v.stream,r.address,r.size);}
