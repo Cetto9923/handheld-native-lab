@@ -1,3 +1,7 @@
+# 2026-11-12 movement classification correction and tutorial progression
+
+CORRECTION four corridor-first screenshots allshowtutorialdialogue, exclude29.7757FPS frommovement acceptance.5s155frames30.0007 alsoenterspostequipdialogue, mixedprogression. Root normalUI equippedRain特伦, partner now saysprepared. Tutorial pagingR1 thenB verified; gamepadkeyeventduration160 reliable. No inputsource changes or cheats. Continue dialogue then true moving/battle samples. APK0db386 PID31064.
+
 # 2026-11-12 CPU cache candidate deployed
 
 CPU cacheAPK0db386552bf4ab01f8ca9b513f592f43b581db7ef47b913812ca52a3cff802d4 build5/install-r exit0 installedbaseverified PID31064. GPUmarker1, warm1212failed0 2879ms. CurrentnormalContinue cavepassage withequipphantom objective. No claimedFPSbenefit yet, scenechanged fromheavyShrineentry toinn/passageroute during priorprocess. Familylookup13once/52000dynamicgettercalls concurrenthostpass, sourcecommitd465e3f.
