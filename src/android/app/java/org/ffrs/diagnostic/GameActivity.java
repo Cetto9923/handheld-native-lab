@@ -1426,6 +1426,11 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         } catch (Exception e) {
             Log.w(TAG, "unit names unreadable: " + e.getMessage());
         }
+        // The table that was built into the app is the fallback, so the names
+        // show up even when no name file was written yet.
+        for (java.util.Map.Entry<Integer, String> e : UnitNames.table().entrySet()) {
+            if (!map.containsKey(e.getKey())) map.put(e.getKey(), e.getValue());
+        }
         return map;
     }
 

@@ -121,7 +121,8 @@ step javac javac --release 8 -classpath "${FFRS_ANDROID_JAR}" -g -d "${FFRS_PACK
     "${FFRS_APP_JAVA}/SaveExporter.java" \
     "${FFRS_APP_JAVA}/SaveRestorer.java" \
     "${FFRS_APP_JAVA}/SaveCheater.java" \
-    "${FFRS_APP_JAVA}/GuestMemory.java"
+    "${FFRS_APP_JAVA}/GuestMemory.java" \
+    "${FFRS_APP_JAVA}/UnitNames.java"
 step jar jar cf "${FFRS_PACKAGE_DIR}/classes.jar" -C "${FFRS_PACKAGE_DIR}/classes" .
 step d8 "${FFRS_D8}" --min-api 28 --lib "${FFRS_ANDROID_JAR}" \
     --output "${FFRS_PACKAGE_DIR}/dex" "${FFRS_PACKAGE_DIR}/classes.jar"

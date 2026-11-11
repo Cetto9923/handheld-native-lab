@@ -62,6 +62,7 @@ def main():
     ap.add_argument('dump')
     ap.add_argument('-o', '--out', default=None)
     ap.add_argument('--pairs', type=int, default=0, help='show this many pairs')
+    ap.add_argument('--java', default=None, help='write the baked UnitNames.java here')
     args = ap.parse_args()
 
     rows = parse(args.dump)
@@ -91,6 +92,50 @@ def main():
             for uid in sorted(names):
                 fh.write('%d\t%s\n' % (uid, names[uid]))
         print('wrote %s' % args.out)
+
+    if args.java:
+        lines = [
+            'package org.ffrs.diagnostic;',
+            '',
+            'import java.util.Collections;',
+            'import java.util.HashMap;',
+            'import java.util.Map;',
+            '',
+            '/**',
+            ' * The character names of the units, built into the app.',
+            ' *',
+            ' * The names come from the text table the game keeps in memory, so the cheat',
+            ' * can show the name the game uses instead of a number. A name file in the app',
+            ' * directory overrides this table, which is how a refreshed table is used',
+            ' * without rebuilding the app.',
+            ' */',
+            'public final class UnitNames {',
+            '    private static final Map<Integer, String> TABLE = new HashMap<>();',
+            '',
+            '    static {',
+        ]
+        for uid in sorted(names):
+            lines.append('        TABLE.put(%d, "%s");' % (uid, names[uid].replace('\\', '\\\\').replace('"', '\\"')))
+        lines += [
+            '    }',
+            '',
+            '    private UnitNames() {}',
+            '',
+            '    /** The built in names, by unit id. */',
+            '    public static Map<Integer, String> table() {',
+            '        return Collections.unmodifiableMap(TABLE);',
+            '    }',
+            '',
+            '    /** The name of a unit, or null when it is not known. */',
+            '    public static String name(int unitId) {',
+            '        return TABLE.get(unitId);',
+            '    }',
+            '}',
+            '',
+        ]
+        with open(args.java, 'w', encoding='utf-8') as fh:
+            fh.write('\n'.join(lines))
+        print('wrote %s with %d names' % (args.java, len(names)))
 
 
 if __name__ == '__main__':
