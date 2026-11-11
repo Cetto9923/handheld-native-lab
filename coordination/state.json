@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-11T22:24:53.466280+00:00",
+ "updated_at": "2026-11-11T22:39:56.776736+00:00",
  "phase": "FAIL currentShrine room stillregularlightingrectangles inPID7534, preservecamera andfirstbadgroupcapture; spellstutteralsoopen",
  "coordinator": "Codex /root shrine takeover",
  "integration_branch": "work/rg477m-native",
@@ -1639,7 +1639,7 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-honor-shrine-20261111",
    "acquired_at": "2026-11-12T01:08:27.178041+08:00",
-   "checkpoint": "Shrine visual FAIL remains. Same-camera compact frame87091 all167groups/27.29MB/zero budget skips,99 color0 files indexed. Priorframe68629 missing lateROIs cannot prove clean pass. SelectiveROI capture running with bounded diagnostic-only probe.compact callback, no gameplay/restart. Fire action still58why5 waits inone60frameblock plus15newcompute/481ms load/417ms rewrite, actual steady repeat pending.",
+   "checkpoint": "Firstbad highROI g106 FS97ae confirmed. Producer nativeR16 widenedR32, consumer sameguestR16. LiveA->B nativeviewclear, restoredactualR32stillclean soABA NOT_PASS; fresh unchangedbuild6 PID16062 control underway. Adreno735 standalone GPU R16/R32 byte-layout+sentinels PASS exit0, productionpolicy310 sanitizercasesPASS. Genericnativeintegerwidth candidate source reviewed, build/deploy pending.",
    "write_state": "ACTIVE"
   },
   {
@@ -1724,6 +1724,20 @@
    "acquired_at": "2026-11-12T05:16:47.592083+08:00",
    "checkpoint": "Final source recheck passed, no deviceoperations",
    "write_state": "RELEASED"
+  },
+  {
+   "task": "HONOR-TEXEL-WIDTH-GPU-CONTRACT",
+   "owner": "Codex /root/upstream_semantics",
+   "paths": [
+    "tests/device/test_integer_texel_width.cpp",
+    "tests/device/integer_texel_width.comp",
+    ".local/honor-motion-20261112/texel-width-tests/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-honor-shrine-20261111",
+   "acquired_at": "2026-11-11T22:31:07.137120+00:00",
+   "checkpoint": "Worker frozen. Root ran exactdevicefixture exit0 twice and owns integration.",
+   "write_state": "RELEASED_HANDED_BACK"
   }
  ],
  "tasks": [
@@ -4356,7 +4370,7 @@
    "acceptance": "Actual movement screenshots/video, distinct-frame CPU/GPU metrics cold/warm, visual+audio regression; independent QA NOT_RUN",
    "recovery_point": "63d3652 clean, install-r only, do not clear data",
    "branch": "task/T-honor-shrine-20261111",
-   "checkpoint": "Shrine visual FAIL remains. Same-camera compact frame87091 all167groups/27.29MB/zero budget skips,99 color0 files indexed. Priorframe68629 missing lateROIs cannot prove clean pass. SelectiveROI capture running with bounded diagnostic-only probe.compact callback, no gameplay/restart. Fire action still58why5 waits inone60frameblock plus15newcompute/481ms load/417ms rewrite, actual steady repeat pending."
+   "checkpoint": "Firstbad highROI g106 FS97ae confirmed. Producer nativeR16 widenedR32, consumer sameguestR16. LiveA->B nativeviewclear, restoredactualR32stillclean soABA NOT_PASS; fresh unchangedbuild6 PID16062 control underway. Adreno735 standalone GPU R16/R32 byte-layout+sentinels PASS exit0, productionpolicy310 sanitizercasesPASS. Genericnativeintegerwidth candidate source reviewed, build/deploy pending."
   },
   {
    "id": "HONOR-INTEGER-FETCH-SEMANTICS",
@@ -4514,6 +4528,33 @@
    "recovery_point": "APK0db386 remains installed, root edit ownership",
    "branch": "task/T-honor-shrine-20261111",
    "checkpoint": "Read-only review returned twoP1s, fixed and actualdiff rechecked; ASanUBSan productionmetadata function exactmatch exit0. DeviceQA NOT_RUN."
+  },
+  {
+   "id": "HONOR-TEXEL-WIDTH-GPU-CONTRACT",
+   "role": "shader-contract",
+   "owner": "Codex /root/upstream_semantics",
+   "status": "passed",
+   "goal": "Reproduce formatless uint32 storage texel writes at actual R16 and R32 resource widths and verify byte layout on exact Honor GPU",
+   "inputs": [
+    "current compact capture group54/106",
+    "existing tests/device/test_dark_half_fetch.cpp helpers"
+   ],
+   "outputs": [
+    "tests/device/test_integer_texel_width.cpp",
+    "tests/device/integer_texel_width.comp",
+    ".local/honor-motion-20261112/texel-width-tests/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "acceptance": "Root executes exact-device fixture, actual capability log, R16/R32 layout and bounds sentinel compared, production policy host regressions separate.",
+   "recovery_point": "read-only current app PID7534 camera, test has standalone buffers only",
+   "write_scope": [
+    "tests/device/test_integer_texel_width.cpp",
+    "tests/device/integer_texel_width.comp",
+    ".local/honor-motion-20261112/texel-width-tests/"
+   ],
+   "branch": "task/T-honor-shrine-20261111",
+   "checkpoint": "Root actualAdreno735 fixture exit0 twice, R16/R32 exactlayout+tails checked. Not sceneacceptance."
   }
  ],
  "blockers": [

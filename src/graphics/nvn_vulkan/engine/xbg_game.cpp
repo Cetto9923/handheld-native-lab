@@ -2601,18 +2601,35 @@ Shader *load_shader(const void *control){
     VkShaderModuleCreateInfo ci{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};ci.codeSize=words.size()*4;ci.pCode=words.data();VK(vkCreateShaderModule(cfg.device,&ci,nullptr,&p->module));warm::register_module(p->module,key);Shader *out=p.get();shaders.emplace(key,std::move(p));++stats.shader_loads;++hud::shaders;const uint64_t load_t4=timing_clock();hud::shader_ns+=load_t4-load_t0;
     xbg_logf("NVN shader %s stage=%u loaded words=%zu ms read=%.2f rewrite=%.2f analyse=%.2f module=%.2f reused=%d",key.c_str(),h.stage,words.size(),(load_t1-load_t0)/1e6,(load_t2-load_t1)/1e6,(load_t3-load_t2)/1e6,(load_t4-load_t3)/1e6,int(have_reused));return out;
 }
-// Keep the selected module and descriptor view in the same numeric domain.
-// The flags retain their existing format policy; specialization never widens R16.
+// Scalar flags describe signedness, independently of texel width and components.
+// Formatless storage and sampled buffers can use their matching native integer view.
 VkFormat texel_view_format(const RegisteredTexture &registered){
     return format(registered.has_view && registered.view.set_format?registered.view.format:registered.texture.d.format);
 }
 VkFormat texel_binding_format(const RegisteredTexture &registered,const xbg_shader_binding &binding){
     VkFormat result=texel_view_format(registered);
     const uint32_t scalar=(binding.flags>>16)&3;
+    const bool formatless=binding.type!=VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER || (binding.flags&3);
+    const int native_class=xbg_clear_vk_class(result);
+    if(formatless && ((scalar==1 && native_class==2) || (scalar==2 && native_class==1)))return result;
     if(scalar==1 && result!=VK_FORMAT_R32_UINT && result!=VK_FORMAT_R32G32B32A32_UINT && result!=VK_FORMAT_R32G32_UINT)result=VK_FORMAT_R32_UINT;
     else if(scalar==2 && result!=VK_FORMAT_R16_UINT && result!=VK_FORMAT_R16G16_UINT && result!=VK_FORMAT_R16G16B16A16_UINT)result=VK_FORMAT_R16_UINT;
     if(honor_inline_enabled && scalar==2 && texel_view_format(registered)==VK_FORMAT_R32_SINT)result=VK_FORMAT_R32_SINT;
     return result;
+}
+VkFormatFeatureFlags2 texel_buffer_features(VkFormat viewed){
+    static std::map<VkFormat,VkFormatFeatureFlags2> cache;
+    auto found=cache.find(viewed);
+    if(found!=cache.end())return found->second;
+    VkFormatFeatureFlags2 features=format_properties(viewed).bufferFeatures;
+    if(format_feature_flags2){
+        VkFormatProperties3 extra{VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3};
+        VkFormatProperties2 all{VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2};all.pNext=&extra;
+        vkGetPhysicalDeviceFormatProperties2(cfg.physical,viewed,&all);
+        features=extra.bufferFeatures;
+    }
+    xbg_logf("NVN texel format=%u bufferFeatures=%#llx formatFlags2=%u",unsigned(viewed),(unsigned long long)features,unsigned(format_feature_flags2));
+    cache.emplace(viewed,features);return features;
 }
 VkFormat integer_buffer_binding_format(const Shader &shader,const xbg_shader_binding &binding){
     if(binding.type!=VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER || !binding.count || binding.count>256 ||
@@ -3623,6 +3640,14 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                     VkFormat tf=texel_view_format(registered);
                     if(probe_is_active())capture_log("PROBE_TEXEL_NATIVE shader=%s stage=%u binding=%u element=%u nvnFormat=%#x nativeVk=%u scalar=%u guest=%#llx bytes=%llu",shader.key.c_str(),st,b.binding,element,texture.d.format,unsigned(tf),(b.flags>>16)&3,(unsigned long long)uintptr_t(texture.mem),(unsigned long long)texture.L.size);
                     tf=texel_binding_format(registered,b);
+                    if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER){
+                        const VkFormatFeatureFlags2 features=texel_buffer_features(tf);
+                        need(features&VK_FORMAT_FEATURE_2_STORAGE_TEXEL_BUFFER_BIT,"Format not usable as storage texel buffer");
+                        if(b.flags&1)need(cfg.enabled_core.shaderStorageImageWriteWithoutFormat &&
+                            (format_feature_flags2?(features&VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT):storage_without_format_listed(tf)),"Texel format lacks formatless-write support");
+                        if(b.flags&2)need(cfg.enabled_core.shaderStorageImageReadWithoutFormat &&
+                            (format_feature_flags2?(features&VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT):storage_without_format_listed(tf)),"Texel format lacks formatless-read support");
+                    }
                     TexelResident *res=nullptr;
                     if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER && texel_memo_enabled && !compute){Buffer pv;
                         if(!pending_view(uint64_t(texture.mem),texture.L.size,1,pv))res=texel_acquire(uint64_t(texture.mem),texture.L.size,tf);
