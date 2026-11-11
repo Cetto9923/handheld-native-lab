@@ -2233,10 +2233,11 @@ const RegisteredTexture &null_texture(const xbg_shader_binding &b){
 /* SHA-256 over the original NVN 0x880-byte control segment. */
 std::string control_key(const void *data){char key[17];need(xbg_shader_control_key(data,key)==0,"Missing shader control segment");return key;}
 bool probe_shader_requested(const std::string &key);
+using IntegerBufferFormats=std::vector<std::pair<uint32_t,uint32_t>>;
 struct Shader {std::string key;std::string identity;
     std::vector<uint32_t> integer_buffer_bindings,float_buffer_bindings,variant_source;
     std::set<uint32_t> unsupported_integer_buffers;
-    std::map<std::string,std::unique_ptr<Shader>> variants;
+    std::map<IntegerBufferFormats,std::unique_ptr<Shader>> variants;
     uint32_t stage;VkShaderModule module{};std::vector<xbg_shader_binding> bindings;std::vector<uint32_t> inputs,input_classes,probe_words;std::vector<uint8_t> c1;
     std::set<uint32_t> storage_writes; // Vulkan bindings of storage buffers the SPIR-V may write
     bool discards=true; // fragment shader may kill/demote (conservative default)
@@ -2506,7 +2507,6 @@ std::vector<uint32_t> shader_float_buffer_bindings(const std::vector<uint32_t> &
     }
     std::sort(result.begin(),result.end());result.erase(std::unique(result.begin(),result.end()),result.end());return result;
 }
-using IntegerBufferFormats=std::vector<std::pair<uint32_t,uint32_t>>;
 bool integer_buffer_format(uint32_t value){
     return value==VK_FORMAT_R16_UINT || value==VK_FORMAT_R32_UINT;
 }
@@ -2641,6 +2641,7 @@ Shader *integer_buffer_variant(Shader &base){
     }
     if(formats.empty())return &base;
     std::sort(formats.begin(),formats.end());
+    auto existing=base.variants.find(formats);if(existing!=base.variants.end())return existing->second.get();
     std::string identity=base.key+":ib1:";
     for(const auto &entry:formats){
         if(identity.back()!=':')identity+=',';
@@ -2651,7 +2652,6 @@ Shader *integer_buffer_variant(Shader &base){
         xbg_logf("NVN integer buffer UNSUPPORTED shader=%s reason=identity-size unchanged=1",base.key.c_str());
         return &base;
     }
-    auto existing=base.variants.find(identity);if(existing!=base.variants.end())return existing->second.get();
     std::vector<uint32_t> words=base.variant_source;
     need(specialize_integer_buffers(words,formats),"Integer buffer specialization shape changed");
     optimize_shader_words(words,base.stage,base.key,"runtime-variant");
@@ -2663,7 +2663,7 @@ Shader *integer_buffer_variant(Shader &base){
     VkShaderModuleCreateInfo info{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};info.codeSize=words.size()*4;info.pCode=words.data();
     VK(vkCreateShaderModule(cfg.device,&info,nullptr,&variant->module));
     warm::register_module(variant->module,identity);
-    Shader *selected=variant.get();base.variants.emplace(identity,std::move(variant));
+    Shader *selected=variant.get();base.variants.emplace(formats,std::move(variant));
     xbg_logf("NVN integer buffer variant shader=%s identity=%s",base.key.c_str(),identity.c_str());
     return selected;
 }
