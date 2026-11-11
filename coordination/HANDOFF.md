@@ -1,3 +1,7 @@
+# 2026-11-12 actual field progression checkpoint
+
+PID31064 current APK0db386. Completed equip tutorial via normalUI and traversed cave to inn to Mitra town. New full-stick south recording has raw CLOCK_MONOTONIC overlay matching frame CSV, first4s movement review pending. Earlier29.7757 dialogue and mixed30.0007 remain excluded. Continue exterior/battle/transition regression, no overall30PASS.
+
 # 2026-11-12 movement classification correction and tutorial progression
 
 CORRECTION four corridor-first screenshots allshowtutorialdialogue, exclude29.7757FPS frommovement acceptance.5s155frames30.0007 alsoenterspostequipdialogue, mixedprogression. Root normalUI equippedRain特伦, partner now saysprepared. Tutorial pagingR1 thenB verified; gamepadkeyeventduration160 reliable. No inputsource changes or cheats. Continue dialogue then true moving/battle samples. APK0db386 PID31064.

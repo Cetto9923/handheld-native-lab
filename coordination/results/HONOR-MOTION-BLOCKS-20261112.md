@@ -97,3 +97,12 @@ Bluetooth/audio, independent device QA, cold/warm spell repetition, guarded GPU 
 Help page1of2 exposes only L/R paging. R1 advances to page2, which exposes BClose. Page2 then B, Help-list B, System-menu B returns to actual field. X then opens actual main menu. Source GameActivity buttonBit/TouchPad matches nativehid_bridge, which latches presses. Verified normal gamepad input command is adb -s A42BBB5109000333 shell input gamepad keyevent --duration 160 KEYCODE_BUTTON_X, with the appropriate button name. Menu transitions are verified with screenshots. Opaque OEM logcat output did not establish input state. No input-code patch was made.
 
 To advance the authorized regression route, root used normal Equipment/Ability UI to equip Rain with the first available Vision, 特伦. Current preexisting party is level86, as shown by actual main menu and existing autosave metadata. No cheat or save-byte editing occurred. After leaving toward the south, partner dialogue changed to 看来你准备好了, confirming tutorial progression. Current PID31064 is still alive. The5second traverse is partly dialogue and is excluded from pure motion acceptance.
+
+
+## Monotonic video alignment and field progression
+
+Current device screenrecord supports --show-frame-time --monotonic-time. AOSP implementation draws the actual Surface frame CLOCK_MONOTONIC timestamp, so video overlay can align directly with native frame CSV. Source consulted https://android.googlesource.com/platform/frameworks/av/+/refs/heads/main/cmds/screenrecord/Overlay.cpp and screenrecord.cpp. Device command succeeded exit0, no app runtime changes.
+
+New cpu-cache-south-full-stick sample uses2s record prepad, DOWN/MOVE to full south,4s hold, UP in finally. Raw input interval1443288205591288..1443292301871755 contains122distinct writer intervals,4066.541ms,30.0009FPS, P9533.577ms, max33.733ms. Root contact sheet shows continuous field/world displacement with no dialogue. Independent media/data review is pending, and this light corridor does not establish heavy Shrine or battle acceptance. Recording overhead applies.
+
+Next cpu-cache-south-exit video records cave traversal and black transition to inn, retained as mixed traversal/load. North inn door was inspected and leads back into cave. Normal return followed by east/south movement exits the inn into actual Mitra town. Current town screenshot cpu-cache-inn-south.png. No save-byte changes or source edits in this progression.

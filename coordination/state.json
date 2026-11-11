@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-12T04:21:43.007598+08:00",
+ "updated_at": "2026-11-12T04:40:41.800730+08:00",
  "phase": "CPU cache PID31064, equipped Rain Vision through normal tutorial, replay actual moving/battle tests; dialogue-contaminated29.78FPS sample excluded",
  "coordinator": "Codex /root shrine takeover",
  "integration_branch": "work/rg477m-native",
@@ -1637,7 +1637,7 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-honor-shrine-20261111",
    "acquired_at": "2026-11-12T01:08:27.178041+08:00",
-   "checkpoint": "CORRECTION four corridor-first screenshots allshowtutorialdialogue, exclude29.7757FPS frommovement acceptance.5s155frames30.0007 alsoenterspostequipdialogue, mixedprogression. Root normalUI equippedRain特伦, partner now saysprepared. Tutorial pagingR1 thenB verified; gamepadkeyeventduration160 reliable. No inputsource changes or cheats. Continue dialogue then true moving/battle samples. APK0db386 PID31064.",
+   "checkpoint": "PID31064 current APK0db386. Completed equip tutorial via normalUI and traversed cave to inn to Mitra town. New full-stick south recording has raw CLOCK_MONOTONIC overlay matching frame CSV, first4s movement review pending. Earlier29.7757 dialogue and mixed30.0007 remain excluded. Continue exterior/battle/transition regression, no overall30PASS.",
    "write_state": "ACTIVE"
   },
   {
@@ -1679,6 +1679,16 @@
    "acquired_at": "2026-11-12T03:28:04.834268+08:00",
    "checkpoint": "Source committedd465e3f, readable persistent test3modes sanitizerspassed. Worker frozen.",
    "write_state": "RELEASED_HANDED_BACK"
+  },
+  {
+   "task": "HONOR-EVIDENCE-AUDIT-20261112",
+   "owner": "Codex /root/combat_perf_audit",
+   "paths": [],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-honor-shrine-20261111",
+   "acquired_at": "2026-11-12T04:24:09.455688+08:00",
+   "checkpoint": "Read-only evidence review messages, no filesystem mutation or device operation",
+   "write_state": "READ_ONLY"
   }
  ],
  "tasks": [
@@ -4311,7 +4321,7 @@
    "acceptance": "Actual movement screenshots/video, distinct-frame CPU/GPU metrics cold/warm, visual+audio regression; independent QA NOT_RUN",
    "recovery_point": "63d3652 clean, install-r only, do not clear data",
    "branch": "task/T-honor-shrine-20261111",
-   "checkpoint": "CORRECTION four corridor-first screenshots allshowtutorialdialogue, exclude29.7757FPS frommovement acceptance.5s155frames30.0007 alsoenterspostequipdialogue, mixedprogression. Root normalUI equippedRain特伦, partner now saysprepared. Tutorial pagingR1 thenB verified; gamepadkeyeventduration160 reliable. No inputsource changes or cheats. Continue dialogue then true moving/battle samples. APK0db386 PID31064."
+   "checkpoint": "PID31064 current APK0db386. Completed equip tutorial via normalUI and traversed cave to inn to Mitra town. New full-stick south recording has raw CLOCK_MONOTONIC overlay matching frame CSV, first4s movement review pending. Earlier29.7757 dialogue and mixed30.0007 remain excluded. Continue exterior/battle/transition regression, no overall30PASS."
   },
   {
    "id": "HONOR-INTEGER-FETCH-SEMANTICS",
@@ -4378,6 +4388,26 @@
    "acceptance": "Concurrent first-use resolution, existing getter/failed-family semantics, host contract checks; root owns APK and actual-device before/after",
    "recovery_point": "d5a3340 texture source unchanged, do not touch other files",
    "checkpoint": "d465e3f deployed PID31064, persistent concurrency regression passed. Device performance acceptance belongsroot."
+  },
+  {
+   "id": "HONOR-EVIDENCE-AUDIT-20261112",
+   "owner": "Codex /root/combat_perf_audit",
+   "role": "read-only evidence reviewer",
+   "branch": "task/T-honor-shrine-20261111",
+   "status": "in_progress",
+   "goal": "Independently classify actual movement/battle/transition media boundaries and align monotonic CSV before acceptance",
+   "inputs": [
+    ".local/honor-motion-20261112/",
+    "root provides new sample paths"
+   ],
+   "outputs": [
+    "review messages"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [],
+   "acceptance": "View actual media, identify dialogue/menu/wall intervals, verify monotonic bounds and distinct writers; not independent device execution",
+   "recovery_point": "Read-only reviewer, no source or device changes"
   }
  ],
  "blockers": [
