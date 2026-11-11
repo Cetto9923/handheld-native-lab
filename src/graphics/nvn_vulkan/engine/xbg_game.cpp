@@ -789,6 +789,7 @@ uint64_t upload_batch_bytes=0; // pressure since last bounded loading drain
 int shader_reuse=0;uint64_t shaders_reused=0,shader_reuse_mismatches=0;
 struct ShaderReuseComparison {uint64_t attempted=0,missing=0,compared=0,equal=0,mismatch=0;};
 ShaderReuseComparison shader_reuse_comparisons[6][2];
+uint64_t integer_texture_lookup_hits=0,integer_texture_lookup_misses=0;
 // Command pool resets off the render thread. vkResetCommandPool took ~0.4 ms of every frame on the Redmi K50 Ultra's render
 // thread. After a slot is submitted, the reset thread waits for its fence and resets its pool; retiring the slot first waits
 // for that job, so vkResetFences never overlaps the thread's wait (concurrent waits are allowed), and reusing the slot skips
@@ -1226,7 +1227,7 @@ void perf_frame(){
     {texel_distinct+=texel_frame_keys.size();for(auto k:texel_frame_keys)if(texel_prev_keys.count(k))++texel_reused;texel_prev_keys.swap(texel_frame_keys);texel_frame_keys.clear();}
     if(completion_wait_enabled)fold_completion_wait_stats();
     if(perf_frame_timed)++perf_timed_frames;perf_frame_timed=perf_sample && stats.presents.load()%perf_sample==0;   // the next frame
-    {bool was=ab_frame_on;ab_frame_on=ab_enabled();tls_gate=!ab_off("tlsgate");img_fast=!ab_off("imgfast");if(was!=ab_frame_on && ab_period>0){perf=Perf{};perf.window_start=timing_clock();set_cache_hits=set_cache_misses=0;return;}}
+    {bool was=ab_frame_on;ab_frame_on=ab_enabled();tls_gate=!ab_off("tlsgate");img_fast=!ab_off("imgfast");if(was!=ab_frame_on && ab_period>0){perf=Perf{};perf.window_start=timing_clock();set_cache_hits=set_cache_misses=0;integer_texture_lookup_hits=integer_texture_lookup_misses=0;return;}}
     pipelines_unsaved+=size_t(warm::compiled.exchange(0));
     if(pipelines_unsaved && stats.presents.load()>=pipeline_save_frame+300){pipeline_save_frame=stats.presents.load();save_pipeline_cache();}
     uint64_t now=timing_clock();if(!perf.window_start){perf.window_start=now;perf.frames=0;return;}
@@ -1287,6 +1288,8 @@ void perf_frame(){
         if(comparison.attempted)xbg_logf("NVN PERF shader_reuse compare stage=%u variant=%u attempted=%llu missing=%llu compared=%llu equal=%llu mismatch=%llu",stage,variant,(unsigned long long)comparison.attempted,(unsigned long long)comparison.missing,(unsigned long long)comparison.compared,(unsigned long long)comparison.equal,(unsigned long long)comparison.mismatch);
         comparison=ShaderReuseComparison{};
     }
+    xbg_logf("NVN PERF integer_texture_lookup ab=%u hits=%llu misses=%llu",unsigned(ab_frame_on),(unsigned long long)integer_texture_lookup_hits,(unsigned long long)integer_texture_lookup_misses);
+    integer_texture_lookup_hits=integer_texture_lookup_misses=0;
     if(shaders_reused || shader_reuse_mismatches){xbg_logf("NVN PERF shader_reuse window reused=%llu mismatches=%llu",(unsigned long long)shaders_reused,(unsigned long long)shader_reuse_mismatches);shaders_reused=shader_reuse_mismatches=0;}
     if(wb_skip){xbg_logf("NVN PERF wbskip ab=%d skipped=%.1f (%.2fMB)",int(ab_frame_on),wb_skipped/f,wb_skipped_bytes/1048576.0/f);wb_skipped=wb_skipped_bytes=0;}
     if(pipe_memo){xbg_logf("NVN PERF pipememo ab=%d hits=%.1f misses=%.1f",int(ab_frame_on),pipe_memo_hits/f,pipe_memo_misses/f);pipe_memo_hits=pipe_memo_misses=0;}
@@ -2252,6 +2255,11 @@ std::string control_key(const void *data){char key[17];need(xbg_shader_control_k
 bool probe_shader_requested(const std::string &key);
 using IntegerBufferFormats=std::vector<std::pair<uint32_t,uint32_t>>;
 struct Shader {std::string key;std::string identity;
+    // Registration updates std::map nodes in place. Shader lifetime ends before
+    // these tables are cleared. Cache the lookup, and reread live metadata.
+    mutable const std::map<int,RegisteredTexture> *integer_texture_table=nullptr;
+    mutable int integer_texture_id=0;
+    mutable const RegisteredTexture *integer_texture_record=nullptr;
     std::vector<uint32_t> integer_buffer_bindings,float_buffer_bindings,variant_source;
     std::vector<XbgIndirectInstanceField> indirect_instance_fields;
     std::set<uint32_t> unsupported_integer_buffers;
@@ -2685,11 +2693,18 @@ VkFormat integer_buffer_binding_format(const Shader &shader,const xbg_shader_bin
         const uint64_t handle=binding.source==XBG_SOURCE_IMAGE?state.img[ns][slot]:state.tex[ns][slot];
         const int id=int(handle&0xfffff);
         if(!id || (state.texture_pool.n>0 && id>=state.texture_pool.n))return VK_FORMAT_UNDEFINED;
-        auto found=table.find(id);if(found==table.end())return VK_FORMAT_UNDEFINED;
-        const auto &texture=found->second.texture;
+        const RegisteredTexture *record=shader.integer_texture_record;
+        if(ab_off("iblookup") || shader.integer_texture_table!=&table || shader.integer_texture_id!=id || !record){
+            ++integer_texture_lookup_misses;
+            auto found=table.find(id);
+            if(found==table.end())return VK_FORMAT_UNDEFINED;
+            record=&found->second;
+            shader.integer_texture_table=&table;shader.integer_texture_id=id;shader.integer_texture_record=record;
+        }else ++integer_texture_lookup_hits;
+        const auto &texture=record->texture;
         if(texture.d.target!=10 || !texture.mem || !texture.L.size)return VK_FORMAT_UNDEFINED;
-        if(!integer_buffer_format(texel_view_format(found->second)))return VK_FORMAT_UNDEFINED;
-        const VkFormat actual=texel_binding_format(found->second,binding);
+        if(!integer_buffer_format(texel_view_format(*record)))return VK_FORMAT_UNDEFINED;
+        const VkFormat actual=texel_binding_format(*record,binding);
         // Mixed arrays cannot share one SPIR-V sampled scalar type.
         if(!integer_buffer_format(actual) || (element && actual!=selected))return VK_FORMAT_UNDEFINED;
         selected=actual;

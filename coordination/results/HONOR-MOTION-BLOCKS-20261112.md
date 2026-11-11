@@ -211,3 +211,24 @@ Independent readonlyreview tracednormalruntime, mixedrecords, moduleactualstage,
 Rootextendedexistinginspect_pipeline_warm_list.py forkind2 whilepreservingoldfields. Exactlegacy1182+1compute mixedframing passes,7negativecompute casesreject. Rootreranall3sourceextractsanitizers afterobservabilityaddition. ActualAPKbuild,cold/warmmode2 bytecomparison, gameplay and30FPS remainpending. Currentbuild7PID17589stilllive.
 
 Audio acceptance must include coordination/prompts/_STANDING-audio-acceptance.md. No FPSlimit/fence-spin/audio-buffer change in this work. BluetoothA2DPsubjective2minfield+2minbattle andliveconnect/disconnect remainNOT_RUN. Audio countervalues alone willnotbeclaimedPASS.
+
+
+## Build8 deployment and current comparison coverage
+
+Build8 source837b539 built exit0. APK FFRS-Learned-Compute-Warm.apk SHA958c101d326a681773361a4a630e2ed8c05bcc598405f373107b80c7255f909e installed-r exit0 and installedbase independently matches. CurrentPID24336, gfx-shader-reuse2. Verified preinstall backup4files1000668B SHA3e2368da360b4387a15fca4f797d65b71faa0f86944928c9dc145be64f55b565. OrdinaryContinue restoresShrineentry. Mode2 is diagnostic comparison mode, separate from productionmode1 performance evidence. Matching symbols copied to build8-libffrs_game_window.so.
+
+Startup warm loaded1293records/1439116B, built1293 failed0 in3635ms. Current mode2 exact125comparisons all equal,0mismatch. Coverage stage0base46equal/15missing,stage3base1equal,stage4base78equal/42missing,stage5base0equal/42missing,stage0variant7missing andstage4variant1missing. Beforebuild8 list had1293graphics/0compute, so42compute recipes were newly learned in currentprocess. Current inspected list1335records with42compute and1293graphics, identity/framing only.
+
+All8missingformatvariants already exist in the old learnedlist, which contains90variantreferences. Their currentabsence from the retained optimized-word cache is distinct from a recipe-learning gap. Existingwarm pipelinebuild succeeded for allrecords. Bounded matched-symbol inspection reads rewritten_bytes55433248,308retainedentries,keep_rewritten=true,reuse_rejected=false after125runtime takes. The64MiB first-arrival retention budget and old-first load order are being examined, without declaring identity mismatch. Actualsecondstartup comparisons andcompletefirst/repeatspell metrics remainpending.
+
+## Build7 spell recording correction and actual ice result
+
+Valid build7-shrine-ice-first-use.mp4 was awaited through completion. Independent reviewer decoded409frames. Main action interval1452800813704586..1452804105777449, native50723..50782,59newintervals3244.026ms18.187FPS,P95100.595ms,max201.642ms,26above50/3above100, present0. Maximum50749..50750coversfirsticeburst. MP484to479,icepillars/fragments/damage/Break visible. LaterRainmenuexcluded. Result is denseShrine, firsticeinPID17589, learnedgraphicswarmcache andrecording. It is not a same-condition A/B against earlier worldbattle.
+
+The firstfire record attempt is INVALID. Targetselection at1453050502475220 andcastconfirmation1453090126141038 are39.62s apart, beyond22srecording. Observerwasnotawaited, localfullvideo/boundsabsent. NoFPSresultisclaimedforit. Root acknowledged the execution error and will use preselectedtarget plus one synchronous recording/confirm/wait flow. Ordinary battle completed intoresult/growth andreturnedfield beforebuild8 install.
+
+## Targeted texture-record lookup candidate
+
+Exact sampled-PC mapping with build7's matching symbols assigns2.844percent of RHIcycles/77samples to inner texture-table.find(id), build7 source line2647. Root's candidate caches one positive RegisteredTexture node perShader with key(tableaddress,id). Outerpool selection andallbounds/target/memory/extent/nativeformat/arraychecks execute normally. Cachednodes expose currentregistration metadata, includingin-placeupdates. Existingregistrationnodes are nevererased/replaced ascontainers duringruntime andShader destruction precedestableclear. No resourcecontents orformatresult is cached.
+
+Exact originalfunctioncomparison hostcontract passes1028cases underASan,UBSan andcombined, coveringin-placeformat/view/target/memorychanges,legacytoactual,differentpoolmem/off,samepoolmem,id/poolbounds,negativequerytheninsert,mixedarray,10000mapinsertions andexistingA/Bbypass. NDK fulltranslationunitsyntax exit0. Independentreadreview found no semantic/lifetime defect, andidentifiedA/Bphasecounter contamination. Rootfixed counterreset atphase switch andaddedab= tolookup log. Sourcecandidate is not in installedbuild8. Actualhitratio andsame-camera benefit remainunmeasured.

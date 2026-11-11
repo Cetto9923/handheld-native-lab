@@ -1,3 +1,7 @@
+# 2026-11-12 build8 live, lookup candidate reviewed
+
+Build8 SHA958c installedverifiedPID24336 mode2. Warm1293/0fail;125exactequal0mismatch. 42compute newlylearned,8variantsalreadyinoldrecipesbutretainedwordsmissing; budget/orderdiagnosispending. Validbuild7denseice18.187FPSmax201.642ms,firstfireINVALID missedrecord. New20linepositiveRegisteredTexture lookupcandidate1028sanitizercases+indepreview+syntaxpassed, notinstalled. Rootlearningactualbattlecurrentbuild8.
+
 # 2026-11-12 warm source reviewed, sustained dense-room performance open
 
 Rootownsengineagain. Genericlearnedcompute/base+variantwordreuse source reviewed andhostsanitizerspassed, rootinspectorintegrationpassed. Devicebuildnext. Existingbuild7PID17589 remainslive, crystalroomrawmoving16.98FPS andsteady17..26 gap hasno graphicscreation/CPUreadback cause. RHIprofile+boundedCPUscopes saved, samplingrestored0/TracerPid0. Continue warmcandidateactualmode2/skills andsustainedCPUdiagnosis.

@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-11T23:12:11.596061+00:00",
+ "updated_at": "2026-11-11T23:48:03.531390+00:00",
  "phase": "FAIL currentShrine room stillregularlightingrectangles inPID7534, preservecamera andfirstbadgroupcapture; spellstutteralsoopen",
  "coordinator": "Codex /root shrine takeover",
  "integration_branch": "work/rg477m-native",
@@ -1639,7 +1639,7 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-honor-shrine-20261111",
    "acquired_at": "2026-11-12T01:08:27.178041+08:00",
-   "checkpoint": "Rootretakesfrozenenginewarmcandidate; actualbuild7PID17589 stillincrystaltemple, heavy3s movingraw16.983fps. StaticboundedCPU13timedframes+8secRHIprofile saved, noframesacceptanceclaimed.",
+   "checkpoint": "Build8 SHA958c installedverifiedPID24336 mode2. Warm1293/0fail;125exactequal0mismatch. 42compute newlylearned,8variantsalreadyinoldrecipesbutretainedwordsmissing; budget/orderdiagnosispending. Validbuild7denseice18.187FPSmax201.642ms,firstfireINVALID missedrecord. New20linepositiveRegisteredTexture lookupcandidate1028sanitizercases+indepreview+syntaxpassed, notinstalled. Rootlearningactualbattlecurrentbuild8.",
    "write_state": "ACTIVE"
   },
   {
@@ -4383,7 +4383,7 @@
    "acceptance": "Actual movement screenshots/video, distinct-frame CPU/GPU metrics cold/warm, visual+audio regression; independent QA NOT_RUN",
    "recovery_point": "63d3652 clean, install-r only, do not clear data",
    "branch": "task/T-honor-shrine-20261111",
-   "checkpoint": "Build7 genericwidthproduction installed-r SHA6f4b6847 verified PID17589. OrdinaryContinuepreservedShrineentry. Actualframe13483 all167groups/27.29MB zero budgetskips, CS3b630B47 scalar1 native74 actual74 andFS97aeB64sameguest/range74, viewport1383x778. First3.5sforward raw26.705FPS max101.417ms needsmediaclassification, heavy30notpassed. Rootdoingwarmmoving+nextroom/spells. Warmgenericimplementationagentsoleenginewriter."
+   "checkpoint": "Build8 SHA958c installedverifiedPID24336 mode2. Warm1293/0fail;125exactequal0mismatch. 42compute newlylearned,8variantsalreadyinoldrecipesbutretainedwordsmissing; budget/orderdiagnosispending. Validbuild7denseice18.187FPSmax201.642ms,firstfireINVALID missedrecord. New20linepositiveRegisteredTexture lookupcandidate1028sanitizercases+indepreview+syntaxpassed, notinstalled. Rootlearningactualbattlecurrentbuild8."
   },
   {
    "id": "HONOR-INTEGER-FETCH-SEMANTICS",
