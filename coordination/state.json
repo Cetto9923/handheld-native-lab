@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-12T05:28:45.751385+08:00",
- "phase": "CPU cache PID31064, independently reviewed 3.77s corridor motion about30FPS; continue complex exterior and combat regression",
+ "updated_at": "2026-11-12T05:39:24.609792+08:00",
+ "phase": "World structural candidate7229b02 deployed PID7534, actualworld moving sample underreview; continue battle/coldwarm validation",
  "coordinator": "Codex /root shrine takeover",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -1639,7 +1639,7 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-honor-shrine-20261111",
    "acquired_at": "2026-11-12T01:08:27.178041+08:00",
-   "checkpoint": "Structural instance-only SPIRV metadata integration and depth-only readiness hostchecked. Two review P1s fixed: raw write descriptor aliases before merge, CPUclean guest snapshot avoids unsubmitted mapped GPUcopy. Latest pending/owned lifecycle unchanged. Build6 next, APK0db386 PID31064 remains live. Actual worldbattle clear ice+fire assault executed, severe firstfire longframes retained, tutorial aftereffect excluded.",
+   "checkpoint": "Build6/install-r exit0 SHA bc04fcdeed20bb165fa05cc214654971e5078ee8fd741b63b922d087e955bf44 installedbaseverified, PID7534. Continue restoredactualworldvillage. Structuralmetadata actualbinding29 axisZ23rows observed, sync_wb0 nearby30FPS logs. Recorded6s worldeast182newintervals rawabout30FPS max84.92ms, mediareviewpending. PriorPID31064 CSV capped120000 at1443886310319549, laterworld/fireCSV unavailable. Earlierbackups invalid permission-error text; correctedverified shelltar986844B4files SHA07c8...createdafterinstall-r beforefurtherplay. Data-preserving install andContinue verified.",
    "write_state": "ACTIVE"
   },
   {
@@ -1689,8 +1689,8 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-honor-shrine-20261111",
    "acquired_at": "2026-11-12T04:24:09.455688+08:00",
-   "checkpoint": "Independent media/data review returned. Ready for later read-only review requests, no device/source writes.",
-   "write_state": "RELEASED"
+   "checkpoint": "New media/data review only, no deviceoperations",
+   "write_state": "READ_ONLY"
   },
   {
    "task": "HONOR-WORLD-INDIRECT-ANALYSIS-20261112",
@@ -4356,7 +4356,7 @@
    "acceptance": "Actual movement screenshots/video, distinct-frame CPU/GPU metrics cold/warm, visual+audio regression; independent QA NOT_RUN",
    "recovery_point": "63d3652 clean, install-r only, do not clear data",
    "branch": "task/T-honor-shrine-20261111",
-   "checkpoint": "Structural instance-only SPIRV metadata integration and depth-only readiness hostchecked. Two review P1s fixed: raw write descriptor aliases before merge, CPUclean guest snapshot avoids unsubmitted mapped GPUcopy. Latest pending/owned lifecycle unchanged. Build6 next, APK0db386 PID31064 remains live. Actual worldbattle clear ice+fire assault executed, severe firstfire longframes retained, tutorial aftereffect excluded."
+   "checkpoint": "Build6/install-r exit0 SHA bc04fcdeed20bb165fa05cc214654971e5078ee8fd741b63b922d087e955bf44 installedbaseverified, PID7534. Continue restoredactualworldvillage. Structuralmetadata actualbinding29 axisZ23rows observed, sync_wb0 nearby30FPS logs. Recorded6s worldeast182newintervals rawabout30FPS max84.92ms, mediareviewpending. PriorPID31064 CSV capped120000 at1443886310319549, laterworld/fireCSV unavailable. Earlierbackups invalid permission-error text; correctedverified shelltar986844B4files SHA07c8...createdafterinstall-r beforefurtherplay. Data-preserving install andContinue verified."
   },
   {
    "id": "HONOR-INTEGER-FETCH-SEMANTICS",
@@ -4429,11 +4429,13 @@
    "owner": "Codex /root/combat_perf_audit",
    "role": "read-only evidence reviewer",
    "branch": "task/T-honor-shrine-20261111",
-   "status": "passed",
+   "status": "in_progress",
    "goal": "Independently classify actual movement/battle/transition media boundaries and align monotonic CSV before acceptance",
    "inputs": [
     ".local/honor-motion-20261112/",
-    "root provides new sample paths"
+    "root provides new sample paths",
+    "world-structure-east-moving video+CSV PID7534",
+    "cpu-cache-fire-assault-action video PID31064 CSV cap preventsnativeframestat"
    ],
    "outputs": [
     "review messages"
@@ -4443,7 +4445,7 @@
    "write_scope": [],
    "acceptance": "View actual media, identify dialogue/menu/wall intervals, verify monotonic bounds and distinct writers; not independent device execution",
    "recovery_point": "Read-only reviewer, no source or device changes",
-   "checkpoint": "Read-only full364encoded-frame review and105480CSVrows, conservative113new intervals3.766s30.004FPS max33.727ms, no wall/dialogue/menu/load; media/data only, independent device executionNOT_RUN."
+   "checkpoint": "Review newworld movement and spell media; old corridor review scopedpass kept."
   },
   {
    "id": "HONOR-WORLD-INDIRECT-ANALYSIS-20261112",

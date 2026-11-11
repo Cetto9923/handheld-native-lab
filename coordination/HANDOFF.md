@@ -1,3 +1,9 @@
+# 2026-11-12 structural world candidate deployed and evidence corrections
+
+Build6/install-r exit0 SHA bc04fcdeed20bb165fa05cc214654971e5078ee8fd741b63b922d087e955bf44 installedbaseverified, PID7534. Continue restoredactualworldvillage. Structuralmetadata actualbinding29 axisZ23rows observed, sync_wb0 nearby30FPS logs. Recorded6s worldeast182newintervals rawabout30FPS max84.92ms, mediareviewpending. PriorPID31064 CSV capped120000 at1443886310319549, laterworld/fireCSV unavailable. Earlierbackups invalid permission-error text; correctedverified shelltar986844B4files SHA07c8...createdafterinstall-r beforefurtherplay. Data-preserving install andContinue verified.
+
+Current artifact .local/android-apk/FFRS-World-Indirect-Structure.apk source7229b02. No LLDB with olderlib. NewPIDCSV resets120000rowcap. Current long traversalvideo+input trace running tool sessions91316/69244, ordinary logs/files sameprefixworld-structure-long-traversal.
+
 # 2026-11-12 structural world indirect candidate checkpoint
 
 Structural instance-only SPIRV metadata integration and depth-only readiness hostchecked. Two review P1s fixed: raw write descriptor aliases before merge, CPUclean guest snapshot avoids unsubmitted mapped GPUcopy. Latest pending/owned lifecycle unchanged. Build6 next, APK0db386 PID31064 remains live. Actual worldbattle clear ice+fire assault executed, severe firstfire longframes retained, tutorial aftereffect excluded.
