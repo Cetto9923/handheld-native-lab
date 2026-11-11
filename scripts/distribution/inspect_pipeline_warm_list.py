@@ -53,6 +53,24 @@ def archive_keys(path):
     return result
 
 
+def shader_source_key(identity):
+    if re.fullmatch('[0-9a-f]{16}', identity):
+        return identity
+    match = re.fullmatch(r'([0-9a-f]{16}):ib1:([0-9_,]+)', identity)
+    if not match:
+        raise ValueError('invalid shader key')
+    previous = -1
+    for item in match.group(2).split(','):
+        pair = item.split('_')
+        if len(pair) != 2 or any(not re.fullmatch(r'0|[1-9][0-9]*', part) for part in pair):
+            raise ValueError('invalid shader specialization')
+        binding, format_value = map(int, pair)
+        if binding > 0xffffffff or binding <= previous or format_value not in (74, 98):
+            raise ValueError('unsupported shader specialization')
+        previous = binding
+    return match.group(1)
+
+
 def inspect(data, available_keys=None):
     if not data or len(data) >= 64 * 1024 * 1024:
         raise ValueError('empty or oversized warm list')
@@ -81,11 +99,11 @@ def inspect(data, available_keys=None):
         keys = []
         for _ in range(stages):
             length = u32()
-            if length != 16:
+            if not 16 <= length <= 256:
                 raise ValueError('unsupported shader key length')
             key = take(length).decode('ascii')
-            if not re.fullmatch('[0-9a-f]{16}', key):
-                raise ValueError('invalid shader key')
+            source = shader_source_key(key)
+            shaders.add(source)
             keys.append(key)
         count = u32()
         if not 1 <= count <= 4096:
@@ -109,7 +127,6 @@ def inspect(data, available_keys=None):
             if identity != module_id(key):
                 raise ValueError('pipeline shader identity mismatch')
             pos += 4
-        shaders.update(keys)
         unique.add(raw)
         records += 1
     missing = sorted(shaders - available_keys) if available_keys is not None else None

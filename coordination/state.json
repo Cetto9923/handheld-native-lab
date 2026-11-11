@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-12T01:32:30.872912+08:00",
- "phase": "Honor Pad stationary character-foot blocks reproduced by user, preserve live scene PID20700; battle stutter unresolved",
+ "updated_at": "2026-11-12T03:18:04.554863+08:00",
+ "phase": "Honor public integer-buffer candidate deployed PID23697, matched movement CPU25.97 versus liveGPU29.21/29.30FPS, guarded build4 in progress",
  "coordinator": "Codex /root shrine takeover",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -1622,16 +1622,48 @@
    "task": "HONOR-MOTION-BLOCKS-20261112",
    "owner": "Codex /root motion investigation",
    "paths": [
-    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
     "src/graphics/nvn_vulkan/engine/xbg_spirv_stencil.h",
     ".local/honor-motion-20261112/",
-    "coordination/results/HONOR-MOTION-BLOCKS-20261112.md"
+    "coordination/results/HONOR-MOTION-BLOCKS-20261112.md",
+    "src/android/native/guest_boot_jni.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_integer_buffer.h",
+    "scripts/distribution/inspect_pipeline_warm_list.py",
+    "tests/device/test_reflection_uint_fetch.cpp",
+    "tests/device/reflection_uint_fetch.spvasm"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-honor-shrine-20261111",
    "acquired_at": "2026-11-12T01:08:27.178041+08:00",
-   "checkpoint": "63d3652 clean; stability worktree preserved",
+   "checkpoint": "APK594898 deployed PID23697 verified; current21ee/63a5 integer format variants active, inspected views clear. No-record actual motion CPU25.965FPS vs liveGPU29.207/29.298, stable30 notpassed. New latest-pending-proof and roundedUBO guards hostchecked, build4 session47784 log.local/honor-motion-20261112/build4.log. CurrentGPUtrue onlyruntime, persistentmarker0. No new LLDB attach with rebuilt symbols before installing matched APK.",
    "write_state": "ACTIVE"
+  },
+  {
+   "task": "HONOR-INTEGER-FETCH-SEMANTICS",
+   "owner": "Codex /root/upstream_semantics",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_integer_buffer.h",
+    ".local/honor-motion-20261112/semantic-tests/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-honor-shrine-20261111",
+   "acquired_at": "2026-11-12T02:34:43.994681+08:00",
+   "checkpoint": "Completed worker confirmed by collaboration status. Root integration ownership.",
+   "write_state": "RELEASED_HANDED_BACK"
+  },
+  {
+   "task": "HONOR-RESOURCE-SPECIALIZATION",
+   "owner": "Codex /root/combat_perf_audit",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "scripts/distribution/inspect_pipeline_warm_list.py",
+    ".local/honor-motion-20261112/variant-tests/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-honor-shrine-20261111",
+   "acquired_at": "2026-11-12T02:40:16.389518+08:00",
+   "checkpoint": "Completed worker confirmed by collaboration status. Root integration ownership.",
+   "write_state": "RELEASED_HANDED_BACK"
   }
  ],
  "tasks": [
@@ -4264,7 +4296,51 @@
    "acceptance": "Actual movement screenshots/video, distinct-frame CPU/GPU metrics cold/warm, visual+audio regression; independent QA NOT_RUN",
    "recovery_point": "63d3652 clean, install-r only, do not clear data",
    "branch": "task/T-honor-shrine-20261111",
-   "checkpoint": "deaa9b3 installed APK36739797 PID20700. Artifact and combat30 remain unresolved. Current stationary foot-block screenshot/crop captured. Preserve scene, no input/restart. Exact device63a5/21ee Buffer B64 static transforms validate, no causal rendering. Report coordination/results/HONOR-MOTION-BLOCKS-20261112.md."
+   "checkpoint": "APK594898 deployed PID23697 verified; current21ee/63a5 integer format variants active, inspected views clear. No-record actual motion CPU25.965FPS vs liveGPU29.207/29.298, stable30 notpassed. New latest-pending-proof and roundedUBO guards hostchecked, build4 session47784 log.local/honor-motion-20261112/build4.log. CurrentGPUtrue onlyruntime, persistentmarker0. No new LLDB attach with rebuilt symbols before installing matched APK."
+  },
+  {
+   "id": "HONOR-INTEGER-FETCH-SEMANTICS",
+   "role": "SPIR-V implementer",
+   "owner": "Codex /root/upstream_semantics",
+   "branch": "task/T-honor-shrine-20261111",
+   "status": "implemented",
+   "goal": "Strict structural integer buffer fetch rewrite gated by runtime actual format, no binding/hash whitelist",
+   "inputs": [
+    "actual device97ae/63a5/21ee SPIRV",
+    "Vulkan spec98ab101"
+   ],
+   "outputs": [
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_integer_buffer.h",
+    ".local/honor-motion-20261112/semantic-tests/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "acceptance": "Def-use negativecontrols, actualinput ASan/UBSan and spirv-val; root integration/device separate",
+   "recovery_point": "new header can be excluded; no existing files overwritten",
+   "checkpoint": "Worker completed and frozen. Host structural/identity tests passed. Root integrating build/device regression."
+  },
+  {
+   "id": "HONOR-RESOURCE-SPECIALIZATION",
+   "role": "renderer implementer",
+   "owner": "Codex /root/combat_perf_audit",
+   "branch": "task/T-honor-shrine-20261111",
+   "status": "implemented",
+   "goal": "Actual format-gated Shader variants and consistent runtime/warm recipe identity, no hash/binding whitelist",
+   "inputs": [
+    "strict integer buffer helper by upstream_semantics",
+    "current capture43758 R16_UINT B64 FS21ee",
+    "existing Shader/memo/warm lifecycle"
+   ],
+   "outputs": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "scripts/distribution/inspect_pipeline_warm_list.py",
+    ".local/honor-motion-20261112/variant-tests/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "acceptance": "Correct original/UInt variant switching, distinct memo keys, stable warm recipe identity and backward compatible16keyrecords; root owns build/device",
+   "recovery_point": "9d0e9c4 engine clean; no device/cache/data changes by worker",
+   "checkpoint": "Worker completed and frozen. Host structural/identity tests passed. Root integrating build/device regression."
   }
  ],
  "blockers": [

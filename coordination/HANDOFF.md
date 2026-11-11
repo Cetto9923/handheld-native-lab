@@ -1,3 +1,15 @@
+# 2026-11-12 guarded resident follow-up
+
+APK594898 deployed PID23697 verified; current21ee/63a5 integer format variants active, inspected views clear. No-record actual motion CPU25.965FPS vs liveGPU29.207/29.298, stable30 notpassed. New latest-pending-proof and roundedUBO guards hostchecked, build4 session47784 log.local/honor-motion-20261112/build4.log. CurrentGPUtrue onlyruntime, persistentmarker0. No new LLDB attach with rebuilt symbols before installing matched APK.
+
+Updated canonical report coordination/results/HONOR-MOTION-BLOCKS-20261112.md replaces earlier measurements and restrictions below. User requested sustained goal completion and authorized autonomous actual movement, battle, preserving-data installs. No pause request.
+
+# 2026-11-12 public integer buffer specialization deployed
+
+Public integer-buffer candidate build exit0, install-r exit0, APK594898edd86005e3e516f857e0e2880a786607365d6dcb3101220b868353885d verified from installedbase.apk, PID23697. Title renders, warm1182 failed0. Continue selected, scene regression pending.
+
+Actual-format structural specialization replaces shader-hash whitelist. R16/R32_UINT routes supported strict integer consumers. Unknown graphs logged unchanged, additional coverage pending. No RG477M operations. Preserve saves, data and existing synchronization. All earlier scene-preservation restrictions below were superseded by user install/gameplay authorization. Prior FTZ attribution is unproven. Current device regression remains open.
+
 # 2026-11-12 correction, preserve stationary artifact scene
 
 User now confirms deaa9b3 candidate still has moving ring blocks and stationary rectangles below character. Earlier user-confirmed clear is limited and superseded. PID20700 A42 Pad remains live. No input/restart/scene transition until current evidence captured and diagnosis ready. Raw .local/honor-motion-20261112/user-stopped-blocks.png and feet-crop.png, screenshot visibly has ground light/dark rectangular patches below/right of character. Battlefield action420newframes22.34FPS P9581.07ms max230.37ms, no30PASS. Stop north-wall movement, next route right per minimap/user. Prior 14 unverified shaders altered by broad B64 rewrite include unrelated2D/3D images, while 21ee/63a5 are Buffer2fetch variants potentially needing equivalent repair. No GPU cause yet proven.
