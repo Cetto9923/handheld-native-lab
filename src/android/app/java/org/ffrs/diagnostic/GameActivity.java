@@ -999,32 +999,163 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         }
     }
 
-    /**
-     * Harvests the localized strings the guest holds.
-     *
-     * The game keeps its whole text table in memory, including the Chinese
-     * character names it draws on screen. A block that holds Chinese text is
-     * written out in full, so the keys that sit next to the names come with
-     * them.
-     */
-    private static final class StringHarvester implements GuestMemory.ChunkSink {
-        private static final int BLOCK = 64 * 1024;
-        private static final int MAX_LINES = 80000;
-        private final java.io.PrintWriter out;
-        private int lines = 0;
-        private int blocks = 0;
+    /** The memory walk; it must not run on the UI thread. */
+    private static final class ScanTask implements Runnable {
+        private final GameActivity owner;
+        private final File slot;
+        private final List<SaveCheater.Unit> roster;
+        ScanTask(GameActivity o, File s, List<SaveCheater.Unit> r) { owner = o; slot = s; roster = r; }
 
-        StringHarvester(File file) throws Exception {
-            out = new java.io.PrintWriter(new java.io.OutputStreamWriter(
-                    new java.io.FileOutputStream(file), "UTF-8"));
+        @Override public void run() {
+            Log.i(TAG, "guest scan start");
+            try {
+                File dir = owner.getExternalFilesDir(null);
+                if (dir == null) { owner.toast("没有可写目录"); return; }
+                File unitOut = new File(dir, "guest-unit-scan.txt");
+                File strOut = new File(dir, "guest-strings.txt");
+                Collector collector = new Collector(owner, slot, roster, unitOut, strOut);
+                GuestMemory.walk(collector);
+                collector.close();
+                owner.toast("扫描完成: " + unitOut.getAbsolutePath());
+                Log.i(TAG, "guest scan report: " + unitOut.getAbsolutePath());
+            } catch (Throwable t) {
+                Log.e(TAG, "guest scan failed", t);
+                owner.toast("扫描失败: " + t);
+            }
+        }
+    }
+
+    /**
+     * Collects the answers in one pass over the guest memory.
+     *
+     * The guest holds gigabytes of resident pages, so one walk per question
+     * would take minutes. The unit ids are looked up in an open addressed
+     * table to keep the walk free of allocations.
+     */
+    private static final class Collector implements GuestMemory.ChunkSink {
+        private static final int SLOTS = 512;
+        private static final int BLOCK = 64 * 1024;
+        private static final int MAX_LINES = 200000;
+        private static final int MAX_HITS = 12;
+
+        private final GameActivity owner;
+        private final List<SaveCheater.Unit> roster;
+        private final int[] slotValue = new int[SLOTS];
+        private final int[] slotOwner = new int[SLOTS];
+        private final int[] hitCount = new int[64];
+        private final java.io.PrintWriter units;
+        private final java.io.PrintWriter strings;
+        private final byte[] rosterFrag;
+        private final byte[][] hintNeedles;
+        private int stringLines = 0;
+
+        /** The character names the game shows; both are confirmed on screen. */
+        private static final String[] NAME_HINTS = {"拉斯韦尔", "雷因"};
+
+        Collector(GameActivity o, File slot, List<SaveCheater.Unit> r, File unitFile, File stringFile) throws Exception {
+            owner = o; roster = r;
+            units = new java.io.PrintWriter(new java.io.OutputStreamWriter(new java.io.FileOutputStream(unitFile), "UTF-8"));
+            strings = new java.io.PrintWriter(new java.io.OutputStreamWriter(new java.io.FileOutputStream(stringFile), "UTF-8"));
+            for (int i = 0; i < r.size() && i < 64; i++) {
+                int v = r.get(i).unitId;
+                int h = hash(v);
+                while (slotValue[h] != 0) h = (h + 1) & (SLOTS - 1);
+                slotValue[h] = v + 1;
+                slotOwner[h] = i;
+            }
+            byte[] plain = SaveCheater.plaintext(slot);
+            if (plain != null && !r.isEmpty() && r.get(0).hitPointOffset > 16) {
+                int at = r.get(0).hitPointOffset - 16;
+                rosterFrag = new byte[32];
+                System.arraycopy(plain, at, rosterFrag, 0, 32);
+            } else {
+                rosterFrag = null;
+            }
+            hintNeedles = new byte[NAME_HINTS.length][];
+            for (int i = 0; i < NAME_HINTS.length; i++) hintNeedles[i] = utf16(NAME_HINTS[i]);
+            units.println("slot=" + slot.getName() + " units=" + r.size());
+            for (SaveCheater.Unit u : r) {
+                units.println("file unit " + u.unitId + " hp=" + u.hitPoint + "/" + u.maxHitPoint
+                        + " mp=" + u.magicPoint + "/" + u.maxMagicPoint
+                        + " exp=" + u.experience + " level=" + u.level);
+            }
         }
 
+        private static int hash(int v) { return (v * 0x9E3779B1 >>> 13) & (SLOTS - 1); }
+
         @Override public void onChunk(long address, byte[] data, int length) {
+            scanIds(address, data, length);
+            scanFragment(address, data, length);
+            scanNames(address, data, length);
             for (int off = 0; off < length; off += BLOCK) {
                 int len = Math.min(BLOCK, length - off);
-                blocks++;
-                if (!hasCjk(data, off, len)) continue;
-                dump(address, data, off, len);
+                if (hasCjk(data, off, len)) dump(address, data, off, len);
+            }
+        }
+
+        /** Where the unit ids live in the guest memory. */
+        private void scanIds(long address, byte[] data, int length) {
+            for (int i = 0; i + 4 <= length; i++) {
+                int v = (data[i] & 0xff) | ((data[i + 1] & 0xff) << 8)
+                        | ((data[i + 2] & 0xff) << 16) | ((data[i + 3] & 0xff) << 24);
+                int h = hash(v);
+                while (slotValue[h] != 0) {
+                    if (slotValue[h] - 1 == v) {
+                        int who = slotOwner[h];
+                        if (hitCount[who] < MAX_HITS) {
+                            hitCount[who]++;
+                            units.println("hit unit=" + roster.get(who).unitId + " @" + String.format("%012x", address + i));
+                            int from = Math.max(0, i - 32);
+                            units.println("   ints:" + ints(data, from, Math.min(96, length - from)));
+                            units.println("   text:" + text(data, from, Math.min(192, length - from)));
+                        }
+                        break;
+                    }
+                    h = (h + 1) & (SLOTS - 1);
+                }
+            }
+        }
+
+        /**
+         * The character names the game draws.
+         *
+         * A name that is found on screen is in the guest memory as well, and
+         * its neighbourhood is the text table it lives in.
+         */
+        private void scanNames(long address, byte[] data, int length) {
+            for (int h = 0; h < hintNeedles.length; h++) {
+                int at = indexOf(data, length, hintNeedles[h]);
+                if (at < 0) continue;
+                units.println("name '" + NAME_HINTS[h] + "' @" + String.format("%012x", address + at));
+                int from = Math.max(0, at - 4096);
+                units.println("   window:" + text(data, from, Math.min(8192, length - from)));
+            }
+        }
+
+        /** The first position of the needle in the chunk, or -1. */
+        private static int indexOf(byte[] hay, int len, byte[] needle) {
+            int last = len - needle.length;
+            for (int i = 0; i <= last; i++) {
+                if (hay[i] != needle[0]) continue;
+                boolean same = true;
+                for (int j = 1; j < needle.length; j++) {
+                    if (hay[i + j] != needle[j]) { same = false; break; }
+                }
+                if (same) return i;
+            }
+            return -1;
+        }
+
+        /** The serialized roster of the save file, if the guest keeps a copy. */
+        private void scanFragment(long address, byte[] data, int length) {
+            if (rosterFrag == null) return;
+            for (int i = 0; i + rosterFrag.length <= length; i++) {
+                if (data[i] != rosterFrag[0]) continue;
+                boolean same = true;
+                for (int j = 1; j < rosterFrag.length; j++) {
+                    if (data[i + j] != rosterFrag[j]) { same = false; break; }
+                }
+                if (same) units.println("rosterblob @" + String.format("%012x", address + i));
             }
         }
 
@@ -1039,25 +1170,37 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             return false;
         }
 
-        /** Writes every text run of the block with its address. */
+        /**
+         * Writes every text run of the block with its address.
+         *
+         * The localization table keeps a key next to every translated string,
+         * so a block that holds Chinese text also holds the keys that point
+         * at the character names.
+         */
         private void dump(long base, byte[] b, int off, int len) {
             int end = off + len;
             int i = off;
-            while (i + 1 < end && lines < MAX_LINES) {
+            while (i + 1 < end && stringLines < MAX_LINES) {
                 if (!isText((b[i] & 0xff) | ((b[i + 1] & 0xff) << 8))) { i += 2; continue; }
                 int start = i;
                 StringBuilder sb = new StringBuilder();
+                int cjk = 0;
                 while (i + 1 < end) {
                     int c = (b[i] & 0xff) | ((b[i + 1] & 0xff) << 8);
                     if (!isText(c)) break;
                     sb.append((char) c);
+                    if (c >= 0x4e00 && c <= 0x9fff) cjk++;
                     i += 2;
                     if (sb.length() >= 160) break;
                 }
-                if (sb.length() >= 2) {
-                    out.println(String.format("%012x", base + start) + "\t" + sb);
-                    lines++;
-                }
+                if (sb.length() < 2) continue;
+                // Only real text is worth keeping: random bytes read as UTF-16
+                // produce a flood of short runs that hide the text table.
+                boolean chinese = cjk >= 2;
+                boolean identifier = cjk == 0 && isIdentifier(sb);
+                if (!chinese && !identifier) continue;
+                strings.println(String.format("%012x", base + start) + "\t" + sb);
+                stringLines++;
             }
         }
 
@@ -1065,105 +1208,22 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             return c >= 0x20 && c != 0x7f && c != 0xffff && !(c >= 0xd800 && c <= 0xdfff);
         }
 
-        void close() {
-            out.flush();
-            out.close();
-            Log.i(TAG, "string harvest lines=" + lines + " blocks=" + blocks);
-        }
-    }
-
-    /** The memory walk; it must not run on the UI thread. */
-    private static final class ScanTask implements Runnable {
-        private final GameActivity owner;
-        private final File slot;
-        private final List<SaveCheater.Unit> roster;
-        ScanTask(GameActivity o, File s, List<SaveCheater.Unit> r) { owner = o; slot = s; roster = r; }
-
-        @Override public void run() {
-            Log.i(TAG, "guest scan start");
-            try {
-                scan();
-            } catch (Throwable t) {
-                Log.e(TAG, "guest scan failed", t);
-                owner.toast("扫描失败: " + t);
+        /** True when the run looks like a key rather than random bytes. */
+        private static boolean isIdentifier(StringBuilder sb) {
+            if (sb.length() < 6) return false;
+            boolean letter = false;
+            for (int i = 0; i < sb.length(); i++) {
+                char c = sb.charAt(i);
+                if (c >= 'a' && c <= 'z') { letter = true; continue; }
+                if (c >= 'A' && c <= 'Z') continue;
+                if (c >= '0' && c <= '9') continue;
+                if (c == '_' || c == '.' || c == '/' || c == ':' || c == '-' || c == '#') continue;
+                return false;
             }
+            return letter;
         }
 
-        /** The walk itself; a failure here must not take the app down. */
-        private void scan() {
-            StringBuilder sb = new StringBuilder();
-            byte[] plain = SaveCheater.plaintext(slot);
-            sb.append("slot=").append(slot.getName())
-              .append(" plain=").append(plain == null ? "null" : Integer.toString(plain.length)).append('\n');
-            if (plain != null && !roster.isEmpty() && roster.get(0).hitPointOffset > 16) {
-                // Does the guest keep the serialized roster blob in memory?
-                int at = roster.get(0).hitPointOffset - 16;
-                byte[] frag = new byte[32];
-                System.arraycopy(plain, at, frag, 0, 32);
-                long[] blobHits = GuestMemory.find(frag, 8);
-                sb.append("== roster blob fragment at plain+").append(at).append(" hits=").append(blobHits.length).append('\n');
-                for (long h : blobHits) sb.append("  blob @").append(hex(h)).append('\n');
-            }
-            // The game draws the character names, so the Chinese names are in
-            // the guest memory as well. A known name leads to the name table.
-            for (String name : NAME_HINTS) {
-                byte[] needle = utf16(name);
-                long[] nameHits = GuestMemory.find(needle, 6);
-                sb.append("== name '").append(name).append("' hits=").append(nameHits.length).append('\n');
-                for (long h : nameHits) {
-                    sb.append("  name @").append(hex(h)).append('\n');
-                    byte[] window = GuestMemory.peek(h - 2048, 8192);
-                    if (window != null) sb.append("    text:").append(text(window)).append('\n');
-                }
-            }
-            for (SaveCheater.Unit u : roster) {
-                byte[] id = int32(u.unitId);
-                long[] hits = GuestMemory.find(id, 12);
-                sb.append("== unit ").append(u.unitId).append(" id hits=").append(hits.length)
-                  .append(" (file: hp=").append(u.hitPoint).append(" mp=").append(u.magicPoint)
-                  .append(" exp=").append(u.experience).append(')').append('\n');
-                for (long h : hits) {
-                    byte[] ctx = GuestMemory.peek(h - 32, 96);
-                    sb.append("  hit @").append(hex(h)).append('\n');
-                    if (ctx != null) {
-                        sb.append("    ints:").append(ints(ctx)).append('\n');
-                        sb.append("    text:").append(text(ctx)).append('\n');
-                    }
-                }
-            }
-            File out = new File(owner.getExternalFilesDir(null), "guest-unit-scan.txt");
-            try {
-                java.io.FileOutputStream os = new java.io.FileOutputStream(out);
-                os.write(sb.toString().getBytes("UTF-8"));
-                os.close();
-            } catch (Exception e) {
-                owner.toast("扫描报告写入失败: " + e.getMessage());
-                return;
-            }
-            // The game keeps its whole text table in memory, so the Chinese
-            // character names are in there too. Every block that holds Chinese
-            // text is written out in full, keys included.
-            File strOut = new File(owner.getExternalFilesDir(null), "guest-strings.txt");
-            try {
-                StringHarvester harvester = new StringHarvester(strOut);
-                GuestMemory.walk(harvester);
-                harvester.close();
-                sb.append("== strings -> ").append(strOut.getAbsolutePath()).append('\n');
-                Log.i(TAG, "guest strings: " + strOut.getAbsolutePath());
-            } catch (Exception e) {
-                Log.w(TAG, "string harvest failed: " + e.getMessage());
-            }
-            owner.toast("扫描完成: " + out.getAbsolutePath());
-            Log.i(TAG, "guest scan report: " + out.getAbsolutePath());
-        }
-
-        private static byte[] int32(int v) {
-            return new byte[]{(byte) (v & 0xff), (byte) ((v >> 8) & 0xff),
-                    (byte) ((v >> 16) & 0xff), (byte) ((v >> 24) & 0xff)};
-        }
-        private static String hex(long v) { return String.format("0x%016x", v); }
-        /** The character names the game shows; the first one is confirmed on screen. */
-        private static final String[] NAME_HINTS = {"拉斯韦尔"};
+        /** The UTF-16LE bytes of a string. */
         private static byte[] utf16(String s) {
             byte[] out = new byte[s.length() * 2];
             for (int i = 0; i < s.length(); i++) {
@@ -1173,11 +1233,12 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             }
             return out;
         }
+
         /** The printable UTF-16LE runs inside a byte window. */
-        private static String text(byte[] b) {
+        private static String text(byte[] b, int off, int len) {
             StringBuilder sb = new StringBuilder();
             StringBuilder run = new StringBuilder();
-            for (int i = 0; i + 1 < b.length; i += 2) {
+            for (int i = off; i + 1 < off + len; i += 2) {
                 char c = (char) ((b[i] & 0xff) | ((b[i + 1] & 0xff) << 8));
                 if (c >= 0x20 && c != 0x7f && c != 0xffff && !Character.isSurrogate(c)) run.append(c);
                 else { if (run.length() >= 2) sb.append('[').append(run).append(']'); run.setLength(0); }
@@ -1185,14 +1246,21 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             if (run.length() >= 2) sb.append('[').append(run).append(']');
             return sb.toString();
         }
+
         /** The bytes as little endian int32 values. */
-        private static String ints(byte[] b) {
+        private static String ints(byte[] b, int off, int len) {
             StringBuilder s = new StringBuilder();
-            for (int i = 0; i + 4 <= b.length; i += 4) {
+            for (int i = off; i + 4 <= off + len; i += 4) {
                 int v = (b[i] & 0xff) | ((b[i + 1] & 0xff) << 8) | ((b[i + 2] & 0xff) << 16) | ((b[i + 3] & 0xff) << 24);
                 s.append(' ').append(v);
             }
             return s.toString();
+        }
+
+        void close() {
+            units.flush(); units.close();
+            strings.flush(); strings.close();
+            Log.i(TAG, "guest scan done strings=" + stringLines);
         }
     }
 
