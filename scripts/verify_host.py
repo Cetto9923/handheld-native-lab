@@ -87,9 +87,22 @@ def main():
             for name, implementation, harness in contracts:
                 binary = out / ('test-' + name)
                 extra_artifacts.append(binary)
-                if run(name + '-build', [cc, '-O2', '-Wall', '-Wextra', '-Werror', '-pthread',
-                                        f'src/runtime/hle/{implementation}.c',
-                                        f'tests/native/{harness}.c', '-o', binary]):
+                sources = [f'src/runtime/hle/{implementation}.c', f'tests/native/{harness}.c']
+                flags = [cc, '-O2', '-Wall', '-Wextra', '-Werror', '-pthread']
+                if name == 'mutex':
+                    mutex_obj = out / 'mutex.o'
+                    clock_obj = out / 'host-monotonic-cond.o'
+                    extra_artifacts.extend([mutex_obj, clock_obj])
+                    built = run(name + '-impl', flags + ['-include', 'tests/native/host_monotonic_cond.h',
+                                                         '-c', sources[0], '-o', mutex_obj])
+                    built = built and run(name + '-clock', [cc, '-O2', '-Wall', '-Wextra', '-Werror',
+                                                            '-c', 'tests/native/host_monotonic_cond.c', '-o', clock_obj])
+                    built = built and run(name + '-build', flags + [str(mutex_obj), str(clock_obj), sources[1], '-o', binary])
+                elif name == 'exit-registry':
+                    built = run(name + '-build', flags + sources + ['tests/native/host_exit_registry_stub.c', '-o', binary])
+                else:
+                    built = run(name + '-build', flags + sources + ['-o', binary])
+                if built:
                     run(name + '-contract', [binary])
                     if name == 'guest-tls':
                         run(name + '-host-control', [binary, '--host-only-control'])
@@ -113,7 +126,30 @@ def main():
                                        'src/runtime/nso/nso_loader.c',
                                        'tests/native/game_leaf_sample.c', '-o', leaf]):
                 run('game-leaf-comparison', [leaf, module.resolve()])
+    event_binary = out / 'test-event-finalize'
+    extra_artifacts.append(event_binary)
+    event_flags = [cc, '-std=c11', '-Wall', '-Wextra', '-pthread', '-fsanitize=address,undefined']
+    if run('event-finalize-asan-build', event_flags + [
+            'src/runtime/hle/nso_host.c', 'tests/native/event_finalize_contract.c',
+            'tests/native/event_finalize_stubs.c', '-o', event_binary]):
+        run('event-finalize-asan', [event_binary])
+    event_tsan = out / 'test-event-finalize-tsan'
+    extra_artifacts.append(event_tsan)
+    tsan_flags = [cc, '-std=c11', '-Wall', '-Wextra', '-pthread', '-fsanitize=thread']
+    if run('event-finalize-tsan-build', tsan_flags + [
+            'src/runtime/hle/nso_host.c', 'tests/native/event_finalize_contract.c',
+            'tests/native/event_finalize_stubs.c', '-o', event_tsan]):
+        run('event-finalize-tsan', [event_tsan])
+    save_binary = out / 'test-save-commit'
+    extra_artifacts.append(save_binary)
+    if run('save-commit-build', [cc, '-std=c11', '-Wall', '-Wextra', '-pthread', '-fsanitize=address,undefined',
+                                  'src/runtime/hle/nso_host.c', 'tests/native/save_commit_host_contract.c',
+                                  'tests/native/event_finalize_stubs.c', '-o', save_binary]):
+        run('save-commit-contract', [save_binary])
+    run('engine-log-rotation', [sys.executable, '-m', 'unittest', 'tests.installer.test_engine_log_rotation'])
+    run('present-outcome', [sys.executable, '-m', 'unittest', 'tests.installer.test_present_outcome'])
     probe = out / 'probe-build'
+
     if run('probe-configure', [cmake, '-S', 'src/android/native', '-B', probe,
                                '-DCMAKE_BUILD_TYPE=Release']):
         if run('probe-build', [cmake, '--build', probe, '-j', '2']):
