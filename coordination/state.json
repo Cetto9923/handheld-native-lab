@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-12T23:32:00.823024+08:00",
+ "updated_at": "2026-11-12T23:40:00.798140+08:00",
  "phase": "v1.0.9 consolidation in progress: one APK (versionCode 9) must boot both the Honor tablet (code 7) and the RG477M (code 8). Three implementation lines are in flight — readback targeted retirement (stutter root cause), Mali formatless-write FATAL (RG477M cannot enter the game), battle-settle crash P0 (8E5 phone, no device). The Honor tablet was returned to the user after the effect-seed line finished its measurement; all Honor device acceptance is deferred to one session after the merge.",
  "coordinator": "MiniMax Code /root release takeover (Codex thread aborted by user)",
  "integration_branch": "work/rg477m-native",
@@ -1895,6 +1895,20 @@
    "acquired_at": "2026-11-12T23:32:00.823024+08:00",
    "checkpoint": "not yet reported",
    "objective": "Pre-emptive hardening for the 8E5 (Snapdragon) crash after a Bahamut summon wins the fight. No 8E5 device is available, so the work is code-level analysis plus host contracts; every device claim must be written NOT_RUN.",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "RELEASE-1.0.9-MERGE-20261112",
+   "owner": "MiniMax Code /root release takeover",
+   "paths": [
+    "src/",
+    "coordination/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/release-1.0.9-20261112",
+   "branch": "task/T-release-1.0.9-20261112",
+   "acquired_at": "2026-11-12T23:40:00.798140+08:00",
+   "checkpoint": "ad2941b",
+   "objective": "Serial integration of the four implementation lines into one 1.0.9 / code 9 APK and the single device acceptance session",
    "write_state": "ACTIVE"
   }
  ],
@@ -5234,8 +5248,8 @@
    "role": "coordinator",
    "status": "blocked",
    "owner": "MiniMax Code /root release takeover",
-   "branch": "task/T-package-1.0.7-20261112",
-   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/package-1.0.7-20261112",
+   "branch": "task/T-release-1.0.9-20261112",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/release-1.0.9-20261112",
    "objective": "Merge the four implementation lines serially, build one APK with versionCode 9 / versionName 1.0.9, and run the single device acceptance session on both devices.",
    "inputs": [
     "warm flush (seed line, 056159d)",
@@ -5260,9 +5274,10 @@
     "coordination/"
    ],
    "acceptance": "One APK installs on both devices (versionCode 9 covers the Honor code 7 and the RG477M code 8, the signing certificate is unchanged). The RG477M boots past the texel check and reaches the title and a battle. The Honor regression is run only with the explicit permission of the user. Every PASS is linked to a commit, a build id, the raw log and the exit code.",
-   "checkpoint": "27c27a6",
+   "checkpoint": "ad2941b (merge preview built and verified; the three open lines are not in yet)",
    "device_exclusive": "RG477M01445122 and, with the user permission, A42BBB5109000333",
-   "status_note": "blocked on the three implementation lines; the coordinator starts it as soon as they report"
+   "status_note": "the merge preview is built and verified at ad2941b; the task is blocked on the three open implementation lines",
+   "merge_note": "Cherry-pick instead of branch merge: the four lines descend from different bases (the rescue and transit lines carry their own moon/probe history, the rg477m, texel and crash lines start at db094f8), so a branch merge would drag the probe history back in. The coordinator picked the functional commits only, in this order: 07a8d44 + 221ef7b (RG477M resolution tier, pillarbox, 30 FPS declaration, device result), 4d1c98c (the warm list flush fix), ede7790 (the seed distribution path), b0db957 + 056159d (the effect line reports), 6b18120 (event targeted retirement plus the warm-up throttle), 97d1a4f + 585bf28 (the metrics tool and the merge list). All eight picked cleanly, no conflict."
   }
  ],
  "blockers": [
@@ -7353,5 +7368,75 @@
   "device_state": "the tablet carries the clean 1.0.7 build: gfx-defer-events 0, the diagnostic probes cleared, the pipeline list and cache restored, no app running. Every marker change made by this line is reverted and backed up in .local/marker-backups/ffrs-markers-backup-20261112-223935.tar.",
   "artifacts": ".local/rescue-1.0.7-20261112/ (4 frame CSVs, the 10 MB run-4 guest log, the final pipeline list and cache, the window analysis, 4 screenshots)",
   "not_verified": "no Honor measurement of the final seed build; no frame-rate number from the RG477M; the cold-start frame is unexplained"
+ },
+ "release_1_0_9_merge_20261112": {
+  "observed_at": "2026-11-12T23:40:00.798140+08:00",
+  "branch": "task/T-release-1.0.9-20261112",
+  "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/release-1.0.9-20261112",
+  "head": "ad2941b",
+  "method": "cherry-pick of the functional commits only; the branch topology is not a line, so a branch merge would have brought the probe history back",
+  "picked": [
+   {
+    "commit": "07a8d44",
+    "what": "RG477M: the resolution tier, the 4:3 pillarbox, the 30 FPS declaration"
+   },
+   {
+    "commit": "221ef7b",
+    "what": "the RG477M device result report"
+   },
+   {
+    "commit": "4d1c98c",
+    "what": "the warm list flush fix (Class A): the learned pipeline recipes are written on their own 300-frame cadence, and the shutdown path flushes too"
+   },
+   {
+    "commit": "ede7790",
+    "what": "the seed distribution path: package_honor_portable.py --add-to / --restore, verify_seed, seed_block"
+   },
+   {
+    "commit": "b0db957",
+    "what": "the slow-frame attribution report and the pipeline recipe provenance"
+   },
+   {
+    "commit": "056159d",
+    "what": "the seed conclusion re-checked against the retained device log"
+   },
+   {
+    "commit": "6b18120",
+    "what": "event targeted retirement (retire_through / publish_event_value) plus the warm-up throttle markers gfx-warm-budget and gfx-warm-interval"
+   },
+   {
+    "commit": "97d1a4f",
+    "what": "the tracked frame timing acceptance metric tool (analyze_stalls.py)"
+   },
+   {
+    "commit": "585bf28",
+    "what": "the merge point list"
+   }
+  ],
+  "conflict_review": "no cherry-pick reported a conflict. The two lines that touch the same functions were checked by hand: perf_frame() keeps both the pipeline cache throttle and the new xbg_warm_flush::due branch, and the warm namespace keeps both the flush path and the transit budget markers. The symbol counts in the merged file were verified.",
+  "host_contracts": {
+   "scripts/verify_host.py": "19/19 steps passed, exit 0",
+   "scripts/runtime/selfproof_xbg_event_retire.sh": "baseline_exit=0 mutated_exit=1, green",
+   "tests/graphics/test_warm_flush_contract.cpp": "all checks passed, exit 0",
+   "python3 -m unittest tests.installer.test_package_honor_portable": "12 tests, OK"
+  },
+  "build": {
+   "command": "bash scripts/android/build_game_window_apk.sh",
+   "steps": "18 of 18 steps exit_code=0",
+   "apk": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/apk/ffrs-game-window-1.0.9-merge-preview.apk",
+   "bytes": 3523580,
+   "sha256": "3d427ff777439a994451389e666521a2bd3a561bbd441915606125eecd7609fd",
+   "version": "versionCode 9 / versionName 1.0.9",
+   "certificate_sha256": "d11967a31fcef92f3d6b44adf9d9678c8d2b07bf8f3246d51a791617ed61f36e",
+   "certificate_note": "the honor certificate was reused on purpose: a fresh keystore would break the overlay install on both devices",
+   "device": "NOT installed on either device. The RG477M belongs to the texel line, and the guest would die on the Mali FATAL anyway."
+  },
+  "not_yet_in": [
+   "the readback targeted retirement (the transit line, in progress)",
+   "the Mali formatless-write FATAL fix (the texel line, in progress)",
+   "the battle-settle crash P0 hardening (the crash line, in progress)",
+   "the seed narrowing P1 (deferred, no device)"
+  ],
+  "risk": "the merged engine file carries three independent edits to src/graphics/nvn_vulkan/engine/xbg_game.cpp; the host contracts prove the rules hold, but only a real device run can prove the three edits do not interact on the GPU path."
  }
 }
