@@ -20,6 +20,14 @@ extern "C" int xbg_completion_wait_selftest(char *report,size_t bytes);
 #include "xbg_pipeline_key.h"
 #include "xbg_warm_flush.h"
 #include "xbg_spirv_integer_buffer.h"
+#include "xbg_spirv_typed_storage.h"
+// The host testable format table repeats the Vulkan format numbers; keep them
+// pinned to the headers the engine actually compiles against.
+static_assert(VK_FORMAT_R32_UINT==XBG_VK_FORMAT_R32_UINT && VK_FORMAT_R32_SINT==XBG_VK_FORMAT_R32_SINT &&
+              VK_FORMAT_R32_SFLOAT==XBG_VK_FORMAT_R32_SFLOAT && VK_FORMAT_R32G32_UINT==XBG_VK_FORMAT_R32G32_UINT &&
+              VK_FORMAT_R32G32_SINT==XBG_VK_FORMAT_R32G32_SINT && VK_FORMAT_R32G32_SFLOAT==XBG_VK_FORMAT_R32G32_SFLOAT &&
+              VK_FORMAT_R32G32B32A32_UINT==XBG_VK_FORMAT_R32G32B32A32_UINT && VK_FORMAT_R32G32B32A32_SINT==XBG_VK_FORMAT_R32G32B32A32_SINT &&
+              VK_FORMAT_R32G32B32A32_SFLOAT==XBG_VK_FORMAT_R32G32B32A32_SFLOAT,"VkFormat numbers differ from the SPIR-V image format table");
 #include "xbg_spirv_indirect_instances.h"
 #include "xbg_vulkan.h"
 #include "xbg_depth.h"
@@ -2507,6 +2515,8 @@ const RegisteredTexture &null_texture(const xbg_shader_binding &b){
 std::string control_key(const void *data){char key[17];need(xbg_shader_control_key(data,key)==0,"Missing shader control segment");return key;}
 bool probe_shader_requested(const std::string &key);
 using IntegerBufferFormats=std::vector<std::pair<uint32_t,uint32_t>>;
+// Typed storage variants are keyed by (binding, SPIR-V image format).
+using TypedStorageFormats=std::vector<std::pair<uint32_t,uint32_t>>;
 struct Shader {std::string key;std::string identity;
     // Registration updates std::map nodes in place. Shader lifetime ends before
     // these tables are cleared. Cache the lookup, and reread live metadata.
@@ -2517,6 +2527,14 @@ struct Shader {std::string key;std::string identity;
     std::vector<XbgIndirectInstanceField> indirect_instance_fields;
     std::set<uint32_t> unsupported_integer_buffers;
     std::map<IntegerBufferFormats,std::unique_ptr<Shader>> variants;
+    // The SPIR-V image format each storage texel/image binding actually
+    // declares (0 = formatless). The engine checks the module's real form,
+    // not the package's formatless flag.
+    std::map<uint32_t,uint32_t> storage_image_formats;
+    // Final module words, kept only for shaders that may need a typed
+    // storage variant, so a variant can be derived from the real module.
+    std::vector<uint32_t> module_words;
+    std::map<TypedStorageFormats,std::unique_ptr<Shader>> typed_variants;
     uint32_t stage;VkShaderModule module{};std::vector<xbg_shader_binding> bindings;std::vector<uint32_t> inputs,input_classes,probe_words;std::vector<uint8_t> c1;
     std::set<uint32_t> storage_writes; // Vulkan bindings of storage buffers the SPIR-V may write
     bool discards=true; // fragment shader may kill/demote (conservative default)
@@ -2789,13 +2807,18 @@ std::vector<uint32_t> shader_float_buffer_bindings(const std::vector<uint32_t> &
 bool integer_buffer_format(uint32_t value){
     return value==VK_FORMAT_R16_UINT || value==VK_FORMAT_R32_UINT;
 }
-bool shader_identity(const std::string &identity,std::string &base,IntegerBufferFormats &formats){
+// A shader identity is the 16 hex digit control key, optionally followed by
+// ":ib1:" and the integer buffer variants, or ":stb1:" and the typed storage
+// variants. The two variant families never share a prefix.
+bool shader_identity(const std::string &identity,std::string &base,IntegerBufferFormats &formats,TypedStorageFormats *typed=nullptr){
     formats.clear();
+    if(typed)typed->clear();
     if(identity.size()<16 || identity.size()>256)return false;
     base=identity.substr(0,16);
     if(base.find_first_not_of("0123456789abcdef")!=std::string::npos)return false;
     if(identity.size()==16)return true;
-    if(identity.compare(16,5,":ib1:")!=0)return false;
+    const bool typed_form=identity.compare(16,5,":stb1:")==0;
+    if(!typed_form && identity.compare(16,5,":ib1:")!=0)return false;
     size_t at=21;
     auto number=[&](uint32_t &value){
         size_t begin=at;uint64_t parsed=0;
@@ -2807,9 +2830,19 @@ bool shader_identity(const std::string &identity,std::string &base,IntegerBuffer
     };
     while(at<identity.size()){
         uint32_t binding,format;
-        if(!number(binding) || at>=identity.size() || identity[at++]!='_' || !number(format) || !integer_buffer_format(format))return false;
-        if(!formats.empty() && binding<=formats.back().first)return false;
-        formats.push_back({binding,format});
+        if(!number(binding) || at>=identity.size() || identity[at++]!='_' || !number(format))return false;
+        if(typed_form){
+            // Only formats the SPIR-V image format table can express.
+            if(!xbg_spirv_image_format(format))return false;
+            if(typed){
+                if(!typed->empty() && binding<=typed->back().first)return false;
+                typed->push_back({binding,format});
+            }
+        }else{
+            if(!integer_buffer_format(format))return false;
+            if(!formats.empty() && binding<=formats.back().first)return false;
+            formats.push_back({binding,format});
+        }
         if(at==identity.size())return true;
         if(identity[at++]!=',' || at==identity.size())return false;
     }
@@ -2887,6 +2920,13 @@ Shader *load_shader(const void *control){
     // gfx-shader-reuse: take the warm-up threads' rewrite of this shader when there is one; with 2, rewrite as well and compare word by word.
     const bool have_reused=optimize_runtime_shader(words,h.stage,key,key,"runtime");
     load_t2=timing_clock();
+    // The module's own image form decides the formatless requirement later.
+    // The package flag only says what the guest asked for.
+    {bool typed_candidate=false;
+     for(const auto &binding:p->bindings)if(binding.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER||binding.type==VK_DESCRIPTOR_TYPE_STORAGE_IMAGE){
+        p->storage_image_formats[binding.binding]=xbg_spirv_declared_image_format(words,binding.binding);
+        if(binding.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER)typed_candidate=true;}
+     if(typed_candidate)p->module_words=words;}
     {auto extent=spirv_uniform_extent(words);uint32_t trimmed=0;for(auto &b:p->bindings)if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER && b.source==XBG_SOURCE_UNIFORM){auto e=extent.find(b.binding);uint32_t declared=b.bytes?b.bytes:65536;if(e!=extent.end() && e->second<declared){b.bytes=e->second;++trimmed;}}uniform_trimmed+=trimmed;}
     {bool kill=false;for(size_t i=5;i<words.size();){uint32_t n=words[i]>>16,op=words[i]&0xffff;if(op==252||op==4416||op==5380){kill=true;break;}if(!n)break;i+=n;}p->discards=kill;}
     p->raster=xbg_spirv_raster_facts(words.data(),words.size(),h.stage);
@@ -3001,6 +3041,8 @@ Shader *integer_buffer_variant(Shader &base){
     variant->key=base.key;variant->identity=identity;variant->stage=base.stage;
     variant->bindings=base.bindings;variant->inputs=base.inputs;variant->input_classes=base.input_classes;
     variant->c1=base.c1;variant->storage_writes=base.storage_writes;variant->discards=base.discards;variant->raster=base.raster;
+    variant->storage_image_formats=base.storage_image_formats;
+    if(!base.module_words.empty())variant->module_words=words;
     if(base.stage==5)xbg_spirv_indirect_instances(words,variant->indirect_instance_fields);
     variant->probe_words=words;
     VkShaderModuleCreateInfo info{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};info.codeSize=words.size()*4;info.pCode=words.data();
@@ -3019,6 +3061,109 @@ struct IntegerBufferSelection {
             if(original[stage])state.shader[stage]=integer_buffer_variant(*original[stage]);
     }
     ~IntegerBufferSelection(){for(unsigned stage=0;stage<6;++stage)state.shader[stage]=original[stage];}
+};
+// The VkFormat a storage texel buffer binding is bound with right now. It is
+// the same view the descriptor path builds, so a typed module and the bound
+// view always describe the same texels.
+VkFormat typed_storage_binding_format(const Shader &shader,const xbg_shader_binding &binding){
+    if(binding.type!=VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER || !binding.count || binding.count>256 ||
+       (binding.source!=XBG_SOURCE_TEXTURE && binding.source!=XBG_SOURCE_IMAGE) || !state.texture_pool.pool)return VK_FORMAT_UNDEFINED;
+    const unsigned limit=binding.source==XBG_SOURCE_IMAGE?16u:256u;
+    if(binding.slot>=limit || binding.count>limit-binding.slot)return VK_FORMAT_UNDEFINED;
+    auto pool=textures.find(pool_key(&state.texture_pool));
+    const auto &table=pool==textures.end()?legacy_textures:pool->second;
+    VkFormat selected=VK_FORMAT_UNDEFINED;
+    for(unsigned element=0;element<binding.count;++element){
+        const unsigned slot=binding.slot+element,ns=nvn_stage[shader.stage];
+        const uint64_t handle=binding.source==XBG_SOURCE_IMAGE?state.img[ns][slot]:state.tex[ns][slot];
+        const int id=int(handle&0xfffff);
+        if(!id || (state.texture_pool.n>0 && id>=state.texture_pool.n))return VK_FORMAT_UNDEFINED;
+        auto found=table.find(id);
+        if(found==table.end())return VK_FORMAT_UNDEFINED;
+        const RegisteredTexture &record=found->second;
+        if(record.texture.d.target!=10 || !record.texture.mem || !record.texture.L.size)return VK_FORMAT_UNDEFINED;
+        const VkFormat actual=texel_binding_format(record,binding);
+        if(actual==VK_FORMAT_UNDEFINED)return VK_FORMAT_UNDEFINED;
+        // Mixed arrays cannot share one declared image format.
+        if(element && actual!=selected)return VK_FORMAT_UNDEFINED;
+        selected=actual;
+    }
+    return selected;
+}
+// Can the device still run the formatless write the guest asked for?
+bool storage_texel_formatless_write_ok(VkFormat fmt){
+    const VkFormatFeatureFlags2 features=texel_buffer_features(fmt);
+    const bool listed=format_feature_flags2?((features&VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT)!=0):storage_without_format_listed(fmt);
+    return cfg.enabled_core.shaderStorageImageWriteWithoutFormat && listed;
+}
+// A formatless storage texel buffer may only run when the device supports the
+// formatless write feature. When it does not, the module may declare the
+// format that is actually bound instead. The written bytes, the texel address
+// stride and the number of written components come from the bound VkFormat in
+// both forms, so the result is byte-for-byte the same.
+//
+// The module is cached per shader but the bound format changes per draw, so
+// the variant is keyed by (binding, bound format), like the integer buffer
+// variants. Its identity prefix differs from theirs.
+Shader *typed_storage_variant(Shader &base){
+    if(base.module_words.empty())return &base;
+    TypedStorageFormats formats;
+    for(const auto &binding:base.bindings){
+        if(binding.type!=VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER)continue;
+        if(binding.count!=1)continue;
+        auto declared=base.storage_image_formats.find(binding.binding);
+        if(declared!=base.storage_image_formats.end() && declared->second!=XBG_IMAGE_FORMAT_UNKNOWN)continue;
+        if(!(binding.flags&1))continue; // only a formatless write needs the typed form
+        const VkFormat actual=typed_storage_binding_format(base,binding);
+        if(actual==VK_FORMAT_UNDEFINED)continue;
+        if(storage_texel_formatless_write_ok(actual))continue; // the device still supports formatless
+        if(!xbg_spirv_image_format(uint32_t(actual)))continue;  // SPIR-V cannot express that format
+        formats.push_back({binding.binding,uint32_t(actual)});
+    }
+    if(formats.empty())return &base;
+    std::sort(formats.begin(),formats.end());
+    auto existing=base.typed_variants.find(formats);if(existing!=base.typed_variants.end())return existing->second.get();
+    std::string identity=base.key+":stb1:";
+    for(const auto &entry:formats){
+        if(identity.back()!=':')identity+=',';
+        identity+=std::to_string(entry.first)+"_"+std::to_string(entry.second);
+    }
+    if(identity.size()>256){
+        xbg_logf("NVN typed storage UNSUPPORTED shader=%s reason=identity-size unchanged=1",base.key.c_str());
+        return &base;
+    }
+    std::vector<uint32_t> words=base.module_words;
+    for(const auto &entry:formats){
+        if(xbg_typed_storage_rewrite(words,entry.first,xbg_spirv_image_format(entry.second))!=1){
+            xbg_logf("NVN typed storage UNSUPPORTED shader=%s binding=%u format=%u reason=rewrite-refused unchanged=1",base.key.c_str(),entry.first,entry.second);
+            return &base;
+        }
+    }
+    const uint64_t load_monotonic=shader_monotonic_ns(),load_frame=stats.presents.load();
+    auto variant=std::make_unique<Shader>();
+    variant->key=base.key;variant->identity=identity;variant->stage=base.stage;
+    variant->bindings=base.bindings;variant->inputs=base.inputs;variant->input_classes=base.input_classes;
+    variant->c1=base.c1;variant->storage_writes=base.storage_writes;variant->discards=base.discards;variant->raster=base.raster;
+    variant->storage_image_formats=base.storage_image_formats;
+    for(const auto &entry:formats)variant->storage_image_formats[entry.first]=xbg_spirv_image_format(entry.second);
+    variant->module_words=words;
+    if(base.stage==5)xbg_spirv_indirect_instances(words,variant->indirect_instance_fields);
+    VkShaderModuleCreateInfo info{};info.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;info.codeSize=words.size()*4;info.pCode=words.data();
+    VK(vkCreateShaderModule(cfg.device,&info,nullptr,&variant->module));
+    warm::register_module(variant->module,identity);
+    Shader *selected=variant.get();base.typed_variants.emplace(formats,std::move(variant));
+    xbg_logf("NVN typed storage variant shader=%s identity=%s",base.key.c_str(),identity.c_str());
+    shader_load_anchor(identity,base.stage,load_frame,load_monotonic);
+    return selected;
+}
+struct TypedStorageSelection {
+    std::array<Shader*,6> original{};
+    explicit TypedStorageSelection(bool compute){
+        for(unsigned stage=0;stage<6;++stage)original[stage]=state.shader[stage];
+        for(unsigned stage=compute?5u:0u;stage<(compute?6u:5u);++stage)
+            if(original[stage])state.shader[stage]=typed_storage_variant(*original[stage]);
+    }
+    ~TypedStorageSelection(){for(unsigned stage=0;stage<6;++stage)state.shader[stage]=original[stage];}
 };
 // nvnProgramSetShaders assigns a new serial, and NVN shader control/code memory
 // must stay unchanged while a program uses it: cache resolved shaders by serial
@@ -3187,8 +3332,8 @@ VkShaderModule load_module(const std::string &key,uint32_t expected_stage=0){
             return found->second.module;
         }
     }
-    std::string base;IntegerBufferFormats formats;
-    if(!shader_identity(key,base,formats))return VK_NULL_HANDLE;
+    std::string base;IntegerBufferFormats formats;TypedStorageFormats typed;
+    if(!shader_identity(key,base,formats,&typed))return VK_NULL_HANDLE;
     std::vector<uint8_t> b;if(!read_shader_bundle(base,b,nullptr))return VK_NULL_HANDLE;
     xbg_shader_header h;memcpy(&h,b.data(),sizeof(h));if(h.magic!=0x31534758 || h.version!=1 || h.stage>=6 || h.binding_count>256 || h.input_count>16 || h.c1_bytes>65536 || h.spirv_bytes%4)return VK_NULL_HANDLE;
     if(expected_stage && expected_stage!=(1u<<h.stage))return VK_NULL_HANDLE;
@@ -3198,6 +3343,9 @@ VkShaderModule load_module(const std::string &key,uint32_t expected_stage=0){
     std::vector<uint32_t> rewrite_input;
     if(keep_rewritten)rewrite_input=w;
     optimize_shader_words(w,h.stage,base,"warm");
+    // A typed storage identity declares the bound format in the module, in the
+    // same order as the runtime path (after the optimizer).
+    for(const auto &entry:typed)if(xbg_typed_storage_rewrite(w,entry.first,xbg_spirv_image_format(entry.second))!=1)return VK_NULL_HANDLE;
     if(keep_rewritten)retain_rewritten(key,std::move(rewrite_input),w);
     VkShaderModuleCreateInfo ci{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};ci.codeSize=w.size()*4;ci.pCode=w.data();VkShaderModule m;if(vkCreateShaderModule(cfg.device,&ci,nullptr,&m)!=VK_SUCCESS)return VK_NULL_HANDLE;
     std::lock_guard<std::mutex> lock(mu);
@@ -3358,8 +3506,8 @@ bool read_record(const std::vector<uint8_t> &bytes,size_t &at,Rec &record){
         uint32_t length;
         if(!get(length) || length<16 || length>256 || length>bytes.size()-at)return false;
         std::string key(reinterpret_cast<const char*>(bytes.data()+at),length);at+=length;
-        std::string base;IntegerBufferFormats formats;
-        if(!shader_identity(key,base,formats))return false;
+        std::string base;IntegerBufferFormats formats;TypedStorageFormats typed;
+        if(!shader_identity(key,base,formats,&typed))return false;
         record.keys.push_back(std::move(key));
     }
     if(!get(count) || !count || count>XbgPipelineKey::Capacity || size_t(count)*4>bytes.size()-at)return false;
@@ -4110,10 +4258,21 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                     if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER){
                         const VkFormatFeatureFlags2 features=texel_buffer_features(tf);
                         need(features&VK_FORMAT_FEATURE_2_STORAGE_TEXEL_BUFFER_BIT,"Format not usable as storage texel buffer");
-                        if(b.flags&1)need(cfg.enabled_core.shaderStorageImageWriteWithoutFormat &&
-                            (format_feature_flags2?(features&VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT):storage_without_format_listed(tf)),"Texel format lacks formatless-write support");
-                        if(b.flags&2)need(cfg.enabled_core.shaderStorageImageReadWithoutFormat &&
-                            (format_feature_flags2?(features&VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT):storage_without_format_listed(tf)),"Texel format lacks formatless-read support");
+                        // The requirement follows the module's real image form. A
+                        // formatless module still needs the formatless feature,
+                        // exactly as before. A typed module declares the format it
+                        // writes, so the declared format must match the bound view
+                        // exactly: that is stricter than the formatless check.
+                        const uint32_t declared=shader.storage_image_formats.count(b.binding)?shader.storage_image_formats[b.binding]:0u;
+                        if(declared){
+                            need(xbg_typed_storage_matches(declared,uint32_t(tf)),
+                                "Typed storage texel format does not match the bound view format");
+                        }else{
+                            if(b.flags&1)need(cfg.enabled_core.shaderStorageImageWriteWithoutFormat &&
+                                (format_feature_flags2?(features&VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT):storage_without_format_listed(tf)),"Texel format lacks formatless-write support");
+                            if(b.flags&2)need(cfg.enabled_core.shaderStorageImageReadWithoutFormat &&
+                                (format_feature_flags2?(features&VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT):storage_without_format_listed(tf)),"Texel format lacks formatless-read support");
+                        }
                     }
                     TexelResident *res=nullptr;
                     if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER && texel_memo_enabled && !compute){Buffer pv;
@@ -4592,7 +4751,7 @@ bool ui_cover_all(double hf){
         x0=std::min(x0,nx);x1=std::max(x1,nx);y0=std::min(y0,ny);y1=std::max(y1,ny);}
     return x0<0.002f && x1>0.998f && y0<0.002f && std::fabs(y1-float(hf))<0.002f;
 }
-void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instances=1,uint32_t first_instance=0,const GpuIndexedArgs *gpu_args=nullptr){preflight_cpu_reads();IntegerBufferSelection shader_selection(false);CPU_SCOPE(Draw);DrawRoot draw_timing_root(&cpu_scope);provenance_draw();
+void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instances=1,uint32_t first_instance=0,const GpuIndexedArgs *gpu_args=nullptr){preflight_cpu_reads();IntegerBufferSelection shader_selection(false);TypedStorageSelection typed_selection(false);CPU_SCOPE(Draw);DrawRoot draw_timing_root(&cpu_scope);provenance_draw();
     // #region agent log
     // Draws that share the 8b27 depth buffer but write a different (or no) colour target: depth prepass candidates.
     if(flame_diag_enabled && fdiag_prevds && state.shader[0] && state.rt.depth && uint64_t(uintptr_t(state.rt.depth->mem))==fdiag_prevds && !(state.rt.color[0] && uint64_t(uintptr_t(state.rt.color[0]->mem))==fdiag_prev8)){
@@ -5130,7 +5289,7 @@ void preflight_partial_compute_texels(uint64_t indirect_address){
         }
     }
 }
-void dispatch(p_dispatch p,uint64_t indirect_address=0){overlay_shadow={};struct ShadowScope{~ShadowScope(){overlay_shadow={};}} shadow_scope;preflight_cpu_reads();IntegerBufferSelection shader_selection(true);CPU_SCOPE(Dispatch);provenance_log("DISPATCH shader=%s",state.shader[5]?state.shader[5]->key.c_str():"null");need(state.shader[5],"Dispatch has no genuine compute shader");
+void dispatch(p_dispatch p,uint64_t indirect_address=0){overlay_shadow={};struct ShadowScope{~ShadowScope(){overlay_shadow={};}} shadow_scope;preflight_cpu_reads();IntegerBufferSelection shader_selection(true);TypedStorageSelection typed_selection(true);CPU_SCOPE(Dispatch);provenance_log("DISPATCH shader=%s",state.shader[5]?state.shader[5]->key.c_str():"null");need(state.shader[5],"Dispatch has no genuine compute shader");
     // #region agent log
     // Which buffers do the GPU-particle compute kernels write, and does one of them cover the indirect-args word?
     if(flame_diag_enabled){static uint64_t last_args=0;static unsigned nlog=0;if(indirect_address)last_args=indirect_address;
