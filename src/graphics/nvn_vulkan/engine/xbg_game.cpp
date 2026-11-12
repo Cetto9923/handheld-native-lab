@@ -3067,7 +3067,7 @@ struct IntegerBufferSelection {
 // view always describe the same texels.
 VkFormat typed_storage_binding_format(const Shader &shader,const xbg_shader_binding &binding){
     if(binding.type!=VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER || !binding.count || binding.count>256 ||
-       (binding.source!=XBG_SOURCE_TEXTURE && binding.source!=XBG_SOURCE_IMAGE) || !state.texture_pool.pool)return VK_FORMAT_UNDEFINED;
+       (binding.source!=XBG_SOURCE_TEXTURE && binding.source!=XBG_SOURCE_IMAGE))return VK_FORMAT_UNDEFINED;
     const unsigned limit=binding.source==XBG_SOURCE_IMAGE?16u:256u;
     if(binding.slot>=limit || binding.count>limit-binding.slot)return VK_FORMAT_UNDEFINED;
     auto pool=textures.find(pool_key(&state.texture_pool));
@@ -3113,7 +3113,7 @@ bool storage_image_formatless_write_ok(VkFormat fmt){
 // view describe the same texels.
 VkFormat typed_storage_image_format(const Shader &shader,const xbg_shader_binding &binding){
     if(binding.type!=VK_DESCRIPTOR_TYPE_STORAGE_IMAGE || !binding.count || binding.count>256 ||
-       (binding.source!=XBG_SOURCE_TEXTURE && binding.source!=XBG_SOURCE_IMAGE) || !state.texture_pool.pool)return VK_FORMAT_UNDEFINED;
+       (binding.source!=XBG_SOURCE_TEXTURE && binding.source!=XBG_SOURCE_IMAGE))return VK_FORMAT_UNDEFINED;
     const unsigned limit=binding.source==XBG_SOURCE_IMAGE?16u:256u;
     if(binding.slot>=limit || binding.count>limit-binding.slot)return VK_FORMAT_UNDEFINED;
     auto pool=textures.find(pool_key(&state.texture_pool));
