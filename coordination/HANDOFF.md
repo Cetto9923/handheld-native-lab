@@ -1,3 +1,20 @@
+# 2026-11-12 09:41 v1.0.6 已对外发布（GitHub Release）
+
+- 接管说明：Codex 线程 01a1cd35-e5bb-72f0-a2f5-caee423a9b3f 的 turn 被用户手动中断（rollout 末尾 turn_aborted），写锁已释放，本轮由 MiniMax Code 独占推进，无并发写者。
+- 发布内容：主线 00b66e2（30 FPS 锁定与帧率优化、build9 学习缓存）+ 稳定线 6 个修复（7558d87 fsync、c600edc 事件生命周期、3b7858b engine.log 轮转、25cb34e 呈现裁剪、a0ef958 音频流重开、58901a8 host 合约）。两分支改动文件零重叠，cherry-pick 0 冲突。
+- honor 侧分支 task/T-release-1.0.6-20261112，提交 5f4e2b5；manifest 改为 versionCode=6 / versionName=1.0.6；游戏美术图标 PNG 全部移除，替换为自制中性矢量 ic_launcher.xml，默认应用名中性化为 Handheld Native Lab（保留 values-en / values-zh 原名）。
+- 公开仓 Cetto9923/handheld-native-lab 分支 codex/density-release-1.0.6（提交 990fb25），tag v1.0.6，Release https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.6 。资产 FFRS-v1.0.6.apk，3519484 B，SHA-256 e6c2d287146c438f70c75ef3c408ddf3aa0629cbf6109be0dd09792828ca9cda。
+- 签名证书 SHA-256 d11967a31fcef92f3d6b44adf9d9678c8d2b07bf8f3246d51a791617ed61f36e，与 v1.0.2 / v1.0.3 / v1.0.4 一致，支持覆盖升级保留存档。
+- 安全校验：APK 内 assets/ffrs_save_key.bin 为 0 字节（构建时 FFRS_SAVE_KEY_FILE 指向不存在路径），无 .pak/.nsp/.nca/.sav/.bin 游戏资源，无游戏美术 PNG（12 个条目，与 v1.0.4 发布包逐项同构）；公开源码树无设备序列号、无本机绝对路径、无 64 位 hex 密钥常量，save_key 仅为代码路径引用。已从 GitHub 下载回发布物复核，SHA-256 与上传件一致。
+- 验收：python3 scripts/verify_host.py --runtime-contracts 在发布提交上 31 项检查 30 PASS / 0 fail / 1 blocked（blocked 项为 module-load-info，原因是本地缺少解包游戏模块，与代码无关）。
+- 未验证（不宣称通过）：本构建在 RG477M 掌机与荣耀平板上的真实场景帧率、A2DP 音频现场与战斗听感均未重跑。RG477M 当前实装版本仍为 1.0.8，荣耀平板当前实装 build9（00b66e2，SHA 27d8cce3），两者都不是本次发布的 1.0.6 产物。
+- 恢复点：honor 5f4e2b5；公开仓 990fb25；tag v1.0.6。构建日志 .local/logs/android-game-window-release-106/，产物 .local/android-apk/FFRS-v1.0.6.apk。
+# 2026-11-12 build9 deployment checkpoint
+
+Build9 source 00b66e2 built successfully. APK SHA-256 27d8cce3eb891ff7b7edce89cb19efba455fb3984b02605379f7ee1bfaff9b2c. Build8 first ice and fire full recordings completed with recorder exit 0. Learned list now contains 1293 graphics and 65 compute records. Data-preserving build9 installation is running after a validated save tar. Root remains sole device operator. Mode2 is diagnostic. Dense-room performance and same-process repeated spells remain open.
+
+Report readability edits are assigned to combat_perf_audit only. Independent media review is assigned to upstream_semantics, with local output only. No other source owner is active.
+
 # 2026-11-12 bounded cache scheduling candidate
 
 Build8current24336 M2 stilllearningactualskills. Exact8variantidentitiesalreadyinoldlist;42compute newlylearned. Latestsourceprioritizesmostrecentlylearnedrecords beforesupplementalseed, addsretained/deniedbudget/peak +M2identitydenials. 3sanitizerspassed actualbudgetassertions. Sourcecandidatewithpositive-nodecache readybuild9, notinstalled. Fullfire recordingstilltoberepeatedproperly; nofirstfireFPSfrominvalid7attempt.
