@@ -5525,6 +5525,10 @@ bool can_defer_attachment_barrier(uint32_t bits,bool known){
 // guest parameters and its ordinal inside the frame. Used to tell a duplicated command from a
 // genuinely different command when the per-frame draw count is periodic.
 bool draw_param_trace=false;
+// Per-frame chain record of the traced draws, written to a separate file with buffered I/O.
+// Logging every draw on the engine log changes the frame pacing and hides the effect, so the
+// record goes to a file that is flushed rarely instead.
+bool moon_chain=false;FILE *moon_chain_file=nullptr;
 // Optional: only these fragment shaders get the full per-draw parameter line (marker gfx-trace-fs).
 std::vector<std::string> trace_fs_keys;
 // Per frame, per (vertex,fragment,indexed) shader tuple: how many draws were issued and a rolling
@@ -5535,10 +5539,30 @@ typedef std::tuple<std::string,std::string,int> DrawPairKey;
 std::map<DrawPairKey,std::pair<unsigned,uint64_t>> draw_pair_counts;
 uint64_t draw_pair_frame=~0ull;
 uint64_t sig_mix(uint64_t h,uint64_t v){h^=v+0x9e3779b97f4a7c15ull+(h<<6)+(h>>2);return h;}
+FILE *moon_pairs_file=nullptr;
 void flush_draw_pairs(uint64_t fr){
-    for(auto &kv:draw_pair_counts)xbg_logf("DP fr=%llu vs=%s fs=%s ix=%d n=%u sig=%llx",(unsigned long long)fr,
-        std::get<0>(kv.first).c_str(),std::get<1>(kv.first).c_str(),std::get<2>(kv.first),
-        kv.second.first,(unsigned long long)kv.second.second);
+    if(moon_chain){
+        if(!moon_pairs_file){moon_pairs_file=fopen((probe.base+"/moon-pairs.csv").c_str(),"w");if(moon_pairs_file)setvbuf(moon_pairs_file,nullptr,_IOFBF,65536);}
+        if(moon_pairs_file){
+            fprintf(moon_pairs_file,"%llu",(unsigned long long)fr);
+            for(auto &kv:draw_pair_counts)fprintf(moon_pairs_file,",%s|%s|%d=%u",std::get<0>(kv.first).c_str(),std::get<1>(kv.first).c_str(),std::get<2>(kv.first),kv.second.first);
+            fputc('\n',moon_pairs_file);
+            if(!(fr%30))fflush(moon_pairs_file);
+        }
+    }
+    // When a fragment-shader filter is set, only the filtered pairs are written out. The per-frame
+    // flush of every pair is a few hundred log lines, which itself changes the frame pacing and
+    // hides the effect being measured.
+    for(auto &kv:draw_pair_counts){
+        const std::string &fs=std::get<1>(kv.first);
+        if(!trace_fs_keys.empty()){
+            bool keep=false;for(auto &k:trace_fs_keys)if(k==fs){keep=true;break;}
+            if(!keep)continue;
+        }
+        xbg_logf("DP fr=%llu vs=%s fs=%s ix=%d n=%u sig=%llx",(unsigned long long)fr,
+            std::get<0>(kv.first).c_str(),fs.c_str(),std::get<2>(kv.first),
+            kv.second.first,(unsigned long long)kv.second.second);
+    }
     draw_pair_counts.clear();
 }
 void trace_draw_pair(bool indexed,uint64_t sig){
@@ -5547,6 +5571,167 @@ void trace_draw_pair(bool indexed,uint64_t sig){
     const char *vs=state.shader[0]?state.shader[0]->key.c_str():"none";
     const char *fs=state.shader[4]?state.shader[4]->key.c_str():"none";
     auto &e=draw_pair_counts[{vs,fs,indexed?1:0}];e.first++;e.second=sig_mix(e.second,sig);
+}
+// Per-draw chain state for one indexed draw: which path the engine took and what it resolved.
+// Diagnostic only; reset per draw and reported when the fragment shader matches gfx-trace-fs.
+struct IndexedChainState {const char *stage="";unsigned row_count=0,row_first=0;uint32_t args[5]={0};uint32_t plan_count=0,plan_inst=0,plan_bv=0,plan_bi=0;int tmpl_ok=0;};
+IndexedChainState g_idx_chain;
+uint64_t draw_state_hu=0,draw_state_ht=0,draw_state_hs=0;
+uint64_t hash_host(uint64_t address,size_t bytes);
+// Hash of the copy the engine would hand to the draw from the uniform snapshot cache, or 0 when the
+// range is not cached. A difference against the live host memory means the draw uses an older uniform.
+uint64_t uniform_snapshot_hash(uint64_t address,uint64_t bytes){
+    if(!address||!bytes)return 0;
+    auto it=uniform_snapshots.find({address,bytes});
+    if(it==uniform_snapshots.end())return 0;
+    size_t take=bytes<64?size_t(bytes):size_t(64);
+    return hash_host(uint64_t(uintptr_t(it->second.mapped)),take);
+}
+uint64_t hash_host(uint64_t address,size_t bytes){uint64_t h=1469598103934665603ull;if(!address)return 0;const uint8_t *p=reinterpret_cast<const uint8_t*>(address);for(size_t i=0;i<bytes;i++)h=(h^uint64_t(p[i]))*1099511628211ull;return h;}
+inline uint64_t hash_mix(uint64_t h,uint64_t v){h^=v+0x9e3779b97f4a7c15ull+(h<<6)+(h>>2);return h;}
+// Everything the draw consumes: program uniforms, texture handles, blend and depth state, viewport,
+// scissor and the bound render targets. Equal hashes mean equal inputs for that draw.
+uint64_t draw_state_hash(){
+    uint64_t h=1469598103934665603ull;
+    uint64_t hu=1469598103934665603ull,ht=1469598103934665603ull,hs=1469598103934665603ull;
+    for(unsigned st=0;st<6;st++){
+        if(!state.shader[st])continue;
+        for(auto &b:state.shader[st]->bindings){
+            h=hash_mix(h,uint64_t(b.source)<<8|b.binding);
+            if(b.source==XBG_SOURCE_UNIFORM||b.source==XBG_SOURCE_STORAGE){
+                unsigned slot=b.slot;if(slot>=16)continue;
+                auto r=st<4?state.ub[st][slot]:state.ub[4][slot];
+                h=hash_mix(h,r.address);h=hash_mix(h,r.size);
+                if(r.address)h=hash_mix(h,hash_host(r.address,r.size<64?size_t(r.size):size_t(64)));
+                hu=hash_mix(hu,r.address);hu=hash_mix(hu,hash_host(r.address,r.size<64?size_t(r.size):size_t(64)));
+            }else if(b.source==XBG_SOURCE_TEXTURE||b.source==XBG_SOURCE_IMAGE){
+                unsigned slot=b.slot;if(slot>=256)continue;
+                h=hash_mix(h,st<4?state.tex[st][slot]:state.tex[4][slot]);
+                h=hash_mix(h,st<4?state.img[st][slot]:state.img[4][slot]);
+                ht=hash_mix(ht,st<4?state.tex[st][slot]:state.tex[4][slot]);
+                ht=hash_mix(ht,st<4?state.img[st][slot]:state.img[4][slot]);
+            }
+        }
+    }
+    for(int i=0;i<8;i++){h=hash_mix(h,hash_host(uint64_t(uintptr_t(&state.blend[i])),sizeof(state.blend[i])));hs=hash_mix(hs,hash_host(uint64_t(uintptr_t(&state.blend[i])),sizeof(state.blend[i])));}
+    h=hash_mix(h,hash_host(uint64_t(uintptr_t(&state.color)),sizeof(state.color)));
+    h=hash_mix(h,hash_host(uint64_t(uintptr_t(&state.mask)),sizeof(state.mask)));
+    h=hash_mix(h,hash_host(uint64_t(uintptr_t(&state.poly)),sizeof(state.poly)));
+    h=hash_mix(h,hash_host(uint64_t(uintptr_t(&state.ds)),sizeof(state.ds)));
+    h=hash_mix(h,hash_host(uint64_t(uintptr_t(&state.viewport)),sizeof(state.viewport)));
+    h=hash_mix(h,hash_host(uint64_t(uintptr_t(&state.scissor)),sizeof(state.scissor)));
+    for(int i=0;i<4;i++){h=hash_mix(h,uint64_t(uintptr_t(state.rt.color[i])));hs=hash_mix(hs,uint64_t(uintptr_t(state.rt.color[i])));}
+    h=hash_mix(h,uint64_t(uintptr_t(state.rt.depth)));
+    hs=hash_mix(hs,hash_host(uint64_t(uintptr_t(&state.color)),sizeof(state.color)));
+    hs=hash_mix(hs,hash_host(uint64_t(uintptr_t(&state.mask)),sizeof(state.mask)));
+    hs=hash_mix(hs,hash_host(uint64_t(uintptr_t(&state.poly)),sizeof(state.poly)));
+    hs=hash_mix(hs,hash_host(uint64_t(uintptr_t(&state.ds)),sizeof(state.ds)));
+    hs=hash_mix(hs,hash_host(uint64_t(uintptr_t(&state.viewport)),sizeof(state.viewport)));
+    hs=hash_mix(hs,hash_host(uint64_t(uintptr_t(&state.scissor)),sizeof(state.scissor)));
+    hs=hash_mix(hs,uint64_t(uintptr_t(state.rt.depth)));
+    draw_state_hu=hu;draw_state_ht=ht;draw_state_hs=hs;
+    return h;
+}
+void emit_indexed_chain(const p_draw_idx &a){
+    if(!draw_param_trace&&!moon_chain)return;
+    const char *vs=state.shader[0]?state.shader[0]->key.c_str():"none";
+    const char *fs=state.shader[4]?state.shader[4]->key.c_str():"none";
+    for(auto &k:trace_fs_keys)if(k==fs){
+        static uint64_t chain_fr=~0ull;static unsigned chain_ord=0;static unsigned prev_draws=0,draws_this_frame=0;
+        uint64_t fr=stats.presents.load();
+        if(fr!=chain_fr){chain_fr=fr;chain_ord=0;prev_draws=draws_this_frame;draws_this_frame=0;}
+        unsigned ord=chain_ord++;++draws_this_frame;
+        if(draw_param_trace)xbg_logf("ICHAIN fr=%llu ord=%u vs=%s fs=%s ind=%#llx ibuf=%#llx stage=%s rowcnt=%u rowfirst=%u tmpl=%d args=[%u %u %u %u %u] pcnt=%u pinst=%u pbv=%u pbi=%u",
+            (unsigned long long)fr,ord,vs,fs,(unsigned long long)a.ind,(unsigned long long)a.ibuf,
+            g_idx_chain.stage,g_idx_chain.row_count,g_idx_chain.row_first,g_idx_chain.tmpl_ok,
+            g_idx_chain.args[0],g_idx_chain.args[1],g_idx_chain.args[2],g_idx_chain.args[3],g_idx_chain.args[4],
+            g_idx_chain.plan_count,g_idx_chain.plan_inst,g_idx_chain.plan_bv,g_idx_chain.plan_bi);
+        if(moon_chain){
+            if(!moon_chain_file){moon_chain_file=fopen((probe.base+"/moon-chain.csv").c_str(),"w");if(moon_chain_file)setvbuf(moon_chain_file,nullptr,_IOFBF,4096);}
+            if(moon_chain_file){
+                // Index words and the vertex buffer this draw reads, straight from host memory.
+                uint32_t idx[6]={0};unsigned esz=(a.itype==1)?2u:((a.itype==2)?4u:0u);
+                if(a.ibuf&&esz&&a.count>0&&a.count<=6){const uint8_t *p=(const uint8_t*)a.ibuf;
+                    for(unsigned i=0;i<unsigned(a.count);i++){if(esz==4)memcpy(&idx[i],p+i*4,4);else{uint16_t v;memcpy(&v,p+i*2,2);idx[i]=v;}}}
+                uint64_t vb=0,vbsz=0;uint64_t vh=0;
+                if(state.shader[0])for(auto loc:state.shader[0]->inputs){if(loc>=16)continue;va_st v;memcpy(&v,&state.attrib[loc],4);
+                    if(!v.fmt||v.stream>=16)continue;auto r=state.vb[v.stream];vb=r.address;vbsz=r.size;break;}
+                if(vb)vh=hash_host(vb,vbsz<256?size_t(vbsz):size_t(256));
+                uint64_t ih=hash_host(a.ibuf,256);
+                unsigned nwb=0;uint64_t wa=0,wb=0;int wslot=-1;
+                for(auto &w:pending_writebacks)if(xbg_wb_overlaps(vb,vbsz,w.addr,w.bytes)){if(!nwb){wa=w.addr;wb=w.bytes;wslot=int(static_cast<const Slot*>(w.slot)-slots);}++nwb;}
+                // The uniform the vertex stage reads: its content and any pending result over it.
+                uint64_t ua=0,ubn=0,uh=0,uwa=0,uwb=0;unsigned unwb=0;
+                if(state.shader[0])for(auto &bd:state.shader[0]->bindings){
+                    if(bd.source!=XBG_SOURCE_UNIFORM&&bd.source!=XBG_SOURCE_STORAGE)continue;
+                    unsigned slot=bd.slot;if(slot>=16)continue;
+                    auto r=state.ub[0][slot];if(!r.address)continue;
+                    ua=r.address;ubn=r.size;uh=hash_host(r.address,r.size<64?size_t(r.size):size_t(64));
+                    for(auto &w:pending_writebacks)if(xbg_wb_overlaps(r.address,r.size,w.addr,w.bytes)){if(!unwb){uwa=w.addr;uwb=w.bytes;}++unwb;}
+                    break;}
+                uint64_t texh=0,fu=0,fubn=0,fuh=0;unsigned fub=0;
+                if(state.shader[4])for(auto &bd:state.shader[4]->bindings){
+                    if(bd.source==XBG_SOURCE_TEXTURE||bd.source==XBG_SOURCE_IMAGE){unsigned slot=bd.slot;if(slot<256)texh=state.tex[4][slot];break;}
+                }
+                if(state.shader[4])for(auto &bd:state.shader[4]->bindings){
+                    if(bd.source!=XBG_SOURCE_UNIFORM&&bd.source!=XBG_SOURCE_STORAGE)continue;
+                    unsigned slot=bd.slot;if(slot>=16)continue;
+                    auto r=state.ub[4][slot];if(!r.address)continue;
+                    fu=r.address;fubn=r.size;fuh=hash_host(r.address,r.size<64?size_t(r.size):size_t(64));
+                    for(auto &w:pending_writebacks)if(xbg_wb_overlaps(r.address,r.size,w.addr,w.bytes))++fub;
+                    break;}
+                uint64_t usnap=0,fsnap=0;
+                // Texture handles and the content the engine would sample, for every stage.
+                unsigned tex_n=0;uint64_t tex_sig=1469598103934665603ull;
+                for(unsigned st=0;st<6&&tex_n<6;st++){
+                    if(!state.shader[st])continue;
+                    for(auto &bd:state.shader[st]->bindings){
+                        if(bd.source!=XBG_SOURCE_TEXTURE&&bd.source!=XBG_SOURCE_IMAGE)continue;
+                        unsigned slot=bd.slot;if(slot>=256)continue;
+                        uint64_t handle=st<4?state.tex[st][slot]:state.tex[4][slot];
+                        tex_sig=hash_mix(tex_sig,handle);
+                        int id=int(handle&0xfffff);
+                        if(id&&state.texture_pool.pool){
+                            auto pool=textures.find(pool_key(&state.texture_pool));
+                            auto &table=pool==textures.end()?legacy_textures:pool->second;
+                            auto found=table.find(id);
+                            if(found!=table.end()){
+                                auto &t=found->second.texture;
+                                if(t.mem&&t.L.size){
+                                    size_t take=t.L.size<64?size_t(t.L.size):size_t(64);
+                                    tex_sig=hash_mix(tex_sig,hash_host(uint64_t(uintptr_t(t.mem)),take));
+                                }else tex_sig=hash_mix(tex_sig,0xdeadbeefull);
+                            }else tex_sig=hash_mix(tex_sig,0xfeedfaceull);
+                        }
+                        if(++tex_n>=6)break;
+                    }
+                }
+                unsigned bl_en=state.color.blend_en&1u;
+                const blend_st &bl=state.blend[0];
+                uint64_t bl_pack=(uint64_t(bl.src_rgb))|(uint64_t(bl.dst_rgb)<<7)|(uint64_t(bl.src_a)<<14)|(uint64_t(bl.dst_a)<<21)|(uint64_t(bl.eq_rgb)<<28)|(uint64_t(bl.eq_a)<<31);
+                unsigned ds_pack=(unsigned(state.ds.dt))|(unsigned(state.ds.dw)<<2)|(unsigned(state.ds.df)<<4)|(unsigned(state.poly.cull)<<8)|(unsigned(state.poly.front)<<12);
+                uint64_t rt_serial=state.rt.color[0]?uint64_t(state.rt.color[0]->serial):0;
+                uint64_t vpw=uint64_t(state.viewport.width*1000.0),vph=uint64_t(state.viewport.height*1000.0);
+                if(ua)usnap=uniform_snapshot_hash(ua,ubn);
+                if(fu)fsnap=uniform_snapshot_hash(fu,fubn);
+                fprintf(moon_chain_file,"%llu,%u,%#llx,%#llx,%u,%u,%u,%u,%u,%u,%#llx,%llu,%#llx,%u,%#llx,%llu,%d,%s,%u,%#llx,%llu,%#llx,%u,%#llx,%llu,%#llx,%#llx,%llu,%#llx,%u,%llu,%llu,%llu,%llu,%#llx,%#llx,%u,%llu,%u,%llu,%llu,%llu,%llu,%llu,%u\n",
+                    (unsigned long long)fr,ord,(unsigned long long)a.ibuf,(unsigned long long)ih,
+                    idx[0],idx[1],idx[2],idx[3],idx[4],idx[5],
+                    (unsigned long long)vb,(unsigned long long)vbsz,(unsigned long long)vh,
+                    unsigned(nwb),(unsigned long long)wa,(unsigned long long)wb,wslot,
+                    g_idx_chain.stage,prev_draws,
+                    (unsigned long long)ua,(unsigned long long)ubn,(unsigned long long)uh,
+                    unwb,(unsigned long long)uwa,(unsigned long long)uwb,
+                    (unsigned long long)texh,(unsigned long long)fu,(unsigned long long)fubn,(unsigned long long)fuh,fub,
+                    (unsigned long long)draw_state_hash(),
+                    (unsigned long long)draw_state_hu,(unsigned long long)draw_state_ht,(unsigned long long)draw_state_hs,
+                    (unsigned long long)usnap,(unsigned long long)fsnap,
+                    bl_en,bl_pack,ds_pack,uint64_t(state.mask.mask),rt_serial,vpw,vph,
+                    tex_sig,tex_n);
+                if(!(fr%30))fflush(moon_chain_file);
+            }
+        }
+        return;}
 }
 void trace_draw_params(const p_draw_idx &a){
     uint64_t fr=stats.presents.load();
@@ -5564,6 +5749,36 @@ void trace_draw_params(const p_draw_idx &a){
         xbg_logf("DRAWPARAM fr=%llu ord=%u vs=%s fs=%s prim=%d itype=%d count=%d inst=%d bv=%d bi=%d ibuf=%#llx ind=%#llx",
             (unsigned long long)fr, ord++, vs, fs, a.prim, a.itype, a.count, a.instances, a.base_vertex, a.base_instance,
             (unsigned long long)a.ibuf, (unsigned long long)a.ind);
+        // Input provenance of this draw: the index words it used and the vertex buffers it reads.
+        // Reads go through pending_view only, so a resident (GPU-written) range is read without
+        // making the CPU wait; a range that is not resident is reported as such instead.
+        {
+            char vbs[640];int vn=0;vbs[0]=0;
+            unsigned esz=(a.itype==1)?2u:((a.itype==2)?4u:0u);
+            uint32_t idx[8]={0};int ires=-1;
+            if(a.ibuf&&esz&&a.count>0&&a.count<=8){
+                Buffer iv;
+                if(pending_view(a.ibuf,uint64_t(a.count)*esz,4,iv)){
+                    ires=1;const uint8_t *p=static_cast<const uint8_t*>(iv.mapped);
+                    for(unsigned i=0;i<unsigned(a.count);i++){if(esz==4)memcpy(&idx[i],p+i*4,4);else{uint16_t v;memcpy(&v,p+i*2,2);idx[i]=v;}}
+                } else ires=0;
+            }
+            for(unsigned loc=0;loc<16&&vn<(int)sizeof(vbs)-96;loc++){
+                va_st v;memcpy(&v,&state.attrib[loc],4);if(!v.fmt)continue;if(v.stream>=16)continue;
+                auto r=state.vb[v.stream];uint64_t h=1469598103934665603ull;int res=-1;
+                size_t take=r.size<48?size_t(r.size):size_t(48);
+                if(r.address&&take){Buffer vv;
+                    if(pending_view(r.address,take,4,vv)){res=1;const uint8_t *p=static_cast<const uint8_t*>(vv.mapped);
+                        for(size_t i=0;i<take;i++)h=(h^(uint64_t)p[i])*1099511628211ull;}
+                    else res=0;}
+                bool cached=snapshots.find({r.address,r.size})!=snapshots.end();
+                vn+=snprintf(vbs+vn,sizeof(vbs)-vn," loc=%u st=%u off=%u vb=%#llx/%llu res=%d h=%llx cache=%d",
+                    loc,v.stream,v.offset,(unsigned long long)r.address,(unsigned long long)r.size,res,(unsigned long long)h,int(cached));
+            }
+            xbg_logf("VCHAIN fr=%llu vs=%s fs=%s ibuf=%#llx ires=%d idx=[%u %u %u %u %u %u]%s",
+                (unsigned long long)fr,vs,fs,(unsigned long long)a.ibuf,ires,
+                idx[0],idx[1],idx[2],idx[3],idx[4],idx[5],vbs);
+        }
     }
 }
 void execute_draw_record(const p_draw &a){preflight_cpu_reads();
@@ -5674,56 +5889,57 @@ bool pin_indexed_input(const IndexedInputFailure &input){
 bool gpu_draw_indexed(const p_draw_idx &a){
     if(!gpu_indexed_enabled){
         static unsigned fail_gie=0;if(fail_gie++<5 || honor_pipeline_diagnostics)xbg_logf("NVN GPU_INDEXED_FAIL disabled frame=%llu",(unsigned long long)stats.presents.load());
-        return false;
+        g_idx_chain.stage="disabled";return false;
     }
     if(a.mdi_cnt){
         static unsigned fail_mdi=0;if(fail_mdi++<5 || honor_pipeline_diagnostics)xbg_logf("NVN GPU_INDEXED_FAIL mdi=%#llx frame=%llu",(unsigned long long)a.mdi_cnt,(unsigned long long)stats.presents.load());
-        return false;
+        g_idx_chain.stage="mdi";return false;
     }
     if(a.prim!=4){
         static unsigned fail_prim=0;if(fail_prim++<5 || honor_pipeline_diagnostics)xbg_logf("NVN GPU_INDEXED_FAIL prim=%d frame=%llu",a.prim,(unsigned long long)stats.presents.load());
-        return false;
+        g_idx_chain.stage="prim";return false;
     }
     if(a.itype!=1 && a.itype!=2){
         static unsigned fail_it=0;if(fail_it++<5 || honor_pipeline_diagnostics)xbg_logf("NVN GPU_INDEXED_FAIL itype=%d frame=%llu",a.itype,(unsigned long long)stats.presents.load());
-        return false;
+        g_idx_chain.stage="itype";return false;
     }
     if(!a.ind || !nvn_memory_pool_resolve_address){
         static unsigned fail_ind=0;if(fail_ind++<5 || honor_pipeline_diagnostics)xbg_logf("NVN GPU_INDEXED_FAIL ind=%#llx pool_res=%d frame=%llu",(unsigned long long)a.ind,int(nvn_memory_pool_resolve_address!=nullptr),(unsigned long long)stats.presents.load());
-        return false;
+        g_idx_chain.stage="ind";return false;
     }
     XbgIndirectTemplateRow row{};std::shared_ptr<IndirectTemplateBatch> batch;
     if(!find_indirect_template(a.ind,row,&batch)){
         static unsigned fail_find=0;
         if(fail_find++<20 || honor_pipeline_diagnostics)
             xbg_logf("NVN GPU_INDEXED_FAIL find_template addr=%#llx frame=%llu", (unsigned long long)a.ind, (unsigned long long)stats.presents.load());
-        return false;
+        g_idx_chain.stage="notemplate";return false;
     }
     if(!row.index_count || row.index_count==4){
         static unsigned fail_ic=0;
         if(fail_ic++<20 || honor_pipeline_diagnostics)
             xbg_logf("NVN GPU_INDEXED_FAIL index_count=%u addr=%#llx frame=%llu", row.index_count, (unsigned long long)a.ind, (unsigned long long)stats.presents.load());
-        return false;
+        g_idx_chain.stage="rowcount";return false;
     }
+    g_idx_chain.row_count=row.index_count;g_idx_chain.row_first=row.first_index;
     uint64_t bytes=(uint64_t(row.first_index)+row.index_count)*(1u<<a.itype);
     if(!bytes || bytes>64ull*1024*1024 || a.ibuf%(1u<<a.itype)){
         static unsigned fail_ib=0;
         if(fail_ib++<20 || honor_pipeline_diagnostics)
             xbg_logf("NVN GPU_INDEXED_FAIL bytes=%llu ibuf=%#llx itype=%d addr=%#llx frame=%llu", (unsigned long long)bytes, (unsigned long long)a.ibuf, a.itype, (unsigned long long)a.ind, (unsigned long long)stats.presents.load());
-        return false;
+        g_idx_chain.stage="ibufalign";return false;
     }
     size_t available=0;void *base=nvn_memory_pool_resolve_address(a.ibuf,&available);
     if(uint64_t(base)!=a.ibuf || bytes>available){
         static unsigned fail_avail=0;
         if(fail_avail++<20 || honor_pipeline_diagnostics)
             xbg_logf("NVN GPU_INDEXED_FAIL base=%p ibuf=%#llx bytes=%llu avail=%zu addr=%#llx frame=%llu", base, (unsigned long long)a.ibuf, (unsigned long long)bytes, available, (unsigned long long)a.ind, (unsigned long long)stats.presents.load());
-        return false;
+        g_idx_chain.stage="avail";return false;
     }
     if(!keep_indirect_owned(batch)){
         static unsigned fail_kio=0;
         if(fail_kio++<20 || honor_pipeline_diagnostics)
             xbg_logf("NVN GPU_INDEXED_FAIL keep_indirect_owned batch=%#llx addr=%#llx frame=%llu", (unsigned long long)batch->address, (unsigned long long)a.ind, (unsigned long long)stats.presents.load());
-        return false;
+        g_idx_chain.stage="keepowned";return false;
     }
     IndexedInputFailure input;
     if(!indexed_graphics_ready(a,size_t(bytes),&input)){
@@ -5733,7 +5949,7 @@ bool gpu_draw_indexed(const p_draw_idx &a){
         if(fail_igr++<20 || honor_pipeline_diagnostics)
             xbg_logf("NVN GPU_INDEXED_FAIL igr why=%s st=%u bind=%u in_addr=%#llx in_bytes=%llu pin=%d ready=%d addr=%#llx frame=%llu",
                 input.why, input.stage, input.binding, (unsigned long long)input.address, (unsigned long long)input.bytes, int(pin), int(ready), (unsigned long long)a.ind, (unsigned long long)stats.presents.load());
-        if(!ready)return false;
+        if(!ready){g_idx_chain.stage="igr";return false;}
     }
     static std::set<std::pair<std::string, std::string>> seen_pairs;
     std::string vs_key = state.shader[0] ? state.shader[0]->key : "none";
@@ -5751,12 +5967,32 @@ bool gpu_draw_indexed(const p_draw_idx &a){
         }
     }
     GpuIndexedArgs args{batch->owned,a.ind-batch->address,size_t(bytes)};
+    // Diagnostic only (marker gfx-draw-param-trace = 1): the GPU reads the indirect arguments from the owned copy,
+    // so compare that copy against the arguments the guest really holds and count the difference per frame.
+    if(draw_param_trace){
+        static uint64_t diag_fr=~0ull;static unsigned diag_ok=0,diag_mism=0;
+        uint64_t fr=stats.presents.load();
+        if(fr!=diag_fr){if(diag_fr!=~0ull)xbg_logf("GPUIDX fr=%llu ok=%u mism=%u",(unsigned long long)diag_fr,diag_ok,diag_mism);diag_fr=fr;diag_ok=0;diag_mism=0;}
+        uint32_t copied[5]={0},actual[5]={0};
+        batch->owned->view.invalidate();
+        memcpy(copied,static_cast<const uint8_t*>(batch->owned->view.mapped)+(a.ind-batch->address),20);
+        cpu_access(a.ind,20,5);
+        memcpy(actual,reinterpret_cast<const void*>(a.ind),20);
+        if(memcmp(copied,actual,20)!=0){
+            ++diag_mism;
+            static unsigned diag_logs=0;
+            if(diag_logs++<12)xbg_logf("GPUIDX_MISMATCH fr=%llu addr=%#llx off=%llu copied=[%u %u %u %u %u] actual=[%u %u %u %u %u] row_count=%u row_first=%u",
+                (unsigned long long)fr,(unsigned long long)a.ind,(unsigned long long)(a.ind-batch->address),
+                copied[0],copied[1],copied[2],copied[3],copied[4],actual[0],actual[1],actual[2],actual[3],actual[4],
+                row.index_count,row.first_index);
+        }else ++diag_ok;
+    }
     // instances=0 is unknown metadata here, never a replacement for the GPU value.
     p_draw_idx indexed{};indexed.prim=a.prim;indexed.itype=a.itype;indexed.count=int32_t(row.index_count);indexed.ibuf=a.ibuf;
-    draw(a.prim,0,int(row.index_count),&indexed,0,0,&args);return true;
+    draw(a.prim,0,int(row.index_count),&indexed,0,0,&args);g_idx_chain.stage="gpu_ok";return true;
 }
 void execute_draw_index_record(const p_draw_idx &a){preflight_cpu_reads();
-    if(draw_param_trace)trace_draw_params(a);
+    if(draw_param_trace||moon_chain)trace_draw_params(a);
     uint64_t fr = stats.presents.load();
     if (fr >= 605 && fr <= 615 && a.ind) {
         static uint64_t last_fr = 0;
@@ -5778,7 +6014,9 @@ void execute_draw_index_record(const p_draw_idx &a){preflight_cpu_reads();
                 (unsigned long long)stats.presents.load(), (unsigned long long)a.ind);
         }
     }
-    if(gpu_draw_indexed(a))return;
+    g_idx_chain.stage="";g_idx_chain.row_count=0;g_idx_chain.row_first=0;g_idx_chain.tmpl_ok=0;
+    memset(g_idx_chain.args,0,sizeof g_idx_chain.args);g_idx_chain.plan_count=0;g_idx_chain.plan_inst=0;g_idx_chain.plan_bv=0;g_idx_chain.plan_bi=0;
+    if(gpu_draw_indexed(a)){emit_indexed_chain(a);return;}
     static unsigned fallback_logs=0;if(gpu_indexed_enabled && a.ind && probe.waiting && !capture.trace && fallback_logs<16){
         bool waits=false;for(auto &w:pending_writebacks)if(xbg_wb_overlaps(a.ind,20,w.addr,w.bytes))waits=true;
         FILE *f=waits?fopen((probe.base+"/gfx-codex-probe").c_str(),"rb"):nullptr;int mode=f?fgetc(f):0;if(f)fclose(f);
@@ -5825,12 +6063,19 @@ void execute_draw_index_record(const p_draw_idx &a){preflight_cpu_reads();
         xbg_draw_call plan{};int result=xbg_draw_indirect_plan(&plan,a.prim,a.itype,a.ibuf,args,20);
         if(result)xbg_fatalf("Invalid indirect draw parameters: %d",result);
         p_draw_idx indexed{plan.primitive,plan.index_type,plan.count,plan.base_vertex,plan.base_instance,plan.instances,plan.index_address};
+        for(int i=0;i<5;i++)g_idx_chain.args[i]=args[i];
+        g_idx_chain.plan_count=uint32_t(plan.count);g_idx_chain.plan_inst=uint32_t(plan.instances);
+        g_idx_chain.plan_bv=uint32_t(plan.base_vertex);g_idx_chain.plan_bi=uint32_t(plan.base_instance);
+        g_idx_chain.tmpl_ok=proved?1:0;g_idx_chain.stage="cpu_ind";
         draw(plan.primitive,0,plan.count,&indexed);
+        emit_indexed_chain(a);
         return;
     }
     p_draw_idx indexed=a;
     if(a.instances<=0)indexed.instances=1;   // instances 0 counts as 1 (nvn_mtl.m: "di->instances ? di->instances : 1")
+    g_idx_chain.stage="nonind";
     draw(a.prim,0,a.count,&indexed);
+    emit_indexed_chain(a);
 }
 template<class T>T payload(const uint8_t *p,size_t n){need(n>=sizeof(T),"Truncated NVN command payload");T out;memcpy(&out,p,sizeof(out));return out;}
 template<class T>T variable_payload(const uint8_t *p,size_t n){T out{};memcpy(&out,p,std::min(n,sizeof(T)));return out;}
@@ -6173,7 +6418,7 @@ extern "C" int xbg_game_initialize(const xbg_game_config *c,char *error,size_t b
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *f=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-owned-input-copy").c_str(),"rb");owned_input_copy_enabled=true;if(f){owned_input_copy_enabled=fgetc(f)!='0';fclose(f);}xbg_logf("NVN owned indexed input copy=%d",int(owned_input_copy_enabled));}
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *f=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-clear-overwrite-probe").c_str(),"rb");clear_overwrite_probe=false;if(f){clear_overwrite_probe=fgetc(f)=='1';fclose(f);}xbg_logf("NVN temporary clear-overwrite diagnostic=%d",int(clear_overwrite_probe));}
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *f=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-texture-lifecycle").c_str(),"rb");texture_lifecycle_enabled=true;if(f){texture_lifecycle_enabled=fgetc(f)!='0';fclose(f);}xbg_logf("NVN texture lifecycle retirement=%d",int(texture_lifecycle_enabled));}
-    {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');std::string base=cut==std::string::npos?dir:dir.substr(0,cut);FILE *g=fopen((base+"/gfx-indexed-resident").c_str(),"rb");gpu_indexed_enabled=true;gpu_indexed_draws=0;if(g){gpu_indexed_enabled=fgetc(g)!='0';fclose(g);}FILE *m=fopen((base+"/gfx-indirect-proof").c_str(),"rb");indirect_diag_enabled=false;indirect_proof_checks=indirect_proof_mismatches=0;if(m){indirect_diag_enabled=fgetc(m)=='1';fclose(m);}indirect_proof_enabled=gpu_indexed_enabled || indirect_diag_enabled;FILE *dp=fopen((base+"/gfx-draw-param-trace").c_str(),"rb");draw_param_trace=false;if(dp){draw_param_trace=fgetc(dp)=='1';fclose(dp);}FILE *rt=fopen((base+"/gfx-report-trace").c_str(),"rb");report_trace=false;if(rt){report_trace=fgetc(rt)=='1';fclose(rt);}trace_fs_keys.clear();FILE *tf=fopen((base+"/gfx-trace-fs").c_str(),"rb");if(tf){char buf[128]={};if(fgets(buf,sizeof buf,tf)){std::string s(buf);while(!s.empty()&&(s.back()=='\n'||s.back()=='\r'))s.pop_back();if(!s.empty())trace_fs_keys.push_back(s);}fclose(tf);}xbg_logf("NVN trace fs filter=%zu",trace_fs_keys.size());xbg_logf("NVN indirect-template proof=%d GPU-indexed-resident=%d draw-param-trace=%d",int(indirect_proof_enabled),int(gpu_indexed_enabled),int(draw_param_trace));}
+    {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');std::string base=cut==std::string::npos?dir:dir.substr(0,cut);FILE *g=fopen((base+"/gfx-indexed-resident").c_str(),"rb");gpu_indexed_enabled=true;gpu_indexed_draws=0;if(g){gpu_indexed_enabled=fgetc(g)!='0';fclose(g);}FILE *m=fopen((base+"/gfx-indirect-proof").c_str(),"rb");indirect_diag_enabled=false;indirect_proof_checks=indirect_proof_mismatches=0;if(m){indirect_diag_enabled=fgetc(m)=='1';fclose(m);}indirect_proof_enabled=gpu_indexed_enabled || indirect_diag_enabled;FILE *dp=fopen((base+"/gfx-draw-param-trace").c_str(),"rb");draw_param_trace=false;if(dp){draw_param_trace=fgetc(dp)=='1';fclose(dp);}FILE *mc=fopen((base+"/gfx-moon-chain").c_str(),"rb");moon_chain=false;if(mc){moon_chain=fgetc(mc)=='1';fclose(mc);}FILE *rt=fopen((base+"/gfx-report-trace").c_str(),"rb");report_trace=false;if(rt){report_trace=fgetc(rt)=='1';fclose(rt);}trace_fs_keys.clear();FILE *tf=fopen((base+"/gfx-trace-fs").c_str(),"rb");if(tf){char buf[128]={};if(fgets(buf,sizeof buf,tf)){std::string s(buf);while(!s.empty()&&(s.back()=='\n'||s.back()=='\r'))s.pop_back();if(!s.empty())trace_fs_keys.push_back(s);}fclose(tf);}xbg_logf("NVN trace fs filter=%zu",trace_fs_keys.size());xbg_logf("NVN indirect-template proof=%d GPU-indexed-resident=%d draw-param-trace=%d",int(indirect_proof_enabled),int(gpu_indexed_enabled),int(draw_param_trace));}
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-attachment-barrier").c_str(),"rb");attachment_barrier_enabled=true;attachment_barriers_deferred=0;if(m){attachment_barrier_enabled=fgetc(m)!='0';fclose(m);}xbg_logf("NVN attachment-only barrier defer=%d",int(attachment_barrier_enabled));}
     if(const char *mode=getenv("DM_GFX_COMPLETION_WAIT")){if(!strcmp(mode,"0"))completion_wait_enabled=false;else if(!strcmp(mode,"1"))completion_wait_enabled=true;}
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-legacy-waitall").c_str(),"rb");if(m){legacy_waitall=fgetc(m)=='1';fclose(m);}
