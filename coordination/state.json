@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-12T22:29:51.683002+08:00",
+ "updated_at": "2026-11-12T22:47:44.281561+08:00",
  "phase": "v1.0.6 published; v1.0.7 internal team-play package built and device-verified on task/T-package-1.0.7-20261112 (moon halo fix shipped, cheat menu usable, 30 FPS held). Battle effect pipeline stutter still open, not in this package.",
  "coordinator": "MiniMax Code /root release takeover (Codex thread aborted by user)",
  "integration_branch": "work/rg477m-native",
@@ -6805,6 +6805,108 @@
    "cause": "both workers died on transport errors (ERR_NETWORK_IO_SUSPENDED and Connection error) while still in research, before editing any file; both worktrees stayed clean",
    "kept": "the 477M worker had already delivered its community reference list and the save key correction; the seed worker had closed and independently re-verified the evidence chain",
    "action": "restart both with the finished research handed over as a briefing so neither repeats it"
+  },
+  "honor_stall_baseline_20261112": {
+   "observed_at": "2026-11-12T22:47:44.281561+08:00",
+   "user_report": "1.0.7 is smooth on the Honor (Qualcomm) tablet, but the world map transition animation stutters for a long time; after a restart the animation felt stuttery again",
+   "measurement": {
+    "source": "app private dir codex-frame-7742.csv, one row per presented frame with monotonic_ns; buffered CSV so it does not perturb the frame timing",
+    "session": "295.2 s, 7260 frames",
+    "overall_fps": 24.59,
+    "steady_state": "93.0 percent of the frames are at or below 50 ms; median gap 33.34 ms, which is a full 30.0 FPS",
+    "stalls_over_100ms": 93,
+    "stall_time_total_s": 40.1,
+    "stall_share_of_session": "13.6 percent",
+    "fps_excluding_stalls": 28.46,
+    "gap_percentiles_ms": {
+     "p50": 33.35,
+     "p90": 44.77,
+     "p99": 138.82,
+     "max": 6506.18
+    },
+    "worst_stalls_frame_ms": [
+     [
+      29,
+      6506
+     ],
+     [
+      6037,
+      2691
+     ],
+     [
+      3690,
+      2328
+     ],
+     [
+      387,
+      1828
+     ],
+     [
+      3653,
+      1824
+     ],
+     [
+      4,
+      1768
+     ],
+     [
+      6040,
+      1168
+     ],
+     [
+      228,
+      1122
+     ],
+     [
+      6080,
+      1082
+     ],
+     [
+      616,
+      943
+     ]
+    ],
+    "cold_start_stalls": [
+     [
+      4,
+      1768
+     ],
+     [
+      24,
+      229
+     ],
+     [
+      26,
+      802
+     ],
+     [
+      29,
+      6506
+     ]
+    ],
+    "in_battle_stalls": "repeated 100 to 2300 ms spikes from frame 3310 onward (3310, 3355, 3374, 3653, 3678, 3690, 3692, 3698, 3738, 4595-4600, 4736-4742, 4909)"
+   },
+   "engine_metrics": {
+    "defer_events": 0,
+    "event_guard": "off, probe file removed",
+    "async": "async=0 drains=0.00 drain_ms=0.00 pace_ms=0.00 waits=0.00",
+    "block_ms": "legacy_wait=13.26/3.42 legacy_wait_total=13.26 submit_by other=8.53 present=1.00, so the CPU side blocks roughly 21.8 ms per frame"
+   },
+   "root_cause": "The visible stutter is the 93 stalls, not the steady frame rate. Their distribution (a burst in the first 120 frames and repeated single frames of 1.8 to 2.7 s in battle) matches the already proven root cause: the effect pipelines are created synchronously on the frame that releases the effect, 125 to 381 ms each, 5 to 18 in a batch, 750 to 1916 ms per batch and up to several seconds in the worst case. HONOR-PIPELINE-SEED-20261112 is the fix for exactly this.",
+   "defer_events_decision": {
+    "switch_now": "off (0)",
+    "why": "gfx-defer-events=1 buys 24.32 to 30.00 FPS in the transition scene by postponing the event publication, which stretches the game logic time and therefore lengthens the transition. The project rule forbids changing the game logic time to buy frame rate, so the switch stays off. It was also a leftover from an earlier A/B run: the 1.0.7 package default is defer_events=0 and ensureDefaultMarkers never writes this marker, so teammates and fresh installs never see it.",
+    "measured_now": "with defer off the ordinary play scene already holds a 30.0 FPS steady state, so the loss from turning it off is limited to the transition scene"
+   },
+   "device_cleanup": {
+    "performed_at": "2026-11-12T22:47:44.281561+08:00",
+    "device": "A42BBB5109000333",
+    "action": "gfx-defer-events, gfx-honor-pipeline-diag, gfx-indirect-proof, gfx-codex-probe, gfx-draw-param-trace and gfx-report-trace were set to 0; the gfx-event-guard probe file was deleted because that switch is existence based",
+    "backup": ".local/marker-backups/ffrs-markers-backup-20261112-223935.tar (also left on the device at /sdcard/ffrs-markers-backup-20261112-223935.tar)",
+    "kept": "the nine markers the app writes by default, and the performance switches gfx-async-pipelines, gfx-indexed-resident, gfx-pipe-memo, gfx-tex-dirty, gfx-wtrack, gfx-wb-skip, gfx-vcache and gfx-shader-reuse were left alone because turning them off would cost performance"
+   },
+   "log_path_note": "The current session writes to guest_boot.log. engine.log still holds the previous session and its mtime stays behind, so the switch lines must be read from guest_boot.log.",
+   "not_verified": "The effect stutter has not been re-measured after the effect seed fix lands; the numbers above are the pre-fix baseline."
   }
  }
 }
