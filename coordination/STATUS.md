@@ -1,6 +1,6 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-12T17:40:00+08:00
+状态事件时间：2026-11-12T18:05:00+08:00
 阶段：v1.0.6 published; v1.0.7 candidate on task/T-release-1.0.7-20261112 with the moon halo root cause narrowed but not closed, no fix claimed, no behaviour change shipped
 总控：MiniMax Code /root release takeover (Codex thread aborted by user)
 更新方式：按事件更新，没有后台自动刷新。
@@ -130,6 +130,8 @@
 | RELEASE-106-DOWNLOAD-VERIFY-20261112 | release gate | passed | MiniMax Code /root release takeover | 无 | 无额外门禁 | task/T-release-1.0.6-20261112 |
 | HONOR-MOON-FLICKER-20261112 | investigation | in_progress | MiniMax Code /root release takeover | 无 | 无额外门禁 | task/T-release-1.0.7-20261112 |
 | HONOR-MOON-FIX-20261112 | implementation | blocked | MiniMax Code /root release takeover | HONOR-MOON-FLICKER-20261112 | 无额外门禁 | task/T-release-1.0.7-20261112 |
+| HONOR-P0-CRASH-COLLECTION-20261112 | investigation | completed | MiniMax Code /root release takeover | 无 | 无额外门禁 | task/T-release-1.0.7-20261112 |
+| HONOR-P1-FRAME-PERCENTILE-20261112 | investigation | completed | MiniMax Code /root release takeover | 无 | 无额外门禁 | task/T-release-1.0.7-20261112 |
 
 ## 独占写入
 
@@ -240,6 +242,10 @@
 - P-CX-50 severe stutter: user report plus existing engine logs show heavy synchronous submit/fence cost; smooth operation NOT passed. Fatal TIMEOUT not reproduced yet.
 - P-CX-TERRA-dark-limit-black: no verified complete same-frame GPU replay capture; binding18 type/range semantic correction and first wrong output unresolved; see RESULT
 - Moon halo: the engine submits identical work every frame and every indirect argument is constant, so the difference is a GPU side resource the engine does not capture. Both paths that read the arguments from guest memory render the moon stable and without the halo, but they synchronise the GPU every frame (33.3 ms), so neither can ship as the fix. A RenderDoc .gfxr capture of this scene is the next step.
+- HONOR-P0-P1-20261112: crash classes C1..C6 are collected with raw evidence but NONE reproduced on production v1.0.6 in a 22 minute targeted soak. Keep them open; do not treat the soak as a fix.
+- HONOR-P1-20261112: backgrounding drops the 01 scene to 8.60 FPS with present_result=1 on every long frame, and returning to the foreground holds p95 130..146 ms with 80..113 frames above 100 ms. Root cause not identified; the surface rebuild path (static audit P0-3 vkDeviceWaitIdle, P0-6 ANativeWindow double lock) is the suspect. No fix proposed until the cause is proven.
+- HONOR-P1-20261112 cold load: first entry into the 01 scene averages 24.03 FPS with a 1408.55 ms worst frame because the submit thread compiles shaders synchronously (xbg_game.cpp:2501-2533). With a warm pipeline cache the same scene holds 30.00 FPS for 392 s with zero long frames.
+- HONOR-SAVE-20261112: the save file lives in external app specific storage and survives APK updates, but the guest only flushes at its own save points, so installing a package while playing loses the progress since the last save point. The save root also switches between the external codex-local-save directory and the internal getFilesDir()/saves when the installer flips to managed mode.
 
 ## 已验证
 
