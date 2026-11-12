@@ -6134,6 +6134,38 @@ extern "C" int xbg_rg16_proxy_contract(const uint32_t *vs_code,size_t vs_bytes,c
     state=State{};sampled_rg16_images.clear();storage_rg16_images.clear();last_pass_reset();images.erase(t.serial);image_index_dirty=true;++images_epoch;++memo_check_gen;return 0;
 }
 
+// The marker file that decides whether the engine may reuse the open depth/stencil pass
+// for a depth sample.
+//
+// "1" forces the reuse on and "0" forces it off; "auto" keeps the device default. The
+// device default is off on the Honor tablet, because that path was measured to flicker the
+// moon halo in the real scene, and on everywhere else. The app writes "auto" as its default
+// marker, so the per-device decision stays here, in the only place that knows the GPU.
+//
+// A marker that still holds the app's own old default ("1\n") was written by an app build
+// that did not know about the Honor tablet. It is migrated to "auto" once; a value the player
+// typed by hand ("1" without the newline) stays an explicit override.
+static const char *depth_aspect_source="device default";
+static void xbg_resolve_depth_aspect(const std::string &base,bool honor){
+    depth_aspect_enabled=!honor;depth_aspect_kept=0;depth_aspect_source="device default";
+    const std::string path=base+"/gfx-depth-aspect";
+    FILE *m=fopen(path.c_str(),"rb");
+    if(!m)return;
+    char buf[16]={};const size_t n=fread(buf,1,sizeof(buf),m);fclose(m);
+    if(n==2&&buf[0]=='1'&&buf[1]=='\n'){
+        // The app's old default. Replace it with the neutral token, so the
+        // marker stops forcing the path on where the path is known to flicker.
+        FILE *w=fopen(path.c_str(),"wb");
+        if(w){fputs("auto\n",w);fclose(w);}
+        depth_aspect_source="legacy marker migrated";
+        return;
+    }
+    if(n==0)return;
+    if(buf[0]=='1'){depth_aspect_enabled=true;depth_aspect_source="marker";}
+    else if(buf[0]=='0'){depth_aspect_enabled=false;depth_aspect_source="marker";}
+    else depth_aspect_source="marker (device default)";
+}
+
 extern "C" int xbg_game_initialize(const xbg_game_config *c,char *error,size_t bytes){
     if(!c || c->size!=sizeof(*c) || !c->physical || !c->device || !c->queue || !c->shader_directory || !c->fence_timeout_ns){if(error&&bytes)snprintf(error,bytes,"Invalid xbg_game_config");return -1;}
     std::lock_guard<std::recursive_mutex> lock(mutex);if(initialized){if(error&&bytes)snprintf(error,bytes,"Game graphics already initialized");return -1;}
@@ -6189,10 +6221,8 @@ extern "C" int xbg_game_initialize(const xbg_game_config *c,char *error,size_t b
         FILE *overlay=honor?fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-partial-overlay-check").c_str(),"rb"):nullptr;
         const int overlay_mode=overlay?fgetc(overlay):'0';partial_overlay_diagnostic=overlay_mode=='1'?1u:overlay_mode=='2'?2u:overlay_mode=='3'?3u:overlay_mode=='4'?4u:overlay_mode=='5'?5u:0u;if(overlay)fclose(overlay);
         xbg_logf("NVN partial overlay diagnostic=%d",int(partial_overlay_diagnostic));
-        FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-depth-aspect").c_str(),"rb");
-        depth_aspect_enabled=!honor;depth_aspect_kept=0;
-        if(m){depth_aspect_enabled=fgetc(m)!='0';fclose(m);}
-        xbg_logf("NVN depth-aspect sample reuse=%d (honor=%d; marker overrides)",int(depth_aspect_enabled),int(honor));
+        xbg_resolve_depth_aspect(cut==std::string::npos?dir:dir.substr(0,cut),honor);
+        xbg_logf("NVN depth-aspect sample reuse=%d (honor=%d; %s)",int(depth_aspect_enabled),int(honor),depth_aspect_source);
     }
 #ifdef XBG_HAVE_SPIRV_OPT
     {

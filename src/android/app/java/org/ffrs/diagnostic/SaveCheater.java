@@ -463,6 +463,11 @@ public final class SaveCheater {
         if (result.edits.isEmpty()) result.message = "没有需要修改的数值";
         else result.message = "已修改 " + result.edits.size() + " 项"
                 + (result.backupCreated ? "（已备份原存档，可用菜单还原）" : "")
+                // The running game keeps its own copy of the roster in the
+                // guest memory, and that runtime layout is not mapped yet, so
+                // the edit cannot be pushed into the running session safely.
+                // Say so plainly instead of pretending the session changed.
+                + "\n本局不生效：运行中的数值在 guest 内存里，存档只改到下次读档"
                 + "\n回标题画面 Load Game 重新读档后生效";
         return result;
     }
@@ -625,7 +630,12 @@ public final class SaveCheater {
     }
 
     private static void put(byte[] plain, int offset, int value, Result result, int unitId, String label) {
-        if (offset < 0) return;
+        // The offset comes from the parsed tag, so it must point at a whole
+        // int32 inside the decrypted body before anything is written.
+        if (offset < 0 || offset + 4 > plain.length) {
+            result.edits.add("单位" + unitId + " " + label + " 偏移非法（已跳过）");
+            return;
+        }
         int old = le32(plain, offset);
         if (old == value) return;
         plain[offset] = (byte) (value & 0xff);
