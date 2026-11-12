@@ -1,7 +1,7 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-12T01:41:00.817033+00:00
-阶段：v1.0.6 released to the public GitHub repository. Source = main 00b66e2 plus the six stability-line fixes, merged with zero file overlap. Public artifact FFRS-v1.0.6.apk carries no save key, no game data and no game artwork. Host contracts: 30 PASS, 0 fail, 1 blocked (local unpacked game module absent). Real-device frame rate and audio were not re-verified on this build and are not claimed.
+状态事件时间：2026-11-12T17:40:00+08:00
+阶段：v1.0.6 published; v1.0.7 candidate on task/T-release-1.0.7-20261112 with the moon halo root cause narrowed but not closed, no fix claimed, no behaviour change shipped
 总控：MiniMax Code /root release takeover (Codex thread aborted by user)
 更新方式：按事件更新，没有后台自动刷新。
 
@@ -128,6 +128,8 @@
 | RELEASE-106-NO-KEY-ASSET-20261112 | release gate | passed | MiniMax Code /root release takeover | 无 | 无额外门禁 | task/T-release-1.0.6-20261112 |
 | RELEASE-106-SIGNING-MATCH-20261112 | release gate | passed | MiniMax Code /root release takeover | 无 | 无额外门禁 | task/T-release-1.0.6-20261112 |
 | RELEASE-106-DOWNLOAD-VERIFY-20261112 | release gate | passed | MiniMax Code /root release takeover | 无 | 无额外门禁 | task/T-release-1.0.6-20261112 |
+| HONOR-MOON-FLICKER-20261112 | investigation | in_progress | MiniMax Code /root release takeover | 无 | 无额外门禁 | task/T-release-1.0.7-20261112 |
+| HONOR-MOON-FIX-20261112 | implementation | blocked | MiniMax Code /root release takeover | HONOR-MOON-FLICKER-20261112 | 无额外门禁 | task/T-release-1.0.7-20261112 |
 
 ## 独占写入
 
@@ -226,6 +228,7 @@
 - {"task": "HONOR-LEARNED-COMPUTE-WARM-20261112", "owner": "Codex /root/combat_perf_audit", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", ".local/honor-motion-20261112/learned-compute-warm/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-honor-shrine-20261111", "acquired_at": "2026-11-11T22:50:54.640235+00:00", "checkpoint": "Frozen SHA1767b15c, hostsanitizer+NDKsyntax pass; root integration, independentreview pending.", "write_state": "RELEASED_HANDED_BACK"}
 - {"task": "HONOR-REPORT-READABILITY-20261112", "owner": "combat_perf_audit", "paths": ["coordination/results/HONOR-MOTION-BLOCKS-20261112.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-honor-shrine-20261111", "acquired_at": "2026-11-12T00:03:15.266730+00:00", "checkpoint": "Normalize this task report wording only. Preserve all values, invalid samples and version boundaries."}
 - {"task": "RELEASE-1.0.6-20261112", "owner": "MiniMax Code /root release takeover", "paths": ["coordination/state.json", "coordination/HANDOFF.md", "coordination/STATUS.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-release-1.0.6-20261112", "acquired_at": "2026-11-12T01:41:00.817033+00:00", "checkpoint": "Public release v1.0.6 published and download-verified.", "write_state": "RELEASED", "released_at": "2026-11-12T01:41:00.817033+00:00"}
+- {"task": "HONOR-MOON-FIX-20261112", "owner": "MiniMax Code /root release takeover", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", "coordination/state.json", "coordination/HANDOFF.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/release-1.0.7-20261112", "branch": "task/T-release-1.0.7-20261112", "acquired_at": "2026-11-12T17:40:00+08:00", "checkpoint": "6e7f424", "objective": "Moon halo flicker: find an indirect argument source that is stable and keeps the GPU resident path at 30 FPS", "write_state": "BLOCKED_ON_GPU_LEVEL_CAPTURE"}
 
 ## 阻塞
 
@@ -236,6 +239,7 @@
 - Prior51..53performancepossiblycontendedbyotherdebugconversation, nowclosedbyuser. Quietexclusive real-sceneperformance+independentQA stillNOT_RUN.
 - P-CX-50 severe stutter: user report plus existing engine logs show heavy synchronous submit/fence cost; smooth operation NOT passed. Fatal TIMEOUT not reproduced yet.
 - P-CX-TERRA-dark-limit-black: no verified complete same-frame GPU replay capture; binding18 type/range semantic correction and first wrong output unresolved; see RESULT
+- Moon halo: the engine submits identical work every frame and every indirect argument is constant, so the difference is a GPU side resource the engine does not capture. Both paths that read the arguments from guest memory render the moon stable and without the halo, but they synchronise the GPU every frame (33.3 ms), so neither can ship as the fix. A RenderDoc .gfxr capture of this scene is the next step.
 
 ## 已验证
 
@@ -344,6 +348,10 @@
 - The tables of the object families hold the objects of the game. In the same run no state was refused: the counts of 'no room for another' and 'the render state table is full' are both zero, where the run of p-mm-43 refused more than sixteen hundred blend states and more than four thousand render states.
 - The capability tool can remove an extension declaration, and two independent ways of removing the declarations agree: the output of scripts/graphics/fix_spirv_capabilities.py with --drop Float64 --drop FragmentShaderPixelInterlockEXT --drop-extension EXT_fragment_shader_interlock is byte for byte identical to the deliverable of P-MM-29, which was verified on the device, for all four modules of this game.
 - {"checkpoint": "build51actualGPUFlush", "status": "PASS scopedcomponent only; no gameFPS/scene/audio acceptance", "evidence": ".local/codex-queue-flush/manifest.json"}
+- On the Honor tablet A42BBB5109000333 the published v1.0.6 APK runs the field scene at a steady 30.00 FPS, identical to the build9 baseline measured in the same scene with the same save: ops 2256 vs 2242-2337, draws 737 vs 737-742, dispatches 135 vs 135.
+- The moon halo flicker on the Honor tablet is a two-state per-frame toggle (region mean 82.2 <-> 103.0) with identical statistics in the published build and in the build9 baseline, so it is not introduced by the published package.
+- The published v1.0.6 tree contains no uncommitted code: the only dirty file in the release worktree is a whitespace-only reformat of another writer coordination document, and the rendering source is byte-identical to the build9 baseline.
+- The moon halo flicker on the Honor tablet is caused by the GPU-resident indirect template path: with gfx-indexed-resident=0 the user observed a normal moon, and gfx-wb-skip=0 changed nothing.
 
 ## 未验证
 
@@ -369,5 +377,8 @@
 - The present path has never run on a device. The contract proves the behaviour of the interface on a host without Vulkan, and that is all it proves: no swapchain image, no submit and no present have happened on the RG477M.
 - The buffers of the guest and the queue submission seam have not run on the device yet: they were wired after the run of p-mm-44, so it is not known whether the guest reaches the submission and what the replay reads from the package.
 - No frame of the game has ever been shown. The replay sends no Vulkan command and the present path has no caller, so the colour of the guest own clear command has never reached the screen.
+- Whether gfx-wb-skip=0 removes the moon halo flicker on the device has not been confirmed; the field scene could not be re-entered from the title screen with adb input in this session.
+- No code fix for the stale indirect-argument read has been written, built or verified.
+- The current-slot guard on find_indirect_template is not yet built, installed or accepted on the device.
 
 具体恢复命令与未完成修改见 HANDOFF.md。

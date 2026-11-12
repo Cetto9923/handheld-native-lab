@@ -1,3 +1,30 @@
+# 2026-11-12 17:40 Moon halo: the symptom is the halo, the engine state is identical, and no fix is claimed
+
+Scope: the user's moon flicker, in the Load Data 01 scene with the one character save (01 战场 Lv.1 / Time 0:24). No game behaviour is changed and no release is claimed in this step.
+
+Correction to the running record. The appearance the user reported as "the moon looks normal" is not a repair: it is the state where the halo is completely absent. Measured on the moon ROI, the stable states sit at 147.3..147.6 and the flickering states alternate between 147.6 and 169.1. A stable frame at 147.5 is a frame with no halo at all, which is what the guest memory draw path renders. The halo exists only on the GPU resident indirect path.
+
+What the flicker is. The difference between the two states is a wide soft halo around the moon, not a moving moon: the moon disc is pixel identical in both states, and the difference map is a concentric ring peaking at r=50..60 px with an amplitude of 81 grey levels, zero again beyond r=100.
+
+What the engine submits is identical every frame. A per draw probe (read only, marker driven, buffered so the cadence does not change) records for every draw in that scene: the index words, the vertex buffer address and content hash, the uniform address, size and content hash, the texture handle and the texture content signature, the blend enable and the packed blend factors, the depth state, the colour write mask, the viewport and the render target serial. All of them are constant from frame to frame. The only per frame change is the offscreen target ping-pong between the serials 231 and 232, which is normal double buffering. The per frame draw, dispatch and submission counters are constant too.
+
+The arguments are identical as well. A second probe (indirect-probe.csv, marker gfx-indirect-probe) writes one line per indirect draw with the shader pair, the template row and the five argument words. All six indirect shader pairs in that scene keep their draw count, index count, instance count and first index constant over 300 frames. The guest memory draw path renders the moon stable and without the halo, and the GPU resident path renders it with a halo that switches on and off.
+
+Four variants of the indirect argument source were built into one binary (marker gfx-indirect-mode) and measured with the same 10 s screenrecord in the same scene:
+  mode 0, the copy is made when the draw runs (current behaviour): halo 156.7, std 10.53, two states 147.6 and 169.1, 301 frames in 10 s (30 FPS)
+  mode 1, the copy is made with the dispatch that produced the arguments: halo 156.4, std 10.49, same two states, 300 frames (30 FPS)
+  mode 2, a template from an older recording slot is accepted when its copy was made with its dispatch: halo 155.5, std 10.27, same two states, 300 frames (30 FPS)
+  mode 3, only a template from the current recording slot is accepted (the guard of 7b733b9): halo 147.5, std 0.10, stable and without the halo, 105 frames (about 10 FPS)
+  gfx-indexed-resident=0 (the guest memory path for every indexed draw): halo 147.3, std 0.73, stable and without the halo, 276 frames (about 28 FPS)
+
+Why 7b733b9 was not shipped, measured. Mode 3 pays 33.3 ms of legacy wait per frame (NVN PERF block_ms legacy_wait=33.32) because a rejected template sends the draw to the guest memory path, which synchronises the GPU. The earlier note that the guard costs "2 to 3x frame rate" is confirmed, and the reason is the synchronisation, not the guard itself.
+
+Where the root cause stands. The difference is not in the arguments, not in the recorded draw state, not in the textures, not in the bloom channel (gfx-bright=0 changes nothing and PERF reports bright applied=0.00 in this scene), not in the pipeline key, not in the writeback skip and not in the occlusion path. It is a GPU side resource that the engine does not capture. The most likely candidate is the vertex or instance data that the compute shader writes for the glow batch, because the indirect path reads it from a buffer that the engine reuses while the guest memory path reads the resolved copy. A GPU level capture of this scene (RenderDoc .gfxr, the tooling already exists on this device) is the next step.
+
+Device and repository state. The device carries the diagnostic build FFRS-v1.0.7-indirect.apk (sha256 90da3af8ba23e3435f7242e1efd6fddedf69b8147e9371f0826974dd47e99776) with gfx-indirect-mode=0 and gfx-indirect-probe=1 for the probe run; production v1.0.6 is reinstalled and re-verified at the end of this step, with all markers back at factory defaults. Nothing in the main worktree, in the public repository or in the game data was touched.
+
+Branches. The release branch task/T-release-1.0.7-20261112 carries 6e7f424 (the mode switch and the probe, default behaviour unchanged) on top of 7b733b9 (the current-slot guard). The rescue branch task/T-rescue-1.0.7-20261112 carries 40c2963 (the read only moon scene probes). The rescue baseline 5f4e2b5 is the published v1.0.6 source.
+
 # 2026-11-12 10:50 月亮闪烁与帧率复测：打包无问题，闪烁是 GPU 间接模板路径
 
 - 用户报「打包代码不对、可能夹带未提交部分、之前 Codex 修好的月亮又在闪」。逐项核查结论：发布包**没有**夹带未提交代码，也**没有**漏掉任何提交。
