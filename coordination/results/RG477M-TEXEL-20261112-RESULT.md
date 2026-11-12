@@ -345,6 +345,7 @@ Unknown 格式被拒；畸形模块被拒且字节不变。
   `HEAD` 基线逐条一致（diff 无差异；基线 192 条 `-Wmissing-field-initializers` 等，
   新代码用 `{}`+显式 sType 初始化，不新增 warning）。
 - 产物：`.local/android-apk/ffrs-game-window-debug.apk`（不入库）。
+  最终 APK SHA-256：`f2891eb202b49272cbbb1f27e924ae35b2af8c226bdf2b98e2fe82662f6490d1`（第三次构建，含 `c9f087e`）。
 
 #### §2.5 真机（BLOCKED：设备不在线）
 
@@ -358,6 +359,49 @@ bash scripts/android/verify_rg477m_typed_storage.sh RG477M01445122
   脚本会：只对 `RG477M01445122` 做 `adb install -r` → force-stop → 清 `engine.log.fatal` →
   启动 → 等待 → 拉 `engine.log` / `engine.log.fatal` / logcat / 截屏，并打印
   `FATAL_ABSENT`、`FORMATLESS_WRITE_FATAL_ABSENT`、typed storage 变体日志行。
+
+#### §2.6 覆盖率：命中与仍未覆盖的 shader（附证据）
+
+**已命中并有真实证据**：§664748e31a2dfad9`（compute，binding 11，STORAGE_TEXEL_BUFFER，
+绑定格式 `VK_FORMAT_R32_UINT(98)` → 声明 `R32ui(33)`）。证据：`.local/rg477m-texel-20261112/extracted.spv`
+（设备 6GB `shaders.hnla` 按字节偏移抽出的真实模块，游戏派生内容，不入库）经既有
+`xbg_spirv_ffrs_stencil` + 本次 `xbg_typed_storage_rewrite` 后，
+`spirv-dis` 显示 `%127 = OpTypeImage %uint Buffer 0 0 0 2 R32ui`，`spirv-val --target-env vulkan1.1` 通过。
+
+**仍未覆盖（每条都有明确证据或可执行判据）**：
+
+1. **其它 formatless 的 storage texel buffer / storage image shader**：宿主**无法枚举**，
+   因为着色器归档（设备上的 6GB `shaders.hnla`）不在仓库里（`.local/` 只有本任务抽出的 1 个模块）。
+   运行期判据（设备一跑就有）：每次成功生成变体都有
+   `NVN typed storage variant shader=<key> identity=<key>:stb1:<binding>_<format>`；
+   每次被拒都有 `NVN typed storage UNSUPPORTED shader=<key> ... reason=rewrite-refused unchanged=1`
+   或 `reason=identity-size`。**跑完一次真机即可统计命中/未命中的全集**。
+2. **formatless 读**（`binding.flags&2`，同一 image 上有 `OpImageRead`）：改写**主动拒绝**
+   （改成 typed 会改变读语义），仍走原 formatless 检查 → 设备若缺
+   `STORAGE_READ_WITHOUT_FORMAT` 位仍会 FATAL。拒绝路径由
+   `tests/device/typed_storage_formatless_read.spvasm` 在宿主侧覆盖。
+3. **count>1 的数组绑定**：本次不生成变体（数组元素可能格式不同，无法共用一个声明格式），
+   仍走原检查。
+4. **SPIR-V 无法表达的绑定格式**（如 `R32G32B32_UINT` 没有对应 image format、`R16` 系列）：
+   不生成变体，仍走原 formatless 检查。格式表见 `xbg_spirv_image_format`。
+5. **image type 被多个变量共享**、或同 image 上有 formatless 读：拒绝改写（宿主契约覆盖），
+   仍走原检查。
+
+**未改动的路径**（保持原样，不是遗漏）：`xbg_game.cpp:4057` 附近的 storage image formatless 检查
+已改成按模块形态分支，但 formatless 分支的**要求一字未改**；`honor_inline` 路径、事件退休路径、
+`src/runtime/hle/nso_host.c` 均未触碰。
+
+#### §2.7 风险
+
+1. **真机未验证**：设备 `RG477M01445122` 全程不在线，进标题/进战斗/画面正确性**尚未取得证据**，
+   不能声称通过。```2.5``` 的脚本是上机后的取证入口。
+2. **变体数量**：同一 shader 若在不同 draw 上以不同格式绑定，会生成多个模块/管线（冷启动成本，
+   之后走缓存）。这与既有的整数缓冲变体机制同构。
+3. **warm 预热列表**：`:stb1:` identity 会写进设备上的 `vk-pipeline-list.bin`；
+   `load_module` 已能按同一顺序重建同一模块（stencil → specialize → optimize → typed），
+   重建失败时只是退回运行期创建，不影响正确性。
+4. **支持 formatless 的设备行为不变**：变体只在设备**确实缺** formatless 特性位时生成，
+   所以 Adreno 等设备的路径完全没变（本次改动的仓库是 RG477M 专用，荣耀平板仓未动）。
 
 #### §1.4 硬约束自检
 
