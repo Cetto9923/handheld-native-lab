@@ -146,6 +146,18 @@ def main():
                                   'src/runtime/hle/nso_host.c', 'tests/native/save_commit_host_contract.c',
                                   'tests/native/event_finalize_stubs.c', '-o', save_binary]):
         run('save-commit-contract', [save_binary])
+    warm_flush = out / 'test-warm-flush'
+    extra_artifacts.append(warm_flush)
+    warm_cxx = shutil.which('clang++') or shutil.which('c++')
+    if not warm_cxx:
+        results.append(dict(name='warm-flush-build', passed=False,
+                            blocked='a C++ compiler is required for the warm flush contract'))
+    elif run('warm-flush-build', [warm_cxx, '-std=c++17', '-Wall', '-Wextra', '-Werror', '-pthread',
+                                  '-Isrc/graphics/nvn_vulkan/engine',
+                                  'tests/graphics/test_warm_flush_contract.cpp', '-o', str(warm_flush)]):
+        run('warm-flush-contract', [warm_flush, str(root)])
+    run('portable-package', [sys.executable, '-m', 'unittest',
+                              'tests.installer.test_package_honor_portable'])
     run('engine-log-rotation', [sys.executable, '-m', 'unittest', 'tests.installer.test_engine_log_rotation'])
     run('present-outcome', [sys.executable, '-m', 'unittest', 'tests.installer.test_present_outcome'])
     probe = out / 'probe-build'
