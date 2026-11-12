@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-12T05:55:00.000000+00:00",
+ "updated_at": "2026-11-12T17:40:00+08:00",
  "phase": "FAIL currentShrine room stillregularlightingrectangles inPID7534, preservecamera andfirstbadgroupcapture; spellstutteralsoopen",
  "coordinator": "Codex /root shrine takeover",
  "integration_branch": "work/rg477m-native",
@@ -6027,5 +6027,29 @@
    "original_baseline": "the original Nintendo Switch release of Final Fantasy Resonance targets 30 FPS (the Switch 2 edition targets 60 FPS)",
    "recommendation": "keep 30 FPS as the shipped target and the P1 acceptance bar. A 60 FPS mode may only be exposed as an optional switch once the guest logic time base is proven real-time, because raising the frame rate of a frame-count driven effect changes the game animation speed, which the task rules forbid. The dense scene cannot hold 60 FPS on this device anyway."
   }
+ },
+ "honor_moon_halo_20261112": {
+  "scene": "Load Data -> 01 -> Yes, one character save (01 战场 Lv.1 / Time 0:24), 3000x1920 device",
+  "symptom": "The moon halo alternates between two states. The wide soft halo around the moon switches on and off; the moon disc itself is pixel identical in both states, and the difference is a concentric ring peaking at r=50..60 px with an amplitude of 81 grey levels.",
+  "not_a_fix": "The appearance reported as 'the moon looks normal' is the state where the halo is completely absent (ROI 147.3..147.6), which is what the guest memory draw path renders. It is not a repair, it is the missing halo.",
+  "engine_state_is_constant": "Every field the engine records per draw is constant from frame to frame in that scene: index words, vertex buffer address and content hash, uniform address/size/content hash, texture handle and texture content signature, blend enable and factors, depth state, colour write mask, viewport, render target serial (the only change is the offscreen target ping-pong between serials 231 and 232), and the per frame draw and dispatch and submission counters.",
+  "indirect_arguments_are_constant": "The per frame probe (indirect-probe.csv, marker gfx-indirect-probe) shows all six indirect shader pairs keep their draw count, index count, instance count and first index constant over 300 frames.",
+  "source_of_the_difference": "The halo exists only on the GPU resident indirect path. The two paths that give the draw its arguments from guest memory (gfx-indexed-resident=0, and the current-slot guard in 7b733b9) both render the moon stable and without the halo.",
+  "measured_modes": {
+   "mode0_baseline": "halo 156.7 std 10.53, two states 147.6 and 169.1, 301 video frames in 10 s (30 FPS)",
+   "mode1_copy_with_the_dispatch": "halo 156.4 std 10.49, two states 147.6 and 169.1, 300 frames (30 FPS)",
+   "mode2_relaxed_guard": "halo 155.5 std 10.27, two states 147.6 and 169.1, 300 frames (30 FPS)",
+   "mode3_current_slot_guard_7b733b9": "halo 147.5 std 0.10, stable and without the halo, 105 frames (about 10 FPS)",
+   "gfx_indexed_resident_0": "halo 147.3 std 0.73, stable and without the halo, 276 frames (about 28 FPS)"
+  },
+  "cost_of_the_correct_paths": "mode 3 pays 33.3 ms of legacy wait per frame because the rejected template sends the draw to the guest memory path, which synchronises the GPU. That is the reason 7b733b9 was not shipped.",
+  "status": "root cause narrowed to the GPU resident indirect path, not closed. No release is claimed and the default behaviour is unchanged.",
+  "next": "Close the gap on the GPU resident path: the arguments and the recorded state are identical per frame, so the difference is in a resource the engine does not capture, most likely the vertex or instance data the compute shader writes for the glow batch, which the indirect path reads from a buffer the engine reuses. A GPU level capture of this scene (RenderDoc .gfxr; the tooling already exists on this device) is the next step.",
+  "artifacts": [
+   "rescue branch task/T-rescue-1.0.7-20261112 commit 40c2963 (read only probes)",
+   "release branch task/T-release-1.0.7-20261112 commit 6e7f424 (mode switch and probe)",
+   "/tmp/indirect-probe-mode0.csv, /tmp/ab_mode0.mp4, /tmp/moon-chain.csv (local, not committed)"
+  ],
+  "carried_from": "task/T-release-1.0.7-20261112@0052889 (the delivery branch keeps the authoritative coordination record)"
  }
 }
