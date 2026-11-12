@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-12T19:37:54.159407+08:00",
+ "updated_at": "2026-11-12T20:07:56.023483+08:00",
  "phase": "v1.0.6 published; v1.0.7 internal team-play package built and device-verified on task/T-package-1.0.7-20261112 (moon halo fix shipped, cheat menu usable, 30 FPS held). Battle effect pipeline stutter still open, not in this package.",
  "coordinator": "MiniMax Code /root release takeover (Codex thread aborted by user)",
  "integration_branch": "work/rg477m-native",
@@ -1806,6 +1806,39 @@
    "branch": "task/T-package-1.0.7-20261112",
    "acquired_at": "2026-11-12T19:37:54.159407+08:00",
    "checkpoint": "1.0.7 internal package built and device-verified; APK at .local/release-1.0.7/, sha256 faf3b74250deb91c0f537d85b2202f95def9b56c35e8c159a90ea495f74f60a6"
+  },
+  {
+   "task": "RG477M-BASELINE-SYNC-20261112",
+   "owner": "worker agent bg_5b168acd-b506-4fbb-97a3-2bf500996fbc",
+   "paths": [
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "src/android/app/java/org/ffrs/diagnostic/DeviceProfile.java",
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_pipeline_key.h"
+   ],
+   "worktree": "worker to declare; the RG477M main worktree and the honor main worktree are forbidden (foreign WIP)",
+   "branch": "task/T-rg477m-sync-20261112",
+   "acquired_at": "2026-11-12T20:06:51.357052+08:00",
+   "checkpoint": "dispatched with a corrected brief; the worker must reply with its plan, its worktree and its baseline commit before it starts editing",
+   "objective": "One APK, one codebase, two devices: bring the RG477M baseline up to the Honor line, keep the existing device profile tiering (handheld_mid 720/30 for RG477M, tablet_sd8s 1080/60 for the Honor tablet), and prove title plus battle at a stable 30 FPS on the RG477M.",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "HONOR-PIPELINE-SEED-20261112",
+   "owner": "worker agent bg_493e3274-03b2-44e1-afc9-b606d08602a7",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "scripts/distribution/package_honor_portable.py",
+    "scripts/distribution/inspect_pipeline_warm_list.py",
+    "scripts/distribution/index_pipeline_warm_list.py"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/rescue-1.0.7-20261112",
+   "branch": "task/T-rescue-1.0.7-20261112",
+   "acquired_at": "2026-11-12T20:06:51.357052+08:00",
+   "checkpoint": "running; the worker was steered with the cross-device constraint (Mali) and must keep out of the RG477M directory",
+   "objective": "Remove the synchronous pipeline creation from the battle effect release frames: fix the flush guard that loses fast-created records, and ship a validated seed so a first-time effect does not compile on the frame it appears.",
+   "write_state": "ACTIVE"
   }
  ],
  "tasks": [
@@ -4908,7 +4941,7 @@
    "id": "HONOR-PACKAGE-1.0.7-20261112",
    "role": "release",
    "owner": "MiniMax Code /root release takeover",
-   "status": "in_progress",
+   "status": "passed",
    "goal": "build the 1.0.7 internal team-play package on the verified v1.0.6 baseline with the moon-halo fix, verify it on the Honor device, and hand it over for team playtesting",
    "inputs": [
     "task/T-release-1.0.7-20261112@02c6242",
@@ -4922,7 +4955,9 @@
    "dependencies": [
     "HONOR-MOON-FIX-20261112"
    ],
-   "pass_gates": [],
+   "pass_gates": [
+    "HONOR-MOON-FIX-20261112"
+   ],
    "write_scope": [
     "src/android/app/gamewindow/AndroidManifest.xml",
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
@@ -4930,7 +4965,82 @@
    ],
    "acceptance": "APK installs on the Honor device, versionName 1.0.7, depth-aspect resolved to the device default without any manual marker edit, the cheat dialog decrypts the real save, frame rate held at 30 FPS",
    "recovery_point": "02c6242",
-   "branch": "task/T-package-1.0.7-20261112"
+   "branch": "task/T-package-1.0.7-20261112",
+   "execution_status": "PASSED: built (exit 0) as .local/release-1.0.7/ffrs-game-window-1.0.7-internal.apk (3523650 bytes, sha256 faf3b74250deb91c0f537d85b2202f95def9b56c35e8c159a90ea495f74f60a6, verified with shasum -c), installed on the Honor device (adb install -r Success, versionName 1.0.7), the moon depth-aspect marker migrated from the legacy 2-byte value to auto on its own, the cheat dialog decrypted the real save, and the title held 30.00 FPS with submit_cpu 7.9-9.1 ms and gpu 5.1-5.4 ms. Commits aca34f0 and db094f8."
+  },
+  {
+   "id": "RG477M-BASELINE-SYNC-20261112",
+   "status": "in_progress",
+   "role": "PORT_SYNC_TO_TARGET_DEVICE",
+   "dependencies": [
+    "HONOR-PACKAGE-1.0.7-20261112"
+   ],
+   "pass_gates": [
+    "HONOR-PIPELINE-SEED-20261112"
+   ],
+   "owner": "worker agent bg_5b168acd-b506-4fbb-97a3-2bf500996fbc",
+   "branch": "task/T-rg477m-sync-20261112",
+   "worktree": "worker to declare; the RG477M main worktree and the honor main worktree are forbidden (foreign WIP)",
+   "scope": "RG477M lags the Honor line by code version, not by architecture: 47 files, +4434/-347 between 63d3652 and e7ddc44, with src/graphics/nvn_vulkan/engine/xbg_game.cpp alone at +986 lines. DeviceProfile.java is byte identical across both baselines and already maps mt6897 / model RG477M to handheld_mid (720 short edge, 30 FPS) and sm8635 with smallestWidthDp >= 600 to tablet_sd8s; the RG477M engine log already shows 'xbg_refresh_target_fps: locked target_fps=30'. The signing certificate on the RG477M device is d11967a31fcef92f3d6b44adf9d9678c8d2b07bf8f3246d51a791617ed61f36e, byte identical to the Honor 1.0.7 certificate, so a covering install works without uninstalling. The remaining device defect is NVN GPU_INDEXED_FAIL ind=0 pool_res=1 frame=3/4, and commits 7229b02 (instance-only indirect writes) and d5a3340 (resident indirect argument guard) target exactly that path.",
+   "execution_status": "DISPATCHED after a topology correction. The earlier brief assumed two separate repositories and a separate-port rewrite; that was wrong. Verified: /Users/yuyan9923/GitHub/ff-resonance-honor-gtpro is a git worktree of /Users/yuyan9923/GitHub/ff-resonance-rg477m-native, sharing one .git, one branch list and one history, so there is no cross-repo sync problem. The work/rg477m-native branch at a7a0416 with its self-written nvn_device backend is not what the device runs.",
+   "last_command_returncode": 0,
+   "goal": "Advance the RG477M code baseline to the Honor line and make one APK serve both devices, so the Honor optimizations reach the handheld without a per-device fork.",
+   "inputs": [
+    "RG477M installed baseline: commit 63d3652 (org.ffrs.gamewindow 1.0.8 / versionCode 8), merge base of every branch",
+    "Honor baseline: e7ddc44 (rescue, moon fix + cheat honesty) and aca34f0 (1.0.7 package)",
+    "device: RG477M01445122 (MT6897, Mali, 1280x960, API 34)",
+    "data root: /sdcard/HandheldNativeLab/data/ (bundle hnl-data.properties + hnl-index.tsv)",
+    "existing profile table: src/android/app/java/org/ffrs/diagnostic/DeviceProfile.java",
+    "community references: OSS-NOTES.md, required before any large change"
+   ],
+   "outputs": [
+    "one APK with versionName 1.0.9 / versionCode 9 that installs over the RG477M 1.0.8",
+    "device evidence on RG477M01445122: title, battle, stable 30 FPS, profile log, 4:3 letterbox",
+    "a RESULT report and OSS-NOTES.md"
+   ],
+   "write_scope": [
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "src/android/app/java/org/ffrs/diagnostic/DeviceProfile.java",
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp"
+   ],
+   "acceptance": "The same APK installs on both devices (versionCode 9 covers the RG477M code 8 and the Honor code 7). The RG477M boots to the title and reaches a battle. 30 FPS is stable on the RG477M real scene. The startup log shows profile=handheld_mid with the detection reason, soc=mt6897 and gpu=mali. The 4:3 1280x960 output is letterboxed, not stretched, and the game logic time is unchanged. No data root is hardcoded. OSS-NOTES.md lists every community or upstream reference with URL and revision, and any change without a source is rejected.",
+   "recovery_point": "63d3652"
+  },
+  {
+   "id": "HONOR-PIPELINE-SEED-20261112",
+   "status": "in_progress",
+   "role": "GRAPHICS_PERFORMANCE_FIX",
+   "dependencies": [],
+   "pass_gates": [
+    "HONOR-PACKAGE-1.0.7-20261112"
+   ],
+   "owner": "worker agent bg_493e3274-03b2-44e1-afc9-b606d08602a7",
+   "branch": "task/T-rescue-1.0.7-20261112",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/rescue-1.0.7-20261112",
+   "scope": "Two proven root causes. Class A: warm::flush() is called only from save_pipeline_cache() and is guarded by pipelines_unsaved, which increments only when a pipeline creation took 2 ms or more, so every pipeline recorded by warm::record() with a creation time below 2 ms is recorded and then never flushed. Class B: the seed entity vk-pipeline-list.seed / pipeline-warm-list.bin does not exist in the repository and does not exist in the shipped data bundle, while the engine (load_records, FFRS_WARM_LIST_SEED, <shader_directory>/vk-pipeline-list.seed) and the Android side (<data root>/pipeline-warm-list.bin) already support it. The packaging whitelist scripts/distribution/package_honor_portable.py uses exact equality and must be widened to accept the seed.",
+   "execution_status": "IN_PROGRESS. Both root causes were closed by measurement before the fix started (per-session created versus warm_hits, and a session where created=18 produced only 15 table rows, the missing 3 being the batch created=3 create_ms=1.7). The worker was additionally told that the same engine runs on the RG477M (Mali) so the fix must carry no GPU-vendor assumption and that pipeline creation cost on Mali may differ; the worker must report any unverified Mali assumption.",
+   "last_command_returncode": 0,
+   "goal": "Remove the synchronous pipeline creation from the battle effect release frames by fixing the flush guard that loses fast-created records and by shipping a validated seed file.",
+   "inputs": [
+    "engine: src/graphics/nvn_vulkan/engine/xbg_game.cpp (warm::record, warm::flush, save_pipeline_cache, load_records, pipeline_lookup)",
+    "seed validation tool: scripts/distribution/inspect_pipeline_warm_list.py",
+    "candidate seed: the RG477M and Honor device warm list, 1560 records, validated (missing_shader_keys empty, index-only archive validation)",
+    "packaging whitelist: scripts/distribution/package_honor_portable.py"
+   ],
+   "outputs": [
+    "class A fix in xbg_game.cpp",
+    "class B seed entity plus the widened packaging whitelist",
+    "device proof that no effect frame creates a pipeline synchronously any more"
+   ],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "scripts/distribution/package_honor_portable.py",
+    "scripts/distribution/inspect_pipeline_warm_list.py",
+    "scripts/distribution/index_pipeline_warm_list.py"
+   ],
+   "acceptance": "Class A: warm::flush() runs for every recorded pipeline, not only for the ones whose creation took 2 ms or more. Class B: a validated seed ships with the data bundle and the packaging whitelist accepts it. On the device no new-pipeline creation exceeds 100 ms on an effect frame. The seed is found on both data roots without a hardcoded path.",
+   "recovery_point": "e7ddc44"
   }
  ],
  "blockers": [
@@ -6539,5 +6649,90 @@
    ".local/tombstones-all-20261111/tombstone_{00,01,02,03} (read only, previously not copied)"
   ],
   "not_claimed": "No crash is claimed fixed, no frame rate claim beyond the measured numbers, no full game compatibility, no independent QA, no human audio verification, no 60 FPS."
+ },
+ "rg477m_baseline_sync_20261112": {
+  "observed_at": "2026-11-12T20:06:51.357052+08:00",
+  "status": "IN_PROGRESS",
+  "user_ask": "1.0.7 is not adapted to the user's RG477M handheld; adapt it, and sync the Honor optimizations over.",
+  "topology_finding": {
+   "summary": "The two project directories are one repository. /Users/yuyan9923/GitHub/ff-resonance-honor-gtpro is a git worktree of /Users/yuyan9923/GitHub/ff-resonance-rg477m-native; they share one .git, one branch list and one history. There is no cross-repo sync problem and no separate-port rewrite.",
+   "evidence": "git rev-parse --git-common-dir returns the same path for both; git worktree list lists both; git branch -a is byte-identical from either directory; the honor .git is a file pointing at .git/worktrees/ff-resonance-honor-gtpro.",
+   "correction": "An earlier blocker that described the RG477M tree as a self-written nvn_device rewrite is wrong: that is the work/rg477m-native branch at a7a0416 (2026-10-25, versionName=0.1-game-window-form) and it is not what the device runs."
+  },
+  "device_baselines": {
+   "rg477m": {
+    "package": "org.ffrs.gamewindow",
+    "version_name": "1.0.8",
+    "version_code": 8,
+    "built_from_commit": "63d3652",
+    "commit_subject": "fix(graphics): restore GPU sync for indirect draws to eliminate moon flickering and bump version to 1.0.8",
+    "installed_at": "2026-11-12T00:07:46+08:00",
+    "relation": "63d3652 is the merge base of every branch, including the Honor 1.0.7 line"
+   },
+   "honor": {
+    "package": "org.ffrs.gamewindow",
+    "version_name": "1.0.7",
+    "version_code": 7,
+    "built_from_commit": "aca34f0 / db094f8 (task/T-package-1.0.7-20261112), code base e7ddc44 (task/T-rescue-1.0.7-20261112)"
+   }
+  },
+  "source_gap_63d3652_to_e7ddc44": {
+   "files_changed": 47,
+   "insertions": 4434,
+   "deletions": 347,
+   "engine": "src/graphics/nvn_vulkan/engine/xbg_game.cpp +986 lines, plus new xbg_spirv_indirect_instances.h and xbg_spirv_integer_buffer.h",
+   "app": "src/android/app/java/org/ffrs/diagnostic/GameActivity.java +87 lines (moon depth-aspect marker fix, cheat menu honesty)",
+   "relevant_commits": [
+    "7229b02 Recognize instance-only indirect writes structurally and preserve safe GPU residency",
+    "d5a3340 Fix integer buffer specialization and guard resident indirect arguments",
+    "d465e3f Cache immutable texture entrypoints and shader format variants",
+    "837b539 Learn compute warm recipes and reuse optimized shader variants",
+    "8bdd5b3 Cache positive texture record lookups with live metadata checks",
+    "5e879a1 fix(graphics): keep a present crop inside the source image",
+    "e7ddc44 fix(honor): the moon halo path follows the device, the cheat menu stops pretending to apply immediately"
+   ],
+   "note": "7229b02 / d5a3340 target exactly the indirect argument handling that produces the RG477M GPU_INDEXED_FAIL, so syncing the baseline is the expected fix path for the remaining RG477M defect."
+  },
+  "signing": {
+   "certificate_sha256": "d11967a31fcef92f3d6b44adf9d9678c8d2b07bf8f3246d51a791617ed61f36e",
+   "rg477m_device": "same certificate, verified from the pulled base.apk with apksigner",
+   "honor_1_0_7": "same certificate",
+   "conclusion": "a covering install over the RG477M 1.0.8 is possible; uninstalling is not required",
+   "correction": "The earlier 'signature mismatch' blocker is withdrawn; it came from comparing against an unrelated package (dev.handheldnativelab.preview)."
+  },
+  "device_profile": {
+   "status": "already implemented, identical in both baselines (git diff 63d3652 e7ddc44 on DeviceProfile.java is empty)",
+   "source": "src/android/app/java/org/ffrs/diagnostic/DeviceProfile.java",
+   "mapping": "mt6897 or model containing rg477m/anbernic -> handheld_mid (720 short edge, 30 FPS); sm8635 with smallestWidthDp >= 600 -> tablet_sd8s (1080, 60); default -> handheld_mid",
+   "device_evidence": "the RG477M engine log already shows 'xbg_refresh_target_fps: locked target_fps=30 target_ns=33333333', so the tier selection is already landing on the RG477M",
+   "hook": "gfx-target-fps marker (GameActivity writeMarkerIfMissing, xbg_game.cpp xbg_refresh_target_fps)",
+   "override": "DeviceProfile.select honours an explicit override id"
+  },
+  "data_roots": {
+   "rg477m": "/sdcard/HandheldNativeLab/data/ (main.nso, sdk.nso, romfs/, shaders.hnla 6.1 GB, shaders/, pipeline-warm-list.bin 905028 B, hnl-data.properties, hnl-index.tsv)",
+   "honor": "/sdcard/FFRS (16 GB)",
+   "discovery": "GameActivity.resolveGameDir() has intent-override / managed-installer-root / autodiscover fallbacks and the bundle is verified through hnl-data.properties + hnl-index.tsv; no path may be hardcoded and the Honor root must not be assumed on the RG477M"
+  },
+  "version_decision": {
+   "version_name": "1.0.9",
+   "version_code": 9,
+   "reason": "one APK must cover both devices; the RG477M already holds versionCode 8 and the Honor holds 7, so the code must exceed 8. Version 1.0.7 cannot be installed over the RG477M 1.0.8."
+  },
+  "open_on_rg477m": [
+   "NVN GPU_INDEXED_FAIL ind=0 pool_res=1 frame=3/4 (device log)",
+   "the cheat menu needs an RG477M save key: the RG477M save came from a OnePlus PMS110 export and the Honor key does not decrypt it. BLOCKED until the RG477M key is located; the Honor save_key must not be copied into this repository.",
+   "the RG477M battery was low earlier; the user confirmed the device is charging"
+  ],
+  "not_verified": "No RG477M boot or battle has been run against the new baseline yet; every statement about the RG477M running the Honor 1.0.7 code is a prediction from the source diff, not a device result.",
+  "community_guidance": {
+   "user_instruction": "借鉴成熟社区项目的做法来做适配，不要闭门造车。",
+   "rule": "Any large change to the rendering, pacing, scaling or profile logic must cite a community or upstream reference with URL and revision. A change without a source is rejected. The worker must deliver OSS-NOTES.md with URL, commit or version, licence, the scope it actually supports, and whether it is actually obtainable.",
+   "expected_reference_areas": [
+    "Switch homebrew porting communities for handheld versus docked profile splitting and resolution scaling on 4:3 handheld panels",
+    "Android Vulkan driver behaviour for Mali: pipeline cache support, VK_EXT_pipeline_creation_cache_control, and the cost of pipeline creation",
+    "Frame pacing at 30 FPS on a 60 Hz panel: SurfaceView queueBuffer timing and half-vsync pacing as used by established Android emulators and ports"
+   ],
+   "status": "researched by the coordinator and handed to the worker; the worker must add the concrete URLs and revisions it actually used"
+  }
  }
 }

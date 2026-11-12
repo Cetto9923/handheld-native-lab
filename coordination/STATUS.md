@@ -1,6 +1,6 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-12T19:37:54.159407+08:00
+状态事件时间：2026-11-12T20:07:56.023483+08:00
 阶段：v1.0.6 published; v1.0.7 internal team-play package built and device-verified on task/T-package-1.0.7-20261112 (moon halo fix shipped, cheat menu usable, 30 FPS held). Battle effect pipeline stutter still open, not in this package.
 总控：MiniMax Code /root release takeover (Codex thread aborted by user)
 更新方式：按事件更新，没有后台自动刷新。
@@ -132,7 +132,9 @@
 | HONOR-MOON-FIX-20261112 | implementation | passed | MiniMax Code /root release takeover | HONOR-MOON-FLICKER-20261112 | 无额外门禁 | task/T-release-1.0.7-20261112 |
 | HONOR-P0-CRASH-COLLECTION-20261112 | investigation | completed | MiniMax Code /root release takeover | 无 | 无额外门禁 | task/T-release-1.0.7-20261112 |
 | HONOR-P1-FRAME-PERCENTILE-20261112 | investigation | completed | MiniMax Code /root release takeover | 无 | 无额外门禁 | task/T-release-1.0.7-20261112 |
-| HONOR-PACKAGE-1.0.7-20261112 | release | in_progress | MiniMax Code /root release takeover | HONOR-MOON-FIX-20261112 | 无额外门禁 | task/T-package-1.0.7-20261112 |
+| HONOR-PACKAGE-1.0.7-20261112 | release | passed | MiniMax Code /root release takeover | HONOR-MOON-FIX-20261112 | HONOR-MOON-FIX-20261112 | task/T-package-1.0.7-20261112 |
+| RG477M-BASELINE-SYNC-20261112 | PORT_SYNC_TO_TARGET_DEVICE | in_progress | worker agent bg_5b168acd-b506-4fbb-97a3-2bf500996fbc | HONOR-PACKAGE-1.0.7-20261112 | HONOR-PIPELINE-SEED-20261112 | task/T-rg477m-sync-20261112 |
+| HONOR-PIPELINE-SEED-20261112 | GRAPHICS_PERFORMANCE_FIX | in_progress | worker agent bg_493e3274-03b2-44e1-afc9-b606d08602a7 | 无 | HONOR-PACKAGE-1.0.7-20261112 | task/T-rescue-1.0.7-20261112 |
 
 ## 独占写入
 
@@ -233,6 +235,8 @@
 - {"task": "RELEASE-1.0.6-20261112", "owner": "MiniMax Code /root release takeover", "paths": ["coordination/state.json", "coordination/HANDOFF.md", "coordination/STATUS.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-release-1.0.6-20261112", "acquired_at": "2026-11-12T01:41:00.817033+00:00", "checkpoint": "Public release v1.0.6 published and download-verified.", "write_state": "RELEASED", "released_at": "2026-11-12T01:41:00.817033+00:00"}
 - {"task": "HONOR-MOON-FIX-20261112", "owner": "MiniMax Code /root release takeover", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", "coordination/state.json", "coordination/HANDOFF.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/release-1.0.7-20261112", "branch": "task/T-release-1.0.7-20261112", "acquired_at": "2026-11-12T17:40:00+08:00", "checkpoint": "6e7f424", "objective": "Moon halo flicker: find an indirect argument source that is stable and keeps the GPU resident path at 30 FPS", "write_state": "BLOCKED_ON_GPU_LEVEL_CAPTURE"}
 - {"task": "HONOR-PACKAGE-1.0.7-20261112", "owner": "MiniMax Code /root release takeover", "paths": ["src/android/app/gamewindow/AndroidManifest.xml", "src/graphics/nvn_vulkan/engine/xbg_game.cpp", "src/android/app/java/org/ffrs/diagnostic/", "coordination/state.json", "coordination/HANDOFF.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/package-1.0.7-20261112", "branch": "task/T-package-1.0.7-20261112", "acquired_at": "2026-11-12T19:37:54.159407+08:00", "checkpoint": "1.0.7 internal package built and device-verified; APK at .local/release-1.0.7/, sha256 faf3b74250deb91c0f537d85b2202f95def9b56c35e8c159a90ea495f74f60a6"}
+- {"task": "RG477M-BASELINE-SYNC-20261112", "owner": "worker agent bg_5b168acd-b506-4fbb-97a3-2bf500996fbc", "paths": ["src/android/app/gamewindow/AndroidManifest.xml", "src/android/app/java/org/ffrs/diagnostic/DeviceProfile.java", "src/android/app/java/org/ffrs/diagnostic/GameActivity.java", "src/graphics/nvn_vulkan/engine/xbg_game.cpp", "src/graphics/nvn_vulkan/engine/xbg_pipeline_key.h"], "worktree": "worker to declare; the RG477M main worktree and the honor main worktree are forbidden (foreign WIP)", "branch": "task/T-rg477m-sync-20261112", "acquired_at": "2026-11-12T20:06:51.357052+08:00", "checkpoint": "dispatched with a corrected brief; the worker must reply with its plan, its worktree and its baseline commit before it starts editing", "objective": "One APK, one codebase, two devices: bring the RG477M baseline up to the Honor line, keep the existing device profile tiering (handheld_mid 720/30 for RG477M, tablet_sd8s 1080/60 for the Honor tablet), and prove title plus battle at a stable 30 FPS on the RG477M.", "write_state": "ACTIVE"}
+- {"task": "HONOR-PIPELINE-SEED-20261112", "owner": "worker agent bg_493e3274-03b2-44e1-afc9-b606d08602a7", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", "scripts/distribution/package_honor_portable.py", "scripts/distribution/inspect_pipeline_warm_list.py", "scripts/distribution/index_pipeline_warm_list.py"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/rescue-1.0.7-20261112", "branch": "task/T-rescue-1.0.7-20261112", "acquired_at": "2026-11-12T20:06:51.357052+08:00", "checkpoint": "running; the worker was steered with the cross-device constraint (Mali) and must keep out of the RG477M directory", "objective": "Remove the synchronous pipeline creation from the battle effect release frames: fix the flush guard that loses fast-created records, and ship a validated seed so a first-time effect does not compile on the frame it appears.", "write_state": "ACTIVE"}
 
 ## 阻塞
 
