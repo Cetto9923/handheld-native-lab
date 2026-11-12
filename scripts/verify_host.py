@@ -170,6 +170,28 @@ def main():
         run('warm-flush-contract', [warm_flush, str(root)])
     run('portable-package', [sys.executable, '-m', 'unittest',
                               'tests.installer.test_package_honor_portable'])
+    spirv_as = shutil.which('spirv-as')
+    spirv_val = shutil.which('spirv-val')
+    if spirv_as and spirv_val:
+        typed_dir = out / 'typed-storage'
+        typed_dir.mkdir(parents=True, exist_ok=True)
+        typed_spv = []
+        for fixture in ('typed_storage_uint', 'typed_storage_shared_image', 'typed_storage_formatless_read'):
+            spv = typed_dir / (fixture + '.spv')
+            if run('typed-storage-assemble-' + fixture, [spirv_as, '--target-env', 'vulkan1.1',
+                                              'tests/device/' + fixture + '.spvasm', '-o', spv]):
+                typed_spv.append(spv)
+        typed_cxx = shutil.which('clang++') or cc
+        typed_binary = out / 'test-typed-storage'
+        extra_artifacts.append(typed_binary)
+        if len(typed_spv) == 3 and run('typed-storage-build', [typed_cxx, '-std=c++17', '-O1', '-g',
+                                                    '-fsanitize=address,undefined', '-Wall', '-Wextra',
+                                                    'tests/device/test_typed_storage.cpp', '-o', typed_binary]):
+            run('typed-storage-contract', [typed_binary, typed_spv[0], typed_spv[1], typed_spv[2],
+                                       typed_dir / 'typed_storage_out.spv'])
+            run('typed-storage-val', [spirv_val, '--target-env', 'vulkan1.1', typed_dir / 'typed_storage_out.spv'])
+    else:
+        print('typed-storage-contract: SKIPPED, spirv-as and spirv-val are not installed', flush=True)
     run('engine-log-rotation', [sys.executable, '-m', 'unittest', 'tests.installer.test_engine_log_rotation'])
     run('present-outcome', [sys.executable, '-m', 'unittest', 'tests.installer.test_present_outcome'])
     probe = out / 'probe-build'
