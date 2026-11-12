@@ -312,15 +312,22 @@ inline bool xbg_spirv_has_capability(const std::vector<uint32_t> &w,uint32_t cap
 // refused, because a module that declares them without the capability is
 // invalid SPIR-V.
 inline int xbg_typed_storage_rewrite(std::vector<uint32_t> &words,uint32_t binding,uint32_t spirv_format,
-                                     const XbgStorageFormatMap &formats,bool allow_extended_formats){
+                                     const XbgStorageFormatMap &formats,bool allow_extended_formats,
+                                     const char **reason=nullptr){
+    // The refusal reason is reported with the vocabulary the offline coverage
+    // scan uses, so a device run and the scan can be compared line by line.
+    const auto refuse=[&](const char *why)->int{if(reason)*reason=why;return -1;};
     const uint32_t scalar=xbg_spirv_image_format_scalar(spirv_format);
-    if(scalar>2)return -1;
-    if(words.size()<5||words[0]!=0x07230203u)return -1;
+    if(scalar>2)return refuse("invalid-target-format");
+    if(words.size()<5||words[0]!=0x07230203u)return refuse("malformed-module");
     XbgStorageImageBinding info;
-    if(!xbg_spirv_binding_image(words,binding,info))return -1;
-    if(info.declared_format!=XBG_IMAGE_FORMAT_UNKNOWN)return info.declared_format==spirv_format?0:-1;
+    if(!xbg_spirv_binding_image(words,binding,info))return refuse("no-storage-image-for-binding");
+    if(info.declared_format!=XBG_IMAGE_FORMAT_UNKNOWN){
+        if(info.declared_format==spirv_format){if(reason)*reason="already-typed";return 0;}
+        return refuse("typed-with-other-format");
+    }
     // An extended format needs a capability that the device must support.
-    if(xbg_spirv_image_format_needs_extended(spirv_format)&&!allow_extended_formats)return -1;
+    if(xbg_spirv_image_format_needs_extended(spirv_format)&&!allow_extended_formats)return refuse("extended-format-not-supported");
     std::unordered_map<uint32_t,size_t> def;xbg_spirv_def_map(words,def);
     // The descriptors that share this image type.
     const std::vector<XbgImageSharer> sharers=xbg_spirv_image_sharers(words,info.image_type);
@@ -340,23 +347,23 @@ inline int xbg_typed_storage_rewrite(std::vector<uint32_t> &words,uint32_t bindi
             }
         }
         const bool same=declared==spirv_format||formats.declares(sharer.binding,spirv_format);
-        if(!same)return -1;
+        if(!same)return refuse("image-type-shared-with-other-format");
         // A typed image changes read semantics too, so a formatless read on
         // any descriptor of this image keeps the module formatless.
-        if(xbg_spirv_image_read(words,sharer.variable))return -1;
+        if(xbg_spirv_image_read(words,sharer.variable))return refuse("formatless-read-on-same-image");
     }
     // A typed image changes read semantics too, so a formatless read on the
     // rewritten descriptor keeps the module formatless.
-    if(xbg_spirv_image_read(words,info.variable))return -1;
+    if(xbg_spirv_image_read(words,info.variable))return refuse("formatless-read-on-same-image");
     // The sampled type must match the format's scalar class (VUID
     // StandaloneSpirv-Image-04965). The repository's uint storage images may
     // only be declared as an unsigned format.
-    auto sample=def.find(info.sampled_type);if(sample==def.end())return -1;
+    auto sample=def.find(info.sampled_type);if(sample==def.end())return refuse("unknown-sampled-type");
     size_t si=sample->second;uint32_t declared_scalar=3;
     if((words[si]&65535u)==22)declared_scalar=0;
     else if((words[si]&65535u)==21&&words[si+3]==0)declared_scalar=2;
     else if((words[si]&65535u)==21&&words[si+3]==1)declared_scalar=1;
-    if(declared_scalar!=scalar)return -1;
+    if(declared_scalar!=scalar)return refuse("sampled-type-class-mismatch");
     // The module must not end up with two identical type declarations: SPIR-V
     // forbids a duplicate non-aggregate type. When the typed form already
     // exists, the variable takes that type instead of declaring a second one.
@@ -364,9 +371,9 @@ inline int xbg_typed_storage_rewrite(std::vector<uint32_t> &words,uint32_t bindi
     if(existing){
         // Only an exclusive image type can move: a shared one would leave
         // the other descriptors on the old type.
-        if(sharers.size()!=1)return -1;
+        if(sharers.size()!=1)return refuse("duplicate-type-not-reusable");
         const uint32_t pointer=xbg_spirv_uniform_pointer_type(words,existing,sharers.front().variable_at);
-        if(!pointer)return -1;
+        if(!pointer)return refuse("duplicate-type-not-reusable");
         // The variable takes the existing type, and the loads of the variable
         // declare the type they produce.
         const std::vector<size_t> loads=xbg_spirv_variable_loads(words,info.variable);
@@ -389,6 +396,7 @@ inline int xbg_typed_storage_rewrite(std::vector<uint32_t> &words,uint32_t bindi
 // The rewrite without a format map: an image type that another descriptor
 // shares is refused, because nothing proves that the other descriptor declares
 // the same format.
-inline int xbg_typed_storage_rewrite(std::vector<uint32_t> &words,uint32_t binding,uint32_t spirv_format){
-    return xbg_typed_storage_rewrite(words,binding,spirv_format,XbgStorageFormatMap{},false);
+inline int xbg_typed_storage_rewrite(std::vector<uint32_t> &words,uint32_t binding,uint32_t spirv_format,
+                                     const char **reason=nullptr){
+    return xbg_typed_storage_rewrite(words,binding,spirv_format,XbgStorageFormatMap{},false,reason);
 }

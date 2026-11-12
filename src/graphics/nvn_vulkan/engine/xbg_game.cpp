@@ -2956,9 +2956,10 @@ Shader *typed_storage_variant(Shader &base){
     for(const auto &entry:formats){
         // 0 means the module already declares this format, which is what a
         // second descriptor of a shared image type sees.
-        const int rewritten=xbg_typed_storage_rewrite(words,entry.first,xbg_spirv_image_format(entry.second),declared,extended_formats);
+        const char *reason="";
+        const int rewritten=xbg_typed_storage_rewrite(words,entry.first,xbg_spirv_image_format(entry.second),declared,extended_formats,&reason);
         if(rewritten!=1&&rewritten!=0){
-            xbg_logf("NVN typed storage UNSUPPORTED shader=%s binding=%u format=%u reason=rewrite-refused unchanged=1",base.key.c_str(),entry.first,entry.second);
+            xbg_logf("NVN typed storage UNSUPPORTED shader=%s binding=%u format=%u reason=%s unchanged=1",base.key.c_str(),entry.first,entry.second,reason);
             return &base;
         }
     }

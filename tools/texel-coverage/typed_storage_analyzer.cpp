@@ -393,19 +393,27 @@ int main(int argc, char **argv){
                 XbgStorageFormatMap probe = canonical;
                 probe.binding_format[binding.binding] = spirv_format;
                 std::vector<uint32_t> copy = words;
+                const char *shipped_reason = "";
                 const int result = xbg_typed_storage_rewrite(copy, binding.binding, spirv_format,
-                                                             probe, allow_extended_formats);
+                                                             probe, allow_extended_formats, &shipped_reason);
                 const std::string reason = diagnose(words, binding.binding, spirv_format,
                                                     probe, allow_extended_formats);
                 if(result == 1) dump_rewritten(key, binding.binding, vk, copy);
-                // The explanation must agree with the shipping verdict.
+                // The explanation must agree with the shipping verdict and with
+                // the reason the shipping rewrite reports.
                 const bool agree = (result == 1) == (reason == "accepted");
-                if(!agree) ++mismatches;
+                // The shipping rewrite only names a reason when it refuses.
+                const bool reason_agrees = result == 0
+                    ? shipped_reason == std::string("already-typed")
+                    : (result == 1 ? (std::string(shipped_reason).empty() || shipped_reason == reason)
+                                   : shipped_reason == reason);
+                if(!agree || !reason_agrees) ++mismatches;
                 out += "{\"vk_format\":" + std::to_string(vk);
                 out += ",\"spirv_format\":" + std::to_string(spirv_format);
                 out += ",\"result\":" + std::to_string(result);
                 out += ",\"reason\":\"" + reason + "\"";
-                out += ",\"verdict_agrees\":" + std::string(agree ? "true" : "false");
+                out += ",\"verdict_agrees\":" + std::string(agree && reason_agrees ? "true" : "false");
+                out += ",\"shipped_reason\":\"" + json_escape(shipped_reason) + "\"";
                 out += "}";
             }
             out += "]}";
@@ -433,11 +441,13 @@ int main(int argc, char **argv){
             for(uint32_t target : targets){
                 variant_target = true;
                 const uint32_t spirv_format = canonical.binding_format.at(target);
+                const char *shipped_reason = "";
                 const int result = xbg_typed_storage_rewrite(variant, target, spirv_format,
-                                                             canonical, allow_extended_formats);
+                                                             canonical, allow_extended_formats, &shipped_reason);
                 if(result != 1 && result != 0){
                     variant_ok = false;
                     variant_reason = diagnose(words, target, spirv_format, canonical, allow_extended_formats);
+                    if(variant_reason != shipped_reason) ++mismatches;
                     break;
                 }
             }
