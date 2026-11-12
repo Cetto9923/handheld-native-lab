@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-12T23:08:41.123953+08:00",
+ "updated_at": "2026-11-12T23:11:58.606703+08:00",
  "phase": "v1.0.6 published; v1.0.7 internal team-play package built and device-verified on task/T-package-1.0.7-20261112 (moon halo fix shipped, cheat menu usable, 30 FPS held). Battle effect pipeline stutter still open, not in this package.",
  "coordinator": "MiniMax Code /root release takeover (Codex thread aborted by user)",
  "integration_branch": "work/rg477m-native",
@@ -6964,7 +6964,7 @@
   "root_cause_corrected_at": "2026-11-12T23:00:52.831874+08:00",
   "correction_note": "An earlier entry in this file and an earlier message to the user attributed the stalls to the effect pipelines being created synchronously on the frame that releases the effect. That attribution was wrong and is withdrawn. The measured created count in the live session is zero."
  },
- "warm_prewarm_negative_return_20261112": {
+ "warm_prewarm_attribution_withdrawn_20261112": {
   "observed_at": "2026-11-12T23:00:52.831874+08:00",
   "finding": "The seed prewarm is currently a net loss: it costs about 7 s of prewarm and produces a multi second stall, while delivering zero hits.",
   "evidence": {
@@ -6987,6 +6987,48 @@
    "P1 the class A flush fix stays because it fixes a real bug, the learned recipes never reaching the disk, but it depends on the key match",
    "P2 the seed belongs in the distributed data package because the team bundle lacks it, with the acceptance that a 1560 pipeline prewarm must not hand the user a multi second startup stall before the key match is fixed"
   ],
-  "device_note": "the RG477M is still offline; the Honor tablet A42BBB5109000333 runs 1.0.7 with gfx-defer-events off and the leftover probe files cleared"
+  "device_note": "the RG477M is still offline; the Honor tablet A42BBB5109000333 runs 1.0.7 with gfx-defer-events off and the leftover probe files cleared",
+  "withdrawn_at": "2026-11-12T23:11:58.606703+08:00",
+  "withdrawal_reason": "The coordinator mixed two different runs into one conclusion. The device log file is overwritten by later sessions: the lines that reported warm list=1560 and warm_built=1560 warm_ms=7010 came from an earlier session, while the log pulled later contained only one warm list line, NVN warm list=0 enabled=1, with warm_built=0 everywhere. A session with no prewarm at all still showed the stalls, so the prewarm does not cause them. The coordinator attribution is withdrawn."
+ },
+ "honor_transition_real_rootcause_20261112": {
+  "observed_at": "2026-11-12T23:11:58.606703+08:00",
+  "measured_by": "the transition worker, on the Honor device, comparing 60 frame windows from the engine perf lines: 28 slow windows against 95 fast windows",
+  "table": {
+   "submit_cpu_ms": {
+    "slow": 24.35,
+    "fast": 13.22
+   },
+   "gpu_ms": {
+    "slow": 15.43,
+    "fast": 16.82
+   },
+   "created": {
+    "slow": 10.68,
+    "fast": 0.38
+   },
+   "sync_rb": {
+    "slow": 5.04,
+    "fast": 0.02
+   },
+   "warm_built": {
+    "slow": 0,
+    "fast": 0
+   },
+   "async_built": {
+    "slow": 15.68,
+    "fast": 14.37
+   }
+  },
+  "transition_window": {
+   "wall_ms": 3433.7,
+   "fps": 17.47,
+   "submit_cpu_ms": 28.51,
+   "sync_rb": 7
+  },
+  "conclusion": "The stall is not the prewarm and not defer_events. The CPU is stuck inside vkQueueSubmit, and the readback drain only happens in the slow windows. gpu_sync() calls submit_slots(true), which waits for every slot instead of waiting only for the submission that owns the readback, so the wait is far larger than needed. The new pipelines and the readback drain appear only in the slow windows, and the order between them is still open.",
+  "reuse_rejected": "not set: only two paths set it, the gfx-shader-reuse=2 comparison and take_rewritten input mismatch, and the device runs gfx-shader-reuse=0 while optimize_runtime_shader() short circuits before take_rewritten, with zero INPUT MISMATCH lines in the log",
+  "next": "Implement a readback directed retirement in the same spirit as the event directed retirement that was already implemented and host proven: wait only for the submission that owns the readback. The event directed retirement and the new gfx-warm-budget and gfx-warm-interval markers stay in place as dormant levers with unchanged defaults.",
+  "evidence_discipline": "the coordinator added two rules to AGENTS.md after mixing two runs: confirm the owning process and the capture moment before using device logs, and withdraw an attribution explicitly when later data refutes it"
  }
 }
