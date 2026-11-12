@@ -6,8 +6,10 @@
 
 - 这是**离线统计**：它回答「Mali typed-storage 改写规则能把多少模块改成 typed 形态，
   剩下的是哪些、为什么」，不回答「游戏在 RG477M 上能不能跑」。
-- **真机腿 NOT_RUN**：设备 `RG477M01445122` 本轮不在线，脚本 `scripts/android/verify_rg477m_typed_storage.sh`
-  在设备未连接时以 `BLOCKED_DEVICE` 退出 2。本文件不含任何真机 PASS，也不含任何推测出来的真机结论。
+- **本分支的真机腿 NOT_RUN**：统计期间设备 `RG477M01445122` 上线了，但设备上跑的是**另一条线**的
+  v9 构建，本分支的 APK（versionCode 7）被 `adb install -r` 以 `INSTALL_FAILED_VERSION_DOWNGRADE` 拒绝。
+  本轮**只读**取回了设备上已有的日志并用它验证 census 脚本（§8.5），**没有**安装、卸载或启动任何东西。
+  本文件不含任何属于本分支的真机 PASS。
 - 所有判定都来自**设备上运行的同一份代码**：离线分析器直接 `#include` 生产头
   `src/graphics/nvn_vulkan/engine/xbg_spirv_typed_storage.h` 与 `xbg_spirv_stencil.h`，
   不是二次实现。
@@ -191,10 +193,66 @@
 `scripts/verify_host.py` **此前没有** typed-storage 组（任务简报称已接入，实测未接入），本轮补上：
 装配 4 个 fixture、编译契约、跑契约、对 4 个改写结果各跑一次 `spirv-val --target-env vulkan1.1`。
 
+## 8.5 设备侧现有证据（只读，非本分支）
+
+统计进行中时 RG477M 突然上线，设备上已有一份当天 01:34:59 的运行日志（**已安装的 v9 构建**，
+`dumpsys package` 显示 `versionCode=9 versionName=1.0.9`；本地同版 APK
+`.local/android-apk/ffrs-game-window-debug-1.0.9.apk`，SHA-256
+`cc5bb6be78238e2124a5e01f332eebdf82e9423126a024fa7f4e73f3298e068a`）。
+本轮**只读**取回该日志（`adb shell cat`），**没有安装、没有卸载、没有启动**任何东西。
+
+用加固后的 census 脚本读这份真实日志（`FFRS_LOG=<path>`）：
+
+```
+hits=4            hit_shaders=2
+refused=0         refused_shaders=0
+fatal_marker=present
+formatless_write_fatal=present
+other_fatals=16
+命中：
+  NVN typed storage variant shader=664748e31a2dfad9 identity=664748e31a2dfad9:stb1:11_98
+  NVN typed storage variant shader=664748e31a2dfad9 identity=664748e31a2dfad9:stb1:11_107
+  NVN typed storage variant shader=51f7cdbbdeb581a3 identity=51f7cdbbdeb581a3:stb1:11_100
+  NVN typed storage variant shader=51f7cdbbdeb581a3 identity=51f7cdbbdeb581a3:stb1:11_109
+```
+
+即：**typed-storage 变体在真机上确实被创建并使用**（4 次命中，2 个 shader），
+但该构建仍然 FATAL：`FATAL: Texel format lacks formatless-write support`。
+
+从日志定位到具体对象：`NVN texel format=74 bufferFeatures=0x58` 紧接
+`NVN STORAGE_PENDING_VIEW_MISS frame=22 shader=3b6302a58b86a34a`，74 =
+`VK_FORMAT_R16G16B16A16_SFLOAT`（浮点 16 位×4）。
+
+离线语料里同一个 shader 的事实（扫描器输出，post-stencil）：
+
+| 项 | 值 |
+|---|---|
+| binding | 47，`STORAGE_TEXEL_BUFFER`，count 1 |
+| package flags | `0x80010501` → formatless write，scalar=1（无符号） |
+| 模块 sampled type | class 2（uint），stencil rewrite 触发 2 次 |
+| image type sharers | 1 |
+| 可接受格式 | **98 / 101 / 107**（无符号族），其余为 sampled-type-class-mismatch |
+
+结论（**规则层面**，非真机结论）：该 binding 的 typed 形态是**可覆盖**的；
+已安装构建之所以 FATAL，是因为它把绑定格式解析成 74（浮点），
+而该模块（stencil 之后）采样无符号，声明不了浮点格式 → 改写被拒 → 退回 formatless → FATAL。
+**本分支**的 `texel_binding_format`（package scalar=1 时把绑定格式定为 `R32_UINT`）
+会把该 binding 解析成 98，正好落在可接受集合内。
+
+两点必须写清：
+1. 上面这条是**规则层面的推断**，**不是**本分支的真机结论；本分支的构建没有装到设备上。
+2. 设备上跑的 v9 构建**不是**本分支的产物（本 worktree 的 APK 是 versionCode 7，
+   `adb install -r` 因 `INSTALL_FAILED_VERSION_DOWNGRADE` 拒绝）；
+   同时仓库里存在另一条并行工作线 `.worktrees/rg477m-texelfix-20261113`
+   （HEAD `dc3bbb9`）正在改同一处 `texel_binding_format`，其实现已带 module 感知的格式替换。
+   **本轮没有改动那条线**，覆盖结论与真机复现应由总控协调，避免两条线互相覆盖。
+
 ## 9. 未完成与风险
 
-1. **真机腿 NOT_RUN**：设备 `RG477M01445122` 不在线。进标题、进战斗、画面正确性、FATAL 缺席
-   全部无证据。脚本已就绪，设备上线后一次运行即出结论（§10）。
+1. **真机腿：本分支 NOT_RUN**。统计期间设备上线，设备上是**别的线**的 v9 构建（§8.5），
+   其日志证明 typed 变体在真机上会被创建，但仍有 formatless-write FATAL。
+   本分支的 APK（versionCode 7）因版本降级被 `adb install -r` 拒绝，且设备正被其它线使用，
+   本轮**没有**安装/卸载/启动任何东西。进标题、进战斗、画面正确性对本分支仍然无证据。
 2. **2 个模块无法被 typed 路径覆盖**：`090014edce599091`、`6ff5fc1ca693f953` 在同一 image 上
    formatless write + formatless read。Mali 没有 `STORAGE_{READ,WRITE}_WITHOUT_FORMAT` 位，
    这两个模块在真机上仍可能触发 FATAL。本轮未改（改写会改变读语义）。
@@ -247,9 +305,16 @@ git show db5218e:src/graphics/nvn_vulkan/engine/xbg_spirv_typed_storage.h > $B/s
 git show 38957a0:tools/texel-coverage/typed_storage_analyzer.cpp > $B/tools/texel-coverage/
 # -> covered 1356 / uncovered 1120；spirv-val 5520 -> 4165 通过 / 1355 失败
 
-# 真机腿（设备上线后）
+# 真机腿（需要先协调版本码：本 worktree 的 APK 是 versionCode 7，设备上是 9）
 bash scripts/android/verify_rg477m_typed_storage.sh RG477M01445122
-# 设备不在线时：BLOCKED_DEVICE，退出码 2（本轮即此状态）
+# 设备不在线：BLOCKED_DEVICE，退出码 2
+# 安装被版本降级拒绝：INSTALL_FAILED_VERSION_DOWNGRADE，脚本在 set -e 下退出码 1，
+#   且不会继续 force-stop / 清日志 / 启动（设备状态不变）
+
+# 只读 census：读一份已存在的日志（真实设备日志已用它验证过）
+FFRS_LOG=<engine.log> FFRS_OUT=<out-dir> bash scripts/android/verify_rg477m_typed_storage.sh
+# -> hits / hit_shaders / refused / 每个 reason_* 计数 / fatal_marker /
+#    formatless_write_fatal / other_fatals；有 FATAL 时退出码 1
 ```
 
 ## 11. 与任务简报的偏差（如实记录）
@@ -267,5 +332,7 @@ bash scripts/android/verify_rg477m_typed_storage.sh RG477M01445122
 - 产物（不进 Git，`.local/rg477m-texel-20261112/`）：
   `coverage/modules.jsonl`、`coverage/coverage_stats.json`、`coverage/uncovered_bindings.{json,tsv}`、
   `coverage/module_verdicts.{json,tsv}`、`coverage/spirv_val.json`、`coverage_dump/*.spv`（9079 个改写后模块）
+- 设备侧只读证据：`.local/rg477m-texel-20261112/device_readonly/{engine.log,engine.log.fatal}`
+  （来自设备上已安装的 v9 构建，非本分支）
 - 出处：`coordination/results/RG477M-TEXEL-20261112-OSS-NOTES.md`
 - 前序报告：`coordination/results/RG477M-TEXEL-20261112-RESULT.md`

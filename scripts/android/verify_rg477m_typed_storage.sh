@@ -41,9 +41,9 @@ typed_storage_census() {
     local SUMMARY="$2"
     local HITS HIT_SHADERS REFUSED REFUSED_SHADERS count reason unknown
     HITS="$(grep -c "NVN typed storage variant shader=" "${LOG}" || true)"
-    HIT_SHADERS="$(grep -o "NVN typed storage variant shader=[0-9a-f]*" "${LOG}" | sed 's/.*shader=//' | sort -u | wc -l | tr -d ' ')"
+    HIT_SHADERS="$( { grep -o "NVN typed storage variant shader=[0-9a-f]*" "${LOG}" || true; } | sed 's/.*shader=//' | sort -u | wc -l | tr -d ' ')"
     REFUSED="$(grep -c "NVN typed storage UNSUPPORTED" "${LOG}" || true)"
-    REFUSED_SHADERS="$(grep -o "NVN typed storage UNSUPPORTED shader=[0-9a-f]*" "${LOG}" | sed 's/.*shader=//' | sort -u | wc -l | tr -d ' ')"
+    REFUSED_SHADERS="$( { grep -o "NVN typed storage UNSUPPORTED shader=[0-9a-f]*" "${LOG}" || true; } | sed 's/.*shader=//' | sort -u | wc -l | tr -d ' ')"
     {
         echo "log=${LOG}"
         echo "hits=${HITS}"
@@ -57,7 +57,7 @@ typed_storage_census() {
         # A reason outside the known set is a new class: it is reported, never
         # folded into a known one.
         local seen=""
-        for reason in $(grep -o "NVN typed storage UNSUPPORTED .*reason=[a-z0-9-]*" "${LOG}" | sed 's/.*reason=//' | sort -u); do
+        for reason in $( { grep -o "NVN typed storage UNSUPPORTED .*reason=[a-z0-9-]*" "${LOG}" || true; } | sed 's/.*reason=//' | sort -u); do
             known=0
             for candidate in "${FFRS_REASONS[@]}"; do
                 if [[ "${reason}" == "${candidate}" ]]; then known=1; break; fi
@@ -69,14 +69,14 @@ typed_storage_census() {
         done
         echo "fatal_marker=$([ -s "${FFRS_OUT}/engine.log.fatal" ] && echo present || echo absent)"
         echo "formatless_write_fatal=$(grep -q "lacks formatless-write support" "${LOG}" && echo present || echo absent)"
-        echo "other_fatals=$(grep -c "^FATAL:" "${LOG}" || true)"
+        echo "other_fatals=$(grep -c "FATAL:" "${LOG}" || true)"
     } > "${SUMMARY}"
     echo "--- typed storage census ---"
     cat "${SUMMARY}"
     echo "--- refused shaders ---"
-    grep -o "NVN typed storage UNSUPPORTED shader=[0-9a-f]* .*reason=[a-z0-9-]*" "${LOG}" | sed 's/NVN typed storage UNSUPPORTED //' | sort -u | head -40 || true
+    { grep -o "NVN typed storage UNSUPPORTED shader=[0-9a-f]* .*reason=[a-z0-9-]*" "${LOG}" || true; } | sed 's/NVN typed storage UNSUPPORTED //' | sort -u | head -40 || true
     echo "--- hit shaders ---"
-    grep -o "NVN typed storage variant shader=[0-9a-f]* identity=[^ ]*" "${LOG}" | sort -u | head -40 || true
+    { grep -o "NVN typed storage variant shader=[0-9a-f]* identity=[^ ]*" "${LOG}" || true; } | sort -u | head -40 || true
     echo "--- other fatals ---"
     grep -E "^FATAL:" "${LOG}" | head -20 || true
     if [[ -s "${FFRS_OUT}/engine.log.fatal" ]] || grep -q "lacks formatless-write support" "${LOG}"; then
