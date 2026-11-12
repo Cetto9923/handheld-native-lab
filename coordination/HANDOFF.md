@@ -1,3 +1,50 @@
+# 2026-11-12 23:35 1.0.9 合流启动：特效线交回平板，卡顿真因锁定在提交路径的 drain
+
+一次归因，一个结论，一次撤回。全程只用真机数据。
+
+## 这一轮的落点
+
+| 任务 | 状态 | 关键产出 |
+|---|---|---|
+| 特效线（seed / warm flush） | 已交回 | `T-RESCUE-WARM-LIST-RESULT.md`、`HONOR-EFFECT-PREWARM-SEED-20261112.md`，平板已归还并恢复全部 marker |
+| 过场 / readback 定向退休 | 进行中 | `xbg_readback_retire.h` + 自证脚本 + 契约测试（未提交） |
+| Mali formatless-write FATAL | 进行中 | 477M 独占，SPIR-V typed 路径 |
+| 8E5 战斗结算闪退 P0 | 进行中 | 无设备，只做代码级加固 + 宿主契约 |
+| 1.0.9 合流出包 | 待启动 | 依赖上述三线 |
+
+## 卡顿真因（第三次修正后的当前结论）
+
+慢窗口（n=10）与快窗口（n=116）逐项对比，取自保留的 run-4 日志（pid 16129，126 个 60 帧窗口）：
+
+- `submit_cpu_ms` **28.09 vs 13.47**（慢 vs 快）——CPU 卡在提交路径
+- `gpu_ms` **13.48 vs 17.25** —— GPU 反而更闲，**GPU 不是瓶颈**
+- `sync_rb` **9.80 vs 0.03**、`sync_wb` **10.40 vs 0.00** —— 慢窗口的标记是读写回 drain
+- `create_max_ms` 全会话最大 **1.3 ms** —— 同步建管线**不可能**解释 100 ms 尖峰
+
+分组交叉验证说明因果关系：有 readback 无建管线 = 45.0 ms/帧，有建管线无 readback = 43.5 ms/帧，两者都有 = 53.8 ms/帧。**互不为因**，是同一类帧上的两笔独立开销，而落点都在慢掉的提交路径。**修复点是 drain 调度**，即 transit 线正在做的 readback 定向退休。
+
+## 两次被推翻的归因（显式撤回）
+
+1. 「特效首次释放同步建管线」→ 撤回。全会话单条最大建管线 1.3 ms。
+2. 「seed 预热导致巨帧」→ 撤回。巨帧在预热**开**（4800 ms）、**关**（4690 ms）、**完全无缓存**（4489 ms）三种情况下都在。它是场景与资源加载，未解释。
+
+## seed 的裁定：只修 A 类，不吹 B 类
+
+- **A 类已修**：`warm::flush()` 不再被 `pipelines_unsaved`（仅计 ≥2 ms 的创建）卡住，改为自己的 300 帧节流，shutdown 也 flush。
+- **B 类不成立为「已解决」**：key **逐字节匹配**（设备学到的 431 条是 seed 1560 条的严格子集，`only_in_second=0`），但收益**未证实**——报 106 hits 的那次会话没有留存；保留的那次关掉后台构建器后，同一份 1560 条仍留下 329 次帧内创建。**已知 key ≠ 已建管线**。
+- **代价**：1560 条 seed 约 **7.0 s** 后台驱动工作换约 106 次命中，且这段工作与主线程在冷启动期抢资源。
+- **决定**：1.0.9 只带 A 类修复；seed 收窄 + 构建顺序调整列为 P1（`HONOR-SEED-NARROW-P1-20261112`），等平板再交回时做设备 A/B。
+
+## 设备状态
+
+- **A42BBB5109000333（平板）**：已归还用户，跑的是干净的 1.0.7（`gfx-defer-events=0`、诊断探针已清、pipeline list/cache 已还原、App 已停）。备份在 `.local/marker-backups/ffrs-markers-backup-20261112-223935.tar`。**此后任何 worker 不得碰。**
+- **RG477M01445122**：数据完好（14G + 3 存档），已装 1.0.9/code 9（签名与 honor 逐字节相同，`install -r` 成功，未卸载），但 guest 因 Mali FATAL 启动即死。**该设备由 Mali 线独占。**
+- 本轮所有日志按 pid 与采集时刻对齐取证，跨会话行未混用。
+
+## 合流注意
+
+`src/graphics/nvn_vulkan/engine/xbg_game.cpp` 有四条线各自在自己的 worktree 里改：seed 线（已交回）、transit、texel、crash。**由总控串行合并**，顺序：warm flush → event/readback retire → texel format → crash P0。honor 主 worktree 里 Antigravity 的 `xbg_game.cpp` WIP 不属于本次合流。
+
 # 2026-11-12 17:40 Moon halo: the symptom is the halo, the engine state is identical, and no fix is claimed
 
 Scope: the user's moon flicker, in the Load Data 01 scene with the one character save (01 战场 Lv.1 / Time 0:24). No game behaviour is changed and no release is claimed in this step.

@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-12T23:25:51.921398+08:00",
- "phase": "v1.0.6 published; v1.0.7 internal team-play package built and device-verified on task/T-package-1.0.7-20261112 (moon halo fix shipped, cheat menu usable, 30 FPS held). Battle effect pipeline stutter still open, not in this package.",
+ "updated_at": "2026-11-12T23:32:00.823024+08:00",
+ "phase": "v1.0.9 consolidation in progress: one APK (versionCode 9) must boot both the Honor tablet (code 7) and the RG477M (code 8). Three implementation lines are in flight — readback targeted retirement (stutter root cause), Mali formatless-write FATAL (RG477M cannot enter the game), battle-settle crash P0 (8E5 phone, no device). The Honor tablet was returned to the user after the effect-seed line finished its measurement; all Honor device acceptance is deferred to one session after the merge.",
  "coordinator": "MiniMax Code /root release takeover (Codex thread aborted by user)",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -1836,8 +1836,65 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/rescue-1.0.7-20261112",
    "branch": "task/T-rescue-1.0.7-20261112",
    "acquired_at": "2026-11-12T20:06:51.357052+08:00",
-   "checkpoint": "running; the worker was steered with the cross-device constraint (Mali) and must keep out of the RG477M directory",
+   "checkpoint": "056159d",
    "objective": "Remove the synchronous pipeline creation from the battle effect release frames: fix the flush guard that loses fast-created records, and ship a validated seed so a first-time effect does not compile on the frame it appears.",
+   "write_state": "COMPLETE_HANDED_BACK",
+   "released_at": "2026-11-12T23:32:00.823024+08:00",
+   "release_reason": "Effect/seed line finished on the Honor tablet, restored every marker it touched, returned the tablet to the user and pulled all raw logs to .local/rescue-1.0.7-20261112/. Device data refuted the task premise (pipeline creation is not the spike cause), so the remaining device gate was withdrawn and the follow-up (narrow the seed) became P1.",
+   "result": "T-RESCUE-WARM-LIST-RESULT.md + HONOR-EFFECT-PREWARM-SEED-20261112.md; Class A warm::flush fix and the seed distribution path landed"
+  },
+  {
+   "task": "HONOR-TRANSIT-RETIRE-20261112",
+   "owner": "worker agent bg_c4589115-46fd-481d-9b34-20dde3c287c1",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_readback_retire.h",
+    "src/graphics/nvn_vulkan/engine/xbg_event_retire.h",
+    "tests/native/xbg_readback_retire_contract.cpp",
+    "scripts/runtime/selfproof_xbg_readback_retire.sh",
+    "coordination/results/TRANSIT-20261112-RESULT.md",
+    "coordination/results/TRANSIT-20261112-OSS-NOTES.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/transit-20261112",
+   "branch": "task/T-transit-20261112",
+   "acquired_at": "2026-11-12T23:32:00.823024+08:00",
+   "checkpoint": "585bf28 plus uncommitted xbg_readback_retire.h / selfproof script / contract test",
+   "objective": "Retire a readback only to its own submission instead of draining every slot, so the CPU stops blocking in vkQueueSubmit. Must not change game logic time, animation speed or draw results.",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "RG477M-TEXEL-FORMAT-20261112",
+   "owner": "worker agent bg_5cdcb608-6767-413d-bd13-bfceddcdd7dc",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_indirect_instances.h",
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_integer_buffer.h",
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_stencil.h",
+    "tests/native/",
+    "coordination/results/RG477M-TEXEL-20261112-RESULT.md",
+    "coordination/results/RG477M-TEXEL-20261112-OSS-NOTES.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native/.worktrees/rg477m-texel-20261112",
+   "branch": "task/T-rg477m-texel-20261112",
+   "acquired_at": "2026-11-12T23:32:00.823024+08:00",
+   "checkpoint": "db094f8 (no change yet)",
+   "objective": "Fix the Mali FATAL \"Texel format lacks formatless-write support\" so the RG477M can enter the game. Mali reports bufferFeatures=0x78 for texel formats: the optional STORAGE_WRITE_WITHOUT_FORMAT / READ_WITHOUT_FORMAT bits are absent, so the formatless path cannot be used; the typed (with-format) path must be produced by rewriting the SPIR-V.",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "CRASH-P0-BATTLE-SETTLE-20261112",
+   "owner": "worker agent bg_c4b2d1d1-a3ce-47e3-bb89-d1dd870937f2",
+   "paths": [
+    "src/runtime/hle/nso_host.c",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "tests/native/",
+    "coordination/results/CRASH-P0-BATTLE-SETTLE-20261112.md"
+   ],
+   "worktree": "worker to declare; the RG477M main worktree and the honor main worktree are forbidden (foreign WIP)",
+   "branch": "task/T-crash-p0-20261112",
+   "acquired_at": "2026-11-12T23:32:00.823024+08:00",
+   "checkpoint": "not yet reported",
+   "objective": "Pre-emptive hardening for the 8E5 (Snapdragon) crash after a Bahamut summon wins the fight. No 8E5 device is available, so the work is code-level analysis plus host contracts; every device claim must be written NOT_RUN.",
    "write_state": "ACTIVE"
   }
  ],
@@ -5004,18 +5061,19 @@
     "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp"
    ],
-   "acceptance": "The same APK installs on both devices (versionCode 9 covers the RG477M code 8 and the Honor code 7). The RG477M boots to the title and reaches a battle. 30 FPS is stable on the RG477M real scene. The startup log shows profile=handheld_mid with the detection reason, soc=mt6897 and gpu=mali. The 4:3 1280x960 output is letterboxed, not stretched, and the game logic time is unchanged. No data root is hardcoded. OSS-NOTES.md lists every community or upstream reference with URL and revision, and any change without a source is rejected.",
-   "recovery_point": "63d3652"
+   "acceptance": "DELIVERED AND DEVICE VERIFIED: one APK (versionCode 9, versionName 1.0.9) installs over the RG477M code 8 with the same signing certificate, render_tier=1280x720 operation_mode=handheld with the detection reason in the log, the 4:3 1280x960 output is pillarboxed (source 1280x720 -> dst 1280x720 at (0,120), bars_top 120, bars_bottom 120, stretch=no), the surface frame rate is declared at 30 Hz and the engine locks target_fps=30, the data root is auto-discovered (no hardcoded path), the cheat dialog decrypts the real save, and all four live saves are byte-identical to the backup with unchanged timestamps. NOT VERIFIED: the guest does not reach the title on the RG477M - it dies after ~5 s with FATAL: Texel format lacks formatless-write support (Mali). That gate stays open until RG477M-TEXEL-FORMAT-20261112 lands.",
+   "recovery_point": "63d3652",
+   "checkpoint": "221ef7b"
   },
   {
    "id": "HONOR-PIPELINE-SEED-20261112",
-   "status": "in_progress",
+   "status": "completed",
    "role": "GRAPHICS_PERFORMANCE_FIX",
    "dependencies": [],
    "pass_gates": [
     "HONOR-PACKAGE-1.0.7-20261112"
    ],
-   "owner": "worker agent bg_493e3274-03b2-44e1-afc9-b606d08602a7",
+   "owner": "worker agent bg_493e3274-03b2-44e1-afc9-b606d08602a7, continued and finished by bg_885edb77-5872-4c8c-8ae9-2089b09e4c6c",
    "branch": "task/T-rescue-1.0.7-20261112",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/rescue-1.0.7-20261112",
    "scope": "Two proven root causes. Class A: warm::flush() is called only from save_pipeline_cache() and is guarded by pipelines_unsaved, which increments only when a pipeline creation took 2 ms or more, so every pipeline recorded by warm::record() with a creation time below 2 ms is recorded and then never flushed. Class B: the seed entity vk-pipeline-list.seed / pipeline-warm-list.bin does not exist in the repository and does not exist in the shipped data bundle, while the engine (load_records, FFRS_WARM_LIST_SEED, <shader_directory>/vk-pipeline-list.seed) and the Android side (<data root>/pipeline-warm-list.bin) already support it. The packaging whitelist scripts/distribution/package_honor_portable.py uses exact equality and must be widened to accept the seed.",
@@ -5039,8 +5097,172 @@
     "scripts/distribution/inspect_pipeline_warm_list.py",
     "scripts/distribution/index_pipeline_warm_list.py"
    ],
-   "acceptance": "Class A: warm::flush() runs for every recorded pipeline, not only for the ones whose creation took 2 ms or more. Class B: a validated seed ships with the data bundle and the packaging whitelist accepts it. On the device no new-pipeline creation exceeds 100 ms on an effect frame. The seed is found on both data roots without a hardcoded path.",
-   "recovery_point": "e7ddc44"
+   "acceptance": "DELIVERED: Class A - warm::flush() now runs for every recorded pipeline on its own 300-frame cadence instead of only for pipelines whose creation took 2 ms or more, and the shutdown path flushes too (xbg_warm_flush.h + xbg_game.cpp). Class B - a validated 1560-record seed ships as an entity in the data bundle and the packaging whitelist accepts it (package_honor_portable.py --add-to/--restore, verify_seed, seed_block). Host contracts: tests/graphics/test_warm_flush_contract.cpp green, 12 installer tests green, scripts/verify_host.py 19/19. NOT_RUN / WITHDRAWN: the original device gate 'no new-pipeline creation exceeds 100 ms on an effect frame' rested on a premise the device data refuted - over the whole measured session the largest single pipeline creation was 1.3 ms, so creation is not the spike cause; the Honor tablet was returned to the user before the final seed build could be measured, so no device claim is made. The seed benefit itself is unproven: the run that reported 106 hits was not retained, and the retained run with the builder off still had 329 in-frame creations. Follow-up HONOR-SEED-NARROW-P1-20261112 tracks narrowing the seed and reordering the build priority.",
+   "recovery_point": "e7ddc44",
+   "checkpoint": "056159d",
+   "result_files": [
+    "coordination/results/T-RESCUE-WARM-LIST-RESULT.md",
+    "coordination/results/HONOR-EFFECT-PREWARM-SEED-20261112.md",
+    ".local/rescue-1.0.7-20261112/"
+   ]
+  },
+  {
+   "id": "RG477M-TEXEL-FORMAT-20261112",
+   "role": "graphics worker",
+   "status": "in_progress",
+   "owner": "worker agent bg_5cdcb608-6767-413d-bd13-bfceddcdd7dc",
+   "branch": "task/T-rg477m-texel-20261112",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native/.worktrees/rg477m-texel-20261112",
+   "objective": "Remove the Mali formatless-write FATAL so the RG477M can enter the game: Mali reports bufferFeatures=0x78 for the texel formats, missing the optional STORAGE_WRITE_WITHOUT_FORMAT and READ_WITHOUT_FORMAT bits, so the formatless storage texel path cannot be used and the SPIR-V must be rewritten to the typed path.",
+   "inputs": [
+    "xbg_game.cpp:2670-2683 texel_buffer_features()",
+    "xbg_game.cpp:3826-3839 FATAL check",
+    "xbg_spirv_indirect_instances.h",
+    "xbg_spirv_integer_buffer.h",
+    "xbg_spirv_stencil.h"
+   ],
+   "outputs": [
+    "SPIR-V rewrite for the typed texel path",
+    "host contract test",
+    "coordination/results/RG477M-TEXEL-20261112-RESULT.md",
+    "coordination/results/RG477M-TEXEL-20261112-OSS-NOTES.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_*.h",
+    "tests/native/"
+   ],
+   "acceptance": "The guest boots on the RG477M past the texel-format check and reaches the title. No reduced precision, no skipped draw, no depth turned off, no placeholder module. Every community reference has URL, revision, licence and support range in OSS-NOTES. If the NVN formatless semantics cannot be met on Mali the result is BLOCKED with the smallest workable fallback and its verifiable depth, not a fake green. Device: RG477M01445122 only.",
+   "checkpoint": "db094f8 (no change yet)",
+   "device_exclusive": "RG477M01445122 (the Honor tablet A42BBB5109000333 is forbidden)"
+  },
+  {
+   "id": "HONOR-TRANSIT-RETIRE-20261112",
+   "role": "graphics worker",
+   "status": "in_progress",
+   "owner": "worker agent bg_c4589115-46fd-481d-9b34-20dde3c287c1",
+   "branch": "task/T-transit-20261112",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/transit-20261112",
+   "objective": "Retire a readback only up to the submission that carries it, instead of draining every slot, so the CPU stops blocking in vkQueueSubmit while the GPU is idle.",
+   "inputs": [
+    "xbg_game.cpp:1014/1052 retire_slot",
+    "xbg_game.cpp:1065-1080 retire_through()",
+    "xbg_game.cpp:2059-2080 publish_event_value()",
+    "xbg_event_retire.h",
+    "transit A/B script and analyze_stalls.py"
+   ],
+   "outputs": [
+    "xbg_readback_retire.h",
+    "tests/native/xbg_readback_retire_contract.cpp",
+    "scripts/runtime/selfproof_xbg_readback_retire.sh",
+    "updated RESULT and OSS-NOTES"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_readback_retire.h",
+    "tests/native/",
+    "scripts/runtime/selfproof_xbg_readback_retire.sh"
+   ],
+   "acceptance": "The host self-proof is green on the baseline and red on the mutation. The retired set is exactly the slots up to the owning submission, and a readback that is not yet ready is never retired. Game logic time, animation speed, draw count and draw results are unchanged. Device A/B is deferred: the Honor tablet was returned to the user, and the acceptance on the RG477M happens after the merge.",
+   "checkpoint": "585bf28 plus uncommitted xbg_readback_retire.h, selfproof script and contract test",
+   "device_exclusive": "none (offline implementation only; no device is touched from this line)"
+  },
+  {
+   "id": "CRASH-P0-BATTLE-SETTLE-20261112",
+   "role": "runtime worker",
+   "status": "in_progress",
+   "owner": "worker agent bg_c4b2d1d1-a3ce-47e3-bb89-d1dd870937f2",
+   "branch": "task/T-crash-p0-20261112",
+   "worktree": "worker to declare; the RG477M main worktree and the honor main worktree are forbidden (foreign WIP)",
+   "objective": "Pre-emptive hardening for the 8E5 (Snapdragon) crash reported after a Bahamut summon defeats its opponent. No 8E5 device exists, so the work is code-level analysis bound to the known audit findings, plus host contracts.",
+   "inputs": [
+    "coordination/results/CRASH-STUTTER-FULL-AUDIT-20261111.md (P0-1 FinalizeEvent x WaitEvent UAF, P0-4, P0-5)",
+    "src/runtime/hle/nso_host.c:2753-2791, :2850-2874, :2923-2938",
+    "xbg_game.cpp:468/467/2549, :1014/1052, :5525-5527"
+   ],
+   "outputs": [
+    "code-level hardening commit",
+    "host contract test",
+    "coordination/results/CRASH-P0-BATTLE-SETTLE-20261112.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/runtime/hle/nso_host.c",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "tests/native/"
+   ],
+   "acceptance": "The suspected UAF and the abort paths are closed by construction, proven by a host contract that fails on the pre-fix code. No 8E5 device exists, so every device-side claim is written NOT_RUN and the crash is not declared fixed. The report states which audit findings it covers and which remain open. Requesting the crash log from the reporter is a separate coordinator action and is not a substitute for the code work.",
+   "checkpoint": "not yet reported",
+   "device_exclusive": "none (the RG477M belongs to the texel line)"
+  },
+  {
+   "id": "HONOR-SEED-NARROW-P1-20261112",
+   "role": "graphics worker",
+   "status": "ready",
+   "owner": "unassigned - dispatch after a slot frees",
+   "branch": "task/T-rescue-1.0.7-20261112 (follow-up branch)",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/rescue-1.0.7-20261112",
+   "objective": "Narrow the 1560-record seed and fix the build order: the seed costs about 7.0 s of background driver work for roughly 106 hits, and the seed-only records are built last, after the device own records.",
+   "inputs": [
+    "T-RESCUE-WARM-LIST-RESULT.md sections 6 and 7",
+    "vk-pipeline-list seed (1560 records)",
+    "xbg_game.cpp warm::start()"
+   ],
+   "outputs": [
+    "narrowed seed entity",
+    "build-order change",
+    "host contract"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "scripts/distribution/"
+   ],
+   "acceptance": "The seed only carries the records the runtime actually asks for, the build order puts the records the current session needs first, and the effect on the cold start is measured rather than assumed. Device measurement is deferred until the Honor tablet is released to the project again.",
+   "checkpoint": "P1, not scheduled",
+   "device_exclusive": "none",
+   "parent_task": "HONOR-PIPELINE-SEED-20261112 (follow-up, not a gate)"
+  },
+  {
+   "id": "RELEASE-1.0.9-MERGE-20261112",
+   "role": "coordinator",
+   "status": "blocked",
+   "owner": "MiniMax Code /root release takeover",
+   "branch": "task/T-package-1.0.7-20261112",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/package-1.0.7-20261112",
+   "objective": "Merge the four implementation lines serially, build one APK with versionCode 9 / versionName 1.0.9, and run the single device acceptance session on both devices.",
+   "inputs": [
+    "warm flush (seed line, 056159d)",
+    "event retire + readback retire (transit)",
+    "texel format (texel)",
+    "crash P0 (crash)"
+   ],
+   "outputs": [
+    "ffrs-game-window-1.0.9.apk",
+    "coordination/results/RELEASE-1.0.9-20261112.md"
+   ],
+   "dependencies": [
+    "HONOR-TRANSIT-RETIRE-20261112",
+    "RG477M-TEXEL-FORMAT-20261112",
+    "CRASH-P0-BATTLE-SETTLE-20261112"
+   ],
+   "pass_gates": [
+    "RG477M-TEXEL-FORMAT-20261112"
+   ],
+   "write_scope": [
+    "src/",
+    "coordination/"
+   ],
+   "acceptance": "One APK installs on both devices (versionCode 9 covers the Honor code 7 and the RG477M code 8, the signing certificate is unchanged). The RG477M boots past the texel check and reaches the title and a battle. The Honor regression is run only with the explicit permission of the user. Every PASS is linked to a commit, a build id, the raw log and the exit code.",
+   "checkpoint": "27c27a6",
+   "device_exclusive": "RG477M01445122 and, with the user permission, A42BBB5109000333",
+   "status_note": "blocked on the three implementation lines; the coordinator starts it as soon as they report"
   }
  ],
  "blockers": [
@@ -5056,7 +5278,8 @@
   "HONOR-P1-20261112: backgrounding drops the 01 scene to 8.60 FPS with present_result=1 on every long frame, and returning to the foreground holds p95 130..146 ms with 80..113 frames above 100 ms. Root cause not identified; the surface rebuild path (static audit P0-3 vkDeviceWaitIdle, P0-6 ANativeWindow double lock) is the suspect. No fix proposed until the cause is proven.",
   "HONOR-P1-20261112 cold load: first entry into the 01 scene averages 24.03 FPS with a 1408.55 ms worst frame because the submit thread compiles shaders synchronously (xbg_game.cpp:2501-2533). With a warm pipeline cache the same scene holds 30.00 FPS for 392 s with zero long frames.",
   "HONOR-SAVE-20261112: the save file lives in external app specific storage and survives APK updates, but the guest only flushes at its own save points, so installing a package while playing loses the progress since the last save point. The save root also switches between the external codex-local-save directory and the internal getFilesDir()/saves when the installer flips to managed mode.",
-  "HONOR-BATTLE-EFFECT-STUTTER: battle effect pipelines are still created synchronously on their first release (created=5..18, create_ms 750..1916, one pipeline 125..381 ms). Root cause narrowed to the renderpass piece of the pipeline key: the same shader combination maps to several keys that differ only in the renderpass/attachment set, and the effect renderpass combinations are absent from the warm list, so the warm-up cannot pre-build them. Fix in progress on task/T-rescue-1.0.7-20261112; NOT included in the 1.0.7 team package."
+  "HONOR-BATTLE-EFFECT-STUTTER (attribution withdrawn and re-scoped 2026-11-12): the device data refutes the original claim. Synchronous pipeline creation is NOT the cause of the >100 ms spikes (the largest single creation in the whole session is 1.3 ms). The cause is the CPU blocking in the submit path while the GPU is idle, marked by the readback/writeback drains (sync_rb 9.80 vs 0.03 per window). The repair point is the drain scheduling, which is task HONOR-TRANSIT-RETIRE-20261112. The warm list flush defect (Class A) is fixed; the seed is unproven and is being narrowed. The cold-start 4.5-4.8 s frame is still unexplained.",
+  "RG477M-TEXEL-FORMAT-20261112: on the RG477M (Mali-G615) the guest dies after about five seconds with FATAL: Texel format lacks formatless-write support. Mali reports bufferFeatures=0x78 for the texel formats, so the optional STORAGE_WRITE_WITHOUT_FORMAT and READ_WITHOUT_FORMAT bits are absent for the whole family. The typed path is available (0x78 contains STORAGE_TEXEL_BUFFER_BIT), so the fix is a SPIR-V rewrite. The game cannot be played on the handheld until this lands, which outranks the stutter. Task RG477M-TEXEL-FORMAT-20261112, device RG477M01445122 exclusively."
  ],
  "verified": [
   "CURRENT_HANDOFF: a277 runtime sourcee305; actual originalstartup+OScleanup0/0, poststartup originalallocator0/0, HOST14expected, completeCRT515raw133. Earlier append-only bullets are historical stages and not current blockers.",
@@ -7077,6 +7300,58 @@
   "promising_path": "the Mali flags 0x78 contain VK_FORMAT_FEATURE_2_STORAGE_TEXEL_BUFFER_BIT, so the typed storage texel buffer path is available. The candidate fix is to rewrite the SPIR-V so the formatless storage texel buffer access becomes a typed one, for example R32_UINT or R16_UINT, or a storage buffer with manual indexing. The project already has that machinery in xbg_spirv_indirect_instances.h, xbg_spirv_integer_buffer.h and xbg_spirv_stencil.h.",
   "task": "bg_5cdcb608, worktree .worktrees/rg477m-texel-20261112 on branch task/T-rg477m-texel-20261112 from db094f8",
   "constraints": "no reduced precision, no skipped draws, no depth turned off, no placeholder module, no false green. If the NVN formatless semantics cannot be met on Mali the result must say BLOCKED with the smallest workable fallback and how deep the handheld can be verified.",
-  "community": "the Khronos VkFormatFeatureFlagBits2 text was retrieved. The worker must retrieve and cite Panfrost, the ARM open source Mali driver, as the closest reference, plus Dawn and Mesa."
+  "community": "the Khronos VkFormatFeatureFlagBits2 text was retrieved. The worker must retrieve and cite Panfrost, the ARM open source Mali driver, as the closest reference, plus Dawn and Mesa.",
+  "worker_status": "dispatched as bg_5cdcb608-6767-413d-bd13-bfceddcdd7dc on branch task/T-rg477m-texel-20261112; worktree .worktrees/rg477m-texel-20261112 in the RG477M main repo; no code change yet at db094f8"
+ },
+ "integration_note_20261112": {
+  "xbg_game_cpp_writers": [
+   "HONOR-TRANSIT-RETIRE-20261112 (transit worktree)",
+   "RG477M-TEXEL-FORMAT-20261112 (texel worktree)",
+   "CRASH-P0-BATTLE-SETTLE-20261112 (crash worktree)",
+   "HONOR-PIPELINE-SEED-20261112 (released)"
+  ],
+  "rule": "three lines edit src/graphics/nvn_vulkan/engine/xbg_game.cpp in three separate worktrees; the coordinator merges them serially and resolves the overlap; no line may commit into another branch",
+  "merge_order": [
+   "warm flush (seed line, released)",
+   "event retire + readback retire (transit)",
+   "texel format (texel)",
+   "crash P0 (crash)"
+  ],
+  "note": "the Honor main worktree still carries Antigravity WIP in xbg_game.cpp (HONOR-MOTION-BLOCKS); it is not part of this merge"
+ },
+ "honor_effect_seed_verdict_20261112": {
+  "observed_at": "2026-11-12T23:34:00.479221+08:00",
+  "device": "Honor GT Pro A42BBB5109000333, returned to the user in the baseline state after the measurement",
+  "measurement": "codex-frame-<pid>.csv monotonic deltas plus the engine 60-frame NVN PERF windows; no gfx-flame-diag, no screenrecord timing",
+  "verdict": {
+   "spike_cause": "the CPU blocks in the submit path (submit_cpu_ms 28.1 vs 13.5 ms per frame) while the GPU is less busy (13.5 vs 17.3 ms). The frame is slow while the GPU is idle.",
+   "not_the_cause": "synchronous pipeline creation. The largest single creation in the whole measured session is 1.3 ms; a slow window has 17 creations costing 6.8 ms in total.",
+   "marker_of_slow_windows": "the readback and writeback drains (sync_rb 9.80 vs 0.03, sync_wb 10.40 vs 0.00 per window). A window with a readback and zero creations still costs 45.0 ms per frame; a window with creations and no readback costs 43.5 ms; together 53.8 ms.",
+   "ordering": "neither causes the other. They are two independent costs of the same kind of frame and both land while the submit path is slow. The repair point is the drain scheduling.",
+   "cold_start": "the 4.5-4.8 s cold-start frame is present with the warm-up on (4800 ms), off (4690 ms) and with no cache at all (4489 ms). It is scene and resource load, not the graphics path, and it is still unexplained."
+  },
+  "seed_verdict": {
+   "key_match": "byte for byte. The 431 records the device learned are a strict subset of the 1560-record seed (only_in_second=0), and the cold session had to build 282 records that are all present in the seed.",
+   "benefit": "unproven. The run that reported 106 hits and 0 in-frame creations was not retained. With the background builder switched off the same 1560-key list still left 329 in-frame creations, so a known key is not a built pipeline.",
+   "cost": "about 7.0 s of background driver work at start-up for roughly 106 hits, and that work competes with the main thread during the cold start.",
+   "decision": "ship the Class A flush fix in 1.0.9; treat the seed as an over-broad entity and narrow it in HONOR-SEED-NARROW-P1-20261112. No claim that the seed fixed the stutter."
+  },
+  "attribution_history": [
+   {
+    "claim": "the first effect release synchronously creates the pipeline",
+    "status": "withdrawn, the maximum single creation in the session is 1.3 ms"
+   },
+   {
+    "claim": "the seed pre-warm is the cause of the giant frames",
+    "status": "withdrawn, the giant frame is present with the warm-up off and with no cache at all"
+   },
+   {
+    "claim": "the CPU blocks in the submit path while the GPU is idle",
+    "status": "current, measured on the retained run 4 log (pid 16129, 126 windows)"
+   }
+  ],
+  "device_state": "the tablet carries the clean 1.0.7 build: gfx-defer-events 0, the diagnostic probes cleared, the pipeline list and cache restored, no app running. Every marker change made by this line is reverted and backed up in .local/marker-backups/ffrs-markers-backup-20261112-223935.tar.",
+  "artifacts": ".local/rescue-1.0.7-20261112/ (4 frame CSVs, the 10 MB run-4 guest log, the final pipeline list and cache, the window analysis, 4 screenshots)",
+  "not_verified": "no Honor measurement of the final seed build; no frame-rate number from the RG477M; the cold-start frame is unexplained"
  }
 }
