@@ -9,7 +9,7 @@ An independent, open-source Android ARM64 native runtime, dynamic HLE compatibil
 
 > **中文简介**：本项目为《最终幻想：共鸣》独立研发的 Android 原生运行时与 Vulkan 兼容层。采用原生 AArch64 代码执行（非模拟器架构），具备全机型屏幕比例与方向自适应、高通骁龙 Adreno 着色器动态内联修复、以及多存储卷免权限数据包自动识别能力。
 
-**最新成果：v1.0.2 通用版已发布**
+**最新成果：v1.0.6 稳定性与帧率优化版已发布**
 - **全机型屏幕旋转与比例自适应**：解耦原生纵向屏幕限制，针对各品牌手机/平板（包括一加、荣耀、小米等）统一采用系统级逻辑横屏（Identity Transform + Opaque Composition），杜绝反向拉伸与画面黑边条。
 - **高通骁龙（Adreno 全系 / 骁龙 8 至尊版）着色器崩溃修复**：全面放开子群着色器（Subgroup Helper Inlining）动态注入与基数同步保护，彻底解决 Adreno 830 / 750 / 735 系列驱动编译崩溃导致的瞬间闪退。
 - **免特权多介质数据包自动发现**：支持外置 TF/SD 卡、次级存储卷及 Android 11+ 作用域存储保底路径（`getExternalFilesDirs`），实现 APK 覆盖更新免重拷数据包。
@@ -17,7 +17,7 @@ An independent, open-source Android ARM64 native runtime, dynamic HLE compatibil
 
 ## 快速安装与运行
 
-1. 从 [GitHub Releases](https://github.com/Cetto9923/handheld-native-lab/releases) 下载最新发布的 APK 安装包（`FFRS-Universal-Fix.apk`）。
+1. 从 [GitHub Releases](https://github.com/Cetto9923/handheld-native-lab/releases) 下载最新发布的 APK 安装包（`FFRS-v1.0.6.apk`）。
 2. 将已持有的合法数据包目录放置在设备主存储根目录或应用私有存储中（如 `/sdcard/FFRS/`）。
 3. 安装 APK 并启动，应用将自动识别存储卷中的游戏本体数据，无需重新迁移或更换数据包。
 

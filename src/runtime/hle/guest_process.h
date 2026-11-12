@@ -140,6 +140,13 @@ struct nb_scope *guest_process_current_boundary(void);
 /* Deleting destructor for an object allocated from main's interposed heap.
  * Active module only; 1 completed actual free,0 no process,-1 refused. */
 int guest_process_interposed_free(void *pointer);
+int guest_process_is_guest_memory(uintptr_t address);
+/* Release a block of the guest's own page heap without entering the guest.
+ * Returns 0 when the block was released. */
+int guest_process_release_guest_page_block(void *ptr, size_t bytes);
+/* Release a block of the guest's own page heap without entering the guest.
+ * Returns 0 when the block was released. */
+int guest_process_release_guest_page_block(void *ptr, size_t bytes);
 struct guest_tp_template;
 int guest_process_current_tls_template(struct guest_tp_template *out);
 void guest_process_bind_child_thread(void);

@@ -16,6 +16,13 @@ source "${FFRS_ROOT}/scripts/device/android_env.sh"
 
 FFRS_APK_DIR="${FFRS_APK_DIR:-${FFRS_ROOT}/.local/android-apk}"
 FFRS_BUILD_TOOLS="${FFRS_BUILD_TOOLS:-${FFRS_SDK}/build-tools/34.0.0}"
+# d8 8.2.2 (build-tools 34.0.0) dies with an internal NPE while dexing the anonymous
+# OnClickListener that captures the cheat-dialog fields (org/ffrs/diagnostic/GameActivity$1):
+# "Cannot invoke String.length() because <parameter1> is null". A newer d8 dexes the same
+# classes, so use the newest d8 that is installed and only fall back to the pinned
+# build-tools when no newer one exists. aapt2/zipalign/apksigner stay on FFRS_BUILD_TOOLS.
+FFRS_D8="${FFRS_D8:-$(ls -1d "${FFRS_SDK}"/build-tools/*/d8 2>/dev/null | awk -F/ '{v=$(NF-1);split(v,a,".");print a[1]*100000+a[2]*1000+a[3], $0}' | sort -n | tail -1 | cut -d' ' -f2-)}"
+FFRS_D8="${FFRS_D8:-${FFRS_BUILD_TOOLS}/d8}"
 FFRS_ANDROID_JAR="${FFRS_ANDROID_JAR:-${FFRS_SDK}/platforms/android-34/android.jar}"
 FFRS_APP_MANIFEST="${FFRS_APP_MANIFEST:-${FFRS_ROOT}/src/android/app/gamewindow/AndroidManifest.xml}"
 FFRS_APP_RES="${FFRS_APP_RES:-${FFRS_ROOT}/src/android/app/gamewindow/res}"
@@ -54,6 +61,10 @@ for executable in aapt2 d8 zipalign apksigner; do
         exit 2
     fi
 done
+if [[ ! -x "${FFRS_D8}" ]]; then
+    echo "BLOCKED_TOOLCHAIN: missing ${FFRS_D8}" >&2
+    exit 2
+fi
 for tool in javac jar zip cmake; do
     if ! command -v "${tool}" > /dev/null 2>&1; then
         echo "BLOCKED_TOOLCHAIN: missing ${tool}" >&2
@@ -106,9 +117,14 @@ step javac javac --release 8 -classpath "${FFRS_ANDROID_JAR}" -g -d "${FFRS_PACK
     "${FFRS_APP_JAVA}/GameWindowNative.java" \
     "${FFRS_APP_JAVA}/DisplaySnapshot.java" \
     "${FFRS_APP_JAVA}/NativeDataBundle.java" \
-    "${FFRS_APP_JAVA}/DataBundleInstaller.java"
+    "${FFRS_APP_JAVA}/DataBundleInstaller.java" \
+    "${FFRS_APP_JAVA}/SaveExporter.java" \
+    "${FFRS_APP_JAVA}/SaveRestorer.java" \
+    "${FFRS_APP_JAVA}/SaveCheater.java" \
+    "${FFRS_APP_JAVA}/GuestMemory.java" \
+    "${FFRS_APP_JAVA}/UnitNames.java"
 step jar jar cf "${FFRS_PACKAGE_DIR}/classes.jar" -C "${FFRS_PACKAGE_DIR}/classes" .
-step d8 "${FFRS_BUILD_TOOLS}/d8" --min-api 28 --lib "${FFRS_ANDROID_JAR}" \
+step d8 "${FFRS_D8}" --min-api 28 --lib "${FFRS_ANDROID_JAR}" \
     --output "${FFRS_PACKAGE_DIR}/dex" "${FFRS_PACKAGE_DIR}/classes.jar"
 step aapt2-compile "${FFRS_BUILD_TOOLS}/aapt2" compile --dir "${FFRS_APP_RES}" \
     -o "${FFRS_PACKAGE_DIR}/res/resources.zip"
@@ -132,6 +148,27 @@ if [[ -n "${FFRS_SPIRV_TOOLS_SOURCE:-}" ]]; then
     cp "${FFRS_SPIRV_TOOLS_SOURCE}/LICENSE" "${FFRS_NOTICE_DIR}/SPIRV-Tools-Apache-2.0.txt"
     cp "${FFRS_SPIRV_TOOLS_SOURCE}/spirv-headers/LICENSE" "${FFRS_NOTICE_DIR}/SPIRV-Headers-license.txt"
     FFRS_APP_ASSETS="${FFRS_NOTICE_ASSETS}"
+fi
+# The cheat editor needs the 32 byte SaveDataEncryptionKey. The key is a build
+# input, not a source file: it lives outside git and is staged into the
+# package assets here so the key never lands in a tracked path.
+FFRS_SAVE_KEY_FILE="${FFRS_SAVE_KEY_FILE:-${FFRS_ROOT}/.local/cheat/save_key.txt}"
+if [[ -f "${FFRS_SAVE_KEY_FILE}" ]]; then
+    FFRS_CHEAT_ASSETS="${FFRS_PACKAGE_DIR}/cheat-assets"
+    mkdir -p "${FFRS_CHEAT_ASSETS}"
+    cp "${FFRS_SAVE_KEY_FILE}" "${FFRS_CHEAT_ASSETS}/ffrs_save_key.bin"
+    if [[ -n "${FFRS_APP_ASSETS:-}" ]]; then
+        FFRS_MERGE_ASSETS="${FFRS_PACKAGE_DIR}/merged-assets"
+        mkdir -p "${FFRS_MERGE_ASSETS}"
+        cp -R "${FFRS_APP_ASSETS}/." "${FFRS_MERGE_ASSETS}/"
+        cp -R "${FFRS_CHEAT_ASSETS}/." "${FFRS_MERGE_ASSETS}/"
+        FFRS_APP_ASSETS="${FFRS_MERGE_ASSETS}"
+    else
+        FFRS_APP_ASSETS="${FFRS_CHEAT_ASSETS}"
+    fi
+    echo "cheat_assets: staged the save key from ${FFRS_SAVE_KEY_FILE}"
+else
+    echo "cheat_assets: no save key at ${FFRS_SAVE_KEY_FILE}; the cheat menu stays disabled"
 fi
 if [[ -n "${FFRS_APP_ASSETS:-}" ]]; then
     step aapt2-link "${FFRS_BUILD_TOOLS}/aapt2" link \

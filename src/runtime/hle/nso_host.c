@@ -4,6 +4,8 @@
 #include "exit_registry.h"
 #include "guest_process.h"
 #include "guest_tp.h"
+#include "heap_owner.h"
+#include "heap_owner.h"
 #include "native_window.h"
 /* Standalone Event-only contracts need not link the optional MultiWait
  * provider. The owned runtime strongly references it through lookup. */
@@ -21,6 +23,7 @@ extern int ffrs_multiwait_event_waiting(void *) __attribute__((weak));
 #include <time.h>
 #include <sys/time.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <sched.h>
 #include <inttypes.h>
 #include <unistd.h>
@@ -1371,16 +1374,26 @@ void nso_host_fs_close_file(nn_fs_file_handle handle) {
     strncpy(path, entry->nn_path, sizeof(path) - 1);
     path[sizeof(path) - 1] = '\0';
 
+    int mode = entry->mode;
+    int dirty = entry->dirty;
+    /* closing is already set, and validate_file_handle rejects a closing
+     * entry, so no new read can pin fd. Sync outside the global lock. */
+    pthread_mutex_unlock(&s_fs_file_mutex);
+    int sync_error = 0;
     if (fd >= 0) {
-        if ((entry->mode & 2) && entry->dirty && fsync(fd)) {
-            s_fs_closed_write_error = 1;
+        if ((mode & 2) && dirty && fsync(fd)) {
+            sync_error = 1;
             fprintf(stderr, "[hle] nn::fs::CloseFile: writable file sync failed errno=%d\n", errno);
         }
-        if (close(fd) && (entry->mode & 2)) s_fs_closed_write_error = 1;
+        if (close(fd) && (mode & 2)) sync_error = 1;
     }
+    pthread_mutex_lock(&s_fs_file_mutex);
+    if (sync_error) s_fs_closed_write_error = 1;
     entry->in_use = 0;
     entry->fd = -1;
     entry->dirty = 0;
+    entry->closing = 0;
+    pthread_cond_broadcast(&s_fs_file_cond);
     pthread_mutex_unlock(&s_fs_file_mutex);
     fprintf(stderr, "[hle] nn::fs::CloseFile: closed handle=%p (path='%s')\n", handle.handle, path);
 }
@@ -1394,8 +1407,15 @@ int32_t nso_host_fs_flush_file(nn_fs_file_handle handle) {
         return 1;
     }
     int fd = entry->fd;
+    /* Pin the entry the same way a read does, so Close waits instead of
+     * reusing fd while this sync is outside the lock. */
+    entry->active_reads++;
+    pthread_mutex_unlock(&s_fs_file_mutex);
     int result = fsync(fd);
-    if (!result) entry->dirty = 0;
+    pthread_mutex_lock(&s_fs_file_mutex);
+    if (entry->active_reads) entry->active_reads--;
+    if (entry->closing && !entry->active_reads) pthread_cond_broadcast(&s_fs_file_cond);
+    if (!result && entry->in_use && entry->fd == fd) entry->dirty = 0;
     pthread_mutex_unlock(&s_fs_file_mutex);
     if (result) return 0x2a2;
     fprintf(stderr, "[hle] nn::fs::FlushFile: flushed handle=%p\n", handle.handle);
@@ -1767,12 +1787,38 @@ int32_t nso_host_fs_commit_save_data(const char *name) {
     if (!mount) return 0x2a2;
     pthread_mutex_lock(&s_fs_file_mutex);
     int result = s_fs_closed_write_error ? 0x2a2 : 0;
+    for (;;) {
+        int closing_writers = 0;
+        for (int i = 0; i < NSO_FS_MAX_OPEN_FILES; i++) {
+            nso_fs_file_entry *file = &s_fs_open_files[i];
+            if (file->in_use && (file->mode & 2) && file->closing) closing_writers++;
+        }
+        if (!closing_writers) break;
+        pthread_cond_wait(&s_fs_file_cond, &s_fs_file_mutex);
+    }
+    int fds[NSO_FS_MAX_OPEN_FILES];
+    nso_fs_file_entry *pinned[NSO_FS_MAX_OPEN_FILES];
+    int pinned_count = 0;
     for (int i = 0; i < NSO_FS_MAX_OPEN_FILES; i++) {
         nso_fs_file_entry *file = &s_fs_open_files[i];
-        if (file->in_use && (file->mode & 2)) {
-            if (fsync(file->fd)) result = 0x2a2;
-            else file->dirty = 0;
-        }
+        if (!(file->in_use && (file->mode & 2) && !file->closing && file->fd >= 0)) continue;
+        file->active_reads++;
+        fds[pinned_count] = file->fd;
+        pinned[pinned_count] = file;
+        pinned_count++;
+    }
+    pthread_mutex_unlock(&s_fs_file_mutex);
+    int synced[NSO_FS_MAX_OPEN_FILES] = {0};
+    for (int i = 0; i < pinned_count; i++) {
+        if (fsync(fds[i])) result = 0x2a2;
+        else synced[i] = 1;
+    }
+    pthread_mutex_lock(&s_fs_file_mutex);
+    for (int i = 0; i < pinned_count; i++) {
+        nso_fs_file_entry *file = pinned[i];
+        if (synced[i] && file->in_use && file->fd == fds[i]) file->dirty = 0;
+        if (file->active_reads) file->active_reads--;
+        if (file->closing && !file->active_reads) pthread_cond_broadcast(&s_fs_file_cond);
     }
     pthread_mutex_unlock(&s_fs_file_mutex);
     int fd = open(mount->host_path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
@@ -2723,6 +2769,7 @@ struct nso_event_entry {
     bool initialized;
     uint32_t waiters;
     uint32_t users;
+    bool dying;                  /* Finalize is waiting to free this entry. */
     struct nso_event_entry *next;
 };
 
@@ -2739,6 +2786,7 @@ static inline size_t event_hash(const void *obj) {
     return (size_t)(k & EVENT_HASH_MASK);
 }
 static pthread_mutex_t s_event_registry_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t s_event_release_cond = PTHREAD_COND_INITIALIZER;
 static struct nso_event_entry *s_event_buckets[EVENT_HASH_SIZE];
 
 static struct nso_event_entry *find_event_locked(void *object) {
@@ -2785,7 +2833,14 @@ static void release_event(struct nso_event_entry *e) {
     if (!e) return;
     pthread_mutex_lock(&s_event_registry_mutex);
     if (e->users > 0) e->users--;
+    if (e->users == 0) pthread_cond_broadcast(&s_event_release_cond);
     pthread_mutex_unlock(&s_event_registry_mutex);
+}
+
+/* Called with the entry mutex held. The last waiter wakes Finalize. */
+static void event_waiter_leave(struct nso_event_entry *e) {
+    if (e->waiters > 0) e->waiters--;
+    if (e->dying && e->waiters == 0) pthread_cond_signal(&e->cond);
 }
 
 void nso_host_os_initialize_event(void *event, bool initially_signaled, int32_t clear_mode) {
@@ -2859,19 +2914,31 @@ void nso_host_os_finalize_event(void *event) {
     while (*slot && (*slot)->object != event) {
         slot = &(*slot)->next;
     }
-    if (*slot) {
-        struct nso_event_entry *e = *slot;
-        *slot = e->next;
-        pthread_mutex_lock(&e->mutex);
-        e->initialized = false;
-        pthread_cond_broadcast(&e->cond);
-        pthread_mutex_unlock(&e->mutex);
-        pthread_cond_destroy(&e->cond);
-        pthread_mutex_destroy(&e->mutex);
-        free(e);
+    struct nso_event_entry *e = *slot;
+    if (!e) {
+        ((uint8_t *)event)[0x13] = 0;
+        pthread_mutex_unlock(&s_event_registry_mutex);
+        fprintf(stderr, "[hle] nn::os::FinalizeEvent: event=%p (no entry)\n", event);
+        return;
     }
-    /* Clear guest initialized state */
+    *slot = e->next;
+    e->dying = true;
     ((uint8_t *)event)[0x13] = 0;
+    pthread_mutex_unlock(&s_event_registry_mutex);
+
+    /* Drop the registry lock before waiting. Waiters leave through
+     * release_event, which needs that lock. */
+    pthread_mutex_lock(&e->mutex);
+    e->initialized = false;
+    pthread_cond_broadcast(&e->cond);
+    while (e->waiters) pthread_cond_wait(&e->cond, &e->mutex);
+    pthread_mutex_unlock(&e->mutex);
+
+    pthread_mutex_lock(&s_event_registry_mutex);
+    while (e->users) pthread_cond_wait(&s_event_release_cond, &s_event_registry_mutex);
+    pthread_cond_destroy(&e->cond);
+    pthread_mutex_destroy(&e->mutex);
+    free(e);
     pthread_mutex_unlock(&s_event_registry_mutex);
 
     fprintf(stderr, "[hle] nn::os::FinalizeEvent: event=%p\n", event);
@@ -2896,9 +2963,10 @@ void nso_host_os_signal_event(void *event) {
     if(ffrs_multiwait_notify_event)ffrs_multiwait_notify_event(event);
     else if(ffrs_multiwait_notify)ffrs_multiwait_notify();
 
-    static int signal_log_count = 0;
-    if (++signal_log_count <= 10 || (signal_log_count & 1023) == 0) {
-        fprintf(stderr, "[hle] nn::os::SignalEvent: event=%p (count=%d)\n", event, signal_log_count);
+    static atomic_int signal_log_count;
+    int signal_count = atomic_fetch_add(&signal_log_count, 1) + 1;
+    if (signal_count <= 10 || (signal_count & 1023) == 0) {
+        fprintf(stderr, "[hle] nn::os::SignalEvent: event=%p (count=%d)\n", event, signal_count);
     }
 }
 
@@ -2912,9 +2980,10 @@ void nso_host_os_clear_event(void *event) {
     pthread_mutex_unlock(&e->mutex);
     release_event(e);
 
-    static int clear_log_count = 0;
-    if (++clear_log_count <= 10 || (clear_log_count & 1023) == 0) {
-        fprintf(stderr, "[hle] nn::os::ClearEvent: event=%p (count=%d)\n", event, clear_log_count);
+    static atomic_int clear_log_count;
+    int clear_count = atomic_fetch_add(&clear_log_count, 1) + 1;
+    if (clear_count <= 10 || (clear_count & 1023) == 0) {
+        fprintf(stderr, "[hle] nn::os::ClearEvent: event=%p (count=%d)\n", event, clear_count);
     }
 }
 
@@ -2926,7 +2995,7 @@ void nso_host_os_wait_event(void *event) {
     while (!e->signaled && e->initialized) {
         e->waiters++;
         pthread_cond_wait(&e->cond, &e->mutex);
-        e->waiters--;
+        event_waiter_leave(e);
     }
     if (e->clear_mode == NN_OS_EVENT_CLEAR_MODE_AUTO) {
         e->signaled = false;
@@ -2935,9 +3004,10 @@ void nso_host_os_wait_event(void *event) {
     pthread_mutex_unlock(&e->mutex);
     release_event(e);
 
-    static int wait_log_count = 0;
-    if (++wait_log_count <= 10 || (wait_log_count & 1023) == 0) {
-        fprintf(stderr, "[hle] nn::os::WaitEvent: event=%p satisfied (count=%d)\n", event, wait_log_count);
+    static atomic_int wait_log_count;
+    int wait_count = atomic_fetch_add(&wait_log_count, 1) + 1;
+    if (wait_count <= 10 || (wait_count & 1023) == 0) {
+        fprintf(stderr, "[hle] nn::os::WaitEvent: event=%p satisfied (count=%d)\n", event, wait_count);
     }
 }
 
@@ -2964,10 +3034,11 @@ bool nso_host_os_timed_wait_event(void *event, int64_t timeout_ns) {
     struct nso_event_entry *e = borrow_event(event);
     if (!e) return false;
 
-    static int s_timed_wait_count = 0;
-    if (++s_timed_wait_count <= 20 || (s_timed_wait_count & 1023) == 0) {
+    static atomic_int s_timed_wait_count;
+    int timed_count = atomic_fetch_add(&s_timed_wait_count, 1) + 1;
+    if (timed_count <= 20 || (timed_count & 1023) == 0) {
         fprintf(stderr, "[hle] TimedWaitEvent: count=%d event=%p timeout_ns=%" PRId64 "\n",
-                s_timed_wait_count, event, timeout_ns);
+                timed_count, event, timeout_ns);
     }
 
     struct timespec deadline;
@@ -2989,7 +3060,7 @@ bool nso_host_os_timed_wait_event(void *event, int64_t timeout_ns) {
     while (!e->signaled && e->initialized) {
         e->waiters++;
         int rc = pthread_cond_timedwait(&e->cond, &e->mutex, &deadline);
-        e->waiters--;
+        event_waiter_leave(e);
         if (rc != 0) {
             if (rc != ETIMEDOUT) {
                 fprintf(stderr, "[hle] TimedWaitEvent: pthread_cond_timedwait error rc=%d\n", rc);
@@ -3372,6 +3443,9 @@ int nso_host_posix_memalign(void **memptr, size_t alignment, size_t size) {
     if(try_game_aligned_alloc(alignment,size,&ptr)) {
         errno=saved_errno;
         if(!ptr && size)return ENOMEM;
+        /* The guest allocated this from its own page heap. It must go back
+         * to that heap, never to the host allocator. */
+        heap_owner_record(ptr,size,HEAP_OWNER_GUEST_PAGE);
         *memptr=ptr;return 0;
     }
     size_t alloc_size = (size == 0) ? sizeof(void *) : size;
@@ -3382,6 +3456,9 @@ int nso_host_posix_memalign(void **memptr, size_t alignment, size_t size) {
         return rc;
     }
     memset(ptr, 0, alloc_size);
+    /* Host chunk handed to the guest. The ledger remembers that it must be
+     * released with the host free() and never with nn::os::FreeMemoryPages. */
+    heap_owner_record(ptr,alloc_size,HEAP_OWNER_HOST_SCUdo);
     *memptr = ptr;
     fprintf(stderr, "[hle] posix_memalign: memptr=%p alignment=%zu (0x%zx) size=%zu (0x%zx) -> *memptr=%p rc=0\n",
             (void *)memptr, alignment, alignment, size, size, ptr);
@@ -3394,7 +3471,10 @@ void *nso_host_memalign(size_t alignment, size_t size) {
         return NULL;
     }
     void *ptr = NULL;
-    if(try_game_aligned_alloc(alignment,size,&ptr))return ptr;
+    if(try_game_aligned_alloc(alignment,size,&ptr)){
+        heap_owner_record(ptr,size,HEAP_OWNER_GUEST_PAGE);
+        return ptr;
+    }
     size_t alloc_align = alignment < sizeof(void *) ? sizeof(void *) : alignment;
     size_t alloc_size = (size == 0) ? sizeof(void *) : size;
     int rc = posix_memalign(&ptr, alloc_align, alloc_size);
@@ -3404,6 +3484,7 @@ void *nso_host_memalign(size_t alignment, size_t size) {
         return NULL;
     }
     memset(ptr, 0, alloc_size);
+    heap_owner_record(ptr,alloc_size,HEAP_OWNER_HOST_SCUdo);
     fprintf(stderr, "[hle] memalign: alignment=%zu (0x%zx) size=%zu (0x%zx) -> %p\n",
             alignment, alignment, size, size, ptr);
     return ptr;
@@ -3417,10 +3498,37 @@ void *nso_host_valloc(size_t size) {
     return nso_host_memalign(4096, size);
 }
 
+extern int guest_process_is_guest_memory(uintptr_t) __attribute__((weak));
+extern int guest_process_interposed_free(void *) __attribute__((weak));
+
 void nso_host_free(void *ptr) {
-    if (ptr) {
-        free(ptr);
+    if (!ptr) {
+        return;
     }
+    /* The host free() must never see a guest page/heap address. Scudo aborts
+     * with "corrupted chunk header" when it is asked to release a block its
+     * own allocator never produced. */
+    size_t bytes=0;
+    enum heap_owner_kind owner=heap_owner_lookup(ptr,&bytes);
+    int is_guest=(owner==HEAP_OWNER_GUEST_PAGE) ||
+                 (guest_process_is_guest_memory ? guest_process_is_guest_memory((uintptr_t)ptr) : 0);
+    if(is_guest) {
+        heap_owner_forget(ptr);
+        if(guest_process_interposed_free && guest_process_interposed_free(ptr)==1) {
+            return;
+        }
+        if(owner==HEAP_OWNER_GUEST_PAGE && guest_process_release_guest_page_block) {
+            if(guest_process_release_guest_page_block(ptr,bytes)==0) return;
+        }
+        return;
+    }
+    if(owner==HEAP_OWNER_HOST_SCUdo)heap_owner_forget(ptr);
+    free(ptr);
+}
+
+void nso_host_sized_delete(void *ptr, size_t size) {
+    (void)size;
+    nso_host_free(ptr);
 }
 
 static int is_readable(const void *ptr, size_t len) {
@@ -4340,6 +4448,10 @@ uint64_t nso_host_resolve(uint32_t index,const char *name) {
     if(!strcmp(name,"aligned_alloc"))return (uint64_t)(uintptr_t)&nso_host_aligned_alloc;
     if(!strcmp(name,"valloc"))return (uint64_t)(uintptr_t)&nso_host_valloc;
     if(!strcmp(name,"free"))return (uint64_t)(uintptr_t)&nso_host_free;
+    if(!strcmp(name,"_ZdlPv") || !strcmp(name,"_ZdaPv"))
+        return (uint64_t)(uintptr_t)&nso_host_free;
+    if(!strcmp(name,"_ZdlPvm") || !strcmp(name,"_ZdaPvm") || !strcmp(name,"snk_sized_delete"))
+        return (uint64_t)(uintptr_t)&nso_host_sized_delete;
     if(!strcmp(name,"_ZN2nn4diag6detail9AbortImplEv") || !strcmp(name,"nndetailDiagAbortImpl"))
         return (uint64_t)(uintptr_t)&nso_host_diag_abort_impl;
     if(!strcmp(name,"_ZN2nn4diag12GetBacktraceEPmi"))

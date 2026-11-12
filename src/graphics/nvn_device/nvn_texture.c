@@ -284,14 +284,47 @@ static void *memory_pool_entry(const char *name) {
     return NULL;
 }
 
+typedef uint64_t (*pool_get_buffer_address_fn)(const void *);
+
+/* Both family tables are process-lifetime static const arrays. Resolve their
+ * immutable entry addresses once, while reading every builder value through
+ * the original getter on each initialization. pthread_once also publishes
+ * missing entries consistently to concurrent first callers. */
+static struct {
+    builder_get_int_fn format, target, flags, width, height, depth, levels, samples, dsmode;
+    builder_get_offset_fn stride, memory_offset;
+    builder_get_pointer_fn memory_pool;
+    builder_get_swizzle_fn swizzle;
+    pool_get_buffer_address_fn pool_buffer_address;
+} s_family_functions;
+static pthread_once_t s_family_functions_once = PTHREAD_ONCE_INIT;
+
+static void resolve_family_functions(void) {
+    s_family_functions.format = (builder_get_int_fn)(uintptr_t)builder_entry("nvnTextureBuilderGetFormat");
+    s_family_functions.target = (builder_get_int_fn)(uintptr_t)builder_entry("nvnTextureBuilderGetTarget");
+    s_family_functions.flags = (builder_get_int_fn)(uintptr_t)builder_entry("nvnTextureBuilderGetFlags");
+    s_family_functions.width = (builder_get_int_fn)(uintptr_t)builder_entry("nvnTextureBuilderGetWidth");
+    s_family_functions.height = (builder_get_int_fn)(uintptr_t)builder_entry("nvnTextureBuilderGetHeight");
+    s_family_functions.depth = (builder_get_int_fn)(uintptr_t)builder_entry("nvnTextureBuilderGetDepth");
+    s_family_functions.levels = (builder_get_int_fn)(uintptr_t)builder_entry("nvnTextureBuilderGetLevels");
+    s_family_functions.samples = (builder_get_int_fn)(uintptr_t)builder_entry("nvnTextureBuilderGetSamples");
+    s_family_functions.dsmode = (builder_get_int_fn)(uintptr_t)builder_entry("nvnTextureBuilderGetDepthStencilMode");
+    s_family_functions.stride = (builder_get_offset_fn)(uintptr_t)builder_entry("nvnTextureBuilderGetStride");
+    s_family_functions.memory_offset = (builder_get_offset_fn)(uintptr_t)builder_entry("nvnTextureBuilderGetMemoryOffset");
+    s_family_functions.memory_pool = (builder_get_pointer_fn)(uintptr_t)builder_entry("nvnTextureBuilderGetMemoryPool");
+    s_family_functions.swizzle = (builder_get_swizzle_fn)(uintptr_t)builder_entry("nvnTextureBuilderGetSwizzle");
+    s_family_functions.pool_buffer_address =
+        (pool_get_buffer_address_fn)(uintptr_t)memory_pool_entry("nvnMemoryPoolGetBufferAddress");
+}
+
 /* The address the memory pool hands out for its storage. The reference host
  * answers with the address of the pool's memory (hle_nvn.c:478), and this
  * runtime's memory pool hands out an address of its own for the same purpose
  * (nvn_memory_pool_get_buffer_address). A pool that was never initialized has
  * no address, and the answer is then zero. */
 static uint64_t memory_pool_buffer_address(const void *pool) {
-    typedef uint64_t (*pool_get_buffer_address_fn)(const void *);
-    pool_get_buffer_address_fn fn = (pool_get_buffer_address_fn)(uintptr_t)memory_pool_entry("nvnMemoryPoolGetBufferAddress");
+    pthread_once(&s_family_functions_once, resolve_family_functions);
+    pool_get_buffer_address_fn fn = s_family_functions.pool_buffer_address;
     if (!fn || !pool) return 0;
     return fn(pool);
 }
@@ -307,22 +340,23 @@ static size_t zcull_size(int width, int height, int depth) {
 
 /* Take the description of the builder into the texture. */
 static int snapshot_builder(nvn_texture_state *t, const void *builder) {
-    builder_get_int_fn get_format = (builder_get_int_fn)(uintptr_t)builder_entry("nvnTextureBuilderGetFormat");
-    builder_get_int_fn get_target = (builder_get_int_fn)(uintptr_t)builder_entry("nvnTextureBuilderGetTarget");
-    builder_get_int_fn get_flags = (builder_get_int_fn)(uintptr_t)builder_entry("nvnTextureBuilderGetFlags");
-    builder_get_int_fn get_width = (builder_get_int_fn)(uintptr_t)builder_entry("nvnTextureBuilderGetWidth");
-    builder_get_int_fn get_height = (builder_get_int_fn)(uintptr_t)builder_entry("nvnTextureBuilderGetHeight");
-    builder_get_int_fn get_depth = (builder_get_int_fn)(uintptr_t)builder_entry("nvnTextureBuilderGetDepth");
-    builder_get_int_fn get_levels = (builder_get_int_fn)(uintptr_t)builder_entry("nvnTextureBuilderGetLevels");
-    builder_get_int_fn get_samples = (builder_get_int_fn)(uintptr_t)builder_entry("nvnTextureBuilderGetSamples");
+    pthread_once(&s_family_functions_once, resolve_family_functions);
+    builder_get_int_fn get_format = s_family_functions.format;
+    builder_get_int_fn get_target = s_family_functions.target;
+    builder_get_int_fn get_flags = s_family_functions.flags;
+    builder_get_int_fn get_width = s_family_functions.width;
+    builder_get_int_fn get_height = s_family_functions.height;
+    builder_get_int_fn get_depth = s_family_functions.depth;
+    builder_get_int_fn get_levels = s_family_functions.levels;
+    builder_get_int_fn get_samples = s_family_functions.samples;
     builder_get_int_fn get_dsmode =
-        (builder_get_int_fn)(uintptr_t)builder_entry("nvnTextureBuilderGetDepthStencilMode");
-    builder_get_offset_fn get_stride = (builder_get_offset_fn)(uintptr_t)builder_entry("nvnTextureBuilderGetStride");
+        s_family_functions.dsmode;
+    builder_get_offset_fn get_stride = s_family_functions.stride;
     builder_get_offset_fn get_memory_offset =
-        (builder_get_offset_fn)(uintptr_t)builder_entry("nvnTextureBuilderGetMemoryOffset");
+        s_family_functions.memory_offset;
     builder_get_pointer_fn get_memory_pool =
-        (builder_get_pointer_fn)(uintptr_t)builder_entry("nvnTextureBuilderGetMemoryPool");
-    builder_get_swizzle_fn get_swizzle = (builder_get_swizzle_fn)(uintptr_t)builder_entry("nvnTextureBuilderGetSwizzle");
+        s_family_functions.memory_pool;
+    builder_get_swizzle_fn get_swizzle = s_family_functions.swizzle;
     void *device;
 
     if (!get_format || !get_target || !get_flags || !get_width || !get_height || !get_depth || !get_levels ||

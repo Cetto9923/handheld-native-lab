@@ -1,0 +1,9 @@
+#version 450
+// Unknown image format intentionally exercises StorageImageWriteWithoutFormat.
+layout(local_size_x = 8) in;
+layout(set = 0, binding = 0) uniform writeonly uimageBuffer destination;
+void main() {
+    const uint values[8] = uint[8](2u, 9u, 17u, 0u, 511u, 65535u, 4u, 12u);
+    uint index = gl_GlobalInvocationID.x;
+    imageStore(destination, int(index), uvec4(values[index], 0u, 0u, 0u));
+}

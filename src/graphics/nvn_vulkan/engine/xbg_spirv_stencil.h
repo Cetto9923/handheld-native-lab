@@ -276,13 +276,8 @@ inline int xbg_spirv_uint_store(std::vector<uint32_t> &w,uint32_t binding){
 // vec4 result. This exact bundle is proven by runtime STENCIL+RRRR bindings.
 // Return 0 for other modules, 1 for the repair, -1 for an unexpected bundle.
 inline int xbg_spirv_ffrs_stencil(std::vector<uint32_t> &words,uint32_t stage,const char *key){
-    // Earth Shrine reflection/light lists: frame1358/draw131709 binds B64 as
-    // R16_UINT, while the translated shader fetches float then bitcasts to an
-    // integer light index. Correct only its two fetch types; retain the native
-    // R16 view/range (no scalar binding override that would widen it to R32).
-    if(stage==4 && key && !std::strcmp(key,"97ae64dbc5e7ff26")){
-        int n=xbg_spirv_uint_fetch(words,64);return n==2?n:-1;
-    }
+    // Integer Buffer sampling is specialized from the actual bound view format
+    // before drawing, with complete use-graph checks in xbg_spirv_integer_buffer.h.
     if((stage==5 || stage==0) && key){
         int changed=0;
         for(const auto &f:xbg_ffrs_integer_facts)if(!std::strcmp(key,f.key)){

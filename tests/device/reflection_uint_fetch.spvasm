@@ -1,4 +1,4 @@
-; Self-authored two-fetch fragment fixture. B70 shares float types with B64.
+; Self-authored integer consumers. B70 shares float types and remains floating.
 OpCapability Shader
 OpCapability SampledBuffer
 OpMemoryModel Logical GLSL450
@@ -21,16 +21,31 @@ OpDecorate %out Location 0
 %other = OpVariable %pointer UniformConstant
 %output = OpTypePointer Output %v4
 %out = OpVariable %output Output
+%local_float = OpTypePointer Function %float
 %zero = OpConstant %int 0
 %one = OpConstant %int 1
 %fn = OpTypeFunction %void
 %main = OpFunction %void None %fn
 %label = OpLabel
+%temporary = OpVariable %local_float Function
 %s = OpLoad %sampled %indices
 %i = OpImage %image %s
 %a = OpImageFetch %v4 %i %zero None
 %b = OpImageFetch %v4 %i %one None
-%sum = OpFAdd %v4 %a %b
+%ax = OpCompositeExtract %float %a 0
+%bx = OpCompositeExtract %float %b 0
+%index_a = OpBitcast %uint %ax
+OpStore %temporary %bx
+%loaded_b = OpLoad %float %temporary
+%index_b = OpBitcast %int %loaded_b
+%numeric_a = OpConvertUToF %float %index_a
+%numeric_b = OpConvertSToF %float %index_b
+%numeric_sum = OpFAdd %float %numeric_a %numeric_b
+%vector_sum = OpCompositeConstruct %v4 %numeric_sum %numeric_sum %numeric_sum %numeric_sum
+%other_s = OpLoad %sampled %other
+%other_i = OpImage %image %other_s
+%other_value = OpImageFetch %v4 %other_i %zero None
+%sum = OpFAdd %v4 %vector_sum %other_value
 OpStore %out %sum
 OpReturn
 OpFunctionEnd

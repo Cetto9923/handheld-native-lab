@@ -11,8 +11,10 @@
 
 #include <pthread.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
 #include "nvn_bridge.h"
 #include "nvn_device.h"
@@ -78,14 +80,112 @@ static int engine_present(void *userdata, void *native_window, VkImage image, Vk
     return 0;
 }
 
+/* The stderr of an Android app process cannot be read back from the
+ * device, so the engine log is also written to a file the app owns. This is
+ * the only way to see what the translator did to a shader on the device. */
+static const char *engine_log_default_paths[] = {
+    "/storage/emulated/0/Android/data/org.ffrs.gamewindow/files/engine.log",
+    "/sdcard/Android/data/org.ffrs.gamewindow/files/engine.log",
+};
+static char engine_log_path_used[512];
+static int engine_log_capped;
+
+static long engine_log_max_bytes(void) {
+    const char *env = getenv("FFRS_ENGINE_LOG_MAX");
+    if (env && env[0]) {
+        long value = atol(env);
+        if (value >= 1024) return value;
+    }
+    return 64L * 1024L * 1024L;
+}
+
+static void engine_log_choose_path(void) {
+    const char *env;
+    if (engine_log_path_used[0]) return;
+    env = getenv("FFRS_ENGINE_LOG");
+    if (env && env[0]) snprintf(engine_log_path_used, sizeof engine_log_path_used, "%s", env);
+    else snprintf(engine_log_path_used, sizeof engine_log_path_used, "%s", engine_log_default_paths[0]);
+}
+
+static void engine_write_fatal_file(const char *text) {
+    char path[576];
+    FILE *file;
+    engine_log_choose_path();
+    snprintf(path, sizeof path, "%s.fatal", engine_log_path_used);
+    file = fopen(path, "wb");
+    if (!file) return;
+    fprintf(file, "FATAL: %s\n", text ? text : "");
+    fflush(file);
+    fclose(file);
+}
+
+static FILE *engine_log_sink(void) {
+    static FILE *sink;
+    static pthread_mutex_t sink_lock = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_lock(&sink_lock);
+    engine_log_choose_path();
+    if (sink && !engine_log_capped) {
+        struct stat st;
+        if (fstat(fileno(sink), &st) == 0 && st.st_size >= engine_log_max_bytes()) {
+            char backup[576];
+            snprintf(backup, sizeof backup, "%s.1", engine_log_path_used);
+            fclose(sink);
+            sink = NULL;
+            if (access(backup, F_OK) != 0) rename(engine_log_path_used, backup);
+            else engine_log_capped = 1;
+        }
+    }
+    if (!sink && !engine_log_capped) {
+        const char *env = getenv("FFRS_ENGINE_LOG");
+        if (env && env[0]) {
+            sink = fopen(engine_log_path_used, "ab");
+        } else {
+            sink = fopen(engine_log_default_paths[0], "ab");
+            if (sink) snprintf(engine_log_path_used, sizeof engine_log_path_used, "%s", engine_log_default_paths[0]);
+            else {
+                sink = fopen(engine_log_default_paths[1], "ab");
+                if (sink) snprintf(engine_log_path_used, sizeof engine_log_path_used, "%s", engine_log_default_paths[1]);
+            }
+        }
+    }
+    FILE *out = engine_log_capped ? NULL : sink;
+    pthread_mutex_unlock(&sink_lock);
+    return out;
+}
+
+static pthread_mutex_t engine_log_write_lock = PTHREAD_MUTEX_INITIALIZER;
+
 static void engine_log(void *userdata, const char *message) {
+    static unsigned lines_written;
+    const char *text = message ? message : "";
+    FILE *sink;
     (void)userdata;
-    fprintf(stderr, "[engine] %s\n", message ? message : "");
+    fprintf(stderr, "[engine] %s\n", text);
+    /* Hold the write lock across the rotation check. Otherwise one thread
+     * can fclose the file another thread is still writing. */
+    pthread_mutex_lock(&engine_log_write_lock);
+    sink = engine_log_sink();
+    if (sink) {
+        fprintf(sink, "[engine] %s\n", text);
+        lines_written++;
+        if ((lines_written % 64u) == 0 || strstr(text, "FATAL") || strstr(text, "WARN")) fflush(sink);
+    }
+    pthread_mutex_unlock(&engine_log_write_lock);
 }
 
 static void engine_fatal(void *userdata, const char *message) {
+    const char *text = message ? message : "";
+    FILE *sink;
     (void)userdata;
-    fprintf(stderr, "[engine] FATAL: %s\n", message ? message : "");
+    fprintf(stderr, "[engine] FATAL: %s\n", text);
+    engine_write_fatal_file(text);
+    pthread_mutex_lock(&engine_log_write_lock);
+    sink = engine_log_sink();
+    if (sink) {
+        fprintf(sink, "[engine] FATAL: %s\n", text);
+        fflush(sink);
+    }
+    pthread_mutex_unlock(&engine_log_write_lock);
     /* The engine is about to leave. There is nothing left for this runtime
      * to do, and the guest cannot go on without the graphics. */
     fflush(NULL);

@@ -11,6 +11,8 @@
 #include "audio_bridge.h"
 #include "guest_context.h"
 #include "guest_pages.h"
+#include "heap_owner.h"
+#include "heap_owner.h"
 #include "native_boundary.h"
 #include "guest_os_tls.h"
 #include "module_tls.h"
@@ -676,9 +678,28 @@ static uint32_t allocate_pages(uintptr_t address,size_t bytes) {
     return finish_page_service(p,"map",address,bytes,r);
 }
 static uint32_t free_pages(uintptr_t address,size_t bytes) {
+    /* A block that the host heap owns has to go back to the host heap. The
+     * guest's nn::os path would otherwise hand a host chunk address to the
+     * page allocator, which cannot own it. */
+    size_t owned_bytes=0;
+    enum heap_owner_kind owner=heap_owner_lookup((const void *)address,&owned_bytes);
+    if(owner==HEAP_OWNER_HOST_SCUdo) {
+        fprintf(stderr,"[heap-owner] CROSS_HEAP_FREE ptr=0x%" PRIxPTR " bytes=%zu owner=HOST_SCUdo path=host-free\n",
+                (uintptr_t)address,owned_bytes);
+        heap_owner_forget((const void *)address);
+        free((void *)address);
+        return 0;
+    }
     guest_process *p=required_current();pthread_mutex_lock(&p->mutex);
     struct guest_pages_result r=guest_pages_free_allocations(p->pages,address,bytes);
     return finish_page_service(p,"free-allocations",address,bytes,r);
+}
+/* Release a block of the guest's own page heap without entering the guest.
+ * The host free path uses it when a guest page address would otherwise be
+ * handed to the host allocator. */
+int guest_process_release_guest_page_block(void *ptr,size_t bytes) {
+    if(!ptr)return 0;
+    return free_pages((uintptr_t)ptr,bytes)==0?0:-1;
 }
 static guest_process *tls_current(void) {
     guest_process *p=required_current();
@@ -1121,7 +1142,7 @@ void guest_process_bind_child_thread(void) {
 /* SDK posix_memalign/memalign call the interposed aligned_alloc symbol.
  * Main exports its own allocator; host allocations cannot be freed by it. */
 int guest_process_interposed_aligned_alloc(size_t alignment,size_t bytes,void **out) {
-    guest_process *p=current_process;
+    guest_process *p=current_process?current_process:exclusive_process;
     if(!p || !p->module)return 0;
     uint32_t symbol=nso_find_symbol(p->module,"aligned_alloc");
     uint64_t offset=symbol?nso_symbol_value(p->module,symbol):0,address=0;
@@ -1132,7 +1153,7 @@ int guest_process_interposed_aligned_alloc(size_t alignment,size_t bytes,void **
     *out=(void*)(uintptr_t)packet.x[0];return 1;
 }
 int guest_process_interposed_free(void *pointer) {
-    guest_process *p=current_process;
+    guest_process *p=current_process?current_process:exclusive_process;
     if(!p || !p->module)return 0;
     if(!pointer)return 1;
     uint32_t symbol=nso_find_symbol(p->module,"free");
@@ -1142,6 +1163,17 @@ int guest_process_interposed_free(void *pointer) {
     nb_status r=nb_call_from_host(&p->boundary,(void(*)(void))(uintptr_t)address,&packet);
     if(r!=NB_OK){fprintf(stderr,"[allocator-interpose] free boundary=%d; refusing foreign heap fallback\n",r);return -1;}
     return 1;
+}
+int guest_process_is_guest_memory(uintptr_t address) {
+    if(!address)return 0;
+    if(nso_host_is_guest_memory(address))return 1;
+    guest_process *p=current_process?current_process:exclusive_process;
+    if(p && p->module) {
+        uintptr_t base=(uintptr_t)nso_base(p->module);
+        size_t size=(size_t)nso_image_size(p->module);
+        if(address>=base && address-base<size)return 1;
+    }
+    return 0;
 }
 /* Called after nb_call_child returns and before unbinding either TLS domain. */
 int guest_process_invoke_thread_exit(void (*destructor)(void *),void *value) {
@@ -1431,6 +1463,7 @@ uint64_t guest_process_resolve(uint32_t index,const char *name) {
          * require a separately supported callback/reentry boundary. */
         "atexit","__cxa_atexit","_Exit","_exit",
         "posix_memalign","memalign","aligned_alloc","valloc","free",
+        "_ZdlPv","_ZdlPvm","_ZdaPv","_ZdaPvm","snk_sized_delete",
         "__cxa_thread_atexit","__cxa_thread_atexit_impl",
         "_ZN2nn4diag6detail9AbortImplEv",
         "_ZN2nn4diag12GetBacktraceEPmi",
@@ -1599,12 +1632,13 @@ static int import_signature(const char *name,nb_signature *out) {
         "_ZNSt3__15mutex6unlockEv",
         "_ZNSt3__118condition_variable10notify_oneEv",
         "_ZNSt3__118condition_variable10notify_allEv",
-        "_ZN5movie17SetThreadPriorityEi","free",NULL};
+        "_ZN5movie17SetThreadPriorityEi","free","_ZdlPv","_ZdaPv",NULL};
     const char *const *lists[]={one,two,three,void_one};
     for(unsigned group=0;group<4;group++)for(size_t i=0;lists[group][i];i++)if(!strcmp(name,lists[group][i])) {
         arguments=group==3?1:group+1;returns=group==3?0:1;goto found;
     }
-    if(!strcmp(name,"rand") || !strcmp(name,"getpid")) {arguments=0;returns=1;}
+    if(!strcmp(name,"_ZdlPvm") || !strcmp(name,"_ZdaPvm") || !strcmp(name,"snk_sized_delete")) {arguments=2;returns=0;}
+    else if(!strcmp(name,"rand") || !strcmp(name,"getpid")) {arguments=0;returns=1;}
     else if(!strcmp(name,"qsort")) {arguments=4;returns=0;}
     else if(!strcmp(name,"bsearch")) {arguments=5;returns=1;}
     else if(!strcmp(name,"_ZN2nn3hid18VibrationConverterC1Ei")) {arguments=2;returns=0;}

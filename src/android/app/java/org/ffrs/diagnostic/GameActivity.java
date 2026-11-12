@@ -1,6 +1,9 @@
 package org.ffrs.diagnostic;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
+import java.util.ArrayList;
 import android.media.AudioManager;
 import android.media.AudioDeviceCallback;
 import android.media.AudioDeviceInfo;
@@ -38,13 +41,16 @@ import android.os.Environment;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.FrameLayout;
 import android.widget.ScrollView;
+import android.widget.Spinner;
 
 import java.io.File;
 import java.lang.ref.WeakReference;
+import java.util.List;
 
 /**
  * Game window form only.
@@ -74,6 +80,9 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     private TextView setupText;
     private DataBundleInstaller dataInstaller;
     private Button importButton, storageButton, recoverButton, cancelButton;
+    // The directory the guest actually writes its saves into. Kept so the
+    // export action can hand the files to the player.
+    private File liveSaveRoot;
     private static final int PICK_DATA_BUNDLE = 4701;
     private boolean guestStarted, guestStartFailed, surfaceReady;
     private int guestTerminalState;
@@ -251,6 +260,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
      * On-screen pad drawn over the SurfaceView. Emits the same button bits as buttonBit().
      * Tap the small PAD handle to show/hide; long-press it to edit: drag a control to move it,
      * tap it then use the size slider, drag the opacity slider, Reset / Done. Saved in files/touch-pad.cfg.
+     * The function menu (export / cheat / quick save / layout) has its own
+     * small button next to the PAD handle, so it stays one tap away.
      */
     private static final class TouchPad extends View {
         private static final int T_BTN = 0, T_STICK = 1, T_DPAD = 2;
@@ -267,13 +278,16 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
         private final GameActivity owner;
         boolean shown;
-        private boolean editing, handleLong;
+        private boolean editing, handleLong, menuOpen;
         private float opacity = 1f;
         private int selected = -1, dragMode;                 // dragMode: 1 opacity, 2 size, 3 move
         private float dragDx, dragDy;
         private final RectF handle = new RectF(), panel = new RectF(), opTrack = new RectF(), scTrack = new RectF();
+        private final RectF menuBtn = new RectF();
         private final RectF btnReset = new RectF(), btnDone = new RectF();
-        private int handleId = -1, lsId = -1, rsId = -1;
+        private final RectF menuPanel = new RectF();
+        private final RectF[] menuItems = new RectF[8];
+        private int handleId = -1, lsId = -1, rsId = -1, menuId = -1;
         private float u, vw, vh, lsKx, lsKy, rsKx, rsKy;
         private final Ctl[] ctls = new Ctl[13];
         private long pressed;
@@ -288,10 +302,10 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             line.setStyle(Paint.Style.STROKE); line.setStrokeWidth(3f);
             fill.setStyle(Paint.Style.FILL);
             text.setTextAlign(Paint.Align.CENTER);
-            ctls[0] = new Ctl("A", T_BTN, 0, 0.75f, 0.75f);
-            ctls[1] = new Ctl("B", T_BTN, 1, 0.75f, 0.75f);
-            ctls[2] = new Ctl("X", T_BTN, 2, 0.75f, 0.75f);
-            ctls[3] = new Ctl("Y", T_BTN, 3, 0.75f, 0.75f);
+            ctls[0] = new Ctl("A", T_BTN, 0, 0.60f, 0.60f);
+            ctls[1] = new Ctl("B", T_BTN, 1, 0.60f, 0.60f);
+            ctls[2] = new Ctl("X", T_BTN, 2, 0.60f, 0.60f);
+            ctls[3] = new Ctl("Y", T_BTN, 3, 0.60f, 0.60f);
             ctls[4] = new Ctl("L1", T_BTN, 6, 1.6f, 0.6f);
             ctls[5] = new Ctl("L2", T_BTN, 8, 1.6f, 0.6f);
             ctls[6] = new Ctl("R1", T_BTN, 7, 1.6f, 0.6f);
@@ -301,6 +315,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             ctls[10] = new Ctl("DPAD", T_DPAD, -1, 1.6f, 1.6f);
             ctls[11] = new Ctl("LS", T_STICK, -1, 1.9f, 1.9f);
             ctls[12] = new Ctl("RS", T_STICK, -1, 1.5f, 1.5f);
+            for (int i = 0; i < menuItems.length; i++) menuItems[i] = new RectF();
             setFocusable(false);
         }
 
@@ -323,7 +338,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
         private void defaults() {
             float w = vw, h = vh;
-            float fx = w - 3.1f * u, fy = h - 3.3f * u, d = 1.25f * u;
+            float fx = w - 3.4f * u, fy = h - 3.4f * u, d = 1.45f * u;
             place(0, fx, fy + d); place(1, fx + d, fy); place(2, fx - d, fy); place(3, fx, fy - d);
             place(4, 2.0f * u, 2.4f * u); place(5, 2.0f * u, 1.0f * u);
             place(6, w - 2.0f * u, 2.4f * u); place(7, w - 2.0f * u, 1.0f * u);
@@ -337,12 +352,28 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             defaults();
             loadConfig();
             handle.set(w / 2f - 0.8f * u, 0.05f * u, w / 2f + 0.8f * u, 0.6f * u);
+            // The function menu keeps its own button next to the PAD handle,
+            // so it stays one tap away and the long press stays free for the
+            // layout editor.
+            menuBtn.set(w / 2f + 1.1f * u, 0.05f * u, w / 2f + 2.5f * u, 0.6f * u);
             float pw = Math.min(0.46f * w, 18f * u), ph = 7.2f * u;
             panel.set(w / 2f - pw / 2f, h / 2f - ph / 2f, w / 2f + pw / 2f, h / 2f + ph / 2f);
             opTrack.set(panel.left + 4.2f * u, panel.top + 2.6f * u - 0.15f * u, panel.right - 1.0f * u, panel.top + 2.6f * u + 0.15f * u);
             scTrack.set(opTrack.left, panel.top + 4.3f * u - 0.15f * u, opTrack.right, panel.top + 4.3f * u + 0.15f * u);
-            btnReset.set(panel.left + 1.0f * u, panel.bottom - 1.7f * u, panel.centerX() - 0.5f * u, panel.bottom - 0.6f * u);
-            btnDone.set(panel.centerX() + 0.5f * u, panel.bottom - 1.7f * u, panel.right - 1.0f * u, panel.bottom - 0.6f * u);
+            // The reset button stays small and hugs the left edge: a wide
+            // target is easy to hit by accident on a phone.
+            float bw = 2.8f * u, bh = 0.9f * u, by = panel.bottom - 1.5f * u;
+            btnReset.set(panel.left + 1.1f * u, by, panel.left + 1.1f * u + bw, by + bh);
+            btnDone.set(panel.right - 1.1f * u - 2.2f * u, by, panel.right - 1.1f * u, by + bh);
+            float mw = Math.min(0.34f * w, 11f * u), mh = Math.min(16.0f * u, 0.90f * h);
+            menuPanel.set(w / 2f - mw / 2f, h / 2f - mh / 2f, w / 2f + mw / 2f, h / 2f + mh / 2f);
+            // The rows share whatever height is left, so more entries still fit.
+            float spacing = (mh - 2.0f * u) / menuItems.length;
+            float ih = Math.max(0.9f * u, spacing - 0.4f * u);
+            for (int i = 0; i < menuItems.length; i++) {
+                float iy = menuPanel.top + 1.0f * u + i * spacing;
+                menuItems[i].set(menuPanel.left + 1.2f * u, iy, menuPanel.right - 1.2f * u, iy + ih);
+            }
         }
 
         // ---------------- persistence ----------------
@@ -382,11 +413,48 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             selected = -1; invalidate();
         }
 
-        // ---------------- edit mode ----------------
+        // ---------------- menu mode ----------------
+        /**
+         * Long press on the PAD handle opens the layout editor.
+         *
+         * The long press used to open the function menu, which pushed the
+         * editor onto a second tap and made a tap turn into an edit instead
+         * of a plain show/hide. The editor is the deliberate gesture now:
+         * tap shows or hides the pad, long press edits the layout.
+         *
+         * The function menu stays reachable through the small button next to
+         * the handle.
+         */
         void onLongPress() {
             handleLong = true;
+            enterEdit();
+        }
+
+        /** Opens the function menu from its own button. */
+        private void openMenu() {
             shown = true; clearInput();
-            editing = true; selected = -1;
+            menuOpen = true;
+            Log.i(TAG, "game_input touch_pad menu=on");
+            invalidate();
+        }
+
+        private void closeMenu() {
+            menuOpen = false;
+            Log.i(TAG, "game_input touch_pad menu=off");
+            invalidate();
+        }
+
+        // ---------------- edit mode ----------------
+        /**
+         * Enters the layout editor.
+         *
+         * Only the handle reaches this state. A long press on a game button
+         * does nothing at all, so the editor can never interrupt a fight.
+         */
+        void enterEdit() {
+            shown = true; editing = true; selected = -1; dragMode = 0;
+            menuOpen = false;
+            clearInput();
             Log.i(TAG, "game_input touch_pad edit=on");
             invalidate();
         }
@@ -396,6 +464,37 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             saveConfig();
             Log.i(TAG, "game_input touch_pad edit=off opacity=" + opacity);
             invalidate();
+        }
+
+        /**
+         * Touch handling while the function menu is open.
+         *
+         * The three entries are save export, the cheat editor and the layout
+         * editor. A tap outside the panel closes the menu.
+         */
+        private boolean onMenuTouch(MotionEvent e) {
+            int act = e.getActionMasked();
+            if (act != MotionEvent.ACTION_DOWN) return true;
+            float x = e.getX(), y = e.getY();
+            if (!menuPanel.contains(x, y)) { closeMenu(); return true; }
+            for (int i = 0; i < menuItems.length; i++) {
+                if (!menuItems[i].contains(x, y)) continue;
+                menuOpen = false;
+                // The menu is raised from inside the editor, so leave the
+                // editor before the action runs and keep the pad usable.
+                if (editing) exitEdit();
+                invalidate();
+                if (i == 0) owner.exportSaves();
+                else if (i == 1) owner.openCheatDialog();
+                else if (i == 2) owner.restoreSave();
+                else if (i == 3) owner.quickSave();
+                else if (i == 4) owner.quickLoad();
+                else if (i == 5) enterEdit();
+                else if (i == 6) owner.userToggleTouchPad();
+                else owner.startGuestScan();
+                return true;
+            }
+            return true;
         }
 
         private boolean hit(Ctl c, float x, float y) {
@@ -439,6 +538,22 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         // ---------------- touch ----------------
         @Override public boolean onTouchEvent(MotionEvent e) {
             int act = e.getActionMasked(), idx = e.getActionIndex();
+            // The function menu swallows every touch while it is open, so a
+            // tap outside it closes the menu instead of reaching the handle.
+            if (menuOpen) return onMenuTouch(e);
+            if ((act == MotionEvent.ACTION_DOWN || act == MotionEvent.ACTION_POINTER_DOWN)
+                    && menuId < 0 && menuBtn.contains(e.getX(idx), e.getY(idx))) {
+                menuId = e.getPointerId(idx);
+                invalidate();
+                return true;
+            }
+            if ((act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_POINTER_UP || act == MotionEvent.ACTION_CANCEL)
+                    && menuId >= 0 && e.getPointerId(idx) == menuId) {
+                menuId = -1;
+                if (act != MotionEvent.ACTION_CANCEL) openMenu();
+                invalidate();
+                return true;
+            }
             if ((act == MotionEvent.ACTION_DOWN || act == MotionEvent.ACTION_POINTER_DOWN)
                     && handleId < 0 && handle.contains(e.getX(idx), e.getY(idx))) {
                 handleId = e.getPointerId(idx); handleLong = false;
@@ -450,7 +565,13 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 removeCallbacks(longPress);
                 boolean inside = handle.contains(e.getX(idx), e.getY(idx));
                 handleId = -1;
-                if (!handleLong && inside) { if (editing) exitEdit(); else owner.userToggleTouchPad(); }
+                if (!handleLong && inside) {
+                    // Tap the handle: show the pad when it is hidden, hide it
+                    // when it is shown. A tap never opens the editor, so it
+                    // cannot interrupt a fight by accident.
+                    if (editing) exitEdit();
+                    else owner.userToggleTouchPad();
+                }
                 invalidate();
                 return true;
             }
@@ -512,10 +633,17 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             c.drawRoundRect(handle, handle.height() / 3f, handle.height() / 3f, fill);
             c.drawRoundRect(handle, handle.height() / 3f, handle.height() / 3f, line);
             c.drawText(editing ? "OK" : (shown ? "PAD -" : "PAD +"), handle.centerX(), handle.centerY() + text.getTextSize() / 3f, text);
+            // Function menu button, always visible so the menu is reachable
+            // even while the pad itself is hidden.
+            fill.setColor(menuOpen ? 0x50FFFFFF : 0x20FFFFFF);
+            c.drawRoundRect(menuBtn, menuBtn.height() / 3f, menuBtn.height() / 3f, fill);
+            c.drawRoundRect(menuBtn, menuBtn.height() / 3f, menuBtn.height() / 3f, line);
+            c.drawText("≡", menuBtn.centerX(), menuBtn.centerY() + text.getTextSize() / 3f, text);
             if (!shown) return;
             text.setTextSize(0.65f * u);
             for (int i = 0; i < ctls.length; i++) drawCtl(c, i);
             if (editing) drawPanel(c);
+            if (menuOpen) drawMenu(c);
         }
 
         private void drawCtl(Canvas c, int i) {
@@ -552,11 +680,41 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             }
         }
 
+        /** The function menu: save export, cheat editor, layout editor. */
+        private void drawMenu(Canvas c) {
+            fill.setColor(0xE0101418); c.drawRoundRect(menuPanel, u * 0.5f, u * 0.5f, fill);
+            line.setColor(0xA0FFFFFF); c.drawRoundRect(menuPanel, u * 0.5f, u * 0.5f, line);
+            text.setTextAlign(Paint.Align.CENTER);
+            text.setColor(0xFFFFFFFF); text.setTextSize(0.52f * u);
+            String[] labels = {
+                    "导出存档",        // export save
+                    "金手指",          // cheat
+                    "还原存档",        // restore save
+                    "即时存档",        // quick save
+                    "即时读档",        // quick load
+                    "编辑按键布局",    // layout editor
+                    "隐藏手柄",        // hide the pad
+                    "扫描实时数据"     // guest memory scan
+            };
+            for (int i = 0; i < menuItems.length; i++) {
+                RectF r = menuItems[i];
+                fill.setColor(0x40FFFFFF); c.drawRoundRect(r, u * 0.3f, u * 0.3f, fill);
+                line.setColor(0xA0FFFFFF); c.drawRoundRect(r, u * 0.3f, u * 0.3f, line);
+                text.setColor(0xFFFFFFFF); text.setTextSize(0.62f * u);
+                c.drawText(labels[i], r.centerX(), r.centerY() + 0.2f * u, text);
+            }
+            text.setTextSize(0.42f * u); text.setColor(0x90FFFFFF);
+            c.drawText("\u70b9\u51fb\u5176\u4ed6\u5904\u53d6\u6d88", menuPanel.centerX(), menuPanel.bottom - 0.5f * u, text);
+        }
+
         private void drawPanel(Canvas c) {
             fill.setColor(0xD8101418); c.drawRoundRect(panel, u * 0.5f, u * 0.5f, fill);
             line.setColor(0xA0FFFFFF); c.drawRoundRect(panel, u * 0.5f, u * 0.5f, line);
             text.setColor(0xFFFFFFFF); text.setTextSize(0.5f * u);
-            c.drawText("\u62d6\u52a8\u6309\u952e\u79fb\u52a8\u4f4d\u7f6e\uff0c\u70b9\u9009\u540e\u8c03\u5927\u5c0f", panel.centerX(), panel.top + 1.1f * u, text);
+            c.drawText("拖动按键移动位置，点选后调大小", panel.centerX(), panel.top + 1.0f * u, text);
+            text.setTextSize(0.38f * u); text.setColor(0x90FFFFFF);
+            c.drawText("长按顶部 PAD 打开功能菜单", panel.centerX(), panel.top + 1.75f * u, text);
+            text.setTextSize(0.5f * u); text.setColor(0xFFFFFFFF);
             Paint.Align al = text.getTextAlign(); text.setTextAlign(Paint.Align.LEFT);
             c.drawText("\u900f\u660e\u5ea6", panel.left + 1.0f * u, opTrack.centerY() + 0.18f * u, text);
             c.drawText(selected >= 0 ? "\u5927\u5c0f " + ctls[selected].name : "\u5927\u5c0f", panel.left + 1.0f * u, scTrack.centerY() + 0.18f * u, text);
@@ -567,8 +725,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 RectF r = pass == 0 ? btnReset : btnDone;
                 fill.setColor(0x40FFFFFF); c.drawRoundRect(r, u * 0.3f, u * 0.3f, fill);
                 line.setColor(0xA0FFFFFF); c.drawRoundRect(r, u * 0.3f, u * 0.3f, line);
-                text.setColor(0xFFFFFFFF); text.setTextSize(0.6f * u);
-                c.drawText(pass == 0 ? "\u91cd\u7f6e" : "\u5b8c\u6210", r.centerX(), r.centerY() + 0.2f * u, text);
+                text.setColor(0xFFFFFFFF); text.setTextSize(pass == 0 ? 0.42f * u : 0.5f * u);
+                c.drawText(pass == 0 ? "恢复默认" : "完成", r.centerX(), r.centerY() + 0.16f * u, text);
             }
         }
 
@@ -652,6 +810,1132 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         if (startState == GuestStartState.STARTED) startGuestWatch();
     }
 
+    /**
+     * Returns the directory the guest writes its saves into.
+     *
+     * An explicit save root wins. Otherwise the native side derives one from
+     * the directory that holds the guest log, exactly like
+     * guest_boot_jni.cpp does, so the export looks in the same place.
+     */
+    private File resolveLiveSaveRoot(String saveRoot, File files) {
+        if (saveRoot != null && !saveRoot.isEmpty()) {
+            File explicitRoot = new File(saveRoot);
+            if (explicitRoot.isDirectory()) return explicitRoot;
+        }
+        if (files == null) return null;
+        File derived = new File(files, "codex-local-save");
+        return derived.isDirectory() ? derived : null;
+    }
+
+    /**
+     * Opens the cheat editor.
+     *
+     * The editor rewrites the live save slot in place: it decrypts the
+     * SVHD container, patches the unit roster and the guest/party caps and
+     * writes the file back. The guest keeps running; it reads the edited
+     * values the next time the roster is loaded.
+     */
+    void openCheatDialog() {
+        if (!SaveCheater.available()) {
+            toast("金手指不可用：存档密钥未随包提供");
+            Log.w(TAG, "cheat unavailable: no save key in assets");
+            return;
+        }
+        final File slot = primarySaveSlot();
+        if (slot == null) {
+            toast("找不到存档文件");
+            return;
+        }
+        final SaveCheater.Result info = SaveCheater.inspect(slot);
+        if (!info.ok) {
+            toast("读取存档失败：" + info.message);
+            return;
+        }
+
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(32, 24, 32, 24);
+        scroll.addView(box);
+
+        TextView infoView = new TextView(this);
+        infoView.setText("存档槽: " + slot.getName() + "\n单位数: " + info.units.size());
+        infoView.setTextSize(13f);
+        box.addView(infoView);
+
+        // Which unit the fields below belong to.
+        TextView pickerLabel = new TextView(this);
+        pickerLabel.setText("选择角色");
+        pickerLabel.setTextSize(13f);
+        box.addView(pickerLabel);
+
+        final Spinner picker = new Spinner(this);
+        final List<SaveCheater.Unit> roster = info.units;
+        // The names come from a table that the guest memory scan produced, so
+        // they can be refreshed without rebuilding the app.
+        final java.util.Map<Integer, String> nameMap = unitNames();
+        final SaveCheater.Result originalInfo = SaveCheater.original(slot);
+        final java.util.Map<Integer, SaveCheater.Unit> originalById = new java.util.HashMap<>();
+        for (SaveCheater.Unit u : originalInfo.units) originalById.put(u.unitId, u);
+        String[] names = new String[roster.size()];
+        for (int i = 0; i < roster.size(); i++) {
+            SaveCheater.Unit u = roster.get(i);
+            String label = nameMap.get(u.unitId);
+            names[i] = (label != null ? label : "单位" + u.unitId)
+                    + "  HP " + u.hitPoint + "/" + u.maxHitPoint
+                    + "  MP " + u.magicPoint + "/" + u.maxMagicPoint
+                    + "  EXP " + u.experience;
+        }
+        android.widget.ArrayAdapter<String> adapter =
+                new android.widget.ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, names);
+        picker.setAdapter(adapter);
+        box.addView(picker);
+
+        // One editable field per cheat value.
+        final EditText hpField = new EditText(this);
+        final EditText maxHpField = new EditText(this);
+        final EditText mpField = new EditText(this);
+        final EditText maxMpField = new EditText(this);
+        final EditText expField = new EditText(this);
+        final EditText levelField = new EditText(this);
+        addCheatField(box, "生命值 HP（当前）", hpField, 0);
+        addCheatField(box, "生命上限", maxHpField, 0);
+        addCheatField(box, "魔法值 MP（当前）", mpField, 0);
+        addCheatField(box, "魔法上限", maxMpField, 0);
+        addCheatField(box, "经验", expField, 0);
+        addCheatField(box, "等级", levelField, 1);
+
+        // The values the unit had before any cheat edit.
+        TextView originalView = new TextView(this);
+        originalView.setTextSize(12f);
+        box.addView(originalView);
+
+        // Picking a role loads its current values into the fields.
+        final CheatFields fields = new CheatFields(this, hpField, maxHpField, mpField, maxMpField, expField, levelField);
+        fields.setOriginalView(originalView);
+        fields.setOriginals(originalById);
+        picker.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                if (position < 0 || position >= roster.size()) return;
+                fields.fill(roster.get(position));
+            }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> parent) { }
+        });
+        if (!roster.isEmpty()) fields.fill(roster.get(0));
+
+        LinearLayout buttons = new LinearLayout(this);
+        buttons.setOrientation(LinearLayout.HORIZONTAL);
+        box.addView(buttons);
+
+        Button apply = new Button(this);
+        apply.setText("应用到所选");
+        apply.setOnClickListener(new CheatApply(this, slot, fields, picker, roster));
+        buttons.addView(apply);
+
+        Button preset = new Button(this);
+        preset.setText("所选满状态");
+        preset.setOnClickListener(new CheatPreset(this, slot, picker, roster));
+        buttons.addView(preset);
+
+        Button all = new Button(this);
+        all.setText("全员满状态");
+        all.setOnClickListener(new CheatAll(this, slot));
+        buttons.addView(all);
+
+        Button scan = new Button(this);
+        scan.setText("扫描实时数据");
+        scan.setOnClickListener(new CheatScan(this, slot, roster));
+        buttons.addView(scan);
+
+        Button restore = new Button(this);
+        restore.setText("恢复原始数值");
+        restore.setOnClickListener(new CheatRestore(this, slot));
+        buttons.addView(restore);
+
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("金手指")
+                .setView(scroll)
+                .setPositiveButton("关闭", null)
+                .show();
+    }
+
+    /**
+     * Looks for the live unit values in the guest memory.
+     *
+     * Editing the save file only changes what the next load reads; the running
+     * game keeps its own copy. This walks the guest memory and reports the
+     * neighbourhood of every unit id so the live layout can be recognised, and
+     * whether the serialized roster blob is in memory as well.
+     */
+    private static final class CheatScan implements View.OnClickListener {
+        private final GameActivity owner;
+        private final File slot;
+        private final List<SaveCheater.Unit> roster;
+        CheatScan(GameActivity o, File s, List<SaveCheater.Unit> r) { owner = o; slot = s; roster = r; }
+        @Override public void onClick(View v) {
+            new Thread(new ScanTask(owner, slot, roster), "ffrs-cheat-scan").start();
+            owner.toast("正在扫描 guest 内存，稍候…");
+        }
+    }
+
+    /**
+     * Puts the untouched copy of the slot back over the edited one.
+     *
+     * The backup is the copy the first cheat edit left behind, so this undoes
+     * every cheat at once and leaves the save exactly as it was found.
+     */
+    private static final class CheatRestore implements View.OnClickListener {
+        private final GameActivity owner;
+        private final File slot;
+        CheatRestore(GameActivity o, File s) { owner = o; slot = s; }
+        @Override public void onClick(View v) {
+            if (!SaveCheater.hasOriginal(slot)) {
+                owner.toast("没有原存档备份，无法恢复");
+                return;
+            }
+            SaveCheater.Result r = SaveCheater.restore(slot);
+            owner.toast(r.ok ? "已恢复原始数值\n" + r.message : "恢复失败：" + r.message);
+            Log.i(TAG, "cheat restored ok=" + r.ok + " " + r.message);
+        }
+    }
+
+    /** The memory walk; it must not run on the UI thread. */
+    private static final class ScanTask implements Runnable {
+        private final GameActivity owner;
+        private final File slot;
+        private final List<SaveCheater.Unit> roster;
+        ScanTask(GameActivity o, File s, List<SaveCheater.Unit> r) { owner = o; slot = s; roster = r; }
+
+        @Override public void run() {
+            Log.i(TAG, "guest scan start");
+            try {
+                File dir = owner.getExternalFilesDir(null);
+                if (dir == null) { owner.toast("没有可写目录"); return; }
+                File unitOut = new File(dir, "guest-unit-scan.txt");
+                File strOut = new File(dir, "guest-strings.txt");
+                Collector collector = new Collector(owner, slot, roster, unitOut, strOut);
+                GuestMemory.walk(collector);
+                collector.close();
+                owner.toast("扫描完成: " + unitOut.getAbsolutePath());
+                Log.i(TAG, "guest scan report: " + unitOut.getAbsolutePath());
+            } catch (Throwable t) {
+                Log.e(TAG, "guest scan failed", t);
+                owner.toast("扫描失败: " + t);
+            }
+        }
+    }
+
+    /**
+     * Collects the answers in one pass over the guest memory.
+     *
+     * The guest holds gigabytes of resident pages, so one walk per question
+     * would take minutes. The unit ids are looked up in an open addressed
+     * table to keep the walk free of allocations.
+     */
+    private static final class Collector implements GuestMemory.ChunkSink {
+        private static final int SLOTS = 512;
+        private static final int BLOCK = 64 * 1024;
+        private static final int MAX_LINES = 200000;
+        private static final int MAX_HITS = 12;
+
+        private final GameActivity owner;
+        private final List<SaveCheater.Unit> roster;
+        private final int[] slotValue = new int[SLOTS];
+        private final int[] slotOwner = new int[SLOTS];
+        private final int[] hitCount = new int[64];
+        private final java.io.PrintWriter units;
+        private final java.io.PrintWriter strings;
+        private final byte[] rosterFrag;
+        private final byte[][] hintNeedles;
+        private int stringLines = 0;
+
+        /** The character names the game shows; both are confirmed on screen. */
+        private static final String[] NAME_HINTS = {"拉斯韦尔", "雷因"};
+
+        Collector(GameActivity o, File slot, List<SaveCheater.Unit> r, File unitFile, File stringFile) throws Exception {
+            owner = o; roster = r;
+            units = new java.io.PrintWriter(new java.io.OutputStreamWriter(new java.io.FileOutputStream(unitFile), "UTF-8"));
+            strings = new java.io.PrintWriter(new java.io.OutputStreamWriter(new java.io.FileOutputStream(stringFile), "UTF-8"));
+            for (int i = 0; i < r.size() && i < 64; i++) {
+                int v = r.get(i).unitId;
+                int h = hash(v);
+                while (slotValue[h] != 0) h = (h + 1) & (SLOTS - 1);
+                slotValue[h] = v + 1;
+                slotOwner[h] = i;
+            }
+            byte[] plain = SaveCheater.plaintext(slot);
+            if (plain != null && !r.isEmpty() && r.get(0).hitPointOffset > 16) {
+                int at = r.get(0).hitPointOffset - 16;
+                rosterFrag = new byte[32];
+                System.arraycopy(plain, at, rosterFrag, 0, 32);
+            } else {
+                rosterFrag = null;
+            }
+            hintNeedles = new byte[NAME_HINTS.length][];
+            for (int i = 0; i < NAME_HINTS.length; i++) hintNeedles[i] = utf16(NAME_HINTS[i]);
+            units.println("slot=" + slot.getName() + " units=" + r.size());
+            for (SaveCheater.Unit u : r) {
+                units.println("file unit " + u.unitId + " hp=" + u.hitPoint + "/" + u.maxHitPoint
+                        + " mp=" + u.magicPoint + "/" + u.maxMagicPoint
+                        + " exp=" + u.experience + " level=" + u.level);
+            }
+        }
+
+        private static int hash(int v) { return (v * 0x9E3779B1 >>> 13) & (SLOTS - 1); }
+
+        @Override public void onChunk(long address, byte[] data, int length) {
+            scanIds(address, data, length);
+            scanFragment(address, data, length);
+            scanNames(address, data, length);
+            for (int off = 0; off < length; off += BLOCK) {
+                int len = Math.min(BLOCK, length - off);
+                if (hasCjk(data, off, len)) dump(address, data, off, len);
+            }
+        }
+
+        /** Where the unit ids live in the guest memory. */
+        private void scanIds(long address, byte[] data, int length) {
+            for (int i = 0; i + 4 <= length; i++) {
+                int v = (data[i] & 0xff) | ((data[i + 1] & 0xff) << 8)
+                        | ((data[i + 2] & 0xff) << 16) | ((data[i + 3] & 0xff) << 24);
+                int h = hash(v);
+                while (slotValue[h] != 0) {
+                    if (slotValue[h] - 1 == v) {
+                        int who = slotOwner[h];
+                        if (hitCount[who] < MAX_HITS) {
+                            hitCount[who]++;
+                            units.println("hit unit=" + roster.get(who).unitId + " @" + String.format("%012x", address + i));
+                            int from = Math.max(0, i - 32);
+                            units.println("   ints:" + ints(data, from, Math.min(96, length - from)));
+                            units.println("   text:" + text(data, from, Math.min(192, length - from)));
+                        }
+                        break;
+                    }
+                    h = (h + 1) & (SLOTS - 1);
+                }
+            }
+        }
+
+        /**
+         * The character names the game draws.
+         *
+         * A name that is found on screen is in the guest memory as well, and
+         * its neighbourhood is the text table it lives in.
+         */
+        private void scanNames(long address, byte[] data, int length) {
+            for (int h = 0; h < hintNeedles.length; h++) {
+                int at = indexOf(data, length, hintNeedles[h]);
+                if (at < 0) continue;
+                units.println("name '" + NAME_HINTS[h] + "' @" + String.format("%012x", address + at));
+                int from = Math.max(0, at - 4096);
+                units.println("   window:" + text(data, from, Math.min(8192, length - from)));
+            }
+        }
+
+        /** The first position of the needle in the chunk, or -1. */
+        private static int indexOf(byte[] hay, int len, byte[] needle) {
+            int last = len - needle.length;
+            for (int i = 0; i <= last; i++) {
+                if (hay[i] != needle[0]) continue;
+                boolean same = true;
+                for (int j = 1; j < needle.length; j++) {
+                    if (hay[i + j] != needle[j]) { same = false; break; }
+                }
+                if (same) return i;
+            }
+            return -1;
+        }
+
+        /** The serialized roster of the save file, if the guest keeps a copy. */
+        private void scanFragment(long address, byte[] data, int length) {
+            if (rosterFrag == null) return;
+            for (int i = 0; i + rosterFrag.length <= length; i++) {
+                if (data[i] != rosterFrag[0]) continue;
+                boolean same = true;
+                for (int j = 1; j < rosterFrag.length; j++) {
+                    if (data[i + j] != rosterFrag[j]) { same = false; break; }
+                }
+                if (same) units.println("rosterblob @" + String.format("%012x", address + i));
+            }
+        }
+
+        /** True when the block holds a run of three or more Chinese characters. */
+        private boolean hasCjk(byte[] b, int off, int len) {
+            int run = 0;
+            for (int i = off; i + 1 < off + len; i += 2) {
+                int c = (b[i] & 0xff) | ((b[i + 1] & 0xff) << 8);
+                if (c >= 0x4e00 && c <= 0x9fff) { run++; if (run >= 3) return true; }
+                else run = 0;
+            }
+            return false;
+        }
+
+        /**
+         * Writes every text run of the block with its address.
+         *
+         * The localization table keeps a key next to every translated string,
+         * so a block that holds Chinese text also holds the keys that point
+         * at the character names.
+         */
+        private void dump(long base, byte[] b, int off, int len) {
+            int end = off + len;
+            int i = off;
+            while (i + 1 < end && stringLines < MAX_LINES) {
+                if (!isText((b[i] & 0xff) | ((b[i + 1] & 0xff) << 8))) { i += 2; continue; }
+                int start = i;
+                StringBuilder sb = new StringBuilder();
+                int cjk = 0;
+                while (i + 1 < end) {
+                    int c = (b[i] & 0xff) | ((b[i + 1] & 0xff) << 8);
+                    if (!isText(c)) break;
+                    sb.append((char) c);
+                    if (c >= 0x4e00 && c <= 0x9fff) cjk++;
+                    i += 2;
+                    if (sb.length() >= 160) break;
+                }
+                if (sb.length() < 2) continue;
+                // Only real text is worth keeping: random bytes read as UTF-16
+                // produce a flood of short runs that hide the text table.
+                boolean chinese = cjk >= 2;
+                boolean identifier = cjk == 0 && isIdentifier(sb);
+                if (!chinese && !identifier) continue;
+                strings.println(String.format("%012x", base + start) + "\t" + sb);
+                stringLines++;
+            }
+        }
+
+        private static boolean isText(int c) {
+            return c >= 0x20 && c != 0x7f && c != 0xffff && !(c >= 0xd800 && c <= 0xdfff);
+        }
+
+        /** True when the run looks like a key rather than random bytes. */
+        private static boolean isIdentifier(StringBuilder sb) {
+            if (sb.length() < 6) return false;
+            boolean letter = false;
+            for (int i = 0; i < sb.length(); i++) {
+                char c = sb.charAt(i);
+                if (c >= 'a' && c <= 'z') { letter = true; continue; }
+                if (c >= 'A' && c <= 'Z') continue;
+                if (c >= '0' && c <= '9') continue;
+                if (c == '_' || c == '.' || c == '/' || c == ':' || c == '-' || c == '#') continue;
+                return false;
+            }
+            return letter;
+        }
+
+        /** The UTF-16LE bytes of a string. */
+        private static byte[] utf16(String s) {
+            byte[] out = new byte[s.length() * 2];
+            for (int i = 0; i < s.length(); i++) {
+                char c = s.charAt(i);
+                out[i * 2] = (byte) (c & 0xff);
+                out[i * 2 + 1] = (byte) ((c >> 8) & 0xff);
+            }
+            return out;
+        }
+
+        /** The printable UTF-16LE runs inside a byte window. */
+        private static String text(byte[] b, int off, int len) {
+            StringBuilder sb = new StringBuilder();
+            StringBuilder run = new StringBuilder();
+            for (int i = off; i + 1 < off + len; i += 2) {
+                char c = (char) ((b[i] & 0xff) | ((b[i + 1] & 0xff) << 8));
+                if (c >= 0x20 && c != 0x7f && c != 0xffff && !Character.isSurrogate(c)) run.append(c);
+                else { if (run.length() >= 2) sb.append('[').append(run).append(']'); run.setLength(0); }
+            }
+            if (run.length() >= 2) sb.append('[').append(run).append(']');
+            return sb.toString();
+        }
+
+        /** The bytes as little endian int32 values. */
+        private static String ints(byte[] b, int off, int len) {
+            StringBuilder s = new StringBuilder();
+            for (int i = off; i + 4 <= off + len; i += 4) {
+                int v = (b[i] & 0xff) | ((b[i + 1] & 0xff) << 8) | ((b[i + 2] & 0xff) << 16) | ((b[i + 3] & 0xff) << 24);
+                s.append(' ').append(v);
+            }
+            return s.toString();
+        }
+
+        void close() {
+            units.flush(); units.close();
+            strings.flush(); strings.close();
+            Log.i(TAG, "guest scan done strings=" + stringLines);
+        }
+    }
+
+    /**
+     * The cheat value fields of the dialog, filled from the selected unit.
+     */
+    private static final class CheatFields {
+        private final GameActivity owner;
+        private final EditText hp, maxHp, mp, maxMp, exp, level;
+        CheatFields(GameActivity o, EditText hp, EditText maxHp, EditText mp,
+                    EditText maxMp, EditText exp, EditText level) {
+            owner = o; this.hp = hp; this.maxHp = maxHp; this.mp = mp;
+            this.maxMp = maxMp; this.exp = exp; this.level = level;
+        }
+        private TextView originalView;
+        private java.util.Map<Integer, SaveCheater.Unit> originalById = new java.util.HashMap<>();
+        void setOriginalView(TextView v) { originalView = v; }
+        void setOriginals(java.util.Map<Integer, SaveCheater.Unit> m) { originalById = m; }
+        /** Loads the unit's current values into the fields. */
+        void fill(SaveCheater.Unit u) {
+            hp.setText(String.valueOf(u.hitPoint));
+            maxHp.setText(String.valueOf(u.maxHitPoint));
+            mp.setText(String.valueOf(u.magicPoint));
+            maxMp.setText(String.valueOf(u.maxMagicPoint));
+            exp.setText(String.valueOf(u.experience));
+            level.setText(String.valueOf(u.level));
+            if (originalView == null) return;
+            SaveCheater.Unit o = originalById.get(u.unitId);
+            originalView.setText(o == null
+                    ? "原值: 无记录"
+                    : "原值  HP " + o.hitPoint + "/" + o.maxHitPoint
+                      + "  MP " + o.magicPoint + "/" + o.maxMagicPoint
+                      + "  EXP " + o.experience + "  等级 " + o.level);
+        }
+        Integer hpValue() { return parseField(hp); }
+        Integer maxHpValue() { return parseField(maxHp); }
+        Integer mpValue() { return parseField(mp); }
+        Integer maxMpValue() { return parseField(maxMp); }
+        Integer expValue() { return parseField(exp); }
+        Integer levelValue() { return parseField(level); }
+    }
+
+    /** The unit the picker currently points at. */
+    private static Integer selectedUnit(Spinner picker, List<SaveCheater.Unit> roster) {
+        int pos = picker.getSelectedItemPosition();
+        if (pos < 0 || pos >= roster.size()) return null;
+        return roster.get(pos).unitId;
+    }
+
+    /**
+     * Named listeners (not anonymous/inner): the dex step of this build setup
+     * trips an internal error on a lambda or an anonymous class that captures
+     * a local variable.
+     */
+    private static final class CheatApply implements View.OnClickListener {
+        private final GameActivity owner;
+        private final File slot;
+        private final CheatFields fields;
+        private final Spinner picker;
+        private final List<SaveCheater.Unit> roster;
+        CheatApply(GameActivity o, File s, CheatFields fields, Spinner picker, List<SaveCheater.Unit> roster) {
+            owner = o; slot = s; this.fields = fields; this.picker = picker; this.roster = roster;
+        }
+        @Override public void onClick(View v) {
+            Integer hpValue = fields.hpValue(), maxHpValue = fields.maxHpValue();
+            Integer mpValue = fields.mpValue(), maxMpValue = fields.maxMpValue();
+            Integer expValue = fields.expValue(), levelValue = fields.levelValue();
+            if (hpValue == null && maxHpValue == null && mpValue == null
+                    && maxMpValue == null && expValue == null && levelValue == null) {
+                owner.toast("没有填写任何数值");
+                return;
+            }
+            Integer unit = selectedUnit(picker, roster);
+            SaveCheater.Result r = SaveCheater.apply(slot, hpValue, maxHpValue, mpValue,
+                    maxMpValue, expValue, levelValue, unit);
+            owner.toast(describeCheat(r));
+            Log.i(TAG, "cheat applied unit=" + unit + ": " + r.message + " " + r.edits);
+        }
+    }
+
+    /** Maxes out only the unit the picker points at. */
+    private static final class CheatPreset implements View.OnClickListener {
+        private final GameActivity owner;
+        private final File slot;
+        private final Spinner picker;
+        private final List<SaveCheater.Unit> roster;
+        CheatPreset(GameActivity o, File s, Spinner picker, List<SaveCheater.Unit> roster) {
+            owner = o; slot = s; this.picker = picker; this.roster = roster;
+        }
+        @Override public void onClick(View v) {
+            Integer unit = selectedUnit(picker, roster);
+            SaveCheater.Result r = SaveCheater.apply(slot, 99999, 99999, 999, 999, 9999999, 99, unit);
+            owner.toast(describeCheat(r));
+            Log.i(TAG, "cheat preset unit=" + unit + ": " + r.message + " " + r.edits);
+        }
+    }
+
+    /** Maxes out every unit in the roster. */
+    private static final class CheatAll implements View.OnClickListener {
+        private final GameActivity owner;
+        private final File slot;
+        CheatAll(GameActivity o, File s) { owner = o; slot = s; }
+        @Override public void onClick(View v) {
+            SaveCheater.Result r = SaveCheater.apply(slot, 99999, 99999, 999, 999, 9999999, 99, null);
+            owner.toast(describeCheat(r));
+            Log.i(TAG, "cheat all applied: " + r.message + " " + r.edits);
+        }
+    }
+
+    /** Renders a cheat result as one message: summary line plus every change. */
+    private static String describeCheat(SaveCheater.Result r) {
+        StringBuilder msg = new StringBuilder(r.message);
+        for (String e : r.edits) msg.append('\n').append(e);
+        return msg.toString();
+    }
+
+    /** Adds a labelled numeric input to the cheat dialog. */
+    private void addCheatField(LinearLayout box, String label, EditText field, int initial) {
+        TextView caption = new TextView(this);
+        caption.setText(label);
+        caption.setTextSize(13f);
+        box.addView(caption);
+        field.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_FLAG_SIGNED);
+        if (initial > 0) field.setText(String.valueOf(initial));
+        box.addView(field);
+    }
+
+    /** Parses an optional integer; an empty or invalid field means "leave alone". */
+    private static Integer parseField(EditText field) {
+        String s = field.getText().toString().trim();
+        if (s.isEmpty()) return null;
+        try { return Integer.valueOf(s); } catch (NumberFormatException e) { return null; }
+    }
+
+    /**
+     * The character names of the units, when a name table was written.
+     *
+     * The table is a plain text file with one "id<TAB>name" pair per line.
+     * It comes out of the guest memory scan, so the names can be refreshed
+     * without rebuilding the app.
+     */
+    private java.util.Map<Integer, String> unitNames() {
+        java.util.Map<Integer, String> map = new java.util.HashMap<>();
+        try {
+            File dir = getExternalFilesDir(null);
+            if (dir == null) return map;
+            File f = new File(dir, "unit-names.txt");
+            if (!f.isFile()) return map;
+            java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(
+                    new java.io.FileInputStream(f), "UTF-8"));
+            try {
+                String line;
+                while ((line = r.readLine()) != null) {
+                    int tab = line.indexOf('\t');
+                    if (tab <= 0) continue;
+                    try {
+                        int id = Integer.parseInt(line.substring(0, tab).trim());
+                        String name = line.substring(tab + 1).trim();
+                        if (!name.isEmpty()) map.put(id, name);
+                    } catch (NumberFormatException ignored) { }
+                }
+            } finally { r.close(); }
+        } catch (Exception e) {
+            Log.w(TAG, "unit names unreadable: " + e.getMessage());
+        }
+        // The table that was built into the app is the fallback, so the names
+        // show up even when no name file was written yet.
+        for (java.util.Map.Entry<Integer, String> e : UnitNames.table().entrySet()) {
+            if (!map.containsKey(e.getKey())) map.put(e.getKey(), e.getValue());
+        }
+        return map;
+    }
+
+    /**
+     * Runs the guest memory scan from the function menu.
+     *
+     * The scan reads hundreds of megabytes of guest memory, so it runs on its
+     * own thread and the report lands in the app files directory.
+     */
+    void startGuestScan() {
+        File slot = primarySaveSlot();
+        if (slot == null) { toast("找不到存档文件"); return; }
+        SaveCheater.Result info = SaveCheater.inspect(slot);
+        if (!info.ok || info.units.isEmpty()) { toast("存档里没有单位数据"); return; }
+        new Thread(new ScanTask(this, slot, info.units), "ffrs-cheat-scan").start();
+        toast("正在扫描 guest 内存，稍候…");
+    }
+
+    /** The save slot the game is currently using. */
+    private File primarySaveSlot() {
+        File root = liveSaveRoot;
+        if (root == null) return null;
+        File slot = new File(root, "GameSaveData0");
+        return slot.exists() ? slot : null;
+    }
+
+    /** Shows a short message without stealing the game focus. */
+    void toast(final String message) {
+        new Handler(Looper.getMainLooper()).post(new ToastTask(this, message));
+    }
+
+    /** Named task: the dex step of this build setup trips on an anonymous class that captures a local. */
+    private static final class ToastTask implements Runnable {
+        private final GameActivity owner;
+        private final String message;
+        ToastTask(GameActivity o, String m) { owner = o; message = m; }
+        @Override public void run() {
+            android.widget.Toast.makeText(owner, message, android.widget.Toast.LENGTH_LONG).show();
+        }
+    }
+
+    /**
+     * Copies the guest saves into the public Download collection.
+     *
+     * The runtime keeps the save directory private, so the platform file
+     * manager shows it as empty and a player cannot hand the file over.
+     * The export gives the player a plain file they can send.
+     */
+    /**
+     * Snapshots the live save directory.
+     *
+     * The guest writes its own slots, so this captures the state the game has
+     * written down, not the current frame: it is the safety net for a crash or
+     * a bad edit, and the way back to a known good point.
+     */
+    void quickSave() {
+        File root = liveSaveRoot;
+        if (root == null) {
+            toast("找不到存档目录，请等游戏进入标题画面后再试");
+            return;
+        }
+        File dest = nextSnapshotDir();
+        if (dest == null) {
+            toast("无法创建即时存档目录");
+            return;
+        }
+        int count = 0;
+        long bytes = 0;
+        for (File f : root.listFiles()) {
+            if (!f.isFile()) continue;
+            if (f.getName().endsWith(".cheat.tmp") || f.getName().endsWith(".orig")) continue;
+            try {
+                copyFile(f, new File(dest, f.getName()));
+                bytes += f.length();
+                count++;
+            } catch (Exception e) {
+                Log.w(TAG, "quick save failed for " + f.getName() + ": " + e.getMessage());
+            }
+        }
+        // The picture of the game at this moment is the thumbnail of the card.
+        captureThumbnail(new File(dest, "thumb.png"));
+        writeText(new File(dest, "meta.txt"), snapshotNote(dest));
+        toast("已即时存档: " + dest.getName() + "（" + count + " 个文件，" + (bytes / 1024) + " KB）");
+        Log.i(TAG, "quick save: " + dest.getName() + " " + count + " files " + bytes + " bytes");
+    }
+
+    /** The folder the next snapshot goes into. */
+    private File nextSnapshotDir() {
+        File dir = quickSaveDir();
+        if (dir == null) return null;
+        int n = 1;
+        File[] kids = dir.listFiles();
+        if (kids != null) {
+            for (File f : kids) {
+                if (!f.isDirectory() || !f.getName().startsWith("save-")) continue;
+                try { n = Math.max(n, Integer.parseInt(f.getName().substring(5)) + 1); }
+                catch (NumberFormatException ignored) { }
+            }
+        }
+        File target = new File(dir, String.format("save-%03d", n));
+        return target.mkdirs() ? target : null;
+    }
+
+    /** The snapshots, oldest first. */
+    private java.util.List<File> snapshots() {
+        java.util.List<File> out = new java.util.ArrayList<>();
+        File dir = quickSaveDir();
+        if (dir == null) return out;
+        File[] kids = dir.listFiles();
+        if (kids == null) return out;
+        java.util.Arrays.sort(kids);
+        for (File f : kids) if (f.isDirectory() && f.getName().startsWith("save-")) out.add(f);
+        return out;
+    }
+
+    /** The note of a snapshot: when it was taken and what the party looked like. */
+    private String snapshotNote(File snap) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("time=").append(timeStamp(snap.lastModified())).append('\n');
+        File slot = primarySaveSlot();
+        if (slot != null) {
+            SaveCheater.Result info = SaveCheater.inspect(slot);
+            if (info.ok) {
+                java.util.Map<Integer, String> names = unitNames();
+                for (SaveCheater.Unit u : info.units) {
+                    String name = names.get(u.unitId);
+                    sb.append("unit ").append(u.unitId);
+                    if (name != null) sb.append(' ').append(name);
+                    sb.append(' ').append(u.hitPoint).append('/').append(u.maxHitPoint)
+                      .append(' ').append(u.magicPoint).append('/').append(u.maxMagicPoint)
+                      .append(' ').append(u.experience).append('\n');
+                }
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Grabs the current frame of the game surface.
+     *
+     * The picture of the game at the moment the save was taken is the only
+     * thumbnail available without the game writing one itself.
+     */
+    private void captureThumbnail(final File dest) {
+        final int w = surface_view.getWidth(), h = surface_view.getHeight();
+        if (w <= 0 || h <= 0) return;
+        final android.graphics.Bitmap shot =
+                android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888);
+        try {
+            android.view.PixelCopy.request(surface_view, shot, new ThumbCopy(dest, shot),
+                    new Handler(Looper.getMainLooper()));
+        } catch (Exception e) {
+            Log.w(TAG, "thumbnail request failed: " + e.getMessage());
+        }
+    }
+
+    /** Writes the grabbed frame into the snapshot folder. */
+    private static final class ThumbCopy implements android.view.PixelCopy.OnPixelCopyFinishedListener {
+        private final File dest;
+        private final android.graphics.Bitmap source;
+        ThumbCopy(File d, android.graphics.Bitmap s) { dest = d; source = s; }
+        @Override public void onPixelCopyFinished(int result) {
+            if (result != android.view.PixelCopy.SUCCESS) {
+                Log.w(TAG, "thumbnail copy failed: " + result);
+                return;
+            }
+            try {
+                java.io.FileOutputStream os = new java.io.FileOutputStream(dest);
+                android.graphics.Bitmap small = android.graphics.Bitmap.createScaledBitmap(
+                        source, 480, 307, true);
+                small.compress(android.graphics.Bitmap.CompressFormat.PNG, 90, os);
+                os.close();
+                small.recycle();
+            } catch (Exception e) {
+                Log.w(TAG, "thumbnail write failed: " + e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Puts the quick save back over the live slots.
+     *
+     * The guest keeps its own copy of the roster, so the restored values show
+     * up after the save is loaded again in game.
+     */
+    void quickLoad() {
+        openSaveCards();
+    }
+
+    /**
+     * The save cards.
+     *
+     * Every snapshot is a card with the picture of the game at that moment,
+     * the time it was taken and the party that was in the save. Tap a card to
+     * read that save back, long press to throw it away.
+     */
+    void openSaveCards() {
+        final java.util.List<File> snaps = snapshots();
+        if (snaps.isEmpty()) {
+            toast("还没有即时存档，先执行一次即时存档");
+            return;
+        }
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(24, 24, 24, 24);
+        scroll.addView(box);
+        TextView hint = new TextView(this);
+        hint.setText("点卡片读档，长按删除");
+        hint.setTextSize(12f);
+        box.addView(hint);
+        for (File snap : snaps) box.addView(saveCard(snap));
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("即时存档")
+                .setView(scroll)
+                .setPositiveButton("关闭", null)
+                .show();
+    }
+
+    /** One card of the save list. */
+    private View saveCard(final File snap) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(8, 12, 8, 12);
+        android.widget.ImageView shot = new android.widget.ImageView(this);
+        android.graphics.Bitmap bmp = android.graphics.BitmapFactory.decodeFile(
+                new File(snap, "thumb.png").getAbsolutePath());
+        if (bmp != null) shot.setImageBitmap(bmp);
+        row.addView(shot, new LinearLayout.LayoutParams(480, 307));
+        LinearLayout text = new LinearLayout(this);
+        text.setOrientation(LinearLayout.VERTICAL);
+        text.setPadding(24, 0, 0, 0);
+        TextView title = new TextView(this);
+        title.setText(snap.getName() + "  " + timeStamp(snap.lastModified()));
+        title.setTextSize(16f);
+        text.addView(title);
+        TextView note = new TextView(this);
+        note.setText(cardNote(snap));
+        note.setTextSize(12f);
+        text.addView(note);
+        row.addView(text);
+        row.setOnClickListener(new SaveCardClick(this, snap));
+        row.setOnLongClickListener(new SaveCardLongClick(this, snap));
+        return row;
+    }
+
+    /** The party line under the title of a card. */
+    private String cardNote(File snap) {
+        File meta = new File(snap, "meta.txt");
+        if (!meta.isFile()) return "";
+        StringBuilder sb = new StringBuilder();
+        try {
+            java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(
+                    new java.io.FileInputStream(meta), "UTF-8"));
+            try {
+                String line;
+                int shown = 0;
+                while ((line = r.readLine()) != null) {
+                    if (!line.startsWith("unit ")) continue;
+                    if (shown++ >= 6) break;
+                    sb.append(line.substring(5)).append('\n');
+                }
+            } finally { r.close(); }
+        } catch (Exception e) {
+            Log.w(TAG, "snapshot meta unreadable: " + e.getMessage());
+        }
+        return sb.toString().trim();
+    }
+
+    /**
+     * Reads a snapshot back into the game.
+     *
+     * The slots are written back first, so the save on disk is the snapshot.
+     * The running game keeps its own copy of the roster, so the values show
+     * up after the save is loaded again in game.
+     */
+    void loadSnapshot(File snap) {
+        File root = liveSaveRoot;
+        if (root == null) { toast("找不到存档目录"); return; }
+        int count = 0;
+        File[] kids = snap.listFiles();
+        if (kids != null) {
+            for (File f : kids) {
+                if (!f.isFile()) continue;
+                String n = f.getName();
+                if (n.equals("thumb.png") || n.equals("meta.txt")) continue;
+                try { copyFile(f, new File(root, n)); count++; }
+                catch (Exception e) { Log.w(TAG, "quick load failed for " + n + ": " + e.getMessage()); }
+            }
+        }
+        toast("已读档 " + snap.getName() + ": 写回 " + count + " 个文件\n回标题画面 Load Game 后生效");
+        Log.i(TAG, "quick load: " + snap.getName() + " " + count + " files");
+    }
+
+    /** Reads the snapshot of a card back into the game. */
+    private static final class SaveCardClick implements View.OnClickListener {
+        private final GameActivity owner;
+        private final File snap;
+        SaveCardClick(GameActivity o, File s) { owner = o; snap = s; }
+        @Override public void onClick(View v) { owner.loadSnapshot(snap); }
+    }
+
+    /** Throws a save card away. */
+    private static final class SaveCardLongClick implements View.OnLongClickListener {
+        private final GameActivity owner;
+        private final File snap;
+        SaveCardLongClick(GameActivity o, File s) { owner = o; snap = s; }
+        @Override public boolean onLongClick(View v) {
+            deleteTree(snap);
+            owner.toast("已删除 " + snap.getName());
+            Log.i(TAG, "snapshot deleted: " + snap.getName());
+            return true;
+        }
+    }
+
+    /** Copies one file. */
+    private static void copyFile(File from, File to) throws java.io.IOException {
+        java.io.InputStream in = new java.io.FileInputStream(from);
+        java.io.FileOutputStream out = new java.io.FileOutputStream(to);
+        try {
+            byte[] buf = new byte[65536];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+        } finally { in.close(); out.close(); }
+    }
+
+    /** Removes a folder and everything in it. */
+    private static void deleteTree(File dir) {
+        File[] kids = dir.listFiles();
+        if (kids != null) for (File f : kids) deleteTree(f);
+        dir.delete();
+    }
+
+    /** Writes a text file. */
+    private static void writeText(File file, String text) {
+        try {
+            java.io.FileOutputStream os = new java.io.FileOutputStream(file);
+            os.write(text.getBytes("UTF-8"));
+            os.close();
+        } catch (Exception e) {
+            Log.w(TAG, "text write failed: " + e.getMessage());
+        }
+    }
+
+    /** A time in a form a player can read. */
+    private static String timeStamp(long when) {
+        return new java.text.SimpleDateFormat("MM-dd HH:mm:ss", java.util.Locale.CHINA)
+                .format(new java.util.Date(when));
+    }
+
+    /** Where the quick save snapshot lives. */
+    private File quickSaveDir() {
+        File dir = getExternalFilesDir(null);
+        if (dir == null) return null;
+        File q = new File(dir, "ffrs-quicksave");
+        if (!q.isDirectory() && !q.mkdirs()) return null;
+        return q;
+    }
+
+    /**
+     * Restores the save slot from the backup taken before the first cheat edit.
+     *
+     * The guest keeps running with its own copy of the roster, so the game
+     * has to be restarted before the restored values show up in game.
+     */
+    void restoreSave() {
+        File root = liveSaveRoot;
+        if (root == null) {
+            File dir = getExternalFilesDir(null);
+            if (dir != null) {
+                File candidate = new File(dir, "codex-local-save");
+                if (candidate.isDirectory()) root = candidate;
+            }
+        }
+        if (root == null) {
+            File slot = primarySaveSlot();
+            if (slot != null) root = slot.getParentFile();
+        }
+        if (root == null) {
+            Log.w(TAG, "save_restore skipped: no live save root");
+            toast("找不到存档目录，请等游戏进入标题画面后再试");
+            return;
+        }
+
+        final File saveRoot = root;
+        final List<File> backups = SaveRestorer.listBackupDirectories();
+        final File cheatBak = new File(saveRoot, "GameSaveData0.bak");
+        final boolean hasCheatBak = cheatBak.isFile();
+
+        if (backups.isEmpty() && !hasCheatBak) {
+            toast("在 Download 目录未找到导出的备份 (FFRS-save-*)");
+            return;
+        }
+
+        List<String> items = new ArrayList<String>();
+        final List<File> targets = new ArrayList<File>();
+
+        for (File b : backups) {
+            items.add("备份目录: " + b.getName());
+            targets.add(b);
+        }
+        if (hasCheatBak) {
+            items.add("金手指本地单文件备份 (GameSaveData0.bak)");
+            targets.add(cheatBak);
+        }
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("选择要恢复的存档");
+        builder.setItems(items.toArray(new CharSequence[0]), new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                File chosen = targets.get(which);
+                if (chosen.equals(cheatBak)) {
+                    File slot = primarySaveSlot();
+                    if (slot != null) {
+                        SaveCheater.Result r = SaveCheater.restore(slot);
+                        toast(r.ok ? (r.message + "，请重启游戏生效") : ("还原失败：" + r.message));
+                    }
+                } else {
+                    toast("正在恢复存档…");
+                    new Thread(new SaveRestoreTask(GameActivity.this, chosen, saveRoot), "ffrs-save-restore").start();
+                }
+            }
+        });
+        builder.setNegativeButton("取消", null);
+        builder.show();
+    }
+
+    private void exportSaves() {
+        File root = liveSaveRoot;
+        if (root == null) {
+            Log.w(TAG, "save_export skipped: no live save root");
+            toast("找不到存档目录，请等游戏进入标题画面后再试");
+            if (setupText != null) setupText.setText("Save export: no save directory found yet.");
+            return;
+        }
+        toast("正在导出存档…");
+        new Thread(new SaveExportTask(this, root), "ffrs-save-export").start();
+    }
+
+    /**
+     * Runs the save export off the UI thread and reports the outcome.
+     *
+     * A named class instead of an anonymous one: the dex shape of an
+     * anonymous class that captures a local variable trips an internal
+     * error in the build tool's dex step.
+     */
+    private static final class SaveExportTask implements Runnable {
+        private final GameActivity owner;
+        private final File root;
+        SaveExportTask(GameActivity owner, File root) { this.owner = owner; this.root = root; }
+        @Override public void run() {
+            final SaveExporter.Result result = SaveExporter.export(owner, root);
+            new Handler(Looper.getMainLooper()).post(new SaveExportReport(owner, result));
+        }
+    }
+
+    /** Reports the export outcome on the UI thread. */
+    private static final class SaveExportReport implements Runnable {
+        private final GameActivity owner;
+        private final SaveExporter.Result result;
+        SaveExportReport(GameActivity owner, SaveExporter.Result result) {
+            this.owner = owner; this.result = result;
+        }
+        @Override public void run() {
+            Log.i(TAG, "save_export " + result.describe());
+            if (owner.setupText != null) owner.setupText.setText("Save export: " + result.describe());
+            // The player needs the path: the game screen has no setup text view.
+            owner.toast(result.ok()
+                    ? "存档已导出到 " + result.directory.getAbsolutePath()
+                            + "\n共 " + result.fileCount + " 个文件，" + result.totalBytes + " 字节"
+                    : "导出失败：" + result.error);
+        }
+    }
+
+    private static final class SaveRestoreTask implements Runnable {
+        private final GameActivity owner;
+        private final File backupDir;
+        private final File targetDir;
+        SaveRestoreTask(GameActivity owner, File backupDir, File targetDir) {
+            this.owner = owner; this.backupDir = backupDir; this.targetDir = targetDir;
+        }
+        @Override public void run() {
+            final SaveRestorer.Result result = SaveRestorer.restore(owner, backupDir, targetDir);
+            new Handler(Looper.getMainLooper()).post(new SaveRestoreReport(owner, result));
+        }
+    }
+
+    private static final class SaveRestoreReport implements Runnable {
+        private final GameActivity owner;
+        private final SaveRestorer.Result result;
+        SaveRestoreReport(GameActivity owner, SaveRestorer.Result result) {
+            this.owner = owner; this.result = result;
+        }
+        @Override public void run() {
+            Log.i(TAG, "save_restore " + result.describe());
+            if (owner.setupText != null) owner.setupText.setText("Save restore: " + result.describe());
+            if (result.ok()) {
+                owner.toast("存档恢复成功！\n共恢复 " + result.fileCount + " 个文件，请重启游戏生效");
+            } else {
+                owner.toast("恢复失败：" + result.error);
+            }
+        }
+    }
+
     private DeviceProfile deviceProfile() {
         String override = "";
         File dir = getExternalFilesDir(null);
@@ -701,9 +1985,10 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         File dir = getExternalFilesDir(null);
         if (dir == null) return;
         writeMarkerIfMissing(new File(dir, "gfx-legacy-waitall"), "0\n");
+        writeMarkerIfMissing(new File(dir, "gfx-readback-cached"), "1\n");
         writeMarkerIfMissing(new File(dir, "gfx-target-fps"), (selectedDeviceProfile != null ? selectedDeviceProfile.targetFps : 30) + "\n");
         writeMarkerIfMissing(new File(dir, "gfx-depth-aspect"), "1\n");
-        writeMarkerIfMissing(new File(dir, "gfx-async-pipelines"), "0\n");
+        writeMarkerIfMissing(new File(dir, "gfx-async-pipelines"), "1\n");
         writeMarkerIfMissing(new File(dir, "gfx-fence-spin-us"), "0\n");
         writeMarkerIfMissing(new File(dir, "gfx-audio-paced-transport"), "1\n");
         writeMarkerIfMissing(new File(dir, "gfx-codex-audio-dump"), "0\n");
@@ -1115,6 +2400,10 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             box.addView(grant, bp);
             box.addView(retry, bp);
         }
+        // Always available: the player needs a way to hand the saves over
+        // without a computer, whatever state the data check is in.
+        setupButton("导出存档到 Download", 7, box);
+        setupButton("从 Download 恢复存档", 8, box);
         box.setVisibility(View.GONE);
         box.setClickable(true);
         setupView = box;
@@ -1166,6 +2455,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             else if (action == 4) owner.dataInstaller.recover();
             else if (action == 5) owner.dataInstaller.cancel();
             else if (action == 6) owner.dataInstaller.rescanDirectory();
+            else if (action == 7) owner.exportSaves();
+            else if (action == 8) owner.restoreSave();
         }
     }
 
@@ -1346,6 +2637,11 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             return;
         }
         if (isolatedSave) Log.i(TAG, "isolated regression save root=" + saveRoot);
+        /* The guest derives its own save directory from the log directory when
+         * no explicit root was given, so the export must look in the same
+         * place the native side used. */
+        liveSaveRoot = resolveLiveSaveRoot(saveRoot, files);
+        Log.i(TAG, "live_save_root=" + (liveSaveRoot == null ? "null" : liveSaveRoot.getAbsolutePath()));
         guestStarted = true;
         Log.i(TAG, "guest_start hide_setup_view");
         if (setupView != null) setupView.setVisibility(View.GONE);
@@ -1479,6 +2775,10 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
     @Override protected void onStop() {
         Log.i(TAG, "lifecycle onStop");
+        /* Leaving the app is the moment a player stops playing, so this is
+         * the moment the saves are worth handing over. The export runs on
+         * its own thread and never blocks the lifecycle. */
+        if (liveSaveRoot != null) exportSaves();
         super.onStop();
     }
 

@@ -254,7 +254,7 @@ public final class DataBundleInstaller implements Runnable {
         data = runtime;
         // Match the frozen runtime profile; do not import diagnostic flags from archives.
         marker(data, "gfx-target-fps", "30\n"); marker(data, "gfx-fence-spin-us", "0\n");
-        marker(data, "gfx-legacy-waitall", "0\n"); marker(data, "gfx-async-pipelines", "0\n");
+        marker(data, "gfx-legacy-waitall", "0\n"); marker(data, "gfx-async-pipelines", "1\n");
         marker(data, "gfx-depth-aspect", "1\n"); marker(data, "gfx-audio-paced-transport", "1\n");
         marker(data, "gfx-codex-audio-dump", "0\n"); marker(data, "gfx-codex-frame-metrics", "1\n");
         // Only an APK contract that names the archive may enable the native fallback.
