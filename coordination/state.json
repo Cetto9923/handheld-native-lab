@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-12T23:14:24.162079+08:00",
+ "updated_at": "2026-11-12T23:25:51.921398+08:00",
  "phase": "v1.0.6 published; v1.0.7 internal team-play package built and device-verified on task/T-package-1.0.7-20261112 (moon halo fix shipped, cheat menu usable, 30 FPS held). Battle effect pipeline stutter still open, not in this package.",
  "coordinator": "MiniMax Code /root release takeover (Codex thread aborted by user)",
  "integration_branch": "work/rg477m-native",
@@ -6839,6 +6839,25 @@
     ],
     "why_it_matters": "the coordinator had to admit that the automatic key injection on the user's tablet was not disclosed in advance, so the ownership of the device is now recorded as a first class constraint"
    }
+  },
+  "result_20261112": {
+   "observed_at": "2026-11-12T23:25:51.921398+08:00",
+   "status": "the worker line is delivered and verified on the device; a separate pre-existing engine defect blocks the game itself",
+   "apk": ".local/apk/ffrs-game-window-1.0.9.apk in the RG477M main worktree, 3523650 bytes, sha256 2bd65685f83bb675b24523b7fa2daa1947b7e874b736a589c95c89ffb1324e22",
+   "version": "versionCode 9, versionName 1.0.9, certificate d11967a3...f36e, the same certificate as the RG477M 1.0.8 and the Honor 1.0.7",
+   "commits": "07a8d44 for the code and 221ef7b for the device result, on task/T-rg477m-sync-20261112, worktree clean, not pushed",
+   "device_evidence": [
+    "the profile tier is real: render_tier=1280x720 operation_mode=handheld and the guest reports operation_mode=0",
+    "the 4:3 output is correct: source=1280x720 to dst=1280x720 at (0,120) on a 1280x960 swapchain, scale 1.0000, bars_top=120, bars_bottom=120, stretch=no",
+    "the frame rate declaration: surface_frame_rate_declaration hz=30 compatibility=default strategy=only_if_seamless, and the engine locked target_fps=30",
+    "the frame metrics from the buffered CSV with screenrecord and flame off: 21 presents queued, 0 skip, 0 fail, p50 33.329 ms equals 30.0 FPS, p95 33.94 ms, one 1730 ms long frame",
+    "the data root is discovered correctly: autodiscovered game_dir=/storage/emulated/0/HandheldNativeLab/data, not /sdcard/FFRS",
+    "the cheat menu opens and the dialog decrypts the real save: 8 units, HP 270 and MP 35, so the honor key works on the RG477M",
+    "the saves are untouched: the SHA-1 of the four live saves matches the backup byte for byte and the timestamps are unchanged"
+   ],
+   "changes": "DeviceProfile.java carries the resolution tier as a real render size of 1280x720 or 1920x1080 and derives the docked rendering from the tier, GameActivity.java reports the tier and declares 30 FPS with a marker that allows an A/B without a rebuild, nvn_backend_vulkan.c lifts the inline aspect fit into a named function with the arithmetic unchanged, and the manifest moves to code 9 and name 1.0.9. Two contract tests cover the tier and the 4:3 case.",
+   "not_run": "the title, the battle and the game screens, because the guest dies after about five presents; the Honor regression of the same package, because the tablet is back with the user and the exact commands are in the RESULT",
+   "overlap": "the engine lines touch xbg_game.cpp and xbg_spirv_*.h while this line touches the profile, GameActivity, the manifest and the tests, so the three merge cleanly"
   }
  },
  "defer_events_long_term_decision_20261112": {
@@ -7042,5 +7061,22 @@
   "reuse_rejected": "not set: only two paths set it, the gfx-shader-reuse=2 comparison and take_rewritten input mismatch, and the device runs gfx-shader-reuse=0 while optimize_runtime_shader() short circuits before take_rewritten, with zero INPUT MISMATCH lines in the log",
   "next": "Implement a readback directed retirement in the same spirit as the event directed retirement that was already implemented and host proven: wait only for the submission that owns the readback. The event directed retirement and the new gfx-warm-budget and gfx-warm-interval markers stay in place as dormant levers with unchanged defaults.",
   "evidence_discipline": "the coordinator added two rules to AGENTS.md after mixing two runs: confirm the owning process and the capture moment before using device logs, and withdraw an attribution explicitly when later data refutes it"
+ },
+ "rg477m_texel_formatless_fatal_20261112": {
+  "observed_at": "2026-11-12T23:25:51.921398+08:00",
+  "severity": "blocking for the handheld: the game cannot be played at all, which outranks the stutter",
+  "symptom": "the guest dies after about four to five seconds and about five presents with FATAL: Texel format lacks formatless-write support, and engine.log.fatal is written",
+  "pre_existing": "the RG477M 1.0.8 engine.log ends with the same two lines, so this defect predates every change of this round",
+  "mechanism": "the engine checks the per format buffer features of the texel format and requires VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT when the binding asks for a formatless write. The check is at xbg_game.cpp:3834-3839 and the feature query at :2670-2683. The logic is correct: with format_feature_flags2=1 it uses the 64 bit VkFormatProperties3::bufferFeatures and prints it with %#llx, so there is no 32 bit truncation.",
+  "adreno_versus_mali": {
+   "adreno_honor": "format 98 gives 0x180000078, format 99 0x180000078, format 100 0x180000078, format 74 0x180000058, format 107 0x180000058, format 109 0x1a0000078",
+   "mali_rg477m": "format 98 gives 0x78",
+   "reading": "the low 32 bits are the same on both, and the difference is only the high bits: 0x100000000 is VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT and 0x80000000 is the read counterpart. Adreno reports both for every format it uses, Mali reports neither, so this is a whole device family difference rather than a single format.",
+   "spec": "the Khronos VkFormatFeatureFlagBits2 specification states the two values and treats them as optional features, so an application must fall back to a typed path when they are missing"
+  },
+  "promising_path": "the Mali flags 0x78 contain VK_FORMAT_FEATURE_2_STORAGE_TEXEL_BUFFER_BIT, so the typed storage texel buffer path is available. The candidate fix is to rewrite the SPIR-V so the formatless storage texel buffer access becomes a typed one, for example R32_UINT or R16_UINT, or a storage buffer with manual indexing. The project already has that machinery in xbg_spirv_indirect_instances.h, xbg_spirv_integer_buffer.h and xbg_spirv_stencil.h.",
+  "task": "bg_5cdcb608, worktree .worktrees/rg477m-texel-20261112 on branch task/T-rg477m-texel-20261112 from db094f8",
+  "constraints": "no reduced precision, no skipped draws, no depth turned off, no placeholder module, no false green. If the NVN formatless semantics cannot be met on Mali the result must say BLOCKED with the smallest workable fallback and how deep the handheld can be verified.",
+  "community": "the Khronos VkFormatFeatureFlagBits2 text was retrieved. The worker must retrieve and cite Panfrost, the ARM open source Mali driver, as the closest reference, plus Dawn and Mesa."
  }
 }
