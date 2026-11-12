@@ -3847,3 +3847,27 @@ User transferred execution to Codex. Source 0444c81 plus Antigravity staged/unst
 - 证据根：`.local/p0-p1-soak-20261112/`（36 MB，未入库）：soak marks/crashes、soak 日志、p1-report.json（全分段 + 逐帧长帧归因）、logcat、DropBox 全文、tombstone 前后 diff、6 份逐帧 CSV、soak 与分析脚本。
 - 补齐历史证据（只读、未删）：`.local/tombstones-all-20261111/tombstone_{00,01,02,03}`（此前漏拷）。
 - 未声称：任何闪退已修复、整游戏兼容、60 FPS、独立 QA、人耳音频。
+## 2026-11-12 1.0.7 团队试玩包（Honor 平板）
+
+**基线**：`task/T-package-1.0.7-20261112`，从已验证的 v1.0.6 基线 `5f4e2b5` 出发，合入 release 分支的 P1 更正稿与 rescue 分支的月亮修复。commit `aca34f0`。
+
+**版本**：versionName 1.0.7 / versionCode 7（此前设备上装的是 1.0.6）。
+
+**产物**：`.local/release-1.0.7/ffrs-game-window-1.0.7-internal.apk`，sha256 `faf3b74250deb91c0f537d85b2202f95def9b56c35e8c159a90ea495f74f60a6`。**内含存档解密密钥（32 B），仅限内部试玩，不得公开发布**；未入 Git。
+
+**月亮光晕修复已随包发布并真机验证**（这是本包相对 1.0.6 的主要行为变化）：
+
+- 根因是**配置漂移**，不是绘制丢失：引擎在 Honor 平板上默认关闭 depth/stencil pass 复用（该路径会让真实场景月亮光晕闪烁），但 App 每次启动都把 marker 重写为 `1\n`，等于强制打开。
+- 修法：判定留在引擎（只有引擎知道 GPU），新增 `xbg_resolve_depth_aspect()`：`1` 强制开 / `0` 强制关 / `auto` 用设备默认（Honor 关、其它开）；App 自己写的旧默认 `1\n` 会被就地迁移成 `auto\n`，既有设备自动纠正；玩家手写的 `1`（不带换行）仍是显式覆写。App 两处默认 marker 改为 `auto\n`。
+- 真机验证（A42BBB5109000333）：设备旧 marker 写成 `1\n` 后，引擎打印 `NVN depth-aspect sample reuse=0 (honor=1; legacy marker migrated)`，文件被自动改写为 `auto`；本次会话该路径的 kept 计数为 **0**（判定行号 447467 晚于全部 kept 行，最大 331550），即彻底不走该路径。
+- **结论：团队成员无需手动改任何文件，月亮不再闪。**
+
+**其它真机验证**：标题画面正常渲染；稳定 30.00 FPS（submit_cpu 7.9–9.1 ms，gpu 5.1–5.4 ms）；菜单可开；金手指对话框真实解密存档（雷因 HP 6372/9999、MP 421/9999、EXP 9999999，单位数 8，存档槽 GameSaveData0），六个按钮全部可用，不再提示「金手指不可用」。
+
+**金手指的诚实边界**：即时生效**未实现**。存档是 UE 属性标签序列化，运行期是 guest 内存里的运行期结构，两者不是同一套布局、偏移不一致，用存档偏移推运行期地址不成立。本包做法：`SaveCheater.put()` 增加偏移合法性校验（越界跳过，不写坏存档），并在界面与结果里明说「本局不生效，回标题画面 Load Game 读档后生效」及原因；扫描新增**只读**的 livevalue 定位，为下一轮严格校验后实现即时生效留依据。**不做假实现。**
+
+**战斗特效卡顿未包含在此包**：特效管线首次释放仍同步创建（created=5..18，create_ms 750..1916，单条 125..381 ms）。根因已缩小到 pipeline key 的 **renderpass piece**：同一 shader 组合对应多个 key，差异只在 renderpass/attachment 组合，而特效用的那些组合不在预热表里，所以预热线程无法提前建好。修复在 `task/T-rescue-1.0.7-20261112` 进行中。
+
+**证据**：`.local/wm-perf-20261112/release-1.0.7/`（title/menu/cheat 截图 + 预热列表副本），`.local/release-1.0.7/`（APK + sha256）。
+
+**未声称**：特效卡顿已修复、完整游戏兼容、60 FPS、独立 QA、人耳音频。

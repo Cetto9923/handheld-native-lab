@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-12T18:05:00+08:00",
- "phase": "v1.0.6 published; v1.0.7 candidate on task/T-release-1.0.7-20261112 with the moon halo root cause narrowed but not closed, no fix claimed, no behaviour change shipped",
+ "updated_at": "2026-11-12T19:37:54.159407+08:00",
+ "phase": "v1.0.6 published; v1.0.7 internal team-play package built and device-verified on task/T-package-1.0.7-20261112 (moon halo fix shipped, cheat menu usable, 30 FPS held). Battle effect pipeline stutter still open, not in this package.",
  "coordinator": "MiniMax Code /root release takeover (Codex thread aborted by user)",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -1791,6 +1791,21 @@
    "checkpoint": "6e7f424",
    "objective": "Moon halo flicker: find an indirect argument source that is stable and keeps the GPU resident path at 30 FPS",
    "write_state": "BLOCKED_ON_GPU_LEVEL_CAPTURE"
+  },
+  {
+   "task": "HONOR-PACKAGE-1.0.7-20261112",
+   "owner": "MiniMax Code /root release takeover",
+   "paths": [
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/android/app/java/org/ffrs/diagnostic/",
+    "coordination/state.json",
+    "coordination/HANDOFF.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/package-1.0.7-20261112",
+   "branch": "task/T-package-1.0.7-20261112",
+   "acquired_at": "2026-11-12T19:37:54.159407+08:00",
+   "checkpoint": "1.0.7 internal package built and device-verified; APK at .local/release-1.0.7/, sha256 faf3b74250deb91c0f537d85b2202f95def9b56c35e8c159a90ea495f74f60a6"
   }
  ],
  "tasks": [
@@ -4791,7 +4806,7 @@
    "id": "HONOR-MOON-FLICKER-20261112",
    "role": "investigation",
    "owner": "MiniMax Code /root release takeover",
-   "status": "in_progress",
+   "status": "passed",
    "goal": "decide whether the published v1.0.6 package causes the moon flicker and identify the mechanism",
    "inputs": [
     "task/T-release-1.0.6-20261112@5f4e2b5",
@@ -4799,15 +4814,14 @@
     "device A42BBB5109000333"
    ],
    "outputs": [
-    "coordination/state.json honor_moon_halo_20261112",
-    "coordination/HANDOFF.md 2026-11-12 17:40 entry",
-    "rescue branch 40c2963 read only probes",
-    "release branch 6e7f424 mode switch and probe"
+    "root cause: configuration drift, not a lost draw. The engine keeps the open depth/stencil pass off on the Honor tablet, but the App rewrote the marker to \"1\\n\" on every start, forcing the path on; the real scene then flickered the moon halo",
+    "device evidence: NVN depth-aspect sample reuse=1 (honor=1; marker overrides) plus NVN depth-aspect sample kept serial=... count=N on the Honor device",
+    "user confirmation: the halo stopped flickering once the marker was set to 0"
    ],
    "dependencies": [],
    "pass_gates": [],
    "write_scope": [],
-   "acceptance": "package integrity proven, frame rate measured on device, flicker quantified, engine per draw state and indirect arguments proven constant per frame; the mechanism is narrowed to the GPU resident indirect path but not closed",
+   "acceptance": "mechanism evidenced from device logs and confirmed by the user; the reused-depth path is the cause",
    "recovery_point": "task/T-release-1.0.7-20261112@6e7f424",
    "branch": "task/T-release-1.0.7-20261112"
   },
@@ -4815,14 +4829,16 @@
    "id": "HONOR-MOON-FIX-20261112",
    "role": "implementation",
    "owner": "MiniMax Code /root release takeover",
-   "status": "blocked",
-   "goal": "serve only a current-slot indirect template so the moon halo stops alternating without giving up the GPU-resident path",
+   "status": "passed",
+   "goal": "stop the moon halo from flickering without giving up the GPU resident path; the indirect-template route was abandoned once the root cause turned out to be the depth-aspect marker drift",
    "inputs": [
     "task/T-release-1.0.6-20261112@5f4e2b5"
    ],
    "outputs": [
-    "src/graphics/nvn_vulkan/engine/xbg_game.cpp find_indirect_template current-slot guard (7b733b9, correct but 33.3 ms of legacy wait per frame)",
-    "src/graphics/nvn_vulkan/engine/xbg_game.cpp gfx-indirect-mode selector (6e7f424)"
+    "task/T-package-1.0.7-20261112@aca34f0: xbg_game.cpp xbg_resolve_depth_aspect() - \"1\" forces on, \"0\" forces off, \"auto\" keeps the device default (off on Honor)",
+    "the app own old default \"1\\n\" is migrated to \"auto\\n\" once, so an existing device corrects itself; a hand written \"1\" stays an explicit override",
+    "app markers default to \"auto\\n\" in GameActivity.ensureDefaultMarkers and DataBundleInstaller.prepare",
+    "device log: NVN depth-aspect sample reuse=0 (honor=1; legacy marker migrated), and the reused-depth path count is 0 for the whole session"
    ],
    "dependencies": [
     "HONOR-MOON-FLICKER-20261112"
@@ -4831,7 +4847,7 @@
    "write_scope": [
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp"
    ],
-   "acceptance": "device build accepted: moon halo stable in the same scene and frame rate held at 30 FPS; the guard alone reaches a stable moon without the halo but only at about 10 FPS, so the acceptance gate is not met",
+   "acceptance": "device build accepted: the halo is stable in the real scene, 30 FPS held (submit_cpu 7.9-9.1 ms, gpu 5.1-5.4 ms), and the decision no longer depends on a hand edited marker",
    "recovery_point": "task/T-release-1.0.7-20261112@6e7f424",
    "branch": "task/T-release-1.0.7-20261112"
   },
@@ -4887,6 +4903,34 @@
    "acceptance": "P50/P95/P99/max and long frame counts per scene on the real device, cold and warm separated, no video or print overhead, long frames attributed per frame.",
    "recovery_point": "task/T-release-1.0.7-20261112",
    "branch": "task/T-release-1.0.7-20261112"
+  },
+  {
+   "id": "HONOR-PACKAGE-1.0.7-20261112",
+   "role": "release",
+   "owner": "MiniMax Code /root release takeover",
+   "status": "in_progress",
+   "goal": "build the 1.0.7 internal team-play package on the verified v1.0.6 baseline with the moon-halo fix, verify it on the Honor device, and hand it over for team playtesting",
+   "inputs": [
+    "task/T-release-1.0.7-20261112@02c6242",
+    "task/T-rescue-1.0.7-20261112@e7ddc44 (moon fix, cherry-picked)",
+    "device A42BBB5109000333"
+   ],
+   "outputs": [
+    "task/T-package-1.0.7-20261112@aca34f0",
+    ".local/release-1.0.7/ffrs-game-window-1.0.7-internal.apk"
+   ],
+   "dependencies": [
+    "HONOR-MOON-FIX-20261112"
+   ],
+   "pass_gates": [],
+   "write_scope": [
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/android/app/java/org/ffrs/diagnostic/"
+   ],
+   "acceptance": "APK installs on the Honor device, versionName 1.0.7, depth-aspect resolved to the device default without any manual marker edit, the cheat dialog decrypts the real save, frame rate held at 30 FPS",
+   "recovery_point": "02c6242",
+   "branch": "task/T-package-1.0.7-20261112"
   }
  ],
  "blockers": [
@@ -4901,7 +4945,8 @@
   "HONOR-P0-P1-20261112: crash classes C1..C6 are collected with raw evidence but NONE reproduced on production v1.0.6 in a 22 minute targeted soak. Keep them open; do not treat the soak as a fix.",
   "HONOR-P1-20261112: backgrounding drops the 01 scene to 8.60 FPS with present_result=1 on every long frame, and returning to the foreground holds p95 130..146 ms with 80..113 frames above 100 ms. Root cause not identified; the surface rebuild path (static audit P0-3 vkDeviceWaitIdle, P0-6 ANativeWindow double lock) is the suspect. No fix proposed until the cause is proven.",
   "HONOR-P1-20261112 cold load: first entry into the 01 scene averages 24.03 FPS with a 1408.55 ms worst frame because the submit thread compiles shaders synchronously (xbg_game.cpp:2501-2533). With a warm pipeline cache the same scene holds 30.00 FPS for 392 s with zero long frames.",
-  "HONOR-SAVE-20261112: the save file lives in external app specific storage and survives APK updates, but the guest only flushes at its own save points, so installing a package while playing loses the progress since the last save point. The save root also switches between the external codex-local-save directory and the internal getFilesDir()/saves when the installer flips to managed mode."
+  "HONOR-SAVE-20261112: the save file lives in external app specific storage and survives APK updates, but the guest only flushes at its own save points, so installing a package while playing loses the progress since the last save point. The save root also switches between the external codex-local-save directory and the internal getFilesDir()/saves when the installer flips to managed mode.",
+  "HONOR-BATTLE-EFFECT-STUTTER: battle effect pipelines are still created synchronously on their first release (created=5..18, create_ms 750..1916, one pipeline 125..381 ms). Root cause narrowed to the renderpass piece of the pipeline key: the same shader combination maps to several keys that differ only in the renderpass/attachment set, and the effect renderpass combinations are absent from the warm list, so the warm-up cannot pre-build them. Fix in progress on task/T-rescue-1.0.7-20261112; NOT included in the 1.0.7 team package."
  ],
  "verified": [
   "CURRENT_HANDOFF: a277 runtime sourcee305; actual originalstartup+OScleanup0/0, poststartup originalallocator0/0, HOST14expected, completeCRT515raw133. Earlier append-only bullets are historical stages and not current blockers.",

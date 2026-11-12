@@ -1,7 +1,7 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-12T18:05:00+08:00
-阶段：v1.0.6 published; v1.0.7 candidate on task/T-release-1.0.7-20261112 with the moon halo root cause narrowed but not closed, no fix claimed, no behaviour change shipped
+状态事件时间：2026-11-12T19:37:54.159407+08:00
+阶段：v1.0.6 published; v1.0.7 internal team-play package built and device-verified on task/T-package-1.0.7-20261112 (moon halo fix shipped, cheat menu usable, 30 FPS held). Battle effect pipeline stutter still open, not in this package.
 总控：MiniMax Code /root release takeover (Codex thread aborted by user)
 更新方式：按事件更新，没有后台自动刷新。
 
@@ -128,10 +128,11 @@
 | RELEASE-106-NO-KEY-ASSET-20261112 | release gate | passed | MiniMax Code /root release takeover | 无 | 无额外门禁 | task/T-release-1.0.6-20261112 |
 | RELEASE-106-SIGNING-MATCH-20261112 | release gate | passed | MiniMax Code /root release takeover | 无 | 无额外门禁 | task/T-release-1.0.6-20261112 |
 | RELEASE-106-DOWNLOAD-VERIFY-20261112 | release gate | passed | MiniMax Code /root release takeover | 无 | 无额外门禁 | task/T-release-1.0.6-20261112 |
-| HONOR-MOON-FLICKER-20261112 | investigation | in_progress | MiniMax Code /root release takeover | 无 | 无额外门禁 | task/T-release-1.0.7-20261112 |
-| HONOR-MOON-FIX-20261112 | implementation | blocked | MiniMax Code /root release takeover | HONOR-MOON-FLICKER-20261112 | 无额外门禁 | task/T-release-1.0.7-20261112 |
+| HONOR-MOON-FLICKER-20261112 | investigation | passed | MiniMax Code /root release takeover | 无 | 无额外门禁 | task/T-release-1.0.7-20261112 |
+| HONOR-MOON-FIX-20261112 | implementation | passed | MiniMax Code /root release takeover | HONOR-MOON-FLICKER-20261112 | 无额外门禁 | task/T-release-1.0.7-20261112 |
 | HONOR-P0-CRASH-COLLECTION-20261112 | investigation | completed | MiniMax Code /root release takeover | 无 | 无额外门禁 | task/T-release-1.0.7-20261112 |
 | HONOR-P1-FRAME-PERCENTILE-20261112 | investigation | completed | MiniMax Code /root release takeover | 无 | 无额外门禁 | task/T-release-1.0.7-20261112 |
+| HONOR-PACKAGE-1.0.7-20261112 | release | in_progress | MiniMax Code /root release takeover | HONOR-MOON-FIX-20261112 | 无额外门禁 | task/T-package-1.0.7-20261112 |
 
 ## 独占写入
 
@@ -231,6 +232,7 @@
 - {"task": "HONOR-REPORT-READABILITY-20261112", "owner": "combat_perf_audit", "paths": ["coordination/results/HONOR-MOTION-BLOCKS-20261112.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-honor-shrine-20261111", "acquired_at": "2026-11-12T00:03:15.266730+00:00", "checkpoint": "Normalize this task report wording only. Preserve all values, invalid samples and version boundaries."}
 - {"task": "RELEASE-1.0.6-20261112", "owner": "MiniMax Code /root release takeover", "paths": ["coordination/state.json", "coordination/HANDOFF.md", "coordination/STATUS.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-release-1.0.6-20261112", "acquired_at": "2026-11-12T01:41:00.817033+00:00", "checkpoint": "Public release v1.0.6 published and download-verified.", "write_state": "RELEASED", "released_at": "2026-11-12T01:41:00.817033+00:00"}
 - {"task": "HONOR-MOON-FIX-20261112", "owner": "MiniMax Code /root release takeover", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", "coordination/state.json", "coordination/HANDOFF.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/release-1.0.7-20261112", "branch": "task/T-release-1.0.7-20261112", "acquired_at": "2026-11-12T17:40:00+08:00", "checkpoint": "6e7f424", "objective": "Moon halo flicker: find an indirect argument source that is stable and keeps the GPU resident path at 30 FPS", "write_state": "BLOCKED_ON_GPU_LEVEL_CAPTURE"}
+- {"task": "HONOR-PACKAGE-1.0.7-20261112", "owner": "MiniMax Code /root release takeover", "paths": ["src/android/app/gamewindow/AndroidManifest.xml", "src/graphics/nvn_vulkan/engine/xbg_game.cpp", "src/android/app/java/org/ffrs/diagnostic/", "coordination/state.json", "coordination/HANDOFF.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/package-1.0.7-20261112", "branch": "task/T-package-1.0.7-20261112", "acquired_at": "2026-11-12T19:37:54.159407+08:00", "checkpoint": "1.0.7 internal package built and device-verified; APK at .local/release-1.0.7/, sha256 faf3b74250deb91c0f537d85b2202f95def9b56c35e8c159a90ea495f74f60a6"}
 
 ## 阻塞
 
@@ -246,6 +248,7 @@
 - HONOR-P1-20261112: backgrounding drops the 01 scene to 8.60 FPS with present_result=1 on every long frame, and returning to the foreground holds p95 130..146 ms with 80..113 frames above 100 ms. Root cause not identified; the surface rebuild path (static audit P0-3 vkDeviceWaitIdle, P0-6 ANativeWindow double lock) is the suspect. No fix proposed until the cause is proven.
 - HONOR-P1-20261112 cold load: first entry into the 01 scene averages 24.03 FPS with a 1408.55 ms worst frame because the submit thread compiles shaders synchronously (xbg_game.cpp:2501-2533). With a warm pipeline cache the same scene holds 30.00 FPS for 392 s with zero long frames.
 - HONOR-SAVE-20261112: the save file lives in external app specific storage and survives APK updates, but the guest only flushes at its own save points, so installing a package while playing loses the progress since the last save point. The save root also switches between the external codex-local-save directory and the internal getFilesDir()/saves when the installer flips to managed mode.
+- HONOR-BATTLE-EFFECT-STUTTER: battle effect pipelines are still created synchronously on their first release (created=5..18, create_ms 750..1916, one pipeline 125..381 ms). Root cause narrowed to the renderpass piece of the pipeline key: the same shader combination maps to several keys that differ only in the renderpass/attachment set, and the effect renderpass combinations are absent from the warm list, so the warm-up cannot pre-build them. Fix in progress on task/T-rescue-1.0.7-20261112; NOT included in the 1.0.7 team package.
 
 ## 已验证
 
