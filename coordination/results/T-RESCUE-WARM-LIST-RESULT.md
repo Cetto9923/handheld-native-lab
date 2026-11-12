@@ -23,8 +23,8 @@ below with device evidence.
 | What marks a slow window? | **Readback/writeback drains** (`sync_rb` 9.8 vs 0.03, `sync_wb` 10.4 vs 0.00 per window) and, independently, first-time pipeline lookups. | section 3 |
 | Do readbacks cause the creations, or the creations the readbacks? | **Neither.** A window with readbacks and **no** creation is still slow (45.0 ms/frame), and a window with creations and **no** readback is also slow (43.5 ms/frame). They are independent co-occurring causes. | section 4 |
 | Does the warm-up cause the giant frames? | **No.** The 4.5-4.8 s cold-start frame appears with the warm-up **on**, **off**, and with **no cache at all**. | section 5 |
-| Does the seed match the runtime's requests? | **Yes, byte for byte.** All 282 keys the runtime asked for are identical to seed records; the seed served **106** pipelines with **0** creations. | section 6 |
-| Is the seed a win? | It removes the in-frame creation cost (created=0), but the shipped 1560-record seed costs **7.0 s** of background driver work to serve ~106 hits. The win is real but the seed is over-broad. | section 7 |
+| Does the seed match the runtime's requests? | **Yes, byte for byte.** All 282 keys the cold run created are identical to seed records, and the 431 keys the device itself learned are a **strict subset** of the seed (nothing learned is missing from it); on the device the two lists merged to exactly 1560 unique records. | section 6 |
+| Is the seed a win? | **With the background builder on**, yes: the seeded list gave **0** in-frame creations (106 hits). But a known key is not a built pipeline — with the builder off, the same 1560-key list still left **329** in-frame creations. The 1560-record seed also costs **7.0 s** of background driver work to serve ~106 hits, so it is over-broad. | section 7 |
 
 ## 2. The baseline, reproduced from the device
 
@@ -137,19 +137,63 @@ during the cold start. That is a **cost to be budgeted**, not the cause of the s
 
 **Evidence 1 — byte-level key comparison** (`scripts/distribution/compare_pipeline_warm_keys.py`,
 new in this branch): the shipped seed (1560 records) against the 282 records the
-runtime itself asked for in the cold session:
+cold session had to build from scratch (only creations are written to the learned
+list, so these are exactly the keys the runtime could not get from a cache):
 
-    shared_exact_keys                : 282      <- every runtime request is in the seed
-    only_in_second_exact_keys        : 0        <- the runtime asked for nothing the seed lacks
+    shared_exact_keys                : 282      <- every key it built is in the seed
+    only_in_second_exact_keys        : 0        <- nothing it built is missing from the seed
     shared_render_pass_variants      : 19  (seed 21, runtime 19)
     only_in_first_stage_module_pairs : 1107
 
-**Evidence 2 — the seed really serves the runtime** (device log, seed + learned list):
+**Evidence 1b — the same check on the list the device itself learned**, compared
+against the shipped seed file (1638144 B, 1560 records):
+
+    shared_exact_keys           : 431   <- every learned record exists in the seed
+    only_in_second_exact_keys   : 0     <- the device learned nothing the seed lacks
+    shared_render_pass_variants : 19    (seed 21, learned 19)
+    shared_stage_module_pairs   : 501
+    only_in_first_stage_module_pairs : 959
+
+The device's own learned list (431 records, 376615 B) is a **strict subset** of the
+shipped seed. The device log shows the two merging on the device itself:
+
+    NVN warm list loaded path=.../files/vk-pipeline-list.bin bytes=376615 added=431
+    NVN warm list loaded path=/sdcard/FFRS/pipeline-warm-list.bin bytes=1638144 added=1129
+    NVN warm list=1560 enabled=0
+
+431 already-known records plus 1129 new ones from the seed = 1560 unique records, with
+**nothing the device learned missing from the seed**. The seed is a strict superset of
+the device's own learning.
+
+**One correction to the reasoning this replaces**: a *known* key is not a *built*
+pipeline, and it is not a *requested* key. Only creations are written to the learned
+list (`warm::record` is called from the creation path only), so absence from that list
+does **not** prove "never requested". The demand of the measured scene is therefore
+taken from the hit counters, not from list membership.
+
+**Evidence 2 — the seed really serves the runtime** (device log, seed + learned list,
+recorded live in run 3; that session's log was not retained):
 
     pipelines_new=33 warm_hits=21 created=0
     pipelines_new=92 warm_hits=67 created=0
     pipelines_new=12 warm_hits=4  created=0      (+ 2, 4, 1, 1, 5, 1 in later windows)
     => 106 warm hits, 0 synchronous creations
+
+**Evidence 2b — the retained log, re-parsed at this commit** (run 4, pid 16129,
+`device/guest_boot-16129-warm-off.log`, 126 PERF windows, summed over the whole session):
+
+    pipelines_new=461   warm_hits=17   created=329   create_ms=135.6
+    create_max_ms (max over the session) = 1.3 ms
+    warm_built=0  warm_failed=0  warm_ms=0        <- background builder disabled
+    async_skips=39  async_built=1910
+
+This is the **builder-off** arm, and it is the sharpest statement of what the seed
+buys: with every key present in the loaded list (1560 records) the device still had to
+create **329 pipelines inside frames**, because the marker `gfx-no-warm` had switched the
+background builder off and a known recipe is not a built pipeline. With the builder on
+(run 3) the same key set produced **0** in-frame creations. The seed's value therefore
+comes from the builder running *and* the keys matching; the key match alone is not
+enough.
 
 **Why `warm_hits` looks small**: `pipeline_fast` memoises a pipeline after its first
 use, so only the **first** draw of each distinct pipeline consults the warm list. 106
@@ -172,8 +216,12 @@ out of the frame, it does not remove it.**
   nothing (`created=0` measured, 106 warm hits). Without it, the same pipelines are
   created inside the frames that need them. This is the whole point and it is real.
 - **It does not buy a smaller seed by itself.** The shipped 1560-record seed builds
-  **1560** pipelines in the background (`warm_ms=7017`, `warm_failed=0`) to serve the
-  ~106 the session actually requests. The other ~1450 are built and never used.
+  **1560** pipelines in the background (`warm_built=1560`, `warm_ms=7017`,
+  `warm_failed=0`) to serve the ~106 the measured scene actually requests. The other
+  ~1450 are built and never used. The seed file contributes **1129** keys the device
+  had not learned itself (the other 431 were already known), and in the measured scene
+  most of those 1129 are among the ones built and never used. A narrower seed — the
+  keys the shipping content actually requests — would pay the same 7 s for less.
 - **The risk to the user is at start-up, not in the battle**: the warm-up's 7 s of
   driver work runs concurrently with the cold start, where the device is already
   spending 4.5-4.8 s in one frame. The two are not the same stall (section 5), but they
@@ -239,6 +287,33 @@ across the field, and the app exports the save when it stops. No save was restor
 overwritten by this branch, and no older save was rolled back (that would have
 destroyed the user's progress). The character's position in the save may therefore be
 further south than before the measurement.
+
+### 9.1 Data pulled off the device
+
+All measurements in this report come from these files, pulled to
+`/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/rescue-1.0.7-20261112/`
+(outside Git, per the project rule that raw device artefacts stay in `.local/`):
+
+| file | bytes | sha256 (first 16) | what it is |
+|---|---|---|---|
+| `device/codex-frame-11545.csv` | 1238349 | `15ae09c62c03a3b9` | run 1 frame timing (seed only) |
+| `device/codex-frame-14135.csv` | 603924 | `c087492508d8b4ef` | run 2 frame timing (cold) |
+| `device/codex-frame-15089.csv` | 329474 | `1c8200ec91a0776e` | run 3 frame timing (seed + learned) |
+| `device/codex-frame-16129.csv` | 511962 | `2a1a2fccac39f728` | run 4 frame timing (warm off) |
+| `device/guest_boot-16129-warm-off.log` | 10034155 | `2760e86d4a3d721e` | run 4 engine log, the 126 PERF windows analysed in sections 3-5 |
+| `device/vk-pipeline-list-final.bin` | 376615 | `0161986f23ba71f8` | the learned list after the A-class fix (431 records) |
+| `device/vk-pipeline-cache-final.bin` | 30130629 | `95148390cac60746` | VkPipelineCache; sha identical to the pre-measurement value (section 9) |
+| `windows-warm-off.json` | 10472 | `7862328b9145afdf` | machine-readable output of the window analysis |
+| `run1-screen.png` … `run4-screen.png` | 3.1-4.7 MB each | — | one screenshot per arm, proving the scene was live in each |
+| `run2-driver.sh` … `run4-driver.sh` | 819 each | — | the exact driver sequence used per arm (reproducible) |
+
+Regenerate the analysis from the raw files with:
+
+    python3 scripts/graphics/analyze_perf_windows.py \
+      /Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/rescue-1.0.7-20261112/device/guest_boot-16129-warm-off.log
+    python3 scripts/distribution/compare_pipeline_warm_keys.py \
+      /Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/wm-perf-20261112/release-1.0.7/vk-pipeline-list.bin \
+      /Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/rescue-1.0.7-20261112/device/vk-pipeline-list-final.bin
 
 **Device returned.** No further sampling, key injection, marker change or app restart
 will be performed on A42BBB5109000333 from this branch. All remaining work is offline;
