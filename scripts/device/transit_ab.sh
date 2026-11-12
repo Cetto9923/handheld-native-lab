@@ -213,6 +213,11 @@ for arm in ${ARMS//,/ }; do
     else
         echo "BLOCKED_INPUT: the path file has no TRANSITION_START/TRANSITION_END note" >&2
     fi
+    # The acceptance metrics: the whole run, and the transition segment on its own.
+    python3 scripts/graphics/analyze_stalls.py "${OUT_DIR}/${arm}-${phase}-frame.csv" --json "${OUT_DIR}/${arm}-${phase}-stalls.json" > /dev/null 2>&1 || true
+    if [[ -n "${start_ns}" && -n "${end_ns}" ]]; then
+        python3 scripts/graphics/analyze_stalls.py "${OUT_DIR}/${arm}-${phase}-frame.csv" --start-ns "${start_ns}" --end-ns "${end_ns}" --json "${OUT_DIR}/${arm}-${phase}-transition-stalls.json" > /dev/null 2>&1 || true
+    fi
     # The engine's own counters for the same run: the deferral, the warm-up, and the first perf windows.
     grep -E "NVN PERF events defer=|NVN PERF block_ms|NVN defer events=|NVN event retirement|NVN warm throttle|NVN warm list=|NVN warm list seeded" "${OUT_DIR}/${arm}-${phase}-guest_boot.log" > "${OUT_DIR}/${arm}-${phase}-perf.txt" 2>/dev/null || true
     grep -E "NVN PERF v=1" "${OUT_DIR}/${arm}-${phase}-guest_boot.log" | head -4 | cut -c1-200 >> "${OUT_DIR}/${arm}-${phase}-perf.txt" 2>/dev/null || true
