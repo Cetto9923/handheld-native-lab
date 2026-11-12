@@ -28,7 +28,7 @@ static size_t image_at(const std::vector<uint32_t> &words,uint32_t binding){
 }
 // Every word except the Image Format operand of the binding's image type must
 // stay exactly as it was: the rewrite must not touch the data flow.
-static void assert_only_format_changed(const std::vector<uint32_t> &before,const std::vector<uint32_t> &after,uint32_t binding){
+static void assert_only_format_changed(const std::vector<uint32_t> &before,const std::vector<uint32_t> &after,uint32_t binding,uint32_t expected=XBG_IMAGE_FORMAT_R32UI){
     assert(before.size()==after.size());
     const size_t at=image_at(before,binding);
     assert(image_at(after,binding)==at);
@@ -37,7 +37,7 @@ static void assert_only_format_changed(const std::vector<uint32_t> &before,const
         assert(before[i]==after[i]);
     }
     assert(before[at+8]==XBG_IMAGE_FORMAT_UNKNOWN);
-    assert(after[at+8]==XBG_IMAGE_FORMAT_R32UI);
+    assert(after[at+8]==expected);
 }
 int main(int argc,char **argv){
     assert(argc>=6);
@@ -69,6 +69,25 @@ int main(int argc,char **argv){
     auto shared_copy=shared;
     assert(xbg_typed_storage_rewrite(shared_copy,11,XBG_IMAGE_FORMAT_R32UI)==-1);
     assert(shared_copy==shared);
+    // A shared image type declares one format for every binding that uses it,
+    // so the module may only declare it when all of them need the same one.
+    // The engine finds the other users of the type and checks that.
+    std::vector<uint32_t> sharers;
+    xbg_spirv_shared_image_bindings(shared,11,sharers);
+    assert((sharers==std::vector<uint32_t>{11,12}));
+    xbg_spirv_shared_image_bindings(shared,12,sharers);
+    assert((sharers==std::vector<uint32_t>{11,12}));
+    // The caller has checked that both users need R32ui: then the shared type
+    // may carry it.
+    auto shared_typed=shared;
+    assert(xbg_typed_storage_rewrite(shared_typed,11,XBG_IMAGE_FORMAT_R32UI,true)==1);
+    assert(xbg_spirv_declared_image_format(shared_typed,11)==XBG_IMAGE_FORMAT_R32UI);
+    assert(xbg_spirv_declared_image_format(shared_typed,12)==XBG_IMAGE_FORMAT_R32UI);
+    // Without that check the shared type stays formatless: the guardrail is
+    // still the default.
+    auto shared_again=shared;
+    assert(xbg_typed_storage_rewrite(shared_again,11,XBG_IMAGE_FORMAT_R32UI)==-1);
+    assert(shared_again==shared);
     auto reading_copy=reading;
     assert(xbg_typed_storage_rewrite(reading_copy,11,XBG_IMAGE_FORMAT_R32UI)==-1);
     assert(reading_copy==reading);
@@ -103,16 +122,51 @@ int main(int argc,char **argv){
 
     // Golden: the real FFRS module (when the local device dump is present) goes
     // through the engine's integer storage rewrite and then the typed rewrite.
-    if(argc>=7){
-        const std::vector<uint32_t> real=load(argv[5]);
+    if(argc>=8){
+        const std::vector<uint32_t> real=load(argv[7]);
         auto words=real;
         assert(xbg_spirv_ffrs_stencil(words,5,"664748e31a2dfad9")>=1);
         assert(xbg_spirv_declared_image_format(words,11)==XBG_IMAGE_FORMAT_UNKNOWN);
         const std::vector<uint32_t> before=words;
         assert(xbg_typed_storage_rewrite(words,11,XBG_IMAGE_FORMAT_R32UI)==1);
         assert_only_format_changed(before,words,11);
-        save(argv[6],words);
+        save(argv[8],words);
     }
+    // The RG477M (Mali-G615) crash of 1.0.9: "FATAL: Texel format lacks
+    // formatless-write support". The binding is a formatless storage Buffer
+    // image and the guest binds a 16-bit view (R16_UINT). SPIR-V's Image
+    // Format operand has no 16-bit format at all, so the module cannot
+    // declare the bound format, the typed-storage rewrite cannot rescue the
+    // binding, and the module stays formatless: on a device without
+    // VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT that write is fatal.
+    // The engine binds the format the module itself describes instead:
+    // 32-bit unsigned RGBA, which SPIR-V declares as Rgba32ui.
+    XbgStorageImageBinding buffer_info;assert(xbg_spirv_binding_image(fixture,11,buffer_info));
+    assert(buffer_info.dim==XBG_IMAGE_DIM_BUFFER);
+    assert(xbg_spirv_image_scalar_class(fixture,11)==2);       // unsigned
+    assert(xbg_spirv_storage_write_components(fixture,11)==4);  // one uint4 texel
+    // A 16-bit bound view has no SPIR-V image format.
+    assert(xbg_spirv_image_format(74)==XBG_IMAGE_FORMAT_UNKNOWN);
+    assert(xbg_typed_storage_view_format(fixture,11,74)==XBG_VK_FORMAT_R32G32B32A32_UINT);
+    // Red mutant: the old rule kept the guest's 16-bit view, the module stayed
+    // formatless and the device aborted. That must not come back.
+    assert(xbg_typed_storage_view_format(fixture,11,74)!=74);
+    // A bound view SPIR-V can declare is left alone.
+    assert(xbg_typed_storage_view_format(fixture,11,98)==98);
+    assert(xbg_typed_storage_view_format(fixture,11,107)==107);
+    // A module that declares its own format keeps it: no substitution.
+    assert(xbg_typed_storage_view_format(game_declared,0,74)==74);
+    // The substituted format is one the rewrite can declare, and only the
+    // Image Format operand changes.
+    auto buffer_typed=fixture;
+    assert(xbg_typed_storage_rewrite(buffer_typed,11,XBG_IMAGE_FORMAT_RGBA32UI)==1);
+    assert(xbg_spirv_declared_image_format(buffer_typed,11)==XBG_IMAGE_FORMAT_RGBA32UI);
+    assert_only_format_changed(fixture,buffer_typed,11,XBG_IMAGE_FORMAT_RGBA32UI);
+    // The substitution is idempotent: on the module the engine rewrote, the
+    // bound format has to stay the substituted one, or the descriptor path
+    // would bind the guest's 16-bit view and reject the engine's own module.
+    assert(xbg_typed_storage_view_format(buffer_typed,11,74)==XBG_VK_FORMAT_R32G32B32A32_UINT);
+    save(argv[6],buffer_typed);
     // The battle-settle crash of 1.0.9 on the Honor tablet: the module
     // declares a typed storage image itself (the real module
     // c11e2f23ff063e85 declares a 3D Rg32ui storage image), and the guest
@@ -134,6 +188,6 @@ int main(int argc,char **argv){
     assert(!xbg_typed_storage_requires_match(true,XBG_IMAGE_FORMAT_UNKNOWN,XBG_VK_FORMAT_R32_UINT));
 
     save(argv[4],typed);
-    std::cout<<"Typed storage texel buffer: formatless to R32ui, idempotent, shared image and formatless read refused, bound format mismatch red PASS\n";
+    std::cout<<"Typed storage texel buffer: formatless to R32ui, idempotent, shared image and formatless read refused, bound format mismatch red, a bound view SPIR-V cannot declare is replaced by the module's own 32-bit form PASS\n";
     return 0;
 }
