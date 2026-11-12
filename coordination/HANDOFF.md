@@ -3801,3 +3801,49 @@ User transferred execution to Codex. Source 0444c81 plus Antigravity staged/unst
 
 - User accepted stable30FPS for phase1 and explicitlyprioritized playablegame beforeFPS. Paused/cancelled readbackcached A/B; cached1NOT_RUN, baseline notaccepted dueuserinputcondition.
 - User reports NewGame/difficulty exit oncurrentlyinstalled58; sameknown RG16attachment guard underrepair. NextAPK59 launch ORIGINAL unmodifiedmain/defaultgame_dir (restoreoriginal30FPS windowconfiguration; do notoverwrite60derivedcopy). NoFPSoptimizationuntilactualscene controllable.
+
+
+## 2026-11-12 18:05 P0 闪退收集 / P1 长帧分位（荣耀平板真机，发布分支）
+
+- 范围：Honor A42BBB5109000333 / Adreno 735；设备安装件 = 生产 FFRS-v1.0.6，base.apk SHA256 `e6c2d287146c438f70c75ef3c408ddf3aa0629cbf6109be0dd09792828ca9cda`（开始/结束各复核一次），marker 全出厂默认。本轮只测量取证：**未改源码、未构建、未装非生产包、未改存档内容、未推送、未碰 Antigravity 的 WIP**。
+- 时窗：17:35:43 → 17:57:36，约 22 分钟，6 个进程，8 阶段（冷启、标题冷/暖、LOAD DATA 菜单、01 场景首进、场景内切后台/回前台 ×3、场景重载 ×4、暖跑 150 s、长驻 242 s）。
+
+**P0 闪退清单（历史证据，全部有原始日志）**
+
+- 本工程 C1/C2：2026-10-29 两次 SIGABRT，`Scudo internal map failure (Out of memory)`，栈 `descriptors_build → descriptors → dispatch/draw → execute → xbg_submit_now → nvn_queue_submit_commands`，最下层是驱动 `vkCreateBufferView → calloc` 失败（tombstone_17/18）。
+- 本工程 C3：2026-11-08 13:37 ANR，`Input dispatching timed out, Waited 5001ms for MotionEvent`（DropBox data_app_anr）。
+- 本工程 C4：2026-11-11 11:38×2 与 13:35/13:36×2/13:37 共 **6 次 Java 崩溃**：`Unable to start activity GameActivity: IllegalStateException: The specified child already has a parent`。源码事实：`GameActivity.java` 全文**零 `removeView`**；manifest `launchMode=singleTask` + 全量 `configChanges`。复现路径未定位。
+- 本工程 C5：`descriptors_build` 处 SIGSEGV（partial storage texel 同步退休活跃 descriptor slot），用户报告首战崩溃。
+- 本工程 C6：`vkCreateGraphicsPipelines` 返回 -13 (VK_ERROR_UNKNOWN) → fatal abort，Boss 出现即崩，用户确认可重复；null-cache 重试与 VS SPIR-V 优化均未解决。
+- 同 runtime 姊妹包 C7-a..d（`org.snk.the1st.gamewindow`，同一 `libffrs_game_window.so`）：4 次 `nb_import_gateway → snk_allocator_free/snk_sized_delete` 内存破坏 abort（tombstone 01/02/03/20）。FFRS 包的 32 份 tombstone 中**未出现**同类堆破坏。
+- **明确排除**：深信服 VDI ×13、gfxreconstruct 离线回放工具自身 abort ×9、原神 ×2、sh ×1、系统蓝牙 HAL ×1 —— 均非本工程设备侧崩溃。
+- **本轮 soak 未复现**：tombstone 前后 diff 无新增、DropBox 无新增本应用条目、pid 轮询无意外死亡。按规范记为**失败记录（未复现）**，**不宣称已修复**。
+
+**P1 长帧分位（生产包自带 CSV，按行号边界切段，不依赖时钟基线）**
+
+- 标题冷/暖：30.00 FPS，p99 34.04/34.08 ms，**长帧 0**。LOAD DATA 菜单：29.84 FPS，1 帧 313.55 ms。
+- **01 场景首进（管线缓存冷）**：mean 41.62 ms = **24.03 FPS**，p95 46.09，p99 53.46，max **1408.55 ms**，45 帧 >50 ms、9 帧 >100 ms。
+- **01 场景缓存热**：重进后连跑 150 s + 242 s = 392 s，**锁定 30.00 FPS，max 34.59 ms，长帧 0**。⇒ 30 FPS 可达，卡顿是**冷加载**成本，不是稳态缺陷。
+- 冷加载长帧形态：最差 4 笔（1408.55 / 1156.70 / 862.46 / 641.57 ms）全在进入后前 7 秒，其中两笔 draws 仅 2 与 12 却耗时过秒 ⇒ 阻塞在提交线程同步的着色器编译（与静态审计 `xbg_game.cpp:2501-2533` 同源）。
+- **切后台 20 s：mean 116.22 ms = 8.60 FPS，126 帧 >50 ms、125 帧 >100 ms；回前台 p95 抬到 130–146 ms，单次 80–113 帧 >100 ms。这些长帧的 `present_result` 全为 1（正常帧恒为 0）** ⇒ present 失败是后台切换路径的直接可观测信号，该路径即静态审计 P0-3（`vkDeviceWaitIdle` 无超时）与 P0-6（ANativeWindow 双锁竞态）所在处。**本轮 P1 最严重项，根因未明前不提修复。**
+
+**月亮闪烁（用户反馈"又开始闪烁了"）**
+
+- 不是本轮回归：设备包 = 生产 v1.0.6 逐字节一致，marker 出厂默认，本轮未装任何非生产包、未改渲染代码。闪烁是 v1.0.6 原始行为。
+- 此前唯一候选改动 7b733b9 会**整体消除辉光**且每帧付 33.3 ms legacy wait（约 10 FPS），因此从未发布；用户先前看到的"月亮正常了"就是辉光消失，不是修复。
+- 解锁路径唯一：该场景 RenderDoc `.gfxr` GPU 级抓帧（设备已有工具链，存有 186 MB 旧 capture 可证可用）。**仍为 blocked，等用户授权。**
+
+**存档安全（用户提问）**
+
+- 实际位置：`/sdcard/Android/data/org.ffrs.gamewindow/files/codex-local-save`（本轮 4 次启动 logcat 均打印 `live_save_root=` 该路径）——**外部应用专属存储，`install -r` 覆盖安装不会删**；另有 `/sdcard/saves-bak-107` 人工备份。
+- **丢失的真实机制是落盘时机，不是位置**：soak 玩 22 分钟（4 次强停）后 `GameSaveData0` 的 mtime 仍停在 13:38 ⇒ 游戏只在自身存档点落盘，进程被杀就丢这段。**覆盖安装会杀进程 ⇒ 这就是"每次更新存档丢失"的成因。**
+- 次因 1：`onStop` 每次退出都往 `/sdcard/Download/FFRS-save-<时间戳>/` 导快照（已 36 份），"从 Download 恢复"会**用所选旧快照覆盖** live 存档。
+- 次因 2（潜在未触发）：`GameActivity.java:2624-2627` 在安装器 managed 模式下会把存档根切到内部 `getFilesDir()/saves`；本机为 unmanaged（内部目录不存在），但这是更新后"存档读不到"的真实脆弱点。
+- 现在可规避：更新前先在游戏内存档；恢复只挑最新快照；不要清空 `Android/data/org.ffrs.gamewindow/`。
+
+**产出**
+
+- 报告：`coordination/results/HONOR-P0-P1-SOAK-20261112.md`。
+- 证据根：`.local/p0-p1-soak-20261112/`（36 MB，未入库）：soak marks/crashes、soak 日志、p1-report.json（全分段 + 逐帧长帧归因）、logcat、DropBox 全文、tombstone 前后 diff、6 份逐帧 CSV、soak 与分析脚本。
+- 补齐历史证据（只读、未删）：`.local/tombstones-all-20261111/tombstone_{00,01,02,03}`（此前漏拷）。
+- 未声称：任何闪退已修复、整游戏兼容、60 FPS、独立 QA、人耳音频。

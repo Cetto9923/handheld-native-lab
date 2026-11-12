@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-12T17:40:00+08:00",
+ "updated_at": "2026-11-12T18:05:00+08:00",
  "phase": "v1.0.6 published; v1.0.7 candidate on task/T-release-1.0.7-20261112 with the moon halo root cause narrowed but not closed, no fix claimed, no behaviour change shipped",
  "coordinator": "MiniMax Code /root release takeover (Codex thread aborted by user)",
  "integration_branch": "work/rg477m-native",
@@ -4834,6 +4834,59 @@
    "acceptance": "device build accepted: moon halo stable in the same scene and frame rate held at 30 FPS; the guard alone reaches a stable moon without the halo but only at about 10 FPS, so the acceptance gate is not met",
    "recovery_point": "task/T-release-1.0.7-20261112@6e7f424",
    "branch": "task/T-release-1.0.7-20261112"
+  },
+  {
+   "id": "HONOR-P0-CRASH-COLLECTION-20261112",
+   "role": "investigation",
+   "owner": "MiniMax Code /root release takeover",
+   "status": "completed",
+   "goal": "collect real crash evidence for the FFR resonance native port on the Honor tablet and produce a crash list",
+   "inputs": [
+    "device A42BBB5109000333",
+    "production FFRS-v1.0.6 APK",
+    "coordination/results/CRASH-STUTTER-FULL-AUDIT-20261111.md"
+   ],
+   "outputs": [
+    "coordination/results/HONOR-P0-P1-SOAK-20261112.md",
+    "state.json honor_p0_p1_soak_20261112",
+    ".local/p0-p1-soak-20261112/ (soak log, dropbox dump, tombstone diff, frame CSV)"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "coordination/state.json",
+    "coordination/HANDOFF.md",
+    "coordination/results/HONOR-P0-P1-SOAK-20261112.md"
+   ],
+   "acceptance": "crash inventory with raw evidence for every entry, non-project crashes explicitly excluded, and a live device soak recorded. Historical crashes C1..C7 are collected and classified; NONE of them reproduced on v1.0.6 in this soak, so no crash is claimed fixed.",
+   "recovery_point": "task/T-release-1.0.7-20261112",
+   "branch": "task/T-release-1.0.7-20261112"
+  },
+  {
+   "id": "HONOR-P1-FRAME-PERCENTILE-20261112",
+   "role": "investigation",
+   "owner": "MiniMax Code /root release takeover",
+   "status": "completed",
+   "goal": "measure per scene frame interval percentiles on the Honor tablet with the production package",
+   "inputs": [
+    "device A42BBB5109000333",
+    "production FFRS-v1.0.6 APK",
+    "gfx-codex-frame-metrics=1 per frame CSV"
+   ],
+   "outputs": [
+    "coordination/results/HONOR-P0-P1-SOAK-20261112.md section 3",
+    ".local/p0-p1-soak-20261112/p1-report.json"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "coordination/state.json",
+    "coordination/HANDOFF.md",
+    "coordination/results/HONOR-P0-P1-SOAK-20261112.md"
+   ],
+   "acceptance": "P50/P95/P99/max and long frame counts per scene on the real device, cold and warm separated, no video or print overhead, long frames attributed per frame.",
+   "recovery_point": "task/T-release-1.0.7-20261112",
+   "branch": "task/T-release-1.0.7-20261112"
   }
  ],
  "blockers": [
@@ -4844,7 +4897,11 @@
   "Prior51..53performancepossiblycontendedbyotherdebugconversation, nowclosedbyuser. Quietexclusive real-sceneperformance+independentQA stillNOT_RUN.",
   "P-CX-50 severe stutter: user report plus existing engine logs show heavy synchronous submit/fence cost; smooth operation NOT passed. Fatal TIMEOUT not reproduced yet.",
   "P-CX-TERRA-dark-limit-black: no verified complete same-frame GPU replay capture; binding18 type/range semantic correction and first wrong output unresolved; see RESULT",
-  "Moon halo: the engine submits identical work every frame and every indirect argument is constant, so the difference is a GPU side resource the engine does not capture. Both paths that read the arguments from guest memory render the moon stable and without the halo, but they synchronise the GPU every frame (33.3 ms), so neither can ship as the fix. A RenderDoc .gfxr capture of this scene is the next step."
+  "Moon halo: the engine submits identical work every frame and every indirect argument is constant, so the difference is a GPU side resource the engine does not capture. Both paths that read the arguments from guest memory render the moon stable and without the halo, but they synchronise the GPU every frame (33.3 ms), so neither can ship as the fix. A RenderDoc .gfxr capture of this scene is the next step.",
+  "HONOR-P0-P1-20261112: crash classes C1..C6 are collected with raw evidence but NONE reproduced on production v1.0.6 in a 22 minute targeted soak. Keep them open; do not treat the soak as a fix.",
+  "HONOR-P1-20261112: backgrounding drops the 01 scene to 8.60 FPS with present_result=1 on every long frame, and returning to the foreground holds p95 130..146 ms with 80..113 frames above 100 ms. Root cause not identified; the surface rebuild path (static audit P0-3 vkDeviceWaitIdle, P0-6 ANativeWindow double lock) is the suspect. No fix proposed until the cause is proven.",
+  "HONOR-P1-20261112 cold load: first entry into the 01 scene averages 24.03 FPS with a 1408.55 ms worst frame because the submit thread compiles shaders synchronously (xbg_game.cpp:2501-2533). With a warm pipeline cache the same scene holds 30.00 FPS for 392 s with zero long frames.",
+  "HONOR-SAVE-20261112: the save file lives in external app specific storage and survives APK updates, but the guest only flushes at its own save points, so installing a package while playing loses the progress since the last save point. The save root also switches between the external codex-local-save directory and the internal getFilesDir()/saves when the installer flips to managed mode."
  ],
  "verified": [
   "CURRENT_HANDOFF: a277 runtime sourcee305; actual originalstartup+OScleanup0/0, poststartup originalallocator0/0, HOST14expected, completeCRT515raw133. Earlier append-only bullets are historical stages and not current blockers.",
@@ -6374,5 +6431,68 @@
    "release branch task/T-release-1.0.7-20261112 commit 6e7f424 (mode switch and probe)",
    "/tmp/indirect-probe-mode0.csv, /tmp/ab_mode0.mp4, /tmp/moon-chain.csv (local, not committed)"
   ]
+ },
+ "honor_p0_p1_soak_20261112": {
+  "scope": "Honor ROD2-W69 / A42BBB5109000333 / Adreno 735, production FFRS-v1.0.6 (device base.apk SHA256 e6c2d287146c438f70c75ef3c408ddf3aa0629cbf6109be0dd09792828ca9cda, verified at the start and at the end of the run), all markers at factory default. Measurement only: no source change, no build, no non-production package installed, no save content touched.",
+  "window": "2026-11-12T17:35:43+08:00 to 2026-11-12T17:57:36+08:00, about 22 minutes, 6 processes, 8 phases (cold boot, title cold and warm, load menu, 01 scene first entry, 3x background and foreground, 4x scene reload, 150 s warm run, 242 s long run).",
+  "p0_crash_inventory": {
+   "ours": [
+    "C1 2026-10-29 21:39 pid 22145 RHIThread SIGABRT Scudo out-of-memory map failure; stack descriptors_build -> descriptors -> dispatch -> execute -> xbg_submit_now -> nvn_engine_submit -> nvn_queue_submit_commands, below that the Adreno driver vkCreateBufferView -> calloc fails. Tombstone 17.",
+    "C2 2026-10-29 22:24 pid 28868 RHIThread same signature, operator new fails inside descriptors_build reached from draw. Tombstone 18.",
+    "C3 2026-11-08 13:37 ANR: Input dispatching timed out, waited 5001 ms for a MotionEvent, org.ffrs.gamewindow/android.app.NativeActivity. DropBox data_app_anr.",
+    "C4 2026-11-11 11:38 x2 and 13:35, 13:36 x2, 13:37, six times: java.lang.RuntimeException Unable to start activity GameActivity: java.lang.IllegalStateException: The specified child already has a parent. DropBox data_app_crash x6.",
+    "C5 2026-11-04/05 pid 26439 SIGSEGV at descriptors_build, partial storage texel synchronisation retiring an active descriptor slot. state.json honor_battle_crash_20261104 and first-battle-crash-25315.log.",
+    "C6 2026-11-04/07 pids 28310, 29521, 31613: vkCreateGraphicsPipelines returned -13 VK_ERROR_UNKNOWN, engine fatal, abort when the boss appears. 30 FPS is not required to reproduce. null pipeline cache retry and SPIR-V optimisation of the vertex shader fe033d948255d9ff both failed."
+   ],
+   "sibling_package_same_runtime_library": [
+    "C7-a 2026-11-10 19:42 SIGABRT pointer tag truncated at snk_allocator_free via nb_import_gateway (tombstone 01)",
+    "C7-b 2026-11-10 20:00 SIGABRT Scudo corrupted chunk header at snk_allocator_free via nb_import_gateway (tombstone 02)",
+    "C7-c 2026-11-11 03:28 SIGABRT Scudo corrupted chunk header at snk_sized_delete via nb_import_gateway (tombstone 03)",
+    "C7-d 2026-11-05 14:54 SIGABRT at snk_abort_impl via nb_import_gateway, process uptime 2 s (tombstone 20)"
+   ],
+   "excluded_not_ours": [
+    "com.sangfor.vdi.client.tablet 13 crashes (SocketImpl file descriptor ownership assertions)",
+    "libgfxrecon-replay.so 9 aborts: the RenderDoc/gfxreconstruct offline replay tool aborting, not device side game crashes. Tombstone 25 belongs to this class but still corroborates C6.",
+    "com.miHoYo.Yuanshen 2, /system/bin/sh 1, com.android.bluetooth 1 (The Bluetooth HAL died, system bluetooth, not this app)"
+   ],
+   "live_soak_result": "NOT REPRODUCED. No new tombstone in /data/tombstones (before and after listings are identical, 32 files), no new DropBox entry for this app, and the pid liveness poll recorded no unexpected death. C1..C6 remain historical, occurred before, and did not recur on v1.0.6. This is recorded as a failed reproduction, not as a fix."
+  },
+  "p1_frame_percentiles": {
+   "method": "Segmentation by CSV row boundary snapshots taken at every scene boundary (wc -l), so no clock base assumption is used: /proc/uptime is CLOCK_BOOTTIME and the CSV monotonic_ns is CLOCK_MONOTONIC, which differ by 36 days of suspend on this device. Per segment: ALL frames, STEADY (excluding the first 45 frames), TRANSIT (the first 45 frames). Long frames above 50 ms attributed per frame by the draws, dispatches and submissions delta and by present_result. Production package built in CSV only, no screen recording and no per frame printing.",
+   "results": {
+    "title_cold_40s": "1199 intervals, mean 33.33 ms, 30.00 FPS, p95 33.87, p99 34.04, max 34.38, 0 long frames",
+    "title_warm_60s": "1799 intervals, mean 33.33 ms, 30.00 FPS, p95 33.85, p99 34.08, max 35.79, 0 long frames",
+    "load_menu_54s": "1619 intervals, mean 33.51 ms, 29.84 FPS, p95 33.86, p99 34.04, max 313.55, 1 frame above 50 ms",
+    "scene01_first_entry_cold_122s": "2939 intervals, mean 41.62 ms, 24.03 FPS, p50 41.17, p95 46.09, p99 53.46, max 1408.55, 45 frames above 50 ms, 9 above 100 ms",
+    "scene01_reload_dwell_22s": "659 intervals, 30.00 FPS, max 34.62, 0 long frames",
+    "scene01_warm_150s": "4499 intervals, 30.00 FPS, max 34.59, 0 long frames",
+    "scene01_long_242s": "7259 intervals, 30.00 FPS, max 34.51, 0 long frames",
+    "backgrounded_home_20s": "179 intervals, mean 116.22 ms, 8.60 FPS, p95 159.86, max 187.20, 126 frames above 50 ms, 125 above 100 ms",
+    "return_to_foreground_0_72s": "1499 intervals, mean 48.15 ms, 20.77 FPS, p95 130.28, max 215.80, 80 frames above 100 ms",
+    "return_to_foreground_1_75s": "1499 intervals, mean 50.28 ms, 19.89 FPS, p95 146.50, max 180.41, 113 frames above 100 ms",
+    "return_to_foreground_2_59s": "1379 intervals, mean 42.72 ms, 23.41 FPS, p95 46.61, max 57.54, 0 frames above 100 ms"
+   },
+   "conclusions": [
+    "30 FPS is reachable in the 01 scene: with a warm pipeline cache the same scene, save and package held 30.00 FPS for 150 s plus 242 s with max 34.59 ms and zero long frames. The stutter is a cold load cost, not a steady state defect.",
+    "The cold load long frames are concentrated in the first 7 seconds after entering the scene. The four worst are 1408.55 ms, 1156.70 ms, 862.46 ms and 641.57 ms, and the two worst have almost no draws (2 and 12) while taking over a second, which points at the synchronous disk read, SPIR-V rewrite and vkCreateShaderModule on the submit thread. This matches the static audit entry xbg_game.cpp:2501-2533 (shader_reuse=0). Static audit and device measurement corroborate each other here.",
+    "Backgrounding and returning to the foreground are the worst stutter source in this run: 8.60 FPS while backgrounded, p95 130 to 146 ms after returning, 80 to 113 frames above 100 ms per return, and present_result is 1 on every one of those long frames while normal frames are always 0. That is the surface rebuild path, where static audit P0-3 (vkDeviceWaitIdle without timeout) and P0-6 (ANativeWindow double lock race) live. Root cause not identified, so no fix is proposed."
+   ]
+  },
+  "moon_flicker_status": "Unchanged and not closed. The installed package is byte identical to the released v1.0.6 and all markers are at factory default, so the flicker the user saw on 2026-11-12 is the original v1.0.6 behaviour, not a regression from this round. The only candidate change (7b733b9 current slot guard) removes the halo entirely and costs 33.3 ms of legacy wait per frame (about 10 FPS), so it was never shipped and never produced the halo free picture the user reported as fixed.",
+  "save_storage": {
+   "live_save_root": "/storage/emulated/0/Android/data/org.ffrs.gamewindow/files/codex-local-save (confirmed by live_save_root log lines from 4 process starts during the soak)",
+   "safe_from_update": "External app specific storage. install -r keeps it, and neither force-stop nor install -r deletes it. A manual copy also exists at /sdcard/saves-bak-107.",
+   "real_loss_mechanism": "The guest only writes the save file at its own save points. GameSaveData0 stayed at its 13:38 mtime through a 22 minute session that included 4 force-stops, so progress since the last in game save point is lost whenever the process is killed, and installing an APK kills the process. The file is not deleted; the un-flushed progress is gone.",
+   "secondary_1_restore_overwrites": "onStop exports a snapshot to /sdcard/Download/FFRS-save-<timestamp>/ on every exit; 36 snapshots exist. Restoring an older one overwrites the live save root, so an old restore reads as lost progress.",
+   "secondary_2_root_switch": "GameActivity.java:2624-2627 switches the save root to getFilesDir()/saves when the data installer is in managed mode. This device is unmanaged (the internal directory does not exist), so it is not active now, but it is a real way for an update to make the save appear lost.",
+   "secondary_3_isolated_flag": "The isolated_regression_save intent extra can redirect the save root, but no such extra was used in this run.",
+   "workaround_now": "Trigger an in game save before updating, restore only the newest snapshot, and never wipe /sdcard/Android/data/org.ffrs.gamewindow/."
+  },
+  "artifacts": [
+   "coordination/results/HONOR-P0-P1-SOAK-20261112.md",
+   ".local/p0-p1-soak-20261112/ (soak-marks-and-crashes.json, soak-log.txt, p1-report.json, logcat-20261112-1737-1800.txt, dropbox-full-20261112.txt, tombstone-baseline.txt, tombstone-after.txt, frame-csv/, soak_harness.py, an_soak.py)",
+   ".local/tombstones-all-20261111/tombstone_{00,01,02,03} (read only, previously not copied)"
+  ],
+  "not_claimed": "No crash is claimed fixed, no frame rate claim beyond the measured numbers, no full game compatibility, no independent QA, no human audio verification, no 60 FPS."
  }
 }
