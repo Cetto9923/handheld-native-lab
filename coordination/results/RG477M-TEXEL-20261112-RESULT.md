@@ -256,6 +256,109 @@ xbg_typed_storage_matches(spirv_format, vk_format) -> bool
 | 7 | `shader_identity`（约 2570 行）与 `load_module`（约 2950 行） | 识别 `:stb1:` identity，使 warm 预热路径能重建同一 typed 模块（不认识时只是退回运行期创建，不影响正确性） |
 | 8 | `dispatch()`（约 4886 行）、`draw()`（约 4348 行） | 各加一个 `TypedStorageSelection` RAII |
 
+### §2 已实现的改动（提交 `d161525`、`bed62cc`）
+
+#### §2.1 文件与函数（行号为 `bed62cc` 时的 `src/graphics/nvn_vulkan/engine/xbg_game.cpp`）
+
+| 文件 | 位置 | 改动 |
+|---|---|---|
+| `src/graphics/nvn_vulkan/engine/xbg_spirv_typed_storage.h`（新，178 行） | `xbg_spirv_image_format`(53) / `xbg_spirv_image_format_scalar`(69) / `xbg_typed_storage_matches`(80) / `xbg_spirv_binding_image`(95) / `xbg_spirv_declared_image_format`(119) / `xbg_typed_storage_rewrite`(134) | 纯函数、宿主可测、无 Vulkan 头依赖 |
+| `xbg_game.cpp` | 21-27 | include 新头 + `static_assert` 把 VkFormat 数值钉在 vulkan_core.h 上 |
+| `xbg_game.cpp` | 2311/2314/2315 | `struct Shader` 新增 `storage_image_formats`、`module_words`、`typed_variants` |
+| `xbg_game.cpp` | 2700-2706（`load_shader`） | 记录模块实际形态（每个 storage texel/image binding 的 SPIR-V image format），并在需要时保留最终模块字节 |
+| `xbg_game.cpp` | 2821（`integer_buffer_variant`） | 把 `storage_image_formats` / `module_words` 传给整数缓冲变体 |
+| `xbg_game.cpp` | 2591（`shader_identity`） | identity 增加 `:stb1:` 前缀解析（与 `:ib1:` 区分） |
+| `xbg_game.cpp` | 2845 `typed_storage_binding_format` | 解析 storage texel buffer 当前实际绑定的 VkFormat（复用 `texel_binding_format`） |
+| `xbg_game.cpp` | 2871 `storage_texel_formatless_write_ok` / 2878 `storage_image_formatless_write_ok` | 设备是否仍支持 formatless 写（格式特性位） |
+| `xbg_game.cpp` | 2891 `typed_storage_image_format` | 解析 storage image 当前绑定的 view 格式（与描述符路径同一函数 `im.view_format`） |
+| `xbg_game.cpp` | 2917 `typed_storage_variant` | 按 (binding, 绑定格式) 生成模块变体；identity = key+":stb1:"+"binding_format,..."；改写用 `xbg_typed_storage_rewrite`；被拒绝时记录 `NVN typed storage UNSUPPORTED ... reason=rewrite-refused` 并保持原模块 |
+| `xbg_game.cpp` | 2970 `TypedStorageSelection` | RAII：在 `draw()`/`dispatch()` 入口换入 typed 变体，退出还原 |
+| `xbg_game.cpp` | 4046-4060（`descriptors_build`，storage texel buffer） | 按模块实际形态判定：formatless → 保留今天的 WITHOUT_FORMAT 要求；typed → 要求 `STORAGE_TEXEL_BUFFER_BIT` 且声明格式与绑定 VkFormat 精确一致 |
+| `xbg_game.cpp` | 4250-4262（`descriptors_build`，storage image） | 同上（`STORAGE_IMAGE_BIT` 已在原处检查） |
+| `xbg_game.cpp` | 4550（`draw`）/5088（`dispatch`） | 各加一个 `TypedStorageSelection` RAII |
+| `xbg_game.cpp` warm 路径 `load_module` | — | 识别 `:stb1:` identity 并按同一顺序（stencil → specialize → optimize → typed）重建同一模块 |
+| `tests/device/test_typed_storage.cpp` + 3 个 `.spvasm` fixture（新） | — | 宿主契约 |
+| `scripts/android/verify_rg477m_typed_storage.sh`（新） | — | 真机安装/启动/取证脚本，只允许 RG477M01445122 |
+
+#### §2.2 逐字节等价论证（写出的字节、地址步长、分量数）
+
+1. 写出的字节与地址由绑定视图决定，与模块是否声明格式无关。
+   - VUID `vkCmdDispatch-OpImageWrite-04469`：*For every OpImageWrite instruction, the type of the
+     Texel operand must have at least as many components as the format of the bound image view or
+     buffer view.* → 分量数下限来自绑定视图的格式。
+   - VUID `vkCmdDispatch-OpImageWrite-08795/08796`：typed 形态下 SPIR-V 声明的 Image Format 必须与
+     绑定的 buffer/image view 的 VkFormat 精确一致。
+   - formatless（Image Format=Unknown）只表示模块不声明格式，视图本身仍然是 R32_UINT 的视图，
+     所以每 texel 仍是 1 个 32 位分量、4 字节，地址步长仍是 4 字节。
+   → 两种形态写入的字节数、地址步长、被写入的分量（.x）完全相同。
+2. 本次的具体绑定：设备日志 `NVN texel format=98`（`VK_FORMAT_R32_UINT`，1 分量 × 4 字节）。
+   - formatless 形态：写 .x 分量的 4 字节。
+   - typed 形态（R32ui）：R32ui 即 R32_UINT 的 SPIR-V 表达（1 分量无符号 32 位），仍写 .x 分量的 4 字节。
+   → 逐字节相同，无精度变化、无分量丢失。
+3. 数据流没有被本次改动触碰：模块里 `OpImageWrite` 的 texel 早已由既有的
+   `xbg_spirv_integer_storage` 改写为位保留的 `OpBitcast %v4uint %v4float`（本次未改）。
+   宿主契约 `assert_only_format_changed` 逐字比较证明：改写前后只有 `OpTypeImage` 的
+   Image Format 一个操作数不同，指令、ID、数据流、bound 全部不变。
+4. SPIR-V 合法性：R32ui 要求 Sampled Type = uint（VUID StandaloneSpirv-Image-04965），改写后
+   模块的 Sampled Type 正是 uint（既有 integer storage 改写负责）；texel 为 4 分量 uint 向量
+   ≥ R32ui 的 1 分量（04469）。实测 `spirv-val --target-env vulkan1.1` 通过。
+5. 能力检查没有放松：formatless 分支一字未改；typed 分支更严（额外要求声明格式与绑定
+   VkFormat 精确一致，不一致即 FATAL）。变体只在设备确实缺 formatless 特性位时生成，
+   支持 formatless 的设备行为完全不变。
+
+#### §2.3 宿主契约（命令与退出码）
+
+```sh
+cd <worktree>
+D=.local/rg477m-texel-20261112/exp
+spirv-as --target-env vulkan1.1 tests/device/typed_storage_uint.spvasm -o $D/typed_storage_uint.spv
+spirv-as --target-env vulkan1.1 tests/device/typed_storage_shared_image.spvasm -o $D/typed_storage_shared_image.spv
+spirv-as --target-env vulkan1.1 tests/device/typed_storage_formatless_read.spvasm -o $D/typed_storage_formatless_read.spv
+clang++ -std=c++17 -O1 -g -fsanitize=address,undefined -Wall -Wextra -o $D/test_typed_storage tests/device/test_typed_storage.cpp
+$D/test_typed_storage $D/typed_storage_uint.spv $D/typed_storage_shared_image.spv $D/typed_storage_formatless_read.spv $D/typed_storage_out.spv .local/rg477m-texel-20261112/extracted.spv $D/real_typed.spv
+spirv-val --target-env vulkan1.1 $D/typed_storage_out.spv
+spirv-val --target-env vulkan1.1 $D/real_typed.spv
+```
+
+结果：`test_typed_storage` 退出码 0（ASan/UBSan 无告警），输出
+`Typed storage texel buffer: formatless to R32ui, idempotent, shared image and formatless read refused, bound format mismatch red PASS`；
+两次 `spirv-val` 退出码 0。
+
+覆盖的断言（绿）：Unknown → R32ui 且只有 Image Format 一个操作数变化；已是 typed 的模块
+不被重复改写（返回 0，字节不变）；同名不同格式的 typed 模块被拒；共享 image type 被拒；
+同一 image 上存在 formatless read 被拒；Sampled Type 与格式标量类别不符被拒；未知 binding 被拒；
+Unknown 格式被拒；畸形模块被拒且字节不变。
+覆盖的断言（红，变异体必须红）：把已改写模块的声明格式改成 R32i（绑定仍是 R32_UINT）后，
+`xbg_typed_storage_matches(24,98)` 为 false → 引擎的 `need(...)` 必然失败。
+
+真实模块金样（`.local/rg477m-texel-20261112/extracted.spv`，游戏派生内容，不入库）：
+先跑既有 `xbg_spirv_ffrs_stencil`（返回 1），再跑 typed 改写（返回 1），
+`spirv-dis` 显示 `%127 = OpTypeImage %uint Buffer 0 0 0 2 R32ui`，`spirv-val` 通过。
+
+#### §2.4 NDK 编译
+
+- `scripts/android/build_game_window_apk.sh`：全步骤退出码均为 0
+  （cmake-configure / cmake-build-game-window / android-elf-header / android-compile-native-window /
+  host-compile-native-window / javac / jar / d8 / aapt2-compile / aapt2-link / payload-zip /
+  zipalign / apksigner-sign / apksigner-verify / keytool / strip / sha256）。
+- `xbg_game.cpp` 用 NDK clang `-Wall -Wextra` 单独编译：0 error；warning 集合与
+  `HEAD` 基线逐条一致（diff 无差异；基线 192 条 `-Wmissing-field-initializers` 等，
+  新代码用 `{}`+显式 sType 初始化，不新增 warning）。
+- 产物：`.local/android-apk/ffrs-game-window-debug.apk`（不入库）。
+
+#### §2.5 真机（BLOCKED：设备不在线）
+
+- 计划阶段已记录：`RG477M01445122` 当时不在线；本轮复查仍然只有荣耀平板
+  `A42BBB5109000333`（禁止触碰，未做任何操作；`adb reconnect` 只重连了平板，未 `adb kill-server`）。
+- 因此 进标题 / 进战斗 / 截图 尚未执行，不能声称真机通过。
+- 设备上线后一条命令即可取证：
+```sh
+bash scripts/android/verify_rg477m_typed_storage.sh RG477M01445122
+```
+  脚本会：只对 `RG477M01445122` 做 `adb install -r` → force-stop → 清 `engine.log.fatal` →
+  启动 → 等待 → 拉 `engine.log` / `engine.log.fatal` / logcat / 截屏，并打印
+  `FATAL_ABSENT`、`FORMATLESS_WRITE_FATAL_ABSENT`、typed storage 变体日志行。
+
 #### §1.4 硬约束自检
 
 - 不降精度、不跳 draw、不全局关 depth、不用占位 module：改写只改一个类型操作数，**不新增/删除/修改任何数据流指令**。
