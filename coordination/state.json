@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-12T23:49:46.285118+08:00",
+ "updated_at": "2026-11-12T23:54:19.311276+08:00",
  "phase": "v1.0.9 consolidation in progress: one APK (versionCode 9) must boot both the Honor tablet (code 7) and the RG477M (code 8). Three implementation lines are in flight — readback targeted retirement (stutter root cause), Mali formatless-write FATAL (RG477M cannot enter the game), battle-settle crash P0 (8E5 phone, no device). The Honor tablet was returned to the user after the effect-seed line finished its measurement; all Honor device acceptance is deferred to one session after the merge.",
  "coordinator": "MiniMax Code /root release takeover (Codex thread aborted by user)",
  "integration_branch": "work/rg477m-native",
@@ -7510,7 +7510,10 @@
    "the crash type (SIGSEGV / abort / ANR)",
    "whether the crash happens on entering the temple or in the first battle inside it",
    "the version and the APK source"
-  ]
+  ],
+  "source_roles": "the field report is third hand: the temple and 大地图 crash items come from the Honor tablet tester 三季人, not from the user, whose own story progress has not reached that temple yet. The 8E5 item comes from a different reporter. The temple path therefore has no local reproduction yet, and the acceptance must not depend on a save that reaches the temple.",
+  "self_verification": "RedirectOutput() in src/android/native/guest_boot_jni.cpp dup2s the process stdout and stderr into guest_boot.log with O_TRUNC, so the host guard line survives on the device and belongs to the current session only. The player can confirm the attribution with one command: adb shell grep -a -n multiwait on the guest_boot.log under the app files directory, plus adb logcat -b crash -d. A hit on [multiwait] refusing Event finalization during active wait confirms C1, a host abort during the scene unload, with a SIGABRT crash form.",
+  "attribution_20261112_2350": "the crash line attributed the scene switch crash to four candidates, with C1 strongest: nso_host.c:2908-2909 refuses to finalize an Event while a wait is active and calls abort(). The guest really uses MultiWait (8 symbols wired in guest_process.c and multiwait.c is compiled into the Android build), and the project own HANDOFF records this exact guard with SIGABRT-6 as the observed outcome, which proves the race really happened. C2 is the same family (a holder outliving its Event, then a guest pointer read or write on a released page). C3 is the engine side wait event without a guest address check. The crash probability gradient reported by the tester, temple often and 大地图 rarely, matches a race whose window widens with the number of holders a scene keeps."
  },
  "worker_restart_20261112": {
   "observed_at": "2026-11-12T23:46:49.520204+08:00",
@@ -7554,5 +7557,15 @@
    "the 8E5 device itself stays unavailable, so that report stays NOT_RUN plus code-level hardening",
    "the seed narrowing P1 has no device to measure on, so it stays deferred"
   ]
+ },
+ "crash_attribution_20261112": {
+  "observed_at": "2026-11-12T23:54:19.311276+08:00",
+  "line": "CRASH-P0-BATTLE-SETTLE-20261112, commit 75beed3 on task/T-crash-p0-20261112",
+  "C1": "nso_host_os_finalize_event at nso_host.c:2903-2910: if ffrs_multiwait_event_waiting(event) then it prints the multiwait refusal line and calls abort(). The guard is deliberate; HANDOFF:2467 records the host going silent with exit0 when quiescent and SIGABRT-6 when a wait was active. Evidence strength: high, it is the only host path that terminates the process on the scene unload action itself.",
+  "C2": "same family: a MultiWait holder can outlive its Event; nso_host_os_is_event_signaled reads guest memory at the event pointer when the entry is no longer in the registry, and the signal path rebuilds the entry and writes to a possibly released guest page. Evidence strength: medium high.",
+  "C3": "the engine side OP_WAIT_EVENT only checks that the address is non zero and then reads it atomically, so an unmapped address is a SIGSEGV, and the busy wait timeout is a fatal abort. nvn_memory_pool_resolve_address already exists as the address check. Evidence strength: medium.",
+  "C4": "retire_slot turns a fence timeout or a device lost into a fatal abort, with an unbounded spin. Evidence strength: lower.",
+  "crash_form": "SIGABRT (6) with an Abort message, not a memory access fault, for C1.",
+  "hardening_constraints": "the deliberate guard must not simply be deleted or relaxed into a finalize anyway. The safe path is one of: wait for the waiters to leave with a bounded upper limit, mark the event retiring and wake the waiters, or detach the MultiWait holders before the finalize. It must not deadlock, because a waiter that never exits is exactly why the abort was there, and it must not change the game semantics: the event still gets finalized and the waiters still get woken the same way."
  }
 }
