@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-12T23:11:58.606703+08:00",
+ "updated_at": "2026-11-12T23:14:24.162079+08:00",
  "phase": "v1.0.6 published; v1.0.7 internal team-play package built and device-verified on task/T-package-1.0.7-20261112 (moon halo fix shipped, cheat menu usable, 30 FPS held). Battle effect pipeline stutter still open, not in this package.",
  "coordinator": "MiniMax Code /root release takeover (Codex thread aborted by user)",
  "integration_branch": "work/rg477m-native",
@@ -6826,6 +6826,18 @@
      "no red line is broken: no skipped draws, no reduced precision, no depth turned off, no placeholder module",
      "every change cites an obtainable community source in OSS-NOTES.md"
     ]
+   },
+   "honor_device_returned_to_user": {
+    "observed_at": "2026-11-12T23:14:24.162079+08:00",
+    "user_decision": "2026-11-12 23:12, the user chose: let the effect worker finish the current transition sampling round and then stop, and touch the Honor tablet no more after that",
+    "consequences": [
+     "the effect worker finishes the round in flight, pulls every artefact off the device because the logs get overwritten by later sessions, restores every marker to the baseline snapshot in .local/marker-backups/ffrs-markers-backup-20261112-223935.tar, stops the app and hands the tablet back",
+     "no worker may restart the app, inject key events, change a marker or install on A42BBB5109000333 from now on",
+     "the readback directed retirement worker and every other Honor side work goes fully offline: implementation, host self proof, NDK compile check, build, documentation, and a ready to run A/B script that is not executed",
+     "the on device acceptance for all three lines is postponed to a single run after the three worktrees are merged into one 1.0.9 package, so that the acceptance measures the merged build rather than one line on top of the old parts",
+     "the RG477M is a separate device and its worker continues there; it must not touch the Honor tablet"
+    ],
+    "why_it_matters": "the coordinator had to admit that the automatic key injection on the user's tablet was not disclosed in advance, so the ownership of the device is now recorded as a first class constraint"
    }
   }
  },
