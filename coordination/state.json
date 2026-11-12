@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-12T23:46:49.520204+08:00",
+ "updated_at": "2026-11-12T23:49:46.285118+08:00",
  "phase": "v1.0.9 consolidation in progress: one APK (versionCode 9) must boot both the Honor tablet (code 7) and the RG477M (code 8). Three implementation lines are in flight — readback targeted retirement (stutter root cause), Mali formatless-write FATAL (RG477M cannot enter the game), battle-settle crash P0 (8E5 phone, no device). The Honor tablet was returned to the user after the effect-seed line finished its measurement; all Honor device acceptance is deferred to one session after the merge.",
  "coordinator": "MiniMax Code /root release takeover (Codex thread aborted by user)",
  "integration_branch": "work/rg477m-native",
@@ -5148,7 +5148,7 @@
     "src/graphics/nvn_vulkan/engine/xbg_spirv_*.h",
     "tests/native/"
    ],
-   "acceptance": "The guest boots on the RG477M past the texel-format check and reaches the title. No reduced precision, no skipped draw, no depth turned off, no placeholder module. Every community reference has URL, revision, licence and support range in OSS-NOTES. If the NVN formatless semantics cannot be met on Mali the result is BLOCKED with the smallest workable fallback and its verifiable depth, not a fake green. Device: RG477M01445122 only.",
+   "acceptance": "The guest boots on the RG477M past the texel-format check, reaches the title AND a battle is actually playable: the rewritten SPIR-V must produce a correct image, not only avoid the FATAL (no black blocks, no wrong colours, no missing particles), and any float to uint reinterpretation must be proven byte equivalent. No reduced precision, no skipped draw, no depth turned off, no placeholder module, and the engine capability check must not be relaxed to hide the problem. Every community reference has URL, revision, licence and support range in OSS-NOTES. If the NVN formatless semantics cannot be met on Mali while keeping the image correct the result is BLOCKED with the smallest workable fallback and its verifiable depth, not a fake green. Device: RG477M01445122 only.",
    "checkpoint": "the first attempt reached a decisive attribution but wrote no code; the findings are carried into the restart",
    "device_exclusive": "RG477M01445122 (the Honor tablet A42BBB5109000333 is forbidden)",
    "attribution_findings": "the failing binding is compute shader 664748e31a2dfad9 (stage 5), format 98 = VK_FORMAT_R32_UINT. Its SPIR-V declares OpTypeImage sampledType=4(float) dim=5(Buffer) sampled=2(Storage) format=0(Unknown), which is a formatless storage texel buffer. Mali reports bufferFeatures=0x78 for that format, so the optional STORAGE_WRITE_WITHOUT_FORMAT bit is missing for the whole Mali family, and 0x78 still contains STORAGE_TEXEL_BUFFER_BIT, so the typed path is available. The fix is to rewrite the SPIR-V so the formatless storage texel buffer becomes typed, using the existing xbg_spirv_* machinery. The engine capability check itself is correct and must not be relaxed."
@@ -5279,7 +5279,7 @@
     "src/",
     "coordination/"
    ],
-   "acceptance": "One APK installs on both devices (versionCode 9 covers the Honor code 7 and the RG477M code 8, the signing certificate is unchanged). The RG477M boots past the texel check and reaches the title and a battle. The Honor regression is run only with the explicit permission of the user. Every PASS is linked to a commit, a build id, the raw log and the exit code.",
+   "acceptance": "One APK installs on both devices (versionCode 9 covers the Honor code 7 and the RG477M code 8, the signing certificate is unchanged). The RG477M boots past the texel check, reaches the title and a battle is playable, with a correct image. The Honor regression runs in ONE session after the merge, in three legs: the 大地图 route (first entry versus later entry, the stutter judgement), the temple route (20 entries, no crash), then the town and dungeon regression. The 大地图 and temple crash paths get 20 consecutive runs each and any FATAL or SIGSEGV fails the build. Every PASS is linked to a commit, a build id, the raw log and the exit code.",
    "checkpoint": "ad2941b (merge preview built and verified; the three open lines are not in yet)",
    "device_exclusive": "RG477M01445122 and, with the user permission, A42BBB5109000333",
    "status_note": "the merge preview is built and verified at ad2941b; the task is blocked on the three open implementation lines",
@@ -7526,5 +7526,33 @@
    "crash P0": "bg_dbfd2130-fa4f-45e0-a196-fe66b3e7bcac",
    "bigmap": "bg_15c01055-171e-4803-97a2-1468e840d97a"
   }
+ },
+ "user_decisions_20261112": {
+  "observed_at": "2026-11-12T23:49:46.285118+08:00",
+  "decided_by": "the user (MiniMax Code /root asked, the user answered)",
+  "items": [
+   {
+    "id": "D1",
+    "question": "when can the Honor tablet be used for the final acceptance",
+    "answer": "after 1.0.9 is merged, one session, everything at once",
+    "impact": "the tablet is not touched until the merge is done. One session covers the stutter judgement, the 大地图 first versus later entry, and the 大地图 and temple crash paths. The session is bigger, so it is planned in three legs: the 大地图 route, the temple route, then the town and dungeon regression, cold and warm apart."
+   },
+   {
+    "id": "D2",
+    "question": "who collects the crash logs for the temple and the 大地图",
+    "answer": "the coordinator asks the tester (三季人)",
+    "impact": "the request text is ready in coordination/results/CRASH-LOG-REQUEST-20261112.md, section A is written to be forwarded as is. The 8E5 reporter gets section B. Until the logs arrive the crash line stays at code-level hardening and NOT_RUN."
+   },
+   {
+    "id": "D3",
+    "question": "the acceptance floor for the RG477M if the Mali formatless semantics cannot be fully fixed",
+    "answer": "it must reach the title and a real battle has to be playable",
+    "impact": "the texel line was told: silencing the FATAL is not enough, the rewritten SPIR-V must produce a correct image (no black blocks, wrong colours, missing particles), any float to uint reinterpretation must be proven byte equivalent, and the verification route must go past the title into a battle. If it cannot be done while keeping the image correct, the result is BLOCKED with the smallest workable fallback. The engine capability check must not be relaxed and the rendering precision must not be lowered."
+   }
+  ],
+  "not_decided_yet": [
+   "the 8E5 device itself stays unavailable, so that report stays NOT_RUN plus code-level hardening",
+   "the seed narrowing P1 has no device to measure on, so it stays deferred"
+  ]
  }
 }
