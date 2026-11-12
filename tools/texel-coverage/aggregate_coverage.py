@@ -4,9 +4,12 @@
 Reads the analyzer's per-module JSONL and produces:
   * the hit counts and the refusal-reason breakdown,
   * the per-binding table of every descriptor the typed rewrite cannot cover,
-  * the per-module verdict, following the engine's own variant rule: the
-    engine refuses the whole typed variant when any single binding fails, so a
-    module is only covered when every formatless-write binding is covered.
+  * the per-module table of every module the typed variant cannot cover, with
+    the identity the engine would use and the formats the binding resolves to.
+
+The module verdict is the analyzer's module_variant verdict, which is the
+shipping rewrite's own answer: the engine refuses the whole typed variant
+when any single binding fails.
 
 Usage:
   aggregate_coverage.py --jsonl <modules.jsonl> --out <output-dir>
@@ -22,9 +25,12 @@ STORAGE_TEXEL_BUFFER = 5
 REASONS = (
     "accepted",
     "no-storage-image-for-binding",
+    "image-type-shared-with-other-format",
     "image-type-shared-by-multiple-descriptors",
     "sampled-type-class-mismatch",
     "formatless-read-on-same-image",
+    "duplicate-type-not-reusable",
+    "extended-format-not-supported",
     "unknown-sampled-type",
     "malformed-module",
     "invalid-target-format",
@@ -39,6 +45,22 @@ def load(path):
             line = line.strip()
             if line:
                 yield json.loads(line)
+
+
+def binding_targets(record):
+    """The bindings the engine would put into the typed variant."""
+    out = []
+    for binding in record.get("bindings") or []:
+        if binding["descriptor_type"] not in (STORAGE_IMAGE, STORAGE_TEXEL_BUFFER):
+            continue
+        if binding["count"] != 1:
+            continue
+        if not binding["formatless_write_flag"]:
+            continue
+        if binding["declared_format"] != 0:
+            continue
+        out.append(binding)
+    return out
 
 
 def main():
@@ -56,6 +78,8 @@ def main():
     modules_with_fless_read = 0
     modules_covered = 0
     modules_uncovered = 0
+    modules_covered_kept = 0
+    modules_uncovered_kept = 0
 
     storage_bindings = 0
     fless_write_bindings = 0
@@ -64,6 +88,8 @@ def main():
     no_image_bindings = 0
     module_formatless = 0
     module_typed = 0
+    target_bindings = 0
+    target_bindings_covered = 0
 
     reason_counts = Counter()
     accepted_sets = Counter()
@@ -78,14 +104,51 @@ def main():
             continue
         parsed += 1
         stage_counts[record["stage"]] += 1
-        if record.get("module_words_kept"):
+        kept = bool(record.get("module_words_kept"))
+        if kept:
             modules_kept_words += 1
         bindings = record.get("bindings") or []
         if bindings:
             modules_with_storage += 1
 
-        # The engine only attempts the typed form for a formatless write.
-        targets = []
+        module_has_write = any(b["formatless_write_flag"] for b in bindings)
+        module_has_read = any(b["formatless_read_flag"] for b in bindings)
+        if module_has_write:
+            modules_with_fless_write += 1
+        if module_has_read:
+            modules_with_fless_read += 1
+
+        targets = binding_targets(record)
+        target_bindings += len(targets)
+        covered_bindings = 0
+        for binding in targets:
+            accepted = [v["vk_format"] for v in binding["rewrite"] if v["result"] == 1]
+            refused = [v for v in binding["rewrite"] if v["result"] != 1]
+            for verdict in binding["rewrite"]:
+                if not verdict["verdict_agrees"]:
+                    mismatch_count += 1
+            if accepted:
+                accepted_sets[tuple(accepted)] += 1
+                covered_bindings += 1
+                continue
+            reasons = sorted({v["reason"] for v in refused})
+            for verdict in refused:
+                reason_counts[verdict["reason"]] += 1
+            uncovered_bindings.append({
+                "key": record["key"],
+                "stage": record["stage"],
+                "binding": binding["binding"],
+                "descriptor_type": binding["descriptor_type"],
+                "count": binding["count"],
+                "package_scalar": binding["package_scalar"],
+                "sampled_class": binding["sampled_class"],
+                "image_type_sharers": binding.get("image_type_sharers", 0),
+                "image_writes": binding["image_writes"],
+                "image_reads": binding["image_reads"],
+                "reasons": reasons,
+            })
+        target_bindings_covered += covered_bindings
+
         for binding in bindings:
             storage_bindings += 1
             if binding["count"] != 1:
@@ -100,69 +163,51 @@ def main():
                 module_formatless += 1
             else:
                 module_typed += 1
-            for verdict in binding["rewrite"]:
-                if not verdict["verdict_agrees"]:
-                    mismatch_count += 1
-            if binding["formatless_write_flag"] and binding["declared_format"] == 0:
-                targets.append(binding)
 
-        module_has_write = any(b["formatless_write_flag"] for b in bindings)
-        module_has_read = any(b["formatless_read_flag"] for b in bindings)
-        if module_has_write:
-            modules_with_fless_write += 1
-        if module_has_read:
-            modules_with_fless_read += 1
-
-        # A formatless read without a formatless write is never typed by the
-        # engine, so it stays formatless and still needs the read feature.
+        variant = record.get("module_variant") or {}
+        has_target = bool(variant.get("has_target"))
+        ok = bool(variant.get("ok"))
         read_only = [
             b for b in bindings
             if b["formatless_read_flag"] and not b["formatless_write_flag"]
         ]
-
-        module_ok = True
-        module_reasons = set()
-        for binding in targets:
-            accepted = [v["vk_format"] for v in binding["rewrite"] if v["result"] == 1]
-            refused = [v for v in binding["rewrite"] if v["result"] != 1]
-            if accepted:
-                accepted_sets[tuple(accepted)] += 1
-            else:
-                module_ok = False
-                reasons = sorted({v["reason"] for v in refused})
-                module_reasons.update(reasons)
-                for verdict in refused:
-                    reason_counts[verdict["reason"]] += 1
-                uncovered_bindings.append({
-                    "key": record["key"],
-                    "stage": record["stage"],
-                    "binding": binding["binding"],
-                    "descriptor_type": binding["descriptor_type"],
-                    "count": binding["count"],
-                    "package_scalar": binding["package_scalar"],
-                    "sampled_class": binding["sampled_class"],
-                    "image_type_sharers": binding.get("image_type_sharers", 0),
-                    "image_writes": binding["image_writes"],
-                    "image_reads": binding["image_reads"],
-                    "reasons": reasons,
-                })
-        for binding in read_only:
-            module_ok = False
-            module_reasons.add("formatless-read-without-write")
-
-        if not targets and not read_only:
+        if read_only:
+            ok = False
+            if not variant.get("reason"):
+                variant = dict(variant)
+                variant["reason"] = "formatless-read-without-write"
+        if not has_target and not read_only:
             continue
-        if module_ok:
+        if ok:
             modules_covered += 1
+            if kept:
+                modules_covered_kept += 1
         else:
             modules_uncovered += 1
+            if kept:
+                modules_uncovered_kept += 1
+        identity = record["key"]
+        if ok:
+            identity = record["key"] + ":stb1:"
         module_verdicts.append({
             "key": record["key"],
             "stage": record["stage"],
-            "verdict": "covered" if module_ok else "uncovered",
-            "reasons": sorted(module_reasons),
-            "targets": len(targets),
-            "read_only": len(read_only),
+            "identity": identity,
+            "verdict": "covered" if ok else "uncovered",
+            "reason": variant.get("reason", ""),
+            "targets": variant.get("targets", len(targets)),
+            "module_words_kept": kept,
+            "bindings": [
+                {
+                    "binding": b["binding"],
+                    "descriptor_type": b["descriptor_type"],
+                    "sampled_class": b["sampled_class"],
+                    "package_scalar": b["package_scalar"],
+                    "accepted_formats": [v["vk_format"] for v in b["rewrite"] if v["result"] == 1],
+                    "image_type_sharers": b.get("image_type_sharers", 0),
+                }
+                for b in targets
+            ],
         })
 
     stats = OrderedDict([
@@ -181,8 +226,12 @@ def main():
         ("bindings_without_module_image", no_image_bindings),
         ("bindings_module_formatless", module_formatless),
         ("bindings_module_already_typed", module_typed),
+        ("typed_variant_targets", target_bindings),
+        ("typed_variant_targets_covered", target_bindings_covered),
         ("modules_covered", modules_covered),
         ("modules_uncovered", modules_uncovered),
+        ("modules_covered_with_module_words", modules_covered_kept),
+        ("modules_uncovered_with_module_words", modules_uncovered_kept),
         ("uncovered_bindings", len(uncovered_bindings)),
         ("diagnostic_verdict_mismatches", mismatch_count),
     ])
@@ -214,12 +263,21 @@ def main():
                 str(entry["image_reads"]), "|".join(entry["reasons"]),
             ]) + "\n")
     with open(os.path.join(args.out, "module_verdicts.tsv"), "w") as handle:
-        handle.write("key\tstage\tverdict\ttargets\tread_only\treasons\n")
+        handle.write("key\tstage\tidentity\tverdict\treason\ttargets\t"
+                     "module_words_kept\tbindings\n")
         for entry in module_verdicts:
+            bindings = ";".join(
+                "%d:%s:%s" % (
+                    b["binding"],
+                    "texel" if b["descriptor_type"] == STORAGE_TEXEL_BUFFER else "image",
+                    ",".join(str(f) for f in b["accepted_formats"]) or "-",
+                )
+                for b in entry["bindings"]
+            )
             handle.write("\t".join([
-                entry["key"], str(entry["stage"]), entry["verdict"],
-                str(entry["targets"]), str(entry["read_only"]),
-                "|".join(entry["reasons"]),
+                entry["key"], str(entry["stage"]), entry["identity"], entry["verdict"],
+                entry["reason"] or "-", str(entry["targets"]),
+                "yes" if entry["module_words_kept"] else "no", bindings or "-",
             ]) + "\n")
 
     print(json.dumps(stats, indent=2))

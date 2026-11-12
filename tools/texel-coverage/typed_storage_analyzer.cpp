@@ -9,6 +9,10 @@
 //   bundle := the game's .xgs container (XGS1 header, bindings, inputs, c1, SPIR-V)
 // Output : one JSON object per record on stdout.
 //
+// Usage : typed_storage_analyzer [dump-dir] [--no-extended]
+//   dump-dir    : every accepted rewrite is written there as a .spv file
+//   --no-extended : model a device without StorageImageExtendedFormats
+//
 // For every storage descriptor the package declares, the analyzer reports:
 //   * what the module itself declares for that binding (Unknown = formatless),
 //   * whether the module actually writes/reads that image,
@@ -38,6 +42,7 @@ constexpr uint32_t CANDIDATE_FORMATS[] = {98, 99, 100, 101, 102, 103, 107, 108, 
 constexpr uint32_t OP_TYPE_INT = 21;
 constexpr uint32_t OP_TYPE_FLOAT = 22;
 constexpr uint32_t OP_TYPE_POINTER = 32;
+constexpr uint32_t OP_TYPE_IMAGE = 25;
 constexpr uint32_t OP_VARIABLE = 59;
 constexpr uint32_t OP_LOAD = 61;
 constexpr uint32_t OP_IMAGE_FETCH = 95;
@@ -159,10 +164,42 @@ int sampled_class(const std::vector<uint32_t> &w, uint32_t sampled_type){
     return -1;
 }
 
+// The bound VkFormat a descriptor resolves to when the module's own sampled
+// type decides it: the single component variant of the sampled class. Every
+// descriptor that shares an image type shares the sampled type, so the whole
+// group resolves to the same format. The real format comes from the runtime
+// texture pool and is not known offline.
+uint32_t canonical_vk_format(int sampled){
+    switch(sampled){
+    case 0: return 100; // R32_SFLOAT
+    case 1: return 99;  // R32_SINT
+    case 2: return 98;  // R32_UINT
+    default: return 0;
+    }
+}
+
+// The format map the engine builds from the formats it resolved at runtime.
+XbgStorageFormatMap canonical_map(const std::vector<uint32_t> &w, const std::vector<PackageBinding> &bindings){
+    XbgStorageFormatMap map;
+    for(const auto &binding : bindings){
+        if(binding.type != VK_DT_STORAGE_IMAGE && binding.type != VK_DT_STORAGE_TEXEL_BUFFER) continue;
+        if(binding.count != 1) continue;
+        if(!(binding.flags & 1)) continue;
+        if(xbg_spirv_declared_image_format(w, binding.binding) != XBG_IMAGE_FORMAT_UNKNOWN) continue;
+        XbgStorageImageBinding info;
+        if(!xbg_spirv_binding_image(w, binding.binding, info)) continue;
+        const uint32_t vk = canonical_vk_format(sampled_class(w, info.sampled_type));
+        if(!vk) continue;
+        map.binding_format[binding.binding] = xbg_spirv_image_format(vk);
+    }
+    return map;
+}
+
 // A diagnostic mirror of the shipping refusal checks, used only to explain a
 // refusal. The shipping function stays authoritative; the analyzer asserts
 // that this explanation agrees with it on every case.
-std::string diagnose(const std::vector<uint32_t> &w, uint32_t binding, uint32_t spirv_format){
+std::string diagnose(const std::vector<uint32_t> &w, uint32_t binding, uint32_t spirv_format,
+                     const XbgStorageFormatMap &formats, bool allow_extended_formats){
     const uint32_t scalar = xbg_spirv_image_format_scalar(spirv_format);
     if(scalar > 2) return "invalid-target-format";
     if(w.size() < 5 || w[0] != 0x07230203u) return "malformed-module";
@@ -170,33 +207,31 @@ std::string diagnose(const std::vector<uint32_t> &w, uint32_t binding, uint32_t 
     if(!xbg_spirv_binding_image(w, binding, info)) return "no-storage-image-for-binding";
     if(info.declared_format != XBG_IMAGE_FORMAT_UNKNOWN)
         return info.declared_format == spirv_format ? "already-typed" : "typed-with-other-format";
+    if(xbg_spirv_image_format_needs_extended(spirv_format) && !allow_extended_formats)
+        return "extended-format-not-supported";
     std::unordered_map<uint32_t, size_t> def;
     build_defs(w, def);
-    // The image type must belong to this descriptor alone.
-    uint32_t users = 0;
-    for(size_t i = 5; i < w.size();){
-        const uint32_t n = w[i] >> 16, op = w[i] & 0xffffu;
-        if(!n || i + n > w.size()) break;
-        if(op == OP_VARIABLE && n >= 4){
-            const auto ptr = def.find(w[i + 1]);
-            if(ptr != def.end() && (w[ptr->second] & 0xffffu) == OP_TYPE_POINTER
-               && w[ptr->second + 3] == info.image_type) ++users;
+    const std::vector<XbgImageSharer> sharers = xbg_spirv_image_sharers(w, info.image_type);
+    for(const auto &sharer : sharers){
+        if(sharer.variable == info.variable) continue;
+        uint32_t declared = XBG_IMAGE_FORMAT_UNKNOWN;
+        auto ptr = def.find(w[sharer.variable_at + 1]);
+        if(ptr != def.end() && (w[ptr->second] & 0xffffu) == OP_TYPE_POINTER){
+            auto img = def.find(w[ptr->second + 3]);
+            if(img != def.end() && (w[img->second] & 0xffffu) == OP_TYPE_IMAGE) declared = w[img->second + 8];
         }
-        i += n;
+        if(!(declared == spirv_format || formats.declares(sharer.binding, spirv_format)))
+            return "image-type-shared-with-other-format";
+        if(xbg_spirv_image_read(w, sharer.variable)) return "formatless-read-on-same-image";
     }
-    if(users != 1) return "image-type-shared-by-multiple-descriptors";
+    if(xbg_spirv_image_read(w, info.variable)) return "formatless-read-on-same-image";
     const int declared = sampled_class(w, info.sampled_type);
     if(declared < 0) return "unknown-sampled-type";
     if(declared != int(scalar)) return "sampled-type-class-mismatch";
-    // A formatless read on the same image keeps the module formatless.
-    const std::vector<uint32_t> loaded = loaded_ids(w, info.variable);
-    for(size_t i = 5; i < w.size();){
-        const uint32_t n = w[i] >> 16, op = w[i] & 0xffffu;
-        if(!n || i + n > w.size()) break;
-        if((op == OP_IMAGE_READ || op == OP_IMAGE_SPARSE_READ) && n >= 4){
-            for(uint32_t id : loaded) if(w[i + 3] == id) return "formatless-read-on-same-image";
-        }
-        i += n;
+    const uint32_t existing = xbg_spirv_typed_image_type(w, info.image_at, spirv_format);
+    if(existing){
+        if(sharers.size() != 1) return "duplicate-type-not-reusable";
+        if(!xbg_spirv_uniform_pointer_type(w, existing, sharers.front().variable_at)) return "duplicate-type-not-reusable";
     }
     return "accepted";
 }
@@ -205,11 +240,10 @@ std::string diagnose(const std::vector<uint32_t> &w, uint32_t binding, uint32_t 
 // as <key>_<binding>_<vkformat>.spv so that spirv-val can check the result.
 std::string g_dump_dir;
 
-bool dump_rewritten(const std::string &key, uint32_t binding, uint32_t vk_format,
-                    const std::vector<uint32_t> &words){
+// The module-level variant gets its own file name.
+bool dump_module_variant(const std::string &key, const std::vector<uint32_t> &words){
     if(g_dump_dir.empty()) return false;
-    const std::string path = g_dump_dir + "/" + key + "_" + std::to_string(binding)
-                           + "_" + std::to_string(vk_format) + ".spv";
+    const std::string path = g_dump_dir + "/" + key + "_variant.spv";
     FILE *file = fopen(path.c_str(), "wb");
     if(!file) return false;
     const size_t written = fwrite(words.data(), 4, words.size(), file);
@@ -217,10 +251,11 @@ bool dump_rewritten(const std::string &key, uint32_t binding, uint32_t vk_format
     return written == words.size();
 }
 
-// The module-level variant gets its own file name.
-bool dump_module_variant(const std::string &key, const std::vector<uint32_t> &words){
+bool dump_rewritten(const std::string &key, uint32_t binding, uint32_t vk_format,
+                    const std::vector<uint32_t> &words){
     if(g_dump_dir.empty()) return false;
-    const std::string path = g_dump_dir + "/" + key + "_variant.spv";
+    const std::string path = g_dump_dir + "/" + key + "_" + std::to_string(binding)
+                           + "_" + std::to_string(vk_format) + ".spv";
     FILE *file = fopen(path.c_str(), "wb");
     if(!file) return false;
     const size_t written = fwrite(words.data(), 4, words.size(), file);
@@ -240,8 +275,11 @@ std::string json_escape(const std::string &in){
 } // namespace
 
 int main(int argc, char **argv){
-    if(argc > 1){
-        g_dump_dir = argv[1];
+    bool allow_extended_formats = true;
+    for(int i = 1; i < argc; ++i){
+        const std::string arg = argv[i];
+        if(arg == "--no-extended"){ allow_extended_formats = false; continue; }
+        g_dump_dir = arg;
         std::error_code ec;
         std::filesystem::create_directories(g_dump_dir, ec);
         if(ec){ fprintf(stderr, "cannot create dump directory %s: %s\n", g_dump_dir.c_str(), ec.message().c_str()); return 2; }
@@ -312,6 +350,9 @@ int main(int argc, char **argv){
             if(binding.type == VK_DT_STORAGE_TEXEL_BUFFER) has_texel_buffer = true;
         out += ",\"module_words_kept\":" + std::string(has_texel_buffer ? "true" : "false");
 
+        // The format map the engine builds from the runtime formats.
+        const XbgStorageFormatMap canonical = canonical_map(words, bindings);
+
         out += ",\"bindings\":[";
         bool first = true;
         for(const auto &binding : bindings){
@@ -334,24 +375,8 @@ int main(int argc, char **argv){
             out += ",\"package_scalar\":" + std::to_string((binding.flags >> 16) & 3);
             out += ",\"module_has_image\":" + std::string(has_image ? "true" : "false");
             out += ",\"image_type_id\":" + std::to_string(has_image ? info.image_type : 0u);
-            // How many descriptor variables share this OpTypeImage. The
-            // shipping rewrite refuses when the image type is not exclusive.
-            {
-                uint32_t sharers = 0;
-                std::unordered_map<uint32_t, size_t> share_def;
-                build_defs(words, share_def);
-                for(size_t i = 5; i < words.size();){
-                    const uint32_t n = words[i] >> 16, op = words[i] & 0xffffu;
-                    if(!n || i + n > words.size()) break;
-                    if(op == OP_VARIABLE && n >= 4){
-                        const auto ptr = share_def.find(words[i + 1]);
-                        if(ptr != share_def.end() && (words[ptr->second] & 0xffffu) == OP_TYPE_POINTER
-                           && words[ptr->second + 3] == info.image_type) ++sharers;
-                    }
-                    i += n;
-                }
-                out += ",\"image_type_sharers\":" + std::to_string(sharers);
-            }
+            out += ",\"image_type_sharers\":" + std::to_string(
+                has_image ? xbg_spirv_image_sharers(words, info.image_type).size() : 0u);
             out += ",\"declared_format\":" + std::to_string(declared);
             out += ",\"sampled_class\":" + std::to_string(sample);
             out += ",\"image_writes\":" + std::to_string(usage.writes);
@@ -363,9 +388,15 @@ int main(int argc, char **argv){
                 const uint32_t vk = CANDIDATE_FORMATS[i];
                 const uint32_t spirv_format = xbg_spirv_image_format(vk);
                 if(i) out += ",";
+                // This binding declares the candidate format, the other
+                // descriptors keep the format their sampled type implies.
+                XbgStorageFormatMap probe = canonical;
+                probe.binding_format[binding.binding] = spirv_format;
                 std::vector<uint32_t> copy = words;
-                const int result = xbg_typed_storage_rewrite(copy, binding.binding, spirv_format);
-                const std::string reason = diagnose(words, binding.binding, spirv_format);
+                const int result = xbg_typed_storage_rewrite(copy, binding.binding, spirv_format,
+                                                             probe, allow_extended_formats);
+                const std::string reason = diagnose(words, binding.binding, spirv_format,
+                                                    probe, allow_extended_formats);
                 if(result == 1) dump_rewritten(key, binding.binding, vk, copy);
                 // The explanation must agree with the shipping verdict.
                 const bool agree = (result == 1) == (reason == "accepted");
@@ -389,25 +420,24 @@ int main(int argc, char **argv){
             bool variant_ok = true;
             std::string variant_reason;
             bool variant_target = false;
+            std::vector<uint32_t> targets;
             for(const auto &binding : bindings){
                 if(binding.type != VK_DT_STORAGE_IMAGE && binding.type != VK_DT_STORAGE_TEXEL_BUFFER) continue;
                 if(binding.count != 1) continue;
                 if(!(binding.flags & 1)) continue;
                 if(xbg_spirv_declared_image_format(words, binding.binding) != XBG_IMAGE_FORMAT_UNKNOWN) continue;
+                if(!canonical.binding_format.count(binding.binding)) continue;
+                targets.push_back(binding.binding);
+            }
+            std::sort(targets.begin(), targets.end());
+            for(uint32_t target : targets){
                 variant_target = true;
-                uint32_t chosen = 0;
-                for(size_t i = 0; i < sizeof(CANDIDATE_FORMATS) / sizeof(CANDIDATE_FORMATS[0]); ++i){
-                    const uint32_t vk = CANDIDATE_FORMATS[i];
-                    std::vector<uint32_t> probe = words;
-                    if(xbg_typed_storage_rewrite(probe, binding.binding, xbg_spirv_image_format(vk)) == 1){
-                        chosen = vk;
-                        break;
-                    }
-                }
-                if(!chosen){ variant_ok = false; variant_reason = "no-accepted-format"; break; }
-                if(xbg_typed_storage_rewrite(variant, binding.binding, xbg_spirv_image_format(chosen)) != 1){
+                const uint32_t spirv_format = canonical.binding_format.at(target);
+                const int result = xbg_typed_storage_rewrite(variant, target, spirv_format,
+                                                             canonical, allow_extended_formats);
+                if(result != 1 && result != 0){
                     variant_ok = false;
-                    variant_reason = diagnose(words, binding.binding, xbg_spirv_image_format(chosen));
+                    variant_reason = diagnose(words, target, spirv_format, canonical, allow_extended_formats);
                     break;
                 }
             }
@@ -415,6 +445,7 @@ int main(int argc, char **argv){
             out += "\"ok\":" + std::string(variant_ok ? "true" : "false");
             out += ",\"reason\":\"" + json_escape(variant_reason) + "\"";
             out += ",\"has_target\":" + std::string(variant_target ? "true" : "false");
+            out += ",\"targets\":" + std::to_string(targets.size());
             out += ",\"module_words_kept\":" + std::string(has_texel_buffer ? "true" : "false");
             out += "}";
             if(variant_ok && variant_target) dump_module_variant(key, variant);

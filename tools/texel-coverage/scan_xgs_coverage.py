@@ -84,6 +84,8 @@ def main():
     parser.add_argument("--limit", type=int, default=0, help="stop after N shaders (0 = all)")
     parser.add_argument("--dump-dir", default="",
                         help="directory for the rewritten SPIR-V of every accepted rewrite")
+    parser.add_argument("--analyzer-arg", action="append", default=[],
+                        help="extra argument for the analyzer (repeatable)")
     args = parser.parse_args()
 
     os.makedirs(args.out, exist_ok=True)
@@ -105,6 +107,7 @@ def main():
         analyzer_argv = [args.analyzer]
         if args.dump_dir:
             analyzer_argv.append(args.dump_dir)
+        analyzer_argv.extend(args.analyzer_arg)
         proc = subprocess.Popen(
             analyzer_argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
