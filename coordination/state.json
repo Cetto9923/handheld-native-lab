@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-13T01:05:00+00:00",
+ "updated_at": "2026-11-13T01:25:00+00:00",
  "phase": "v1.0.9 consolidation in progress: one APK (versionCode 9) must boot both the Honor tablet (code 7) and the RG477M (code 8). Three implementation lines are in flight — readback targeted retirement (stutter root cause), Mali formatless-write FATAL (RG477M cannot enter the game), battle-settle crash P0 (8E5 phone, no device). The Honor tablet was returned to the user after the effect-seed line finished its measurement; all Honor device acceptance is deferred to one session after the merge.",
  "coordinator": "MiniMax Code /root release takeover (Codex thread aborted by user)",
  "integration_branch": "work/rg477m-native",
@@ -7634,7 +7634,7 @@
   "user_report": "reading save slot 02 into the bigmap is very slow; this version is slower than the previous one; battle effects also stutter; the battle settle screen crashed",
   "finding": "the engine is not drawing more than it should: on the same route 1.0.9 reaches 784 draws per frame while 1.0.7 settles at 44, but 1.0.7 gets there because the game itself drops its render load (its W92/W93 show fps 15.86, submit_cpu_ms 15.79 to 37.73, draws 25, passes unchanged at 23). 1.0.9 never leaves 28.6..30.3 fps with submit_cpu_ms 16..18.6, so the game's own downgrade never triggers",
   "withdrawn_attribution": "the first reading ('1.0.9 does 3.5x more work') was wrong and is withdrawn; the resource counts match (texture_serial 232 in both, images 1096 vs 1088, pipelines 151 vs 422) and the counter semantics are identical in both versions",
-  "open_root_cause": "engine submit_cpu_ms grew from 10.4 ms (1.0.7 steady) to 16.8 ms (1.0.9); not attributed yet; this is what keeps the game's downgrade from firing",
+  "open_root_cause": "closed: the engine side is not doing extra work on its own. Steady state of the same route: 1.0.7 records 45 draws/frame with submit_cpu_ms 9.9 and gpu_ms 23.0; 1.0.9 records 784 draws/frame with submit_cpu_ms 17.5 and gpu_ms 20.4. The GPU is less busy on 1.0.9; the extra 7.6 ms is the cost of recording 739 extra draw commands. The two optimisations 1.0.9 added never fire on this device (readback targeted=0, events targeted=0, async=0; legacy_wait 17..19 ms/frame in both versions).",
   "measurement_defects_fixed": [
    "scene::init returns early when gfx-scene-tag is missing at startup, so R1..R3 measured nothing; the marker has to be written before the app starts",
    "the stall line's format string has 7 float conversions but 6 float arguments, so every float slot from there on read an uninitialized register on AArch64 (other_ms printed 1.19e107); R4's attribution is unusable"
@@ -7644,6 +7644,8 @@
   "not_run": [
    "battle effect stutter (needs a real battle frame capture; the 1.0.9 battle settle crashes)",
    "shrine scene (no device evidence)"
-  ]
+  ],
+  "remaining_lever": "the game's own render-load downgrade criterion. 1.0.7 got 44 draws/frame because its frame rate dropped to 15.9 and the game cut its own load; 1.0.9 holds 30 fps, so the criterion never fires. Making the engine reflect the frame time the game sees, or letting the criterion trigger without changing game logic, touches game behaviour and is the user's call. This round attributes only and does not change it.",
+  "verdict": "the bigmap slowdown on 1.0.9 is NOT a regression: the engine is not drawing anything it should not. 1.0.7 happened to trigger the game's own downgrade and 1.0.9 did not."
  }
 }
