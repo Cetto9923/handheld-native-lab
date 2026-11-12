@@ -52,6 +52,7 @@ def main():
         return passed
 
     cc = shutil.which('clang')
+    cxx = shutil.which('clang++')
     cmake = shutil.which('cmake') or '/opt/homebrew/bin/cmake'
     if not cc or not Path(cmake).exists():
         parser.error('clang and CMake are required; no tools are installed by this runner')
@@ -67,6 +68,43 @@ def main():
         # Missing renderer functions are an explicit failed game-stage gate.
         # Return 3 is expected for this host diagnostic, not a rendering pass.
         run('nvn-coverage', [coverage, 'evidence/nvn/main_nvn_ids.txt'], expected=3)
+    # The typed storage texel buffer rewrite: the host contract, the
+    # rewritten modules, and the SPIR-V validity of every result.
+    spirv_as = shutil.which('spirv-as')
+    spirv_val = shutil.which('spirv-val')
+    typed_storage = out / 'typed-storage'
+    typed_storage.mkdir(parents=True, exist_ok=True)
+    if not spirv_as or not spirv_val or not cxx:
+        results.append(dict(name='typed-storage', passed=False,
+                            blocked='spirv-as, spirv-val and clang++ are required for the typed storage contract'))
+    else:
+        assembled = True
+        for fixture in ('uint', 'shared_image', 'formatless_read', 'duplicate_type'):
+            assembled = run(f'typed-storage-fixture-{fixture}',
+                            [spirv_as, '--target-env', 'vulkan1.1',
+                             f'tests/device/typed_storage_{fixture}.spvasm',
+                             '-o', str(typed_storage / f'typed_storage_{fixture}.spv')]) and assembled
+        binary = typed_storage / 'test_typed_storage'
+        extra_artifacts.append(binary)
+        built = assembled and run('typed-storage-build',
+                                  [cxx, '-std=c++17', '-O1', '-g', '-Wall', '-Wextra',
+                                   '-fsanitize=address,undefined',
+                                   'tests/device/test_typed_storage.cpp', '-o', str(binary)])
+        if built:
+            run('typed-storage-contract',
+                [binary,
+                 str(typed_storage / 'typed_storage_uint.spv'),
+                 str(typed_storage / 'typed_storage_shared_image.spv'),
+                 str(typed_storage / 'typed_storage_formatless_read.spv'),
+                 str(typed_storage / 'typed_storage_out.spv'),
+                 str(typed_storage / 'typed_storage_duplicate_type.spv'),
+                 str(typed_storage / 'shared_typed.spv'),
+                 str(typed_storage / 'extended.spv'),
+                 str(typed_storage / 'duplicate_typed.spv')])
+            for spv_module in ('typed_storage_out.spv', 'shared_typed.spv',
+                                'extended.spv', 'duplicate_typed.spv'):
+                run(f'typed-storage-spirv-val-{spv_module[:-4]}',
+                    [spirv_val, '--target-env', 'vulkan1.1', str(typed_storage / spv_module)])
     if run('loader-build', [cc, '-O2', '-Wall', '-Wextra',
                             'src/runtime/nso/nso_loader.c', 'src/runtime/nso/nso_call.c',
                             '-ldl', '-o', native]):

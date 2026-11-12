@@ -2943,13 +2943,28 @@ Shader *typed_storage_variant(Shader &base){
         xbg_logf("NVN typed storage UNSUPPORTED shader=%s reason=identity-size unchanged=1",base.key.c_str());
         return &base;
     }
+    // The format every descriptor of this module declares after the rewrite.
+    // It proves that a descriptor which shares an image type declares the
+    // same format, so that no other descriptor's access changes.
+    XbgStorageFormatMap declared;
+    for(const auto &entry:formats)declared.binding_format[entry.first]=xbg_spirv_image_format(entry.second);
+    // The extended image formats need the device's
+    // StorageImageExtendedFormats feature; without it the module stays
+    // formatless.
+    const bool extended_formats=cfg.enabled_core.shaderStorageImageExtendedFormats!=0;
     std::vector<uint32_t> words=base.module_words;
     for(const auto &entry:formats){
-        if(xbg_typed_storage_rewrite(words,entry.first,xbg_spirv_image_format(entry.second))!=1){
+        // 0 means the module already declares this format, which is what a
+        // second descriptor of a shared image type sees.
+        const int rewritten=xbg_typed_storage_rewrite(words,entry.first,xbg_spirv_image_format(entry.second),declared,extended_formats);
+        if(rewritten!=1&&rewritten!=0){
             xbg_logf("NVN typed storage UNSUPPORTED shader=%s binding=%u format=%u reason=rewrite-refused unchanged=1",base.key.c_str(),entry.first,entry.second);
             return &base;
         }
     }
+    // The rewrite may add the StorageImageExtendedFormats capability, so the
+    // module's capabilities are checked again before it is created.
+    validate_capabilities(words,base.stage);
     const uint64_t load_monotonic=shader_monotonic_ns(),load_frame=stats.presents.load();
     auto variant=std::make_unique<Shader>();
     variant->key=base.key;variant->identity=identity;variant->stage=base.stage;
