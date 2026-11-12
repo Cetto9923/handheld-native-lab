@@ -190,8 +190,13 @@ def main():
                                                     '-fsanitize=address,undefined', '-Wall', '-Wextra',
                                                     'tests/device/test_typed_storage.cpp', '-o', typed_binary]):
             run('typed-storage-contract', [typed_binary, typed_spv[0], typed_spv[1], typed_spv[2],
-                                       typed_dir / 'typed_storage_out.spv', typed_spv[3]])
+                                       typed_dir / 'typed_storage_out.spv', typed_spv[3],
+                                       typed_dir / 'typed_storage_buffer_out.spv'])
             run('typed-storage-val', [spirv_val, '--target-env', 'vulkan1.1', typed_dir / 'typed_storage_out.spv'])
+            # A formatless Buffer image that the engine had to give a 32-bit
+            # RGBA view: Rgba32ui is the only typed form a Buffer image can
+            # carry, so the rewritten module has to stay valid SPIR-V.
+            run('typed-storage-buffer-val', [spirv_val, '--target-env', 'vulkan1.1', typed_dir / 'typed_storage_buffer_out.spv'])
         # The real module that crashed the 1.0.9 battle settle scene on the Honor
         # tablet (c11e2f23ff063e85) declares its own typed storage images. The game
         # data is not in the repository, so this check runs only when the module
@@ -206,6 +211,35 @@ def main():
                 run('typed-storage-real-contract', [real_binary, str(real_module)])
         else:
             print('typed-storage-real-contract: SKIPPED, set FFRS_REAL_MODULE to the extracted c11e2f23ff063e85.spv',
+                  flush=True)
+        # The real battle module that aborted the RG477M (Mali-G615) with
+        # "FATAL: Texel format lacks formatless-write support". Like the module
+        # above it is not in the repository, so the check runs only when the
+        # module has been extracted locally; otherwise it is skipped and says so.
+        real_texel = Path(os.environ.get('FFRS_REAL_TEXEL_MODULE', '')) if os.environ.get('FFRS_REAL_TEXEL_MODULE') else None
+        if real_texel and real_texel.is_file():
+            real_texel_binary = out / 'test-typed-storage-real-texel'
+            extra_artifacts.append(real_texel_binary)
+            if run('typed-storage-real-texel-build', [typed_cxx, '-std=c++17', '-O1', '-g',
+                                                '-fsanitize=address,undefined', '-Wall', '-Wextra',
+                                                'tests/device/test_typed_storage_real_texel.cpp', '-o', real_texel_binary]):
+                run('typed-storage-real-texel-contract', [real_texel_binary, str(real_texel)])
+        else:
+            print('typed-storage-real-texel-contract: SKIPPED, set FFRS_REAL_TEXEL_MODULE to the extracted 3b6302a58b86a34a.spv',
+                  flush=True)
+        # The second module the RG477M reached after that one: its bindings 29
+        # and 35 share one storage image type, so the typed-storage rewrite
+        # refused it. Same rule as above: the module is not in the repository.
+        shared_module = Path(os.environ.get('FFRS_REAL_SHARED_MODULE', '')) if os.environ.get('FFRS_REAL_SHARED_MODULE') else None
+        if shared_module and shared_module.is_file() and real_texel and real_texel.is_file():
+            shared_binary = out / 'test-typed-storage-real-shared'
+            extra_artifacts.append(shared_binary)
+            if run('typed-storage-real-shared-build', [typed_cxx, '-std=c++17', '-O1', '-g',
+                                                '-fsanitize=address,undefined', '-Wall', '-Wextra',
+                                                'tests/device/test_typed_storage_real_texel.cpp', '-o', shared_binary]):
+                run('typed-storage-real-shared-contract', [shared_binary, str(real_texel), str(shared_module)])
+        else:
+            print('typed-storage-real-shared-contract: SKIPPED, set FFRS_REAL_SHARED_MODULE to the extracted 9bee7f09d6c655c3.spv',
                   flush=True)
     else:
         print('typed-storage-contract: SKIPPED, spirv-as and spirv-val are not installed', flush=True)

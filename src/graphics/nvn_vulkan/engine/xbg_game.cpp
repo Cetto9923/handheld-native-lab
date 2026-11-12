@@ -2951,20 +2951,38 @@ Shader *load_shader(const void *control){
     VkShaderModuleCreateInfo ci{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};ci.codeSize=words.size()*4;ci.pCode=words.data();VK(vkCreateShaderModule(cfg.device,&ci,nullptr,&p->module));warm::register_module(p->module,key);Shader *out=p.get();shaders.emplace(key,std::move(p));++stats.shader_loads;++hud::shaders;const uint64_t load_t4=timing_clock();hud::shader_ns+=load_t4-load_t0;
     xbg_logf("NVN shader %s stage=%u loaded words=%zu ms read=%.2f rewrite=%.2f analyse=%.2f module=%.2f reused=%d",key.c_str(),h.stage,words.size(),(load_t1-load_t0)/1e6,(load_t2-load_t1)/1e6,(load_t3-load_t2)/1e6,(load_t4-load_t3)/1e6,int(have_reused));shader_load_anchor(key,h.stage,load_frame,load_monotonic);return out;
 }
+// The device answers are cached, so the guard below is cheap.
+VkFormatFeatureFlags2 texel_buffer_features(VkFormat viewed);
+bool storage_texel_formatless_write_ok(VkFormat fmt);
+
 // Scalar flags describe signedness, independently of texel width and components.
 // Formatless storage and sampled buffers can use their matching native integer view.
+//
+// module is the shader's own words, or null when they are not at hand. They
+// are needed for the typed-storage rescue: a bound format that SPIR-V cannot
+// declare leaves the module formatless, and a device without
+// VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT cannot run a formatless
+// storage write at all.
 VkFormat texel_view_format(const RegisteredTexture &registered){
     return format(registered.has_view && registered.view.set_format?registered.view.format:registered.texture.d.format);
 }
-VkFormat texel_binding_format(const RegisteredTexture &registered,const xbg_shader_binding &binding){
+VkFormat texel_binding_format(const RegisteredTexture &registered,const xbg_shader_binding &binding,const std::vector<uint32_t> *module){
     VkFormat result=texel_view_format(registered);
     const uint32_t scalar=(binding.flags>>16)&3;
     const bool formatless=binding.type!=VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER || (binding.flags&3);
     const int native_class=xbg_clear_vk_class(result);
-    if(formatless && ((scalar==1 && native_class==2) || (scalar==2 && native_class==1)))return result;
-    if(scalar==1 && result!=VK_FORMAT_R32_UINT && result!=VK_FORMAT_R32G32B32A32_UINT && result!=VK_FORMAT_R32G32_UINT)result=VK_FORMAT_R32_UINT;
-    else if(scalar==2 && result!=VK_FORMAT_R16_UINT && result!=VK_FORMAT_R16G16_UINT && result!=VK_FORMAT_R16G16B16A16_UINT)result=VK_FORMAT_R16_UINT;
-    if(honor_inline_enabled && scalar==2 && texel_view_format(registered)==VK_FORMAT_R32_SINT)result=VK_FORMAT_R32_SINT;
+    const bool keep_native=formatless && ((scalar==1 && native_class==2) || (scalar==2 && native_class==1));
+    if(!keep_native){
+        if(scalar==1 && result!=VK_FORMAT_R32_UINT && result!=VK_FORMAT_R32G32B32A32_UINT && result!=VK_FORMAT_R32G32_UINT)result=VK_FORMAT_R32_UINT;
+        else if(scalar==2 && result!=VK_FORMAT_R16_UINT && result!=VK_FORMAT_R16G16_UINT && result!=VK_FORMAT_R16G16B16A16_UINT)result=VK_FORMAT_R16_UINT;
+        if(honor_inline_enabled && scalar==2 && texel_view_format(registered)==VK_FORMAT_R32_SINT)result=VK_FORMAT_R32_SINT;
+    }
+    // A formatless storage write on a device that cannot do it needs the
+    // typed form, and the typed form needs a format SPIR-V can declare.
+    if(module && !module->empty() && binding.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER && (binding.flags&1)){
+        const uint32_t substitute=xbg_typed_storage_view_format(*module,binding.binding,uint32_t(result));
+        if(substitute!=uint32_t(result) && !storage_texel_formatless_write_ok(result))result=VkFormat(substitute);
+    }
     return result;
 }
 VkFormatFeatureFlags2 texel_buffer_features(VkFormat viewed){
@@ -3005,7 +3023,7 @@ VkFormat integer_buffer_binding_format(const Shader &shader,const xbg_shader_bin
         const auto &texture=record->texture;
         if(texture.d.target!=10 || !texture.mem || !texture.L.size)return VK_FORMAT_UNDEFINED;
         if(!integer_buffer_format(texel_view_format(*record)))return VK_FORMAT_UNDEFINED;
-        const VkFormat actual=texel_binding_format(*record,binding);
+        const VkFormat actual=texel_binding_format(*record,binding,nullptr);
         // Mixed arrays cannot share one SPIR-V sampled scalar type.
         if(!integer_buffer_format(actual) || (element && actual!=selected))return VK_FORMAT_UNDEFINED;
         selected=actual;
@@ -3089,7 +3107,7 @@ VkFormat typed_storage_binding_format(const Shader &shader,const xbg_shader_bind
         if(found==table.end())return VK_FORMAT_UNDEFINED;
         const RegisteredTexture &record=found->second;
         if(record.texture.d.target!=10 || !record.texture.mem || !record.texture.L.size)return VK_FORMAT_UNDEFINED;
-        const VkFormat actual=texel_binding_format(record,binding);
+        const VkFormat actual=texel_binding_format(record,binding,&shader.module_words);
         if(actual==VK_FORMAT_UNDEFINED)return VK_FORMAT_UNDEFINED;
         // Mixed arrays cannot share one declared image format.
         if(element && actual!=selected)return VK_FORMAT_UNDEFINED;
@@ -3147,6 +3165,7 @@ VkFormat typed_storage_image_format(const Shader &shader,const xbg_shader_bindin
 Shader *typed_storage_variant(Shader &base){
     if(base.module_words.empty())return &base;
     TypedStorageFormats formats;
+    std::map<uint32_t,uint32_t> candidate;   // binding -> the format the module has to declare
     for(const auto &binding:base.bindings){
         const bool texel=binding.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
         const bool image=binding.type==VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
@@ -3159,6 +3178,7 @@ Shader *typed_storage_variant(Shader &base){
         if(actual==VK_FORMAT_UNDEFINED)continue;
         if(texel?storage_texel_formatless_write_ok(actual):storage_image_formatless_write_ok(actual))continue; // the device still supports formatless
         if(!xbg_spirv_image_format(uint32_t(actual)))continue;  // SPIR-V cannot express that format
+        candidate[binding.binding]=uint32_t(actual);
         formats.push_back({binding.binding,uint32_t(actual)});
     }
     if(formats.empty())return &base;
@@ -3175,8 +3195,21 @@ Shader *typed_storage_variant(Shader &base){
     }
     std::vector<uint32_t> words=base.module_words;
     for(const auto &entry:formats){
-        if(xbg_typed_storage_rewrite(words,entry.first,xbg_spirv_image_format(entry.second))!=1){
-            xbg_logf("NVN typed storage UNSUPPORTED shader=%s binding=%u format=%u reason=rewrite-refused unchanged=1",base.key.c_str(),entry.first,entry.second);
+        // A shared image type declares one format for every binding that uses
+        // it. The module may only declare it when all of them need the same
+        // one: the declared format has to match the bound view of each.
+        std::vector<uint32_t> sharers;
+        xbg_spirv_shared_image_bindings(base.module_words,entry.first,sharers);
+        bool shared_ok=true;
+        for(uint32_t other:sharers){
+            auto found=candidate.find(other);
+            if(found==candidate.end()||found->second!=entry.second){shared_ok=false;break;}
+        }
+        // 0 means the module already declares exactly this format: the second
+        // binding of a shared image type finds the type declared by the first.
+        const int rewritten=xbg_typed_storage_rewrite(words,entry.first,xbg_spirv_image_format(entry.second),shared_ok);
+        if(rewritten!=1&&rewritten!=0){
+            xbg_logf("NVN typed storage UNSUPPORTED shader=%s binding=%u format=%u reason=rewrite-refused shared=%d unchanged=1",base.key.c_str(),entry.first,entry.second,int(shared_ok));
             return &base;
         }
     }
@@ -4299,7 +4332,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                 if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER || b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER){need(texture.d.target==10 && texture.mem && texture.L.size,"Invalid buffer texture");
                     VkFormat tf=texel_view_format(registered);
                     if(probe_is_active())capture_log("PROBE_TEXEL_NATIVE shader=%s stage=%u binding=%u element=%u nvnFormat=%#x nativeVk=%u scalar=%u guest=%#llx bytes=%llu",shader.key.c_str(),st,b.binding,element,texture.d.format,unsigned(tf),(b.flags>>16)&3,(unsigned long long)uintptr_t(texture.mem),(unsigned long long)texture.L.size);
-                    tf=texel_binding_format(registered,b);
+                    tf=texel_binding_format(registered,b,&shader.module_words);
                     if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER){
                         const VkFormatFeatureFlags2 features=texel_buffer_features(tf);
                         need(features&VK_FORMAT_FEATURE_2_STORAGE_TEXEL_BUFFER_BIT,"Format not usable as storage texel buffer");
