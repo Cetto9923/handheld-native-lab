@@ -23,12 +23,20 @@
 
 ## 2. 现场证据（逐条登记，含来源与不可证实部分）
 
-| # | 来源 | 原文要点 | 本线解读 |
-|---|---|---|---|
-| E1 | 用户（8E5） | 巴哈姆特召唤兽击败对手后闪退 | 战斗结算 → 切场景 |
-| E2 | 平板一线（场景装载） | 「每次进入**大地图**得卡一小会……其他城镇内、副本内都流畅」 | **加载性能**，非本线；但说明"进入大地图"是高频场景切换点 |
-| E3 | 平板一线 | 「**每次加载大地图都需要卡一会，有小概率闪退**」 | 场景切换 → **低频**闪退 |
-| E4 | 平板一线 | 「**进入新的幻兵水晶神殿大概率闪退**……自动存档会存神殿里面，再重新进游戏读这个档就可以」 | 场景切换 → **高频**闪退；「自动存档可绕过」**不等于已修复**，只是给了玩家一条规避路径 |
+**每条证据的报告人不同，不可混为一谈：**
+
+| # | 报告人 | 设备 | 原文要点 | 本线解读 |
+|---|---|---|---|---|
+| E1 | **另一位报告人**（非用户本人、非三季人） | 8E5（高通 Snapdragon） | 巴哈姆特召唤兽击败对手后闪退 | 战斗结算 → 切场景 |
+| E2 | **荣耀平板一线测试者「三季人」** | 荣耀平板 | 「每次进入**大地图**得卡一小会……其他城镇内、副本内都流畅」 | **加载性能**，非本线；但说明"进入大地图"是高频场景切换点 |
+| E3 | **荣耀平板一线测试者「三季人」** | 荣耀平板 | 「**每次加载大地图都需要卡一会，有小概率闪退**」 | 场景切换 → **低频**闪退 |
+| E4 | **荣耀平板一线测试者「三季人」** | 荣耀平板 | 「**进入新的幻兵水晶神殿大概率闪退**……自动存档会存神殿里面，再重新进游戏读这个档就可以」 | 场景切换 → **高频**闪退；「自动存档可绕过」**不等于已修复**，只是给了玩家一条规避路径 |
+
+> **取证边界（重要）**：E2/E3/E4 全部来自**荣耀平板一线测试者「三季人」**，
+> **不是用户本人的复现**；用户本人的剧情**还没走到那个神殿**。
+> 因此本线**没有**神殿的可复现路径，也**不能**声称"本地已复现神殿闪退"。
+> 神殿与��地图的取证只能靠**设备日志**（见 §7.1 的 grep 自查方法），不能靠本地跑通。
+> E1 的 8E5 同样不在任何人手里。
 
 ### 2.1 现场证据对应（映射到本线缺陷与缺口）
 
@@ -218,13 +226,32 @@ case XBG_OP_EXTENSION_BASE+4:{auto a=payload<xbg_wait_event>(p,n);need(a.address
 | 荣耀平板「加载大地图」小概率闪退 | **NOT_RUN** | 同上 |
 | 任何真机 ASan/TSan 复跑 | **NOT_RUN** | 本线无设备 |
 
-### 7.1 向玩家/一线索取的证据清单（用于把"大概率"收敛到具体一条）
+### 7.1 向玩家/一线索取的证据清单（**先做第 1 条，它最轻**）
+
+**第 1 条（主要取证手段，一条 grep 即可定性）：**
+
+```
+adb shell "grep -a -n 'multiwait' /sdcard/Android/data/org.ffrs.gamewindow/files/guest_boot.log"
+adb logcat -b crash -d
+```
+
+- 路径已按工程实际核对：`GameActivity.java:2748` 用 `new File(getFilesDir(), "guest_boot.log")`，
+  应用包名 `org.ffrs.gamewindow`（`src/android/app/gamewindow/AndroidManifest.xml:3`），
+  故设备路径即 `/sdcard/Android/data/org.ffrs.gamewindow/files/guest_boot.log`；
+  `guest_boot_jni.cpp:84-95` 的 `RedirectOutput()` 用 `O_TRUNC` 把 stdout/stderr 整体 dup2 进该文件，
+  **每次 guest 启动截断**，因此它天然就是"本次会话的现场"，不会被旧会话污染。
+- **命中 `refusing Event finalization during active wait` ⇒ 确诊 C1**：
+  宿主在场景卸载时因存在活动等待而主动终止进程，崩溃形态是 **SIGABRT(6)**，**不是访存错误**。
+- 第二条 `adb logcat -b crash -d` 会给出 `Abort message` 或 signal 6，与第 1 条互相印证。
+- 若第 1 条**没有**命中 multiwait、而第二条显示 SIGSEGV ⇒ 转向 C2/C3（悬垂指针 / 非法 guest 地址）。
+
+**第 2 条（补充，tombstone 退居其次）：**
 
 1. 崩溃瞬间设备上的 `engine.log.fatal` **全文**（本仓 `xbg_fatalf` 会写 `error_text` + `FATAL:` 前缀）；
 2. `adb logcat -b crash -d` 的 **tombstone**（含 signal 号与 fault 地址）；
 3. **崩溃类型**：SIGSEGV(11) / SIGABRT(6) / ANR —— 这一项**直接区分 C1/C2 与 C3/C4**；
 4. **崩在进神殿瞬间，还是进神殿后第一场战斗**（区分场景装载 vs 战斗结算两条链）；
-5. 是否伴随 `[multiwait]` 前缀日志（命中 C1/C2 的直接标记）。
+5. 设备型号与 Android 版本（8E5 与荣耀平板的驱动/调度差异是概率差异的候选解释之一）。
 
 ---
 
@@ -293,3 +320,186 @@ case XBG_OP_EXTENSION_BASE+4:{auto a=payload<xbg_wait_event>(p,n);need(a.address
 - `tests/native/event_retire_contract.c`（新增）、`tests/native/event_finalize_stubs.c`、`scripts/verify_host.py`。
 
 与其它线**不重叠**：本线只碰 `src/runtime/hle/nso_host.c` 与测试，不碰 `xbg_game.cpp`。
+---
+
+## 10. 复核与补正（2026-11-13，本轮收口）
+
+> 本节记录：在 §6 的宿主侧实现（commit `a9e6c56`）之上，本轮**补上**总控要求的三件事，
+> 并给出选定方案的论证、契约实测结果、审计项覆盖矩阵与合并清单。
+> **设备侧结论仍然全部 NOT_RUN**：本线没有 8E5、没有荣耀平板、没有神殿真机。
+
+### 10.1 本轮补正（commit `92d672a`）
+
+1. **护栏日志串保持可 grep（总控硬要求）。**
+   §6 的实现把 `[multiwait] refusing Event finalization during active wait` 整行删掉了，
+   玩家就再也无法用一条 grep 自查。本轮**按字节原样恢复**这一行，只在句尾追加实情：
+
+   ```
+   [multiwait] refusing Event finalization during active wait: event=0x... (race recorded; the event is retired, the waiting holder is released, the process continues)
+   ```
+
+   - **为什么保留原串**：这条消息标记的是「竞态确实发生了」，
+     而**加固并没有消灭竞态**（场景卸载时仍可能有活动等待），
+     竞态只是从「杀进程」变成了「记录并安全处理」。消息消失 = 玩家失去唯一一条自证线索。
+   - **为什么语义要补充**：原句的 refusing 描述的是「当场拒绝终结」，
+     现在事件**仍然被终结**（退休），只是不再杀进程。追加的括号说明写明了实际处理，
+     避免日志与行为不符。
+   - **加固后玩家应观察到的信号**：
+     - 竞态发生时：**出现** `[multiwait] refusing Event finalization during active wait`，且**进程继续运行**；
+     - 紧接着一条 `[hle] nn::os::FinalizeEvent: event=... retired (multiwait_waiting=1 multiwait_referenced=1)`；
+     - **不再出现 SIGABRT**。
+   - 取证方法见 §7.1（一条 grep + `adb logcat -b crash -d`）。
+2. **修掉一处 guest 内存的未对齐写。**
+   `nso_host_os_initialize_event` 用 `*(uint64_t*)(bytes+0x14) = 0;` 往 guest 对象偏移 0x14 写 8 字节，
+   而 0x14 天然不是 8 对齐的（UBSan 一直在报：`store to misaligned address ... for type 'uint64_t'`）。
+   这是**基线就存在**的问题（基线 `db094f8` 同样报），不是本轮引入；
+   但它污染了「ASan/TSan 无告警」这条证据。改为 `memcpy` 后 UBSan 干净。
+   ARM64 对普通内存允许非对齐访问，所以它本身不是 8E5 崩溃的成因，**只影响证据的干净度**。
+3. **把两条契约的事件对象固定为 `_Alignas(8)`。**
+   宿主对未对齐的事件对象是**直接拒绝**的（`InitializeEvent` 与 `borrow_event` 都查 `& 7`）。
+   契约里的 `struct event_object` 只有 1 字节对齐，只是碰巧落在 8 对齐的栈槽上；
+   一旦栈布局变化，`InitializeEvent` 会静默拒绝、契约就会**在没有进入被测代码的情况下通过**。
+   现在对齐是语言层保证的。
+
+### 10.2 选定方案、理由与死锁自由论证
+
+总控要求：「不得简单删掉或放宽护栏」，正确方向是把「有活动等待时 finalize」变成**安全路径**，
+且**不能死锁**、**不能改变游戏行为**。本轮采用的方案（`a9e6c56` + `92d672a`）：
+
+| 要求 | 本方案如何满足 |
+|---|---|
+| 不删护栏 | 护栏**保留且仍会触发**，只是不再 `abort()`；消息串按字节保留（§10.1） |
+| 变成安全路径 | 事件**仍然被终结**：条目退休、guest 的 initialized 标志清零、条目离开活动注册表 |
+| 等等待者退出后再摘链（有界、不死锁） | 做法是**永不阻塞等待 multiwait 持有者**：finalize **不等**，改为把条目退休并**主动释放持有者**（置位宿主侧状态 + `ffrs_multiwait_notify_event`）。因此**不存在需要设上界的等待**，也就**不可能死锁** |
+| 兜底路径要写进报告 | 兜底有两条：① 持有者永不退出时，条目退休留存，**永不被释放**，持有者始终握着有效事件；② 退休表超过上限（1024）时按最旧优先释放，仍被持有的条目跳过并保留 |
+| 语义等价 | 事件最终仍被终结；等待者仍被唤醒（释放 = 宿主侧状态置位并通知，与「事件已不存在」这一事实一致）；**没有**跳过 finalize、跳过场景切换或吞掉等待 |
+| 不引入新的挂死 | 多等待者被释放而不是留死等；普通 `WaitEvent` 等待者沿用 `1df098f` 的 `initialized=false` + broadcast 机制离开 |
+
+**锁序（ABBA）**：`multiwait.c` 持自己的锁回调 `nso_host_os_is_event_signaled()`，而后者取**事件注册表锁**。
+因此**任何**持注册表锁调用 multiwait 函数的写法都会 ABBA 死锁。
+本实现把 multiwait 侧的查询（`ffrs_multiwait_event_waiting/_referenced`）全部放在**取注册表锁之前**，
+释放退休条目的引用确认放在**注册表锁之外**，并在注释里写明了这个约束。
+
+### 10.3 宿主契约实测结果
+
+命令（在 worktree 根执行）：
+
+```
+cc -std=c11 -Wall -Wextra -pthread -fsanitize=address,undefined \
+   src/runtime/hle/nso_host.c tests/native/event_retire_contract.c \
+   tests/native/event_finalize_stubs.c -o test-event-retire
+cc -std=c11 -Wall -Wextra -pthread -fsanitize=thread  ... -o test-event-retire-tsan
+python3 scripts/verify_host.py
+```
+
+| 契约 | 构建 | 运行 | 结果 |
+|---|---|---|---|
+| `event_retire_contract`（新） | ASan+UBSan | **exit 0**，`event retire contract passed`，**sanitizer 告警 0 条** | 绿 |
+| `event_retire_contract`（新） | TSan | **exit 0**，**ThreadSanitizer 告警 0 条** | 绿 |
+| `event_finalize_contract`（既有） | ASan+UBSan | **exit 0**，`event finalize contract passed`，**告警 0 条** | 绿 |
+| `event_finalize_contract`（既有） | TSan | **exit 0**，**告警 0 条** | 绿 |
+| **同一条 `event_retire_contract` 对基线 `db094f8` 的 `nso_host.c`** | ASan+UBSan | **exit 134（SIGABRT）**，日志末行正是 `[multiwait] refusing Event finalization during active wait` | **红** |
+| `scripts/verify_host.py`（HEAD=`92d672a`） | — | **21 项检查，20 通过，1 项 blocked** | 见下 |
+
+> **红/绿是同一条契约、只换 `nso_host.c`**，不是两个不同的测试。
+> 基线那条的退出码 134 与末行日志，就是 §7.1 里让玩家去 grep 的那个特征。
+
+**唯一 blocked 项**：`module-load-info` — 「local unpacked game module is absent」。
+这是**输入缺失**（本机没有解包后的游戏模块，位于 `.local/`、不入 Git），**不是代码条件**，与本轮改动无关。
+
+### 10.4 审计项覆盖矩阵
+
+| 审计项 | 状态 | 说明 |
+|---|---|---|
+| **P0-1 FinalizeEvent × WaitEvent 并发 UAF** | **已覆盖（宿主侧）** | `1df098f` 已覆盖普通 `WaitEvent` 等待者；本轮补齐 **MultiWait 持有者**这一类此前无人计数的引用者 |
+| **C1 场景卸载时 finalize × 活动等待 → abort** | **已覆盖** | 护栏保留、abort 移除、事件退休、持有者被释放 |
+| **C2 悬垂 guest 指针（读/写两侧）** | **已覆盖（宿主侧）** | 读：`is_event_signaled` 对已终结事件只读宿主侧状态；写：晚到 signal 只改宿主侧状态、**绝不写 guest 页**；复活：已终结指针拒绝重新注册 |
+| **P0-4 引擎侧 `OP_WAIT_EVENT`（guest 地址未校验 + 超时即 fatal）** | **未覆盖** | 见 §10.5 的理由与建议补丁形状 |
+| **P0-5 `retire_slot` 的 fence 超时即 fatal + 无界自旋** | **未覆盖** | 同上，属 GPU 侧，证据强度为「中低」 |
+| **P0-2 `nvnSyncWait` 的 UINT64_MAX 无限等待** | **未覆盖** | 与「场景切换」无直接关联；需单独的 GPU 同步线处理 |
+| **P0-3 `vkDeviceWaitIdle` 无超时** | **未覆盖** | 同上 |
+| **P0-6 ANativeWindow 双锁竞态** | **未覆盖** | 与场景切换无关，属窗口生命周期线 |
+| 审计 P1 / P2 共 39 条 | **未覆盖** | 本轮只做 P0 家族；不扩范围 |
+
+### 10.5 为什么没有动 `xbg_game.cpp`（P0-4 / P0-5）
+
+审计 P0-4 建议「访问前校验地址落在已注册 guest pool 区间」。**本轮没有照做**，理由是它会改变可观察行为：
+
+- 引擎对 guest 地址的信任模型是「guest 与 runtime **共享同一地址空间**」，
+  `OP_SIGNAL_EVENT`（`xbg_game.cpp:5843`）与 `apply_event()`（`:1009`）都是**直接解引用** event 地址、从不校验；
+- 可用的两个校验器都不合适：
+  `nvn_memory_pool_resolve_address()` 只覆盖 **NVN 注册的 buffer pool**，而 event word 是 guest 自己的变量；
+  `guest_process_is_guest_memory()` 只覆盖**地址区域**与**模块镜像**，
+  **不覆盖 guest 堆**（guest 堆在 `heap_owner` 表里，见 `nso_host.c:3636` 与 `address_region.c:100`），
+  用它去筛会**误杀合法地址**、把正常等待变成跳过；
+- 只在**等待**一侧加校验、而**信号**一侧照旧解引用，会让两条路径对同一个地址给出不同结论；
+- 真正一致的修法必须**在 event 地址进入引擎的那一点**（Signal / Wait 两侧）同时校验，
+  并且需要一个「这个地址是否仍是活着的 guest 内存」的运行时接口
+  （= `heap_owner_lookup` ∪ 地址区域 ∪ 模块镜像）。这是**跨模块新增 API**，且落在 graphics 线的在途改动文件上。
+
+**建议给 graphics 线的确切补丁形状**（本线未实施，供其排期）：
+
+1. runtime 侧新增并导出 `int nso_host_is_live_guest_range(uintptr_t addr, size_t bytes)`，
+   判据 = `heap_owner_lookup()` 为 `HEAP_OWNER_GUEST_PAGE` **或** `nso_host_is_guest_memory()` **或** 落在模块镜像内，
+   并要求整个区间被覆盖（起始与末尾各查一次）；
+2. engine 侧以 **weak** 符号引用（与 `nvn_memory_pool_resolve_address` 同形），
+   运行时未链接时**保持现状**（不改变行为）；
+3. `OP_WAIT_EVENT`（`:5971`）与 `OP_SIGNAL_EVENT`（`:5843`）**两侧同时**使用该判据：
+   不通过则**记诊断并跳过该次操作**（不解引用、不 abort）；
+4. `OP_WAIT_EVENT` 的 2s 忙等超时（`:5971` 的 `need(..., "NVN event wait timeout")` → `xbg_fatalf` → `abort()`）
+   改为**带诊断的降级**（记录地址/模式/已等时长后继续执行命令流），依据审计 P0-4「超时返回可恢复错误而非 fatal」；
+   这只影响**已经异常**的路径（正常路径不会超时），不改变正常行为。
+
+### 10.6 NOT_RUN 清单（设备侧，全部未做）
+
+| 项 | 状态 | 缺什么 |
+|---|---|---|
+| 8E5 巴哈姆特召唤兽结算后闪退 | **NOT_RUN** | 无 8E5 设备；该报告人不在本线可触达范围 |
+| 荣耀平板「进入新幻兵水晶神殿」大概率闪退 | **NOT_RUN** | 平板 `A42BBB5109000333` 已归还用户，禁止连接；**用户本人剧情未走到该神殿，本地无可复现路径** |
+| 荣耀平板「加载大地图」小概率闪退 | **NOT_RUN** | 同上 |
+| 真机 ASan/TSan 复跑 | **NOT_RUN** | 本线无设备 |
+| 崩溃后 `guest_boot.log` 现场取证 | **NOT_RUN** | 需要设备；取证方法已写进 §7.1 |
+| `scripts/verify_host.py` 的 `module-load-info` | **blocked** | 本机没有解包后的游戏模块（输入缺失，与代码无关） |
+
+> **不得把本轮结论写成「已修复」**：能说的是「**在代码构造上消除了『场景卸载时因活动等待而终止进程』这一类崩溃**」，
+> 并且给出了让玩家自证的取证方法。是否就是 8E5 / 神殿闪退的成因，**必须等设备侧日志**。
+
+### 10.7 仍存风险
+
+1. **退休表是有界的**：上限 1024，溢出时按最旧优先释放；仍被 multiwait 持有者引用的条目会被跳过并保留，
+   因此该表**在极端情况下可能暂时超过上限并缓慢增长**（一个 holder 长期不释放事件时）。
+2. **「晚到 signal」的语义收紧**：对**已终结**的事件，signal 现在只改宿主侧状态、**不再写 guest 对象**。
+   在真实 SDK 里 finalize 之后再 signal 属于未定义行为，但本工程此前靠「写一个可能已释放的页」来兜住它，
+   收紧后这一类调用会变成「只通知、不写」。若真机出现 `use refused` 日志变多，说明该路径确有发生，需复核。
+3. **多等待者被释放 = 宿主侧状态置位**：等待者会认为「事件发生了」。这与「事件已被终结、等待者不能永远等死」的取舍一致，
+   但确实与「事件从未被置位」的情形不同，属于**本轮唯一一处可观察的语义变化**，已在 §10.2 写明。
+4. **引擎侧两条 abort 路径仍在**（P0-4 / P0-5），见 §10.5。
+
+### 10.8 合并清单（给总控）
+
+**分支 `task/T-crash-p0-20261112`，基线 `db094f8`，HEAD `92d672a`。本线只碰下列位置。**
+
+```
+src/runtime/hle/nso_host.c
+  - struct nso_event_entry                : 新增 retired / retire_seq 字段
+  - 静态区                                : 新增 s_retired_buckets / s_retired_count / s_retired_seq / EVENT_RETIRED_MAX
+  - find_retired_locked()                 : 新增（按地址找墓碑）
+  - retire_event_locked()                 : 新增（条目入退休表）
+  - trim_retired_events()                 : 新增（注册表锁外确认无 holder 引用后才释放）
+  - borrow_event()                        : 新增墓碑拒绝（已终结事件不得复活）
+  - nso_host_os_initialize_event()        : 新增墓碑丢弃（同一地址开新的一生）；+0x14 的 uint64 写改 memcpy
+  - nso_host_os_finalize_event()          : 删除 abort；改为退休 + 释放持有者；恢复护栏日志串
+  - nso_host_os_signal_event()            : 新增墓碑分支（只改宿主侧状态，不写 guest 页）
+  - nso_host_os_is_event_signaled()       : 新增墓碑读取（不读 guest 页）
+tests/native/event_retire_contract.c     : 新增（等待者在场 finalize 不 abort / 持有者被释放 / 晚到 signal 不碰 guest 内存 /
+                                             同一地址开新的一生 / 二次 finalize 是 no-op / 退休表有界）
+tests/native/event_finalize_stubs.c      : multiwait 桩改为可控（ffrs_test_multiwait_waiting / ffrs_test_multiwait_referenced），
+                                           补上 ffrs_multiwait_event_referenced
+tests/native/event_finalize_contract.c   : 事件对象改为 _Alignas(8)
+scripts/verify_host.py                    : 新增 event-retire-asan / event-retire-tsan 两步
+coordination/results/CRASH-P0-BATTLE-SETTLE-20261112.md : 本报告
+```
+
+**不重叠声明**：本线**没有**修改 `src/graphics/nvn_vulkan/engine/xbg_game.cpp`，
+因此与特效/seed 线、加载性能线在该文件上的在途改动**无冲突**；
+也**没有**触碰 honor 主 worktree、存档、`.local/` 输入与任何设备。
