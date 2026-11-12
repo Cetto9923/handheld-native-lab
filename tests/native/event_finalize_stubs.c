@@ -2,7 +2,13 @@
 #include <stdlib.h>
 /* Host stand-in for symbols the event contract does not exercise.
  * A call here fails the test instead of pretending the path ran. */
-int ffrs_multiwait_event_waiting(void *event){(void)event;return 0;}
+/* The MultiWait state is controllable so that a contract can drive the
+ * scene unload race: the event contract leaves it at zero, the retire
+ * contract turns it on. */
+int ffrs_test_multiwait_waiting;
+int ffrs_test_multiwait_referenced;
+int ffrs_multiwait_event_waiting(void *event){(void)event;return ffrs_test_multiwait_waiting;}
+int ffrs_multiwait_event_referenced(void *event){(void)event;return ffrs_test_multiwait_referenced;}
 void ffrs_multiwait_notify(void){}
 void ffrs_multiwait_notify_event(void *event){(void)event;}
 void guest_process_interposed_aligned_alloc(void){fprintf(stderr,"event contract called unexpected %s\n","guest_process_interposed_aligned_alloc");abort();}

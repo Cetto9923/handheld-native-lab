@@ -240,3 +240,56 @@ case XBG_OP_EXTENSION_BASE+4:{auto a=payload<xbg_wait_event>(p,n);need(a.address
 - 不声称"已修复"；本轮的产出是**代码级加固 + 宿主契约**，设备侧一律 `NOT_RUN`；
 - 未触碰他人 worktree / WIP / 存档 / `.local/` 输入；
 - 未改 warm / pipeline / shader 等加载性能代码（不属本线写权范围）。
+
+---
+
+## 6. 实施记录（总控接手完成，2026-11-13 00:0x）
+
+> 前两任 worker 均被宿主网络抖动（`net::ERR_NETWORK_CHANGED`）打断。归因（§3）已由 `75beed3` 落盘，
+> 实现由总控接手完成。设备侧结论**全部 NOT_RUN**：本线没有 8E5、没有神殿真机、平板未获授权。
+
+### 6.1 改了什么
+
+| 文件 | 内容 |
+|---|---|
+| `src/runtime/hle/nso_host.c` | 事件条目**退休**而非释放；退休表用哈希（不用链表，避免在等待热路径上做 O(n) 扫描）；晚到的 signal 只改宿主侧状态、**绝不写 guest 内存**；finalize 命中已退休条目时不再写 guest 内存；退休时**释放等待者**；trim 在**注册表锁之外**确认没有 multiwait holder 指向它才释放 |
+| `tests/native/event_retire_contract.c` | 新契约：等待者在场时 finalize 不 abort / 等待者被释放 / 晚到 signal 不碰 guest 内存 / 同一地址可开新的一生 / 二次 finalize 是 no-op / 退休表有界 |
+| `tests/native/event_finalize_stubs.c` | multiwait 桩改为**可控**（`ffrs_test_multiwait_waiting` / `ffrs_test_multiwait_referenced`），并补上 `ffrs_multiwait_event_referenced` |
+| `scripts/verify_host.py` | 新增 `event-retire-asan` 与 `event-retire-tsan` 两步 |
+
+### 6.2 关键设计取舍（与上一任 worker 的差异）
+
+1. **退休表用哈希而不是链表。** 上一任用单链表 + 线性扫描，而 `nso_host_os_is_event_signaled()` 在 multiwait 的等待循环里**每轮都被调用**（multiwait 持自己的锁回调进来）。1024 条墓碑的线性扫描正好落在本工程正在治理的卡顿热路径上，必须改成 O(1)。
+2. **释放前必须在注册表锁之外确认引用。** `multiwait.c` 持锁回调 `is_event_signaled`，所以**持注册表锁调用 multiwait 函数会 ABBA 死锁**。因此 trim 分两段：锁内收集候选 → 锁外查 `ffrs_multiwait_event_referenced` → 仍被引用的**留在表里**，不释放。
+3. **退休时必须释放等待者，否则从崩溃变成挂死。** multiwait 的无超时等待会永远等 `is_event_signaled` 为真；事件被 finalize 后状态就再也不会变。所以退休时把宿主侧状态置为已置位并 `ffrs_multiwait_notify_event` 通知，等待者随即返回。这保持了「事件最终仍被终结、等待者仍按原语义被唤醒」，只是把「进程被杀」换成「等待者被正常释放」。
+4. **晚到的 signal 不再写 guest 内存。** 事件已终结，guest 可能已经释放那一页，所以 signal 只更新宿主侧状态并通知 multiwait，绝不碰 guest 对象。
+5. **同一地址可以开新的一生。** guest 调用 `InitializeEvent` 时，墓碑被丢弃（除非仍有 holder 指向它），因此对象地址复用不会被墓碑挡住。
+6. **旧代码里的 abort 被删除，但护栏意图没有丢**：现在会打印 `retired (multiwait_waiting=%d multiwait_referenced=%d)`，玩家仍可用 `grep -a multiwait` 自查。
+
+### 6.3 红/绿自证
+
+同一条 `event_retire_contract` 分别对新旧代码编译：
+
+| 代码 | 结果 |
+|---|---|
+| 新代码（ASan+UBSan） | exit 0，3002 次退休，0 次非对齐拒绝，`event retire contract passed` |
+| 旧代码 `75beed3`（ASan+UBSan） | **exit 134（SIGABRT）**，日志尾部正是 `[multiwait] refusing Event finalization during active wait` |
+| 新代码（TSan） | exit 0，0 条 ThreadSanitizer 告警 |
+| 既有 `event_finalize_contract`（ASan / TSan） | 两条都通过，既有行为未变 |
+
+`scripts/verify_host.py`：**23/23 步通过**（原 19 步 + 新增 event-retire-asan / event-retire-tsan）。
+
+### 6.4 仍未覆盖 / 仍存风险
+
+- **设备侧全 NOT_RUN**：没有 8E5、没有神殿真机、平板未获授权。**不得声称已修复**，只能写「构造上消除了这类崩溃」。
+- **C2（悬垂 guest 指针）只覆盖了 host 侧**：引擎侧 `OP_WAIT_EVENT` 仍只校验地址非零就原子读（审计 P0-4），**本轮未改**（它属于 graphics 线，且与主线改动区域重叠）。
+- **C4（retire_slot fence 超时 → fatal）未改**。
+- 墓碑表上限 1024，溢出后按最旧优先释放；若最旧条目仍被 holder 引用则跳过（该表可能暂时超过上限，极端情况下会缓慢增长）。
+- 自动注册路径（guest 分配事件但**不**调用 `InitializeEvent`）在墓碑仍存活期间会被拒绝（记 `use refused` 日志）；墓碑被 trim 后自动恢复。这是「不写已释放页」与「不误伤新对象」之间的取舍，**需真机观察是否出现 refused 日志**。
+
+### 6.5 合并清单
+
+- `src/runtime/hle/nso_host.c`：结构体新增 `retired` / `retire_seq`；新增 `s_retired_buckets` / `s_retired_count` / `s_retired_seq` / `EVENT_RETIRED_MAX`；新增 `find_retired_locked()` / `retire_event_locked()` / `trim_retired_events()`；`borrow_event()` 增加墓碑拒绝；`nso_host_os_initialize_event()` 增加墓碑丢弃；`nso_host_os_finalize_event()` 去掉 abort 改为退休 + 释放等待者；`nso_host_os_signal_event()` 增加墓碑分支；`nso_host_os_is_event_signaled()` 增加墓碑读取。
+- `tests/native/event_retire_contract.c`（新增）、`tests/native/event_finalize_stubs.c`、`scripts/verify_host.py`。
+
+与其它线**不重叠**：本线只碰 `src/runtime/hle/nso_host.c` 与测试，不碰 `xbg_game.cpp`。

@@ -140,6 +140,18 @@ def main():
             'src/runtime/hle/nso_host.c', 'tests/native/event_finalize_contract.c',
             'tests/native/event_finalize_stubs.c', '-o', event_tsan]):
         run('event-finalize-tsan', [event_tsan])
+    retire_binary = out / 'test-event-retire'
+    extra_artifacts.append(retire_binary)
+    if run('event-retire-asan-build', event_flags + [
+            'src/runtime/hle/nso_host.c', 'tests/native/event_retire_contract.c',
+            'tests/native/event_finalize_stubs.c', '-o', retire_binary]):
+        run('event-retire-asan', [retire_binary])
+    retire_tsan = out / 'test-event-retire-tsan'
+    extra_artifacts.append(retire_tsan)
+    if run('event-retire-tsan-build', tsan_flags + [
+            'src/runtime/hle/nso_host.c', 'tests/native/event_retire_contract.c',
+            'tests/native/event_finalize_stubs.c', '-o', retire_tsan]):
+        run('event-retire-tsan', [retire_tsan])
     save_binary = out / 'test-save-commit'
     extra_artifacts.append(save_binary)
     if run('save-commit-build', [cc, '-std=c11', '-Wall', '-Wextra', '-pthread', '-fsanitize=address,undefined',

@@ -2770,6 +2770,8 @@ struct nso_event_entry {
     uint32_t waiters;
     uint32_t users;
     bool dying;                  /* Finalize is waiting to free this entry. */
+    bool retired;                /* Finalized; kept as a tombstone for late users. */
+    uint64_t retire_seq;         /* Retirement order, used by the trim. */
     struct nso_event_entry *next;
 };
 
@@ -2789,11 +2791,103 @@ static pthread_mutex_t s_event_registry_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t s_event_release_cond = PTHREAD_COND_INITIALIZER;
 static struct nso_event_entry *s_event_buckets[EVENT_HASH_SIZE];
 
+/* Finalized events are retired here instead of being freed.
+ *
+ * A MultiWait holder keeps the guest event pointer inside multiwait.c, outside
+ * this registry, and the guest may release the page as soon as FinalizeEvent
+ * returns. Freeing the entry at that point left such a holder with a dangling
+ * pointer, and re-registering the pointer on a later signal wrote into the
+ * released page. A retired entry is never handed back to the guest and is
+ * never freed while somebody can still point at it; its signal state stays on
+ * the host side, so no code path reads the guest object through a finalized
+ * pointer any more. The table is bounded: the oldest idle entries are dropped
+ * once it overflows. */
+static struct nso_event_entry *s_retired_buckets[EVENT_HASH_SIZE];
+static unsigned s_retired_count;
+static uint64_t s_retired_seq;
+#define EVENT_RETIRED_MAX 1024
+
 static struct nso_event_entry *find_event_locked(void *object) {
     size_t b = event_hash(object);
     struct nso_event_entry *e = s_event_buckets[b];
     while (e && e->object != object) e = e->next;
     return e;
+}
+
+/* Called with the registry lock held. The newest retirement for an address
+ * wins: the guest may reuse an address for a new object, and the newest
+ * tombstone describes the current life. */
+static struct nso_event_entry *find_retired_locked(void *object) {
+    size_t b = event_hash(object);
+    struct nso_event_entry *e = s_retired_buckets[b];
+    struct nso_event_entry *found = NULL;
+    while (e) {
+        if (e->object == object) found = e;
+        e = e->next;
+    }
+    return found;
+}
+
+/* Called with the registry lock held. */
+static void retire_event_locked(struct nso_event_entry *e) {
+    e->retired = true;
+    e->retire_seq = ++s_retired_seq;
+    size_t b = event_hash(e->object);
+    e->next = s_retired_buckets[b];
+    s_retired_buckets[b] = e;
+    s_retired_count++;
+}
+
+/* Drops the retired entries that nobody can reach any more.
+ *
+ * A MultiWait holder may still point at a retired event, so the reference
+ * check has to happen outside the registry lock: multiwait calls back into
+ * is_event_signaled while it holds its own lock, and taking the registry lock
+ * under the multiwait lock would deadlock. The candidates are collected under
+ * the registry lock, checked without it, and left in place when a holder
+ * still references them. */
+static void trim_retired_events(void) {
+    struct nso_event_entry *candidates[16];
+    unsigned count = 0;
+    pthread_mutex_lock(&s_event_registry_mutex);
+    if (s_retired_count > EVENT_RETIRED_MAX) {
+        for (size_t b = 0; b < EVENT_HASH_SIZE && count < 16; b++) {
+            for (struct nso_event_entry *e = s_retired_buckets[b]; e && count < 16; e = e->next) {
+                if (e->users) continue;
+                /* keep the oldest ones */
+                unsigned at = count++;
+                while (at > 0 && candidates[at - 1]->retire_seq > e->retire_seq) {
+                    candidates[at] = candidates[at - 1];
+                    at--;
+                }
+                candidates[at] = e;
+            }
+        }
+    }
+    pthread_mutex_unlock(&s_event_registry_mutex);
+
+    for (unsigned i = 0; i < count; i++) {
+        struct nso_event_entry *e = candidates[i];
+        if (ffrs_multiwait_event_referenced && ffrs_multiwait_event_referenced(e->object)) {
+            /* A holder still points at this address: the tombstone stays. */
+            continue;
+        }
+        bool removed = false;
+        pthread_mutex_lock(&s_event_registry_mutex);
+        size_t b = event_hash(e->object);
+        struct nso_event_entry **slot = &s_retired_buckets[b];
+        while (*slot && *slot != e) slot = &(*slot)->next;
+        if (*slot) {
+            *slot = e->next;
+            s_retired_count--;
+            removed = true;
+        }
+        pthread_mutex_unlock(&s_event_registry_mutex);
+        if (!removed) continue;
+        pthread_cond_destroy(&e->cond);
+        pthread_mutex_destroy(&e->mutex);
+        free(e);
+    }
 }
 
 static struct nso_event_entry *borrow_event(void *object) {
@@ -2804,6 +2898,19 @@ static struct nso_event_entry *borrow_event(void *object) {
     pthread_mutex_lock(&s_event_registry_mutex);
     struct nso_event_entry *e = find_event_locked(object);
     if (!e) {
+        /* A finalized event must not come back to life. The guest may already
+         * have released the page, so re-registering the pointer here would let
+         * a late signal write into released guest memory. */
+        if (find_retired_locked(object)) {
+            pthread_mutex_unlock(&s_event_registry_mutex);
+            static int retired_refused;
+            int refused = __atomic_add_fetch(&retired_refused, 1, __ATOMIC_RELAXED);
+            if (refused <= 5 || (refused & 1023) == 0) {
+                fprintf(stderr, "[hle] nn::os::Event: event=%p was finalized; use refused (count=%d)\n",
+                        object, refused);
+            }
+            return NULL;
+        }
         /* Auto-register statically initialized or dynamically allocated event */
         uint8_t *b = (uint8_t *)object;
         bool signaled = b[0x10] != 0;
@@ -2853,9 +2960,28 @@ void nso_host_os_initialize_event(void *event, bool initially_signaled, int32_t 
         return;
     }
 
+    /* The guest starts a new life for this address, so the tombstone of the
+     * previous one no longer applies to it. multiwait must not be called under
+     * the registry lock, so the reference is read before the lock is taken. */
+    bool multiwait_referenced = ffrs_multiwait_event_referenced &&
+                                ffrs_multiwait_event_referenced(event);
     pthread_mutex_lock(&s_event_registry_mutex);
     struct nso_event_entry *e = find_event_locked(event);
     if (!e) {
+        struct nso_event_entry *stale = find_retired_locked(event);
+        if (stale && !stale->users && !multiwait_referenced) {
+            size_t sb = event_hash(event);
+            struct nso_event_entry **sslot = &s_retired_buckets[sb];
+            while (*sslot && *sslot != stale) sslot = &(*sslot)->next;
+            if (*sslot) {
+                *sslot = stale->next;
+                s_retired_count--;
+            }
+            stale->next = NULL;
+            pthread_cond_destroy(&stale->cond);
+            pthread_mutex_destroy(&stale->mutex);
+            free(stale);
+        }
         e = (struct nso_event_entry *)calloc(1, sizeof(*e));
         if (!e) {
             pthread_mutex_unlock(&s_event_registry_mutex);
@@ -2905,9 +3031,15 @@ void nso_host_os_finalize_event(void *event) {
         fprintf(stderr, "[hle] nn::os::FinalizeEvent: null event pointer\n");
         return;
     }
-    if(ffrs_multiwait_event_waiting && ffrs_multiwait_event_waiting(event)) {
-        fprintf(stderr,"[multiwait] refusing Event finalization during active wait\n");abort();
-    }
+    /* A MultiWait holder may be waiting on this event right now. That used to
+     * abort the process, which turned a lifetime race into a guaranteed crash
+     * the guest cannot act on. The event is retired below instead: the entry
+     * survives, the signal state stays on the host side, and a waiting holder
+     * is released so the scene unload cannot hang either. multiwait must not
+     * be called under the registry lock, so both states are read before the
+     * lock is taken. */
+    bool multiwait_waiting = ffrs_multiwait_event_waiting && ffrs_multiwait_event_waiting(event);
+    bool multiwait_referenced = ffrs_multiwait_event_referenced && ffrs_multiwait_event_referenced(event);
     pthread_mutex_lock(&s_event_registry_mutex);
     size_t b_idx = event_hash(event);
     struct nso_event_entry **slot = &s_event_buckets[b_idx];
@@ -2916,9 +3048,13 @@ void nso_host_os_finalize_event(void *event) {
     }
     struct nso_event_entry *e = *slot;
     if (!e) {
-        ((uint8_t *)event)[0x13] = 0;
+        /* Already finalized: the guest object was marked uninitialized then
+         * and the page may be gone now, so it must not be touched again. */
+        bool retired = find_retired_locked(event) != NULL;
+        if (!retired) ((uint8_t *)event)[0x13] = 0;
         pthread_mutex_unlock(&s_event_registry_mutex);
-        fprintf(stderr, "[hle] nn::os::FinalizeEvent: event=%p (no entry)\n", event);
+        fprintf(stderr, "[hle] nn::os::FinalizeEvent: event=%p (no entry%s)\n",
+                event, retired ? ", already finalized" : "");
         return;
     }
     *slot = e->next;
@@ -2934,19 +3070,62 @@ void nso_host_os_finalize_event(void *event) {
     while (e->waiters) pthread_cond_wait(&e->cond, &e->mutex);
     pthread_mutex_unlock(&e->mutex);
 
+    /* Retire the entry instead of freeing it.
+     *
+     * A MultiWait holder keeps the guest event pointer inside multiwait.c,
+     * outside this registry, and the guest may release the page as soon as
+     * FinalizeEvent returns. Freeing the entry here left that holder with a
+     * dangling pointer, and a later signal re-registered the pointer and wrote
+     * into the released page. Keeping the entry alive removes both: no entry
+     * is freed while somebody can still point at it, and the host keeps the
+     * signal state, so no code path reads the guest object through a
+     * finalized pointer. */
     pthread_mutex_lock(&s_event_registry_mutex);
     while (e->users) pthread_cond_wait(&s_event_release_cond, &s_event_registry_mutex);
-    pthread_cond_destroy(&e->cond);
-    pthread_mutex_destroy(&e->mutex);
-    free(e);
+    retire_event_locked(e);
     pthread_mutex_unlock(&s_event_registry_mutex);
 
-    fprintf(stderr, "[hle] nn::os::FinalizeEvent: event=%p\n", event);
+    /* A holder that is waiting on this event has to be released, otherwise the
+     * wait never ends and the scene unload hangs instead of crashing. */
+    if (multiwait_waiting) {
+        pthread_mutex_lock(&e->mutex);
+        e->signaled = true;
+        pthread_mutex_unlock(&e->mutex);
+        if (ffrs_multiwait_notify_event) ffrs_multiwait_notify_event(event);
+    }
+    trim_retired_events();
+
+    fprintf(stderr, "[hle] nn::os::FinalizeEvent: event=%p retired (multiwait_waiting=%d multiwait_referenced=%d)\n",
+            event, multiwait_waiting ? 1 : 0, multiwait_referenced ? 1 : 0);
 }
 
 void nso_host_os_signal_event(void *event) {
     struct nso_event_entry *e = borrow_event(event);
-    if (!e) return;
+    if (!e) {
+        /* The event was finalized. Its state lives on the host side now, so
+         * the signal is recorded there and the waiters are notified, but the
+         * guest object is never written: the page may be gone. */
+        struct nso_event_entry *r = NULL;
+        pthread_mutex_lock(&s_event_registry_mutex);
+        r = find_retired_locked(event);
+        if (r) {
+            pthread_mutex_lock(&r->mutex);
+            r->signaled = true;
+            pthread_mutex_unlock(&r->mutex);
+        }
+        pthread_mutex_unlock(&s_event_registry_mutex);
+        if (r) {
+            if (ffrs_multiwait_notify_event) ffrs_multiwait_notify_event(event);
+            else if (ffrs_multiwait_notify) ffrs_multiwait_notify();
+            static int retired_signal_count;
+            int count = __atomic_add_fetch(&retired_signal_count, 1, __ATOMIC_RELAXED);
+            if (count <= 5 || (count & 1023) == 0) {
+                fprintf(stderr, "[hle] nn::os::SignalEvent: event=%p was finalized; state kept on the host (count=%d)\n",
+                        event, count);
+            }
+        }
+        return;
+    }
 
     pthread_mutex_lock(&e->mutex);
     if (!e->signaled) {
@@ -3091,7 +3270,16 @@ bool nso_host_os_is_event_signaled(void *event) {
         s = e->signaled;
         pthread_mutex_unlock(&e->mutex);
     } else {
-        s = ((uint8_t *)event)[0x10] != 0;
+        /* A finalized event keeps its state on the host side. The guest page
+         * may be gone, so it must not be read here. */
+        struct nso_event_entry *r = find_retired_locked(event);
+        if (r) {
+            pthread_mutex_lock(&r->mutex);
+            s = r->signaled;
+            pthread_mutex_unlock(&r->mutex);
+        } else {
+            s = ((uint8_t *)event)[0x10] != 0;
+        }
     }
     pthread_mutex_unlock(&s_event_registry_mutex);
     return s;
