@@ -3096,6 +3096,38 @@ bool storage_texel_formatless_write_ok(VkFormat fmt){
     const bool listed=format_feature_flags2?((features&VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT)!=0):storage_without_format_listed(fmt);
     return cfg.enabled_core.shaderStorageImageWriteWithoutFormat && listed;
 }
+// The same question for a storage image: the optimal tiling features carry the
+// formatless bits there.
+bool storage_image_formatless_write_ok(VkFormat fmt){
+    if(format_feature_flags2){
+        VkFormatProperties3 extra{};extra.sType=VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3;
+        VkFormatProperties2 all{};all.sType=VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2;all.pNext=&extra;
+        vkGetPhysicalDeviceFormatProperties2(cfg.physical,fmt,&all);
+        return cfg.enabled_core.shaderStorageImageWriteWithoutFormat && (extra.optimalTilingFeatures&VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT);
+    }
+    VkFormatProperties fp{};vkGetPhysicalDeviceFormatProperties(cfg.physical,fmt,&fp);
+    return cfg.enabled_core.shaderStorageImageWriteWithoutFormat && storage_without_format_listed(fmt) && (fp.optimalTilingFeatures&VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT);
+}
+// The VkFormat a storage image binding is bound with right now. It resolves the
+// view exactly like the descriptor path does, so a typed module and the bound
+// view describe the same texels.
+VkFormat typed_storage_image_format(const Shader &shader,const xbg_shader_binding &binding){
+    if(binding.type!=VK_DESCRIPTOR_TYPE_STORAGE_IMAGE || !binding.count || binding.count>256 ||
+       (binding.source!=XBG_SOURCE_TEXTURE && binding.source!=XBG_SOURCE_IMAGE) || !state.texture_pool.pool)return VK_FORMAT_UNDEFINED;
+    const unsigned limit=binding.source==XBG_SOURCE_IMAGE?16u:256u;
+    if(binding.slot>=limit || binding.count>limit-binding.slot)return VK_FORMAT_UNDEFINED;
+    auto pool=textures.find(pool_key(&state.texture_pool));
+    const auto &table=pool==textures.end()?legacy_textures:pool->second;
+    const unsigned slot=binding.slot,ns=nvn_stage[shader.stage];
+    const uint64_t handle=binding.source==XBG_SOURCE_IMAGE?state.img[ns][slot]:state.tex[ns][slot];
+    const int id=int(handle&0xfffff);
+    if(!id || (state.texture_pool.n>0 && id>=state.texture_pool.n))return VK_FORMAT_UNDEFINED;
+    auto found=table.find(id);
+    if(found==table.end())return VK_FORMAT_UNDEFINED;
+    const RegisteredTexture &record=found->second;
+    Image &im=get_image(&record.texture,true);
+    return im.view_format(record.has_view?&record.view:nullptr);
+}
 // A formatless storage texel buffer may only run when the device supports the
 // formatless write feature. When it does not, the module may declare the
 // format that is actually bound instead. The written bytes, the texel address
@@ -3109,14 +3141,16 @@ Shader *typed_storage_variant(Shader &base){
     if(base.module_words.empty())return &base;
     TypedStorageFormats formats;
     for(const auto &binding:base.bindings){
-        if(binding.type!=VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER)continue;
+        const bool texel=binding.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
+        const bool image=binding.type==VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        if(!texel && !image)continue;
         if(binding.count!=1)continue;
         auto declared=base.storage_image_formats.find(binding.binding);
         if(declared!=base.storage_image_formats.end() && declared->second!=XBG_IMAGE_FORMAT_UNKNOWN)continue;
         if(!(binding.flags&1))continue; // only a formatless write needs the typed form
-        const VkFormat actual=typed_storage_binding_format(base,binding);
+        const VkFormat actual=texel?typed_storage_binding_format(base,binding):typed_storage_image_format(base,binding);
         if(actual==VK_FORMAT_UNDEFINED)continue;
-        if(storage_texel_formatless_write_ok(actual))continue; // the device still supports formatless
+        if(texel?storage_texel_formatless_write_ok(actual):storage_image_formatless_write_ok(actual))continue; // the device still supports formatless
         if(!xbg_spirv_image_format(uint32_t(actual)))continue;  // SPIR-V cannot express that format
         formats.push_back({binding.binding,uint32_t(actual)});
     }
@@ -4460,10 +4494,19 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                     if(b.type==VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER || b.type==VK_DESCRIPTOR_TYPE_SAMPLER){DESC_SCOPE(SamplerBind);uint64_t sh=handle;if(b.sampler_slot!=UINT32_MAX){need(b.sampler_slot<128,"Sampler slot out of range");sh=state.samp[ns][b.sampler_slot];}int sid=int(sh>>20);samp_par parameters{};if(sid==0){parameters.ws=parameters.wt=parameters.wr=7;parameters.aniso=1;parameters.cmp_func=1;}
                         else{auto sp=samplers.find(pool_key(&state.sampler_pool));auto &table=sp==samplers.end()?legacy_samplers:sp->second;auto sa=table.find(sid);if(sa==table.end())xbg_fatalf("Unregistered sampler id=%d",sid);parameters=sa->second;}ii.sampler=sampler(parameters,im,im.view_format(registered.has_view?&registered.view:nullptr,true),((b.flags>>16)&3)!=0);if(capture.active || probe_is_active())capture_log("SAMPLER st=%u binding=%u sid=%d samplerSlot=%u min=%u mag=%u wrap=%u/%u/%u lod=%g/%g bias=%g",st,b.binding,sid,b.sampler_slot,parameters.minf,parameters.magf,parameters.ws,parameters.wt,parameters.wr,parameters.lod_min,parameters.lod_max,parameters.lod_bias);}
                     if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_IMAGE){if(im.rg16_proxy)storage_rg16_images.push_back(&im);VkFormat viewed=im.view_format(registered.has_view?&registered.view:nullptr);if(!(im.usage&VK_IMAGE_USAGE_STORAGE_BIT))xbg_fatalf("NVN storage image without IMAGE flag serial=%llu format=%#x flags=%#x",(unsigned long long)texture.serial,texture.d.format,texture.d.flags);const VkFormatProperties &fp=format_properties(viewed);need(fp.optimalTilingFeatures&VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT,"Format not usable as storage image");
-                        if((b.flags&3) && format_feature_flags2){VkFormatProperties3 extra{VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3};VkFormatProperties2 all{VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2};all.pNext=&extra;vkGetPhysicalDeviceFormatProperties2(cfg.physical,viewed,&all);if(b.flags&1)need(extra.optimalTilingFeatures&VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT,"Image format lacks formatless-write support");if(b.flags&2)need(extra.optimalTilingFeatures&VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT,"Image format lacks formatless-read support");}
-                        else if(b.flags&3){VkFormatProperties fp{};vkGetPhysicalDeviceFormatProperties(cfg.physical,viewed,&fp);bool listed=storage_without_format_listed(viewed) && (fp.optimalTilingFeatures&VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT);
-                            if((b.flags&1) && !(listed && cfg.enabled_core.shaderStorageImageWriteWithoutFormat))xbg_fatalf("Image format %d lacks formatless-write support without VK_KHR_format_feature_flags2 (shader=%s listedWithStorageImage=%d shaderStorageImageWriteWithoutFormat=%u)",int(viewed),shader.key.c_str(),int(listed),unsigned(cfg.enabled_core.shaderStorageImageWriteWithoutFormat));
-                            if((b.flags&2) && !(listed && cfg.enabled_core.shaderStorageImageReadWithoutFormat))xbg_fatalf("Image format %d lacks formatless-read support without VK_KHR_format_feature_flags2 (shader=%s listedWithStorageImage=%d shaderStorageImageReadWithoutFormat=%u)",int(viewed),shader.key.c_str(),int(listed),unsigned(cfg.enabled_core.shaderStorageImageReadWithoutFormat));}im.gpu_written=true,provenance_write(im,__LINE__);im.last_write=++write_seq;}
+                        // The requirement follows the module's real image form. A formatless
+                        // module still needs the formatless feature, exactly as before. A
+                        // typed module declares the format it writes, so that format must
+                        // match the bound view exactly: stricter than the formatless check.
+                        const uint32_t declared=shader.storage_image_formats.count(b.binding)?shader.storage_image_formats[b.binding]:0u;
+                        if(declared){
+                            need(xbg_typed_storage_matches(declared,uint32_t(viewed)),"Typed storage image format does not match the bound view format");
+                        }else{
+                            if((b.flags&3) && format_feature_flags2){VkFormatProperties3 extra{VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3};VkFormatProperties2 all{VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2};all.pNext=&extra;vkGetPhysicalDeviceFormatProperties2(cfg.physical,viewed,&all);if(b.flags&1)need(extra.optimalTilingFeatures&VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT,"Image format lacks formatless-write support");if(b.flags&2)need(extra.optimalTilingFeatures&VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT,"Image format lacks formatless-read support");}
+                            else if(b.flags&3){VkFormatProperties fp{};vkGetPhysicalDeviceFormatProperties(cfg.physical,viewed,&fp);bool listed=storage_without_format_listed(viewed) && (fp.optimalTilingFeatures&VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT);
+                                if((b.flags&1) && !(listed && cfg.enabled_core.shaderStorageImageWriteWithoutFormat))xbg_fatalf("Image format %d lacks formatless-write support without VK_KHR_format_feature_flags2 (shader=%s listedWithStorageImage=%d shaderStorageImageWriteWithoutFormat=%u)",int(viewed),shader.key.c_str(),int(listed),unsigned(cfg.enabled_core.shaderStorageImageWriteWithoutFormat));
+                                if((b.flags&2) && !(listed && cfg.enabled_core.shaderStorageImageReadWithoutFormat))xbg_fatalf("Image format %d lacks formatless-read support without VK_KHR_format_feature_flags2 (shader=%s listedWithStorageImage=%d shaderStorageImageReadWithoutFormat=%u)",int(viewed),shader.key.c_str(),int(listed),unsigned(cfg.enabled_core.shaderStorageImageReadWithoutFormat));}}
+                        im.gpu_written=true,provenance_write(im,__LINE__);im.last_write=++write_seq;}
                     probe_bind(im,registered.has_view?&registered.view:nullptr,b.type==VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,st,b.binding,ii.imageView,shader.key);
                     probe_full_image(im,ii.imageView,st,b.binding,element,b.type==VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,shader.key);
                     if(probe_full_target())capture_log("FULL_SAMPLER_BIND event=%u stage=%u binding=%u element=%u sampler=%p imageView=%p layout=%u",capture.events,st,b.binding,element,(void*)ii.sampler,(void*)ii.imageView,unsigned(ii.imageLayout));
