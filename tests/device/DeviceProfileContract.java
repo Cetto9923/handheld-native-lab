@@ -37,6 +37,28 @@ public class DeviceProfileContract {
         if (!DeviceProfile.select("SM8650", 420, "").usesDockedRendering()
                 || DeviceProfile.select(null, 0, null).usesDockedRendering())
             throw new AssertionError("docked rendering selection");
+        /* The resolution tier is the render target the profile stands for,
+         * and it decides the operation mode the guest renders in. */
+        DeviceProfile handheld = DeviceProfile.select("MT6897", 420, "");
+        if (handheld.renderTierWidth() != 1280 || handheld.renderTierHeight() != 720)
+            throw new AssertionError("handheld render tier");
+        DeviceProfile tablet = DeviceProfile.select("SM8635", 768, "");
+        if (tablet.renderTierWidth() != 1920 || tablet.renderTierHeight() != 1080)
+            throw new AssertionError("tablet render tier");
+        if (handheld.usesDockedRendering() || !tablet.usesDockedRendering())
+            throw new AssertionError("the tier decides the operation mode");
+        /* A display mode request wins; without one the game target is
+         * declared; without a target nothing is declared. */
+        if (handheld.surfaceFrameRateRequest(0, 30) != 30)
+            throw new AssertionError("no display mode request declares the game target");
+        if (handheld.surfaceFrameRateRequest(60, 30) != 60)
+            throw new AssertionError("a display mode request wins");
+        if (handheld.surfaceFrameRateRequest(0, 0) != 0)
+            throw new AssertionError("no target declares nothing");
+        /* Only the handheld tier declares; the tablet and phone tiers keep
+         * their own display mode request and their accepted behaviour. */
+        if (!handheld.declaresSurfaceFrameRate() || tablet.declaresSurfaceFrameRate())
+            throw new AssertionError("the frame rate declaration is a handheld tier thing");
         System.out.println("profile selection checks passed; runtime rendering not covered");
     }
 }

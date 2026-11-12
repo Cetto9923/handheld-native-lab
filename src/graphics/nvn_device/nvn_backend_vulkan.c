@@ -1121,6 +1121,33 @@ static int nvn_vulkan_get_device_queue(nvn_device_state *device, void **out_phys
     return 1;
 }
 
+/* Fit the game's picture into the surface without stretching it.
+ *
+ * The picture keeps its own shape: of the two axis factors the smaller one
+ * is used, so the picture fits inside the surface on both axes and the room
+ * that is left over becomes a border. The picture is centred in that
+ * border. Nothing of the picture is cut away and nothing of it is
+ * stretched, which is what a 16:9 game on a 4:3 panel needs: the border
+ * is the pillarbox, and the game keeps its own proportions and its own time.
+ *
+ * The caller gets the rectangle the picture occupies, the border it leaves
+ * and the factor it was scaled by. */
+static void nvn_vulkan_fit_preserve_aspect(double source_w, double source_h,
+                                            uint32_t surface_w, uint32_t surface_h,
+                                            int32_t *out_x, int32_t *out_y,
+                                            int32_t *out_w, int32_t *out_h,
+                                            double *out_scale) {
+    double scale = (double)surface_w / source_w;
+    if ((double)surface_h / source_h < scale) scale = (double)surface_h / source_h;
+    int32_t w = (int32_t)(source_w * scale);
+    int32_t h = (int32_t)(source_h * scale);
+    *out_w = w;
+    *out_h = h;
+    *out_x = (int32_t)(((double)surface_w - w) / 2.0);
+    *out_y = (int32_t)(((double)surface_h - h) / 2.0);
+    *out_scale = scale;
+}
+
 /* Present an image that something else rendered.
  *
  * This is the path of the replay engine: the engine renders the game's own
@@ -1146,7 +1173,7 @@ static int nvn_vulkan_present_image(nvn_device_state *device, void *image, uint3
     VkPresentInfoKHR present_info;
     VkClearColorValue black;
     VkImageSubresourceRange range;
-    double scale;
+    double scale = 0.0;
     int32_t source_x = 0, source_y = 0;
     double source_w = width ? width : 1, source_h = height ? height : 1;
     int32_t destination_x, destination_y, destination_w, destination_h;
@@ -1223,21 +1250,23 @@ static int nvn_vulkan_present_image(nvn_device_state *device, void *image, uint3
         source_w = (double)crop[2];
         source_h = (double)crop[3];
     }
-    scale = (double)st->width / source_w;
-    if ((double)st->height / source_h < scale) scale = (double)st->height / source_h;
-    destination_w = (int32_t)(source_w * scale);
-    destination_h = (int32_t)(source_h * scale);
-    destination_x = (int32_t)(((double)st->width - destination_w) / 2.0);
-    destination_y = (int32_t)(((double)st->height - destination_h) / 2.0);
+    nvn_vulkan_fit_preserve_aspect(source_w, source_h, st->width, st->height,
+                                   &destination_x, &destination_y,
+                                   &destination_w, &destination_h, &scale);
 
     {
         static uint32_t s_present_log_count = 0;
         if (s_present_log_count < 5 || (s_present_log_count % 300 == 0 && s_present_log_count <= 1800)) {
-            fprintf(stderr, "[nvn] vulkan present #%u: source=%.0fx%.0f crop=(%d,%d,%d,%d) -> dst=%dx%d at (%d,%d) on swapchain %ux%u (scale=%.4f)\n",
+            /* The border the picture leaves is reported with the picture
+             * itself: on a 4:3 panel a 16:9 game leaves two black bars, and
+             * the log says how big they are instead of leaving it to be
+             * guessed from the sizes. */
+            fprintf(stderr, "[nvn] vulkan present #%u: source=%.0fx%.0f crop=(%d,%d,%d,%d) -> dst=%dx%d at (%d,%d) on swapchain %ux%u (scale=%.4f) aspect=preserve bars_top=%d bars_bottom=%d stretch=no\n",
                     s_present_log_count, source_w, source_h,
                     crop ? crop[0] : 0, crop ? crop[1] : 0, crop ? crop[2] : 0, crop ? crop[3] : 0,
                     destination_w, destination_h, destination_x, destination_y,
-                    st->width, st->height, scale);
+                    st->width, st->height, scale,
+                    destination_y, (int32_t)st->height - destination_y - destination_h);
         }
         s_present_log_count++;
     }

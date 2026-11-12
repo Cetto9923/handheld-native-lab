@@ -2041,7 +2041,10 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 + " target_fps=" + profile.targetFps
                 + " display_short_edge=" + (mode == null ? 0 : Math.min(mode.getPhysicalWidth(), mode.getPhysicalHeight()))
                 + " display_hz=" + (mode == null ? 0 : mode.getRefreshRate())
-                + " gpu=see_vulkan_device_log render_resolution=unapplied");
+                + " gpu=see_vulkan_device_log"
+                + " render_tier=" + profile.renderTierWidth() + "x" + profile.renderTierHeight()
+                + " render_short_edge=" + profile.targetShortEdge
+                + " operation_mode=" + (profile.usesDockedRendering() ? "docked" : "handheld"));
         return profile;
     }
 
@@ -2078,6 +2081,58 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         writeMarkerIfMissing(new File(dir, "gfx-audio-paced-transport"), "1\n");
         writeMarkerIfMissing(new File(dir, "gfx-codex-audio-dump"), "0\n");
         writeMarkerIfMissing(new File(dir, "gfx-codex-frame-metrics"), "1\n");
+        /* The frame rate declaration to the platform is on by default. The
+         * marker lets it be turned off on the device, without a new build. */
+        writeMarkerIfMissing(new File(dir, "gfx-surface-frame-rate"), "1\n");
+    }
+
+    /**
+     * Tell the platform the rate the game really produces.
+     *
+     * The three argument form asks for a refresh rate change only when it
+     * can be done seamlessly; it exists from Android 12 on. On Android 11
+     * the two argument form is used, which the platform documents as the
+     * same request. The call returns nothing: it stays a request, and the
+     * platform decides what it can give.
+     */
+    private void declareSurfaceFrameRate(Surface surface, int declareHz) {
+        if (declareHz <= 0) return;
+        try {
+            if (Build.VERSION.SDK_INT >= 31) {
+                surface.setFrameRate(declareHz, Surface.FRAME_RATE_COMPATIBILITY_DEFAULT,
+                        Surface.CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS);
+                Log.i(TAG, "surface_frame_rate_declaration: hz=" + declareHz
+                        + " compatibility=default strategy=only_if_seamless");
+            } else if (Build.VERSION.SDK_INT >= 30) {
+                surface.setFrameRate(declareHz, Surface.FRAME_RATE_COMPATIBILITY_DEFAULT);
+                Log.i(TAG, "surface_frame_rate_declaration: hz=" + declareHz
+                        + " compatibility=default strategy=default");
+            } else {
+                Log.i(TAG, "surface_frame_rate_declaration: hz=" + declareHz + " skipped api=" + Build.VERSION.SDK_INT);
+            }
+        } catch (IllegalArgumentException e) {
+            Log.w(TAG, "surface_frame_rate_declaration rejected", e);
+        }
+    }
+
+    /**
+     * Whether the app may declare its frame rate to the platform.
+     *
+     * A marker in the app's own file directory turns the declaration off, so
+     * the two ways can be compared on a device without a new build. The
+     * marker holds "0" to turn it off; anything else leaves it on.
+     */
+    private boolean surfaceFrameRateDeclarationEnabled() {
+        File dir = getExternalFilesDir(null);
+        if (dir == null) return true;
+        try (java.io.FileInputStream marker =
+                     new java.io.FileInputStream(new File(dir, "gfx-surface-frame-rate"))) {
+            return marker.read() != '0';
+        } catch (java.io.FileNotFoundException ignored) {
+            return true;
+        } catch (java.io.IOException ignored) {
+            return true;
+        }
     }
 
     private static void writeMarkerIfMissing(File file, String content) {
@@ -2202,6 +2257,25 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             } catch (IllegalArgumentException e) {
                 Log.w(TAG, "surface_frame_rate_request rejected", e);
             }
+        }
+        /* A profile that runs below the panel rate asks for no display mode:
+         * the window keeps the panel rate and the engine paces the frames.
+         * The platform is told the rate the game really produces, so the
+         * scheduler places the frames instead of guessing. The request stays
+         * a request; the platform decides what it can give. */
+        int declareHz = selectedDeviceProfile == null ? 0
+                : selectedDeviceProfile.surfaceFrameRateRequest((int) requestedDisplayHz, requestedGameFps());
+        boolean declares = selectedDeviceProfile != null
+                && selectedDeviceProfile.declaresSurfaceFrameRate();
+        if (declareHz > 0 && requestedDisplayHz <= 0.0f && declares) {
+            if (surfaceFrameRateDeclarationEnabled()) {
+                declareSurfaceFrameRate(surface, declareHz);
+            } else {
+                Log.i(TAG, "surface_frame_rate_declaration: hz=" + declareHz + " skipped marker=off");
+            }
+        } else if (declareHz > 0) {
+            Log.i(TAG, "surface_frame_rate_declaration: hz=" + declareHz + " skipped"
+                    + " display_mode_hz=" + requestedDisplayHz + " tier_declares=" + declares);
         }
         display_snapshot = captureDisplaySnapshot();
         long[] window = GameWindowNative.setSurface(surface);
