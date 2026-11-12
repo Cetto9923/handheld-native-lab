@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-12T20:07:56.023483+08:00",
+ "updated_at": "2026-11-12T20:09:14.408563+08:00",
  "phase": "v1.0.6 published; v1.0.7 internal team-play package built and device-verified on task/T-package-1.0.7-20261112 (moon halo fix shipped, cheat menu usable, 30 FPS held). Battle effect pipeline stutter still open, not in this package.",
  "coordinator": "MiniMax Code /root release takeover (Codex thread aborted by user)",
  "integration_branch": "work/rg477m-native",
@@ -6732,7 +6732,50 @@
     "Android Vulkan driver behaviour for Mali: pipeline cache support, VK_EXT_pipeline_creation_cache_control, and the cost of pipeline creation",
     "Frame pacing at 30 FPS on a 60 Hz panel: SurfaceView queueBuffer timing and half-vsync pacing as used by established Android emulators and ports"
    ],
-   "status": "researched by the coordinator and handed to the worker; the worker must add the concrete URLs and revisions it actually used"
+   "status": "reference list handed to the worker; the worker must cite the concrete file or commit it actually used in its own OSS-NOTES.md, and any change without a source is rejected",
+   "verified_references": [
+    {
+     "area": "one codebase, many device profiles",
+     "url": "https://dev.epicgames.com/documentation/en-us/unreal-engine/device-profiles-in-unreal-engine",
+     "http_status": 200,
+     "note": "the industry pattern of matching device properties to a profile that overrides quality, resolution and frame rate instead of shipping a per-device build"
+    },
+    {
+     "area": "quality tier and target frame rate selection",
+     "url": "https://docs.unity3d.com/Manual/class-QualitySettings.html",
+     "http_status": 200
+    },
+    {
+     "area": "Switch port on Android, docked versus handheld tiering and resolution scaling",
+     "url": "https://github.com/skyline-emu/skyline",
+     "http_status": 200
+    },
+    {
+     "area": "keeping the original aspect ratio on a 4:3 panel (letterbox or pillarbox, never stretch)",
+     "url": "https://www.pcgamingwiki.com/w/index.php?title=Glossary:Scaling",
+     "note": "search result reference; the worker must open it and cite what it actually says"
+    },
+    {
+     "area": "declaring a target frame rate on Android so the compositor schedules it",
+     "url": "https://developer.android.com/reference/android/view/Surface#setFrameRate(float,%20int)",
+     "note": "the worker must confirm the API level and the real effect on this device"
+    }
+   ],
+   "rejected_sources": [
+    {
+     "url": "https://github.com/THEGAMER00/AetherSX2",
+     "reason": "http 404 at the time of checking, so it cannot be cited as an obtainable reference"
+    }
+   ]
+  },
+  "rg477m_device_facts": {
+   "measured_at": "2026-11-12T20:09:14.408563+08:00",
+   "soc": "ro.soc.model=MT6897, ro.soc.manufacturer=Mediatek, ro.board.platform=mt6897, ro.product.board=k6897v1_64 (public code mt6897, board k6897v1_64)",
+   "gpu": "Mali-G615 MC6, GLES: ARM, Mali-G615 MC6, OpenGL ES 3.2 v1.44p1-01eac0.030c4a3fb15fe65f485fb565f5e1b688, egl ro.hardware.egl=meow",
+   "panel": "4.7 inch LTPS, 1280x960, density 280, modes 60/120/90 Hz, active mode 60 Hz",
+   "system_frame_rate_override": "dumpsys display shows frameRateOverride {uid=10171 frameRateHz=60.0} for the app uid; any frame rate declaration has to account for it",
+   "profile_evidence": "engine log already shows 'xbg_refresh_target_fps: locked target_fps=30 target_ns=33333333', so DeviceProfile.select() lands on handheld_mid for this device",
+   "note": "Anbernic markets the RG477M as Dimensity 8300 with Mali-G615 MC6; the device agrees on the GPU. The SoC identity in the source table is the public code MT6897, which DeviceProfile already matches."
   }
  }
 }
