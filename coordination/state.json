@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-12T20:09:14.408563+08:00",
+ "updated_at": "2026-11-12T22:29:51.683002+08:00",
  "phase": "v1.0.6 published; v1.0.7 internal team-play package built and device-verified on task/T-package-1.0.7-20261112 (moon halo fix shipped, cheat menu usable, 30 FPS held). Battle effect pipeline stutter still open, not in this package.",
  "coordinator": "MiniMax Code /root release takeover (Codex thread aborted by user)",
  "integration_branch": "work/rg477m-native",
@@ -6776,6 +6776,35 @@
    "system_frame_rate_override": "dumpsys display shows frameRateOverride {uid=10171 frameRateHz=60.0} for the app uid; any frame rate declaration has to account for it",
    "profile_evidence": "engine log already shows 'xbg_refresh_target_fps: locked target_fps=30 target_ns=33333333', so DeviceProfile.select() lands on handheld_mid for this device",
    "note": "Anbernic markets the RG477M as Dimensity 8300 with Mali-G615 MC6; the device agrees on the GPU. The SoC identity in the source table is the public code MT6897, which DeviceProfile already matches."
+  },
+  "rg477m_save_key_verification": {
+   "verified_at": "2026-11-12T22:29:51.683002+08:00",
+   "question": "can the Honor save key decrypt the RG477M saves",
+   "answer": "yes",
+   "method": "offline verification on the worker backup under .local/rg477m-adapt/backup-20261112/sdcard/; SVHD header, SHA-1 of the encrypted body checked against the stored digest, then AES-256-ECB decrypt with the 32 byte key from .local/cheat/save_key.txt",
+   "files_checked": [
+    "Android/data/org.ffrs.gamewindow/files/codex-local-save/GameSaveData0 (304144 bytes)",
+    "Android/data/org.ffrs.gamewindow/files/codex-local-save/GameSaveData1 (304144 bytes)",
+    "HandheldNativeLab-历史存档/org.ffrs.gamewindow/external/codex-local-save/GameSaveData0 (311504 bytes)",
+    "HandheldNativeLab-历史存档/org.ffrs.gamewindow/external/codex-local-save/GameSaveData1 (307488 bytes)",
+    "HandheldNativeLab-历史存档/org.ffrs.gamewindow/external/codex-local-save/GameSaveData2 (309552 bytes)"
+   ],
+   "result": "every file passed the SHA-1 check and decrypted to a valid Unreal property tag stream that starts with the GVAS magic and a UE5 tag",
+   "correction": "An earlier blocker that said the RG477M saves use a different key from the Honor saves is WRONG and is withdrawn. The RG477M saves came from a OnePlus PMS110 export, but they use the same game key. The cheat menu on the RG477M is therefore not blocked by the key.",
+   "handling": "the key stays in .local/ only, is never committed, and is referenced through the existing build-time FFRS_SAVE_KEY_FILE staging; no key file is copied between worktrees"
+  },
+  "device_availability_rg477m": {
+   "observed_at": "2026-11-12T22:29:51.683002+08:00",
+   "state": "OFFLINE",
+   "evidence": "adb devices lists only A42BBB5109000333 (Honor); the RG477M is not enumerated over USB",
+   "impact": "device verification of the RG477M build is blocked until the handheld reconnects; code, build and OSS-NOTES work continues",
+   "note": "adb kill-server is forbidden, so this is a physical link state, not a server restart"
+  },
+  "worker_restarts": {
+   "observed_at": "2026-11-12T22:29:51.683002+08:00",
+   "cause": "both workers died on transport errors (ERR_NETWORK_IO_SUSPENDED and Connection error) while still in research, before editing any file; both worktrees stayed clean",
+   "kept": "the 477M worker had already delivered its community reference list and the save key correction; the seed worker had closed and independently re-verified the evidence chain",
+   "action": "restart both with the finished research handed over as a briefing so neither repeats it"
   }
  }
 }
