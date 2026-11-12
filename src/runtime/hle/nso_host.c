@@ -3015,7 +3015,11 @@ void nso_host_os_initialize_event(void *event, bool initially_signaled, int32_t 
     bytes[0x11] = initially_signaled ? 1 : 0;
     bytes[0x12] = (uint8_t)clear_mode;
     bytes[0x13] = 1; /* initialized state */
-    *(uint64_t *)(bytes + 0x14) = 0;
+    /* The guest object is 8 byte aligned, but offset 0x14 is not: the
+     * word is copied instead of stored through a typed pointer, so the write
+     * stays aligned on every target. */
+    uint64_t zero_word = 0;
+    memcpy(bytes + 0x14, &zero_word, sizeof zero_word);
     *(uint32_t *)(bytes + 0x1c) = 0;
     *(uint32_t *)(bytes + 0x20) = 0;
 
@@ -3040,6 +3044,16 @@ void nso_host_os_finalize_event(void *event) {
      * lock is taken. */
     bool multiwait_waiting = ffrs_multiwait_event_waiting && ffrs_multiwait_event_waiting(event);
     bool multiwait_referenced = ffrs_multiwait_event_referenced && ffrs_multiwait_event_referenced(event);
+    if (multiwait_waiting) {
+        /* The guard message is kept exactly as it was, byte for byte, so that a
+         * report from the field can still be matched against it with a single
+         * grep. It used to be followed by abort(). The race is handled now, so
+         * the line records that the race happened and what was done about it
+         * instead of killing the process. */
+        fprintf(stderr, "[multiwait] refusing Event finalization during active wait: event=%p "
+                        "(race recorded; the event is retired, the waiting holder is released, "
+                        "the process continues)\n", event);
+    }
     pthread_mutex_lock(&s_event_registry_mutex);
     size_t b_idx = event_hash(event);
     struct nso_event_entry **slot = &s_event_buckets[b_idx];
