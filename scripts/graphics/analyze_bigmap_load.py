@@ -11,6 +11,11 @@ Buckets of a transition (a cluster of windows whose wall time is above the stead
   submit   : the CPU time inside vkQueueSubmit over the cluster, and the readback/writeback drains
   other    : the wall time above the steady state, minus the shader and the pipeline time
 
+The four buckets overlap in time (the CPU inside vkQueueSubmit overlaps the GPU wait and the
+guest's own work), so they must not be added up: "other" can come out negative when the
+blocking wait is longer than the excess. The number to read is the graphics path's own share,
+(shader + pipeline) / excess.
+
 Usage:
   python3 analyze_bigmap_load.py --log <guest_boot.log> --csv <codex-frame-<pid>.csv> [--json out.json] [--report]
 """
