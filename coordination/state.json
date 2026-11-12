@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-12T22:47:44.281561+08:00",
+ "updated_at": "2026-11-12T22:56:56.563966+08:00",
  "phase": "v1.0.6 published; v1.0.7 internal team-play package built and device-verified on task/T-package-1.0.7-20261112 (moon halo fix shipped, cheat menu usable, 30 FPS held). Battle effect pipeline stutter still open, not in this package.",
  "coordinator": "MiniMax Code /root release takeover (Codex thread aborted by user)",
  "integration_branch": "work/rg477m-native",
@@ -6908,5 +6908,36 @@
    "log_path_note": "The current session writes to guest_boot.log. engine.log still holds the previous session and its mtime stays behind, so the switch lines must be read from guest_boot.log.",
    "not_verified": "The effect stutter has not been re-measured after the effect seed fix lands; the numbers above are the pre-fix baseline."
   }
+ },
+ "defer_events_long_term_decision_20261112": {
+  "decided_at": "2026-11-12T22:56:56.563966+08:00",
+  "decided_by": "user, 2026-11-12 22:56, after the coordinator laid out the options",
+  "decision": "gfx-defer-events stays OFF. The long term route is the root fix, not the deferred-event switch. No released package may ship with the switch on.",
+  "why": [
+   "the switch buys a frame rate number by postponing the event publication, which stretches the game logic time and therefore lengthens the transition; the project rule forbids changing the game logic time to buy frame rate",
+   "the user experience falsified it on the Honor tablet: with the switch on the transition ran at 30 FPS but was reported as stuttering for a long time, so it trades stutter for slow motion rather than improving the game",
+   "with the switch off the ordinary play scene already holds a full 30.0 FPS steady state with a 33.34 ms median gap, so the switch is not needed for normal play and only ever applied to the transition scene",
+   "the real cost is on the CPU side: block_ms legacy_wait=13.26 submit_by other=8.53, about 21.8 ms of CPU blocking per frame"
+  ],
+  "three_stage_route": [
+   {
+    "stage": "1.0.8",
+    "scope": "ship with the switch off plus the effect pipeline seed fix; the 93 stalls above 100 ms that ate 13.6 percent of the session disappear",
+    "status": "the effect seed worker is implementing it"
+   },
+   {
+    "stage": "1.0.9",
+    "scope": "reduce the legacy_wait CPU blocking through a fence retirement style path so the transition reaches 30 FPS on its own and the switch becomes unnecessary",
+    "status": "the transition worker is investigating it, with the acceptance that the game logic time must not change"
+   },
+   {
+    "stage": "long term",
+    "scope": "either remove gfx-defer-events entirely, or demote it to an adaptive compensation that engages only when a frame would really exceed its budget and that still does not change the game logic time",
+    "status": "not started"
+   }
+  ],
+  "community_direction": "the mature pattern for this is fence retirement: an event retires when the GPU really finished, and the wait happens only at the read that needs it, which does not move the timeline the game sees. Unreal's FenceValue model is the same idea. deferring the publication is the opposite of that.",
+  "verification_rule": "every claim must use the same measurement: the buffered codex-frame-<pid>.csv monotonic_ns gaps, reported as the count of frames above 100 ms, the total stall time, the stall share of the session and the steady state median gap. The pre-fix baseline is 93 stalls, 40.1 s, 13.6 percent, 33.34 ms median.",
+  "device_state": "the Honor tablet A42BBB5109000333 runs 1.0.7 with the switch off and the leftover probe files cleared; the RG477M is still offline"
  }
 }
