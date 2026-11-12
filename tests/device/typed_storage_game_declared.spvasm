@@ -1,0 +1,43 @@
+; A storage image that the GAME declares typed (Rg32ui, 3D) next to a
+; formatless one that shares nothing. This is the shape of the real module
+; c11e2f23ff063e85 that crashed the 1.0.9 battle-settle scene on the Honor
+; tablet: the module itself declares a typed storage image, and the guest
+; binds a view whose format comes from the guest's own NVN format.
+;
+; The engine's strict "declared format must equal the bound view format" rule
+; must NOT apply to it: only the bindings the engine rewrote itself carry that
+; requirement. The contract test pins that decision.
+;
+; binding 0 : storage image, declared Rg32ui (the game's own typed declaration)
+; binding 1 : storage image, formatless (Unknown)
+
+               OpCapability Shader
+               OpCapability StorageImageWriteWithoutFormat
+               OpCapability StorageImageReadWithoutFormat
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint GLCompute %main "main"
+               OpExecutionMode %main LocalSize 1 1 1
+               OpDecorate %img_typed DescriptorSet 0
+               OpDecorate %img_typed Binding 0
+               OpDecorate %img_plain DescriptorSet 0
+               OpDecorate %img_plain Binding 1
+       %void = OpTypeVoid
+     %uint = OpTypeInt 32 0
+     %uint3 = OpTypeVector %uint 3
+    %float = OpTypeFloat 32
+    %v4float = OpTypeVector %float 4
+     %int = OpTypeInt 32 1
+    %v4int = OpTypeVector %int 4
+  %image_rg32ui = OpTypeImage %uint 3D 0 0 0 2 Rg32ui
+  %image_unknown = OpTypeImage %float 3D 0 0 0 2 Unknown
+%_ptr_UniformConstant_image_rg32ui = OpTypePointer UniformConstant %image_rg32ui
+%_ptr_UniformConstant_image_unknown = OpTypePointer UniformConstant %image_unknown
+        %img_typed = OpVariable %_ptr_UniformConstant_image_rg32ui UniformConstant
+        %img_plain = OpVariable %_ptr_UniformConstant_image_unknown UniformConstant
+         %main = OpFunction %void None %void
+        %entry = OpLabel
+         %coord = OpCompositeConstruct %uint3 %uint_0 %uint_0 %uint_0
+        %texel = OpLoad %image_rg32ui %img_typed
+         %val = OpImageRead %v4int %texel %coord
+               OpReturn
+               OpFunctionEnd

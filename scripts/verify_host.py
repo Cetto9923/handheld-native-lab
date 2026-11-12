@@ -176,7 +176,8 @@ def main():
         typed_dir = out / 'typed-storage'
         typed_dir.mkdir(parents=True, exist_ok=True)
         typed_spv = []
-        for fixture in ('typed_storage_uint', 'typed_storage_shared_image', 'typed_storage_formatless_read'):
+        for fixture in ('typed_storage_uint', 'typed_storage_shared_image', 'typed_storage_formatless_read',
+                        'typed_storage_game_declared'):
             spv = typed_dir / (fixture + '.spv')
             if run('typed-storage-assemble-' + fixture, [spirv_as, '--target-env', 'vulkan1.1',
                                               'tests/device/' + fixture + '.spvasm', '-o', spv]):
@@ -184,11 +185,11 @@ def main():
         typed_cxx = shutil.which('clang++') or cc
         typed_binary = out / 'test-typed-storage'
         extra_artifacts.append(typed_binary)
-        if len(typed_spv) == 3 and run('typed-storage-build', [typed_cxx, '-std=c++17', '-O1', '-g',
+        if len(typed_spv) == 4 and run('typed-storage-build', [typed_cxx, '-std=c++17', '-O1', '-g',
                                                     '-fsanitize=address,undefined', '-Wall', '-Wextra',
                                                     'tests/device/test_typed_storage.cpp', '-o', typed_binary]):
             run('typed-storage-contract', [typed_binary, typed_spv[0], typed_spv[1], typed_spv[2],
-                                       typed_dir / 'typed_storage_out.spv'])
+                                       typed_dir / 'typed_storage_out.spv', typed_spv[3]])
             run('typed-storage-val', [spirv_val, '--target-env', 'vulkan1.1', typed_dir / 'typed_storage_out.spv'])
     else:
         print('typed-storage-contract: SKIPPED, spirv-as and spirv-val are not installed', flush=True)

@@ -40,10 +40,11 @@ static void assert_only_format_changed(const std::vector<uint32_t> &before,const
     assert(after[at+8]==XBG_IMAGE_FORMAT_R32UI);
 }
 int main(int argc,char **argv){
-    assert(argc>=5);
+    assert(argc>=6);
     const std::vector<uint32_t> fixture=load(argv[1]);
     const std::vector<uint32_t> shared=load(argv[2]);
     const std::vector<uint32_t> reading=load(argv[3]);
+    const std::vector<uint32_t> game_declared=load(argv[5]);
 
     // The fixture is formatless: the module's own form, not the package flag.
     assert(xbg_spirv_declared_image_format(fixture,11)==XBG_IMAGE_FORMAT_UNKNOWN);
@@ -112,6 +113,26 @@ int main(int argc,char **argv){
         assert_only_format_changed(before,words,11);
         save(argv[6],words);
     }
+    // The battle-settle crash of 1.0.9 on the Honor tablet: the module
+    // declares a typed storage image itself (the real module
+    // c11e2f23ff063e85 declares a 3D Rg32ui storage image), and the guest
+    // binds a view whose format comes from the guest's own NVN format. The
+    // engine must not reject that pair: only the bindings the engine rewrote
+    // itself carry the strict match requirement.
+    assert(xbg_spirv_declared_image_format(game_declared,0)==XBG_IMAGE_FORMAT_RG32UI);
+    assert(xbg_spirv_declared_image_format(game_declared,1)==XBG_IMAGE_FORMAT_UNKNOWN);
+    // The game's own declaration: not rewritten, so no strict match, whatever
+    // the bound view format is. This is the case that used to abort.
+    assert(!xbg_typed_storage_requires_match(false,XBG_IMAGE_FORMAT_RG32UI,XBG_VK_FORMAT_R32_UINT));
+    assert(!xbg_typed_storage_requires_match(false,XBG_IMAGE_FORMAT_RG32UI,XBG_VK_FORMAT_R32G32_UINT));
+    // The engine's own rewrite: the declared format must equal the bound
+    // view's format, exactly as before.
+    assert(xbg_typed_storage_requires_match(true,XBG_IMAGE_FORMAT_R32UI,XBG_VK_FORMAT_R32_UINT));
+    assert(!xbg_typed_storage_requires_match(true,XBG_IMAGE_FORMAT_R32UI,XBG_VK_FORMAT_R32_SINT));
+    assert(!xbg_typed_storage_requires_match(true,XBG_IMAGE_FORMAT_R32I,XBG_VK_FORMAT_R32_UINT));
+    // A rewritten binding whose declared format is Unknown cannot match either.
+    assert(!xbg_typed_storage_requires_match(true,XBG_IMAGE_FORMAT_UNKNOWN,XBG_VK_FORMAT_R32_UINT));
+
     save(argv[4],typed);
     std::cout<<"Typed storage texel buffer: formatless to R32ui, idempotent, shared image and formatless read refused, bound format mismatch red PASS\n";
     return 0;

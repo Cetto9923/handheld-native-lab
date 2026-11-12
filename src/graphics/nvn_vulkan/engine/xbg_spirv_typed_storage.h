@@ -81,6 +81,22 @@ inline bool xbg_typed_storage_matches(uint32_t spirv_format,uint32_t vk_format){
     return spirv_format!=XBG_IMAGE_FORMAT_UNKNOWN && spirv_format==xbg_spirv_image_format(vk_format);
 }
 
+// The strict "declared format must equal the bound view format" rule applies
+// only to the bindings this engine rewrote itself. A module that already
+// declares a typed format carries the game's own declaration: its NVN format
+// and the Vulkan view format are the game's own pair, and NVN does not require
+// the two to be spelled the same way (the real module c11e2f23ff063e85 binds a
+// 3D Rg32ui storage image whose view format comes from the guest's NVN
+// format). That pair is not the engine's to reject, and 1.0.7 ran the same
+// modules without this check.
+//
+// rewritten  the binding is in the engine's rewritten set
+// declared   the SPIR-V format the engine declared for that binding
+// bound      the VkFormat of the view that is bound right now
+inline bool xbg_typed_storage_requires_match(bool rewritten,uint32_t declared,uint32_t bound){
+    return rewritten && xbg_typed_storage_matches(declared,bound);
+}
+
 // The image type a descriptor binding uses, with the operand positions the
 // rewrite needs. Nothing is modified by this analysis.
 struct XbgStorageImageBinding {

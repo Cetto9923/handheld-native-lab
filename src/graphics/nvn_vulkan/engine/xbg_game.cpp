@@ -1062,7 +1062,7 @@ void frame(uint64_t now){
     ++win_stalls;win_stall_ms+=uint64_t(gap_ms);
     xbg_logf("NVN PERF stall v=1 frame=%llu gap_ms=%.1f tag=%s occurrence=%llu seq=%llu shader_ms=%.1f shader_count=%llu shader_slow_count=%llu shader_slow_ms=%.1f pipelines_new=%llu pipelines_created=%llu pipeline_create_ms=%.1f submit_cpu_ms=%.2f gpu_ms=%.2f sync_rb=%llu sync_wb=%llu other_ms=%.1f",
         (unsigned long long)frame_no,gap_ms,tag.c_str(),(unsigned long long)occurrence(),(unsigned long long)tag_seq,
-        shader_ms,(unsigned long long)d_shader_count,(unsigned long long)slow_count,(unsigned long long)slow_ms,
+        shader_ms,(unsigned long long)d_shader_count,(unsigned long long)slow_count,double(slow_ms),
         (unsigned long long)d_new_count,(unsigned long long)d_pipe_count,pipe_ms,
         double(d_submit)/1e6,double(d_gpu)/1e6,(unsigned long long)d_rb,(unsigned long long)d_wb,other_ms);
 }
@@ -2531,6 +2531,13 @@ struct Shader {std::string key;std::string identity;
     // declares (0 = formatless). The engine checks the module's real form,
     // not the package's formatless flag.
     std::map<uint32_t,uint32_t> storage_image_formats;
+    // The storage bindings whose typed image form this engine wrote itself
+    // (the Mali typed-storage rewrite). Only those carry the strict
+    // "declared format must equal the bound view format" rule. A module that
+    // already declares a typed format came from the game: its NVN format and
+    // the Vulkan view format are the game's own pair, and NVN does not require
+    // them to be spelled the same way, so that pair is not ours to reject.
+    std::set<uint32_t> typed_storage_rewritten;
     // Final module words, kept only for shaders that may need a typed
     // storage variant, so a variant can be derived from the real module.
     std::vector<uint32_t> module_words;
@@ -3179,7 +3186,11 @@ Shader *typed_storage_variant(Shader &base){
     variant->bindings=base.bindings;variant->inputs=base.inputs;variant->input_classes=base.input_classes;
     variant->c1=base.c1;variant->storage_writes=base.storage_writes;variant->discards=base.discards;variant->raster=base.raster;
     variant->storage_image_formats=base.storage_image_formats;
-    for(const auto &entry:formats)variant->storage_image_formats[entry.first]=xbg_spirv_image_format(entry.second);
+    variant->typed_storage_rewritten=base.typed_storage_rewritten;
+    for(const auto &entry:formats){
+        variant->storage_image_formats[entry.first]=xbg_spirv_image_format(entry.second);
+        variant->typed_storage_rewritten.insert(entry.first);
+    }
     variant->module_words=words;
     if(base.stage==5)xbg_spirv_indirect_instances(words,variant->indirect_instance_fields);
     VkShaderModuleCreateInfo info{};info.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;info.codeSize=words.size()*4;info.pCode=words.data();
@@ -4297,9 +4308,10 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                         // exactly as before. A typed module declares the format it
                         // writes, so the declared format must match the bound view
                         // exactly: that is stricter than the formatless check.
-                        const uint32_t declared=shader.storage_image_formats.count(b.binding)?shader.storage_image_formats[b.binding]:0u;
+                        const bool rewritten=shader.typed_storage_rewritten.count(b.binding)!=0;
+                        const uint32_t declared=rewritten?shader.storage_image_formats[b.binding]:0u;
                         if(declared){
-                            need(xbg_typed_storage_matches(declared,uint32_t(tf)),
+                            need(xbg_typed_storage_requires_match(rewritten,declared,uint32_t(tf)),
                                 "Typed storage texel format does not match the bound view format");
                         }else{
                             if(b.flags&1)need(cfg.enabled_core.shaderStorageImageWriteWithoutFormat &&
@@ -4498,9 +4510,10 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                         // module still needs the formatless feature, exactly as before. A
                         // typed module declares the format it writes, so that format must
                         // match the bound view exactly: stricter than the formatless check.
-                        const uint32_t declared=shader.storage_image_formats.count(b.binding)?shader.storage_image_formats[b.binding]:0u;
+                        const bool rewritten=shader.typed_storage_rewritten.count(b.binding)!=0;
+                        const uint32_t declared=rewritten?shader.storage_image_formats[b.binding]:0u;
                         if(declared){
-                            need(xbg_typed_storage_matches(declared,uint32_t(viewed)),"Typed storage image format does not match the bound view format");
+                            need(xbg_typed_storage_requires_match(rewritten,declared,uint32_t(viewed)),"Typed storage image format does not match the bound view format");
                         }else{
                             if((b.flags&3) && format_feature_flags2){VkFormatProperties3 extra{VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3};VkFormatProperties2 all{VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2};all.pNext=&extra;vkGetPhysicalDeviceFormatProperties2(cfg.physical,viewed,&all);if(b.flags&1)need(extra.optimalTilingFeatures&VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT,"Image format lacks formatless-write support");if(b.flags&2)need(extra.optimalTilingFeatures&VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT,"Image format lacks formatless-read support");}
                             else if(b.flags&3){VkFormatProperties fp{};vkGetPhysicalDeviceFormatProperties(cfg.physical,viewed,&fp);bool listed=storage_without_format_listed(viewed) && (fp.optimalTilingFeatures&VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT);
