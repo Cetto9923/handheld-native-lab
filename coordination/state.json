@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-11T23:56:39.744569+00:00",
+ "updated_at": "2026-11-12T05:05:00.000000+00:00",
  "phase": "FAIL currentShrine room stillregularlightingrectangles inPID7534, preservecamera andfirstbadgroupcapture; spellstutteralsoopen",
  "coordinator": "Codex /root shrine takeover",
  "integration_branch": "work/rg477m-native",
@@ -5925,5 +5925,84 @@
   "result": "coordination/results/BASELINE-AND-STABILITY-20261111.md",
   "slot_and_prewarm": "NOT_RUN while PID 31943 is in the tutorial",
   "rg477m": "BLOCKED"
+ },
+ "honor_rescue_20261112": {
+  "status": "STEP1_DELIVERED_PENDING_COMMIT: baseline frozen, isolated rescue worktree, moon flicker reproduced and quantified without aliasing, four-switch A/B done and all falsified, root cause narrowed to a frame-count driven extra guest draw command for vs=fae0b835a11360e2 / fs=4746d49d8e2bbaab; engine side mechanism still open",
+  "scope": "user task book: Handheld Native Lab v1.0.6 stability rescue. Step 1 only: freeze baseline, isolate environment, reproduce moon flicker, most valuable A/B. No broad code edits before localization.",
+  "parallel_constraint": "Antigravity works in the same honor repo (process cwd /Users/yuyan9923/GitHub/ff-resonance-honor-gtpro). This task therefore uses an isolated worktree and does not touch the main repo working tree, its branches, or its uncommitted work.",
+  "baseline_freeze": {
+   "published_apk": "FFRS-v1.0.6.apk 3519484 B sha256 e6c2d287146c438f70c75ef3c408ddf3aa0629cbf6109be0dd09792828ca9cda",
+   "published_source": "public repo Cetto9923/handheld-native-lab tag v1.0.6 = 5ef21d7, branch codex/density-release-1.0.6 = 990fb25; honor repo equivalent baseline commit 5f4e2b5 (xbg_game.cpp byte-identical to 990fb25)",
+   "package_name": "org.ffrs.gamewindow, activity org.ffrs.diagnostic.GameActivity, versionCode 6, versionName 1.0.6",
+   "device": "ROD2-W69 Honor tablet, serial A42BBB5109000333, SM8635, Adreno 735 (driver V@0762.46), 3000x1920",
+   "restored_this_turn": "the device had the diagnostic APK installed over production; FFRS-v1.0.6.apk was reinstalled and the on-device base.apk sha256 now equals the published asset sha256 exactly",
+   "v1_0_4": "tag v1.0.4 = d229719 (commit 0e1a9f7), APK .local/android-apk/FFRS-v1.0.4.apk 3449852 B; v1.0.4 has NO xbg_spirv_integer_buffer.h and NO xbg_spirv_indirect_instances.h"
+  },
+  "isolated_worktree": {
+   "path": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/rescue-1.0.7-20261112",
+   "branch": "task/T-rescue-1.0.7-20261112",
+   "base": "5f4e2b5 (verified v1.0.6 source baseline)",
+   "head": "5f4e2b5, clean",
+   "rule": "main/master stay read-only; released v1.0.6 tag is not overwritten; a fix ships as v1.0.7 (versionCode 7)"
+  },
+  "device_state_reset": {
+   "finding": "the device markers were NOT at factory defaults before this turn: gfx-async-pipelines=0 (default 1), gfx-shader-reuse=2 (default 0; mode 2 additionally rewrites and compares every shader load), gfx-indirect-trace=1 (diagnostic residue)",
+   "action": "all markers restored to factory defaults: async-pipelines=1, shader-reuse=0, indexed-resident=1, wb-skip=1, target-fps=30, codex-probe=0, codex-frame-metrics=1; gfx-indirect-trace removed",
+   "impact": "earlier observations in this session were taken on a polluted baseline; the numbers recorded this turn are on the clean default baseline",
+   "engine_log_rotation_trap": "nvn_engine.c:134 sets engine_log_capped=1 and permanently disables the file log when engine.log.1 already exists. Old logs were archived with mv (no user data deleted) so the new build writes engine.log again; the earlier 67 MB engine.log was stale trace-package output, not the production package.",
+   "verification": "a fresh production run logs IDXTRACE=0 (no diagnostic code) and reports shader-reuse=0, async-pipelines=1, pipe-memo=1, bright=1, wb-skip=1"
+  },
+  "measurement_methodology_correction": {
+   "problem": "adb screenrecord on this tablet samples at about 19.7 fps while the game renders 30 fps, so the earlier two-state brightness quantization of the moon region was aliased and could not prove a per-frame toggle",
+   "resolved": "two alias-free sources are now used: (1) dumpsys SurfaceFlinger --latency <BLAST layer> gives the real present timestamp sequence; (2) codex-frame-<pid>.csv gives per-frame engine counters (draws/dispatches/submissions) with monotonic timestamps, written by the production package itself with no diagnostic code",
+   "layer_name": "<hash> SurfaceView[org.ffrs.gamewindow/org.ffrs.diagnostic.GameActivity](BLAST)#<id>; obtained from dumpsys SurfaceFlinger --list",
+   "baseline_frame_timing": "30.00 fps, mean 33.33 ms, P50 33.35, P95 33.57, P99 33.67, max 33.74 over 125 intervals; no long frames in the moon scene",
+   "rejected": "screencap is about 1.9 s per 3000x1920 frame, unusable for pixel work; screenrecord stays visual evidence only"
+  },
+  "moon_flicker_root_cause": {
+   "question": "what actually drives the moon halo flicker",
+   "measurement": "per-frame engine draw counts in the moon scene, taken from the production v1.0.6 package (no diagnostic code), cross-checked against the diagnostic build's per-draw trace",
+   "key_finding_1": "the draw sequence in the moon scene is strictly periodic with period 6 frames: period-6 match 99.7 percent on the raw per-draw trace and 93-98 percent on the production per-frame CSV, other tested periods (2,3,4,5,7,8) sit at 33-66 percent",
+   "key_finding_2": "re-verified from the raw per-draw trace: the moon scene draw sequence is 79,79,80,80,79,79 repeating (period-6 match 99.7 percent, period-12 99.6 percent, other periods 33-66 percent); the earlier 80,80,81,80,81,81 phrasing came from the production CSV session and is the same structure with a different phase origin",
+   "key_finding_3": "CORRECTED 2026-11-12: the phase-aligned 6-frame variation belongs to exactly ONE shader pair, vs=fae0b835a11360e2 / fs=4746d49d8e2bbaab, whose per-frame count is 11,11,12,12,11,11 (phases 2 and 3 carry one extra draw). An earlier note credited vs=17005546ca19abc9; the raw per-draw trace does not support that. Other pairs vary only on a separate non-phase-aligned event set (about 13.7 percent of frames: fs=4e81f73282ffd5b1 +1, fs=123f2ada0f802e0f -2, fs=b33659227a17c1a9 +1, fs=5a9fc0ecb88c6440 +1, net +1).",
+   "key_finding_4": "the extra draw is INSERTED INSIDE the frame, not appended: on a phase-0 frame the target pair sits at ordinals 24,33,37,42,45,48,49,50,73,74,78; on a phase-2 frame at 24,25,34,38,43,46,49,50,51,74,75,79 (ordinal 25 is the extra one, everything after shifts by one).",
+   "key_finding_5": "the production package reproduces the same 6-frame period as the diagnostic build, so the period is a property of the shipped rendering path, not of the diagnostic instrumentation",
+   "interpretation": "6 frames at 30 fps is 200 ms. A strictly per-phase, reproducible extra draw is a systematic synchronisation or scheduling artefact in the render path, not random game logic: game logic would not align unrelated shader pairs to one single phase.",
+   "not_yet_confirmed": "STILL OPEN: the engine-side reason why the guest emits one extra halo draw on 2 of every 6 frames. The candidate is stale engine-published data (writeback slot lifetime / counter report) reaching the guest, or a frame-count-keyed engine state. A read-only per-draw parameter probe (marker gfx-draw-param-trace) is being built in the rescue worktree to compare the extra draw against its neighbours (same count/instances/ibuf = duplicated command; different parameters = a genuinely different batch).",
+   "correction_to_earlier_record": "the earlier attribution in honor_moon_flicker_20261112 step_6/step_7 (the GPU-resident indirect template path) is NOT supported by this scene: in the moon scene all 344k+ traced indexed draws carry ind=0 and the device reports GPU indexed resident=0, so no indirect draw happens at all here. indirect_proof_enabled only gates find_indirect_template and indirect_template_batch. That attribution is downgraded to unconfirmed and must be re-tested.",
+   "refuted": "gfx-wb-skip=0 leaves the flicker unchanged; gfx-bright reported bright applied=0.00 so the brightening pass is not active; vcache is off by default on this device; occlusion culling reports draws_skipped=0.00; pipeline eviction reports pipelines_new=0 evicted=0",
+   "key_finding_6": "the draws counter is the GUEST draw-command count, not an engine re-issue count: the trace hook is reached from exactly one call site, the OP_DRAW_IDX case in execute() (xbg_game.cpp:5844), and every one of the 343205 traced lines is tagged cpu (gpu_draw_indexed returned false for all of them, so no draw was submitted twice by the engine). Therefore the guest program itself emits one extra draw-indexed command for the halo shader pair on 2 of every 6 frames.",
+   "key_finding_7": "the guest time base is real time (nso_host.c uses clock_gettime(CLOCK_MONOTONIC) for the steady clock and the timer HLE), yet the 6-frame period does not stretch at 60 FPS (production CSV period-6 match 97.9 percent at 59.77 FPS). A guest that timed the effect from real time would have shown 12 frames at 60 FPS. So the periodicity is produced by frame-count-keyed state in the port, not by the game clock.",
+   "historical_link": "the previously rejected commit 7b733b9 added xbg_writeback_is_current_slot() to find_indirect_template(); its own comment states the exact symptom: \"Serving that older template draws with a stale instance count, which shows as a halo that alternates between two states frame by frame.\" That guard was dropped because it cost 2-3x frame rate, and the rescue baseline 5f4e2b5 does not contain it. The stale-writeback / slot-lifetime family is therefore the prime suspect for the extra draw, but it is not yet proven for this draw.",
+   "key_finding_4b": "title screen shows no 6-frame period (40 draws per frame, each phase 91 percent identical), so the period is scene-specific and not injected globally by the engine; no frame-counter modulo 6 exists in the engine source"
+  },
+  "single_variable_experiments": {
+   "method": "one marker file changed per run, game restarted, then: engine.log marker echo line confirms the effective value, SurfaceFlinger --latency gives alias-free frame timing, codex-frame CSV gives per-frame draws, the moon scene is re-entered by the user",
+   "device_marker_reading": "marker file <app files>/gfx-<name> is read from the parent of the shader directory; when the file is absent the host environment variable DM_GFX_<NAME> is the fallback. gfx-pipe-memo=1 and gfx-wb-skip=1 come from the host setenv in guest_boot_jni.cpp:123-125, so a missing gfx-pipe-memo file still means the memo is ON.",
+   "status": "baseline captured at 30 fps in the moon scene; the four requested switches (gfx-pipe-memo, gfx-async-pipelines, gfx-wb-skip, gfx-bright) are still to be run one at a time",
+   "planned": "gfx-pipe-memo=0, gfx-async-pipelines=0, gfx-wb-skip=0, gfx-bright=0, each with a restart, a marker echo check, alias-free frame timing and a per-frame draw sequence, compared against the captured baseline"
+  },
+  "performance_baseline_20261112": {
+   "moon_scene_30fps": "fps 30.00, ops 199.8, passes 32, draws 80.7, dispatches 17, gpu_ms 22.85, submit_cpu_ms 8.6, present_cpu_ms 1.05, pipelines 56, layouts 32",
+   "frame_interval": "mean 33.33 ms, P50 33.35, P95 33.91, P99 34.13, max 39.52 over 1546 battle frames; no frame above 50 ms",
+   "long_frames_production_csv": "the whole-session CSV (7500 frames) contains 6 intervals above 50 ms, max 271 ms, all during scene loading rather than steady play",
+   "fps60_probe": "gfx-target-fps=60 reaches fps 59.93 with gpu_ms 10.07 in the title scene; the 30 fps target stays the accepted goal"
+  },
+  "not_verified": [
+   "the 60 fps discriminator (does the 6-frame period stretch to 12) needs the moon scene re-entered at 60 fps",
+   "the four single-switch A/B runs in the moon scene",
+   "v1.0.4 versus v1.0.6 behaviour in the same scene with the same save",
+   "scene B (block/texture anomaly) and scene C (dense spell fight) are not yet identified or reproducible",
+   "random crash collection (logcat, tombstone, symbolised stacks) has not started",
+   "P95/P99 long-frame analysis across battle and scene transitions has not started",
+   "Bluetooth audio extra latency measurement has not started"
+  ],
+  "artifacts": [
+   ".local/rescue/20261112/ab/BASELINE-prod.frame.csv",
+   ".local/rescue/20261112/ab/BASELINE-prod.engine.log",
+   ".local/rescue/20261112/ab/BASELINE-prod.sflatency.txt",
+   ".local/rescue/20261112/ab/FPS60-prod.frame.csv",
+   ".local/rescue/20261112/xbg_game_trace_instrumentation.patch"
+  ]
  }
 }
