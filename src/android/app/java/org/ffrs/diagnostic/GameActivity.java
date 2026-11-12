@@ -833,7 +833,10 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
      * The editor rewrites the live save slot in place: it decrypts the
      * SVHD container, patches the unit roster and the guest/party caps and
      * writes the file back. The guest keeps running; it reads the edited
-     * values the next time the roster is loaded.
+     * values the next time the roster is loaded. The running session cannot
+     * be changed safely yet: the roster the game holds is a runtime structure
+     * in the guest memory, not the tagged save body, and that layout is not
+     * mapped (see the guest memory scan).
      */
     void openCheatDialog() {
         if (!SaveCheater.available()) {
@@ -862,6 +865,15 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         infoView.setText("存档槽: " + slot.getName() + "\n单位数: " + info.units.size());
         infoView.setTextSize(13f);
         box.addView(infoView);
+
+        // Say what the edit does before the player makes it: the running
+        // game keeps its own copy of the roster in the guest memory, so the
+        // edited save is only read by the next load.
+        TextView timingView = new TextView(this);
+        timingView.setText("改动写入存档文件，本局不生效；回标题画面 Load Game 重新读档后生效。\n"
+                + "原因：运行中的数值在 guest 内存的运行期结构里，该结构尚未定位，改写它有损坏本局的风险。");
+        timingView.setTextSize(12f);
+        box.addView(timingView);
 
         // Which unit the fields below belong to.
         TextView pickerLabel = new TextView(this);
@@ -1037,12 +1049,19 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         private static final int BLOCK = 64 * 1024;
         private static final int MAX_LINES = 200000;
         private static final int MAX_HITS = 12;
+        private static final int LIVE_SLOTS = 512;
+        private static final int MAX_LIVE_HITS = 4;
 
         private final GameActivity owner;
         private final List<SaveCheater.Unit> roster;
         private final int[] slotValue = new int[SLOTS];
         private final int[] slotOwner = new int[SLOTS];
         private final int[] hitCount = new int[64];
+        // The roster values of the save, as an open addressed table: the
+        // guest memory holds the same numbers in its own runtime structure.
+        private final int[] liveValue = new int[LIVE_SLOTS];
+        private final String[] liveLabel = new String[LIVE_SLOTS];
+        private final int[] liveHits = new int[LIVE_SLOTS];
         private final java.io.PrintWriter units;
         private final java.io.PrintWriter strings;
         private final byte[] rosterFrag;
@@ -1073,6 +1092,15 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             }
             hintNeedles = new byte[NAME_HINTS.length][];
             for (int i = 0; i < NAME_HINTS.length; i++) hintNeedles[i] = utf16(NAME_HINTS[i]);
+            for (int i = 0; i < r.size() && i < 64; i++) {
+                SaveCheater.Unit u = r.get(i);
+                registerLive(u.hitPoint, "unit=" + u.unitId + " hp");
+                registerLive(u.magicPoint, "unit=" + u.unitId + " mp");
+                registerLive(u.experience, "unit=" + u.unitId + " exp");
+                registerLive(Float.floatToRawIntBits((float) u.hitPoint), "unit=" + u.unitId + " hp(float)");
+                registerLive(Float.floatToRawIntBits((float) u.magicPoint), "unit=" + u.unitId + " mp(float)");
+                registerLive(Float.floatToRawIntBits((float) u.experience), "unit=" + u.unitId + " exp(float)");
+            }
             units.println("slot=" + slot.getName() + " units=" + r.size());
             for (SaveCheater.Unit u : r) {
                 units.println("file unit " + u.unitId + " hp=" + u.hitPoint + "/" + u.maxHitPoint
@@ -1085,6 +1113,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
         @Override public void onChunk(long address, byte[] data, int length) {
             scanIds(address, data, length);
+            scanLiveValues(address, data, length);
             scanFragment(address, data, length);
             scanNames(address, data, length);
             for (int off = 0; off < length; off += BLOCK) {
@@ -1112,6 +1141,49 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                         break;
                     }
                     h = (h + 1) & (SLOTS - 1);
+                }
+            }
+        }
+
+        /** Adds one roster value to the live value table. */
+        private void registerLive(int value, String label) {
+            if (value == 0 || value == Integer.MAX_VALUE) return;
+            int h = hash(value);
+            while (liveValue[h] != 0) {
+                if (liveValue[h] - 1 == value) return;   // keep the first label
+                h = (h + 1) & (LIVE_SLOTS - 1);
+            }
+            liveValue[h] = value + 1;
+            liveLabel[h] = label;
+        }
+
+        /**
+         * Where the roster values live in the guest memory.
+         *
+         * The save body is a tagged serialization, so its offsets say nothing
+         * about the runtime structure the game works with. The values are the
+         * only handle on that structure: the same numbers per unit, at a
+         * fixed stride, mark the live roster. Only aligned words are read, so
+         * a reported address is the address of the value itself.
+         */
+        private void scanLiveValues(long address, byte[] data, int length) {
+            for (int i = 0; i + 4 <= length; i += 4) {
+                if (((address + i) & 3) != 0) continue;
+                int v = (data[i] & 0xff) | ((data[i + 1] & 0xff) << 8)
+                        | ((data[i + 2] & 0xff) << 16) | ((data[i + 3] & 0xff) << 24);
+                int h = hash(v);
+                while (liveValue[h] != 0) {
+                    if (liveValue[h] - 1 == v) {
+                        if (liveHits[h] < MAX_LIVE_HITS) {
+                            liveHits[h]++;
+                            int from = Math.max(0, i - 16);
+                            units.println("livevalue " + liveLabel[h] + " @"
+                                    + String.format("%012x", address + i)
+                                    + " ints:" + ints(data, from, Math.min(64, length - from)));
+                        }
+                        break;
+                    }
+                    h = (h + 1) & (LIVE_SLOTS - 1);
                 }
             }
         }
@@ -1258,6 +1330,14 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         }
 
         void close() {
+            // The hits per roster value say whether the live runtime layout
+            // was found at all: a value without a hit was changed since the
+            // save was written, or it is not kept as a plain number.
+            units.println("livevalue summary (hits per roster value):");
+            for (int h = 0; h < LIVE_SLOTS; h++) {
+                if (liveValue[h] == 0) continue;
+                units.println("   " + liveLabel[h] + " hits=" + liveHits[h]);
+            }
             units.flush(); units.close();
             strings.flush(); strings.close();
             Log.i(TAG, "guest scan done strings=" + stringLines);
@@ -1987,7 +2067,12 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         writeMarkerIfMissing(new File(dir, "gfx-legacy-waitall"), "0\n");
         writeMarkerIfMissing(new File(dir, "gfx-readback-cached"), "1\n");
         writeMarkerIfMissing(new File(dir, "gfx-target-fps"), (selectedDeviceProfile != null ? selectedDeviceProfile.targetFps : 30) + "\n");
-        writeMarkerIfMissing(new File(dir, "gfx-depth-aspect"), "1\n");
+        // "auto" leaves the decision to the engine, which is the only
+        // place that knows the GPU: on the Honor tablet (Adreno 735) reusing
+        // the open depth/stencil pass flickers the moon halo, so the engine
+        // keeps that path off there and on everywhere else. A marker the
+        // player wrote by hand ("1" or "0") is left alone.
+        writeMarkerIfMissing(new File(dir, "gfx-depth-aspect"), "auto\n");
         writeMarkerIfMissing(new File(dir, "gfx-async-pipelines"), "1\n");
         writeMarkerIfMissing(new File(dir, "gfx-fence-spin-us"), "0\n");
         writeMarkerIfMissing(new File(dir, "gfx-audio-paced-transport"), "1\n");

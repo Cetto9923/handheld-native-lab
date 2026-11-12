@@ -255,7 +255,10 @@ public final class DataBundleInstaller implements Runnable {
         // Match the frozen runtime profile; do not import diagnostic flags from archives.
         marker(data, "gfx-target-fps", "30\n"); marker(data, "gfx-fence-spin-us", "0\n");
         marker(data, "gfx-legacy-waitall", "0\n"); marker(data, "gfx-async-pipelines", "1\n");
-        marker(data, "gfx-depth-aspect", "1\n"); marker(data, "gfx-audio-paced-transport", "1\n");
+        // "auto" leaves the depth-aspect reuse to the engine, which knows
+        // the GPU and keeps the path off on the Honor tablet (the moon halo
+        // flickers there). See GameActivity.ensureDefaultMarkers.
+        marker(data, "gfx-depth-aspect", "auto\n"); marker(data, "gfx-audio-paced-transport", "1\n");
         marker(data, "gfx-codex-audio-dump", "0\n"); marker(data, "gfx-codex-frame-metrics", "1\n");
         // Only an APK contract that names the archive may enable the native fallback.
         marker(data, "gfx-shader-archive", contract.required.containsKey("shaders.hnla") ? "1\n" : "0\n");
