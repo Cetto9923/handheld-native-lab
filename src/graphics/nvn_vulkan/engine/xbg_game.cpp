@@ -629,6 +629,15 @@ struct IndirectTemplateInput {
     uint64_t address=0,bytes=0;
 };
 bool indirect_proof_enabled=false,indirect_diag_enabled=false,gpu_indexed_enabled=true,texture_lifecycle_enabled=true,clear_overwrite_probe=false,owned_input_copy_enabled=true;uint64_t indirect_proof_checks=0,indirect_proof_mismatches=0,gpu_indexed_draws=0;
+// Which indirect argument source the engine uses (marker gfx-indirect-probe):
+// 0 = the copy is made when the draw runs (baseline),
+// 1 = the copy is made with the dispatch that produced the arguments,
+// 2 = as 1, and a template from an older recording slot is accepted when its copy was made with its dispatch,
+// 3 = only a template from the current recording slot is accepted.
+int indirect_mode=0;
+// Per-frame indirect draw probe (marker gfx-indirect-probe): a CSV with the shader pair, the template row and the arguments the
+// owned copy holds. It is buffered and flushed in batches, so unlike per-draw logging it does not change the frame cadence.
+bool indirect_probe=false;FILE *indirect_probe_file=nullptr;
 struct GpuIndexedArgs {std::shared_ptr<OwnedIndirectBuffer> owned;VkDeviceSize offset=0;size_t index_bytes=0;};
 // owner denotes an independent allocation, never a view into the slot arena.
 struct PendingWriteback {uint64_t addr,bytes;Buffer buffer;const void *slot;std::shared_ptr<IndirectTemplateBatch> indirect;std::shared_ptr<void> owner;};
@@ -658,7 +667,8 @@ bool find_indirect_template(uint64_t address,XbgIndirectTemplateRow &row,std::sh
         // Serving that older template draws with a stale instance count, which
         // shows as a halo that alternates between two states frame by frame.
         if(address<w->addr || address+20>w->addr+w->bytes || !w->indirect)return false;
-        if(!xbg_writeback_is_current_slot(w->slot))return false;
+        if(indirect_mode==3){if(!xbg_writeback_is_current_slot(w->slot))return false;}
+        else if(indirect_mode==2){if(!xbg_writeback_is_current_slot(w->slot)&&!(w->indirect&&w->indirect->owned))return false;}
         had_indirect=true;
         const auto &rows=w->indirect->rows;auto it=std::lower_bound(rows.begin(),rows.end(),address,[](const XbgIndirectTemplateRow &a,uint64_t b){return a.address<b;});
         if(it==rows.end() || it->address!=address)return false;row=*it;if(batch)*batch=w->indirect;return true;
@@ -1582,8 +1592,10 @@ struct Commands {
         if(!draw){bool had=end_open_pass();if(!nothing_since_barrier && !had)full_barrier(command);}}
     void finish(){if(!draw){end_open_pass();if(cur_op==27)compute_barrier(command);else full_barrier(command);last_finish_ops=perf.ops;}}
 };
-bool keep_indirect_owned(const std::shared_ptr<IndirectTemplateBatch> &batch){
-    if(batch->owned)return true;
+// The dispatch that produced the arguments copies them into a private buffer right after it runs, so the private copy holds
+// that dispatch's own instance count. A copy made later, when the draw runs, can read a buffer that the next dispatch already
+// overwrote, which is how the draw ended up with a different instance count from one frame to the next.
+bool capture_indirect_args(const std::shared_ptr<IndirectTemplateBatch> &batch){
     Buffer source;if(!pending_view(batch->address,batch->bytes,4,source))return false;
     auto owned=std::make_shared<OwnedIndirectBuffer>(batch->bytes);Commands copy;
     VkBufferMemoryBarrier pre_b{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
@@ -1604,6 +1616,11 @@ bool keep_indirect_owned(const std::shared_ptr<IndirectTemplateBatch> &batch){
             (unsigned long long)batch->address,(unsigned long long)batch->bytes);
     }
     return true;
+}
+bool keep_indirect_owned(const std::shared_ptr<IndirectTemplateBatch> &batch){
+    if(batch->owned)return true;
+    if(indirect_mode)return false;
+    return capture_indirect_args(batch);
 }
 VkFormat format(int f) {
     static const VkFormat table[]={VK_FORMAT_UNDEFINED,
@@ -4924,7 +4941,7 @@ void dispatch(p_dispatch p,uint64_t indirect_address=0){overlay_shadow={};struct
     pass_prof_complete(c.command,prof_dispatch);bright::after_dispatch(c);if(d.needs_writeback()||capture.active){VkMemoryBarrier b{VK_STRUCTURE_TYPE_MEMORY_BARRIER};b.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT;b.dstAccessMask=VK_ACCESS_HOST_READ_BIT;vkCmdPipelineBarrier(c.command,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,1,&b,0,nullptr,0,nullptr);}c.finish();++perf.dispatches;
     d.defer_writeback(indirect_proof);
     if(indirect_proof){
-        keep_indirect_owned(indirect_proof);
+        capture_indirect_args(indirect_proof);
     }
     uint64_t disp_fr = stats.presents.load();
     if(state.shader[5] && state.shader[5]->key=="9bee7f09d6c655c3"){
@@ -5697,6 +5714,18 @@ bool gpu_draw_indexed(const p_draw_idx &a){
     if(seen_pairs.insert({vs_key, fs_key}).second){
         xbg_logf("GPU_INDEXED_SHADER_PAIR vs=%s fs=%s count=%u ind=%#llx", vs_key.c_str(), fs_key.c_str(), row.index_count, (unsigned long long)a.ind);
     }
+    if(indirect_probe){
+        if(!indirect_probe_file){indirect_probe_file=fopen((probe.base+"/indirect-probe.csv").c_str(),"w");if(indirect_probe_file)setvbuf(indirect_probe_file,nullptr,_IOFBF,4096);}
+        if(indirect_probe_file){
+            uint32_t args5[5]={0,0,0,0,0};
+            if(batch->owned&&batch->owned->view.mapped&&batch->owned->view.size>=20){uint64_t off=a.ind-batch->address;if(off+20<=batch->owned->view.size)memcpy(args5,static_cast<const uint8_t*>(batch->owned->view.mapped)+off,20);}
+            fprintf(indirect_probe_file,"%llu,%s,%s,%u,%u,%#llx,%#llx,%d,%u,%u,%u,%u,%u\n",
+                (unsigned long long)stats.presents.load(),vs_key.c_str(),fs_key.c_str(),row.index_count,row.first_index,
+                (unsigned long long)batch->address,(unsigned long long)a.ind,int(batch->owned!=nullptr),
+                args5[0],args5[1],args5[2],args5[3],args5[4]);
+            if(!(stats.presents.load()%30))fflush(indirect_probe_file);
+        }
+    }
     if(vs_key=="be4e89a0687ae37c"){
         static unsigned flame_draw_cnt=0;
         if(flame_draw_cnt++<120){
@@ -6127,7 +6156,7 @@ extern "C" int xbg_game_initialize(const xbg_game_config *c,char *error,size_t b
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *f=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-owned-input-copy").c_str(),"rb");owned_input_copy_enabled=true;if(f){owned_input_copy_enabled=fgetc(f)!='0';fclose(f);}xbg_logf("NVN owned indexed input copy=%d",int(owned_input_copy_enabled));}
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *f=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-clear-overwrite-probe").c_str(),"rb");clear_overwrite_probe=false;if(f){clear_overwrite_probe=fgetc(f)=='1';fclose(f);}xbg_logf("NVN temporary clear-overwrite diagnostic=%d",int(clear_overwrite_probe));}
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *f=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-texture-lifecycle").c_str(),"rb");texture_lifecycle_enabled=true;if(f){texture_lifecycle_enabled=fgetc(f)!='0';fclose(f);}xbg_logf("NVN texture lifecycle retirement=%d",int(texture_lifecycle_enabled));}
-    {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');std::string base=cut==std::string::npos?dir:dir.substr(0,cut);FILE *g=fopen((base+"/gfx-indexed-resident").c_str(),"rb");gpu_indexed_enabled=true;gpu_indexed_draws=0;if(g){gpu_indexed_enabled=fgetc(g)!='0';fclose(g);}FILE *m=fopen((base+"/gfx-indirect-proof").c_str(),"rb");indirect_diag_enabled=false;indirect_proof_checks=indirect_proof_mismatches=0;if(m){indirect_diag_enabled=fgetc(m)=='1';fclose(m);}indirect_proof_enabled=gpu_indexed_enabled || indirect_diag_enabled;xbg_logf("NVN indirect-template proof=%d GPU-indexed-resident=%d",int(indirect_proof_enabled),int(gpu_indexed_enabled));}
+    {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');std::string base=cut==std::string::npos?dir:dir.substr(0,cut);FILE *g=fopen((base+"/gfx-indexed-resident").c_str(),"rb");gpu_indexed_enabled=true;gpu_indexed_draws=0;if(g){gpu_indexed_enabled=fgetc(g)!='0';fclose(g);}FILE *m=fopen((base+"/gfx-indirect-proof").c_str(),"rb");indirect_diag_enabled=false;indirect_proof_checks=indirect_proof_mismatches=0;if(m){indirect_diag_enabled=fgetc(m)=='1';fclose(m);}indirect_proof_enabled=gpu_indexed_enabled || indirect_diag_enabled;{FILE *ip=fopen((base+"/gfx-indirect-probe").c_str(),"rb");indirect_probe=false;if(ip){indirect_probe=fgetc(ip)=='1';fclose(ip);}FILE *im2=fopen((base+"/gfx-indirect-mode").c_str(),"rb");indirect_mode=0;if(im2){int v=fgetc(im2);if(v>='0'&&v<='9')indirect_mode=v-'0';fclose(im2);}}xbg_logf("NVN indirect-template proof=%d GPU-indexed-resident=%d mode=%d",int(indirect_proof_enabled),int(gpu_indexed_enabled));}
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-attachment-barrier").c_str(),"rb");attachment_barrier_enabled=true;attachment_barriers_deferred=0;if(m){attachment_barrier_enabled=fgetc(m)!='0';fclose(m);}xbg_logf("NVN attachment-only barrier defer=%d",int(attachment_barrier_enabled));}
     if(const char *mode=getenv("DM_GFX_COMPLETION_WAIT")){if(!strcmp(mode,"0"))completion_wait_enabled=false;else if(!strcmp(mode,"1"))completion_wait_enabled=true;}
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-legacy-waitall").c_str(),"rb");if(m){legacy_waitall=fgetc(m)=='1';fclose(m);}
