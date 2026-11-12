@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-12T23:40:00.798140+08:00",
+ "updated_at": "2026-11-12T23:46:49.520204+08:00",
  "phase": "v1.0.9 consolidation in progress: one APK (versionCode 9) must boot both the Honor tablet (code 7) and the RG477M (code 8). Three implementation lines are in flight — readback targeted retirement (stutter root cause), Mali formatless-write FATAL (RG477M cannot enter the game), battle-settle crash P0 (8E5 phone, no device). The Honor tablet was returned to the user after the effect-seed line finished its measurement; all Honor device acceptance is deferred to one session after the merge.",
  "coordinator": "MiniMax Code /root release takeover (Codex thread aborted by user)",
  "integration_branch": "work/rg477m-native",
@@ -5124,7 +5124,7 @@
    "id": "RG477M-TEXEL-FORMAT-20261112",
    "role": "graphics worker",
    "status": "in_progress",
-   "owner": "worker agent bg_5cdcb608-6767-413d-bd13-bfceddcdd7dc",
+   "owner": "worker agent bg_f7ac5178-30a6-4e24-8587-f9455b035244 (restarted after the first attempt was cut by a network change)",
    "branch": "task/T-rg477m-texel-20261112",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native/.worktrees/rg477m-texel-20261112",
    "objective": "Remove the Mali formatless-write FATAL so the RG477M can enter the game: Mali reports bufferFeatures=0x78 for the texel formats, missing the optional STORAGE_WRITE_WITHOUT_FORMAT and READ_WITHOUT_FORMAT bits, so the formatless storage texel path cannot be used and the SPIR-V must be rewritten to the typed path.",
@@ -5149,13 +5149,14 @@
     "tests/native/"
    ],
    "acceptance": "The guest boots on the RG477M past the texel-format check and reaches the title. No reduced precision, no skipped draw, no depth turned off, no placeholder module. Every community reference has URL, revision, licence and support range in OSS-NOTES. If the NVN formatless semantics cannot be met on Mali the result is BLOCKED with the smallest workable fallback and its verifiable depth, not a fake green. Device: RG477M01445122 only.",
-   "checkpoint": "db094f8 (no change yet)",
-   "device_exclusive": "RG477M01445122 (the Honor tablet A42BBB5109000333 is forbidden)"
+   "checkpoint": "the first attempt reached a decisive attribution but wrote no code; the findings are carried into the restart",
+   "device_exclusive": "RG477M01445122 (the Honor tablet A42BBB5109000333 is forbidden)",
+   "attribution_findings": "the failing binding is compute shader 664748e31a2dfad9 (stage 5), format 98 = VK_FORMAT_R32_UINT. Its SPIR-V declares OpTypeImage sampledType=4(float) dim=5(Buffer) sampled=2(Storage) format=0(Unknown), which is a formatless storage texel buffer. Mali reports bufferFeatures=0x78 for that format, so the optional STORAGE_WRITE_WITHOUT_FORMAT bit is missing for the whole Mali family, and 0x78 still contains STORAGE_TEXEL_BUFFER_BIT, so the typed path is available. The fix is to rewrite the SPIR-V so the formatless storage texel buffer becomes typed, using the existing xbg_spirv_* machinery. The engine capability check itself is correct and must not be relaxed."
   },
   {
    "id": "HONOR-TRANSIT-RETIRE-20261112",
    "role": "graphics worker",
-   "status": "in_progress",
+   "status": "completed",
    "owner": "worker agent bg_c4589115-46fd-481d-9b34-20dde3c287c1",
    "branch": "task/T-transit-20261112",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/transit-20261112",
@@ -5181,15 +5182,19 @@
     "tests/native/",
     "scripts/runtime/selfproof_xbg_readback_retire.sh"
    ],
-   "acceptance": "The host self-proof is green on the baseline and red on the mutation. The retired set is exactly the slots up to the owning submission, and a readback that is not yet ready is never retired. Game logic time, animation speed, draw count and draw results are unchanged. Device A/B is deferred: the Honor tablet was returned to the user, and the acceptance on the RG477M happens after the merge.",
-   "checkpoint": "585bf28 plus uncommitted xbg_readback_retire.h, selfproof script and contract test",
-   "device_exclusive": "none (offline implementation only; no device is touched from this line)"
+   "acceptance": "DELIVERED AND MERGED: the readback is retired to the submission that owns it. The owner is the slot that records the copy command and owns the target buffer, so the guest bytes are final at that slot fence; the rule waits for that one fence only, and does not wait at all when the owner is already retired. The 64 MB command pool drain is not a readback and still needs every submission to retire, so it keeps the full drain and is counted separately. The marker gfx-readback-retire defaults to 1 (the new behaviour) and writing 0 falls back to the old submit_slots(true) full drain, which is also the A/B reference arm. The self-proof is green on the baseline and red on both mutations, the NDK build has 0 errors with the warning set identical to the baseline, and the rule lives in xbg_readback_retire.h so the host contract drives the production header. NOT_RUN: the device A/B (the Honor tablet went back to the user). HONEST LIMITATION measured on device logs: the readback drain only blocks 1.79-3.85 ms per frame while submit_cpu_ms is 22.5-37.7 ms, so this change alone is worth 4-6 ms per frame and cannot by itself reach 30 FPS. The next levers are the submit path and the pipeline creation, which are outside this line.",
+   "checkpoint": "463f508, merged into the 1.0.9 branch as 17c3de7",
+   "device_exclusive": "none (offline implementation only; no device is touched from this line)",
+   "result_files": [
+    "coordination/results/TRANSIT-20261112-RESULT.md",
+    "coordination/results/TRANSIT-20261112-OSS-NOTES.md"
+   ]
   },
   {
    "id": "CRASH-P0-BATTLE-SETTLE-20261112",
    "role": "runtime worker",
    "status": "in_progress",
-   "owner": "worker agent bg_c4b2d1d1-a3ce-47e3-bb89-d1dd870937f2",
+   "owner": "worker agent bg_dbfd2130-fa4f-45e0-a196-fe66b3e7bcac (restarted after the first attempt was cut by a network change)",
    "branch": "task/T-crash-p0-20261112",
    "worktree": "worker to declare; the RG477M main worktree and the honor main worktree are forbidden (foreign WIP)",
    "objective": "Pre-emptive hardening for the 8E5 (Snapdragon) crash reported after a Bahamut summon defeats its opponent. No 8E5 device exists, so the work is code-level analysis bound to the known audit findings, plus host contracts.",
@@ -5211,8 +5216,9 @@
     "tests/native/"
    ],
    "acceptance": "The suspected UAF and the abort paths are closed by construction, proven by a host contract that fails on the pre-fix code. No 8E5 device exists, so every device-side claim is written NOT_RUN and the crash is not declared fixed. The report states which audit findings it covers and which remain open. Requesting the crash log from the reporter is a separate coordinator action and is not a substitute for the code work.",
-   "checkpoint": "not yet reported",
-   "device_exclusive": "none (the RG477M belongs to the texel line)"
+   "checkpoint": "the first attempt completed the attribution reading but wrote no code; the field evidence is carried into the restart",
+   "device_exclusive": "none (the RG477M belongs to the texel line)",
+   "field_evidence": "see user_field_report_20261112: entering a new 幻兵水晶神殿 crashes most of the time, loading a 大地图 crashes occasionally"
   },
   {
    "id": "HONOR-SEED-NARROW-P1-20261112",
@@ -5278,6 +5284,36 @@
    "device_exclusive": "RG477M01445122 and, with the user permission, A42BBB5109000333",
    "status_note": "the merge preview is built and verified at ad2941b; the task is blocked on the three open implementation lines",
    "merge_note": "Cherry-pick instead of branch merge: the four lines descend from different bases (the rescue and transit lines carry their own moon/probe history, the rg477m, texel and crash lines start at db094f8), so a branch merge would drag the probe history back in. The coordinator picked the functional commits only, in this order: 07a8d44 + 221ef7b (RG477M resolution tier, pillarbox, 30 FPS declaration, device result), 4d1c98c (the warm list flush fix), ede7790 (the seed distribution path), b0db957 + 056159d (the effect line reports), 6b18120 (event targeted retirement plus the warm-up throttle), 97d1a4f + 585bf28 (the metrics tool and the merge list). All eight picked cleanly, no conflict."
+  },
+  {
+   "id": "BIGMAP-LOAD-20261112",
+   "role": "graphics worker",
+   "status": "in_progress",
+   "owner": "worker agent bg_15c01055-171e-4803-97a2-1468e840d97a",
+   "branch": "task/T-release-1.0.9-20261112",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/release-1.0.9-20261112",
+   "objective": "Decompose the cost of entering the 大地图 with the retained device logs, answer whether the second entry is still slow (which tests the warm list flush hypothesis), and specify the measurable expectation for 1.0.9. The reporter believes it is shader loading.",
+   "inputs": [
+    ".local/rescue-1.0.7-20261112/device/guest_boot-16129-warm-off.log (pid 16129, 126 windows)",
+    ".local/rescue-1.0.7-20261112/device/codex-frame-11545.csv (16740 frames, long route with the 大地图 walk)",
+    "scripts/graphics/analyze_stalls.py --perf-log",
+    ".local/tools/analyze_frames.py"
+   ],
+   "outputs": [
+    "coordination/results/BIGMAP-LOAD-20261112.md",
+    "coordination/results/BIGMAP-LOAD-20261112-OSS-NOTES.md",
+    "minimal marker gated scene switch metrics if the existing counters cannot separate the first entry from the later ones"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp (statistics and logging only)",
+    "scripts/graphics/",
+    "coordination/results/"
+   ],
+   "acceptance": "The first entry into the 大地图 and a later entry are separated with numbers, and the cost is split between shader loading, pipeline creation, submit blocking and the rest. The claim \"the A class flush defect makes every 大地图 entry rebuild the pipelines\" is either proven or refuted with data. The engine counters that would be needed on the device are specified, and the new metric does not change the main NVN PERF v=1 line so the baseline stays comparable. No device is touched.",
+   "checkpoint": "just dispatched",
+   "device_exclusive": "none (offline analysis on the retained logs)"
   }
  ],
  "blockers": [
@@ -7373,7 +7409,7 @@
   "observed_at": "2026-11-12T23:40:00.798140+08:00",
   "branch": "task/T-release-1.0.9-20261112",
   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/release-1.0.9-20261112",
-  "head": "ad2941b",
+  "head": "17c3de7",
   "method": "cherry-pick of the functional commits only; the branch topology is not a line, so a branch merge would have brought the probe history back",
   "picked": [
    {
@@ -7411,6 +7447,10 @@
    {
     "commit": "585bf28",
     "what": "the merge point list"
+   },
+   {
+    "commit": "463f508",
+    "what": "the readback targeted retirement (xbg_readback_retire.h, the gfx-readback-retire marker, the contract and the self-proof)"
    }
   ],
   "conflict_review": "no cherry-pick reported a conflict. The two lines that touch the same functions were checked by hand: perf_frame() keeps both the pipeline cache throttle and the new xbg_warm_flush::due branch, and the warm namespace keeps both the flush path and the transit budget markers. The symbol counts in the merged file were verified.",
@@ -7418,7 +7458,8 @@
    "scripts/verify_host.py": "19/19 steps passed, exit 0",
    "scripts/runtime/selfproof_xbg_event_retire.sh": "baseline_exit=0 mutated_exit=1, green",
    "tests/graphics/test_warm_flush_contract.cpp": "all checks passed, exit 0",
-   "python3 -m unittest tests.installer.test_package_honor_portable": "12 tests, OK"
+   "python3 -m unittest tests.installer.test_package_honor_portable": "12 tests, OK",
+   "scripts/runtime/selfproof_xbg_readback_retire.sh": "baseline_exit=0, both mutations red, green"
   },
   "build": {
    "command": "bash scripts/android/build_game_window_apk.sh",
@@ -7432,11 +7473,58 @@
    "device": "NOT installed on either device. The RG477M belongs to the texel line, and the guest would die on the Mali FATAL anyway."
   },
   "not_yet_in": [
-   "the readback targeted retirement (the transit line, in progress)",
-   "the Mali formatless-write FATAL fix (the texel line, in progress)",
-   "the battle-settle crash P0 hardening (the crash line, in progress)",
+   "the Mali formatless-write FATAL fix (the texel line, restarted)",
+   "the battle-settle and temple scene-switch crash P0 hardening (the crash line, restarted)",
+   "the 大地图 load cost decomposition (the bigmap line, just dispatched)",
    "the seed narrowing P1 (deferred, no device)"
   ],
   "risk": "the merged engine file carries three independent edits to src/graphics/nvn_vulkan/engine/xbg_game.cpp; the host contracts prove the rules hold, but only a real device run can prove the three edits do not interact on the GPU path."
+ },
+ "user_field_report_20261112": {
+  "observed_at": "2026-11-12T23:46:49.520204+08:00",
+  "source": "the user forwarded a chat screenshot from the tester 三季人, running the 1.0.7 internal team package on the Honor tablet",
+  "items": [
+   {
+    "id": "F1",
+    "text": "目前卡顿的地方主要还是大地图，每次进入大地图得卡一小会，可能是加载着色器，之后也就流畅了。其他的像城镇内、副本内都很流畅。",
+    "owner": "BIGMAP-LOAD-20261112",
+    "interpretation": "the scene switch into the 大地图 costs a short hitch every time, the reporter suspects shader loading. The 4.5-4.8 s cold frame that spends about 133 ms per frame outside every engine counter is still unexplained, so this is a live hypothesis, not a proven cause."
+   },
+   {
+    "id": "F2",
+    "text": "每次加载大地图都需要卡一会，有小概率闪退。",
+    "owner": "CRASH-P0-BATTLE-SETTLE-20261112",
+    "interpretation": "a low frequency crash on the same 大地图 load path. Both F1 and F2 are scene switches, which is the documented trigger condition of the audit P0-1 (FinalizeEvent x WaitEvent UAF)."
+   },
+   {
+    "id": "F3",
+    "text": "还有就是进入新的幻兵水晶神殿大概率闪退，但是没啥问题，因为自动存档会存神殿里面，再重新进游戏读这个档就可以了，直接在神殿内。",
+    "owner": "CRASH-P0-BATTLE-SETTLE-20261112",
+    "interpretation": "a high frequency crash when entering a new temple. The automatic save lets the player reload inside the temple, which works around the crash but does not fix it. This is now the primary reproduction scenario for the crash line."
+   }
+  ],
+  "notable": "the reported crashes are NOT the 8E5 phone. They are on the Honor tablet with 1.0.7, which means the scene switch crash path can be reproduced on a device the project can reach, unlike the 8E5 report. This raises the priority of the crash line and makes a real device acceptance possible once the tablet is released to the project.",
+  "requested_from_the_tester": [
+   "engine.log.fatal full text at the moment of the crash",
+   "adb logcat -b crash -d tombstone",
+   "the crash type (SIGSEGV / abort / ANR)",
+   "whether the crash happens on entering the temple or in the first battle inside it",
+   "the version and the APK source"
+  ]
+ },
+ "worker_restart_20261112": {
+  "observed_at": "2026-11-12T23:46:49.520204+08:00",
+  "cause": "net::ERR_NETWORK_CHANGED interrupted two child agents at the same moment; it is a network event, not a logic failure",
+  "affected": [
+   "bg_5cdcb608 (Mali formatless-write FATAL)",
+   "bg_c4b2d1d1 (battle settle crash P0)"
+  ],
+  "damage": "no code was written in either worktree; both worktrees are still clean at their base commits",
+  "mitigation": "both lines were restarted with the conclusions of the interrupted runs written into the new prompts, so the analysis is not repeated. Both new prompts require the attribution and the plan to be committed to a file within the first ten minutes, and a commit after every atomic change, so a second network event cannot destroy the work again.",
+  "restarts": {
+   "Mali": "bg_f7ac5178-30a6-4e24-8587-f9455b035244",
+   "crash P0": "bg_dbfd2130-fa4f-45e0-a196-fe66b3e7bcac",
+   "bigmap": "bg_15c01055-171e-4803-97a2-1468e840d97a"
+  }
  }
 }
