@@ -1934,6 +1934,9 @@ void resolve_slot_writebacks(const void *slot){
         writeback_bytes+=w.bytes;w.buffer.invalidate();invalidate_cpu_range(w.addr,w.bytes);memcpy(reinterpret_cast<void*>(w.addr),w.buffer.mapped,w.bytes);}
     pending_writebacks.swap(keep);resolving_pending=false;
 }
+// Diagnostic only (marker gfx-report-trace = 1): log every counter/timestamp report when the guest
+// asks for it and when the engine publishes it, so the latency and the published value can be checked.
+bool report_trace=false;
 void write_report(const PendingReport &r){
     uint64_t samples=0;auto e=epochs.find(r.epoch);if(e!=epochs.end()){e->second.advance_known();samples=e->second.prefix(r.count);}
     uint64_t value=r.ts_value;if(timestamp_bits<64)value&=(uint64_t(1)<<timestamp_bits)-1;
@@ -1949,6 +1952,7 @@ void write_report(const PendingReport &r){
         ++samples_reports;samples_reported+=reported_samples;
     }
     NVNcounterData result{};result.counter=r.type==NVN_COUNTER_TYPE_SAMPLES_PASSED?reported_samples:0;result.timestamp=uint64_t(double(value)*properties.limits.timestampPeriod*12.0/625.0);
+    if(report_trace)xbg_logf("REPORT_PUB fr=%llu addr=%#llx type=%llu ts_value=%llu counter=%llu ts=%llu epoch=%llu count=%zu ts_period=%.6f",(unsigned long long)stats.presents.load(),(unsigned long long)r.addr,(unsigned long long)r.type,(unsigned long long)r.ts_value,(unsigned long long)reported_samples,(unsigned long long)result.timestamp,(unsigned long long)r.epoch,r.count,properties.limits.timestampPeriod);
     snapshot_invalidate(r.addr,sizeof(result));evguard::EngineRead er(reinterpret_cast<void*>(r.addr),sizeof(result));memcpy(reinterpret_cast<void*>(r.addr),&result,sizeof(result));
 }
 // Reports whose timestamp and samples are all known are written in order.
@@ -5698,7 +5702,23 @@ bool gpu_draw_indexed(const p_draw_idx &a){
     p_draw_idx indexed{};indexed.prim=a.prim;indexed.itype=a.itype;indexed.count=int32_t(row.index_count);indexed.ibuf=a.ibuf;
     draw(a.prim,0,int(row.index_count),&indexed,0,0,&args);return true;
 }
+// Diagnostic only (marker gfx-draw-param-trace = 1): log every indexed draw with its full
+// guest parameters and its ordinal inside the frame. Used to tell a duplicated command from a
+// genuinely different command when the per-frame draw count is periodic.
+bool draw_param_trace=false;
+
+void trace_draw_params(const p_draw_idx &a){
+    static uint64_t last_fr=~0ull;static unsigned ord=0;
+    uint64_t fr=stats.presents.load();
+    if(fr!=last_fr){last_fr=fr;ord=0;}
+    xbg_logf("DRAWPARAM fr=%llu ord=%u vs=%s fs=%s prim=%d itype=%d count=%d inst=%d bv=%d bi=%d ibuf=%#llx ind=%#llx mdi=%llu",
+        (unsigned long long)fr, ord++,
+        state.shader[0]?state.shader[0]->key.c_str():"none", state.shader[4]?state.shader[4]->key.c_str():"none",
+        a.prim, a.itype, a.count, a.instances, a.base_vertex, a.base_instance,
+        (unsigned long long)a.ibuf, (unsigned long long)a.ind, (unsigned long long)a.mdi_cnt);
+}
 void execute_draw_index_record(const p_draw_idx &a){preflight_cpu_reads();
+    if(draw_param_trace)trace_draw_params(a);
     uint64_t fr = stats.presents.load();
     if (fr >= 605 && fr <= 615 && a.ind) {
         static uint64_t last_fr = 0;
@@ -5950,6 +5970,7 @@ void execute(const uint8_t *pc,unsigned depth,uint64_t &budget){
                 timestamp_query(r.ts,r.ts_index,r.slot);
                 Slot &ts=recording_slot();++ts.ops;++perf.ops;vkCmdWriteTimestamp(ts.cmd,ts_stage,r.ts,r.ts_index);
             }else{Commands c;timestamp_query(r.ts,r.ts_index,r.slot);vkCmdWriteTimestamp(c.command,ts_stage,r.ts,r.ts_index);c.finish();}
+            if(report_trace)xbg_logf("REPORT_REQ fr=%llu addr=%#llx type=%llu epoch=%llu count=%zu ts_top=%d ts_bottom=%d ts_samples=%d",(unsigned long long)stats.presents.load(),(unsigned long long)addr,(unsigned long long)type,(unsigned long long)r.epoch,r.count,int(is_ts_top),int(is_ts_bottom),int(is_samples));
             pending_reports.push_back(r);break;}
         default:xbg_fatalf("NVN opcode %u at %#llx not implemented",h.op,(unsigned long long)uintptr_t(pc));
         }
@@ -6114,7 +6135,7 @@ extern "C" int xbg_game_initialize(const xbg_game_config *c,char *error,size_t b
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *f=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-owned-input-copy").c_str(),"rb");owned_input_copy_enabled=true;if(f){owned_input_copy_enabled=fgetc(f)!='0';fclose(f);}xbg_logf("NVN owned indexed input copy=%d",int(owned_input_copy_enabled));}
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *f=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-clear-overwrite-probe").c_str(),"rb");clear_overwrite_probe=false;if(f){clear_overwrite_probe=fgetc(f)=='1';fclose(f);}xbg_logf("NVN temporary clear-overwrite diagnostic=%d",int(clear_overwrite_probe));}
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *f=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-texture-lifecycle").c_str(),"rb");texture_lifecycle_enabled=true;if(f){texture_lifecycle_enabled=fgetc(f)!='0';fclose(f);}xbg_logf("NVN texture lifecycle retirement=%d",int(texture_lifecycle_enabled));}
-    {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');std::string base=cut==std::string::npos?dir:dir.substr(0,cut);FILE *g=fopen((base+"/gfx-indexed-resident").c_str(),"rb");gpu_indexed_enabled=true;gpu_indexed_draws=0;if(g){gpu_indexed_enabled=fgetc(g)!='0';fclose(g);}FILE *m=fopen((base+"/gfx-indirect-proof").c_str(),"rb");indirect_diag_enabled=false;indirect_proof_checks=indirect_proof_mismatches=0;if(m){indirect_diag_enabled=fgetc(m)=='1';fclose(m);}indirect_proof_enabled=gpu_indexed_enabled || indirect_diag_enabled;xbg_logf("NVN indirect-template proof=%d GPU-indexed-resident=%d",int(indirect_proof_enabled),int(gpu_indexed_enabled));}
+    {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');std::string base=cut==std::string::npos?dir:dir.substr(0,cut);FILE *g=fopen((base+"/gfx-indexed-resident").c_str(),"rb");gpu_indexed_enabled=true;gpu_indexed_draws=0;if(g){gpu_indexed_enabled=fgetc(g)!='0';fclose(g);}FILE *m=fopen((base+"/gfx-indirect-proof").c_str(),"rb");indirect_diag_enabled=false;indirect_proof_checks=indirect_proof_mismatches=0;if(m){indirect_diag_enabled=fgetc(m)=='1';fclose(m);}indirect_proof_enabled=gpu_indexed_enabled || indirect_diag_enabled;FILE *dp=fopen((base+"/gfx-draw-param-trace").c_str(),"rb");draw_param_trace=false;if(dp){draw_param_trace=fgetc(dp)=='1';fclose(dp);}FILE *rt=fopen((base+"/gfx-report-trace").c_str(),"rb");report_trace=false;if(rt){report_trace=fgetc(rt)=='1';fclose(rt);}xbg_logf("NVN indirect-template proof=%d GPU-indexed-resident=%d draw-param-trace=%d",int(indirect_proof_enabled),int(gpu_indexed_enabled),int(draw_param_trace));}
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-attachment-barrier").c_str(),"rb");attachment_barrier_enabled=true;attachment_barriers_deferred=0;if(m){attachment_barrier_enabled=fgetc(m)!='0';fclose(m);}xbg_logf("NVN attachment-only barrier defer=%d",int(attachment_barrier_enabled));}
     if(const char *mode=getenv("DM_GFX_COMPLETION_WAIT")){if(!strcmp(mode,"0"))completion_wait_enabled=false;else if(!strcmp(mode,"1"))completion_wait_enabled=true;}
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-legacy-waitall").c_str(),"rb");if(m){legacy_waitall=fgetc(m)=='1';fclose(m);}
