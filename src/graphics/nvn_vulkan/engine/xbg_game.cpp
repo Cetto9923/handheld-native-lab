@@ -42,6 +42,7 @@ extern "C" int xbg_completion_wait_selftest(char *report,size_t bytes);
 #include "xbg_capture_layout.h"
 #include "xbg_indirect_template.h"
 #include "xbg_event_retire.h"
+#include "xbg_readback_retire.h"
 #include "../nvn/nvn_cover.h"
 extern "C" {
 #include "../tex/nvn_deswizzle.h"
@@ -936,7 +937,8 @@ void log_memory_profile_counts();
 struct Perf {
     uint64_t frames=0,submits=0,waits=0,sync_writeback=0,sync_readback=0,sync_query=0,sync_other=0,gpu_ns=0,gpu_samples=0,
         submit_cpu_ns=0,present_cpu_ns=0,passes=0,draws=0,dispatches=0,snapshot_hits=0,snapshot_misses=0,pending_views=0,access_by[12]={},folded_clears=0,why_wait=0,why_poll=0,why_access=0,why_cmdwait=0,why_finish=0,why_slot=0,snapshot_bytes=0,arena_peak=0,window_start=0,ops=0,
-        render_cond_ops=0,render_cond_skips=0,render_cond_force_off=0,draws_skipped_cond=0;
+        render_cond_ops=0,render_cond_skips=0,render_cond_force_off=0,draws_skipped_cond=0,
+        readback_targeted=0,readback_no_wait=0,readback_fallback=0,readback_inflight=0,sync_drain=0;
 } perf;
 // Marker gfx-render-cond = 0 ignores the conditional render enable entirely: the draws inside a block whose condition
 // evaluated false are kept. The condition comes from a GPU-written counter, so a host-side evaluation sees a value that is
@@ -1320,6 +1322,7 @@ void perf_frame(){
      for(int i=0;i<8;i++){uintptr_t lr=evguard::callers[i].load();if(!lr)break;Dl_info li{};const char *lm="?",*ls="?";uintptr_t base=0,sym=0;
          if(dladdr(reinterpret_cast<void*>(lr),&li)){if(li.dli_fname)lm=li.dli_fname;if(li.dli_sname)ls=li.dli_sname;base=uintptr_t(li.dli_fbase);sym=uintptr_t(li.dli_saddr);}
          xbg_logf("NVN PERF evguard caller lr=%#llx %s+%#llx (%s+%#llx) hits=%llu",(unsigned long long)lr,lm,(unsigned long long)(lr-base),ls,(unsigned long long)(sym?lr-sym:0),(unsigned long long)evguard::caller_hits[i].load());}}events_deferred=0;
+    xbg_logf("NVN PERF readback targeted=%llu nowait=%llu fallback=%llu inflight=%llu drain=%llu",(unsigned long long)perf.readback_targeted,(unsigned long long)perf.readback_no_wait,(unsigned long long)perf.readback_fallback,(unsigned long long)perf.readback_inflight,(unsigned long long)perf.sync_drain);
     {static const char *site_names[SITE_COUNT]={"other","ring","present","event","arena","gpu_sync","complete","poll","legacy_wait"};
      char line[768];int at=snprintf(line,sizeof(line),"NVN PERF block_ms");
      for(int i=0;i<SITE_COUNT && at<int(sizeof(line))-40;i++)if(block_calls[i])at+=snprintf(line+at,sizeof(line)-at," %s=%.2f/%.2f",site_names[i],block_ns[i]/1e6/f,block_calls[i]/f);
@@ -1361,6 +1364,58 @@ void timestamp_query(VkQueryPool &pool,uint32_t &index,const void *&owner){
 }
 // Synchronous point: everything recorded so far has completed on the GPU.
 void gpu_sync(uint64_t &reason){++reason;SiteScope site(SITE_GPU_SYNC);submit_slots(true);}
+// The readback's copy and the buffer it writes belong to one slot: the one that was recording when they were recorded.
+// That submission owns the readback, and the guest's bytes are final when its fence has signalled.
+//
+// The engine answered a readback with submit_slots(true), which retired every submission in flight: it waited for all of
+// them and did their retirement work (descriptor release, arena reset, query fetch, writeback resolution, the guest's
+// fence publication) at the readback's point, several times a frame in the map transition. The guest asked for a range
+// of bytes, not for a queue to be empty.
+//
+// Here only the owner's fence is waited for. The other submissions stay in flight and retire later, in submission order,
+// where the ring reuses them; the guest's own wait (xbg_legacy_wait) still retires the submissions it needs, so the
+// guest's fence values are published as before.
+//
+// Marker gfx-readback-retire: 1 (the default) waits for the owner's submission, 0 answers the readback with the old
+// full drain.
+bool readback_retire_targeted=true;
+// Retire the submissions that have completed, from the oldest. The fence is checked before the retirement, so this
+// never waits: the submissions that are still in flight stay in flight, and the order of the retirements is kept.
+void retire_completed_slots(){
+    for(unsigned k=0;k<slot_count;++k){
+        Slot *op=oldest_pending();
+        if(!op)break;
+        if(vkGetFenceStatus(cfg.device,op->fence)!=VK_SUCCESS)break;   // the oldest is still in flight: the order is kept
+        retire_slot(*op);
+    }
+}
+void readback_sync(uint64_t &reason){
+    ++reason;SiteScope site(SITE_GPU_SYNC);
+    if(!readback_retire_targeted){submit_slots(true);return;}   // the old path: drain every submission in flight
+    // The owner is the slot that carries the copy: the one that is recording, or - if it was submitted in between - the
+    // newest submission. A recording slot becomes a submission here, so that it can be waited for.
+    Slot *owner=&slots[slot_index];
+    if(owner->recording)submit_slots(false);
+    else owner=&slots[prev_slot_index()];
+    bool pending[kMaxSlots]={};
+    for(unsigned k=0;k<slot_count;++k)pending[k]=slots[k].pending;
+    const XbgReadbackDecision decision=xbg_readback_decide(pending,slot_count,int(owner-slots));
+    if(decision.fallback){submit_slots(true);++perf.readback_fallback;return;}   // no owner: the old path
+    if(!decision.wait){++perf.readback_no_wait;return;}   // the owner already retired: its data is final
+    // The submissions that have completed are retired without waiting for them: their retirement work overlaps the
+    // wait for the owner, and the ones still in flight stay in flight.
+    retire_completed_slots();
+    // The wait: the fence of the submission that owns the readback, and nothing else.
+    const bool busy=vkGetFenceStatus(cfg.device,owner->fence)==VK_NOT_READY;
+    const uint64_t b0=busy?timing_clock():0;
+    VK(hybrid_wait_fence(owner->fence,std::max<uint64_t>(cfg.fence_timeout_ns,10000000000ull)));
+    if(busy){block_ns[sync_site]+=timing_clock()-b0;++block_calls[sync_site];}
+    ++perf.readback_targeted;
+    // The submissions the old path would have retired here: the ones in flight besides the owner.
+    for(unsigned k=0;k<slot_count;++k)if(pending[k]&&int(k)!=decision.owner)++perf.readback_inflight;
+    // The owner has completed, so the submissions queued before it have completed as well.
+    retire_completed_slots();
+}
 void retire_handle(std::function<void()> f){recording_slot().retire.handles.push_back(std::move(f));}
 template<class T>void retire_object(std::shared_ptr<T> p){recording_slot().retire.objects.push_back(std::move(p));}
 Buffer stream_buffer(size_t n,const void *data=nullptr,size_t copy=0,bool zero=true){
@@ -1902,7 +1957,7 @@ void capture_image(Image &im,const view_t *view,const char *role){
         region.bufferOffset=buffer.offset;vkCmdCopyImageToBuffer(command.command,im.image,im.layout,buffer.buffer,1,&region);
         VkBufferMemoryBarrier host{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};host.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;host.dstAccessMask=VK_ACCESS_HOST_READ_BIT;host.srcQueueFamilyIndex=host.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;host.buffer=buffer.buffer;host.offset=buffer.offset;host.size=buffer.size;
         vkCmdPipelineBarrier(command.command,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,0,nullptr,1,&host,0,nullptr);
-        im.transition(command.command,saved);command.finish();gpu_sync(perf.sync_readback);buffer.invalidate();
+        im.transition(command.command,saved);command.finish();readback_sync(perf.sync_readback);buffer.invalidate();
         char label[160];snprintf(label,sizeof(label),"%s-s%llu-m%u-l%u",role,(unsigned long long)im.source.serial,m,l);
         capture_log("PIXELS label=%s vk=%u aspect=%u width=%u height=%u depth=%u rowBytes=%u restoredLayout=%u",label,unsigned(im.fmt),plane,w,h,z,w*bpp,unsigned(im.layout));
         capture_data(label,buffer.mapped,size_t(bytes));
@@ -5188,7 +5243,7 @@ void copy_texture_buffer(const p_copy_b2t &request,bool to_buffer){preflight_cpu
     // pools during mip-chain loads. Bound them without changing texture contents
     // or copy order. Drain only here: get_image callers may hold live command buffers.
     if(upload_batch_bytes>=(64ull<<20)){
-        upload_batch_bytes=0;gpu_sync(perf.sync_readback);
+        upload_batch_bytes=0;++perf.sync_drain;gpu_sync(perf.sync_readback);
         for(auto &slot:active_slots()){
             poolreset::finish(slot);
             if(slot.reset_queued)VK(slot.reset_result);
@@ -5251,7 +5306,7 @@ void copy_texture_buffer(const p_copy_b2t &request,bool to_buffer){preflight_cpu
         else vkCmdCopyBufferToImage(command.command,staging.buffer,im.image,im.layout,copies.size(),copies.data());
         im.transition(command.command,VK_IMAGE_LAYOUT_GENERAL);command.finish();
         if(to_buffer){
-            gpu_sync(perf.sync_readback);staging.invalidate();invalidate_cpu_range(p.src,bytes);const uint8_t *dp=nullptr,*sp=nullptr;
+            readback_sync(perf.sync_readback);staging.invalidate();invalidate_cpu_range(p.src,bytes);const uint8_t *dp=nullptr,*sp=nullptr;
             for(auto &r:copies){if(r.imageSubresource.aspectMask==VK_IMAGE_ASPECT_DEPTH_BIT)dp=static_cast<const uint8_t*>(staging.mapped)+(r.bufferOffset-staging.offset);else sp=static_cast<const uint8_t*>(staging.mapped)+(r.bufferOffset-staging.offset);}
             size_t pixels=size_t(p.r.width)*p.r.height*p.r.depth;
             std::vector<uint8_t> d16;if(dp && p.tex->d.format==0x32 && depth16_as_d24){d16.resize(pixels*2);for(size_t i=0;i<pixels;i++){uint32_t v;memcpy(&v,dp+i*4,4);uint16_t k=uint16_t(d24_to_d16(v));memcpy(&d16[i*2],&k,2);}dp=d16.data();}
@@ -5280,7 +5335,7 @@ void copy_texture_buffer(const p_copy_b2t &request,bool to_buffer){preflight_cpu
         VkBufferImageCopy r{};r.bufferOffset=b.offset;r.imageSubresource=copy_layers(im,level,layer,p.r);r.imageOffset=copy_offset(im,p.r);r.imageExtent=copy_extent(im,p.r);
         if(to_buffer)vkCmdCopyImageToBuffer(c.command,im.image,im.layout,b.buffer,1,&r);else vkCmdCopyBufferToImage(c.command,b.buffer,im.image,im.layout,1,&r);
         im.transition(c.command,VK_IMAGE_LAYOUT_GENERAL);c.finish();
-        if(to_buffer){gpu_sync(perf.sync_readback);b.invalidate();invalidate_cpu_range(p.src,plan.guest_bytes);
+        if(to_buffer){readback_sync(perf.sync_readback);b.invalidate();invalidate_cpu_range(p.src,plan.guest_bytes);
             need(xbg_bc_copy_transfer(reinterpret_cast<void*>(p.src),plan.guest_bytes,b.mapped,plan.packed_bytes,plan,true)==0,"BC readback unpacking failed");}
         else im.gpu_written=true,provenance_write(im,__LINE__);
         {static unsigned n=0;if(n++<20)xbg_logf("NVN BC native %s format=%#x level=%u layer=%u region=%dx%dx%d bytes=%zu",to_buffer?"readback":"upload",p.tex->d.format,level,layer,p.r.width,p.r.height,p.r.depth,plan.packed_bytes);}
@@ -5338,7 +5393,7 @@ void copy_texture_buffer(const p_copy_b2t &request,bool to_buffer){preflight_cpu
         copies.push_back(r);
     }
     if(to_buffer)vkCmdCopyImageToBuffer(c.command,im.image,im.layout,b.buffer,uint32_t(copies.size()),copies.data());else vkCmdCopyBufferToImage(c.command,b.buffer,im.image,im.layout,uint32_t(copies.size()),copies.data());im.transition(c.command,VK_IMAGE_LAYOUT_GENERAL);c.finish();
-    if(to_buffer){gpu_sync(perf.sync_readback);b.invalidate();invalidate_cpu_range(p.src,n);
+    if(to_buffer){readback_sync(perf.sync_readback);b.invalidate();invalidate_cpu_range(p.src,n);
         for(int k=0;k<p.r.depth;k++)for(int y=0;y<p.r.height;y++){
             size_t off=size_t(k)*image+size_t(y)*row;
             memcpy(reinterpret_cast<uint8_t*>(p.src)+off,static_cast<const uint8_t*>(b.mapped)+size_t(k)*staging_image+size_t(y)*staging_row,size_t(p.r.width)*im.bpp);
@@ -6199,7 +6254,7 @@ extern "C" int xbg_rg16_proxy_contract(const uint32_t *vs_code,size_t vs_bytes,c
     Commands after_clear;prepare_read(im,after_clear.command);for(unsigned i=0;i<4;i++)prepare_read(im,after_clear.command);after_clear.finish();Buffer clear_read=read_image(*im.filtered);
     counts[0]=rg16_filter_proxy::refreshes-refresh0;counts[1]=rg16_filter_proxy::dispatches-dispatch0;counts[2]=im.content_version;counts[3]=im.filtered_version;
     need(counts[0]==3 && counts[1]==9 && counts[2]==counts[3],"RG16 proxy must refresh once per write sequence and all mips");
-    gpu_sync(perf.sync_readback);for(Buffer *b:{&initial_read,&final_read,&canonical_read,&result,&clear_read})b->invalidate();
+    readback_sync(perf.sync_readback);for(Buffer *b:{&initial_read,&final_read,&canonical_read,&result,&clear_read})b->invalidate();
     memcpy(initial,initial_read.mapped,words*4);memcpy(final_values,final_read.mapped,words*4);memcpy(canonical,canonical_read.mapped,words*2);memcpy(samples,result.mapped,request_count*16);memcpy(cleared,clear_read.mapped,words*4);
     vkDestroyPipeline(cfg.device,sample_pipeline,nullptr);vkDestroyPipeline(cfg.device,render_pipeline,nullptr);vkDestroyPipelineLayout(cfg.device,sample_layout,nullptr);vkDestroyPipelineLayout(cfg.device,render_layout,nullptr);
     // Descriptor sets live in the real slot pools: retire/reset them before
@@ -6323,7 +6378,7 @@ extern "C" int xbg_game_initialize(const xbg_game_config *c,char *error,size_t b
     {std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');std::string parent=cut==std::string::npos?dir:dir.substr(0,cut);FILE *m=fopen((parent+"/gfx-codex-frame-metrics").c_str(),"rb");bool enabled=false;if(m){enabled=fgetc(m)=='1';fclose(m);}if(enabled){std::string path=parent+"/codex-frame-"+std::to_string(getpid())+".csv";int fd=open(path.c_str(),O_WRONLY|O_CREAT|O_EXCL|O_CLOEXEC,0644);if(fd>=0){frame_trace.file=fdopen(fd,"wb");if(!frame_trace.file)close(fd);else{setvbuf(frame_trace.file,nullptr,_IOFBF,65536);fputs("frame,monotonic_ns,texture_serial,image_writer,draws,dispatches,submissions,present_result\n",frame_trace.file);xbg_logf("CODEX_FRAME metrics path=%s maxRows=120000 flushEvery=60",path.c_str());}}}}
     {std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');std::string marker=(cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-codex-gpu-step";FILE *m=fopen(marker.c_str(),"rb");codex_gpu_step=false;if(m){codex_gpu_step=fgetc(m)=='1';fclose(m);}xbg_logf("CODEX_GPU step diagnosis=%d",int(codex_gpu_step));}
     {std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');std::string marker=(cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-sync-mode";FILE *m=fopen(marker.c_str(),"rb");sync_mode=false;if(m){sync_mode=fgetc(m)=='1';fclose(m);}}
-     {std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-defer-events").c_str(),"rb");defer_events=0;if(m){int c=fgetc(m);defer_events=c=='1'?1:c=='2'?2:0;fclose(m);}else if(const char *e=getenv("DM_GFX_DEFER_EVENTS")){int v=atoi(e);defer_events=v==1?1:v==2?2:0;}xbg_logf("NVN defer events=%d (marker gfx-defer-events)",int(defer_events));{FILE *r=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-event-retire").c_str(),"rb");event_retire_targeted=true;if(r){event_retire_targeted=fgetc(r)!=0x30;fclose(r);}xbg_logf("NVN event retirement targeted=%d (marker gfx-event-retire)",int(event_retire_targeted));}{FILE *eg=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-event-guard").c_str(),"rb");evguard::enabled=eg!=nullptr;if(eg)fclose(eg);if(evguard::enabled)xbg_logf("NVN event guard on (marker gfx-event-guard)");}{FILE *v=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-vcache").c_str(),"rb");vcache::enabled=false;if(v){vcache::enabled=fgetc(v)!='0';fclose(v);}else if(const char *e=getenv("DM_GFX_VCACHE"))vcache::enabled=atoi(e)!=0;xbg_logf("NVN vertex/index cross-frame cache=%d tracker=%d (marker gfx-vcache)",int(vcache::enabled),int(nvn_dirty_since!=nullptr));}
+     {std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-defer-events").c_str(),"rb");defer_events=0;if(m){int c=fgetc(m);defer_events=c=='1'?1:c=='2'?2:0;fclose(m);}else if(const char *e=getenv("DM_GFX_DEFER_EVENTS")){int v=atoi(e);defer_events=v==1?1:v==2?2:0;}xbg_logf("NVN defer events=%d (marker gfx-defer-events)",int(defer_events));{FILE *r=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-event-retire").c_str(),"rb");event_retire_targeted=true;if(r){event_retire_targeted=fgetc(r)!=0x30;fclose(r);}xbg_logf("NVN event retirement targeted=%d (marker gfx-event-retire)",int(event_retire_targeted));}{FILE *rb=fopen(((cut==std::string::npos?dir:dir)+"/gfx-readback-retire").c_str(),"rb");readback_retire_targeted=true;if(rb){readback_retire_targeted=fgetc(rb)!=0x30;fclose(rb);}xbg_logf("NVN readback retirement targeted=%d (marker gfx-readback-retire)",int(readback_retire_targeted));}{FILE *eg=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-event-guard").c_str(),"rb");evguard::enabled=eg!=nullptr;if(eg)fclose(eg);if(evguard::enabled)xbg_logf("NVN event guard on (marker gfx-event-guard)");}{FILE *v=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-vcache").c_str(),"rb");vcache::enabled=false;if(v){vcache::enabled=fgetc(v)!='0';fclose(v);}else if(const char *e=getenv("DM_GFX_VCACHE"))vcache::enabled=atoi(e)!=0;xbg_logf("NVN vertex/index cross-frame cache=%d tracker=%d (marker gfx-vcache)",int(vcache::enabled),int(nvn_dirty_since!=nullptr));}
      {FILE *v=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-tex-dirty").c_str(),"rb");tex_dirty=false;if(v){tex_dirty=fgetc(v)!='0';fclose(v);}else if(const char *e=getenv("DM_GFX_TEX_DIRTY"))tex_dirty=atoi(e)!=0;
       xbg_logf("NVN texture checks through the dirty tracker=%d (marker gfx-tex-dirty)",int(tex_dirty));}{FILE *b=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-native-bc").c_str(),"rb");native_bc=false;if(b){native_bc=fgetc(b)!='0';fclose(b);}else if(const char *e=getenv("DM_GFX_NATIVE_BC"))native_bc=atoi(e)!=0;xbg_logf("NVN native BC textures=%d (marker gfx-native-bc)",int(native_bc));}
      {FILE *b=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-noload").c_str(),"rb");noload_enabled=false;if(b){noload_enabled=fgetc(b)!='0';fclose(b);}else if(const char *e=getenv("DM_GFX_NOLOAD"))noload_enabled=atoi(e)!=0;xbg_logf("NVN proven full-overwrite first draws skip the color load=%d (marker gfx-noload; A/B target noload)",int(noload_enabled));}{FILE *q=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-bright").c_str(),"rb");bright::enabled=true;if(q){bright::enabled=fgetc(q)!='0';fclose(q);}else if(const char *e=getenv("DM_GFX_BRIGHT"))bright::enabled=atoi(e)!=0;xbg_logf("NVN 3D brightening=%d (marker gfx-bright; A/B target bright)",int(bright::enabled));}{FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-perf-sample").c_str(),"rb");perf_sample=32;if(m){if(fscanf(m,"%u",&perf_sample)!=1)perf_sample=32;fclose(m);}else if(const char *e=getenv("DM_GFX_PERF_SAMPLE"))perf_sample=unsigned(atoi(e));perf_frame_timed=perf_sample!=0;perf_timed_frames=0;xbg_logf("NVN perf timing every %u frames (marker gfx-perf-sample; 0 = off)",perf_sample);}}

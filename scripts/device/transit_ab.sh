@@ -2,9 +2,12 @@
 # The paired A/B of the map transition: the same save, the same path, the same operation, one arm at a time.
 #
 #   arms:
+#     rb-drain      gfx-readback-retire=0  (the old full drain at every readback: the reference)
+#     rb-target     gfx-readback-retire=1  (the readback waits for the submission that owns it)
 #     defer0        gfx-defer-events=0, gfx-event-retire=1   (no deferral: the reference)
 #     defer1-drain  gfx-defer-events=1, gfx-event-retire=0   (deferral with the old full drain at the read point)
 #     defer1-target gfx-defer-events=1, gfx-event-retire=1   (deferral with the retirement of the event's own submission)
+#     warm-plain / warm-off / warm-budget   the warm-up's share of the driver
 #
 # The path file is a list of steps, one per line:
 #   key KEYCODE [--duration MS]   a gamepad press through the game's own input path
@@ -31,7 +34,7 @@ FILES="/sdcard/Android/data/${PACKAGE}/files"
 
 PATH_FILE=""
 OUT_DIR=""
-ARMS="defer0,defer1-drain,defer1-target"
+ARMS="rb-drain,rb-target"
 WARM=0
 
 while [[ $# -gt 0 ]]; do
@@ -87,18 +90,21 @@ remove_marker() {
 apply_arm() {
     local arm="$1"
     case "${arm}" in
-        defer0)        set_marker gfx-defer-events 0; set_marker gfx-event-retire 1;;
-        defer1-drain)  set_marker gfx-defer-events 1; set_marker gfx-event-retire 0;;
-        defer1-target) set_marker gfx-defer-events 1; set_marker gfx-event-retire 1;;
+        defer0)        set_marker gfx-defer-events 0; set_marker gfx-event-retire 1; set_marker gfx-readback-retire 1;;
+        defer1-drain)  set_marker gfx-defer-events 1; set_marker gfx-event-retire 0; set_marker gfx-readback-retire 1;;
+        defer1-target) set_marker gfx-defer-events 1; set_marker gfx-event-retire 1; set_marker gfx-readback-retire 1;;
+        # The readback arms: the retirement of the submission that owns the readback, or the old full drain.
+        rb-drain)      set_marker gfx-defer-events 0; set_marker gfx-event-retire 1; set_marker gfx-readback-retire 0;;
+        rb-target)     set_marker gfx-defer-events 0; set_marker gfx-event-retire 1; set_marker gfx-readback-retire 1;;
         # The warm-up arms: the list prewarm on (the shipped behaviour), off, or paced.
-        warm-off)      set_marker gfx-defer-events 0; set_marker gfx-event-retire 1
+        warm-off)      set_marker gfx-defer-events 0; set_marker gfx-event-retire 1; set_marker gfx-readback-retire 1
                       adb -s "${DEVICE}" shell "touch ${FILES}/gfx-no-warm" >/dev/null
                       remove_marker gfx-warm-budget; remove_marker gfx-warm-interval;;
-        warm-budget)   set_marker gfx-defer-events 0; set_marker gfx-event-retire 1
+        warm-budget)   set_marker gfx-defer-events 0; set_marker gfx-event-retire 1; set_marker gfx-readback-retire 1
                       remove_marker gfx-no-warm
                       set_marker gfx-warm-budget "${FFRS_WARM_BUDGET:-4}"
                       set_marker gfx-warm-interval "${FFRS_WARM_INTERVAL:-0}";;
-        warm-plain)    set_marker gfx-defer-events 0; set_marker gfx-event-retire 1
+        warm-plain)    set_marker gfx-defer-events 0; set_marker gfx-event-retire 1; set_marker gfx-readback-retire 1
                       remove_marker gfx-no-warm; remove_marker gfx-warm-budget; remove_marker gfx-warm-interval;;
         *) echo "unknown arm: ${arm}" >&2; return 1;;
     esac
@@ -218,11 +224,20 @@ for arm in ${ARMS//,/ }; do
     if [[ -n "${start_ns}" && -n "${end_ns}" ]]; then
         python3 scripts/graphics/analyze_stalls.py "${OUT_DIR}/${arm}-${phase}-frame.csv" --start-ns "${start_ns}" --end-ns "${end_ns}" --json "${OUT_DIR}/${arm}-${phase}-transition-stalls.json" > /dev/null 2>&1 || true
     fi
-    # The engine's own counters for the same run: the deferral, the warm-up, and the first perf windows.
-    grep -E "NVN PERF events defer=|NVN PERF block_ms|NVN defer events=|NVN event retirement|NVN warm throttle|NVN warm list=|NVN warm list seeded" "${OUT_DIR}/${arm}-${phase}-guest_boot.log" > "${OUT_DIR}/${arm}-${phase}-perf.txt" 2>/dev/null || true
+    # The engine's own counters for the same run: the deferral, the warm-up, the readback retirement, and the perf
+    # windows of the run (the slow windows against the fast ones, with the fixed baseline in the analyzer).
+    grep -E "NVN PERF events defer=|NVN PERF block_ms|NVN PERF readback|NVN defer events=|NVN event retirement|NVN readback retirement|NVN warm throttle|NVN warm list=|NVN warm list seeded" "${OUT_DIR}/${arm}-${phase}-guest_boot.log" > "${OUT_DIR}/${arm}-${phase}-perf.txt" 2>/dev/null || true
+    python3 scripts/graphics/analyze_stalls.py --perf-log "${OUT_DIR}/${arm}-${phase}-guest_boot.log" --json "${OUT_DIR}/${arm}-${phase}-perf-windows.json" > "${OUT_DIR}/${arm}-${phase}-perf-windows.txt" 2>&1 || true
+    sed -n '/^counters/,/^slowest/p' "${OUT_DIR}/${arm}-${phase}-perf-windows.txt" 2>/dev/null | head -8 || true
     grep -E "NVN PERF v=1" "${OUT_DIR}/${arm}-${phase}-guest_boot.log" | head -4 | cut -c1-200 >> "${OUT_DIR}/${arm}-${phase}-perf.txt" 2>/dev/null || true
     tail -8 "${OUT_DIR}/${arm}-${phase}-perf.txt" 2>/dev/null || true
     summary "${arm}" "${phase}"
 done
 
+# The markers are restored to the shipped defaults: the engine reads them at its start, so removing them is the
+# state the device was in before the run.
+for marker in gfx-defer-events gfx-event-retire gfx-readback-retire gfx-warm-budget gfx-warm-interval gfx-no-warm; do
+    remove_marker "${marker}"
+done
+echo "the markers were removed again: the device is back at the shipped defaults"
 echo "summary in ${OUT_DIR}/summary.txt"
