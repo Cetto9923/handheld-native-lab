@@ -969,10 +969,19 @@ std::string read_tag(){
     while(!s.empty()&&(s.back()=='\n'||s.back()=='\r'||s.back()==' '))s.pop_back();
     return s;
 }
+uint64_t mtime_ns(const struct stat &st){
+#if defined(__APPLE__)
+    return uint64_t(st.st_mtimespec.tv_sec)*1000000000ull+uint64_t(st.st_mtimespec.tv_nsec);
+#else
+    return uint64_t(st.st_mtime)*1000000000ull+uint64_t(st.st_mtim.tv_nsec);
+#endif
+}
 void init(const std::string &base){
     tag_path=base+"/gfx-scene-tag";
     struct stat st{};if(stat(tag_path.c_str(),&st)!=0)return;
     enabled=true;
+    // the tag file that is already there when the app starts is not an entry: only a later write counts
+    {struct stat st{};if(stat(tag_path.c_str(),&st)==0)tag_mtime=mtime_ns(st);}
     {FILE *f=fopen((base+"/gfx-scene-stall-ms").c_str(),"rb");if(f){unsigned v=0;if(fscanf(f,"%u",&v)!=1)v=0;fclose(f);if(v)stall_ms=v;}}
     xbg_logf("NVN scene marker=1 tag_file=%s stall_ms=%llu",tag_path.c_str(),(unsigned long long)stall_ms);
 }
@@ -998,7 +1007,12 @@ void frame(uint64_t now){
     // The tag file: every write of it is one entry into that scene.
     struct stat st{};
     if(stat(tag_path.c_str(),&st)==0){
-        const uint64_t mtime=uint64_t(st.st_mtime)*1000000000ull+uint64_t(st.st_mtim.tv_nsec);
+        // the modification time of the tag file: every write of it counts as one entry into the scene
+#if defined(__APPLE__)
+        const uint64_t mtime=uint64_t(st.st_mtimespec.tv_sec)*1000000000ull+uint64_t(st.st_mtimespec.tv_nsec);
+#else
+        const uint64_t mtime=mtime_ns(st);
+#endif
         if(mtime!=tag_mtime){
             tag_mtime=mtime;
             const std::string label=read_tag();
