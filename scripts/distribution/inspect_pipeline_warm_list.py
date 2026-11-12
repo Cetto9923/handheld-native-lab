@@ -21,20 +21,22 @@ def module_id(key):
     return value | (1 << 63)
 
 
-def archive_keys(path):
-    size = path.stat().st_size
-    with path.open('rb') as f:
-        header = f.read(16)
-        if len(header) != 16:
-            raise ValueError('short archive header')
-        magic, count, reserved = struct.unpack('<8sII', header)
-        if magic != b'HNLXGS1\0' or reserved or not 0 < count <= 1000000:
-            raise ValueError('invalid archive header')
-        if 16 + count * 32 > size:
-            raise ValueError('archive index exceeds file')
-        table = f.read(count * 32)
-        if len(table) != count * 32:
-            raise ValueError('truncated archive index')
+def archive_keys_from_file(handle, size):
+    """Read the archive index from an open handle of a known size.
+
+    The payload is never read: only the header and the key table are.
+    """
+    header = handle.read(16)
+    if len(header) != 16:
+        raise ValueError('short archive header')
+    magic, count, reserved = struct.unpack('<8sII', header)
+    if magic != b'HNLXGS1\0' or reserved or not 0 < count <= 1000000:
+        raise ValueError('invalid archive header')
+    if 16 + count * 32 > size:
+        raise ValueError('archive index exceeds file')
+    table = handle.read(count * 32)
+    if len(table) != count * 32:
+        raise ValueError('truncated archive index')
     result = set()
     previous = ''
     end = 16 + count * 32
@@ -51,6 +53,12 @@ def archive_keys(path):
     if end != size:
         raise ValueError('archive extent mismatch')
     return result
+
+
+def archive_keys(path):
+    size = path.stat().st_size
+    with path.open('rb') as f:
+        return archive_keys_from_file(f, size)
 
 
 def shader_source_key(identity):
