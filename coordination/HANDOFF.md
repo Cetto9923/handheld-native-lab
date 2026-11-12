@@ -3918,3 +3918,36 @@ User transferred execution to Codex. Source 0444c81 plus Antigravity staged/unst
 **证据**：`.local/wm-perf-20261112/release-1.0.7/`（title/menu/cheat 截图 + 预热列表副本），`.local/release-1.0.7/`（APK + sha256）。
 
 **未声称**：特效卡顿已修复、完整游戏兼容、60 FPS、独立 QA、人耳音频。
+
+## 2026-11-13 战斗结算闪退修复 + 大地图「更卡」归因（Honor 平板，总控直做）
+
+**触发**：用户把平板交回并授权，现场报三件事：读 02 存档进大地图超级慢、这个版本比之前更卡、战斗结算画面闪退。
+
+**崩溃（1.0.9 回归，已修）**
+
+- 签名：`FATAL: Typed storage image format does not match the bound view format`（设备 `engine.log.fatal` 71 B；进程已死，logcat crash buffer 无 tombstone，是 `xbg_fatalf` 主动 abort）。
+- 根因：Mali typed storage 线（`62459f0` / `0125c05`）新增的「声明格式必须等于绑定 view 格式」严格检查，**误杀了游戏自己声明为 typed 的 storage image**。
+- 证据模块 `c11e2f23ff063e85`（compute stage 5，从 NAS 上 `FFRS-data.zip` 的 `FFRS/romfs/shaders/` 解出，`spirv-dis` 可读）：binding 47 声明 3D `Rg32ui`、binding 59 声明 3D `Rgba32ui`，包标志 `flessW=0`（游戏声明它们不是 formatless write），因此 guest 绑定的是它自己的 NVN view 格式。NVN 不要求这与 Vulkan view 格式拼写一致。1.0.7 的同一分支没有这条检查。
+- 修法（`89386a8`）：新增 `Shader::typed_storage_rewritten`，只记录**引擎自己改写**过的 binding；严格匹配只对这些生效。判定规则下沉到头文件 `xbg_typed_storage_requires_match(rewritten, declared, bound)`，引擎与宿主测试共用一条。
+- 自证：新增 fixture `tests/device/typed_storage_game_declared.spvasm` + 契约用例，接进 `verify_host.py`；**变异测试**把规则改回旧写法后 `typed-storage-contract` 变红（非恒真）；`verify_host` 30 步全绿，唯一红仍是 `module-load-info`（本 worktree 无解包游戏本体，修复前后一致）。
+- 设备：修复包 sha256 `cc5bb6be78238e2124a5e01f332eebdf82e9423126a024fa7f4e73f3298e068a`，`install -r` 覆盖 1.0.9/code 9（未卸载、存档保留）。同路线 `>50ms` 帧 66→56、`>200ms` 帧 17→12、进大地图段卡顿总量 8932ms→3769ms。
+- **未声称**：崩溃已在平板复现验证（还没走到战斗结算那一幕）。
+
+**大地图「更卡」归因**
+
+- 1.0.9 每帧 draw 数涨到 **784**，1.0.7 同路线稳在 **44**；资源量相近（texture_serial 两版都 232、images 1096 vs 1088、pipelines 151 vs 422），构建 marker 两版一致。
+- **不是引擎多画**：1.0.7 的回落是**游戏自己**降的载 —— 其 W92/W93 窗口 fps 15.86、submit_cpu_ms 从 15.79 涨到 37.73、draws 降到 25，而 passes 恒为 23。1.0.9 全程 fps 28.6–30.3、submit_cpu_ms 16–18.6，**游戏的降载判据一次都没触发**，绘制量遂膨胀。
+- **撤回的归因**：最初写成「1.0.9 干活量是 1.0.7 的 3.5 倍＝引擎回归」，核对后推翻并显式撤回（见报告 §3.5 口径核对）。
+- **仍未认领**：引擎侧 `submit_cpu_ms` 从 1.0.7 稳态 10.4 ms 涨到 1.0.9 的 16.8 ms（+61%）—— 这才是让游戏判据失灵的源头，本轮未归因。**不得宣称大地图卡顿已解决。**
+
+**顺手修掉的两个测量缺陷（使早期数据作废）**
+
+- `scene::init` 在启动时 `stat(gfx-scene-tag)`，文件不存在即 return，测量永不启用。R1–R3 都是启动 45 秒后才写标记 ⇒ 三轮场景数据全部为空。正确写法：**先写标记再启动 App**，切换时再重写一次（mtime 变化＝一次入场）。
+- `xbg_game.cpp` stall 行的格式串有 **7 个浮点转换但只传了 6 个浮点实参**（`slow_ms` 以整数传给 `%.1f` 位），AArch64 下变参整型/浮点分属不同寄存器组 ⇒ 从该位起所有浮点槽位读到未初始化值（`other_ms` 打印成 1.19e107）。**R4 的场景归因因此作废**，R5 起才有可信数字。
+- 作废的数据：R1–R3 场景测量、R4 归因、R1 的帧 CSV（11-11 旧文件，pid 复用撞 `O_EXCL`）、根目录 `csv-10071/10453/10537.csv`（旧文件）。设备上 187 份历史 CSV 已先全部归档到 `.local/acceptance-1.0.9-honor-20261113/device-evidence/`（186 份，147 MB，含 SHA-256）再清理。
+
+**证据**：报告 `coordination/results/BIGMAP-REGRESSION-20261113.md`（commit `95b14a7`）；崩溃证据 `.local/acceptance-1.0.9-honor-20261113/R7-battle-settle-crash/`；轮次数据 `.local/acceptance-1.0.9-honor-20261113/R{4,5,6,7,8}-*/`；合并主干 `task/T-release-1.0.9-20261112` HEAD `95b14a7`。
+
+**477M**：`RG477M01445122` 全程不在线（adb、USB 枚举、mDNS、5555/5037 端口扫描均不可见）⇒ Mali 真机腿 NOT_RUN。离线侧已派 worker 做**全量 shader 覆盖统计**：游戏包含 20258 个真实 `.xgs`（1.63 GB），可从 NAS 的 `FFRS-data.zip` 流式读取，无需设备即可统计 formatless storage shader 数量与改写覆盖率。
+
+**未声称**：大地图卡顿已解决、战斗特效卡顿已解决（NOT_RUN）、战斗结算闪退已在平板复现验证、神殿场景通过、整游戏兼容、独立 QA。

@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-13T00:08:46.597749+08:00",
+ "updated_at": "2026-11-13T01:05:00+00:00",
  "phase": "v1.0.9 consolidation in progress: one APK (versionCode 9) must boot both the Honor tablet (code 7) and the RG477M (code 8). Three implementation lines are in flight — readback targeted retirement (stutter root cause), Mali formatless-write FATAL (RG477M cannot enter the game), battle-settle crash P0 (8E5 phone, no device). The Honor tablet was returned to the user after the effect-seed line finished its measurement; all Honor device acceptance is deferred to one session after the merge.",
  "coordinator": "MiniMax Code /root release takeover (Codex thread aborted by user)",
  "integration_branch": "work/rg477m-native",
@@ -1910,6 +1910,21 @@
    "checkpoint": "ad2941b",
    "objective": "Serial integration of the four implementation lines into one 1.0.9 / code 9 APK and the single device acceptance session",
    "write_state": "ACTIVE"
+  },
+  {
+   "task": "HONOR-PACKAGE-1.0.7-20261112",
+   "owner": "MiniMax Code /root release takeover",
+   "paths": [
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/android/app/java/org/ffrs/diagnostic/",
+    "coordination/state.json",
+    "coordination/HANDOFF.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/package-1.0.7-20261112",
+   "branch": "task/T-package-1.0.7-20261112",
+   "acquired_at": "2026-11-12T17:06:52.252940+00:00",
+   "checkpoint": "1.0.7 internal package built and device-verified; APK at .local/release-1.0.7/, sha256 faf3b742..."
   }
  ],
  "tasks": [
@@ -5037,7 +5052,8 @@
    "acceptance": "APK installs on the Honor device, versionName 1.0.7, depth-aspect resolved to the device default without any manual marker edit, the cheat dialog decrypts the real save, frame rate held at 30 FPS",
    "recovery_point": "02c6242",
    "branch": "task/T-package-1.0.7-20261112",
-   "execution_status": "PASSED: built (exit 0) as .local/release-1.0.7/ffrs-game-window-1.0.7-internal.apk (3523650 bytes, sha256 faf3b74250deb91c0f537d85b2202f95def9b56c35e8c159a90ea495f74f60a6, verified with shasum -c), installed on the Honor device (adb install -r Success, versionName 1.0.7), the moon depth-aspect marker migrated from the legacy 2-byte value to auto on its own, the cheat dialog decrypted the real save, and the title held 30.00 FPS with submit_cpu 7.9-9.1 ms and gpu 5.1-5.4 ms. Commits aca34f0 and db094f8."
+   "execution_status": "PASSED: built (exit 0) as .local/release-1.0.7/ffrs-game-window-1.0.7-internal.apk (3523650 bytes, sha256 faf3b74250deb91c0f537d85b2202f95def9b56c35e8c159a90ea495f74f60a6, verified with shasum -c), installed on the Honor device (adb install -r Success, versionName 1.0.7), the moon depth-aspect marker migrated from the legacy 2-byte value to auto on its own, the cheat dialog decrypted the real save, and the title held 30.00 FPS with submit_cpu 7.9-9.1 ms and gpu 5.1-5.4 ms. Commits aca34f0 and db094f8.",
+   "note": "duplicate registration merged by the coordinator on 2026-11-13; the status is the live one"
   },
   {
    "id": "RG477M-BASELINE-SYNC-20261112",
@@ -5123,7 +5139,7 @@
   {
    "id": "RG477M-TEXEL-FORMAT-20261112",
    "role": "graphics worker",
-   "status": "in_progress",
+   "status": "blocked",
    "owner": "worker agent bg_f7ac5178-30a6-4e24-8587-f9455b035244 (restarted after the first attempt was cut by a network change)",
    "branch": "task/T-rg477m-texel-20261112",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native/.worktrees/rg477m-texel-20261112",
@@ -5149,9 +5165,12 @@
     "tests/native/"
    ],
    "acceptance": "The guest boots on the RG477M past the texel-format check, reaches the title AND a battle is actually playable: the rewritten SPIR-V must produce a correct image, not only avoid the FATAL (no black blocks, no wrong colours, no missing particles), and any float to uint reinterpretation must be proven byte equivalent. No reduced precision, no skipped draw, no depth turned off, no placeholder module, and the engine capability check must not be relaxed to hide the problem. Every community reference has URL, revision, licence and support range in OSS-NOTES. If the NVN formatless semantics cannot be met on Mali while keeping the image correct the result is BLOCKED with the smallest workable fallback and its verifiable depth, not a fake green. Device: RG477M01445122 only.",
-   "checkpoint": "the first attempt reached a decisive attribution but wrote no code; the findings are carried into the restart",
+   "checkpoint": "the implementation is merged into the release branch (db5218e and the typed-storage commits after it) and the host contract is green, but the device leg cannot run: RG477M01445122 is offline (adb, USB enumeration, mDNS and 5555/5037 port scans all found nothing on 2026-11-13)",
    "device_exclusive": "RG477M01445122 (the Honor tablet A42BBB5109000333 is forbidden)",
-   "attribution_findings": "the failing binding is compute shader 664748e31a2dfad9 (stage 5), format 98 = VK_FORMAT_R32_UINT. Its SPIR-V declares OpTypeImage sampledType=4(float) dim=5(Buffer) sampled=2(Storage) format=0(Unknown), which is a formatless storage texel buffer. Mali reports bufferFeatures=0x78 for that format, so the optional STORAGE_WRITE_WITHOUT_FORMAT bit is missing for the whole Mali family, and 0x78 still contains STORAGE_TEXEL_BUFFER_BIT, so the typed path is available. The fix is to rewrite the SPIR-V so the formatless storage texel buffer becomes typed, using the existing xbg_spirv_* machinery. The engine capability check itself is correct and must not be relaxed."
+   "attribution_findings": "the failing binding is compute shader 664748e31a2dfad9 (stage 5), format 98 = VK_FORMAT_R32_UINT. Its SPIR-V declares OpTypeImage sampledType=4(float) dim=5(Buffer) sampled=2(Storage) format=0(Unknown), which is a formatless storage texel buffer. Mali reports bufferFeatures=0x78 for that format, so the optional STORAGE_WRITE_WITHOUT_FORMAT bit is missing for the whole Mali family, and 0x78 still contains STORAGE_TEXEL_BUFFER_BIT, so the typed path is available. The fix is to rewrite the SPIR-V so the formatless storage texel buffer becomes typed, using the existing xbg_spirv_* machinery. The engine capability check itself is correct and must not be relaxed.",
+   "blocked_reason": "RG477M01445122 is not connected. The acceptance needs the guest to boot past the texel-format check, reach the title and be playable in an actual battle; without the device none of that can be claimed. The offline coverage statistics over the full 20258-module shader corpus run under RG477M-TEXEL-COVERAGE-20261113.",
+   "merged_into": "task/T-release-1.0.9-20261112",
+   "device_evidence": "NOT_RUN"
   },
   {
    "id": "HONOR-TRANSIT-RETIRE-20261112",
@@ -5255,7 +5274,7 @@
   {
    "id": "RELEASE-1.0.9-MERGE-20261112",
    "role": "coordinator",
-   "status": "blocked",
+   "status": "in_progress",
    "owner": "MiniMax Code /root release takeover",
    "branch": "task/T-release-1.0.9-20261112",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/release-1.0.9-20261112",
@@ -5270,23 +5289,18 @@
     "ffrs-game-window-1.0.9.apk",
     "coordination/results/RELEASE-1.0.9-20261112.md"
    ],
-   "dependencies": [
-    "HONOR-TRANSIT-RETIRE-20261112",
-    "RG477M-TEXEL-FORMAT-20261112",
-    "CRASH-P0-BATTLE-SETTLE-20261112"
-   ],
-   "pass_gates": [
-    "RG477M-TEXEL-FORMAT-20261112"
-   ],
+   "dependencies": [],
+   "pass_gates": [],
    "write_scope": [
     "src/",
     "coordination/"
    ],
    "acceptance": "One APK installs on both devices (versionCode 9 covers the Honor code 7 and the RG477M code 8, the signing certificate is unchanged). The RG477M boots past the texel check, reaches the title and a battle is playable, with a correct image. The Honor regression runs in ONE session after the merge, in three legs: the 大地图 route (first entry versus later entry, the stutter judgement), the temple route (20 entries, no crash), then the town and dungeon regression. The 大地图 and temple crash paths get 20 consecutive runs each and any FATAL or SIGSEGV fails the build. Every PASS is linked to a commit, a build id, the raw log and the exit code.",
-   "checkpoint": "ad2941b (merge preview built and verified; the three open lines are not in yet)",
+   "checkpoint": "89386a8 typed storage crash fix + 95b14a7 bigmap regression report; APK sha256 cc5bb6be78238e2124a5e01f332eebdf82e9423126a024fa7f4e73f3298e068a installed on the Honor tablet as 1.0.9/code 9",
    "device_exclusive": "RG477M01445122 and, with the user permission, A42BBB5109000333",
    "status_note": "the merge preview is built and verified at ad2941b; the task is blocked on the three open implementation lines",
-   "merge_note": "Cherry-pick instead of branch merge: the four lines descend from different bases (the rescue and transit lines carry their own moon/probe history, the rg477m, texel and crash lines start at db094f8), so a branch merge would drag the probe history back in. The coordinator picked the functional commits only, in this order: 07a8d44 + 221ef7b (RG477M resolution tier, pillarbox, 30 FPS declaration, device result), 4d1c98c (the warm list flush fix), ede7790 (the seed distribution path), b0db957 + 056159d (the effect line reports), 6b18120 (event targeted retirement plus the warm-up throttle), 97d1a4f + 585bf28 (the metrics tool and the merge list). All eight picked cleanly, no conflict."
+   "merge_note": "Cherry-pick instead of branch merge: the four lines descend from different bases (the rescue and transit lines carry their own moon/probe history, the rg477m, texel and crash lines start at db094f8), so a branch merge would drag the probe history back in. The coordinator picked the functional commits only, in this order: 07a8d44 + 221ef7b (RG477M resolution tier, pillarbox, 30 FPS declaration, device result), 4d1c98c (the warm list flush fix), ede7790 (the seed distribution path), b0db957 + 056159d (the effect line reports), 6b18120 (event targeted retirement plus the warm-up throttle), 97d1a4f + 585bf28 (the metrics tool and the merge list). All eight picked cleanly, no conflict.",
+   "dependency_note": "the merge's code dependencies are all merged and their host contracts are green. The device legs of those two lines are tracked separately, because a device PASS cannot be claimed for them: HONOR-TRANSIT-RETIRE-20261112 and CRASH-P0-BATTLE-SETTLE-20261112 stay 'completed' (delivered as code) until a device reproduces them. The same applies to RG477M-TEXEL-FORMAT-20261112, whose device leg is blocked on an offline RG477M."
   },
   {
    "id": "BIGMAP-LOAD-20261112",
@@ -5317,6 +5331,23 @@
    "acceptance": "The first entry into the 大地图 and a later entry are separated with numbers, and the cost is split between shader loading, pipeline creation, submit blocking and the rest. The claim \"the A class flush defect makes every 大地图 entry rebuild the pipelines\" is either proven or refuted with data. The engine counters that would be needed on the device are specified, and the new metric does not change the main NVN PERF v=1 line so the baseline stays comparable. No device is touched.",
    "checkpoint": "just dispatched",
    "device_exclusive": "none (offline analysis on the retained logs)"
+  },
+  {
+   "id": "RG477M-TEXEL-COVERAGE-20261113",
+   "role": "graphics worker",
+   "status": "in_progress",
+   "owner": "worker agent bg_f529cd01-e937-4e37-b94d-5a72f1969c05",
+   "branch": "task/T-rg477m-texel-20261112",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native/.worktrees/rg477m-texel-20261112",
+   "objective": "offline coverage statistics over the full shader corpus: the game package holds 20258 real .xgs modules that can be streamed from the NAS copy of FFRS-data.zip, so the number of formatless storage shaders and the rewrite coverage can be measured without the device",
+   "dependencies": [],
+   "pass_gates": [],
+   "device_leg": "NOT_RUN: RG477M01445122 is offline (adb, USB enumeration, mDNS and 5555/5037 port scans all found nothing)",
+   "writes": [
+    "coordination/results/RG477M-TEXEL-COVERAGE-20261113.md",
+    "coordination/results/RG477M-TEXEL-20261112-OSS-NOTES.md",
+    ".local/rg477m-texel-20261112/"
+   ]
   }
  ],
  "blockers": [
@@ -5333,7 +5364,8 @@
   "HONOR-P1-20261112 cold load: first entry into the 01 scene averages 24.03 FPS with a 1408.55 ms worst frame because the submit thread compiles shaders synchronously (xbg_game.cpp:2501-2533). With a warm pipeline cache the same scene holds 30.00 FPS for 392 s with zero long frames.",
   "HONOR-SAVE-20261112: the save file lives in external app specific storage and survives APK updates, but the guest only flushes at its own save points, so installing a package while playing loses the progress since the last save point. The save root also switches between the external codex-local-save directory and the internal getFilesDir()/saves when the installer flips to managed mode.",
   "HONOR-BATTLE-EFFECT-STUTTER (attribution withdrawn and re-scoped 2026-11-12): the device data refutes the original claim. Synchronous pipeline creation is NOT the cause of the >100 ms spikes (the largest single creation in the whole session is 1.3 ms). The cause is the CPU blocking in the submit path while the GPU is idle, marked by the readback/writeback drains (sync_rb 9.80 vs 0.03 per window). The repair point is the drain scheduling, which is task HONOR-TRANSIT-RETIRE-20261112. The warm list flush defect (Class A) is fixed; the seed is unproven and is being narrowed. The cold-start 4.5-4.8 s frame is still unexplained.",
-  "RG477M-TEXEL-FORMAT-20261112: on the RG477M (Mali-G615) the guest dies after about five seconds with FATAL: Texel format lacks formatless-write support. Mali reports bufferFeatures=0x78 for the texel formats, so the optional STORAGE_WRITE_WITHOUT_FORMAT and READ_WITHOUT_FORMAT bits are absent for the whole family. The typed path is available (0x78 contains STORAGE_TEXEL_BUFFER_BIT), so the fix is a SPIR-V rewrite. The game cannot be played on the handheld until this lands, which outranks the stutter. Task RG477M-TEXEL-FORMAT-20261112, device RG477M01445122 exclusively."
+  "RG477M-TEXEL-FORMAT-20261112: on the RG477M (Mali-G615) the guest dies after about five seconds with FATAL: Texel format lacks formatless-write support. Mali reports bufferFeatures=0x78 for the texel formats, so the optional STORAGE_WRITE_WITHOUT_FORMAT and READ_WITHOUT_FORMAT bits are absent for the whole family. The typed path is available (0x78 contains STORAGE_TEXEL_BUFFER_BIT), so the fix is a SPIR-V rewrite. The game cannot be played on the handheld until this lands, which outranks the stutter. Task RG477M-TEXEL-FORMAT-20261112, device RG477M01445122 exclusively.",
+  "HONOR-BATTLE-EFFECT-STUTTER: battle effect pipelines are still created synchronously on their first release (created=5..18, create_ms 750..1916, single pipeline 125..381 ms). Root cause narrowed to the renderpass piece of the pipeline key: the same shader combination maps to several keys that differ only in the renderpass/attachment set, and the effect renderpass combinations are absent from the warm list, so the warm-up cannot pre-build them. Fix is in progress on task/T-rescue-1.0.7-20261112; NOT included in the 1.0.7 team package."
  ],
  "verified": [
   "CURRENT_HANDOFF: a277 runtime sourcee305; actual originalstartup+OScleanup0/0, poststartup originalallocator0/0, HOST14expected, completeCRT515raw133. Earlier append-only bullets are historical stages and not current blockers.",
@@ -7581,5 +7613,37 @@
   "after_the_fix": "1.0.9 prints [hle] nn::os::FinalizeEvent: event=%p retired (multiwait_waiting=1 multiwait_referenced=1). The race was hit and handled safely: the holder is released and the process survives. The old line is gone on purpose.",
   "grep": "adb shell \"grep -a -n multiwait /sdcard/Android/data/org.ffrs.gamewindow/files/guest_boot.log\" still finds both, because both lines contain the word multiwait.",
   "note": "the player check must read the new line as the healthy case, not as a crash signature."
+ },
+ "honor_typed_storage_crash_20261113": {
+  "status": "fixed",
+  "commit": "89386a8",
+  "report": "coordination/results/BIGMAP-REGRESSION-20261113.md",
+  "device": "A42BBB5109000333 Honor tablet, user handed it over and authorized the work",
+  "signature": "FATAL: Typed storage image format does not match the bound view format",
+  "fatal_evidence": ".local/acceptance-1.0.9-honor-20261113/R7-battle-settle-crash/engine.log.fatal (71 B)",
+  "root_cause": "the Mali typed storage line (62459f0 storage image, 0125c05 storage texel buffer) added a strict declared-format-must-equal-bound-view check that also rejects a module the game itself declared typed",
+  "module": "c11e2f23ff063e85 (compute stage 5): binding 47 declares a 3D Rg32ui storage image and binding 59 a 3D Rgba32ui one, package flags flessW=0, so the guest binds its own NVN view format",
+  "fix": "the strict match now applies only to the bindings this engine rewrote itself (Shader::typed_storage_rewritten); the shared rule lives in xbg_typed_storage_requires_match",
+  "proof": "host contract with a new fixture; mutation test turns typed-storage-contract red on the old rule; verify_host 30 steps green, only module-load-info red (no unpacked game module in this worktree)",
+  "device_result": "install -r over 1.0.9 code 9 without uninstalling, sha256 cc5bb6be78238e2124a5e01f332eebdf82e9423126a024fa7f4e73f3298e068a; same route >50ms frames 66 to 56, >200ms 17 to 12, bigmap segment stall total 8932ms to 3769ms",
+  "not_run": "the crash itself is not yet reproduced on the tablet with the fixed build; the battle settle scene still has to be reached"
+ },
+ "honor_bigmap_regression_20261113": {
+  "status": "attributed",
+  "report": "coordination/results/BIGMAP-REGRESSION-20261113.md",
+  "user_report": "reading save slot 02 into the bigmap is very slow; this version is slower than the previous one; battle effects also stutter; the battle settle screen crashed",
+  "finding": "the engine is not drawing more than it should: on the same route 1.0.9 reaches 784 draws per frame while 1.0.7 settles at 44, but 1.0.7 gets there because the game itself drops its render load (its W92/W93 show fps 15.86, submit_cpu_ms 15.79 to 37.73, draws 25, passes unchanged at 23). 1.0.9 never leaves 28.6..30.3 fps with submit_cpu_ms 16..18.6, so the game's own downgrade never triggers",
+  "withdrawn_attribution": "the first reading ('1.0.9 does 3.5x more work') was wrong and is withdrawn; the resource counts match (texture_serial 232 in both, images 1096 vs 1088, pipelines 151 vs 422) and the counter semantics are identical in both versions",
+  "open_root_cause": "engine submit_cpu_ms grew from 10.4 ms (1.0.7 steady) to 16.8 ms (1.0.9); not attributed yet; this is what keeps the game's downgrade from firing",
+  "measurement_defects_fixed": [
+   "scene::init returns early when gfx-scene-tag is missing at startup, so R1..R3 measured nothing; the marker has to be written before the app starts",
+   "the stall line's format string has 7 float conversions but 6 float arguments, so every float slot from there on read an uninitialized register on AArch64 (other_ms printed 1.19e107); R4's attribution is unusable"
+  ],
+  "invalidated_data": "R1..R3 scene measurements (marker never enabled); R4 attribution (varargs misalignment); R1 frame CSV (11-11 file, pid reuse hit the O_EXCL) and the root csv-10071/10453/10537.csv files (old)",
+  "device_csv_archive": ".local/acceptance-1.0.9-honor-20261113/device-evidence/ (all 186 device CSVs, 147 MB, with SHA-256)",
+  "not_run": [
+   "battle effect stutter (needs a real battle frame capture; the 1.0.9 battle settle crashes)",
+   "shrine scene (no device evidence)"
+  ]
  }
 }
