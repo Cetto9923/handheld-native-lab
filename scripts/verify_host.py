@@ -9,6 +9,7 @@ import argparse
 import datetime
 import hashlib
 import json
+import os
 from pathlib import Path
 import platform
 import shutil
@@ -191,6 +192,21 @@ def main():
             run('typed-storage-contract', [typed_binary, typed_spv[0], typed_spv[1], typed_spv[2],
                                        typed_dir / 'typed_storage_out.spv', typed_spv[3]])
             run('typed-storage-val', [spirv_val, '--target-env', 'vulkan1.1', typed_dir / 'typed_storage_out.spv'])
+        # The real module that crashed the 1.0.9 battle settle scene on the Honor
+        # tablet (c11e2f23ff063e85) declares its own typed storage images. The game
+        # data is not in the repository, so this check runs only when the module
+        # has been extracted locally; otherwise it is skipped and says so.
+        real_module = Path(os.environ.get('FFRS_REAL_MODULE', '')) if os.environ.get('FFRS_REAL_MODULE') else None
+        if real_module and real_module.is_file():
+            real_binary = out / 'test-typed-storage-real'
+            extra_artifacts.append(real_binary)
+            if run('typed-storage-real-build', [typed_cxx, '-std=c++17', '-O1', '-g',
+                                                '-fsanitize=address,undefined', '-Wall', '-Wextra',
+                                                'tests/device/test_typed_storage_real_module.cpp', '-o', real_binary]):
+                run('typed-storage-real-contract', [real_binary, str(real_module)])
+        else:
+            print('typed-storage-real-contract: SKIPPED, set FFRS_REAL_MODULE to the extracted c11e2f23ff063e85.spv',
+                  flush=True)
     else:
         print('typed-storage-contract: SKIPPED, spirv-as and spirv-val are not installed', flush=True)
     run('engine-log-rotation', [sys.executable, '-m', 'unittest', 'tests.installer.test_engine_log_rotation'])
