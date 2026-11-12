@@ -3,6 +3,7 @@
 #include <pthread.h>
 #include <fcntl.h>
 #include <time.h>
+#include <sys/stat.h>
 #include "xbg_game_internal.h"
 #include "xbg_shader_archive.h"
 #ifdef XBG_HAVE_SPIRV_OPT
@@ -940,6 +941,110 @@ struct Perf {
         render_cond_ops=0,render_cond_skips=0,render_cond_force_off=0,draws_skipped_cond=0,
         readback_targeted=0,readback_no_wait=0,readback_fallback=0,readback_inflight=0,sync_drain=0;
 } perf;
+// ===== 场景切换测量（标记 gfx-scene-tag，默认关闭）=====
+// Off unless the marker file files/gfx-scene-tag exists: without it there is no file read, no counter and no line at
+// all, so the runtime is unchanged. With the marker on, the tester writes the name of the scene into that file before
+// the transition; every write of the file counts as one entry into that scene, so the first and the second entry of the
+// same scene are told apart by the occurrence number. The engine then logs the tag event and, for every frame longer
+// than the threshold, what the graphics path spent on that frame: the shader loads, the pipeline creations, the CPU
+// inside vkQueueSubmit, and the rest. The main "NVN PERF v=1" line is not touched, so the baseline stays comparable.
+namespace scene{
+bool enabled=false;
+std::string tag_path;
+std::string tag="none";
+uint64_t tag_seq=0;
+std::map<std::string,uint64_t> occurrences;
+uint64_t stall_ms=100;
+uint64_t tag_mtime=0;
+uint64_t last_frame_ns=0,last_shader_ns=0,last_shader_count=0,last_pipe_ns=0,last_pipe_count=0,last_new_count=0;
+uint64_t last_submit_ns=0,last_gpu_ns=0,last_rb=0,last_wb=0;
+uint64_t frame_slow_count=0,frame_slow_ms=0;
+uint64_t win_frame=0,win_ns=0,win_shader_ms=0,win_shader_count=0,win_slow_count=0,win_slow_ms=0;
+uint64_t win_new_count=0,win_pipe_count=0,win_pipe_ms=0,win_stalls=0,win_stall_ms=0;
+uint64_t occurrence(){auto it=occurrences.find(tag);return it==occurrences.end()?0:it->second;}
+std::string read_tag(){
+    FILE *f=fopen(tag_path.c_str(),"rb");if(!f)return std::string();
+    char buf[96]={0};size_t n=fread(buf,1,sizeof(buf)-1,f);fclose(f);
+    std::string s(buf,n);
+    while(!s.empty()&&(s.back()=='\n'||s.back()=='\r'||s.back()==' '))s.pop_back();
+    return s;
+}
+void init(const std::string &base){
+    tag_path=base+"/gfx-scene-tag";
+    struct stat st{};if(stat(tag_path.c_str(),&st)!=0)return;
+    enabled=true;
+    {FILE *f=fopen((base+"/gfx-scene-stall-ms").c_str(),"rb");if(f){unsigned v=0;if(fscanf(f,"%u",&v)!=1)v=0;fclose(f);if(v)stall_ms=v;}}
+    xbg_logf("NVN scene marker=1 tag_file=%s stall_ms=%llu",tag_path.c_str(),(unsigned long long)stall_ms);
+}
+// The slow shader loads of the frame being recorded (the load itself is on the game thread, so it lands in the frame
+// that is open when it happens).
+void shader_loaded(uint64_t ns){if(!enabled)return;if(ns>=5000000ull){++frame_slow_count;frame_slow_ms+=ns/1000000ull;}}
+void open_window(uint64_t frame_no,uint64_t now){
+    win_frame=frame_no;win_ns=now;
+    win_shader_ms=win_shader_count=win_slow_count=win_slow_ms=0;
+    win_new_count=win_pipe_count=win_pipe_ms=win_stalls=win_stall_ms=0;
+}
+void close_window(uint64_t frame_no,uint64_t now){
+    const double span=win_ns?double(now-win_ns)/1e6:0.0;
+    xbg_logf("NVN PERF scene v=1 event=leave tag=%s occurrence=%llu seq=%llu frames=%llu span_ms=%.1f shader_ms=%.1f shader_count=%llu shader_slow_count=%llu shader_slow_ms=%.1f pipelines_new=%llu pipelines_created=%llu pipeline_create_ms=%.1f stalls=%llu stall_ms=%.1f",
+        tag.c_str(),(unsigned long long)occurrence(),(unsigned long long)tag_seq,(unsigned long long)(frame_no-win_frame),span,
+        double(win_shader_ms),(unsigned long long)win_shader_count,(unsigned long long)win_slow_count,(unsigned long long)win_slow_ms,
+        (unsigned long long)win_new_count,(unsigned long long)win_pipe_count,double(win_pipe_ms),(unsigned long long)win_stalls,double(win_stall_ms));
+}
+// Called once per presented frame, from the statistics side only.
+void frame(uint64_t now){
+    if(!enabled)return;
+    const uint64_t frame_no=stats.presents.load();
+    // The tag file: every write of it is one entry into that scene.
+    struct stat st{};
+    if(stat(tag_path.c_str(),&st)==0){
+        const uint64_t mtime=uint64_t(st.st_mtime)*1000000000ull+uint64_t(st.st_mtim.tv_nsec);
+        if(mtime!=tag_mtime){
+            tag_mtime=mtime;
+            const std::string label=read_tag();
+            if(!label.empty()){
+                if(tag!="none")close_window(frame_no,now);
+                tag=label;++occurrences[tag];++tag_seq;
+                open_window(frame_no,now);
+                xbg_logf("NVN PERF scene v=1 event=enter tag=%s occurrence=%llu seq=%llu frame=%llu monotonic_ns=%llu",tag.c_str(),(unsigned long long)occurrence(),(unsigned long long)tag_seq,(unsigned long long)frame_no,(unsigned long long)now);
+            }
+        }
+    }
+    // What the graphics path itself did in this frame.
+    const uint64_t shader_ns=hud::shader_ns.load(),shader_count=hud::shaders.load();
+    const uint64_t pipe_ns=hud::pipeline_ns.load(),pipe_count=hud::pipelines.load();
+    const uint64_t new_count=pipeline_counts.misses;
+    const uint64_t d_shader_ns=shader_ns>=last_shader_ns?shader_ns-last_shader_ns:0;
+    const uint64_t d_shader_count=shader_count>=last_shader_count?shader_count-last_shader_count:0;
+    const uint64_t d_pipe_ns=pipe_ns>=last_pipe_ns?pipe_ns-last_pipe_ns:0;
+    const uint64_t d_pipe_count=pipe_count>=last_pipe_count?pipe_count-last_pipe_count:0;
+    const uint64_t d_new_count=new_count>=last_new_count?new_count-last_new_count:0;
+    last_shader_ns=shader_ns;last_shader_count=shader_count;last_pipe_ns=pipe_ns;last_pipe_count=pipe_count;last_new_count=new_count;
+    // The submit and GPU counters live in the perf window, so they restart with it: a value below the last one means
+    // the window just closed and the current value is already this frame's.
+    const uint64_t submit_ns=perf.submit_cpu_ns,gpu_ns=perf.gpu_ns,rb=perf.sync_readback,wb=perf.sync_writeback;
+    const uint64_t d_submit=submit_ns>=last_submit_ns?submit_ns-last_submit_ns:submit_ns;
+    const uint64_t d_gpu=gpu_ns>=last_gpu_ns?gpu_ns-last_gpu_ns:gpu_ns;
+    const uint64_t d_rb=rb>=last_rb?rb-last_rb:rb,d_wb=wb>=last_wb?wb-last_wb:wb;
+    last_submit_ns=submit_ns;last_gpu_ns=gpu_ns;last_rb=rb;last_wb=wb;
+    win_shader_ms+=d_shader_ns/1000000ull;win_shader_count+=d_shader_count;win_slow_count+=frame_slow_count;win_slow_ms+=frame_slow_ms;
+    win_new_count+=d_new_count;win_pipe_count+=d_pipe_count;win_pipe_ms+=d_pipe_ns/1000000ull;
+    const uint64_t slow_count=frame_slow_count,slow_ms=frame_slow_ms;
+    frame_slow_count=0;frame_slow_ms=0;
+    if(!last_frame_ns){last_frame_ns=now;return;}
+    const double gap_ms=double(now-last_frame_ns)/1e6;
+    last_frame_ns=now;
+    if(gap_ms<double(stall_ms))return;
+    const double shader_ms=double(d_shader_ns)/1e6,pipe_ms=double(d_pipe_ns)/1e6;
+    const double other_ms=gap_ms-shader_ms-pipe_ms;
+    ++win_stalls;win_stall_ms+=uint64_t(gap_ms);
+    xbg_logf("NVN PERF stall v=1 frame=%llu gap_ms=%.1f tag=%s occurrence=%llu seq=%llu shader_ms=%.1f shader_count=%llu shader_slow_count=%llu shader_slow_ms=%.1f pipelines_new=%llu pipelines_created=%llu pipeline_create_ms=%.1f submit_cpu_ms=%.2f gpu_ms=%.2f sync_rb=%llu sync_wb=%llu other_ms=%.1f",
+        (unsigned long long)frame_no,gap_ms,tag.c_str(),(unsigned long long)occurrence(),(unsigned long long)tag_seq,
+        shader_ms,(unsigned long long)d_shader_count,(unsigned long long)slow_count,(unsigned long long)slow_ms,
+        (unsigned long long)d_new_count,(unsigned long long)d_pipe_count,pipe_ms,
+        double(d_submit)/1e6,double(d_gpu)/1e6,(unsigned long long)d_rb,(unsigned long long)d_wb,other_ms);
+}
+}
 // Marker gfx-render-cond = 0 ignores the conditional render enable entirely: the draws inside a block whose condition
 // evaluated false are kept. The condition comes from a GPU-written counter, so a host-side evaluation sees a value that is
 // one frame old; when the guest uses it to gate an effect, the effect appears and disappears with that staleness.
@@ -1284,7 +1389,8 @@ void perf_frame(){
     // pipeline took 2 ms or more: those recipes were recorded in memory and
     // never reached the disk, so the next launch built them again.
     if(xbg_warm_flush::due(presents,warm_save_frame)){warm_save_frame=presents;warm::flush();}
-    uint64_t now=timing_clock();if(!perf.window_start){perf.window_start=now;perf.frames=0;return;}
+    uint64_t now=timing_clock();scene::frame(now);
+    if(!perf.window_start){perf.window_start=now;perf.frames=0;return;}
     if(++perf.frames<60)return;
     if(memory_profile_counts)log_memory_profile_counts();
     double wall=double(now-perf.window_start)/1e6,f=double(perf.frames);
@@ -2745,6 +2851,7 @@ uint64_t shader_monotonic_ns(){
 }
 void shader_load_anchor(const std::string &identity,uint32_t stage,uint64_t frame,uint64_t begin){
     const uint64_t end=shader_monotonic_ns();
+    scene::shader_loaded(end-begin);
     if(end-begin>=5000000ull)
         xbg_logf("NVN shader slow-load identity=%s stage=%u frame=%llu monotonic_begin_ns=%llu monotonic_end_ns=%llu total_ms=%.2f",identity.c_str(),stage,(unsigned long long)frame,(unsigned long long)begin,(unsigned long long)end,(end-begin)/1e6);
 }
@@ -6406,7 +6513,8 @@ extern "C" int xbg_game_initialize(const xbg_game_config *c,char *error,size_t b
      xbg_logf("NVN NaN-ignoring min / max / clamp like Maxwell=%d (marker gfx-nan-minmax)",int(nan_minmax));
      xbg_logf("NVN translator output clean-up: component fold=%d (marker gfx-ldc-fold) forwarded temporaries=%d (marker gfx-forward-temps)",int(ldc_fold),int(forward_temps));
      {FILE *q=fopen((base+"/gfx-shader-reuse").c_str(),"rb");shader_reuse=0;if(q){int c=fgetc(q);shader_reuse=c=='0'?0:c=='2'?2:1;fclose(q);}else if(const char *e=getenv("DM_GFX_SHADER_REUSE"))shader_reuse=atoi(e);
-      warm::keep_rewritten=shader_reuse!=0;xbg_logf("NVN shader loads take the warm-up's rewritten SPIR-V=%d (marker gfx-shader-reuse; 2 also rewrites and compares)",shader_reuse);}}
+      warm::keep_rewritten=shader_reuse!=0;xbg_logf("NVN shader loads take the warm-up's rewritten SPIR-V=%d (marker gfx-shader-reuse; 2 also rewrites and compares)",shader_reuse);}
+     scene::init(base);}
     xbg_module_id_hook=warm::module_id;{std::string lp=warm::list_path();FILE *nw=fopen((lp.substr(0,lp.find_last_of('/'))+"/gfx-no-warm").c_str(),"rb");warm::enabled=!nw;if(nw)fclose(nw);}
      {std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');std::string base=(cut==std::string::npos?dir:dir.substr(0,cut));
       FILE *m=fopen((base+"/gfx-warm-budget").c_str(),"rb");if(m){unsigned v=0;if(fscanf(m,"%u",&v)!=1)v=0;fclose(m);warm::budget_per_frame=v;}
