@@ -74,3 +74,37 @@
 跨会话的行不得混用。
 
 已入库位置：`coordination/state.json` → `user_field_report_20261112`
+---
+
+## D. 1.0.9 装上之后，同一条自查命令会看到什么（请连同这段一起转给测试者）
+
+旧包（1.0.7）崩的时候，日志里是这行：
+
+```
+[multiwait] refusing Event finalization during active wait
+```
+
+这行**之后进程就被杀了**（SIGABRT）——这就是神殿/大地图闪退的原因：切场景时旧场景的 Event 要被终结，
+但还有人在等它，宿主直接 abort。
+
+1.0.9 装上以后，同样情况下**不会再崩**，日志里会变成这行：
+
+```
+[hle] nn::os::FinalizeEvent: event=0x... retired (multiwait_waiting=1 multiwait_referenced=1)
+```
+
+意思是「竞态照样发生了，但这次被安全处理了：等待者被释放，进程活着」。**这一行在新包里出现是好事，不是坏消息。**
+
+所以自查命令不变：
+
+```
+adb shell "grep -a -n multiwait /sdcard/Android/data/org.ffrs.gamewindow/files/guest_boot.log"
+```
+
+另外 1.0.9 还会**多打一条**这行，说明「已终结的事件被再次使用，宿主拒绝了」——这属于防崩保护被触发的计数：
+
+```
+[hle] nn::os::Event: event=0x... was finalized; use refused (count=N)
+```
+
+如果这一行的 count 很大，说明游戏在频繁地复用已终结的事件，值得回来说一声。

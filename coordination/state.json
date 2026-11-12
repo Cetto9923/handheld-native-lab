@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-12T23:54:19.311276+08:00",
+ "updated_at": "2026-11-13T00:08:46.597749+08:00",
  "phase": "v1.0.9 consolidation in progress: one APK (versionCode 9) must boot both the Honor tablet (code 7) and the RG477M (code 8). Three implementation lines are in flight — readback targeted retirement (stutter root cause), Mali formatless-write FATAL (RG477M cannot enter the game), battle-settle crash P0 (8E5 phone, no device). The Honor tablet was returned to the user after the effect-seed line finished its measurement; all Honor device acceptance is deferred to one session after the merge.",
  "coordinator": "MiniMax Code /root release takeover (Codex thread aborted by user)",
  "integration_branch": "work/rg477m-native",
@@ -5193,8 +5193,8 @@
   {
    "id": "CRASH-P0-BATTLE-SETTLE-20261112",
    "role": "runtime worker",
-   "status": "in_progress",
-   "owner": "worker agent bg_dbfd2130-fa4f-45e0-a196-fe66b3e7bcac (restarted after the first attempt was cut by a network change)",
+   "status": "completed",
+   "owner": "the first two worker runs were cut by a host network change; the coordinator took the implementation over and finished it",
    "branch": "task/T-crash-p0-20261112",
    "worktree": "worker to declare; the RG477M main worktree and the honor main worktree are forbidden (foreign WIP)",
    "objective": "Pre-emptive hardening for the 8E5 (Snapdragon) crash reported after a Bahamut summon defeats its opponent. No 8E5 device exists, so the work is code-level analysis bound to the known audit findings, plus host contracts.",
@@ -5215,10 +5215,13 @@
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
     "tests/native/"
    ],
-   "acceptance": "The suspected UAF and the abort paths are closed by construction, proven by a host contract that fails on the pre-fix code. No 8E5 device exists, so every device-side claim is written NOT_RUN and the crash is not declared fixed. The report states which audit findings it covers and which remain open. Requesting the crash log from the reporter is a separate coordinator action and is not a substitute for the code work.",
-   "checkpoint": "the first attempt completed the attribution reading but wrote no code; the field evidence is carried into the restart",
+   "acceptance": "DELIVERED AS CODE LEVEL HARDENING, DEVICE NOT_RUN: FinalizeEvent no longer aborts when a MultiWait holder is waiting on the event. The entry is retired instead of freed, the tombstone lives in a hash table so the wait loop does not pay a linear scan, a waiting holder is released so the scene unload cannot hang, a late signal only updates the host side state and never writes the guest object, and the trim frees a tombstone only after it has confirmed outside the registry lock that no holder points at it (multiwait calls back into is_event_signaled under its own lock, so calling into multiwait under the registry lock would deadlock). Red and green proof on the same contract: the old code aborts with SIGABRT 134 and the line [multiwait] refusing Event finalization during active wait, the new code passes under ASan, UBSan and TSan with 0 ThreadSanitizer warnings, and the existing event_finalize contract still passes, so scripts/verify_host.py is 23 of 23. NOT RUN: no 8E5 device, no temple save, the Honor tablet was not released to the project, so this is NOT claimed as fixed, only as removed by construction. Still open: the engine side OP_WAIT_EVENT still only checks that the address is non zero (audit P0-4) and the retire_slot fence timeout is still fatal (C4).",
+   "checkpoint": "a9e6c56, merged into the 1.0.9 branch as 3552504",
    "device_exclusive": "none (the RG477M belongs to the texel line)",
-   "field_evidence": "see user_field_report_20261112: entering a new 幻兵水晶神殿 crashes most of the time, loading a 大地图 crashes occasionally"
+   "field_evidence": "see user_field_report_20261112: entering a new 幻兵水晶神殿 crashes most of the time, loading a 大地图 crashes occasionally",
+   "result_files": [
+    "coordination/results/CRASH-P0-BATTLE-SETTLE-20261112.md"
+   ]
   },
   {
    "id": "HONOR-SEED-NARROW-P1-20261112",
@@ -7409,7 +7412,7 @@
   "observed_at": "2026-11-12T23:40:00.798140+08:00",
   "branch": "task/T-release-1.0.9-20261112",
   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/release-1.0.9-20261112",
-  "head": "17c3de7",
+  "head": "3552504",
   "method": "cherry-pick of the functional commits only; the branch topology is not a line, so a branch merge would have brought the probe history back",
   "picked": [
    {
@@ -7451,11 +7454,15 @@
    {
     "commit": "463f508",
     "what": "the readback targeted retirement (xbg_readback_retire.h, the gfx-readback-retire marker, the contract and the self-proof)"
+   },
+   {
+    "commit": "75beed3 + a9e6c56",
+    "what": "the scene switch crash hardening: the event retirement that replaces the abort, plus the new contract"
    }
   ],
   "conflict_review": "no cherry-pick reported a conflict. The two lines that touch the same functions were checked by hand: perf_frame() keeps both the pipeline cache throttle and the new xbg_warm_flush::due branch, and the warm namespace keeps both the flush path and the transit budget markers. The symbol counts in the merged file were verified.",
   "host_contracts": {
-   "scripts/verify_host.py": "19/19 steps passed, exit 0",
+   "scripts/verify_host.py": "23 of 23 steps passed, exit 0 (19 before, plus event-retire-asan and event-retire-tsan)",
    "scripts/runtime/selfproof_xbg_event_retire.sh": "baseline_exit=0 mutated_exit=1, green",
    "tests/graphics/test_warm_flush_contract.cpp": "all checks passed, exit 0",
    "python3 -m unittest tests.installer.test_package_honor_portable": "12 tests, OK",
@@ -7567,5 +7574,12 @@
   "C4": "retire_slot turns a fence timeout or a device lost into a fatal abort, with an unbounded spin. Evidence strength: lower.",
   "crash_form": "SIGABRT (6) with an Abort message, not a memory access fault, for C1.",
   "hardening_constraints": "the deliberate guard must not simply be deleted or relaxed into a finalize anyway. The safe path is one of: wait for the waiters to leave with a bounded upper limit, mark the event retiring and wake the waiters, or detach the MultiWait holders before the finalize. It must not deadlock, because a waiter that never exits is exactly why the abort was there, and it must not change the game semantics: the event still gets finalized and the waiters still get woken the same way."
+ },
+ "crash_self_check_after_the_fix": {
+  "observed_at": "2026-11-13T00:08:46.597749+08:00",
+  "before_the_fix": "1.0.7 prints [multiwait] refusing Event finalization during active wait and then aborts (SIGABRT 6). A hit on this line confirms C1: the host killed the process during the scene unload because a MultiWait holder was still waiting on the event.",
+  "after_the_fix": "1.0.9 prints [hle] nn::os::FinalizeEvent: event=%p retired (multiwait_waiting=1 multiwait_referenced=1). The race was hit and handled safely: the holder is released and the process survives. The old line is gone on purpose.",
+  "grep": "adb shell \"grep -a -n multiwait /sdcard/Android/data/org.ffrs.gamewindow/files/guest_boot.log\" still finds both, because both lines contain the word multiwait.",
+  "note": "the player check must read the new line as the healthy case, not as a crash signature."
  }
 }

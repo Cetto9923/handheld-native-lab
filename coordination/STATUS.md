@@ -1,6 +1,6 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-12T23:54:19.311276+08:00
+状态事件时间：2026-11-13T00:08:46.597749+08:00
 阶段：v1.0.9 consolidation in progress: one APK (versionCode 9) must boot both the Honor tablet (code 7) and the RG477M (code 8). Three implementation lines are in flight — readback targeted retirement (stutter root cause), Mali formatless-write FATAL (RG477M cannot enter the game), battle-settle crash P0 (8E5 phone, no device). The Honor tablet was returned to the user after the effect-seed line finished its measurement; all Honor device acceptance is deferred to one session after the merge.
 总控：MiniMax Code /root release takeover (Codex thread aborted by user)
 更新方式：按事件更新，没有后台自动刷新。
@@ -137,7 +137,7 @@
 | HONOR-PIPELINE-SEED-20261112 | GRAPHICS_PERFORMANCE_FIX | completed | worker agent bg_493e3274-03b2-44e1-afc9-b606d08602a7, continued and finished by bg_885edb77-5872-4c8c-8ae9-2089b09e4c6c | 无 | HONOR-PACKAGE-1.0.7-20261112 | task/T-rescue-1.0.7-20261112 |
 | RG477M-TEXEL-FORMAT-20261112 | graphics worker | in_progress | worker agent bg_f7ac5178-30a6-4e24-8587-f9455b035244 (restarted after the first attempt was cut by a network change) | 无 | 无额外门禁 | task/T-rg477m-texel-20261112 |
 | HONOR-TRANSIT-RETIRE-20261112 | graphics worker | completed | worker agent bg_c4589115-46fd-481d-9b34-20dde3c287c1 | 无 | 无额外门禁 | task/T-transit-20261112 |
-| CRASH-P0-BATTLE-SETTLE-20261112 | runtime worker | in_progress | worker agent bg_dbfd2130-fa4f-45e0-a196-fe66b3e7bcac (restarted after the first attempt was cut by a network change) | 无 | 无额外门禁 | task/T-crash-p0-20261112 |
+| CRASH-P0-BATTLE-SETTLE-20261112 | runtime worker | completed | the first two worker runs were cut by a host network change; the coordinator took the implementation over and finished it | 无 | 无额外门禁 | task/T-crash-p0-20261112 |
 | HONOR-SEED-NARROW-P1-20261112 | graphics worker | ready | unassigned - dispatch after a slot frees | 无 | 无额外门禁 | task/T-rescue-1.0.7-20261112 (follow-up branch) |
 | RELEASE-1.0.9-MERGE-20261112 | coordinator | blocked | MiniMax Code /root release takeover | HONOR-TRANSIT-RETIRE-20261112, RG477M-TEXEL-FORMAT-20261112, CRASH-P0-BATTLE-SETTLE-20261112 | RG477M-TEXEL-FORMAT-20261112 | task/T-release-1.0.9-20261112 |
 | BIGMAP-LOAD-20261112 | graphics worker | in_progress | worker agent bg_15c01055-171e-4803-97a2-1468e840d97a | 无 | 无额外门禁 | task/T-release-1.0.9-20261112 |
