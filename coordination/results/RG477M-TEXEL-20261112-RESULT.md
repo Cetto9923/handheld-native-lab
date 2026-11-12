@@ -193,4 +193,72 @@ SPIR-V 模块按 shader 缓存，而绑定格式按 draw 变化。仓库已有�
 
 ## 7. 实施记录
 
-（待补）
+### §1 改写规则伪代码与改动清单（先落盘，再改第一行代码）
+
+#### §1.1 已在本机证伪/证实的前置事实
+
+- SPIR-V Image Format 枚举值（用 `spirv-dis` 对同一模块逐值反查得到，非记忆）：
+  `Unknown=0, R32f=3, R32i=24, R32ui=33, Rg32f=6, Rg32i=25, Rg32ui=35,
+  Rgba32f=1, Rgba32i=21, Rgba32ui=30`。
+- VkFormat 数值（NDK `vulkan_core.h`）：`R32_UINT=98, R32_SINT=99, R32_SFLOAT=100,
+  R32G32_UINT=101, R32G32_SINT=102, R32G32_SFLOAT=103,
+  R32G32B32A32_UINT=107, R32G32B32A32_SINT=108, R32G32B32A32_SFLOAT=109`。
+- 对本仓库真实模块 `664748e31a2dfad9` 实测（`spirv-val --target-env vulkan1.1`）：
+  1. 现状（`xbg_spirv_ffrs_stencil` 改写后、Sampled Type=uint、Image Format=Unknown）：**val 通过**；
+  2. 只把该 `OpTypeImage` 的 Image Format 操作数改成 `R32ui(33)`、**其余指令一字不动**：**val 仍通过**。
+  → 证明「只改一个类型操作数」在 SPIR-V 层面成立，且 `v4uint` texel 对 `R32ui` 合法（GLSL imageStore 同形）。
+  证据文件：`.local/rg477m-texel-20261112/exp/after_integer.spv`、`.../typed_r32ui.spv`。
+
+#### §1.2 改写规则伪代码（宿主纯函数，新文件 `src/graphics/nvn_vulkan/engine/xbg_spirv_typed_storage.h`）
+
+```text
+xbg_spirv_image_format(vk_format) -> spirv_image_format          # 0 = 不支持/保持 Unknown
+    98->33(R32ui) 99->24(R32i) 100->3(R32f)
+    101->35(Rg32ui) 102->25(Rg32i) 103->6(Rg32f)
+    107->30(Rgba32ui) 108->21(Rgba32i) 109->1(Rgba32f)
+    其它 -> 0（不支持：保持 formatless，绝不猜）
+
+xbg_spirv_image_format_scalar(spirv_format) -> 0(float)|1(int)|2(uint)
+    R32f/Rg32f/Rgba32f -> 0 ; R32i/... -> 1 ; R32ui/... -> 2
+
+xbg_typed_storage_rewrite(words, binding, spirv_format) -> 1 | 0 | -1
+    1. 校验 magic==0x07230203、spirv_format 合法且 != Unknown，否则 -1
+    2. 找 OpDecorate Binding==binding 且 OpVariable StorageClass==UniformConstant 的变量 -> var
+    3. var -> OpTypePointer(UniformConstant) -> OpTypeImage -> image_type
+       要求 Dim==Buffer（texel buffer 路径）
+    4. 若 image_type 的 Image Format 操作数 != Unknown：
+         已是 typed：同 spirv_format -> 返回 0（幂等，字节不变）；不同 -> -1
+    5. 要求 image_type 只被这一个变量引用（共享类型会连带改变别的 binding）否则 -1
+    6. 要求该 image 上没有 OpImageRead（只有写；改成 typed 会改变读语义）否则 -1
+    7. 要求 image_type 的 Sampled Type 的标量类别 == xbg_spirv_image_format_scalar(spirv_format)
+       否则 -1（本仓库的 uint 存储图只允许 R32ui）
+    8. 只改一个操作数：image_type 的 Image Format = spirv_format
+       其它指令、数据流、ID、bound 全部不动
+    9. 返回 1
+
+xbg_spirv_declared_image_format(words, binding) -> spirv_image_format
+    0 = formatless（Unknown）；其它 = 模块实际声明的格式
+
+xbg_typed_storage_matches(spirv_format, vk_format) -> bool
+    spirv_format != 0 && spirv_format == xbg_spirv_image_format(vk_format)   # 精确一致
+```
+
+#### §1.3 引擎改动清单（`src/graphics/nvn_vulkan/engine/xbg_game.cpp`）
+
+| # | 位置（函数） | 改动 |
+|---|---|---|
+| 1 | `struct Shader`（约 2288 行） | 新增 `storage_image_formats`（binding -> 模块实际声明的 SPIR-V image format）、`module_words`（仅对含 storage texel/image binding 的着色器保留）、`typed_variants` |
+| 2 | `load_shader`（约 2620 行，`stencil_rewrite` 之后） | 用 `xbg_spirv_declared_image_format` 记录每个 storage texel/image binding 的**模块实际形态**；必要时保留 `module_words` |
+| 3 | 新函数 `typed_storage_variant(Shader&)`（紧邻 `integer_buffer_variant`，约 2745 行） | 按 **(binding, 绑定 VkFormat)** 生成模块变体：identity = `key + ":stb1:" + "binding_format,..."`（与整数缓冲变体的 `:ib1:` 区分）；改写用 `xbg_typed_storage_rewrite` |
+| 4 | 新函数 `typed_storage_binding_format(Shader&, const xbg_shader_binding&)` | 解析该 binding 当前**实际绑定**的 VkFormat（复用 `texel_binding_format`） |
+| 5 | 新结构 `TypedStorageSelection`（RAII，紧邻 `IntegerBufferSelection`，约 2791 行） | 在 `draw()`/`dispatch()` 入口把 `state.shader[stage]` 换成 typed 变体，退出时还原 |
+| 6 | `descriptors_build` 的 storage texel 分支（约 3862-3870 行） | **按模块实际形态**判定：<br>· 模块仍 formatless（声明格式==Unknown）→ **完全保留今天的要求**（`STORAGE_WRITE_WITHOUT_FORMAT` / `STORAGE_READ_WITHOUT_FORMAT`）<br>· 模块已 typed → 要求 ①`STORAGE_TEXEL_BUFFER_BIT` ②**声明的 SPIR-V 格式与绑定 VkFormat 精确一致**（更严） |
+| 7 | `shader_identity`（约 2570 行）与 `load_module`（约 2950 行） | 识别 `:stb1:` identity，使 warm 预热路径能重建同一 typed 模块（不认识时只是退回运行期创建，不影响正确性） |
+| 8 | `dispatch()`（约 4886 行）、`draw()`（约 4348 行） | 各加一个 `TypedStorageSelection` RAII |
+
+#### §1.4 硬约束自检
+
+- 不降精度、不跳 draw、不全局关 depth、不用占位 module：改写只改一个类型操作数，**不新增/删除/修改任何数据流指令**。
+- 不改游戏逻辑时间/动画/物理/音频/输入/过场速度：改写不触碰任何 CPU 侧逻辑。
+- 能力检查不放松：formatless 分支一字不改；typed 分支比 formatless 分支**更严**（额外要求格式精确一致）。
+- 变体只在**设备确实缺 formatless 位**时生成（缺位才需要 typed），支持 formatless 的设备行为完全不变。
