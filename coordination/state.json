@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-11-12T01:41:00.817033+00:00",
+  "updated_at": "2026-11-12T10:44:31",
   "phase": "v1.0.6 released to the public GitHub repository. Source = main 00b66e2 plus the six stability-line fixes, merged with zero file overlap. Public artifact FFRS-v1.0.6.apk carries no save key, no game data and no game artwork. Host contracts: 30 PASS, 0 fail, 1 blocked (local unpacked game module absent). Real-device frame rate and audio were not re-verified on this build and are not claimed.",
   "coordinator": "MiniMax Code /root release takeover (Codex thread aborted by user)",
   "integration_branch": "work/rg477m-native",
@@ -4771,6 +4771,50 @@
       "acceptance": "Evidence recorded in coordination/state.json release_1_0_6_20261112",
       "recovery_point": "5f4e2b5",
       "branch": "task/T-release-1.0.6-20261112"
+    },
+    {
+      "id": "HONOR-MOON-FLICKER-20261112",
+      "role": "investigation",
+      "owner": "MiniMax Code /root release takeover",
+      "status": "in_progress",
+      "goal": "decide whether the published v1.0.6 package causes the moon flicker and identify the mechanism",
+      "inputs": [
+        "task/T-release-1.0.6-20261112@5f4e2b5",
+        "00b66e2 build9 baseline",
+        "device A42BBB5109000333"
+      ],
+      "outputs": [
+        "coordination/state.json honor_moon_flicker_20261112"
+      ],
+      "dependencies": [],
+      "pass_gates": [],
+      "write_scope": [],
+      "acceptance": "package integrity proven, frame rate measured on device, flicker quantified, root cause chain evidenced from device logs",
+      "recovery_point": "5f4e2b5",
+      "branch": "task/T-release-1.0.6-20261112"
+    },
+    {
+      "id": "HONOR-MOON-FIX-20261112",
+      "role": "implementation",
+      "owner": "MiniMax Code /root release takeover",
+      "status": "in_progress",
+      "goal": "serve only a current-slot indirect template so the moon halo stops alternating without giving up the GPU-resident path",
+      "inputs": [
+        "task/T-release-1.0.6-20261112@5f4e2b5"
+      ],
+      "outputs": [
+        "src/graphics/nvn_vulkan/engine/xbg_game.cpp find_indirect_template current-slot guard"
+      ],
+      "dependencies": [
+        "HONOR-MOON-FLICKER-20261112"
+      ],
+      "pass_gates": [],
+      "write_scope": [
+        "src/graphics/nvn_vulkan/engine/xbg_game.cpp"
+      ],
+      "acceptance": "device build accepted: moon halo stable in the same scene and frame rate held at 30 FPS",
+      "recovery_point": "5f4e2b5",
+      "branch": "task/T-release-1.0.6-20261112"
     }
   ],
   "blockers": [
@@ -4891,7 +4935,11 @@
       "checkpoint": "build51actualGPUFlush",
       "status": "PASS scopedcomponent only; no gameFPS/scene/audio acceptance",
       "evidence": ".local/codex-queue-flush/manifest.json"
-    }
+    },
+    "On the Honor tablet A42BBB5109000333 the published v1.0.6 APK runs the field scene at a steady 30.00 FPS, identical to the build9 baseline measured in the same scene with the same save: ops 2256 vs 2242-2337, draws 737 vs 737-742, dispatches 135 vs 135.",
+    "The moon halo flicker on the Honor tablet is a two-state per-frame toggle (region mean 82.2 <-> 103.0) with identical statistics in the published build and in the build9 baseline, so it is not introduced by the published package.",
+    "The published v1.0.6 tree contains no uncommitted code: the only dirty file in the release worktree is a whitespace-only reformat of another writer coordination document, and the rendering source is byte-identical to the build9 baseline.",
+    "The moon halo flicker on the Honor tablet is caused by the GPU-resident indirect template path: with gfx-indexed-resident=0 the user observed a normal moon, and gfx-wb-skip=0 changed nothing."
   ],
   "unverified": [
     "完整CRT/TLS/线程/guest内存上下文与真正完整入口，正式T02参考行为验收。",
@@ -4915,7 +4963,10 @@
     "The graphics pipeline of the game is still refused by the driver: the fix of P-MM-29 is made on copies in .local and the runtime still feeds the driver the original modules.",
     "The present path has never run on a device. The contract proves the behaviour of the interface on a host without Vulkan, and that is all it proves: no swapchain image, no submit and no present have happened on the RG477M.",
     "The buffers of the guest and the queue submission seam have not run on the device yet: they were wired after the run of p-mm-44, so it is not known whether the guest reaches the submission and what the replay reads from the package.",
-    "No frame of the game has ever been shown. The replay sends no Vulkan command and the present path has no caller, so the colour of the guest own clear command has never reached the screen."
+    "No frame of the game has ever been shown. The replay sends no Vulkan command and the present path has no caller, so the colour of the guest own clear command has never reached the screen.",
+    "Whether gfx-wb-skip=0 removes the moon halo flicker on the device has not been confirmed; the field scene could not be re-entered from the title screen with adb input in this session.",
+    "No code fix for the stale indirect-argument read has been written, built or verified.",
+    "The current-slot guard on find_indirect_template is not yet built, installed or accepted on the device."
   ],
   "execution_goal": {
     "objective": "User cancels adaptive refresh implementation; prefer verified existing Switch FPS patch approach, port to exact currentBuild if possible, pursue realstable60FPS and continuecontrols/scenes/story/resources/audio unchangedspeed",
@@ -6122,9 +6173,61 @@
     "download_reverified": true,
     "not_verified": [
       "real-device frame rate on RG477M for this exact build",
-      "real-device frame rate on the Honor tablet for this exact build",
       "A2DP audio field/battle acceptance on this exact build"
     ],
-    "honor_head_after_release": "5f4e2b511f8579f0f786ebca54edfde67df8d4dd"
+    "honor_head_after_release": "5f4e2b511f8579f0f786ebca54edfde67df8d4dd",
+    "verified_on_device": {
+      "honor_tablet_frame_rate": "30.00 FPS steady in the field scene on A42BBB5109000333 for this exact build (v1.0.6 APK SHA-256 e6c2d287146c438f70c75ef3c408ddf3aa0629cbf6109be0dd09792828ca9cda)",
+      "honor_tablet_flicker": "moon halo flicker present and unchanged versus the build9 baseline; pre-existing, not introduced by this package"
+    }
+  },
+  "honor_moon_flicker_20261112": {
+    "question": "Is the moon flicker introduced by the published v1.0.6 package, and what is the mechanism?",
+    "status": "fix written and building; device acceptance pending",
+    "package_integrity": {
+      "conclusion": "not introduced by the published package",
+      "evidence": [
+        "tree diff 00b66e2..5f4e2b5 touches only the 6 cherry-picked stability commits plus the release commit; src/graphics/nvn_vulkan/engine/xbg_game.cpp is byte-identical, so the rendering path is the same as the build9 baseline",
+        "63d3652 (restore GPU sync for indirect draws to eliminate moon flickering) is an ancestor of 5f4e2b5 and its change is present at xbg_game.cpp:2009 (if(why==3 || why==8))",
+        "no uncommitted source is in the release branch: the only dirty file is coordination/results/HONOR-MOTION-BLOCKS-20261112.md, a whitespace-only reformat of another writer's analysis document",
+        "the RG477M worktree carries uncommitted NVN sync-family work, but it belongs to work/rg477m-native and is not part of this package",
+        "the Codex thread 01a1cb93-20cb-7890-bfdf-b1e74f323814 that the user pointed at is a read-only investigation: it contains no git commit and no apply_patch call"
+      ]
+    },
+    "frame_rate": {
+      "method": "same device A42BBB5109000333, same save, same scene, install -r -d, title screen then gamepad X to Continue",
+      "v1_0_6": "30.00 FPS steady; field scene ops 2256, draws 737, dispatches 135, submit_cpu 17.0 ms, gpu 20.9 ms",
+      "build9": "30.00 FPS steady; same scene ops 2242-2337, draws 737-742, dispatches 135",
+      "withdrawn_claim": "the earlier 7.87 FPS reading compared two different scenes; that window was the crystal-dense room (ops 1553, draws 765, dispatches 73), a different workload",
+      "not_verified": "crystal-dense second room frame rate for this exact build"
+    },
+    "flicker_measurement": {
+      "method": "screenrecord 6-8 s on device, per-frame mean of the moon region of the 3000x1920 frame (centre 1515,591 radius 55)",
+      "v1_0_6": "two-state toggle 82.2 <-> 103.0, std 10.10, range 21.22, 241 frames",
+      "build9": "two-state toggle 81.9 <-> 103.3, std 10.21, range 21.45, 205 frames",
+      "signature": "only the moon halo annulus changes, bbox x 1469-1572 y 545-650; the moon core and the surrounding sky are pixel-identical",
+      "conclusion": "the flicker is identical in the published build and in the build9 baseline, so it predates the package"
+    },
+    "root_cause_chain": {
+      "step_1": "63d3652 restores the GPU sync for indirect draws by letting cpu_access(why=5) call resolve_pending()",
+      "step_2": "that sync only fires while the read still overlaps a pending writeback; the device log shows CPU_ACCESS_SYNC count 0 in the field scene",
+      "step_3": "the device log shows 20 x NVN FIND_INDIRECT_FAIL with had_overlap=0 had_indirect=0, so the GPU-resident indirect template is already gone when the CPU needs it",
+      "step_4": "d5a3340 removed the recent_indirect_batches fallback, the only remaining way to find an indirect batch whose writeback had already retired",
+      "step_5": "refuted by experiment: gfx-wb-skip=0 leaves the flicker unchanged (moon region 82.9 <-> 103.4, std 9.80), so a dropped storage writeback is not the cause",
+      "step_6": "confirmed by experiment: gfx-indexed-resident=1 enables the GPU-resident indirect template path (find_indirect_template); with it at 0 the path is disabled, the draw falls back to the CPU read with its GPU synchronization, and the user reports the moon is normal",
+      "step_7": "the asymmetry behind it: current_pending_range, which hands out the GPU-resident view of the same range, requires w->slot==&slots[slot_index], but find_indirect_template accepted a template from any recording slot, so a template built from an earlier producer could be served and the draw used a stale instance count"
+    },
+    "not_verified": [
+      "the current-slot guard has not yet been built, installed and accepted on the device",
+      "the moon scene had to be re-entered with the user help; the fix acceptance needs the same scene again",
+      "the crystal-dense second room frame rate for this build",
+      "A2DP audio field and battle acceptance for this build"
+    ],
+    "single_variable_experiments": [
+      "gfx-wb-skip 1 -> 0: flicker unchanged (refuted)",
+      "gfx-indexed-resident 1 -> 0: moon reported normal by the user, at the cost of frame pacing and audio continuity (the CPU fallback synchronizes the GPU every frame)",
+      "the Codex thread 01a1cb93-20cb-7890-bfdf-b1e74f323814 is read-only: it contains no git commit and no apply_patch call"
+    ],
+    "fix_candidate": "find_indirect_template now requires the writeback to belong to the current recording slot (xbg_writeback_is_current_slot), the same guard current_pending_range already applies, so an older template can no longer be served and the draw falls back to the synchronized CPU path only when freshness cannot be proven"
   }
 }

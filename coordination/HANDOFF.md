@@ -1,3 +1,20 @@
+# 2026-11-12 10:50 月亮闪烁与帧率复测：打包无问题，闪烁是 GPU 间接模板路径
+
+- 用户报「打包代码不对、可能夹带未提交部分、之前 Codex 修好的月亮又在闪」。逐项核查结论：发布包**没有**夹带未提交代码，也**没有**漏掉任何提交。
+- 源码核对：00b66e2（build9 基线）到 5f4e2b5（1.0.6 发布提交）的树差异**只有** 6 个 cherry-pick 的稳定提交 + 发布提交本身；`src/graphics/nvn_vulkan/engine/xbg_game.cpp` 逐字节相同，渲染路径与基线一致。
+- 月亮修复在包内：63d3652「restore GPU sync for indirect draws to eliminate moon flickering」是 5f4e2b5 的祖先，其改动 `if(why==3 || why==8)` 仍在 xbg_game.cpp:2009。
+- 工作区脏文件只有一个：`coordination/results/HONOR-MOTION-BLOCKS-20261112.md`，是他人分析文档的空格排版改动，不含源码。RG477M 工作区确有未提交的 NVN sync family 工作，但属于 work/rg477m-native，不在本包范围。用户指认的 Codex 会话 01a1cb93-20cb-7890-bfdf-b1e74f323814 内无任何 git commit / apply_patch，是只读调查会话。
+- 帧率（同设备 A42BBB5109000333、同存档、同场景、install -r -d 覆盖装、标题界面按手柄键进游戏）：**v1.0.6 与 build9 都是稳定 30.00 FPS**（场景指标几乎一致：ops 2256 vs 2242~2337，draws 737 vs 737~742，dispatches 135 vs 135）。此前「1.0.6 只有 7.0 FPS」的结论**作废**：那一次比较的是不同场景（晶体密室，ops 1553 / draws 765 / dispatches 73），且该场景在两份构建上都是未闭合缺口。
+- 闪烁量化（设备录像 6~8 s，逐帧取月亮区域 3000x1920 中心(1515,591) 半径 55 的均值）：v1.0.6 = 82.2 <-> 103.0 两态跳变（std 10.10，range 21.22，241 帧）；build9 = 81.9 <-> 103.3（std 10.21，range 21.45，205 帧）。**两者统计一致 → 闪烁早于本次发布存在，不是发布包引入。**
+- 闪烁特征：差异图显示只有月亮**外圈光晕环**在两态间切换（月核与周围天空逐像素相同），变化包围盒 x1469-1572 / y545-650。
+- 单变量实验：
+  - `gfx-wb-skip` 1→0：闪烁**不变**（82.9 <-> 103.4，std 9.80）→ 写回丢弃**不是**原因，假设被证伪。
+  - `gfx-indexed-resident` 1→0：用户确认月亮**恢复正常**，但帧节奏与音频出现卡顿（CPU 回退路径每帧与 GPU 同步）→ **确证** GPU 常驻间接模板路径是闪烁来源。
+- 根因链：63d3652 恢复 GPU sync 的机制是让 `cpu_access(why=5)` 调用 `resolve_pending()`，但该同步只在读操作仍与 pending 写回重叠时触发（设备日志 `CPU_ACCESS_SYNC` 计数 0）；设备日志 20 次 `NVN FIND_INDIRECT_FAIL ... had_overlap=0`；d5a3340 删除了 `recent_indirect_batches` 回退；**关键不对称**：`current_pending_range` 在交出同一区间的 GPU 常驻视图前要求 `w->slot==&slots[slot_index]`，而 `find_indirect_template` 没有这道校验，因此可能取到更早 slot 的模板，用过期的实例数绘制。
+- 修复（待设备验收）：`find_indirect_template` 增加当前 slot 校验（`xbg_writeback_is_current_slot`），无法证明新鲜度时才回退到带同步的 CPU 路径。测试包 `.local/android-apk/FFRS-v1.0.7-test.apk`，SHA-256 a9ebeae292c58f00c90a02c203fb4551fa94a4c9814d23ffab9b58d39df2b790。
+- 发布口径：v1.0.6 tag 已发布且不可覆盖，修复版如验收通过另起 v1.0.7，不改写 v1.0.6。
+- 设备现状：平板已装测试包（versionCode 6），`gfx-indexed-resident=1`、`gfx-wb-skip=1` 已复位为出厂默认；存档备份在 `/sdcard/saves-bak-107/`。
+- 恢复点：honor 分支 task/T-release-1.0.6-20261112；公开仓 990fb25 / tag v1.0.6 未变。
 # 2026-11-12 09:41 v1.0.6 已对外发布（GitHub Release）
 
 - 接管说明：Codex 线程 01a1cd35-e5bb-72f0-a2f5-caee423a9b3f 的 turn 被用户手动中断（rollout 末尾 turn_aborted），写锁已释放，本轮由 MiniMax Code 独占推进，无并发写者。

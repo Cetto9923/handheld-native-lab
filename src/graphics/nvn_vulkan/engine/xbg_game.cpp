@@ -639,6 +639,10 @@ bool indirect_cpu_clean(uint64_t address,uint64_t bytes){
     for(auto &r:pending_reports)if(xbg_wb_overlaps(address,bytes,r.addr,sizeof(NVNcounterData)))return false;
     return true;
 }
+// Defined below, where the recording slots are declared: a writeback that
+// belongs to an earlier recording slot is not authoritative for the slot that
+// is recording now.
+static bool xbg_writeback_is_current_slot(const void *slot);
 bool find_indirect_template(uint64_t address,XbgIndirectTemplateRow &row,std::shared_ptr<IndirectTemplateBatch> *batch=nullptr){
     if(!indirect_proof_enabled)return false;
     bool had_overlap=false,had_indirect=false;
@@ -647,7 +651,14 @@ bool find_indirect_template(uint64_t address,XbgIndirectTemplateRow &row,std::sh
         had_overlap=true;
         // The newest overlapping write is authoritative, including partial or
         // unrecognized writes. An older template cannot establish freshness.
+        // A writeback from an earlier recording slot is not authoritative for
+        // the current slot: current_pending_range requires the current slot
+        // before it hands out a GPU-resident view of the same range, because a
+        // newer producer in this slot may already have replaced those bytes.
+        // Serving that older template draws with a stale instance count, which
+        // shows as a halo that alternates between two states frame by frame.
         if(address<w->addr || address+20>w->addr+w->bytes || !w->indirect)return false;
+        if(!xbg_writeback_is_current_slot(w->slot))return false;
         had_indirect=true;
         const auto &rows=w->indirect->rows;auto it=std::lower_bound(rows.begin(),rows.end(),address,[](const XbgIndirectTemplateRow &a,uint64_t b){return a.address<b;});
         if(it==rows.end() || it->address!=address)return false;row=*it;if(batch)*batch=w->indirect;return true;
@@ -752,6 +763,8 @@ struct Slot {
     std::vector<struct Descriptors*> desc_used; // pooled per-draw descriptor records, returned after this slot's fence // handed out this frame; recycled into spare_sets after the slot fence (no per-frame pool reset)
 };
 Slot slots[kMaxSlots];unsigned slot_count=16,slot_index=0;
+static bool xbg_writeback_is_current_slot(const void *slot){return slot==&slots[slot_index];}
+
 VkSemaphore submit_semaphores[kMaxSlots]={};
 bool submit_sem_signaled[kMaxSlots]={};
 bool submit_sem_inited=false;
