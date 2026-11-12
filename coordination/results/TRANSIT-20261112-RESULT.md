@@ -146,3 +146,30 @@ recorded here rather than changed.
 - `scripts/runtime/selfproof_xbg_event_retire.sh` - the self-proof (baseline green, mutation red).
 - `scripts/device/transit_ab.sh` - the paired device A/B.
 - `coordination/results/TRANSIT-20261112-OSS-NOTES.md` - the sources, with what was really opened.
+
+## 9. The merge list (for the serial integration)
+
+My worktree is `.worktrees/transit-20261112`, branch `task/T-transit-20261112`, base `e7ddc44`, HEAD `97d1a4f`
+(two commits: the engine change, and the tracked metrics tool). The engine file `src/graphics/nvn_vulkan/engine/xbg_game.cpp`
+is touched in the following places, all of them in the anonymous namespace of that file, all of them free of the effects
+worker's areas (shader seeds, pipeline cache):
+
+| place (base line) | what | why |
+|---|---|---|
+| includes, after `xbg_indirect_template.h` (line 42) | `#include "xbg_event_retire.h"` | the rule, as production code |
+| `struct PendingEvent` (line 620) | one more field `uint64_t order`, plus `event_order`, `event_signals`, `event_targeted`, `event_slots_targeted`, `event_fallback`, `event_retire_targeted` | the order the signals were issued in, and the counters |
+| after `retire_slot()` (line 1067) | new `retire_through()` | retires the submissions up to the one that carries the event |
+| `perf_frame()` (line 1265) | the `NVN PERF events` line gained `targeted=`, `slots=`, `fallback=` | the counters have to be visible on the device |
+| after `complete_all()` (line 2043) | new `publish_event_value()` | the read point retires only what the event needs |
+| `warm::worker()` (line 3034) | the body is paced by `warm::budget_per_frame` / `warm::interval_us` | the warm-up against the game's own frames |
+| `OP_SIGNAL_EVENT` (line 6106) | the two `push_back` calls carry `++event_order` | the order of the signals |
+| `XBG_OP_EXTENSION_BASE+4` (line 6232) | `complete_all()` -> `publish_event_value()`, with the old drain as the fallback | the command-buffer wait |
+| `xbg_game_initialize()` (line 6513) | reads the marker `gfx-event-retire` | the A/B switch of the rule |
+| `xbg_game_initialize()` (line 6542) | reads the markers `gfx-warm-budget` and `gfx-warm-interval` before `warm::start()` | the A/B switches of the warm-up |
+| `xbg_game_event_read()` (line 6613) | `complete_all()` -> `publish_event_value()` | the guest's read |
+
+Nothing else in the file changed. `AndroidManifest.xml` was **not** touched (the version number is the total control's).
+
+The APK with this tree and the warm-up throttle: `FFRS-Transit-20261112.apk`, SHA-256
+`2be0cd631abae669ffa1404983ca9662695c40e2527d6ecfbea17d7961d20b1c` (built from `97d1a4f`).
+
