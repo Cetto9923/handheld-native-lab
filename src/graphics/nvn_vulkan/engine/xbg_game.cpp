@@ -17,6 +17,7 @@ extern "C" int xbg_completion_wait_selftest(char *report,size_t bytes);
 #include "xbg_draw_timing.h"
 #include "xbg_provenance.h"
 #include "xbg_pipeline_key.h"
+#include "xbg_warm_flush.h"
 #include "xbg_spirv_integer_buffer.h"
 #include "xbg_spirv_indirect_instances.h"
 #include "xbg_vulkan.h"
@@ -1212,7 +1213,7 @@ void submit_slots(bool wait){
 }
 // Pipelines persist across launches (the driver validates the header and
 // ignores incompatible data), so later launches skip shader compilation.
-size_t pipelines_unsaved=0;uint64_t pipeline_save_frame=0;constexpr uint64_t compile_ns=2000000;
+size_t pipelines_unsaved=0;uint64_t pipeline_save_frame=0;uint64_t warm_save_frame=0;constexpr uint64_t compile_ns=2000000;
 std::string pipeline_cache_path(){std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');return (cut==std::string::npos?dir:dir.substr(0,cut))+"/vk-pipeline-cache.bin";}
 std::vector<uint8_t> load_pipeline_cache(){
     std::vector<uint8_t> data;FILE *f=fopen(pipeline_cache_path().c_str(),"rb");if(!f)return data;
@@ -1236,8 +1237,12 @@ void write_pipeline_cache(size_t unsaved){
 }
 void cache_save_join(){if(cache_saver.joinable())cache_saver.join();}
 void save_pipeline_cache(){
+    // The learned warm list is written on its own schedule (xbg_warm_flush.h);
+    // flushing it here as well keeps the last recipes of a session when the
+    // run ends.
+    warm::flush();
     if(!pipeline_cache || !pipelines_unsaved || cache_save_busy.load())return;
-    warm::flush();const size_t unsaved=pipelines_unsaved;pipelines_unsaved=0;
+    const size_t unsaved=pipelines_unsaved;pipelines_unsaved=0;
     if(sync_cache_save){write_pipeline_cache(unsaved);return;}
     cache_save_join();cache_save_busy=true;
     cache_saver=std::thread([unsaved]{setpriority(PRIO_PROCESS,0,10);write_pipeline_cache(unsaved);cache_save_busy=false;});
@@ -1252,7 +1257,13 @@ void perf_frame(){
     if(perf_frame_timed)++perf_timed_frames;perf_frame_timed=perf_sample && stats.presents.load()%perf_sample==0;   // the next frame
     {bool was=ab_frame_on;ab_frame_on=ab_enabled();tls_gate=!ab_off("tlsgate");img_fast=!ab_off("imgfast");if(was!=ab_frame_on && ab_period>0){perf=Perf{};perf.window_start=timing_clock();set_cache_hits=set_cache_misses=0;integer_texture_lookup_hits=integer_texture_lookup_misses=0;return;}}
     pipelines_unsaved+=size_t(warm::compiled.exchange(0));
-    if(pipelines_unsaved && stats.presents.load()>=pipeline_save_frame+300){pipeline_save_frame=stats.presents.load();save_pipeline_cache();}
+    const uint64_t presents=stats.presents.load();
+    if(pipelines_unsaved && presents>=pipeline_save_frame+300){pipeline_save_frame=presents;save_pipeline_cache();}
+    // The learned warm list is written on its own schedule. It used to be
+    // flushed only from save_pipeline_cache(), which returns early when no
+    // pipeline took 2 ms or more: those recipes were recorded in memory and
+    // never reached the disk, so the next launch built them again.
+    if(xbg_warm_flush::due(presents,warm_save_frame)){warm_save_frame=presents;warm::flush();}
     uint64_t now=timing_clock();if(!perf.window_start){perf.window_start=now;perf.frames=0;return;}
     if(++perf.frames<60)return;
     if(memory_profile_counts)log_memory_profile_counts();
@@ -2879,7 +2890,7 @@ uint64_t module_id(VkShaderModule m){std::lock_guard<std::mutex> l(mu);auto it=i
 std::unordered_map<uint64_t,std::string> id_keys;
 void register_module(VkShaderModule m,const std::string &key){std::lock_guard<std::mutex> l(mu);uint64_t id=fnv(key);ids[m]=id;id_keys[id]=key;}
 struct Rec{std::vector<std::string> keys;std::vector<uint32_t> words;};
-std::vector<Rec> recs;std::unordered_set<std::string> known;std::vector<uint8_t> pending;
+std::vector<Rec> recs;std::unordered_set<std::string> known;xbg_warm_flush::Pending pending;
 // Explicitly enabled Honor experiment: precompute the LIMIT shaders seen in the device trace.
 std::vector<std::string> compute_prewarm_keys;
 std::unordered_map<std::string,VkPipeline> ready;std::vector<std::thread> threads;std::atomic<bool> stop{false};std::atomic<size_t> next{0};
@@ -2899,14 +2910,24 @@ void record(const VkPipelineShaderStageCreateInfo *stages,uint32_t count,const X
         keys.push_back(id_keys.at(found->second));
     }
     if(!known.insert(bytes).second)return;
-    auto put=[](uint32_t value){for(unsigned i=0;i<4;++i)pending.push_back(uint8_t(value>>(8*i)));};
+    // The record is assembled outside the pending buffer and appended in one
+    // step, so a concurrent flush cannot write half a recipe.
+    std::vector<uint8_t> out;
+    auto put=[&](uint32_t value){for(unsigned i=0;i<4;++i)out.push_back(uint8_t(value>>(8*i)));};
     put(0x57504c58);put(uint32_t(keys.size()));
-    for(const auto &shader_key:keys){put(uint32_t(shader_key.size()));pending.insert(pending.end(),shader_key.begin(),shader_key.end());}
-    put(key.count);pending.insert(pending.end(),bytes.begin(),bytes.end());
+    for(const auto &shader_key:keys){put(uint32_t(shader_key.size()));out.insert(out.end(),shader_key.begin(),shader_key.end());}
+    put(key.count);out.insert(out.end(),bytes.begin(),bytes.end());
+    pending.append(out.data(),out.size());
 }
 void record(const VkGraphicsPipelineCreateInfo &ci,const XbgPipelineKey &key){record(ci.pStages,ci.stageCount,key);}
 void record(const VkComputePipelineCreateInfo &ci,const XbgPipelineKey &key){record(&ci.stage,1,key);}
-void flush(){if(pending.empty())return;FILE *f=fopen(list_path().c_str(),"ab");if(!f)return;bool ok=fwrite(pending.data(),1,pending.size(),f)==pending.size();ok=fclose(f)==0&&ok;if(ok)pending.clear();}
+// The learned list is written on its own schedule (see xbg_warm_flush.h). A
+// failed write keeps the recipes, so the next attempt writes them again.
+void flush(){
+    std::vector<uint8_t> out;
+    if(!pending.take(out))return;
+    if(!xbg_warm_flush::append_file(list_path(),out)){pending.restore(out);return;}
+}
 // gfx-shader-reuse：预热改写好的 SPIR-V，按着色器键留到 load_shader 取走（取走即删）；没用到的随 shutdown 释放。
 // gfx-shader-reuse: SPIR-V the warm-up rewrote, kept by shader key until load_shader takes it (taking removes it); unused entries
 // are freed at shutdown.
