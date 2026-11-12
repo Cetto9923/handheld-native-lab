@@ -79,6 +79,7 @@ extern "C" __attribute__((weak)) int xbg_host_command_callback(cmd_t *c,size_t n
 #include <unistd.h>
 #include <dlfcn.h>
 #include <map>
+#include <tuple>
 #include <new>
 #include <type_traits>
 #include <unordered_map>
@@ -1952,7 +1953,7 @@ void write_report(const PendingReport &r){
         ++samples_reports;samples_reported+=reported_samples;
     }
     NVNcounterData result{};result.counter=r.type==NVN_COUNTER_TYPE_SAMPLES_PASSED?reported_samples:0;result.timestamp=uint64_t(double(value)*properties.limits.timestampPeriod*12.0/625.0);
-    if(report_trace)xbg_logf("REPORT_PUB fr=%llu addr=%#llx type=%llu ts_value=%llu counter=%llu ts=%llu epoch=%llu count=%zu ts_period=%.6f",(unsigned long long)stats.presents.load(),(unsigned long long)r.addr,(unsigned long long)r.type,(unsigned long long)r.ts_value,(unsigned long long)reported_samples,(unsigned long long)result.timestamp,(unsigned long long)r.epoch,r.count,properties.limits.timestampPeriod);
+    if(report_trace)xbg_logf("RP fr=%llu addr=%#llx type=%llu ts=%llu counter=%llu epoch=%llu count=%zu",(unsigned long long)stats.presents.load(),(unsigned long long)r.addr,(unsigned long long)r.type,(unsigned long long)result.timestamp,(unsigned long long)reported_samples,(unsigned long long)r.epoch,r.count);
     snapshot_invalidate(r.addr,sizeof(result));evguard::EngineRead er(reinterpret_cast<void*>(r.addr),sizeof(result));memcpy(reinterpret_cast<void*>(r.addr),&result,sizeof(result));
 }
 // Reports whose timestamp and samples are all known are written in order.
@@ -5520,7 +5521,59 @@ bool can_defer_attachment_barrier(uint32_t bits,bool known){
 // The arguments live in guest memory and NVN reads them on the GPU when the draw runs. This engine has no indirect
 // draw buffer for guest memory, so they are read on the CPU at execution time, after the pending GPU writebacks over
 // that range have been resolved (preflight_cpu_reads), and the draw is issued directly.
+// Diagnostic only (marker gfx-draw-param-trace = 1): log every indexed draw with its full
+// guest parameters and its ordinal inside the frame. Used to tell a duplicated command from a
+// genuinely different command when the per-frame draw count is periodic.
+bool draw_param_trace=false;
+// Optional: only these fragment shaders get the full per-draw parameter line (marker gfx-trace-fs).
+std::vector<std::string> trace_fs_keys;
+// Per frame, per (vertex,fragment,indexed) shader tuple: how many draws were issued and a rolling
+// signature of their guest parameters. The signature changes when the guest redraws the same pair
+// with different data even when the draw count stays the same, so a stable count is not taken as
+// proof that the draw asked for the same thing.
+typedef std::tuple<std::string,std::string,int> DrawPairKey;
+std::map<DrawPairKey,std::pair<unsigned,uint64_t>> draw_pair_counts;
+uint64_t draw_pair_frame=~0ull;
+uint64_t sig_mix(uint64_t h,uint64_t v){h^=v+0x9e3779b97f4a7c15ull+(h<<6)+(h>>2);return h;}
+void flush_draw_pairs(uint64_t fr){
+    for(auto &kv:draw_pair_counts)xbg_logf("DP fr=%llu vs=%s fs=%s ix=%d n=%u sig=%llx",(unsigned long long)fr,
+        std::get<0>(kv.first).c_str(),std::get<1>(kv.first).c_str(),std::get<2>(kv.first),
+        kv.second.first,(unsigned long long)kv.second.second);
+    draw_pair_counts.clear();
+}
+void trace_draw_pair(bool indexed,uint64_t sig){
+    uint64_t fr=stats.presents.load();
+    if(fr!=draw_pair_frame){if(draw_pair_frame!=~0ull)flush_draw_pairs(draw_pair_frame);draw_pair_frame=fr;}
+    const char *vs=state.shader[0]?state.shader[0]->key.c_str():"none";
+    const char *fs=state.shader[4]?state.shader[4]->key.c_str():"none";
+    auto &e=draw_pair_counts[{vs,fs,indexed?1:0}];e.first++;e.second=sig_mix(e.second,sig);
+}
+void trace_draw_params(const p_draw_idx &a){
+    uint64_t fr=stats.presents.load();
+    uint64_t sig=1469598103934665603ull;
+    sig=sig_mix(sig,uint64_t(uint32_t(a.prim)));sig=sig_mix(sig,uint64_t(uint32_t(a.itype)));
+    sig=sig_mix(sig,uint64_t(uint32_t(a.count)));sig=sig_mix(sig,uint64_t(uint32_t(a.instances)));
+    sig=sig_mix(sig,uint64_t(uint32_t(a.base_vertex)));sig=sig_mix(sig,uint64_t(uint32_t(a.base_instance)));
+    sig=sig_mix(sig,a.ibuf);sig=sig_mix(sig,a.ind);
+    trace_draw_pair(true,sig);
+    const char *vs=state.shader[0]?state.shader[0]->key.c_str():"none";
+    const char *fs=state.shader[4]?state.shader[4]->key.c_str():"none";
+    for(auto &k:trace_fs_keys)if(k==fs){
+        static uint64_t ord_fr=~0ull;static unsigned ord=0;
+        if(ord_fr!=fr){ord_fr=fr;ord=0;}
+        xbg_logf("DRAWPARAM fr=%llu ord=%u vs=%s fs=%s prim=%d itype=%d count=%d inst=%d bv=%d bi=%d ibuf=%#llx ind=%#llx",
+            (unsigned long long)fr, ord++, vs, fs, a.prim, a.itype, a.count, a.instances, a.base_vertex, a.base_instance,
+            (unsigned long long)a.ibuf, (unsigned long long)a.ind);
+    }
+}
 void execute_draw_record(const p_draw &a){preflight_cpu_reads();
+    if(draw_param_trace){
+        uint64_t sig=1469598103934665603ull;
+        sig=sig_mix(sig,uint64_t(uint32_t(a.prim)));sig=sig_mix(sig,uint64_t(uint32_t(a.first)));
+        sig=sig_mix(sig,uint64_t(uint32_t(a.count)));sig=sig_mix(sig,uint64_t(uint32_t(a.instances)));
+        sig=sig_mix(sig,uint64_t(uint32_t(a.base_instance)));sig=sig_mix(sig,a.ind);
+        trace_draw_pair(false,sig);
+    }
     uint64_t fr = stats.presents.load();
     if (fr >= 605 && fr <= 615 && a.ind) {
         std::string vs = state.shader[0] ? state.shader[0]->key : "none";
@@ -5701,21 +5754,6 @@ bool gpu_draw_indexed(const p_draw_idx &a){
     // instances=0 is unknown metadata here, never a replacement for the GPU value.
     p_draw_idx indexed{};indexed.prim=a.prim;indexed.itype=a.itype;indexed.count=int32_t(row.index_count);indexed.ibuf=a.ibuf;
     draw(a.prim,0,int(row.index_count),&indexed,0,0,&args);return true;
-}
-// Diagnostic only (marker gfx-draw-param-trace = 1): log every indexed draw with its full
-// guest parameters and its ordinal inside the frame. Used to tell a duplicated command from a
-// genuinely different command when the per-frame draw count is periodic.
-bool draw_param_trace=false;
-
-void trace_draw_params(const p_draw_idx &a){
-    static uint64_t last_fr=~0ull;static unsigned ord=0;
-    uint64_t fr=stats.presents.load();
-    if(fr!=last_fr){last_fr=fr;ord=0;}
-    xbg_logf("DRAWPARAM fr=%llu ord=%u vs=%s fs=%s prim=%d itype=%d count=%d inst=%d bv=%d bi=%d ibuf=%#llx ind=%#llx mdi=%llu",
-        (unsigned long long)fr, ord++,
-        state.shader[0]?state.shader[0]->key.c_str():"none", state.shader[4]?state.shader[4]->key.c_str():"none",
-        a.prim, a.itype, a.count, a.instances, a.base_vertex, a.base_instance,
-        (unsigned long long)a.ibuf, (unsigned long long)a.ind, (unsigned long long)a.mdi_cnt);
 }
 void execute_draw_index_record(const p_draw_idx &a){preflight_cpu_reads();
     if(draw_param_trace)trace_draw_params(a);
@@ -6135,7 +6173,7 @@ extern "C" int xbg_game_initialize(const xbg_game_config *c,char *error,size_t b
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *f=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-owned-input-copy").c_str(),"rb");owned_input_copy_enabled=true;if(f){owned_input_copy_enabled=fgetc(f)!='0';fclose(f);}xbg_logf("NVN owned indexed input copy=%d",int(owned_input_copy_enabled));}
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *f=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-clear-overwrite-probe").c_str(),"rb");clear_overwrite_probe=false;if(f){clear_overwrite_probe=fgetc(f)=='1';fclose(f);}xbg_logf("NVN temporary clear-overwrite diagnostic=%d",int(clear_overwrite_probe));}
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *f=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-texture-lifecycle").c_str(),"rb");texture_lifecycle_enabled=true;if(f){texture_lifecycle_enabled=fgetc(f)!='0';fclose(f);}xbg_logf("NVN texture lifecycle retirement=%d",int(texture_lifecycle_enabled));}
-    {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');std::string base=cut==std::string::npos?dir:dir.substr(0,cut);FILE *g=fopen((base+"/gfx-indexed-resident").c_str(),"rb");gpu_indexed_enabled=true;gpu_indexed_draws=0;if(g){gpu_indexed_enabled=fgetc(g)!='0';fclose(g);}FILE *m=fopen((base+"/gfx-indirect-proof").c_str(),"rb");indirect_diag_enabled=false;indirect_proof_checks=indirect_proof_mismatches=0;if(m){indirect_diag_enabled=fgetc(m)=='1';fclose(m);}indirect_proof_enabled=gpu_indexed_enabled || indirect_diag_enabled;FILE *dp=fopen((base+"/gfx-draw-param-trace").c_str(),"rb");draw_param_trace=false;if(dp){draw_param_trace=fgetc(dp)=='1';fclose(dp);}FILE *rt=fopen((base+"/gfx-report-trace").c_str(),"rb");report_trace=false;if(rt){report_trace=fgetc(rt)=='1';fclose(rt);}xbg_logf("NVN indirect-template proof=%d GPU-indexed-resident=%d draw-param-trace=%d",int(indirect_proof_enabled),int(gpu_indexed_enabled),int(draw_param_trace));}
+    {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');std::string base=cut==std::string::npos?dir:dir.substr(0,cut);FILE *g=fopen((base+"/gfx-indexed-resident").c_str(),"rb");gpu_indexed_enabled=true;gpu_indexed_draws=0;if(g){gpu_indexed_enabled=fgetc(g)!='0';fclose(g);}FILE *m=fopen((base+"/gfx-indirect-proof").c_str(),"rb");indirect_diag_enabled=false;indirect_proof_checks=indirect_proof_mismatches=0;if(m){indirect_diag_enabled=fgetc(m)=='1';fclose(m);}indirect_proof_enabled=gpu_indexed_enabled || indirect_diag_enabled;FILE *dp=fopen((base+"/gfx-draw-param-trace").c_str(),"rb");draw_param_trace=false;if(dp){draw_param_trace=fgetc(dp)=='1';fclose(dp);}FILE *rt=fopen((base+"/gfx-report-trace").c_str(),"rb");report_trace=false;if(rt){report_trace=fgetc(rt)=='1';fclose(rt);}trace_fs_keys.clear();FILE *tf=fopen((base+"/gfx-trace-fs").c_str(),"rb");if(tf){char buf[128]={};if(fgets(buf,sizeof buf,tf)){std::string s(buf);while(!s.empty()&&(s.back()=='\n'||s.back()=='\r'))s.pop_back();if(!s.empty())trace_fs_keys.push_back(s);}fclose(tf);}xbg_logf("NVN trace fs filter=%zu",trace_fs_keys.size());xbg_logf("NVN indirect-template proof=%d GPU-indexed-resident=%d draw-param-trace=%d",int(indirect_proof_enabled),int(gpu_indexed_enabled),int(draw_param_trace));}
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-attachment-barrier").c_str(),"rb");attachment_barrier_enabled=true;attachment_barriers_deferred=0;if(m){attachment_barrier_enabled=fgetc(m)!='0';fclose(m);}xbg_logf("NVN attachment-only barrier defer=%d",int(attachment_barrier_enabled));}
     if(const char *mode=getenv("DM_GFX_COMPLETION_WAIT")){if(!strcmp(mode,"0"))completion_wait_enabled=false;else if(!strcmp(mode,"1"))completion_wait_enabled=true;}
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-legacy-waitall").c_str(),"rb");if(m){legacy_waitall=fgetc(m)=='1';fclose(m);}
