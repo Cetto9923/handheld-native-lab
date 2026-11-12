@@ -92,6 +92,56 @@ int main(void) {
             subprocess.run([str(path / 'test')], check=True)
 
 
+    def test_aspect_fit_keeps_the_picture_whole(self):
+        """The 4:3 case: a 16:9 picture is pillarboxed, never stretched."""
+        source = (ROOT / 'src/graphics/nvn_device/nvn_backend_vulkan.c').read_text()
+        start = source.index('static void nvn_vulkan_fit_preserve_aspect(')
+        end = source.index('\n}\n', start) + len('\n}\n')
+        body = source[start:end]
+        fixture = r"""#include <math.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+""" + body + r"""
+static int aspect_kept(double w, double h, double source_w, double source_h) {
+    if (h <= 0.0) return 0;
+    return fabs((w / h) - (source_w / source_h)) <= 0.01;
+}
+int main(void) {
+    int32_t x, y, w, h;
+    double scale;
+    /* The handheld tier on a 4:3 panel: the whole picture, centred, with a
+     * black bar above and below it, and not stretched. */
+    nvn_vulkan_fit_preserve_aspect(1280, 720, 1280, 960, &x, &y, &w, &h, &scale);
+    if (x != 0 || y != 120 || w != 1280 || h != 720) return 1;
+    if (scale != 1.0) return 2;
+    if (!aspect_kept((double)w, (double)h, 1280.0, 720.0)) return 3;
+    /* The docked tier on the same panel: scaled down, still whole, still
+     * centred and still not stretched. */
+    nvn_vulkan_fit_preserve_aspect(1920, 1080, 1280, 960, &x, &y, &w, &h, &scale);
+    if (x < 0 || y < 0 || w > 1280 || h > 960 || w <= 0 || h <= 0) return 4;
+    if (abs(x - (1280 - w) / 2) > 1 || abs(y - (960 - h) / 2) > 1) return 5;
+    if (!aspect_kept((double)w, (double)h, 1920.0, 1080.0)) return 6;
+    /* A square picture on a square surface fills it. */
+    nvn_vulkan_fit_preserve_aspect(1000, 1000, 800, 800, &x, &y, &w, &h, &scale);
+    if (x != 0 || y != 0 || w != 800 || h != 800) return 7;
+    /* A portrait picture on a landscape surface keeps its shape and its
+     * border on both sides. */
+    nvn_vulkan_fit_preserve_aspect(720, 1280, 1280, 960, &x, &y, &w, &h, &scale);
+    if (w > 1280 || h > 960) return 8;
+    if (!aspect_kept((double)w, (double)h, 720.0, 1280.0)) return 9;
+    if (abs(x - (1280 - w) / 2) > 1) return 10;
+    return 0;
+}
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp)
+            (path / 'test.c').write_text(fixture)
+            subprocess.run(['cc', '-std=c11', '-D_POSIX_C_SOURCE=200809L',
+                            '-Wall', '-Wextra', '-Werror', str(path / 'test.c'),
+                            '-o', str(path / 'test')], check=True)
+            subprocess.run([str(path / 'test')], check=True)
+
     def test_inline_gate_is_profile_and_selected_adreno_only(self):
         source = (ROOT / 'src/graphics/nvn_vulkan/engine/xbg_game.cpp').read_text()
         anchor = source.index('vkGetPhysicalDeviceProperties(cfg.physical,&properties)')
