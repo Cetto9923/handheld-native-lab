@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-12T23:00:52.831874+08:00",
+ "updated_at": "2026-11-12T23:08:41.123953+08:00",
  "phase": "v1.0.6 published; v1.0.7 internal team-play package built and device-verified on task/T-package-1.0.7-20261112 (moon halo fix shipped, cheat menu usable, 30 FPS held). Battle effect pipeline stutter still open, not in this package.",
  "coordinator": "MiniMax Code /root release takeover (Codex thread aborted by user)",
  "integration_branch": "work/rg477m-native",
@@ -6794,17 +6794,39 @@
    "handling": "the key stays in .local/ only, is never committed, and is referenced through the existing build-time FFRS_SAVE_KEY_FILE staging; no key file is copied between worktrees"
   },
   "device_availability_rg477m": {
-   "observed_at": "2026-11-12T22:29:51.683002+08:00",
-   "state": "OFFLINE",
-   "evidence": "adb devices lists only A42BBB5109000333 (Honor); the RG477M is not enumerated over USB",
-   "impact": "device verification of the RG477M build is blocked until the handheld reconnects; code, build and OSS-NOTES work continues",
-   "note": "adb kill-server is forbidden, so this is a physical link state, not a server restart"
+   "observed_at": "2026-11-12T23:08:41.123953+08:00",
+   "state": "ONLINE",
+   "evidence": "adb devices lists RG477M01445122 as device; model RG477M, ro.soc.model=MT6897, ro.board.platform=mt6897, ro.hardware.egl=meow, panel 1280x960, battery level 53 with status 2 (charging), AC powered false because the cable only supplies power",
+   "data_intact": "the data root /sdcard/HandheldNativeLab/data/ holds main.nso 125577976, sdk.nso, romfs/, shaders/, shaders.hnla 6089256224, pipeline-warm-list.bin 905028, hnl-data.properties and hnl-index.tsv; the saves hold GameSaveData0/1/2 plus OptionSaveData and EnhancedInputUserSettings; the app private directory exists with the historical frame CSVs",
+   "installed": "org.ffrs.gamewindow 1.0.8 versionCode 8",
+   "note": "the earlier empty listing was only the storage not being mounted yet right after the boot, not a data loss"
   },
   "worker_restarts": {
    "observed_at": "2026-11-12T22:29:51.683002+08:00",
    "cause": "both workers died on transport errors (ERR_NETWORK_IO_SUSPENDED and Connection error) while still in research, before editing any file; both worktrees stayed clean",
    "kept": "the 477M worker had already delivered its community reference list and the save key correction; the seed worker had closed and independently re-verified the evidence chain",
    "action": "restart both with the finished research handed over as a briefing so neither repeats it"
+  },
+  "resource_scheduling_20261112": {
+   "observed_at": "2026-11-12T23:08:41.123953+08:00",
+   "user_directive": "477M waits until the perfect version is done, there is no spare cable; then at 23:0x the user asked to push the Qualcomm tablet first",
+   "plan": [
+    "the Honor tablet A42BBB5109000333 is the primary target and the only contended device; the effect worker holds it for the warmup and stall investigation, the transition worker queues behind it",
+    "the RG477M came back online with its data intact, so its worker may run the on device acceptance there because that is a separate device and its code is already committed with an APK already built; it must reuse the existing APK and not compete for the build queue",
+    "the final target is one package, versionName 1.0.9 and versionCode 9, which covers the RG477M code 8 and the Honor code 7",
+    "the three worktrees touch xbg_game.cpp in separate places and the coordinator merges them serially at the end"
+   ],
+   "final_target": {
+    "version_name": "1.0.9",
+    "version_code": 9,
+    "acceptance": [
+     "the stalls above 100 ms drop far below the baseline of 93, the stall time falls below 40.1 s and the stall share falls below 13.6 percent, with the steady median gap holding at about 33.34 ms",
+     "no multi second single frame at startup any more",
+     "the game logic time is unchanged: gfx-defer-events stays off and the transition duration matches the original within 5 percent",
+     "no red line is broken: no skipped draws, no reduced precision, no depth turned off, no placeholder module",
+     "every change cites an obtainable community source in OSS-NOTES.md"
+    ]
+   }
   }
  },
  "defer_events_long_term_decision_20261112": {
