@@ -4108,3 +4108,48 @@ User transferred execution to Codex. Source 0444c81 plus Antigravity staged/unst
 
 - 陆行鸟召唤后画面异常：**仍未复现**（需玩家在世界地图按 Y，异常时停在原地回「已复现」）。
 - 世界地图 3D 视图黑色块状缺失、小地图地形层缺失：未取证。
+
+### 2026-11-13 21:40 续：draw 列表已证「两态相同」，下一步逐 binding 比对 uniform
+
+**分支** `task/T-rg477m-flicker-liveoff-20261113`　**HEAD** `edfecd7`（工作树干净）
+**已装** `6d32f4b0342fc9bd769ed9cceaf813c543a92d166eb1fb7e373c77f1cf404336`（含 ubtrace）
+**设备** RG477M01445122，游戏 PID 13330（覆盖安装时旧进程已被系统杀掉，已重新启动）
+
+#### 本轮最硬的三条证据
+
+1. **两态 draw 列表完全相同**（45 帧、512 容量、`over=0` 首次完整覆盖）：
+   共同 80 条、各自独有 0 条；跨态列表不一致率**不高于**态内。无任何 draw 计数能预测状态（|r| ≤ 0.2）。
+   ⚠️ 早前「两态相同」的 census 容量只有 64、每帧溢出约 95 条，是**假阴性**，本轮才真正证实。
+2. **白纱是离散连贯状态**：alpha = **0.0775 ± 0.0120**（30 个 BLUR 帧，R²=0.88），
+   相邻 BLUR 帧 alpha 图相关 r = 0.86~0.99 ⇒ 整帧开关，不是随机抖动。
+   alpha 在地面**不均匀**（左 0.02→右上 0.15），与局部亮度相关 r=+0.27。
+   天空/水面/UI 横幅完全不变；相机零位移；引擎内部渲染目标上同样可见 ⇒ **引擎渲染阶段**就已存在。
+3. **11 档 ab_off 路径全部证伪**（每档 90 帧、10 段连续 9 帧判定）：
+   memofront 10/10 段仍闪（44 次转换）⇒ 早前 4 帧「闪烁消失」是**假阳性**。
+
+#### 方法学教训（已写进 §13.1）
+
+判定「某开关消除闪烁」的**最小样本 = 90 帧（10 段 × 9 帧连续）**；小于此只能出「疑似」。
+本轮据此推翻了自己 3 个结论（假阴性 census、假阴性 pmean/rtpx、假阳性 memofront）。
+
+#### 新增诊断（提交 edfecd7）
+
+`files/gfx-live-ubtrace`：开启后对**每个 draw 的每个 uniform binding** 记录
+`frame,draw,vs,fs,stage,binding,element,source,offset,bytes,hash`（FNV-1a，guest 源字节前 4KB）
+到 `ubtrace-<pid>.csv`。只观察，不改渲染；标记不存在时零开销。
+用途：把两态帧的 uniform **逐 binding** 比对，直接定位哪个 binding 在跳变。
+
+#### 下一步（需要用户配合一次）
+
+游戏已重启，新包已就位。请：走到运河广场闪烁机位站定后回「到了」，
+agent 立刻跑 `/tmp/ffrs-flicker-csv/ub_pipeline.sh`（开 ubtrace + 抓连续呈现帧），
+再用 present 号把 ubtrace 的每帧与像素状态（SHARP/BLUR）对齐，逐 binding 找跳变项。
+
+#### 未完成 / 风险
+
+- 闪烁根因**仍未锁定**，未做任何修复。
+- `gfx-codex-probe` 标记仍为 `R`（probe 每进程一次，预算已用尽），本轮未用。
+- 陆行鸟画面异常仍未复现；世界地图 3D 黑色块状缺失未取证。
+- `0228e3c` 引入的 `gfx-pass-live` 回归未修（`pass_prof_active()` 要求 `pass_prof_frame!=UINT64_MAX`，
+  而 `gfx-pass-live` 正是用 `UINT64_MAX` 表示每帧都采）。
+- explore 子代理仍在排查引擎代码里的候选路径，结论未到。
