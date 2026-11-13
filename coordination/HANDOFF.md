@@ -1,3 +1,43 @@
+# 2026-11-13 19:10 运河广场闪烁：8 条引擎路径全部证伪，闪烁锁定在近处鹅卵石地面（RG477M）
+
+一次不靠猜的收敛：先纠正自己的测量错误，再把闪烁的空间位置量出来，最后补上唯一缺的取证工具。
+
+## 结论先说
+
+- **引擎没有掉帧**：帧计数器对墙钟实测 15240 -> 15420 帧 / 5.9975 s = 30.0 FPS 精确稳定，sync_wb=0。
+- **用户看到的掉帧严重是我造成的**：`screenrecord 12 Mbps` 叠加上同时武装 `gfx-pass-live=150`
+  （每 draw 拼 shader 串、往 engine.log 灌 5 万行 GPASS）把帧率压到 10 FPS。
+  测量方式已改为「帧计数器 + PERF」，不用录屏。
+- **闪烁只在近处鹅卵石地面与台阶**（去趋势残差 std 3.11 / 1.21，峰值差 23% / 14%）；
+  墙面、水面、**右上小地图（独立渲染通道）都不闪** -> 不是全屏后处理 / 曝光跳变。
+- **SurfaceFlinger 合成稳定**：Android View 叠加层（PAD+ 按钮）逐帧 std = 0.00。
+- **indirect_mode=3（只接受当前 slot 的间接模板）不降帧，且把闪烁压掉 22~28%**，
+  但只是减小、不是消除 -> 不是根因。GPU 常驻索引路径关掉会让帧率掉到 22~23 FPS
+  （该开关只关不开，测完已重启恢复）。
+- **新增引擎侧呈现帧抓取**（提交 5082aac）：标记 `files/gfx-live-framedump` = 1..9，
+  抓连续 N 帧呈现图像（含 alpha）落盘 `files/frame-dump/`，一刀切开「引擎画错」与「合成/alpha 透出」。
+
+## 落点
+
+| 项 | 值 |
+|---|---|
+| 设备 | 仅 RG477M（`RG477M01445122`）；荣耀平板未操作 |
+| 分支 / 提交 | `task/T-rg477m-flicker-liveoff-20261113` / `5082aac`（`xbg_game.cpp` +7、`xbg_probe.inc` +40） |
+| APK | `.local/android-apk/ffrs-game-window-debug.apk`，sha256 `5f407ef7...`，证书 `d11967a3...`（与设备已装包一致，`install -r -t` 成功、存档保留） |
+| 宿主契约 | `verify_host.py --runtime-contracts` 实际检查项全部 passed（整体 exit=1 是既有 blocked：本地未解包游戏模块 `module-load-info`） |
+| 报告 | `coordination/results/RG477M-FLICKER-LEFTGROUND-20261113.md` 第 8 节 |
+| 取证 | `/tmp/ffrs-flicker-csv/`（matrix.py、fast.py、rawburst.py、fdump.py 与 burst 原始帧） |
+
+## 下一步
+
+1. 重启游戏（顺带恢复 GPU 常驻索引路径），读档回运河广场，走到闪烁机位。
+2. 写 `gfx-live-framedump=8`，取 8 帧连续呈现图像，与同刻 raw 截图逐像素比对。
+3. 引擎帧在变 -> 查渲染；引擎帧不变 -> 查呈现/合成（alpha）。
+
+## 未声称
+
+闪烁根因未锁定、未修复；未声称完整游戏兼容、60 FPS、独立 QA。
+
 # 2026-11-13 16:45 第3章水都卡顿：根因是设备上遗留的一个诊断标记（RG477M）
 
 一次归因，一个提交，一次真机 A/B 验收。第3章水都（奥尔德里昂）室内场景从 **11.4 FPS 回到 30.1 FPS**，且**带着同一个遗留标记**。

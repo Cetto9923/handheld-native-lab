@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-13T16:45:00+08:00",
+ "updated_at": "2026-11-13T19:10:00+08:00",
  "phase": "v1.0.9 consolidation in progress: one APK (versionCode 9) must boot both the Honor tablet (code 7) and the RG477M (code 8). Three implementation lines are in flight — readback targeted retirement (stutter root cause), Mali formatless-write FATAL (RG477M cannot enter the game), battle-settle crash P0 (8E5 phone, no device). The Honor tablet was returned to the user after the effect-seed line finished its measurement; all Honor device acceptance is deferred to one session after the merge.",
  "coordinator": "MiniMax Code /root release takeover (Codex thread aborted by user)",
  "integration_branch": "work/rg477m-native",
@@ -1895,6 +1895,23 @@
    "acquired_at": "2026-11-12T23:32:00.823024+08:00",
    "checkpoint": "not yet reported",
    "objective": "Pre-emptive hardening for the 8E5 (Snapdragon) crash after a Bahamut summon wins the fight. No 8E5 device is available, so the work is code-level analysis plus host contracts; every device claim must be written NOT_RUN.",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "RG477M-FLICKER-LOCALIZATION-20261113",
+   "owner": "MiniMax Code /root",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_probe.inc",
+    "coordination/results/RG477M-FLICKER-LEFTGROUND-20261113.md",
+    "coordination/HANDOFF.md",
+    "coordination/state.json"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native",
+   "branch": "task/T-rg477m-flicker-liveoff-20261113",
+   "acquired_at": "2026-11-13T19:10:00+08:00",
+   "checkpoint": "5082aac",
+   "objective": "Flicker localization and the engine-side present-frame dump on the RG477M.",
    "write_state": "ACTIVE"
   }
  ],
@@ -5293,6 +5310,38 @@
    "checkpoint": "0228e3c",
    "device_exclusive": "RG477M01445122",
    "status_note": "Device verified. The chocobo visual anomaly reported by the user was NOT reproduced in this session; no code was changed for it and no claim is made about it."
+  },
+  {
+   "id": "RG477M-FLICKER-LOCALIZATION-20261113",
+   "role": "implementer",
+   "status": "in_progress",
+   "owner": "MiniMax Code /root",
+   "branch": "task/T-rg477m-flicker-liveoff-20261113",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native",
+   "objective": "Localize the canal plaza flicker on the RG477M, tell a wrong render apart from a presentation/composite-alpha problem, and then fix it without losing the 30 FPS result.",
+   "inputs": [
+    "device raw screencap bursts (no recording)",
+    "plaza_base.mp4 447 frames at 30.2 FPS",
+    "runtime switch matrix with gfx-live-off=gpuidx and gfx-live-indirect-mode=0..3",
+    "honor moon halo archaeology in coordination/HANDOFF.md"
+   ],
+   "outputs": [
+    "791005b chore(graphics): switch the GPU-resident indexed path and the indirect mode live",
+    "5082aac chore(graphics): dump consecutive presented frames for the flicker diagnosis",
+    "coordination/results/RG477M-FLICKER-LEFTGROUND-20261113.md section 8",
+    "APK sha256 5f407ef7f5cc579326a455e4a38bda93a27931a1a88d7e29f566997f23970684"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_probe.inc",
+    "coordination/"
+   ],
+   "acceptance": "The engine's own presented frames are captured with alpha for consecutive presents at the flicker spot and compared pixel by pixel with a raw screencap taken at the same moment. The result must name one of: a wrong render, or a presentation/composite-alpha problem. Any fix must keep 30.0 FPS with sync_wb=0 and must pass scripts/verify_host.py --runtime-contracts.",
+   "checkpoint": "5082aac",
+   "device_exclusive": "RG477M01445122",
+   "status_note": "The eight engine cache and scheduling paths are all falsified. The flicker is localized to the near cobblestone ground and the stairs. The new present-frame dump is built and installed; the game was restarted and is loading the save. The user has to walk back to the flickering spot before the capture."
   }
  ],
  "blockers": [
@@ -7441,5 +7490,27 @@
    ".local/android-apk/ffrs-game-window-debug.apk (sha256 8bda346d...)",
    "device /sdcard/Android/data/org.ffrs.gamewindow/files/engine.log and codex-frame-14585.csv"
   ]
+ },
+ "rg477m_flicker_localization_20261113": {
+  "observed_at": "2026-11-13T19:10:00+08:00",
+  "status": "in_progress",
+  "device": "RG477M01445122 (Mali-G615 MC6); the Honor tablet was not touched",
+  "branch": "task/T-rg477m-flicker-liveoff-20261113",
+  "commit": "5082aac",
+  "engine_fps": "30.0 FPS measured from the frame counter against the wall clock (15240 to 15420 frames over 5.9975 s); sync_wb=0, sync_rb=0. The engine does not drop frames.",
+  "measurement_correction": "The frame drops the user saw were caused by the diagnostics themselves: screenrecord at 12 Mbps plus gfx-pass-live=150 (a shader-pair string per draw, 50000 GPASS log lines) dropped the device to 10 FPS (100 ms per frame). A clean recording without the pass profiler gave 447 frames in 14.95 s (33.1 ms median). Performance measurement now uses the frame counter and NVN PERF, never a recording.",
+  "flicker_location": "Only the near cobblestone ground and the stairs flicker (detrended residual std 3.11 and 1.21, peak difference 23 and 14 percent). The building wall, the water and the mini map (a separate render pass) do not flicker, so a full-screen post-process or exposure jump is excluded. The earlier water-sparkle figure of 3.14 was aliasing noise at 2.5 FPS sampling and is corrected to 0.11.",
+  "compositor_check": "The Android View overlay (PAD+ button) has a per-frame std of 0.00 while the game ground has 5.34, so the SurfaceFlinger composition is stable. That still does not separate a wrong render from a low alpha letting the wallpaper through, because the handheld uses VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR with RGBA_8888 and the Honor P0-1 fix was Honor-gated.",
+  "live_switch_matrix": "indirect_mode 0/1/2/3 measured in one session with the new runtime switches. Mode 3 (only a template from the current recording slot, the shared ancestor 7b733b9) keeps 29.9 FPS and removes 22 to 28 percent of the fast flicker, so it reduces but does not remove it and is not the root cause. Turning the GPU-resident indexed path off (gpuidx) costs 22 to 23 FPS because sync_wb goes from 0 to 60 per frame; that switch only turns things off, so the process was restarted to restore it.",
+  "new_diagnostic": "Marker files/gfx-live-framedump with a digit 1..9 dumps that many consecutive presented frames (raw pixels plus a text header with width, height, bpp, format and alpha) into files/frame-dump/. Read-only, default off, no rendering change.",
+  "apk": {
+   "sha256": "5f407ef7f5cc579326a455e4a38bda93a27931a1a88d7e29f566997f23970684",
+   "signing_cert_sha256": "d11967a31fcef92f3d6b44adf9d9678c8d2b07bf8f3246d51a791617ed61f36e",
+   "install": "adb install -r -t succeeded and the save is preserved"
+  },
+  "host_contract": "verify_host.py --runtime-contracts: every real check passed. The overall exit 1 is the pre-existing blocked item module-load-info (the local unpacked game module is absent) and is not related to this change.",
+  "device_side_effects": "com.anbernic.control was force-stopped earlier and has been restored with am start -n com.anbernic.control/.ui.controlcenter.ControlCenterActivity; ControlCenterService is running again. com.ylm.magicwallpaper1 was force-stopped but its service is still running. One adb kill-server happened while the device was disconnected; the Honor tablet was not connected and the impact was zero.",
+  "next": "Restart the game, load the save back into the canal plaza, walk to the flickering spot, then write gfx-live-framedump=8 and compare the engine pixels with a raw screencap taken at the same moment.",
+  "not_verified": "The flicker root cause is not locked and no fix is claimed. No claim of full game compatibility, 60 FPS or independent QA."
  }
 }
