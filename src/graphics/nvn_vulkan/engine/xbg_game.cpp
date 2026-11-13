@@ -7079,6 +7079,12 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
       if(sync_file){int value=fgetc(sync_file);fclose(sync_file);if(value=='0' || value=='1'){
           sync_mode=value=='1';xbg_logf("LIVE-SYNC enabled=%d at present %llu",int(sync_mode),(unsigned long long)pr);
       }remove(ls.c_str());}
+      // Diagnostic only: marker files/gfx-live-flame-diag holds '0' or '1' and switches the per-frame draw census
+      // (the flame/particle census ported from the Honor tree) on or off live, so the census can be compared with the
+      // same scene without restarting the game. The census only observes: it never changes what is rendered.
+      {std::string fdg=probe.base+"/gfx-live-flame-diag";FILE *fdgf=fopen(fdg.c_str(),"rb");
+       if(fdgf){int value=fgetc(fdgf);fclose(fdgf);if(value=='0'||value=='1'){
+           flame_diag_enabled=(value=='1');xbg_logf("LIVE-FLAME-DIAG enabled=%d at present %llu",int(flame_diag_enabled),(unsigned long long)pr);}}}
       // Diagnostic only: marker files/gfx-live-framedump holds a digit 1..9 and dumps that many
       // consecutive presented frames to files/frame-dump/, so the engine's own pixels can be
       // compared against what the display shows at the same moment.
