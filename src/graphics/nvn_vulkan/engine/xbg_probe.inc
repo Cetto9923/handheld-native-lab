@@ -14,7 +14,7 @@ struct ProbeTexelSnapshot {
 };
 struct ProbeQuerySnapshot {VkQueryPool pool;uint32_t index;unsigned group,draw;};
 struct ProbeState {
-    unsigned repeat_captures=0;bool repeat_mode=false,compact=false,spell_depth_test=false,spell_cull_test=false,spell_no_tests=false,spell_empty_fragment=false,spell_prepass_no_depth_write=false;
+    unsigned repeat_captures=0,frame_dump_remaining=0,window=0;bool repeat_mode=false,compact=false,spell_depth_test=false,spell_cull_test=false,spell_no_tests=false,spell_empty_fragment=false,spell_prepass_no_depth_write=false;
     bool waiting=false,lut=false;std::string base,group;unsigned groups=0,draws=0,snapshots=0;uint64_t extra_buffer_bytes=0;
     std::vector<ProbeSurface> outputs,inputs;std::map<std::vector<uint64_t>,std::string> saved;
     std::vector<ProbeTexelSnapshot> texels;
@@ -374,7 +374,7 @@ void probe_snapshot(const ProbeSurface &surface){
         capture_log("PROBE_SPRITE_ATLAS group=%u serial=%llu label=%s width=%u height=%u vk=%u bytes=%llu",probe.groups,(unsigned long long)im.source.serial,full_label.c_str(),w,h,unsigned(im.fmt),(unsigned long long)bytes);
         capture.active=true;capture_data(full_label.c_str(),raw,size_t(bytes));capture.active=false;
     }
-    if(!probe.compact && z==1 && w>=1000 && h>=500 && (surface.role=="color0" || surface.role=="color3")){
+    if(!probe.compact && z==1 && w>=1000 && h>=500 && (surface.role=="color0" || surface.role=="color3" || surface.role=="present")){
         const uint32_t x=w/3,y=h/2,rw=w/3,rh=h/2;std::vector<uint8_t> roi(size_t(rw)*rh*bpp);
         for(uint32_t row=0;row<rh;row++)memcpy(roi.data()+size_t(row)*rw*bpp,raw+(size_t(y+row)*w+x)*bpp,size_t(rw)*bpp);
         std::string roi_label=std::string(label)+"-roi";capture_log("PROBE_ROI group=%u role=%s serial=%llu label=%s vk=%u x=%u y=%u width=%u height=%u bpp=%u",probe.groups,surface.role.c_str(),(unsigned long long)im.source.serial,roi_label.c_str(),unsigned(im.fmt),x,y,rw,rh,bpp);
@@ -516,9 +516,58 @@ void probe_start(uint64_t frame,bool lut){
     if(!capture.full)capture_log("PROBE version=3 frame=%llu lutProducer=%u rawReadback=full sampleGridMax=128x72x32 maxSnapshots=1024 maxFileBytes=%llu",(unsigned long long)capture.frame,unsigned(lut),(unsigned long long)capture_limit);
     xbg_logf("CODEX_PROBE armed frame=%llu directory=%s lutProducer=%u",(unsigned long long)capture.frame,directory.c_str(),unsigned(lut));
 }
+
+// RG477M live present-frame dump. Marker files/gfx-live-framedump holds a digit
+// 1..9: read back that many consecutive presented frames and write them to
+// files/frame-dump/. It only reads the presented image back and writes it to
+// disk; it never changes rendering, and it costs nothing while no marker is
+// armed. The alpha channel is kept so a composite-alpha problem can be told
+// apart from a rendering problem.
+void probe_frame_dump(Image &present){
+    if(!probe.frame_dump_remaining)return;
+    Image &im=present;
+    const uint32_t w=im.width,h=im.height,bpp=im.bpp;
+    const uint64_t frame=stats.presents.load();
+    if(!w||!h||!bpp||im.samples!=VK_SAMPLE_COUNT_1_BIT||im.layout==VK_IMAGE_LAYOUT_UNDEFINED||!(im.usage&VK_IMAGE_USAGE_TRANSFER_SRC_BIT)||(im.aspects&VK_IMAGE_ASPECT_DEPTH_BIT)){
+        xbg_logf("FRAME-DUMP skip present=%llu reason=unsupported w=%u h=%u bpp=%u usage=%#x aspects=%#x samples=%u",
+            (unsigned long long)frame,w,h,bpp,unsigned(im.usage),unsigned(im.aspects),unsigned(im.samples));
+        --probe.frame_dump_remaining;return;
+    }
+    const size_t bytes=size_t(w)*h*bpp;
+    if(bytes>64u*1024*1024){xbg_logf("FRAME-DUMP skip present=%llu reason=too-large bytes=%zu",(unsigned long long)frame,bytes);probe.frame_dump_remaining=0;return;}
+    Buffer buffer=readback_buffer(bytes);Commands command;VkImageLayout saved=im.layout;
+    im.transition(command.command,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    VkBufferImageCopy region{};region.bufferOffset=buffer.offset;region.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};region.imageExtent={w,h,1};
+    vkCmdCopyImageToBuffer(command.command,im.image,im.layout,buffer.buffer,1,&region);
+    VkBufferMemoryBarrier host{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};host.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;host.dstAccessMask=VK_ACCESS_HOST_READ_BIT;
+    host.srcQueueFamilyIndex=host.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;host.buffer=buffer.buffer;host.offset=buffer.offset;host.size=buffer.size;
+    vkCmdPipelineBarrier(command.command,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,0,nullptr,1,&host,0,nullptr);
+    im.transition(command.command,saved);command.finish();gpu_sync(perf.sync_readback);buffer.invalidate();
+    char leaf[128];snprintf(leaf,sizeof(leaf),"/frame-dump/f%llu.bin",(unsigned long long)frame);
+    const std::string path=probe.base+leaf;
+    FILE *file=fopen(path.c_str(),"wb");
+    if(!file){xbg_logf("FRAME-DUMP open failed present=%llu errno=%d",(unsigned long long)frame,errno);--probe.frame_dump_remaining;return;}
+    fprintf(file,"# FFRD present=%llu width=%u height=%u bpp=%u fmt=%u usage=%#x bytes=%zu\n",
+        (unsigned long long)frame,w,h,bpp,unsigned(im.fmt),unsigned(im.usage),bytes);
+    const size_t written=fwrite(buffer.mapped,1,bytes,file);const int closed=fclose(file);
+    xbg_logf("FRAME-DUMP present=%llu path=%s w=%u h=%u bpp=%u fmt=%u bytes=%zu written=%zu closed=%d",
+        (unsigned long long)frame,path.c_str(),w,h,bpp,unsigned(im.fmt),bytes,written,closed);
+    --probe.frame_dump_remaining;
+}
 void probe_present(Image &present){
+    if(probe.frame_dump_remaining)probe_frame_dump(present);
     if(probe_full()){full_present(present);return;}
-    if(probe_is_active()){probe_flush();ProbeSurface final{probe_keep(present),{},false,"present"};if(final.image)probe_snapshot(final);return;}
+    if(probe_is_active()){
+        probe_flush();ProbeSurface final{probe_keep(present),{},false,"present"};if(final.image)probe_snapshot(final);
+        // A window capture continues with the very next frame, so a flicker window can be compared frame
+        // by frame. Every capture lands in its own directory (repeat_mode), named after the present number
+        // of the captured frame, so no capture.txt is overwritten and the frames line up with the dumps.
+        if(probe.window && probe.repeat_captures<32){
+            if(capture.trace){capture_log("END frame=%llu events=%u bytes=%llu",(unsigned long long)capture.frame,(unsigned long long)capture.events,(unsigned long long)capture.bytes);fclose(capture.trace);capture.trace=nullptr;capture.active=false;capture.probe=false;capture.full=false;}
+            ++probe.repeat_captures;probe_start(stats.presents.load()+2,false);
+        }
+        return;
+    }
     // Each capture still requires a fresh marker write. Allow retries within
     // one process when a short effect is missed, while retaining a hard cap.
     if(probe.repeat_mode && !capture.trace && probe.repeat_captures<16)probe.waiting=true;
@@ -540,6 +589,16 @@ void probe_present(Image &present){
         FILE *reset=fopen((probe.base+"/gfx-codex-probe").c_str(),"wb");
         if(reset){fputc('0',reset);fclose(reset);}
         probe_start(stats.presents.load()+2,false);return;
+    }
+    if(value=='R'){
+        // Multi-frame window capture. Unlike the Honor-only '5'..'C' family this is available on every
+        // device: the marker arms one window of consecutive frames, each in its own capture directory.
+        probe.window=24;probe.repeat_mode=true;probe.compact=false;
+        probe.spell_depth_test=probe.spell_cull_test=probe.spell_no_tests=probe.spell_empty_fragment=probe.spell_prepass_no_depth_write=false;
+        FILE *reset=fopen((probe.base+"/gfx-codex-probe").c_str(),"wb");
+        if(reset){fputc('0',reset);fclose(reset);}
+        probe_start(stats.presents.load()+2,false);
+        return;
     }
     if(value=='4'){
         // Diagnose the normal frame after recording, without disabling its

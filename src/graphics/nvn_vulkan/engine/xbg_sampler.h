@@ -17,6 +17,10 @@ typedef struct xbg_sampler_limits {
  * Returns 0 on success and leaves output untouched on failure. */
 int xbg_sampler_from_nvn(const xbg_nvn_sampler_desc *nvn,const xbg_sampler_limits *limits,VkSamplerCreateInfo *out);
 const char *xbg_sampler_error(int result);
+/* Diagnostic: when non-zero, the conversion forces maxLod=0 so the sampler never selects a
+ * mip. Used to tell a mip/LOD flip apart from a texture-content change. Off by default;
+ * it changes what is rendered and is never enabled in a release build. */
+extern int xbg_sampler_force_maxlod0;
 #ifdef __cplusplus
 }
 #endif
