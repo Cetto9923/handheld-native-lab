@@ -25,19 +25,49 @@
 enum {
     XBG_IMAGE_FORMAT_UNKNOWN=0,
     XBG_IMAGE_FORMAT_RGBA32F=1,
+    XBG_IMAGE_FORMAT_RGBA16F=2,
     XBG_IMAGE_FORMAT_R32F=3,
     XBG_IMAGE_FORMAT_RG32F=6,
+    XBG_IMAGE_FORMAT_RG16F=7,
+    XBG_IMAGE_FORMAT_R16F=9,
     XBG_IMAGE_FORMAT_RGBA32I=21,
+    XBG_IMAGE_FORMAT_RGBA16I=22,
+    XBG_IMAGE_FORMAT_RGBA8I=23,
     XBG_IMAGE_FORMAT_R32I=24,
     XBG_IMAGE_FORMAT_RG32I=25,
+    XBG_IMAGE_FORMAT_RG16I=26,
+    XBG_IMAGE_FORMAT_RG8I=27,
+    XBG_IMAGE_FORMAT_R16I=28,
+    XBG_IMAGE_FORMAT_R8I=29,
     XBG_IMAGE_FORMAT_RGBA32UI=30,
+    XBG_IMAGE_FORMAT_RGBA16UI=31,
+    XBG_IMAGE_FORMAT_RGBA8UI=32,
     XBG_IMAGE_FORMAT_R32UI=33,
-    XBG_IMAGE_FORMAT_RG32UI=35
+    XBG_IMAGE_FORMAT_RG32UI=35,
+    XBG_IMAGE_FORMAT_RG16UI=36,
+    XBG_IMAGE_FORMAT_RG8UI=37,
+    XBG_IMAGE_FORMAT_R16UI=38,
+    XBG_IMAGE_FORMAT_R8UI=39
 };
 
 // Vulkan format numbers (vulkan_core.h). The engine asserts these at compile
 // time; they are repeated here so this header stays host-testable.
 enum {
+    XBG_VK_FORMAT_R8_UINT=13,
+    XBG_VK_FORMAT_R8_SINT=14,
+    XBG_VK_FORMAT_R8G8_UINT=20,
+    XBG_VK_FORMAT_R8G8_SINT=21,
+    XBG_VK_FORMAT_R8G8B8A8_UINT=41,
+    XBG_VK_FORMAT_R8G8B8A8_SINT=42,
+    XBG_VK_FORMAT_R16_UINT=74,
+    XBG_VK_FORMAT_R16_SINT=75,
+    XBG_VK_FORMAT_R16_SFLOAT=76,
+    XBG_VK_FORMAT_R16G16_UINT=81,
+    XBG_VK_FORMAT_R16G16_SINT=82,
+    XBG_VK_FORMAT_R16G16_SFLOAT=83,
+    XBG_VK_FORMAT_R16G16B16A16_UINT=95,
+    XBG_VK_FORMAT_R16G16B16A16_SINT=96,
+    XBG_VK_FORMAT_R16G16B16A16_SFLOAT=97,
     XBG_VK_FORMAT_R32_UINT=98,
     XBG_VK_FORMAT_R32_SINT=99,
     XBG_VK_FORMAT_R32_SFLOAT=100,
@@ -62,6 +92,21 @@ inline uint32_t xbg_spirv_image_format(uint32_t vk_format){
     case XBG_VK_FORMAT_R32G32B32A32_UINT:return XBG_IMAGE_FORMAT_RGBA32UI;
     case XBG_VK_FORMAT_R32G32B32A32_SINT:return XBG_IMAGE_FORMAT_RGBA32I;
     case XBG_VK_FORMAT_R32G32B32A32_SFLOAT:return XBG_IMAGE_FORMAT_RGBA32F;
+    case XBG_VK_FORMAT_R16_UINT:return XBG_IMAGE_FORMAT_R16UI;
+    case XBG_VK_FORMAT_R16_SINT:return XBG_IMAGE_FORMAT_R16I;
+    case XBG_VK_FORMAT_R16_SFLOAT:return XBG_IMAGE_FORMAT_R16F;
+    case XBG_VK_FORMAT_R16G16_UINT:return XBG_IMAGE_FORMAT_RG16UI;
+    case XBG_VK_FORMAT_R16G16_SINT:return XBG_IMAGE_FORMAT_RG16I;
+    case XBG_VK_FORMAT_R16G16_SFLOAT:return XBG_IMAGE_FORMAT_RG16F;
+    case XBG_VK_FORMAT_R16G16B16A16_UINT:return XBG_IMAGE_FORMAT_RGBA16UI;
+    case XBG_VK_FORMAT_R16G16B16A16_SINT:return XBG_IMAGE_FORMAT_RGBA16I;
+    case XBG_VK_FORMAT_R16G16B16A16_SFLOAT:return XBG_IMAGE_FORMAT_RGBA16F;
+    case XBG_VK_FORMAT_R8_UINT:return XBG_IMAGE_FORMAT_R8UI;
+    case XBG_VK_FORMAT_R8_SINT:return XBG_IMAGE_FORMAT_R8I;
+    case XBG_VK_FORMAT_R8G8_UINT:return XBG_IMAGE_FORMAT_RG8UI;
+    case XBG_VK_FORMAT_R8G8_SINT:return XBG_IMAGE_FORMAT_RG8I;
+    case XBG_VK_FORMAT_R8G8B8A8_UINT:return XBG_IMAGE_FORMAT_RGBA8UI;
+    case XBG_VK_FORMAT_R8G8B8A8_SINT:return XBG_IMAGE_FORMAT_RGBA8I;
     default:return XBG_IMAGE_FORMAT_UNKNOWN;
     }
 }
@@ -69,9 +114,17 @@ inline uint32_t xbg_spirv_image_format(uint32_t vk_format){
 // Scalar class a declared image format requires: 0 float, 1 signed, 2 unsigned.
 inline uint32_t xbg_spirv_image_format_scalar(uint32_t spirv_format){
     switch(spirv_format){
-    case XBG_IMAGE_FORMAT_R32F:case XBG_IMAGE_FORMAT_RG32F:case XBG_IMAGE_FORMAT_RGBA32F:return 0;
-    case XBG_IMAGE_FORMAT_R32I:case XBG_IMAGE_FORMAT_RG32I:case XBG_IMAGE_FORMAT_RGBA32I:return 1;
-    case XBG_IMAGE_FORMAT_R32UI:case XBG_IMAGE_FORMAT_RG32UI:case XBG_IMAGE_FORMAT_RGBA32UI:return 2;
+    case XBG_IMAGE_FORMAT_R32F:case XBG_IMAGE_FORMAT_RG32F:case XBG_IMAGE_FORMAT_RGBA32F:
+    case XBG_IMAGE_FORMAT_R16F:case XBG_IMAGE_FORMAT_RG16F:case XBG_IMAGE_FORMAT_RGBA16F:
+        return 0;
+    case XBG_IMAGE_FORMAT_R32I:case XBG_IMAGE_FORMAT_RG32I:case XBG_IMAGE_FORMAT_RGBA32I:
+    case XBG_IMAGE_FORMAT_R16I:case XBG_IMAGE_FORMAT_RG16I:case XBG_IMAGE_FORMAT_RGBA16I:
+    case XBG_IMAGE_FORMAT_R8I:case XBG_IMAGE_FORMAT_RG8I:case XBG_IMAGE_FORMAT_RGBA8I:
+        return 1;
+    case XBG_IMAGE_FORMAT_R32UI:case XBG_IMAGE_FORMAT_RG32UI:case XBG_IMAGE_FORMAT_RGBA32UI:
+    case XBG_IMAGE_FORMAT_R16UI:case XBG_IMAGE_FORMAT_RG16UI:case XBG_IMAGE_FORMAT_RGBA16UI:
+    case XBG_IMAGE_FORMAT_R8UI:case XBG_IMAGE_FORMAT_RG8UI:case XBG_IMAGE_FORMAT_RGBA8UI:
+        return 2;
     default:return 3;
     }
 }
@@ -81,22 +134,26 @@ inline uint32_t xbg_spirv_image_format_scalar(uint32_t spirv_format){
 // vkCmdDispatch-OpImageWrite-08795 for image views, 04469 for buffer views).
 inline uint32_t xbg_spirv_image_format_components(uint32_t spirv_format){
     switch(spirv_format){
-    case XBG_IMAGE_FORMAT_R32F:case XBG_IMAGE_FORMAT_R32I:case XBG_IMAGE_FORMAT_R32UI:return 1;
-    case XBG_IMAGE_FORMAT_RG32F:case XBG_IMAGE_FORMAT_RG32I:case XBG_IMAGE_FORMAT_RG32UI:return 2;
-    case XBG_IMAGE_FORMAT_RGBA32F:case XBG_IMAGE_FORMAT_RGBA32I:case XBG_IMAGE_FORMAT_RGBA32UI:return 4;
+    case XBG_IMAGE_FORMAT_R32F:case XBG_IMAGE_FORMAT_R32I:case XBG_IMAGE_FORMAT_R32UI:
+    case XBG_IMAGE_FORMAT_R16F:case XBG_IMAGE_FORMAT_R16I:case XBG_IMAGE_FORMAT_R16UI:
+    case XBG_IMAGE_FORMAT_R8I:case XBG_IMAGE_FORMAT_R8UI:
+        return 1;
+    case XBG_IMAGE_FORMAT_RG32F:case XBG_IMAGE_FORMAT_RG32I:case XBG_IMAGE_FORMAT_RG32UI:
+    case XBG_IMAGE_FORMAT_RG16F:case XBG_IMAGE_FORMAT_RG16I:case XBG_IMAGE_FORMAT_RG16UI:
+    case XBG_IMAGE_FORMAT_RG8I:case XBG_IMAGE_FORMAT_RG8UI:
+        return 2;
+    case XBG_IMAGE_FORMAT_RGBA32F:case XBG_IMAGE_FORMAT_RGBA32I:case XBG_IMAGE_FORMAT_RGBA32UI:
+    case XBG_IMAGE_FORMAT_RGBA16F:case XBG_IMAGE_FORMAT_RGBA16I:case XBG_IMAGE_FORMAT_RGBA16UI:
+    case XBG_IMAGE_FORMAT_RGBA8I:case XBG_IMAGE_FORMAT_RGBA8UI:
+        return 4;
     default:return 0;
     }
 }
 
 // The number of components a declarable VkFormat carries. 0 when the format
-// is not one of the 32-bit-per-component formats the rewrite can use.
+// is not one of the formats the rewrite can use.
 inline uint32_t xbg_vk_format_components(uint32_t vk_format){
-    switch(xbg_spirv_image_format(vk_format)){
-    case XBG_IMAGE_FORMAT_R32F:case XBG_IMAGE_FORMAT_R32I:case XBG_IMAGE_FORMAT_R32UI:return 1;
-    case XBG_IMAGE_FORMAT_RG32F:case XBG_IMAGE_FORMAT_RG32I:case XBG_IMAGE_FORMAT_RG32UI:return 2;
-    case XBG_IMAGE_FORMAT_RGBA32F:case XBG_IMAGE_FORMAT_RGBA32I:case XBG_IMAGE_FORMAT_RGBA32UI:return 4;
-    default:return 0;
-    }
+    return xbg_spirv_image_format_components(xbg_spirv_image_format(vk_format));
 }
 
 // The same format in another numeric class, with the same component count and
@@ -106,6 +163,24 @@ inline uint32_t xbg_vk_format_components(uint32_t vk_format){
 inline uint32_t xbg_vk_format_class_components(uint32_t vk_format,uint32_t klass){
     const uint32_t components=xbg_vk_format_components(vk_format);
     if(!components)return 0;
+    const uint32_t spirv_fmt=xbg_spirv_image_format(vk_format);
+    const bool is_16=(spirv_fmt==XBG_IMAGE_FORMAT_R16UI || spirv_fmt==XBG_IMAGE_FORMAT_R16I || spirv_fmt==XBG_IMAGE_FORMAT_R16F ||
+                      spirv_fmt==XBG_IMAGE_FORMAT_RG16UI || spirv_fmt==XBG_IMAGE_FORMAT_RG16I || spirv_fmt==XBG_IMAGE_FORMAT_RG16F ||
+                      spirv_fmt==XBG_IMAGE_FORMAT_RGBA16UI || spirv_fmt==XBG_IMAGE_FORMAT_RGBA16I || spirv_fmt==XBG_IMAGE_FORMAT_RGBA16F);
+    const bool is_8=(spirv_fmt==XBG_IMAGE_FORMAT_R8UI || spirv_fmt==XBG_IMAGE_FORMAT_R8I ||
+                     spirv_fmt==XBG_IMAGE_FORMAT_RG8UI || spirv_fmt==XBG_IMAGE_FORMAT_RG8I ||
+                     spirv_fmt==XBG_IMAGE_FORMAT_RGBA8UI || spirv_fmt==XBG_IMAGE_FORMAT_RGBA8I);
+    if(is_16){
+        if(klass==0)return components==1?XBG_VK_FORMAT_R16_SFLOAT:components==2?XBG_VK_FORMAT_R16G16_SFLOAT:XBG_VK_FORMAT_R16G16B16A16_SFLOAT;
+        if(klass==1)return components==1?XBG_VK_FORMAT_R16_SINT:components==2?XBG_VK_FORMAT_R16G16_SINT:XBG_VK_FORMAT_R16G16B16A16_SINT;
+        if(klass==2)return components==1?XBG_VK_FORMAT_R16_UINT:components==2?XBG_VK_FORMAT_R16G16_UINT:XBG_VK_FORMAT_R16G16B16A16_UINT;
+        return 0;
+    }
+    if(is_8){
+        if(klass==1)return components==1?XBG_VK_FORMAT_R8_SINT:components==2?XBG_VK_FORMAT_R8G8_SINT:XBG_VK_FORMAT_R8G8B8A8_SINT;
+        if(klass==2)return components==1?XBG_VK_FORMAT_R8_UINT:components==2?XBG_VK_FORMAT_R8G8_UINT:XBG_VK_FORMAT_R8G8B8A8_UINT;
+        return 0;
+    }
     if(klass==0)return components==1?XBG_VK_FORMAT_R32_SFLOAT:components==2?XBG_VK_FORMAT_R32G32_SFLOAT:XBG_VK_FORMAT_R32G32B32A32_SFLOAT;
     if(klass==1)return components==1?XBG_VK_FORMAT_R32_SINT:components==2?XBG_VK_FORMAT_R32G32_SINT:XBG_VK_FORMAT_R32G32B32A32_SINT;
     if(klass==2)return components==1?XBG_VK_FORMAT_R32_UINT:components==2?XBG_VK_FORMAT_R32G32_UINT:XBG_VK_FORMAT_R32G32B32A32_UINT;
@@ -422,6 +497,21 @@ inline void xbg_spirv_shared_image_bindings(const std::vector<uint32_t> &w,uint3
     out.erase(std::unique(out.begin(),out.end()),out.end());
 }
 
+inline bool xbg_spirv_format_is_extended(uint32_t spirv_format){
+    switch(spirv_format){
+    case XBG_IMAGE_FORMAT_R16F:
+    case XBG_IMAGE_FORMAT_R16I:
+    case XBG_IMAGE_FORMAT_R8I:
+    case XBG_IMAGE_FORMAT_RG8I:
+    case XBG_IMAGE_FORMAT_R16UI:
+    case XBG_IMAGE_FORMAT_R8UI:
+    case XBG_IMAGE_FORMAT_RG8UI:
+        return true;
+    default:
+        return false;
+    }
+}
+
 // Declares the bound format in the module: the Image Format operand of the
 // binding's OpTypeImage becomes spirv_format. Nothing else changes.
 //
@@ -482,6 +572,18 @@ inline int xbg_typed_storage_rewrite(std::vector<uint32_t> &words,uint32_t bindi
     for(size_t i=5;i<words.size();){uint32_t n=words[i]>>16,op=words[i]&65535u;
         if((op==98||op==305)&&n>=4&&loaded.count(words[i+3]))return -1;
         i+=n;
+    }
+    if(xbg_spirv_format_is_extended(spirv_format)){
+        bool has_cap49=false;
+        for(size_t i=5;i<words.size();){
+            uint32_t n=words[i]>>16,op=words[i]&65535u;
+            if(op==17){if(words[i+1]==49)has_cap49=true;}else break;
+            i+=n;
+        }
+        if(!has_cap49){
+            words.insert(words.begin()+5,{2u<<16|17u,49u});
+            info.image_at+=2;
+        }
     }
     words[info.image_at+8]=spirv_format;
     return 1;
@@ -610,6 +712,15 @@ inline int xbg_typed_storage_split_rewrite(std::vector<uint32_t> &words,uint32_t
     const uint32_t pointer_decl[4]={4u<<16|32u,pointer_type,words[pointer->second+2],image_type};
     std::vector<uint32_t> out;out.reserve(words.size()+16);
     out.insert(out.end(),words.begin(),words.begin()+5);
+    if(xbg_spirv_format_is_extended(spirv_format)){
+        bool has_cap49=false;
+        for(size_t i=5;i<words.size();){
+            uint32_t n=words[i]>>16,op=words[i]&65535u;
+            if(op==17){if(words[i+1]==49)has_cap49=true;}else break;
+            i+=n;
+        }
+        if(!has_cap49)out.insert(out.end(),{2u<<16|17u,49u});
+    }
     for(size_t i=5;i<words.size();){
         const uint32_t n=words[i]>>16,op=words[i]&65535u;
         if(i==variable->second){

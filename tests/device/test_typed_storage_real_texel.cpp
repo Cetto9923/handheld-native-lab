@@ -30,21 +30,19 @@ int main(int argc,char**argv){
     assert(xbg_spirv_ffrs_stencil(words,5,"3b6302a58b86a34a")>=1);
     assert(xbg_spirv_image_scalar_class(words,47)==2);       // unsigned
     assert(xbg_spirv_storage_write_components(words,47)==4);  // one uint4 texel
-    // The guest's 16-bit view has no SPIR-V image format: that is why the
-    // module stayed formatless and the device aborted.
-    assert(xbg_spirv_image_format(74)==XBG_IMAGE_FORMAT_UNKNOWN);
-    // The engine substitutes the module's own 32-bit RGBA form.
-    const uint32_t substitute=xbg_typed_storage_view_format(words,47,74);
-    assert(substitute==XBG_VK_FORMAT_R32G32B32A32_UINT);
-    // Red mutant: the old rule kept the guest's 16-bit view.
-    assert(substitute!=74);
-    // The rewrite declares it, and the strict match then holds.
-    assert(xbg_typed_storage_rewrite(words,47,xbg_spirv_image_format(substitute))==1);
-    assert(xbg_spirv_declared_image_format(words,47)==XBG_IMAGE_FORMAT_RGBA32UI);
-    assert(xbg_typed_storage_requires_match(true,XBG_IMAGE_FORMAT_RGBA32UI,XBG_VK_FORMAT_R32G32B32A32_UINT));
+    // The guest binds R16_UINT (74) for binding 47. SPIR-V declares it as R16ui (38)
+    // via OpCapability StorageImageExtendedFormats without widening to 32-bit RGBA.
+    assert(xbg_spirv_image_format(74)==XBG_IMAGE_FORMAT_R16UI);
+    // The native 16-bit view format is preserved:
+    const uint32_t resolved=xbg_typed_storage_view_format(words,47,74);
+    assert(resolved==74);
+    // The rewrite declares R16ui on binding 47:
+    assert(xbg_typed_storage_rewrite(words,47,xbg_spirv_image_format(resolved))==1);
+    assert(xbg_spirv_declared_image_format(words,47)==XBG_IMAGE_FORMAT_R16UI);
+    assert(xbg_typed_storage_requires_match(true,XBG_IMAGE_FORMAT_R16UI,74));
     // A bound view SPIR-V can declare is left alone.
     assert(xbg_typed_storage_view_format(words,47,98)==98);
-    printf("real module 3b6302a58b86a34a binding 47: the 16-bit view is replaced by the module's own 32-bit RGBA form PASS\n");
+    printf("real module 3b6302a58b86a34a binding 47: native 16-bit view preserved with R16ui PASS\n");
     // The second module the RG477M reached after that one: 9bee7f09d6c655c3.
     // Its bindings 29 and 35 share one formatless storage Buffer image type,
     // so the typed-storage rewrite refused it and the module stayed
