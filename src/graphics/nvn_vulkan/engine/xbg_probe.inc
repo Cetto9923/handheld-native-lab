@@ -557,12 +557,15 @@ void probe_frame_dump(Image &present){
 void probe_present(Image &present){
     if(probe.frame_dump_remaining)probe_frame_dump(present);
     if(probe_full()){full_present(present);return;}
-    if(probe_is_active()){probe_flush();ProbeSurface final{probe_keep(present),{},false,"present"};if(final.image)probe_snapshot(final);return;}
-    // A window capture takes the next frame on its own, so a flicker window can be compared frame by
-    // frame. Every capture lands in its own directory (repeat_mode), so no capture.txt is overwritten.
-    if(!capture.trace && probe.window){
-        if(probe.repeat_captures<32){++probe.repeat_captures;probe_start(stats.presents.load()+2,false);}
-        else probe.window=0;
+    if(probe_is_active()){
+        probe_flush();ProbeSurface final{probe_keep(present),{},false,"present"};if(final.image)probe_snapshot(final);
+        // A window capture continues with the very next frame, so a flicker window can be compared frame
+        // by frame. Every capture lands in its own directory (repeat_mode), named after the present number
+        // of the captured frame, so no capture.txt is overwritten and the frames line up with the dumps.
+        if(probe.window && probe.repeat_captures<32){
+            if(capture.trace){capture_log("END frame=%llu events=%u bytes=%llu",(unsigned long long)capture.frame,(unsigned long long)capture.events,(unsigned long long)capture.bytes);fclose(capture.trace);capture.trace=nullptr;capture.active=false;capture.probe=false;capture.full=false;}
+            ++probe.repeat_captures;probe_start(stats.presents.load()+2,false);
+        }
         return;
     }
     // Each capture still requires a fresh marker write. Allow retries within
