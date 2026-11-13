@@ -2,6 +2,7 @@
 #include <string.h>
 
 static bool finite(float x){uint32_t bits;memcpy(&bits,&x,4);return (bits&0x7f800000u)!=0x7f800000u;}
+int xbg_sampler_force_maxlod0=0;   // diagnostic, see xbg_sampler.h
 static int wrap(uint32_t n,VkBool32 mirror,VkSamplerAddressMode &out){
     switch(n){
     case 1:out=VK_SAMPLER_ADDRESS_MODE_REPEAT;return 0;
@@ -27,6 +28,7 @@ extern "C" int xbg_sampler_from_nvn(const xbg_nvn_sampler_desc *p,const xbg_samp
     // Zero would always select magFilter, silently changing min!=mag samplers.
     s.minLod=p->min_filter<2?0:(p->min_lod<0?0:p->min_lod);
     s.maxLod=p->min_filter<2?0.25f:(p->max_lod<0?0:p->max_lod);s.mipLodBias=p->lod_bias;
+    if(xbg_sampler_force_maxlod0)s.maxLod=0.f;   // diagnostic: never select a mip
     if(!finite(p->anisotropy) || p->anisotropy<1 || !finite(limits->max_anisotropy) ||
        p->anisotropy>limits->max_anisotropy || (p->anisotropy>1 && !limits->anisotropy_enabled))return -5;
     s.anisotropyEnable=p->anisotropy>1;s.maxAnisotropy=p->anisotropy;

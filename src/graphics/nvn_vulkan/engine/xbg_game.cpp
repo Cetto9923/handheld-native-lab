@@ -7085,6 +7085,27 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
       {std::string fdg=probe.base+"/gfx-live-flame-diag";FILE *fdgf=fopen(fdg.c_str(),"rb");
        if(fdgf){int value=fgetc(fdgf);fclose(fdgf);if(value=='0'||value=='1'){
            flame_diag_enabled=(value=='1');xbg_logf("LIVE-FLAME-DIAG enabled=%d at present %llu",int(flame_diag_enabled),(unsigned long long)pr);}}}
+      // Diagnostic only: marker files/gfx-live-set holds space separated name=value pairs and applies them live,
+      // e.g. "texdirty=0 texmemo=1 ownedinput=0 mipmaxlod0=1". Every name is an engine-internal observation switch;
+      // none of them touches the game or the save. It exists so the engine paths can be compared inside one session
+      // with the engine's own presented frames, instead of one restart per path.
+      {std::string gs=probe.base+"/gfx-live-set";FILE *gsf=fopen(gs.c_str(),"rb");
+       if(gsf){char buf[512]={0};size_t n=fread(buf,1,sizeof(buf)-1,gsf);buf[n]=0;fclose(gsf);
+        static const struct{const char *name;bool *flag;} live_flags[]={
+          {"texdirty",&tex_dirty},{"texmemo",&texel_memo_enabled},{"imgcache",&img_cache_enabled},
+          {"descmemo",&desc_memo_enabled},{"dynpartial",&dyn_partial_enabled},{"xmemo",&xmemo_enabled},
+          {"bindcache",&bind_cache_enabled},{"ownedinput",&owned_input_copy_enabled},
+          {"gpuindexed",&gpu_indexed_enabled},{"uppro",&upload_prologue},{"depthaspect",&depth_aspect_enabled},
+          {"pipefast",&pipeline_fast_enabled},{"pipememo",&pipe_memo},{"occlusion",&occlusion_batch_enabled},
+          {"vcache",&vcache::enabled},
+        };
+        char *save=nullptr;
+        for(char *tok=strtok_r(buf," \t\n\r",&save);tok;tok=strtok_r(nullptr," \t\n\r",&save)){
+          char *eq=strchr(tok,'=');if(!eq)continue;*eq=0;int v=(eq[1]=='1');
+          for(auto &e:live_flags)if(!strcmp(e.name,tok)){if(*e.flag!=v){*e.flag=v;xbg_logf("LIVE-SET %s=%d at present %llu",e.name,v,(unsigned long long)pr);}break;}}
+        // Diagnostic: force maxLod=0 on every sampler, so no mip can ever be selected.
+        {int want=strstr(buf,"mipmaxlod0=1")?1:(strstr(buf,"mipmaxlod0=0")?0:xbg_sampler_force_maxlod0);
+         if(want!=xbg_sampler_force_maxlod0){xbg_sampler_force_maxlod0=want;xbg_logf("LIVE-SET mipmaxlod0=%d at present %llu",want,(unsigned long long)pr);}}}}
       // Diagnostic only: marker files/gfx-live-framedump holds a digit 1..9 and dumps that many
       // consecutive presented frames to files/frame-dump/, so the engine's own pixels can be
       // compared against what the display shows at the same moment.
