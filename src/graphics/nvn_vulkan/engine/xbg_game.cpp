@@ -7079,6 +7079,13 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
       if(sync_file){int value=fgetc(sync_file);fclose(sync_file);if(value=='0' || value=='1'){
           sync_mode=value=='1';xbg_logf("LIVE-SYNC enabled=%d at present %llu",int(sync_mode),(unsigned long long)pr);
       }remove(ls.c_str());}
+      // Diagnostic only: marker files/gfx-live-framedump holds a digit 1..9 and dumps that many
+      // consecutive presented frames to files/frame-dump/, so the engine's own pixels can be
+      // compared against what the display shows at the same moment.
+      {std::string fd=probe.base+"/gfx-live-framedump";FILE *fdf=fopen(fd.c_str(),"rb");
+       if(fdf){int c=fgetc(fdf);fclose(fdf);if(c>='1'&&c<='9'){probe.frame_dump_remaining=unsigned(c-'0');
+        mkdir((probe.base+"/frame-dump").c_str(),0755);
+        xbg_logf("FRAME-DUMP armed frames=%u at present %llu",probe.frame_dump_remaining,(unsigned long long)pr);}}}
       // gfx-pass-live = "<frames>": one-shot; arms per-frame pass profiling for the next <frames> presents, then deletes the marker.
       // 一次性：从下一帧起逐帧采pass，共<frames>帧，读后删除标记。
       std::string pl=probe.base+"/gfx-pass-live";FILE *q=fopen(pl.c_str(),"rb");

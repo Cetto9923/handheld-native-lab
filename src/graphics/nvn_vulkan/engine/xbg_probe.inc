@@ -14,7 +14,7 @@ struct ProbeTexelSnapshot {
 };
 struct ProbeQuerySnapshot {VkQueryPool pool;uint32_t index;unsigned group,draw;};
 struct ProbeState {
-    unsigned repeat_captures=0;bool repeat_mode=false,compact=false,spell_depth_test=false,spell_cull_test=false,spell_no_tests=false,spell_empty_fragment=false,spell_prepass_no_depth_write=false;
+    unsigned repeat_captures=0,frame_dump_remaining=0;bool repeat_mode=false,compact=false,spell_depth_test=false,spell_cull_test=false,spell_no_tests=false,spell_empty_fragment=false,spell_prepass_no_depth_write=false;
     bool waiting=false,lut=false;std::string base,group;unsigned groups=0,draws=0,snapshots=0;uint64_t extra_buffer_bytes=0;
     std::vector<ProbeSurface> outputs,inputs;std::map<std::vector<uint64_t>,std::string> saved;
     std::vector<ProbeTexelSnapshot> texels;
@@ -516,7 +516,46 @@ void probe_start(uint64_t frame,bool lut){
     if(!capture.full)capture_log("PROBE version=3 frame=%llu lutProducer=%u rawReadback=full sampleGridMax=128x72x32 maxSnapshots=1024 maxFileBytes=%llu",(unsigned long long)capture.frame,unsigned(lut),(unsigned long long)capture_limit);
     xbg_logf("CODEX_PROBE armed frame=%llu directory=%s lutProducer=%u",(unsigned long long)capture.frame,directory.c_str(),unsigned(lut));
 }
+
+// RG477M live present-frame dump. Marker files/gfx-live-framedump holds a digit
+// 1..9: read back that many consecutive presented frames and write them to
+// files/frame-dump/. It only reads the presented image back and writes it to
+// disk; it never changes rendering, and it costs nothing while no marker is
+// armed. The alpha channel is kept so a composite-alpha problem can be told
+// apart from a rendering problem.
+void probe_frame_dump(Image &present){
+    if(!probe.frame_dump_remaining)return;
+    Image &im=present;
+    const uint32_t w=im.width,h=im.height,bpp=im.bpp;
+    const uint64_t frame=stats.presents.load();
+    if(!w||!h||!bpp||im.samples!=VK_SAMPLE_COUNT_1_BIT||im.layout==VK_IMAGE_LAYOUT_UNDEFINED||!(im.usage&VK_IMAGE_USAGE_TRANSFER_SRC_BIT)||(im.aspects&VK_IMAGE_ASPECT_DEPTH_BIT)){
+        xbg_logf("FRAME-DUMP skip present=%llu reason=unsupported w=%u h=%u bpp=%u usage=%#x aspects=%#x samples=%u",
+            (unsigned long long)frame,w,h,bpp,unsigned(im.usage),unsigned(im.aspects),unsigned(im.samples));
+        --probe.frame_dump_remaining;return;
+    }
+    const size_t bytes=size_t(w)*h*bpp;
+    if(bytes>64u*1024*1024){xbg_logf("FRAME-DUMP skip present=%llu reason=too-large bytes=%zu",(unsigned long long)frame,bytes);probe.frame_dump_remaining=0;return;}
+    Buffer buffer=readback_buffer(bytes);Commands command;VkImageLayout saved=im.layout;
+    im.transition(command.command,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    VkBufferImageCopy region{};region.bufferOffset=buffer.offset;region.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};region.imageExtent={w,h,1};
+    vkCmdCopyImageToBuffer(command.command,im.image,im.layout,buffer.buffer,1,&region);
+    VkBufferMemoryBarrier host{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};host.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;host.dstAccessMask=VK_ACCESS_HOST_READ_BIT;
+    host.srcQueueFamilyIndex=host.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;host.buffer=buffer.buffer;host.offset=buffer.offset;host.size=buffer.size;
+    vkCmdPipelineBarrier(command.command,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,0,nullptr,1,&host,0,nullptr);
+    im.transition(command.command,saved);command.finish();gpu_sync(perf.sync_readback);buffer.invalidate();
+    char leaf[128];snprintf(leaf,sizeof(leaf),"/frame-dump/f%llu.bin",(unsigned long long)frame);
+    const std::string path=probe.base+leaf;
+    FILE *file=fopen(path.c_str(),"wb");
+    if(!file){xbg_logf("FRAME-DUMP open failed present=%llu errno=%d",(unsigned long long)frame,errno);--probe.frame_dump_remaining;return;}
+    fprintf(file,"# FFRD present=%llu width=%u height=%u bpp=%u fmt=%u usage=%#x bytes=%zu\n",
+        (unsigned long long)frame,w,h,bpp,unsigned(im.fmt),unsigned(im.usage),bytes);
+    const size_t written=fwrite(buffer.mapped,1,bytes,file);const int closed=fclose(file);
+    xbg_logf("FRAME-DUMP present=%llu path=%s w=%u h=%u bpp=%u fmt=%u bytes=%zu written=%zu closed=%d",
+        (unsigned long long)frame,path.c_str(),w,h,bpp,unsigned(im.fmt),bytes,written,closed);
+    --probe.frame_dump_remaining;
+}
 void probe_present(Image &present){
+    if(probe.frame_dump_remaining)probe_frame_dump(present);
     if(probe_full()){full_present(present);return;}
     if(probe_is_active()){probe_flush();ProbeSurface final{probe_keep(present),{},false,"present"};if(final.image)probe_snapshot(final);return;}
     // Each capture still requires a fresh marker write. Allow retries within
