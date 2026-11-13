@@ -1,7 +1,7 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-13T01:25:00+00:00
-阶段：v1.0.9 consolidation in progress: one APK (versionCode 9) must boot both the Honor tablet (code 7) and the RG477M (code 8). Three implementation lines are in flight — readback targeted retirement (stutter root cause), Mali formatless-write FATAL (RG477M cannot enter the game), battle-settle crash P0 (8E5 phone, no device). The Honor tablet was returned to the user after the effect-seed line finished its measurement; all Honor device acceptance is deferred to one session after the merge.
+状态事件时间：2026-11-13T03:05:00+00:00
+阶段：v1.0.9 unified package (versionCode 9, sha256 3309cfc8...) boots and plays on both devices (title -> save load -> 3D field -> walking, 0 FATAL). Battle flow still NOT verified on either device: the burning-ruins area raises no random encounter over 400 walk steps, and the RG477M dropped off USB, so its battle leg is blocked on device reconnection.
 总控：MiniMax Code /root release takeover (Codex thread aborted by user)
 更新方式：按事件更新，没有后台自动刷新。
 
@@ -142,6 +142,7 @@
 | RELEASE-1.0.9-MERGE-20261112 | coordinator | in_progress | MiniMax Code /root release takeover | 无 | 无额外门禁 | task/T-release-1.0.9-20261112 |
 | BIGMAP-LOAD-20261112 | graphics worker | in_progress | worker agent bg_15c01055-171e-4803-97a2-1468e840d97a | 无 | 无额外门禁 | task/T-release-1.0.9-20261112 |
 | RG477M-TEXEL-COVERAGE-20261113 | graphics worker | in_progress | worker agent bg_f529cd01-e937-4e37-b94d-5a72f1969c05 | 无 | 无额外门禁 | task/T-rg477m-texel-20261112 |
+| ACCEPTANCE-1.0.9-PAD-MOB-20261113 | coordinator | blocked | MiniMax Code /root | 无 | 无额外门禁 | task/T-package-1.0.7-20261112 |
 
 ## 独占写入
 
@@ -267,6 +268,7 @@
 - HONOR-BATTLE-EFFECT-STUTTER (attribution withdrawn and re-scoped 2026-11-12): the device data refutes the original claim. Synchronous pipeline creation is NOT the cause of the >100 ms spikes (the largest single creation in the whole session is 1.3 ms). The cause is the CPU blocking in the submit path while the GPU is idle, marked by the readback/writeback drains (sync_rb 9.80 vs 0.03 per window). The repair point is the drain scheduling, which is task HONOR-TRANSIT-RETIRE-20261112. The warm list flush defect (Class A) is fixed; the seed is unproven and is being narrowed. The cold-start 4.5-4.8 s frame is still unexplained.
 - RG477M-TEXEL-FORMAT-20261112: on the RG477M (Mali-G615) the guest dies after about five seconds with FATAL: Texel format lacks formatless-write support. Mali reports bufferFeatures=0x78 for the texel formats, so the optional STORAGE_WRITE_WITHOUT_FORMAT and READ_WITHOUT_FORMAT bits are absent for the whole family. The typed path is available (0x78 contains STORAGE_TEXEL_BUFFER_BIT), so the fix is a SPIR-V rewrite. The game cannot be played on the handheld until this lands, which outranks the stutter. Task RG477M-TEXEL-FORMAT-20261112, device RG477M01445122 exclusively.
 - HONOR-BATTLE-EFFECT-STUTTER: battle effect pipelines are still created synchronously on their first release (created=5..18, create_ms 750..1916, single pipeline 125..381 ms). Root cause narrowed to the renderpass piece of the pipeline key: the same shader combination maps to several keys that differ only in the renderpass/attachment set, and the effect renderpass combinations are absent from the warm list, so the warm-up cannot pre-build them. Fix is in progress on task/T-rescue-1.0.7-20261112; NOT included in the 1.0.7 team package.
+- RG477M-DEVICE-OFFLINE: RG477M01445122 disappeared from 'adb devices -l' at ~2026-11-13 08:35 CST during the acceptance run. 'adb kill-server' is forbidden by the project rules, so the coordinator cannot revive it; the user must replug USB for the RG477M battle leg to run.
 
 ## 已验证
 
@@ -379,6 +381,8 @@
 - The moon halo flicker on the Honor tablet is a two-state per-frame toggle (region mean 82.2 <-> 103.0) with identical statistics in the published build and in the build9 baseline, so it is not introduced by the published package.
 - The published v1.0.6 tree contains no uncommitted code: the only dirty file in the release worktree is a whitespace-only reformat of another writer coordination document, and the rendering source is byte-identical to the build9 baseline.
 - The moon halo flicker on the Honor tablet is caused by the GPU-resident indirect template path: with gfx-indexed-resident=0 the user observed a normal moon, and gfx-wb-skip=0 changed nothing.
+- 1.0.9 unified package (sha256 3309cfc8...) boots on both the Honor tablet (pid 9906) and the RG477M (pid 25064) and plays the field flow end to end: title -> Continue -> save load -> 3D burning-ruins scene -> real party movement, with no engine.log.fatal on either device.
+- The field flow cannot be driven when a physical gamepad is attached: GameActivity hides the on-screen pad, so the touch-stick path publishes no analog axes. Tapping the PAD handle restores movement.
 
 ## 未验证
 
@@ -407,5 +411,7 @@
 - Whether gfx-wb-skip=0 removes the moon halo flicker on the device has not been confirmed; the field scene could not be re-entered from the title screen with adb input in this session.
 - No code fix for the stale indirect-argument read has been written, built or verified.
 - The current-slot guard on find_indirect_template is not yet built, installed or accepted on the device.
+- Battle entry, full battle and the battle result screen remain unverified on both devices after 400 walking steps per device with no encounter raised and no FATAL.
+- The RG477M battle leg could not be started because the device left the adb device list (USB drop) mid-session; the earlier title/load/3D/walk evidence stands.
 
 具体恢复命令与未完成修改见 HANDOFF.md。

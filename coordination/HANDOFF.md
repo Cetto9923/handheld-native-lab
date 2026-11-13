@@ -3951,3 +3951,56 @@ User transferred execution to Codex. Source 0444c81 plus Antigravity staged/unst
 **477M**：`RG477M01445122` 全程不在线（adb、USB 枚举、mDNS、5555/5037 端口扫描均不可见）⇒ Mali 真机腿 NOT_RUN。离线侧已派 worker 做**全量 shader 覆盖统计**：游戏包含 20258 个真实 `.xgs`（1.63 GB），可从 NAS 的 `FFRS-data.zip` 流式读取，无需设备即可统计 formatless storage shader 数量与改写覆盖率。
 
 **未声称**：大地图卡顿已解决、战斗特效卡顿已解决（NOT_RUN）、战斗结算闪退已在平板复现验证、神殿场景通过、整游戏兼容、独立 QA。
+
+
+---
+
+## 2026-11-13 03:05Z — 统一包 1.0.9 真机流程验收（平板 + RG477M）：场景流程 PASS，战斗未闭合
+
+**结果一句话**：统一包 `3309cfc8…`（1.0.9 / versionCode 9，release HEAD `4156929`）在**两台设备上都跑通了
+「标题 → Continue → 读档 → 进 3D 燃烧废墟 → 角色真实走动」，全程 `engine.log.fatal` 不存在、进程存活**；
+**但「进战斗 → 打完整场 → 战斗结算画面」在两台上都还没闭合**，且 RG477M 中途掉线。
+
+### 本轮查明的三条可复用事实
+
+1. **虚拟手柄被外接手柄挤掉 → 触摸推杆推不动角色。**
+   本平板接着 **DualSense Wireless Controller**（device id 96）。
+   `GameActivity.discoverPad()` 见到外接手柄就隐藏屏上虚拟手柄，
+   `publishPad()` 里 `touchOn=false` ⇒ `touchLx/touchLy` 恒为 0 ⇒ 历史脚本的
+   `input touchscreen motionevent` 左下角拖拽**根本进不了游戏**。
+   **对策**：点顶部 `PAD +` 把手显示虚拟手柄，或把 `files/touch-pad` 写 `1`。
+2. **`adb input keyevent` 按住只有 ~3 ms**，游戏 30 Hz 轮询收不到 ⇒ 必须
+   `input gamepad keyevent --duration <ms>`。logcat `game_input key=… nvn_bit=…` 可证明事件到了宿主。
+3. **`KEYCODE_BUTTON_SELECT` 被荣耀系统劫持**（切出到微信/任务切换器）⇒ 开小地图要**点屏幕上的「−」**，
+   不能发 SELECT keycode。**`KEYCODE_BUTTON_START` = 系统菜单**。
+
+### 战斗入口（最确定的一条）
+
+LOAD DATA 列表里有游戏自己写的 **`战场`（战场）存档**：
+`Auto Save`（2026-11-12 14:38:05，Lv.1）与 `01`（2026-11-11 06:17:08，Lv.1）。
+已成功载入 `Auto Save` → 回到第 1 章开头场景（Lv.1 单人，燃烧村庄 + 台阶）。
+当前正在从这个起点向北推进找**脚本化教程战斗**。
+
+### 遭遇巡游是阴性结果，但排除了三种可能
+
+平板与 RG477M 各跑满 **400 步**（每步 3.4 s 持续推摇杆，约 43 min）：
+小地图箭头位置持续变化 ⇒ **角色确实在走**；`engine.log.fatal` 始终不存在 ⇒ **过程中没有 FATAL**；
+向东走会出现「黑屏加载 → 新场景」⇒ **区域之间是走得通的**。
+**结论：燃烧废墟一带没有随机遭遇表 —— 这不是移植缺陷，是玩法路径问题。**
+战斗流程因此仍未闭合。
+
+### 阻塞（需要用户）
+
+- **RG477M 于 ~08:35 CST 从 `adb devices -l` 消失**（USB 掉线）。
+  项目规则禁止 `adb kill-server`，所以总控救不回来，**请重新插拔 477M 的 USB**，才能继续 477M 的战斗腿。
+  之前已取得的 477M 标题/读档/进场景/走动证据仍然有效。
+- 大地图卡顿方向仍等用户拍板（只归因不改）。
+
+### 明确不主张
+
+未证明完整游戏兼容；未把「能走动」当成「进战斗实际玩」；战斗特效卡顿**没有新数据**，不给任何性能结论；
+平板与 477M 的证据**不是同一段流程**（平板推进到战斗入口前，477M 已掉线）。
+
+证据目录：`/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/acceptance-1.0.9-honor-20261113/`
+报告：`coordination/results/ACCEPTANCE-1.0.9-PAD-MOB-20261113.md`
+
