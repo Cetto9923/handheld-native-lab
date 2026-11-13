@@ -2681,7 +2681,9 @@ void validate_capabilities(const std::vector<uint32_t> &w,uint32_t stage){
 // (DM_GFX_QUAD_DERIVATIVES, which the Android app sets to 1; marker gfx-quad-derivatives = 1 / 0).
 bool quad_derivatives=false;std::atomic<uint64_t> quad_rewrites{0};
 void quad_rewrite(std::vector<uint32_t> &words,uint32_t stage,const char *key,const char *loader){
-    if(!quad_derivatives || stage!=4)return;
+    const bool is_adreno = properties.vendorID == 0x5143 ||
+                           strstr(properties.deviceName, "Adreno") != nullptr;
+    if(!quad_derivatives || stage!=4 || !is_adreno)return;
     std::vector<uint32_t> out;xbg_spirv_quad_stats counts;
     size_t k=xbg_spirv_quad_derivatives(words.data(),words.size(),out,&counts);
     if(k){words.swap(out);quad_rewrites.fetch_add(k,std::memory_order_relaxed);}
@@ -2696,10 +2698,12 @@ void quad_rewrite(std::vector<uint32_t> &words,uint32_t stage,const char *key,co
 // warp, as the Ryujinx translator emits for wider hosts. On Adreno (64-lane subgroups) the clutter, grass, fluid and PPR
 // shaders' warp-aggregated appends otherwise lose lanes 32-63 and overwrite entries. Both module loaders apply it. Off unless
 // the host asks (DM_GFX_WARP32, which the Android app sets to 1; marker gfx-warp32 = 1 / 0), and only where subgroups are
-// wider than 32 lanes.
+// wider than 32 lanes on Qualcomm Adreno.
 bool warp32=false;std::atomic<uint64_t> warp_rewrites{0};
 void warp_rewrite(std::vector<uint32_t> &words,uint32_t stage,const char *key,const char *loader){
-    if(!warp32 || stage!=5 || subgroup.subgroupSize<=32)return;
+    const bool is_adreno = properties.vendorID == 0x5143 ||
+                           strstr(properties.deviceName, "Adreno") != nullptr;
+    if(!warp32 || stage!=5 || subgroup.subgroupSize<=32 || !is_adreno)return;
     std::vector<uint32_t> out;size_t k=xbg_spirv_warp32(words.data(),words.size(),subgroup.subgroupSize,out);
     if(k){
         // A vote-only module can acquire Ballot capability during rewriting; check the transformed requirements too.
@@ -6821,7 +6825,7 @@ vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemor
     {std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');std::string marker=(cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-sync-mode";FILE *m=fopen(marker.c_str(),"rb");sync_mode=false;if(m){sync_mode=fgetc(m)=='1';fclose(m);}}
      {std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-defer-events").c_str(),"rb");defer_events=0;if(m){int c=fgetc(m);defer_events=c=='1'?1:c=='2'?2:0;fclose(m);}else if(const char *e=getenv("DM_GFX_DEFER_EVENTS")){int v=atoi(e);defer_events=v==1?1:v==2?2:0;}xbg_logf("NVN defer events=%d (marker gfx-defer-events)",int(defer_events));{FILE *r=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-event-retire").c_str(),"rb");event_retire_targeted=true;if(r){event_retire_targeted=fgetc(r)!=0x30;fclose(r);}xbg_logf("NVN event retirement targeted=%d (marker gfx-event-retire)",int(event_retire_targeted));}{FILE *rb=fopen(((cut==std::string::npos?dir:dir)+"/gfx-readback-retire").c_str(),"rb");readback_retire_targeted=true;if(rb){readback_retire_targeted=fgetc(rb)!=0x30;fclose(rb);}xbg_logf("NVN readback retirement targeted=%d (marker gfx-readback-retire)",int(readback_retire_targeted));}{FILE *eg=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-event-guard").c_str(),"rb");evguard::enabled=eg!=nullptr;if(eg)fclose(eg);if(evguard::enabled)xbg_logf("NVN event guard on (marker gfx-event-guard)");}{FILE *v=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-vcache").c_str(),"rb");vcache::enabled=false;if(v){vcache::enabled=fgetc(v)!='0';fclose(v);}else if(const char *e=getenv("DM_GFX_VCACHE"))vcache::enabled=atoi(e)!=0;xbg_logf("NVN vertex/index cross-frame cache=%d tracker=%d (marker gfx-vcache)",int(vcache::enabled),int(nvn_dirty_since!=nullptr));}
      {FILE *v=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-tex-dirty").c_str(),"rb");tex_dirty=false;if(v){tex_dirty=fgetc(v)!='0';fclose(v);}else if(const char *e=getenv("DM_GFX_TEX_DIRTY"))tex_dirty=atoi(e)!=0;
-      xbg_logf("NVN texture checks through the dirty tracker=%d (marker gfx-tex-dirty)",int(tex_dirty));}{FILE *b=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-native-bc").c_str(),"rb");native_bc=false;if(b){native_bc=fgetc(b)!='0';fclose(b);}else if(const char *e=getenv("DM_GFX_NATIVE_BC"))native_bc=atoi(e)!=0;xbg_logf("NVN native BC textures=%d (marker gfx-native-bc)",int(native_bc));}
+      xbg_logf("NVN texture checks through the dirty tracker=%d (marker gfx-tex-dirty)",int(tex_dirty));}{const bool is_adreno = properties.vendorID == 0x5143 || strstr(properties.deviceName, "Adreno") != nullptr;FILE *b=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-native-bc").c_str(),"rb");native_bc=false;if(b){native_bc=fgetc(b)!='0';fclose(b);}else if(const char *e=getenv("DM_GFX_NATIVE_BC"))native_bc=is_adreno && atoi(e)!=0;xbg_logf("NVN native BC textures=%d (marker gfx-native-bc)",int(native_bc));}
      {FILE *b=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-noload").c_str(),"rb");noload_enabled=false;if(b){noload_enabled=fgetc(b)!='0';fclose(b);}else if(const char *e=getenv("DM_GFX_NOLOAD"))noload_enabled=atoi(e)!=0;xbg_logf("NVN proven full-overwrite first draws skip the color load=%d (marker gfx-noload; A/B target noload)",int(noload_enabled));}{FILE *q=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-bright").c_str(),"rb");bright::enabled=true;if(q){bright::enabled=fgetc(q)!='0';fclose(q);}else if(const char *e=getenv("DM_GFX_BRIGHT"))bright::enabled=atoi(e)!=0;xbg_logf("NVN 3D brightening=%d (marker gfx-bright; A/B target bright)",int(bright::enabled));}{FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-perf-sample").c_str(),"rb");perf_sample=32;if(m){if(fscanf(m,"%u",&perf_sample)!=1)perf_sample=32;fclose(m);}else if(const char *e=getenv("DM_GFX_PERF_SAMPLE"))perf_sample=unsigned(atoi(e));perf_frame_timed=perf_sample!=0;perf_timed_frames=0;xbg_logf("NVN perf timing every %u frames (marker gfx-perf-sample; 0 = off)",perf_sample);}}
     draw_base_instance=0;for(auto &row:driver_cache)for(auto &cache:row)cache.key={};
     for(auto &sl:slots)sl=Slot{};slot_index=0;pass_prof_enabled=false;pass_prof_next=300;pass_prof_period=600;pass_prof_until=UINT64_MAX;pass_prof_frame=UINT64_MAX;pass_prof_draws=0;pass_prof_queries=pass_prof_slots=pass_prof_skipped_slots=0;perf=Perf{};for(auto &c:perf_timing_before)c=XbgCpuTiming::Counter{};static_arena.cached=false;support_static.clear();format_property_cache.clear();for(auto &k:format_flat_known)k=false;

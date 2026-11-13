@@ -91,6 +91,7 @@ final class DeviceProfile {
         if (id.equals("handheld_mid")) return new DeviceProfile(id, 720, 30);
         if (id.equals("tablet_sd8s")) return new DeviceProfile(id, 1080, 60);
         if (id.equals("phone_sd8g3")) return new DeviceProfile(id, 1080, 60);
+        if (id.equals("phone_mali")) return new DeviceProfile(id, 1080, 60);
         if (id.equals("odin_elite")) return new DeviceProfile(id, 1080, 30);
 
         String mod = model == null ? "" : model.trim().toLowerCase(Locale.ROOT);
@@ -105,10 +106,14 @@ final class DeviceProfile {
         }
 
         if (chip.equals("sm8635") && smallestWidthDp >= 600) return new DeviceProfile("tablet_sd8s", 1080, 60);
+        // Dimensity 9000/9200/9300/9400 series or Kirin (Mali / Immortalis / Maleoon GPU flagship phones).
+        if (chip.startsWith("mt69") || chip.startsWith("kirin")) {
+            return new DeviceProfile("phone_mali", 1080, 60);
+        }
         // Honor 400 Pro, OnePlus Ace (SM8750 / Snapdragon 8 Elite), Snapdragon 8 series, and general phones.
         if (chip.equals("sm8650") || chip.equals("sm8750") || chip.equals("sm8550")
                 || chip.equals("sm8475") || chip.equals("sm8450") || chip.equals("sm7675")
-                || chip.equals("sm7475") || chip.startsWith("mt69") || chip.startsWith("kirin")
+                || chip.equals("sm7475")
                 || (!chip.isEmpty() && !chip.equals("mt6897") && !chip.equals("sm8635")
                     && !chip.equals("sm86350") && !chip.equals("sm86500") && smallestWidthDp > 0)) {
             return new DeviceProfile("phone_sd8g3", 1080, 60);
