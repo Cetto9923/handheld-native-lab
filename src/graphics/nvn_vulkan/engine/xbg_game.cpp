@@ -47,6 +47,7 @@ static_assert(VK_FORMAT_R32_UINT==XBG_VK_FORMAT_R32_UINT && VK_FORMAT_R32_SINT==
 #include "xbg_spirv_temps.h"
 #include "xbg_spirv_raster.h"
 #include "xbg_spirv_stencil.h"
+#include "xbg_spirv_depth.h"
 #include "xbg_boss_interface.h"
 #include "xbg_compaction_sum.h"
 #include "xbg_capture_layout.h"
@@ -2774,6 +2775,12 @@ int stencil_rewrite(std::vector<uint32_t> &words,uint32_t stage,const char *key,
      * for a given key actually fired. */
     if(result||stage==4)xbg_logf("NVN integer image types shader=%s stage=%u loader=%s rewrites=%d",key,stage,loader,result);return result;
 }
+void terrain_depth_rewrite(std::vector<uint32_t> &words,uint32_t stage,const char *key,const char *loader){
+    const bool is_mali = properties.vendorID == 0x13B5 || strstr(properties.deviceName, "Mali") != nullptr;
+    if(!is_mali || stage!=4 || std::strcmp(key,"062df44b75d37d76")!=0)return;
+    const bool patched=xbg_terrain_drop_frag_depth(words);
+    xbg_logf("NVN terrain drop frag depth shader=%s loader=%s patched=%d",key,loader,int(patched));
+}
 // Diagnostic (files/dm/spv-override/<key>.spv): this SPIR-V replaces the bundle's, for offline-optimized test modules.
 // Opens <shader_directory>/<key>.xgs; if it is not there, falls back to $FFRS_SHADER_ALT/<key>.xgs (the shaders folder shipped inside the
 // game folder).  The primary directory stays authoritative so every path derived from it behaves exactly as before.
@@ -2945,7 +2952,7 @@ Shader *load_shader(const void *control){
     // Time of each part of the load (file read, SPIR-V rewrites, analysis, module creation), for the loaded line below.
     const uint64_t load_t1=timing_clock();uint64_t load_t2=0,load_t3=0;
     auto p=std::make_unique<Shader>();p->key=key;p->identity=key;p->stage=h.stage;p->bindings.resize(h.binding_count);memcpy(p->bindings.data(),bytes.data()+offset,h.binding_count*sizeof(xbg_shader_binding));offset+=h.binding_count*sizeof(xbg_shader_binding);p->inputs.resize(h.input_count);memcpy(p->inputs.data(),bytes.data()+offset,h.input_count*4);offset+=h.input_count*4;p->c1.assign(bytes.begin()+offset,bytes.begin()+offset+h.c1_bytes);offset+=h.c1_bytes;
-    std::vector<uint32_t> words(h.spirv_bytes/4);memcpy(words.data(),bytes.data()+offset,h.spirv_bytes);spv_override(key,words);boss_interface_rewrite(words,h.stage,key.c_str(),"runtime");histogram_sync_rewrite(words,h.stage,key.c_str(),"runtime");if(stencil_rewrite(words,h.stage,key.c_str(),"runtime")){for(auto &binding:p->bindings){uint32_t scalar=xbg_ffrs_integer_fact(h.stage,key.c_str(),binding.binding);if(binding.binding==xbg_ffrs_uint_binding(h.stage,key.c_str()) || binding.binding==xbg_ffrs_uint_store_binding(h.stage,key.c_str()))scalar=1;if(scalar)binding.flags=(binding.flags&~(3u<<16))|(scalar<<16);}}validate_capabilities(words,h.stage);
+    std::vector<uint32_t> words(h.spirv_bytes/4);memcpy(words.data(),bytes.data()+offset,h.spirv_bytes);spv_override(key,words);boss_interface_rewrite(words,h.stage,key.c_str(),"runtime");histogram_sync_rewrite(words,h.stage,key.c_str(),"runtime");terrain_depth_rewrite(words,h.stage,key.c_str(),"runtime");if(stencil_rewrite(words,h.stage,key.c_str(),"runtime")){for(auto &binding:p->bindings){uint32_t scalar=xbg_ffrs_integer_fact(h.stage,key.c_str(),binding.binding);if(binding.binding==xbg_ffrs_uint_binding(h.stage,key.c_str()) || binding.binding==xbg_ffrs_uint_store_binding(h.stage,key.c_str()))scalar=1;if(scalar)binding.flags=(binding.flags&~(3u<<16))|(scalar<<16);}}validate_capabilities(words,h.stage);
     p->float_buffer_bindings=shader_float_buffer_bindings(words);
     p->integer_buffer_bindings=xbg_spirv_integer_buffer_candidates(words);
     if(!p->integer_buffer_bindings.empty())p->variant_source=words;
@@ -3494,7 +3501,7 @@ VkShaderModule load_module(const std::string &key,uint32_t expected_stage=0){
     xbg_shader_header h;memcpy(&h,b.data(),sizeof(h));if(h.magic!=0x31534758 || h.version!=1 || h.stage>=6 || h.binding_count>256 || h.input_count>16 || h.c1_bytes>65536 || h.spirv_bytes%4)return VK_NULL_HANDLE;
     if(expected_stage && expected_stage!=(1u<<h.stage))return VK_NULL_HANDLE;
     size_t off=sizeof(h)+size_t(h.binding_count)*sizeof(xbg_shader_binding)+size_t(h.input_count)*4+h.c1_bytes;if(off+h.spirv_bytes!=b.size())return VK_NULL_HANDLE;
-    std::vector<uint32_t> w(h.spirv_bytes/4);memcpy(w.data(),b.data()+off,h.spirv_bytes);spv_override(base,w);boss_interface_rewrite(w,h.stage,base.c_str(),"warm");histogram_sync_rewrite(w,h.stage,base.c_str(),"warm");stencil_rewrite(w,h.stage,base.c_str(),"warm");
+    std::vector<uint32_t> w(h.spirv_bytes/4);memcpy(w.data(),b.data()+off,h.spirv_bytes);spv_override(base,w);boss_interface_rewrite(w,h.stage,base.c_str(),"warm");histogram_sync_rewrite(w,h.stage,base.c_str(),"warm");terrain_depth_rewrite(w,h.stage,base.c_str(),"warm");stencil_rewrite(w,h.stage,base.c_str(),"warm");
     if(!specialize_integer_buffers(w,formats))return VK_NULL_HANDLE;
     std::vector<uint32_t> rewrite_input;
     if(keep_rewritten)rewrite_input=w;
@@ -5078,6 +5085,19 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
     VkPipelineViewportStateCreateInfo vp{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};vp.viewportCount=vp.scissorCount=1;
     VkPipelineRasterizationStateCreateInfo rs{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};rs.polygonMode=state.poly.mode==2?VK_POLYGON_MODE_FILL:state.poly.mode==1?VK_POLYGON_MODE_LINE:VK_POLYGON_MODE_POINT;need(rs.polygonMode==VK_POLYGON_MODE_FILL || cfg.enabled_core.fillModeNonSolid,"Non-solid polygon mode disabled");rs.cullMode=state.poly.cull;rs.frontFace=state.poly.front?VK_FRONT_FACE_COUNTER_CLOCKWISE:VK_FRONT_FACE_CLOCKWISE;rs.lineWidth=1;rs.depthBiasEnable=state.poly.offset_en!=0;rs.depthBiasConstantFactor=state.bias[1]*(state.rt.depth && state.rt.depth->d.format==0x32 && depth16_as_d24?256.0f:1.0f);
     rs.depthBiasSlopeFactor=state.bias[0];rs.depthBiasClamp=state.bias[2];need(!rs.depthBiasClamp || cfg.enabled_core.depthBiasClamp,"Depth bias clamp disabled");   // constant bias units: 2^-16 for D16, 2^-24 for the X8_D24 stand-in; slope and clamp do not depend on the format
+    const bool is_mali_device = properties.vendorID == 0x13B5 || strstr(properties.deviceName, "Mali") != nullptr;
+    if(is_mali_device && state.shader[4] && state.shader[4]->key == "062df44b75d37d76"){
+        Buffer &c2_buf = driver_block(nvn_stage[4], 1);
+        if(c2_buf.mapped && ubtrace_hash(c2_buf.mapped, 4096) == 0x44754dd35d3a5bc9ull){
+            const float dscale = (state.rt.depth && state.rt.depth->d.format == 0x32 && depth16_as_d24) ? 256.0f : 1.0f;
+            rs.depthBiasEnable = VK_TRUE;
+            rs.depthBiasSlopeFactor = -1.0f;
+            rs.depthBiasConstantFactor = -2.0f * dscale;
+            rs.depthBiasClamp = 0.0f;
+            static unsigned terrain_bias_logs = 0;
+            if(terrain_bias_logs++ < 5)xbg_logf("NVN terrain overlay depth bias applied (-1.0 slope, -2.0 constant) for draw=%llu", (unsigned long long)stats.draws.load());
+        }
+    }
     // SetDepthClamp: depth outside [near, far] is clamped instead of clipped (nvn_obj.h p_depth_clamp; nvn_mtl.m:6915 uses
     // it as Metal's depth clip mode). Vulkan needs the depthClamp feature for it.
     rs.depthClampEnable=state.depth_clamp?VK_TRUE:VK_FALSE;need(!rs.depthClampEnable || cfg.enabled_core.depthClamp,"Depth clamp feature disabled");
