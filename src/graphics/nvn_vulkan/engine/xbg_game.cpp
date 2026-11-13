@@ -2972,6 +2972,10 @@ bool storage_texel_formatless_write_ok(VkFormat fmt);
 VkFormat texel_view_format(const RegisteredTexture &registered){
     return format(registered.has_view && registered.view.set_format?registered.view.format:registered.texture.d.format);
 }
+// The Mali class alignment can be switched off at runtime (marker
+// gfx-typed-storage-class-align = '0'). It is on by default; the marker exists so a device
+// can be compared with and without it without a rebuild.
+bool typed_storage_class_align_enabled=true;
 VkFormat texel_binding_format(const RegisteredTexture &registered,const xbg_shader_binding &binding,const std::map<uint32_t,XbgStorageBindingInfo> *info){
     VkFormat result=texel_view_format(registered);
     const uint32_t scalar=(binding.flags>>16)&3;
@@ -2994,7 +2998,7 @@ VkFormat texel_binding_format(const RegisteredTexture &registered,const xbg_shad
             // the RG477M) needs the module to declare a format, and then the view has to
             // follow the module's numeric class.
             const bool device_formatless_write_ok=storage_texel_formatless_write_ok(result);
-            const XbgTypedStorageViewDecision decision=xbg_typed_storage_view_decision(uint32_t(result),&found->second,device_formatless_write_ok);
+            const XbgTypedStorageViewDecision decision=typed_storage_class_align_enabled?xbg_typed_storage_view_decision(uint32_t(result),&found->second,device_formatless_write_ok):xbg_typed_storage_view_decision(uint32_t(result),nullptr,true);
             if(decision.substituted)result=VkFormat(decision.format);
         }
     }
@@ -6896,6 +6900,9 @@ vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemor
       // format and not for another. The RG477M's Mali-G615 cannot for the guest's storage texel
       // buffers, so the engine declares a format in the module and the view follows the module's
       // class; a device that can keeps the guest's own module and the guest's own view.
+      {FILE *ca=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-typed-storage-class-align").c_str(),"rb");
+       if(ca){typed_storage_class_align_enabled=fgetc(ca)!='0';fclose(ca);}
+       xbg_logf("NVN typed-storage class alignment=%d (marker gfx-typed-storage-class-align)",int(typed_storage_class_align_enabled));}
       {const bool texel_sint=storage_texel_formatless_write_ok(VK_FORMAT_R32_SINT);
        const bool texel_uint=storage_texel_formatless_write_ok(VK_FORMAT_R32_UINT);
        const bool texel_float=storage_texel_formatless_write_ok(VK_FORMAT_R32_SFLOAT);
