@@ -76,6 +76,18 @@ inline uint32_t xbg_spirv_image_format_scalar(uint32_t spirv_format){
     }
 }
 
+// The number of components an SPIR-V image format carries. A typed image
+// has to be written with a texel of at least that many components (VUID
+// vkCmdDispatch-OpImageWrite-08795 for image views, 04469 for buffer views).
+inline uint32_t xbg_spirv_image_format_components(uint32_t spirv_format){
+    switch(spirv_format){
+    case XBG_IMAGE_FORMAT_R32F:case XBG_IMAGE_FORMAT_R32I:case XBG_IMAGE_FORMAT_R32UI:return 1;
+    case XBG_IMAGE_FORMAT_RG32F:case XBG_IMAGE_FORMAT_RG32I:case XBG_IMAGE_FORMAT_RG32UI:return 2;
+    case XBG_IMAGE_FORMAT_RGBA32F:case XBG_IMAGE_FORMAT_RGBA32I:case XBG_IMAGE_FORMAT_RGBA32UI:return 4;
+    default:return 0;
+    }
+}
+
 // A typed module is only legal when the declared SPIR-V format is exactly the
 // format of the bound view (VUID vkCmdDispatch-format-08795/08796).
 inline bool xbg_typed_storage_matches(uint32_t spirv_format,uint32_t vk_format){
@@ -327,5 +339,241 @@ inline int xbg_typed_storage_rewrite(std::vector<uint32_t> &words,uint32_t bindi
         i+=n;
     }
     words[info.image_at+8]=spirv_format;
+    return 1;
+}
+
+// Every global variable whose type is a pointer to the image type of the given
+// binding. A shared image type is used by more than one of them, and declares
+// one format for all of them.
+inline void xbg_spirv_image_type_users(const std::vector<uint32_t> &w,uint32_t binding,std::vector<uint32_t> &out){
+    out.clear();
+    if(w.size()<5||w[0]!=0x07230203u)return;
+    XbgStorageImageBinding info;
+    if(!xbg_spirv_binding_image(w,binding,info))return;
+    std::unordered_map<uint32_t,size_t> def;
+    for(size_t i=5;i<w.size();){uint32_t n=w[i]>>16,op=w[i]&65535u;
+        if(op>=19&&op<=33&&n>=2)def[w[i+1]]=i;
+        if(op==59&&n>=4)def[w[i+2]]=i;
+        i+=n;
+    }
+    for(size_t i=5;i<w.size();){uint32_t n=w[i]>>16,op=w[i]&65535u;
+        if(op==59&&n>=4){
+            auto ptr=def.find(w[i+1]);
+            if(ptr!=def.end()&&(w[ptr->second]&65535u)==32&&w[ptr->second+3]==info.image_type)out.push_back(w[i+2]);
+        }
+        i+=n;
+    }
+}
+
+// The smallest number of components the module writes to a storage binding.
+// A typed image has to be written with a texel of at least as many components
+// as the format it declares, so a binding whose texels are narrower than the
+// format cannot be declared. 0 when the binding has no write at all.
+inline uint32_t xbg_spirv_storage_min_write_components(const std::vector<uint32_t> &w,uint32_t binding){
+    XbgStorageImageBinding info;if(!xbg_spirv_binding_image(w,binding,info))return 0;
+    std::unordered_map<uint32_t,size_t> def;             // type id -> OpTypeXxx
+    std::unordered_map<uint32_t,uint32_t> value_type;    // value id -> its type id
+    for(size_t i=5;i<w.size();){uint32_t n=w[i]>>16,op=w[i]&65535u;
+        if(op>=19&&op<=33&&n>=2)def[w[i+1]]=i;
+        else if(n>=3)value_type[w[i+2]]=w[i+1];
+        i+=n;}
+    std::unordered_set<uint32_t> loaded;
+    for(size_t i=5;i<w.size();){uint32_t n=w[i]>>16,op=w[i]&65535u;
+        if(op==61&&n>=4&&w[i+3]==info.variable)loaded.insert(w[i+2]);
+        i+=n;}
+    uint32_t minimum=0;
+    for(size_t i=5;i<w.size();){uint32_t n=w[i]>>16,op=w[i]&65535u;
+        if(op==99&&n>=5&&loaded.count(w[i+1])){
+            auto v=value_type.find(w[i+3]);
+            if(v==value_type.end())return 0;
+            auto t=def.find(v->second);
+            if(t==def.end())return 0;
+            uint32_t c=(w[t->second]&65535u)==23?w[t->second+3]:1u;
+            if(!minimum||c<minimum)minimum=c;
+        }
+        i+=n;}
+    return minimum;
+}
+
+
+// The bindings that share one formatless storage image type. A module with
+// such a group needs the image type split when the group does not agree on
+// one format.
+inline bool xbg_spirv_shared_image_group(const std::vector<uint32_t> &w,std::vector<uint32_t> &out){
+    out.clear();
+    if(w.size()<5||w[0]!=0x07230203u)return false;
+    std::vector<uint32_t> bindings;
+    for(size_t i=5;i<w.size();){uint32_t n=w[i]>>16,op=w[i]&65535u;
+        if(n==0||i+n>w.size())return false;
+        if(op==71&&n==4&&w[i+2]==33)bindings.push_back(w[i+3]);
+        i+=n;
+    }
+    std::sort(bindings.begin(),bindings.end());
+    bindings.erase(std::unique(bindings.begin(),bindings.end()),bindings.end());
+    for(uint32_t binding:bindings){
+        XbgStorageImageBinding info;
+        if(!xbg_spirv_binding_image(w,binding,info))continue;
+        if(info.declared_format!=XBG_IMAGE_FORMAT_UNKNOWN)continue;
+        std::vector<uint32_t> sharers;
+        xbg_spirv_shared_image_bindings(w,binding,sharers);
+        if(sharers.size()>1){out=sharers;return true;}
+    }
+    return false;
+}
+
+// Gives one binding a private copy of the image type it shares, so that the
+// binding can declare its own format while the other users of the shared type
+// keep theirs.
+//
+// The binding's variable and the loads from it are retargeted to the new type.
+// No value, coordinate, texel or write changes, so the shader writes exactly
+// the bytes it wrote before: the bound view's format decides the texel
+// layout in the typed and in the formatless form alike (VUID
+// vkCmdDispatch-OpImageWrite-04469).
+//
+//  1 = the binding declares the format on its own image type
+//  0 = the binding's image type is not shared: there is nothing to split
+// -1 = refused; the module is unchanged
+inline int xbg_typed_storage_split_rewrite(std::vector<uint32_t> &words,uint32_t binding,uint32_t spirv_format){
+    const uint32_t scalar=xbg_spirv_image_format_scalar(spirv_format);
+    if(scalar>2)return -1;
+    if(words.size()<5||words[0]!=0x07230203u)return -1;
+    XbgStorageImageBinding info;
+    if(!xbg_spirv_binding_image(words,binding,info))return -1;
+    if(info.declared_format!=XBG_IMAGE_FORMAT_UNKNOWN)return info.declared_format==spirv_format?0:-1;
+    const uint32_t components=xbg_spirv_image_format_components(spirv_format);
+    if(!components)return -1;
+    // The image type has to be shared, or there is nothing to split.
+    std::vector<uint32_t> users;
+    xbg_spirv_image_type_users(words,binding,users);
+    if(users.size()<2)return 0;
+    // The sampled type must match the format's scalar class (VUID
+    // StandaloneSpirv-Image-04965).
+    if(xbg_spirv_image_scalar_class(words,binding)!=scalar)return -1;
+    // The texel has to be at least as wide as the declared format.
+    if(xbg_spirv_storage_min_write_components(words,binding)<components)return -1;
+    std::unordered_map<uint32_t,size_t> def;
+    for(size_t i=5;i<words.size();){uint32_t n=words[i]>>16,op=words[i]&65535u;
+        if(op>=19&&op<=33&&n>=2)def[words[i+1]]=i;
+        if(op==59&&n>=4)def[words[i+2]]=i;
+        i+=n;
+    }
+    const auto variable=def.find(info.variable);if(variable==def.end())return -1;
+    const auto pointer=def.find(info.pointer_type);if(pointer==def.end())return -1;
+    // The values the binding loads, and the accesses that use them.
+    std::unordered_set<uint32_t> loaded;
+    std::unordered_set<size_t> load_at;
+    for(size_t i=5;i<words.size();){uint32_t n=words[i]>>16,op=words[i]&65535u;
+        if(op==61&&n>=4&&words[i+3]==info.variable){
+            if(words[i+1]!=info.image_type)return -1;   // not an image load
+            loaded.insert(words[i+2]);load_at.insert(i);
+        }
+        i+=n;
+    }
+    if(loaded.empty())return -1;
+    // Only a write keeps its meaning when the image type changes: a read or a
+    // texel pointer sees the format, so they keep the module formatless.
+    for(size_t i=5;i<words.size();){uint32_t n=words[i]>>16,op=words[i]&65535u;
+        if(!load_at.count(i)){
+            for(uint32_t k=1;k<n;++k){
+                if(!loaded.count(words[i+k]))continue;
+                if(op==99)continue;                      // OpImageWrite
+                return -1;
+            }
+        }
+        i+=n;
+    }
+    // The new declarations: a private copy of the image type with the new
+    // format, and a pointer to it.
+    uint32_t bound=words[3];
+    const uint32_t image_type=bound++;
+    const uint32_t pointer_type=bound++;
+    const uint32_t image_decl[9]={9u<<16|25u,image_type,
+        words[info.image_at+2],words[info.image_at+3],words[info.image_at+4],
+        words[info.image_at+5],words[info.image_at+6],words[info.image_at+7],spirv_format};
+    const uint32_t pointer_decl[4]={4u<<16|32u,pointer_type,words[pointer->second+2],image_type};
+    std::vector<uint32_t> out;out.reserve(words.size()+16);
+    out.insert(out.end(),words.begin(),words.begin()+5);
+    for(size_t i=5;i<words.size();){
+        const uint32_t n=words[i]>>16,op=words[i]&65535u;
+        if(i==variable->second){
+            out.insert(out.end(),image_decl,image_decl+9);
+            out.insert(out.end(),pointer_decl,pointer_decl+4);
+        }
+        const size_t at=out.size();
+        out.insert(out.end(),words.begin()+i,words.begin()+i+n);
+        if(i==variable->second)out[at+1]=pointer_type;
+        if(op==61&&n>=4&&loaded.count(words[i+2])&&words[i+3]==info.variable)out[at+1]=image_type;
+        i+=n;
+    }
+    out[3]=bound;
+    words.swap(out);
+    return 1;
+}
+
+// One binding that needs the module to declare a format.
+struct XbgTypedStorageRequest {
+    uint32_t binding=0;
+    uint32_t spirv_format=XBG_IMAGE_FORMAT_UNKNOWN;
+};
+
+// Declares the requested formats in the module.
+//
+// The bindings that share one image type have to agree on the format, because
+// the shared type declares one format for all of them. When they disagree,
+// every one of them gets a private copy of the type and declares its own
+// format. A binding that shares the type and is not in the list would keep
+// the shared type formatless, so the whole group is refused.
+//
+// failed   the request that could not be declared
+// shared   1 when the shared type could carry the format of that request,
+//          0 when the group disagrees or a sharer is not in the list
+// split    the bindings that received a private image type
+//
+//  1 = the module declares the requested formats
+// -1 = refused; the module is unchanged
+inline int xbg_typed_storage_declare(std::vector<uint32_t> &words,const std::vector<XbgTypedStorageRequest> &requests,size_t &failed,int &shared,std::vector<uint32_t> &split){
+    failed=0;shared=1;split.clear();
+    if(requests.empty())return -1;
+    if(words.size()<5||words[0]!=0x07230203u)return -1;
+    std::vector<uint32_t> image_of(requests.size(),0);
+    for(size_t r=0;r<requests.size();++r){
+        XbgStorageImageBinding info;
+        if(!xbg_spirv_binding_image(words,requests[r].binding,info)){failed=r;return -1;}
+        image_of[r]=info.image_type;
+    }
+    std::vector<char> handled(requests.size(),0);
+    for(size_t r=0;r<requests.size();++r){
+        if(handled[r])continue;
+        // the requests that share this image type
+        std::vector<size_t> group;
+        for(size_t k=0;k<requests.size();++k)if(image_of[k]==image_of[r])group.push_back(k);
+        // Every descriptor that uses the shared type has to be in the group: a
+        // binding that is not in it would keep the shared type formatless.
+        std::vector<uint32_t> sharers;
+        xbg_spirv_shared_image_bindings(words,requests[r].binding,sharers);
+        for(uint32_t other:sharers){
+            bool in_group=false;
+            for(size_t k:group)if(requests[k].binding==other)in_group=true;
+            if(!in_group){failed=r;shared=0;return -1;}
+        }
+        // The group agrees on one format, or every binding of it gets a
+        // private copy of the image type.
+        bool same=true;
+        for(size_t k:group)if(requests[k].spirv_format!=requests[group[0]].spirv_format)same=false;
+        for(size_t k:group){
+            int rewritten=0;
+            if(same)rewritten=xbg_typed_storage_rewrite(words,requests[k].binding,requests[k].spirv_format,true);
+            else{
+                rewritten=xbg_typed_storage_split_rewrite(words,requests[k].binding,requests[k].spirv_format);
+                // The first split leaves the last sharer alone on the shared
+                // type, which it can declare itself.
+                if(rewritten==0)rewritten=xbg_typed_storage_rewrite(words,requests[k].binding,requests[k].spirv_format,true);
+                else if(rewritten==1)split.push_back(requests[k].binding);
+            }
+            if(rewritten!=1&&rewritten!=0){failed=k;shared=same?1:0;return -1;}
+            handled[k]=1;
+        }
+    }
     return 1;
 }
