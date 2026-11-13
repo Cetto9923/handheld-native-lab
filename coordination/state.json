@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-12T23:32:00.823024+08:00",
+ "updated_at": "2026-11-13T16:45:00+08:00",
  "phase": "v1.0.9 consolidation in progress: one APK (versionCode 9) must boot both the Honor tablet (code 7) and the RG477M (code 8). Three implementation lines are in flight — readback targeted retirement (stutter root cause), Mali formatless-write FATAL (RG477M cannot enter the game), battle-settle crash P0 (8E5 phone, no device). The Honor tablet was returned to the user after the effect-seed line finished its measurement; all Honor device acceptance is deferred to one session after the merge.",
  "coordinator": "MiniMax Code /root release takeover (Codex thread aborted by user)",
  "integration_branch": "work/rg477m-native",
@@ -5263,6 +5263,36 @@
    "checkpoint": "27c27a6",
    "device_exclusive": "RG477M01445122 and, with the user permission, A42BBB5109000333",
    "status_note": "blocked on the three implementation lines; the coordinator starts it as soon as they report"
+  },
+  {
+   "id": "RG477M-PERF-PASSPROF-WINDOW-20261113",
+   "role": "implementer",
+   "status": "implemented_device_verified",
+   "owner": "MiniMax Code /root (Antigravity takeover)",
+   "branch": "task/T-rg477m-passprof-window-20261113",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native",
+   "objective": "Fix the chapter-3 water capital (Aldriann) slideshow stutter on the RG477M without changing game behaviour: a leftover gfx-pass-profile diagnostic marker kept pass_prof_enabled set for the whole session, which disabled the GPU-resident indirect argument path, forced a per-frame CPU read of the compute dispatch arguments, and that read hit a pending writeback range and drained the whole submission queue (fence ~46 ms/frame); the CPU also read stale zeros, so the compute dispatch was skipped every frame.",
+   "inputs": [
+    "device engine.log + guest_boot.log (RG477M01445122)",
+    "device frame CSV codex-frame-14585.csv",
+    ".local/reports/perf-fence-analysis-20261113.md (read-only analysis, 321 lines)",
+    ".local/ch3-takeover-20261113-1545/ (earlier device capture)"
+   ],
+   "outputs": [
+    "0228e3c fix(graphics): keep the GPU-resident indirect path on a stale pass-profiler marker",
+    "coordination/results/RG477M-PERF-PASSPROF-WINDOW-20261113.md",
+    "APK sha256 8bda346dbd6d58ac72661bbf8b2a5ccb0f71e39deb68789911229d7df25b6657"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "coordination/"
+   ],
+   "acceptance": "Device: with the SAME leftover gfx-pass-profile marker present, the water capital interior runs at 30.1 FPS with sync_wb=0 and the indirect dispatch executing on the GPU (indirect gpu=1.0, cpu_fallback=0.0, cpu_zero=0.0). Before the fix the same marker gave 11.4 FPS. Steady state 30.0 FPS, no single frame over the 2-frame budget (66.7 ms). Host: verify_host.py --runtime-contracts exit 0. Host contract: scripts/verify_host.py --runtime-contracts exit 0 (all contracts passed).",
+   "checkpoint": "0228e3c",
+   "device_exclusive": "RG477M01445122",
+   "status_note": "Device verified. The chocobo visual anomaly reported by the user was NOT reproduced in this session; no code was changed for it and no claim is made about it."
   }
  ],
  "blockers": [
@@ -7353,5 +7383,63 @@
   "device_state": "the tablet carries the clean 1.0.7 build: gfx-defer-events 0, the diagnostic probes cleared, the pipeline list and cache restored, no app running. Every marker change made by this line is reverted and backed up in .local/marker-backups/ffrs-markers-backup-20261112-223935.tar.",
   "artifacts": ".local/rescue-1.0.7-20261112/ (4 frame CSVs, the 10 MB run-4 guest log, the final pipeline list and cache, the window analysis, 4 screenshots)",
   "not_verified": "no Honor measurement of the final seed build; no frame-rate number from the RG477M; the cold-start frame is unexplained"
+ },
+ "rg477m_passprof_window_20261113": {
+  "observed_at": "2026-11-13T16:45:00+08:00",
+  "status": "ROOT_CAUSE_FIXED_DEVICE_VERIFIED",
+  "device": "RG477M01445122 (Mali-G615 MC6, Android ARM64, 1280x960)",
+  "branch": "task/T-rg477m-passprof-window-20261113",
+  "commit": "0228e3c",
+  "root_cause": "A gfx-pass-profile marker left on the device set pass_prof_enabled for the whole session. indirect_dispatch_inputs_resident() and indexed_graphics_ready() both read that flag, so the GPU-resident indirect argument path was permanently off. Every frame then read the compute dispatch arguments on the CPU; the read overlapped a pending writeback range and resolve_pending() drained all 16 slots (fence ~46 ms/frame, sync_wb 2/frame). The CPU read the arguments before the GPU had written them (cpu_zero=1), so the compute dispatch was skipped entirely.",
+  "ab_evidence": {
+   "old_code_with_marker": {
+    "fps": 11.36,
+    "submit_cpu_ms": 69.74,
+    "fence_ms": 46.12,
+    "sync_wb": 120,
+    "indirect_gpu": 0.0,
+    "cpu_zero": 1.0
+   },
+   "old_code_without_marker": {
+    "fps": 28.55,
+    "submit_cpu_ms": 11.28,
+    "fence_ms": 0.0,
+    "sync_wb": 0,
+    "indirect_gpu": 1.0,
+    "cpu_zero": 0.0
+   },
+   "new_code_with_same_marker": {
+    "fps": 30.14,
+    "submit_cpu_ms": 10.46,
+    "fence_ms": 0.0,
+    "sync_wb": 0,
+    "indirect_gpu": 1.0,
+    "cpu_zero": 0.0
+   }
+  },
+  "fix": "pass_prof_active() gates the two fast paths on the frame actually being sampled, not on a session-long flag. Startup banner now prints the pass profiler state.",
+  "acceptance": {
+   "steady_fps": 30.0,
+   "frame_hold_over_2_frames_in_steady_state": 0,
+   "host_contract": "verify_host.py --runtime-contracts exit 0"
+  },
+  "targets_assessment": {
+   "A_cpu_gpu_fence_serialization": "CONFIRMED and was the main cause",
+   "B_grab_pass_render_pass_fragmentation": "NOT PRESENT in this scene (sync_rb=0, readback drain=0, pass_ends == passes)",
+   "C_frustum_culling_absent": "TRUE but unfixable (NVN draw records carry no bounding box) and not the bottleneck here"
+  },
+  "open": [
+   "Chocobo visual anomaly (view stuck in a small window, input dead) NOT reproduced; no fix claimed.",
+   "nn::oe::GetOperationMode() returns 0 on the RG477M while P-MM-6 recorded that the guest degenerates its screen scale factor to 0.0 when the flag is clear; HANDOFF.md:2362 records that the RG477M must stay Handheld(0). Contradiction unresolved; needs a device experiment.",
+   "resolve_pending() still drains every slot. The targeted-retirement route is written up in .local/reports/perf-fence-analysis-20261113.md section 4.1 and is NOT implemented (no benefit here, wide semantic surface).",
+   "An unexplained 16 FPS stretch on 2026-11-13 16:31-16:42 with the same command stream and fence=0; not thermal (57.8 C, status 0); device devfreq is not readable.",
+   "perf.submits is polluted by pin_indexed_input() at xbg_game.cpp:6197, which increments it without any vkQueueSubmit."
+  ],
+  "artifacts": [
+   ".local/reports/perf-fence-analysis-20261113.md",
+   "coordination/results/RG477M-PERF-PASSPROF-WINDOW-20261113.md",
+   ".local/android-apk/ffrs-game-window-debug.apk (sha256 8bda346d...)",
+   "device /sdcard/Android/data/org.ffrs.gamewindow/files/engine.log and codex-frame-14585.csv"
+  ]
  }
 }

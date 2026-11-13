@@ -1,3 +1,59 @@
+# 2026-11-13 16:45 第3章水都卡顿：根因是设备上遗留的一个诊断标记（RG477M）
+
+一次归因，一个提交，一次真机 A/B 验收。第3章水都（奥尔德里昂）室内场景从 **11.4 FPS 回到 30.1 FPS**，且**带着同一个遗留标记**。
+
+## 落点
+
+| 项 | 值 |
+|---|---|
+| 设备 | 仅 RG477M（`RG477M01445122`，Mali-G615 MC6）；荣耀平板未操作 |
+| 分支 / 提交 | `task/T-rg477m-passprof-window-20261113` / `0228e3c`（仅改 `xbg_game.cpp`，+13/−3） |
+| APK | `.local/android-apk/ffrs-game-window-debug.apk`，sha256 `8bda346d…`；签名沿用同一把开发密钥，`install -r` 成功、存档保留 |
+| 宿主契约 | `verify_host.py --runtime-contracts` → exit 0 |
+| 报告 | `coordination/results/RG477M-PERF-PASSPROF-WINDOW-20261113.md` |
+| 只读分析 | `.local/reports/perf-fence-analysis-20261113.md`（321 行，含 18 个 marker 的 A/B 矩阵） |
+
+## 根因
+
+设备上 16:13 留下的 `gfx-pass-profile`（`0 1 4`）本该只影响 4 帧，但它把 `pass_prof_enabled` 置成了**整个会话**的常开标志。而两个快路径门禁都在读这个标志：
+
+- `indirect_dispatch_inputs_resident()`（`:5300`）→ GPU 常驻间接 dispatch 参数
+- `indexed_graphics_ready()`（`:6156`）→ GPU 常驻索引绘制
+
+于是每帧都走 CPU 回读间接参数 → 命中 pending 写回区间 → `resolve_pending()` → `submit_slots(true)` **排干全部 16 个 slot** → `fence` 46.12 ms/帧、`sync_wb` 2/帧。而且 CPU 读到的是还没落地的旧值（`cpu_zero=1`），**那个每帧一次的 compute dispatch 被整段跳过**。
+
+## A/B（只切换标记，不改代码）
+
+| 指标 | 带标记（修复前） | 不带标记（修复前） | 带标记（**修复后**） |
+|---|---|---|---|
+| fps | **11.36** | 28.55 | **30.14** |
+| submit_cpu_ms | 69.74 | 11.28 | 10.46 |
+| fence | 46.12 ms | 0.00 | 0.00 |
+| sync_wb | 120 | 0 | 0 |
+| indirect gpu / cpu_zero | 0.0 / 1.0 | 1.0 / 0.0 | **1.0 / 0.0** |
+
+## 修复
+
+`pass_prof_active()` 只在**正在被采样的那一帧**放行精确计时路径，窗口一过快路径立刻恢复；启动横幅打印通道分析器真实状态，避免再被静默关掉。没有碰 Descriptor / Barrier / Pipeline 行为，没有引入任何机型判断。
+
+## 真机验收
+
+稳态 **30.0 FPS**，p95 36–39 ms，稳态**无任何单帧超过 2 帧预算（66.7 ms）**。关卡加载段仍有一次 4.0 s 冻结，是 UE 资源加载，不是渲染循环的帧保持。
+
+## 三个靶点的结论
+
+- **靶点 A（CPU 强制等 GPU/fence）**：成立，且是主因。
+- **靶点 B（水体折射抓屏导致 pass 断裂）**：**本场景不成立** —— `sync_rb=0`、`readback drain=0`、`pass_ends` 合计 64.0 == `passes` 64.0，每 pass 恰好断一次。
+- **靶点 C（无视锥裁剪）**：属实但**不可修**（NVN draw record 不带包围盒），且本场景 GPU 未饱和，不是瓶颈。
+
+## 明确未完成
+
+1. **陆行鸟画面异常未复现**，本轮没有改动任何相关代码，也不对它下任何结论。已排除呈现几何 / guest 渲染目标 / 视口转换 / 4:3 黑边。
+2. `nn::oe::GetOperationMode()` 在 RG477M 返回 0，而 P-MM-6 记录该标志清零会让 guest 的屏幕缩放因子退化成 0.0；HANDOFF:2362 又记录 RG477M 必须 Handheld(0)。两者冲突，**需设备实验判定**，未做。
+3. `resolve_pending()` 仍排干全部 slot；定向退役方案写在分析报告 §4.1，**未实施**（本场景收益为 0，改动面大）。
+4. 16:31–16:42 有一段同命令流、同 `fence=0` 却稳定 16 FPS 的现象**未解释**（非降频：GPU 57.8 ℃、thermal status 0；devfreq 无读权限）。
+5. `perf.submits` 被 `:6197` 的 owned indexed input copy 污染（不调用 `vkQueueSubmit` 却递增），诊断时不要读这个数。
+
 # 2026-11-12 23:35 1.0.9 合流启动：特效线交回平板，卡顿真因锁定在提交路径的 drain
 
 一次归因，一个结论，一次撤回。全程只用真机数据。

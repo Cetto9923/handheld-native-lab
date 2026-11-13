@@ -1,6 +1,6 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-12T23:32:00.823024+08:00
+状态事件时间：2026-11-13T16:45:00+08:00
 阶段：v1.0.9 consolidation in progress: one APK (versionCode 9) must boot both the Honor tablet (code 7) and the RG477M (code 8). Three implementation lines are in flight — readback targeted retirement (stutter root cause), Mali formatless-write FATAL (RG477M cannot enter the game), battle-settle crash P0 (8E5 phone, no device). The Honor tablet was returned to the user after the effect-seed line finished its measurement; all Honor device acceptance is deferred to one session after the merge.
 总控：MiniMax Code /root release takeover (Codex thread aborted by user)
 更新方式：按事件更新，没有后台自动刷新。
@@ -140,6 +140,7 @@
 | CRASH-P0-BATTLE-SETTLE-20261112 | runtime worker | in_progress | worker agent bg_c4b2d1d1-a3ce-47e3-bb89-d1dd870937f2 | 无 | 无额外门禁 | task/T-crash-p0-20261112 |
 | HONOR-SEED-NARROW-P1-20261112 | graphics worker | ready | unassigned - dispatch after a slot frees | 无 | 无额外门禁 | task/T-rescue-1.0.7-20261112 (follow-up branch) |
 | RELEASE-1.0.9-MERGE-20261112 | coordinator | blocked | MiniMax Code /root release takeover | HONOR-TRANSIT-RETIRE-20261112, RG477M-TEXEL-FORMAT-20261112, CRASH-P0-BATTLE-SETTLE-20261112 | RG477M-TEXEL-FORMAT-20261112 | task/T-package-1.0.7-20261112 |
+| RG477M-PERF-PASSPROF-WINDOW-20261113 | implementer | implemented_device_verified | MiniMax Code /root (Antigravity takeover) | 无 | 无额外门禁 | task/T-rg477m-passprof-window-20261113 |
 
 ## 独占写入
 
