@@ -88,6 +88,30 @@ inline uint32_t xbg_spirv_image_format_components(uint32_t spirv_format){
     }
 }
 
+// The number of components a declarable VkFormat carries. 0 when the format
+// is not one of the 32-bit-per-component formats the rewrite can use.
+inline uint32_t xbg_vk_format_components(uint32_t vk_format){
+    switch(xbg_spirv_image_format(vk_format)){
+    case XBG_IMAGE_FORMAT_R32F:case XBG_IMAGE_FORMAT_R32I:case XBG_IMAGE_FORMAT_R32UI:return 1;
+    case XBG_IMAGE_FORMAT_RG32F:case XBG_IMAGE_FORMAT_RG32I:case XBG_IMAGE_FORMAT_RG32UI:return 2;
+    case XBG_IMAGE_FORMAT_RGBA32F:case XBG_IMAGE_FORMAT_RGBA32I:case XBG_IMAGE_FORMAT_RGBA32UI:return 4;
+    default:return 0;
+    }
+}
+
+// The same format in another numeric class, with the same component count and
+// therefore the same texel size. The texel layout of a storage binding comes
+// from the bound view's format, so a class change that keeps the component
+// count keeps the layout and only changes how the written bits are read back.
+inline uint32_t xbg_vk_format_class_components(uint32_t vk_format,uint32_t klass){
+    const uint32_t components=xbg_vk_format_components(vk_format);
+    if(!components)return 0;
+    if(klass==0)return components==1?XBG_VK_FORMAT_R32_SFLOAT:components==2?XBG_VK_FORMAT_R32G32_SFLOAT:XBG_VK_FORMAT_R32G32B32A32_SFLOAT;
+    if(klass==1)return components==1?XBG_VK_FORMAT_R32_SINT:components==2?XBG_VK_FORMAT_R32G32_SINT:XBG_VK_FORMAT_R32G32B32A32_SINT;
+    if(klass==2)return components==1?XBG_VK_FORMAT_R32_UINT:components==2?XBG_VK_FORMAT_R32G32_UINT:XBG_VK_FORMAT_R32G32B32A32_UINT;
+    return 0;
+}
+
 // A typed module is only legal when the declared SPIR-V format is exactly the
 // format of the bound view (VUID vkCmdDispatch-format-08795/08796).
 inline bool xbg_typed_storage_matches(uint32_t spirv_format,uint32_t vk_format){
@@ -194,6 +218,36 @@ inline uint32_t xbg_spirv_storage_write_components(const std::vector<uint32_t> &
     return components;
 }
 
+// The smallest number of components the module writes to a storage binding.
+// A typed image has to be written with a texel of at least as many components
+// as the format it declares, so a binding whose texels are narrower than the
+// format cannot be declared. 0 when the binding has no write at all.
+inline uint32_t xbg_spirv_storage_min_write_components(const std::vector<uint32_t> &w,uint32_t binding){
+    XbgStorageImageBinding info;if(!xbg_spirv_binding_image(w,binding,info))return 0;
+    std::unordered_map<uint32_t,size_t> def;             // type id -> OpTypeXxx
+    std::unordered_map<uint32_t,uint32_t> value_type;    // value id -> its type id
+    for(size_t i=5;i<w.size();){uint32_t n=w[i]>>16,op=w[i]&65535u;
+        if(op>=19&&op<=33&&n>=2)def[w[i+1]]=i;
+        else if(n>=3)value_type[w[i+2]]=w[i+1];
+        i+=n;}
+    std::unordered_set<uint32_t> loaded;
+    for(size_t i=5;i<w.size();){uint32_t n=w[i]>>16,op=w[i]&65535u;
+        if(op==61&&n>=4&&w[i+3]==info.variable)loaded.insert(w[i+2]);
+        i+=n;}
+    uint32_t minimum=0;
+    for(size_t i=5;i<w.size();){uint32_t n=w[i]>>16,op=w[i]&65535u;
+        if(op==99&&n>=5&&loaded.count(w[i+1])){
+            auto v=value_type.find(w[i+3]);
+            if(v==value_type.end())return 0;
+            auto t=def.find(v->second);
+            if(t==def.end())return 0;
+            uint32_t c=(w[t->second]&65535u)==23?w[t->second+3]:1u;
+            if(!minimum||c<minimum)minimum=c;
+        }
+        i+=n;}
+    return minimum;
+}
+
 // The VkFormat to bind for a storage binding whose bound format SPIR-V
 // cannot declare.
 //
@@ -210,11 +264,61 @@ inline uint32_t xbg_spirv_storage_write_components(const std::vector<uint32_t> &
 // rewrite can declare them.
 //
 // Returns the bound format unchanged when there is nothing to substitute.
-inline uint32_t xbg_typed_storage_view_format(const std::vector<uint32_t> &w,uint32_t binding,uint32_t native){
-    if(xbg_spirv_image_format(native)!=XBG_IMAGE_FORMAT_UNKNOWN)return native;  // already declarable
-    XbgStorageImageBinding info;if(!xbg_spirv_binding_image(w,binding,info))return native;
-    const uint32_t klass=xbg_spirv_image_scalar_class(w,binding);if(klass>2)return native;
-    uint32_t components=xbg_spirv_storage_write_components(w,binding);
+// What the module says about one storage binding. The analysis walks the
+// whole module, so the engine computes it once per module and keeps it with
+// the shader: the descriptor path asks for it on every draw.
+struct XbgStorageBindingInfo {
+    uint32_t declared_format=XBG_IMAGE_FORMAT_UNKNOWN;
+    uint32_t scalar_class=3;          // 0 float, 1 signed, 2 unsigned, 3 unknown
+    uint32_t write_components=0;
+    uint32_t min_write_components=0;
+    uint32_t dim=0;
+    bool found=false;
+};
+
+// The same analysis for a host test that has only the module.
+inline XbgStorageBindingInfo xbg_spirv_storage_binding_info(const std::vector<uint32_t> &w,uint32_t binding){
+    XbgStorageBindingInfo out;
+    XbgStorageImageBinding info;if(!xbg_spirv_binding_image(w,binding,info))return out;
+    out.found=true;
+    out.declared_format=info.declared_format;
+    out.dim=info.dim;
+    out.scalar_class=xbg_spirv_image_scalar_class(w,binding);
+    out.write_components=xbg_spirv_storage_write_components(w,binding);
+    out.min_write_components=xbg_spirv_storage_min_write_components(w,binding);
+    return out;
+}
+
+// The view format for a storage binding, from the module's own facts. The
+// guest's view format is the starting point: it carries the texel size, so
+// the game's memory layout stays. Its numeric class has to agree with the
+// module's sampled type, or the declared format would violate VUID
+// StandaloneSpirv-Image-04965. When the guest's metadata and the guest's own
+// shader disagree about the class, the shader wins: a formatless access on
+// the reference platform follows the shader's type. The swap keeps the
+// component count, so the texel size and the texel layout stay the same and
+// the written bytes do not change.
+inline uint32_t xbg_typed_storage_view_format_info(const XbgStorageBindingInfo &info,uint32_t native){
+    if(!info.found)return native;
+    const uint32_t klass=info.scalar_class;
+    if(klass>2)return native;                       // the module does not say
+    const uint32_t native_spirv=xbg_spirv_image_format(native);
+    if(native_spirv!=XBG_IMAGE_FORMAT_UNKNOWN){
+        if(xbg_spirv_image_format_scalar(native_spirv)==klass)return native;
+        const uint32_t swapped=xbg_vk_format_class_components(native,klass);
+        if(!swapped)return native;
+        // A format the module declares itself is the module's own business,
+        // unless this is the engine's own rewrite of the same binding.
+        if(info.declared_format!=XBG_IMAGE_FORMAT_UNKNOWN)
+            return info.declared_format==xbg_spirv_image_format(swapped)?swapped:native;
+        return swapped;
+    }
+    // The guest's format has no SPIR-V image format at all (16-bit or 8-bit).
+    // The engine then binds the format the module itself describes: the same
+    // numeric class, 32 bits per component, and the component count the module
+    // writes. The view and the module then describe the same texels, and the
+    // rewrite can declare them.
+    uint32_t components=info.write_components;
     if(info.dim==XBG_IMAGE_DIM_BUFFER)components=4;   // a Buffer image texel is always RGBA
     if(components==3)return native;                    // SPIR-V has no Rgb32 image format
     if(components<1||components>4)return native;
@@ -235,6 +339,10 @@ inline uint32_t xbg_typed_storage_view_format(const std::vector<uint32_t> &w,uin
     // A format the game declares itself is the game's own business.
     if(info.declared_format!=XBG_IMAGE_FORMAT_UNKNOWN)return native;
     return candidate;
+}
+
+inline uint32_t xbg_typed_storage_view_format(const std::vector<uint32_t> &w,uint32_t binding,uint32_t native){
+    return xbg_typed_storage_view_format_info(xbg_spirv_storage_binding_info(w,binding),native);
 }
 
 // The SPIR-V image format a binding's module declares, or Unknown when the
@@ -318,6 +426,11 @@ inline int xbg_typed_storage_rewrite(std::vector<uint32_t> &words,uint32_t bindi
         i+=n;
     }
     if(users!=1&&!shared_ok)return -1;
+    // The texel has to be at least as wide as the declared format: a
+    // typed image is written with a texel of at least the format's component
+    // count (VUID vkCmdDispatch-OpImageWrite-04469).
+    const uint32_t components=xbg_spirv_image_format_components(spirv_format);
+    if(components && xbg_spirv_storage_min_write_components(words,binding)<components)return -1;
     // The sampled type must match the format's scalar class (VUID
     // StandaloneSpirv-Image-04965). The repository's uint storage images may
     // only be declared as an unsigned format.
@@ -365,35 +478,6 @@ inline void xbg_spirv_image_type_users(const std::vector<uint32_t> &w,uint32_t b
     }
 }
 
-// The smallest number of components the module writes to a storage binding.
-// A typed image has to be written with a texel of at least as many components
-// as the format it declares, so a binding whose texels are narrower than the
-// format cannot be declared. 0 when the binding has no write at all.
-inline uint32_t xbg_spirv_storage_min_write_components(const std::vector<uint32_t> &w,uint32_t binding){
-    XbgStorageImageBinding info;if(!xbg_spirv_binding_image(w,binding,info))return 0;
-    std::unordered_map<uint32_t,size_t> def;             // type id -> OpTypeXxx
-    std::unordered_map<uint32_t,uint32_t> value_type;    // value id -> its type id
-    for(size_t i=5;i<w.size();){uint32_t n=w[i]>>16,op=w[i]&65535u;
-        if(op>=19&&op<=33&&n>=2)def[w[i+1]]=i;
-        else if(n>=3)value_type[w[i+2]]=w[i+1];
-        i+=n;}
-    std::unordered_set<uint32_t> loaded;
-    for(size_t i=5;i<w.size();){uint32_t n=w[i]>>16,op=w[i]&65535u;
-        if(op==61&&n>=4&&w[i+3]==info.variable)loaded.insert(w[i+2]);
-        i+=n;}
-    uint32_t minimum=0;
-    for(size_t i=5;i<w.size();){uint32_t n=w[i]>>16,op=w[i]&65535u;
-        if(op==99&&n>=5&&loaded.count(w[i+1])){
-            auto v=value_type.find(w[i+3]);
-            if(v==value_type.end())return 0;
-            auto t=def.find(v->second);
-            if(t==def.end())return 0;
-            uint32_t c=(w[t->second]&65535u)==23?w[t->second+3]:1u;
-            if(!minimum||c<minimum)minimum=c;
-        }
-        i+=n;}
-    return minimum;
-}
 
 
 // The bindings that share one formatless storage image type. A module with

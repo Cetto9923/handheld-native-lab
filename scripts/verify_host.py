@@ -247,6 +247,25 @@ def main():
         # private copy of the type and declares its own format. The module is
         # the one the RG477M aborted on (ba0d8842fa53e521), or the shared
         # module above when no separate one is named.
+        # The second module the RG477M aborted on: d201be268f66c813. Its
+        # bindings 35 and 41 share one formatless storage image type whose
+        # sampled type is float, while the guest binds an R32_SINT view. The
+        # engine has to align the view's numeric class with the module's
+        # sampled type, or the declared format violates VUID
+        # StandaloneSpirv-Image-04965 and the module stays formatless.
+        class_module = Path(os.environ.get('FFRS_REAL_CLASS_MODULE', '')) if os.environ.get('FFRS_REAL_CLASS_MODULE') else None
+        class_binary = out / 'test-typed-storage-class-align'
+        extra_artifacts.append(class_binary)
+        class_out = typed_dir / 'typed_storage_class_align_out.spv'
+        if class_module and class_module.is_file():
+            if run('typed-storage-class-align-build', [typed_cxx, '-std=c++17', '-O1', '-g',
+                                                '-fsanitize=address,undefined', '-Wall', '-Wextra',
+                                                'tests/device/test_typed_storage_class_align.cpp', '-o', class_binary]):
+                if run('typed-storage-class-align-contract', [class_binary, str(class_module), str(class_out)]):
+                    run('typed-storage-class-align-val', [spirv_val, '--target-env', 'vulkan1.1', class_out])
+        else:
+            print('typed-storage-class-align-contract: SKIPPED, set FFRS_REAL_CLASS_MODULE to the extracted d201be268f66c813.spv',
+                  flush=True)
         split_module = Path(os.environ.get('FFRS_REAL_SPLIT_MODULE', '')) if os.environ.get('FFRS_REAL_SPLIT_MODULE') else shared_module
         split_binary = out / 'test-typed-storage-split'
         extra_artifacts.append(split_binary)
