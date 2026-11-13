@@ -3002,17 +3002,23 @@ VkFormat texel_binding_format(const RegisteredTexture &registered,const xbg_shad
 }
 VkFormatFeatureFlags2 texel_buffer_features(VkFormat viewed){
     static std::map<VkFormat,VkFormatFeatureFlags2> cache;
+    static std::set<VkFormat> legacy;   // answered before format-feature-flags2 was known
     auto found=cache.find(viewed);
-    if(found!=cache.end())return found->second;
+    // The answer has to be the same whatever the query order is. The legacy query cannot see
+    // the formatless-write bit at all, so a format that was asked for before the extension was
+    // resolved is asked again: otherwise the same format would answer differently depending on
+    // when the engine happened to need it, and the typed-storage gate would follow that.
+    if(found!=cache.end() && (!format_feature_flags2 || !legacy.count(viewed)))return found->second;
     VkFormatFeatureFlags2 features=format_properties(viewed).bufferFeatures;
     if(format_feature_flags2){
         VkFormatProperties3 extra{VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3};
         VkFormatProperties2 all{VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2};all.pNext=&extra;
         vkGetPhysicalDeviceFormatProperties2(cfg.physical,viewed,&all);
         features=extra.bufferFeatures;
-    }
+        legacy.erase(viewed);
+    } else legacy.insert(viewed);
     xbg_logf("NVN texel format=%u bufferFeatures=%#llx formatFlags2=%u",unsigned(viewed),(unsigned long long)features,unsigned(format_feature_flags2));
-    cache.emplace(viewed,features);return features;
+    cache[viewed]=features;return features;
 }
 VkFormat integer_buffer_binding_format(const Shader &shader,const xbg_shader_binding &binding){
     if(binding.type!=VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER || !binding.count || binding.count>256 ||
@@ -3199,22 +3205,24 @@ Shader *typed_storage_variant(Shader &base){
         if(!texel && !image)continue;
         auto declared=base.storage_image_formats.find(binding.binding);
         const uint32_t declared_format=declared==base.storage_image_formats.end()?0u:declared->second;
-        const char *skip=nullptr;uint32_t native=0,resolved=0;
+        const char *skip=nullptr;uint32_t native=0,resolved=0;int caps=-1;   // caps: the device's formatless-write capability for this format
         if(binding.count!=1)skip="count";
         else if(declared_format!=XBG_IMAGE_FORMAT_UNKNOWN)skip="module-declared";
         else if(!(binding.flags&1))skip="not-formatless-write";
         else{
             const VkFormat actual=texel?typed_storage_binding_format(base,binding):typed_storage_image_format(base,binding);
             native=uint32_t(actual);
+            const bool formatless_ok=texel?storage_texel_formatless_write_ok(actual):storage_image_formatless_write_ok(actual);
+            caps=formatless_ok?1:0;
             if(actual==VK_FORMAT_UNDEFINED)skip="no-bound-view";
-            else if(texel?storage_texel_formatless_write_ok(actual):storage_image_formatless_write_ok(actual))skip="device-formatless-ok"; // the device still supports formatless
+            else if(formatless_ok)skip="device-formatless-ok"; // the device still supports formatless
             else if(!xbg_spirv_image_format(uint32_t(actual)))skip="no-spirv-image-format";  // SPIR-V cannot express that format
             else{resolved=uint32_t(actual);formats.push_back({binding.binding,uint32_t(actual)});}
         }
         if(!typed_storage_diag_first)continue;
         typed_storage_decisions.push_back(std::string("b")+std::to_string(binding.binding)+"="+
             (skip?std::string(skip):("type"+std::to_string(native)+"->"+std::to_string(resolved)))+
-            " flags="+std::to_string(binding.flags)+" count="+std::to_string(binding.count));
+            " flags="+std::to_string(binding.flags)+" count="+std::to_string(binding.count)+" caps="+std::to_string(caps));
     }
     if(!typed_storage_decisions.empty()){
         for(const auto &decision:typed_storage_decisions)
@@ -6749,14 +6757,7 @@ extern "C" int xbg_game_initialize(const xbg_game_config *c,char *error,size_t b
      xbg_logf("NVN legacy_waitall=%d (tablet profile=%d, marker gfx-legacy-waitall overrides)", int(legacy_waitall), (tablet_profile && tablet_profile[0]=='1')?1:0);}
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-full-barrier").c_str(),"rb");full_barrier_strict=m&&fgetc(m)=='1';if(m)fclose(m);xbg_logf("NVN full barrier strict=%d (marker gfx-full-barrier, 0=compute scoped)",int(full_barrier_strict));}
     cfg=*c;xbg_logf("NVN completion_wait enabled=%d legacy_waitall=%d",int(completion_wait_enabled),int(legacy_waitall));
-    // The typed-storage rescue only exists for a device that cannot run a formatless storage
-    // write (VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT). This line says, from the
-    // Vulkan capability itself, which kind of device this is: the RG477M's Mali-G615 cannot, so
-    // the engine declares a format in the module and the view follows the module's class; a
-    // device that can keeps the guest's own module and the guest's own view.
-    {const bool texel_formatless=storage_texel_formatless_write_ok(VK_FORMAT_R32_SINT);
-     const bool image_formatless=storage_image_formatless_write_ok(VK_FORMAT_R32_SINT);
-     xbg_logf("NVN typed-storage capability: formatless-write texel=%d image=%d feature=%u",int(texel_formatless),int(image_formatless),unsigned(cfg.enabled_core.shaderStorageImageWriteWithoutFormat));}vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemoryProperties(cfg.physical,&memories);{char line[512];int at=snprintf(line,sizeof line,"NVN caps memory types");for(uint32_t i=0;i<memories.memoryTypeCount && at<int(sizeof line)-24;i++)at+=snprintf(line+at,sizeof line-at," %u:%#x/h%u",i,unsigned(memories.memoryTypes[i].propertyFlags),memories.memoryTypes[i].heapIndex);xbg_logf("%s",line);}
+vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemoryProperties(cfg.physical,&memories);{char line[512];int at=snprintf(line,sizeof line,"NVN caps memory types");for(uint32_t i=0;i<memories.memoryTypeCount && at<int(sizeof line)-24;i++)at+=snprintf(line+at,sizeof line-at," %u:%#x/h%u",i,unsigned(memories.memoryTypes[i].propertyFlags),memories.memoryTypes[i].heapIndex);xbg_logf("%s",line);}
     {
         // Adreno 735: reusing the open depth/stencil pass flickers the moon
         // halo in the real scene. Keep the existing end-pass/barrier path.
@@ -6889,6 +6890,17 @@ extern "C" int xbg_game_initialize(const xbg_game_config *c,char *error,size_t b
       std::string list;for(auto &e:ext){list+=e.extensionName;list+=' ';}
       format_feature_flags2=properties.apiVersion>=VK_API_VERSION_1_3;for(auto &e:ext)if(!strcmp(e.extensionName,VK_KHR_FORMAT_FEATURE_FLAGS_2_EXTENSION_NAME))format_feature_flags2=true;
       xbg_logf("NVN format-feature-flags2=%d (formatless storage checks %s)",int(format_feature_flags2),format_feature_flags2?"per format":"by the pre-1.3 format list");
+      // The typed-storage rescue only exists for a device that cannot run a formatless storage
+      // write (VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT). The probe is per format, and it
+      // needs format-feature-flags2 to be resolved first: a device can list the feature for one
+      // format and not for another. The RG477M's Mali-G615 cannot for the guest's storage texel
+      // buffers, so the engine declares a format in the module and the view follows the module's
+      // class; a device that can keeps the guest's own module and the guest's own view.
+      {const bool texel_sint=storage_texel_formatless_write_ok(VK_FORMAT_R32_SINT);
+       const bool texel_uint=storage_texel_formatless_write_ok(VK_FORMAT_R32_UINT);
+       const bool texel_float=storage_texel_formatless_write_ok(VK_FORMAT_R32_SFLOAT);
+       const bool image_sint=storage_image_formatless_write_ok(VK_FORMAT_R32_SINT);
+       xbg_logf("NVN typed-storage capability: formatless-write texel sint=%d uint=%d float=%d image=%d feature=%u",int(texel_sint),int(texel_uint),int(texel_float),int(image_sint),unsigned(cfg.enabled_core.shaderStorageImageWriteWithoutFormat));}
       capability_report();
       {const VkFormatProperties &d16=format_properties(VK_FORMAT_D16_UNORM),&d24=format_properties(VK_FORMAT_X8_D24_UNORM_PACK32);
        const VkFormatFeatureFlags d24_needs=VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT|VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT|VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT|VK_FORMAT_FEATURE_TRANSFER_SRC_BIT|VK_FORMAT_FEATURE_TRANSFER_DST_BIT;
