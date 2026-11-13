@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-11-13T03:05:00+00:00",
+  "updated_at": "2026-11-13T09:25:00+00:00",
   "phase": "v1.0.9 unified package (versionCode 9, sha256 3309cfc8...) boots and plays on both devices (title -> save load -> 3D field -> walking, 0 FATAL). Battle flow still NOT verified on either device: the burning-ruins area raises no random encounter over 400 walk steps, and the RG477M dropped off USB, so its battle leg is blocked on device reconnection.",
   "coordinator": "MiniMax Code /root release takeover (Codex thread aborted by user)",
   "integration_branch": "work/rg477m-native",
@@ -5387,7 +5387,8 @@
     "HONOR-BATTLE-EFFECT-STUTTER (attribution withdrawn and re-scoped 2026-11-12): the device data refutes the original claim. Synchronous pipeline creation is NOT the cause of the >100 ms spikes (the largest single creation in the whole session is 1.3 ms). The cause is the CPU blocking in the submit path while the GPU is idle, marked by the readback/writeback drains (sync_rb 9.80 vs 0.03 per window). The repair point is the drain scheduling, which is task HONOR-TRANSIT-RETIRE-20261112. The warm list flush defect (Class A) is fixed; the seed is unproven and is being narrowed. The cold-start 4.5-4.8 s frame is still unexplained.",
     "RG477M-TEXEL-FORMAT-20261112: on the RG477M (Mali-G615) the guest dies after about five seconds with FATAL: Texel format lacks formatless-write support. Mali reports bufferFeatures=0x78 for the texel formats, so the optional STORAGE_WRITE_WITHOUT_FORMAT and READ_WITHOUT_FORMAT bits are absent for the whole family. The typed path is available (0x78 contains STORAGE_TEXEL_BUFFER_BIT), so the fix is a SPIR-V rewrite. The game cannot be played on the handheld until this lands, which outranks the stutter. Task RG477M-TEXEL-FORMAT-20261112, device RG477M01445122 exclusively.",
     "HONOR-BATTLE-EFFECT-STUTTER: battle effect pipelines are still created synchronously on their first release (created=5..18, create_ms 750..1916, single pipeline 125..381 ms). Root cause narrowed to the renderpass piece of the pipeline key: the same shader combination maps to several keys that differ only in the renderpass/attachment set, and the effect renderpass combinations are absent from the warm list, so the warm-up cannot pre-build them. Fix is in progress on task/T-rescue-1.0.7-20261112; NOT included in the 1.0.7 team package.",
-    "RG477M-DEVICE-OFFLINE: RG477M01445122 disappeared from 'adb devices -l' at ~2026-11-13 08:35 CST during the acceptance run. 'adb kill-server' is forbidden by the project rules, so the coordinator cannot revive it; the user must replug USB for the RG477M battle leg to run."
+    "RG477M-DEVICE-OFFLINE: RG477M01445122 disappeared from 'adb devices -l' at ~2026-11-13 08:35 CST during the acceptance run. 'adb kill-server' is forbidden by the project rules, so the coordinator cannot revive it; the user must replug USB for the RG477M battle leg to run.",
+    "HONOR-TABLET-OFFLINE: A42BBB5109000333 disappeared from adb and from the macOS USB layer while a battle was running; the user has to replug the tablet USB so the battle can be driven to the result screen."
   ],
   "verified": [
     "CURRENT_HANDOFF: a277 runtime sourcee305; actual originalstartup+OScleanup0/0, poststartup originalallocator0/0, HOST14expected, completeCRT515raw133. Earlier append-only bullets are historical stages and not current blockers.",
@@ -5504,7 +5505,9 @@
     "The published v1.0.6 tree contains no uncommitted code: the only dirty file in the release worktree is a whitespace-only reformat of another writer coordination document, and the rendering source is byte-identical to the build9 baseline.",
     "The moon halo flicker on the Honor tablet is caused by the GPU-resident indirect template path: with gfx-indexed-resident=0 the user observed a normal moon, and gfx-wb-skip=0 changed nothing.",
     "1.0.9 unified package (sha256 3309cfc8...) boots on both the Honor tablet (pid 9906) and the RG477M (pid 25064) and plays the field flow end to end: title -> Continue -> save load -> 3D burning-ruins scene -> real party movement, with no engine.log.fatal on either device.",
-    "The field flow cannot be driven when a physical gamepad is attached: GameActivity hides the on-screen pad, so the touch-stick path publishes no analog axes. Tapping the PAD handle restores movement."
+    "The field flow cannot be driven when a physical gamepad is attached: GameActivity hides the on-screen pad, so the touch-stick path publishes no analog axes. Tapping the PAD handle restores movement.",
+    "RG477M device-reproduced crash at battle start: FATAL: Texel format lacks formatless-write support, with the full engine log line 'NVN typed storage UNSUPPORTED shader=ba0d8842fa53e521 binding=53 format=100 reason=rewrite-refused shared=0' and the module's SPIR-V proving bindings 53 and 59 share one formatless OpTypeImage while needing different formats.",
+    "The Honor tablet reached a real battle for the first time in this session (LV55 beast versus the party, turn order and HP/MP panels rendered), evidence PAD-flow/hunt10/h040-NW.png."
   ],
   "unverified": [
     "完整CRT/TLS/线程/guest内存上下文与真正完整入口，正式T02参考行为验收。",
@@ -5533,7 +5536,8 @@
     "No code fix for the stale indirect-argument read has been written, built or verified.",
     "The current-slot guard on find_indirect_template is not yet built, installed or accepted on the device.",
     "Battle entry, full battle and the battle result screen remain unverified on both devices after 400 walking steps per device with no encounter raised and no FATAL.",
-    "The RG477M battle leg could not be started because the device left the adb device list (USB drop) mid-session; the earlier title/load/3D/walk evidence stands."
+    "The RG477M battle leg could not be started because the device left the adb device list (USB drop) mid-session; the earlier title/load/3D/walk evidence stands.",
+    "The tablet's battle result screen (the exact path of the user's reported crash) is still unverified: the tablet dropped off USB while the battle was on screen."
   ],
   "execution_goal": {
     "objective": "User cancels adaptive refresh implementation; prefer verified existing Switch FPS patch approach, port to exact currentBuild if possible, pursue realstable60FPS and continuecontrols/scenes/story/resources/audio unchangedspeed",
@@ -7733,6 +7737,59 @@
       "battle verified",
       "any battle performance number",
       "battle result screen reached without crash"
+    ]
+  },
+  "rg477m_battle_shared_texture_crash_20261113": {
+    "observed_at": "2026-11-13T09:05:00+00:00/2026-11-13T09:20:00+00:00",
+    "status": "device-reproduced crash, root cause established, fix dispatched to a worker",
+    "device": "RG477M01445122 (Mali-G615)",
+    "symptom": "the process dies the moment a battle starts; engine.log.fatal = FATAL: Texel format lacks formatless-write support",
+    "evidence": {
+      "fatal": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/acceptance-1.0.9-honor-20261113/MOB/crash-20261113/engine.log.fatal",
+      "guest_boot": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/acceptance-1.0.9-honor-20261113/MOB/crash-20261113/guest_boot.log",
+      "logcat": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/acceptance-1.0.9-honor-20261113/MOB/crash-20261113/logcat.txt",
+      "hunt_log": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/acceptance-1.0.9-honor-20261113/MOB/hunt10/hunt.log",
+      "last_frame_before_death": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/acceptance-1.0.9-honor-20261113/MOB/hunt10/h158-SW.png"
+    },
+    "log_lines": [
+      "NVN shader ba0d8842fa53e521 stage=5 loaded words=19145",
+      "NVN typed storage UNSUPPORTED shader=ba0d8842fa53e521 binding=53 format=100 reason=rewrite-refused shared=0 unchanged=1",
+      "FATAL: Texel format lacks formatless-write support"
+    ],
+    "module": {
+      "key": "ba0d8842fa53e521",
+      "stage": 5,
+      "bindings": 13,
+      "archive": ".local/modules/ba0d8842fa53e521.spv (+ .spvasm) in both repos, gitignored",
+      "image_types": {
+        "31": "OpTypeImage %float Buffer 0 0 0 1 Unknown (binding 47, storage image, sampled=1)",
+        "44": "OpTypeImage %uint Buffer 0 0 0 2 R32ui (binding 17, already typed)",
+        "48": "OpTypeImage %float Buffer 0 0 0 2 Unknown (SHARED by binding 53 and binding 59)"
+      },
+      "shared_users": "binding 53 (%cp_i_cb2_4A_) and binding 59 (%cp_i_cb2_48_) both use %_ptr_UniformConstant_48; both are STORAGE_TEXEL_BUFFER with package flags 0x80000501 (formatless write)"
+    },
+    "root_cause": "xbg_typed_storage_rewrite refuses (-1) when the binding image type has more than one descriptor user and shared_ok is false; typed_storage_variant computes shared_ok from whether all sharers need the SAME candidate format. Bindings 53 and 59 share %48 but need different bound view formats, so the rewrite is refused, the binding stays formatless, and Mali-G615 has no STORAGE_WRITE_WITHOUT_FORMAT for that format -> the descriptor guard aborts.",
+    "distinct_from_previously_fixed": "this is the shared-image-type case the previous worker explicitly listed as not implemented; it is not a regression of 4156929",
+    "impact": "Mali only (Adreno supports formatless write). Blocking for the RG477M: every battle that uses this compute shader aborts the game.",
+    "worker": {
+      "task_id": "T-RG477M-SHARED-TEXTURE-SPLIT-20261113",
+      "session": "mvs_343d7a537efa428fb142059f4844103d",
+      "branch": "task/T-rg477m-shared-texel-split-20261113",
+      "base": "4156929",
+      "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native/.worktrees/shared-texel-split-20261113",
+      "objective": "implement the shared image type split (private OpTypeImage + OpTypePointer per binding, each declaring its own format), with byte-equivalence argument, host contract plus mutation self-proof, spirv-val, and a real RG477M battle to the result screen"
+    },
+    "honor_tablet": {
+      "battle_reached": true,
+      "battle_screenshot": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/acceptance-1.0.9-honor-20261113/PAD-flow/hunt10/h040-NW.png",
+      "detail": "LV55 beast versus the party, turn order timeline, attribute affinity and HP/MP panels all rendered",
+      "device_state": "the tablet then dropped off USB (not enumerated at the macOS USB layer either); it is still sitting in that battle; reconnecting the tablet USB is required to drive it to the battle result screen and verify commit 89386a8 there"
+    },
+    "report": "coordination/results/RG477M-BATTLE-SHARED-TEXTURE-CRASH-20261113.md",
+    "not_run": [
+      "the tablet battle result screen (device offline)",
+      "the RG477M battle after the shared image type fix",
+      "8E5, temple"
     ]
   }
 }

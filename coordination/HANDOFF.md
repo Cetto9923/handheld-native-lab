@@ -4004,3 +4004,30 @@ LOAD DATA 列表里有游戏自己写的 **`战场`（战场）存档**：
 证据目录：`/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/acceptance-1.0.9-honor-20261113/`
 报告：`coordination/results/ACCEPTANCE-1.0.9-PAD-MOB-20261113.md`
 
+
+
+---
+
+## 2026-11-13 09:25Z — RG477M 战斗开始即 FATAL（真机复现，第三条独立根因）；平板首次进战斗后掉线
+
+**新发现**：477M 上**战斗一开始游戏就死**。`engine.log.fatal` = `FATAL: Texel format lacks formatless-write support`。
+根因是**第三类**（与已修的两条都不同）：战斗 compute shader `ba0d8842fa53e521` 里
+**binding 53 与 59 共用同一个 formatless `OpTypeImage %48`**，但两者要不同格式 →
+`xbg_typed_storage_rewrite` 拒绝改写（`reason=rewrite-refused shared=0`）→ 保持 formatless →
+Mali-G615 没有 `STORAGE_WRITE_WITHOUT_FORMAT` → 护栏 abort。
+这正是上一轮 worker 报告里写明「未实现」的那一项，**不是 `4156929` 的漏网**。
+
+**影响**：只影响 Mali；对 477M 是阻断级 —— 这就是「必须能进战斗实际玩」卡住的真正原因。
+已派 worker `T-RG477M-SHARED-TEXTURE-SPLIT-20261113`（session `mvs_343d7a537efa428fb142059f4844103d`）
+实现**共享 image type 拆分**，并要求字节等价论证 + 变异自证 + spirv-val + 真机打完一整场。
+
+**平板进展**：`PAD-flow/hunt10.sh` step 40 **首次进入真实战斗**（Lv.55 巨兽 vs 队伍，回合条/属性相性/
+生命值法力值全渲染，截图 `PAD-flow/hunt10/h040-NW.png`）。**随后平板从 USB 掉线**
+（macOS USB 层也认不到，物理断开）。平板此刻停在那场战斗里 ——
+**请重新插拔平板 USB**，才能继续驱动到战斗结算画面，验证 `89386a8` 那条修复。
+
+**明确不主张**：平板的战斗结算路径仍未验证；8E5/神殿仍 NOT_RUN；不把「检测到战斗画面」当成「打完并到结算」。
+
+报告：`coordination/results/RG477M-BATTLE-SHARED-TEXTURE-CRASH-20261113.md`
+证据：`/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/acceptance-1.0.9-honor-20261113/MOB/crash-20261113/`、`/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/acceptance-1.0.9-honor-20261113/PAD-flow/hunt10/`
+

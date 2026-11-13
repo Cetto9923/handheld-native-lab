@@ -1,6 +1,6 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-13T03:05:00+00:00
+状态事件时间：2026-11-13T09:25:00+00:00
 阶段：v1.0.9 unified package (versionCode 9, sha256 3309cfc8...) boots and plays on both devices (title -> save load -> 3D field -> walking, 0 FATAL). Battle flow still NOT verified on either device: the burning-ruins area raises no random encounter over 400 walk steps, and the RG477M dropped off USB, so its battle leg is blocked on device reconnection.
 总控：MiniMax Code /root release takeover (Codex thread aborted by user)
 更新方式：按事件更新，没有后台自动刷新。
@@ -269,6 +269,7 @@
 - RG477M-TEXEL-FORMAT-20261112: on the RG477M (Mali-G615) the guest dies after about five seconds with FATAL: Texel format lacks formatless-write support. Mali reports bufferFeatures=0x78 for the texel formats, so the optional STORAGE_WRITE_WITHOUT_FORMAT and READ_WITHOUT_FORMAT bits are absent for the whole family. The typed path is available (0x78 contains STORAGE_TEXEL_BUFFER_BIT), so the fix is a SPIR-V rewrite. The game cannot be played on the handheld until this lands, which outranks the stutter. Task RG477M-TEXEL-FORMAT-20261112, device RG477M01445122 exclusively.
 - HONOR-BATTLE-EFFECT-STUTTER: battle effect pipelines are still created synchronously on their first release (created=5..18, create_ms 750..1916, single pipeline 125..381 ms). Root cause narrowed to the renderpass piece of the pipeline key: the same shader combination maps to several keys that differ only in the renderpass/attachment set, and the effect renderpass combinations are absent from the warm list, so the warm-up cannot pre-build them. Fix is in progress on task/T-rescue-1.0.7-20261112; NOT included in the 1.0.7 team package.
 - RG477M-DEVICE-OFFLINE: RG477M01445122 disappeared from 'adb devices -l' at ~2026-11-13 08:35 CST during the acceptance run. 'adb kill-server' is forbidden by the project rules, so the coordinator cannot revive it; the user must replug USB for the RG477M battle leg to run.
+- HONOR-TABLET-OFFLINE: A42BBB5109000333 disappeared from adb and from the macOS USB layer while a battle was running; the user has to replug the tablet USB so the battle can be driven to the result screen.
 
 ## 已验证
 
@@ -383,6 +384,8 @@
 - The moon halo flicker on the Honor tablet is caused by the GPU-resident indirect template path: with gfx-indexed-resident=0 the user observed a normal moon, and gfx-wb-skip=0 changed nothing.
 - 1.0.9 unified package (sha256 3309cfc8...) boots on both the Honor tablet (pid 9906) and the RG477M (pid 25064) and plays the field flow end to end: title -> Continue -> save load -> 3D burning-ruins scene -> real party movement, with no engine.log.fatal on either device.
 - The field flow cannot be driven when a physical gamepad is attached: GameActivity hides the on-screen pad, so the touch-stick path publishes no analog axes. Tapping the PAD handle restores movement.
+- RG477M device-reproduced crash at battle start: FATAL: Texel format lacks formatless-write support, with the full engine log line 'NVN typed storage UNSUPPORTED shader=ba0d8842fa53e521 binding=53 format=100 reason=rewrite-refused shared=0' and the module's SPIR-V proving bindings 53 and 59 share one formatless OpTypeImage while needing different formats.
+- The Honor tablet reached a real battle for the first time in this session (LV55 beast versus the party, turn order and HP/MP panels rendered), evidence PAD-flow/hunt10/h040-NW.png.
 
 ## 未验证
 
@@ -413,5 +416,6 @@
 - The current-slot guard on find_indirect_template is not yet built, installed or accepted on the device.
 - Battle entry, full battle and the battle result screen remain unverified on both devices after 400 walking steps per device with no encounter raised and no FATAL.
 - The RG477M battle leg could not be started because the device left the adb device list (USB drop) mid-session; the earlier title/load/3D/walk evidence stands.
+- The tablet's battle result screen (the exact path of the user's reported crash) is still unverified: the tablet dropped off USB while the battle was on screen.
 
 具体恢复命令与未完成修改见 HANDOFF.md。
