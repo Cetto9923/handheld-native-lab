@@ -171,6 +171,17 @@ def main():
         run('warm-flush-contract', [warm_flush, str(root)])
     run('portable-package', [sys.executable, '-m', 'unittest',
                               'tests.installer.test_package_honor_portable'])
+    # Where a whole image upload goes: the Mali of the RG477M takes it ahead of
+    # the submission, Adreno keeps it inside the pass. The rule is pure, so the
+    # host states both sides.
+    upload_policy_cxx = shutil.which('clang++') or cc
+    upload_policy_binary = out / 'test-upload-prologue-policy'
+    extra_artifacts.append(upload_policy_binary)
+    if run('upload-prologue-policy-build', [upload_policy_cxx, '-std=c++17', '-O1', '-g',
+                                            '-fsanitize=address,undefined', '-Wall', '-Wextra',
+                                            'tests/device/test_upload_prologue_policy.cpp',
+                                            '-o', upload_policy_binary]):
+        run('upload-prologue-policy-contract', [upload_policy_binary])
     spirv_as = shutil.which('spirv-as')
     spirv_val = shutil.which('spirv-val')
     if spirv_as and spirv_val:

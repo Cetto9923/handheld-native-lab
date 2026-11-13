@@ -21,6 +21,7 @@ extern "C" int xbg_completion_wait_selftest(char *report,size_t bytes);
 #include "xbg_warm_flush.h"
 #include "xbg_spirv_integer_buffer.h"
 #include "xbg_spirv_typed_storage.h"
+#include "xbg_upload_policy.h"
 // The host testable format table repeats the Vulkan format numbers; keep them
 // pinned to the headers the engine actually compiles against.
 static_assert(VK_FORMAT_R32_UINT==XBG_VK_FORMAT_R32_UINT && VK_FORMAT_R32_SINT==XBG_VK_FORMAT_R32_SINT &&
@@ -6886,8 +6887,16 @@ vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemor
       xbg_logf("NVN readback buffers the other slot reads are written by the GPU=%d (marker gfx-xview-guard)",int(xview_guard));}
      {FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-render-cond").c_str(),"rb");render_cond_enabled=true;if(m){render_cond_enabled=fgetc(m)!='0';fclose(m);}else if(const char *e=getenv("DM_GFX_RENDER_COND"))render_cond_enabled=atoi(e)!=0;
       xbg_logf("NVN conditional render enable honoured=%d (marker gfx-render-cond; 0 keeps the draws a false block would drop)",int(render_cond_enabled));}
-     {FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-upload-prologue").c_str(),"rb");upload_prologue=false;if(m){upload_prologue=fgetc(m)!='0';fclose(m);}else if(const char *e=getenv("DM_GFX_UPLOAD_PROLOGUE"))upload_prologue=atoi(e)!=0;
-      xbg_logf("NVN whole uploads of images not yet used in a submission go ahead of it=%d (marker gfx-upload-prologue)",int(upload_prologue));}
+     {FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-upload-prologue").c_str(),"rb");
+      // A whole upload of an image the submission has not used yet goes ahead of the submission,
+      // instead of ending the open pass in mid-frame. A tiling GPU (Mali) then does not have to
+      // write that pass's attachments out and read them back, which is what dropped the far
+      // scene for a frame on the RG477M. Adreno does not pay that round trip, so it keeps the
+      // upload inside the pass. The marker overrides the device default.
+      const bool upload_prologue_gpu_default=xbg_upload_prologue_default(properties.vendorID,properties.deviceName);
+      upload_prologue=upload_prologue_gpu_default;
+      if(m){upload_prologue=fgetc(m)!='0';fclose(m);}else if(const char *e=getenv("DM_GFX_UPLOAD_PROLOGUE"))upload_prologue=atoi(e)!=0;
+      xbg_logf("NVN whole uploads of images not yet used in a submission go ahead of it=%d (device default=%d, marker gfx-upload-prologue)",int(upload_prologue),int(upload_prologue_gpu_default));}
      {FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-async-pipelines").c_str(),"rb");warm::async_on=false;if(m){warm::async_on=fgetc(m)!='0';fclose(m);}else if(const char *e=getenv("DM_GFX_ASYNC_PIPELINES"))warm::async_on=atoi(e)!=0;
       xbg_logf("NVN background builds for skippable draws=%d (marker gfx-async-pipelines)",int(warm::async_on));}
      {uint32_t n=0;vkEnumerateDeviceExtensionProperties(cfg.physical,nullptr,&n,nullptr);std::vector<VkExtensionProperties> ext(n);vkEnumerateDeviceExtensionProperties(cfg.physical,nullptr,&n,ext.data());
