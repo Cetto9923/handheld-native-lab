@@ -7099,12 +7099,15 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
           {"pipefast",&pipeline_fast_enabled},{"pipememo",&pipe_memo},{"occlusion",&occlusion_batch_enabled},
           {"vcache",&vcache::enabled},
         };
-        char *save=nullptr;
+        char *save=nullptr;int mipmaxlod0_want=xbg_sampler_force_maxlod0;
         for(char *tok=strtok_r(buf," \t\n\r",&save);tok;tok=strtok_r(nullptr," \t\n\r",&save)){
           char *eq=strchr(tok,'=');if(!eq)continue;*eq=0;int v=(eq[1]=='1');
+          // mipmaxlod0 is not one of the bool flags: read it inside the token loop. strtok_r has already
+          // replaced the '=' in buf with a NUL by now, so a later strstr on the same buffer can never match it.
+          if(!strcmp(tok,"mipmaxlod0")){mipmaxlod0_want=v;continue;}
           for(auto &e:live_flags)if(!strcmp(e.name,tok)){if(*e.flag!=v){*e.flag=v;xbg_logf("LIVE-SET %s=%d at present %llu",e.name,v,(unsigned long long)pr);}break;}}
         // Diagnostic: force maxLod=0 on every sampler, so no mip can ever be selected.
-        {int want=strstr(buf,"mipmaxlod0=1")?1:(strstr(buf,"mipmaxlod0=0")?0:xbg_sampler_force_maxlod0);
+        {int want=mipmaxlod0_want;
          if(want!=xbg_sampler_force_maxlod0){xbg_sampler_force_maxlod0=want;xbg_logf("LIVE-SET mipmaxlod0=%d at present %llu",want,(unsigned long long)pr);}}}}
       // Diagnostic only: marker files/gfx-live-framedump holds a digit 1..9 and dumps that many
       // consecutive presented frames to files/frame-dump/, so the engine's own pixels can be
