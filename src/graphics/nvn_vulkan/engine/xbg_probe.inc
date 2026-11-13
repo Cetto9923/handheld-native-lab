@@ -14,7 +14,7 @@ struct ProbeTexelSnapshot {
 };
 struct ProbeQuerySnapshot {VkQueryPool pool;uint32_t index;unsigned group,draw;};
 struct ProbeState {
-    unsigned repeat_captures=0,frame_dump_remaining=0;bool repeat_mode=false,compact=false,spell_depth_test=false,spell_cull_test=false,spell_no_tests=false,spell_empty_fragment=false,spell_prepass_no_depth_write=false;
+    unsigned repeat_captures=0,frame_dump_remaining=0,window=0;bool repeat_mode=false,compact=false,spell_depth_test=false,spell_cull_test=false,spell_no_tests=false,spell_empty_fragment=false,spell_prepass_no_depth_write=false;
     bool waiting=false,lut=false;std::string base,group;unsigned groups=0,draws=0,snapshots=0;uint64_t extra_buffer_bytes=0;
     std::vector<ProbeSurface> outputs,inputs;std::map<std::vector<uint64_t>,std::string> saved;
     std::vector<ProbeTexelSnapshot> texels;
@@ -374,7 +374,7 @@ void probe_snapshot(const ProbeSurface &surface){
         capture_log("PROBE_SPRITE_ATLAS group=%u serial=%llu label=%s width=%u height=%u vk=%u bytes=%llu",probe.groups,(unsigned long long)im.source.serial,full_label.c_str(),w,h,unsigned(im.fmt),(unsigned long long)bytes);
         capture.active=true;capture_data(full_label.c_str(),raw,size_t(bytes));capture.active=false;
     }
-    if(!probe.compact && z==1 && w>=1000 && h>=500 && (surface.role=="color0" || surface.role=="color3")){
+    if(!probe.compact && z==1 && w>=1000 && h>=500 && (surface.role=="color0" || surface.role=="color3" || surface.role=="present")){
         const uint32_t x=w/3,y=h/2,rw=w/3,rh=h/2;std::vector<uint8_t> roi(size_t(rw)*rh*bpp);
         for(uint32_t row=0;row<rh;row++)memcpy(roi.data()+size_t(row)*rw*bpp,raw+(size_t(y+row)*w+x)*bpp,size_t(rw)*bpp);
         std::string roi_label=std::string(label)+"-roi";capture_log("PROBE_ROI group=%u role=%s serial=%llu label=%s vk=%u x=%u y=%u width=%u height=%u bpp=%u",probe.groups,surface.role.c_str(),(unsigned long long)im.source.serial,roi_label.c_str(),unsigned(im.fmt),x,y,rw,rh,bpp);
@@ -558,6 +558,13 @@ void probe_present(Image &present){
     if(probe.frame_dump_remaining)probe_frame_dump(present);
     if(probe_full()){full_present(present);return;}
     if(probe_is_active()){probe_flush();ProbeSurface final{probe_keep(present),{},false,"present"};if(final.image)probe_snapshot(final);return;}
+    // A window capture takes the next frame on its own, so a flicker window can be compared frame by
+    // frame. Every capture lands in its own directory (repeat_mode), so no capture.txt is overwritten.
+    if(!capture.trace && probe.window){
+        if(probe.repeat_captures<32){++probe.repeat_captures;probe_start(stats.presents.load()+2,false);}
+        else probe.window=0;
+        return;
+    }
     // Each capture still requires a fresh marker write. Allow retries within
     // one process when a short effect is missed, while retaining a hard cap.
     if(probe.repeat_mode && !capture.trace && probe.repeat_captures<16)probe.waiting=true;
@@ -579,6 +586,16 @@ void probe_present(Image &present){
         FILE *reset=fopen((probe.base+"/gfx-codex-probe").c_str(),"wb");
         if(reset){fputc('0',reset);fclose(reset);}
         probe_start(stats.presents.load()+2,false);return;
+    }
+    if(value=='R'){
+        // Multi-frame window capture. Unlike the Honor-only '5'..'C' family this is available on every
+        // device: the marker arms one window of consecutive frames, each in its own capture directory.
+        probe.window=24;probe.repeat_mode=true;probe.compact=false;
+        probe.spell_depth_test=probe.spell_cull_test=probe.spell_no_tests=probe.spell_empty_fragment=probe.spell_prepass_no_depth_write=false;
+        FILE *reset=fopen((probe.base+"/gfx-codex-probe").c_str(),"wb");
+        if(reset){fputc('0',reset);fclose(reset);}
+        probe_start(stats.presents.load()+2,false);
+        return;
     }
     if(value=='4'){
         // Diagnose the normal frame after recording, without disabling its

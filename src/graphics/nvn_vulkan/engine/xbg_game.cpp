@@ -426,7 +426,7 @@ VkBuffer fdiag_8b_buf{};VkDeviceMemory fdiag_8b_mem{};uint8_t *fdiag_8b_map=null
 uint32_t fdiag_8b_ww[3]={},fdiag_8b_hh[3]={};VkFormat fdiag_8b_fmt[3]={};
 // Per-frame census of every draw: (vs,fs,color target) -> draws/instances, to find which shader paints the toggling fire.
 struct FdiagDr{char vs[9],fs[9];uint64_t mem;uint32_t n,w;uint64_t inst;};
-FdiagDr fdiag_dr[64]{};uint32_t fdiag_dr_n=0,fdiag_dr_over=0;
+FdiagDr fdiag_dr[512]{};uint32_t fdiag_dr_n=0,fdiag_dr_over=0;
 // Ordered, run-length encoded events that touch the 8b27 scene-colour target (draw / colour clear / depth clear / copy dst / resolve dst).
 struct FdiagEv{char t;char a[9];char b[9];uint32_t n;};
 FdiagEv fdiag_ev[160]{};uint32_t fdiag_ev_n=0,fdiag_ev_over=0;uint64_t fdiag_prev8=0,fdiag_prevds=0;
@@ -752,7 +752,10 @@ int ab_period=0;bool ab_on=true;
 bool ab_frame_on=true;
 // Which optimization gfx-ab-toggle switches off in its off phase (marker gfx-ab-target: wtrack, pipefast, query or timestamps).
 char ab_target[16]={0};
-inline bool ab_off(const char *name){return ab_period>0 && !ab_frame_on && !strcmp(ab_target,name);}
+// Live forced-off target: marker files/gfx-live-ab holds the name of one engine path that stays off for the
+// rest of the session, so the whole ab_off list can be swept in one run instead of one restart per path.
+char ab_force[16]={0};
+inline bool ab_off(const char *name){return (ab_period>0 && !ab_frame_on && !strcmp(ab_target,name))||(ab_force[0]&&!strcmp(ab_force,name));}
 bool ab_enabled(){if(ab_period<=0)return true;ab_on=((std::chrono::steady_clock::now().time_since_epoch().count()/1000000000ll/ab_period)&1)==0;return ab_on;}
 struct Slot {
     bool reset_queued=false,reset_busy=false;VkResult reset_result=VK_SUCCESS;   // poolreset: a reset job was queued for this submission / still runs (under poolreset::mu)
@@ -4919,7 +4922,7 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
     if(flame_diag_enabled && state.shader[0] && state.rt.color[0]){const char *vk=state.shader[0]->key.c_str(),*fk=state.shader[4]?state.shader[4]->key.c_str():"";uint64_t cm=uint64_t(uintptr_t(state.rt.color[0]->mem));uint32_t slot=fdiag_dr_n;
         if(state.shader[0]->key=="8b27994fdc0e32c9"){fdiag_prev8=cm;fdiag_prevds=state.rt.depth?uint64_t(uintptr_t(state.rt.depth->mem)):0;}if(fdiag_prev8 && cm==fdiag_prev8)fdiag_event('D',vk,fk);
         for(uint32_t i=0;i<fdiag_dr_n;i++)if(fdiag_dr[i].mem==cm && strncmp(fdiag_dr[i].vs,vk,8)==0 && strncmp(fdiag_dr[i].fs,fk,8)==0){slot=i;break;}
-        if(slot<64){if(slot==fdiag_dr_n){memset(&fdiag_dr[slot],0,sizeof fdiag_dr[slot]);strncpy(fdiag_dr[slot].vs,vk,8);strncpy(fdiag_dr[slot].fs,fk,8);fdiag_dr[slot].mem=cm;fdiag_dr[slot].w=state.rt.color[0]->d.width;++fdiag_dr_n;}fdiag_dr[slot].n++;fdiag_dr[slot].inst+=indexed?uint64_t(indexed->instances):uint64_t(instances);}else ++fdiag_dr_over;}
+        if(slot<512){if(slot==fdiag_dr_n){memset(&fdiag_dr[slot],0,sizeof fdiag_dr[slot]);strncpy(fdiag_dr[slot].vs,vk,8);strncpy(fdiag_dr[slot].fs,fk,8);fdiag_dr[slot].mem=cm;fdiag_dr[slot].w=state.rt.color[0]->d.width;++fdiag_dr_n;}fdiag_dr[slot].n++;fdiag_dr[slot].inst+=indexed?uint64_t(indexed->instances):uint64_t(instances);}else ++fdiag_dr_over;}
     // #endregion
     // #region agent log: shrine ground rectangle probe (support[5][0] divisor vs fp_c3[152])
     if(flame_diag_enabled && state.shader[4]){
@@ -7085,6 +7088,13 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
       {std::string fdg=probe.base+"/gfx-live-flame-diag";FILE *fdgf=fopen(fdg.c_str(),"rb");
        if(fdgf){int value=fgetc(fdgf);fclose(fdgf);if(value=='0'||value=='1'){
            flame_diag_enabled=(value=='1');xbg_logf("LIVE-FLAME-DIAG enabled=%d at present %llu",int(flame_diag_enabled),(unsigned long long)pr);}}}
+      // Diagnostic only: marker files/gfx-live-ab holds the name of an engine path that must stay off
+      // (the same list the gfx-ab-toggle/gfx-ab-target A/B uses), so every path can be tested in one session.
+      {std::string ap=probe.base+"/gfx-live-ab";FILE *apf=fopen(ap.c_str(),"rb");
+       if(apf){char nb[32]={0};size_t nn=fread(nb,1,sizeof(nb)-1,apf);nb[nn]=0;fclose(apf);
+        char *sp2=nullptr;char *tk=strtok_r(nb," \t\n\r",&sp2);
+        if(tk&&*tk&&strncmp(ab_force,tk,sizeof(ab_force))!=0){strncpy(ab_force,tk,sizeof(ab_force)-1);xbg_logf("LIVE-AB force=%s at present %llu",ab_force,(unsigned long long)pr);}
+        else if(!tk&&ab_force[0]){ab_force[0]=0;xbg_logf("LIVE-AB force=none at present %llu",(unsigned long long)pr);}}}
       // Diagnostic only: marker files/gfx-live-set holds space separated name=value pairs and applies them live,
       // e.g. "texdirty=0 texmemo=1 ownedinput=0 mipmaxlod0=1". Every name is an engine-internal observation switch;
       // none of them touches the game or the save. It exists so the engine paths can be compared inside one session

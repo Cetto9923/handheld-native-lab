@@ -583,3 +583,128 @@ GPU 常驻索引/间接、texel 常驻、descmemo/imgcache/xmemo/bindcache、ton
 ### 11.6 未声称
 
 闪烁的最终根因仍未锁定，未做任何修复；不声称完整游戏兼容、60 FPS 或独立 QA。
+
+## 12. 2026-11-13 夜续：白纱完成空间定位，13 条引擎路径证伪，引擎自带 A/B 框架被复用
+
+### 12.0 先修设备脏状态：上一轮 A/B 矩阵把开关留在了设备上
+
+盘点 `/sdcard/Android/data/org.ffrs.gamewindow/files/` 时发现上一轮矩阵遗留了两个仍生效的标记：
+
+| 标记 | 内容 | 影响 |
+| --- | --- | --- |
+| `gfx-live-off` | `gpuidx` | GPU 常驻索引路径被关闭 |
+| `gfx-live-indirect-mode` | `3` | 间接参数来源模式 3 |
+
+后果：fps 30.00 → 23.40，submit_cpu_ms 13.9 → 30.8，sync_wb 0 → 60。**此前所有在设备上做的闪烁测量都带着这个脏状态。**
+已把两个标记改名为 `.stale3` 并重启，重测干净基线：fps 30.00、sync_wb=0、submit_cpu_ms 6.28（标题画面）。
+
+### 12.1 两态的像素级性质：仿射拟合 = 半透明白纱
+
+同一机位、引擎自己的呈现帧（present 31410..31418，1280x720，fmt=37 R8G8B8A8_UNORM）：
+
+| present | ROI 均值 | ROI 拉普拉斯方差 | 态 |
+| --- | --- | --- | --- |
+| 31410 | 125.72 | 469.12 | SHARP |
+| 31411 | 132.56 | 362.70 | BLUR |
+| 31412 | 132.62 | 362.59 | BLUR |
+| 31413 | 125.89 | 469.05 | SHARP |
+| 31414 | 126.06 | 469.79 | SHARP |
+| 31415 | 126.29 | 470.92 | SHARP |
+| 31416 | 126.54 | 473.65 | SHARP |
+| 31417 | 133.79 | 373.34 | BLUR |
+| 31418 | 134.11 | 376.68 | BLUR |
+
+ROI = x260..560, y400..540（纯鹅卵石，排除主角）。另抓 27 帧长序列确认：单态持续 1~4 帧后切换，不是单帧噪声。
+
+逐像素仿射回归（BLUR 对 SHARP）：
+
+    BLUR = 0.9265 * SHARP + 17.149     R2 = 0.938    resid_rms = 5.615
+
+即**一层 alpha 约 0.07 的亮纱盖在上面**：暗像素抬升最多（85 → 103，+18），亮像素几乎不动（177 → 179）。
+
+### 12.2 空间范围：只覆盖地面几何，天空/水面/UI 完全不变
+
+按区域分别做仿射拟合（SHARP31413 对 BLUR31417）：
+
+| 区域 | SHARP 均值 | BLUR 均值 | 差 | 拟合斜率 | 截距 |
+| --- | --- | --- | --- | --- | --- |
+| 天空 | 111.4 | 111.9 | +0.51 | 0.999 | +0.60 |
+| 水面 | 50.7 | 50.7 | -0.01 | 0.946 | +2.73 |
+| 右上横幅 UI | 40.5 | 40.8 | +0.34 | 0.977 | +1.29 |
+| 台阶 | 78.8 | 80.7 | +1.94 | 0.909 | +9.11 |
+| 右侧铺石 | 171.8 | 175.2 | +3.42 | 0.913 | +18.39 |
+| 主角 | 118.0 | 126.8 | **+8.87** | 0.929 | +17.23 |
+| 左侧铺石 | 97.7 | 106.2 | **+8.49** | 0.935 | +14.84 |
+
+按 `alpha = (BLUR - SHARP) / (255 - SHARP)` 反演出的 alpha 覆盖图显示：白纱覆盖**整片铺石广场与楼梯**（最强在楼梯口），水面区域只有粒子噪点。
+
+结论：这不是屏幕空间后处理，也不是全局色调映射变化（天空/水面/UI 斜率都≈1），而是**地面几何自身被改写**。
+
+### 12.3 census 指标与两态无相关
+
+用 240 帧 census 的 FLAME_FRAME 逐帧对齐（be4e_draw / be4e_inst / other_draw / other_inst / skip / rthash / texhash / rtpx / pf / pmean），
+与 SHARP/BLUR 标签交叉，**没有任何一项能分离两态**。census 只覆盖前 64 个 (mem,vs,fs) 组合，本场景溢出约 95 条，draw 列表本就不可全量比对。
+
+### 12.4 13 条引擎路径的 gfx-live-set 矩阵：全部证伪
+
+用新加的 `gfx-live-set`（每 30 帧轮询、双向热切换）逐条关闭引擎路径，每档抓 9 帧引擎呈现帧，
+以铺石区拉普拉斯方差极差（lapRange）为闪烁幅度指标：
+
+| 档位 | lapRange | 档位 | lapRange |
+| --- | --- | --- | --- |
+| baseline | 105.6 | uppro=0 | 117.6 |
+| texdirty=0 | 104.6 | pipefast=0 | 100.2 |
+| texmemo=0 | 104.4 | vcache=0 | 126.6 |
+| imgcache=0 | 109.8 | xmemo=0 | 126.0 |
+| descmemo=0 | 101.7 | bindcache=0 | 97.2 |
+| dynpartial=0 | 100.1 | ownedinput=0 | 97.1 |
+| occlusion=0 | 118.7 | | |
+
+各档绝对亮度随场景缓慢漂移（lapvar 中位数 200~500），但**幅度恒定在 97~127**，与基线 105.6 同量级：无一档消除闪烁。
+（`pipememo`/`depthaspect` 两档取样时玩家打开了任务菜单，画面是菜单不是广场，数据作废待补。）
+
+### 12.5 用户现场观察（关键约束）
+
+- **主角走开几秒后，白色闪烁就停了**；
+- **固定几个地方闪烁，其它场景不闪烁**。
+
+把范围从「整个广场」收窄到「与角色/局部位置绑定的地面效果」，与 §12.2 的 alpha 覆盖图一致。
+
+### 12.6 复用引擎自带的 in-process A/B 框架
+
+引擎里已有按秒相位切换的 A/B 框架：`files/gfx-ab-toggle` 写周期秒数、`files/gfx-ab-target` 写要关掉的路径名，
+`ab_off(name)` 在热路径被 25 处引用，路径清单：
+
+    poolreset xguard tlsgate imgfast snapinval wtrack vcache wbskip texdirty uppro shreuse
+    iblookup ktag memofront descreserve hitgen passfast barrier3 pipefast pipememo occ query
+    noload bright timestamps
+
+其中 `bright` 是「宿主用曝光系数 k 改写游戏色调映射 LUT」的路径（`after_dispatch` 里对 compute shader
+552f45c348a61b86 的 32^3 调色表做一次拷贝+改写），与「整体对比度被压低」最像。但 `dm_bright_k()` 是弱符号，
+宿主实现 `dm/host/dm_bright.c` 不在掌机构建里 → **该路径在 RG477M 上根本不生效**（日志无 `NVN bright: ready`）。
+
+新增实时开关 `files/gfx-live-ab`：写一个路径名就让该路径在本会话内**永久关闭**（`ab_force`），
+这样 25 条路径可以在一次会话里全部扫完，不必每条重启一次。
+
+### 12.7 probe 在 RG477M 上是一次性的，已改为窗口模式
+
+`probe.waiting` 只在引擎初始化时按标记文件是否存在置位，`probe_start` 后即清零 →
+RG477M 上 probe **每进程只能用一次**（标题屏那次已用掉）。已改：
+
+- 标记值 `R` = 窗口模式：连抓 24 帧，每帧一个独立目录 `codex-probe-<pid>-f<frame>/`（各带自己的 capture.txt），
+  帧号写在目录名上，可逐帧比对；
+- present 表面也产出全分辨率 ROI 裁剪（x=w/3, y=h/2, rw=w/3, rh=h/2），可直接判定某一帧是 SHARP 还是 BLUR；
+- census 的 draw 表容量 64 → 512（原容量下本场景每帧溢出约 95 条，列表本来就不可全量比对）。
+
+### 12.8 修掉 80a5837 自带的 bug
+
+`gfx-live-set` 的 `mipmaxlod0` 用 `strstr(buf,...)` 解析，而同一个 buf 已被上面的 strtok_r 把 `=` 改写成 `\0`
+→ 永远匹配不上，**该开关从 2214b57 起才真正生效**。
+
+### 12.9 本轮提交
+
+| commit | 内容 |
+| --- | --- |
+| ecb66dd | docs: census 结论 |
+| 2214b57 | fix: mipmaxlod0 改在 token 循环里读 |
+| （本次） | chore: probe 窗口模式 / present ROI / census 512 / gfx-live-ab 强制关路径 |

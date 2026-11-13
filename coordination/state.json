@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-13T20:05:00+08:00",
+ "updated_at": "2026-11-13T20:08:43+08:00",
  "phase": "v1.0.9 consolidation in progress: one APK (versionCode 9) must boot both the Honor tablet (code 7) and the RG477M (code 8). Three implementation lines are in flight — readback targeted retirement (stutter root cause), Mali formatless-write FATAL (RG477M cannot enter the game), battle-settle crash P0 (8E5 phone, no device). The Honor tablet was returned to the user after the effect-seed line finished its measurement; all Honor device acceptance is deferred to one session after the merge.",
  "coordinator": "MiniMax Code /root release takeover (Codex thread aborted by user)",
  "integration_branch": "work/rg477m-native",
@@ -4930,7 +4930,8 @@
    "write_scope": [],
    "acceptance": "mechanism evidenced from device logs and confirmed by the user; the reused-depth path is the cause",
    "recovery_point": "task/T-release-1.0.7-20261112@6e7f424",
-   "branch": "task/T-release-1.0.7-20261112"
+   "branch": "task/T-release-1.0.7-20261112",
+   "status_note": "veil located (alpha ~0.07 over the ground only); 13 engine paths falsified; 25-path ab_off sweep + probe window capture pending"
   },
   {
    "id": "HONOR-MOON-FIX-20261112",
@@ -5344,7 +5345,7 @@
    "acceptance": "The engine's own presented frames are captured with alpha for consecutive presents at the flicker spot and compared pixel by pixel with a raw screencap taken at the same moment. The result must name one of: a wrong render, or a presentation/composite-alpha problem. Any fix must keep 30.0 FPS with sync_wb=0 and must pass scripts/verify_host.py --runtime-contracts.",
    "checkpoint": "af36d34",
    "device_exclusive": "RG477M01445122",
-   "status_note": "Mechanism locked: the flicker is a translucent overlay that appears and disappears on the scene colour target (paving brightness vs sharpness correlation -0.996, flat radial spectral ratio 0.68 means contrast compression, dark pixels lifted most). Not a resampling, exposure or composite problem. Next: use the per-frame draw census (new runtime switch files/gfx-live-flame-diag) to name the draw that toggles. Device state is dirty (gfx-live-off tokens descmemo, imgcache, xmemo, bindcache, gpuidx are off this session and that switch is off-only) and needs a game restart to restore the clean 30 FPS state."
+   "status_note": "veil located (alpha ~0.07 over the ground only); 13 engine paths falsified; 25-path ab_off sweep + probe window capture pending"
   }
  ],
  "blockers": [
@@ -7583,5 +7584,99 @@
   "device_state_dirty": "This session turned the gfx-live-off tokens descmemo, imgcache, xmemo, bindcache and gpuidx off (that switch is off-only) and briefly enabled gfx-live-sync=1; sync_mode was turned back off with gfx-live-sync=0 (log: LIVE-SYNC enabled=0 at present 29790). A game restart is required to restore the clean state (fps about 30, submit_cpu_ms about 11, sync_wb=0). Before the restart PERF showed fps 21.8-23.2 and submit_cpu_ms 31.3.",
   "known_regression": "0228e3c made gfx-pass-live inert: pass_prof_active() now requires pass_prof_frame!=UINT64_MAX while gfx-pass-live sets pass_prof_frame=UINT64_MAX. Needs a separate fix; it does not affect the finding above.",
   "not_claimed": "the specific overlay draw is not identified yet; no fix has been made; no 60 FPS and no independent QA claim"
+ },
+ "rg477m_flicker_veil_20261113": {
+  "status": "root_cause_not_locked_evidence_narrowed",
+  "observed_at": "2026-11-13T19:45:00+08:00",
+  "device": "RG477M01445122 (Mali-G615 MC6)",
+  "branch": "task/T-rg477m-flicker-liveoff-20261113",
+  "dirty_marker_incident": {
+   "found": [
+    "gfx-live-off=gpuidx",
+    "gfx-live-indirect-mode=3"
+   ],
+   "effect": "fps 30.00 -> 23.40, submit_cpu_ms 13.9 -> 30.8, sync_wb 0 -> 60; every earlier on-device flicker measurement carried this state",
+   "action": "renamed to .stale3 and restarted; clean baseline re-measured: fps 30.00, sync_wb=0, submit_cpu_ms 6.28"
+  },
+  "veil_model": {
+   "affine_fit": "BLUR = 0.9265*SHARP + 17.149, R2=0.938, roi x260..560 y400..540 (engine presented frames 31410..31418)",
+   "reading": "a translucent bright veil of alpha about 0.07 over the ground; dark pixels lifted most (85->103), bright pixels unchanged (177->179)",
+   "spatial": "covers the whole cobblestone plaza and the staircase (alpha map), strongest at the stair head; sky +0.51 (slope 0.999), water -0.01, banner UI +0.34 are untouched",
+   "excludes": [
+    "screen-space post",
+    "global tone mapping",
+    "resolution change",
+    "sub-pixel shift",
+    "texture re-upload"
+   ]
+  },
+  "state_timing": "two states alternate every 1 to 4 frames; 27-frame capture confirms runs of 1..4 frames",
+  "census_result": "no census metric separates the two states (be4e_draw, other_draw, rthash, texhash, rtpx, pf, pmean all overlap)",
+  "user_observation": [
+   "the white flicker stops a few seconds after the protagonist walks away",
+   "only a few fixed places flicker; other scenes do not"
+  ],
+  "gfx_live_set_matrix_20261113": {
+   "metric": "paving laplacian variance spread over 9 engine-presented frames per tier",
+   "baseline": 105.6,
+   "tiers": {
+    "texdirty0": 104.6,
+    "texmemo0": 104.4,
+    "imgcache0": 109.8,
+    "descmemo0": 101.7,
+    "xmemo0": 126.0,
+    "bindcache0": 97.2,
+    "dynpartial0": 100.1,
+    "ownedinput0": 97.1,
+    "uppro0": 117.6,
+    "pipefast0": 100.2,
+    "vcache0": 126.6,
+    "occlusion0": 118.7
+   },
+   "verdict": "13 paths falsified: no tier removes the flicker",
+   "invalid": [
+    "pipememo",
+    "depthaspect (the player opened the quest menu during those two tiers)"
+   ]
+  },
+  "engine_ab_framework": {
+   "discovery": "the engine already has an in-process A/B (gfx-ab-toggle period in seconds + gfx-ab-target) with 25 ab_off paths in the hot path",
+   "paths": [
+    "poolreset",
+    "xguard",
+    "tlsgate",
+    "imgfast",
+    "snapinval",
+    "wtrack",
+    "vcache",
+    "wbskip",
+    "texdirty",
+    "uppro",
+    "shreuse",
+    "iblookup",
+    "ktag",
+    "memofront",
+    "descreserve",
+    "hitgen",
+    "passfast",
+    "barrier3",
+    "pipefast",
+    "pipememo",
+    "occ",
+    "query",
+    "noload",
+    "bright",
+    "timestamps"
+   ],
+   "bright_note": "the bright path rewrites the game tone-mapping LUT with the host exposure dm_bright_k(); dm_bright_k is a weak symbol and the host implementation is not linked into the handheld build, so that path is inactive on RG477M (no 'NVN bright: ready' in the log)",
+   "new_switch": "files/gfx-live-ab: write a path name and it stays off for the whole session (ab_force), so all 25 paths can be swept in one session"
+  },
+  "probe_change": "probe.waiting was only set at engine init, so the probe was one-shot per process on RG477M; marker value R now captures a 24-frame window, one directory per frame, plus a full-resolution ROI crop of the present and a 512-entry census draw table",
+  "builds": {
+   "a1fe2cb1": "gfx-live-set + maxLod0 diagnostic",
+   "ce24178": "probe window mode + present ROI + census 512",
+   "f1c45032": "gfx-live-ab forced-off path switch (installed)"
+  },
+  "next": "ab_off sweep of all 25 paths, mipmaxlod0 A/B, then the probe window capture to identify the draw that paints the veil"
  }
 }
