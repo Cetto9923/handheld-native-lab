@@ -917,6 +917,16 @@ std::unordered_set<uint64_t> texel_frame_keys,texel_prev_keys;uint64_t texel_bin
 // (the camp's first frame falls among them); an empty file samples as above.
 constexpr uint32_t pass_prof_query_limit=1024,pass_prof_slot_limit=32;
 bool pass_prof_enabled=false;uint64_t pass_prof_next=300,pass_prof_draws=0,pass_prof_frame=UINT64_MAX,pass_prof_period=600,pass_prof_until=UINT64_MAX;
+// 通道分析器是有界的诊断：标记给出要采样的呈现窗口，引擎在窗口里逐帧采样。只有正在被采样的那一帧才允许走精确计时路径；
+// 窗口一过，GPU 常驻间接参数 / GPU 常驻索引绘制这些快路径必须立刻恢复。
+// The pass profiler is a bounded diagnostic: the marker names the window of presents to sample and the engine samples one
+// frame at a time inside it. Only the frame being sampled may take the exact-timing path; once the window is over the fast
+// paths (GPU-resident indirect arguments, GPU-resident indexed draws) have to run again.
+//
+// 这里曾经用常开标志 pass_prof_enabled：设备上留着一个 gfx-pass-profile 标记，整个会话就都留在慢路径上——间接参数每帧
+// 被 CPU 回读，命中待写回区间后触发全队列排干（NVN PERF：sync_wb 2/帧、fence 约 46 ms/帧）；而且回读到的是还没落地的旧值
+// （cpu_zero=1），那个 compute dispatch 每帧都被整段跳过。实测 RG477M：带着标记 11.4 FPS，去掉标记 28.6 FPS。
+inline bool pass_prof_active(){return pass_prof_enabled && pass_prof_frame!=UINT64_MAX && stats.presents.load()+1==pass_prof_frame;}
 // Vertices (or indices) times instances drawn, for the per-pass verts= of NVN GPASS.
 uint64_t pass_prof_verts=0;
 uint32_t pass_prof_queries=0,pass_prof_slots=0,pass_prof_skipped_slots=0;
@@ -5287,7 +5297,7 @@ bool current_pending_range(uint64_t address,uint64_t bytes,VkDeviceSize align){
     return false;
 }
 bool indirect_dispatch_inputs_resident(){
-    if(!state.shader[5] || capture.active || capture.probe || provenance_file || pass_prof_enabled || g_ui_moff!=0)return false;
+    if(!state.shader[5] || capture.active || capture.probe || provenance_file || pass_prof_active() || g_ui_moff!=0)return false;
     auto clean_or_resident=[](uint64_t address,uint64_t cpu_bytes,uint64_t view_bytes,VkDeviceSize align){
         if(!address || !cpu_bytes || address+view_bytes<address)return false;
         for(auto &w:pending_writebacks)if(xbg_wb_overlaps(address,cpu_bytes,w.addr,w.bytes))return current_pending_range(address,view_bytes,align);
@@ -6143,7 +6153,7 @@ bool indexed_range_ready(uint64_t address,uint64_t bytes,VkDeviceSize alignment)
 struct IndexedInputFailure {const char *why="none";uint32_t stage=UINT32_MAX,binding=UINT32_MAX;uint64_t address=0,bytes=0;};
 bool indexed_graphics_ready(const p_draw_idx &a,size_t index_bytes,IndexedInputFailure *failure=nullptr){
     auto reject=[&](const char *why,uint32_t st=UINT32_MAX,uint32_t binding=UINT32_MAX,uint64_t address=0,uint64_t bytes=0){if(failure)*failure={why,st,binding,address,bytes};return false;};
-    if(read_preflight || capture.active || capture.probe || provenance_file || pass_prof_enabled || draw_detail ||
+    if(read_preflight || capture.active || capture.probe || provenance_file || pass_prof_active() || draw_detail ||
        state.rast_discard || state.tf_on || !state.shader[0] || (!state.shader[4] && !state.rt.depth) || state.shader[1] || state.shader[2] || state.shader[3])return reject("state");
     if(!indexed_range_ready(a.ibuf,index_bytes,4))return reject("index",0,0,a.ibuf,index_bytes);
     for(auto loc:state.shader[0]->inputs){if(loc>=16)return reject("vertex-location");va_st v;memcpy(&v,&state.attrib[loc],4);if(!v.fmt)continue;if(v.stream>=16)return reject("vertex-stream");auto r=state.vb[v.stream];if(!indexed_range_ready(r.address,r.size,4))return reject("vertex",0,v.stream,r.address,r.size);}
@@ -6866,7 +6876,7 @@ vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemor
          submit_sem_inited=false;
          last_signal_sem=VK_NULL_HANDLE;
          last_signal_slot=-1;
-     }{FILE *w=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-async-pool-reset").c_str(),"rb");poolreset::enabled=false;if(w){poolreset::enabled=fgetc(w)!='0';fclose(w);}else if(const char *e=getenv("DM_GFX_ASYNC_POOL_RESET"))poolreset::enabled=atoi(e)!=0;poolreset::start();xbg_logf("NVN async command pool reset=%d (marker gfx-async-pool-reset)",int(poolreset::enabled));}{FILE *w=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-no-bindcache").c_str(),"rb");if(w){bind_cache_enabled=false;fclose(w);}}{FILE *w=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-no-imgcache").c_str(),"rb");if(w){img_cache_enabled=false;fclose(w);}}{FILE *w=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-pass-profile").c_str(),"rb");if(w){pass_prof_enabled=true;unsigned long long from=0,period=0,count=0;if(fscanf(w,"%llu %llu %llu",&from,&period,&count)>=2){pass_prof_next=from;pass_prof_period=period?period:1;if(count)pass_prof_until=from+count;}fclose(w);}}{FILE *w=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-no-descmemo").c_str(),"rb");if(w){desc_memo_enabled=false;fclose(w);}xbg_logf("NVN descmemo enabled=%d",int(desc_memo_enabled));}{FILE *w=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-no-dynpartial").c_str(),"rb");if(w){dyn_partial_enabled=false;fclose(w);}}{FILE *w=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-no-xmemo").c_str(),"rb");if(w){xmemo_enabled=false;fclose(w);}xbg_logf("NVN cross-frame memo enabled=%d",int(xmemo_enabled));}{auto marker=[&](const char *name){FILE *w=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+name).c_str(),"rb");int c=-1;if(w){c=fgetc(w);fclose(w);}return c;};persistent_fb_enabled=marker("/gfx-no-persistent-fb")<0;slot_pools_enabled=marker("/gfx-no-slot-pools")<0;readback_cached=marker("/gfx-readback-cached")=='1' || (marker("/gfx-readback-cached")<0 && getenv("DM_GFX_READBACK_CACHED") && *getenv("DM_GFX_READBACK_CACHED")=='1');texel_memo_enabled=marker("/gfx-no-texel-memo")<0;no_occlusion_queries=marker("/gfx-no-occlusion")=='1';
+     }{FILE *w=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-async-pool-reset").c_str(),"rb");poolreset::enabled=false;if(w){poolreset::enabled=fgetc(w)!='0';fclose(w);}else if(const char *e=getenv("DM_GFX_ASYNC_POOL_RESET"))poolreset::enabled=atoi(e)!=0;poolreset::start();xbg_logf("NVN async command pool reset=%d (marker gfx-async-pool-reset)",int(poolreset::enabled));}{FILE *w=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-no-bindcache").c_str(),"rb");if(w){bind_cache_enabled=false;fclose(w);}}{FILE *w=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-no-imgcache").c_str(),"rb");if(w){img_cache_enabled=false;fclose(w);}}{FILE *w=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-pass-profile").c_str(),"rb");if(w){pass_prof_enabled=true;unsigned long long from=0,period=0,count=0;if(fscanf(w,"%llu %llu %llu",&from,&period,&count)>=2){pass_prof_next=from;pass_prof_period=period?period:1;if(count)pass_prof_until=from+count;}fclose(w);}xbg_logf("NVN pass profiler enabled=%d next=%llu period=%llu until=%llu (marker gfx-pass-profile; only the sampled frames take the exact-timing path)",int(pass_prof_enabled),(unsigned long long)pass_prof_next,(unsigned long long)pass_prof_period,(unsigned long long)pass_prof_until);}{FILE *w=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-no-descmemo").c_str(),"rb");if(w){desc_memo_enabled=false;fclose(w);}xbg_logf("NVN descmemo enabled=%d",int(desc_memo_enabled));}{FILE *w=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-no-dynpartial").c_str(),"rb");if(w){dyn_partial_enabled=false;fclose(w);}}{FILE *w=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-no-xmemo").c_str(),"rb");if(w){xmemo_enabled=false;fclose(w);}xbg_logf("NVN cross-frame memo enabled=%d",int(xmemo_enabled));}{auto marker=[&](const char *name){FILE *w=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+name).c_str(),"rb");int c=-1;if(w){c=fgetc(w);fclose(w);}return c;};persistent_fb_enabled=marker("/gfx-no-persistent-fb")<0;slot_pools_enabled=marker("/gfx-no-slot-pools")<0;readback_cached=marker("/gfx-readback-cached")=='1' || (marker("/gfx-readback-cached")<0 && getenv("DM_GFX_READBACK_CACHED") && *getenv("DM_GFX_READBACK_CACHED")=='1');texel_memo_enabled=marker("/gfx-no-texel-memo")<0;no_occlusion_queries=marker("/gfx-no-occlusion")=='1';
       {const int ov_marker=marker("/gfx-occlusion-visible");
        const bool occlusion_force_visible_gpu_default=xbg_occlusion_force_visible_default(properties.vendorID,properties.deviceName);
        occlusion_force_visible=ov_marker>=0?ov_marker=='1':occlusion_force_visible_gpu_default;
