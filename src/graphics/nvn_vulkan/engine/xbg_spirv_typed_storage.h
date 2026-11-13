@@ -341,6 +341,38 @@ inline uint32_t xbg_typed_storage_view_format_info(const XbgStorageBindingInfo &
     return candidate;
 }
 
+// The decision the descriptor path makes for a storage texel buffer, with the
+// device's capability as an input.
+//
+// The class alignment only exists because a device that cannot run the guest's
+// formatless storage write needs the module to declare a format, and then the
+// view has to describe the same texels as the declared format. A device that can
+// run the formatless write (the Vulkan format feature is listed for the bound
+// format) keeps the guest's own view and the guest's own module: the
+// substitution is off there, so this patch cannot change what such a device
+// runs. The RG477M's Mali-G615 cannot, so it takes the substituted path.
+//
+// The rule is pure, so the host contract can state it: with the capability the
+// guest's format is bound unchanged; without it the module's class is
+// substituted and the component count stays the guest's.
+struct XbgTypedStorageViewDecision{
+    uint32_t format=0;              // the format the view is bound with
+    uint32_t guest_format=0;        // the format the guest asked for
+    uint32_t substituted_format=0;  // the format the module's class produced
+    bool substituted=false;         // true when the view format changed
+    bool formatless_supported=false;// true when the device runs the formatless write
+};
+inline XbgTypedStorageViewDecision xbg_typed_storage_view_decision(uint32_t guest_format,const XbgStorageBindingInfo *info,bool device_formatless_write_ok){
+    XbgTypedStorageViewDecision decision;
+    decision.guest_format=guest_format;decision.format=guest_format;
+    decision.formatless_supported=device_formatless_write_ok;
+    if(!info||!info->found)return decision;
+    if(device_formatless_write_ok)return decision;   // the device runs the guest's own formatless write
+    const uint32_t substitute=xbg_typed_storage_view_format_info(*info,guest_format);
+    if(substitute!=guest_format){decision.format=substitute;decision.substituted_format=substitute;decision.substituted=true;}
+    return decision;
+}
+
 inline uint32_t xbg_typed_storage_view_format(const std::vector<uint32_t> &w,uint32_t binding,uint32_t native){
     return xbg_typed_storage_view_format_info(xbg_spirv_storage_binding_info(w,binding),native);
 }

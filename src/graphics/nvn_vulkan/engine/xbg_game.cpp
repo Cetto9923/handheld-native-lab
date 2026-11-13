@@ -2988,8 +2988,14 @@ VkFormat texel_binding_format(const RegisteredTexture &registered,const xbg_shad
     if(info && !info->empty() && binding.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER && (binding.flags&1)){
         auto found=info->find(binding.binding);
         if(found!=info->end()){
-            const uint32_t substitute=xbg_typed_storage_view_format_info(found->second,uint32_t(result));
-            if(substitute!=uint32_t(result) && !storage_texel_formatless_write_ok(result))result=VkFormat(substitute);
+            // Capability probe: can this device run the guest's formatless storage write for
+            // this format? A device that can keeps the guest's own view and the guest's own
+            // module, so this patch changes nothing there. A device that cannot (Mali-G615 on
+            // the RG477M) needs the module to declare a format, and then the view has to
+            // follow the module's numeric class.
+            const bool device_formatless_write_ok=storage_texel_formatless_write_ok(result);
+            const XbgTypedStorageViewDecision decision=xbg_typed_storage_view_decision(uint32_t(result),&found->second,device_formatless_write_ok);
+            if(decision.substituted)result=VkFormat(decision.format);
         }
     }
     return result;
@@ -6742,7 +6748,15 @@ extern "C" int xbg_game_initialize(const xbg_game_config *c,char *error,size_t b
      if (!m) legacy_waitall=false;
      xbg_logf("NVN legacy_waitall=%d (tablet profile=%d, marker gfx-legacy-waitall overrides)", int(legacy_waitall), (tablet_profile && tablet_profile[0]=='1')?1:0);}
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-full-barrier").c_str(),"rb");full_barrier_strict=m&&fgetc(m)=='1';if(m)fclose(m);xbg_logf("NVN full barrier strict=%d (marker gfx-full-barrier, 0=compute scoped)",int(full_barrier_strict));}
-    cfg=*c;xbg_logf("NVN completion_wait enabled=%d legacy_waitall=%d",int(completion_wait_enabled),int(legacy_waitall));vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemoryProperties(cfg.physical,&memories);{char line[512];int at=snprintf(line,sizeof line,"NVN caps memory types");for(uint32_t i=0;i<memories.memoryTypeCount && at<int(sizeof line)-24;i++)at+=snprintf(line+at,sizeof line-at," %u:%#x/h%u",i,unsigned(memories.memoryTypes[i].propertyFlags),memories.memoryTypes[i].heapIndex);xbg_logf("%s",line);}
+    cfg=*c;xbg_logf("NVN completion_wait enabled=%d legacy_waitall=%d",int(completion_wait_enabled),int(legacy_waitall));
+    // The typed-storage rescue only exists for a device that cannot run a formatless storage
+    // write (VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT). This line says, from the
+    // Vulkan capability itself, which kind of device this is: the RG477M's Mali-G615 cannot, so
+    // the engine declares a format in the module and the view follows the module's class; a
+    // device that can keeps the guest's own module and the guest's own view.
+    {const bool texel_formatless=storage_texel_formatless_write_ok(VK_FORMAT_R32_SINT);
+     const bool image_formatless=storage_image_formatless_write_ok(VK_FORMAT_R32_SINT);
+     xbg_logf("NVN typed-storage capability: formatless-write texel=%d image=%d feature=%u",int(texel_formatless),int(image_formatless),unsigned(cfg.enabled_core.shaderStorageImageWriteWithoutFormat));}vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemoryProperties(cfg.physical,&memories);{char line[512];int at=snprintf(line,sizeof line,"NVN caps memory types");for(uint32_t i=0;i<memories.memoryTypeCount && at<int(sizeof line)-24;i++)at+=snprintf(line+at,sizeof line-at," %u:%#x/h%u",i,unsigned(memories.memoryTypes[i].propertyFlags),memories.memoryTypes[i].heapIndex);xbg_logf("%s",line);}
     {
         // Adreno 735: reusing the open depth/stencil pass flickers the moon
         // halo in the real scene. Keep the existing end-pass/barrier path.
@@ -7394,7 +7408,7 @@ extern "C" void xbg_register_sampler(const dpool_t *p,int id,const samp_par *s){
 extern "C" void xbg_legacy_tex_release(tex_t *t){if(!t)return;if(!gfx_async){xbg_legacy_tex_release_now(t);return;}tex_t copy=*t;gfx_enqueue([copy]()mutable{xbg_legacy_tex_release_now(&copy);});}
 extern "C" void xbg_texture_lifetime_end(const tex_t *t){
     if(!t)return;tex_t copy=*t;
-    auto release=[copy]()mutable{std::lock_guard<std::recursive_mutex> lock(mutex);if(!texture_lifecycle_enabled)return;static unsigned logged=0;const char *profile=getenv("FFRS_PROFILE_TABLET");const bool tablet=profile && profile[0]=='1';const unsigned sequence=logged++;if(sequence<32 || (copy.L.size>=1048576 && (!tablet || (sequence%1024)==0)))xbg_logf("NVN texture lifecycle retired serial=%llu mem=%p bytes=%llu",(unsigned long long)copy.serial,copy.mem,(unsigned long long)copy.L.size);xbg_legacy_tex_release_now(&copy);};
+    auto release=[copy]()mutable{std::lock_guard<std::recursive_mutex> lock(mutex);if(!texture_lifecycle_enabled)return;static unsigned logged=0;const unsigned sequence=logged++;if(sequence<32 || (copy.L.size>=1048576 && (sequence%1024)==0))xbg_logf("NVN texture lifecycle retired serial=%llu mem=%p bytes=%llu",(unsigned long long)copy.serial,copy.mem,(unsigned long long)copy.L.size);xbg_legacy_tex_release_now(&copy);};
     if(gfx_async)gfx_enqueue(std::move(release));else release();
 }
 extern "C" void xbg_legacy_prog_release(prog_t *p){if(!p)return;if(!gfx_async){xbg_legacy_prog_release_now(p);return;}prog_t copy=*p;gfx_enqueue([copy]()mutable{xbg_legacy_prog_release_now(&copy);});}

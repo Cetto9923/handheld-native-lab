@@ -266,6 +266,20 @@ def main():
         else:
             print('typed-storage-class-align-contract: SKIPPED, set FFRS_REAL_CLASS_MODULE to the extracted d201be268f66c813.spv',
                   flush=True)
+        # The capability gate of the Mali patch: the class alignment only runs on a
+        # device that cannot do a formatless storage write. The rule is pure, so the
+        # host states both sides: with the capability the guest's format is bound
+        # unchanged, without it the module's class is substituted.
+        gate_binary = out / 'test-typed-storage-capability-gate'
+        extra_artifacts.append(gate_binary)
+        if class_module and class_module.is_file():
+            if run('typed-storage-capability-gate-build', [typed_cxx, '-std=c++17', '-O1', '-g',
+                                                '-fsanitize=address,undefined', '-Wall', '-Wextra',
+                                                'tests/device/test_typed_storage_capability_gate.cpp', '-o', gate_binary]):
+                run('typed-storage-capability-gate-contract', [gate_binary, str(class_module)])
+        else:
+            print('typed-storage-capability-gate-contract: SKIPPED, set FFRS_REAL_CLASS_MODULE to the extracted d201be268f66c813.spv',
+                  flush=True)
         split_module = Path(os.environ.get('FFRS_REAL_SPLIT_MODULE', '')) if os.environ.get('FFRS_REAL_SPLIT_MODULE') else shared_module
         split_binary = out / 'test-typed-storage-split'
         extra_artifacts.append(split_binary)

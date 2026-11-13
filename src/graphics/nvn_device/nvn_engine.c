@@ -131,8 +131,16 @@ static FILE *engine_log_sink(void) {
             snprintf(backup, sizeof backup, "%s.1", engine_log_path_used);
             fclose(sink);
             sink = NULL;
+            /* The file log rotates once and then stops; the contract in
+             * tests/installer/test_engine_log_rotation.py states that. Say so once, because a
+             * reader who finds a log that stopped growing needs to know where the rest of the
+             * lines went: stderr keeps every line, and logcat keeps them until the platform
+             * rotates its own buffer. */
             if (access(backup, F_OK) != 0) rename(engine_log_path_used, backup);
-            else engine_log_capped = 1;
+            else {
+                engine_log_capped = 1;
+                fprintf(stderr,"[engine] the file log is capped at %s (a backup already exists); the lines stay on stderr\n",engine_log_path_used);
+            }
         }
     }
     if (!sink && !engine_log_capped) {
