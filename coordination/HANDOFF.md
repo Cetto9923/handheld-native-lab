@@ -4154,6 +4154,38 @@ agent 立刻跑 `/tmp/ffrs-flicker-csv/ub_pipeline.sh`（开 ubtrace + 抓连续
   而 `gfx-pass-live` 正是用 `UINT64_MAX` 表示每帧都采）。
 - explore 子代理仍在排查引擎代码里的候选路径，结论未到。
 
+### 2026-11-13 21:22 引擎源码只读调查 + 4 条「引擎丢 draw」路径证伪
+
+explore 子代理通读 `src/graphics/nvn_vulkan/engine/`（只读，未改代码），产出 8 条候选路径。
+本轮用**现有广场日志**零设备成本证伪其中 4 条：
+
+| 机制 | 计数器 | 广场实测 | 结论 |
+|---|---|---|---|
+| async 跳绘制（`:3775` → `:5132` `if(!pipeline.pipeline)return;`） | `async_skips` | 13574 行全 0 | 证伪 |
+| noload DONT_CARE pass（`:5185` first_draw_covers → `:4787`） | `noload_passes_per_frame` | 13568 行全 0 | 证伪 |
+| 条件渲染跳过（`:6530-6535` OP_RENDER_COND） | `render_cond ops/skips/draws_skipped` | 全 0 | 证伪 |
+| 跨帧 uniform 快照缓存 | `:1610` snapshot_maps_reset 每次提交重建 map | 代码 | 证伪 |
+| 跨帧 image view 缓存 | `:4109` desc_memo_reset 内 img_cache.clear() | 代码 | 证伪 |
+
+注意：设备 `gfx-async-pipelines=1`（开着）、`gfx-noload`/`gfx-render-cond` 标记不存在（默认开），
+所以是「开着但一次没触发」，不是「没开」。
+
+**架构定性**：引擎是 NVN→Vulkan 翻译层，全量 grep `fog/light/ambient/shadowmap/ssao/dither/jitter/noise` 全为 0
+⇒ 雾/光照/顶点色/阴影/抖动五个方向在引擎侧不存在实现，白纱只能是客机 shader 行为，
+或引擎交付给客机 shader 的**数据/状态**在帧间不一致。
+
+**剩余候选**：C2 driver block handle 表（缓存键 `{slot_serial, gen, base}` 非内容哈希）、
+C4 帧内 desc memo 比对的是 buffer 身份而非内容、C5 客机侧数据本身在变、C6 `PipeMemoKey` 不含 `vp_sw`、
+以及 census 未覆盖的地面 draw 的 blend/depth 状态。
+
+**方法学缺口**：`mipmaxlod0` 的 live A/B 无效（`sampler_fast` 缓存键不含该标志，
+`clear_descriptor_caches()` 仅在 shutdown 调用 ⇒ live 切换不重建 sampler）。
+§10.2 径向功率谱独立排除 mip 切换，主结论不受影响。
+
+**下一步（一次采集，不再来回试）**：需用户在运河广场机位，同时开 `gfx-live-ubtrace` +
+`gfx-live-flame-diag`（读 `FLAME_UB` 的 `cmp`）+ `gfx-live-framedump`，可选 probe 窗口 `'R'`。
+判读表见报告 §14.5。报告已扩到 840 行（新增 §14）。
+
 ### 2026-11-13 20:49 磁盘清理（用户指令：先清理磁盘，做了太多测试又没结论）
 
 **设备 RG477M01445122**

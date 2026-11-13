@@ -771,3 +771,70 @@ RG477M 上 probe **每进程只能用一次**（标题屏那次已用掉）。�
 写入 `ubtrace-<pid>.csv`（hash 取 guest 源字节前 4KB 的 FNV-1a）。
 它**只观察**，不改变任何渲染行为；关闭时零开销。用它把两态帧的 uniform 逐字节对比，
 即可定位到具体是哪个 binding 在跳变。
+
+### 14. 引擎源码只读调查 + 4 条「引擎可能丢 draw」路径的零成本证伪
+
+（2026-11-13 晚，explore 子代理只读通读 `src/graphics/nvn_vulkan/engine/`，未改任何代码）
+
+#### 14.1 架构定性（决定候选空间）
+
+引擎是 **NVN→Vulkan 翻译层**，不拥有自己的雾/光照/抖动/SSAO/阴影/顶点色。对引擎目录全量 grep：
+`fog=0, ambient=0, hemisphere=0, light=0, shadowmap=0, ssao=0, calculateLod=0, textureLod=0, dither=0, jitter=0, noise=0`。
+
+⇒ **A 雾 / B 光照 / D 顶点色 / E 阴影·SSAO / H 抖动 五个方向在引擎侧根本不存在实现**，
+白纱只能是客机 shader 的行为，或引擎交付给客机 shader 的**数据/状态在帧间不一致**。
+
+#### 14.2 四条「引擎可能悄悄丢 draw」路径 —— 全部用**现有日志**证伪（零设备成本）
+
+这是本轮最有价值的产出：既然 draw 列表相同，唯一能解释「列表相同却像素不同」的结构性路径
+就是引擎在 census 计数之后丢掉了某个 draw。四条全查：
+
+| 机制 | 引擎位置 | 计数器 | 广场实测 | 结论 |
+|---|---|---|---|---|
+| async 跳绘制（后台建管线期间不提交该 draw） | `:3775` async_request → `:5132` `if(!pipeline.pipeline)return;` | `async_skips` | engine6/7 共 **13574 行全为 0**，`async_built=0` | **证伪** |
+| noload DONT_CARE pass（跳过颜色附件加载，留上一帧内容） | `:5185` `first_draw_covers()` → `:4787` `loadOp=DONT_CARE` | `noload_passes_per_frame` | **13568 行全为 0** | **证伪** |
+| 条件渲染跳过（`OP_RENDER_COND` 条件为假整块丢弃） | `:6530-6535` | `render_cond ops/skips/draws_skipped` | `enabled=1` 但 **ops/skips/draws_skipped 全 0** | **证伪** |
+| 跨帧 uniform 快照缓存 | `:1610` `snapshot_maps_reset()` 用 placement-new 整体重建 map | — | 每次提交都重建 | **代码证伪** |
+| 跨帧 image view 缓存 | `:4109` `desc_memo_reset()` 内 `img_cache.clear()` | — | 随每次提交执行 | **代码证伪** |
+
+另注：设备上 `gfx-async-pipelines=1`（async 确实开着）、`gfx-noload` 与 `gfx-render-cond` 标记不存在
+（即 Android 默认 `DM_GFX_NOLOAD=1`、render_cond 默认开）——所以这三条路**不是「没开所以没触发」，而是「开着但一次都没触发」**。
+
+#### 14.3 剩余候选（按优先级）
+
+| 级别 | 候选 | 关键代码事实 |
+|---|---|---|
+| ★★★★ | **C2 引擎自有 driver block（c2 handle 表）内容不一致** | `:4009-4016` 写入纹理/采样器 handle 表；`:4118-4122` 缓存键是 `{slot_serial, gen, base}`，**不是内容哈希** —— 相同 bind 序列但纹理内容不同会复用旧 block |
+| ★★★ | **C4 帧内 descriptor memo 命中过期 dynamic uniform** | `:4231-4245` 命中时重取快照，但比对的是 **buffer 身份**而非内容，同一 buffer 不同 offset 内容仍可能不同 |
+| ★★★ | **C5 客机侧数据本身在两态间不同（引擎忠实搬运）** | 引擎无跨帧 uniform 缓存（14.2 已证伪）⇒ 若两态 uniform 确实不同，就是**客机每帧写了不同的 uniform**，引擎无 bug |
+| ★★ | **C6 `PipeMemoKey` 不覆盖 `vp_sw`** | `:2647-2667` 三段字节切片（attrib..viewport / blend_color..copy_stride / patch..samples）不含 `vp_sw`；但 `vp_sw` 只做 Y 翻转（`:5202-5208`），会产生几何错位而非提亮 |
+| ★★ | **渲染状态 blend/depth 差异** | census 的 `blend=%u/%u/%u` 只覆盖 6 个 flame shader，**不覆盖地面 draw** |
+
+#### 14.4 一处方法学缺口（前序结论需加注）
+
+`mipmaxlod0` 这个 live 开关的 A/B **无效**：`xbg_sampler.cpp:31` 应用了 `maxLod=0`，
+但 `xbg_game.cpp:3989-3992` 的 `sampler_fast` 缓存键**不含该标志**，
+而 `clear_descriptor_caches()` **只在 shutdown**（`:7065`）调用 ⇒ live 切换不会重建已缓存 sampler。
+
+⇒ 「mip/LOD 已被证伪」这一前提**在严格意义上未被有效验证**。
+但 §10.2 的径向功率谱（比值在 f=4..64 恒定、无截止频率）独立排除了 mip 切换，故主结论不受影响。
+
+#### 14.5 下一步：一次采集回答四个问题
+
+需要用户在运河广场机位，**一次采集同时开三个诊断**（不要再来回试）：
+
+1. `gfx-live-ubtrace` → 逐 binding 的 uniform 指纹（回答：客机 uniform 是否在变）
+2. `gfx-live-flame-diag` → `FLAME_UB` 的 `cmp`（**唯一**能证明「引擎交付的内容 ≠ 客机源」的工具）
+3. `gfx-live-framedump` → 呈现帧，给每帧打 SHARP/BLUR 标签
+4. 可选 `gfx-codex-probe=R` → `PROBE_COLOR_STATE`/`PROBE_BLEND`/`PROBE_RASTER`（每进程一次预算，用在刀刃上）
+
+判读表：
+
+| ubtrace hash | FLAME_UB cmp | 结论 | 下一步 |
+|---|---|---|---|
+| 有差异 | 0 | **客机自己在变**，引擎忠实搬运 | 转客机侧/游戏原生行为核对 |
+| 无差异 | ≠0 | **引擎交付了与客机源不一致的 uniform** | 按 binding 定位到引擎缺陷 |
+| 无差异 | 0 | 差异在**纹理内容或顶点数据** | texture hash / vertex dump |
+
+⚠️ 已知证明力边界：`ubtrace` 哈希的是**客机源字节**（`:4400` 的 `data`），不证明引擎交付正确；
+「引擎交付错」只能由 `FLAME_UB` 的 `cmp` 证明。
