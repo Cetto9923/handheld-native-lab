@@ -7055,13 +7055,24 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
     fire_trace_tick();
     // Diagnostic: marker files/gfx-live-off holds space separated tokens; polled every 30 presents. Only ever switches things OFF
     // (never back on) so cached state stays consistent. tokens: bindcache imgcache descmemo dynpartial xmemo texelmemo wtrack
+    // gpuidx depthaspect
     // 诊断：files/gfx-live-off 每30帧轮询一次，只关不开：bindcache imgcache descmemo dynpartial xmemo texelmemo wtrack
     {static uint64_t live_next=0;uint64_t pr=stats.presents.load();
      if(pr>=live_next){live_next=pr+30;FILE *m=fopen((probe.base+"/gfx-live-off").c_str(),"rb");
       if(m){char buf[256]={0};size_t n=fread(buf,1,sizeof(buf)-1,m);buf[n]=0;fclose(m);
        auto off=[&](const char *tok,bool &flag){if(flag && strstr(buf,tok)){flag=false;xbg_logf("LIVE-OFF %s at present %llu",tok,(unsigned long long)pr);}};
        off("bindcache",bind_cache_enabled);off("imgcache",img_cache_enabled);off("descmemo",desc_memo_enabled);off("dynpartial",dyn_partial_enabled);
-       off("xmemo",xmemo_enabled);off("texelmemo",texel_memo_enabled);off("wtrack",wtrack::enabled);off("depthaspect",depth_aspect_enabled);}
+       off("xmemo",xmemo_enabled);off("texelmemo",texel_memo_enabled);off("wtrack",wtrack::enabled);off("depthaspect",depth_aspect_enabled);
+       // The GPU-resident indexed draw and the GPU-resident indirect template, switched live the same way the
+       // gfx-indexed-resident=0 marker switches them at start-up: both go off together, so the guest-memory
+       // source of the draw arguments can be compared with the resident source in one session.
+       if(gpu_indexed_enabled && strstr(buf,"gpuidx")){gpu_indexed_enabled=false;indirect_proof_enabled=false;xbg_logf("LIVE-OFF gpuidx at present %llu",(unsigned long long)pr);}
+       // Diagnostic only: marker files/gfx-live-indirect-mode holds a digit 0..3 and selects the source of the
+       // indirect arguments live, the same four modes as the gfx-indirect-mode marker, so the matrix can be
+       // measured in one session instead of one restart per mode.
+       {std::string im_path=probe.base+"/gfx-live-indirect-mode";FILE *imf=fopen(im_path.c_str(),"rb");
+        if(imf){int c=fgetc(imf);fclose(imf);if(c>='0'&&c<='3'){indirect_mode=c-'0';xbg_logf("LIVE-INDIRECT-MODE mode=%d at present %llu",int(indirect_mode),(unsigned long long)pr);}}}}
+
       // Diagnostic only: the existing synchronous submit mode, toggled live so
       // the same scene can be compared without restarting or changing saves.
       std::string ls=probe.base+"/gfx-live-sync";FILE *sync_file=fopen(ls.c_str(),"rb");
