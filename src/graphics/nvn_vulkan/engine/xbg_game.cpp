@@ -7083,7 +7083,7 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
       // consecutive presented frames to files/frame-dump/, so the engine's own pixels can be
       // compared against what the display shows at the same moment.
       {std::string fd=probe.base+"/gfx-live-framedump";FILE *fdf=fopen(fd.c_str(),"rb");
-       if(fdf){int c=fgetc(fdf);fclose(fdf);if(c>='1'&&c<='9'){probe.frame_dump_remaining=unsigned(c-'0');
+       if(fdf){int c=fgetc(fdf);fclose(fdf);remove(fd.c_str());if(c>='1'&&c<='9'){probe.frame_dump_remaining=unsigned(c-'0');
         mkdir((probe.base+"/frame-dump").c_str(),0755);
         xbg_logf("FRAME-DUMP armed frames=%u at present %llu",probe.frame_dump_remaining,(unsigned long long)pr);}}}
       // gfx-pass-live = "<frames>": one-shot; arms per-frame pass profiling for the next <frames> presents, then deletes the marker.
