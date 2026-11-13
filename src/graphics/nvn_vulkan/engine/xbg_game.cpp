@@ -3165,7 +3165,6 @@ VkFormat typed_storage_image_format(const Shader &shader,const xbg_shader_bindin
 Shader *typed_storage_variant(Shader &base){
     if(base.module_words.empty())return &base;
     TypedStorageFormats formats;
-    std::map<uint32_t,uint32_t> candidate;   // binding -> the format the module has to declare
     for(const auto &binding:base.bindings){
         const bool texel=binding.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
         const bool image=binding.type==VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
@@ -3178,7 +3177,6 @@ Shader *typed_storage_variant(Shader &base){
         if(actual==VK_FORMAT_UNDEFINED)continue;
         if(texel?storage_texel_formatless_write_ok(actual):storage_image_formatless_write_ok(actual))continue; // the device still supports formatless
         if(!xbg_spirv_image_format(uint32_t(actual)))continue;  // SPIR-V cannot express that format
-        candidate[binding.binding]=uint32_t(actual);
         formats.push_back({binding.binding,uint32_t(actual)});
     }
     if(formats.empty())return &base;
@@ -3194,24 +3192,24 @@ Shader *typed_storage_variant(Shader &base){
         return &base;
     }
     std::vector<uint32_t> words=base.module_words;
-    for(const auto &entry:formats){
-        // A shared image type declares one format for every binding that uses
-        // it. The module may only declare it when all of them need the same
-        // one: the declared format has to match the bound view of each.
-        std::vector<uint32_t> sharers;
-        xbg_spirv_shared_image_bindings(base.module_words,entry.first,sharers);
-        bool shared_ok=true;
-        for(uint32_t other:sharers){
-            auto found=candidate.find(other);
-            if(found==candidate.end()||found->second!=entry.second){shared_ok=false;break;}
-        }
-        // 0 means the module already declares exactly this format: the second
-        // binding of a shared image type finds the type declared by the first.
-        const int rewritten=xbg_typed_storage_rewrite(words,entry.first,xbg_spirv_image_format(entry.second),shared_ok);
-        if(rewritten!=1&&rewritten!=0){
-            xbg_logf("NVN typed storage UNSUPPORTED shader=%s binding=%u format=%u reason=rewrite-refused shared=%d unchanged=1",base.key.c_str(),entry.first,entry.second,int(shared_ok));
-            return &base;
-        }
+    // A shared image type declares one format for every binding that uses it.
+    // When the bindings that need the typed form do not agree on the format,
+    // the type is split: each of them gets a private copy of the type and
+    // declares its own format. A binding that does not need the typed form
+    // would keep the shared type formatless, so the group is refused.
+    std::vector<XbgTypedStorageRequest> requests;
+    for(const auto &entry:formats)requests.push_back({entry.first,xbg_spirv_image_format(entry.second)});
+    size_t failed=0;int shared=1;std::vector<uint32_t> split;
+    if(xbg_typed_storage_declare(words,requests,failed,shared,split)!=1){
+        const uint32_t refused_binding=failed<requests.size()?requests[failed].binding:0;
+        const uint32_t refused_format=failed<formats.size()?formats[failed].second:0;
+        xbg_logf("NVN typed storage UNSUPPORTED shader=%s binding=%u format=%u reason=rewrite-refused shared=%d unchanged=1",base.key.c_str(),refused_binding,refused_format,shared);
+        return &base;
+    }
+    for(uint32_t binding:split){
+        uint32_t format=0;
+        for(const auto &entry:formats)if(entry.first==binding)format=entry.second;
+        xbg_logf("NVN typed storage split shader=%s binding=%u format=%u",base.key.c_str(),binding,format);
     }
     const uint64_t load_monotonic=shader_monotonic_ns(),load_frame=stats.presents.load();
     auto variant=std::make_unique<Shader>();

@@ -49,24 +49,32 @@ int main(int argc,char**argv){
     // Its bindings 29 and 35 share one formatless storage Buffer image type,
     // so the typed-storage rewrite refused it and the module stayed
     // formatless. A shared type may only be declared when every binding that
-    // uses it needs the same format.
+    // uses it needs the same format. The module that needs the type split
+    // (ba0d8842fa53e521) is checked by the split contract; the group is
+    // found in the module itself, so both of them run here.
     if(argc>=3){
         auto shared_module=load(argv[2]);
-        assert(xbg_spirv_ffrs_stencil(shared_module,5,"9bee7f09d6c655c3")>=1);
-        std::vector<uint32_t> sharers;
-        xbg_spirv_shared_image_bindings(shared_module,29,sharers);
-        assert((sharers==std::vector<uint32_t>{29,35}));
-        assert(xbg_spirv_declared_image_format(shared_module,29)==XBG_IMAGE_FORMAT_UNKNOWN);
+        const int stencil=xbg_spirv_ffrs_stencil(shared_module,5,"9bee7f09d6c655c3");
+        std::vector<uint32_t> group;
+        assert(xbg_spirv_shared_image_group(shared_module,group));
+        assert(group.size()==2);
+        if(stencil>=1)assert((group==std::vector<uint32_t>{29,35}));
+        // The format of the group's own numeric class.
+        const uint32_t klass=xbg_spirv_image_scalar_class(shared_module,group[0]);
+        assert(klass<3);
+        const uint32_t format=klass==0?XBG_IMAGE_FORMAT_R32F:klass==1?XBG_IMAGE_FORMAT_R32I:XBG_IMAGE_FORMAT_R32UI;
+        assert(xbg_spirv_declared_image_format(shared_module,group[0])==XBG_IMAGE_FORMAT_UNKNOWN);
+        assert(xbg_spirv_declared_image_format(shared_module,group[1])==XBG_IMAGE_FORMAT_UNKNOWN);
         // Without the shared check the rewrite is refused: the guardrail.
         auto refused=shared_module;
-        assert(xbg_typed_storage_rewrite(refused,29,XBG_IMAGE_FORMAT_R32UI,false)==-1);
+        assert(xbg_typed_storage_rewrite(refused,group[0],format,false)==-1);
         assert(refused==shared_module);
-        // With it, the shared type carries R32ui for both bindings.
+        // With it, the shared type carries the format for both bindings.
         auto typed=shared_module;
-        assert(xbg_typed_storage_rewrite(typed,29,XBG_IMAGE_FORMAT_R32UI,true)==1);
-        assert(xbg_spirv_declared_image_format(typed,29)==XBG_IMAGE_FORMAT_R32UI);
-        assert(xbg_spirv_declared_image_format(typed,35)==XBG_IMAGE_FORMAT_R32UI);
-        printf("real module 9bee7f09d6c655c3 bindings 29/35: the shared image type may be declared when both need it PASS\n");
+        assert(xbg_typed_storage_rewrite(typed,group[0],format,true)==1);
+        assert(xbg_spirv_declared_image_format(typed,group[0])==format);
+        assert(xbg_spirv_declared_image_format(typed,group[1])==format);
+        printf("real module with the shared image type of bindings %u and %u: the shared type may be declared when both need it PASS\n",group[0],group[1]);
     }
     return 0;
 }

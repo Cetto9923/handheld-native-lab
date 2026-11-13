@@ -241,6 +241,25 @@ def main():
         else:
             print('typed-storage-real-shared-contract: SKIPPED, set FFRS_REAL_SHARED_MODULE to the extracted 9bee7f09d6c655c3.spv',
                   flush=True)
+        # A shared image type declares one format for every binding that uses
+        # it. When the bindings of the group need different bound view
+        # formats, the type has to be split: every binding of the group gets a
+        # private copy of the type and declares its own format. The module is
+        # the one the RG477M aborted on (ba0d8842fa53e521), or the shared
+        # module above when no separate one is named.
+        split_module = Path(os.environ.get('FFRS_REAL_SPLIT_MODULE', '')) if os.environ.get('FFRS_REAL_SPLIT_MODULE') else shared_module
+        split_binary = out / 'test-typed-storage-split'
+        extra_artifacts.append(split_binary)
+        split_out = typed_dir / 'typed_storage_split_out.spv'
+        if split_module and split_module.is_file():
+            if run('typed-storage-split-build', [typed_cxx, '-std=c++17', '-O1', '-g',
+                                                '-fsanitize=address,undefined', '-Wall', '-Wextra',
+                                                'tests/device/test_typed_storage_split.cpp', '-o', split_binary]):
+                if run('typed-storage-split-contract', [split_binary, str(split_module), str(split_out)]):
+                    run('typed-storage-split-val', [spirv_val, '--target-env', 'vulkan1.1', split_out])
+        else:
+            print('typed-storage-split-contract: SKIPPED, set FFRS_REAL_SPLIT_MODULE to the extracted ba0d8842fa53e521.spv',
+                  flush=True)
     else:
         print('typed-storage-contract: SKIPPED, spirv-as and spirv-val are not installed', flush=True)
     run('engine-log-rotation', [sys.executable, '-m', 'unittest', 'tests.installer.test_engine_log_rotation'])
