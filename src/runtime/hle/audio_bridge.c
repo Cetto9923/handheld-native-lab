@@ -213,13 +213,17 @@ static aaudio_result_t open_aaudio_stream(audio_output *out) {
     if (status == AAUDIO_OK && out->stream) {
         int32_t burst = AAudioStream_getFramesPerBurst(out->stream);
         int32_t cap = AAudioStream_getBufferCapacityInFrames(out->stream);
-        int32_t desired = burst > 0 ? burst * 2 : 1920;
-        if (desired < 1920) desired = 1920;
+        int32_t desired = burst > 0 ? burst : 1920;
         if (burst > 1024) {
-            /* Bluetooth A2DP (burst ~3354 / 70ms): use 2x burst to absorb wireless transmission jitter */
-            desired = burst * 2;
+            /* Bluetooth A2DP (burst can be 3000~7215 frames, ~60-150ms):
+             * Do NOT double the burst! 1x burst is already ample buffer for A2DP packetization.
+             * Doubling a 7215 burst created a 300ms buffer, leading to severe audio-video desync. */
+            desired = burst;
         } else {
-            /* Speaker / wired headset: cap at 3840 frames (~80ms) for low latency */
+            /* Speaker / wired headset (burst typically 192~960 frames):
+             * Double buffer to avoid underruns, capped between 1920 (~40ms) and 3840 (~80ms). */
+            desired = burst > 0 ? burst * 2 : 1920;
+            if (desired < 1920) desired = 1920;
             if (desired > 3840) desired = 3840;
         }
         if (cap > 0 && desired > cap) desired = cap;
@@ -497,7 +501,8 @@ static uint32_t open_output_event(void *key,void *event,const void *parameter) {
         out->fifo.pcm=calloc((size_t)capacity*channels,sizeof(int16_t));
         if(!out->fifo.pcm){pthread_cond_destroy(&out->condition);pthread_mutex_destroy(&out->mutex);AAudioStream_close(out->stream);free(out);return 0x2a2;}
         int32_t burst=AAudioStream_getFramesPerBurst(out->stream);
-        out->warmup_frames=(uint32_t)(burst>0?burst:rate/100);
+        uint32_t max_warmup = (uint32_t)(rate / 50); /* 20ms */
+        out->warmup_frames = (uint32_t)(burst > 0 ? ((uint32_t)burst > max_warmup ? max_warmup : (uint32_t)burst) : (uint32_t)(rate / 100));
         if(out->warmup_frames>out->fifo.capacity)out->warmup_frames=out->fifo.capacity;
         fprintf(stderr,"[audio] paced transport enabled fifo_frames=%u warmup_frames=%u rate=%d; physical latency pending validation\n",out->fifo.capacity,out->warmup_frames,rate);
     }

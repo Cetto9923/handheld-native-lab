@@ -1614,7 +1614,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         return target.mkdirs() ? target : null;
     }
 
-    /** The snapshots, oldest first. */
+    /** The snapshots, newest first. */
     private java.util.List<File> snapshots() {
         java.util.List<File> out = new java.util.ArrayList<>();
         File dir = quickSaveDir();
@@ -1623,6 +1623,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         if (kids == null) return out;
         java.util.Arrays.sort(kids);
         for (File f : kids) if (f.isDirectory() && f.getName().startsWith("save-")) out.add(f);
+        java.util.Collections.reverse(out);
         return out;
     }
 
@@ -1718,20 +1719,33 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(24, 24, 24, 24);
         scroll.addView(box);
+
+        final File latest = snaps.get(0);
+        Button quickBtn = new Button(this);
+        quickBtn.setText("⚡ 一键载入最新即时存档 (" + latest.getName() + " · " + timeStamp(latest.lastModified()) + ")");
+        quickBtn.setTextSize(14f);
+        quickBtn.setTextColor(0xFF00E676);
+        quickBtn.setOnClickListener(new SaveCardClick(this, latest));
+        box.addView(quickBtn);
+
         TextView hint = new TextView(this);
-        hint.setText("点卡片读档，长按删除");
+        hint.setText("历史快照列表（倒序排列，点卡片读档，长按删除）：");
         hint.setTextSize(12f);
+        hint.setPadding(0, 16, 0, 12);
         box.addView(hint);
-        for (File snap : snaps) box.addView(saveCard(snap));
+
+        for (int i = 0; i < snaps.size(); i++) {
+            box.addView(saveCard(snaps.get(i), i == 0));
+        }
         new android.app.AlertDialog.Builder(this)
-                .setTitle("即时存档")
+                .setTitle("即时读档")
                 .setView(scroll)
                 .setPositiveButton("关闭", null)
                 .show();
     }
 
     /** One card of the save list. */
-    private View saveCard(final File snap) {
+    private View saveCard(final File snap, boolean isLatest) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setPadding(8, 12, 8, 12);
@@ -1744,9 +1758,17 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         text.setOrientation(LinearLayout.VERTICAL);
         text.setPadding(24, 0, 0, 0);
         TextView title = new TextView(this);
-        title.setText(snap.getName() + "  " + timeStamp(snap.lastModified()));
+        title.setText(snap.getName() + "  " + timeStamp(snap.lastModified()) + (isLatest ? " ★ 最新" : ""));
         title.setTextSize(16f);
+        if (isLatest) title.setTextColor(0xFF00E676);
         text.addView(title);
+
+        TextView slotNotice = new TextView(this);
+        slotNotice.setText("对应主菜单槽位: 【Slot 01 (Auto Save)】");
+        slotNotice.setTextSize(11f);
+        slotNotice.setTextColor(0xFF80D8FF);
+        text.addView(slotNotice);
+
         TextView note = new TextView(this);
         note.setText(cardNote(snap));
         note.setTextSize(12f);
@@ -1801,7 +1823,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 catch (Exception e) { Log.w(TAG, "quick load failed for " + n + ": " + e.getMessage()); }
             }
         }
-        toast("已读档 " + snap.getName() + ": 写回 " + count + " 个文件\n回标题画面 Load Game 后生效");
+        toast("已成功载入快照 " + snap.getName() + "！\n【操作指南】数据已写回槽位【Slot 01】，在主菜单点击「Load Game -> 01」即可直接进入！");
         Log.i(TAG, "quick load: " + snap.getName() + " " + count + " files");
     }
 
