@@ -1,3 +1,52 @@
+# 2026-11-13 20:05 运河广场闪烁：机制锁定为「覆盖层逐帧两态」，下一步用引擎逐帧 draw census 点名是哪个 draw
+
+## 结论先说
+
+- **闪烁不是「变亮」，是「变糊」**：铺石地面逐帧亮度与拉普拉斯方差（锐度）**相关系数 -0.996**；
+  锐度 409/407/404/402 的帧亮度 142.2/141.9/141.6/141.5（暗），锐度 290/289/288/282 的帧亮度
+  151.0/150.8/150.7（亮）。夜空（无纹理）完全稳定。
+- **不是重采样 / 分辨率差异（关键否证）**：最糊帧 ÷ 最锐帧的径向功率谱比值在 f=4..64 **恒为 0.68**。
+  若为 mip 层级或内部渲染分辨率变化，高频必须急剧衰减（ratio→0）。平坦比值 = 全频段等比缩放 =
+  **对比度被压缩**，不是采样变糊。
+- **是半透明亮层覆盖**：row 470 剖面上暗像素抬升最多（85→103，+18），亮像素几乎不动（177→179）；
+  纯加性叠加做不到（加性叠加的差值与原值无关地恒定）。3×3 线性核拟合两态关系 R²=0.885/0.913，
+  核带负旁瓣。放大并排看：糊帧整体像罩了一层半透明白纱，石缝被填平、角色被冲淡。
+- **机制结论**：闪烁 = 某个**半透明/加性覆盖层在场景颜色靶上逐帧「出现 / 消失」**。
+  此前 9 条引擎路径（深度复用、GPU 常驻索引/间接、texel 常驻、descmemo/imgcache/xmemo/bindcache、
+  tone-mapping LUT）全部证伪，因为它们都不负责「画这层覆盖」。
+- **新工具**：新增运行时标记 `files/gfx-live-flame-diag`（'0'/'1'），**不重启游戏**即可开关引擎逐帧
+  draw census（Honor 树为篝火调查开发的 FLAME_FRAME / FLAME_DR / FLAME_EV），能直接点名
+  「哪个 draw 逐帧消失」，并区分「画完被 clear 覆盖」(H2) 与「GEQUAL 深度拒绝」(H1/H4)。
+- **设备状态是脏的**：本会话为做矩阵用 `gfx-live-off`（只关不开）依次关掉了
+  descmemo/imgcache/xmemo/bindcache/gpuidx；`gfx-live-sync=1` 已用 '0' 关回（present 29790）。
+  **需要重启游戏进程**才能恢复干净状态（fps≈30、submit_cpu_ms≈11、sync_wb=0）；
+  重启前实测 fps 21.8~23.2、submit_cpu_ms 31.3（关缓存的代价，不是 0228e3c 回退）。
+- **未声称**：覆盖层的具体 draw 尚未定位；未做任何修复；不声称 60 FPS 或独立 QA。
+
+## 落点
+
+| 项 | 值 |
+|---|---|
+| 设备 | 仅 RG477M（`RG477M01445122`）；荣耀平板未操作 |
+| 分支 / 提交 | `task/T-rg477m-flicker-liveoff-20261113` / `af36d34`（`xbg_game.cpp` +6） |
+| APK | `.local/android-apk/ffrs-game-window-debug.apk`，sha256 `3f2c840e0f44bf28f84db69bbb3a9f5c766baf57dc02477568f56ad92cf3191e`（含 `f8cfe0e` 一次性抓帧修正 + `af36d34` 运行时 census 开关；**尚未装机**） |
+| 契约 | `verify_host.py --runtime-contracts`：46 项 passed=True / 0 failed（exit=1 仍是既有 blocked `module-load-info`） |
+| 取证 | `coordination/results/RG477M-FLICKER-LEFTGROUND-20261113.md` §10 |
+
+## 下一步（需用户配合一次重启）
+
+1. 装 APK → **重启游戏进程**（会丢失当前运河广场机位）→ 用户走回闪烁机位。
+2. 运行时开 `gfx-live-flame-diag=1` + `gfx-live-framedump=9`：抓 9 帧连续呈现帧 + 逐帧 census。
+3. 用 present 计数器把呈现帧与 census 对齐，比对「糊帧 / 锐帧」两类的 draw 列表差异 → 点名覆盖层 draw。
+4. 定位后按 Vulkan 能力/设备特性分流修复（不硬编码机型），真机复验 30 FPS。
+
+## 已知回归（待单独修）
+
+`0228e3c` 让 `gfx-pass-live` 失效：`pass_prof_active()` 现在要求 `pass_prof_frame!=UINT64_MAX`，
+而 `gfx-pass-live` 正是用 `pass_prof_frame=UINT64_MAX` 表示「窗口内每帧都采」。
+不影响本轮结论（改用 draw census），但属于我引入的诊断工具回归。
+
+---
 # 2026-11-13 19:10 运河广场闪烁：8 条引擎路径全部证伪，闪烁锁定在近处鹅卵石地面（RG477M）
 
 一次不靠猜的收敛：先纠正自己的测量错误，再把闪烁的空间位置量出来，最后补上唯一缺的取证工具。

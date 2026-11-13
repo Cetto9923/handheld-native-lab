@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-13T19:10:00+08:00",
+ "updated_at": "2026-11-13T20:05:00+08:00",
  "phase": "v1.0.9 consolidation in progress: one APK (versionCode 9) must boot both the Honor tablet (code 7) and the RG477M (code 8). Three implementation lines are in flight — readback targeted retirement (stutter root cause), Mali formatless-write FATAL (RG477M cannot enter the game), battle-settle crash P0 (8E5 phone, no device). The Honor tablet was returned to the user after the effect-seed line finished its measurement; all Honor device acceptance is deferred to one session after the merge.",
  "coordinator": "MiniMax Code /root release takeover (Codex thread aborted by user)",
  "integration_branch": "work/rg477m-native",
@@ -5329,7 +5329,10 @@
     "791005b chore(graphics): switch the GPU-resident indexed path and the indirect mode live",
     "5082aac chore(graphics): dump consecutive presented frames for the flicker diagnosis",
     "coordination/results/RG477M-FLICKER-LEFTGROUND-20261113.md section 8",
-    "APK sha256 5f407ef7f5cc579326a455e4a38bda93a27931a1a88d7e29f566997f23970684"
+    "APK sha256 5f407ef7f5cc579326a455e4a38bda93a27931a1a88d7e29f566997f23970684",
+    "af36d34 chore(graphics): switch the per-frame draw census on or off live",
+    "coordination/results/RG477M-FLICKER-LEFTGROUND-20261113.md section 10 (mechanism locked)",
+    "APK sha256 3f2c840e0f44bf28f84db69bbb3a9f5c766baf57dc02477568f56ad92cf3191e"
    ],
    "dependencies": [],
    "pass_gates": [],
@@ -5339,9 +5342,9 @@
     "coordination/"
    ],
    "acceptance": "The engine's own presented frames are captured with alpha for consecutive presents at the flicker spot and compared pixel by pixel with a raw screencap taken at the same moment. The result must name one of: a wrong render, or a presentation/composite-alpha problem. Any fix must keep 30.0 FPS with sync_wb=0 and must pass scripts/verify_host.py --runtime-contracts.",
-   "checkpoint": "5082aac",
+   "checkpoint": "af36d34",
    "device_exclusive": "RG477M01445122",
-   "status_note": "The eight engine cache and scheduling paths are all falsified. The flicker is localized to the near cobblestone ground and the stairs. The new present-frame dump is built and installed; the game was restarted and is loading the save. The user has to walk back to the flickering spot before the capture."
+   "status_note": "Mechanism locked: the flicker is a translucent overlay that appears and disappears on the scene colour target (paving brightness vs sharpness correlation -0.996, flat radial spectral ratio 0.68 means contrast compression, dark pixels lifted most). Not a resampling, exposure or composite problem. Next: use the per-frame draw census (new runtime switch files/gfx-live-flame-diag) to name the draw that toggles. Device state is dirty (gfx-live-off tokens descmemo, imgcache, xmemo, bindcache, gpuidx are off this session and that switch is off-only) and needs a game restart to restore the clean 30 FPS state."
   }
  ],
  "blockers": [
@@ -7512,5 +7515,73 @@
   "device_side_effects": "com.anbernic.control was force-stopped earlier and has been restored with am start -n com.anbernic.control/.ui.controlcenter.ControlCenterActivity; ControlCenterService is running again. com.ylm.magicwallpaper1 was force-stopped but its service is still running. One adb kill-server happened while the device was disconnected; the Honor tablet was not connected and the impact was zero.",
   "next": "Restart the game, load the save back into the canal plaza, walk to the flickering spot, then write gfx-live-framedump=8 and compare the engine pixels with a raw screencap taken at the same moment.",
   "not_verified": "The flicker root cause is not locked and no fix is claimed. No claim of full game compatibility, 60 FPS or independent QA."
+ },
+ "rg477m_flicker_overlay_mechanism_20261113": {
+  "status": "mechanism_locked_draw_not_identified",
+  "finding": "The canal-plaza flicker is a translucent/additive overlay that appears and disappears on the scene colour target. Not a resampling, exposure, resolution or composite problem.",
+  "metric": "engine-presented frames via gfx-live-framedump, present 20460..20468, 1280x720 R8G8B8A8_UNORM (screen recording discarded: 23 percent duplicate frames on a 60 Hz panel)",
+  "evidence": {
+   "paving_brightness_series": [
+    142.19,
+    151.04,
+    150.95,
+    141.92,
+    150.79,
+    150.71,
+    141.61,
+    141.52,
+    150.68
+   ],
+   "paving_laplacian_variance_series": [
+    409.2,
+    289.8,
+    289.9,
+    406.9,
+    288.9,
+    287.6,
+    404.2,
+    402.3,
+    281.8
+   ],
+   "corr_brightness_vs_sharpness": -0.996,
+   "radial_spectrum_ratio_blur_over_sharp": {
+    "f4": 0.683,
+    "f8": 0.805,
+    "f12": 0.653,
+    "f16": 0.77,
+    "f24": 0.68,
+    "f32": 0.646,
+    "f48": 0.685,
+    "f64": 0.697
+   },
+   "spectral_reading": "flat ratio across f=4..64 means contrast compression, not a low-pass, mip or internal-resolution change",
+   "row_profile_reading": "dark pixels lifted most (85 to 103), bright pixels almost unchanged (177 to 179), which is an alpha or screen blended bright layer",
+   "kernel_fit_r2": [
+    0.88471,
+    0.91272
+   ],
+   "stable_areas": [
+    "night sky (no texture)",
+    "water (animated particles)",
+    "minimap (UI animation)"
+   ],
+   "affected_areas": [
+    "cobblestone paving x300..700 y380..540 (strong)",
+    "white railing x420..700 y285..340 (mild)"
+   ]
+  },
+  "tooling_added": {
+   "runtime_switch": "files/gfx-live-flame-diag (0/1) toggles the per-frame draw census live, no restart needed",
+   "commit": "af36d34",
+   "apk_sha256": "3f2c840e0f44bf28f84db69bbb3a9f5c766baf57dc02477568f56ad92cf3191e",
+   "census_lines": [
+    "FLAME_FRAME per present (pmean, rtw, rth)",
+    "FLAME_DR per draw (vs:fs:color-target:draws:instances)",
+    "FLAME_EV ordered events on the scene colour target (draw, colour clear, depth clear, copy dst, resolve dst)"
+   ]
+  },
+  "device_state_dirty": "This session turned the gfx-live-off tokens descmemo, imgcache, xmemo, bindcache and gpuidx off (that switch is off-only) and briefly enabled gfx-live-sync=1; sync_mode was turned back off with gfx-live-sync=0 (log: LIVE-SYNC enabled=0 at present 29790). A game restart is required to restore the clean state (fps about 30, submit_cpu_ms about 11, sync_wb=0). Before the restart PERF showed fps 21.8-23.2 and submit_cpu_ms 31.3.",
+  "known_regression": "0228e3c made gfx-pass-live inert: pass_prof_active() now requires pass_prof_frame!=UINT64_MAX while gfx-pass-live sets pass_prof_frame=UINT64_MAX. Needs a separate fix; it does not affect the finding above.",
+  "not_claimed": "the specific overlay draw is not identified yet; no fix has been made; no 60 FPS and no independent QA claim"
  }
 }
