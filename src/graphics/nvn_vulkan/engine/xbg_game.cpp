@@ -4163,6 +4163,42 @@ void texel_evict(unsigned si,bool all){
     for(auto it=map.begin();it!=map.end();){if(all || it->second.used+128<slot_serial){vkDestroyBufferView(cfg.device,it->second.view,nullptr);texel_hole_bytes[si]+=it->first.bytes;texel_live_bytes[si]-=it->first.bytes;it=map.erase(it);++texel_evictions;}else ++it;}
     if(all || texel_hole_bytes[si]>8ull*1024*1024){for(auto &e:map)vkDestroyBufferView(cfg.device,e.second.view,nullptr);map.clear();texel_arena[si].release();texel_hole_bytes[si]=texel_live_bytes[si]=0;}
 }
+// Live uniform-binding fingerprint trace (marker files/gfx-live-ubtrace).
+// The draw census proved the draw list is identical in both flicker states, so the
+// difference has to live in the data handed to those draws. For every uniform
+// binding of every draw this records a hash of the guest bytes that are copied
+// into the descriptor, so two presented frames can be compared byte for byte.
+// It only observes: it never changes what is rendered, and it is off unless the
+// marker file exists.
+struct UbTrace{std::atomic<bool> on{false};FILE *file=nullptr;uint64_t rows=0;uint64_t frame=~0ull;uint32_t draw=0;uint64_t frames=0,limit=600;};
+UbTrace ubtrace;
+void ubtrace_open(const std::string &path){
+    if(ubtrace.file)return;
+    int fd=open(path.c_str(),O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC,0644);
+    if(fd<0)return;
+    ubtrace.file=fdopen(fd,"wb");if(!ubtrace.file){close(fd);return;}
+    setvbuf(ubtrace.file,nullptr,_IOFBF,1<<20);
+    fputs("frame,draw,vs,fs,stage,binding,element,source,offset,bytes,hash\n",ubtrace.file);
+    xbg_logf("UBTRACE open path=%s",path.c_str());
+}
+inline uint64_t ubtrace_hash(const void *data,size_t bytes){
+    if(!data||!bytes)return 0;
+    const uint8_t *p=static_cast<const uint8_t *>(data);uint64_t h=1469598103934665603ull;
+    size_t n=std::min<size_t>(bytes,4096);
+    for(size_t i=0;i<n;i++)h=(h^p[i])*1099511628211ull;
+    return h;
+}
+void ubtrace_binding(const std::string &shader,unsigned stage,unsigned binding,unsigned element,unsigned source,const void *data,size_t copy,size_t buffer_offset){
+    if(!ubtrace.on.load(std::memory_order_relaxed))return;
+    if(!ubtrace.file)return;
+    uint64_t fr=stats.presents.load();
+    if(fr!=ubtrace.frame){ubtrace.frame=fr;ubtrace.draw=0;}
+    const char *vs=state.shader[0]?state.shader[0]->key.c_str():"none";
+    const char *fs=state.shader[4]?state.shader[4]->key.c_str():"none";
+    fprintf(ubtrace.file,"%llu,%u,%.16s,%.16s,%u,%u,%u,%u,%zu,%zu,%#llx\n",
+        (unsigned long long)fr,ubtrace.draw++,vs,fs,stage,binding,element,source,buffer_offset,copy,ubtrace_hash(data,copy));
+    if(++ubtrace.rows%20000==0)fflush(ubtrace.file);
+}
 void descriptors(Descriptors &out,Commands &commands,bool compute){
     out.indirect_input.reset();
     if(indirect_proof_enabled && compute && state.shader[5]){
@@ -4361,6 +4397,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                 else buffer_infos.push_back({buffer->buffer,buffer->offset+buffer_offset,n});write.pBufferInfo=&buffer_infos.back();
                 if(capture.active){char label[100];snprintf(label,sizeof(label),"st%u-bind%u-el%u-buffer",st,b.binding,element);capture_log("BUFFER label=%s shader=%s nvnStage=%u sourceKind=%u slot=%u guest=%p copied=%zu descriptorBytes=%zu bufferOffset=%zu",label,shader.key.c_str(),ns,b.source,slot,data,copy,n,buffer_offset);capture_data(label,static_cast<const uint8_t*>(buffer->mapped)+buffer_offset,n);}
                 if(out.indirect_input && !out.indirect_input->instances_only && b.binding==41 && b.source==XBG_SOURCE_UNIFORM && element==0 && copy>=16 && indirect_cpu_clean(uint64_t(data),16)){memcpy(out.indirect_input->params,static_cast<const uint8_t*>(buffer->mapped)+buffer_offset,16);out.indirect_input->params_valid=true;}
+                ubtrace_binding(shader.key,st,b.binding,element,b.source,data,copy,buffer_offset);
                 probe_buffer(shader.key,st,b.binding,element,static_cast<const uint8_t*>(buffer->mapped)+buffer_offset,n);
                 probe_full_buffer(shader.key,st,b.binding,element,*buffer,buffer->offset+buffer_offset,n,VK_FORMAT_UNDEFINED,is_storage && shader.storage_writes.count(b.binding));
                 if(fire_trace_active())fire_trace_uniform_gpu(shader.key,st,b.binding,element,*buffer,buffer_offset,n);
@@ -7088,6 +7125,13 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
       {std::string fdg=probe.base+"/gfx-live-flame-diag";FILE *fdgf=fopen(fdg.c_str(),"rb");
        if(fdgf){int value=fgetc(fdgf);fclose(fdgf);if(value=='0'||value=='1'){
            flame_diag_enabled=(value=='1');xbg_logf("LIVE-FLAME-DIAG enabled=%d at present %llu",int(flame_diag_enabled),(unsigned long long)pr);}}}
+      // Diagnostic only: marker files/gfx-live-ubtrace turns the per-draw uniform binding
+      // fingerprint trace on. The file may hold a maximum number of presented frames to
+      // record; the trace then stops itself so a long session cannot fill the device.
+      {std::string ut=probe.base+"/gfx-live-ubtrace";FILE *utf=fopen(ut.c_str(),"rb");
+       if(utf){unsigned lim=0;if(fscanf(utf,"%u",&lim)!=1)lim=600;fclose(utf);remove(ut.c_str());
+        if(lim>0&&!ubtrace.file){ubtrace_open(probe.base+"/ubtrace-"+std::to_string(getpid())+".csv");ubtrace.limit=lim;ubtrace.frames=0;ubtrace.on.store(true,std::memory_order_relaxed);
+         xbg_logf("LIVE-UBTRACE on frames=%u at present %llu",lim,(unsigned long long)pr);}}}
       // Diagnostic only: marker files/gfx-live-ab holds the name of an engine path that must stay off
       // (the same list the gfx-ab-toggle/gfx-ab-target A/B uses), so every path can be tested in one session.
       {std::string ap=probe.base+"/gfx-live-ab";FILE *apf=fopen(ap.c_str(),"rb");
@@ -7404,7 +7448,9 @@ void flame_diag_roi_read(){
     // #endregion
 }
 
-static void xbg_present_texture_now(const win_t *window,const tex_t *texture){std::lock_guard<std::recursive_mutex> lock(mutex);preflight_cpu_reads();{SiteScope site(SITE_PRESENT);cur_op=61;TimingRoot timing_root;CPU_SCOPE(Other);need(initialized&&cfg.present,"Game presentation callback not installed");uint64_t present_begin=timing_clock();Image &im=get_image(texture,false);need(im.gpu_written,"Game tried to present a texture never rendered");probe_present(im);Commands c;im.transition(c.command,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);fire_trace_present(im,c.command);c.finish();if(flame_diag_enabled)flame_diag_roi_record(im);submit_slots(false);if(flame_diag_enabled){gpu_sync(perf.sync_readback);flame_diag_roi_read();}uint64_t pace_ns=xbg_frame_pace();int r;{CPU_SCOPE(Present);r=cfg.present(cfg.userdata,window->native,im.image,im.fmt,im.width,im.height,window->crop,window->interval);}if(r){static unsigned err_n=0;if(err_n++<10)xbg_logf("Game presentation dropped/warning: %d",r);}++stats.presents;if(flame_diag_enabled){fdiag_present=texture->serial;fdiag_present_mem=uint64_t(uintptr_t(texture->mem));
+static void xbg_present_texture_now(const win_t *window,const tex_t *texture){std::lock_guard<std::recursive_mutex> lock(mutex);preflight_cpu_reads();{SiteScope site(SITE_PRESENT);cur_op=61;TimingRoot timing_root;CPU_SCOPE(Other);need(initialized&&cfg.present,"Game presentation callback not installed");uint64_t present_begin=timing_clock();Image &im=get_image(texture,false);need(im.gpu_written,"Game tried to present a texture never rendered");probe_present(im);
+    // Stop the uniform fingerprint trace once it has covered the requested number of frames.
+    if(ubtrace.on.load(std::memory_order_relaxed)){if(ubtrace.frames>=ubtrace.limit){ubtrace.on.store(false,std::memory_order_relaxed);if(ubtrace.file){fflush(ubtrace.file);fclose(ubtrace.file);ubtrace.file=nullptr;}xbg_logf("LIVE-UBTRACE off after %llu frames",(unsigned long long)ubtrace.frames);}else ++ubtrace.frames;}Commands c;im.transition(c.command,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);fire_trace_present(im,c.command);c.finish();if(flame_diag_enabled)flame_diag_roi_record(im);submit_slots(false);if(flame_diag_enabled){gpu_sync(perf.sync_readback);flame_diag_roi_read();}uint64_t pace_ns=xbg_frame_pace();int r;{CPU_SCOPE(Present);r=cfg.present(cfg.userdata,window->native,im.image,im.fmt,im.width,im.height,window->crop,window->interval);}if(r){static unsigned err_n=0;if(err_n++<10)xbg_logf("Game presentation dropped/warning: %d",r);}++stats.presents;if(flame_diag_enabled){fdiag_present=texture->serial;fdiag_present_mem=uint64_t(uintptr_t(texture->mem));
         uint64_t other_draw=0,other_inst=0,other_bind=0,other_zero=0;for(int i=2;i<flame_diag_keys;i++){other_draw+=fdiag_draws[i];other_inst+=fdiag_inst[i];other_bind+=fdiag_binds[i];other_zero+=fdiag_zero[i];}
         xbg_logf("FLAME_FRAME fr=%llu be4e_draw=%llu be4e_inst=%llu be4e_bind=%llu be4e_zero=%llu f8b27_draw=%llu f8b27_inst=%llu f8b27_bind=%llu f8b27_zero=%llu f8b27_nz=%llu f8b27_sig=%#llx f8b27_mem=%#llx other_draw=%llu other_inst=%llu other_bind=%llu other_zero=%llu skip=%llu ds=%u/%u/%u blend=%u/%u/%u rt=%#llx dsrt=%#llx vp=%#llx sc=%#llx bi=%llu bv=%llu cnt=%llu prim=%d itype=%d present=%llu pmem=%#llx pf=%llu pmean=%llu roi=%u,%u,%u,%u im=%llu,%llu c5a=%#x c5b=%#x c5c=%#x c2a=%#x c0a=%#x ubo=%#llx c5mask=%#llx c5min=%llu c5max=%llu c5n=%llu rtpx=%llu rtw=%llu rth=%llu b18=%#x rthash=%#llx texhash=%#llx vb0=%#llx:%llu vb1=%#llx:%llu vb2=%#llx:%llu vb3=%#llx:%llu ibuf=%#llx ibytes=%llu",
             (unsigned long long)stats.presents.load(),(unsigned long long)fdiag_draws[0],(unsigned long long)fdiag_inst[0],(unsigned long long)fdiag_binds[0],(unsigned long long)fdiag_zero[0],
