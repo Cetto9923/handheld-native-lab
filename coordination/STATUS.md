@@ -1,7 +1,7 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-14T13:38:00.802876+08:00
-阶段：整合APK a0f402e已完成87项宿主检查及构建，2934个compute全库改写验证通过；RG477M断连，水都及角色/技能真机回归待恢复USB。
+状态事件时间：2026-11-14T17:56:14.626759+08:00
+阶段：a0f402e候选已安装到RG477M并启动标题，用户手动测试中。性能缓存修复与跨机型诊断导出继续待集成。
 总控：Codex /root 本轮接管
 更新方式：按事件更新，没有后台自动刷新。
 
@@ -152,6 +152,7 @@
 | CODEX-HOST-PAGE-20261114 | implementer | implemented | minimax_session | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-NARROW-20261114 | implementer | implemented | Codex /root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-NARROW-GUARD-20261114 | implementer | implemented | minimax_session | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-ANDROID-REPORT-20261114 | android | in_progress | android_reporting | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 
 ## 独占写入
 
@@ -266,6 +267,7 @@
 - {"task": "CODEX-HOST-PAGE-20261114", "owner": "minimax_session", "paths": ["src/runtime/hle/address_region.c", "src/runtime/hle/guest_pages.c", "src/runtime/nso/nso_boot.c", "tests/native/owned_pages_contract.c", "tests/native/guest_pages_contract.c", "tests/native/address_region_contract.c", "scripts/runtime/build_guest_pages_contract.sh", "scripts/runtime/test_owned_pages.py"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T12:52:44.221260+08:00", "checkpoint": "3c42368已提交。实现者和总控在Mac真实16KiB宿主分别复跑128/244检查通过，Android设备NOT_RUN。", "objective": "支持4KiB guest页在16KiB host页上的map/free，保存共享host页的邻居数据及失败恢复，以实际Mac16KiB宿主契约验证。Android目标设备验收保持NOT_RUN。", "write_state": "RELEASED"}
 - {"task": "CODEX-NARROW-20261114", "owner": "Codex /root", "paths": ["src/graphics/nvn_vulkan/engine/third_party/droidplay/spv_narrow.h", "src/graphics/nvn_vulkan/engine/third_party/droidplay/LICENSE", "src/graphics/nvn_vulkan/engine/third_party/droidplay/provenance.json", "scripts/verify_host.py", "src/graphics/nvn_vulkan/engine/xbg_game.cpp", "src/graphics/nvn_vulkan/engine/xbg_probe.inc", "src/graphics/nvn_vulkan/engine/xbg_water_trace.inc"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T12:59:16.841391+08:00", "checkpoint": "a0f402e已提交，87宿主检查及APK构建退出0，全库2934compute中1195改写/309归约全部验证通过。", "objective": "吸收MIT上游16lane subgroup归约修复并补宿主和真实GPU回归，统一接入runtime/warm；关联水都仍待验证。", "write_state": "RELEASED"}
 - {"task": "CODEX-NARROW-GUARD-20261114", "owner": "minimax_session", "paths": ["src/graphics/nvn_vulkan/engine/xbg_spirv_narrow.h", "tests/device/test_spirv_narrow.cpp", "tests/device/warp_reduce.spvasm", "scripts/android/verify_spirv_narrow.sh"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T13:06:28.332778+08:00", "checkpoint": "a0f402e已提交，87宿主检查及APK构建退出0，全库2934compute中1195改写/309归约全部验证通过。", "objective": "新增helper实际源索引数据流守卫并补有效SPV负例，拒绝误匹配归约，保留已证实的真实模块修复。", "write_state": "RELEASED"}
+- {"task": "CODEX-ANDROID-REPORT-20261114", "owner": "android_reporting", "paths": ["src/android/app/java/org/ffrs/diagnostic/DiagnosticReport.java", "src/android/app/java/org/ffrs/diagnostic/ReportActivity.java", "src/android/app/gamewindow/res/xml/report_shortcuts.xml", "tests/installer/DiagnosticReportContract.java", "tests/installer/test_diagnostic_report.py"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T13:45:21.243811+08:00", "checkpoint": "768c110源码干净，a0f402e APK已构建。无设备。", "objective": "给无电脑测试玩家提供自有应用日志/设备信息诊断ZIP导出，独立Java入口不启动游戏，保存到用户选择位置。", "write_state": "ACTIVE"}
 
 ## 阻塞
 

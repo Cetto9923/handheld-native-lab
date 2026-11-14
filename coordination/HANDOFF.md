@@ -1,3 +1,13 @@
+# 2026-11-14 17:55 RG477M安装完成，交用户测试
+
+- 用户恢复USB并要求立即安装给其测试。已覆盖安装已验证a0f402e候选1.0.11-preview，PID7985，标题画面已观察。APK回读SHA256 f2375446c3567967f7f45d606b292b6823ededa066b637feb06d93257c42c75e。
+- 安装前后存档tar摘要均dd66a544555a9843bafc0485db5b011d50354f008a0525cc51e7aefd8ee0130a。旧APK和当时日志已保存于 .local/codex-recovery-20261114/install-a0f402e-20261114-175453/。
+- 本次测试设置gfx-subgroup-narrow=1、gfx-async-pipelines=0。原gfx-target-fps为30，未测出真实60，不用标题FPS作游戏性能验收。
+- 当前由用户手动测试。不要继续发送游戏输入、重启或装别的包，等用户交回设备控制或测试反馈。
+- android_reporting已交回5个新文件但未接菜单/Manifest/build。现有轮转需兼容engine.log.1，待单独修改。当前安装包不含这些WIP。
+- minimax性能只读找到texel_evict调度仅覆盖slot0/15，其余14槽未老化；容量满的新key还先全hash再回退。两个问题待独立最小修复、宿主回归、同场景A/B，尚无实机收益。报告 .local/worker-rg477m-perf-review/review.md。
+- honor_configuration_review指出managed runtime marker根与Activity外部根不一致，defaults30/async1与外部profile60/async0不同；pipeline失败继续跳draw/dispatch、warm失败日志不全。荣耀400Pro尚无本次日志，不能据这些源码事实确定其闪退根因。
+
 # 2026-11-14 a0f402e 整合APK已完成，等待RG477M连接
 
 - 开发源码HEAD a0f402e，整合APK 1.0.11-preview 为 .local/codex-recovery-20261114/apk-history/ffrs-1.0.11-preview-a0f402e.apk，3589186字节，SHA256 f2375446c3567967f7f45d606b292b6823ededa066b637feb06d93257c42c75e。

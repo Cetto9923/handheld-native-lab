@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-14T13:38:00.802876+08:00",
- "phase": "整合APK a0f402e已完成87项宿主检查及构建，2934个compute全库改写验证通过；RG477M断连，水都及角色/技能真机回归待恢复USB。",
+ "updated_at": "2026-11-14T17:56:14.626759+08:00",
+ "phase": "a0f402e候选已安装到RG477M并启动标题，用户手动测试中。性能缓存修复与跨机型诊断导出继续待集成。",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -2044,6 +2044,23 @@
    "checkpoint": "a0f402e已提交，87宿主检查及APK构建退出0，全库2934compute中1195改写/309归约全部验证通过。",
    "objective": "新增helper实际源索引数据流守卫并补有效SPV负例，拒绝误匹配归约，保留已证实的真实模块修复。",
    "write_state": "RELEASED"
+  },
+  {
+   "task": "CODEX-ANDROID-REPORT-20261114",
+   "owner": "android_reporting",
+   "paths": [
+    "src/android/app/java/org/ffrs/diagnostic/DiagnosticReport.java",
+    "src/android/app/java/org/ffrs/diagnostic/ReportActivity.java",
+    "src/android/app/gamewindow/res/xml/report_shortcuts.xml",
+    "tests/installer/DiagnosticReportContract.java",
+    "tests/installer/test_diagnostic_report.py"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T13:45:21.243811+08:00",
+   "checkpoint": "768c110源码干净，a0f402e APK已构建。无设备。",
+   "objective": "给无电脑测试玩家提供自有应用日志/设备信息诊断ZIP导出，独立Java入口不启动游戏，保存到用户选择位置。",
+   "write_state": "ACTIVE"
   }
  ],
  "tasks": [
@@ -5769,6 +5786,35 @@
    ],
    "acceptance": "反例完整保持，原始GPU fixture仍修正，实际5模块及spirv-val通过。",
    "checkpoint": "a0f402e。3轮真实GPU修正字节与最终guard输出相同，9个合法反例拒绝，完整库1195份改写全部spirv-val通过。整合APK游戏验收等待设备。"
+  },
+  {
+   "id": "CODEX-ANDROID-REPORT-20261114",
+   "role": "android",
+   "status": "in_progress",
+   "owner": "android_reporting",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "让荣耀400Pro等机型的用户可直接导出本应用崩溃和能力日志，便于复现与适配。",
+   "inputs": [
+    "现有GameActivity/SaveExporter/managed runtime路径",
+    "Android ActivityManager/ApplicationExitInfo官方API"
+   ],
+   "outputs": [
+    "纯Java有界ZIP导出",
+    "独立报告Activity及launcher快捷入口",
+    "关键导出回归"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/android/app/java/org/ffrs/diagnostic/DiagnosticReport.java",
+    "src/android/app/java/org/ffrs/diagnostic/ReportActivity.java",
+    "src/android/app/gamewindow/res/xml/report_shortcuts.xml",
+    "tests/installer/DiagnosticReportContract.java",
+    "tests/installer/test_diagnostic_report.py"
+   ],
+   "acceptance": "不加载JNI/不启动游戏，白名单自有日志，不含存档/游戏/资源/密钥文件，报告有上限和截断说明；SAF输出失败有状态反馈；旧API保持可用。",
+   "checkpoint": "768c110，接口由根串行接GameActivity/manifest/build脚本。"
   }
  ],
  "blockers": [
@@ -8147,7 +8193,7 @@
    "archive": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/codex-recovery-20261114/branch-archive"
   },
   "baseline_apk": "9083174963c40ce1c7d1726671fa2ffd4e00f573efad516d80def5b3a10cf881",
-  "current_focus": "a0f402e整合APK已备妥，等待RG477M重新连接后以同APK gfx-subgroup-narrow=0/1分别重启、加载第三章手动01并到水都机位，定向32帧A/B及角色、技能、音频与移动卡顿回归。设备授权继续有效。",
+  "current_focus": "用户请求立即推送安装并手动测试。已覆盖安装a0f402e/1.0.11-preview并启动标题，PID7985；APK回读SHA匹配，安装前后存档tar相同。subgroup-narrow=1，async-pipelines=0，原30FPS限帧。等待水都阶梯/角色/帧率反馈，源码诊断导出WIP保持独立未集成。",
   "integration_candidate": {
    "head": "a0f402e",
    "host_checks": 87,
@@ -8156,8 +8202,10 @@
    "apk": ".local/codex-recovery-20261114/apk-history/ffrs-1.0.11-preview-a0f402e.apk",
    "bytes": 3589186,
    "sha256": "f2375446c3567967f7f45d606b292b6823ededa066b637feb06d93257c42c75e",
-   "device_status": "NOT_INSTALLED_DEVICE_DISCONNECTED",
-   "evidence": ".local/codex-recovery-20261114/integration-a0f402e/plan.json"
+   "device_status": "INSTALLED_LAUNCHED_TITLE_USER_MANUAL_TEST",
+   "evidence": ".local/codex-recovery-20261114/integration-a0f402e/plan.json",
+   "install_evidence": ".local/codex-recovery-20261114/install-a0f402e-20261114-175453/plan.json",
+   "installed_sha256_verified": true
   },
   "narrow_gpu_evidence": {
    "device": "RG477M01445122",
@@ -8181,13 +8229,12 @@
    "evidence": ".local/codex-recovery-20261114/host-page-review/manifest.json"
   },
   "device_connection": {
-   "status": "DISCONNECTED",
-   "checked_at": "2026-11-14T13:17:39.088195+08:00",
-   "adb_devices": [],
-   "user_reconnect_requested": true,
-   "last_verified_pid": "28827",
-   "last_verified_apk": "9083174963c40ce1c7d1726671fa2ffd4e00f573efad516d80def5b3a10cf881",
-   "authorization": "本轮RG477M授权继续有效，无需重复确认"
+   "status": "CONNECTED_USER_MANUAL_TEST",
+   "checked_at": "2026-11-14T17:56:14.626759+08:00",
+   "serial": "RG477M01445122",
+   "pid": "7985",
+   "operator": "用户手动测试，根不再发送输入或重启装包，等待测试反馈",
+   "authorization": "本轮RG477M授权继续有效"
   },
   "compute_library_validation": {
    "original_compute_modules": 2934,
@@ -8196,6 +8243,15 @@
    "kept_unmatched_steps": 0,
    "original_or_rewritten_validation_failures": 0,
    "evidence": ".local/codex-recovery-20261114/narrow-all-compute/summary.json"
+  },
+  "new_user_scope": {
+   "reported_at": "2026-11-14T13:45:21.243811+08:00",
+   "rg477m": [
+    "低帧率",
+    "读档后门口按小地图走到运河阶梯复现闪烁"
+   ],
+   "honor400pro": "用户表哥实机闪退，阶段/日志待新包测试反馈",
+   "honor_tablet": "用户报告不卡不闪退，既有本机GPU日志为Adreno735，400Pro官方第三代骁龙8，不能混作同芯片同驱动验收"
   }
  }
 }
