@@ -88,4 +88,40 @@ inline bool xbg_terrain_drop_frag_depth(std::vector<uint32_t> &w) {
     return true;
 }
 
+
+/**
+ * Does the module read gl_FragCoord (BuiltIn 15) at all?
+ *
+ * A shader that stores gl_FragCoord.z into gl_FragDepth writes exactly the
+ * value the rasterizer would have written, so dropping the store is a no-op
+ * for it. A shader that computes its own depth value does not read
+ * gl_FragCoord, and for it dropping the store replaces the game's depth
+ * with the rasterizer's interpolated z -- a semantic change that breaks the
+ * depth test against everything the game drew with the usual convention.
+ *
+ * The FFRS shader 062df44b75d37d76 (the one that draws the protagonist) is
+ * such a shader: it never reads gl_FragCoord, and the strip made the
+ * protagonist lose whole horizontal bands to the depth test.
+ */
+inline bool xbg_spirv_reads_fragcoord(const std::vector<uint32_t> &w) {
+    if (w.size() < 5 || w[0] != 0x07230203u) return false;
+    uint32_t fragcoord = 0;
+    for (size_t i = 5; i < w.size();) {
+        uint32_t n = w[i] >> 16, op = w[i] & 0xffffu;
+        if (!n || i + n > w.size()) return false;
+        if (op == 71 && n >= 4 && w[i + 2] == 11 && w[i + 3] == 15) fragcoord = w[i + 1];  // OpDecorate BuiltIn FragCoord
+        i += n;
+    }
+    if (!fragcoord) return false;
+    // The declaration alone proves nothing: the translator lists every builtin
+    // the shader could use. Only a load shows that the value is read.
+    for (size_t i = 5; i < w.size();) {
+        uint32_t n = w[i] >> 16, op = w[i] & 0xffffu;
+        if (!n || i + n > w.size()) return false;
+        if (op == 61 && n >= 4 && w[i + 3] == fragcoord) return true;  // OpLoad from the FragCoord variable
+        i += n;
+    }
+    return false;
+}
+
 #endif // XBG_SPIRV_DEPTH_H

@@ -182,6 +182,21 @@ def main():
                                             'tests/device/test_upload_prologue_policy.cpp',
                                             '-o', upload_policy_binary]):
         run('upload-prologue-policy-contract', [upload_policy_binary])
+    # The gl_FragDepth strip is a no-op only for a shader that reads
+    # gl_FragCoord: it stores gl_FragCoord.z, which the rasterizer writes
+    # anyway. The FFRS shader that draws the protagonist computes its own
+    # depth and never reads gl_FragCoord, so stripping its store replaced the
+    # game's depth with the rasterizer's and cost the protagonist whole
+    # horizontal bands to the depth test. The rule is pure, so the host
+    # states both sides.
+    frag_depth_cxx = shutil.which('clang++') or cc
+    frag_depth_binary = out / 'test-frag-depth-strip'
+    extra_artifacts.append(frag_depth_binary)
+    if run('frag-depth-strip-build', [frag_depth_cxx, '-std=c++17', '-O1', '-g',
+                                       '-fsanitize=address,undefined', '-Wall', '-Wextra',
+                                       'tests/device/test_frag_depth_strip.cpp',
+                                       '-o', frag_depth_binary]):
+        run('frag-depth-strip-contract', [frag_depth_binary])
     spirv_as = shutil.which('spirv-as')
     spirv_val = shutil.which('spirv-val')
     if spirv_as and spirv_val:
