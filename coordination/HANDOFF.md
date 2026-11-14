@@ -1,3 +1,15 @@
+# 地形实际输入类型不匹配，修复候选实施
+
+实际pipeline recipes已取得。深度VS a455及颜色VS11320的Location0/1都是VkFormat41/RGBA8_UINT，stride4，前者vertex-rate、后者instance-rate；保存的SPV接口为float4，之后Bitcast uint再ConvertUToF。00758同类一个input。这是实际接口不匹配。root已登记load_profile独占SPIRV纯pass/测试，perf_cpu独占identity/测试，root接xbg_game/warm/版本/gate和构建。地图画面修复因果仍待真机。另pipeline缓存shell644实际不能append，已备份后恢复app-owned，自动增量905028→1094487并保留原prefix，已保存权限与内容证据。
+
+# 地图单帧证据已取得
+
+当前21/PID32442/世界地图静机位CPU56162至56164三帧已采，均无新shader；普通present56520及单帧capture56974已保全chapter3-map/，capture结束bytes66677208（约64MiB预算），probe标记已恢复0。正常帧和取证帧同见巨大绿色斜面，HDR color0中在group91首次出现，VS11320/FS77a692，2draw/实例342，实际属地形候选。三个shader从本地6GB archive索引定位后直接读取设备对应成员，字节匹配已校验，原数据未修改。lookup_review只读数据流核查，load_profile仍作原生帧视觉分析。
+
+# 第三章与世界地图异常取证
+
+用户要求对照开局与最新第三章录屏，反馈卡顿、世界地图不可用及画面异常。root取回新原片并核实际设备版本/PID，perf_cpu只读复核地图历史与代码。开局女主修复反馈限定该流程，当前21的第三章整包验收为待核。
+
 # 2026-11-14 用户上传用21 APK已整理
 
 用户要求先准备最新稳定包供其自行上传。采用其刚实测确认女主不闪烁的21原APK，输出.local/releases/1.0.21/FFRS-1.0.21-preview-20261114.apk，3601404字节，SHA07f5f0368183b7fb9228c9f744fd835bf623c05fd0e86a1ecb71e13f7ec1419e。28份源码摘要重新核对一致，签名/版本/ZIP完整性均通过。验证计划和日志在upload21/，历史APK保留。该交付为1.0.21-preview实测包，声音短卡、各场景FPS与其它机型验证继续开放。当前性能主任务保持进行中。
@@ -4541,3 +4553,17 @@ C4 帧内 desc memo 比对的是 buffer 身份而非内容、C5 客机侧数据�
 用户报告a0f402e进入游戏退出。已保留7985/9495对应日志及exit-info，均主动exit70。b673e10f3da2451c的typed storage b41/b47请求被拒绝。标题验证不能覆盖场景进入。根接回RG477M，同包narrow=0做控制复现，两名只读worker检查拒绝路径。证据在 `.local/codex-recovery-20261114/crash-a0f402e-20261114-175815`。
 
 新建游戏同包narrow=0、PID13124复现同一exit70。独立worker确认integer后即存在，已排除narrow开关作为本次拒绝的引入点。03ab3e6在transactional declare中移动已有type/pointer并重新计算facts，保留opaque guard及失败不发布。宿主76检查通过，真实b673三个阶段typed均通过val且函数仅一处load类型ID变化、原子操作不变。1.0.12-preview已构建，真机新建游戏回归中。
+
+
+## 世界地图顶点接口修复接线检查点
+
+实际group35/91的location0/1绑定RGBA8_UINT，原VS声明float4。load_profile实现事务性按格式接口变体，perf_cpu已冻结组合identity并追加helper只读QA，lookup_review独立identity QA通过并复审runtime/warm接线。类编号沿既有0float/1SINT/2UINT。root接线已落盘，22候选尚未构建或安装，21地图仍FAIL。所有原片、shader和probe位于.local/codex-recovery-20261114/chapter3-map/。设备pipeline学习表原shell只读文件已原子恢复app-owned，保全原字节及设备备份，尚无性能改善结论。
+
+
+## 22地图候选已构建，等待真机复验
+
+源码0bd4dc5，99项宿主检查及Android构建退出0，32份构建输入前后相同。APK为.local/codex-recovery-20261114/apk-history/ffrs-1.0.22-preview-vertex-input.apk，3617788B，SHA256 2e4c354ed1aa8f2d6bc0b281069c84e3f931922e339e3d10b83a16459faf4774。记录在vertex-input-build/，原始build snapshot为ff40c9d+dirty，提交后同源核验通过。runtime/warm接线独立复核无阻塞finding，helper独立QA收口中。
+
+覆盖安装前保存询问已发送，尚无回复。本轮未退出当前21进程PID32442，22真机世界地图及开场女主均NOT_RUN。收到保存确认后，先保全当前引擎日志及存档备份，再覆盖安装22，启动并读原第三章存档。地图保持同机位，确认a455/11320/00758均成功生成vin1接口变体，用现成gfx-live-ab=vinput同包开关对照，采普通present，结束恢复gfx-live-ab。随后复测开场女主与音频。不要以host检查代替画面通过。5份Android诊断报告WIP继续隔离，历史APK保留。
+
+独立helper QA已交回，报告vertex-identity/qa-vertex-helper/review.md SHA1a9adfea。ASan/UBSan、28SPV及7个额外合法输入反例通过，lookup源码二次审无阻塞。22当前仍未安装，21 PID32442保留，等待保存确认。

@@ -240,3 +240,15 @@ submission-owned快照、GPU输出准备、读写依赖和slot退休参与同一
 上述检查点作为性能修改的现成回归依据。项目当前工作重点为真实场景帧率与长帧，最终目标沿docs/PROJECT.md的原速真实60FPS执行。开场剧情、走动、战斗特效、室内/副本及水都分别保留冷暖数据。FPS、P95/P99、超过50/100/250ms的长帧、CPU/GPU耗时、实际复制量与有声流xrun增量共同记录。教程弹窗和暂停窗口有各自标签，录屏编码帧率仅用于解释媒体采样。
 
 出处汇总见 `coordination/results/CODEX-UPSTREAM-PORTS-20261114.md`、`RG477M-FLICKER-LEFTGROUND-20261113.md` 及 `.local/upstream-switch-zelda-20261114/` 各独立报告。后续显示变化按构建、同PID与具体场景更新证据。
+
+## 2026-11-15 世界地图取证新增
+
+### L-016 顶点格式与接口数值类型同步
+
+世界地图实际pipeline将RGBA8_UINT顶点和实例数据送入声明float4的VS。格式、Location、stride和instance rate需与最终模块一起核对，integer texel-buffer修正不会自动覆盖vertex attribute。按实际格式生成接口变体时，原始寄存器位值由匹配类型Load后bitcast恢复，真实draw参数与游戏运算继续沿原路径。UINT、SINT、float/normalized分别处理，短向量的缺省分量取值也受数值类型影响。
+
+变体须覆盖深度预绘制及正式绘制，共享输入指针类型须隔离，未知指针使用需事务性拒绝。组合identity、warm加载、持久化recipe、实际input_classes与metadata同步接入。可复用verify_vertex_input.sh及verify_shader_identity.sh。22候选宿主与Android构建通过，地图因果与开场同包回归仍待真机。证据见CODEX-CHAPTER3-MAP-20261114.md。
+
+### L-017 应用缓存可写性用实际UID验证
+
+由adb shell直接放入应用外部files的缓存可能仍属shell且仅owner可写。文件存在或预热读取成功不足以证明学习表可追加。使用run-as的test -w及真实打开结果核对，保留原字节备份后，由应用UID创建同字节stage并校验摘要，再原子替换。当前设备恢复后学习表正常追加，帧率收益尚未测定。

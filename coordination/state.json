@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-14T23:36:56.670280+08:00",
- "phase": "显示经验库已总结，FPS主任务进行中。2分钟开场录屏已保全，RG断开导致新CPU采样未执行。",
+ "updated_at": "2026-11-15T00:27:37.729698+08:00",
+ "phase": "第三章世界地图FAIL已取证，22顶点接口修复候选0bd4dc5已通过99宿主检查与Android构建；等待保存后同机位真机复验。",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -2610,6 +2610,106 @@
    "checkpoint": "可上传APK已就绪，verification.json包含复核结果。",
    "write_state": "RELEASED",
    "released_at": "2026-11-14T23:36:56.670280+08:00"
+  },
+  {
+   "task": "CODEX-CHAPTER3-MAP-20261114",
+   "owner": "root",
+   "paths": [
+    ".local/codex-recovery-20261114/chapter3-map/",
+    "coordination/results/CODEX-CHAPTER3-MAP-20261114.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T23:43:53.392840+08:00",
+   "checkpoint": "本次新视频与世界地图异常取证。",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "CODEX-MAP-HISTORY-20261114",
+   "owner": "perf_cpu",
+   "paths": [
+    ".local/codex-recovery-20261114/map-history-review/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T23:43:53.392840+08:00",
+   "checkpoint": "本次新视频与世界地图异常取证。",
+   "write_state": "RELEASED",
+   "released_at": "2026-11-14T23:54:43.624188+08:00"
+  },
+  {
+   "task": "CODEX-MAP-VIDEO-20261114",
+   "owner": "load_profile",
+   "paths": [
+    ".local/codex-recovery-20261114/map-video-analysis/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T23:46:20.440126+08:00",
+   "checkpoint": "只读本地已保全原片，分析世界地图。",
+   "write_state": "RELEASED",
+   "released_at": "2026-11-15T00:07:01.335416+08:00"
+  },
+  {
+   "task": "CODEX-MAP-TERRAIN-SHADER-20261114",
+   "owner": "perf_cpu/lookup_review",
+   "paths": [
+    ".local/codex-recovery-20261114/map-terrain-review/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T23:54:43.624188+08:00",
+   "checkpoint": "3报告交回，source审阅无阻塞，真机NOT_RUN。",
+   "write_state": "RELEASED",
+   "released_at": "2026-11-15T00:25:21.525324+08:00"
+  },
+  {
+   "task": "CODEX-VERTEX-INTERFACE-20261115",
+   "owner": "load_profile",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_vertex_input.h",
+    "tests/device/test_spirv_vertex_input.cpp",
+    "tests/device/vertex_input_bits.spvasm",
+    "scripts/android/verify_vertex_input.sh",
+    ".local/codex-recovery-20261114/vertex-input-implementation/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T00:07:01.335416+08:00",
+   "checkpoint": "header7cc9bc37，selftest及NDK0，独立QA待交回。",
+   "write_state": "FROZEN_HANDED_BACK",
+   "released_at": "2026-11-15T00:21:45.193387+08:00"
+  },
+  {
+   "task": "CODEX-VERTEX-IDENTITY-20261115",
+   "owner": "perf_cpu",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_shader_identity.h",
+    "tests/device/test_shader_identity.cpp",
+    "scripts/android/verify_shader_identity.sh",
+    ".local/codex-recovery-20261114/vertex-identity/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T00:07:01.335416+08:00",
+   "checkpoint": "全部源码冻结及helper独立QA1a9adfea已交回，无设备操作。",
+   "write_state": "RELEASED",
+   "released_at": "2026-11-15T00:27:37.729698+08:00"
+  },
+  {
+   "task": "CODEX-VERTEX-INTEGRATE-20261115",
+   "owner": "root",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "scripts/verify_host.py",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    ".local/codex-recovery-20261114/vertex-input-build/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T00:07:01.335416+08:00",
+   "checkpoint": "0bd4dc5 build validated，待用户保存/安装后真机同场景。",
+   "write_state": "ACTIVE"
   }
  ],
  "tasks": [
@@ -7384,6 +7484,204 @@
    ],
    "acceptance": "交付APK字节与实测包一致，原历史包保留，签名/ZIP/版本校验通过，明确音频/帧率遗留范围。",
    "checkpoint": "21实测原包已整理到.local/releases/1.0.21/，签名/版本/ZIP/SHA通过，28源码摘要重新核对一致。音频和FPS仍开放。"
+  },
+  {
+   "id": "CODEX-CHAPTER3-MAP-20261114",
+   "owner": "root",
+   "role": "EVIDENCE_AND_INTEGRATION",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "取回第三章新录像及同次设备证据，对照开局视频定位世界地图异常与性能问题。",
+   "inputs": [
+    "当前21源码780ebc6",
+    "第三章/世界地图新反馈",
+    "原开局31秒及2分钟视频",
+    "EXPERIENCE与既有地图/陆行鸟报告"
+   ],
+   "outputs": [
+    ".local/codex-recovery-20261114/chapter3-map/",
+    "coordination/results/CODEX-CHAPTER3-MAP-20261114.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/codex-recovery-20261114/chapter3-map/",
+    "coordination/results/CODEX-CHAPTER3-MAP-20261114.md"
+   ],
+   "acceptance": "记录实际版本/PID/时间、可复核视觉现象及范围，单项推测单独标明，原片保持，未获同一性证据不按key改shader。",
+   "checkpoint": "root独占设备与coordination；worker只读生产源码。"
+  },
+  {
+   "id": "CODEX-MAP-HISTORY-20261114",
+   "owner": "perf_cpu",
+   "role": "READ_ONLY_REVIEW",
+   "status": "completed",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "只读核对既有世界地图黑块/小窗口问题的历史证据、已证伪路径及当前代码相关范围。",
+   "inputs": [
+    "当前21源码780ebc6",
+    "第三章/世界地图新反馈",
+    "原开局31秒及2分钟视频",
+    "EXPERIENCE与既有地图/陆行鸟报告"
+   ],
+   "outputs": [
+    ".local/codex-recovery-20261114/map-history-review/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/codex-recovery-20261114/map-history-review/"
+   ],
+   "acceptance": "记录实际版本/PID/时间、可复核视觉现象及范围，单项推测单独标明，原片保持，未获同一性证据不按key改shader。",
+   "checkpoint": "report4ef5826d，历史黑块/小窗口未修，13路径仅白纱，固定上游LUT可作候选，当前新的root capture已另取得。"
+  },
+  {
+   "id": "CODEX-MAP-VIDEO-20261114",
+   "owner": "load_profile",
+   "role": "READ_ONLY_VIDEO_ANALYSIS",
+   "status": "completed",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "逐段核查最新39.8秒第三章录像，对照开局两视频，定位世界地图异常的可复核现象与PTS。",
+   "inputs": [
+    "chapter3-map/screen-20261114-234124.mp4",
+    "chapter3-map/current.png",
+    "原开局31秒及2分钟视频"
+   ],
+   "outputs": [
+    ".local/codex-recovery-20261114/map-video-analysis/review.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/codex-recovery-20261114/map-video-analysis/"
+   ],
+   "acceptance": "精确时间和原生像素证据，区分遮罩/LOADING/景深/正常阴影与缺陷；媒体编码FPS不作游戏FPS；未知shader/根因保留。",
+   "checkpoint": "report ce80a886，31.509→31.576秒及33.856→33.922秒斜面正反跳变，角色疑为遮挡轮廓，视觉确认。"
+  },
+  {
+   "id": "CODEX-MAP-TERRAIN-SHADER-20261114",
+   "owner": "perf_cpu/lookup_review",
+   "role": "READ_ONLY_SHADER_REVIEW",
+   "status": "completed",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "实际地图shader/dataflow审查后，追加只读identity及runtime/warm接线独立复审。",
+   "inputs": [
+    "chapter3-map/map-capture.txt group91、normal-engine-f56520.png及passes-sheet",
+    "chapter3-map/shaders/11320c7ea662abd3及77a69261b6e511cc及00758c2888655e0b原SPV/XGS/asm，device匹配local archive已校验",
+    "21源码780ebc6 integer variant identity :ib1:6_98",
+    "vin1 identity frozen header3aa90a9及testf4eb506",
+    "root xbg_game.cpp runtime/warm/parse_record新接线"
+   ],
+   "outputs": [
+    ".local/codex-recovery-20261114/map-terrain-review/review.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/codex-recovery-20261114/map-terrain-review/"
+   ],
+   "acceptance": "实际映射后追Position与instance/texel来源，不猜key，显式区分geometry/depth/texture/后处理候选，源代码和原数据只读，不设备/构建/Git/coord。",
+   "checkpoint": "terrain9f3455c、identityQA fd50c91、接线QA75d5232已交回。只读源码复核PASS，真机NOT_RUN。"
+  },
+  {
+   "id": "CODEX-VERTEX-INTERFACE-20261115",
+   "owner": "load_profile",
+   "role": "IMPLEMENTATION",
+   "status": "implemented",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "事务性按实际numeric class改VS Input变量/派生指针/Load，再bitcast到原类型和result ID，保留NVN寄存器bits。",
+   "inputs": [
+    "当前21源码780ebc6",
+    "实际地图group35/91 recipe的Location0/1均format41 RGBA8_UINT、shader float4",
+    "device核验的11320/a455/00758原SPV",
+    "同游戏现成integer/typed variant及warm lifecycle"
+   ],
+   "outputs": [
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_vertex_input.h",
+    "tests/device/test_spirv_vertex_input.cpp",
+    "tests/device/vertex_input_bits.spvasm",
+    "scripts/android/verify_vertex_input.sh",
+    ".local/codex-recovery-20261114/vertex-input-implementation/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_vertex_input.h",
+    "tests/device/test_spirv_vertex_input.cpp",
+    "tests/device/vertex_input_bits.spvasm",
+    "scripts/android/verify_vertex_input.sh",
+    ".local/codex-recovery-20261114/vertex-input-implementation/"
+   ],
+   "acceptance": "正常入口匹配实际格式，原VkFormat与draw参数沿现路径，变体身份组合且warm/runtime一致，SPIRV验证、位值与拒绝不半写；开局和地图实际验证待root。",
+   "checkpoint": "组件实现、NDK及独立QA通过，真机地图pending。helper QA1a9adfea，源码0bd4dc5。"
+  },
+  {
+   "id": "CODEX-VERTEX-IDENTITY-20261115",
+   "owner": "perf_cpu",
+   "role": "IMPLEMENTATION",
+   "status": "completed",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "扩canonical identity附加:vin1:loc_class族，保持integer/typed组合及旧调用兼容并补事务性解析回归。",
+   "inputs": [
+    "当前21源码780ebc6",
+    "实际地图group35/91 recipe的Location0/1均format41 RGBA8_UINT、shader float4",
+    "device核验的11320/a455/00758原SPV",
+    "同游戏现成integer/typed variant及warm lifecycle"
+   ],
+   "outputs": [
+    "src/graphics/nvn_vulkan/engine/xbg_shader_identity.h",
+    "tests/device/test_shader_identity.cpp",
+    "scripts/android/verify_shader_identity.sh",
+    ".local/codex-recovery-20261114/vertex-identity/",
+    ".local/codex-recovery-20261114/vertex-identity/qa-vertex-helper/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_shader_identity.h",
+    "tests/device/test_shader_identity.cpp",
+    "scripts/android/verify_shader_identity.sh",
+    ".local/codex-recovery-20261114/vertex-identity/"
+   ],
+   "acceptance": "正常入口匹配实际格式，原VkFormat与draw参数沿现路径，变体身份组合且warm/runtime一致，SPIRV验证、位值与拒绝不半写；开局和地图实际验证待root。",
+   "checkpoint": "identity及helper独立QA通过，helper报告1a9adfea，四冻结输入SHA一致，28SPV及7独立合法输入反例全部0。真机NOT_RUN。"
+  },
+  {
+   "id": "CODEX-VERTEX-INTEGRATE-20261115",
+   "owner": "root",
+   "role": "INTEGRATION",
+   "status": "awaiting_user",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "接实际vertex格式class、运行期选择及warm再现，在21画面对照上构建22修复候选，设备复验。",
+   "inputs": [
+    "当前21源码780ebc6",
+    "实际地图group35/91 recipe的Location0/1均format41 RGBA8_UINT、shader float4",
+    "device核验的11320/a455/00758原SPV",
+    "同游戏现成integer/typed variant及warm lifecycle"
+   ],
+   "outputs": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "scripts/verify_host.py",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    ".local/codex-recovery-20261114/vertex-input-build/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "scripts/verify_host.py",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    ".local/codex-recovery-20261114/vertex-input-build/"
+   ],
+   "acceptance": "正常入口匹配实际格式，原VkFormat与draw参数沿现路径，变体身份组合且warm/runtime一致，SPIRV验证、位值与拒绝不半写；开局和地图实际验证待root。",
+   "checkpoint": "source0bd4dc5；99宿主与Android0，32inputs一致。APK2e4c354e/3617788B。保存与覆盖安装询问已发送，当前21 PID32442继续运行，22真机NOT_RUN。"
   }
  ],
  "blockers": [
