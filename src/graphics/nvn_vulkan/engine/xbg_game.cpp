@@ -3283,7 +3283,7 @@ Shader *typed_storage_variant(Shader &base){
     std::vector<XbgTypedStorageRequest> requests;
     for(const auto &entry:formats)requests.push_back({entry.first,xbg_spirv_image_format(entry.second)});
     size_t failed=0;int shared=1;std::vector<uint32_t> split;
-    if(xbg_typed_storage_declare(words,requests,failed,shared,split)!=1){
+    if(xbg_typed_storage_declare(words,requests,failed,shared,split,cfg.enabled_core.shaderStorageImageExtendedFormats!=0)!=1){
         const uint32_t refused_binding=failed<requests.size()?requests[failed].binding:0;
         const uint32_t refused_format=failed<formats.size()?formats[failed].second:0;
         xbg_logf("NVN typed storage UNSUPPORTED shader=%s binding=%u format=%u reason=rewrite-refused shared=%d unchanged=1",base.key.c_str(),refused_binding,refused_format,shared);
@@ -3313,6 +3313,7 @@ Shader *typed_storage_variant(Shader &base){
     }
     variant->module_words=words;
     if(base.stage==5)xbg_spirv_indirect_instances(words,variant->indirect_instance_fields);
+    validate_capabilities(words,base.stage);
     VkShaderModuleCreateInfo info{};info.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;info.codeSize=words.size()*4;info.pCode=words.data();
     VK(vkCreateShaderModule(cfg.device,&info,nullptr,&variant->module));
     warm::register_module(variant->module,identity);
@@ -3510,7 +3511,11 @@ VkShaderModule load_module(const std::string &key,uint32_t expected_stage=0){
     optimize_shader_words(w,h.stage,base,"warm");
     // A typed storage identity declares the bound format in the module, in the
     // same order as the runtime path (after the optimizer).
-    for(const auto &entry:typed)if(xbg_typed_storage_rewrite(w,entry.first,xbg_spirv_image_format(entry.second))!=1)return VK_NULL_HANDLE;
+    std::vector<XbgTypedStorageRequest> typed_requests;
+    for(const auto &entry:typed)typed_requests.push_back({entry.first,xbg_spirv_image_format(entry.second)});
+    size_t typed_failed=0;int typed_shared=1;std::vector<uint32_t> typed_split;
+    if(xbg_typed_storage_declare(w,typed_requests,typed_failed,typed_shared,typed_split,cfg.enabled_core.shaderStorageImageExtendedFormats!=0)!=1)return VK_NULL_HANDLE;
+    validate_capabilities(w,h.stage);
     if(keep_rewritten)retain_rewritten(key,std::move(rewrite_input),w);
     VkShaderModuleCreateInfo ci{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};ci.codeSize=w.size()*4;ci.pCode=w.data();VkShaderModule m;if(vkCreateShaderModule(cfg.device,&ci,nullptr,&m)!=VK_SUCCESS)return VK_NULL_HANDLE;
     std::lock_guard<std::mutex> lock(mu);

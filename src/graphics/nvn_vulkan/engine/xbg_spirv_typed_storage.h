@@ -17,8 +17,8 @@
 // VkFormat in both forms (VUID vkCmdDispatch-OpImageWrite-04469, and the
 // typed rules 08795/08796), so the rewrite is byte-for-byte equivalent.
 //
-// Only the Image Format operand of one OpTypeImage changes here: no data-flow
-// instruction is added, removed or edited.
+// The image format and, when necessary, descriptor type references change.
+// Coordinates and written values retain their original data flow.
 
 // SPIR-V Image Format operand values. Verified on this host by disassembling
 // the real FFRS module with every candidate value (spirv-dis), not from memory.
@@ -326,9 +326,8 @@ inline uint32_t xbg_spirv_storage_min_write_components(const std::vector<uint32_
 // The VkFormat to bind for a storage binding whose bound format SPIR-V
 // cannot declare.
 //
-// SPIR-V's Image Format operand has no 16-bit or 8-bit format at all, and a
-// Buffer image only ever carries Rgba32f/i/ui. A bound view whose format has
-// no SPIR-V image format therefore cannot be declared by the module, so the
+// R8/R16 formats are declared natively when supported by the format table.
+// A bound view with no matching SPIR-V image format cannot be declared, so the
 // typed-storage rewrite cannot rescue the binding and the module stays
 // formatless. On a device without VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT
 // that is a fatal error.
@@ -388,7 +387,7 @@ inline uint32_t xbg_typed_storage_view_format_info(const XbgStorageBindingInfo &
             return info.declared_format==xbg_spirv_image_format(swapped)?swapped:native;
         return swapped;
     }
-    // The guest's format has no SPIR-V image format at all (16-bit or 8-bit).
+    // The guest's format is absent from the supported SPIR-V format table.
     // The engine then binds the format the module itself describes: the same
     // numeric class, 32 bits per component, and the component count the module
     // writes. The view and the module then describe the same texels, and the
@@ -499,6 +498,12 @@ inline void xbg_spirv_shared_image_bindings(const std::vector<uint32_t> &w,uint3
 
 inline bool xbg_spirv_format_is_extended(uint32_t spirv_format){
     switch(spirv_format){
+    case XBG_IMAGE_FORMAT_RG32F:
+    case XBG_IMAGE_FORMAT_RG32I:
+    case XBG_IMAGE_FORMAT_RG32UI:
+    case XBG_IMAGE_FORMAT_RG16F:
+    case XBG_IMAGE_FORMAT_RG16I:
+    case XBG_IMAGE_FORMAT_RG16UI:
     case XBG_IMAGE_FORMAT_R16F:
     case XBG_IMAGE_FORMAT_R16I:
     case XBG_IMAGE_FORMAT_R8I:
@@ -512,8 +517,47 @@ inline bool xbg_spirv_format_is_extended(uint32_t spirv_format){
     }
 }
 
-// Declares the bound format in the module: the Image Format operand of the
-// binding's OpTypeImage becomes spirv_format. Nothing else changes.
+// An existing typed image and UniformConstant pointer may be reused when both
+// declarations precede every variable that will take them. A later declaration
+// is refused, keeping the original module valid and unchanged.
+inline int xbg_spirv_existing_storage_types(const std::vector<uint32_t> &words,
+        const XbgStorageImageBinding &info,uint32_t format,size_t before,
+        uint32_t &image,uint32_t &pointer){
+    image=pointer=0;
+    const uint32_t image_words=words[info.image_at]>>16;
+    size_t image_offset=0;
+    for(size_t i=5;i<words.size();){
+        const uint32_t n=words[i]>>16,op=words[i]&65535u;
+        if(op==25 && n==image_words && i!=info.image_at && words[i+8]==format){
+            bool equal=true;
+            for(uint32_t j=2;j<n;++j)if(j!=8 && words[i+j]!=words[info.image_at+j])equal=false;
+            if(equal){image=words[i+1];image_offset=i;break;}
+        }
+        i+=n;
+    }
+    if(!image)return 0;
+    if(image_offset>=before)return -1;
+    for(size_t i=image_offset+(words[image_offset]>>16);i<before;){
+        const uint32_t n=words[i]>>16,op=words[i]&65535u;
+        if(op==32 && n==4 && words[i+2]==0 && words[i+3]==image){pointer=words[i+1];return 1;}
+        i+=n;
+    }
+    return -1;
+}
+
+inline void xbg_spirv_add_extended_storage_capability(std::vector<uint32_t> &words,uint32_t format){
+    if(!xbg_spirv_format_is_extended(format))return;
+    for(size_t i=5;i<words.size();){
+        const uint32_t n=words[i]>>16,op=words[i]&65535u;
+        if(op!=17)break;
+        if(words[i+1]==49)return;
+        i+=n;
+    }
+    words.insert(words.begin()+5,{2u<<16|17u,49u});
+}
+
+// Declares the bound format, reusing an existing image type when needed to
+// avoid duplicate types. Coordinates and written texels stay unchanged.
 //
 //  1 = the module was rewritten
 //  0 = the module already declares exactly this format (idempotent, unchanged)
@@ -526,13 +570,16 @@ inline bool xbg_spirv_format_is_extended(uint32_t spirv_format){
 //             on the shared type is correct for all of them. Without it a
 //             shared image type is refused, because changing its format would
 //             change another descriptor's access as well.
-inline int xbg_typed_storage_rewrite(std::vector<uint32_t> &words,uint32_t binding,uint32_t spirv_format,bool shared_ok=false){
+// allow_extended_formats is the device's enabled shaderStorageImageExtendedFormats
+// feature. The default keeps callers that already checked capabilities compatible.
+inline int xbg_typed_storage_rewrite(std::vector<uint32_t> &words,uint32_t binding,uint32_t spirv_format,bool shared_ok=false,bool allow_extended_formats=true){
     const uint32_t scalar=xbg_spirv_image_format_scalar(spirv_format);
     if(scalar>2)return -1;
     if(words.size()<5||words[0]!=0x07230203u)return -1;
     XbgStorageImageBinding info;
     if(!xbg_spirv_binding_image(words,binding,info))return -1;
     if(info.declared_format!=XBG_IMAGE_FORMAT_UNKNOWN)return info.declared_format==spirv_format?0:-1;
+    if(xbg_spirv_format_is_extended(spirv_format) && !allow_extended_formats)return -1;
     std::unordered_map<uint32_t,size_t> def;
     for(size_t i=5;i<words.size();){uint32_t n=words[i]>>16,op=words[i]&65535u;
         if(op>=19&&op<=33&&n>=2)def[words[i+1]]=i;
@@ -573,19 +620,33 @@ inline int xbg_typed_storage_rewrite(std::vector<uint32_t> &words,uint32_t bindi
         if((op==98||op==305)&&n>=4&&loaded.count(words[i+3]))return -1;
         i+=n;
     }
-    if(xbg_spirv_format_is_extended(spirv_format)){
-        bool has_cap49=false;
+    // A format change must not introduce a duplicate non-aggregate type.
+    // Retarget every descriptor that shares this image type to an existing
+    // typed declaration, retaining the old formatless type for other uses.
+    std::unordered_set<uint32_t> variables;
+    size_t first_variable=words.size();
+    for(size_t i=5;i<words.size();){
+        const uint32_t n=words[i]>>16,op=words[i]&65535u;
+        if(op==59 && n>=4){
+            auto ptr=def.find(words[i+1]);
+            if(ptr!=def.end() && (words[ptr->second]&65535u)==32 && words[ptr->second+3]==info.image_type){
+                variables.insert(words[i+2]);first_variable=std::min(first_variable,i);
+            }
+        }
+        i+=n;
+    }
+    uint32_t existing_image=0,existing_pointer=0;
+    const int existing=xbg_spirv_existing_storage_types(words,info,spirv_format,first_variable,existing_image,existing_pointer);
+    if(existing<0)return -1;
+    if(existing){
         for(size_t i=5;i<words.size();){
-            uint32_t n=words[i]>>16,op=words[i]&65535u;
-            if(op==17){if(words[i+1]==49)has_cap49=true;}else break;
+            const uint32_t n=words[i]>>16,op=words[i]&65535u;
+            if(op==59 && n>=4 && variables.count(words[i+2]))words[i+1]=existing_pointer;
+            if(op==61 && n>=4 && variables.count(words[i+3]))words[i+1]=existing_image;
             i+=n;
         }
-        if(!has_cap49){
-            words.insert(words.begin()+5,{2u<<16|17u,49u});
-            info.image_at+=2;
-        }
-    }
-    words[info.image_at+8]=spirv_format;
+    }else words[info.image_at+8]=spirv_format;
+    xbg_spirv_add_extended_storage_capability(words,spirv_format);
     return 1;
 }
 
@@ -652,13 +713,14 @@ inline bool xbg_spirv_shared_image_group(const std::vector<uint32_t> &w,std::vec
 //  1 = the binding declares the format on its own image type
 //  0 = the binding's image type is not shared: there is nothing to split
 // -1 = refused; the module is unchanged
-inline int xbg_typed_storage_split_rewrite(std::vector<uint32_t> &words,uint32_t binding,uint32_t spirv_format){
+inline int xbg_typed_storage_split_rewrite(std::vector<uint32_t> &words,uint32_t binding,uint32_t spirv_format,bool allow_extended_formats=true){
     const uint32_t scalar=xbg_spirv_image_format_scalar(spirv_format);
     if(scalar>2)return -1;
     if(words.size()<5||words[0]!=0x07230203u)return -1;
     XbgStorageImageBinding info;
     if(!xbg_spirv_binding_image(words,binding,info))return -1;
     if(info.declared_format!=XBG_IMAGE_FORMAT_UNKNOWN)return info.declared_format==spirv_format?0:-1;
+    if(xbg_spirv_format_is_extended(spirv_format) && !allow_extended_formats)return -1;
     const uint32_t components=xbg_spirv_image_format_components(spirv_format);
     if(!components)return -1;
     // The image type has to be shared, or there is nothing to split.
@@ -701,31 +763,26 @@ inline int xbg_typed_storage_split_rewrite(std::vector<uint32_t> &words,uint32_t
         }
         i+=n;
     }
-    // The new declarations: a private copy of the image type with the new
-    // format, and a pointer to it.
+    // Reuse a matching typed declaration when one is already present.
+    // Otherwise create the binding's private image and pointer types.
+    uint32_t image_type=0,pointer_type=0;
+    const int existing=xbg_spirv_existing_storage_types(words,info,spirv_format,variable->second,image_type,pointer_type);
+    if(existing<0)return -1;
     uint32_t bound=words[3];
-    const uint32_t image_type=bound++;
-    const uint32_t pointer_type=bound++;
-    const uint32_t image_decl[9]={9u<<16|25u,image_type,
-        words[info.image_at+2],words[info.image_at+3],words[info.image_at+4],
-        words[info.image_at+5],words[info.image_at+6],words[info.image_at+7],spirv_format};
-    const uint32_t pointer_decl[4]={4u<<16|32u,pointer_type,words[pointer->second+2],image_type};
-    std::vector<uint32_t> out;out.reserve(words.size()+16);
-    out.insert(out.end(),words.begin(),words.begin()+5);
-    if(xbg_spirv_format_is_extended(spirv_format)){
-        bool has_cap49=false;
-        for(size_t i=5;i<words.size();){
-            uint32_t n=words[i]>>16,op=words[i]&65535u;
-            if(op==17){if(words[i+1]==49)has_cap49=true;}else break;
-            i+=n;
-        }
-        if(!has_cap49)out.insert(out.end(),{2u<<16|17u,49u});
+    std::vector<uint32_t> declarations;
+    if(!existing){
+        image_type=bound++;pointer_type=bound++;
+        const uint32_t image_words=words[info.image_at]>>16;
+        declarations.insert(declarations.end(),words.begin()+info.image_at,words.begin()+info.image_at+image_words);
+        declarations[1]=image_type;declarations[8]=spirv_format;
+        declarations.insert(declarations.end(),{4u<<16|32u,pointer_type,words[pointer->second+2],image_type});
     }
+    std::vector<uint32_t> out;out.reserve(words.size()+declarations.size()+2);
+    out.insert(out.end(),words.begin(),words.begin()+5);
     for(size_t i=5;i<words.size();){
         const uint32_t n=words[i]>>16,op=words[i]&65535u;
         if(i==variable->second){
-            out.insert(out.end(),image_decl,image_decl+9);
-            out.insert(out.end(),pointer_decl,pointer_decl+4);
+            out.insert(out.end(),declarations.begin(),declarations.end());
         }
         const size_t at=out.size();
         out.insert(out.end(),words.begin()+i,words.begin()+i+n);
@@ -734,6 +791,7 @@ inline int xbg_typed_storage_split_rewrite(std::vector<uint32_t> &words,uint32_t
         i+=n;
     }
     out[3]=bound;
+    xbg_spirv_add_extended_storage_capability(out,spirv_format);
     words.swap(out);
     return 1;
 }
@@ -759,14 +817,16 @@ struct XbgTypedStorageRequest {
 //
 //  1 = the module declares the requested formats
 // -1 = refused; the module is unchanged
-inline int xbg_typed_storage_declare(std::vector<uint32_t> &words,const std::vector<XbgTypedStorageRequest> &requests,size_t &failed,int &shared,std::vector<uint32_t> &split){
+inline int xbg_typed_storage_declare(std::vector<uint32_t> &words,const std::vector<XbgTypedStorageRequest> &requests,size_t &failed,int &shared,std::vector<uint32_t> &split,bool allow_extended_formats=true){
     failed=0;shared=1;split.clear();
     if(requests.empty())return -1;
     if(words.size()<5||words[0]!=0x07230203u)return -1;
+    std::vector<uint32_t> candidate=words;
     std::vector<uint32_t> image_of(requests.size(),0);
     for(size_t r=0;r<requests.size();++r){
+        if(xbg_spirv_format_is_extended(requests[r].spirv_format) && !allow_extended_formats){failed=r;return -1;}
         XbgStorageImageBinding info;
-        if(!xbg_spirv_binding_image(words,requests[r].binding,info)){failed=r;return -1;}
+        if(!xbg_spirv_binding_image(candidate,requests[r].binding,info)){failed=r;return -1;}
         image_of[r]=info.image_type;
     }
     std::vector<char> handled(requests.size(),0);
@@ -778,7 +838,7 @@ inline int xbg_typed_storage_declare(std::vector<uint32_t> &words,const std::vec
         // Every descriptor that uses the shared type has to be in the group: a
         // binding that is not in it would keep the shared type formatless.
         std::vector<uint32_t> sharers;
-        xbg_spirv_shared_image_bindings(words,requests[r].binding,sharers);
+        xbg_spirv_shared_image_bindings(candidate,requests[r].binding,sharers);
         for(uint32_t other:sharers){
             bool in_group=false;
             for(size_t k:group)if(requests[k].binding==other)in_group=true;
@@ -790,17 +850,18 @@ inline int xbg_typed_storage_declare(std::vector<uint32_t> &words,const std::vec
         for(size_t k:group)if(requests[k].spirv_format!=requests[group[0]].spirv_format)same=false;
         for(size_t k:group){
             int rewritten=0;
-            if(same)rewritten=xbg_typed_storage_rewrite(words,requests[k].binding,requests[k].spirv_format,true);
+            if(same)rewritten=xbg_typed_storage_rewrite(candidate,requests[k].binding,requests[k].spirv_format,true,allow_extended_formats);
             else{
-                rewritten=xbg_typed_storage_split_rewrite(words,requests[k].binding,requests[k].spirv_format);
+                rewritten=xbg_typed_storage_split_rewrite(candidate,requests[k].binding,requests[k].spirv_format,allow_extended_formats);
                 // The first split leaves the last sharer alone on the shared
                 // type, which it can declare itself.
-                if(rewritten==0)rewritten=xbg_typed_storage_rewrite(words,requests[k].binding,requests[k].spirv_format,true);
+                if(rewritten==0)rewritten=xbg_typed_storage_rewrite(candidate,requests[k].binding,requests[k].spirv_format,true,allow_extended_formats);
                 else if(rewritten==1)split.push_back(requests[k].binding);
             }
             if(rewritten!=1&&rewritten!=0){failed=k;shared=same?1:0;return -1;}
             handled[k]=1;
         }
     }
+    words.swap(candidate);
     return 1;
 }

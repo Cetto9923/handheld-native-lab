@@ -204,7 +204,7 @@ def main():
         typed_dir.mkdir(parents=True, exist_ok=True)
         typed_spv = []
         for fixture in ('typed_storage_uint', 'typed_storage_shared_image', 'typed_storage_formatless_read',
-                        'typed_storage_game_declared'):
+                        'typed_storage_game_declared', 'typed_storage_duplicate_types'):
             spv = typed_dir / (fixture + '.spv')
             if run('typed-storage-assemble-' + fixture, [spirv_as, '--target-env', 'vulkan1.1',
                                               'tests/device/' + fixture + '.spvasm', '-o', spv]):
@@ -212,17 +212,23 @@ def main():
         typed_cxx = shutil.which('clang++') or cc
         typed_binary = out / 'test-typed-storage'
         extra_artifacts.append(typed_binary)
-        if len(typed_spv) == 4 and run('typed-storage-build', [typed_cxx, '-std=c++17', '-O1', '-g',
+        if len(typed_spv) == 5 and run('typed-storage-build', [typed_cxx, '-std=c++17', '-O1', '-g',
                                                     '-fsanitize=address,undefined', '-Wall', '-Wextra',
                                                     'tests/device/test_typed_storage.cpp', '-o', typed_binary]):
             run('typed-storage-contract', [typed_binary, typed_spv[0], typed_spv[1], typed_spv[2],
                                        typed_dir / 'typed_storage_out.spv', typed_spv[3],
-                                       typed_dir / 'typed_storage_buffer_out.spv'])
+                                       typed_dir / 'typed_storage_buffer_out.spv',
+                                       '--duplicate-types', typed_spv[4], typed_dir / 'duplicate'])
             run('typed-storage-val', [spirv_val, '--target-env', 'vulkan1.1', typed_dir / 'typed_storage_out.spv'])
-            # A formatless Buffer image that the engine had to give a 32-bit
-            # RGBA view: Rgba32ui is the only typed form a Buffer image can
-            # carry, so the rewritten module has to stay valid SPIR-V.
+            # Validate the native bound format and every extended-format case.
             run('typed-storage-buffer-val', [spirv_val, '--target-env', 'vulkan1.1', typed_dir / 'typed_storage_buffer_out.spv'])
+            for image_format in (6, 7, 9, 25, 26, 27, 28, 29, 35, 36, 37, 38, 39):
+                run('typed-storage-extended-val-' + str(image_format),
+                    [spirv_val, '--target-env', 'vulkan1.1',
+                     typed_dir / ('typed_storage_out.spv.extended-' + str(image_format) + '.spv')])
+            for variant in ('reused', 'private', 'split', 'late-source'):
+                run('typed-storage-duplicate-val-' + variant,
+                    [spirv_val, '--target-env', 'vulkan1.1', typed_dir / ('duplicate.' + variant + '.spv')])
         # The real module that crashed the 1.0.9 battle settle scene on the Honor
         # tablet (c11e2f23ff063e85) declares its own typed storage images. The game
         # data is not in the repository, so this check runs only when the module

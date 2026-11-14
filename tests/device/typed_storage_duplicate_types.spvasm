@@ -1,0 +1,42 @@
+; Two formatless bindings share an image type. Binding 13 already has the
+; R32ui image and pointer types that a rewrite of binding 11 or 12 would need.
+OpCapability Shader
+OpCapability ImageBuffer
+OpCapability StorageImageWriteWithoutFormat
+OpMemoryModel Logical GLSL450
+OpEntryPoint GLCompute %main "main"
+OpExecutionMode %main LocalSize 1 1 1
+OpDecorate %image DescriptorSet 0
+OpDecorate %image Binding 11
+OpDecorate %image2 DescriptorSet 0
+OpDecorate %image2 Binding 12
+OpDecorate %typed_image DescriptorSet 0
+OpDecorate %typed_image Binding 13
+%void = OpTypeVoid
+%fn = OpTypeFunction %void
+%uint = OpTypeInt 32 0
+%int = OpTypeInt 32 1
+%v4uint = OpTypeVector %uint 4
+%image_ty = OpTypeImage %uint Buffer 0 0 0 2 Unknown
+%ptr_image_ty = OpTypePointer UniformConstant %image_ty
+%typed_image_ty = OpTypeImage %uint Buffer 0 0 0 2 R32ui
+%ptr_typed_image_ty = OpTypePointer UniformConstant %typed_image_ty
+%image = OpVariable %ptr_image_ty UniformConstant
+%image2 = OpVariable %ptr_image_ty UniformConstant
+%typed_image = OpVariable %ptr_typed_image_ty UniformConstant
+%int_0 = OpConstant %int 0
+%uint_1 = OpConstant %uint 1
+%uint_2 = OpConstant %uint 2
+%uint_3 = OpConstant %uint 3
+%uint_4 = OpConstant %uint 4
+%main = OpFunction %void None %fn
+%entry = OpLabel
+%loaded = OpLoad %image_ty %image
+%loaded2 = OpLoad %image_ty %image2
+%loaded_typed = OpLoad %typed_image_ty %typed_image
+%texel = OpCompositeConstruct %v4uint %uint_1 %uint_2 %uint_3 %uint_4
+OpImageWrite %loaded %int_0 %texel None
+OpImageWrite %loaded2 %int_0 %texel None
+OpImageWrite %loaded_typed %int_0 %texel None
+OpReturn
+OpFunctionEnd
