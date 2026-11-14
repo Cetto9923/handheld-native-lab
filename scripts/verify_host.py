@@ -199,6 +199,9 @@ def main():
         narrow_dir = out / 'narrow-subgroup'
         run('narrow-subgroup-contract', ['bash', 'scripts/android/verify_spirv_narrow.sh', narrow_dir])
         extra_artifacts.append(narrow_dir / 'test_spirv_narrow')
+        texel_dir = out / 'texel-snapshot'
+        run('texel-snapshot-contract', ['bash', 'scripts/android/verify_texel_snapshot.sh', texel_dir])
+        extra_artifacts.append(texel_dir / 'test_texel_snapshot')
         typed_dir = out / 'typed-storage'
         typed_dir.mkdir(parents=True, exist_ok=True)
         typed_spv = []

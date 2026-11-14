@@ -22,6 +22,7 @@ extern "C" int xbg_completion_wait_selftest(char *report,size_t bytes);
 #include "xbg_spirv_integer_buffer.h"
 #include "xbg_spirv_typed_storage.h"
 #include "xbg_upload_policy.h"
+#include "xbg_texel_snapshot.h"
 // The host testable format table repeats the Vulkan format numbers; keep them
 // pinned to the headers the engine actually compiles against.
 static_assert(VK_FORMAT_R32_UINT==XBG_VK_FORMAT_R32_UINT && VK_FORMAT_R32_SINT==XBG_VK_FORMAT_R32_SINT &&
@@ -659,7 +660,8 @@ int indirect_mode=0;
 bool indirect_probe=false;FILE *indirect_probe_file=nullptr;
 struct GpuIndexedArgs {std::shared_ptr<OwnedIndirectBuffer> owned;VkDeviceSize offset=0;size_t index_bytes=0;};
 // owner denotes an independent allocation, never a view into the slot arena.
-struct PendingWriteback {uint64_t addr,bytes;Buffer buffer;const void *slot;std::shared_ptr<IndirectTemplateBatch> indirect;std::shared_ptr<void> owner;};
+uint64_t pending_writeback_version=0;
+struct PendingWriteback {uint64_t addr,bytes;Buffer buffer;const void *slot;std::shared_ptr<IndirectTemplateBatch> indirect;std::shared_ptr<void> owner;uint64_t version=++pending_writeback_version;};
 std::vector<PendingWriteback> pending_writebacks;
 bool indirect_cpu_clean(uint64_t address,uint64_t bytes){
     if(!address || !bytes || address+bytes<address)return false;
@@ -908,6 +910,12 @@ struct TexelKeyHash{size_t operator()(const TexelKey &k)const{uint64_t x=k.base*
 struct TexelResident{Buffer buffer;VkBufferView view{};uint64_t hash=0,used=0,gen=0,checked=0,check_epoch=0;};   // checked: verified in this submission
 std::unordered_map<TexelKey,TexelResident,TexelKeyHash> texel_resident[kMaxSlots];Arena texel_arena[kMaxSlots];uint64_t texel_hole_bytes[kMaxSlots]={},texel_live_bytes[kMaxSlots]={};
 bool texel_memo_enabled=true;uint64_t texel_gen=0,texel_refreshes=0,texel_fallbacks=0,texel_evictions=0,texel_hits=0;
+// Only copied, read-only graphics inputs are reused. Their destination remains
+// owned by the current recording slot, and range writes use snapshot invalidation.
+XbgTexelSnapshotCache<Buffer> texel_copy_cache;
+bool texel_copy_enabled=true;
+struct TexelCopyStats {uint64_t copies=0,hits=0,would_hits=0,copy_bytes=0,hit_bytes=0,pass_ends=0;};
+TexelCopyStats texel_copy_stats[2]; // normal graphics, diagnostic graphics
 // A copy verified earlier in this submission stays valid until an in-stream CPU write overlaps it (snapshot_invalidate
 // bumps texel_write_epoch), so a ~1 MB range bound by 558 draws is hashed once per frame, not per draw.
 uint64_t texel_write_epoch=1,texel_lo=UINT64_MAX,texel_hi=0;void texel_touch(uint64_t address,uint64_t bytes);
@@ -1421,7 +1429,7 @@ void perf_frame(){
     {texel_distinct+=texel_frame_keys.size();for(auto k:texel_frame_keys)if(texel_prev_keys.count(k))++texel_reused;texel_prev_keys.swap(texel_frame_keys);texel_frame_keys.clear();}
     if(completion_wait_enabled)fold_completion_wait_stats();
     if(perf_frame_timed)++perf_timed_frames;perf_frame_timed=perf_sample && stats.presents.load()%perf_sample==0;   // the next frame
-    {bool was=ab_frame_on;ab_frame_on=ab_enabled();tls_gate=!ab_off("tlsgate");img_fast=!ab_off("imgfast");if(was!=ab_frame_on && ab_period>0){perf=Perf{};perf.window_start=timing_clock();set_cache_hits=set_cache_misses=0;integer_texture_lookup_hits=integer_texture_lookup_misses=0;return;}}
+    {bool was=ab_frame_on;ab_frame_on=ab_enabled();tls_gate=!ab_off("tlsgate");img_fast=!ab_off("imgfast");if(was!=ab_frame_on && ab_period>0){perf=Perf{};perf.window_start=timing_clock();set_cache_hits=set_cache_misses=0;integer_texture_lookup_hits=integer_texture_lookup_misses=0;for(auto &counts:texel_copy_stats)counts=TexelCopyStats{};return;}}
     pipelines_unsaved+=size_t(warm::compiled.exchange(0));
     const uint64_t presents=stats.presents.load();
     if(pipelines_unsaved && presents>=pipeline_save_frame+300){pipeline_save_frame=presents;save_pipeline_cache();}
@@ -1489,6 +1497,13 @@ void perf_frame(){
         auto &comparison=shader_reuse_comparisons[stage][variant];
         if(comparison.attempted)xbg_logf("NVN PERF shader_reuse compare stage=%u variant=%u attempted=%llu missing=%llu compared=%llu equal=%llu mismatch=%llu",stage,variant,(unsigned long long)comparison.attempted,(unsigned long long)comparison.missing,(unsigned long long)comparison.compared,(unsigned long long)comparison.equal,(unsigned long long)comparison.mismatch);
         comparison=ShaderReuseComparison{};
+    }
+    for(unsigned mode=0;mode<2;++mode){
+        auto &counts=texel_copy_stats[mode];
+        xbg_logf("NVN PERF texelcopy normal=%u enabled=%u ab=%u copy=%.2f hit=%.2f wouldhit=%.2f copy_kb=%.2f hit_kb=%.2f passends=%.2f",
+            unsigned(mode==0),unsigned(texel_copy_enabled && !ab_off("texelcopy")),unsigned(ab_frame_on),
+            counts.copies/f,counts.hits/f,counts.would_hits/f,counts.copy_bytes/1024.0/f,counts.hit_bytes/1024.0/f,counts.pass_ends/f);
+        counts=TexelCopyStats{};
     }
     xbg_logf("NVN PERF integer_texture_lookup ab=%u hits=%llu misses=%llu",unsigned(ab_frame_on),(unsigned long long)integer_texture_lookup_hits,(unsigned long long)integer_texture_lookup_misses);
     integer_texture_lookup_hits=integer_texture_lookup_misses=0;
@@ -1617,9 +1632,10 @@ void desc_memo_reset();
 struct SnapFront{uint64_t address=0,bytes=0,epoch=0;Buffer buffer;};SnapFront snap_front[2][8192];uint64_t snapshot_epoch=1;
 uint64_t snap_front_hits=0,snap_map_hits=0,snap_invalidations=0,snap_invalidated=0;   // perf (NVN PERF snapfront)
 inline SnapFront &snap_front_for(int which,uint64_t a,uint64_t n){uint64_t x=a*0x9E3779B97F4A7C15ull^n*0xC2B2AE3D27D4EB4Full;return snap_front[which][(x^(x>>31))&8191];}
-void snapshot_reset(){snapshot_maps_reset();snapshot_maxlen=0;desc_memo_reset();++texel_write_epoch;++snapshot_epoch;last_pass_reset();}   // the guest may write memory between submissions: texel copies are re-verified
+void snapshot_reset(){snapshot_maps_reset();texel_copy_cache.reset();snapshot_maxlen=0;desc_memo_reset();++texel_write_epoch;++snapshot_epoch;last_pass_reset();}   // the guest may write memory between submissions: texel copies are re-verified
 void snapshot_invalidate(uint64_t address,uint64_t bytes){
     ++snap_invalidations;if(ab_off("snapinval"))++snapshot_epoch;
+    texel_copy_cache.invalidate(address,bytes);
     if(address<texel_hi && address+bytes>texel_lo)texel_touch(address,bytes);
     uint64_t lo=address>snapshot_maxlen?address-snapshot_maxlen:0;int which=0;
     for(auto *m:{&snapshots,&uniform_snapshots}){
@@ -1630,13 +1646,14 @@ void snapshot_invalidate(uint64_t address,uint64_t bytes){
 // GPU-resident view of a guest range whose newest content is a pending
 // (not yet written back) GPU result. The producing operation is followed by a
 // full barrier, so later reads of the view observe it in queue order.
-bool pending_view(uint64_t address,uint64_t bytes,VkDeviceSize align,Buffer &out){
+bool pending_view(uint64_t address,uint64_t bytes,VkDeviceSize align,Buffer &out,uint64_t *version=nullptr){
     if(!slots[slot_index].recording && std::any_of(pending_writebacks.begin(),pending_writebacks.end(),[](const PendingWriteback &w){return bool(w.owner);}))recording_slot();
     for(auto w=pending_writebacks.rbegin();w!=pending_writebacks.rend();++w){
         if(!(address<w->addr+w->bytes && address+bytes>w->addr))continue;
         if(address<w->addr || address+bytes>w->addr+w->bytes)return false;
         VkDeviceSize delta=address-w->addr;if(align>1 && (w->buffer.offset+delta)%align)return false;
         out=w->buffer;out.offset+=delta;out.mapped=static_cast<uint8_t*>(out.mapped)+delta;out.size=bytes;++perf.pending_views;
+        if(version)*version=w->version;
         if(w->owner)slots[slot_index].retire.objects.push_back(w->owner);
         if(!w->owner && w->slot!=&slots[slot_index]){++xviews;slots[slot_index].xview=true;
             const_cast<Slot*>(static_cast<const Slot*>(w->slot))->viewed.push_back({out.buffer,out.offset,out.offset+bytes});
@@ -2017,6 +2034,7 @@ void probe_depth_decision(const Image &image,bool in_open,bool needs_barrier,boo
 VkStencilOpState stencil(bool back);
 void probe_buffer(const std::string &shader,unsigned stage,unsigned binding,unsigned element,const void *data,size_t bytes);
 bool fire_trace_active();
+bool water_ready();
 bool fire_trace_overlap(uint64_t,uint64_t);
 void fire_trace_texel(const std::string &,unsigned,unsigned,unsigned,const Buffer &,uint64_t,uint64_t);
 void fire_trace_uniform_gpu(const std::string &,unsigned,unsigned,unsigned,const Buffer &,size_t,size_t);
@@ -4658,13 +4676,31 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                             ++write_seq;
                         }else{
                             Buffer view;
-                            if(pending_view(base,bytes,1,view)){
-                                buf=out.keep(readback_buffer(bytes));
-                                VkCommandBuffer cmd=recording_slot().cmd;
-                                end_open_pass();
-                                VkBufferCopy region{view.offset,buf->offset,bytes};
-                                vkCmdCopyBuffer(cmd,view.buffer,buf->buffer,1,&region);
-                                full_barrier(cmd);
+                            uint64_t source_version=0;
+                            if(pending_view(base,bytes,1,view,&source_version)){
+                                const bool normal=!capture.active && !capture.probe && !provenance_file &&
+                                    !pass_prof_active() && !draw_detail && !fire_trace_active() && !water_ready() &&
+                                    !flame_diag_enabled && !ubtrace.on.load(std::memory_order_relaxed);
+                                const bool cacheable=!compute && normal && graphics_attachment_only();
+                                TexelCopyStats *counts=compute?nullptr:&texel_copy_stats[normal?0:1];
+                                const XbgTexelSnapshotScope scope{slot_serial,snapshot_epoch};
+                                const XbgTexelSnapshotSource source{uint64_t(view.buffer),view.offset,source_version};
+                                Buffer copied;
+                                const bool would_hit=cacheable && texel_copy_cache.lookup(scope,base,bytes,source,copied);
+                                if(counts && would_hit)++counts->would_hits;
+                                if(would_hit && texel_copy_enabled && !ab_off("texelcopy")){
+                                    buf=out.keep(copied);
+                                    ++counts->hits;counts->hit_bytes+=bytes;
+                                }else{
+                                    buf=out.keep(readback_buffer(bytes));
+                                    VkCommandBuffer cmd=recording_slot().cmd;
+                                    const bool ended=end_open_pass();
+                                    VkBufferCopy region{view.offset,buf->offset,bytes};
+                                    vkCmdCopyBuffer(cmd,view.buffer,buf->buffer,1,&region);
+                                    full_barrier(cmd);
+                                    if(cacheable)texel_copy_cache.store(scope,base,bytes,source,*buf);
+                                    if(counts){++counts->copies;counts->copy_bytes+=bytes;counts->pass_ends+=ended;}
+                                }
                                 out.storage.push_back({{base,bytes},buf});
                                 static unsigned pv_hits=0;
                                 if(pv_hits++<20 || honor_pipeline_diagnostics)
@@ -6969,6 +7005,8 @@ vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemor
       FILE *n=fopen((base+"/gfx-warm-interval").c_str(),"rb");if(n){unsigned v=0;if(fscanf(n,"%u",&v)!=1)v=0;fclose(n);warm::interval_us=v*1000ull;}
       xbg_logf("NVN warm throttle budget_per_frame=%llu interval_ms=%llu",(unsigned long long)warm::budget_per_frame,(unsigned long long)(warm::interval_us/1000));}
      warm::start();probe_init();
+    texel_copy_cache.reset();texel_copy_enabled=true;
+    for(auto &counts:texel_copy_stats)counts=TexelCopyStats{};
     wtrack::enabled=false;state=State{};state.color.logic_op=3;state.color.alpha_func=8;for(unsigned i=0;i<8;i++)state.blend[i]={i,2,1,2,1,1,1};stats.reset();timing=XbgCpuTiming(timing_clock);pipeline_counts={};pipeline_before={};pipeline_tick=0;timing_active=false;timing_first=timing_last=0;live_profile_used=false;descriptor_detail=false;descriptor_timing=XbgDescriptorTiming{};descriptor_root=nullptr;draw_detail=false;draw_timing=XbgDrawTiming{};draw_root=nullptr;completed=0;last_attachment_trace=UINT64_MAX;sampler_mirror_clamp_enabled=VK_FALSE;failed=false;error_text[0]=0;initialized=true;
     {std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-sync-submit").c_str(),"rb");sync_submit_enabled=false;if(m){sync_submit_enabled=fgetc(m)=='1';fclose(m);}xbg_logf("NVN synchronous queue submits=%d (marker gfx-sync-submit)",int(sync_submit_enabled));
      FILE *sc=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-sem-chain").c_str(),"rb");
@@ -7177,7 +7215,7 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
       if(m){char buf[256]={0};size_t n=fread(buf,1,sizeof(buf)-1,m);buf[n]=0;fclose(m);
        auto off=[&](const char *tok,bool &flag){if(flag && strstr(buf,tok)){flag=false;xbg_logf("LIVE-OFF %s at present %llu",tok,(unsigned long long)pr);}};
        off("bindcache",bind_cache_enabled);off("imgcache",img_cache_enabled);off("descmemo",desc_memo_enabled);off("dynpartial",dyn_partial_enabled);
-       off("xmemo",xmemo_enabled);off("texelmemo",texel_memo_enabled);off("wtrack",wtrack::enabled);off("depthaspect",depth_aspect_enabled);
+       off("xmemo",xmemo_enabled);off("texelmemo",texel_memo_enabled);off("texelcopy",texel_copy_enabled);off("wtrack",wtrack::enabled);off("depthaspect",depth_aspect_enabled);
        // The GPU-resident indexed draw and the GPU-resident indirect template, switched live the same way the
        // gfx-indexed-resident=0 marker switches them at start-up: both go off together, so the guest-memory
        // source of the draw arguments can be compared with the resident source in one session.
