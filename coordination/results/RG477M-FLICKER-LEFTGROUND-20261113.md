@@ -963,3 +963,64 @@ RG477M 上 probe **每进程只能用一次**（标题屏那次已用掉）。�
 - honor 树已被另一条工作线推进到 `b6e487b`（含 `Immortalis` 等改动），本次**未触碰**该树。
 - 第三章运河广场白纱（§14）与陆行鸟异常仍未处理，根因各自独立。
 
+### 17. A/B 结果与修复落地（2026-11-14 11:06–11:26）
+
+#### 17.1 同机位 2×2 对照（同一 APK，只差一个布尔开关）
+
+| 臂 | 设备日志 | 引擎侧：全帧最强水平带状结构 | 用户肉眼 |
+|---|---|---|---|
+| A：剥离开 | `terrain drop frag depth … patched=1` | **8 行对**（group 139，3 帧完全一致） | 黑条纹**出现** |
+| B：剥离关 | `terrain drop frag depth … skipped` | **0 行对**（2 帧） | 黑条纹**消失** |
+| 修复版（auto） | `kept: the shader computes its own depth (it never reads gl_FragCoord)` | — | 黑条纹**消失** |
+
+- 同一机位（用户确认「就是这里」）、同一存档位置、同一 APK（so 仅差一个开关，480 字节）
+- 引擎侧度量：探针 color0 全分辨率 ROI 内，扫「整行纯黑 + 邻行有内容」的交替行游程；
+  A 臂在 group 139 稳定命中 8 行对，B 臂两帧全为 0
+- 缺陷在 color0（G-buffer 写入阶段）就存在，**不是合成层**；被剔除的行严格是 `(0,0,0,0)`
+  （3876 个像素只有 1 种取值）⇒ 主角那一笔被**深度测试按水平条带整行剔除**，
+  露出从未被绘制的黑色 ⇒ 玩家的「黑色横条纹」
+
+#### 17.2 机制（为什么剥离会整行剔除主角）
+
+主角着色器 `062df44b75d37d76` 的 `gl_FragDepth` 存的是**自己算出来的深度**
+（由 `OpExtInst` 从两个加载值算出），**从不读 `gl_FragCoord`**。
+剥离后，深度值从「游戏约定的深度」变成「光栅器插值 z」，与深度缓冲里
+按游戏约定写入的值不一致 ⇒ LEQUAL 比较在**深度差函数的等值线**上翻转
+⇒ 等值线在站立的角色身上正好是**一条条水平带** ⇒ 每隔一带被整行剔除。
+
+#### 17.3 修复（不再是「按 key 硬编码」，改成按数据流判定）
+
+`xbg_spirv_depth.h` 新增 `xbg_spirv_reads_fragcoord()`：
+只有当着色器**真的从 `gl_FragCoord` 变量加载过值**时，`gl_FragDepth` 才可能是
+`gl_FragCoord.z`，剥离才是语义等价的 no-op；否则保留游戏自己的深度。
+
+| 情况 | 处理 |
+|---|---|
+| 着色器读 `gl_FragCoord`（如真正的地形着色器） | 照旧剥离（保留 93ebe66 的地面闪烁修复） |
+| 着色器自己算深度（**主角**这个） | **不剥离** |
+
+- 开关 `gfx-terrain-depth` 变三态：**缺省=auto**（按数据流判定）/ `0`=永不剥离 /
+  `1`=永远剥离（= 93ebe66 旧行为，留给第三章地面闪烁的 A/B）
+- 提交：`fix(engine): keep the gl_FragDepth store for shaders that compute their own depth`
+- 回归测试：`tests/device/test_frag_depth_strip.cpp`（合成 SPIR-V 模块，
+  钉死「声明但从不读 ⇒ 不剥离」与剥离本身的完整性），
+  已注册进 `scripts/verify_host.py`（`frag-depth-strip-build` / `frag-depth-strip-contract`）
+- 分流仍按 Vulkan 设备身份（`vendorID==0x13B5` / deviceName 含 `Mali`），**不做机型硬编码**
+
+#### 17.4 真机验证
+
+- APK：`.local/android-apk/ffrs-game-window-debug.apk`，sha256 `ae57bb2cfff0ba0d…`
+- 设备日志：`NVN terrain drop frag depth=auto` →
+  `kept: the shader computes its own depth (it never reads gl_FragCoord)`
+- fps **30.00**，submit_cpu_ms 2.55，无 sync_wb/sync_rb
+- 用户肉眼：主角黑条纹**消失**（修复版默认行为，不依赖任何标记）
+
+#### 17.5 遗留与后续
+
+- **第三章运河广场地面闪烁**：本次只改变了「主角这个着色器」的深度语义，
+  真正地面的着色器若读 `gl_FragCoord` 则剥离照旧 ⇒ 地面修复不受影响；
+  但**这一条尚未在第三章机位复测**，需要用 `gfx-terrain-depth=1`（强制剥离）与
+  缺省（auto）各跑一次确认（§14.5 判读表仍然适用）
+- 运河广场白纱（§14）与陆行鸟异常仍未处理，根因各自独立
+- honor 树已被另一条工作线推进到 `b6e487b`（含 `Immortalis` 等改动），本次**未触碰**该树
+
