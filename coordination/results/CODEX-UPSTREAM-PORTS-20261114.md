@@ -1,5 +1,11 @@
 # 成熟 Switch 原生移植对照与本轮针对性优化
 
+## 1.0.21女主闪烁实玩反馈
+
+RG477M已安装21并回读APK一致，PID32442同次运行。用户完成开场复测后明确反馈“不闪烁了”，女主身体闪烁本轮用户实玩确认消失。包内同时含位置精度和clear覆盖修正，单项因果尚未分离。当前包保留为后续性能优化的画面对照。
+
+同次日志、9300帧CSV与截图保存在 `.local/codex-recovery-20261114/visual-pass21/`。截至开场首战时间轴教程弹窗的末30秒约30FPS，P95 34.20ms，P99 39.76ms。有声流尾部18次progress的xruns累计20恒定。该教程窗口的测量范围有限，移动、战斗特效与开场短断音仍待实际覆盖。
+
 ## 1.0.21候选产物
 
 源码780ebc67d4b9cfe41c7df35bc0e1a7280e0796a1，98项宿主检查与Android构建通过，28份输入构建前后摘要一致。APK `ffrs-1.0.21-preview-position-precision.apk` 保存在本地APK历史目录，3601404字节，SHA256为07f5f0368183b7fb9228c9f744fd835bf623c05fd0e86a1ecb71e13f7ec1419e。native LOAD段均16KiB对齐，ZIP检查通过。独立18份SPV校验、ASan/UBSan及注解目标集合、函数体/Fma字节、幂等核对通过，review125afed9/e2cd142d。有效fixture覆盖VS/FS/CS，Tess/Geometry有效fixture待补。两项候选修正为完整clear目标覆盖及通用位置浮点约束。

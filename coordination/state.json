@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-14T23:09:15.033304+08:00",
- "phase": "1.0.21已安装RG477M并进入真实标题画面，APK回读及存档校验通过，用户新开游戏复测女主闪烁。",
+ "updated_at": "2026-11-14T23:14:36.922851+08:00",
+ "phase": "1.0.21女主闪烁本轮用户确认消失，当前包作为新画面对照，继续音频与战斗性能。",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -9679,7 +9679,7 @@
    "archive": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/codex-recovery-20261114/branch-archive"
   },
   "baseline_apk": "9083174963c40ce1c7d1726671fa2ffd4e00f573efad516d80def5b3a10cf881",
-  "current_focus": "女主身体局部黑色栅状缺口及低帧/短断音，原18当前PID19148。",
+  "current_focus": "21女主闪烁本轮用户确认消失，保留当前包，继续实际战斗与音频卡顿定位。",
   "integration_candidate": {
    "head": "a0f402e",
    "host_checks": 87,
@@ -9985,10 +9985,11 @@
    "status": "不是性能PASS；用户仍反馈卡顿与>30秒读档"
   },
   "current_user_feedback": {
-   "at": "2026-11-14T22:47:48.010417+08:00",
-   "package": "exact 1.0.18-preview restored",
-   "rendering": "女主身上闪烁，录屏已定位局部黑色栅状缺口",
-   "cause": "18/20均复现，撤回19 UBO为唯一引入原因的假设，实际根因待证据。"
+   "at": "2026-11-14T23:14:36.922851+08:00",
+   "package": "1.0.21-preview / 07f5f036",
+   "pid": 32442,
+   "rendering": "用户确认女主不闪烁了",
+   "performance": "开场声音与战斗特效反馈待收集"
   },
   "current_candidate": {
    "source": "780ebc67d4b9cfe41c7df35bc0e1a7280e0796a1",
@@ -10003,21 +10004,25 @@
    "native_load_alignment": 16384,
    "evidence": ".local/codex-recovery-20261114/precision-build/",
    "installed": true,
-   "device_status": "TITLE_RENDERED_USER_SCENE_TEST_PENDING",
+   "device_status": "USER_CONFIRMED_OPENING_HERO_FLICKER_ABSENT",
    "changes": [
     "cba445f folded clear完整目标覆盖与3D子view保留",
     "固定DroidPlay NoContraction通用位置运算约束，默认开启，启动marker可对照"
    ],
    "pending": [
-    "女主闪烁同场景验证及因果",
-    "当前低帧/音频短卡复验",
-    "实际Mali GPU耗时与性能回归"
+    "低帧与开场声音短卡",
+    "战斗特效长帧复测",
+    "第三章水都地面及其它场景画面回归",
+    "其它机型兼容回归"
    ],
    "installed_readback_match": true,
    "pid": 32442,
    "save_before_after_sha256": "86d8a9f5f9a77604ff5d6ebde5e716169f2ac804b15306d26e72b17f26a93ae8",
    "install_evidence": ".local/codex-recovery-20261114/install-780ebc6-21-20261114-230735/",
-   "position_precision_enabled": true
+   "position_precision_enabled": true,
+   "visual_feedback_at": "2026-11-14T23:14:36.922851+08:00",
+   "visual_feedback": "用户确认不闪烁了。本轮女主身体闪烁通过用户实玩反馈，单项代码因果未分离。",
+   "visual_evidence": ".local/codex-recovery-20261114/visual-pass21/"
   },
   "control20_feedback": "用户确认剧情仍有闪烁，旧UBO回退未消除现象，不能归因为19 UBO单项。",
   "installed_baseline": {
@@ -10042,7 +10047,7 @@
    "wrapper_sha256": "1468a2c8ea4e5cbb82785577d49a1adb33b8079c84af56cbad4d1730e4ff0e73",
    "upstream_revision": "a72a85c59cac54f3428827cfb72e1adf63b1521a",
    "upstream_sha256": "768ff41d76f5f22d08cacd52d53e7d92e3e3ebf9f44d39e8f9bcb6ff225895ea",
-   "device_result": "startup enabled1及warm顶点实际marked命中；标题画面已呈现，女主/性能因果未验。",
+   "device_result": "21当前PID32442用户实玩确认女主身体不闪烁。包同时含clear修正，单项归因未分离。实际战斗性能/音频待验。",
    "default": true,
    "startup_marker": "gfx-position-precise",
    "environment": "DM_SPV_PRECISE",
