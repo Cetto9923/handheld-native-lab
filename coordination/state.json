@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-14T12:48:09.249914+08:00",
+ "updated_at": "2026-11-14T12:52:44.221260+08:00",
  "phase": "历史分支归并完成，整合APK宿主86项检查及构建通过；RG477M水都左地面两态已复现，正在逐draw连续定向取证。",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -1938,9 +1938,7 @@
    "owner": "Codex /root",
    "paths": [
     "coordination/",
-    "src/runtime/hle/",
     "src/android/",
-    "tests/",
     ".local/codex-recovery-20261114/"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
@@ -1990,6 +1988,26 @@
    "acquired_at": "2026-11-14T12:48:09.249914+08:00",
    "checkpoint": "a49c62c，初始源码干净",
    "objective": "给431a/6e2d透明层及f55c合成增加有界默认关闭的连续输入/输出采样，复用slot fence，保留正常绘制与缓存路径。",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "CODEX-HOST-PAGE-20261114",
+   "owner": "minimax_session",
+   "paths": [
+    "src/runtime/hle/address_region.c",
+    "src/runtime/hle/guest_pages.c",
+    "src/runtime/nso/nso_boot.c",
+    "tests/native/owned_pages_contract.c",
+    "tests/native/guest_pages_contract.c",
+    "tests/native/address_region_contract.c",
+    "scripts/runtime/build_guest_pages_contract.sh",
+    "scripts/runtime/test_owned_pages.py"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T12:52:44.221260+08:00",
+   "checkpoint": "1d85bbf，Mac宿主getconf PAGESIZE=16384",
+   "objective": "支持4KiB guest页在16KiB host页上的map/free，保存共享host页的邻居数据及失败恢复，以实际Mac16KiB宿主契约验证。Android目标设备验收保持NOT_RUN。",
    "write_state": "ACTIVE"
   }
  ],
@@ -5599,6 +5617,64 @@
    ],
    "acceptance": "既有typed-storage正负用例通过，新增扩展格式门禁与重复类型回归通过，实际游戏表示保持。",
    "checkpoint": "opaque-use门禁回归及真实五模块检查交回，源码已冻结。"
+  },
+  {
+   "id": "CODEX-WATER-TRACE-20261114",
+   "role": "implementer",
+   "status": "in_progress",
+   "owner": "architecture_review",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "给431a/6e2d透明层及f55c合成增加有界默认关闭的连续输入/输出采样，复用slot fence，保留正常绘制与缓存路径。",
+   "inputs": [
+    "a49c62c整合源码",
+    "固定908/PID28827水都90帧及present55574探针"
+   ],
+   "outputs": [
+    "有界定向连续采样",
+    "本轮实际输入输出索引"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_probe.inc",
+    "src/graphics/nvn_vulkan/engine/xbg_water_trace.inc"
+   ],
+   "acceptance": "默认关闭不改变绘制及缓存路径，按实际最终绑定采集，slot fence后读写，预算及范围可验证，独立源码审查后构建及真机。",
+   "checkpoint": "a49c62c，初始源码干净"
+  },
+  {
+   "id": "CODEX-HOST-PAGE-20261114",
+   "role": "implementer",
+   "status": "in_progress",
+   "owner": "minimax_session",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "支持4KiB guest页在16KiB host页上的map/free，保存共享host页的邻居数据及失败恢复，以实际Mac16KiB宿主契约验证。Android目标设备验收保持NOT_RUN。",
+   "inputs": [
+    "1d85bbf源码",
+    "b6历史不安全变更仅作对照",
+    "Mac实际16KiB host页"
+   ],
+   "outputs": [
+    "共享host页安全映射实现",
+    "真实16KiB宿主正负契约"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/runtime/hle/address_region.c",
+    "src/runtime/hle/guest_pages.c",
+    "src/runtime/nso/nso_boot.c",
+    "tests/native/owned_pages_contract.c",
+    "tests/native/guest_pages_contract.c",
+    "tests/native/address_region_contract.c",
+    "scripts/runtime/build_guest_pages_contract.sh",
+    "scripts/runtime/test_owned_pages.py"
+   ],
+   "acceptance": "guest4KiB map/free/remap零填充、邻居数据、失败rollback及既有contracts通过，Android16KiB设备验收独立记录NOT_RUN。",
+   "checkpoint": "1d85bbf，Mac宿主getconf PAGESIZE=16384"
   }
  ],
  "blockers": [
