@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-15T01:45:11.039180+08:00",
- "phase": "23已装RG，APKseed SHA/实际union1162与warm_failed0通过；已修导入存档属主权限并保留原字节，等正常保存及技能实测反馈，GPU和未知2秒帧继续未验。",
+ "updated_at": "2026-11-15T02:00:02.021307+08:00",
+ "phase": "用户明确授权Git发布23及给包，root整理既有公开仓库预览Release。掌机充电，保存/技能真机补测待恢复。",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -2877,6 +2877,33 @@
    "checkpoint": "root独占RG，正常保存文件内容与原包均保持。",
    "write_state": "FROZEN_HANDED_BACK",
    "released_at": "2026-11-15T01:45:11.039180+08:00"
+  },
+  {
+   "task": "CODEX-RELEASE23-20261115",
+   "owner": "root",
+   "paths": [
+    ".local/releases/1.0.23/FFRS-1.0.23-preview-20261115.apk",
+    ".local/releases/1.0.23/FFRS-1.0.23-preview-20261115.apk.sha256",
+    ".local/releases/1.0.23/publication/",
+    "coordination/results/CODEX-RELEASE23-20261115.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T02:00:02.021307+08:00",
+   "checkpoint": "根串行发布，独立审计只读。",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "CODEX-RELEASE23-AUDIT-20261115",
+   "owner": "perf_cpu",
+   "paths": [
+    ".local/releases/1.0.23/audit/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T02:00:02.021307+08:00",
+   "checkpoint": "根串行发布，独立审计只读。",
+   "write_state": "ACTIVE"
   }
  ],
  "tasks": [
@@ -8169,7 +8196,63 @@
     ".local/codex-recovery-20261114/stutter22-user-video/seed-build/save-owner-repair/"
    ],
    "acceptance": "保存原字节/摘要/metadata与恢复点，标题画面停止进程消除并发写，由run-as复制同字节stage后原子替换属主，逐字节校验保持；不改原游戏包与原始输入。随后正常入口验证保存，未落盘的旧内存进度不冒充已恢复。",
-   "checkpoint": "已确认mode2 errno13。标题quiescent后保全原文件，GameSaveData0/1内容SHA与mtime相同，UID从2000变10174，读写open不写数据退出0；普通游戏保存结果问询已发。"
+   "checkpoint": "用户回复掌机没电、充电后再测，正常游戏保存NOT_RUN。23及权限恢复检查点均保留。"
+  },
+  {
+   "id": "CODEX-RELEASE23-20261115",
+   "owner": "root",
+   "role": "RELEASE",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "按用户明确指令向既有GitHub仓库发布当前23预览版源码标签及APK，校验远端附件并交付。",
+   "inputs": [
+    "用户明确先发布当前版本、GIT上发布并给包",
+    "origin Cetto9923/handheld-native-lab public/push permission true",
+    "23APK845d1c4c，build/source dd76193，101host及Android0",
+    "当前持续GPU/声音/转场停顿与正常保存复测未完成"
+   ],
+   "outputs": [
+    ".local/releases/1.0.23/FFRS-1.0.23-preview-20261115.apk",
+    ".local/releases/1.0.23/FFRS-1.0.23-preview-20261115.apk.sha256",
+    ".local/releases/1.0.23/publication/",
+    "coordination/results/CODEX-RELEASE23-20261115.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/releases/1.0.23/FFRS-1.0.23-preview-20261115.apk",
+    ".local/releases/1.0.23/FFRS-1.0.23-preview-20261115.apk.sha256",
+    ".local/releases/1.0.23/publication/",
+    "coordination/results/CODEX-RELEASE23-20261115.md"
+   ],
+   "acceptance": "仅发布自有已提交源码与明确授权APK，保存历史版本；preview标签与包一致、发布说明真实限定验证范围。worker仅写audit目录，禁设备/Git修改/上传/源码/coord。root不用main/master提交或推送。",
+   "checkpoint": "只读远端已验证，准备release notes与附件后发布；用户掌机没电充电，真机验证待恢复。"
+  },
+  {
+   "id": "CODEX-RELEASE23-AUDIT-20261115",
+   "owner": "perf_cpu",
+   "role": "READ_ONLY_RELEASE_AUDIT",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "只读复核本轮拟推送历史与APK附件，验证公开发布内容、版本/哈希/源码一致性与已知问题范围。",
+   "inputs": [
+    "用户明确先发布当前版本、GIT上发布并给包",
+    "origin Cetto9923/handheld-native-lab public/push permission true",
+    "23APK845d1c4c，build/source dd76193，101host及Android0",
+    "当前持续GPU/声音/转场停顿与正常保存复测未完成"
+   ],
+   "outputs": [
+    ".local/releases/1.0.23/audit/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/releases/1.0.23/audit/"
+   ],
+   "acceptance": "仅发布自有已提交源码与明确授权APK，保存历史版本；preview标签与包一致、发布说明真实限定验证范围。worker仅写audit目录，禁设备/Git修改/上传/源码/coord。root不用main/master提交或推送。",
+   "checkpoint": "只读远端已验证，准备release notes与附件后发布；用户掌机没电充电，真机验证待恢复。"
   }
  ],
  "blockers": [

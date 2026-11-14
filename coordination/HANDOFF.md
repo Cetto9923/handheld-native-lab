@@ -4611,3 +4611,11 @@ C4 帧内 desc memo 比对的是 buffer 身份而非内容、C5 客机侧数据�
 游戏内正常保存尚未完成验收。已向用户请求通过游戏内系统菜单保存并反馈成功提示。用户已开始在城内操作，root取消刚打开的Load Data界面后明确继续由用户操作；后续不可在同一时段抢输入。当前GameSaveData0/1仍是修复时相同内容，尚未观察到正常写入。后续收到保存结果后，拉当前guest log核实际mode2写入与文件时间/大小/摘要，再核PID重开读档。原失败那轮内存进度未宣称恢复。
 
 23数据在seed-build/device23/，当前engine-session-23537.log及frames-23537.csv只属于该PID。已载入第3章slot01，最后截图在旅店门外城内。原GPU90在22 PID18193完成90帧9810项完整、无skip；top混合HDR15.15ms、深度5.31ms、compute5.65ms是profile菜单路径。独立报告gpu-review/review.md SHA9f5d2dab，不外推normal或主动技能。持续GPU负荷、未知2秒帧、音频短卡及原速60FPS目标仍未完成。
+
+## 充电等待与用户授权Git发布
+
+用户回复掌机没电，充电后再说。正常游戏保存和技能复测继续待测，后续恢复真机时重新核对进程与场景。本轮发布操作使用主机和既有GitHub仓库。
+
+用户随后明确要求先发布当前版本、GIT上发布并给包，已授权本次源码推送、标签和Release附件上传。目标既有公开仓库Cetto9923/handheld-native-lab，发布v1.0.23-preview，标签指向精确构建源dd76193。仅推当前开发分支与该版本标签，main/master保持只读。5份未提交诊断WIP继续隔离。
+
+发布包.local/releases/1.0.23/FFRS-1.0.23-preview-20261115.apk与历史23包同字节3679303B、SHA845d1c4c。说明和计划在同目录publication/，独立公开内容审计在audit/。说明明确101项host、Android构建、设备1162预热成功，GPU/声音/转场及整体提帧和保存/其它机型回归继续待测。当前正在完成发布审计及远端上传验证。
