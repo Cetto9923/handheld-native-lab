@@ -202,6 +202,13 @@ def main():
         texel_dir = out / 'texel-snapshot'
         run('texel-snapshot-contract', ['bash', 'scripts/android/verify_texel_snapshot.sh', texel_dir])
         extra_artifacts.append(texel_dir / 'test_texel_snapshot')
+        indirect_binary = out / 'test-draw-indirect-plan'
+        extra_artifacts.append(indirect_binary)
+        if run('draw-indirect-plan-build', [cc, '-std=c11', '-Wall', '-Wextra', '-Werror',
+                                          '-fsanitize=address,undefined',
+                                          'src/graphics/nvn_vulkan/engine/xbg_draw_plan.c',
+                                          'tests/device/test_draw_indirect_plan.c', '-o', indirect_binary]):
+            run('draw-indirect-plan-contract', [indirect_binary])
         typed_dir = out / 'typed-storage'
         typed_dir.mkdir(parents=True, exist_ok=True)
         typed_spv = []

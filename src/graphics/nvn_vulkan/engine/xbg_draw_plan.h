@@ -8,7 +8,8 @@ extern "C" {
  * index_type=-1 is non-indexed, otherwise NVN 0/1/2 = u8/u16/u32.
  * Signed base_vertex is preserved. Existing backend counts/firstInstance are
  * signed 32-bit NVN arguments, so unsigned indirect values above INT32_MAX are
- * rejected explicitly instead of wrapping. Zero count/instances is a no-op. */
+ * rejected explicitly instead of wrapping. Zero count/instances produces a
+ * normalized no-op before checking unused offsets or index addresses. */
 typedef struct xbg_draw_call {
     int32_t primitive,index_type,first,count,instances,base_instance,base_vertex;
     uint64_t index_address;

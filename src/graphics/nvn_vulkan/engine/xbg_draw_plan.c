@@ -14,6 +14,12 @@ int xbg_draw_indirect_plan(xbg_draw_call *out,int32_t primitive,int32_t index_ty
     if(!out || !arguments || index_type< -1 || index_type>2)return -1;
     size_t bytes=index_type<0?16:20;if(argument_bytes<bytes)return -2;
     uint32_t v[5]={0};memcpy(v,arguments,bytes);
+    if(!v[0] || !v[1]){
+        /* Empty draws consume neither vertex/index addresses nor instance
+         * offsets. Culled records may retain sentinel bits in those fields. */
+        xbg_draw_call empty={primitive,index_type,0,0,0,0,0,0};
+        *out=empty;return 0;
+    }
     if(v[0]>INT32_MAX || v[1]>INT32_MAX || v[index_type<0?3:4]>INT32_MAX || (index_type<0 && v[2]>INT32_MAX))return -3;
     xbg_draw_call p={primitive,index_type,index_type<0?(int32_t)v[2]:0,(int32_t)v[0],(int32_t)v[1],(int32_t)v[index_type<0?3:4],0,0};
     if(index_type>=0){
