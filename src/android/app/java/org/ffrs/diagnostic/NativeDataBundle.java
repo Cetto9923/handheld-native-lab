@@ -121,6 +121,54 @@ public final class NativeDataBundle {
         return hexBytes(digest().digest((c.indexSha + "\n" + c.nativeSha).getBytes(StandardCharsets.UTF_8)));
     }
 
+    /** Stage a build-validated APK warm list. The caller owns the input stream. */
+    public static void stageApkPipelineWarmSeed(InputStream source, File runtime) throws IOException {
+        if (runtime == null || Files.isSymbolicLink(runtime.toPath()) || !runtime.isDirectory())
+            throw new IOException("Runtime directory unavailable for APK warm seed");
+        File seed = new File(runtime, "apk-pipeline-warm.seed");
+        if (Files.isSymbolicLink(seed.toPath())) throw new IOException("Linked APK warm seed refused");
+        File temp = File.createTempFile(".apk-warm-seed-", ".tmp", runtime);
+        try {
+            MessageDigest hash = digest(); long copied = 0;
+            try (FileOutputStream output = new FileOutputStream(temp)) {
+                byte[] buffer = new byte[128 * 1024]; int length;
+                while ((length = source.read(buffer)) != -1) {
+                    // The native warm-list reader accepts files strictly below 64 MiB.
+                    if (length >= 64L * 1024 * 1024 - copied)
+                        throw new IOException("APK warm seed exceeds the native size limit");
+                    output.write(buffer, 0, length); hash.update(buffer, 0, length); copied += length;
+                }
+                if (copied == 0) throw new IOException("Empty APK warm seed");
+                output.getFD().sync();
+            }
+            // Check complete record framing. Pipeline recipes and shader identities
+            // are validated by the packaging gate and the native warm-list reader.
+            try (RandomAccessFile input = new RandomAccessFile(temp, "r")) {
+                while (input.getFilePointer() < copied) {
+                    if (copied - input.getFilePointer() < 8
+                            || Integer.reverseBytes(input.readInt()) != 0x57504c58)
+                        throw new IOException("Invalid APK warm record header");
+                    int stages = Integer.reverseBytes(input.readInt());
+                    if (stages < 1 || stages > 5) throw new IOException("Invalid APK warm stage count");
+                    for (int stage = 0; stage < stages; ++stage) {
+                        int length = Integer.reverseBytes(input.readInt());
+                        if (length < 16 || length > 256 || length > copied - input.getFilePointer())
+                            throw new IOException("Invalid APK warm shader identity length");
+                        input.seek(input.getFilePointer() + length);
+                    }
+                    int words = Integer.reverseBytes(input.readInt());
+                    if (words < 1 || words > 4096 || words * 4L > copied - input.getFilePointer())
+                        throw new IOException("Invalid APK warm pipeline length");
+                    input.seek(input.getFilePointer() + words * 4L);
+                }
+            }
+            String incoming = hexBytes(hash.digest());
+            if (seed.isFile() && seed.length() == copied && incoming.equals(fileSha(seed, null))) return;
+            Files.move(temp.toPath(), seed.toPath(), StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING);
+        } finally { Files.deleteIfExists(temp.toPath()); }
+    }
+
     /** Stage only a contract-pinned warm list; never replace learned runtime history. */
     public static void stagePipelineWarmSeed(File data, File runtime, Contract c, Cancel cancel) throws IOException {
         String expected = c.required.get("pipeline-warm-list.bin");

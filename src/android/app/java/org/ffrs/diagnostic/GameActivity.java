@@ -10,6 +10,7 @@ import android.media.AudioDeviceInfo;
 import android.os.Handler;
 import android.os.Looper;
 import android.content.Context;
+import android.content.res.AssetManager;
 import android.graphics.Canvas;
 import android.graphics.Insets;
 import android.graphics.Paint;
@@ -2842,7 +2843,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         GameWindowNative.setProfileTargetFps(selectedDeviceProfile.targetFps,
                 selectedDeviceProfile.usesDockedRendering());
         String log_path = files == null ? null : new File(files, "guest_boot.log").getAbsolutePath();
-        Thread guest = new Thread(new GuestBootTask(image, romfs, log_path, saveRoot), "ffrs-guest");
+        Thread guest = new Thread(new GuestBootTask(image, romfs, log_path, saveRoot, getAssets(), files), "ffrs-guest");
         guest.start();
     }
 
@@ -2851,15 +2852,27 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         private final String image;
         private final String romfs;
         private final String log_path, saveRoot;
-        GuestBootTask(String image, String romfs, String log_path, String saveRoot) {
+        private final AssetManager assets;
+        private final File runtime;
+        GuestBootTask(String image, String romfs, String log_path, String saveRoot,
+                      AssetManager assets, File runtime) {
             this.image = image;
             this.romfs = romfs;
             this.log_path = log_path;
             this.saveRoot = saveRoot;
+            this.assets = assets;
+            this.runtime = runtime;
         }
         @Override public void run() {
             long thread = -1;
             try {
+                try (java.io.InputStream seed = assets.open("pipeline-warm-list.bin")) {
+                    NativeDataBundle.stageApkPipelineWarmSeed(seed, runtime);
+                } catch (java.io.FileNotFoundException missing) {
+                    Log.i(TAG, "APK pipeline warm seed absent");
+                } catch (java.io.IOException | SecurityException error) {
+                    Log.w(TAG, "APK pipeline warm seed unavailable; continuing guest startup", error);
+                }
                 thread = saveRoot == null ? GameWindowNative.nativeStartGuest(image, romfs, log_path,
                         GUEST_QUOTA_BYTES, GUEST_STACK_BYTES, GUEST_RESOURCE_BYTES, new String[0])
                         : GameWindowNative.nativeStartInstalledGuest(image, romfs, log_path,

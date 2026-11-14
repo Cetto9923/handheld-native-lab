@@ -354,6 +354,11 @@ def main():
                   flush=True)
     else:
         print('typed-storage-contract: SKIPPED, spirv-as and spirv-val are not installed', flush=True)
+    run('warm-list-identity-contract', [sys.executable, '-m', 'unittest',
+                                       'tests.installer.test_pipeline_warm_inspector',
+                                       'tests.installer.test_pipeline_warm_index'])
+    run('apk-warm-seed-contract', [sys.executable, '-m', 'unittest',
+                                  'tests.installer.test_apk_pipeline_warm_seed'])
     run('engine-log-rotation', [sys.executable, '-m', 'unittest', 'tests.installer.test_engine_log_rotation'])
     run('present-outcome', [sys.executable, '-m', 'unittest', 'tests.installer.test_present_outcome'])
     probe = out / 'probe-build'

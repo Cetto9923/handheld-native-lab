@@ -3811,6 +3811,11 @@ void start(){
     // Prioritize the most recently learned records within the bounded word
     // cache. Supplemental seeds remain available after the learned work.
     std::reverse(recs.begin(),recs.end());
+    // Portable recipes bundled with an APK supplement the device's learned
+    // history. Each device compiles its own compatible Vulkan pipelines.
+    std::string apk_seed=list_path();
+    apk_seed.resize(apk_seed.find_last_of('/')+1);
+    load_records(apk_seed+"apk-pipeline-warm.seed");
     load_records(std::string(cfg.shader_directory)+"/vk-pipeline-list.seed");
     if(const char *seed_env=getenv("FFRS_WARM_LIST_SEED")){if(strcmp(seed_env,list_path().c_str())!=0)load_records(seed_env);}
     xbg_logf("NVN warm list=%zu enabled=%d",recs.size(),int(enabled));

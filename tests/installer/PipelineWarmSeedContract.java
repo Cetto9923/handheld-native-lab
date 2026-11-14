@@ -26,6 +26,105 @@ public final class PipelineWarmSeedContract {
         try { action.run(); } catch (IOException expected) { failed = true; }
         check(failed, "invalid seed accepted");
     }
+    static byte[] apkSeed() throws Exception {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        DataOutputStream output = new DataOutputStream(bytes);
+        int[] header = {0x57504c58, 1, 16};
+        for (int value : header) output.writeInt(Integer.reverseBytes(value));
+        output.write("0123456789abcdef".getBytes("US-ASCII"));
+        int[] words = {10, 1, 0, 0, 0, 0, 1, 0, 16, 0x2e171b5f, 0xbfad94ed};
+        for (int value : words) output.writeInt(Integer.reverseBytes(value));
+        return bytes.toByteArray();
+    }
+    static final class OwnedInput extends ByteArrayInputStream {
+        boolean closed;
+        OwnedInput(byte[] bytes) { super(bytes); }
+        @Override public void close() throws IOException { closed = true; super.close(); }
+    }
+    static void noApkTemps(File runtime) {
+        for (String name : runtime.list())
+            check(!name.startsWith(".apk-warm-seed-"), "APK temporary file leaked");
+    }
+    static void apkContracts(File root) throws Exception {
+        final byte[] good = apkSeed();
+        final File legacy = new File(root, "legacy-runtime");
+        final File managed = new File(root, "managed/runtime/version-fixture");
+        final byte[] learned = {41, 42, 43}, dataSeed = {51, 52, 53};
+        for (File runtime : new File[]{legacy, managed}) {
+            check(runtime.mkdirs(), "APK runtime fixture");
+            File shaders = new File(runtime, "shaders"); check(shaders.mkdir(), "APK shader fixture");
+            File history = new File(runtime, "vk-pipeline-list.bin");
+            File bundled = new File(shaders, "vk-pipeline-list.seed");
+            Files.write(history.toPath(), learned); Files.write(bundled.toPath(), dataSeed);
+            OwnedInput input = new OwnedInput(good);
+            NativeDataBundle.stageApkPipelineWarmSeed(input, runtime);
+            check(!input.closed, "stager closed the caller's stream"); input.close();
+            File seed = new File(runtime, "apk-pipeline-warm.seed");
+            check(Arrays.equals(Files.readAllBytes(seed.toPath()), good), "APK seed bytes differ");
+            check(Arrays.equals(Files.readAllBytes(history.toPath()), learned)
+                    && Arrays.equals(Files.readAllBytes(bundled.toPath()), dataSeed), "existing warm data changed");
+            check(runtime.list().length == 3, "APK staging wrote an unexpected file"); noApkTemps(runtime); passed++;
+            check(seed.setLastModified(1600000000000L), "fixture timestamp");
+            NativeDataBundle.stageApkPipelineWarmSeed(new ByteArrayInputStream(good), runtime);
+            check(seed.lastModified() == 1600000000000L, "identical APK seed was rewritten"); passed++;
+        }
+        final File seed = new File(legacy, "apk-pipeline-warm.seed");
+        byte[] updated = new byte[good.length * 2];
+        System.arraycopy(good, 0, updated, 0, good.length);
+        System.arraycopy(good, 0, updated, good.length, good.length);
+        NativeDataBundle.stageApkPipelineWarmSeed(new ByteArrayInputStream(updated), legacy);
+        check(Arrays.equals(Files.readAllBytes(seed.toPath()), updated), "APK seed update not installed"); passed++;
+        for (int length = 0; length < good.length; ++length) {
+            final byte[] truncated = Arrays.copyOf(good, length);
+            refuse(() -> NativeDataBundle.stageApkPipelineWarmSeed(new ByteArrayInputStream(truncated), legacy));
+            check(Arrays.equals(Files.readAllBytes(seed.toPath()), updated), "truncation damaged APK seed");
+            noApkTemps(legacy);
+        }
+        passed++;
+        for (int offset : new int[]{0, 4, 8, 28}) {
+            final byte[] malformed = good.clone();
+            Arrays.fill(malformed, offset, offset + 4, (byte) 0xff);
+            refuse(() -> NativeDataBundle.stageApkPipelineWarmSeed(new ByteArrayInputStream(malformed), legacy));
+            check(Arrays.equals(Files.readAllBytes(seed.toPath()), updated), "malformed record damaged APK seed");
+            noApkTemps(legacy);
+        }
+        byte[] tail = Arrays.copyOf(good, good.length + 1);
+        refuse(() -> NativeDataBundle.stageApkPipelineWarmSeed(new ByteArrayInputStream(tail), legacy));
+        noApkTemps(legacy); passed++;
+        InputStream broken = new InputStream() {
+            int reads;
+            @Override public int read() throws IOException { throw new IOException("injected read failure"); }
+            @Override public int read(byte[] b, int offset, int length) throws IOException {
+                if (++reads > 1) throw new IOException("injected read failure");
+                System.arraycopy(good, 0, b, offset, 11); return 11;
+            }
+        };
+        refuse(() -> NativeDataBundle.stageApkPipelineWarmSeed(broken, legacy));
+        check(Arrays.equals(Files.readAllBytes(seed.toPath()), updated), "I/O failure damaged APK seed");
+        noApkTemps(legacy); passed++;
+        InputStream oversized = new InputStream() {
+            long remaining = 64L * 1024 * 1024;
+            @Override public int read() { if (remaining == 0) return -1; --remaining; return 0; }
+            @Override public int read(byte[] b, int offset, int length) {
+                if (remaining == 0) return -1;
+                int n = (int) Math.min(remaining, length); Arrays.fill(b, offset, offset + n, (byte) 0);
+                remaining -= n; return n;
+            }
+        };
+        refuse(() -> NativeDataBundle.stageApkPipelineWarmSeed(oversized, legacy));
+        check(Arrays.equals(Files.readAllBytes(seed.toPath()), updated), "oversize damaged APK seed");
+        noApkTemps(legacy); passed++;
+        final File unavailable = new File(root, "not-a-runtime"); Files.write(unavailable.toPath(), learned);
+        refuse(() -> NativeDataBundle.stageApkPipelineWarmSeed(new ByteArrayInputStream(good), unavailable));
+        check(Arrays.equals(Files.readAllBytes(unavailable.toPath()), learned), "unavailable runtime modified"); passed++;
+        final File moveFailure = new File(root, "move-failure"); check(moveFailure.mkdir(), "move fixture");
+        File destination = new File(moveFailure, "apk-pipeline-warm.seed"); check(destination.mkdir(), "seed directory fixture");
+        File sentinel = new File(destination, "keep"); Files.write(sentinel.toPath(), learned);
+        refuse(() -> NativeDataBundle.stageApkPipelineWarmSeed(new ByteArrayInputStream(good), moveFailure));
+        check(Arrays.equals(Files.readAllBytes(sentinel.toPath()), learned), "failed replace damaged destination");
+        check(moveFailure.list().length == 1, "failed replace left extra files"); noApkTemps(moveFailure); passed++;
+        refuse(() -> NativeDataBundle.stageApkPipelineWarmSeed(new ByteArrayInputStream(good), null)); passed++;
+    }
     public static void main(String[] args) throws Exception {
         final File root = new File(args[0]);
         check(root.mkdirs(), "choose a fresh fixture directory");
@@ -80,6 +179,7 @@ public final class PipelineWarmSeedContract {
         Files.createSymbolicLink(source.toPath(), linked.toPath());
         refuse(() -> NativeDataBundle.stagePipelineWarmSeed(data, runtime, c, null));
         check(Arrays.equals(Files.readAllBytes(linked.toPath()), good), "linked source changed"); passed++;
+        apkContracts(root);
         System.out.println("pipeline seed staging contracts passed=" + passed + "; fixture only, no GPU/gameplay acceptance");
     }
 }

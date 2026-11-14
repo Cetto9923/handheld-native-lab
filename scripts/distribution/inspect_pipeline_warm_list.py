@@ -13,6 +13,16 @@ import re
 import struct
 
 
+# Matches xbg_spirv_image_format in xbg_spirv_typed_storage.h. Identity recipes
+# store actual VkFormat values, including formats with a different SPIR-V enum.
+SPIRV_IMAGE_FORMATS = {
+    13: 39, 14: 29, 20: 37, 21: 27, 41: 32, 42: 23,
+    74: 38, 75: 28, 76: 9, 81: 36, 82: 26, 83: 7,
+    95: 31, 96: 22, 97: 2, 98: 33, 99: 24, 100: 3,
+    101: 35, 102: 25, 103: 6, 107: 30, 108: 21, 109: 1,
+}
+
+
 def module_id(key):
     # Matches warm::fnv in the project engine, including its offset basis.
     value = 1469598103934665603
@@ -62,21 +72,35 @@ def archive_keys(path):
 
 
 def shader_source_key(identity):
-    if re.fullmatch('[0-9a-f]{16}', identity):
-        return identity
-    match = re.fullmatch(r'([0-9a-f]{16}):ib1:([0-9_,]+)', identity)
-    if not match:
+    if not 16 <= len(identity) <= 256:
         raise ValueError('invalid shader key')
-    previous = -1
-    for item in match.group(2).split(','):
-        pair = item.split('_')
-        if len(pair) != 2 or any(not re.fullmatch(r'0|[1-9][0-9]*', part) for part in pair):
-            raise ValueError('invalid shader specialization')
-        binding, format_value = map(int, pair)
-        if binding > 0xffffffff or binding <= previous or format_value not in (74, 98):
-            raise ValueError('unsupported shader specialization')
-        previous = binding
-    return match.group(1)
+    parts = identity.split(':')
+    if not re.fullmatch('[0-9a-f]{16}', parts[0]) or len(parts) % 2 != 1:
+        raise ValueError('invalid shader key')
+    family_order = {'ib1': 0, 'stb1': 1, 'vin1': 2}
+    previous_family = -1
+    for at in range(1, len(parts), 2):
+        family, recipe = parts[at:at + 2]
+        order = family_order.get(family, -1)
+        if order <= previous_family:
+            raise ValueError('invalid shader specialization family order')
+        previous_family = order
+        previous_binding = -1
+        for item in recipe.split(','):
+            match = re.fullmatch(r'(0|[1-9][0-9]*)_(0|[1-9][0-9]*)', item)
+            if not match:
+                raise ValueError('invalid shader specialization')
+            binding, format_value = map(int, match.groups())
+            if binding > 0xffffffff or format_value > 0xffffffff or binding <= previous_binding:
+                raise ValueError('invalid shader specialization values')
+            if family == 'ib1' and format_value not in (74, 98):
+                raise ValueError('unsupported integer shader specialization')
+            if family == 'stb1' and format_value not in SPIRV_IMAGE_FORMATS:
+                raise ValueError('unsupported typed shader specialization')
+            if family == 'vin1' and (binding >= 16 or format_value > 2):
+                raise ValueError('unsupported vertex input specialization')
+            previous_binding = binding
+    return parts[0]
 
 
 def inspect(data, available_keys=None):
