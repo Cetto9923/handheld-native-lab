@@ -50,3 +50,18 @@
 - `.local/codex-recovery-20261114/baseline-908-water-probe/capture/` 为同PID的present55574。正确解码RGBA16F后，g140 的 `431a/6e2d` 单绘制、2实例给左铺地区域加入灰白透明层，右侧基本中性。g149 的 `f55c` 合成符合 `scene.rgb * trans.a + trans.rgb`，左侧逐像素MAE为0.00127。
 - 单帧探针改变调度，尚缺连续实际输入/输出证明时间闪烁根因。旧PID7533四帧路径与本次不同，最终左地面跨度仅1.16，不能与当前数据混用。
 - 已显式撤回“旧聚合draw census相同可排除所有绘制/顺序差异”和“旧uniform哈希相同可排除所有实际输入变化”。下一步使用有界、现有slot fence退休的定向连续采样。
+
+## 16KiB 主机页与4KiB客体子页
+
+- 提交 `3c42368` 支持在一个16KiB主机页上保留多个4KiB客体分配。释放共享边界时只清目标字节，整页匿名内存继续保持懒分配。失败回滚只恢复新开放的主机页。
+- 实际 Mac 主机页为16384。实现者及总控分别执行 guest normal 128项、recovery 244项检查，8种注入失败情形全部通过，最终ticket、charged和raw region归零。旧owned-page和address-region契约通过。
+- 特制负控把rollback恢复为覆盖活邻居的整段span，新测试以退出1拒绝，证明能够捕获原b6类错误。证据在 `.local/worker-host-page-20261114/checkpoint-final.json`，总控复跑在 `.local/codex-recovery-20261114/host-page-review/manifest.json`。
+- 物理MMU权限仍按主机页生效。同主机页的活邻居保持RW时，已释放4KiB子页无法独立设为NONE。Android16KiB及天玑9400实际设备尚未测试，不能据宿主契约宣称该设备游戏问题已修复。
+
+## RG477M 16通道子组归约实证
+
+- 公开上游 `enjoyerofslop/droidplay-core` revision `51a20c51efb9125c0e344ba21aa4d4dafcaffa31` 提供MIT许可的 `dm/android/spv_narrow.h` 及独立GPU归约用例。已保存URL、revision、许可证和源码摘要。
+- 固定 RG477M01445122、Mali-G615 MC6、subgroup16，在游戏PID28827保持运行期间，独立用例三次原始求和均为 `0x463c3a`，期待 `0x231e1d`，重复两倍。上游修正后三轮求和、最小值、最大值和OR均通过。原始及重写模块都通过spirv-val。
+- 对本次水都present55574实际使用的27个compute模块，5个需要窄子组改写，其中2个匹配归约步骤，包含粒子计数 `b673e10f3da2451c`。5份原始和5份重写均通过验证，没有未匹配步骤。
+- 独立设备用例和日志在 `.local/codex-recovery-20261114/upstream-narrow/device-plan.json`；当前场景模块检查在 `.local/codex-recovery-20261114/narrow-active-modules/summary.json`。本问题与水都时间闪烁的关联仍待同包A/B。
+- 该上游也记录本游戏Odin2实际开场及三次战斗，包含Bahamut召唤，仍有近景火焰块、岩石条纹和水平线。应复用其逐格式、子组、内存的可重复测试方法，跨设备结果继续按具体芯片与驱动登记。[游戏记录](https://github.com/enjoyerofslop/droidplay-core/blob/51a20c51efb9125c0e344ba21aa4d4dafcaffa31/dm/games/0100606026F12000/README.md)

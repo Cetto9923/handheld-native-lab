@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-14T12:52:44.221260+08:00",
+ "updated_at": "2026-11-14T13:17:39.088195+08:00",
  "phase": "历史分支归并完成，整合APK宿主86项检查及构建通过；RG477M水都左地面两态已复现，正在逐draw连续定向取证。",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -1986,9 +1986,9 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-14T12:48:09.249914+08:00",
-   "checkpoint": "a49c62c，初始源码干净",
+   "checkpoint": "源码冻结，NDK单翻译单元语法检查通过，独立只读review的I/O及dynamic support问题已修。",
    "objective": "给431a/6e2d透明层及f55c合成增加有界默认关闭的连续输入/输出采样，复用slot fence，保留正常绘制与缓存路径。",
-   "write_state": "ACTIVE"
+   "write_state": "RELEASED"
   },
   {
    "task": "CODEX-HOST-PAGE-20261114",
@@ -2006,8 +2006,43 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-14T12:52:44.221260+08:00",
-   "checkpoint": "1d85bbf，Mac宿主getconf PAGESIZE=16384",
+   "checkpoint": "3c42368已提交。实现者和总控在Mac真实16KiB宿主分别复跑128/244检查通过，Android设备NOT_RUN。",
    "objective": "支持4KiB guest页在16KiB host页上的map/free，保存共享host页的邻居数据及失败恢复，以实际Mac16KiB宿主契约验证。Android目标设备验收保持NOT_RUN。",
+   "write_state": "RELEASED"
+  },
+  {
+   "task": "CODEX-NARROW-20261114",
+   "owner": "Codex /root",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/third_party/droidplay/spv_narrow.h",
+    "src/graphics/nvn_vulkan/engine/third_party/droidplay/LICENSE",
+    "src/graphics/nvn_vulkan/engine/third_party/droidplay/provenance.json",
+    "scripts/verify_host.py",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_probe.inc",
+    "src/graphics/nvn_vulkan/engine/xbg_water_trace.inc"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T12:59:16.841391+08:00",
+   "checkpoint": "694de64，RG477M真实GPU三轮原始doublecount与修正通过",
+   "objective": "吸收MIT上游16lane subgroup归约修复并补宿主和真实GPU回归，统一接入runtime/warm；关联水都仍待验证。",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "CODEX-NARROW-GUARD-20261114",
+   "owner": "minimax_session",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_narrow.h",
+    "tests/device/test_spirv_narrow.cpp",
+    "tests/device/warp_reduce.spvasm",
+    "scripts/android/verify_spirv_narrow.sh"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T13:06:28.332778+08:00",
+   "checkpoint": "3c42368+root窄子组WIP，独立review找到非shuffle索引XOR也被错误归类。",
+   "objective": "新增helper实际源索引数据流守卫并补有效SPV负例，拒绝误匹配归约，保留已证实的真实模块修复。",
    "write_state": "ACTIVE"
   }
  ],
@@ -5621,7 +5656,7 @@
   {
    "id": "CODEX-WATER-TRACE-20261114",
    "role": "implementer",
-   "status": "in_progress",
+   "status": "implemented",
    "owner": "architecture_review",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
@@ -5642,12 +5677,12 @@
     "src/graphics/nvn_vulkan/engine/xbg_water_trace.inc"
    ],
    "acceptance": "默认关闭不改变绘制及缓存路径，按实际最终绑定采集，slot fence后读写，预算及范围可验证，独立源码审查后构建及真机。",
-   "checkpoint": "a49c62c，初始源码干净"
+   "checkpoint": "3文件交回根总控，NDK syntax exit0，待统一装包实测。"
   },
   {
    "id": "CODEX-HOST-PAGE-20261114",
    "role": "implementer",
-   "status": "in_progress",
+   "status": "implemented",
    "owner": "minimax_session",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
@@ -5674,7 +5709,66 @@
     "scripts/runtime/test_owned_pages.py"
    ],
    "acceptance": "guest4KiB map/free/remap零填充、邻居数据、失败rollback及既有contracts通过，Android16KiB设备验收独立记录NOT_RUN。",
-   "checkpoint": "1d85bbf，Mac宿主getconf PAGESIZE=16384"
+   "checkpoint": "3c42368，host-page-review/manifest.json；MMU主机页权限限制已记录。"
+  },
+  {
+   "id": "CODEX-NARROW-20261114",
+   "role": "implementer",
+   "status": "in_progress",
+   "owner": "Codex /root",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "在实证Mali16lane subgroup上修正32lane归约越界步骤重复累加。",
+   "inputs": [
+    "DroidPlay rev51a20c51efb9125c0e344ba21aa4d4dafcaffa31 MIT",
+    "RG477M真实GPU三轮A/B日志"
+   ],
+   "outputs": [
+    "保留许可证的上游实现",
+    "C++适配及宿主正常/负例回归",
+    "runtime/warm统一接线"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/third_party/droidplay/spv_narrow.h",
+    "src/graphics/nvn_vulkan/engine/third_party/droidplay/LICENSE",
+    "src/graphics/nvn_vulkan/engine/third_party/droidplay/provenance.json",
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_narrow.h",
+    "tests/device/test_spirv_narrow.cpp",
+    "tests/device/warp_reduce.spvasm",
+    "scripts/android/verify_spirv_narrow.sh",
+    "scripts/verify_host.py"
+   ],
+   "acceptance": "原始微测试doublecount可复现，修正四项GPU计算一致，16/8/32lane及错误输入宿主回归通过，真实模块spirv-val，整合APK真机回归。",
+   "checkpoint": "证据位于.local/codex-recovery-20261114/upstream-narrow/device-plan.json"
+  },
+  {
+   "id": "CODEX-NARROW-GUARD-20261114",
+   "role": "implementer",
+   "status": "in_progress",
+   "owner": "minimax_session",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "验证实际helper shuffle source数据流，阻止upstream分类过宽改变有效输入。",
+   "inputs": [
+    "独立有效SPV反例",
+    "当前水都实际5个compute模块"
+   ],
+   "outputs": [
+    "最小防误匹配守卫",
+    "有效负例回归"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_narrow.h",
+    "tests/device/test_spirv_narrow.cpp",
+    "tests/device/warp_reduce.spvasm",
+    "scripts/android/verify_spirv_narrow.sh"
+   ],
+   "acceptance": "反例完整保持，原始GPU fixture仍修正，实际5模块及spirv-val通过。",
+   "checkpoint": "源码本地未提交，根暂缓构建。"
   }
  ],
  "blockers": [
@@ -8062,6 +8156,36 @@
    "apk": ".local/codex-recovery-20261114/apk-history/ffrs-1.0.11-preview-a49c62c.apk",
    "sha256": "cda987f9a51b142ccc148a62cf44e7d7de2e3ee547da35cf50ec9fdcabb30df5",
    "device_status": "NOT_INSTALLED"
+  },
+  "narrow_gpu_evidence": {
+   "device": "RG477M01445122",
+   "gpu": "Mali-G615 MC6",
+   "subgroup": 16,
+   "translated_sum": "0x463c3a",
+   "expected": "0x231e1d",
+   "runs": 3,
+   "fixed_runs_passed": 3,
+   "evidence": ".local/codex-recovery-20261114/upstream-narrow/device-plan.json",
+   "water_attribution": "NOT_PROVEN"
+  },
+  "host_page": {
+   "commit": "3c42368",
+   "host_page": 16384,
+   "guest_page": 4096,
+   "normal_checks": 128,
+   "recovery_checks": 244,
+   "recovery_cases": 8,
+   "android_device": "NOT_RUN",
+   "evidence": ".local/codex-recovery-20261114/host-page-review/manifest.json"
+  },
+  "device_connection": {
+   "status": "DISCONNECTED",
+   "checked_at": "2026-11-14T13:17:39.088195+08:00",
+   "adb_devices": [],
+   "user_reconnect_requested": true,
+   "last_verified_pid": "28827",
+   "last_verified_apk": "9083174963c40ce1c7d1726671fa2ffd4e00f573efad516d80def5b3a10cf881",
+   "authorization": "本轮RG477M授权继续有效，无需重复确认"
   }
  }
 }

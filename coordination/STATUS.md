@@ -1,6 +1,6 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-14T12:52:44.221260+08:00
+状态事件时间：2026-11-14T13:17:39.088195+08:00
 阶段：历史分支归并完成，整合APK宿主86项检查及构建通过；RG477M水都左地面两态已复现，正在逐draw连续定向取证。
 总控：Codex /root 本轮接管
 更新方式：按事件更新，没有后台自动刷新。
@@ -148,8 +148,10 @@
 | CODEX-TYPED-AUDIT-20261114 | research | completed | minimax_session | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-PERF-AUDIT-20261114 | research | completed | antigravity_session | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-TYPED-CAP-20261114 | implementer | implemented | minimax_session | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
-| CODEX-WATER-TRACE-20261114 | implementer | in_progress | architecture_review | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
-| CODEX-HOST-PAGE-20261114 | implementer | in_progress | minimax_session | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-WATER-TRACE-20261114 | implementer | implemented | architecture_review | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-HOST-PAGE-20261114 | implementer | implemented | minimax_session | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-NARROW-20261114 | implementer | in_progress | Codex /root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-NARROW-GUARD-20261114 | implementer | in_progress | minimax_session | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 
 ## 独占写入
 
@@ -260,8 +262,10 @@
 - {"task": "CODEX-RECOVERY-20261114", "owner": "Codex /root", "paths": ["coordination/", "src/android/", ".local/codex-recovery-20261114/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T11:49:26.263338+08:00", "checkpoint": "a49c62c整合构建与86宿主检查通过；固定908/PID28827采90水都呈现帧和55574逐pass探针。", "write_state": "ACTIVE"}
 - {"task": "CODEX-PARTICLE-20261114", "owner": "architecture_review", "paths": ["src/graphics/nvn_vulkan/engine/xbg_spirv_stencil.h", "tests/device/test_ffrs_particle_rewrite.cpp", "scripts/android/verify_ffrs_particle_rewrite.sh"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/codex-recovery-20261114", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T11:50:49.087285+08:00", "checkpoint": "实现与宿主自测交回总控。", "write_state": "RELEASED"}
 - {"task": "CODEX-TYPED-CAP-20261114", "owner": "minimax_session", "paths": ["src/graphics/nvn_vulkan/engine/xbg_spirv_typed_storage.h", "tests/device/test_typed_storage.cpp", "tests/device/typed_storage_duplicate_types.spvasm"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T11:56:49.859512+08:00", "checkpoint": "已交回并冻结源码。", "write_state": "RELEASED"}
-- {"task": "CODEX-WATER-TRACE-20261114", "owner": "architecture_review", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", "src/graphics/nvn_vulkan/engine/xbg_probe.inc", "src/graphics/nvn_vulkan/engine/xbg_water_trace.inc"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T12:48:09.249914+08:00", "checkpoint": "a49c62c，初始源码干净", "objective": "给431a/6e2d透明层及f55c合成增加有界默认关闭的连续输入/输出采样，复用slot fence，保留正常绘制与缓存路径。", "write_state": "ACTIVE"}
-- {"task": "CODEX-HOST-PAGE-20261114", "owner": "minimax_session", "paths": ["src/runtime/hle/address_region.c", "src/runtime/hle/guest_pages.c", "src/runtime/nso/nso_boot.c", "tests/native/owned_pages_contract.c", "tests/native/guest_pages_contract.c", "tests/native/address_region_contract.c", "scripts/runtime/build_guest_pages_contract.sh", "scripts/runtime/test_owned_pages.py"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T12:52:44.221260+08:00", "checkpoint": "1d85bbf，Mac宿主getconf PAGESIZE=16384", "objective": "支持4KiB guest页在16KiB host页上的map/free，保存共享host页的邻居数据及失败恢复，以实际Mac16KiB宿主契约验证。Android目标设备验收保持NOT_RUN。", "write_state": "ACTIVE"}
+- {"task": "CODEX-WATER-TRACE-20261114", "owner": "architecture_review", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", "src/graphics/nvn_vulkan/engine/xbg_probe.inc", "src/graphics/nvn_vulkan/engine/xbg_water_trace.inc"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T12:48:09.249914+08:00", "checkpoint": "源码冻结，NDK单翻译单元语法检查通过，独立只读review的I/O及dynamic support问题已修。", "objective": "给431a/6e2d透明层及f55c合成增加有界默认关闭的连续输入/输出采样，复用slot fence，保留正常绘制与缓存路径。", "write_state": "RELEASED"}
+- {"task": "CODEX-HOST-PAGE-20261114", "owner": "minimax_session", "paths": ["src/runtime/hle/address_region.c", "src/runtime/hle/guest_pages.c", "src/runtime/nso/nso_boot.c", "tests/native/owned_pages_contract.c", "tests/native/guest_pages_contract.c", "tests/native/address_region_contract.c", "scripts/runtime/build_guest_pages_contract.sh", "scripts/runtime/test_owned_pages.py"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T12:52:44.221260+08:00", "checkpoint": "3c42368已提交。实现者和总控在Mac真实16KiB宿主分别复跑128/244检查通过，Android设备NOT_RUN。", "objective": "支持4KiB guest页在16KiB host页上的map/free，保存共享host页的邻居数据及失败恢复，以实际Mac16KiB宿主契约验证。Android目标设备验收保持NOT_RUN。", "write_state": "RELEASED"}
+- {"task": "CODEX-NARROW-20261114", "owner": "Codex /root", "paths": ["src/graphics/nvn_vulkan/engine/third_party/droidplay/spv_narrow.h", "src/graphics/nvn_vulkan/engine/third_party/droidplay/LICENSE", "src/graphics/nvn_vulkan/engine/third_party/droidplay/provenance.json", "scripts/verify_host.py", "src/graphics/nvn_vulkan/engine/xbg_game.cpp", "src/graphics/nvn_vulkan/engine/xbg_probe.inc", "src/graphics/nvn_vulkan/engine/xbg_water_trace.inc"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T12:59:16.841391+08:00", "checkpoint": "694de64，RG477M真实GPU三轮原始doublecount与修正通过", "objective": "吸收MIT上游16lane subgroup归约修复并补宿主和真实GPU回归，统一接入runtime/warm；关联水都仍待验证。", "write_state": "ACTIVE"}
+- {"task": "CODEX-NARROW-GUARD-20261114", "owner": "minimax_session", "paths": ["src/graphics/nvn_vulkan/engine/xbg_spirv_narrow.h", "tests/device/test_spirv_narrow.cpp", "tests/device/warp_reduce.spvasm", "scripts/android/verify_spirv_narrow.sh"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T13:06:28.332778+08:00", "checkpoint": "3c42368+root窄子组WIP，独立review找到非shuffle索引XOR也被错误归类。", "objective": "新增helper实际源索引数据流守卫并补有效SPV负例，拒绝误匹配归约，保留已证实的真实模块修复。", "write_state": "ACTIVE"}
 
 ## 阻塞
 

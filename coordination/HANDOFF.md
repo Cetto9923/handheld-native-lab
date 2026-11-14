@@ -1,3 +1,12 @@
+# 2026-11-14 共享主机页已提交，窄子组修复复核中
+
+- 当前开发HEAD 3c42368，主干1d85bbf。16KiB host/4KiB guest共享页兼容修复已提交。实现者及总控分别复跑128/244项guest契约，8种失败注入通过；Android16KiB设备尚未测试。
+- RG477M独立GPU小测试三轮证明16lane归约sum重复两倍，上游narrow后三轮四项正确。当前水都27compute中5个受影响，2个匹配归约，含b673粒子计数。原始和重写均spirv-val通过，但未建立水都时间闪烁归因。
+- 独立review发现上游仅凭helper内存在XOR/Add分类过宽。minimax_session独占新xbg_spirv_narrow.h及其测试，补真正shuffle source数据流守卫和有效SPV反例。上游MIT文件保持原样。该修正完成前暂停完整构建。
+- architecture_review的water trace三文件已冻结交回，NDK syntax通过。root已接narrow到runtime/warm共享优化入口，仅compute，默认开且gfx-subgroup-narrow=0可同包A/B。拟同包关/开各采32帧。
+- ADB刚断开，设备列表为空，已请求用户重新连接。最后验证仍为908参考包/PID28827，水都机位。授权继续有效。13:12再次备份存档，SHA与初始完全相同。
+- 新trace采集脚本为 .local/codex-recovery-20261114/capture_water_trace.py，解析器 .local/worker-probe-analysis/parse_water_trace.py。无设备时继续守卫、宿主与APK构建。
+
 # 2026-11-14 水都连续取证检查点
 
 - 代码开发树为 Honor 根目录，开发 HEAD a49c62c。历史18分支已删除并归档，主干 work/rg477m-native 已快进至1d85bbf。
