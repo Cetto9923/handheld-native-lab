@@ -357,6 +357,48 @@ int main(int argc,char **argv){
         assert(xbg_typed_storage_split_rewrite(late,11,XBG_IMAGE_FORMAT_R32UI)==-1);
         assert(late==late_source);
 
+        // The transactional entry point orders existing declarations before
+        // reuse. No duplicate type or new ID is needed, and opaque aliases
+        // remain unsupported even when declaration order is repairable.
+        const std::vector<XbgTypedStorageRequest> late_requests={{11,XBG_IMAGE_FORMAT_R32UI},{12,XBG_IMAGE_FORMAT_R32UI}};
+        assert(xbg_typed_storage_declare(late,late_requests,failed,shared_result,split)==1);
+        assert(late.size()==late_source.size() && late[3]==late_source[3]);
+        assert(xbg_spirv_binding_image(late,11,first));
+        assert(xbg_spirv_binding_image(late,12,second));
+        assert(first.image_type==known.image_type && second.image_type==known.image_type);
+        assert_function_unchanged(late_source,late);
+        save((prefix+".late-typed.spv").c_str(),late);
+        auto pointer_late=duplicate;
+        std::vector<uint32_t> pointer_words;
+        for(size_t i=5;i<pointer_late.size();i+=pointer_late[i]>>16){
+            const uint32_t n=pointer_late[i]>>16,op=pointer_late[i]&65535u;
+            if(op==32 && pointer_late[i+1]==known.pointer_type){
+                pointer_words.assign(pointer_late.begin()+i,pointer_late.begin()+i+n);
+                pointer_late.erase(pointer_late.begin()+i,pointer_late.begin()+i+n);break;
+            }
+        }
+        for(size_t i=5;i<pointer_late.size();i+=pointer_late[i]>>16){
+            if((pointer_late[i]&65535u)==59 && pointer_late[i+2]==known.variable){
+                pointer_late.insert(pointer_late.begin()+i,pointer_words.begin(),pointer_words.end());break;
+            }
+        }
+        save((prefix+".late-pointer-source.spv").c_str(),pointer_late);
+        const auto pointer_source=pointer_late;
+        assert(xbg_typed_storage_declare(pointer_late,late_requests,failed,shared_result,split)==1);
+        assert(pointer_late.size()==pointer_source.size() && pointer_late[3]==pointer_source[3]);
+        assert_function_unchanged(pointer_source,pointer_late);
+        save((prefix+".late-pointer-typed.spv").c_str(),pointer_late);
+        for(uint32_t binding:{11u,12u}){
+            const auto copied=with_image_copy(late_source,binding);
+            auto refused=copied;
+            assert(xbg_typed_storage_declare(refused,late_requests,failed,shared_result,split)==-1);
+            assert(refused==copied);
+        }
+        auto late_transaction=late_source;
+        const std::vector<XbgTypedStorageRequest> late_bad={{11,XBG_IMAGE_FORMAT_R32UI},{12,XBG_IMAGE_FORMAT_R32I}};
+        assert(xbg_typed_storage_declare(late_transaction,late_bad,failed,shared_result,split)==-1);
+        assert(late_transaction==late_source);
+
         // A later failure cannot publish a half-rewritten module.
         auto transaction=duplicate;
         const std::vector<XbgTypedStorageRequest> bad_requests={{11,XBG_IMAGE_FORMAT_R32UI},{12,XBG_IMAGE_FORMAT_R32I}};

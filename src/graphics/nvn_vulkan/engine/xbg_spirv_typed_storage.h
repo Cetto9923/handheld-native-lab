@@ -545,6 +545,45 @@ inline int xbg_spirv_existing_storage_types(const std::vector<uint32_t> &words,
     return -1;
 }
 
+// An equivalent typed declaration can follow the formatless descriptor in a
+// valid module. Move the existing image/pointer before that descriptor, keeping
+// their IDs and instructions intact. The sampled scalar type must already be
+// available there. The transactional caller reruns all binding/use checks after
+// this move, so no cached instruction offsets survive it.
+inline bool xbg_spirv_order_storage_types(std::vector<uint32_t> &words,
+        uint32_t binding,uint32_t format){
+    XbgStorageImageBinding info;
+    if(!xbg_spirv_binding_image(words,binding,info))return false;
+    if(info.declared_format!=XBG_IMAGE_FORMAT_UNKNOWN)return true;
+    size_t before=words.size(),sample_at=words.size();
+    for(size_t i=5;i<words.size();i+=words[i]>>16){
+        const uint32_t n=words[i]>>16,op=words[i]&65535u;
+        if(op==59 && n>=4 && words[i+2]==info.variable)before=i;
+        if(((op==21 && n>=4) || (op==22 && n>=3)) && words[i+1]==info.sampled_type)sample_at=i;
+    }
+    uint32_t image=0,pointer=0;
+    if(xbg_spirv_existing_storage_types(words,info,format,before,image,pointer)>=0)return true;
+    if(!image || sample_at>=before)return false;
+    size_t image_at=words.size(),pointer_at=words.size();
+    for(size_t i=5;i<words.size();i+=words[i]>>16){
+        const uint32_t n=words[i]>>16,op=words[i]&65535u;
+        if(op==25 && n>=9 && words[i+1]==image)image_at=i;
+        if(op==32 && n==4 && words[i+2]==0 && words[i+3]==image){pointer_at=i;break;}
+    }
+    if(image_at==words.size() || pointer_at==words.size())return false;
+    std::vector<uint32_t> moved,out;
+    for(size_t at:{image_at,pointer_at})
+        if(at>=before)moved.insert(moved.end(),words.begin()+at,words.begin()+at+(words[at]>>16));
+    out.reserve(words.size());out.insert(out.end(),words.begin(),words.begin()+5);
+    for(size_t i=5;i<words.size();i+=words[i]>>16){
+        if(i==before)out.insert(out.end(),moved.begin(),moved.end());
+        if((i==image_at || i==pointer_at) && i>=before)continue;
+        out.insert(out.end(),words.begin()+i,words.begin()+i+(words[i]>>16));
+    }
+    words.swap(out);
+    return true;
+}
+
 inline void xbg_spirv_add_extended_storage_capability(std::vector<uint32_t> &words,uint32_t format){
     if(!xbg_spirv_format_is_extended(format))return;
     for(size_t i=5;i<words.size();){
@@ -832,6 +871,11 @@ inline int xbg_typed_storage_declare(std::vector<uint32_t> &words,const std::vec
     if(requests.empty())return -1;
     if(words.size()<5||words[0]!=0x07230203u)return -1;
     std::vector<uint32_t> candidate=words;
+    for(size_t r=0;r<requests.size();++r){
+        if(!xbg_spirv_order_storage_types(candidate,requests[r].binding,requests[r].spirv_format)){
+            failed=r;return -1;
+        }
+    }
     std::vector<uint32_t> image_of(requests.size(),0);
     for(size_t r=0;r<requests.size();++r){
         if(xbg_spirv_format_is_extended(requests[r].spirv_format) && !allow_extended_formats){failed=r;return -1;}
