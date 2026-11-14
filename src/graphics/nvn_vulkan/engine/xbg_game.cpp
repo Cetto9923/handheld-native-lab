@@ -2775,19 +2775,19 @@ int stencil_rewrite(std::vector<uint32_t> &words,uint32_t stage,const char *key,
      * for a given key actually fired. */
     if(result||stage==4)xbg_logf("NVN integer image types shader=%s stage=%u loader=%s rewrites=%d",key,stage,loader,result);return result;
 }
-// A/B switch for the 93ebe66 gl_FragDepth strip (marker gfx-terrain-depth = 1 / 0).
-// 1 keeps the strip (the state the 1.0.10 APK shipped), 0 keeps the shader's own depth value.
 // The gl_FragDepth strip, three states (marker gfx-terrain-depth = 1 / 0, absent = auto).
-//   auto  strip only a shader that reads gl_FragCoord, i.e. one whose gl_FragDepth holds
-//         gl_FragCoord.z -- for that shader the store is redundant and dropping it is a no-op.
+//   auto  strip only a shader that stores exactly gl_FragCoord.z: there the store is
+//         redundant, and dropping it changes nothing but the early-Z behaviour.
 //   0     never strip.
 //   1     always strip (the 1.0.10 behaviour; kept for the A/B against the ground flicker).
+// The shader key is not hardcoded here any more: the data-flow rule decides, so a
+// misidentified key cannot send a terrain fix onto an unrelated object again.
 int terrain_depth_strip=-1;
 void terrain_depth_rewrite(std::vector<uint32_t> &words,uint32_t stage,const char *key,const char *loader){
     const bool is_mali = properties.vendorID == 0x13B5 || strstr(properties.deviceName, "Mali") != nullptr;
-    if(!is_mali || stage!=4 || std::strcmp(key,"062df44b75d37d76")!=0)return;
+    if(!is_mali || stage!=4)return;
     if(terrain_depth_strip==0){xbg_logf("NVN terrain drop frag depth shader=%s loader=%s skipped (marker gfx-terrain-depth=0)",key,loader);return;}
-    if(terrain_depth_strip!=1&&!xbg_spirv_reads_fragcoord(words)){xbg_logf("NVN terrain drop frag depth shader=%s loader=%s kept: the shader computes its own depth (it never reads gl_FragCoord)",key,loader);return;}
+    if(terrain_depth_strip!=1&&!xbg_spirv_fragdepth_stores_rasterizer_z(words)){xbg_logf("NVN terrain drop frag depth shader=%s loader=%s kept: the shader computes its own depth (it does not store gl_FragCoord.z)",key,loader);return;}
     const bool patched=xbg_terrain_drop_frag_depth(words);
     xbg_logf("NVN terrain drop frag depth shader=%s loader=%s patched=%d",key,loader,int(patched));
 }
@@ -5095,19 +5095,6 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
     VkPipelineViewportStateCreateInfo vp{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};vp.viewportCount=vp.scissorCount=1;
     VkPipelineRasterizationStateCreateInfo rs{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};rs.polygonMode=state.poly.mode==2?VK_POLYGON_MODE_FILL:state.poly.mode==1?VK_POLYGON_MODE_LINE:VK_POLYGON_MODE_POINT;need(rs.polygonMode==VK_POLYGON_MODE_FILL || cfg.enabled_core.fillModeNonSolid,"Non-solid polygon mode disabled");rs.cullMode=state.poly.cull;rs.frontFace=state.poly.front?VK_FRONT_FACE_COUNTER_CLOCKWISE:VK_FRONT_FACE_CLOCKWISE;rs.lineWidth=1;rs.depthBiasEnable=state.poly.offset_en!=0;rs.depthBiasConstantFactor=state.bias[1]*(state.rt.depth && state.rt.depth->d.format==0x32 && depth16_as_d24?256.0f:1.0f);
     rs.depthBiasSlopeFactor=state.bias[0];rs.depthBiasClamp=state.bias[2];need(!rs.depthBiasClamp || cfg.enabled_core.depthBiasClamp,"Depth bias clamp disabled");   // constant bias units: 2^-16 for D16, 2^-24 for the X8_D24 stand-in; slope and clamp do not depend on the format
-    const bool is_mali_device = properties.vendorID == 0x13B5 || strstr(properties.deviceName, "Mali") != nullptr;
-    if(is_mali_device && state.shader[4] && state.shader[4]->key == "062df44b75d37d76"){
-        Buffer &c2_buf = driver_block(nvn_stage[4], 1);
-        if(c2_buf.mapped && ubtrace_hash(c2_buf.mapped, 4096) == 0x44754dd35d3a5bc9ull){
-            const float dscale = (state.rt.depth && state.rt.depth->d.format == 0x32 && depth16_as_d24) ? 256.0f : 1.0f;
-            rs.depthBiasEnable = VK_TRUE;
-            rs.depthBiasSlopeFactor = -1.0f;
-            rs.depthBiasConstantFactor = -2.0f * dscale;
-            rs.depthBiasClamp = 0.0f;
-            static unsigned terrain_bias_logs = 0;
-            if(terrain_bias_logs++ < 5)xbg_logf("NVN terrain overlay depth bias applied (-1.0 slope, -2.0 constant) for draw=%llu", (unsigned long long)stats.draws.load());
-        }
-    }
     // SetDepthClamp: depth outside [near, far] is clamped instead of clipped (nvn_obj.h p_depth_clamp; nvn_mtl.m:6915 uses
     // it as Metal's depth clip mode). Vulkan needs the depthClamp feature for it.
     rs.depthClampEnable=state.depth_clamp?VK_TRUE:VK_FALSE;need(!rs.depthClampEnable || cfg.enabled_core.depthClamp,"Depth clamp feature disabled");

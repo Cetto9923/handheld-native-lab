@@ -3,12 +3,27 @@
 #include <cstdint>
 #include <vector>
 
-// A minimal fragment module with the FFRS depth pattern: it declares
-// gl_FragCoord, writes gl_FragDepth, and runs with DepthReplacing.
-// 'load_fragcoord' decides whether anything actually reads gl_FragCoord.
-static std::vector<uint32_t> build_module(bool load_fragcoord) {
-    enum : uint32_t { VOID = 1, FLOAT = 2, VEC4 = 3, PTR_IN = 4, PTR_OUT = 5,
-                      FRAGCOORD = 6, FRAGDEPTH = 7, ENTRY = 8, VALUE = 9, LOADED = 10 };
+// Minimal fragment modules.
+//
+// The FFRS shaders reach gl_FragCoord through OpAccessChain, because
+// gl_FragCoord is a vec4: the value arrives as a load of an access-chain
+// result, never as a load of the builtin variable itself. The predicate has
+// to follow that pointer, so the fixtures below build the same shape.
+//
+// The three cases:
+//   stores_z       -- stores gl_FragCoord.z  => the strip is a no-op
+//   stores_remap   -- stores a remapped depth (fc.z and fc.w combined with a
+//                      push constant) => the strip changes the depth value
+//   stores_literal -- stores a plain number  => the strip changes the depth value
+enum : uint32_t { VOID = 1, FLOAT = 2, VEC4 = 3, PTR_IN = 4, PTR_OUT = 5,
+                  FRAGCOORD = 6, FRAGDEPTH = 7, ENTRY = 8, VALUE = 9,
+                  LOADED = 10, CHAIN = 11, CONST_Z = 12, CONST_W = 13,
+                  PUSH = 14, CONST_2 = 15, CONST_3 = 16, CONST_0 = 17,
+                  PTR_IN_F = 18, CHAIN_F = 19, CONST_1 = 20 };
+
+enum class Shape { StoresZ, StoresRemap, StoresLiteral };
+
+static std::vector<uint32_t> build_module(Shape shape) {
     std::vector<uint32_t> w;
     auto op = [&](uint32_t opcode, std::initializer_list<uint32_t> operands) {
         w.push_back((uint32_t(operands.size() + 1) << 16) | opcode);
@@ -26,12 +41,43 @@ static std::vector<uint32_t> build_module(bool load_fragcoord) {
     op(22, {FLOAT, 32});
     op(23, {VEC4, FLOAT, 4});
     op(32, {PTR_IN, VEC4});
+    op(32, {PTR_IN, FLOAT});                      // a pointer to one vec4 component
     op(32, {PTR_OUT, FLOAT});
-    op(59, {PTR_IN, FRAGCOORD, 0});               // OpVariable Input
-    op(59, {PTR_OUT, FRAGDEPTH, 3});              // OpVariable Output
-    if (load_fragcoord) op(61, {VEC4, LOADED, FRAGCOORD});   // OpLoad from gl_FragCoord
-    op(62, {FRAGDEPTH, VALUE});                   // OpStore gl_FragDepth
+    op(43, {FLOAT, CONST_0, 0});                  // OpConstant 0
+    op(43, {FLOAT, CONST_1, 1});                  // OpConstant 1
+    op(43, {FLOAT, CONST_2, 2});                  // OpConstant 2
+    op(43, {FLOAT, CONST_3, 3});                  // OpConstant 3
+    op(59, {PTR_IN, FRAGCOORD, 0});               // OpVariable Input gl_FragCoord
+    op(59, {PTR_OUT, FRAGDEPTH, 3});              // OpVariable Output gl_FragDepth
+
+    // gl_FragCoord.z through an access chain: the real compiler shape.
+    op(65, {PTR_IN_F, CHAIN, FRAGCOORD, CONST_2});   // OpAccessChain -> fc.z
+    op(61, {FLOAT, LOADED, CHAIN});                   // OpLoad fc.z
+
+    switch (shape) {
+    case Shape::StoresZ:
+        op(62, {FRAGDEPTH, LOADED});                     // store fc.z as it is
+        break;
+    case Shape::StoresRemap: {
+        // fc.w combined with a push constant: the game's own depth remap.
+        op(65, {PTR_IN_F, CHAIN_F, FRAGCOORD, CONST_3});   // OpAccessChain -> fc.w
+        op(61, {FLOAT, PUSH, CHAIN_F});                    // OpLoad fc.w
+        op(129, {FLOAT, VALUE, LOADED, PUSH});             // OpFAdd -> not fc.z
+        op(62, {FRAGDEPTH, VALUE});                        // store the remap
+        break;
+    }
+    case Shape::StoresLiteral:
+        op(62, {FRAGDEPTH, CONST_1});                     // store a plain number
+        break;
+    }
     return w;
+}
+
+// The stored value id: the fixture stores LOADED for StoresZ, but the remap case
+// overwrites VALUE, so the tests look at the predicate instead of an id.
+static bool stores_rasterizer_z(Shape shape) {
+    auto m = build_module(shape);
+    return xbg_spirv_fragdepth_stores_rasterizer_z(m);
 }
 
 static bool has_fragdepth_decoration(const std::vector<uint32_t> &w) {
@@ -65,18 +111,20 @@ static bool stores_fragdepth(const std::vector<uint32_t> &w) {
 }
 
 int main() {
-    // A module that declares gl_FragCoord but never reads it computes its own
-    // depth. Dropping its gl_FragDepth is a semantic change, so the engine has
-    // to keep it -- this is the FFRS protagonist shader.
-    auto unused = build_module(false);
-    assert(!xbg_spirv_reads_fragcoord(unused));
+    // A module that stores exactly gl_FragCoord.z: the rasterizer would write
+    // the same value, so dropping the store changes nothing.
+    assert(stores_rasterizer_z(Shape::StoresZ));
 
-    // A module that reads gl_FragCoord can be storing gl_FragCoord.z, so the
-    // store is redundant and dropping it changes nothing.
-    auto used = build_module(true);
-    assert(xbg_spirv_reads_fragcoord(used));
+    // A module that stores the game's own remapped depth (fc.z and fc.w with a
+    // push constant) is NOT the rasterizer's z: dropping the store would replace
+    // the game's depth with the interpolated z.
+    assert(!stores_rasterizer_z(Shape::StoresRemap));
+
+    // A module that stores a plain number is not the rasterizer's z either.
+    assert(!stores_rasterizer_z(Shape::StoresLiteral));
 
     // The strip itself still removes the whole depth pattern.
+    auto unused = build_module(Shape::StoresLiteral);
     assert(has_fragdepth_decoration(unused));
     assert(has_depth_replacing(unused));
     assert(stores_fragdepth(unused));
@@ -86,16 +134,16 @@ int main() {
     assert(!has_depth_replacing(stripped));
     assert(!stores_fragdepth(stripped));
 
-    // The FragCoord declaration survives, and a module that reads it keeps
-    // reading it after the strip.
-    auto stripped_used = used;
-    assert(xbg_terrain_drop_frag_depth(stripped_used));
-    assert(xbg_spirv_reads_fragcoord(stripped_used));
+    // After the strip there is no gl_FragDepth left, so nothing can be stored
+    // into it any more.
+    auto stripped_z = build_module(Shape::StoresZ);
+    assert(xbg_terrain_drop_frag_depth(stripped_z));
+    assert(!xbg_spirv_fragdepth_stores_rasterizer_z(stripped_z));
 
     // A module that is not SPIR-V is refused, and it stays as it was.
     auto broken = unused;
     broken[0] = 0;
-    assert(!xbg_spirv_reads_fragcoord(broken));
+    assert(!xbg_spirv_fragdepth_stores_rasterizer_z(broken));
     assert(!xbg_terrain_drop_frag_depth(broken));
     return 0;
 }
