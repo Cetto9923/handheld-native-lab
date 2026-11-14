@@ -6217,6 +6217,18 @@ void execute_draw_call(const xbg_draw_call &p){
         draw(p.primitive,0,p.count,&indexed);
     }
 }
+void invalid_indirect_draw(const char *site,int result,int primitive,int index_type,
+        uint64_t index_base,uint64_t address,const void *arguments,size_t bytes){
+    uint32_t values[5]={};
+    memcpy(values,arguments,std::min(bytes,sizeof values));
+    xbg_fatalf("Invalid indirect draw parameters: %d site=%s op=%u frame=%llu primitive=%d indexType=%d address=%#llx indexBase=%#llx bytes=%zu args=%#x,%#x,%#x,%#x,%#x vs=%s fs=%s lastBoundCs=%s",
+        result,site,cur_op,(unsigned long long)stats.presents.load(),primitive,index_type,
+        (unsigned long long)address,(unsigned long long)index_base,bytes,
+        values[0],values[1],values[2],values[3],values[4],
+        state.shader[0]?state.shader[0]->key.c_str():"none",
+        state.shader[4]?state.shader[4]->key.c_str():"none",
+        state.shader[5]?state.shader[5]->key.c_str():"none");
+}
 void execute_indirect(const xbg_indirect &p,bool single){preflight_cpu_reads();
     need(p.arguments && p.max_count>=0 && p.max_count<=1000000,"Invalid indirect draw request");
     uint32_t count=1;
@@ -6232,7 +6244,7 @@ void execute_indirect(const xbg_indirect &p,bool single){preflight_cpu_reads();
         // Read at execution, after preceding synchronous GPU storage writeback,
         // never at command recording. Both single and multi use this path.
         xbg_draw_call plan{};int result=xbg_draw_indirect_plan(&plan,p.primitive,p.index_type,p.index_address,reinterpret_cast<const void*>(address),bytes);
-        if(result)xbg_fatalf("Invalid indirect draw parameters: %d",result);
+        if(result)invalid_indirect_draw("execute-indirect",result,p.primitive,p.index_type,p.index_address,address,reinterpret_cast<const void*>(address),bytes);
         execute_draw_call(plan);
     }
 }
@@ -6277,7 +6289,7 @@ void execute_draw_record(const p_draw &a){preflight_cpu_reads();
         uint32_t args[4]={0};memcpy(args,reinterpret_cast<const void*>(a.ind),16);
         if(probe_is_active())capture_log("PROBE_INDIRECT indexed=0 address=%#llx vs=%s fs=%s count=%u instances=%u first=%u baseInstance=%u",(unsigned long long)a.ind,state.shader[0]?state.shader[0]->key.c_str():"none",state.shader[4]?state.shader[4]->key.c_str():"none",args[0],args[1],args[2],args[3]);
         xbg_draw_call plan{};int result=xbg_draw_indirect_plan(&plan,a.prim,-1,0,args,16);
-        if(result)xbg_fatalf("Invalid indirect draw parameters: %d",result);
+        if(result)invalid_indirect_draw("draw-arrays-record",result,a.prim,-1,0,a.ind,args,sizeof args);
         draw(plan.primitive,plan.first,plan.count,nullptr,uint32_t(plan.instances),uint32_t(plan.base_instance));
         return;
     }
@@ -6518,7 +6530,7 @@ void execute_draw_index_record(const p_draw_idx &a){preflight_cpu_reads();
         if(proved){for(auto row:check_rows){uint32_t actual[5];memcpy(actual,reinterpret_cast<const void*>(row.address),20);bool same=actual[0]==row.index_count && actual[2]==row.first_index && actual[3]==0 && actual[4]==0;++indirect_proof_checks;if(!same)++indirect_proof_mismatches;if(!same)xbg_logf("CODEX_INDIRECT_PROOF_MISMATCH frame=%llu address=%#llx count=%u/%u firstIndex=%u/%u baseVertex=%u baseInstance=%u",(unsigned long long)stats.presents.load(),(unsigned long long)row.address,actual[0],row.index_count,actual[2],row.first_index,actual[3],actual[4]);}if(indirect_proof_checks<=440 || !(indirect_proof_checks%440))xbg_logf("CODEX_INDIRECT_PROOF frame=%llu batchRows=%zu checks=%llu mismatches=%llu count=%u firstIndex=%u instancesActual=%u",(unsigned long long)stats.presents.load(),check_rows.size(),(unsigned long long)indirect_proof_checks,(unsigned long long)indirect_proof_mismatches,args[0],args[2],args[1]);}
         if(probe_is_active())capture_log("PROBE_INDIRECT indexed=1 address=%#llx vs=%s fs=%s count=%u instances=%u firstIndex=%u baseVertexBits=%u baseInstance=%u",(unsigned long long)a.ind,state.shader[0]?state.shader[0]->key.c_str():"none",state.shader[4]?state.shader[4]->key.c_str():"none",args[0],args[1],args[2],args[3],args[4]);
         xbg_draw_call plan{};int result=xbg_draw_indirect_plan(&plan,a.prim,a.itype,a.ibuf,args,20);
-        if(result)xbg_fatalf("Invalid indirect draw parameters: %d",result);
+        if(result)invalid_indirect_draw("draw-index-record",result,a.prim,a.itype,a.ibuf,a.ind,args,sizeof args);
         p_draw_idx indexed{plan.primitive,plan.index_type,plan.count,plan.base_vertex,plan.base_instance,plan.instances,plan.index_address};
         draw(plan.primitive,0,plan.count,&indexed);
         return;

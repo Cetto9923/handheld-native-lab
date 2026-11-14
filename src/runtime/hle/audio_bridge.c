@@ -11,6 +11,7 @@
 #include <stddef.h>
 #include <limits.h>
 #include <errno.h>
+#include <ctype.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -265,6 +266,44 @@ static void audio_worker_identity(audio_output *out, const char *name) {
             name, out->key, out->rate, out->channels, (long)syscall(SYS_gettid),
             inherited_nice, nice_error, name_result);
 }
+static int audio_source_read_nice(const char *marker, int *requested) {
+    if (!marker[0]) return ENOENT;
+    int fd = open(marker, O_RDONLY | O_CLOEXEC | O_NONBLOCK);
+    if (fd < 0) return errno;
+    struct stat info;
+    int error = 0;
+    if (fstat(fd, &info)) error = errno;
+    else if (!S_ISREG(info.st_mode)) error = EINVAL;
+    char text[64];
+    ssize_t bytes = 0;
+    if (!error) {
+        bytes = read(fd, text, sizeof text - 1);
+        if (bytes < 0) error = errno;
+        else if (!bytes || bytes == sizeof text - 1 || memchr(text, 0, (size_t)bytes)) error = EINVAL;
+    }
+    close(fd);
+    if (error) return error;
+    text[bytes] = 0;
+    errno = 0;
+    char *end;
+    long value = strtol(text, &end, 10);
+    if (end == text || errno || value < -20 || value > 19) return EINVAL;
+    while (*end && isspace((unsigned char)*end)) end++;
+    if (*end) return EINVAL;
+    *requested = (int)value;
+    return 0;
+}
+static void audio_source_set_nice(audio_output *out, int requested, int marker_error, int live_marker) {
+    errno = 0;
+    int result = setpriority(PRIO_PROCESS, 0, requested);
+    int set_error = result < 0 ? errno : 0;
+    errno = 0;
+    int actual = getpriority(PRIO_PROCESS, 0);
+    int get_error = errno;
+    fprintf(stderr, "[audio] source scheduling key=%p tid=%ld requested_nice=%d actual_nice=%d result=%d errno=%d get_errno=%d marker_errno=%d live_marker=%d\n",
+            out->key, (long)syscall(SYS_gettid), requested, actual, result,
+            set_error, get_error, marker_error, live_marker);
+}
 /* The endpoint owns a real sample-rate clock; Android transport notification
  * batching must not pull an entire burst out of the guest in a few microseconds.
  * PCM is transferred verbatim to owned storage after each sampling interval.
@@ -273,6 +312,18 @@ static void audio_worker_identity(audio_output *out, const char *name) {
 static void *audio_endpoint_worker(void *argument) {
     audio_output *out=argument;
     audio_worker_identity(out, "ffrs-audio-src");
+    char nice_marker[PATH_MAX] = {0};
+    pthread_mutex_lock(&audio_lock);
+    if (platform_directory[0]) {
+        int length = snprintf(nice_marker, sizeof nice_marker, "%s/gfx-audio-worker-nice", platform_directory);
+        if (length < 0 || (size_t)length >= sizeof nice_marker) nice_marker[0] = 0;
+    }
+    pthread_mutex_unlock(&audio_lock);
+    int requested_nice = -16;
+    int marker_error = audio_source_read_nice(nice_marker, &requested_nice);
+    int live_marker = marker_error != ENOENT;
+    audio_source_set_nice(out, requested_nice, marker_error, live_marker);
+    uint64_t next_nice_check = audio_now_ns() + 1000000000ull;
     pthread_mutex_lock(&out->mutex);
     while(!out->closing){
         while(!out->closing && (!atomic_load(&out->state) || out->ph==out->pt)){
@@ -311,6 +362,11 @@ static void *audio_endpoint_worker(void *argument) {
         void *event=out->event;
         pthread_mutex_unlock(&out->mutex);
         if(event)nso_host_os_signal_system_event(event);
+        if (live_marker && audio_now_ns() >= next_nice_check) {
+            marker_error = audio_source_read_nice(nice_marker, &requested_nice);
+            audio_source_set_nice(out, requested_nice, marker_error, live_marker);
+            next_nice_check = audio_now_ns() + 1000000000ull;
+        }
         pthread_mutex_lock(&out->mutex);
     }
     pthread_mutex_unlock(&out->mutex);return NULL;

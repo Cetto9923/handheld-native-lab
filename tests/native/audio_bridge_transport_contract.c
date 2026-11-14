@@ -1,5 +1,6 @@
 /* Full audio_bridge API/lifecycle test with a deliberately batching backend.
  * This is not a speaker/A2DP test. Run the Android ABI binary on RG477M. */
+#define _GNU_SOURCE
 #include "../../src/runtime/hle/audio_bridge.h"
 #include <aaudio/AAudio.h>
 #include <pthread.h>
@@ -11,6 +12,8 @@
 #include <time.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <sys/resource.h>
+#include <errno.h>
 
 struct AAudioStreamBuilderStruct {int channels,rate,performance;};
 struct AAudioStreamStruct {int channels,rate,size;_Atomic int state;int64_t written;};
@@ -21,8 +24,25 @@ static int calls,opens,closes,errors,timeouts,disconnects,partial;
 static int backend_burst=3075,backend_capacity=6150,expected_buffer=3075;
 static aaudio_performance_mode_t expected_performance=AAUDIO_PERFORMANCE_MODE_NONE;
 static _Atomic int block_writes;
+static _Atomic int deny_nice,last_nice_request;
+static _Atomic unsigned nice_requests,nice_failures,nice_zero_requests,nice_audio_requests;
+static _Thread_local int simulated_nice;
 static uint64_t now_ns(void){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return (uint64_t)t.tv_sec*1000000000ull+t.tv_nsec;}
 #define CHECK(c) do{if(!(c)){fprintf(stderr,"FAIL line%d %s\n",__LINE__,#c);errors++;}}while(0)
+int getpriority(int which,id_t who){
+    if(which!=PRIO_PROCESS || who!=0){errno=EINVAL;return -1;}
+    return simulated_nice;
+}
+int setpriority(int which,id_t who,int priority){
+    CHECK(which==PRIO_PROCESS && who==0 && priority>=-20 && priority<=19);
+    char name[32]={0};CHECK(pthread_getname_np(pthread_self(),name,sizeof name)==0);
+    CHECK(!strcmp(name,"ffrs-audio-src"));
+    nice_requests++;atomic_store(&last_nice_request,priority);
+    if(priority==0)nice_zero_requests++;
+    if(priority==-16)nice_audio_requests++;
+    if(atomic_load(&deny_nice)){nice_failures++;errno=EPERM;return -1;}
+    simulated_nice=priority;return 0;
+}
 aaudio_result_t AAudio_createStreamBuilder(AAudioStreamBuilder **b){*b=calloc(1,sizeof(**b));return *b?0:AAUDIO_ERROR_NO_MEMORY;}
 aaudio_result_t AAudioStreamBuilder_delete(AAudioStreamBuilder *b){free(b);return 0;}
 void AAudioStreamBuilder_setDirection(AAudioStreamBuilder *b,aaudio_direction_t v){(void)b;CHECK(v==AAUDIO_DIRECTION_OUTPUT);}
@@ -176,9 +196,49 @@ static void low_latency_request_test(const char *directory){
  CHECK(open_out(key,key+80,&parameter)==0);close_out(key);
  printf("low_latency_request fallback_and_buffer_floor errors=%d\n",errors);
 }
+static int write_nice_marker(const char *directory,const char *value){
+ char marker[512];snprintf(marker,sizeof marker,"%s/gfx-audio-worker-nice",directory);
+ FILE *file=fopen(marker,"wb");CHECK(file!=NULL);if(!file)return 0;
+ CHECK(fputs(value,file)>=0);CHECK(fclose(file)==0);return 1;
+}
+static void nice_boundaries_test(const char *directory){
+ const char *values[]={"-20\n","19\n","-21\n","20\n","bad\n"};
+ const int expected[]={-20,19,-16,-16,-16};
+ for(unsigned i=0;i<sizeof values/sizeof*values;i++){
+  if(!write_nice_marker(directory,values[i]))return;
+  unsigned char key[128]={0};uint64_t parameter=48000ull+(6ull<<32);
+  CHECK(open_out(key,key+80,&parameter)==0);close_out(key);
+  CHECK(atomic_load(&last_nice_request)==expected[i]);
+ }
+ printf("source_nice boundaries_and_invalid errors=%d\n",errors);
+}
+static void *nice_marker_updates(void *directory){
+ usleep(400000);write_nice_marker(directory,"-16\n");
+ usleep(1000000);write_nice_marker(directory,"0\n");return NULL;
+}
+static void nice_diagnostics_test(const char *directory){
+ unsigned default_before=nice_requests;
+ stream_test(240,0);CHECK(nice_requests==default_before+1);
+ CHECK(atomic_load(&last_nice_request)==-16);
+ unsigned requests_before=nice_requests,failures_before=nice_failures;
+ atomic_store(&deny_nice,1);stream_test(80,0);atomic_store(&deny_nice,0);
+ CHECK(nice_requests>requests_before && nice_failures>failures_before);
+ CHECK(atomic_load(&last_nice_request)==-16);
+ nice_boundaries_test(directory);
+ if(!write_nice_marker(directory,"0\n"))return;
+ unsigned zero_before=nice_zero_requests,audio_before=nice_audio_requests;
+ pthread_t updater;int thread_result=pthread_create(&updater,NULL,nice_marker_updates,(void*)directory);
+ CHECK(thread_result==0);if(thread_result)return;
+ stream_test(480,0);CHECK(pthread_join(updater,NULL)==0);
+ CHECK(nice_zero_requests>=zero_before+2 && nice_audio_requests>=audio_before+1);
+ CHECK(atomic_load(&last_nice_request)==0);
+ printf("source_nice successful_requests=%u denied_requests=%u live_zero=%u live_audio=%u errors=%d\n",
+        (unsigned)(nice_requests-nice_failures),(unsigned)nice_failures,
+        (unsigned)(nice_zero_requests-zero_before),(unsigned)(nice_audio_requests-audio_before),errors);
+}
 int main(int argc,char **argv){
  if(argc!=2)return 2;mkdir(argv[1],0700);CHECK(ffrs_audio_set_platform_directory(argv[1])==0);
  char marker[512];snprintf(marker,sizeof marker,"%s/gfx-audio-paced-transport",argv[1]);FILE *f=fopen(marker,"wb");if(!f)return 3;fputs("1",f);fclose(f);
- load_api();stream_test(80,0);stream_test(160,1);stop_restart_test();stop_blocked_writer_test();stereo_packet_test();low_latency_request_test(argv[1]);
+ load_api();stream_test(80,0);stream_test(160,1);stop_restart_test();stop_blocked_writer_test();stereo_packet_test();low_latency_request_test(argv[1]);nice_diagnostics_test(argv[1]);
  CHECK(opens==closes);printf("audio_bridge_transport_contract errors=%d opens=%d closes=%d events=%u\n",errors,opens,closes,(unsigned)events);return errors!=0;
 }
