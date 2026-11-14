@@ -93,6 +93,8 @@ def main():
         contract = json.loads(log.splitlines()[-1])
         if contract["errors"] or contract["mapped_guest_bytes"] or not contract["ledger_valid"]:
             raise RuntimeError("nonempty/invalid final host ledger")
+        if contract["guest_page_bytes"] != 4096 or contract["controlled_vm_failure_cases"] != (4 if name=="recovery" else 0):
+            raise RuntimeError("missing guest subpage/recovery coverage")
         manifest.setdefault("host_contracts", {})[name] = contract
     if platform.system() == "Darwin":
         run("host-build-old-region", ["clang", *strict, source, old_test, "-lpthread",

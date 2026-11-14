@@ -26,7 +26,7 @@ m={'head':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
    'source_sha256':{str(v.relative_to(ROOT)):digest(v) for v in inputs},
    'cases':{},'host_contracts':{},'complete':False,'android_executed':False,
    'game_executed':False,'device_operations':False,'production_test_hooks':False,
-   'quota_bytes':131072,'page_request_bytes':65536,
+   'quota_bytes':131072,'page_request_bytes':65536,'subpage_request_bytes':4096,
    'quota_source':'explicit self-owned contract input, not physical RAM or an SDK policy',
    'recovery_instrumentation':'existing raw VM hooks and test-only link wrappers for Context reserve/commit; no production additions',
    'limits':['one exclusive active owner of global raw ledger','exact allocation free only',
@@ -59,7 +59,8 @@ for mode in ['normal','recovery']:
  run('host-link-'+mode,['clang',*objects,'-lpthread','-o',binary])
  text=run('host-run-'+mode,[binary]);case=json.loads(text.splitlines()[-1])
  if case['errors'] or any(case[v] for v in ['final_pending','final_charged','final_tickets','raw_regions']):raise RuntimeError('nonempty final ownership')
- if case['recovery_cases'] != (6 if mode=='recovery' else 0):raise RuntimeError('recovery coverage mismatch')
+ if case['recovery_cases'] != (8 if mode=='recovery' else 0):raise RuntimeError('recovery coverage mismatch')
+ if case['guest_page_bytes']!=4096:raise RuntimeError('missing guest subpage coverage')
  m['host_contracts'][mode]=case
  m.setdefault('host_artifacts',{})[mode]={'path':str(binary),'sha256':digest(binary),'bytes':binary.stat().st_size}
 symbols=run('host-production-symbols',['nm','-g',out/'guest_pages_normal.host'])

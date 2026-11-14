@@ -45,8 +45,7 @@ static int add_size(size_t *total, size_t bytes) {
 }
 static int valid_range(const guest_pages *p, uintptr_t address, size_t bytes) {
     return bytes && bytes <= UINTPTR_MAX - address &&
-           !(address % 4096) && !(bytes % 4096) &&
-           !(address % p->host_page) && !(bytes % p->host_page);
+           p->host_page && !(address % 4096) && !(bytes % 4096);
 }
 static int overlaps(uintptr_t a, size_t an, uintptr_t b, size_t bn) {
     return a < b + bn && b < a + an;

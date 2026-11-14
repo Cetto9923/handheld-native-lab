@@ -14,6 +14,7 @@
 static int errors, checks, recovery_cases;
 #define CHECK(c) do { ++checks; if (!(c)) { ++errors; fprintf(stderr,"line %d: %s\n",__LINE__,#c); } } while (0)
 static const size_t unit = 65536;
+static size_t host_page;
 
 /* Inspect only our exact VM spans; never read a NONE page to test a fault. */
 static int protection_is(uintptr_t address, size_t bytes, int wanted) {
@@ -101,7 +102,7 @@ static int partial_protect_failure(void *address,size_t bytes,int prot) {
     ++protect_calls;
     if (protect_calls == 1) {
         seen_precharge = pending_before_vm >= bytes;
-        CHECK(mprotect(address,bytes/2,prot) == 0);
+        CHECK(mprotect(address,bytes<host_page?bytes:host_page,prot) == 0);
         errno = EACCES; return -1;
     }
     if (fail_restore) { errno = EIO; return -1; }
@@ -192,7 +193,86 @@ static void recovery(guest_context *context,guest_pages *p) {
 }
 #endif
 
+static void guest_subpages_contract(void) {
+    const size_t guest=4096,bytes=4*host_page+guest;
+    guest_context *context=NULL;
+    guest_pages *p=NULL;
+    struct guest_context_config config={4*host_page,unit};
+    CHECK(guest_context_create(&config,&context).status==GUEST_CONTEXT_OK);
+    CHECK(guest_pages_create(context,&p).status==GUEST_PAGES_OK);
+    if(!p)return;
+    uintptr_t base=0;
+    CHECK(guest_pages_reserve(p,bytes,&base).status==GUEST_PAGES_OK);
+    CHECK(guest_pages_map(p,base,guest).status==GUEST_PAGES_OK);
+    CHECK(guest_pages_map(p,base+guest,guest).status==GUEST_PAGES_OK);
+    memset((void *)base,0x3a,guest);memset((void *)(base+guest),0x6b,guest);
+    CHECK(guest_pages_map(p,base+guest,guest).status==GUEST_PAGES_OVERLAP);
+    CHECK(guest_pages_free_exact(p,base,guest).status==GUEST_PAGES_OK);
+    CHECK(protection_is(base,guest,host_page>guest?(PROT_READ|PROT_WRITE):PROT_NONE));
+    CHECK(protection_is(base+guest,guest,PROT_READ|PROT_WRITE));
+    CHECK(((unsigned char *)base)[guest]==0x6b && ((unsigned char *)base)[2*guest-1]==0x6b);
+    snapshot(p,1,1,0,guest);
+    CHECK(guest_pages_map(p,base,guest).status==GUEST_PAGES_OK && all_zero(base,guest));
+    CHECK(((unsigned char *)base)[guest]==0x6b);
+    CHECK(guest_pages_free_exact(p,base,guest).status==GUEST_PAGES_OK);
+    CHECK(guest_pages_free_exact(p,base+guest,guest).status==GUEST_PAGES_OK);
+    CHECK(protection_is(base,2*guest,PROT_NONE));
+    CHECK(guest_pages_free_allocations(p,base,guest*2).status==GUEST_PAGES_UNSUPPORTED);
+    CHECK(guest_pages_map(p,base+host_page,guest*3).status==GUEST_PAGES_OK);
+    memset((void *)(base+host_page),0x5c,guest*3);
+    CHECK(guest_pages_free_allocations(p,base+host_page+guest,guest).status==GUEST_PAGES_OK);
+    CHECK(((unsigned char *)(base+host_page))[0]==0x5c);
+    CHECK(((unsigned char *)(base+host_page+guest*2))[guest-1]==0x5c);
+    snapshot(p,1,2,0,guest*2);
+    CHECK(guest_pages_map(p,base+4*host_page,guest).status==GUEST_PAGES_OK);
+    CHECK(all_zero(base+4*host_page,guest));
+    CHECK(guest_pages_map(p,base+bytes,guest).status==GUEST_PAGES_NOT_OWNED);
+    CHECK(guest_pages_map(p,UINTPTR_MAX-4095,4096).status==GUEST_PAGES_UNSUPPORTED);
+    snapshot(p,1,3,0,guest*3);
+    guest_charge_ticket *external=NULL;
+    CHECK(guest_charge_reserve(context,config.quota_bytes-guest*3,&external).status==GUEST_CONTEXT_OK);
+    CHECK(guest_charge_commit(external).status==GUEST_CONTEXT_OK);
+    struct guest_pages_result r=guest_pages_map(p,base,guest);
+    CHECK(r.status==GUEST_PAGES_QUOTA && !r.vm_attempted);
+    CHECK(guest_charge_release(external).status==GUEST_CONTEXT_OK);
+    CHECK(guest_pages_release_region(p,base).status==GUEST_PAGES_OK);
+    snapshot(p,0,0,0,0);
+#if defined(GUEST_PAGES_CONTRACT_WRAP_CONTEXT)
+    CHECK(guest_pages_reserve(p,4*host_page,&base).status==GUEST_PAGES_OK);
+    CHECK(guest_pages_map(p,base,guest).status==GUEST_PAGES_OK);
+    memset((void *)base,0x7d,guest);
+    reset_hooks();nso_host_owned_pages_test_vm(partial_protect_failure,NULL);
+    r=guest_pages_map(p,base+guest,3*host_page-guest);
+    CHECK(r.status==GUEST_PAGES_VM_ERROR && r.vm.native_errno==EACCES && !r.vm.restore_errno);
+    CHECK(protect_calls==2 && r.ticket_cleanup.status==GUEST_CONTEXT_OK);
+    CHECK(protection_is(base,guest,PROT_READ|PROT_WRITE));
+    CHECK(((unsigned char *)base)[0]==0x7d && ((unsigned char *)base)[guest-1]==0x7d);
+    CHECK(protection_is(base+host_page,host_page*2,PROT_NONE));
+    snapshot(p,1,1,0,guest);++recovery_cases;
+    reset_hooks();refuse_commit=1;
+    nso_host_owned_pages_test_vm(observe_protect,replace_none);
+    r=guest_pages_map(p,base+guest,guest);
+    CHECK(r.status==GUEST_PAGES_CONTEXT_ERROR && r.rollback_attempted);
+    CHECK(r.rollback_vm.status==NSO_OWNED_PAGE_OK && r.ticket_cleanup.status==GUEST_CONTEXT_OK);
+    CHECK(replace_calls==(host_page>guest?0:1));
+    CHECK(protection_is(base,guest,PROT_READ|PROT_WRITE));
+    CHECK(((unsigned char *)base)[0]==0x7d && ((unsigned char *)base)[guest-1]==0x7d);
+    snapshot(p,1,1,0,guest);++recovery_cases;
+    reset_hooks();
+    CHECK(guest_pages_map(p,base+guest,guest).status==GUEST_PAGES_OK && all_zero(base+guest,guest));
+    CHECK(guest_pages_release_region(p,base).status==GUEST_PAGES_OK);
+    snapshot(p,0,0,0,0);
+#endif
+    CHECK(guest_pages_destroy(p).status==GUEST_PAGES_OK);
+    CHECK(guest_context_destroy(context).status==GUEST_CONTEXT_OK);
+    puts("phase=guest_4k_subpages_accounting_neighbor_and_recovery completed");
+}
+
 int main(void) {
+    long actual_page=sysconf(_SC_PAGESIZE);
+    CHECK(actual_page>=4096 && actual_page<=65536 && !(actual_page%4096));
+    if(errors)return 1;
+    host_page=(size_t)actual_page;
     guest_context *context = NULL;
     guest_pages *p = NULL,*duplicate = NULL;
     struct guest_context_config config = {unit*2,unit};
@@ -256,7 +336,8 @@ int main(void) {
     CHECK(guest_pages_create(context,&p).status == GUEST_PAGES_OK);
     CHECK(guest_pages_destroy(p).status == GUEST_PAGES_OK);
     CHECK(guest_context_destroy(context).status == GUEST_CONTEXT_OK);
-    printf("{\"checks\":%d,\"errors\":%d,\"recovery_cases\":%d,\"final_pending\":%zu,\"final_charged\":%zu,\"final_tickets\":%zu,\"raw_regions\":%zu,\"guest_page_bytes\":%zu}\n",
-        checks,errors,recovery_cases,cu.pending_bytes,cu.charged_bytes,cu.tickets,raw.region_count,unit);
+    guest_subpages_contract();
+    printf("{\"checks\":%d,\"errors\":%d,\"recovery_cases\":%d,\"final_pending\":%zu,\"final_charged\":%zu,\"final_tickets\":%zu,\"raw_regions\":%zu,\"guest_page_bytes\":4096,\"legacy_request_bytes\":%zu,\"host_page_bytes\":%zu}\n",
+        checks,errors,recovery_cases,cu.pending_bytes,cu.charged_bytes,cu.tickets,raw.region_count,unit,host_page);
     return errors ? 1 : 0;
 }

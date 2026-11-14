@@ -132,6 +132,37 @@ static int small_contract(void) {
     puts("phase=split_recycle_and_whole_release completed");
     return 0;
 }
+static int guest_subpage_contract(void) {
+    const size_t guest=4096,bytes=3*page+guest;
+    uintptr_t address=0;
+    CHECK(!nso_host_allocate_address_region(&address,bytes));
+    CHECK(ok(nso_host_owned_pages_map(address,guest)));
+    CHECK(ok(nso_host_owned_pages_map(address+guest,guest)));
+    fill(address,guest,0x31);fill(address+guest,guest,0x72);
+    CHECK(ok(nso_host_owned_pages_free(address,guest)));
+    CHECK(protection_is(address,page>guest));
+    CHECK(protection_is(address+guest,1));CHECK(bytes_equal(address+guest,guest,0x72));
+    CHECK(usage(1,bytes,guest));
+    CHECK(ok(nso_host_owned_pages_map(address,guest)));
+    CHECK(bytes_equal(address,guest,0));CHECK(bytes_equal(address+guest,guest,0x72));
+    fill(address,guest,0x45);
+    CHECK(ok(nso_host_owned_pages_free(address+guest,guest)));
+    CHECK(protection_is(address,1));CHECK(bytes_equal(address,guest,0x45));
+    CHECK(ok(nso_host_owned_pages_free(address,guest)));
+    CHECK(protection_is(address,0));CHECK(protection_is(address+guest,0));
+    CHECK(ok(nso_host_owned_pages_map(address+3*page,guest)));
+    CHECK(bytes_equal(address+3*page,guest,0));
+    CHECK(nso_host_owned_pages_map(address+bytes,guest).status==NSO_OWNED_PAGE_NOT_OWNED);
+    CHECK(ok(nso_host_owned_pages_free(address+3*page,guest)));
+    CHECK(protection_is(address+3*page,0));
+    CHECK(nso_host_owned_pages_map(UINTPTR_MAX-4095,4096).detail==NSO_OWNED_PAGE_DETAIL_RANGE);
+    CHECK(nso_host_owned_pages_free(UINTPTR_MAX-4095,4096).detail==NSO_OWNED_PAGE_DETAIL_RANGE);
+    CHECK(nso_host_owned_pages_map(UINTPTR_MAX-8191,4096).status==NSO_OWNED_PAGE_NOT_OWNED);
+    CHECK(usage(1,bytes,0));
+    CHECK(!nso_host_free_address_region(address));CHECK(usage(0,0,0));
+    puts("phase=guest_4k_subpages_neighbor_zero_tail completed");
+    return 0;
+}
 static int large_reservation(void) {
     uintptr_t address=0;
     size_t bytes=UINT64_C(0xf80000000);
@@ -223,10 +254,13 @@ static int serialized_release(void) {
 
 #if defined(NSO_OWNED_PAGES_TESTING)
 static int protect_calls,fail_restore;
+static uintptr_t protected_address[2];
+static size_t protected_bytes[2];
 static int partial_protect_failure(void *address,size_t size,int protection) {
     protect_calls++;
+    if(protect_calls<=2){protected_address[protect_calls-1]=(uintptr_t)address;protected_bytes[protect_calls-1]=size;}
     if(protect_calls==1) {
-        if(mprotect(address,size/2,protection))return -1;
+        if(mprotect(address,size<page?size:page,protection))return -1;
         errno=EACCES;return -1;
     }
     if(fail_restore) {errno=EIO;return -1;}
@@ -273,6 +307,25 @@ static int recovery_contract(void) {
     CHECK(!view.mapped_guest_bytes_valid && !view.mapped_guest_bytes);
     nso_host_owned_pages_test_vm(NULL,NULL);
     CHECK(!nso_host_free_address_region(address));CHECK(usage(0,0,0));
+
+    CHECK(!nso_host_allocate_address_region(&address,4*page));
+    CHECK(ok(nso_host_owned_pages_map(address,4096)));
+    fill(address,4096,0x83);
+    protect_calls=0;fail_restore=0;
+    nso_host_owned_pages_test_vm(partial_protect_failure,NULL);
+    result=nso_host_owned_pages_map(address+4096,3*page-4096);
+    CHECK(result.status==NSO_OWNED_PAGE_SYSTEM_ERROR && result.native_errno==EACCES);
+    CHECK(protect_calls==2);
+    CHECK(protected_address[0]==address+page && protected_bytes[0]==2*page);
+    CHECK(protected_address[1]==address+page && protected_bytes[1]==2*page);
+    CHECK(protection_is(address,1));CHECK(bytes_equal(address,4096,0x83));
+    CHECK(protection_is(address+page,0));CHECK(protection_is(address+2*page,0));
+    CHECK(usage(1,4*page,4096));
+    nso_host_owned_pages_test_vm(NULL,NULL);
+    CHECK(ok(nso_host_owned_pages_map(address+4096,3*page-4096)));
+    CHECK(bytes_equal(address+4096,3*page-4096,0));
+    CHECK(bytes_equal(address,4096,0x83));
+    CHECK(!nso_host_free_address_region(address));CHECK(usage(0,0,0));
     puts("phase=controlled_vm_error_recovery completed");
     return 0;
 }
@@ -281,16 +334,17 @@ static int recovery_contract(void) {
 int main(void) {
     long value=sysconf(_SC_PAGESIZE);
     CHECK(value>=4096 && value<=65536 && !(value%4096));page=(size_t)value;
-    CHECK(!small_contract());CHECK(!large_reservation());
+    CHECK(!small_contract());CHECK(!guest_subpage_contract());CHECK(!large_reservation());
     CHECK(!threaded_contract());CHECK(!serialized_release());
     int recovery=0;
 #if defined(NSO_OWNED_PAGES_TESTING)
-    CHECK(!recovery_contract());recovery=3;
+    CHECK(!recovery_contract());recovery=4;
 #endif
     CHECK(usage(0,0,0));
     printf("{\"host_page_bytes\":%zu,\"threads\":%u,\"cycles_per_thread\":%u,"
            "\"release_races\":%u,\"controlled_vm_failure_cases\":%d,"
            "\"mapped_guest_bytes\":0,\"ledger_valid\":true,\"errors\":0,"
-           "\"physical_budget_claimed\":false}\n",page,WORKERS,CYCLES,RELEASE_RACES,recovery);
+           "\"guest_page_bytes\":4096,\"host_protection_granularity\":%zu,"
+           "\"physical_budget_claimed\":false}\n",page,WORKERS,CYCLES,RELEASE_RACES,recovery,page);
     return 0;
 }
