@@ -209,6 +209,9 @@ def main():
         narrow_dir = out / 'narrow-subgroup'
         run('narrow-subgroup-contract', ['bash', 'scripts/android/verify_spirv_narrow.sh', narrow_dir])
         extra_artifacts.append(narrow_dir / 'test_spirv_narrow')
+        uniform_extent_dir = out / 'uniform-extent'
+        run('uniform-extent-contract', ['bash', 'scripts/android/verify_spirv_uniform_extent.sh', uniform_extent_dir])
+        extra_artifacts.append(uniform_extent_dir / 'test_spirv_uniform_extent')
         texel_dir = out / 'texel-snapshot'
         run('texel-snapshot-contract', ['bash', 'scripts/android/verify_texel_snapshot.sh', texel_dir])
         extra_artifacts.append(texel_dir / 'test_texel_snapshot')

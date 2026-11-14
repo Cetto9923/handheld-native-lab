@@ -163,6 +163,29 @@ static int guest_subpage_contract(void) {
     puts("phase=guest_4k_subpages_neighbor_zero_tail completed");
     return 0;
 }
+static int host_aligned_neighbors_contract(void) {
+    const size_t guest=4096;
+    uintptr_t address=0;
+    CHECK(!nso_host_allocate_address_region(&address,6*page));
+    uintptr_t lower=address+page-guest,upper=address+3*page;
+    CHECK(ok(nso_host_owned_pages_map(lower,guest)));
+    CHECK(ok(nso_host_owned_pages_map(upper,guest)));
+    fill(lower,guest,0x35);fill(upper,guest,0x79);
+    CHECK(ok(nso_host_owned_pages_map(address+page,2*page)));
+    CHECK(bytes_equal(address+page,2*page,0));
+    fill(address+page,2*page,0xa6);
+    CHECK(usage(1,6*page,2*guest+2*page));
+    CHECK(ok(nso_host_owned_pages_free(address+page,2*page)));
+    CHECK(protection_is(address+page,0));CHECK(protection_is(address+2*page,0));
+    CHECK(bytes_equal(lower,guest,0x35));CHECK(bytes_equal(upper,guest,0x79));
+    CHECK(usage(1,6*page,2*guest));
+    CHECK(ok(nso_host_owned_pages_map(address+page,2*page)));
+    CHECK(bytes_equal(address+page,2*page,0));
+    CHECK(bytes_equal(lower,guest,0x35));CHECK(bytes_equal(upper,guest,0x79));
+    CHECK(!nso_host_free_address_region(address));CHECK(usage(0,0,0));
+    puts("phase=host_aligned_span_preserves_neighbors completed");
+    return 0;
+}
 static int large_reservation(void) {
     uintptr_t address=0;
     size_t bytes=UINT64_C(0xf80000000);
@@ -335,6 +358,7 @@ int main(void) {
     long value=sysconf(_SC_PAGESIZE);
     CHECK(value>=4096 && value<=65536 && !(value%4096));page=(size_t)value;
     CHECK(!small_contract());CHECK(!guest_subpage_contract());CHECK(!large_reservation());
+    CHECK(!host_aligned_neighbors_contract());
     CHECK(!threaded_contract());CHECK(!serialized_release());
     int recovery=0;
 #if defined(NSO_OWNED_PAGES_TESTING)

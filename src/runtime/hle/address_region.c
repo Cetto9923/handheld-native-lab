@@ -112,6 +112,8 @@ static void unshared_host_span(struct reservation *r,uintptr_t begin,uintptr_t e
      * pages can contain live guest bytes outside this gapless/disjoint range. */
     *host_begin=begin&~(uintptr_t)(page-1);
     *host_end=(end+page-1)&~(uintptr_t)(page-1);
+    /* Complete boundary host pages have no bytes outside the requested range. */
+    if(*host_begin==begin && *host_end==end)return;
     if(accessible_outside(r,*host_begin,*host_begin+page,begin,end))*host_begin+=page;
     if(*host_begin<*host_end && accessible_outside(r,*host_end-page,*host_end,begin,end))
         *host_end-=page;

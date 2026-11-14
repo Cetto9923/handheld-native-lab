@@ -1,3 +1,37 @@
+# 2026-11-14 21:43 页查询候选独立组件复验完成
+
+- address_region仅完整宿主页对齐早返，source b7c11c6a、owned test d251455e冻结。实现者51条host命令0，根独立Mac normal/recovery0。
+- 根NDK26/API28构建owned-pages.android，SHA09215a0c4cdeb87988102545d7af439a5128ff9b33967c11901e9da2ce651d86，RG477M真实4KiB宿主页执行0，8线程×32轮、32释放竞态、新邻居/零化/保护用例全过，ledger_valid/errors0。游戏仍PID26260。仅组件通过，实际读档收益待验。
+- UBO原始样本25条改善含重复，26唯一模块中24条改善。生产SOURCE_UNIFORM筛选后的已核五绑定一次模型少319632B，实际城内uniform约0.46MB/frame，不能将全样本静态71%当作每帧或FPS收益。vertex当前约14MB/frame，是后续更大复制热点。
+- 当前一次截图在第三章任务菜单，新的baseline末窗口未持续确认移动，不能和城内1143draw窗口当同场景A/B。用户当前明确这轮无闪烁无闪退，但卡顿明显。
+- UBO实现及独立QA正在进行，根已接host gate与1.0.19版本号，尚未打包/安装。
+
+# 2026-11-14 21:34 成熟上游针对性优化开始
+
+- 用户明确当前1.0.18这轮无闪烁无闪退，卡顿仍在，并要求借鉴成熟经验针对性优化。该确认只覆盖当前实玩范围。
+- 上游比较已收口。先接DroidPlay UBO extent按操作数识别，以及TOTK/DroidPlay请求内页查询策略中的完整宿主页早返。ROOT已登记两个互不重叠写者，旧通用缓存候选保持deferred。
+- perf_cpu独占xbg_game.cpp、UBO helper和对应测试。load_profile独占address_region.c及owned-pages回归。root负责全量门禁、版本与构建、APK归档、设备采样。
+- 当前用户保持游戏输入权，PID26260，后续装包须保全存档及当前日志。当前无性能PASS。
+
+# 2026-11-14 21:32 用户要求先研究成熟移植，上游比较进行中
+
+- 用户不知道项目名，已自行核实 BOTWRecompAndroid、TotK Native、TOTKDroid、DroidPlay Core 与 nxnative 的公开源码和发布记录。固定 revision、许可证、文件摘要在 `.local/upstream-switch-zelda-20261114/`。BOTW 与 TOTK 报告已回收，worker 正补同游戏对照。
+- DroidPlay 已有同游戏 1.0.1 Android 路线，Odin 2 开场和前三战作者记录中位52.1FPS，部分图像/音频问题仍公开。其主模块 Build ID `84e182f72ee1da4f477804bd05b54c15`，我们实际 `736837afd390442ed7c74a7de730e71b`，地址补丁需独立识别验证。
+- 之前未落地的 descriptor prep 与 aligned host span 保持冻结，生产仍7de9e39。新增只读 UBO extent 对照任务，只写 cbuf-review。当前按字面word扫描与上游按操作数扫描存在已知保守性差距，需真实模块量化。
+- 撤回简化说法“当前没有命令副本”。NVN recorder已有不可变package和递归依赖lease，明确异步缺口在提交后立即释放lease。完整异步接入须转移lease至job并核对对象pin、bound state与真实fence。
+- `gfx_async` 仍关闭。DroidPlay 的额外 Vulkan recorder 默认关闭，尚不能当作成熟默认性能路径。上游通用dirty tracker与我们的stub差距待按整条host写入路径审计。
+- 1.0.18 当前实测城内18.7–20.3FPS，读档三个长帧合计55.467秒，性能未达标。当前游戏PID26260仍在，用户拥有输入权。旧轻监测89515已停止，21:28核对无该进程，不能称仍在监测。
+- 所有历史APK、分支备份和存档保留。五份Android报告WIP仍未入包。
+
+# 2026-11-14 20:52 1.0.18已安装，等待城内移动CPU采样
+
+- 用户已明确本轮存档保存完成并授权安装。根先完整保全PID511至exit-f871662-before18-20261114-205127，再覆盖安装7de9e39 / 1.0.18-preview。
+- APK a6c9fbe2dd21c2b5e16dd691c7c291c092b57a1c407c481a7dc6e30540def650，3597308字节，host97/97、Android0、构建前后源码摘要相同。回读APK一致，新存档tar在安装前后均86d8a9f5f9a77604ff5d6ebde5e716169f2ac804b15306d26e72b17f26a93ae8，已备份install-7de9e39-20261114-205130/。
+- 新PID26260。texelcopy保持ON，shader_reuse从校验模式2改正常复用1，当前日志确认1。这个配置变化需与上传代码收益分别看，不能把冷shader改善全归上传修正。source nice0/LOW0/FPS30/narrow1/async0保持。
+- 已通知用户先读刚存的城内档连续移动，根用gfx-cpu-profile写0 3触发3帧CPU采样，之后再新建看过渡。当前尚未写入profile标记，等待实际城内移动，用户保持输入权。
+- 诊断目录performance-7de9e39/，初始guest日志已保存，CPU marker不存在且未消耗一次机会。新drain计时首条frame436 71.8MB，gpu_sync1.381ms/reset0.276ms，只是首个样本，不能据此概括长卡顿根因。
+- 旧轻监测PID73545/工具session21665已SIGINT结束130，准备新轻监测，严格按PID26260/新会话记录。5份Android报告WIP仍冻结未进包。
+
 # 2026-11-14 20:48 1.0.18上传与CPU采样候选冻结
 
 - source2666a8f9/testd619dc28已交回，最小生产修改在xbg_game.cpp。CPU mirror成功路径绕开立即作废的整图preserve上传，GPU depth/nativeBC/decodedBC/color fallback保留partial preserve。guest_texture_write先验证全部目标再写，失败保持原字节，池和计数溢出守卫已补。

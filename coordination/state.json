@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-14T20:48:37.168558+08:00",
- "phase": "7041击败开场BOSS后exit70，Invalid indirect draw parameters:-3。先保留同次数据并增加失败时参数取证，继续回归。",
+ "updated_at": "2026-11-14T21:43:09.768464+08:00",
+ "phase": "用户确认1.0.18当前场景无闪烁无闪退，集中优化卡顿。按成熟上游接UBO extent与完整宿主页扫描减负。",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -2218,8 +2218,8 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-14T20:24:23.019181+08:00",
-   "checkpoint": "只写独立.local报告，不改生产/设备",
-   "write_state": "ACTIVE"
+   "checkpoint": "本轮用户中断后list_agents仅root。现有报告保留，源码无新增dirty；新只读任务承接26260。",
+   "write_state": "FROZEN_STOPPED"
   },
   {
    "task": "CODEX-AUDIO-511-20261114",
@@ -2230,8 +2230,8 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-14T20:24:23.019181+08:00",
-   "checkpoint": "只写独立.local报告，不改生产/设备",
-   "write_state": "ACTIVE"
+   "checkpoint": "本轮用户中断后list_agents仅root。现有报告保留，源码无新增dirty；新只读任务承接26260。",
+   "write_state": "FROZEN_STOPPED"
   },
   {
    "task": "CODEX-UPLOAD-CPU-511-20261114",
@@ -2246,6 +2246,177 @@
    "acquired_at": "2026-11-14T20:34:12.730892+08:00",
    "checkpoint": "两文件冻结交根整合，source2666a8f9。",
    "write_state": "RELEASED"
+  },
+  {
+   "task": "CODEX-PERF-26260-20261114",
+   "owner": "perf_cpu",
+   "paths": [
+    ".local/worker-perf-26260/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T20:58:28.520730+08:00",
+   "checkpoint": "只读报告已交回，上游比较继续。",
+   "write_state": "RELEASED"
+  },
+  {
+   "task": "CODEX-LOAD-26260-20261114",
+   "owner": "load_profile",
+   "paths": [
+    ".local/worker-load-26260/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T20:58:28.520730+08:00",
+   "checkpoint": "只读报告已交回，上游比较继续。",
+   "write_state": "RELEASED"
+  },
+  {
+   "task": "CODEX-DESC-PREP-20261114",
+   "owner": "perf_cpu",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_integer_texture_front.h",
+    "tests/device/test_integer_texture_front.cpp",
+    "tests/device/test_descriptor_dynamic_plan.py",
+    ".local/worker-perf-26260/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T21:09:15.376051+08:00",
+   "checkpoint": "无生产WIP，冻结等待上游对照。",
+   "write_state": "FROZEN_USER_PRIORITY"
+  },
+  {
+   "task": "CODEX-ALIGNED-HOST-SPAN-20261114",
+   "owner": "load_profile",
+   "paths": [
+    "src/runtime/hle/address_region.c",
+    ".local/worker-load-26260/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T21:09:15.376051+08:00",
+   "checkpoint": "无生产WIP，冻结等待上游对照。",
+   "write_state": "FROZEN_USER_PRIORITY"
+  },
+  {
+   "task": "CODEX-ZELDA-BOTW-20261114",
+   "owner": "perf_cpu",
+   "paths": [
+    ".local/upstream-switch-zelda-20261114/botw-review/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T21:14:36.762601+08:00",
+   "checkpoint": "只读公开来源与本项目，只写独立研究产物",
+   "write_state": "RELEASED"
+  },
+  {
+   "task": "CODEX-ZELDA-TOTK-20261114",
+   "owner": "load_profile",
+   "paths": [
+    ".local/upstream-switch-zelda-20261114/totk-review/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T21:14:36.762601+08:00",
+   "checkpoint": "只读公开来源与本项目，只写独立研究产物",
+   "write_state": "RELEASED"
+  },
+  {
+   "task": "CODEX-ZELDA-CORE-20261114",
+   "owner": "Codex /root",
+   "paths": [
+    ".local/upstream-switch-zelda-20261114/botw",
+    ".local/upstream-switch-zelda-20261114/totk",
+    ".local/upstream-switch-zelda-20261114/totkdroid",
+    ".local/upstream-switch-zelda-20261114/droidplay",
+    ".local/upstream-switch-zelda-20261114/nxnative",
+    ".local/upstream-switch-zelda-20261114/fetch-plan.json",
+    ".local/upstream-switch-zelda-20261114/fetch-launcher.json",
+    ".local/upstream-switch-zelda-20261114/root-review.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T21:14:36.762601+08:00",
+   "checkpoint": "只读公开来源与本项目，只写独立研究产物",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "CODEX-UPSTREAM-CBUF-20261114",
+   "owner": "/root/perf_cpu/lookup_review",
+   "paths": [
+    ".local/upstream-switch-zelda-20261114/cbuf-review/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T21:29:03.435632+08:00",
+   "checkpoint": "源码及轻契约已交回，根串行集成。",
+   "write_state": "RELEASED"
+  },
+  {
+   "task": "CODEX-UPSTREAM-UBO-20261114",
+   "owner": "perf_cpu",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_uniform_extent.h",
+    "src/graphics/nvn_vulkan/engine/third_party/droidplay/spv_lit.h",
+    "src/graphics/nvn_vulkan/engine/third_party/droidplay/provenance.json",
+    "tests/device/test_spirv_uniform_extent.cpp",
+    "tests/device/uniform_extent_cases.spvasm",
+    "scripts/android/verify_spirv_uniform_extent.sh",
+    ".local/upstream-switch-zelda-20261114/ubo-integration/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T21:34:18.680728+08:00",
+   "checkpoint": "用户明确要求借鉴成熟经验针对性优化，根登记后授权实现。",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "CODEX-UPSTREAM-PAGE-20261114",
+   "owner": "load_profile",
+   "paths": [
+    "src/runtime/hle/address_region.c",
+    "tests/native/owned_pages_contract.c",
+    ".local/upstream-switch-zelda-20261114/page-integration/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T21:34:18.680728+08:00",
+   "checkpoint": "源码及轻契约已交回，根串行集成。",
+   "write_state": "RELEASED"
+  },
+  {
+   "task": "CODEX-UPSTREAM-INTEGRATE-20261114",
+   "owner": "Codex /root",
+   "paths": [
+    "scripts/verify_host.py",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "coordination/results/CODEX-UPSTREAM-PORTS-20261114.md",
+    ".local/upstream-switch-zelda-20261114/baseline-7de9e39/",
+    ".local/upstream-switch-zelda-20261114/root-review.md",
+    ".local/codex-recovery-20261114/integration-upstream-final/",
+    ".local/codex-recovery-20261114/apk-history/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T21:35:42.433767+08:00",
+   "checkpoint": "实现者正在并行轻契约，根先保全当前基线。",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "CODEX-UPSTREAM-UBO-QA-20261114",
+   "owner": "/root/perf_cpu/lookup_review",
+   "paths": [
+    ".local/upstream-switch-zelda-20261114/cbuf-review/integration-qa/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T21:41:22.111817+08:00",
+   "checkpoint": "只读生产，已存在源码，最终以实施者冻结摘要核对。",
+   "write_state": "ACTIVE"
   }
  ],
  "tasks": [
@@ -6342,6 +6513,317 @@
    ],
    "acceptance": "CPU镜像成功路径保留其它mip/layer原始字节，GPU权威/失败/深度及回读仍preserve，保留64MiB drain同步。CPU采样不改变GPUresident路径，实际场景验收由根",
    "checkpoint": "source2666a8f9/testd619dc28冻结，3契约实现者与独立复跑0，旧函数负控真实失败，NDK28 syntax0。实际性能收益待验。"
+  },
+  {
+   "id": "CODEX-PERF-26260-20261114",
+   "role": "READ_ONLY_RESEARCH",
+   "owner": "perf_cpu",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "按PID26260真实3帧CPU数据定位descriptor/snapshot/Other最小减负点",
+   "inputs": [
+    "7de9e39",
+    "performance-7de9e39 CPU3/guest/CSV"
+   ],
+   "outputs": [
+    ".local/worker-perf-26260/review.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/worker-perf-26260/"
+   ],
+   "acceptance": "同PID/时刻对齐，正常GPUresident路径保持，最小改动给出失效/并发反例，未实测不宣称收益",
+   "checkpoint": "CPU3 frame2552..2554；当前用户输入，root独占设备"
+  },
+  {
+   "id": "CODEX-LOAD-26260-20261114",
+   "role": "READ_ONLY_RESEARCH",
+   "owner": "load_profile",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "核对1.0.18当前读档超过30秒的实际长帧/资源/guest阻塞",
+   "inputs": [
+    "7de9e39",
+    "performance-7de9e39 CPU3/guest/CSV"
+   ],
+   "outputs": [
+    ".local/worker-load-26260/review.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/worker-load-26260/"
+   ],
+   "acceptance": "同PID/时刻对齐，正常GPUresident路径保持，最小改动给出失效/并发反例，未实测不宣称收益",
+   "checkpoint": "CPU3 frame2552..2554；当前用户输入，root独占设备"
+  },
+  {
+   "id": "CODEX-DESC-PREP-20261114",
+   "role": "IMPLEMENTATION",
+   "owner": "perf_cpu",
+   "status": "deferred",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "按实时metadata的槽位前端与稳定动态UBO准备计划消除重复查找/排序，保留快照和同步",
+   "inputs": [
+    "7de9e39",
+    "PID26260 CPU3与55秒长读档证据"
+   ],
+   "outputs": [
+    "最小补丁",
+    "实现者回归与恢复点"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_integer_texture_front.h",
+    "tests/device/test_integer_texture_front.cpp",
+    "tests/device/test_descriptor_dynamic_plan.py",
+    ".local/worker-perf-26260/"
+   ],
+   "acceptance": "合法输入语义、更新/失效/回读/共享页保持，实际RG收益待根验证，代码由独立review复核",
+   "checkpoint": "用户要求先研究成熟Switch Zelda方案，源码未改，7de9e39保持；实现检查点已保存。"
+  },
+  {
+   "id": "CODEX-ALIGNED-HOST-SPAN-20261114",
+   "role": "IMPLEMENTATION",
+   "owner": "load_profile",
+   "status": "deferred",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "宿主页完整对齐的guest范围直接返回无需扫描外侧共享，非对齐沿原逻辑",
+   "inputs": [
+    "7de9e39",
+    "PID26260 CPU3与55秒长读档证据"
+   ],
+   "outputs": [
+    "最小补丁",
+    "实现者回归与恢复点"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/runtime/hle/address_region.c",
+    ".local/worker-load-26260/"
+   ],
+   "acceptance": "合法输入语义、更新/失效/回读/共享页保持，实际RG收益待根验证，代码由独立review复核",
+   "checkpoint": "用户要求先研究成熟Switch Zelda方案，源码未改，7de9e39保持；实现检查点已保存。"
+  },
+  {
+   "id": "CODEX-ZELDA-BOTW-20261114",
+   "role": "UPSTREAM_RESEARCH",
+   "owner": "perf_cpu",
+   "status": "completed",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "核实BOTWRecompAndroid发布和60fps设备范围，提取适合FFRS的成熟runtime/renderer/VM实现",
+   "inputs": [
+    "用户优先成熟Switch Zelda方案要求",
+    "公开primary repositories",
+    "7de9e39性能证据"
+   ],
+   "outputs": [
+    ".local/upstream-switch-zelda-20261114/botw-review/review.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/upstream-switch-zelda-20261114/botw-review/"
+   ],
+   "acceptance": "源码URL/不可变SHA/许可证/可获取状态，分清游戏版本与设备实测覆盖，给精确可复用模块和本项目差异",
+   "checkpoint": "固定源码比较和DroidPlay补充已交回，无生产修改。"
+  },
+  {
+   "id": "CODEX-ZELDA-TOTK-20261114",
+   "role": "UPSTREAM_RESEARCH",
+   "owner": "load_profile",
+   "status": "completed",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "核实Aurelio TotK Native及TOTKDroid架构与60fps实测，找NVN/Vulkan/调度/内存可复用实现",
+   "inputs": [
+    "用户优先成熟Switch Zelda方案要求",
+    "公开primary repositories",
+    "7de9e39性能证据"
+   ],
+   "outputs": [
+    ".local/upstream-switch-zelda-20261114/totk-review/review.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/upstream-switch-zelda-20261114/totk-review/"
+   ],
+   "acceptance": "源码URL/不可变SHA/许可证/可获取状态，分清游戏版本与设备实测覆盖，给精确可复用模块和本项目差异",
+   "checkpoint": "固定源码比较和DroidPlay补充已交回，无生产修改。"
+  },
+  {
+   "id": "CODEX-ZELDA-CORE-20261114",
+   "role": "UPSTREAM_RESEARCH",
+   "owner": "Codex /root",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "核实DroidPlay Core/nxnative与本项目代码来源和实现差异，统一制定吸收方案",
+   "inputs": [
+    "用户优先成熟Switch Zelda方案要求",
+    "公开primary repositories",
+    "7de9e39性能证据"
+   ],
+   "outputs": [
+    ".local/upstream-switch-zelda-20261114/review.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/upstream-switch-zelda-20261114/"
+   ],
+   "acceptance": "源码URL/不可变SHA/许可证/可获取状态，分清游戏版本与设备实测覆盖，给精确可复用模块和本项目差异",
+   "checkpoint": "冻结未落地自研候选，生产不编辑"
+  },
+  {
+   "id": "CODEX-UPSTREAM-CBUF-20261114",
+   "role": "UPSTREAM_RESEARCH",
+   "owner": "/root/perf_cpu/lookup_review",
+   "status": "completed",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "对照DroidPlay按SPIRV操作数计算UBO extent与当前按word扫描，实测真实模块的保守裁剪差距，不编辑生产",
+   "inputs": [
+    "7de9e39",
+    "DroidPlay a72a85c59cac54f3428827cfb72e1adf63b1521a",
+    "现存真实SPV夹具"
+   ],
+   "outputs": [
+    ".local/upstream-switch-zelda-20261114/cbuf-review/review.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/upstream-switch-zelda-20261114/cbuf-review/"
+   ],
+   "acceptance": "准确复用源算法边界，literal碰撞、动态索引和未识别用法保守保持，记录真实模块/宿主证据，真机NOT_RUN",
+   "checkpoint": "27输入26唯一模块/126唯一Uniform绑定/24分析范围改善，已核source2五绑定候选。具体每帧权重待实测。"
+  },
+  {
+   "id": "CODEX-UPSTREAM-UBO-20261114",
+   "owner": "perf_cpu",
+   "objective": "吸收DroidPlay按ID操作数和已验证vec4布局的uniform读取范围分析，减少当前误保守整块快照",
+   "inputs": [
+    "7de9e39",
+    "DroidPlay a72a85c59cac54f3428827cfb72e1adf63b1521a spv_cb_ext2/spv_lit.h",
+    "cbuf-review 27真实模块/130绑定/25范围改善"
+   ],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_uniform_extent.h",
+    "src/graphics/nvn_vulkan/engine/third_party/droidplay/spv_lit.h",
+    "src/graphics/nvn_vulkan/engine/third_party/droidplay/provenance.json",
+    "tests/device/test_spirv_uniform_extent.cpp",
+    "tests/device/uniform_extent_cases.spvasm",
+    "scripts/android/verify_spirv_uniform_extent.sh",
+    ".local/upstream-switch-zelda-20261114/ubo-integration/"
+   ],
+   "acceptance": "literal碰撞不扩大复制、计算索引/未知布局/opaque保持保守，真实shader SPV保持逐字相同，UBO快照与fence生命周期保持。自测+独立复核，RG真实帧率待总控。",
+   "role": "IMPLEMENTATION",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "outputs": [
+    "最小生产补丁",
+    "源码与测试摘要",
+    "可恢复日志/检查点"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "checkpoint": "用户明确要求借鉴成熟经验针对性优化，根登记后授权实现。"
+  },
+  {
+   "id": "CODEX-UPSTREAM-PAGE-20261114",
+   "owner": "load_profile",
+   "objective": "依上游请求范围内查询策略消除完整宿主页对齐范围的外侧共享扫描，保留现有分配票据和VM事务",
+   "inputs": [
+    "7de9e39",
+    "TOTK/DroidPlay页索引比较",
+    "PID26260 55.467秒长载入"
+   ],
+   "write_scope": [
+    "src/runtime/hle/address_region.c",
+    "tests/native/owned_pages_contract.c",
+    ".local/upstream-switch-zelda-20261114/page-integration/"
+   ],
+   "acceptance": "完整对齐早返与非对齐共享边缘正确，4KiB/16KiB host语义、失败rollback和原guest字节保持，宿主契约复跑，RG加载收益待总控。",
+   "role": "IMPLEMENTATION",
+   "status": "implemented",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "outputs": [
+    "最小生产补丁",
+    "源码与测试摘要",
+    "可恢复日志/检查点"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "checkpoint": "source b7c11c6a/test d251455e冻结。实现者51命令0，根独立Mac normal/recovery0，RG477M真实4KiB owned页契约0，8threads×32cycles/32release races/errors0/ledger_valid，加载收益待游戏验证。"
+  },
+  {
+   "id": "CODEX-UPSTREAM-INTEGRATE-20261114",
+   "role": "INTEGRATION_QA",
+   "owner": "Codex /root",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "串行整合成熟上游针对性候选并保留1.0.18稳定性基线，验证加载/移动卡顿",
+   "inputs": [
+    "7de9e39",
+    "两个已登记互斥实现任务",
+    "用户当前稳定但卡的反馈"
+   ],
+   "outputs": [
+    "完整宿主门禁与Android APK",
+    "同场景冷暖性能证据",
+    "上游来源索引及检查点"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "scripts/verify_host.py",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "coordination/results/CODEX-UPSTREAM-PORTS-20261114.md",
+    ".local/upstream-switch-zelda-20261114/baseline-7de9e39/",
+    ".local/upstream-switch-zelda-20261114/root-review.md",
+    ".local/codex-recovery-20261114/integration-upstream-final/",
+    ".local/codex-recovery-20261114/apk-history/"
+   ],
+   "acceptance": "原shader字节与游戏逻辑保持，源码冻结后host/Android构建，安装包摘要核验/存档保留，RG加载和移动独立实测后决定收益",
+   "checkpoint": "实现者正在并行轻契约，根先保全当前基线。"
+  },
+  {
+   "id": "CODEX-UPSTREAM-UBO-QA-20261114",
+   "role": "INDEPENDENT_COMPONENT_QA",
+   "owner": "/root/perf_cpu/lookup_review",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "独立复核精确UBO范围边界与既有shader-load接线，保留全范围回退和生命周期",
+   "inputs": [
+    "DroidPlay固定源码",
+    "新xbg_spirv_uniform_extent.h与实际源入口"
+   ],
+   "outputs": [
+    ".local/upstream-switch-zelda-20261114/cbuf-review/integration-qa/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/upstream-switch-zelda-20261114/cbuf-review/integration-qa/"
+   ],
+   "acceptance": "正负组件与实际模块独立复跑，source范围/unknown/full守卫核验，真机性能另验",
+   "checkpoint": "只读生产，已存在源码，最终以实施者冻结摘要核对。"
   }
  ],
  "blockers": [
@@ -6517,13 +6999,13 @@
  },
  "coordinator_branch": "task/T-codex-recovery-20261114",
  "progress_assessment": {
-  "reached": "Every NVN family the guest asks for between the sampler and its first draw is implemented and wired: the command memory callback works and a recording is never void, the sampler object family, the texture object family, the texture view family and the three device handle functions are reachable through the guest own lookup, the descriptor pools are numbered and a handle is read with the base of the pool that was bound.",
-  "not_reached": "A draw that is submitted from a replayed command, a pixel that comes out of it, and therefore any title screen or playable scene.",
-  "frame_count": 0,
+  "reached": "1.0.18 RG477M真实新建/开场BOSS后流程和存读档已进入场景；用户确认本轮原闪退点通过。当前城内移动18.7–20.3FPS，真实GPU26–28ms，生产源7de9e39。",
+  "not_reached": "稳定30/60FPS、过渡/战斗音画连续性、水都地面闪烁、多芯片实机兼容均待验。",
+  "frame_count": "current PID26260 frame log tracked separately",
   "next_blockers": [
-   "the device run with P-MM-24, P-MM-25 and P-MM-26 in it",
-   "P-MM-27 graphics pipeline crash",
-   "P-MM-28 present path"
+   "55.467秒读档的CPU VM管理热点需有界实测",
+   "同游戏DroidPlay与Zelda成熟模块对照后择取最小完整实现",
+   "荣耀400Pro同次闪退日志及其它芯片真机证据"
   ]
  },
  "device_availability": "User confirms other conversation was installing/debugging another game and has now closed it; root sole device operator from this point. Previous foreigngame screenshots do not prove FFRSscene or solely FFRSexit cause; earlier FPS potentially contended, NOT acceptance. Continuous occupancy authorized.",
@@ -8990,8 +9472,67 @@
    ],
    "tests": "独立3契约0，旧C真实负控失败，Android28 syntax0",
    "plan": ".local/codex-recovery-20261114/integration-upload-final/plan.json",
-   "device": "NOT_RUN",
-   "configuration_note": "当前PID511 shader_reuse=2验证模式162比较全equal/0 mismatch。正常性能包拟1，单独披露冷shader对照开销移除，移动warm问题独立分析。"
+   "device": "用户读城内新存档走动后采3帧CPU，实际性能待验",
+   "configuration_note": "当前PID511 shader_reuse=2验证模式162比较全equal/0 mismatch。正常性能包拟1，单独披露冷shader对照开销移除，移动warm问题独立分析。",
+   "commit": "7de9e39",
+   "build": "host97/97, Android0, source unchanged",
+   "apk": ".local/codex-recovery-20261114/apk-history/ffrs-1.0.18-preview-upload-final.apk",
+   "apk_bytes": 3597308,
+   "apk_sha256": "a6c9fbe2dd21c2b5e16dd691c7c291c092b57a1c407c481a7dc6e30540def650",
+   "installed": true,
+   "pid": 26260,
+   "save_before_after_sha256": "86d8a9f5f9a77604ff5d6ebde5e716169f2ac804b15306d26e72b17f26a93ae8",
+   "configuration": "texelcopy ON, shader_reuse1, source nice0, LOW0, FPS30, narrow1, async0",
+   "install_evidence": ".local/codex-recovery-20261114/install-7de9e39-20261114-205130"
+  },
+  "cpu3_26260": {
+   "frames": [
+    2552,
+    2554
+   ],
+   "wall_ms": 160.32023,
+   "measured_ms": 97.88277,
+   "uncovered_ms": 62.43746,
+   "draws": 3425,
+   "dispatches": 255,
+   "submissions": 26,
+   "shaders": 0,
+   "exclusive_ms": {
+    "descriptor": 28.106027,
+    "snapshot": 18.71752,
+    "other": 18.811319,
+    "draw": 18.115421
+   },
+   "fence_calls": 0,
+   "evidence": ".local/codex-recovery-20261114/performance-7de9e39/command-cpu3-engine.log",
+   "status": "不是性能PASS；用户仍反馈卡顿与>30秒读档"
+  },
+  "current_user_feedback": {
+   "at": "2026-11-14T21:34:18.680728+08:00",
+   "package": "1.0.18-preview",
+   "stability": "用户确认当前这轮无闪烁无闪退",
+   "performance": "用户确认卡顿仍明显",
+   "scope": "仅当前这轮场景，不扩大到完整游戏/第三章固定机位/其他设备"
   }
+ },
+ "upstream_research_20261114": {
+  "status": "in_progress",
+  "source_head": "7de9e39c5be12ec4835d67b46e14de8424072cdf",
+  "botw": "65c3d4783acbb843c1a6a011030cfc06d991b091",
+  "totk_native": "afdcd6beeb5387194b3f27fc81d37a608dc28605",
+  "totkdroid": "27be1909d2aa0941755bec84fb642f9163ca74f0",
+  "droidplay": "a72a85c59cac54f3428827cfb72e1adf63b1521a",
+  "nxnative": "5a4e23a2e952dae92e1ccf0e6b7bf24e3266d4e8",
+  "evidence": ".local/upstream-switch-zelda-20261114/",
+  "production_change": "none",
+  "same_game_build_ids": {
+   "current": "736837afd390442ed7c74a7de730e71b",
+   "upstream_1_0_1": "84e182f72ee1da4f477804bd05b54c15"
+  },
+  "pending": [
+   "DroidPlay allocator/scheduler对照收口",
+   "UBO extent保守性真实模块量化",
+   "形成有来源的最小吸收任务顺序"
+  ]
  }
 }
