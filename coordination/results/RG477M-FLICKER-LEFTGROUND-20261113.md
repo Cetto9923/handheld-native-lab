@@ -1024,3 +1024,129 @@ RG477M 上 probe **每进程只能用一次**（标题屏那次已用掉）。�
 - 运河广场白纱（§14）与陆行鸟异常仍未处理，根因各自独立
 - honor 树已被另一条工作线推进到 `b6e487b`（含 `Immortalis` 等改动），本次**未触碰**该树
 
+
+#### 18. 全量 SPIR-V 审计：撤回三条已被推翻的结论（2026-11-14 下午）
+
+上一轮（§16/§17）的修复**结论正确但理由错误**：主角黑条纹确实是 93ebe66 的
+gl_FragDepth 剥离造成的，A/B 也确实证明了这一点；但用来决定「该不该剥离」的判据，
+以及支撑它的几条证据，经全量审计后**都是错的**。本节按项目规则显式撤回。
+
+##### 18.1 撤回 E5：「该 fs 从不读 gl_FragCoord」
+
+**原结论**（§16.1 E5）：062df44b75d37d76 的 gl_FragCoord（var 74）的
+OpLoad 次数 = 0 —— 着色器根本不读 gl_FragCoord。
+
+**撤回依据**：gl_FragCoord 是 **vec4**，编译器取 .x/.y/.z/.w 一律走
+OpAccessChain，**没有任何一个着色器**是直接 OpLoad 那个 builtin 变量的。
+spirv-dis 独立复核（062df44b75d37d76.spv，5473 行）：
+
+    OpDecorate %74 BuiltIn FragCoord
+    %2181 = OpAccessChain %2082 %74 %2035      ; %2035 = OpConstant %6 0
+    %2306 = OpAccessChain %2082 %74 %2085      ; %2085 = OpConstant %6 1
+    %2512 = OpAccessChain %2082 %74 %2088      ; %2088 = OpConstant %6 2  (= .z)
+    %2752 = OpAccessChain %2082 %74 %2117      ; %2117 = OpConstant %6 3
+
+即：**主角着色器确实读 gl_FragCoord（含 .z），只是不直接 load**。
+原判据用「直接 OpLoad」统计，结论必然为 0 —— **这是判据的缺陷，不是着色器的事实**。
+
+全量统计（706 个模块）：声明 FragCoord 的 402 个着色器**全部**经 access chain 访问，
+直接 OpLoad 命中 **0**。
+
+##### 18.2 撤回 E7：「深度 bias 补偿命中 0 次」
+
+**原结论**（§16.1 E7）：93ebe66 自带的 terrain overlay depth bias 命中 0 次
+（driver_block 哈希 0x44754dd35d3a5bc9 未匹配）⇒ 补偿手段空转。
+
+**撤回依据**：设备日志实测**命中 5 次**，且打的是**主角的 draw**：
+
+    [engine] NVN terrain overlay depth bias applied (-1.0 slope, -2.0 constant) for draw=48299
+    [engine] NVN terrain overlay depth bias applied (-1.0 slope, -2.0 constant) for draw=48307
+    [engine] NVN terrain overlay depth bias applied (-1.0 slope, -2.0 constant) for draw=48309
+    [engine] NVN terrain overlay depth bias applied (-1.0 slope, -2.0 constant) for draw=48311
+    [engine] NVN terrain overlay depth bias applied (-1.0 slope, -2.0 constant) for draw=48314
+
+原因与 gl_FragDepth 剥离**同一个错误**：draw() 里的补偿分支同样用
+state.shader[4]->key == "062df44b75d37d76" 做门，而那是主角的 fs。
+于是「给地形 overlay 的确定性深度补偿」实际以 **slope -1.0 / constant -2.0**
+打在了主角的 draw 上。原结论「命中 0 次」不成立。
+
+##### 18.3 撤回 §17.3 / §17.5：「读 gl_FragCoord 的地形着色器照旧剥离」
+
+**原结论**（§17.3 表格）：着色器读 gl_FragCoord（如真正的地形着色器）→ 照旧剥离；
+§17.5 由此得出「地面修复不受影响，只需用 gfx-terrain-depth=1 与缺省各跑一次复测」。
+
+**撤回依据**：这个「读 gl_FragCoord」的判据**对 706 个着色器恒为 false**
+（见 18.1），所以 auto 模式实际等价于「永不剥离」。更关键的是——
+**没有任何着色器把 gl_FragCoord.z 存进 gl_FragDepth**。
+
+全量数据流切片（706 模块 / 498 fragment / 105 声明 gl_FragDepth）：
+
+| 存的值的来源 | 着色器数 |
+|---|---|
+| **恰好 gl_FragCoord.z** | **0** |
+| 由 fc.z + fc.w + push constant（fp_c3/fp_c5）推导 | 96 |
+| 与 fc 无关（游戏自算深度） | 7 |
+
+⇒ **剥离对全部 105 个着色器都是语义改变，没有一个是 no-op。**
+93ebe66 注释里「terrain shader statically stores gl_FragCoord.z into gl_FragDepth」
+这个前提**从未被验证，且在整个着色器集上为假**。
+
+因此 §17.5 那条「用 gfx-terrain-depth=1 与 auto 复测地面」的前提不成立：
+auto 模式从来没有剥离过任何着色器，**地面上不存在「被剥离」这回事**，
+也就不存在「修复是否回退了地面」这个问题。
+
+##### 18.4 修正后的实现与验证
+
+判据换成**真正回答问题的那个**：
+xbg_spirv_fragdepth_stores_rasterizer_z() —— 跟随指针问
+「存的到底是不是 gl_FragCoord.z」，只有这种着色器才允许剥离。
+
+- 判据实现要点：OpAccessChain 感知（真实编译器形状），
+  沿 OpAccessChain → OpLoad → OpStore 走，并用 OpConstant 解析分量索引。
+- **保守设计**：走不通的形状一律判「不是 fc.z」⇒ 保留 store。
+- **去掉 key 硬编码门**：由数据流规则决定，误判 key 不会再把「地形修复」打到别人身上。
+- **移除 depth-bias 补偿分支**：它和剥离是同一个错误门，且实测打在主角上。
+
+**三重验证**（互不依赖）：
+
+| 手段 | 结果 |
+|---|---|
+| 自制 Python 指针溯源（706 模块） | 0 个存 fc.z |
+| spirv-dis 独立反汇编复核 | 确认 access chain 形状与 .z 索引 |
+| **引擎 C++ 判据跑真实 706 模块** | fragment=498 with_fragdepth=105 stores_rasterizer_z=0 |
+
+真机（RG477M，装机 sha256 9083174963c4…）：
+
+- 全部 fragment 着色器保留自己的深度 store：本次会话 **1391 条 kept**，**0 条 patched**。
+- 深度 bias 补偿：**0 次**（旧日志区间内那 5 次属上一轮构建）。
+- fps **30.00**，submit_cpu_ms 2.43–5.47，sync_wb=0 / sync_rb=0。
+- 主角区域水平条带判定：设备端截图最长黑 run 中位数 **1.0**、
+  「宽黑条带后接短黑条带」计数 **1**（噪声级）⇒ **黑条纹未复现**。
+
+> 取证更正：本机 adb exec-out screencap -p 在这台掌机上返回的是**全黑坏数据**
+> （1280×960 全 0），而设备端 screencap 落盘再 pull 的文件是真实画面。
+> 后续所有屏幕取证一律用**设备端落盘 + pull**，不用 exec-out。
+
+##### 18.5 对第三章地面闪烁的影响（结论改了）
+
+- 「地面闪烁是 gl_FragDepth 剥离造成的」这条**从未成立**：剥离只作用于主角那个 key，
+  地面从来没被剥离过 ⇒ 地面闪烁与本次深度改动**无关**，
+  上一轮遗留项「用 gfx-terrain-depth 复测地面」**作废**。
+- 地面闪烁仍需独立定位。新的观察（来自本次 draw 清单，75 个 draw group）：
+  场景里存在**深度预通道**（group 90–98、104，depthWrite=1）与
+  **颜色通道**（group 105–126，depthWrite=0）两套 draw，
+  且**预通道用的 fs 与颜色通道用的 fs 不是同一批**
+  （预通道：0fcc0a66e6b033b0 / 08c080ed4b68e1bf / 53fb467b5368f0ad /
+  83e861b2c9367dba / 7a4a4e241c1b3122；颜色通道多为 plain 或另一批 FD+DR）。
+  **下一个假设**：预通道写入的深度与颜色通道测试用的深度来自不同着色器、不同深度约定
+  ⇒ 同一片地面在两个通道里深度不一致 ⇒ 逐帧出现/消失。
+  这需要回运河广场机位，用 gfx-live-framedump 抓**深度附件**与 color0 做逐帧比对来验证。
+
+#### 19. Codex 整合复核补记（2026-11-14）
+
+- 保留上一节原始调查和撤回记录。用户确认 `90831749…` 包角色已正常，地面仍闪烁。
+- `ddeadec` 自动判据尚有 mixed-store、CompositeExtract 数组与 literal 索引、SpecConstant 等问题。正常运行和预热路径本轮完整保留游戏深度，并撤回固定 bias，避免继续扩大自动剥离范围。
+- 本轮 `exec-out screencap` 已获得有效游戏画面。截图通道有效性按当次文件核验，上一节全黑结果仅对应当次失败采集。
+- `ubtrace` 目前漏掉 descriptor memo 命中，draw 字段实际为 binding 记录序号，hash 仅覆盖前 4096 字节。现有稳定 hash 或 cmp=0 无法排除全部 uniform 数据问题。
+- `FRAME-DUMP.present` 与 `UBTRACE.frame` 同号，`FLAME_UB/DR/FRAME` 在呈现计数递增后打印，关联时需加一。
+- 先前性能采样 A/B 遭遇 MiniMax 换包，已作废，后续固定 APK SHA、PID 和机位重新测量。
