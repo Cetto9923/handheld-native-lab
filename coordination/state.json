@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-14T23:14:36.922851+08:00",
- "phase": "1.0.21女主闪烁本轮用户确认消失，当前包作为新画面对照，继续音频与战斗性能。",
+ "updated_at": "2026-11-14T23:31:34.205192+08:00",
+ "phase": "显示经验库已总结，FPS主任务进行中。2分钟开场录屏已保全，RG断开导致新CPU采样未执行。",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -2582,6 +2582,20 @@
    "checkpoint": "源码780ebc6；构建及APK摘要已保全precision-build/。设备验收待重连。",
    "write_state": "FROZEN_HANDED_BACK",
    "released_at": "2026-11-14T23:05:02.645631+08:00"
+  },
+  {
+   "task": "CODEX-SCENE-FPS-20261114",
+   "owner": "root",
+   "paths": [
+    "coordination/EXPERIENCE.md",
+    "coordination/results/CODEX-SCENE-FPS-20261114.md",
+    ".local/codex-recovery-20261114/scene-fps21/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T23:17:10.670351+08:00",
+   "checkpoint": "经验库及真实场景性能取证，尚无新性能代码。",
+   "write_state": "ACTIVE"
   }
  ],
  "tasks": [
@@ -7301,6 +7315,35 @@
    ],
    "acceptance": "保持显式FMA及fragment/compute模块，指令函数体逐字保持，仅补合法NoContraction；已有装饰幂等，未知/坏输入不半写；所有优化入口配置一致。女主因果与性能须真机，不能由离线结果代替。",
    "checkpoint": "780ebc6源，host98/98、Android0、28输入SHA一致，APK07f5f036/3601404B。RG断开，未安装；女主因果和性能NOT_RUN。"
+  },
+  {
+   "id": "CODEX-SCENE-FPS-20261114",
+   "owner": "root",
+   "role": "PERFORMANCE_ANALYSIS",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "总结已修显示问题及回归依据，以21为画面对照，定位各实际场景帧率与长帧/音频卡顿。",
+   "inputs": [
+    "用户明确重点各场景帧率",
+    "21女主不闪烁用户确认",
+    "新2分钟掌机录屏，用户听到声音卡顿而画面未见明显卡顿",
+    "同PID32442帧CSV与音频日志"
+   ],
+   "outputs": [
+    "coordination/EXPERIENCE.md",
+    "coordination/results/CODEX-SCENE-FPS-20261114.md",
+    ".local/codex-recovery-20261114/scene-fps21/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "coordination/EXPERIENCE.md",
+    "coordination/results/CODEX-SCENE-FPS-20261114.md",
+    ".local/codex-recovery-20261114/scene-fps21/"
+   ],
+   "acceptance": "逐项保留修复范围、代码/组件/真机证据，录屏用于视觉声学、真实FPS来自同PID引擎，保留原逻辑时间，最终60FPS目标。",
+   "checkpoint": "经验库L010至015/显示回归检查点完成，2分钟视频/同PID原始证据已保全，当前窗口CPU18/GPU29至30ms。新CPU3因断开未启动；后续依真实样本接入复制/descriptor/GPU候选，FPS收益未交付。"
   }
  ],
  "blockers": [
@@ -9679,7 +9722,7 @@
    "archive": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/codex-recovery-20261114/branch-archive"
   },
   "baseline_apk": "9083174963c40ce1c7d1726671fa2ffd4e00f573efad516d80def5b3a10cf881",
-  "current_focus": "21女主闪烁本轮用户确认消失，保留当前包，继续实际战斗与音频卡顿定位。",
+  "current_focus": "各场景FPS与长帧，21画面对照保持。原生当前窗口CPU约18ms/GPU29至30ms，继续缩减提交/快照及GPU成本。",
   "integration_candidate": {
    "head": "a0f402e",
    "host_checks": 87,
@@ -9715,8 +9758,8 @@
    "evidence": ".local/codex-recovery-20261114/host-page-review/manifest.json"
   },
   "device_connection": {
-   "status": "CONNECTED_USER_SCENE_TEST",
-   "checked_at": "2026-11-14T23:09:15.033304+08:00",
+   "status": "RG477M_DISCONNECTED_AFTER_VIDEO_CAPTURE",
+   "checked_at": "2026-11-14T23:31:34.205192+08:00",
    "serial": "RG477M01445122",
    "pid": "32442",
    "operator": "用户操控，root采样；21已安装并进入标题。",
@@ -10053,6 +10096,14 @@
    "environment": "DM_SPV_PRECISE",
    "supports": "单已知位置生成entry模块；group及multiple entry保持原路径",
    "independent_component": "review125afed9/e2cd142d，18SPV val0/ASan0，annotations精确集合，函数体/Fma及幂等一致；VS/FS/CS fixture，Tess/Geometry有效fixture未执行。"
+  },
+  "latest_video_analysis": {
+   "video": ".local/codex-recovery-20261114/scene-fps21/screen-20261114-231601.mp4",
+   "sha256": "0999ddd4d29c9c1803c7a9752fb0c81cf1660f5cdce4a65898bebe69aa1f4e69",
+   "duration_seconds": 119.606522,
+   "audio": "片头0.348625秒近静音，其余未检出≥15ms近静音段；听感短卡仍待定位。AAudio重开周期各自计xrun，存在欠载记录。",
+   "alignment": "creation_time为片头的旧假设已撤回。片尾粗锚点约±2秒，尚缺同步画面标记，不作为精确录屏FPS。",
+   "report": "coordination/results/CODEX-SCENE-FPS-20261114.md"
   }
  },
  "upstream_research_20261114": {

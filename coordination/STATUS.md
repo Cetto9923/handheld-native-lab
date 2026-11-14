@@ -1,7 +1,7 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-14T23:14:36.922851+08:00
-阶段：1.0.21女主闪烁本轮用户确认消失，当前包作为新画面对照，继续音频与战斗性能。
+状态事件时间：2026-11-14T23:31:34.205192+08:00
+阶段：显示经验库已总结，FPS主任务进行中。2分钟开场录屏已保全，RG断开导致新CPU采样未执行。
 总控：Codex /root 本轮接管
 更新方式：按事件更新，没有后台自动刷新。
 
@@ -189,6 +189,7 @@
 | CODEX-CLEAR-INDEPENDENT-REVIEW-20261114 | READ_ONLY_REVIEW | completed | perf_cpu | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-POSITION-PRECISION-IMPL-20261114 | IMPLEMENTATION | implemented | load_profile | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-POSITION-PRECISION-INTEGRATE-20261114 | INTEGRATION | implemented | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-SCENE-FPS-20261114 | PERFORMANCE_ANALYSIS | in_progress | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 
 ## 独占写入
 
@@ -340,6 +341,7 @@
 - {"task": "CODEX-CLEAR-INDEPENDENT-REVIEW-20261114", "owner": "perf_cpu", "paths": [".local/upstream-switch-zelda-20261114/layered-clear-independent/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T22:47:48.010417+08:00", "checkpoint": "root独占设备、集成及coordination；当前补丁未打包。", "write_state": "RELEASED", "released_at": "2026-11-14T22:54:03.253403+08:00"}
 - {"task": "CODEX-POSITION-PRECISION-IMPL-20261114", "owner": "load_profile", "paths": ["src/graphics/nvn_vulkan/engine/third_party/droidplay/spv_precise.h", "src/graphics/nvn_vulkan/engine/third_party/droidplay/provenance.json", "src/graphics/nvn_vulkan/engine/xbg_spirv_precise.h", "tests/device/test_spirv_precise.cpp", "tests/device/position_precision.spvasm", "scripts/android/verify_spirv_precise.sh", ".local/upstream-switch-zelda-20261114/position-precision-integration/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T22:52:25.015028+08:00", "checkpoint": "root负责xbg_game/版本/gate，全量构建待helper冻结；load_profile仅写helper/test/source provenance。", "write_state": "FROZEN_HANDED_BACK", "released_at": "2026-11-14T23:00:44.121559+08:00"}
 - {"task": "CODEX-POSITION-PRECISION-INTEGRATE-20261114", "owner": "root", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", "src/android/app/gamewindow/AndroidManifest.xml", "scripts/verify_host.py", ".local/codex-recovery-20261114/precision-build/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T22:52:25.015028+08:00", "checkpoint": "源码780ebc6；构建及APK摘要已保全precision-build/。设备验收待重连。", "write_state": "FROZEN_HANDED_BACK", "released_at": "2026-11-14T23:05:02.645631+08:00"}
+- {"task": "CODEX-SCENE-FPS-20261114", "owner": "root", "paths": ["coordination/EXPERIENCE.md", "coordination/results/CODEX-SCENE-FPS-20261114.md", ".local/codex-recovery-20261114/scene-fps21/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T23:17:10.670351+08:00", "checkpoint": "经验库及真实场景性能取证，尚无新性能代码。", "write_state": "ACTIVE"}
 
 ## 阻塞
 

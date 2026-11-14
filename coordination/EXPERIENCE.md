@@ -178,3 +178,65 @@ NVN terrain drop frag depth shader=062df44b75d37d76 loader=runtime kept: the sha
 - 旧 `FLAME_DR` 聚合相同无法排除同 shader 子 draw 的顺序、被跳过的绘制、纯深度绘制或 GPU 间接实例变化。它在实际发出绘制前采集，并将同键绘制合并。旧 uniform trace 在 descriptor-build 路径且只哈希前 4KiB，也无法排除 memo 命中和实际 GPU 输入变化。
 - 当前 `R` 路径的 `window=24` 未递减，实际由 `repeat_captures<32` 限制窗口。应按实际文件、帧号与 END 记录核对预算，旧“固定9帧”描述已过时。不要为再次取证删除尚未归档的文件。
 - 在固定 `90831749` APK、PID28827 的水都场景已采集90帧。左地面具有亮度与锐度反相关的跳变。present55574 的逐 pass 证据定位到 `VS431a6183c3565f66 / FS6e2d000b284e669c` 写入 RGBA16F 透明层，`CSf55cfedfb74f811a` 随后合成。单帧贡献不能单独证明时间闪烁的成因。
+
+
+## 2026-11-14 显示修复总结与性能优化回归依据
+
+### 当前画面对照版本
+
+1.0.21-preview 的生产源码为 `780ebc67d4b9cfe41c7df35bc0e1a7280e0796a1`，APK SHA256 为 `07f5f0368183b7fb9228c9f744fd835bf623c05fd0e86a1ecb71e13f7ec1419e`。RG477M 用户实玩确认开场女主身体“不闪烁了”。98项宿主检查、Android构建及独立精度组件复验已通过。APK、原31秒异常录屏、同PID日志和帧CSV均在 `.local/codex-recovery-20261114/`。第三章地面、其它场景和其它设备保留各自的验证状态。
+
+### L-010 自算深度输出的完整数据流
+
+人物黑条的历史修复包含保留游戏的 FragDepth 输出，当前源码修正为 `1950d52`。L-002旧说明已经由本文件末尾复核修订撤回。062df实际通过AccessChain读取FragCoord，最终深度由FMin等运算产生。删除store需要证明最终写入值与光栅深度相等。读取内建值本身只是一条数据流线索。
+
+性能修改可复用 `tests/device/test_frag_depth_strip.cpp` 和 verify_host 中 frag-depth-strip 契约，画面对照覆盖人物面部、裙身、头发与移动轮廓。普通路径的 `gfx-terrain-depth` 缺省为保留游戏原始输出，值1为显式剥离实验。
+
+### L-011 顶点浮点约束与女主间歇缺口
+
+原18和20均复现女主脸部、裙身间歇黑色栅状缺口。21吸收固定DroidPlay `a72a85c59` 的NoContraction处理，并同时包含clear修复，用户确认症状消失。当前证据支持整包显示改善，单项代码因果尚待分离。
+
+共享优化入口在tidy之后对位置生成阶段补充NoContraction，runtime、warm与integer变体使用同一入口，typed变体保留已有装饰。显式Fma有原机融合语义。两个真实7ca7模块各补492条约束、各保留100条Fma，完整函数体字节与幂等独立核对通过。group装饰和multiple-entry模块沿原路径处理，具体覆盖见包装及契约。
+
+可复用 `scripts/android/verify_spirv_precise.sh`、`tests/device/test_spirv_precise.cpp` 与 `position_precision.spvasm`。脚本已接入verify_host。默认启用配置在预热线程启动前读取，启动标记 `gfx-position-precise` 优先于 `DM_SPV_PRECISE`。同包精度对照通过新进程配置建立，shader复用检查模式2可逐字核对warm与runtime输出。来源与SHA见third_party/droidplay/provenance.json。
+
+### L-012 清屏的目标覆盖与3D内容保留
+
+`cba445f` 修复folded clear沿普通draw附件交集规划而缩小目标宽高或层数的问题。create_pass在图像副作用前核对selected mip/view的完整覆盖，失败走target-only路径。3D image.layers为1，保留判断还需核对selected mip的depth slices、base和count，首次部分覆盖需要导入未清CPU内容。
+
+`view_range_contract.c`、`clear_format_contract.cpp`、`layer_output_gpu_contract.cpp` 包含对应契约。独立宿主ASan/UBSan和32层color配1层depth、8slice非零base等反例通过。GPU组件直接发出VkClearAttachments，完整引擎路径和3D未选slice端到端canary在该轮记录为NOT_RUN。普通clear命中可看现有coverage日志，R/provenance抓取会改变fold准入，需记录实际路线。
+
+### L-013 整数纹理和变体身份影响角色、特效与转场
+
+`03ab3e6` 修正typed storage先用后声明导致新建游戏exit70。`26bb311` 对实际UINT纹理用匹配整数fetch，再bitcast回客机原浮点寄存器位值，并在组合身份中同时保留integer与typed recipe。数值转换、signedness、格式位宽和通道数各有独立含义。较短的shader键或单个成功变体无法覆盖组合路径。
+
+可复用 `verify_integer_buffer.sh`、`verify_shader_identity.sh` 和typed-storage现有契约，真实原BOSS/转场故障流程曾在17包由用户推进通过。后续性能候选沿原正常shader载入、warm和两类变体入口核对，角色及技能的实机覆盖分别记录。
+
+### L-014 子组大小采用实际设备事实
+
+Mali-G615实测subgroup16，旧32-lane reduction在真实组件得到双倍合计，narrow修正后3次通过。已保存原始compute模块库的离线校验结果。对应 `xbg_spirv_narrow.h`、固定上游头与 `verify_spirv_narrow.sh` 已在现有门禁内。
+
+GPU厂商、真实subgroup、支持stage与helper形状共同决定路径。性能比较记录narrow配置及设备身份，跨GPU采样各自建组。未知helper保持当前保守处理。
+
+### L-015 快照和部分覆盖同时维护数据正确性
+
+原18和20也能复现女主缺口，19的UBO优化是唯一引入原因这一假设已经撤回。当前21生产UBO沿旧范围路径。UBO范围分析可作为后续候选重新核查，其下游pending_view、GPU resident选择与变体实际读取范围仍需配套验证。
+
+submission-owned快照、GPU输出准备、读写依赖和slot退休参与同一资源生命周期。复制优化先证明本次draw/dispatch的真实读取范围与内容版本，再量实际复制字节、命中率和帧时间。GPU等待可能与另一CPU线程并行，legacy_wait无法直接从submit CPU相减。CPU三帧采样按实际累计帧数归一。
+
+`7de9e39` 的CPU镜像上传修正保留GPU fallback所需的partial preserve，失败前预检完整写入范围，成功后才发布内容权威与版本。可复用 `test_upload_cpu_preserve.py`。这组正确性条件同样适用于后续顶点、索引、descriptor和纹理缓存优化。
+
+### 性能候选的显示回归检查点
+
+| 检查点 | 已有证据或入口 | 复验观察 |
+| --- | --- | --- |
+| 开场女主近景与移动 | 21用户确认、原异常31秒录屏、precision/frag-depth契约 | 面部、裙身、头发的黑块、条纹和轮廓闪动 |
+| 战斗技能与BOSS后推进 | integer/typed/identity契约及17实玩流程 | 特效、伤害数字、人物、转场及退出信息 |
+| 多层/3D附件clear | planner、格式及layer组件契约 | 所选mip/view覆盖、未选slice内容与残影 |
+| 普通与warm/变体shader | 精度与身份契约、reuse模式2 | 模块字节、组合recipe和配置一致性 |
+| 纹理CPU镜像与GPU fallback | upload preserve契约 | 部分更新、未改区域和失败事务性 |
+| 水都地面及其它机型 | 各自历史报告，当前未完成整包回归 | 继续保留未验状态及原始证据 |
+
+上述检查点作为性能修改的现成回归依据。项目当前工作重点为真实场景帧率与长帧，最终目标沿docs/PROJECT.md的原速真实60FPS执行。开场剧情、走动、战斗特效、室内/副本及水都分别保留冷暖数据。FPS、P95/P99、超过50/100/250ms的长帧、CPU/GPU耗时、实际复制量与有声流xrun增量共同记录。教程弹窗和暂停窗口有各自标签，录屏编码帧率仅用于解释媒体采样。
+
+出处汇总见 `coordination/results/CODEX-UPSTREAM-PORTS-20261114.md`、`RG477M-FLICKER-LEFTGROUND-20261113.md` 及 `.local/upstream-switch-zelda-20261114/` 各独立报告。后续显示变化按构建、同PID与具体场景更新证据。
