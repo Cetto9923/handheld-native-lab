@@ -83,6 +83,12 @@ void test_pending_bytes() {
     std::vector<uint8_t> again;
     check(pending.take(again), "the kept recipes are written by the next attempt");
     check(again == out, "the kept recipes are the same bytes");
+
+    pending.append(second, sizeof(second));
+    check(pending.take(again), "a reused output buffer takes the next recipes");
+    check(again == std::vector<uint8_t>(second, second + sizeof(second)),
+          "a reused output buffer contains only the next recipes");
+    check(pending.empty(), "taking into a reused output buffer leaves no old recipes pending");
 }
 
 // Concurrent recording during a flush: no recorded byte is lost and none is

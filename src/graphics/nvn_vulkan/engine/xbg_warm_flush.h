@@ -55,6 +55,7 @@ public:
     bool take(std::vector<uint8_t> &out) {
         std::lock_guard<std::mutex> lock(mu_);
         if (pending_.empty()) return false;
+        out.clear();
         out.swap(pending_);
         return true;
     }
