@@ -1,3 +1,13 @@
+# 2026-11-14 水都连续取证检查点
+
+- 代码开发树为 Honor 根目录，开发 HEAD a49c62c。历史18分支已删除并归档，主干 work/rg477m-native 仍在 a1ccbe4，待本轮验收后快进。
+- a49c62c 完整宿主检查86/86、Android构建、签名及ELF检查退出0。候选为 .local/codex-recovery-20261114/apk-history/ffrs-1.0.11-preview-a49c62c.apk，SHA256 cda987f9a51b142ccc148a62cf44e7d7de2e3ee547da35cf50ec9fdcabb30df5，尚未安装。
+- 当前 RG477M01445122 仍运行用户确认角色正常的90831749参考包，PID28827。用户走到水都复现位置，已保留90个实际呈现帧及55574帧逐pass探针。呈现帧同步回读会扰动性能，仅作画面证据。
+- 水都左铺地相邻亮度最大跳变10.23，右铺地0.86。55574帧g140 VS431a6183c3565f66 / FS6e2d000b284e669c产生RGBA16F灰白透明层，g149 CSf55cfedfb74f811a按scene*trans.a+trans.rgb合成。单帧尚不能证明时间闪烁根因。
+- 撤回旧census相同即可排除逐draw变化的归因。聚合会丢同shader子draw顺序、纯深度draw和GPU间接实例。旧uniform哈希只覆盖descriptor-build及前4KiB，不能排除memo与实际GPU输入。
+- architecture_review 领取 CODEX-WATER-TRACE-20261114，独占 xbg_game.cpp / xbg_probe.inc / 新 xbg_water_trace.inc，增加有界、默认关闭、现有slot fence退休的定向采样。其余代理只读，无设备权限。
+- 存档和历史APK已保留。旧perf-sample A/B因MiniMax并发换包作废。下一步固定整合包连续采样，核对深度、粒子属性选择位及实际输出，再落地最小修复。
+
 # 2026-11-14 分支收敛完成，继续闪烁与卡顿
 
 - 当前开发树 /Users/yuyan9923/GitHub/ff-resonance-honor-gtpro，开发分支 task/T-codex-recovery-20261114。主干 work/rg477m-native 在 RG477M 目录。

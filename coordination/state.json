@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-14T12:11:49.630498+08:00",
- "phase": "已完成历史分支收敛及18个旧分支删除，开始固定MiniMax参考包的闪烁/卡顿复测。整合版宿主检查通过，目标设备验收待执行。",
+ "updated_at": "2026-11-14T12:48:09.249914+08:00",
+ "phase": "历史分支归并完成，整合APK宿主86项检查及构建通过；RG477M水都左地面两态已复现，正在逐draw连续定向取证。",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -1937,17 +1937,16 @@
    "task": "CODEX-RECOVERY-20261114",
    "owner": "Codex /root",
    "paths": [
-    "src/graphics/nvn_vulkan/engine/",
+    "coordination/",
     "src/runtime/hle/",
-    "src/android/native/guest_boot_jni.cpp",
-    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "src/android/",
     "tests/",
-    "coordination/"
+    ".local/codex-recovery-20261114/"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-14T11:49:26.263338+08:00",
-   "checkpoint": "主干和开发分支已统一至a1ccbe4，历史分支已归并归档；当前APK908...为用户确认角色正常的基线。",
+   "checkpoint": "a49c62c整合构建与86宿主检查通过；固定908/PID28827采90水都呈现帧和55574逐pass探针。",
    "write_state": "ACTIVE"
   },
   {
@@ -1977,6 +1976,21 @@
    "acquired_at": "2026-11-14T11:56:49.859512+08:00",
    "checkpoint": "已交回并冻结源码。",
    "write_state": "RELEASED"
+  },
+  {
+   "task": "CODEX-WATER-TRACE-20261114",
+   "owner": "architecture_review",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_probe.inc",
+    "src/graphics/nvn_vulkan/engine/xbg_water_trace.inc"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T12:48:09.249914+08:00",
+   "checkpoint": "a49c62c，初始源码干净",
+   "objective": "给431a/6e2d透明层及f55c合成增加有界默认关闭的连续输入/输出采样，复用slot fence，保留正常绘制与缓存路径。",
+   "write_state": "ACTIVE"
   }
  ],
  "tasks": [
@@ -7945,14 +7959,14 @@
   "historical_claims_withdrawn": [
    "Antigravity HANDOFF 以单张截图矩形颜色统计宣称角色全黑及移动方块根除，验收不足，重新核验。",
    "b6e487b的9300/9400根因没有目标机同次日志，保留为候选。",
-   "4fc1fd7所称062df从未读取FragCoord不成立。真实模块经OpAccessChain读取，且FragDepth由FMin计算。默认保持原始深度，停止以读取内建值推导深度等价。"
+   "4fc1fd7所称062df从未读取FragCoord不成立。真实模块经OpAccessChain读取，且FragDepth由FMin计算。默认保持原始深度，停止以读取内建值推导深度等价。",
+   "旧FLAME_DR聚合相同不能排除同shader子draw顺序、被跳过draw、纯深度draw或GPU间接实例变化；旧uniform trace只覆盖descriptor build及前4KiB，不能排除memo命中和实际GPU输入。"
   ],
   "remaining": [
-   "Antigravity界面已确认回合结束，设备占用已释放。",
-   "审查各分支",
-   "角色/特效修复",
-   "卡顿实测",
-   "分支清理"
+   "水都闪烁根因及修复",
+   "固定同包卡顿复测",
+   "整合APK角色/技能/转场/音频真机回归",
+   "其它芯片设备日志与回归待可用"
   ],
   "branch_cleanup": {
    "main": "work/rg477m-native",
@@ -7963,6 +7977,15 @@
    "archive": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/codex-recovery-20261114/branch-archive"
   },
   "baseline_apk": "9083174963c40ce1c7d1726671fa2ffd4e00f573efad516d80def5b3a10cf881",
-  "current_focus": "用户明确第三章水都地面闪烁。开场90帧只作场景独立证据，未建立水都结论。"
+  "current_focus": "用户已走到第三章水都。固定908参考包/PID28827采90帧，左铺地最大相邻亮度跳变10.23，右侧0.86；present55574定位431a/6e2d粒子绘制写RGBA16F透明层，f55c计算合成。尚缺连续输入/输出根因证据。",
+  "integration_candidate": {
+   "head": "a49c62c8a3645a0dda4db3c437fdd5dd2129dbdb",
+   "host_checks": 86,
+   "host_exit": 0,
+   "android_exit": 0,
+   "apk": ".local/codex-recovery-20261114/apk-history/ffrs-1.0.11-preview-a49c62c.apk",
+   "sha256": "cda987f9a51b142ccc148a62cf44e7d7de2e3ee547da35cf50ec9fdcabb30df5",
+   "device_status": "NOT_INSTALLED"
+  }
  }
 }

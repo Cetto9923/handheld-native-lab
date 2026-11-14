@@ -170,3 +170,11 @@ NVN terrain drop frag depth shader=062df44b75d37d76 loader=runtime kept: the sha
   真正的地面着色器若读 `gl_FragCoord` 则剥离照旧，但**尚未在第三章机位复测**，
   需用 `gfx-terrain-depth=1` 与缺省各跑一次。
 - **陆行鸟召唤后画面异常**：仍未复现；世界地图 3D 视图有黑色块状缺失，未取证。
+
+## 2026-11-14 Codex 复核修订
+
+- L-002 中“读取 FragCoord 即可剥离深度”的做法已撤回。真实 `062df44b75d37d76` 经 `OpAccessChain` 读取内建值，最终 `FragDepth` 经 `FMin` 等运算产生。存在读取无法证明输出与光栅深度相等。当前普通路径完整保留游戏深度，诊断开关 `gfx-terrain-depth=1` 仍为显式实验用途。证据见水都报告 §19 及提交 `1950d52`。
+- 上表 `gfx-terrain-depth` 缺省含义已更新为保留原始深度。旧“auto”说明仅描述历史版本。
+- 旧 `FLAME_DR` 聚合相同无法排除同 shader 子 draw 的顺序、被跳过的绘制、纯深度绘制或 GPU 间接实例变化。它在实际发出绘制前采集，并将同键绘制合并。旧 uniform trace 在 descriptor-build 路径且只哈希前 4KiB，也无法排除 memo 命中和实际 GPU 输入变化。
+- 当前 `R` 路径的 `window=24` 未递减，实际由 `repeat_captures<32` 限制窗口。应按实际文件、帧号与 END 记录核对预算，旧“固定9帧”描述已过时。不要为再次取证删除尚未归档的文件。
+- 在固定 `90831749` APK、PID28827 的水都场景已采集90帧。左地面具有亮度与锐度反相关的跳变。present55574 的逐 pass 证据定位到 `VS431a6183c3565f66 / FS6e2d000b284e669c` 写入 RGBA16F 透明层，`CSf55cfedfb74f811a` 随后合成。单帧贡献不能单独证明时间闪烁的成因。

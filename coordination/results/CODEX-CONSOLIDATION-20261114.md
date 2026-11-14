@@ -35,3 +35,18 @@
 - 角色正常依据用户对 MiniMax 包的反馈，本轮整合包待独立复测。
 - 闪烁、卡顿、召唤及跨设备闪退继续定位和验收。
 - 验收必须完整包含 `coordination/prompts/_STANDING-audio-acceptance.md`。
+
+## a49c62c 整合构建检查点
+
+- 完整宿主验证86/86通过，包含真实模块夹具与粒子重写。Android APK、签名、ELF及打包检查退出0。构建前后源码及工作区一致。
+- 候选 APK 为 `.local/codex-recovery-20261114/apk-history/ffrs-1.0.11-preview-a49c62c.apk`，SHA256 `cda987f9a51b142ccc148a62cf44e7d7de2e3ee547da35cf50ec9fdcabb30df5`。构建和输入环境保存在 `.local/codex-recovery-20261114/integration-a49c62c/plan.json`，普通日志在同目录。
+- 本候选尚未安装。当前设备继续运行参考包 `90831749`、PID28827，保持用户走到的水都复现场景。
+- 预热 `Pending::take(out)` 复用输出向量会把旧配方重新带入队列，已用 `out.clear()` 及确定性回归修复。当前生产 flush 使用新向量，未把该问题归因为水都卡顿。
+
+## 固定参考包的水都证据
+
+- `.local/codex-recovery-20261114/baseline-908-water-present-runs/` 保留10组、每组9个连续呈现帧，共90帧。每组有帧头、大小和摘要，采集前后 PID28827 一致。
+- 左铺地 ROI `(260,420)-(360,500)` 的80个组内相邻帧对中33个亮度差大于3，最大10.23。右铺地 ROI `(900,490)-(1050,580)` 最大0.86，没有大于3的帧对。同步回读扰动性能，这组数据仅验证画面现象。
+- `.local/codex-recovery-20261114/baseline-908-water-probe/capture/` 为同PID的present55574。正确解码RGBA16F后，g140 的 `431a/6e2d` 单绘制、2实例给左铺地区域加入灰白透明层，右侧基本中性。g149 的 `f55c` 合成符合 `scene.rgb * trans.a + trans.rgb`，左侧逐像素MAE为0.00127。
+- 单帧探针改变调度，尚缺连续实际输入/输出证明时间闪烁根因。旧PID7533四帧路径与本次不同，最终左地面跨度仅1.16，不能与当前数据混用。
+- 已显式撤回“旧聚合draw census相同可排除所有绘制/顺序差异”和“旧uniform哈希相同可排除所有实际输入变化”。下一步使用有界、现有slot fence退休的定向连续采样。
