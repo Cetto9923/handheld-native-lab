@@ -1,3 +1,16 @@
+# 2026-11-14 a0f402e 整合APK已完成，等待RG477M连接
+
+- 开发源码HEAD a0f402e，整合APK 1.0.11-preview 为 .local/codex-recovery-20261114/apk-history/ffrs-1.0.11-preview-a0f402e.apk，3589186字节，SHA256 f2375446c3567967f7f45d606b292b6823ededa066b637feb06d93257c42c75e。
+- 完整宿主87项全通过，Android构建、签名、ELF及打包检查退出0。构建前后源码未变，证据 integration-a0f402e/plan.json。当前APK尚未安装。
+- 窄子组guard已补真实shuffle源、canonical clamp/predicate、u32 index、Function指针别名、CopyMemory和扩展out-pointer写入拒绝。9个合法SPV反例保持原字节。默认无真实夹具的脚本空数组兼容问题已由总控修正，两种入口复跑均通过。
+- 全库2934个compute模块检查，1195个改写，309个匹配归约，没有未匹配步骤，原始及所有改写spirv-val零失败，证据 narrow-all-compute/summary.json。三轮RG477M GPU小测试所用修正模块，与最终guard输出逐字相同，SHA87dad46b...。
+- 新源码/采样已全部交回冻结。原主干work/rg477m-native维持1d85bbf稳定检查点，开发分支包含新修复。原18分支与702个APK文件保留方案不变。
+- 当前adb devices列表为空，已请求用户重新连接。最后实机包90831749、PID28827，仍在用户水都机位；13:12再次备份存档摘要与初始一致。不要把候选构建或单独GPU小测试宣称为水都修复完成。
+- 设备恢复后先核包/PID，存档已有备份，覆盖安装本候选，保留30限帧、spin0及已确认音频路径。为保证绘制完整，A/B两臂均设gfx-async-pipelines=0；gfx-subgroup-narrow=0/1分别重启生效。加载手动slot01的旅店，正常走到运河广场楼梯机位。
+- 每臂命令为 python3 .local/codex-recovery-20261114/capture_water_trace.py <唯一目录名> --pid <当前PID> --apk-sha f2375446c3567967f7f45d606b292b6823ededa066b637feb06d93257c42c75e --frames 32。要求WINDOW_DONE/END queued=saved skipped=0 failed=0及WATER_TRACE_COMPLETE一致。
+- 解析命令 python3 .local/worker-probe-analysis/parse_water_trace.py <采集目录/capture>，优先比较present左/右ROI、粒子实例/UB66选择位/B18索引、透明层和f55c合成。物理与view格式/swizzle一致后才能用合成误差归因。深度需实际FS64/support重算UV，不能只用同位ROI排除。
+- 后续仍需真实移动/技能/场景切换、帧P95/P99及蓝牙音频完整回归。其它芯片真机测试NOT_RUN。原perf-sample A/B因MiniMax并发换包作废。
+
 # 2026-11-14 共享主机页已提交，窄子组修复复核中
 
 - 当前开发HEAD 3c42368，主干1d85bbf。16KiB host/4KiB guest共享页兼容修复已提交。实现者及总控分别复跑128/244项guest契约，8种失败注入通过；Android16KiB设备尚未测试。

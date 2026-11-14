@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-14T13:17:39.088195+08:00",
- "phase": "历史分支归并完成，整合APK宿主86项检查及构建通过；RG477M水都左地面两态已复现，正在逐draw连续定向取证。",
+ "updated_at": "2026-11-14T13:38:00.802876+08:00",
+ "phase": "整合APK a0f402e已完成87项宿主检查及构建，2934个compute全库改写验证通过；RG477M断连，水都及角色/技能真机回归待恢复USB。",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -1944,7 +1944,7 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-14T11:49:26.263338+08:00",
-   "checkpoint": "a49c62c整合构建与86宿主检查通过；固定908/PID28827采90水都呈现帧和55574逐pass探针。",
+   "checkpoint": "a0f402e构建/宿主/全compute检查完成，RG477M离线，候选未安装。13:12存档备份与初始摘要相同。",
    "write_state": "ACTIVE"
   },
   {
@@ -2025,9 +2025,9 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-14T12:59:16.841391+08:00",
-   "checkpoint": "694de64，RG477M真实GPU三轮原始doublecount与修正通过",
+   "checkpoint": "a0f402e已提交，87宿主检查及APK构建退出0，全库2934compute中1195改写/309归约全部验证通过。",
    "objective": "吸收MIT上游16lane subgroup归约修复并补宿主和真实GPU回归，统一接入runtime/warm；关联水都仍待验证。",
-   "write_state": "ACTIVE"
+   "write_state": "RELEASED"
   },
   {
    "task": "CODEX-NARROW-GUARD-20261114",
@@ -2041,9 +2041,9 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-14T13:06:28.332778+08:00",
-   "checkpoint": "3c42368+root窄子组WIP，独立review找到非shuffle索引XOR也被错误归类。",
+   "checkpoint": "a0f402e已提交，87宿主检查及APK构建退出0，全库2934compute中1195改写/309归约全部验证通过。",
    "objective": "新增helper实际源索引数据流守卫并补有效SPV负例，拒绝误匹配归约，保留已证实的真实模块修复。",
-   "write_state": "ACTIVE"
+   "write_state": "RELEASED"
   }
  ],
  "tasks": [
@@ -5714,7 +5714,7 @@
   {
    "id": "CODEX-NARROW-20261114",
    "role": "implementer",
-   "status": "in_progress",
+   "status": "implemented",
    "owner": "Codex /root",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
@@ -5741,12 +5741,12 @@
     "scripts/verify_host.py"
    ],
    "acceptance": "原始微测试doublecount可复现，修正四项GPU计算一致，16/8/32lane及错误输入宿主回归通过，真实模块spirv-val，整合APK真机回归。",
-   "checkpoint": "证据位于.local/codex-recovery-20261114/upstream-narrow/device-plan.json"
+   "checkpoint": "a0f402e。3轮真实GPU修正字节与最终guard输出相同，9个合法反例拒绝，完整库1195份改写全部spirv-val通过。整合APK游戏验收等待设备。"
   },
   {
    "id": "CODEX-NARROW-GUARD-20261114",
    "role": "implementer",
-   "status": "in_progress",
+   "status": "implemented",
    "owner": "minimax_session",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
@@ -5768,7 +5768,7 @@
     "scripts/android/verify_spirv_narrow.sh"
    ],
    "acceptance": "反例完整保持，原始GPU fixture仍修正，实际5模块及spirv-val通过。",
-   "checkpoint": "源码本地未提交，根暂缓构建。"
+   "checkpoint": "a0f402e。3轮真实GPU修正字节与最终guard输出相同，9个合法反例拒绝，完整库1195份改写全部spirv-val通过。整合APK游戏验收等待设备。"
   }
  ],
  "blockers": [
@@ -8147,15 +8147,17 @@
    "archive": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/codex-recovery-20261114/branch-archive"
   },
   "baseline_apk": "9083174963c40ce1c7d1726671fa2ffd4e00f573efad516d80def5b3a10cf881",
-  "current_focus": "用户已走到第三章水都。固定908参考包/PID28827采90帧，左铺地最大相邻亮度跳变10.23，右侧0.86；present55574定位431a/6e2d粒子绘制写RGBA16F透明层，f55c计算合成。尚缺连续输入/输出根因证据。",
+  "current_focus": "a0f402e整合APK已备妥，等待RG477M重新连接后以同APK gfx-subgroup-narrow=0/1分别重启、加载第三章手动01并到水都机位，定向32帧A/B及角色、技能、音频与移动卡顿回归。设备授权继续有效。",
   "integration_candidate": {
-   "head": "a49c62c8a3645a0dda4db3c437fdd5dd2129dbdb",
-   "host_checks": 86,
+   "head": "a0f402e",
+   "host_checks": 87,
    "host_exit": 0,
    "android_exit": 0,
-   "apk": ".local/codex-recovery-20261114/apk-history/ffrs-1.0.11-preview-a49c62c.apk",
-   "sha256": "cda987f9a51b142ccc148a62cf44e7d7de2e3ee547da35cf50ec9fdcabb30df5",
-   "device_status": "NOT_INSTALLED"
+   "apk": ".local/codex-recovery-20261114/apk-history/ffrs-1.0.11-preview-a0f402e.apk",
+   "bytes": 3589186,
+   "sha256": "f2375446c3567967f7f45d606b292b6823ededa066b637feb06d93257c42c75e",
+   "device_status": "NOT_INSTALLED_DEVICE_DISCONNECTED",
+   "evidence": ".local/codex-recovery-20261114/integration-a0f402e/plan.json"
   },
   "narrow_gpu_evidence": {
    "device": "RG477M01445122",
@@ -8186,6 +8188,14 @@
    "last_verified_pid": "28827",
    "last_verified_apk": "9083174963c40ce1c7d1726671fa2ffd4e00f573efad516d80def5b3a10cf881",
    "authorization": "本轮RG477M授权继续有效，无需重复确认"
+  },
+  "compute_library_validation": {
+   "original_compute_modules": 2934,
+   "rewritten": 1195,
+   "reduction_modules": 309,
+   "kept_unmatched_steps": 0,
+   "original_or_rewritten_validation_failures": 0,
+   "evidence": ".local/codex-recovery-20261114/narrow-all-compute/summary.json"
   }
  }
 }

@@ -65,3 +65,12 @@
 - 对本次水都present55574实际使用的27个compute模块，5个需要窄子组改写，其中2个匹配归约步骤，包含粒子计数 `b673e10f3da2451c`。5份原始和5份重写均通过验证，没有未匹配步骤。
 - 独立设备用例和日志在 `.local/codex-recovery-20261114/upstream-narrow/device-plan.json`；当前场景模块检查在 `.local/codex-recovery-20261114/narrow-active-modules/summary.json`。本问题与水都时间闪烁的关联仍待同包A/B。
 - 该上游也记录本游戏Odin2实际开场及三次战斗，包含Bahamut召唤，仍有近景火焰块、岩石条纹和水平线。应复用其逐格式、子组、内存的可重复测试方法，跨设备结果继续按具体芯片与驱动登记。[游戏记录](https://github.com/enjoyerofslop/droidplay-core/blob/51a20c51efb9125c0e344ba21aa4d4dafcaffa31/dm/games/0100606026F12000/README.md)
+
+## a0f402e 最新交付检查点
+
+- 仅compute且实际subgroup小于32时启用窄子组修正，默认开启，`gfx-subgroup-narrow=0` 供同包A/B。warm与runtime共用改写入口，typed变体复用配置一致。未知helper形状保持原模块并记录日志。
+- 独立review构造了上游误匹配的合法SPIR-V输入。新增守卫核实际shuffle源、canonical predicate、u32 index，拒绝Function指针别名、CopyMemory及隐式out-pointer写入。9个合法负例保持原字节，上游源码和MIT许可证保留原样。
+- 最终守卫对GPU微测试生成的字节与先前三轮RG477M测试完全相同，摘要为 `87dad46bdc8e4db9a9f6bd80f90b6e7c86df5a591821eb99bdc80604148aa501`。
+- 全库2934个compute模块检查，1195个改写，309个匹配归约步骤，没有未匹配步骤，原始及重写spirv-val零失败。逐模块输入/输出摘要和验证日志在 `.local/codex-recovery-20261114/narrow-all-compute/`。
+- 完整宿主87项及Android构建、签名、ELF、打包均通过。APK为 `.local/codex-recovery-20261114/apk-history/ffrs-1.0.11-preview-a0f402e.apk`，3589186字节，SHA256 `f2375446c3567967f7f45d606b292b6823ededa066b637feb06d93257c42c75e`。构建前后源码一致，普通日志及命令在 `integration-a0f402e/`。
+- 设备随后断开，ADB列表为空，新包尚未安装。水都闪烁、角色/技能/移动、跨场景性能与蓝牙音频游戏验收继续等待连接恢复。其它芯片实际设备回归仍为NOT_RUN。13:12再次备份存档，与初始tar摘要完全相同。
