@@ -4567,3 +4567,18 @@ C4 帧内 desc memo 比对的是 buffer 身份而非内容、C5 客机侧数据�
 覆盖安装前保存询问已发送，尚无回复。本轮未退出当前21进程PID32442，22真机世界地图及开场女主均NOT_RUN。收到保存确认后，先保全当前引擎日志及存档备份，再覆盖安装22，启动并读原第三章存档。地图保持同机位，确认a455/11320/00758均成功生成vin1接口变体，用现成gfx-live-ab=vinput同包开关对照，采普通present，结束恢复gfx-live-ab。随后复测开场女主与音频。不要以host检查代替画面通过。5份Android诊断报告WIP继续隔离，历史APK保留。
 
 独立helper QA已交回，报告vertex-identity/qa-vertex-helper/review.md SHA1a9adfea。ASan/UBSan、28SPV及7个额外合法输入反例通过，lookup源码二次审无阻塞。22当前仍未安装，21 PID32442保留，等待保存确认。
+
+
+## 用户确认安装22
+
+用户已保存并明确授权现在覆盖安装。root独占RG477M01445122，先保全21日志/存档与旧APK，再安装已校验22候选2e4c354e，核对安装字节和存档摘要，继续读取第三章。Honor A42BBB5109000333虽在线，本轮只操作RG。
+
+## 22已安装，世界地图同包对照完成
+
+安装记录vertex-input-build/install-0bd4dc5-22-20261115-003352/，APK核验2e4c354e，存档tar前后86d8a9f5一致。PID18193。Continue读入slot05第1章后已通过游戏原菜单读slot01第3章Lv25旅店，出门沿运河向东、圆形广场南桥进入地图，输入及截图有记录。
+
+同APK、同PID、同机位18个普通原生present完成ABA。新接口on1 13290–13292/13440–13442完整，旧路径off13710–13712/13860–13862大面积地面缺失且右上巨斜面，新接口on2 14130–14132/14280–14282恢复。三VS a455/11320/00758均成功vin1。gfx-live-ab已恢复空值，root已告知用户可直接操作测试。framedump前旧目录原子改名保全，当前新目录保留18帧。
+
+原始采集与48文件SHA索引在vertex-input-build/map22/，报告CODEX-CHAPTER3-MAP-20261114.md。perf_cpu独立离线审18帧，与PNG RGB逐像素一致。lookup按当次PID、LIVE-AB及dump核对有限窗口约30FPS，正常长帧与读回影响均保留，尚无帧率收益结论。开场女主22回归、战斗、地图移动与其它位置、音频及整体FPS仍各自待测。root已交还游戏输入权，后续先核PID再拉当次日志。
+
+两份独立离线报告均已交回并重算SHA。device-qa/review.md为eac6f0b5dcfccd7c7c7509d38017cb36e8df4cdf690e82ec98bb34dd809442d0，performance/review.md为baf5101900c6b6a8b19e5176a6b4181ba7d385ab1fe82a4bbfb34870a6e3567f。安装与本次地图机位对照完成，FPS主任务继续保留进行中。源码0bd4dc5已冻结，5份Android诊断报告WIP与历史APK保留。

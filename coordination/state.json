@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-15T00:27:37.729698+08:00",
- "phase": "第三章世界地图FAIL已取证，22顶点接口修复候选0bd4dc5已通过99宿主检查与Android构建；等待保存后同机位真机复验。",
+ "updated_at": "2026-11-15T00:49:58.304406+08:00",
+ "phase": "22已安装并完成RG同机位ABA，旧路径重现地面缺失/巨斜面，新接口两轮恢复；独立离线审图与性能范围核对中。",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -2622,7 +2622,8 @@
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-14T23:43:53.392840+08:00",
    "checkpoint": "本次新视频与世界地图异常取证。",
-   "write_state": "ACTIVE"
+   "write_state": "RELEASED",
+   "released_at": "2026-11-15T00:49:58.304406+08:00"
   },
   {
    "task": "CODEX-MAP-HISTORY-20261114",
@@ -2708,8 +2709,35 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-15T00:07:01.335416+08:00",
-   "checkpoint": "0bd4dc5 build validated，待用户保存/安装后真机同场景。",
-   "write_state": "ACTIVE"
+   "checkpoint": "保存/安装已获授权，root串行设备复验。",
+   "write_state": "FROZEN_HANDED_BACK",
+   "released_at": "2026-11-15T00:49:58.304406+08:00"
+  },
+  {
+   "task": "CODEX-MAP22-DEVICE-EVIDENCE-QA-20261115",
+   "owner": "perf_cpu",
+   "paths": [
+    ".local/codex-recovery-20261114/vertex-input-build/device-qa/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T00:37:51.394773+08:00",
+   "checkpoint": "root正在从第三章slot01移向地图，22真实地图输入尚待root采集。",
+   "write_state": "RELEASED",
+   "released_at": "2026-11-15T00:49:58.304406+08:00"
+  },
+  {
+   "task": "CODEX-MAP22-PERF-QA-20261115",
+   "owner": "perf_cpu/lookup_review",
+   "paths": [
+    ".local/codex-recovery-20261114/vertex-input-build/device-qa/performance/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T00:44:21.194316+08:00",
+   "checkpoint": "独立离线性能范围核对，root独占RG。",
+   "write_state": "RELEASED",
+   "released_at": "2026-11-15T00:49:58.304406+08:00"
   }
  ],
  "tasks": [
@@ -7489,7 +7517,7 @@
    "id": "CODEX-CHAPTER3-MAP-20261114",
    "owner": "root",
    "role": "EVIDENCE_AND_INTEGRATION",
-   "status": "in_progress",
+   "status": "completed",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "objective": "取回第三章新录像及同次设备证据，对照开局视频定位世界地图异常与性能问题。",
@@ -7656,7 +7684,7 @@
    "id": "CODEX-VERTEX-INTEGRATE-20261115",
    "owner": "root",
    "role": "INTEGRATION",
-   "status": "awaiting_user",
+   "status": "implemented",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "objective": "接实际vertex格式class、运行期选择及warm再现，在21画面对照上构建22修复候选，设备复验。",
@@ -7681,7 +7709,66 @@
     ".local/codex-recovery-20261114/vertex-input-build/"
    ],
    "acceptance": "正常入口匹配实际格式，原VkFormat与draw参数沿现路径，变体身份组合且warm/runtime一致，SPIRV验证、位值与拒绝不半写；开局和地图实际验证待root。",
-   "checkpoint": "source0bd4dc5；99宿主与Android0，32inputs一致。APK2e4c354e/3617788B。保存与覆盖安装询问已发送，当前21 PID32442继续运行，22真机NOT_RUN。"
+   "checkpoint": "APK2e4c354e覆盖安装校验通过，存档tar前后86d8a9f5相同，PID18193，地图同机位ABA 18原生帧已采。新路径两轮恢复/旧路径重现，live-ab已清空恢复。",
+   "validation": {
+    "apk": "2e4c354ed1aa8f2d6bc0b281069c84e3f931922e339e3d10b83a16459faf4774",
+    "source": "0bd4dc54587885e5453fed71fe1159fd7fd3e687",
+    "device": "RG477M01445122",
+    "capture_pid": 18193,
+    "install": "PASS_HASH_AND_SAVE_BACKUP_MATCH",
+    "static_world_map_aba": "PASS_SCOPED_18_PRESENTS",
+    "opening_22": "NOT_RUN",
+    "moving_battle_other_scenes_22": "NOT_RUN",
+    "performance_gain": "NOT_ESTABLISHED",
+    "offline_qa": "eac6f0b5/baf51019"
+   }
+  },
+  {
+   "id": "CODEX-MAP22-DEVICE-EVIDENCE-QA-20261115",
+   "owner": "perf_cpu",
+   "role": "READ_ONLY_CAPTURE_REVIEW",
+   "status": "completed",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "独立复核root采集的22地图同包对照图、shader接口命中及同PID日志，限定画面和性能结论。",
+   "inputs": [
+    "21地图原生present56520及原视频",
+    "22已安装APK2e4c354e，source0bd4dc5，PID18193",
+    "root将在vertex-input-build/map22/保存当次地图采集，输入缺失则先审21对照判据"
+   ],
+   "outputs": [
+    ".local/codex-recovery-20261114/vertex-input-build/device-qa/review.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/codex-recovery-20261114/vertex-input-build/device-qa/"
+   ],
+   "acceptance": "只读原图/日志/生产代码，仅写独立QA目录，无ADB/Git/全量构建/coord操作。明确root执行真机、独立离线审证据的范围，不代称独立设备验收。",
+   "checkpoint": "root正在从第三章slot01移向地图，22真实地图输入尚待root采集。"
+  },
+  {
+   "id": "CODEX-MAP22-PERF-QA-20261115",
+   "owner": "perf_cpu/lookup_review",
+   "role": "READ_ONLY_LOG_REVIEW",
+   "status": "completed",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "按本轮PID18193、LIVE-AB与dump帧界限独立核对稳定地图窗口CPU/GPU/FPS范围。",
+   "inputs": [
+    "vertex-input-build/map22/ab-plan.json",
+    "on1/off/on2 engine.log及frames-18193.csv"
+   ],
+   "outputs": [
+    ".local/codex-recovery-20261114/vertex-input-build/device-qa/performance/review.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/codex-recovery-20261114/vertex-input-build/device-qa/performance/"
+   ],
+   "acceptance": "仅写本local目录，其他输入只读，禁止ADB/Git/源码/coord和全量构建。所有dump及受其阻塞影响长帧保留并单列，不冒充独立真机或归因性能收益。",
+   "checkpoint": "可只读分析已闭合ABA记录，root本轮不操作游戏输入。"
   }
  ],
  "blockers": [
