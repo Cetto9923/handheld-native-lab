@@ -3514,7 +3514,7 @@ VkShaderModule load_module(const std::string &key,uint32_t expected_stage=0){
     std::vector<XbgTypedStorageRequest> typed_requests;
     for(const auto &entry:typed)typed_requests.push_back({entry.first,xbg_spirv_image_format(entry.second)});
     size_t typed_failed=0;int typed_shared=1;std::vector<uint32_t> typed_split;
-    if(xbg_typed_storage_declare(w,typed_requests,typed_failed,typed_shared,typed_split,cfg.enabled_core.shaderStorageImageExtendedFormats!=0)!=1)return VK_NULL_HANDLE;
+    if(!typed_requests.empty() && xbg_typed_storage_declare(w,typed_requests,typed_failed,typed_shared,typed_split,cfg.enabled_core.shaderStorageImageExtendedFormats!=0)!=1)return VK_NULL_HANDLE;
     validate_capabilities(w,h.stage);
     if(keep_rewritten)retain_rewritten(key,std::move(rewrite_input),w);
     VkShaderModuleCreateInfo ci{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};ci.codeSize=w.size()*4;ci.pCode=w.data();VkShaderModule m;if(vkCreateShaderModule(cfg.device,&ci,nullptr,&m)!=VK_SUCCESS)return VK_NULL_HANDLE;
