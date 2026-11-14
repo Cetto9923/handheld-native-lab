@@ -1,6 +1,6 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-14T19:56:59.195399+08:00
+状态事件时间：2026-11-14T20:13:15.896690+08:00
 阶段：7041击败开场BOSS后exit70，Invalid indirect draw parameters:-3。先保留同次数据并增加失败时参数取证，继续回归。
 总控：Codex /root 本轮接管
 更新方式：按事件更新，没有后台自动刷新。
@@ -162,6 +162,7 @@
 | CODEX-INTEGER-CASTBACK-20261114 | GRAPHICS | implemented | minimax_session | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-INTEGER-GPU-20261114 | GPU_QA | passed | android_reporting | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-SHADER-IDENTITY-20261114 | GRAPHICS_QA | implemented | minimax_session/inline_cache_review | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-CB-CAPACITY-20261114 | RUNTIME | implemented | minimax_session | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 
 ## 独占写入
 
@@ -286,6 +287,7 @@
 - {"task": "CODEX-INTEGER-CASTBACK-20261114", "owner": "minimax_session", "paths": ["src/graphics/nvn_vulkan/engine/xbg_spirv_integer_buffer.h", "tests/device/test_reflection_uint_fetch.cpp", "tests/device/reflection_uint_fetch.spvasm", "scripts/android/verify_integer_buffer.sh"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T19:43:26.756527+08:00", "checkpoint": "header f4e33a29。严格路径三组输出逐字相同，真实fallback15份SPV val0，独立GPU最终binary8c8e3d2f在RG477M三case24records零误差，实际BOSS待回归。", "write_state": "RELEASED"}
 - {"task": "CODEX-INTEGER-GPU-20261114", "owner": "android_reporting", "paths": [".local/worker-current-integer-gpu/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T19:45:41.294110+08:00", "checkpoint": "最终GPU binary8c8e3d2f，RG477M Mali-G615 MC6，24records mismatches0，evidence integer-gpu-final/plan.json/run.log。覆盖组件契约，BOSS另行验收。", "write_state": "RELEASED"}
 - {"task": "CODEX-SHADER-IDENTITY-20261114", "owner": "minimax_session/inline_cache_review", "paths": ["src/graphics/nvn_vulkan/engine/xbg_shader_identity.h", "tests/device/test_shader_identity.cpp", "scripts/android/verify_shader_identity.sh"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T19:46:39.596355+08:00", "checkpoint": "独立header/测试已冻结，组合配方恢复真实5bf/d56字节相等，根接runtime+warm两入口，整包构建进行中。", "write_state": "RELEASED"}
+- {"task": "CODEX-CB-CAPACITY-20261114", "owner": "minimax_session", "paths": ["src/graphics/nvn_device/nvn_command_buffer.c", "tests/native/nvn_command_buffer_capacity_contract.c", "scripts/runtime/build_nvn_command_buffer_capacity_contract.sh"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T20:04:39.164621+08:00", "checkpoint": "三文件冻结，source9b3aa6f3，根接回统一构建与真机。", "write_state": "RELEASED"}
 
 ## 阻塞
 

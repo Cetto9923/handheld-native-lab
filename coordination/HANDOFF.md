@@ -1,4 +1,28 @@
-# 2026-11-14 20:00 整数view位表示候选构建中
+# 2026-11-14 20:13 命令缓冲容量修正冻结
+
+- CODEX-CB-CAPACITY-20261114三文件已冻结，recorder source SHA 9b3aa6f357d272292317aab675dce3e7febf2b220de5b03ff87d4bfd600684fc。静态首chunk32槽加动态稳定chunk，旧slot地址及package寿命保留，free/finalized复用先于扩容。
+- 实现者及独立审查均运行ASan/UBSan，417个live对象、96个旧package内容、OOM不改变旧状态、真实callback扩容及8线程并发通过。独立同一33-live公共API契约旧26bb311在第33对象失败，当前33个全成功。Android28 NDK syntax退出0。
+- 计划构建1.0.17-preview，根串行运行完整host及Android，普通计划/日志 `.local/codex-recovery-20261114/integration-capacity-final/`。实际退出134场景和原BOSS点均待回归。
+- 当前设备已退出，用户保持游戏输入权，根先构建再覆盖安装。存档与APK历史继续保留，未把旧fatal文件混入PID22836结论。
+
+# 2026-11-14 20:02 PID22836退出134，命令缓冲32槽表满
+
+- 用户再次报告退出。已保存guest_boot/current engine/CSV22836及exit-info，目录 `.local/codex-recovery-20261114/boss-crash-26bb311-20261114-200232/`。exit-info时间20:02:08.724，状态134，末帧约4480。
+- guest_boot明确记录command buffer table full，Initialize失败、结束录制无handle、提交handle0被拒，随后SyncWait TIMEOUT且guest在NVNSubmission.cpp315 AbortImpl。这次仍处于更早流程，5bf/924/d56/7ca目标key尚未载入，原BOSS修复仍未验证。
+- engine.log.fatal仍为旧PID22127的Invalid or excessive buffer size，禁止混入本次结论。当前没有INDIRECT_OVERSIZE/SNAPSHOT_OVERSIZE。
+- 初次pull命令日志与engine.log payload发生本地同名覆盖，源设备日志仍完整，已重新完整提取41414779字节至engine.log，pull命令输出单存pull-engine.log，恢复计划engine-repull-plan.json。monitor的自动副本亦保留。
+- 根已登记CODEX-CB-CAPACITY-20261114，minimax_session独占recorder C与新容量回归。现静态32槽只复用finalized，32个live后直接拒绝，与真实合法场景不相容。实现须稳定地址动态扩展，保留原包、同步及callback unlock后指针，不通过驱逐live/跳命令/伪造fence绕开。
+- 用户继续拥有游戏输入，当前进程已退出。采集完毕后保持现场，先做有针对性的宿主回归与独立审查再打包。
+
+# 2026-11-14 19:58 候选26bb311已安装，用户继续推进
+
+- 1.0.16-preview已覆盖安装，回读APK SHA ecc7114a154ca2c6f6b6d3f44c8c064b7aad9d1bfc49022b83597ffe87853b4f一致。源26bb311，构建前后源码摘要一致。host95/95及Android退出0，独立review无finding。
+- 安装前后存档tar SHA均dd66a544555a9843bafc0485db5b011d50354f008a0525cc51e7aefd8ee0130a。旧APK及日志备份在 `.local/codex-recovery-20261114/install-26bb311-20261114-195751/`。
+- PID22836已正常启动到片头。已通知用户继续原路线，根保持只读，不输入按键。实际BOSS回归尚未覆盖，不能称已修复。
+- 监测命令 `python3 .local/codex-recovery-20261114/boss-regression-26bb311/monitor.py`，tool session81154，每15秒采进程/截图/boot尾，退出立即保存guest/current引擎/fatal/CSV22836/exit-info。命令cwd及日志在该目录plan.json和monitor.log。最长30分钟，之后需根按现场继续，不能承诺后台监测。
+- 崩溃控制设置继续为texelcopy关闭、source nice0、LOW0、narrow1、async0、fps30。先验证实际故障点，再做性能音频A/B。五个报告WIP仍冻结且未进APK。
+
+# 2026-11-14 19:56 整数view位表示候选构建完成
 
 - integer-buffer最小fallback已交回冻结，header SHA f4e33a29d28b076227c5164f3675d4b548bbf7d8faa760ff3e8d50490d3965a6。严格路径输出保持，fallback只接受直接opaque链及component0提取，恢复原float4 ID，后续浮点消费者保留。真实5bf/924/7ca函数差分通过，自有负例及15份SPV val通过。
 - 最终GPU微测试binary SHA 8c8e3d2f26c90c459bf6a70ea776f4a8aac8c3334577d326a2db970a8c044574，由根在RG477M Mali-G615 MC6运行，3case24records原始位、float算术及shared绑定零误差。证据 `.local/codex-recovery-20261114/integer-gpu-final/`。该结论仅覆盖组件契约。

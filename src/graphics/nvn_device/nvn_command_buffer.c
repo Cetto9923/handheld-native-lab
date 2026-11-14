@@ -36,6 +36,7 @@
 #include "nvn_texture_pool.h"
 
 #include <inttypes.h>
+#include <limits.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -45,9 +46,9 @@
 /* The bounds of this layer                                            */
 /* ------------------------------------------------------------------ */
 
-/* How many command buffers the runtime holds at once. The guest keeps a
- * handful, so this is a safety net rather than a limit the guest reaches. */
-#define NVN_CB_MAX_BUFFERS 32
+/* Recorder slots grow in fixed chunks. Existing slot addresses must survive
+ * growth because recording callbacks temporarily release the registry lock. */
+#define NVN_CB_BUFFERS_PER_CHUNK 32
 
 /* How many records one recording holds. A frame of the guest records a few
  * hundred, and the bound keeps a runaway guest from eating the host's
@@ -191,6 +192,11 @@ typedef struct {
     size_t diagnostic_capacity;
 } nvn_cb_buffer;
 
+typedef struct nvn_cb_buffer_chunk {
+    nvn_cb_buffer slots[NVN_CB_BUFFERS_PER_CHUNK];
+    struct nvn_cb_buffer_chunk *next;
+} nvn_cb_buffer_chunk;
+
 /* An immutable package of commands. The handle of a recording is the address
  * of its first record, which is the address of this block. */
 typedef struct nvn_cb_package {
@@ -223,7 +229,7 @@ typedef struct nvn_cb_pool_segment {
 } nvn_cb_pool_segment;
 
 static pthread_mutex_t s_lock = PTHREAD_MUTEX_INITIALIZER;
-static nvn_cb_buffer s_buffers[NVN_CB_MAX_BUFFERS];
+static nvn_cb_buffer_chunk s_buffer_head;
 static nvn_command_buffer_stats s_stats;
 static uint64_t s_sequence;
 static nvn_cb_package *s_packages;
@@ -511,33 +517,41 @@ static nvn_cb_buffer *buffer_reset(nvn_cb_buffer *buffer, const void *object) {
 
 /* The slot of one guest command buffer.
  *
- * A slot of a finalized buffer is given up before a slot of a live one,
- * because the recordings of a finalized buffer have been read by whoever
- * wanted them. */
+ * Unused slots and then finalized slots are reused before growing the table.
+ * A live slot is never evicted. Chunks keep all slot addresses stable. */
 static nvn_cb_buffer *buffer_find(const void *object, int create) {
     size_t i;
+    size_t capacity = 0, live = 0;
+    nvn_cb_buffer_chunk *chunk, *last = &s_buffer_head;
     nvn_cb_buffer *free_slot = NULL;
     nvn_cb_buffer *oldest_finalized = NULL;
-    nvn_cb_buffer *oldest = NULL;
     if (!object) return NULL;
-    for (i = 0; i < NVN_CB_MAX_BUFFERS; i++) {
-        nvn_cb_buffer *buffer = &s_buffers[i];
-        if (!buffer->in_use) {
-            if (!free_slot) free_slot = buffer;
-            continue;
-        }
-        if (buffer->object == object) return buffer;
-        if (!oldest || buffer->sequence < oldest->sequence) oldest = buffer;
-        if (buffer->finalized &&
-            (!oldest_finalized || buffer->sequence < oldest_finalized->sequence)) {
-            oldest_finalized = buffer;
+    for (chunk = &s_buffer_head; chunk; chunk = chunk->next) {
+        last = chunk;
+        capacity += NVN_CB_BUFFERS_PER_CHUNK;
+        for (i = 0; i < NVN_CB_BUFFERS_PER_CHUNK; i++) {
+            nvn_cb_buffer *buffer = &chunk->slots[i];
+            if (!buffer->in_use) {
+                if (!free_slot) free_slot = buffer;
+                continue;
+            }
+            if (buffer->object == object) return buffer;
+            if (!buffer->finalized) live++;
+            if (buffer->finalized &&
+                (!oldest_finalized || buffer->sequence < oldest_finalized->sequence)) {
+                oldest_finalized = buffer;
+            }
         }
     }
     if (!create) return NULL;
     if (free_slot) return buffer_reset(free_slot, object);
     if (oldest_finalized) return buffer_reset(oldest_finalized, object);
-    (void)oldest;
-    return NULL;
+    chunk = (nvn_cb_buffer_chunk *)calloc(1, sizeof(*chunk));
+    if (!chunk) return NULL;
+    last->next = chunk;
+    fprintf(stderr, "[nvn] command buffer table grew: capacity=%zu live=%zu\n",
+            capacity + NVN_CB_BUFFERS_PER_CHUNK, live + 1);
+    return buffer_reset(&chunk->slots[0], object);
 }
 
 /* ------------------------------------------------------------------ */
@@ -2185,8 +2199,8 @@ int nvn_command_buffer_initialize(void *buffer) {
                         "are recorded on the host in the format of the game\n",
                 buffer);
     } else if(!ok) {
-        fprintf(stderr, "[nvn] nvnCommandBufferInitialize: buffer=%p; the command buffer table is "
-                        "full, so the buffer was not initialized\n",
+        fprintf(stderr, "[nvn] nvnCommandBufferInitialize: buffer=%p; no recorder state was "
+                        "available, so the buffer was not initialized\n",
                 buffer);
     }
     return ok;
@@ -2740,6 +2754,7 @@ int nvn_command_buffer_get_package(uint64_t handle, nvn_command_package *out) {
 
 void nvn_command_buffer_get_stats(nvn_command_buffer_stats *out) {
     size_t i;
+    nvn_cb_buffer_chunk *chunk;
     if (!out) return;
     pthread_mutex_lock(&s_lock);
     *out = s_stats;
@@ -2748,10 +2763,14 @@ void nvn_command_buffer_get_stats(nvn_command_buffer_stats *out) {
     out->host_segment_bytes = s_pool_bytes;
     out->host_segment_bound = (uint64_t)NVN_CB_MAX_HOSTSEGMENTS * NVN_CB_HOSTSEG_BYTES;
     out->live_packages=s_package_count;
-    for (i = 0; i < NVN_CB_MAX_BUFFERS; i++) {
-        if (!s_buffers[i].in_use) continue;
-        if (!s_buffers[i].finalized) out->live_buffers++;
-        out->records += (int)s_buffers[i].view_count;
+    for (chunk = &s_buffer_head; chunk; chunk = chunk->next) {
+        for (i = 0; i < NVN_CB_BUFFERS_PER_CHUNK; i++) {
+            nvn_cb_buffer *buffer = &chunk->slots[i];
+            if (!buffer->in_use) continue;
+            if (!buffer->finalized && out->live_buffers < INT_MAX) out->live_buffers++;
+            if (buffer->view_count > (size_t)(INT_MAX - out->records)) out->records = INT_MAX;
+            else out->records += (int)buffer->view_count;
+        }
     }
     pthread_mutex_unlock(&s_lock);
 }

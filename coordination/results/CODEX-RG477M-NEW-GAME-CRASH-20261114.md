@@ -47,3 +47,13 @@
 独立检查另确认，native R32_UINT view上部分float sampled-buffer消费者因strict整数改写形状拒绝而保持浮点模块。Vulkan要求view数值类型与OpTypeImage Sampled Type匹配，见 [VUID format-07753](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdDispatchBase.html)。本轮准备保持原始float消费指令的direct integer fetch加bitcast修正，需通过宿主、真实SPV及GPU契约后再装包，同一BOSS位置尚待回归。
 
 组合integer与typed-storage变体还有独立身份缺陷，现runtime的typed identity丢失ib配方，旧stb解析前缀长度也错误。当前两次运行的三compute均无对应warm记录且无观察到的身份并存碰撞，故该缺陷未被认定为这两次BOSS根因。修复将保留组合配方，避免后续缓存恢复错误模块。
+
+## 1.0.16更早流程命令缓冲容量退出
+
+`26bb311`候选1.0.16-preview的APK摘要为 `ecc7114a154ca2c6f6b6d3f44c8c064b7aad9d1bfc49022b83597ffe87853b4f`。宿主95项、Android构建及真实RG477M GPU三case24项契约均通过，安装前后存档摘要一致。用户自行推进，根只读记录。
+
+PID22836于20:02:08.724主动退出134，最后完成约frame4480。该会话尚未载入5bf9/924b/d56/7ca目标着色器，原BOSS故障点仍未覆盖。同次guest_boot第85103行起的错误链为命令缓冲表满、Initialize失败、EndRecording返回空handle、QueueSubmit拒绝handle0、SyncWait超时，随后游戏在NVNSubmission.cpp315调用AbortImpl退出。
+
+`nvn_command_buffer.c`将同时活动的录制器限制在静态32槽，已有槽及finalized槽可复用，32槽均活动时直接拒绝。当前准备保持槽地址稳定的分块扩展，保留包寿命和finalize复用，回调解锁期间也保留原slot地址。
+
+本次证据在 `.local/codex-recovery-20261114/boss-crash-26bb311-20261114-200232/`，完整补采在 `exit-26bb311-full-recapture-20261114-200651/`。初次本地engine.log与pull命令输出同名发生覆盖，已从设备完整重新提取41414779字节，命令输出改为独立文件，源日志摘要与metadata已保留。`engine.log.fatal`的mtime仍属于PID22127旧会话，该文件的8GB错误不得用于本次归因。

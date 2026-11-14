@@ -81,6 +81,9 @@ def main():
             results.append(dict(name='runtime-contracts', passed=False,
                                 blocked='these independent VM/TLS contracts require macOS ARM64'))
         else:
+            command_capacity = out / 'command-buffer-capacity'
+            run('command-buffer-capacity-contract', ['bash', 'scripts/runtime/build_nvn_command_buffer_capacity_contract.sh', command_capacity])
+            extra_artifacts.append(command_capacity / 'capacity-contract')
             contracts = [('mutex', 'mutex', 'mutex_contract'),
                          ('address-region', 'address_region', 'address_region_contract'),
                          ('guest-tls', 'guest_tls', 'guest_tls_threads'),
