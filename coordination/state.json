@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-14T23:05:39.864555+08:00",
- "phase": "女主身体闪烁已从录屏定位，成熟上游精度约束及clear覆盖候选21已构建，98/98通过，RG断开待实机。",
+ "updated_at": "2026-11-14T23:09:15.033304+08:00",
+ "phase": "1.0.21已安装RG477M并进入真实标题画面，APK回读及存档校验通过，用户新开游戏复测女主闪烁。",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -9715,11 +9715,11 @@
    "evidence": ".local/codex-recovery-20261114/host-page-review/manifest.json"
   },
   "device_connection": {
-   "status": "RG477M_DISCONNECTED_HONOR_TABLET_ONLY",
-   "checked_at": "2026-11-14T22:55:19.584862+08:00",
+   "status": "CONNECTED_USER_SCENE_TEST",
+   "checked_at": "2026-11-14T23:09:15.033304+08:00",
    "serial": "RG477M01445122",
-   "pid": "19148",
-   "operator": "用户推进，根只记录；按用户要求曾确认混沌抉择技能及目标。",
+   "pid": "32442",
+   "operator": "用户操控，root采样；21已安装并进入标题。",
    "authorization": "本轮RG477M授权继续有效"
   },
   "compute_library_validation": {
@@ -10002,8 +10002,8 @@
    "source_inputs": 28,
    "native_load_alignment": 16384,
    "evidence": ".local/codex-recovery-20261114/precision-build/",
-   "installed": false,
-   "device_status": "NOT_RUN_RG477M_DISCONNECTED",
+   "installed": true,
+   "device_status": "TITLE_RENDERED_USER_SCENE_TEST_PENDING",
    "changes": [
     "cba445f folded clear完整目标覆盖与3D子view保留",
     "固定DroidPlay NoContraction通用位置运算约束，默认开启，启动marker可对照"
@@ -10012,7 +10012,12 @@
     "女主闪烁同场景验证及因果",
     "当前低帧/音频短卡复验",
     "实际Mali GPU耗时与性能回归"
-   ]
+   ],
+   "installed_readback_match": true,
+   "pid": 32442,
+   "save_before_after_sha256": "86d8a9f5f9a77604ff5d6ebde5e716169f2ac804b15306d26e72b17f26a93ae8",
+   "install_evidence": ".local/codex-recovery-20261114/install-780ebc6-21-20261114-230735/",
+   "position_precision_enabled": true
   },
   "control20_feedback": "用户确认剧情仍有闪烁，旧UBO回退未消除现象，不能归因为19 UBO单项。",
   "installed_baseline": {
@@ -10037,7 +10042,7 @@
    "wrapper_sha256": "1468a2c8ea4e5cbb82785577d49a1adb33b8079c84af56cbad4d1730e4ff0e73",
    "upstream_revision": "a72a85c59cac54f3428827cfb72e1adf63b1521a",
    "upstream_sha256": "768ff41d76f5f22d08cacd52d53e7d92e3e3ebf9f44d39e8f9bcb6ff225895ea",
-   "device_result": "NOT_RUN",
+   "device_result": "startup enabled1及warm顶点实际marked命中；标题画面已呈现，女主/性能因果未验。",
    "default": true,
    "startup_marker": "gfx-position-precise",
    "environment": "DM_SPV_PRECISE",

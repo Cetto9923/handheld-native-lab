@@ -1,3 +1,14 @@
+# 2026-11-14 23:09 21已安装并到标题
+
+- 用户重连RG477M01445122后实测无游戏PID、桌面、电量22%/AC充电。root接续安装21，无需终止在跑游戏。荣耀平板同时连接，所有ADB操作显式固定RG序列号。
+- 安装备份位于install-780ebc6-21-20261114-230735/。旧18 APK a6c9fbe2、新21 07f5f036均保全，新APK安装回读一致，存档tar前后86d8a9f5f9a77604ff5d6ebde5e716169f2ac804b15306d26e72b17f26a93ae8完全一致。
+- 新PID32442，系统包元数据versionCode21/1.0.21-preview。reconnect21/ready.png已见真实标题菜单。precision-enabled-exact.log确认NVN position precision=1，当前warm日志有多份真实顶点marked命中。初始同PID CSV已拉至reconnect21/initial-frame-32442.csv。
+- 已告知用户新建游戏复测刚才女主闪烁剧情并留意音频/特效。root保持用户输入权。标题与启动确认不扩大为女主闪烁、实际FPS或音频验收，后续应按32442同次运行记录。当前没有后台监控承诺或新长进程。
+
+# RG477M重连并开始安装21
+
+用户回复连上了，实测RG477M01445122存在，当前无游戏PID且位于桌面，电量22%/AC充电。root接续已构建21的备份、覆盖安装、回读与启动。启动计划和日志保存在reconnect21/。
+
 # 2026-11-14 23:02 1.0.21候选构建完成，待RG重连
 
 - 源码780ebc67d4b9cfe41c7df35bc0e1a7280e0796a1，包含cba445f clear修正及固定DroidPlay位置NoContraction约束。root全量98/98宿主检查、Android构建均0，28输入构建前后SHA一致。独立冻结helper脚本ASan/UBSan、18份SPIR-V验证0。
