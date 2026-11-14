@@ -54,6 +54,6 @@ extern "C" int xbg_texture_clear_slice(uint32_t width,uint32_t height,uint32_t l
     if(uint64_t(x)+w>width || uint64_t(y)+h>height || uint64_t(base)+z+depth>layers)return -2;
     *rect={{x,y},{uint32_t(w),uint32_t(h)}};*layer=base+uint32_t(z)+slice;return 0;
 }
-extern "C" int xbg_clear_requires_preserve(uint32_t levels,uint32_t layers,uint32_t w,uint32_t h,const VkRect2D *r,uint32_t partial,uint32_t aspects,uint32_t written){
-    return !r || partial || levels>1 || layers>1 || r->offset.x || r->offset.y || r->extent.width!=w || r->extent.height!=h || aspects!=written;
+extern "C" int xbg_clear_requires_preserve(uint32_t levels,uint32_t layers,uint32_t w,uint32_t h,const VkRect2D *r,uint32_t partial,uint32_t partial_view,uint32_t aspects,uint32_t written){
+    return !r || partial || partial_view || levels>1 || layers>1 || r->offset.x || r->offset.y || r->extent.width!=w || r->extent.height!=h || aspects!=written;
 }

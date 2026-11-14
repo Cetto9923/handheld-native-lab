@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-14T22:00:26.730034+08:00",
- "phase": "用户确认19流畅性提升、残余音频/特效/移动卡顿，剧情人物轻微闪烁。先做UBO单变量旧算法控制，根因未定。",
+ "updated_at": "2026-11-14T22:54:03.253403+08:00",
+ "phase": "原18用户录屏定位女主身体间歇深黑覆盖，检查位置精度/深度一致性，clear覆盖补丁独立复审中。",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -2437,8 +2437,8 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-14T22:00:26.730034+08:00",
-   "checkpoint": "19现数据保全performance-3e0c9bc/regression-user/，尚未证明UBO因果。",
-   "write_state": "ACTIVE"
+   "checkpoint": "20已交回；原18APK也复现，root保全原机位及用户视频，不再写该图形源。",
+   "write_state": "RELEASED"
   },
   {
    "task": "CODEX-UBO-REGRESSION-DOWNSTREAM-20261114",
@@ -2450,7 +2450,7 @@
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-14T22:00:26.730034+08:00",
    "checkpoint": "19现数据保全performance-3e0c9bc/regression-user/，尚未证明UBO因果。",
-   "write_state": "ACTIVE"
+   "write_state": "RELEASED"
   },
   {
    "task": "CODEX-UBO-REGRESSION-ANALYZER-20261114",
@@ -2462,6 +2462,122 @@
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-14T22:00:26.730034+08:00",
    "checkpoint": "19现数据保全performance-3e0c9bc/regression-user/，尚未证明UBO因果。",
+   "write_state": "RELEASED"
+  },
+  {
+   "task": "CODEX-LAYERED-CLEAR-REVIEW-20261114",
+   "owner": "load_profile",
+   "paths": [
+    ".local/upstream-switch-zelda-20261114/layered-clear-review/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T22:19:18.107716+08:00",
+   "checkpoint": "用户20仍闪烁，原18APK对照恢复中，生产保持74129a9控制源。",
+   "write_state": "RELEASED"
+  },
+  {
+   "task": "CODEX-GPU-DRIFT-REVIEW-20261114",
+   "owner": "perf_cpu",
+   "paths": [
+    ".local/upstream-switch-zelda-20261114/gpu-drift-review/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T22:19:18.107716+08:00",
+   "checkpoint": "用户20仍闪烁，原18APK对照恢复中，生产保持74129a9控制源。",
+   "write_state": "RELEASED"
+  },
+  {
+   "task": "CODEX-CLEAR-COVERAGE-20261114",
+   "owner": "load_profile",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_clear.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_clear.h",
+    "src/graphics/nvn_vulkan/engine/xbg_framebuffer.c",
+    "src/graphics/nvn_vulkan/engine/xbg_framebuffer.h",
+    "tests/native/clear_format_contract.cpp",
+    "tests/native/view_range_contract.c",
+    "tests/native/layer_output_gpu_contract.cpp",
+    ".local/upstream-switch-zelda-20261114/layered-clear-integration/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T22:33:28.804875+08:00",
+   "checkpoint": "冻结8文件，ASan/UBSan自测及Android语法通过，独立复审/真机覆盖未完成。",
+   "write_state": "FROZEN_HANDED_BACK",
+   "released_at": "2026-11-14T22:47:48.010417+08:00"
+  },
+  {
+   "task": "CODEX-USER-VIDEO-20261114",
+   "owner": "perf_cpu",
+   "paths": [
+    ".local/codex-recovery-20261114/ubo-regression-control/user-video/analysis-perf/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T22:37:13.725916+08:00",
+   "checkpoint": "原18录屏24.235044/24.268700/24.302256秒定位女主裙身局部深黑覆盖，完整报告297d7424，未归因。",
+   "write_state": "FROZEN_HANDED_BACK",
+   "released_at": "2026-11-14T22:47:48.010417+08:00"
+  },
+  {
+   "task": "CODEX-POSITION-PRECISION-REVIEW-20261114",
+   "owner": "perf_cpu/lookup_review",
+   "paths": [
+    ".local/upstream-switch-zelda-20261114/position-precision-review/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T22:47:48.010417+08:00",
+   "checkpoint": "root独占设备、集成及coordination；当前补丁未打包。",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "CODEX-CLEAR-INDEPENDENT-REVIEW-20261114",
+   "owner": "perf_cpu",
+   "paths": [
+    ".local/upstream-switch-zelda-20261114/layered-clear-independent/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T22:47:48.010417+08:00",
+   "checkpoint": "root独占设备、集成及coordination；当前补丁未打包。",
+   "write_state": "RELEASED",
+   "released_at": "2026-11-14T22:54:03.253403+08:00"
+  },
+  {
+   "task": "CODEX-POSITION-PRECISION-IMPL-20261114",
+   "owner": "load_profile",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/third_party/droidplay/spv_precise.h",
+    "src/graphics/nvn_vulkan/engine/third_party/droidplay/provenance.json",
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_precise.h",
+    "tests/device/test_spirv_precise.cpp",
+    "tests/device/position_precision.spvasm",
+    "scripts/android/verify_spirv_precise.sh",
+    ".local/upstream-switch-zelda-20261114/position-precision-integration/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T22:52:25.015028+08:00",
+   "checkpoint": "root负责xbg_game/版本/gate，全量构建待helper冻结；load_profile仅写helper/test/source provenance。",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "CODEX-POSITION-PRECISION-INTEGRATE-20261114",
+   "owner": "root",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "scripts/verify_host.py",
+    ".local/codex-recovery-20261114/precision-build/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T22:52:25.015028+08:00",
+   "checkpoint": "root负责xbg_game/版本/gate，全量构建待helper冻结；load_profile仅写helper/test/source provenance。",
    "write_state": "ACTIVE"
   }
  ],
@@ -6776,7 +6892,7 @@
    ],
    "acceptance": "literal碰撞不扩大复制、计算索引/未知布局/opaque保持保守，真实shader SPV保持逐字相同，UBO快照与fence生命周期保持。自测+独立复核，RG真实帧率待总控。",
    "role": "IMPLEMENTATION",
-   "status": "implemented",
+   "status": "deferred",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "outputs": [
@@ -6786,7 +6902,7 @@
    ],
    "dependencies": [],
    "pass_gates": [],
-   "checkpoint": "3e0c9bc。源a9a2a849/header55edb75冻结，组件ASan/UBSan/val0、NDK26 API28 -c0，根host+Android串行构建中。"
+   "checkpoint": "19人物闪烁反馈后，74129a9已恢复18的UBO生产路径。组件证据保留，因果待控制。"
   },
   {
    "id": "CODEX-UPSTREAM-PAGE-20261114",
@@ -6904,13 +7020,13 @@
     ".local/codex-recovery-20261114/ubo-regression-control/"
    ],
    "acceptance": "原始shader和同步保留，区分静态组件正确与游戏完整语义，控制包先构建与同场景复测，未知项不称根因",
-   "checkpoint": "19现数据保全performance-3e0c9bc/regression-user/，尚未证明UBO因果。"
+   "checkpoint": "74129a9/20，97/97宿主与Android构建通过，安装回读及存档一致，PID10323，待同场景实测。"
   },
   {
    "id": "CODEX-UBO-REGRESSION-DOWNSTREAM-20261114",
    "owner": "perf_cpu",
    "role": "READ_ONLY_RESEARCH",
-   "status": "in_progress",
+   "status": "completed",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "objective": "隔离19剧情人物轻微闪烁，保留稳定性与当前性能证据，先单变量回退UBO进行对照",
@@ -6930,13 +7046,13 @@
     ".local/upstream-switch-zelda-20261114/ubo-integration/regression-review/"
    ],
    "acceptance": "原始shader和同步保留，区分静态组件正确与游戏完整语义，控制包先构建与同场景复测，未知项不称根因",
-   "checkpoint": "19现数据保全performance-3e0c9bc/regression-user/，尚未证明UBO因果。"
+   "checkpoint": "未找到当前loader有效过裁剪反例，遗留范围与variant契约缺口已报告。用户20仍闪烁，UBO因果未获支持。"
   },
   {
    "id": "CODEX-UBO-REGRESSION-ANALYZER-20261114",
    "owner": "/root/perf_cpu/lookup_review",
    "role": "READ_ONLY_RESEARCH",
-   "status": "in_progress",
+   "status": "completed",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "objective": "隔离19剧情人物轻微闪烁，保留稳定性与当前性能证据，先单变量回退UBO进行对照",
@@ -6956,7 +7072,230 @@
     ".local/upstream-switch-zelda-20261114/cbuf-review/integration-qa/regression/"
    ],
    "acceptance": "原始shader和同步保留，区分静态组件正确与游戏完整语义，控制包先构建与同场景复测，未知项不称根因",
-   "checkpoint": "19现数据保全performance-3e0c9bc/regression-user/，尚未证明UBO因果。"
+   "checkpoint": "未找到当前loader有效过裁剪反例，遗留范围与variant契约缺口已报告。用户20仍闪烁，UBO因果未获支持。"
+  },
+  {
+   "id": "CODEX-LAYERED-CLEAR-REVIEW-20261114",
+   "owner": "load_profile",
+   "role": "READ_ONLY_RESEARCH",
+   "status": "completed",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "复核成熟上游分层clear的完整契约，核对本项目folded clear/3D view/多附件层数是否仍有缺口",
+   "inputs": [
+    "74129a9/source18 xbg_game",
+    "DroidPlay固定来源",
+    "PID10323同次窗口与thermalservice冲突数据"
+   ],
+   "outputs": [
+    ".local/upstream-switch-zelda-20261114/layered-clear-review/review.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/upstream-switch-zelda-20261114/layered-clear-review/"
+   ],
+   "acceptance": "精确数据/代码/Primary来源，可证伪，未证明不称根因，无设备写入",
+   "checkpoint": "用户20仍闪烁，原18APK对照恢复中，生产保持74129a9控制源。"
+  },
+  {
+   "id": "CODEX-GPU-DRIFT-REVIEW-20261114",
+   "owner": "perf_cpu",
+   "role": "READ_ONLY_RESEARCH",
+   "status": "completed",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "同PID同菜单工作负载GPU26至42ms漂移核查，准备官方Perfetto最小频率取证方案",
+   "inputs": [
+    "74129a9/source18 xbg_game",
+    "DroidPlay固定来源",
+    "PID10323同次窗口与thermalservice冲突数据"
+   ],
+   "outputs": [
+    ".local/upstream-switch-zelda-20261114/gpu-drift-review/review.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/upstream-switch-zelda-20261114/gpu-drift-review/"
+   ],
+   "acceptance": "精确数据/代码/Primary来源，可证伪，未证明不称根因，无设备写入",
+   "checkpoint": "用户20仍闪烁，原18APK对照恢复中，生产保持74129a9控制源。"
+  },
+  {
+   "id": "CODEX-CLEAR-COVERAGE-20261114",
+   "owner": "load_profile",
+   "role": "IMPLEMENTATION",
+   "status": "implemented",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "借鉴DroidPlay完整clear契约，修复folded pass尺寸/层数不足及3D子view首次内容保留，补原路限量取证",
+   "inputs": [
+    "74129a9 source18 xbg_game",
+    "DroidPlay a72a85c59 layered clear实现和文档",
+    "production planner5例有效缺口模型",
+    "原18也闪烁反馈及31秒用户视频"
+   ],
+   "outputs": [
+    "最小clear修复",
+    "实际命中计数/有界日志",
+    "宿主与可用GPU回归"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_clear.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_clear.h",
+    "src/graphics/nvn_vulkan/engine/xbg_framebuffer.c",
+    "src/graphics/nvn_vulkan/engine/xbg_framebuffer.h",
+    "tests/native/clear_format_contract.cpp",
+    "tests/native/view_range_contract.c",
+    "tests/native/layer_output_gpu_contract.cpp",
+    ".local/upstream-switch-zelda-20261114/layered-clear-integration/"
+   ],
+   "acceptance": "planning失败在image副作用前返回，完整unmasked clear覆盖选中mip/view全部像素和层，3D子view保留其余slice；正常draw/同步/逻辑时间保持，现有gfx-live-ab的clearfold只作一次A/B；实际闪烁因果和性能待root真机",
+   "checkpoint": "root97/97/hash一致，独立review c8766478，无阻塞finding。保留实际GPU与女主因果待验。"
+  },
+  {
+   "id": "CODEX-USER-VIDEO-20261114",
+   "owner": "perf_cpu",
+   "role": "READ_ONLY_VIDEO_ANALYSIS",
+   "status": "completed",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "分析用户31秒原录屏女主身体闪烁与音频短卡，给时间段、可复核像素/声学现象",
+   "inputs": [
+    ".local/codex-recovery-20261114/ubo-regression-control/user-video/screen-20261114-222932.mp4",
+    "用户明确闪烁主要在女主身上",
+    "视频属于原18/PID19148，屏录用于视觉，帧率以引擎CSV另测"
+   ],
+   "outputs": [
+    ".local/codex-recovery-20261114/ubo-regression-control/user-video/analysis-perf/review.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/codex-recovery-20261114/ubo-regression-control/user-video/analysis-perf/"
+   ],
+   "acceptance": "区分动画/镜头运动/火光/编码与人物闪烁，AAC音轨短静音只描述观测，原文件不改，未获shader输入证据不归因",
+   "checkpoint": "原18录屏24.235044/24.268700/24.302256秒定位女主裙身局部深黑覆盖，完整报告297d7424，未归因。"
+  },
+  {
+   "id": "CODEX-POSITION-PRECISION-REVIEW-20261114",
+   "owner": "perf_cpu/lookup_review",
+   "role": "READ_ONLY_REVIEW",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "只读核对DroidPlay NoContraction保持Maxwell分步舍入的方案与本项目位置/深度路径，检查现有真实SPV及实际主角配对证据。",
+   "inputs": [
+    "74129a9 dirty clear8文件冻结",
+    "固定DroidPlay a72a85c59",
+    "原18用户录屏女主局部深黑覆盖"
+   ],
+   "outputs": [
+    ".local/upstream-switch-zelda-20261114/position-precision-review/review.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/upstream-switch-zelda-20261114/position-precision-review/"
+   ],
+   "acceptance": "只读生产源码，输出可复核代码/模块证据与边界，未映射当前女主draw不得按key改写，不操作设备或Git。",
+   "checkpoint": "root独占设备、集成及coordination；当前补丁未打包。"
+  },
+  {
+   "id": "CODEX-CLEAR-INDEPENDENT-REVIEW-20261114",
+   "owner": "perf_cpu",
+   "role": "READ_ONLY_REVIEW",
+   "status": "completed",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "独立复核冻结clear coverage补丁，复跑现有宿主契约，审查fold fallback副作用和3D partial view保留。",
+   "inputs": [
+    "74129a9 dirty clear8文件冻结",
+    "固定DroidPlay a72a85c59",
+    "原18用户录屏女主局部深黑覆盖"
+   ],
+   "outputs": [
+    ".local/upstream-switch-zelda-20261114/layered-clear-independent/review.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/upstream-switch-zelda-20261114/layered-clear-independent/"
+   ],
+   "acceptance": "只读生产源码，输出可复核代码/模块证据与边界，未映射当前女主draw不得按key改写，不操作设备或Git。",
+   "checkpoint": "独立3契约ASan/UBSan及生产planner额外反例exit0，8SHA一致，review c8766478；fullengine GPU与3D真实canary未执行。"
+  },
+  {
+   "id": "CODEX-POSITION-PRECISION-IMPL-20261114",
+   "owner": "load_profile",
+   "role": "IMPLEMENTATION",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "吸收固定DroidPlay NoContraction通用位置精度实现，保持Maxwell分步浮点舍入，真实模块与合法SPIR-V回归。",
+   "inputs": [
+    "固定DroidPlay a72a85c59",
+    "2份真实VS均0/492 NoContraction",
+    "原18女主视频局部深黑覆盖",
+    "clear补丁宿主97/97、独立3组件0"
+   ],
+   "outputs": [
+    "src/graphics/nvn_vulkan/engine/third_party/droidplay/spv_precise.h",
+    "src/graphics/nvn_vulkan/engine/third_party/droidplay/provenance.json",
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_precise.h",
+    "tests/device/test_spirv_precise.cpp",
+    "tests/device/position_precision.spvasm",
+    "scripts/android/verify_spirv_precise.sh",
+    ".local/upstream-switch-zelda-20261114/position-precision-integration/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/third_party/droidplay/spv_precise.h",
+    "src/graphics/nvn_vulkan/engine/third_party/droidplay/provenance.json",
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_precise.h",
+    "tests/device/test_spirv_precise.cpp",
+    "tests/device/position_precision.spvasm",
+    "scripts/android/verify_spirv_precise.sh",
+    ".local/upstream-switch-zelda-20261114/position-precision-integration/"
+   ],
+   "acceptance": "保持显式FMA及fragment/compute模块，指令函数体逐字保持，仅补合法NoContraction；已有装饰幂等，未知/坏输入不半写；所有优化入口配置一致。女主因果与性能须真机，不能由离线结果代替。",
+   "checkpoint": "root负责xbg_game/版本/gate，全量构建待helper冻结；load_profile仅写helper/test/source provenance。"
+  },
+  {
+   "id": "CODEX-POSITION-PRECISION-INTEGRATE-20261114",
+   "owner": "root",
+   "role": "INTEGRATION",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "统一接入runtime/warm与integer/typed变体优化路径及启动时A/B，串行构建并保留原APK。",
+   "inputs": [
+    "固定DroidPlay a72a85c59",
+    "2份真实VS均0/492 NoContraction",
+    "原18女主视频局部深黑覆盖",
+    "clear补丁宿主97/97、独立3组件0"
+   ],
+   "outputs": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "scripts/verify_host.py",
+    ".local/codex-recovery-20261114/precision-build/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "scripts/verify_host.py",
+    ".local/codex-recovery-20261114/precision-build/"
+   ],
+   "acceptance": "保持显式FMA及fragment/compute模块，指令函数体逐字保持，仅补合法NoContraction；已有装饰幂等，未知/坏输入不半写；所有优化入口配置一致。女主因果与性能须真机，不能由离线结果代替。",
+   "checkpoint": "root负责xbg_game/版本/gate，全量构建待helper冻结；load_profile仅写helper/test/source provenance。"
   }
  ],
  "blockers": [
@@ -9335,7 +9674,7 @@
    "archive": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/codex-recovery-20261114/branch-archive"
   },
   "baseline_apk": "9083174963c40ce1c7d1726671fa2ffd4e00f573efad516d80def5b3a10cf881",
-  "current_focus": "用户已确认新建游戏不闪退，正在处理暖态约21FPS及有声6ch xrun短断音。",
+  "current_focus": "女主身体局部黑色栅状缺口及低帧/短断音，原18当前PID19148。",
   "integration_candidate": {
    "head": "a0f402e",
    "host_checks": 87,
@@ -9372,9 +9711,9 @@
   },
   "device_connection": {
    "status": "CONNECTED_USER_PROGRESS_ROOT_RECORDING",
-   "checked_at": "2026-11-14T18:02:34.483458+08:00",
+   "checked_at": "2026-11-14T22:47:48.010417+08:00",
    "serial": "RG477M01445122",
-   "pid": "22127",
+   "pid": "19148",
    "operator": "用户推进，根只记录；按用户要求曾确认混沌抉择技能及目标。",
    "authorization": "本轮RG477M授权继续有效"
   },
@@ -9641,26 +9980,37 @@
    "status": "不是性能PASS；用户仍反馈卡顿与>30秒读档"
   },
   "current_user_feedback": {
-   "at": "2026-11-14T22:00:26.730034+08:00",
-   "package": "1.0.19-preview",
-   "performance": "整体流畅性提升，声音轻微卡顿；画面未感明显卡顿，特效与首场移动仍不丝滑",
-   "rendering": "剧情人物轻微闪烁，用户对照18无闪烁",
-   "cause": "尚未证明归因，控制包隔离UBO"
+   "at": "2026-11-14T22:47:48.010417+08:00",
+   "package": "exact 1.0.18-preview restored",
+   "rendering": "女主身上闪烁，录屏已定位局部黑色栅状缺口",
+   "cause": "18/20均复现，撤回19 UBO为唯一引入原因的假设，实际根因待证据。"
   },
   "current_candidate": {
-   "source": "3e0c9bcf4e5452ab443bc7e01b8d027a5cdebc7e",
-   "version": "1.0.19-preview",
-   "apk_sha256": "d0b8f181a8c87cf9e64670090550e9a036982fa046b264be1665fe98cde5468e",
+   "source": "74129a9861b14cb9d71485b94ddb5f4948047b92",
+   "version": "1.0.20-preview",
+   "apk_sha256": "b570111987d0f96c1dcf19490da6823de9375cb6f3905dede415024feabecc0e",
    "bytes": 3601404,
-   "pid": 30282,
-   "host_checks": "98/98",
+   "pid": 10323,
+   "host_checks": "97/97",
    "android_build": 0,
    "source_hash_match": true,
    "installed_readback_match": true,
    "save_before_after_sha256": "86d8a9f5f9a77604ff5d6ebde5e716169f2ac804b15306d26e72b17f26a93ae8",
-   "evidence": ".local/codex-recovery-20261114/install-3e0c9bc-20261114-214854/",
-   "game_performance": "pending"
-  }
+   "evidence": ".local/codex-recovery-20261114/install-74129a9-20261114-220424/",
+   "game_performance": "pending",
+   "control": "xbg_game.cpp exact7de9e39 SHA2666a8f9; retains page fastpath only versus18",
+   "installed": false
+  },
+  "control20_feedback": "用户确认剧情仍有闪烁，旧UBO回退未消除现象，不能归因为19 UBO单项。",
+  "installed_baseline": {
+   "source": "7de9e39",
+   "version": "1.0.18-preview",
+   "apk_sha256": "a6c9fbe2dd21c2b5e16dd691c7c291c092b57a1c407c481a7dc6e30540def650",
+   "pid": 19148,
+   "evidence": ".local/codex-recovery-20261114/install-baseline18-after20-20261114-221843/",
+   "user_feedback": "同一剧情仍轻微闪烁，用户暂停交给root取消暂停采样，用户另录31秒视频"
+  },
+  "flicker_subject": "用户明确主要是女主身上闪烁；原18亦复现，31秒原视频已取回。"
  },
  "upstream_research_20261114": {
   "status": "completed",

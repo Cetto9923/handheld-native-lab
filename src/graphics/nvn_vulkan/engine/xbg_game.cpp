@@ -975,7 +975,8 @@ struct Perf {
     uint64_t frames=0,submits=0,waits=0,sync_writeback=0,sync_readback=0,sync_query=0,sync_other=0,gpu_ns=0,gpu_samples=0,
         submit_cpu_ns=0,present_cpu_ns=0,passes=0,draws=0,dispatches=0,snapshot_hits=0,snapshot_misses=0,pending_views=0,access_by[12]={},folded_clears=0,why_wait=0,why_poll=0,why_access=0,why_cmdwait=0,why_finish=0,why_slot=0,snapshot_bytes=0,arena_peak=0,window_start=0,ops=0,
         render_cond_ops=0,render_cond_skips=0,render_cond_force_off=0,draws_skipped_cond=0,
-        readback_targeted=0,readback_no_wait=0,readback_fallback=0,readback_inflight=0,sync_drain=0;
+        readback_targeted=0,readback_no_wait=0,readback_fallback=0,readback_inflight=0,sync_drain=0,
+        clear_coverage_misses=0,clear_coverage_legacy=0;
 } perf;
 // ===== 场景切换测量（标记 gfx-scene-tag，默认关闭）=====
 // Off unless the marker file files/gfx-scene-tag exists: without it there is no file read, no counter and no line at
@@ -1450,6 +1451,7 @@ void perf_frame(){
         int(sync_mode),(unsigned long long)perf.frames,wall,f*1000.0/wall,double(perf.submit_cpu_ns)/1e6/f,double(perf.present_cpu_ns)/1e6/f,perf.gpu_samples?double(perf.gpu_ns)/1e6/f:-1.0,(unsigned long long)perf.gpu_samples,
         double(perf.submits)/f,double(perf.waits)/f,(unsigned long long)perf.sync_writeback,(unsigned long long)perf.sync_readback,(unsigned long long)perf.sync_query,double(perf.ops)/f,double(perf.folded_clears)/f,double(perf.passes)/f,double(perf.draws)/f,double(perf.dispatches)/f,
         (unsigned long long)perf.why_wait,(unsigned long long)perf.why_poll,(unsigned long long)perf.why_access,(unsigned long long)perf.access_by[1],(unsigned long long)perf.access_by[2],(unsigned long long)perf.access_by[3],(unsigned long long)perf.access_by[4],(unsigned long long)perf.access_by[5],(unsigned long long)perf.access_by[6],(unsigned long long)perf.access_by[8],(unsigned long long)perf.access_by[9],(unsigned long long)perf.access_by[10],(unsigned long long)perf.access_by[11],(unsigned long long)perf.why_cmdwait,(unsigned long long)perf.why_finish,(unsigned long long)perf.why_slot,(unsigned long long)perf.pending_views,(unsigned long long)perf.snapshot_hits,(unsigned long long)perf.snapshot_misses,double(perf.snapshot_bytes)/1048576.0,double(perf.arena_peak)/1048576.0,perf_counts().pipelines,perf_counts().layouts,perf_counts().samplers,perf_counts().passes,perf_counts().images,perf_counts().host_segments,double(perf_counts().host_bytes)/1048576.0);
+    if(perf.clear_coverage_misses)xbg_logf("NVN PERF clearfold coverage_misses=%llu rejected=%llu legacy=%llu",(unsigned long long)perf.clear_coverage_misses,(unsigned long long)(perf.clear_coverage_misses-perf.clear_coverage_legacy),(unsigned long long)perf.clear_coverage_legacy);
     if(!timing_active){
         static const char *names[]={"other","draw","dispatch","descriptor","pass","buffer","pipeline","submit","fence","present","cleanup","hash","image","log","program","cpuwrite","snapshot"};
         char line[1024];int at=snprintf(line,sizeof(line),"NVN PERF parts_ms_per_frame timed=%llu",(unsigned long long)perf_timed_frames);
@@ -4792,7 +4794,7 @@ uint64_t noload_passes=0;bool noload_enabled=false;
 struct RenderPassEntry {VkRenderPass pass{},noload{};PipelineDefinition definition;};
 std::map<std::vector<uint32_t>,RenderPassEntry> render_pass_cache;
 void clear_render_pass_cache(){for(auto &r:render_pass_cache){vkDestroyRenderPass(cfg.device,r.second.pass,nullptr);if(r.second.noload)vkDestroyRenderPass(cfg.device,r.second.noload,nullptr);}render_pass_cache.clear();pipeline_fast.clear();pipe_memo_valid=false;}
-bool create_pass(Pass &p,Commands &c,int clear_color=-1,bool clear_depth=false,bool soft=false){CPU_SCOPE(Pass);
+bool create_pass(Pass &p,Commands &c,int clear_color=-1,bool clear_depth=false,bool soft=false,int fold_clear_slot=-1){CPU_SCOPE(Pass);
     const bool plain_draw=c.draw && clear_color<0 && !clear_depth && !soft && !provenance_file && !capture.active && !ab_off("passfast");
     if(plain_draw && last_pass.valid && open_pass.cmd==c.command && open_pass.pass==last_pass.pass.pass && open_pass.framebuffer==last_pass.pass.framebuffer && !memcmp(&state.rt,&last_pass.rt,sizeof state.rt)){
         p=last_pass.pass;for(auto *im:p.images){need(!im->rg16_proxy || std::find(sampled_rg16_images.begin(),sampled_rg16_images.end(),im)==sampled_rg16_images.end(),"RG16 same-draw sampled/attachment feedback requires explicit supported subresource semantics");im->last_write=++write_seq;im->gpu_written=true;++im->content_version;}++pass_fast_hits;return true;}
@@ -4830,6 +4832,22 @@ bool create_pass(Pass &p,Commands &c,int clear_color=-1,bool clear_depth=false,b
     }
     if(result && soft)return false;
     if(result)xbg_fatalf("NVN framebuffer %s result=%d attachment=%d",xbg_framebuffer_error(result),result,bad==UINT32_MAX?-1:int(bad));
+    if(fold_clear_slot>=0){
+        need(soft && fold_clear_slot<9 && extents[fold_clear_slot].active,"Invalid folded clear target slot");
+        const auto &target=extents[fold_clear_slot];
+        if(!xbg_framebuffer_covers_clear(&plan,&target)){
+            const bool enabled=!ab_off("clearfold");
+            ++perf.clear_coverage_misses;if(!enabled)++perf.clear_coverage_legacy;
+            static unsigned notes=0;
+            if(notes<8){
+                ++notes;xbg_logf("NVN clearfold coverage frame=%llu op=%llu enabled=%u slot=%d serial=%llu mip=%u baseLayer=%u target=%ux%u layers=%u planned=%ux%u layers=%u route=%s",
+                    (unsigned long long)(stats.presents.load()+1),(unsigned long long)perf.ops,unsigned(enabled),fold_clear_slot,(unsigned long long)targets[fold_clear_slot]->serial,target.base_level,target.base_layer,std::max(1u,target.width>>target.base_level),std::max(1u,target.height>>target.base_level),target.layer_count,plan.width,plan.height,plan.layers,enabled?"target-only":"legacy-fold");
+            }
+            // Reject before querying or marking any attachment image. The clear
+            // fallback imports preserved CPU storage before gpu_written is set.
+            if(enabled)return false;
+        }
+    }
     p.width=plan.width;p.height=plan.height;p.layers=plan.layers;p.samples=VkSampleCountFlagBits(plan.samples);
     need(p.layers<=properties.limits.maxFramebufferLayers,"Framebuffer layer count exceeds device limit");
     static std::vector<VkAttachmentDescription> descriptions;descriptions.clear();static std::vector<VkImageView> views;views.clear();   // not re-entrant: graphics thread
@@ -5693,16 +5711,25 @@ void clear_attachment(const p_clear_color *color,const p_clear_ds *depth,int sca
     }
     // #endregion
     if(!a.aspectMask && !partial)return;
+    const tex_t *target=color?state.rt.color[color->index]:state.rt.depth;Image &target_image=get_image(target,false);
+    const view_t *target_view=color?(state.rt.has_cview[color->index]?&state.rt.cview[color->index]:nullptr):(state.rt.has_dview?&state.rt.dview:nullptr);
+    uint32_t clear_level=target_view && target_view->set_levels?target_view->base_level:0;need(clear_level<target_image.levels,"Clear mip outside image");
+    uint32_t clear_width=std::max(1u,target_image.width>>clear_level),clear_height=std::max(1u,target_image.height>>clear_level);VkRect2D preserve_rect{};
+    need(xbg_clear_rectangle(clear_width,clear_height,state.scissor.offset.x,state.scissor.offset.y,state.scissor.extent.width,state.scissor.extent.height,&preserve_rect)==0,"Invalid clear scissor");
+    const uint32_t clear_slices=target_image.source.d.target==2?std::max(1u,target_image.depth>>clear_level):target_image.layers;
+    const uint32_t clear_base=target_view && target_view->set_layers?target_view->min_layer:0;
+    uint32_t clear_count=target_view && target_view->set_layers?target_view->nlayers:clear_slices;
+    need(xbg_nvn_view_count(clear_slices,clear_base,clear_count,&clear_count)==0,"Clear slice view outside image");
+    // clearfold is an explicit diagnostic A/B of the former behavior. Normal
+    // clears retain every CPU-backed slice outside the selected volume view.
+    const bool partial_view=!ab_off("clearfold") && (clear_base || clear_count!=clear_slices);
+    bool preserve=xbg_clear_requires_preserve(target_image.levels,target_image.layers,clear_width,clear_height,&preserve_rect,partial,partial_view,target_image.aspects,a.aspectMask)!=0;
     // Full (unmasked) clears are recorded inside the draw render pass of the
     // current targets, so a clear and the draws after it share one pass.
     if(!partial && a.aspectMask && !capture.trace && !provenance_file){
-        const tex_t *t0=color?state.rt.color[color->index]:state.rt.depth;Image &ti=get_image(t0,false);
-        const view_t *tv=color?(state.rt.has_cview[color->index]?&state.rt.cview[color->index]:nullptr):(state.rt.has_dview?&state.rt.dview:nullptr);
-        uint32_t lvl=tv && tv->set_levels?tv->base_level:0;uint32_t cw=std::max(1u,ti.width>>lvl),ch=std::max(1u,ti.height>>lvl);VkRect2D keep{};
-        bool needs_preserve=lvl<ti.levels && xbg_clear_rectangle(cw,ch,state.scissor.offset.x,state.scissor.offset.y,state.scissor.extent.width,state.scissor.extent.height,&keep)==0 && xbg_clear_requires_preserve(ti.levels,ti.layers,cw,ch,&keep,false,ti.aspects,a.aspectMask)!=0;
-        if(!needs_preserve || ti.gpu_written || ti.uploaded){
+        if(!preserve || target_image.gpu_written || target_image.uploaded){
             Commands c(true);Pass p;
-            if(create_pass(p,c,-1,false,true)){
+            if(create_pass(p,c,-1,false,true,color?color->index:8)){
                 if(open_pass.cmd!=c.command || open_pass.pass!=p.pass || open_pass.framebuffer!=p.framebuffer){end_open_pass();begin_pass(p,c);open_pass.cmd=c.command;open_pass.pass=p.pass;open_pass.framebuffer=p.framebuffer;open_pass.images=p.images;open_pass.depth_attached=state.rt.depth!=nullptr;++perf.passes;}
                 if(depth){open_pass.depth_used=true;open_pass.depth_may_write=true;open_pass.depth_writes|=(a.aspectMask&VK_IMAGE_ASPECT_DEPTH_BIT)!=0;open_pass.stencil_writes|=(a.aspectMask&VK_IMAGE_ASPECT_STENCIL_BIT)!=0;}
                 VkClearRect r{scissor(p),0,p.layers};if(r.rect.extent.width && r.rect.extent.height)vkCmdClearAttachments(c.command,1,&a,1,&r);
@@ -5711,12 +5738,6 @@ void clear_attachment(const p_clear_color *color,const p_clear_ds *depth,int sca
         }
     }
     if(capture_begin(color?"clear-color":"clear-depth-stencil",stats.presents))capture_log("CLEAR target=%d scalar=%d colorMask=%u stencilMask=%u partial=%u",color?color->index:-1,scalar,cm,sm,unsigned(partial));
-    const tex_t *target=color?state.rt.color[color->index]:state.rt.depth;Image &target_image=get_image(target,false);
-    const view_t *target_view=color?(state.rt.has_cview[color->index]?&state.rt.cview[color->index]:nullptr):(state.rt.has_dview?&state.rt.dview:nullptr);
-    uint32_t clear_level=target_view && target_view->set_levels?target_view->base_level:0;need(clear_level<target_image.levels,"Clear mip outside image");
-    uint32_t clear_width=std::max(1u,target_image.width>>clear_level),clear_height=std::max(1u,target_image.height>>clear_level);VkRect2D preserve_rect{};
-    need(xbg_clear_rectangle(clear_width,clear_height,state.scissor.offset.x,state.scissor.offset.y,state.scissor.extent.width,state.scissor.extent.height,&preserve_rect)==0,"Invalid clear scissor");
-    bool preserve=xbg_clear_requires_preserve(target_image.levels,target_image.layers,clear_width,clear_height,&preserve_rect,partial,target_image.aspects,a.aspectMask)!=0;
     // LOAD preserves actual previous contents only after importing CPU-backed
     // storage on first use; never mark gpu_written before this preservation.
     if(preserve){need(target_image.samples==VK_SAMPLE_COUNT_1_BIT || target_image.gpu_written,"Partial clear of uninitialized CPU multisample storage unsupported");get_image(target,true);}

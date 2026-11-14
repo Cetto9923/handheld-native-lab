@@ -16,6 +16,9 @@ int xbg_framebuffer_plan(const xbg_framebuffer_attachment *attachments,uint32_t 
     uint32_t max_width,uint32_t max_height,xbg_framebuffer_extent *out,uint32_t *bad_index);
 /* Explicit layered path: framebuffer uses the minimum view layer count. */
 int xbg_framebuffer_plan_layered(const xbg_framebuffer_attachment *,uint32_t,uint32_t,uint32_t,xbg_framebuffer_extent *,uint32_t *);
+/* After a successful plan, a folded clear must cover its selected target mip
+ * and every layer of that view. The view's base layer is relative to its image. */
+int xbg_framebuffer_covers_clear(const xbg_framebuffer_extent *plan,const xbg_framebuffer_attachment *target);
 const char *xbg_framebuffer_error(int result);
 /* NVN count zero selects all remaining subresources, as nxnative's image
  * view implementation does. Invalid ranges leave the output untouched. */

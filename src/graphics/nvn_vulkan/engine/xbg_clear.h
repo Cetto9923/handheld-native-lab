@@ -14,8 +14,9 @@ int xbg_masked_clear_state(uint32_t color_mask,uint32_t stencil_mask,uint32_t st
 int xbg_clear_rectangle(uint32_t width,uint32_t height,int32_t x,int32_t y,uint32_t w,uint32_t h,VkRect2D *out);
 int xbg_texture_clear_slice(uint32_t width,uint32_t height,uint32_t layers,uint32_t base_layer,
     int32_t x,int32_t y,int32_t z,int32_t w,int32_t h,int32_t depth,uint32_t slice,VkRect2D *rect,uint32_t *layer);
+/* partial_view also covers 3D slice views, whose image array-layer count is one. */
 int xbg_clear_requires_preserve(uint32_t levels,uint32_t layers,uint32_t width,uint32_t height,
-    const VkRect2D *rect,uint32_t partial_mask,uint32_t aspects,uint32_t written_aspects);
+    const VkRect2D *rect,uint32_t partial_mask,uint32_t partial_view,uint32_t aspects,uint32_t written_aspects);
 #ifdef __cplusplus
 }
 #endif

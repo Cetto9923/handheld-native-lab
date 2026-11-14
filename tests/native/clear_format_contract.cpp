@@ -12,5 +12,17 @@ int main() {
     for(unsigned f=0x99;f<=0x9c;f++)if(xbg_clear_color_class(f)!=0)errors++;
     VkClearColorValue out;std::memset(&out,0xa5,sizeof(out));VkClearColorValue original=out;
     if(xbg_clear_value(VK_FORMAT_UNDEFINED,0,rgba,&out)!=-1 || std::memcmp(&out,&original,sizeof(out)))errors++;
+    VkRect2D full{{0,0},{32,32}};
+    const uint32_t color=VK_IMAGE_ASPECT_COLOR_BIT;
+    if(xbg_clear_requires_preserve(1,1,32,32,&full,0,0,color,color))errors++;
+    // A single-mip 3D image has one array layer. A selected slice view still
+    // needs the CPU contents of the volume's other slices on first use.
+    if(!xbg_clear_requires_preserve(1,1,32,32,&full,0,1,color,color))errors++;
+    if(!xbg_clear_requires_preserve(2,1,32,32,&full,0,0,color,color) ||
+       !xbg_clear_requires_preserve(1,4,32,32,&full,0,0,color,color) ||
+       !xbg_clear_requires_preserve(1,1,32,32,&full,1,0,color,color))errors++;
+    VkRect2D scissor{{3,4},{7,9}};
+    if(!xbg_clear_requires_preserve(1,1,32,32,&scissor,0,0,color,color) ||
+       !xbg_clear_requires_preserve(1,1,32,32,&full,0,0,VK_IMAGE_ASPECT_DEPTH_BIT|VK_IMAGE_ASPECT_STENCIL_BIT,VK_IMAGE_ASPECT_DEPTH_BIT))errors++;
     std::printf("clear_format_contract errors=%d\n",errors);return errors?1:0;
 }

@@ -1,5 +1,15 @@
 # 成熟 Switch 原生移植对照与本轮针对性优化
 
+## 女主身体闪烁最新对照
+
+用户确认1.0.20仍轻微闪烁，随后恢复原1.0.18 APK，用户也确认同一类闪烁。原18包a6c9fbe2的恢复、回读和存档备份证据位于 `.local/codex-recovery-20261114/install-baseline18-after20-20261114-221843/`。撤回19 UBO改动是唯一引入原因的假设。生产UBO继续保持18路径，性能收益与闪烁因果各待实际验证。
+
+用户最新31.091519秒录屏已保全，SHA256 a5977386beee0c52bdcac7bd2f7724335033604a6a2a39ccd2301ae9d2c2bbe8。24.235044、24.268700、24.302256秒三帧的女主裙身局部黑像素占比为3.50%、16.64%、0.009%，邻近背景亮度稳定。女主脸部与裙身黑色栅状缺口已定位，尚缺引擎帧与绘制数据同步。音轨22至27秒未检出预设短静音或强重复候选，听感验收待复测。详细证据在 `ubo-regression-control/user-video/analysis-perf/review.md`，该报告SHA297d742422f3462582a1698d8df806c2607f3370c06477228def646aaa2cff5b。
+
+分层clear进一步复核发现实际缺口。folded clear沿普通draw的附件交集规划，目标view大于其他附件时，p.layers及宽高会缩小，目标剩余slice或像素未清。3D image.layers为1也漏掉子view首次CPU内容保留。8文件修复已冻结，宿主组件及Android语法自测通过，独立复审和全量宿主检查进行中。该缺口与女主闪烁的联系待正常路径命中和同场景A/B。另核对成熟上游位置NoContraction与当前shader的已有覆盖。[DroidPlay精度实现](https://github.com/enjoyerofslop/droidplay-core/blob/a72a85c59cac54f3428827cfb72e1adf63b1521a/dm/android/spv_precise.h)
+
+15秒Perfetto采样保存在 `baseline18-flicker-current/frequency/`。实际protobuf的failed_ftrace_events列出power/gpu_frequency，CPU频率轨有效，GPU频率无法据本次trace判定。掌机断开前电量4%，已通知用户充电。目前ADB只有荣耀平板，RG477M实机验收待重新连接。[Perfetto错误字段定义](https://github.com/google/perfetto/blob/v59.1/protos/perfetto/trace/ftrace/ftrace_stats.proto)
+
 ## 1.0.19 实玩反馈与控制验证
 
 1.0.19 源码为 `3e0c9bc`，98项宿主检查与 Android 构建通过，APK SHA256 为 `d0b8f181a8c87cf9e64670090550e9a036982fa046b264be1665fe98cde5468e`。安装回读一致，存档前后摘要一致。PID30282 实际新建游戏开场约25–26FPS。
@@ -8,7 +18,7 @@
 
 根已保全 `performance-3e0c9bc/regression-user/` 的同次日志和帧数据，启动单变量控制。1.0.20 将 uniform 路径精确恢复至7de9e39，保留完整宿主页对齐查询优化。19的完整源码和测试在3e0c9bc及 `.local/codex-recovery-20261114/ubo-regression-control/source19/` 可恢复。当前尚未证明闪烁与UBO的因果关系。此前优先吸收该范围分析的决定按此次用户反馈进入回归隔离。
 
-## 当前结论
+## 21时34分实施前判断（后续对照已修订）
 
 用户已确认 1.0.18-preview 当前这轮画面无闪烁、运行无闪退，卡顿仍明显。该包作为稳定性对照。当前优化优先处理 UBO 快照复制与页映射查询，采用已取得源码和本项目实际热点的对应关系确定范围。
 

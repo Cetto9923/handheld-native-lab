@@ -27,6 +27,12 @@ static int framebuffer_plan(int layered,const xbg_framebuffer_attachment *a,uint
 }
 int xbg_framebuffer_plan(const xbg_framebuffer_attachment *a,uint32_t n,uint32_t w,uint32_t h,xbg_framebuffer_extent *out,uint32_t *bad){return framebuffer_plan(0,a,n,w,h,out,bad);}
 int xbg_framebuffer_plan_layered(const xbg_framebuffer_attachment *a,uint32_t n,uint32_t w,uint32_t h,xbg_framebuffer_extent *out,uint32_t *bad){return framebuffer_plan(1,a,n,w,h,out,bad);}
+int xbg_framebuffer_covers_clear(const xbg_framebuffer_extent *plan,const xbg_framebuffer_attachment *target){
+    if(!plan || !target || !target->active || target->base_level>=32 || !target->layer_count)return 0;
+    uint32_t width=target->width>>target->base_level,height=target->height>>target->base_level;
+    if(!width)width=1;if(!height)height=1;
+    return plan->width==width && plan->height==height && plan->layers>=target->layer_count;
+}
 const char *xbg_framebuffer_error(int result){
     switch(result){case 0:return "OK";case -1:return "invalid attachment dimensions/count";
     case -2:return "attachment mip/layer view outside texture";case -3:return "layered rendering requires explicit implementation";

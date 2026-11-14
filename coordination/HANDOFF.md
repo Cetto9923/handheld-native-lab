@@ -1,3 +1,27 @@
+# 2026-11-14 22:52 clear独立回归完成，接入位置精度修正
+
+- clear补丁root全量宿主97/97通过，8文件构建前后SHA相同。perf_cpu独立重编3组件ASan/UBSan以及32层color/1层depth、3D8slice/base2/count0反例均0，未见阻塞项。实际GPU和剧情因果NOT_RUN。
+- lookup_review核对现有27真实SPV/26唯一SHA，只有7ca7的original/castback两份VS适用位置精度处理，每份492算术点，NoContraction覆盖0；其余FS/CS按上游原本不处理。该VS尚未映射开场女主。
+- 已登记load_profile仅写固定spv_precise/header包装/契约/provenance。root独占xbg_game、版本、host gate和构建，统一warm/runtime及变体优化入口并配置一个启动A/B。计划补的是通用原机运算语义，女主闪烁关联仍待实机。
+- 当前ADB仅荣耀平板A42BBB5109000333，RG477M已断开，用户已收到需重连的通知。
+
+# 2026-11-14 女主身体闪烁录屏与对照修订
+
+- 20仍闪烁后恢复原18 APK a6c9fbe2，当前PID19148。用户确认原18也闪烁，撤回19 UBO单项引入的归因假设。生产UBO仍保持18路径。恢复包与存档摘要已回读核对，save86d8a9f5不变。
+- 用户31.091519秒原视频screen-20261114-222932.mp4已保全，本地ubo-regression-control/user-video/，27976318B/SHA a5977386beee0c52bdcac7bd2f7724335033604a6a2a39ccd2301ae9d2c2bbe8。用户明确女主身上闪烁。
+- analysis-perf/review.md SHA297d742422f3462582a1698d8df806c2607f3370c06477228def646aaa2cff5b。24.235044→24.268700→24.302256秒女主裙身局部Y<16占比3.50%→16.64%→0.009%，邻近背景亮度稳定。此为视觉定位，无engine帧同步，不绑定shader/clear/频率因果。22–27秒AAC未检出预设静音/重复候选，听感未验收。
+- clear8文件实现交回冻结，ASan/UBSan3契约及NDK语法通过，全量APK和实际剧情因果待验。perf_cpu独立复审，lookup_review只读核对DroidPlay位置NoContraction方案。root唯一设备操作与集成者。
+- RG477M当前电量实测4%，USB报告5V/0.5A、low_power0，已通知用户充电。不得据电量或HAL温度直接归因GPU漂移。15秒Perfetto已完成，CPU频率可读，GPU频率无轨且ftrace_setup_errors1，需核查缺失事件。
+
+# 2026-11-14 22:08 1.0.20控制包已安装
+
+- 用户明确保存完成并授权安装。20源74129a9，97/97宿主与Android构建通过，16输入摘要前后一致。APK b570111987d0f96c1dcf19490da6823de9375cb6f3905dede415024feabecc0e，3601404字节。
+- install-74129a9-20261114-220424/包含旧包、日志和存档备份，APK回读一致，存档前后86d8a9f5f9a77604ff5d6ebde5e716169f2ac804b15306d26e72b17f26a93ae8。当前PID10323，用户继续掌握输入。
+- 20的xbg_game.cpp与18逐字一致SHA2666a8f9，保留页查询早返b7c11c6a。旧XGS bundle重新导入bindings再跑旧extent，shader reuse只存SPIR-V words且为进程内，19短b.bytes不会经缓存进入20。
+- 已通知用户同室内走动与闪烁剧情对照。初次20截图为开场战斗的系统菜单，此轻场景30FPS不能替代第三章旅店18至20FPS的低帧对照。当前性能与闪烁验收仍待结果。
+- 19取证已保存在performance-3e0c9bc/regression-user/与dungeon-user/，后者截图实际为第三章旅店传送点室内。20数据在performance-74129a9/，源/进程与旧19分开记录。
+- 19轻监测预期PID30060在换包前未匹配，未发signal。日志已经由安装备份保全，不声称该监测持续存活。
+
 # 2026-11-14 22:01 19改善但用户报告人物闪烁，准备20单变量控制
 
 - 用户反馈19整体更流畅，画面整体卡顿减轻，声音/技能/人物移动仍短卡；剧情人物轻微闪烁，18同轮无闪烁。19画面验收未通过，UBO因果尚未证明。

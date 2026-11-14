@@ -111,10 +111,30 @@ static void gpu_contract(const char *vert_path,const char *frag_path){
     VkFramebuffer multi=framebuffer(0,6);clear();draw(multi,6,2);draw(multi,6,4);read();expect({-1,-1,64,-1,128,-1});require(driver_refreshes==2,"baseInstance change without buffer binding change did not refresh driver data");
     VkFramebuffer one=framebuffer(5,1);clear();draw(one,1,0);read();expect({-1,-1,-1,-1,-1,0});
     VkFramebuffer offset=framebuffer(1,4);clear();draw(offset,4,2);read();expect({-1,-1,-1,64,-1,-1});
+    auto attachment_clear=[&](VkFramebuffer fb,uint32_t layers,const VkRect2D &rect,float red){
+        begin();transition(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        VkRenderPassBeginInfo rp{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};rp.renderPass=render_pass;rp.framebuffer=fb;rp.renderArea=scissor;
+        vkCmdBeginRenderPass(command,&rp,VK_SUBPASS_CONTENTS_INLINE);
+        VkClearAttachment attachment{};attachment.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT;attachment.clearValue.color.float32[0]=red;attachment.clearValue.color.float32[3]=1;
+        VkClearRect range{rect,0,layers};vkCmdClearAttachments(command,1,&attachment,1,&range);
+        vkCmdEndRenderPass(command);finish();
+    };
+    clear();attachment_clear(multi,6,scissor,.25f);read();expect({64,64,64,64,64,64});
+    draw(multi,6,4);read();expect({64,64,64,64,128,64});
+    attachment_clear(multi,6,scissor,.25f);read();expect({64,64,64,64,64,64});
+    clear();attachment_clear(offset,4,scissor,.5f);read();expect({-1,128,128,128,128,-1});
+    VkRect2D partial_rect{{3,4},{7,9}};
+    clear();attachment_clear(offset,4,partial_rect,.5f);read();
+    const auto *clear_pixels=static_cast<const unsigned char*>(pixels.mapped);
+    for(unsigned l=0;l<6;l++)for(unsigned y=0;y<16;y++)for(unsigned x=0;x<16;x++){
+        const bool selected=l>=1 && l<5 && x>=3 && x<10 && y>=4 && y<13;
+        const auto *pixel=clear_pixels+((l*16+y)*16+x)*4;
+        require(pixel[1]==0 && pixel[2]==0 && std::abs(int(pixel[0])-(selected?128:0))<=1 && pixel[3]==(selected?255:0),"attachment clear changed unselected layer/scissor canary");
+    }
     bool refused=false;try{draw(one,1,2);}catch(const std::runtime_error&){refused=true;}require(refused,"out-of-range Layer reached command recording");
     VKC(vkDeviceWaitIdle(device));for(auto f:framebuffers)vkDestroyFramebuffer(device,f,nullptr);for(auto v:views)vkDestroyImageView(device,v,nullptr);vkDestroyFence(device,fence,nullptr);vkDestroyCommandPool(device,command_pool,nullptr);vkDestroyPipeline(device,pipeline,nullptr);vkDestroyShaderModule(device,vs,nullptr);vkDestroyShaderModule(device,fs,nullptr);vkDestroyRenderPass(device,render_pass,nullptr);vkDestroyDescriptorPool(device,descriptor_pool,nullptr);vkDestroyPipelineLayout(device,layout,nullptr);vkDestroyDescriptorSetLayout(device,set_layout,nullptr);vkDestroyImage(device,image,nullptr);vkFreeMemory(device,image_memory,nullptr);for(auto b:{driver,pixels}){vkUnmapMemory(device,b.memory);vkDestroyBuffer(device,b.buffer,nullptr);vkFreeMemory(device,b.memory,nullptr);}state.backend->destroy(&state);
     nvn_vulkan_enabled_features after{};require(!nvn_vulkan_get_enabled_features(&state,&after),"destroyed backend leaked enabled-feature record");
-    std::printf("layer_output GPU PASS device=%s requestedInstance=%u.%u physicalAPI=%u.%u multiViewport=%u enabledLayer=%u enabledViewport=%u nonzeroBase2and4=1 sameBufferBindings=1 actualLayerPixels=4608 oneLayerView=1 baseLayerSubview=1 negativeOutOfRange=1 originalLocation1=1 full_engine_descriptor_memo=NOT_INVOKED\n",props.deviceName,VK_VERSION_MAJOR(enabled.instance_api_version),VK_VERSION_MINOR(enabled.instance_api_version),VK_VERSION_MAJOR(enabled.physical_api_version),VK_VERSION_MINOR(enabled.physical_api_version),enabled.core.multiViewport,enabled.shader_output_layer,enabled.shader_output_viewport_index);
+    std::printf("layer_output GPU PASS device=%s requestedInstance=%u.%u physicalAPI=%u.%u multiViewport=%u enabledLayer=%u enabledViewport=%u nonzeroBase2and4=1 sameBufferBindings=1 actualLayerPixels=4608 oneLayerView=1 baseLayerSubview=1 negativeOutOfRange=1 originalLocation1=1 attachmentClearAllLayers=1 clearBeforeAfterDraw=1 clearSubviewScissorCanaries=1 full_engine_clear_attachment=NOT_INVOKED full_engine_descriptor_memo=NOT_INVOKED\n",props.deviceName,VK_VERSION_MAJOR(enabled.instance_api_version),VK_VERSION_MINOR(enabled.instance_api_version),VK_VERSION_MAJOR(enabled.physical_api_version),VK_VERSION_MINOR(enabled.physical_api_version),enabled.core.multiViewport,enabled.shader_output_layer,enabled.shader_output_viewport_index);
 }
 #endif
 int main(int argc,char**argv){try{if(argc==3&&!std::strcmp(argv[1],"--shader-source")){std::fputs(!std::strcmp(argv[2],"vert")?vertex_source:fragment_source,stdout);return 0;}cpu_contract();if(argc==4&&!std::strcmp(argv[1],"--gpu")){
