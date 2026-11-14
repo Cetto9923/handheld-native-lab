@@ -185,6 +185,7 @@ def main():
                                             'tests/device/test_upload_prologue_policy.cpp',
                                             '-o', upload_policy_binary]):
         run('upload-prologue-policy-contract', [upload_policy_binary])
+    run('upload-cpu-preserve-contract', ['python3', 'tests/device/test_upload_cpu_preserve.py'])
     # Normal loading preserves the game's depth output. A FragCoord read
     # alone cannot establish that its computed FragDepth is redundant.
     # The legacy strip is available only as an explicit diagnostic.

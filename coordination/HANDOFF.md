@@ -1,3 +1,37 @@
+# 2026-11-14 20:48 1.0.18上传与CPU采样候选冻结
+
+- source2666a8f9/testd619dc28已交回，最小生产修改在xbg_game.cpp。CPU mirror成功路径绕开立即作废的整图preserve上传，GPU depth/nativeBC/decodedBC/color fallback保留partial preserve。guest_texture_write先验证全部目标再写，失败保持原字节，池和计数溢出守卫已补。
+- 64MiB drain同步和pool reset保留，追加每drain的gpu_sync_ms/pool_reset_ms/bytes/pools。gfx-cpu-profile同协议按30present轮询，once/count≤60/current溢出/capture/provenance及deferred规则保留，纯CPU采样不禁GPUresident。
+- 实现者与独立审查3项ASan/UBSan测试均0，真实mip/layer/volume/BC edge字节对完整swizzle API，旧f871662 mirror负控失败，Android28 syntax0。性能收益未验。
+- 根将串行host97及Android构建，计划integration-upload-final/plan.json。用户当前仍在PID511手动操作，先保存后新建流程，不覆盖安装打断保存。
+- 当前shader_reuse=2是校验模式，162条比较全equal/0 mismatch，初次shader加载仍重复优化比对。正常性能包拟改1并明确这是另一项配置变化；该设置不能解释warm城内12FPS。
+
+# 2026-11-14 20:35 城内移动实测12FPS，继续性能修复
+
+- 用户报告当前移动未稳30。已在PID511实际第1章城内走廊抓到连续11.89–13.08FPS，约1202draw/100dispatch，texelcopy已ON，submit路径47–55ms，GPU29–32ms，pipeline750无新建。证据performance-f871662/command-moving-engine.log、moving-codex-frame-511.csv、moving-screen.png。此前轻负载30FPS结论限于原轻场景。
+- 发现copy_texture_buffer全局partial get_image(true)先整份上传所有mip，随后CPU-authoritative guest_texture_write成功又im.uploaded=false立即废弃。已登记CODEX-UPLOAD-CPU-511，minimax_session独占xbg_game.cpp及tests/device/test_upload_cpu_preserve.py。将preserve推迟到GPU fallback，depth/nativeBC/decodedBC/color保留所需部分覆盖，64MiB drain保持。guest mirror失败需预先完整范围验证以免半写影响fallback依据。
+- 开场多次4–6秒长帧与64MiB upload_batch drain多次相邻。sync_rb部分由此累加，未证明是纹理CPU readback。可拆gpu_sync和pool reset耗时，先不删同步或容量约束。
+- 撤回只读初报中把legacy_wait25–29ms当作submitCPU内部组成的表述。xbg_legacy_wait在游戏等待线程解锁后hybrid_wait，可与submit翻译重叠，不能直接相减。CPU profile Fence只覆盖retire_slot等待边界。已显式纠正派工消息。
+- 当前gfx-cpu-profile只在首submit读取，晚写无法触发。新候选将复用相同标记及once/count≤60/deferred规则按present节流检查，采3帧纯CPU统计，保持draw_detail/pass_prof关闭与GPUresident路径。18候选尚未构建/安装，用户仍在操作，先保存再新建复现。
+- 轻量只读进程监测performance-f871662/monitor-light.py，tool session21665，OS PID在light/process.json。不截屏，仅PID/少量日志尾/最后CSV行。当前仍PID511，source nice0/LOW0，FPS30限帧，缓存ON。
+
+# 2026-11-14 20:27 用户确认本轮不闪退，继续处理开场和技能卡顿
+
+- 用户确认1.0.17这次未闪退，战斗特效及新建游戏剧情过渡仍卡顿。随后说明先保存这一轮进度，再新建游戏复测。用户继续掌握全部游戏输入，根不重启/不装包。
+- PID511同会话full guest日志已经取得，frame7303加载924b/5bf/d56/7ca及完整修正变体（5bf含17/23，VS含6/12/18/24）。实际command table grew capacity64/live33，之后present11700继续。原exit70/134两点的本轮流程通过，完整游戏长期与其他设备尚未验收。
+- 周期截图进程63177已于20:23用SIGINT停止（session19241退出130），避免性能采样干扰。20:23:46清空gfx-live-ab启用texelcopy，实际日志LIVE-AB force=none at present11700。source nice0/LOW0/fps30/narrow1/async0保持。性能基线中的texelcopy关闭是为崩溃对照，用户主观卡顿不能当作优化路径已开后的结论。
+- 证据 `.local/codex-recovery-20261114/performance-f871662/`，含off/onearly CSV、engine/guest尾及on-full完整guest/current engine/current CSV。当前走动轻负载draw43/dispatch49，OFF末120秒30FPS、P9934.024ms、无>50ms；仍有全流程76次>250ms和多次4–6秒切换长帧。轻场景不能替代开场/战斗特效验收。
+- CODEX-PERF-511和CODEX-AUDIO-511两个只读任务已派发。有声流0x6fde6aaa20/6ch/source TID1597，副流0x6931e6a740全零。当前OFF尾31秒有声xrun16恒定，不能据无增量直接宣称后续nice优化有效。
+- 用户可从新建游戏直接复现长帧。下一步按其操作保存实际PID/phase/present，冷与暖态分开，排查pipeline/资源上传及同步路径，不把不同负载混成同一A/B。
+
+# 2026-11-14 20:15 1.0.17容量修正已安装，用户继续测试
+
+- 源码f871662，完整host96/96及Android构建退出0，构建前后生产源码摘要相同。APK `.local/codex-recovery-20261114/apk-history/ffrs-1.0.17-preview-capacity-final.apk`，3601404字节，SHA c98be9d4b378c89dd20e20ad9865760e1f52f2057489dae2cfa52b99cf082180。
+- 已覆盖安装并回读同摘要，前后存档tar均dd66a544555a9843bafc0485db5b011d50354f008a0525cc51e7aefd8ee0130a，备份与命令在 `.local/codex-recovery-20261114/install-f871662-20261114-201431/`。
+- 当前PID511，已观察到用户进入新建游戏难度选择。用户负责游戏输入，根保持只读监测。命令表满的原退出134故障段和原后续BOSS exit70点均尚未覆盖。
+- 监测 `.local/codex-recovery-20261114/boss-regression-f871662/monitor.py`，tool session19241，原始stdout为monitor.log，采样与现场保全在followup/。最长30分钟后由根按现场继续。新通用退出采集脚本 `.local/codex-recovery-20261114/capture_process_exit.py --pid 511 --label f871662`，命令输出与payload分名，记录mtime和摘要，避免旧fatal混入当前会话。
+- 仍保持texelcopy OFF、音频source nice0/LOW0、narrow1、async0、fps30作崩溃控制。性能/音频A/B待流程稳定。五个Android报告WIP冻结，未进APK。
+
 # 2026-11-14 20:13 命令缓冲容量修正冻结
 
 - CODEX-CB-CAPACITY-20261114三文件已冻结，recorder source SHA 9b3aa6f357d272292317aab675dce3e7febf2b220de5b03ff87d4bfd600684fc。静态首chunk32槽加动态稳定chunk，旧slot地址及package寿命保留，free/finalized复用先于扩容。

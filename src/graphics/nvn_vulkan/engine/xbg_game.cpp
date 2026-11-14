@@ -5774,15 +5774,17 @@ bool guest_texture_write(const tex_t *t,unsigned level,unsigned layer,const NVNc
     uint32_t bx0=r.xoffset/bw,by0=r.yoffset/bh,nbx=(r.width+bw-1)/bw,nby=(r.height+bh-1)/bh;
     if(uint64_t(bx0+nbx)*bpb>row_bytes || by0+nby>rows || row<size_t(nbx)*bpb)return false;
     bool volume=t->d.target==2;if(volume?uint32_t(r.zoffset+r.depth)>slices:layer+uint32_t(r.zoffset+r.depth)>t->L.layers)return false;
-    for(int k=0;k<r.depth;k++){
+    // Validate every destination before changing guest bytes. A failed mirror
+    // must leave the same CPU contents for the GPU-preservation fallback.
+    for(int write=0;write<2;write++)for(int k=0;k<r.depth;k++){
         uint64_t b=base;uint32_t z=0;
         if(volume)z=uint32_t(r.zoffset+k);
         else{uint32_t a,b2,c,d2;uint64_t lb;unsigned h1,h2;if(nvn_deswizzle_geom(&t->d,level,layer+uint32_t(r.zoffset+k),&a,&b2,&c,&lb,&h1,&h2,&d2))return false;b=lb;}
         for(uint32_t y=0;y<nby;y++)for(uint32_t x=0;x<nbx;x++){
             uint64_t at=b+nvn_bl_offset((bx0+x)*bpb,by0+y,z,row_bytes,rows,th,td);
-            if(at+bpb>t->L.size)return false;
-            if(t->pool && ((uint64_t)t->off + at + bpb > t->pool->size)) return false;
-            memcpy(t->mem+at,src+size_t(k)*image_stride+size_t(y)*row+size_t(x)*bpb,bpb);
+            if(at>t->L.size || bpb>t->L.size-at)return false;
+            if(t->pool && (at>t->pool->size-uint64_t(t->off) || bpb>t->pool->size-uint64_t(t->off)-at))return false;
+            if(write)memcpy(t->mem+at,src+size_t(k)*image_stride+size_t(y)*row+size_t(x)*bpb,bpb);
         }
     }
     return true;
@@ -5792,13 +5794,19 @@ void copy_texture_buffer(const p_copy_b2t &request,bool to_buffer){preflight_cpu
     // pools during mip-chain loads. Bound them without changing texture contents
     // or copy order. Drain only here: get_image callers may hold live command buffers.
     if(upload_batch_bytes>=(64ull<<20)){
+        const uint64_t drained_bytes=upload_batch_bytes,drain_begin=timing_clock();
         upload_batch_bytes=0;++perf.sync_drain;gpu_sync(perf.sync_readback);
+        const uint64_t reset_begin=timing_clock();unsigned reset_pools=0;
         for(auto &slot:active_slots()){
             poolreset::finish(slot);
             if(slot.reset_queued)VK(slot.reset_result);
             if(slot.pool){VK(vkResetCommandPool(cfg.device,slot.pool,VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT));slot.reset_queued=false;}
             else if(slot.cmd){VK(vkResetCommandBuffer(slot.cmd,VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT));if(slot.pro)VK(vkResetCommandBuffer(slot.pro,VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT));}
+            if(slot.pool || slot.cmd)++reset_pools;
         }
+        xbg_logf("NVN upload drain frame=%llu bytes=%llu gpu_sync_ms=%.3f pool_reset_ms=%.3f pools=%u",
+            (unsigned long long)stats.presents.load(),(unsigned long long)drained_bytes,
+            (reset_begin-drain_begin)/1e6,(timing_clock()-reset_begin)/1e6,reset_pools);
     }
     need(request.tex,"Null buffer image texture");
     tex_t stable=*request.tex;p_copy_b2t p=request;p.tex=&stable;
@@ -5838,9 +5846,8 @@ void copy_texture_buffer(const p_copy_b2t &request,bool to_buffer){preflight_cpu
     need((p.flags&~NVN_COPY_FLAGS_ENGINE_2D_BIT)==0,"Buffer/texture copy flags not implemented");
     uint32_t level=p.has_view&&p.view.set_levels?p.view.base_level:0,layer=p.has_view&&p.view.set_layers?p.view.min_layer:0;region_check(im,level,layer,p.r);need(p.src,"Null buffer image copy address");
     bool full_destination=xbg_copy_is_full({im.width,im.height,im.source.d.target==2?im.depth:im.layers,im.levels,level,layer,p.r.xoffset,p.r.yoffset,p.r.zoffset,p.r.width,p.r.height,p.r.depth})!=0;
-    if(!to_buffer && !full_destination)get_image(p.tex,true);
-
     if(im.aspects!=VK_IMAGE_ASPECT_COLOR_BIT){
+        if(!to_buffer && !full_destination)get_image(p.tex,true);
         xbg_depth_format f;need(xbg_depth_format_info(p.tex->d.format,&f)==0,"Unknown NVN depth copy format");
         size_t row,image,bytes;
         need(nvn_copy_pitch(p.r.width,p.r.height,p.r.depth,1,1,f.packed_bytes,state.copy_stride,copy_image_stride_value(),&row,&image,&bytes) && row%f.packed_bytes==0 && bytes<=256ull*1024*1024,"Invalid packed depth copy stride/extent");
@@ -5900,6 +5907,7 @@ void copy_texture_buffer(const p_copy_b2t &request,bool to_buffer){preflight_cpu
         size_t bytes=size_t(p.r.width)*p.r.height*p.r.depth*im.bpp;
         if(!im.gpu_written && !(p.tex->d.flags&0x10)){invalidate_cpu_range(uint64_t(uintptr_t(p.tex->mem)),p.tex->L.size);
             if(guest_texture_write(p.tex,level,layer,p.r,reinterpret_cast<const uint8_t*>(p.src),row,image)){im.uploaded=false;im.checked_submission=UINT64_MAX;return;}}
+        if(!full_destination)get_image(p.tex,true);
         need(bytes<=256ull*1024*1024,"Decoded BC staging exceeds memory bound");std::vector<uint8_t> decoded(bytes);
         int result=im.bc5_float32?xbg_decode_bc5_rg32_linear(p.r.width,p.r.height,p.r.depth,reinterpret_cast<const void*>(p.src),source_bytes,row,image,decoded.data(),decoded.size()):
             xbg_decode_bc_linear(p.tex->d.format,p.r.width,p.r.height,p.r.depth,reinterpret_cast<const void*>(p.src),source_bytes,row,image,decoded.data(),decoded.size());
@@ -5916,6 +5924,7 @@ void copy_texture_buffer(const p_copy_b2t &request,bool to_buffer){preflight_cpu
     if(!to_buffer)probe_volume_copy(im,p.src,n,row,image);
     if(!to_buffer && !im.gpu_written && !(p.tex->d.flags&0x10)){invalidate_cpu_range(uint64_t(uintptr_t(p.tex->mem)),p.tex->L.size);
         if(guest_texture_write(p.tex,level,layer,p.r,reinterpret_cast<const uint8_t*>(p.src),row,image)){im.uploaded=false;im.checked_submission=UINT64_MAX;return;}}
+    if(!to_buffer && !full_destination)get_image(p.tex,true);
     size_t slice_alignment=4;while(slice_alignment%im.bpp)slice_alignment+=4;
     size_t staging_row=size_t(p.r.width)*im.bpp;
     size_t staging_image=((staging_row*size_t(p.r.height)+slice_alignment-1)/slice_alignment)*slice_alignment,staging_bytes=staging_image*size_t(p.r.depth);
@@ -7331,10 +7340,16 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
       if(q){unsigned n=0;if(fscanf(q,"%u",&n)!=1)n=60;fclose(q);remove(pl.c_str());if(n<1)n=1;if(n>600)n=600;
        pass_prof_enabled=true;pass_prof_period=1;pass_prof_next=pr+2;pass_prof_until=pr+2+n;pass_prof_frame=UINT64_MAX;
        xbg_logf("PASS-LIVE armed: %u frames from present %llu",n,(unsigned long long)(pr+2));}}}
-    // Diagnostic trigger: marker files/gfx-cpu-profile = "<start_present> <frames>" (frames 1..60) arms the existing one-shot live CPU timing.
-    {static int cpu_prof_state=-1;static uint64_t cpu_prof_start=0;static uint32_t cpu_prof_count=0;
-     if(cpu_prof_state<0){cpu_prof_state=0;FILE *m=fopen((probe.base+"/gfx-cpu-profile").c_str(),"rb");if(m){unsigned long long s=0;unsigned c=0;if(fscanf(m,"%llu %u",&s,&c)==2 && c>0 && c<=60){cpu_prof_start=s;cpu_prof_count=c;cpu_prof_state=1;}fclose(m);}}
-     if(cpu_prof_state==1 && !live_profile_used && !timing_active && !timing_first && !capture.trace && !provenance_file && stats.presents.load()>=cpu_prof_start){deferred_live_profile=cpu_prof_count;live_profile_used=true;cpu_prof_state=2;}}
+    // Diagnostic trigger: poll the existing one-shot marker every 30 presents,
+    // so a request added during gameplay has the same bounded CPU-only path.
+    {static int cpu_prof_state=0;static uint64_t cpu_prof_start=0,cpu_prof_next=0;static uint32_t cpu_prof_count=0;
+     uint64_t present=stats.presents.load();
+     if(cpu_prof_state==0 && !live_profile_used && present>=cpu_prof_next){cpu_prof_next=present>UINT64_MAX-30?UINT64_MAX:present+30;
+        std::string path=probe.base+"/gfx-cpu-profile";FILE *m=fopen(path.c_str(),"rb");
+        if(m){unsigned long long s=0;unsigned c=0;
+            if(fscanf(m,"%llu %u",&s,&c)==2 && c>0 && c<=60 && s<=UINT64_MAX-uint64_t(c)-2){cpu_prof_start=s;cpu_prof_count=c;cpu_prof_state=1;}
+            fclose(m);remove(path.c_str());}}
+     if(cpu_prof_state==1 && !live_profile_used && !timing_active && !timing_first && !capture.trace && !provenance_file && present>=cpu_prof_start && present<=UINT64_MAX-uint64_t(cpu_prof_count)-2){deferred_live_profile=cpu_prof_count;live_profile_used=true;cpu_prof_state=2;}}
     if(deferred_live_profile && !timing.top){uint64_t current=stats.presents.load();timing=XbgCpuTiming(timing_clock);timing_first=current+2;timing_last=timing_first+deferred_live_profile-1;deferred_live_profile=0;}
    TimingRoot timing_root;CPU_SCOPE(Other);need(initialized && !failed,"Game Vulkan backend not initialized/healthy");uint64_t begin=timing_clock();snapshot_reset();uint64_t budget=0;
     // A render-enable block is a property of one submission: the reference clears it when the submission starts

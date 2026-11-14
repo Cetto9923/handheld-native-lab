@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-14T20:13:15.896690+08:00",
+ "updated_at": "2026-11-14T20:48:37.168558+08:00",
  "phase": "7041击败开场BOSS后exit70，Invalid indirect draw parameters:-3。先保留同次数据并增加失败时参数取证，继续回归。",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -2150,9 +2150,9 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-14T18:55:14.568580+08:00",
-   "checkpoint": "576d5cc，7041证据保留",
+   "checkpoint": "PID511本轮原故障点已过，用户确认无闪退。",
    "objective": "定位BOSS结算间接绘制参数退出并修复，先记录具体参数值",
-   "write_state": "ACTIVE"
+   "write_state": "RELEASED"
   },
   {
    "task": "CODEX-INTEGER-CASTBACK-20261114",
@@ -2207,6 +2207,44 @@
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-14T20:04:39.164621+08:00",
    "checkpoint": "三文件冻结，source9b3aa6f3，根接回统一构建与真机。",
+   "write_state": "RELEASED"
+  },
+  {
+   "task": "CODEX-PERF-511-20261114",
+   "owner": "minimax_session",
+   "paths": [
+    ".local/worker-perf-511/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T20:24:23.019181+08:00",
+   "checkpoint": "只写独立.local报告，不改生产/设备",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "CODEX-AUDIO-511-20261114",
+   "owner": "android_reporting",
+   "paths": [
+    ".local/worker-audio-511/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T20:24:23.019181+08:00",
+   "checkpoint": "只写独立.local报告，不改生产/设备",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "CODEX-UPLOAD-CPU-511-20261114",
+   "owner": "minimax_session",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    ".local/worker-upload-cpu-511/",
+    "tests/device/test_upload_cpu_preserve.py"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T20:34:12.730892+08:00",
+   "checkpoint": "两文件冻结交根整合，source2666a8f9。",
    "write_state": "RELEASED"
   }
  ],
@@ -6115,15 +6153,15 @@
    ],
    "dependencies": [],
    "pass_gates": [],
-   "status": "in_progress",
+   "status": "passed",
    "write_scope": [
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
     "src/graphics/nvn_vulkan/engine/xbg_draw_plan.c",
     "src/graphics/nvn_vulkan/engine/xbg_draw_plan.h",
     "tests/device/test_draw_indirect_plan.c"
    ],
-   "acceptance": "实际同BOSS结算通过且保留游戏画面/逻辑，未知参数不直接绕过校验",
-   "checkpoint": "26bb311 / 1.0.16-preview已安装，PID22836正常启动。host95、Android、精确最终GPU24records通过。用户推进实际BOSS，尚未覆盖故障点。"
+   "acceptance": "本次PID511实际经过原924/5bf/d56/7ca退出点并继续推进，用户确认这次无闪退。完整游戏及其他BOSS另验。",
+   "checkpoint": "f871662包含26bb311，frame7303四目标模块及新的integer+typed完整变体出现，后续present11700继续。用户确认本轮无闪退；卡顿继续处理。"
   },
   {
    "id": "CODEX-INTEGER-CASTBACK-20261114",
@@ -6208,7 +6246,7 @@
    "id": "CODEX-CB-CAPACITY-20261114",
    "role": "RUNTIME",
    "owner": "minimax_session",
-   "status": "implemented",
+   "status": "passed",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "objective": "消除合法并发command buffer数量触发32槽表满，保留所有活动录制、包与回调稳定指针",
@@ -6229,7 +6267,81 @@
     "scripts/runtime/build_nvn_command_buffer_capacity_contract.sh"
    ],
    "acceptance": "不驱逐活buffer/不跳指令/不伪造fence。超过32合法live buffer全部成功，旧包及数据可读取，finalize复用且callback解锁后指针稳定，实际触发段待根复跑",
-   "checkpoint": "source9b3aa6f3。417live/448capacity、96旧包保持、OOM恢复、回调重入和8线程ASan/UBSan通过，旧33失败/新33通过，Android syntax0，实际场景待回归。"
+   "checkpoint": "f871662 / APK c98be9d4 / PID511。真实command table grew capacity64/live33后继续，用户确认本轮无闪退。组件417live及host96仍通过。此流程通过，完整游戏长期另验。"
+  },
+  {
+   "id": "CODEX-PERF-511-20261114",
+   "role": "PERFORMANCE",
+   "owner": "minimax_session",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "只读分析当前PID511正常性能A/B及剩余长帧，不混历史窗口",
+   "inputs": [
+    "PID511 1.0.17-preview",
+    "performance-f871662 current evidence"
+   ],
+   "outputs": [
+    ".local/worker-perf-511/review.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/worker-perf-511/"
+   ],
+   "acceptance": "同PID/实际present锚与工作负载对齐，冷暖和场景变化分开，未证实项不作根因",
+   "checkpoint": "设备由根独占，用户负责游戏输入"
+  },
+  {
+   "id": "CODEX-AUDIO-511-20261114",
+   "role": "AUDIO",
+   "owner": "android_reporting",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "只读分析当前PID511主有声流xrun与调度，提出有界同进程A/B",
+   "inputs": [
+    "PID511 1.0.17-preview",
+    "performance-f871662 current evidence"
+   ],
+   "outputs": [
+    ".local/worker-audio-511/review.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/worker-audio-511/"
+   ],
+   "acceptance": "同PID/实际present锚与工作负载对齐，冷暖和场景变化分开，未证实项不作根因",
+   "checkpoint": "设备由根独占，用户负责游戏输入"
+  },
+  {
+   "id": "CODEX-UPLOAD-CPU-511-20261114",
+   "role": "GRAPHICS_PERFORMANCE",
+   "owner": "minimax_session",
+   "status": "implemented",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "推迟CPU-authoritative纹理copy前立即废弃的全图上传，保留GPU部分覆盖；复用既有CPU timing入口定位移动CPU耗时",
+   "inputs": [
+    "f871662",
+    "PID511 transition drain计数",
+    "moving-engine CPU47–55ms/GPU29–32ms/12FPS"
+   ],
+   "outputs": [
+    "最小补丁",
+    "branch正确性与既有copy回归",
+    "精确CPU profile入口"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    ".local/worker-upload-cpu-511/",
+    "tests/device/test_upload_cpu_preserve.py"
+   ],
+   "acceptance": "CPU镜像成功路径保留其它mip/layer原始字节，GPU权威/失败/深度及回读仍preserve，保留64MiB drain同步。CPU采样不改变GPUresident路径，实际场景验收由根",
+   "checkpoint": "source2666a8f9/testd619dc28冻结，3契约实现者与独立复跑0，旧函数负控真实失败，NDK28 syntax0。实际性能收益待验。"
   }
  ],
  "blockers": [
@@ -8813,7 +8925,73 @@
    "scope": "稳定slot分块扩容，finalized复用，package不变",
    "component_result": "ASan/UBSan 417live/448capacity/97packages/callback1，独立旧33失败新33通过",
    "build_plan": ".local/codex-recovery-20261114/integration-capacity-final/plan.json",
-   "device": "NOT_RUN"
+   "device": "用户操控至新建游戏难度选择，退出134故障段尚未覆盖",
+   "commit": "f871662",
+   "host": "96/96",
+   "android_exit": 0,
+   "source_before_after_equal": true,
+   "apk": ".local/codex-recovery-20261114/apk-history/ffrs-1.0.17-preview-capacity-final.apk",
+   "apk_bytes": 3601404,
+   "apk_sha256": "c98be9d4b378c89dd20e20ad9865760e1f52f2057489dae2cfa52b99cf082180",
+   "installed": true,
+   "pid": 511,
+   "save_before_after_sha256": "dd66a544555a9843bafc0485db5b011d50354f008a0525cc51e7aefd8ee0130a",
+   "install_evidence": ".local/codex-recovery-20261114/install-f871662-20261114-201431",
+   "monitor_session": 19241,
+   "monitor_plan": ".local/codex-recovery-20261114/boss-regression-f871662/plan.json"
+  },
+  "user_2023_feedback": "用户反馈1.0.17这次没闪退，战斗特效与开场剧情过渡仍卡顿",
+  "current_performance_test": {
+   "pid": 511,
+   "apk": "f871662 c98be9d4",
+   "screenshots_monitor": "20:23停止，host PID63177 SIGINT，只停止只读采集进程",
+   "texelcopy": "20:23:46清空gfx-live-ab，已启用，待日志确认present锚",
+   "audio": "source nice0/LOW0保持，先隔离texelcopy收益",
+   "evidence": ".local/codex-recovery-20261114/performance-f871662"
+  },
+  "crash_flow_acceptance": {
+   "pid": 511,
+   "source": "f871662 with26bb311",
+   "apk": "c98be9d4",
+   "evidence": ".local/codex-recovery-20261114/performance-f871662/on-full-guest_boot.log",
+   "observed": [
+    "目标四shader frame7303已加载完整integer+typed变体",
+    "command buffer capacity64/live33",
+    "present11700仍运行",
+    "用户确认这次没闪退"
+   ],
+   "scope": "原两种退出点的本轮流程，未扩成完整游戏/所有机型通过",
+   "remaining": [
+    "战斗特效卡顿",
+    "新建游戏剧情/过渡长帧",
+    "短断音",
+    "水都闪烁",
+    "跨机型验收"
+   ]
+  },
+  "performance_user_next": "用户先保存本轮进度再新建游戏复测，根不装包/不重启，先保持texelcopy ON/source nice0/LOW0对准开场长帧",
+  "moving_511": {
+   "evidence": "performance-f871662/command-moving-engine.log / moving-codex-frame-511.csv / moving-screen.png",
+   "scene": "第1章格兰谢尔城内走廊实际移动",
+   "observed": "cache ON, 1202draw/100dispatch，11.89–13.08FPS，submit路径47–55ms，GPU29–32ms，pipeline750无新建",
+   "counter_correction": "撤回将legacy_wait25–29ms直接视为submitCPU组成部分的表述。xbg_legacy_wait解锁后hybrid_wait可在另一游戏线程与submit重叠，不能直接相减。CPU profile Fence仅retire_slot等待边界。",
+   "correction_basis": "child completion_path/record_gpu_wait/fold调用链只读复核",
+   "next": "用户保存后重开，18候选upload冗余修正+已有CPU marker live入口准备"
+  },
+  "upload_candidate": {
+   "version": "1.0.18-preview",
+   "source_sha256": "2666a8f92225abc38020c0ab026b405be40edc1a8f1f5e4811dd2666ebd94a7e",
+   "changes": [
+    "CPU镜像成功避免提前全图上传后立即失效",
+    "GPU部分覆盖preserve保留",
+    "镜像失败不半写",
+    "64MiB drain计时拆分，同步保持",
+    "既有gfx-cpu-profile改可live请求3帧CPU采样，GPUresident不变"
+   ],
+   "tests": "独立3契约0，旧C真实负控失败，Android28 syntax0",
+   "plan": ".local/codex-recovery-20261114/integration-upload-final/plan.json",
+   "device": "NOT_RUN",
+   "configuration_note": "当前PID511 shader_reuse=2验证模式162比较全equal/0 mismatch。正常性能包拟1，单独披露冷shader对照开销移除，移动warm问题独立分析。"
   }
  }
 }
