@@ -256,3 +256,21 @@ submission-owned快照、GPU输出准备、读写依赖和slot退休参与同一
 ### L-016后续真机对照
 
 22源码0bd4dc5、APK2e4c354e在RG477M的PID18193完成同机位新路径、旧路径、新路径对照。a455/11320/00758三个地形VS均成功生成vin1接口变体。旧路径重现大面积地面缺失、城镇下黑色矩形及巨大斜面，新路径前后两轮均恢复，18个普通原生present及同次日志已保全。此结果支持接口类型缺口为该机位异常成因。原生帧对照与独立离线审证据记录见CODEX-CHAPTER3-MAP-20261114.md及vertex-input-build/map22/。开场、战斗、地图其它位置与性能目标各自复验。
+
+### L-018 预热身份需要贯通发行工具
+
+22运行时已经支持完整ib1/stb1/vin1 identity，旧发行inspector仍只识裸key与ib1，真实学习表无法进入种子发行流程。dd76193同步发行语法与格式边界，并把APK可选补充seed接到真实legacy/managed runtime，再复用C++已有的学习表、APK补充表及数据seed union。完整serialized key用于去重，源key用于archive存在性检查，变体后缀和word内module hash同步验证。
+
+可复用test_pipeline_warm_inspector、test_apk_pipeline_warm_seed及既有warm flush契约。APK内seed按签名包交付，Java原子stage校验有界长度与record framing，完整recipe校验由发行工具和native reader承担。坏可选seed保留旧seed并继续启动。23已构建，warm实际命中及首次技能收益仍待真机验证。
+
+### L-019 主动技能长帧与暖态负荷分别取证
+
+PID18193的战斗日志直接量到0.5至1.1秒pipeline创建，也保留2.024秒且pipeline/shader为0的未知长帧。后续其它技能又出现连续31帧新编译0、GPU中位约65ms的重负荷。暖态菜单约30FPS不能覆盖这些主动阶段。Mali driver cache本轮确有成功载入和增长，缓存是否有效应以当次记录判断。
+
+录屏PTS、媒体creation/modified与引擎monotonic分别保全。音频按每次stream重开划生命周期，xrun重置后的末值不能覆盖此前增长。GPU pass采样会改变部分resident及精确计时路径，用于热点定位，普通运行长帧另外保留。详细证据见CODEX-STUTTER22-20261115.md。
+
+### L-020 存档备份一致与正常写入分别验证
+
+多轮安装前后tar一直保持同一摘要，本轮发现实际GameSaveData0写打开errno13。导入的GameSaveData0/1为shell所有、mode644，应用UID读写打开失败。备份完整性、文件属主及普通游戏保存的写入结果分别记录。
+
+本轮先在标题停止进程保全原字节和metadata，再由应用UID创建同字节stage并保留mtime，摘要核对后原子替换。原文件内容保持，恢复应用UID读写打开成功。用户正常保存落盘的验证继续单独记录。恢复点及首轮stat参数引用错误均保存在seed-build/save-owner-repair/，详细报告见CODEX-STUTTER22-20261115.md。

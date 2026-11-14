@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-15T00:49:58.304406+08:00",
- "phase": "22已安装并完成RG同机位ABA，旧路径重现地面缺失/巨斜面，新接口两轮恢复；独立离线审图与性能范围核对中。",
+ "updated_at": "2026-11-15T01:45:11.039180+08:00",
+ "phase": "23已装RG，APKseed SHA/实际union1162与warm_failed0通过；已修导入存档属主权限并保留原字节，等正常保存及技能实测反馈，GPU和未知2秒帧继续未验。",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -2738,6 +2738,145 @@
    "checkpoint": "独立离线性能范围核对，root独占RG。",
    "write_state": "RELEASED",
    "released_at": "2026-11-15T00:49:58.304406+08:00"
+  },
+  {
+   "task": "CODEX-STUTTER22-CAPTURE-20261115",
+   "owner": "root",
+   "paths": [
+    ".local/codex-recovery-20261114/stutter22-user-video/capture/",
+    "coordination/results/CODEX-STUTTER22-20261115.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T00:54:44.351540+08:00",
+   "checkpoint": "root即刻只读捕获设备，所有游戏输入权在用户。",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "CODEX-STUTTER22-VIDEO-20261115",
+   "owner": "load_profile",
+   "paths": [
+    ".local/codex-recovery-20261114/stutter22-user-video/video-review/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T00:54:44.351540+08:00",
+   "checkpoint": "root即刻只读捕获设备，所有游戏输入权在用户。",
+   "write_state": "RELEASED",
+   "released_at": "2026-11-15T01:24:07.524884+08:00"
+  },
+  {
+   "task": "CODEX-STUTTER22-LOGS-20261115",
+   "owner": "perf_cpu",
+   "paths": [
+    ".local/codex-recovery-20261114/stutter22-user-video/log-review/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T00:54:44.351540+08:00",
+   "checkpoint": "root即刻只读捕获设备，所有游戏输入权在用户。",
+   "write_state": "RELEASED",
+   "released_at": "2026-11-15T01:24:07.524884+08:00"
+  },
+  {
+   "task": "CODEX-STUTTER22-PIPELINE-REVIEW-20261115",
+   "owner": "perf_cpu/lookup_review",
+   "paths": [
+    ".local/codex-recovery-20261114/stutter22-user-video/pipeline-review/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T00:59:27.331336+08:00",
+   "checkpoint": "只读warm/cache同步编译与已有counter，root独占设备。",
+   "write_state": "RELEASED",
+   "released_at": "2026-11-15T01:24:07.524884+08:00"
+  },
+  {
+   "task": "CODEX-WARM-IDENTITY-TOOLS-20261115",
+   "owner": "load_profile",
+   "paths": [
+    "scripts/distribution/inspect_pipeline_warm_list.py",
+    "tests/installer/test_pipeline_warm_inspector.py",
+    ".local/codex-recovery-20261114/stutter22-user-video/identity-tools/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T01:07:51.520181+08:00",
+   "checkpoint": "scope确认后派发，互不重叠。",
+   "write_state": "FROZEN_HANDED_BACK",
+   "released_at": "2026-11-15T01:24:07.524884+08:00"
+  },
+  {
+   "task": "CODEX-APK-WARM-SEED-20261115",
+   "owner": "perf_cpu",
+   "paths": [
+    "src/android/app/java/org/ffrs/diagnostic/NativeDataBundle.java",
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "tests/installer/PipelineWarmSeedContract.java",
+    "tests/installer/test_apk_pipeline_warm_seed.py",
+    ".local/codex-recovery-20261114/stutter22-user-video/apk-seed/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T01:07:51.520181+08:00",
+   "checkpoint": "scope确认后派发，互不重叠。",
+   "write_state": "FROZEN_HANDED_BACK",
+   "released_at": "2026-11-15T01:24:07.524884+08:00"
+  },
+  {
+   "task": "CODEX-WARM-SEED-INTEGRATE-20261115",
+   "owner": "root",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "scripts/verify_host.py",
+    ".local/codex-recovery-20261114/stutter22-user-video/seed-build/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T01:07:51.520181+08:00",
+   "checkpoint": "scope确认后派发，互不重叠。",
+   "write_state": "FROZEN_HANDED_BACK",
+   "released_at": "2026-11-15T01:45:11.039180+08:00"
+  },
+  {
+   "task": "CODEX-STUTTER22-REPEAT-20261115",
+   "owner": "load_profile",
+   "paths": [
+    ".local/codex-recovery-20261114/stutter22-user-video/repeat-review/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T01:15:38.591387+08:00",
+   "checkpoint": "inspector源码已冻结，新任务仅本地日志复核。",
+   "write_state": "RELEASED",
+   "released_at": "2026-11-15T01:24:07.524884+08:00"
+  },
+  {
+   "task": "CODEX-STUTTER22-GPU90-20261115",
+   "owner": "perf_cpu",
+   "paths": [
+    ".local/codex-recovery-20261114/stutter22-user-video/gpu-review/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T01:21:34.266027+08:00",
+   "checkpoint": "APK Java源码已冻结，仅做离线GPU数据复核。",
+   "write_state": "RELEASED",
+   "released_at": "2026-11-15T01:45:11.039180+08:00"
+  },
+  {
+   "task": "CODEX-SAVE-OWNER-RECOVERY-20261115",
+   "owner": "root",
+   "paths": [
+    ".local/codex-recovery-20261114/stutter22-user-video/seed-build/save-owner-repair/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T01:30:25.386860+08:00",
+   "checkpoint": "root独占RG，正常保存文件内容与原包均保持。",
+   "write_state": "FROZEN_HANDED_BACK",
+   "released_at": "2026-11-15T01:45:11.039180+08:00"
   }
  ],
  "tasks": [
@@ -7769,6 +7908,268 @@
    ],
    "acceptance": "仅写本local目录，其他输入只读，禁止ADB/Git/源码/coord和全量构建。所有dump及受其阻塞影响长帧保留并单列，不冒充独立真机或归因性能收益。",
    "checkpoint": "可只读分析已闭合ABA记录，root本轮不操作游戏输入。"
+  },
+  {
+   "id": "CODEX-STUTTER22-CAPTURE-20261115",
+   "owner": "root",
+   "role": "EVIDENCE_AND_PROFILING",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "取回用户最新录屏与PID18193当次帧/CPU/GPU/音频日志，定位场景及卡顿，按证据推进性能修复。",
+   "inputs": [
+    "22源码0bd4dc5，APK2e4c354e，当前RG477M PID18193",
+    "最新screen-20261115-005332.mp4，root即刻保全原片及当次日志",
+    "前一轮同地图静机位ABA约30FPS，不能替代本次移动帧率"
+   ],
+   "outputs": [
+    ".local/codex-recovery-20261114/stutter22-user-video/capture/",
+    "coordination/results/CODEX-STUTTER22-20261115.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/codex-recovery-20261114/stutter22-user-video/capture/",
+    "coordination/results/CODEX-STUTTER22-20261115.md"
+   ],
+   "acceptance": "明确source/build/PID/时刻，场景分段与原始长帧保留，不将媒体编码FPS当游戏FPS；worker只读本地输入且仅写指定报告，禁止ADB/Git/coord/源码/全量build。",
+   "checkpoint": "完整取证/23源dd76193与装机已归档，持续GPU负荷和未知2s/音频待继续，用户持游戏输入权。"
+  },
+  {
+   "id": "CODEX-STUTTER22-VIDEO-20261115",
+   "owner": "load_profile",
+   "role": "READ_ONLY_VIDEO_ANALYSIS",
+   "status": "completed",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "逐帧检查最新录屏的场景、相机移动/停顿和媒体PTS，明确录制采样与游戏帧率证据范围。",
+   "inputs": [
+    "22源码0bd4dc5，APK2e4c354e，当前RG477M PID18193",
+    "最新screen-20261115-005332.mp4，root即刻保全原片及当次日志",
+    "前一轮同地图静机位ABA约30FPS，不能替代本次移动帧率"
+   ],
+   "outputs": [
+    ".local/codex-recovery-20261114/stutter22-user-video/video-review/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/codex-recovery-20261114/stutter22-user-video/video-review/"
+   ],
+   "acceptance": "明确source/build/PID/时刻，场景分段与原始长帧保留，不将媒体编码FPS当游戏FPS；worker只读本地输入且仅写指定报告，禁止ADB/Git/coord/源码/全量build。",
+   "checkpoint": "root即刻只读捕获设备，所有游戏输入权在用户。"
+  },
+  {
+   "id": "CODEX-STUTTER22-LOGS-20261115",
+   "owner": "perf_cpu",
+   "role": "READ_ONLY_LOG_ANALYSIS",
+   "status": "completed",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "拆当前PID18193日志与帧CSV，核真实游戏长帧/CPU/GPU/shader负荷及音频欠载，避免未经同步就逐秒归因视频。",
+   "inputs": [
+    "22源码0bd4dc5，APK2e4c354e，当前RG477M PID18193",
+    "最新screen-20261115-005332.mp4，root即刻保全原片及当次日志",
+    "前一轮同地图静机位ABA约30FPS，不能替代本次移动帧率"
+   ],
+   "outputs": [
+    ".local/codex-recovery-20261114/stutter22-user-video/log-review/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/codex-recovery-20261114/stutter22-user-video/log-review/"
+   ],
+   "acceptance": "明确source/build/PID/时刻，场景分段与原始长帧保留，不将媒体编码FPS当游戏FPS；worker只读本地输入且仅写指定报告，禁止ADB/Git/coord/源码/全量build。",
+   "checkpoint": "root即刻只读捕获设备，所有游戏输入权在用户。"
+  },
+  {
+   "id": "CODEX-STUTTER22-PIPELINE-REVIEW-20261115",
+   "owner": "perf_cpu/lookup_review",
+   "role": "READ_ONLY_SOURCE_REVIEW",
+   "status": "completed",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "按22同PID新战斗长帧核shader/pipeline同步编译与warm/persistent cache实际路线，找可验证小范围修正。 并只读复核补充APKseed及inspector实现。",
+   "inputs": [
+    "stutter22-user-video/capture/engine.log及engine-cpu3.log",
+    "xbg_game.cpp warm/compile/persistent cache及固定DroidPlay上游",
+    "当前frame max2.024s及23次250ms以上长帧尚在归因",
+    "root xbg_game warm.start追加apk-pipeline-warm.seed union加载",
+    "perf_cpu APK Asset stage及load_profile inspector canonical格式补正"
+   ],
+   "outputs": [
+    ".local/codex-recovery-20261114/stutter22-user-video/pipeline-review/review.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/codex-recovery-20261114/stutter22-user-video/pipeline-review/"
+   ],
+   "acceptance": "只读输入和源码，仅写本报告目录，不设备/源码/coord/Git/全量build。区分driver compile、SPIRV rewrite、I/O及shader first-use，不能盲开有生命周期缺口的async队列。",
+   "checkpoint": "pipeline报告964d68bb已交回，追加同scope qa/独立复核，待实现冻结后轻契约。"
+  },
+  {
+   "id": "CODEX-WARM-IDENTITY-TOOLS-20261115",
+   "owner": "load_profile",
+   "role": "IMPLEMENTATION",
+   "status": "implemented",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "同步发行预热清单inspector到现canonical ib1/stb1/vin1格式，并补拒绝/组合/真实cache回归。",
+   "inputs": [
+    "22源码0bd4dc5及当前真实战斗冷编译证据",
+    "现有warm学习表/三seed union及NativeDataBundle原子stage辅助逻辑",
+    "inspector只识裸key/ib1，发行无法带完整vin/stb identity"
+   ],
+   "outputs": [
+    "scripts/distribution/inspect_pipeline_warm_list.py",
+    "tests/installer/test_pipeline_warm_inspector.py",
+    ".local/codex-recovery-20261114/stutter22-user-video/identity-tools/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "scripts/distribution/inspect_pipeline_warm_list.py",
+    "tests/installer/test_pipeline_warm_inspector.py",
+    ".local/codex-recovery-20261114/stutter22-user-video/identity-tools/"
+   ],
+   "acceptance": "源文件独占，未知或坏可选seed不阻断游戏启动；学习表与原包数据保留。保持原运行/显示/同步语义，实机warm命中及卡顿收益待后续用户存档后验证，不提前PASS。worker禁ADB/Git/coord/全量build。",
+   "checkpoint": "dd76193，组件及独立QA通过，整包101host/Android0，实际23 warm收益待真机。"
+  },
+  {
+   "id": "CODEX-APK-WARM-SEED-20261115",
+   "owner": "perf_cpu",
+   "role": "IMPLEMENTATION",
+   "status": "implemented",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "在guest正常启动前从可选APK asset原子落地补充预热seed，覆盖legacy/managed实际runtime路径，保留学习表与数据seed，纯Java契约及Android编译验证。",
+   "inputs": [
+    "22源码0bd4dc5及当前真实战斗冷编译证据",
+    "现有warm学习表/三seed union及NativeDataBundle原子stage辅助逻辑",
+    "inspector只识裸key/ib1，发行无法带完整vin/stb identity"
+   ],
+   "outputs": [
+    "src/android/app/java/org/ffrs/diagnostic/NativeDataBundle.java",
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "tests/installer/PipelineWarmSeedContract.java",
+    "tests/installer/test_apk_pipeline_warm_seed.py",
+    ".local/codex-recovery-20261114/stutter22-user-video/apk-seed/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/android/app/java/org/ffrs/diagnostic/NativeDataBundle.java",
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "tests/installer/PipelineWarmSeedContract.java",
+    "tests/installer/test_apk_pipeline_warm_seed.py",
+    ".local/codex-recovery-20261114/stutter22-user-video/apk-seed/"
+   ],
+   "acceptance": "源文件独占，未知或坏可选seed不阻断游戏启动；学习表与原包数据保留。保持原运行/显示/同步语义，实机warm命中及卡顿收益待后续用户存档后验证，不提前PASS。worker禁ADB/Git/coord/全量build。",
+   "checkpoint": "dd76193，组件及独立QA通过，整包101host/Android0，实际23 warm收益待真机。"
+  },
+  {
+   "id": "CODEX-WARM-SEED-INTEGRATE-20261115",
+   "owner": "root",
+   "role": "IMPLEMENTATION",
+   "status": "implemented",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "接现warm union加载APK补充seed，保全最新真实recipe并验证覆盖，构建23性能候选。",
+   "inputs": [
+    "22源码0bd4dc5及当前真实战斗冷编译证据",
+    "现有warm学习表/三seed union及NativeDataBundle原子stage辅助逻辑",
+    "inspector只识裸key/ib1，发行无法带完整vin/stb identity"
+   ],
+   "outputs": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "scripts/verify_host.py",
+    ".local/codex-recovery-20261114/stutter22-user-video/seed-build/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "scripts/verify_host.py",
+    ".local/codex-recovery-20261114/stutter22-user-video/seed-build/"
+   ],
+   "acceptance": "源文件独占，未知或坏可选seed不阻断游戏启动；学习表与原包数据保留。保持原运行/显示/同步语义，实机warm命中及卡顿收益待后续用户存档后验证，不提前PASS。worker禁ADB/Git/coord/全量build。",
+   "checkpoint": "23APK845d1c4c已安装，PID19646后权限恢复重启为23537；seedSHA f7285c7e union1162 warm_built1162 failed0。现成history与seed重合added0。技能及稳帧收益待用户操作。"
+  },
+  {
+   "id": "CODEX-STUTTER22-REPEAT-20261115",
+   "owner": "load_profile",
+   "role": "READ_ONLY_LOG_REVIEW",
+   "status": "completed",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "核用户再次释放及其它技能新数据，量化编译长帧和无编译GPU重负荷，保留未知来源。",
+   "inputs": [
+    "capture/repeat-skills/engine.log及frames-18193.csv/plan/current.png",
+    "此前capture原36k帧与video-review原片报告",
+    "用户确认已再次释放，随后反馈其它技能也卡"
+   ],
+   "outputs": [
+    ".local/codex-recovery-20261114/stutter22-user-video/repeat-review/review.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/codex-recovery-20261114/stutter22-user-video/repeat-review/"
+   ],
+   "acceptance": "只读本地输入，仅写本目录，禁止ADB/Git/源码/coord/全量build。不猜技能名与精确时点，按帧界限及创建/GPU字段给有限窗口，先快报再有限收口。",
+   "checkpoint": "新CSV到62640，末61692/61708有1秒级创建，另55400附近0创建GPU60至126ms。"
+  },
+  {
+   "id": "CODEX-STUTTER22-GPU90-20261115",
+   "owner": "perf_cpu",
+   "role": "READ_ONLY_GPU_PROFILE_REVIEW",
+   "status": "completed",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "核战斗菜单90帧pass GPU采样完整性、热点及未来特效/场景优化的实际证据。",
+   "inputs": [
+    "capture/gpu90/engine.log及plan.json",
+    "源码pass_prof_active及GPASS输出语义",
+    "用户反馈其它技能仍卡，新repeat日志有0pipeline重GPU窗口"
+   ],
+   "outputs": [
+    ".local/codex-recovery-20261114/stutter22-user-video/gpu-review/review.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/codex-recovery-20261114/stutter22-user-video/gpu-review/"
+   ],
+   "acceptance": "仅写本local目录，所有输入/源码只读，禁止设备/Git/coord/源码修改/全量build。不将profile慢路径当normal性能，不凭shader名字猜对象，限定采样时机位，核90帧/skip/query预算并列原始行。",
+   "checkpoint": "GPU报告9f5d2dab，90帧9810项完整，profile菜单hotpass15.15ms，normal技能收益未外推。"
+  },
+  {
+   "id": "CODEX-SAVE-OWNER-RECOVERY-20261115",
+   "owner": "root",
+   "role": "DEVICE_FILE_OWNERSHIP_REPAIR",
+   "status": "awaiting_user",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "修复应用生成存档目录中导入GameSaveData0/1的shell属主导致errno13，原文件字节保持并保全备份，验证实际应用UID可写及正常保存。",
+   "inputs": [
+    "22 before-guest_boot.log L99517 GameSaveData0 mode2 open errno13",
+    "23 title scene，GameSaveData0/1 shell owner644，实际UID test-w1",
+    "已验证安装前后tar SHA86d8a9f5，各历史备份在.local"
+   ],
+   "outputs": [
+    ".local/codex-recovery-20261114/stutter22-user-video/seed-build/save-owner-repair/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/codex-recovery-20261114/stutter22-user-video/seed-build/save-owner-repair/"
+   ],
+   "acceptance": "保存原字节/摘要/metadata与恢复点，标题画面停止进程消除并发写，由run-as复制同字节stage后原子替换属主，逐字节校验保持；不改原游戏包与原始输入。随后正常入口验证保存，未落盘的旧内存进度不冒充已恢复。",
+   "checkpoint": "已确认mode2 errno13。标题quiescent后保全原文件，GameSaveData0/1内容SHA与mtime相同，UID从2000变10174，读写open不写数据退出0；普通游戏保存结果问询已发。"
   }
  ],
  "blockers": [

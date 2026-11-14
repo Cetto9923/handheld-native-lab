@@ -4582,3 +4582,32 @@ C4 帧内 desc memo 比对的是 buffer 身份而非内容、C5 客机侧数据�
 原始采集与48文件SHA索引在vertex-input-build/map22/，报告CODEX-CHAPTER3-MAP-20261114.md。perf_cpu独立离线审18帧，与PNG RGB逐像素一致。lookup按当次PID、LIVE-AB及dump核对有限窗口约30FPS，正常长帧与读回影响均保留，尚无帧率收益结论。开场女主22回归、战斗、地图移动与其它位置、音频及整体FPS仍各自待测。root已交还游戏输入权，后续先核PID再拉当次日志。
 
 两份独立离线报告均已交回并重算SHA。device-qa/review.md为eac6f0b5dcfccd7c7c7509d38017cb36e8df4cdf690e82ec98bb34dd809442d0，performance/review.md为baf5101900c6b6a8b19e5176a6b4181ba7d385ab1fe82a4bbfb34870a6e3567f。安装与本次地图机位对照完成，FPS主任务继续保留进行中。源码0bd4dc5已冻结，5份Android诊断报告WIP与历史APK保留。
+
+
+## 22用户新录屏卡顿反馈
+
+最新screen-20261115-005332.mp4，设备仍RG477M01445122、PID18193。root只读保全视频与当次日志，用户持有输入权。load_profile分析本地录屏，perf_cpu分析同PID日志，两者仅写stutter22-user-video/各自子目录。当前只证地图静机位显示恢复，实际移动性能待本轮定位。
+
+## 战斗卡顿已分项取证，23预热候选已构建
+
+用户新片36.717秒含英勇斩击、物理反击、机械陆行鸟的0.83至1.06秒画面采样空档。同PID音频重开之间的36.875秒日志窗为15.618FPS，23条超过250ms的长帧含pipeline创建10.252秒/66次，最大2.024秒帧无编译仍未知。录屏秒点与日志不强绑。主6ch流xrun累计+4，末段重开后0不能覆盖此前增长。
+
+用户确认再次释放并反馈其它技能也卡。新packet为stutter22-user-video/capture/repeat-skills/，CSV从旧36660完整追加至62640。55380至55410连续31帧新编译0，GPU中位约65ms，持续绘制开销需继续优化。61692/61708又有1秒级pipeline长帧，五条新编译事件18pipeline、累计3001.9ms。GPU90采样见capture/gpu90/，90帧到72932，marker已消费/active有界到期，离线rank复核在gpu-review/。
+
+已修发行inspector只识裸key/ib1而拒绝stb1/vin1的遗漏，并接APK可选补充预热asset在GuestBootTask后台原子落地到实际legacy/managed runtime/apk-pipeline-warm.seed，C++现warm union合并它。学习表及原数据seed保留，坏asset不阻断游戏启动。源码dd76193，独立QA1ed21222，host101项及Android0，38输入摘要一致。
+
+23APK为.local/codex-recovery-20261114/apk-history/ffrs-1.0.23-preview-battle-prewarm.apk，3679303B，SHA845d1c4c57272a429edc918be71389b8ab25f4fe5c0b431d4fc335af20763fe3。内含本次真实记录1162条唯一recipe，seed1220416B，SHAf7285c7eb3071e04074eb2e848bddeef568655b4ee1127edf7ae867d74207acc，较22前增加126条，archive源key缺失0。历史包保留，5份诊断WIP排除。
+
+当前23未安装，已问用户战斗结束并保存后是否安装，等待回复。安装后先核实际runtime seed SHA、三源union加载计数、warm完成/失败与完整变体命中，再复放同技能比较cold/warm。不能仅靠包内清单和菜单30FPS宣称战斗已修。持续GPU成本、未知2秒帧及声音短卡继续记录，后续root若接手需先核PID与当前用户输入权。详细报告CODEX-STUTTER22-20261115.md。
+
+## 23已安装及保存权限故障恢复
+
+用户已确认结束保存并授权安装。23于01:25覆盖安装，SHA845d1c4c复核通过，PID19646，APK补充seed实际落地SHAf7285c7e。学习表和APKseed都1162条且相互重合added0，旧数据seed也added0。warm完整创建1162、failed0。随后标题重开为当前PID23537，亦1162/0通过。23稳帧和首次技能的收益尚待用户实测，不能从预热计数推成性能已修。
+
+发现此前遗漏。多轮存档tar总是86d8a9f5，before-guest_boot.log L99517有GameSaveData0 mode2 errno13，GameSaveData0/1为shell UID2000的644文件，应用UID无写权限。root已向用户明示此前只核对安装前后摘要、遗漏正常写权限，那次写入失败进度未落盘。
+
+保存权限恢复在标题先停进程保全原字节及metadata，run-as创建同字节stage，核对sha并保留mtime后原子替换为应用UID10174/mode640。两个文件修复前后内容SHA保持，读写打开后关闭不写数据测试通过。原文件备份和恢复点在seed-build/save-owner-repair/。首次stat格式被远端shell拆分，文件尚未处理，attempt1原日志保留，修正无空格格式后成功。重新启动23即PID23537。
+
+游戏内正常保存尚未完成验收。已向用户请求通过游戏内系统菜单保存并反馈成功提示。用户已开始在城内操作，root取消刚打开的Load Data界面后明确继续由用户操作；后续不可在同一时段抢输入。当前GameSaveData0/1仍是修复时相同内容，尚未观察到正常写入。后续收到保存结果后，拉当前guest log核实际mode2写入与文件时间/大小/摘要，再核PID重开读档。原失败那轮内存进度未宣称恢复。
+
+23数据在seed-build/device23/，当前engine-session-23537.log及frames-23537.csv只属于该PID。已载入第3章slot01，最后截图在旅店门外城内。原GPU90在22 PID18193完成90帧9810项完整、无skip；top混合HDR15.15ms、深度5.31ms、compute5.65ms是profile菜单路径。独立报告gpu-review/review.md SHA9f5d2dab，不外推normal或主动技能。持续GPU负荷、未知2秒帧、音频短卡及原速60FPS目标仍未完成。

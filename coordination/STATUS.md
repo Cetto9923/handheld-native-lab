@@ -1,7 +1,7 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-15T00:49:58.304406+08:00
-阶段：22已安装并完成RG同机位ABA，旧路径重现地面缺失/巨斜面，新接口两轮恢复；独立离线审图与性能范围核对中。
+状态事件时间：2026-11-15T01:45:11.039180+08:00
+阶段：23已装RG，APKseed SHA/实际union1162与warm_failed0通过；已修导入存档属主权限并保留原字节，等正常保存及技能实测反馈，GPU和未知2秒帧继续未验。
 总控：Codex /root 本轮接管
 更新方式：按事件更新，没有后台自动刷新。
 
@@ -200,6 +200,16 @@
 | CODEX-VERTEX-INTEGRATE-20261115 | INTEGRATION | implemented | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-MAP22-DEVICE-EVIDENCE-QA-20261115 | READ_ONLY_CAPTURE_REVIEW | completed | perf_cpu | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-MAP22-PERF-QA-20261115 | READ_ONLY_LOG_REVIEW | completed | perf_cpu/lookup_review | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-STUTTER22-CAPTURE-20261115 | EVIDENCE_AND_PROFILING | in_progress | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-STUTTER22-VIDEO-20261115 | READ_ONLY_VIDEO_ANALYSIS | completed | load_profile | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-STUTTER22-LOGS-20261115 | READ_ONLY_LOG_ANALYSIS | completed | perf_cpu | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-STUTTER22-PIPELINE-REVIEW-20261115 | READ_ONLY_SOURCE_REVIEW | completed | perf_cpu/lookup_review | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-WARM-IDENTITY-TOOLS-20261115 | IMPLEMENTATION | implemented | load_profile | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-APK-WARM-SEED-20261115 | IMPLEMENTATION | implemented | perf_cpu | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-WARM-SEED-INTEGRATE-20261115 | IMPLEMENTATION | implemented | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-STUTTER22-REPEAT-20261115 | READ_ONLY_LOG_REVIEW | completed | load_profile | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-STUTTER22-GPU90-20261115 | READ_ONLY_GPU_PROFILE_REVIEW | completed | perf_cpu | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-SAVE-OWNER-RECOVERY-20261115 | DEVICE_FILE_OWNERSHIP_REPAIR | awaiting_user | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 
 ## 独占写入
 
@@ -362,6 +372,16 @@
 - {"task": "CODEX-VERTEX-INTEGRATE-20261115", "owner": "root", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", "scripts/verify_host.py", "src/android/app/gamewindow/AndroidManifest.xml", ".local/codex-recovery-20261114/vertex-input-build/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T00:07:01.335416+08:00", "checkpoint": "保存/安装已获授权，root串行设备复验。", "write_state": "FROZEN_HANDED_BACK", "released_at": "2026-11-15T00:49:58.304406+08:00"}
 - {"task": "CODEX-MAP22-DEVICE-EVIDENCE-QA-20261115", "owner": "perf_cpu", "paths": [".local/codex-recovery-20261114/vertex-input-build/device-qa/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T00:37:51.394773+08:00", "checkpoint": "root正在从第三章slot01移向地图，22真实地图输入尚待root采集。", "write_state": "RELEASED", "released_at": "2026-11-15T00:49:58.304406+08:00"}
 - {"task": "CODEX-MAP22-PERF-QA-20261115", "owner": "perf_cpu/lookup_review", "paths": [".local/codex-recovery-20261114/vertex-input-build/device-qa/performance/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T00:44:21.194316+08:00", "checkpoint": "独立离线性能范围核对，root独占RG。", "write_state": "RELEASED", "released_at": "2026-11-15T00:49:58.304406+08:00"}
+- {"task": "CODEX-STUTTER22-CAPTURE-20261115", "owner": "root", "paths": [".local/codex-recovery-20261114/stutter22-user-video/capture/", "coordination/results/CODEX-STUTTER22-20261115.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T00:54:44.351540+08:00", "checkpoint": "root即刻只读捕获设备，所有游戏输入权在用户。", "write_state": "ACTIVE"}
+- {"task": "CODEX-STUTTER22-VIDEO-20261115", "owner": "load_profile", "paths": [".local/codex-recovery-20261114/stutter22-user-video/video-review/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T00:54:44.351540+08:00", "checkpoint": "root即刻只读捕获设备，所有游戏输入权在用户。", "write_state": "RELEASED", "released_at": "2026-11-15T01:24:07.524884+08:00"}
+- {"task": "CODEX-STUTTER22-LOGS-20261115", "owner": "perf_cpu", "paths": [".local/codex-recovery-20261114/stutter22-user-video/log-review/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T00:54:44.351540+08:00", "checkpoint": "root即刻只读捕获设备，所有游戏输入权在用户。", "write_state": "RELEASED", "released_at": "2026-11-15T01:24:07.524884+08:00"}
+- {"task": "CODEX-STUTTER22-PIPELINE-REVIEW-20261115", "owner": "perf_cpu/lookup_review", "paths": [".local/codex-recovery-20261114/stutter22-user-video/pipeline-review/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T00:59:27.331336+08:00", "checkpoint": "只读warm/cache同步编译与已有counter，root独占设备。", "write_state": "RELEASED", "released_at": "2026-11-15T01:24:07.524884+08:00"}
+- {"task": "CODEX-WARM-IDENTITY-TOOLS-20261115", "owner": "load_profile", "paths": ["scripts/distribution/inspect_pipeline_warm_list.py", "tests/installer/test_pipeline_warm_inspector.py", ".local/codex-recovery-20261114/stutter22-user-video/identity-tools/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T01:07:51.520181+08:00", "checkpoint": "scope确认后派发，互不重叠。", "write_state": "FROZEN_HANDED_BACK", "released_at": "2026-11-15T01:24:07.524884+08:00"}
+- {"task": "CODEX-APK-WARM-SEED-20261115", "owner": "perf_cpu", "paths": ["src/android/app/java/org/ffrs/diagnostic/NativeDataBundle.java", "src/android/app/java/org/ffrs/diagnostic/GameActivity.java", "tests/installer/PipelineWarmSeedContract.java", "tests/installer/test_apk_pipeline_warm_seed.py", ".local/codex-recovery-20261114/stutter22-user-video/apk-seed/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T01:07:51.520181+08:00", "checkpoint": "scope确认后派发，互不重叠。", "write_state": "FROZEN_HANDED_BACK", "released_at": "2026-11-15T01:24:07.524884+08:00"}
+- {"task": "CODEX-WARM-SEED-INTEGRATE-20261115", "owner": "root", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", "src/android/app/gamewindow/AndroidManifest.xml", "scripts/verify_host.py", ".local/codex-recovery-20261114/stutter22-user-video/seed-build/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T01:07:51.520181+08:00", "checkpoint": "scope确认后派发，互不重叠。", "write_state": "FROZEN_HANDED_BACK", "released_at": "2026-11-15T01:45:11.039180+08:00"}
+- {"task": "CODEX-STUTTER22-REPEAT-20261115", "owner": "load_profile", "paths": [".local/codex-recovery-20261114/stutter22-user-video/repeat-review/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T01:15:38.591387+08:00", "checkpoint": "inspector源码已冻结，新任务仅本地日志复核。", "write_state": "RELEASED", "released_at": "2026-11-15T01:24:07.524884+08:00"}
+- {"task": "CODEX-STUTTER22-GPU90-20261115", "owner": "perf_cpu", "paths": [".local/codex-recovery-20261114/stutter22-user-video/gpu-review/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T01:21:34.266027+08:00", "checkpoint": "APK Java源码已冻结，仅做离线GPU数据复核。", "write_state": "RELEASED", "released_at": "2026-11-15T01:45:11.039180+08:00"}
+- {"task": "CODEX-SAVE-OWNER-RECOVERY-20261115", "owner": "root", "paths": [".local/codex-recovery-20261114/stutter22-user-video/seed-build/save-owner-repair/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T01:30:25.386860+08:00", "checkpoint": "root独占RG，正常保存文件内容与原包均保持。", "write_state": "FROZEN_HANDED_BACK", "released_at": "2026-11-15T01:45:11.039180+08:00"}
 
 ## 阻塞
 
