@@ -4619,3 +4619,9 @@ C4 帧内 desc memo 比对的是 buffer 身份而非内容、C5 客机侧数据�
 用户随后明确要求先发布当前版本、GIT上发布并给包，已授权本次源码推送、标签和Release附件上传。目标既有公开仓库Cetto9923/handheld-native-lab，发布v1.0.23-preview，标签指向精确构建源dd76193。仅推当前开发分支与该版本标签，main/master保持只读。5份未提交诊断WIP继续隔离。
 
 发布包.local/releases/1.0.23/FFRS-1.0.23-preview-20261115.apk与历史23包同字节3679303B、SHA845d1c4c。说明和计划在同目录publication/，独立公开内容审计在audit/。说明明确101项host、Android构建、设备1162预热成功，GPU/声音/转场及整体提帧和保存/其它机型回归继续待测。当前正在完成发布审计及远端上传验证。
+
+## GitHub发布23已完成
+
+Release为https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.23-preview ，预览版已正式公开，附件APK与sha256已上传。tag精确指向dd76193生产源，开发分支已推送。远端下载APK重新校验SHA845d1c4c及大小3679303B，和本地交付一致。
+
+公开内容独立审计通过，audit/review.md SHA211bf291。发布操作全流程日志与可恢复计划在.local/releases/1.0.23/publication/plan.json、publish.log，status=PUBLISHED_VERIFIED。用户可直接取本地APK或GitHub附件。真机仍等用户充电后继续正常保存及技能复测，发布完成不代表性能主任务完成。

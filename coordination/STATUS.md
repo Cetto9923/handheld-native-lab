@@ -1,7 +1,7 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-15T02:00:02.021307+08:00
-阶段：用户明确授权Git发布23及给包，root整理既有公开仓库预览Release。掌机充电，保存/技能真机补测待恢复。
+状态事件时间：2026-11-15T02:09:00.818970+08:00
+阶段：v1.0.23-preview已公开发布到GitHub，源标签和远端APK下载摘要验证通过。用户设备充电，性能及正常保存补测待继续。
 总控：Codex /root 本轮接管
 更新方式：按事件更新，没有后台自动刷新。
 
@@ -210,8 +210,8 @@
 | CODEX-STUTTER22-REPEAT-20261115 | READ_ONLY_LOG_REVIEW | completed | load_profile | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-STUTTER22-GPU90-20261115 | READ_ONLY_GPU_PROFILE_REVIEW | completed | perf_cpu | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-SAVE-OWNER-RECOVERY-20261115 | DEVICE_FILE_OWNERSHIP_REPAIR | awaiting_user | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
-| CODEX-RELEASE23-20261115 | RELEASE | in_progress | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
-| CODEX-RELEASE23-AUDIT-20261115 | READ_ONLY_RELEASE_AUDIT | in_progress | perf_cpu | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-RELEASE23-20261115 | RELEASE | completed | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-RELEASE23-AUDIT-20261115 | READ_ONLY_RELEASE_AUDIT | completed | perf_cpu | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 
 ## 独占写入
 
@@ -384,8 +384,8 @@
 - {"task": "CODEX-STUTTER22-REPEAT-20261115", "owner": "load_profile", "paths": [".local/codex-recovery-20261114/stutter22-user-video/repeat-review/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T01:15:38.591387+08:00", "checkpoint": "inspector源码已冻结，新任务仅本地日志复核。", "write_state": "RELEASED", "released_at": "2026-11-15T01:24:07.524884+08:00"}
 - {"task": "CODEX-STUTTER22-GPU90-20261115", "owner": "perf_cpu", "paths": [".local/codex-recovery-20261114/stutter22-user-video/gpu-review/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T01:21:34.266027+08:00", "checkpoint": "APK Java源码已冻结，仅做离线GPU数据复核。", "write_state": "RELEASED", "released_at": "2026-11-15T01:45:11.039180+08:00"}
 - {"task": "CODEX-SAVE-OWNER-RECOVERY-20261115", "owner": "root", "paths": [".local/codex-recovery-20261114/stutter22-user-video/seed-build/save-owner-repair/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T01:30:25.386860+08:00", "checkpoint": "root独占RG，正常保存文件内容与原包均保持。", "write_state": "FROZEN_HANDED_BACK", "released_at": "2026-11-15T01:45:11.039180+08:00"}
-- {"task": "CODEX-RELEASE23-20261115", "owner": "root", "paths": [".local/releases/1.0.23/FFRS-1.0.23-preview-20261115.apk", ".local/releases/1.0.23/FFRS-1.0.23-preview-20261115.apk.sha256", ".local/releases/1.0.23/publication/", "coordination/results/CODEX-RELEASE23-20261115.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T02:00:02.021307+08:00", "checkpoint": "根串行发布，独立审计只读。", "write_state": "ACTIVE"}
-- {"task": "CODEX-RELEASE23-AUDIT-20261115", "owner": "perf_cpu", "paths": [".local/releases/1.0.23/audit/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T02:00:02.021307+08:00", "checkpoint": "根串行发布，独立审计只读。", "write_state": "ACTIVE"}
+- {"task": "CODEX-RELEASE23-20261115", "owner": "root", "paths": [".local/releases/1.0.23/FFRS-1.0.23-preview-20261115.apk", ".local/releases/1.0.23/FFRS-1.0.23-preview-20261115.apk.sha256", ".local/releases/1.0.23/publication/", "coordination/results/CODEX-RELEASE23-20261115.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T02:00:02.021307+08:00", "checkpoint": "发布与远端附件核验完成。", "write_state": "RELEASED", "released_at": "2026-11-15T02:09:00.818970+08:00"}
+- {"task": "CODEX-RELEASE23-AUDIT-20261115", "owner": "perf_cpu", "paths": [".local/releases/1.0.23/audit/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T02:00:02.021307+08:00", "checkpoint": "发布与远端附件核验完成。", "write_state": "RELEASED", "released_at": "2026-11-15T02:09:00.818970+08:00"}
 
 ## 阻塞
 
