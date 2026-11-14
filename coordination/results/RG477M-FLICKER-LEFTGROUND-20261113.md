@@ -772,6 +772,59 @@ RG477M 上 probe **每进程只能用一次**（标题屏那次已用掉）。�
 它**只观察**，不改变任何渲染行为；关闭时零开销。用它把两态帧的 uniform 逐字节对比，
 即可定位到具体是哪个 binding 在跳变。
 
+### 15. 新症状：主角身上黑色横向条纹（2026-11-14 10:42 用户报告）
+
+#### 15.1 现象与量化
+
+场景：`gfx-scene-tag=water-capital-walk`（水都），夜间废墟 + 篝火。
+游戏 PID 7533，`draws=544.7 passes=135.3`，fps=28.41，`submit_cpu_ms=17.21 sync_wb=0 sync_rb=0`。
+
+主角身上出现**横向黑色条带**，实测特征：
+
+| 测量项 | 结果 | 含义 |
+|---|---|---|
+| 条带周期 | 主角区行亮度剖面自相关 lag=12/13 处 r=+0.145/+0.123，lag=6~9 处 r=-0.24~-0.29 | 周期 ≈ **12 屏幕像素**（主角高约 120px → 约 10 条） |
+| 是否屏幕空间 | 同行背景（x430-520、x760-850）无同周期结构（其自相关 lag1..25 全为正） | 条纹**贴在角色身上**，非全屏横条 |
+| 是否随时间变 | 连拍 3 帧，主角区帧间差 mean=0.50/0.75，变化像素仅 **0.2% / 0.1%** | 条纹**时间上稳定**（角色站立不动） |
+| 剪影 | 头盔/肩/躯干/腿轮廓完整，红色胸甲细节在多条中重复出现 | 几何形状对，**着色/纹理错** |
+
+#### 15.2 与地面白纱的关系
+
+不同场景、不同形态，但**同属「送进 draw 的数据/状态」这一类**：
+白纱 = 地面被覆一层 alpha≈0.0775 的白；条纹 = 角色身上周期性黑条。
+§14.1 已定性：引擎无光照/阴影/抖动/雾代码 ⇒ 两者都不可能是引擎自己画的，
+只能是客机 shader 的行为，或引擎交付的数据/状态在帧间或区域间不一致。
+
+#### 15.3 本轮已排除
+
+- **BC 纹理解码行距 bug**：`bcdec` 的 `destinationPitch` 语义是**字节**
+  （`third_party/bcdec/bcdec.h:1276` 每行 `decompressed += destinationPitch`），
+  引擎快路径传 `w*4` 字节、`xbg_decode_block` 传 16（16 像素×4 字节），**单位一致** ✓
+- **引擎侧合成层**：屏幕像素与引擎呈现帧逐位相同（历史结论 SSD=0.000）⇒ 截图即引擎帧
+- **引擎自有的雾/提亮/合成绘制**：`xbg_clear.cpp` 的 masked clear 只设 colorWriteMask 不开 blend；
+  `bright::after_dispatch` 因 `dm_bright_k` 弱符号未实现在 RG477M 整条不执行（§14.3 C8）
+
+#### 15.4 下一步（一次采集）
+
+脚本：`/tmp/ffrs-char-capture.sh`（三件套一起开，30 秒内结束，不发任何输入）
+
+1. `gfx-codex-probe=R` → 24 帧全捕获：`PROBE_GROUP`(vs/fs 着色器键)、
+   `PROBE_BIND`(每个 binding 绑的纹理 serial/格式/mip/层/gpuWritten)、
+   `PROBE_COLOR_STATE`+`PROBE_BLEND`(blend 开关/因子/常量)、
+   `PROBE_RASTER`(cull/scissor/**swizzle**/conditionalSkip)、`PROBE_DRAW`(draw 列表/baseInstance)
+2. `gfx-live-ubtrace=400` → 逐 draw 逐 binding 的 uniform 指纹
+3. `gfx-live-framedump=9` → 9 帧连续呈现帧
+
+判读：
+
+| 观察 | 结论 |
+|---|---|
+| `PROBE_BIND` 里角色 draw 绑的纹理 serial/尺寸/mip 对不上 | 纹理侧（绑错图） |
+| `PROBE_BIND` 正常、`PROBE_RASTER` 的 cull/scissor/swizzle 有异常 | 渲染状态侧 |
+| `PROBE_COLOR_STATE` 的 blendEnable/mask 与实际半透明不符 | 混合侧 |
+| ubtrace hash 逐帧**不变** | 不是客机动画 → 引擎侧状态/纹理问题 |
+| ubtrace hash 逐帧**变** | 客机自己在变 → 引擎忠实搬运 |
+
 ### 14. 引擎源码只读调查 + 4 条「引擎可能丢 draw」路径的零成本证伪
 
 （2026-11-13 晚，explore 子代理只读通读 `src/graphics/nvn_vulkan/engine/`，未改任何代码）
