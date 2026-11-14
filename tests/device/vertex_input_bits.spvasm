@@ -1,0 +1,58 @@
+OpCapability Shader
+OpMemoryModel Logical GLSL450
+OpEntryPoint Vertex %main "main" %input0 %input1 %input2 %input3 %position
+OpName %input0 "packed_uint"
+OpName %input1 "packed_sint"
+OpDecorate %input0 Location 0
+OpDecorate %input1 Location 1
+OpDecorate %input2 Location 2
+OpDecorate %input3 Location 3
+OpDecorate %position BuiltIn Position
+%void = OpTypeVoid
+%float = OpTypeFloat 32
+%v4float = OpTypeVector %float 4
+%input_v4 = OpTypePointer Input %v4float
+%input_float = OpTypePointer Input %float
+%output_v4 = OpTypePointer Output %v4float
+%input0 = OpVariable %input_v4 Input
+%input1 = OpVariable %input_v4 Input
+%input2 = OpVariable %input_v4 Input
+%input3 = OpVariable %input_float Input
+%position = OpVariable %output_v4 Output
+; Existing numeric types after the inputs must move before a retyped variable.
+%uint = OpTypeInt 32 0
+%int = OpTypeInt 32 1
+%v4uint = OpTypeVector %uint 4
+%v4int = OpTypeVector %int 4
+%input_uint = OpTypePointer Input %uint
+%input_int = OpTypePointer Input %int
+%input_v4uint = OpTypePointer Input %v4uint
+%input_v4int = OpTypePointer Input %v4int
+%local_v4 = OpTypePointer Function %v4float
+%fn = OpTypeFunction %void
+%zero = OpConstant %int 0
+%float_zero = OpConstant %float 0
+%float_one = OpConstant %float 1
+%main = OpFunction %void None %fn
+%entry = OpLabel
+%local = OpVariable %local_v4 Function
+%a = OpLoad %v4float %input0
+%a_bits = OpBitcast %v4uint %a
+%a_values = OpConvertUToF %v4float %a_bits
+%component0 = OpAccessChain %input_float %input0 %zero
+%a_scalar = OpLoad %float %component0
+%a_scalar_bits = OpBitcast %uint %a_scalar
+%component1 = OpInBoundsAccessChain %input_float %input1 %zero
+%b = OpLoad %float %component1
+%b_bits = OpBitcast %int %b
+%b_value = OpConvertSToF %float %b_bits
+%d = OpLoad %float %input3
+%d_bits = OpBitcast %uint %d
+%d_value = OpConvertUToF %float %d_bits
+%mixed_float = OpLoad %v4float %input2
+%sum = OpFAdd %v4float %a_values %mixed_float
+%extra = OpCompositeConstruct %v4float %b_value %d_value %float_zero %float_one
+%result = OpFAdd %v4float %sum %extra
+OpStore %position %result
+OpReturn
+OpFunctionEnd

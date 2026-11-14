@@ -21,6 +21,7 @@ extern "C" int xbg_completion_wait_selftest(char *report,size_t bytes);
 #include "xbg_warm_flush.h"
 #include "xbg_spirv_integer_buffer.h"
 #include "xbg_spirv_typed_storage.h"
+#include "xbg_spirv_vertex_input.h"
 #include "xbg_shader_identity.h"
 #include "xbg_upload_policy.h"
 #include "xbg_texel_snapshot.h"
@@ -2562,6 +2563,8 @@ bool probe_shader_requested(const std::string &key);
 using IntegerBufferFormats=std::vector<std::pair<uint32_t,uint32_t>>;
 // Typed storage variants are keyed by (binding, SPIR-V image format).
 using TypedStorageFormats=std::vector<std::pair<uint32_t,uint32_t>>;
+// Vertex locations use the same numeric classes as xbg_vertex_input_classes.
+using VertexInputFormats=std::vector<std::pair<uint32_t,uint32_t>>;
 struct Shader {std::string key;std::string identity;
     // Registration updates std::map nodes in place. Shader lifetime ends before
     // these tables are cleared. Cache the lookup, and reread live metadata.
@@ -2588,10 +2591,11 @@ struct Shader {std::string key;std::string identity;
     // the Vulkan view format are the game's own pair, and NVN does not require
     // them to be spelled the same way, so that pair is not ours to reject.
     std::set<uint32_t> typed_storage_rewritten;
-    // Final module words, kept only for shaders that may need a typed
-    // storage variant, so a variant can be derived from the real module.
+    // Final words for typed storage and vertex-interface variants.
     std::vector<uint32_t> module_words;
     std::map<TypedStorageFormats,std::unique_ptr<Shader>> typed_variants;
+    std::map<VertexInputFormats,std::unique_ptr<Shader>> vertex_variants;
+    std::set<VertexInputFormats> unsupported_vertex_inputs;
     uint32_t stage;VkShaderModule module{};std::vector<xbg_shader_binding> bindings;std::vector<uint32_t> inputs,input_classes,probe_words;std::vector<uint8_t> c1;
     std::set<uint32_t> storage_writes; // Vulkan bindings of storage buffers the SPIR-V may write
     bool discards=true; // fragment shader may kill/demote (conservative default)
@@ -2976,7 +2980,7 @@ Shader *load_shader(const void *control){
         p->storage_image_formats[binding.binding]=xbg_spirv_declared_image_format(words,binding.binding);
         p->storage_binding_info[binding.binding]=xbg_spirv_storage_binding_info(words,binding.binding);
         if(binding.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER)typed_candidate=true;}
-     if(typed_candidate)p->module_words=words;}
+     if(typed_candidate || (h.stage==0 && !p->inputs.empty()))p->module_words=words;}
     {auto extent=spirv_uniform_extent(words);uint32_t trimmed=0;for(auto &b:p->bindings)if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER && b.source==XBG_SOURCE_UNIFORM){auto e=extent.find(b.binding);uint32_t declared=b.bytes?b.bytes:65536;if(e!=extent.end() && e->second<declared){b.bytes=e->second;++trimmed;}}uniform_trimmed+=trimmed;}
     {bool kill=false;for(size_t i=5;i<words.size();){uint32_t n=words[i]>>16,op=words[i]&0xffff;if(op==252||op==4416||op==5380){kill=true;break;}if(!n)break;i+=n;}p->discards=kill;}
     p->raster=xbg_spirv_raster_facts(words.data(),words.size(),h.stage);
@@ -3338,6 +3342,74 @@ struct TypedStorageSelection {
     }
     ~TypedStorageSelection(){for(unsigned stage=0;stage<6;++stage)state.shader[stage]=original[stage];}
 };
+
+uint32_t vertex_format_class(VkFormat viewed){
+    switch(viewed){
+        case VK_FORMAT_R8_SINT:case VK_FORMAT_R8G8_SINT:case VK_FORMAT_R8G8B8_SINT:case VK_FORMAT_R8G8B8A8_SINT:
+        case VK_FORMAT_R16_SINT:case VK_FORMAT_R16G16_SINT:case VK_FORMAT_R16G16B16_SINT:case VK_FORMAT_R16G16B16A16_SINT:
+        case VK_FORMAT_R32_SINT:case VK_FORMAT_R32G32_SINT:case VK_FORMAT_R32G32B32_SINT:case VK_FORMAT_R32G32B32A32_SINT:
+            return 1;
+        case VK_FORMAT_R8_UINT:case VK_FORMAT_R8G8_UINT:case VK_FORMAT_R8G8B8_UINT:case VK_FORMAT_R8G8B8A8_UINT:
+        case VK_FORMAT_R16_UINT:case VK_FORMAT_R16G16_UINT:case VK_FORMAT_R16G16B16_UINT:case VK_FORMAT_R16G16B16A16_UINT:
+        case VK_FORMAT_R32_UINT:case VK_FORMAT_R32G32_UINT:case VK_FORMAT_R32G32B32_UINT:case VK_FORMAT_R32G32B32A32_UINT:
+        case VK_FORMAT_A2B10G10R10_UINT_PACK32:
+            return 2;
+        default:return 0;
+    }
+}
+Shader *vertex_input_variant(Shader &base){
+    if(base.stage!=0 || base.inputs.empty() || ab_off("vinput"))return &base;
+    VertexInputFormats formats;
+    for(size_t input=0;input<base.inputs.size();++input){
+        const uint32_t location=base.inputs[input];
+        need(location<16,"Vertex input location out of range");
+        va_st attribute;memcpy(&attribute,&state.attrib[location],4);
+        if(!attribute.fmt)continue; // The draw's constant-zero path already matches the declared class.
+        const uint32_t actual=vertex_format_class(format(attribute.fmt));
+        if(actual!=base.input_classes[input])formats.push_back({location,actual});
+    }
+    if(formats.empty())return &base;
+    std::sort(formats.begin(),formats.end());
+    auto existing=base.vertex_variants.find(formats);
+    if(existing!=base.vertex_variants.end())return existing->second.get();
+    if(base.unsupported_vertex_inputs.count(formats))return &base;
+    std::string identity=base.identity+":vin1:";
+    for(const auto &entry:formats){
+        if(identity.back()!=':')identity+=',';
+        identity+=std::to_string(entry.first)+"_"+std::to_string(entry.second);
+    }
+    std::vector<uint32_t> words=base.module_words;
+    if(identity.size()>256 || xbg_spirv_vertex_input(words,formats)!=1){
+        base.unsupported_vertex_inputs.insert(formats);
+        xbg_logf("NVN vertex input UNSUPPORTED identity=%s reason=recipe-or-shape unchanged=1",identity.c_str());
+        return &base;
+    }
+    const uint64_t load_monotonic=shader_monotonic_ns(),load_frame=stats.presents.load();
+    auto variant=std::make_unique<Shader>();
+    variant->key=base.key;variant->identity=identity;variant->stage=base.stage;
+    variant->bindings=base.bindings;variant->inputs=base.inputs;
+    variant->input_classes.resize(base.inputs.size());
+    need(xbg_vertex_input_classes(words.data(),words.size(),variant->inputs.data(),variant->inputs.size(),variant->input_classes.data())==0,"Unsupported rewritten vertex input interface");
+    variant->c1=base.c1;variant->storage_writes=base.storage_writes;variant->discards=base.discards;
+    variant->raster=xbg_spirv_raster_facts(words.data(),words.size(),base.stage);
+    variant->storage_image_formats=base.storage_image_formats;
+    variant->storage_binding_info=base.storage_binding_info;
+    variant->typed_storage_rewritten=base.typed_storage_rewritten;
+    variant->module_words=words;variant->probe_words=words;
+    validate_capabilities(words,base.stage);
+    VkShaderModuleCreateInfo info{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};info.codeSize=words.size()*4;info.pCode=words.data();
+    VK(vkCreateShaderModule(cfg.device,&info,nullptr,&variant->module));
+    warm::register_module(variant->module,identity);
+    Shader *selected=variant.get();base.vertex_variants.emplace(formats,std::move(variant));
+    xbg_logf("NVN vertex input variant shader=%s identity=%s",base.key.c_str(),identity.c_str());
+    shader_load_anchor(identity,base.stage,load_frame,load_monotonic);
+    return selected;
+}
+struct VertexInputSelection {
+    Shader *original=state.shader[0];
+    VertexInputSelection(){if(original)state.shader[0]=vertex_input_variant(*original);}
+    ~VertexInputSelection(){state.shader[0]=original;}
+};
 // nvnProgramSetShaders assigns a new serial, and NVN shader control/code memory
 // must stay unchanged while a program uses it: cache resolved shaders by serial
 // instead of re-hashing every control segment on each bind.
@@ -3505,8 +3577,8 @@ VkShaderModule load_module(const std::string &key,uint32_t expected_stage=0){
             return found->second.module;
         }
     }
-    std::string base;IntegerBufferFormats formats;TypedStorageFormats typed;
-    if(!xbg_shader_identity(key,base,formats,&typed))return VK_NULL_HANDLE;
+    std::string base;IntegerBufferFormats formats;TypedStorageFormats typed;VertexInputFormats vertex;
+    if(!xbg_shader_identity(key,base,formats,&typed,&vertex))return VK_NULL_HANDLE;
     std::vector<uint8_t> b;if(!read_shader_bundle(base,b,nullptr))return VK_NULL_HANDLE;
     xbg_shader_header h;memcpy(&h,b.data(),sizeof(h));if(h.magic!=0x31534758 || h.version!=1 || h.stage>=6 || h.binding_count>256 || h.input_count>16 || h.c1_bytes>65536 || h.spirv_bytes%4)return VK_NULL_HANDLE;
     if(expected_stage && expected_stage!=(1u<<h.stage))return VK_NULL_HANDLE;
@@ -3514,7 +3586,7 @@ VkShaderModule load_module(const std::string &key,uint32_t expected_stage=0){
     std::vector<uint32_t> w(h.spirv_bytes/4);memcpy(w.data(),b.data()+off,h.spirv_bytes);spv_override(base,w);boss_interface_rewrite(w,h.stage,base.c_str(),"warm");histogram_sync_rewrite(w,h.stage,base.c_str(),"warm");terrain_depth_rewrite(w,h.stage,base.c_str(),"warm");stencil_rewrite(w,h.stage,base.c_str(),"warm");
     if(!specialize_integer_buffers(w,formats))return VK_NULL_HANDLE;
     std::vector<uint32_t> rewrite_input;
-    if(keep_rewritten)rewrite_input=w;
+    if(keep_rewritten && vertex.empty())rewrite_input=w;
     optimize_shader_words(w,h.stage,base,"warm");
     // A typed storage identity declares the bound format in the module, in the
     // same order as the runtime path (after the optimizer).
@@ -3522,8 +3594,11 @@ VkShaderModule load_module(const std::string &key,uint32_t expected_stage=0){
     for(const auto &entry:typed)typed_requests.push_back({entry.first,xbg_spirv_image_format(entry.second)});
     size_t typed_failed=0;int typed_shared=1;std::vector<uint32_t> typed_split;
     if(!typed_requests.empty() && xbg_typed_storage_declare(w,typed_requests,typed_failed,typed_shared,typed_split,cfg.enabled_core.shaderStorageImageExtendedFormats!=0)!=1)return VK_NULL_HANDLE;
+    if(!vertex.empty() && (h.stage!=0 || xbg_spirv_vertex_input(w,vertex)!=1))return VK_NULL_HANDLE;
     validate_capabilities(w,h.stage);
-    if(keep_rewritten)retain_rewritten(key,std::move(rewrite_input),w);
+    // Vertex variants start from the runtime's final module. Their complete
+    // identity still reuses warm pipelines, without a pre-optimizer cache entry.
+    if(keep_rewritten && vertex.empty())retain_rewritten(key,std::move(rewrite_input),w);
     VkShaderModuleCreateInfo ci{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};ci.codeSize=w.size()*4;ci.pCode=w.data();VkShaderModule m;if(vkCreateShaderModule(cfg.device,&ci,nullptr,&m)!=VK_SUCCESS)return VK_NULL_HANDLE;
     std::lock_guard<std::mutex> lock(mu);
     auto inserted=modules.emplace(key,WarmModule{m,1u<<h.stage});
@@ -3683,8 +3758,8 @@ bool read_record(const std::vector<uint8_t> &bytes,size_t &at,Rec &record){
         uint32_t length;
         if(!get(length) || length<16 || length>256 || length>bytes.size()-at)return false;
         std::string key(reinterpret_cast<const char*>(bytes.data()+at),length);at+=length;
-        std::string base;IntegerBufferFormats formats;TypedStorageFormats typed;
-        if(!xbg_shader_identity(key,base,formats,&typed))return false;
+        std::string base;IntegerBufferFormats formats;TypedStorageFormats typed;VertexInputFormats vertex;
+        if(!xbg_shader_identity(key,base,formats,&typed,&vertex))return false;
         record.keys.push_back(std::move(key));
     }
     if(!get(count) || !count || count>XbgPipelineKey::Capacity || size_t(count)*4>bytes.size()-at)return false;
@@ -5042,7 +5117,7 @@ bool ui_cover_all(double hf){
         x0=std::min(x0,nx);x1=std::max(x1,nx);y0=std::min(y0,ny);y1=std::max(y1,ny);}
     return x0<0.002f && x1>0.998f && y0<0.002f && std::fabs(y1-float(hf))<0.002f;
 }
-void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instances=1,uint32_t first_instance=0,const GpuIndexedArgs *gpu_args=nullptr){preflight_cpu_reads();IntegerBufferSelection shader_selection(false);TypedStorageSelection typed_selection(false);CPU_SCOPE(Draw);DrawRoot draw_timing_root(&cpu_scope);provenance_draw();
+void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instances=1,uint32_t first_instance=0,const GpuIndexedArgs *gpu_args=nullptr){preflight_cpu_reads();IntegerBufferSelection shader_selection(false);TypedStorageSelection typed_selection(false);VertexInputSelection vertex_selection;CPU_SCOPE(Draw);DrawRoot draw_timing_root(&cpu_scope);provenance_draw();
     // #region agent log
     // Draws that share the 8b27 depth buffer but write a different (or no) colour target: depth prepass candidates.
     if(flame_diag_enabled && fdiag_prevds && state.shader[0] && state.rt.depth && uint64_t(uintptr_t(state.rt.depth->mem))==fdiag_prevds && !(state.rt.color[0] && uint64_t(uintptr_t(state.rt.color[0]->mem))==fdiag_prev8)){

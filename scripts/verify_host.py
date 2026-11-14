@@ -206,6 +206,9 @@ def main():
         identity_dir = out / 'shader-identity'
         run('shader-identity-contract', ['bash', 'scripts/android/verify_shader_identity.sh', identity_dir])
         extra_artifacts.append(identity_dir / 'test_shader_identity')
+        vertex_dir = out / 'vertex-input'
+        run('vertex-input-contract', ['bash', 'scripts/android/verify_vertex_input.sh', vertex_dir])
+        extra_artifacts.append(vertex_dir / 'test_spirv_vertex_input')
         narrow_dir = out / 'narrow-subgroup'
         run('narrow-subgroup-contract', ['bash', 'scripts/android/verify_spirv_narrow.sh', narrow_dir])
         extra_artifacts.append(narrow_dir / 'test_spirv_narrow')
