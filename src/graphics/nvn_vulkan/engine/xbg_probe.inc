@@ -21,6 +21,7 @@ struct ProbeState {
     std::vector<ProbeQuerySnapshot> queries;
 } probe;
 #include "xbg_full_capture.inc"
+#include "xbg_water_trace.inc"
 // Short, opt-in CPU-uniform trace. It does not submit commands, read GPU
 // buffers, or wait for a fence. Descriptor memo is bypassed while recording
 // so the captured values are the actual per-draw uniform snapshots.
@@ -502,6 +503,7 @@ void probe_volume_copy(Image &im,uint64_t source,size_t bytes,size_t row,size_t 
     xbg_logf("CODEX_VOLUME_COPY serial=%llu src=%p bytes=%zu row=%zu imageStride=%zu sourceNonzero=%zu alpha=%u/%u first=%02x%02x%02x%02x beforeSite=%u uploaded=%u gpu=%u",(unsigned long long)im.source.serial,(void*)source,bytes,row,stride,nonzero,amin,amax,bytes>0?p[0]:0,bytes>1?p[1]:0,bytes>2?p[2]:0,bytes>3?p[3]:0,im.provenance_write_site,unsigned(im.uploaded),unsigned(im.gpu_written));
 }
 void probe_init(){
+    water_trace=WaterTraceState{};
     std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');probe.base=cut==std::string::npos?dir:dir.substr(0,cut);
     FILE *file=fopen((probe.base+"/gfx-codex-probe").c_str(),"rb");probe.waiting=file!=nullptr;if(file)fclose(file);
     xbg_logf("CODEX_PROBE enabled=%d marker=gfx-codex-probe (0 waits; 1 captures next complete frame)",int(probe.waiting));

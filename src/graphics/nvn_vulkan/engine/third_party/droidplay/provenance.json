@@ -1,0 +1,20 @@
+{
+  "repository": "https://github.com/enjoyerofslop/droidplay-core",
+  "revision": "51a20c51efb9125c0e344ba21aa4d4dafcaffa31",
+  "license": "MIT",
+  "files": [
+    {
+      "source": "https://raw.githubusercontent.com/enjoyerofslop/droidplay-core/51a20c51efb9125c0e344ba21aa4d4dafcaffa31/dm/android/spv_narrow.h",
+      "size": 13103,
+      "sha256": "4c6887841c55fd0b050cb2882b9750dd22096e2836ac0794b75d4cb751491c55",
+      "file": "spv_narrow.h"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/enjoyerofslop/droidplay-core/51a20c51efb9125c0e344ba21aa4d4dafcaffa31/LICENSE",
+      "size": 1063,
+      "sha256": "a65554a74de59bf4d2210f3d4381c67d6fc6fa78f237f83c85543773319efa7b",
+      "file": "LICENSE"
+    }
+  ],
+  "changes": "Unmodified upstream source. Runtime integration is in xbg_spirv_narrow.h."
+}

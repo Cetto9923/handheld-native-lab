@@ -43,6 +43,7 @@ static_assert(VK_FORMAT_R32_UINT==XBG_VK_FORMAT_R32_UINT && VK_FORMAT_R32_SINT==
 #include "xbg_rg16_proxy_spv.h"
 #include "xbg_spirv_quad.h"
 #include "xbg_spirv_warp.h"
+#include "xbg_spirv_narrow.h"
 #include "xbg_spirv_ldc.h"
 #include "xbg_spirv_temps.h"
 #include "xbg_spirv_raster.h"
@@ -2715,6 +2716,19 @@ void warp_rewrite(std::vector<uint32_t> &words,uint32_t stage,const char *key,co
         xbg_logf("NVN warp32 shader=%s loader=%s subgroupSize=%u rewrites=%zu",key,loader,subgroup.subgroupSize,k);
     }
 }
+// Maxwell reduction helpers assume 32 lanes. A narrower device uses one
+// subgroup per warp and omits reduction steps with no partner in that subgroup.
+// Keep this correction before temporary forwarding, which changes the helpers.
+bool narrow_subgroups=true;
+void narrow_rewrite(std::vector<uint32_t> &words,uint32_t stage,const char *key,const char *loader){
+    if(!narrow_subgroups || stage!=5 || subgroup.subgroupSize>=32)return;
+    const int flags=xbg_spirv_narrow(words,subgroup.subgroupSize,subgroup.supportedStages);
+    if(flags){
+        validate_capabilities(words,stage);
+        xbg_logf("NVN narrow subgroup shader=%s loader=%s subgroupSize=%u flags=%d",key,loader,subgroup.subgroupSize,flags);
+    }else if(spv_narrow_wanted(words.data(),words.size()))
+        xbg_logf("NVN narrow subgroup shader=%s loader=%s subgroupSize=%u unsupportedShape=1 unchanged=1",key,loader,subgroup.subgroupSize);
+}
 // Two exact clean-ups of the translator's output, after the rewrites above (they match its form), in both module loaders. Each
 // is off unless the host asks; the Android app sets both to 1, and a marker file (1 / 0) still wins.
 // - Constant-buffer component fold (xbg_spirv_ldc.cpp; DM_GFX_LDC_FOLD, marker gfx-ldc-fold): an LDC with a computed address
@@ -2896,6 +2910,7 @@ void optimize_shader_words(std::vector<uint32_t> &words,uint32_t stage,const std
 #endif
     quad_rewrite(words,stage,key.c_str(),loader);
     warp_rewrite(words,stage,key.c_str(),loader);
+    narrow_rewrite(words,stage,key.c_str(),loader);
     compaction_sum_rewrite(words,stage,key.c_str(),loader);
     tidy_rewrite(words);
 }
@@ -3930,7 +3945,20 @@ void prepare_rg16_proxy(Image &im,VkCommandBuffer cmd){
     static unsigned notes=0;if(notes++<12)xbg_logf("NVN RG16 proxy refreshed serial=%llu canonical_vk=%u sampled_vk=%u version=%llu mips=%u layers=%u extent=%ux%ux%u",(unsigned long long)im.source.serial,unsigned(im.fmt),unsigned(proxy.fmt),(unsigned long long)im.content_version,im.levels,im.layers,im.width,im.height,im.depth);
 }
 
+// Keep only the water diagnostic's selected final bindings. Memo entries need
+// these even before a trace is armed, since Vulkan cannot query a written set.
+struct WaterBufferBinding {
+    Buffer source;uint64_t offset,bytes;unsigned stage,binding;VkFormat format;bool dynamic;
+};
+struct WaterImageBinding {Image *image;VkImageView view;unsigned stage,binding;};
+struct WaterBindings {
+    std::vector<WaterBufferBinding> buffers;std::vector<WaterImageBinding> images;bool memo=false;
+    void clear(){buffers.clear();images.clear();memo=false;}
+};
+void water_binding_buffer(WaterBindings &,const std::string &,unsigned,unsigned,unsigned,const Buffer &,uint64_t,uint64_t,VkFormat,bool=false);
+void water_binding_image(WaterBindings &,const std::string &,unsigned,unsigned,unsigned,Image &,VkImageView);
 struct Descriptors {
+    WaterBindings water;
     std::shared_ptr<IndirectTemplateInput> indirect_input;
     const LayoutEntry *entry=nullptr;VkDescriptorSet set{};VkPipelineLayout pipeline_layout{};std::vector<uint32_t> dynamic_offsets;
     std::vector<Buffer> buffers;std::vector<VkBufferView> buffer_views; // buffers: reserved up front, pointers stay valid
@@ -3997,7 +4025,7 @@ Descriptors &acquire_descriptors(){
 }
 void release_descriptors(Slot &s){
     for(Descriptors *d:s.desc_used){for(auto x:d->buffer_views)vkDestroyBufferView(cfg.device,x,nullptr);
-        d->entry=nullptr;d->set=VK_NULL_HANDLE;d->pipeline_layout=VK_NULL_HANDLE;d->dynamic_offsets.clear();d->buffers.clear();d->buffer_views.clear();d->storage.clear();d->written.clear();d->capture_inputs.clear();d->indirect_input.reset();
+        d->entry=nullptr;d->set=VK_NULL_HANDLE;d->pipeline_layout=VK_NULL_HANDLE;d->dynamic_offsets.clear();d->buffers.clear();d->buffer_views.clear();d->storage.clear();d->written.clear();d->capture_inputs.clear();d->indirect_input.reset();d->water.clear();
         desc_free.push_back(d);}
     s.desc_used.clear();
 }
@@ -4091,7 +4119,7 @@ void upgrade_mutable(Image &im){
     xbg_logf("NVN mutable upgrade serial=%llu fmt=%d %ux%ux%u levels=%u layers=%u copied=%d total=%llu",(unsigned long long)im.source.serial,int(im.fmt),im.width,im.height,im.depth,im.levels,im.layers,int(copied),(unsigned long long)mutable_upgrades);
 }
 struct DescMemo{const LayoutEntry *entry;VkDescriptorSet set;VkPipelineLayout pipeline_layout;std::vector<uint32_t> dynamic_offsets;std::vector<MemoImage> images;struct Dyn{uint64_t order;VkBuffer buffer;uint32_t offset;bool uniform;uint8_t src=0,ns=0,bank=0;};std::vector<Dyn> dyn;bool persistent=false;std::vector<std::pair<uint64_t,const void*>> tex_ids;struct Stor{uint64_t base,bytes;VkBuffer buffer;VkDeviceSize offset;};std::vector<Stor> stor;
-    struct Texel{const RegisteredTexture *record;uint64_t revision,base,bytes,gen;uint32_t format;};std::vector<Texel> texel;uint64_t checked_gen=0;size_t reserve=0;};   // checked_gen: memo_check_gen at its last passed image checks   // texel: resident uniform texel buffers (texel_acquire)
+    struct Texel{const RegisteredTexture *record;uint64_t revision,base,bytes,gen;uint32_t format;};std::vector<Texel> texel;uint64_t checked_gen=0;size_t reserve=0;WaterBindings water;};   // checked_gen: memo_check_gen at its last passed image checks   // texel: resident uniform texel buffers (texel_acquire)
 struct DynUbo{uint64_t order,address;size_t copy;};
 // Cross-frame memo (Claude C147): the memo lives per frame slot and survives submits. An entry is persistent when its set
 // holds no per-frame snapshot except dynamic uniform buffers (re-snapshotted on every hit, only the offset moves) and the
@@ -4218,6 +4246,7 @@ void ubtrace_binding(const std::string &shader,unsigned stage,unsigned binding,u
     if(++ubtrace.rows%20000==0)fflush(ubtrace.file);
 }
 void descriptors(Descriptors &out,Commands &commands,bool compute){
+    out.water.clear();
     out.indirect_input.reset();
     if(indirect_proof_enabled && compute && state.shader[5]){
         const auto &facts=state.shader[5]->indirect_instance_fields;
@@ -4319,6 +4348,19 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
                 // 命中也走既有按 submit 节流的 CPU 内容复核，不强制重传。
                 // Hits retain get_image's bounded per-submit CPU checks, without forcing uploads.
                 for(auto &ti:m.images){Image &im=get_image(ti.first,true);prepare_read(im,commands.command,true,attachment_barrier_enabled && ti.record?im.sampled_aspects(ti.record->has_view?&ti.record->view:nullptr):0);}
+                out.water=m.water;out.water.memo=true;
+                for(auto &binding:out.water.buffers)if(binding.dynamic){
+                    const uint64_t order=uint64_t(binding.binding)<<32;
+                    for(const auto &uniform:fresh)if(uniform.first==order){binding.source=uniform.second;binding.offset=uniform.second.offset;break;}
+                    // Dynamic support/driver blocks are kept above, separately
+                    // from fresh guest UBOs. Match the actual selected offset.
+                    for(size_t i=0;i<m.dyn.size();i++)if(m.dyn[i].order==order && !m.dyn[i].uniform){
+                        for(const auto &buffer:out.buffers)if(buffer.buffer==m.dyn[i].buffer && buffer.offset==offsets[i]){
+                            binding.source=buffer;binding.offset=buffer.offset;break;
+                        }
+                        break;
+                    }
+                }
                 out.entry=m.entry;out.set=m.set;out.pipeline_layout=m.pipeline_layout;out.dynamic_offsets=offsets;++desc_memo_hits;if(m.persistent)++xmemo_hits;desc_ns[5]+=perf_clock()-tm0;return;}
                 ++desc_memo_why[3];
                 if(m.persistent){auto pin=memo_pinned[slot_index].find(m.set);if(pin!=memo_pinned[slot_index].end() && --pin->second.refs==0){slots[slot_index].used_sets[pin->second.layout].push_back(m.set);memo_pinned[slot_index].erase(pin);}}
@@ -4332,7 +4374,7 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
     if(ok && !(out.written.empty() && out.buffer_views.empty() && out.set && out.dynamic_offsets.size()==desc_memo_dyn.size()))++desc_memo_why[4];
     if(ok && out.written.empty() && out.buffer_views.empty() && out.set && out.dynamic_offsets.size()==desc_memo_dyn.size()){++desc_memo_misses;
         std::sort(desc_memo_dyn.begin(),desc_memo_dyn.end(),[](const DescMemo::Dyn &a,const DescMemo::Dyn &b){return a.order<b.order;});
-        DescMemo dm{out.entry,out.set,out.pipeline_layout,out.dynamic_offsets,desc_memo_images,desc_memo_dyn};dm.texel=desc_memo_texel;
+        DescMemo dm{out.entry,out.set,out.pipeline_layout,out.dynamic_offsets,desc_memo_images,desc_memo_dyn};dm.texel=desc_memo_texel;dm.water=out.water;
         {size_t elements=0;for(unsigned st=0;st<5;st++)if(state.shader[st])for(auto &b:state.shader[st]->bindings)elements+=b.count;dm.reserve=elements*2+40;}
         dm.persistent=xmemo_enabled && memo_dyn_ok && out.written.empty();
         for(auto &st:out.storage)dm.stor.push_back({st.first.first,st.first.second,st.second->buffer,st.second->offset});
@@ -4413,6 +4455,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                 need(n && n<=size_t(is_storage?properties.limits.maxStorageBufferRange:properties.limits.maxUniformBufferRange),"Descriptor range exceeds device limit");
                 if(write.descriptorType==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC){buffer_infos.push_back({buffer->buffer,0,n});if(desc_memo_recording)desc_memo_dyn.push_back({(uint64_t(b.binding)<<32)|element,buffer->buffer,uint32_t(buffer->offset+buffer_offset),b.source==XBG_SOURCE_UNIFORM,uint8_t(b.source),uint8_t(ns),uint8_t(b.source==XBG_SOURCE_DRIVER0?0:1)});dynamic_list.push_back({(uint64_t(b.binding)<<32)|element,uint32_t(buffer->offset+buffer_offset)});}
                 else buffer_infos.push_back({buffer->buffer,buffer->offset+buffer_offset,n});write.pBufferInfo=&buffer_infos.back();
+                water_binding_buffer(out.water,shader.key,st,b.binding,element,*buffer,buffer->offset+buffer_offset,n,VK_FORMAT_UNDEFINED,write.descriptorType==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
                 if(capture.active){char label[100];snprintf(label,sizeof(label),"st%u-bind%u-el%u-buffer",st,b.binding,element);capture_log("BUFFER label=%s shader=%s nvnStage=%u sourceKind=%u slot=%u guest=%p copied=%zu descriptorBytes=%zu bufferOffset=%zu",label,shader.key.c_str(),ns,b.source,slot,data,copy,n,buffer_offset);capture_data(label,static_cast<const uint8_t*>(buffer->mapped)+buffer_offset,n);}
                 if(out.indirect_input && !out.indirect_input->instances_only && b.binding==41 && b.source==XBG_SOURCE_UNIFORM && element==0 && copy>=16 && indirect_cpu_clean(uint64_t(data),16)){memcpy(out.indirect_input->params,static_cast<const uint8_t*>(buffer->mapped)+buffer_offset,16);out.indirect_input->params_valid=true;}
                 ubtrace_binding(shader.key,st,b.binding,element,b.source,data,copy,buffer_offset);
@@ -4444,6 +4487,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                             live!=images.end() && live->second.get()==it->second.im){Image *im=&get_image(it->second.tex,true);
                             prepare_read(*im,commands.command,true,attachment_barrier_enabled?im->sampled_aspects(it->second.record->has_view?&it->second.record->view:nullptr):0);if(desc_memo_recording)desc_memo_images.push_back({it->second.tex,im,it->second.record,it->second.revision});
                             VkDescriptorImageInfo ii{};ii.imageView=it->second.view;ii.sampler=b.type==VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER?it->second.sampler:VK_NULL_HANDLE;ii.imageLayout=VK_IMAGE_LAYOUT_GENERAL;
+                            water_binding_image(out.water,shader.key,st,b.binding,element,*im,ii.imageView);
                             image_infos.push_back(ii);write.pImageInfo=&image_infos.back();img_fast=true;++img_cache_hits;}
                         else if(it!=img_cache.end())img_cache.erase(it);
                     }
@@ -4487,6 +4531,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                         if(!pending_view(uint64_t(texture.mem),texture.L.size,1,pv))res=texel_acquire(uint64_t(texture.mem),texture.L.size,tf);
                         if(res){if(desc_memo_recording)desc_memo_texel.push_back({record,record->revision,uint64_t(texture.mem),uint64_t(texture.L.size),res->gen,uint32_t(tf)});
                             texel_views.push_back(res->view);write.pTexelBufferView=&texel_views.back();
+                            water_binding_buffer(out.water,shader.key,st,b.binding,element,res->buffer,res->buffer.offset,texture.L.size,tf);
                             if(probe_is_active())probe_texel_buffer(shader.key,st,b.binding,element,res->buffer,tf,uint64_t(texture.mem),texture.L.size,true);
                             probe_full_buffer(shader.key,st,b.binding,element,res->buffer,res->buffer.offset,texture.L.size,tf,false);
                             if(fire_trace_active()){if(shader.key=="8b27994fdc0e32c9" && st==0 && b.binding==12 && !element)xbg_logf("FIRE_SOURCE frame=%llu resident=1 guesthash=%llx srchash=%llx",(unsigned long long)stats.presents.load(),(unsigned long long)hash_memory(texture.mem,4096),(unsigned long long)hash_memory(res->buffer.mapped,4096));fire_trace_texel(shader.key,st,b.binding,element,res->buffer,texture.L.size,uint64_t(texture.mem));}}
@@ -4638,6 +4683,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                     // #region agent log
                     // Is the buffer the GPU reads the same bytes the guest holds right now? (read-only texel buffers)
                     probe_full_buffer(shader.key,st,b.binding,element,*buf,buf_offset,bytes,tf,b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER);
+                    water_binding_buffer(out.water,shader.key,st,b.binding,element,*buf,buf_offset,bytes,tf);
                     if(flame_diag_enabled && b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER && buf->mapped && base && bytes && bytes<=65536){unsigned ci=compute?1:0;const uint8_t *gp=static_cast<const uint8_t*>(buf->mapped)+(buf_offset-buf->offset),*hp=reinterpret_cast<const uint8_t*>(uintptr_t(base));
                         ++fdiag_mm[ci][0];if(gp==hp)++fdiag_mm[ci][1];else if(memcmp(gp,hp,size_t(bytes))!=0){if(!fdiag_mm[ci][2])fdiag_mm[ci][3]=b.binding;++fdiag_mm[ci][2];}}
                     // #endregion
@@ -4684,6 +4730,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                         im.gpu_written=true,provenance_write(im,__LINE__);im.last_write=++write_seq;}
                     probe_bind(im,registered.has_view?&registered.view:nullptr,b.type==VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,st,b.binding,ii.imageView,shader.key);
                     probe_full_image(im,ii.imageView,st,b.binding,element,b.type==VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,shader.key);
+                    water_binding_image(out.water,shader.key,st,b.binding,element,im,ii.imageView);
                     if(probe_full_target())capture_log("FULL_SAMPLER_BIND event=%u stage=%u binding=%u element=%u sampler=%p imageView=%p layout=%u",capture.events,st,b.binding,element,(void*)ii.sampler,(void*)ii.imageView,unsigned(ii.imageLayout));
                     image_infos.push_back(ii);write.pImageInfo=&image_infos.back();
                     if(img_cacheable){img_cache.emplace(ikey,ImgEntry{&texture,&im,ii.imageView,ii.sampler,record,record->revision});++img_cache_misses;}
@@ -5194,6 +5241,7 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
         if(gpu_args)full_capture.buffers.push_back({gpu_args->owned->view,gpu_args->offset,20,gpu_args->owned->chunk.size,"indirect",false});
         full_before_draw(c.command,p);
     }
+    const unsigned water_draw=water_trace_draw_begin(c.command,d.water,count,indexed?unsigned(indexed->instances):instances,draw_base_instance,gpu_args!=nullptr);
     VkQueryPool occlusion{};uint32_t occlusion_index=0;const bool counting=state.count_samples && !no_occlusion_queries && !ab_off("occ");
     const bool spell_probe=probe_is_active() && probe.compact && state.shader[4] &&
         (state.shader[4]->key=="c0adc062e4b8e8fa" || state.shader[4]->key=="b7dd0f48aea00196");
@@ -5246,6 +5294,7 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
             std::find(draw_depth_reads.begin(),draw_depth_reads.end(),open_pass.images[open_pass.images.size()-1])!=draw_depth_reads.end())open_pass.depth_sample_visible=true;
     }
     if(!occlusion_batch_enabled)end_occlusion_query();c.finish();++perf.draws;++pass_prof_draws;if(!gpu_args)pass_prof_verts+=uint64_t(uint32_t(count))*instances;
+    water_trace_draw_end(c.command,water_draw,viewport,sc);
     if(d.needs_writeback() || capture.active){unsigned saved=cur_op;cur_op=62;end_open_pass();full_barrier(c.command);cur_op=saved;VkMemoryBarrier barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};barrier.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT;barrier.dstAccessMask=VK_ACCESS_HOST_READ_BIT;vkCmdPipelineBarrier(c.command,VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,1,&barrier,0,nullptr,0,nullptr);}
     {DRAW_SCOPE(Writeback);if(capture.active){if(d.needs_writeback())gpu_sync(perf.sync_writeback);d.writeback();}else d.defer_writeback();}stats.draws.fetch_add(1,std::memory_order_relaxed);   // diagnostics only: a seq_cst add (LDADDAL) waits for every earlier store, ~2.7% of the render thread
     probe_draw_end(p);
@@ -5559,8 +5608,10 @@ void dispatch(p_dispatch p,uint64_t indirect_address=0){overlay_shadow={};struct
     if(!gpu_indirect){need(p.x>=0 && p.y>=0 && p.z>=0,"Negative compute dispatch");if(!p.x||!p.y||!p.z)return;need(uint32_t(p.x)<=properties.limits.maxComputeWorkGroupCount[0] && uint32_t(p.y)<=properties.limits.maxComputeWorkGroupCount[1] && uint32_t(p.z)<=properties.limits.maxComputeWorkGroupCount[2],"Compute dispatch exceeds device limit");}probe_dispatch_begin();
     uint64_t indirect_serial=slot_serial;Commands c;fire_trace_compute_begin();Descriptors &d=acquire_descriptors();descriptors(d,c,true);need(!gpu_indirect || (slot_serial==indirect_serial && slots[slot_index].cmd==c.command),"Indirect dispatch source slot retired during descriptor preparation");for(auto *im:storage_rg16_images)need(std::find(sampled_rg16_images.begin(),sampled_rg16_images.end(),im)==sampled_rg16_images.end(),"RG16 same-dispatch sampled/storage feedback requires explicit supported subresource semantics");VkComputePipelineCreateInfo ci{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};ci.stage={VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};ci.stage.stage=VK_SHADER_STAGE_COMPUTE_BIT;ci.stage.module=state.shader[5]->module;ci.stage.pName="main";ci.layout=d.pipeline_layout;PipelineLease pipeline;{CPU_SCOPE(Pipeline);XbgPipelineKey key;bool cacheable=xbg_compute_pipeline_key(key,ci,d.entry->definition.view());pipeline_lookup(pipeline,key,cacheable,nullptr,&ci);}if(!pipeline.pipeline){c.finish();return;}vkCmdBindPipeline(c.command,VK_PIPELINE_BIND_POINT_COMPUTE,pipeline.pipeline);vkCmdBindDescriptorSets(c.command,VK_PIPELINE_BIND_POINT_COMPUTE,d.pipeline_layout,0,1,&d.set,uint32_t(d.dynamic_offsets.size()),d.dynamic_offsets.data());int prof_dispatch=pass_prof_compute_begin(c.command,p);
     auto indirect_proof=indirect_template_batch(d,p,gpu_indirect);probe_indirect_template(p);
+    const unsigned water_dispatch=water_trace_dispatch_begin(c.command,d.water);
     if(gpu_indirect){vkCmdDispatchIndirect(c.command,indirect.buffer,indirect.offset);static unsigned notes=0;if(notes++<8)xbg_logf("NVN GPU indirect dispatch shader=%s address=%#llx sourceSlotSerial=%llu",state.shader[5]->key.c_str(),(unsigned long long)indirect_address,(unsigned long long)indirect_serial);}
     else vkCmdDispatch(c.command,p.x,p.y,p.z);
+    water_trace_dispatch_end(c.command,d.water,water_dispatch);
     fire_trace_sort_end(c.command);fire_trace_hist_end(c.command);fire_trace_compute_end(c.command);
     pass_prof_complete(c.command,prof_dispatch);bright::after_dispatch(c);if(d.needs_writeback()||capture.active){VkMemoryBarrier b{VK_STRUCTURE_TYPE_MEMORY_BARRIER};b.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT;b.dstAccessMask=VK_ACCESS_HOST_READ_BIT;vkCmdPipelineBarrier(c.command,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,1,&b,0,nullptr,0,nullptr);}c.finish();++perf.dispatches;
     d.defer_writeback(indirect_proof);
@@ -6899,6 +6950,11 @@ vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemor
      if(q){warp32=fgetc(q)!='0';fclose(q);}else if(const char *e=getenv("DM_GFX_WARP32"))warp32=atoi(e)!=0;
      else if(subgroup.subgroupSize>32)warp32=true;
      xbg_logf("NVN 32-lane warps in wider subgroups=%d subgroup=%u (marker gfx-warp32)",int(warp32),subgroup.subgroupSize);}
+    {std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');
+     FILE *marker=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-subgroup-narrow").c_str(),"rb");
+     narrow_subgroups=true;
+     if(marker){narrow_subgroups=fgetc(marker)!='0';fclose(marker);}
+     xbg_logf("NVN narrow subgroup correction=%d subgroup=%u computeOnly=1 (marker gfx-subgroup-narrow)",int(narrow_subgroups),subgroup.subgroupSize);}
     {std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');std::string base=cut==std::string::npos?dir:dir.substr(0,cut);
      auto dm=[&](const char *marker,const char *env){FILE *q=fopen((base+marker).c_str(),"rb");bool on=false;if(q){on=fgetc(q)!='0';fclose(q);}else if(const char *e=getenv(env))on=atoi(e)!=0;return on;};
      ldc_fold=dm("/gfx-ldc-fold","DM_GFX_LDC_FOLD");forward_temps=dm("/gfx-forward-temps","DM_GFX_FORWARD_TEMPS");nan_minmax=dm("/gfx-nan-minmax","DM_GFX_NAN_MINMAX");
@@ -7110,6 +7166,7 @@ extern "C" void xbg_copy_commands(cmd_t *command,int count,const uint64_t *handl
 }
 extern "C" void xbg_invoke_command_callback(cmd_t *c,size_t n){if(xbg_host_command_callback && xbg_host_command_callback(c,n))return;uint64_t args[]={uint64_t(c),NVN_COMMAND_BUFFER_MEMORY_EVENT_OUT_OF_COMMAND_MEMORY,n,uint64_t(c->cb_data)};if(cfg.invoke_guest)cfg.invoke_guest(cfg.userdata,reinterpret_cast<void*>(c->cb),args,4);else c->cb(reinterpret_cast<NVNcommandBuffer*>(c),NVN_COMMAND_BUFFER_MEMORY_EVENT_OUT_OF_COMMAND_MEMORY,n,c->cb_data);}
 static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::recursive_mutex> lock(mutex);
+    water_trace_tick();
     fire_trace_tick();
     // Diagnostic: marker files/gfx-live-off holds space separated tokens; polled every 30 presents. Only ever switches things OFF
     // (never back on) so cached state stays consistent. tokens: bindcache imgcache descmemo dynpartial xmemo texelmemo wtrack
@@ -7468,7 +7525,7 @@ void flame_diag_roi_read(){
 
 static void xbg_present_texture_now(const win_t *window,const tex_t *texture){std::lock_guard<std::recursive_mutex> lock(mutex);preflight_cpu_reads();{SiteScope site(SITE_PRESENT);cur_op=61;TimingRoot timing_root;CPU_SCOPE(Other);need(initialized&&cfg.present,"Game presentation callback not installed");uint64_t present_begin=timing_clock();Image &im=get_image(texture,false);need(im.gpu_written,"Game tried to present a texture never rendered");probe_present(im);
     // Stop the uniform fingerprint trace once it has covered the requested number of frames.
-    if(ubtrace.on.load(std::memory_order_relaxed)){if(ubtrace.frames>=ubtrace.limit){ubtrace.on.store(false,std::memory_order_relaxed);if(ubtrace.file){fflush(ubtrace.file);fclose(ubtrace.file);ubtrace.file=nullptr;}xbg_logf("LIVE-UBTRACE off after %llu frames",(unsigned long long)ubtrace.frames);}else ++ubtrace.frames;}Commands c;im.transition(c.command,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);fire_trace_present(im,c.command);c.finish();if(flame_diag_enabled)flame_diag_roi_record(im);submit_slots(false);if(flame_diag_enabled){gpu_sync(perf.sync_readback);flame_diag_roi_read();}uint64_t pace_ns=xbg_frame_pace();int r;{CPU_SCOPE(Present);r=cfg.present(cfg.userdata,window->native,im.image,im.fmt,im.width,im.height,window->crop,window->interval);}if(r){static unsigned err_n=0;if(err_n++<10)xbg_logf("Game presentation dropped/warning: %d",r);}++stats.presents;if(flame_diag_enabled){fdiag_present=texture->serial;fdiag_present_mem=uint64_t(uintptr_t(texture->mem));
+    if(ubtrace.on.load(std::memory_order_relaxed)){if(ubtrace.frames>=ubtrace.limit){ubtrace.on.store(false,std::memory_order_relaxed);if(ubtrace.file){fflush(ubtrace.file);fclose(ubtrace.file);ubtrace.file=nullptr;}xbg_logf("LIVE-UBTRACE off after %llu frames",(unsigned long long)ubtrace.frames);}else ++ubtrace.frames;}Commands c;im.transition(c.command,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);fire_trace_present(im,c.command);water_trace_present(im,c.command);c.finish();if(flame_diag_enabled)flame_diag_roi_record(im);submit_slots(false);if(flame_diag_enabled){gpu_sync(perf.sync_readback);flame_diag_roi_read();}uint64_t pace_ns=xbg_frame_pace();int r;{CPU_SCOPE(Present);r=cfg.present(cfg.userdata,window->native,im.image,im.fmt,im.width,im.height,window->crop,window->interval);}if(r){static unsigned err_n=0;if(err_n++<10)xbg_logf("Game presentation dropped/warning: %d",r);}++stats.presents;if(flame_diag_enabled){fdiag_present=texture->serial;fdiag_present_mem=uint64_t(uintptr_t(texture->mem));
         uint64_t other_draw=0,other_inst=0,other_bind=0,other_zero=0;for(int i=2;i<flame_diag_keys;i++){other_draw+=fdiag_draws[i];other_inst+=fdiag_inst[i];other_bind+=fdiag_binds[i];other_zero+=fdiag_zero[i];}
         xbg_logf("FLAME_FRAME fr=%llu be4e_draw=%llu be4e_inst=%llu be4e_bind=%llu be4e_zero=%llu f8b27_draw=%llu f8b27_inst=%llu f8b27_bind=%llu f8b27_zero=%llu f8b27_nz=%llu f8b27_sig=%#llx f8b27_mem=%#llx other_draw=%llu other_inst=%llu other_bind=%llu other_zero=%llu skip=%llu ds=%u/%u/%u blend=%u/%u/%u rt=%#llx dsrt=%#llx vp=%#llx sc=%#llx bi=%llu bv=%llu cnt=%llu prim=%d itype=%d present=%llu pmem=%#llx pf=%llu pmean=%llu roi=%u,%u,%u,%u im=%llu,%llu c5a=%#x c5b=%#x c5c=%#x c2a=%#x c0a=%#x ubo=%#llx c5mask=%#llx c5min=%llu c5max=%llu c5n=%llu rtpx=%llu rtw=%llu rth=%llu b18=%#x rthash=%#llx texhash=%#llx vb0=%#llx:%llu vb1=%#llx:%llu vb2=%#llx:%llu vb3=%#llx:%llu ibuf=%#llx ibytes=%llu",
             (unsigned long long)stats.presents.load(),(unsigned long long)fdiag_draws[0],(unsigned long long)fdiag_inst[0],(unsigned long long)fdiag_binds[0],(unsigned long long)fdiag_zero[0],
