@@ -6,10 +6,10 @@
 // profile does not. Both are pure functions of the device identity, so the
 // host states both sides.
 
-// The Mali of the RG477M, whatever it reports as its name.
+// The Mali / Immortalis GPU family (Arm Ltd).
 inline bool xbg_device_is_mali(uint32_t vendor_id, const char *device_name){
-    if(vendor_id==0x13b5u) return true;   // Arm Ltd: Mali
-    return device_name && std::strstr(device_name,"Mali")!=nullptr;
+    if(vendor_id==0x13b5u) return true;   // Arm Ltd: Mali / Immortalis
+    return device_name && (std::strstr(device_name,"Mali")!=nullptr || std::strstr(device_name,"Immortalis")!=nullptr);
 }
 
 // Where a whole image upload goes, when the submission has not used that image

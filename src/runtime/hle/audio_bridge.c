@@ -48,6 +48,7 @@ typedef struct {
 } audio_timing;
 _Static_assert(sizeof(audio_timing_row)==64 && offsetof(audio_timing,rows)==64,
                "audio timing file layout");
+#define AUDIO_QUEUE_CAPACITY 256
 typedef struct {
     void *key, *event;
     int channels, rate;
@@ -62,10 +63,10 @@ typedef struct {
     uint32_t warmup_frames;
     uint64_t warmup_deadline_ns;
     uint64_t endpoint_frames;
-    uint64_t endpoint_start_ns,arrival_ns[64];
+    uint64_t endpoint_start_ns,arrival_ns[AUDIO_QUEUE_CAPACITY];
     ffrs_audio_fifo fifo;
     ffrs_audio_sample_clock sample_clock;
-    audio_buffer *pending[64], *released[64], *active;
+    audio_buffer *pending[AUDIO_QUEUE_CAPACITY], *released[AUDIO_QUEUE_CAPACITY], *active;
     unsigned ph, pt, rh, rt;
     uint64_t frames_written;
     struct ffrs_audio_stats stats;
@@ -131,8 +132,11 @@ static void mirror_output(audio_output *out) {
     __atomic_store_n(words+3,atomic_load(&out->state)?0u:1u,__ATOMIC_RELEASE);
 }
 static void release_buffer(audio_output *out,audio_buffer *buffer) {
-    if (out->rt-out->rh>=64) {fputs("[audio] released queue overflow\n",stderr);abort();}
-    out->released[out->rt++%64]=buffer;
+    if (out->rt-out->rh>=AUDIO_QUEUE_CAPACITY) {
+        fputs("[audio] released queue full; advancing head\n",stderr);
+        out->rh++;
+    }
+    out->released[out->rt++%AUDIO_QUEUE_CAPACITY]=buffer;
     out->stats.released_buffers++;
 }
 static void scan_written(audio_output *out,const int16_t *pcm,uint64_t frames) {
@@ -205,7 +209,7 @@ static aaudio_result_t open_aaudio_stream(audio_output *out) {
     AAudioStreamBuilder_setChannelCount(builder, out->channels);
     AAudioStreamBuilder_setUsage(builder, AAUDIO_USAGE_GAME);
     AAudioStreamBuilder_setContentType(builder, AAUDIO_CONTENT_TYPE_MUSIC);
-    AAudioStreamBuilder_setPerformanceMode(builder, AAUDIO_PERFORMANCE_MODE_NONE);
+    AAudioStreamBuilder_setPerformanceMode(builder, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
 
     status = AAudioStreamBuilder_openStream(builder, &out->stream);
     AAudioStreamBuilder_delete(builder);
@@ -221,10 +225,10 @@ static aaudio_result_t open_aaudio_stream(audio_output *out) {
             desired = burst;
         } else {
             /* Speaker / wired headset (burst typically 192~960 frames):
-             * Double buffer to avoid underruns, capped between 1920 (~40ms) and 3840 (~80ms). */
-            desired = burst > 0 ? burst * 2 : 1920;
-            if (desired < 1920) desired = 1920;
-            if (desired > 3840) desired = 3840;
+             * Quadruple buffer to absorb video decoding CPU spikes, capped between 3840 (~80ms) and 7200 (~150ms). */
+            desired = burst > 0 ? burst * 4 : 4800;
+            if (desired < 3840) desired = 3840;
+            if (desired > 7200) desired = 7200;
         }
         if (cap > 0 && desired > cap) desired = cap;
         if (desired > 0) {
@@ -250,9 +254,9 @@ static void *audio_endpoint_worker(void *argument) {
             pthread_cond_wait(&out->condition,&out->mutex);
         }
         if(out->closing)break;
-        uint64_t available=out->arrival_ns[out->ph%64];
+        uint64_t available=out->arrival_ns[out->ph%AUDIO_QUEUE_CAPACITY];
         if(available<out->endpoint_start_ns)available=out->endpoint_start_ns;
-        audio_buffer *buffer=out->pending[out->ph++%64];
+        audio_buffer *buffer=out->pending[out->ph++%AUDIO_QUEUE_CAPACITY];
         out->active=buffer;out->busy=1;
         uint64_t position=0,frames=buffer->bytes/(2u*out->channels);
         audio_timing_record(out,2,audio_timing_begin(out),0,0,0);
@@ -287,7 +291,7 @@ static void *audio_endpoint_worker(void *argument) {
     pthread_mutex_unlock(&out->mutex);return NULL;
 }
 static void *audio_transport_worker(void *argument) {
-    audio_output *out=argument;int16_t scratch[1024*8];
+    audio_output *out=argument;int16_t scratch[2048*8];
     pthread_mutex_lock(&out->mutex);
     while(!out->closing){
         while(!out->closing){
@@ -325,7 +329,7 @@ static void *audio_transport_worker(void *argument) {
             struct timespec when={(time_t)(wake/1000000000ull),(long)(wake%1000000000ull)};
             pthread_cond_timedwait(&out->condition,&out->mutex,&when);continue;
         }
-        uint32_t ask=ffrs_audio_fifo_peek(&out->fifo,scratch,1024);
+        uint32_t ask=ffrs_audio_fifo_peek(&out->fifo,scratch,2048);
         out->transport_busy=1;uint64_t begin=audio_timing_begin(out);
         pthread_mutex_unlock(&out->mutex);
         aaudio_result_t wrote=AAudioStream_write(out->stream,scratch,(int32_t)ask,100000000ll);
@@ -373,7 +377,7 @@ static void *audio_worker(void *argument) {
             audio_timing_record(out,4,begin,0,0,0);
         }
         if(out->closing)break;
-        audio_buffer *buffer=out->pending[out->ph++%64];out->active=buffer;out->busy=1;
+        audio_buffer *buffer=out->pending[out->ph++%AUDIO_QUEUE_CAPACITY];out->active=buffer;out->busy=1;
         audio_timing_record(out,2,audio_timing_begin(out),0,0,0);
         pthread_mutex_unlock(&out->mutex);
         uint64_t position=0;
@@ -563,7 +567,7 @@ static void stop_output(void *key) {
 #endif
         while(out->busy || out->transport_busy)pthread_cond_wait(&out->condition,&out->mutex);
         out->fifo.read=out->fifo.write=0;out->sample_clock=(ffrs_audio_sample_clock){0};out->backend_started=0;out->warmup_deadline_ns=0;
-        int returned=0;while(out->ph!=out->pt){release_buffer(out,out->pending[out->ph++%64]);returned=1;}
+        int returned=0;while(out->ph!=out->pt){release_buffer(out,out->pending[out->ph++%AUDIO_QUEUE_CAPACITY]);returned=1;}
         pthread_mutex_unlock(&out->mutex);mirror_output(out);
         if(returned&&out->event)nso_host_os_signal_system_event(out->event);
         return;
@@ -573,7 +577,7 @@ static void stop_output(void *key) {
 #endif
     pthread_mutex_lock(&out->mutex);
     while(out->busy)pthread_cond_wait(&out->condition,&out->mutex);
-    int returned=0;while(out->ph!=out->pt){release_buffer(out,out->pending[out->ph++%64]);returned=1;}
+    int returned=0;while(out->ph!=out->pt){release_buffer(out,out->pending[out->ph++%AUDIO_QUEUE_CAPACITY]);returned=1;}
     pthread_mutex_unlock(&out->mutex);mirror_output(out);if(returned&&out->event)nso_host_os_signal_system_event(out->event);
 }
 static void close_output(void *key) {
@@ -606,14 +610,14 @@ static int append_buffer(void *key,audio_buffer *buffer) {
     pthread_mutex_lock(&out->mutex);
     int ok=buffer&&buffer->data&&buffer->bytes&&buffer->bytes<=buffer->capacity&&
         buffer->bytes%(2u*out->channels)==0&&!out->closing&&
-        out->pt-out->ph+out->rt-out->rh+out->busy<64&&out->active!=buffer;
-    for(unsigned i=out->ph;ok && i!=out->pt;i++)if(out->pending[i%64]==buffer)ok=0;
-    for(unsigned i=out->rh;ok && i!=out->rt;i++)if(out->released[i%64]==buffer)ok=0;
+        out->pt-out->ph+out->rt-out->rh+out->busy<AUDIO_QUEUE_CAPACITY&&out->active!=buffer;
+    for(unsigned i=out->ph;ok && i!=out->pt;i++)if(out->pending[i%AUDIO_QUEUE_CAPACITY]==buffer)ok=0;
+    for(unsigned i=out->rh;ok && i!=out->rt;i++)if(out->released[i%AUDIO_QUEUE_CAPACITY]==buffer)ok=0;
     if(ok){
         buffer->next=NULL;buffer->offset=0; // original AudioBufferList::push_back
         out->stats.appended_buffers++;out->stats.submitted_frames+=buffer->bytes/(2u*out->channels);
-        if(out->paced)out->arrival_ns[out->pt%64]=atomic_load(&out->state)?audio_now_ns():0;
-        out->pending[out->pt++%64]=buffer;pthread_cond_broadcast(&out->condition);
+        if(out->paced)out->arrival_ns[out->pt%AUDIO_QUEUE_CAPACITY]=atomic_load(&out->state)?audio_now_ns():0;
+        out->pending[out->pt++%AUDIO_QUEUE_CAPACITY]=buffer;pthread_cond_broadcast(&out->condition);
     }else{
         out->stats.rejected_buffers++;
         if(out->stats.rejected_buffers<=8)fprintf(stderr,"[audio] append rejected key=%p buffer=%p data=%p capacity=%llu bytes=%llu pending=%u released=%u active=%u\n",key,(void*)buffer,buffer?buffer->data:NULL,
@@ -625,7 +629,7 @@ static int append_buffer(void *key,audio_buffer *buffer) {
 static audio_buffer *released_buffer(void *key) {
     audio_output *out=find_output(key);if(!out)return NULL;
     pthread_mutex_lock(&out->mutex);
-    audio_buffer *buffer=out->rh!=out->rt?out->released[out->rh++%64]:NULL;
+    audio_buffer *buffer=out->rh!=out->rt?out->released[out->rh++%AUDIO_QUEUE_CAPACITY]:NULL;
     pthread_mutex_unlock(&out->mutex);return buffer;
 }
 int ffrs_audio_get_stats(const void *key,struct ffrs_audio_stats *stats,size_t bytes) {

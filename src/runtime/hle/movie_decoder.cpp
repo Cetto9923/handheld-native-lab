@@ -285,7 +285,7 @@ uint32_t get_output(Decoder *self,int index,Buffer *out) {
     if(size_t(o.info.offset)>n||size_t(o.info.size)>n-size_t(o.info.offset))return UNKNOWN;
     if(!o.info.size)return OK;
     if(!p||!out->base)return UNKNOWN;
-    AMediaFormat *f=AMediaCodec_getBufferFormat(d->codec,size_t(index));if(f){format_read(o.format,f);AMediaFormat_delete(f);}
+    if(i32(o.format,"stride")<=0){AMediaFormat *f=AMediaCodec_getBufferFormat(d->codec,size_t(index));if(f){format_read(o.format,f);AMediaFormat_delete(f);}}
     size_t written=0;uint32_t r=copy_nv12(o.format,p+o.info.offset,size_t(o.info.size),static_cast<uint8_t*>(out->base),out->capacity,written);
     if(r==OK)out->size=int32_t(written);else fprintf(stderr,"[movie] output copy failed status=%#x index=%d codecBytes=%zu infoBytes=%d capacity=%llu\n",r,index,n,o.info.size,(unsigned long long)out->capacity);return r;
 }

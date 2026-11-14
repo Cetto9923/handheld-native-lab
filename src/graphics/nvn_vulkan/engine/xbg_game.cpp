@@ -2776,7 +2776,7 @@ int stencil_rewrite(std::vector<uint32_t> &words,uint32_t stage,const char *key,
     if(result||stage==4)xbg_logf("NVN integer image types shader=%s stage=%u loader=%s rewrites=%d",key,stage,loader,result);return result;
 }
 void terrain_depth_rewrite(std::vector<uint32_t> &words,uint32_t stage,const char *key,const char *loader){
-    const bool is_mali = properties.vendorID == 0x13B5 || strstr(properties.deviceName, "Mali") != nullptr;
+    const bool is_mali = properties.vendorID == 0x13B5 || strstr(properties.deviceName, "Mali") != nullptr || strstr(properties.deviceName, "Immortalis") != nullptr;
     if(!is_mali || stage!=4 || std::strcmp(key,"062df44b75d37d76")!=0)return;
     const bool patched=xbg_terrain_drop_frag_depth(words);
     xbg_logf("NVN terrain drop frag depth shader=%s loader=%s patched=%d",key,loader,int(patched));
@@ -3725,7 +3725,7 @@ void start(){
     load_records(std::string(cfg.shader_directory)+"/vk-pipeline-list.seed");
     if(const char *seed_env=getenv("FFRS_WARM_LIST_SEED")){if(strcmp(seed_env,list_path().c_str())!=0)load_records(seed_env);}
     xbg_logf("NVN warm list=%zu enabled=%d",recs.size(),int(enabled));
-    if(!enabled || (recs.empty() && compute_prewarm_keys.empty()))return;stop=false;next=0;unsigned n=std::min<unsigned>(3,std::max(1u,std::thread::hardware_concurrency()/3));
+    if(!enabled || (recs.empty() && compute_prewarm_keys.empty()))return;stop=false;next=0;unsigned n=std::min<unsigned>(4,std::max(2u,std::thread::hardware_concurrency()/2));
     for(unsigned i=0;i<n;i++)threads.emplace_back(worker);
 }
 void shutdown(){{std::lock_guard<std::mutex> l(mu);stop=true;}async_cv.notify_all();for(auto &t:threads)if(t.joinable())t.join();threads.clear();if(async_thread.joinable())async_thread.join();std::lock_guard<std::mutex> l(mu);async_q.clear();async_pending.clear();async_failed.clear();
@@ -5085,7 +5085,7 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
     VkPipelineViewportStateCreateInfo vp{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};vp.viewportCount=vp.scissorCount=1;
     VkPipelineRasterizationStateCreateInfo rs{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};rs.polygonMode=state.poly.mode==2?VK_POLYGON_MODE_FILL:state.poly.mode==1?VK_POLYGON_MODE_LINE:VK_POLYGON_MODE_POINT;need(rs.polygonMode==VK_POLYGON_MODE_FILL || cfg.enabled_core.fillModeNonSolid,"Non-solid polygon mode disabled");rs.cullMode=state.poly.cull;rs.frontFace=state.poly.front?VK_FRONT_FACE_COUNTER_CLOCKWISE:VK_FRONT_FACE_CLOCKWISE;rs.lineWidth=1;rs.depthBiasEnable=state.poly.offset_en!=0;rs.depthBiasConstantFactor=state.bias[1]*(state.rt.depth && state.rt.depth->d.format==0x32 && depth16_as_d24?256.0f:1.0f);
     rs.depthBiasSlopeFactor=state.bias[0];rs.depthBiasClamp=state.bias[2];need(!rs.depthBiasClamp || cfg.enabled_core.depthBiasClamp,"Depth bias clamp disabled");   // constant bias units: 2^-16 for D16, 2^-24 for the X8_D24 stand-in; slope and clamp do not depend on the format
-    const bool is_mali_device = properties.vendorID == 0x13B5 || strstr(properties.deviceName, "Mali") != nullptr;
+    const bool is_mali_device = properties.vendorID == 0x13B5 || strstr(properties.deviceName, "Mali") != nullptr || strstr(properties.deviceName, "Immortalis") != nullptr;
     if(is_mali_device && state.shader[4] && state.shader[4]->key == "062df44b75d37d76"){
         Buffer &c2_buf = driver_block(nvn_stage[4], 1);
         if(c2_buf.mapped && ubtrace_hash(c2_buf.mapped, 4096) == 0x44754dd35d3a5bc9ull){
@@ -6603,7 +6603,20 @@ void execute(const uint8_t *pc,unsigned depth,uint64_t &budget){
             // The awaited value is not among the signals issued so far: fall back to the old full drain, which publishes
             // every pending value, so that a guest waiting for a value this engine cannot account for behaves as before.
             {uint32_t v0=__atomic_load_n(reinterpret_cast<uint32_t*>(a.address),__ATOMIC_ACQUIRE);if(!(a.mode==0?v0==a.value:int32_t(v0-a.value)>=0)){complete_all();++event_fallback;}}
-            auto deadline=std::chrono::steady_clock::now()+std::chrono::nanoseconds(cfg.fence_timeout_ns);for(;;){uint32_t value=__atomic_load_n(reinterpret_cast<uint32_t*>(a.address),__ATOMIC_ACQUIRE);if(a.mode==0?value==a.value:int32_t(value-a.value)>=0)break;need(std::chrono::steady_clock::now()<deadline,"NVN event wait timeout");std::this_thread::yield();}break;}
+            auto deadline=std::chrono::steady_clock::now()+std::chrono::nanoseconds(std::max<uint64_t>(cfg.fence_timeout_ns,10000000000ull));
+            for(;;){
+                uint32_t value=__atomic_load_n(reinterpret_cast<uint32_t*>(a.address),__ATOMIC_ACQUIRE);
+                if(a.mode==0?value==a.value:int32_t(value-a.value)>=0)break;
+                if(std::chrono::steady_clock::now()>=deadline){
+                    complete_all();
+                    uint32_t vpost=__atomic_load_n(reinterpret_cast<uint32_t*>(a.address),__ATOMIC_ACQUIRE);
+                    if(a.mode==0?vpost==a.value:int32_t(vpost-a.value)>=0)break;
+                    xbg_logf("NVN event wait timeout at %#llx (expected %u mode %d got %u), forced unblock",
+                             (unsigned long long)a.address, a.value, a.mode, vpost);
+                    break;
+                }
+                std::this_thread::yield();
+            }break;}
         case XBG_OP_EXTENSION_BASE+5:state.bounds=payload<xbg_depth_bounds>(p,n);break;
         case XBG_OP_EXTENSION_BASE+6:resolve_texture(payload<p_copy_t2t>(p,n));break;
         case OP_RESET_COUNTER:{uint64_t type=payload<uint64_t>(p,n);if(type==NVN_COUNTER_TYPE_SAMPLES_PASSED){state.samples_passed=0;end_occlusion_query();++counter_epoch;state.count_samples=true;++counter_ops[0];}else{xbg_logf("NVN reset counter type %#llx ignored",(unsigned long long)type);}break;}

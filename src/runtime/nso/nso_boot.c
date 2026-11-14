@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <unistd.h>
 
 #ifdef NSO_WITH_GUEST_PROFILE
 #include "../hle/guest_process.h"
@@ -93,7 +94,9 @@ static void *run_profile_entry(guest_process *p,void *opaque) {
             s_orig_ctors=malloc(arr_sz);
             if(s_orig_ctors) {
                 memcpy(s_orig_ctors, arr, arr_sz);
-                size_t tramp_bytes=((count * 24 + 4095) / 4096) * 4096;
+                long host_page_val=sysconf(_SC_PAGESIZE);
+                size_t host_page=host_page_val>0?(size_t)host_page_val:4096;
+                size_t tramp_bytes=((count * 24 + host_page - 1) / host_page) * host_page;
                 void *tramps=mmap(NULL, tramp_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
                 if(tramps!=MAP_FAILED) {
                     for(uint32_t i=0;i<count;i++) {

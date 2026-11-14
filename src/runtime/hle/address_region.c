@@ -5,6 +5,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
 
@@ -87,7 +88,7 @@ static struct nso_owned_page_result page_contract(uintptr_t address,size_t size)
     if(!size || size>UINTPTR_MAX-address)
         return page_result(NSO_OWNED_PAGE_UNSUPPORTED,NSO_OWNED_PAGE_DETAIL_RANGE,0,0);
     size_t page=host_page_size();
-    if(!page || address%4096 || size%4096 || address%page || size%page)
+    if(!page || address%4096 || size%4096)
         return page_result(NSO_OWNED_PAGE_UNSUPPORTED,NSO_OWNED_PAGE_DETAIL_ALIGNMENT,0,0);
     return page_result(NSO_OWNED_PAGE_OK,NSO_OWNED_PAGE_DETAIL_NONE,0,0);
 }
@@ -182,21 +183,27 @@ struct nso_owned_page_result nso_host_owned_pages_map(uintptr_t address,size_t s
         else {
             struct accessible_interval *node=allocate_node(2,sizeof(*node));
             if(!node)result=page_result(NSO_OWNED_PAGE_NO_MEMORY,NSO_OWNED_PAGE_DETAIL_NONE,ENOMEM,0);
-            else if(protect_owned((void *)address,size,PROT_READ|PROT_WRITE)) {
-                int failure=errno,restore=0,restore_failed=0;
-                /* An unsuccessful mprotect may already have changed a prefix.
-                 * This span was entirely PROT_NONE, so restore that whole span. */
-                if(protect_owned((void *)address,size,PROT_NONE)) {
-                    restore=errno;restore_failed=1;r->quarantined=1;
+            else {
+                size_t page=host_page_size();
+                uintptr_t host_start=address & ~(uintptr_t)(page-1);
+                uintptr_t host_end=(end+page-1) & ~(uintptr_t)(page-1);
+                size_t host_size=host_end-host_start;
+                if(protect_owned((void *)host_start,host_size,PROT_READ|PROT_WRITE)) {
+                    int failure=errno,restore=0,restore_failed=0;
+                    /* An unsuccessful mprotect may already have changed a prefix.
+                     * This span was entirely PROT_NONE, so restore that whole span. */
+                    if(protect_owned((void *)host_start,host_size,PROT_NONE)) {
+                        restore=errno;restore_failed=1;r->quarantined=1;
+                    }
+                    release_node(2,node);
+                    result=page_result(restore_failed?NSO_OWNED_PAGE_QUARANTINED:NSO_OWNED_PAGE_SYSTEM_ERROR,
+                                       NSO_OWNED_PAGE_DETAIL_NONE,failure,restore);
+                } else {
+                    *node=(struct accessible_interval){address,end,*slot};
+                    /* Owned containment plus disjointness bounds the sum by the
+                     * requested reservation size, so this addition cannot wrap. */
+                    *slot=node;r->mapped_guest_bytes+=size;
                 }
-                release_node(2,node);
-                result=page_result(restore_failed?NSO_OWNED_PAGE_QUARANTINED:NSO_OWNED_PAGE_SYSTEM_ERROR,
-                                   NSO_OWNED_PAGE_DETAIL_NONE,failure,restore);
-            } else {
-                *node=(struct accessible_interval){address,end,*slot};
-                /* Owned containment plus disjointness bounds the sum by the
-                 * requested reservation size, so this addition cannot wrap. */
-                *slot=node;r->mapped_guest_bytes+=size;
             }
         }
     }
@@ -231,7 +238,15 @@ struct nso_owned_page_result nso_host_owned_pages_free(uintptr_t address,size_t 
             if(split && !right)
                 result=page_result(NSO_OWNED_PAGE_NO_MEMORY,NSO_OWNED_PAGE_DETAIL_NONE,ENOMEM,0);
             else {
-                void *mapped=replace_owned_none((void *)address,size);
+                size_t page=host_page_size();
+                int is_host_aligned=!(address%page) && !(size%page);
+                void *mapped=NULL;
+                if(is_host_aligned) {
+                    mapped=replace_owned_none((void *)address,size);
+                } else {
+                    memset((void *)address,0,size);
+                    mapped=(void *)address;
+                }
                 if(mapped==MAP_FAILED || mapped!=(void *)address) {
                     int failure=mapped==MAP_FAILED?errno:EFAULT;
                     /* A failed destructive replacement cannot prove old data

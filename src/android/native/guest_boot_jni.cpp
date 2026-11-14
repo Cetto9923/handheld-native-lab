@@ -125,6 +125,7 @@ void* GuestThreadMain(void* opaque) {
     setenv("DM_GFX_PIPE_MEMO", "1", 1);
     setenv("DM_GFX_CLEAR_OVERWRITE", "1", 1);
     setenv("DM_GFX_READBACK_CACHED", "1", 1);
+    setenv("DM_GFX_ASYNC_PIPELINES", "1", 0);
     const char *profile_tablet = getenv("FFRS_PROFILE_TABLET");
     if (profile_tablet && profile_tablet[0] == '1') {
         setenv("DM_GFX_WARP32", "1", 1);
