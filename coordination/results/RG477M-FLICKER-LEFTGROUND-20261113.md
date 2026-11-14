@@ -891,3 +891,75 @@ RG477M 上 probe **每进程只能用一次**（标题屏那次已用掉）。�
 
 ⚠️ 已知证明力边界：`ubtrace` 哈希的是**客机源字节**（`:4400` 的 `data`），不证明引擎交付正确；
 「引擎交付错」只能由 `FLAME_UB` 的 `cmp` 证明。
+
+### 16. 主角黑条纹：根因锁定到 93ebe66 的 gl_FragDepth 剥离（待 A/B 最终确认）
+
+（2026-11-14 上午。§15 的三件套采集已完成，产物见 `/tmp/ffrs-flicker-csv/char-105053/`）
+
+#### 16.1 结论（高置信度，A/B 尚待跑）
+
+设备现役 APK 里**唯一在这台机器上真正生效的新行为**，是提交 `93ebe66` 对着色器
+`062df44b75d37d76` 的 **gl_FragDepth 剥离**。该提交按一个**被误判的着色器 key**
+（作者以为它是「地形着色器」），把主角那一笔的深度语义从「着色器自算深度」
+换成了「光栅器插值 z」，主角与地面的深度体系因此不一致，深度测试把主角
+**按水平条带剔除**，被剔除的像素保留未被绘制过的黑色 color0 —— 即玩家看到的黑条纹。
+
+#### 16.2 证据链（每条都可复查）
+
+| # | 证据 | 数据 |
+|---|---|---|
+| E1 | 现役 APK 就是 93ebe66 的构建 | so 内含 `NVN terrain drop frag depth … patched=%d`，**不含** `Immortalis`（那是 honor 树后来 `b6e487b` 才加的），**不含** `gfx-terrain-depth`；apk sha256 `9c886d9b…` |
+| E2 | 时间线吻合 | 安装 2026-11-14 **10:34:11**（`lastUpdateTime`），用户 **10:42** 报告黑条纹 |
+| E3 | 剥离在本机真的生效 | engine.log：`NVN terrain drop frag depth shader=062df44b75d37d76 loader=warm/runtime patched=1`（命中 2 次） |
+| E4 | 该 fs 画的是主角，不是地形 | 探针：`062df44b75d37d76` 是**全场唯一**画主角的 fs（group 109，6 draw）；color0 里主角一出现条带能量就 0 → **32.89** ⇒ 缺陷在 G-buffer 写入阶段就有，与合成无关 |
+| E5 | **剥离不是语义 no-op** | 离线反汇编 `.local/shrine-oom-20261111/run11/spv-dump/062df44b75d37d76.spv`（22512 words）：① `OpExecutionMode(101,12)=DepthReplacing` 存在；② **从 `gl_FragCoord`（var 74）的 `OpLoad` 次数 = 0** —— 着色器根本不读 `gl_FragCoord`；③ `gl_FragDepth`（var 85）存的是局部变量 1881，其值由 `OpExtInst(GLSL.std.450 set 2040, instr 37)` 计算得来，**不是 `gl_FragCoord.z`** ⇒ 剥离把「自算深度」换成了「插值 z」，深度值真的变了 |
+| E6 | 其它两条新路径在本机不生效 | `2779645`（R16ui typed storage）只动 compute shader `3b6302a58b86a34a` binding 47，且该 fs 的 Capability 列表**无 49`(StorageImageExtendedFormats)` ⇒ 没被它改；`7bfb923` 的 native_bc / quad_derivatives / warp32 三处改动在本机被标记覆盖（`gfx-native-bc=0`、`gfx-quad-derivatives=0`、`gfx-warp32=0`，11-11 就在），日志 `NVN native BC textures=0` 前后一致 |
+| E7 | 提交自带的补偿手段空转 | 同一提交对**同一个 key** 加的 `terrain overlay depth bias` **命中 0 次**（`driver_block` 哈希 `0x44754dd35d3a5bc9` 未匹配）⇒ 剥离生效、补偿没生效 |
+
+#### 16.3 同时排除掉的假设
+
+- **early-Z 打乱 quad 活跃掩码** → 该 fs **无** `OpKill`、**无** `OpDemoteToHelperInvocation`、
+  **无任何 subgroup 运算**（op 333–366 计数为 0）⇒ 这条路径不成立。
+- **剥离逻辑不完整**（残留 frag_depth 引用）→ 该模块只有 **1 次** `OpStore` 到 frag_depth，
+  剥离的 4 类指令（ExecMode/Decorate/Variable/Store）齐全 ⇒ 剥离本身是干净的。
+- **BC 贴图解码行距** → 见 §15.3（单位一致）；且设备 `gfx-native-bc=0`，两版 APK 都是 CPU 解码。
+
+#### 16.4 为什么这条改动会打错目标
+
+`93ebe66` 的注释与日志把 `062df44b75d37d76` 称作「terrain shader」，并在同一提交里
+对同一个 key 加「terrain overlay depth bias」。但探针证明：在 `water-capital-walk`
+场景里，这个 key 画的**只有主角那一组**。**硬编码 key + 对 key 语义的误判**，
+让一个为「第三章地面闪烁」写的深度语义改动，落到了角色身上。
+
+#### 16.5 A/B 方案（已就绪，未跑）
+
+新增运行时开关（不新增机型分支，仍按 vendorID/deviceName 判 Mali）：
+
+| 标记 | 含义 |
+|---|---|
+| `gfx-terrain-depth=1`（缺省） | 保持 93ebe66 行为（剥离），= 设备现役行为 |
+| `gfx-terrain-depth=0` | 不剥离，主角保留着色器自算深度 |
+
+- 分支：`task/T-rg477m-stripe-fragdepth-20261114`（基于 `93ebe66`，合入我方文档提交 `649f1d2`）
+- 提交：`98a314a feat(engine): add the gfx-terrain-depth A/B switch for the Mali gl_FragDepth strip`
+- APK：`.local/android-apk/ffrs-game-window-debug.apk`，sha256 `ab45261acc2a1530…`，versionName 1.0.10
+- 与设备现役 so 的差异：**只有那一个开关**（so 大 480 字节），签名证书 SHA-256 `d11967a3…` 一致 ⇒ 可直接覆盖安装
+- 判定口径：同一机位、同一姿态，截屏取主角框区域，比较条带能量（现役基线 0 → **32.89**）
+  与周期（≈12 屏幕 px）；条带能量回到基线才算 PASS
+
+#### 16.6 A/B 确认后的修复方向（备选，尚未实施）
+
+| 方案 | 内容 | 评价 |
+|---|---|---|
+| A | 对该着色器**不剥离**，保留自算深度 | 最小改动，直接消除主角条带；但第三章地面闪烁是否复发需另测 |
+| B | 把「按 key 剥离」改成「**按数据流判定**：只有当着色器确实把 `gl_FragCoord.z` 存进 `gl_FragDepth` 时才剥离」 | 本 fs 从不读 `gl_FragCoord` ⇒ 判定为「不剥离」。**不再硬编码 key**，符合「不硬编码」精神，是更稳的正解 |
+| C | 把 key 换成真正的地形着色器 key | 需要先定位第三章地面实际使用的 fs key（probe 可查），成本最高 |
+
+三者均按 Vulkan 设备身份（`vendorID==0x13B5` / deviceName 含 `Mali`）分流，**不做机型硬编码**。
+
+#### 16.7 未完成与风险
+
+- **归因尚未最终确认**：A/B 未跑，按项目口径不得宣称 PASS。
+- honor 树已被另一条工作线推进到 `b6e487b`（含 `Immortalis` 等改动），本次**未触碰**该树。
+- 第三章运河广场白纱（§14）与陆行鸟异常仍未处理，根因各自独立。
+
