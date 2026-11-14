@@ -1,9 +1,9 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-14T11:40:00+08:00",
- "phase": "v1.0.9 consolidation in progress: one APK (versionCode 9) must boot both the Honor tablet (code 7) and the RG477M (code 8). Three implementation lines are in flight — readback targeted retirement (stutter root cause), Mali formatless-write FATAL (RG477M cannot enter the game), battle-settle crash P0 (8E5 phone, no device). The Honor tablet was returned to the user after the effect-seed line finished its measurement; all Honor device acceptance is deferred to one session after the merge. | RG477M: the protagonist's black horizontal stripes are root-caused and fixed (93ebe66 stripped gl_FragDepth from a shader key that actually draws the protagonist, and that shader computes its own depth); fix 4fc1fd7, verified on device with an A/B pair; the cross-tool experience library is coordination/EXPERIENCE.md.",
- "coordinator": "MiniMax Code /root release takeover (Codex thread aborted by user)",
+ "updated_at": "2026-11-14T11:56:49.859512+08:00",
+ "phase": "角色变黑回归恢复、真实卡顿定位及各分支审查收敛。用户授权本轮操作 RG477M，历史 APK 保留。",
+ "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
  "active_writers": [
@@ -1930,6 +1930,51 @@
    "checkpoint": "b7a68d8",
    "objective": "Root-cause and fix the protagonist's black horizontal stripes on the RG477M.",
    "write_state": "COMPLETE_HANDED_BACK"
+  },
+  {
+   "task": "CODEX-RECOVERY-20261114",
+   "owner": "Codex /root",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/",
+    "src/runtime/hle/",
+    "src/android/native/guest_boot_jni.cpp",
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "tests/",
+    "coordination/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/codex-recovery-20261114",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T11:49:26.263338+08:00",
+   "checkpoint": "已建立分支完整Git bundle和各工作树差分备份，开发树从ef33490隔离。当前在等Antigravity释放设备占用。",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "CODEX-PARTICLE-20261114",
+   "owner": "architecture_review",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_stencil.h",
+    "tests/device/test_ffrs_particle_rewrite.cpp",
+    "scripts/android/verify_ffrs_particle_rewrite.sh"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/codex-recovery-20261114",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T11:50:49.087285+08:00",
+   "checkpoint": "实现与宿主自测交回总控。",
+   "write_state": "RELEASED"
+  },
+  {
+   "task": "CODEX-TYPED-CAP-20261114",
+   "owner": "minimax_session",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_typed_storage.h",
+    "tests/device/test_typed_storage.cpp",
+    "tests/device/typed_storage_duplicate_types.spvasm"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/codex-recovery-20261114",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T11:56:49.859512+08:00",
+   "checkpoint": "已派工",
+   "write_state": "ACTIVE"
   }
  ],
  "tasks": [
@@ -5408,6 +5453,135 @@
     "host contract test green",
     "fps 30.00 with sync_wb=0 and sync_rb=0 after the fix"
    ]
+  },
+  {
+   "id": "CODEX-RECOVERY-20261114",
+   "role": "coordinator",
+   "status": "in_progress",
+   "owner": "Codex /root",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/codex-recovery-20261114",
+   "objective": "有条件吸收各分支，修复角色变黑与卡顿，最终收敛到交付主干和一个开发分支，保留历史APK及可恢复分支备份。",
+   "inputs": [
+    "work/rg477m-native@ef33490",
+    "task/T-mali-decouple-ch3-v1010@e4fe8ff",
+    "当前 RG477M PID20895 原始日志及截图",
+    "用户本轮 RG477M 设备授权和本地分支清理授权"
+   ],
+   "outputs": [
+    "统一开发分支和候选APK",
+    "真实场景图像与帧时间证据",
+    "分支吸收/归档索引"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/",
+    "src/runtime/hle/",
+    "src/android/native/guest_boot_jni.cpp",
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "tests/",
+    "coordination/"
+   ],
+   "acceptance": "角色材质及特效在相同场景复验，卡顿以同次进程原始帧时间定位并复测；主干和开发分支保留，独有代码和WIP可恢复，APK历史不删除。验收必须完整包含 coordination/prompts/_STANDING-audio-acceptance.md。",
+   "checkpoint": "已建立分支完整Git bundle和各工作树差分备份，开发树从ef33490隔离。当前在等Antigravity释放设备占用。"
+  },
+  {
+   "id": "CODEX-PARTICLE-20261114",
+   "role": "implementer",
+   "status": "implemented",
+   "owner": "architecture_review",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/codex-recovery-20261114",
+   "objective": "有条件吸收e4fe8ff的10条粒子uint事实，以真实模块经生产入口验证准确绑定与未涉及绑定保持。",
+   "inputs": [
+    "ef33490",
+    "e4fe8ff",
+    "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/codex-recovery-20261114/device-before"
+   ],
+   "outputs": [
+    "补丁及自测证据"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_stencil.h",
+    "tests/device/test_ffrs_particle_rewrite.cpp",
+    "scripts/android/verify_ffrs_particle_rewrite.sh"
+   ],
+   "acceptance": "报告精确输入和覆盖，真机由总控串行执行。",
+   "checkpoint": "实现与ASan/UBSan、5个原始和5个重写模块spirv-val通过，真机待总控。"
+  },
+  {
+   "id": "CODEX-TYPED-AUDIT-20261114",
+   "role": "research",
+   "status": "in_progress",
+   "owner": "minimax_session",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/codex-recovery-20261114",
+   "objective": "只读审查真实cluster storage输入与黑NPC，结合e4恢复与当前原生R16差异定位真实布局。",
+   "inputs": [
+    "ef33490",
+    "e4fe8ff",
+    "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/codex-recovery-20261114/device-before"
+   ],
+   "outputs": [
+    "只读分析结论"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [],
+   "acceptance": "报告精确输入和覆盖，真机由总控串行执行。",
+   "checkpoint": "已派工"
+  },
+  {
+   "id": "CODEX-PERF-AUDIT-20261114",
+   "role": "research",
+   "status": "in_progress",
+   "owner": "antigravity_session",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/codex-recovery-20261114",
+   "objective": "只读分析PID20895帧日志及现有等待路径，提出保留同步语义的最小卡顿修复。",
+   "inputs": [
+    "ef33490",
+    "e4fe8ff",
+    "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/codex-recovery-20261114/device-before"
+   ],
+   "outputs": [
+    "只读分析结论"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [],
+   "acceptance": "报告精确输入和覆盖，真机由总控串行执行。",
+   "checkpoint": "已派工"
+  },
+  {
+   "id": "CODEX-TYPED-CAP-20261114",
+   "role": "implementer",
+   "status": "in_progress",
+   "owner": "minimax_session",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/codex-recovery-20261114",
+   "objective": "按现有native typed-storage API吸收d19a037的Rg32f/i/ui能力49与重复image type处理，保留nativeR16及shared split，并添加精确回归。",
+   "inputs": [
+    "d19a037",
+    "ef33490现有typed-storage",
+    "真实3b和shared模块"
+   ],
+   "outputs": [
+    "最小补丁",
+    "宿主及spirv-val回归"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_typed_storage.h",
+    "tests/device/test_typed_storage.cpp",
+    "tests/device/typed_storage_duplicate_types.spvasm"
+   ],
+   "acceptance": "既有typed-storage正负用例通过，新增扩展格式门禁与重复类型回归通过，实际游戏表示保持。",
+   "checkpoint": "已派工"
   }
  ],
  "blockers": [
@@ -5581,7 +5755,7 @@
   "reporting": "Report material breakthroughs, required user action or real blockers; no artificial progress from diagnostic counts",
   "current_priority": "Playability first: enter actualscene and operate/progressstory; firststage stable30FPSaccepted; deferFPSoptimization/60patch untilplayable"
  },
- "coordinator_branch": "task/codex-integration",
+ "coordinator_branch": "task/T-codex-recovery-20261114",
  "progress_assessment": {
   "reached": "Every NVN family the guest asks for between the sampler and its first draw is implemented and wired: the command memory callback works and a recording is never void, the sampler object family, the texture object family, the texture view family and the three device handle functions are reachable through the guest own lookup, the descriptor pools are numbered and a handle is read with the base of the pool that was bound.",
   "not_reached": "A draw that is submitted from a replayed command, a pixel that comes out of it, and therefore any title screen or playable scene.",
@@ -7761,5 +7935,21 @@
    "the protagonist strip fix has not been applied to the honor tree line (its own shader keys must be re-checked)"
   ],
   "observed_at": "2026-11-14T11:40:00+08:00"
+ },
+ "codex_recovery_20261114": {
+  "device_authorization": "用户本轮直接授权使用 RG477M01445122，覆盖 AGENTS-HONOR 的本轮设备限制",
+  "archive": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/codex-recovery-20261114/branch-archive",
+  "historical_claims_withdrawn": [
+   "Antigravity HANDOFF 以单张截图矩形颜色统计宣称角色全黑及移动方块根除，验收不足，重新核验。",
+   "b6e487b的9300/9400根因没有目标机同次日志，保留为候选。",
+   "4fc1fd7所称062df从未读取FragCoord不成立。真实模块经OpAccessChain读取，且FragDepth由FMin计算。默认保持原始深度，停止以读取内建值推导深度等价。"
+  ],
+  "remaining": [
+   "Antigravity界面已确认回合结束，设备占用已释放。",
+   "审查各分支",
+   "角色/特效修复",
+   "卡顿实测",
+   "分支清理"
+  ]
  }
 }

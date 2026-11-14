@@ -22,7 +22,10 @@ static void init_event(struct event_object *event, int signaled) {
 
 int main(void) {
     alarm(20);
-    struct event_object event;
+    /* The host requires an 8 byte aligned event object: an unaligned one is
+     * refused by InitializeEvent and by every borrow, which would make this
+     * contract pass without ever entering the code it checks. */
+    _Alignas(8) struct event_object event;
 
     /* 1. Finalizing an event that a holder waits on must not abort the
      *    process. The old code called abort() here, which turned a lifetime

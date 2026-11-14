@@ -2775,20 +2775,12 @@ int stencil_rewrite(std::vector<uint32_t> &words,uint32_t stage,const char *key,
      * for a given key actually fired. */
     if(result||stage==4)xbg_logf("NVN integer image types shader=%s stage=%u loader=%s rewrites=%d",key,stage,loader,result);return result;
 }
-// A/B switch for the 93ebe66 gl_FragDepth strip (marker gfx-terrain-depth = 1 / 0).
-// 1 keeps the strip (the state the 1.0.10 APK shipped), 0 keeps the shader's own depth value.
-// The gl_FragDepth strip, three states (marker gfx-terrain-depth = 1 / 0, absent = auto).
-//   auto  strip only a shader that reads gl_FragCoord, i.e. one whose gl_FragDepth holds
-//         gl_FragCoord.z -- for that shader the store is redundant and dropping it is a no-op.
-//   0     never strip.
-//   1     always strip (the 1.0.10 behaviour; kept for the A/B against the ground flicker).
-int terrain_depth_strip=-1;
+// Preserve the game's depth output. The old strip remains an explicit A/B diagnostic.
+int terrain_depth_strip=0;
 void terrain_depth_rewrite(std::vector<uint32_t> &words,uint32_t stage,const char *key,const char *loader){
     const bool is_mali = properties.vendorID == 0x13B5 || strstr(properties.deviceName, "Mali") != nullptr;
     if(!is_mali || stage!=4 || std::strcmp(key,"062df44b75d37d76")!=0)return;
-    if(terrain_depth_strip==0){xbg_logf("NVN terrain drop frag depth shader=%s loader=%s skipped (marker gfx-terrain-depth=0)",key,loader);return;}
-    if(terrain_depth_strip!=1&&!xbg_spirv_reads_fragcoord(words)){xbg_logf("NVN terrain drop frag depth shader=%s loader=%s kept: the shader computes its own depth (it never reads gl_FragCoord)",key,loader);return;}
-    const bool patched=xbg_terrain_drop_frag_depth(words);
+    const bool patched=xbg_terrain_drop_frag_depth(words,terrain_depth_strip==1);
     xbg_logf("NVN terrain drop frag depth shader=%s loader=%s patched=%d",key,loader,int(patched));
 }
 // Diagnostic (files/dm/spv-override/<key>.spv): this SPIR-V replaces the bundle's, for offline-optimized test modules.
@@ -5095,19 +5087,6 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
     VkPipelineViewportStateCreateInfo vp{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};vp.viewportCount=vp.scissorCount=1;
     VkPipelineRasterizationStateCreateInfo rs{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};rs.polygonMode=state.poly.mode==2?VK_POLYGON_MODE_FILL:state.poly.mode==1?VK_POLYGON_MODE_LINE:VK_POLYGON_MODE_POINT;need(rs.polygonMode==VK_POLYGON_MODE_FILL || cfg.enabled_core.fillModeNonSolid,"Non-solid polygon mode disabled");rs.cullMode=state.poly.cull;rs.frontFace=state.poly.front?VK_FRONT_FACE_COUNTER_CLOCKWISE:VK_FRONT_FACE_CLOCKWISE;rs.lineWidth=1;rs.depthBiasEnable=state.poly.offset_en!=0;rs.depthBiasConstantFactor=state.bias[1]*(state.rt.depth && state.rt.depth->d.format==0x32 && depth16_as_d24?256.0f:1.0f);
     rs.depthBiasSlopeFactor=state.bias[0];rs.depthBiasClamp=state.bias[2];need(!rs.depthBiasClamp || cfg.enabled_core.depthBiasClamp,"Depth bias clamp disabled");   // constant bias units: 2^-16 for D16, 2^-24 for the X8_D24 stand-in; slope and clamp do not depend on the format
-    const bool is_mali_device = properties.vendorID == 0x13B5 || strstr(properties.deviceName, "Mali") != nullptr;
-    if(is_mali_device && state.shader[4] && state.shader[4]->key == "062df44b75d37d76"){
-        Buffer &c2_buf = driver_block(nvn_stage[4], 1);
-        if(c2_buf.mapped && ubtrace_hash(c2_buf.mapped, 4096) == 0x44754dd35d3a5bc9ull){
-            const float dscale = (state.rt.depth && state.rt.depth->d.format == 0x32 && depth16_as_d24) ? 256.0f : 1.0f;
-            rs.depthBiasEnable = VK_TRUE;
-            rs.depthBiasSlopeFactor = -1.0f;
-            rs.depthBiasConstantFactor = -2.0f * dscale;
-            rs.depthBiasClamp = 0.0f;
-            static unsigned terrain_bias_logs = 0;
-            if(terrain_bias_logs++ < 5)xbg_logf("NVN terrain overlay depth bias applied (-1.0 slope, -2.0 constant) for draw=%llu", (unsigned long long)stats.draws.load());
-        }
-    }
     // SetDepthClamp: depth outside [near, far] is clamped instead of clipped (nvn_obj.h p_depth_clamp; nvn_mtl.m:6915 uses
     // it as Metal's depth clip mode). Vulkan needs the depthClamp feature for it.
     rs.depthClampEnable=state.depth_clamp?VK_TRUE:VK_FALSE;need(!rs.depthClampEnable || cfg.enabled_core.depthClamp,"Depth clamp feature disabled");
@@ -6895,7 +6874,7 @@ vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemor
     {std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');std::string marker=(cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-sync-mode";FILE *m=fopen(marker.c_str(),"rb");sync_mode=false;if(m){sync_mode=fgetc(m)=='1';fclose(m);}}
      {std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-defer-events").c_str(),"rb");defer_events=0;if(m){int c=fgetc(m);defer_events=c=='1'?1:c=='2'?2:0;fclose(m);}else if(const char *e=getenv("DM_GFX_DEFER_EVENTS")){int v=atoi(e);defer_events=v==1?1:v==2?2:0;}xbg_logf("NVN defer events=%d (marker gfx-defer-events)",int(defer_events));{FILE *r=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-event-retire").c_str(),"rb");event_retire_targeted=true;if(r){event_retire_targeted=fgetc(r)!=0x30;fclose(r);}xbg_logf("NVN event retirement targeted=%d (marker gfx-event-retire)",int(event_retire_targeted));}{FILE *rb=fopen(((cut==std::string::npos?dir:dir)+"/gfx-readback-retire").c_str(),"rb");readback_retire_targeted=true;if(rb){readback_retire_targeted=fgetc(rb)!=0x30;fclose(rb);}xbg_logf("NVN readback retirement targeted=%d (marker gfx-readback-retire)",int(readback_retire_targeted));}{FILE *eg=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-event-guard").c_str(),"rb");evguard::enabled=eg!=nullptr;if(eg)fclose(eg);if(evguard::enabled)xbg_logf("NVN event guard on (marker gfx-event-guard)");}{FILE *v=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-vcache").c_str(),"rb");vcache::enabled=false;if(v){vcache::enabled=fgetc(v)!='0';fclose(v);}else if(const char *e=getenv("DM_GFX_VCACHE"))vcache::enabled=atoi(e)!=0;xbg_logf("NVN vertex/index cross-frame cache=%d tracker=%d (marker gfx-vcache)",int(vcache::enabled),int(nvn_dirty_since!=nullptr));}
      {FILE *v=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-tex-dirty").c_str(),"rb");tex_dirty=false;if(v){tex_dirty=fgetc(v)!='0';fclose(v);}else if(const char *e=getenv("DM_GFX_TEX_DIRTY"))tex_dirty=atoi(e)!=0;
-      xbg_logf("NVN texture checks through the dirty tracker=%d (marker gfx-tex-dirty)",int(tex_dirty));}{const bool is_adreno = properties.vendorID == 0x5143 || strstr(properties.deviceName, "Adreno") != nullptr;FILE *b=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-native-bc").c_str(),"rb");native_bc=false;if(b){native_bc=fgetc(b)!='0';fclose(b);}else if(const char *e=getenv("DM_GFX_NATIVE_BC"))native_bc=is_adreno && atoi(e)!=0;xbg_logf("NVN native BC textures=%d (marker gfx-native-bc)",int(native_bc));}{FILE *td=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-terrain-depth").c_str(),"rb");terrain_depth_strip=-1;if(td){int c=fgetc(td);terrain_depth_strip=(c=='0')?0:(c=='1')?1:-1;fclose(td);}xbg_logf("NVN terrain drop frag depth=%s (marker gfx-terrain-depth: 1 = always, 0 = never, absent = auto)",terrain_depth_strip<0?"auto":terrain_depth_strip==0?"never":"always");}
+      xbg_logf("NVN texture checks through the dirty tracker=%d (marker gfx-tex-dirty)",int(tex_dirty));}{const bool is_adreno = properties.vendorID == 0x5143 || strstr(properties.deviceName, "Adreno") != nullptr;FILE *b=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-native-bc").c_str(),"rb");native_bc=false;if(b){native_bc=fgetc(b)!='0';fclose(b);}else if(const char *e=getenv("DM_GFX_NATIVE_BC"))native_bc=is_adreno && atoi(e)!=0;xbg_logf("NVN native BC textures=%d (marker gfx-native-bc)",int(native_bc));}{FILE *td=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-terrain-depth").c_str(),"rb");terrain_depth_strip=0;if(td){terrain_depth_strip=fgetc(td)=='1';fclose(td);}xbg_logf("NVN terrain drop frag depth=%d (marker gfx-terrain-depth=1 enables the diagnostic)",terrain_depth_strip);}
      {FILE *b=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-noload").c_str(),"rb");noload_enabled=false;if(b){noload_enabled=fgetc(b)!='0';fclose(b);}else if(const char *e=getenv("DM_GFX_NOLOAD"))noload_enabled=atoi(e)!=0;xbg_logf("NVN proven full-overwrite first draws skip the color load=%d (marker gfx-noload; A/B target noload)",int(noload_enabled));}{FILE *q=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-bright").c_str(),"rb");bright::enabled=true;if(q){bright::enabled=fgetc(q)!='0';fclose(q);}else if(const char *e=getenv("DM_GFX_BRIGHT"))bright::enabled=atoi(e)!=0;xbg_logf("NVN 3D brightening=%d (marker gfx-bright; A/B target bright)",int(bright::enabled));}{FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-perf-sample").c_str(),"rb");perf_sample=32;if(m){if(fscanf(m,"%u",&perf_sample)!=1)perf_sample=32;fclose(m);}else if(const char *e=getenv("DM_GFX_PERF_SAMPLE"))perf_sample=unsigned(atoi(e));perf_frame_timed=perf_sample!=0;perf_timed_frames=0;xbg_logf("NVN perf timing every %u frames (marker gfx-perf-sample; 0 = off)",perf_sample);}}
     draw_base_instance=0;for(auto &row:driver_cache)for(auto &cache:row)cache.key={};
     for(auto &sl:slots)sl=Slot{};slot_index=0;pass_prof_enabled=false;pass_prof_next=300;pass_prof_period=600;pass_prof_until=UINT64_MAX;pass_prof_frame=UINT64_MAX;pass_prof_draws=0;pass_prof_queries=pass_prof_slots=pass_prof_skipped_slots=0;perf=Perf{};for(auto &c:perf_timing_before)c=XbgCpuTiming::Counter{};static_arena.cached=false;support_static.clear();format_property_cache.clear();for(auto &k:format_flat_known)k=false;

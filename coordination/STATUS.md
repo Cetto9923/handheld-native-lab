@@ -1,8 +1,8 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-14T11:40:00+08:00
-阶段：v1.0.9 consolidation in progress: one APK (versionCode 9) must boot both the Honor tablet (code 7) and the RG477M (code 8). Three implementation lines are in flight — readback targeted retirement (stutter root cause), Mali formatless-write FATAL (RG477M cannot enter the game), battle-settle crash P0 (8E5 phone, no device). The Honor tablet was returned to the user after the effect-seed line finished its measurement; all Honor device acceptance is deferred to one session after the merge. | RG477M: the protagonist's black horizontal stripes are root-caused and fixed (93ebe66 stripped gl_FragDepth from a shader key that actually draws the protagonist, and that shader computes its own depth); fix 4fc1fd7, verified on device with an A/B pair; the cross-tool experience library is coordination/EXPERIENCE.md.
-总控：MiniMax Code /root release takeover (Codex thread aborted by user)
+状态事件时间：2026-11-14T11:56:49.859512+08:00
+阶段：角色变黑回归恢复、真实卡顿定位及各分支审查收敛。用户授权本轮操作 RG477M，历史 APK 保留。
+总控：Codex /root 本轮接管
 更新方式：按事件更新，没有后台自动刷新。
 
 | 任务 | 角色 | 状态 | 实际负责人 | 启动依赖 | 验收门禁 | 分支 |
@@ -143,6 +143,11 @@
 | RG477M-PERF-PASSPROF-WINDOW-20261113 | implementer | implemented_device_verified | MiniMax Code /root (Antigravity takeover) | 无 | 无额外门禁 | task/T-rg477m-passprof-window-20261113 |
 | RG477M-FLICKER-LOCALIZATION-20261113 | implementer | in_progress | MiniMax Code /root | 无 | 无额外门禁 | task/T-rg477m-flicker-liveoff-20261113 |
 | RG477M-STRIPE-FRAGDEPTH-20261114 | implementer | completed | MiniMax Code /root | RG477M-FLICKER-LOCALIZATION-20261113 | 无额外门禁 | task/T-rg477m-stripe-fragdepth-20261114 |
+| CODEX-RECOVERY-20261114 | coordinator | in_progress | Codex /root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-PARTICLE-20261114 | implementer | implemented | architecture_review | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-TYPED-AUDIT-20261114 | research | in_progress | minimax_session | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-PERF-AUDIT-20261114 | research | in_progress | antigravity_session | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-TYPED-CAP-20261114 | implementer | in_progress | minimax_session | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 
 ## 独占写入
 
@@ -250,6 +255,9 @@
 - {"task": "CRASH-P0-BATTLE-SETTLE-20261112", "owner": "worker agent bg_c4b2d1d1-a3ce-47e3-bb89-d1dd870937f2", "paths": ["src/runtime/hle/nso_host.c", "src/graphics/nvn_vulkan/engine/xbg_game.cpp", "tests/native/", "coordination/results/CRASH-P0-BATTLE-SETTLE-20261112.md"], "worktree": "worker to declare; the RG477M main worktree and the honor main worktree are forbidden (foreign WIP)", "branch": "task/T-crash-p0-20261112", "acquired_at": "2026-11-12T23:32:00.823024+08:00", "checkpoint": "not yet reported", "objective": "Pre-emptive hardening for the 8E5 (Snapdragon) crash after a Bahamut summon wins the fight. No 8E5 device is available, so the work is code-level analysis plus host contracts; every device claim must be written NOT_RUN.", "write_state": "ACTIVE"}
 - {"task": "RG477M-FLICKER-LOCALIZATION-20261113", "owner": "MiniMax Code /root", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", "src/graphics/nvn_vulkan/engine/xbg_probe.inc", "coordination/results/RG477M-FLICKER-LEFTGROUND-20261113.md", "coordination/HANDOFF.md", "coordination/state.json"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native", "branch": "task/T-rg477m-flicker-liveoff-20261113", "acquired_at": "2026-11-13T19:10:00+08:00", "checkpoint": "5082aac", "objective": "Flicker localization and the engine-side present-frame dump on the RG477M.", "write_state": "ACTIVE"}
 - {"task": "RG477M-STRIPE-FRAGDEPTH-20261114", "owner": "MiniMax Code /root", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", "src/graphics/nvn_vulkan/engine/xbg_spirv_depth.h", "tests/device/test_frag_depth_strip.cpp", "scripts/verify_host.py", "coordination/EXPERIENCE.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native", "branch": "task/T-rg477m-stripe-fragdepth-20261114", "acquired_at": "2026-11-14T10:40:00+08:00", "checkpoint": "b7a68d8", "objective": "Root-cause and fix the protagonist's black horizontal stripes on the RG477M.", "write_state": "COMPLETE_HANDED_BACK"}
+- {"task": "CODEX-RECOVERY-20261114", "owner": "Codex /root", "paths": ["src/graphics/nvn_vulkan/engine/", "src/runtime/hle/", "src/android/native/guest_boot_jni.cpp", "src/android/app/java/org/ffrs/diagnostic/GameActivity.java", "tests/", "coordination/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/codex-recovery-20261114", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T11:49:26.263338+08:00", "checkpoint": "已建立分支完整Git bundle和各工作树差分备份，开发树从ef33490隔离。当前在等Antigravity释放设备占用。", "write_state": "ACTIVE"}
+- {"task": "CODEX-PARTICLE-20261114", "owner": "architecture_review", "paths": ["src/graphics/nvn_vulkan/engine/xbg_spirv_stencil.h", "tests/device/test_ffrs_particle_rewrite.cpp", "scripts/android/verify_ffrs_particle_rewrite.sh"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/codex-recovery-20261114", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T11:50:49.087285+08:00", "checkpoint": "实现与宿主自测交回总控。", "write_state": "RELEASED"}
+- {"task": "CODEX-TYPED-CAP-20261114", "owner": "minimax_session", "paths": ["src/graphics/nvn_vulkan/engine/xbg_spirv_typed_storage.h", "tests/device/test_typed_storage.cpp", "tests/device/typed_storage_duplicate_types.spvasm"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/codex-recovery-20261114", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T11:56:49.859512+08:00", "checkpoint": "已派工", "write_state": "ACTIVE"}
 
 ## 阻塞
 

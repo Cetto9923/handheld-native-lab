@@ -65,23 +65,22 @@ static bool stores_fragdepth(const std::vector<uint32_t> &w) {
 }
 
 int main() {
-    // A module that declares gl_FragCoord but never reads it computes its own
-    // depth. Dropping its gl_FragDepth is a semantic change, so the engine has
-    // to keep it -- this is the FFRS protagonist shader.
     auto unused = build_module(false);
-    assert(!xbg_spirv_reads_fragcoord(unused));
-
-    // A module that reads gl_FragCoord can be storing gl_FragCoord.z, so the
-    // store is redundant and dropping it changes nothing.
     auto used = build_module(true);
-    assert(xbg_spirv_reads_fragcoord(used));
+    for (const auto &original : {unused, used}) {
+        auto preserved = original;
+        assert(!xbg_terrain_drop_frag_depth(preserved));
+        assert(preserved == original);
+        assert(!xbg_terrain_drop_frag_depth(preserved, false));
+        assert(preserved == original);
+    }
 
     // The strip itself still removes the whole depth pattern.
     assert(has_fragdepth_decoration(unused));
     assert(has_depth_replacing(unused));
     assert(stores_fragdepth(unused));
     auto stripped = unused;
-    assert(xbg_terrain_drop_frag_depth(stripped));
+    assert(xbg_terrain_drop_frag_depth(stripped, true));
     assert(!has_fragdepth_decoration(stripped));
     assert(!has_depth_replacing(stripped));
     assert(!stores_fragdepth(stripped));
@@ -89,13 +88,14 @@ int main() {
     // The FragCoord declaration survives, and a module that reads it keeps
     // reading it after the strip.
     auto stripped_used = used;
-    assert(xbg_terrain_drop_frag_depth(stripped_used));
-    assert(xbg_spirv_reads_fragcoord(stripped_used));
+    assert(xbg_terrain_drop_frag_depth(stripped_used, true));
+    assert(!has_fragdepth_decoration(stripped_used));
 
     // A module that is not SPIR-V is refused, and it stays as it was.
     auto broken = unused;
     broken[0] = 0;
-    assert(!xbg_spirv_reads_fragcoord(broken));
-    assert(!xbg_terrain_drop_frag_depth(broken));
+    const auto broken_before = broken;
+    assert(!xbg_terrain_drop_frag_depth(broken, true));
+    assert(broken == broken_before);
     return 0;
 }

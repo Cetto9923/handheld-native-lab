@@ -2098,7 +2098,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         // keeps that path off there and on everywhere else. A marker the
         // player wrote by hand ("1" or "0") is left alone.
         writeMarkerIfMissing(new File(dir, "gfx-depth-aspect"), "auto\n");
-        writeMarkerIfMissing(new File(dir, "gfx-async-pipelines"), "1\n");
+        writeMarkerIfMissing(new File(dir, "gfx-async-pipelines"), "0\n");
         writeMarkerIfMissing(new File(dir, "gfx-fence-spin-us"), "0\n");
         writeMarkerIfMissing(new File(dir, "gfx-audio-paced-transport"), "1\n");
         writeMarkerIfMissing(new File(dir, "gfx-codex-audio-dump"), "0\n");

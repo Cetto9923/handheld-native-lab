@@ -112,7 +112,20 @@ inline constexpr XbgFfrsIntegerFact xbg_ffrs_integer_facts[]={
     {"6018ff2b44b763d7",30,1,false},
     {"fe033d948255d9ff",18,1,false},
     {"fe033d948255d9ff",24,1,false},
-    {"fe033d948255d9ff",30,1,false}
+    {"fe033d948255d9ff",30,1,false},
+    // Opening particle variants with the same raw index bindings. The real
+    // modules are covered by test_ffrs_particle_rewrite.cpp. Other Buffer
+    // bindings, including their numeric half-float attributes, stay float.
+    {"9198ac8854711e1c",12,1,false},
+    {"9198ac8854711e1c",24,1,false},
+    {"ead249f088784a89",12,1,false},
+    {"ead249f088784a89",24,1,false},
+    {"cc083b4b242a59ba",18,1,false},
+    {"cc083b4b242a59ba",30,1,false},
+    {"d83a8836c4cfac88",18,1,false},
+    {"d83a8836c4cfac88",30,1,false},
+    {"8574fb4cb432cb74",18,1,false},
+    {"8574fb4cb432cb74",30,1,false}
 };
 inline uint32_t xbg_ffrs_integer_fact(uint32_t stage,const char *key,uint32_t binding){
     if((stage==5 || stage==0) && key)for(const auto &f:xbg_ffrs_integer_facts)

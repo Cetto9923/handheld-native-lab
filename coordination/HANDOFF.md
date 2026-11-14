@@ -1,3 +1,13 @@
+- 当前 PID20895 截图明确有两名黑NPC，原“角色全黑已修”结论撤回。帧日志约27FPS、legacy_wait_total约17ms/帧；正在分别审查。
+# 2026-11-14 Codex 接管角色回归、卡顿及分支收敛
+
+- 工作树 /Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/codex-recovery-20261114，开发分支 task/T-codex-recovery-20261114，初始 HEAD ef33490。
+- 用户授权本轮操作 RG477M01445122，覆盖 Honor 限制；存档及历史 APK 保留。
+- Git bundle 与所有工作树差分已备份到 /Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/codex-recovery-20261114/branch-archive。
+- 当前角色恢复/卡顿修复均待本轮验收。原 Antigravity 截图统计不能作为整场景 PASS。
+- 验收必须完整包含 coordination/prompts/_STANDING-audio-acceptance.md。
+- 原会话仍在运行，等待释放装包及设备占用；先进行隔离代码审查。
+
 # 2026-11-14 11:40 主角黑条纹：根因锁定为 93ebe66 的 gl_FragDepth 剥离，已修复并真机验证
 
 ## 结论先说
