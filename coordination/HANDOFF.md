@@ -1,3 +1,10 @@
+# 2026-11-14 位置精度候选21源码冻结
+
+- load_profile已冻结spv_precise原样头、1468a2c8包装、合法fixture/契约/script与per-file provenance。自测ASan/UBSan及18模块spirv-val0，原始和castback7ca各新增492个NoContraction，函数体及显式Fma原字节保持，幂等0，NDK26/API28对象0。分组装饰模块保守保持原样。
+- root共享末端接线覆盖runtime/warm/integer，typed保留已优化annotations。lookup_review独立接线静态审未见缓存绕行或配置写竞争，现正复跑冻结契约。
+- root串行全量host+Android计划precision-build/plan.json，4jobs，APK归档名ffrs-1.0.21-preview-position-precision.apk。默认位置修正开启，启动gfx-position-precise=0或DM_SPV_PRECISE=0可同包对照，需新进程。此候选还含cba445f clear覆盖修正，实际因果需单项对照。
+- 当前RG断开，只完成离线覆盖，女主闪烁修复与GPU性能均NOT_RUN。用户报告音频/低帧仍开放。
+
 # 2026-11-14 22:52 clear独立回归完成，接入位置精度修正
 
 - clear补丁root全量宿主97/97通过，8文件构建前后SHA相同。perf_cpu独立重编3组件ASan/UBSan以及32层color/1层depth、3D8slice/base2/count0反例均0，未见阻塞项。实际GPU和剧情因果NOT_RUN。

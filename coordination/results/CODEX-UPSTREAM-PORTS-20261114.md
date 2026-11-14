@@ -2,6 +2,8 @@
 
 ## 女主身体闪烁最新对照
 
+通用位置精度处理已按固定DroidPlay实现接入本项目的共享优化入口，位于tidy之后，覆盖runtime、warm与integer变体。typed变体沿用已优化模块的装饰。现存真实7ca7原始与castback两份VS各有492处所选运算，现有NoContraction覆盖为0，另外各有100条显式Fma。当前实现补充分步运算的融合约束，显式Fma保持原语义。默认启用，启动标记gfx-position-precise优先于DM_SPV_PRECISE，0可作同包对照。配置在预热线程启动前读取，新进程重新构建模块。独立接线静态审查未见阻塞问题，helper契约尚待冻结与独立复跑。此VS尚未映射到开场女主，离线缺口与录屏闪烁的因果仍待实机。[固定精度实现](https://github.com/enjoyerofslop/droidplay-core/blob/a72a85c59cac54f3428827cfb72e1adf63b1521a/dm/android/spv_precise.h)
+
 用户确认1.0.20仍轻微闪烁，随后恢复原1.0.18 APK，用户也确认同一类闪烁。原18包a6c9fbe2的恢复、回读和存档备份证据位于 `.local/codex-recovery-20261114/install-baseline18-after20-20261114-221843/`。撤回19 UBO改动是唯一引入原因的假设。生产UBO继续保持18路径，性能收益与闪烁因果各待实际验证。
 
 用户最新31.091519秒录屏已保全，SHA256 a5977386beee0c52bdcac7bd2f7724335033604a6a2a39ccd2301ae9d2c2bbe8。24.235044、24.268700、24.302256秒三帧的女主裙身局部黑像素占比为3.50%、16.64%、0.009%，邻近背景亮度稳定。女主脸部与裙身黑色栅状缺口已定位，尚缺引擎帧与绘制数据同步。音轨22至27秒未检出预设短静音或强重复候选，听感验收待复测。详细证据在 `ubo-regression-control/user-video/analysis-perf/review.md`，该报告SHA297d742422f3462582a1698d8df806c2607f3370c06477228def646aaa2cff5b。

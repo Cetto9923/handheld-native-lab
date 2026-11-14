@@ -14,7 +14,14 @@
       "size": 1063,
       "sha256": "a65554a74de59bf4d2210f3d4381c67d6fc6fa78f237f83c85543773319efa7b",
       "file": "LICENSE"
+    },
+    {
+      "file": "spv_precise.h",
+      "revision": "a72a85c59cac54f3428827cfb72e1adf63b1521a",
+      "source": "https://raw.githubusercontent.com/enjoyerofslop/droidplay-core/a72a85c59cac54f3428827cfb72e1adf63b1521a/dm/android/spv_precise.h",
+      "size": 4864,
+      "sha256": "768ff41d76f5f22d08cacd52d53e7d92e3e3ebf9f44d39e8f9bcb6ff225895ea"
     }
   ],
-  "changes": "Unmodified upstream source. Runtime integration is in xbg_spirv_narrow.h."
+  "changes": "Unmodified upstream sources. A file revision overrides the default revision. Runtime integration is in xbg_spirv_narrow.h and xbg_spirv_precise.h."
 }

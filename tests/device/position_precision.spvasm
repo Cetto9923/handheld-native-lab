@@ -1,0 +1,25 @@
+OpCapability Shader
+%glsl = OpExtInstImport "GLSL.std.450"
+OpMemoryModel Logical GLSL450
+OpEntryPoint Vertex %main "main" %position
+OpDecorate %position BuiltIn Position
+%void = OpTypeVoid
+%float = OpTypeFloat 32
+%vec4 = OpTypeVector %float 4
+%output = OpTypePointer Output %vec4
+%fn = OpTypeFunction %void
+%one = OpConstant %float 1
+%vector = OpConstantComposite %vec4 %one %one %one %one
+%position = OpVariable %output Output
+%main = OpFunction %void None %fn
+%entry = OpLabel
+%neg = OpFNegate %float %one
+%sum = OpFAdd %float %one %neg
+%sub = OpFSub %float %sum %one
+%mul = OpFMul %float %sub %one
+%scale = OpVectorTimesScalar %vec4 %vector %mul
+%fma = OpExtInst %float %glsl Fma %mul %one %sum
+%result = OpCompositeConstruct %vec4 %fma %fma %fma %one
+OpStore %position %result
+OpReturn
+OpFunctionEnd

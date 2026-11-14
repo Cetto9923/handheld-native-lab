@@ -46,6 +46,7 @@ static_assert(VK_FORMAT_R32_UINT==XBG_VK_FORMAT_R32_UINT && VK_FORMAT_R32_SINT==
 #include "xbg_spirv_quad.h"
 #include "xbg_spirv_warp.h"
 #include "xbg_spirv_narrow.h"
+#include "xbg_spirv_precise.h"
 #include "xbg_spirv_ldc.h"
 #include "xbg_spirv_temps.h"
 #include "xbg_spirv_raster.h"
@@ -2888,6 +2889,7 @@ std::vector<uint32_t> shader_float_buffer_bindings(const std::vector<uint32_t> &
 bool integer_buffer_format(uint32_t value){
     return value==VK_FORMAT_R16_UINT || value==VK_FORMAT_R32_UINT;
 }
+bool position_precise=true;
 void optimize_shader_words(std::vector<uint32_t> &words,uint32_t stage,const std::string &key,const char *loader){
 #ifdef XBG_HAVE_SPIRV_OPT
     honor_inline_rewrite(words,key,loader);
@@ -2897,6 +2899,12 @@ void optimize_shader_words(std::vector<uint32_t> &words,uint32_t stage,const std
     narrow_rewrite(words,stage,key.c_str(),loader);
     compaction_sum_rewrite(words,stage,key.c_str(),loader);
     tidy_rewrite(words);
+    // Maxwell rounds separate multiply/add instructions separately. Apply this
+    // after the other rewrites so every module loader keeps that constraint.
+    if(position_precise && stage<4){
+        const size_t marked=xbg_spirv_precise(words);
+        if(marked)xbg_logf("NVN position precision shader=%s stage=%u loader=%s marked=%zu",key.c_str(),stage,loader,marked);
+    }
 }
 bool specialize_integer_buffers(std::vector<uint32_t> &words,const IntegerBufferFormats &formats){
     auto changed=words;
@@ -7063,6 +7071,16 @@ vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemor
      narrow_subgroups=true;
      if(marker){narrow_subgroups=fgetc(marker)!='0';fclose(marker);}
      xbg_logf("NVN narrow subgroup correction=%d subgroup=%u computeOnly=1 (marker gfx-subgroup-narrow)",int(narrow_subgroups),subgroup.subgroupSize);}
+    {
+        std::string dir=cfg.shader_directory;
+        const size_t cut=dir.find_last_of('/');
+        const std::string base=cut==std::string::npos?dir:dir.substr(0,cut);
+        FILE *marker=fopen((base+"/gfx-position-precise").c_str(),"rb");
+        position_precise=true;
+        if(marker){position_precise=fgetc(marker)!='0';fclose(marker);}
+        else if(const char *value=getenv("DM_SPV_PRECISE"))position_precise=value[0]!='0';
+        xbg_logf("NVN position precision=%d (startup marker gfx-position-precise; env DM_SPV_PRECISE)",int(position_precise));
+    }
     {std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');std::string base=cut==std::string::npos?dir:dir.substr(0,cut);
      auto dm=[&](const char *marker,const char *env){FILE *q=fopen((base+marker).c_str(),"rb");bool on=false;if(q){on=fgetc(q)!='0';fclose(q);}else if(const char *e=getenv(env))on=atoi(e)!=0;return on;};
      ldc_fold=dm("/gfx-ldc-fold","DM_GFX_LDC_FOLD");forward_temps=dm("/gfx-forward-temps","DM_GFX_FORWARD_TEMPS");nan_minmax=dm("/gfx-nan-minmax","DM_GFX_NAN_MINMAX");

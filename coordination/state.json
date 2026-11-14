@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-14T22:54:03.253403+08:00",
+ "updated_at": "2026-11-14T23:00:44.121559+08:00",
  "phase": "原18用户录屏定位女主身体间歇深黑覆盖，检查位置精度/深度一致性，clear覆盖补丁独立复审中。",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -2563,7 +2563,8 @@
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-14T22:52:25.015028+08:00",
    "checkpoint": "root负责xbg_game/版本/gate，全量构建待helper冻结；load_profile仅写helper/test/source provenance。",
-   "write_state": "ACTIVE"
+   "write_state": "FROZEN_HANDED_BACK",
+   "released_at": "2026-11-14T23:00:44.121559+08:00"
   },
   {
    "task": "CODEX-POSITION-PRECISION-INTEGRATE-20261114",
@@ -7188,11 +7189,13 @@
    "status": "in_progress",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
-   "objective": "只读核对DroidPlay NoContraction保持Maxwell分步舍入的方案与本项目位置/深度路径，检查现有真实SPV及实际主角配对证据。",
+   "objective": "只读核对DroidPlay NoContraction保持Maxwell分步舍入的方案与本项目位置/深度路径，检查现有真实SPV及实际主角配对证据。 并独立复核root接线与load_profile冻结helper契约。",
    "inputs": [
     "74129a9 dirty clear8文件冻结",
     "固定DroidPlay a72a85c59",
-    "原18用户录屏女主局部深黑覆盖"
+    "原18用户录屏女主局部深黑覆盖",
+    "root optimize_shader_words末尾接入及启动marker/env配置",
+    "load_profile固定helper/契约交回后只读审查"
    ],
    "outputs": [
     ".local/upstream-switch-zelda-20261114/position-precision-review/review.md"
@@ -7203,7 +7206,7 @@
     ".local/upstream-switch-zelda-20261114/position-precision-review/"
    ],
    "acceptance": "只读生产源码，输出可复核代码/模块证据与边界，未映射当前女主draw不得按key改写，不操作设备或Git。",
-   "checkpoint": "root独占设备、集成及coordination；当前补丁未打包。"
+   "checkpoint": "27模块覆盖统计已交回，真实2份VS0/492，root接线待独立复核，helper实现中。"
   },
   {
    "id": "CODEX-CLEAR-INDEPENDENT-REVIEW-20261114",
@@ -7233,7 +7236,7 @@
    "id": "CODEX-POSITION-PRECISION-IMPL-20261114",
    "owner": "load_profile",
    "role": "IMPLEMENTATION",
-   "status": "in_progress",
+   "status": "implemented",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "objective": "吸收固定DroidPlay NoContraction通用位置精度实现，保持Maxwell分步浮点舍入，真实模块与合法SPIR-V回归。",
@@ -7264,7 +7267,7 @@
     ".local/upstream-switch-zelda-20261114/position-precision-integration/"
    ],
    "acceptance": "保持显式FMA及fragment/compute模块，指令函数体逐字保持，仅补合法NoContraction；已有装饰幂等，未知/坏输入不半写；所有优化入口配置一致。女主因果与性能须真机，不能由离线结果代替。",
-   "checkpoint": "root负责xbg_game/版本/gate，全量构建待helper冻结；load_profile仅写helper/test/source provenance。"
+   "checkpoint": "source冻1468a2c8，ASan/UBSan+18模块val0，两份7ca各492，函数体及Fma保持，NDK28对象0。独立QA与root全量待完成。"
   },
   {
    "id": "CODEX-POSITION-PRECISION-INTEGRATE-20261114",
@@ -9710,8 +9713,8 @@
    "evidence": ".local/codex-recovery-20261114/host-page-review/manifest.json"
   },
   "device_connection": {
-   "status": "CONNECTED_USER_PROGRESS_ROOT_RECORDING",
-   "checked_at": "2026-11-14T22:47:48.010417+08:00",
+   "status": "RG477M_DISCONNECTED_HONOR_TABLET_ONLY",
+   "checked_at": "2026-11-14T22:55:19.584862+08:00",
    "serial": "RG477M01445122",
    "pid": "19148",
    "operator": "用户推进，根只记录；按用户要求曾确认混沌抉择技能及目标。",
@@ -10010,7 +10013,15 @@
    "evidence": ".local/codex-recovery-20261114/install-baseline18-after20-20261114-221843/",
    "user_feedback": "同一剧情仍轻微闪烁，用户暂停交给root取消暂停采样，用户另录31秒视频"
   },
-  "flicker_subject": "用户明确主要是女主身上闪烁；原18亦复现，31秒原视频已取回。"
+  "flicker_subject": "用户明确主要是女主身上闪烁；原18亦复现，31秒原视频已取回。",
+  "clear_coverage_candidate": {
+   "commit": "cba445f",
+   "host": "97/97",
+   "hash_match": true,
+   "independent_review_sha256": "c8766478328a40caa350c6ed472a978e500e7f30bf3db96215622619d2cff86a",
+   "device_gpu": "NOT_RUN",
+   "hero_flicker_causality": "NOT_PROVEN"
+  }
  },
  "upstream_research_20261114": {
   "status": "completed",
