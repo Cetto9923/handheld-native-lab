@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-13T20:08:43+08:00",
- "phase": "v1.0.9 consolidation in progress: one APK (versionCode 9) must boot both the Honor tablet (code 7) and the RG477M (code 8). Three implementation lines are in flight — readback targeted retirement (stutter root cause), Mali formatless-write FATAL (RG477M cannot enter the game), battle-settle crash P0 (8E5 phone, no device). The Honor tablet was returned to the user after the effect-seed line finished its measurement; all Honor device acceptance is deferred to one session after the merge.",
+ "updated_at": "2026-11-14T11:40:00+08:00",
+ "phase": "v1.0.9 consolidation in progress: one APK (versionCode 9) must boot both the Honor tablet (code 7) and the RG477M (code 8). Three implementation lines are in flight — readback targeted retirement (stutter root cause), Mali formatless-write FATAL (RG477M cannot enter the game), battle-settle crash P0 (8E5 phone, no device). The Honor tablet was returned to the user after the effect-seed line finished its measurement; all Honor device acceptance is deferred to one session after the merge. | RG477M: the protagonist's black horizontal stripes are root-caused and fixed (93ebe66 stripped gl_FragDepth from a shader key that actually draws the protagonist, and that shader computes its own depth); fix 4fc1fd7, verified on device with an A/B pair; the cross-tool experience library is coordination/EXPERIENCE.md.",
  "coordinator": "MiniMax Code /root release takeover (Codex thread aborted by user)",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -1913,6 +1913,23 @@
    "checkpoint": "5082aac",
    "objective": "Flicker localization and the engine-side present-frame dump on the RG477M.",
    "write_state": "ACTIVE"
+  },
+  {
+   "task": "RG477M-STRIPE-FRAGDEPTH-20261114",
+   "owner": "MiniMax Code /root",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_depth.h",
+    "tests/device/test_frag_depth_strip.cpp",
+    "scripts/verify_host.py",
+    "coordination/EXPERIENCE.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native",
+   "branch": "task/T-rg477m-stripe-fragdepth-20261114",
+   "acquired_at": "2026-11-14T10:40:00+08:00",
+   "checkpoint": "b7a68d8",
+   "objective": "Root-cause and fix the protagonist's black horizontal stripes on the RG477M.",
+   "write_state": "COMPLETE_HANDED_BACK"
   }
  ],
  "tasks": [
@@ -5346,6 +5363,50 @@
    "checkpoint": "af36d34",
    "device_exclusive": "RG477M01445122",
    "status_note": "veil located (alpha ~0.07 over the ground only); 13 engine paths falsified; 25-path ab_off sweep + probe window capture pending"
+  },
+  {
+   "id": "RG477M-STRIPE-FRAGDEPTH-20261114",
+   "role": "implementer",
+   "status": "completed",
+   "owner": "MiniMax Code /root",
+   "branch": "task/T-rg477m-stripe-fragdepth-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native",
+   "objective": "Root-cause the protagonist's black horizontal stripes on the RG477M and fix them without losing 30 FPS.",
+   "inputs": [
+    "probe window capture (gfx-codex-probe=R) of the color0 attachment at the protagonist draw",
+    "offline SPIR-V disassembly of shader 062df44b75d37d76",
+    "the 1.0.10 APK that the device was running (93ebe66 build)"
+   ],
+   "outputs": [
+    "98a314a feat(engine): add the gfx-terrain-depth A/B switch for the Mali gl_FragDepth strip",
+    "4fc1fd7 fix(engine): keep the gl_FragDepth store for shaders that compute their own depth",
+    "tests/device/test_frag_depth_strip.cpp + verify_host.py contracts frag-depth-strip-build/contract",
+    "coordination/EXPERIENCE.md (cross-tool experience library) and its AGENTS.md pointer",
+    "coordination/results/RG477M-FLICKER-LEFTGROUND-20261113.md sections 16 and 17"
+   ],
+   "dependencies": [
+    "RG477M-FLICKER-LOCALIZATION-20261113"
+   ],
+   "pass_gates": [
+    "same-position A/B pair on the device with only the boolean switch changed",
+    "engine-side metric over the color0 ROI (alternating black rows) separates the two arms",
+    "host contract test green",
+    "fps 30.00 with sync_wb=0 and sync_rb=0 after the fix"
+   ],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_depth.h",
+    "tests/device/test_frag_depth_strip.cpp",
+    "scripts/verify_host.py",
+    "coordination/EXPERIENCE.md",
+    "coordination/results/RG477M-FLICKER-LEFTGROUND-20261113.md",
+    "coordination/HANDOFF.md",
+    "coordination/state.json"
+   ],
+   "acceptance": "user-visible black stripes on the protagonist are gone on the RG477M at the same position, the engine log states why the store is kept, and the performance baseline is unchanged",
+   "checkpoint": "b7a68d8",
+   "device_exclusive": true,
+   "status_note": "Root cause locked, fix shipped and verified on the RG477M. The canal-plaza white veil and the Chapter 3 ground flicker re-check remain open under RG477M-FLICKER-LOCALIZATION-20261113."
   }
  ],
  "blockers": [
@@ -7678,5 +7739,26 @@
    "f1c45032": "gfx-live-ab forced-off path switch (installed)"
   },
   "next": "ab_off sweep of all 25 paths, mipmaxlod0 A/B, then the probe window capture to identify the draw that paints the veil"
+ },
+ "rg477m_fragdepth_rootcause_20261114": {
+  "device": "RG477M01445122 (Mali-G615 MC6)",
+  "symptom": "black horizontal stripes on the protagonist in water-capital-walk; object space, period about 12 screen pixels, temporally stable",
+  "root_cause": "93ebe66 stripped gl_FragDepth from shader key 062df44b75d37d76, believing it to be the terrain shader; the probe shows that key draws the protagonist, and the module never loads gl_FragCoord, so its gl_FragDepth holds a value the shader computes itself. The strip therefore replaced the game's depth with the rasterizer's interpolated z, and the LEQUAL comparison flipped along the contours of the depth difference, rejecting whole horizontal bands of the protagonist.",
+  "evidence": [
+   "probe color0 at the protagonist draw: the figure is rasterized as 1 pixel high horizontal scanlines; the gaps are exactly (0,0,0,0) (3876 pixels, one single value) -> never written, not 'painted black'",
+   "offline SPIR-V: 0 OpLoad from the gl_FragCoord variable; gl_FragDepth is stored from a computed local value",
+   "A/B pair, same position, same APK, one boolean: strip on -> stripes present (8 alternating row pairs in the engine-side metric, 3 frames consistent); strip off -> stripes absent (0 row pairs)",
+   "the fix keeps the store for this shader, so the protagonist is solid; fps 30.00, submit_cpu_ms 2.55, sync_wb=0, sync_rb=0"
+  ],
+  "fix": "4fc1fd7 - xbg_spirv_reads_fragcoord(): strip gl_FragDepth only when the shader really loads gl_FragCoord (then the store is gl_FragCoord.z and redundant); otherwise keep the game's own depth. Device split still by Vulkan device identity (vendorID 0x13B5 / deviceName contains Mali), no model hardcoding.",
+  "runtime_switch": "files/gfx-terrain-depth: absent = auto, '0' = never strip, '1' = always strip (the 1.0.10 behaviour, kept for the Chapter 3 ground A/B)",
+  "regression_test": "tests/device/test_frag_depth_strip.cpp, wired into scripts/verify_host.py as frag-depth-strip-build / frag-depth-strip-contract",
+  "apk_sha256": "ae57bb2cfff0ba0d508ec61edead4c3081869668908da494e0d89fb0f93a44f5",
+  "open": [
+   "Chapter 3 ground flicker re-check on the device with gfx-terrain-depth=1 versus absent",
+   "the canal plaza white veil is a separate, still unlocked root cause",
+   "the protagonist strip fix has not been applied to the honor tree line (its own shader keys must be re-checked)"
+  ],
+  "observed_at": "2026-11-14T11:40:00+08:00"
  }
 }
