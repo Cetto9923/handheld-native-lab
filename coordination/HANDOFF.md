@@ -4327,3 +4327,9 @@ C4 帧内 desc memo 比对的是 buffer 身份而非内容、C5 客机侧数据�
 **复核**
 - 游戏 PID 13330 在跑：fps=30.00 / submit_cpu_ms=4.95 / sync_wb=0 / sync_rb=0（标题画面 draws=39）。
 - explore 子代理仍在读引擎源码（bind cache / blend 映射 / driver block），结论未到。
+
+## 2026-11-14 新包进入场景退出
+
+用户报告a0f402e进入游戏退出。已保留7985/9495对应日志及exit-info，均主动exit70。b673e10f3da2451c的typed storage b41/b47请求被拒绝。标题验证不能覆盖场景进入。根接回RG477M，同包narrow=0做控制复现，两名只读worker检查拒绝路径。证据在 `.local/codex-recovery-20261114/crash-a0f402e-20261114-175815`。
+
+新建游戏同包narrow=0、PID13124复现同一exit70。独立worker确认integer后即存在，已排除narrow开关作为本次拒绝的引入点。03ab3e6在transactional declare中移动已有type/pointer并重新计算facts，保留opaque guard及失败不发布。宿主76检查通过，真实b673三个阶段typed均通过val且函数仅一处load类型ID变化、原子操作不变。1.0.12-preview已构建，真机新建游戏回归中。

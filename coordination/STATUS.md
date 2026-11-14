@@ -1,7 +1,7 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-14T17:56:14.626759+08:00
-阶段：a0f402e候选已安装到RG477M并启动标题，用户手动测试中。性能缓存修复与跨机型诊断导出继续待集成。
+状态事件时间：2026-11-14T18:26:31.682893+08:00
+阶段：03ab3e6修复新建游戏退出并已越过真实开场致命点，用户确认不闪退。继续处理同次开场约21FPS和短暂断音。
 总控：Codex /root 本轮接管
 更新方式：按事件更新，没有后台自动刷新。
 
@@ -153,6 +153,9 @@
 | CODEX-NARROW-20261114 | implementer | implemented | Codex /root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-NARROW-GUARD-20261114 | implementer | implemented | minimax_session | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-ANDROID-REPORT-20261114 | android | in_progress | android_reporting | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-CRASH-20261114 | GRAPHICS_QA | passed | Codex /root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-TEXEL-COPY-20261114 | PERF_AUDIO | in_progress | minimax_session | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-AUDIO-ROUTE-20261114 | PERF_AUDIO | in_progress | android_reporting | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 
 ## 独占写入
 
@@ -268,6 +271,9 @@
 - {"task": "CODEX-NARROW-20261114", "owner": "Codex /root", "paths": ["src/graphics/nvn_vulkan/engine/third_party/droidplay/spv_narrow.h", "src/graphics/nvn_vulkan/engine/third_party/droidplay/LICENSE", "src/graphics/nvn_vulkan/engine/third_party/droidplay/provenance.json", "scripts/verify_host.py", "src/graphics/nvn_vulkan/engine/xbg_game.cpp", "src/graphics/nvn_vulkan/engine/xbg_probe.inc", "src/graphics/nvn_vulkan/engine/xbg_water_trace.inc"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T12:59:16.841391+08:00", "checkpoint": "a0f402e已提交，87宿主检查及APK构建退出0，全库2934compute中1195改写/309归约全部验证通过。", "objective": "吸收MIT上游16lane subgroup归约修复并补宿主和真实GPU回归，统一接入runtime/warm；关联水都仍待验证。", "write_state": "RELEASED"}
 - {"task": "CODEX-NARROW-GUARD-20261114", "owner": "minimax_session", "paths": ["src/graphics/nvn_vulkan/engine/xbg_spirv_narrow.h", "tests/device/test_spirv_narrow.cpp", "tests/device/warp_reduce.spvasm", "scripts/android/verify_spirv_narrow.sh"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T13:06:28.332778+08:00", "checkpoint": "a0f402e已提交，87宿主检查及APK构建退出0，全库2934compute中1195改写/309归约全部验证通过。", "objective": "新增helper实际源索引数据流守卫并补有效SPV负例，拒绝误匹配归约，保留已证实的真实模块修复。", "write_state": "RELEASED"}
 - {"task": "CODEX-ANDROID-REPORT-20261114", "owner": "android_reporting", "paths": ["src/android/app/java/org/ffrs/diagnostic/DiagnosticReport.java", "src/android/app/java/org/ffrs/diagnostic/ReportActivity.java", "src/android/app/gamewindow/res/xml/report_shortcuts.xml", "tests/installer/DiagnosticReportContract.java", "tests/installer/test_diagnostic_report.py"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T13:45:21.243811+08:00", "checkpoint": "768c110源码干净，a0f402e APK已构建。无设备。", "objective": "给无电脑测试玩家提供自有应用日志/设备信息诊断ZIP导出，独立Java入口不启动游戏，保存到用户选择位置。", "write_state": "ACTIVE"}
+- {"task": "CODEX-CRASH-20261114", "owner": "Codex /root", "paths": ["src/graphics/nvn_vulkan/engine/xbg_spirv_typed_storage.h", "src/graphics/nvn_vulkan/engine/xbg_game.cpp", "tests/device/test_typed_storage.cpp", "scripts/android/verify_typed_storage.sh", "scripts/verify_host.py", "src/android/app/gamewindow/AndroidManifest.xml"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T18:03:12.408229+08:00", "checkpoint": "03ab3e6，新包回读SHA一致，PID18110越过b673且用户确认不闪退。", "objective": "定位并修复b673 typed-storage格式拒绝，保留写入语义，实际读档/走动验收", "write_state": "RELEASED"}
+- {"task": "CODEX-TEXEL-COPY-20261114", "owner": "minimax_session", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", "src/graphics/nvn_vulkan/engine/xbg_texel_snapshot.h", "tests/device/test_texel_snapshot.cpp", "scripts/android/verify_texel_snapshot.sh"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T18:26:31.682893+08:00", "checkpoint": "03ab3e6，当前PID18110证据已保存", "objective": "为只读pending texel重复GPU拷贝增加按源版本/范围失效的同slot复用及A/B计数，保留首次copy/barrier和游戏绘制", "write_state": "ACTIVE"}
+- {"task": "CODEX-AUDIO-ROUTE-20261114", "owner": "android_reporting", "paths": ["src/runtime/hle/audio_bridge.c", "tests/native/audio_bridge_transport_contract.c"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-14T18:26:31.682893+08:00", "checkpoint": "03ab3e6，当前PID18110证据已保存", "objective": "增加显式AAudio性能模式诊断与请求/实际路由参数日志，保留NONE默认及原guest采样时钟，实际本机A/B", "write_state": "ACTIVE"}
 
 ## 阻塞
 
