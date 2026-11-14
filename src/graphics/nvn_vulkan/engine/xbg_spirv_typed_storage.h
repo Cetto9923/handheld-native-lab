@@ -556,6 +556,35 @@ inline void xbg_spirv_add_extended_storage_capability(std::vector<uint32_t> &wor
     words.insert(words.begin()+5,{2u<<16|17u,49u});
 }
 
+// Type replacement only supports descriptor loads consumed directly by
+// OpImageWrite. Opaque copies, phis and function arguments would require their
+// complete type-use graph to be rewritten too, so refuse those shapes first.
+inline bool xbg_spirv_storage_write_only_uses(const std::vector<uint32_t> &words,
+        const std::unordered_set<uint32_t> &variables,uint32_t image_type,
+        std::unordered_set<uint32_t> &loaded){
+    loaded.clear();
+    std::unordered_set<size_t> load_at;
+    for(size_t i=5;i<words.size();){
+        const uint32_t n=words[i]>>16,op=words[i]&65535u;
+        if(op==61 && n>=4 && variables.count(words[i+3])){
+            if(words[i+1]!=image_type)return false;
+            loaded.insert(words[i+2]);load_at.insert(i);
+        }
+        i+=n;
+    }
+    if(loaded.empty())return false;
+    for(size_t i=5;i<words.size();){
+        const uint32_t n=words[i]>>16,op=words[i]&65535u;
+        if(!load_at.count(i)){
+            for(uint32_t k=1;k<n;++k){
+                if(loaded.count(words[i+k]) && op!=99)return false;
+            }
+        }
+        i+=n;
+    }
+    return true;
+}
+
 // Declares the bound format, reusing an existing image type when needed to
 // avoid duplicate types. Coordinates and written texels stay unchanged.
 //
@@ -639,10 +668,12 @@ inline int xbg_typed_storage_rewrite(std::vector<uint32_t> &words,uint32_t bindi
     const int existing=xbg_spirv_existing_storage_types(words,info,spirv_format,first_variable,existing_image,existing_pointer);
     if(existing<0)return -1;
     if(existing){
+        std::unordered_set<uint32_t> retargeted_loads;
+        if(!xbg_spirv_storage_write_only_uses(words,variables,info.image_type,retargeted_loads))return -1;
         for(size_t i=5;i<words.size();){
             const uint32_t n=words[i]>>16,op=words[i]&65535u;
             if(op==59 && n>=4 && variables.count(words[i+2]))words[i+1]=existing_pointer;
-            if(op==61 && n>=4 && variables.count(words[i+3]))words[i+1]=existing_image;
+            if(op==61 && n>=4 && retargeted_loads.count(words[i+2]))words[i+1]=existing_image;
             i+=n;
         }
     }else words[info.image_at+8]=spirv_format;
@@ -740,29 +771,8 @@ inline int xbg_typed_storage_split_rewrite(std::vector<uint32_t> &words,uint32_t
     }
     const auto variable=def.find(info.variable);if(variable==def.end())return -1;
     const auto pointer=def.find(info.pointer_type);if(pointer==def.end())return -1;
-    // The values the binding loads, and the accesses that use them.
     std::unordered_set<uint32_t> loaded;
-    std::unordered_set<size_t> load_at;
-    for(size_t i=5;i<words.size();){uint32_t n=words[i]>>16,op=words[i]&65535u;
-        if(op==61&&n>=4&&words[i+3]==info.variable){
-            if(words[i+1]!=info.image_type)return -1;   // not an image load
-            loaded.insert(words[i+2]);load_at.insert(i);
-        }
-        i+=n;
-    }
-    if(loaded.empty())return -1;
-    // Only a write keeps its meaning when the image type changes: a read or a
-    // texel pointer sees the format, so they keep the module formatless.
-    for(size_t i=5;i<words.size();){uint32_t n=words[i]>>16,op=words[i]&65535u;
-        if(!load_at.count(i)){
-            for(uint32_t k=1;k<n;++k){
-                if(!loaded.count(words[i+k]))continue;
-                if(op==99)continue;                      // OpImageWrite
-                return -1;
-            }
-        }
-        i+=n;
-    }
+    if(!xbg_spirv_storage_write_only_uses(words,{info.variable},info.image_type,loaded))return -1;
     // Reuse a matching typed declaration when one is already present.
     // Otherwise create the binding's private image and pointer types.
     uint32_t image_type=0,pointer_type=0;

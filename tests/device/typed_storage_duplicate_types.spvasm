@@ -34,6 +34,8 @@ OpDecorate %typed_image Binding 13
 %loaded = OpLoad %image_ty %image
 %loaded2 = OpLoad %image_ty %image2
 %loaded_typed = OpLoad %typed_image_ty %typed_image
+; An unrelated typed image copy stays legal through formatless-type reuse.
+%typed_copy = OpCopyObject %typed_image_ty %loaded_typed
 %texel = OpCompositeConstruct %v4uint %uint_1 %uint_2 %uint_3 %uint_4
 OpImageWrite %loaded %int_0 %texel None
 OpImageWrite %loaded2 %int_0 %texel None

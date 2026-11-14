@@ -1,3 +1,12 @@
+# 2026-11-14 分支收敛完成，继续闪烁与卡顿
+
+- 当前开发树 /Users/yuyan9923/GitHub/ff-resonance-honor-gtpro，开发分支 task/T-codex-recovery-20261114。主干 work/rg477m-native 在 RG477M 目录。
+- 18个旧分支已归并历史后删除，其他项目SNK分支保留。APK清单共702文件，原目录保留，参考包及Antigravity包另备份。
+- 参考包90831749...已获用户确认角色正常，仍有闪烁。前一轮perf-sample A/B因MiniMax换包作废。
+- 整合宿主检查已退出0，2个class fixture测试因本地缺文件SKIPPED，Android构建及真机仍待本轮执行。
+- typed-storage独立review补opaque-use去重门禁进行中，修复交回后启动完整APK编译。
+- 下一步先固定参考包/PID采集90帧引擎呈现图，量化闪烁；随后装整合候选复跑角色、技能、场景和音频。
+
 - 当前 PID20895 截图明确有两名黑NPC，原“角色全黑已修”结论撤回。帧日志约27FPS、legacy_wait_total约17ms/帧；正在分别审查。
 # 2026-11-14 Codex 接管角色回归、卡顿及分支收敛
 

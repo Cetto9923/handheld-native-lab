@@ -69,6 +69,33 @@ static std::vector<uint32_t> scalar_fixture(const std::vector<uint32_t> &fixture
     }
     assert(false);return {};
 }
+// A legal opaque image copy, plus a write through it. Keep the original
+// direct write so component-width analysis also reaches the deduplication path.
+static std::vector<uint32_t> with_image_copy(const std::vector<uint32_t> &source,uint32_t binding){
+    XbgStorageImageBinding info;assert(xbg_spirv_binding_image(source,binding,info));
+    auto words=source;
+    const uint32_t copied=words[3]++;
+    uint32_t loaded=0;
+    for(size_t i=5;i<words.size();){
+        const uint32_t n=words[i]>>16,op=words[i]&65535u;
+        if(op==61 && n>=4 && words[i+3]==info.variable){
+            loaded=words[i+2];
+            words.insert(words.begin()+i+n,{4u<<16|83u,info.image_type,copied,loaded});
+            break;
+        }
+        i+=n;
+    }
+    assert(loaded);
+    for(size_t i=5;i<words.size();){
+        const uint32_t n=words[i]>>16,op=words[i]&65535u;
+        if(op==99 && n>=4 && words[i+1]==loaded){
+            std::vector<uint32_t> write(words.begin()+i,words.begin()+i+n);
+            write[1]=copied;words.insert(words.begin()+i+n,write.begin(),write.end());return words;
+        }
+        i+=n;
+    }
+    assert(false);return {};
+}
 static void assert_function_unchanged(const std::vector<uint32_t> &before,const std::vector<uint32_t> &after){
     auto first_function=[](const std::vector<uint32_t> &words){
         for(size_t i=5;i<words.size();i+=words[i]>>16)if((words[i]&65535u)==54)return i;
@@ -258,6 +285,25 @@ int main(int argc,char **argv){
         assert(reused.size()==duplicate.size() && reused[3]==duplicate[3]);
         assert_function_unchanged(duplicate,reused);
         save((prefix+".reused.spv").c_str(),reused);
+
+        // CopyObject is legal SPIR-V, but replacing only its source load's
+        // type would invalidate the copied result. Check every retargeted
+        // sharer, including binding 12 when binding 11 initiates the rewrite.
+        for(uint32_t binding:{11u,12u}){
+            const auto copied=with_image_copy(duplicate,binding);
+            const std::string copy_prefix=prefix+".copy-"+std::to_string(binding);
+            save((copy_prefix+".source.spv").c_str(),copied);
+            auto refused=copied;
+            assert(xbg_typed_storage_rewrite(refused,11,XBG_IMAGE_FORMAT_R32UI,true)==-1);
+            assert(refused==copied);
+            save((copy_prefix+".refused.spv").c_str(),refused);
+            assert(xbg_typed_storage_split_rewrite(refused,binding,XBG_IMAGE_FORMAT_R32UI)==-1);
+            assert(refused==copied);
+            const std::vector<XbgTypedStorageRequest> copy_requests={{11,XBG_IMAGE_FORMAT_R32UI},{12,XBG_IMAGE_FORMAT_R32UI}};
+            size_t copy_failed=0;int copy_shared=1;std::vector<uint32_t> copy_split;
+            assert(xbg_typed_storage_declare(refused,copy_requests,copy_failed,copy_shared,copy_split)==-1);
+            assert(refused==copied);
+        }
 
         // One sharer receives the pre-existing R32ui type, the other keeps
         // the original formatless type and its original load type.

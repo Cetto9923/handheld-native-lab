@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-14T11:56:49.859512+08:00",
- "phase": "角色变黑回归恢复、真实卡顿定位及各分支审查收敛。用户授权本轮操作 RG477M，历史 APK 保留。",
+ "updated_at": "2026-11-14T12:11:49.630498+08:00",
+ "phase": "已完成历史分支收敛及18个旧分支删除，开始固定MiniMax参考包的闪烁/卡顿复测。整合版宿主检查通过，目标设备验收待执行。",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -1614,9 +1614,9 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/stability-20261111",
    "branch": "task/T-stability-20261111",
    "acquired_at": "2026-11-11T19:12:51.875440+08:00",
-   "checkpoint": "58901a8",
+   "checkpoint": "用户停止外部会话后完成分支归并，工作树已脱离旧分支，原内容和APK保留。",
    "objective": "Host-testable stability fixes are committed on task/T-stability-20261111 at 58901a8. Do not edit xbg_game.cpp or the Java UI. Do not delete this worktree. Device checks for the save sync and the paced audio reopen are NOT_RUN.",
-   "write_state": "ACTIVE"
+   "write_state": "FROZEN_ARCHIVED_CONSOLIDATION"
   },
   {
    "task": "HONOR-MOTION-BLOCKS-20261112",
@@ -1638,8 +1638,8 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-honor-shrine-20261111",
    "acquired_at": "2026-11-12T01:08:27.178041+08:00",
-   "checkpoint": "Build9 source 00b66e2 built successfully. APK SHA-256 27d8cce3eb891ff7b7edce89cb19efba455fb3984b02605379f7ee1bfaff9b2c. Build8 first ice and fire full recordings completed with recorder exit 0. Learned list now contains 1293 graphics and 65 compute records. Data-preserving build9 installation is running after a validated save tar. Root remains sole device operator. Mode2 is diagnostic. Dense-room performance and same-process repeated spells remain open.",
-   "write_state": "ACTIVE"
+   "checkpoint": "用户停止外部会话后完成分支归并，工作树已脱离旧分支，原内容和APK保留。",
+   "write_state": "FROZEN_ARCHIVED_CONSOLIDATION"
   },
   {
    "task": "HONOR-INTEGER-FETCH-SEMANTICS",
@@ -1760,7 +1760,8 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-honor-shrine-20261111",
    "acquired_at": "2026-11-12T00:03:15.266730+00:00",
-   "checkpoint": "Normalize this task report wording only. Preserve all values, invalid samples and version boundaries."
+   "checkpoint": "用户停止外部会话后完成分支归并，工作树已脱离旧分支，原内容和APK保留。",
+   "write_state": "FROZEN_ARCHIVED_CONSOLIDATION"
   },
   {
    "task": "RELEASE-1.0.6-20261112",
@@ -1805,7 +1806,8 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/package-1.0.7-20261112",
    "branch": "task/T-package-1.0.7-20261112",
    "acquired_at": "2026-11-12T19:37:54.159407+08:00",
-   "checkpoint": "1.0.7 internal package built and device-verified; APK at .local/release-1.0.7/, sha256 faf3b74250deb91c0f537d85b2202f95def9b56c35e8c159a90ea495f74f60a6"
+   "checkpoint": "用户停止外部会话后完成分支归并，工作树已脱离旧分支，原内容和APK保留。",
+   "write_state": "FROZEN_ARCHIVED_CONSOLIDATION"
   },
   {
    "task": "RG477M-BASELINE-SYNC-20261112",
@@ -1820,9 +1822,9 @@
    "worktree": "worker to declare; the RG477M main worktree and the honor main worktree are forbidden (foreign WIP)",
    "branch": "task/T-rg477m-sync-20261112",
    "acquired_at": "2026-11-12T20:06:51.357052+08:00",
-   "checkpoint": "dispatched with a corrected brief; the worker must reply with its plan, its worktree and its baseline commit before it starts editing",
+   "checkpoint": "用户停止外部会话后完成分支归并，工作树已脱离旧分支，原内容和APK保留。",
    "objective": "One APK, one codebase, two devices: bring the RG477M baseline up to the Honor line, keep the existing device profile tiering (handheld_mid 720/30 for RG477M, tablet_sd8s 1080/60 for the Honor tablet), and prove title plus battle at a stable 30 FPS on the RG477M.",
-   "write_state": "ACTIVE"
+   "write_state": "FROZEN_ARCHIVED_CONSOLIDATION"
   },
   {
    "task": "HONOR-PIPELINE-SEED-20261112",
@@ -1858,9 +1860,9 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/transit-20261112",
    "branch": "task/T-transit-20261112",
    "acquired_at": "2026-11-12T23:32:00.823024+08:00",
-   "checkpoint": "585bf28 plus uncommitted xbg_readback_retire.h / selfproof script / contract test",
+   "checkpoint": "用户停止外部会话后完成分支归并，工作树已脱离旧分支，原内容和APK保留。",
    "objective": "Retire a readback only to its own submission instead of draining every slot, so the CPU stops blocking in vkQueueSubmit. Must not change game logic time, animation speed or draw results.",
-   "write_state": "ACTIVE"
+   "write_state": "FROZEN_ARCHIVED_CONSOLIDATION"
   },
   {
    "task": "RG477M-TEXEL-FORMAT-20261112",
@@ -1877,9 +1879,9 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native/.worktrees/rg477m-texel-20261112",
    "branch": "task/T-rg477m-texel-20261112",
    "acquired_at": "2026-11-12T23:32:00.823024+08:00",
-   "checkpoint": "db094f8 (no change yet)",
+   "checkpoint": "用户停止外部会话后完成分支归并，工作树已脱离旧分支，原内容和APK保留。",
    "objective": "Fix the Mali FATAL \"Texel format lacks formatless-write support\" so the RG477M can enter the game. Mali reports bufferFeatures=0x78 for texel formats: the optional STORAGE_WRITE_WITHOUT_FORMAT / READ_WITHOUT_FORMAT bits are absent, so the formatless path cannot be used; the typed (with-format) path must be produced by rewriting the SPIR-V.",
-   "write_state": "ACTIVE"
+   "write_state": "FROZEN_ARCHIVED_CONSOLIDATION"
   },
   {
    "task": "CRASH-P0-BATTLE-SETTLE-20261112",
@@ -1893,9 +1895,9 @@
    "worktree": "worker to declare; the RG477M main worktree and the honor main worktree are forbidden (foreign WIP)",
    "branch": "task/T-crash-p0-20261112",
    "acquired_at": "2026-11-12T23:32:00.823024+08:00",
-   "checkpoint": "not yet reported",
+   "checkpoint": "用户停止外部会话后完成分支归并，工作树已脱离旧分支，原内容和APK保留。",
    "objective": "Pre-emptive hardening for the 8E5 (Snapdragon) crash after a Bahamut summon wins the fight. No 8E5 device is available, so the work is code-level analysis plus host contracts; every device claim must be written NOT_RUN.",
-   "write_state": "ACTIVE"
+   "write_state": "FROZEN_ARCHIVED_CONSOLIDATION"
   },
   {
    "task": "RG477M-FLICKER-LOCALIZATION-20261113",
@@ -1910,9 +1912,9 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native",
    "branch": "task/T-rg477m-flicker-liveoff-20261113",
    "acquired_at": "2026-11-13T19:10:00+08:00",
-   "checkpoint": "5082aac",
+   "checkpoint": "用户停止外部会话后完成分支归并，工作树已脱离旧分支，原内容和APK保留。",
    "objective": "Flicker localization and the engine-side present-frame dump on the RG477M.",
-   "write_state": "ACTIVE"
+   "write_state": "FROZEN_ARCHIVED_CONSOLIDATION"
   },
   {
    "task": "RG477M-STRIPE-FRAGDEPTH-20261114",
@@ -1942,10 +1944,10 @@
     "tests/",
     "coordination/"
    ],
-   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-14T11:49:26.263338+08:00",
-   "checkpoint": "已建立分支完整Git bundle和各工作树差分备份，开发树从ef33490隔离。当前在等Antigravity释放设备占用。",
+   "checkpoint": "主干和开发分支已统一至a1ccbe4，历史分支已归并归档；当前APK908...为用户确认角色正常的基线。",
    "write_state": "ACTIVE"
   },
   {
@@ -1970,11 +1972,11 @@
     "tests/device/test_typed_storage.cpp",
     "tests/device/typed_storage_duplicate_types.spvasm"
    ],
-   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-14T11:56:49.859512+08:00",
-   "checkpoint": "已派工",
-   "write_state": "ACTIVE"
+   "checkpoint": "已交回并冻结源码。",
+   "write_state": "RELEASED"
   }
  ],
  "tasks": [
@@ -5481,7 +5483,8 @@
     "src/android/native/guest_boot_jni.cpp",
     "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
     "tests/",
-    "coordination/"
+    "coordination/",
+    "src/android/app/gamewindow/AndroidManifest.xml"
    ],
    "acceptance": "角色材质及特效在相同场景复验，卡顿以同次进程原始帧时间定位并复测；主干和开发分支保留，独有代码和WIP可恢复，APK历史不删除。验收必须完整包含 coordination/prompts/_STANDING-audio-acceptance.md。",
    "checkpoint": "已建立分支完整Git bundle和各工作树差分备份，开发树从ef33490隔离。当前在等Antigravity释放设备占用。"
@@ -5515,7 +5518,7 @@
   {
    "id": "CODEX-TYPED-AUDIT-20261114",
    "role": "research",
-   "status": "in_progress",
+   "status": "completed",
    "owner": "minimax_session",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/codex-recovery-20261114",
@@ -5532,12 +5535,12 @@
    "pass_gates": [],
    "write_scope": [],
    "acceptance": "报告精确输入和覆盖，真机由总控串行执行。",
-   "checkpoint": "已派工"
+   "checkpoint": "只读审查已交回，结论已纳入整合记录。"
   },
   {
    "id": "CODEX-PERF-AUDIT-20261114",
    "role": "research",
-   "status": "in_progress",
+   "status": "completed",
    "owner": "antigravity_session",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/codex-recovery-20261114",
@@ -5554,15 +5557,15 @@
    "pass_gates": [],
    "write_scope": [],
    "acceptance": "报告精确输入和覆盖，真机由总控串行执行。",
-   "checkpoint": "已派工"
+   "checkpoint": "只读审查已交回，结论已纳入整合记录。"
   },
   {
    "id": "CODEX-TYPED-CAP-20261114",
    "role": "implementer",
-   "status": "in_progress",
+   "status": "implemented",
    "owner": "minimax_session",
    "branch": "task/T-codex-recovery-20261114",
-   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "objective": "按现有native typed-storage API吸收d19a037的Rg32f/i/ui能力49与重复image type处理，保留nativeR16及shared split，并添加精确回归。",
    "inputs": [
     "d19a037",
@@ -5581,7 +5584,7 @@
     "tests/device/typed_storage_duplicate_types.spvasm"
    ],
    "acceptance": "既有typed-storage正负用例通过，新增扩展格式门禁与重复类型回归通过，实际游戏表示保持。",
-   "checkpoint": "已派工"
+   "checkpoint": "opaque-use门禁回归及真实五模块检查交回，源码已冻结。"
   }
  ],
  "blockers": [
@@ -7950,6 +7953,16 @@
    "角色/特效修复",
    "卡顿实测",
    "分支清理"
-  ]
+  ],
+  "branch_cleanup": {
+   "main": "work/rg477m-native",
+   "development": "task/T-codex-recovery-20261114",
+   "deleted_project_branches": 18,
+   "other_project_preserved": "work/snk-the1st-honor-gtpro",
+   "existing_apk_files_preserved": 702,
+   "archive": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/codex-recovery-20261114/branch-archive"
+  },
+  "baseline_apk": "9083174963c40ce1c7d1726671fa2ffd4e00f573efad516d80def5b3a10cf881",
+  "current_focus": "用户明确第三章水都地面闪烁。开场90帧只作场景独立证据，未建立水都结论。"
  }
 }

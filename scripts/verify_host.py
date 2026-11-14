@@ -226,7 +226,8 @@ def main():
                 run('typed-storage-extended-val-' + str(image_format),
                     [spirv_val, '--target-env', 'vulkan1.1',
                      typed_dir / ('typed_storage_out.spv.extended-' + str(image_format) + '.spv')])
-            for variant in ('reused', 'private', 'split', 'late-source'):
+            for variant in ('reused', 'private', 'split', 'late-source',
+                            'copy-11.source', 'copy-11.refused', 'copy-12.source', 'copy-12.refused'):
                 run('typed-storage-duplicate-val-' + variant,
                     [spirv_val, '--target-env', 'vulkan1.1', typed_dir / ('duplicate.' + variant + '.spv')])
         # The real module that crashed the 1.0.9 battle settle scene on the Honor
