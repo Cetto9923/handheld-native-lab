@@ -18,6 +18,8 @@ static pthread_mutex_t sink_lock=PTHREAD_MUTEX_INITIALIZER;
 static int16_t sink[240*6*512];
 static size_t sink_samples;
 static int calls,opens,closes,errors,timeouts,disconnects,partial;
+static int backend_burst=3075,backend_capacity=6150,expected_buffer=3075;
+static aaudio_performance_mode_t expected_performance=AAUDIO_PERFORMANCE_MODE_NONE;
 static _Atomic int block_writes;
 static uint64_t now_ns(void){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return (uint64_t)t.tv_sec*1000000000ull+t.tv_nsec;}
 #define CHECK(c) do{if(!(c)){fprintf(stderr,"FAIL line%d %s\n",__LINE__,#c);errors++;}}while(0)
@@ -30,14 +32,14 @@ void AAudioStreamBuilder_setSampleRate(AAudioStreamBuilder *b,int32_t v){b->rate
 void AAudioStreamBuilder_setChannelCount(AAudioStreamBuilder *b,int32_t v){b->channels=v;}
 void AAudioStreamBuilder_setUsage(AAudioStreamBuilder *b,aaudio_usage_t v){(void)b;CHECK(v==AAUDIO_USAGE_GAME);}
 void AAudioStreamBuilder_setContentType(AAudioStreamBuilder *b,aaudio_content_type_t v){(void)b;CHECK(v==AAUDIO_CONTENT_TYPE_MUSIC);}
-void AAudioStreamBuilder_setPerformanceMode(AAudioStreamBuilder *b,aaudio_performance_mode_t v){CHECK(v==AAUDIO_PERFORMANCE_MODE_NONE);b->performance=v;}
-aaudio_result_t AAudioStreamBuilder_openStream(AAudioStreamBuilder *b,AAudioStream **s){*s=calloc(1,sizeof(**s));if(!*s)return AAUDIO_ERROR_NO_MEMORY;(*s)->rate=b->rate?b->rate:48000;(*s)->channels=b->channels;(*s)->size=6150;atomic_store(&(*s)->state,AAUDIO_STREAM_STATE_OPEN);opens++;return 0;}
+void AAudioStreamBuilder_setPerformanceMode(AAudioStreamBuilder *b,aaudio_performance_mode_t v){CHECK(v==expected_performance);b->performance=v;}
+aaudio_result_t AAudioStreamBuilder_openStream(AAudioStreamBuilder *b,AAudioStream **s){*s=calloc(1,sizeof(**s));if(!*s)return AAUDIO_ERROR_NO_MEMORY;(*s)->rate=b->rate?b->rate:48000;(*s)->channels=b->channels;(*s)->size=backend_capacity;atomic_store(&(*s)->state,AAUDIO_STREAM_STATE_OPEN);opens++;return 0;}
 aaudio_result_t AAudioStream_close(AAudioStream *s){closes++;free(s);return 0;}
 aaudio_result_t AAudioStream_requestStart(AAudioStream *s){atomic_store(&s->state,AAUDIO_STREAM_STATE_STARTED);return 0;}
 aaudio_result_t AAudioStream_requestStop(AAudioStream *s){atomic_store(&s->state,AAUDIO_STREAM_STATE_STOPPED);return 0;}
-int32_t AAudioStream_getFramesPerBurst(AAudioStream *s){(void)s;return 3075;}
-int32_t AAudioStream_getBufferCapacityInFrames(AAudioStream *s){(void)s;return 6150;}
-aaudio_result_t AAudioStream_setBufferSizeInFrames(AAudioStream *s,int32_t v){CHECK(v==6150);s->size=v;return v;}
+int32_t AAudioStream_getFramesPerBurst(AAudioStream *s){(void)s;return backend_burst;}
+int32_t AAudioStream_getBufferCapacityInFrames(AAudioStream *s){(void)s;return backend_capacity;}
+aaudio_result_t AAudioStream_setBufferSizeInFrames(AAudioStream *s,int32_t v){CHECK(v==expected_buffer);s->size=v;return v;}
 int32_t AAudioStream_getBufferSizeInFrames(AAudioStream *s){return s->size;}
 aaudio_stream_state_t AAudioStream_getState(AAudioStream *s){return atomic_load(&s->state);}
 int32_t AAudioStream_getDeviceId(AAudioStream *s){(void)s;return 3;}
@@ -45,6 +47,8 @@ int32_t AAudioStream_getXRunCount(AAudioStream *s){(void)s;return 0;}
 int64_t AAudioStream_getFramesWritten(AAudioStream *s){return s->written;}
 int64_t AAudioStream_getFramesRead(AAudioStream *s){return s->written;}
 aaudio_performance_mode_t AAudioStream_getPerformanceMode(AAudioStream *s){(void)s;return AAUDIO_PERFORMANCE_MODE_NONE;}
+aaudio_sharing_mode_t AAudioStream_getSharingMode(AAudioStream *s){(void)s;return AAUDIO_SHARING_MODE_SHARED;}
+aaudio_session_id_t AAudioStream_getSessionId(AAudioStream *s){(void)s;return AAUDIO_SESSION_ID_NONE;}
 aaudio_usage_t AAudioStream_getUsage(AAudioStream *s){(void)s;return AAUDIO_USAGE_GAME;}
 int32_t AAudioStream_getChannelCount(AAudioStream *s){return s->channels;}
 int32_t AAudioStream_getSampleRate(AAudioStream *s){return s->rate;}
@@ -157,9 +161,24 @@ static void stereo_packet_test(void){
  pthread_mutex_lock(&sink_lock);for(size_t i=0;i<sink_samples;i++)if(sink[i]!=value(i)){CHECK(sink[i]==value(i));break;}pthread_mutex_unlock(&sink_lock);
  stop(key);close_out(key);printf("stereo1536_packet errors=%d\n",errors);
 }
+static void low_latency_request_test(const char *directory){
+ unsigned char key[128]={0};uint64_t parameter=48000ull+(6ull<<32);
+ char marker[512];snprintf(marker,sizeof marker,"%s/gfx-audio-low-latency",directory);
+ FILE *file=fopen(marker,"wb");CHECK(file!=NULL);if(!file)return;
+ fputs("1\n",file);fclose(file);
+ expected_performance=AAUDIO_PERFORMANCE_MODE_LOW_LATENCY;
+ backend_burst=1026;backend_capacity=2052;expected_buffer=1920;
+ CHECK(open_out(key,key+80,&parameter)==0);close_out(key);
+ file=fopen(marker,"wb");CHECK(file!=NULL);if(!file)return;
+ fputs("0\n",file);fclose(file);
+ expected_performance=AAUDIO_PERFORMANCE_MODE_NONE;
+ backend_burst=3075;backend_capacity=6150;expected_buffer=3075;
+ CHECK(open_out(key,key+80,&parameter)==0);close_out(key);
+ printf("low_latency_request fallback_and_buffer_floor errors=%d\n",errors);
+}
 int main(int argc,char **argv){
  if(argc!=2)return 2;mkdir(argv[1],0700);CHECK(ffrs_audio_set_platform_directory(argv[1])==0);
  char marker[512];snprintf(marker,sizeof marker,"%s/gfx-audio-paced-transport",argv[1]);FILE *f=fopen(marker,"wb");if(!f)return 3;fputs("1",f);fclose(f);
- load_api();stream_test(80,0);stream_test(160,1);stop_restart_test();stop_blocked_writer_test();stereo_packet_test();
+ load_api();stream_test(80,0);stream_test(160,1);stop_restart_test();stop_blocked_writer_test();stereo_packet_test();low_latency_request_test(argv[1]);
  CHECK(opens==closes);printf("audio_bridge_transport_contract errors=%d opens=%d closes=%d events=%u\n",errors,opens,closes,(unsigned)events);return errors!=0;
 }

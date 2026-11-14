@@ -18,6 +18,7 @@
 #include <sys/mman.h>
 #if defined(__ANDROID__)
 #include <aaudio/AAudio.h>
+#include <sys/resource.h>
 #include <sys/syscall.h>
 #endif
 static pthread_mutex_t audio_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -198,6 +199,21 @@ static aaudio_result_t open_aaudio_stream(audio_output *out) {
     aaudio_result_t status = AAudio_createStreamBuilder(&builder);
     if (status != AAUDIO_OK) return status;
 
+    aaudio_performance_mode_t requested_performance = AAUDIO_PERFORMANCE_MODE_NONE;
+    char marker[PATH_MAX];
+    int marker_length = 0;
+    pthread_mutex_lock(&audio_lock);
+    if (platform_directory[0])
+        marker_length = snprintf(marker, sizeof marker, "%s/gfx-audio-low-latency", platform_directory);
+    pthread_mutex_unlock(&audio_lock);
+    if (marker_length > 0 && (size_t)marker_length < sizeof marker) {
+        FILE *enabled = fopen(marker, "rb");
+        if (enabled) {
+            if (fgetc(enabled) == '1') requested_performance = AAUDIO_PERFORMANCE_MODE_LOW_LATENCY;
+            fclose(enabled);
+        }
+    }
+
     AAudioStreamBuilder_setDirection(builder, AAUDIO_DIRECTION_OUTPUT);
     AAudioStreamBuilder_setSharingMode(builder, AAUDIO_SHARING_MODE_SHARED);
     AAudioStreamBuilder_setFormat(builder, AAUDIO_FORMAT_PCM_I16);
@@ -205,7 +221,7 @@ static aaudio_result_t open_aaudio_stream(audio_output *out) {
     AAudioStreamBuilder_setChannelCount(builder, out->channels);
     AAudioStreamBuilder_setUsage(builder, AAUDIO_USAGE_GAME);
     AAudioStreamBuilder_setContentType(builder, AAUDIO_CONTENT_TYPE_MUSIC);
-    AAudioStreamBuilder_setPerformanceMode(builder, AAUDIO_PERFORMANCE_MODE_NONE);
+    AAudioStreamBuilder_setPerformanceMode(builder, requested_performance);
 
     status = AAudioStreamBuilder_openStream(builder, &out->stream);
     AAudioStreamBuilder_delete(builder);
@@ -215,27 +231,39 @@ static aaudio_result_t open_aaudio_stream(audio_output *out) {
         int32_t cap = AAudioStream_getBufferCapacityInFrames(out->stream);
         int32_t desired = burst > 0 ? burst : 1920;
         if (burst > 1024) {
-            /* Bluetooth A2DP (burst can be 3000~7215 frames, ~60-150ms):
-             * Do NOT double the burst! 1x burst is already ample buffer for A2DP packetization.
-             * Doubling a 7215 burst created a 300ms buffer, leading to severe audio-video desync. */
+            /* Large bursts also occur on speaker deep-buffer routes.
+             * Keep one burst instead of doubling its transport latency. */
             desired = burst;
         } else {
-            /* Speaker / wired headset (burst typically 192~960 frames):
-             * Double buffer to avoid underruns, capped between 1920 (~40ms) and 3840 (~80ms). */
+            /* Double smaller bursts, capped at 3840 frames (~80ms). */
             desired = burst > 0 ? burst * 2 : 1920;
-            if (desired < 1920) desired = 1920;
             if (desired > 3840) desired = 3840;
         }
+        if (desired < 1920) desired = 1920;
         if (cap > 0 && desired > cap) desired = cap;
         if (desired > 0) {
             AAudioStream_setBufferSizeInFrames(out->stream, desired);
         }
-        fprintf(stderr, "[audio] real AudioOut stream ready: key=%p rate=%d channels=%u device=%d burst=%d capacity=%d buf=%d\n",
-                out->key, out->rate, out->channels,
+        fprintf(stderr, "[audio] real AudioOut stream ready: key=%p rate=%d channels=%d device=%d burst=%d capacity=%d buf=%d requested_performance=%d performance=%d sharing=%d session=%d\n",
+                out->key, AAudioStream_getSampleRate(out->stream), AAudioStream_getChannelCount(out->stream),
                 AAudioStream_getDeviceId(out->stream), burst, cap,
-                AAudioStream_getBufferSizeInFrames(out->stream));
+                AAudioStream_getBufferSizeInFrames(out->stream), requested_performance,
+                AAudioStream_getPerformanceMode(out->stream), AAudioStream_getSharingMode(out->stream),
+                AAudioStream_getSessionId(out->stream));
+    } else {
+        fprintf(stderr, "[audio] AudioOut open failed: key=%p requested_performance=%d rate=%d channels=%d result=%d\n",
+                out->key, requested_performance, out->rate, out->channels, status);
     }
     return status;
+}
+static void audio_worker_identity(audio_output *out, const char *name) {
+    int name_result = pthread_setname_np(pthread_self(), name);
+    errno = 0;
+    int inherited_nice = getpriority(PRIO_PROCESS, 0);
+    int nice_error = errno;
+    fprintf(stderr, "[audio] worker name=%s key=%p rate=%d channels=%d tid=%ld inherited_nice=%d nice_errno=%d setname_result=%d\n",
+            name, out->key, out->rate, out->channels, (long)syscall(SYS_gettid),
+            inherited_nice, nice_error, name_result);
 }
 /* The endpoint owns a real sample-rate clock; Android transport notification
  * batching must not pull an entire burst out of the guest in a few microseconds.
@@ -244,6 +272,7 @@ static aaudio_result_t open_aaudio_stream(audio_output *out) {
  * assertions that the DAC has already played the samples. */
 static void *audio_endpoint_worker(void *argument) {
     audio_output *out=argument;
+    audio_worker_identity(out, "ffrs-audio-src");
     pthread_mutex_lock(&out->mutex);
     while(!out->closing){
         while(!out->closing && (!atomic_load(&out->state) || out->ph==out->pt)){
@@ -288,6 +317,7 @@ static void *audio_endpoint_worker(void *argument) {
 }
 static void *audio_transport_worker(void *argument) {
     audio_output *out=argument;int16_t scratch[1024*8];
+    audio_worker_identity(out, "ffrs-audio-out");
     pthread_mutex_lock(&out->mutex);
     while(!out->closing){
         while(!out->closing){
