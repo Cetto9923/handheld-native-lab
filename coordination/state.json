@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-14T23:31:34.205192+08:00",
+ "updated_at": "2026-11-14T23:36:56.670280+08:00",
  "phase": "显示经验库已总结，FPS主任务进行中。2分钟开场录屏已保全，RG断开导致新CPU采样未执行。",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -2596,6 +2596,20 @@
    "acquired_at": "2026-11-14T23:17:10.670351+08:00",
    "checkpoint": "经验库及真实场景性能取证，尚无新性能代码。",
    "write_state": "ACTIVE"
+  },
+  {
+   "task": "CODEX-UPLOAD21-20261114",
+   "owner": "root",
+   "paths": [
+    ".local/releases/1.0.21/",
+    ".local/codex-recovery-20261114/upload21/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T23:36:27.466956+08:00",
+   "checkpoint": "可上传APK已就绪，verification.json包含复核结果。",
+   "write_state": "RELEASED",
+   "released_at": "2026-11-14T23:36:56.670280+08:00"
   }
  ],
  "tasks": [
@@ -7344,6 +7358,32 @@
    ],
    "acceptance": "逐项保留修复范围、代码/组件/真机证据，录屏用于视觉声学、真实FPS来自同PID引擎，保留原逻辑时间，最终60FPS目标。",
    "checkpoint": "经验库L010至015/显示回归检查点完成，2分钟视频/同PID原始证据已保全，当前窗口CPU18/GPU29至30ms。新CPU3因断开未启动；后续依真实样本接入复制/descriptor/GPU候选，FPS收益未交付。"
+  },
+  {
+   "id": "CODEX-UPLOAD21-20261114",
+   "owner": "root",
+   "role": "DELIVERY",
+   "status": "completed",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "整理用户实测21 APK供用户自行上传，复核版本、签名与摘要。",
+   "inputs": [
+    "21原包07f5f036",
+    "用户不闪烁实玩确认",
+    "28源文件摘要一致"
+   ],
+   "outputs": [
+    ".local/releases/1.0.21/",
+    ".local/codex-recovery-20261114/upload21/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/releases/1.0.21/",
+    ".local/codex-recovery-20261114/upload21/"
+   ],
+   "acceptance": "交付APK字节与实测包一致，原历史包保留，签名/ZIP/版本校验通过，明确音频/帧率遗留范围。",
+   "checkpoint": "21实测原包已整理到.local/releases/1.0.21/，签名/版本/ZIP/SHA通过，28源码摘要重新核对一致。音频和FPS仍开放。"
   }
  ],
  "blockers": [
@@ -10104,6 +10144,15 @@
    "audio": "片头0.348625秒近静音，其余未检出≥15ms近静音段；听感短卡仍待定位。AAudio重开周期各自计xrun，存在欠载记录。",
    "alignment": "creation_time为片头的旧假设已撤回。片尾粗锚点约±2秒，尚缺同步画面标记，不作为精确录屏FPS。",
    "report": "coordination/results/CODEX-SCENE-FPS-20261114.md"
+  },
+  "upload_delivery21": {
+   "apk": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/releases/1.0.21/FFRS-1.0.21-preview-20261114.apk",
+   "sha256": "07f5f0368183b7fb9228c9f744fd835bf623c05fd0e86a1ecb71e13f7ec1419e",
+   "bytes": 3601404,
+   "version": "1.0.21-preview",
+   "validation": "签名/版本/ZIP/hash通过，采用用户实测同字节原包。",
+   "evidence": ".local/codex-recovery-20261114/upload21/",
+   "scope": "RG477M本轮女主闪烁消失；音频短卡及部分场景低帧仍优化。"
   }
  },
  "upstream_research_20261114": {
