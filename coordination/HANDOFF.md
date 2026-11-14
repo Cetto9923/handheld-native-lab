@@ -1,3 +1,12 @@
+# 2026-11-14 23:02 1.0.21候选构建完成，待RG重连
+
+- 源码780ebc67d4b9cfe41c7df35bc0e1a7280e0796a1，包含cba445f clear修正及固定DroidPlay位置NoContraction约束。root全量98/98宿主检查、Android构建均0，28输入构建前后SHA一致。独立冻结helper脚本ASan/UBSan、18份SPIR-V验证0。
+- APK .local/codex-recovery-20261114/apk-history/ffrs-1.0.21-preview-position-precision.apk，3601404B，SHA07f5f0368183b7fb9228c9f744fd835bf623c05fd0e86a1ecb71e13f7ec1419e。native SHAefeeabe79e6ed36328c421e5352ef6e32d90522a338f305c65a1eb89ade3cf1a，三个LOAD均16KiB alignment且offset/VA同余。ZIP校验通过，precision日志串实存。报告WIP的XML资源及两个DEX类均明确不在APK内。
+- plan、构建PID和日志、源前后摘要、artifact-verification.json均在precision-build/。所有历史APK留存。root当前无长构建进程。
+- 最终独立review125afed9f02a0afbf7124c14bd8ef4ce8ea6c6113e61dc9176bfb178f6a8d8c1，integration-check/review.md e2cd142d0de323fe7a746dde36179fa6454800ea0518ad13dff2a94dd5d64ad6。18份SPV val及ASan/UBSan0，额外独立脚本验证注解目标恰好为所选五类result、无重复、全函数体/Fma不变和幂等。VS/FS/CS有效fixture已跑，Tess/Geometry有效fixture未跑。
+- 设备当前仅荣耀平板A42BBB5109000333，RG477M断开。21未安装。最后确认RG运行原18/PID19148，女主闪烁原视频31秒a5977386已保全。当前shader归属、同机位闪烁修复、GPU耗时、音频及低帧回归仍待实机。
+- 继续时先adb devices确认RG和进度交接，再用install_integer_candidate.py指向上述APK/SHA保全日志和存档、覆盖安装并回读。gfx-position-precise=0须新进程作同包单变量，clearfold live对照沿用已有target。两个修正不能仅凭一次正常画面同时宣称因果通过。
+
 # 2026-11-14 位置精度候选21源码冻结
 
 - load_profile已冻结spv_precise原样头、1468a2c8包装、合法fixture/契约/script与per-file provenance。自测ASan/UBSan及18模块spirv-val0，原始和castback7ca各新增492个NoContraction，函数体及显式Fma原字节保持，幂等0，NDK26/API28对象0。分组装饰模块保守保持原样。

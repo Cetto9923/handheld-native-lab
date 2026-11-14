@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-14T23:00:44.121559+08:00",
- "phase": "原18用户录屏定位女主身体间歇深黑覆盖，检查位置精度/深度一致性，clear覆盖补丁独立复审中。",
+ "updated_at": "2026-11-14T23:05:39.864555+08:00",
+ "phase": "女主身体闪烁已从录屏定位，成熟上游精度约束及clear覆盖候选21已构建，98/98通过，RG断开待实机。",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -2531,8 +2531,9 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-14T22:47:48.010417+08:00",
-   "checkpoint": "root独占设备、集成及coordination；当前补丁未打包。",
-   "write_state": "ACTIVE"
+   "checkpoint": "独立QA收口，review125afed9/e2cd142d，无阻塞finding。",
+   "write_state": "RELEASED",
+   "released_at": "2026-11-14T23:05:39.864555+08:00"
   },
   {
    "task": "CODEX-CLEAR-INDEPENDENT-REVIEW-20261114",
@@ -2578,8 +2579,9 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-14T22:52:25.015028+08:00",
-   "checkpoint": "root负责xbg_game/版本/gate，全量构建待helper冻结；load_profile仅写helper/test/source provenance。",
-   "write_state": "ACTIVE"
+   "checkpoint": "源码780ebc6；构建及APK摘要已保全precision-build/。设备验收待重连。",
+   "write_state": "FROZEN_HANDED_BACK",
+   "released_at": "2026-11-14T23:05:02.645631+08:00"
   }
  ],
  "tasks": [
@@ -7186,7 +7188,7 @@
    "id": "CODEX-POSITION-PRECISION-REVIEW-20261114",
    "owner": "perf_cpu/lookup_review",
    "role": "READ_ONLY_REVIEW",
-   "status": "in_progress",
+   "status": "completed",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "objective": "只读核对DroidPlay NoContraction保持Maxwell分步舍入的方案与本项目位置/深度路径，检查现有真实SPV及实际主角配对证据。 并独立复核root接线与load_profile冻结helper契约。",
@@ -7206,7 +7208,7 @@
     ".local/upstream-switch-zelda-20261114/position-precision-review/"
    ],
    "acceptance": "只读生产源码，输出可复核代码/模块证据与边界，未映射当前女主draw不得按key改写，不操作设备或Git。",
-   "checkpoint": "27模块覆盖统计已交回，真实2份VS0/492，root接线待独立复核，helper实现中。"
+   "checkpoint": "最终review125afed9/独立e2cd142d。18SPV val0、ASan0、annotation精确目标集、完整函数体/Fma及幂等独立核对0。VS/FS/CS覆盖，Tess/Geometry有效fixture未跑，Mali剧情NOT_RUN。"
   },
   {
    "id": "CODEX-CLEAR-INDEPENDENT-REVIEW-20261114",
@@ -7273,7 +7275,7 @@
    "id": "CODEX-POSITION-PRECISION-INTEGRATE-20261114",
    "owner": "root",
    "role": "INTEGRATION",
-   "status": "in_progress",
+   "status": "implemented",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "objective": "统一接入runtime/warm与integer/typed变体优化路径及启动时A/B，串行构建并保留原APK。",
@@ -7298,7 +7300,7 @@
     ".local/codex-recovery-20261114/precision-build/"
    ],
    "acceptance": "保持显式FMA及fragment/compute模块，指令函数体逐字保持，仅补合法NoContraction；已有装饰幂等，未知/坏输入不半写；所有优化入口配置一致。女主因果与性能须真机，不能由离线结果代替。",
-   "checkpoint": "root负责xbg_game/版本/gate，全量构建待helper冻结；load_profile仅写helper/test/source provenance。"
+   "checkpoint": "780ebc6源，host98/98、Android0、28输入SHA一致，APK07f5f036/3601404B。RG断开，未安装；女主因果和性能NOT_RUN。"
   }
  ],
  "blockers": [
@@ -9989,20 +9991,28 @@
    "cause": "18/20均复现，撤回19 UBO为唯一引入原因的假设，实际根因待证据。"
   },
   "current_candidate": {
-   "source": "74129a9861b14cb9d71485b94ddb5f4948047b92",
-   "version": "1.0.20-preview",
-   "apk_sha256": "b570111987d0f96c1dcf19490da6823de9375cb6f3905dede415024feabecc0e",
+   "source": "780ebc67d4b9cfe41c7df35bc0e1a7280e0796a1",
+   "version": "1.0.21-preview",
+   "apk": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/codex-recovery-20261114/apk-history/ffrs-1.0.21-preview-position-precision.apk",
+   "apk_sha256": "07f5f0368183b7fb9228c9f744fd835bf623c05fd0e86a1ecb71e13f7ec1419e",
    "bytes": 3601404,
-   "pid": 10323,
-   "host_checks": "97/97",
+   "host_checks": "98/98",
    "android_build": 0,
    "source_hash_match": true,
-   "installed_readback_match": true,
-   "save_before_after_sha256": "86d8a9f5f9a77604ff5d6ebde5e716169f2ac804b15306d26e72b17f26a93ae8",
-   "evidence": ".local/codex-recovery-20261114/install-74129a9-20261114-220424/",
-   "game_performance": "pending",
-   "control": "xbg_game.cpp exact7de9e39 SHA2666a8f9; retains page fastpath only versus18",
-   "installed": false
+   "source_inputs": 28,
+   "native_load_alignment": 16384,
+   "evidence": ".local/codex-recovery-20261114/precision-build/",
+   "installed": false,
+   "device_status": "NOT_RUN_RG477M_DISCONNECTED",
+   "changes": [
+    "cba445f folded clear完整目标覆盖与3D子view保留",
+    "固定DroidPlay NoContraction通用位置运算约束，默认开启，启动marker可对照"
+   ],
+   "pending": [
+    "女主闪烁同场景验证及因果",
+    "当前低帧/音频短卡复验",
+    "实际Mali GPU耗时与性能回归"
+   ]
   },
   "control20_feedback": "用户确认剧情仍有闪烁，旧UBO回退未消除现象，不能归因为19 UBO单项。",
   "installed_baseline": {
@@ -10021,6 +10031,18 @@
    "independent_review_sha256": "c8766478328a40caa350c6ed472a978e500e7f30bf3db96215622619d2cff86a",
    "device_gpu": "NOT_RUN",
    "hero_flicker_causality": "NOT_PROVEN"
+  },
+  "position_precision_candidate": {
+   "source": "780ebc67d4b9cfe41c7df35bc0e1a7280e0796a1",
+   "wrapper_sha256": "1468a2c8ea4e5cbb82785577d49a1adb33b8079c84af56cbad4d1730e4ff0e73",
+   "upstream_revision": "a72a85c59cac54f3428827cfb72e1adf63b1521a",
+   "upstream_sha256": "768ff41d76f5f22d08cacd52d53e7d92e3e3ebf9f44d39e8f9bcb6ff225895ea",
+   "device_result": "NOT_RUN",
+   "default": true,
+   "startup_marker": "gfx-position-precise",
+   "environment": "DM_SPV_PRECISE",
+   "supports": "单已知位置生成entry模块；group及multiple entry保持原路径",
+   "independent_component": "review125afed9/e2cd142d，18SPV val0/ASan0，annotations精确集合，函数体/Fma及幂等一致；VS/FS/CS fixture，Tess/Geometry有效fixture未执行。"
   }
  },
  "upstream_research_20261114": {
@@ -10032,7 +10054,7 @@
   "droidplay": "a72a85c59cac54f3428827cfb72e1adf63b1521a",
   "nxnative": "5a4e23a2e952dae92e1ccf0e6b7bf24e3266d4e8",
   "evidence": ".local/upstream-switch-zelda-20261114/",
-  "production_change": "none",
+  "production_change": "候选源已吸收页查询早返、clear目标覆盖和NoContraction位置约束。UBO候选回退。21尚未安装，原18为最后确认设备版本。",
   "same_game_build_ids": {
    "current": "736837afd390442ed7c74a7de730e71b",
    "upstream_1_0_1": "84e182f72ee1da4f477804bd05b54c15"

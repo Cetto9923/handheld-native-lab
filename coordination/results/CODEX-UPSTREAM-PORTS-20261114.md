@@ -1,8 +1,14 @@
 # 成熟 Switch 原生移植对照与本轮针对性优化
 
+## 1.0.21候选产物
+
+源码780ebc67d4b9cfe41c7df35bc0e1a7280e0796a1，98项宿主检查与Android构建通过，28份输入构建前后摘要一致。APK `ffrs-1.0.21-preview-position-precision.apk` 保存在本地APK历史目录，3601404字节，SHA256为07f5f0368183b7fb9228c9f744fd835bf623c05fd0e86a1ecb71e13f7ec1419e。native LOAD段均16KiB对齐，ZIP检查通过。独立18份SPV校验、ASan/UBSan及注解目标集合、函数体/Fma字节、幂等核对通过，review125afed9/e2cd142d。有效fixture覆盖VS/FS/CS，Tess/Geometry有效fixture待补。两项候选修正为完整clear目标覆盖及通用位置浮点约束。
+
+RG477M当前断开，21待安装。女主闪烁因果、实际GPU性能、低帧与短断音回归均待同设备实测。构建与产物验证记录在 `.local/codex-recovery-20261114/precision-build/`。
+
 ## 女主身体闪烁最新对照
 
-通用位置精度处理已按固定DroidPlay实现接入本项目的共享优化入口，位于tidy之后，覆盖runtime、warm与integer变体。typed变体沿用已优化模块的装饰。现存真实7ca7原始与castback两份VS各有492处所选运算，现有NoContraction覆盖为0，另外各有100条显式Fma。当前实现补充分步运算的融合约束，显式Fma保持原语义。默认启用，启动标记gfx-position-precise优先于DM_SPV_PRECISE，0可作同包对照。配置在预热线程启动前读取，新进程重新构建模块。独立接线静态审查未见阻塞问题，helper契约尚待冻结与独立复跑。此VS尚未映射到开场女主，离线缺口与录屏闪烁的因果仍待实机。[固定精度实现](https://github.com/enjoyerofslop/droidplay-core/blob/a72a85c59cac54f3428827cfb72e1adf63b1521a/dm/android/spv_precise.h)
+通用位置精度处理已按固定DroidPlay实现接入本项目的共享优化入口，位于tidy之后，覆盖runtime、warm与integer变体。typed变体沿用已优化模块的装饰。现存真实7ca7原始与castback两份VS各有492处所选运算，现有NoContraction覆盖为0，另外各有100条显式Fma。当前实现补充分步运算的融合约束，显式Fma保持原语义。默认启用，启动标记gfx-position-precise优先于DM_SPV_PRECISE，0可作同包对照。配置在预热线程启动前读取，新进程重新构建模块。独立接线静态审查未见阻塞问题，冻结helper已独立通过ASan/UBSan与18份SPIR-V校验。此VS尚未映射到开场女主，离线缺口与录屏闪烁的因果仍待实机。[固定精度实现](https://github.com/enjoyerofslop/droidplay-core/blob/a72a85c59cac54f3428827cfb72e1adf63b1521a/dm/android/spv_precise.h)
 
 用户确认1.0.20仍轻微闪烁，随后恢复原1.0.18 APK，用户也确认同一类闪烁。原18包a6c9fbe2的恢复、回读和存档备份证据位于 `.local/codex-recovery-20261114/install-baseline18-after20-20261114-221843/`。撤回19 UBO改动是唯一引入原因的假设。生产UBO继续保持18路径，性能收益与闪烁因果各待实际验证。
 
