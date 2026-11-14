@@ -5387,12 +5387,7 @@
    "dependencies": [
     "RG477M-FLICKER-LOCALIZATION-20261113"
    ],
-   "pass_gates": [
-    "same-position A/B pair on the device with only the boolean switch changed",
-    "engine-side metric over the color0 ROI (alternating black rows) separates the two arms",
-    "host contract test green",
-    "fps 30.00 with sync_wb=0 and sync_rb=0 after the fix"
-   ],
+   "pass_gates": [],
    "write_scope": [
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
     "src/graphics/nvn_vulkan/engine/xbg_spirv_depth.h",
@@ -5406,7 +5401,13 @@
    "acceptance": "user-visible black stripes on the protagonist are gone on the RG477M at the same position, the engine log states why the store is kept, and the performance baseline is unchanged",
    "checkpoint": "b7a68d8",
    "device_exclusive": true,
-   "status_note": "Root cause locked, fix shipped and verified on the RG477M. The canal-plaza white veil and the Chapter 3 ground flicker re-check remain open under RG477M-FLICKER-LOCALIZATION-20261113."
+   "status_note": "Root cause locked, fix shipped and verified on the RG477M. The canal-plaza white veil and the Chapter 3 ground flicker re-check remain open under RG477M-FLICKER-LOCALIZATION-20261113.",
+   "acceptance_criteria": [
+    "same-position A/B pair on the device with only the boolean switch changed",
+    "engine-side metric over the color0 ROI (alternating black rows) separates the two arms",
+    "host contract test green",
+    "fps 30.00 with sync_wb=0 and sync_rb=0 after the fix"
+   ]
   }
  ],
  "blockers": [
