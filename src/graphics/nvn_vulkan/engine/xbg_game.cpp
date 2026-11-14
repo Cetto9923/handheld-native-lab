@@ -20,7 +20,6 @@ extern "C" int xbg_completion_wait_selftest(char *report,size_t bytes);
 #include "xbg_pipeline_key.h"
 #include "xbg_warm_flush.h"
 #include "xbg_spirv_integer_buffer.h"
-#include "xbg_spirv_uniform_extent.h"
 #include "xbg_spirv_typed_storage.h"
 #include "xbg_shader_identity.h"
 #include "xbg_upload_policy.h"
@@ -2599,6 +2598,38 @@ struct Shader {std::string key;std::string identity;
 // Storage buffers written by a shader. Pointers rooted at a storage-buffer
 // variable that reach OpStore/OpCopyMemory/atomics, function calls, phis or
 // selects mark that binding written; anything unprovable marks all written.
+// Bytes of each uniform block a shader can actually read (iOS c1/cbuf packing idea): Ryujinx declares
+// constant buffers as struct{vec4 data[4096];}. When every access uses a constant element index, only
+// (max index + 1) * 16 bytes need copying per draw; any other use keeps the full block.
+std::map<uint32_t,uint32_t> spirv_uniform_extent(const std::vector<uint32_t> &w){
+    std::map<uint32_t,uint32_t> binding,constant,stride,member_type,var_type,result;std::set<uint32_t> uniform_vars,full;std::map<uint32_t,uint32_t> max_index;
+    std::map<uint32_t,uint32_t> pointer_pointee,struct_member0;
+    for(size_t i=5;i<w.size();){uint32_t n=w[i]>>16,op=w[i]&65535;if(!n||i+n>w.size())return {};
+        switch(op){
+        case 71:if(n>=4 && w[i+2]==33)binding[w[i+1]]=w[i+3];if(n>=4 && w[i+2]==6)stride[w[i+1]]=w[i+3];break; // Binding / ArrayStride
+        case 43:if(n>=4)constant[w[i+2]]=w[i+3];break; // OpConstant (32-bit)
+        case 30:if(n>=3)struct_member0[w[i+1]]=w[i+2];break; // OpTypeStruct member 0
+        case 32:if(n>=4)pointer_pointee[w[i+1]]=w[i+3];break;
+        case 59:if(n>=4 && w[i+3]==2){uniform_vars.insert(w[i+2]);var_type[w[i+2]]=w[i+1];}break; // OpVariable Uniform
+        default:break;
+        }
+        i+=n;
+    }
+    for(size_t i=5;i<w.size();){uint32_t n=w[i]>>16,op=w[i]&65535;
+        if(op==59){i+=n;continue;}
+        if(op==5||op==6||op==15||op==71||op==72||op==332||op==5632){i+=n;continue;} // names/entry-point interface/decorations reference without reading
+        for(uint32_t k=1;k<n;k++){uint32_t id=w[i+k];if(!uniform_vars.count(id))continue;
+            bool ok=(op==65||op==66) && k==3 && n>=6;
+            if(ok){auto c=constant.find(w[i+5]);auto m=constant.find(w[i+4]);if(c==constant.end()||m==constant.end()||m->second!=0)ok=false;else max_index[id]=std::max(max_index[id],c->second);}
+            if(!ok)full.insert(id);}
+        i+=n;
+    }
+    for(uint32_t v:uniform_vars){auto b=binding.find(v);if(b==binding.end()||full.count(v))continue;
+        auto pt=pointer_pointee.find(var_type[v]);if(pt==pointer_pointee.end())continue;auto m0=struct_member0.find(pt->second);if(m0==struct_member0.end())continue;
+        auto st=stride.find(m0->second);if(st==stride.end()||st->second!=16)continue;
+        auto mi=max_index.find(v);result[b->second]=mi==max_index.end()?16:(mi->second+1)*16;}
+    return result;
+}
 std::set<uint32_t> spirv_storage_writes(const std::vector<uint32_t> &w,bool &unknown){
     std::map<uint32_t,uint32_t> binding,storage_class,root;std::set<uint32_t> written_vars;unknown=false;
     std::set<uint32_t> buffer_block_types;std::map<uint32_t,uint32_t> pointer_pointee;
@@ -2936,19 +2967,7 @@ Shader *load_shader(const void *control){
         p->storage_binding_info[binding.binding]=xbg_spirv_storage_binding_info(words,binding.binding);
         if(binding.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER)typed_candidate=true;}
      if(typed_candidate)p->module_words=words;}
-    {
-        std::vector<uint32_t> uniform_bindings;
-        for(const auto &binding:p->bindings)
-            if(binding.type==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER && binding.source==XBG_SOURCE_UNIFORM)
-                uniform_bindings.push_back(binding.binding);
-        const auto extents=xbg_spirv_uniform_extent(words,uniform_bindings);
-        for(auto &binding:p->bindings){
-            if(binding.type!=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER || binding.source!=XBG_SOURCE_UNIFORM)continue;
-            const auto extent=extents.find(binding.binding);
-            const uint32_t declared=binding.bytes?binding.bytes:65536;
-            if(extent!=extents.end() && extent->second<declared){binding.bytes=extent->second;++uniform_trimmed;}
-        }
-    }
+    {auto extent=spirv_uniform_extent(words);uint32_t trimmed=0;for(auto &b:p->bindings)if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER && b.source==XBG_SOURCE_UNIFORM){auto e=extent.find(b.binding);uint32_t declared=b.bytes?b.bytes:65536;if(e!=extent.end() && e->second<declared){b.bytes=e->second;++trimmed;}}uniform_trimmed+=trimmed;}
     {bool kill=false;for(size_t i=5;i<words.size();){uint32_t n=words[i]>>16,op=words[i]&0xffff;if(op==252||op==4416||op==5380){kill=true;break;}if(!n)break;i+=n;}p->discards=kill;}
     p->raster=xbg_spirv_raster_facts(words.data(),words.size(),h.stage);
     if(h.stage==5){

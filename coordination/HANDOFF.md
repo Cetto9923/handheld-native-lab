@@ -1,3 +1,25 @@
+# 2026-11-14 22:01 19改善但用户报告人物闪烁，准备20单变量控制
+
+- 用户反馈19整体更流畅，画面整体卡顿减轻，声音/技能/人物移动仍短卡；剧情人物轻微闪烁，18同轮无闪烁。19画面验收未通过，UBO因果尚未证明。
+- 保全PID30282同次guest14.7MB、engine尾、CSV到performance-3e0c9bc/regression-user/。当前仍用户掌握输入，未重启/未安装20。
+- 根已将UBO生产路径、溯源和对应新测试精确恢复7de9e39，保留页查询b7c11c6a，版本20。删除的候选源码完整保留Git3e0c9bc和ubo-regression-control/source19/副本。
+- 两个只读worker正在对固定3e0c9bc分析器和b.bytes下游语义复核。新的槽位/descriptor/prefix优化均未实施，先隔离闪烁回归。
+- 构建计划ubo-regression-control/build/plan.json，待根提交源码后串行host+Android，完成后再请求保存/装包交接。
+
+# 2026-11-14 21:50 1.0.19已安装，用户读档移动测试
+
+- 用户明确保存完成并授权安装。1.0.19源3e0c9bc，host98/98与Android0，21输入前后SHA一致。APK d0b8f181a8c87cf9e64670090550e9a036982fa046b264be1665fe98cde5468e / 3601404字节。
+- install-3e0c9bc-20261114-214854/记录旧包/日志/存档备份，覆盖安装后APK回读一致，存档前后86d8a9f5f9a77604ff5d6ebde5e716169f2ac804b15306d26e72b17f26a93ae8。PID30282。
+- root已通知用户读取刚才存档、回同机位连续移动半分钟，记录加载与帧时间。用户保持输入权。性能、闪烁和原退出点在此候选均待真机覆盖。
+- shader_reuse1/texelcopyON/narrow1/async-pipeline0/nice0/LOW0/FPS30保持同18正常设置。历史APK留存。
+- UBO独立QA完成4份额外合法alias/descriptor反例，3条主命令与ASan/val0，无阻塞finding。下一vertex-prefix仅只读评估，尚未实施。
+
+# 2026-11-14 21:47 1.0.19成熟上游候选构建中
+
+- 源码提交3e0c9bc，UBO源a9a2a849/header55edb75，页查询源b7c11c6a。当前仅根串行host+Android构建，plan/logs/launcher在integration-upstream-final/，tool session30478。
+- UBO独立QA3命令0，27真实SPV/126唯一Uniform binding与固定上游逐条相同，shader与源输入摘要不变，无阻塞finding。实际帧率收益待测，不能套用静态字节比例。
+- 当前安装仍1.0.18，PID26260，用户负责输入；未覆盖安装19。5份Android报告WIP未入新包构建。
+
 # 2026-11-14 21:43 页查询候选独立组件复验完成
 
 - address_region仅完整宿主页对齐早返，source b7c11c6a、owned test d251455e冻结。实现者51条host命令0，根独立Mac normal/recovery0。

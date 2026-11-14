@@ -14,24 +14,6 @@
       "size": 1063,
       "sha256": "a65554a74de59bf4d2210f3d4381c67d6fc6fa78f237f83c85543773319efa7b",
       "file": "LICENSE"
-    },
-    {
-      "source": "https://raw.githubusercontent.com/enjoyerofslop/droidplay-core/a72a85c59cac54f3428827cfb72e1adf63b1521a/dm/android/spv_lit.h",
-      "revision": "a72a85c59cac54f3428827cfb72e1adf63b1521a",
-      "size": 2756,
-      "sha256": "5b6cfeff23662ff4df417e8935f3e3295ba003b6002e4b1e829aeda405705894",
-      "file": "spv_lit.h",
-      "changes": "Unmodified upstream source."
-    },
-    {
-      "source": "https://github.com/enjoyerofslop/droidplay-core/blob/a72a85c59cac54f3428827cfb72e1adf63b1521a/dm/android/gfx_vk_draw.inc#L274",
-      "revision": "a72a85c59cac54f3428827cfb72e1adf63b1521a",
-      "source_lines": [
-        274,
-        315
-      ],
-      "file": "../../xbg_spirv_uniform_extent.h",
-      "changes": "Adapt spv_cb_ext2 to explicit requested bindings and std::map results; validate framing, explicit Block/Offset and scalar layout; keep computed indices at full range; reject pointer arithmetic and decoration groups conservatively."
     }
   ],
   "changes": "Unmodified upstream source. Runtime integration is in xbg_spirv_narrow.h."

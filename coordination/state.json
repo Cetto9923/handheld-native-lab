@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-14T21:43:09.768464+08:00",
- "phase": "用户确认1.0.18当前场景无闪烁无闪退，集中优化卡顿。按成熟上游接UBO extent与完整宿主页扫描减负。",
+ "updated_at": "2026-11-14T22:00:26.730034+08:00",
+ "phase": "用户确认19流畅性提升、残余音频/特效/移动卡顿，剧情人物轻微闪烁。先做UBO单变量旧算法控制，根因未定。",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -2340,8 +2340,8 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-14T21:14:36.762601+08:00",
-   "checkpoint": "只读公开来源与本项目，只写独立研究产物",
-   "write_state": "ACTIVE"
+   "checkpoint": "已冻结交回根，源3e0c9bc。",
+   "write_state": "RELEASED"
   },
   {
    "task": "CODEX-UPSTREAM-CBUF-20261114",
@@ -2371,8 +2371,8 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-14T21:34:18.680728+08:00",
-   "checkpoint": "用户明确要求借鉴成熟经验针对性优化，根登记后授权实现。",
-   "write_state": "ACTIVE"
+   "checkpoint": "已冻结交回根，源3e0c9bc。",
+   "write_state": "RELEASED"
   },
   {
    "task": "CODEX-UPSTREAM-PAGE-20261114",
@@ -2398,7 +2398,8 @@
     ".local/upstream-switch-zelda-20261114/baseline-7de9e39/",
     ".local/upstream-switch-zelda-20261114/root-review.md",
     ".local/codex-recovery-20261114/integration-upstream-final/",
-    ".local/codex-recovery-20261114/apk-history/"
+    ".local/codex-recovery-20261114/apk-history/",
+    ".local/codex-recovery-20261114/performance-3e0c9bc/"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
@@ -2415,7 +2416,52 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-14T21:41:22.111817+08:00",
-   "checkpoint": "只读生产，已存在源码，最终以实施者冻结摘要核对。",
+   "checkpoint": "组件独立QA已交回，无阻塞finding。",
+   "write_state": "RELEASED"
+  },
+  {
+   "task": "CODEX-UBO-REGRESSION-20261114",
+   "owner": "Codex /root",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_uniform_extent.h",
+    "src/graphics/nvn_vulkan/engine/third_party/droidplay/spv_lit.h",
+    "src/graphics/nvn_vulkan/engine/third_party/droidplay/provenance.json",
+    "scripts/verify_host.py",
+    "scripts/android/verify_spirv_uniform_extent.sh",
+    "tests/device/test_spirv_uniform_extent.cpp",
+    "tests/device/uniform_extent_cases.spvasm",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    ".local/codex-recovery-20261114/ubo-regression-control/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T22:00:26.730034+08:00",
+   "checkpoint": "19现数据保全performance-3e0c9bc/regression-user/，尚未证明UBO因果。",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "CODEX-UBO-REGRESSION-DOWNSTREAM-20261114",
+   "owner": "perf_cpu",
+   "paths": [
+    ".local/upstream-switch-zelda-20261114/ubo-integration/regression-review/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T22:00:26.730034+08:00",
+   "checkpoint": "19现数据保全performance-3e0c9bc/regression-user/，尚未证明UBO因果。",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "CODEX-UBO-REGRESSION-ANALYZER-20261114",
+   "owner": "/root/perf_cpu/lookup_review",
+   "paths": [
+    ".local/upstream-switch-zelda-20261114/cbuf-review/integration-qa/regression/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-14T22:00:26.730034+08:00",
+   "checkpoint": "19现数据保全performance-3e0c9bc/regression-user/，尚未证明UBO因果。",
    "write_state": "ACTIVE"
   }
  ],
@@ -6665,7 +6711,7 @@
    "id": "CODEX-ZELDA-CORE-20261114",
    "role": "UPSTREAM_RESEARCH",
    "owner": "Codex /root",
-   "status": "in_progress",
+   "status": "completed",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "objective": "核实DroidPlay Core/nxnative与本项目代码来源和实现差异，统一制定吸收方案",
@@ -6683,7 +6729,7 @@
     ".local/upstream-switch-zelda-20261114/"
    ],
    "acceptance": "源码URL/不可变SHA/许可证/可获取状态，分清游戏版本与设备实测覆盖，给精确可复用模块和本项目差异",
-   "checkpoint": "冻结未落地自研候选，生产不编辑"
+   "checkpoint": "coordination/results/CODEX-UPSTREAM-PORTS-20261114.md已索引，固定源码与同游戏实现、许可证和硬件覆盖核对完成，转入最小针对实现。"
   },
   {
    "id": "CODEX-UPSTREAM-CBUF-20261114",
@@ -6730,7 +6776,7 @@
    ],
    "acceptance": "literal碰撞不扩大复制、计算索引/未知布局/opaque保持保守，真实shader SPV保持逐字相同，UBO快照与fence生命周期保持。自测+独立复核，RG真实帧率待总控。",
    "role": "IMPLEMENTATION",
-   "status": "in_progress",
+   "status": "implemented",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "outputs": [
@@ -6740,7 +6786,7 @@
    ],
    "dependencies": [],
    "pass_gates": [],
-   "checkpoint": "用户明确要求借鉴成熟经验针对性优化，根登记后授权实现。"
+   "checkpoint": "3e0c9bc。源a9a2a849/header55edb75冻结，组件ASan/UBSan/val0、NDK26 API28 -c0，根host+Android串行构建中。"
   },
   {
    "id": "CODEX-UPSTREAM-PAGE-20261114",
@@ -6800,13 +6846,13 @@
     ".local/codex-recovery-20261114/apk-history/"
    ],
    "acceptance": "原shader字节与游戏逻辑保持，源码冻结后host/Android构建，安装包摘要核验/存档保留，RG加载和移动独立实测后决定收益",
-   "checkpoint": "实现者正在并行轻契约，根先保全当前基线。"
+   "checkpoint": "3e0c9bc / 1.0.19，98/98 host+Android0，21源码摘要前后一致。APK d0b8f181，安装回读一致，存档前后86d8a9f5。PID30282，用户读档移动测试中。"
   },
   {
    "id": "CODEX-UPSTREAM-UBO-QA-20261114",
    "role": "INDEPENDENT_COMPONENT_QA",
    "owner": "/root/perf_cpu/lookup_review",
-   "status": "in_progress",
+   "status": "passed",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "objective": "独立复核精确UBO范围边界与既有shader-load接线，保留全范围回退和生命周期",
@@ -6823,7 +6869,94 @@
     ".local/upstream-switch-zelda-20261114/cbuf-review/integration-qa/"
    ],
    "acceptance": "正负组件与实际模块独立复跑，source范围/unknown/full守卫核验，真机性能另验",
-   "checkpoint": "只读生产，已存在源码，最终以实施者冻结摘要核对。"
+   "checkpoint": "独立冻结SHA复跑，27真实SPV/126唯一binding与上游一致，4份合法alias/descriptor shader验证与ASan全0，覆盖组件契约，FPS另验。"
+  },
+  {
+   "id": "CODEX-UBO-REGRESSION-20261114",
+   "owner": "Codex /root",
+   "role": "CONTROL_BUILD",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "隔离19剧情人物轻微闪烁，保留稳定性与当前性能证据，先单变量回退UBO进行对照",
+   "inputs": [
+    "用户19改善但闪烁回归反馈",
+    "3e0c9bc固定源/19APK",
+    "7de9e39 UBO基线",
+    "PID30282同次日志"
+   ],
+   "outputs": [
+    "最小对照源码/包或只读报告",
+    "精确证据与待验项"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_uniform_extent.h",
+    "src/graphics/nvn_vulkan/engine/third_party/droidplay/spv_lit.h",
+    "src/graphics/nvn_vulkan/engine/third_party/droidplay/provenance.json",
+    "scripts/verify_host.py",
+    "scripts/android/verify_spirv_uniform_extent.sh",
+    "tests/device/test_spirv_uniform_extent.cpp",
+    "tests/device/uniform_extent_cases.spvasm",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    ".local/codex-recovery-20261114/ubo-regression-control/"
+   ],
+   "acceptance": "原始shader和同步保留，区分静态组件正确与游戏完整语义，控制包先构建与同场景复测，未知项不称根因",
+   "checkpoint": "19现数据保全performance-3e0c9bc/regression-user/，尚未证明UBO因果。"
+  },
+  {
+   "id": "CODEX-UBO-REGRESSION-DOWNSTREAM-20261114",
+   "owner": "perf_cpu",
+   "role": "READ_ONLY_RESEARCH",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "隔离19剧情人物轻微闪烁，保留稳定性与当前性能证据，先单变量回退UBO进行对照",
+   "inputs": [
+    "用户19改善但闪烁回归反馈",
+    "3e0c9bc固定源/19APK",
+    "7de9e39 UBO基线",
+    "PID30282同次日志"
+   ],
+   "outputs": [
+    "最小对照源码/包或只读报告",
+    "精确证据与待验项"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/upstream-switch-zelda-20261114/ubo-integration/regression-review/"
+   ],
+   "acceptance": "原始shader和同步保留，区分静态组件正确与游戏完整语义，控制包先构建与同场景复测，未知项不称根因",
+   "checkpoint": "19现数据保全performance-3e0c9bc/regression-user/，尚未证明UBO因果。"
+  },
+  {
+   "id": "CODEX-UBO-REGRESSION-ANALYZER-20261114",
+   "owner": "/root/perf_cpu/lookup_review",
+   "role": "READ_ONLY_RESEARCH",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "隔离19剧情人物轻微闪烁，保留稳定性与当前性能证据，先单变量回退UBO进行对照",
+   "inputs": [
+    "用户19改善但闪烁回归反馈",
+    "3e0c9bc固定源/19APK",
+    "7de9e39 UBO基线",
+    "PID30282同次日志"
+   ],
+   "outputs": [
+    "最小对照源码/包或只读报告",
+    "精确证据与待验项"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/upstream-switch-zelda-20261114/cbuf-review/integration-qa/regression/"
+   ],
+   "acceptance": "原始shader和同步保留，区分静态组件正确与游戏完整语义，控制包先构建与同场景复测，未知项不称根因",
+   "checkpoint": "19现数据保全performance-3e0c9bc/regression-user/，尚未证明UBO因果。"
   }
  ],
  "blockers": [
@@ -9508,15 +9641,29 @@
    "status": "不是性能PASS；用户仍反馈卡顿与>30秒读档"
   },
   "current_user_feedback": {
-   "at": "2026-11-14T21:34:18.680728+08:00",
-   "package": "1.0.18-preview",
-   "stability": "用户确认当前这轮无闪烁无闪退",
-   "performance": "用户确认卡顿仍明显",
-   "scope": "仅当前这轮场景，不扩大到完整游戏/第三章固定机位/其他设备"
+   "at": "2026-11-14T22:00:26.730034+08:00",
+   "package": "1.0.19-preview",
+   "performance": "整体流畅性提升，声音轻微卡顿；画面未感明显卡顿，特效与首场移动仍不丝滑",
+   "rendering": "剧情人物轻微闪烁，用户对照18无闪烁",
+   "cause": "尚未证明归因，控制包隔离UBO"
+  },
+  "current_candidate": {
+   "source": "3e0c9bcf4e5452ab443bc7e01b8d027a5cdebc7e",
+   "version": "1.0.19-preview",
+   "apk_sha256": "d0b8f181a8c87cf9e64670090550e9a036982fa046b264be1665fe98cde5468e",
+   "bytes": 3601404,
+   "pid": 30282,
+   "host_checks": "98/98",
+   "android_build": 0,
+   "source_hash_match": true,
+   "installed_readback_match": true,
+   "save_before_after_sha256": "86d8a9f5f9a77604ff5d6ebde5e716169f2ac804b15306d26e72b17f26a93ae8",
+   "evidence": ".local/codex-recovery-20261114/install-3e0c9bc-20261114-214854/",
+   "game_performance": "pending"
   }
  },
  "upstream_research_20261114": {
-  "status": "in_progress",
+  "status": "completed",
   "source_head": "7de9e39c5be12ec4835d67b46e14de8424072cdf",
   "botw": "65c3d4783acbb843c1a6a011030cfc06d991b091",
   "totk_native": "afdcd6beeb5387194b3f27fc81d37a608dc28605",
@@ -9529,10 +9676,7 @@
    "current": "736837afd390442ed7c74a7de730e71b",
    "upstream_1_0_1": "84e182f72ee1da4f477804bd05b54c15"
   },
-  "pending": [
-   "DroidPlay allocator/scheduler对照收口",
-   "UBO extent保守性真实模块量化",
-   "形成有来源的最小吸收任务顺序"
-  ]
+  "pending": [],
+  "report": "coordination/results/CODEX-UPSTREAM-PORTS-20261114.md"
  }
 }
