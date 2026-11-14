@@ -4,8 +4,9 @@
 
 // This is a format-agnostic structural analysis. The caller must additionally
 // verify that the effective bound view is R16_UINT or R32_UINT before selecting a variant.
-// Only scalar extracts carried directly, or through a single-store Function
-// variable whose store dominates its loads, into integer bitcasts are accepted.
+// The strict path retains its integer-only consumers. A fallback preserves the
+// original float register representation after a raw integer fetch, accepting
+// only component-zero extracts and a completely closed direct opaque chain.
 namespace xbg_integer_buffer_detail {
 struct Instruction { size_t at; uint32_t count,op,block; };
 struct Analysis {
@@ -81,7 +82,7 @@ inline bool type(const std::vector<uint32_t> &w,const Analysis &a,uint32_t id,ui
     return (w[at]&65535u)==op;
 }
 
-inline bool analyze(const std::vector<uint32_t> &w,uint32_t binding,Analysis &a){
+inline bool analyze_opaque(const std::vector<uint32_t> &w,uint32_t binding,Analysis &a){
     for(const auto &in:a.instructions){
         size_t i=in.at;
         if(in.op==71 && in.count==4 && w[i+2]==33 && w[i+3]==binding){
@@ -116,7 +117,11 @@ inline bool analyze(const std::vector<uint32_t> &w,uint32_t binding,Analysis &a)
             a.fetches.insert(w[i+2]);
         }
     }
-    if(a.fetches.empty())return false;
+    return !a.fetches.empty();
+}
+
+inline bool analyze(const std::vector<uint32_t> &w,uint32_t binding,Analysis &a){
+    if(!analyze_opaque(w,binding,a))return false;
     for(const auto &in:a.instructions){
         size_t i=in.at;
         if(in.op==81 && a.fetches.count(w[i+3])){
@@ -207,6 +212,88 @@ inline bool analyze(const std::vector<uint32_t> &w,uint32_t binding,Analysis &a)
     for(uint32_t id:all)if(!consumed.count(id))return false;
     return true;
 }
+
+inline bool analyze_castback(const std::vector<uint32_t> &w,uint32_t binding,Analysis &a){
+    if(!analyze_opaque(w,binding,a))return false;
+    // Only the opaque values change type. The old float4 fetch result is
+    // recreated by a bitcast, so its extracted scalar consumers stay intact.
+    // Component zero avoids making assumptions about missing view components.
+    std::unordered_set<uint32_t> all={a.descriptor};
+    for(const auto *ids:{&a.loads,&a.images,&a.fetches})all.insert(ids->begin(),ids->end());
+    std::unordered_set<uint32_t> consumed;
+    for(const auto &in:a.instructions){
+        size_t i=in.at;
+        if(in.op>=2 && in.op<=8)continue;
+        // These declarations contain literals, strings, function IDs and
+        // constant IDs. Entry-point interface IDs keep the same variables.
+        if(in.op==10 || in.op==11 || (in.op>=14 && in.op<=17) || in.op==331)continue;
+        if(in.op==317 || in.op==330 || in.op==43 || in.op==50)continue;
+        if(in.op>=19 && in.op<=39)continue;
+        if(in.op==71){
+            if(!all.count(w[i+1]))continue;
+            if(w[i+1]==a.descriptor && in.count==4 && (w[i+2]==33 || w[i+2]==34))continue;
+            return false;
+        }
+        for(uint32_t j=1;j<in.count;++j){
+            if(in.op==59 && j==3)continue;
+            if(in.op==12 && j==4)continue; // Extended-instruction number is literal.
+            uint32_t id=w[i+j];
+            if(!all.count(id))continue;
+            bool allowed=false,consume=false;
+            if(in.op==59 && j==2 && id==a.descriptor)allowed=true;
+            if(in.op==61 && in.count==4){
+                if(j==2 && a.loads.count(id))allowed=true;
+                if(j==3 && id==a.descriptor){allowed=true;consume=true;}
+            }
+            if(in.op==100 && in.count==4){
+                if(j==2 && a.images.count(id))allowed=true;
+                if(j==3 && a.loads.count(id)){allowed=true;consume=true;}
+            }
+            if(in.op==95 && a.fetches.count(w[i+2])){
+                if(j==2 && a.fetches.count(id))allowed=true;
+                if(j==3 && a.images.count(id)){allowed=true;consume=true;}
+            }
+            if(in.op==81 && in.count==5 && j==3 && a.fetches.count(id) &&
+               w[i+1]==a.float_type && w[i+4]==0){allowed=true;consume=true;}
+            if(!allowed)return false;
+            if(consume)consumed.insert(id);
+        }
+    }
+    for(uint32_t id:all)if(!consumed.count(id))return false;
+    return true;
+}
+
+inline int rewrite_castback(std::vector<uint32_t> &words,const Analysis &a){
+    // Leave room for the type chain, vector type and one fresh ID per fetch.
+    if(a.fetches.size()+6u>uint64_t(UINT32_MAX)-words[3])return 0;
+    uint32_t bound=words[3],uint_type=a.uint_type,uint_vector=0;
+    std::vector<uint32_t> declarations;
+    if(!uint_type){uint_type=bound++;declarations.insert(declarations.end(),{(4u<<16)|21u,uint_type,32u,0u});}
+    auto types=xbg_integer_image_types(words,a.image_at,a.pointer_at,a.variable_at,uint_type,true,bound);
+    declarations.insert(declarations.end(),types.declarations.begin(),types.declarations.end());
+    for(const auto &in:a.instructions){
+        size_t i=in.at;
+        if(in.op==23 && in.count==4 && words[i+2]==uint_type && words[i+3]==4)uint_vector=words[i+1];
+    }
+    if(!uint_vector){uint_vector=bound++;declarations.insert(declarations.end(),{(4u<<16)|23u,uint_vector,uint_type,4u});}
+    std::vector<uint32_t> out(words.begin(),words.begin()+5);
+    for(const auto &in:a.instructions){
+        size_t i=in.at;
+        if(types.moved.count(i))continue;
+        if(i==a.variable_at)out.insert(out.end(),declarations.begin(),declarations.end());
+        size_t at=out.size();out.insert(out.end(),words.begin()+i,words.begin()+i+in.count);
+        if(i==a.variable_at)out[at+1]=types.pointer;
+        if(in.op==61 && a.loads.count(words[i+2]))out[at+1]=types.sampled;
+        if(in.op==100 && a.images.count(words[i+2]))out[at+1]=types.image;
+        if(in.op==95 && a.fetches.count(words[i+2])){
+            uint32_t raw=bound++;
+            out[at+1]=uint_vector;out[at+2]=raw;
+            out.insert(out.end(),{(4u<<16)|124u,words[i+1],words[i+2],raw});
+        }
+    }
+    out[3]=bound;words.swap(out);
+    return int(a.fetches.size());
+}
 } // namespace xbg_integer_buffer_detail
 
 inline std::vector<uint32_t> xbg_spirv_integer_buffer_candidates(const std::vector<uint32_t> &words){
@@ -221,7 +308,9 @@ inline std::vector<uint32_t> xbg_spirv_integer_buffer_candidates(const std::vect
         if(!type(words,parsed,words[i+1],59,variable_at) || !type(words,parsed,words[variable_at+1],32,pointer_at))continue;
         if(!type(words,parsed,words[pointer_at+3],27,sampled_at) || !type(words,parsed,words[sampled_at+2],25,image_at) || words[image_at+3]!=5)continue;
         Analysis a=parsed;
-        if(analyze(words,words[i+3],a))bindings.push_back(words[i+3]);
+        bool supported=analyze(words,words[i+3],a);
+        if(!supported){a=parsed;supported=analyze_castback(words,words[i+3],a);}
+        if(supported)bindings.push_back(words[i+3]);
     }
     std::sort(bindings.begin(),bindings.end());
     bindings.erase(std::unique(bindings.begin(),bindings.end()),bindings.end());
@@ -234,7 +323,12 @@ inline int xbg_spirv_integer_buffer_rewrite(std::vector<uint32_t> &words,uint32_
     using namespace xbg_integer_buffer_detail;
     Analysis a;
     if(!parse(words,a))return -1;
-    if(!analyze(words,binding,a))return 0;
+    Analysis parsed=a;
+    if(!analyze(words,binding,a)){
+        a=parsed;
+        if(!analyze_castback(words,binding,a))return 0;
+        return rewrite_castback(words,a);
+    }
     uint32_t bound=words[3],uint_type=a.uint_type,uint_vector=0,function_pointer=0;
     std::vector<uint32_t> declarations;
     if(!uint_type){uint_type=bound++;declarations.insert(declarations.end(),{(4u<<16)|21u,uint_type,32u,0u});}

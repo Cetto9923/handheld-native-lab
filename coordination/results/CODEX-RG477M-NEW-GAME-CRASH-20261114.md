@@ -24,7 +24,7 @@
 - 安装前后存档tar摘要均为 `dd66a544555a9843bafc0485db5b011d50354f008a0525cc51e7aefd8ee0130a`。
 - PID18110实际执行新建游戏、普通难度、开场晶体/战争/火场过场并到达可操作火场阶梯，已越过原b673退出点。当前guest_boot有typed variant成功且无FATAL。用户独立反馈不闪退。
 - 根在可操作火场做短距离上/下走动，角色及小地图方向变化，PID维持18110。记录位于 `crash-build-final/movement`。
-- 本结论仅覆盖该新建游戏流程。第三章读档、水都闪烁、战斗、长期稳定性和其他芯片仍待回归。新建游戏的正常自动存档另保留备份，手动01号档未由测试写入。
+- 本结论仅覆盖该新建游戏流程。第三章读档、水都闪烁、战斗、长期稳定性和其他芯片仍待回归。截至首段走动，存档备份tar摘要仍与安装前相同，手动01号档未由测试写入。
 
 ## 仍在处理的卡顿与断音
 
@@ -33,3 +33,17 @@
 8帧pass-live改变了GPUresident诊断执行路径，仅作该诊断图的结构数据。常态178pass与诊断39pass之间的差异尚不能全部归因某个shader。已派工验证uniform-texel pending重复copy的开销，保持首次copy及屏障并做同包开关对照。
 
 当前主声轨在扬声器DEEP_BUFFER路由。独立shell UID的AAudio组件probe只在2ch callback+LOW请求得到actual LOW；6ch blocking请求LOW实际仍NONE且burst变化。本应用资格和断音改善仍需同包实测，组件probe不作为音频验收。
+
+## 后续BOSS场景退出仍未修复
+
+用户澄清故障在首个新型魔导兵器击败后继续前进，后续大型人形装甲敌人的场景。首战胜利并回到火场台阶尚未覆盖故障点。
+
+- `576d5cc` / 1.0.13-preview，PID7041，frame15297退出70，fatal为 `Invalid indirect draw parameters: -3`。当时缺原始参数，不能确定是哪一个字段越界。证据为 `.local/codex-recovery-20261114/boss-crash-576d5cc-20261114-185144/`。
+- `8b13bed` / 1.0.15-preview，PID22127，frame27510退出70，fatal为 `Invalid or excessive buffer size`。退出前请求地址0x6fe16b0000、8053063680字节。该运行关闭texelcopy复用，音频source nice0、LOW请求0。证据为 `.local/codex-recovery-20261114/boss-crash-8b13bed-20261114-192517/`。
+- 两次均紧邻924b、5bf9、d56三个compute与7ca7/0a3图形着色器载入。当前控制组完整会话的 `INDIRECT_EMPTY` 计数为0。零绘制语义修正未触发本次故障，将它视为本次BOSS根因的推测撤回。copied-texel缓存关闭仍复现，也不能依据先后关系归因该优化。
+
+5bf9的B29静态写入布局为68字节记录，两处五word绘制参数在字节12和32，indexCount均为 `3*M*K*B mod 2^32`，K另存记录word14。d56的B35写入是打包索引展开。现场draw参数地址与该记录的对应关系尚未取得，8GB索引请求也尚待明确记录index type/count，不能只凭字节数反推归因。
+
+独立检查另确认，native R32_UINT view上部分float sampled-buffer消费者因strict整数改写形状拒绝而保持浮点模块。Vulkan要求view数值类型与OpTypeImage Sampled Type匹配，见 [VUID format-07753](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdDispatchBase.html)。本轮准备保持原始float消费指令的direct integer fetch加bitcast修正，需通过宿主、真实SPV及GPU契约后再装包，同一BOSS位置尚待回归。
+
+组合integer与typed-storage变体还有独立身份缺陷，现runtime的typed identity丢失ib配方，旧stb解析前缀长度也错误。当前两次运行的三compute均无对应warm记录且无观察到的身份并存碰撞，故该缺陷未被认定为这两次BOSS根因。修复将保留组合配方，避免后续缓存恢复错误模块。

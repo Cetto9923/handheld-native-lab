@@ -1,3 +1,22 @@
+# 2026-11-14 20:00 整数view位表示候选构建中
+
+- integer-buffer最小fallback已交回冻结，header SHA f4e33a29d28b076227c5164f3675d4b548bbf7d8faa760ff3e8d50490d3965a6。严格路径输出保持，fallback只接受直接opaque链及component0提取，恢复原float4 ID，后续浮点消费者保留。真实5bf/924/7ca函数差分通过，自有负例及15份SPV val通过。
+- 最终GPU微测试binary SHA 8c8e3d2f26c90c459bf6a70ea776f4a8aac8c3334577d326a2db970a8c044574，由根在RG477M Mali-G615 MC6运行，3case24records原始位、float算术及shared绑定零误差。证据 `.local/codex-recovery-20261114/integer-gpu-final/`。该结论仅覆盖组件契约。
+- root接入组合shader identity，typed以base.identity保留ib配方，warm loader与record parser共享新严格parser。旧stb前缀长度错误一并修复。独立真实组合模块恢复与直接变换链逐字相等。
+- 1.0.16-preview完整宿主95/95及Android构建均退出0，预先计划 `.local/codex-recovery-20261114/integration-integer-final/plan.json`，tool session66207，普通日志host.log/android.log，源码前后摘要相同。APK SHA ecc7114a154ca2c6f6b6d3f44c8c064b7aad9d1bfc49022b83597ffe87853b4f，3597308字节。当前尚未装包、尚未验证实际BOSS位置。
+- 根只读记录用户操控。当前游戏已退出，安装前若检测到用户重新启动则停止覆盖当前操作。测试包继续保持texelcopy关闭、音频source nice0/LOW0作为控制，APK及存档备份保留。
+
+# 2026-11-14 19:25 BOSS后同点仍退出，继续参数链路调查
+
+- 当前安装8b13bed / 1.0.15-preview，SHA256 d91be1fe431c3f4ff372d412943d71d41d89bde506eb174548d6fdfa99a90ab2。用户自行推进，根只读记录。PID22127已于19:24:56.332主动exit70。
+- 本次frame27510在VS7ca7/FS0a3载入后，请求地址0x6fe16b0000、8053063680字节，fatal Invalid or excessive buffer size。证据 `.local/codex-recovery-20261114/boss-crash-8b13bed-20261114-192517/`。
+- 控制组texelcopy关闭仍复现，不能将其归因于缓存优化。零绘制修正INDIRECT_EMPTY触发0次，撤回将其作为本次BOSS根因的推测。该API边界修正仅有宿主验证。
+- 实际故障位置在首个新型魔导兵器击败后继续推进，后续大型人形装甲敌人的场景。首场机器人胜利/返回火场台阶尚未到故障位置。
+- 正在核对5bf9 compute输出的68B控制packet、draw索引参数和uniform texel格式匹配。静态布局报告 `.local/worker-boss-independent/layout-report.md`。尚缺当场rawargs和packet输入值，不能仅据SPIRV布局断言根因。
+- CODEX-INTEGER-CASTBACK-20261114派给minimax_session，限定integer-buffer header及测试。root独占xbg_game.cpp串行接线和有界异常参数取证，设备只由root读取，用户保留游戏输入。
+- 先前03ab3e6修复新建游戏typed类型声明顺序已在PID18110通过该入口，用户确认。576d5cc只读texel拷贝复用同包真实相邻场景20.5–20.97→27.83–30.07 FPS，仍需固定场景复测及跨场景验收。音频、闪烁和其它机型适配仍未完成。
+- 五个Android报告WIP文件冻结，未纳入当前APK。APK历史、分支归档和存档均保留，未推送远端。
+
 # 2026-11-14 17:55 RG477M安装完成，交用户测试
 
 - 用户恢复USB并要求立即安装给其测试。已覆盖安装已验证a0f402e候选1.0.11-preview，PID7985，标题画面已观察。APK回读SHA256 f2375446c3567967f7f45d606b292b6823ededa066b637feb06d93257c42c75e。

@@ -21,6 +21,7 @@ extern "C" int xbg_completion_wait_selftest(char *report,size_t bytes);
 #include "xbg_warm_flush.h"
 #include "xbg_spirv_integer_buffer.h"
 #include "xbg_spirv_typed_storage.h"
+#include "xbg_shader_identity.h"
 #include "xbg_upload_policy.h"
 #include "xbg_texel_snapshot.h"
 // The host testable format table repeats the Vulkan format numbers; keep them
@@ -1824,6 +1825,10 @@ Buffer snapshot(uint64_t address,size_t bytes,VkDeviceSize align=4){CPU_SCOPE(Sn
     Buffer b=snapshot_slow(address,bytes,align);f.address=address;f.bytes=bytes;f.epoch=snapshot_epoch;f.buffer=b;return b;
 }
 Buffer snapshot_slow(uint64_t address,size_t bytes,VkDeviceSize align){
+    if(bytes>256ull*1024*1024)
+        xbg_logf("NVN SNAPSHOT_OVERSIZE frame=%llu op=%u site=%u address=%#llx bytes=%zu align=%llu",
+            (unsigned long long)stats.presents.load(),cur_op,snap_site,
+            (unsigned long long)address,bytes,(unsigned long long)align);
     auto key=std::make_pair(address,uint64_t(bytes));auto it=snapshots.find(key);
     if(it!=snapshots.end()){++perf.snapshot_hits;++snap_map_hits;return it->second;}
     {Buffer view;if(pending_view(address,bytes,align,view)){snapshots.emplace(key,view);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,bytes);return view;}}
@@ -2881,47 +2886,6 @@ std::vector<uint32_t> shader_float_buffer_bindings(const std::vector<uint32_t> &
 bool integer_buffer_format(uint32_t value){
     return value==VK_FORMAT_R16_UINT || value==VK_FORMAT_R32_UINT;
 }
-// A shader identity is the 16 hex digit control key, optionally followed by
-// ":ib1:" and the integer buffer variants, or ":stb1:" and the typed storage
-// variants. The two variant families never share a prefix.
-bool shader_identity(const std::string &identity,std::string &base,IntegerBufferFormats &formats,TypedStorageFormats *typed=nullptr){
-    formats.clear();
-    if(typed)typed->clear();
-    if(identity.size()<16 || identity.size()>256)return false;
-    base=identity.substr(0,16);
-    if(base.find_first_not_of("0123456789abcdef")!=std::string::npos)return false;
-    if(identity.size()==16)return true;
-    const bool typed_form=identity.compare(16,5,":stb1:")==0;
-    if(!typed_form && identity.compare(16,5,":ib1:")!=0)return false;
-    size_t at=21;
-    auto number=[&](uint32_t &value){
-        size_t begin=at;uint64_t parsed=0;
-        while(at<identity.size() && identity[at]>='0' && identity[at]<='9'){
-            parsed=parsed*10+unsigned(identity[at++]-'0');if(parsed>UINT32_MAX)return false;
-        }
-        if(at==begin || (at>begin+1 && identity[begin]=='0'))return false;
-        value=uint32_t(parsed);return true;
-    };
-    while(at<identity.size()){
-        uint32_t binding,format;
-        if(!number(binding) || at>=identity.size() || identity[at++]!='_' || !number(format))return false;
-        if(typed_form){
-            // Only formats the SPIR-V image format table can express.
-            if(!xbg_spirv_image_format(format))return false;
-            if(typed){
-                if(!typed->empty() && binding<=typed->back().first)return false;
-                typed->push_back({binding,format});
-            }
-        }else{
-            if(!integer_buffer_format(format))return false;
-            if(!formats.empty() && binding<=formats.back().first)return false;
-            formats.push_back({binding,format});
-        }
-        if(at==identity.size())return true;
-        if(identity[at++]!=',' || at==identity.size())return false;
-    }
-    return false;
-}
 void optimize_shader_words(std::vector<uint32_t> &words,uint32_t stage,const std::string &key,const char *loader){
 #ifdef XBG_HAVE_SPIRV_OPT
     honor_inline_rewrite(words,key,loader);
@@ -3298,7 +3262,7 @@ Shader *typed_storage_variant(Shader &base){
     if(formats.empty())return &base;
     std::sort(formats.begin(),formats.end());
     auto existing=base.typed_variants.find(formats);if(existing!=base.typed_variants.end())return existing->second.get();
-    std::string identity=base.key+":stb1:";
+    std::string identity=base.identity+":stb1:";
     for(const auto &entry:formats){
         if(identity.back()!=':')identity+=',';
         identity+=std::to_string(entry.first)+"_"+std::to_string(entry.second);
@@ -3532,7 +3496,7 @@ VkShaderModule load_module(const std::string &key,uint32_t expected_stage=0){
         }
     }
     std::string base;IntegerBufferFormats formats;TypedStorageFormats typed;
-    if(!shader_identity(key,base,formats,&typed))return VK_NULL_HANDLE;
+    if(!xbg_shader_identity(key,base,formats,&typed))return VK_NULL_HANDLE;
     std::vector<uint8_t> b;if(!read_shader_bundle(base,b,nullptr))return VK_NULL_HANDLE;
     xbg_shader_header h;memcpy(&h,b.data(),sizeof(h));if(h.magic!=0x31534758 || h.version!=1 || h.stage>=6 || h.binding_count>256 || h.input_count>16 || h.c1_bytes>65536 || h.spirv_bytes%4)return VK_NULL_HANDLE;
     if(expected_stage && expected_stage!=(1u<<h.stage))return VK_NULL_HANDLE;
@@ -3710,7 +3674,7 @@ bool read_record(const std::vector<uint8_t> &bytes,size_t &at,Rec &record){
         if(!get(length) || length<16 || length>256 || length>bytes.size()-at)return false;
         std::string key(reinterpret_cast<const char*>(bytes.data()+at),length);at+=length;
         std::string base;IntegerBufferFormats formats;TypedStorageFormats typed;
-        if(!shader_identity(key,base,formats,&typed))return false;
+        if(!xbg_shader_identity(key,base,formats,&typed))return false;
         record.keys.push_back(std::move(key));
     }
     if(!get(count) || !count || count>XbgPipelineKey::Capacity || size_t(count)*4>bytes.size()-at)return false;
@@ -6217,6 +6181,49 @@ void execute_draw_call(const xbg_draw_call &p){
         draw(p.primitive,0,p.count,&indexed);
     }
 }
+void note_large_indirect_index(int index_type,uint64_t index_base,uint64_t address,
+        const void *arguments){
+    if(index_type<0 || index_type>2)return;
+    uint32_t values[5];memcpy(values,arguments,sizeof values);
+    if(!values[0] || !values[1])return;
+    if(uint64_t(values[0])*(1u<<index_type)<=256ull*1024*1024)return;
+    xbg_logf("NVN INDIRECT_OVERSIZE frame=%llu op=%u address=%#llx indexBase=%#llx indexType=%d args=%#x,%#x,%#x,%#x,%#x vs=%s fs=%s lastBoundCs=%s",
+        (unsigned long long)stats.presents.load(),cur_op,(unsigned long long)address,
+        (unsigned long long)index_base,index_type,values[0],values[1],values[2],values[3],values[4],
+        state.shader[0]?state.shader[0]->key.c_str():"none",
+        state.shader[4]?state.shader[4]->key.c_str():"none",
+        state.shader[5]?state.shader[5]->key.c_str():"none");
+    // The known compute control layout has draw arguments at byte 12 or 32.
+    // Read candidates only inside registered storage, without another GPU wait.
+    for(uint64_t offset:{12ull,32ull}){
+        if(address<offset)continue;
+        const uint64_t base=address-offset;
+        size_t available=0;
+        auto pool=pools.upper_bound(base);
+        if(pool!=pools.begin()){
+            --pool;
+            if(base>=pool->first && base-pool->first<pool->second)
+                available=pool->second-size_t(base-pool->first);
+        }
+        auto host=host_ranges.upper_bound(base);
+        if(host!=host_ranges.begin()){
+            --host;
+            if(base>=host->first && base-host->first<host->second)
+                available=std::max(available,host->second-size_t(base-host->first));
+        }
+        if(available<68)continue;
+        unsigned pending=0;
+        for(const auto &writeback:pending_writebacks)
+            pending+=xbg_wb_overlaps(base,68,writeback.addr,writeback.bytes);
+        uint32_t packet[17];
+        {evguard::EngineRead read(reinterpret_cast<const void*>(base),sizeof packet);
+            memcpy(packet,reinterpret_cast<const void*>(base),sizeof packet);}
+        xbg_logf("NVN INDIRECT_PACKET_CANDIDATE cpuObserved=1 pendingOverlap=%u address=%#llx drawOffset=%llu words=%#x,%#x,%#x,%#x,%#x,%#x,%#x,%#x,%#x,%#x,%#x,%#x,%#x,%#x,%#x,%#x,%#x",
+            pending,(unsigned long long)base,(unsigned long long)offset,
+            packet[0],packet[1],packet[2],packet[3],packet[4],packet[5],packet[6],packet[7],packet[8],
+            packet[9],packet[10],packet[11],packet[12],packet[13],packet[14],packet[15],packet[16]);
+    }
+}
 void invalid_indirect_draw(const char *site,int result,int primitive,int index_type,
         uint64_t index_base,uint64_t address,const void *arguments,size_t bytes){
     uint32_t values[5]={};
@@ -6256,11 +6263,13 @@ void execute_indirect(const xbg_indirect &p,bool single){preflight_cpu_reads();
         uint64_t address=0;need(xbg_draw_indirect_address(p.arguments,i,p.stride,p.index_type,&address)==0,"Invalid indirect argument address/stride");
         size_t bytes=p.index_type<0?16:20;
         need(bytes<=command_available(reinterpret_cast<const uint8_t*>(address)),"Indirect arguments exceed registered storage");cpu_access(address,bytes,5);
+        uint32_t args[5]={};memcpy(args,reinterpret_cast<const void*>(address),bytes);
+        note_large_indirect_index(p.index_type,p.index_address,address,args);
         // Read at execution, after preceding synchronous GPU storage writeback,
         // never at command recording. Both single and multi use this path.
-        xbg_draw_call plan{};int result=xbg_draw_indirect_plan(&plan,p.primitive,p.index_type,p.index_address,reinterpret_cast<const void*>(address),bytes);
-        if(result)invalid_indirect_draw("execute-indirect",result,p.primitive,p.index_type,p.index_address,address,reinterpret_cast<const void*>(address),bytes);
-        note_empty_indirect_draw("execute-indirect",p.index_type,address,reinterpret_cast<const void*>(address),bytes);
+        xbg_draw_call plan{};int result=xbg_draw_indirect_plan(&plan,p.primitive,p.index_type,p.index_address,args,bytes);
+        if(result)invalid_indirect_draw("execute-indirect",result,p.primitive,p.index_type,p.index_address,address,args,bytes);
+        note_empty_indirect_draw("execute-indirect",p.index_type,address,args,bytes);
         execute_draw_call(plan);
     }
 }
@@ -6307,6 +6316,7 @@ void execute_draw_record(const p_draw &a){preflight_cpu_reads();
         xbg_draw_call plan{};int result=xbg_draw_indirect_plan(&plan,a.prim,-1,0,args,16);
         if(result)invalid_indirect_draw("draw-arrays-record",result,a.prim,-1,0,a.ind,args,sizeof args);
         note_empty_indirect_draw("draw-arrays-record",-1,a.ind,args,sizeof args);
+        if(!plan.count || !plan.instances)return;
         draw(plan.primitive,plan.first,plan.count,nullptr,uint32_t(plan.instances),uint32_t(plan.base_instance));
         return;
     }
@@ -6543,12 +6553,14 @@ void execute_draw_index_record(const p_draw_idx &a){preflight_cpu_reads();
         }
         cpu_access(a.ind,20,5);
         uint32_t args[5]={0};memcpy(args,reinterpret_cast<const void*>(a.ind),20);probe_indirect_arguments(a,args);
+        note_large_indirect_index(a.itype,a.ibuf,a.ind,args);
         if(proved && proof_batch->owned){auto &v=proof_batch->owned->view;v.invalidate();unsigned errors=0;for(auto row:check_rows){uint32_t actual[5],copied[5];memcpy(actual,reinterpret_cast<const void*>(row.address),20);memcpy(copied,static_cast<const uint8_t*>(v.mapped)+(row.address-proof_batch->address),20);errors+=memcmp(actual,copied,20)!=0;}static unsigned logged=0;if(errors || logged++<12)xbg_logf("CODEX_INDIRECT_OWNED frame=%llu rows=%zu bytes=%llu errors=%u instancesActual=%u",(unsigned long long)stats.presents.load(),check_rows.size(),(unsigned long long)proof_batch->bytes,errors,args[1]);need(!errors,"Independent indirect GPU copy differs from actual arguments");}
         if(proved){for(auto row:check_rows){uint32_t actual[5];memcpy(actual,reinterpret_cast<const void*>(row.address),20);bool same=actual[0]==row.index_count && actual[2]==row.first_index && actual[3]==0 && actual[4]==0;++indirect_proof_checks;if(!same)++indirect_proof_mismatches;if(!same)xbg_logf("CODEX_INDIRECT_PROOF_MISMATCH frame=%llu address=%#llx count=%u/%u firstIndex=%u/%u baseVertex=%u baseInstance=%u",(unsigned long long)stats.presents.load(),(unsigned long long)row.address,actual[0],row.index_count,actual[2],row.first_index,actual[3],actual[4]);}if(indirect_proof_checks<=440 || !(indirect_proof_checks%440))xbg_logf("CODEX_INDIRECT_PROOF frame=%llu batchRows=%zu checks=%llu mismatches=%llu count=%u firstIndex=%u instancesActual=%u",(unsigned long long)stats.presents.load(),check_rows.size(),(unsigned long long)indirect_proof_checks,(unsigned long long)indirect_proof_mismatches,args[0],args[2],args[1]);}
         if(probe_is_active())capture_log("PROBE_INDIRECT indexed=1 address=%#llx vs=%s fs=%s count=%u instances=%u firstIndex=%u baseVertexBits=%u baseInstance=%u",(unsigned long long)a.ind,state.shader[0]?state.shader[0]->key.c_str():"none",state.shader[4]?state.shader[4]->key.c_str():"none",args[0],args[1],args[2],args[3],args[4]);
         xbg_draw_call plan{};int result=xbg_draw_indirect_plan(&plan,a.prim,a.itype,a.ibuf,args,20);
         if(result)invalid_indirect_draw("draw-index-record",result,a.prim,a.itype,a.ibuf,a.ind,args,sizeof args);
         note_empty_indirect_draw("draw-index-record",a.itype,a.ind,args,sizeof args);
+        if(!plan.count || !plan.instances)return;
         p_draw_idx indexed{plan.primitive,plan.index_type,plan.count,plan.base_vertex,plan.base_instance,plan.instances,plan.index_address};
         draw(plan.primitive,0,plan.count,&indexed);
         return;

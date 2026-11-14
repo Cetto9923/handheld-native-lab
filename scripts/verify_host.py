@@ -196,6 +196,12 @@ def main():
     spirv_as = shutil.which('spirv-as')
     spirv_val = shutil.which('spirv-val')
     if spirv_as and spirv_val:
+        integer_dir = out / 'integer-buffer'
+        run('integer-buffer-contract', ['bash', 'scripts/android/verify_integer_buffer.sh', integer_dir])
+        extra_artifacts.append(integer_dir / 'test_integer_buffer')
+        identity_dir = out / 'shader-identity'
+        run('shader-identity-contract', ['bash', 'scripts/android/verify_shader_identity.sh', identity_dir])
+        extra_artifacts.append(identity_dir / 'test_shader_identity')
         narrow_dir = out / 'narrow-subgroup'
         run('narrow-subgroup-contract', ['bash', 'scripts/android/verify_spirv_narrow.sh', narrow_dir])
         extra_artifacts.append(narrow_dir / 'test_spirv_narrow')
