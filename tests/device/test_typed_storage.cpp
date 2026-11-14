@@ -145,18 +145,27 @@ int main(int argc,char **argv){
     assert(buffer_info.dim==XBG_IMAGE_DIM_BUFFER);
     assert(xbg_spirv_image_scalar_class(fixture,11)==2);       // unsigned
     assert(xbg_spirv_storage_write_components(fixture,11)==4);  // one uint4 texel
-    // A 16-bit bound view declares R16ui natively via StorageImageExtendedFormats.
-    assert(xbg_spirv_image_format(74)==XBG_IMAGE_FORMAT_R16UI);
-    assert(xbg_typed_storage_view_format(fixture,11,74)==74);
+    // A 16-bit bound view has no SPIR-V image format.
+    assert(xbg_spirv_image_format(74)==XBG_IMAGE_FORMAT_UNKNOWN);
+    assert(xbg_typed_storage_view_format(fixture,11,74)==XBG_VK_FORMAT_R32G32B32A32_UINT);
+    // Red mutant: the old rule kept the guest's 16-bit view, the module stayed
+    // formatless and the device aborted. That must not come back.
+    assert(xbg_typed_storage_view_format(fixture,11,74)!=74);
     // A bound view SPIR-V can declare is left alone.
     assert(xbg_typed_storage_view_format(fixture,11,98)==98);
     assert(xbg_typed_storage_view_format(fixture,11,107)==107);
     // A module that declares its own format keeps it: no substitution.
     assert(xbg_typed_storage_view_format(game_declared,0,74)==74);
+    // The substituted format is one the rewrite can declare, and only the
+    // Image Format operand changes.
     auto buffer_typed=fixture;
-    assert(xbg_typed_storage_rewrite(buffer_typed,11,XBG_IMAGE_FORMAT_R16UI)==1);
-    assert(xbg_spirv_declared_image_format(buffer_typed,11)==XBG_IMAGE_FORMAT_R16UI);
-    assert(xbg_typed_storage_view_format(buffer_typed,11,74)==74);
+    assert(xbg_typed_storage_rewrite(buffer_typed,11,XBG_IMAGE_FORMAT_RGBA32UI)==1);
+    assert(xbg_spirv_declared_image_format(buffer_typed,11)==XBG_IMAGE_FORMAT_RGBA32UI);
+    assert_only_format_changed(fixture,buffer_typed,11,XBG_IMAGE_FORMAT_RGBA32UI);
+    // The substitution is idempotent: on the module the engine rewrote, the
+    // bound format has to stay the substituted one, or the descriptor path
+    // would bind the guest's 16-bit view and reject the engine's own module.
+    assert(xbg_typed_storage_view_format(buffer_typed,11,74)==XBG_VK_FORMAT_R32G32B32A32_UINT);
     save(argv[6],buffer_typed);
     // The battle-settle crash of 1.0.9 on the Honor tablet: the module
     // declares a typed storage image itself (the real module
