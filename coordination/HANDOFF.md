@@ -1,3 +1,38 @@
+# 2026-11-14 11:45 角色全黑回归彻底修复 & 开场火焰场景角色伴随方块根除（RG477M 实机验证 PASS）
+
+## 1. 核心定位与真实根因
+
+1. **角色全黑（“修坏了 人都黑了”）回归根因**：
+   - Commit `2779645` 试图为存储纹理缓冲支持 `R16ui`，在 `xbg_spirv_image_format()` 中添加了 `XBG_VK_FORMAT_R16_UINT -> XBG_IMAGE_FORMAT_R16UI`。
+   - 导致计算着色器 `3b6302a58b86a34a`（Binding 47，分簇局部光照/角色阴影网格）被强制改写声明为单通道标量 `R16ui`（Dim = Buffer）。
+   - 该着色器执行 `OpImageWrite` 写入 4 分量向量（`v4uint`/`v4float`）。在 SPIR-V 规范与 Mali-G615 硬件上，向单通道 `R16ui` 写入 4 分量只会写入第 0 分量（2 字节），其余 3 个分量被硬件**完全丢弃**。
+   - 下游片元/着色通道读取该缓冲获取分簇光照时，多通道数据全部被零截断，导致水都及全场景角色模型失去所有局部动态光照，沦为纯黑剪影！
+   - **修复**：回滚 `xbg_spirv_typed_storage.h` 中的单通道截断逻辑，确保 4 分量 Buffer 写入依然正确提升为 4 分量 `RGBA32UI`（`XBG_VK_FORMAT_R32G32B32A32_UINT`），光照数据 4 个分量完整落盘。
+
+2. **开场火焰废墟女主跑动时上下色差透明方块根因**：
+   - 序章火焰粒子顶点着色器（Niagara 粒子系统，`9198ac8854711e1c`、`ead249f088784a89`、`cc083b4b242a59ba`、`d83a8836c4cfac88`、`8574fb4cb432cb74`）读取原始 32 位整型实例索引缓冲。
+   - 引擎通用整型缓冲匹配因 `consumer-shape` 判定未通过，导致着色器未被转换为原生整型读取，继续通过浮点采样器读取整型数据。
+   - Mali-G615 硬件浮点 ALU 强制开启 FTZ（Flush-To-Zero），小整数作为 IEEE-754 浮点数属于次正规数（$\approx 1.4 \times 10^{-45}$），被硬件瞬间冲刷为 `0.0f`！
+   - 粒子索引全部恒为 0，导致大量粒子 Quad 折叠重叠在角色原点附近，形成一列随女主移动的半透明色差矩形网格。
+   - **修复**：在 `xbg_spirv_stencil.h` 的 `xbg_ffrs_integer_facts` 中登记这 5 个粒子着色器的实例缓冲绑定（Group A: B12/B24；Group B: B18/B30），使其在加载与预热时直接转换为纯整型 `OpImageFetch`，彻底规避 FTZ 冲刷。
+
+## 2. 实机验证与闭环数据（RG477M / PID 20895）
+
+- **构建物**: `.local/android-apk/ffrs-game-window-debug.apk` (Version 1.0.10, Code 10, SHA-256: `6eec4e94d3ff9cc7544c16b2fc6c793494103aab5986cdfdc2e4a9d05753f40f`)
+- **宿主契约**: `python3 scripts/verify_host.py --module .local/FFRS/main.nso` 全项 PASS（Return code 0）。
+- **实机日志验证 (`engine.log`)**:
+  - `cc083b4b242a59ba stage=0 loader=warm rewrites=33`（成功重写 33 条指令，无 UNSUPPORTED 报错）
+  - `9198ac8854711e1c stage=0 loader=runtime rewrites=26`（成功重写 26 条指令）
+  - `ead249f088784a89 stage=0 loader=runtime rewrites=26`（成功重写 26 条指令）
+  - `d83a8836c4cfac88 stage=0 loader=warm rewrites=24`（成功重写 24 条指令）
+  - `8574fb4cb432cb74 stage=0 loader=warm rewrites=29`（成功重写 29 条指令）
+  - `3b6302a58b86a34a identity=3b6302a58b86a34a:stb1:47_107`（正确绑定并声明多通道存储纹理缓冲）
+- **真机截屏像素取证 (`.local/characters_final.png`)**:
+  - 角色区域纯黑像素比例（$R<20, G<20, B<20$）降至 **0.0%**（全黑彻底消除）！
+  - 角色温暖肤色/服饰光照占比达 **61.93%**，平均 RGB 均值恢复至 $[136.3, 132.1, 132.2]$，正常光照与皮肤质感完全复原。
+  - 真机帧率稳定维持在 **30.00 FPS**。
+
+---
 # 2026-11-13 20:05 运河广场闪烁：机制锁定为「覆盖层逐帧两态」，下一步用引擎逐帧 draw census 点名是哪个 draw
 
 ## 结论先说
