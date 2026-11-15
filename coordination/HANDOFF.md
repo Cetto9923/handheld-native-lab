@@ -1,3 +1,7 @@
+# 2026-11-16T07:08:34.889692+08:00 53首次及暖对照准备
+
+53 PID19273的首个普通新路技能，两Lv1钢蝠，9296..9431/136帧17.0041FPS/max266.51ms/48超50/21超100，全部8秒原样保留。计算调度CPU fallback已为0，最大sync_wb1，最慢帧shader131.7ms、submitCPU254.61/GPU57.99。虽移除了计算参数读回，当前冷窗没有FPS改善证据，接下来同进程暖原/暖新复核，不能把等待次数改善称为稳30。仍可能有op26间接draw读回，原因待进一步按调用链验证，不能仅从indirect_template_batch不支持GPU参数就断言是新引入。当前已经切indtexel原路径，角色探索中，等待下一战斗。自建旧PID2107/8384/11169/16304帧CSV逐个匹配host摘要后移除，共7311200B；首轮run-as外部目录Permission denied无删除，shell同路径成功。备份与恢复命令retired-frame-csv/plan.json。
+
 # 2026-11-16T06:56:53.175177+08:00 53已安装
 
 53源39c5bf9 clean，115宿主/Android0，81项源输入SHA一致。APK59a37bdfe2c2ab721a4b8a752ef989d9c9d188b9c8b3dfe980259aebb4cdbf0b，3724503B。安装回读及461九文件SHA、正式源metadata通过。PID19273复用461，以indtexel原输入准入启动，adpf0/vcache0/texrecord1/probe0/overlay0。下一次到技能确认前再选择新路，不把冷暖差归帧率收益。需要特别准确区分两个已有范围：partial_overlay_available按tablet+vendor5143+Adreno735，honor_inline_enabled按tablet+Adreno并服从gfx-honor-inline，53间接texel候选复用的是后者。新准入尚仅在本台735实测，不能声称其它Adreno/Mali已通过。
