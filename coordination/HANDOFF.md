@@ -4907,3 +4907,8 @@ https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.30-preview �
 ## 荣耀30用户测试与稳30研究
 
 用户明确要求将当前包安装荣耀平板，旧“荣耀暂缓”本轮解除。A42BBB5109000333当前24、游戏进程未运行、前台日历。根领取HONOR30-PERF31，先以shell tar保全外部codex-local-save及ffrs-quicksave，run-as外部访问被FUSE拒绝但shell可读，勿为备份改权限。检查旧诊断marker，安装已发布89cbb81c，启动后交给用户实测。并行只读比较既有shader加载/重特效证据与成熟上游及Android/Arm官方文档，先定位可实施差距。不得把安装或预热通过称稳定30。
+
+### 2026-11-16 44火焰技能检查点
+
+44c 20e4ef6/4574ccc5构建113/Android0/79输入一致，未装。当前44b/20331。旧A1 18.326→新B1 26.157→旧A3 24.278短窗不能全归收益，A2遇敌排除。实际雷因消失突袭旧路首次8秒15.058/max319.78，39200帧shader261.8ms/CPU299.41/GPU23.53，pipeline0。warm已加载同key但reuse0，后续模式2逐字核对。用户交回输入，root操作，稳定30及音频未通过。
+证据.local/honor-submit44-20261116/，报告CODEX-HONOR-SUBMIT44-20261116.md。
