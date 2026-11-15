@@ -4945,6 +4945,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
 struct Pass {
     const PipelineDefinition *definition=nullptr;
     VkRenderPass pass{},pass_noload{};VkFramebuffer framebuffer{};uint32_t width{},height{},color_slots{},layers=1;VkSampleCountFlagBits samples=VK_SAMPLE_COUNT_1_BIT;ImageList images;
+    bool depth_attached=false,depth_omitted=false;
 };
 // Draws inside the open pass with unchanged render-target state get the same Pass: non-draw ops end the pass, so nothing
 // else touched its attachments since. Only the attachments' write marks are refreshed (as prepare_attachment does).
@@ -4960,8 +4961,15 @@ struct RenderPassEntry {VkRenderPass pass{},noload{};PipelineDefinition definiti
 std::map<std::vector<uint32_t>,RenderPassEntry> render_pass_cache;
 void clear_render_pass_cache(){for(auto &r:render_pass_cache){vkDestroyRenderPass(cfg.device,r.second.pass,nullptr);if(r.second.noload)vkDestroyRenderPass(cfg.device,r.second.noload,nullptr);}render_pass_cache.clear();pipeline_fast.clear();pipe_memo_valid=false;}
 bool create_pass(Pass &p,Commands &c,int clear_color=-1,bool clear_depth=false,bool soft=false,int fold_clear_slot=-1){CPU_SCOPE(Pass);
+    // Keep the original extent calculation, including the bound depth view.
+    // Only an ordinary one-color draw with all depth/stencil tests disabled
+    // can omit the unused attachment. Clears and depth-only draws retain it.
+    const bool omit_depth=c.draw && clear_color<0 && !clear_depth && !soft && fold_clear_slot<0 &&
+        state.rt.n==1 && state.rt.color[0] && state.rt.depth &&
+        !state.ds.dt && !state.ds.st && !state.bounds.enable &&
+        !capture.active && !capture.probe && !provenance_file && !ab_off("depthomit");
     const bool plain_draw=c.draw && clear_color<0 && !clear_depth && !soft && !provenance_file && !capture.active && !ab_off("passfast");
-    if(plain_draw && last_pass.valid && open_pass.cmd==c.command && open_pass.pass==last_pass.pass.pass && open_pass.framebuffer==last_pass.pass.framebuffer && !memcmp(&state.rt,&last_pass.rt,sizeof state.rt)){
+    if(plain_draw && last_pass.valid && last_pass.pass.depth_omitted==omit_depth && open_pass.cmd==c.command && open_pass.pass==last_pass.pass.pass && open_pass.framebuffer==last_pass.pass.framebuffer && !memcmp(&state.rt,&last_pass.rt,sizeof state.rt)){
         p=last_pass.pass;for(auto *im:p.images){need(!im->rg16_proxy || std::find(sampled_rg16_images.begin(),sampled_rg16_images.end(),im)==sampled_rg16_images.end(),"RG16 same-draw sampled/attachment feedback requires explicit supported subresource semantics");im->last_write=++write_seq;im->gpu_written=true;++im->content_version;}++pass_fast_hits;return true;}
     // 仅显式设置DM_VK_TRACE_ATTACHMENTS=1时输出成功诊断；首次调用读取，错误始终记录。
     // Read once: opt in with DM_VK_TRACE_ATTACHMENTS=1; errors are always logged.
@@ -5014,6 +5022,9 @@ bool create_pass(Pass &p,Commands &c,int clear_color=-1,bool clear_depth=false,b
         }
     }
     p.width=plan.width;p.height=plan.height;p.layers=plan.layers;p.samples=VkSampleCountFlagBits(plan.samples);
+    p.depth_omitted=omit_depth;
+    if(omit_depth)targets[8]=nullptr;
+    p.depth_attached=targets[8]!=nullptr;
     need(p.layers<=properties.limits.maxFramebufferLayers,"Framebuffer layer count exceeds device limit");
     static std::vector<VkAttachmentDescription> descriptions;descriptions.clear();static std::vector<VkImageView> views;views.clear();   // not re-entrant: graphics thread
     static std::vector<VkAttachmentReference> colors;colors.assign(size_t(state.rt.n),{VK_ATTACHMENT_UNUSED,VK_IMAGE_LAYOUT_GENERAL});VkAttachmentReference depth{VK_ATTACHMENT_UNUSED,VK_IMAGE_LAYOUT_GENERAL};
@@ -5455,7 +5466,7 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
         // Proven full overwrite: begin with the color-DONT_CARE twin; open_pass keeps p.pass, so later draws continue this pass.
         if(!gpu_args && p.pass_noload && quad_indices.empty() && !ab_off("noload") && ui_uy==0 && ui_vs==1 && !state.rast_discard && first_draw_covers(p,prim,first,count,indexed,vertex_buffers,ib,index_type)){VkRenderPass keep=p.pass;p.pass=p.pass_noload;begin_pass(p,c);p.pass=keep;++noload_passes;}
         else begin_pass(p,c);
-        open_pass.cmd=c.command;open_pass.pass=p.pass;open_pass.framebuffer=p.framebuffer;open_pass.images=p.images;open_pass.depth_attached=state.rt.depth!=nullptr;++perf.passes;}
+        open_pass.cmd=c.command;open_pass.pass=p.pass;open_pass.framebuffer=p.framebuffer;open_pass.images=p.images;open_pass.depth_attached=p.depth_attached;++perf.passes;}
     if(state.ds.dt || state.ds.st || state.bounds.enable)open_pass.depth_used=true;
     if(new_run){end_occlusion_query();begin_occlusion_query(c.command,occlusion,occlusion_index);}
     BindCache &bc=bind_cache;if(!bind_cache_enabled || bc.cmd!=c.command || pipeline.transient){bc=BindCache{};bc.cmd=c.command;}
@@ -5916,7 +5927,7 @@ void clear_attachment(const p_clear_color *color,const p_clear_ds *depth,int sca
         if(!preserve || target_image.gpu_written || target_image.uploaded){
             Commands c(true);Pass p;
             if(create_pass(p,c,-1,false,true,color?color->index:8)){
-                if(open_pass.cmd!=c.command || open_pass.pass!=p.pass || open_pass.framebuffer!=p.framebuffer){end_open_pass();begin_pass(p,c);open_pass.cmd=c.command;open_pass.pass=p.pass;open_pass.framebuffer=p.framebuffer;open_pass.images=p.images;open_pass.depth_attached=state.rt.depth!=nullptr;++perf.passes;}
+                if(open_pass.cmd!=c.command || open_pass.pass!=p.pass || open_pass.framebuffer!=p.framebuffer){end_open_pass();begin_pass(p,c);open_pass.cmd=c.command;open_pass.pass=p.pass;open_pass.framebuffer=p.framebuffer;open_pass.images=p.images;open_pass.depth_attached=p.depth_attached;++perf.passes;}
                 if(depth){open_pass.depth_used=true;open_pass.depth_may_write=true;open_pass.depth_writes|=(a.aspectMask&VK_IMAGE_ASPECT_DEPTH_BIT)!=0;open_pass.stencil_writes|=(a.aspectMask&VK_IMAGE_ASPECT_STENCIL_BIT)!=0;}
                 VkClearRect r{scissor(p),0,p.layers};if(r.rect.extent.width && r.rect.extent.height)vkCmdClearAttachments(c.command,1,&a,1,&r);
                 ++perf.folded_clears;return;

@@ -379,6 +379,8 @@ def main():
                                        'tests.device.test_probe_marker_poll'])
     run('bridge-lookup-contract', [sys.executable, '-m', 'unittest',
                                    'tests.device.test_bridge_lookup'])
+    run('depth-attachment-contract', [sys.executable, '-m', 'unittest',
+                                      'tests.device.test_depth_attachment'])
     packed_dir = out / 'packed-shader-words'
     run('packed-shader-words-contract', ['bash', 'scripts/android/verify_packed_shader_words.sh', packed_dir])
     extra_artifacts.append(packed_dir / 'test_packed_shader_words')

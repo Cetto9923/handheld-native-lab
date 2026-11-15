@@ -1,6 +1,6 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-15T22:49:54.175435+08:00
+状态事件时间：2026-11-15T23:23:23.225210+08:00
 阶段：荣耀神殿内部持续移动长帧优化，1080P输出及有界内部尺寸目标30继续推进
 总控：Codex /root 本轮接管
 更新方式：按事件更新，没有后台自动刷新。
@@ -245,6 +245,7 @@
 | CODEX-HONOR-TEXTURE39-20261115 | RENDER_DESCRIPTOR_CPU_OPTIMIZATION | completed_performance_inconclusive | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-HONOR-PROBE40-20261115 | DIAGNOSTIC_OVERHEAD_REDUCTION | passed | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-HONOR-MOVING41-20261115 | MOVING_RENDER_CPU_INVESTIGATION | in_progress | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-HONOR-GPASS42-20261115 | TEMPLE_RENDER_PASS_INVESTIGATION | in_progress | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 
 ## 独占写入
 
@@ -452,6 +453,7 @@
 - {"task": "CODEX-HONOR-TEXTURE39-20261115", "owner": "root", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", "tests/device/test_render_policy.py", "src/android/app/gamewindow/AndroidManifest.xml", ".local/honor-stable30-20261115/build39/", ".local/honor-stable30-20261115/texture39/", "coordination/results/CODEX-HONOR-TEXTURE39-20261115.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T21:09:48.679053+08:00", "checkpoint": "组件与安装保全通过，FPS单项方向混合。", "write_state": "COMPLETE_SCOPED_PERF_INCONCLUSIVE", "checkpoint_at": "2026-11-15T22:00:28.314643+08:00"}
 - {"task": "CODEX-HONOR-PROBE40-20261115", "owner": "root", "paths": ["src/graphics/nvn_vulkan/engine/xbg_probe.inc", "src/android/app/gamewindow/AndroidManifest.xml", "tests/device/test_probe_marker_poll.py", "scripts/verify_host.py", ".local/honor-stable30-20261115/build40/", ".local/honor-stable30-20261115/probe40/", "coordination/results/CODEX-HONOR-PROBE40-20261115.md", "coordination/EXPERIENCE.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T21:24:31.309137+08:00", "checkpoint": "22:16撤回旧28.81移动结论，PAD隐藏。22:25再次复核19.4窗口截图已在战斗菜单，非零轴也不能证明场景移动；A40-real/41-short均遇敌混合。当前41/14303，需前后画面场景一致的移动窗口，性能改善未证实。", "write_state": "COMPLETE_SCOPED", "checkpoint_at": "2026-11-15T22:00:28.314643+08:00"}
 - {"task": "CODEX-HONOR-MOVING41-20261115", "owner": "root", "paths": [".local/honor-moving41-20261115/", "coordination/results/CODEX-HONOR-MOVING41-20261115.md", "src/graphics/nvn_device/nvn_bridge.c", "tests/device/test_bridge_lookup.py", "scripts/verify_host.py", "src/android/app/gamewindow/AndroidManifest.xml", "coordination/EXPERIENCE.md", "coordination/results/CODEX-HONOR-PROBE40-20261115.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T22:08:06.022043+08:00", "checkpoint": "41源码25b0bd3，APK fe5b9323，113宿主/Android0，79输入一致，装包及9文件SHA通过。14303神殿内部B41-field2真实非零轴、前后探索且位移，26100..26220/120间隔21.7207FPS/P9979.90/max80.61/29超50，短暖窗仍未稳30，单项收益未隔离。旧28.81隐藏摇杆及19.4战斗菜单结论已撤回。", "write_state": "ACTIVE", "checkpoint_at": "2026-11-15T22:49:54.175435+08:00"}
+- {"task": "CODEX-HONOR-GPASS42-20261115", "owner": "root", "paths": [".local/honor-gpass42-20261115/", "coordination/results/CODEX-HONOR-GPASS42-20261115.md", "src/graphics/nvn_vulkan/engine/xbg_game.cpp", "src/android/app/gamewindow/AndroidManifest.xml", "tests/device/test_depth_attachment.py", "scripts/verify_host.py"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T23:05:47.156670+08:00", "checkpoint": "14303 GPASS69453..69458六帧，31.73ms总pass+compute。fullscreen 21ee00对应draw depth0/0、dz1，均1384x780，平均4.97ms。采样前探索、后遇敌，单列诊断。实现单色/DS禁用的闲置深度附件候选，保留完整原extent计算和原深度图内容，旧路径现成live-ab=depthomit对照。", "write_state": "ACTIVE"}
 
 ## 阻塞
 
