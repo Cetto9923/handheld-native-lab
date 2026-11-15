@@ -342,10 +342,10 @@ namespace performance_hint {
 bool enabled=false;
 #if defined(__ANDROID__)
 void *library=nullptr;
-decltype(&APerformanceHint_getManager) get_manager=nullptr;
-decltype(&APerformanceHint_createSession) create_session=nullptr;
-decltype(&APerformanceHint_closeSession) close_session=nullptr;
-decltype(&APerformanceHint_reportActualWorkDuration) report_work=nullptr;
+APerformanceHintManager *(*get_manager)()=nullptr;
+APerformanceHintSession *(*create_session)(APerformanceHintManager *,const int32_t *,size_t,int64_t)=nullptr;
+void (*close_session)(APerformanceHintSession *)=nullptr;
+int (*report_work)(APerformanceHintSession *,int64_t)=nullptr;
 APerformanceHintSession *session=nullptr;
 bool blocked=false;
 int32_t owner=0;

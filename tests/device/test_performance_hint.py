@@ -1,5 +1,6 @@
 """Execute the production opt-in ADPF adapter against counted API calls."""
 from pathlib import Path
+import os
 import subprocess
 import tempfile
 import unittest
@@ -8,6 +9,43 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class PerformanceHint(unittest.TestCase):
+    def test_real_ndk_minimum_sdk_and_function_types(self):
+        ndk = os.environ.get('ANDROID_NDK_HOME') or os.environ.get('ANDROID_NDK_ROOT')
+        if not ndk:
+            installed = sorted((Path.home() / 'Library/Android/sdk/ndk').glob('*'))
+            if not installed:
+                self.skipTest('Android NDK is unavailable for the cross-compile check')
+            ndk = installed[-1]
+        bins = list((Path(ndk) / 'toolchains/llvm/prebuilt').glob('*/bin'))
+        self.assertTrue(bins)
+        source = (ROOT / 'src/graphics/nvn_vulkan/engine/xbg_game.cpp').read_text()
+        start = source.index('namespace performance_hint {')
+        adapter = source[start:source.index('void timing_start(){', start)]
+        smoke = r'''
+#include <android/performance_hint.h>
+#include <dlfcn.h>
+#include <unistd.h>
+#include <cstdint>
+#include <type_traits>
+uint64_t timing_clock();
+void xbg_logf(const char *, ...);
+''' + adapter + r'''
+#if __ANDROID_API__ >= 33
+static_assert(std::is_same<decltype(&APerformanceHint_getManager), decltype(performance_hint::get_manager)>::value);
+static_assert(std::is_same<decltype(&APerformanceHint_createSession), decltype(performance_hint::create_session)>::value);
+static_assert(std::is_same<decltype(&APerformanceHint_closeSession), decltype(performance_hint::close_session)>::value);
+static_assert(std::is_same<decltype(&APerformanceHint_reportActualWorkDuration), decltype(performance_hint::report_work)>::value);
+#endif
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            (path / 'adapter.cpp').write_text(smoke)
+            for api in (28, 33):
+                compiler = bins[0] / ('aarch64-linux-android' + str(api) + '-clang++')
+                subprocess.run([str(compiler), '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                                '-fPIC', '-c', str(path / 'adapter.cpp'),
+                                '-o', str(path / ('adapter' + str(api) + '.o'))], check=True)
+
     def test_optional_api_timing_and_session_lifetime(self):
         source = (ROOT / 'src/graphics/nvn_vulkan/engine/xbg_game.cpp').read_text()
         start = source.index('namespace performance_hint {')
