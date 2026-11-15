@@ -19,3 +19,7 @@ Arena::destroy原先对所有VkBuffer销毁均增加全局memo_epoch，导致所
 ## 待完成
 
 宿主/Android全量构建、存档保全安装、同进程旧新旧普通移动及火焰群攻技能、显示/内存/冷暖与声音回归。用户补充最卡是当前位置遇敌后第一位主角的四字火焰群攻，名称待从实机菜单确认。发现PAD隐藏与位置变化后根停止输入，等待输入归属回复。独立QA NOT_RUN。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。
+
+## 构建检查点
+
+源c27ad9c首次宿主检查112/113，arena-memory-policy旧fixture仅提供memo_epoch，生产Arena改为调用memo_forget_buffer后提取片段缺依赖。已更新该fixture验证资源释放前逐个调用失效钩子，所有既有guard、回收数量、Android/Mac分配量和16槽GC断言保留。实际slot引用与global对照语义另由本轮生产函数提取测试覆盖。组件合计9项ASan/UBSan通过。首次完整日志保留build44/，下一构建build44b/。

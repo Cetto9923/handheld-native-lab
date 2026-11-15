@@ -76,18 +76,18 @@ int main() {
         start = source.index('    template<class Protected> void trim(')
         methods = source[start:source.index('    void release()', start)]
         fixture = r'''
-#include <atomic>
 #include <cassert>
 #include <cstdint>
 #include <set>
 #include <vector>
 using VkBuffer = uint64_t;
 using VkDeviceSize = uint64_t;
-std::atomic<uint64_t> memo_epoch{1};
 struct { int device = 1; } cfg;
-std::set<uint64_t> destroyed, freed;
+std::set<uint64_t> destroyed, freed, invalidated;
+void memo_forget_buffer(VkBuffer buffer) { assert(invalidated.insert(buffer).second); }
 void vkUnmapMemory(int device, uint64_t memory) { assert(device == 1 && memory); }
 void vkDestroyBuffer(int device, uint64_t buffer, void *) {
+    assert(invalidated.count(buffer));
     assert(device == 1 && destroyed.insert(buffer).second);
 }
 void vkFreeMemory(int device, uint64_t memory, void *) {
@@ -115,13 +115,14 @@ int main() {
     assert(arena.chunks[0].buffer == 1 && arena.chunks[1].buffer == 2 &&
            arena.chunks[2].buffer == 3);
     assert(destroyed == std::set<uint64_t>{4});
-    assert(memo_epoch == 2);
+    assert(invalidated == std::set<uint64_t>{4});
     arena.keep_chunks = 0;
     arena.trim([](VkBuffer buffer) { return buffer == 3; });
     assert(arena.chunks.size() == 1 && arena.chunks[0].buffer == 3);
-    assert(memo_epoch == 4);
+    assert((invalidated == std::set<uint64_t>{1, 2, 4}));
     arena.trim();
-    assert(arena.chunks.empty() && arena.current == 0 && memo_epoch == 5);
+    assert(arena.chunks.empty() && arena.current == 0);
+    assert((invalidated == std::set<uint64_t>{1, 2, 3, 4}));
     assert((destroyed == std::set<uint64_t>{1, 2, 3, 4}));
     assert((freed == std::set<uint64_t>{101, 102, 103, 104}));
 }
