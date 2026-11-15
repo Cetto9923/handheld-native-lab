@@ -1,3 +1,7 @@
+# 2026-11-16T06:16:16.280323+08:00 51安装对照准备
+
+51源20c6c98 clean，host/summary.json为115项全部通过，Android退出0，81项源输入SHA前后相等。APK23298026ae6abfa7e9d991fd5f3b619a8282915292c52b90ed2d3b25d53a966e，3724503B。安装回读APK及461全部9文件SHA、正式源metadata通过。PID11169复用461，以indtexel原准入路径启动，adpf0/vcache0/texrecord1，probe0及overlay0。接下来同进程原/新/原/新实际消失突袭对照，冷暖分别记录。所有APK保留，Main只读。
+
 # 2026-11-16T06:12:29.697158+08:00 51
 
 51候选扩展indirect_dispatch_inputs_resident。仅既有Honor范围及indtexel未禁用时接受buffer texture，要求CPU干净或最新完整当前槽GPU范围、4字节对齐，拒绝未知/空/越界/非buffer纹理、部分或外槽GPU写、报告覆盖及有副作用的诊断。精确可写texel别名沿原共享storage，拒绝其它可写交叠和uniform写别名，SSBO包含关系按现有descriptor复用核对。原UBO/SSBO路径与所有shader/typed/integer语义继续保留。生产提取ASan/UBSan覆盖分支通过，整包及真实性能/输出待测。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。
