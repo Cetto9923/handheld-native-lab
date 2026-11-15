@@ -1,6 +1,6 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-15T18:53:13.444732+08:00
+状态事件时间：2026-11-15T19:09:12.537887+08:00
 阶段：继续定位战斗GPU主通道并审阅成熟开源跨设备兼容缺口
 总控：Codex /root 本轮接管
 更新方式：按事件更新，没有后台自动刷新。
@@ -439,7 +439,7 @@
 - {"task": "CODEX-HONOR-CHEAT30-UI-20261115", "owner": "root", "paths": [".local/honor-cheat30-ui-20261115", "coordination/results/CODEX-HONOR-CHEAT30-UI-20261115.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T17:10:30.529260+08:00", "checkpoint": "6688d2b", "write_state": "DEFERRED_BY_USER"}
 - {"task": "CODEX-TEXEL-GC32-20261115", "owner": "root", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", "tests/device/test_arena_memory_policy.py", ".local/texel-gc32-20261115", "coordination/results/CODEX-TEXEL-GC32-20261115.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T17:27:27.988876+08:00", "checkpoint": "e37fcb3218d0ebc89bfe514d0c14d017ed464fa8", "write_state": "CHECKPOINTED_SOURCE_FROZEN"}
 - {"task": "CODEX-PAD-CHORD33-20261115", "owner": "root", "paths": ["src/android/app/java/org/ffrs/diagnostic/GameActivity.java", "src/android/app/gamewindow/AndroidManifest.xml", "tests/installer/test_pad_shortcut.py", "scripts/verify_host.py", ".local/pad-chord33-20261115/", "coordination/results/CODEX-PAD-CHORD33-20261115.md", "tests/installer/test_save_flow.py", "src/android/app/java/org/ffrs/diagnostic/NativeDataBundle.java", "coordination/EXPERIENCE.md", "coordination/results/CODEX-HONOR30-PERF31-20261115.md", "coordination/results/CODEX-TEXEL-GC32-20261115.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T17:57:41.476317+08:00", "checkpoint": "c90ff50", "write_state": "COMPLETE_HANDED_BACK"}
-- {"task": "CODEX-HONOR-STABLE30-AB-20261115", "owner": "root", "paths": [".local/honor-stable30-20261115/", "coordination/results/CODEX-HONOR-STABLE30-AB-20261115.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T18:25:47.477419+08:00", "checkpoint": "c90ff50", "write_state": "ACTIVE"}
+- {"task": "CODEX-HONOR-STABLE30-AB-20261115", "owner": "root", "paths": [".local/honor-stable30-20261115/", "coordination/results/CODEX-HONOR-STABLE30-AB-20261115.md", "src/android/native/guest_boot_jni.cpp", "src/android/app/java/org/ffrs/diagnostic/DeviceProfile.java", "src/android/app/java/org/ffrs/diagnostic/GameActivity.java", "src/graphics/nvn_device/nvn_backend_vulkan.c", "src/graphics/nvn_vulkan/engine/xbg_game.cpp", "tests/device/", "tests/installer/", "src/runtime/hle/guest_process.c", "src/runtime/hle/guest_process.h", "src/graphics/nvn_device/nvn_queue.c", "src/graphics/nvn_device/nvn_device.c", "src/graphics/nvn_device/nvn_device.h", "tests/native/guest_process_contract.c"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T18:25:47.477419+08:00", "checkpoint": "7935067;用户授权推荐30FPS动态内部模式，先取土之神殿基线", "write_state": "ACTIVE"}
 
 ## 阻塞
 

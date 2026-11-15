@@ -1110,6 +1110,88 @@ nb_scope *guest_process_current_boundary(void) {
     }
     return NULL;
 }
+
+/* This build's registered TAutoConsoleVariable caches hold {vtable, object,
+ * data}. REA registration evidence identifies the integer/float data getters
+ * and the two game/render-thread copies at object + 0x50. Validate the full
+ * chain before changing these runtime settings. Shipping console commands
+ * did not reach this path. Game files and executable bytes stay immutable. */
+static uintptr_t render_policy_data(guest_process *p, uintptr_t offset,
+                                    uintptr_t cache_vtable, uintptr_t object_vtable) {
+    uintptr_t base = nso_base(p->module);
+    const uintptr_t *cache = (const uintptr_t *)(base + offset);
+    uintptr_t object = cache[1], data = cache[2];
+    if (cache[0] != base + cache_vtable || !object || (object & 7) ||
+        object > UINTPTR_MAX - 88 || data != object + 80 ||
+        !guest_process_is_guest_memory(object) || !guest_process_is_guest_memory(object + 87))
+        return 0;
+    if (*(const uintptr_t *)object != base + object_vtable) return 0;
+    return data;
+}
+
+void guest_process_update_render_policy(void) {
+    static pthread_mutex_t policy_mutex = PTHREAD_MUTEX_INITIALIZER;
+    static unsigned frames;
+    static int enabled = -1, refusal_logged;
+    pthread_mutex_lock(&policy_mutex);
+    if (enabled < 0) {
+        const char *value = getenv("FFRS_RENDER_POLICY");
+        enabled = value && !strcmp(value, "1");
+    }
+    if (!enabled || frames++ % 60) {
+        pthread_mutex_unlock(&policy_mutex);
+        return;
+    }
+    guest_process *p = current_process ? current_process : exclusive_process;
+    if (!p || !p->module) {
+        pthread_mutex_unlock(&policy_mutex);
+        return;
+    }
+    char build[33];
+    nso_build_id(p->module, build);
+    if (strcmp(build, "736837afd390442ed7c74a7de730e71b") ||
+        nso_image_size(p->module) < 0x8c28aa8) {
+        if (!refusal_logged++) fprintf(stderr, "[render-policy] unsupported game build; settings retained\n");
+        pthread_mutex_unlock(&policy_mutex);
+        return;
+    }
+    uintptr_t mode = render_policy_data(p, 0x8c28a90, 0x67d9530, 0x67dd5c8);
+    uintptr_t minimum = render_policy_data(p, 0x8be70d0, 0x67dd958, 0x67dd6f8);
+    uintptr_t maximum = render_policy_data(p, 0x8be70e8, 0x67dd958, 0x67dd6f8);
+    uintptr_t budget = render_policy_data(p, 0x8be7118, 0x67dd958, 0x67dd6f8);
+    if (!mode || !minimum || !maximum || !budget) {
+        pthread_mutex_unlock(&policy_mutex);
+        return;
+    }
+    const uintptr_t addresses[] = { maximum, minimum, budget };
+    float values[] = { 100.0f, 75.0f, 1000.0f / 30.0f };
+    float previous[3][2];
+    int previous_mode[2];
+    int valid = 1, changed = 0;
+    for (unsigned i = 0; i < 2; ++i) {
+        __atomic_load((int *)mode + i, &previous_mode[i], __ATOMIC_RELAXED);
+        valid &= previous_mode[i] >= 0 && previous_mode[i] <= 2;
+        changed |= previous_mode[i] != 2;
+    }
+    for (unsigned i = 0; i < 3; ++i) {
+        for (unsigned j = 0; j < 2; ++j) {
+            __atomic_load((float *)addresses[i] + j, &previous[i][j], __ATOMIC_RELAXED);
+            valid &= isfinite(previous[i][j]) && previous[i][j] > 0 && previous[i][j] <= 200;
+            changed |= previous[i][j] != values[i];
+        }
+    }
+    if (valid && changed) {
+        for (unsigned i = 0; i < 3; ++i)
+            for (unsigned j = 0; j < 2; ++j)
+                __atomic_store((float *)addresses[i] + j, &values[i], __ATOMIC_RELAXED);
+        for (unsigned i = 0; i < 2; ++i) __atomic_store_n((int *)mode + i, 2, __ATOMIC_RELAXED);
+        fprintf(stderr, "[render-policy] dynamic mode=%d/%d->2 min=%.3f/%.3f->75 max=%.3f/%.3f->100 budget=%.3f/%.3f->%.3f ms\n",
+                previous_mode[0], previous_mode[1], previous[1][0], previous[1][1],
+                previous[0][0], previous[0][1], previous[2][0], previous[2][1], values[2]);
+    }
+    pthread_mutex_unlock(&policy_mutex);
+}
+
 int guest_process_current_tls_template(guest_tp_template *out) {
     if (!out) return 0;
     guest_process *p=current_process?current_process:exclusive_process;

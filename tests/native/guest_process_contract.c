@@ -4465,6 +4465,18 @@ static int nvn_device_contract(void) {
     expect_condition("nvn-device-timestamp-nonzero", returned_first != 0);
     expect_condition("nvn-device-timestamp-monotonic", returned_second >= returned_first);
 
+    typedef uint64_t (*recorded_timestamp_fn)(void *, const void *);
+    recorded_timestamp_fn recorded_timestamp = (recorded_timestamp_fn)(uintptr_t)
+        lookup(NULL, "nvnDeviceGetTimestampInNanoseconds");
+    CHECK(recorded_timestamp != NULL);
+    uint64_t recorded_counter[2] = { UINT64_MAX, 19200000 };
+    expect_value("nvn-recorded-timestamp-one-second", recorded_timestamp(NULL, recorded_counter), 1000000000);
+    expect_value("nvn-recorded-timestamp-stable", recorded_timestamp(NULL, recorded_counter), 1000000000);
+    recorded_counter[1] = 13;
+    expect_value("nvn-recorded-timestamp-fraction", recorded_timestamp(NULL, recorded_counter), 677);
+    recorded_counter[1] = 0;
+    expect_value("nvn-recorded-timestamp-zero", recorded_timestamp(NULL, recorded_counter), 0);
+
     /* 6. The device initialisation reports the truth. It succeeds exactly
      *    when a real device exists, and this build either has one or has
      *    none; the expectation below is what this build has to be. */

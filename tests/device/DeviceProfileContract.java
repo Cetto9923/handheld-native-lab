@@ -6,6 +6,16 @@ public class DeviceProfileContract {
             throw new AssertionError(soc + ": " + p.id);
     }
     public static void main(String[] args) {
+        int[][] views = { {3000,1920}, {1280,960}, {2400,1080}, {1920,1080}, {1000,700} };
+        for (int[] view : views) {
+            int[] surface = DeviceProfile.target30SurfaceSize(view[0], view[1]);
+            double gameScale = Math.min(surface[0] / 1920.0, surface[1] / 1080.0);
+            if (Math.abs(gameScale - 1) > 0.001
+                    || Math.abs((double)surface[0] / surface[1] - (double)view[0] / view[1]) > 0.001)
+                throw new AssertionError("target30 surface geometry");
+        }
+        if (DeviceProfile.target30SurfaceSize(0, 100) != null)
+            throw new AssertionError("unmeasured view");
         int tabletWidth = DeviceProfile.formFactorWidthDp(3000, 1920, 400, 580);
         if (tabletWidth != 768) throw new AssertionError("Honor physical width");
         check("SM8635", tabletWidth, "", "tablet_sd8s", 1080, 60);

@@ -34,6 +34,14 @@ final class DeviceProfile {
 
     int renderTierHeight() { return targetShortEdge; }
 
+    // Preserve the view's shape while giving the 16:9 game a 1920x1080
+    // presentation area. Extra surface pixels hold the existing borders.
+    static int[] target30SurfaceSize(int width, int height) {
+        if (width <= 0 || height <= 0) return null;
+        double scale = Math.max(1920.0 / width, 1080.0 / height);
+        return new int[] { (int)Math.round(width * scale), (int)Math.round(height * scale) };
+    }
+
     /**
      * The operation mode the tier needs.
      *

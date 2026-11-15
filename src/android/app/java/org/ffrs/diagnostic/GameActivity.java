@@ -96,6 +96,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     private static WeakReference<GameActivity> currentActivity = new WeakReference<GameActivity>(null);
     private static WeakReference<GameActivity> surfaceOwner = new WeakReference<GameActivity>(null);
     private DeviceProfile selectedDeviceProfile;
+    private boolean target30RenderPolicy;
     private AudioManager audioManager;
     private final AudioDeviceCallback audioCallback = new GameAudioDeviceCallback();
     private static final class GameAudioDeviceCallback extends AudioDeviceCallback {
@@ -861,9 +862,27 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         audioManager = (AudioManager)getSystemService(AUDIO_SERVICE);
         if (audioManager != null) audioManager.registerAudioDeviceCallback(audioCallback, new Handler(Looper.getMainLooper()));
         selectedDeviceProfile = deviceProfile();
+        File policyDir = getExternalFilesDir(null);
+        if (policyDir != null) {
+            try (java.io.FileInputStream marker =
+                         new java.io.FileInputStream(new File(policyDir, "gfx-render-policy"))) {
+                target30RenderPolicy = marker.read() == '1';
+            } catch (java.io.IOException ignored) { }
+        }
         ensureDefaultMarkers();
         configureWindow();
         surface_view = new SurfaceView(this);
+        if (target30RenderPolicy) {
+            surface_view.addOnLayoutChangeListener((view, left, top, right, bottom,
+                    oldLeft, oldTop, oldRight, oldBottom) -> {
+                int[] size = DeviceProfile.target30SurfaceSize(right - left, bottom - top);
+                if (size != null) {
+                    surface_view.getHolder().setFixedSize(size[0], size[1]);
+                    Log.i(TAG, "target30_output surface=" + size[0] + "x" + size[1]
+                            + " game_area=1920x1080 borders=preserve_aspect");
+                }
+            });
+        }
         /* The surface format decides whether the compositor reads an alpha
          * channel out of the frame the Vulkan presenter copies into it. The
          * game's final frame carries alpha zero over the whole 3D world and
@@ -2233,6 +2252,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     // Read the same per-package target marker as the native limiter. A changed
     // target takes effect for display selection on the next Activity launch.
     private int requestedGameFps() {
+        if (target30RenderPolicy) return 30;
         File dir = getExternalFilesDir(null);
         if (dir != null) {
             try (java.util.Scanner input = new java.util.Scanner(new File(dir, "gfx-target-fps"))) {

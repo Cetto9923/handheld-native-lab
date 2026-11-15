@@ -235,7 +235,7 @@ uint64_t nvn_device_get_current_timestamp_in_nanoseconds(void *device);
  *   nvnDeviceRegisterFastClearColorui(device, c, fmt)     fast clears
  *   nvnDeviceRegisterFastClearDepth(device, d)         -> false
  *   nvnDeviceIsExternalDebuggerAttached(device)        -> false
- *   nvnDeviceGetTimestampInNanoseconds(device, c)      -> the host clock
+ *   nvnDeviceGetTimestampInNanoseconds(device, c)      -> recorded GPU time in ns
  *   nvnDeviceApplyDeferredFinalizes(device, n)         void
  *   nvnDeviceFinalizeCommandHandle(device, handle)     void
  *   nvnDeviceWalkDebugDatabase(device, ...)            void, the guest callback

@@ -60,6 +60,8 @@ void guest_process_test_argument_vm(void *(*map)(size_t bytes,size_t pending),
 struct nso_result guest_process_load(guest_process *,const char *path,char *err,size_t errlen);
 /* Borrowed inspection/call handle, never independently release it. */
 nso_module *guest_process_module(guest_process *);
+/* Opt-in, version-checked runtime render settings at the native present boundary. */
+void guest_process_update_render_policy(void);
 struct nso_result guest_process_run(guest_process *,guest_process_callback,void *arg,void **value);
 /* Known integer/pointer register ABI only. Up to six explicit scalar arguments,
  * one x0 result, no foreign unwind/stack arguments/unknown aggregate ABI.

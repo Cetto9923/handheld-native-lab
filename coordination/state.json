@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-15T18:53:13.444732+08:00",
+ "updated_at": "2026-11-15T19:09:12.537887+08:00",
  "phase": "继续定位战斗GPU主通道并审阅成熟开源跨设备兼容缺口",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3289,12 +3289,25 @@
    "owner": "root",
    "paths": [
     ".local/honor-stable30-20261115/",
-    "coordination/results/CODEX-HONOR-STABLE30-AB-20261115.md"
+    "coordination/results/CODEX-HONOR-STABLE30-AB-20261115.md",
+    "src/android/native/guest_boot_jni.cpp",
+    "src/android/app/java/org/ffrs/diagnostic/DeviceProfile.java",
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "src/graphics/nvn_device/nvn_backend_vulkan.c",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "tests/device/",
+    "tests/installer/",
+    "src/runtime/hle/guest_process.c",
+    "src/runtime/hle/guest_process.h",
+    "src/graphics/nvn_device/nvn_queue.c",
+    "src/graphics/nvn_device/nvn_device.c",
+    "src/graphics/nvn_device/nvn_device.h",
+    "tests/native/guest_process_contract.c"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-15T18:25:47.477419+08:00",
-   "checkpoint": "c90ff50",
+   "checkpoint": "7935067;用户授权推荐30FPS动态内部模式，先取土之神殿基线",
    "write_state": "ACTIVE"
   }
  ],
@@ -9422,7 +9435,7 @@
    "status": "in_progress",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
-   "objective": "近期稳定真实30FPS，优先世界地图、副本和重复技能，显示回归作为门禁。先逐变量对照既有掌机/底座模式，再核对同步和预热。",
+   "objective": "用户已授权1080P输出、动态内部尺寸、目标真实30FPS。验证实际尺寸控制入口，土之神殿/地图/战斗同场景对照，保留显示与游戏时间。",
    "inputs": [
     "APK33源码c90ff50和SHA368a6f32",
     "用户确认组合键显示隐藏正常，地图/副本仍卡，近期目标稳30",
@@ -9436,10 +9449,23 @@
    "pass_gates": [],
    "write_scope": [
     ".local/honor-stable30-20261115/",
-    "coordination/results/CODEX-HONOR-STABLE30-AB-20261115.md"
+    "coordination/results/CODEX-HONOR-STABLE30-AB-20261115.md",
+    "src/android/native/guest_boot_jni.cpp",
+    "src/android/app/java/org/ffrs/diagnostic/DeviceProfile.java",
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "src/graphics/nvn_device/nvn_backend_vulkan.c",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "tests/device/",
+    "tests/installer/",
+    "src/runtime/hle/guest_process.c",
+    "src/runtime/hle/guest_process.h",
+    "src/graphics/nvn_device/nvn_queue.c",
+    "src/graphics/nvn_device/nvn_device.c",
+    "src/graphics/nvn_device/nvn_device.h",
+    "tests/native/guest_process_contract.c"
    ],
    "acceptance": "同一冻结存档、同一场景配置，A-B-A，冷暖分开，正常帧长尾和显示/音频证据；失败恢复标记。",
-   "checkpoint": "用户已交还输入。A-control-mode1 PID24587，完整同字节9文件，世界地图静机位900帧30FPS，P9935.13/max50.80ms；walk15秒含自动3秒摇杆采集进行中。Perfetto独立栈采样待普通窗口后；B模式0/A返回1未运行。近期目标稳30，全场景未通过。"
+   "checkpoint": "读取本次实际CVar证实mode2、min80/max80、预算33.33。shell写mem被拒且回读80/80，名为live-bounds的17.2FPS窗口是未改设置基线。准备版本/类型/指针验证的应用内设置路径和counter timestamp转换修正。"
   }
  ],
  "blockers": [

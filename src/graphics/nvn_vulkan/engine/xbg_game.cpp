@@ -7687,6 +7687,8 @@ static void xbg_refresh_target_fps() {
         if (fscanf(f, "%d", &val) == 1 && val >= 0) target_fps = val;
         fclose(f);
     }
+    const char *render_policy = getenv("FFRS_RENDER_POLICY");
+    if (render_policy && !strcmp(render_policy, "1")) target_fps = 30;
     if (target_fps > 0) {
         s_target_frame_ns = 1000000000ull / (uint64_t)target_fps;
     } else {

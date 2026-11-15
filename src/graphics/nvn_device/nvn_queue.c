@@ -674,8 +674,11 @@ void nvn_queue_submit_commands(void *queue, int count, const uint64_t *handles) 
 }
 
 void nso_host_vi_signal_vsync_event(void);
+/* Standalone NVN component tests have no owned game process. */
+extern void guest_process_update_render_policy(void) __attribute__((weak));
 
 void nvn_queue_present_texture(void *queue, void *window, int index) {
+    if (guest_process_update_render_policy) guest_process_update_render_policy();
     /* The engine owns the game's own render target and asks this runtime to
      * show it: the image is copied into the swapchain and shown. */
     pthread_mutex_lock(&s_queue_lock);

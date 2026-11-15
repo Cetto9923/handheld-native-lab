@@ -155,6 +155,13 @@ void* GuestThreadMain(void* opaque) {
             } else fprintf(stderr, "[port] invalid operation-mode marker; using handheld\n");
         }
         setenv("FFRS_OPERATION_MODE", operation_mode ? "1" : "0", 1);
+        const std::string policy_marker = path + "/gfx-render-policy";
+        FILE *policy_file = fopen(policy_marker.c_str(), "rb");
+        const bool target30_policy = policy_file && fgetc(policy_file) == '1';
+        if (policy_file) fclose(policy_file);
+        setenv("FFRS_RENDER_POLICY", target30_policy ? "1" : "0", 1);
+        fprintf(stderr, "[port] target30_render_policy=%d marker=%s\n",
+                int(target30_policy), policy_marker.c_str());
         fprintf(stderr, "[port] operation_mode=%d source=%s marker=%s\n",
                 operation_mode, operation_source, operation_marker.c_str());
         const std::string marker = path + "/gfx-codex-movie-dump";

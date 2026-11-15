@@ -493,14 +493,17 @@ int nvn_device_is_external_debugger_attached(void *device) {
 }
 
 uint64_t nvn_device_get_timestamp_in_nanoseconds(void *device, const void *counter_data) {
-    struct timespec ts;
-    uint64_t ns = 0;
+    uint64_t ticks;
     s_device.calls++;
     (void)device;
-    (void)counter_data;
-    if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0)
-        ns = (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
-    return ns;
+    /* write_report stores NVNcounterData { counter, timestamp }, with the
+     * GPU timestamp converted to 19.2 MHz ticks. Convert that recorded value
+     * back to nanoseconds. Reading the host clock here measures the CPU's
+     * query-read interval instead of the GPU work between the reports.
+     * The quotient/remainder form avoids overflowing ticks * 625. */
+    if (!counter_data) return 0;
+    memcpy(&ticks, (const unsigned char *)counter_data + sizeof(uint64_t), sizeof(ticks));
+    return (ticks / 12) * 625 + (ticks % 12) * 625 / 12;
 }
 
 void nvn_device_apply_deferred_finalizes(void *device, int count) {
