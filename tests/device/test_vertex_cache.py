@@ -36,6 +36,7 @@ class VertexCache(unittest.TestCase):
 #include <vector>
 using VkDeviceSize = uint64_t;
 uint64_t slot_serial = 100;
+struct { std::atomic<uint64_t> presents{100}; } stats;
 bool tracked_memory = false, written = false;
 unsigned protected_calls = 0;
 int dirty_since(const void *, size_t, uint64_t) { return written; }
@@ -104,13 +105,13 @@ int main(int argc, char **argv) {
         assert(vcache::mirror_bytes == data.size());
         assert(vcache::lookup(address, data.size(), second));
         assert(second.buffer == first.buffer && vcache::hits == 1);
-        slot_serial += 8;
+        slot_serial += 8; stats.presents += 8;
         data.front() = 9;
         assert(vcache::lookup(address, data.size(), second));
         assert(second.buffer != first.buffer);
         assert(static_cast<uint8_t *>(first.mapped)[0] == 7);
         assert(!std::memcmp(second.mapped, data.data(), data.size()));
-        slot_serial += 8;
+        slot_serial += 8; stats.presents += 8;
         data.back() = 11;
         assert(vcache::lookup(address, data.size(), second));
         assert(!std::memcmp(second.mapped, data.data(), data.size()));
@@ -118,7 +119,8 @@ int main(int argc, char **argv) {
         assert(vcache::comparisons == 3 && vcache::compared_bytes == 1536);
     } else if (test == 1) {
         assert(vcache::lookup(address, data.size(), first));
-        ++slot_serial; data[300] = 8;
+        // Many submissions in one frame must still classify as dynamic.
+        slot_serial += 100; ++stats.presents; data[300] = 8;
         assert(!vcache::lookup(address, data.size(), second));
         assert(vcache::mirror_bytes == 0 && vcache::volatiles == 1);
         assert(static_cast<uint8_t *>(first.mapped)[300] == 7);
@@ -185,8 +187,7 @@ int main(int argc, char **argv) {
         assert(static_cast<uint8_t *>(first.mapped)[511] == 7);
         drain_retired(); assert(live_allocations == 0);
         assert(vcache::lookup(address, 512, second));
-    } else {
-        assert(test == 6);
+    } else if (test == 6) {
         for (unsigned i = 0; i < 1000; ++i) {
             data[0] = static_cast<uint8_t>(i);
             assert(vcache::lookup(address, 512, first));
@@ -195,6 +196,29 @@ int main(int argc, char **argv) {
             vcache::flush(); drain_retired();
             assert(live_allocations == 0);
         }
+    } else if (test == 7) {
+        assert(vcache::lookup(address, 512, first));
+        slot_serial += 100; ++stats.presents; data[30] = 9;
+        assert(!vcache::lookup(address, 512, second));
+        vcache::flush();
+        assert(vcache::live() == 1 && vcache::mirror_bytes == 0);
+        assert(!vcache::lookup(address, 512, second));
+        assert(static_cast<uint8_t *>(first.mapped)[30] == 7);
+        drain_retired(); assert(live_allocations == 0);
+        slot_serial += 600; stats.presents += 10;
+        assert(vcache::lookup(address, 512, second));
+        assert(static_cast<uint8_t *>(second.mapped)[30] == 9);
+    } else {
+        assert(test == 8);
+        assert(vcache::lookup(address, 512, first));
+        for (size_t i = 1; i < vcache::max_entries; ++i)
+            vcache::map.emplace(std::make_pair(uint64_t(i), uint64_t(512)), vcache::Entry{});
+        assert(vcache::live() == vcache::max_entries);
+        // A full metadata table still serves existing entries without growth.
+        assert(vcache::lookup(address, 512, second));
+        assert(first.buffer == second.buffer);
+        assert(!vcache::lookup(address + 1, 512, second));
+        assert(vcache::live() == vcache::max_entries);
     }
     vcache::release(); drain_retired();
     assert(vcache::mirror_bytes == 0 && vcache::live() == 0);
@@ -207,7 +231,7 @@ int main(int argc, char **argv) {
             subprocess.run(['clang++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
                             '-fsanitize=address,undefined', str(path / 'test.cpp'),
                             '-o', str(path / 'test')], check=True)
-            for case in range(7):
+            for case in range(9):
                 with self.subTest(case=case):
                     subprocess.run([str(path / 'test'), str(case)], check=True)
 

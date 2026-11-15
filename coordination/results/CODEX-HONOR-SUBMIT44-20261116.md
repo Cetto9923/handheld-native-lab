@@ -80,3 +80,13 @@ LevelUp详情短按A多次未离开，最后1秒A正常回探索。一次在详�
 验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md，A2DP、显示、稳定30仍开放。
 
 46源b7ff0e3 clean，114项宿主全部通过，Android退出0，80项源码输入前后SHA一致。APK b4455701c8235a0557b9112661c1b0b9b88a63414ce461d79530cb06cf618fc0，3720407B。安装回读SHA及私有副本461全部9文件SHA、正式源metadata一致，证据build46/install46。launch46有界轮询PID15697，仍使用461，vcache0/texrecord1、新描述符路径及45默认shader复用1。当前启动预热中，尚未取得46性能结果。
+
+## 46初测与47冷却修正
+
+A46-control-moving1为神殿内部桥面真实移动，前后探索，4560..4800/240间隔24.4858FPS/P99103.78/max112.58ms，25超50、3超100。B46-content-moving1中途遇敌，5400..5580原始18.8415FPS只作混合诊断，排除探索对比。
+
+46开启后部分vertex/index复制由snapshot转到vcache，后续战斗静止菜单窗口仍fill约5.6MiB/帧、compare约8.08MiB/帧，累计flush38且volatile0。说明复制计数的迁移不足以证明减少总复制或FPS收益。一个游戏帧包含多次slot提交，缺tracker的完整内容比较不适合按8次提交判断逐帧变化，预算flush也会忘记动态范围。
+
+47仅对内容比较路径按present差判断8帧内变化，真实tracker仍按原slot策略。预算flush保留未过期动态范围冷却记录，map最多16384项，满表仍可服务既有条目，新范围回退正常snapshot。新增多提交单帧、flush后保留冷却、满表上界回归，生产提取9种运行情形和既有组件共11项通过。默认仍关，待完整构建及同进程对照。
+
+45临时trace已核对主机与设备SHA95a09106后仅删除设备文件5127903B，完整主机trace/符号保留，清理索引profile-skill45/device-cleanup.json。

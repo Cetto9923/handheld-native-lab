@@ -1867,11 +1867,14 @@ namespace vcache {
 bool enabled=false;uint64_t hits=0,hit_bytes=0,fills=0,fill_bytes=0,refills=0,volatiles=0,untracked=0,flushes=0;
 uint64_t comparisons=0,compared_bytes=0,mirror_bytes=0;
 constexpr size_t min_bytes=256;constexpr VkDeviceSize budget=64ull<<20;constexpr uint64_t volatile_window=8,retry_after=600;
+constexpr size_t max_entries=16384;
 enum State:uint8_t{EMPTY,CACHED,VOLATILE,UNTRACKED};
 struct Entry {
     Buffer buffer;
     uint64_t stamp=0,filled=0,retry=0;
+    uint64_t filled_present=0;
     State state=EMPTY;
+    bool compare_contents=false;
     std::vector<uint8_t> mirror;
 };
 struct KeyHash{size_t operator()(const std::pair<uint64_t,uint64_t> &k)const{uint64_t x=k.first*0x9E3779B97F4A7C15ull^k.second*0xC2B2AE3D27D4EB4Full;return size_t(x^(x>>29));}};
@@ -1880,7 +1883,14 @@ size_t live(){return map.size();}
 VkDeviceSize arena_bytes(){return arena.used_total;}
 bool overlaps_wtrack(uint64_t a,uint64_t n){unsigned k=wtrack::nregions.load(std::memory_order_acquire);
     for(unsigned i=0;i<k;i++){uint64_t b=wtrack::regions[i].begin.load(std::memory_order_relaxed),e=wtrack::regions[i].end.load(std::memory_order_relaxed);if(a<e && a+n>b)return true;}return false;}
-void flush(){if(arena.chunks.empty() && map.empty())return;std::vector<ArenaChunk> old;old.swap(arena.chunks);arena.current=0;arena.used_total=0;arena.peak=0;map.clear();mirror_bytes=0;++flushes;
+void flush(){if(arena.chunks.empty() && map.empty())return;std::vector<ArenaChunk> old;old.swap(arena.chunks);arena.current=0;arena.used_total=0;arena.peak=0;
+    // Keep the bounded cooldown records for content-compared dynamic ranges.
+    // Forgetting them on a budget flush immediately recopies the same ranges.
+    for(auto it=map.begin();it!=map.end();){
+        if(it->second.compare_contents && it->second.state==VOLATILE && slot_serial<it->second.retry)++it;
+        else it=map.erase(it);
+    }
+    mirror_bytes=0;++flushes;
     retire_handle([old]()mutable{for(auto &c:old)Arena::destroy(c);});}   // after the recording slot retires, no submission reads them
 // Queue idle and all slot references already released.
 void release(){map.clear();mirror_bytes=0;arena.release();}
@@ -1894,7 +1904,14 @@ void drop_pool(uint64_t base,uint64_t bytes){
 }
 bool lookup(uint64_t address,size_t bytes,Buffer &out){
     if(bytes<min_bytes || bytes>budget || address>UINT64_MAX-bytes)return false;
-    const void *p=reinterpret_cast<const void*>(uintptr_t(address));Entry &e=map[{address,uint64_t(bytes)}];
+    const void *p=reinterpret_cast<const void*>(uintptr_t(address));
+    const auto key=std::make_pair(address,uint64_t(bytes));
+    auto entry=map.find(key);
+    if(entry==map.end()){
+        if(map.size()>=max_entries)return false;
+        entry=map.emplace(key,Entry{}).first;
+    }
+    Entry &e=entry->second;
     if(e.state==VOLATILE || e.state==UNTRACKED){if(slot_serial<e.retry)return false;e.state=EMPTY;}
     if(e.state==CACHED){
         bool unchanged;
@@ -1905,7 +1922,11 @@ bool lookup(uint64_t address,size_t bytes,Buffer &out){
             unchanged=memcmp(e.mirror.data(),p,bytes)==0;
         }
         if(unchanged){++hits;hit_bytes+=bytes;out=e.buffer;return true;}
-        if(slot_serial-e.filled<volatile_window){
+        // A frame can submit many slots. Content comparison classifies
+        // frame-to-frame changes using presents, while the real tracker
+        // retains its original submission-based policy.
+        const uint64_t age=e.compare_contents?stats.presents.load()-e.filled_present:slot_serial-e.filled;
+        if(age<volatile_window){
             mirror_bytes-=e.mirror.size();
             std::vector<uint8_t>().swap(e.mirror);
             e.state=VOLATILE;e.retry=slot_serial+retry_after;
@@ -1934,7 +1955,7 @@ bool lookup(uint64_t address,size_t bytes,Buffer &out){
         mirror_bytes+=bytes;
     }
     Buffer b=arena.alloc(bytes);memcpy(b.mapped,tracked?p:f.mirror.data(),bytes);b.flush();
-    f.buffer=b;f.stamp=stamp;f.filled=slot_serial;f.state=CACHED;++fills;fill_bytes+=bytes;out=b;return true;
+    f.buffer=b;f.stamp=stamp;f.filled=slot_serial;f.filled_present=stats.presents.load();f.compare_contents=!tracked;f.state=CACHED;++fills;fill_bytes+=bytes;out=b;return true;
 }
 }
 Buffer snapshot_slow(uint64_t address,size_t bytes,VkDeviceSize align);
