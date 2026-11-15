@@ -26,6 +26,19 @@ static void rejected(const Words &original,uint32_t binding){
     assert(std::find(candidates.begin(),candidates.end(),binding)==candidates.end());
 }
 
+static void check_binding_order(const Words &original,const Words &expected){
+    auto words=original;
+    std::vector<size_t> decorations;
+    for(size_t i=5;i<words.size();i+=words[i]>>16)
+        if((words[i]&65535u)==71 && words[i]>>16==4 && words[i+2]==33)decorations.push_back(i);
+    for(size_t i=0;i<decorations.size()/2;++i){
+        size_t first=decorations[i],last=decorations[decorations.size()-1-i];
+        std::swap_ranges(words.begin()+first,words.begin()+first+4,words.begin()+last);
+    }
+    // Failed, strict and castback analyses must not leave state for the next binding.
+    assert(xbg_spirv_integer_buffer_candidates(words)==expected);
+}
+
 // Every old function instruction survives. Only opaque load/image types and
 // each fetch's type/result ID may change, followed by its restoring bitcast.
 static void check_castback_functions(const Words &before,const Words &after,uint32_t binding){
@@ -129,6 +142,7 @@ static void castback_contracts(const Words &original,const std::string &output){
     assert(inserted);
     write_words(output+".multi-original.spv",shared);
     assert(xbg_spirv_integer_buffer_candidates(shared)==(std::vector<uint32_t>{64,70}));
+    check_binding_order(shared,{64,70});
     for(uint32_t binding:{64u,70u}){
         auto before=shared;assert(xbg_spirv_integer_buffer_rewrite(shared,binding)>0);
         check_castback_functions(before,shared,binding);
@@ -180,6 +194,7 @@ int main(int argc,char**argv){
     auto bytes=in.tellg();assert(bytes>=20 && bytes%4==0);in.seekg(0);std::vector<uint32_t> original(size_t(bytes)/4);in.read(reinterpret_cast<char*>(original.data()),bytes);assert(in.good());
     auto w=original;assert(scalar_type(w,64)==22 && scalar_type(w,70)==22);
     assert(xbg_spirv_integer_buffer_candidates(w)==std::vector<uint32_t>{64});
+    check_binding_order(w,{64});
     assert(xbg_spirv_integer_buffer_rewrite(w,64)==2);
     assert(scalar_type(w,64)==21 && scalar_type(w,70)==22);
     unsigned fetches=0;for(size_t i=5;i<w.size();i+=w[i]>>16)fetches+=(w[i]&65535u)==95;

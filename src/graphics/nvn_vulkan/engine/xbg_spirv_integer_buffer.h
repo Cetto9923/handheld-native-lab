@@ -18,6 +18,18 @@ struct Analysis {
     size_t variable_at=0,pointer_at=0,image_at=0;
     uint32_t descriptor=0,float_type=0,float_vector=0,uint_type=0;
     bool unsupported_control_flow=false;
+
+    void reset_binding(){
+        // Keep the parsed module and CFG while discarding one binding's data flow.
+        loads.clear();
+        images.clear();
+        fetches.clear();
+        extracts.clear();
+        variables.clear();
+        values.clear();
+        variable_at=pointer_at=image_at=0;
+        descriptor=float_type=float_vector=0;
+    }
 };
 
 inline bool parse(const std::vector<uint32_t> &w,Analysis &a){
@@ -307,9 +319,12 @@ inline std::vector<uint32_t> xbg_spirv_integer_buffer_candidates(const std::vect
         size_t variable_at=0,pointer_at=0,sampled_at=0,image_at=0;
         if(!type(words,parsed,words[i+1],59,variable_at) || !type(words,parsed,words[variable_at+1],32,pointer_at))continue;
         if(!type(words,parsed,words[pointer_at+3],27,sampled_at) || !type(words,parsed,words[sampled_at+2],25,image_at) || words[image_at+3]!=5)continue;
-        Analysis a=parsed;
-        bool supported=analyze(words,words[i+3],a);
-        if(!supported){a=parsed;supported=analyze_castback(words,words[i+3],a);}
+        parsed.reset_binding();
+        bool supported=analyze(words,words[i+3],parsed);
+        if(!supported){
+            parsed.reset_binding();
+            supported=analyze_castback(words,words[i+3],parsed);
+        }
         if(supported)bindings.push_back(words[i+3]);
     }
     std::sort(bindings.begin(),bindings.end());
