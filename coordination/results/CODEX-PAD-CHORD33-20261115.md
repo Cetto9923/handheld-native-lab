@@ -1,0 +1,20 @@
+# 手柄组合键与33候选验证
+
+源码检查点为c90ff50，开发分支task/T-codex-recovery-20261114。1.0.33-preview在荣耀A42BBB5109000333安装后回读SHA256为368a6f32d98a3be91fa7ad900b3d8ba5b160822f0bb3c55588c38810fff997ee，3703949字节。native SHA6db94b8b8f212379948bcc8c0a90d3449489b5741fe75861bac52485ad5cbf6f，与32相同。DEX新SHA2b0bba1c59dd7e13e96f874c87a705770f6fb8d4caf272a6cf2c72787befc30b，确认含组合键和显式调试副本入口。
+
+109项宿主检查及Android构建退出0，58项源输入构建前后SHA一致。手柄组合键及存档副本5项组件检查通过。证据和命令在.local/pad-chord33-20261115/。
+
+物理手柄Start/Select即+/-在160ms窗口内同时按下，切换一次既有userToggleTouchPad。按住自动重复和先松开一键期间再按均保持本轮已消费状态，待两键均抬起才允许下轮组合。单键在窗口结束或抬起后交给游戏，释放脉冲160ms，适应低帧输入采样。普通单按+/-因此增加短暂识别/释放延迟。其余按键沿原入口。后台和断连清除待处理状态，复用原可见性文件和主线程Handler。
+
+用户实测回答“可以正常显示和隐藏”。本轮切换功能已获用户确认。物理单键菜单/地图的完整人工回归和独立QA未另行执行，组件覆盖普通短按、长按、逆序组合、重复、窗口边界和后台重置。
+
+## 存档验证纠正
+
+旧安装脚本使用exec-out tar，传输返回码0和归档字节一致曾被误当作完整存档覆盖。补核发现GameSaveData2至5为mode600，shell无法读取；exec-out将tar错误写进二进制stdout，tarfile初次解析也未覆盖后续全部条目。原文件仍在设备。此前荣耀30、31、32“完整归档已验证”的表述撤回，原始读得出的条目一致性继续保留。
+
+33接入现有isolated_regression_save调试路径的显式isolated_regression_seed参数。应用读取正常存档目录，复制到空的私有调试目录，复用既有原子copyFile和NativeDataBundle.fileSha。每个源与目标SHA相同才记录完成。目录非空、源目标相同、无源文件时拒绝初始化，失败时保留源目录并停止该次guest启动。
+
+本轮PID21622在files/shield-regression-202611153301成功复制9文件，含GameSaveData0至5、OptionSaveData、EnhancedInputUserSettings及GameSaveData0.orig。完整源SHA、私有副本归档与逐文件校验在install-plan.json、seed-logcat.txt、complete-save-seed.tar，9项全部匹配。原9文件的大小、权限、属主、mtime安装和复制前后逐项相同。父目录..的mtime因日志创建发生变化，脚本已收窄到实际文件条目。历史ffrs-quicksave另用shell-T归档成功。user33后来测试进度已另行冻结在.local/honor-stable30-20261115/master-save.tar。
+
+用户当前重点为世界地图、副本和技能卡顿，近期目标明确为稳定真实30FPS。33的native性能修正与32相同，组合键通过不能外推为性能通过。继续任务CODEX-HONOR-STABLE30-AB-20261115，使用同字节完整存档做A-B-A，运行模式、同步、预热逐变量对照，显示及音频回归继续记录。RG477M本轮未操作，33尚未发布。
+

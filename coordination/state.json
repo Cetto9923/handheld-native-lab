@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-15T17:06:33.616481+08:00",
+ "updated_at": "2026-11-15T18:53:13.444732+08:00",
  "phase": "继续定位战斗GPU主通道并审阅成熟开源跨设备兼容缺口",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -2122,7 +2122,7 @@
    "acquired_at": "2026-11-14T18:38:31.029224+08:00",
    "checkpoint": "5d81d5a，worker源码冻结",
    "objective": "整合单一候选并串行构建、同包真机对照",
-   "write_state": "ACTIVE"
+   "write_state": "CHECKPOINTED_SCOPE_TRANSFERRED_ROOT"
   },
   {
    "task": "CODEX-AUDIO-SCHED-20261114",
@@ -2405,7 +2405,7 @@
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-14T21:35:42.433767+08:00",
    "checkpoint": "实现者正在并行轻契约，根先保全当前基线。",
-   "write_state": "ACTIVE"
+   "write_state": "CHECKPOINTED_SCOPE_TRANSFERRED_ROOT"
   },
   {
    "task": "CODEX-UPSTREAM-UBO-QA-20261114",
@@ -3223,13 +3223,79 @@
     ".local/honor30-perf31-20261115/",
     "coordination/results/CODEX-HONOR30-PERF31-20261115.md",
     "src/graphics/nvn_vulkan/engine/xbg_spirv_integer_buffer.h",
-    "tests/device/test_reflection_uint_fetch.cpp"
+    "tests/device/test_reflection_uint_fetch.cpp",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "tests/device/test_upload_cpu_preserve.py"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-15T16:39:31.022143+08:00",
-   "checkpoint": "5cd18bf1dc5c0d68fb9943882b8a4584a3ec34a6",
-   "write_state": "CHECKPOINTED_PENDING_DEVICE_COMPARISON"
+   "checkpoint": "e37fcb3218d0ebc89bfe514d0c14d017ed464fa8",
+   "write_state": "FROZEN_CHECKPOINT_TRANSFERRED_TO_GC32"
+  },
+  {
+   "task": "CODEX-HONOR-CHEAT30-UI-20261115",
+   "owner": "root",
+   "paths": [
+    ".local/honor-cheat30-ui-20261115",
+    "coordination/results/CODEX-HONOR-CHEAT30-UI-20261115.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T17:10:30.529260+08:00",
+   "checkpoint": "6688d2b",
+   "write_state": "DEFERRED_BY_USER"
+  },
+  {
+   "task": "CODEX-TEXEL-GC32-20261115",
+   "owner": "root",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "tests/device/test_arena_memory_policy.py",
+    ".local/texel-gc32-20261115",
+    "coordination/results/CODEX-TEXEL-GC32-20261115.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T17:27:27.988876+08:00",
+   "checkpoint": "e37fcb3218d0ebc89bfe514d0c14d017ed464fa8",
+   "write_state": "CHECKPOINTED_SOURCE_FROZEN"
+  },
+  {
+   "task": "CODEX-PAD-CHORD33-20261115",
+   "owner": "root",
+   "paths": [
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/installer/test_pad_shortcut.py",
+    "scripts/verify_host.py",
+    ".local/pad-chord33-20261115/",
+    "coordination/results/CODEX-PAD-CHORD33-20261115.md",
+    "tests/installer/test_save_flow.py",
+    "src/android/app/java/org/ffrs/diagnostic/NativeDataBundle.java",
+    "coordination/EXPERIENCE.md",
+    "coordination/results/CODEX-HONOR30-PERF31-20261115.md",
+    "coordination/results/CODEX-TEXEL-GC32-20261115.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T17:57:41.476317+08:00",
+   "checkpoint": "c90ff50",
+   "write_state": "COMPLETE_HANDED_BACK"
+  },
+  {
+   "task": "CODEX-HONOR-STABLE30-AB-20261115",
+   "owner": "root",
+   "paths": [
+    ".local/honor-stable30-20261115/",
+    "coordination/results/CODEX-HONOR-STABLE30-AB-20261115.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T18:25:47.477419+08:00",
+   "checkpoint": "c90ff50",
+   "write_state": "ACTIVE"
   }
  ],
  "tasks": [
@@ -9239,7 +9305,10 @@
     ".local/honor30-perf31-20261115/",
     "coordination/results/CODEX-HONOR30-PERF31-20261115.md",
     "src/graphics/nvn_vulkan/engine/xbg_spirv_integer_buffer.h",
-    "tests/device/test_reflection_uint_fetch.cpp"
+    "tests/device/test_reflection_uint_fetch.cpp",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "tests/device/test_upload_cpu_preserve.py"
    ],
    "dependencies": [],
    "pass_gates": [],
@@ -9247,10 +9316,130 @@
     ".local/honor30-perf31-20261115/",
     "coordination/results/CODEX-HONOR30-PERF31-20261115.md",
     "src/graphics/nvn_vulkan/engine/xbg_spirv_integer_buffer.h",
-    "tests/device/test_reflection_uint_fetch.cpp"
+    "tests/device/test_reflection_uint_fetch.cpp",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "tests/device/test_upload_cpu_preserve.py"
    ],
    "acceptance": "Honor package byte verification, save and backup archives unchanged across update, launch verified and user controls testing. Compare specific measured hot paths with primary upstream sources, record proven gaps and minimal fix/evidence where viable. No graphics semantic regressions or game clock changes.",
    "checkpoint": "5cd18bf。荣耀30已安装且APK/存档/备份逐字核对，遗留async1归档恢复0，用户报告掉帧但已测流程未再闪退。最小整数分析复用73495模块等价、108宿主和Android构建通过，主机组件耗时降7.23%。本地候选b0467af8未安装/发布，版本元数据仍30，完整证据在报告。PID5199三帧descriptor8.60ms/frame、snapshot2.15ms/frame为下一CPU调查点，含菜单/读档场景限制。稳定30及候选实机收益未验收。"
+  },
+  {
+   "id": "CODEX-HONOR-CHEAT30-UI-20261115",
+   "owner": "root",
+   "role": "HONOR_CHEAT_UI_VERIFICATION",
+   "status": "deferred_by_user",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "核实用户反馈荣耀金手指界面非最新版，比较设备APK/界面与发布包和当前源码，修复已确认差异。",
+   "inputs": [
+    "用户反馈荣耀金手指非最新版",
+    "已发布30和设备安装包SHA89cbb81c相同"
+   ],
+   "outputs": [
+    ".local/honor-cheat30-ui-20261115",
+    "coordination/results/CODEX-HONOR-CHEAT30-UI-20261115.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/honor-cheat30-ui-20261115",
+    "coordination/results/CODEX-HONOR-CHEAT30-UI-20261115.md"
+   ],
+   "acceptance": "明确实际界面与版本差异；若修复则设备复验并保全存档。",
+   "checkpoint": "设备APK与发布30逐字一致89cbb81c；实际UI含中文角色、一键预设和折叠自定义、生效提示。用户说明缺少功能或提示，具体缺项已询问。证据在.local/honor-cheat30-ui-20261115/，未应用修改/恢复、未重装或改源码。 用户明确先忽略此项，返回性能优化。"
+  },
+  {
+   "id": "CODEX-TEXEL-GC32-20261115",
+   "owner": "root",
+   "role": "PERFORMANCE_CACHE_LIFECYCLE_FIX",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "修复16提交槽下texel缓存回收固定取模饥饿，验证长期缓存、内存和掉帧。",
+   "inputs": [
+    "31实机PID12238描述符细分证据",
+    "recording_slot按slot_serial&15<2只访问固定槽；slot_serial与slot_index同增"
+   ],
+   "outputs": [
+    ".local/texel-gc32-20261115",
+    "coordination/results/CODEX-TEXEL-GC32-20261115.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/device/test_arena_memory_policy.py",
+    ".local/texel-gc32-20261115",
+    "coordination/results/CODEX-TEXEL-GC32-20261115.md"
+   ],
+   "acceptance": "2至16槽回收公平且旧策略回归能失败；只在retired当前槽回收；宿主/Android通过；真机观察全槽覆盖和持续性能、显示/音频、存档验证。",
+   "checkpoint": "32候选已构建并装荣耀，APK0bdf02d3回读、存档和备份逐字一致。3项Arena/GC契约和108宿主/Android通过，57输入SHA不变。PID13973标题已见全16槽gc_mask0xffff，继续同场景/移动战斗。31 GPU45帧queries完整，数据在compare31/pass31-summary.json；不能将采样FPS当正常。"
+  },
+  {
+   "id": "CODEX-PAD-CHORD33-20261115",
+   "owner": "root",
+   "role": "ANDROID_GAMEPAD_SHORTCUT",
+   "status": "passed",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "物理手柄+/-组合切换虚拟按键，保持单键与其他游戏输入，继续后台日志分析卡顿。",
+   "inputs": [
+    "用户明确物理手柄操作，要求+和-一起按切换虚拟按键",
+    "现有userToggleTouchPad及Marker持久化"
+   ],
+   "outputs": [
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "tests/installer/test_pad_shortcut.py",
+    ".local/pad-chord33-20261115/",
+    "coordination/results/CODEX-PAD-CHORD33-20261115.md",
+    "tests/installer/test_save_flow.py",
+    "src/android/app/java/org/ffrs/diagnostic/NativeDataBundle.java"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/installer/test_pad_shortcut.py",
+    "scripts/verify_host.py",
+    ".local/pad-chord33-20261115/",
+    "coordination/results/CODEX-PAD-CHORD33-20261115.md",
+    "tests/installer/test_save_flow.py",
+    "src/android/app/java/org/ffrs/diagnostic/NativeDataBundle.java",
+    "coordination/EXPERIENCE.md",
+    "coordination/results/CODEX-HONOR30-PERF31-20261115.md",
+    "coordination/results/CODEX-TEXEL-GC32-20261115.md"
+   ],
+   "acceptance": "组合只切换一次并消耗游戏按钮，普通单按及长按保留，自动重复不重复切换，松手/后台清除，组件及Android通过，设备组合按键实测。",
+   "checkpoint": "c90ff50,33 APK368a6f32已装荣耀，109宿主/Android和58输入SHA通过。用户确认+/-开关虚拟按键正常。9个源存档由应用复制并逐个SHA验证，先前mode600遗漏已纠正，报告有完整记录。性能仍未通过，近期目标稳30。"
+  },
+  {
+   "id": "CODEX-HONOR-STABLE30-AB-20261115",
+   "owner": "root",
+   "role": "HONOR_CONTROLLED_STUTTER_AB",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "近期稳定真实30FPS，优先世界地图、副本和重复技能，显示回归作为门禁。先逐变量对照既有掌机/底座模式，再核对同步和预热。",
+   "inputs": [
+    "APK33源码c90ff50和SHA368a6f32",
+    "用户确认组合键显示隐藏正常，地图/副本仍卡，近期目标稳30",
+    "已补齐源文件与副本SHA一致的完整9文件备份"
+   ],
+   "outputs": [
+    ".local/honor-stable30-20261115/",
+    "coordination/results/CODEX-HONOR-STABLE30-AB-20261115.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/honor-stable30-20261115/",
+    "coordination/results/CODEX-HONOR-STABLE30-AB-20261115.md"
+   ],
+   "acceptance": "同一冻结存档、同一场景配置，A-B-A，冷暖分开，正常帧长尾和显示/音频证据；失败恢复标记。",
+   "checkpoint": "用户已交还输入。A-control-mode1 PID24587，完整同字节9文件，世界地图静机位900帧30FPS，P9935.13/max50.80ms；walk15秒含自动3秒摇杆采集进行中。Perfetto独立栈采样待普通窗口后；B模式0/A返回1未运行。近期目标稳30，全场景未通过。"
   }
  ],
  "blockers": [
@@ -9402,7 +9591,8 @@
    "evidence": "coordination/results/CODEX-PUBLISH-CHEAT30-20261115.md",
    "independent_qa": "NOT_RUN"
   },
-  "CODEX-HONOR30-PERF31-20261115: 荣耀30安装/存档备份一致；73495模块候选等价；108宿主及Android构建通过。"
+  "CODEX-HONOR30-PERF31-20261115: 荣耀30安装/存档备份一致；73495模块候选等价；108宿主及Android构建通过。 初轮归档限shell可读条目，完整覆盖结论已撤回，33补齐9文件SHA。",
+  "CODEX-PAD-CHORD33: 用户确认组合键切换正常；109项宿主及Android通过；全9文件应用侧源/副本SHA逐项一致，补齐4个mode600旧档。"
  ],
  "unverified": [
   "完整CRT/TLS/线程/guest内存上下文与真正完整入口，正式T02参考行为验收。",
@@ -9432,7 +9622,8 @@
   "The current-slot guard on find_indirect_template is not yet built, installed or accepted on the device.",
   "2026-11-15当前29仅掌机范围自测。手机OEM严重运行内存异常仍缺对应退出日志，荣耀本轮用户暂缓。战斗仍有GPU73.95ms与火炎剑626.5ms管线长帧，长期内存和开场声音待回归，独立QA NOT_RUN。",
   "1.0.30简化备份恢复已通过生产方法JVM文件系统往返与存储失败检查，最终掌机备份/恢复往返尚未完成；输入与用户交叠窗口排除。金手指存档修改需要回标题重读，现有备份为已写盘进度。独立QA NOT_RUN。 [2026-11-15 16:24补验更新：掌机备份/恢复及实际Load Game回到场景已完成实现者自测，旧NOT_RUN仅为历史快照；独立QA仍未执行。]",
-  "CODEX-HONOR30-PERF31-20261115: 本地CPU候选尚未装机对照，稳30FPS、战斗GPU尾部与完整跨设备兼容仍待验收。"
+  "CODEX-HONOR30-PERF31-20261115: 本地CPU候选尚未装机对照，稳30FPS、战斗GPU尾部与完整跨设备兼容仍待验收。",
+  "荣耀近期验收目标稳定真实30FPS。此前30/31/32 shell归档完整覆盖表述已撤回，完整源文件补核见33报告。地图/副本/技能低帧继续开放。"
  ],
  "execution_goal": {
   "objective": "User cancels adaptive refresh implementation; prefer verified existing Switch FPS patch approach, port to exact currentBuild if possible, pursue realstable60FPS and continuecontrols/scenes/story/resources/audio unchangedspeed",

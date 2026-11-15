@@ -58,3 +58,8 @@ simpleperf尝试cpu-cycles及cpu-clock均被设备内核拒绝为unsupported，�
 下一次交还设备测试窗口后，候选与已发布30做同一场景暖缓存对照，记录开场、走动与同一技能的FPS、P95/P99、50/100/250ms长帧、音频和显示回归。实际技能GPU通道继续用既有gfx-pass-live采样，并保留采样扰动条件。位置精度、FragDepth、RG16滤波与完整shader identity回归沿EXPERIENCE.md已有检查执行。
 
 独立QA未执行，候选真机战斗收益、所有场景稳定30FPS及其他手机的兼容性均未验收。用户这轮无闪退反馈限定其已测流程。
+
+
+## 2026-11-15 备份覆盖补核更正
+
+初次exec-out tar未读到mode600的GameSaveData2至5，错误流还会混入归档。此前本报告的完整归档覆盖表述撤回。33已由应用读取全9文件并逐个SHA核对，源文件元数据保持，完整证据见CODEX-PAD-CHORD33-20261115.md。

@@ -278,3 +278,13 @@ PID18193的战斗日志直接量到0.5至1.1秒pipeline创建，也保留2.024�
 ### L-021 printf聚合日志的格式与实参逐项核对
 
 scene close_window的shader_slow_ms使用%.1f却曾传ULL，导致后续浮点/整数参数错位。已修为double并用抽取生产函数的-Wformat=2契约验证11个数字字段，旧实参编译被拒绝。已发布23仍沿旧打印，从shader_slow_ms起的scene leave聚合字段不能按标签使用，逐帧stall及CSV另行核验。PID9359的79559ms/17次创建字面归因已撤回，原始逐帧记录为8次1228.3ms。证据见CODEX-RESUME23-20261115.md及scene-log-contract。
+
+### L-022 提交槽回收调度需要覆盖全部配置槽
+
+slot_serial与slot_index同增，16槽时固定slot_serial低4位小于2只会调度slot0和slot15，其余14槽漏过texel缓存周期清理。66b873a改为按槽循环轮转相位。生产提取契约遍历2至16槽，旧策略反例能失败，原退休保护继续执行。荣耀32真实副本记录gc_mask0xffff且缓存非空，证明全槽入口覆盖。长期内存与帧率收益继续分别测量。详见CODEX-TEXEL-GC32-20261115.md。
+
+### L-023 ADB归档的完整覆盖和错误流分别验证
+
+荣耀GameSaveData2至5为mode600，shell读取失败，run-as在该机的外部FUSE路径也被拒绝。exec-out会将tar错误混入二进制stdout，传输返回0，tarfile可能仅解析前面的成员。此前归档字节相同只证明已读出部分相同，完整性结论已撤回。shell-T能保留stderr及远端退出码，完整成员清单、长度和逐文件摘要另行核对。
+
+33沿既有显式调试副本入口由应用UID读取全部源文件，复用原子复制及SHA校验，9文件源与私有副本逐一匹配。源目录元数据比较按实际文件条目执行，父目录..mtime会随日志创建改变。命令、失败与补核证据见CODEX-PAD-CHORD33-20261115.md。
