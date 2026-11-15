@@ -362,6 +362,9 @@ def main():
     packed_dir = out / 'packed-shader-words'
     run('packed-shader-words-contract', ['bash', 'scripts/android/verify_packed_shader_words.sh', packed_dir])
     extra_artifacts.append(packed_dir / 'test_packed_shader_words')
+    state_lookup_dir = out / 'render-state-lookup'
+    run('render-state-lookup-contract', ['bash', 'scripts/runtime/verify_render_state_lookup.sh', state_lookup_dir])
+    extra_artifacts.append(state_lookup_dir / 'render_state_lookup')
     run('engine-log-rotation', [sys.executable, '-m', 'unittest', 'tests.installer.test_engine_log_rotation'])
     run('present-outcome', [sys.executable, '-m', 'unittest', 'tests.installer.test_present_outcome'])
     probe = out / 'probe-build'

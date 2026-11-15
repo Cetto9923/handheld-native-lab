@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-15T12:38:36.775622+08:00",
+ "updated_at": "2026-11-15T13:08:04.048324+08:00",
  "phase": "继续定位战斗GPU主通道并审阅成熟开源跨设备兼容缺口",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3124,7 +3124,6 @@
     "src/android/native/CMakeLists.txt",
     "tests/device/test_packed_shader_words.cpp",
     "scripts/android/verify_packed_shader_words.sh",
-    "scripts/verify_host.py",
     ".local/codex-recovery-20261114/battle-video24-20261115/packed-cache/"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
@@ -3141,14 +3140,32 @@
     "src/runtime/hle/address_region.c",
     "tests/native/guest_pages_contract.c",
     "tests/native/owned_pages_contract.c",
-    "src/android/app/gamewindow/AndroidManifest.xml",
     ".local/codex-recovery-20261114/offline-page26-20261115",
-    "coordination/results/CODEX-PAGE-APPEND26-20261115.md"
+    "coordination/results/CODEX-PAGE-APPEND26-20261115.md",
+    ".local/codex-recovery-20261114/gpu-draw24/render-percent/E26-default/"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-15T12:25:19.594913+08:00",
-   "checkpoint": "Page26 sourceandfocusedtests implemented. RGrealVM24576maps beforemedian660.890ms after27.538ms, ledger/cleanup1. Hostnormal/recovery andASan/UBSan passed; RGowned8threads32cycles/32races andguest281checks0 passed. Actuallearnedrootfiles/vk-pipeline-list.bin1326validated supersets1162.26APK0a010363 installedwithgameoff, savearchives identical, PID8416. Sceneregressioninprogress.",
+   "checkpoint": "cc1f797已提交。26包0a010363，PID8416读档成功，warm1326/failed0，retained累计1331/denied0/peak61602931。world02静止30秒29.9998FPS，仅基线。用户掌握输入并已录森林战斗，正取最新125448视频。simpleperf --app cpu-clock:u -f200 fp可用，tmp输出有效，60秒战斗采样session83970。",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "CODEX-STATE-LOOKUP27-20261115",
+   "owner": "root",
+   "paths": [
+    "src/graphics/nvn_device/nvn_render_state.c",
+    "tests/native/nvn_render_state_lookup_contract.c",
+    "scripts/runtime/verify_render_state_lookup.sh",
+    "scripts/verify_host.py",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    ".local/codex-recovery-20261114/state-lookup27-20261115/",
+    "coordination/results/CODEX-STATE-LOOKUP27-20261115.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T13:01:08.147342+08:00",
+   "checkpoint": "27候选2f41c6da/3695687B已构建，103项host和Android0，50份输入逐字一致。状态提示仅存索引，原锁内核身份并解包guest当前值。ASan/UBSan及RG真实API契约通过，重复getter组件中位1006.656至2.469ms，仅组件收益。1343条实际recipe覆盖1326且增加17条。26新片已对齐，仍有1.14秒管线停顿及无编译长帧。用户掌握输入，等待保存后安装确认。",
    "write_state": "ACTIVE"
   }
  ],
@@ -8945,7 +8962,8 @@
     "tests/native/owned_pages_contract.c",
     "src/android/app/gamewindow/AndroidManifest.xml",
     ".local/codex-recovery-20261114/offline-page26-20261115",
-    "coordination/results/CODEX-PAGE-APPEND26-20261115.md"
+    "coordination/results/CODEX-PAGE-APPEND26-20261115.md",
+    ".local/codex-recovery-20261114/gpu-draw24/render-percent/E26-default/"
    ],
    "dependencies": [],
    "pass_gates": [],
@@ -8956,10 +8974,47 @@
     "tests/native/owned_pages_contract.c",
     "src/android/app/gamewindow/AndroidManifest.xml",
     ".local/codex-recovery-20261114/offline-page26-20261115",
-    "coordination/results/CODEX-PAGE-APPEND26-20261115.md"
+    "coordination/results/CODEX-PAGE-APPEND26-20261115.md",
+    ".local/codex-recovery-20261114/gpu-draw24/render-percent/E26-default/"
    ],
    "acceptance": "Private perregion append bounds/tail onlyunderexisting locks. Freed/split tail invalidation, lowaddressoverlap fallback, mixedorder maps, failure rollback/quarantine andsubpage safety. Existinghostnormal/recovery, ASan/UBSan/concurrency, actualVMbenchmark. DeviceFPS remainsNOT_RUN.",
-   "checkpoint": "Page26 sourceandfocusedtests implemented. RGrealVM24576maps beforemedian660.890ms after27.538ms, ledger/cleanup1. Hostnormal/recovery andASan/UBSan passed; RGowned8threads32cycles/32races andguest281checks0 passed. Actuallearnedrootfiles/vk-pipeline-list.bin1326validated supersets1162.26APK0a010363 installedwithgameoff, savearchives identical, PID8416. Sceneregressioninprogress."
+   "checkpoint": "cc1f797已提交。26包0a010363，PID8416读档成功，warm1326/failed0，retained累计1331/denied0/peak61602931。world02静止30秒29.9998FPS，仅基线。用户掌握输入并已录森林战斗，正取最新125448视频。simpleperf --app cpu-clock:u -f200 fp可用，tmp输出有效，60秒战斗采样session83970。"
+  },
+  {
+   "id": "CODEX-STATE-LOOKUP27-20261115",
+   "owner": "root",
+   "role": "PERFORMANCE_IMPLEMENTATION_AND_SELF_TEST",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "Reduce repeated render-state full-table scans from26 real CPU samples, preserving current guest-state unpack and all existing family behavior.",
+   "inputs": [
+    "cc1f797 and26 forest battle video fae0469a",
+    "223 RHI state_find self samples,221 in render-state,174 at comparison loop line219",
+    "Actual learned1343 recipes,17 new exact identities"
+   ],
+   "outputs": [
+    "src/graphics/nvn_device/nvn_render_state.c",
+    "tests/native/nvn_render_state_lookup_contract.c",
+    "scripts/runtime/verify_render_state_lookup.sh",
+    "scripts/verify_host.py",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    ".local/codex-recovery-20261114/state-lookup27-20261115/",
+    "coordination/results/CODEX-STATE-LOOKUP27-20261115.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_device/nvn_render_state.c",
+    "tests/native/nvn_render_state_lookup_contract.c",
+    "scripts/runtime/verify_render_state_lookup.sh",
+    "scripts/verify_host.py",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    ".local/codex-recovery-20261114/state-lookup27-20261115/",
+    "coordination/results/CODEX-STATE-LOOKUP27-20261115.md"
+   ],
+   "acceptance": "Under original s_rs_lock cache table index only, exact object/family/in_use validation. Unpack guest current bytes on every hit. Collisions and invalid hints use original scan. Realloc, copies, address reuse, family mixing and concurrency under ASan/UBSan. Component timing separate from game FPS.",
+   "checkpoint": "27候选2f41c6da/3695687B已构建，103项host和Android0，50份输入逐字一致。状态提示仅存索引，原锁内核身份并解包guest当前值。ASan/UBSan及RG真实API契约通过，重复getter组件中位1006.656至2.469ms，仅组件收益。1343条实际recipe覆盖1326且增加17条。26新片已对齐，仍有1.14秒管线停顿及无编译长帧。用户掌握输入，等待保存后安装确认。"
   }
  ],
  "blockers": [

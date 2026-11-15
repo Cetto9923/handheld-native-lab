@@ -127,6 +127,11 @@ static pthread_mutex_t s_rs_lock = PTHREAD_MUTEX_INITIALIZER;
 static nvn_object_table s_states = { NULL, 0, 0, sizeof(nvn_rs_value) };
 static nvn_render_state_stats s_stats;
 
+/* Indices survive table reallocations. Zero means no hint. Every access is
+ * under s_rs_lock and validates the entry before reading the guest's bytes. */
+#define NVN_RS_LOOKUP_HINTS 1024
+static size_t s_lookup_hints[NVN_RS_LOOKUP_HINTS];
+
 static void unpack_value(nvn_rs_value *v) {
     switch(v->family) {
     case NVN_RS_COLOR:{ffrs_color_st p;memcpy(&p,v->object,sizeof p);v->color_blend_enable=p.blend_en;v->color_logic_op=p.logic_op;v->color_alpha_test=p.alpha_func;break;}
@@ -213,11 +218,24 @@ static nvn_rs_value *state_find(const void *object, int family, int create) {
     size_t i;
     nvn_rs_value *free_slot = NULL;
     if (!object) return NULL;
+    uintptr_t address = (uintptr_t)object;
+    size_t bucket = ((address >> 3) ^ (address >> 13) ^ (unsigned)family) &
+                    (NVN_RS_LOOKUP_HINTS - 1);
+    size_t hint = s_lookup_hints[bucket];
+    nvn_rs_value *cached = hint ? nvn_object_table_at(&s_states, hint - 1) : NULL;
+    if (cached && cached->in_use && cached->object == object && cached->family == family) {
+        unpack_value(cached);
+        return cached;
+    }
     for (i = 0; i < s_states.count; i++) {
         nvn_rs_value *entry = (nvn_rs_value *)nvn_object_table_at(&s_states, i);
         if (!entry) continue;
         if (entry->in_use) {
-            if (entry->object == object && entry->family == family) {unpack_value(entry);return entry;}
+            if (entry->object == object && entry->family == family) {
+                s_lookup_hints[bucket] = i + 1;
+                unpack_value(entry);
+                return entry;
+            }
         } else if (!free_slot) {
             free_slot = entry;
         }
@@ -232,6 +250,8 @@ static nvn_rs_value *state_find(const void *object, int family, int create) {
     apply_defaults(free_slot, family);
     free_slot->in_use = 1;
     unpack_value(free_slot);
+    s_lookup_hints[bucket] =
+        ((char *)free_slot - (char *)s_states.slots) / s_states.entry_size + 1;
     return free_slot;
 }
 

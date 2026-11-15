@@ -44,3 +44,11 @@ RG guest_pages正常契约281项检查、errors0，最终pending/charged/tickets
 26包含25的无损改写缓存、页追加提示和1326条APK补充recipe。APK为ffrs-1.0.26-preview-page-warm.apk，3695687字节，SHA256为0a010363a5718e11fb8b9af4127643356a33a2f28597c4bbf0998011d8cb753d。build26的102项宿主检查及Android构建退出0，输入摘要前后相同。
 
 覆盖安装前确认游戏已停止，完整存档tar前后逐字相同，安装APK回读SHA一致，启动PID8416。device26中保存安装计划及日志。实际缓存覆盖、加载、技能首用/重复、声音和显示回归继续实测，暂未给出帧率改善结论。
+
+## 当前26实机进展
+
+源码已提交cc1f797。PID8416正常读取02世界地图。实际warm1326、failed0、4093ms，改写缓存累计retained1331、denied_budget0、peak_bytes61602931，当前保存payload峰约58.75MiB。累计retained含已消费记录，不代表实时存活数量。
+
+E26-default普通30秒记录frame7770至8674、904个间隔，29.999760FPS，P95为35.092ms、P99为45.943ms、最大73.237ms，超过50ms共6个。13个完整PERF窗口GPU中位24.81ms、submitCPU11.72ms。该世界地图静止机位处于30帧限制，战斗改善尚待新片与日志验证。
+
+用户掌握输入并进入森林战斗，已新录125448视频。现成simpleperf以--app模式成功取得有效2秒能力探针，随后启动60秒战斗CPU采样，200Hz、用户态事件、fp堆栈。采样附加开销单独记录，普通战斗日志与视频另核对。当前没有独立Agent复跑。
