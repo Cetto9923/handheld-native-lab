@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-15T19:09:12.537887+08:00",
+ "updated_at": "2026-11-15T20:02:42.878269+08:00",
  "phase": "继续定位战斗GPU主通道并审阅成熟开源跨设备兼容缺口",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -2047,7 +2047,7 @@
   },
   {
    "task": "CODEX-ANDROID-REPORT-20261114",
-   "owner": "android_reporting",
+   "owner": "root",
    "paths": [
     "src/android/app/java/org/ffrs/diagnostic/DiagnosticReport.java",
     "src/android/app/java/org/ffrs/diagnostic/ReportActivity.java",
@@ -2058,9 +2058,9 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-14T13:45:21.243811+08:00",
-   "checkpoint": "源码冻结，真机收益及报告UI整合待验",
+   "checkpoint": "root takes over released five-file draft after full read; user requested all changes committed",
    "objective": "给无电脑测试玩家提供自有应用日志/设备信息诊断ZIP导出，独立Java入口不启动游戏，保存到用户选择位置。",
-   "write_state": "RELEASED"
+   "write_state": "ACTIVE"
   },
   {
    "task": "CODEX-CRASH-20261114",
@@ -7039,7 +7039,7 @@
    "id": "CODEX-ANDROID-REPORT-20261114",
    "role": "android",
    "status": "in_progress",
-   "owner": "android_reporting",
+   "owner": "root",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "objective": "让荣耀400Pro等机型的用户可直接导出本应用崩溃和能力日志，便于复现与适配。",
@@ -7059,10 +7059,15 @@
     "src/android/app/java/org/ffrs/diagnostic/ReportActivity.java",
     "src/android/app/gamewindow/res/xml/report_shortcuts.xml",
     "tests/installer/DiagnosticReportContract.java",
-    "tests/installer/test_diagnostic_report.py"
+    "tests/installer/test_diagnostic_report.py",
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "src/android/app/gamewindow/res/values/strings.xml",
+    "scripts/android/build_game_window_apk.sh",
+    "scripts/verify_host.py"
    ],
    "acceptance": "不加载JNI/不启动游戏，白名单自有日志，不含存档/游戏/资源/密钥文件，报告有上限和截断说明；SAF输出失败有状态反馈；旧API保持可用。",
-   "checkpoint": "768c110，接口由根串行接GameActivity/manifest/build脚本。"
+   "checkpoint": "root integration: menu, manifest, build and launcher shortcut; existing .1 log rotation coverage"
   },
   {
    "id": "CODEX-CRASH-20261114",
@@ -9465,7 +9470,7 @@
     "tests/native/guest_process_contract.c"
    ],
    "acceptance": "同一冻结存档、同一场景配置，A-B-A，冷暖分开，正常帧长尾和显示/音频证据；失败恢复标记。",
-   "checkpoint": "读取本次实际CVar证实mode2、min80/max80、预算33.33。shell写mem被拒且回读80/80，名为live-bounds的17.2FPS窗口是未改设置基线。准备版本/类型/指针验证的应用内设置路径和counter timestamp转换修正。"
+   "checkpoint": "36 fe2caadc已安装荣耀PID14765，110host/Android通过，68源SHA一致。用户再次交还输入，受控入口840帧29.3607FPS/P9967.55ms；北移420帧29.5329FPS/P9958.60ms，少量长帧未达稳30。原子pass6帧9993..9998，主1384x780/输出1920x1080；35水晶台阶与入口位置不同。下一步深处长帧与诊断草稿集成，全部修改提交后仅当Main吸收才清理分支。"
   }
  ],
  "blockers": [

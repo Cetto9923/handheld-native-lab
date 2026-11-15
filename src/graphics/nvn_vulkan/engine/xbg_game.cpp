@@ -4601,9 +4601,9 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                         uint64_t sh=b.type==VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER?(b.sampler_slot!=UINT32_MAX?state.samp[ns][b.sampler_slot]:handle):0;
                         ikey={handle,sh,uint64_t(uintptr_t(state.texture_pool.pool->mem)),uint64_t(state.texture_pool.off),state.sampler_pool.pool?uint64_t(uintptr_t(state.sampler_pool.pool->mem)):0,uint64_t(state.sampler_pool.off),uint64_t(b.type)|(uint64_t((b.flags>>16)&3)<<8)};img_cacheable=true;
                         auto it=img_cache.find(ikey);
-                        auto live=it==img_cache.end()?images.end():images.find(it->second.tex->serial);
+                        Image *live=it==img_cache.end()?nullptr:find_image(it->second.tex->serial);
                         if(it!=img_cache.end() && it->second.record->revision==it->second.revision &&
-                            live!=images.end() && live->second.get()==it->second.im){Image *im=&get_image(it->second.tex,true);
+                            live && live==it->second.im){Image *im=&get_image(it->second.tex,true);
                             prepare_read(*im,commands.command,true,attachment_barrier_enabled?im->sampled_aspects(it->second.record->has_view?&it->second.record->view:nullptr):0);if(desc_memo_recording)desc_memo_images.push_back({it->second.tex,im,it->second.record,it->second.revision});
                             VkDescriptorImageInfo ii{};ii.imageView=it->second.view;ii.sampler=b.type==VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER?it->second.sampler:VK_NULL_HANDLE;ii.imageLayout=VK_IMAGE_LAYOUT_GENERAL;
                             water_binding_image(out.water,shader.key,st,b.binding,element,*im,ii.imageView);

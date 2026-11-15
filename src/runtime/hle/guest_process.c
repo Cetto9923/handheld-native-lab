@@ -1164,7 +1164,7 @@ void guest_process_update_render_policy(void) {
         return;
     }
     const uintptr_t addresses[] = { maximum, minimum, budget };
-    float values[] = { 100.0f, 75.0f, 1000.0f / 30.0f };
+    float values[] = { 80.0f, 60.0f, 1000.0f / 30.0f };
     float previous[3][2];
     int previous_mode[2];
     int valid = 1, changed = 0;
@@ -1177,17 +1177,21 @@ void guest_process_update_render_policy(void) {
         for (unsigned j = 0; j < 2; ++j) {
             __atomic_load((float *)addresses[i] + j, &previous[i][j], __ATOMIC_RELAXED);
             valid &= isfinite(previous[i][j]) && previous[i][j] > 0 && previous[i][j] <= 200;
-            changed |= previous[i][j] != values[i];
         }
     }
+    // Keep the game's own lower ceiling when it has reduced quality for a
+    // CPU-bound frame. Raising that ceiling defeats its existing heuristic.
+    values[0] = fminf(80.0f, fmaxf(60.0f, fminf(previous[0][0], previous[0][1])));
+    for (unsigned i = 0; i < 3; ++i)
+        for (unsigned j = 0; j < 2; ++j) changed |= previous[i][j] != values[i];
     if (valid && changed) {
         for (unsigned i = 0; i < 3; ++i)
             for (unsigned j = 0; j < 2; ++j)
                 __atomic_store((float *)addresses[i] + j, &values[i], __ATOMIC_RELAXED);
         for (unsigned i = 0; i < 2; ++i) __atomic_store_n((int *)mode + i, 2, __ATOMIC_RELAXED);
-        fprintf(stderr, "[render-policy] dynamic mode=%d/%d->2 min=%.3f/%.3f->75 max=%.3f/%.3f->100 budget=%.3f/%.3f->%.3f ms\n",
+        fprintf(stderr, "[render-policy] dynamic mode=%d/%d->2 min=%.3f/%.3f->60 max=%.3f/%.3f->%.3f budget=%.3f/%.3f->%.3f ms\n",
                 previous_mode[0], previous_mode[1], previous[1][0], previous[1][1],
-                previous[0][0], previous[0][1], previous[2][0], previous[2][1], values[2]);
+                previous[0][0], previous[0][1], values[0], previous[2][0], previous[2][1], values[2]);
     }
     pthread_mutex_unlock(&policy_mutex);
 }

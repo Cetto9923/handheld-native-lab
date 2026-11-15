@@ -8,6 +8,43 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class RenderPolicy(unittest.TestCase):
+    def test_descriptor_image_front_lifetime(self):
+        source = (ROOT / 'src/graphics/nvn_vulkan/engine/xbg_game.cpp').read_text()
+        start = source.index('struct ImgFront{')
+        body = source[start:source.index('Image &get_image_slow(', start)]
+        self.assertIn('Image *live=it==img_cache.end()?nullptr:find_image(it->second.tex->serial);', source)
+        fixture = r'''
+#include <cassert>
+#include <cstdint>
+#include <map>
+#include <memory>
+struct Image { int value; };
+std::map<uint64_t,std::shared_ptr<Image>> images;
+''' + body + r'''
+int main() {
+    assert(find_image(1) == nullptr);
+    auto old = std::make_shared<Image>(); images.emplace(1,old);
+    assert(find_image(1) == old.get());
+    images.erase(1); ++images_epoch;
+    assert(find_image(1) == nullptr);
+    auto replacement = std::make_shared<Image>(); images.emplace(1,replacement);
+    assert(find_image(1) == replacement.get());
+    uint64_t other = 2;
+    while (((other*0x9E3779B97F4A7C15ull)>>54) != ((1*0x9E3779B97F4A7C15ull)>>54)) ++other;
+    auto collision = std::make_shared<Image>(); images.emplace(other,collision);
+    assert(find_image(other) == collision.get());
+    assert(find_image(1) == replacement.get());
+    images.clear(); ++images_epoch;
+    assert(find_image(1) == nullptr && find_image(other) == nullptr);
+}
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            (path / 'test.cpp').write_text(fixture)
+            subprocess.run(['clang++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                            '-fsanitize=address,undefined', str(path / 'test.cpp'), '-o', str(path / 'test')], check=True)
+            subprocess.run([str(path / 'test')], check=True)
+
     def test_runtime_settings_validation(self):
         source = (ROOT / 'src/runtime/hle/guest_process.c').read_text()
         start = source.index('static uintptr_t render_policy_data(')
@@ -59,13 +96,14 @@ int main(int argc, char **argv) {
     if (test == 4) *(uintptr_t *)objects[2] = 0;
     if (test == 5) { float bad = NAN; memcpy(objects[3]+84, &bad, 4); }
     if (test == 6) ((uintptr_t *)(base + offsets[2]))[1] = UINTPTR_MAX - 7;
+    if (test == 7) { float low[2] = {75,75}; memcpy(objects[2]+80, low, 8); }
     unsigned char before[4][88];
     for (unsigned i = 0; i < 4; ++i) memcpy(before[i], objects[i], 88);
     guest_process_update_render_policy();
-    if (test) {
+    if (test > 0 && test < 7) {
         for (unsigned i = 0; i < 4; ++i) assert(!memcmp(before[i], objects[i], 88));
     } else {
-        const float expected[] = {75,100,1000.0f/30};
+        const float expected[] = {60,test == 7 ? 75.0f : 80.0f,1000.0f/30};
         for (unsigned i = 1; i < 4; ++i) {
             float values[2]; memcpy(values, objects[i]+80, 8);
             assert(values[0] == expected[i-1] && values[1] == expected[i-1]);
@@ -82,7 +120,7 @@ int main(int argc, char **argv) {
             (path / 'test.c').write_text(fixture)
             subprocess.run(['clang', '-std=c11', '-D_DARWIN_C_SOURCE', '-Wall', '-Wextra', '-Werror',
                             '-fsanitize=address,undefined', str(path / 'test.c'), '-o', str(path / 'test')], check=True)
-            for case in range(7):
+            for case in range(8):
                 subprocess.run([str(path / 'test'), str(case)], check=True)
 
     def test_recorded_gpu_time(self):
