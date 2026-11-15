@@ -126,3 +126,9 @@ ADPF service确认24538的session绑定TID24719，实际comm为RHIThread，targe
 45原CPU trace的cpufreq与RHI运行片段交集约5.00秒，3-6核加权约2.50/2.66/2.65/2.65GHz，记录45-rhi-frequency.sql/csv，初始频率缺失片段未补值。48启动时thermalservice状态1，完整温度快照launch48/thermal-before.txt保留。
 
 下一最小假设为OP_BIND_UBO/SSBO无条件递增buf_gen。fill_driver的graphics c0只发布SSBO范围及base_instance，compute c0还发布UBO。应先逐字节验证graphics UBO变化和完全相同范围重绑对c0输出的影响，保留compute UBO与SSBO变化、base_instance、snapshot失效及全部真实绑定状态。API调度继续保留为默认关闭的候选。
+
+## 49驱动块版本候选
+
+OP_BIND_UBO/SSBO继续原样写入每个真实绑定。仅当driver c0实际使用的表范围变化时递增buf_gen，即SSBO范围变化或compute UBO范围变化。graphics UBO变化及完全相同地址/长度重绑可沿用相同driver块。原slot_serial及base_instance缓存键保留。通过既有live-ab drivergen可恢复原每绑定递增，none使用候选，增加PERF driver_gen skipped计数。没有改变uniform复制长度、snapshot版本、shader或图像元数据。
+
+生产提取整个绑定case、完整fill_driver及真实base_instance/cache helper，ASan/UBSan验证4096字节驱动块在graphics UBO变化时全等、compute UBO及SSBO变化时更新、64位地址、大小变化、16槽全部graphics UBO、完全相同重绑、slot/base_instance变化和原路控制。连同系统提示及既有组件10项通过。FPS/显示/音频收益待实机。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。

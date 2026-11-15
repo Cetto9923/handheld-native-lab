@@ -8,6 +8,102 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class RenderPolicy(unittest.TestCase):
+    def test_driver_generation_tracks_published_table_bytes(self):
+        source = (ROOT / 'src/graphics/nvn_vulkan/engine/xbg_game.cpp').read_text()
+        start = source.index('        case OP_BIND_UBO:case OP_BIND_SSBO:')
+        bind = source[start:source.index('        case OP_BIND_TEX:', start)]
+        start = source.index('void fill_driver(')
+        fill = source[start:source.index('// Uniform data is bound', start)]
+        header = (ROOT / 'src/graphics/nvn_vulkan/engine/xbg_game.h').read_text()
+        start = header.index('static inline int xbg_driver_base_instance_write(')
+        helpers = header[start:header.index('int xbg_game_initialize(', start)]
+        fixture = r'''
+#include <cassert>
+#include <cstdint>
+#include <cstring>
+#include <cstdlib>
+constexpr unsigned OP_BIND_UBO = 1, OP_BIND_SSBO = 2;
+struct Range { uint64_t address = 0, size = 0; };
+struct {
+    Range ub[6][16], sb[6][16];
+    uint64_t tex[6][256]{}, samp[6][128]{}, img[6][16]{};
+} state;
+uint64_t buf_gen[6]{}, driver_gen_skipped = 0;
+uint32_t draw_base_instance = 3;
+bool control = false;
+bool ab_off(const char *name) { assert(!std::strcmp(name,"drivergen")); return control; }
+void need(bool value, const char *) { assert(value); }
+struct p_bind_buf { int stage, index; uint64_t addr, size; };
+template<class T> T payload(const void *p, unsigned n) {
+    assert(n == sizeof(T)); T out; std::memcpy(&out,p,n); return out;
+}
+void bind_range(unsigned op, const p_bind_buf &value) {
+    struct { unsigned op; } h{op};
+    const void *p = &value; unsigned n = sizeof(value);
+    switch (op) {
+''' + bind + r'''
+        default: assert(false);
+    }
+}
+''' + helpers + fill + r'''
+int main() {
+    for (unsigned stage : {0u, 1u, 5u}) {
+        uint8_t before[4096]{}, after[4096]{};
+        fill_driver(before, stage, 0);
+        uint64_t generation = buf_gen[stage];
+        xbg_driver_cache_key key{7,generation,draw_base_instance};
+        bind_range(OP_BIND_UBO,{int(stage),2,0x123456780000ULL,96});
+        assert(state.ub[stage][2].address == 0x123456780000ULL && state.ub[stage][2].size == 96);
+        fill_driver(after, stage, 0);
+        assert((std::memcmp(before,after,4096) != 0) == (stage == 5));
+        assert(buf_gen[stage] == generation + (stage == 5));
+        assert(xbg_driver_cache_matches(&key,7,buf_gen[stage],draw_base_instance) == (stage != 5));
+        generation = buf_gen[stage];
+        bind_range(OP_BIND_UBO,{int(stage),2,0x123456780000ULL,96});
+        assert(buf_gen[stage] == generation);
+        bind_range(OP_BIND_UBO,{int(stage),2,0x123456780000ULL,112});
+        assert(buf_gen[stage] == generation + (stage == 5));
+        std::memset(before,0,4096); std::memset(after,0,4096);
+        fill_driver(before,stage,0);
+        generation = buf_gen[stage];
+        bind_range(OP_BIND_SSBO,{int(stage),4,0x123456781000ULL,512});
+        assert(buf_gen[stage] == generation + 1);
+        fill_driver(after,stage,0); assert(std::memcmp(before,after,4096) != 0);
+        generation = buf_gen[stage];
+        bind_range(OP_BIND_SSBO,{int(stage),4,0x123456781000ULL,512});
+        assert(buf_gen[stage] == generation);
+        bind_range(OP_BIND_SSBO,{int(stage),4,0x123456781000ULL,768});
+        assert(buf_gen[stage] == generation + 1);
+        key={7,buf_gen[stage],draw_base_instance};
+        assert(!xbg_driver_cache_matches(&key,8,buf_gen[stage],draw_base_instance));
+        assert(!xbg_driver_cache_matches(&key,7,buf_gen[stage],draw_base_instance+1));
+        control=true;
+        generation=buf_gen[stage];
+        bind_range(OP_BIND_UBO,{int(stage),2,0x123456780000ULL,112});
+        bind_range(OP_BIND_SSBO,{int(stage),4,0x123456781000ULL,768});
+        assert(buf_gen[stage] == generation + 2);
+        control=false;
+    }
+    // All graphics UBO slots retain actual bindings without touching c0.
+    for (int stage=0;stage<5;++stage) {
+        uint64_t generation=buf_gen[stage];
+        for (int slot=0;slot<16;++slot)
+            bind_range(OP_BIND_UBO,{stage,slot,0xfedcba9876540000ULL+uint64_t(slot)*256,128});
+        assert(buf_gen[stage] == generation);
+        for (int slot=0;slot<16;++slot)
+            assert(state.ub[stage][slot].address == 0xfedcba9876540000ULL+uint64_t(slot)*256);
+    }
+    assert(driver_gen_skipped > 80);
+}
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            (path / 'test.cpp').write_text('#include <initializer_list>\n' + fixture)
+            subprocess.run(['clang++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                            '-fsanitize=address,undefined', str(path / 'test.cpp'),
+                            '-o', str(path / 'test')], check=True)
+            subprocess.run([str(path / 'test')], check=True)
+
     def test_shader_reuse_profile_default_and_explicit_overrides(self):
         source = (ROOT / 'src/graphics/nvn_vulkan/engine/xbg_game.cpp').read_text()
         start = source.index('     {shader_reuse=0;')

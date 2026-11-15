@@ -840,6 +840,7 @@ uint64_t cleanup_ns[5]={},writeback_bytes=0; // perf: cleanup phase split
 // Driver/support constant buffers are rebuilt only when their inputs change (iOS: reuse parameter
 // blocks for identical inputs). Generations bump on binding ops; slot_serial on every frame-slot switch.
 uint64_t tex_gen[6]={},buf_gen[6]={},slot_serial=1;
+uint64_t driver_gen_skipped=0;
 struct DriverCache{xbg_driver_cache_key key{};Buffer buffer;};DriverCache driver_cache[6][2];
 uint32_t draw_base_instance=0;
 struct SupportCache{float w=-1,h=-1;uint64_t slot=0;Buffer buffer;};SupportCache support_cache;
@@ -1606,6 +1607,7 @@ void perf_frame(){
     {static uint64_t pm=0,pe=0;xbg_logf("NVN PERF pipelines_new=%llu evicted=%llu warm_hits=%llu created=%llu create_ms=%.1f create_max_ms=%.1f warm_built=%llu warm_failed=%llu warm_ms=%.0f async_skips=%llu async_built=%llu",(unsigned long long)(pipeline_counts.misses-pm),(unsigned long long)(pipeline_counts.evictions-pe),(unsigned long long)warm::hits,(unsigned long long)warm::creates,warm::create_ns/1e6,warm::create_max_ns/1e6,(unsigned long long)warm::built.load(),(unsigned long long)warm::failed.load(),warm::build_ns.load()/1e6,(unsigned long long)warm::async_skips.exchange(0),(unsigned long long)warm::async_built.load());warm::hits=warm::creates=warm::create_ns=warm::create_max_ns=0;pm=pipeline_counts.misses;pe=pipeline_counts.evictions;}
     xbg_logf("NVN PERF compute_pipelines warm_hits=%llu created=%llu create_ms=%.2f create_max_ms=%.2f",(unsigned long long)warm::compute_hits,(unsigned long long)warm::compute_creates,warm::compute_create_ns/1e6,warm::compute_create_max_ns/1e6);
     warm::compute_hits=warm::compute_creates=warm::compute_create_ns=warm::compute_create_max_ns=0;
+    xbg_logf("NVN PERF driver_gen skipped=%.1f control=%u",driver_gen_skipped/f,unsigned(ab_off("drivergen")));driver_gen_skipped=0;
     xbg_logf("NVN PERF memo_buffers destroyed=%llu referenced=%llu slot_drops=%llu tracked=%zu invalid_slots=%#x control=%d",
              (unsigned long long)memo_buffers_destroyed,(unsigned long long)memo_buffers_referenced,
              (unsigned long long)memo_buffer_slot_drops,memo_buffer_slots.size(),memo_buffer_invalid_slots,int(ab_off("memobuffer")));
@@ -6944,7 +6946,19 @@ void execute(const uint8_t *pc,unsigned depth,uint64_t &budget){
         case OP_BIND_VATTR:{auto a=variable_payload<p_bind_vattr>(p,n);need(a.first==0 && a.n>=0 && a.n<=16 && n>=offsetof(p_bind_vattr,st)+size_t(a.n)*4,"Invalid vertex attribute record");need(xbg_vertex_attributes_replace(state.attrib,reinterpret_cast<const uint32_t*>(a.st),a.n)==0,"Invalid vertex attribute replacement");break;}
         case OP_BIND_VSTREAM:{auto a=variable_payload<p_bind_vstream>(p,n);need(a.first>=0 && a.n>=0 && a.first+a.n<=16 && n>=offsetof(p_bind_vstream,st)+size_t(a.n)*sizeof(vs_st),"Invalid vertex stream record");memcpy(state.stream+a.first,a.st,a.n*sizeof(vs_st));break;}
         case OP_BIND_VBUF:{auto a=variable_payload<p_bind_vbuf>(p,n);need(a.first>=0 && a.n>=0 && a.first+a.n<=16 && n>=offsetof(p_bind_vbuf,r)+size_t(a.n)*sizeof(NVNbufferRange),"Invalid vertex buffer record");memcpy(state.vb+a.first,a.r,a.n*sizeof(NVNbufferRange));break;}
-        case OP_BIND_UBO:case OP_BIND_SSBO:{auto a=payload<p_bind_buf>(p,n);need(a.stage>=0 && a.stage<6 && a.index>=0 && a.index<16,"Invalid shader buffer slot");(h.op==OP_BIND_UBO?state.ub:state.sb)[a.stage][a.index]={a.addr,a.size};++buf_gen[a.stage];break;}
+        case OP_BIND_UBO:case OP_BIND_SSBO:{
+            auto a=payload<p_bind_buf>(p,n);
+            need(a.stage>=0 && a.stage<6 && a.index>=0 && a.index<16,"Invalid shader buffer slot");
+            auto &range=(h.op==OP_BIND_UBO?state.ub:state.sb)[a.stage][a.index];
+            const bool changed=range.address!=a.addr || range.size!=a.size;
+            // c0 publishes storage ranges in graphics stages and both range
+            // tables in compute. Every bind still updates the actual state.
+            const bool driver_table=h.op==OP_BIND_SSBO || a.stage==5;
+            if(ab_off("drivergen") || (changed && driver_table))++buf_gen[a.stage];
+            else ++driver_gen_skipped;
+            range={a.addr,a.size};
+            break;
+        }
         case OP_BIND_TEX:case OP_BIND_SAMP:case OP_BIND_IMG:case OP_BIND_TEX1:{
             // OP_BIND_TEX1 is the combined handle bind (nvn_obj.h p_bind_tex1): bind_rec turns it into the separate
             // texture / sampler form and adds the numbering bases of the pools the record was made with.
