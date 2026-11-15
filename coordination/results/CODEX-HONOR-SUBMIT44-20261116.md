@@ -116,3 +116,13 @@ B47-content-moving2开启缓存24853..24914/61间隔，实际轴2.565秒、呈�
 首轮48源577fc01宿主114项通过，Android编译退出2，没有生成APK。即使是decltype取API33函数类型，NDK对minSdk28仍报unavailable。已改为等价函数指针声明，保持动态解析与minSdk28。新增真实NDK交叉编译，分别以API28编译生产适配器、API33静态比对4个函数指针与SDK原型全等，连同组件9项通过。原build48失败日志保留，后续build48b全量重跑。
 
 48b源9f06fba clean，114宿主全通过、Android0，80项输入SHA一致，动态符号表无强依赖APerformanceHint接口。APK49321c68aaefaadc51fd4ca3e186077da1e359464a969fec381893fe3229367a，3720407B。install48回读APK及私有461全部9文件SHA、正式源metadata通过。launch48 PID24538，texrecord1/vcache0/adpf0，原正式存档与APK历史保留。尚待API实际session及同机FPS验证。
+
+## 48系统提示接收及短移动对照
+
+ADPF service确认24538的session绑定TID24719，实际comm为RHIThread，target33333333ns、AllowedByProcState true、ForcePaused false。日志前3次上报37.17/28.21/31.22ms，之后count300与600仍上报，未见接口错误。关闭后服务中24538的session已移除。
+
+同进程桥面两轮非零轴、前后探索。A48-hintoff-moving1为5305..5357/52间隔、轴2.592秒、呈现2.48769秒，20.9029FPS/max84.31ms/12超50。B48-hinton-moving1为7627..7690/63间隔，轴2.603秒、呈现2.53921秒，24.8109FPS/max69.01/4超50。回关A48-hintoff-moving2为8337..8395/58间隔，轴2.581秒、呈现2.50651秒，23.1397FPS/max69.22/10超50。末图仍为桥面探索，遇敌圈已红。均无present错误。短暖窗仍未稳30，不能把初始20.9到24.8全归API，尚待重复、技能和完整音频验收。当前API关闭、输入UP。
+
+45原CPU trace的cpufreq与RHI运行片段交集约5.00秒，3-6核加权约2.50/2.66/2.65/2.65GHz，记录45-rhi-frequency.sql/csv，初始频率缺失片段未补值。48启动时thermalservice状态1，完整温度快照launch48/thermal-before.txt保留。
+
+下一最小假设为OP_BIND_UBO/SSBO无条件递增buf_gen。fill_driver的graphics c0只发布SSBO范围及base_instance，compute c0还发布UBO。应先逐字节验证graphics UBO变化和完全相同范围重绑对c0输出的影响，保留compute UBO与SSBO变化、base_instance、snapshot失效及全部真实绑定状态。API调度继续保留为默认关闭的候选。
