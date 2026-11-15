@@ -114,3 +114,5 @@ B47-content-moving2开启缓存24853..24914/61间隔，实际轴2.565秒、呈�
 组件生产提取涵盖默认关闭、非Android、库/符号缺失、manager/session拒绝、每帧多提交、呈现后idle排除、非正时钟、线程更换、上报失败、1000次启停/renderer重启与资源计数。8项组件通过。两次初始夹具编译分别因非Android分支未使用test和RTLD常量而Werror失败，均已修正，原始失败日志保留。完整宿主/Android及实机收益待测。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。
 
 首轮48源577fc01宿主114项通过，Android编译退出2，没有生成APK。即使是decltype取API33函数类型，NDK对minSdk28仍报unavailable。已改为等价函数指针声明，保持动态解析与minSdk28。新增真实NDK交叉编译，分别以API28编译生产适配器、API33静态比对4个函数指针与SDK原型全等，连同组件9项通过。原build48失败日志保留，后续build48b全量重跑。
+
+48b源9f06fba clean，114宿主全通过、Android0，80项输入SHA一致，动态符号表无强依赖APerformanceHint接口。APK49321c68aaefaadc51fd4ca3e186077da1e359464a969fec381893fe3229367a，3720407B。install48回读APK及私有461全部9文件SHA、正式源metadata通过。launch48 PID24538，texrecord1/vcache0/adpf0，原正式存档与APK历史保留。尚待API实际session及同机FPS验证。

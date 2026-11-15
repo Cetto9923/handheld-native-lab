@@ -1,3 +1,7 @@
+# 2026-11-16T04:33:36.843283+08:00 48
+
+48b源9f06fba clean，114宿主全通过、Android0，80项输入SHA一致，动态符号表无强依赖APerformanceHint接口。APK49321c68aaefaadc51fd4ca3e186077da1e359464a969fec381893fe3229367a，3720407B。install48回读APK及私有461全部9文件SHA、正式源metadata通过。launch48 PID24538，texrecord1/vcache0/adpf0，原正式存档与APK历史保留。尚待API实际session及同机FPS验证。
+
 # 2026-11-16T04:31:50.947838+08:00 48b
 
 首轮48源577fc01宿主114项通过，Android编译退出2，没有生成APK。即使是decltype取API33函数类型，NDK对minSdk28仍报unavailable。已改为等价函数指针声明，保持动态解析与minSdk28。新增真实NDK交叉编译，分别以API28编译生产适配器、API33静态比对4个函数指针与SDK原型全等，连同组件9项通过。原build48失败日志保留，后续build48b全量重跑。
