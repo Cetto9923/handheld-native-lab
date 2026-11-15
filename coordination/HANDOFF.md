@@ -4924,3 +4924,7 @@ https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.30-preview �
 ### 45默认路径真机检查点
 
 45源9c85fa0/APK70db6d98d51e7aa81a00ee8144f4e58e92883ff82ce8303f07ae97128ea15781/3720407B，113宿主及Android退出0，79输入一致，安装回读与9存档SHA及正式源metadata通过。归档原gfx-shader-reuse标记以验默认，启动日志明确默认reuse1、warm1935，PID5377复用461。紧随am start的pidof过早退出1，随后同次启动5377正常已记录。当前探索入口，准备进入神殿继续测。
+
+### 45移动及暖技能CPU栈
+
+45/70db6d98/PID5377。内部移动23.4315及29.1226FPS，未稳30。GPASS场景1384x780、UI1920x1080，诊断8帧。暖技能6秒trace95a09106匹配f16061d9，RHI运行5202.26ms/5.9301s，descriptor及vertex/index memcpy仍热点。45原CSV不足8秒已改3秒覆盖并保留旧JSON，5份普通8秒窗口覆盖复验通过。vcache缺dirty版本前提，后续研究有界全字节比较或精确fetch范围。当前施法后输入UP，先新鲜截图。

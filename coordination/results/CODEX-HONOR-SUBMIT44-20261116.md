@@ -54,3 +54,17 @@ fire-A1-global为旧memobuffer、shader_reuse0、无CPU/GPU探针及中途截图
 
 45源9c85fa0/APK70db6d98d51e7aa81a00ee8144f4e58e92883ff82ce8303f07ae97128ea15781/3720407B，113宿主及Android退出0，79输入一致，安装回读与9存档SHA及正式源metadata通过。归档原gfx-shader-reuse标记以验默认，启动日志明确默认reuse1、warm1935，PID5377复用461。紧随am start的pidof过早退出1，随后同次启动5377正常已记录。当前探索入口，准备进入神殿继续测。
 44c/29319新描述符路暖技能CPU诊断39152..39211共60帧/3.662714秒，67776draw/5369dispatch。CPU计时measured2.937488秒，descriptor exclusive1.103757秒、其中ImageLookup387.112ms，remaining491.449ms；snapshot262.592ms、draw390.359ms、fence316.918ms。部分范围含等待，不能全算CPU运行。DESC coverage OK，但诊断额外2881578次时钟读取，不能将该窗FPS作普通验收。此窗新shader1及pipeline miss1，pipeline最大217.876ms，保留新编译长帧，不能称完全暖缓存。B3-scoped-reuse1原始28.4402FPS/180间隔的后截图为遇敌黑场，排除纯探索移动验收。
+
+## 45普通移动、GPU分段与暖技能CPU栈
+
+当前45/70db6d98/PID5377/default shader reuse1/新descriptor路径。B45-moving1前后探索非零轴12600..12660/60间隔23.4315FPS/P9972.75。后续trace45-encounter-walk前后探索、轴3轮，53580..53880/300间隔29.1226FPS/P9957.94/max61.0/8超50，仍未稳30。
+
+技能GPASS8帧23463..23470，场景1384x780，末UI1920x1080，pass+compute约24.2..31.7ms，属于改变批次的诊断。五个已校验compute模块在45默认配置均reused1，rewrite2.28..5.03ms。该次首次技能仍出现271.8ms长帧，其中shader140.1ms，多份顶点模块和变体载入聚集。复用覆盖了部分加载开销，其它分析和运行时负荷继续存在。
+
+第二次消失突袭6秒Perfetto为95a09106334d11aed0f320ccacb9bae9075b1e47393081ef447d7cfeba069478。匹配符号BuildID为f16061d9db8428ab1daa7139064734a9032a28b4，RHI5679运行5202.26ms，样本窗口5.9301秒。
+
+Perfetto将MONOTONIC归一到BOOTTIME，clock_snapshot给出146158443482074-145839938495302=318504986772ns偏移。实际A145840270000000ns落于trace开始约0.332秒。原辅助脚本将6秒采样后不足8秒的CSV写为8秒窗口，已保留action-metrics.unbounded-before-correction.json，改为强制检查CSV尾覆盖。当前仅3秒请求覆盖68371..68437/67帧/2.943741秒，22.4204FPS/max78.14ms，限定CPU诊断窗口。其它五份14秒采集的8秒窗口复验均覆盖完整。
+
+RHI inclusive采样约431条，422条含INVALID_ELF展开问题。已解析部分中descriptors_build153、descriptors123、memcpy62、texel_acquire34、snapshot33、stream_buffer29，inclusive存在重叠。匹配地址转为十六进制后addr2line定位memcpy主要来自draw5448顶点snapshot及5449索引snapshot。普通日志每帧vertex约15..16.4MiB、index约1.4MiB。host桥只有返回0的dirty_since stub，dirty_tracked/protect/now缺失，现有跨帧vcache所需的内容版本前提仍有缺口。后续研究有界完整内容比较的静态顶点/索引复用，或先证明精确fetch范围再缩小snapshot。继续保留CPU访问、GPU pending覆盖和不可变提交快照。
+
+LevelUp详情短按A多次未离开，最后1秒A正常回探索。一次在详情页发送的方向只作导航记录，该动作排除探索采样。profile-skill45脚本、trace、符号和CSV均已保全，设备上该45临时trace仍待主机验证后清理。当前战斗施法后，输入已UP。完整显示、A2DP、跨设备及稳定30目标继续开放。
