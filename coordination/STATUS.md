@@ -1,6 +1,6 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-15T15:50:14.448236+08:00
+状态事件时间：2026-11-15T16:26:21.908411+08:00
 阶段：继续定位战斗GPU主通道并审阅成熟开源跨设备兼容缺口
 总控：Codex /root 本轮接管
 更新方式：按事件更新，没有后台自动刷新。
@@ -233,6 +233,7 @@
 | CODEX-PAGE-GAP28-20261115 | PERFORMANCE_IMPLEMENTATION_AND_SELF_TEST | in_progress | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-SAVE-MEMORY29-20261115 | BUG_FIX_AND_MEMORY_DIAGNOSIS | implemented_device_verified | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-PUBLISH-CHEAT30-20261115 | RELEASE_AND_ANDROID_UI | completed | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-BACKUP30-ROUNDTRIP-20261115 | DEVICE_SELF_TEST | completed | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 
 ## 独占写入
 
@@ -428,6 +429,7 @@
 - {"task": "CODEX-PAGE-GAP28-20261115", "owner": "root", "paths": ["src/runtime/hle/guest_pages.c", "src/runtime/hle/address_region.c", "tests/native/guest_pages_contract.c", "tests/native/owned_pages_contract.c", ".local/codex-recovery-20261114/page-gap28-20261115/", "coordination/results/CODEX-PAGE-GAP28-20261115.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T13:29:13.445067+08:00", "checkpoint": "28已安装，源27e9df8、APK987ab1ee/3699783B，103host+Android0、50份输入一致，存档tar及APK设备字节复核通过。PID16067，GameMode由unsupported变standard、可用standard/custom，未切性能模式。实际Continue加载15秒200Hz CPU采样PTY22481进行中。", "write_state": "ACTIVE"}
 - {"task": "CODEX-SAVE-MEMORY29-20261115", "owner": "root", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", "tests/installer/test_save_export_lifecycle.py", ".local/codex-recovery-20261114/save-memory29-20261115/", "coordination/results/CODEX-SAVE-MEMORY29-20261115.md", "tests/device/test_arena_memory_policy.py"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T13:50:05.655776+08:00", "checkpoint": "7b5a8e4/29 ccb08cf9，105host和Android0，52输入一致，APK及保存字节核验。3次Home目录数27不变、手动导出5文件逐字相同。默认PID21740同world30秒29.99983FPS/P99 41.670ms，PSS4480964KiB较28降34.6%。memory/slot/no-warm标记恢复不存在。真实三技能至胜利存活，但GPU73.95ms、火炎剑626.5ms仍开放。其它设备与独立QA未执行。", "write_state": "CHECKPOINTED_SCOPE_TRANSFERRED", "checkpoint_at": "2026-11-15T14:39:39.309158+08:00"}
 - {"task": "CODEX-PUBLISH-CHEAT30-20261115", "owner": "root", "paths": ["src/android/app/java/org/ffrs/diagnostic/GameActivity.java", "src/android/app/gamewindow/AndroidManifest.xml", "tests/installer/test_touch_pad_menu.py", "scripts/verify_host.py", ".local/releases/1.0.30/", "coordination/results/CODEX-PUBLISH-CHEAT30-20261115.md", "tests/installer/test_unit_names.py", "tests/installer/test_save_flow.py"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T15:11:14.438940+08:00", "checkpoint": "30预览已GitHub公开发布且远端下载SHA89cbb81c/3703949B验证一致，tag/source030149e，108host/Android0，57输入匹配。中文雷因8单位、菜单独立、折叠UI及用户34项保存结果实测。备份恢复宿主文件往返/故障契约通过，最终掌机往返及独立QA NOT_RUN；交叠窗口已排除。主卡顿仍开放。", "write_state": "COMPLETE_SCOPED", "checkpoint_at": "2026-11-15T15:50:14.448236+08:00"}
+- {"task": "CODEX-BACKUP30-ROUNDTRIP-20261115", "owner": "root", "paths": [".local/releases/1.0.30/backup-roundtrip/", "coordination/results/CODEX-PUBLISH-CHEAT30-20261115.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T16:18:24.066855+08:00", "checkpoint": "已发布89cbb81c/同PID31041实际备份save-001 8份1800573B，8份与当前文件摘要全同；16:22:17实际恢复8份，9份live含.orig摘要全同；经Load Game选自动存档回到第1章土之神殿，进程存活，未完成stage0。实现者真机自测完成，独立QA NOT_RUN，输入交还用户。", "write_state": "COMPLETE_SCOPED", "checkpoint_at": "2026-11-15T16:26:21.908411+08:00"}
 
 ## 阻塞
 
@@ -559,6 +561,7 @@
 - The moon halo flicker on the Honor tablet is caused by the GPU-resident indirect template path: with gfx-indexed-resident=0 the user observed a normal moon, and gfx-wb-skip=0 changed nothing.
 - {"task": "CODEX-SAVE-MEMORY29-20261115", "source": "7b5a8e4", "scope": "RG477M29 actual three background transitions no new export; manual export5files matches; default world30sec29.99983FPS/PSS4480964KiB vs28 6851356KiB", "evidence": "coordination/results/CODEX-SAVE-MEMORY29-20261115.md"}
 - {"task": "CODEX-PUBLISH-CHEAT30-20261115", "scope": "Published prerelease and remote-download checksum verified;108 host checks plus scoped RG UI and actual cheat result", "source": "030149eb587329e7a9baf4f804c3c3198d729015", "release": "https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.30-preview", "evidence": "coordination/results/CODEX-PUBLISH-CHEAT30-20261115.md"}
+- {"task": "CODEX-BACKUP30-ROUNDTRIP-20261115", "scope": "Actual RG backup8 files/restore8 files, all9 live file hashes equal, normal Load Game returns real chapter1 shrine, same published APK89cbb81c PID31041", "evidence": "coordination/results/CODEX-PUBLISH-CHEAT30-20261115.md", "independent_qa": "NOT_RUN"}
 
 ## 未验证
 
@@ -588,6 +591,6 @@
 - No code fix for the stale indirect-argument read has been written, built or verified.
 - The current-slot guard on find_indirect_template is not yet built, installed or accepted on the device.
 - 2026-11-15当前29仅掌机范围自测。手机OEM严重运行内存异常仍缺对应退出日志，荣耀本轮用户暂缓。战斗仍有GPU73.95ms与火炎剑626.5ms管线长帧，长期内存和开场声音待回归，独立QA NOT_RUN。
-- 1.0.30简化备份恢复已通过生产方法JVM文件系统往返与存储失败检查，最终掌机备份/恢复往返尚未完成；输入与用户交叠窗口排除。金手指存档修改需要回标题重读，现有备份为已写盘进度。独立QA NOT_RUN。
+- 1.0.30简化备份恢复已通过生产方法JVM文件系统往返与存储失败检查，最终掌机备份/恢复往返尚未完成；输入与用户交叠窗口排除。金手指存档修改需要回标题重读，现有备份为已写盘进度。独立QA NOT_RUN。 [2026-11-15 16:24补验更新：掌机备份/恢复及实际Load Game回到场景已完成实现者自测，旧NOT_RUN仅为历史快照；独立QA仍未执行。]
 
 具体恢复命令与未完成修改见 HANDOFF.md。

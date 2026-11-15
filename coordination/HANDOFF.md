@@ -4763,3 +4763,13 @@ CPU能力探针2秒775samples/lost0，只说明采集可用。外部files输出0
 ## 30预览GitHub已发布
 
 https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.30-preview ，APK及sha256已上传并远端下载核对89cbb81c/3703949B。tag/source030149e、108host与Android0、57源码匹配。金手指中文/菜单/折叠和34项保存结果已实机取证，备份恢复宿主文件系统往返与失败检查通过，最终掌机往返暂NOT_RUN。APK及两个前候选全保留。完整发布日志在.local/releases/1.0.30/publication/。主卡顿继续开放，不能把UI包称性能已修。设备仍31041、用户掌握输入，待用户协调选择后再做备份往返。
+
+## 补齐30掌机备份恢复
+
+用户补充让助手操作掌机，根已宣布接管本轮输入。当前RG PID31041、源cd710fe、发布30 APK89cbb81c。根领取BACKUP30-ROUNDTRIP，仅写本地原始证据和发布报告，先保全当前存档及现有快照，测试当次正常备份与同字节恢复，不恢复旧进度或撤销用户最新金手指修改。荣耀不测。
+
+30备份恢复实机：RG31041、save-001、8文件1800573B，与title-ready当前保存逐文件SHA相同，生成后live未变，未完成stage0。首次恢复点击缺实际执行日志不作恢复证据；重试16:22:17.098实际quick load8文件，恢复后9个live文件含原.orig逐字一致，持久恢复提示已截图。经真实Load Game选Auto Save并确认，wait-scene PTY53240，普通日志backup-roundtrip/wait-scene.log，待截图确认实际场景再收口。原始证据仅.local。
+
+## 30最终包备份恢复已补验
+
+同发布89cbb81c、同PID31041。真实菜单生成save-001备份8文件1800573B，每份与当前保存摘要一致；重试后16:22:17实际恢复8文件，恢复后全部9份live含.orig与恢复前逐字一致，未完成stage0。经真实Load Game自动存档确认，实际回到第1章土之神殿，截图和日志在.local/releases/1.0.30/backup-roundtrip/。旧NOT_RUN已被本轮实现者自测覆盖，独立QA仍NOT_RUN。测试结束，已向用户交还输入。当前不需装包或改游戏代码，待将报告与GitHub发布说明追加补验范围。主卡顿继续开放。

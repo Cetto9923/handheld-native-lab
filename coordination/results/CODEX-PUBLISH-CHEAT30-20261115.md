@@ -63,3 +63,15 @@ Release https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.30-pr
 tag指向精确构建源码030149eb587329e7a9baf4f804c3c3198d729015，当前开发分支acf189c已推送，main/master未作为推送目标。完整可恢复发布记录在.local/releases/1.0.30/publication/plan.json及publish.log，各步退出0。
 
 本次公开预览交付包含内置金手指、中文人名/标签、菜单独立、简化预设/自定义/结果说明、文件备份恢复流程。实际金手指入口、菜单、中文及用户保存结果已取证，备份恢复宿主文件往返和故障契约通过；最终包掌机备份恢复往返仍待完成，独立QA为NOT_RUN。发布不作为主战斗卡顿或跨设备稳定性通过结论。
+
+## 2026-11-15 最终包掌机备份恢复补验完成
+
+用户补充让助手操作掌机，root宣布接管本轮触控。同一已发布89cbb81c APK、同一PID31041，先保全当下完整存档，然后经游戏系统菜单正常返回标题。原本没有ffrs-quicksave目录。
+
+真实菜单“备份存档”产生save-001，logcat16:20:12.021记录8个文件、1,800,573字节。持久结果显示备份时间、最近存档写入时间和恢复入口。8份备份文件逐个SHA256与标题画面当下文件一致，备份本身未改变live文件，无.saving或.ffrs-copy残留。
+
+首次恢复点击没有对应执行日志，因此那次仅“文件未变”不作为恢复证据。重新打开卡片、点击“恢复最新备份”，16:22:17.098同PID明确记录quick load save-001 8 files，并实际显示“备份已恢复，请读档生效”及两步说明。恢复后完整live集合9份文件（含原GameSaveData0.orig）逐个SHA256与恢复前一致。
+
+随后经真实Load Game列表选择自动存档并确认，成功回到第1章土之神殿实际场景，PID仍为31041。截图world-check.png确认了场景。此前“最终包掌机备份/恢复往返NOT_RUN”现已由本轮实现者实机自测覆盖，独立QA仍为NOT_RUN。
+
+原始证据在.local/releases/1.0.30/backup-roundtrip/，包含plan.json、各阶段存档tar、backup-validation.json、restore-validation.json、ui-actions.json、logcat-after-restore.txt、备份/恢复提示、实际Load Game列表与回到场景截图。wait-scene PTY53240退出0，普通日志wait-scene.log。测试已结束并交还用户输入。未改动发布APK或游戏代码，本轮不新增性能通过结论。
