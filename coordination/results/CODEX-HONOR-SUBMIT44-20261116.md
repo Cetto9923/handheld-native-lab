@@ -106,3 +106,9 @@ B47-content-moving2开启缓存24853..24914/61间隔，实际轴2.565秒、呈�
 45 trace中RHI CPU分布为0/1/2约57ms、3核704ms、4核1403ms、5核1290ms、6核1749ms，7核0。47当前RHI18426允许0-6，主线程允许0-7，vip cpuset0-7。sysfs实际拓扑0-2最高2016000、3-6为2803200、7为3014400kHz。run-as查询其它线程taskset被SELinux权限拒绝，没有修改亲和性。不能据此将丢帧直接归因到核分配。
 
 设备API36，dumpsys performance_hint明确Hint Session Support true、preferred16666666ns。下一候选使用官方ADPF Performance Hint按真实渲染工作周期报告，保留系统调度和热管理，默认先关。参考https://source.android.com/docs/core/perf/performance-hint-api与https://developer.android.com/ndk/reference/group/a-performance-hint，2026-11-16实际获取，无第三方代码复制。旧NDK26.1的C接口为API33，因此动态解析并在不支持时回退。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。
+
+## 48官方工作时长提示候选
+
+新增默认关闭的既有live-set项adpf。Android侧动态解析4个API33 C接口，缺符号、服务或session拒绝时仅停用提示。首次提交开始同一帧工作计时，后续提交不重置，在呈现前、原帧率等待及cfg.present之前上报MONOTONIC实际间隔，目标33333333ns。渲染线程更换时释放旧session再建新session。上报失败关闭session且停用至显式关闭或重启，shutdown停完异步线程后先释放session，覆盖未初始化及设备错误返回。其它平台为空操作，30Hz目标候选仍需实机证实。
+
+组件生产提取涵盖默认关闭、非Android、库/符号缺失、manager/session拒绝、每帧多提交、呈现后idle排除、非正时钟、线程更换、上报失败、1000次启停/renderer重启与资源计数。8项组件通过。两次初始夹具编译分别因非Android分支未使用test和RTLD常量而Werror失败，均已修正，原始失败日志保留。完整宿主/Android及实机收益待测。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。

@@ -375,6 +375,8 @@ def main():
                                         'tests.device.test_arena_memory_policy'])
     run('render-policy-contract', [sys.executable, '-m', 'unittest',
                                   'tests.device.test_render_policy'])
+    run('performance-hint-contract', [sys.executable, '-m', 'unittest',
+                                     'tests.device.test_performance_hint'])
     run('probe-marker-poll-contract', [sys.executable, '-m', 'unittest',
                                        'tests.device.test_probe_marker_poll'])
     run('bridge-lookup-contract', [sys.executable, '-m', 'unittest',
