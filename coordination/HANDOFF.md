@@ -4745,3 +4745,9 @@ CPU能力探针2秒775samples/lost0，只说明采集可用。外部files输出0
 29主卡顿仍开放。实际同一战斗三技能成功至胜利，无退出，机械陆行鸟frame15024 GPU73.95ms且无shader/pipeline；火炎剑16475间隔626.5ms含2管线421.7ms。后续复用default29/before-vk-pipeline-list.bin新增真实recipe取union，再按现有GPASS入口定位重负荷draw，不能再次试4槽（16→4→16反向证明性能退化）。页映射实际单reservation多heap交错仍有全表扫描。不要用C29-repeat的混入步行窗口冒充同机位样本。
 
 继续前先核当前PID与root独占输入。设备日志已保全至各轮本地目录。原授权允许直接安装测试包，荣耀本轮仍暂缓，禁止操作它。
+
+## 发布30与菜单行为
+
+用户授权发布当前包且金手指内置，并要求菜单不联动展开虚拟按键。根领取PUBLISH-CHEAT30，源码a280860，复用本地既有资源及构建入口，不读取无关凭据、不获取新游戏密钥。原5份诊断WIP继续隔离。版本顺延30preview保障覆盖升级，菜单仅改变自身状态，PAD单独控制显示。root独占RG，荣耀不测。先宿主/真机回归，再推当前开发分支与30标签、GitHub Release，并回读校验附件。
+
+30构建PTY22457，普通日志.local/releases/1.0.30/build/run.log、完整命令及54份输入摘要在build/plan.json。生产菜单方法JVM回归与旧bug反证通过，独立onDraw菜单在按键隐藏时仍绘制。原29最小arena与所有显示修复保留。GitHub远端开发分支目前01e802448825bb134a9c8496cb1c2b31dd65ff7b，发布前核祖先和自有源码payload。

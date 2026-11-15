@@ -1,6 +1,6 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-15T14:39:39.309158+08:00
+状态事件时间：2026-11-15T15:14:04.301790+08:00
 阶段：继续定位战斗GPU主通道并审阅成熟开源跨设备兼容缺口
 总控：Codex /root 本轮接管
 更新方式：按事件更新，没有后台自动刷新。
@@ -232,6 +232,7 @@
 | CODEX-STATE-LOOKUP27-20261115 | PERFORMANCE_IMPLEMENTATION_AND_SELF_TEST | in_progress | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-PAGE-GAP28-20261115 | PERFORMANCE_IMPLEMENTATION_AND_SELF_TEST | in_progress | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-SAVE-MEMORY29-20261115 | BUG_FIX_AND_MEMORY_DIAGNOSIS | implemented_device_verified | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-PUBLISH-CHEAT30-20261115 | RELEASE_AND_ANDROID_UI | in_progress | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 
 ## 独占写入
 
@@ -425,7 +426,8 @@
 - {"task": "CODEX-PAGE-APPEND26-20261115", "owner": "root", "paths": [".local/codex-recovery-20261114/offline-page26-20261115", "coordination/results/CODEX-PAGE-APPEND26-20261115.md", ".local/codex-recovery-20261114/gpu-draw24/render-percent/E26-default/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T12:25:19.594913+08:00", "checkpoint": "cc1f797已提交。26包0a010363，PID8416读档成功，warm1326/failed0，retained累计1331/denied0/peak61602931。world02静止30秒29.9998FPS，仅基线。用户掌握输入并已录森林战斗，正取最新125448视频。simpleperf --app cpu-clock:u -f200 fp可用，tmp输出有效，60秒战斗采样session83970。", "write_state": "ACTIVE"}
 - {"task": "CODEX-STATE-LOOKUP27-20261115", "owner": "root", "paths": ["src/graphics/nvn_device/nvn_render_state.c", "tests/native/nvn_render_state_lookup_contract.c", "scripts/runtime/verify_render_state_lookup.sh", ".local/codex-recovery-20261114/state-lookup27-20261115/", "coordination/results/CODEX-STATE-LOOKUP27-20261115.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T13:01:08.147342+08:00", "checkpoint": "27包2f41c6da已安装并设备回读SHA一致，完整存档tar前后相同，PID29010。用户已明确授权未来测试包直接安装，不再逐包询问。root接管本次读档及技能测试，原26输入结束。", "write_state": "ACTIVE"}
 - {"task": "CODEX-PAGE-GAP28-20261115", "owner": "root", "paths": ["src/runtime/hle/guest_pages.c", "src/runtime/hle/address_region.c", "tests/native/guest_pages_contract.c", "tests/native/owned_pages_contract.c", ".local/codex-recovery-20261114/page-gap28-20261115/", "coordination/results/CODEX-PAGE-GAP28-20261115.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T13:29:13.445067+08:00", "checkpoint": "28已安装，源27e9df8、APK987ab1ee/3699783B，103host+Android0、50份输入一致，存档tar及APK设备字节复核通过。PID16067，GameMode由unsupported变standard、可用standard/custom，未切性能模式。实际Continue加载15秒200Hz CPU采样PTY22481进行中。", "write_state": "ACTIVE"}
-- {"task": "CODEX-SAVE-MEMORY29-20261115", "owner": "root", "paths": ["src/android/app/java/org/ffrs/diagnostic/GameActivity.java", "src/graphics/nvn_vulkan/engine/xbg_game.cpp", "src/android/app/gamewindow/AndroidManifest.xml", "scripts/verify_host.py", "tests/installer/test_save_export_lifecycle.py", ".local/codex-recovery-20261114/save-memory29-20261115/", "coordination/results/CODEX-SAVE-MEMORY29-20261115.md", "tests/device/test_arena_memory_policy.py"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T13:50:05.655776+08:00", "checkpoint": "7b5a8e4/29 ccb08cf9，105host和Android0，52输入一致，APK及保存字节核验。3次Home目录数27不变、手动导出5文件逐字相同。默认PID21740同world30秒29.99983FPS/P99 41.670ms，PSS4480964KiB较28降34.6%。memory/slot/no-warm标记恢复不存在。真实三技能至胜利存活，但GPU73.95ms、火炎剑626.5ms仍开放。其它设备与独立QA未执行。", "write_state": "CHECKPOINTED_SELF_TESTED_PARTIAL", "checkpoint_at": "2026-11-15T14:39:39.309158+08:00"}
+- {"task": "CODEX-SAVE-MEMORY29-20261115", "owner": "root", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", "tests/installer/test_save_export_lifecycle.py", ".local/codex-recovery-20261114/save-memory29-20261115/", "coordination/results/CODEX-SAVE-MEMORY29-20261115.md", "tests/device/test_arena_memory_policy.py"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T13:50:05.655776+08:00", "checkpoint": "7b5a8e4/29 ccb08cf9，105host和Android0，52输入一致，APK及保存字节核验。3次Home目录数27不变、手动导出5文件逐字相同。默认PID21740同world30秒29.99983FPS/P99 41.670ms，PSS4480964KiB较28降34.6%。memory/slot/no-warm标记恢复不存在。真实三技能至胜利存活，但GPU73.95ms、火炎剑626.5ms仍开放。其它设备与独立QA未执行。", "write_state": "CHECKPOINTED_SCOPE_TRANSFERRED", "checkpoint_at": "2026-11-15T14:39:39.309158+08:00"}
+- {"task": "CODEX-PUBLISH-CHEAT30-20261115", "owner": "root", "paths": ["src/android/app/java/org/ffrs/diagnostic/GameActivity.java", "src/android/app/gamewindow/AndroidManifest.xml", "tests/installer/test_touch_pad_menu.py", "scripts/verify_host.py", ".local/releases/1.0.30/", "coordination/results/CODEX-PUBLISH-CHEAT30-20261115.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T15:11:14.438940+08:00", "checkpoint": "a280860", "write_state": "ACTIVE"}
 
 ## 阻塞
 

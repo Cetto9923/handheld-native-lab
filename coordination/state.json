@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-15T14:39:39.309158+08:00",
+ "updated_at": "2026-11-15T15:14:04.301790+08:00",
  "phase": "继续定位战斗GPU主通道并审阅成熟开源跨设备兼容缺口",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3169,10 +3169,7 @@
    "task": "CODEX-SAVE-MEMORY29-20261115",
    "owner": "root",
    "paths": [
-    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
-    "src/android/app/gamewindow/AndroidManifest.xml",
-    "scripts/verify_host.py",
     "tests/installer/test_save_export_lifecycle.py",
     ".local/codex-recovery-20261114/save-memory29-20261115/",
     "coordination/results/CODEX-SAVE-MEMORY29-20261115.md",
@@ -3182,8 +3179,25 @@
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-15T13:50:05.655776+08:00",
    "checkpoint": "7b5a8e4/29 ccb08cf9，105host和Android0，52输入一致，APK及保存字节核验。3次Home目录数27不变、手动导出5文件逐字相同。默认PID21740同world30秒29.99983FPS/P99 41.670ms，PSS4480964KiB较28降34.6%。memory/slot/no-warm标记恢复不存在。真实三技能至胜利存活，但GPU73.95ms、火炎剑626.5ms仍开放。其它设备与独立QA未执行。",
-   "write_state": "CHECKPOINTED_SELF_TESTED_PARTIAL",
+   "write_state": "CHECKPOINTED_SCOPE_TRANSFERRED",
    "checkpoint_at": "2026-11-15T14:39:39.309158+08:00"
+  },
+  {
+   "task": "CODEX-PUBLISH-CHEAT30-20261115",
+   "owner": "root",
+   "paths": [
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/installer/test_touch_pad_menu.py",
+    "scripts/verify_host.py",
+    ".local/releases/1.0.30/",
+    "coordination/results/CODEX-PUBLISH-CHEAT30-20261115.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T15:11:14.438940+08:00",
+   "checkpoint": "a280860",
+   "write_state": "ACTIVE"
   }
  ],
  "tasks": [
@@ -9110,6 +9124,39 @@
    "checkpoint": "7b5a8e4/29 ccb08cf9，105host和Android0，52输入一致，APK及保存字节核验。3次Home目录数27不变、手动导出5文件逐字相同。默认PID21740同world30秒29.99983FPS/P99 41.670ms，PSS4480964KiB较28降34.6%。memory/slot/no-warm标记恢复不存在。真实三技能至胜利存活，但GPU73.95ms、火炎剑626.5ms仍开放。其它设备与独立QA未执行。",
    "evidence": "coordination/results/CODEX-SAVE-MEMORY29-20261115.md",
    "remaining": "长期内存增长、手机强退原始日志、其它设备及独立QA；主战斗长帧继续开放"
+  },
+  {
+   "id": "CODEX-PUBLISH-CHEAT30-20261115",
+   "owner": "root",
+   "role": "RELEASE_AND_ANDROID_UI",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "Publish current memory/save fix with built-in cheat resources and independently toggled virtual gamepad menu per user authorization.",
+   "inputs": [
+    "a280860/1.0.29 verified memory and save lifecycle",
+    "User authorizes Git release and built-in cheat feature, menu must not expand virtual controls"
+   ],
+   "outputs": [
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/installer/test_touch_pad_menu.py",
+    "scripts/verify_host.py",
+    ".local/releases/1.0.30/",
+    "coordination/results/CODEX-PUBLISH-CHEAT30-20261115.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/installer/test_touch_pad_menu.py",
+    "scripts/verify_host.py",
+    ".local/releases/1.0.30/",
+    "coordination/results/CODEX-PUBLISH-CHEAT30-20261115.md"
+   ],
+   "acceptance": "Host actual menu visibility regression; signed APK contains cheat resources; save inspect and temporary-copy roundtrip; RG actual menu with hidden/shown controls and cheat dialog; install save bytes retained; public release downloaded and hash verified. Main/master read-only, five WIP excluded.",
+   "checkpoint": "菜单openMenu不再改shown，onDraw分别绘制菜单与虚拟键。生产方法JVM回归及恢复旧强制显示反证通过。版本30preview构建PTY22457，普通日志.local/releases/1.0.30/build/run.log。使用既有本地资源通过原构建入口随APK内置金手指，源码不含资源字节。"
   }
  ],
  "blockers": [

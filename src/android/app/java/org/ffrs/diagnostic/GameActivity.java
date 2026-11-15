@@ -433,7 +433,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
         /** Opens the function menu from its own button. */
         private void openMenu() {
-            shown = true; clearInput();
+            clearInput();
             menuOpen = true;
             Log.i(TAG, "game_input touch_pad menu=on");
             invalidate();
@@ -640,10 +640,11 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             c.drawRoundRect(menuBtn, menuBtn.height() / 3f, menuBtn.height() / 3f, fill);
             c.drawRoundRect(menuBtn, menuBtn.height() / 3f, menuBtn.height() / 3f, line);
             c.drawText("≡", menuBtn.centerX(), menuBtn.centerY() + text.getTextSize() / 3f, text);
-            if (!shown) return;
-            text.setTextSize(0.65f * u);
-            for (int i = 0; i < ctls.length; i++) drawCtl(c, i);
-            if (editing) drawPanel(c);
+            if (shown) {
+                text.setTextSize(0.65f * u);
+                for (int i = 0; i < ctls.length; i++) drawCtl(c, i);
+                if (editing) drawPanel(c);
+            }
             if (menuOpen) drawMenu(c);
         }
 
@@ -694,7 +695,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                     "即时存档",        // quick save
                     "即时读档",        // quick load
                     "编辑按键布局",    // layout editor
-                    "隐藏手柄",        // hide the pad
+                    shown ? "隐藏手柄" : "显示手柄",
                     "扫描实时数据"     // guest memory scan
             };
             for (int i = 0; i < menuItems.length; i++) {
