@@ -49,3 +49,8 @@ fire-A1-global为旧memobuffer、shader_reuse0、无CPU/GPU探针及中途截图
 
 44c模式1 PID29319首次消失突袭命中5个compute模块，rewrite2.23/2.26/5.01/3.80/8.32ms，旧0模式约51..106ms；451次模式2比较全等。首次窗口2钢蝠14871..14999/129帧16.1533FPS/max173.37，仍有63超50/16超100，不能称稳定30，敌群数量不同不作整窗因果比较。现live-ab none新描述符路，准备暖技能60帧CPU诊断。45源码将已验证Adreno profile缺省复用1，保持显式marker/env优先、64MiB、exact-input验证及失败回退，7项组件通过，准备全量构建。
 同帧仍有shader77.4ms和shader0/CPU约100ms/GPU约66ms，复用只覆盖部分加载成本。普通技能fire-reuse1-first，后续诊断单列。设备本轮2个43 trace已逐一核对主机和设备SHA后清理设备副本，共10899586B，完整trace及符号继续保留主机。
+
+## 45构建安装与进一步负荷证据
+
+45源9c85fa0/APK70db6d98d51e7aa81a00ee8144f4e58e92883ff82ce8303f07ae97128ea15781/3720407B，113宿主及Android退出0，79输入一致，安装回读与9存档SHA及正式源metadata通过。归档原gfx-shader-reuse标记以验默认，启动日志明确默认reuse1、warm1935，PID5377复用461。紧随am start的pidof过早退出1，随后同次启动5377正常已记录。当前探索入口，准备进入神殿继续测。
+44c/29319新描述符路暖技能CPU诊断39152..39211共60帧/3.662714秒，67776draw/5369dispatch。CPU计时measured2.937488秒，descriptor exclusive1.103757秒、其中ImageLookup387.112ms，remaining491.449ms；snapshot262.592ms、draw390.359ms、fence316.918ms。部分范围含等待，不能全算CPU运行。DESC coverage OK，但诊断额外2881578次时钟读取，不能将该窗FPS作普通验收。此窗新shader1及pipeline miss1，pipeline最大217.876ms，保留新编译长帧，不能称完全暖缓存。B3-scoped-reuse1原始28.4402FPS/180间隔的后截图为遇敌黑场，排除纯探索移动验收。
