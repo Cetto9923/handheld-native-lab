@@ -38,3 +38,7 @@ guest_pages宿主正常及8类恢复检查通过，恢复553项、errors0，最�
 27实战后的有效学习表1462549字节，SHA256为6186c5f39f6cb5beffbefb4c7125b06b2edf73ce525cc38453da8ccab8f3bad4。原inspector核对1400条唯一recipe，1291 graphics、109 compute，1345个source shader key均存在于授权archive索引。28APK补充表使用这份实际学习结果，保留全部历史包及原学习数据。
 
 28已完成103项宿主检查及Android构建，退出0，50份输入摘要前后一致。APK为ffrs-1.0.28-preview-page-gap.apk、3699783字节，SHA256为987ab1eea7fad4a45735d83f7d16785dec4e68422f267532dbcd1e3fac56f2a1。首次明镜与火炎剑仍有未覆盖的编译停顿，机械陆行鸟已覆盖但效果窗口仍约23.48FPS，持续GPU和shader加载开销继续开放。用户已明确授权今后测试包直接安装，后续直接保全当次数据、覆盖安装及真机验证。
+
+## 28已安装
+
+源码27e9df8。用户已授权直接安装，root保全27 PID29010最终日志/帧CSV/学习表及完整存档后覆盖成功。设备APK回读SHA987ab1ee与候选一致，完整存档tar前后逐字相同，新PID16067。实际cmd game list-modes返回standard及可用standard/custom，完成从此前unsupported到系统识别为游戏的验证，未手动切换模式。正在采集Continue实际加载与场景回归。

@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-15T13:36:39.135613+08:00",
+ "updated_at": "2026-11-15T14:26:25.009748+08:00",
  "phase": "继续定位战斗GPU主通道并审阅成熟开源跨设备兼容缺口",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -2571,8 +2571,6 @@
    "task": "CODEX-POSITION-PRECISION-INTEGRATE-20261114",
    "owner": "root",
    "paths": [
-    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
-    "scripts/verify_host.py",
     ".local/codex-recovery-20261114/precision-build/"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
@@ -2700,8 +2698,6 @@
    "task": "CODEX-VERTEX-INTEGRATE-20261115",
    "owner": "root",
    "paths": [
-    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
-    "scripts/verify_host.py",
     ".local/codex-recovery-20261114/vertex-input-build/"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
@@ -2825,8 +2821,6 @@
    "task": "CODEX-WARM-SEED-INTEGRATE-20261115",
    "owner": "root",
    "paths": [
-    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
-    "scripts/verify_host.py",
     ".local/codex-recovery-20261114/stutter22-user-video/seed-build/"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
@@ -2989,7 +2983,6 @@
    "task": "CODEX-SCENE-LOG-FORMAT-20261115",
    "owner": "root",
    "paths": [
-    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
     ".local/codex-recovery-20261114/resume23-20261115/scene-log-contract/"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
@@ -3004,7 +2997,6 @@
    "owner": "root",
    "paths": [
     ".local/codex-recovery-20261114/gpu-draw24/",
-    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
     "coordination/results/CODEX-GPU-DRAW24-20261115.md"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
@@ -3074,7 +3066,6 @@
    "task": "CODEX-RENDER-PERCENT-20261115",
    "owner": "root",
    "paths": [
-    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
     ".local/codex-recovery-20261114/gpu-draw24/render-percent/",
     "tests/installer/test_apk_pipeline_warm_seed.py"
    ],
@@ -3115,7 +3106,6 @@
    "task": "CODEX-WARM-REWRITE-PACK25-20261115",
    "owner": "root",
    "paths": [
-    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
     "src/graphics/nvn_vulkan/engine/xbg_packed_shader_words.h",
     "src/android/native/CMakeLists.txt",
     "tests/device/test_packed_shader_words.cpp",
@@ -3149,7 +3139,6 @@
     "src/graphics/nvn_device/nvn_render_state.c",
     "tests/native/nvn_render_state_lookup_contract.c",
     "scripts/runtime/verify_render_state_lookup.sh",
-    "scripts/verify_host.py",
     ".local/codex-recovery-20261114/state-lookup27-20261115/",
     "coordination/results/CODEX-STATE-LOOKUP27-20261115.md"
    ],
@@ -3167,14 +3156,32 @@
     "src/runtime/hle/address_region.c",
     "tests/native/guest_pages_contract.c",
     "tests/native/owned_pages_contract.c",
-    "src/android/app/gamewindow/AndroidManifest.xml",
     ".local/codex-recovery-20261114/page-gap28-20261115/",
     "coordination/results/CODEX-PAGE-GAP28-20261115.md"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-15T13:29:13.445067+08:00",
-   "checkpoint": "28页空洞提示已实现。宿主正常/8类恢复和原始页正常/4类恢复ASan/UBSan通过，RG guest293检查0及8线程32轮/32释放竞态通过。真实高末页优先、6区域24576次填洞组件中位831.589至32.994ms，账本/回收均1，仅组件。28构建PTY12466，1400条实际recipe。补Android官方appCategory=game，27实际GameMode unsupported，收益待测。",
+   "checkpoint": "28已安装，源27e9df8、APK987ab1ee/3699783B，103host+Android0、50份输入一致，存档tar及APK设备字节复核通过。PID16067，GameMode由unsupported变standard、可用standard/custom，未切性能模式。实际Continue加载15秒200Hz CPU采样PTY22481进行中。",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "CODEX-SAVE-MEMORY29-20261115",
+   "owner": "root",
+   "paths": [
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "scripts/verify_host.py",
+    "tests/installer/test_save_export_lifecycle.py",
+    ".local/codex-recovery-20261114/save-memory29-20261115/",
+    "coordination/results/CODEX-SAVE-MEMORY29-20261115.md",
+    "tests/device/test_arena_memory_policy.py"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T13:50:05.655776+08:00",
+   "checkpoint": "29保存导出改菜单手动触发，实际onStop JVM回归及恢复旧调用反证通过。4槽内存降但FPS14.8055已撤回，28回默认16当前PID5528做反向对照。29保持16槽，Android最小arena块4MiB，trim按实际guard保护包含oversized源buffer，销毁buffer推进memo_epoch避免旧descriptor误复用。生产trim/destroy ASan/UBSan与平台分配常量测试通过，29全构建session7501进行中。",
    "write_state": "ACTIVE"
   }
  ],
@@ -9060,7 +9067,46 @@
     "coordination/results/CODEX-PAGE-GAP28-20261115.md"
    ],
    "acceptance": "Under existing owner locks keep only proven empty interval bounds and last published accessible cursor. Any free invalidates raw cursor. Do not bypass overlap, quarantine, VM, subpage protection, quota and failed rollback contracts. Test high-page-first then gap fill, out of order, free/split/reuse and failed map. Separate component timings from game FPS.",
-   "checkpoint": "28页空洞提示已实现。宿主正常/8类恢复和原始页正常/4类恢复ASan/UBSan通过，RG guest293检查0及8线程32轮/32释放竞态通过。真实高末页优先、6区域24576次填洞组件中位831.589至32.994ms，账本/回收均1，仅组件。28构建PTY12466，1400条实际recipe。补Android官方appCategory=game，27实际GameMode unsupported，收益待测。"
+   "checkpoint": "28已安装，源27e9df8、APK987ab1ee/3699783B，103host+Android0、50份输入一致，存档tar及APK设备字节复核通过。PID16067，GameMode由unsupported变standard、可用standard/custom，未切性能模式。实际Continue加载15秒200Hz CPU采样PTY22481进行中。"
+  },
+  {
+   "id": "CODEX-SAVE-MEMORY29-20261115",
+   "owner": "root",
+   "role": "BUG_FIX_AND_MEMORY_DIAGNOSIS",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "Fix public save-export folder creation on every onStop and diagnose/fix measured memory pressure without changing original saves or graphics precision.",
+   "inputs": [
+    "User screenshots show FFRS-save timestamps in Download and OEM forced closure due severe running-memory anomaly",
+    "Actual28 PID16067 world PSS7215350KB, Graphics4097095KB, PrivateOther2456736KB, Native616476KB",
+    "GameActivity.onStop always calls exportSaves which creates new timestamp directory",
+    "28 map CPU trace still spends many samples in full searches; actual one62GiB reservation interleaves multiple heaps, prior6region component is limited coverage"
+   ],
+   "outputs": [
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "scripts/verify_host.py",
+    "tests/installer/test_save_export_lifecycle.py",
+    ".local/codex-recovery-20261114/save-memory29-20261115/",
+    "coordination/results/CODEX-SAVE-MEMORY29-20261115.md",
+    "tests/device/test_arena_memory_policy.py"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "scripts/verify_host.py",
+    "tests/installer/test_save_export_lifecycle.py",
+    ".local/codex-recovery-20261114/save-memory29-20261115/",
+    "coordination/results/CODEX-SAVE-MEMORY29-20261115.md",
+    "tests/device/test_arena_memory_policy.py"
+   ],
+   "acceptance": "Actual lifecycle method regression and device repeated background/foreground folder-count check. Explicit menu export remains callable. Original save bytes and all existing user exports preserved. Memory snapshots same scene/PID/cache state, include Graphics and private RSS, distinguish allocations from reserved VA and storage. Reuse existing memory/warm markers, restore after A/B. No runtime graphics semantic changes.",
+   "checkpoint": "29安装APK及保存逐字核验成功，PID13758；首同world30秒30.00165FPS、P99 49.318ms、max61.36ms，GPU24.9ms。PSS4424654/Graphics1536911KiB，较28明显下降，帧尾继续复验。正在3次Home无目录增长验证，荣耀不测。"
   }
  ],
  "blockers": [

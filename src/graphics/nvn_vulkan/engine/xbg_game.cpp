@@ -516,8 +516,15 @@ const VkFormatProperties &format_properties(VkFormat f){
     VkFormatProperties p{};vkGetPhysicalDeviceFormatProperties(cfg.physical,f,&p);return format_property_cache.emplace(f,p).first->second;
 }
 struct ArenaChunk{VkBuffer buffer{};VkDeviceMemory memory{};uint8_t *mapped{};VkDeviceSize size=0,used=0,allocation_size=0;bool coherent=true;};
+extern std::atomic<uint64_t> memo_epoch;
 constexpr VkBufferUsageFlags arena_usage=VK_BUFFER_USAGE_TRANSFER_SRC_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT|VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT|VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT|VK_BUFFER_USAGE_STORAGE_BUFFER_BIT|VK_BUFFER_USAGE_INDEX_BUFFER_BIT|VK_BUFFER_USAGE_VERTEX_BUFFER_BIT|VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+#if defined(__ANDROID__)
+// Bound the minimum retained allocation across the independent slot arenas.
+// alloc() still grows each chunk to fit a larger individual request.
+constexpr VkDeviceSize arena_chunk_bytes=4ull*1024*1024;
+#else
 constexpr VkDeviceSize arena_chunk_bytes=32ull*1024*1024;
+#endif
 constexpr VkDeviceSize arena_flush_bytes=96ull*1024*1024;
 VkDeviceSize arena_alignment=256;
 struct Buffer {
@@ -570,12 +577,17 @@ struct Arena {
     // of it); trim() releases oversized/extra chunks before the next recording.
     size_t keep_chunks=3;
     void reset(){for(auto &c:chunks)c.used=0;current=0;used_total=0;}
-    void trim(){
+    template<class Protected> void trim(Protected protect){
         size_t kept=0;std::vector<ArenaChunk> keep;
-        for(auto &c:chunks){if(c.size==arena_chunk_bytes && kept<keep_chunks){keep.push_back(c);++kept;}else destroy(c);}
+        for(auto &c:chunks){
+            if(protect(c.buffer))keep.push_back(c);
+            else if(c.size==arena_chunk_bytes && kept<keep_chunks){keep.push_back(c);++kept;}
+            else destroy(c);
+        }
         chunks.swap(keep);current=0;
     }
-    static void destroy(ArenaChunk &c){if(c.mapped)vkUnmapMemory(cfg.device,c.memory);if(c.buffer)vkDestroyBuffer(cfg.device,c.buffer,nullptr);if(c.memory)vkFreeMemory(cfg.device,c.memory,nullptr);c=ArenaChunk{};}
+    void trim(){trim([](VkBuffer){return false;});}
+    static void destroy(ArenaChunk &c){if(c.buffer)++memo_epoch;if(c.mapped)vkUnmapMemory(cfg.device,c.memory);if(c.buffer)vkDestroyBuffer(cfg.device,c.buffer,nullptr);if(c.memory)vkFreeMemory(cfg.device,c.memory,nullptr);c=ArenaChunk{};}
     void release(){for(auto &c:chunks)destroy(c);chunks.clear();current=0;used_total=0;}
 };
 // Independent allocation: shared ownership can outlive the producer slot arena.
@@ -1295,7 +1307,13 @@ Slot &recording_slot(){
          s.guard.clear();if(o_pending && xview_guard && !ab_off("xguard"))s.guard.swap(s.viewed);s.viewed.clear();s.pro_ops.clear();s.pro_images.clear();}
         // Pending writebacks still read this slot's readback arena; finish them before trimming.
         for(auto &w:pending_writebacks)if(w.slot==&s){++perf.why_slot;resolve_pending();break;}
-        s.stream.trim();s.readback.keep_chunks=s.guard.empty()?1:s.readback.chunks.size();s.readback.trim();
+        s.stream.trim();s.readback.keep_chunks=1;
+        // Other pending submissions retain their exact source buffers,
+        // including oversized chunks. Idle readback chunks can be released.
+        s.readback.trim([&](VkBuffer buffer){
+            return std::any_of(s.guard.begin(),s.guard.end(),
+                               [&](const Slot::XRange &range){return range.buffer==buffer;});
+        });
         if(texel_memo_enabled && (slot_serial&15)<2)texel_evict(slot_index,false);   // this slot's copies: its previous submission retired
         if(!s.cmd){if(slot_pools_enabled){VkCommandPoolCreateInfo cp{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};cp.queueFamilyIndex=cfg.queue_family;VK(vkCreateCommandPool(cfg.device,&cp,nullptr,&s.pool));}
             VkCommandBufferAllocateInfo a{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};a.commandPool=s.pool?s.pool:command_pool;a.level=VK_COMMAND_BUFFER_LEVEL_PRIMARY;a.commandBufferCount=1;VK(vkAllocateCommandBuffers(cfg.device,&a,&s.cmd));}
@@ -6920,17 +6938,21 @@ void execute(const uint8_t *pc,unsigned depth,uint64_t &budget){
 PerfCounts perf_counts(){return {pipeline_objects.size(),layout_cache.size(),sampler_cache.size(),render_pass_cache.size(),images.size(),host_segments.size(),host_bytes};}
 void log_memory_profile_counts(){
     size_t pools=0,spare=0,used=0,pinned=0,memo_entries=0,arena_chunks=0;uint64_t arena_bytes=0;
+    uint64_t resident_texel_bytes=0;
     auto add_arena=[&](const Arena &a){arena_chunks+=a.chunks.size();for(const auto &chunk:a.chunks)arena_bytes+=chunk.allocation_size;};
     for(unsigned i=0;i<slot_count;i++){
         const Slot &s=slots[i];pools+=s.pools.size();
         for(const auto &entry:s.spare_sets)spare+=entry.second.size();
         for(const auto &entry:s.used_sets)used+=entry.second.size();
         pinned+=memo_pinned[i].size();memo_entries+=desc_memo_slot[i].size();add_arena(s.stream);add_arena(s.readback);
+        for(const auto &chunk:texel_arena[i].chunks)resident_texel_bytes+=chunk.allocation_size;
     }
     add_arena(static_arena);
     xbg_logf("NVN MEMORY_COUNTS pools=%zu spare_sets=%zu used_sets=%zu pinned_sets=%zu descriptor_records=%zu free_records=%zu arena_chunks=%zu arena_bytes=%llu image_bytes=%lld memo_entries=%zu",
              pools,spare,used,pinned,desc_all.size(),desc_free.size(),arena_chunks,
              (unsigned long long)arena_bytes,(long long)image_bytes_live,memo_entries);
+    xbg_logf("NVN MEMORY_RESIDENT slots=%u texel_bytes=%llu vertex_index_bytes=%llu",
+             slot_count,(unsigned long long)resident_texel_bytes,(unsigned long long)vcache::arena_bytes());
     // Read existing family counters only in the opt-in memory profile. These
     // distinguish guest generation churn from growth of live texture objects.
     if(nvn_texture_get_stats && nvn_bridge_get_stats){

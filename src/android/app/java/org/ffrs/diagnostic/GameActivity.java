@@ -2969,10 +2969,6 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
     @Override protected void onStop() {
         Log.i(TAG, "lifecycle onStop");
-        /* Leaving the app is the moment a player stops playing, so this is
-         * the moment the saves are worth handing over. The export runs on
-         * its own thread and never blocks the lifecycle. */
-        if (liveSaveRoot != null) exportSaves();
         super.onStop();
     }
 

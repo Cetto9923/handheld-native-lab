@@ -4709,3 +4709,25 @@ CPU能力探针2秒775samples/lost0，只说明采集可用。外部files输出0
 28页空洞提示及主机/RG组件已完成，28页空洞提示已实现。宿主正常/8类恢复和原始页正常/4类恢复ASan/UBSan通过，RG guest293检查0及8线程32轮/32释放竞态通过。真实高末页优先、6区域24576次填洞组件中位831.589至32.994ms，账本/回收均1，仅组件。28构建PTY12466，1400条实际recipe。补Android官方appCategory=game，27实际GameMode unsupported，收益待测。
 
 27已正常结束战斗并回世界地图，未发现本轮退出；持续GPU重负荷仍待优化。RG GameMode当前unsupported，28仅补官方game类别，未设置performance模式。注意不要将高位末页填洞组件的25倍收益写成游戏FPS改善。
+
+## 28已安装
+
+28已安装，源27e9df8、APK987ab1ee/3699783B，103host+Android0、50份输入一致，存档tar及APK设备字节复核通过。PID16067，GameMode由unsupported变standard、可用standard/custom，未切性能模式。实际Continue加载15秒200Hz CPU采样PTY22481进行中。
+
+安装脚本及普通日志在page-gap28-20261115/device28，安装PTY95080已退出0，root持有输入并已从标题按Continue，不要与用户/其它工具抢操作。设备1400条有效学习种子启动计数仍待日志核对。原5份报告WIP保留，源码未推送。
+
+## 用户追加存档目录与内存强退
+
+截图明确为Download/FFRS-save-时间戳目录及OEM严重运行内存异常后强制关闭。GameActivity.onStop每次调用exportSaves已定位对应自动导出，根领取SAVE-MEMORY29，将导出改为菜单手动触发，保全原存档与已有导出。28 PID16067在world PSS7215350KB，其中Graphics4097095KB、PrivateOther2456736KB、Native616476KB，原因待同场景A/B。复用gfx-memory-profile和gfx-no-warm，禁止新造同义诊断开关。
+
+28 Continue已加载正常world，1400预热失败0、改写缓存累计retained1394/denied0/peak64092157。首10个连续draw>200/300的呈现出现在Continue后38.519秒，27对应50.456秒，缓存/种子和采集条件不同，只是工作负载转换时间，不能宣称严格读档加速。28实测15秒CPU样本4063/lost0，映射函数仍有大量fallback循环样本，实际只有一个0xf80000000的VA保留区，游戏多heap流交错使单游标提示失效。先前6区域组件不覆盖此实际模式，CPU页主问题继续开放。
+
+内存对照发现16槽资源重复占用大。已有4槽marker实验在同world从30降14.8055FPS，PSS从6851356降4875739KB。该候选明确拒绝，源码已恢复16且未构建4槽APK，临时slot marker已归档，当前28重启回16。新候选保留16槽，缩小Android arena最小块，并按实际guard保留所有正在被其它GPU批次引用的chunk。不得把4槽节省直接写成可交付修复。
+
+29候选现只含手动导出、Android arena最小块4MiB及按guard精确保留读回源buffer，16并发槽完整保留。Arena destroy推进memo_epoch避免释放/数值handle重用后旧descriptor被命中。抽取生产trim/destroy的ASan/UBSan契约覆盖protected oversized保留、闲置释放、重复trim、epoch失效；JVM生命周期及旧bug反证通过。构建plan在save-memory29/build29，session7501。28当前5528回16做Areturn读档，memory-profile1仍生效，gfx-slot-count原始不存在已归档恢复，gfx-no-warm从未写入。
+
+## 29开始实际安装
+
+29为27e9df8+root自有dirty，105项host和Android构建0，52份输入逐字一致。APK ccb08cf9/3699783B。28的16槽反向对照PID5528、903intervals、30.000138FPS、GPU24.57ms，确认4槽14.8055FPS回退已撤回。29保持16槽、4MiB最小arena块、实际guard保护及销毁epoch。install PTY88855，普通日志save-memory29-20261115/device29/run.log，计划已落盘。先核存档tar、APK回读，再Continue，确认world实际出现后做30秒稳态及内存、3次后台无新目录。荣耀本轮不测。
+
+29 PID13758 Continue已读入相同world。首30秒903间隔30.00165FPS、P95 36.171/P99 49.318/最大61.360ms、9个>50ms，GPU24.9ms、CPU13.08ms。PSS4,424,654KiB、Graphics1,536,911KiB，相比28基线6,851,356/3,785,623显著下降，帧尾抖动需继续复验，不能仅凭均值30判稳帧完整通过。lifecycle29开始3次Home测试。
