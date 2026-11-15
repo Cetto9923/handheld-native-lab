@@ -21,3 +21,7 @@ Vulkan规定depthTestEnable为false时深度写入关闭。依据为本轮查阅
 ## 组件覆盖与未完成
 
 生产谓词和last_pass缓存资格表达式提取编译的ASan/UBSan覆盖测试状态切换、清除、单色/多色/深度单独、诊断、已有AB强制原路，以及同RT启用深度/模板/bounds必须miss缓存。源码位置核对extent先规划再省略及两个OpenPass入口的实际附件字段。该项不是完整Vulkan渲染或独立QA。宿主全集、Android、装包、GPU对照、移动和音频验收仍待执行，验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。
+
+## 构建后边界复查
+
+初次42源8e66fb5已通过114宿主及Android，APK b8298b9e，80输入一致。尚未安装。复查补充depth bias限制，偏置计算可能依赖深度格式，即使深度测试关闭，FragmentCoord深度也可能被shader读取，因此开启polygon offset时保留原深度附件。单项反例同步加入，再构建后安装。初次APK保留历史。

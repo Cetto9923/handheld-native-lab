@@ -23,6 +23,7 @@ struct {
     struct { int n=1; const void *color[8]={}; const void *depth=nullptr; } rt;
     struct { bool dt=false, st=false; } ds;
     struct { bool enable=false; } bounds;
+    struct { bool offset_en=false; } poly;
 } state;
 const void *provenance_file=nullptr;
 static bool force_old=false;
@@ -48,6 +49,7 @@ int main() {
     state.ds.dt=true; assert(!eligible()); state.ds.dt=false;
     state.ds.st=true; assert(!eligible()); state.ds.st=false;
     state.bounds.enable=true; assert(!eligible()); state.bounds.enable=false;
+    state.poly.offset_en=true; assert(!eligible()); state.poly.offset_en=false;
     state.rt.n=0; assert(!eligible());
     state.rt.n=2; assert(!eligible()); state.rt.n=1;
     state.rt.color[0]=nullptr; assert(!eligible()); state.rt.color[0]=&color;

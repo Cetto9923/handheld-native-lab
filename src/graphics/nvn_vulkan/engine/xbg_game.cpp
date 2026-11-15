@@ -4966,7 +4966,7 @@ bool create_pass(Pass &p,Commands &c,int clear_color=-1,bool clear_depth=false,b
     // can omit the unused attachment. Clears and depth-only draws retain it.
     const bool omit_depth=c.draw && clear_color<0 && !clear_depth && !soft && fold_clear_slot<0 &&
         state.rt.n==1 && state.rt.color[0] && state.rt.depth &&
-        !state.ds.dt && !state.ds.st && !state.bounds.enable &&
+        !state.ds.dt && !state.ds.st && !state.bounds.enable && !state.poly.offset_en &&
         !capture.active && !capture.probe && !provenance_file && !ab_off("depthomit");
     const bool plain_draw=c.draw && clear_color<0 && !clear_depth && !soft && !provenance_file && !capture.active && !ab_off("passfast");
     if(plain_draw && last_pass.valid && last_pass.pass.depth_omitted==omit_depth && open_pass.cmd==c.command && open_pass.pass==last_pass.pass.pass && open_pass.framebuffer==last_pass.pass.framebuffer && !memcmp(&state.rt,&last_pass.rt,sizeof state.rt)){
