@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-15T20:20:43.463892+08:00",
+ "updated_at": "2026-11-15T20:45:55.776823+08:00",
  "phase": "继续定位战斗GPU主通道并审阅成熟开源跨设备兼容缺口",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3309,6 +3309,40 @@
    "acquired_at": "2026-11-15T18:25:47.477419+08:00",
    "checkpoint": "7935067;用户授权推荐30FPS动态内部模式，先取土之神殿基线",
    "write_state": "ACTIVE"
+  },
+  {
+   "task": "CODEX-HONOR-CLEANUP-20261115",
+   "owner": "root",
+   "paths": [
+    ".local/honor-stable30-20261115/cleanup/",
+    "coordination/results/CODEX-HONOR-CLEANUP-20261115.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T20:36:05.054379+08:00",
+   "checkpoint": "三份已验证备份，保留一份测试存档，重启实际场景通过。",
+   "write_state": "COMPLETE_SCOPED",
+   "checkpoint_at": "2026-11-15T20:45:55.776823+08:00"
+  },
+  {
+   "task": "T-CHEAT-OPTIONS-20261115",
+   "owner": "chat-01a1df35-a1ce-7cb2-8e5c-3fa5e081dc66",
+   "paths": [
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "src/android/app/java/org/ffrs/diagnostic/SaveCheater.java",
+    "src/android/app/java/org/ffrs/diagnostic/GameWindowNative.java",
+    "src/android/native/guest_boot_jni.cpp",
+    "src/runtime/hle/nso_host.c",
+    "src/runtime/hle/nso_host.h",
+    "tests/",
+    "scripts/",
+    "coordination/results/T-CHEAT-OPTIONS-20261115.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/cheat-options-20261115",
+   "branch": "task/T-cheat-options-20261115",
+   "acquired_at": "2026-11-15T20:41:19.544419+08:00",
+   "checkpoint": "已核对独立worktree，原树源码冻结，禁止跨树暂存或集成。",
+   "write_state": "ACTIVE_ISOLATED_WORKTREE"
   }
  ],
  "tasks": [
@@ -9472,6 +9506,64 @@
    ],
    "acceptance": "同一冻结存档、同一场景配置，A-B-A，冷暖分开，正常帧长尾和显示/音频证据；失败恢复标记。",
    "checkpoint": "36 fe2caadc已安装荣耀PID14765，110host/Android通过，68源SHA一致。用户再次交还输入，受控入口840帧29.3607FPS/P9967.55ms；北移420帧29.5329FPS/P9958.60ms，少量长帧未达稳30。原子pass6帧9993..9998，主1384x780/输出1920x1080；35水晶台阶与入口位置不同。下一步深处长帧与诊断草稿集成，全部修改提交后仅当Main吸收才清理分支。"
+  },
+  {
+   "id": "CODEX-HONOR-CLEANUP-20261115",
+   "owner": "root",
+   "role": "DEVICE_TEST_DATA_CLEANUP",
+   "status": "passed",
+   "objective": "清理荣耀平板重复自动导出、过期对照存档和抓帧/采样数据，先完成电脑归档及逐文件校验，保留正式存档、手动备份、有效缓存和单一测试副本。",
+   "inputs": [
+    "Honor A42BBB5109000333",
+    "user explicit cleanup authorization",
+    "installed37 and original complete9-file backup"
+   ],
+   "outputs": [
+    ".local/honor-stable30-20261115/cleanup/",
+    "coordination/results/CODEX-HONOR-CLEANUP-20261115.md"
+   ],
+   "write_scope": [
+    ".local/honor-stable30-20261115/cleanup/",
+    "coordination/results/CODEX-HONOR-CLEANUP-20261115.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "acceptance": "Verified host archives and all member hashes, protected metadata and cache checks unchanged, duplicate test paths absent, one test save retained, restart and real scene verified",
+   "checkpoint": "508ec73+清理报告；三组8165文件备份校验、清理释放3.39GiB、9文件测试副本SHA及正式目录metadata和pipeline cache不变；37 PID21784实际Continue土之神殿，Home恢复目录0/1未增长。独立QA NOT_RUN。",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro"
+  },
+  {
+   "id": "T-CHEAT-OPTIONS-20261115",
+   "owner": "chat-01a1df35-a1ce-7cb2-8e5c-3fa5e081dc66",
+   "role": "ANDROID_CHEAT_IMPLEMENTATION",
+   "status": "in_progress",
+   "objective": "按独立会话用户授权完善金手指勾选及返回标题后的继续游戏衔接。",
+   "inputs": [
+    "508ec739",
+    "独立会话协调消息"
+   ],
+   "outputs": [
+    "task/T-cheat-options-20261115",
+    "coordination/results/T-CHEAT-OPTIONS-20261115.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "src/android/app/java/org/ffrs/diagnostic/SaveCheater.java",
+    "src/android/app/java/org/ffrs/diagnostic/GameWindowNative.java",
+    "src/android/native/guest_boot_jni.cpp",
+    "src/runtime/hle/nso_host.c",
+    "src/runtime/hle/nso_host.h",
+    "tests/",
+    "scripts/",
+    "coordination/results/T-CHEAT-OPTIONS-20261115.md"
+   ],
+   "acceptance": "实现者提交并提供宿主验证，主会话串行审查后集成，当前无设备操作或发布授权。",
+   "checkpoint": "独立worktree写入，主树相同源码保持508ec73冻结，state/HANDOFF仍由root维护。",
+   "branch": "task/T-cheat-options-20261115",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/cheat-options-20261115"
   }
  ],
  "blockers": [
@@ -9753,20 +9845,7 @@
   "display_mode_observed": "Android display0 mode2=120.00001Hz; supported60/90/120; no appframeoverride and gamemodeunsupported. Game30cap distinct from panel."
  },
  "parallelism_note": "No active Codex workers. runtime/vulkan two newly dispatched tasks stopped at readonly NOT_STARTED safe point; independent515 task never dispatched. All older authors/reviewers already handed back; QA remains errored, no retry.",
- "handoff_checkpoint": {
-  "observed_at_utc": "2026-10-24T17:37:51.527927+00:00",
-  "integration_HEAD": "064634f",
-  "original_delivery_HEAD": "a27742c2abf52421a900aaea93567c7b5427ac99",
-  "integration_state": "dirty: the command buffer family is integrated and green on the host but not committed; the shader identity tooling is uncommitted",
-  "original_delivery_state": "SAFE_FF_A277_COMPLETED_CLEAN_NO_PUSH",
-  "single_entry": "The guest runs in the app process on the RG477M through the device, queue, memory pool, sampler pool, texture pool, render state, blend state, program and command buffer families, and now stops by name at nvnSamplerBuilderSetDefaults. The frame count is zero: no guest pixel has reached the screen, no title screen, no playable scene.",
-  "latest_device_event": "APK sha256 226e42dafd61988e82650c3d63b83085ee8576ca6e314124d488c62e73a5de7e, built from a dirty tree on top of 064634f, run with a 300 second window into .local/logs/p-mm-22-guest-transcript.log (57023 lines). The device lock was taken before the run and released after it.",
-  "active_work": "P-MM-21 sampler and texture builder families (worker), P-MM-22 the real command stream (worker). The coordinator owns the dispatch, the CMake, the contract, the device run and the coordination files.",
-  "note": "Previous checkpoint fields mixed historical facts and are superseded by this current snapshot; exact containing-commit SHA always read Git.",
-  "process_check": ".local/handoff-final/process-check.json",
-  "new_development": "NOT_STARTED_DSO_AND_TP_READ_CLEAN",
-  "entry_copy_in_delivery": "a277 already delivered; final doc-only commit/ff outcome must be read Git and final receipt"
- },
+ "handoff_checkpoint": "37 PID21784清理后复用461存档真实Continue土之神殿。清理完成，稳定30目标继续active。独立金手指worktree登记，root本树对应源码冻结。",
  "runtime_risks": [
   {
    "id": "HOST_GUEST_X18_GATEWAY",

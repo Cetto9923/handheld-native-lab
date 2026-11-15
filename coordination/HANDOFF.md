@@ -1,3 +1,11 @@
+# 2026-11-15 平板测试数据清理完成，持续稳30目标已登记
+
+37 PID21784复用files/shield-regression-202611153461，真实Continue回到土之神殿入口。电脑已归档3组8165文件，压缩1.25GiB，逐成员大小/哈希及稳定源metadata核验，清理释放3.39GiB。47个Download旧自动导出目录和8个私有旧回归副本已移除，保留1个完整9文件测试目录，Home恢复后0/1目录数未增长。正式存档/手动备份/有效shader目录metadata及57MB pipeline cache SHA相同。备份.local/honor-stable30-20261115/cleanup/，报告CODEX-HONOR-CLEANUP-20261115.md。APK历史保留。
+
+用户问52FPS方法，已重新浏览固定同款DroidPlay报告并核对本地源码。Odin2 1.0.1 chain6中位52.1/最低窗口43.1，有限前期场景且存在画面/音频缺口。核心按范围同步、GPU结果转发、同次alias共享，明确开场15.9→40.6。当前已有pending_view，但uniform texel仍有不可变复制，36约1.2MiB及2.2个pass结束/帧，先查内容版本/资源寿命允许的转发差异，禁止盲删复制。目标已通过create_goal登记active，继续1080P输出/有界动态内部尺寸/原速真实稳30，现有29.36入口样本不能覆盖全场景。
+
+独立会话01a1df35-a1ce-7cb2-8e5c-3fa5e081dc66在.worktrees/cheat-options-20261115分支task/T-cheat-options-20261115从508ec73改金手指与标题Continue，state已登记T-CHEAT-OPTIONS-20261115。无设备操作/集成/push。root本树GameActivity、SaveCheater、GameWindowNative、guest_boot_jni、nso_host保持冻结以便串行集成，性能后续优先图形或独立平台文件。Main尚未吸收，条件删除未执行。
+
 # 2026-11-15 37诊断入口已接通，36目标模式继续定位长帧
 
 37 APK5966ae67921a30306f08849d4b395e034c6f3cdb5aaa1c9d953ae439c0ec5978/3720407B，111宿主/Android0，75输入SHA一致。native与36逐字相同f7257989。安装完整9文件SHA及回读APK通过。独立诊断进程17839未加载libffrs_game_window，真实SAF导出7项372932B ZIP，SHA4a46d770eb15040a89012fa5169cbb2bb34c4ff64f8e339991248b71b7309098，包含engine.log.1，ZIP完整且无存档/keys成员。5份旧草稿已接菜单、Manifest、launcher、build与门禁，原作者改动保留。独立QA仍NOT_RUN。
