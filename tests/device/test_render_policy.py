@@ -8,6 +8,64 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class RenderPolicy(unittest.TestCase):
+    def test_shader_reuse_profile_default_and_explicit_overrides(self):
+        source = (ROOT / 'src/graphics/nvn_vulkan/engine/xbg_game.cpp').read_text()
+        start = source.index('     {shader_reuse=0;')
+        configure = source[start:source.index('\n     scene::init(base);', start)]
+        fixture = r'''
+#include <cassert>
+#include <cstdio>
+#include <cstdlib>
+#include <string>
+int shader_reuse = -1;
+bool honor_inline_enabled = false;
+namespace warm { bool keep_rewritten = false; }
+void xbg_logf(const char *, ...) {}
+void configure(const std::string &base) {
+''' + configure + r'''
+}
+int main(int argc, char **argv) {
+    assert(argc == 2);
+    const std::string base = argv[1];
+    const std::string marker = base + "/gfx-shader-reuse";
+    assert(unsetenv("DM_GFX_SHADER_REUSE") == 0);
+    for (bool profile : {false, true}) {
+        honor_inline_enabled = profile;
+        configure(base);
+#ifdef XBG_HAVE_SPIRV_OPT
+        assert(shader_reuse == int(profile));
+#else
+        assert(shader_reuse == 0);
+#endif
+        assert(warm::keep_rewritten == (shader_reuse != 0));
+        for (int mode : {0, 1, 2}) {
+            assert(setenv("DM_GFX_SHADER_REUSE", std::to_string(mode).c_str(), 1) == 0);
+            configure(base);
+            assert(shader_reuse == mode && warm::keep_rewritten == (mode != 0));
+            for (int explicit_mode : {0, 1, 2}) {
+                FILE *file = fopen(marker.c_str(), "wb");
+                assert(file);
+                assert(fputc('0' + explicit_mode, file) != EOF);
+                assert(fclose(file) == 0);
+                configure(base);
+                assert(shader_reuse == explicit_mode);
+                assert(warm::keep_rewritten == (explicit_mode != 0));
+                assert(remove(marker.c_str()) == 0);
+            }
+        }
+        assert(unsetenv("DM_GFX_SHADER_REUSE") == 0);
+    }
+}
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            (path / 'test.cpp').write_text(fixture)
+            for defines in ([], ['-DXBG_HAVE_SPIRV_OPT']):
+                subprocess.run(['clang++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                                '-fsanitize=address,undefined', *defines,
+                                str(path / 'test.cpp'), '-o', str(path / 'test')], check=True)
+                subprocess.run([str(path / 'test'), str(path)], check=True)
+
     def test_descriptor_buffer_retirement_invalidates_referencing_slots(self):
         source = (ROOT / 'src/graphics/nvn_vulkan/engine/xbg_game.cpp').read_text()
         start = source.index('std::unordered_map<VkBuffer,uint32_t> memo_buffer_slots;')
