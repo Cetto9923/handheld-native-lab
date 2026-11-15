@@ -150,3 +150,5 @@ PID27718同一内部桥面，全部moving-clock真实非零轴、前后探索。
 复用gfx-partial-overlay-check，同一0..5解析器供启动和既有每30次呈现轮询使用，延续已验证Honor735范围。缺失、EOF及无效值返回0。可在技能确认前设5，结束后设0，既有每输入8次上限与原CPU同步路径继续用于诊断。此改动用于选择采样阶段，未实现异步GPU输入消费优化。
 
 生产提取读文件、关闭与状态切换代码，覆盖其它设备不轮询、0..5、重复请求、缺失、EOF及非法值，连同已有组件12项ASan/UBSan/真实NDK检查通过。完整构建、目标技能双输入比较待执行。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。
+
+50源7a6607c clean，114宿主/Android0，80项输入SHA一致。APK1805321eca4426d33cf86b29621954f1cb079e0a238fad0c977ab27cbaa85915，3724503B。install50回读APK、私有461九文件SHA及正式源metadata通过。launch50复用461，none新driver、adpf0/vcache0/texrecord1、overlay0，接下来到技能确认时切5。49与此前全部APK及符号保留。

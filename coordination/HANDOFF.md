@@ -1,3 +1,8 @@
+# 2026-11-16T05:43:54.543849+08:00 50
+
+50源7a6607c clean，114宿主/Android0，80项输入SHA一致。APK1805321eca4426d33cf86b29621954f1cb079e0a238fad0c977ab27cbaa85915，3724503B。install50回读APK、私有461九文件SHA及正式源metadata通过。launch50复用461，none新driver、adpf0/vcache0/texrecord1、overlay0，接下来到技能确认时切5。49与此前全部APK及符号保留。
+PID=2107
+
 # 2026-11-16T05:28:46.318608+08:00 50
 
 复用gfx-partial-overlay-check，同一0..5解析器供启动和既有每30次呈现轮询使用，延续已验证Honor735范围。缺失、EOF及无效值返回0。可在技能确认前设5，结束后设0，既有每输入8次上限与原CPU同步路径继续用于诊断。此改动用于选择采样阶段，未实现异步GPU输入消费优化。
