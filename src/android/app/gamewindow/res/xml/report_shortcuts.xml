@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="diagnostic_report"
+        android:enabled="true"
+        android:shortcutShortLabel="@string/report_shortcut_label">
+        <intent android:action="android.intent.action.VIEW"
+            android:targetPackage="org.ffrs.gamewindow"
+            android:targetClass="org.ffrs.diagnostic.ReportActivity" />
+    </shortcut>
+</shortcuts>

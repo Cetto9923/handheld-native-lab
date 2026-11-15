@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-15T20:02:42.878269+08:00",
+ "updated_at": "2026-11-15T20:20:43.463892+08:00",
  "phase": "继续定位战斗GPU主通道并审阅成熟开源跨设备兼容缺口",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -2058,9 +2058,9 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-14T13:45:21.243811+08:00",
-   "checkpoint": "root takes over released five-file draft after full read; user requested all changes committed",
+   "checkpoint": "37 source and actual SAF export selftest complete",
    "objective": "给无电脑测试玩家提供自有应用日志/设备信息诊断ZIP导出，独立Java入口不启动游戏，保存到用户选择位置。",
-   "write_state": "ACTIVE"
+   "write_state": "RELEASED"
   },
   {
    "task": "CODEX-CRASH-20261114",
@@ -7067,7 +7067,8 @@
     "scripts/verify_host.py"
    ],
    "acceptance": "不加载JNI/不启动游戏，白名单自有日志，不含存档/游戏/资源/密钥文件，报告有上限和截断说明；SAF输出失败有状态反馈；旧API保持可用。",
-   "checkpoint": "root integration: menu, manifest, build and launcher shortcut; existing .1 log rotation coverage"
+   "checkpoint": "37 APK5966ae67已安装荣耀，111host/Android和75源SHA通过，native与36逐字相同f7257989。独立诊断进程17839未加载游戏native库，实际SAF导出7项372932B ZIP/SHA4a46d770，包含engine.log.1，完整性检查通过。全部诊断草稿已接菜单/Manifest/launcher/build待串行提交；Main实时查询ecb9b57未吸收，分支删除条件未满足。",
+   "independent_qa": "NOT_RUN"
   },
   {
    "id": "CODEX-CRASH-20261114",

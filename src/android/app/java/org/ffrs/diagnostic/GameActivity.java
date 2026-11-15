@@ -374,7 +374,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         private final RectF menuBtn = new RectF();
         private final RectF btnReset = new RectF(), btnDone = new RectF();
         private final RectF menuPanel = new RectF();
-        private final RectF[] menuItems = new RectF[8];
+        private final RectF[] menuItems = new RectF[9];
         private int handleId = -1, lsId = -1, rsId = -1, menuId = -1;
         private float u, vw, vh, lsKx, lsKy, rsKx, rsKy;
         private final Ctl[] ctls = new Ctl[13];
@@ -579,7 +579,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 else if (i == 4) owner.quickLoad();
                 else if (i == 5) enterEdit();
                 else if (i == 6) owner.userToggleTouchPad();
-                else owner.startGuestScan();
+                else if (i == 7) owner.startGuestScan();
+                else owner.startActivity(new Intent(owner, ReportActivity.class));
                 return true;
             }
             return true;
@@ -783,7 +784,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                     "恢复备份",        // quick load
                     "编辑按键布局",    // layout editor
                     shown ? "隐藏手柄" : "显示手柄",
-                    "扫描实时数据"     // guest memory scan
+                    "扫描实时数据",    // guest memory scan
+                    "导出诊断报告"
             };
             for (int i = 0; i < menuItems.length; i++) {
                 RectF r = menuItems[i];
