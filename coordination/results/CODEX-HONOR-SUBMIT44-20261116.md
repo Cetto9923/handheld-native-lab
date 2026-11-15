@@ -94,3 +94,15 @@ A46-control-moving1为神殿内部桥面真实移动，前后探索，4560..4800
 46关闭缓存后的首次消失突袭为2敌Lv1钢蝠及妖藤，12862..13014/153帧、7.96527秒，19.0828FPS/P99151.50/max207.34ms，57超50、9超100，无present错误。此为首次技能及可能胜利转场8秒窗口，未做纯效果FPS结论。
 
 47源f9ead5d clean，114宿主/Android退出0，80项源码SHA一致。APK faa7b9003bd7c150256127488decf3b1d0fcaea54d744e46aa0ef5ce162fe484，3720407B，安装回读及私有461全部9文件SHA、正式源metadata通过。launch47 PID18107，默认vcache0，准备内部移动同进程对照。
+
+## 47缓存负收益与撤回
+
+47的A47-control-moving1为内部探索6480..6540/60间隔23.9400FPS/max57.95。B47-content-moving1结束已遇敌黑场，7320..7380原始19.7285排除探索对比。首次消失突袭同2敌Lv1钢蝠及妖藤，11782..11914/133帧7.951秒，16.6017FPS/P99188.79/max197.20，64超50、14超100。它与46的19.0828跨进程首次窗口不能单独定因，但没有改善证据。
+
+进一步使用moving-clock.py，日志改为monotonic，真实非零轴开始至UP归零作为边界，等待CSV缓冲尾覆盖完整窗口，再计算其中全部连续呈现间隔。没有删减区间内长帧。两段前后均为同一内部断桥探索，角色移动可见。
+
+B47-content-moving2开启缓存24853..24914/61间隔，实际轴2.565秒、呈现2.5258秒，24.1508FPS/max58.82/7超50。A47-control-moving2关闭26504..26570/66间隔，轴2.583秒、呈现2.5498秒，25.8844FPS/max50.69/1超50。限定短窗口，未稳30，候选无收益。已live关闭，源码撤回46/47的全内容比较缓存及专属测试，全部实验APK与补丁提交保留备查。
+
+45 trace中RHI CPU分布为0/1/2约57ms、3核704ms、4核1403ms、5核1290ms、6核1749ms，7核0。47当前RHI18426允许0-6，主线程允许0-7，vip cpuset0-7。sysfs实际拓扑0-2最高2016000、3-6为2803200、7为3014400kHz。run-as查询其它线程taskset被SELinux权限拒绝，没有修改亲和性。不能据此将丢帧直接归因到核分配。
+
+设备API36，dumpsys performance_hint明确Hint Session Support true、preferred16666666ns。下一候选使用官方ADPF Performance Hint按真实渲染工作周期报告，保留系统调度和热管理，默认先关。参考https://source.android.com/docs/core/perf/performance-hint-api与https://developer.android.com/ndk/reference/group/a-performance-hint，2026-11-16实际获取，无第三方代码复制。旧NDK26.1的C接口为API33，因此动态解析并在不支持时回退。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。

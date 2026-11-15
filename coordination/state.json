@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-16T03:56:39.083979+08:00",
+ "updated_at": "2026-11-16T04:20:24.667551+08:00",
  "phase": "荣耀神殿内部持续移动长帧优化，1080P输出及有界内部尺寸目标30继续推进",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3468,13 +3468,14 @@
     "tests/device/test_render_policy.py",
     "scripts/verify_host.py",
     "tests/device/test_arena_memory_policy.py",
-    "tests/device/test_vertex_cache.py"
+    "tests/device/test_vertex_cache.py",
+    "tests/device/test_performance_hint.py"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-16T00:37:43.134192+08:00",
-   "checkpoint": "47源f9ead5d clean，114宿主/Android退出0，80项源码SHA一致。APK faa7b9003bd7c150256127488decf3b1d0fcaea54d744e46aa0ef5ce162fe484，3720407B，安装回读及私有461全部9文件SHA、正式源metadata通过。launch47 PID18107，默认vcache0，准备内部移动同进程对照。",
-   "checkpoint_at": "2026-11-16T03:56:39.083979+08:00"
+   "checkpoint": "B47-content-moving2开启缓存24853..24914/61间隔，实际轴2.565秒、呈现2.5258秒，24.1508FPS/max58.82/7超50。A47-control-moving2关闭26504..26570/66间隔，轴2.583秒、呈现2.5498秒，25.8844FPS/max50.69/1超50。限定短窗口，未稳30，候选无收益。已live关闭，源码撤回46/47的全内容比较缓存及专属测试，全部实验APK与补丁提交保留备查。\n\n45 trace中RHI CPU分布为0/1/2约57ms、3核704ms、4核1403ms、5核1290ms、6核1749ms，7核0。47当前RHI18426允许0-6，主线程允许0-7，vip cpuset0-7。sysfs实际拓扑0-2最高2016000、3-6为2803200、7为3014400kHz。run-as查询其它线程taskset被SELinux权限拒绝，没有修改亲和性。不能据此将丢帧直接归因到核分配。\n\n设备API36，dumpsys performance_hint明确Hint Session Support true、preferred16666666ns。下一候选使用官方ADPF Performance Hint按真实渲染工作周期报告，保留系统调度和热管理，默认先关。参考https://source.android.com/docs/core/perf/performance-hint-api与https://developer.android.com/ndk/reference/group/a-performance-hint，2026-11-16实际获取，无第三方代码复制。旧NDK26.1的C接口为API33，因此动态解析并在不支持时回退。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。",
+   "checkpoint_at": "2026-11-16T04:20:45.301968+08:00"
   }
  ],
  "tasks": [
@@ -9935,7 +9936,8 @@
     "tests/device/test_render_policy.py",
     "scripts/verify_host.py",
     "tests/device/test_arena_memory_policy.py",
-    "tests/device/test_vertex_cache.py"
+    "tests/device/test_vertex_cache.py",
+    "tests/device/test_performance_hint.py"
    ],
    "write_scope": [
     ".local/honor-submit44-20261116/",
@@ -9945,13 +9947,14 @@
     "tests/device/test_render_policy.py",
     "scripts/verify_host.py",
     "tests/device/test_arena_memory_policy.py",
-    "tests/device/test_vertex_cache.py"
+    "tests/device/test_vertex_cache.py",
+    "tests/device/test_performance_hint.py"
    ],
    "dependencies": [],
    "pass_gates": [],
    "acceptance": "原始PID/帧/场景/符号核对，真实持续移动普通FPS与诊断分窗，CPU/GPU及数据生命周期事实支持归因，显示及原速/声音保持；验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。",
-   "checkpoint": "47源f9ead5d clean，114宿主/Android退出0，80项源码SHA一致。APK faa7b9003bd7c150256127488decf3b1d0fcaea54d744e46aa0ef5ce162fe484，3720407B，安装回读及私有461全部9文件SHA、正式源metadata通过。launch47 PID18107，默认vcache0，准备内部移动同进程对照。",
-   "updated_at": "2026-11-16T03:56:39.083979+08:00"
+   "checkpoint": "B47-content-moving2开启缓存24853..24914/61间隔，实际轴2.565秒、呈现2.5258秒，24.1508FPS/max58.82/7超50。A47-control-moving2关闭26504..26570/66间隔，轴2.583秒、呈现2.5498秒，25.8844FPS/max50.69/1超50。限定短窗口，未稳30，候选无收益。已live关闭，源码撤回46/47的全内容比较缓存及专属测试，全部实验APK与补丁提交保留备查。\n\n45 trace中RHI CPU分布为0/1/2约57ms、3核704ms、4核1403ms、5核1290ms、6核1749ms，7核0。47当前RHI18426允许0-6，主线程允许0-7，vip cpuset0-7。sysfs实际拓扑0-2最高2016000、3-6为2803200、7为3014400kHz。run-as查询其它线程taskset被SELinux权限拒绝，没有修改亲和性。不能据此将丢帧直接归因到核分配。\n\n设备API36，dumpsys performance_hint明确Hint Session Support true、preferred16666666ns。下一候选使用官方ADPF Performance Hint按真实渲染工作周期报告，保留系统调度和热管理，默认先关。参考https://source.android.com/docs/core/perf/performance-hint-api与https://developer.android.com/ndk/reference/group/a-performance-hint，2026-11-16实际获取，无第三方代码复制。旧NDK26.1的C接口为API33，因此动态解析并在不支持时回退。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。",
+   "updated_at": "2026-11-16T04:20:45.301968+08:00"
   }
  ],
  "blockers": [

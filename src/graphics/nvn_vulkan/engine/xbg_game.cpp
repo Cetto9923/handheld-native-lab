@@ -950,7 +950,7 @@ bool slot_pools_enabled=true,readback_cached=false;
 // samples_report_seen: the game has recorded a samples-passed report (D2R never does: its ~8 pending reports a frame are
 // all timestamps).
 bool heavy_timestamps=false;extern uint64_t pass_fast_hits;   // gfx-heavy-timestamps = '1': timestamp reports end the pass with full barriers, as before
-bool no_occlusion_queries=false,occlusion_force_visible=false,samples_report_seen=false;uint64_t samples_reports=0,samples_reported=0,counter_ops[3]={};extern uint64_t pipeline_fast_hits;extern bool pipe_memo;extern uint64_t pipe_memo_hits,pipe_memo_misses;extern uint64_t snap_front_hits,snap_map_hits,snap_invalidations,snap_invalidated;extern std::atomic<uint64_t> quad_rewrites,warp_rewrites,ldc_folds,temps_forwarded,nan_minmax_swaps;namespace vcache{extern bool enabled;extern uint64_t hits,hit_bytes,fills,fill_bytes,refills,volatiles,untracked,flushes,comparisons,compared_bytes,mirror_bytes;size_t live();VkDeviceSize arena_bytes();}   // counter_ops: resets, timestamp reports, samples reports recorded
+bool no_occlusion_queries=false,occlusion_force_visible=false,samples_report_seen=false;uint64_t samples_reports=0,samples_reported=0,counter_ops[3]={};extern uint64_t pipeline_fast_hits;extern bool pipe_memo;extern uint64_t pipe_memo_hits,pipe_memo_misses;extern uint64_t snap_front_hits,snap_map_hits,snap_invalidations,snap_invalidated;extern std::atomic<uint64_t> quad_rewrites,warp_rewrites,ldc_folds,temps_forwarded,nan_minmax_swaps;namespace vcache{extern bool enabled;extern uint64_t hits,hit_bytes,fills,fill_bytes,refills,volatiles,untracked,flushes;size_t live();VkDeviceSize arena_bytes();}   // counter_ops: resets, timestamp reports, samples reports recorded
 // Resident uniform texel copies (texel_acquire, before descriptors()).
 struct TexelKey{uint64_t base,bytes;uint32_t format;bool operator==(const TexelKey &o)const{return base==o.base&&bytes==o.bytes&&format==o.format;}};
 struct TexelKeyHash{size_t operator()(const TexelKey &k)const{uint64_t x=k.base*0x9E3779B97F4A7C15ull^k.bytes*0xC2B2AE3D27D4EB4Full^k.format;x^=x>>29;return size_t(x*0xBF58476D1CE4E5B9ull);}};
@@ -1530,7 +1530,7 @@ void perf_frame(){
     xbg_logf("NVN PERF snapfront front_hits=%.1f map_hits=%.1f invalidations=%.1f erased=%.1f",snap_front_hits/f,snap_map_hits/f,snap_invalidations/f,snap_invalidated/f);xbg_logf("NVN PERF textures bc_native=%llu bc_decoded=%llu live_images=%.1fMB bc_images=%.1fMB bc_payload=%.1fMB",(unsigned long long)native_bc_images,(unsigned long long)decoded_bc_images,image_bytes_live/1048576.0,bc_image_bytes_live/1048576.0,bc_data_bytes_live/1048576.0);snap_front_hits=snap_map_hits=snap_invalidations=snap_invalidated=0;
     if(bright::enabled){xbg_logf("NVN PERF bright applied=%.2f k=%.2f",bright::applied/f,bright::last_k);bright::applied=0;}
     if(tex_dirty){xbg_logf("NVN PERF texdirty tracked=%.1f checks=%.1f changed=%.1f",tex_dirty_tracked/f,tex_dirty_checks/f,tex_dirty_changed/f);tex_dirty_tracked=tex_dirty_checks=tex_dirty_changed=0;}
-    if(vcache::enabled){xbg_logf("NVN PERF vcache hits=%.1f (%.2fMB) fills=%.1f (%.2fMB) refills=%.2f volatile=%llu untracked=%llu flushes=%llu entries=%zu arena=%.1fMB pools=%d comparisons=%.1f compared=%.2fMB mirror=%.2fMB",vcache::hits/f,vcache::hit_bytes/1048576.0/f,vcache::fills/f,vcache::fill_bytes/1048576.0/f,vcache::refills/f,(unsigned long long)vcache::volatiles,(unsigned long long)vcache::untracked,(unsigned long long)vcache::flushes,vcache::live(),vcache::arena_bytes()/1048576.0,[]{int live=0,used=0;uint64_t adds=0;if(nvn_dirty_slot_stats)nvn_dirty_slot_stats(&live,&used,&adds);return used;}(),vcache::comparisons/f,vcache::compared_bytes/1048576.0/f,vcache::mirror_bytes/1048576.0);vcache::hits=vcache::hit_bytes=vcache::fills=vcache::fill_bytes=vcache::refills=vcache::comparisons=vcache::compared_bytes=0;}
+    if(vcache::enabled){xbg_logf("NVN PERF vcache hits=%.1f (%.2fMB) fills=%.1f (%.2fMB) refills=%.2f volatile=%llu untracked=%llu flushes=%llu entries=%zu arena=%.1fMB pools=%d",vcache::hits/f,vcache::hit_bytes/1048576.0/f,vcache::fills/f,vcache::fill_bytes/1048576.0/f,vcache::refills/f,(unsigned long long)vcache::volatiles,(unsigned long long)vcache::untracked,(unsigned long long)vcache::flushes,vcache::live(),vcache::arena_bytes()/1048576.0,[]{int live=0,used=0;uint64_t adds=0;if(nvn_dirty_slot_stats)nvn_dirty_slot_stats(&live,&used,&adds);return used;}());vcache::hits=vcache::hit_bytes=vcache::fills=vcache::fill_bytes=vcache::refills=0;}
     {static uint64_t pm=0,pe=0;xbg_logf("NVN PERF pipelines_new=%llu evicted=%llu warm_hits=%llu created=%llu create_ms=%.1f create_max_ms=%.1f warm_built=%llu warm_failed=%llu warm_ms=%.0f async_skips=%llu async_built=%llu",(unsigned long long)(pipeline_counts.misses-pm),(unsigned long long)(pipeline_counts.evictions-pe),(unsigned long long)warm::hits,(unsigned long long)warm::creates,warm::create_ns/1e6,warm::create_max_ns/1e6,(unsigned long long)warm::built.load(),(unsigned long long)warm::failed.load(),warm::build_ns.load()/1e6,(unsigned long long)warm::async_skips.exchange(0),(unsigned long long)warm::async_built.load());warm::hits=warm::creates=warm::create_ns=warm::create_max_ns=0;pm=pipeline_counts.misses;pe=pipeline_counts.evictions;}
     xbg_logf("NVN PERF compute_pipelines warm_hits=%llu created=%llu create_ms=%.2f create_max_ms=%.2f",(unsigned long long)warm::compute_hits,(unsigned long long)warm::compute_creates,warm::compute_create_ns/1e6,warm::compute_create_max_ns/1e6);
     warm::compute_hits=warm::compute_creates=warm::compute_create_ns=warm::compute_create_max_ns=0;
@@ -1865,97 +1865,33 @@ bool tex_dirty=false;uint64_t tex_dirty_tracked=0,tex_dirty_checks=0,tex_dirty_c
 // starts over.
 namespace vcache {
 bool enabled=false;uint64_t hits=0,hit_bytes=0,fills=0,fill_bytes=0,refills=0,volatiles=0,untracked=0,flushes=0;
-uint64_t comparisons=0,compared_bytes=0,mirror_bytes=0;
 constexpr size_t min_bytes=256;constexpr VkDeviceSize budget=64ull<<20;constexpr uint64_t volatile_window=8,retry_after=600;
-constexpr size_t max_entries=16384;
 enum State:uint8_t{EMPTY,CACHED,VOLATILE,UNTRACKED};
-struct Entry {
-    Buffer buffer;
-    uint64_t stamp=0,filled=0,retry=0;
-    uint64_t filled_present=0;
-    State state=EMPTY;
-    bool compare_contents=false;
-    std::vector<uint8_t> mirror;
-};
+struct Entry{Buffer buffer;uint64_t stamp=0,filled=0,retry=0;State state=EMPTY;};
 struct KeyHash{size_t operator()(const std::pair<uint64_t,uint64_t> &k)const{uint64_t x=k.first*0x9E3779B97F4A7C15ull^k.second*0xC2B2AE3D27D4EB4Full;return size_t(x^(x>>29));}};
 std::unordered_map<std::pair<uint64_t,uint64_t>,Entry,KeyHash> map;Arena arena;
 size_t live(){return map.size();}
 VkDeviceSize arena_bytes(){return arena.used_total;}
 bool overlaps_wtrack(uint64_t a,uint64_t n){unsigned k=wtrack::nregions.load(std::memory_order_acquire);
     for(unsigned i=0;i<k;i++){uint64_t b=wtrack::regions[i].begin.load(std::memory_order_relaxed),e=wtrack::regions[i].end.load(std::memory_order_relaxed);if(a<e && a+n>b)return true;}return false;}
-void flush(){if(arena.chunks.empty() && map.empty())return;std::vector<ArenaChunk> old;old.swap(arena.chunks);arena.current=0;arena.used_total=0;arena.peak=0;
-    // Keep the bounded cooldown records for content-compared dynamic ranges.
-    // Forgetting them on a budget flush immediately recopies the same ranges.
-    for(auto it=map.begin();it!=map.end();){
-        if(it->second.compare_contents && it->second.state==VOLATILE && slot_serial<it->second.retry)++it;
-        else it=map.erase(it);
-    }
-    mirror_bytes=0;++flushes;
+void flush(){if(arena.chunks.empty() && map.empty())return;std::vector<ArenaChunk> old;old.swap(arena.chunks);arena.current=0;arena.used_total=0;arena.peak=0;map.clear();++flushes;
     retire_handle([old]()mutable{for(auto &c:old)Arena::destroy(c);});}   // after the recording slot retires, no submission reads them
-// Queue idle and all slot references already released.
-void release(){map.clear();mirror_bytes=0;arena.release();}
-void drop_pool(uint64_t base,uint64_t bytes){
-    for(auto it=map.begin();it!=map.end();){
-        if(it->first.first<base+bytes && it->first.first+it->first.second>base){
-            mirror_bytes-=it->second.mirror.size();
-            it=map.erase(it);
-        }else ++it;
-    }
-}
+void drop_pool(uint64_t base,uint64_t bytes){for(auto it=map.begin();it!=map.end();){if(it->first.first<base+bytes && it->first.first+it->first.second>base)it=map.erase(it);else ++it;}}
 bool lookup(uint64_t address,size_t bytes,Buffer &out){
-    if(bytes<min_bytes || bytes>budget || address>UINT64_MAX-bytes)return false;
-    const void *p=reinterpret_cast<const void*>(uintptr_t(address));
-    const auto key=std::make_pair(address,uint64_t(bytes));
-    auto entry=map.find(key);
-    if(entry==map.end()){
-        if(map.size()>=max_entries)return false;
-        entry=map.emplace(key,Entry{}).first;
-    }
-    Entry &e=entry->second;
+    if(bytes<min_bytes || !nvn_dirty_since || !nvn_dirty_tracked || !nvn_dirty_protect || !nvn_dirty_now)return false;
+    const void *p=reinterpret_cast<const void*>(uintptr_t(address));Entry &e=map[{address,uint64_t(bytes)}];
     if(e.state==VOLATILE || e.state==UNTRACKED){if(slot_serial<e.retry)return false;e.state=EMPTY;}
     if(e.state==CACHED){
-        bool unchanged;
-        if(e.mirror.empty())unchanged=!nvn_dirty_since(p,bytes,e.stamp);
-        else{
-            ++comparisons;
-            compared_bytes+=bytes;
-            unchanged=memcmp(e.mirror.data(),p,bytes)==0;
-        }
-        if(unchanged){++hits;hit_bytes+=bytes;out=e.buffer;return true;}
-        // A frame can submit many slots. Content comparison classifies
-        // frame-to-frame changes using presents, while the real tracker
-        // retains its original submission-based policy.
-        const uint64_t age=e.compare_contents?stats.presents.load()-e.filled_present:slot_serial-e.filled;
-        if(age<volatile_window){
-            mirror_bytes-=e.mirror.size();
-            std::vector<uint8_t>().swap(e.mirror);
-            e.state=VOLATILE;e.retry=slot_serial+retry_after;
-            ++volatiles;
-            return false;
-        }
+        if(!nvn_dirty_since(p,bytes,e.stamp)){++hits;hit_bytes+=bytes;out=e.buffer;return true;}
+        if(slot_serial-e.filled<volatile_window){e.state=VOLATILE;e.retry=slot_serial+retry_after;++volatiles;return false;}
         ++refills;
     }
-    if(overlaps_wtrack(address,bytes)){e.state=UNTRACKED;e.retry=slot_serial+retry_after;++untracked;return false;}
-    const bool tracked=nvn_dirty_since && nvn_dirty_tracked && nvn_dirty_protect && nvn_dirty_now && nvn_dirty_tracked(p,bytes);
-    if(!tracked && bytes>budget/2)return false;
-    // Hosts without a real dirty-page tracker compare every byte of a cached
-    // CPU mirror on every lookup. The GPU copy is immutable, including refills.
-    // Count both payloads against the existing budget. Arena alignment and
-    // previously submitted arenas keep their existing fence-bound lifetime.
-    const uint64_t mirror_size=tracked?0:bytes;
-    if(arena.used_total+mirror_bytes-e.mirror.size()+bytes+mirror_size>budget)flush();
+    if(!nvn_dirty_tracked(p,bytes) || overlaps_wtrack(address,bytes)){e.state=UNTRACKED;e.retry=slot_serial+retry_after;++untracked;return false;}
+    if(arena.used_total+bytes>budget)flush();
     Entry &f=map[{address,uint64_t(bytes)}];   // flush() may have cleared the map
-    mirror_bytes-=f.mirror.size();
-    std::vector<uint8_t>().swap(f.mirror);
-    uint64_t stamp=0;
-    if(tracked){stamp=nvn_dirty_now();nvn_dirty_protect(p,bytes);}
-    else{
-        f.mirror.resize(bytes);
-        memcpy(f.mirror.data(),p,bytes);
-        mirror_bytes+=bytes;
-    }
-    Buffer b=arena.alloc(bytes);memcpy(b.mapped,tracked?p:f.mirror.data(),bytes);b.flush();
-    f.buffer=b;f.stamp=stamp;f.filled=slot_serial;f.filled_present=stats.presents.load();f.compare_contents=!tracked;f.state=CACHED;++fills;fill_bytes+=bytes;out=b;return true;
+    uint64_t stamp=nvn_dirty_now();nvn_dirty_protect(p,bytes);
+    Buffer b=arena.alloc(bytes);memcpy(b.mapped,p,bytes);b.flush();
+    f.buffer=b;f.stamp=stamp;f.filled=slot_serial;f.state=CACHED;++fills;fill_bytes+=bytes;out=b;return true;
 }
 }
 Buffer snapshot_slow(uint64_t address,size_t bytes,VkDeviceSize align);
@@ -4110,7 +4046,7 @@ std::unordered_map<SamplerFastKey,VkSampler,SamplerFastHash> sampler_fast;
 void clear_descriptor_caches(){sampler_fast.clear();pipeline_fast.clear();pipe_memo_valid=false;
     for(auto &l:layout_cache){if(l.second.tmpl)vkDestroyDescriptorUpdateTemplate(cfg.device,l.second.tmpl,nullptr);vkDestroyPipelineLayout(cfg.device,l.second.pipeline_layout,nullptr);vkDestroyDescriptorSetLayout(cfg.device,l.second.layout,nullptr);}layout_cache.clear();shader_layouts.clear();
     for(auto &x:sampler_cache)vkDestroySampler(cfg.device,x.second,nullptr);sampler_cache.clear();
-    static_arena.release();support_static.clear();vcache::release();
+    static_arena.release();support_static.clear();
     memo_buffer_slots.clear();memo_buffer_invalid_slots=0;
 }
 VkDescriptorSet allocate_set(VkDescriptorSetLayout layout){
