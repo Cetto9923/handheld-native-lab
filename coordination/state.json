@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-15T22:11:45.177907+08:00",
+ "updated_at": "2026-11-15T22:49:54.175435+08:00",
  "phase": "荣耀神殿内部持续移动长帧优化，1080P输出及有界内部尺寸目标30继续推进",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3399,7 +3399,7 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-15T21:24:31.309137+08:00",
-   "checkpoint": "40组件及同进程控制通过，移动28.81仍有长帧，后续归稳定30主任务。",
+   "checkpoint": "22:16撤回旧28.81移动结论，PAD隐藏。22:25再次复核19.4窗口截图已在战斗菜单，非零轴也不能证明场景移动；A40-real/41-short均遇敌混合。当前41/14303，需前后画面场景一致的移动窗口，性能改善未证实。",
    "write_state": "COMPLETE_SCOPED",
    "checkpoint_at": "2026-11-15T22:00:28.314643+08:00"
   },
@@ -3412,13 +3412,16 @@
     "src/graphics/nvn_device/nvn_bridge.c",
     "tests/device/test_bridge_lookup.py",
     "scripts/verify_host.py",
-    "src/android/app/gamewindow/AndroidManifest.xml"
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "coordination/EXPERIENCE.md",
+    "coordination/results/CODEX-HONOR-PROBE40-20261115.md"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-15T22:08:06.022043+08:00",
-   "checkpoint": "已完成移动Perfetto，6355/6560，trace ea02ad17，BuildID f6a6d6b5匹配40符号；texture_get叶12样本及按表地址线性循环已核实。",
-   "write_state": "ACTIVE"
+   "checkpoint": "41源码25b0bd3，APK fe5b9323，113宿主/Android0，79输入一致，装包及9文件SHA通过。14303神殿内部B41-field2真实非零轴、前后探索且位移，26100..26220/120间隔21.7207FPS/P9979.90/max80.61/29超50，短暖窗仍未稳30，单项收益未隔离。旧28.81隐藏摇杆及19.4战斗菜单结论已撤回。",
+   "write_state": "ACTIVE",
+   "checkpoint_at": "2026-11-15T22:49:54.175435+08:00"
   }
  ],
  "tasks": [
@@ -9581,7 +9584,7 @@
     "tests/native/guest_process_contract.c"
    ],
    "acceptance": "同一冻结存档、同一场景配置，A-B-A，冷暖分开，正常帧长尾和显示/音频证据；失败恢复标记。",
-   "checkpoint": "40源8cf2764，当前6355真实内部水晶断桥，用户要求连续移动。moving3 28.8114FPS/P9972.49/16超50，完整稳30仍未通过；ADPF负收益撤回，probe0遗留待命已清理并修正热轮询。"
+   "checkpoint": "41源码25b0bd3，APK fe5b9323，113宿主/Android0，79输入一致，装包及9文件SHA通过。14303神殿内部B41-field2真实非零轴、前后探索且位移，26100..26220/120间隔21.7207FPS/P9979.90/max80.61/29超50，短暖窗仍未稳30，单项收益未隔离。旧28.81隐藏摇杆及19.4战斗菜单结论已撤回。"
   },
   {
    "id": "CODEX-HONOR-CLEANUP-20261115",
@@ -9750,7 +9753,7 @@
    "dependencies": [],
    "pass_gates": [],
    "acceptance": "每帧读一次且下帧可观察新标记，既有捕获重试/初始化功能保留，宿主Android通过，同进程控制probepoll及清理后真实场景验收。",
-   "checkpoint": "8cf2764/40 2f7d04d7；112host/Android0、77输入一致。静止同进程两对旧18.81/18.36、新21.38/18.83。清理待命重启6355，内部连续moving3严格持杆边界28.8114FPS/P9972.49/16帧超50，仍未稳30。移动CPU6帧descriptor13.17ms/image_lookup4.31ms，独立QA NOT_RUN。"
+   "checkpoint": "22:16撤回旧28.81移动结论，PAD隐藏。22:25再次复核19.4窗口截图已在战斗菜单，非零轴也不能证明场景移动；A40-real/41-short均遇敌混合。当前41/14303，需前后画面场景一致的移动窗口，性能改善未证实。"
   },
   {
    "id": "CODEX-HONOR-MOVING41-20261115",
@@ -9779,12 +9782,14 @@
     "src/graphics/nvn_device/nvn_bridge.c",
     "tests/device/test_bridge_lookup.py",
     "scripts/verify_host.py",
-    "src/android/app/gamewindow/AndroidManifest.xml"
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "coordination/EXPERIENCE.md",
+    "coordination/results/CODEX-HONOR-PROBE40-20261115.md"
    ],
    "dependencies": [],
    "pass_gates": [],
    "acceptance": "持续移动且输入最终释放，CPU诊断窗口与普通帧率窗口分别记录，同PID及源码产物符号匹配，定位结论有原始证据。",
-   "checkpoint": "已完成移动Perfetto，6355/6560，trace ea02ad17，BuildID f6a6d6b5匹配40符号；texture_get叶12样本及按表地址线性循环已核实。"
+   "checkpoint": "41源码25b0bd3，APK fe5b9323，113宿主/Android0，79输入一致，装包及9文件SHA通过。14303神殿内部B41-field2真实非零轴、前后探索且位移，26100..26220/120间隔21.7207FPS/P9979.90/max80.61/29超50，短暖窗仍未稳30，单项收益未隔离。旧28.81隐藏摇杆及19.4战斗菜单结论已撤回。"
   }
  ],
  "blockers": [
@@ -9971,17 +9976,17 @@
   "荣耀近期验收目标稳定真实30FPS。此前30/31/32 shell归档完整覆盖表述已撤回，完整源文件补核见33报告。地图/副本/技能低帧继续开放。"
  ],
  "execution_goal": {
-  "objective": "User cancels adaptive refresh implementation; prefer verified existing Switch FPS patch approach, port to exact currentBuild if possible, pursue realstable60FPS and continuecontrols/scenes/story/resources/audio unchangedspeed",
+  "objective": "继续优化共鸣原生Android移植，当前授权荣耀A42BBB5109000333，批准1080P输出和有界动态内部尺寸，开场/地图/土之神殿/战斗真实稳定30FPS及冷暖回归，保持速度、声音、显示修复，按Switch原生底座模式流畅度和分辨率验收。清理冗余测试数据核存档缓存，提交修改，Main确认吸收才删自有旧分支，保留APK。",
   "mode": "Durable goal ACTIVE; create_goal tool succeeded; no token budget",
   "workers_model": "gpt-6.1-sol",
   "workers_reasoning": "xhigh",
   "completion": "unproven",
   "human_local_development_approval": "User directly approved local development and commits; later fully authorized access. Existing task boundaries remain, no remote publication or data clearing.",
-  "next_goal": "After device available: actualGPU QueueFlush contract, build51 launch long enough for actualtitle BGM, control matrix/difficulty/scene/story, explicit cold/warm frame phases; then one-variable wait-path A/B",
+  "next_goal": "41同机位普通探索移动的匹配40对照与CPU/GPU同步拆解，验证底座模式实际内部尺寸与游戏原速，开场/地图/技能冷暖回归。",
   "loop": "Locate real blocker -> smallest functional code fix -> compile -> real device recheck -> local checkpoint -> next gate",
-  "parallel_scope": "Runtime, graphics, ordinary QA and documentation operate in assigned scopes; no repeated research of confirmed facts, no fake stubs",
+  "parallel_scope": "root串行控制荣耀设备与本树性能源码，金手指独立工作树保持既有归属，独立QA尚未执行。",
   "reporting": "Report material breakthroughs, required user action or real blockers; no artificial progress from diagnostic counts",
-  "current_priority": "Playability first: enter actualscene and operate/progressstory; firststage stable30FPSaccepted; deferFPSoptimization/60patch untilplayable"
+  "current_priority": "神殿内部持续移动真实长帧，严格画面场景和输入核对，队列CPU/GPU预算取证并最小优化，持续稳30尚未通过。"
  },
  "coordinator_branch": "task/T-codex-recovery-20261114",
  "progress_assessment": {
@@ -10066,7 +10071,7 @@
   "display_mode_observed": "Android display0 mode2=120.00001Hz; supported60/90/120; no appframeoverride and gamemodeunsupported. Game30cap distinct from panel."
  },
  "parallelism_note": "No active Codex workers. runtime/vulkan two newly dispatched tasks stopped at readonly NOT_STARTED safe point; independent515 task never dispatched. All older authors/reviewers already handed back; QA remains errored, no retry.",
- "handoff_checkpoint": "40/6355内部连续移动窗口28.81FPS，尚未稳30。唯一461副本、待命0标记已归档清除，UP释放，下一轮保持内部持续移动并拆CPU/未覆盖线程栈。",
+ "handoff_checkpoint": "41源码25b0bd3，APK fe5b9323，113宿主/Android0，79输入一致，装包及9文件SHA通过。14303神殿内部B41-field2真实非零轴、前后探索且位移，26100..26220/120间隔21.7207FPS/P9979.90/max80.61/29超50，短暖窗仍未稳30，单项收益未隔离。旧28.81隐藏摇杆及19.4战斗菜单结论已撤回。",
  "runtime_risks": [
   {
    "id": "HOST_GUEST_X18_GATEWAY",
