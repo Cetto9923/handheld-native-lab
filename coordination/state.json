@@ -3471,13 +3471,14 @@
     "tests/device/test_vertex_cache.py",
     "tests/device/test_performance_hint.py",
     "tests/device/test_probe_marker_poll.py",
-    "tests/device/test_indirect_texel_residency.py"
+    "tests/device/test_indirect_texel_residency.py",
+    "src/graphics/nvn_vulkan/engine/xbg_probe.inc"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-16T00:37:43.134192+08:00",
-   "checkpoint": "51源20c6c98 clean，host/summary.json为115项全部通过，Android退出0，81项源输入SHA前后相等。APK23298026ae6abfa7e9d991fd5f3b619a8282915292c52b90ed2d3b25d53a966e，3724503B。安装回读APK及461全部9文件SHA、正式源metadata通过。PID11169复用461，以indtexel原准入路径启动，adpf0/vcache0/texrecord1，probe0及overlay0。接下来同进程原/新/原/新实际消失突袭对照，冷暖分别记录。所有APK保留，Main只读。",
-   "checkpoint_at": "2026-11-16T06:16:16.280323+08:00"
+   "checkpoint": "51同PID11169原A1为两Lv2变异鼠，普通8秒148帧18.4813FPS/max224.19ms/54超50/15超100，最大sync_wb10。新B1为Lv1钢蝠及妖藤，165帧20.6644FPS/max107.40/57超50/5超100，最大sync_wb5。敌种和冷暖不同，未归因为稳定帧率收益。B2新路两Lv2变异鼠采用probe3与录屏，单列显示/回退诊断，仍有924b0b5d1854f387 CPU调度读回，d56a对应原回退记录此窗未见，不能只按缺失日志证明全部调用通过。现在准备扩展已有probe3的一次输入清单，含32条上界的纹理地址、范围、slot、类型及当前驻留，保留同步路径，生产提取探针及准入联合ASan/UBSan两种数组规模通过。",
+   "checkpoint_at": "2026-11-16T06:36:34.259992+08:00"
   }
  ],
  "tasks": [
@@ -9941,7 +9942,8 @@
     "tests/device/test_vertex_cache.py",
     "tests/device/test_performance_hint.py",
     "tests/device/test_probe_marker_poll.py",
-    "tests/device/test_indirect_texel_residency.py"
+    "tests/device/test_indirect_texel_residency.py",
+    "src/graphics/nvn_vulkan/engine/xbg_probe.inc"
    ],
    "write_scope": [
     ".local/honor-submit44-20261116/",
@@ -9954,13 +9956,14 @@
     "tests/device/test_vertex_cache.py",
     "tests/device/test_performance_hint.py",
     "tests/device/test_probe_marker_poll.py",
-    "tests/device/test_indirect_texel_residency.py"
+    "tests/device/test_indirect_texel_residency.py",
+    "src/graphics/nvn_vulkan/engine/xbg_probe.inc"
    ],
    "dependencies": [],
    "pass_gates": [],
    "acceptance": "原始PID/帧/场景/符号核对，真实持续移动普通FPS与诊断分窗，CPU/GPU及数据生命周期事实支持归因，显示及原速/声音保持；验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。",
-   "checkpoint": "51源20c6c98 clean，host/summary.json为115项全部通过，Android退出0，81项源输入SHA前后相等。APK23298026ae6abfa7e9d991fd5f3b619a8282915292c52b90ed2d3b25d53a966e，3724503B。安装回读APK及461全部9文件SHA、正式源metadata通过。PID11169复用461，以indtexel原准入路径启动，adpf0/vcache0/texrecord1，probe0及overlay0。接下来同进程原/新/原/新实际消失突袭对照，冷暖分别记录。所有APK保留，Main只读。",
-   "updated_at": "2026-11-16T06:16:16.280323+08:00"
+   "checkpoint": "51同PID11169原A1为两Lv2变异鼠，普通8秒148帧18.4813FPS/max224.19ms/54超50/15超100，最大sync_wb10。新B1为Lv1钢蝠及妖藤，165帧20.6644FPS/max107.40/57超50/5超100，最大sync_wb5。敌种和冷暖不同，未归因为稳定帧率收益。B2新路两Lv2变异鼠采用probe3与录屏，单列显示/回退诊断，仍有924b0b5d1854f387 CPU调度读回，d56a对应原回退记录此窗未见，不能只按缺失日志证明全部调用通过。现在准备扩展已有probe3的一次输入清单，含32条上界的纹理地址、范围、slot、类型及当前驻留，保留同步路径，生产提取探针及准入联合ASan/UBSan两种数组规模通过。",
+   "updated_at": "2026-11-16T06:36:34.259992+08:00"
   }
  ],
  "blockers": [

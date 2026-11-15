@@ -327,6 +327,27 @@ void probe_cpu_sync(uint64_t address,uint64_t bytes,unsigned why,uint64_t pendin
             xbg_logf("CODEX_INDIRECT_BUFFER binding=%u address=%#llx bytes=%llu producerSlot=%d pending=%#llx pending_bytes=%llu bufferOffset=%llu",binding,(unsigned long long)a,(unsigned long long)n,producer,(unsigned long long)wb,(unsigned long long)wbbytes,(unsigned long long)offset);
         };
         row(0,address,bytes);for(auto &b:state.shader[5]->bindings)if((b.source==XBG_SOURCE_STORAGE || b.source==XBG_SOURCE_UNIFORM) && b.slot<16){auto r=b.source==XBG_SOURCE_STORAGE?state.sb[nvn_stage[5]][b.slot]:state.ub[nvn_stage[5]][b.slot];row(b.binding,r.address,r.size);}
+        unsigned texel_rows=0;
+        if(state.texture_pool.pool)for(const auto &b:state.shader[5]->bindings){
+            if((b.type!=VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER && b.type!=VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER) ||
+               (b.source!=XBG_SOURCE_TEXTURE && b.source!=XBG_SOURCE_IMAGE))continue;
+            const unsigned limit=b.source==XBG_SOURCE_IMAGE?16u:256u;
+            if(b.slot>=limit || b.count>limit-b.slot)continue;
+            auto pool=textures.find(pool_key(&state.texture_pool));
+            const auto &table=pool==textures.end()?legacy_textures:pool->second;
+            for(unsigned e=0;e<b.count;++e){
+                if(texel_rows++>=32)return;
+                unsigned slot=b.slot+e,ns=nvn_stage[5];
+                uint64_t handle=b.source==XBG_SOURCE_IMAGE?state.img[ns][slot]:state.tex[ns][slot];
+                int id=int(handle&0xfffff);auto found=table.find(id);
+                if(found==table.end())continue;
+                const auto &t=found->second.texture;
+                xbg_logf("CODEX_INDIRECT_TEXEL binding=%u element=%u type=%u source=%u slot=%u id=%d target=%u currentRange=%u",
+                    b.binding,e,unsigned(b.type),b.source,slot,id,unsigned(t.d.target),
+                    unsigned(current_pending_range(uint64_t(t.mem),t.L.size,4)));
+                row(b.binding,uint64_t(t.mem),t.L.size);
+            }
+        }
     }
 }
 std::shared_ptr<Image> probe_keep(Image &im){for(auto &entry:images)if(entry.second.get()==&im)return entry.second;return {};}

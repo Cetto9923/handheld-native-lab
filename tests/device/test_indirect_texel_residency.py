@@ -14,12 +14,17 @@ class IndirectTexelResidency(unittest.TestCase):
         # The earlier forward declaration has no body.
         start = source.index('bool current_pending_range(uint64_t address,', start + 1)
         body = source[start:source.index('// Optional, bounded real-data diagnostic.', start)]
+        probe = (ROOT / 'src/graphics/nvn_vulkan/engine/xbg_probe.inc').read_text()
+        start = probe.index('void probe_cpu_sync(')
+        probe_body = probe[start:probe.index('std::shared_ptr<Image> probe_keep(', start)]
         fixture = r'''
 #include "xbg_writeback_policy.h"
 #include <algorithm>
 #include <atomic>
 #include <cassert>
 #include <cstdint>
+#include <cstdarg>
+#include <cstdio>
 #include <map>
 #include <set>
 #include <vector>
@@ -32,7 +37,7 @@ enum { XBG_SOURCE_SUPPORT=1,XBG_SOURCE_UNIFORM=2,XBG_SOURCE_STORAGE=3,
        XBG_SOURCE_C1=4,XBG_SOURCE_DRIVER0=5,XBG_SOURCE_DRIVER2=6,
        XBG_SOURCE_TEXTURE=7,XBG_SOURCE_IMAGE=8 };
 struct Binding { unsigned binding,type,count,bytes,source,slot; };
-struct Shader { std::vector<Binding> bindings; std::set<unsigned> storage_writes; } shader;
+struct Shader { std::string key="fixture"; std::vector<Binding> bindings; std::set<unsigned> storage_writes; } shader;
 struct Range { uint64_t address=0,size=0; };
 struct Pool { void *pool=nullptr; int n=32; };
 struct State {
@@ -41,10 +46,10 @@ struct State {
     uint64_t tex[6][256]{},img[6][16]{};
     Pool texture_pool;
 } state;
-struct Slot { bool recording=false; } slots[16];
+struct Slot { bool recording=false,pending=false; int fence=0; uint64_t covers=0,ops=0; } slots[16];
 unsigned slot_index=0;
 unsigned nvn_stage[6]={0,1,2,3,4,5};
-struct Buffer { uint64_t offset=0; };
+struct Buffer { uint64_t offset=0,size=512; };
 struct Writeback { uint64_t addr,bytes; Buffer buffer; const void *slot; };
 std::vector<Writeback> pending_writebacks;
 struct Report { uint64_t addr; };
@@ -59,7 +64,7 @@ struct RegisteredTexture { Texture texture; };
 std::map<int,RegisteredTexture> legacy_textures;
 std::map<int,std::map<int,RegisteredTexture>> textures;
 int pool_key(const Pool *) { return 1; }
-struct { bool active=false,probe=false; } capture;
+struct { bool active=false,probe=false,trace=false; } capture;
 void *provenance_file=nullptr;
 bool profile=false,control=false,honor_inline_enabled=true,draw_detail=false;
 bool flame_diag_enabled=false,fire=false,water=false;
@@ -72,7 +77,20 @@ bool ab_off(const char *name) { assert(std::string(name)=="indtexel");return con
 struct { struct { uint64_t minStorageBufferOffsetAlignment=16;
                  uint64_t minUniformBufferOffsetAlignment=16; } limits; } properties;
 size_t uniform_range(size_t n) { return std::max<size_t>(16,(n+15)&~size_t(15)); }
-''' + body + r'''
+struct { bool waiting=true; } probe;
+struct { std::atomic<uint64_t> presents{1}; } stats;
+unsigned cur_op=27;bool xview_guard=true;
+struct { void *device=nullptr; } cfg;
+enum { VK_SUCCESS=0 };
+int vkGetFenceStatus(void *,int) { return VK_SUCCESS; }
+int marker='3';
+int probe_marker_value() { return marker; }
+std::vector<std::string> logs;
+void xbg_logf(const char *format,...) {
+    char text[2048];va_list args;va_start(args,format);
+    vsnprintf(text,sizeof(text),format,args);va_end(args);logs.emplace_back(text);
+}
+''' + body + probe_body + r'''
 void texture(int id,uint64_t address,uint64_t bytes) {
     auto &t=legacy_textures[id].texture;
     t.mem=reinterpret_cast<void *>(address);t.L.size=bytes;t.d.target=10;
@@ -91,7 +109,7 @@ void baseline() {
                      {29,4,1,0,7,128},{53,6,1,65536,2,0}};
     control=false;honor_inline_enabled=true;
 }
-int main() {
+int main(int argc,char **) {
     baseline();assert(indirect_dispatch_inputs_resident());
     pending_writebacks.push_back({0x2000,256,{32},&slots[0]});
     pending_writebacks.push_back({0x3000,256,{64},&slots[0]});
@@ -146,6 +164,29 @@ int main() {
     g_ui_moff=0;slots[0].recording=false;
     pending_writebacks.push_back({0x3000,256,{64},&slots[0]});
     assert(!indirect_dispatch_inputs_resident());
+
+    baseline();pending_writebacks.push_back({0x4000,60,{0},&slots[0]});
+    if(argc>1){
+        shader.bindings[1].count=16;shader.bindings[2].count=32;
+        for(auto &handle:state.img[5])handle=1;
+        for(auto &handle:state.tex[5])handle=2;
+    }
+    probe_cpu_sync(0x4000,12,5,0x4000,60);
+    auto texel_count=[] { return std::count_if(logs.begin(),logs.end(),[](const auto &line) {
+        return line.find("CODEX_INDIRECT_TEXEL ")==0;
+    }); };
+    const int expected_texels=argc>1?32:2;
+    assert(texel_count()==expected_texels);
+    assert(std::any_of(logs.begin(),logs.end(),[](const auto &line) {
+        return line.find("CODEX_INDIRECT_BUFFER binding=29 address=0x3000 bytes=256") == 0;
+    }));
+    probe_cpu_sync(0x4000,12,5,0x4000,60);assert(texel_count()==expected_texels);
+    size_t previous_logs=logs.size();marker='0';
+    probe_cpu_sync(0x4000,12,5,0x4000,60);assert(logs.size()==previous_logs);
+    marker='3';capture.trace=true;
+    probe_cpu_sync(0x4000,12,5,0x4000,60);assert(logs.size()==previous_logs);
+    capture.trace=false;probe.waiting=false;
+    probe_cpu_sync(0x4000,12,5,0x4000,60);assert(logs.size()==previous_logs);
 }
 '''
         fixture = '#include <string>\n' + fixture
@@ -157,6 +198,7 @@ int main() {
                             str(ROOT / 'src/graphics/nvn_vulkan/engine'),
                             str(path / 'test.cpp'), '-o', str(path / 'test')], check=True)
             subprocess.run([str(path / 'test')], check=True)
+            subprocess.run([str(path / 'test'), 'many'], check=True)
 
 
 if __name__ == '__main__':

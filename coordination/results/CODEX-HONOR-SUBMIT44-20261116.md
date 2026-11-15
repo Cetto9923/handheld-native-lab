@@ -168,3 +168,9 @@ PID27718同一内部桥面，全部moving-clock真实非零轴、前后探索。
 51源20c6c98 clean，host/summary.json为115项全部通过，Android退出0，81项源输入SHA前后相等。APK23298026ae6abfa7e9d991fd5f3b619a8282915292c52b90ed2d3b25d53a966e，3724503B。安装回读APK及461全部9文件SHA、正式源metadata通过。PID11169复用461，以indtexel原准入路径启动，adpf0/vcache0/texrecord1，probe0及overlay0。接下来同进程原/新/原/新实际消失突袭对照，冷暖分别记录。所有APK保留，Main只读。
 
 预备51构建计划从50复制时source_commit字段暂为旧值，独立source51.json记录真实20c6c98，构建结束已同步修正plan/artifact.json，宿主summary的source_head同为20c6c98。没有修改在编译的输入。主机81项快照包含新增测试。
+
+## 51首轮旧新与剩余回退
+
+51同PID11169原A1为两Lv2变异鼠，普通8秒148帧18.4813FPS/max224.19ms/54超50/15超100，最大sync_wb10。新B1为Lv1钢蝠及妖藤，165帧20.6644FPS/max107.40/57超50/5超100，最大sync_wb5。敌种和冷暖不同，未归因为稳定帧率收益。B2新路两Lv2变异鼠采用probe3与录屏，单列显示/回退诊断，仍有924b0b5d1854f387 CPU调度读回，d56a对应原回退记录此窗未见，不能只按缺失日志证明全部调用通过。现在准备扩展已有probe3的一次输入清单，含32条上界的纹理地址、范围、slot、类型及当前驻留，保留同步路径，生产提取探针及准入联合ASan/UBSan两种数组规模通过。
+
+probe3及录屏窗口排除普通FPS，显示尚待逐帧查看。真实稳30、冷暖全场景、A2DP及独立QA仍未达成。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。
