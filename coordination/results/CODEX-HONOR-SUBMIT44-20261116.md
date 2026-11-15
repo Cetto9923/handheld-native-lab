@@ -158,3 +158,7 @@ PID27718同一内部桥面，全部moving-clock真实非零轴、前后探索。
 50 PID2107消失突袭首次普通8秒171帧21.3589FPS/max159.42ms，45超50、6超100，含可能胜利转场。mode5已确认为20880，实际动作20986..21156，目标3b部分合并未触发，双输入比较NOT_OBSERVED。随后mode1随第二次技能启用27510，仍无overlay queued/result，不能据此证明字节相等或将旧LIMIT热点归给火焰技能。两次均已切回0。第三次暖技能Perfetto5fa8690c已保全，仍描述符/复制热点。probe启动时不存在，enabled0，临时写3不会启用，此次仅CPU trace有效。已创建0并重启同50、复用461，PID8384，准备在真正enabled1时复用marker3采同步输入/生产槽。未改shader或启用异步GPU合并。
 
 完整原始证据fire50-overlay5、fire50-overlay1、profile-skill50及launch50-probe落在.local/honor-submit44-20261116/。蓝牙主观、整包显示及独立QA仍NOT_RUN，真实稳定30未达成。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。
+
+## 51间接计算调度候选
+
+51候选扩展indirect_dispatch_inputs_resident。仅既有Honor范围及indtexel未禁用时接受buffer texture，要求CPU干净或最新完整当前槽GPU范围、4字节对齐，拒绝未知/空/越界/非buffer纹理、部分或外槽GPU写、报告覆盖及有副作用的诊断。精确可写texel别名沿原共享storage，拒绝其它可写交叠和uniform写别名，SSBO包含关系按现有descriptor复用核对。原UBO/SSBO路径与所有shader/typed/integer语义继续保留。生产提取ASan/UBSan覆盖分支通过，整包及真实性能/输出待测。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。

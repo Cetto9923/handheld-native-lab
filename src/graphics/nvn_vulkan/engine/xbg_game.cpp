@@ -5741,9 +5741,36 @@ bool indirect_dispatch_inputs_resident(){
         for(auto &w:pending_writebacks)if(xbg_wb_overlaps(address,cpu_bytes,w.addr,w.bytes))return current_pending_range(address,view_bytes,align);
         return true;
     };
-    struct Range{uint64_t begin,end;bool written;};std::vector<Range> ranges,merged;auto &shader=*state.shader[5];unsigned ns=nvn_stage[5];
+    struct Range{uint64_t begin,end;bool written;};
+    std::vector<Range> ranges,merged,texels,uniforms;
+    auto &shader=*state.shader[5];unsigned ns=nvn_stage[5];
     for(auto &b:shader.bindings){
-        if(!b.count || b.count>128 || (b.type!=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER && b.type!=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER))return false;
+        if(!b.count || b.count>128)return false;
+        if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER || b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER){
+            if(!honor_inline_enabled || ab_off("indtexel") || !state.texture_pool.pool ||
+               draw_detail || fire_trace_active() || water_ready() || flame_diag_enabled ||
+               ubtrace.on.load(std::memory_order_relaxed))return false;
+            if(b.source!=XBG_SOURCE_TEXTURE && b.source!=XBG_SOURCE_IMAGE)return false;
+            const unsigned limit=b.source==XBG_SOURCE_IMAGE?16u:256u;
+            if(b.slot>=limit || b.count>limit-b.slot)return false;
+            auto pool=textures.find(pool_key(&state.texture_pool));
+            const auto &table=pool==textures.end()?legacy_textures:pool->second;
+            for(unsigned i=0;i<b.count;++i){
+                uint64_t handle=b.source==XBG_SOURCE_IMAGE?state.img[ns][b.slot+i]:state.tex[ns][b.slot+i];
+                int id=int(handle&0xfffff);
+                if(!id || (state.texture_pool.n>0 && id>=state.texture_pool.n))return false;
+                auto found=table.find(id);if(found==table.end())return false;
+                const auto &texture=found->second.texture;
+                uint64_t address=uint64_t(texture.mem),bytes=texture.L.size;
+                if(texture.d.target!=10 || !xbg_wb_range_valid(address,bytes) ||
+                   ((address|bytes)&3u) || !clean_or_resident(address,bytes,bytes,4))return false;
+                for(const auto &report:pending_reports)
+                    if(xbg_wb_overlaps(address,bytes,report.addr,sizeof(NVNcounterData)))return false;
+                texels.push_back({address,address+bytes,b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER});
+            }
+            continue;
+        }
+        if(b.type!=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER && b.type!=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)return false;
         if(b.source!=XBG_SOURCE_UNIFORM && b.source!=XBG_SOURCE_STORAGE){
             if(b.type!=VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER || (b.source!=XBG_SOURCE_SUPPORT && b.source!=XBG_SOURCE_C1 && b.source!=XBG_SOURCE_DRIVER0 && b.source!=XBG_SOURCE_DRIVER2))return false;
             continue;
@@ -5752,7 +5779,7 @@ bool indirect_dispatch_inputs_resident(){
             if(b.slot+i>=16)return false;auto r=b.source==XBG_SOURCE_STORAGE?state.sb[ns][b.slot+i]:state.ub[ns][b.slot+i];
             if(!r.address || !r.size || r.address+r.size<r.address)return false;
             if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)ranges.push_back({r.address,r.address+r.size,shader.storage_writes.count(b.binding)!=0});
-            else{size_t copy=std::min<size_t>(r.size,b.bytes?b.bytes:65536);if(!clean_or_resident(r.address,copy,uniform_range(copy),properties.limits.minUniformBufferOffsetAlignment))return false;}
+            else{size_t copy=std::min<size_t>(r.size,b.bytes?b.bytes:65536);if(!clean_or_resident(r.address,copy,uniform_range(copy),properties.limits.minUniformBufferOffsetAlignment))return false;uniforms.push_back({r.address,r.address+copy,false});}
         }
     }
     std::sort(ranges.begin(),ranges.end(),[](const Range&a,const Range&b){return a.begin<b.begin;});
@@ -5760,6 +5787,21 @@ bool indirect_dispatch_inputs_resident(){
     for(auto r:merged){uint64_t bytes=r.end-r.begin;
         if(!clean_or_resident(r.begin,bytes,bytes,r.written?1:properties.limits.minStorageBufferOffsetAlignment))return false;
         if(r.written)for(auto &report:pending_reports)if(xbg_wb_overlaps(r.begin,bytes,report.addr,sizeof(NVNcounterData)))return false;
+    }
+    // Descriptor preparation shares exact writable texel aliases and texels
+    // contained in an SSBO allocation. Other writable overlaps could require
+    // separate copies of the same guest bytes, so keep the CPU fallback.
+    for(size_t i=0;i<texels.size();++i){
+        const auto &a=texels[i];
+        for(size_t j=0;j<i;++j){
+            const auto &b=texels[j];
+            if(a.begin<b.end && b.begin<a.end && (a.written || b.written) &&
+               (a.begin!=b.begin || a.end!=b.end || a.written!=b.written))return false;
+        }
+        for(const auto &b:merged)
+            if(a.begin<b.end && b.begin<a.end && (a.begin<b.begin || a.end>b.end))return false;
+        if(a.written)for(const auto &b:uniforms)
+            if(a.begin<b.end && b.begin<a.end)return false;
     }
     return true;
 }

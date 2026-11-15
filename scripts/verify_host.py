@@ -379,6 +379,8 @@ def main():
                                      'tests.device.test_performance_hint'])
     run('probe-marker-poll-contract', [sys.executable, '-m', 'unittest',
                                        'tests.device.test_probe_marker_poll'])
+    run('indirect-texel-residency-contract', [sys.executable, '-m', 'unittest',
+                                            'tests.device.test_indirect_texel_residency'])
     run('bridge-lookup-contract', [sys.executable, '-m', 'unittest',
                                    'tests.device.test_bridge_lookup'])
     packed_dir = out / 'packed-shader-words'
