@@ -1,7 +1,7 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-15T02:09:00.818970+08:00
-阶段：v1.0.23-preview已公开发布到GitHub，源标签和远端APK下载摘要验证通过。用户设备充电，性能及正常保存补测待继续。
+状态事件时间：2026-11-15T09:56:02.073551+08:00
+阶段：23保存/读回实机通过，LDC/temps同机位对照无可靠GPU收益已恢复；持续战斗GPU性能仍待优化
 总控：Codex /root 本轮接管
 更新方式：按事件更新，没有后台自动刷新。
 
@@ -209,9 +209,16 @@
 | CODEX-WARM-SEED-INTEGRATE-20261115 | IMPLEMENTATION | implemented | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-STUTTER22-REPEAT-20261115 | READ_ONLY_LOG_REVIEW | completed | load_profile | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-STUTTER22-GPU90-20261115 | READ_ONLY_GPU_PROFILE_REVIEW | completed | perf_cpu | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
-| CODEX-SAVE-OWNER-RECOVERY-20261115 | DEVICE_FILE_OWNERSHIP_REPAIR | awaiting_user | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-SAVE-OWNER-RECOVERY-20261115 | DEVICE_FILE_OWNERSHIP_REPAIR | completed | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-RELEASE23-20261115 | RELEASE | completed | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-RELEASE23-AUDIT-20261115 | READ_ONLY_RELEASE_AUDIT | completed | perf_cpu | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-RESUME23-DEVICE-20261115 | DEVICE_VALIDATION | completed | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-RESUME23-PERF-REVIEW-20261115 | READ_ONLY_SOURCE_REVIEW | completed | perf_cpu | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-RESUME23-GPU-REVIEW-20261115 | READ_ONLY_GPU_SOURCE_REVIEW | completed | load_profile | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-RESUME23-LOG-REVIEW-20261115 | READ_ONLY_LOG_REVIEW | completed | perf_cpu | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-TIDY-AB-20261115 | DEVICE_AB_EXISTING_OPTIMIZATIONS | completed | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-TIDY-JOINT-20261115 | HOST_CONTRACT_EXECUTION | completed | load_profile | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-SCENE-LOG-FORMAT-20261115 | DIAGNOSTIC_CORRECTION | completed | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 
 ## 独占写入
 
@@ -386,6 +393,13 @@
 - {"task": "CODEX-SAVE-OWNER-RECOVERY-20261115", "owner": "root", "paths": [".local/codex-recovery-20261114/stutter22-user-video/seed-build/save-owner-repair/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T01:30:25.386860+08:00", "checkpoint": "root独占RG，正常保存文件内容与原包均保持。", "write_state": "FROZEN_HANDED_BACK", "released_at": "2026-11-15T01:45:11.039180+08:00"}
 - {"task": "CODEX-RELEASE23-20261115", "owner": "root", "paths": [".local/releases/1.0.23/FFRS-1.0.23-preview-20261115.apk", ".local/releases/1.0.23/FFRS-1.0.23-preview-20261115.apk.sha256", ".local/releases/1.0.23/publication/", "coordination/results/CODEX-RELEASE23-20261115.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T02:00:02.021307+08:00", "checkpoint": "发布与远端附件核验完成。", "write_state": "RELEASED", "released_at": "2026-11-15T02:09:00.818970+08:00"}
 - {"task": "CODEX-RELEASE23-AUDIT-20261115", "owner": "perf_cpu", "paths": [".local/releases/1.0.23/audit/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T02:00:02.021307+08:00", "checkpoint": "发布与远端附件核验完成。", "write_state": "RELEASED", "released_at": "2026-11-15T02:09:00.818970+08:00"}
+- {"task": "CODEX-RESUME23-DEVICE-20261115", "owner": "root", "paths": [".local/codex-recovery-20261114/resume23-20261115/device/", "coordination/results/CODEX-RESUME23-20261115.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T02:44:52.016452+08:00", "checkpoint": "本轮有限回归与现成开关实验已收口，性能问题开放。", "write_state": "RELEASED", "released_at": "2026-11-15T09:56:02.073551+08:00"}
+- {"task": "CODEX-RESUME23-PERF-REVIEW-20261115", "owner": "perf_cpu", "paths": [".local/codex-recovery-20261114/resume23-20261115/perf-review/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T02:44:52.016452+08:00", "checkpoint": "报告已冻结", "write_state": "RELEASED", "released_at": "2026-11-15T03:08:04.360581+08:00"}
+- {"task": "CODEX-RESUME23-GPU-REVIEW-20261115", "owner": "load_profile", "paths": [".local/codex-recovery-20261114/resume23-20261115/gpu-source-review/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T02:47:07.861049+08:00", "checkpoint": "报告已冻结", "write_state": "RELEASED", "released_at": "2026-11-15T03:08:04.360581+08:00"}
+- {"task": "CODEX-RESUME23-LOG-REVIEW-20261115", "owner": "perf_cpu", "paths": [".local/codex-recovery-20261114/resume23-20261115/log-review"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T03:08:04.360581+08:00", "checkpoint": "有限任务完成，证据已冻结", "write_state": "RELEASED", "released_at": "2026-11-15T09:48:21.215449+08:00"}
+- {"task": "CODEX-TIDY-AB-20261115", "owner": "root", "paths": [".local/codex-recovery-20261114/resume23-20261115/tidy-contract", ".local/codex-recovery-20261114/resume23-20261115/tidy-ab", ".local/codex-recovery-20261114/resume23-20261115/device"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T03:08:04.360581+08:00", "checkpoint": "本轮有限回归与现成开关实验已收口，性能问题开放。", "write_state": "RELEASED", "released_at": "2026-11-15T09:56:02.073551+08:00"}
+- {"task": "CODEX-TIDY-JOINT-20261115", "owner": "load_profile", "paths": [".local/codex-recovery-20261114/resume23-20261115/tidy-joint-review/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T03:09:10.589900+08:00", "checkpoint": "有限任务完成，证据已冻结", "write_state": "RELEASED", "released_at": "2026-11-15T09:48:21.215449+08:00"}
+- {"task": "CODEX-SCENE-LOG-FORMAT-20261115", "owner": "root", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", ".local/codex-recovery-20261114/resume23-20261115/scene-log-contract/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T03:11:25.268554+08:00", "checkpoint": "有限任务完成，证据已冻结", "write_state": "RELEASED", "released_at": "2026-11-15T09:48:21.215449+08:00"}
 
 ## 阻塞
 

@@ -1036,7 +1036,7 @@ void close_window(uint64_t frame_no,uint64_t now){
     const double span=win_ns?double(now-win_ns)/1e6:0.0;
     xbg_logf("NVN PERF scene v=1 event=leave tag=%s occurrence=%llu seq=%llu frames=%llu span_ms=%.1f shader_ms=%.1f shader_count=%llu shader_slow_count=%llu shader_slow_ms=%.1f pipelines_new=%llu pipelines_created=%llu pipeline_create_ms=%.1f stalls=%llu stall_ms=%.1f",
         tag.c_str(),(unsigned long long)occurrence(),(unsigned long long)tag_seq,(unsigned long long)(frame_no-win_frame),span,
-        double(win_shader_ms),(unsigned long long)win_shader_count,(unsigned long long)win_slow_count,(unsigned long long)win_slow_ms,
+        double(win_shader_ms),(unsigned long long)win_shader_count,(unsigned long long)win_slow_count,double(win_slow_ms),
         (unsigned long long)win_new_count,(unsigned long long)win_pipe_count,double(win_pipe_ms),(unsigned long long)win_stalls,double(win_stall_ms));
 }
 // Called once per presented frame, from the statistics side only.

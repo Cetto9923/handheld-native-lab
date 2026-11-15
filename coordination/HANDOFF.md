@@ -4625,3 +4625,19 @@ C4 帧内 desc memo 比对的是 buffer 身份而非内容、C5 客机侧数据�
 Release为https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.23-preview ，预览版已正式公开，附件APK与sha256已上传。tag精确指向dd76193生产源，开发分支已推送。远端下载APK重新校验SHA845d1c4c及大小3679303B，和本地交付一致。
 
 公开内容独立审计通过，audit/review.md SHA211bf291。发布操作全流程日志与可恢复计划在.local/releases/1.0.23/publication/plan.json、publish.log，status=PUBLISHED_VERIFIED。用户可直接取本地APK或GitHub附件。真机仍等用户充电后继续正常保存及技能复测，发布完成不代表性能主任务完成。
+
+## 2026-11-15 设备恢复与23复测
+
+用户已重新连接RG477M，电量65%，USB充电，当前23已安装且无运行进程。存档0/1属主10174，正常保存尚未验。root独占设备完成保存/读回与战斗采样，perf_cpu只读源码审阅snapshot及缓存，所有证据写resume23-20261115。荣耀平板在线但本轮ADB均显式选择RG477M。既有5份Android报告WIP保留。
+
+追加load_profile只读GPU/shader现有优化与实际调用路径审阅，仅写resume23-20261115/gpu-source-review，root保持设备独占。
+
+23 PID9359的正常保存/读回已完成。01原件完整备份后，正常SAVE DATA写414000字节，SHA634ac0b0变为b50e6297，游戏时间7:40:33；LOAD DATA回读并回到旅店紫色保存点。其它文件摘要不变。恢复任务已completed。继续同PID移动及主动技能采样。
+
+23 PID9359首次/重复机械陆行鸟已采。重复frame35477 gap68.6ms、GPU71.62ms且shader/pipeline0。新增世界地图02恢复点7:47:53，原01未覆盖。两源码worker报告冻结，CPU1/8启发式暂不实施。root领取现成ldc单开→必要加入temps的新PID A/B，worker perf_cpu只读复核23日志。现精度1、其余显示修正保持，开关/缓存先备份，组件与真实SPV联合校验后再设备测试。
+
+load_profile另领取local tidy-joint-review契约执行，可单进程host编译与实际模块校验，源码/设备/Git只读，root继续设备对照。
+
+日志复核发现scene close_window的shader_slow_ms格式%.1f实参误为ULL，后续GP/FP字段错位。PID9359 after-chocobo pipeline_create_ms79559等不能按字段解释，撤回该聚合归因，逐帧stall/CSV保持有效。root登记单文件最小double实参修正与local格式契约，当前设备仍为未替换23。
+
+23恢复回归阶段收口。正常保存01/读回与GameSaveData0自动保存实际写入通过，新增空02为对照点7:47:53。GPU同机位B10/C11/Areturn中位25.09/24.90/24.90ms，真实命中LDC及temps但无可靠稳态收益，候选不纳入默认。已恢复原marker不存在状态并以新PID13530回读02与30秒普通呈现验证，实际安装APK SHA845d1c4c。下一步需要定位战斗mixed主pass全部draw与最终shader，现有首末key不能归具体对象；目前GPU长帧问题仍开放。唯一生产源码改动为scene close_window浮点实参格式修正，局部编译格式契约11字段通过，尚未生成新APK。详见CODEX-RESUME23-20261115.md及local证据。

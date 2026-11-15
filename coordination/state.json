@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-15T02:09:00.818970+08:00",
- "phase": "v1.0.23-preview已公开发布到GitHub，源标签和远端APK下载摘要验证通过。用户设备充电，性能及正常保存补测待继续。",
+ "updated_at": "2026-11-15T09:56:02.073551+08:00",
+ "phase": "23保存/读回实机通过，LDC/temps同机位对照无可靠GPU收益已恢复；持续战斗GPU性能仍待优化",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -2906,6 +2906,101 @@
    "checkpoint": "发布与远端附件核验完成。",
    "write_state": "RELEASED",
    "released_at": "2026-11-15T02:09:00.818970+08:00"
+  },
+  {
+   "task": "CODEX-RESUME23-DEVICE-20261115",
+   "owner": "root",
+   "paths": [
+    ".local/codex-recovery-20261114/resume23-20261115/device/",
+    "coordination/results/CODEX-RESUME23-20261115.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T02:44:52.016452+08:00",
+   "checkpoint": "本轮有限回归与现成开关实验已收口，性能问题开放。",
+   "write_state": "RELEASED",
+   "released_at": "2026-11-15T09:56:02.073551+08:00"
+  },
+  {
+   "task": "CODEX-RESUME23-PERF-REVIEW-20261115",
+   "owner": "perf_cpu",
+   "paths": [
+    ".local/codex-recovery-20261114/resume23-20261115/perf-review/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T02:44:52.016452+08:00",
+   "checkpoint": "报告已冻结",
+   "write_state": "RELEASED",
+   "released_at": "2026-11-15T03:08:04.360581+08:00"
+  },
+  {
+   "task": "CODEX-RESUME23-GPU-REVIEW-20261115",
+   "owner": "load_profile",
+   "paths": [
+    ".local/codex-recovery-20261114/resume23-20261115/gpu-source-review/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T02:47:07.861049+08:00",
+   "checkpoint": "报告已冻结",
+   "write_state": "RELEASED",
+   "released_at": "2026-11-15T03:08:04.360581+08:00"
+  },
+  {
+   "task": "CODEX-RESUME23-LOG-REVIEW-20261115",
+   "owner": "perf_cpu",
+   "paths": [
+    ".local/codex-recovery-20261114/resume23-20261115/log-review"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T03:08:04.360581+08:00",
+   "checkpoint": "有限任务完成，证据已冻结",
+   "write_state": "RELEASED",
+   "released_at": "2026-11-15T09:48:21.215449+08:00"
+  },
+  {
+   "task": "CODEX-TIDY-AB-20261115",
+   "owner": "root",
+   "paths": [
+    ".local/codex-recovery-20261114/resume23-20261115/tidy-contract",
+    ".local/codex-recovery-20261114/resume23-20261115/tidy-ab",
+    ".local/codex-recovery-20261114/resume23-20261115/device"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T03:08:04.360581+08:00",
+   "checkpoint": "本轮有限回归与现成开关实验已收口，性能问题开放。",
+   "write_state": "RELEASED",
+   "released_at": "2026-11-15T09:56:02.073551+08:00"
+  },
+  {
+   "task": "CODEX-TIDY-JOINT-20261115",
+   "owner": "load_profile",
+   "paths": [
+    ".local/codex-recovery-20261114/resume23-20261115/tidy-joint-review/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T03:09:10.589900+08:00",
+   "checkpoint": "有限任务完成，证据已冻结",
+   "write_state": "RELEASED",
+   "released_at": "2026-11-15T09:48:21.215449+08:00"
+  },
+  {
+   "task": "CODEX-SCENE-LOG-FORMAT-20261115",
+   "owner": "root",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    ".local/codex-recovery-20261114/resume23-20261115/scene-log-contract/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T03:11:25.268554+08:00",
+   "checkpoint": "有限任务完成，证据已冻结",
+   "write_state": "RELEASED",
+   "released_at": "2026-11-15T09:48:21.215449+08:00"
   }
  ],
  "tasks": [
@@ -8180,7 +8275,7 @@
    "id": "CODEX-SAVE-OWNER-RECOVERY-20261115",
    "owner": "root",
    "role": "DEVICE_FILE_OWNERSHIP_REPAIR",
-   "status": "awaiting_user",
+   "status": "completed",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "objective": "修复应用生成存档目录中导入GameSaveData0/1的shell属主导致errno13，原文件字节保持并保全备份，验证实际应用UID可写及正常保存。",
@@ -8198,7 +8293,7 @@
     ".local/codex-recovery-20261114/stutter22-user-video/seed-build/save-owner-repair/"
    ],
    "acceptance": "保存原字节/摘要/metadata与恢复点，标题画面停止进程消除并发写，由run-as复制同字节stage后原子替换属主，逐字节校验保持；不改原游戏包与原始输入。随后正常入口验证保存，未落盘的旧内存进度不冒充已恢复。",
-   "checkpoint": "用户回复掌机没电、充电后再测，正常游戏保存NOT_RUN。23及权限恢复检查点均保留。"
+   "checkpoint": "23 PID9359，正常保存01成功，GameSaveData1 mode2/write414000，SHA634ac0b0→b50e6297，Time7:38:52→7:40:33，正常读回原水都旅店机位；其它文件摘要不变。before/after备份与截图位于resume23-20261115/device。"
   },
   {
    "id": "CODEX-RELEASE23-20261115",
@@ -8255,6 +8350,181 @@
    ],
    "acceptance": "仅发布自有已提交源码与明确授权APK，保存历史版本；preview标签与包一致、发布说明真实限定验证范围。worker仅写audit目录，禁设备/Git修改/上传/源码/coord。root不用main/master提交或推送。",
    "checkpoint": "Release445489874已公开，tag源dd76193，开发分支已推送，APK远端下载SHA845d1c4c吻合；审计211bf291。"
+  },
+  {
+   "id": "CODEX-RESUME23-DEVICE-20261115",
+   "owner": "root",
+   "role": "DEVICE_VALIDATION",
+   "status": "completed",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "在已安装23上正常保存并读回，随后采同进程战斗技能预热命中、真实帧间隔与GPU负荷；只操作RG477M。",
+   "inputs": [
+    "23源dd76193与已安装APK845d1c4c",
+    "用户继续并接入RG477M，电量65%，游戏未运行",
+    "22重复技能0创建GPU65ms与CPU snapshot/descriptor证据"
+   ],
+   "outputs": [
+    ".local/codex-recovery-20261114/resume23-20261115/device/",
+    "coordination/results/CODEX-RESUME23-20261115.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/codex-recovery-20261114/resume23-20261115/device/",
+    "coordination/results/CODEX-RESUME23-20261115.md"
+   ],
+   "acceptance": "root独占ADB/Git/coord；worker只读源码和本地旧证据且仅写报告目录，禁设备/源码修改/构建。正常保存须游戏入口成功及文件落盘并读回，卡顿收益须同PID真实场景，保留原字节备份。",
+   "checkpoint": "正常保存/读回及auto写入验证完成。23同APK B10/C11/Areturn GPU中位25.09/24.90/24.90ms，354draw/约53.5dispatch，候选无可靠收益不采用，原marker不存在状态已恢复。PID13530世界地图02，APK实际SHA845d1c4c吻合。全场景帧率目标仍未达到。"
+  },
+  {
+   "id": "CODEX-RESUME23-PERF-REVIEW-20261115",
+   "owner": "perf_cpu",
+   "role": "READ_ONLY_SOURCE_REVIEW",
+   "status": "completed",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "基于已有CPU与GPU证据审阅vertex snapshot实际fetch范围及缓存，找可验证的小范围性能改动，保护显示修正。",
+   "inputs": [
+    "23源dd76193与已安装APK845d1c4c",
+    "用户继续并接入RG477M，电量65%，游戏未运行",
+    "22重复技能0创建GPU65ms与CPU snapshot/descriptor证据"
+   ],
+   "outputs": [
+    ".local/codex-recovery-20261114/resume23-20261115/perf-review/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/codex-recovery-20261114/resume23-20261115/perf-review/"
+   ],
+   "acceptance": "root独占ADB/Git/coord；worker只读源码和本地旧证据且仅写报告目录，禁设备/源码修改/构建。正常保存须游戏入口成功及文件落盘并读回，卡顿收益须同PID真实场景，保留原字节备份。",
+   "checkpoint": "只读报告已收口，CPU启发式无实测暂不实施，现成ldc/temps关闭，可逐startup单因子A/B，精度联合验证待做。"
+  },
+  {
+   "id": "CODEX-RESUME23-GPU-REVIEW-20261115",
+   "owner": "load_profile",
+   "role": "READ_ONLY_GPU_SOURCE_REVIEW",
+   "status": "completed",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "以真实重GPU窗口及90帧hotpass为输入，审阅当前shader优化和图形执行路径，给成熟现有开关可验证候选及正确性边界。",
+   "inputs": [
+    "22 55380..55410新创建0 GPU中位65.3ms",
+    "GPU90 profile第10pass 15.15ms 145draw mixed1",
+    "当前23源dd76193及已有显示修复与成熟上游本地源码/报告"
+   ],
+   "outputs": [
+    ".local/codex-recovery-20261114/resume23-20261115/gpu-source-review/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/codex-recovery-20261114/resume23-20261115/gpu-source-review/"
+   ],
+   "acceptance": "源码及现有上游资料只读，仅写本报告目录。禁ADB/Git/源码/coord/构建。禁凭shader首末key归对象，保护NoContraction/depth/整数接口/透明层语义，提出一个有限候选及实际调用与默认配置证据。",
+   "checkpoint": "只读报告已收口，CPU启发式无实测暂不实施，现成ldc/temps关闭，可逐startup单因子A/B，精度联合验证待做。"
+  },
+  {
+   "id": "CODEX-RESUME23-LOG-REVIEW-20261115",
+   "owner": "perf_cpu",
+   "role": "READ_ONLY_LOG_REVIEW",
+   "status": "completed",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "复核PID9359首次及重复机械陆行鸟、79秒管线累计与原始长帧，核scene字段语义并给有限结论。",
+   "inputs": [
+    "23源dd76193 APK845d1c4c",
+    "PID9359 first/repeat skill local evidence",
+    "world02正常保存恢复点7:47:53，原01备份及正常更新保持"
+   ],
+   "outputs": [
+    ".local/codex-recovery-20261114/resume23-20261115/log-review"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/codex-recovery-20261114/resume23-20261115/log-review"
+   ],
+   "acceptance": "root独占设备/Git/coord，worker只写log-review。现成开关单因子、按PID隔离，预热/冷编译与稳定窗口分别记录，原缓存及marker备份，不声明全游戏PASS。无源码改动。",
+   "checkpoint": "本地日志复核/联合契约及格式修正已完成，证据位于resume23-20261115对应目录；GPU A/B仍在进行，设备23保持原源码。"
+  },
+  {
+   "id": "CODEX-TIDY-AB-20261115",
+   "owner": "root",
+   "role": "DEVICE_AB_EXISTING_OPTIMIZATIONS",
+   "status": "completed",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "同23APK按A00/B10/必要C11新进程测试现成ldc/temps，保留precise1与显示修正。先组件及真实SPV离线联合校验，再同02机位原生帧/GPU与画面对照，恢复默认作回验。",
+   "inputs": [
+    "23源dd76193 APK845d1c4c",
+    "PID9359 first/repeat skill local evidence",
+    "world02正常保存恢复点7:47:53，原01备份及正常更新保持"
+   ],
+   "outputs": [
+    ".local/codex-recovery-20261114/resume23-20261115/tidy-contract",
+    ".local/codex-recovery-20261114/resume23-20261115/tidy-ab",
+    ".local/codex-recovery-20261114/resume23-20261115/device"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/codex-recovery-20261114/resume23-20261115/tidy-contract",
+    ".local/codex-recovery-20261114/resume23-20261115/tidy-ab",
+    ".local/codex-recovery-20261114/resume23-20261115/device"
+   ],
+   "acceptance": "root独占设备/Git/coord，worker只写log-review。现成开关单因子、按PID隔离，预热/冷编译与稳定窗口分别记录，原缓存及marker备份，不声明全游戏PASS。无源码改动。",
+   "checkpoint": "正常保存/读回及auto写入验证完成。23同APK B10/C11/Areturn GPU中位25.09/24.90/24.90ms，354draw/约53.5dispatch，候选无可靠收益不采用，原marker不存在状态已恢复。PID13530世界地图02，APK实际SHA845d1c4c吻合。全场景帧率目标仍未达到。"
+  },
+  {
+   "id": "CODEX-TIDY-JOINT-20261115",
+   "owner": "load_profile",
+   "role": "HOST_CONTRACT_EXECUTION",
+   "status": "completed",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "执行现成precise与indirect契约，并以local harness核实际VS/FS经LDC及LDC+temps后再precise的SPV有效性、FMA/FragDepth/NoContraction保护，为设备现成开关A/B提供有限组件检查。",
+   "inputs": [
+    "源码dd76193，现成helper与contracts",
+    "report.md准确构建命令及7ca7原/回写真实模块与5e165XGS",
+    "已有世界地图及主角shader local真实模块（可用则加入，勿重新逆向）"
+   ],
+   "outputs": [
+    ".local/codex-recovery-20261114/resume23-20261115/tidy-joint-review/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/codex-recovery-20261114/resume23-20261115/tidy-joint-review/"
+   ],
+   "acceptance": "只读生产源码及输入，仅写本local目录，允许有限单进程host编译/契约运行。禁止ADB/Git/coord/source/fullAndroidbuild。先落盘命令/cwd/log、结果记录SHA退出码覆盖与未知，不把spirv-val当画面验收。",
+   "checkpoint": "本地日志复核/联合契约及格式修正已完成，证据位于resume23-20261115对应目录；GPU A/B仍在进行，设备23保持原源码。"
+  },
+  {
+   "id": "CODEX-SCENE-LOG-FORMAT-20261115",
+   "owner": "root",
+   "role": "DIAGNOSTIC_CORRECTION",
+   "status": "completed",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "修正scene close_window shader_slow_ms %.1f实参误传ULL，恢复后续浮点/整数varargs字段对齐，撤回所有受影响聚合字段解释，沿正确逐帧stall/CSV复核。",
+   "inputs": [
+    "perf_cpu及lookup独立源码确认1037..1040参数错位",
+    "当前已安装23仍含旧打印，逐帧stall格式正确"
+   ],
+   "outputs": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    ".local/codex-recovery-20261114/resume23-20261115/scene-log-contract/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    ".local/codex-recovery-20261114/resume23-20261115/scene-log-contract/"
+   ],
+   "acceptance": "仅修诊断实参类型及局部格式契约，不改游戏执行/图形shader。验证所有聚合字段值和格式检查，当前包23保持且日志aggregates需按缺陷处理。",
+   "checkpoint": "本地日志复核/联合契约及格式修正已完成，证据位于resume23-20261115对应目录；GPU A/B仍在进行，设备23保持原源码。"
   }
  ],
  "blockers": [

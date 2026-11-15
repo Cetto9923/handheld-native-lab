@@ -274,3 +274,7 @@ PID18193的战斗日志直接量到0.5至1.1秒pipeline创建，也保留2.024�
 多轮安装前后tar一直保持同一摘要，本轮发现实际GameSaveData0写打开errno13。导入的GameSaveData0/1为shell所有、mode644，应用UID读写打开失败。备份完整性、文件属主及普通游戏保存的写入结果分别记录。
 
 本轮先在标题停止进程保全原字节和metadata，再由应用UID创建同字节stage并保留mtime，摘要核对后原子替换。原文件内容保持，恢复应用UID读写打开成功。用户正常保存落盘的验证继续单独记录。恢复点及首轮stat参数引用错误均保存在seed-build/save-owner-repair/，详细报告见CODEX-STUTTER22-20261115.md。
+
+### L-021 printf聚合日志的格式与实参逐项核对
+
+scene close_window的shader_slow_ms使用%.1f却曾传ULL，导致后续浮点/整数参数错位。已修为double并用抽取生产函数的-Wformat=2契约验证11个数字字段，旧实参编译被拒绝。已发布23仍沿旧打印，从shader_slow_ms起的scene leave聚合字段不能按标签使用，逐帧stall及CSV另行核验。PID9359的79559ms/17次创建字面归因已撤回，原始逐帧记录为8次1228.3ms。证据见CODEX-RESUME23-20261115.md及scene-log-contract。
