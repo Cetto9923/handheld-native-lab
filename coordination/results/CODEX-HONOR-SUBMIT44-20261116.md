@@ -78,3 +78,5 @@ LevelUp详情短按A多次未离开，最后1秒A正常回探索。一次在详�
 默认继续关闭，使用既有live vcache开关对照。生产提取ASan/UBSan覆盖首尾变化、虚假dirty_since、真实tracker、冷却、池删除/地址复用、预算flush、旧GPU副本保留、1000次释放及关机顺序，与已有组件共11项通过。Android构建及实际收益待测。
 
 验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md，A2DP、显示、稳定30仍开放。
+
+46源b7ff0e3 clean，114项宿主全部通过，Android退出0，80项源码输入前后SHA一致。APK b4455701c8235a0557b9112661c1b0b9b88a63414ce461d79530cb06cf618fc0，3720407B。安装回读SHA及私有副本461全部9文件SHA、正式源metadata一致，证据build46/install46。launch46有界轮询PID15697，仍使用461，vcache0/texrecord1、新描述符路径及45默认shader复用1。当前启动预热中，尚未取得46性能结果。

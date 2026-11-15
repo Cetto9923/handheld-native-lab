@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-16T03:44:08.440837+08:00",
+ "updated_at": "2026-11-16T03:47:20.428239+08:00",
  "phase": "荣耀神殿内部持续移动长帧优化，1080P输出及有界内部尺寸目标30继续推进",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3473,8 +3473,8 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-16T00:37:43.134192+08:00",
-   "checkpoint": "45暖技能CPU栈定位vertex/index memcpy。领取现有vcache无真实dirty tracker时的有界全字节比较回退及生命周期回归，默认仍关闭，先组件、构建再同机A/B。用户已松手由root操作。",
-   "checkpoint_at": "2026-11-16T03:40:50.800492+08:00"
+   "checkpoint": "46源b7ff0e3 clean，114项宿主全部通过，Android退出0，80项源码输入前后SHA一致。APK b4455701c8235a0557b9112661c1b0b9b88a63414ce461d79530cb06cf618fc0，3720407B。安装回读SHA及私有副本461全部9文件SHA、正式源metadata一致，证据build46/install46。launch46有界轮询PID15697，仍使用461，vcache0/texrecord1、新描述符路径及45默认shader复用1。当前启动预热中，尚未取得46性能结果。",
+   "checkpoint_at": "2026-11-16T03:47:20.428239+08:00"
   }
  ],
  "tasks": [
@@ -9950,8 +9950,8 @@
    "dependencies": [],
    "pass_gates": [],
    "acceptance": "原始PID/帧/场景/符号核对，真实持续移动普通FPS与诊断分窗，CPU/GPU及数据生命周期事实支持归因，显示及原速/声音保持；验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。",
-   "checkpoint": "45暖技能CPU栈定位vertex/index memcpy。领取现有vcache无真实dirty tracker时的有界全字节比较回退及生命周期回归，默认仍关闭，先组件、构建再同机A/B。用户已松手由root操作。",
-   "updated_at": "2026-11-16T03:40:50.800492+08:00"
+   "checkpoint": "46源b7ff0e3 clean，114项宿主全部通过，Android退出0，80项源码输入前后SHA一致。APK b4455701c8235a0557b9112661c1b0b9b88a63414ce461d79530cb06cf618fc0，3720407B。安装回读SHA及私有副本461全部9文件SHA、正式源metadata一致，证据build46/install46。launch46有界轮询PID15697，仍使用461，vcache0/texrecord1、新描述符路径及45默认shader复用1。当前启动预热中，尚未取得46性能结果。",
+   "updated_at": "2026-11-16T03:47:20.428239+08:00"
   }
  ],
  "blockers": [

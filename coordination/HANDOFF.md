@@ -1,3 +1,7 @@
+# 2026-11-16T03:47:20.428239+08:00 46
+
+46源b7ff0e3 clean，114项宿主全部通过，Android退出0，80项源码输入前后SHA一致。APK b4455701c8235a0557b9112661c1b0b9b88a63414ce461d79530cb06cf618fc0，3720407B。安装回读SHA及私有副本461全部9文件SHA、正式源metadata一致，证据build46/install46。launch46有界轮询PID15697，仍使用461，vcache0/texrecord1、新描述符路径及45默认shader复用1。当前启动预热中，尚未取得46性能结果。
+
 # 2026-11-16 46顶点索引复用候选
 
 45暖技能同PID5377实际CPU栈定位vertex/index memcpy。46增加缺真实dirty tracker时逐次全字节比较CPU镜像，保留不可变GPU副本、原快速变化回退/600槽冷却、既有预算和池删除。关机先队列空闲及退完槽，再释放vcache。默认仍关，通过现有vcache live开关做A/B。11项生产提取ASan/UBSan及既有组件通过，完整构建/实机收益待测。
