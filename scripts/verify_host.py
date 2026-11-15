@@ -375,6 +375,8 @@ def main():
                                         'tests.device.test_arena_memory_policy'])
     run('render-policy-contract', [sys.executable, '-m', 'unittest',
                                   'tests.device.test_render_policy'])
+    run('android-frame-hint-contract', [sys.executable, '-m', 'unittest',
+                                        'tests.device.test_android_frame_hint'])
     packed_dir = out / 'packed-shader-words'
     run('packed-shader-words-contract', ['bash', 'scripts/android/verify_packed_shader_words.sh', packed_dir])
     extra_artifacts.append(packed_dir / 'test_packed_shader_words')

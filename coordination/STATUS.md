@@ -1,6 +1,6 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-15T20:45:55.776823+08:00
+状态事件时间：2026-11-15T20:51:37.323537+08:00
 阶段：继续定位战斗GPU主通道并审阅成熟开源跨设备兼容缺口
 总控：Codex /root 本轮接管
 更新方式：按事件更新，没有后台自动刷新。
@@ -241,6 +241,7 @@
 | CODEX-HONOR-STABLE30-AB-20261115 | HONOR_CONTROLLED_STUTTER_AB | in_progress | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-HONOR-CLEANUP-20261115 | DEVICE_TEST_DATA_CLEANUP | passed | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | T-CHEAT-OPTIONS-20261115 | ANDROID_CHEAT_IMPLEMENTATION | in_progress | chat-01a1df35-a1ce-7cb2-8e5c-3fa5e081dc66 | 无 | 无额外门禁 | task/T-cheat-options-20261115 |
+| CODEX-HONOR-HINT38-20261115 | ANDROID_FRAME_PACING_PERFORMANCE | in_progress | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 
 ## 独占写入
 
@@ -444,6 +445,7 @@
 - {"task": "CODEX-HONOR-STABLE30-AB-20261115", "owner": "root", "paths": [".local/honor-stable30-20261115/", "coordination/results/CODEX-HONOR-STABLE30-AB-20261115.md", "src/android/native/guest_boot_jni.cpp", "src/android/app/java/org/ffrs/diagnostic/DeviceProfile.java", "src/android/app/java/org/ffrs/diagnostic/GameActivity.java", "src/graphics/nvn_device/nvn_backend_vulkan.c", "src/graphics/nvn_vulkan/engine/xbg_game.cpp", "tests/device/", "tests/installer/", "src/runtime/hle/guest_process.c", "src/runtime/hle/guest_process.h", "src/graphics/nvn_device/nvn_queue.c", "src/graphics/nvn_device/nvn_device.c", "src/graphics/nvn_device/nvn_device.h", "tests/native/guest_process_contract.c"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T18:25:47.477419+08:00", "checkpoint": "7935067;用户授权推荐30FPS动态内部模式，先取土之神殿基线", "write_state": "ACTIVE"}
 - {"task": "CODEX-HONOR-CLEANUP-20261115", "owner": "root", "paths": [".local/honor-stable30-20261115/cleanup/", "coordination/results/CODEX-HONOR-CLEANUP-20261115.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T20:36:05.054379+08:00", "checkpoint": "三份已验证备份，保留一份测试存档，重启实际场景通过。", "write_state": "COMPLETE_SCOPED", "checkpoint_at": "2026-11-15T20:45:55.776823+08:00"}
 - {"task": "T-CHEAT-OPTIONS-20261115", "owner": "chat-01a1df35-a1ce-7cb2-8e5c-3fa5e081dc66", "paths": ["src/android/app/java/org/ffrs/diagnostic/GameActivity.java", "src/android/app/java/org/ffrs/diagnostic/SaveCheater.java", "src/android/app/java/org/ffrs/diagnostic/GameWindowNative.java", "src/android/native/guest_boot_jni.cpp", "src/runtime/hle/nso_host.c", "src/runtime/hle/nso_host.h", "tests/", "scripts/", "coordination/results/T-CHEAT-OPTIONS-20261115.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/cheat-options-20261115", "branch": "task/T-cheat-options-20261115", "acquired_at": "2026-11-15T20:41:19.544419+08:00", "checkpoint": "已核对独立worktree，原树源码冻结，禁止跨树暂存或集成。", "write_state": "ACTIVE_ISOLATED_WORKTREE"}
+- {"task": "CODEX-HONOR-HINT38-20261115", "owner": "root", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", "src/graphics/nvn_vulkan/engine/xbg_android_frame_hint.h", "src/android/app/gamewindow/AndroidManifest.xml", "tests/device/test_android_frame_hint.py", "tests/device/android_frame_hint_contract.cpp", "scripts/verify_host.py", "coordination/results/CODEX-HONOR-HINT38-20261115.md", ".local/honor-stable30-20261115/build38/", ".local/honor-stable30-20261115/hint38/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T20:51:37.323537+08:00", "checkpoint": "开始接线，独立金手指worktree的相同源不在本任务修改范围。", "write_state": "ACTIVE"}
 
 ## 阻塞
 

@@ -25,6 +25,7 @@ extern "C" int xbg_completion_wait_selftest(char *report,size_t bytes);
 #include "xbg_shader_identity.h"
 #include "xbg_upload_policy.h"
 #include "xbg_texel_snapshot.h"
+#include "xbg_android_frame_hint.h"
 // The host testable format table repeats the Vulkan format numbers; keep them
 // pinned to the headers the engine actually compiles against.
 static_assert(VK_FORMAT_R32_UINT==XBG_VK_FORMAT_R32_UINT && VK_FORMAT_R32_SINT==XBG_VK_FORMAT_R32_SINT &&
@@ -94,6 +95,7 @@ extern "C" __attribute__((weak)) int xbg_host_command_callback(cmd_t *c,size_t n
 #include <signal.h>
 #if defined(__ANDROID__)
 #include <ucontext.h>
+#include <android/api-level.h>
 #endif
 #include <cerrno>
 #include <unistd.h>
@@ -129,6 +131,22 @@ static void (*g_ui_rect_fn)(double *y,double *h);
 static double g_ui_moff;static uint64_t g_ui_moff_addr;
 extern "C" void xbg_set_ui_rect_fn(void (*fn)(double *y,double *h)){g_ui_rect_fn=fn;}
 namespace {
+XbgFrameHintApi android_frame_hint_api() {
+    XbgFrameHintApi api;
+#if defined(__ANDROID__)
+    if (android_get_device_api_level() < 33) return api;
+    // libandroid is already linked by the window host. Resolve the API 33
+    // entry points through its exported symbols for API 28 support.
+    api.manager = reinterpret_cast<decltype(api.manager)>(dlsym(RTLD_DEFAULT, "APerformanceHint_getManager"));
+    api.create = reinterpret_cast<decltype(api.create)>(dlsym(RTLD_DEFAULT, "APerformanceHint_createSession"));
+    api.target = reinterpret_cast<decltype(api.target)>(dlsym(RTLD_DEFAULT, "APerformanceHint_updateTargetWorkDuration"));
+    api.report = reinterpret_cast<decltype(api.report)>(dlsym(RTLD_DEFAULT, "APerformanceHint_reportActualWorkDuration"));
+    api.close = reinterpret_cast<decltype(api.close)>(dlsym(RTLD_DEFAULT, "APerformanceHint_closeSession"));
+#endif
+    return api;
+}
+XbgFrameHint android_frame_hint(android_frame_hint_api());
+bool android_frame_hint_enabled = true;
 xbg_game_config cfg{};
 std::recursive_mutex mutex;
 uint32_t deferred_live_profile=0;
@@ -7416,7 +7434,7 @@ extern "C" int xbg_game_profile_cpu(uint64_t first_frame,uint32_t frame_count){
     xbg_logf("NVN CPU_TIMING armed first=%llu count=%u maxSeconds=60 clock=steady elapsed-not-thread-cpu",(unsigned long long)first_frame,frame_count);
     if(first_frame==1)timing_start();return 0;
 }
-extern "C" int xbg_game_shutdown(){gfx_drain();gfx_async_stop();std::lock_guard<std::recursive_mutex> lock(mutex);if(!initialized)return 0;timing_report("shutdown-partial");provenance_close("SHUTDOWN");resolve_pending();submit_slots(true);save_pipeline_cache();pending_writebacks.clear();pending_reports.clear();pending_events.clear();recording_events.clear();epochs.clear();VkResult r=vkQueueWaitIdle(cfg.queue);if(r!=VK_SUCCESS)return r;wtrack::release();destroy_slots();clear_pipeline_objects();cache_save_join();warm::shutdown();bright::shutdown();shutdown_rg16_proxy();clear_descriptor_caches();clear_render_pass_cache();images.clear();++images_epoch;for(auto &f:persistent_framebuffers)vkDestroyFramebuffer(cfg.device,f.second,nullptr);persistent_framebuffers.clear();image_index.clear();image_index_dirty=true;program_cache.clear();shaders.clear();textures.clear();texture_pool_cache=nullptr;samplers.clear();null_textures.clear();texture_pool_cache=nullptr;pools.clear();host_segments.clear();host_ranges.clear();host_bytes=0;cmd_range_lo=0;cmd_range_bytes=0;vkDestroyPipelineCache(cfg.device,pipeline_cache,nullptr);pipeline_cache=VK_NULL_HANDLE;vkDestroyCommandPool(cfg.device,command_pool,nullptr);command_pool=VK_NULL_HANDLE;if(submit_sem_inited && cfg.device){for(unsigned i=0;i<kMaxSlots;i++){if(submit_semaphores[i]!=VK_NULL_HANDLE)vkDestroySemaphore(cfg.device,submit_semaphores[i],nullptr);submit_semaphores[i]=VK_NULL_HANDLE;submit_sem_signaled[i]=false;}submit_sem_inited=false;last_signal_sem=VK_NULL_HANDLE;last_signal_slot=-1;}initialized=false;return 0;}
+extern "C" int xbg_game_shutdown(){gfx_drain();gfx_async_stop();std::lock_guard<std::recursive_mutex> lock(mutex);android_frame_hint.reset();if(!initialized)return 0;timing_report("shutdown-partial");provenance_close("SHUTDOWN");resolve_pending();submit_slots(true);save_pipeline_cache();pending_writebacks.clear();pending_reports.clear();pending_events.clear();recording_events.clear();epochs.clear();VkResult r=vkQueueWaitIdle(cfg.queue);if(r!=VK_SUCCESS)return r;wtrack::release();destroy_slots();clear_pipeline_objects();cache_save_join();warm::shutdown();bright::shutdown();shutdown_rg16_proxy();clear_descriptor_caches();clear_render_pass_cache();images.clear();++images_epoch;for(auto &f:persistent_framebuffers)vkDestroyFramebuffer(cfg.device,f.second,nullptr);persistent_framebuffers.clear();image_index.clear();image_index_dirty=true;program_cache.clear();shaders.clear();textures.clear();texture_pool_cache=nullptr;samplers.clear();null_textures.clear();texture_pool_cache=nullptr;pools.clear();host_segments.clear();host_ranges.clear();host_bytes=0;cmd_range_lo=0;cmd_range_bytes=0;vkDestroyPipelineCache(cfg.device,pipeline_cache,nullptr);pipeline_cache=VK_NULL_HANDLE;vkDestroyCommandPool(cfg.device,command_pool,nullptr);command_pool=VK_NULL_HANDLE;if(submit_sem_inited && cfg.device){for(unsigned i=0;i<kMaxSlots;i++){if(submit_semaphores[i]!=VK_NULL_HANDLE)vkDestroySemaphore(cfg.device,submit_semaphores[i],nullptr);submit_semaphores[i]=VK_NULL_HANDLE;submit_sem_signaled[i]=false;}submit_sem_inited=false;last_signal_sem=VK_NULL_HANDLE;last_signal_slot=-1;}initialized=false;return 0;}
 extern "C" void xbg_game_get_stats(xbg_game_stats *out){if(out)*out={stats.submissions.load(),stats.draws.load(),stats.dispatches.load(),stats.presents.load(),stats.shader_loads.load()};}
 extern "C" void xbg_game_frame_counters(xbg_frame_counters *out){if(out)*out={hud::pipelines.load(),hud::pipeline_ns.load(),hud::shaders.load(),hud::shader_ns.load(),hud::uploads.load(),hud::reuploads.load(),hud::upload_bytes.load(),hud::upload_ns.load()};}
 extern "C" void xbg_game_set_frame(uint64_t frame){hud::frame.store(frame,std::memory_order_relaxed);}
@@ -7506,7 +7524,7 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
           {"bindcache",&bind_cache_enabled},{"ownedinput",&owned_input_copy_enabled},
           {"gpuindexed",&gpu_indexed_enabled},{"uppro",&upload_prologue},{"depthaspect",&depth_aspect_enabled},
           {"pipefast",&pipeline_fast_enabled},{"pipememo",&pipe_memo},{"occlusion",&occlusion_batch_enabled},
-          {"vcache",&vcache::enabled},
+          {"vcache",&vcache::enabled},{"androidhint",&android_frame_hint_enabled},
         };
         char *save=nullptr;int mipmaxlod0_want=xbg_sampler_force_maxlod0;
         for(char *tok=strtok_r(buf," \t\n\r",&save);tok;tok=strtok_r(nullptr," \t\n\r",&save)){
@@ -7671,6 +7689,39 @@ extern "C" int xbg_legacy_wait(uint64_t fence,uint64_t timeout){
     return fence<=completed;
 }
 extern "C" void xbg_legacy_finish(){gfx_drain();std::lock_guard<std::recursive_mutex> lock(mutex);need(initialized,"Queue finish before Vulkan initialization");++perf.why_finish;complete_all();VK(vkQueueWaitIdle(cfg.queue));}
+#if defined(__ANDROID__)
+extern "C" uint32_t nso_host_oe_get_current_focus_state(void) __attribute__((weak));
+#endif
+static void xbg_report_frame_hint(uint64_t now_ns, uint64_t pacing_ns, uint64_t target_ns) {
+#if defined(__ANDROID__)
+    static const bool target_policy = [] {
+        const char *value = getenv("FFRS_RENDER_POLICY");
+        return value && !strcmp(value, "1");
+    }();
+    const bool focused = !nso_host_oe_get_current_focus_state ||
+                         nso_host_oe_get_current_focus_state() == 1;
+    const bool was_active = android_frame_hint.active();
+    android_frame_hint.finish_frame(android_frame_hint_enabled && target_policy && focused,
+                                   int32_t(gettid()), target_ns, now_ns, pacing_ns);
+    if (was_active != android_frame_hint.active())
+        xbg_logf("NVN Android frame hint active=%u tid=%d target_ns=%llu",
+                 unsigned(android_frame_hint.active()), int(gettid()), (unsigned long long)target_ns);
+    static bool unavailable_logged = false;
+    if (android_frame_hint.unavailable() && !unavailable_logged) {
+        unavailable_logged = true;
+        xbg_logf("NVN Android frame hint unavailable; normal scheduling continues");
+    }
+    if (android_frame_hint.active() && android_frame_hint.report_count() &&
+        android_frame_hint.report_count() % 600 == 0)
+        xbg_logf("NVN Android frame hint reports=%llu work_ns=%lld pacing_ns=%llu",
+                 (unsigned long long)android_frame_hint.report_count(),
+                 (long long)android_frame_hint.last_work_ns(), (unsigned long long)pacing_ns);
+#else
+    (void)now_ns;
+    (void)pacing_ns;
+    (void)target_ns;
+#endif
+}
 static uint64_t s_target_frame_ns = 33333333ull; // Default 30 FPS (33.333333 ms)
 static uint64_t s_next_present_ns = 0;
 static uint32_t s_pace_check_counter = 0;
@@ -7844,7 +7895,7 @@ void flame_diag_roi_read(){
 
 static void xbg_present_texture_now(const win_t *window,const tex_t *texture){std::lock_guard<std::recursive_mutex> lock(mutex);preflight_cpu_reads();{SiteScope site(SITE_PRESENT);cur_op=61;TimingRoot timing_root;CPU_SCOPE(Other);need(initialized&&cfg.present,"Game presentation callback not installed");uint64_t present_begin=timing_clock();Image &im=get_image(texture,false);need(im.gpu_written,"Game tried to present a texture never rendered");probe_present(im);
     // Stop the uniform fingerprint trace once it has covered the requested number of frames.
-    if(ubtrace.on.load(std::memory_order_relaxed)){if(ubtrace.frames>=ubtrace.limit){ubtrace.on.store(false,std::memory_order_relaxed);if(ubtrace.file){fflush(ubtrace.file);fclose(ubtrace.file);ubtrace.file=nullptr;}xbg_logf("LIVE-UBTRACE off after %llu frames",(unsigned long long)ubtrace.frames);}else ++ubtrace.frames;}Commands c;im.transition(c.command,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);fire_trace_present(im,c.command);water_trace_present(im,c.command);c.finish();if(flame_diag_enabled)flame_diag_roi_record(im);submit_slots(false);if(flame_diag_enabled){gpu_sync(perf.sync_readback);flame_diag_roi_read();}uint64_t pace_ns=xbg_frame_pace();int r;{CPU_SCOPE(Present);r=cfg.present(cfg.userdata,window->native,im.image,im.fmt,im.width,im.height,window->crop,window->interval);}if(r){static unsigned err_n=0;if(err_n++<10)xbg_logf("Game presentation dropped/warning: %d",r);}++stats.presents;if(flame_diag_enabled){fdiag_present=texture->serial;fdiag_present_mem=uint64_t(uintptr_t(texture->mem));
+    if(ubtrace.on.load(std::memory_order_relaxed)){if(ubtrace.frames>=ubtrace.limit){ubtrace.on.store(false,std::memory_order_relaxed);if(ubtrace.file){fflush(ubtrace.file);fclose(ubtrace.file);ubtrace.file=nullptr;}xbg_logf("LIVE-UBTRACE off after %llu frames",(unsigned long long)ubtrace.frames);}else ++ubtrace.frames;}Commands c;im.transition(c.command,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);fire_trace_present(im,c.command);water_trace_present(im,c.command);c.finish();if(flame_diag_enabled)flame_diag_roi_record(im);submit_slots(false);if(flame_diag_enabled){gpu_sync(perf.sync_readback);flame_diag_roi_read();}uint64_t pace_ns=xbg_frame_pace();int r;{CPU_SCOPE(Present);r=cfg.present(cfg.userdata,window->native,im.image,im.fmt,im.width,im.height,window->crop,window->interval);}if(r){static unsigned err_n=0;if(err_n++<10)xbg_logf("Game presentation dropped/warning: %d",r);}xbg_report_frame_hint(timing_clock(),pace_ns,s_target_frame_ns);++stats.presents;if(flame_diag_enabled){fdiag_present=texture->serial;fdiag_present_mem=uint64_t(uintptr_t(texture->mem));
         uint64_t other_draw=0,other_inst=0,other_bind=0,other_zero=0;for(int i=2;i<flame_diag_keys;i++){other_draw+=fdiag_draws[i];other_inst+=fdiag_inst[i];other_bind+=fdiag_binds[i];other_zero+=fdiag_zero[i];}
         xbg_logf("FLAME_FRAME fr=%llu be4e_draw=%llu be4e_inst=%llu be4e_bind=%llu be4e_zero=%llu f8b27_draw=%llu f8b27_inst=%llu f8b27_bind=%llu f8b27_zero=%llu f8b27_nz=%llu f8b27_sig=%#llx f8b27_mem=%#llx other_draw=%llu other_inst=%llu other_bind=%llu other_zero=%llu skip=%llu ds=%u/%u/%u blend=%u/%u/%u rt=%#llx dsrt=%#llx vp=%#llx sc=%#llx bi=%llu bv=%llu cnt=%llu prim=%d itype=%d present=%llu pmem=%#llx pf=%llu pmean=%llu roi=%u,%u,%u,%u im=%llu,%llu c5a=%#x c5b=%#x c5c=%#x c2a=%#x c0a=%#x ubo=%#llx c5mask=%#llx c5min=%llu c5max=%llu c5n=%llu rtpx=%llu rtw=%llu rth=%llu b18=%#x rthash=%#llx texhash=%#llx vb0=%#llx:%llu vb1=%#llx:%llu vb2=%#llx:%llu vb3=%#llx:%llu ibuf=%#llx ibytes=%llu",
             (unsigned long long)stats.presents.load(),(unsigned long long)fdiag_draws[0],(unsigned long long)fdiag_inst[0],(unsigned long long)fdiag_binds[0],(unsigned long long)fdiag_zero[0],
