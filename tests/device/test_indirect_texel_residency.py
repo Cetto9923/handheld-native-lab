@@ -14,6 +14,8 @@ class IndirectTexelResidency(unittest.TestCase):
         # The earlier forward declaration has no body.
         start = source.index('bool current_pending_range(uint64_t address,', start + 1)
         body = source[start:source.index('// Optional, bounded real-data diagnostic.', start)]
+        start = source.index('bool indirect_cpu_clean(uint64_t address,')
+        clean_body = source[start:source.index('// Defined below, where the recording slots', start)]
         probe = (ROOT / 'src/graphics/nvn_vulkan/engine/xbg_probe.inc').read_text()
         start = probe.index('void probe_cpu_sync(')
         probe_body = probe[start:probe.index('std::shared_ptr<Image> probe_keep(', start)]
@@ -90,7 +92,7 @@ void xbg_logf(const char *format,...) {
     char text[2048];va_list args;va_start(args,format);
     vsnprintf(text,sizeof(text),format,args);va_end(args);logs.emplace_back(text);
 }
-''' + body + probe_body + r'''
+''' + clean_body + body + probe_body + r'''
 void texture(int id,uint64_t address,uint64_t bytes) {
     auto &t=legacy_textures[id].texture;
     t.mem=reinterpret_cast<void *>(address);t.L.size=bytes;t.d.target=10;
@@ -137,7 +139,19 @@ int main(int argc,char **) {
     baseline();legacy_textures[1].texture.d.target=2;assert(!indirect_dispatch_inputs_resident());
     baseline();legacy_textures[1].texture.L.size=0;assert(!indirect_dispatch_inputs_resident());
     baseline();texture(1,UINT64_MAX-3,8);assert(!indirect_dispatch_inputs_resident());
-    baseline();texture(1,0x2002,256);assert(!indirect_dispatch_inputs_resident());
+    baseline();texture(1,0x2002,256);assert(indirect_dispatch_inputs_resident());
+    pending_writebacks.push_back({0x2002,256,{2},&slots[0]});
+    assert(!indirect_dispatch_inputs_resident());
+    pending_writebacks.back().buffer.offset=0;assert(indirect_dispatch_inputs_resident());
+    // The live fire kernel has a CPU-clean two-byte readonly input.
+    baseline();texture(2,0x3000,2);assert(indirect_dispatch_inputs_resident());
+    pending_writebacks.push_back({0x3000,2,{0},&slots[0]});
+    assert(!indirect_dispatch_inputs_resident()); // An unaligned GPU copy stays excluded.
+    pending_writebacks.clear();pending_reports.push_back({0x3000});
+    assert(!indirect_dispatch_inputs_resident());
+    baseline();texture(1,0x2000,2);assert(indirect_dispatch_inputs_resident());
+    pending_writebacks.push_back({0x2000,2,{0},&slots[0]});
+    assert(!indirect_dispatch_inputs_resident());
     baseline();shader.bindings[1].slot=16;assert(!indirect_dispatch_inputs_resident());
     baseline();shader.bindings[2].slot=256;assert(!indirect_dispatch_inputs_resident());
     baseline();shader.bindings[1].count=129;assert(!indirect_dispatch_inputs_resident());

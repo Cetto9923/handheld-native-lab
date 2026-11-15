@@ -5763,7 +5763,10 @@ bool indirect_dispatch_inputs_resident(){
                 const auto &texture=found->second.texture;
                 uint64_t address=uint64_t(texture.mem),bytes=texture.L.size;
                 if(texture.d.target!=10 || !xbg_wb_range_valid(address,bytes) ||
-                   ((address|bytes)&3u) || !clean_or_resident(address,bytes,bytes,4))return false;
+                   !clean_or_resident(address,bytes,bytes,4))return false;
+                // CPU uploads can contain a single 16-bit texel. Four-byte
+                // copy sizes are required only when consuming a GPU result.
+                if((bytes&3u) && !indirect_cpu_clean(address,bytes))return false;
                 for(const auto &report:pending_reports)
                     if(xbg_wb_overlaps(address,bytes,report.addr,sizeof(NVNcounterData)))return false;
                 texels.push_back({address,address+bytes,b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER});

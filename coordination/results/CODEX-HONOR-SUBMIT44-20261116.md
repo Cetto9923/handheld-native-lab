@@ -182,3 +182,9 @@ probe3及录屏窗口排除普通FPS，显示尚待逐帧查看。真实稳30、
 52源3a3cc65 clean，115宿主/Android0，81源输入SHA一致，APK a2bbf957fa04a740b53d01ed274100ba7d128fbbc8f4679aec330a04465244fd，3724503B。安装回读及私有461九文件SHA/正式源metadata通过，PID16304，none新准入、adpf0/vcache0/probe0/overlay0，拟本次火焰技能前开启probe3以列出924b纹理范围。新52仅补有界诊断和版本。
 
 所有APK、符号和私有存档原件保留。真正稳定30及完整冷暖、音频、显示和独立QA仍未达成。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。
+
+## 52实际短输入与53最小修正
+
+52 PID16304 frame8039的924b回退输入已经实测。参数12/生产60字节同slot7；storage B11/B23为相同32字节、B17/B47相同52字节，readonly B29为12、B41为8192，均为完整当前槽GPU范围。唯一短输入B35为CPU干净2字节，无待GPU写覆盖。53仅撤去CPU干净texel的全局4字节地址/长度限制，GPU输入仍要求完整当前槽、源offset4对齐及copy长度4对齐，报告/别名/未知回退保留。生产indirect_cpu_clean、原准入及完整probe函数联合提取，新增CPU干净2字节、GPU两字节拒绝、未对齐guest地址与真实device-buffer offset分别验证，常规和32行上界两进程ASan/UBSan通过。暂未得到53实机性能。
+
+shader、uniform范围、typed/integer、游戏时间与音频配置继续原样。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。
