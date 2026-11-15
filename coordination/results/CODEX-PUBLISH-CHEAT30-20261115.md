@@ -55,3 +55,11 @@ GitHub目标为既有公开仓库Cetto9923/handheld-native-lab。发布前核远
 备份/恢复生产代码已完成JVM实际文件系统往返与故障测试，最终流程包的备份按钮/卡片真机往返暂为NOT_RUN，发布说明不宣称该范围实机通过。独立QA为NOT_RUN。最终native与29包逐字相同，UI流程更改不作为卡顿修复结论。
 
 发布源030149eb587329e7a9baf4f804c3c3198d729015，57份构建输入与该Git版本blob逐字匹配。发布前对远端01e8024至该点102个blob自审未发现被排除原始数据、二进制或凭据模式，APK内既有存档格式资源按用户内置功能要求随包交付，原始资源未进入源码。签名与aapt版本检查通过。
+
+## GitHub发布完成
+
+Release https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.30-preview 已公开，附件 https://github.com/Cetto9923/handheld-native-lab/releases/download/v1.0.30-preview/FFRS-1.0.30-preview-20261115.apk 与sha256文件已上传。远端附件重新下载，SHA256 89cbb81c758138ae5e81b4be2f5ca28ddd5c2fb2591fc5de026a0d63c3c7cb78、3,703,949字节，与本地及安装包相同。
+
+tag指向精确构建源码030149eb587329e7a9baf4f804c3c3198d729015，当前开发分支acf189c已推送，main/master未作为推送目标。完整可恢复发布记录在.local/releases/1.0.30/publication/plan.json及publish.log，各步退出0。
+
+本次公开预览交付包含内置金手指、中文人名/标签、菜单独立、简化预设/自定义/结果说明、文件备份恢复流程。实际金手指入口、菜单、中文及用户保存结果已取证，备份恢复宿主文件往返和故障契约通过；最终包掌机备份恢复往返仍待完成，独立QA为NOT_RUN。发布不作为主战斗卡顿或跨设备稳定性通过结论。

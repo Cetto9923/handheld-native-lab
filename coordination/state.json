@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-15T15:47:39.124301+08:00",
+ "updated_at": "2026-11-15T15:50:14.448236+08:00",
  "phase": "继续定位战斗GPU主通道并审阅成熟开源跨设备兼容缺口",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3198,8 +3198,9 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-15T15:11:14.438940+08:00",
-   "checkpoint": "a280860",
-   "write_state": "ACTIVE"
+   "checkpoint": "30预览已GitHub公开发布且远端下载SHA89cbb81c/3703949B验证一致，tag/source030149e，108host/Android0，57输入匹配。中文雷因8单位、菜单独立、折叠UI及用户34项保存结果实测。备份恢复宿主文件往返/故障契约通过，最终掌机往返及独立QA NOT_RUN；交叠窗口已排除。主卡顿仍开放。",
+   "write_state": "COMPLETE_SCOPED",
+   "checkpoint_at": "2026-11-15T15:50:14.448236+08:00"
   }
  ],
  "tasks": [
@@ -9131,7 +9132,7 @@
    "id": "CODEX-PUBLISH-CHEAT30-20261115",
    "owner": "root",
    "role": "RELEASE_AND_ANDROID_UI",
-   "status": "in_progress",
+   "status": "completed",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "objective": "Publish current fixes with built-in Chinese cheats, independent virtual-control menu, simplified cheat and file-backup/restore workflows with persistent truthful guidance.",
@@ -9162,7 +9163,9 @@
     "tests/installer/test_save_flow.py"
    ],
    "acceptance": "Host actual menu visibility regression; signed APK contains cheat resources; save inspect and temporary-copy roundtrip; RG actual menu with hidden/shown controls and cheat dialog; install save bytes retained; public release downloaded and hash verified. Main/master read-only, five WIP excluded.",
-   "checkpoint": "030149e/89cbb81c流程包已安装，存档tar与APK逐字核验，PID31041。金手指中文雷因/8角色、折叠自定义、菜单独立及保存结果实际显示，用户全体预设34项写入。交叠窗口不作原值保存验收。备份/恢复宿主文件系统与失败测试通过，最终真机往返暂NOT_RUN，独立QA未执行。源57blob匹配，历史102blob自审0发现，准备用户授权GitHub发布。"
+   "checkpoint": "30预览已GitHub公开发布且远端下载SHA89cbb81c/3703949B验证一致，tag/source030149e，108host/Android0，57输入匹配。中文雷因8单位、菜单独立、折叠UI及用户34项保存结果实测。备份恢复宿主文件往返/故障契约通过，最终掌机往返及独立QA NOT_RUN；交叠窗口已排除。主卡顿仍开放。",
+   "release_url": "https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.30-preview",
+   "remaining": "最终包掌机备份恢复往返、独立QA及主战斗卡顿/其它机型验证继续独立跟踪"
   }
  ],
  "blockers": [
@@ -9300,6 +9303,13 @@
    "source": "7b5a8e4",
    "scope": "RG477M29 actual three background transitions no new export; manual export5files matches; default world30sec29.99983FPS/PSS4480964KiB vs28 6851356KiB",
    "evidence": "coordination/results/CODEX-SAVE-MEMORY29-20261115.md"
+  },
+  {
+   "task": "CODEX-PUBLISH-CHEAT30-20261115",
+   "scope": "Published prerelease and remote-download checksum verified;108 host checks plus scoped RG UI and actual cheat result",
+   "source": "030149eb587329e7a9baf4f804c3c3198d729015",
+   "release": "https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.30-preview",
+   "evidence": "coordination/results/CODEX-PUBLISH-CHEAT30-20261115.md"
   }
  ],
  "unverified": [
@@ -9328,7 +9338,8 @@
   "Whether gfx-wb-skip=0 removes the moon halo flicker on the device has not been confirmed; the field scene could not be re-entered from the title screen with adb input in this session.",
   "No code fix for the stale indirect-argument read has been written, built or verified.",
   "The current-slot guard on find_indirect_template is not yet built, installed or accepted on the device.",
-  "2026-11-15当前29仅掌机范围自测。手机OEM严重运行内存异常仍缺对应退出日志，荣耀本轮用户暂缓。战斗仍有GPU73.95ms与火炎剑626.5ms管线长帧，长期内存和开场声音待回归，独立QA NOT_RUN。"
+  "2026-11-15当前29仅掌机范围自测。手机OEM严重运行内存异常仍缺对应退出日志，荣耀本轮用户暂缓。战斗仍有GPU73.95ms与火炎剑626.5ms管线长帧，长期内存和开场声音待回归，独立QA NOT_RUN。",
+  "1.0.30简化备份恢复已通过生产方法JVM文件系统往返与存储失败检查，最终掌机备份/恢复往返尚未完成；输入与用户交叠窗口排除。金手指存档修改需要回标题重读，现有备份为已写盘进度。独立QA NOT_RUN。"
  ],
  "execution_goal": {
   "objective": "User cancels adaptive refresh implementation; prefer verified existing Switch FPS patch approach, port to exact currentBuild if possible, pursue realstable60FPS and continuecontrols/scenes/story/resources/audio unchangedspeed",
