@@ -58,6 +58,7 @@ typedef struct {
     VkBool32 shader_draw_parameters_enabled;
     VkBool32 shader_output_layer_supported,shader_output_viewport_index_supported;
     VkBool32 shader_output_layer_enabled,shader_output_viewport_index_enabled;
+    VkBool32 sampler_mirror_clamp_enabled;
     uint32_t storage_image_write_supported;   /* the device can write a storage image without a format */
     uint32_t storage_image_write_enabled;     /* and it was enabled on this device */
     uint32_t swapchain_supported;             /* the device has VK_KHR_swapchain */
@@ -130,6 +131,7 @@ int nvn_vulkan_get_enabled_features(const nvn_device_state *device,
     out->physical_api_version = st->api_version;
     out->shader_output_layer = st->shader_output_layer_enabled;
     out->shader_output_viewport_index = st->shader_output_viewport_index_enabled;
+    out->sampler_mirror_clamp_to_edge = st->sampler_mirror_clamp_enabled;
     return 1;
 }
 
@@ -296,7 +298,7 @@ static int nvn_vulkan_create(nvn_device_state *device, const void *builder) {
         st->shader_output_layer_supported = supported12.shaderOutputLayer;
         st->shader_output_viewport_index_supported = supported12.shaderOutputViewportIndex;
     }
-    /* Only the two proven output features are requested. Never forward all
+    /* Only the used output and sampler features are requested. Never forward all
      * supported Vulkan12 bits (descriptor indexing, memory model, etc.). */
     draw_parameters.pNext = core12_route ? &requested12 : NULL;
 
@@ -315,8 +317,10 @@ static int nvn_vulkan_create(nvn_device_state *device, const void *builder) {
         requested12.shaderOutputLayer=VK_TRUE;
         requested12.shaderOutputViewportIndex=VK_TRUE;
     }
+    if (core12_route) requested12.samplerMirrorClampToEdge=supported12.samplerMirrorClampToEdge;
     /* Extension names remain alive through vkCreateDevice. */
-    const char *device_extensions[1];
+    const char *device_extensions[2];
+    VkBool32 mirror_extension_supported=VK_FALSE,mirror_extension_enabled=VK_FALSE;
     uint32_t extension_count = 0;
     VkExtensionProperties *available = NULL;
     VkResult extension_result = vkEnumerateDeviceExtensionProperties(st->physical, NULL, &extension_count, NULL);
@@ -324,12 +328,18 @@ static int nvn_vulkan_create(nvn_device_state *device, const void *builder) {
         available = (VkExtensionProperties *)calloc(extension_count, sizeof(*available));
         if (available) {
             extension_result = vkEnumerateDeviceExtensionProperties(st->physical, NULL, &extension_count, available);
-            if (extension_result == VK_SUCCESS) for (uint32_t e=0;e<extension_count;e++)
+            if (extension_result == VK_SUCCESS) for (uint32_t e=0;e<extension_count;e++) {
                 if (!strcmp(available[e].extensionName,VK_KHR_SWAPCHAIN_EXTENSION_NAME)) st->swapchain_supported=1;
+                if (!strcmp(available[e].extensionName,VK_KHR_SAMPLER_MIRROR_CLAMP_TO_EDGE_EXTENSION_NAME)) mirror_extension_supported=VK_TRUE;
+            }
             free(available);
         }
     }
     if (st->swapchain_supported) device_extensions[device_info.enabledExtensionCount++]=VK_KHR_SWAPCHAIN_EXTENSION_NAME;
+    if (!requested12.samplerMirrorClampToEdge && mirror_extension_supported) {
+        device_extensions[device_info.enabledExtensionCount++]=VK_KHR_SAMPLER_MIRROR_CLAMP_TO_EDGE_EXTENSION_NAME;
+        mirror_extension_enabled=VK_TRUE;
+    }
     device_info.ppEnabledExtensionNames=device_info.enabledExtensionCount?device_extensions:NULL;
     fprintf(stderr,"[nvn] vulkan: swapchain supported=%u requested=%u; Vulkan12 route=%u outputLayer supported=%u requested=%u outputViewportIndex supported=%u requested=%u\n",
         st->swapchain_supported,st->swapchain_supported,core12_route,supported12.shaderOutputLayer,requested12.shaderOutputLayer,
@@ -348,6 +358,10 @@ static int nvn_vulkan_create(nvn_device_state *device, const void *builder) {
     st->shader_draw_parameters_enabled = draw_parameters.shaderDrawParameters;
     st->shader_output_layer_enabled = requested12.shaderOutputLayer;
     st->shader_output_viewport_index_enabled = requested12.shaderOutputViewportIndex;
+    st->sampler_mirror_clamp_enabled = requested12.samplerMirrorClampToEdge || mirror_extension_enabled;
+    fprintf(stderr,"[nvn] vulkan: samplerMirrorClampToEdge coreSupported=%u coreRequested=%u extensionSupported=%u extensionEnabled=%u enabled=%u\n",
+        supported12.samplerMirrorClampToEdge,requested12.samplerMirrorClampToEdge,
+        mirror_extension_supported,mirror_extension_enabled,st->sampler_mirror_clamp_enabled);
     fprintf(stderr,"[nvn] vulkan: successful device output features: shaderOutputLayer=%u shaderOutputViewportIndex=%u legacyLayerEXT=0 instanceAPI=%u.%u physicalAPI=%u.%u\n",
         st->shader_output_layer_enabled,st->shader_output_viewport_index_enabled,
         VK_VERSION_MAJOR(st->instance_api_version),VK_VERSION_MINOR(st->instance_api_version),

@@ -294,6 +294,7 @@ int nvn_engine_initialize(nvn_device_state *device, char *reason, size_t reason_
         config.game.instance_api_version = enabled.instance_api_version;
         config.game.enabled_shader_output_layer = enabled.shader_output_layer;
         config.game.enabled_shader_output_viewport_index = enabled.shader_output_viewport_index;
+        config.sampler_mirror_clamp_to_edge = enabled.sampler_mirror_clamp_to_edge;
         fprintf(stderr, "[engine] using successful device feature request: instance API %u.%u.%u, "
                         "physical API %u.%u.%u, enabled shaderDrawParameters=%u outputLayer=%u outputViewportIndex=%u legacyLayerEXT=0\n",
                 VK_VERSION_MAJOR(enabled.instance_api_version), VK_VERSION_MINOR(enabled.instance_api_version),

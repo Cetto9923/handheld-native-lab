@@ -791,8 +791,16 @@ struct Slot {
     std::unordered_map<std::vector<uint64_t>,VkDescriptorSet,SetKeyHash> set_cache; // identical descriptor contents -> one set per frame
     std::unordered_map<VkDescriptorSetLayout,std::vector<VkDescriptorSet>> spare_sets; // batch-allocated, reset with the pools
     struct PassRec {
+        struct DrawRec {
+            uint64_t ordinal=0;std::string shaders;
+            uint32_t count=0,instances=0,first_instance=0,topology=0,cull=0,blend=0,write_mask=0;
+            int32_t first=0,base_vertex=0;
+            bool indexed=false,indirect=false,depth_test=false,depth_write=false;
+            uint32_t depth_compare=0;VkViewport viewport{};VkRect2D scissor{};
+        };
         uint32_t q0=0,q1=0,w=0,h=0,att=0,fmt=0,draws0=0,draws1=0,x=0,y=0,z=0;uint64_t verts0=0,verts1=0;
         bool compute=false,complete=false,mixed=false,dz=false;std::string first,last;
+        std::vector<DrawRec> draw_records;
     };
     bool prof=false;VkQueryPool prof_pool{};uint32_t prof_used=0,prof_slot=0,prof_skipped=0;uint64_t prof_frame=0;
     std::vector<PassRec> prof_recs;int prof_open=-1;
@@ -933,6 +941,11 @@ std::unordered_set<uint64_t> texel_frame_keys,texel_prev_keys;uint64_t texel_bin
 // (the camp's first frame falls among them); an empty file samples as above.
 constexpr uint32_t pass_prof_query_limit=1024,pass_prof_slot_limit=32;
 bool pass_prof_enabled=false;uint64_t pass_prof_next=300,pass_prof_draws=0,pass_prof_frame=UINT64_MAX,pass_prof_period=600,pass_prof_until=UINT64_MAX;
+// Keep a bounded draw census for the first sampled frame of each request.
+// Records are printed after its fence, outside the timed command recording.
+constexpr uint32_t pass_prof_draw_limit=1024;
+uint64_t pass_prof_draw_frame=UINT64_MAX;
+uint32_t pass_prof_draw_records=0,pass_prof_draw_dropped=0;
 // 通道分析器是有界的诊断：标记给出要采样的呈现窗口，引擎在窗口里逐帧采样。只有正在被采样的那一帧才允许走精确计时路径；
 // 窗口一过，GPU 常驻间接参数 / GPU 常驻索引绘制这些快路径必须立刻恢复。
 // The pass profiler is a bounded diagnostic: the marker names the window of presents to sample and the engine samples one
@@ -1226,6 +1239,11 @@ void retire_slot(Slot &s){
         }
         if(complete)span_us=double((last-first)&mask)*per;
         xbg_logf("NVN GPASS frame=%llu slot=%u ring=%u summary recorded=%zu complete=%zu skipped=%u queries=%u result=%d pass_us=%.0f compute_us=%.0f span_us=%.0f",(unsigned long long)s.prof_frame,s.prof_slot,unsigned(&s-slots),s.prof_recs.size(),complete,s.prof_skipped,s.prof_used,int(status),pass_us,compute_us,span_us);
+        for(size_t i=0;i<s.prof_recs.size();++i)for(const auto &d:s.prof_recs[i].draw_records){
+            xbg_logf("NVN GPASS_DRAW frame=%llu slot=%u ring=%u pass=%zu ordinal=%llu shaders=%s count=%u instances=%u first=%d base_vertex=%d first_instance=%u indexed=%u indirect=%u topology=%u cull=%u depth=%u/%u/%u blend=%#x write_mask=%#x viewport=%g/%g/%g/%g scissor=%d/%d/%u/%u",
+                (unsigned long long)s.prof_frame,s.prof_slot,unsigned(&s-slots),i,(unsigned long long)d.ordinal,d.shaders.c_str(),d.count,d.instances,d.first,d.base_vertex,d.first_instance,unsigned(d.indexed),unsigned(d.indirect),d.topology,d.cull,unsigned(d.depth_test),unsigned(d.depth_write),d.depth_compare,d.blend,d.write_mask,
+                d.viewport.x,d.viewport.y,d.viewport.width,d.viewport.height,d.scissor.offset.x,d.scissor.offset.y,d.scissor.extent.width,d.scissor.extent.height);
+        }
     }
     if(s.timestamps){uint64_t t[2]{};if(vkGetQueryPoolResults(cfg.device,s.timestamps,0,2,sizeof(t),t,8,VK_QUERY_RESULT_64_BIT)==VK_SUCCESS && t[1]>=t[0]){uint64_t mask=timestamp_bits<64?(uint64_t(1)<<timestamp_bits)-1:~0ull;const uint64_t ns=uint64_t(double((t[1]-t[0])&mask)*properties.limits.timestampPeriod);perf.gpu_ns+=ns;++perf.gpu_samples;hud::gpu_add(s.hud_frame,ns);}}
     CPU_SCOPE(Cleanup);uint64_t c0=timing_clock();
@@ -1290,6 +1308,7 @@ Slot &recording_slot(){
         if(pass_prof_enabled && timestamp_bits){
             if(stats.presents.load()>=pass_prof_next && stats.presents.load()<pass_prof_until && pass_prof_frame!=frame){pass_prof_frame=frame;pass_prof_next=stats.presents.load()+pass_prof_period;pass_prof_queries=pass_prof_slots=pass_prof_skipped_slots=0;}
             if(frame==pass_prof_frame){
+                if(pass_prof_draw_frame==UINT64_MAX)pass_prof_draw_frame=frame;
                 if(pass_prof_slots<pass_prof_slot_limit){
                     if(!s.prof_pool){VkQueryPoolCreateInfo q{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};q.queryType=VK_QUERY_TYPE_TIMESTAMP;q.queryCount=pass_prof_query_limit;VK(vkCreateQueryPool(cfg.device,&q,nullptr,&s.prof_pool));}
                     vkCmdResetQueryPool(s.cmd,s.prof_pool,0,pass_prof_query_limit);s.prof=true;s.prof_used=0;s.prof_recs.clear();s.prof_open=-1;s.prof_skipped=0;s.prof_frame=frame;s.prof_slot=pass_prof_slots++;
@@ -4991,10 +5010,31 @@ void pass_prof_depth_idle(VkCommandBuffer cmd){Slot &s=slots[slot_index];if(!s.p
 void pass_prof_begin(const Pass &p,VkCommandBuffer cmd){Slot &s=slots[slot_index];s.prof_open=pass_prof_reserve(cmd);if(s.prof_open<0)return;
     auto &r=s.prof_recs[s.prof_open];r.w=p.width;r.h=p.height;r.att=uint32_t(p.images.size());r.fmt=p.images.empty()?0u:uint32_t(p.images[0]->fmt);
 }
-void pass_prof_draw(VkCommandBuffer cmd){Slot &s=slots[slot_index];if(!s.prof || cmd!=s.cmd || s.prof_open<0)return;
+void pass_prof_draw(VkCommandBuffer cmd,const VkGraphicsPipelineCreateInfo &ci,int first,int count,
+                    const p_draw_idx *indexed,uint32_t instances,uint32_t first_instance,bool indirect,
+                    const VkViewport &viewport,const VkRect2D &scissor){
+    Slot &s=slots[slot_index];if(!s.prof || cmd!=s.cmd || s.prof_open<0)return;
     std::string keys;for(unsigned st=0;st<5;++st)if(state.shader[st]){if(!keys.empty())keys+=';';keys+=std::to_string(st)+":"+state.shader[st]->key;}
     auto &r=s.prof_recs[s.prof_open];
     if(r.first.empty() && r.att==7) xbg_logf("CODEX_VP frame=%llu target=%ux%u fmt=%u viewport=%g,%g,%g,%g scissor=%d,%d,%u,%u",(unsigned long long)s.prof_frame,r.w,r.h,r.fmt,state.viewport.x,state.viewport.y,state.viewport.width,state.viewport.height,state.scissor.offset.x,state.scissor.offset.y,state.scissor.extent.width,state.scissor.extent.height);
+    if(s.prof_frame==pass_prof_draw_frame){
+        if(pass_prof_draw_records<pass_prof_draw_limit){
+            Slot::PassRec::DrawRec d;
+            d.ordinal=pass_prof_draws+1;d.shaders=keys;d.count=uint32_t(count);
+            d.indexed=indexed!=nullptr;d.indirect=indirect;d.first=indexed?0:first;
+            d.instances=indexed?uint32_t(indexed->instances):instances;
+            d.base_vertex=indexed?indexed->base_vertex:0;
+            d.first_instance=indexed?uint32_t(indexed->base_instance):first_instance;
+            d.topology=uint32_t(ci.pInputAssemblyState->topology);d.cull=ci.pRasterizationState->cullMode;
+            d.depth_test=ci.pDepthStencilState->depthTestEnable;d.depth_write=ci.pDepthStencilState->depthWriteEnable;
+            d.depth_compare=uint32_t(ci.pDepthStencilState->depthCompareOp);
+            for(uint32_t i=0;i<ci.pColorBlendState->attachmentCount && i<8;++i){
+                const auto &a=ci.pColorBlendState->pAttachments[i];
+                d.blend|=uint32_t(a.blendEnable!=0)<<i;d.write_mask|=uint32_t(a.colorWriteMask)<<(i*4);
+            }
+            d.viewport=viewport;d.scissor=scissor;r.draw_records.push_back(std::move(d));++pass_prof_draw_records;
+        }else ++pass_prof_draw_dropped;
+    }
     if(r.first.empty())r.first=keys;else if(r.last!=keys)r.mixed=true;r.last=std::move(keys);
 }
 int pass_prof_compute_begin(VkCommandBuffer cmd,const p_dispatch &p){int index=pass_prof_reserve(cmd);if(index<0)return index;
@@ -5387,7 +5427,7 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
     if(probe_full_target())capture_log("FULL_DYNAMIC event=%u viewport=%g/%g/%g/%g/%g/%g scissor=%d/%d/%u/%u",capture.events,viewport.x,viewport.y,viewport.width,viewport.height,viewport.minDepth,viewport.maxDepth,sc.offset.x,sc.offset.y,sc.extent.width,sc.extent.height);
     for(auto &b:vertex_buffers){VkDeviceSize off=b.second->offset;if(b.first<16 && bc.vb[b.first]==b.second->buffer && bc.vbo[b.first]==off){++binds_skipped;continue;}
         vkCmdBindVertexBuffers(c.command,b.first,1,&b.second->buffer,&off);if(b.first<16){bc.vb[b.first]=b.second->buffer;bc.vbo[b.first]=off;}}
-    pass_prof_draw(c.command);
+    pass_prof_draw(c.command,ci,first,count,indexed,instances,first_instance,gpu_args!=nullptr,viewport,sc);
     if(indexed){if(bc.ib!=ib->buffer || bc.ibo!=ib->offset || bc.it!=index_type){vkCmdBindIndexBuffer(c.command,ib->buffer,ib->offset,index_type);bc.ib=ib->buffer;bc.ibo=ib->offset;bc.it=index_type;}else ++binds_skipped;if(gpu_args){retire_object(gpu_args->owned);vkCmdDrawIndexedIndirect(c.command,gpu_args->owned->view.buffer,gpu_args->offset,1,20);++gpu_indexed_draws;if(gpu_indexed_draws<=12 || !(gpu_indexed_draws%600))xbg_logf("NVN GPU indexed resident issued=%llu frame=%llu",(unsigned long long)gpu_indexed_draws,(unsigned long long)stats.presents.load());}else vkCmdDrawIndexed(c.command,count,indexed->instances,0,indexed->base_vertex,indexed->base_instance);}else vkCmdDraw(c.command,count,instances,first,first_instance);
     if(probe_is_active())probe_draw_occlusion();
     if(attachment_barrier_enabled){
@@ -5399,7 +5439,7 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
         if(depth_aspect_enabled && open_pass.depth_attached && !open_pass.depth_writes && !open_pass.images.empty() &&
             std::find(draw_depth_reads.begin(),draw_depth_reads.end(),open_pass.images[open_pass.images.size()-1])!=draw_depth_reads.end())open_pass.depth_sample_visible=true;
     }
-    if(!occlusion_batch_enabled)end_occlusion_query();c.finish();++perf.draws;++pass_prof_draws;if(!gpu_args)pass_prof_verts+=uint64_t(uint32_t(count))*instances;
+    if(!occlusion_batch_enabled)end_occlusion_query();c.finish();++perf.draws;++pass_prof_draws;if(!gpu_args)pass_prof_verts+=uint64_t(uint32_t(count))*(indexed?uint32_t(indexed->instances):instances);
     water_trace_draw_end(c.command,water_draw,viewport,sc);
     if(d.needs_writeback() || capture.active){unsigned saved=cur_op;cur_op=62;end_open_pass();full_barrier(c.command);cur_op=saved;VkMemoryBarrier barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};barrier.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT;barrier.dstAccessMask=VK_ACCESS_HOST_READ_BIT;vkCmdPipelineBarrier(c.command,VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,1,&barrier,0,nullptr,0,nullptr);}
     {DRAW_SCOPE(Writeback);if(capture.active){if(d.needs_writeback())gpu_sync(perf.sync_writeback);d.writeback();}else d.defer_writeback();}stats.draws.fetch_add(1,std::memory_order_relaxed);   // diagnostics only: a seq_cst add (LDADDAL) waits for every earlier store, ~2.7% of the render thread
@@ -7129,7 +7169,7 @@ vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemor
       xbg_logf("NVN texture checks through the dirty tracker=%d (marker gfx-tex-dirty)",int(tex_dirty));}{const bool is_adreno = properties.vendorID == 0x5143 || strstr(properties.deviceName, "Adreno") != nullptr;FILE *b=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-native-bc").c_str(),"rb");native_bc=false;if(b){native_bc=fgetc(b)!='0';fclose(b);}else if(const char *e=getenv("DM_GFX_NATIVE_BC"))native_bc=is_adreno && atoi(e)!=0;xbg_logf("NVN native BC textures=%d (marker gfx-native-bc)",int(native_bc));}{FILE *td=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-terrain-depth").c_str(),"rb");terrain_depth_strip=0;if(td){terrain_depth_strip=fgetc(td)=='1';fclose(td);}xbg_logf("NVN terrain drop frag depth=%d (marker gfx-terrain-depth=1 enables the diagnostic)",terrain_depth_strip);}
      {FILE *b=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-noload").c_str(),"rb");noload_enabled=false;if(b){noload_enabled=fgetc(b)!='0';fclose(b);}else if(const char *e=getenv("DM_GFX_NOLOAD"))noload_enabled=atoi(e)!=0;xbg_logf("NVN proven full-overwrite first draws skip the color load=%d (marker gfx-noload; A/B target noload)",int(noload_enabled));}{FILE *q=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-bright").c_str(),"rb");bright::enabled=true;if(q){bright::enabled=fgetc(q)!='0';fclose(q);}else if(const char *e=getenv("DM_GFX_BRIGHT"))bright::enabled=atoi(e)!=0;xbg_logf("NVN 3D brightening=%d (marker gfx-bright; A/B target bright)",int(bright::enabled));}{FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-perf-sample").c_str(),"rb");perf_sample=32;if(m){if(fscanf(m,"%u",&perf_sample)!=1)perf_sample=32;fclose(m);}else if(const char *e=getenv("DM_GFX_PERF_SAMPLE"))perf_sample=unsigned(atoi(e));perf_frame_timed=perf_sample!=0;perf_timed_frames=0;xbg_logf("NVN perf timing every %u frames (marker gfx-perf-sample; 0 = off)",perf_sample);}}
     draw_base_instance=0;for(auto &row:driver_cache)for(auto &cache:row)cache.key={};
-    for(auto &sl:slots)sl=Slot{};slot_index=0;pass_prof_enabled=false;pass_prof_next=300;pass_prof_period=600;pass_prof_until=UINT64_MAX;pass_prof_frame=UINT64_MAX;pass_prof_draws=0;pass_prof_queries=pass_prof_slots=pass_prof_skipped_slots=0;perf=Perf{};for(auto &c:perf_timing_before)c=XbgCpuTiming::Counter{};static_arena.cached=false;support_static.clear();format_property_cache.clear();for(auto &k:format_flat_known)k=false;
+    for(auto &sl:slots)sl=Slot{};slot_index=0;pass_prof_draw_frame=UINT64_MAX;pass_prof_draw_records=pass_prof_draw_dropped=0;pass_prof_enabled=false;pass_prof_next=300;pass_prof_period=600;pass_prof_until=UINT64_MAX;pass_prof_frame=UINT64_MAX;pass_prof_draws=0;pass_prof_queries=pass_prof_slots=pass_prof_skipped_slots=0;perf=Perf{};for(auto &c:perf_timing_before)c=XbgCpuTiming::Counter{};static_arena.cached=false;support_static.clear();format_property_cache.clear();for(auto &k:format_flat_known)k=false;
     VkPhysicalDeviceShaderDrawParametersFeatures draw_parameters{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES};
     VkPhysicalDeviceVulkan12Features outputs{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
     const bool output_api=cfg.instance_api_version>=VK_API_VERSION_1_2 && properties.apiVersion>=VK_API_VERSION_1_2;
@@ -7458,6 +7498,7 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
       std::string pl=probe.base+"/gfx-pass-live";FILE *q=fopen(pl.c_str(),"rb");
       if(q){unsigned n=0;if(fscanf(q,"%u",&n)!=1)n=60;fclose(q);remove(pl.c_str());if(n<1)n=1;if(n>600)n=600;
        pass_prof_enabled=true;pass_prof_period=1;pass_prof_next=pr+2;pass_prof_until=pr+2+n;pass_prof_frame=UINT64_MAX;
+       pass_prof_draw_frame=UINT64_MAX;pass_prof_draw_records=pass_prof_draw_dropped=0;
        xbg_logf("PASS-LIVE armed: %u frames from present %llu",n,(unsigned long long)(pr+2));}}}
     // Diagnostic trigger: poll the existing one-shot marker every 30 presents,
     // so a request added during gameplay has the same bounded CPU-only path.
@@ -7823,7 +7864,7 @@ static void xbg_present_texture_now(const win_t *window,const tex_t *texture){st
             }
         }
         memset(fdiag_draws,0,sizeof fdiag_draws);memset(fdiag_inst,0,sizeof fdiag_inst);memset(fdiag_binds,0,sizeof fdiag_binds);memset(fdiag_zero,0,sizeof fdiag_zero);memset(fdiag_nz,0,sizeof fdiag_nz);memset(fdiag_sig,0,sizeof fdiag_sig);memset(fdiag_mem,0,sizeof fdiag_mem);memset(fdiag_bytes,0,sizeof fdiag_bytes);fdiag_skip=0;fdiag_state_seen=false;fdiag_c5mask=0;fdiag_c5min=0xffffffffull;fdiag_c5max=0;fdiag_c5n=0;fdiag_tab_n=0;fdiag_ibuf=fdiag_ibytes=0;memset(fdiag_small_mem,0,sizeof fdiag_small_mem);memset(fdiag_small_bytes,0,sizeof fdiag_small_bytes);fdiag_b18=~0u;fdiag_rthash=1469598103934665603ull;fdiag_texhash=0;fdiag_geom_seen=false;memset(fdiag_vb_addr,0,sizeof fdiag_vb_addr);memset(fdiag_vb_size,0,sizeof fdiag_vb_size);memset(fdiag_big_bytes,0,sizeof fdiag_big_bytes);memset(fdiag_big_mem,0,sizeof fdiag_big_mem);memset(fdiag_big_nz,0,sizeof fdiag_big_nz);memset(fdiag_big_pending,0,sizeof fdiag_big_pending);fdiag_img_logged=false;fdiag_ds_tex=nullptr;fdiag_clear_color=fdiag_clear_depth=0;fdiag_clear_dv=-1.f;fdiag_fs_n=0;fdiag_u15w=fdiag_u15x=fdiag_u31w=~0u;fdiag_fetch_n=0;fdiag_fetch_mem=0;fdiag_c1w=fdiag_raw_c5=fdiag_raw_c0=~0u;fdiag_c5s_n=fdiag_w_small=fdiag_w_huge=0;fdiag_b18_mem=fdiag_b18_bytes=fdiag_b18_sig=fdiag_b18_nz=0;memset(fdiag_tb,0,sizeof fdiag_tb);fdiag_b24_dead=fdiag_b24_live=fdiag_b24_best=fdiag_b24_sane=0;fdiag_8b_nt=0;
-    }frame_trace_record(texture->serial,im.last_write,r);if(pass_prof_enabled && stats.presents.load()==pass_prof_frame)xbg_logf("NVN GPASS boundary frame=%llu slots=%u skipped_slots=%u reserved_queries=%u max_queries=%u max_slots=%u",(unsigned long long)pass_prof_frame,pass_prof_slots,pass_prof_skipped_slots,pass_prof_queries,pass_prof_query_limit,pass_prof_slot_limit);uint64_t total_present_ns=timing_clock()-present_begin;perf.present_cpu_ns+=(total_present_ns>pace_ns?total_present_ns-pace_ns:0);perf_frame();if(provenance_file && stats.presents.load()>=provenance.target)provenance_close("END");if(capture.trace && stats.presents==capture.frame){capture_log("END frame=%llu events=%u bytes=%llu presentedSerial=%llu image=%p",(unsigned long long)capture.frame,capture.events,(unsigned long long)capture.bytes,(unsigned long long)texture->serial,(void*)im.image);fclose(capture.trace);capture.trace=nullptr;capture.active=false;capture.probe=false;capture.full=false;xbg_logf("NVN one-frame capture complete frame=%llu events=%u bytes=%llu",(unsigned long long)capture.frame,capture.events,(unsigned long long)capture.bytes);}}timing_boundary();}
+    }frame_trace_record(texture->serial,im.last_write,r);if(pass_prof_enabled && stats.presents.load()==pass_prof_draw_frame)xbg_logf("NVN GPASS_DRAW boundary frame=%llu records=%u dropped=%u limit=%u",(unsigned long long)pass_prof_draw_frame,pass_prof_draw_records,pass_prof_draw_dropped,pass_prof_draw_limit);if(pass_prof_enabled && stats.presents.load()==pass_prof_frame)xbg_logf("NVN GPASS boundary frame=%llu slots=%u skipped_slots=%u reserved_queries=%u max_queries=%u max_slots=%u",(unsigned long long)pass_prof_frame,pass_prof_slots,pass_prof_skipped_slots,pass_prof_queries,pass_prof_query_limit,pass_prof_slot_limit);uint64_t total_present_ns=timing_clock()-present_begin;perf.present_cpu_ns+=(total_present_ns>pace_ns?total_present_ns-pace_ns:0);perf_frame();if(provenance_file && stats.presents.load()>=provenance.target)provenance_close("END");if(capture.trace && stats.presents==capture.frame){capture_log("END frame=%llu events=%u bytes=%llu presentedSerial=%llu image=%p",(unsigned long long)capture.frame,capture.events,(unsigned long long)capture.bytes,(unsigned long long)texture->serial,(void*)im.image);fclose(capture.trace);capture.trace=nullptr;capture.active=false;capture.probe=false;capture.full=false;xbg_logf("NVN one-frame capture complete frame=%llu events=%u bytes=%llu",(unsigned long long)capture.frame,capture.events,(unsigned long long)capture.bytes);}}timing_boundary();}
 extern "C" void xbg_legacy_read_texels(const tex_t *t,unsigned level,unsigned layer,const NVNcopyRegion *r,uint8_t *dst,size_t row,size_t image){gfx_drain();std::lock_guard<std::recursive_mutex> lock(mutex);preflight_cpu_reads();need(t&&r&&dst,"Invalid ReadTexels arguments");auto found=images.find(t->serial);
     if(found==images.end() && t->d.format==0x12 && t->mem){
         bool gpu_alias=false;

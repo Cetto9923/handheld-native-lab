@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-15T09:56:02.073551+08:00",
- "phase": "23保存/读回实机通过，LDC/temps同机位对照无可靠GPU收益已恢复；持续战斗GPU性能仍待优化",
+ "updated_at": "2026-11-15T11:19:05.026234+08:00",
+ "phase": "继续定位战斗GPU主通道并审阅成熟开源跨设备兼容缺口",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -3001,6 +3001,100 @@
    "checkpoint": "有限任务完成，证据已冻结",
    "write_state": "RELEASED",
    "released_at": "2026-11-15T09:48:21.215449+08:00"
+  },
+  {
+   "task": "CODEX-GPU-DRAW24-20261115",
+   "owner": "root",
+   "paths": [
+    ".local/codex-recovery-20261114/gpu-draw24/",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "coordination/results/CODEX-GPU-DRAW24-20261115.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T10:25:24.629665+08:00",
+   "checkpoint": "真实draw定位及跨设备机制复核",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "CODEX-CROSS-DEVICE-GAP-20261115",
+   "owner": "perf_cpu",
+   "paths": [
+    ".local/codex-recovery-20261114/gpu-draw24/compat-review/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T10:25:24.629665+08:00",
+   "checkpoint": "真实draw定位及跨设备机制复核",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "CODEX-SAMPLER-COMPAT-20261115",
+   "owner": "root",
+   "paths": [
+    "src/graphics/nvn_device/nvn_backend_vulkan.c",
+    "src/graphics/nvn_device/nvn_vulkan_features.h",
+    "src/graphics/nvn_device/nvn_engine.c",
+    "tests/native/layer_output_gpu_contract.cpp"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T10:31:55.399721+08:00",
+   "checkpoint": "实际设备feature接线",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "CODEX-TOUCH-SIZE-20261115",
+   "owner": "load_profile",
+   "paths": [
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    ".local/codex-recovery-20261114/gpu-draw24/touch-size/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T10:46:40.915919+08:00",
+   "checkpoint": "Java frozen byworker SHA303d6165, root takes integration; actual user single/multitouch failure notyet confirmed.",
+   "write_state": "RELEASED",
+   "released_at": "2026-11-15T11:07:11.530257+08:00"
+  },
+  {
+   "task": "CODEX-GPU24-DRAW-REVIEW-20261115",
+   "owner": "perf_cpu",
+   "paths": [
+    ".local/codex-recovery-20261114/gpu-draw24/draw-review/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T10:52:55.047295+08:00",
+   "checkpoint": "517条draw已取，root设备用户 owns input，优先top3pass和shader组快报。",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "CODEX-RENDER-PERCENT-20261115",
+   "owner": "root",
+   "paths": [
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    ".local/codex-recovery-20261114/gpu-draw24/render-percent/",
+    "tests/installer/test_apk_pipeline_warm_seed.py"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T11:07:11.530257+08:00",
+   "checkpoint": "UI worker已冻结交回Java，root接管该文件集成并验证性能入口。",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "CODEX-HONOR24-REGRESSION-20261115",
+   "owner": "root",
+   "paths": [
+    ".local/codex-recovery-20261114/gpu-draw24/device-honor/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T11:19:05.026234+08:00",
+   "checkpoint": "Old APK and4save files backed up while game stopped; root authorized update/test.",
+   "write_state": "ACTIVE"
   }
  ],
  "tasks": [
@@ -8525,6 +8619,193 @@
    ],
    "acceptance": "仅修诊断实参类型及局部格式契约，不改游戏执行/图形shader。验证所有聚合字段值和格式检查，当前包23保持且日志aggregates需按缺陷处理。",
    "checkpoint": "本地日志复核/联合契约及格式修正已完成，证据位于resume23-20261115对应目录；GPU A/B仍在进行，设备23保持原源码。"
+  },
+  {
+   "id": "CODEX-GPU-DRAW24-20261115",
+   "owner": "root",
+   "role": "IMPLEMENTATION_AND_DEVICE",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "复用现成pass profiler，补有界真实draw清单以定位混合主通道，构建24诊断候选并实机采样，再按证据实施性能改动。",
+   "inputs": [
+    "用户继续优化并要求核成熟跨设备方式及荣耀平板测试",
+    "源4de88c8，RG当前23/PID13530/世界地图02",
+    "同进程重GPU长帧与mixed主pass缺draw清单",
+    "荣耀平板实际安装1.0.9，历史测试版本单列"
+   ],
+   "outputs": [
+    ".local/codex-recovery-20261114/gpu-draw24/",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "coordination/results/CODEX-GPU-DRAW24-20261115.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/codex-recovery-20261114/gpu-draw24/",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "coordination/results/CODEX-GPU-DRAW24-20261115.md"
+   ],
+   "acceptance": "root独占ADB/Git/coord及源。worker只读源码与本地现成上游/报告，仅写自己的local目录，禁设备/源码/构建/Git。诊断只在现成有界采样启用，普通游戏行为不变，frame/PID/manifest与原始日志关联。性能实测与画面回归后才记录收益。",
+   "checkpoint": "已登记，确认两设备在线与各自包版本，尚未编辑"
+  },
+  {
+   "id": "CODEX-CROSS-DEVICE-GAP-20261115",
+   "owner": "perf_cpu",
+   "role": "READ_ONLY_COMPATIBILITY_REVIEW",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "逐项比较BOTW/TotK/DroidPlay实际设备兼容机制与本项目现有代码，列已复用/待补及准确路径，核荣耀平板历史覆盖，给最小可实施缺口。",
+   "inputs": [
+    "用户继续优化并要求核成熟跨设备方式及荣耀平板测试",
+    "源4de88c8，RG当前23/PID13530/世界地图02",
+    "同进程重GPU长帧与mixed主pass缺draw清单",
+    "荣耀平板实际安装1.0.9，历史测试版本单列"
+   ],
+   "outputs": [
+    ".local/codex-recovery-20261114/gpu-draw24/compat-review/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/codex-recovery-20261114/gpu-draw24/compat-review/"
+   ],
+   "acceptance": "root独占ADB/Git/coord及源。worker只读源码与本地现成上游/报告，仅写自己的local目录，禁设备/源码/构建/Git。诊断只在现成有界采样启用，普通游戏行为不变，frame/PID/manifest与原始日志关联。性能实测与画面回归后才记录收益。",
+   "checkpoint": "已登记，确认两设备在线与各自包版本，尚未编辑"
+  },
+  {
+   "id": "CODEX-SAMPLER-COMPAT-20261115",
+   "owner": "root",
+   "role": "COMPATIBILITY_FIX",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "补正常启动采样器mirror-clamp能力从物理查询、逻辑设备enable、成功记录到adapter配置的缺失接线，按实际能力而非机型启用。",
+   "inputs": [
+    "worker源码审阅：已有adapter setter但正常config从未赋值",
+    "BOTW固定源码device.c明确启用该feature",
+    "Vulkan VUID01079 feature或KHR extension启用后才可创建mirror-clamp sampler"
+   ],
+   "outputs": [
+    "src/graphics/nvn_device/nvn_backend_vulkan.c",
+    "src/graphics/nvn_device/nvn_vulkan_features.h",
+    "src/graphics/nvn_device/nvn_engine.c",
+    "tests/native/layer_output_gpu_contract.cpp"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_device/nvn_backend_vulkan.c",
+    "src/graphics/nvn_device/nvn_vulkan_features.h",
+    "src/graphics/nvn_device/nvn_engine.c",
+    "tests/native/layer_output_gpu_contract.cpp"
+   ],
+   "acceptance": "只启用实际支持的core或KHR路径，成功vkCreateDevice后发布真实记录；扩现成真实backend契约验证VkSampler创建。与当前GPU卡顿无已证因果，不冒称解决400Pro/8E5闪退。",
+   "checkpoint": "已登记4文件单写者"
+  },
+  {
+   "id": "CODEX-TOUCH-SIZE-20261115",
+   "owner": "load_profile",
+   "role": "ANDROID_UI_FIX",
+   "status": "completed",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "修复虚拟按键布局编辑器选中按钮后不能调节大小，保留已有布局保存/读取与点击游戏输入语义。",
+   "inputs": [
+    "用户最新明确反馈虚拟键盘编辑不能调按钮大小",
+    "GameActivity.java内部Ctl、editTouch/scTrack/drawEditor现有路径"
+   ],
+   "outputs": [
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    ".local/codex-recovery-20261114/gpu-draw24/touch-size/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    ".local/codex-recovery-20261114/gpu-draw24/touch-size/"
+   ],
+   "acceptance": "独占GameActivity.java和本local报告；禁ADB/Git/coord/其它源/全量build，先源码复现并外科修复。仅在必要时补覆盖此回归的已有测试或local合同，真机编辑/保存/重开由root执行。保留旧布局格式，避免拖动控件抢slider事件。",
+   "checkpoint": "User confirmed scale works after selecting a button. Original report closed as normal operation; speculative multi-pointer patch reverted exactly, game/editor prior semantics retained. Uninstalled candidate d19e94 kept only inAPK history."
+  },
+  {
+   "id": "CODEX-GPU24-DRAW-REVIEW-20261115",
+   "owner": "perf_cpu",
+   "role": "READ_ONLY_PROFILE_ANALYSIS",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "解析24 PID10789用户各种技能仍卡时90帧GPASS及首帧517条真实draw，关联主通道shader分布与采样完整性。",
+   "inputs": [
+    ".local/codex-recovery-20261114/gpu-draw24/device-rg/user-skills/guest.log",
+    ".local/codex-recovery-20261114/gpu-draw24/device-rg/user-skills/frames.csv",
+    "原engine文件达64MB上限，本轮采用当次guest stderr，核CODEX_FRAME10789"
+   ],
+   "outputs": [
+    ".local/codex-recovery-20261114/gpu-draw24/draw-review/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/codex-recovery-20261114/gpu-draw24/draw-review/"
+   ],
+   "acceptance": "只写local报告与解析脚本，禁ADB/Git/coord/source/build/download。帧/slot/ring/pass严格关联，首帧元数据无逐draw GPU计时，菜单/技能窗口分别记录。",
+   "checkpoint": "517条draw已取，root设备用户 owns input，优先top3pass和shader组快报。"
+  },
+  {
+   "id": "CODEX-RENDER-PERCENT-20261115",
+   "owner": "root",
+   "role": "PERFORMANCE_DIAGNOSTIC",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "复用已实现的guest argv/NN GetHostArgc/Argv，尝试通过UE启动命令设置内部渲染比例；按真实附件尺寸验证是否生效。",
+   "inputs": [
+    "用户授权内部渲染分辨率适配，必须保留逻辑时间、UI和画面比例",
+    "GameWindowNative已支持String[] guestArgs，GameActivity目前传空数组",
+    "UE官方r.ScreenPercentage文档，Shipping版本是否接受ExecCmds须实测"
+   ],
+   "outputs": [
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    ".local/codex-recovery-20261114/gpu-draw24/render-percent/",
+    "tests/installer/test_apk_pipeline_warm_seed.py"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    ".local/codex-recovery-20261114/gpu-draw24/render-percent/",
+    "tests/installer/test_apk_pipeline_warm_seed.py"
+   ],
+   "acceptance": "仅新增明确可选的整数render_percentage Intent诊断入口，默认空argv与原路径一致，百分比须10..100。不改游戏包/存档/逻辑时间。实测未知时标NOT_VERIFIED，附件未变不声称优化有效。用户新战斗进度先保存再重启对照。",
+   "checkpoint": "First build host stopped at existing startup architecture contract after intentional constructor signature extension. Update exact expected call and add executed JVM argument boundary contract, preserve seed staging assertions."
+  },
+  {
+   "id": "CODEX-HONOR24-REGRESSION-20261115",
+   "owner": "root",
+   "role": "DEVICE_REGRESSION",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "Honor current24 regression using existing game data and own saved progress; compare actual capabilities and scenario frames with RG independently.",
+   "inputs": [
+    "User requested Honor tablet test and cross-device progress",
+    "Honor A42BBB5109000333, oldpackage9, no active PID, oldAPK and4 save files backed up",
+    "24 clean render probe SHA4c6183b2, host101 andAndroid0, sampler component passed onAdreno735"
+   ],
+   "outputs": [
+    ".local/codex-recovery-20261114/gpu-draw24/device-honor/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/codex-recovery-20261114/gpu-draw24/device-honor/"
+   ],
+   "acceptance": "Explicit serial perADB command; preserve all prior APK/save bytes andmarkers. Validate new package/source and currentPID, actual scenes andsave behavior; component pass is separate from game pass. No other user device data.",
+   "checkpoint": "Old APK and4save files backed up while game stopped; root authorized update/test."
   }
  ],
  "blockers": [

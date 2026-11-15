@@ -1,7 +1,7 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-15T09:56:02.073551+08:00
-阶段：23保存/读回实机通过，LDC/temps同机位对照无可靠GPU收益已恢复；持续战斗GPU性能仍待优化
+状态事件时间：2026-11-15T11:19:05.026234+08:00
+阶段：继续定位战斗GPU主通道并审阅成熟开源跨设备兼容缺口
 总控：Codex /root 本轮接管
 更新方式：按事件更新，没有后台自动刷新。
 
@@ -219,6 +219,13 @@
 | CODEX-TIDY-AB-20261115 | DEVICE_AB_EXISTING_OPTIMIZATIONS | completed | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-TIDY-JOINT-20261115 | HOST_CONTRACT_EXECUTION | completed | load_profile | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-SCENE-LOG-FORMAT-20261115 | DIAGNOSTIC_CORRECTION | completed | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-GPU-DRAW24-20261115 | IMPLEMENTATION_AND_DEVICE | in_progress | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-CROSS-DEVICE-GAP-20261115 | READ_ONLY_COMPATIBILITY_REVIEW | in_progress | perf_cpu | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-SAMPLER-COMPAT-20261115 | COMPATIBILITY_FIX | in_progress | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-TOUCH-SIZE-20261115 | ANDROID_UI_FIX | completed | load_profile | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-GPU24-DRAW-REVIEW-20261115 | READ_ONLY_PROFILE_ANALYSIS | in_progress | perf_cpu | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-RENDER-PERCENT-20261115 | PERFORMANCE_DIAGNOSTIC | in_progress | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-HONOR24-REGRESSION-20261115 | DEVICE_REGRESSION | in_progress | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 
 ## 独占写入
 
@@ -400,6 +407,13 @@
 - {"task": "CODEX-TIDY-AB-20261115", "owner": "root", "paths": [".local/codex-recovery-20261114/resume23-20261115/tidy-contract", ".local/codex-recovery-20261114/resume23-20261115/tidy-ab", ".local/codex-recovery-20261114/resume23-20261115/device"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T03:08:04.360581+08:00", "checkpoint": "本轮有限回归与现成开关实验已收口，性能问题开放。", "write_state": "RELEASED", "released_at": "2026-11-15T09:56:02.073551+08:00"}
 - {"task": "CODEX-TIDY-JOINT-20261115", "owner": "load_profile", "paths": [".local/codex-recovery-20261114/resume23-20261115/tidy-joint-review/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T03:09:10.589900+08:00", "checkpoint": "有限任务完成，证据已冻结", "write_state": "RELEASED", "released_at": "2026-11-15T09:48:21.215449+08:00"}
 - {"task": "CODEX-SCENE-LOG-FORMAT-20261115", "owner": "root", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", ".local/codex-recovery-20261114/resume23-20261115/scene-log-contract/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T03:11:25.268554+08:00", "checkpoint": "有限任务完成，证据已冻结", "write_state": "RELEASED", "released_at": "2026-11-15T09:48:21.215449+08:00"}
+- {"task": "CODEX-GPU-DRAW24-20261115", "owner": "root", "paths": [".local/codex-recovery-20261114/gpu-draw24/", "src/graphics/nvn_vulkan/engine/xbg_game.cpp", "src/android/app/gamewindow/AndroidManifest.xml", "coordination/results/CODEX-GPU-DRAW24-20261115.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T10:25:24.629665+08:00", "checkpoint": "真实draw定位及跨设备机制复核", "write_state": "ACTIVE"}
+- {"task": "CODEX-CROSS-DEVICE-GAP-20261115", "owner": "perf_cpu", "paths": [".local/codex-recovery-20261114/gpu-draw24/compat-review/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T10:25:24.629665+08:00", "checkpoint": "真实draw定位及跨设备机制复核", "write_state": "ACTIVE"}
+- {"task": "CODEX-SAMPLER-COMPAT-20261115", "owner": "root", "paths": ["src/graphics/nvn_device/nvn_backend_vulkan.c", "src/graphics/nvn_device/nvn_vulkan_features.h", "src/graphics/nvn_device/nvn_engine.c", "tests/native/layer_output_gpu_contract.cpp"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T10:31:55.399721+08:00", "checkpoint": "实际设备feature接线", "write_state": "ACTIVE"}
+- {"task": "CODEX-TOUCH-SIZE-20261115", "owner": "load_profile", "paths": ["src/android/app/java/org/ffrs/diagnostic/GameActivity.java", ".local/codex-recovery-20261114/gpu-draw24/touch-size/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T10:46:40.915919+08:00", "checkpoint": "Java frozen byworker SHA303d6165, root takes integration; actual user single/multitouch failure notyet confirmed.", "write_state": "RELEASED", "released_at": "2026-11-15T11:07:11.530257+08:00"}
+- {"task": "CODEX-GPU24-DRAW-REVIEW-20261115", "owner": "perf_cpu", "paths": [".local/codex-recovery-20261114/gpu-draw24/draw-review/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T10:52:55.047295+08:00", "checkpoint": "517条draw已取，root设备用户 owns input，优先top3pass和shader组快报。", "write_state": "ACTIVE"}
+- {"task": "CODEX-RENDER-PERCENT-20261115", "owner": "root", "paths": ["src/android/app/java/org/ffrs/diagnostic/GameActivity.java", ".local/codex-recovery-20261114/gpu-draw24/render-percent/", "tests/installer/test_apk_pipeline_warm_seed.py"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T11:07:11.530257+08:00", "checkpoint": "UI worker已冻结交回Java，root接管该文件集成并验证性能入口。", "write_state": "ACTIVE"}
+- {"task": "CODEX-HONOR24-REGRESSION-20261115", "owner": "root", "paths": [".local/codex-recovery-20261114/gpu-draw24/device-honor/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T11:19:05.026234+08:00", "checkpoint": "Old APK and4save files backed up while game stopped; root authorized update/test.", "write_state": "ACTIVE"}
 
 ## 阻塞
 

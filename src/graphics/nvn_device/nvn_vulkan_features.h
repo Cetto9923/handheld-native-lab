@@ -18,6 +18,7 @@ typedef struct nvn_vulkan_enabled_features {
     uint32_t physical_api_version;
     VkBool32 shader_output_layer;
     VkBool32 shader_output_viewport_index;
+    VkBool32 sampler_mirror_clamp_to_edge;
 } nvn_vulkan_enabled_features;
 
 /* Vulkan12 feature structures require both APIs. No implicit enablement from

@@ -4641,3 +4641,17 @@ load_profile另领取local tidy-joint-review契约执行，可单进程host编�
 日志复核发现scene close_window的shader_slow_ms格式%.1f实参误为ULL，后续GP/FP字段错位。PID9359 after-chocobo pipeline_create_ms79559等不能按字段解释，撤回该聚合归因，逐帧stall/CSV保持有效。root登记单文件最小double实参修正与local格式契约，当前设备仍为未替换23。
 
 23恢复回归阶段收口。正常保存01/读回与GameSaveData0自动保存实际写入通过，新增空02为对照点7:47:53。GPU同机位B10/C11/Areturn中位25.09/24.90/24.90ms，真实命中LDC及temps但无可靠稳态收益，候选不纳入默认。已恢复原marker不存在状态并以新PID13530回读02与30秒普通呈现验证，实际安装APK SHA845d1c4c。下一步需要定位战斗mixed主pass全部draw与最终shader，现有首末key不能归具体对象；目前GPU长帧问题仍开放。唯一生产源码改动为scene close_window浮点实参格式修正，局部编译格式契约11字段通过，尚未生成新APK。详见CODEX-RESUME23-20261115.md及local证据。
+
+用户继续授权定位优化并询问成熟跨设备方式。源4de88c8，RG13530仍世界地图02；荣耀平板当前1.0.9，旧1.0.6长帧/场景测试与早期Dark/Limit/Boss有限验收可核。root领取GPU-DRAW24复用现成profiler有界清单及候选构建，perf_cpu只读逐项核上游机制与本工程缺口，禁止worker设备/源码操作。
+
+跨设备审阅找到具体缺口：mirror-clamp已有adapter setter，正常backend却未request且config一直0。root追加四文件单写任务，沿core/KHR实际能力补接线与真实backend契约，不把它归因为本轮卡顿或特定手机闪退。
+
+用户追加虚拟键布局编辑不能调大小BUG。load_profile领取GameActivity.java唯一写者和touch-size/local报告，root不编辑此Java文件；24GPU诊断包已构建101host/Android0并安装RG，原存档tar前后同字节，单独真实backend镜像边缘采样器及分层组件在RG通过。新Java补丁会以不同APK历史文件名重构候选，原GPU24包保留。
+
+GPU24 PID10789: user owns battle input. Root recorded90 pass frames and517 draw rows. engine.log reached64MB cap, current fullstderr is user-skills/guest.log. perf_cpu owns draw-review only. Touch UI single-versus-multitouch question pending.
+
+UI worker frozen Java303d6165. Root takes Java integration for optional render_percentage diagnostic via existingguest argv; no default changes. Actual UE shipping support unverified, must check real attachment size before claiming benefit. Multi-pointer UI fix verified only local JVM; user single/multitouch symptom answer pending. Mirror sampler component passed RG Mali and Honor Adreno realVkSampler, game full regression remains separate.
+
+User confirmed touch size works after selecting the button. Closed report, precisely reversed only5owned TouchPad hunks, preserved rootrender_percentage argument work. Candidate d19e94 was built with UI hypothesis but neverinstalled; keepas history only. Current RG still first24acc3a154, user owns battle input. Newclean render-probe build follows.
+
+Honor24 regression task opened, root sole device writer. Honor9 had noPID, oldAPK and4saves already backed up. Candidate cleanrender probe4c6183b2 has101host+Android0. RGuser explicitly saved andapproved update; install running.

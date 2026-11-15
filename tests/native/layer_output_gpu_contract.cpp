@@ -76,9 +76,19 @@ static std::vector<uint32_t> read_spv(const char *path){std::ifstream file(path,
 static void gpu_contract(const char *vert_path,const char *frag_path){
     nvn_device_state state{};state.backend=nvn_device_default_backend();require(state.backend&&state.backend->create(&state,nullptr),"production Vulkan backend creation failed");
     nvn_vulkan_enabled_features enabled{};require(nvn_vulkan_get_enabled_features(&state,&enabled),"production enabled-feature getter refused its own device");
-    require(enabled.shader_output_layer&&enabled.shader_output_viewport_index&&enabled.shader_draw_parameters,"required actual logical-device output/draw features were not enabled");
     void *p,*d,*q;uint32_t family;require(state.backend->get_device_queue(&state,&p,&d,&q,&family),"production device handles unavailable");
     VkPhysicalDevice physical=(VkPhysicalDevice)p;VkDevice device=(VkDevice)d;VkQueue queue=(VkQueue)q;
+    if(enabled.sampler_mirror_clamp_to_edge){
+        VkSamplerCreateInfo sampler_info{};sampler_info.sType=VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        sampler_info.magFilter=sampler_info.minFilter=VK_FILTER_NEAREST;
+        sampler_info.mipmapMode=VK_SAMPLER_MIPMAP_MODE_NEAREST;
+        sampler_info.addressModeU=sampler_info.addressModeV=sampler_info.addressModeW=VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE;
+        VkSampler sampler{};
+        VKC(vkCreateSampler(device,&sampler_info,nullptr,&sampler));
+        vkDestroySampler(device,sampler,nullptr);
+        std::puts("mirror_clamp GPU PASS successful_backend_request=1 sampler_create=1");
+    }else std::puts("mirror_clamp GPU NOT_RUN capability_unavailable=1");
+    require(enabled.shader_output_layer&&enabled.shader_output_viewport_index&&enabled.shader_draw_parameters,"required actual logical-device output/draw features were not enabled");
     VkPhysicalDeviceProperties props;vkGetPhysicalDeviceProperties(physical,&props);
     auto vert=read_spv(vert_path),frag=read_spv(frag_path);
     require(xbg_shader_layer_check(vert.data(),vert.size(),0,enabled.instance_api_version,enabled.physical_api_version,enabled.shader_output_layer,enabled.shader_output_viewport_index)==0,"production core Layer shader policy rejected enabled device");
