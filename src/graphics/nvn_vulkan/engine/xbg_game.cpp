@@ -7499,6 +7499,33 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
       if(q){unsigned n=0;if(fscanf(q,"%u",&n)!=1)n=60;fclose(q);remove(pl.c_str());if(n<1)n=1;if(n>600)n=600;
        pass_prof_enabled=true;pass_prof_period=1;pass_prof_next=pr+2;pass_prof_until=pr+2+n;pass_prof_frame=UINT64_MAX;
        pass_prof_draw_frame=UINT64_MAX;pass_prof_draw_records=pass_prof_draw_dropped=0;
+       struct TextureTotals {
+           uint64_t count=0,decoded=0,gpu_written=0,storage=0,image_bytes=0,bc_payload=0;
+       };
+       std::map<std::pair<int,int>,TextureTotals> texture_totals;
+       for(const auto &entry:images){
+           const Image &image=*entry.second;
+           TextureTotals &total=texture_totals[{image.source.d.format,int(image.fmt)}];
+           ++total.count;
+           total.decoded+=image.decoded;
+           total.gpu_written+=image.gpu_written;
+           total.storage+=(image.usage&VK_IMAGE_USAGE_STORAGE_BIT)!=0;
+           total.image_bytes+=uint64_t(image.mem_bytes);
+           total.bc_payload+=uint64_t(image.bc_data);
+       }
+       unsigned texture_rows=0;
+       for(const auto &entry:texture_totals){
+           if(texture_rows==64)break;
+           const TextureTotals &total=entry.second;
+           xbg_logf("NVN GPASS_TEXTURE present=%llu nvn=%#x vk=%d count=%llu decoded=%llu gpu_written=%llu storage=%llu image_bytes=%llu bc_payload=%llu",
+               (unsigned long long)pr,unsigned(entry.first.first),entry.first.second,
+               (unsigned long long)total.count,(unsigned long long)total.decoded,
+               (unsigned long long)total.gpu_written,(unsigned long long)total.storage,
+               (unsigned long long)total.image_bytes,(unsigned long long)total.bc_payload);
+           ++texture_rows;
+       }
+       xbg_logf("NVN GPASS_TEXTURE boundary present=%llu images=%zu groups=%zu records=%u dropped=%zu limit=64",
+           (unsigned long long)pr,images.size(),texture_totals.size(),texture_rows,texture_totals.size()-texture_rows);
        xbg_logf("PASS-LIVE armed: %u frames from present %llu",n,(unsigned long long)(pr+2));}}}
     // Diagnostic trigger: poll the existing one-shot marker every 30 presents,
     // so a request added during gameplay has the same bounded CPU-only path.

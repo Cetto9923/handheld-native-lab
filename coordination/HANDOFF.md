@@ -4655,3 +4655,11 @@ UI worker frozen Java303d6165. Root takes Java integration for optional render_p
 User confirmed touch size works after selecting the button. Closed report, precisely reversed only5owned TouchPad hunks, preserved rootrender_percentage argument work. Candidate d19e94 was built with UI hypothesis but neverinstalled; keepas history only. Current RG still first24acc3a154, user owns battle input. Newclean render-probe build follows.
 
 Honor24 regression task opened, root sole device writer. Honor9 had noPID, oldAPK and4saves already backed up. Candidate cleanrender probe4c6183b2 has101host+Android0. RGuser explicitly saved andapproved update; install running.
+
+24干净比例诊断包已在两设备安装，存档前后逐字一致，源码现为caa28a3。RG PID3205读取02世界地图，默认guest_argc0，实测主通道768×436、输出1280×720，进行30秒普通A基线，PTY23796、render-percent/A-default/plan.json。比例60入口尚未验证。
+
+荣耀首次13624启动ANR原始证据已保留。单次fullscreen重试15801进入共鸣标题，但任务实际仍freeform，之后前台切至空之轨迹。用户明确本轮先不测平板，停止该设备后续操作，完整24场景回归继续待验。compat-review和draw-review完成冻结，mirror-clamp双设备组件通过，相关写入占用已释放。
+
+RG比例对照收口为无观测效果。默认3205、60的14159、加引号40的17163均主通道768×436/输出1280×720，普通world02为30FPS限帧、GPU24.96/25.455/25.59ms。实验源码和包保全render-percent，Java和seed测试恢复4de88c8原路径。当前构建build-final24，PTY38290，保留sampler/draw修正，并在现成pass-live追加最多64行的纹理格式/用途/分配量汇总，用于评估BOTW的BC1转ASTC思路。尚未改变纹理编码或默认画质。
+
+最终24兼容诊断包f7a2c5a2/3683399B已构建101host及Android0、41输入不变，安装RG并回读摘要匹配、存档tar前后字节相同。PID23308默认guest_argc0，读取02世界地图成功。present3630汇总2581实时图像/30组/dropped0，其中存活解压BC968，旧1134为累计创建。BC5_UNORM为201张/137.658MiB，BC1两类合计324张/61.928MiB，BC3为105.504MiB，BC7为75.584MiB。不能直接套用BOTW以BC1为主的收益，也未改变纹理表示。D-final-default正做普通30秒回归，PTY75180。之后交回用户战斗测试输入权，继续按同PID保全技能日志。

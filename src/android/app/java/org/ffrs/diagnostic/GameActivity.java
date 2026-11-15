@@ -2843,41 +2843,25 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         GameWindowNative.setProfileTargetFps(selectedDeviceProfile.targetFps,
                 selectedDeviceProfile.usesDockedRendering());
         String log_path = files == null ? null : new File(files, "guest_boot.log").getAbsolutePath();
-        int renderPercentage = getIntent() == null ? 0 : getIntent().getIntExtra("render_percentage", 0);
-        String[] guestArgs = renderPercentageArguments(renderPercentage);
-        if (guestArgs.length > 0) {
-            Log.i(TAG, "guest render percentage requested=" + renderPercentage + "; actual target size requires verification");
-        } else if (renderPercentage != 0) {
-            Log.w(TAG, "ignored render_percentage outside UE range 10..100: " + renderPercentage);
-        }
-        Thread guest = new Thread(new GuestBootTask(image, romfs, log_path, saveRoot, getAssets(), files, guestArgs), "ffrs-guest");
+        Thread guest = new Thread(new GuestBootTask(image, romfs, log_path, saveRoot, getAssets(), files), "ffrs-guest");
         guest.start();
     }
 
     /** A named task, so the dexer sees a plain class and not an anonymous one. */
-    static String[] renderPercentageArguments(int percentage) {
-        if (percentage >= 10 && percentage <= 100) {
-            return new String[]{"ffrs", "-ExecCmds=r.ScreenPercentage " + percentage};
-        }
-        return new String[0];
-    }
-
     private static final class GuestBootTask implements Runnable {
         private final String image;
         private final String romfs;
         private final String log_path, saveRoot;
         private final AssetManager assets;
         private final File runtime;
-        private final String[] guestArgs;
         GuestBootTask(String image, String romfs, String log_path, String saveRoot,
-                      AssetManager assets, File runtime, String[] guestArgs) {
+                      AssetManager assets, File runtime) {
             this.image = image;
             this.romfs = romfs;
             this.log_path = log_path;
             this.saveRoot = saveRoot;
             this.assets = assets;
             this.runtime = runtime;
-            this.guestArgs = guestArgs;
         }
         @Override public void run() {
             long thread = -1;
@@ -2890,9 +2874,9 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                     Log.w(TAG, "APK pipeline warm seed unavailable; continuing guest startup", error);
                 }
                 thread = saveRoot == null ? GameWindowNative.nativeStartGuest(image, romfs, log_path,
-                        GUEST_QUOTA_BYTES, GUEST_STACK_BYTES, GUEST_RESOURCE_BYTES, guestArgs)
+                        GUEST_QUOTA_BYTES, GUEST_STACK_BYTES, GUEST_RESOURCE_BYTES, new String[0])
                         : GameWindowNative.nativeStartInstalledGuest(image, romfs, log_path,
-                        GUEST_QUOTA_BYTES, GUEST_STACK_BYTES, GUEST_RESOURCE_BYTES, guestArgs, saveRoot);
+                        GUEST_QUOTA_BYTES, GUEST_STACK_BYTES, GUEST_RESOURCE_BYTES, new String[0], saveRoot);
             } catch (RuntimeException | LinkageError | OutOfMemoryError error) {
                 Log.e(TAG, "guest_start native call failed", error);
             }

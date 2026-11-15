@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-15T11:19:05.026234+08:00",
+ "updated_at": "2026-11-15T11:54:38.476597+08:00",
  "phase": "继续定位战斗GPU主通道并审阅成熟开源跨设备兼容缺口",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3014,7 +3014,7 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-15T10:25:24.629665+08:00",
-   "checkpoint": "真实draw定位及跨设备机制复核",
+   "checkpoint": "Final24f7a2c5a2 installed andverified, savearchives identical, PID23308 defaultargc0 world02 loaded. normal903intervals29.9999fps/P95 34.921/P99 44.146/max64.188,3gt50,GPU25.26. Livecensus2581images/968decoded/30groups/no drops. No FPS improvement claim. User owns next battleinput; root capture only. Honor deferred byuser.",
    "write_state": "ACTIVE"
   },
   {
@@ -3026,8 +3026,9 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-15T10:25:24.629665+08:00",
-   "checkpoint": "真实draw定位及跨设备机制复核",
-   "write_state": "ACTIVE"
+   "checkpoint": "Review frozen51a33475; existingnormal mirror-clamp capability gap fixed byroot; no full-device compatibility claim.",
+   "write_state": "RELEASED",
+   "released_at": "2026-11-15T11:34:45.323665+08:00"
   },
   {
    "task": "CODEX-SAMPLER-COMPAT-20261115",
@@ -3041,8 +3042,9 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-15T10:31:55.399721+08:00",
-   "checkpoint": "实际设备feature接线",
-   "write_state": "ACTIVE"
+   "checkpoint": "caa28a3 source; realbackend mirror-clamp +layer component passed onRG MaliG615 andHonor Adreno735; core path only.",
+   "write_state": "RELEASED",
+   "released_at": "2026-11-15T11:34:45.323665+08:00"
   },
   {
    "task": "CODEX-TOUCH-SIZE-20261115",
@@ -3067,8 +3069,9 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-15T10:52:55.047295+08:00",
-   "checkpoint": "517条draw已取，root设备用户 owns input，优先top3pass和shader组快报。",
-   "write_state": "ACTIVE"
+   "checkpoint": "Review frozen d92821b0;90frames/517firstframe rows; metadata only, timing bypass.",
+   "write_state": "RELEASED",
+   "released_at": "2026-11-15T11:34:45.323665+08:00"
   },
   {
    "task": "CODEX-RENDER-PERCENT-20261115",
@@ -3081,8 +3084,9 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-15T11:07:11.530257+08:00",
-   "checkpoint": "UI worker已冻结交回Java，root接管该文件集成并验证性能入口。",
-   "write_state": "ACTIVE"
+   "checkpoint": "Negative experiment source archived before removal; original startup restored.",
+   "write_state": "RELEASED",
+   "released_at": "2026-11-15T11:47:44.790898+08:00"
   },
   {
    "task": "CODEX-HONOR24-REGRESSION-20261115",
@@ -3093,8 +3097,9 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-15T11:19:05.026234+08:00",
-   "checkpoint": "Old APK and4save files backed up while game stopped; root authorized update/test.",
-   "write_state": "ACTIVE"
+   "checkpoint": "User explicitly deferred tablet testing thisround. FirstPID13624 ANR retained; retry15801 reached FFRS title, then appbackground becauseSNKforeground. No fullscene pass.",
+   "write_state": "RELEASED",
+   "released_at": "2026-11-15T11:34:45.323665+08:00"
   }
  ],
  "tasks": [
@@ -8649,13 +8654,13 @@
     "coordination/results/CODEX-GPU-DRAW24-20261115.md"
    ],
    "acceptance": "root独占ADB/Git/coord及源。worker只读源码与本地现成上游/报告，仅写自己的local目录，禁设备/源码/构建/Git。诊断只在现成有界采样启用，普通游戏行为不变，frame/PID/manifest与原始日志关联。性能实测与画面回归后才记录收益。",
-   "checkpoint": "已登记，确认两设备在线与各自包版本，尚未编辑"
+   "checkpoint": "Final24f7a2c5a2 installed andverified, savearchives identical, PID23308 defaultargc0 world02 loaded. normal903intervals29.9999fps/P95 34.921/P99 44.146/max64.188,3gt50,GPU25.26. Livecensus2581images/968decoded/30groups/no drops. No FPS improvement claim. User owns next battleinput; root capture only. Honor deferred byuser."
   },
   {
    "id": "CODEX-CROSS-DEVICE-GAP-20261115",
    "owner": "perf_cpu",
    "role": "READ_ONLY_COMPATIBILITY_REVIEW",
-   "status": "in_progress",
+   "status": "completed",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "objective": "逐项比较BOTW/TotK/DroidPlay实际设备兼容机制与本项目现有代码，列已复用/待补及准确路径，核荣耀平板历史覆盖，给最小可实施缺口。",
@@ -8674,13 +8679,13 @@
     ".local/codex-recovery-20261114/gpu-draw24/compat-review/"
    ],
    "acceptance": "root独占ADB/Git/coord及源。worker只读源码与本地现成上游/报告，仅写自己的local目录，禁设备/源码/构建/Git。诊断只在现成有界采样启用，普通游戏行为不变，frame/PID/manifest与原始日志关联。性能实测与画面回归后才记录收益。",
-   "checkpoint": "已登记，确认两设备在线与各自包版本，尚未编辑"
+   "checkpoint": "Review frozen51a33475; existingnormal mirror-clamp capability gap fixed byroot; no full-device compatibility claim."
   },
   {
    "id": "CODEX-SAMPLER-COMPAT-20261115",
    "owner": "root",
    "role": "COMPATIBILITY_FIX",
-   "status": "in_progress",
+   "status": "completed",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "objective": "补正常启动采样器mirror-clamp能力从物理查询、逻辑设备enable、成功记录到adapter配置的缺失接线，按实际能力而非机型启用。",
@@ -8704,7 +8709,7 @@
     "tests/native/layer_output_gpu_contract.cpp"
    ],
    "acceptance": "只启用实际支持的core或KHR路径，成功vkCreateDevice后发布真实记录；扩现成真实backend契约验证VkSampler创建。与当前GPU卡顿无已证因果，不冒称解决400Pro/8E5闪退。",
-   "checkpoint": "已登记4文件单写者"
+   "checkpoint": "caa28a3 source; realbackend mirror-clamp +layer component passed onRG MaliG615 andHonor Adreno735; core path only."
   },
   {
    "id": "CODEX-TOUCH-SIZE-20261115",
@@ -8735,7 +8740,7 @@
    "id": "CODEX-GPU24-DRAW-REVIEW-20261115",
    "owner": "perf_cpu",
    "role": "READ_ONLY_PROFILE_ANALYSIS",
-   "status": "in_progress",
+   "status": "completed",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "objective": "解析24 PID10789用户各种技能仍卡时90帧GPASS及首帧517条真实draw，关联主通道shader分布与采样完整性。",
@@ -8753,13 +8758,13 @@
     ".local/codex-recovery-20261114/gpu-draw24/draw-review/"
    ],
    "acceptance": "只写local报告与解析脚本，禁ADB/Git/coord/source/build/download。帧/slot/ring/pass严格关联，首帧元数据无逐draw GPU计时，菜单/技能窗口分别记录。",
-   "checkpoint": "517条draw已取，root设备用户 owns input，优先top3pass和shader组快报。"
+   "checkpoint": "Review frozen d92821b0;90frames/517firstframe rows; metadata only, timing bypass."
   },
   {
    "id": "CODEX-RENDER-PERCENT-20261115",
    "owner": "root",
    "role": "PERFORMANCE_DIAGNOSTIC",
-   "status": "in_progress",
+   "status": "completed",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "objective": "复用已实现的guest argv/NN GetHostArgc/Argv，尝试通过UE启动命令设置内部渲染比例；按真实附件尺寸验证是否生效。",
@@ -8781,13 +8786,13 @@
     "tests/installer/test_apk_pipeline_warm_seed.py"
    ],
    "acceptance": "仅新增明确可选的整数render_percentage Intent诊断入口，默认空argv与原路径一致，百分比须10..100。不改游戏包/存档/逻辑时间。实测未知时标NOT_VERIFIED，附件未变不声称优化有效。用户新战斗进度先保存再重启对照。",
-   "checkpoint": "First build host stopped at existing startup architecture contract after intentional constructor signature extension. Update exact expected call and add executed JVM argument boundary contract, preserve seed staging assertions."
+   "checkpoint": "NO_OBSERVED_EFFECT on RGworld02. Quoted40 guestargc2 still768x436/output1280x720/GPU25.59. OriginalJava andmatchingseedtest restored4de88c8; alltestartifacts retained."
   },
   {
    "id": "CODEX-HONOR24-REGRESSION-20261115",
    "owner": "root",
    "role": "DEVICE_REGRESSION",
-   "status": "in_progress",
+   "status": "deferred",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "objective": "Honor current24 regression using existing game data and own saved progress; compare actual capabilities and scenario frames with RG independently.",
@@ -8805,7 +8810,7 @@
     ".local/codex-recovery-20261114/gpu-draw24/device-honor/"
    ],
    "acceptance": "Explicit serial perADB command; preserve all prior APK/save bytes andmarkers. Validate new package/source and currentPID, actual scenes andsave behavior; component pass is separate from game pass. No other user device data.",
-   "checkpoint": "Old APK and4save files backed up while game stopped; root authorized update/test."
+   "checkpoint": "User explicitly deferred tablet testing thisround. FirstPID13624 ANR retained; retry15801 reached FFRS title, then appbackground becauseSNKforeground. No fullscene pass."
   }
  ],
  "blockers": [
