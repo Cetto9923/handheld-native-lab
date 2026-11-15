@@ -7555,14 +7555,17 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
        xbg_logf("PASS-LIVE armed: %u frames from present %llu",n,(unsigned long long)(pr+2));}}}
     // Diagnostic trigger: poll the existing one-shot marker every 30 presents,
     // so a request added during gameplay has the same bounded CPU-only path.
-    {static int cpu_prof_state=0;static uint64_t cpu_prof_start=0,cpu_prof_next=0;static uint32_t cpu_prof_count=0;
+    // Optional third value selects the existing descriptor detail counters.
+    {static int cpu_prof_state=0;static uint64_t cpu_prof_start=0,cpu_prof_next=0;static uint32_t cpu_prof_count=0;static bool cpu_prof_descriptor=false;
      uint64_t present=stats.presents.load();
      if(cpu_prof_state==0 && !live_profile_used && present>=cpu_prof_next){cpu_prof_next=present>UINT64_MAX-30?UINT64_MAX:present+30;
         std::string path=probe.base+"/gfx-cpu-profile";FILE *m=fopen(path.c_str(),"rb");
-        if(m){unsigned long long s=0;unsigned c=0;
-            if(fscanf(m,"%llu %u",&s,&c)==2 && c>0 && c<=60 && s<=UINT64_MAX-uint64_t(c)-2){cpu_prof_start=s;cpu_prof_count=c;cpu_prof_state=1;}
+        if(m){unsigned long long s=0;unsigned c=0,detail=0;
+            if(fscanf(m,"%llu %u %u",&s,&c,&detail)>=2 && detail<=1 && c>0 && c<=60 && s<=UINT64_MAX-uint64_t(c)-2){cpu_prof_start=s;cpu_prof_count=c;cpu_prof_descriptor=detail==1;cpu_prof_state=1;}
             fclose(m);remove(path.c_str());}}
-     if(cpu_prof_state==1 && !live_profile_used && !timing_active && !timing_first && !capture.trace && !provenance_file && present>=cpu_prof_start && present<=UINT64_MAX-uint64_t(cpu_prof_count)-2){deferred_live_profile=cpu_prof_count;live_profile_used=true;cpu_prof_state=2;}}
+     if(cpu_prof_state==1 && !live_profile_used && !timing_active && !timing_first && !capture.trace && !provenance_file && present>=cpu_prof_start && present<=UINT64_MAX-uint64_t(cpu_prof_count)-2){
+        if(cpu_prof_descriptor){descriptor_timing=XbgDescriptorTiming{};descriptor_detail=true;}
+        deferred_live_profile=cpu_prof_count;live_profile_used=true;cpu_prof_state=2;}}
     if(deferred_live_profile && !timing.top){uint64_t current=stats.presents.load();timing=XbgCpuTiming(timing_clock);timing_first=current+2;timing_last=timing_first+deferred_live_profile-1;deferred_live_profile=0;}
    TimingRoot timing_root;CPU_SCOPE(Other);need(initialized && !failed,"Game Vulkan backend not initialized/healthy");uint64_t begin=timing_clock();snapshot_reset();uint64_t budget=0;
     // A render-enable block is a property of one submission: the reference clears it when the submission starts

@@ -149,6 +149,9 @@ static void *provenance_file=nullptr;
 static bool live_profile_used=false,timing_active=false;
 static uint64_t timing_first=0;
 static uint32_t deferred_live_profile=0;
+struct XbgDescriptorTiming { unsigned calls=0; };
+static XbgDescriptorTiming descriptor_timing;
+static bool descriptor_detail=false;
 static void poll() {
 ''' + block + r'''
 }
@@ -162,11 +165,18 @@ int main(int argc,char **argv) {
         poll();marker("0 3\n");stats.presents=29;poll();assert(!deferred_live_profile);
         stats.presents=30;poll();assert(deferred_live_profile==3 && live_profile_used);
         assert(access((probe.base+"/gfx-cpu-profile").c_str(),F_OK));
+        assert(!descriptor_detail);
         deferred_live_profile=0;marker("0 8\n");stats.presents=60;poll();assert(!deferred_live_profile);
     } else if(mode=="bounds") {
         marker("0 61\n");poll();assert(!deferred_live_profile);
         marker("18446744073709551615 3\n");stats.presents=30;poll();assert(!deferred_live_profile);
         marker("0 16\n");stats.presents=60;poll();assert(deferred_live_profile==16);
+    } else if(mode=="descriptor") {
+        descriptor_timing.calls=9;
+        marker("0 3 1\n");poll();
+        assert(deferred_live_profile==3 && descriptor_detail && descriptor_timing.calls==0);
+    } else if(mode=="detail-bounds") {
+        marker("0 3 2\n");poll();assert(!deferred_live_profile && !descriptor_detail);
     } else if(mode=="overflow") {
         marker("0 3\n");stats.presents=UINT64_MAX-1;poll();
         assert(!deferred_live_profile && !live_profile_used);
@@ -187,7 +197,7 @@ int main(int argc,char **argv) {
             subprocess.run(['c++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
                             '-fsanitize=address,undefined', str(output / 'marker.cpp'),
                             '-o', str(output / 'marker')], check=True)
-            for mode in ('late', 'bounds', 'overflow', 'gates'):
+            for mode in ('late', 'bounds', 'descriptor', 'detail-bounds', 'overflow', 'gates'):
                 (output / mode).mkdir()
                 subprocess.run([str(output / 'marker'), str(output / mode), mode], check=True)
 
