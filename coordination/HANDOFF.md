@@ -4731,3 +4731,17 @@ CPU能力探针2秒775samples/lost0，只说明采集可用。外部files输出0
 29为27e9df8+root自有dirty，105项host和Android构建0，52份输入逐字一致。APK ccb08cf9/3699783B。28的16槽反向对照PID5528、903intervals、30.000138FPS、GPU24.57ms，确认4槽14.8055FPS回退已撤回。29保持16槽、4MiB最小arena块、实际guard保护及销毁epoch。install PTY88855，普通日志save-memory29-20261115/device29/run.log，计划已落盘。先核存档tar、APK回读，再Continue，确认world实际出现后做30秒稳态及内存、3次后台无新目录。荣耀本轮不测。
 
 29 PID13758 Continue已读入相同world。首30秒903间隔30.00165FPS、P95 36.171/P99 49.318/最大61.360ms、9个>50ms，GPU24.9ms、CPU13.08ms。PSS4,424,654KiB、Graphics1,536,911KiB，相比28基线6,851,356/3,785,623显著下降，帧尾抖动需继续复验，不能仅凭均值30判稳帧完整通过。lifecycle29开始3次Home测试。
+
+29源码与报告检查点7b5a8e4。3次Home无新导出目录、相同PID13758，显式菜单导出新增1目录且5份文件逐字匹配live。C29-repeat的末秒误与输入交叠已标invalid，原始数据保留，不用于同机位稳态结论。当前正常沿草地遇敌战斗，root持有输入，荣耀不测。诊断memory-profile1尚待收尾恢复原不存在状态。
+
+## 29技能流程与诊断恢复
+
+29 PID13758已施放明镜、机械陆行鸟、火炎剑并进入胜利/成长结果，进程正常。机械陆行鸟无编译GPU73.95ms，火炎剑仍有626.5ms长帧含2管线创建421.7ms，主卡顿未解决。战斗PSS约5.07至5.25GiB，不同资源阶段，不称泄漏。证据device29/mirror、choco、fire及default29/before-*。已归档本轮gfx-memory-profile，slot-count/no-warm均核实不存在。默认29新PID21740，已Continue，待确认world并做发行默认30秒FPS/内存。root持有输入，荣耀不测。
+
+## 29默认配置验证检查点
+
+源码7b5a8e4、APK ccb08cf9/3699783B。默认开关已恢复，无memory-profile/slot-count/no-warm，当前RG PID21740在Continue世界地图。D29-default有效30秒29.99983FPS、P99 41.670ms、max61.653ms，PSS4480964KiB、Graphics1560117KiB，对28基线内存约降34.6%。用户目录修复3次Home与手动5文件逐字验证通过，原导出全保留，最终28份（本轮手动新增1）。源码及构建输入一致，5份无关报告WIP保留。独立QA及其它设备NOT_RUN。
+
+29主卡顿仍开放。实际同一战斗三技能成功至胜利，无退出，机械陆行鸟frame15024 GPU73.95ms且无shader/pipeline；火炎剑16475间隔626.5ms含2管线421.7ms。后续复用default29/before-vk-pipeline-list.bin新增真实recipe取union，再按现有GPASS入口定位重负荷draw，不能再次试4槽（16→4→16反向证明性能退化）。页映射实际单reservation多heap交错仍有全表扫描。不要用C29-repeat的混入步行窗口冒充同机位样本。
+
+继续前先核当前PID与root独占输入。设备日志已保全至各轮本地目录。原授权允许直接安装测试包，荣耀本轮仍暂缓，禁止操作它。

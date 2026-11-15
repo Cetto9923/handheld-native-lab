@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-15T14:26:25.009748+08:00",
+ "updated_at": "2026-11-15T14:39:39.309158+08:00",
  "phase": "继续定位战斗GPU主通道并审阅成熟开源跨设备兼容缺口",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3181,8 +3181,9 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-15T13:50:05.655776+08:00",
-   "checkpoint": "29保存导出改菜单手动触发，实际onStop JVM回归及恢复旧调用反证通过。4槽内存降但FPS14.8055已撤回，28回默认16当前PID5528做反向对照。29保持16槽，Android最小arena块4MiB，trim按实际guard保护包含oversized源buffer，销毁buffer推进memo_epoch避免旧descriptor误复用。生产trim/destroy ASan/UBSan与平台分配常量测试通过，29全构建session7501进行中。",
-   "write_state": "ACTIVE"
+   "checkpoint": "7b5a8e4/29 ccb08cf9，105host和Android0，52输入一致，APK及保存字节核验。3次Home目录数27不变、手动导出5文件逐字相同。默认PID21740同world30秒29.99983FPS/P99 41.670ms，PSS4480964KiB较28降34.6%。memory/slot/no-warm标记恢复不存在。真实三技能至胜利存活，但GPU73.95ms、火炎剑626.5ms仍开放。其它设备与独立QA未执行。",
+   "write_state": "CHECKPOINTED_SELF_TESTED_PARTIAL",
+   "checkpoint_at": "2026-11-15T14:39:39.309158+08:00"
   }
  ],
  "tasks": [
@@ -9030,7 +9031,7 @@
     "coordination/results/CODEX-STATE-LOOKUP27-20261115.md"
    ],
    "acceptance": "Under original s_rs_lock cache table index only, exact object/family/in_use validation. Unpack guest current bytes on every hit. Collisions and invalid hints use original scan. Realloc, copies, address reuse, family mixing and concurrency under ASan/UBSan. Component timing separate from game FPS.",
-   "checkpoint": "27包2f41c6da已安装并设备回读SHA一致，完整存档tar前后相同，PID29010。用户已明确授权未来测试包直接安装，不再逐包询问。root接管本次读档及技能测试，原26输入结束。"
+   "checkpoint": "c6ba89d/27真实技能至胜利存活，state_find CPU样本下降仅限组件和已测窗口。当前版本已29，主战斗GPU和shader加载仍开放，见STATE-LOOKUP27及SAVE-MEMORY29报告。"
   },
   {
    "id": "CODEX-PAGE-GAP28-20261115",
@@ -9067,13 +9068,13 @@
     "coordination/results/CODEX-PAGE-GAP28-20261115.md"
    ],
    "acceptance": "Under existing owner locks keep only proven empty interval bounds and last published accessible cursor. Any free invalidates raw cursor. Do not bypass overlap, quarantine, VM, subpage protection, quota and failed rollback contracts. Test high-page-first then gap fill, out of order, free/split/reuse and failed map. Separate component timings from game FPS.",
-   "checkpoint": "28已安装，源27e9df8、APK987ab1ee/3699783B，103host+Android0、50份输入一致，存档tar及APK设备字节复核通过。PID16067，GameMode由unsupported变standard、可用standard/custom，未切性能模式。实际Continue加载15秒200Hz CPU采样PTY22481进行中。"
+   "checkpoint": "27e9df8/28已装并完成真实Continue。实际仅单个62GiB reservation且多heap流交错，单gap/cursor提示仍漏真实模式，加载CPU样本明确保留fallback。最新设备已29，不能再恢复旧28 PID16067采样。见PAGE-GAP28及SAVE-MEMORY29报告。"
   },
   {
    "id": "CODEX-SAVE-MEMORY29-20261115",
    "owner": "root",
    "role": "BUG_FIX_AND_MEMORY_DIAGNOSIS",
-   "status": "in_progress",
+   "status": "implemented_device_verified",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "objective": "Fix public save-export folder creation on every onStop and diagnose/fix measured memory pressure without changing original saves or graphics precision.",
@@ -9106,7 +9107,9 @@
     "tests/device/test_arena_memory_policy.py"
    ],
    "acceptance": "Actual lifecycle method regression and device repeated background/foreground folder-count check. Explicit menu export remains callable. Original save bytes and all existing user exports preserved. Memory snapshots same scene/PID/cache state, include Graphics and private RSS, distinguish allocations from reserved VA and storage. Reuse existing memory/warm markers, restore after A/B. No runtime graphics semantic changes.",
-   "checkpoint": "29安装APK及保存逐字核验成功，PID13758；首同world30秒30.00165FPS、P99 49.318ms、max61.36ms，GPU24.9ms。PSS4424654/Graphics1536911KiB，较28明显下降，帧尾继续复验。正在3次Home无目录增长验证，荣耀不测。"
+   "checkpoint": "7b5a8e4/29 ccb08cf9，105host和Android0，52输入一致，APK及保存字节核验。3次Home目录数27不变、手动导出5文件逐字相同。默认PID21740同world30秒29.99983FPS/P99 41.670ms，PSS4480964KiB较28降34.6%。memory/slot/no-warm标记恢复不存在。真实三技能至胜利存活，但GPU73.95ms、火炎剑626.5ms仍开放。其它设备与独立QA未执行。",
+   "evidence": "coordination/results/CODEX-SAVE-MEMORY29-20261115.md",
+   "remaining": "长期内存增长、手机强退原始日志、其它设备及独立QA；主战斗长帧继续开放"
   }
  ],
  "blockers": [
@@ -9238,7 +9241,13 @@
   "On the Honor tablet A42BBB5109000333 the published v1.0.6 APK runs the field scene at a steady 30.00 FPS, identical to the build9 baseline measured in the same scene with the same save: ops 2256 vs 2242-2337, draws 737 vs 737-742, dispatches 135 vs 135.",
   "The moon halo flicker on the Honor tablet is a two-state per-frame toggle (region mean 82.2 <-> 103.0) with identical statistics in the published build and in the build9 baseline, so it is not introduced by the published package.",
   "The published v1.0.6 tree contains no uncommitted code: the only dirty file in the release worktree is a whitespace-only reformat of another writer coordination document, and the rendering source is byte-identical to the build9 baseline.",
-  "The moon halo flicker on the Honor tablet is caused by the GPU-resident indirect template path: with gfx-indexed-resident=0 the user observed a normal moon, and gfx-wb-skip=0 changed nothing."
+  "The moon halo flicker on the Honor tablet is caused by the GPU-resident indirect template path: with gfx-indexed-resident=0 the user observed a normal moon, and gfx-wb-skip=0 changed nothing.",
+  {
+   "task": "CODEX-SAVE-MEMORY29-20261115",
+   "source": "7b5a8e4",
+   "scope": "RG477M29 actual three background transitions no new export; manual export5files matches; default world30sec29.99983FPS/PSS4480964KiB vs28 6851356KiB",
+   "evidence": "coordination/results/CODEX-SAVE-MEMORY29-20261115.md"
+  }
  ],
  "unverified": [
   "完整CRT/TLS/线程/guest内存上下文与真正完整入口，正式T02参考行为验收。",
@@ -9265,7 +9274,8 @@
   "No frame of the game has ever been shown. The replay sends no Vulkan command and the present path has no caller, so the colour of the guest own clear command has never reached the screen.",
   "Whether gfx-wb-skip=0 removes the moon halo flicker on the device has not been confirmed; the field scene could not be re-entered from the title screen with adb input in this session.",
   "No code fix for the stale indirect-argument read has been written, built or verified.",
-  "The current-slot guard on find_indirect_template is not yet built, installed or accepted on the device."
+  "The current-slot guard on find_indirect_template is not yet built, installed or accepted on the device.",
+  "2026-11-15当前29仅掌机范围自测。手机OEM严重运行内存异常仍缺对应退出日志，荣耀本轮用户暂缓。战斗仍有GPU73.95ms与火炎剑626.5ms管线长帧，长期内存和开场声音待回归，独立QA NOT_RUN。"
  ],
  "execution_goal": {
   "objective": "User cancels adaptive refresh implementation; prefer verified existing Switch FPS patch approach, port to exact currentBuild if possible, pursue realstable60FPS and continuecontrols/scenes/story/resources/audio unchangedspeed",
