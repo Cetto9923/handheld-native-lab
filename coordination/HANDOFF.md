@@ -4751,3 +4751,5 @@ CPU能力探针2秒775samples/lost0，只说明采集可用。外部files输出0
 用户授权发布当前包且金手指内置，并要求菜单不联动展开虚拟按键。根领取PUBLISH-CHEAT30，源码a280860，复用本地既有资源及构建入口，不读取无关凭据、不获取新游戏密钥。原5份诊断WIP继续隔离。版本顺延30preview保障覆盖升级，菜单仅改变自身状态，PAD单独控制显示。root独占RG，荣耀不测。先宿主/真机回归，再推当前开发分支与30标签、GitHub Release，并回读校验附件。
 
 30构建PTY22457，普通日志.local/releases/1.0.30/build/run.log、完整命令及54份输入摘要在build/plan.json。生产菜单方法JVM回归与旧bug反证通过，独立onDraw菜单在按键隐藏时仍绘制。原29最小arena与所有显示修复保留。GitHub远端开发分支目前01e802448825bb134a9c8496cb1c2b31dd65ff7b，发布前核祖先和自有源码payload。
+
+用户发现首30候选人名又变编号、标签有英文，已定位unitNames本地文件缺失或storage为null时提前return，原内置8人表被绕过。修为先复制UnitNames.table再加载覆盖，保留有效覆盖。选择角色/原值的HP MP EXP与说明改中文。JVM生产方法测试覆盖null/缺失/空/非法表/有效覆盖/异常、全8名与内置表不可变，通过。最终重构建PTY43820，build-final/run.log，首30 APK已保留apk-history/ffrs-1.0.30-preview-first-ui.apk，尚未推送或发布。

@@ -25,3 +25,11 @@ GitHub目标为既有公开仓库Cetto9923/handheld-native-lab。发布前核远
 ## 范围
 
 本轮为29内存/导出修复基础上的菜单与打包改动。29实测world约6.53至4.27GiB、平均30FPS作为上一包范围证据。战斗GPU长帧、shader加载与个别pipeline创建仍开放，30包不声称全场景稳30或60、全机型兼容。独立QA为NOT_RUN。发布结果待补。
+
+## 首候选实机与中文姓名纠正
+
+首30候选eb000105已覆盖安装，存档tar前后逐字一致，设备APK回读同摘要，新PID14893。verify-menu-hidden截图确认菜单可见且PAD+、虚拟按键隐藏；手动PAD展开后菜单与13个控制器同屏，关闭菜单维持显示，随后显式PAD可再次隐藏。verify-cheat-dialog实际显示8角色及数值，内置资源可用。
+
+用户随后指出角色又变编号、标签残留英文。实际unitNames在getExternalFilesDir为null或unit-names.txt不存在时提前return空map，绕过末尾内置表合并。修为初始化直接复制UnitNames.table，之后原覆盖文件可按原格式替换部分名称。JVM抽取生产方法验证null路径、缺文件、空文件、非法行/空值、有效覆盖、新ID、storage异常及不修改内置表。
+
+角色选择与原值标签改为生命/魔法/经验，输入标签移除HP/MP，提示说明改为回标题重新读取存档生效。首候选APK完整归档到apk-history/ffrs-1.0.30-preview-first-ui.apk。最终30重新执行全构建，普通日志.local/releases/1.0.30/build-final/run.log、命令及56份输入摘要见同目录plan.json。发布尚未执行。

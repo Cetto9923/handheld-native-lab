@@ -864,7 +864,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         scroll.addView(box);
 
         TextView infoView = new TextView(this);
-        infoView.setText("存档槽: " + slot.getName() + "\n单位数: " + info.units.size());
+        infoView.setText("存档角色数：" + info.units.size());
         infoView.setTextSize(13f);
         box.addView(infoView);
 
@@ -872,8 +872,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         // game keeps its own copy of the roster in the guest memory, so the
         // edited save is only read by the next load.
         TextView timingView = new TextView(this);
-        timingView.setText("改动写入存档文件，本局不生效；回标题画面 Load Game 重新读档后生效。\n"
-                + "原因：运行中的数值在 guest 内存的运行期结构里，该结构尚未定位，改写它有损坏本局的风险。");
+        timingView.setText("改动保存后，回标题画面重新读取存档生效。");
         timingView.setTextSize(12f);
         box.addView(timingView);
 
@@ -895,10 +894,10 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         for (int i = 0; i < roster.size(); i++) {
             SaveCheater.Unit u = roster.get(i);
             String label = nameMap.get(u.unitId);
-            names[i] = (label != null ? label : "单位" + u.unitId)
-                    + "  HP " + u.hitPoint + "/" + u.maxHitPoint
-                    + "  MP " + u.magicPoint + "/" + u.maxMagicPoint
-                    + "  EXP " + u.experience;
+            names[i] = (label != null ? label : "角色" + u.unitId)
+                    + "  生命 " + u.hitPoint + "/" + u.maxHitPoint
+                    + "  魔法 " + u.magicPoint + "/" + u.maxMagicPoint
+                    + "  经验 " + u.experience;
         }
         android.widget.ArrayAdapter<String> adapter =
                 new android.widget.ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, names);
@@ -912,9 +911,9 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         final EditText maxMpField = new EditText(this);
         final EditText expField = new EditText(this);
         final EditText levelField = new EditText(this);
-        addCheatField(box, "生命值 HP（当前）", hpField, 0);
+        addCheatField(box, "生命值（当前）", hpField, 0);
         addCheatField(box, "生命上限", maxHpField, 0);
-        addCheatField(box, "魔法值 MP（当前）", mpField, 0);
+        addCheatField(box, "魔法值（当前）", mpField, 0);
         addCheatField(box, "魔法上限", maxMpField, 0);
         addCheatField(box, "经验", expField, 0);
         addCheatField(box, "等级", levelField, 1);
@@ -1373,9 +1372,9 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             SaveCheater.Unit o = originalById.get(u.unitId);
             originalView.setText(o == null
                     ? "原值: 无记录"
-                    : "原值  HP " + o.hitPoint + "/" + o.maxHitPoint
-                      + "  MP " + o.magicPoint + "/" + o.maxMagicPoint
-                      + "  EXP " + o.experience + "  等级 " + o.level);
+                    : "原值  生命 " + o.hitPoint + "/" + o.maxHitPoint
+                      + "  魔法 " + o.magicPoint + "/" + o.maxMagicPoint
+                      + "  经验 " + o.experience + "  等级 " + o.level);
         }
         Integer hpValue() { return parseField(hp); }
         Integer maxHpValue() { return parseField(maxHp); }
@@ -1485,7 +1484,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
      * without rebuilding the app.
      */
     private java.util.Map<Integer, String> unitNames() {
-        java.util.Map<Integer, String> map = new java.util.HashMap<>();
+        java.util.Map<Integer, String> map = new java.util.HashMap<>(UnitNames.table());
         try {
             File dir = getExternalFilesDir(null);
             if (dir == null) return map;
@@ -1507,11 +1506,6 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             } finally { r.close(); }
         } catch (Exception e) {
             Log.w(TAG, "unit names unreadable: " + e.getMessage());
-        }
-        // The table that was built into the app is the fallback, so the names
-        // show up even when no name file was written yet.
-        for (java.util.Map.Entry<Integer, String> e : UnitNames.table().entrySet()) {
-            if (!map.containsKey(e.getKey())) map.put(e.getKey(), e.getValue());
         }
         return map;
     }
