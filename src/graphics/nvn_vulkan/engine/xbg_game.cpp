@@ -933,6 +933,7 @@ struct TexelKey{uint64_t base,bytes;uint32_t format;bool operator==(const TexelK
 struct TexelKeyHash{size_t operator()(const TexelKey &k)const{uint64_t x=k.base*0x9E3779B97F4A7C15ull^k.bytes*0xC2B2AE3D27D4EB4Full^k.format;x^=x>>29;return size_t(x*0xBF58476D1CE4E5B9ull);}};
 struct TexelResident{Buffer buffer;VkBufferView view{};uint64_t hash=0,used=0,gen=0,checked=0,check_epoch=0;};   // checked: verified in this submission
 std::unordered_map<TexelKey,TexelResident,TexelKeyHash> texel_resident[kMaxSlots];Arena texel_arena[kMaxSlots];uint64_t texel_hole_bytes[kMaxSlots]={},texel_live_bytes[kMaxSlots]={};
+uint32_t texel_gc_slots=0;
 bool texel_memo_enabled=true;uint64_t texel_gen=0,texel_refreshes=0,texel_fallbacks=0,texel_evictions=0,texel_hits=0;
 // Only copied, read-only graphics inputs are reused. Their destination remains
 // owned by the current recording slot, and range writes use snapshot invalidation.
@@ -1314,7 +1315,8 @@ Slot &recording_slot(){
             return std::any_of(s.guard.begin(),s.guard.end(),
                                [&](const Slot::XRange &range){return range.buffer==buffer;});
         });
-        if(texel_memo_enabled && (slot_serial&15)<2)texel_evict(slot_index,false);   // this slot's copies: its previous submission retired
+        // Rotate the phase across slot cycles. A fixed serial mask starves 14 of 16 slots.
+        if(texel_memo_enabled && ((slot_serial/slot_count+slot_index)&7)==0)texel_evict(slot_index,false);
         if(!s.cmd){if(slot_pools_enabled){VkCommandPoolCreateInfo cp{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};cp.queueFamilyIndex=cfg.queue_family;VK(vkCreateCommandPool(cfg.device,&cp,nullptr,&s.pool));}
             VkCommandBufferAllocateInfo a{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};a.commandPool=s.pool?s.pool:command_pool;a.level=VK_COMMAND_BUFFER_LEVEL_PRIMARY;a.commandBufferCount=1;VK(vkAllocateCommandBuffers(cfg.device,&a,&s.cmd));}
         s.readback.cached=readback_cached;
@@ -1534,6 +1536,9 @@ void perf_frame(){
      if(at<int(sizeof(line))-24)at+=snprintf(line+at,sizeof(line)-at," depth_idle=%.1f",depth_idle_passes/f);
      xbg_logf("%s",line);for(int i=0;i<64;i++)pass_end_by[i]=barrier_by[i]=0;depth_idle_passes=0;}
     xbg_logf("NVN PERF cleanup_ms_per_frame queries=%.2f writebacks=%.2f(%.1fMB) views=%.2f retire=%.2f arena_pools=%.2f",cleanup_ns[0]/1e6/f,cleanup_ns[1]/1e6/f,writeback_bytes/1048576.0/f,cleanup_ns[2]/1e6/f,cleanup_ns[3]/1e6/f,cleanup_ns[4]/1e6/f);for(auto &c:cleanup_ns)c=0;writeback_bytes=0;
+    {size_t entries=0,largest=0;uint64_t live=0,holes=0;
+     for(unsigned i=0;i<slot_count;++i){entries+=texel_resident[i].size();largest=std::max(largest,texel_resident[i].size());live+=texel_live_bytes[i];holes+=texel_hole_bytes[i];}
+     xbg_logf("NVN PERF texel_resident slots=%u gc_mask=%#x entries=%zu largest=%zu live_mb=%.2f holes_mb=%.2f",slot_count,texel_gc_slots,entries,largest,live/1048576.0,holes/1048576.0);texel_gc_slots=0;}
     xbg_logf("NVN PERF xview views=%.2f races=%.2f guarded=%.2f guarded_kb=%.1f",xviews/f,xview_races/f,xview_guarded/f,xview_guarded_bytes/1024.0/f);xviews=xview_races=xview_guarded=xview_guarded_bytes=0;
     if(uploads_prologue || uploads_inpass){xbg_logf("NVN PERF uploads window prologue=%llu inpass=%llu broke_pass=%llu",(unsigned long long)uploads_prologue,(unsigned long long)uploads_inpass,(unsigned long long)uploads_broke_pass);uploads_prologue=uploads_inpass=uploads_broke_pass=0;}
     for(unsigned stage=0;stage<6;++stage)for(unsigned variant=0;variant<2;++variant){
@@ -4318,6 +4323,7 @@ void texel_touch(uint64_t address,uint64_t bytes){
 // leave in the slot's arena pass 8 MB, start the slot's store over (memo entries then fail their generation check).
 void texel_evict(unsigned si,bool all){
     need(!slots[si].pending && (!slots[si].recording || !slots[si].ops),"Evict texel residents only after slot retirement");
+    if(!all)texel_gc_slots|=1u<<si;
     auto &map=texel_resident[si];
     for(auto it=map.begin();it!=map.end();){if(all || it->second.used+128<slot_serial){vkDestroyBufferView(cfg.device,it->second.view,nullptr);texel_hole_bytes[si]+=it->first.bytes;texel_live_bytes[si]-=it->first.bytes;it=map.erase(it);++texel_evictions;}else ++it;}
     if(all || texel_hole_bytes[si]>8ull*1024*1024){for(auto &e:map)vkDestroyBufferView(cfg.device,e.second.view,nullptr);map.clear();texel_arena[si].release();texel_hole_bytes[si]=texel_live_bytes[si]=0;}

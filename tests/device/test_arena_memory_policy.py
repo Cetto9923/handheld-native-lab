@@ -9,6 +9,65 @@ SOURCE = ROOT / 'src/graphics/nvn_vulkan/engine/xbg_game.cpp'
 
 
 class ArenaMemoryPolicy(unittest.TestCase):
+    def run_texel_collection(self, restore_bug=False):
+        source = SOURCE.read_text()
+        line = next(line.strip() for line in source.splitlines()
+                    if 'if(texel_memo_enabled &&' in line and 'texel_evict(slot_index,false)' in line)
+        if restore_bug:
+            line = 'if(texel_memo_enabled && (slot_serial&15)<2)texel_evict(slot_index,false);'
+        recording = source[source.index('Slot &recording_slot(){'):source.index('void submit_slots(', source.index('Slot &recording_slot(){'))]
+        self.assertLess(recording.index('retire_slot(s)'), recording.index('texel_evict(slot_index,false)'))
+        fixture = r'''
+#include <array>
+#include <cassert>
+#include <cstdint>
+unsigned slot_count=16,slot_index=0;
+uint64_t slot_serial=1;
+bool texel_memo_enabled=true;
+std::array<unsigned,16> visits{};
+std::array<bool,16> pending{};
+void texel_evict(unsigned index,bool all) {
+    assert(!all && !pending[index]);
+    ++visits[index];
+}
+void poll() {
+''' + line + r'''
+}
+int main() {
+    for(slot_count=2;slot_count<=16;++slot_count) {
+        visits={};slot_index=0;slot_serial=1;
+        for(unsigned step=0;step<512*slot_count;++step) {
+            pending[slot_index]=false;
+            poll();
+            pending[slot_index]=true;
+            slot_index=(slot_index+1)%slot_count;
+            ++slot_serial;
+        }
+        for(unsigned index=0;index<slot_count;++index)assert(visits[index]==64);
+    }
+    visits={};texel_memo_enabled=false;slot_count=16;
+    for(slot_index=0;slot_index<slot_count;++slot_index)poll();
+    for(unsigned count:visits)assert(count==0);
+}
+'''
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'texel.cpp'
+            path.write_text(fixture)
+            binary = Path(temporary) / 'texel'
+            subprocess.run(['clang++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                            '-fsanitize=address,undefined', str(path), '-o', str(binary)],
+                           check=True, capture_output=True, text=True)
+            return subprocess.run([str(binary)], capture_output=True, text=True)
+
+    def test_texel_collection_reaches_every_configured_slot(self):
+        result = self.run_texel_collection()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_fixed_serial_phase_starvation_is_detected(self):
+        result = self.run_texel_collection(restore_bug=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('visits[index]==64', result.stderr)
+
     def test_guarded_buffers_survive_and_unused_resources_are_invalidated(self):
         source = SOURCE.read_text()
         policy = source.index('constexpr VkDeviceSize arena_chunk_bytes=')
