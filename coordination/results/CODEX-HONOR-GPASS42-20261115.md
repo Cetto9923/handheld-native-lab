@@ -25,3 +25,7 @@ Vulkan规定depthTestEnable为false时深度写入关闭。依据为本轮查阅
 ## 构建后边界复查
 
 初次42源8e66fb5已通过114宿主及Android，APK b8298b9e，80输入一致。尚未安装。复查补充depth bias限制，偏置计算可能依赖深度格式，即使深度测试关闭，FragmentCoord深度也可能被shader读取，因此开启polygon offset时保留原深度附件。单项反例同步加入，再构建后安装。初次APK保留历史。
+
+## 受保护候选构建与安装
+
+源a47c250，114项宿主及Android返回0，80输入构建前后摘要一致。build42-bias APK 3720407B，SHA256 0a502482ffd5ceeff8633d186b3ee6189ec4acfe88ed0360ce6926f94a0a9a34。装包前后9个私有存档文件逐项SHA相同，正式codex-local-save目录文件metadata相同，回读设备APK摘要匹配。复用唯一461私有目录，PID25813，通过标题Continue读至神殿入口，随后往内部导航。初次未带偏置保护b8298包保留未安装。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md，当前GPU与移动及主观蓝牙门未验。

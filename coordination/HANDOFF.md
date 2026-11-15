@@ -1,3 +1,7 @@
+# 2026-11-15T23:34:57.697149+08:00 深度偏置边界复查与42重建
+
+a47c250补齐depth bias限制，单项ASan/UBSan通过。初次42/114宿主/Android0/b8298b9e仅作历史未安装；build42-bias按80输入快照串行重建，plan/run.log落盘。当前仍41 PID14303，战斗菜单，轴已释放；移动验收须重新入神殿并看前后探索位移。 验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。
+
 # 2026-11-15T23:05:47.156670+08:00 神殿逐pass实测
 
 当前PID14303在线，源码clean36cc83e。新鲜resume42.png仍为神殿内部南侧桥段。已有高层async及直接只读texel转发涉及guest输入/CPU clear写源，保持只读核查。 下一步原子发布6帧gfx-pass-live并持续非零轴，结果仅用于GPU/尺寸诊断，普通FPS另窗。证据.local/honor-gpass42-20261115/。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。
