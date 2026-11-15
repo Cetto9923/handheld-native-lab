@@ -8,6 +8,100 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class RenderPolicy(unittest.TestCase):
+    def test_descriptor_buffer_retirement_invalidates_referencing_slots(self):
+        source = (ROOT / 'src/graphics/nvn_vulkan/engine/xbg_game.cpp').read_text()
+        start = source.index('std::unordered_map<VkBuffer,uint32_t> memo_buffer_slots;')
+        registry = source[start:source.index('constexpr VkBufferUsageFlags arena_usage=', start)]
+        start = source.index('void memo_reference_buffer(')
+        retirement = source[start:source.index('bool ab_enabled()', start)]
+        start = source.index('void memo_check_epoch(){')
+        check = source[start:source.index('// End of a submit', start)]
+        self.assertIn('if(c.buffer)memo_forget_buffer(c.buffer);', source)
+        self.assertIn('if(desc_memo_recording)memo_reference_buffer(buffer->buffer,slot_index);', source)
+        self.assertIn('memo_reference_buffer(res->buffer.buffer,slot_index);', source)
+        self.assertIn('memo_buffer_slots.clear();memo_buffer_invalid_slots=0;', source)
+        fixture = r'''
+#include <atomic>
+#include <cassert>
+#include <cstdint>
+#include <cstring>
+#include <mutex>
+#include <unordered_map>
+#include <vector>
+using VkBuffer = uintptr_t;
+std::recursive_mutex mutex;
+std::atomic<uint64_t> memo_epoch{1};
+bool control = false;
+bool ab_off(const char *name) { assert(!std::strcmp(name,"memobuffer")); return control; }
+''' + registry + retirement + r'''
+unsigned slot_index = 0;
+uint64_t memo_slot_epoch[16];
+std::vector<int> memo_pinned[16], desc_memo_slot[16];
+uint64_t xmemo_drops = 0, memo_mod_gen = 1;
+unsigned unpins[16]{};
+void memo_unpin_all(unsigned si) {
+    ++unpins[si]; ++memo_mod_gen;
+    memo_pinned[si].clear(); desc_memo_slot[si].clear();
+}
+''' + check + r'''
+int main() {
+    for (unsigned i = 0; i < 16; ++i) {
+        memo_slot_epoch[i] = 1;
+        desc_memo_slot[i].push_back(1);
+    }
+    memo_forget_buffer(999); // Vertex/index-only allocation never entered a cached set.
+    for (slot_index = 0; slot_index < 16; ++slot_index) memo_check_epoch();
+    assert(memo_epoch == 1 && xmemo_drops == 0 && memo_buffer_invalid_slots == 0);
+    // A shared snapshot can be referenced from distant slots, including slot 15.
+    memo_reference_buffer(100,0); memo_reference_buffer(100,15); memo_reference_buffer(100,15);
+    memo_reference_buffer(200,7);
+    memo_forget_buffer(100);
+    assert(memo_buffer_invalid_slots == ((1u << 15) | 1));
+    assert(!memo_buffer_slots.count(100) && memo_buffer_slots.at(200) == (1u << 7));
+    slot_index = 0; memo_check_epoch();
+    assert(unpins[0] == 1 && memo_mod_gen == 2 && xmemo_drops == 1);
+    assert(memo_buffer_invalid_slots == (1u << 15));
+    // Driver handle reuse preserves the old invalidation and records new dependencies.
+    memo_reference_buffer(100,3);
+    slot_index = 3; memo_check_epoch(); assert(unpins[3] == 0);
+    slot_index = 15; memo_check_epoch(); assert(unpins[15] == 1);
+    memo_forget_buffer(100);
+    slot_index = 3; memo_check_epoch(); assert(unpins[3] == 1);
+    memo_forget_buffer(200);
+    slot_index = 7; memo_check_epoch(); assert(unpins[7] == 1);
+    assert(memo_buffer_slots.empty() && memo_buffer_invalid_slots == 0);
+    assert(memo_buffer_slot_drops == 4 && memo_buffers_destroyed == 4 && memo_buffers_referenced == 3);
+    // Sampler/global changes still invalidate every slot, including previously empty caches.
+    ++memo_epoch;
+    for (slot_index = 0; slot_index < 16; ++slot_index) {
+        unsigned before = unpins[slot_index]; memo_check_epoch();
+        assert(unpins[slot_index] == before + 1 && memo_slot_epoch[slot_index] == memo_epoch);
+    }
+    // The live A/B control remains identical to the former all-buffer global epoch.
+    control = true;
+    memo_reference_buffer(300,4); memo_forget_buffer(300);
+    memo_forget_buffer(400);
+    assert(memo_epoch == 4);
+    control = false;
+    for (slot_index = 0; slot_index < 16; ++slot_index) memo_check_epoch();
+    assert(memo_buffer_invalid_slots == 0);
+    slot_index = 12; memo_pinned[12].resize(8193);
+    unsigned before = unpins[12]; memo_check_epoch();
+    assert(unpins[12] == before + 1 && memo_pinned[12].empty());
+    for (unsigned i = 0; i < 1000; ++i) {
+        memo_reference_buffer(500,i % 16); memo_forget_buffer(500);
+        slot_index = i % 16; memo_check_epoch();
+    }
+    assert(memo_buffer_slots.empty() && memo_buffer_invalid_slots == 0);
+}
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            (path / 'test.cpp').write_text(fixture)
+            subprocess.run(['clang++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                            '-fsanitize=address,undefined', str(path / 'test.cpp'), '-o', str(path / 'test')], check=True)
+            subprocess.run([str(path / 'test')], check=True)
+
     def test_integer_format_lookup_uses_live_registered_records(self):
         source = (ROOT / 'src/graphics/nvn_vulkan/engine/xbg_game.cpp').read_text()
         start = source.index('struct TextureRecordFront {')

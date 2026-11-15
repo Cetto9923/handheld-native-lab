@@ -517,6 +517,12 @@ const VkFormatProperties &format_properties(VkFormat f){
 }
 struct ArenaChunk{VkBuffer buffer{};VkDeviceMemory memory{};uint8_t *mapped{};VkDeviceSize size=0,used=0,allocation_size=0;bool coherent=true;};
 extern std::atomic<uint64_t> memo_epoch;
+// Declared before arena owners so deferred buffer destruction can still use
+// this registry during shutdown. Access is serialized by the engine mutex.
+std::unordered_map<VkBuffer,uint32_t> memo_buffer_slots;
+uint32_t memo_buffer_invalid_slots=0;
+uint64_t memo_buffers_destroyed=0,memo_buffers_referenced=0,memo_buffer_slot_drops=0;
+void memo_forget_buffer(VkBuffer buffer);
 constexpr VkBufferUsageFlags arena_usage=VK_BUFFER_USAGE_TRANSFER_SRC_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT|VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT|VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT|VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT|VK_BUFFER_USAGE_STORAGE_BUFFER_BIT|VK_BUFFER_USAGE_INDEX_BUFFER_BIT|VK_BUFFER_USAGE_VERTEX_BUFFER_BIT|VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
 #if defined(__ANDROID__)
 // Bound the minimum retained allocation across the independent slot arenas.
@@ -587,7 +593,7 @@ struct Arena {
         chunks.swap(keep);current=0;
     }
     void trim(){trim([](VkBuffer){return false;});}
-    static void destroy(ArenaChunk &c){if(c.buffer)++memo_epoch;if(c.mapped)vkUnmapMemory(cfg.device,c.memory);if(c.buffer)vkDestroyBuffer(cfg.device,c.buffer,nullptr);if(c.memory)vkFreeMemory(cfg.device,c.memory,nullptr);c=ArenaChunk{};}
+    static void destroy(ArenaChunk &c){if(c.buffer)memo_forget_buffer(c.buffer);if(c.mapped)vkUnmapMemory(cfg.device,c.memory);if(c.buffer)vkDestroyBuffer(cfg.device,c.buffer,nullptr);if(c.memory)vkFreeMemory(cfg.device,c.memory,nullptr);c=ArenaChunk{};}
     void release(){for(auto &c:chunks)destroy(c);chunks.clear();current=0;used_total=0;}
 };
 // Independent allocation: shared ownership can outlive the producer slot arena.
@@ -777,6 +783,22 @@ char ab_target[16]={0};
 // rest of the session, so the whole ab_off list can be swept in one run instead of one restart per path.
 char ab_force[16]={0};
 inline bool ab_off(const char *name){return (ab_period>0 && !ab_frame_on && !strcmp(ab_target,name))||(ab_force[0]&&!strcmp(ab_force,name));}
+void memo_reference_buffer(VkBuffer buffer,unsigned si){
+    memo_buffer_slots[buffer]|=1u<<si;
+}
+void memo_forget_buffer(VkBuffer buffer){
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    ++memo_buffers_destroyed;
+    auto found=memo_buffer_slots.find(buffer);
+    if(found!=memo_buffer_slots.end()){
+        memo_buffer_invalid_slots|=found->second;
+        memo_buffer_slots.erase(found);
+        ++memo_buffers_referenced;
+    }
+    // Same-process control retains the former all-slot invalidation. References
+    // are tracked in both arms, including handle reuse after destruction.
+    if(ab_off("memobuffer"))++memo_epoch;
+}
 bool ab_enabled(){if(ab_period<=0)return true;ab_on=((std::chrono::steady_clock::now().time_since_epoch().count()/1000000000ll/ab_period)&1)==0;return ab_on;}
 struct Slot {
     bool reset_queued=false,reset_busy=false;VkResult reset_result=VK_SUCCESS;   // poolreset: a reset job was queued for this submission / still runs (under poolreset::mu)
@@ -1512,6 +1534,9 @@ void perf_frame(){
     {static uint64_t pm=0,pe=0;xbg_logf("NVN PERF pipelines_new=%llu evicted=%llu warm_hits=%llu created=%llu create_ms=%.1f create_max_ms=%.1f warm_built=%llu warm_failed=%llu warm_ms=%.0f async_skips=%llu async_built=%llu",(unsigned long long)(pipeline_counts.misses-pm),(unsigned long long)(pipeline_counts.evictions-pe),(unsigned long long)warm::hits,(unsigned long long)warm::creates,warm::create_ns/1e6,warm::create_max_ns/1e6,(unsigned long long)warm::built.load(),(unsigned long long)warm::failed.load(),warm::build_ns.load()/1e6,(unsigned long long)warm::async_skips.exchange(0),(unsigned long long)warm::async_built.load());warm::hits=warm::creates=warm::create_ns=warm::create_max_ns=0;pm=pipeline_counts.misses;pe=pipeline_counts.evictions;}
     xbg_logf("NVN PERF compute_pipelines warm_hits=%llu created=%llu create_ms=%.2f create_max_ms=%.2f",(unsigned long long)warm::compute_hits,(unsigned long long)warm::compute_creates,warm::compute_create_ns/1e6,warm::compute_create_max_ns/1e6);
     warm::compute_hits=warm::compute_creates=warm::compute_create_ns=warm::compute_create_max_ns=0;
+    xbg_logf("NVN PERF memo_buffers destroyed=%llu referenced=%llu slot_drops=%llu tracked=%zu invalid_slots=%#x control=%d",
+             (unsigned long long)memo_buffers_destroyed,(unsigned long long)memo_buffers_referenced,
+             (unsigned long long)memo_buffer_slot_drops,memo_buffer_slots.size(),memo_buffer_invalid_slots,int(ab_off("memobuffer")));
     xbg_logf("NVN PERF setcache ab=%d hits=%.1f misses=%.1f template=%.1f plain=%.1f memo_hits=%.1f memo_misses=%.1f memo_front=%.1f why=texel%.1f/simg%.1f/dm%.1f/dynbuf%.1f/store%.1f",int(ab_frame_on),set_cache_hits/f,set_cache_misses/f,template_updates/f,plain_updates/f,desc_memo_hits/f,desc_memo_misses/f,memo_front_hits/f,desc_memo_why[0]/f,desc_memo_why[1]/f,desc_memo_why[2]/f,desc_memo_why[3]/f,desc_memo_why[4]/f);desc_memo_hits=desc_memo_misses=memo_front_hits=0;for(auto &w:desc_memo_why)w=0;xbg_logf("NVN PERF keydiff shader%.0f pool%.0f ubo%.0f uaddr%.0f size%.0f vp%.0f alpha%.0f drv%.0f tex%.0f samp%.0f saddr%.0f same%.0f new%.0f len%.0f",key_diff[0]/tf,key_diff[1]/tf,key_diff[2]/tf,key_diff[3]/tf,key_diff[4]/tf,key_diff[5]/tf,key_diff[6]/tf,key_diff[7]/tf,key_diff[8]/tf,key_diff[9]/tf,key_diff[10]/tf,key_diff[11]/tf,key_diff[12]/tf,key_diff[13]/tf);for(auto &k:key_diff)k=0;   // per timed frame
     xbg_logf("NVN PERF binds_skipped_per_frame=%.1f xmemo_hits=%.1f drops=%llu bumps=%llu/%llu/%llu/%llu/%llu pinned=%zu/%zu",binds_skipped/f,xmemo_hits/f,(unsigned long long)xmemo_drops,(unsigned long long)memo_bump[0],(unsigned long long)memo_bump[1],(unsigned long long)memo_bump[2],(unsigned long long)memo_bump[3],(unsigned long long)memo_bump[4],memo_pinned[0].size(),memo_pinned[1].size());binds_skipped=0;{char top[160]="";int at=0;bool used[32]={};
      for(int r=0;r<4;r++){int best=-1;for(int k=0;k<32;k++)if(!used[k] && offset_changed_at[k] && (best<0 || offset_changed_at[k]>offset_changed_at[best]))best=k;if(best<0)break;used[best]=true;at+=snprintf(top+at,sizeof(top)-size_t(at),"%s%d:%.1f",r?",":"",best,offset_changed_at[best]/f);}
@@ -4022,6 +4047,7 @@ void clear_descriptor_caches(){sampler_fast.clear();pipeline_fast.clear();pipe_m
     for(auto &l:layout_cache){if(l.second.tmpl)vkDestroyDescriptorUpdateTemplate(cfg.device,l.second.tmpl,nullptr);vkDestroyPipelineLayout(cfg.device,l.second.pipeline_layout,nullptr);vkDestroyDescriptorSetLayout(cfg.device,l.second.layout,nullptr);}layout_cache.clear();shader_layouts.clear();
     for(auto &x:sampler_cache)vkDestroySampler(cfg.device,x.second,nullptr);sampler_cache.clear();
     static_arena.release();support_static.clear();
+    memo_buffer_slots.clear();memo_buffer_invalid_slots=0;
 }
 VkDescriptorSet allocate_set(VkDescriptorSetLayout layout){
     Slot &s=recording_slot();
@@ -4301,7 +4327,17 @@ unsigned dyn_mode_for(bool compute,bool *no_ubo=nullptr){unsigned all=0,vary=0;
     if(no_ubo)*no_ubo=all==0;unsigned lim=properties.limits.maxDescriptorSetUniformBuffersDynamic;
     return all && all<=lim?1:(vary && vary<=lim && dyn_partial_enabled?2:0);}
 void memo_unpin_all(unsigned si){Slot &s=slots[si];for(auto &pn:memo_pinned[si])s.used_sets[pn.second.layout].push_back(pn.first);memo_pinned[si].clear();desc_memo_slot[si].clear();desc_memo_local[si]=0;++memo_mod_gen;}
-void memo_check_epoch(){unsigned si=slot_index;if(memo_slot_epoch[si]!=memo_epoch || memo_pinned[si].size()>8192){if(!desc_memo_slot[si].empty())++xmemo_drops;memo_unpin_all(si);memo_slot_epoch[si]=memo_epoch;}}
+void memo_check_epoch(){
+    unsigned si=slot_index;
+    const uint32_t bit=1u<<si;
+    if(memo_slot_epoch[si]!=memo_epoch || (memo_buffer_invalid_slots&bit) || memo_pinned[si].size()>8192){
+        if(!desc_memo_slot[si].empty())++xmemo_drops;
+        if(memo_buffer_invalid_slots&bit)++memo_buffer_slot_drops;
+        memo_unpin_all(si);
+        memo_slot_epoch[si]=memo_epoch;
+        memo_buffer_invalid_slots&=~bit;
+    }
+}
 // End of a submit for the recording slot: frame-local entries go (their snapshots are per submit); persistent ones stay.
 void desc_memo_reset(){img_cache.clear();
     if(!xmemo_enabled){memo_unpin_all(slot_index);return;}
@@ -4605,6 +4641,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                     buffer=out.keep(driver_block(ns,bank));data=buffer->mapped;copy=n;}
                 else xbg_fatalf("Unsupported shader buffer source %u",b.source);
                 need(n && n<=size_t(is_storage?properties.limits.maxStorageBufferRange:properties.limits.maxUniformBufferRange),"Descriptor range exceeds device limit");
+                if(desc_memo_recording)memo_reference_buffer(buffer->buffer,slot_index);
                 if(write.descriptorType==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC){buffer_infos.push_back({buffer->buffer,0,n});if(desc_memo_recording)desc_memo_dyn.push_back({(uint64_t(b.binding)<<32)|element,buffer->buffer,uint32_t(buffer->offset+buffer_offset),b.source==XBG_SOURCE_UNIFORM,uint8_t(b.source),uint8_t(ns),uint8_t(b.source==XBG_SOURCE_DRIVER0?0:1)});dynamic_list.push_back({(uint64_t(b.binding)<<32)|element,uint32_t(buffer->offset+buffer_offset)});}
                 else buffer_infos.push_back({buffer->buffer,buffer->offset+buffer_offset,n});write.pBufferInfo=&buffer_infos.back();
                 water_binding_buffer(out.water,shader.key,st,b.binding,element,*buffer,buffer->offset+buffer_offset,n,VK_FORMAT_UNDEFINED,write.descriptorType==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
@@ -4681,7 +4718,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                     TexelResident *res=nullptr;
                     if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER && texel_memo_enabled && !compute){Buffer pv;
                         if(!pending_view(uint64_t(texture.mem),texture.L.size,1,pv))res=texel_acquire(uint64_t(texture.mem),texture.L.size,tf);
-                        if(res){if(desc_memo_recording)desc_memo_texel.push_back({record,record->revision,uint64_t(texture.mem),uint64_t(texture.L.size),res->gen,uint32_t(tf)});
+                        if(res){if(desc_memo_recording){memo_reference_buffer(res->buffer.buffer,slot_index);desc_memo_texel.push_back({record,record->revision,uint64_t(texture.mem),uint64_t(texture.L.size),res->gen,uint32_t(tf)});}
                             texel_views.push_back(res->view);write.pTexelBufferView=&texel_views.back();
                             water_binding_buffer(out.water,shader.key,st,b.binding,element,res->buffer,res->buffer.offset,texture.L.size,tf);
                             if(probe_is_active())probe_texel_buffer(shader.key,st,b.binding,element,res->buffer,tf,uint64_t(texture.mem),texture.L.size,true);

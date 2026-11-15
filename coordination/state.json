@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-16T00:32:44.921092+08:00",
+ "updated_at": "2026-11-16T00:57:04.754539+08:00",
  "phase": "荣耀神殿内部持续移动长帧优化，1080P输出及有界内部尺寸目标30继续推进",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3456,6 +3456,22 @@
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-16T00:02:09.270699+08:00",
    "checkpoint": "43源4a52571/APK e92965c5/3720407B，113宿主Android0/79输入一致，安装回读及9文件保全通过。PID7643复用461，同一内部桥段全幅南北移动A1原11460..11520/60间隔21.3393/P9984.51/max84.51，B2新21240..21300/60间隔25.6498/P9946.48/max46.48，A2原24360..24420/60间隔25.6642/P9945.34/max45.34。全部普通窗口前后探索、非零轴最终归零；B1遇敌黑场混合23.75只作诊断。后续原路同25.66推翻把21→25全归新缓存的解释，尚未确认FPS收益，真实稳30继续开放。当前live-ab ibrecord原查表，最后画面探索红遇敌圈，下一动作可能触发战斗，先新鲜截图核对；root输入已UP。"
+  },
+  {
+   "task": "CODEX-HONOR-SUBMIT44-20261116",
+   "owner": "root",
+   "paths": [
+    ".local/honor-submit44-20261116/",
+    "coordination/results/CODEX-HONOR-SUBMIT44-20261116.md",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/device/test_render_policy.py",
+    "scripts/verify_host.py"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-16T00:37:43.134192+08:00",
+   "checkpoint": "43 PID7643新增纯移动6秒Perfetto833b63e1，RHI7839 CPU5494ms/约5.91秒，描述符及malloc高频。第一段trace1b1f11a5遇敌混合不作纯探索。44按实际buffer引用追踪slot失效，保留global sampler/Image及原注册校验，6项生产提取ASan/UBSan通过，FPS/内存/画面待实机。用户新增当前位置第一主角四字火焰群攻重点复现。观察PAD从-到+变化，已停输入并请求输入归属，继续宿主构建。"
   }
  ],
  "tasks": [
@@ -9894,6 +9910,40 @@
    "pass_gates": [],
    "acceptance": "实际格式/视图/注册更新/数组/表切换/未知ID行为保持，宿主及Android通过，9存档保全，同PID移动前后场景与输入核对，冷暖/显示/音频及独立QA据实。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。",
    "checkpoint": "43源4a52571/APK e92965c5/3720407B，113宿主Android0/79输入一致，安装回读及9文件保全通过。PID7643复用461，同一内部桥段全幅南北移动A1原11460..11520/60间隔21.3393/P9984.51/max84.51，B2新21240..21300/60间隔25.6498/P9946.48/max46.48，A2原24360..24420/60间隔25.6642/P9945.34/max45.34。全部普通窗口前后探索、非零轴最终归零；B1遇敌黑场混合23.75只作诊断。后续原路同25.66推翻把21→25全归新缓存的解释，尚未确认FPS收益，真实稳30继续开放。当前live-ab ibrecord原查表，最后画面探索红遇敌圈，下一动作可能触发战斗，先新鲜截图核对；root输入已UP。"
+  },
+  {
+   "id": "CODEX-HONOR-SUBMIT44-20261116",
+   "owner": "root",
+   "role": "MOVING_SUBMIT_CRITICAL_PATH",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "将神殿移动长帧分为CPU运行、线程调度等待、GPU等待和复制，按实际关键路径实现并复验有收益的优化。",
+   "inputs": [
+    "43源4a52571，记录ebccd39，APK e92965c5，当前7643",
+    "43实际移动原/新同约25.6，无单项收益",
+    "42已保全6秒纯移动Perfetto c4854f7e及匹配符号"
+   ],
+   "outputs": [
+    ".local/honor-submit44-20261116/",
+    "coordination/results/CODEX-HONOR-SUBMIT44-20261116.md",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/device/test_render_policy.py",
+    "scripts/verify_host.py"
+   ],
+   "write_scope": [
+    ".local/honor-submit44-20261116/",
+    "coordination/results/CODEX-HONOR-SUBMIT44-20261116.md",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/device/test_render_policy.py",
+    "scripts/verify_host.py"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "acceptance": "原始PID/帧/场景/符号核对，真实持续移动普通FPS与诊断分窗，CPU/GPU及数据生命周期事实支持归因，显示及原速/声音保持；验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。",
+   "checkpoint": "43 PID7643新增纯移动6秒Perfetto833b63e1，RHI7839 CPU5494ms/约5.91秒，描述符及malloc高频。第一段trace1b1f11a5遇敌混合不作纯探索。44按实际buffer引用追踪slot失效，保留global sampler/Image及原注册校验，6项生产提取ASan/UBSan通过，FPS/内存/画面待实机。用户新增当前位置第一主角四字火焰群攻重点复现。观察PAD从-到+变化，已停输入并请求输入归属，继续宿主构建。"
   }
  ],
  "blockers": [
