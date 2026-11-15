@@ -206,3 +206,11 @@ shader、uniform范围、typed/integer、游戏时间与音频配置继续原样
 53同PID暖A1原与B1新均两Lv2变异鼠、输入前相同HP6368/372、仅MP不同，热状态均1，两个完整8秒窗口保留。A1 22906..23084/179帧22.3038FPS/max116.96ms/46超50/4超100，最大sync_wb10，stall shader_ms全0；B1 34490..34672/183帧22.7719FPS/max119.52ms/40超50/6超100，最大sync_wb1，stall shader_ms全0。已确认计算参数读回减少，FPS差约0.47且尾部仍长，不能当稳定收益或稳30。继续第二对原/新窗口。当前恢复indtexel原路径，准备退出结算。
 
 再次确认既有DRS已接通guest_process.c的CVar控制，当前日志含mode2/min60/max60或80/budget33.333，1080P输出与内部尺寸分别验。不能由DeviceProfile的档位选择或grep未命中dynamic字段推断DRS缺失。新的普通窗尚未逐帧核实际3D尺寸，继续保留该比较限制。
+
+## 53第二对暖原新
+
+53第二对普通暖窗同为两Lv1钢蝠，A2原71067..71246/180帧22.4465FPS/max141.88ms/38超50/3超100；B2新93134..93322/189帧23.5755FPS/max105.93ms/29超50/3超100。A2有1条stall含shader，原始行继续保留；B2 stall shader全0。最大sync_wb分别10与1。两组同敌人A1/B1及A2/B2均有小幅正向差，分别约0.47与1.13FPS，仍非稳30且未逐帧记录内部DRS尺寸，不称充分收益验收。53后PSS5114631/RSS5227040KiB，需结合缓存时长继续看，未判定泄漏。当前MP31，需要通过游戏UI重新读档恢复测试输入后，再作暖新CPU/GPU诊断。
+
+只读重新解析50匹配符号的record_open_owned 17个inclusive样本，8个返回点928在record_write_locked调用后、6个939在unlock、2个919在buffer_find、1个917在lock。没有把17个全部归为线性查表，暂不实施MRU猜测。write-tracking旧实现未接宿主hooks且版本按last_use+2选用，当前16槽，不能直接打开或扩到vertex；需实际生命周期和VM改映射审查后再考虑。
+
+蓝牙主观、完整显示、其余场景稳30和独立QA继续待验。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。
