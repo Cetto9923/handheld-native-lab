@@ -4912,3 +4912,7 @@ https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.30-preview �
 
 44c 20e4ef6/4574ccc5构建113/Android0/79输入一致，未装。当前44b/20331。旧A1 18.326→新B1 26.157→旧A3 24.278短窗不能全归收益，A2遇敌排除。实际雷因消失突袭旧路首次8秒15.058/max319.78，39200帧shader261.8ms/CPU299.41/GPU23.53，pipeline0。warm已加载同key但reuse0，后续模式2逐字核对。用户交回输入，root操作，稳定30及音频未通过。
 证据.local/honor-submit44-20261116/，报告CODEX-HONOR-SUBMIT44-20261116.md。
+
+### 44c安装和复用校验
+
+44c/4574ccc5已安装回读，9文件SHA及正式源metadata保持。原路暖态消失突袭8秒18.3459FPS/max126.69/9超100，2敌非同首轮3敌。mode2新进程27168同3钢蝠完成451次warm/runtime逐字比较，0输出不等/0输入不等，5个冷加载热点均equal1。正在同44c重启mode1验证复用收益，memobuffer维持旧路。稳30/显示长回归及A2DP未通过。

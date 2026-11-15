@@ -39,3 +39,8 @@ Arena::destroy原先对所有VkBuffer销毁均增加全局memo_epoch，导致所
 fire-A1-global为旧memobuffer、shader_reuse0、无CPU/GPU探针及中途截图/录屏的实际首次技能释放。确认A输入monotonic140003.022s，后8秒39149..39268共120帧，15.0581FPS/P99285.82/max319.78ms，56帧超过50ms、15超过100ms、present错误0。此窗口含技能与胜利转场，不作纯技能全程FPS。39200帧319.8ms，其中shader加载261.8ms、submit CPU299.41ms、GPU23.53ms、pipeline创建0。首次技能存在明确同步shader加载开销。旧其它技能暖态shader0的负荷结论仍限定原窗口。
 
 运行时6a530aaf1b6615a3/cf90d03fc8ba73b8等实际compute模块改写约51..106ms，日志同时证实这些key本进程已在warm加载过。启动现成gfx-shader-reuse=0使预热输出未保留，runtime仍重复改写。下一步沿已有模式2逐字比较warm/runtime输出，确认后再测模式1，保留64MiB压缩缓存预算及exact-input拒绝机制。先重复原路同技能暖态，避免将首次预热收益归给descriptor候选。冷暖/完整画面及A2DP常设音频验收尚未通过，真实稳定30与独立QA仍NOT_RUN。
+
+## 暖态与预热输出校验
+
+44c/4574ccc5已安装回读，9文件SHA及正式源metadata保持。原路暖态消失突袭8秒18.3459FPS/max126.69/9超100，2敌非同首轮3敌。mode2新进程27168同3钢蝠完成451次warm/runtime逐字比较，0输出不等/0输入不等，5个冷加载热点均equal1。正在同44c重启mode1验证复用收益，memobuffer维持旧路。稳30/显示长回归及A2DP未通过。
+模式2保留正常优化并额外解压比对，首次技能窗口14252..14384/133帧16.579FPS/max299.99，只作校验诊断，不作复用性能收益。缓存仍64MiB上限，retained1436/denied351/peak67107854，部分typed变体被预算拒绝后正常回退。证据fire-A2-global-warm、fire-reuse2-compare及reuse2/。A3旧24.2781、B2新27.0464、A4旧25.8995，均内部同桥短移动；单项收益弱于首轮差值，仍需独立重复。
