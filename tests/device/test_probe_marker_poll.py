@@ -8,6 +8,69 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class ProbeMarkerPoll(unittest.TestCase):
+    def test_overlay_request_can_be_armed_after_loading(self):
+        source = (ROOT / 'src/graphics/nvn_vulkan/engine/xbg_game.cpp').read_text()
+        start = source.index('bool partial_overlay_available=false;')
+        body = source[start:source.index('void histogram_sync_rewrite(', start)]
+        self.assertIn('partial_overlay_available=honor;', source)
+        self.assertIn('partial_overlay_diagnostic=read_partial_overlay_request(overlay);', source)
+        submit = source[source.index('static void xbg_submit_now('):]
+        self.assertLess(submit.index('if(pr>=live_next){live_next=pr+30;'),
+                        submit.index('poll_partial_overlay_request(probe.base,pr);'))
+        fixture = r'''
+#include <cassert>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <string>
+unsigned opens=0,reads=0,closes=0,changes=0;
+int value='0'; bool available=true;
+FILE *test_fopen(const char *path,const char *mode) {
+    assert(!std::strcmp(path,"/test/gfx-partial-overlay-check") && !std::strcmp(mode,"rb"));
+    ++opens; return available?reinterpret_cast<FILE *>(uintptr_t(1)):nullptr;
+}
+int test_fgetc(FILE *file) { assert(file); ++reads; return value; }
+int test_fclose(FILE *file) { assert(file); ++closes; return 0; }
+void xbg_logf(const char *, ...) { ++changes; }
+#define fopen test_fopen
+#define fgetc test_fgetc
+#define fclose test_fclose
+''' + body + r'''
+int main() {
+    for(unsigned frame=0;frame<1000;++frame)poll_partial_overlay_request("/test",frame);
+    assert(opens==0 && partial_overlay_diagnostic==0);
+    partial_overlay_available=true;
+    poll_partial_overlay_request("/test",1000);
+    assert(opens==1 && reads==1 && closes==1 && changes==0);
+    value='5';poll_partial_overlay_request("/test",1030);
+    assert(partial_overlay_diagnostic==5 && changes==1);
+    poll_partial_overlay_request("/test",1060);assert(changes==1);
+    value='0';poll_partial_overlay_request("/test",1090);
+    assert(partial_overlay_diagnostic==0 && changes==2);
+    for(value='1';value<='5';++value){
+        poll_partial_overlay_request("/test",1120);
+        assert(partial_overlay_diagnostic==unsigned(value-'0'));
+    }
+    assert(changes==7);
+    value=-1;poll_partial_overlay_request("/test",1150);
+    assert(partial_overlay_diagnostic==0 && changes==8);
+    value='6';poll_partial_overlay_request("/test",1180);assert(changes==8);
+    value='4';poll_partial_overlay_request("/test",1210);
+    unsigned previous_closes=closes;
+    available=false;poll_partial_overlay_request("/test",1240);
+    assert(partial_overlay_diagnostic==0 && closes==previous_closes);
+    assert(changes==10 && reads==closes && opens==reads+1);
+    assert(read_partial_overlay_request(nullptr)==0);
+}
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            (path / 'test.cpp').write_text(fixture)
+            subprocess.run(['clang++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                            '-fsanitize=address,undefined', str(path / 'test.cpp'),
+                            '-o', str(path / 'test')], check=True)
+            subprocess.run([str(path / 'test')], check=True)
+
     def test_frame_cache_and_live_request(self):
         source = (ROOT / 'src/graphics/nvn_vulkan/engine/xbg_probe.inc').read_text()
         start = source.index('uint64_t probe_marker_frame = UINT64_MAX;')

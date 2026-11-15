@@ -144,3 +144,9 @@ PID27718同一内部桥面，全部moving-clock真实非零轴、前后探索。
 49初始化日志已核对legacy_waitall0、completion_wait1，快速等待路径已生效，不能重复按旧默认推断锁等待。源中已有partial_overlay_check及模式5双输入GPU对CPU字节比较，历史2026-11-05的目标shader3b6302a58b86a34a binding47与可写SSBO17双输入游戏比较仍NOT_RUN，先续证据。当前helper仅启动时读标记且每输入最多8次，拟复用同一标记增加运行时启停，防止名额被标题或别的场景消耗。该阶段继续执行原同步，性能采样单列诊断。
 
 只读检索Mesa Android构建文档和bylaws/libadrenotools原仓库，后者BSD-2-Clause、Android9+Arm64，提供应用内自定义驱动加载。此方向仍是研究，尚无本游戏及Adreno735实测，GitLab设备源码页面本次访问失败；没有取得固定revision或集成代码。资料为https://docs.mesa3d.org/android.html及https://github.com/bylaws/libadrenotools，不采用其它游戏或容器演示的FPS作为本游戏证据。
+
+## 50复用既有双输入校验的运行时启停
+
+复用gfx-partial-overlay-check，同一0..5解析器供启动和既有每30次呈现轮询使用，延续已验证Honor735范围。缺失、EOF及无效值返回0。可在技能确认前设5，结束后设0，既有每输入8次上限与原CPU同步路径继续用于诊断。此改动用于选择采样阶段，未实现异步GPU输入消费优化。
+
+生产提取读文件、关闭与状态切换代码，覆盖其它设备不轮询、0..5、重复请求、缺失、EOF及非法值，连同已有组件12项ASan/UBSan/真实NDK检查通过。完整构建、目标技能双输入比较待执行。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。

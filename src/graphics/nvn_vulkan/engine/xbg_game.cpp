@@ -2967,7 +2967,20 @@ void tidy_rewrite(std::vector<uint32_t> &words){
     if(forward_temps){size_t k=xbg_spirv_forward_temps(words.data(),words.size(),out);if(k){words.swap(out);temps_forwarded.fetch_add(k,std::memory_order_relaxed);}}
 }
 bool honor_radix_sync=false;
+bool partial_overlay_available=false;
 unsigned partial_overlay_diagnostic=0;
+unsigned read_partial_overlay_request(FILE *request){
+    if(!request)return 0;
+    const int mode=fgetc(request);fclose(request);
+    return mode>='1' && mode<='5'?unsigned(mode-'0'):0;
+}
+void poll_partial_overlay_request(const std::string &base,uint64_t present){
+    if(!partial_overlay_available)return;
+    const unsigned requested=read_partial_overlay_request(fopen((base+"/gfx-partial-overlay-check").c_str(),"rb"));
+    if(requested==partial_overlay_diagnostic)return;
+    partial_overlay_diagnostic=requested;
+    xbg_logf("LIVE-PARTIAL-OVERLAY mode=%u at present %llu",requested,(unsigned long long)present);
+}
 void histogram_sync_rewrite(std::vector<uint32_t> &words,uint32_t stage,const char *key,const char *loader){
     if(!honor_radix_sync || stage!=5 || std::strcmp(key,"ef4326df31036d24"))return;
     const bool patched=xbg_ffrs_histogram_workgroup_sync(words);
@@ -7318,6 +7331,7 @@ vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemor
         const char *tablet=getenv("FFRS_PROFILE_TABLET");
         bool honor=tablet && tablet[0]=='1' && properties.vendorID==0x5143 &&
                    !strcmp(properties.deviceName,"Adreno (TM) 735");
+        partial_overlay_available=honor;
         // Reuse the exact-module histogram/interface guards across Qualcomm Adreno.
         // Keep the measured depth-reuse quirk and overlay probes 735-only.
         const bool is_adreno = properties.vendorID == 0x5143 ||
@@ -7325,7 +7339,7 @@ vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemor
         honor_radix_sync = is_adreno;
         std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');
         FILE *overlay=honor?fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-partial-overlay-check").c_str(),"rb"):nullptr;
-        const int overlay_mode=overlay?fgetc(overlay):'0';partial_overlay_diagnostic=overlay_mode=='1'?1u:overlay_mode=='2'?2u:overlay_mode=='3'?3u:overlay_mode=='4'?4u:overlay_mode=='5'?5u:0u;if(overlay)fclose(overlay);
+        partial_overlay_diagnostic=read_partial_overlay_request(overlay);
         xbg_logf("NVN partial overlay diagnostic=%d",int(partial_overlay_diagnostic));
         xbg_resolve_depth_aspect(cut==std::string::npos?dir:dir.substr(0,cut),honor);
         xbg_logf("NVN depth-aspect sample reuse=%d (honor=%d; %s)",int(depth_aspect_enabled),int(honor),depth_aspect_source);
@@ -7654,6 +7668,8 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
        if(utf){unsigned lim=0;if(fscanf(utf,"%u",&lim)!=1)lim=600;fclose(utf);remove(ut.c_str());
         if(lim>0&&!ubtrace.file){ubtrace_open(probe.base+"/ubtrace-"+std::to_string(getpid())+".csv");ubtrace.limit=lim;ubtrace.frames=0;ubtrace.on.store(true,std::memory_order_relaxed);
          xbg_logf("LIVE-UBTRACE on frames=%u at present %llu",lim,(unsigned long long)pr);}}}
+      // Reuse the startup overlay request at the existing 30-present poll.
+      poll_partial_overlay_request(probe.base,pr);
       // Diagnostic only: marker files/gfx-live-ab holds the name of an engine path that must stay off
       // (the same list the gfx-ab-toggle/gfx-ab-target A/B uses), so every path can be tested in one session.
       {std::string ap=probe.base+"/gfx-live-ab";FILE *apf=fopen(ap.c_str(),"rb");
