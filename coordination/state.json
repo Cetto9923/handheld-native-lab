@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-16T01:00:38.870508+08:00",
+ "updated_at": "2026-11-16T01:16:26.603495+08:00",
  "phase": "荣耀神殿内部持续移动长帧优化，1080P输出及有界内部尺寸目标30继续推进",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3472,7 +3472,7 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-16T00:37:43.134192+08:00",
-   "checkpoint": "43 PID7643新增纯移动6秒Perfetto833b63e1，RHI7839 CPU5494ms/约5.91秒，描述符及malloc高频。第一段trace1b1f11a5遇敌混合不作纯探索。44按实际buffer引用追踪slot失效，保留global sampler/Image及原注册校验，6项生产提取ASan/UBSan通过，FPS/内存/画面待实机。用户新增当前位置第一主角四字火焰群攻重点复现。观察PAD从-到+变化，已停输入并请求输入归属，继续宿主构建。"
+   "checkpoint": "44b dc032b3/684a9e77/113宿主Android0/79输入一致，安装9文件及APK回读通过，PID20331复用461、memobuffer旧路径启动并Continue。用户明确交还输入。43雷因在战斗未出现，仅拉斯韦尔，未获火焰基线，重新读档检查。源另补shutdown先清全部16槽memo再退texel/pool，6组件通过，拟44c构建。稳30/技能/内存收益待测。"
   }
  ],
  "tasks": [
@@ -9946,7 +9946,7 @@
    "dependencies": [],
    "pass_gates": [],
    "acceptance": "原始PID/帧/场景/符号核对，真实持续移动普通FPS与诊断分窗，CPU/GPU及数据生命周期事实支持归因，显示及原速/声音保持；验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。",
-   "checkpoint": "43 PID7643新增纯移动6秒Perfetto833b63e1，RHI7839 CPU5494ms/约5.91秒，描述符及malloc高频。第一段trace1b1f11a5遇敌混合不作纯探索。44按实际buffer引用追踪slot失效，保留global sampler/Image及原注册校验，6项生产提取ASan/UBSan通过，FPS/内存/画面待实机。用户新增当前位置第一主角四字火焰群攻重点复现。观察PAD从-到+变化，已停输入并请求输入归属，继续宿主构建。 首次host112/113受旧Arena提取fixture缺新依赖失败，修正fixture而保留所有回收断言，9组件通过，准备build44b。"
+   "checkpoint": "44b dc032b3/684a9e77/113宿主Android0/79输入一致，安装9文件及APK回读通过，PID20331复用461、memobuffer旧路径启动并Continue。用户明确交还输入。43雷因在战斗未出现，仅拉斯韦尔，未获火焰基线，重新读档检查。源另补shutdown先清全部16槽memo再退texel/pool，6组件通过，拟44c构建。稳30/技能/内存收益待测。"
   }
  ],
  "blockers": [

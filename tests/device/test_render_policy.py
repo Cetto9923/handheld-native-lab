@@ -20,6 +20,11 @@ class RenderPolicy(unittest.TestCase):
         self.assertIn('if(desc_memo_recording)memo_reference_buffer(buffer->buffer,slot_index);', source)
         self.assertIn('memo_reference_buffer(res->buffer.buffer,slot_index);', source)
         self.assertIn('memo_buffer_slots.clear();memo_buffer_invalid_slots=0;', source)
+        start = source.index('void destroy_slots(){')
+        shutdown = source[start:source.index('} // namespace', start)]
+        self.assertIn('for(unsigned i=0;i<kMaxSlots;i++){\n        memo_unpin_all(i);', shutdown)
+        self.assertLess(shutdown.index('memo_unpin_all(i)'), shutdown.index('texel_evict(i,true)'))
+        self.assertLess(shutdown.index('memo_unpin_all(i)'), shutdown.index('vkDestroyDescriptorPool'))
         fixture = r'''
 #include <atomic>
 #include <cassert>
