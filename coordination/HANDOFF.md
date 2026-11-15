@@ -4665,3 +4665,9 @@ RG比例对照收口为无观测效果。默认3205、60的14159、加引号40�
 最终24兼容诊断包f7a2c5a2/3683399B已构建101host及Android0、41输入不变，安装RG并回读摘要匹配、存档tar前后字节相同。PID23308默认guest_argc0，读取02世界地图成功。present3630汇总2581实时图像/30组/dropped0，其中存活解压BC968，旧1134为累计创建。BC5_UNORM为201张/137.658MiB，BC1两类合计324张/61.928MiB，BC3为105.504MiB，BC7为75.584MiB。不能直接套用BOTW以BC1为主的收益，也未改变纹理表示。D-final-default正做普通30秒回归，PTY75180。之后交回用户战斗测试输入权，继续按同PID保全技能日志。
 
 D-final-default已完成，frame5794至6697的903间隔为29.9999FPS，P95/P99为34.921/44.146ms，超50ms共3帧，GPU中位25.26ms。源码检查点cca4b58，构建41份输入仍逐字一致。已通知用户可直接进战斗，用户掌握输入，root随后只采集同PID23308的guest_boot.log和codex-frame-23308.csv。没有新帧率收益结论，荣耀本轮按用户要求停止测试；当前开发分支未推送，历史APK均保留。
+
+用户录制最新63秒战斗视频后继续要求解决卡顿。battle-video24-20261115已保全原片3c5e1486/56937496B、同PID23308的guest13MB与CSV。8处视频PTS长间隔与游戏帧匹配，frame12777..14457平均26.655FPS，P95/P99为58.788/128.904ms，7帧超过250ms。13.7秒frame13094的824.9ms伴管线创建633.1ms；43.4秒frame13935的498.9ms没有新管线/shader，需单独查主线程/分配/调度，不能全归GPU或预热。设备截图2%电量，取证完成后ADB断开，已请求用户充电重连。荣耀保持暂缓。
+
+根领取CODEX-WARM-REWRITE-PACK25，原GPU-DRAW24源码占用已冻结交回。源输入9230300，新增无损压缩现成warm改写缓存，在原64MiB保存payload预算下保留更多输入/输出，解压后完整input比较，错误拒绝且输出事务性。102项host含抽取生产retain/take的ASan/UBSan及预算/并发测试通过，55份真实shader 10023048B压到2998532B且逐字还原，Android构建0，45份输入前后不变。25候选f51451b9/3683399B保留apk-history，尚未安装。仍用原1162条APK种子，必须先取本次学习表再合并，不能把缓存实现当作633ms管线编译已解决。
+
+恢复命令先用adb -s RG477M01445122 shell pidof org.ffrs.gamewindow，再从/sdcard/Android/data/org.ffrs.gamewindow/files/dm/vk-pipeline-list-learned.bin取学习表。若新进程已启动，旧23308日志/CSV另按现存文件保全，不能混用归因。若游戏仍运行，用户先保存再装25。详细证据、失败及待测项见CODEX-BATTLE-VIDEO24-20261115.md和local plan.json。源码与报告检查点待本轮串行提交，未推送远端。

@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-15T11:54:38.476597+08:00",
+ "updated_at": "2026-11-15T12:20:39.217925+08:00",
  "phase": "继续定位战斗GPU主通道并审阅成熟开源跨设备兼容缺口",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3014,8 +3014,9 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-15T10:25:24.629665+08:00",
-   "checkpoint": "Final24f7a2c5a2 installed andverified, savearchives identical, PID23308 defaultargc0 world02 loaded. normal903intervals29.9999fps/P95 34.921/P99 44.146/max64.188,3gt50,GPU25.26. Livecensus2581images/968decoded/30groups/no drops. No FPS improvement claim. User owns next battleinput; root capture only. Honor deferred byuser.",
-   "write_state": "ACTIVE"
+   "checkpoint": "Diagnosis retained; xbg source ownership transferred to25 packed-cache task.",
+   "write_state": "FROZEN_HANDED_BACK",
+   "released_at": "2026-11-15T12:04:37.143158+08:00"
   },
   {
    "task": "CODEX-CROSS-DEVICE-GAP-20261115",
@@ -3100,6 +3101,38 @@
    "checkpoint": "User explicitly deferred tablet testing thisround. FirstPID13624 ANR retained; retry15801 reached FFRS title, then appbackground becauseSNKforeground. No fullscene pass.",
    "write_state": "RELEASED",
    "released_at": "2026-11-15T11:34:45.323665+08:00"
+  },
+  {
+   "task": "CODEX-BATTLE-VIDEO24-20261115",
+   "owner": "root",
+   "paths": [
+    ".local/codex-recovery-20261114/battle-video24-20261115/",
+    "coordination/results/CODEX-BATTLE-VIDEO24-20261115.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T11:59:28.901615+08:00",
+   "checkpoint": "Latest63sec video3c5e1486 andsamePID23308 logs/CSV preservedbeforeADBdisconnect2percent.8PTS gap signatures aligned.26.655FPS/P95 58.788/P99 128.904/max824.849;7gt250.13.7sec633.1mspipeline;43.4sec498.9ms withnocompilation remainsunknown. User requestedcharge/reconnect; Honor deferred. Report written.",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "CODEX-WARM-REWRITE-PACK25-20261115",
+   "owner": "root",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_packed_shader_words.h",
+    "src/android/native/CMakeLists.txt",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/device/test_packed_shader_words.cpp",
+    "scripts/android/verify_packed_shader_words.sh",
+    "scripts/verify_host.py",
+    ".local/codex-recovery-20261114/battle-video24-20261115/packed-cache/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T12:04:37.143158+08:00",
+   "checkpoint": "25candidatef51451b9 built3683399B,102host+Android0,45sourcehashes match. Productionretain/take ASan/UBSanbudget/concurrency/error tests and55realSPV exactroundtrips passed10023048B->2998532B. Existing64MiB payloadlimit. Notinstalled. Needdevice newlearnedrecords andsame-skill comparison; pipelinecoverage andwarmstate498.9ms remainopen.",
+   "write_state": "ACTIVE"
   }
  ],
  "tasks": [
@@ -8811,6 +8844,69 @@
    ],
    "acceptance": "Explicit serial perADB command; preserve all prior APK/save bytes andmarkers. Validate new package/source and currentPID, actual scenes andsave behavior; component pass is separate from game pass. No other user device data.",
    "checkpoint": "User explicitly deferred tablet testing thisround. FirstPID13624 ANR retained; retry15801 reached FFRS title, then appbackground becauseSNKforeground. No fullscene pass."
+  },
+  {
+   "id": "CODEX-BATTLE-VIDEO24-20261115",
+   "owner": "root",
+   "role": "DEVICE_PERFORMANCE_ANALYSIS",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "Analyze latest user-recorded battle oncurrent24, align samePID video/CSV/log, identify dominantlongframe cause andimplement a justified minimalfix.",
+   "inputs": [
+    "User latest battle recording stillstutters",
+    "CurrentPID23308, APKf7a2c5a2, source9230300"
+   ],
+   "outputs": [
+    ".local/codex-recovery-20261114/battle-video24-20261115/",
+    "coordination/results/CODEX-BATTLE-VIDEO24-20261115.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/codex-recovery-20261114/battle-video24-20261115/",
+    "coordination/results/CODEX-BATTLE-VIDEO24-20261115.md"
+   ],
+   "acceptance": "User owns battle input; explicitRG serial, preserve video/log before restart. Compare actual GPU/CPU/pipeline counts. Preserve precision,depth,integer/vertex/clear fixes. No fullcompatibility orFPS claim withoutrealmeasure.",
+   "checkpoint": "Latest63sec video3c5e1486 andsamePID23308 logs/CSV preservedbeforeADBdisconnect2percent.8PTS gap signatures aligned.26.655FPS/P95 58.788/P99 128.904/max824.849;7gt250.13.7sec633.1mspipeline;43.4sec498.9ms withnocompilation remainsunknown. User requestedcharge/reconnect; Honor deferred. Report written."
+  },
+  {
+   "id": "CODEX-WARM-REWRITE-PACK25-20261115",
+   "owner": "root",
+   "role": "PERFORMANCE_IMPLEMENTATION",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "Retain more pre-rewritten SPIRV under existing64MiB budget using losslesspacked input/output; preserve exactinput comparison andsame optimizer/shaderidentity. Build25 candidate.",
+   "inputs": [
+    "Video24 slowloads andfull64MiB rewritecache,400 retained/963 denied",
+    "55 slow loads inprovisional video window include435.58ms rewrite,272.04ms analysis; pipeline stalls separate",
+    "Device disconnected at2percent afterevidence backup; no restart/install authorizeduntilsaved"
+   ],
+   "outputs": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_packed_shader_words.h",
+    "src/android/native/CMakeLists.txt",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/device/test_packed_shader_words.cpp",
+    "scripts/android/verify_packed_shader_words.sh",
+    "scripts/verify_host.py",
+    ".local/codex-recovery-20261114/battle-video24-20261115/packed-cache/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_packed_shader_words.h",
+    "src/android/native/CMakeLists.txt",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/device/test_packed_shader_words.cpp",
+    "scripts/android/verify_packed_shader_words.sh",
+    "scripts/verify_host.py",
+    ".local/codex-recovery-20261114/battle-video24-20261115/packed-cache/"
+   ],
+   "acceptance": "Byte-exact unpack beforeinput equality, corruption/length failures publishnooutput anddisable reuse. Compression outsidewarmmutex.64MiB packed bytebudgetunchanged. Existing depth/precision/typed/vin semanticspreserved. Realmodules roundtrip, hostASan/UBSan, Android build. ActualFPS andscene regression pendingdevice.",
+   "checkpoint": "25candidatef51451b9 built3683399B,102host+Android0,45sourcehashes match. Productionretain/take ASan/UBSanbudget/concurrency/error tests and55realSPV exactroundtrips passed10023048B->2998532B. Existing64MiB payloadlimit. Notinstalled. Needdevice newlearnedrecords andsame-skill comparison; pipelinecoverage andwarmstate498.9ms remainopen."
   }
  ],
  "blockers": [

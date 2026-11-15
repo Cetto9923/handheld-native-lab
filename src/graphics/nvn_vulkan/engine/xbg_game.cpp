@@ -48,6 +48,7 @@ static_assert(VK_FORMAT_R32_UINT==XBG_VK_FORMAT_R32_UINT && VK_FORMAT_R32_SINT==
 #include "xbg_spirv_warp.h"
 #include "xbg_spirv_narrow.h"
 #include "xbg_spirv_precise.h"
+#include "xbg_packed_shader_words.h"
 #include "xbg_spirv_ldc.h"
 #include "xbg_spirv_temps.h"
 #include "xbg_spirv_raster.h"
@@ -3553,14 +3554,16 @@ void flush(){
 // gfx-shader-reuse: SPIR-V the warm-up rewrote, kept by shader key until load_shader takes it (taking removes it); unused entries
 // are freed at shutdown.
 bool keep_rewritten=false,reuse_rejected=false;
-struct RewrittenShader {std::vector<uint32_t> input,output;};
+struct RewrittenShader {XbgPackedShaderWords input,output;};
 std::unordered_map<std::string,RewrittenShader> rewritten;
 constexpr size_t rewritten_limit=64u*1024u*1024u;
 size_t rewritten_bytes=0;
 std::atomic<uint64_t> rewritten_retained{0},rewritten_denied_budget{0},rewritten_peak_bytes{0};
 void reject_reuse(){std::lock_guard<std::mutex> lock(mu);reuse_rejected=true;}
 void retain_rewritten(const std::string &key,std::vector<uint32_t> input,const std::vector<uint32_t> &output){
-    const size_t bytes=(input.size()+output.size())*sizeof(uint32_t);
+    RewrittenShader packed;
+    if(!packed.input.assign(input) || !packed.output.assign(output))return;
+    const size_t bytes=packed.input.data.size()+packed.output.data.size();
     std::lock_guard<std::mutex> lock(mu);
     if(reuse_rejected || rewritten.count(key))return;
     if(bytes>rewritten_limit-rewritten_bytes){
@@ -3568,7 +3571,7 @@ void retain_rewritten(const std::string &key,std::vector<uint32_t> input,const s
         if(shader_reuse==2)xbg_logf("NVN shader reuse cache-budget identity=%s used_bytes=%zu request_bytes=%zu limit_bytes=%zu",key.c_str(),rewritten_bytes,bytes,rewritten_limit);
         return;
     }
-    rewritten.emplace(key,RewrittenShader{std::move(input),output});
+    rewritten.emplace(key,std::move(packed));
     rewritten_bytes+=bytes;++rewritten_retained;
     rewritten_peak_bytes.store(std::max(rewritten_peak_bytes.load(),uint64_t(rewritten_bytes)));
 }
@@ -3577,9 +3580,10 @@ bool take_rewritten(const std::string &key,const std::vector<uint32_t> &input,st
     if(reuse_rejected)return false;
     auto found=rewritten.find(key);
     if(found==rewritten.end())return false;
-    const bool same=found->second.input==input;
-    rewritten_bytes-=(found->second.input.size()+found->second.output.size())*sizeof(uint32_t);
-    if(same)out.swap(found->second.output);
+    std::vector<uint32_t> restored_input,restored_output;
+    const bool same=found->second.input.unpack(restored_input) && restored_input==input && found->second.output.unpack(restored_output);
+    rewritten_bytes-=found->second.input.data.size()+found->second.output.data.size();
+    if(same)out.swap(restored_output);
     else{
         reuse_rejected=true;
         xbg_logf("NVN shader reuse INPUT MISMATCH identity=%s warm pipeline reuse disabled",key.c_str());
