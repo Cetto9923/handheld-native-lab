@@ -357,6 +357,7 @@ static int recovery_contract(void) {
 static int append_tail_reuse_contract(void) {
     uintptr_t address=0;
     CHECK(!nso_host_allocate_address_region(&address,32*page));
+    CHECK(ok(nso_host_owned_pages_map(address+31*page,page)));
     CHECK(ok(nso_host_owned_pages_map(address,3*page)));
     CHECK(ok(nso_host_owned_pages_map(address+10*page,page)));
     CHECK(ok(nso_host_owned_pages_free(address+10*page,page)));
@@ -372,7 +373,9 @@ static int append_tail_reuse_contract(void) {
     CHECK(ok(nso_host_owned_pages_free(address+20*page,3*page)));
     CHECK(ok(nso_host_owned_pages_map(address+25*page,page)));
     CHECK(ok(nso_host_owned_pages_map(address+20*page,page)));
-    CHECK(usage(1,32*page,8*page));
+    for(size_t i=26;i<31;i++)CHECK(ok(nso_host_owned_pages_map(address+i*page,page)));
+    CHECK(!ok(nso_host_owned_pages_map(address+30*page,2*page)));
+    CHECK(usage(1,32*page,14*page));
     CHECK(!nso_host_free_address_region(address));
     CHECK(usage(0,0,0));
     return 0;

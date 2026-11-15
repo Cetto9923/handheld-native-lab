@@ -16,6 +16,7 @@ struct page_allocation {
 struct page_region {
     uintptr_t base;
     uintptr_t allocation_high_end;
+    uintptr_t map_gap_begin, map_gap_end;
     size_t bytes;
     int live, quarantined;
     struct page_allocation *allocations;
@@ -164,13 +165,19 @@ struct guest_pages_result guest_pages_map(guest_pages *p, uintptr_t address, siz
     struct page_region *r = containing(p, address, bytes);
     if (!r) { v.status = GUEST_PAGES_NOT_OWNED; goto done; }
     if (r->quarantined) { v.status = GUEST_PAGES_QUARANTINED; goto done; }
-    /* An address beyond every published allocation is already disjoint.
-     * The bound stays conservative after frees and splits. */
-    if(address<r->allocation_high_end)
-        for (struct page_allocation *a = r->allocations; a; a = a->next)
+    uintptr_t end=address+bytes;
+    uintptr_t gap_end=r->base+r->bytes;
+    /* Previously validated gaps also cover ascending maps below the highest
+     * allocation. Frees/splits only remove occupied bytes from such a gap.
+     * Every map publishes a new, smaller gap under this same owner lock. */
+    if(address>=r->map_gap_begin && end<=r->map_gap_end)gap_end=r->map_gap_end;
+    else if(address<r->allocation_high_end)
+        for (struct page_allocation *a = r->allocations; a; a = a->next) {
             if (overlaps(address, bytes, a->address, a->bytes)) {
                 v.status = GUEST_PAGES_OVERLAP; goto done;
             }
+            if(a->address>=end && a->address<gap_end)gap_end=a->address;
+        }
     struct page_allocation *a = page_node(p,GUEST_METADATA_PAGE_ALLOCATION,sizeof(*a));
     if (!a) { v.status = GUEST_PAGES_NO_MEMORY; goto done; }
     a->address = address; a->bytes = bytes;
@@ -205,7 +212,8 @@ struct guest_pages_result guest_pages_map(guest_pages *p, uintptr_t address, siz
         v.status = context_status(v.ticket_cleanup.status);
     }
     a->next = r->allocations; r->allocations = a;
-    if(address+bytes>r->allocation_high_end)r->allocation_high_end=address+bytes;
+    if(end>r->allocation_high_end)r->allocation_high_end=end;
+    r->map_gap_begin=end;r->map_gap_end=gap_end;
     changed(p);
 done:
     pthread_mutex_unlock(&p->mutex);

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="org.ffrs.gamewindow" android:versionCode="27" android:versionName="1.0.27-preview">
+    package="org.ffrs.gamewindow" android:versionCode="28" android:versionName="1.0.28-preview">
     <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="34" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
@@ -8,7 +8,7 @@
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />
     <application android:label="@string/app_name" android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher" android:debuggable="true"
-        android:allowBackup="false" android:extractNativeLibs="true"
+        android:allowBackup="false" android:extractNativeLibs="true" android:appCategory="game"
         android:theme="@android:style/Theme.Material.NoActionBar">
         <activity android:name="org.ffrs.diagnostic.GameActivity" android:exported="true"
             android:label="@string/app_name"

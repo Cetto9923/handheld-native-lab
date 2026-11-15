@@ -277,6 +277,9 @@ static void append_then_reuse_contract(void) {
     CHECK(guest_pages_create(context,&owner).status==GUEST_PAGES_OK);
     uintptr_t base=0;
     CHECK(guest_pages_reserve(owner,160*guest,&base).status==GUEST_PAGES_OK);
+    /* A high allocation must leave the earlier gap available to ascending
+     * mappings without allowing a later range to cross its upper boundary. */
+    CHECK(guest_pages_map(owner,base+159*guest,guest).status==GUEST_PAGES_OK);
     for(size_t i=0;i<128;i++)CHECK(guest_pages_map(owner,base+i*guest,guest).status==GUEST_PAGES_OK);
     CHECK(guest_pages_map(owner,base+32*guest,guest).status==GUEST_PAGES_OVERLAP);
     CHECK(guest_pages_free_exact(owner,base+127*guest,guest).status==GUEST_PAGES_OK);
@@ -291,7 +294,10 @@ static void append_then_reuse_contract(void) {
     CHECK(guest_pages_map(owner,base+140*guest,guest).status==GUEST_PAGES_OK);
     CHECK(guest_pages_map(owner,base+149*guest,2*guest).status==GUEST_PAGES_OVERLAP);
     CHECK(guest_pages_map(owner,base+151*guest,guest).status==GUEST_PAGES_OK);
-    snapshot(owner,1,130,0,131*guest);
+    CHECK(guest_pages_map(owner,base+158*guest,2*guest).status==GUEST_PAGES_OVERLAP);
+    for(size_t i=141;i<150;i++)CHECK(guest_pages_map(owner,base+i*guest,guest).status==GUEST_PAGES_OK);
+    CHECK(guest_pages_map(owner,base+148*guest,3*guest).status==GUEST_PAGES_OVERLAP);
+    snapshot(owner,1,140,0,141*guest);
     CHECK(guest_pages_destroy(owner).status==GUEST_PAGES_OK);
     struct guest_context_usage usage;
     CHECK(guest_context_usage(context,&usage).status==GUEST_CONTEXT_OK);
