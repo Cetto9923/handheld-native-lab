@@ -1,3 +1,8 @@
+# 2026-11-16T04:31:50.947838+08:00 48b
+
+首轮48源577fc01宿主114项通过，Android编译退出2，没有生成APK。即使是decltype取API33函数类型，NDK对minSdk28仍报unavailable。已改为等价函数指针声明，保持动态解析与minSdk28。新增真实NDK交叉编译，分别以API28编译生产适配器、API33静态比对4个函数指针与SDK原型全等，连同组件9项通过。原build48失败日志保留，后续build48b全量重跑。
+source=9f06fba6fb80ae0f6a61790aef82294b8d84273e build48b={"name": "android", "pid": 24815} log=.local/honor-submit44-20261116/build48b/runner.log
+
 # 2026-11-16T04:26:14.749743+08:00 48
 
 新增默认关闭的既有live-set项adpf。Android侧动态解析4个API33 C接口，缺符号、服务或session拒绝时仅停用提示。首次提交开始同一帧工作计时，后续提交不重置，在呈现前、原帧率等待及cfg.present之前上报MONOTONIC实际间隔，目标33333333ns。渲染线程更换时释放旧session再建新session。上报失败关闭session且停用至显式关闭或重启，shutdown停完异步线程后先释放session，覆盖未初始化及设备错误返回。其它平台为空操作，30Hz目标候选仍需实机证实。
