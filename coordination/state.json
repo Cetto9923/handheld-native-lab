@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-15T12:20:39.217925+08:00",
+ "updated_at": "2026-11-15T12:38:36.775622+08:00",
  "phase": "继续定位战斗GPU主通道并审阅成熟开源跨设备兼容缺口",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3122,7 +3122,6 @@
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
     "src/graphics/nvn_vulkan/engine/xbg_packed_shader_words.h",
     "src/android/native/CMakeLists.txt",
-    "src/android/app/gamewindow/AndroidManifest.xml",
     "tests/device/test_packed_shader_words.cpp",
     "scripts/android/verify_packed_shader_words.sh",
     "scripts/verify_host.py",
@@ -3131,7 +3130,25 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-15T12:04:37.143158+08:00",
-   "checkpoint": "25candidatef51451b9 built3683399B,102host+Android0,45sourcehashes match. Productionretain/take ASan/UBSanbudget/concurrency/error tests and55realSPV exactroundtrips passed10023048B->2998532B. Existing64MiB payloadlimit. Notinstalled. Needdevice newlearnedrecords andsame-skill comparison; pipelinecoverage andwarmstate498.9ms remainopen.",
+   "checkpoint": "d0d5759 and25f51451b9 frozenoffline; Manifest transferred torootpage26 integration.",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "CODEX-PAGE-APPEND26-20261115",
+   "owner": "root",
+   "paths": [
+    "src/runtime/hle/guest_pages.c",
+    "src/runtime/hle/address_region.c",
+    "tests/native/guest_pages_contract.c",
+    "tests/native/owned_pages_contract.c",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    ".local/codex-recovery-20261114/offline-page26-20261115",
+    "coordination/results/CODEX-PAGE-APPEND26-20261115.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T12:25:19.594913+08:00",
+   "checkpoint": "Page26 sourceandfocusedtests implemented. RGrealVM24576maps beforemedian660.890ms after27.538ms, ledger/cleanup1. Hostnormal/recovery andASan/UBSan passed; RGowned8threads32cycles/32races andguest281checks0 passed. Actuallearnedrootfiles/vk-pipeline-list.bin1326validated supersets1162.26APK0a010363 installedwithgameoff, savearchives identical, PID8416. Sceneregressioninprogress.",
    "write_state": "ACTIVE"
   }
  ],
@@ -8868,7 +8885,7 @@
     "coordination/results/CODEX-BATTLE-VIDEO24-20261115.md"
    ],
    "acceptance": "User owns battle input; explicitRG serial, preserve video/log before restart. Compare actual GPU/CPU/pipeline counts. Preserve precision,depth,integer/vertex/clear fixes. No fullcompatibility orFPS claim withoutrealmeasure.",
-   "checkpoint": "Latest63sec video3c5e1486 andsamePID23308 logs/CSV preservedbeforeADBdisconnect2percent.8PTS gap signatures aligned.26.655FPS/P95 58.788/P99 128.904/max824.849;7gt250.13.7sec633.1mspipeline;43.4sec498.9ms withnocompilation remainsunknown. User requestedcharge/reconnect; Honor deferred. Report written."
+   "checkpoint": "Reconnected41percentcharging, noPID. Final23308logs/CSV/saves andactualroot warm list1326 retrieved. Prior dm path assumption withdrawn,111bytecat errornotdata.26with1326seed installed, livePID8416."
   },
   {
    "id": "CODEX-WARM-REWRITE-PACK25-20261115",
@@ -8907,6 +8924,42 @@
    ],
    "acceptance": "Byte-exact unpack beforeinput equality, corruption/length failures publishnooutput anddisable reuse. Compression outsidewarmmutex.64MiB packed bytebudgetunchanged. Existing depth/precision/typed/vin semanticspreserved. Realmodules roundtrip, hostASan/UBSan, Android build. ActualFPS andscene regression pendingdevice.",
    "checkpoint": "25candidatef51451b9 built3683399B,102host+Android0,45sourcehashes match. Productionretain/take ASan/UBSanbudget/concurrency/error tests and55realSPV exactroundtrips passed10023048B->2998532B. Existing64MiB payloadlimit. Notinstalled. Needdevice newlearnedrecords andsame-skill comparison; pipelinecoverage andwarmstate498.9ms remainopen."
+  },
+  {
+   "id": "CODEX-PAGE-APPEND26-20261115",
+   "owner": "root",
+   "role": "PERFORMANCE_IMPLEMENTATION_AND_CONTRACTS",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "Eliminate redundant full-list overlap/insertion scans forproven disjoint append page maps, retain existing allother map/free/rollback/accounting behavior. Benchmark originalandcandidate realhost APIs before Android candidate.",
+   "inputs": [
+    "User chargesdevice; authorized offlineoptimization/testing",
+    "Video43sec mainlongframe with222page maplogs, causal profilepending",
+    "Two linearlist walks in guest_pages_map and nso_host_owned_pages_map"
+   ],
+   "outputs": [
+    "src/runtime/hle/guest_pages.c",
+    "src/runtime/hle/address_region.c",
+    "tests/native/guest_pages_contract.c",
+    "tests/native/owned_pages_contract.c",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    ".local/codex-recovery-20261114/offline-page26-20261115",
+    "coordination/results/CODEX-PAGE-APPEND26-20261115.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/runtime/hle/guest_pages.c",
+    "src/runtime/hle/address_region.c",
+    "tests/native/guest_pages_contract.c",
+    "tests/native/owned_pages_contract.c",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    ".local/codex-recovery-20261114/offline-page26-20261115",
+    "coordination/results/CODEX-PAGE-APPEND26-20261115.md"
+   ],
+   "acceptance": "Private perregion append bounds/tail onlyunderexisting locks. Freed/split tail invalidation, lowaddressoverlap fallback, mixedorder maps, failure rollback/quarantine andsubpage safety. Existinghostnormal/recovery, ASan/UBSan/concurrency, actualVMbenchmark. DeviceFPS remainsNOT_RUN.",
+   "checkpoint": "Page26 sourceandfocusedtests implemented. RGrealVM24576maps beforemedian660.890ms after27.538ms, ledger/cleanup1. Hostnormal/recovery andASan/UBSan passed; RGowned8threads32cycles/32races andguest281checks0 passed. Actuallearnedrootfiles/vk-pipeline-list.bin1326validated supersets1162.26APK0a010363 installedwithgameoff, savearchives identical, PID8416. Sceneregressioninprogress."
   }
  ],
  "blockers": [

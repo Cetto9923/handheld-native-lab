@@ -20,6 +20,7 @@ struct reservation {
     size_t mapped_guest_bytes;
     int quarantined;
     struct accessible_interval *accessible;
+    struct accessible_interval *append_tail;
     struct reservation *next;
 };
 static pthread_mutex_t region_mutex=PTHREAD_MUTEX_INITIALIZER;
@@ -204,6 +205,7 @@ struct nso_owned_page_result nso_host_owned_pages_map(uintptr_t address,size_t s
     else if(r->quarantined)result=page_result(NSO_OWNED_PAGE_QUARANTINED,NSO_OWNED_PAGE_DETAIL_NONE,0,0);
     else {
         struct accessible_interval **slot=&r->accessible;
+        if(r->append_tail && r->append_tail->end<=address)slot=&r->append_tail->next;
         while(*slot && (*slot)->end<=address)slot=&(*slot)->next;
         if(*slot && (*slot)->begin<end)
             result=page_result(NSO_OWNED_PAGE_UNSUPPORTED,NSO_OWNED_PAGE_DETAIL_OVERLAP,0,0);
@@ -230,6 +232,7 @@ struct nso_owned_page_result nso_host_owned_pages_map(uintptr_t address,size_t s
                 /* Owned containment plus disjointness bounds the sum by the
                  * requested reservation size, so this addition cannot wrap. */
                 *slot=node;r->mapped_guest_bytes+=size;
+                if(!node->next)r->append_tail=node;
             }
         }
     }
@@ -246,6 +249,9 @@ struct nso_owned_page_result nso_host_owned_pages_free(uintptr_t address,size_t 
     if(!r)result=page_result(NSO_OWNED_PAGE_NOT_OWNED,NSO_OWNED_PAGE_DETAIL_NONE,0,0);
     else if(r->quarantined)result=page_result(NSO_OWNED_PAGE_QUARANTINED,NSO_OWNED_PAGE_DETAIL_NONE,0,0);
     else {
+        /* A successful free can delete or split the cached node. Rebuild the
+         * append hint on a later map while holding this same owner lock. */
+        r->append_tail=NULL;
         struct accessible_interval **slot=&r->accessible;
         while(*slot && (*slot)->end<=address)slot=&(*slot)->next;
         struct accessible_interval *first=*slot,*cursor=first;

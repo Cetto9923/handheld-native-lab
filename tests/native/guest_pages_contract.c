@@ -268,6 +268,37 @@ static void guest_subpages_contract(void) {
     puts("phase=guest_4k_subpages_accounting_neighbor_and_recovery completed");
 }
 
+static void append_then_reuse_contract(void) {
+    const size_t guest=4096;
+    guest_context *context=NULL;
+    guest_pages *owner=NULL;
+    struct guest_context_config config={160*guest,unit};
+    CHECK(guest_context_create(&config,&context).status==GUEST_CONTEXT_OK);
+    CHECK(guest_pages_create(context,&owner).status==GUEST_PAGES_OK);
+    uintptr_t base=0;
+    CHECK(guest_pages_reserve(owner,160*guest,&base).status==GUEST_PAGES_OK);
+    for(size_t i=0;i<128;i++)CHECK(guest_pages_map(owner,base+i*guest,guest).status==GUEST_PAGES_OK);
+    CHECK(guest_pages_map(owner,base+32*guest,guest).status==GUEST_PAGES_OVERLAP);
+    CHECK(guest_pages_free_exact(owner,base+127*guest,guest).status==GUEST_PAGES_OK);
+    CHECK(guest_pages_map(owner,base+127*guest,guest).status==GUEST_PAGES_OK);
+    CHECK(guest_pages_free_allocations(owner,base+10*guest,4*guest).status==GUEST_PAGES_OK);
+    CHECK(guest_pages_map(owner,base+9*guest,5*guest).status==GUEST_PAGES_OVERLAP);
+    CHECK(guest_pages_map(owner,base+10*guest,4*guest).status==GUEST_PAGES_OK);
+    CHECK(guest_pages_free_allocations(owner,base+11*guest,2*guest).status==GUEST_PAGES_OK);
+    CHECK(guest_pages_map(owner,base+11*guest,3*guest).status==GUEST_PAGES_OVERLAP);
+    CHECK(guest_pages_map(owner,base+11*guest,2*guest).status==GUEST_PAGES_OK);
+    CHECK(guest_pages_map(owner,base+150*guest,guest).status==GUEST_PAGES_OK);
+    CHECK(guest_pages_map(owner,base+140*guest,guest).status==GUEST_PAGES_OK);
+    CHECK(guest_pages_map(owner,base+149*guest,2*guest).status==GUEST_PAGES_OVERLAP);
+    CHECK(guest_pages_map(owner,base+151*guest,guest).status==GUEST_PAGES_OK);
+    snapshot(owner,1,130,0,131*guest);
+    CHECK(guest_pages_destroy(owner).status==GUEST_PAGES_OK);
+    struct guest_context_usage usage;
+    CHECK(guest_context_usage(context,&usage).status==GUEST_CONTEXT_OK);
+    CHECK(!usage.pending_bytes && !usage.charged_bytes && !usage.tickets);
+    CHECK(guest_context_destroy(context).status==GUEST_CONTEXT_OK);
+}
+
 int main(void) {
     long actual_page=sysconf(_SC_PAGESIZE);
     CHECK(actual_page>=4096 && actual_page<=65536 && !(actual_page%4096));
@@ -337,6 +368,7 @@ int main(void) {
     CHECK(guest_pages_destroy(p).status == GUEST_PAGES_OK);
     CHECK(guest_context_destroy(context).status == GUEST_CONTEXT_OK);
     guest_subpages_contract();
+    append_then_reuse_contract();
     printf("{\"checks\":%d,\"errors\":%d,\"recovery_cases\":%d,\"final_pending\":%zu,\"final_charged\":%zu,\"final_tickets\":%zu,\"raw_regions\":%zu,\"guest_page_bytes\":4096,\"legacy_request_bytes\":%zu,\"host_page_bytes\":%zu}\n",
         checks,errors,recovery_cases,cu.pending_bytes,cu.charged_bytes,cu.tickets,raw.region_count,unit,host_page);
     return errors ? 1 : 0;

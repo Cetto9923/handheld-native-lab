@@ -15,6 +15,7 @@ struct page_allocation {
 };
 struct page_region {
     uintptr_t base;
+    uintptr_t allocation_high_end;
     size_t bytes;
     int live, quarantined;
     struct page_allocation *allocations;
@@ -145,7 +146,7 @@ struct guest_pages_result guest_pages_reserve(guest_pages *p, size_t bytes, uint
     v.region_result = nso_host_allocate_address_region(&r->base, bytes);
     if (v.region_result) { v.status = GUEST_PAGES_VM_ERROR; drop_node(p,GUEST_METADATA_PAGE_REGION,r); }
     else {
-        r->bytes = bytes; r->live = 1;
+        r->bytes = bytes; r->live = 1;r->allocation_high_end=r->base;
         r->next = p->regions; p->regions = r;
         *out = r->base;
         changed(p);
@@ -163,10 +164,13 @@ struct guest_pages_result guest_pages_map(guest_pages *p, uintptr_t address, siz
     struct page_region *r = containing(p, address, bytes);
     if (!r) { v.status = GUEST_PAGES_NOT_OWNED; goto done; }
     if (r->quarantined) { v.status = GUEST_PAGES_QUARANTINED; goto done; }
-    for (struct page_allocation *a = r->allocations; a; a = a->next)
-        if (overlaps(address, bytes, a->address, a->bytes)) {
-            v.status = GUEST_PAGES_OVERLAP; goto done;
-        }
+    /* An address beyond every published allocation is already disjoint.
+     * The bound stays conservative after frees and splits. */
+    if(address<r->allocation_high_end)
+        for (struct page_allocation *a = r->allocations; a; a = a->next)
+            if (overlaps(address, bytes, a->address, a->bytes)) {
+                v.status = GUEST_PAGES_OVERLAP; goto done;
+            }
     struct page_allocation *a = page_node(p,GUEST_METADATA_PAGE_ALLOCATION,sizeof(*a));
     if (!a) { v.status = GUEST_PAGES_NO_MEMORY; goto done; }
     a->address = address; a->bytes = bytes;
@@ -201,6 +205,7 @@ struct guest_pages_result guest_pages_map(guest_pages *p, uintptr_t address, siz
         v.status = context_status(v.ticket_cleanup.status);
     }
     a->next = r->allocations; r->allocations = a;
+    if(address+bytes>r->allocation_high_end)r->allocation_high_end=address+bytes;
     changed(p);
 done:
     pthread_mutex_unlock(&p->mutex);

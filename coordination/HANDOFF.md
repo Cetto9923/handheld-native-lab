@@ -4671,3 +4671,9 @@ D-final-default已完成，frame5794至6697的903间隔为29.9999FPS，P95/P99�
 根领取CODEX-WARM-REWRITE-PACK25，原GPU-DRAW24源码占用已冻结交回。源输入9230300，新增无损压缩现成warm改写缓存，在原64MiB保存payload预算下保留更多输入/输出，解压后完整input比较，错误拒绝且输出事务性。102项host含抽取生产retain/take的ASan/UBSan及预算/并发测试通过，55份真实shader 10023048B压到2998532B且逐字还原，Android构建0，45份输入前后不变。25候选f51451b9/3683399B保留apk-history，尚未安装。仍用原1162条APK种子，必须先取本次学习表再合并，不能把缓存实现当作633ms管线编译已解决。
 
 恢复命令先用adb -s RG477M01445122 shell pidof org.ffrs.gamewindow，再从/sdcard/Android/data/org.ffrs.gamewindow/files/dm/vk-pipeline-list-learned.bin取学习表。若新进程已启动，旧23308日志/CSV另按现存文件保全，不能混用归因。若游戏仍运行，用户先保存再装25。详细证据、失败及待测项见CODEX-BATTLE-VIDEO24-20261115.md和local plan.json。源码与报告检查点待本轮串行提交，未推送远端。
+
+用户充电期间继续授权优化/测试，25源码已提交d0d5759。根领取PAGE-APPEND26，发现guest_pages和address_region的追加映射两处全链表遍历，补保守最高end与可撤销尾节点提示，沿原锁及原失败回滚。原两文件保全offline-page26-20261115/baseline。宿主正常/8类恢复、原始页组件正常/4类恢复ASan/UBSan、新增尾删除/洞复用/分割/错序与重叠回归均通过，RG正常页组件8线程×32轮和32释放竞态、guest_pages281检查通过。RG真实6区域24576次映射交替三组before/after中位660.890→27.538ms，账本与回收全过，属于组件循环收益。
+
+用户已重新连接，电量41%、充电中，游戏无PID。实际24学习表路径为files/vk-pipeline-list.bin，旧交接dm路径推测已撤回，111字节失败cat不作种子。已保全真正1380314B学习表59c7d4aa、最终23308日志/CSV和全部存档。1326条唯一记录无缺shader，包含旧1162全部条目，多164，其中本次新10条，作为26APK补充seed。
+
+26包0a010363/3695687B已构建102host和Android0，覆盖前游戏已停止，存档tar前后一致、APK回读SHA一致。PID8416刚启动，device26/plan.json可恢复，root继续真实场景回归。新源码尚待本轮提交，5份原诊断WIP保持untracked，未推送远端。

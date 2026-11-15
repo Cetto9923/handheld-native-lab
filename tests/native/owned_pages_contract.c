@@ -354,11 +354,36 @@ static int recovery_contract(void) {
 }
 #endif
 
+static int append_tail_reuse_contract(void) {
+    uintptr_t address=0;
+    CHECK(!nso_host_allocate_address_region(&address,32*page));
+    CHECK(ok(nso_host_owned_pages_map(address,3*page)));
+    CHECK(ok(nso_host_owned_pages_map(address+10*page,page)));
+    CHECK(ok(nso_host_owned_pages_free(address+10*page,page)));
+    CHECK(ok(nso_host_owned_pages_map(address+20*page,3*page)));
+    CHECK(ok(nso_host_owned_pages_map(address+10*page,page)));
+    CHECK(ok(nso_host_owned_pages_map(address+15*page,page)));
+    CHECK(ok(nso_host_owned_pages_free(address+21*page,page)));
+    CHECK(ok(nso_host_owned_pages_map(address+24*page,page)));
+    CHECK(ok(nso_host_owned_pages_map(address+21*page,page)));
+    CHECK(!ok(nso_host_owned_pages_map(address+20*page,2*page)));
+    struct nso_owned_page_result hole=nso_host_owned_pages_free(address+20*page,5*page);
+    CHECK(hole.status==NSO_OWNED_PAGE_UNSUPPORTED && hole.detail==NSO_OWNED_PAGE_DETAIL_HOLES);
+    CHECK(ok(nso_host_owned_pages_free(address+20*page,3*page)));
+    CHECK(ok(nso_host_owned_pages_map(address+25*page,page)));
+    CHECK(ok(nso_host_owned_pages_map(address+20*page,page)));
+    CHECK(usage(1,32*page,8*page));
+    CHECK(!nso_host_free_address_region(address));
+    CHECK(usage(0,0,0));
+    return 0;
+}
+
 int main(void) {
     long value=sysconf(_SC_PAGESIZE);
     CHECK(value>=4096 && value<=65536 && !(value%4096));page=(size_t)value;
     CHECK(!small_contract());CHECK(!guest_subpage_contract());CHECK(!large_reservation());
     CHECK(!host_aligned_neighbors_contract());
+    CHECK(!append_tail_reuse_contract());
     CHECK(!threaded_contract());CHECK(!serialized_release());
     int recovery=0;
 #if defined(NSO_OWNED_PAGES_TESTING)
