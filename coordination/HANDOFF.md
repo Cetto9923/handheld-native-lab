@@ -1,3 +1,7 @@
+# 2026-11-16T06:56:53.175177+08:00 53已安装
+
+53源39c5bf9 clean，115宿主/Android0，81项源输入SHA一致。APK59a37bdfe2c2ab721a4b8a752ef989d9c9d188b9c8b3dfe980259aebb4cdbf0b，3724503B。安装回读及461九文件SHA、正式源metadata通过。PID19273复用461，以indtexel原输入准入启动，adpf0/vcache0/texrecord1/probe0/overlay0。下一次到技能确认前再选择新路，不把冷暖差归帧率收益。需要特别准确区分两个已有范围：partial_overlay_available按tablet+vendor5143+Adreno735，honor_inline_enabled按tablet+Adreno并服从gfx-honor-inline，53间接texel候选复用的是后者。新准入尚仅在本台735实测，不能声称其它Adreno/Mali已通过。
+
 # 2026-11-16T06:53:22.059538+08:00 53短输入准入
 
 52 PID16304 frame8039的924b回退输入已经实测。参数12/生产60字节同slot7；storage B11/B23为相同32字节、B17/B47相同52字节，readonly B29为12、B41为8192，均为完整当前槽GPU范围。唯一短输入B35为CPU干净2字节，无待GPU写覆盖。53仅撤去CPU干净texel的全局4字节地址/长度限制，GPU输入仍要求完整当前槽、源offset4对齐及copy长度4对齐，报告/别名/未知回退保留。生产indirect_cpu_clean、原准入及完整probe函数联合提取，新增CPU干净2字节、GPU两字节拒绝、未对齐guest地址与真实device-buffer offset分别验证，常规和32行上界两进程ASan/UBSan通过。暂未得到53实机性能。
