@@ -75,6 +75,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     private long touchButtons;
     private int touchLx, touchLy, touchRx, touchRy;
     private TouchPad touchPad;
+    private AlertDialog cheatDialog, saveCardsDialog;
     private InputManager inputManager;
     private FrameLayout rootLayout;
     private LinearLayout setupView;
@@ -692,8 +693,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                     "导出存档",        // export save
                     "金手指",          // cheat
                     "还原存档",        // restore save
-                    "即时存档",        // quick save
-                    "即时读档",        // quick load
+                    "备份存档",        // quick save
+                    "恢复备份",        // quick load
                     "编辑按键布局",    // layout editor
                     shown ? "隐藏手柄" : "显示手柄",
                     "扫描实时数据"     // guest memory scan
@@ -872,7 +873,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         // game keeps its own copy of the roster in the guest memory, so the
         // edited save is only read by the next load.
         TextView timingView = new TextView(this);
-        timingView.setText("改动保存后，回标题画面重新读取存档生效。");
+        timingView.setText("建议在标题画面修改。保存后重新读取存档生效。");
         timingView.setTextSize(12f);
         box.addView(timingView);
 
@@ -904,26 +905,46 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         picker.setAdapter(adapter);
         box.addView(picker);
 
-        // One editable field per cheat value.
+        Button preset = new Button(this);
+        preset.setText("所选角色一键满状态");
+        preset.setOnClickListener(new CheatPreset(this, slot, picker, roster));
+        box.addView(preset);
+
+        Button all = new Button(this);
+        all.setText("全体角色一键满状态");
+        all.setOnClickListener(new CheatAll(this, slot));
+        box.addView(all);
+
+        TextView presetHint = new TextView(this);
+        presetHint.setText("满状态预设：等级99、生命99999、魔法999、经验9999999。");
+        presetHint.setTextSize(12f);
+        box.addView(presetHint);
+
+        Button details = new Button(this);
+        details.setText("自定义数值 ▾");
+        box.addView(details);
+        LinearLayout custom = new LinearLayout(this);
+        custom.setOrientation(LinearLayout.VERTICAL);
+        custom.setVisibility(View.GONE);
+        box.addView(custom);
+        details.setOnClickListener(new CheatDetails(custom));
+
         final EditText hpField = new EditText(this);
         final EditText maxHpField = new EditText(this);
         final EditText mpField = new EditText(this);
         final EditText maxMpField = new EditText(this);
         final EditText expField = new EditText(this);
         final EditText levelField = new EditText(this);
-        addCheatField(box, "生命值（当前）", hpField, 0);
-        addCheatField(box, "生命上限", maxHpField, 0);
-        addCheatField(box, "魔法值（当前）", mpField, 0);
-        addCheatField(box, "魔法上限", maxMpField, 0);
-        addCheatField(box, "经验", expField, 0);
-        addCheatField(box, "等级", levelField, 1);
+        addCheatField(custom, "生命值（当前）", hpField, 0);
+        addCheatField(custom, "生命上限", maxHpField, 0);
+        addCheatField(custom, "魔法值（当前）", mpField, 0);
+        addCheatField(custom, "魔法上限", maxMpField, 0);
+        addCheatField(custom, "经验", expField, 0);
+        addCheatField(custom, "等级", levelField, 1);
 
-        // The values the unit had before any cheat edit.
         TextView originalView = new TextView(this);
         originalView.setTextSize(12f);
-        box.addView(originalView);
-
-        // Picking a role loads its current values into the fields.
+        custom.addView(originalView);
         final CheatFields fields = new CheatFields(this, hpField, maxHpField, mpField, maxMpField, expField, levelField);
         fields.setOriginalView(originalView);
         fields.setOriginals(originalById);
@@ -936,40 +957,50 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         });
         if (!roster.isEmpty()) fields.fill(roster.get(0));
 
-        LinearLayout buttons = new LinearLayout(this);
-        buttons.setOrientation(LinearLayout.HORIZONTAL);
-        box.addView(buttons);
-
         Button apply = new Button(this);
-        apply.setText("应用到所选");
+        apply.setText("保存所选角色的自定义数值");
         apply.setOnClickListener(new CheatApply(this, slot, fields, picker, roster));
-        buttons.addView(apply);
-
-        Button preset = new Button(this);
-        preset.setText("所选满状态");
-        preset.setOnClickListener(new CheatPreset(this, slot, picker, roster));
-        buttons.addView(preset);
-
-        Button all = new Button(this);
-        all.setText("全员满状态");
-        all.setOnClickListener(new CheatAll(this, slot));
-        buttons.addView(all);
-
-        Button scan = new Button(this);
-        scan.setText("扫描实时数据");
-        scan.setOnClickListener(new CheatScan(this, slot, roster));
-        buttons.addView(scan);
+        custom.addView(apply);
 
         Button restore = new Button(this);
-        restore.setText("恢复原始数值");
+        restore.setText("恢复修改前的原始存档");
         restore.setOnClickListener(new CheatRestore(this, slot));
-        buttons.addView(restore);
+        box.addView(restore);
 
-        new android.app.AlertDialog.Builder(this)
-                .setTitle("金手指")
+        cheatDialog = new android.app.AlertDialog.Builder(this)
+                .setTitle("金手指 · 存档修改")
                 .setView(scroll)
                 .setPositiveButton("关闭", null)
-                .show();
+                .create();
+        cheatDialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
+        cheatDialog.show();
+    }
+
+    private static final class CheatDetails implements View.OnClickListener {
+        private final View custom;
+        CheatDetails(View custom) { this.custom = custom; }
+        @Override public void onClick(View view) {
+            boolean expand = custom.getVisibility() != View.VISIBLE;
+            custom.setVisibility(expand ? View.VISIBLE : View.GONE);
+            ((Button) view).setText(expand ? "收起自定义数值 ▴" : "自定义数值 ▾");
+        }
+    }
+
+    private void showFlowMessage(String title, String message) {
+        new AlertDialog.Builder(this).setTitle(title).setMessage(message)
+                .setPositiveButton("知道了", null).show();
+    }
+
+    private static final String RELOAD_STEPS =
+            "下一步\n1. 在游戏系统菜单返回标题画面。\n2. 选择读取存档，载入对应的存档。";
+
+    private void showCheatResult(SaveCheater.Result result) {
+        if (!result.ok) {
+            showFlowMessage("修改未完成", result.message);
+            return;
+        }
+        if (cheatDialog != null) cheatDialog.dismiss();
+        showFlowMessage("修改已保存，请读档生效", "存档已更新。\n\n" + RELOAD_STEPS);
     }
 
     /**
@@ -1007,7 +1038,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 return;
             }
             SaveCheater.Result r = SaveCheater.restore(slot);
-            owner.toast(r.ok ? "已恢复原始数值\n" + r.message : "恢复失败：" + r.message);
+            owner.showCheatResult(r);
             Log.i(TAG, "cheat restored ok=" + r.ok + " " + r.message);
         }
     }
@@ -1417,7 +1448,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             Integer unit = selectedUnit(picker, roster);
             SaveCheater.Result r = SaveCheater.apply(slot, hpValue, maxHpValue, mpValue,
                     maxMpValue, expValue, levelValue, unit);
-            owner.toast(describeCheat(r));
+            owner.showCheatResult(r);
             Log.i(TAG, "cheat applied unit=" + unit + ": " + r.message + " " + r.edits);
         }
     }
@@ -1434,7 +1465,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         @Override public void onClick(View v) {
             Integer unit = selectedUnit(picker, roster);
             SaveCheater.Result r = SaveCheater.apply(slot, 99999, 99999, 999, 999, 9999999, 99, unit);
-            owner.toast(describeCheat(r));
+            owner.showCheatResult(r);
             Log.i(TAG, "cheat preset unit=" + unit + ": " + r.message + " " + r.edits);
         }
     }
@@ -1446,16 +1477,9 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         CheatAll(GameActivity o, File s) { owner = o; slot = s; }
         @Override public void onClick(View v) {
             SaveCheater.Result r = SaveCheater.apply(slot, 99999, 99999, 999, 999, 9999999, 99, null);
-            owner.toast(describeCheat(r));
+            owner.showCheatResult(r);
             Log.i(TAG, "cheat all applied: " + r.message + " " + r.edits);
         }
-    }
-
-    /** Renders a cheat result as one message: summary line plus every change. */
-    private static String describeCheat(SaveCheater.Result r) {
-        StringBuilder msg = new StringBuilder(r.message);
-        for (String e : r.edits) msg.append('\n').append(e);
-        return msg.toString();
     }
 
     /** Adds a labelled numeric input to the cheat dialog. */
@@ -1564,33 +1588,40 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
      */
     void quickSave() {
         File root = liveSaveRoot;
-        if (root == null) {
-            toast("找不到存档目录，请等游戏进入标题画面后再试");
+        File[] files = root == null ? null : root.listFiles();
+        if (files == null || files.length == 0) {
+            showFlowMessage("备份未完成", "还没有可备份的存档。请先在游戏内保存进度。");
             return;
         }
         File dest = nextSnapshotDir();
         if (dest == null) {
-            toast("无法创建即时存档目录");
+            showFlowMessage("备份未完成", "无法创建备份目录，请检查可用存储空间后重试。");
             return;
         }
         int count = 0;
-        long bytes = 0;
-        for (File f : root.listFiles()) {
-            if (!f.isFile()) continue;
-            if (f.getName().endsWith(".cheat.tmp") || f.getName().endsWith(".orig")) continue;
-            try {
+        long bytes = 0, savedAt = 0;
+        try {
+            for (File f : files) {
+                if (!f.isFile()) continue;
+                if (f.getName().endsWith(".cheat.tmp") || f.getName().endsWith(".orig")) continue;
                 copyFile(f, new File(dest, f.getName()));
                 bytes += f.length();
+                savedAt = Math.max(savedAt, f.lastModified());
                 count++;
-            } catch (Exception e) {
-                Log.w(TAG, "quick save failed for " + f.getName() + ": " + e.getMessage());
             }
+            if (count == 0) throw new java.io.IOException("没有找到存档文件");
+            writeText(new File(dest, "meta.txt"), snapshotNote(dest));
+            File completed = new File(dest.getParentFile(), dest.getName().substring(".saving-".length()));
+            if (!dest.renameTo(completed)) throw new java.io.IOException("无法完成备份目录写入");
+            captureThumbnail(new File(completed, "thumb.png"));
+            showFlowMessage("存档已备份", "备份时间：" + timeStamp(completed.lastModified())
+                    + "\n最近存档写入：" + timeStamp(savedAt)
+                    + "\n共 " + count + " 个文件。\n\n备份内容为游戏内最近保存的进度。需要恢复时，打开菜单中的“恢复备份”。");
+            Log.i(TAG, "quick save: " + completed.getName() + " " + count + " files " + bytes + " bytes");
+        } catch (Exception e) {
+            Log.w(TAG, "quick save failed: " + e.getMessage());
+            showFlowMessage("备份未完成", "本次备份未完成，请检查存储空间后重试。\n" + e.getMessage());
         }
-        // The picture of the game at this moment is the thumbnail of the card.
-        captureThumbnail(new File(dest, "thumb.png"));
-        writeText(new File(dest, "meta.txt"), snapshotNote(dest));
-        toast("已即时存档: " + dest.getName() + "（" + count + " 个文件，" + (bytes / 1024) + " KB）");
-        Log.i(TAG, "quick save: " + dest.getName() + " " + count + " files " + bytes + " bytes");
     }
 
     /** The folder the next snapshot goes into. */
@@ -1606,7 +1637,11 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 catch (NumberFormatException ignored) { }
             }
         }
-        File target = new File(dir, String.format("save-%03d", n));
+        File target = new File(dir, String.format(".saving-save-%03d", n));
+        while (target.exists()) {
+            n++;
+            target = new File(dir, String.format(".saving-save-%03d", n));
+        }
         return target.mkdirs() ? target : null;
     }
 
@@ -1660,6 +1695,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             android.view.PixelCopy.request(surface_view, shot, new ThumbCopy(dest, shot),
                     new Handler(Looper.getMainLooper()));
         } catch (Exception e) {
+            shot.recycle();
             Log.w(TAG, "thumbnail request failed: " + e.getMessage());
         }
     }
@@ -1672,6 +1708,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         @Override public void onPixelCopyFinished(int result) {
             if (result != android.view.PixelCopy.SUCCESS) {
                 Log.w(TAG, "thumbnail copy failed: " + result);
+                source.recycle();
                 return;
             }
             try {
@@ -1683,7 +1720,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 small.recycle();
             } catch (Exception e) {
                 Log.w(TAG, "thumbnail write failed: " + e.getMessage());
-            }
+            } finally { source.recycle(); }
         }
     }
 
@@ -1707,7 +1744,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     void openSaveCards() {
         final java.util.List<File> snaps = snapshots();
         if (snaps.isEmpty()) {
-            toast("还没有即时存档，先执行一次即时存档");
+            showFlowMessage("还没有备份", "请先在游戏内保存进度，再打开菜单选择“备份存档”。");
             return;
         }
         ScrollView scroll = new ScrollView(this);
@@ -1718,14 +1755,14 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
         final File latest = snaps.get(0);
         Button quickBtn = new Button(this);
-        quickBtn.setText("⚡ 一键载入最新即时存档 (" + latest.getName() + " · " + timeStamp(latest.lastModified()) + ")");
+        quickBtn.setText("恢复最新备份（" + latest.getName() + " · " + timeStamp(latest.lastModified()) + "）");
         quickBtn.setTextSize(14f);
         quickBtn.setTextColor(0xFF00E676);
         quickBtn.setOnClickListener(new SaveCardClick(this, latest));
         box.addView(quickBtn);
 
         TextView hint = new TextView(this);
-        hint.setText("历史快照列表（倒序排列，点卡片读档，长按删除）：");
+        hint.setText("先在游戏系统菜单返回标题，再选择要恢复的备份。恢复完成后选择读取存档。\n备份内容为游戏内最近保存的进度。下方按时间倒序排列，点击恢复，长按删除。");
         hint.setTextSize(12f);
         hint.setPadding(0, 16, 0, 12);
         box.addView(hint);
@@ -1733,8 +1770,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         for (int i = 0; i < snaps.size(); i++) {
             box.addView(saveCard(snaps.get(i), i == 0));
         }
-        new android.app.AlertDialog.Builder(this)
-                .setTitle("即时读档")
+        saveCardsDialog = new android.app.AlertDialog.Builder(this)
+                .setTitle("恢复存档备份")
                 .setView(scroll)
                 .setPositiveButton("关闭", null)
                 .show();
@@ -1760,7 +1797,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         text.addView(title);
 
         TextView slotNotice = new TextView(this);
-        slotNotice.setText("对应主菜单槽位: 【Slot 01 (Auto Save)】");
+        slotNotice.setText("恢复后请在标题画面读取对应存档");
         slotNotice.setTextSize(11f);
         slotNotice.setTextColor(0xFF80D8FF);
         text.addView(slotNotice);
@@ -1807,20 +1844,28 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
      */
     void loadSnapshot(File snap) {
         File root = liveSaveRoot;
-        if (root == null) { toast("找不到存档目录"); return; }
-        int count = 0;
-        File[] kids = snap.listFiles();
-        if (kids != null) {
-            for (File f : kids) {
-                if (!f.isFile()) continue;
-                String n = f.getName();
-                if (n.equals("thumb.png") || n.equals("meta.txt")) continue;
-                try { copyFile(f, new File(root, n)); count++; }
-                catch (Exception e) { Log.w(TAG, "quick load failed for " + n + ": " + e.getMessage()); }
-            }
+        File[] files = snap == null ? null : snap.listFiles();
+        if (root == null || files == null) {
+            showFlowMessage("恢复未完成", "找不到存档或备份目录，请重试。");
+            return;
         }
-        toast("已成功载入快照 " + snap.getName() + "！\n【操作指南】数据已写回槽位【Slot 01】，在主菜单点击「Load Game -> 01」即可直接进入！");
-        Log.i(TAG, "quick load: " + snap.getName() + " " + count + " files");
+        int count = 0;
+        try {
+            for (File f : files) {
+                if (!f.isFile()) continue;
+                String name = f.getName();
+                if (name.equals("thumb.png") || name.equals("meta.txt")) continue;
+                copyFile(f, new File(root, name));
+                count++;
+            }
+            if (count == 0) throw new java.io.IOException("备份中没有存档文件");
+            if (saveCardsDialog != null) saveCardsDialog.dismiss();
+            showFlowMessage("备份已恢复，请读档生效", "已恢复 " + count + " 个存档文件。\n\n" + RELOAD_STEPS);
+            Log.i(TAG, "quick load: " + snap.getName() + " " + count + " files");
+        } catch (Exception e) {
+            Log.w(TAG, "quick load failed: " + e.getMessage());
+            showFlowMessage("恢复未完成", "已恢复 " + count + " 个文件，请重新选择该备份重试。\n" + e.getMessage());
+        }
     }
 
     /** Reads the snapshot of a card back into the game. */
@@ -1846,13 +1891,23 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
     /** Copies one file. */
     private static void copyFile(File from, File to) throws java.io.IOException {
-        java.io.InputStream in = new java.io.FileInputStream(from);
-        java.io.FileOutputStream out = new java.io.FileOutputStream(to);
+        long size = from.length(), modified = from.lastModified();
+        File stage = File.createTempFile(".ffrs-copy-", ".tmp", to.getParentFile());
         try {
-            byte[] buf = new byte[65536];
-            int n;
-            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
-        } finally { in.close(); out.close(); }
+            try (java.io.InputStream in = new java.io.FileInputStream(from);
+                 java.io.FileOutputStream out = new java.io.FileOutputStream(stage)) {
+                byte[] buffer = new byte[65536];
+                int n;
+                while ((n = in.read(buffer)) > 0) out.write(buffer, 0, n);
+                out.getFD().sync();
+            }
+            if (stage.length() != size || from.length() != size || from.lastModified() != modified)
+                throw new java.io.IOException("存档正在更新，请在游戏内保存完成后重试");
+            stage.setLastModified(modified);
+            if (!stage.renameTo(to)) throw new java.io.IOException("无法写入目标存档");
+        } finally {
+            if (stage.exists()) stage.delete();
+        }
     }
 
     /** Removes a folder and everything in it. */

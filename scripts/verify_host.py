@@ -365,6 +365,8 @@ def main():
                                    'tests.installer.test_touch_pad_menu'])
     run('unit-names-contract', [sys.executable, '-m', 'unittest',
                               'tests.installer.test_unit_names'])
+    run('save-flow-contract', [sys.executable, '-m', 'unittest',
+                             'tests.installer.test_save_flow'])
     run('arena-memory-policy-contract', [sys.executable, '-m', 'unittest',
                                         'tests.device.test_arena_memory_policy'])
     packed_dir = out / 'packed-shader-words'

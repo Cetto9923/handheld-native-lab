@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-15T15:23:35.813998+08:00",
+ "updated_at": "2026-11-15T15:41:16.926332+08:00",
  "phase": "继续定位战斗GPU主通道并审阅成熟开源跨设备兼容缺口",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3192,7 +3192,8 @@
     "scripts/verify_host.py",
     ".local/releases/1.0.30/",
     "coordination/results/CODEX-PUBLISH-CHEAT30-20261115.md",
-    "tests/installer/test_unit_names.py"
+    "tests/installer/test_unit_names.py",
+    "tests/installer/test_save_flow.py"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
@@ -9133,7 +9134,7 @@
    "status": "in_progress",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
-   "objective": "Publish current memory/save fix with built-in cheat resources and independently toggled virtual gamepad menu per user authorization.",
+   "objective": "Publish current fixes with built-in Chinese cheats, independent virtual-control menu, simplified cheat and file-backup/restore workflows with persistent truthful guidance.",
    "inputs": [
     "a280860/1.0.29 verified memory and save lifecycle",
     "User authorizes Git release and built-in cheat feature, menu must not expand virtual controls"
@@ -9145,7 +9146,8 @@
     "scripts/verify_host.py",
     ".local/releases/1.0.30/",
     "coordination/results/CODEX-PUBLISH-CHEAT30-20261115.md",
-    "tests/installer/test_unit_names.py"
+    "tests/installer/test_unit_names.py",
+    "tests/installer/test_save_flow.py"
    ],
    "dependencies": [],
    "pass_gates": [],
@@ -9156,10 +9158,11 @@
     "scripts/verify_host.py",
     ".local/releases/1.0.30/",
     "coordination/results/CODEX-PUBLISH-CHEAT30-20261115.md",
-    "tests/installer/test_unit_names.py"
+    "tests/installer/test_unit_names.py",
+    "tests/installer/test_save_flow.py"
    ],
    "acceptance": "Host actual menu visibility regression; signed APK contains cheat resources; save inspect and temporary-copy roundtrip; RG actual menu with hidden/shown controls and cheat dialog; install save bytes retained; public release downloaded and hash verified. Main/master read-only, five WIP excluded.",
-   "checkpoint": "ee9493b+root姓名中文修复，早退bug已通过生产方法JVM回归，覆盖null/缺失/空/非法表/有效覆盖/异常。build-final PTY43820进行中，56源码摘要。首候选已归档，尚未发布。RG首30 PID14893内置金手指确实显示8单位，菜单隐藏/显示两态已实测，待最终包覆盖并复核中文。"
+   "checkpoint": "build-flow PTY81421已退出0，108host+Android0，57输入一致，最终89cbb81c/3703949B。金手指常用前置/自定义折叠、持久读档提示、备份隐藏stage完成发布/逐文件原子替换及失败提示均通过生产方法测试。已提前告知用户本轮覆盖后root接管触控。当前设备仍姓名候选20726，待安装流程包。"
   }
  ],
  "blockers": [
