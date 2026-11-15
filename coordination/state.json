@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-15T21:08:48.983844+08:00",
+ "updated_at": "2026-11-15T21:09:48.679053+08:00",
  "phase": "继续定位战斗GPU主通道并审阅成熟开源跨设备兼容缺口",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3364,6 +3364,23 @@
    "checkpoint": "负收益，源撤回，实机关闭，继续深处纹理注册表查询热点。",
    "write_state": "COMPLETE_EXPERIMENT_REVERTED",
    "checkpoint_at": "2026-11-15T21:08:48.983844+08:00"
+  },
+  {
+   "task": "CODEX-HONOR-TEXTURE39-20261115",
+   "owner": "root",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "tests/device/test_render_policy.py",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    ".local/honor-stable30-20261115/build39/",
+    ".local/honor-stable30-20261115/texture39/",
+    "coordination/results/CODEX-HONOR-TEXTURE39-20261115.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T21:09:48.679053+08:00",
+   "checkpoint": "单写者root，本树当前源码干净。",
+   "write_state": "ACTIVE"
   }
  ],
  "tasks": [
@@ -9625,6 +9642,40 @@
    "pass_gates": [],
    "acceptance": "旧API无强符号、失败退避和线程/目标变化正确，宿主及Android通过，安装存档保全，同进程AB帧时间/长帧与声音显示核对；收益未经实测前不称优化成功。",
    "checkpoint": "b3ea111候选112host/Android0、78输入一致，38 d261cce3实装/9文件保全通过；用户要求移至水晶断桥，ABAB关闭17.13/19.19、开启14.90/17.91FPS。系统session确认，收益未取得，生产接线撤回，原38保留。深处6帧descriptor19.89ms/image_lookup6.06ms，coverageOK。"
+  },
+  {
+   "id": "CODEX-HONOR-TEXTURE39-20261115",
+   "owner": "root",
+   "role": "RENDER_DESCRIPTOR_CPU_OPTIMIZATION",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "按神殿内部同次6帧image_lookup6.06ms证据，缓存稳定纹理注册表节点查询，保留完整记录revision和Image identity校验，实机内部同进程AB。",
+   "inputs": [
+    "a93b211",
+    "38 PID24174深处帧7412..7417 CPU样本",
+    "34栈热点RegisteredTexture lower_bound"
+   ],
+   "outputs": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "tests/device/test_render_policy.py",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    ".local/honor-stable30-20261115/build39/",
+    ".local/honor-stable30-20261115/texture39/",
+    "coordination/results/CODEX-HONOR-TEXTURE39-20261115.md"
+   ],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "tests/device/test_render_policy.py",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    ".local/honor-stable30-20261115/build39/",
+    ".local/honor-stable30-20261115/texture39/",
+    "coordination/results/CODEX-HONOR-TEXTURE39-20261115.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "acceptance": "生产提取契约覆盖表/键切换、碰撞、更新、miss后注册、清空重建，宿主及Android通过，深处同机位AB和存档/画面核验。",
+   "checkpoint": "恢复点a93b211，ADPF已撤回，38实机关闭实验，继续纹理查找单变量。"
   }
  ],
  "blockers": [

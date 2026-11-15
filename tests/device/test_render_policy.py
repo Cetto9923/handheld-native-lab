@@ -8,6 +8,58 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class RenderPolicy(unittest.TestCase):
+    def test_texture_record_front_lifetime(self):
+        source = (ROOT / 'src/graphics/nvn_vulkan/engine/xbg_game.cpp').read_text()
+        start = source.index('struct TextureRecordFront {')
+        body = source[start:source.index('std::map<uint32_t,RegisteredTexture> null_textures;', start)]
+        fixture = r'''
+#include <cassert>
+#include <cstdint>
+#include <map>
+struct RegisteredTexture { int revision = 0; };
+''' + body + r'''
+int main() {
+    std::map<int,RegisteredTexture> first, second;
+    assert(find_texture_record(first,7) == nullptr);
+    first[7].revision = 1;
+    const RegisteredTexture *record = find_texture_record(first,7);
+    assert(record == &first.at(7));
+    uint64_t hits = texture_record_hits;
+    assert(find_texture_record(first,7) == record && texture_record_hits == hits + 1);
+    first[7] = {2};
+    assert(find_texture_record(first,7)->revision == 2);
+    second[7].revision = 3;
+    assert(find_texture_record(second,7) == &second.at(7));
+    assert(find_texture_record(first,7) == record);
+    // IDs separated by the bucket count collide, and must still use the map.
+    first[7+2048].revision = 4;
+    assert(find_texture_record(first,7+2048) == &first.at(7+2048));
+    assert(find_texture_record(first,7) == record);
+    texture_record_cache_enabled = false;
+    hits = texture_record_hits;
+    assert(find_texture_record(first,7) == record && texture_record_hits == hits);
+    first[7].revision = 5;
+    texture_record_cache_enabled = true;
+    assert(find_texture_record(first,7)->revision == 5);
+    first.clear();
+    clear_texture_record_cache();
+    assert(find_texture_record(first,7) == nullptr);
+    first[7].revision = 6;
+    assert(find_texture_record(first,7) == &first.at(7));
+    assert(find_texture_record(first,7)->revision == 6);
+}
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            (path / 'test.cpp').write_text(fixture)
+            subprocess.run(['clang++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                            '-fsanitize=address,undefined', str(path / 'test.cpp'),
+                            '-o', str(path / 'test')], check=True)
+            subprocess.run([str(path / 'test')], check=True)
+        self.assertIn('textures.clear();clear_texture_record_cache();', source)
+        self.assertIn('record=find_texture_record(*texture_pool_cache,id);if(!record)xbg_fatalf(', source)
+        self.assertIn('{"texrecord",&texture_record_cache_enabled}', source)
+
     def test_descriptor_image_front_lifetime(self):
         source = (ROOT / 'src/graphics/nvn_vulkan/engine/xbg_game.cpp').read_text()
         start = source.index('struct ImgFront{')
