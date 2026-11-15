@@ -1,3 +1,9 @@
+# 2026-11-16 46顶点索引复用候选
+
+45暖技能同PID5377实际CPU栈定位vertex/index memcpy。46增加缺真实dirty tracker时逐次全字节比较CPU镜像，保留不可变GPU副本、原快速变化回退/600槽冷却、既有预算和池删除。关机先队列空闲及退完槽，再释放vcache。默认仍关，通过现有vcache live开关做A/B。11项生产提取ASan/UBSan及既有组件通过，完整构建/实机收益待测。
+
+当前45/70db6d98/PID5377、私有副本461、战斗结果画面，输入UP，用户明确由root操作。正式存档、手动备份与所有APK保留。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md，真实稳定30、完整显示和A2DP仍未达标。
+
 # 2026-11-16T01:16:26.603495+08:00 44b已安装及关机清理修正
 
 44b dc032b3/684a9e77/113宿主Android0/79输入一致，安装9文件及APK回读通过，PID20331复用461、memobuffer旧路径启动并Continue。用户明确交还输入。43雷因在战斗未出现，仅拉斯韦尔，未获火焰基线，重新读档检查。源另补shutdown先清全部16槽memo再退texel/pool，6组件通过，拟44c构建。稳30/技能/内存收益待测。

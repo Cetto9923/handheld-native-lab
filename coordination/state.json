@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-16T01:16:26.603495+08:00",
+ "updated_at": "2026-11-16T03:44:08.440837+08:00",
  "phase": "荣耀神殿内部持续移动长帧优化，1080P输出及有界内部尺寸目标30继续推进",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3467,13 +3467,14 @@
     "src/android/app/gamewindow/AndroidManifest.xml",
     "tests/device/test_render_policy.py",
     "scripts/verify_host.py",
-    "tests/device/test_arena_memory_policy.py"
+    "tests/device/test_arena_memory_policy.py",
+    "tests/device/test_vertex_cache.py"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-16T00:37:43.134192+08:00",
-   "checkpoint": "45/70db6d98/PID5377。内部移动23.4315及29.1226FPS，未稳30。GPASS场景1384x780、UI1920x1080，诊断8帧。暖技能6秒trace95a09106匹配f16061d9，RHI运行5202.26ms/5.9301s，descriptor及vertex/index memcpy仍热点。45原CSV不足8秒已改3秒覆盖并保留旧JSON，5份普通8秒窗口覆盖复验通过。vcache缺dirty版本前提，后续研究有界全字节比较或精确fetch范围。当前施法后输入UP，先新鲜截图。",
-   "checkpoint_at": "2026-11-16T03:33:19.188128+08:00"
+   "checkpoint": "45暖技能CPU栈定位vertex/index memcpy。领取现有vcache无真实dirty tracker时的有界全字节比较回退及生命周期回归，默认仍关闭，先组件、构建再同机A/B。用户已松手由root操作。",
+   "checkpoint_at": "2026-11-16T03:40:50.800492+08:00"
   }
  ],
  "tasks": [
@@ -9933,7 +9934,8 @@
     "src/android/app/gamewindow/AndroidManifest.xml",
     "tests/device/test_render_policy.py",
     "scripts/verify_host.py",
-    "tests/device/test_arena_memory_policy.py"
+    "tests/device/test_arena_memory_policy.py",
+    "tests/device/test_vertex_cache.py"
    ],
    "write_scope": [
     ".local/honor-submit44-20261116/",
@@ -9942,13 +9944,14 @@
     "src/android/app/gamewindow/AndroidManifest.xml",
     "tests/device/test_render_policy.py",
     "scripts/verify_host.py",
-    "tests/device/test_arena_memory_policy.py"
+    "tests/device/test_arena_memory_policy.py",
+    "tests/device/test_vertex_cache.py"
    ],
    "dependencies": [],
    "pass_gates": [],
    "acceptance": "原始PID/帧/场景/符号核对，真实持续移动普通FPS与诊断分窗，CPU/GPU及数据生命周期事实支持归因，显示及原速/声音保持；验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。",
-   "checkpoint": "45/70db6d98/PID5377。内部移动23.4315及29.1226FPS，未稳30。GPASS场景1384x780、UI1920x1080，诊断8帧。暖技能6秒trace95a09106匹配f16061d9，RHI运行5202.26ms/5.9301s，descriptor及vertex/index memcpy仍热点。45原CSV不足8秒已改3秒覆盖并保留旧JSON，5份普通8秒窗口覆盖复验通过。vcache缺dirty版本前提，后续研究有界全字节比较或精确fetch范围。当前施法后输入UP，先新鲜截图。",
-   "updated_at": "2026-11-16T03:33:19.188128+08:00"
+   "checkpoint": "45暖技能CPU栈定位vertex/index memcpy。领取现有vcache无真实dirty tracker时的有界全字节比较回退及生命周期回归，默认仍关闭，先组件、构建再同机A/B。用户已松手由root操作。",
+   "updated_at": "2026-11-16T03:40:50.800492+08:00"
   }
  ],
  "blockers": [

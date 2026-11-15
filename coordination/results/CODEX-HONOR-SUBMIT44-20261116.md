@@ -68,3 +68,13 @@ Perfetto将MONOTONIC归一到BOOTTIME，clock_snapshot给出146158443482074-1458
 RHI inclusive采样约431条，422条含INVALID_ELF展开问题。已解析部分中descriptors_build153、descriptors123、memcpy62、texel_acquire34、snapshot33、stream_buffer29，inclusive存在重叠。匹配地址转为十六进制后addr2line定位memcpy主要来自draw5448顶点snapshot及5449索引snapshot。普通日志每帧vertex约15..16.4MiB、index约1.4MiB。host桥只有返回0的dirty_since stub，dirty_tracked/protect/now缺失，现有跨帧vcache所需的内容版本前提仍有缺口。后续研究有界完整内容比较的静态顶点/索引复用，或先证明精确fetch范围再缩小snapshot。继续保留CPU访问、GPU pending覆盖和不可变提交快照。
 
 LevelUp详情短按A多次未离开，最后1秒A正常回探索。一次在详情页发送的方向只作导航记录，该动作排除探索采样。profile-skill45脚本、trace、符号和CSV均已保全，设备上该45临时trace仍待主机验证后清理。当前战斗施法后，输入已UP。完整显示、A2DP、跨设备及稳定30目标继续开放。
+
+## 46顶点索引复用候选
+
+45暖技能Perfetto显示RHI运行5.20/5.93秒，vertex/index memcpy是热点之一。宿主缺dirty_tracked/protect/now，旧vcache默认关且无法复用。
+
+46保留现有vcache框架，缺真实tracker时每次全字节比较CPU镜像。镜像和GPU拷贝来自同一次捕获，变化后分配新GPU副本。快速变化仍回退每提交snapshot，600槽后重试。GPU有效数据和CPU镜像合计64MiB，arena对齐与未退役提交另计。真实tracker路径保留，池删除释放镜像，关机队列空闲且退完槽后释放vcache。
+
+默认继续关闭，使用既有live vcache开关对照。生产提取ASan/UBSan覆盖首尾变化、虚假dirty_since、真实tracker、冷却、池删除/地址复用、预算flush、旧GPU副本保留、1000次释放及关机顺序，与已有组件共11项通过。Android构建及实际收益待测。
+
+验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md，A2DP、显示、稳定30仍开放。

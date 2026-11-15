@@ -373,6 +373,8 @@ def main():
                                      'tests.installer.test_diagnostic_report'])
     run('arena-memory-policy-contract', [sys.executable, '-m', 'unittest',
                                         'tests.device.test_arena_memory_policy'])
+    run('vertex-cache-contract', [sys.executable, '-m', 'unittest',
+                                 'tests.device.test_vertex_cache'])
     run('render-policy-contract', [sys.executable, '-m', 'unittest',
                                   'tests.device.test_render_policy'])
     run('probe-marker-poll-contract', [sys.executable, '-m', 'unittest',
