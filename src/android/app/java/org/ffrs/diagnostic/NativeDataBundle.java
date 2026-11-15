@@ -206,7 +206,7 @@ public final class NativeDataBundle {
         } finally { Files.deleteIfExists(temp.toPath()); }
     }
 
-    private static String fileSha(File file, Cancel cancel) throws IOException {
+    static String fileSha(File file, Cancel cancel) throws IOException {
         return fileSha(file, cancel, null, 0, 0, null, -1);
     }
 

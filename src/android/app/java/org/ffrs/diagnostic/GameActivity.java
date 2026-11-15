@@ -90,6 +90,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     private int guestTerminalState;
     private final Handler guestWatchHandler = new Handler(Looper.getMainLooper());
     private final Runnable guestWatch = new GuestWatch(this);
+    private final TouchPadShortcut padShortcut = new TouchPadShortcut();
+    private final Runnable padShortcutDispatch = new PadShortcutDispatch(this);
     private static final GuestStartState GUEST_START = new GuestStartState();
     private static WeakReference<GameActivity> currentActivity = new WeakReference<GameActivity>(null);
     private static WeakReference<GameActivity> surfaceOwner = new WeakReference<GameActivity>(null);
@@ -103,7 +105,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
     private void publishPad() {
         boolean touchOn = touchPad != null && touchPad.shown;
-        GameWindowNative.setPadState(padConnected || touchOn, padButtons | axisButtons | touchButtons,
+        GameWindowNative.setPadState(padConnected || touchOn, padButtons | axisButtons | touchButtons | padShortcut.buttons,
                 touchLx != 0 ? touchLx : padLx, touchLy != 0 ? touchLy : padLy,
                 touchRx != 0 ? touchRx : padRx, touchRy != 0 ? touchRy : padRy);
     }
@@ -118,6 +120,10 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 Log.i(TAG, "game_input device=" + device.getName() + " id=" + id);
                 break;
             }
+        }
+        if (!padConnected) {
+            padShortcut.reset();
+            guestWatchHandler.removeCallbacks(padShortcutDispatch);
         }
         updateTouchPadVisibility();
         publishPad();
@@ -174,6 +180,69 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         @Override public void onInputDeviceChanged(int id) { owner.discoverPad(); }
     }
 
+    /** Reserve a short window for the physical +/- chord before forwarding a single key. */
+    private static final class TouchPadShortcut {
+        static final long PLUS = 1L << 10, MINUS = 1L << 11, BOTH = PLUS | MINUS;
+        static final long CHORD_MS = 160, TAP_MS = 160;
+        long held, buttons, pending, deadline = Long.MAX_VALUE;
+        boolean consumed;
+
+        boolean key(int bit, boolean down, long now) {
+            flush(now);
+            long button = 1L << bit;
+            if (down) {
+                if ((held & button) != 0) return false;
+                held |= button;
+                if (consumed) return false;
+                if (held == BOTH && buttons == 0 && pending != 0) {
+                    consumed = true;
+                    pending = 0;
+                    deadline = Long.MAX_VALUE;
+                    return true;
+                }
+                if (buttons != 0) buttons |= button;
+                else {
+                    pending |= button;
+                    deadline = now + CHORD_MS;
+                }
+            } else {
+                if ((held & button) == 0) return false;
+                held &= ~button;
+                if (consumed) {
+                    if (held == 0) consumed = false;
+                    return false;
+                }
+                // Keep a released single key observable while the game has a long frame.
+                pending &= ~button;
+                buttons |= button;
+                deadline = now + TAP_MS;
+            }
+            return false;
+        }
+
+        void flush(long now) {
+            if (now < deadline) return;
+            buttons = held;
+            pending = 0;
+            deadline = Long.MAX_VALUE;
+        }
+
+        void reset() {
+            held = buttons = pending = 0;
+            deadline = Long.MAX_VALUE;
+            consumed = false;
+        }
+    }
+
+    private static final class PadShortcutDispatch implements Runnable {
+        private final GameActivity owner;
+        PadShortcutDispatch(GameActivity owner) { this.owner = owner; }
+        @Override public void run() {
+            owner.padShortcut.flush(android.os.SystemClock.uptimeMillis());
+            owner.publishPad();
+        }
+    }
+
     /** Map RG477M gamepad events to game button bits, matching physical face-button labels. */
     private static int buttonBit(int key) {
         switch (key) {
@@ -201,6 +270,22 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         if (!guestStarted && dataInstaller != null && dataInstaller.managed) return super.dispatchKeyEvent(event);
         int bit = buttonBit(event.getKeyCode());
         if (bit < 0) return super.dispatchKeyEvent(event);
+        if (bit == 10 || bit == 11) {
+            if (event.getAction() != KeyEvent.ACTION_DOWN && event.getAction() != KeyEvent.ACTION_UP)
+                return super.dispatchKeyEvent(event);
+            long now = android.os.SystemClock.uptimeMillis();
+            boolean toggle = padShortcut.key(bit, event.getAction() == KeyEvent.ACTION_DOWN, now);
+            guestWatchHandler.removeCallbacks(padShortcutDispatch);
+            if (padShortcut.deadline != Long.MAX_VALUE)
+                guestWatchHandler.postDelayed(padShortcutDispatch, Math.max(0, padShortcut.deadline - now));
+            publishPad();
+            if (toggle) {
+                userToggleTouchPad();
+                toast(touchPad != null && touchPad.shown ? "虚拟按键已显示（+ 和 − 可切换）" : "虚拟按键已隐藏（+ 和 − 可切换）");
+                Log.i(TAG, "game_input pad_shortcut toggled buttons=" + padShortcut.buttons);
+            }
+            return true;
+        }
         if (event.getAction() == KeyEvent.ACTION_DOWN) padButtons |= 1L << bit;
         else if (event.getAction() == KeyEvent.ACTION_UP) padButtons &= ~(1L << bit);
         else return super.dispatchKeyEvent(event);
@@ -754,6 +839,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     @Override protected void onPause() {
         Log.i(TAG, "lifecycle onPause");
         resumed = false;
+        guestWatchHandler.removeCallbacks(padShortcutDispatch);
+        padShortcut.reset();
         padButtons = axisButtons = 0;
         padLx = padLy = padRx = padRy = 0;
         if (currentActivity.get() == this) {
@@ -1547,6 +1634,28 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         if (!info.ok || info.units.isEmpty()) { toast("存档里没有单位数据"); return; }
         new Thread(new ScanTask(this, slot, info.units), "ffrs-cheat-scan").start();
         toast("正在扫描 guest 内存，稍候…");
+    }
+
+    /** Copy a debug run's starting progress through the app's own storage access. */
+    private static void seedRegressionSave(File original, File destination) throws java.io.IOException {
+        if (original == null || original.getCanonicalFile().equals(destination.getCanonicalFile()))
+            throw new java.io.IOException("regression save source unavailable");
+        File[] sourceFiles = original.listFiles(), existing = destination.listFiles();
+        if (sourceFiles == null || existing == null || existing.length != 0)
+            throw new java.io.IOException("regression seed requires an empty destination");
+        int count = 0;
+        for (File file : sourceFiles) {
+            if (!file.isFile()) continue;
+            String checksum = NativeDataBundle.fileSha(file, null);
+            File copied = new File(destination, file.getName());
+            copyFile(file, copied);
+            if (!checksum.equals(NativeDataBundle.fileSha(copied, null)))
+                throw new java.io.IOException("regression save checksum mismatch");
+            Log.i(TAG, "isolated save seed file=" + file.getName()
+                    + " bytes=" + copied.length() + " sha256=" + checksum);
+            count++;
+        }
+        if (count == 0) throw new java.io.IOException("no regression save files found");
     }
 
     /** The save slot the game is currently using. */
@@ -2864,6 +2973,12 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                     (getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0,
                     getFilesDir(), getIntent() == null ? null
                             : getIntent().getStringExtra("isolated_regression_resume"));
+            if (isolatedSave && getIntent().getBooleanExtra("isolated_regression_seed", false)) {
+                File original = resolveLiveSaveRoot(managed
+                        ? new File(getFilesDir(), "saves").getAbsolutePath() : null, files);
+                seedRegressionSave(original, new File(saveRoot));
+                Log.i(TAG, "isolated regression save seeded root=" + saveRoot);
+            }
         } catch (java.io.IOException | SecurityException e) {
             Log.e(TAG, "isolated regression save unavailable; guest start aborted", e);
             return;

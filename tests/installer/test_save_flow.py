@@ -9,6 +9,53 @@ SOURCE = ROOT / 'src/android/app/java/org/ffrs/diagnostic/GameActivity.java'
 
 
 class SaveFlowContract(unittest.TestCase):
+    def test_isolated_seed_copies_all_files_and_protects_existing_progress(self):
+        source = SOURCE.read_text()
+        start = source.index('    private static void seedRegressionSave(')
+        seed = source[start:source.index('    /** The save slot', start)]
+        start = source.index('    private static void copyFile(')
+        copy = source[start:source.index('    /** Removes a folder', start)]
+        fixture = 'package org.ffrs.diagnostic;\nimport java.io.*;\nimport java.nio.file.*;\nimport java.util.*;\n' + \
+            'public class RegressionSeedContract {\nstatic final String TAG="test";\n' + \
+            'static class Log { static void i(String tag,String message) {} }\n' + seed + copy + r'''
+    static void check(boolean value) { if (!value) throw new AssertionError(); }
+    public static void main(String[] args) throws Exception {
+        File base = new File(args[0]), original = new File(base, "original"),
+             destination = new File(base, "copy"), empty = new File(base, "empty"),
+             other = new File(base, "other");
+        check(original.mkdir() && destination.mkdir() && empty.mkdir() && other.mkdir());
+        String[] names = {"GameSaveData0", "GameSaveData1", "GameSaveData2", "GameSaveData3",
+                          "GameSaveData4", "GameSaveData5", "OptionSaveData",
+                          "EnhancedInputUserSettings", "GameSaveData0.orig"};
+        for (String name : names) Files.write(new File(original, name).toPath(), name.getBytes("UTF-8"));
+        seedRegressionSave(original, destination);
+        check(destination.listFiles().length == names.length);
+        for (String name : names) {
+            byte[] expected = name.getBytes("UTF-8");
+            check(Arrays.equals(expected, Files.readAllBytes(new File(original, name).toPath())));
+            check(Arrays.equals(expected, Files.readAllBytes(new File(destination, name).toPath())));
+        }
+        try { seedRegressionSave(original, destination); throw new AssertionError(); }
+        catch (IOException expected) {}
+        try { seedRegressionSave(original, original); throw new AssertionError(); }
+        catch (IOException expected) {}
+        try { seedRegressionSave(empty, other); throw new AssertionError(); }
+        catch (IOException expected) {}
+        check(other.listFiles().length == 0);
+    }
+}
+'''
+        self.assertIn('if (isolatedSave && getIntent().getBooleanExtra("isolated_regression_seed", false))', source)
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'RegressionSeedContract.java'
+            path.write_text(fixture)
+            subprocess.run(['javac', '-d', temporary, str(path),
+                            str(SOURCE.parent / 'NativeDataBundle.java')],
+                           check=True, capture_output=True, text=True)
+            result = subprocess.run(['java', '-cp', temporary, 'org.ffrs.diagnostic.RegressionSeedContract', temporary],
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_custom_values_expand_only_on_explicit_action(self):
         source = SOURCE.read_text()
         start = source.index('    private static final class CheatDetails ')

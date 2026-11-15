@@ -363,6 +363,8 @@ def main():
                                          'tests.installer.test_save_export_lifecycle'])
     run('touch-pad-menu-contract', [sys.executable, '-m', 'unittest',
                                    'tests.installer.test_touch_pad_menu'])
+    run('pad-shortcut-contract', [sys.executable, '-m', 'unittest',
+                                 'tests.installer.test_pad_shortcut'])
     run('unit-names-contract', [sys.executable, '-m', 'unittest',
                               'tests.installer.test_unit_names'])
     run('save-flow-contract', [sys.executable, '-m', 'unittest',
