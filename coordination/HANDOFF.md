@@ -4663,3 +4663,5 @@ Honor24 regression task opened, root sole device writer. Honor9 had noPID, oldAP
 RG比例对照收口为无观测效果。默认3205、60的14159、加引号40的17163均主通道768×436/输出1280×720，普通world02为30FPS限帧、GPU24.96/25.455/25.59ms。实验源码和包保全render-percent，Java和seed测试恢复4de88c8原路径。当前构建build-final24，PTY38290，保留sampler/draw修正，并在现成pass-live追加最多64行的纹理格式/用途/分配量汇总，用于评估BOTW的BC1转ASTC思路。尚未改变纹理编码或默认画质。
 
 最终24兼容诊断包f7a2c5a2/3683399B已构建101host及Android0、41输入不变，安装RG并回读摘要匹配、存档tar前后字节相同。PID23308默认guest_argc0，读取02世界地图成功。present3630汇总2581实时图像/30组/dropped0，其中存活解压BC968，旧1134为累计创建。BC5_UNORM为201张/137.658MiB，BC1两类合计324张/61.928MiB，BC3为105.504MiB，BC7为75.584MiB。不能直接套用BOTW以BC1为主的收益，也未改变纹理表示。D-final-default正做普通30秒回归，PTY75180。之后交回用户战斗测试输入权，继续按同PID保全技能日志。
+
+D-final-default已完成，frame5794至6697的903间隔为29.9999FPS，P95/P99为34.921/44.146ms，超50ms共3帧，GPU中位25.26ms。源码检查点cca4b58，构建41份输入仍逐字一致。已通知用户可直接进战斗，用户掌握输入，root随后只采集同PID23308的guest_boot.log和codex-frame-23308.csv。没有新帧率收益结论，荣耀本轮按用户要求停止测试；当前开发分支未推送，历史APK均保留。
