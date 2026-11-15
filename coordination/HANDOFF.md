@@ -1,3 +1,7 @@
+# 2026-11-15 神殿持续移动新一轮CPU取证
+
+已接续40版源码8cf2764/记录HEAD86afad5，荣耀PID6355。新鲜截图确认神殿内部断桥。用户要求移动采样，当前先采独立Perfetto CPU诊断，普通帧率另取无截图窗口。任务CODEX-HONOR-MOVING41-20261115，证据.local/honor-moving41-20261115/。所有运动输入finally释放，保留原存档与40历史APK。
+
 # 2026-11-15 40已在内部持续移动复测，目标继续active
 
 当前源8cf2764、40 APK2f7d04d7/3720407B，112host/Android0、77输入一致，native ac3f3266，安装9文件及APK回读核验。39缓存两对方向混合，性能未确认。38 ADPF负收益已在a93b211撤回。40修复probe.waiting=1且marker0时逐屏障fopen，PID1628同机位旧18.81/18.36FPS，新21.38/18.83FPS，正向但仍有长帧。

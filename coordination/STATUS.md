@@ -1,6 +1,6 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-15T22:00:28.314643+08:00
+状态事件时间：2026-11-15T22:11:45.177907+08:00
 阶段：荣耀神殿内部持续移动长帧优化，1080P输出及有界内部尺寸目标30继续推进
 总控：Codex /root 本轮接管
 更新方式：按事件更新，没有后台自动刷新。
@@ -244,6 +244,7 @@
 | CODEX-HONOR-HINT38-20261115 | ANDROID_FRAME_PACING_PERFORMANCE | completed_no_performance_gain | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-HONOR-TEXTURE39-20261115 | RENDER_DESCRIPTOR_CPU_OPTIMIZATION | completed_performance_inconclusive | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-HONOR-PROBE40-20261115 | DIAGNOSTIC_OVERHEAD_REDUCTION | passed | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-HONOR-MOVING41-20261115 | MOVING_RENDER_CPU_INVESTIGATION | in_progress | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 
 ## 独占写入
 
@@ -450,6 +451,7 @@
 - {"task": "CODEX-HONOR-HINT38-20261115", "owner": "root", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", "src/graphics/nvn_vulkan/engine/xbg_android_frame_hint.h", "src/android/app/gamewindow/AndroidManifest.xml", "tests/device/test_android_frame_hint.py", "tests/device/android_frame_hint_contract.cpp", "scripts/verify_host.py", "coordination/results/CODEX-HONOR-HINT38-20261115.md", ".local/honor-stable30-20261115/build38/", ".local/honor-stable30-20261115/hint38/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T20:51:37.323537+08:00", "checkpoint": "负收益，源撤回，实机关闭，继续深处纹理注册表查询热点。", "write_state": "COMPLETE_EXPERIMENT_REVERTED", "checkpoint_at": "2026-11-15T21:08:48.983844+08:00"}
 - {"task": "CODEX-HONOR-TEXTURE39-20261115", "owner": "root", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", "tests/device/test_render_policy.py", "src/android/app/gamewindow/AndroidManifest.xml", ".local/honor-stable30-20261115/build39/", ".local/honor-stable30-20261115/texture39/", "coordination/results/CODEX-HONOR-TEXTURE39-20261115.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T21:09:48.679053+08:00", "checkpoint": "组件与安装保全通过，FPS单项方向混合。", "write_state": "COMPLETE_SCOPED_PERF_INCONCLUSIVE", "checkpoint_at": "2026-11-15T22:00:28.314643+08:00"}
 - {"task": "CODEX-HONOR-PROBE40-20261115", "owner": "root", "paths": ["src/graphics/nvn_vulkan/engine/xbg_probe.inc", "src/android/app/gamewindow/AndroidManifest.xml", "tests/device/test_probe_marker_poll.py", "scripts/verify_host.py", ".local/honor-stable30-20261115/build40/", ".local/honor-stable30-20261115/probe40/", "coordination/results/CODEX-HONOR-PROBE40-20261115.md", "coordination/EXPERIENCE.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T21:24:31.309137+08:00", "checkpoint": "40组件及同进程控制通过，移动28.81仍有长帧，后续归稳定30主任务。", "write_state": "COMPLETE_SCOPED", "checkpoint_at": "2026-11-15T22:00:28.314643+08:00"}
+- {"task": "CODEX-HONOR-MOVING41-20261115", "owner": "root", "paths": [".local/honor-moving41-20261115/", "coordination/results/CODEX-HONOR-MOVING41-20261115.md", "src/graphics/nvn_device/nvn_bridge.c", "tests/device/test_bridge_lookup.py", "scripts/verify_host.py", "src/android/app/gamewindow/AndroidManifest.xml"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-15T22:08:06.022043+08:00", "checkpoint": "已完成移动Perfetto，6355/6560，trace ea02ad17，BuildID f6a6d6b5匹配40符号；texture_get叶12样本及按表地址线性循环已核实。", "write_state": "ACTIVE"}
 
 ## 阻塞
 

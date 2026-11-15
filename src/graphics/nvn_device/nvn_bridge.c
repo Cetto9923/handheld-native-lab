@@ -42,6 +42,9 @@ typedef struct bridge_table {
     bridge_entry *entries;
     size_t count;
     size_t capacity;
+    /* Indices survive entries reallocations. Zero denotes an empty cache slot.
+     * The table lock protects both metadata and this lookup cache. */
+    size_t lookup[1024];
 } bridge_table;
 
 static pthread_mutex_t s_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -59,8 +62,16 @@ static uint64_t s_regenerated;
 static bridge_entry *entry_find(bridge_table *table, const void *guest, int create) {
     size_t i;
     bridge_entry *entry = NULL;
+    const size_t cache_slot = (size_t)((((uint64_t)(uintptr_t)guest >> 4) *
+                                      UINT64_C(11400714819323198485)) >> 54);
+    const size_t cached = table->lookup[cache_slot];
+    if (cached && cached <= table->count && table->entries[cached - 1].guest == guest)
+        return &table->entries[cached - 1];
     for (i = 0; i < table->count; i++) {
-        if (table->entries[i].guest == guest) return &table->entries[i];
+        if (table->entries[i].guest == guest) {
+            table->lookup[cache_slot] = i + 1;
+            return &table->entries[i];
+        }
     }
     if (!create) return NULL;
     if (table->count == table->capacity) {
@@ -74,6 +85,7 @@ static bridge_entry *entry_find(bridge_table *table, const void *guest, int crea
     entry = &table->entries[table->count++];
     memset(entry, 0, sizeof(*entry));
     entry->guest = guest;
+    table->lookup[cache_slot] = table->count;
     return entry;
 }
 

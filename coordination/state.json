@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-15T22:00:28.314643+08:00",
+ "updated_at": "2026-11-15T22:11:45.177907+08:00",
  "phase": "荣耀神殿内部持续移动长帧优化，1080P输出及有界内部尺寸目标30继续推进",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3402,6 +3402,23 @@
    "checkpoint": "40组件及同进程控制通过，移动28.81仍有长帧，后续归稳定30主任务。",
    "write_state": "COMPLETE_SCOPED",
    "checkpoint_at": "2026-11-15T22:00:28.314643+08:00"
+  },
+  {
+   "task": "CODEX-HONOR-MOVING41-20261115",
+   "owner": "root",
+   "paths": [
+    ".local/honor-moving41-20261115/",
+    "coordination/results/CODEX-HONOR-MOVING41-20261115.md",
+    "src/graphics/nvn_device/nvn_bridge.c",
+    "tests/device/test_bridge_lookup.py",
+    "scripts/verify_host.py",
+    "src/android/app/gamewindow/AndroidManifest.xml"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T22:08:06.022043+08:00",
+   "checkpoint": "已完成移动Perfetto，6355/6560，trace ea02ad17，BuildID f6a6d6b5匹配40符号；texture_get叶12样本及按表地址线性循环已核实。",
+   "write_state": "ACTIVE"
   }
  ],
  "tasks": [
@@ -9734,6 +9751,40 @@
    "pass_gates": [],
    "acceptance": "每帧读一次且下帧可观察新标记，既有捕获重试/初始化功能保留，宿主Android通过，同进程控制probepoll及清理后真实场景验收。",
    "checkpoint": "8cf2764/40 2f7d04d7；112host/Android0、77输入一致。静止同进程两对旧18.81/18.36、新21.38/18.83。清理待命重启6355，内部连续moving3严格持杆边界28.8114FPS/P9972.49/16帧超50，仍未稳30。移动CPU6帧descriptor13.17ms/image_lookup4.31ms，独立QA NOT_RUN。"
+  },
+  {
+   "id": "CODEX-HONOR-MOVING41-20261115",
+   "owner": "root",
+   "role": "MOVING_RENDER_CPU_INVESTIGATION",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "神殿内部持续移动取证，优化已实测的bridge对象表线性查询，保留锁、完整地址匹配、代际与不可变副本生命周期，40/41同路线复测。",
+   "inputs": [
+    "86afad5，40 APK 2f7d04d7",
+    "PID6355，神殿内部断桥",
+    "用户要求持续移动，采样期间不抓截图"
+   ],
+   "outputs": [
+    ".local/honor-moving41-20261115/",
+    "coordination/results/CODEX-HONOR-MOVING41-20261115.md",
+    "src/graphics/nvn_device/nvn_bridge.c",
+    "tests/device/test_bridge_lookup.py",
+    "scripts/verify_host.py",
+    "src/android/app/gamewindow/AndroidManifest.xml"
+   ],
+   "write_scope": [
+    ".local/honor-moving41-20261115/",
+    "coordination/results/CODEX-HONOR-MOVING41-20261115.md",
+    "src/graphics/nvn_device/nvn_bridge.c",
+    "tests/device/test_bridge_lookup.py",
+    "scripts/verify_host.py",
+    "src/android/app/gamewindow/AndroidManifest.xml"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "acceptance": "持续移动且输入最终释放，CPU诊断窗口与普通帧率窗口分别记录，同PID及源码产物符号匹配，定位结论有原始证据。",
+   "checkpoint": "已完成移动Perfetto，6355/6560，trace ea02ad17，BuildID f6a6d6b5匹配40符号；texture_get叶12样本及按表地址线性循环已核实。"
   }
  ],
  "blockers": [
