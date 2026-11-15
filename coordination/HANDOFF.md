@@ -1,3 +1,9 @@
+# 2026-11-15 38帧预算提示候选构建中
+
+源b3ea111，新增XbgFrameHint及API33动态符号装载，目标模式1/焦点1才启用，真实呈现线程，实际周期扣自身pacer等待，首帧及恢复重新取基线，失败停止重试。旧API28仍可加载同库，独立5个组件检查通过。复用gfx-live-set androidhint作同进程AB。GPU转发仍需跨槽源Arena退休及descriptor准备过程验证，本轮其语义沿37。
+
+全量host/Android顺序构建已启动，本地build38/plan.json含命令/cwd/输入SHA，run.log及host.log留普通日志，工具session97639，启动host PID97922，后续current.pid由脚本更新。源码构建期冻结，恢复点4f16fa7及37 APK5966ae67。当前设备仍37 PID21784，入口37普通25秒660帧25.6301FPS/P9995.02ms/41帧超50ms，原始证据E-cleaned37-reused-save/，与36跨进程差异未隔离。候选收益、安装及同进程AB待验证。
+
 # 2026-11-15 平板测试数据清理完成，持续稳30目标已登记
 
 37 PID21784复用files/shield-regression-202611153461，真实Continue回到土之神殿入口。电脑已归档3组8165文件，压缩1.25GiB，逐成员大小/哈希及稳定源metadata核验，清理释放3.39GiB。47个Download旧自动导出目录和8个私有旧回归副本已移除，保留1个完整9文件测试目录，Home恢复后0/1目录数未增长。正式存档/手动备份/有效shader目录metadata及57MB pipeline cache SHA相同。备份.local/honor-stable30-20261115/cleanup/，报告CODEX-HONOR-CLEANUP-20261115.md。APK历史保留。
