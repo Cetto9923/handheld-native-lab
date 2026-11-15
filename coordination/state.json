@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-16T04:49:09.177356+08:00",
+ "updated_at": "2026-11-16T04:53:33.104713+08:00",
  "phase": "荣耀神殿内部持续移动长帧优化，1080P输出及有界内部尺寸目标30继续推进",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3474,8 +3474,8 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-16T00:37:43.134192+08:00",
-   "checkpoint": "OP_BIND_UBO/SSBO继续原样写入每个真实绑定。仅当driver c0实际使用的表范围变化时递增buf_gen，即SSBO范围变化或compute UBO范围变化。graphics UBO变化及完全相同地址/长度重绑可沿用相同driver块。原slot_serial及base_instance缓存键保留。通过既有live-ab drivergen可恢复原每绑定递增，none使用候选，增加PERF driver_gen skipped计数。没有改变uniform复制长度、snapshot版本、shader或图像元数据。\n\n生产提取整个绑定case、完整fill_driver及真实base_instance/cache helper，ASan/UBSan验证4096字节驱动块在graphics UBO变化时全等、compute UBO及SSBO变化时更新、64位地址、大小变化、16槽全部graphics UBO、完全相同重绑、slot/base_instance变化和原路控制。连同系统提示及既有组件10项通过。FPS/显示/音频收益待实机。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。",
-   "checkpoint_at": "2026-11-16T04:49:09.177356+08:00"
+   "checkpoint": "49源4b0fa32 clean，114宿主及Android0，80项输入SHA一致。APK6c8a4b7ec367d7c9b360001f1a12e33e3f8c75dbb7fac5bb2019e4b0d2107b7b，3720407B，install49回读APK及私有461九文件SHA、正式源metadata通过。launch49以drivergen原路、adpf0/vcache0/texrecord1启动，复用461，准备神殿内部真实移动对照。48再次开启ADPF后RHI亲和性仍0-6，状态快照B48-hinton2保留，未将其表述为已启用prime核。48后续0.8秒前进仍探索，尚未测其首次技能。\nPID=27718",
+   "checkpoint_at": "2026-11-16T04:53:33.104713+08:00"
   }
  ],
  "tasks": [
@@ -9953,8 +9953,8 @@
    "dependencies": [],
    "pass_gates": [],
    "acceptance": "原始PID/帧/场景/符号核对，真实持续移动普通FPS与诊断分窗，CPU/GPU及数据生命周期事实支持归因，显示及原速/声音保持；验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。",
-   "checkpoint": "OP_BIND_UBO/SSBO继续原样写入每个真实绑定。仅当driver c0实际使用的表范围变化时递增buf_gen，即SSBO范围变化或compute UBO范围变化。graphics UBO变化及完全相同地址/长度重绑可沿用相同driver块。原slot_serial及base_instance缓存键保留。通过既有live-ab drivergen可恢复原每绑定递增，none使用候选，增加PERF driver_gen skipped计数。没有改变uniform复制长度、snapshot版本、shader或图像元数据。\n\n生产提取整个绑定case、完整fill_driver及真实base_instance/cache helper，ASan/UBSan验证4096字节驱动块在graphics UBO变化时全等、compute UBO及SSBO变化时更新、64位地址、大小变化、16槽全部graphics UBO、完全相同重绑、slot/base_instance变化和原路控制。连同系统提示及既有组件10项通过。FPS/显示/音频收益待实机。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。",
-   "updated_at": "2026-11-16T04:49:09.177356+08:00"
+   "checkpoint": "49源4b0fa32 clean，114宿主及Android0，80项输入SHA一致。APK6c8a4b7ec367d7c9b360001f1a12e33e3f8c75dbb7fac5bb2019e4b0d2107b7b，3720407B，install49回读APK及私有461九文件SHA、正式源metadata通过。launch49以drivergen原路、adpf0/vcache0/texrecord1启动，复用461，准备神殿内部真实移动对照。48再次开启ADPF后RHI亲和性仍0-6，状态快照B48-hinton2保留，未将其表述为已启用prime核。48后续0.8秒前进仍探索，尚未测其首次技能。\nPID=27718",
+   "updated_at": "2026-11-16T04:53:33.104713+08:00"
   }
  ],
  "blockers": [

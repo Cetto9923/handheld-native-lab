@@ -1,3 +1,8 @@
+# 2026-11-16T04:53:33.104713+08:00 49
+
+49源4b0fa32 clean，114宿主及Android0，80项输入SHA一致。APK6c8a4b7ec367d7c9b360001f1a12e33e3f8c75dbb7fac5bb2019e4b0d2107b7b，3720407B，install49回读APK及私有461九文件SHA、正式源metadata通过。launch49以drivergen原路、adpf0/vcache0/texrecord1启动，复用461，准备神殿内部真实移动对照。48再次开启ADPF后RHI亲和性仍0-6，状态快照B48-hinton2保留，未将其表述为已启用prime核。48后续0.8秒前进仍探索，尚未测其首次技能。
+PID=27718
+
 # 2026-11-16T04:49:09.177356+08:00 49
 
 OP_BIND_UBO/SSBO继续原样写入每个真实绑定。仅当driver c0实际使用的表范围变化时递增buf_gen，即SSBO范围变化或compute UBO范围变化。graphics UBO变化及完全相同地址/长度重绑可沿用相同driver块。原slot_serial及base_instance缓存键保留。通过既有live-ab drivergen可恢复原每绑定递增，none使用候选，增加PERF driver_gen skipped计数。没有改变uniform复制长度、snapshot版本、shader或图像元数据。
