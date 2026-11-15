@@ -1,3 +1,13 @@
+# 2026-11-16T05:24:18.997866+08:00 49
+
+PID27718同一内部桥面，全部moving-clock真实非零轴、前后探索。原A1为11437..11487/50间隔19.6768FPS/max89.22ms/19超50。新B1为13319..13383/64间隔25.5260FPS/max65.46/2超50。回原A2为16006..16068/62间隔24.4505FPS/max70.29/8超50。新B2为19830..19895/65间隔25.3060FPS/max68.95/5超50。每段轴2.55..2.63秒，源4b0fa32，adpf0。较近的A2/B1/B2差距有限，不能把初始19.7到25.5全归新逻辑。PERF确认每帧约4134..4383次driver_gen更新被跳过。真实稳30仍开放。
+
+继续前进2.5秒正常遇敌，雷因消失突袭，2个Lv1钢蝠，输入前MP421。普通14秒采集覆盖完整8秒动作窗口，34459..34618/160帧7.9652秒，19.9618FPS/P99149.63/max215.03，46超50、12超100，无present错误。动作包含施法及可能胜利转场。frame34477 shader131.9ms、submitCPU206.11/GPU18.08；frame34483 shader0、submitCPU102.37/GPU67.00、sync_wb10。既有显示完整验收及A2DP仍未执行，结算截图角色可见，仅作局部观察。
+
+49初始化日志已核对legacy_waitall0、completion_wait1，快速等待路径已生效，不能重复按旧默认推断锁等待。源中已有partial_overlay_check及模式5双输入GPU对CPU字节比较，历史2026-11-05的目标shader3b6302a58b86a34a binding47与可写SSBO17双输入游戏比较仍NOT_RUN，先续证据。当前helper仅启动时读标记且每输入最多8次，拟复用同一标记增加运行时启停，防止名额被标题或别的场景消耗。该阶段继续执行原同步，性能采样单列诊断。
+
+只读检索Mesa Android构建文档和bylaws/libadrenotools原仓库，后者BSD-2-Clause、Android9+Arm64，提供应用内自定义驱动加载。此方向仍是研究，尚无本游戏及Adreno735实测，GitLab设备源码页面本次访问失败；没有取得固定revision或集成代码。资料为https://docs.mesa3d.org/android.html及https://github.com/bylaws/libadrenotools，不采用其它游戏或容器演示的FPS作为本游戏证据。
+
 # 2026-11-16T04:53:33.104713+08:00 49
 
 49源4b0fa32 clean，114宿主及Android0，80项输入SHA一致。APK6c8a4b7ec367d7c9b360001f1a12e33e3f8c75dbb7fac5bb2019e4b0d2107b7b，3720407B，install49回读APK及私有461九文件SHA、正式源metadata通过。launch49以drivergen原路、adpf0/vcache0/texrecord1启动，复用461，准备神殿内部真实移动对照。48再次开启ADPF后RHI亲和性仍0-6，状态快照B48-hinton2保留，未将其表述为已启用prime核。48后续0.8秒前进仍探索，尚未测其首次技能。
