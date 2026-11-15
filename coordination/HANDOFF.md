@@ -1,3 +1,21 @@
+# 2026-11-15 40已在内部持续移动复测，目标继续active
+
+当前源8cf2764、40 APK2f7d04d7/3720407B，112host/Android0、77输入一致，native ac3f3266，安装9文件及APK回读核验。39缓存两对方向混合，性能未确认。38 ADPF负收益已在a93b211撤回。40修复probe.waiting=1且marker0时逐屏障fopen，PID1628同机位旧18.81/18.36FPS，新21.38/18.83FPS，正向但仍有长帧。
+
+0待命文件已归档主机后清除，重启6355日志确认CODEX_PROBE enabled=0且CSV属于6355。已重新导航至神殿内部水晶断桥。用户进一步要求“要动起来，不要原地静止”，之后主验收改为连续移动。moving初次包含中途PNG及729ms长帧，全部保留。moving2严格CSV边界但仍有中途PNG约20.98FPS。moving3只有前后截图，持续触点6次南北往返21.985秒，量化18420..18960/540间隔都在手指按住后首个新flush与松开前最后flush之间，28.8114FPS/P9972.49ms/最大86.70ms/16帧超50/0帧超100/250/0present错误。不能称稳30，不能与静止窗口混用。普通脚本probe40/clean-run/moving_no_capture.py，计划moving3-plan.json。引擎tag沿旧静止tag，归属按PID和CSV边界，后续新脚本要发布独立移动tag。
+
+另在持续输入中CPU6帧22292..22297，3347draw/474dispatch/54submit，descriptor13.17ms/帧、snapshot2.97、image_lookup4.31，coverageOK，uncovered10.62ms/帧另查，不直接归因。样本可见draw数不同，不能当作与旧静止6帧的因果收益。普通帧率与诊断计时分开保存。
+
+当前PID6355、唯一私有files/shield-regression-202611153461、I-clean40，输入已UP释放。后续优先保持此内部位置持续移动，继续拆CPU准备及未覆盖线程栈。普通movement脚本绑PID6355，先核当前PID，重启后另改计划并导航，禁止再停在入口用静止窗口替代。Download导出目录0、私有回归目录1，APK历史/9文件归档全留.local。Main实时ecb9b57，分支未吸收，不删除。独立金手指WT继续其自有任务，root不触碰其源文件。全场景稳定30及声音/冷暖/技能完整回归尚未完成。
+
+# 2026-11-15 40轮询候选已构建，正在安装启动，后续须到神殿内部
+
+当前源8cf2764。39纹理记录缓存对照关闭16.34/15.12、开启15.05/18.70FPS，方向混合，帧率收益未确认，组件等价通过。39 PID28432已实际走入水晶断桥后完成同进程AB，0待命文件保持一致。38内部Perfetto查到probe_guest_barrier/probe_image_read_barrier每次fopen同一gfx-codex-probe=0，普通样本均有该测试开销，已在报告修正测试条件。
+
+40仅把已有请求的观察读取按帧缓存，借现有gfx-live-ab=probepoll可回旧路径。init reset、next-frame freshness、空/缺失文件和旧路径计数ASan/UBSan通过。40 APK2f7d04d7/3720407B，112host/Android0，77输入SHA一致，native ac3f3266；无ADPF实验。安装/启动session29310，普通日志install40.log及probe40/restart.log、计划restart-plan.json，前后完整9文件和设备APK摘要按现有脚本核验。唯一私有461存档持续复用。下一步截图确认标题Continue，再通过DOWN/MOVE/UP持杆前进到内部断桥，原入口数据不作为内部验收，然后probepoll同进程AB。
+
+38 CPU trace已主机8.25MB SHA16642ed3保全，设备本次临时trace已核验后移除。其它未用标记及缓存的清理须按实测用途，别删shader/driver cache。原始0标记要在对照后备份到电脑、清理并重启核真实无待命环境。全场景稳定30仍未完成。root独占荣耀输入，金手指独立WT仍无设备权限。
+
 # 2026-11-15 已进入神殿内部，38负收益撤回，准备39纹理注册表查询候选
 
 用户明确要求从存档入口往神殿内部走。root结束未完成的入口AB，北移6秒+5秒进入水晶断桥，完整同PID24174的ABAB结果为关闭17.13/19.19FPS，开启14.90/17.91FPS，实际系统session有TID24292/33.333ms且native持续报告。ADPF未取得收益，生产接线和helper/test已在a93b211撤回，实验源码b3ea111及38 APK d261cce3保留。设备38已实时关闭androidhint。

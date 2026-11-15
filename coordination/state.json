@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-15T21:24:31.309137+08:00",
- "phase": "继续定位战斗GPU主通道并审阅成熟开源跨设备兼容缺口",
+ "updated_at": "2026-11-15T22:00:28.314643+08:00",
+ "phase": "荣耀神殿内部持续移动长帧优化，1080P输出及有界内部尺寸目标30继续推进",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -3379,8 +3379,9 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-15T21:09:48.679053+08:00",
-   "checkpoint": "单写者root，本树当前源码干净。",
-   "write_state": "ACTIVE"
+   "checkpoint": "组件与安装保全通过，FPS单项方向混合。",
+   "write_state": "COMPLETE_SCOPED_PERF_INCONCLUSIVE",
+   "checkpoint_at": "2026-11-15T22:00:28.314643+08:00"
   },
   {
    "task": "CODEX-HONOR-PROBE40-20261115",
@@ -3392,13 +3393,15 @@
     "scripts/verify_host.py",
     ".local/honor-stable30-20261115/build40/",
     ".local/honor-stable30-20261115/probe40/",
-    "coordination/results/CODEX-HONOR-PROBE40-20261115.md"
+    "coordination/results/CODEX-HONOR-PROBE40-20261115.md",
+    "coordination/EXPERIENCE.md"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-15T21:24:31.309137+08:00",
-   "checkpoint": "新发现真实待命I/O热点，独立于39记录缓存AB。",
-   "write_state": "ACTIVE"
+   "checkpoint": "40组件及同进程控制通过，移动28.81仍有长帧，后续归稳定30主任务。",
+   "write_state": "COMPLETE_SCOPED",
+   "checkpoint_at": "2026-11-15T22:00:28.314643+08:00"
   }
  ],
  "tasks": [
@@ -9561,7 +9564,7 @@
     "tests/native/guest_process_contract.c"
    ],
    "acceptance": "同一冻结存档、同一场景配置，A-B-A，冷暖分开，正常帧长尾和显示/音频证据；失败恢复标记。",
-   "checkpoint": "36 fe2caadc已安装荣耀PID14765，110host/Android通过，68源SHA一致。用户再次交还输入，受控入口840帧29.3607FPS/P9967.55ms；北移420帧29.5329FPS/P9958.60ms，少量长帧未达稳30。原子pass6帧9993..9998，主1384x780/输出1920x1080；35水晶台阶与入口位置不同。下一步深处长帧与诊断草稿集成，全部修改提交后仅当Main吸收才清理分支。"
+   "checkpoint": "40源8cf2764，当前6355真实内部水晶断桥，用户要求连续移动。moving3 28.8114FPS/P9972.49/16超50，完整稳30仍未通过；ADPF负收益撤回，probe0遗留待命已清理并修正热轮询。"
   },
   {
    "id": "CODEX-HONOR-CLEANUP-20261115",
@@ -9665,7 +9668,7 @@
    "id": "CODEX-HONOR-TEXTURE39-20261115",
    "owner": "root",
    "role": "RENDER_DESCRIPTOR_CPU_OPTIMIZATION",
-   "status": "in_progress",
+   "status": "completed_performance_inconclusive",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "objective": "按神殿内部同次6帧image_lookup6.06ms证据，缓存稳定纹理注册表节点查询，保留完整记录revision和Image identity校验，实机内部同进程AB。",
@@ -9693,13 +9696,13 @@
    "dependencies": [],
    "pass_gates": [],
    "acceptance": "生产提取契约覆盖表/键切换、碰撞、更新、miss后注册、清空重建，宿主及Android通过，深处同机位AB和存档/画面核验。",
-   "checkpoint": "恢复点a93b211，ADPF已撤回，38实机关闭实验，继续纹理查找单变量。"
+   "checkpoint": "9462bf2/39 0c6d3909，111host/Android0，75输入一致；内部同进程缓存两对方向混合，保留已验证的记录等价实现，FPS单项收益未确认。"
   },
   {
    "id": "CODEX-HONOR-PROBE40-20261115",
    "owner": "root",
    "role": "DIAGNOSTIC_OVERHEAD_REDUCTION",
-   "status": "in_progress",
+   "status": "passed",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "objective": "修复抓帧待命0时绘制屏障反复打开外部文件的测试开销，按呈现帧缓存已有标记，清理遗留待命状态并对照内部场景。",
@@ -9724,12 +9727,13 @@
     "scripts/verify_host.py",
     ".local/honor-stable30-20261115/build40/",
     ".local/honor-stable30-20261115/probe40/",
-    "coordination/results/CODEX-HONOR-PROBE40-20261115.md"
+    "coordination/results/CODEX-HONOR-PROBE40-20261115.md",
+    "coordination/EXPERIENCE.md"
    ],
    "dependencies": [],
    "pass_gates": [],
    "acceptance": "每帧读一次且下帧可观察新标记，既有捕获重试/初始化功能保留，宿主Android通过，同进程控制probepoll及清理后真实场景验收。",
-   "checkpoint": "38栈openat在probe_guest_barrier20样本及probe_image_read_barrier等14样本，39对照仍在相同0标记条件运行，待结束后清理。"
+   "checkpoint": "8cf2764/40 2f7d04d7；112host/Android0、77输入一致。静止同进程两对旧18.81/18.36、新21.38/18.83。清理待命重启6355，内部连续moving3严格持杆边界28.8114FPS/P9972.49/16帧超50，仍未稳30。移动CPU6帧descriptor13.17ms/image_lookup4.31ms，独立QA NOT_RUN。"
   }
  ],
  "blockers": [
@@ -10011,7 +10015,7 @@
   "display_mode_observed": "Android display0 mode2=120.00001Hz; supported60/90/120; no appframeoverride and gamemodeunsupported. Game30cap distinct from panel."
  },
  "parallelism_note": "No active Codex workers. runtime/vulkan two newly dispatched tasks stopped at readonly NOT_STARTED safe point; independent515 task never dispatched. All older authors/reviewers already handed back; QA remains errored, no retry.",
- "handoff_checkpoint": "37 PID21784清理后复用461存档真实Continue土之神殿。清理完成，稳定30目标继续active。独立金手指worktree登记，root本树对应源码冻结。",
+ "handoff_checkpoint": "40/6355内部连续移动窗口28.81FPS，尚未稳30。唯一461副本、待命0标记已归档清除，UP释放，下一轮保持内部持续移动并拆CPU/未覆盖线程栈。",
  "runtime_risks": [
   {
    "id": "HOST_GUEST_X18_GATEWAY",
