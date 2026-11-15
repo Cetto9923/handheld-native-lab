@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-15T21:09:48.679053+08:00",
+ "updated_at": "2026-11-15T21:24:31.309137+08:00",
  "phase": "继续定位战斗GPU主通道并审阅成熟开源跨设备兼容缺口",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3380,6 +3380,24 @@
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-15T21:09:48.679053+08:00",
    "checkpoint": "单写者root，本树当前源码干净。",
+   "write_state": "ACTIVE"
+  },
+  {
+   "task": "CODEX-HONOR-PROBE40-20261115",
+   "owner": "root",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_probe.inc",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/device/test_probe_marker_poll.py",
+    "scripts/verify_host.py",
+    ".local/honor-stable30-20261115/build40/",
+    ".local/honor-stable30-20261115/probe40/",
+    "coordination/results/CODEX-HONOR-PROBE40-20261115.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T21:24:31.309137+08:00",
+   "checkpoint": "新发现真实待命I/O热点，独立于39记录缓存AB。",
    "write_state": "ACTIVE"
   }
  ],
@@ -9676,6 +9694,42 @@
    "pass_gates": [],
    "acceptance": "生产提取契约覆盖表/键切换、碰撞、更新、miss后注册、清空重建，宿主及Android通过，深处同机位AB和存档/画面核验。",
    "checkpoint": "恢复点a93b211，ADPF已撤回，38实机关闭实验，继续纹理查找单变量。"
+  },
+  {
+   "id": "CODEX-HONOR-PROBE40-20261115",
+   "owner": "root",
+   "role": "DIAGNOSTIC_OVERHEAD_REDUCTION",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "修复抓帧待命0时绘制屏障反复打开外部文件的测试开销，按呈现帧缓存已有标记，清理遗留待命状态并对照内部场景。",
+   "inputs": [
+    "9462bf2",
+    "38内部Perfetto openat调用链及原0标记",
+    "xbg_probe.inc hot observer hooks"
+   ],
+   "outputs": [
+    "src/graphics/nvn_vulkan/engine/xbg_probe.inc",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/device/test_probe_marker_poll.py",
+    "scripts/verify_host.py",
+    ".local/honor-stable30-20261115/build40/",
+    ".local/honor-stable30-20261115/probe40/",
+    "coordination/results/CODEX-HONOR-PROBE40-20261115.md"
+   ],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_probe.inc",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/device/test_probe_marker_poll.py",
+    "scripts/verify_host.py",
+    ".local/honor-stable30-20261115/build40/",
+    ".local/honor-stable30-20261115/probe40/",
+    "coordination/results/CODEX-HONOR-PROBE40-20261115.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "acceptance": "每帧读一次且下帧可观察新标记，既有捕获重试/初始化功能保留，宿主Android通过，同进程控制probepoll及清理后真实场景验收。",
+   "checkpoint": "38栈openat在probe_guest_barrier20样本及probe_image_read_barrier等14样本，39对照仍在相同0标记条件运行，待结束后清理。"
   }
  ],
  "blockers": [

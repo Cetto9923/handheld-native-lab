@@ -1,0 +1,13 @@
+# 抓帧待命轮询开销修正候选
+
+## 实测证据
+
+38 PID24174神殿内部10秒Perfetto，完整原始trace8248757B、SHA16642ed32d4bad09d16fc25b47537cf3f1302f4370e7d5d2e151308db2298331，主机已校验后移除本次平板临时trace。openat的38个叶样本中20个沿execute→probe_guest_barrier，另有prepare_read→probe_image_read_barrier及present→probe_present。符号用38原生库对应的33124152B未裁剪产物13da152af48416d3825f411e7af602b8d302b1d60912252a37da19870fc8bc61定位至xbg_probe.inc 280/299/577。
+
+平板gfx-codex-probe值为0，probe_init仅按文件存在性置waiting=true。值0的待命期间，各屏障观察器再次fopen/fgetc/fclose同一外部文件。先前38/39普通窗口仍带有该待命开销，已在各报告明确测试条件。该开销的独立帧率影响尚待40同进程对照及清理后实测。
+
+## 候选
+
+复用现有帧计数与同一请求标记，在一帧第一次观察时读取一次，后续观察复用值，新请求至迟下一完整帧可见。init重置缓存，marker3观察及1/R/D等捕获路径保留。现有gfx-live-ab目标probepoll可在同进程暂回原逐次I/O路径。测试只增加一个生产提取契约，1000次同帧读取为1次打开，下帧新值、空/缺失文件、强制旧路径及新会话帧号复位均覆盖ASan/UBSan。
+
+候选不改变shader、绘制参数、同步或游戏时间。构建及内部AB待执行。独立QA未运行。

@@ -275,9 +275,23 @@ void probe_flush_texels(){
     }
     probe.texels.clear(); // Copy fence signalled before allocation destruction.
 }
+// Observe a live request once per presented frame. Barrier observers can run
+// hundreds of times in one frame while marker 0 only waits for a request.
+uint64_t probe_marker_frame = UINT64_MAX;
+int probe_marker_cached_value = '0';
+int probe_marker_value() {
+    const uint64_t frame = stats.presents.load();
+    if (!ab_off("probepoll") && probe_marker_frame == frame) return probe_marker_cached_value;
+    FILE *file = fopen((probe.base + "/gfx-codex-probe").c_str(), "rb");
+    const int value = file ? fgetc(file) : '0';
+    if (file) fclose(file);
+    probe_marker_frame = frame;
+    probe_marker_cached_value = value;
+    return value;
+}
 void probe_image_read_barrier(const Image &im,bool in_open,VkImageAspectFlags read_aspects){
     static unsigned logged=0;if(!attachment_barrier_enabled || !probe.waiting || capture.trace || !in_open || logged>=120)return;
-    FILE *file=fopen((probe.base+"/gfx-codex-probe").c_str(),"rb");int value=file?fgetc(file):'0';if(file)fclose(file);if(value!='3')return;
+    int value=probe_marker_value();if(value!='3')return;
     bool depth=open_pass.depth_attached && !open_pass.images.empty() && open_pass.images[open_pass.images.size()-1]==&im;
     VkStencilOpState f=stencil(false),b=stencil(true);++logged;
     xbg_logf("CODEX_IMAGE_READ frame=%llu op=%u image=%p serial=%llu vk=%u aspects=%#x readAspects=%#x depthAlias=%u prevAnyDSMayWrite=%u prevDepthMayWrite=%u prevStencilMayWrite=%u nextDT=%u nextDW=%u nextST=%u front=%u/%u/%u/%#x back=%u/%u/%u/%#x attachments=%zu fs=%s last_write=%llu barrier_seq=%llu",(unsigned long long)stats.presents.load(),cur_op,(const void*)im.image,(unsigned long long)im.source.serial,unsigned(im.fmt),unsigned(im.aspects),unsigned(read_aspects),unsigned(depth),unsigned(open_pass.depth_may_write),unsigned(open_pass.depth_writes),unsigned(open_pass.stencil_writes),unsigned(state.ds.dt),unsigned(state.ds.dw),unsigned(state.ds.st),unsigned(f.failOp),unsigned(f.passOp),unsigned(f.depthFailOp),f.writeMask,unsigned(b.failOp),unsigned(b.passOp),unsigned(b.depthFailOp),b.writeMask,open_pass.images.size(),state.shader[4]?state.shader[4]->key.c_str():"none",(unsigned long long)im.last_write,(unsigned long long)barrier_seq);
@@ -288,22 +302,21 @@ void probe_depth_decision(const Image &im,bool in_open,bool needs_barrier,bool k
     static unsigned logged=0;
     if(logged>=80 || !probe.waiting || capture.trace || !state.shader[4] ||
        state.shader[4]->key!="afaac670a96887d1")return;
-    FILE *file=fopen((probe.base+"/gfx-codex-probe").c_str(),"rb");
-    int value=file?fgetc(file):'0';if(file)fclose(file);if(value!='3')return;
+    int value=probe_marker_value();if(value!='3')return;
     ++logged;
     xbg_logf("MOON_DEPTH_DECISION frame=%llu serial=%llu inOpen=%u needsBarrier=%u keep=%u enabled=%u previousDepthWrites=%u depthVisible=%u attachmentOnly=%u nextDepthWrite=%u nextStencil=%u layout=%u lastWrite=%llu barrierSeq=%llu",
         (unsigned long long)stats.presents.load(),(unsigned long long)im.source.serial,unsigned(in_open),unsigned(needs_barrier),unsigned(keep),unsigned(depth_aspect_enabled),unsigned(open_pass.depth_writes),unsigned(open_pass.depth_sample_visible),unsigned(open_pass.attachment_only),unsigned(state.ds.dw),unsigned(state.ds.st),unsigned(im.layout),(unsigned long long)im.last_write,(unsigned long long)barrier_seq);
 }
 void probe_guest_barrier(uint32_t bits){
     static unsigned logged=0;if(!probe.waiting || capture.trace || !open_pass.cmd || logged>=120)return;
-    FILE *file=fopen((probe.base+"/gfx-codex-probe").c_str(),"rb");int value=file?fgetc(file):'0';if(file)fclose(file);if(value!='3')return;
+    int value=probe_marker_value();if(value!='3')return;
     ++logged;xbg_logf("CODEX_BARRIER_FLAGS frame=%llu bits=%#x attachments=%zu depth=%u stateColors=%d vs=%s fs=%s write_seq=%llu barrier_seq=%llu",(unsigned long long)stats.presents.load(),bits,open_pass.images.size(),unsigned(open_pass.depth_attached),state.rt.n,state.shader[0]?state.shader[0]->key.c_str():"none",state.shader[4]?state.shader[4]->key.c_str():"none",(unsigned long long)write_seq,(unsigned long long)barrier_seq);
 }
 void probe_cpu_sync(uint64_t address,uint64_t bytes,unsigned why,uint64_t pending_address,uint64_t pending_bytes){
     // Keep early CPU overwrites from consuming the storage-read diagnostic budget.
     // At most 12 records per access reason, enabled only by the existing marker 3.
     static unsigned logged[12]={};if(!probe.waiting || capture.trace || why>=12 || logged[why]>=12)return;
-    FILE *file=fopen((probe.base+"/gfx-codex-probe").c_str(),"rb");int value=file?fgetc(file):'0';if(file)fclose(file);if(value!='3')return;
+    int value=probe_marker_value();if(value!='3')return;
     ++logged[why];xbg_logf("CODEX_CPU_SYNC frame=%llu op=%u why=%u address=%#llx bytes=%llu pending=%#llx pending_bytes=%llu covers=%u cs=%s vs=%s fs=%s",(unsigned long long)stats.presents.load(),cur_op,why,(unsigned long long)address,(unsigned long long)bytes,(unsigned long long)pending_address,(unsigned long long)pending_bytes,unsigned(address<=pending_address && address+bytes>=pending_address+pending_bytes),state.shader[5]?state.shader[5]->key.c_str():"none",state.shader[0]?state.shader[0]->key.c_str():"none",state.shader[4]?state.shader[4]->key.c_str():"none");
     for(auto w=pending_writebacks.rbegin();w!=pending_writebacks.rend();++w)if(w->addr==pending_address && w->bytes==pending_bytes){const Slot *s=static_cast<const Slot*>(w->slot);int producer=int(s-slots);int done=s->pending?int(vkGetFenceStatus(cfg.device,s->fence)==VK_SUCCESS):-1;
         xbg_logf("CODEX_CPU_PRODUCER frame=%llu op=%u why=%u currentSlot=%u producerSlot=%d recording=%u pending=%u fenceDone=%d covers=%llu commands=%llu offset=%llu bytes=%llu",(unsigned long long)stats.presents.load(),cur_op,why,slot_index,producer,unsigned(s->recording),unsigned(s->pending),done,(unsigned long long)s->covers,(unsigned long long)s->ops,(unsigned long long)w->buffer.offset,(unsigned long long)w->buffer.size);break;}
@@ -503,6 +516,7 @@ void probe_volume_copy(Image &im,uint64_t source,size_t bytes,size_t row,size_t 
     xbg_logf("CODEX_VOLUME_COPY serial=%llu src=%p bytes=%zu row=%zu imageStride=%zu sourceNonzero=%zu alpha=%u/%u first=%02x%02x%02x%02x beforeSite=%u uploaded=%u gpu=%u",(unsigned long long)im.source.serial,(void*)source,bytes,row,stride,nonzero,amin,amax,bytes>0?p[0]:0,bytes>1?p[1]:0,bytes>2?p[2]:0,bytes>3?p[3]:0,im.provenance_write_site,unsigned(im.uploaded),unsigned(im.gpu_written));
 }
 void probe_init(){
+    probe_marker_frame=UINT64_MAX;probe_marker_cached_value='0';
     water_trace=WaterTraceState{};
     std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');probe.base=cut==std::string::npos?dir:dir.substr(0,cut);
     FILE *file=fopen((probe.base+"/gfx-codex-probe").c_str(),"rb");probe.waiting=file!=nullptr;if(file)fclose(file);
@@ -574,7 +588,7 @@ void probe_present(Image &present){
     // one process when a short effect is missed, while retaining a hard cap.
     if(probe.repeat_mode && !capture.trace && probe.repeat_captures<16)probe.waiting=true;
     if(!probe.waiting || capture.trace)return;
-    FILE *file=fopen((probe.base+"/gfx-codex-probe").c_str(),"rb");int value=file?fgetc(file):'0';if(file)fclose(file);
+    int value=probe_marker_value();
     // Honor-only manual paired-frame diagnosis. Consume each request so a
     // stale marker cannot continuously stall gameplay or overwrite evidence.
     const char *tablet=getenv("FFRS_PROFILE_TABLET");
