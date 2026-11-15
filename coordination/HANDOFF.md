@@ -1,3 +1,11 @@
+# 2026-11-16T00:08:31.148000+08:00 43整数格式查表候选
+
+42深度省略无FPS收益已撤回源码，43仅复用现有注册表缓存处理整数格式查询单条cache miss。6秒真实内部移动Perfetto c4854f7e与符号Build-id相同，16个叶采样还原到table.find3157。单项5测试ASan/UBSan，随后完整宿主/Android及装机同PIDibrecord原路对照，普通移动必须前后探索、非零轴/归零。当前42 PID25813/force depthomit，profile已完输入UP。43未安装。证据.local/honor-format43-20261116/，9文件及APK历史继续保留。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。
+
+# 2026-11-15T23:54:16.865663+08:00 神殿真实移动对照与CPU调用栈采集
+
+42源a47c250/APK0a502482，25813复用461。114宿主/Android0/80源SHA/安装9文件及APK回读通过。GPU场景复核后B1/A2/B2/A3/B3纯神殿内部同机位，94与96pass/帧，计时波动不能全归收益。普通持续移动B11520..11640/120间隔23.3551FPS/P9958.02/max69.62，对照A12720..12780/60间隔23.5045FPS/P9955.49/max55.49，均前后探索非零轴及最终归零，未稳30且未见候选FPS收益。设备force=depthomit恢复原深度路径。moving-first与cpu42-moving遇敌混合单列诊断。用户再次确认松手，root独占输入。已正常逃离私有副本随机战斗，现启动6秒Perfetto+持续移动profile42，计划/符号/日志落.local/honor-gpass42-20261115/profile-moving42/，工具session48640。 验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md，蓝牙主观/冷暖全场景/独立QA仍未验。
+
 # 2026-11-15T23:34:57.697149+08:00 深度偏置边界复查与42重建
 
 a47c250补齐depth bias限制，单项ASan/UBSan通过。初次42/114宿主/Android0/b8298b9e仅作历史未安装；build42-bias按80输入快照串行重建，plan/run.log落盘。当前仍41 PID14303，战斗菜单，轴已释放；移动验收须重新入神殿并看前后探索位移。 验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。

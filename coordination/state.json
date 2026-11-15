@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-15T23:35:45.378719+08:00",
+ "updated_at": "2026-11-16T00:08:31.153123+08:00",
  "phase": "荣耀神殿内部持续移动长帧优化，1080P输出及有界内部尺寸目标30继续推进",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3437,8 +3437,25 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-15T23:05:47.156670+08:00",
-   "checkpoint": "a47c250补齐depth bias限制，单项ASan/UBSan通过。初次42/114宿主/Android0/b8298b9e仅作历史未安装；build42-bias按80输入快照串行重建，plan/run.log落盘。当前仍41 PID14303，战斗菜单，轴已释放；移动验收须重新入神殿并看前后探索位移。",
+   "checkpoint": "42源a47c250/APK0a502482，25813复用461。114宿主/Android0/80源SHA/安装9文件及APK回读通过。GPU场景复核后B1/A2/B2/A3/B3纯神殿内部同机位，94与96pass/帧，计时波动不能全归收益。普通持续移动B11520..11640/120间隔23.3551FPS/P9958.02/max69.62，对照A12720..12780/60间隔23.5045FPS/P9955.49/max55.49，均前后探索非零轴及最终归零，未稳30且未见候选FPS收益。设备force=depthomit恢复原深度路径。moving-first与cpu42-moving遇敌混合单列诊断。用户再次确认松手，root独占输入。已正常逃离私有副本随机战斗，现启动6秒Perfetto+持续移动profile42，计划/符号/日志落.local/honor-gpass42-20261115/profile-moving42/，工具session48640。",
    "write_state": "ACTIVE"
+  },
+  {
+   "task": "CODEX-HONOR-FORMAT43-20261116",
+   "owner": "root",
+   "paths": [
+    ".local/honor-format43-20261116/",
+    "coordination/results/CODEX-HONOR-FORMAT43-20261116.md",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/device/test_render_policy.py",
+    "tests/device/test_depth_attachment.py",
+    "scripts/verify_host.py"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-16T00:02:09.270699+08:00",
+   "checkpoint": "基于42符号采样登记，root串行集成，与root42范围同一写者，无其他源码/ADB写者。"
   }
  ],
  "tasks": [
@@ -9840,7 +9857,43 @@
    "dependencies": [],
    "pass_gates": [],
    "acceptance": "GPASS与普通FPS分窗，记录实际非零轴与前后场景，实际pass尺寸/耗时有原始日志，未证明的因果及冷暖/显示/声音门保持未验。；深度状态/清屏/缓存键反例及宿主Android通过，同进程depthomit旧新GPU对照，画面/移动/音频门完整记录。",
-   "checkpoint": "42源a47c250，114宿主/Android0，80输入前后一致，APK0a502482/3720407B。正在装包session38246，9文件及原正式目录保全，GPU旧新和神殿移动待验。初次b8298包历史保留未装。"
+   "checkpoint": "42源a47c250/APK0a502482，25813复用461。114宿主/Android0/80源SHA/安装9文件及APK回读通过。GPU场景复核后B1/A2/B2/A3/B3纯神殿内部同机位，94与96pass/帧，计时波动不能全归收益。普通持续移动B11520..11640/120间隔23.3551FPS/P9958.02/max69.62，对照A12720..12780/60间隔23.5045FPS/P9955.49/max55.49，均前后探索非零轴及最终归零，未稳30且未见候选FPS收益。设备force=depthomit恢复原深度路径。moving-first与cpu42-moving遇敌混合单列诊断。用户再次确认松手，root独占输入。已正常逃离私有副本随机战斗，现启动6秒Perfetto+持续移动profile42，计划/符号/日志落.local/honor-gpass42-20261115/profile-moving42/，工具session48640。 Perfetto移动6秒完成，before/after均内部探索，trace c4854f7e，build-id3c1fb739与本地符号相同，轴最终归零。整数格式表find热点16个样本已符号到3157。候选深度省略未见FPS收益，将串行撤回。"
+  },
+  {
+   "id": "CODEX-HONOR-FORMAT43-20261116",
+   "owner": "root",
+   "role": "TEMPLE_FORMAT_LOOKUP_OPTIMIZATION",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "基于42真实神殿移动调用栈，复用已有纹理注册表缓存消除整数格式选择的单条缓存抖动。先撤回无FPS收益深度省略，再构建43做同进程iblookup与移动复验。",
+   "inputs": [
+    "42 APK0a502482源a47c250",
+    "6秒移动Perfetto c4854f7e符号Build-id相同，16个IntegerBufferSelection采样实际为3157 map find",
+    "test_render_policy已有注册节点缓存反例"
+   ],
+   "outputs": [
+    ".local/honor-format43-20261116/",
+    "coordination/results/CODEX-HONOR-FORMAT43-20261116.md",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/device/test_render_policy.py",
+    "tests/device/test_depth_attachment.py",
+    "scripts/verify_host.py"
+   ],
+   "write_scope": [
+    ".local/honor-format43-20261116/",
+    "coordination/results/CODEX-HONOR-FORMAT43-20261116.md",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/device/test_render_policy.py",
+    "tests/device/test_depth_attachment.py",
+    "scripts/verify_host.py"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "acceptance": "实际格式/视图/注册更新/数组/表切换/未知ID行为保持，宿主及Android通过，9存档保全，同PID移动前后场景与输入核对，冷暖/显示/音频及独立QA据实。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。",
+   "checkpoint": "43整数格式注册查表候选已实现，42深度省略因移动无收益撤回，5项ASan/UBSan单测通过。准备113宿主与Android串行构建；当前设备42/25813原深度路。"
   }
  ],
  "blockers": [
@@ -10122,7 +10175,7 @@
   "display_mode_observed": "Android display0 mode2=120.00001Hz; supported60/90/120; no appframeoverride and gamemodeunsupported. Game30cap distinct from panel."
  },
  "parallelism_note": "No active Codex workers. runtime/vulkan two newly dispatched tasks stopped at readonly NOT_STARTED safe point; independent515 task never dispatched. All older authors/reviewers already handed back; QA remains errored, no retry.",
- "handoff_checkpoint": "42源a47c250，114宿主/Android0，80输入前后一致，APK0a502482/3720407B。正在装包session38246，9文件及原正式目录保全，GPU旧新和神殿移动待验。初次b8298包历史保留未装。",
+ "handoff_checkpoint": "43整数格式注册查表候选已实现，42深度省略因移动无收益撤回，5项ASan/UBSan单测通过。准备113宿主与Android串行构建；当前设备42/25813原深度路。",
  "runtime_risks": [
   {
    "id": "HOST_GUEST_X18_GATEWAY",

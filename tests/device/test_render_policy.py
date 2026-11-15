@@ -8,6 +8,121 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class RenderPolicy(unittest.TestCase):
+    def test_integer_format_lookup_uses_live_registered_records(self):
+        source = (ROOT / 'src/graphics/nvn_vulkan/engine/xbg_game.cpp').read_text()
+        start = source.index('struct TextureRecordFront {')
+        registry = source[start:source.index('std::map<uint32_t,RegisteredTexture> null_textures;', start)]
+        start = source.index('VkFormat integer_buffer_binding_format(')
+        selection = source[start:source.index('Shader *integer_buffer_variant(', start)]
+        fixture = r'''
+#include <cassert>
+#include <cstdint>
+#include <cstring>
+#include <map>
+using VkFormat = uint32_t;
+constexpr VkFormat VK_FORMAT_UNDEFINED = 0;
+constexpr unsigned VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER = 4;
+constexpr unsigned XBG_SOURCE_TEXTURE = 1, XBG_SOURCE_IMAGE = 2;
+struct Texture {
+    struct { int target = 10; } d;
+    uintptr_t mem = 1;
+    struct { uint64_t size = 16; } L;
+};
+struct RegisteredTexture { Texture texture; VkFormat format = 2; };
+struct Pool { void *pool = reinterpret_cast<void*>(1); int n = 4096; int key = 1; };
+struct {
+    Pool texture_pool;
+    uint64_t tex[6][256]{};
+    uint64_t img[6][16]{};
+} state;
+struct Shader {
+    unsigned stage = 0;
+    mutable const std::map<int,RegisteredTexture> *integer_texture_table = nullptr;
+    mutable int integer_texture_id = 0;
+    mutable const RegisteredTexture *integer_texture_record = nullptr;
+};
+struct xbg_shader_binding {
+    unsigned type = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
+    unsigned count = 2, source = XBG_SOURCE_TEXTURE, slot = 0;
+};
+unsigned nvn_stage[6] = {0, 1, 2, 3, 4, 5};
+std::map<int,std::map<int,RegisteredTexture>> textures;
+std::map<int,RegisteredTexture> legacy_textures;
+uint64_t integer_texture_lookup_hits = 0, integer_texture_lookup_misses = 0;
+bool legacy_lookup_enabled = false;
+bool registry_lookup_disabled = false;
+bool ab_off(const char *name) {
+    return std::strcmp(name, "iblookup") == 0 ? legacy_lookup_enabled : registry_lookup_disabled;
+}
+int pool_key(const Pool *pool) { return pool->key; }
+bool integer_buffer_format(VkFormat format) { return format == 2 || format == 3; }
+VkFormat texel_view_format(const RegisteredTexture &record) { return record.format; }
+VkFormat texel_binding_format(const RegisteredTexture &record, const xbg_shader_binding &, const void *) {
+    return record.format;
+}
+''' + registry + selection + r'''
+int main() {
+    Shader shader;
+    xbg_shader_binding binding;
+    auto &first = textures[1];
+    first[7] = {}; first[8] = {};
+    state.tex[0][0] = 7; state.tex[0][1] = 8;
+    assert(integer_buffer_binding_format(shader, binding) == 2);
+    uint64_t hits = texture_record_hits;
+    // The per-shader single record alternates on every array element.
+    // Both elements must now reuse the existing multi-entry registry cache.
+    assert(integer_buffer_binding_format(shader, binding) == 2);
+    assert(texture_record_hits == hits + 2);
+    first[7].format = 3;
+    assert(integer_buffer_binding_format(shader, binding) == VK_FORMAT_UNDEFINED);
+    first[8].format = 3;
+    assert(integer_buffer_binding_format(shader, binding) == 3);
+    legacy_lookup_enabled = true;
+    hits = texture_record_hits;
+    assert(integer_buffer_binding_format(shader, binding) == 3);
+    assert(texture_record_hits == hits);
+    legacy_lookup_enabled = false;
+    registry_lookup_disabled = true;
+    assert(integer_buffer_binding_format(shader, binding) == 3);
+    assert(texture_record_hits == hits);
+    binding.count = 1;
+    assert(integer_buffer_binding_format(shader, binding) == 3);
+    uint64_t shader_hits = integer_texture_lookup_hits;
+    assert(integer_buffer_binding_format(shader, binding) == 3);
+    assert(integer_texture_lookup_hits == shader_hits + 1);
+    registry_lookup_disabled = false;
+    binding.count = 2;
+    textures[2][7] = {}; textures[2][8] = {};
+    state.texture_pool.key = 2;
+    assert(integer_buffer_binding_format(shader, binding) == 2);
+    state.texture_pool.key = 1;
+    assert(integer_buffer_binding_format(shader, binding) == 3);
+    state.tex[0][1] = 9;
+    assert(integer_buffer_binding_format(shader, binding) == VK_FORMAT_UNDEFINED);
+    first[9].format = 3;
+    assert(integer_buffer_binding_format(shader, binding) == 3);
+    first[9].texture.mem = 0;
+    assert(integer_buffer_binding_format(shader, binding) == VK_FORMAT_UNDEFINED);
+    first[9].texture.mem = 1;
+    state.texture_pool.n = 9;
+    assert(integer_buffer_binding_format(shader, binding) == VK_FORMAT_UNDEFINED);
+    state.texture_pool.n = 4096;
+    binding.count = 1;
+    binding.source = XBG_SOURCE_IMAGE;
+    state.img[0][0] = 7;
+    assert(integer_buffer_binding_format(shader, binding) == 3);
+    binding.slot = 16;
+    assert(integer_buffer_binding_format(shader, binding) == VK_FORMAT_UNDEFINED);
+}
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            (path / 'test.cpp').write_text(fixture)
+            subprocess.run(['clang++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                            '-fsanitize=address,undefined', str(path / 'test.cpp'),
+                            '-o', str(path / 'test')], check=True)
+            subprocess.run([str(path / 'test')], check=True)
+
     def test_texture_record_front_lifetime(self):
         source = (ROOT / 'src/graphics/nvn_vulkan/engine/xbg_game.cpp').read_text()
         start = source.index('struct TextureRecordFront {')

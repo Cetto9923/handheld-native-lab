@@ -1,0 +1,13 @@
+# 神殿移动整数格式查表候选43
+
+42源a47c250，APK0a502482，PID25813。按用户要求进入内部桥段持续南北移动，6秒Perfetto前后截图均探索，输入日志有双向非零轴与结束归零。trace SHA256 c4854f7e08e504a2d39b9848490585073d867838bb4a1ee2bf6b0a89340ad49f，宿主回读匹配，Build ID 3c1fb7399fc17d8ee6746e20dca5269b9cbacf8c与保存的lib42.symbols.so相同。证据.local/honor-gpass42-20261115/profile-moving42/。这是CPU诊断窗口，普通移动FPS另取。
+
+RHIThread25942中IntegerBufferSelection的16个叶采样由llvm-addr2line还原到integer_buffer_binding_format的3157行table.find。当前每Shader只记一条记录，多绑定/数组会逐项冲掉。已有find_texture_record实现按完整表地址与ID检查的2048槽前置缓存，注册节点原地更新且只在shutdown统一清表。候选仅把单条缓存miss的注册查询复用此函数，后续target/mem/size/视图和实际格式、混合数组判断及shader字节处理保持既有数据流。
+
+既有gfx-live-ab=iblookup仍完全强制原查找。为隔离本次修改，复用同一文件的ibrecord仅令新miss路径走map，保留单条Shader缓存。因此ibrecord对照等价42默认查表行为，其它描述符注册缓存不变。none恢复候选。不新增文件或UI开关。
+
+撤回42深度省略及其专属测试和宿主门，图形底座回到36cc83e后只保留本次查表差异。42 APK和实验patch/所有测量仍保留。此前普通移动23.36与23.50FPS无提升证据，不能把该实验作为已验收优化。
+
+test_render_policy增加实际生产查表函数提取编译ASan/UBSan，覆盖数组来回miss复用多条cache、原地注册/视图格式变化、混合数组、原路与单条缓存命中、跨表切换、缺失后注册、内存无效、pool边界及image slot。旧缓存碰撞/清表等反例保留。该测试不是独立QA或画面验收。
+
+43全量构建、实机移动/显示及冷暖/声音回归待执行。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。
