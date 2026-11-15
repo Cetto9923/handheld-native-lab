@@ -1,3 +1,13 @@
+# 2026-11-15 荣耀30交还用户，CPU候选完成构建
+
+5cd18bf。荣耀30已安装且APK/存档/备份逐字核对，遗留async1归档恢复0，用户报告掉帧但已测流程未再闪退。最小整数分析复用73495模块等价、108宿主和Android构建通过，主机组件耗时降7.23%。本地候选b0467af8未安装/发布，版本元数据仍30，完整证据在报告。PID5199三帧descriptor8.60ms/frame、snapshot2.15ms/frame为下一CPU调查点，含菜单/读档场景限制。稳定30及候选实机收益未验收。
+
+详细恢复命令见coordination/results/CODEX-HONOR30-PERF31-20261115.md。当前用户掌握平板输入，本轮未操作RG477M。
+
+# 2026-11-15 荣耀30已安装，CPU分析候选对照完成
+
+荣耀30已安装保全，设备交还用户。整数候选按绑定复用解析结构，73495真实SPIR-V候选输出逐项完全相同，整数ASan/UBSan及val通过。581模块主机基准分析耗时约降7%，六个慢VS约降6至10%。准备同源108检查及Android本地候选构建，未发布/未安装候选。平板只读PID5199日志与CSV已保全，黑屏单帧待用户确认场景，不据此验收FPS。 证据目录.local/honor30-perf31-20261115/，本地候选构建计划candidate-build/plan.json。
+
 # 地形实际输入类型不匹配，修复候选实施
 
 实际pipeline recipes已取得。深度VS a455及颜色VS11320的Location0/1都是VkFormat41/RGBA8_UINT，stride4，前者vertex-rate、后者instance-rate；保存的SPV接口为float4，之后Bitcast uint再ConvertUToF。00758同类一个input。这是实际接口不匹配。root已登记load_profile独占SPIRV纯pass/测试，perf_cpu独占identity/测试，root接xbg_game/warm/版本/gate和构建。地图画面修复因果仍待真机。另pipeline缓存shell644实际不能append，已备份后恢复app-owned，自动增量905028→1094487并保留原prefix，已保存权限与内容证据。
@@ -4773,3 +4783,7 @@ https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.30-preview �
 ## 30最终包备份恢复已补验
 
 同发布89cbb81c、同PID31041。真实菜单生成save-001备份8文件1800573B，每份与当前保存摘要一致；重试后16:22:17实际恢复8文件，恢复后全部9份live含.orig与恢复前逐字一致，未完成stage0。经真实Load Game自动存档确认，实际回到第1章土之神殿，截图和日志在.local/releases/1.0.30/backup-roundtrip/。旧NOT_RUN已被本轮实现者自测覆盖，独立QA仍NOT_RUN。测试结束，已向用户交还输入。当前不需装包或改游戏代码，待将报告与GitHub发布说明追加补验范围。主卡顿继续开放。
+
+## 荣耀30用户测试与稳30研究
+
+用户明确要求将当前包安装荣耀平板，旧“荣耀暂缓”本轮解除。A42BBB5109000333当前24、游戏进程未运行、前台日历。根领取HONOR30-PERF31，先以shell tar保全外部codex-local-save及ffrs-quicksave，run-as外部访问被FUSE拒绝但shell可读，勿为备份改权限。检查旧诊断marker，安装已发布89cbb81c，启动后交给用户实测。并行只读比较既有shader加载/重特效证据与成熟上游及Android/Arm官方文档，先定位可实施差距。不得把安装或预热通过称稳定30。

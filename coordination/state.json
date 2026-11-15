@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-15T16:26:21.908411+08:00",
+ "updated_at": "2026-11-15T17:06:33.616481+08:00",
  "phase": "继续定位战斗GPU主通道并审阅成熟开源跨设备兼容缺口",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3215,6 +3215,21 @@
    "checkpoint": "已发布89cbb81c/同PID31041实际备份save-001 8份1800573B，8份与当前文件摘要全同；16:22:17实际恢复8份，9份live含.orig摘要全同；经Load Game选自动存档回到第1章土之神殿，进程存活，未完成stage0。实现者真机自测完成，独立QA NOT_RUN，输入交还用户。",
    "write_state": "COMPLETE_SCOPED",
    "checkpoint_at": "2026-11-15T16:26:21.908411+08:00"
+  },
+  {
+   "task": "CODEX-HONOR30-PERF31-20261115",
+   "owner": "root",
+   "paths": [
+    ".local/honor30-perf31-20261115/",
+    "coordination/results/CODEX-HONOR30-PERF31-20261115.md",
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_integer_buffer.h",
+    "tests/device/test_reflection_uint_fetch.cpp"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-15T16:39:31.022143+08:00",
+   "checkpoint": "5cd18bf1dc5c0d68fb9943882b8a4584a3ec34a6",
+   "write_state": "CHECKPOINTED_PENDING_DEVICE_COMPARISON"
   }
  ],
  "tasks": [
@@ -9206,6 +9221,36 @@
    "acceptance": "Same installed APK, explicit RG serial, before-game-save archive, real menu backup and current same-byte restore, byte manifests equal, no incomplete stages, persistent success prompts, actual title/read-game path if feasible. Preserve existing snapshots and latest user cheat changes.",
    "checkpoint": "已发布89cbb81c/同PID31041实际备份save-001 8份1800573B，8份与当前文件摘要全同；16:22:17实际恢复8份，9份live含.orig摘要全同；经Load Game选自动存档回到第1章土之神殿，进程存活，未完成stage0。实现者真机自测完成，独立QA NOT_RUN，输入交还用户。",
    "evidence": "coordination/results/CODEX-PUBLISH-CHEAT30-20261115.md"
+  },
+  {
+   "id": "CODEX-HONOR30-PERF31-20261115",
+   "owner": "root",
+   "role": "HONOR_INSTALL_AND_PERFORMANCE_RESEARCH",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "Install published30 on Honor tablet for user test, preserve its saves, investigate measured frame spikes using mature upstream and current source, progress toward stable30FPS.",
+   "inputs": [
+    "User explicitly authorizes Honor install and own testing, resumes Honor scope",
+    "APK89cbb81c source030149e",
+    "Existing RG GPU73.95ms and pipeline/shader stalls; previous source profiles and upstream pinned manifests"
+   ],
+   "outputs": [
+    ".local/honor30-perf31-20261115/",
+    "coordination/results/CODEX-HONOR30-PERF31-20261115.md",
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_integer_buffer.h",
+    "tests/device/test_reflection_uint_fetch.cpp"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/honor30-perf31-20261115/",
+    "coordination/results/CODEX-HONOR30-PERF31-20261115.md",
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_integer_buffer.h",
+    "tests/device/test_reflection_uint_fetch.cpp"
+   ],
+   "acceptance": "Honor package byte verification, save and backup archives unchanged across update, launch verified and user controls testing. Compare specific measured hot paths with primary upstream sources, record proven gaps and minimal fix/evidence where viable. No graphics semantic regressions or game clock changes.",
+   "checkpoint": "5cd18bf。荣耀30已安装且APK/存档/备份逐字核对，遗留async1归档恢复0，用户报告掉帧但已测流程未再闪退。最小整数分析复用73495模块等价、108宿主和Android构建通过，主机组件耗时降7.23%。本地候选b0467af8未安装/发布，版本元数据仍30，完整证据在报告。PID5199三帧descriptor8.60ms/frame、snapshot2.15ms/frame为下一CPU调查点，含菜单/读档场景限制。稳定30及候选实机收益未验收。"
   }
  ],
  "blockers": [
@@ -9356,7 +9401,8 @@
    "scope": "Actual RG backup8 files/restore8 files, all9 live file hashes equal, normal Load Game returns real chapter1 shrine, same published APK89cbb81c PID31041",
    "evidence": "coordination/results/CODEX-PUBLISH-CHEAT30-20261115.md",
    "independent_qa": "NOT_RUN"
-  }
+  },
+  "CODEX-HONOR30-PERF31-20261115: 荣耀30安装/存档备份一致；73495模块候选等价；108宿主及Android构建通过。"
  ],
  "unverified": [
   "完整CRT/TLS/线程/guest内存上下文与真正完整入口，正式T02参考行为验收。",
@@ -9385,7 +9431,8 @@
   "No code fix for the stale indirect-argument read has been written, built or verified.",
   "The current-slot guard on find_indirect_template is not yet built, installed or accepted on the device.",
   "2026-11-15当前29仅掌机范围自测。手机OEM严重运行内存异常仍缺对应退出日志，荣耀本轮用户暂缓。战斗仍有GPU73.95ms与火炎剑626.5ms管线长帧，长期内存和开场声音待回归，独立QA NOT_RUN。",
-  "1.0.30简化备份恢复已通过生产方法JVM文件系统往返与存储失败检查，最终掌机备份/恢复往返尚未完成；输入与用户交叠窗口排除。金手指存档修改需要回标题重读，现有备份为已写盘进度。独立QA NOT_RUN。 [2026-11-15 16:24补验更新：掌机备份/恢复及实际Load Game回到场景已完成实现者自测，旧NOT_RUN仅为历史快照；独立QA仍未执行。]"
+  "1.0.30简化备份恢复已通过生产方法JVM文件系统往返与存储失败检查，最终掌机备份/恢复往返尚未完成；输入与用户交叠窗口排除。金手指存档修改需要回标题重读，现有备份为已写盘进度。独立QA NOT_RUN。 [2026-11-15 16:24补验更新：掌机备份/恢复及实际Load Game回到场景已完成实现者自测，旧NOT_RUN仅为历史快照；独立QA仍未执行。]",
+  "CODEX-HONOR30-PERF31-20261115: 本地CPU候选尚未装机对照，稳30FPS、战斗GPU尾部与完整跨设备兼容仍待验收。"
  ],
  "execution_goal": {
   "objective": "User cancels adaptive refresh implementation; prefer verified existing Switch FPS patch approach, port to exact currentBuild if possible, pursue realstable60FPS and continuecontrols/scenes/story/resources/audio unchangedspeed",
