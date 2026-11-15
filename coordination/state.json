@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-16T00:08:31.153123+08:00",
+ "updated_at": "2026-11-16T00:32:44.921092+08:00",
  "phase": "荣耀神殿内部持续移动长帧优化，1080P输出及有界内部尺寸目标30继续推进",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3455,7 +3455,7 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-16T00:02:09.270699+08:00",
-   "checkpoint": "基于42符号采样登记，root串行集成，与root42范围同一写者，无其他源码/ADB写者。"
+   "checkpoint": "43源4a52571/APK e92965c5/3720407B，113宿主Android0/79输入一致，安装回读及9文件保全通过。PID7643复用461，同一内部桥段全幅南北移动A1原11460..11520/60间隔21.3393/P9984.51/max84.51，B2新21240..21300/60间隔25.6498/P9946.48/max46.48，A2原24360..24420/60间隔25.6642/P9945.34/max45.34。全部普通窗口前后探索、非零轴最终归零；B1遇敌黑场混合23.75只作诊断。后续原路同25.66推翻把21→25全归新缓存的解释，尚未确认FPS收益，真实稳30继续开放。当前live-ab ibrecord原查表，最后画面探索红遇敌圈，下一动作可能触发战斗，先新鲜截图核对；root输入已UP。"
   }
  ],
  "tasks": [
@@ -9893,7 +9893,7 @@
    "dependencies": [],
    "pass_gates": [],
    "acceptance": "实际格式/视图/注册更新/数组/表切换/未知ID行为保持，宿主及Android通过，9存档保全，同PID移动前后场景与输入核对，冷暖/显示/音频及独立QA据实。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。",
-   "checkpoint": "43整数格式注册查表候选已实现，42深度省略因移动无收益撤回，5项ASan/UBSan单测通过。准备113宿主与Android串行构建；当前设备42/25813原深度路。"
+   "checkpoint": "43源4a52571/APK e92965c5/3720407B，113宿主Android0/79输入一致，安装回读及9文件保全通过。PID7643复用461，同一内部桥段全幅南北移动A1原11460..11520/60间隔21.3393/P9984.51/max84.51，B2新21240..21300/60间隔25.6498/P9946.48/max46.48，A2原24360..24420/60间隔25.6642/P9945.34/max45.34。全部普通窗口前后探索、非零轴最终归零；B1遇敌黑场混合23.75只作诊断。后续原路同25.66推翻把21→25全归新缓存的解释，尚未确认FPS收益，真实稳30继续开放。当前live-ab ibrecord原查表，最后画面探索红遇敌圈，下一动作可能触发战斗，先新鲜截图核对；root输入已UP。"
   }
  ],
  "blockers": [
@@ -10175,7 +10175,7 @@
   "display_mode_observed": "Android display0 mode2=120.00001Hz; supported60/90/120; no appframeoverride and gamemodeunsupported. Game30cap distinct from panel."
  },
  "parallelism_note": "No active Codex workers. runtime/vulkan two newly dispatched tasks stopped at readonly NOT_STARTED safe point; independent515 task never dispatched. All older authors/reviewers already handed back; QA remains errored, no retry.",
- "handoff_checkpoint": "43整数格式注册查表候选已实现，42深度省略因移动无收益撤回，5项ASan/UBSan单测通过。准备113宿主与Android串行构建；当前设备42/25813原深度路。",
+ "handoff_checkpoint": "43源4a52571/APK e92965c5/3720407B，113宿主Android0/79输入一致，安装回读及9文件保全通过。PID7643复用461，同一内部桥段全幅南北移动A1原11460..11520/60间隔21.3393/P9984.51/max84.51，B2新21240..21300/60间隔25.6498/P9946.48/max46.48，A2原24360..24420/60间隔25.6642/P9945.34/max45.34。全部普通窗口前后探索、非零轴最终归零；B1遇敌黑场混合23.75只作诊断。后续原路同25.66推翻把21→25全归新缓存的解释，尚未确认FPS收益，真实稳30继续开放。当前live-ab ibrecord原查表，最后画面探索红遇敌圈，下一动作可能触发战斗，先新鲜截图核对；root输入已UP。",
  "runtime_risks": [
   {
    "id": "HOST_GUEST_X18_GATEWAY",
