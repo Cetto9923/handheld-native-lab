@@ -303,3 +303,17 @@ CPU读回屏障候选继续只读审计，why3/8分支本身不等待的源码�
 
 下一项先复用仓库既有poolreset异步命令池重置。已审查job先等本slot fence、retire先finish、复用前finish、上传drain及destroy_slots先清job的顺序。图像和shader语义不改。原日志配置async command pool reset=0，marker实际不存在。首个备份脚本把缺标记误当异常，停止于只读阶段，22998仍活，未重启。补显式存在性检查并保留原失败记录后，归档该PID完整日志/CSV与9文件私有存档，再以原56同APK重启为27957，复用461，正式源metadata留档。启动确认async command pool reset=1、LIVE-AB=poolreset present0，先测原同步reset臂。该配置仍是实验，待同进程poolreset/none普通运动与技能A/B后决定保留或恢复。证据restart56-pool-retry1。
 
+### 56命令池实验与57描述符候选
+
+PID27957同56包。A1原同步池运动5746..5886/140间隔23.2525FPS/max106.59ms。B1异步窗口遇敌，保留混合22.9287并排除纯运动比较。战后柱旁机位B2异步25004..25136/132间隔22.1560FPS/max99.58ms，随后A2同步26335..26471/136间隔22.7878FPS/max109.92ms，前后均探索，实际非零轴及最终零轴有记录。较早28..29FPS属于上方断桥机位，不能与此处直接归为版本加速或退化。异步每帧约9.8个job、约0.7ms finish等待，尚无稳定收益，当前LIVE-AB=poolreset走同步路径。
+
+首次异步战斗的菜单脚本提前完成了施法，施放时钟与8秒采样缺失，整场仅作预热。已保留截图并改用较短点按、逐步确认招式及全体目标，菜单辅助脚本增加同PID输入日志。随后三Lv1钢蝠同步暖技能37628..37809/182帧，22.6671FPS/max125.29ms/P99 121.27ms，44超50、2超100、0present错误。异步暖技能完整对照仍待补。
+
+随后平板前台切到com.hihonor.controlcenter/ControlHomeActivity，27957仍在后台。已发操作归属问题，继续宿主代码和构建工作。下一次设备操作先确认前台和输入归属。当前磁盘gfx-async-pool-reset=1、当前进程LIVE-AB=poolreset。取得操作权后恢复启动配置或继续同包实验时须一并核对这两项。
+
+57候选减少新分配storage输出的描述符缓存成本。当前实际setcache多数窗口hits=0，而56原生点位5090保留缓存插入分配调用。只在两个实际readback_buffer分配位置建立fresh事实，该新arena偏移进入本次buffer descriptor或对应texel view的完整键。槽退休先清set_cache，再复用arena偏移。因此该键在当前槽内只能首次出现。既有Honor/Adreno配置沿原allocate_set、模板创建/失败回退、完整descriptor payload和退休路径，跳过此类键的构造、查找及插入。现有gfx-live-ab=setfresh回原缓存路径，fresh_skips接入现有PERF行并随窗口重置。
+
+生产描述符最终处理段抽取的ASan/UBSan测试已通过，覆盖Honor/原路、fresh/普通、两次分配及普通缓存命中、buffer/image/view完整有效载荷、模板失败plain回退、空writes和槽退休偏移复用。恢复旧缓存插入的负控实际失败。分配事实测试核对两个真实分配点及别名路径。与原native程序和typed组件共7项通过。57全量构建与设备收益尚待验证，设备仍为56。
+
+本轮调度线索复核。27957的RHIThread28095允许0..6，78个其它线程允许0..7，top-app/vip cpuset均0..7。48已记录同样的RHI范围并实测ADPF，属于既有事实。当前cached readback实际已1，Snapshot使用SnapArena批量分配。物理32子组、重复实现snapshot allocator、再次开启readback-cached均缺少新的适用前提。尚未修改CPU亲和性。Android官方调度资料推荐以ADPF向系统提供工作量和期限，当前此路径仍按48实测结论处理。两份在线资料本次可获取，未取得不可变源码revision，仅作指导性引用。[线程调度](https://developer.android.com/android-performance-analyzer/analyze/thread-sched)，[Performance Hint API](https://source.android.com/docs/core/perf/performance-hint-api)。
+
