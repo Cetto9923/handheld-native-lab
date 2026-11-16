@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-16T19:03:51.207694+08:00",
- "phase": "1.0.60通用APK本地交付完成，手机神殿复测待反馈",
+ "updated_at": "2026-11-16T23:26:21.631384+08:00",
+ "phase": "Thor转场采样退出修复",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -3554,6 +3554,26 @@
    "checkpoint": "d2a01e8; APK a9dafd07; old100 PID11406 and new101 PID12251 scoped checks passed; phone NOT_RUN.",
    "write_state": "COMPLETE_SCOPED_DELIVERY",
    "checkpoint_at": "2026-11-16T19:03:51.207694+08:00"
+  },
+  {
+   "task": "CODEX-THOR-FILTER61-20261116",
+   "owner": "root",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_sample_usage.h",
+    "tests/device/test_sample_usage.py",
+    "tests/device/sample_usage_contract.cpp",
+    "scripts/verify_host.py",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "coordination/results/CODEX-THOR-FILTER61-20261116.md",
+    ".local/thor-filter61-20261116/",
+    "coordination/docs/RELEASE61-UNIVERSAL-20261116.md"
+   ],
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "acquired_at": "2026-11-16T23:26:21.631384+08:00",
+   "checkpoint": "23138b3，开始静态指令取证与最小修复",
+   "write_state": "ACTIVE"
   }
  ],
  "tasks": [
@@ -10164,6 +10184,39 @@
    "acceptance": "Production regression reproduces old timeout and passes fix; host and Android build; same APK old/no-DLC and new/DLC tablet checks; phone acceptance explicitly pending.",
    "checkpoint": "## 通用APK交付检查点\n\n构建源码提交d2a01e8，native BuildID为bd811c1da6c9f0aa19377b72157333b07917ef7a。638份src/scripts/tests输入构建前后全文SHA一致，107项宿主检查与Android构建退出0。6项可选真实shader fixture因原临时输入缺失标记SKIPPED，未计入107项通过。抽取生产函数的栅栏生命周期回归、渲染策略及AOC契约均在通过范围。独立QA为NOT_RUN。\n\n荣耀A42BBB5109000333覆盖安装后回读APK全文SHA与交付文件一致。安装前后9份私有测试存档逐文件SHA相同。正式codex-local-save目录文件元数据在安装前、安装后及两组测试结束后相同。全部运行使用显式私有存档副本。\n\n| 同一APK的验证组合 | 进程与输入 | 实际结果 |\n| --- | --- | --- |\n| 游戏1.0.0，无DLC | PID11406，/sdcard/FFRS，main736837 | 标题1.0.0.0、DLC枚举0，继续游戏读取旧自动存档，关闭教程后进入神殿门前世界地图 |\n| 游戏1.0.1，含DLC | PID12251，实体game101-stage-20261116，main b7f965 | 标题1.0.1.0，DLC枚举1、索引2只读挂载aoc0成功，继续游戏读取同源旧自动存档进入相同世界地图，render-policy对象链校验通过 |\n\n两组最后日志均无FATAL，截图、case plan及同PID原日志分别保存在old100-no-dlc/与new101-dlc/。测试只覆盖所列启动、读档及DLC识别挂载。荣耀400 Pro本机、长时间土之神殿走动、技能、全章节、DLC奖励领取和稳定30帧为NOT_RUN或未达标。用户提供的手机末段日志没有系统低内存退出证据，本轮不将其归为OOM。\n\n安装脚本首次在am start后立即pidof返回空而提前结束，之后进程10570正常启动。复用曾由1.0.1写入选项的461测试副本启动1.0.0时出现选项读取提示，跨游戏版本的选项差异为当前推测。随后两组各自用正式源文件新建私有测试副本，正常完成启动读档且未再出现该提示。失败记录和原私有副本备份均保留，正式文件未重置。\n\n交付FFRS-1.0.60-preview-universal.apk，3728599B，SHA256 a9dafd07821d93d46783c582c1e6903b2284c75ed64f24997d71c507a49e7d9d。用户只需统一发布此APK，旧无DLC数据用户直接覆盖安装即可，新升级数据按既有覆盖说明导入。说明文件为coordination/docs/RELEASE60-UNIVERSAL-20261116.md，副本在本地RELEASE.md。此前9.1GB覆盖ZIP当前不在原临时路径，本轮没有重新生成或声称更新ZIP。若外部已保留的ZIP带59 APK，发布安装入口应以60为准。\n\n本轮源码与清理后的证据索引本地提交，APK及游戏派生产物只在.local/。当前平板仍为新数据测试进程12251，输入已抬起，正式游戏数据没有覆盖，长期性能目标保持用户要求的暂停状态。\n",
    "completed_at": "2026-11-16T19:03:51.207694+08:00"
+  },
+  {
+   "id": "CODEX-THOR-FILTER61-20261116",
+   "owner": "root",
+   "role": "CRASH_COMPATIBILITY",
+   "status": "in_progress",
+   "objective": "修复AYN Thor开场转场R32采样能力退出，保留新旧数据兼容与显示语义",
+   "inputs": [
+    "user diagnostic ZIP fb01e9e9",
+    "video 60312ab8",
+    "23138b3"
+   ],
+   "outputs": [
+    "scoped sampler fix and regression",
+    "universal candidate APK"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_spirv_sample_usage.h",
+    "tests/device/test_sample_usage.py",
+    "tests/device/sample_usage_contract.cpp",
+    "scripts/verify_host.py",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "coordination/results/CODEX-THOR-FILTER61-20261116.md",
+    ".local/thor-filter61-20261116/",
+    "coordination/docs/RELEASE61-UNIVERSAL-20261116.md"
+   ],
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "acceptance": "复现原采样拒绝；证明实际指令及能力语义；宿主/Android通过；设备功能范围明确；Thor用户复测待反馈",
+   "checkpoint": "报告59/old736837；fatal R32_SFLOAT无linear能力；系统exit70。"
   }
  ],
  "blockers": [

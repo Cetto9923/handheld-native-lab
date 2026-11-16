@@ -20,6 +20,7 @@ extern "C" int xbg_completion_wait_selftest(char *report,size_t bytes);
 #include "xbg_pipeline_key.h"
 #include "xbg_warm_flush.h"
 #include "xbg_spirv_integer_buffer.h"
+#include "xbg_spirv_sample_usage.h"
 #include "xbg_spirv_typed_storage.h"
 #include "xbg_spirv_vertex_input.h"
 #include "xbg_shader_identity.h"
@@ -2790,6 +2791,7 @@ struct Shader {std::string key;std::string identity;
     std::set<VertexInputFormats> unsupported_vertex_inputs;
     uint32_t stage;VkShaderModule module{};std::vector<xbg_shader_binding> bindings;std::vector<uint32_t> inputs,input_classes,probe_words;std::vector<uint8_t> c1;
     std::set<uint32_t> storage_writes; // Vulkan bindings of storage buffers the SPIR-V may write
+    std::set<uint32_t> filter_independent_bindings;
     bool discards=true; // fragment shader may kill/demote (conservative default)
     XbgRasterFacts raster; // position input (vertex), declared outputs and SampleMask (fragment): first_draw_covers
     Buffer c1_buffer{};bool c1_ready=false;
@@ -3177,6 +3179,7 @@ Shader *load_shader(const void *control){
     // gfx-shader-reuse：预热线程已改写过这个着色器时直接取用；2 时照样改写，与取来的逐字比对。
     // gfx-shader-reuse: take the warm-up threads' rewrite of this shader when there is one; with 2, rewrite as well and compare word by word.
     const bool have_reused=optimize_runtime_shader(words,h.stage,key,key,"runtime");
+    p->filter_independent_bindings=xbg_spirv_filter_independent(words);
     load_t2=timing_clock();
     // The module's own image form decides the formatless requirement later.
     // The package flag only says what the guest asked for.
@@ -3343,6 +3346,7 @@ Shader *integer_buffer_variant(Shader &base){
     variant->storage_image_formats=base.storage_image_formats;
     variant->storage_binding_info=base.storage_binding_info;
     if(!base.module_words.empty())variant->module_words=words;
+    variant->filter_independent_bindings=xbg_spirv_filter_independent(words);
     if(base.stage==5)xbg_spirv_indirect_instances(words,variant->indirect_instance_fields);
     variant->probe_words=words;
     VkShaderModuleCreateInfo info{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};info.codeSize=words.size()*4;info.pCode=words.data();
@@ -3545,6 +3549,7 @@ Shader *typed_storage_variant(Shader &base){
         variant->typed_storage_rewritten.insert(entry.first);
     }
     variant->module_words=words;
+    variant->filter_independent_bindings=xbg_spirv_filter_independent(words);
     if(base.stage==5)xbg_spirv_indirect_instances(words,variant->indirect_instance_fields);
     validate_capabilities(words,base.stage);
     VkShaderModuleCreateInfo info{};info.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;info.codeSize=words.size()*4;info.pCode=words.data();
@@ -3618,6 +3623,7 @@ Shader *vertex_input_variant(Shader &base){
     variant->storage_binding_info=base.storage_binding_info;
     variant->typed_storage_rewritten=base.typed_storage_rewritten;
     variant->module_words=words;variant->probe_words=words;
+    variant->filter_independent_bindings=xbg_spirv_filter_independent(words);
     validate_capabilities(words,base.stage);
     VkShaderModuleCreateInfo info{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};info.codeSize=words.size()*4;info.pCode=words.data();
     VK(vkCreateShaderModule(cfg.device,&info,nullptr,&variant->module));
@@ -4330,7 +4336,13 @@ void release_descriptors(Slot &s){
 // Fast path (iOS: samplers fetched directly instead of re-deriving per draw): raw NVN parameters +
 // view format -> VkSampler, before the full conversion/validation below.
 VkSampler sampler_slow(const samp_par &p,Image &im,VkFormat viewed,bool integer_border);
-VkSampler sampler(const samp_par &p,Image &im,VkFormat viewed,bool integer_border){
+VkSampler sampler(const samp_par &requested,Image &im,VkFormat viewed,bool integer_border,bool filter_independent=false){
+    samp_par p=requested;
+    if(filter_independent && p.minf<=5 && p.magf<=1 && !(format_properties(viewed).optimalTilingFeatures&VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)){
+        // Fetch and gather do not interpolate texels. Keep their address,
+        // border and comparison state while avoiding unsupported filter bits.
+        p.minf=p.minf<2?0:2;p.magf=0;p.aniso=1;
+    }
     auto bits=[](float f){uint32_t u;memcpy(&u,&f,4);return u;};
     SamplerFastKey k{{uint32_t(p.minf)|uint32_t(p.magf)<<8|uint32_t(p.ws)<<16|uint32_t(p.wt)<<24,uint32_t(p.wr)|uint32_t(p.cmp_mode)<<8|uint32_t(p.cmp_func)<<16|uint32_t(integer_border)<<24,
         bits(p.lod_min),bits(p.lod_max),bits(p.lod_bias),bits(p.aniso),bits(p.border[0]),bits(p.border[1]),bits(p.border[2]),bits(p.border[3]),uint32_t(viewed)}};
@@ -5051,7 +5063,10 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                     Image &im=get_image(&texture,true);provenance_log("BIND shader=%s stage=%u slot=%u id=%d handle=%llu descriptorMem=%p descriptorOff=%lld type=%u",shader.key.c_str(),ns,slot,id,(unsigned long long)handle,state.texture_pool.pool?state.texture_pool.pool->mem:nullptr,(long long)state.texture_pool.off,unsigned(b.type));provenance_image("BIND",&texture,im,registered.has_view?&registered.view:nullptr);DESC_CALL(ImageTransition, prepare_read(im,commands.command,b.type!=VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,attachment_barrier_enabled && b.type!=VK_DESCRIPTOR_TYPE_STORAGE_IMAGE?im.sampled_aspects(registered.has_view?&registered.view:nullptr):0));if(desc_memo_recording)desc_memo_images.push_back({&texture,&im,record,record->revision});ii.imageView=DESC_CALL(ImageView, im.view(registered.has_view?&registered.view:nullptr,false,b.type==VK_DESCRIPTOR_TYPE_STORAGE_IMAGE));ii.imageLayout=VK_IMAGE_LAYOUT_GENERAL;
                     if(capture.active){char label[100];snprintf(label,sizeof(label),"st%u-bind%u-el%u-input",st,b.binding,element);out.capture_inputs.push_back({&im,registered.view,registered.has_view,label});capture_log("TEXTURE label=%s shader=%s nvnStage=%u slot=%u handle=%#llx id=%d serial=%llu cachedSerial=%llu image=%p view=%p viewFormat=%u sourceKind=%u",label,shader.key.c_str(),ns,slot,(unsigned long long)handle,id,(unsigned long long)texture.serial,(unsigned long long)im.source.serial,(void*)im.image,(void*)ii.imageView,unsigned(im.view_format(registered.has_view?&registered.view:nullptr)),b.source);}
                     if(b.type==VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER || b.type==VK_DESCRIPTOR_TYPE_SAMPLER){DESC_SCOPE(SamplerBind);uint64_t sh=handle;if(b.sampler_slot!=UINT32_MAX){need(b.sampler_slot<128,"Sampler slot out of range");sh=state.samp[ns][b.sampler_slot];}int sid=int(sh>>20);samp_par parameters{};if(sid==0){parameters.ws=parameters.wt=parameters.wr=7;parameters.aniso=1;parameters.cmp_func=1;}
-                        else{auto sp=samplers.find(pool_key(&state.sampler_pool));auto &table=sp==samplers.end()?legacy_samplers:sp->second;auto sa=table.find(sid);if(sa==table.end())xbg_fatalf("Unregistered sampler id=%d",sid);parameters=sa->second;}ii.sampler=sampler(parameters,im,im.view_format(registered.has_view?&registered.view:nullptr,true),((b.flags>>16)&3)!=0);if(capture.active || probe_is_active())capture_log("SAMPLER st=%u binding=%u sid=%d samplerSlot=%u min=%u mag=%u wrap=%u/%u/%u lod=%g/%g bias=%g",st,b.binding,sid,b.sampler_slot,parameters.minf,parameters.magf,parameters.ws,parameters.wt,parameters.wr,parameters.lod_min,parameters.lod_max,parameters.lod_bias);}
+                        else{auto sp=samplers.find(pool_key(&state.sampler_pool));auto &table=sp==samplers.end()?legacy_samplers:sp->second;auto sa=table.find(sid);if(sa==table.end())xbg_fatalf("Unregistered sampler id=%d",sid);parameters=sa->second;}const VkFormat sampled_format=im.view_format(registered.has_view?&registered.view:nullptr,true);
+                        const bool filter_independent=shader.filter_independent_bindings.count(b.binding)!=0;
+                        if(sampled_format==VK_FORMAT_R32_SFLOAT){static unsigned notes=0;if((!filter_independent && !(format_properties(sampled_format).optimalTilingFeatures&VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)) || notes++<48)xbg_logf("NVN R32 sampler shader=%s binding=%u serial=%llu filterIndependent=%u min=%u mag=%u features=%#x",shader.key.c_str(),b.binding,(unsigned long long)texture.serial,unsigned(filter_independent),parameters.minf,parameters.magf,format_properties(sampled_format).optimalTilingFeatures);}
+                        ii.sampler=sampler(parameters,im,sampled_format,((b.flags>>16)&3)!=0,filter_independent);if(capture.active || probe_is_active())capture_log("SAMPLER st=%u binding=%u sid=%d samplerSlot=%u min=%u mag=%u wrap=%u/%u/%u lod=%g/%g bias=%g",st,b.binding,sid,b.sampler_slot,parameters.minf,parameters.magf,parameters.ws,parameters.wt,parameters.wr,parameters.lod_min,parameters.lod_max,parameters.lod_bias);}
                     if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_IMAGE){if(im.rg16_proxy)storage_rg16_images.push_back(&im);VkFormat viewed=im.view_format(registered.has_view?&registered.view:nullptr);if(!(im.usage&VK_IMAGE_USAGE_STORAGE_BIT))xbg_fatalf("NVN storage image without IMAGE flag serial=%llu format=%#x flags=%#x",(unsigned long long)texture.serial,texture.d.format,texture.d.flags);const VkFormatProperties &fp=format_properties(viewed);need(fp.optimalTilingFeatures&VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT,"Format not usable as storage image");
                         // The requirement follows the module's real image form. A formatless
                         // module still needs the formatless feature, exactly as before. A
