@@ -5269,3 +5269,21 @@ GitHub Release为https://github.com/Cetto9923/handheld-native-lab/releases/tag/v
 共享.local/romfs链接当前目标缺失，旧本地FFRS-data.zip也不在旧交付路径。没有删除或重建它们。本轮重建完全来自用户提供并已核SHA的原始NSP，正式存档不参与补丁打包。当前Mac约12GiB空闲，containers/base/程序NCA为本轮可从原NSP重生的9GB中间件，完成依赖取证后可按可恢复清理流程回收再做ZIP，避免生成额外9GB staging副本。新增派生产物与最终ZIP仅留.local/。
 
 已向用户询问可否连接荣耀平板用于最终启动/读档/DLC验证，继续制作工作不等待该可选答复。帧率优化主目标继续保持收口暂停。下一步核对主模块导入差异、实现并测试真实AOC路径、准备必要APK更新，最后流式生成覆盖ZIP、完整CRC/逐文件SHA校验和最简升级说明。
+
+### AOC实现及1.0.1渲染参数适配检查点
+
+50e4d4d新增真实DLC目录扫描、元数据application/content校验、数字索引排序分页和只读挂载。沿用既有Mount表与路径解析，缺失内容枚举0，禁止覆盖存档挂载。目录缓存大小保持既有0语义，实际Mount核对安装。覆盖数据下次启动生效。生产C提取测试ASan/UBSan通过，包括缺失/错误ID/非规范目录/无效参数/挂载表已满/写保护/标记读取。
+
+新旧主模块651项导入名称相同，SDK解压后SHA完全相同。render-policy-static-proof.json记录两个原始NSO的ADRP+ADD引用，min/max/budget注册PC均为2b621a0至2b6231c，mode为33a45c8至33a45ec。新指令引用实际CVar UTF16名字及新缓存8be80d0/8be80e8/8be8118/8c29a90。四份vtable64字节与旧版完全一致，位置均增加0x1000。实现按两个精确BuildID选择实际地址，保留完整运行时object/vtable/data链校验。9个组件测试通过，完整宿主及Android构建待执行。
+
+荣耀A42BBB5109000333在线，10580仍为旧58进程，125G空闲。采用独立数据目录验证，保留正式FFRS及存档。构建入口为.local/game101-dlc-20261116/build59/run.py，运行前保存命令、环境、输入SHA和日志路径。
+
+### APK与覆盖ZIP构建完成，实机回归进行中
+
+build59基于50e4d4d，91份源输入前后SHA相同，120项宿主检查及Android构建退出0。APK 3728599B，SHA18850fbe921905585975ed9644afac68de9e4f6ecaecd90f830ebd1347434835。对应native BuildID8754ea21370d607182c6b01325de833f6508e654，匹配符号副本lib59.symbols.so已保留。宿主报告只覆盖组件，标题/实际场景仍待实机。
+
+流式覆盖ZIP已生成，9091765145B、SHA6d550a980872d599302a7352adcb0839eb35b4485754d1760dab5d71d949ffde，15个载荷与内置SHA256SUMS.txt。包含解压后的main、10项更新RomFS文件、实际19B DLC标记及从CNMT核验的元数据、59 APK、升级说明。完整逐文件CRC及SHA回读通过。更新模块与资源的11份SHA也与平板stage一一相同。构建脚本scripts/distribution/build_game_data_overlay.py，manifest、命令、PID、日志及ZIP只在.local/game101-dlc-20261116/delivery/。路径遍历、存档路径、重复输出和小型完整往返检查通过。游戏派生载荷没有加入Git或上传。
+
+59覆盖安装回读APK全文SHA相同，9份私有测试存档安装前后全文SHA相同，正式存档目录元数据相同。首轮22350实际加载b7f965主模块，AOC枚举1、List索引2、aoc0只读挂载成功。随后因测试root的shaders.hnla为符号链接，既有archive reader的O_NOFOLLOW拒绝而退出。这次不是新游戏缺少着色器，原归档索引明确包含fae0b835a11360e2，不新增或重生成着色器。失败日志保存在physical-stage/pid22350-first-symlink-failure.log.out。
+
+改用外部独立stage实体目录，复制原着色器归档并核对全文SHA529aede4fc1a1e3bb165757e5011332fb4d4088553587ecb76772013221c0ed8，保留11份loose覆盖及相同SDK。没有修改reader的链接保护或正式FFRS数据。run-as复制外部微小DLC曾被FUSE拒绝，改用stdin在私有目录写入并全文回读，随后最终stage使用shell复制，原记录保留。当前22661从实体stage启动，仍用461私有存档，标题及读档待验证。平板另一款游戏已自动转后台，未向该应用发送控制输入。
