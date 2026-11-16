@@ -34,3 +34,16 @@ GPU编译和执行的实际命令、源码与二进制摘要、进程号、退�
 ## 构建与待验项目
 
 最终构建记录后续追加。1.0.62仍为修复预览，Thor目标机转场、完整游戏场景及独立QA为NOT_RUN。RG正常转场与GPU组件均不等同于Thor实机验收。小米15 Pro长停顿按用户要求暂缓，稳定30帧目标继续开放。
+
+
+## 最终构建和交付
+
+构建源码提交08baf94d05a10fcd6213bd38fd69e38b0a952a03，647份src/scripts/tests输入在构建前后全文SHA一致。Android和109项宿主检查退出0，linear-sample两项实际执行并通过。6项旧的可选真实shader fixture缺少输入而SKIPPED，未计为109项通过。本次目标ceb27真实输入明确设置并执行。新生产代码和自有回归均已本地提交，其他写者的docs/SWITCH_TO_ANDROID_PORTING_PITFALLS_GUIDE.md保持原WIP。
+
+APK为FFRS-1.0.62-preview-universal.apk，3744983B，SHA256 fafd9f22b5959a73a3481106d80be8a6650b28e6f81276d16cc7ea097d513a8d。manifest62/1.0.62-preview，APK完整ZIP CRC和签名验证通过。native BuildID为15aa4a1a4b7c0b4dfda8be230df329990cc6ef24，stripped及完整符号副本一致，均单独保存在本任务.local目录。包内两份非许可证assets逐字节与61一致。artifact.json收录摘要、覆盖范围及符号信息。
+
+最终重建使用build-plan.json中的命令和环境，Android构建为bash scripts/android/build_game_window_apk.sh，宿主检查为python3 scripts/verify_host.py --module .local/honor400-fence60-20261116/main100.nso --runtime-contracts --output .local/thor-linear62-20261117/host。真实两个采样用途环境输入指向.local/thor-filter61-20261116/ceb27d63df2eaf0a.spv。复建须另选新输出目录保留本轮证据。首轮647输入及109项通过记录保存在first-build，最终结果取本目录build-plan.json和host/summary.json。
+
+已复制至/Users/yuyan9923/GitHub/游戏发布包/02-最终幻想_共鸣_FFRS/，APK全文回读SHA一致。附.sha256、1.0.62-闪退修复说明.md并同步安装说明。旧60和61分别保留在历史安装包与专用补丁下，移动前后摘要核验相同，61说明追加接替原因。原游戏数据ZIP保持已有内容。
+
+62整包的Thor转场、RG游戏场景、荣耀平板及独立QA均为NOT_RUN。本轮RG只新增了直接测试生产改写的GPU组件，61的既有转场回归另列。目标设备是否命中62 fallback以及闪退是否消失由用户安装同一包复测确认。没有恢复小米长停顿或长期稳30性能任务，没有向荣耀发送输入或覆盖安装。

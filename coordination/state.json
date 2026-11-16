@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-17T00:56:50.979257+08:00",
- "phase": "优先修索尔R32真正线性采样并打62包",
+ "updated_at": "2026-11-17T01:00:29.043849+08:00",
+ "phase": "62闪退修复预览已交付，待索尔目标机转场复测",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -3621,9 +3621,9 @@
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acquired_at": "2026-11-17T00:31:38.668741+08:00",
-   "checkpoint": "62源码完成并准备最终构建，生产ASan/UBSan及真实SPV通过。RG500组GPU/独立CPU参考通过。61仅覆盖过滤无关读，真实52 Sample已补浮点双线性路径，Thor原机NOT_RUN。",
-   "write_state": "ACTIVE",
-   "checkpoint_at": "2026-11-17T00:56:50.979257+08:00"
+   "checkpoint": "62源08baf94/APK fafd9f22/3744983B/BuildID15aa4a1a。Android及109宿主0，647输入一致，真实52/106/118改写和生产选择通过，RG500组GPU/CPU参考通过。统一目录已交付并回读，60/61保留历史。Thor、62整包场景、独立QA NOT_RUN，待目标机复测。小米长停顿和稳定30任务暂停。无本轮活动构建、采样、自动输入。",
+   "write_state": "DELIVERED_PENDING_TARGET_TEST",
+   "checkpoint_at": "2026-11-17T01:00:29.043849+08:00"
   }
  ],
  "tasks": [
@@ -10301,7 +10301,7 @@
    "id": "CODEX-THOR-LINEAR62-20261117",
    "owner": "root",
    "role": "CRASH_COMPATIBILITY",
-   "status": "in_progress",
+   "status": "awaiting_user_test",
    "objective": "修复索尔R32真正线性采样缺口并交付统一APK62",
    "inputs": [
     "Thor ZIP fb01e9e9",
@@ -10341,7 +10341,8 @@
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acceptance": "实际ceb27 binding52等精确LOD0改写通过验证；缓存身份/预热完整；生产参数匹配；组件原采样对照；构建源码SHA；目标设备验证待用户，RG普通回归明确单列",
-   "checkpoint": "62源码完成并准备最终构建，生产ASan/UBSan及真实SPV通过。RG500组GPU/独立CPU参考通过。61仅覆盖过滤无关读，真实52 Sample已补浮点双线性路径，Thor原机NOT_RUN。"
+   "checkpoint": "62源08baf94/APK fafd9f22/3744983B/BuildID15aa4a1a。Android及109宿主0，647输入一致，真实52/106/118改写和生产选择通过，RG500组GPU/CPU参考通过。统一目录已交付并回读，60/61保留历史。Thor、62整包场景、独立QA NOT_RUN，待目标机复测。小米长停顿和稳定30任务暂停。无本轮活动构建、采样、自动输入。",
+   "recovery_point": ".local/thor-linear62-20261117/artifact.json及build-plan.json，收到Thor用户复测报告后先核对版本62和最新会话退出信息"
   }
  ],
  "blockers": [
