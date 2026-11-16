@@ -888,7 +888,7 @@ struct Slot {
     struct WaitCount{std::atomic<int> n{0};WaitCount()=default;WaitCount(const WaitCount&){}WaitCount &operator=(const WaitCount&){n.store(0);return *this;}} waiters;   // 不持引擎锁等本槽栅栏的线程数（xbg_legacy_wait）；复位栅栏前须等它们离开 | threads waiting on this slot's fence without the engine lock (xbg_legacy_wait); the fence is reset only after they leave
     VkCommandBuffer cmd{};VkCommandPool pool{};VkFence fence{};VkQueryPool timestamps{};bool recording=false,pending=false;uint64_t ops=0,covers=0; // covers: guest fence value complete once this slot retires
     std::vector<VkQueryPool> occlusion_pools,timestamp_pools;uint32_t occlusion_used=0,timestamp_used=0;
-    Retire retire;std::vector<std::shared_ptr<OwnedInputCopy>> copy_readers;Arena stream,readback;std::vector<VkDescriptorPool> pools;size_t pool_next=0;
+    Retire retire;std::vector<std::shared_ptr<OwnedInputCopy>> copy_readers;Arena stream,uniform,readback;std::vector<VkDescriptorPool> pools;size_t pool_next=0;
     // gfx-xview-guard (recording_slot, readback_buffer): ranges of this slot's readback buffers the other slot read through
     // pending views (viewed), the ranges guarded during this recording, and the copies and fills that write guarded
     // buffers from the GPU in a prologue command buffer submitted ahead of cmd.
@@ -1379,8 +1379,8 @@ void retire_slot(Slot &s){
     for(auto &f:s.framebuffers)vkDestroyFramebuffer(cfg.device,f.second,nullptr);s.framebuffers.clear();
     for(auto &v:s.texel_views)vkDestroyBufferView(cfg.device,v.second,nullptr);s.texel_views.clear();
     uint64_t c3=timing_clock();s.retire.run();release_descriptors(s);uint64_t c4=timing_clock();
-    perf.arena_peak=std::max<uint64_t>(perf.arena_peak,s.stream.peak+s.readback.peak);s.stream.peak=s.readback.peak=0;
-    s.stream.reset();s.readback.reset();
+    perf.arena_peak=std::max<uint64_t>(perf.arena_peak,s.stream.peak+s.uniform.peak+s.readback.peak);s.stream.peak=s.uniform.peak=s.readback.peak=0;
+    s.stream.reset();s.uniform.reset();s.readback.reset();
     // Every set is fully rewritten before use, so sets are recycled instead of resetting pools (vkAllocateDescriptorSets cost ~15 us/set on Maleoon).
     for(auto &u:s.used_sets){auto &sp=s.spare_sets[u.first];sp.insert(sp.end(),u.second.begin(),u.second.end());u.second.clear();}s.set_cache.clear();
     cleanup_ns[0]+=c1-c0;cleanup_ns[1]+=c2-c1;cleanup_ns[2]+=c3-c2;cleanup_ns[3]+=c4-c3;cleanup_ns[4]+=timing_clock()-c4;
@@ -1410,7 +1410,7 @@ Slot &recording_slot(){
          s.guard.clear();if(o_pending && xview_guard && !ab_off("xguard"))s.guard.swap(s.viewed);s.viewed.clear();s.pro_ops.clear();s.pro_images.clear();}
         // Pending writebacks still read this slot's readback arena; finish them before trimming.
         for(auto &w:pending_writebacks)if(w.slot==&s){++perf.why_slot;resolve_pending();break;}
-        s.stream.trim();s.readback.keep_chunks=1;
+        s.stream.trim();s.uniform.keep_chunks=1;s.uniform.trim();s.readback.keep_chunks=1;
         // Other pending submissions retain their exact source buffers,
         // including oversized chunks. Idle readback chunks can be released.
         s.readback.trim([&](VkBuffer buffer){
@@ -1736,11 +1736,18 @@ void readback_sync(uint64_t &reason){
 }
 void retire_handle(std::function<void()> f){recording_slot().retire.handles.push_back(std::move(f));}
 template<class T>void retire_object(std::shared_ptr<T> p){recording_slot().retire.objects.push_back(std::move(p));}
-Buffer stream_buffer(size_t n,const void *data=nullptr,size_t copy=0,bool zero=true){
-    Buffer b=recording_slot().stream.alloc(n);
+Buffer stream_buffer(size_t n,const void *data=nullptr,size_t copy=0,bool zero=true,Arena *arena=nullptr){
+    Buffer b=(arena?*arena:recording_slot().stream).alloc(n);
     if(data && copy){need(copy<=n,"Buffer copy overflow");evguard::EngineRead er(data,copy);memcpy(b.mapped,data,copy);}
     if(zero && copy<n)memset(static_cast<uint8_t*>(b.mapped)+copy,0,n-copy);
     b.flush();return b;
+}
+// Keep dynamic UBOs in a small slot-owned arena. Large vertex uploads must not
+// move their buffer identity and force otherwise reusable sets to be rebuilt.
+Buffer uniform_buffer(size_t n,const void *data=nullptr,size_t copy=0){
+    Slot &s=recording_slot();
+    Arena &arena=honor_inline_enabled && !ab_off("uboarena")?s.uniform:s.stream;
+    return stream_buffer(n,data,copy,true,&arena);
 }
 Buffer readback_buffer(size_t n,const void *data=nullptr,size_t copy=0){
     Slot &s=recording_slot();Buffer b=s.readback.alloc(n);
@@ -4355,7 +4362,7 @@ Buffer uniform_snapshot_slow(uint64_t address,size_t copy);
 Buffer uniform_snapshot_cached(uint64_t address,size_t copy);
 Buffer uniform_snapshot(uint64_t address,size_t copy){
     if(g_ui_moff!=0 && address==g_ui_moff_addr && copy>=64){   // 界面下移：投影矩阵另拷一份加纵向偏移，不进快照缓存 | UI shift: a separate copy of the projection matrix with a vertical offset, kept out of the snapshot caches
-        Buffer src=uniform_snapshot_cached(address,copy);Buffer b=stream_buffer(uniform_range(copy),src.mapped,copy);
+        Buffer src=uniform_snapshot_cached(address,copy);Buffer b=uniform_buffer(uniform_range(copy),src.mapped,copy);
         float m[16],o=float(g_ui_moff);memcpy(m,b.mapped,64);m[1]+=o*m[3];m[5]+=o*m[7];m[9]+=o*m[11];m[13]+=o*m[15];memcpy(b.mapped,m,64);b.flush();return b;}
     return uniform_snapshot_cached(address,copy);
 }
@@ -4368,7 +4375,7 @@ Buffer uniform_snapshot_slow(uint64_t address,size_t copy){
     auto it=uniform_snapshots.find(key);if(it!=uniform_snapshots.end()){++perf.snapshot_hits;++snap_map_hits;return it->second;}
     {Buffer view;if(pending_view(address,n,properties.limits.minUniformBufferOffsetAlignment,view)){uniform_snapshots.emplace(key,view);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,n);return view;}}
     ++perf.snapshot_misses;perf.snapshot_bytes+=copy;snap_site_bytes[5]+=copy;snap_site_req[5]+=copy;cpu_access(address,copy,2);
-    Buffer b=stream_buffer(n,reinterpret_cast<const void*>(address),copy,true);uniform_snapshots.emplace(key,b);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,copy);return b;
+    Buffer b=uniform_buffer(n,reinterpret_cast<const void*>(address),copy);uniform_snapshots.emplace(key,b);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,copy);return b;
 }
 // Descriptor memo (iOS "same inputs -> reuse the parameter block"): within one guest submit, a draw whose shaders and
 // bound inputs (buffer ranges, texture/sampler handles, pools, driver generations, viewport) equal an earlier draw's
@@ -4461,7 +4468,7 @@ Buffer &support_block(){size_t n=1392;auto k=std::make_pair(state.viewport.width
 Buffer &driver_block(unsigned ns,unsigned bank){uint64_t gen=bank?tex_gen[ns]:buf_gen[ns];
     const uint32_t base=bank==0 && ns!=5?draw_base_instance:0;
     DriverCache &dc=driver_cache[ns][bank];
-    if(!xbg_driver_cache_matches(&dc.key,slot_serial,gen,base)){Buffer s=stream_buffer(0x1000);fill_driver(static_cast<uint8_t*>(s.mapped),ns,bank?2:0);s.flush();dc.key={slot_serial,gen,base};dc.buffer=s;}
+    if(!xbg_driver_cache_matches(&dc.key,slot_serial,gen,base)){Buffer s=uniform_buffer(0x1000);fill_driver(static_cast<uint8_t*>(s.mapped),ns,bank?2:0);s.flush();dc.key={slot_serial,gen,base};dc.buffer=s;}
     return dc.buffer;}
 // Uniform texel buffers held in resident per-slot copies, so descriptor sets that bind them can be memoized across frames
 // (D2R camp: 558 of 2188 draws per frame bind one and were rebuilt every time, ~21 us each against ~2.5 us for a memo hit).
@@ -7025,7 +7032,7 @@ void execute(const uint8_t *pc,unsigned depth,uint64_t &budget){
     for(;;){need(budget++<10000000,"NVN command count/cycle limit exceeded");
         if(gfx_async && (budget&63)==0)poll_retire();
         // Bound host arena use per frame slot; only at command boundaries.
-        {Slot &cur=slots[slot_index];if(cur.recording && cur.stream.used_total+cur.readback.used_total>arena_flush_bytes){SiteScope site(SITE_ARENA);submit_slots(false);}}
+        {Slot &cur=slots[slot_index];if(cur.recording && cur.stream.used_total+cur.uniform.used_total+cur.readback.used_total>arena_flush_bytes){SiteScope site(SITE_ARENA);submit_slots(false);}}
         size_t available=command_available(pc);need(available>=8,"Truncated command header");op_hdr h;memcpy(&h,pc,8);need(h.size>=8 && !(h.size&7) && h.size<=available,"NVN command size outside pool");const uint8_t *p=pc+8;size_t n=h.size-8;cur_op=h.op;
         if(codex_gpu_step){
             std::string keys;for(unsigned st=0;st<6;st++)if(state.shader[st])keys+=std::to_string(st)+":"+state.shader[st]->key+" ";
@@ -7219,7 +7226,7 @@ void log_memory_profile_counts(){
         const Slot &s=slots[i];pools+=s.pools.size();
         for(const auto &entry:s.spare_sets)spare+=entry.second.size();
         for(const auto &entry:s.used_sets)used+=entry.second.size();
-        pinned+=memo_pinned[i].size();memo_entries+=desc_memo_slot[i].size();add_arena(s.stream);add_arena(s.readback);
+        pinned+=memo_pinned[i].size();memo_entries+=desc_memo_slot[i].size();add_arena(s.stream);add_arena(s.uniform);add_arena(s.readback);
         for(const auto &chunk:texel_arena[i].chunks)resident_texel_bytes+=chunk.allocation_size;
     }
     add_arena(static_arena);
@@ -7244,7 +7251,7 @@ void destroy_slots(){
         memo_unpin_all(i);
         texel_evict(i,true);
     }
-    for(auto &s:active_slots()){s.retire.run();release_descriptors(s);for(auto &v:s.texel_views)vkDestroyBufferView(cfg.device,v.second,nullptr);s.texel_views.clear();for(auto &f:s.framebuffers)vkDestroyFramebuffer(cfg.device,f.second,nullptr);s.framebuffers.clear();for(auto p:s.pools)vkDestroyDescriptorPool(cfg.device,p,nullptr);s.pools.clear();s.pool_next=0;s.stream.release();s.readback.release();s.viewed.clear();s.guard.clear();s.pro_ops.clear();s.pro=VK_NULL_HANDLE;if(s.fence)vkDestroyFence(cfg.device,s.fence,nullptr);if(s.timestamps)vkDestroyQueryPool(cfg.device,s.timestamps,nullptr);if(s.prof_pool)vkDestroyQueryPool(cfg.device,s.prof_pool,nullptr);for(auto q:s.occlusion_pools)vkDestroyQueryPool(cfg.device,q,nullptr);for(auto q:s.timestamp_pools)vkDestroyQueryPool(cfg.device,q,nullptr);if(s.pool)vkDestroyCommandPool(cfg.device,s.pool,nullptr);s=Slot{};}
+    for(auto &s:active_slots()){s.retire.run();release_descriptors(s);for(auto &v:s.texel_views)vkDestroyBufferView(cfg.device,v.second,nullptr);s.texel_views.clear();for(auto &f:s.framebuffers)vkDestroyFramebuffer(cfg.device,f.second,nullptr);s.framebuffers.clear();for(auto p:s.pools)vkDestroyDescriptorPool(cfg.device,p,nullptr);s.pools.clear();s.pool_next=0;s.stream.release();s.uniform.release();s.readback.release();s.viewed.clear();s.guard.clear();s.pro_ops.clear();s.pro=VK_NULL_HANDLE;if(s.fence)vkDestroyFence(cfg.device,s.fence,nullptr);if(s.timestamps)vkDestroyQueryPool(cfg.device,s.timestamps,nullptr);if(s.prof_pool)vkDestroyQueryPool(cfg.device,s.prof_pool,nullptr);for(auto q:s.occlusion_pools)vkDestroyQueryPool(cfg.device,q,nullptr);for(auto q:s.timestamp_pools)vkDestroyQueryPool(cfg.device,q,nullptr);if(s.pool)vkDestroyCommandPool(cfg.device,s.pool,nullptr);s=Slot{};}
     for(unsigned i=0;i<kMaxSlots;i++){if(submit_semaphores[i]){vkDestroySemaphore(cfg.device,submit_semaphores[i],nullptr);submit_semaphores[i]=VK_NULL_HANDLE;}}
     submit_sem_inited=false;last_signal_sem=VK_NULL_HANDLE;
     slot_index=0;snapshot_reset();

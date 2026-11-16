@@ -5194,3 +5194,11 @@ PID27957同56包。A1原同步池运动5746..5886/140间隔23.2525FPS/max106.59m
 准备核对独立uniform上传arena候选。真实暖态desc memo存在每帧约70..145次dynbuf不匹配，当前4MiB混合stream同时容纳大块顶点/索引与小UBO，动态UBO虽偏移可变，VkBuffer变化仍使缓存失效。Khronos Vulkan-Samples固定b4fb432b80234e54cf7be7411f20b65494a5b0f5、Apache-2.0，descriptor_management样例建议少量每帧buffer配动态偏移。README10804B/SHA e61bef62d82c001e55d34cfbb62c625e3307ee945a33f21b08f2cc5edbfeabc5已实际获取。此为候选适用依据，性能尚待实现和同包对照。现有stream与readback本机均实际type6/flags0xf，因此再开HOST_CACHED没有新的设备前提。
 
 58若实施，必须沿原slot fence退休、snapshot内容与范围、非coherent flush、buffer引用失效、trim和shutdown处理。额外UBO池计入96MiB提交阈值与内存统计，限制闲置保留。新增tests/device/test_uniform_arena.py由root领取。用户松手授权持续有效，root输入，正式存档与APK历史保留。音频完整A2DP及全场景稳定30仍待验证。
+
+### 58独立常量池实现检查点
+
+58候选由root在既有write scope内实现。每slot增加独立uniform arena，沿原stream_buffer的读取保护、完整复制、尾部清零与flush，guest uniform、driver block和UI偏移副本三个入口接入。Honor准入与既有gfx-live-ab=uboarena原混合池对照，普通顶点、索引、storage及GPU resident读取路径保持原有入口。新池在原slot fence完成后reset，下一次recording前trim，闲置只留一个4MiB块。memo_forget_buffer随原Arena::destroy执行。提交阈值、峰值统计、内存画像及shutdown均计入新池。
+
+生产上传函数提取契约验证2个slot隔离、顶点增长不改变常量buffer、完整复制/清零/flush、旧路及非Honor路、越界拒绝。恢复混合分配的真实负控失败。退休次序、提交预算及三个入口静态核对通过。与现有Arena及57描述符契约合计9项ASan/UBSan通过。完整宿主和Android构建、真机生命周期及性能均待下一阶段验证。
+
+57设备仍PID5498、gfx-live-ab=setfresh。相同两钢蝠的B1新22.54与A2原19.08保留为单次对照，58两臂均保留57新路以隔离常量池变量。当前设备战果页，所有触控已UP。正式存档、Main和APK历史保持，音频完整流程仍NOT_RUN。

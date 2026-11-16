@@ -389,6 +389,8 @@ def main():
                                   'tests.device.test_program_lookup'])
     run('fresh-descriptor-cache-contract', [sys.executable, '-m', 'unittest',
                                           'tests.device.test_fresh_descriptor_cache'])
+    run('uniform-arena-contract', [sys.executable, '-m', 'unittest',
+                                  'tests.device.test_uniform_arena'])
     packed_dir = out / 'packed-shader-words'
     run('packed-shader-words-contract', ['bash', 'scripts/android/verify_packed_shader_words.sh', packed_dir])
     extra_artifacts.append(packed_dir / 'test_packed_shader_words')
