@@ -295,3 +295,11 @@ CPU读回屏障候选继续只读审计，why3/8分支本身不等待的源码�
 
 继续同包暖技能调用栈定位，匹配build56/lib56.symbols.so。程序缓存目前仍为未证明帧率收益的候选。root持有输入，正式存档、Main与APK历史保持，未推送。
 
+### 56匹配敌群复核与新调用栈
+
+同PID22998补齐A2旧程序路的两Lv1钢蝠暖技能，32668..32835/168帧20.9509FPS/max116.87ms，56超50、5超100，shader stall全部0。同敌群B1新程序路为20.7801FPS/max112.50ms，仍未证明程序缓存的整体帧率收益。B1包含一次8ms shader加载，保留该长帧。实际A后8秒与原始数据保留，没有把不同敌群的A1/B1作加速比。
+
+第五场两Lv2变异鼠用新程序路采6秒暖技能Perfetto，trace769ef05be757301038c24a6e593709fb816369af6fa2ac529a0747cd17f33b90，本地和远端摘要相同。符号ecadb4a9e3bc11e36bd125846b87120b69380715244c3b10b347d901186ce2fc，BuildID49fa7f647345cd40a7eac805ef5ada568f5b3845与trace映射一致。5.9335秒trace内RHI Running5021.05ms，descriptors_build147个inclusive样本，stream_buffer memcpy返回点23、descriptor template update返回点23、texel pending/acquire返回点20、snapshot stream返回点19、recording_slot reset池返回点14。不能将父子计数相加。上层INVALID_ELF383条继续保留，不作完整游戏CPU占比。旧程序info/find热点当前仅bridge4个inclusive点，整体帧率结论仍按上述普通窗口判断。
+
+下一项先复用仓库既有poolreset异步命令池重置。已审查job先等本slot fence、retire先finish、复用前finish、上传drain及destroy_slots先清job的顺序。图像和shader语义不改。原日志配置async command pool reset=0，marker实际不存在。首个备份脚本把缺标记误当异常，停止于只读阶段，22998仍活，未重启。补显式存在性检查并保留原失败记录后，归档该PID完整日志/CSV与9文件私有存档，再以原56同APK重启为27957，复用461，正式源metadata留档。启动确认async command pool reset=1、LIVE-AB=poolreset present0，先测原同步reset臂。该配置仍是实验，待同进程poolreset/none普通运动与技能A/B后决定保留或恢复。证据restart56-pool-retry1。
+
