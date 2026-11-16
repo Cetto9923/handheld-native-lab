@@ -21,6 +21,7 @@ extern "C" int xbg_completion_wait_selftest(char *report,size_t bytes);
 #include "xbg_warm_flush.h"
 #include "xbg_spirv_integer_buffer.h"
 #include "xbg_spirv_sample_usage.h"
+#include "xbg_spirv_linear_sample.h"
 #include "xbg_spirv_typed_storage.h"
 #include "xbg_spirv_vertex_input.h"
 #include "xbg_shader_identity.h"
@@ -2792,10 +2793,19 @@ struct Shader {std::string key;std::string identity;
     uint32_t stage;VkShaderModule module{};std::vector<xbg_shader_binding> bindings;std::vector<uint32_t> inputs,input_classes,probe_words;std::vector<uint8_t> c1;
     std::set<uint32_t> storage_writes; // Vulkan bindings of storage buffers the SPIR-V may write
     std::set<uint32_t> filter_independent_bindings;
+    std::vector<uint32_t> linear_sample_candidates;
+    XbgPackedShaderWords linear_sample_source;
+    std::map<TypedStorageFormats,std::unique_ptr<Shader>> linear_sample_variants;
     bool discards=true; // fragment shader may kill/demote (conservative default)
     XbgRasterFacts raster; // position input (vertex), declared outputs and SampleMask (fragment): first_draw_covers
     Buffer c1_buffer{};bool c1_ready=false;
     ~Shader(){if(module)vkDestroyShaderModule(cfg.device,module,nullptr);}};
+void prepare_linear_sample_source(Shader &shader,const std::vector<uint32_t> &words){
+    if(format_properties(VK_FORMAT_R32_SFLOAT).optimalTilingFeatures&VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)return;
+    shader.linear_sample_candidates=xbg_spirv_linear_sample_candidates(words);
+    if(!shader.linear_sample_candidates.empty() && shader.module_words.empty())
+        need(shader.linear_sample_source.assign(words),"Cannot retain float32 sampling source");
+}
 // Storage buffers written by a shader. Pointers rooted at a storage-buffer
 // variable that reach OpStore/OpCopyMemory/atomics, function calls, phis or
 // selects mark that binding written; anything unprovable marks all written.
@@ -3189,6 +3199,7 @@ Shader *load_shader(const void *control){
         p->storage_binding_info[binding.binding]=xbg_spirv_storage_binding_info(words,binding.binding);
         if(binding.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER)typed_candidate=true;}
      if(typed_candidate || (h.stage==0 && !p->inputs.empty()))p->module_words=words;}
+    prepare_linear_sample_source(*p,words);
     {auto extent=spirv_uniform_extent(words);uint32_t trimmed=0;for(auto &b:p->bindings)if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER && b.source==XBG_SOURCE_UNIFORM){auto e=extent.find(b.binding);uint32_t declared=b.bytes?b.bytes:65536;if(e!=extent.end() && e->second<declared){b.bytes=e->second;++trimmed;}}uniform_trimmed+=trimmed;}
     {bool kill=false;for(size_t i=5;i<words.size();){uint32_t n=words[i]>>16,op=words[i]&0xffff;if(op==252||op==4416||op==5380){kill=true;break;}if(!n)break;i+=n;}p->discards=kill;}
     p->raster=xbg_spirv_raster_facts(words.data(),words.size(),h.stage);
@@ -3347,6 +3358,7 @@ Shader *integer_buffer_variant(Shader &base){
     variant->storage_binding_info=base.storage_binding_info;
     if(!base.module_words.empty())variant->module_words=words;
     variant->filter_independent_bindings=xbg_spirv_filter_independent(words);
+    prepare_linear_sample_source(*variant,words);
     if(base.stage==5)xbg_spirv_indirect_instances(words,variant->indirect_instance_fields);
     variant->probe_words=words;
     VkShaderModuleCreateInfo info{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};info.codeSize=words.size()*4;info.pCode=words.data();
@@ -3550,6 +3562,7 @@ Shader *typed_storage_variant(Shader &base){
     }
     variant->module_words=words;
     variant->filter_independent_bindings=xbg_spirv_filter_independent(words);
+    prepare_linear_sample_source(*variant,words);
     if(base.stage==5)xbg_spirv_indirect_instances(words,variant->indirect_instance_fields);
     validate_capabilities(words,base.stage);
     VkShaderModuleCreateInfo info{};info.sType=VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;info.codeSize=words.size()*4;info.pCode=words.data();
@@ -3624,6 +3637,7 @@ Shader *vertex_input_variant(Shader &base){
     variant->typed_storage_rewritten=base.typed_storage_rewritten;
     variant->module_words=words;variant->probe_words=words;
     variant->filter_independent_bindings=xbg_spirv_filter_independent(words);
+    prepare_linear_sample_source(*variant,words);
     validate_capabilities(words,base.stage);
     VkShaderModuleCreateInfo info{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};info.codeSize=words.size()*4;info.pCode=words.data();
     VK(vkCreateShaderModule(cfg.device,&info,nullptr,&variant->module));
@@ -3637,6 +3651,126 @@ struct VertexInputSelection {
     Shader *original=state.shader[0];
     VertexInputSelection(){if(original)state.shader[0]=vertex_input_variant(*original);}
     ~VertexInputSelection(){state.shader[0]=original;}
+};
+samp_par sampler_parameters(const xbg_shader_binding &binding, unsigned ns, uint64_t handle,
+                            int *sampler_id = nullptr) {
+    uint64_t selected = handle;
+    if (binding.sampler_slot != UINT32_MAX) {
+        need(binding.sampler_slot < 128, "Sampler slot out of range");
+        selected = state.samp[ns][binding.sampler_slot];
+    }
+    const int id = int(selected >> 20);
+    if (sampler_id)
+        *sampler_id = id;
+    samp_par parameters{};
+    if (!id) {
+        parameters.ws = parameters.wt = parameters.wr = 7;
+        parameters.aniso = 1;
+        parameters.cmp_func = 1;
+        return parameters;
+    }
+    auto pool = samplers.find(pool_key(&state.sampler_pool));
+    const auto &table = pool == samplers.end() ? legacy_samplers : pool->second;
+    auto found = table.find(id);
+    if (found == table.end())
+        xbg_fatalf("Unregistered sampler id=%d", id);
+    return found->second;
+}
+Shader *linear_sample_variant(Shader &base) {
+    if (base.linear_sample_candidates.empty())
+        return &base;
+    TypedStorageFormats formats;
+    const unsigned ns = nvn_stage[base.stage];
+    auto pool = textures.find(pool_key(&state.texture_pool));
+    const auto &table = pool == textures.end() ? legacy_textures : pool->second;
+    for (const auto &binding : base.bindings) {
+        if (binding.type != VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ||
+            binding.source != XBG_SOURCE_TEXTURE || binding.count != 1 || binding.slot >= 256 ||
+            std::find(base.linear_sample_candidates.begin(), base.linear_sample_candidates.end(),
+                      binding.binding) == base.linear_sample_candidates.end())
+            continue;
+        const uint64_t handle = state.tex[ns][binding.slot];
+        const int id = int(handle & 0xfffff);
+        auto record = table.find(id);
+        if (!id || record == table.end())
+            continue;
+        Image &image = get_image(&record->second.texture, false);
+        const view_t *view = record->second.has_view ? &record->second.view : nullptr;
+        if (image.samples != VK_SAMPLE_COUNT_1_BIT ||
+            image.view_format(view, true) != VK_FORMAT_R32_SFLOAT ||
+            (format_properties(VK_FORMAT_R32_SFLOAT).optimalTilingFeatures &
+             VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
+            continue;
+        const samp_par parameters = sampler_parameters(binding, ns, handle);
+        // Explicit LOD zero remains level zero after the sampler's clamps.
+        // Both possible within-level filters must be linear, with no anisotropy.
+        if (parameters.minf > 5 || !(parameters.minf & 1) || parameters.magf != 1 ||
+            parameters.cmp_mode || parameters.aniso != 1 || !(parameters.lod_min <= 0) ||
+            !(parameters.lod_max >= 0))
+            continue;
+        formats.push_back({binding.binding, VK_FORMAT_R32_SFLOAT});
+    }
+    if (formats.empty())
+        return &base;
+    std::sort(formats.begin(), formats.end());
+    auto cached = base.linear_sample_variants.find(formats);
+    if (cached != base.linear_sample_variants.end())
+        return cached->second.get();
+    std::string identity = base.identity + ":lf1:";
+    std::vector<uint32_t> bindings;
+    for (const auto &entry : formats) {
+        if (identity.back() != ':')
+            identity += ',';
+        identity += std::to_string(entry.first) + "_100";
+        bindings.push_back(entry.first);
+    }
+    need(identity.size() <= 256, "Float32 linear sampling identity exceeds recipe limit");
+    std::vector<uint32_t> words = base.module_words;
+    if (words.empty())
+        need(base.linear_sample_source.unpack(words), "Cannot restore float32 sampling source");
+    need(xbg_spirv_linear_sample(words, bindings), "Float32 linear sampling source changed shape");
+    auto variant = std::make_unique<Shader>();
+    variant->key = base.key;
+    variant->identity = identity;
+    variant->stage = base.stage;
+    variant->bindings = base.bindings;
+    variant->inputs = base.inputs;
+    variant->input_classes = base.input_classes;
+    variant->c1 = base.c1;
+    variant->storage_writes = base.storage_writes;
+    variant->discards = base.discards;
+    variant->raster = base.raster;
+    variant->storage_image_formats = base.storage_image_formats;
+    variant->storage_binding_info = base.storage_binding_info;
+    variant->typed_storage_rewritten = base.typed_storage_rewritten;
+    variant->filter_independent_bindings = xbg_spirv_filter_independent(words);
+    variant->probe_words = words;
+    validate_capabilities(words, base.stage);
+    if (base.stage == 5)
+        xbg_spirv_indirect_instances(words, variant->indirect_instance_fields);
+    VkShaderModuleCreateInfo info{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+    info.codeSize = words.size() * 4;
+    info.pCode = words.data();
+    VK(vkCreateShaderModule(cfg.device, &info, nullptr, &variant->module));
+    warm::register_module(variant->module, identity);
+    Shader *result = variant.get();
+    base.linear_sample_variants.emplace(formats, std::move(variant));
+    xbg_logf("NVN float32 bilinear sample variant identity=%s", identity.c_str());
+    return result;
+}
+struct LinearSampleSelection {
+    std::array<Shader *, 6> original{};
+    explicit LinearSampleSelection(bool compute) {
+        for (unsigned stage = 0; stage < 6; ++stage)
+            original[stage] = state.shader[stage];
+        for (unsigned stage = compute ? 5u : 0u; stage < (compute ? 6u : 5u); ++stage)
+            if (original[stage])
+                state.shader[stage] = linear_sample_variant(*original[stage]);
+    }
+    ~LinearSampleSelection() {
+        for (unsigned stage = 0; stage < 6; ++stage)
+            state.shader[stage] = original[stage];
+    }
 };
 // nvnProgramSetShaders assigns a new serial, and NVN shader control/code memory
 // must stay unchanged while a program uses it: cache resolved shaders by serial
@@ -3808,8 +3942,8 @@ VkShaderModule load_module(const std::string &key,uint32_t expected_stage=0){
             return found->second.module;
         }
     }
-    std::string base;IntegerBufferFormats formats;TypedStorageFormats typed;VertexInputFormats vertex;
-    if(!xbg_shader_identity(key,base,formats,&typed,&vertex))return VK_NULL_HANDLE;
+    std::string base;IntegerBufferFormats formats;TypedStorageFormats typed,linear;VertexInputFormats vertex;
+    if(!xbg_shader_identity(key,base,formats,&typed,&vertex,&linear))return VK_NULL_HANDLE;
     std::vector<uint8_t> b;if(!read_shader_bundle(base,b,nullptr))return VK_NULL_HANDLE;
     xbg_shader_header h;memcpy(&h,b.data(),sizeof(h));if(h.magic!=0x31534758 || h.version!=1 || h.stage>=6 || h.binding_count>256 || h.input_count>16 || h.c1_bytes>65536 || h.spirv_bytes%4)return VK_NULL_HANDLE;
     if(expected_stage && expected_stage!=(1u<<h.stage))return VK_NULL_HANDLE;
@@ -3817,7 +3951,7 @@ VkShaderModule load_module(const std::string &key,uint32_t expected_stage=0){
     std::vector<uint32_t> w(h.spirv_bytes/4);memcpy(w.data(),b.data()+off,h.spirv_bytes);spv_override(base,w);boss_interface_rewrite(w,h.stage,base.c_str(),"warm");histogram_sync_rewrite(w,h.stage,base.c_str(),"warm");terrain_depth_rewrite(w,h.stage,base.c_str(),"warm");stencil_rewrite(w,h.stage,base.c_str(),"warm");
     if(!specialize_integer_buffers(w,formats))return VK_NULL_HANDLE;
     std::vector<uint32_t> rewrite_input;
-    if(keep_rewritten && vertex.empty())rewrite_input=w;
+    if(keep_rewritten && vertex.empty() && linear.empty())rewrite_input=w;
     optimize_shader_words(w,h.stage,base,"warm");
     // A typed storage identity declares the bound format in the module, in the
     // same order as the runtime path (after the optimizer).
@@ -3826,10 +3960,12 @@ VkShaderModule load_module(const std::string &key,uint32_t expected_stage=0){
     size_t typed_failed=0;int typed_shared=1;std::vector<uint32_t> typed_split;
     if(!typed_requests.empty() && xbg_typed_storage_declare(w,typed_requests,typed_failed,typed_shared,typed_split,cfg.enabled_core.shaderStorageImageExtendedFormats!=0)!=1)return VK_NULL_HANDLE;
     if(!vertex.empty() && (h.stage!=0 || xbg_spirv_vertex_input(w,vertex)!=1))return VK_NULL_HANDLE;
+    std::vector<uint32_t> linear_bindings;for(const auto &entry:linear)linear_bindings.push_back(entry.first);
+    if(!xbg_spirv_linear_sample(w,linear_bindings))return VK_NULL_HANDLE;
     validate_capabilities(w,h.stage);
     // Vertex variants start from the runtime's final module. Their complete
     // identity still reuses warm pipelines, without a pre-optimizer cache entry.
-    if(keep_rewritten && vertex.empty())retain_rewritten(key,std::move(rewrite_input),w);
+    if(keep_rewritten && vertex.empty() && linear.empty())retain_rewritten(key,std::move(rewrite_input),w);
     VkShaderModuleCreateInfo ci{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};ci.codeSize=w.size()*4;ci.pCode=w.data();VkShaderModule m;if(vkCreateShaderModule(cfg.device,&ci,nullptr,&m)!=VK_SUCCESS)return VK_NULL_HANDLE;
     std::lock_guard<std::mutex> lock(mu);
     auto inserted=modules.emplace(key,WarmModule{m,1u<<h.stage});
@@ -5062,8 +5198,8 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                     VkDescriptorImageInfo ii{};
                     Image &im=get_image(&texture,true);provenance_log("BIND shader=%s stage=%u slot=%u id=%d handle=%llu descriptorMem=%p descriptorOff=%lld type=%u",shader.key.c_str(),ns,slot,id,(unsigned long long)handle,state.texture_pool.pool?state.texture_pool.pool->mem:nullptr,(long long)state.texture_pool.off,unsigned(b.type));provenance_image("BIND",&texture,im,registered.has_view?&registered.view:nullptr);DESC_CALL(ImageTransition, prepare_read(im,commands.command,b.type!=VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,attachment_barrier_enabled && b.type!=VK_DESCRIPTOR_TYPE_STORAGE_IMAGE?im.sampled_aspects(registered.has_view?&registered.view:nullptr):0));if(desc_memo_recording)desc_memo_images.push_back({&texture,&im,record,record->revision});ii.imageView=DESC_CALL(ImageView, im.view(registered.has_view?&registered.view:nullptr,false,b.type==VK_DESCRIPTOR_TYPE_STORAGE_IMAGE));ii.imageLayout=VK_IMAGE_LAYOUT_GENERAL;
                     if(capture.active){char label[100];snprintf(label,sizeof(label),"st%u-bind%u-el%u-input",st,b.binding,element);out.capture_inputs.push_back({&im,registered.view,registered.has_view,label});capture_log("TEXTURE label=%s shader=%s nvnStage=%u slot=%u handle=%#llx id=%d serial=%llu cachedSerial=%llu image=%p view=%p viewFormat=%u sourceKind=%u",label,shader.key.c_str(),ns,slot,(unsigned long long)handle,id,(unsigned long long)texture.serial,(unsigned long long)im.source.serial,(void*)im.image,(void*)ii.imageView,unsigned(im.view_format(registered.has_view?&registered.view:nullptr)),b.source);}
-                    if(b.type==VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER || b.type==VK_DESCRIPTOR_TYPE_SAMPLER){DESC_SCOPE(SamplerBind);uint64_t sh=handle;if(b.sampler_slot!=UINT32_MAX){need(b.sampler_slot<128,"Sampler slot out of range");sh=state.samp[ns][b.sampler_slot];}int sid=int(sh>>20);samp_par parameters{};if(sid==0){parameters.ws=parameters.wt=parameters.wr=7;parameters.aniso=1;parameters.cmp_func=1;}
-                        else{auto sp=samplers.find(pool_key(&state.sampler_pool));auto &table=sp==samplers.end()?legacy_samplers:sp->second;auto sa=table.find(sid);if(sa==table.end())xbg_fatalf("Unregistered sampler id=%d",sid);parameters=sa->second;}const VkFormat sampled_format=im.view_format(registered.has_view?&registered.view:nullptr,true);
+                    if(b.type==VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER || b.type==VK_DESCRIPTOR_TYPE_SAMPLER){DESC_SCOPE(SamplerBind);
+                        int sid=0;samp_par parameters=sampler_parameters(b,ns,handle,&sid);const VkFormat sampled_format=im.view_format(registered.has_view?&registered.view:nullptr,true);
                         const bool filter_independent=shader.filter_independent_bindings.count(b.binding)!=0;
                         if(sampled_format==VK_FORMAT_R32_SFLOAT){static unsigned notes=0;if((!filter_independent && !(format_properties(sampled_format).optimalTilingFeatures&VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)) || notes++<48)xbg_logf("NVN R32 sampler shader=%s binding=%u serial=%llu filterIndependent=%u min=%u mag=%u features=%#x",shader.key.c_str(),b.binding,(unsigned long long)texture.serial,unsigned(filter_independent),parameters.minf,parameters.magf,format_properties(sampled_format).optimalTilingFeatures);}
                         ii.sampler=sampler(parameters,im,sampled_format,((b.flags>>16)&3)!=0,filter_independent);if(capture.active || probe_is_active())capture_log("SAMPLER st=%u binding=%u sid=%d samplerSlot=%u min=%u mag=%u wrap=%u/%u/%u lod=%g/%g bias=%g",st,b.binding,sid,b.sampler_slot,parameters.minf,parameters.magf,parameters.ws,parameters.wt,parameters.wr,parameters.lod_min,parameters.lod_max,parameters.lod_bias);}
@@ -5428,7 +5564,7 @@ bool ui_cover_all(double hf){
         x0=std::min(x0,nx);x1=std::max(x1,nx);y0=std::min(y0,ny);y1=std::max(y1,ny);}
     return x0<0.002f && x1>0.998f && y0<0.002f && std::fabs(y1-float(hf))<0.002f;
 }
-void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instances=1,uint32_t first_instance=0,const GpuIndexedArgs *gpu_args=nullptr){preflight_cpu_reads();IntegerBufferSelection shader_selection(false);TypedStorageSelection typed_selection(false);VertexInputSelection vertex_selection;CPU_SCOPE(Draw);DrawRoot draw_timing_root(&cpu_scope);provenance_draw();
+void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instances=1,uint32_t first_instance=0,const GpuIndexedArgs *gpu_args=nullptr){preflight_cpu_reads();IntegerBufferSelection shader_selection(false);TypedStorageSelection typed_selection(false);VertexInputSelection vertex_selection;LinearSampleSelection linear_selection(false);CPU_SCOPE(Draw);DrawRoot draw_timing_root(&cpu_scope);provenance_draw();
     // #region agent log
     // Draws that share the 8b27 depth buffer but write a different (or no) colour target: depth prepass candidates.
     if(flame_diag_enabled && fdiag_prevds && state.shader[0] && state.rt.depth && uint64_t(uintptr_t(state.rt.depth->mem))==fdiag_prevds && !(state.rt.color[0] && uint64_t(uintptr_t(state.rt.color[0]->mem))==fdiag_prev8)){
@@ -6013,7 +6149,7 @@ void preflight_partial_compute_texels(uint64_t indirect_address){
         }
     }
 }
-void dispatch(p_dispatch p,uint64_t indirect_address=0){overlay_shadow={};struct ShadowScope{~ShadowScope(){overlay_shadow={};}} shadow_scope;preflight_cpu_reads();IntegerBufferSelection shader_selection(true);TypedStorageSelection typed_selection(true);CPU_SCOPE(Dispatch);provenance_log("DISPATCH shader=%s",state.shader[5]?state.shader[5]->key.c_str():"null");need(state.shader[5],"Dispatch has no genuine compute shader");
+void dispatch(p_dispatch p,uint64_t indirect_address=0){overlay_shadow={};struct ShadowScope{~ShadowScope(){overlay_shadow={};}} shadow_scope;preflight_cpu_reads();IntegerBufferSelection shader_selection(true);TypedStorageSelection typed_selection(true);LinearSampleSelection linear_selection(true);CPU_SCOPE(Dispatch);provenance_log("DISPATCH shader=%s",state.shader[5]?state.shader[5]->key.c_str():"null");need(state.shader[5],"Dispatch has no genuine compute shader");
     // #region agent log
     // Which buffers do the GPU-particle compute kernels write, and does one of them cover the indirect-args word?
     if(flame_diag_enabled){static uint64_t last_args=0;static unsigned nlog=0;if(indirect_address)last_args=indirect_address;

@@ -1,0 +1,43 @@
+OpCapability Shader
+%glsl = OpExtInstImport "GLSL.std.450"
+OpMemoryModel Logical GLSL450
+OpEntryPoint GLCompute %main "main"
+OpExecutionMode %main LocalSize 1 1 1
+OpDecorate %image DescriptorSet 0
+OpDecorate %image Binding 0
+OpDecorate %Output Block
+OpMemberDecorate %Output 0 Offset 0
+OpDecorate %output DescriptorSet 0
+OpDecorate %output Binding 1
+OpDecorate %Request Block
+OpMemberDecorate %Request 0 Offset 0
+%void = OpTypeVoid
+%function = OpTypeFunction %void
+%float = OpTypeFloat 32
+%int = OpTypeInt 32 1
+%v2float = OpTypeVector %float 2
+%v4float = OpTypeVector %float 4
+%image_type = OpTypeImage %float 2D 0 0 0 1 Unknown
+%sampled_type = OpTypeSampledImage %image_type
+%image_pointer = OpTypePointer UniformConstant %sampled_type
+%image = OpVariable %image_pointer UniformConstant
+%Output = OpTypeStruct %v4float
+%output_pointer = OpTypePointer StorageBuffer %Output
+%output_value_pointer = OpTypePointer StorageBuffer %v4float
+%output = OpVariable %output_pointer StorageBuffer
+%Request = OpTypeStruct %v2float
+%request_pointer = OpTypePointer PushConstant %Request
+%request_uv_pointer = OpTypePointer PushConstant %v2float
+%request = OpVariable %request_pointer PushConstant
+%int_0 = OpConstant %int 0
+%float_0 = OpConstant %float 0
+%main = OpFunction %void None %function
+%entry = OpLabel
+%uv_pointer = OpAccessChain %request_uv_pointer %request %int_0
+%uv = OpLoad %v2float %uv_pointer
+%sampled = OpLoad %sampled_type %image
+%color = OpImageSampleExplicitLod %v4float %sampled %uv Lod %float_0
+%destination = OpAccessChain %output_value_pointer %output %int_0
+OpStore %destination %color
+OpReturn
+OpFunctionEnd

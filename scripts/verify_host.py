@@ -381,6 +381,8 @@ def main():
                                            'tests.device.test_readback_fence_lifetime'])
     run('sample-usage-contract', [sys.executable, '-m', 'unittest',
                                   'tests.device.test_sample_usage'])
+    run('linear-sample-contract', [sys.executable, '-m', 'unittest',
+                                   'tests.device.test_linear_sample'])
     run('performance-hint-contract', [sys.executable, '-m', 'unittest',
                                      'tests.device.test_performance_hint'])
     run('probe-marker-poll-contract', [sys.executable, '-m', 'unittest',

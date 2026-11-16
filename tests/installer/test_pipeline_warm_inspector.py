@@ -28,8 +28,8 @@ def record(identity=IDENTITY, version=1, key=KEY):
 class WarmInspection(unittest.TestCase):
     def test_all_canonical_family_combinations_keep_the_source_archive_key(self):
         families = ['ib1:0_74,4294967295_98', 'stb1:1_13,2_109',
-                    'vin1:0_0,7_1,15_2']
-        for size in range(4):
+                    'vin1:0_0,7_1,15_2', 'lf1:52_100,106_100']
+        for size in range(5):
             for combination in itertools.combinations(families, size):
                 key = KEY + ''.join(':' + family for family in combination)
                 with self.subTest(key=key):
@@ -68,7 +68,7 @@ class WarmInspection(unittest.TestCase):
             warm.inspect(record(identity=warm.module_id(oversized), key=oversized))
 
     def test_noncanonical_family_order_and_duplicates_are_refused(self):
-        families = ['ib1:0_74', 'stb1:0_98', 'vin1:0_2']
+        families = ['ib1:0_74', 'stb1:0_98', 'vin1:0_2', 'lf1:52_100']
         bad = [':ib2:0_74', ':unknown:0_74', ':IB1:0_74', ':ib1:',
                ':ib1:0_74:', '::ib1:0_74', ':vin1:0_2:stb1:0_98']
         for family in families:
@@ -92,6 +92,8 @@ class WarmInspection(unittest.TestCase):
             ':vin1:16_2', ':vin1:4294967295_2', ':vin1:0_3',
             ':vin1:0_4294967296', ':vin1:00_2', ':vin1:0_02',
             ':vin1:0_2,0_1', ':vin1:15_2,14_1', ':vin1:0_2,',
+            ':lf1:0_103', ':lf1:0_0', ':lf1:0_100,0_100',
+            ':lf1:01_100', ':lf1:0_0100', ':lf1:52_100:vin1:0_2',
         ]
         for suffix in bad:
             with self.subTest(suffix=suffix), self.assertRaises(ValueError):

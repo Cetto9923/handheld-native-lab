@@ -77,7 +77,7 @@ def shader_source_key(identity):
     parts = identity.split(':')
     if not re.fullmatch('[0-9a-f]{16}', parts[0]) or len(parts) % 2 != 1:
         raise ValueError('invalid shader key')
-    family_order = {'ib1': 0, 'stb1': 1, 'vin1': 2}
+    family_order = {'ib1': 0, 'stb1': 1, 'vin1': 2, 'lf1': 3}
     previous_family = -1
     for at in range(1, len(parts), 2):
         family, recipe = parts[at:at + 2]
@@ -99,6 +99,8 @@ def shader_source_key(identity):
                 raise ValueError('unsupported typed shader specialization')
             if family == 'vin1' and (binding >= 16 or format_value > 2):
                 raise ValueError('unsupported vertex input specialization')
+            if family == 'lf1' and format_value != 100:
+                raise ValueError('unsupported linear sample specialization')
             previous_binding = binding
     return parts[0]
 

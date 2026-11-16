@@ -301,3 +301,10 @@ slot_serial与slot_index同增，16槽时固定slot_serial低4位小于2只会�
 ### L-025 回收提交后重新核对栅栏所有者状态
 
 readback_sync中的retire_completed_slots可回收先前观察为pending的owner。retire_slot会重置其栅栏，之后继续等待该栅栏会因缺少新提交而超时。d2a01e8在回收后复核owner->pending，真实未完成提交继续按原等待规则执行。test_readback_fence_lifetime.py抽取生产函数，覆盖6种生命周期时序，移除修复的负对照稳定触发原错误。荣耀400 Pro提供的最新PID25691末段FATAL位置与该缺口一致，本机修复确认仍待用户复测。完整证据见CODEX-HONOR400-FENCE60-20261116.md。
+
+
+### L-026 格式过滤兼容同时核对指令用途与实际能力
+
+索尔报告的R32线性过滤检查退出不能仅凭末尾模块包含Gather就归为未使用过滤。RG同场景的真实绑定表明同一R32纹理在52普通Sample、112 Gather混用。61的过滤无关修复覆盖不足，62补齐保留float32数据的显式LOD0双线性变体。缺失硬件能力与具备能力的设备各自验证，原本正常的Mali转场不能替代索尔验收。
+
+可复用test_sample_usage、test_linear_sample及linear_sample_gpu_contract。改写覆盖runtime/warm/组合identity与发行inspector，适用形状由最终模块和sampler事实共同约束。GPU参考每次写NaN哨兵，并对照独立CPU结果。R32边界缺失alpha依据Vulkan允许的分量转换处理，保留原始失败日志。详见CODEX-THOR-LINEAR62-20261117.md。

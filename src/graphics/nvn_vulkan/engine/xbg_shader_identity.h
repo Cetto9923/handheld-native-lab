@@ -11,13 +11,15 @@ inline bool xbg_shader_identity(
     std::string &base,
     std::vector<std::pair<uint32_t,uint32_t>> &integer,
     std::vector<std::pair<uint32_t,uint32_t>> *typed=nullptr,
-    std::vector<std::pair<uint32_t,uint32_t>> *vertex=nullptr){
+    std::vector<std::pair<uint32_t,uint32_t>> *vertex=nullptr,
+    std::vector<std::pair<uint32_t,uint32_t>> *linear=nullptr){
     if(identity.size()<16 || identity.size()>256 || typed==&integer ||
-       vertex==&integer || (vertex && vertex==typed))return false;
+       vertex==&integer || (vertex && vertex==typed) || linear==&integer ||
+       (linear && (linear==typed || linear==vertex)))return false;
     std::string parsed_base=identity.substr(0,16);
     if(parsed_base.find_first_not_of("0123456789abcdef")!=std::string::npos)return false;
 
-    std::vector<std::pair<uint32_t,uint32_t>> parsed_integer,parsed_typed,parsed_vertex;
+    std::vector<std::pair<uint32_t,uint32_t>> parsed_integer,parsed_typed,parsed_vertex,parsed_linear;
     size_t at=16;
     auto number=[&](uint32_t &value){
         const size_t begin=at;
@@ -61,11 +63,18 @@ inline bool xbg_shader_identity(
         at+=6;
         if(!list(parsed_vertex,false,true))return false;
     }
+    if(identity.compare(at,5,":lf1:")==0){
+        if(!linear)return false;
+        at+=5;
+        if(!list(parsed_linear,false))return false;
+        for(const auto &entry:parsed_linear)if(entry.second!=XBG_VK_FORMAT_R32_SFLOAT)return false;
+    }
     if(at!=identity.size())return false;
 
     base.swap(parsed_base);
     integer.swap(parsed_integer);
     if(typed)typed->swap(parsed_typed);
     if(vertex)vertex->swap(parsed_vertex);
+    if(linear)linear->swap(parsed_linear);
     return true;
 }

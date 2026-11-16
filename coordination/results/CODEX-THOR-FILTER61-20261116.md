@@ -37,3 +37,8 @@ Vulkan官方采样章节中Image Operation Steps和Texel Gathering明确，Fetch
 最终APK为3732695B，SHA256 4ddec76da9526b720c68adb7193c12136aff197c13d21e0c8b3ad3790d0e2ffb，native BuildID38f837ff10b561a1852f4505b99a36a98db1680a，APK内stripped与完整符号副本BuildID相同。包内非许可证assets逐字节与60一致，ZIP CRC全量读取通过，manifest核对61/1.0.61-preview。artifact.json、命令、环境、普通构建日志、PID和源码SHA均在本任务.local目录。
 
 用户明确要求等待空之轨迹测试结束。本轮继续本地修复与构建，平板验证等待其通知。测试候选复制到统一发布目录的02-最终幻想_共鸣_FFRS/待验证/1.0.61-Thor转场修复/，附SHA256和说明。当前正式发布入口仍为已有60，61为本轮待实机验证候选。
+
+
+## 2026-11-17 后续更正
+
+61在RG477M通过目标转场，但该机原本支持R32线性过滤。相同场景真实日志证明绑定52存在普通Sample，61的Fetch/Gather修复覆盖不足。后续由62补齐浮点双线性路径，索尔用户以62复测。61保留为历史候选。详细证据见CODEX-THOR-LINEAR62-20261117报告。
