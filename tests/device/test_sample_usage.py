@@ -10,6 +10,45 @@ ENGINE = ROOT / 'src/graphics/nvn_vulkan/engine'
 
 
 class SampleUsage(unittest.TestCase):
+    def test_image_cache_separates_instruction_uses(self):
+        source = (ENGINE / 'xbg_game.cpp').read_text()
+        start = source.index('struct ImgKey{')
+        key_type = source[start:source.index('struct ImgEntry', start)]
+        start = source.index('                        ikey={handle,sh,')
+        assignment = source[start:source.index(';img_cacheable=true;', start)+1]
+        fixture = r'''
+#include <cstdint>
+#include <cstddef>
+#include <unordered_map>
+#include <set>
+''' + key_type + r'''
+struct Pool { void *mem=nullptr; } pool;
+struct DescriptorPool { Pool *pool=nullptr; uint64_t off=0; };
+struct { DescriptorPool texture_pool{&pool,0},sampler_pool; } state;
+struct {uint32_t type=1,flags=0,binding=7;} b;
+struct {std::set<uint32_t> filter_independent_bindings;} shader;
+ImgKey key() {uint64_t handle=11,sh=17;ImgKey ikey{};
+''' + assignment + r'''
+return ikey;}
+int main() {
+    ImgKey filtered=key();shader.filter_independent_bindings.insert(7);
+    ImgKey gather=key();if(filtered==gather)return 10;
+    std::unordered_map<ImgKey,int,ImgKeyHash> cache;
+    cache.emplace(filtered,1);cache.emplace(gather,2);
+    return cache.size()==2 && cache.at(filtered)==1 && cache.at(gather)==2?0:11;
+}
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            for label, content, expected in [('fixed', fixture, 0), ('old', fixture.replace(
+                    '|(uint64_t(shader.filter_independent_bindings.count(b.binding)!=0)<<16)', ''), 10)]:
+                cpp = path / (label + '.cpp')
+                cpp.write_text(content)
+                binary = path / label
+                subprocess.run(['clang++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                                '-fsanitize=address,undefined', str(cpp), '-o', str(binary)], check=True)
+                self.assertEqual(subprocess.run([str(binary)]).returncode, expected)
+
     def test_resource_uses(self):
         with tempfile.TemporaryDirectory() as directory:
             binary = Path(directory) / 'usage'

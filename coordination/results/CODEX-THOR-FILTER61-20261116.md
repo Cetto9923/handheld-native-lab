@@ -18,7 +18,9 @@ Vulkan官方采样章节中Image Operation Steps和Texel Gathering明确，Fetch
 
 从平板原始shaders.hnla只读获取末尾最后加载的ceb27d63df2eaf0a模块，原模块通过spirv-val。其中76/94/100仅Fetch，88/112仅Gather，106同时Sample与Gather，分类契约逐一核对。原日志未保留2683317到shader/binding的映射，此模块并不能单独证明它就是失败draw，当前修复对Thor本次退出的因果仍待候选包复测。
 
-两项新增宿主测试使用ASan/UBSan，覆盖普通Sample、Fetch/Gather、混合使用、别名、调用/合流/未知指令、截断模块及sampler缓存交叉使用。抽取实际sampler入口的负对照禁用规范化后返回9重现不支持过滤的拒绝，修复路径通过。首轮测试的模拟slow函数观测值在cache hit时保持旧值，已将逐min值检查前清空模拟cache，真实缓存隔离检查另行保留。
+三项新增宿主测试使用ASan/UBSan，覆盖普通Sample、Fetch/Gather、混合使用、别名、调用/合流/未知指令、截断模块及sampler缓存交叉使用。抽取实际sampler入口的负对照禁用规范化后返回9重现不支持过滤的拒绝，修复路径通过。首轮测试的模拟slow函数观测值在cache hit时保持旧值，已将逐min值检查前清空模拟cache，真实缓存隔离检查另行保留。
+
+代码复核进一步发现前置img_cache跨shader复用ImageView和Sampler，该键也须带绑定的filter-independent事实，否则可能在sampler入口前复用另一用途的结果。已补入kind的独立位，抽取生产键构造并验证同一纹理/原sampler两类用途必须成为不同条目，移除此位负对照返回10。首轮构建启动后补入此修正，首轮产物不交付，最终构建需重建并重新核验全部源码SHA。
 
 参考固定于本轮读取的Vulkan规范页面，https://docs.vulkan.org/spec/latest/chapters/textures.html 的Image Operation Steps及Texel Gathering，和https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdDraw.html 的04553/04770。规范页面为动态在线文档，未复制上游实现代码，无新增第三方代码许可依赖。
 
