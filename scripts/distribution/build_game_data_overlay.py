@@ -12,7 +12,7 @@ from package_honor_portable import sha256_file
 
 def archive_path(value):
     path = PurePosixPath(value)
-    if (not value or path.is_absolute() or '\\' in value or ':' in value or
+    if (not value or any(ord(c) < 32 for c in value) or path.is_absolute() or '\\' in value or ':' in value or
             str(path) != value or any(p in ('.', '..') for p in value.split('/'))):
         raise ValueError('invalid archive path')
     allowed = (value == 'FFRS/main.nso' or value.startswith('FFRS/romfs/') or
@@ -67,6 +67,9 @@ def build(manifest_path, output):
     with zipfile.ZipFile(temporary) as archive:
         if archive.namelist() != [r['entry'] for r in records] + ['SHA256SUMS.txt']:
             raise ValueError('unexpected archive entries')
+        expected_sums = ''.join(r['sha256'] + '  ' + r['entry'] + '\n' for r in records).encode()
+        if archive.read('SHA256SUMS.txt') != expected_sums:
+            raise ValueError('archive checksum list mismatch')
         for record in records:
             digest = hashlib.sha256()
             with archive.open(record['entry']) as src:

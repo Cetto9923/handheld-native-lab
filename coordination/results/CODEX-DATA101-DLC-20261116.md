@@ -43,3 +43,15 @@ build59基于50e4d4d，91份源输入前后SHA相同，120项宿主检查及Andr
 59覆盖安装回读APK全文SHA相同，9份私有测试存档安装前后全文SHA相同，正式存档目录元数据相同。首轮22350实际加载b7f965主模块，AOC枚举1、List索引2、aoc0只读挂载成功。随后因测试root的shaders.hnla为符号链接，既有archive reader的O_NOFOLLOW拒绝而退出。这次不是新游戏缺少着色器，原归档索引明确包含fae0b835a11360e2，不新增或重生成着色器。失败日志保存在physical-stage/pid22350-first-symlink-failure.log.out。
 
 改用外部独立stage实体目录，复制原着色器归档并核对全文SHA529aede4fc1a1e3bb165757e5011332fb4d4088553587ecb76772013221c0ed8，保留11份loose覆盖及相同SDK。没有修改reader的链接保护或正式FFRS数据。run-as复制外部微小DLC曾被FUSE拒绝，改用stdin在私有目录写入并全文回读，随后最终stage使用shell复制，原记录保留。当前22661从实体stage启动，仍用461私有存档，标题及读档待验证。平板另一款游戏已自动转后台，未向该应用发送控制输入。
+
+### 本地覆盖升级包交付完成
+
+荣耀22661实体stage运行已通过本轮实现者范围验证。标题左下实际显示1.0.1.0，profile核对真实b7f965主模块、1489个TP读取补丁。继续游戏读入原自动存档后进入真实场景，随后系统菜单明确选择03号土之神殿旧存档并确认读取，进入神殿原祭坛位置。通过连续swipe完成短距离位移，保留前后截图与命令，过程未出现新的FATAL或退出。没有把短距离功能验证当作移动帧率验收。
+
+当前同一22661日志确认AOC Count=1、List索引2、aoc0从实体stage/dlc/2只读挂载成功。1.0.1的render-policy完整对象校验通过并实际更新动态模式参数，保持已有目标30设置。DLC奖励领取、所有章节/战斗/地图完整回归、独立QA为NOT_RUN。本轮只完成数据升级交付与已列启动/旧档读取/短移动/DLC识别挂载验证，稳定30性能目标继续暂停且未达标。
+
+最终日志、帧文件、源存档目录元数据及截图在.local/game101-dlc-20261116/final-device/，plan.json状态IMPLEMENTER_SCOPED_DEVICE_CHECKS_PASSED。9份私有测试存档安装前后全文一致，运行后的差异仅OptionSaveData，原始私有备份可恢复。正式存档目录元数据最终与安装前一致，测试入口明确使用461私有副本。正式FFRS主模块及完整游戏目录没有覆盖。当前平板APK为59，前台仍为测试stage游戏进程22661，所有输入已抬起；原current-arm.json里的10580已过期，下次恢复性能任务须以本检查点重新核对。
+
+最终ZIP为.local/game101-dlc-20261116/delivery/FFRS-game-1.0.1-DLC-overlay-20261116.zip，9091765145B，SHA256为6d550a980872d599302a7352adcb0839eb35b4485754d1760dab5d71d949ffde。完整16条目CRC再次通过，内置SHA256SUMS.txt全文回读一致，15项实际载荷已逐文件SHA回读。外置.sha256和.json记录同目录。此后只补打包脚本对校验清单自身的CRC/内容检查及控制字符拒绝，最终ZIP字节没有变化。独立升级说明位于coordination/docs/UPGRADE101-DLC-20261116.md，与ZIP内UPGRADE.md相同。
+
+可复现打包命令为python3 scripts/distribution/build_game_data_overlay.py --manifest .local/game101-dlc-20261116/delivery/manifest.json --output .local/game101-dlc-20261116/delivery/新文件名.zip。脚本要求新输出并保留失败partial文件用于诊断。提取本体时生成的9GB中间程序NCA已记录SHA及原始NSP恢复命令后回收，scratch-base-recovery.json记录removed=true，原始输入NSP均保留。本地新源码和证据索引提交Git，游戏数据ZIP及APK留本地交付，未上传游戏数据。
