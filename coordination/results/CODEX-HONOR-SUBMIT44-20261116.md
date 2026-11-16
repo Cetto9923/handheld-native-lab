@@ -234,3 +234,13 @@ shader、uniform范围、typed/integer、游戏时间与音频配置继续原样
 
 54 PID8516已进入神殿内部桥面。A1原路持续移动5.98秒27.253FPS/max71.85ms，B1新路中途遇敌25.839只作混合诊断并排除移动对比。击败后B2新路同桥面持续移动5.945秒28.930FPS/max47.52ms/0超50，随后A2原路5.882秒28.392FPS/max86.69ms/7超50，均无present错误且前后截图仍探索。短窗收益证据仍不足，不称稳30。首次新路消失突袭两Lv1钢蝠8秒17.496FPS/max246.05ms/19超100，存在多次shader冷加载，原始长帧全保留。range_hits约0.8..1.7/帧，hash约2.6..4.4MiB/帧，实际收益继续暖技能对照。
 53 hash调用来源已用53-hash-sites.csv逐项求和校正，15个来自texel_acquire、5个来自get_image_slow，总数20。此前手工17/3计数撤回，范围校验的候选性质保持。
+
+### 54暖技能与GPU检查点
+
+54同PID8516暖技能普通窗已补。A1原范围校验为Lv1钢蝠+妖藤，41756..41901/146帧18.2178FPS/max121.76ms/61超50/14超100。B1新范围校验为三Lv1钢蝠，57533..57691/159帧19.9415FPS/max107.32ms/57超50/4超100。两窗stall shader全0，无present错误。敌群不同，不作因果加速比。命中仅约1次/帧，尚无充分范围校验收益证据，已在设备LIVE-AB=texelrange恢复原校验；代码54仍为未验收候选。GPU诊断8帧19263..19270所有query完整且无跳槽，1384x780主7附件通道8.3..11.94ms，CS073ce354约6.0..6.29ms。该诊断强制CPU间接参数回退，不作为普通FPS或新间接路的预算证明。当前结果屏，root持有输入，私有461复用，继续30FPS目标。
+
+两次测试结束后thermalservice状态均0，属于结束时快照，不能证明测试全程无调频。54首次冷火焰shader日志有reuse0和reuse1混合，缓存retained1437、denied_budget356、peak67108465B已触及64MiB上限。现有XbgPackedShaderWords已用zlib Z_BEST_SPEED无损压缩，take_rewritten逐字输入验证并取走删除。不能把所有reuse0归给预算，也不要重复实现已有压缩或直接放大内存预算。须先用已有模式2预算身份日志核对未覆盖与预算拒绝各自的具体key。
+
+下一项先审查正常CPU读回是否可将重复SHADER_WRITE到HOST_READ屏障合并到提交边界。保留所有GPU依赖、semaphore chain、slot fence和非coherent失效，逐一审计early mapped read再实现。此为候选推断，尚未修改同步代码。Khronos Guide固定a195f15615721921629b894ccbd3c788558305dd，本文SPDX CC-BY-4.0，源文件实取53224B/SHA a035d27f30ce62dc5382402f986e0e36a349fba97d53e9ebdd2a2d03be8d39e4，本地references/有取证索引。官方示例包含shader到host内存依赖、提交、fence等待和mapped invalidate。[固定同步示例](https://github.com/KhronosGroup/Vulkan-Guide/blob/a195f15615721921629b894ccbd3c788558305dd/chapters/synchronization_examples.adoc)
+
+当前本地分支列表无main，git branch --merged main实际返回malformed object name main。尚未证实Main吸收，不删除当前或其它worktree分支。没有推送。所有APK历史保留。稳定30、完整场景运动显示、A2DP及独立QA仍未完成。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。
