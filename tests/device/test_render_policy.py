@@ -481,12 +481,13 @@ int main() {
 typedef struct { void *module; } guest_process;
 static guest_process process, *current_process = &process, *exclusive_process;
 static unsigned char *base, *objects[4];
-static int wrong_build;
+static int wrong_build, updated_build;
 static uintptr_t nso_base(void *module) { return (uintptr_t)module; }
 static size_t nso_image_size(void *module) { (void)module; return 0x9c00000; }
 static void nso_build_id(void *module, char out[33]) {
     (void)module;
-    strcpy(out, wrong_build ? "00000000000000000000000000000000" : "736837afd390442ed7c74a7de730e71b");
+    strcpy(out, wrong_build ? "00000000000000000000000000000000" :
+           updated_build ? "b7f965b9d7227db8e29f04e84ea7331b" : "736837afd390442ed7c74a7de730e71b");
 }
 static int guest_process_is_guest_memory(uintptr_t address) {
     for (unsigned i = 0; i < 4; ++i)
@@ -497,6 +498,8 @@ static int guest_process_is_guest_memory(uintptr_t address) {
 int main(int argc, char **argv) {
     assert(argc == 2);
     int test = atoi(argv[1]);
+    updated_build = test == 8;
+    uintptr_t shift = updated_build ? 0x1000 : 0;
     setenv("FFRS_RENDER_POLICY", test == 1 ? "0" : "1", 1);
     base = mmap(NULL, 0x9c00000, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
     assert(base != MAP_FAILED);
@@ -504,10 +507,10 @@ int main(int argc, char **argv) {
     const uintptr_t offsets[] = {0x8c28a90, 0x8be70d0, 0x8be70e8, 0x8be7118};
     for (unsigned i = 0; i < 4; ++i) {
         objects[i] = calloc(1, 88); assert(objects[i]);
-        uintptr_t *cache = (uintptr_t *)(base + offsets[i]);
-        cache[0] = (uintptr_t)base + (i ? 0x67dd958 : 0x67d9530);
+        uintptr_t *cache = (uintptr_t *)(base + offsets[i] + shift);
+        cache[0] = (uintptr_t)base + (i ? 0x67dd958 : 0x67d9530) + shift;
         cache[1] = (uintptr_t)objects[i]; cache[2] = cache[1] + 80;
-        *(uintptr_t *)objects[i] = (uintptr_t)base + (i ? 0x67dd6f8 : 0x67dd5c8);
+        *(uintptr_t *)objects[i] = (uintptr_t)base + (i ? 0x67dd6f8 : 0x67dd5c8) + shift;
         if (!i) { int values[2] = {2,2}; memcpy(objects[i]+80, values, 8); }
         else { float values[2] = {80,80}; memcpy(objects[i]+80, values, 8); }
     }
@@ -540,7 +543,7 @@ int main(int argc, char **argv) {
             (path / 'test.c').write_text(fixture)
             subprocess.run(['clang', '-std=c11', '-D_DARWIN_C_SOURCE', '-Wall', '-Wextra', '-Werror',
                             '-fsanitize=address,undefined', str(path / 'test.c'), '-o', str(path / 'test')], check=True)
-            for case in range(8):
+            for case in range(9):
                 subprocess.run([str(path / 'test'), str(case)], check=True)
 
     def test_recorded_gpu_time(self):

@@ -3523,7 +3523,10 @@
     "tests/native/add_on_content_contract.c",
     "scripts/runtime/verify_add_on_content.sh",
     "scripts/verify_host.py",
-    "scripts/extract/build_scoped_hactool.py"
+    "scripts/extract/build_scoped_hactool.py",
+    "tests/device/test_add_on_content.py",
+    "src/runtime/hle/guest_process.c",
+    "tests/device/test_render_policy.py"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
@@ -10099,7 +10102,10 @@
     "tests/native/add_on_content_contract.c",
     "scripts/runtime/verify_add_on_content.sh",
     "scripts/verify_host.py",
-    "scripts/extract/build_scoped_hactool.py"
+    "scripts/extract/build_scoped_hactool.py",
+    "tests/device/test_add_on_content.py",
+    "src/runtime/hle/guest_process.c",
+    "tests/device/test_render_policy.py"
    ],
    "dependencies": [],
    "pass_gates": [],

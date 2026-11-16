@@ -1149,16 +1149,21 @@ void guest_process_update_render_policy(void) {
     }
     char build[33];
     nso_build_id(p->module, build);
-    if (strcmp(build, "736837afd390442ed7c74a7de730e71b") ||
-        nso_image_size(p->module) < 0x8c28aa8) {
+    /* Supplied HK 1.0.1 keeps the same CVar registration instructions and
+     * vtable bytes. Their data/BSS and vtable addresses move by 0x1000.
+     * Evidence: CODEX-DATA101-DLC-20261116, render-policy-static-proof.json.
+     * The runtime object/vtable/data checks below still apply to both builds. */
+    uintptr_t shift = !strcmp(build, "b7f965b9d7227db8e29f04e84ea7331b") ? 0x1000 : 0;
+    if ((!shift && strcmp(build, "736837afd390442ed7c74a7de730e71b")) ||
+        nso_image_size(p->module) < 0x8c28aa8 + shift) {
         if (!refusal_logged++) fprintf(stderr, "[render-policy] unsupported game build; settings retained\n");
         pthread_mutex_unlock(&policy_mutex);
         return;
     }
-    uintptr_t mode = render_policy_data(p, 0x8c28a90, 0x67d9530, 0x67dd5c8);
-    uintptr_t minimum = render_policy_data(p, 0x8be70d0, 0x67dd958, 0x67dd6f8);
-    uintptr_t maximum = render_policy_data(p, 0x8be70e8, 0x67dd958, 0x67dd6f8);
-    uintptr_t budget = render_policy_data(p, 0x8be7118, 0x67dd958, 0x67dd6f8);
+    uintptr_t mode = render_policy_data(p, 0x8c28a90 + shift, 0x67d9530 + shift, 0x67dd5c8 + shift);
+    uintptr_t minimum = render_policy_data(p, 0x8be70d0 + shift, 0x67dd958 + shift, 0x67dd6f8 + shift);
+    uintptr_t maximum = render_policy_data(p, 0x8be70e8 + shift, 0x67dd958 + shift, 0x67dd6f8 + shift);
+    uintptr_t budget = render_policy_data(p, 0x8be7118 + shift, 0x67dd958 + shift, 0x67dd6f8 + shift);
     if (!mode || !minimum || !maximum || !budget) {
         pthread_mutex_unlock(&policy_mutex);
         return;
