@@ -1,0 +1,7 @@
+# 1.0.62 GitHub发布记录
+
+用户明确授权GitHub发布及中文说明。本轮沿已执行的58发布流程，推送开发分支及精确构建源码标签，Main只读。目标仓库Cetto9923/handheld-native-lab，标签v1.0.62-preview，类型预览版。
+
+附件来自统一发布目录02-最终幻想_共鸣_FFRS，为APK、SHA256及中文说明。APK3744983B，SHA256 fafd9f22b5959a73a3481106d80be8a6650b28e6f81276d16cc7ea097d513a8d，构建源码08baf94，native BuildID15aa4a1a4b7c0b4dfda8be230df329990cc6ef24。109项宿主和Android通过，647源码输入一致，500组RG GPU/CPU参考通过。目标机及完整场景未验范围在公开说明中明确。
+
+发布计划及命令、进程、普通日志、公开历史检查、APK检查和下载回读证据保存在.local/releases/1.0.62/publication/。本轮开始远端开发分支3394772为本地639e98c祖先，Main为ecb9b57，62标签未存在。未提交的移植经验指南属于其他写者，保持其WIP。
