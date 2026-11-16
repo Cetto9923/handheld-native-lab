@@ -265,3 +265,13 @@ CPU读回屏障候选继续只读审计，why3/8分支本身不等待的源码�
 
 53匹配BuildID的53-program-sites.csv/txt已生成。program_find原生PC 3158552共7个样本落在nvn_program.c第90行顺序查表，bridge13个inclusive返回点在info_of调用后，另3个在bridge entry_find。完整info有memset及memcpy等原生点位，不把bridge与子调用计数相加。现有program状态为可realloc的nvn_object_table，拟复用render-state的索引hint并按in_use/完整地址核验。桥接缓存命中仍先复制6份0x880控制段，拟先读锁内serial再命中不可变快照。初始化和SetShaders在同锁内更新serial，Finalize清in_use。
 55 APK源563b403保持不变并正在神殿读档实测；56准备在独立native文件，当前已将旧41的桥接写占用转移root。尚无56构建或性能结论。
+
+### 55实际采样与56程序元数据候选
+
+55 PID16144普通A1桥面移动15425..15598/173间隔29.1612FPS/max61.79ms。B1中途遇敌17.9336FPS/max713.74ms，仅作混合诊断。静态资格短路实际探索约698..705次/帧，战斗约1072..1373次/帧。首次新路消失突袭为两Lv2变异鼠，38636..38755/120帧14.9745FPS/max270.39ms，61超50、24超100，含shader最高134.8ms，尚未证明普通FPS收益。
+
+55预热1934成功/3失败，与54相同。开始时系统控制中心覆盖，折叠后10:09:28才出现16144的guest_start，先前残留guest_boot不用于本次启动结论。crash buffer中的SNK旧进程也排除。55匹配符号已保存在build55/lib55.symbols.so，后续构建会覆盖.local/build，须继续使用这份匹配产物。
+
+56源码2c4bbae已提交。程序对象加1024个数字索引提示，按完整地址、in_use和表边界核验，受原锁保护。桥接先读同锁内serial，命中不可变快照时跳过完整info复制，miss保持六阶段完整控制字节。现有gfx-live-ab=progcache驱动原路径，原子mode在LIVE-AB确认前更新。相关ASan/UBSan组件共7项通过，覆盖4096容量、realloc失败、冲突、释放/同址重建、表重建、4读1写、模式切换、10000次缓存命中只有首次full copy、查询中替换与Finalize、旧快照持有及无宿主钩子。56全集、Android和实机尚待验证。
+
+设备仍运行55 APK源563b403，私有461复用，root持有输入。当前最后画面为施放消失突袭后的结果屏，所有注入已UP。全场景稳定30、运动显示与A2DP仍待验收，验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。

@@ -5106,3 +5106,13 @@ CPU读回屏障候选继续只读审计，why3/8分支本身不等待的源码�
 ### 55安装检查点
 
 55源563b403 clean，116host/Android0，82份源码前后SHA一致，APK912e88b654cc93f8ba36849c8d5eb5bce807f46f38ea93b6c306f215b10db10c/3728599B。install55回读APK、全部9私有存档SHA与正式源metadata一致。新PID16144复用461，gfx-live-ab=typedstatic先原资格检查；其它既有默认路径保留。待标题Continue、内部移动及真实技能A/B。另发现program bridge缓存命中前每次复制6份0x880控制段且program_find线性查表，沿53匹配符号再定位后拟复用现有render-state索引hint方案，尚未改这些文件。
+
+### 55实际采样与56程序元数据候选
+
+55 PID16144普通A1桥面移动15425..15598/173间隔29.1612FPS/max61.79ms。B1中途遇敌17.9336FPS/max713.74ms，仅作混合诊断。静态资格短路实际探索约698..705次/帧，战斗约1072..1373次/帧。首次新路消失突袭为两Lv2变异鼠，38636..38755/120帧14.9745FPS/max270.39ms，61超50、24超100，含shader最高134.8ms，尚未证明普通FPS收益。
+
+55预热1934成功/3失败，与54相同。开始时系统控制中心覆盖，折叠后10:09:28才出现16144的guest_start，先前残留guest_boot不用于本次启动结论。crash buffer中的SNK旧进程也排除。55匹配符号已保存在build55/lib55.symbols.so，后续构建会覆盖.local/build，须继续使用这份匹配产物。
+
+56源码2c4bbae已提交。程序对象加1024个数字索引提示，按完整地址、in_use和表边界核验，受原锁保护。桥接先读同锁内serial，命中不可变快照时跳过完整info复制，miss保持六阶段完整控制字节。现有gfx-live-ab=progcache驱动原路径，原子mode在LIVE-AB确认前更新。相关ASan/UBSan组件共7项通过，覆盖4096容量、realloc失败、冲突、释放/同址重建、表重建、4读1写、模式切换、10000次缓存命中只有首次full copy、查询中替换与Finalize、旧快照持有及无宿主钩子。56全集、Android和实机尚待验证。
+
+设备仍运行55 APK源563b403，私有461复用，root持有输入。当前最后画面为施放消失突袭后的结果屏，所有注入已UP。全场景稳定30、运动显示与A2DP仍待验收，验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。
