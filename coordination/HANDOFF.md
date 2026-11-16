@@ -5102,3 +5102,7 @@ https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.30-preview �
 
 55撤回54范围journal及其专属测试，54APK和原始证据保留。新候选仅在原Honor/Adreno范围缓存Shader不可变的typed-storage资格，首次仍执行原诊断，eligible写入绑定每次继续按当前VkFormat选择原variant。gfx-live-ab=typedstatic回原路。新增生产字段/谓词/函数前缀提取ASan/UBSan覆盖320组合、运行中格式变化、后置加载、256项混合表、独立variant事实及非Honor/旧AB，与既有组件共5项通过。Shader字节、GPU同步、slot、音频均未改变。待116项全集/Android/真实性能对照。
 CPU读回屏障候选继续只读审计，why3/8分支本身不等待的源码事实已记下，调用链覆盖和实际可达性仍待验证。
+
+### 55安装检查点
+
+55源563b403 clean，116host/Android0，82份源码前后SHA一致，APK912e88b654cc93f8ba36849c8d5eb5bce807f46f38ea93b6c306f215b10db10c/3728599B。install55回读APK、全部9私有存档SHA与正式源metadata一致。新PID16144复用461，gfx-live-ab=typedstatic先原资格检查；其它既有默认路径保留。待标题Continue、内部移动及真实技能A/B。另发现program bridge缓存命中前每次复制6份0x880控制段且program_find线性查表，沿53匹配符号再定位后拟复用现有render-state索引hint方案，尚未改这些文件。
