@@ -821,6 +821,7 @@ constexpr unsigned kMaxSlots=16;
 extern std::atomic<uint64_t> memo_epoch;extern uint64_t key_diff[14];extern uint64_t memo_bump[5];extern uint64_t xmemo_hits,xmemo_drops;struct PinRef{VkDescriptorSetLayout layout;uint32_t refs;};extern std::unordered_map<VkDescriptorSet,PinRef> memo_pinned[kMaxSlots];
 extern uint64_t texture_record_hits,texture_record_misses;
 extern uint64_t memo_front_hits;extern uint64_t desc_memo_hits,desc_memo_misses,desc_memo_why[6],desc_ns[6],noload_passes,img_cache_hits,img_cache_misses,noload_why[8],binds_skipped,set_binds,set_bind_offsets,set_binds_offsets_only,offset_changes[10],offset_changed_at[32];
+extern bool honor_inline_enabled;
 namespace warm{extern uint64_t hits,creates,create_ns,create_max_ns,compute_hits,compute_creates,compute_create_ns,compute_create_max_ns;extern std::atomic<uint64_t> built,failed,build_ns,async_built,async_skips,compiled,rewritten_retained,rewritten_denied_budget,rewritten_peak_bytes;extern bool async_on;void flush();void register_module(VkShaderModule m,const std::string &key);
     extern bool keep_rewritten;bool take_rewritten(const std::string &key,const std::vector<uint32_t> &input,std::vector<uint32_t> &out);void reject_reuse();}
 // 长帧日志的读数（nvn_vk.c 把它们接到 hle_nvn.c 的 mtl_create_* / mtl_pkg_stats / mtl_upload_* / mtl_gpu_ms）：自启动起的累计，图形线程写、

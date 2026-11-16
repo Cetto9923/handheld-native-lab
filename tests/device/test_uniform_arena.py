@@ -114,6 +114,8 @@ int main() {
 
     def test_slot_retirement_budget_and_all_uniform_entry_points(self):
         source = SOURCE.read_text()
+        self.assertLess(source.index('extern bool honor_inline_enabled;'),
+                        source.index('Buffer uniform_buffer(size_t n,'))
         retire = source[source.index('void retire_slot(Slot &s){'):
                         source.index('Slot &recording_slot(){')]
         self.assertLess(retire.index('hybrid_wait_fence('), retire.index('s.uniform.reset()'))
