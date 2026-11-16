@@ -7,3 +7,21 @@
 计划沿现有FFRS目录输出覆盖文件，仅携带实际变化的模块与资源，以及经核验的DLC数据。若加载支持需要APK更新，一并提供必需安装包与清晰步骤。存档、原始NSP、旧交付、Main及其它工作树保持其现有写入边界。本轮游戏派生产物仅保存在本树.local/game101-dlc-20261116/。
 
 独立常量池帧率优化主目标继续处于用户收口状态。本任务只处理用户要求的版本及DLC升级交付。
+
+### 1.0.1与DLC输入及重建取证完成
+
+三个用户输入NSP均已只读全文SHA核对，分别与既有基线一致。base02b61f9f/9061339984B、update a31ebd0a/143005520B、DLC17631319/121040B。PFS0原件在containers/base、update、dlc，原始资料目录没有修改，extract-plan2.json记录完整路径、大小、SHA及输入stat前后相同。
+
+默认hactool的全局字段解析曾失败，错误值已在日志脱敏，未修改全局资料。以实际可获取的SciresM/hactool固定1d64a83450e025622f3468c28fc4164dad2c5ef6、ISC构建项目内受控工具，关闭全局keyset/titlekey自动发现。只通过匿名管道传入任务所需的header/15代title及area字段，三个提供票据也仅通过匿名管道传入。主NCA与base NCA均传播suppresskeys，原值不写报告或交付。重现工具脚本scripts/extract/build_scoped_hactool.py，命令、PID、日志和二进制SHA在scoped-tool/plan.json。
+
+内部元数据已核对。升级Control NACP显示1.0.1，Patch CNMT0100b8a026f14800/version65536/type129，application0100b8a026f14000。DLC CNMT0100b8a026f15002/version0/type130，application同本体。实际DLC PublicData RomFS只有content文件19B，文本为带BOM的Download Content，属于提供的见习骑士起步冲刺包。后续应按实际数据和索引2建立AOC识别/挂载，保留未安装时0语义。
+
+已由hactool以真实base NCA、onlyupdated、verify重建升级Program并提取ExeFS及更新RomFS。五组相关日志均无FAIL/Invalid/Error，GOOD计数分别9/9/4/4/14。raw下22文件共9037626669B。更新影响FFRS-Switch.pak2958591062B、FFRS-Switch.ucas5976850224B、utoc12382627B及global两文件和清单/命令行。最简单的文件覆盖ZIP需包含这些完整更新容器，不能按143MB的NSP大小承诺ZIP体积。
+
+新main原压缩NSO65281728B，解压后BuildID b7f965b9d7227db8e29f04e84ea7331b，和DroidPlay另地区1.0.1的84e182不同。sdk仍0023a1b06130cd795f7bc4613772af0a，subsdk0仍ab62fe8edd07a6a293f885d54359e559。Mac离线加载新解压main --info成功，imports651/unresolved632，只是离线元数据，未执行游戏。直接压缩main被既有loader拒绝的记录已保留，交付需使用解压后的main.nso。正在分别生成新旧主模块静态inspection，日志main101/main100-inspection.log，可用脚本process存活及输出检查恢复，不得把这步称运行通过。
+
+现有guest_process.c的目标30渲染策略只支持旧736837 BuildID，遇新模块会保守拒绝。后续不能仅改BuildID或复用另地区地址，需要核对实际地址或明确新的验收范围。DLC当前nso_host仍枚举0及挂载缺失，APK支持尚待实现。另会话在独立cheat-options工作树有nso_host相关写入，本任务只在本root树已领取路径工作，跨树冲突由root集成时核对。
+
+共享.local/romfs链接当前目标缺失，旧本地FFRS-data.zip也不在旧交付路径。没有删除或重建它们。本轮重建完全来自用户提供并已核SHA的原始NSP，正式存档不参与补丁打包。当前Mac约12GiB空闲，containers/base/程序NCA为本轮可从原NSP重生的9GB中间件，完成依赖取证后可按可恢复清理流程回收再做ZIP，避免生成额外9GB staging副本。新增派生产物与最终ZIP仅留.local/。
+
+已向用户询问可否连接荣耀平板用于最终启动/读档/DLC验证，继续制作工作不等待该可选答复。帧率优化主目标继续保持收口暂停。下一步核对主模块导入差异、实现并测试真实AOC路径、准备必要APK更新，最后流式生成覆盖ZIP、完整CRC/逐文件SHA校验和最简升级说明。
