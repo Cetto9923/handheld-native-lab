@@ -9,7 +9,7 @@
 
 ## 救回点（2026-10-29，勿回退）
 
-- AAudio 默认 **`PERFORMANCE_MODE_NONE`**（禁默认 `LOW_LATENCY`；旧日志 `performance=10` 即踩坑）
+- AAudio 默认 **`PERFORMANCE_MODE_NONE`**（禁默认 `LOW_LATENCY`；NDK `AAUDIO_PERFORMANCE_MODE_NONE=10`，`LOW_LATENCY=12`）
 - 按 burst 设缓冲：`setBufferSizeInFrames`（约 `burst*2`，扬声器侧可夹 ~1920–3840；蓝牙大 burst 须吃得下 A2DP 抖动）
 - `AAudioStream_write` 超时约 **100ms**；`TIMEOUT` **重试**，禁止当致命失败停流
 - `DISCONNECTED (-899)` / 设备变更 → **自动重开流**（`device_changed` + `AudioDeviceCallback`）；禁永久停 worker
@@ -29,7 +29,7 @@
 
 ## 已知音频坑（常设验收；任一不过 = 整刀 FAIL）
 
-- [ ] 默认 AAudio 为 `PERFORMANCE_MODE_NONE`（禁默认 `LOW_LATENCY`）；guest 日志 `performance=0`
+- [ ] 默认 AAudio 为 `PERFORMANCE_MODE_NONE`（禁默认 `LOW_LATENCY`）；AAudio 日志 `requested_performance=10`、`performance=10`，按当前 NDK 枚举核对
 - [ ] 蓝牙耳机（A2DP）野外/战斗各 **≥2 分钟** 主观连续无断续；**仅扬声器顺滑不算过**
 - [ ] 运行中连接/断开蓝牙：须自动重开流，禁因 `DISCONNECTED(-899)` 永久停音频或拖死 UE tick
 - [ ] `fence_spin_us` / `gfx-fence-spin-us` 默认 **0**；若非 0，须蓝牙 A/B 且音频门不过则回滚

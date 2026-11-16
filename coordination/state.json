@@ -3480,13 +3480,14 @@
     "src/graphics/nvn_device/nvn_bridge.c",
     "tests/native/nvn_bridge_generation_contract.c",
     "tests/installer/texture_snapshot_contract.c",
-    "tests/device/test_program_lookup.py"
+    "tests/device/test_program_lookup.py",
+    "coordination/prompts/_STANDING-audio-acceptance.md"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-16T00:37:43.134192+08:00",
-   "checkpoint": "### 55实际采样与56程序元数据候选\n\n55 PID16144普通A1桥面移动15425..15598/173间隔29.1612FPS/max61.79ms。B1中途遇敌17.9336FPS/max713.74ms，仅作混合诊断。静态资格短路实际探索约698..705次/帧，战斗约1072..1373次/帧。首次新路消失突袭为两Lv2变异鼠，38636..38755/120帧14.9745FPS/max270.39ms，61超50、24超100，含shader最高134.8ms，尚未证明普通FPS收益。\n\n55预热1934成功/3失败，与54相同。开始时系统控制中心覆盖，折叠后10:09:28才出现16144的guest_start，先前残留guest_boot不用于本次启动结论。crash buffer中的SNK旧进程也排除。55匹配符号已保存在build55/lib55.symbols.so，后续构建会覆盖.local/build，须继续使用这份匹配产物。\n\n56源码2c4bbae已提交。程序对象加1024个数字索引提示，按完整地址、in_use和表边界核验，受原锁保护。桥接先读同锁内serial，命中不可变快照时跳过完整info复制，miss保持六阶段完整控制字节。现有gfx-live-ab=progcache驱动原路径，原子mode在LIVE-AB确认前更新。相关ASan/UBSan组件共7项通过，覆盖4096容量、realloc失败、冲突、释放/同址重建、表重建、4读1写、模式切换、10000次缓存命中只有首次full copy、查询中替换与Finalize、旧快照持有及无宿主钩子。56全集、Android和实机尚待验证。\n\n设备仍运行55 APK源563b403，私有461复用，root持有输入。当前最后画面为施放消失突袭后的结果屏，所有注入已UP。全场景稳定30、运动显示与A2DP仍待验收，验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。\n",
-   "checkpoint_at": "2026-11-16T07:55:52.882806+08:00"
+   "checkpoint": "### 56安装、移动及火焰对照\n\n56已安装并回读APK摘要，全部9份私有存档逐个SHA及正式源metadata保持。PID22998复用461。启动明确program fast lookup=0、LIVE-AB=progcache present0。实际none切换在present4200确认native1，同进程后续0/1均紧邻对应LIVE-AB。原精度、同步、fence spin0与分辨率策略保持。\n\n纯探索运动两对短窗为B1新7816..7984/168间隔28.1425FPS/max57.65ms，对A2旧8707..8877/170间隔28.2455FPS/max71.08ms。A3旧15033..15206/173间隔28.9244FPS/max55.72ms，对B3新16378..16553/175间隔28.8987FPS/max88.55ms。各窗约6秒，均有同PID非零方向与最终零轴、前后同探索截图，0present错误。两对没有确认的帧率收益。A1和B2结束在遇敌过渡，混合原始数据保留并排除纯移动对比。\n\n首次新路技能为Lv1钢蝠+妖藤，5123..5269/147帧18.3756FPS/max275.89ms，57超50、12超100。暖态B1新路两Lv1钢蝠12197..12363/167帧20.7801FPS/max112.50ms，51超50、3超100。暖态A1旧路两Lv2变异鼠21155..21304/150帧18.7088FPS/max118.43ms，62超50、11超100。全为普通实际A后完整8秒窗，含技能及可能胜利转场，0present错误。敌群不同不能作为因果加速比，稳定30未达。暖技能仍复制约10..16MiB/帧顶点，约1.4..1.5MiB/帧索引，作为下一项具体调用栈和读取范围核对的输入。\n\n复用现有vulkan_subgroup_probe源码在本机重新查询，ROD2-W69/SM8635/Adreno735，子组默认64、可控范围64..128，required compute32不支持。因此拒绝请求物理32这一候选，没有修改设备feature或shader重写。首次动态链接因缺libc++_shared失败，静态C++运行库重建后capability-only errors0，未创建逻辑设备。证据subgroup56，保留失败与恢复记录。\n\n音频数字口径校正。本次NDK AAudio.h明确AAUDIO_PERFORMANCE_MODE_NONE=10、LOW_LATENCY=12，生产audio_bridge.c默认使用NONE，本次requested_performance=10/performance=10符合该默认。常设音频文档中“10即低延迟、0即NONE”的数字说明与实际NDK不符，此数字判断撤回。仍按枚举语义及常设完整A2DP流程验收，人耳持续播放与连接切换仍NOT_RUN。没有修改音频源码或缓冲。\n\n继续同包暖技能调用栈定位，匹配build56/lib56.symbols.so。程序缓存目前仍为未证明帧率收益的候选。root持有输入，正式存档、Main与APK历史保持，未推送。\n\n",
+   "checkpoint_at": "2026-11-16T11:19:25.517854+08:00"
   }
  ],
  "tasks": [
@@ -9959,7 +9960,8 @@
     "src/graphics/nvn_device/nvn_bridge.c",
     "tests/native/nvn_bridge_generation_contract.c",
     "tests/installer/texture_snapshot_contract.c",
-    "tests/device/test_program_lookup.py"
+    "tests/device/test_program_lookup.py",
+    "coordination/prompts/_STANDING-audio-acceptance.md"
    ],
    "write_scope": [
     ".local/honor-submit44-20261116/",
@@ -9981,7 +9983,8 @@
     "src/graphics/nvn_device/nvn_bridge.c",
     "tests/native/nvn_bridge_generation_contract.c",
     "tests/installer/texture_snapshot_contract.c",
-    "tests/device/test_program_lookup.py"
+    "tests/device/test_program_lookup.py",
+    "coordination/prompts/_STANDING-audio-acceptance.md"
    ],
    "dependencies": [],
    "pass_gates": [],
