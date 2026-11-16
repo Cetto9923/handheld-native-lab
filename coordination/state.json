@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-17T01:03:24.273906+08:00",
- "phase": "发布1.0.62闪退修复预览至GitHub",
+ "updated_at": "2026-11-17T01:08:15.257627+08:00",
+ "phase": "荣耀新增报告复核通过，继续62 GitHub预览发布",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -3638,6 +3638,19 @@
    "acquired_at": "2026-11-17T01:03:24.273906+08:00",
    "checkpoint": "用户本轮明确授权GitHub发布，含此版本开发分支及精确标签推送",
    "write_state": "ACTIVE"
+  },
+  {
+   "task": "CODEX-HONOR-REPORT62-20261117",
+   "owner": "root",
+   "paths": [
+    ".local/honor-report63-20261117/",
+    "coordination/results/CODEX-HONOR-REPORT62-20261117.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-17T01:06:16.057910+08:00",
+   "checkpoint": "报告与62覆盖复验完成，原机NOT_RUN。",
+   "write_state": "COMPLETE_SCOPED_REVIEW"
   }
  ],
  "tasks": [
@@ -10383,7 +10396,32 @@
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acceptance": "标签对应构建源，公开历史与附件范围核验，release预览状态及下载全文SHA验证，Main引用保全",
-   "checkpoint": "准备发布，远端开发分支3394772为本地HEAD祖先，62标签未存在"
+   "checkpoint": "报告30664526复核覆盖，真实模块复验0，公开新增历史92blob/27687970B在所选检查范围0发现。附件与已授权公开58内置资源相同，准备推开发分支及62精确标签。"
+  },
+  {
+   "id": "CODEX-HONOR-REPORT62-20261117",
+   "owner": "root",
+   "role": "CRASH_ANALYSIS",
+   "status": "completed_scoped",
+   "objective": "核对用户新报告30664526并验证62对同一R32退出的覆盖，完成后继续GitHub发布",
+   "inputs": [
+    "FFRS-report-20261117-004843.zip",
+    "08baf94 production fix"
+   ],
+   "outputs": [
+    "同会话证据报告",
+    "复验结果及发布说明更新"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/honor-report63-20261117/",
+    "coordination/results/CODEX-HONOR-REPORT62-20261117.md"
+   ],
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "acceptance": "版本/设备/末次PID和退出时间对齐，明确新报告与62修复路径关系，真实模块回归通过，原机待验如实记录",
+   "checkpoint": "最新PID3782 exit70与FATAL mtime相差1086ms，同ceb27 R32缺过滤能力。现有62真实模块及生产选择两项ASan/UBSan复验0，原机NOT_RUN。按报告实际HONOR元数据处理，发布说明已更新。"
   }
  ],
  "blockers": [

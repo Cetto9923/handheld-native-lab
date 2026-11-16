@@ -1,0 +1,23 @@
+# 荣耀新增报告与62修复覆盖复核
+
+用户在62发布准备期间提供FFRS-report-20261117-004843.zip并要求先修复再发布。原ZIP只读，副本及展开日志位于.local/honor-report63-20261117/。文件429314B，SHA256 306645266b170ce9f3c3fe5b05f9cdaa09692adea88eaffd150ab01646782df0，完整CRC通过。该本地暂存目录的63编号仅为摄入命名，发布版本继续由实际修复和版本记录决定。
+
+## 实际设备与同会话证据
+
+metadata为HONOR FLC-AN00、SM8550、Android16/API36、总内存11844259840B、APK1.0.60-preview/60。导出时可用4319248384B、low_memory=false，仅描述导出时快照。报告设备信息与小米15 Pro分别处理，已向用户核对报告归属。
+
+exit-history末次为PID3782、reason1、status70、时间1794847649694。engine采样尾部确实包含codex-frame-3782.csv启动锚点，从该行提取最新独立日志8608行，另存latest-engine-pid3782.log。其末尾为相同ceb27d63df2eaf0a在frame6717载入，随即R32_SFLOAT线性过滤能力检查FATAL。fatal文件及两份运行日志原文件mtime均1794847648608，与末次退出相差1086ms。head部分PID17553及18573是旧会话，不混入3782归因。
+
+FATAL字段为min3、mag1、compare0/2、NVN format0xa、Vk100、optimalFeatures0x8001ed87、texture1079261，功能位0x1000缺失。与索尔同一能力检查错误，纹理serial不同。现有退出记录支持应用主动检查退出，未据此归为系统OOM或驱动终止。guest采样head出现b7f965模块头，latest tail缺少对应游戏主模块启动头，该值保持历史线索，未绑定到3782作主版本结论。
+
+## 62实际修复覆盖
+
+待发布62构建源08baf94已包含缺失R32线性过滤时的显式LOD0双线性兼容，以及Fetch/Gather用途与图像缓存隔离。相关ceb27真实模块的52、106、118改写、生产sampler/资源选择及完整recipe回归已在最终构建执行。
+
+新增报告后再次独立运行test_linear_sample.py两项，实际输入为已取证ceb27 SPIR-V，包含生产函数提取、ASan/UBSan及真实模块spirv-val，退出0。命令、环境、源码来源、PID和原日志保存在recheck-plan.json与linear-recheck.log。该测试证明62包含并可选择这条兼容路线，目标机真实参数是否全部适用以及整包退出是否消失仍须用户安装复测。
+
+当前报告来自60版本。该ZIP补充62已处理错误路径的设备证据，未证明62本身再次失败。完成这次复核后可交付并发布62修复预览，发布说明注明荣耀新报告及目标机待验范围。
+
+## 卡顿证据边界
+
+3782部分着色器载入实测约98至289ms，其中rewrite占主要部分。报告未包含帧CSV或逐帧stall记录，不能与此前小米视频约20秒冻结对齐。旧会话和本会话的累计PERF分开处理，warm_ms为累计耗时。小米15 Pro长停顿归因和修复保持开放，发布说明如实记录。
