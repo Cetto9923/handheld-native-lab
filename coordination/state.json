@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-17T01:08:15.257627+08:00",
- "phase": "荣耀新增报告复核通过，继续62 GitHub预览发布",
+ "updated_at": "2026-11-17T01:17:49.199449+08:00",
+ "phase": "62闪退修复预览已发布，长卡顿仍开放，报告来源冲突已记录",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -3636,8 +3636,9 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-17T01:03:24.273906+08:00",
-   "checkpoint": "用户本轮明确授权GitHub发布，含此版本开发分支及精确标签推送",
-   "write_state": "ACTIVE"
+   "checkpoint": "GitHub v1.0.62-preview已发布并回读APK/SHA/中文说明一致，精确tag08baf94，APK fafd9f22，Main ecb9保全。首次GitHub500后安全重试成功。新增报告设备来源冲突公开说明已纠正。首60帧4.9FPS不当作战斗证据，5700帧窗口14.64FPS需CPU/GPU进一步采样，小米几十秒停顿未修复。",
+   "write_state": "COMPLETE_SCOPED_DELIVERY",
+   "checkpoint_at": "2026-11-17T01:17:49.199449+08:00"
   },
   {
    "task": "CODEX-HONOR-REPORT62-20261117",
@@ -3649,8 +3650,8 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-17T01:06:16.057910+08:00",
-   "checkpoint": "报告与62覆盖复验完成，原机NOT_RUN。",
-   "write_state": "COMPLETE_SCOPED_REVIEW"
+   "checkpoint": "来源冲突与性能证据边界已修订，尚无经验证的几十秒停顿修复。",
+   "write_state": "CHECKPOINTED_PENDING_TARGET_EVIDENCE"
   }
  ],
  "tasks": [
@@ -10375,7 +10376,7 @@
    "id": "CODEX-PUBLISH62-20261117",
    "owner": "root",
    "role": "RELEASE",
-   "status": "in_progress",
+   "status": "passed",
    "objective": "按用户授权发布GitHub 1.0.62预览及中文说明并回读附件",
    "inputs": [
     "08baf94 verified source",
@@ -10396,13 +10397,13 @@
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acceptance": "标签对应构建源，公开历史与附件范围核验，release预览状态及下载全文SHA验证，Main引用保全",
-   "checkpoint": "报告30664526复核覆盖，真实模块复验0，公开新增历史92blob/27687970B在所选检查范围0发现。附件与已授权公开58内置资源相同，准备推开发分支及62精确标签。"
+   "checkpoint": "GitHub v1.0.62-preview已发布并回读APK/SHA/中文说明一致，精确tag08baf94，APK fafd9f22，Main ecb9保全。首次GitHub500后安全重试成功。新增报告设备来源冲突公开说明已纠正。首60帧4.9FPS不当作战斗证据，5700帧窗口14.64FPS需CPU/GPU进一步采样，小米几十秒停顿未修复。"
   },
   {
    "id": "CODEX-HONOR-REPORT62-20261117",
    "owner": "root",
    "role": "CRASH_ANALYSIS",
-   "status": "completed_scoped",
+   "status": "in_progress",
    "objective": "核对用户新报告30664526并验证62对同一R32退出的覆盖，完成后继续GitHub发布",
    "inputs": [
     "FFRS-report-20261117-004843.zip",
@@ -10421,7 +10422,7 @@
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acceptance": "版本/设备/末次PID和退出时间对齐，明确新报告与62修复路径关系，真实模块回归通过，原机待验如实记录",
-   "checkpoint": "最新PID3782 exit70与FATAL mtime相差1086ms，同ceb27 R32缺过滤能力。现有62真实模块及生产选择两项ASan/UBSan复验0，原机NOT_RUN。按报告实际HONOR元数据处理，发布说明已更新。"
+   "checkpoint": "用户确认对方导出，暂不重复索要报告。来源冲突待核。R32 exit70已有62兼容候选，首60帧为启动混合不能归战斗。5700帧窗口14.64FPS/CPU40.36/GPU36.87，pipeline新创建0，几十秒停顿尚未定位。"
   }
  ],
  "blockers": [
