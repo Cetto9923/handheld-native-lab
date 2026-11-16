@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-16T23:41:18.554071+08:00",
- "phase": "61转场修复候选已构建，等待用户结束空轨测试",
+ "updated_at": "2026-11-17T00:12:08.932096+08:00",
+ "phase": "61掌机火场BOSS后转场回归，用户操作root采集",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -3572,9 +3572,9 @@
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acquired_at": "2026-11-16T23:26:21.631384+08:00",
-   "checkpoint": "61候选bd87e09/APK4ddec76d/3732695B，108宿主及Android0，641源输入一致，3采样用途回归及真实ceb27通过，已复制统一发布目录待验证。用户要求等空轨测试结束，当前平板场景与Thor转场实测NOT_RUN，等待通知。",
-   "write_state": "CHECKPOINTED_WAITING_USER_DEVICE",
-   "checkpoint_at": "2026-11-16T23:41:18.554071+08:00"
+   "checkpoint": "用户授权RG477M01445122，30→61覆盖安装回读APK一致，9正式存档SHA保全通过。9963从旧100数据及空私有副本新建，已过开场影片到火场可操作。用户明确目标为火场最终BOSS后第二幕紫门，并接管掌机推进。root只读采集，live tail宿主PID95042，plan与日志在rg477m/opening/。",
+   "write_state": "ACTIVE_RG477M_USER_INPUT_ROOT_CAPTURE",
+   "checkpoint_at": "2026-11-17T00:12:08.932096+08:00"
   }
  ],
  "tasks": [
@@ -10217,7 +10217,7 @@
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acceptance": "复现原采样拒绝；证明实际指令及能力语义；宿主/Android通过；设备功能范围明确；Thor用户复测待反馈",
-   "checkpoint": "61候选bd87e09/APK4ddec76d/3732695B，108宿主及Android0，641源输入一致，3采样用途回归及真实ceb27通过，已复制统一发布目录待验证。用户要求等空轨测试结束，当前平板场景与Thor转场实测NOT_RUN，等待通知。"
+   "checkpoint": "用户授权RG477M01445122，30→61覆盖安装回读APK一致，9正式存档SHA保全通过。9963从旧100数据及空私有副本新建，已过开场影片到火场可操作。用户明确目标为火场最终BOSS后第二幕紫门，并接管掌机推进。root只读采集，live tail宿主PID95042，plan与日志在rg477m/opening/。"
   }
  ],
  "blockers": [
@@ -10499,7 +10499,7 @@
   "display_mode_observed": "Android display0 mode2=120.00001Hz; supported60/90/120; no appframeoverride and gamemodeunsupported. Game30cap distinct from panel."
  },
  "parallelism_note": "No active Codex workers. runtime/vulkan two newly dispatched tasks stopped at readonly NOT_STARTED safe point; independent515 task never dispatched. All older authors/reviewers already handed back; QA remains errored, no retry.",
- "handoff_checkpoint": "61候选bd87e09/APK4ddec76d/3732695B，108宿主及Android0，641源输入一致，3采样用途回归及真实ceb27通过，已复制统一发布目录待验证。用户要求等空轨测试结束，当前平板场景与Thor转场实测NOT_RUN，等待通知。",
+ "handoff_checkpoint": "用户授权RG477M01445122，30→61覆盖安装回读APK一致，9正式存档SHA保全通过。9963从旧100数据及空私有副本新建，已过开场影片到火场可操作。用户明确目标为火场最终BOSS后第二幕紫门，并接管掌机推进。root只读采集，live tail宿主PID95042，plan与日志在rg477m/opening/。",
  "runtime_risks": [
   {
    "id": "HOST_GUEST_X18_GATEWAY",
