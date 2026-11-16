@@ -3472,12 +3472,13 @@
     "tests/device/test_performance_hint.py",
     "tests/device/test_probe_marker_poll.py",
     "tests/device/test_indirect_texel_residency.py",
-    "src/graphics/nvn_vulkan/engine/xbg_probe.inc"
+    "src/graphics/nvn_vulkan/engine/xbg_probe.inc",
+    "tests/device/test_texel_range_validation.py"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-16T00:37:43.134192+08:00",
-   "checkpoint": "53第二对普通暖窗同为两Lv1钢蝠，A2原71067..71246/180帧22.4465FPS/max141.88ms/38超50/3超100；B2新93134..93322/189帧23.5755FPS/max105.93ms/29超50/3超100。A2有1条stall含shader，原始行继续保留；B2 stall shader全0。最大sync_wb分别10与1。两组同敌人A1/B1及A2/B2均有小幅正向差，分别约0.47与1.13FPS，仍非稳30且未逐帧记录内部DRS尺寸，不称充分收益验收。53后PSS5114631/RSS5227040KiB，需结合缓存时长继续看，未判定泄漏。当前MP31，需要通过游戏UI重新读档恢复测试输入后，再作暖新CPU/GPU诊断。\n只读重新解析50匹配符号的record_open_owned 17个inclusive样本，8个返回点928在record_write_locked调用后、6个939在unlock、2个919在buffer_find、1个917在lock。没有把17个全部归为线性查表，暂不实施MRU猜测。write-tracking旧实现未接宿主hooks且版本按last_use+2选用，当前16槽，不能直接打开或扩到vertex；需实际生命周期和VM改映射审查后再考虑。",
+   "checkpoint": "53暖技能6秒Perfetto已保全9f6897e3，符号BuildID d7878b63与trace映射一致。RHI运行5350.21/5930.14ms，descriptors_build139、texel_acquire43、hash_memory20 inclusive样本，存在上层INVALID_ELF不作独占比例。hash来源17条驻留texel、3条图像；源代码已有4lane整段hash。CSV已到120000上限，不能计算此次普通FPS。trace BOOTTIME与输入MONOTONIC相差318.504986771秒，以clock_snapshot对齐。领取有界写区间校验候选，仅在同一原本可复用提交内跳过可证无重叠的重复hash，保留整段回退；实际收益待A/B。",
    "checkpoint_at": "2026-11-16T07:55:52.882806+08:00"
   }
  ],
@@ -9943,7 +9944,8 @@
     "tests/device/test_performance_hint.py",
     "tests/device/test_probe_marker_poll.py",
     "tests/device/test_indirect_texel_residency.py",
-    "src/graphics/nvn_vulkan/engine/xbg_probe.inc"
+    "src/graphics/nvn_vulkan/engine/xbg_probe.inc",
+    "tests/device/test_texel_range_validation.py"
    ],
    "write_scope": [
     ".local/honor-submit44-20261116/",
@@ -9957,13 +9959,14 @@
     "tests/device/test_performance_hint.py",
     "tests/device/test_probe_marker_poll.py",
     "tests/device/test_indirect_texel_residency.py",
-    "src/graphics/nvn_vulkan/engine/xbg_probe.inc"
+    "src/graphics/nvn_vulkan/engine/xbg_probe.inc",
+    "tests/device/test_texel_range_validation.py"
    ],
    "dependencies": [],
    "pass_gates": [],
    "acceptance": "原始PID/帧/场景/符号核对，真实持续移动普通FPS与诊断分窗，CPU/GPU及数据生命周期事实支持归因，显示及原速/声音保持；验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。",
-   "checkpoint": "53第二对普通暖窗同为两Lv1钢蝠，A2原71067..71246/180帧22.4465FPS/max141.88ms/38超50/3超100；B2新93134..93322/189帧23.5755FPS/max105.93ms/29超50/3超100。A2有1条stall含shader，原始行继续保留；B2 stall shader全0。最大sync_wb分别10与1。两组同敌人A1/B1及A2/B2均有小幅正向差，分别约0.47与1.13FPS，仍非稳30且未逐帧记录内部DRS尺寸，不称充分收益验收。53后PSS5114631/RSS5227040KiB，需结合缓存时长继续看，未判定泄漏。当前MP31，需要通过游戏UI重新读档恢复测试输入后，再作暖新CPU/GPU诊断。\n只读重新解析50匹配符号的record_open_owned 17个inclusive样本，8个返回点928在record_write_locked调用后、6个939在unlock、2个919在buffer_find、1个917在lock。没有把17个全部归为线性查表，暂不实施MRU猜测。write-tracking旧实现未接宿主hooks且版本按last_use+2选用，当前16槽，不能直接打开或扩到vertex；需实际生命周期和VM改映射审查后再考虑。",
-   "updated_at": "2026-11-16T07:55:52.882806+08:00"
+   "checkpoint": "53暖技能6秒Perfetto已保全9f6897e3，符号BuildID d7878b63与trace映射一致。RHI运行5350.21/5930.14ms，descriptors_build139、texel_acquire43、hash_memory20 inclusive样本，存在上层INVALID_ELF不作独占比例。hash来源17条驻留texel、3条图像；源代码已有4lane整段hash。CSV已到120000上限，不能计算此次普通FPS。trace BOOTTIME与输入MONOTONIC相差318.504986771秒，以clock_snapshot对齐。领取有界写区间校验候选，仅在同一原本可复用提交内跳过可证无重叠的重复hash，保留整段回退；实际收益待A/B。",
+   "updated_at": "2026-11-16T09:01:54.252301+08:00"
   }
  ],
  "blockers": [

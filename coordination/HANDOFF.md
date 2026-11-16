@@ -5063,3 +5063,8 @@ https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.30-preview �
 ### 45移动及暖技能CPU栈
 
 45/70db6d98/PID5377。内部移动23.4315及29.1226FPS，未稳30。GPASS场景1384x780、UI1920x1080，诊断8帧。暖技能6秒trace95a09106匹配f16061d9，RHI运行5202.26ms/5.9301s，descriptor及vertex/index memcpy仍热点。45原CSV不足8秒已改3秒覆盖并保留旧JSON，5份普通8秒窗口覆盖复验通过。vcache缺dirty版本前提，后续研究有界全字节比较或精确fetch范围。当前施法后输入UP，先新鲜截图。
+
+### 53暖技能调用栈与范围校验候选
+
+53暖技能6秒Perfetto已保全9f6897e3，符号BuildID d7878b63与trace映射一致。RHI运行5350.21/5930.14ms，descriptors_build139、texel_acquire43、hash_memory20 inclusive样本，存在上层INVALID_ELF不作独占比例。hash来源17条驻留texel、3条图像；源代码已有4lane整段hash。CSV已到120000上限，不能计算此次普通FPS。trace BOOTTIME与输入MONOTONIC相差318.504986771秒，以clock_snapshot对齐。领取有界写区间校验候选，仅在同一原本可复用提交内跳过可证无重叠的重复hash，保留整段回退；实际收益待A/B。
+当前19273已再次施放消失突袭，源39c5bf9/53，仍复用461。root持有输入，未改正式存档或Main。

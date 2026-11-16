@@ -214,3 +214,9 @@ shader、uniform范围、typed/integer、游戏时间与音频配置继续原样
 只读重新解析50匹配符号的record_open_owned 17个inclusive样本，8个返回点928在record_write_locked调用后、6个939在unlock、2个919在buffer_find、1个917在lock。没有把17个全部归为线性查表，暂不实施MRU猜测。write-tracking旧实现未接宿主hooks且版本按last_use+2选用，当前16槽，不能直接打开或扩到vertex；需实际生命周期和VM改映射审查后再考虑。
 
 蓝牙主观、完整显示、其余场景稳30和独立QA继续待验。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。
+
+## 53暖技能CPU复核及后续候选
+
+53暖技能6秒Perfetto已保全9f6897e3，符号BuildID d7878b63与trace映射一致。RHI运行5350.21/5930.14ms，descriptors_build139、texel_acquire43、hash_memory20 inclusive样本，存在上层INVALID_ELF不作独占比例。hash来源17条驻留texel、3条图像；源代码已有4lane整段hash。CSV已到120000上限，不能计算此次普通FPS。trace BOOTTIME与输入MONOTONIC相差318.504986771秒，以clock_snapshot对齐。领取有界写区间校验候选，仅在同一原本可复用提交内跳过可证无重叠的重复hash，保留整段回退；实际收益待A/B。
+
+匹配PC解析53-descriptor-sites.txt。28个描述符调用点位于4807 texel_acquire，20个位于5066驱动更新。17个hash样本来自驻留texel，3个来自图像。只是inclusive取样，不能相加作为CPU百分比。小写入造成全局epoch增长和大表粗失效为源码事实，实际重复量和收益尚待新计数与同机对照。无改着色器及精度。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。
