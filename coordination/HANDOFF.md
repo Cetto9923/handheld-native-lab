@@ -5202,3 +5202,13 @@ PID27957同56包。A1原同步池运动5746..5886/140间隔23.2525FPS/max106.59m
 生产上传函数提取契约验证2个slot隔离、顶点增长不改变常量buffer、完整复制/清零/flush、旧路及非Honor路、越界拒绝。恢复混合分配的真实负控失败。退休次序、提交预算及三个入口静态核对通过。与现有Arena及57描述符契约合计9项ASan/UBSan通过。完整宿主和Android构建、真机生命周期及性能均待下一阶段验证。
 
 57设备仍PID5498、gfx-live-ab=setfresh。相同两钢蝠的B1新22.54与A2原19.08保留为单次对照，58两臂均保留57新路以隔离常量池变量。当前设备战果页，所有触控已UP。正式存档、Main和APK历史保持，音频完整流程仍NOT_RUN。
+
+### 58构建与安装检查点
+
+首轮58源e2475f7，119项宿主通过，Android因uniform入口位于honor_inline_enabled定义之前而失败。补前置extern声明及顺序契约后，58b源d79ffa6 clean重跑119项宿主与Android全部通过，89份输入SHA前后一致。APK a01c2f64a744ddfd8706b46184d8f358d012a4cdff33dcb196148a7a5df4c4bf/3728599B，包内ELF与lib58.symbols.so均BuildID5726910f565387d2d80f0d8a54cf7a6c63457859，符号SHA52834c21344b1396df52c954d2ba3424e7186cd714311dedad3ccd230e04277f。失败日志和最终build58b均保留。
+
+install58回读APK摘要及9份私有存档SHA，正式源metadata保持。新PID10580复用461，LIVE-AB=uboarena先走原混合池。async poolreset0、fence_spin0、AAudio NONE数值10符合当前默认。设备交互由用户再次确认交由root，当前正从外侧读档进入神殿中段。
+
+新证据校正探针条件。57/PID5498启动实际CODEX_PROBE enabled=1，设备gfx-codex-probe为0换行，待命不等于不存在。56匹配trace还定位probe_cpu_template_enabled内的文件查询2个样本，此辅助入口尚未使用已有按帧观察缓存。本轮将该2B标记原字节、SHA和恢复命令留档，并在停止57后改名gfx-codex-probe.stale57-before58。58启动enabled=0已核对。不得把57与58整体差异都归常量池，常量池收益仅按58同进程uboarena/none对照。未修改现有探针函数，后续若处理须复用probe_marker_value，并覆盖模式切换与诊断语义。
+
+当前58为候选，真实运动和暖技能收益、动态画面完整回归及常设A2DP流程待验证，稳定30仍未通过。历史APK保留，Main无改动，无push。
