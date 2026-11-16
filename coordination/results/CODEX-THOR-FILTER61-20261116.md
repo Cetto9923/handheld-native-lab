@@ -29,3 +29,11 @@ Vulkan官方采样章节中Image Operation Steps和Texel Gathering明确，Fetch
 开始时本树.git仍指向旧移动目录，原common/worktrees/ff-resonance-honor-gtpro元数据也已缺失。共享objects和task/T-codex-recovery-20261114的23138b3提交仍完整。保留原.git链接副本后，为本树重建独立worktree管理目录及23138b3索引，git status初始干净。未切换分支或覆盖工作文件，其它worktree元数据保留。
 
 当前平板前台为空之轨迹应用，本轮未向其发送按键或退出请求。Thor未接入，独立QA、Thor实机同转场回归与新包平板场景回归均为NOT_RUN。长期性能目标保持paused。本轮交付定位为61修复候选，后续由用户将同一APK发给Thor用户复测并补诊断报告。
+
+## 最终构建及等待检查点
+
+最终构建源bd87e09，641份src/scripts/tests输入构建前后全文SHA一致，Android及108项宿主检查退出0。sample-usage三项ASan/UBSan测试及真实ceb27模块验证通过。6项旧可选真实shader fixture仍因输入缺失SKIPPED。首轮构建输入变化导致SHA检查失败，日志和非交付APK保留在first-input-changed/，最终重新构建通过全量输入一致性检查。
+
+最终APK为3732695B，SHA256 4ddec76da9526b720c68adb7193c12136aff197c13d21e0c8b3ad3790d0e2ffb，native BuildID38f837ff10b561a1852f4505b99a36a98db1680a，APK内stripped与完整符号副本BuildID相同。包内非许可证assets逐字节与60一致，ZIP CRC全量读取通过，manifest核对61/1.0.61-preview。artifact.json、命令、环境、普通构建日志、PID和源码SHA均在本任务.local目录。
+
+用户明确要求等待空之轨迹测试结束。本轮继续本地修复与构建，平板验证等待其通知。测试候选复制到统一发布目录的02-最终幻想_共鸣_FFRS/待验证/1.0.61-Thor转场修复/，附SHA256和说明。当前正式发布入口仍为已有60，61为本轮待实机验证候选。

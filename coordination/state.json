@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-16T23:26:21.631384+08:00",
- "phase": "Thor转场采样退出修复",
+ "updated_at": "2026-11-16T23:41:18.554071+08:00",
+ "phase": "61转场修复候选已构建，等待用户结束空轨测试",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -3572,8 +3572,9 @@
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acquired_at": "2026-11-16T23:26:21.631384+08:00",
-   "checkpoint": "23138b3，开始静态指令取证与最小修复",
-   "write_state": "ACTIVE"
+   "checkpoint": "61候选bd87e09/APK4ddec76d/3732695B，108宿主及Android0，641源输入一致，3采样用途回归及真实ceb27通过，已复制统一发布目录待验证。用户要求等空轨测试结束，当前平板场景与Thor转场实测NOT_RUN，等待通知。",
+   "write_state": "CHECKPOINTED_WAITING_USER_DEVICE",
+   "checkpoint_at": "2026-11-16T23:41:18.554071+08:00"
   }
  ],
  "tasks": [
@@ -10216,7 +10217,7 @@
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acceptance": "复现原采样拒绝；证明实际指令及能力语义；宿主/Android通过；设备功能范围明确；Thor用户复测待反馈",
-   "checkpoint": "报告59/old736837；fatal R32_SFLOAT无linear能力；系统exit70。"
+   "checkpoint": "61候选bd87e09/APK4ddec76d/3732695B，108宿主及Android0，641源输入一致，3采样用途回归及真实ceb27通过，已复制统一发布目录待验证。用户要求等空轨测试结束，当前平板场景与Thor转场实测NOT_RUN，等待通知。"
   }
  ],
  "blockers": [
@@ -10498,7 +10499,7 @@
   "display_mode_observed": "Android display0 mode2=120.00001Hz; supported60/90/120; no appframeoverride and gamemodeunsupported. Game30cap distinct from panel."
  },
  "parallelism_note": "No active Codex workers. runtime/vulkan two newly dispatched tasks stopped at readonly NOT_STARTED safe point; independent515 task never dispatched. All older authors/reviewers already handed back; QA remains errored, no retry.",
- "handoff_checkpoint": "d2a01e8构建60通用APK，107宿主通过；荣耀旧100无DLC/新101含DLC启动和旧档世界场景通过。手机400Pro本机待复测，详见CODEX-HONOR400-FENCE60-20261116.md。",
+ "handoff_checkpoint": "61候选bd87e09/APK4ddec76d/3732695B，108宿主及Android0，641源输入一致，3采样用途回归及真实ceb27通过，已复制统一发布目录待验证。用户要求等空轨测试结束，当前平板场景与Thor转场实测NOT_RUN，等待通知。",
  "runtime_risks": [
   {
    "id": "HOST_GUEST_X18_GATEWAY",
