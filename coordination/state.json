@@ -3420,8 +3420,8 @@
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-15T22:08:06.022043+08:00",
    "checkpoint": "41源码25b0bd3，APK fe5b9323，113宿主/Android0，79输入一致，装包及9文件SHA通过。14303神殿内部B41-field2真实非零轴、前后探索且位移，26100..26220/120间隔21.7207FPS/P9979.90/max80.61/29超50，短暖窗仍未稳30，单项收益未隔离。旧28.81隐藏摇杆及19.4战斗菜单结论已撤回。",
-   "write_state": "ACTIVE",
-   "checkpoint_at": "2026-11-15T22:49:54.175435+08:00"
+   "write_state": "CHECKPOINTED_SOURCE_TRANSFERRED_TO_SUBMIT44",
+   "checkpoint_at": "2026-11-16T10:18:02.196296+08:00"
   },
   {
    "task": "CODEX-HONOR-GPASS42-20261115",
@@ -3474,7 +3474,13 @@
     "tests/device/test_indirect_texel_residency.py",
     "src/graphics/nvn_vulkan/engine/xbg_probe.inc",
     "tests/device/test_texel_range_validation.py",
-    "tests/device/test_typed_storage_static.py"
+    "tests/device/test_typed_storage_static.py",
+    "src/graphics/nvn_device/nvn_program.c",
+    "src/graphics/nvn_device/nvn_obj_ffrs.h",
+    "src/graphics/nvn_device/nvn_bridge.c",
+    "tests/native/nvn_bridge_generation_contract.c",
+    "tests/installer/texture_snapshot_contract.c",
+    "tests/device/test_program_lookup.py"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
@@ -9947,7 +9953,13 @@
     "tests/device/test_indirect_texel_residency.py",
     "src/graphics/nvn_vulkan/engine/xbg_probe.inc",
     "tests/device/test_texel_range_validation.py",
-    "tests/device/test_typed_storage_static.py"
+    "tests/device/test_typed_storage_static.py",
+    "src/graphics/nvn_device/nvn_program.c",
+    "src/graphics/nvn_device/nvn_obj_ffrs.h",
+    "src/graphics/nvn_device/nvn_bridge.c",
+    "tests/native/nvn_bridge_generation_contract.c",
+    "tests/installer/texture_snapshot_contract.c",
+    "tests/device/test_program_lookup.py"
    ],
    "write_scope": [
     ".local/honor-submit44-20261116/",
@@ -9963,7 +9975,13 @@
     "tests/device/test_indirect_texel_residency.py",
     "src/graphics/nvn_vulkan/engine/xbg_probe.inc",
     "tests/device/test_texel_range_validation.py",
-    "tests/device/test_typed_storage_static.py"
+    "tests/device/test_typed_storage_static.py",
+    "src/graphics/nvn_device/nvn_program.c",
+    "src/graphics/nvn_device/nvn_obj_ffrs.h",
+    "src/graphics/nvn_device/nvn_bridge.c",
+    "tests/native/nvn_bridge_generation_contract.c",
+    "tests/installer/texture_snapshot_contract.c",
+    "tests/device/test_program_lookup.py"
    ],
    "dependencies": [],
    "pass_gates": [],

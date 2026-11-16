@@ -188,6 +188,9 @@ typedef struct nvn_pool_info {
 
 int nvn_texture_info_of(const void *texture, nvn_texture_info *out);
 int nvn_program_info_of(const void *program, nvn_program_info *out);
+int nvn_program_serial_of(const void *program, uint64_t *serial);
+int nvn_program_fast_lookup_enabled(void);
+void nvn_program_set_fast_lookup(int enabled);
 int nvn_memory_pool_info_of(const void *pool, nvn_memory_pool_info *out);
 int nvn_texture_pool_info_of(const void *pool, nvn_pool_info *out);
 int nvn_sampler_pool_info_of(const void *pool, nvn_pool_info *out);

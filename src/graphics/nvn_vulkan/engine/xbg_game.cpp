@@ -66,6 +66,7 @@ extern "C" {
 #include "../../nvn_device/nvn_texture.h"
 __attribute__((weak)) void nvn_texture_get_stats(nvn_texture_stats *out);
 __attribute__((weak)) void nvn_bridge_get_stats(uint64_t *objects,uint64_t *regenerated);
+__attribute__((weak)) void nvn_program_set_fast_lookup(int enabled);
 // The HLE's write-protect dirty-page tracker over the guest memory pools (dm/gfx/nvn/nvn_dirty.c). Weak: hosts and tests
 // without it simply do not get the cross-frame vertex/index cache.
 __attribute__((weak)) int nvn_dirty_tracked(const void *addr,size_t len);
@@ -856,6 +857,9 @@ char ab_target[16]={0};
 // rest of the session, so the whole ab_off list can be swept in one run instead of one restart per path.
 char ab_force[16]={0};
 inline bool ab_off(const char *name){return (ab_period>0 && !ab_frame_on && !strcmp(ab_target,name))||(ab_force[0]&&!strcmp(ab_force,name));}
+void update_program_lookup_policy(){
+    if(nvn_program_set_fast_lookup)nvn_program_set_fast_lookup(!ab_off("progcache"));
+}
 void memo_reference_buffer(VkBuffer buffer,unsigned si){
     memo_buffer_slots[buffer]|=1u<<si;
 }
@@ -1570,7 +1574,7 @@ void perf_frame(){
     {texel_distinct+=texel_frame_keys.size();for(auto k:texel_frame_keys)if(texel_prev_keys.count(k))++texel_reused;texel_prev_keys.swap(texel_frame_keys);texel_frame_keys.clear();}
     if(completion_wait_enabled)fold_completion_wait_stats();
     if(perf_frame_timed)++perf_timed_frames;perf_frame_timed=perf_sample && stats.presents.load()%perf_sample==0;   // the next frame
-    {bool was=ab_frame_on;ab_frame_on=ab_enabled();tls_gate=!ab_off("tlsgate");img_fast=!ab_off("imgfast");if(was!=ab_frame_on && ab_period>0){perf=Perf{};perf.window_start=timing_clock();set_cache_hits=set_cache_misses=0;integer_texture_lookup_hits=integer_texture_lookup_misses=typed_storage_static_skips=0;for(auto &counts:texel_copy_stats)counts=TexelCopyStats{};return;}}
+    {bool was=ab_frame_on;ab_frame_on=ab_enabled();update_program_lookup_policy();tls_gate=!ab_off("tlsgate");img_fast=!ab_off("imgfast");if(was!=ab_frame_on && ab_period>0){perf=Perf{};perf.window_start=timing_clock();set_cache_hits=set_cache_misses=0;integer_texture_lookup_hits=integer_texture_lookup_misses=typed_storage_static_skips=0;for(auto &counts:texel_copy_stats)counts=TexelCopyStats{};return;}}
     pipelines_unsaved+=size_t(warm::compiled.exchange(0));
     const uint64_t presents=stats.presents.load();
     if(pipelines_unsaved && presents>=pipeline_save_frame+300){pipeline_save_frame=presents;save_pipeline_cache();}
@@ -7738,8 +7742,8 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
       {std::string ap=probe.base+"/gfx-live-ab";FILE *apf=fopen(ap.c_str(),"rb");
        if(apf){char nb[32]={0};size_t nn=fread(nb,1,sizeof(nb)-1,apf);nb[nn]=0;fclose(apf);
         char *sp2=nullptr;char *tk=strtok_r(nb," \t\n\r",&sp2);
-        if(tk&&*tk&&strncmp(ab_force,tk,sizeof(ab_force))!=0){strncpy(ab_force,tk,sizeof(ab_force)-1);xbg_logf("LIVE-AB force=%s at present %llu",ab_force,(unsigned long long)pr);}
-        else if(!tk&&ab_force[0]){ab_force[0]=0;xbg_logf("LIVE-AB force=none at present %llu",(unsigned long long)pr);}}}
+        if(tk&&*tk&&strncmp(ab_force,tk,sizeof(ab_force))!=0){strncpy(ab_force,tk,sizeof(ab_force)-1);update_program_lookup_policy();xbg_logf("LIVE-AB force=%s at present %llu",ab_force,(unsigned long long)pr);}
+        else if(!tk&&ab_force[0]){ab_force[0]=0;update_program_lookup_policy();xbg_logf("LIVE-AB force=none at present %llu",(unsigned long long)pr);}}}
       // Diagnostic only: marker files/gfx-live-set holds space separated name=value pairs and applies them live,
       // e.g. "texdirty=0 texmemo=1 ownedinput=0 mipmaxlod0=1". Every name is an engine-internal observation switch;
       // none of them touches the game or the save. It exists so the engine paths can be compared inside one session

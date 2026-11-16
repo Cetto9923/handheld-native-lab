@@ -260,3 +260,8 @@ CPU读回屏障候选继续只读审计，why3/8分支本身不等待的源码�
 ### 55安装检查点
 
 55源563b403 clean，116host/Android0，82份源码前后SHA一致，APK912e88b654cc93f8ba36849c8d5eb5bce807f46f38ea93b6c306f215b10db10c/3728599B。install55回读APK、全部9私有存档SHA与正式源metadata一致。新PID16144复用461，gfx-live-ab=typedstatic先原资格检查；其它既有默认路径保留。待标题Continue、内部移动及真实技能A/B。另发现program bridge缓存命中前每次复制6份0x880控制段且program_find线性查表，沿53匹配符号再定位后拟复用现有render-state索引hint方案，尚未改这些文件。
+
+### 程序元数据热点精确核对与56预备范围
+
+53匹配BuildID的53-program-sites.csv/txt已生成。program_find原生PC 3158552共7个样本落在nvn_program.c第90行顺序查表，bridge13个inclusive返回点在info_of调用后，另3个在bridge entry_find。完整info有memset及memcpy等原生点位，不把bridge与子调用计数相加。现有program状态为可realloc的nvn_object_table，拟复用render-state的索引hint并按in_use/完整地址核验。桥接缓存命中仍先复制6份0x880控制段，拟先读锁内serial再命中不可变快照。初始化和SetShaders在同锁内更新serial，Finalize清in_use。
+55 APK源563b403保持不变并正在神殿读档实测；56准备在独立native文件，当前已将旧41的桥接写占用转移root。尚无56构建或性能结论。

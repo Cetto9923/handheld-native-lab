@@ -385,6 +385,8 @@ def main():
                                         'tests.device.test_typed_storage_static'])
     run('bridge-lookup-contract', [sys.executable, '-m', 'unittest',
                                    'tests.device.test_bridge_lookup'])
+    run('program-lookup-contract', [sys.executable, '-m', 'unittest',
+                                  'tests.device.test_program_lookup'])
     packed_dir = out / 'packed-shader-words'
     run('packed-shader-words-contract', ['bash', 'scripts/android/verify_packed_shader_words.sh', packed_dir])
     extra_artifacts.append(packed_dir / 'test_packed_shader_words')

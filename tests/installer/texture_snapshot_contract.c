@@ -28,6 +28,8 @@ int nvn_memory_pool_info_of(const void *p,nvn_memory_pool_info *o) {
     memset(o,0,sizeof(*o));o->mem=backing;o->size=sizeof(backing);o->generation=1;return 1;
 }
 int nvn_program_info_of(const void *p,nvn_program_info *o){(void)p;(void)o;return 0;}
+int nvn_program_serial_of(const void *p,uint64_t *s){(void)p;(void)s;return 0;}
+int nvn_program_fast_lookup_enabled(void){return 0;}
 int nvn_texture_pool_info_of(const void *p,nvn_pool_info *o){(void)p;(void)o;return 0;}
 int nvn_sampler_pool_info_of(const void *p,nvn_pool_info *o){(void)p;(void)o;return 0;}
 int nvn_sampler_info_of(const void *p,ffrs_samp_par *o,uint64_t *n){(void)p;(void)o;(void)n;return 0;}

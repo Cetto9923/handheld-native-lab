@@ -18,6 +18,7 @@
 #include <inttypes.h>
 #include <pthread.h>
 #include <stdint.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -79,16 +80,44 @@ static pthread_mutex_t s_program_lock = PTHREAD_MUTEX_INITIALIZER;
 static uint64_t s_program_serial;
 static nvn_object_table s_programs = { NULL, 0, 0, sizeof(nvn_program_state) };
 static nvn_program_stats s_stats;
+static atomic_int s_fast_lookup = 1;
+#define NVN_PROGRAM_LOOKUP_HINTS 1024
+static size_t s_program_hints[NVN_PROGRAM_LOOKUP_HINTS];
+
+void nvn_program_set_fast_lookup(int enabled) {
+    int value = enabled != 0;
+    if (atomic_exchange_explicit(&s_fast_lookup, value, memory_order_relaxed) != value)
+        fprintf(stderr, "[nvn] program fast lookup=%d\n", value);
+}
+
+int nvn_program_fast_lookup_enabled(void) {
+    return atomic_load_explicit(&s_fast_lookup, memory_order_relaxed);
+}
 
 static nvn_program_state *program_find(void *program, int create) {
     size_t i;
+    size_t *hint = NULL;
     nvn_program_state *free_slot = NULL;
     if (!program) return NULL;
+    if (nvn_program_fast_lookup_enabled()) {
+        const size_t cache_slot = (size_t)((((uint64_t)(uintptr_t)program >> 4) *
+                                          UINT64_C(11400714819323198485)) >> 54);
+        hint = &s_program_hints[cache_slot];
+        /* Numeric indices survive the table's realloc. Every hit validates
+         * the complete guest address and its current occupancy under the lock. */
+        if (*hint) {
+            nvn_program_state *entry = nvn_object_table_at(&s_programs, *hint - 1);
+            if (entry && entry->in_use && entry->program == program) return entry;
+        }
+    }
     for (i = 0; i < s_programs.count; i++) {
         nvn_program_state *entry = (nvn_program_state *)nvn_object_table_at(&s_programs, i);
         if (!entry) continue;
         if (entry->in_use) {
-            if (entry->program == program) return entry;
+            if (entry->program == program) {
+                if (hint) *hint = i + 1;
+                return entry;
+            }
         } else if (!free_slot) {
             free_slot = entry;
         }
@@ -101,6 +130,7 @@ static nvn_program_state *program_find(void *program, int create) {
     memset(free_slot, 0, sizeof(*free_slot));
     free_slot->program = program;
     free_slot->in_use = 1;
+    if (hint) *hint = (size_t)((char *)free_slot - (char *)s_programs.slots) / s_programs.entry_size + 1;
     return free_slot;
 }
 
@@ -340,6 +370,21 @@ int nvn_program_get_subtile_size(void *program) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Read only the generation used by immutable bridge snapshots. */
+int nvn_program_serial_of(const void *program, uint64_t *serial) {
+    nvn_program_state *p;
+    if (!program || !serial) return 0;
+    pthread_mutex_lock(&s_program_lock);
+    p = program_find((void *)(uintptr_t)program, 0);
+    if (!p || !p->in_use) {
+        pthread_mutex_unlock(&s_program_lock);
+        return 0;
+    }
+    *serial = p->serial;
+    pthread_mutex_unlock(&s_program_lock);
+    return 1;
+}
+
 /* What this family knows about one program.
  *
  * The replay layer takes the shader of a stage from the control section that

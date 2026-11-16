@@ -218,6 +218,17 @@ const ffrs_prog *nvn_bridge_program(const void *guest_program) {
     ffrs_prog *prog;
     bridge_entry *entry;
     if (!guest_program) return NULL;
+    if (nvn_program_fast_lookup_enabled()) {
+        uint64_t serial;
+        if (!nvn_program_serial_of(guest_program, &serial)) return NULL;
+        pthread_mutex_lock(&s_lock);
+        entry = entry_find(&s_programs, guest_program, 0);
+        if (entry && entry->object && entry->serial == serial) {
+            pthread_mutex_unlock(&s_lock);
+            return (const ffrs_prog *)entry->object;
+        }
+        pthread_mutex_unlock(&s_lock);
+    }
     if (!nvn_program_info_of(guest_program, &info)) return NULL;
     pthread_mutex_lock(&s_lock);
     entry = entry_find(&s_programs, guest_program, 0);

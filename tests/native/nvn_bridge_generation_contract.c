@@ -34,6 +34,8 @@ void nvn_command_buffer_retire_source_memory(void *p,size_t n) { REQUIRE(p&&n); 
 int nvn_engine_register_texture(const void *p,int i,const void *t,const void *v) {(void)p;(void)i;(void)t;(void)v;return 0;}
 int nvn_engine_register_sampler(const void *p,int i,const void *s) {(void)p;(void)i;(void)s;return 0;}
 int nvn_program_info_of(const void *p,nvn_program_info *o) {(void)p;(void)o;return 0;}
+int nvn_program_serial_of(const void *p,uint64_t *s) {(void)p;(void)s;return 0;}
+int nvn_program_fast_lookup_enabled(void) {return 0;}
 int nvn_sampler_info_of(const void *p,ffrs_samp_par *o,uint64_t *s) {(void)p;(void)o;(void)s;return 0;}
 int nvn_texture_view_info_of(const void *p,ffrs_view *o,uint64_t *s) {(void)p;(void)o;(void)s;return 0;}
 /* Family entry lookup uses production tables, including actual builder/texture. */
