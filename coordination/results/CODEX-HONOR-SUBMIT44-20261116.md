@@ -317,3 +317,11 @@ PID27957同56包。A1原同步池运动5746..5886/140间隔23.2525FPS/max106.59m
 
 本轮调度线索复核。27957的RHIThread28095允许0..6，78个其它线程允许0..7，top-app/vip cpuset均0..7。48已记录同样的RHI范围并实测ADPF，属于既有事实。当前cached readback实际已1，Snapshot使用SnapArena批量分配。物理32子组、重复实现snapshot allocator、再次开启readback-cached均缺少新的适用前提。尚未修改CPU亲和性。Android官方调度资料推荐以ADPF向系统提供工作量和期限，当前此路径仍按48实测结论处理。两份在线资料本次可获取，未取得不可变源码revision，仅作指导性引用。[线程调度](https://developer.android.com/android-performance-analyzer/analyze/thread-sched)，[Performance Hint API](https://source.android.com/docs/core/perf/performance-hint-api)。
 
+### 57录制代际保护修订
+
+首轮57源be754b8 clean，118项宿主与Android0，88份输入SHA前后一致。APK49225d8e638f1e69ce45f0554426e430950a5c99d43ed01555a1b22839e1da8d/3728599B保存在build57，尚未安装。
+
+源码复核发现描述符准备期间CPU同步可能提交并切换录制槽。因此撤回“仅凭fresh布尔量即可认定当前缓存键首次出现”的完整性论证。新分配位置同时记录slot_serial，准入增加当前槽仍recording、分配序号等于当前slot_serial两个条件。槽切换及准备后已结束录制时沿原缓存路径处理。新增生产最终处理段测试覆盖这两种边界，含返回普通缓存命中和完整payload，7项关联ASan/UBSan通过，旧缓存插入负控仍实际失败。57b将重跑完整构建，首轮57保留备查。
+
+设备仍为56/PID27957，输入归属问题待用户回答。当前进行宿主构建，验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。全场景稳定30、57实机收益、运动显示及A2DP完整流程均待验证。
+

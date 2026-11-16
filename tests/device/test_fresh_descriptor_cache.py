@@ -15,8 +15,8 @@ class FreshDescriptorCache(unittest.TestCase):
         end = source.index('// Render passes are cached by their full definition;', start)
         tail = source[start:end]
         if restore_old:
-            first_line = tail.splitlines()[0]
-            tail = tail.replace(first_line, '    const bool use_cache=true;', 1)
+            declaration = tail[:tail.index(';')+1]
+            tail = tail.replace(declaration, '    const bool use_cache=true;', 1)
         fixture = r'''
 #include <vulkan/vulkan.h>
 #include <cassert>
@@ -32,7 +32,10 @@ struct LayoutEntry {
     std::vector<uint64_t> tmpl_sig;
 };
 struct Descriptors { const LayoutEntry *entry; VkDescriptorSet set=VK_NULL_HANDLE; };
-struct Slot { std::map<std::vector<uint64_t>,VkDescriptorSet> set_cache; } slot;
+struct Slot { bool recording=true; std::map<std::vector<uint64_t>,VkDescriptorSet> set_cache; } slots[1];
+Slot &slot=slots[0];
+unsigned slot_index=0;
+uint64_t slot_serial=1;
 struct Payload {
     VkDescriptorBufferInfo buffer{};
     VkDescriptorImageInfo image{};
@@ -50,7 +53,10 @@ std::vector<Payload> updates;
 uint64_t allocations=0;
 bool ab_off(const char *name) { assert(std::string(name)=="setfresh"); return forced_old; }
 uint64_t perf_clock() { return 1; }
-Slot &recording_slot() { return slot; }
+Slot &recording_slot() {
+    if(!slot.recording) { slot.set_cache.clear();slot.recording=true;++slot_serial; }
+    return slot;
+}
 VkDescriptorSet allocate_set(VkDescriptorSetLayout layout) {
     assert(layout==handle<VkDescriptorSetLayout>(10));
     return handle<VkDescriptorSet>(100+(++allocations));
@@ -94,10 +100,11 @@ extern "C" VKAPI_ATTR void VKAPI_CALL vkUpdateDescriptorSets(
         consume(write.dstBinding,write.descriptorType,data);
     }
 }
-void finalize(Descriptors &out,bool fresh_storage_output) {
+void finalize(Descriptors &out,bool fresh_storage_output,uint64_t fresh_storage_serial=1) {
 ''' + tail + r'''
 void reset() {
     slot.set_cache.clear();entries.clear();updates.clear();writes.clear();
+    slot.recording=true;slot_serial=1;
     allocations=set_cache_fresh_skips=set_cache_hits=set_cache_misses=template_updates=plain_updates=0;
 }
 int main() {
@@ -143,6 +150,19 @@ int main() {
     LayoutEntry empty;Descriptors out{&empty};
     finalize(out,false);finalize(out,false);
     assert(allocations==1 && set_cache_hits==1 && updates.empty());
+    // A CPU synchronization during preparation can retire the allocation slot.
+    for(bool still_recording:{false,true}) {
+        reset();fail_template=false;slot.recording=still_recording;
+        slot_serial=still_recording?2:1;
+        LayoutEntry layout;Descriptors current{&layout};
+        VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        write.dstBinding=0;write.descriptorCount=1;
+        write.descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;write.pBufferInfo=&buffer;
+        writes.push_back(write);
+        finalize(current,true,1);finalize(current,true,1);
+        assert(set_cache_fresh_skips==0 && allocations==1 && set_cache_hits==1);
+        assert(updates.size()==1 && updates[0].buffer.offset==buffer.offset);
+    }
 }
 '''
         ndk = os.environ.get('ANDROID_NDK_HOME') or os.environ.get('ANDROID_NDK_ROOT')
@@ -174,6 +194,7 @@ int main() {
         end = source.index('// Render passes are cached by their full definition;', start)
         build = source[start:end]
         self.assertEqual(build.count('fresh_storage_output=true;'), 2)
+        self.assertEqual(build.count('fresh_storage_serial=slot_serial;'), 2)
         alias_start = build.index('if(buf){')
         alias_end = build.index('static unsigned alias_hits', alias_start)
         self.assertNotIn('fresh_storage_output=true;', build[alias_start:alias_end])

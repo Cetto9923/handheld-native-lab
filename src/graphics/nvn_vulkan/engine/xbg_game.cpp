@@ -4687,6 +4687,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
     // Uniform buffers use dynamic offsets (when the set fits the device limit) so per-draw constants do not change set contents.
     const unsigned dmode=dyn_mode_for(compute);
     bool fresh_storage_output=false;
+    uint64_t fresh_storage_serial=0;
     // Aliased NVN storage ranges must refer to the same VkBuffer allocation.
     // Snapshotting each binding separately loses writes observed through aliases.
     {DESC_SCOPE(Setup);
@@ -4721,6 +4722,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
             out.storage.push_back({{base,bytes},b});
             out.written.push_back({{base,bytes},b});
             fresh_storage_output=true;
+            fresh_storage_serial=slot_serial;
             ++write_seq;
         }
         else{snap_site=3;out.storage.push_back({{base,bytes},out.keep(snapshot(base,bytes,properties.limits.minStorageBufferOffsetAlignment))});snap_site=0;}
@@ -4962,6 +4964,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                             out.storage.push_back({{base,bytes},buf});
                             out.written.push_back({{base,bytes},buf});
                             fresh_storage_output=true;
+                            fresh_storage_serial=slot_serial;
                             ++write_seq;
                         }else{
                             Buffer view;
@@ -5078,10 +5081,12 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
             for(size_t i=0;i<writes.size();i++){auto &w=writes[i];if(w.pBufferInfo)data[i].buffer=*w.pBufferInfo;else if(w.pImageInfo)data[i].image=*w.pImageInfo;else data[i].view=*w.pTexelBufferView;}
             vkUpdateDescriptorSetWithTemplate(cfg.device,out.set,e.tmpl,data.data());++template_updates;return;}
         for(auto &w:writes)w.dstSet=out.set;vkUpdateDescriptorSets(cfg.device,uint32_t(writes.size()),writes.data(),0,nullptr);++plain_updates;return;}
-    // Fresh storage outputs have a new arena offset within this slot. Their
+    // Fresh storage outputs in this recording have a new arena offset. Their
     // descriptor key cannot repeat before slot retirement clears set_cache.
     // The allocation sites establish freshness for the exact outputs bound above.
-    const bool use_cache=!(honor_inline_enabled && fresh_storage_output && !ab_off("setfresh"));
+    const bool use_cache=!(honor_inline_enabled && fresh_storage_output &&
+                          slots[slot_index].recording && fresh_storage_serial==slot_serial &&
+                          !ab_off("setfresh"));
     if(!use_cache)++set_cache_fresh_skips;
     uint64_t tk0=perf_clock();
     if(use_cache){

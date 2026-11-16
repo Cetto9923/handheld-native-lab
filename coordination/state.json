@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-16T12:20:45.106007+08:00",
+ "updated_at": "2026-11-16T12:27:03.074072+08:00",
  "phase": "荣耀神殿内部持续移动长帧优化，1080P输出及有界内部尺寸目标30继续推进",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3487,8 +3487,8 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-16T00:37:43.134192+08:00",
-   "checkpoint": "### 56命令池实验与57描述符候选\n\nPID27957同56包。A1原同步池运动5746..5886/140间隔23.2525FPS/max106.59ms。B1异步窗口遇敌，保留混合22.9287并排除纯运动比较。战后柱旁机位B2异步25004..25136/132间隔22.1560FPS/max99.58ms，随后A2同步26335..26471/136间隔22.7878FPS/max109.92ms，前后均探索，实际非零轴及最终零轴有记录。较早28..29FPS属于上方断桥机位，不能与此处直接归为版本加速或退化。异步每帧约9.8个job、约0.7ms finish等待，尚无稳定收益，当前LIVE-AB=poolreset走同步路径。\n\n首次异步战斗的菜单脚本提前完成了施法，施放时钟与8秒采样缺失，整场仅作预热。已保留截图并改用较短点按、逐步确认招式及全体目标，菜单辅助脚本增加同PID输入日志。随后三Lv1钢蝠同步暖技能37628..37809/182帧，22.6671FPS/max125.29ms/P99 121.27ms，44超50、2超100、0present错误。异步暖技能完整对照仍待补。\n\n随后平板前台切到com.hihonor.controlcenter/ControlHomeActivity，27957仍在后台。已发操作归属问题，继续宿主代码和构建工作。下一次设备操作先确认前台和输入归属。当前磁盘gfx-async-pool-reset=1、当前进程LIVE-AB=poolreset。取得操作权后恢复启动配置或继续同包实验时须一并核对这两项。\n\n57候选减少新分配storage输出的描述符缓存成本。当前实际setcache多数窗口hits=0，而56原生点位5090保留缓存插入分配调用。只在两个实际readback_buffer分配位置建立fresh事实，该新arena偏移进入本次buffer descriptor或对应texel view的完整键。槽退休先清set_cache，再复用arena偏移。因此该键在当前槽内只能首次出现。既有Honor/Adreno配置沿原allocate_set、模板创建/失败回退、完整descriptor payload和退休路径，跳过此类键的构造、查找及插入。现有gfx-live-ab=setfresh回原缓存路径，fresh_skips接入现有PERF行并随窗口重置。\n\n生产描述符最终处理段抽取的ASan/UBSan测试已通过，覆盖Honor/原路、fresh/普通、两次分配及普通缓存命中、buffer/image/view完整有效载荷、模板失败plain回退、空writes和槽退休偏移复用。恢复旧缓存插入的负控实际失败。分配事实测试核对两个真实分配点及别名路径。与原native程序和typed组件共7项通过。57全量构建与设备收益尚待验证，设备仍为56。\n\n本轮调度线索复核。27957的RHIThread28095允许0..6，78个其它线程允许0..7，top-app/vip cpuset均0..7。48已记录同样的RHI范围并实测ADPF，属于既有事实。当前cached readback实际已1，Snapshot使用SnapArena批量分配。物理32子组、重复实现snapshot allocator、再次开启readback-cached均缺少新的适用前提。尚未修改CPU亲和性。Android官方调度资料推荐以ADPF向系统提供工作量和期限，当前此路径仍按48实测结论处理。两份在线资料本次可获取，未取得不可变源码revision，仅作指导性引用。[线程调度](https://developer.android.com/android-performance-analyzer/analyze/thread-sched)，[Performance Hint API](https://source.android.com/docs/core/perf/performance-hint-api)。\n\n",
-   "checkpoint_at": "2026-11-16T12:20:45.106007+08:00"
+   "checkpoint": "### 57录制代际保护修订\n\n首轮57源be754b8 clean，118项宿主与Android0，88份输入SHA前后一致。APK49225d8e638f1e69ce45f0554426e430950a5c99d43ed01555a1b22839e1da8d/3728599B保存在build57，尚未安装。\n\n源码复核发现描述符准备期间CPU同步可能提交并切换录制槽。因此撤回“仅凭fresh布尔量即可认定当前缓存键首次出现”的完整性论证。新分配位置同时记录slot_serial，准入增加当前槽仍recording、分配序号等于当前slot_serial两个条件。槽切换及准备后已结束录制时沿原缓存路径处理。新增生产最终处理段测试覆盖这两种边界，含返回普通缓存命中和完整payload，7项关联ASan/UBSan通过，旧缓存插入负控仍实际失败。57b将重跑完整构建，首轮57保留备查。\n\n设备仍为56/PID27957，输入归属问题待用户回答。当前进行宿主构建，验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。全场景稳定30、57实机收益、运动显示及A2DP完整流程均待验证。\n\n",
+   "checkpoint_at": "2026-11-16T12:27:03.074072+08:00"
   }
  ],
  "tasks": [
@@ -9992,8 +9992,8 @@
    "dependencies": [],
    "pass_gates": [],
    "acceptance": "原始PID/帧/场景/符号核对，真实持续移动普通FPS与诊断分窗，CPU/GPU及数据生命周期事实支持归因，显示及原速/声音保持；验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。",
-   "checkpoint": "### 56命令池实验与57描述符候选\n\nPID27957同56包。A1原同步池运动5746..5886/140间隔23.2525FPS/max106.59ms。B1异步窗口遇敌，保留混合22.9287并排除纯运动比较。战后柱旁机位B2异步25004..25136/132间隔22.1560FPS/max99.58ms，随后A2同步26335..26471/136间隔22.7878FPS/max109.92ms，前后均探索，实际非零轴及最终零轴有记录。较早28..29FPS属于上方断桥机位，不能与此处直接归为版本加速或退化。异步每帧约9.8个job、约0.7ms finish等待，尚无稳定收益，当前LIVE-AB=poolreset走同步路径。\n\n首次异步战斗的菜单脚本提前完成了施法，施放时钟与8秒采样缺失，整场仅作预热。已保留截图并改用较短点按、逐步确认招式及全体目标，菜单辅助脚本增加同PID输入日志。随后三Lv1钢蝠同步暖技能37628..37809/182帧，22.6671FPS/max125.29ms/P99 121.27ms，44超50、2超100、0present错误。异步暖技能完整对照仍待补。\n\n随后平板前台切到com.hihonor.controlcenter/ControlHomeActivity，27957仍在后台。已发操作归属问题，继续宿主代码和构建工作。下一次设备操作先确认前台和输入归属。当前磁盘gfx-async-pool-reset=1、当前进程LIVE-AB=poolreset。取得操作权后恢复启动配置或继续同包实验时须一并核对这两项。\n\n57候选减少新分配storage输出的描述符缓存成本。当前实际setcache多数窗口hits=0，而56原生点位5090保留缓存插入分配调用。只在两个实际readback_buffer分配位置建立fresh事实，该新arena偏移进入本次buffer descriptor或对应texel view的完整键。槽退休先清set_cache，再复用arena偏移。因此该键在当前槽内只能首次出现。既有Honor/Adreno配置沿原allocate_set、模板创建/失败回退、完整descriptor payload和退休路径，跳过此类键的构造、查找及插入。现有gfx-live-ab=setfresh回原缓存路径，fresh_skips接入现有PERF行并随窗口重置。\n\n生产描述符最终处理段抽取的ASan/UBSan测试已通过，覆盖Honor/原路、fresh/普通、两次分配及普通缓存命中、buffer/image/view完整有效载荷、模板失败plain回退、空writes和槽退休偏移复用。恢复旧缓存插入的负控实际失败。分配事实测试核对两个真实分配点及别名路径。与原native程序和typed组件共7项通过。57全量构建与设备收益尚待验证，设备仍为56。\n\n本轮调度线索复核。27957的RHIThread28095允许0..6，78个其它线程允许0..7，top-app/vip cpuset均0..7。48已记录同样的RHI范围并实测ADPF，属于既有事实。当前cached readback实际已1，Snapshot使用SnapArena批量分配。物理32子组、重复实现snapshot allocator、再次开启readback-cached均缺少新的适用前提。尚未修改CPU亲和性。Android官方调度资料推荐以ADPF向系统提供工作量和期限，当前此路径仍按48实测结论处理。两份在线资料本次可获取，未取得不可变源码revision，仅作指导性引用。[线程调度](https://developer.android.com/android-performance-analyzer/analyze/thread-sched)，[Performance Hint API](https://source.android.com/docs/core/perf/performance-hint-api)。\n\n",
-   "updated_at": "2026-11-16T12:20:45.106007+08:00"
+   "checkpoint": "### 57录制代际保护修订\n\n首轮57源be754b8 clean，118项宿主与Android0，88份输入SHA前后一致。APK49225d8e638f1e69ce45f0554426e430950a5c99d43ed01555a1b22839e1da8d/3728599B保存在build57，尚未安装。\n\n源码复核发现描述符准备期间CPU同步可能提交并切换录制槽。因此撤回“仅凭fresh布尔量即可认定当前缓存键首次出现”的完整性论证。新分配位置同时记录slot_serial，准入增加当前槽仍recording、分配序号等于当前slot_serial两个条件。槽切换及准备后已结束录制时沿原缓存路径处理。新增生产最终处理段测试覆盖这两种边界，含返回普通缓存命中和完整payload，7项关联ASan/UBSan通过，旧缓存插入负控仍实际失败。57b将重跑完整构建，首轮57保留备查。\n\n设备仍为56/PID27957，输入归属问题待用户回答。当前进行宿主构建，验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。全场景稳定30、57实机收益、运动显示及A2DP完整流程均待验证。\n\n",
+   "updated_at": "2026-11-16T12:27:03.074072+08:00"
   }
  ],
  "blockers": [
