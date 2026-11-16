@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-16T14:49:15.076432+08:00",
+ "updated_at": "2026-11-16T18:37:50.093700+08:00",
  "phase": "本地覆盖升级包交付完成",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3534,6 +3534,24 @@
    "checkpoint": "50e4d4d source; APK18850fbe, ZIP6d550a98; Honor22661 title/load/short movement/AOC passed; full regression NOT_RUN.",
    "write_state": "COMPLETE_SCOPED_DELIVERY",
    "checkpoint_at": "2026-11-16T14:49:15.076432+08:00"
+  },
+  {
+   "task": "CODEX-HONOR400-FENCE60-20261116",
+   "owner": "root",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/device/test_readback_fence_lifetime.py",
+    "scripts/verify_host.py",
+    "coordination/results/CODEX-HONOR400-FENCE60-20261116.md",
+    ".local/honor400-fence60-20261116/",
+    "coordination/EXPERIENCE.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-16T18:12:03.177949+08:00",
+   "checkpoint": "127ca20; phone owner fence timeout evidence preserved.",
+   "write_state": "ACTIVE"
   }
  ],
  "tasks": [
@@ -10112,6 +10130,36 @@
    "acceptance": "Verified internal update and DLC identity, exact overlay with matching runtime support, archive CRC and per-file digests, save paths excluded, clear minimal upgrade instructions, explicit device acceptance coverage.",
    "checkpoint": "\n### 本地覆盖升级包交付完成\n\n荣耀22661实体stage运行已通过本轮实现者范围验证。标题左下实际显示1.0.1.0，profile核对真实b7f965主模块、1489个TP读取补丁。继续游戏读入原自动存档后进入真实场景，随后系统菜单明确选择03号土之神殿旧存档并确认读取，进入神殿原祭坛位置。通过连续swipe完成短距离位移，保留前后截图与命令，过程未出现新的FATAL或退出。没有把短距离功能验证当作移动帧率验收。\n\n当前同一22661日志确认AOC Count=1、List索引2、aoc0从实体stage/dlc/2只读挂载成功。1.0.1的render-policy完整对象校验通过并实际更新动态模式参数，保持已有目标30设置。DLC奖励领取、所有章节/战斗/地图完整回归、独立QA为NOT_RUN。本轮只完成数据升级交付与已列启动/旧档读取/短移动/DLC识别挂载验证，稳定30性能目标继续暂停且未达标。\n\n最终日志、帧文件、源存档目录元数据及截图在.local/game101-dlc-20261116/final-device/，plan.json状态IMPLEMENTER_SCOPED_DEVICE_CHECKS_PASSED。9份私有测试存档安装前后全文一致，运行后的差异仅OptionSaveData，原始私有备份可恢复。正式存档目录元数据最终与安装前一致，测试入口明确使用461私有副本。正式FFRS主模块及完整游戏目录没有覆盖。当前平板APK为59，前台仍为测试stage游戏进程22661，所有输入已抬起；原current-arm.json里的10580已过期，下次恢复性能任务须以本检查点重新核对。\n\n最终ZIP为.local/game101-dlc-20261116/delivery/FFRS-game-1.0.1-DLC-overlay-20261116.zip，9091765145B，SHA256为6d550a980872d599302a7352adcb0839eb35b4485754d1760dab5d71d949ffde。完整16条目CRC再次通过，内置SHA256SUMS.txt全文回读一致，15项实际载荷已逐文件SHA回读。外置.sha256和.json记录同目录。此后只补打包脚本对校验清单自身的CRC/内容检查及控制字符拒绝，最终ZIP字节没有变化。独立升级说明位于coordination/docs/UPGRADE101-DLC-20261116.md，与ZIP内UPGRADE.md相同。\n\n可复现打包命令为python3 scripts/distribution/build_game_data_overlay.py --manifest .local/game101-dlc-20261116/delivery/manifest.json --output .local/game101-dlc-20261116/delivery/新文件名.zip。脚本要求新输出并保留失败partial文件用于诊断。提取本体时生成的9GB中间程序NCA已记录SHA及原始NSP恢复命令后回收，scratch-base-recovery.json记录removed=true，原始输入NSP均保留。本地新源码和证据索引提交Git，游戏数据ZIP及APK留本地交付，未上传游戏数据。\n",
    "updated_at": "2026-11-16T14:49:15.076432+08:00"
+  },
+  {
+   "id": "CODEX-HONOR400-FENCE60-20261116",
+   "owner": "root",
+   "role": "CRASH_COMPATIBILITY",
+   "status": "in_progress",
+   "objective": "# 荣耀400 Pro神殿GPU等待退出与新旧数据统一APK",
+   "inputs": [
+    "user provided phone logs",
+    "127ca20 source"
+   ],
+   "outputs": [
+    "universal APK60",
+    "phone crash lifetime regression evidence"
+   ],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/device/test_readback_fence_lifetime.py",
+    "scripts/verify_host.py",
+    "coordination/results/CODEX-HONOR400-FENCE60-20261116.md",
+    ".local/honor400-fence60-20261116/",
+    "coordination/EXPERIENCE.md"
+   ],
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "dependencies": [],
+   "pass_gates": [],
+   "acceptance": "Production regression reproduces old timeout and passes fix; host and Android build; same APK old/no-DLC and new/DLC tablet checks; phone acceptance explicitly pending.",
+   "checkpoint": "\n## 同步时序回归与60构建\n\n生产readback_sync抽取测试在原代码上以返回9稳定复现reset fence timeout，修复后6种场景通过ASan/UBSan。另自动移除修复guard的负对照仍返回9，证明契约能检出原缺口。保留真实pending提交的栅栏等待与10秒超时，只在清理已退休owner后返回已完成状态。未增加等待时间或跳过实际未完成GPU任务。\n\n完整Android构建及宿主检查退出0，所有src/scripts/tests源码输入全文SHA构建前后相同。APK为FFRS-1.0.60-preview-universal.apk，SHAa9dafd07821d93d46783c582c1e6903b2284c75ed64f24997d71c507a49e7d9d。此前临时build59、FFRS主模块本机副本等目录已不在原路径，本轮从已安装59 APK只读恢复现有assets，再从平板原FFRS只读获取main100.nso作宿主检查。SaveKey内容只做本地相等核对，没有写入报告。新APK沿同一包名、签名与资源，兼容旧736837和新b7f965主模块，DLC仍由实际目录扫描。\n\n构建、原日志复制、输入SHA、执行命令/环境/PID/普通日志均在.local/honor400-fence60-20261116/。旧全局Git路径失效时仅在宿主验证子进程提供显式GIT_DIR，Android构建沿实际第三方工具仓库取许可证，未修改Git元数据。当前已开始覆盖安装及9存档保全校验，计划先以原FFRS无DLC数据启动，再以原独立stage的1.0.1+DLC启动同一个APK。手机本身修复确认仍为NOT_RUN。\n"
   }
  ],
  "blockers": [

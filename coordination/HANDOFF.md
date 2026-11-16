@@ -5299,3 +5299,11 @@ build59基于50e4d4d，91份源输入前后SHA相同，120项宿主检查及Andr
 最终ZIP为.local/game101-dlc-20261116/delivery/FFRS-game-1.0.1-DLC-overlay-20261116.zip，9091765145B，SHA256为6d550a980872d599302a7352adcb0839eb35b4485754d1760dab5d71d949ffde。完整16条目CRC再次通过，内置SHA256SUMS.txt全文回读一致，15项实际载荷已逐文件SHA回读。外置.sha256和.json记录同目录。此后只补打包脚本对校验清单自身的CRC/内容检查及控制字符拒绝，最终ZIP字节没有变化。独立升级说明位于coordination/docs/UPGRADE101-DLC-20261116.md，与ZIP内UPGRADE.md相同。
 
 可复现打包命令为python3 scripts/distribution/build_game_data_overlay.py --manifest .local/game101-dlc-20261116/delivery/manifest.json --output .local/game101-dlc-20261116/delivery/新文件名.zip。脚本要求新输出并保留失败partial文件用于诊断。提取本体时生成的9GB中间程序NCA已记录SHA及原始NSP恢复命令后回收，scratch-base-recovery.json记录removed=true，原始输入NSP均保留。本地新源码和证据索引提交Git，游戏数据ZIP及APK留本地交付，未上传游戏数据。
+
+## 同步时序回归与60构建
+
+生产readback_sync抽取测试在原代码上以返回9稳定复现reset fence timeout，修复后6种场景通过ASan/UBSan。另自动移除修复guard的负对照仍返回9，证明契约能检出原缺口。保留真实pending提交的栅栏等待与10秒超时，只在清理已退休owner后返回已完成状态。未增加等待时间或跳过实际未完成GPU任务。
+
+完整Android构建及宿主检查退出0，所有src/scripts/tests源码输入全文SHA构建前后相同。APK为FFRS-1.0.60-preview-universal.apk，SHAa9dafd07821d93d46783c582c1e6903b2284c75ed64f24997d71c507a49e7d9d。此前临时build59、FFRS主模块本机副本等目录已不在原路径，本轮从已安装59 APK只读恢复现有assets，再从平板原FFRS只读获取main100.nso作宿主检查。SaveKey内容只做本地相等核对，没有写入报告。新APK沿同一包名、签名与资源，兼容旧736837和新b7f965主模块，DLC仍由实际目录扫描。
+
+构建、原日志复制、输入SHA、执行命令/环境/PID/普通日志均在.local/honor400-fence60-20261116/。旧全局Git路径失效时仅在宿主验证子进程提供显式GIT_DIR，Android构建沿实际第三方工具仓库取许可证，未修改Git元数据。当前已开始覆盖安装及9存档保全校验，计划先以原FFRS无DLC数据启动，再以原独立stage的1.0.1+DLC启动同一个APK。手机本身修复确认仍为NOT_RUN。

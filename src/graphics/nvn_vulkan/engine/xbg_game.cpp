@@ -1724,6 +1724,9 @@ void readback_sync(uint64_t &reason){
     // The submissions that have completed are retired without waiting for them: their retirement work overlaps the
     // wait for the owner, and the ones still in flight stay in flight.
     retire_completed_slots();
+    // Cleanup can retire the owner and reset its fence. Recheck its live
+    // state before waiting on a fence that now has no pending submission.
+    if(!owner->pending){++perf.readback_no_wait;return;}
     // The wait: the fence of the submission that owns the readback, and nothing else.
     const bool busy=vkGetFenceStatus(cfg.device,owner->fence)==VK_NOT_READY;
     const uint64_t b0=busy?timing_clock():0;

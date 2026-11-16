@@ -377,6 +377,8 @@ def main():
                                   'tests.device.test_render_policy'])
     run('add-on-content-contract', [sys.executable, '-m', 'unittest',
                                    'tests.device.test_add_on_content'])
+    run('readback-fence-lifetime-contract', [sys.executable, '-m', 'unittest',
+                                           'tests.device.test_readback_fence_lifetime'])
     run('performance-hint-contract', [sys.executable, '-m', 'unittest',
                                      'tests.device.test_performance_hint'])
     run('probe-marker-poll-contract', [sys.executable, '-m', 'unittest',
