@@ -325,3 +325,9 @@ PID27957同56包。A1原同步池运动5746..5886/140间隔23.2525FPS/max106.59m
 
 设备仍为56/PID27957，输入归属问题待用户回答。当前进行宿主构建，验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。全场景稳定30、57实机收益、运动显示及A2DP完整流程均待验证。
 
+### 57b构建安装检查点
+
+57b源066e8a7 clean，118项宿主与Android0，88份构建输入前后SHA一致。APK5e16b299077128d86af1d8ebdfbe6d6f32cc798a44832fef03bb05d2e17d63cc/3728599B，包内真实native ELF与匹配符号的BuildID均de0543e1d06cac765673d4b764696cc0d4050224。build57b保留APK、符号及构建日志，首轮57同时留存备查。
+
+按用户本轮“已松开手柄，你操作”及既有直接安装授权继续推进。前台变化问题作为状态核对，已通过消息说明恢复《共鸣》测试。install57b回读APK并逐一校验9份私有文件SHA、正式源metadata，全部相同。同步池实验由本轮创建的1标记已逐字归档并记录恢复命令，恢复实验前缺失状态。新PID5498复用461，启动明确async command pool reset=0、LIVE-AB=setfresh present0，先运行原描述符缓存路径。shader/显示/音频回归与真实帧率收益继续验证。
+
