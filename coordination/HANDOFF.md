@@ -5073,3 +5073,7 @@ https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.30-preview �
 
 54有界texel写区间校验实现完成。仅既有Honor/Adreno范围，gfx-live-ab=texelrange保留原路。同提交且完整64条以内无重叠才复用，提交reset、漏历史、重叠、异常范围全量hash。原pending writeback/report/event检查保持先执行。生产函数提取ASan/UBSan测试覆盖变化尾字节、在用旧副本、slot退休刷新、reset、64/65写、环首重叠、原路/非Honor、超过64居民、跨槽/格式和无效范围，与既有组件共5项通过。实际收益及完整构建尚待验证。
 没有跨提交假定CPU内容不变，也没有开启写保护跟踪。新增range_hits/hash_mb接在原texel_resident计数行，未增加诊断开关。
+
+### 54构建安装检查点
+
+54源033a4ce clean，116host与Android0，82份源码输入前后SHA一致。APK bb758a851297398d3c8961f7ed87d703465263c421ad9d77d1352f32f8e76fb4/3728599B，install54回读APK及全部9份私有存档SHA、正式源metadata通过。新PID8516复用461；texrecord1/vcache0/adpf0，gfx-live-ab=texelrange先走原粗校验，indtexel新路保持。待标题Continue、神殿移动及同技能冷暖对照。音频与全显示回归未通过。
