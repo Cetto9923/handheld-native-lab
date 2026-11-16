@@ -3473,12 +3473,13 @@
     "tests/device/test_probe_marker_poll.py",
     "tests/device/test_indirect_texel_residency.py",
     "src/graphics/nvn_vulkan/engine/xbg_probe.inc",
-    "tests/device/test_texel_range_validation.py"
+    "tests/device/test_texel_range_validation.py",
+    "tests/device/test_typed_storage_static.py"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-16T00:37:43.134192+08:00",
-   "checkpoint": "54同PID8516暖技能普通窗已补。A1原范围校验为Lv1钢蝠+妖藤，41756..41901/146帧18.2178FPS/max121.76ms/61超50/14超100。B1新范围校验为三Lv1钢蝠，57533..57691/159帧19.9415FPS/max107.32ms/57超50/4超100。两窗stall shader全0，无present错误。敌群不同，不作因果加速比。命中仅约1次/帧，尚无充分范围校验收益证据，已在设备LIVE-AB=texelrange恢复原校验；代码54仍为未验收候选。GPU诊断8帧19263..19270所有query完整且无跳槽，完整8帧的1384x780主7附件通道按帧合计3.129..11.935ms，其中19266两段合计10.434ms；CS073ce354完整8帧为2.405..6.293ms。该诊断强制CPU间接参数回退，不作为普通FPS或新间接路的预算证明。当前结果屏，root持有输入，私有461复用，继续30FPS目标。",
+   "checkpoint": "55撤回54范围journal及其专属测试，54APK和原始证据保留。新候选仅在原Honor/Adreno范围缓存Shader不可变的typed-storage资格，首次仍执行原诊断，eligible写入绑定每次继续按当前VkFormat选择原variant。gfx-live-ab=typedstatic回原路。新增生产字段/谓词/函数前缀提取ASan/UBSan覆盖320组合、运行中格式变化、后置加载、256项混合表、独立variant事实及非Honor/旧AB，与既有组件共5项通过。Shader字节、GPU同步、slot、音频均未改变。待116项全集/Android/真实性能对照。",
    "checkpoint_at": "2026-11-16T07:55:52.882806+08:00"
   }
  ],
@@ -9945,7 +9946,8 @@
     "tests/device/test_probe_marker_poll.py",
     "tests/device/test_indirect_texel_residency.py",
     "src/graphics/nvn_vulkan/engine/xbg_probe.inc",
-    "tests/device/test_texel_range_validation.py"
+    "tests/device/test_texel_range_validation.py",
+    "tests/device/test_typed_storage_static.py"
    ],
    "write_scope": [
     ".local/honor-submit44-20261116/",
@@ -9960,13 +9962,14 @@
     "tests/device/test_probe_marker_poll.py",
     "tests/device/test_indirect_texel_residency.py",
     "src/graphics/nvn_vulkan/engine/xbg_probe.inc",
-    "tests/device/test_texel_range_validation.py"
+    "tests/device/test_texel_range_validation.py",
+    "tests/device/test_typed_storage_static.py"
    ],
    "dependencies": [],
    "pass_gates": [],
    "acceptance": "原始PID/帧/场景/符号核对，真实持续移动普通FPS与诊断分窗，CPU/GPU及数据生命周期事实支持归因，显示及原速/声音保持；验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。",
-   "checkpoint": "54同PID8516暖技能普通窗已补。A1原范围校验为Lv1钢蝠+妖藤，41756..41901/146帧18.2178FPS/max121.76ms/61超50/14超100。B1新范围校验为三Lv1钢蝠，57533..57691/159帧19.9415FPS/max107.32ms/57超50/4超100。两窗stall shader全0，无present错误。敌群不同，不作因果加速比。命中仅约1次/帧，尚无充分范围校验收益证据，已在设备LIVE-AB=texelrange恢复原校验；代码54仍为未验收候选。GPU诊断8帧19263..19270所有query完整且无跳槽，完整8帧的1384x780主7附件通道按帧合计3.129..11.935ms，其中19266两段合计10.434ms；CS073ce354完整8帧为2.405..6.293ms。该诊断强制CPU间接参数回退，不作为普通FPS或新间接路的预算证明。当前结果屏，root持有输入，私有461复用，继续30FPS目标。",
-   "updated_at": "2026-11-16T09:48:06.585673+08:00"
+   "checkpoint": "55撤回54范围journal及其专属测试，54APK和原始证据保留。新候选仅在原Honor/Adreno范围缓存Shader不可变的typed-storage资格，首次仍执行原诊断，eligible写入绑定每次继续按当前VkFormat选择原variant。gfx-live-ab=typedstatic回原路。新增生产字段/谓词/函数前缀提取ASan/UBSan覆盖320组合、运行中格式变化、后置加载、256项混合表、独立variant事实及非Honor/旧AB，与既有组件共5项通过。Shader字节、GPU同步、slot、音频均未改变。待116项全集/Android/真实性能对照。",
+   "updated_at": "2026-11-16T09:59:59.860224+08:00"
   }
  ],
  "blockers": [

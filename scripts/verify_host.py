@@ -381,8 +381,8 @@ def main():
                                        'tests.device.test_probe_marker_poll'])
     run('indirect-texel-residency-contract', [sys.executable, '-m', 'unittest',
                                             'tests.device.test_indirect_texel_residency'])
-    run('texel-range-validation-contract', [sys.executable, '-m', 'unittest',
-                                          'tests.device.test_texel_range_validation'])
+    run('typed-storage-static-contract', [sys.executable, '-m', 'unittest',
+                                        'tests.device.test_typed_storage_static'])
     run('bridge-lookup-contract', [sys.executable, '-m', 'unittest',
                                    'tests.device.test_bridge_lookup'])
     packed_dir = out / 'packed-shader-words'

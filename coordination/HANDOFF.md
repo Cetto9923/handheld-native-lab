@@ -5092,3 +5092,13 @@ https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.30-preview �
 下一项先审查正常CPU读回是否可将重复SHADER_WRITE到HOST_READ屏障合并到提交边界。保留所有GPU依赖、semaphore chain、slot fence和非coherent失效，逐一审计early mapped read再实现。此为候选推断，尚未修改同步代码。Khronos Guide固定a195f15615721921629b894ccbd3c788558305dd，本文SPDX CC-BY-4.0，源文件实取53224B/SHA a035d27f30ce62dc5382402f986e0e36a349fba97d53e9ebdd2a2d03be8d39e4，本地references/有取证索引。官方示例包含shader到host内存依赖、提交、fence等待和mapped invalidate。[固定同步示例](https://github.com/KhronosGroup/Vulkan-Guide/blob/a195f15615721921629b894ccbd3c788558305dd/chapters/synchronization_examples.adoc)
 
 当前本地分支列表无main，git branch --merged main实际返回malformed object name main。尚未证实Main吸收，不删除当前或其它worktree分支。没有推送。所有APK历史保留。稳定30、完整场景运动显示、A2DP及独立QA仍未完成。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。
+
+### 55静态格式判断候选接管
+
+只读审计发现cpu_access why3/8在descriptor准备期间直接invalidate并读pending mapped buffer，未在该分支等待fence。一般resolve_slot_writebacks/resolve_pending/capture路径有退休或gpu_sync，但此例外尚未解决，不能盲合并shader到host屏障。改做不可变typed-storage元数据短路候选，保留所有运行时格式检查。54范围候选尚无充分收益，领取自有源码撤回和新的生产谓词回归。
+现有Shader.module_words还为有vertex inputs的stage0保留，typed_storage_variant因此会为没有可变storage格式的顶点模块每次锁全局诊断set并扫描bindings。53真实采样有TypedStorageSelection及其set分配调用点。只缓存模块/绑定自身的静态资格，不能缓存实际绑定VkFormat。
+
+### 55静态资格短路实现
+
+55撤回54范围journal及其专属测试，54APK和原始证据保留。新候选仅在原Honor/Adreno范围缓存Shader不可变的typed-storage资格，首次仍执行原诊断，eligible写入绑定每次继续按当前VkFormat选择原variant。gfx-live-ab=typedstatic回原路。新增生产字段/谓词/函数前缀提取ASan/UBSan覆盖320组合、运行中格式变化、后置加载、256项混合表、独立variant事实及非Honor/旧AB，与既有组件共5项通过。Shader字节、GPU同步、slot、音频均未改变。待116项全集/Android/真实性能对照。
+CPU读回屏障候选继续只读审计，why3/8分支本身不等待的源码事实已记下，调用链覆盖和实际可达性仍待验证。

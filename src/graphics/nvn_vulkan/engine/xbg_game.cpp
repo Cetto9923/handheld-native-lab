@@ -960,6 +960,7 @@ int shader_reuse=0;uint64_t shaders_reused=0,shader_reuse_mismatches=0;
 struct ShaderReuseComparison {uint64_t attempted=0,missing=0,compared=0,equal=0,mismatch=0;};
 ShaderReuseComparison shader_reuse_comparisons[6][2];
 uint64_t integer_texture_lookup_hits=0,integer_texture_lookup_misses=0;
+uint64_t typed_storage_static_skips=0;
 // Command pool resets off the render thread. vkResetCommandPool took ~0.4 ms of every frame on the Redmi K50 Ultra's render
 // thread. After a slot is submitted, the reset thread waits for its fence and resets its pool; retiring the slot first waits
 // for that job, so vkResetFences never overlaps the thread's wait (concurrent waits are allowed), and reusing the slot skips
@@ -1037,14 +1038,9 @@ XbgTexelSnapshotCache<Buffer> texel_copy_cache;
 bool texel_copy_enabled=true;
 struct TexelCopyStats {uint64_t copies=0,hits=0,would_hits=0,copy_bytes=0,hit_bytes=0,pass_ends=0;};
 TexelCopyStats texel_copy_stats[2]; // normal graphics, diagnostic graphics
-// Writes still invalidate content within a submission. A bounded journal lets
-// an unrelated write preserve a verified copy. Submission resets and a missed
-// journal window always require the original full content check.
-struct TexelWriteRange{uint64_t address=0,bytes=0;};
-TexelWriteRange texel_write_ranges[64];
-uint64_t texel_write_epoch=1,texel_reset_epoch=1,texel_lo=UINT64_MAX,texel_hi=0;
-uint64_t texel_range_hits=0,texel_hash_bytes=0;
-void texel_touch(uint64_t address,uint64_t bytes);
+// A copy verified earlier in this submission stays valid until an in-stream CPU write overlaps it (snapshot_invalidate
+// bumps texel_write_epoch), so a ~1 MB range bound by 558 draws is hashed once per frame, not per draw.
+uint64_t texel_write_epoch=1,texel_lo=UINT64_MAX,texel_hi=0;void texel_touch(uint64_t address,uint64_t bytes);
 void texel_evict(unsigned si,bool all);
 // Diagnostic (NVN PERF texel): distinct uniform texel ranges per frame and how many the previous frame also used.
 std::unordered_set<uint64_t> texel_frame_keys,texel_prev_keys;uint64_t texel_binds=0,texel_distinct=0,texel_reused=0;
@@ -1574,7 +1570,7 @@ void perf_frame(){
     {texel_distinct+=texel_frame_keys.size();for(auto k:texel_frame_keys)if(texel_prev_keys.count(k))++texel_reused;texel_prev_keys.swap(texel_frame_keys);texel_frame_keys.clear();}
     if(completion_wait_enabled)fold_completion_wait_stats();
     if(perf_frame_timed)++perf_timed_frames;perf_frame_timed=perf_sample && stats.presents.load()%perf_sample==0;   // the next frame
-    {bool was=ab_frame_on;ab_frame_on=ab_enabled();tls_gate=!ab_off("tlsgate");img_fast=!ab_off("imgfast");if(was!=ab_frame_on && ab_period>0){perf=Perf{};perf.window_start=timing_clock();set_cache_hits=set_cache_misses=0;integer_texture_lookup_hits=integer_texture_lookup_misses=0;for(auto &counts:texel_copy_stats)counts=TexelCopyStats{};return;}}
+    {bool was=ab_frame_on;ab_frame_on=ab_enabled();tls_gate=!ab_off("tlsgate");img_fast=!ab_off("imgfast");if(was!=ab_frame_on && ab_period>0){perf=Perf{};perf.window_start=timing_clock();set_cache_hits=set_cache_misses=0;integer_texture_lookup_hits=integer_texture_lookup_misses=typed_storage_static_skips=0;for(auto &counts:texel_copy_stats)counts=TexelCopyStats{};return;}}
     pipelines_unsaved+=size_t(warm::compiled.exchange(0));
     const uint64_t presents=stats.presents.load();
     if(pipelines_unsaved && presents>=pipeline_save_frame+300){pipeline_save_frame=presents;save_pipeline_cache();}
@@ -1643,7 +1639,7 @@ void perf_frame(){
     xbg_logf("NVN PERF cleanup_ms_per_frame queries=%.2f writebacks=%.2f(%.1fMB) views=%.2f retire=%.2f arena_pools=%.2f",cleanup_ns[0]/1e6/f,cleanup_ns[1]/1e6/f,writeback_bytes/1048576.0/f,cleanup_ns[2]/1e6/f,cleanup_ns[3]/1e6/f,cleanup_ns[4]/1e6/f);for(auto &c:cleanup_ns)c=0;writeback_bytes=0;
     {size_t entries=0,largest=0;uint64_t live=0,holes=0;
      for(unsigned i=0;i<slot_count;++i){entries+=texel_resident[i].size();largest=std::max(largest,texel_resident[i].size());live+=texel_live_bytes[i];holes+=texel_hole_bytes[i];}
-     xbg_logf("NVN PERF texel_resident slots=%u gc_mask=%#x entries=%zu largest=%zu live_mb=%.2f holes_mb=%.2f range_hits=%.2f hash_mb=%.2f",slot_count,texel_gc_slots,entries,largest,live/1048576.0,holes/1048576.0,texel_range_hits/f,texel_hash_bytes/1048576.0/f);texel_gc_slots=0;texel_range_hits=texel_hash_bytes=0;}
+     xbg_logf("NVN PERF texel_resident slots=%u gc_mask=%#x entries=%zu largest=%zu live_mb=%.2f holes_mb=%.2f",slot_count,texel_gc_slots,entries,largest,live/1048576.0,holes/1048576.0);texel_gc_slots=0;}
     xbg_logf("NVN PERF xview views=%.2f races=%.2f guarded=%.2f guarded_kb=%.1f",xviews/f,xview_races/f,xview_guarded/f,xview_guarded_bytes/1024.0/f);xviews=xview_races=xview_guarded=xview_guarded_bytes=0;
     if(uploads_prologue || uploads_inpass){xbg_logf("NVN PERF uploads window prologue=%llu inpass=%llu broke_pass=%llu",(unsigned long long)uploads_prologue,(unsigned long long)uploads_inpass,(unsigned long long)uploads_broke_pass);uploads_prologue=uploads_inpass=uploads_broke_pass=0;}
     for(unsigned stage=0;stage<6;++stage)for(unsigned variant=0;variant<2;++variant){
@@ -1660,8 +1656,8 @@ void perf_frame(){
             counts.copies/f,counts.hits/f,counts.would_hits/f,counts.copy_bytes/1024.0/f,counts.hit_bytes/1024.0/f,counts.pass_ends/f);
         counts=TexelCopyStats{};
     }
-    xbg_logf("NVN PERF integer_texture_lookup ab=%u hits=%llu misses=%llu",unsigned(ab_frame_on),(unsigned long long)integer_texture_lookup_hits,(unsigned long long)integer_texture_lookup_misses);
-    integer_texture_lookup_hits=integer_texture_lookup_misses=0;
+    xbg_logf("NVN PERF integer_texture_lookup ab=%u hits=%llu misses=%llu typed_static_skips_per_frame=%.1f",unsigned(ab_frame_on),(unsigned long long)integer_texture_lookup_hits,(unsigned long long)integer_texture_lookup_misses,typed_storage_static_skips/f);
+    integer_texture_lookup_hits=integer_texture_lookup_misses=typed_storage_static_skips=0;
     if(shader_reuse)xbg_logf("NVN PERF shader_reuse_cache retained=%llu denied_budget=%llu peak_bytes=%llu",(unsigned long long)warm::rewritten_retained.load(),(unsigned long long)warm::rewritten_denied_budget.load(),(unsigned long long)warm::rewritten_peak_bytes.load());
     if(shaders_reused || shader_reuse_mismatches){xbg_logf("NVN PERF shader_reuse window reused=%llu mismatches=%llu",(unsigned long long)shaders_reused,(unsigned long long)shader_reuse_mismatches);shaders_reused=shader_reuse_mismatches=0;}
     if(wb_skip){xbg_logf("NVN PERF wbskip ab=%d skipped=%.1f (%.2fMB)",int(ab_frame_on),wb_skipped/f,wb_skipped_bytes/1048576.0/f);wb_skipped=wb_skipped_bytes=0;}
@@ -1787,7 +1783,7 @@ void desc_memo_reset();
 struct SnapFront{uint64_t address=0,bytes=0,epoch=0;Buffer buffer;};SnapFront snap_front[2][8192];uint64_t snapshot_epoch=1;
 uint64_t snap_front_hits=0,snap_map_hits=0,snap_invalidations=0,snap_invalidated=0;   // perf (NVN PERF snapfront)
 inline SnapFront &snap_front_for(int which,uint64_t a,uint64_t n){uint64_t x=a*0x9E3779B97F4A7C15ull^n*0xC2B2AE3D27D4EB4Full;return snap_front[which][(x^(x>>31))&8191];}
-void snapshot_reset(){snapshot_maps_reset();texel_copy_cache.reset();snapshot_maxlen=0;desc_memo_reset();texel_reset_epoch=++texel_write_epoch;++snapshot_epoch;last_pass_reset();}   // the guest may write memory between submissions: texel copies are re-verified
+void snapshot_reset(){snapshot_maps_reset();texel_copy_cache.reset();snapshot_maxlen=0;desc_memo_reset();++texel_write_epoch;++snapshot_epoch;last_pass_reset();}   // the guest may write memory between submissions: texel copies are re-verified
 void snapshot_invalidate(uint64_t address,uint64_t bytes){
     ++snap_invalidations;if(ab_off("snapinval"))++snapshot_epoch;
     texel_copy_cache.invalidate(address,bytes);
@@ -2770,6 +2766,9 @@ struct Shader {std::string key;std::string identity;
     std::set<uint32_t> typed_storage_rewritten;
     // Final words for typed storage and vertex-interface variants.
     std::vector<uint32_t> module_words;
+    // Immutable binding/module eligibility, independent of the bound view.
+    // -1 has not been checked, 0 cannot need a typed variant, 1 can need one.
+    int8_t typed_storage_dynamic=-1;
     std::map<TypedStorageFormats,std::unique_ptr<Shader>> typed_variants;
     std::map<VertexInputFormats,std::unique_ptr<Shader>> vertex_variants;
     std::set<VertexInputFormats> unsupported_vertex_inputs;
@@ -3422,8 +3421,22 @@ VkFormat typed_storage_image_format(const Shader &shader,const xbg_shader_bindin
 // The module is cached per shader but the bound format changes per draw, so
 // the variant is keyed by (binding, bound format), like the integer buffer
 // variants. Its identity prefix differs from theirs.
+bool typed_storage_static_skip(Shader &base){
+    if(base.typed_storage_dynamic>=0)return base.typed_storage_dynamic==0;
+    base.typed_storage_dynamic=std::any_of(base.bindings.begin(),base.bindings.end(),[&](const xbg_shader_binding &binding){
+        if((binding.type!=VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER && binding.type!=VK_DESCRIPTOR_TYPE_STORAGE_IMAGE) ||
+           binding.count!=1 || !(binding.flags&1))return false;
+        auto declared=base.storage_image_formats.find(binding.binding);
+        return declared==base.storage_image_formats.end() || declared->second==XBG_IMAGE_FORMAT_UNKNOWN;
+    });
+    // Preserve the original first-call diagnostic, including static reasons.
+    return false;
+}
 Shader *typed_storage_variant(Shader &base){
     if(base.module_words.empty())return &base;
+    if(honor_inline_enabled && !ab_off("typedstatic") && typed_storage_static_skip(base)){
+        ++typed_storage_static_skips;return &base;
+    }
     TypedStorageFormats formats;
     // One record per storage binding the typed-storage rescue looked at, so a
     // device log says why a binding stayed formatless instead of leaving the
@@ -4451,17 +4464,6 @@ Buffer &driver_block(unsigned ns,unsigned bank){uint64_t gen=bank?tex_gen[ns]:bu
 // refreshed from guest memory when its content hash changes, before its first read in a frame; content that changes again
 // within the frame falls back to the per-frame snapshot. A memo entry checks the copy's generation, so an evicted and
 // recreated copy is never mistaken for the one its set holds. gfx-no-texel-memo keeps the former per-frame path.
-bool texel_range_unchanged(const TexelKey &key,uint64_t checked_epoch){
-    if(!honor_inline_enabled || ab_off("texelrange") || checked_epoch<texel_reset_epoch ||
-       checked_epoch>texel_write_epoch || texel_write_epoch-checked_epoch>64)return false;
-    for(uint64_t epoch=checked_epoch;epoch<texel_write_epoch;){
-        ++epoch;
-        const auto &write=texel_write_ranges[epoch%64];
-        if(xbg_wb_overlaps(key.base,key.bytes,write.address,write.bytes))return false;
-    }
-    ++texel_range_hits;
-    return true;
-}
 TexelResident *texel_acquire(uint64_t base,uint64_t bytes,VkFormat fmt){
     if(!bytes || base>UINT64_MAX-bytes || bytes>64ull*1024*1024){++texel_fallbacks;return nullptr;}
     // 待写回的数据走原快照路径，不允许驻留命中绕过 GPU 写入或跨槽排空。
@@ -4473,10 +4475,7 @@ TexelResident *texel_acquire(uint64_t base,uint64_t bytes,VkFormat fmt){
     for(auto *list:{&pending_events,&recording_events})for(auto &e:*list)if(base<e.addr+4 && base+bytes>e.addr){++texel_fallbacks;return nullptr;}
     unsigned si=slot_index;need(slots[si].recording && !slots[si].pending,"Texel resident requires a retired recording slot");auto &map=texel_resident[si];TexelKey key{base,bytes,uint32_t(fmt)};
     auto it=map.find(key);
-    if(it!=map.end() && it->second.checked==slot_serial &&
-       (it->second.check_epoch==texel_write_epoch || texel_range_unchanged(key,it->second.check_epoch))){
-        it->second.check_epoch=texel_write_epoch;it->second.used=slot_serial;return &it->second;}
-    texel_hash_bytes+=bytes;
+    if(it!=map.end() && it->second.checked==slot_serial && it->second.check_epoch==texel_write_epoch){it->second.used=slot_serial;return &it->second;}
     uint64_t h=hash_memory(reinterpret_cast<const void*>(uintptr_t(base)),size_t(bytes));
     if(it==map.end()){
         if(map.size()>=8192 || texel_live_bytes[si]+texel_hole_bytes[si]+bytes>64ull*1024*1024){++texel_fallbacks;return nullptr;}
@@ -4491,14 +4490,8 @@ TexelResident *texel_acquire(uint64_t base,uint64_t bytes,VkFormat fmt){
     r.used=slot_serial;r.checked=slot_serial;r.check_epoch=texel_write_epoch;return &r;
 }
 void texel_touch(uint64_t address,uint64_t bytes){
-    if(!bytes)return;
-    if(address>UINT64_MAX-bytes){texel_reset_epoch=++texel_write_epoch;return;}
-    auto &map=texel_resident[slot_index];
-    if(map.size()<=64 && std::none_of(map.begin(),map.end(),[&](const auto &entry){
-        return xbg_wb_overlaps(address,bytes,entry.first.base,entry.first.bytes);
-    }))return;
-    ++texel_write_epoch;
-    texel_write_ranges[texel_write_epoch%64]={address,bytes};
+    auto &map=texel_resident[slot_index];if(map.size()>64){++texel_write_epoch;return;}   // many copies: invalidate coarsely
+    for(auto &e:map)if(address<e.first.base+e.first.bytes && address+bytes>e.first.base){++texel_write_epoch;return;}
 }
 // While a slot starts recording (its previous submission retired): drop copies unused for ~128 submissions; when the holes they
 // leave in the slot's arena pass 8 MB, start the slot's store over (memo entries then fail their generation check).
