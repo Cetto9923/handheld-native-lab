@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-16T13:03:22.592882+08:00",
+ "updated_at": "2026-11-16T13:14:45.974764+08:00",
  "phase": "荣耀神殿内部持续移动长帧优化，1080P输出及有界内部尺寸目标30继续推进",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3488,8 +3488,22 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-16T00:37:43.134192+08:00",
-   "checkpoint": "\n### 58构建与安装检查点\n\n首轮58源e2475f7，119项宿主通过，Android因uniform入口位于honor_inline_enabled定义之前而失败。补前置extern声明及顺序契约后，58b源d79ffa6 clean重跑119项宿主与Android全部通过，89份输入SHA前后一致。APK a01c2f64a744ddfd8706b46184d8f358d012a4cdff33dcb196148a7a5df4c4bf/3728599B，包内ELF与lib58.symbols.so均BuildID5726910f565387d2d80f0d8a54cf7a6c63457859，符号SHA52834c21344b1396df52c954d2ba3424e7186cd714311dedad3ccd230e04277f。失败日志和最终build58b均保留。\n\ninstall58回读APK摘要及9份私有存档SHA，正式源metadata保持。新PID10580复用461，LIVE-AB=uboarena先走原混合池。async poolreset0、fence_spin0、AAudio NONE数值10符合当前默认。设备交互由用户再次确认交由root，当前正从外侧读档进入神殿中段。\n\n新证据校正探针条件。57/PID5498启动实际CODEX_PROBE enabled=1，设备gfx-codex-probe为0换行，待命不等于不存在。56匹配trace还定位probe_cpu_template_enabled内的文件查询2个样本，此辅助入口尚未使用已有按帧观察缓存。本轮将该2B标记原字节、SHA和恢复命令留档，并在停止57后改名gfx-codex-probe.stale57-before58。58启动enabled=0已核对。不得把57与58整体差异都归常量池，常量池收益仅按58同进程uboarena/none对照。未修改现有探针函数，后续若处理须复用probe_marker_value，并覆盖模式切换与诊断语义。\n\n当前58为候选，真实运动和暖技能收益、动态画面完整回归及常设A2DP流程待验证，稳定30仍未通过。历史APK保留，Main无改动，无push。\n",
-   "checkpoint_at": "2026-11-16T13:03:22.592882+08:00"
+   "checkpoint": "\n### 用户收口并授权发布58\n\n用户要求先收口提交当前版本，随后明确今天发布一版优化。停止继续优化与设备输入，按既有GitHub预览Release流程交付1.0.58-preview。授权范围为现有开发分支、精确构建源标签和APK附件，Main维持现状。当前本地HEAD c2329de，源码与测试已提交，工作区干净。58实际源码d79ffa6，119项宿主及Android0，89份输入一致，APK a01c2f64。新增发布任务CODEX-PUBLISH58-20261116。\n\n58/PID10580的普通神殿运动结果。原混合池A1为3052..3219/167间隔28.1933FPS/max63.41ms。新池B1为3694..3831/137间隔23.4004FPS/max779.37ms，但结束遇敌黑场，单列混合窗口。战后同桥段新B2为9346..9418/72间隔25.2911FPS/max77.58ms，原A2为9774..9857/83间隔28.6580FPS/max49.74ms，原A3为10277..10356/79间隔26.4721FPS/max55.03ms，新B3为11730..11793/63间隔27.0242FPS/max62.15ms。B2/A2/A3/B3均前后探索、非零方向及最终零轴，窗口约2.3至3秒。短窗仍有波动，不能宣称常量池获得稳定收益或稳30。\n\n58进程内首次消失突袭为Lv1钢蝠加妖藤，5694..5850/157帧19.6385FPS/max260.13ms，46超50、14超100、0present错误。按实际A后完整8秒计，包含技能及胜利转场，磁盘缓存保持，不能称清缓存冷启动。58暖技能原/新对照尚未完成。\n\n归因补充校正。desc_memo_why[3]打印为dynbuf，源码实际在动态buffer、image身份、texel generation或持久storage复核失败后共用递增。因此撤回将约70至145次统归动态UBO buffer变化的判断。独立常量池为待验证候选，发布说明必须保留这一状态。\n\n内存两次dumpsys分别为探索早期PSS4216634KiB/Graphics706552KiB，战斗后PSS4724611KiB/Graphics827652KiB。中间包含新资源加载与两个实验池的驻留，两点不能证明增长来自UBO池或泄漏，长期内存回归未完成。最后一次输入180733.453已回零。收口时ADB提示荣耀设备不在线，PID10580和gfx-live-ab=none为最后已确认状态，不能称当前在线运行。当前本地current-arm旧名称中的old-mixed只代表启动臂，末次实际已切新路，接手须重新核对。\n\n目前约25至29FPS运动短窗与约19.6FPS首次技能证明稳定30尚未达成。开场、世界地图、完整动态显示、A2DP持续人耳及跨设备全套回归继续待验。历史APK及存档保全记录留存。收口发布不代表性能目标完成。\n",
+   "checkpoint_at": "2026-11-16T13:14:45.974764+08:00",
+   "write_state": "FROZEN_USER_REQUESTED_WRAPUP"
+  },
+  {
+   "task": "CODEX-PUBLISH58-20261116",
+   "owner": "root",
+   "paths": [
+    ".local/releases/1.0.58/",
+    "coordination/results/CODEX-PUBLISH58-20261116.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-16T13:14:45.974764+08:00",
+   "checkpoint": "\n### 用户收口并授权发布58\n\n用户要求先收口提交当前版本，随后明确今天发布一版优化。停止继续优化与设备输入，按既有GitHub预览Release流程交付1.0.58-preview。授权范围为现有开发分支、精确构建源标签和APK附件，Main维持现状。当前本地HEAD c2329de，源码与测试已提交，工作区干净。58实际源码d79ffa6，119项宿主及Android0，89份输入一致，APK a01c2f64。新增发布任务CODEX-PUBLISH58-20261116。\n\n58/PID10580的普通神殿运动结果。原混合池A1为3052..3219/167间隔28.1933FPS/max63.41ms。新池B1为3694..3831/137间隔23.4004FPS/max779.37ms，但结束遇敌黑场，单列混合窗口。战后同桥段新B2为9346..9418/72间隔25.2911FPS/max77.58ms，原A2为9774..9857/83间隔28.6580FPS/max49.74ms，原A3为10277..10356/79间隔26.4721FPS/max55.03ms，新B3为11730..11793/63间隔27.0242FPS/max62.15ms。B2/A2/A3/B3均前后探索、非零方向及最终零轴，窗口约2.3至3秒。短窗仍有波动，不能宣称常量池获得稳定收益或稳30。\n\n58进程内首次消失突袭为Lv1钢蝠加妖藤，5694..5850/157帧19.6385FPS/max260.13ms，46超50、14超100、0present错误。按实际A后完整8秒计，包含技能及胜利转场，磁盘缓存保持，不能称清缓存冷启动。58暖技能原/新对照尚未完成。\n\n归因补充校正。desc_memo_why[3]打印为dynbuf，源码实际在动态buffer、image身份、texel generation或持久storage复核失败后共用递增。因此撤回将约70至145次统归动态UBO buffer变化的判断。独立常量池为待验证候选，发布说明必须保留这一状态。\n\n内存两次dumpsys分别为探索早期PSS4216634KiB/Graphics706552KiB，战斗后PSS4724611KiB/Graphics827652KiB。中间包含新资源加载与两个实验池的驻留，两点不能证明增长来自UBO池或泄漏，长期内存回归未完成。最后一次输入180733.453已回零。收口时ADB提示荣耀设备不在线，PID10580和gfx-live-ab=none为最后已确认状态，不能称当前在线运行。当前本地current-arm旧名称中的old-mixed只代表启动臂，末次实际已切新路，接手须重新核对。\n\n目前约25至29FPS运动短窗与约19.6FPS首次技能证明稳定30尚未达成。开场、世界地图、完整动态显示、A2DP持续人耳及跨设备全套回归继续待验。历史APK及存档保全记录留存。收口发布不代表性能目标完成。\n",
+   "write_state": "ACTIVE"
   }
  ],
  "tasks": [
@@ -9933,7 +9947,7 @@
    "id": "CODEX-HONOR-SUBMIT44-20261116",
    "owner": "root",
    "role": "MOVING_SUBMIT_CRITICAL_PATH",
-   "status": "in_progress",
+   "status": "paused",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "objective": "将神殿移动长帧分为CPU运行、线程调度等待、GPU等待和复制，按实际关键路径实现并复验有收益的优化。",
@@ -9995,8 +10009,36 @@
    "dependencies": [],
    "pass_gates": [],
    "acceptance": "原始PID/帧/场景/符号核对，真实持续移动普通FPS与诊断分窗，CPU/GPU及数据生命周期事实支持归因，显示及原速/声音保持；验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。",
-   "checkpoint": "\n### 58构建与安装检查点\n\n首轮58源e2475f7，119项宿主通过，Android因uniform入口位于honor_inline_enabled定义之前而失败。补前置extern声明及顺序契约后，58b源d79ffa6 clean重跑119项宿主与Android全部通过，89份输入SHA前后一致。APK a01c2f64a744ddfd8706b46184d8f358d012a4cdff33dcb196148a7a5df4c4bf/3728599B，包内ELF与lib58.symbols.so均BuildID5726910f565387d2d80f0d8a54cf7a6c63457859，符号SHA52834c21344b1396df52c954d2ba3424e7186cd714311dedad3ccd230e04277f。失败日志和最终build58b均保留。\n\ninstall58回读APK摘要及9份私有存档SHA，正式源metadata保持。新PID10580复用461，LIVE-AB=uboarena先走原混合池。async poolreset0、fence_spin0、AAudio NONE数值10符合当前默认。设备交互由用户再次确认交由root，当前正从外侧读档进入神殿中段。\n\n新证据校正探针条件。57/PID5498启动实际CODEX_PROBE enabled=1，设备gfx-codex-probe为0换行，待命不等于不存在。56匹配trace还定位probe_cpu_template_enabled内的文件查询2个样本，此辅助入口尚未使用已有按帧观察缓存。本轮将该2B标记原字节、SHA和恢复命令留档，并在停止57后改名gfx-codex-probe.stale57-before58。58启动enabled=0已核对。不得把57与58整体差异都归常量池，常量池收益仅按58同进程uboarena/none对照。未修改现有探针函数，后续若处理须复用probe_marker_value，并覆盖模式切换与诊断语义。\n\n当前58为候选，真实运动和暖技能收益、动态画面完整回归及常设A2DP流程待验证，稳定30仍未通过。历史APK保留，Main无改动，无push。\n",
-   "updated_at": "2026-11-16T13:03:22.592882+08:00"
+   "checkpoint": "\n### 用户收口并授权发布58\n\n用户要求先收口提交当前版本，随后明确今天发布一版优化。停止继续优化与设备输入，按既有GitHub预览Release流程交付1.0.58-preview。授权范围为现有开发分支、精确构建源标签和APK附件，Main维持现状。当前本地HEAD c2329de，源码与测试已提交，工作区干净。58实际源码d79ffa6，119项宿主及Android0，89份输入一致，APK a01c2f64。新增发布任务CODEX-PUBLISH58-20261116。\n\n58/PID10580的普通神殿运动结果。原混合池A1为3052..3219/167间隔28.1933FPS/max63.41ms。新池B1为3694..3831/137间隔23.4004FPS/max779.37ms，但结束遇敌黑场，单列混合窗口。战后同桥段新B2为9346..9418/72间隔25.2911FPS/max77.58ms，原A2为9774..9857/83间隔28.6580FPS/max49.74ms，原A3为10277..10356/79间隔26.4721FPS/max55.03ms，新B3为11730..11793/63间隔27.0242FPS/max62.15ms。B2/A2/A3/B3均前后探索、非零方向及最终零轴，窗口约2.3至3秒。短窗仍有波动，不能宣称常量池获得稳定收益或稳30。\n\n58进程内首次消失突袭为Lv1钢蝠加妖藤，5694..5850/157帧19.6385FPS/max260.13ms，46超50、14超100、0present错误。按实际A后完整8秒计，包含技能及胜利转场，磁盘缓存保持，不能称清缓存冷启动。58暖技能原/新对照尚未完成。\n\n归因补充校正。desc_memo_why[3]打印为dynbuf，源码实际在动态buffer、image身份、texel generation或持久storage复核失败后共用递增。因此撤回将约70至145次统归动态UBO buffer变化的判断。独立常量池为待验证候选，发布说明必须保留这一状态。\n\n内存两次dumpsys分别为探索早期PSS4216634KiB/Graphics706552KiB，战斗后PSS4724611KiB/Graphics827652KiB。中间包含新资源加载与两个实验池的驻留，两点不能证明增长来自UBO池或泄漏，长期内存回归未完成。最后一次输入180733.453已回零。收口时ADB提示荣耀设备不在线，PID10580和gfx-live-ab=none为最后已确认状态，不能称当前在线运行。当前本地current-arm旧名称中的old-mixed只代表启动臂，末次实际已切新路，接手须重新核对。\n\n目前约25至29FPS运动短窗与约19.6FPS首次技能证明稳定30尚未达成。开场、世界地图、完整动态显示、A2DP持续人耳及跨设备全套回归继续待验。历史APK及存档保全记录留存。收口发布不代表性能目标完成。\n",
+   "updated_at": "2026-11-16T13:14:45.974764+08:00"
+  },
+  {
+   "id": "CODEX-PUBLISH58-20261116",
+   "owner": "root",
+   "role": "RELEASE",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "Publish the current 1.0.58 preview APK and its exact source tag to the existing GitHub repository under current user authorization.",
+   "inputs": [
+    "d79ffa6 clean source",
+    "build58b 119 checks Android exit 0",
+    "APK a01c2f64a744ddfd8706b46184d8f358d012a4cdff33dcb196148a7a5df4c4bf"
+   ],
+   "outputs": [
+    ".local/releases/1.0.58/",
+    "coordination/results/CODEX-PUBLISH58-20261116.md",
+    "v1.0.58-preview"
+   ],
+   "write_scope": [
+    ".local/releases/1.0.58/",
+    "coordination/results/CODEX-PUBLISH58-20261116.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "acceptance": "Exact source and final APK audit, fast-forward development branch and exact source tag, GitHub prerelease assets, remote download digest verification. Performance is still unpassed.",
+   "checkpoint": "\n### 用户收口并授权发布58\n\n用户要求先收口提交当前版本，随后明确今天发布一版优化。停止继续优化与设备输入，按既有GitHub预览Release流程交付1.0.58-preview。授权范围为现有开发分支、精确构建源标签和APK附件，Main维持现状。当前本地HEAD c2329de，源码与测试已提交，工作区干净。58实际源码d79ffa6，119项宿主及Android0，89份输入一致，APK a01c2f64。新增发布任务CODEX-PUBLISH58-20261116。\n\n58/PID10580的普通神殿运动结果。原混合池A1为3052..3219/167间隔28.1933FPS/max63.41ms。新池B1为3694..3831/137间隔23.4004FPS/max779.37ms，但结束遇敌黑场，单列混合窗口。战后同桥段新B2为9346..9418/72间隔25.2911FPS/max77.58ms，原A2为9774..9857/83间隔28.6580FPS/max49.74ms，原A3为10277..10356/79间隔26.4721FPS/max55.03ms，新B3为11730..11793/63间隔27.0242FPS/max62.15ms。B2/A2/A3/B3均前后探索、非零方向及最终零轴，窗口约2.3至3秒。短窗仍有波动，不能宣称常量池获得稳定收益或稳30。\n\n58进程内首次消失突袭为Lv1钢蝠加妖藤，5694..5850/157帧19.6385FPS/max260.13ms，46超50、14超100、0present错误。按实际A后完整8秒计，包含技能及胜利转场，磁盘缓存保持，不能称清缓存冷启动。58暖技能原/新对照尚未完成。\n\n归因补充校正。desc_memo_why[3]打印为dynbuf，源码实际在动态buffer、image身份、texel generation或持久storage复核失败后共用递增。因此撤回将约70至145次统归动态UBO buffer变化的判断。独立常量池为待验证候选，发布说明必须保留这一状态。\n\n内存两次dumpsys分别为探索早期PSS4216634KiB/Graphics706552KiB，战斗后PSS4724611KiB/Graphics827652KiB。中间包含新资源加载与两个实验池的驻留，两点不能证明增长来自UBO池或泄漏，长期内存回归未完成。最后一次输入180733.453已回零。收口时ADB提示荣耀设备不在线，PID10580和gfx-live-ab=none为最后已确认状态，不能称当前在线运行。当前本地current-arm旧名称中的old-mixed只代表启动臂，末次实际已切新路，接手须重新核对。\n\n目前约25至29FPS运动短窗与约19.6FPS首次技能证明稳定30尚未达成。开场、世界地图、完整动态显示、A2DP持续人耳及跨设备全套回归继续待验。历史APK及存档保全记录留存。收口发布不代表性能目标完成。\n",
+   "updated_at": "2026-11-16T13:14:45.974764+08:00"
   }
  ],
  "blockers": [
