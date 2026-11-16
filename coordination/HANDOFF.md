@@ -5184,3 +5184,13 @@ PID27957同56包。A1原同步池运动5746..5886/140间隔23.2525FPS/max106.59m
 按用户本轮“已松开手柄，你操作”及既有直接安装授权继续推进。前台变化问题作为状态核对，已通过消息说明恢复《共鸣》测试。install57b回读APK并逐一校验9份私有文件SHA、正式源metadata，全部相同。同步池实验由本轮创建的1标记已逐字归档并记录恢复命令，恢复实验前缺失状态。新PID5498复用461，启动明确async command pool reset=0、LIVE-AB=setfresh present0，先运行原描述符缓存路径。shader/显示/音频回归与真实帧率收益继续验证。
 
 
+
+### 57b普通移动与暖技能复测
+
+同APK5e16b299、源066e8a7、PID5498。B2新路桥中段23094..23235/141间隔23.9398FPS/max71.42ms，随后A2原路23662..23819/157间隔26.9689FPS/max64.09ms。两窗前后探索、方向输入与最终归零均可核对。B4新26798..26953为25.9974FPS/max61.44ms，同段状态仍有波动，尚未确认移动收益。A3和B5结束进入遇敌流程，原始数据单列。seek-C1前后为战果成长页，29.8263只属该页面，明确排除探索移动。seek-C4被系统暗光提醒截获，无game_input，断言停止，保留原始失败和截图。
+
+首次B0新招式15519..15667/149帧18.5847FPS/max189.68ms，51超50、10超100。暖A1原路三Lv1钢蝠25465..25625/161帧20.0625FPS/max128.29ms，52超50、10超100。暖B1新路两Lv1钢蝠29223..29403/181帧22.5438FPS/max113.90ms，46超50、2超100。暖A2原路两Lv1钢蝠37059..37211/153帧19.0797FPS/max122.03ms，61超50、12超100。完整实际确认键后8秒，均0present错误。同敌群本次新路数值更高，仍须反向重复，不能从一次结果宣称稳定收益。B1动作内46条长帧全部shader_ms与pipeline_create_ms为0，长帧子集submit_cpu中位43.79ms、GPU中位22.67ms，子集不代表全动作平均。
+
+准备核对独立uniform上传arena候选。真实暖态desc memo存在每帧约70..145次dynbuf不匹配，当前4MiB混合stream同时容纳大块顶点/索引与小UBO，动态UBO虽偏移可变，VkBuffer变化仍使缓存失效。Khronos Vulkan-Samples固定b4fb432b80234e54cf7be7411f20b65494a5b0f5、Apache-2.0，descriptor_management样例建议少量每帧buffer配动态偏移。README10804B/SHA e61bef62d82c001e55d34cfbb62c625e3307ee945a33f21b08f2cc5edbfeabc5已实际获取。此为候选适用依据，性能尚待实现和同包对照。现有stream与readback本机均实际type6/flags0xf，因此再开HOST_CACHED没有新的设备前提。
+
+58若实施，必须沿原slot fence退休、snapshot内容与范围、非coherent flush、buffer引用失效、trim和shutdown处理。额外UBO池计入96MiB提交阈值与内存统计，限制闲置保留。新增tests/device/test_uniform_arena.py由root领取。用户松手授权持续有效，root输入，正式存档与APK历史保留。音频完整A2DP及全场景稳定30仍待验证。
