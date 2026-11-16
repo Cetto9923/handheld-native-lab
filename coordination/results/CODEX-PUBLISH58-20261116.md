@@ -19,4 +19,12 @@
 
 发布计划、附件检查、差异历史审计、命令及普通日志保存在.local/releases/1.0.58/publication/。发布说明使用优化预览版，包含已知掉帧及未验证范围。远端源分支初始aabc9fb68bc685cb61f0ab41a96fbbdae6eb34ec为本地HEAD祖先。Main当前ecb9b57保持现状。
 
-当前待完成GitHub推送、Release附件上传及远端下载摘要校验。
+## 发布与回读结果
+
+GitHub发布已完成，Release为[v1.0.58-preview](https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.58-preview)。APK及SHA256附件均上传成功，发布类型为预览版。
+
+标签精确指向d79ffa60c33e7712efbaffd7fa84690b58633348，开发分支首次发布推送为ca05526cf30559278fbe70d134e034f84bba32af。远端下载APK重新核对3728599字节及完整SHA256，与上述本地产物相同，下载的校验文件逐字一致。正式发布前最终自审覆盖423个新增可达blob共154274750字节，所选高置信凭据标记、排除载荷路径及GitHub对象大小检查0发现。
+
+发布日志状态PUBLISHED_VERIFIED，完整命令、退出码、Release API结果、远端下载及摘要在.local/releases/1.0.58/publication/。当前远端Main仍为ecb9b57fe90d5a5d24299980095bc49953c26aaa。最后追加本发布结果提交后，再次推送同一开发分支。
+
+本次发布任务完成。用户要求先收口，性能优化主任务按用户要求暂停在58检查点，稳定30目标保留未完成状态。

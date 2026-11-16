@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-16T13:17:24.365828+08:00",
+ "updated_at": "2026-11-16T13:20:36.861586+08:00",
  "phase": "荣耀神殿内部持续移动长帧优化，1080P输出及有界内部尺寸目标30继续推进",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3488,8 +3488,8 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-16T00:37:43.134192+08:00",
-   "checkpoint": "\n### 用户收口并授权发布58\n\n用户要求先收口提交当前版本，随后明确今天发布一版优化。停止继续优化与设备输入，按既有GitHub预览Release流程交付1.0.58-preview。授权范围为现有开发分支、精确构建源标签和APK附件，Main维持现状。当前本地HEAD c2329de，源码与测试已提交，工作区干净。58实际源码d79ffa6，119项宿主及Android0，89份输入一致，APK a01c2f64。新增发布任务CODEX-PUBLISH58-20261116。\n\n58/PID10580的普通神殿运动结果。原混合池A1为3052..3219/167间隔28.1933FPS/max63.41ms。新池B1为3694..3831/137间隔23.4004FPS/max779.37ms，但结束遇敌黑场，单列混合窗口。战后同桥段新B2为9346..9418/72间隔25.2911FPS/max77.58ms，原A2为9774..9857/83间隔28.6580FPS/max49.74ms，原A3为10277..10356/79间隔26.4721FPS/max55.03ms，新B3为11730..11793/63间隔27.0242FPS/max62.15ms。B2/A2/A3/B3均前后探索、非零方向及最终零轴，窗口约2.3至3秒。短窗仍有波动，不能宣称常量池获得稳定收益或稳30。\n\n58进程内首次消失突袭为Lv1钢蝠加妖藤，5694..5850/157帧19.6385FPS/max260.13ms，46超50、14超100、0present错误。按实际A后完整8秒计，包含技能及胜利转场，磁盘缓存保持，不能称清缓存冷启动。58暖技能原/新对照尚未完成。\n\n归因补充校正。desc_memo_why[3]打印为dynbuf，源码实际在动态buffer、image身份、texel generation或持久storage复核失败后共用递增。因此撤回将约70至145次统归动态UBO buffer变化的判断。独立常量池为待验证候选，发布说明必须保留这一状态。\n\n内存两次dumpsys分别为探索早期PSS4216634KiB/Graphics706552KiB，战斗后PSS4724611KiB/Graphics827652KiB。中间包含新资源加载与两个实验池的驻留，两点不能证明增长来自UBO池或泄漏，长期内存回归未完成。最后一次输入180733.453已回零。收口时ADB提示荣耀设备不在线，PID10580和gfx-live-ab=none为最后已确认状态，不能称当前在线运行。当前本地current-arm旧名称中的old-mixed只代表启动臂，末次实际已切新路，接手须重新核对。\n\n目前约25至29FPS运动短窗与约19.6FPS首次技能证明稳定30尚未达成。开场、世界地图、完整动态显示、A2DP持续人耳及跨设备全套回归继续待验。历史APK及存档保全记录留存。收口发布不代表性能目标完成。\n",
-   "checkpoint_at": "2026-11-16T13:14:45.974764+08:00",
+   "checkpoint": "\n### 1.0.58优化预览已发布并核验\n\nGitHub Release为https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.58-preview。APK和SHA256附件已上传并重新下载，3728599B及SHA a01c2f64a744ddfd8706b46184d8f358d012a4cdff33dcb196148a7a5df4c4bf与本地完全一致。标签精确指向构建源d79ffa6，119项宿主与Android0、89份输入一致。开发分支已推ca05526，最终发布报告追加后再推一次。Main仍ecb9b57，历史APK保留。\n\n最终公开历史自审423 blob/154274750B，在所选凭据模式和排除载荷路径范围内0发现，独立审计未执行。完整发布计划、API、命令退出码、回读摘要和附件在.local/releases/1.0.58/publication/，status=PUBLISHED_VERIFIED。\n\n用户要求先收口提交，随后授权今天发布优化版。发布任务已完成，设备离线且没有运行中的本轮构建/采样/自动输入。性能主任务按用户要求暂停，58常量池收益及暖技能、全场景、长期内存、A2DP完整听感仍待验证，稳定30未达。下次恢复先核设备、PID、末次none实验臂与461私有存档，读取最终发布报告后再继续。\n",
+   "checkpoint_at": "2026-11-16T13:20:36.861586+08:00",
    "write_state": "FROZEN_USER_REQUESTED_WRAPUP"
   },
   {
@@ -3502,9 +3502,9 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-16T13:14:45.974764+08:00",
-   "checkpoint": "\n### 58发布预检完成\n\n用户今天发布优化版的授权已记录，沿用现有公开仓库与预览Release流程。最终1.0.58 APK字节与荣耀已安装候选一致，a01c2f64/3728599B。119项宿主、Android0、89份输入一致，签名校验通过，versionCode58/versionName1.0.58-preview/ARM64/最低API28已核。ZIP CRC通过，内置金手指资源与此前已授权发布30的资源逐字相同，资源字节不在报告中输出。新增可达历史419个blob共152339370B，限定高置信凭据标记与排除载荷路径自审0发现，独立审计未执行。\n\n发布说明和CODEX-PUBLISH58-20261116.md已形成可审阅结果，明确仍有掉帧、常量池收益待验及全套回归缺口。标签精确指向构建源d79ffa6，当前开发分支随发布推送，Main保持当前远端ecb9b57。准备推送与Release上传，随后下载附件复核完整SHA及校验文件。设备离线不影响既有构建及发布操作，继续保持收口状态。\n",
-   "write_state": "ACTIVE",
-   "checkpoint_at": "2026-11-16T13:17:24.365828+08:00"
+   "checkpoint": "\n### 1.0.58优化预览已发布并核验\n\nGitHub Release为https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.58-preview。APK和SHA256附件已上传并重新下载，3728599B及SHA a01c2f64a744ddfd8706b46184d8f358d012a4cdff33dcb196148a7a5df4c4bf与本地完全一致。标签精确指向构建源d79ffa6，119项宿主与Android0、89份输入一致。开发分支已推ca05526，最终发布报告追加后再推一次。Main仍ecb9b57，历史APK保留。\n\n最终公开历史自审423 blob/154274750B，在所选凭据模式和排除载荷路径范围内0发现，独立审计未执行。完整发布计划、API、命令退出码、回读摘要和附件在.local/releases/1.0.58/publication/，status=PUBLISHED_VERIFIED。\n\n用户要求先收口提交，随后授权今天发布优化版。发布任务已完成，设备离线且没有运行中的本轮构建/采样/自动输入。性能主任务按用户要求暂停，58常量池收益及暖技能、全场景、长期内存、A2DP完整听感仍待验证，稳定30未达。下次恢复先核设备、PID、末次none实验臂与461私有存档，读取最终发布报告后再继续。\n",
+   "write_state": "COMPLETE_HANDED_BACK",
+   "checkpoint_at": "2026-11-16T13:20:36.861586+08:00"
   }
  ],
  "tasks": [
@@ -10010,14 +10010,14 @@
    "dependencies": [],
    "pass_gates": [],
    "acceptance": "原始PID/帧/场景/符号核对，真实持续移动普通FPS与诊断分窗，CPU/GPU及数据生命周期事实支持归因，显示及原速/声音保持；验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。",
-   "checkpoint": "\n### 用户收口并授权发布58\n\n用户要求先收口提交当前版本，随后明确今天发布一版优化。停止继续优化与设备输入，按既有GitHub预览Release流程交付1.0.58-preview。授权范围为现有开发分支、精确构建源标签和APK附件，Main维持现状。当前本地HEAD c2329de，源码与测试已提交，工作区干净。58实际源码d79ffa6，119项宿主及Android0，89份输入一致，APK a01c2f64。新增发布任务CODEX-PUBLISH58-20261116。\n\n58/PID10580的普通神殿运动结果。原混合池A1为3052..3219/167间隔28.1933FPS/max63.41ms。新池B1为3694..3831/137间隔23.4004FPS/max779.37ms，但结束遇敌黑场，单列混合窗口。战后同桥段新B2为9346..9418/72间隔25.2911FPS/max77.58ms，原A2为9774..9857/83间隔28.6580FPS/max49.74ms，原A3为10277..10356/79间隔26.4721FPS/max55.03ms，新B3为11730..11793/63间隔27.0242FPS/max62.15ms。B2/A2/A3/B3均前后探索、非零方向及最终零轴，窗口约2.3至3秒。短窗仍有波动，不能宣称常量池获得稳定收益或稳30。\n\n58进程内首次消失突袭为Lv1钢蝠加妖藤，5694..5850/157帧19.6385FPS/max260.13ms，46超50、14超100、0present错误。按实际A后完整8秒计，包含技能及胜利转场，磁盘缓存保持，不能称清缓存冷启动。58暖技能原/新对照尚未完成。\n\n归因补充校正。desc_memo_why[3]打印为dynbuf，源码实际在动态buffer、image身份、texel generation或持久storage复核失败后共用递增。因此撤回将约70至145次统归动态UBO buffer变化的判断。独立常量池为待验证候选，发布说明必须保留这一状态。\n\n内存两次dumpsys分别为探索早期PSS4216634KiB/Graphics706552KiB，战斗后PSS4724611KiB/Graphics827652KiB。中间包含新资源加载与两个实验池的驻留，两点不能证明增长来自UBO池或泄漏，长期内存回归未完成。最后一次输入180733.453已回零。收口时ADB提示荣耀设备不在线，PID10580和gfx-live-ab=none为最后已确认状态，不能称当前在线运行。当前本地current-arm旧名称中的old-mixed只代表启动臂，末次实际已切新路，接手须重新核对。\n\n目前约25至29FPS运动短窗与约19.6FPS首次技能证明稳定30尚未达成。开场、世界地图、完整动态显示、A2DP持续人耳及跨设备全套回归继续待验。历史APK及存档保全记录留存。收口发布不代表性能目标完成。\n",
-   "updated_at": "2026-11-16T13:14:45.974764+08:00"
+   "checkpoint": "\n### 1.0.58优化预览已发布并核验\n\nGitHub Release为https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.58-preview。APK和SHA256附件已上传并重新下载，3728599B及SHA a01c2f64a744ddfd8706b46184d8f358d012a4cdff33dcb196148a7a5df4c4bf与本地完全一致。标签精确指向构建源d79ffa6，119项宿主与Android0、89份输入一致。开发分支已推ca05526，最终发布报告追加后再推一次。Main仍ecb9b57，历史APK保留。\n\n最终公开历史自审423 blob/154274750B，在所选凭据模式和排除载荷路径范围内0发现，独立审计未执行。完整发布计划、API、命令退出码、回读摘要和附件在.local/releases/1.0.58/publication/，status=PUBLISHED_VERIFIED。\n\n用户要求先收口提交，随后授权今天发布优化版。发布任务已完成，设备离线且没有运行中的本轮构建/采样/自动输入。性能主任务按用户要求暂停，58常量池收益及暖技能、全场景、长期内存、A2DP完整听感仍待验证，稳定30未达。下次恢复先核设备、PID、末次none实验臂与461私有存档，读取最终发布报告后再继续。\n",
+   "updated_at": "2026-11-16T13:20:36.861586+08:00"
   },
   {
    "id": "CODEX-PUBLISH58-20261116",
    "owner": "root",
    "role": "RELEASE",
-   "status": "in_progress",
+   "status": "passed",
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "objective": "Publish the current 1.0.58 preview APK and its exact source tag to the existing GitHub repository under current user authorization.",
@@ -10038,8 +10038,8 @@
    "dependencies": [],
    "pass_gates": [],
    "acceptance": "Exact source and final APK audit, fast-forward development branch and exact source tag, GitHub prerelease assets, remote download digest verification. Performance is still unpassed.",
-   "checkpoint": "\n### 58发布预检完成\n\n用户今天发布优化版的授权已记录，沿用现有公开仓库与预览Release流程。最终1.0.58 APK字节与荣耀已安装候选一致，a01c2f64/3728599B。119项宿主、Android0、89份输入一致，签名校验通过，versionCode58/versionName1.0.58-preview/ARM64/最低API28已核。ZIP CRC通过，内置金手指资源与此前已授权发布30的资源逐字相同，资源字节不在报告中输出。新增可达历史419个blob共152339370B，限定高置信凭据标记与排除载荷路径自审0发现，独立审计未执行。\n\n发布说明和CODEX-PUBLISH58-20261116.md已形成可审阅结果，明确仍有掉帧、常量池收益待验及全套回归缺口。标签精确指向构建源d79ffa6，当前开发分支随发布推送，Main保持当前远端ecb9b57。准备推送与Release上传，随后下载附件复核完整SHA及校验文件。设备离线不影响既有构建及发布操作，继续保持收口状态。\n",
-   "updated_at": "2026-11-16T13:17:24.365828+08:00"
+   "checkpoint": "\n### 1.0.58优化预览已发布并核验\n\nGitHub Release为https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.58-preview。APK和SHA256附件已上传并重新下载，3728599B及SHA a01c2f64a744ddfd8706b46184d8f358d012a4cdff33dcb196148a7a5df4c4bf与本地完全一致。标签精确指向构建源d79ffa6，119项宿主与Android0、89份输入一致。开发分支已推ca05526，最终发布报告追加后再推一次。Main仍ecb9b57，历史APK保留。\n\n最终公开历史自审423 blob/154274750B，在所选凭据模式和排除载荷路径范围内0发现，独立审计未执行。完整发布计划、API、命令退出码、回读摘要和附件在.local/releases/1.0.58/publication/，status=PUBLISHED_VERIFIED。\n\n用户要求先收口提交，随后授权今天发布优化版。发布任务已完成，设备离线且没有运行中的本轮构建/采样/自动输入。性能主任务按用户要求暂停，58常量池收益及暖技能、全场景、长期内存、A2DP完整听感仍待验证，稳定30未达。下次恢复先核设备、PID、末次none实验臂与461私有存档，读取最终发布报告后再继续。\n",
+   "updated_at": "2026-11-16T13:20:36.861586+08:00"
   }
  ],
  "blockers": [
