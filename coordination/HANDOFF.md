@@ -5068,3 +5068,8 @@ https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.30-preview �
 
 53暖技能6秒Perfetto已保全9f6897e3，符号BuildID d7878b63与trace映射一致。RHI运行5350.21/5930.14ms，descriptors_build139、texel_acquire43、hash_memory20 inclusive样本，存在上层INVALID_ELF不作独占比例。hash来源17条驻留texel、3条图像；源代码已有4lane整段hash。CSV已到120000上限，不能计算此次普通FPS。trace BOOTTIME与输入MONOTONIC相差318.504986771秒，以clock_snapshot对齐。领取有界写区间校验候选，仅在同一原本可复用提交内跳过可证无重叠的重复hash，保留整段回退；实际收益待A/B。
 当前19273已再次施放消失突袭，源39c5bf9/53，仍复用461。root持有输入，未改正式存档或Main。
+
+### 54范围校验候选
+
+54有界texel写区间校验实现完成。仅既有Honor/Adreno范围，gfx-live-ab=texelrange保留原路。同提交且完整64条以内无重叠才复用，提交reset、漏历史、重叠、异常范围全量hash。原pending writeback/report/event检查保持先执行。生产函数提取ASan/UBSan测试覆盖变化尾字节、在用旧副本、slot退休刷新、reset、64/65写、环首重叠、原路/非Honor、超过64居民、跨槽/格式和无效范围，与既有组件共5项通过。实际收益及完整构建尚待验证。
+没有跨提交假定CPU内容不变，也没有开启写保护跟踪。新增range_hits/hash_mb接在原texel_resident计数行，未增加诊断开关。
