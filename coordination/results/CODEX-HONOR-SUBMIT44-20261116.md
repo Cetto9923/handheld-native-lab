@@ -217,9 +217,9 @@ shader、uniform范围、typed/integer、游戏时间与音频配置继续原样
 
 ## 53暖技能CPU复核及后续候选
 
-53暖技能6秒Perfetto已保全9f6897e3，符号BuildID d7878b63与trace映射一致。RHI运行5350.21/5930.14ms，descriptors_build139、texel_acquire43、hash_memory20 inclusive样本，存在上层INVALID_ELF不作独占比例。hash来源17条驻留texel、3条图像；源代码已有4lane整段hash。CSV已到120000上限，不能计算此次普通FPS。trace BOOTTIME与输入MONOTONIC相差318.504986771秒，以clock_snapshot对齐。领取有界写区间校验候选，仅在同一原本可复用提交内跳过可证无重叠的重复hash，保留整段回退；实际收益待A/B。
+53暖技能6秒Perfetto已保全9f6897e3，符号BuildID d7878b63与trace映射一致。RHI运行5350.21/5930.14ms，descriptors_build139、texel_acquire43、hash_memory20 inclusive样本，存在上层INVALID_ELF不作独占比例。hash来源15条驻留texel、5条图像；源代码已有4lane整段hash。CSV已到120000上限，不能计算此次普通FPS。trace BOOTTIME与输入MONOTONIC相差318.504986771秒，以clock_snapshot对齐。领取有界写区间校验候选，仅在同一原本可复用提交内跳过可证无重叠的重复hash，保留整段回退；实际收益待A/B。
 
-匹配PC解析53-descriptor-sites.txt。28个描述符调用点位于4807 texel_acquire，20个位于5066驱动更新。17个hash样本来自驻留texel，3个来自图像。只是inclusive取样，不能相加作为CPU百分比。小写入造成全局epoch增长和大表粗失效为源码事实，实际重复量和收益尚待新计数与同机对照。无改着色器及精度。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。
+匹配PC解析53-descriptor-sites.txt。28个描述符调用点位于4807 texel_acquire，20个位于5066驱动更新。15个hash样本来自驻留texel，5个来自图像。只是inclusive取样，不能相加作为CPU百分比。小写入造成全局epoch增长和大表粗失效为源码事实，实际重复量和收益尚待新计数与同机对照。无改着色器及精度。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。
 
 ### 54范围校验候选
 
@@ -229,3 +229,8 @@ shader、uniform范围、typed/integer、游戏时间与音频配置继续原样
 ### 54构建安装检查点
 
 54源033a4ce clean，116host与Android0，82份源码输入前后SHA一致。APK bb758a851297398d3c8961f7ed87d703465263c421ad9d77d1352f32f8e76fb4/3728599B，install54回读APK及全部9份私有存档SHA、正式源metadata通过。新PID8516复用461；texrecord1/vcache0/adpf0，gfx-live-ab=texelrange先走原粗校验，indtexel新路保持。待标题Continue、神殿移动及同技能冷暖对照。音频与全显示回归未通过。
+
+### 54神殿移动及首次技能
+
+54 PID8516已进入神殿内部桥面。A1原路持续移动5.98秒27.253FPS/max71.85ms，B1新路中途遇敌25.839只作混合诊断并排除移动对比。击败后B2新路同桥面持续移动5.945秒28.930FPS/max47.52ms/0超50，随后A2原路5.882秒28.392FPS/max86.69ms/7超50，均无present错误且前后截图仍探索。短窗收益证据仍不足，不称稳30。首次新路消失突袭两Lv1钢蝠8秒17.496FPS/max246.05ms/19超100，存在多次shader冷加载，原始长帧全保留。range_hits约0.8..1.7/帧，hash约2.6..4.4MiB/帧，实际收益继续暖技能对照。
+53 hash调用来源已用53-hash-sites.csv逐项求和校正，15个来自texel_acquire、5个来自get_image_slow，总数20。此前手工17/3计数撤回，范围校验的候选性质保持。

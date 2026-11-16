@@ -3478,7 +3478,7 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-16T00:37:43.134192+08:00",
-   "checkpoint": "54源033a4ce clean，116host与Android0，82份源码输入前后SHA一致。APK bb758a851297398d3c8961f7ed87d703465263c421ad9d77d1352f32f8e76fb4/3728599B，install54回读APK及全部9份私有存档SHA、正式源metadata通过。新PID8516复用461；texrecord1/vcache0/adpf0，gfx-live-ab=texelrange先走原粗校验，indtexel新路保持。待标题Continue、神殿移动及同技能冷暖对照。音频与全显示回归未通过。",
+   "checkpoint": "54 PID8516已进入神殿内部桥面。A1原路持续移动5.98秒27.253FPS/max71.85ms，B1新路中途遇敌25.839只作混合诊断并排除移动对比。击败后B2新路同桥面持续移动5.945秒28.930FPS/max47.52ms/0超50，随后A2原路5.882秒28.392FPS/max86.69ms/7超50，均无present错误且前后截图仍探索。短窗收益证据仍不足，不称稳30。首次新路消失突袭两Lv1钢蝠8秒17.496FPS/max246.05ms/19超100，存在多次shader冷加载，原始长帧全保留。range_hits约0.8..1.7/帧，hash约2.6..4.4MiB/帧，实际收益继续暖技能对照。",
    "checkpoint_at": "2026-11-16T07:55:52.882806+08:00"
   }
  ],
@@ -9965,8 +9965,8 @@
    "dependencies": [],
    "pass_gates": [],
    "acceptance": "原始PID/帧/场景/符号核对，真实持续移动普通FPS与诊断分窗，CPU/GPU及数据生命周期事实支持归因，显示及原速/声音保持；验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。",
-   "checkpoint": "54源033a4ce clean，116host与Android0，82份源码输入前后SHA一致。APK bb758a851297398d3c8961f7ed87d703465263c421ad9d77d1352f32f8e76fb4/3728599B，install54回读APK及全部9份私有存档SHA、正式源metadata通过。新PID8516复用461；texrecord1/vcache0/adpf0，gfx-live-ab=texelrange先走原粗校验，indtexel新路保持。待标题Continue、神殿移动及同技能冷暖对照。音频与全显示回归未通过。",
-   "updated_at": "2026-11-16T09:07:12.033271+08:00"
+   "checkpoint": "54 PID8516已进入神殿内部桥面。A1原路持续移动5.98秒27.253FPS/max71.85ms，B1新路中途遇敌25.839只作混合诊断并排除移动对比。击败后B2新路同桥面持续移动5.945秒28.930FPS/max47.52ms/0超50，随后A2原路5.882秒28.392FPS/max86.69ms/7超50，均无present错误且前后截图仍探索。短窗收益证据仍不足，不称稳30。首次新路消失突袭两Lv1钢蝠8秒17.496FPS/max246.05ms/19超100，存在多次shader冷加载，原始长帧全保留。range_hits约0.8..1.7/帧，hash约2.6..4.4MiB/帧，实际收益继续暖技能对照。",
+   "updated_at": "2026-11-16T09:17:39.539305+08:00"
   }
  ],
  "blockers": [
