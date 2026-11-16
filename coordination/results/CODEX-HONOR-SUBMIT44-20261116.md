@@ -237,10 +237,12 @@ shader、uniform范围、typed/integer、游戏时间与音频配置继续原样
 
 ### 54暖技能与GPU检查点
 
-54同PID8516暖技能普通窗已补。A1原范围校验为Lv1钢蝠+妖藤，41756..41901/146帧18.2178FPS/max121.76ms/61超50/14超100。B1新范围校验为三Lv1钢蝠，57533..57691/159帧19.9415FPS/max107.32ms/57超50/4超100。两窗stall shader全0，无present错误。敌群不同，不作因果加速比。命中仅约1次/帧，尚无充分范围校验收益证据，已在设备LIVE-AB=texelrange恢复原校验；代码54仍为未验收候选。GPU诊断8帧19263..19270所有query完整且无跳槽，1384x780主7附件通道8.3..11.94ms，CS073ce354约6.0..6.29ms。该诊断强制CPU间接参数回退，不作为普通FPS或新间接路的预算证明。当前结果屏，root持有输入，私有461复用，继续30FPS目标。
+54同PID8516暖技能普通窗已补。A1原范围校验为Lv1钢蝠+妖藤，41756..41901/146帧18.2178FPS/max121.76ms/61超50/14超100。B1新范围校验为三Lv1钢蝠，57533..57691/159帧19.9415FPS/max107.32ms/57超50/4超100。两窗stall shader全0，无present错误。敌群不同，不作因果加速比。命中仅约1次/帧，尚无充分范围校验收益证据，已在设备LIVE-AB=texelrange恢复原校验；代码54仍为未验收候选。GPU诊断8帧19263..19270所有query完整且无跳槽，完整8帧的1384x780主7附件通道按帧合计3.129..11.935ms，其中19266两段合计10.434ms；CS073ce354完整8帧为2.405..6.293ms。该诊断强制CPU间接参数回退，不作为普通FPS或新间接路的预算证明。当前结果屏，root持有输入，私有461复用，继续30FPS目标。
 
 两次测试结束后thermalservice状态均0，属于结束时快照，不能证明测试全程无调频。54首次冷火焰shader日志有reuse0和reuse1混合，缓存retained1437、denied_budget356、peak67108465B已触及64MiB上限。现有XbgPackedShaderWords已用zlib Z_BEST_SPEED无损压缩，take_rewritten逐字输入验证并取走删除。不能把所有reuse0归给预算，也不要重复实现已有压缩或直接放大内存预算。须先用已有模式2预算身份日志核对未覆盖与预算拒绝各自的具体key。
 
 下一项先审查正常CPU读回是否可将重复SHADER_WRITE到HOST_READ屏障合并到提交边界。保留所有GPU依赖、semaphore chain、slot fence和非coherent失效，逐一审计early mapped read再实现。此为候选推断，尚未修改同步代码。Khronos Guide固定a195f15615721921629b894ccbd3c788558305dd，本文SPDX CC-BY-4.0，源文件实取53224B/SHA a035d27f30ce62dc5382402f986e0e36a349fba97d53e9ebdd2a2d03be8d39e4，本地references/有取证索引。官方示例包含shader到host内存依赖、提交、fence等待和mapped invalidate。[固定同步示例](https://github.com/KhronosGroup/Vulkan-Guide/blob/a195f15615721921629b894ccbd3c788558305dd/chapters/synchronization_examples.adoc)
 
 当前本地分支列表无main，git branch --merged main实际返回malformed object name main。尚未证实Main吸收，不删除当前或其它worktree分支。没有推送。所有APK历史保留。稳定30、完整场景运动显示、A2DP及独立QA仍未完成。验收必须完整包含coordination/prompts/_STANDING-audio-acceptance.md。
+
+GPU耗时范围已按gpu-pass.json完整8帧校正，前版转录只覆盖排序靠前记录，其范围撤回。19266主7附件通道分为2.128与8.306ms两段，两段均计入。所有8帧及效果收尾完整保留，未按快慢删帧。
