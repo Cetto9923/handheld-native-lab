@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-16T13:20:36.861586+08:00",
+ "updated_at": "2026-11-16T13:42:09.530077+08:00",
  "phase": "荣耀神殿内部持续移动长帧优化，1080P输出及有界内部尺寸目标30继续推进",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3505,6 +3505,30 @@
    "checkpoint": "\n### 1.0.58优化预览已发布并核验\n\nGitHub Release为https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.58-preview。APK和SHA256附件已上传并重新下载，3728599B及SHA a01c2f64a744ddfd8706b46184d8f358d012a4cdff33dcb196148a7a5df4c4bf与本地完全一致。标签精确指向构建源d79ffa6，119项宿主与Android0、89份输入一致。开发分支已推ca05526，最终发布报告追加后再推一次。Main仍ecb9b57，历史APK保留。\n\n最终公开历史自审423 blob/154274750B，在所选凭据模式和排除载荷路径范围内0发现，独立审计未执行。完整发布计划、API、命令退出码、回读摘要和附件在.local/releases/1.0.58/publication/，status=PUBLISHED_VERIFIED。\n\n用户要求先收口提交，随后授权今天发布优化版。发布任务已完成，设备离线且没有运行中的本轮构建/采样/自动输入。性能主任务按用户要求暂停，58常量池收益及暖技能、全场景、长期内存、A2DP完整听感仍待验证，稳定30未达。下次恢复先核设备、PID、末次none实验臂与461私有存档，读取最终发布报告后再继续。\n",
    "write_state": "COMPLETE_HANDED_BACK",
    "checkpoint_at": "2026-11-16T13:20:36.861586+08:00"
+  },
+  {
+   "task": "CODEX-DATA101-DLC-20261116",
+   "owner": "root",
+   "paths": [
+    ".local/game101-dlc-20261116/",
+    "coordination/results/CODEX-DATA101-DLC-20261116.md",
+    "coordination/docs/UPGRADE101-DLC-20261116.md",
+    "scripts/distribution/build_game_data_overlay.py",
+    "src/runtime/hle/add_on_content.c",
+    "src/runtime/hle/add_on_content.h",
+    "src/runtime/hle/nso_host.c",
+    "src/runtime/hle/nso_host.h",
+    "src/android/native/CMakeLists.txt",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/native/add_on_content_contract.c",
+    "scripts/runtime/verify_add_on_content.sh",
+    "scripts/verify_host.py"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-16T13:42:09.530077+08:00",
+   "checkpoint": "Read-only discovery completed, begin bounded PFS0 inventory and inspect existing extractor capabilities.",
+   "write_state": "ACTIVE"
   }
  ],
  "tasks": [
@@ -10040,6 +10064,45 @@
    "acceptance": "Exact source and final APK audit, fast-forward development branch and exact source tag, GitHub prerelease assets, remote download digest verification. Performance is still unpassed.",
    "checkpoint": "\n### 1.0.58优化预览已发布并核验\n\nGitHub Release为https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.58-preview。APK和SHA256附件已上传并重新下载，3728599B及SHA a01c2f64a744ddfd8706b46184d8f358d012a4cdff33dcb196148a7a5df4c4bf与本地完全一致。标签精确指向构建源d79ffa6，119项宿主与Android0、89份输入一致。开发分支已推ca05526，最终发布报告追加后再推一次。Main仍ecb9b57，历史APK保留。\n\n最终公开历史自审423 blob/154274750B，在所选凭据模式和排除载荷路径范围内0发现，独立审计未执行。完整发布计划、API、命令退出码、回读摘要和附件在.local/releases/1.0.58/publication/，status=PUBLISHED_VERIFIED。\n\n用户要求先收口提交，随后授权今天发布优化版。发布任务已完成，设备离线且没有运行中的本轮构建/采样/自动输入。性能主任务按用户要求暂停，58常量池收益及暖技能、全场景、长期内存、A2DP完整听感仍待验证，稳定30未达。下次恢复先核设备、PID、末次none实验臂与461私有存档，读取最终发布报告后再继续。\n",
    "updated_at": "2026-11-16T13:20:36.861586+08:00"
+  },
+  {
+   "id": "CODEX-DATA101-DLC-20261116",
+   "owner": "root",
+   "role": "GAME_DATA_UPGRADE",
+   "status": "in_progress",
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "objective": "用户提供Downloads/01-SwitchGame下的游戏资料目录，要求制作最新升级档与DLC的数据补丁ZIP及升级说明，优先最简单的覆盖导入。当前目录包含本体1.0.0、唯一升级档1.0.1及见习骑士起步冲刺包DLC。内部版本与内容身份待取证，文件名只作定位线索。",
+   "inputs": [
+    "user supplied base/update/DLC NSP",
+    "1.0.58 source d79ffa6",
+    "existing FFRS data layout"
+   ],
+   "outputs": [
+    ".local/game101-dlc-20261116/",
+    "coordination/results/CODEX-DATA101-DLC-20261116.md",
+    "coordination/docs/UPGRADE101-DLC-20261116.md"
+   ],
+   "write_scope": [
+    ".local/game101-dlc-20261116/",
+    "coordination/results/CODEX-DATA101-DLC-20261116.md",
+    "coordination/docs/UPGRADE101-DLC-20261116.md",
+    "scripts/distribution/build_game_data_overlay.py",
+    "src/runtime/hle/add_on_content.c",
+    "src/runtime/hle/add_on_content.h",
+    "src/runtime/hle/nso_host.c",
+    "src/runtime/hle/nso_host.h",
+    "src/android/native/CMakeLists.txt",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/native/add_on_content_contract.c",
+    "scripts/runtime/verify_add_on_content.sh",
+    "scripts/verify_host.py"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "acceptance": "Verified internal update and DLC identity, exact overlay with matching runtime support, archive CRC and per-file digests, save paths excluded, clear minimal upgrade instructions, explicit device acceptance coverage.",
+   "checkpoint": "Read-only discovery completed, begin bounded PFS0 inventory and inspect existing extractor capabilities.",
+   "updated_at": "2026-11-16T13:42:09.530077+08:00"
   }
  ],
  "blockers": [
