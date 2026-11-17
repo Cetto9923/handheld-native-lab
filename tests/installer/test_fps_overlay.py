@@ -3,12 +3,48 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+import re
 
 ROOT = Path(__file__).resolve().parents[2]
 JAVA = ROOT / 'src/android/app/java/org/ffrs/diagnostic'
 
 
 class FpsOverlay(unittest.TestCase):
+    def test_recreated_activity_keeps_the_running_guests_save_root(self):
+        source = (JAVA / 'GameActivity.java').read_text()
+        declaration = re.search(r'    private (?:static )?File liveSaveRoot;', source).group(0)
+        start = source.index('    private File primarySaveSlot() {')
+        method = source[start:source.index('\n    /**', start)]
+        for restore_bug in (False, True):
+            field = declaration.replace('static ', '') if restore_bug else declaration
+            fixture = '''import java.io.File;
+import java.nio.file.Files;
+public class SaveRootContract {
+''' + field + method + '''
+    public static void main(String[] args) throws Exception {
+        File root = new File(args[0]);
+        File slot = new File(root, "GameSaveData0");
+        Files.write(slot.toPath(), new byte[] {1, 2, 3});
+        SaveRootContract first = new SaveRootContract();
+        first.liveSaveRoot = root;
+        SaveRootContract recreated = new SaveRootContract();
+        if (!slot.equals(recreated.primarySaveSlot()))
+            throw new AssertionError("running save root lost on Activity recreation");
+    }
+}
+'''
+            with tempfile.TemporaryDirectory() as directory:
+                path = Path(directory)
+                java = path / 'SaveRootContract.java'
+                java.write_text(fixture)
+                subprocess.run(['javac', str(java)], check=True, capture_output=True)
+                result = subprocess.run(['java', '-cp', directory, 'SaveRootContract', directory],
+                                        capture_output=True, text=True)
+                if restore_bug:
+                    self.assertNotEqual(result.returncode, 0)
+                else:
+                    self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_surface_loss_preserves_guest_texture_acquisition(self):
         source = ROOT / 'src/graphics/nvn_device/nvn_window.c'
         for restore_bug in (False, True):

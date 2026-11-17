@@ -84,7 +84,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     private Button importButton, storageButton, recoverButton, cancelButton;
     // The directory the guest actually writes its saves into. Kept so the
     // export action can hand the files to the player.
-    private File liveSaveRoot;
+    // The guest remains alive across Activity recreation in this process.
+    private static File liveSaveRoot;
     private static final int PICK_DATA_BUNDLE = 4701;
     private boolean guestStarted, guestStartFailed, surfaceReady;
     private int guestTerminalState;
