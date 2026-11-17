@@ -5501,3 +5501,7 @@ Next construct candidate66 build-plan from candidate65, same assets and source h
 当前新任务CODEX-STABLE69-CHEAT-FPS-20261117，尚未构建69。金手指新增AssetManager直接加载包内32B资源，保留旧存档编辑/备份和读档提示。dd7a5e5的一次载入native挂接仅覆盖736837，尚不适用于b7f965，未吸收。FPS从成功排队的游戏present原子计数，每秒采样，菜单持久开关、默认关闭，隐藏手柄仍显示，Pause/Destroy移除任务。5项生产提取ASan/JVM通过，包含20000并发计数和旧swapchain负对照。原表面夹具首轮放在gpu_ready=0导致失败，已修正夹具时序，原拒绝断言保留。源码修改、任务和报告需要提交后再建稳定69，使用68b同1750种子和32B资产，准确固化全部655源码输入。
 
 当前荣耀输入仍归用户。没有root采样或自动输入进程。外来docs/SWITCH_TO_ANDROID_PORTING_PITFALLS_GUIDE.md保留，Main只读，源修改集中在新任务领取路径。后续构建69后备份、覆盖安装，再核对FPS菜单开关/持久性和金手指独立副本修改恢复。发布文件统一到游戏发布包/02-最终幻想_共鸣_FFRS，旧APK保留。
+
+## 2026-11-17 紧凑显示反馈
+
+69源7903058/112检查/安装APK回读及49私有项、9正式存档保全已通过。用户确认FPS可打开，要求缩小FPS并将10项菜单分两列，串行修正后重建70，保留69历史。 外来指南WIP保留，当前输入归root，设备仅荣耀A42BBB5109000333。

@@ -498,14 +498,17 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             float bw = 2.8f * u, bh = 0.9f * u, by = panel.bottom - 1.5f * u;
             btnReset.set(panel.left + 1.1f * u, by, panel.left + 1.1f * u + bw, by + bh);
             btnDone.set(panel.right - 1.1f * u - 2.2f * u, by, panel.right - 1.1f * u, by + bh);
-            float mw = Math.min(0.34f * w, 11f * u), mh = Math.min(16.0f * u, 0.90f * h);
+            float mw = Math.min(0.76f * w, 18f * u), mh = Math.min(8.8f * u, 0.80f * h);
             menuPanel.set(w / 2f - mw / 2f, h / 2f - mh / 2f, w / 2f + mw / 2f, h / 2f + mh / 2f);
-            // The rows share whatever height is left, so more entries still fit.
-            float spacing = (mh - 2.0f * u) / menuItems.length;
-            float ih = Math.max(0.9f * u, spacing - 0.4f * u);
+            // Drawing and hit testing share the same two-column rectangles.
+            int rows = (menuItems.length + 1) / 2;
+            float spacing = (mh - 1.6f * u) / rows;
+            float iw = (mw - 2.0f * u) / 2f;
+            float ih = spacing - 0.3f * u;
             for (int i = 0; i < menuItems.length; i++) {
-                float iy = menuPanel.top + 1.0f * u + i * spacing;
-                menuItems[i].set(menuPanel.left + 1.2f * u, iy, menuPanel.right - 1.2f * u, iy + ih);
+                float ix = menuPanel.left + 0.7f * u + (i % 2) * (iw + 0.6f * u);
+                float iy = menuPanel.top + 0.6f * u + (i / 2) * spacing;
+                menuItems[i].set(ix, iy, ix + iw, iy + ih);
             }
         }
 
@@ -780,12 +783,13 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 if (editing) drawPanel(c);
             }
             if (owner.fpsVisible) {
+                text.setTextSize(0.26f * u);
+                float width = text.measureText(owner.fpsLabel) + 0.24f * u;
                 fill.setColor(0xB0000000);
-                c.drawRoundRect(0.3f * u, 0.3f * u, 4.6f * u, 1.5f * u, 0.2f * u, 0.2f * u, fill);
+                c.drawRoundRect(0.18f * u, 0.18f * u, 0.18f * u + width, 0.70f * u, 0.08f * u, 0.08f * u, fill);
                 text.setColor(0xFFFFFFFF);
-                text.setTextSize(0.62f * u);
                 text.setTextAlign(Paint.Align.LEFT);
-                c.drawText(owner.fpsLabel, 0.55f * u, 1.12f * u, text);
+                c.drawText(owner.fpsLabel, 0.30f * u, 0.53f * u, text);
                 text.setTextAlign(Paint.Align.CENTER);
             }
             if (menuOpen) drawMenu(c);
@@ -847,8 +851,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 RectF r = menuItems[i];
                 fill.setColor(0x40FFFFFF); c.drawRoundRect(r, u * 0.3f, u * 0.3f, fill);
                 line.setColor(0xA0FFFFFF); c.drawRoundRect(r, u * 0.3f, u * 0.3f, line);
-                text.setColor(0xFFFFFFFF); text.setTextSize(0.62f * u);
-                c.drawText(labels[i], r.centerX(), r.centerY() + 0.2f * u, text);
+                text.setColor(0xFFFFFFFF); text.setTextSize(0.48f * u);
+                c.drawText(labels[i], r.centerX(), r.centerY() + 0.16f * u, text);
             }
             text.setTextSize(0.42f * u); text.setColor(0x90FFFFFF);
             c.drawText("\u70b9\u51fb\u5176\u4ed6\u5904\u53d6\u6d88", menuPanel.centerX(), menuPanel.bottom - 0.5f * u, text);
