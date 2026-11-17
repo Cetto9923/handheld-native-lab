@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-17T19:26:59.202538+08:00",
- "phase": "68b分级回收契约通过，准备构建，RG仍未连接",
+ "updated_at": "2026-11-17T19:30:37.044672+08:00",
+ "phase": "68b分级回收候选构建通过，等待RG重新连接验证",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -3734,7 +3734,7 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-17T11:07:35.928348+08:00",
-   "checkpoint": "68b分级回收源码完成，9项宿主检查通过，两个Android组件编译0。生产快照回放证明68仍会早于技能触发软回收，因此68b在已核准RG预算及真实余量充足时保留warm。硬门槛/系统压力/Android提示仍完整回收。待构建及连机验证。",
+   "checkpoint": "68b源1bf221e完成构建，111宿主及Android退出0，653输入一致，APK ddf0c0e4/3769559B/BuildID324a3647。软门槛仅在核准RG预算、有效余量>10%且无系统提示时保留warm，硬门槛及真正压力继续完整回收。RG断连，未安装，实机收益和独立QA NOT_RUN。",
    "checkpoint_at": "2026-11-17T18:55:15.424740+08:00"
   }
  ],
@@ -10595,7 +10595,7 @@
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acceptance": "花朵为用户线索，按key改写前取得实际draw证据。视频帧率与真实游戏帧率分别记录。移动、长帧和音频分别保留证据。",
-   "checkpoint": "68b分级回收源码完成，9项宿主检查通过，两个Android组件编译0。生产快照回放证明68仍会早于技能触发软回收，因此68b在已核准RG预算及真实余量充足时保留warm。硬门槛/系统压力/Android提示仍完整回收。待构建及连机验证。"
+   "checkpoint": "68b源1bf221e完成构建，111宿主及Android退出0，653输入一致，APK ddf0c0e4/3769559B/BuildID324a3647。软门槛仅在核准RG预算、有效余量>10%且无系统提示时保留warm，硬门槛及真正压力继续完整回收。RG断连，未安装，实机收益和独立QA NOT_RUN。"
   }
  ],
  "blockers": [

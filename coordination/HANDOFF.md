@@ -5477,3 +5477,11 @@ Next construct candidate66 build-plan from candidate65, same assets and source h
 离线调用生产severity回放PID24929的17个已观测快照，68仍有4个快照触发level1，最早在日志20434行、此前帧26174，远早于机械胖陆行鸟91780帧。旧分配轨迹不能预测新包内存和帧率，但证明仅放宽RSS预算无法保证全流程预热缓存存活。68先前APK保留为内部历史，下一步应构建并验证68b。
 
 68b仅在已核准设备预算、level1、没有Android提示、系统可用内存有效且超过10%时，回收临时缓存并保留warm模块、预热管线和改写结果。硬门槛、系统压力、未知内存、其它设备均继续完整回收。GPU完成/读回、槽占用、GPU权威图像保护仍执行。生产提取ASan/UBSan和生命周期9项通过，新增负对照证实软回收误清warm能被捕获，默认完整回收原有阶段断言保持。两个API28策略及回收组件编译0，设备执行NOT_RUN。证据和基线在memory-tier68b/。
+
+## 68b最终构建检查点
+
+68b源1bf221e，Android及111宿主退出0，653输入SHA前后一致。APK ddf0c0e4/3769559B，BuildID324a3647，完整及剥离符号匹配，1750种子相同。candidate68首稿与candidate68b最终候选均保留，优先安装candidate68b，不再使用上节candidate68的旧恢复命令。68b尚未装机或公开发布，独立QA及实机收益NOT_RUN。
+
+下一轮先确认RG477M01445122重新枚举，再将memory-tier68b/policy.android与reclaim.android推送运行，策略输入使用memory-budget68/status.txt和meminfo.txt。组件通过后执行 `python3 .local/water-capital-flowers-20261117/candidate68b/install_test.py`，按直接keyboard路线测试。优先核对soft回收warm_preserved=1、后续技能warm reuse/hit，以及硬门槛/Android关键通知warm_preserved=0和进程存活。1080目前仍依设备测试标记，发行默认统一及神殿/声音/其它机型回归继续待验。当前没有存活构建、采样或自动输入，荣耀继续保留给其它会话。
+
+分支只读审计已保存candidate68b/git-absorption-audit.json。远端main当前ecb9b57，五条本地分支均没有完整被它吸收，因此没有符合用户删除条件的分支。当前优化均已在任务分支提交，外来移植指南WIP继续保留。

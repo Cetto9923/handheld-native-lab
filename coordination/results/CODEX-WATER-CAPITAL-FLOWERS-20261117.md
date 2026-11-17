@@ -140,3 +140,9 @@ candidate66/trace-lars-limit01保存同PID、BuildID及按键时钟的30秒500Hz
 68b在已验证设备预算的软RSS压力、有效系统余量大于10%且没有Android提示时，保留warm缓存，继续完整GPU等待和安全临时缓存回收。level2硬门槛、真正系统压力、Android提示、未知余量及普通手机预算仍走原完整回收。回收日志补充warm_preserved。9项生产提取与生命周期检查退出0，误清warm负对照失败，原完整回收的栅栏/worker/图像权威保护负对照仍通过。API28策略与回收组件编译0，设备运行和真实收益待验。
 
 证据在.local/water-capital-flowers-20261117/memory-budget68/replay/和memory-tier68b/。源包68保持备查，68b尚待构建。远端main只读ls-remote核对仍为ecb9b57，当前优化未被Main吸收，分支删除条件尚未满足。
+
+### 68b最终候选构建完成
+
+源1bf221e1518656c4866c0ad1919b0c2251597744，Android和111项宿主检查退出0，653输入前后SHA相同。APK为.local/water-capital-flowers-20261117/candidate68b/FFRS-1.0.68-preview-universal.apk，3769559B，SHA256 ddf0c0e49ead0e81f528460c7fcec20a15849389ab549e75027913e75f939bd8，native BuildID324a3647a99a66171e6cdfa3a66f68585dc43551。包内1750种子与原候选相同，完整及剥离符号匹配。build-plan.json保存命令、PID、退出、输入摘要，artifact.json保存索引。
+
+RG仍未连接，策略组件、实际软回收保留预热、硬回收及系统通知存活、同技能长帧和冷暖回归全部待实机。没有将候选交给公开发布入口。原先仅预算调整的68内部包同样保留。当前可证明的是宿主与交叉构建，帧率收益仍未得到证明。
