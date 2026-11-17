@@ -5509,3 +5509,11 @@ Next construct candidate66 build-plan from candidate65, same assets and source h
 ## 2026-11-17 资源包玩法金手指71
 
 用户追加原RAR5项，并指定保留R3按住临时恢复。框架来自其指定空轨会话，已实现原子R3状态及预执行跳板，96组原生ARM64寄存器/标志/栈检查通过，真实101模块85条预检与关闭重载恢复通过。071首轮完整host唯一失败为原启动保留顺序，生产顺序已恢复，待最终重建。当前root独占荣耀，首轮菜单五项已选择保存，接下来按同私有94003副本验证，结束测试恢复全关。正式9存档SHA保持。
+
+## 2026-11-17 1.0.71交付检查点
+
+1.0.71最终源b7a08b3，APK bd27d46e/3777820B，113宿主和Android通过，658源码输入一致。荣耀安装回读同SHA，87私有项及9正式存档保全。两列菜单、小FPS、中文角色、5项勾选保存、显式退出重开、最终PID24985五处原指令恢复和R3输入0/1/0通过。统一发布目录已交付APK/校验/中文说明，旧包保留。实际遇敌和战斗收益完整对照、独立QA、其它设备及蓝牙仍待验证，长期帧率目标继续开放。测试设置全关，FPS开启，应用与日志采集已结束。
+
+本轮代码源b7a08b3ed5a30ab41593539c328957e10e29cc0c，native BuildID a7a5cf11384899f111ea9ce7cf7204ea2be7a334，完整及strip符号在.local/stable71-20261117/symbols/。构建计划、113项检查、安装、每个PID的记录和发布索引在该目录。正式游戏数据和原存档之外，实机游戏流程在shield-regression-20261117223071副本测试。当前无构建、采样或自动输入进程。
+
+复验恢复命令为 adb -s A42BBB5109000333 shell am start -n org.ffrs.gamewindow/org.ffrs.diagnostic.GameActivity --es game_dir /sdcard/FFRS --ez isolated_regression_save true --es isolated_regression_resume shield-regression-20261117223071 。测试收益需要显式记录当次PID、原勾选设置和同存档基准。APK历史在发布历史目录，71中间两次构建在first-build/与second-build/。外来docs/SWITCH_TO_ANDROID_PORTING_PITFALLS_GUIDE.md工作区修改保留。
