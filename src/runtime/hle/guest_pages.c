@@ -13,10 +13,12 @@ struct page_allocation {
     int committed, backed;
     struct page_allocation *next;
 };
+enum { MAP_GAP_COUNT = 8 };
 struct page_region {
     uintptr_t base;
     uintptr_t allocation_high_end;
-    uintptr_t map_gap_begin, map_gap_end;
+    struct { uintptr_t begin, end; } map_gaps[MAP_GAP_COUNT];
+    unsigned map_gap_next;
     size_t bytes;
     int live, quarantined;
     struct page_allocation *allocations;
@@ -170,8 +172,12 @@ struct guest_pages_result guest_pages_map(guest_pages *p, uintptr_t address, siz
     /* Previously validated gaps also cover ascending maps below the highest
      * allocation. Frees/splits only remove occupied bytes from such a gap.
      * Every map publishes a new, smaller gap under this same owner lock. */
-    if(address>=r->map_gap_begin && end<=r->map_gap_end)gap_end=r->map_gap_end;
-    else if(address<r->allocation_high_end)
+    int gap_cached=0;
+    for(unsigned i=0;i<MAP_GAP_COUNT;i++)
+        if(address>=r->map_gaps[i].begin && end<=r->map_gaps[i].end) {
+            gap_end=r->map_gaps[i].end;gap_cached=1;break;
+        }
+    if(!gap_cached && address<r->allocation_high_end)
         for (struct page_allocation *a = r->allocations; a; a = a->next) {
             if (overlaps(address, bytes, a->address, a->bytes)) {
                 v.status = GUEST_PAGES_OVERLAP; goto done;
@@ -213,7 +219,16 @@ struct guest_pages_result guest_pages_map(guest_pages *p, uintptr_t address, siz
     }
     a->next = r->allocations; r->allocations = a;
     if(end>r->allocation_high_end)r->allocation_high_end=end;
-    r->map_gap_begin=end;r->map_gap_end=gap_end;
+    /* Interleaved heaps can advance in different known-free gaps. A new map
+     * trims every cached gap it intersects before publishing its upper gap.
+     * Frees only remove occupied bytes, so they cannot invalidate a free gap. */
+    for(unsigned i=0;i<MAP_GAP_COUNT;i++) {
+        if(r->map_gaps[i].begin<end && address<r->map_gaps[i].end)
+            r->map_gaps[i].end=address>r->map_gaps[i].begin?address:r->map_gaps[i].begin;
+    }
+    r->map_gaps[r->map_gap_next].begin=end;
+    r->map_gaps[r->map_gap_next].end=gap_end;
+    r->map_gap_next=(r->map_gap_next+1)%MAP_GAP_COUNT;
     changed(p);
 done:
     pthread_mutex_unlock(&p->mutex);

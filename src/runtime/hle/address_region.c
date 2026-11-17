@@ -13,6 +13,7 @@ struct accessible_interval {
     uintptr_t begin,end;
     struct accessible_interval *next;
 };
+enum { MAP_CURSOR_COUNT = 8 };
 struct reservation {
     uintptr_t address;
     void *mapping;
@@ -20,7 +21,8 @@ struct reservation {
     size_t mapped_guest_bytes;
     int quarantined;
     struct accessible_interval *accessible;
-    struct accessible_interval *map_cursor;
+    struct accessible_interval *map_cursors[MAP_CURSOR_COUNT];
+    unsigned map_cursor_next;
     struct reservation *next;
 };
 static pthread_mutex_t region_mutex=PTHREAD_MUTEX_INITIALIZER;
@@ -205,7 +207,13 @@ struct nso_owned_page_result nso_host_owned_pages_map(uintptr_t address,size_t s
     else if(r->quarantined)result=page_result(NSO_OWNED_PAGE_QUARANTINED,NSO_OWNED_PAGE_DETAIL_NONE,0,0);
     else {
         struct accessible_interval **slot=&r->accessible;
-        if(r->map_cursor && r->map_cursor->end<=address)slot=&r->map_cursor->next;
+        struct accessible_interval *cursor=NULL;
+        for(unsigned i=0;i<MAP_CURSOR_COUNT;i++) {
+            struct accessible_interval *candidate=r->map_cursors[i];
+            if(candidate && candidate->end<=address && (!cursor || candidate->end>cursor->end))
+                cursor=candidate;
+        }
+        if(cursor)slot=&cursor->next;
         while(*slot && (*slot)->end<=address)slot=&(*slot)->next;
         if(*slot && (*slot)->begin<end)
             result=page_result(NSO_OWNED_PAGE_UNSUPPORTED,NSO_OWNED_PAGE_DETAIL_OVERLAP,0,0);
@@ -232,7 +240,8 @@ struct nso_owned_page_result nso_host_owned_pages_map(uintptr_t address,size_t s
                 /* Owned containment plus disjointness bounds the sum by the
                  * requested reservation size, so this addition cannot wrap. */
                 *slot=node;r->mapped_guest_bytes+=size;
-                r->map_cursor=node;
+                r->map_cursors[r->map_cursor_next]=node;
+                r->map_cursor_next=(r->map_cursor_next+1)%MAP_CURSOR_COUNT;
             }
         }
     }
@@ -251,7 +260,8 @@ struct nso_owned_page_result nso_host_owned_pages_free(uintptr_t address,size_t 
     else {
         /* A successful free can delete or split the cached node. Rebuild the
          * forward cursor on a later map while holding this same owner lock. */
-        r->map_cursor=NULL;
+        memset(r->map_cursors,0,sizeof(r->map_cursors));
+        r->map_cursor_next=0;
         struct accessible_interval **slot=&r->accessible;
         while(*slot && (*slot)->end<=address)slot=&(*slot)->next;
         struct accessible_interval *first=*slot,*cursor=first;

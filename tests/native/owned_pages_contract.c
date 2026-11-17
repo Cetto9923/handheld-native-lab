@@ -381,12 +381,37 @@ static int append_tail_reuse_contract(void) {
     return 0;
 }
 
+static int interleaved_cursors_contract(void) {
+    uintptr_t base=0;
+    const size_t stride=32*page;
+    CHECK(!nso_host_allocate_address_region(&base,8*stride));
+    for(unsigned heap=0;heap<8;heap++)
+        CHECK(ok(nso_host_owned_pages_map(base+heap*stride+31*page,page)));
+    for(unsigned index=0;index<16;index++)for(unsigned heap=0;heap<8;heap++)
+        CHECK(ok(nso_host_owned_pages_map(base+heap*stride+index*page,page)));
+    for(unsigned heap=0;heap<8;heap++) {
+        CHECK(nso_host_owned_pages_map(base+heap*stride+15*page,2*page).detail==NSO_OWNED_PAGE_DETAIL_OVERLAP);
+        CHECK(nso_host_owned_pages_map(base+heap*stride+30*page,2*page).detail==NSO_OWNED_PAGE_DETAIL_OVERLAP);
+    }
+    CHECK(ok(nso_host_owned_pages_free(base+4*page,2*page)));
+    CHECK(ok(nso_host_owned_pages_map(base+4*page,2*page)));
+    CHECK(ok(nso_host_owned_pages_free(base+7*stride+31*page,page)));
+    CHECK(ok(nso_host_owned_pages_map(base+7*stride+31*page,page)));
+    CHECK(ok(nso_host_owned_pages_free(base+7*stride+15*page,page)));
+    CHECK(ok(nso_host_owned_pages_map(base+7*stride+16*page,page)));
+    CHECK(ok(nso_host_owned_pages_map(base+7*stride+15*page,page)));
+    CHECK(usage(1,8*stride,137*page));
+    CHECK(!nso_host_free_address_region(base));CHECK(usage(0,0,0));
+    return 0;
+}
+
 int main(void) {
     long value=sysconf(_SC_PAGESIZE);
     CHECK(value>=4096 && value<=65536 && !(value%4096));page=(size_t)value;
     CHECK(!small_contract());CHECK(!guest_subpage_contract());CHECK(!large_reservation());
     CHECK(!host_aligned_neighbors_contract());
     CHECK(!append_tail_reuse_contract());
+    CHECK(!interleaved_cursors_contract());
     CHECK(!threaded_contract());CHECK(!serialized_release());
     int recovery=0;
 #if defined(NSO_OWNED_PAGES_TESTING)

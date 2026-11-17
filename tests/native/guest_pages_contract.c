@@ -305,6 +305,34 @@ static void append_then_reuse_contract(void) {
     CHECK(guest_context_destroy(context).status==GUEST_CONTEXT_OK);
 }
 
+static void interleaved_gaps_contract(void) {
+    const size_t guest=4096, stride=32*guest;
+    guest_context *context=NULL;
+    guest_pages *owner=NULL;
+    struct guest_context_config config={8*stride,2*1024*1024};
+    CHECK(guest_context_create(&config,&context).status==GUEST_CONTEXT_OK);
+    CHECK(guest_pages_create(context,&owner).status==GUEST_PAGES_OK);
+    uintptr_t base=0;
+    CHECK(guest_pages_reserve(owner,8*stride,&base).status==GUEST_PAGES_OK);
+    for(unsigned heap=0;heap<8;heap++)
+        CHECK(guest_pages_map(owner,base+heap*stride+31*guest,guest).status==GUEST_PAGES_OK);
+    for(unsigned page=0;page<16;page++)for(unsigned heap=0;heap<8;heap++)
+        CHECK(guest_pages_map(owner,base+heap*stride+page*guest,guest).status==GUEST_PAGES_OK);
+    snapshot(owner,1,136,0,136*guest);
+    for(unsigned heap=0;heap<8;heap++) {
+        CHECK(guest_pages_map(owner,base+heap*stride+15*guest,2*guest).status==GUEST_PAGES_OVERLAP);
+        CHECK(guest_pages_map(owner,base+heap*stride+30*guest,2*guest).status==GUEST_PAGES_OVERLAP);
+    }
+    CHECK(guest_pages_free_allocations(owner,base+4*guest,2*guest).status==GUEST_PAGES_OK);
+    CHECK(guest_pages_map(owner,base+4*guest,3*guest).status==GUEST_PAGES_OVERLAP);
+    CHECK(guest_pages_map(owner,base+4*guest,2*guest).status==GUEST_PAGES_OK);
+    CHECK(guest_pages_free_exact(owner,base+7*stride+31*guest,guest).status==GUEST_PAGES_OK);
+    CHECK(guest_pages_map(owner,base+7*stride+31*guest,guest).status==GUEST_PAGES_OK);
+    snapshot(owner,1,135,0,136*guest);
+    CHECK(guest_pages_destroy(owner).status==GUEST_PAGES_OK);
+    CHECK(guest_context_destroy(context).status==GUEST_CONTEXT_OK);
+}
+
 int main(void) {
     long actual_page=sysconf(_SC_PAGESIZE);
     CHECK(actual_page>=4096 && actual_page<=65536 && !(actual_page%4096));
@@ -375,6 +403,7 @@ int main(void) {
     CHECK(guest_context_destroy(context).status == GUEST_CONTEXT_OK);
     guest_subpages_contract();
     append_then_reuse_contract();
+    interleaved_gaps_contract();
     printf("{\"checks\":%d,\"errors\":%d,\"recovery_cases\":%d,\"final_pending\":%zu,\"final_charged\":%zu,\"final_tickets\":%zu,\"raw_regions\":%zu,\"guest_page_bytes\":4096,\"legacy_request_bytes\":%zu,\"host_page_bytes\":%zu}\n",
         checks,errors,recovery_cases,cu.pending_bytes,cu.charged_bytes,cu.tickets,raw.region_count,unit,host_page);
     return errors ? 1 : 0;

@@ -3163,7 +3163,9 @@
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-15T13:29:13.445067+08:00",
    "checkpoint": "28已安装，源27e9df8、APK987ab1ee/3699783B，103host+Android0、50份输入一致，存档tar及APK设备字节复核通过。PID16067，GameMode由unsupported变standard、可用standard/custom，未切性能模式。实际Continue加载15秒200Hz CPU采样PTY22481进行中。",
-   "write_state": "ACTIVE"
+   "write_state": "TRANSFERRED_TO_ROOT_WATER_TASK",
+   "released_at": "2026-11-17T14:15:10.696309+08:00",
+   "release_reason": "Same root owner resumed source-verified page mapping optimization. Old build/profile processes absent, paths clean."
   },
   {
    "task": "CODEX-SAVE-MEMORY29-20261115",
@@ -3693,13 +3695,17 @@
     "coordination/results/CODEX-WATER-CAPITAL-FLOWERS-20261117.md",
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
     "src/android/app/gamewindow/AndroidManifest.xml",
-    "tests/device/test_upload_cpu_preserve.py"
+    "tests/device/test_upload_cpu_preserve.py",
+    "src/runtime/hle/guest_pages.c",
+    "src/runtime/hle/address_region.c",
+    "tests/native/guest_pages_contract.c",
+    "tests/native/owned_pages_contract.c"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-17T11:07:35.928348+08:00",
-   "checkpoint": "65 source a1257bb, APK19fad703/3765463B/BuildID2c07a04d, host111+Android0, sourceSHA653 match. RG24373 installed and formal9 rechecked unchanged. Actual outcity and normal chocobo skill tested, LIMIT still NOT_REPRODUCED_THIS_RUN. Two page mapping scan loops identified by sampled PCs. No active build/profiler/input. Current world-map screenshot candidate65/device/checkpoint-screen2.png. Frame CSV reached maxRows120000, restart required for next ordinary CSV sample.",
-   "checkpoint_at": "2026-11-17T14:08:46.187349+08:00"
+   "checkpoint": "66 page mapping candidate: 8 coherent gaps and 8 invalidated-on-free cursors. Host normal465/recovery863 pass; host ASan and RG4KiB contracts pass, both negative controls reject. Real53171-map RG replay median CPU17937.523 ->6546.275ms, all ledgers/cleanup valid. Full APK/gameplay pending. Baseline30e615a, paths saved page-cache66/baseline.",
+   "checkpoint_at": "2026-11-17T14:40:34.265143+08:00"
   }
  ],
  "tasks": [
@@ -10543,12 +10549,16 @@
     "coordination/results/CODEX-WATER-CAPITAL-FLOWERS-20261117.md",
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
     "src/android/app/gamewindow/AndroidManifest.xml",
-    "tests/device/test_upload_cpu_preserve.py"
+    "tests/device/test_upload_cpu_preserve.py",
+    "src/runtime/hle/guest_pages.c",
+    "src/runtime/hle/address_region.c",
+    "tests/native/guest_pages_contract.c",
+    "tests/native/owned_pages_contract.c"
    ],
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acceptance": "花朵为用户线索，按key改写前取得实际draw证据。视频帧率与真实游戏帧率分别记录。移动、长帧和音频分别保留证据。",
-   "checkpoint": "65 source a1257bb, APK19fad703/3765463B/BuildID2c07a04d, host111+Android0, sourceSHA653 match. RG24373 installed and formal9 rechecked unchanged. Actual outcity and normal chocobo skill tested, LIMIT still NOT_REPRODUCED_THIS_RUN. Two page mapping scan loops identified by sampled PCs. No active build/profiler/input. Current world-map screenshot candidate65/device/checkpoint-screen2.png. Frame CSV reached maxRows120000, restart required for next ordinary CSV sample."
+   "checkpoint": "66 page mapping candidate: 8 coherent gaps and 8 invalidated-on-free cursors. Host normal465/recovery863 pass; host ASan and RG4KiB contracts pass, both negative controls reject. Real53171-map RG replay median CPU17937.523 ->6546.275ms, all ledgers/cleanup valid. Full APK/gameplay pending. Baseline30e615a, paths saved page-cache66/baseline."
   }
  ],
  "blockers": [
