@@ -54,6 +54,11 @@ class MemoryPressure(unittest.TestCase):
     def test_production_reclaim(self):
         self.assertEqual(self.run_reclaim().returncode, 0)
 
+    def test_preserve_warm_cache_negative_control(self):
+        before = 'if (!preserve_warm)\n        warm_count = warm::trim_for_memory_pressure(false);'
+        after = 'if (true)\n        warm_count = warm::trim_for_memory_pressure(false);'
+        self.assertNotEqual(self.run_reclaim((before, after)).returncode, 0)
+
     def test_gpu_authority_negative_control(self):
         self.assertEqual(self.run_reclaim(('image.gpu_written || ', '')).returncode, 9)
 

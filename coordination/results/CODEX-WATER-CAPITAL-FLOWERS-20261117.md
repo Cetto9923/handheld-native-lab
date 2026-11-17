@@ -132,3 +132,11 @@ candidate66/trace-lars-limit01保存同PID、BuildID及按键时钟的30秒500Hz
 源4d65315，111宿主及Android退出0，653输入SHA一致。APK为.local/water-capital-flowers-20261117/candidate68/FFRS-1.0.68-preview-universal.apk，3769559B，SHA256 b5b44fac2a4863f048624829232b395dc2c6f741340ade0329f94cea865ba88f，native BuildID5500e843de1f7a5f22ba7bd1c0f3a62ec7e21768。完整和剥离符号匹配，1750管线种子与67相同。输入与命令/退出在build-plan.json，产物索引artifact.json。
 
 掌机断连，尚未安装或验证整包收益。设备冷暖场景、手机reason3存活、原用户LIMIT、声音及独立QA继续待验。荣耀仍供其它会话使用。没有使用荣耀替代掌机验收。本轮状态记录缩进一度扩大diff，已恢复原1空格格式。
+
+### 68b软门槛与硬门槛分别回收
+
+使用生产头文件编译宿主ASan/UBSan程序，回放67 PID24929的17个实际内存快照。68新门槛下4个快照仍为level1，首个RSS4941631488B、available4542865408B，日志20434行此前帧26174，普通机械胖陆行鸟在91780帧。该结果撤回“仅修改门槛即可保证后续技能预热存活”的推断。快照回放沿用旧包分配与回收后的轨迹，无法代替68实机测试，也无法预测其峰值或帧率。
+
+68b在已验证设备预算的软RSS压力、有效系统余量大于10%且没有Android提示时，保留warm缓存，继续完整GPU等待和安全临时缓存回收。level2硬门槛、真正系统压力、Android提示、未知余量及普通手机预算仍走原完整回收。回收日志补充warm_preserved。9项生产提取与生命周期检查退出0，误清warm负对照失败，原完整回收的栅栏/worker/图像权威保护负对照仍通过。API28策略与回收组件编译0，设备运行和真实收益待验。
+
+证据在.local/water-capital-flowers-20261117/memory-budget68/replay/和memory-tier68b/。源包68保持备查，68b尚待构建。远端main只读ls-remote核对仍为ecb9b57，当前优化未被Main吸收，分支删除条件尚未满足。

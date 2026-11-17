@@ -8,7 +8,8 @@
 #include <memory>
 #include <vector>
 
-unsigned phase = 0, unpinned = 0, destroyed_pools = 0, pipeline_clears = 0;
+unsigned phase = 0, unpinned = 0, destroyed_pools = 0, pipeline_clears = 0, warm_trims = 0;
+bool expect_preserved_warm = false;
 using VkBuffer = int;
 struct Arena {
     size_t keep_chunks = 1;
@@ -52,7 +53,7 @@ void complete_all() {
 namespace poolreset {
 void drain() {
     assert(phase == 1);
-    phase = 2;
+    phase = expect_preserved_warm ? 3 : 2;
 }
 } // namespace poolreset
 namespace warm {
@@ -60,6 +61,7 @@ std::atomic<bool> memory_constrained{false};
 std::atomic<unsigned> active_workers{0};
 std::condition_variable async_cv;
 size_t trim_for_memory_pressure(bool idle) {
+    ++warm_trims;
     if (!idle) {
         assert(phase == 0);
         memory_constrained.store(true);
@@ -105,7 +107,9 @@ void clear_pipeline_objects() {
 #include PRODUCTION_HEADER
 
 void initialize() {
-    phase = unpinned = destroyed_pools = pipeline_clears = 0;
+    phase = unpinned = destroyed_pools = pipeline_clears = warm_trims = 0;
+    expect_preserved_warm = false;
+    warm::memory_constrained = false;
     image_index_dirty = false;
     images_epoch = memo_check_gen = memo_epoch = 0;
     images.clear();
@@ -136,12 +140,20 @@ int main() {
         assert(images.count(2) && !images.count(3) && images.count(4));
         assert(image_index_dirty && images_epoch == 1 && memo_check_gen == 1);
         assert(destroyed_pools == 4 && pipeline_clears == (level == 2));
+        assert(warm_trims == 2 && warm::memory_constrained);
         for (unsigned i = 0; i < slots.size(); ++i) {
             assert(slots[i].stream.buffers.empty() && slots[i].uniform.buffers.empty());
             assert((slots[i].readback.buffers == std::vector<int>{40 + int(i)}));
             assert(slots[i].readback.keep_chunks == 1);
         }
     }
+    initialize();
+    expect_preserved_warm = true;
+    reclaim_memory_caches(1, true);
+    assert(warm_trims == 0 && !warm::memory_constrained);
+    assert(destroyed_pools == 4 && pipeline_clears == 0);
+    assert(images.count(1) && images.count(2) && !images.count(3) && images.count(4));
+    assert(image_index_dirty && images_epoch == 1 && memo_check_gen == 1);
     for (unsigned state = 0; state < 4; ++state) {
         initialize();
         if (state == 0)

@@ -69,6 +69,25 @@ int main(int argc, char **argv) {
     // The reported 12 GB phone uses the default profile even with ample RAM.
     assert(severity({3191264ull * 1024, 11844259840ull, 4407549952ull, true}) == 2);
 
+    const Snapshot rg_soft_warning{4941631488ull, 12400549888ull, 4542865408ull, true};
+    assert(severity(rg_soft_warning, rg_limit) == 1);
+    assert(should_preserve_warm_cache(rg_soft_warning, rg_limit, 1, 0));
+    assert(!should_preserve_warm_cache(rg_soft_warning, default_resident_limit, 1, 0));
+    assert(!should_preserve_warm_cache(rg_soft_warning, rg_limit, 2, 0));
+    assert(!should_preserve_warm_cache(rg_soft_warning, rg_limit, 1, 1));
+    assert(!should_preserve_warm_cache(rg_soft_warning, rg_limit, 1, 2));
+    Snapshot unknown_headroom = rg_soft_warning;
+    unknown_headroom.available_known = false;
+    assert(!should_preserve_warm_cache(unknown_headroom, rg_limit, 1, 0));
+    unknown_headroom = rg_soft_warning;
+    unknown_headroom.available = unknown_headroom.total + 1;
+    assert(!should_preserve_warm_cache(unknown_headroom, rg_limit, 1, 0));
+    unknown_headroom.available = unknown_headroom.total / 10;
+    assert(!should_preserve_warm_cache(unknown_headroom, rg_limit, 1, 0));
+    unknown_headroom.available = unknown_headroom.total / 20;
+    assert(!should_preserve_warm_cache(unknown_headroom, rg_limit, 1, 0));
+    assert(!should_preserve_warm_cache({}, rg_limit, 1, 0));
+
     Policy policy;
     assert(policy.poll_due(0, 0));
     assert(!policy.poll_due(poll_interval_ns - 1, 0));

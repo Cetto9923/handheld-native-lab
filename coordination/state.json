@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-17T19:15:32.767046+08:00",
- "phase": "68缓存预算候选构建通过，等待RG重新连接进行实机对照",
+ "updated_at": "2026-11-17T19:26:59.202538+08:00",
+ "phase": "68b分级回收契约通过，准备构建，RG仍未连接",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -3672,7 +3672,6 @@
     ".local/video-flicker62-20261117/",
     "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
     "src/android/app/java/org/ffrs/diagnostic/GameWindowNative.java",
-    "tests/device/memory_reclaim_contract.cpp",
     "tests/installer/test_memory_pressure_lifecycle.py",
     "scripts/verify_host.py",
     "coordination/results/CODEX-MEMORY-SURVIVAL63-20261117.md",
@@ -3702,6 +3701,12 @@
      ],
      "time": "2026-11-17T18:57:41.120372+08:00",
      "reason": "Same root coordinator takes serial ownership; old sessions stopped, source clean and no active build/profiler."
+    },
+    {
+     "path": "tests/device/memory_reclaim_contract.cpp",
+     "to": "CODEX-WATER-CAPITAL-FLOWERS-20261117",
+     "at": "2026-11-17T19:24:19.024666+08:00",
+     "reason": "root verified no active source writer; RG soft-tier cache contract"
     }
    ]
   },
@@ -3723,12 +3728,13 @@
     "src/android/native/guest_boot_jni.cpp",
     "src/graphics/nvn_vulkan/engine/xbg_memory_pressure.h",
     "tests/device/memory_pressure_contract.cpp",
-    "tests/device/test_memory_pressure.py"
+    "tests/device/test_memory_pressure.py",
+    "tests/device/memory_reclaim_contract.cpp"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-17T11:07:35.928348+08:00",
-   "checkpoint": "68源4d65315已构建，111宿主及Android退出0，653输入SHA一致。APK b5b44fac/3769559B/BuildID5500e843，1750种子相同。RG断连，尚未安装，游戏收益及压力注入NOT_RUN，独立QA NOT_RUN。",
+   "checkpoint": "68b分级回收源码完成，9项宿主检查通过，两个Android组件编译0。生产快照回放证明68仍会早于技能触发软回收，因此68b在已核准RG预算及真实余量充足时保留warm。硬门槛/系统压力/Android提示仍完整回收。待构建及连机验证。",
    "checkpoint_at": "2026-11-17T18:55:15.424740+08:00"
   }
  ],
@@ -10583,12 +10589,13 @@
     "src/android/native/guest_boot_jni.cpp",
     "src/graphics/nvn_vulkan/engine/xbg_memory_pressure.h",
     "tests/device/memory_pressure_contract.cpp",
-    "tests/device/test_memory_pressure.py"
+    "tests/device/test_memory_pressure.py",
+    "tests/device/memory_reclaim_contract.cpp"
    ],
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acceptance": "花朵为用户线索，按key改写前取得实际draw证据。视频帧率与真实游戏帧率分别记录。移动、长帧和音频分别保留证据。",
-   "checkpoint": "68源4d65315已构建，111宿主及Android退出0，653输入SHA一致。APK b5b44fac/3769559B/BuildID5500e843，1750种子相同。RG断连，尚未安装，游戏收益及压力注入NOT_RUN，独立QA NOT_RUN。"
+   "checkpoint": "68b分级回收源码完成，9项宿主检查通过，两个Android组件编译0。生产快照回放证明68仍会早于技能触发软回收，因此68b在已核准RG预算及真实余量充足时保留warm。硬门槛/系统压力/Android提示仍完整回收。待构建及连机验证。"
   }
  ],
  "blockers": [

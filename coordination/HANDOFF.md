@@ -5471,3 +5471,9 @@ Next construct candidate66 build-plan from candidate65, same assets and source h
 68源4d65315已构建，111宿主及Android退出0，653输入SHA一致。APK b5b44fac/3769559B/BuildID5500e843，1750种子与67相同，完整及剥离符号匹配。RG未连接，尚未安装，游戏收益及真正压力注入NOT_RUN，独立QA NOT_RUN。直接keyboard输入路线已准备。候选保持本地内部测试状态。
 
 当前只枚举到A42BBB5109000333，继续保持荣耀隔离。没有活动构建、采样或输入。重新连接后依次执行 `python3 .local/water-capital-flowers-20261117/memory-budget68/run_contracts.py`、`python3 .local/water-capital-flowers-20261117/candidate68/install_test.py`。后者会核对9正式源及全部私有文件、安装APK回读，从shield-regression-1682116771762187740副本启动。先观察标题，再按keyboard读取手动01并实际出城。日志按当前PID截取，核对resident_limit5368709120、warm hit/reuse和回收，再测同技能和RUNNING_CRITICAL注入。整体目标保持active。
+
+## 68b软门槛分级修正
+
+离线调用生产severity回放PID24929的17个已观测快照，68仍有4个快照触发level1，最早在日志20434行、此前帧26174，远早于机械胖陆行鸟91780帧。旧分配轨迹不能预测新包内存和帧率，但证明仅放宽RSS预算无法保证全流程预热缓存存活。68先前APK保留为内部历史，下一步应构建并验证68b。
+
+68b仅在已核准设备预算、level1、没有Android提示、系统可用内存有效且超过10%时，回收临时缓存并保留warm模块、预热管线和改写结果。硬门槛、系统压力、未知内存、其它设备均继续完整回收。GPU完成/读回、槽占用、GPU权威图像保护仍执行。生产提取ASan/UBSan和生命周期9项通过，新增负对照证实软回收误清warm能被捕获，默认完整回收原有阶段断言保持。两个API28策略及回收组件编译0，设备执行NOT_RUN。证据和基线在memory-tier68b/。

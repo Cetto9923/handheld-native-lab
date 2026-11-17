@@ -7488,11 +7488,14 @@ void destroy_slots(){
 }
 // Called between guest submissions/presents while holding the engine mutex.
 // Nothing is released until submitted GPU work and guest writebacks complete.
-void reclaim_memory_caches(unsigned level) {
-    size_t warm_count = warm::trim_for_memory_pressure(false);
+void reclaim_memory_caches(unsigned level, bool preserve_warm = false) {
+    size_t warm_count = 0;
+    if (!preserve_warm)
+        warm_count = warm::trim_for_memory_pressure(false);
     complete_all();
     poolreset::drain();
-    warm_count += warm::trim_for_memory_pressure(true);
+    if (!preserve_warm)
+        warm_count += warm::trim_for_memory_pressure(true);
     for (const Slot &slot : active_slots()) {
         if (slot.pending || slot.recording || slot.waiters.n.load() || !slot.copy_readers.empty()) {
             xbg_logf("NVN memory reclaim deferred: submission still owns resources");
@@ -7553,9 +7556,9 @@ void reclaim_memory_caches(unsigned level) {
         clear_pipeline_objects();
     ++memo_epoch;
     xbg_logf("NVN memory reclaim level=%u slots=%zu images=%zu image_bytes=%lld warm_ready=%zu "
-             "warm_workers=%u",
+             "warm_workers=%u warm_preserved=%u",
              level, reclaimed_slots, reclaimed_images, (long long)reclaimed_image_bytes, warm_count,
-             warm::active_workers.load());
+             warm::active_workers.load(), unsigned(preserve_warm));
 }
 void maintain_memory_pressure() {
 #ifdef __ANDROID__
@@ -7574,16 +7577,19 @@ void maintain_memory_pressure() {
     const unsigned level = memory_pressure_policy.reclaim_level(now, before, hint);
     if (!level)
         return;
+    const bool preserve_warm = xbg_memory_pressure::should_preserve_warm_cache(
+        before, memory_pressure_policy.resident_limit, level, hint);
     xbg_logf("NVN memory pressure start level=%u hint=%u rss=%llu available=%llu total=%llu",
              level, hint, (unsigned long long)before.resident,
              (unsigned long long)before.available, (unsigned long long)before.total);
     log_memory_profile_counts(false);
     // A forensic capture may retain raw pointers across these boundaries.
     // Preserve that evidence and release speculative work independently.
-    if (capture.trace || provenance_file || probe_is_active())
-        warm::trim_for_memory_pressure(false);
-    else
-        reclaim_memory_caches(level);
+    if (capture.trace || provenance_file || probe_is_active()) {
+        if (!preserve_warm)
+            warm::trim_for_memory_pressure(false);
+    } else
+        reclaim_memory_caches(level, preserve_warm);
     const int purged = mallopt(M_PURGE, 0);
     const auto after = xbg_memory_pressure::read_snapshot();
     memory_pressure_policy.record_reclaim(after);

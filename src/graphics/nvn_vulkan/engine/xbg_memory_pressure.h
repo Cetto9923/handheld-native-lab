@@ -86,6 +86,16 @@ inline unsigned severity(const Snapshot &snapshot,
     return std::max(resident_level, system_severity(snapshot));
 }
 
+inline bool should_preserve_warm_cache(const Snapshot &snapshot, uint64_t configured,
+                                       unsigned level, unsigned requested) {
+    // Only the tested device budget can retain prewarming during a soft RSS
+    // warning. Unknown headroom and actual system pressure require full trim.
+    return level == 1 && requested == 0 &&
+           resident_limit_bytes(snapshot, configured) > default_resident_limit &&
+           snapshot.available_known && snapshot.total &&
+           snapshot.available <= snapshot.total && snapshot.available > snapshot.total / 10;
+}
+
 struct Policy {
     uint64_t resident_limit = default_resident_limit;
     uint64_t last_poll = 0;
