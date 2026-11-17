@@ -3074,10 +3074,6 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             refreshSetup();
             return;
         }
-        boolean managed = dataInstaller != null && dataInstaller.managed && dataInstaller.root != null
-                && dataInstaller.root.getAbsolutePath().equals(game_dir);
-        File files = managed ? dataInstaller.runtimeRoot : getExternalFilesDir(null);
-        if (!CheatMenu.prepare(this, new File(image), files)) return;
         if (!GUEST_START.begin()) {
             int state = GUEST_START.get();
             guestStarted = state == GuestStartState.STARTING || state == GuestStartState.STARTED;
@@ -3086,6 +3082,16 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             return;
         }
         guestStarted = true;
+        boolean managed = dataInstaller != null && dataInstaller.managed && dataInstaller.root != null
+                && dataInstaller.root.getAbsolutePath().equals(game_dir);
+        File files = managed ? dataInstaller.runtimeRoot : getExternalFilesDir(null);
+        if (!CheatMenu.prepare(this, new File(image), files)) {
+            GUEST_START.finish(false);
+            guestStarted = false;
+            guestStartFailed = true;
+            refreshSetup();
+            return;
+        }
         String saveRoot = managed ? new File(getFilesDir(), "saves").getAbsolutePath() : null;
         boolean isolatedSave = getIntent() != null
                 && getIntent().getBooleanExtra("isolated_regression_save", false);

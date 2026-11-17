@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-17T21:29:57.619290+08:00",
+ "updated_at": "2026-11-17T21:57:01.781745+08:00",
  "phase": "用户收口闪退排查，集成稳定版金手指并添加菜单FPS开关",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -11194,7 +11194,7 @@
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acceptance": "FPS来自成功排队的游戏呈现，跳过/失败不计数，UI读取无渲染锁，开关默认关闭并持久保存，暂停/销毁停止采样。包内金手指资源可读，独立存档副本完成修改和恢复核验。真实原进度保全，APK历史保留，不声称完整游戏兼容。 原码不遇敌按住R3临时恢复、松开再启用，保持寄存器/NZCV/栈与其它按键行为。",
-   "checkpoint": "70源168d46b，Android/112检查通过，荣耀两列菜单、FPS缩小及金手指中文提示已实测。新用户要求集成1.0.1 RAR五项玩法开关，读取空轨现有启动patch框架，R3恢复方式待用户选项，其余实现可继续。"
+   "checkpoint": "71首轮Android0/113宿主1失败为启动保留顺序，生产顺序已恢复、旧契约单项复验0。96组ARM64 R3跳板及真实101模块85条校验通过，首轮已安装，68私有项和9正式存档保全，最终重建及实机五项效果待验。"
   }
  ],
  "blockers": [
