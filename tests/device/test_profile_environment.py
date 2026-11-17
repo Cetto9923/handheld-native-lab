@@ -131,6 +131,10 @@ int main(void) {
     if (w > 1280 || h > 960) return 8;
     if (!aspect_kept((double)w, (double)h, 720.0, 1280.0)) return 9;
     if (abs(x - (1280 - w) / 2) > 1) return 10;
+    /* The landscape game stays 16:9 inside a portrait tablet surface. */
+    nvn_vulkan_fit_preserve_aspect(1920, 1080, 1920, 3000, &x, &y, &w, &h, &scale);
+    if (x != 0 || y != 960 || w != 1920 || h != 1080 || scale != 1.0) return 11;
+    if (!aspect_kept((double)w, (double)h, 1920.0, 1080.0)) return 12;
     return 0;
 }
 """

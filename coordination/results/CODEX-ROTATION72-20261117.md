@@ -27,3 +27,13 @@
 ## 横屏同向验证及竖屏追加
 
 8fba52d/APK96f276e1/3777820B，114宿主检查（summary为准）及Android构建通过，659输入一致，安装105私有项保全。PID30366原生游戏、Java菜单与虚拟按键同时翻转，反向坐标点击校准切回正常，截图已保存。用户实测横向180度掉头并转回，明确反馈能自动转正、菜单与画面一致。断开USB使重启核验尚未完成，已重新连接。用户追加自动竖屏，现改fullSensor四向，继续保持最终blit等比例黑边和手动校准。新版完整构建/竖屏实机验证待执行。
+
+## 四向包安装身份与电脑模式干扰
+
+55e8569 APK17b391c431a3b0bf747f3b83bc0db9d095d1939ad70eea689721e086668e545f、3777820B，native a84ce7ca3f6e4e7f080422f3926d73345c2ba4f1，114宿主与Android通过、659输入匹配。安装105私有项保全，回读base.apk同SHA，version72、更新00:04:16，PID32172前台包org.ffrs.gamewindow、请求FULL_SENSOR。用户确认仍不能竖屏与上下转。实际配置mInHnDesktopMode=true，global is_hn_desktop_mode=1。用户明确授权退出后，通过系统任务栏PC图标长按，观察退出PC模式提示，global变0、同ActivityWindowInfo的mInHnDesktopMode=false。系统默认ignoreOrientationRequest=true。临时wm lock0/free与ignore false/reset均已恢复为原free及默认true，未据此判自动旋转通过。等待用户四向物理复测。
+
+首页短卡在32172当前独立CSV中有记录，17820行的帧间隔中位16.684ms、p95 19.787ms，83个大于100ms，最大3835ms发生启动早期frame29。只使用engine最近32172标记之后85条stall，未与旧PID混用。部分约162ms停顿shader及pipeline为0，仍未定因。后台另有portlab:snk约3GBRSS，进程存在不能直接证明资源竞争。完整原始证据在four-way，性能问题继续开放。
+
+## 退出电脑模式后的实测与拉伸修复
+
+用户已确认退出电脑模式后可以自动旋转，但竖屏将游戏比例拉伸。当前源码的等比例计算本身支持1920x3000，surfaceChanged却只describeWindow、不发布新窗口代次；backend仅按代次识别窗口更换，VK_SUBOPTIMAL仍继续沿用旧尺寸，因此补同Surface尺寸变化的重新发布。生产提取Java覆盖横→竖→横保持同一Surface、每次更新代次且不重开游戏，旧describe路径的负对照失败；C生产比例函数补1920x1080置于1920x3000时完整1920x1080、上下各960黑边。8组件检查通过。真实修复效果继续等构建后验证。此前临时wm设置已恢复free、default、ignore reset及原用户rotation1，PC模式按用户授权保持关闭。

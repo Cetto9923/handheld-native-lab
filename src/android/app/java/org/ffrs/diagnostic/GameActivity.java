@@ -3250,7 +3250,9 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         if (currentActivity.get() != this) return;
         Log.i(TAG, "surface_changed format=" + format
                 + " width_px=" + width + " height_px=" + height);
-        long[] window = GameWindowNative.describeWindow();
+        // A rotation can resize the existing Surface without replacing its pointer.
+        // Publish a new generation so Vulkan rebuilds with the current aspect ratio.
+        long[] window = GameWindowNative.setSurface(holder.getSurface());
         if (window != null) {
             Log.i(TAG, "window_readback present=" + window[0]
                     + " pointer=0x" + Long.toHexString(window[1])

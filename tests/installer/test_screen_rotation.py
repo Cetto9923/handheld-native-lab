@@ -9,6 +9,59 @@ JAVA = ROOT / 'src/android/app/java/org/ffrs/diagnostic'
 
 
 class ScreenRotation(unittest.TestCase):
+    def test_same_surface_resize_publishes_a_fresh_native_window_generation(self):
+        source = (JAVA / 'GameActivity.java').read_text()
+        start = source.index('    @Override public void surfaceChanged(')
+        end = source.index('    @Override public void surfaceDestroyed(', start)
+        method = source[start:end].replace('@Override ', '')
+        fixture = '''
+import java.lang.ref.WeakReference;
+class Log { static void i(String tag, String value) {} }
+class SurfaceHolder {
+    final Object surface = new Object();
+    Object getSurface() { return surface; }
+}
+class GameWindowNative {
+    static long generation;
+    static long[] setSurface(Object surface) {
+        return new long[] {1, 123, 1920, 3000, 1, ++generation};
+    }
+    static long[] describeWindow() { return new long[] {1, 123, 3000, 1920, 1, generation}; }
+}
+public class SurfaceResizeContract {
+    static final String TAG = "test";
+    static WeakReference<SurfaceResizeContract> currentActivity;
+    boolean guestStarted = true;
+    void startGuest() { throw new AssertionError("running guest restarted"); }
+''' + method + '''
+    public static void main(String[] args) {
+        SurfaceResizeContract activity = new SurfaceResizeContract();
+        currentActivity = new WeakReference<>(activity);
+        SurfaceHolder holder = new SurfaceHolder();
+        activity.surfaceChanged(holder, 1, 3000, 1920);
+        activity.surfaceChanged(holder, 1, 1920, 3000);
+        activity.surfaceChanged(holder, 1, 3000, 1920);
+        if (GameWindowNative.generation != 3)
+            throw new AssertionError("same Surface resize left swapchain generation stale");
+    }
+}
+'''
+        for restore_bug in (False, True):
+            implementation = fixture.replace('GameWindowNative.setSurface(holder.getSurface())',
+                                               'GameWindowNative.describeWindow()') if restore_bug else fixture
+            with tempfile.TemporaryDirectory() as directory:
+                path = Path(directory)
+                java = path / 'SurfaceResizeContract.java'
+                java.write_text(implementation)
+                subprocess.run(['javac', str(java)], check=True, capture_output=True)
+                result = subprocess.run(['java', '-cp', directory, 'SurfaceResizeContract'],
+                                        capture_output=True, text=True)
+                if restore_bug:
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn('swapchain generation stale', result.stderr)
+                else:
+                    self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_native_presentation_rotates_both_axes_and_preserves_crop_and_borders(self):
         source = (ROOT / 'src/graphics/nvn_device/nvn_backend_vulkan.c').read_text()
         start = source.index('    memset(&blit, 0, sizeof(blit));')

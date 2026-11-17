@@ -4300,7 +4300,8 @@
     "src/android/native/game_window_jni.cpp",
     "src/runtime/hle/native_window.c",
     "src/runtime/hle/native_window.h",
-    "src/graphics/nvn_device/nvn_backend_vulkan.c"
+    "src/graphics/nvn_device/nvn_backend_vulkan.c",
+    "tests/device/test_profile_environment.py"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
@@ -11349,12 +11350,13 @@
     "src/android/native/game_window_jni.cpp",
     "src/runtime/hle/native_window.c",
     "src/runtime/hle/native_window.h",
-    "src/graphics/nvn_device/nvn_backend_vulkan.c"
+    "src/graphics/nvn_device/nvn_backend_vulkan.c",
+    "tests/device/test_profile_environment.py"
    ],
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acceptance": "菜单两列完整显示，四向屏幕可切换并保持游戏比例，手动180度校准可持久保存，原生画面/触摸可继续操作，诊断版本指纹来自实际APK文件，正式存档保全",
-   "checkpoint": "用户确认横屏重力方向正常、菜单一致，并追加自动竖屏要求。改fullSensor支持四向，保留16:9呈现黑边与手动180校准，重建后验证竖屏菜单/触摸及诊断。"
+   "checkpoint": "用户确认退出PC模式后可自动旋转，但竖屏拉伸。源码surfaceChanged只读窗口未更新发布代次，同一Surface尺寸变更可能沿用旧swapchain并被系统拉伸。将尺寸变更重新发布给native，新增旧路径负对照和竖屏比例契约后重建验证。"
   }
  ],
  "blockers": [
