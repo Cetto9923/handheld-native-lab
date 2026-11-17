@@ -17,3 +17,8 @@ Android34起前台RUNNING_MEMORY及onLowMemory通知已停止发送，因此每�
 Android回调范围取自ComponentCallbacks2官方文档，https://developer.android.com/reference/android/content/ComponentCallbacks2。分配器purge参数由当前NDK26.1的malloc.h定义核对，M_PURGE从API28可用。未引入第三方实现。
 
 首轮Android native编译退出0。生产回收、原子请求和worker生命周期提取测试覆盖GPU权威图像保全、在途资源延后、读回guard、临界门槛与限流，并含删除GPU完成/权威保护/在途保护/worker保护的负对照。当前完整APK构建和真机验收待执行。索尔62人物闪烁另见CODEX-VIDEO-FLICKER-20261117.md，未将其归因于当前内存报告。
+
+
+## 首轮完整构建检查点
+
+首轮源码5617f78的Android打包退出0，111项宿主中110项通过。旧packed-shader提取夹具缺少新增memory_constrained原子依赖声明而编译失败，未将此轮视作通过。已补夹具声明并增加压力状态拒绝继续保留改写缓存的断言，单项复验退出0。首轮原日志及APK保留，最终交付需重新固化输入SHA并重跑完整流程。设备备份已完成，RG477M当前桌面、后台旧61，9正式源存档逐个SHA和331KiB私有files完整tar均保留，尚未安装候选。

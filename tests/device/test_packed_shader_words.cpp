@@ -12,6 +12,7 @@
 int shader_reuse=1;
 void xbg_logf(const char *,...) {}
 namespace warm {
+std::atomic<bool> memory_constrained{false};
 #include "rewrite_cache_production.inc"
 }
 
@@ -22,6 +23,7 @@ static void reset_cache() {
     warm::rewritten_retained=0;
     warm::rewritten_denied_budget=0;
     warm::rewritten_peak_bytes=0;
+    warm::memory_constrained=false;
 }
 
 static void packing_contracts() {
@@ -58,6 +60,11 @@ static void packing_contracts() {
     assert(warm::take_rewritten("shader",repeated,restored) && restored==noise);
     assert(warm::rewritten_bytes==0 && warm::rewritten.empty());
     assert(!warm::take_rewritten("shader",repeated,restored) && restored==noise);
+
+    warm::memory_constrained=true;
+    warm::retain_rewritten("pressure",repeated,noise);
+    assert(warm::rewritten.empty() && warm::rewritten_bytes==0);
+    warm::memory_constrained=false;
 
     warm::retain_rewritten("mismatch",repeated,noise);
     auto mismatch=repeated;mismatch.back()^=1;

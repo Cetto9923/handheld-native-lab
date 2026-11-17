@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-17T09:26:12.757400+08:00",
+ "updated_at": "2026-11-17T09:36:59.294697+08:00",
  "phase": "优先低内存存活改造，索尔62人物闪烁另记录待取证",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3673,14 +3673,15 @@
     "coordination/results/CODEX-MEMORY-SURVIVAL63-20261117.md",
     "coordination/results/CODEX-VIDEO-FLICKER-20261117.md",
     "coordination/docs/RELEASE63-UNIVERSAL-20261117.md",
-    "tests/device/memory_warm_contract.cpp"
+    "tests/device/memory_warm_contract.cpp",
+    "tests/device/test_packed_shader_words.cpp"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-17T08:57:16.075948+08:00",
-   "checkpoint": "63主动压力检测/JNI回调/缓存回收首版完成，首轮native compile0。正在复验7项生产提取回归及生命周期JVM。进入最终构建前还需补实际压力注入及显示保全。原机reason3存活与Thor角色闪烁NOT_RUN。",
+   "checkpoint": "63首轮Android0，111宿主仅旧packed提取夹具缺新增atomic依赖失败，已补mock并加压力拒绝保留断言，单项复验0。RG正式9文件SHA备份及私有files归档完成，当前桌面，尚未安装。下一步最终重建，命令仍run_build.py。",
    "write_state": "ACTIVE",
-   "checkpoint_at": "2026-11-17T09:26:12.757400+08:00"
+   "checkpoint_at": "2026-11-17T09:36:59.294697+08:00"
   }
  ],
  "tasks": [
@@ -10489,12 +10490,13 @@
     "coordination/results/CODEX-MEMORY-SURVIVAL63-20261117.md",
     "coordination/results/CODEX-VIDEO-FLICKER-20261117.md",
     "coordination/docs/RELEASE63-UNIVERSAL-20261117.md",
-    "tests/device/memory_warm_contract.cpp"
+    "tests/device/memory_warm_contract.cpp",
+    "tests/device/test_packed_shader_words.cpp"
    ],
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acceptance": "压力信号覆盖主动检测与Android回调，前台不依赖已废弃回调；清理前实际完成GPU/写回，GPU权威内容和活跃引用保全；缓存丢弃可重建；源码和构建SHA一致；目标实机存活验收单列，原1080与游戏时序保留",
-   "checkpoint": "63主动压力检测/JNI回调/缓存回收首版完成，首轮native compile0。正在复验7项生产提取回归及生命周期JVM。进入最终构建前还需补实际压力注入及显示保全。原机reason3存活与Thor角色闪烁NOT_RUN。"
+   "checkpoint": "63首轮Android0，111宿主仅旧packed提取夹具缺新增atomic依赖失败，已补mock并加压力拒绝保留断言，单项复验0。RG正式9文件SHA备份及私有files归档完成，当前桌面，尚未安装。下一步最终重建，命令仍run_build.py。"
   }
  ],
  "blockers": [
