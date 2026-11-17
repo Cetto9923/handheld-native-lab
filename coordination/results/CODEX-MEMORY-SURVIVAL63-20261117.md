@@ -1,5 +1,17 @@
 # 63低内存存活候选
 
+## 最终构建与本地数据包校验
+
+最终源码1cdc8a4，Android打包退出0，111项宿主检查通过，653项源码输入前后SHA一致。APK3749079字节，SHA256 f0869f2330683c03ac948298ad7b2ebaf04c5c87a8bbb572337be99ecf6601f0，native BuildID 2d264639711a3ea5da00c963b221b606178d78d0。assets与62逐字节相同，首轮失败记录保留。
+
+RG477M安装回读摘要一致，正式源9文件在安装后及压力测试后逐项SHA一致，本轮使用隔离存档shield-regression-1682116771762187740。荣耀设备继续由另一会话使用，本轮未操作。
+
+设备测试目录曾缺sdk.nso和shaders.hnla。从已有发布FFRS-data.zip提取，通过CRC和设备SHA回读后补入此前不存在的标准路径。首次恢复把archive放入app files属于本次操作的路径选择错误，导致Missing shader fae0b835a11360e2，改为main同级路径后启动成功。原设备缺件的遗漏环节尚未确认。
+
+成功进程19679到达1.0.1标题。主动level1及am send-trim-memory RUNNING_CRITICAL注入的level2均实际触发。该次强回收RSS2622824448降至2618085376字节，约4.52MiB。随后同进程仍运行，最新会话未见fatal。标题常驻约2.44GiB，缓存释放收益有限，不能据此宣称真实reason3问题已解决。真实战斗、切场景、原机低内存长期存活与Thor闪烁回归待执行。
+
+本地发布目录FFRS-data.zip全量unzip -t退出0，共40550项全部通过。压缩11297593596字节，展开16912576940字节，SHA256 7ef10ea4597b0394094e0509f8165a35d2841265cde59b3d4065c9b9cb3acc9f。SDK12076520字节及archive6089256224字节均在包内，完整提取CRC通过。原始证据见.local/memory-survival63-20261117/release-data-verification.json、release-data-crc.log及device/plan.json。外部网盘上传副本尚未下载核验。
+
 用户要求内存压力大时允许卡顿，优先维持游戏进程。报告9a58a9d4中的62 PID17941和2427均为reason3，系统最后RSS采样3.64/3.04GiB。旧fatal文件仍停在00:47，不能用来解释新退出。原报告及展开日志见.local/memory-survival63-20261117/。
 
 ## 预先约束
