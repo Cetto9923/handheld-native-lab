@@ -59,6 +59,7 @@ int main() {
 #include <cstdint>
 #include <cstring>
 #include <vector>
+#include "src/graphics/nvn_vulkan/engine/xbg_writeback_policy.h"
 #define _Static_assert static_assert
 extern "C" {
 #include "src/graphics/nvn_vulkan/nvn/nvn_obj.h"
@@ -115,6 +116,12 @@ static void success_case(int format, int target, unsigned width, unsigned height
 }
 
 int main() {
+    // Every supported 16-byte-segment format, including partial head/tail
+    // segments, odd rows, mip levels, array layers and volume slices.
+    for (int format : {0x01,0x05,0x25,0x29,0x2e}) {
+        for (int x=0;x<17;++x)
+            success_case(format,1,65,35,1,3,0,{x,3,0,31,19,1},0);
+    }
     success_case(0x25,1,64,32,1,5,0,{0,0,0,64,32,1},0);
     success_case(0x25,1,64,32,1,5,0,{3,2,0,7,9,1},1);
     success_case(0x45,1,63,31,1,5,0,{4,4,0,59,27,1},0);
@@ -124,6 +131,21 @@ int main() {
     success_case(0x25,2,16,8,5,3,0,{1,1,1,9,5,3},0);
     success_case(0x48,2,16,16,5,3,0,{0,0,0,8,8,2},1);
 
+    // Aliased source/destination must keep the original per-block copy order.
+    {
+        tex_t aliased{};aliased.d.target=1;aliased.d.format=0x25;
+        aliased.d.width=64;aliased.d.height=32;aliased.d.depth=1;aliased.d.levels=1;
+        nvn_tex_layout(&aliased.d,&aliased.L);
+        std::vector<uint8_t> storage(aliased.L.size+512),expected;
+        for(size_t i=0;i<storage.size();++i)storage[i]=uint8_t(i*17+31);
+        expected=storage;aliased.mem=storage.data();
+        for(uint32_t y=0;y<32;++y)for(uint32_t x=0;x<64;++x){
+            uint64_t at=nvn_bl_offset(x*4,y,0,256,32,2,0);
+            memcpy(expected.data()+at,expected.data()+512+y*256+x*4,4);
+        }
+        assert(guest_texture_write(&aliased,0,0,{0,0,0,64,32,1},storage.data()+512,256,8192));
+        assert(storage==expected);
+    }
     tex_t texture{};texture.d.target=1;texture.d.format=0x25;
     texture.d.width=64;texture.d.height=32;texture.d.depth=1;texture.d.levels=1;
     nvn_tex_layout(&texture.d, &texture.L);

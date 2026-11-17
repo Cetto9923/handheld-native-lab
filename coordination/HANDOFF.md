@@ -5425,3 +5425,7 @@ GitHub v1.0.62-preview已发布并回读APK/SHA/中文说明一致，精确tag08
 ### 63首轮打包与夹具适配
 
 63首轮Android0，111宿主仅旧packed提取夹具缺新增atomic依赖失败，已补mock并加压力拒绝保留断言，单项复验0。RG正式9文件SHA备份及私有files归档完成，当前桌面，尚未安装。下一步最终重建，命令仍run_build.py。
+
+## 2026-11-17 13时 水都与LIMIT检查点
+
+64源码447b4e0，APK641f7fcb，BuildID16e456dd，111宿主和Android0，1750管线实际预热成功。RG覆盖前后正式9存档及私有文件校验一致。PID3437出城采样及CPU栈已保存，纹理CPU镜像约814ms inclusive，页映射仍为热点。16字节连续段复制候选通过扩展ASan/UBSan，尚未装包。现由root独占掌机，正在战斗推进LIMIT。 原始证据在.local/water-capital-flowers-20261117/candidate64/。trace-outcity01仅打开2D地图，实际3D过图为trace-outcity02。55秒trace-limit01未覆盖实际LIMIT，仅菜单/普通动作。Honor未操作。Main只读，外国指南WIP未动。

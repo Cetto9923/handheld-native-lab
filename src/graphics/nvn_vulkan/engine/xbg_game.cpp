@@ -6427,17 +6427,25 @@ bool guest_texture_write(const tex_t *t,unsigned level,unsigned layer,const NVNc
     uint32_t bx0=r.xoffset/bw,by0=r.yoffset/bh,nbx=(r.width+bw-1)/bw,nby=(r.height+bh-1)/bh;
     if(uint64_t(bx0+nbx)*bpb>row_bytes || by0+nby>rows || row<size_t(nbx)*bpb)return false;
     bool volume=t->d.target==2;if(volume?uint32_t(r.zoffset+r.depth)>slices:layer+uint32_t(r.zoffset+r.depth)>t->L.layers)return false;
+    const uint64_t source_bytes=image_stride<=UINT64_MAX/uint64_t(r.depth)?image_stride*uint64_t(r.depth):0;
+    const bool segment_copy=bpb<16 && 16%bpb==0 && xbg_wb_range_valid(uint64_t(uintptr_t(src)),source_bytes) &&
+        !xbg_wb_overlaps(uint64_t(uintptr_t(src)),source_bytes,uint64_t(uintptr_t(t->mem)),t->L.size);
     // Validate every destination before changing guest bytes. A failed mirror
     // must leave the same CPU contents for the GPU-preservation fallback.
     for(int write=0;write<2;write++)for(int k=0;k<r.depth;k++){
         uint64_t b=base;uint32_t z=0;
         if(volume)z=uint32_t(r.zoffset+k);
         else{uint32_t a,b2,c,d2;uint64_t lb;unsigned h1,h2;if(nvn_deswizzle_geom(&t->d,level,layer+uint32_t(r.zoffset+k),&a,&b2,&c,&lb,&h1,&h2,&d2))return false;b=lb;}
-        for(uint32_t y=0;y<nby;y++)for(uint32_t x=0;x<nbx;x++){
-            uint64_t at=b+nvn_bl_offset((bx0+x)*bpb,by0+y,z,row_bytes,rows,th,td);
-            if(at>t->L.size || bpb>t->L.size-at)return false;
-            if(t->pool && (at>t->pool->size-uint64_t(t->off) || bpb>t->pool->size-uint64_t(t->off)-at))return false;
-            if(write)memcpy(t->mem+at,src+size_t(k)*image_stride+size_t(y)*row+size_t(x)*bpb,bpb);
+        for(uint32_t y=0;y<nby;y++)for(uint32_t x=0;x<nbx*bpb;){
+            uint32_t column=bx0*bpb+x;
+            // Power-of-two texels/BC blocks share a contiguous 16-byte GOB
+            // segment. Preserve per-block ordering for aliases and other formats.
+            uint32_t count=segment_copy?std::min(nbx*bpb-x,16-(column&15)):bpb;
+            uint64_t at=b+nvn_bl_offset(column,by0+y,z,row_bytes,rows,th,td);
+            if(at>t->L.size || count>t->L.size-at)return false;
+            if(t->pool && (at>t->pool->size-uint64_t(t->off) || count>t->pool->size-uint64_t(t->off)-at))return false;
+            if(write)memcpy(t->mem+at,src+size_t(k)*image_stride+size_t(y)*row+x,count);
+            x+=count;
         }
     }
     return true;
