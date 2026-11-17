@@ -5452,3 +5452,9 @@ Next construct candidate66 build-plan from candidate65, same assets and source h
 66 PID14314通过拉斯韦尔LIMIT I牙月，500Hz记录417336样本丢64。103100/103101帧2997.736/1921.165ms，第二帧管线创建1708.6ms，第一帧包含纹理建图和BC解码。67 BC5候选保留UNORM16调色板和float归一化，宿主ASan、65536端点对/8索引、RG CPU及40组GPU采样通过，16种BC各4096块与旧版逐字节相同。掌机组件CPU减少约13–17%，整包待构建复验。正式9存档保全，14314帧CSV已满120000，已停止测试进程。原莉德LIMIT仍待复现。
 
 编译与组件脚本在bc5-palette67/run_contracts.py，旧源码在baseline/。下一步以66 build-plan相同环境和1750种子生成67计划，固定653输入后构建、安装回读并复测。LIMIT CPU原始123MiB perf.data和分阶段汇总在candidate66/trace-lars-limit01，已完成记录，没有存活采样进程。源64MiB改写缓存已有压缩，后续先跑模式2核对具体预算key再优化。
+
+## 67实机与68预算修正入口
+
+67源bad67b6已装，111宿主/Android0，APK4b0171d2/BuildID33956114，9正式源最终一致。24929在1080输出/有界动态/解锁条件短路段城36.51、世界34.62FPS，机械胖陆行鸟max171.7ms仍卡。确认固定RSS门槛在系统可用6.76GB时清掉1846预热管线，warm_built累计1859不能作存活证明；需RG单独预算，FLC12GB reason3报告维持手机防护。65/66当前实际都warm1806，旧1802→1806说法已撤回。
+
+当前RG24929处于森林战斗拉斯韦尔菜单，雷因睡眠，刹足螳螂剩余。设备标记shader-reuse1、opmode1、render-policy1、target-fps0。Honor仍由其它会话占用。APK发布默认仍未统一1080，保持待验。下一步按已测RG和可用系统内存校验RSS预算，手机默认保持现有防护；构建68验证预热缓存实际存活和技能rewrite/pipeline耗时。日志在compare67-1080/engine-battle-latest.log，第2098至2102行有首轮回收。原FLC报告在memory-survival63-20261117，total11.8GB，不能统一按总RAM放宽。没有后台采样，外国指南WIP保留。
