@@ -80,7 +80,7 @@ int main(void) {
         methods = source[start:end]
         fixture = '''
 class ActivityInfo {
-    static final int SCREEN_ORIENTATION_SENSOR_LANDSCAPE = 6;
+    static final int SCREEN_ORIENTATION_FULL_SENSOR = 10;
     static final int SCREEN_ORIENTATION_REVERSE_LANDSCAPE = 8;
 }
 class Log { static void i(String tag, String value) {} }
@@ -114,22 +114,22 @@ public class RotationContract {
         Preferences preferences = new Preferences();
         RotationContract first = new RotationContract(preferences);
         first.restoreScreenOrientation();
-        if (first.requested != 6 || preferences.saved) throw new AssertionError("default");
+        if (first.requested != 10 || preferences.saved) throw new AssertionError("default");
         first.rootLayout = new FrameLayout();
         first.applyScreenOrientation();
         if (first.rootLayout.rotation != 0f) throw new AssertionError("default transform");
         first.rotateScreen();
-        if (first.requested != 6 || !preferences.saved || first.rootLayout.rotation != 180f
+        if (first.requested != 10 || !preferences.saved || first.rootLayout.rotation != 180f
                 || !GameWindowNative.reverse)
             throw new AssertionError("reverse on orientation-ignoring tablet");
         RotationContract recreated = new RotationContract(preferences);
         recreated.restoreScreenOrientation();
         recreated.rootLayout = new FrameLayout();
         recreated.applyScreenOrientation();
-        if (recreated.requested != 6 || recreated.rootLayout.rotation != 180f || !GameWindowNative.reverse)
+        if (recreated.requested != 10 || recreated.rootLayout.rotation != 180f || !GameWindowNative.reverse)
             throw new AssertionError("restore after view creation");
         recreated.rotateScreen();
-        if (recreated.requested != 6 || preferences.saved || recreated.rootLayout.rotation != 0f || GameWindowNative.reverse) throw new AssertionError("normal");
+        if (recreated.requested != 10 || preferences.saved || recreated.rootLayout.rotation != 0f || GameWindowNative.reverse) throw new AssertionError("normal");
     }
 }
 '''
@@ -143,7 +143,7 @@ public class RotationContract {
         self.assertLess(create.index('setContentView(root);'), create.index('applyScreenOrientation();'))
         self.assertIn('root.addView(surface_view,', create)
         self.assertIn('root.addView(touchPad,', create)
-        self.assertIn('android:screenOrientation="sensorLandscape"', (ROOT / 'src/android/app/gamewindow/AndroidManifest.xml').read_text())
+        self.assertIn('android:screenOrientation="fullSensor"', (ROOT / 'src/android/app/gamewindow/AndroidManifest.xml').read_text())
         self.assertIn('else if (i == 9) owner.toggleFpsOverlay();', source)
         self.assertIn('else owner.rotateScreen();', source)
         self.assertIn('"旋转屏幕180°"', source)

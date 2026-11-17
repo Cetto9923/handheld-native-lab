@@ -11320,7 +11320,7 @@
    "owner": "root",
    "role": "ANDROID_UI",
    "status": "in_progress",
-   "objective": "默认重力感应横屏并加入可持久保存的180度手动校准，验证原生画面与触摸同向；补充诊断APK指纹核对黑屏报告版本",
+   "objective": "支持四向重力感应并加入可持久保存的180度手动校准，验证原生画面与触摸同向；补充诊断APK指纹核对黑屏报告版本",
    "inputs": [
     "用户Y700四代横屏倒置反馈及手动校准要求",
     "用户确认realme已安装最新版，与报告metadata60存在差异，实际APK身份待证据核对",
@@ -11353,8 +11353,8 @@
    ],
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
-   "acceptance": "菜单两列完整显示，横屏正反可切换并持久保存，原生画面/触摸可继续操作，版本指纹来自实际APK文件，正式存档保全",
-   "checkpoint": "010cf9c原生画面已180度翻转，但单独旋转TouchPad后覆盖菜单不可见，用户与截图确认。改为共同父布局旋转Java UI及Surface透明区域，保留已验证的原生blit翻转，完整重建后复验。"
+   "acceptance": "菜单两列完整显示，四向屏幕可切换并保持游戏比例，手动180度校准可持久保存，原生画面/触摸可继续操作，诊断版本指纹来自实际APK文件，正式存档保全",
+   "checkpoint": "用户确认横屏重力方向正常、菜单一致，并追加自动竖屏要求。改fullSensor支持四向，保留16:9呈现黑边与手动180校准，重建后验证竖屏菜单/触摸及诊断。"
   }
  ],
  "blockers": [
