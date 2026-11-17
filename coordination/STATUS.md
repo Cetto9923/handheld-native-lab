@@ -1,7 +1,7 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-17T22:31:07.885569+08:00
-阶段：1.0.71本地交付，功能菜单与启动金手指完成范围验证
+状态事件时间：2026-11-17T22:49:53.270422+08:00
+阶段：1.0.71已发布GitHub，APK和中文说明回读核验完成
 总控：Codex /root 本轮接管
 更新方式：按事件更新，没有后台自动刷新。
 
@@ -260,6 +260,7 @@
 | CODEX-WATER-CAPITAL-FLOWERS-20261117 | PERF_INVESTIGATION | blocked | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-HONOR-OPENING68-20261117 | DEVICE_QA | paused | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-STABLE69-CHEAT-FPS-20261117 | ANDROID_RELEASE | ready_for_review | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-PUBLISH71-20261117 | RELEASE | passed | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 
 ## 独占写入
 
@@ -482,6 +483,7 @@
 - {"task": "CODEX-WATER-CAPITAL-FLOWERS-20261117", "owner": "root", "paths": [".local/water-capital-flowers-20261117/", "coordination/results/CODEX-WATER-CAPITAL-FLOWERS-20261117.md", "src/graphics/nvn_vulkan/engine/xbg_game.cpp", "tests/device/test_upload_cpu_preserve.py", "src/runtime/hle/guest_pages.c", "src/runtime/hle/address_region.c", "tests/native/guest_pages_contract.c", "tests/native/owned_pages_contract.c", "src/graphics/nvn_vulkan/engine/xbg_texture.c", "tests/native/bc5_filter_contract.cpp", "src/android/native/guest_boot_jni.cpp", "src/graphics/nvn_vulkan/engine/xbg_memory_pressure.h", "tests/device/memory_pressure_contract.cpp", "tests/device/test_memory_pressure.py", "tests/device/memory_reclaim_contract.cpp"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-17T11:07:35.928348+08:00", "checkpoint": "RG477M连续三轮未连接，本轮USB列表仅荣耀，mDNS为空，无活动构建或采样。68b源码/构建已提交，111宿主及Android通过，真实技能/出城/神殿/压力存活和声音验收待RG。目标受阻，等待重新连接并恢复。", "checkpoint_at": "2026-11-17T18:55:15.424740+08:00", "transferred_paths": [{"path": "src/android/app/gamewindow/AndroidManifest.xml", "to": "CODEX-STABLE69-CHEAT-FPS-20261117", "at": "2026-11-17T20:31:39.837271+08:00", "reason": "root verified clean source and no live build; user prioritizes stable release"}]}
 - {"task": "CODEX-HONOR-OPENING68-20261117", "owner": "root", "paths": [".local/honor-opening68-20261117/", "coordination/results/CODEX-HONOR-OPENING68-20261117.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-17T20:05:19.743306+08:00", "checkpoint": "设备只读核对完成，准备备份60及原日志，再装最新68b并用空独立存档启动。"}
 - {"task": "CODEX-STABLE69-CHEAT-FPS-20261117", "owner": "root", "paths": ["src/android/app/java/org/ffrs/diagnostic/GameActivity.java", "src/android/app/java/org/ffrs/diagnostic/GameWindowNative.java", "src/android/app/java/org/ffrs/diagnostic/SaveCheater.java", "src/android/native/game_window_jni.cpp", "src/graphics/nvn_device/nvn_engine.c", "src/graphics/nvn_device/nvn_engine.h", "src/android/app/gamewindow/AndroidManifest.xml", "tests/installer/test_fps_overlay.py", "tests/native/present_counter_contract.c", "scripts/verify_host.py", ".local/stable69-20261117/", "coordination/results/CODEX-STABLE69-CHEAT-FPS-20261117.md", "tests/installer/test_touch_pad_menu.py", "src/graphics/nvn_device/nvn_window.c", "tests/native/window_acquire_contract.c", "tests/installer/test_present_outcome.py", ".local/stable70-20261117/", "coordination/docs/RELEASE70-UNIVERSAL-20261117.md", "src/android/app/java/org/ffrs/diagnostic/CheatMenu.java", "src/runtime/nso/nso_loader.c", "src/runtime/nso/nso_loader.h", "src/runtime/hle/guest_process.c", "src/android/native/guest_boot_jni.cpp", "scripts/android/build_game_window_apk.sh", "tests/native/test_startup_cheats.py", ".local/stable71-20261117/", "src/runtime/hle/hid_bridge.c", "src/runtime/hle/hid_bridge.h", "tests/native/hid_bridge_contract.c", "tests/native/r3_trampoline_contract.S", "coordination/docs/RELEASE71-UNIVERSAL-20261117.md", "coordination/EXPERIENCE.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-17T20:31:39.837271+08:00", "checkpoint": "1.0.71最终源b7a08b3，APK bd27d46e/3777820B，113宿主和Android通过，658源码输入一致。荣耀安装回读同SHA，87私有项及9正式存档保全。两列菜单、小FPS、中文角色、5项勾选保存、显式退出重开、最终PID24985五处原指令恢复和R3输入0/1/0通过。统一发布目录已交付APK/校验/中文说明，旧包保留。实际遇敌和战斗收益完整对照、独立QA、其它设备及蓝牙仍待验证，长期帧率目标继续开放。测试设置全关，FPS开启，应用与日志采集已结束。", "checkpoint_at": "2026-11-17T22:31:07.885569+08:00", "write_state": "CHECKPOINTED_DELIVERED_FOR_REVIEW"}
+- {"task": "CODEX-PUBLISH71-20261117", "owner": "root", "paths": ["coordination/results/CODEX-PUBLISH71-20261117.md", ".local/releases/1.0.71/", ".local/stable71-20261117/artifact.json"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-17T22:45:01.753275+08:00", "checkpoint": "GitHub v1.0.71已发布并设为最新版，精确构建标签b7a08b3；APK bd27d46e/3777820B、SHA和中文说明三附件经草稿与公开发布两轮下载逐字核验。正文和标签回读一致，Main前后ecb9b57。测试覆盖及完整战斗收益待验项已在正文披露。状态PUBLISHED_VERIFIED。", "checkpoint_at": "2026-11-17T22:49:53.270422+08:00", "write_state": "COMPLETE_SCOPED_DELIVERY"}
 
 ## 阻塞
 
@@ -618,6 +620,7 @@
 - CODEX-HONOR30-PERF31-20261115: 荣耀30安装/存档备份一致；73495模块候选等价；108宿主及Android构建通过。 初轮归档限shell可读条目，完整覆盖结论已撤回，33补齐9文件SHA。
 - CODEX-PAD-CHORD33: 用户确认组合键切换正常；109项宿主及Android通过；全9文件应用侧源/副本SHA逐项一致，补齐4个mode600旧档。
 - 1.0.71最终源b7a08b3，APK bd27d46e/3777820B，113宿主和Android通过，658源码输入一致。荣耀安装回读同SHA，87私有项及9正式存档保全。两列菜单、小FPS、中文角色、5项勾选保存、显式退出重开、最终PID24985五处原指令恢复和R3输入0/1/0通过。统一发布目录已交付APK/校验/中文说明，旧包保留。实际遇敌和战斗收益完整对照、独立QA、其它设备及蓝牙仍待验证，长期帧率目标继续开放。测试设置全关，FPS开启，应用与日志采集已结束。
+- GitHub v1.0.71已发布并设为最新版，精确构建标签b7a08b3；APK bd27d46e/3777820B、SHA和中文说明三附件经草稿与公开发布两轮下载逐字核验。正文和标签回读一致，Main前后ecb9b57。测试覆盖及完整战斗收益待验项已在正文披露。状态PUBLISHED_VERIFIED。
 
 ## 未验证
 

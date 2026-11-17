@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-17T22:31:07.885569+08:00",
- "phase": "1.0.71本地交付，功能菜单与启动金手指完成范围验证",
+ "updated_at": "2026-11-17T22:49:53.270422+08:00",
+ "phase": "1.0.71已发布GitHub，APK和中文说明回读核验完成",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -4254,6 +4254,21 @@
    "checkpoint": "1.0.71最终源b7a08b3，APK bd27d46e/3777820B，113宿主和Android通过，658源码输入一致。荣耀安装回读同SHA，87私有项及9正式存档保全。两列菜单、小FPS、中文角色、5项勾选保存、显式退出重开、最终PID24985五处原指令恢复和R3输入0/1/0通过。统一发布目录已交付APK/校验/中文说明，旧包保留。实际遇敌和战斗收益完整对照、独立QA、其它设备及蓝牙仍待验证，长期帧率目标继续开放。测试设置全关，FPS开启，应用与日志采集已结束。",
    "checkpoint_at": "2026-11-17T22:31:07.885569+08:00",
    "write_state": "CHECKPOINTED_DELIVERED_FOR_REVIEW"
+  },
+  {
+   "task": "CODEX-PUBLISH71-20261117",
+   "owner": "root",
+   "paths": [
+    "coordination/results/CODEX-PUBLISH71-20261117.md",
+    ".local/releases/1.0.71/",
+    ".local/stable71-20261117/artifact.json"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-17T22:45:01.753275+08:00",
+   "checkpoint": "GitHub v1.0.71已发布并设为最新版，精确构建标签b7a08b3；APK bd27d46e/3777820B、SHA和中文说明三附件经草稿与公开发布两轮下载逐字核验。正文和标签回读一致，Main前后ecb9b57。测试覆盖及完整战斗收益待验项已在正文披露。状态PUBLISHED_VERIFIED。",
+   "checkpoint_at": "2026-11-17T22:49:53.270422+08:00",
+   "write_state": "COMPLETE_SCOPED_DELIVERY"
   }
  ],
  "tasks": [
@@ -11206,6 +11221,35 @@
     "独立QA及其它设备",
     "蓝牙音频常设验收"
    ]
+  },
+  {
+   "id": "CODEX-PUBLISH71-20261117",
+   "owner": "root",
+   "role": "RELEASE",
+   "status": "passed",
+   "objective": "按用户授权将已交付1.0.71 APK、校验文件及中文说明发布到GitHub并下载核验",
+   "inputs": [
+    "最终APK bd27d46e/3777820B",
+    "源码b7a08b3/113项宿主及Android构建通过",
+    "用户本轮明确授权GitHub发布"
+   ],
+   "outputs": [
+    "coordination/results/CODEX-PUBLISH71-20261117.md",
+    "GitHub v1.0.71"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "coordination/results/CODEX-PUBLISH71-20261117.md",
+    ".local/releases/1.0.71/",
+    ".local/stable71-20261117/artifact.json"
+   ],
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "acceptance": "版本标签指向准确构建源码，公开APK、校验文件及中文说明下载回读一致，说明披露实际验证范围",
+   "checkpoint": "GitHub v1.0.71已发布并设为最新版，精确构建标签b7a08b3；APK bd27d46e/3777820B、SHA和中文说明三附件经草稿与公开发布两轮下载逐字核验。正文和标签回读一致，Main前后ecb9b57。测试覆盖及完整战斗收益待验项已在正文披露。状态PUBLISHED_VERIFIED。",
+   "release_url": "https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.71",
+   "completed_at": "2026-11-17T22:49:53.270422+08:00"
   }
  ],
  "blockers": [
@@ -11360,7 +11404,8 @@
   },
   "CODEX-HONOR30-PERF31-20261115: 荣耀30安装/存档备份一致；73495模块候选等价；108宿主及Android构建通过。 初轮归档限shell可读条目，完整覆盖结论已撤回，33补齐9文件SHA。",
   "CODEX-PAD-CHORD33: 用户确认组合键切换正常；109项宿主及Android通过；全9文件应用侧源/副本SHA逐项一致，补齐4个mode600旧档。",
-  "1.0.71最终源b7a08b3，APK bd27d46e/3777820B，113宿主和Android通过，658源码输入一致。荣耀安装回读同SHA，87私有项及9正式存档保全。两列菜单、小FPS、中文角色、5项勾选保存、显式退出重开、最终PID24985五处原指令恢复和R3输入0/1/0通过。统一发布目录已交付APK/校验/中文说明，旧包保留。实际遇敌和战斗收益完整对照、独立QA、其它设备及蓝牙仍待验证，长期帧率目标继续开放。测试设置全关，FPS开启，应用与日志采集已结束。"
+  "1.0.71最终源b7a08b3，APK bd27d46e/3777820B，113宿主和Android通过，658源码输入一致。荣耀安装回读同SHA，87私有项及9正式存档保全。两列菜单、小FPS、中文角色、5项勾选保存、显式退出重开、最终PID24985五处原指令恢复和R3输入0/1/0通过。统一发布目录已交付APK/校验/中文说明，旧包保留。实际遇敌和战斗收益完整对照、独立QA、其它设备及蓝牙仍待验证，长期帧率目标继续开放。测试设置全关，FPS开启，应用与日志采集已结束。",
+  "GitHub v1.0.71已发布并设为最新版，精确构建标签b7a08b3；APK bd27d46e/3777820B、SHA和中文说明三附件经草稿与公开发布两轮下载逐字核验。正文和标签回读一致，Main前后ecb9b57。测试覆盖及完整战斗收益待验项已在正文披露。状态PUBLISHED_VERIFIED。"
  ],
  "unverified": [
   "完整CRT/TLS/线程/guest内存上下文与真正完整入口，正式T02参考行为验收。",

@@ -5517,3 +5517,13 @@ Next construct candidate66 build-plan from candidate65, same assets and source h
 本轮代码源b7a08b3ed5a30ab41593539c328957e10e29cc0c，native BuildID a7a5cf11384899f111ea9ce7cf7204ea2be7a334，完整及strip符号在.local/stable71-20261117/symbols/。构建计划、113项检查、安装、每个PID的记录和发布索引在该目录。正式游戏数据和原存档之外，实机游戏流程在shield-regression-20261117223071副本测试。当前无构建、采样或自动输入进程。
 
 复验恢复命令为 adb -s A42BBB5109000333 shell am start -n org.ffrs.gamewindow/org.ffrs.diagnostic.GameActivity --es game_dir /sdcard/FFRS --ez isolated_regression_save true --es isolated_regression_resume shield-regression-20261117223071 。测试收益需要显式记录当次PID、原勾选设置和同存档基准。APK历史在发布历史目录，71中间两次构建在first-build/与second-build/。外来docs/SWITCH_TO_ANDROID_PORTING_PITFALLS_GUIDE.md工作区修改保留。
+
+## 2026-11-17 GitHub 1.0.71发布开始
+
+用户明确授权发布APK，准备推送精确构建源码b7a08b3的v1.0.71标签，并附APK、SHA和中文说明。当前外来指南WIP保留。普通发布日志和可恢复计划位于.local/releases/1.0.71/publication/，当前尚未创建远端标签或Release。
+
+## 2026-11-17 GitHub 1.0.71发布完成
+
+GitHub v1.0.71已发布并设为最新版，精确构建标签b7a08b3；APK bd27d46e/3777820B、SHA和中文说明三附件经草稿与公开发布两轮下载逐字核验。正文和标签回读一致，Main前后ecb9b57。测试覆盖及完整战斗收益待验项已在正文披露。状态PUBLISHED_VERIFIED。
+
+发布页 https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.71 。本地源APK和统一发布目录均为bd27d46e82ea4e79a52e98f677faee986da0922f06b03f6b9bef89cdb82cbbe9。元数据、命令、退出码及两轮下载证据保存在.local/releases/1.0.71/publication/。无本轮运行中的上传进程。角色/帧率功能与源码测试状态沿71报告范围解释，长期帧率目标和实际战斗收益继续分别验收。
