@@ -1,0 +1,15 @@
+# realme场景主体黑屏诊断
+
+用户确认截图与报告来自同一台设备，并确认该用户安装的是最新版。报告文件FFRS-report-20261117-221909.zip，436166B，SHA256 22ff8a30e14eb5368a61d42a84c078a66235806ef3f3b8bbf263314a368a51c8。截图任务文字、小地图和顶层菜单可见，3D主体极暗。原证据位于.local/realme-black-20261117/。
+
+## 版本与运行范围
+
+metadata记录realme RMX3800、SM8650、Android16、version_name=1.0.60-preview、version_code=60，客机BuildID b7f965b9d7227db8e29f04e84ea7331b。用户的安装确认与版本字段存在冲突，按最新版本仍异常继续跟进。ReportActivity实际通过PackageManager读取PackageInfo，源码没有把60写死。当前ZIP缺少APK文件指纹和主进程PID，实际安装与导出进程的版本关系尚待核对。
+
+engine.log为26MB追加日志的64KB文件头与2MB尾部拼接，包含CODEX_FRAME指向28917、10838、3733的运行段。39次graphics pipeline creation failed(-13)均位于3733启动标识之前。PID3733段里该项失败为0。将这些旧错误作为当前黑屏原因缺少依据。guest_boot.log只保留当前启动头及尾，所需Surface/交换链建立明细落在采样间隙。最新尾部继续绘制并有音频，但场景画面正确性仍需图形取证。
+
+## 当前源码核对
+
+1.0.71的1080P档通过usesDockedRendering连接FFRS_PROFILE_TABLET，采用RGBX Surface和优先OPAQUE的交换链，明确处理本游戏场景alpha为0而HUD有alpha的呈现特性。报告中operation_mode=1、phone_sd8g3、1920x1080与该档一致。已有不透明路径存在，当前证据尚未确认黑屏发生于透明合成、着色、资源还是其它绘制环节。
+
+72补充诊断进程PID、活跃主进程PID、PackageInfo更新时间、直接解析APK的版本与APK文件SHA256，帮助下一份报告绑定实际安装包。用户另已被询问是否开启金手指及全部关闭后重启的对照结果。诊断增强与手动方向修正分别验证，黑屏根因和realme上的实际修复状态继续开放。

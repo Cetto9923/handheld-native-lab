@@ -3,6 +3,7 @@ package org.ffrs.diagnostic;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
+import android.content.pm.ActivityInfo;
 import java.util.ArrayList;
 import android.media.AudioManager;
 import android.media.AudioDeviceCallback;
@@ -92,6 +93,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     private final Handler guestWatchHandler = new Handler(Looper.getMainLooper());
     private final Runnable guestWatch = new GuestWatch(this);
     private boolean fpsVisible;
+    private boolean reverseLandscape;
     private String fpsLabel = "FPS …";
     private final FrameRateSampler frameRate = new FrameRateSampler();
     private final Runnable fpsUpdate = new FpsUpdate(this);
@@ -134,6 +136,24 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         startFpsMonitor();
         if (touchPad != null) touchPad.invalidate();
         Log.i(TAG, "fps_overlay enabled=" + fpsVisible);
+    }
+
+    private void restoreScreenOrientation() {
+        reverseLandscape = getPreferences(MODE_PRIVATE).getBoolean("reverse_landscape", false);
+        applyScreenOrientation();
+    }
+
+    private void applyScreenOrientation() {
+        setRequestedOrientation(reverseLandscape
+                ? ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
+                : ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+    }
+
+    private void rotateScreen() {
+        reverseLandscape = !reverseLandscape;
+        getPreferences(MODE_PRIVATE).edit().putBoolean("reverse_landscape", reverseLandscape).apply();
+        applyScreenOrientation();
+        Log.i(TAG, "screen_orientation reverse_landscape=" + reverseLandscape);
     }
     private final TouchPadShortcut padShortcut = new TouchPadShortcut();
     private final Runnable padShortcutDispatch = new PadShortcutDispatch(this);
@@ -419,7 +439,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         private final RectF menuBtn = new RectF();
         private final RectF btnReset = new RectF(), btnDone = new RectF();
         private final RectF menuPanel = new RectF();
-        private final RectF[] menuItems = new RectF[10];
+        private final RectF[] menuItems = new RectF[11];
         private int handleId = -1, lsId = -1, rsId = -1, menuId = -1;
         private float u, vw, vh, lsKx, lsKy, rsKx, rsKy;
         private final Ctl[] ctls = new Ctl[13];
@@ -498,7 +518,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             float bw = 2.8f * u, bh = 0.9f * u, by = panel.bottom - 1.5f * u;
             btnReset.set(panel.left + 1.1f * u, by, panel.left + 1.1f * u + bw, by + bh);
             btnDone.set(panel.right - 1.1f * u - 2.2f * u, by, panel.right - 1.1f * u, by + bh);
-            float mw = Math.min(0.76f * w, 18f * u), mh = Math.min(8.8f * u, 0.80f * h);
+            float mw = Math.min(0.76f * w, 18f * u), mh = Math.min(10.0f * u, 0.80f * h);
             menuPanel.set(w / 2f - mw / 2f, h / 2f - mh / 2f, w / 2f + mw / 2f, h / 2f + mh / 2f);
             // Drawing and hit testing share the same two-column rectangles.
             int rows = (menuItems.length + 1) / 2;
@@ -629,7 +649,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 else if (i == 6) owner.userToggleTouchPad();
                 else if (i == 7) owner.startGuestScan();
                 else if (i == 8) owner.startActivity(new Intent(owner, ReportActivity.class));
-                else owner.toggleFpsOverlay();
+                else if (i == 9) owner.toggleFpsOverlay();
+                else owner.rotateScreen();
                 return true;
             }
             return true;
@@ -845,7 +866,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                     shown ? "隐藏手柄" : "显示手柄",
                     "扫描实时数据",    // guest memory scan
                     "导出诊断报告",
-                    owner.fpsVisible ? "关闭帧率显示" : "开启帧率显示"
+                    owner.fpsVisible ? "关闭帧率显示" : "开启帧率显示",
+                    "旋转屏幕180°"
             };
             for (int i = 0; i < menuItems.length; i++) {
                 RectF r = menuItems[i];
@@ -917,6 +939,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        restoreScreenOrientation();
         fpsVisible = getPreferences(MODE_PRIVATE).getBoolean("show_fps", false);
         try (java.io.InputStream key = getAssets().open("ffrs_save_key.bin")) {
             Log.i(TAG, "cheat packaged asset ready=" + SaveCheater.initializeKey(key));

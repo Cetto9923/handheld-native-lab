@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-17T22:49:53.270422+08:00",
+ "updated_at": "2026-11-17T23:10:00.911148+08:00",
  "phase": "1.0.71已发布GitHub，APK和中文说明回读核验完成",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -4269,6 +4269,37 @@
    "checkpoint": "GitHub v1.0.71已发布并设为最新版，精确构建标签b7a08b3；APK bd27d46e/3777820B、SHA和中文说明三附件经草稿与公开发布两轮下载逐字核验。正文和标签回读一致，Main前后ecb9b57。测试覆盖及完整战斗收益待验项已在正文披露。状态PUBLISHED_VERIFIED。",
    "checkpoint_at": "2026-11-17T22:49:53.270422+08:00",
    "write_state": "COMPLETE_SCOPED_DELIVERY"
+  },
+  {
+   "task": "CODEX-REALME-BLACK-20261117",
+   "owner": "root",
+   "paths": [
+    ".local/realme-black-20261117/",
+    "coordination/results/CODEX-REALME-BLACK-20261117.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-17T22:55:19.729695+08:00",
+   "checkpoint": "仅证据和报告写入，源码先只读。"
+  },
+  {
+   "task": "CODEX-ROTATION72-20261117",
+   "owner": "root",
+   "paths": [
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "src/android/app/java/org/ffrs/diagnostic/ReportActivity.java",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/installer/test_touch_pad_menu.py",
+    "tests/installer/test_screen_rotation.py",
+    "tests/installer/test_diagnostic_report.py",
+    "scripts/verify_host.py",
+    "coordination/results/CODEX-ROTATION72-20261117.md",
+    ".local/rotation72-20261117/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-17T23:10:00.911148+08:00",
+   "checkpoint": "root串行接手已完成71的相关Android文件，无其它实际源码写入。"
   }
  ],
  "tasks": [
@@ -11250,6 +11281,66 @@
    "checkpoint": "GitHub v1.0.71已发布并设为最新版，精确构建标签b7a08b3；APK bd27d46e/3777820B、SHA和中文说明三附件经草稿与公开发布两轮下载逐字核验。正文和标签回读一致，Main前后ecb9b57。测试覆盖及完整战斗收益待验项已在正文披露。状态PUBLISHED_VERIFIED。",
    "release_url": "https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.71",
    "completed_at": "2026-11-17T22:49:53.270422+08:00"
+  },
+  {
+   "id": "CODEX-REALME-BLACK-20261117",
+   "owner": "root",
+   "role": "GRAPHICS_DIAGNOSTICS",
+   "status": "in_progress",
+   "objective": "分析realme RMX3800用户场景主体黑屏而UI可见的诊断报告，核对版本、当次运行与现有修正，按证据修复确认问题",
+   "inputs": [
+    "/Users/yuyan9923/Downloads/FFRS-report-20261117-221909.zip",
+    "报告SHA256 22ff8a30e14eb5368a61d42a84c078a66235806ef3f3b8bbf263314a368a51c8",
+    "截图任务文字和小地图正常、场景主体极暗，来源同设备关系待用户确认"
+   ],
+   "outputs": [
+    "coordination/results/CODEX-REALME-BLACK-20261117.md",
+    "证据支持的修正或精确补采要求"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/realme-black-20261117/",
+    "coordination/results/CODEX-REALME-BLACK-20261117.md"
+   ],
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "acceptance": "按日志所属进程/时刻归因，复用显示修复经验，区分已覆盖与未复验范围，任何新源码修正执行对应回归",
+   "checkpoint": "用户确认当前为最新版，采集版本标识与实际安装说法存在差异，待APK指纹。日志engine包含28917/10838/3733多次运行，39次图形管线失败均在3733之前；最新段无同类失败。当前源码已有1080P不透明Surface与swapchain路径，黑屏原因尚未证实，继续定位。"
+  },
+  {
+   "id": "CODEX-ROTATION72-20261117",
+   "owner": "root",
+   "role": "ANDROID_UI",
+   "status": "in_progress",
+   "objective": "加入可持久保存的180度横屏手动校准，验证原生画面与触摸同向；补充诊断APK指纹以核对黑屏报告版本",
+   "inputs": [
+    "用户Y700四代横屏倒置反馈及手动校准要求",
+    "用户确认realme已安装最新版，与报告metadata60存在差异，实际APK身份待证据核对",
+    "1.0.71已发布源码b7a08b3"
+   ],
+   "outputs": [
+    "1.0.72手动横屏校准包",
+    "APK及进程身份诊断字段",
+    "范围回归及中文说明"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "src/android/app/java/org/ffrs/diagnostic/ReportActivity.java",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/installer/test_touch_pad_menu.py",
+    "tests/installer/test_screen_rotation.py",
+    "tests/installer/test_diagnostic_report.py",
+    "scripts/verify_host.py",
+    "coordination/results/CODEX-ROTATION72-20261117.md",
+    ".local/rotation72-20261117/"
+   ],
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "acceptance": "菜单两列完整显示，横屏正反可切换并持久保存，原生画面/触摸可继续操作，版本指纹来自实际APK文件，正式存档保全",
+   "checkpoint": "已确认manifest固定landscape；以Android Activity整体反向横屏处理校准。"
   }
  ],
  "blockers": [

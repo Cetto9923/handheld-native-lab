@@ -5527,3 +5527,7 @@ Next construct candidate66 build-plan from candidate65, same assets and source h
 GitHub v1.0.71已发布并设为最新版，精确构建标签b7a08b3；APK bd27d46e/3777820B、SHA和中文说明三附件经草稿与公开发布两轮下载逐字核验。正文和标签回读一致，Main前后ecb9b57。测试覆盖及完整战斗收益待验项已在正文披露。状态PUBLISHED_VERIFIED。
 
 发布页 https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.71 。本地源APK和统一发布目录均为bd27d46e82ea4e79a52e98f677faee986da0922f06b03f6b9bef89cdb82cbbe9。元数据、命令、退出码及两轮下载证据保存在.local/releases/1.0.71/publication/。无本轮运行中的上传进程。角色/帧率功能与源码测试状态沿71报告范围解释，长期帧率目标和实际战斗收益继续分别验收。
+
+## 2026-11-17 realme主体黑屏报告
+
+报告221909，SHA22ff8a30，元数据realme RMX3800/SM8650/Android16/APK60，场景文字和小地图可见、主体极暗。证据保存在.local/realme-black-20261117/。当前仅分析采样日志和源码，用户正在核对截图与版本来源。已发布71的状态保持按其实际验证范围解释。

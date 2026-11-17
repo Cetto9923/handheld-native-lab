@@ -179,16 +179,39 @@ public final class ReportActivity extends Activity {
         }
     }
 
+    static String apkSha256(File file) throws Exception {
+        java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+        try (InputStream input = new FileInputStream(file)) {
+            byte[] buffer = new byte[16384];
+            int count;
+            while ((count = input.read(buffer)) != -1) digest.update(buffer, 0, count);
+        }
+        StringBuilder value = new StringBuilder();
+        for (byte element : digest.digest()) value.append(String.format(Locale.ROOT, "%02x", element & 255));
+        return value.toString();
+    }
+
     private static String metadata(Context context, File external) {
         StringBuilder text = new StringBuilder("FFRS diagnostic metadata\n");
         text.append("created_at=").append(new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.US).format(new Date()))
                 .append("\ncreated_at_ms=").append(System.currentTimeMillis())
-                .append("\npackage=").append(context.getPackageName());
+                .append("\npackage=").append(context.getPackageName())
+                .append("\ndiagnostic_pid=").append(android.os.Process.myPid());
         try {
             PackageInfo info = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
             text.append("\nversion_name=").append(info.versionName)
-                    .append("\nversion_code=").append(info.getLongVersionCode());
+                    .append("\nversion_code=").append(info.getLongVersionCode())
+                    .append("\napp_last_update_time_ms=").append(info.lastUpdateTime);
         } catch (Exception e) { text.append("\napp_version=unavailable ").append(describe(e)); }
+        try {
+            String path = context.getApplicationInfo().sourceDir;
+            PackageInfo archive = context.getPackageManager().getPackageArchiveInfo(path, 0);
+            if (archive != null) {
+                text.append("\nbase_apk_version_name=").append(archive.versionName)
+                        .append("\nbase_apk_version_code=").append(archive.getLongVersionCode());
+            }
+            text.append("\nbase_apk_sha256=").append(apkSha256(new File(path)));
+        } catch (Exception e) { text.append("\nbase_apk=unavailable ").append(describe(e)); }
         String soc = Build.VERSION.SDK_INT >= 31 ? Build.SOC_MODEL : Build.HARDWARE;
         text.append("\nmanufacturer=").append(Build.MANUFACTURER)
                 .append("\nmodel=").append(Build.MODEL)
@@ -197,6 +220,17 @@ public final class ReportActivity extends Activity {
                 .append("\nsoc=").append(soc)
                 .append("\nsoc_source=").append(Build.VERSION.SDK_INT >= 31 ? "SOC_MODEL" : "HARDWARE");
         ActivityManager manager = (ActivityManager)context.getSystemService(Context.ACTIVITY_SERVICE);
+        try {
+            if (manager == null) throw new IllegalStateException("ActivityManager unavailable");
+            int mainPid = 0;
+            List<ActivityManager.RunningAppProcessInfo> processes = manager.getRunningAppProcesses();
+            if (processes != null) {
+                for (ActivityManager.RunningAppProcessInfo process : processes) {
+                    if (context.getPackageName().equals(process.processName)) mainPid = process.pid;
+                }
+            }
+            text.append("\nmain_pid=").append(mainPid);
+        } catch (Exception e) { text.append("\nmain_pid=unavailable ").append(describe(e)); }
         try {
             if (manager == null) throw new IllegalStateException("ActivityManager unavailable");
             ActivityManager.MemoryInfo memory = new ActivityManager.MemoryInfo();

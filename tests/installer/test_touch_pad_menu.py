@@ -136,7 +136,7 @@ class RectF {
 public class MenuGeometryContract {
     float u;
     RectF menuPanel = new RectF();
-    RectF[] menuItems = new RectF[10];
+    RectF[] menuItems = new RectF[11];
     void layout(int w, int h) {
         u = Math.min(w, h) / 15f;
         for (int i = 0; i < menuItems.length; ++i) menuItems[i] = new RectF();
@@ -150,7 +150,7 @@ public class MenuGeometryContract {
             RectF panel = menu.menuPanel;
             if (panel.left < 0 || panel.top < 0 || panel.right > size[0] || panel.bottom > size[1])
                 throw new AssertionError("panel exceeds viewport");
-            for (int i = 0; i < 10; ++i) {
+            for (int i = 0; i < menu.menuItems.length; ++i) {
                 RectF r = menu.menuItems[i];
                 if (r.left < panel.left || r.right > panel.right || r.top < panel.top ||
                         r.bottom > panel.bottom - 0.7f * menu.u ||

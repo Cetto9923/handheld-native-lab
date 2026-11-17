@@ -1,0 +1,7 @@
+# 72手动横屏校准检查点
+
+用户反馈Y700四代横屏上下颠倒、无法改变方向，并要求手动旋转校准。当前manifest固定landscape。增加菜单“旋转屏幕180°”，以Android的LANDSCAPE与REVERSE_LANDSCAPE切换整个Activity，按键和原生Surface跟随系统窗口，保存reverse_landscape选择并在onCreate恢复。菜单继续使用两列，11项分为6行，面板高度随之调整。
+
+另补诊断APK文件SHA256、APK版本、包更新时间及导出/主进程PID。该项服务于用户确认最新版与报告60字段之间的来源核对，当前版本冲突原因尚未证实。
+
+10项JVM及Android编译检查通过，覆盖默认方向、双向切换、界面重建后的恢复、实际APK字节摘要和空文件/文件不存在，以及菜单几何与隐藏手柄原回归。完整构建、荣耀原生画面/点按/重开回归待执行。Y700与realme实机当前未接入本会话，独立QA未执行。验收引用coordination/prompts/_STANDING-audio-acceptance.md，本轮蓝牙音频范围待验。
