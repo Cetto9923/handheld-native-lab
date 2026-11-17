@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-17T23:10:00.911148+08:00",
+ "updated_at": "2026-11-17T23:28:26.643865+08:00",
  "phase": "1.0.71已发布GitHub，APK和中文说明回读核验完成",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -4294,12 +4294,14 @@
     "tests/installer/test_diagnostic_report.py",
     "scripts/verify_host.py",
     "coordination/results/CODEX-ROTATION72-20261117.md",
-    ".local/rotation72-20261117/"
+    ".local/rotation72-20261117/",
+    "coordination/docs/RELEASE72-ROTATION-20261117.md"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-17T23:10:00.911148+08:00",
-   "checkpoint": "root串行接手已完成71的相关Android文件，无其它实际源码写入。"
+   "checkpoint": "72编译与安装检查点，待平板交接，测试包已交付待验证目录。",
+   "checkpoint_at": "2026-11-17T23:28:26.643865+08:00"
   }
  ],
  "tasks": [
@@ -11322,7 +11324,8 @@
    "outputs": [
     "1.0.72手动横屏校准包",
     "APK及进程身份诊断字段",
-    "范围回归及中文说明"
+    "范围回归及中文说明",
+    "/Users/yuyan9923/GitHub/游戏发布包/02-最终幻想_共鸣_FFRS/待验证/1.0.72-手动旋转/FFRS-1.0.72-universal.apk"
    ],
    "dependencies": [],
    "pass_gates": [],
@@ -11335,12 +11338,13 @@
     "tests/installer/test_diagnostic_report.py",
     "scripts/verify_host.py",
     "coordination/results/CODEX-ROTATION72-20261117.md",
-    ".local/rotation72-20261117/"
+    ".local/rotation72-20261117/",
+    "coordination/docs/RELEASE72-ROTATION-20261117.md"
    ],
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acceptance": "菜单两列完整显示，横屏正反可切换并持久保存，原生画面/触摸可继续操作，版本指纹来自实际APK文件，正式存档保全",
-   "checkpoint": "已确认manifest固定landscape；以Android Activity整体反向横屏处理校准。"
+   "checkpoint": "72源e08f68c，APK2e3ebda4/3777820B，114宿主和Android通过，659输入一致。已安装荣耀并回读APK一致、96私有项保全。测试包已放发布目录待验证/1.0.72-手动旋转。平板当前空轨前台，等待用户输入交接后做原生方向/点按/重开及诊断元数据实机回归，当前任务仍在进行。"
   }
  ],
  "blockers": [
