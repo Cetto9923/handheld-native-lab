@@ -5465,3 +5465,9 @@ Next construct candidate66 build-plan from candidate65, same assets and source h
 68修正RG477M预热缓存被固定RSS门槛过早回收。仅精确机型且物理内存至少10GiB使用4.5/5GiB软硬门槛，其余沿2/2.5GiB；系统10%/5%及Android提示仍生效。8宿主ASan/生命周期通过，两负对照按预期断言失败，Android组件已编译。掌机ADB断开，组件运行/装包/整包复测待连机。
 
 证据在memory-budget68/，首轮容量负对照编译因unused参数被-Werror拒绝，已保留并改为真正触发容量边界断言的突变。当前只剩荣耀平板在线，依其它会话设备隔离要求不操作。没有活动构建、采样或自动按键。下一步构建68并保留符号/653输入摘要，连机后续推送policy组件并在原1080测试标记、隔离存档执行实际出城/技能及压力注入回归。
+
+## 68构建结束及恢复命令
+
+68源4d65315已构建，111宿主及Android退出0，653输入SHA一致。APK b5b44fac/3769559B/BuildID5500e843，1750种子与67相同，完整及剥离符号匹配。RG未连接，尚未安装，游戏收益及真正压力注入NOT_RUN，独立QA NOT_RUN。直接keyboard输入路线已准备。候选保持本地内部测试状态。
+
+当前只枚举到A42BBB5109000333，继续保持荣耀隔离。没有活动构建、采样或输入。重新连接后依次执行 `python3 .local/water-capital-flowers-20261117/memory-budget68/run_contracts.py`、`python3 .local/water-capital-flowers-20261117/candidate68/install_test.py`。后者会核对9正式源及全部私有文件、安装APK回读，从shield-regression-1682116771762187740副本启动。先观察标题，再按keyboard读取手动01并实际出城。日志按当前PID截取，核对resident_limit5368709120、warm hit/reuse和回收，再测同技能和RUNNING_CRITICAL注入。整体目标保持active。

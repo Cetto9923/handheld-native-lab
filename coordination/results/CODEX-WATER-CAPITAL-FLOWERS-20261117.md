@@ -126,3 +126,9 @@ candidate66/trace-lars-limit01保存同PID、BuildID及按键时钟的30秒500Hz
 67的PID24929实际触发RSS2687221760B、系统可用6763016192B时清除1846条未消费预热管线和改写结果。该日志已按当前帧CSV锚点切分。68仅在ro.product.model精确为RG477M且物理内存不少于10GiB时使用4.5GiB软门槛、5GiB硬门槛。机型读取失败、其它机型及不足容量仍沿2/2.5GiB。系统可用10%/5%和Android显式回收提示独立生效，GPU栅栏及权威检查保持原路径。预算选择属于本轮实现判断，尚待整包实机验证。
 
 8项既有生产提取ASan/UBSan与生命周期检查退出0，精确机型和物理容量突变各在对应断言被拒绝。Android策略组件API28编译0，推送时RG已从ADB断开，设备运行未执行。首容量负对照编译失败因unused参数，修正突变后才取得有效运行失败，原失败日志保全。完整命令、退出及夹具在.local/water-capital-flowers-20261117/memory-budget68/，没有把宿主结果记为实机通过。
+
+### 68最终构建产物
+
+源4d65315，111宿主及Android退出0，653输入SHA一致。APK为.local/water-capital-flowers-20261117/candidate68/FFRS-1.0.68-preview-universal.apk，3769559B，SHA256 b5b44fac2a4863f048624829232b395dc2c6f741340ade0329f94cea865ba88f，native BuildID5500e843de1f7a5f22ba7bd1c0f3a62ec7e21768。完整和剥离符号匹配，1750管线种子与67相同。输入与命令/退出在build-plan.json，产物索引artifact.json。
+
+掌机断连，尚未安装或验证整包收益。设备冷暖场景、手机reason3存活、原用户LIMIT、声音及独立QA继续待验。荣耀仍供其它会话使用。没有使用荣耀替代掌机验收。本轮状态记录缩进一度扩大diff，已恢复原1空格格式。

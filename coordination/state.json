@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-17T19:11:35.843435+08:00",
- "phase": "68设备预算修正宿主通过，RG断连，准备构建待实机验证",
+ "updated_at": "2026-11-17T19:15:32.767046+08:00",
+ "phase": "68缓存预算候选构建通过，等待RG重新连接进行实机对照",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -3728,7 +3728,7 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-17T11:07:35.928348+08:00",
-   "checkpoint": "68修正RG477M预热缓存被固定RSS门槛过早回收。仅精确机型且物理内存至少10GiB使用4.5/5GiB软硬门槛，其余沿2/2.5GiB；系统10%/5%及Android提示仍生效。8宿主ASan/生命周期通过，两负对照按预期断言失败，Android组件已编译。掌机ADB断开，组件运行/装包/整包复测待连机。",
+   "checkpoint": "68源4d65315已构建，111宿主及Android退出0，653输入SHA一致。APK b5b44fac/3769559B/BuildID5500e843，1750种子相同。RG断连，尚未安装，游戏收益及压力注入NOT_RUN，独立QA NOT_RUN。",
    "checkpoint_at": "2026-11-17T18:55:15.424740+08:00"
   }
  ],
@@ -10588,7 +10588,7 @@
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acceptance": "花朵为用户线索，按key改写前取得实际draw证据。视频帧率与真实游戏帧率分别记录。移动、长帧和音频分别保留证据。",
-   "checkpoint": "68修正RG477M预热缓存被固定RSS门槛过早回收。仅精确机型且物理内存至少10GiB使用4.5/5GiB软硬门槛，其余沿2/2.5GiB；系统10%/5%及Android提示仍生效。8宿主ASan/生命周期通过，两负对照按预期断言失败，Android组件已编译。掌机ADB断开，组件运行/装包/整包复测待连机。"
+   "checkpoint": "68源4d65315已构建，111宿主及Android退出0，653输入SHA一致。APK b5b44fac/3769559B/BuildID5500e843，1750种子相同。RG断连，尚未安装，游戏收益及压力注入NOT_RUN，独立QA NOT_RUN。"
   }
  ],
  "blockers": [
