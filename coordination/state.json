@@ -4281,33 +4281,6 @@
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-17T22:55:19.729695+08:00",
    "checkpoint": "仅证据和报告写入，源码先只读。"
-  },
-  {
-   "task": "CODEX-ROTATION72-20261117",
-   "owner": "root",
-   "paths": [
-    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
-    "src/android/app/java/org/ffrs/diagnostic/ReportActivity.java",
-    "src/android/app/gamewindow/AndroidManifest.xml",
-    "tests/installer/test_touch_pad_menu.py",
-    "tests/installer/test_screen_rotation.py",
-    "tests/installer/test_diagnostic_report.py",
-    "scripts/verify_host.py",
-    "coordination/results/CODEX-ROTATION72-20261117.md",
-    ".local/rotation72-20261117/",
-    "coordination/docs/RELEASE72-ROTATION-20261117.md",
-    "src/android/app/java/org/ffrs/diagnostic/GameWindowNative.java",
-    "src/android/native/game_window_jni.cpp",
-    "src/runtime/hle/native_window.c",
-    "src/runtime/hle/native_window.h",
-    "src/graphics/nvn_device/nvn_backend_vulkan.c",
-    "tests/device/test_profile_environment.py"
-   ],
-   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
-   "branch": "task/T-codex-recovery-20261114",
-   "acquired_at": "2026-11-17T23:10:00.911148+08:00",
-   "checkpoint": "用户已交接荣耀输入，由root验证72。",
-   "checkpoint_at": "2026-11-17T23:32:41.129635+08:00"
   }
  ],
  "tasks": [
@@ -11320,7 +11293,7 @@
    "id": "CODEX-ROTATION72-20261117",
    "owner": "root",
    "role": "ANDROID_UI",
-   "status": "in_progress",
+   "status": "ready_for_review",
    "objective": "支持四向重力感应并加入可持久保存的180度手动校准，验证原生画面与触摸同向；补充诊断APK指纹核对黑屏报告版本",
    "inputs": [
     "用户Y700四代横屏倒置反馈及手动校准要求",
@@ -11328,10 +11301,9 @@
     "1.0.71已发布源码b7a08b3"
    ],
    "outputs": [
-    "1.0.72手动横屏校准包",
-    "APK及进程身份诊断字段",
-    "范围回归及中文说明",
-    "/Users/yuyan9923/GitHub/游戏发布包/02-最终幻想_共鸣_FFRS/待验证/1.0.72-手动旋转/FFRS-1.0.72-universal.apk"
+    "/Users/yuyan9923/GitHub/游戏发布包/02-最终幻想_共鸣_FFRS/FFRS-1.0.72-universal.apk",
+    "/Users/yuyan9923/GitHub/游戏发布包/02-最终幻想_共鸣_FFRS/1.0.72-更新说明.md",
+    "coordination/results/CODEX-ROTATION72-20261117.md"
    ],
    "dependencies": [],
    "pass_gates": [],
@@ -11356,7 +11328,8 @@
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acceptance": "菜单两列完整显示，四向屏幕可切换并保持游戏比例，手动180度校准可持久保存，原生画面/触摸可继续操作，诊断版本指纹来自实际APK文件，正式存档保全",
-   "checkpoint": "用户确认退出PC模式后可自动旋转，但竖屏拉伸。源码surfaceChanged只读窗口未更新发布代次，同一Surface尺寸变更可能沿用旧swapchain并被系统拉伸。将尺寸变更重新发布给native，新增旧路径负对照和竖屏比例契约后重建验证。"
+   "checkpoint": "用户要求结束旋转问题并提交稳定版本。最终源码6c05013，APK0fb453ad，114检查和Android构建通过，荣耀回读一致、105私有项保全。同步旋转与自动旋转已验证，最终竖屏比例视觉、重开与Android诊断导出未完成，按用户指令收口。发布主目录已交付72，71归档。ADB断开使结束8075测试副本进程的请求未送达，当前进程状态未知。",
+   "user_closed_scope": "2026-11-18 用户要求结束旋转问题并提交稳定版本，剩余视觉验收记录为未完成。"
   }
  ],
  "blockers": [
