@@ -5429,3 +5429,9 @@ GitHub v1.0.62-preview已发布并回读APK/SHA/中文说明一致，精确tag08
 ## 2026-11-17 13时 水都与LIMIT检查点
 
 64源码447b4e0，APK641f7fcb，BuildID16e456dd，111宿主和Android0，1750管线实际预热成功。RG覆盖前后正式9存档及私有文件校验一致。PID3437出城采样及CPU栈已保存，纹理CPU镜像约814ms inclusive，页映射仍为热点。16字节连续段复制候选通过扩展ASan/UBSan，尚未装包。现由root独占掌机，正在战斗推进LIMIT。 原始证据在.local/water-capital-flowers-20261117/candidate64/。trace-outcity01仅打开2D地图，实际3D过图为trace-outcity02。55秒trace-limit01未覆盖实际LIMIT，仅菜单/普通动作。Honor未操作。Main只读，外国指南WIP未动。
+
+## 65 device checkpoint 2026-11-17
+
+65 source a1257bb, APK19fad703/3765463B/BuildID2c07a04d, host111+Android0, sourceSHA653 match. RG24373 installed and formal9 rechecked unchanged. Actual outcity and normal chocobo skill tested, LIMIT still NOT_REPRODUCED_THIS_RUN. Two page mapping scan loops identified by sampled PCs. No active build/profiler/input. Current world-map screenshot candidate65/device/checkpoint-screen2.png. Frame CSV reached maxRows120000, restart required for next ordinary CSV sample.
+
+Next read the latest water-capital report, page-pattern/result.json and page-pcs.json. HLE sources unchanged. Transfer old root PAGE-GAP28 ownership to current task before editing those files. Actual mistaken ice and escape actions are retained under their real identities. Main remains read-only, foreign guide WIP preserved.

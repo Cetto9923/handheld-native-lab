@@ -2,7 +2,7 @@
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
  "updated_at": "2026-11-17T12:33:04.811134+08:00",
- "phase": "64内部候选已安装，RG出城及战斗调用栈取证与纹理镜像优化",
+ "phase": "65 internal texture mirror candidate installed; page scan and LIMIT investigation active",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -3698,8 +3698,8 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-17T11:07:35.928348+08:00",
-   "checkpoint": "64源码447b4e0，APK641f7fcb，BuildID16e456dd，111宿主和Android0，1750管线实际预热成功。RG覆盖前后正式9存档及私有文件校验一致。PID3437出城采样及CPU栈已保存，纹理CPU镜像约814ms inclusive，页映射仍为热点。16字节连续段复制候选通过扩展ASan/UBSan，尚未装包。现由root独占掌机，正在战斗推进LIMIT。",
-   "checkpoint_at": "2026-11-17T13:04:32.254030+08:00"
+   "checkpoint": "65 source a1257bb, APK19fad703/3765463B/BuildID2c07a04d, host111+Android0, sourceSHA653 match. RG24373 installed and formal9 rechecked unchanged. Actual outcity and normal chocobo skill tested, LIMIT still NOT_REPRODUCED_THIS_RUN. Two page mapping scan loops identified by sampled PCs. No active build/profiler/input. Current world-map screenshot candidate65/device/checkpoint-screen2.png. Frame CSV reached maxRows120000, restart required for next ordinary CSV sample.",
+   "checkpoint_at": "2026-11-17T14:08:46.187349+08:00"
   }
  ],
  "tasks": [
@@ -10548,7 +10548,7 @@
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acceptance": "花朵为用户线索，按key改写前取得实际draw证据。视频帧率与真实游戏帧率分别记录。移动、长帧和音频分别保留证据。",
-   "checkpoint": "64源码447b4e0，APK641f7fcb，BuildID16e456dd，111宿主和Android0，1750管线实际预热成功。RG覆盖前后正式9存档及私有文件校验一致。PID3437出城采样及CPU栈已保存，纹理CPU镜像约814ms inclusive，页映射仍为热点。16字节连续段复制候选通过扩展ASan/UBSan，尚未装包。现由root独占掌机，正在战斗推进LIMIT。"
+   "checkpoint": "65 source a1257bb, APK19fad703/3765463B/BuildID2c07a04d, host111+Android0, sourceSHA653 match. RG24373 installed and formal9 rechecked unchanged. Actual outcity and normal chocobo skill tested, LIMIT still NOT_REPRODUCED_THIS_RUN. Two page mapping scan loops identified by sampled PCs. No active build/profiler/input. Current world-map screenshot candidate65/device/checkpoint-screen2.png. Frame CSV reached maxRows120000, restart required for next ordinary CSV sample."
   }
  ],
  "blockers": [
@@ -10741,11 +10741,11 @@
   "workers_reasoning": "xhigh",
   "completion": "unproven",
   "human_local_development_approval": "用户已授权本轮RG477M测试、自动安装、提交及GitHub发布。荣耀暂由另一会话使用，本轮未操作。",
-  "next_goal": "复现首战和LIMIT，按同进程调用栈优化加载与图形提交长帧",
+  "next_goal": "Reduce verified interleaved page mapping scans, then recheck outcity and actual LIMIT",
   "loop": "Locate real blocker -> smallest functional code fix -> compile -> real device recheck -> local checkpoint -> next gate",
   "parallel_scope": "root串行控制荣耀设备与本树性能源码，金手指独立工作树保持既有归属，独立QA尚未执行。",
   "reporting": "Report material breakthroughs, required user action or real blockers; no artificial progress from diagnostic counts",
-  "current_priority": "复现首战和LIMIT，按同进程调用栈优化加载与图形提交长帧"
+  "current_priority": "Reduce verified interleaved page mapping scans, then recheck outcity and actual LIMIT"
  },
  "coordinator_branch": "task/T-codex-recovery-20261114",
  "progress_assessment": {
