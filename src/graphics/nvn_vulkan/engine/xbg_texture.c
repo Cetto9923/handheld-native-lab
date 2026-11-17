@@ -138,13 +138,17 @@ static void color(const uint8_t *b, uint8_t p[16][4], int four, int opaque) {
     uint32_t bits=le32(b+4);
     for(unsigned i=0;i<16;i++) for(unsigned j=0;j<4;j++) p[i][j]=(uint8_t)v[(bits>>(i*2))&3][j];
 }
-static void channel(const uint8_t *b, uint16_t p[16]) {
+static uint64_t channel_palette(const uint8_t *b, uint16_t v[8]) {
     /* R16 keeps the 1/5 and 1/7 interpolants instead of rounding them to R8. */
-    uint32_t v[8]={b[0]*257u,b[1]*257u};
+    v[0]=b[0]*257u;v[1]=b[1]*257u;
     for(unsigned k=2;k<8;k++) v[k]=b[0]>b[1]?
         ((8-k)*v[0]+(k-1)*v[1]+3)/7:k<6?((6-k)*v[0]+(k-1)*v[1]+2)/5:k==6?0:65535;
     uint64_t bits=0; for(unsigned k=0;k<6;k++) bits|=(uint64_t)b[k+2]<<(k*8);
-    for(unsigned i=0;i<16;i++) p[i]=(uint16_t)v[(bits>>(i*3))&7];
+    return bits;
+}
+static void channel(const uint8_t *b, uint16_t p[16]) {
+    uint16_t palette[8];uint64_t bits=channel_palette(b,palette);
+    for(unsigned i=0;i<16;i++) p[i]=palette[(bits>>(i*3))&7];
 }
 int xbg_rg16_unorm_to_rg32_float(const void *source,size_t source_bytes,
     void *output,size_t out_bytes,size_t pixels) {
@@ -223,12 +227,21 @@ int xbg_decode_bc5_rg32_linear(uint32_t w,uint32_t h,uint32_t depth,
     if(src>UINTPTR_MAX-needed || dst>UINTPTR_MAX-output_size ||
        (src<dst+output_size && dst<src+needed))return -1;
     for(uint32_t z=0;z<depth;z++)for(size_t by=0;by<rows;by++)for(size_t bx=0;bx<blocks;bx++){
-        uint16_t rg[32];float normalized[32];
-        int result=xbg_decode_block(0x4b,(const uint8_t*)source+z*image+by*row+bx*16,16,rg,sizeof rg);
-        if(result)return result;
-        if(xbg_rg16_unorm_to_rg32_float(rg,sizeof rg,normalized,sizeof normalized,16))return -1;
-        for(unsigned y=0;y<4 && by*4+y<h;y++)for(unsigned x=0;x<4 && bx*4+x<w;x++)
-            memcpy((uint8_t*)output+(((size_t)z*h+by*4+y)*w+bx*4+x)*8,normalized+(y*4+x)*2,8);
+        const uint8_t *block=(const uint8_t*)source+z*image+by*row+bx*16;
+        uint16_t red[8],green[8];
+        uint64_t red_bits=channel_palette(block,red),green_bits=channel_palette(block+8,green);
+        float red_float[8],green_float[8];
+        // Each block selects from eight UNORM16 values per channel. Normalize
+        // those values once, retaining the original rounded 16-bit palette.
+        for(unsigned i=0;i<8;i++){
+            red_float[i]=(float)red[i]/65535.0f;
+            green_float[i]=(float)green[i]/65535.0f;
+        }
+        for(unsigned y=0;y<4 && by*4+y<h;y++)for(unsigned x=0;x<4 && bx*4+x<w;x++){
+            unsigned shift=(y*4+x)*3;
+            float pixel[2]={red_float[(red_bits>>shift)&7],green_float[(green_bits>>shift)&7]};
+            memcpy((uint8_t*)output+(((size_t)z*h+by*4+y)*w+bx*4+x)*8,pixel,sizeof pixel);
+        }
     }
     return 0;
 }

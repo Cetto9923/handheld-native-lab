@@ -77,7 +77,33 @@ static Mip make_mip(uint32_t w,uint32_t h,uint32_t layers,unsigned seed){
         require(m.decoded[i]==float(double(m.reference[i])/65535.0),"BC5 decode differs from independent palette reference");
     return m;
 }
+static void all_bc5_endpoints_contract(){
+    for(unsigned a=0;a<256;a++)for(unsigned b=0;b<256;b++){
+        uint8_t source[17]={0x91};
+        uint8_t *block=source+1;
+        block[0]=uint8_t(a);block[1]=uint8_t(b);
+        block[8]=uint8_t(b);block[9]=uint8_t(a);
+        uint64_t selectors=0;
+        for(unsigned i=0;i<16;i++)selectors|=uint64_t(i%8)<<(i*3);
+        for(unsigned k=0;k<6;k++){
+            block[2+k]=uint8_t(selectors>>(8*k));
+            block[10+k]=uint8_t(selectors>>(8*k));
+        }
+        uint8_t original[sizeof source];std::memcpy(original,source,sizeof source);
+        uint8_t output[130];std::memset(output,0xa7,sizeof output);
+        require(xbg_decode_bc5_rg32_linear(4,4,1,block,16,0,0,output+1,128)==0,
+                "complete BC5 endpoint-domain decode failed");
+        require(std::memcmp(source,original,sizeof source)==0,"endpoint decode modified source");
+        require(output[0]==0xa7 && output[129]==0xa7,"endpoint decode changed output canary");
+        for(unsigned i=0;i<16;i++)for(unsigned c=0;c<2;c++){
+            float actual;std::memcpy(&actual,output+1+(i*2+c)*4,4);
+            float expected=float(double(reference_channel(block+c*8,i))/65535.0);
+            require(actual==expected,"BC5 endpoint/selector differs from exact reference");
+        }
+    }
+}
 static void cpu_contract(){
+    all_bc5_endpoints_contract();
     std::vector<uint16_t> words(65536*2);std::vector<float> floats(words.size());
     for(unsigned i=0;i<65536;i++){words[i*2]=uint16_t(i);words[i*2+1]=uint16_t(65535-i);}
     const auto original=words;
@@ -116,7 +142,7 @@ static void cpu_contract(){
     require(xbg_rg16_unorm_to_rg32_float(words.data(),4,floats.data(),7,1)!=0,"short normalize output accepted");
     require(xbg_rg16_unorm_to_rg32_float(words.data(),words.size()*2,words.data(),words.size()*2,1)!=0,"overlapping normalize accepted");
     require(xbg_rg16_unorm_to_rg32_float(words.data(),4,floats.data(),8,SIZE_MAX)!=0,"normalize overflow accepted");
-    std::printf("bc5_filter_contract CPU PASS normalized_values=65536 channels=2 mips=3 layers=3 non_square=7x5 source_unchanged=1 negative_bounds=1\n");
+    std::printf("bc5_filter_contract CPU PASS normalized_values=65536 endpoint_pairs=65536 selectors=8 channels=2 mips=3 layers=3 non_square=7x5 source_unchanged=1 negative_bounds=1\n");
 }
 
 #ifdef __ANDROID__

@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-17T16:50:13.560056+08:00",
- "phase": "66内部候选已装机，直接按键完成首轮出城对照，继续LIMIT与冷暖回归",
+ "updated_at": "2026-11-17T17:48:03.067660+08:00",
+ "phase": "67 BC5热点优化组件通过，准备整包与预热缺口复验",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -3699,13 +3699,15 @@
     "src/runtime/hle/guest_pages.c",
     "src/runtime/hle/address_region.c",
     "tests/native/guest_pages_contract.c",
-    "tests/native/owned_pages_contract.c"
+    "tests/native/owned_pages_contract.c",
+    "src/graphics/nvn_vulkan/engine/xbg_texture.c",
+    "tests/native/bc5_filter_contract.cpp"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-17T11:07:35.928348+08:00",
-   "checkpoint": "66源9c1a765已构建并安装，111项宿主和Android构建退出0，653输入SHA一致。APK90be30a8/3765463B/BuildID5844b657，正式9存档及私有文件安装前后一致。改用ADB keyboard直接Dpad+B，虚拟按键保持隐藏。65 PID29724与66 PID14314实际出城最长长帧782.809→355.764ms，>100ms为13→7；暖资源单对照，种子学习1802→1806，整机收益待重复验证。实际LIMIT仍未复现。",
-   "checkpoint_at": "2026-11-17T16:50:13.560056+08:00"
+   "checkpoint": "66 PID14314通过拉斯韦尔LIMIT I牙月，500Hz记录417336样本丢64。103100/103101帧2997.736/1921.165ms，第二帧管线创建1708.6ms，第一帧包含纹理建图和BC解码。67 BC5候选保留UNORM16调色板和float归一化，宿主ASan、65536端点对/8索引、RG CPU及40组GPU采样通过，16种BC各4096块与旧版逐字节相同。掌机组件CPU减少约13–17%，整包待构建复验。正式9存档保全，14314帧CSV已满120000，已停止测试进程。原莉德LIMIT仍待复现。",
+   "checkpoint_at": "2026-11-17T17:48:03.067660+08:00"
   }
  ],
  "tasks": [
@@ -10553,12 +10555,14 @@
     "src/runtime/hle/guest_pages.c",
     "src/runtime/hle/address_region.c",
     "tests/native/guest_pages_contract.c",
-    "tests/native/owned_pages_contract.c"
+    "tests/native/owned_pages_contract.c",
+    "src/graphics/nvn_vulkan/engine/xbg_texture.c",
+    "tests/native/bc5_filter_contract.cpp"
    ],
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acceptance": "花朵为用户线索，按key改写前取得实际draw证据。视频帧率与真实游戏帧率分别记录。移动、长帧和音频分别保留证据。",
-   "checkpoint": "66源9c1a765已构建并安装，111项宿主和Android构建退出0，653输入SHA一致。APK90be30a8/3765463B/BuildID5844b657，正式9存档及私有文件安装前后一致。改用ADB keyboard直接Dpad+B，虚拟按键保持隐藏。65 PID29724与66 PID14314实际出城最长长帧782.809→355.764ms，>100ms为13→7；暖资源单对照，种子学习1802→1806，整机收益待重复验证。实际LIMIT仍未复现。"
+   "checkpoint": "66 PID14314通过拉斯韦尔LIMIT I牙月，500Hz记录417336样本丢64。103100/103101帧2997.736/1921.165ms，第二帧管线创建1708.6ms，第一帧包含纹理建图和BC解码。67 BC5候选保留UNORM16调色板和float归一化，宿主ASan、65536端点对/8索引、RG CPU及40组GPU采样通过，16种BC各4096块与旧版逐字节相同。掌机组件CPU减少约13–17%，整包待构建复验。正式9存档保全，14314帧CSV已满120000，已停止测试进程。原莉德LIMIT仍待复现。"
   }
  ],
  "blockers": [

@@ -5446,3 +5446,9 @@ Next construct candidate66 build-plan from candidate65, same assets and source h
 66源9c1a765已构建并安装，111项宿主和Android构建退出0，653输入SHA一致。APK90be30a8/3765463B/BuildID5844b657，正式9存档及私有文件安装前后一致。改用ADB keyboard直接Dpad+B，虚拟按键保持隐藏。65 PID29724与66 PID14314实际出城最长长帧782.809→355.764ms，>100ms为13→7；暖资源单对照，种子学习1802→1806，整机收益待重复验证。实际LIMIT仍未复现。
 
 普通对照与截图在compare65c/compare66，早期失败标题脚本与未出城窗口已明确排除。RG正式9存档保护，当前14314继续世界地图与战斗，虚拟按键隐藏。荣耀保持其它会话占用。全部本轮源码已在9c1a765，当前只补证据记录，外来指南WIP保留。下一步检查compare66/battle01.png，复现指定LIMIT并采同PID栈，重复暖资源对照。
+
+## 67 BC5热点源码检查点
+
+66 PID14314通过拉斯韦尔LIMIT I牙月，500Hz记录417336样本丢64。103100/103101帧2997.736/1921.165ms，第二帧管线创建1708.6ms，第一帧包含纹理建图和BC解码。67 BC5候选保留UNORM16调色板和float归一化，宿主ASan、65536端点对/8索引、RG CPU及40组GPU采样通过，16种BC各4096块与旧版逐字节相同。掌机组件CPU减少约13–17%，整包待构建复验。正式9存档保全，14314帧CSV已满120000，已停止测试进程。原莉德LIMIT仍待复现。
+
+编译与组件脚本在bc5-palette67/run_contracts.py，旧源码在baseline/。下一步以66 build-plan相同环境和1750种子生成67计划，固定653输入后构建、安装回读并复测。LIMIT CPU原始123MiB perf.data和分阶段汇总在candidate66/trace-lars-limit01，已完成记录，没有存活采样进程。源64MiB改写缓存已有压缩，后续先跑模式2核对具体预算key再优化。
