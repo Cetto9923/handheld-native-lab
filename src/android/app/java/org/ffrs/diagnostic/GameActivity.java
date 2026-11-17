@@ -144,9 +144,10 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     }
 
     private void applyScreenOrientation() {
-        setRequestedOrientation(reverseLandscape
-                ? ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
-                : ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+        // Rotate the shared parent so SurfaceView and touch coordinates stay aligned,
+        // including on tablets that ignore Activity orientation requests.
+        if (rootLayout != null) rootLayout.setRotation(reverseLandscape ? 180f : 0f);
     }
 
     private void rotateScreen() {
@@ -1005,6 +1006,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         root.addView(touchPad, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         buildSetupView();
         setContentView(root);
+        applyScreenOrientation();
         refreshSetup();
         inputManager = (InputManager)getSystemService(Context.INPUT_SERVICE);
         if (inputManager != null) inputManager.registerInputDeviceListener(deviceListener, new Handler(Looper.getMainLooper()));

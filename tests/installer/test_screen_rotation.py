@@ -1,4 +1,4 @@
-"""Exercise the production orientation preference and requested Android modes."""
+"""Exercise the production orientation preference and shared game/touch transform."""
 from pathlib import Path
 import subprocess
 import tempfile
@@ -33,6 +33,11 @@ public class RotationContract {
     final Preferences preferences;
     boolean reverseLandscape;
     int requested = -1;
+    static final class FrameLayout {
+        float rotation;
+        void setRotation(float value) { rotation = value; }
+    }
+    FrameLayout rootLayout;
     RotationContract(Preferences value) { preferences = value; }
     Preferences getPreferences(int mode) { return preferences; }
     void setRequestedOrientation(int orientation) { requested = orientation; }
@@ -42,13 +47,20 @@ public class RotationContract {
         RotationContract first = new RotationContract(preferences);
         first.restoreScreenOrientation();
         if (first.requested != 0 || preferences.saved) throw new AssertionError("default");
+        first.rootLayout = new FrameLayout();
+        first.applyScreenOrientation();
+        if (first.rootLayout.rotation != 0f) throw new AssertionError("default transform");
         first.rotateScreen();
-        if (first.requested != 8 || !preferences.saved) throw new AssertionError("reverse");
+        if (first.requested != 0 || !preferences.saved || first.rootLayout.rotation != 180f)
+            throw new AssertionError("reverse on orientation-ignoring tablet");
         RotationContract recreated = new RotationContract(preferences);
         recreated.restoreScreenOrientation();
-        if (recreated.requested != 8) throw new AssertionError("restore");
+        recreated.rootLayout = new FrameLayout();
+        recreated.applyScreenOrientation();
+        if (recreated.requested != 0 || recreated.rootLayout.rotation != 180f)
+            throw new AssertionError("restore after view creation");
         recreated.rotateScreen();
-        if (recreated.requested != 0 || preferences.saved) throw new AssertionError("normal");
+        if (recreated.requested != 0 || preferences.saved || recreated.rootLayout.rotation != 0f) throw new AssertionError("normal");
     }
 }
 '''
@@ -59,6 +71,9 @@ public class RotationContract {
             subprocess.run(['java', '-cp', directory, 'RotationContract'], check=True, capture_output=True)
         create = source[source.index('    @Override public void onCreate(Bundle state) {'):]
         self.assertLess(create.index('restoreScreenOrientation();'), create.index('setContentView(root);'))
+        self.assertLess(create.index('setContentView(root);'), create.index('applyScreenOrientation();'))
+        self.assertIn('root.addView(surface_view,', create)
+        self.assertIn('root.addView(touchPad,', create)
         self.assertIn('else if (i == 9) owner.toggleFpsOverlay();', source)
         self.assertIn('else owner.rotateScreen();', source)
         self.assertIn('"旋转屏幕180°"', source)
