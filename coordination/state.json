@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-17T11:10:51.957833+08:00",
- "phase": "63 preview publication and water-capital flower performance investigation",
+ "updated_at": "2026-11-17T11:17:10.763958+08:00",
+ "phase": "63不限帧预览版已发布，继续水都移动与花朵热点定位",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -10516,7 +10516,7 @@
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acceptance": "压力信号覆盖主动检测与Android回调，前台不依赖已废弃回调；清理前实际完成GPU/写回，GPU权威内容和活跃引用保全；缓存丢弃可重建；源码和构建SHA一致；目标实机存活验收单列，原1080与游戏时序保留",
-   "checkpoint": "63最终源码ca59451，111宿主/Android0、653输入SHA一致。APK ba3b94ca、3749079字节，RG安装回读及正式源9文件SHA通过。旧30标记已迁0，native target_ns=0；第三章客栈6.13秒移动43.707FPS，已走出客栈。水都花朵卡顿另任务取证，原机低内存/索尔闪烁及蓝牙待验。统一目录已放63，62精确归档，现准备GitHub预览发布。"
+   "checkpoint": "63已发布并回读验证，tag源码ca59451，APK ba3b94ca，111宿主/Android0。统一发布目录放63、62归档，Main ecb9b57保持。RG旧30标记迁0，第三章客栈移动43.707FPS。水都室外、原机低内存、Thor闪烁及蓝牙仍开放。"
   },
   {
    "id": "CODEX-WATER-CAPITAL-FLOWERS-20261117",
@@ -10729,17 +10729,17 @@
   "荣耀近期验收目标稳定真实30FPS。此前30/31/32 shell归档完整覆盖表述已撤回，完整源文件补核见33报告。地图/副本/技能低帧继续开放。"
  ],
  "execution_goal": {
-  "objective": "继续优化共鸣原生Android移植，当前授权荣耀A42BBB5109000333，批准1080P输出和有界动态内部尺寸，开场/地图/土之神殿/战斗真实稳定30FPS及冷暖回归，保持速度、声音、显示修复，按Switch原生底座模式流畅度和分辨率验收。清理冗余测试数据核存档缓存，提交修改，Main确认吸收才删自有旧分支，保留APK。",
-  "mode": "用户要求收口后暂停，当前goal工具确认paused。长期稳定30FPS尚未达标。",
+  "objective": "继续优化共鸣原生Android移植，以1080P输出及有界动态内部尺寸，持续优化水都、世界地图、土之神殿和战斗真实帧率及帧时间，不再锁定30Hz目标。保持原速、音频和显示修复。清理已授权测试冗余，核验存档缓存，提交修改，Main确认吸收才删自有分支，保留APK历史。",
+  "mode": "active。用户已恢复并更新目标，最新要求尽可能提升真实帧率。",
   "workers_model": "gpt-6.1-sol",
   "workers_reasoning": "xhigh",
   "completion": "unproven",
-  "human_local_development_approval": "User directly approved local development and commits; later fully authorized access. Existing task boundaries remain, no remote publication or data clearing.",
-  "next_goal": "41同机位普通探索移动的匹配40对照与CPU/GPU同步拆解，验证底座模式实际内部尺寸与游戏原速，开场/地图/技能冷暖回归。",
+  "human_local_development_approval": "用户已授权本轮RG477M测试、自动安装、提交及GitHub发布。荣耀暂由另一会话使用，本轮未操作。",
+  "next_goal": "沿水都水面与发光花朵路段实际移动，完成普通冷暖往返帧时间采样，再用既有CPU/GPU探针定位。",
   "loop": "Locate real blocker -> smallest functional code fix -> compile -> real device recheck -> local checkpoint -> next gate",
   "parallel_scope": "root串行控制荣耀设备与本树性能源码，金手指独立工作树保持既有归属，独立QA尚未执行。",
   "reporting": "Report material breakthroughs, required user action or real blockers; no artificial progress from diagnostic counts",
-  "current_priority": "神殿内部持续移动真实长帧，严格画面场景和输入核对，队列CPU/GPU预算取证并最小优化，持续稳30尚未通过。"
+  "current_priority": "沿水都水面与发光花朵路段实际移动，完成普通冷暖往返帧时间采样，再用既有CPU/GPU探针定位。"
  },
  "coordinator_branch": "task/T-codex-recovery-20261114",
  "progress_assessment": {

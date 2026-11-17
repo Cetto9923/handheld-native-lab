@@ -1,5 +1,11 @@
 # 63低内存存活候选
 
+## 发布完成
+
+GitHub v1.0.63-preview已发布，标记指向实际构建源码ca59451。APK、SHA256与中文说明三个附件均下载回读一致，main仍为ecb9b57fe90d5a5d24299980095bc49953c26aaa，开发分支已推送。发布计划与完整命令日志位于.local/releases/1.0.63/publication/plan.json，状态PUBLISHED_VERIFIED。
+
+统一发布目录02-最终幻想_共鸣_FFRS当前提供63通用APK和更新说明，62的APK、摘要、说明及安装指南均逐字节保留于历史安装包与专用补丁/1.0.62-由63接替-20261117。FFRS-data.zip沿已校验版本使用。水都花朵附近卡顿仍在定位，原机低内存存活、Thor闪烁和蓝牙验收仍开放。
+
 ## 最终解锁构建与实机检查点
 
 最终源码ca5945116ca5394cdccd07d299220f328bb51380，111项宿主检查通过，Android退出0，653项输入SHA前后一致。APK3749079字节，SHA256 ba3b94ca54933d7fc0986881be2e8568d13bc4e57e4255ea596b79b68a6e6a56，完整与strip native BuildID均为700fca59b12f1791060f9832409341009b37e699，assets仍与62逐字节一致。
