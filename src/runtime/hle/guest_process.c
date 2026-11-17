@@ -421,6 +421,21 @@ struct nso_result guest_process_load(guest_process *p,const char *path,char *err
     nso_set_text_filter(NULL, NULL);
     p->module=loaded.module;
     if(loaded.result.status==NSO_RETAINED)p->quarantined=1;
+    const char *patch_path=getenv("FFRS_STARTUP_CHEATS_PLAN");
+    if(loaded.result.status==NSO_OK && patch_path && *patch_path) {
+        struct nso_result patched=nso_apply_startup_patch_file(p->module,patch_path,
+                                                               ffrs_hid_r3_address());
+        if(patched.status!=NSO_OK) {
+            if(err && len)snprintf(err,len,"startup cheats rejected: %s",strerror(patched.native_error));
+            fprintf(stderr,"[ffrs-cheats] startup plan rejected error=%d\n",patched.native_error);
+            struct nso_result cleanup=nso_release(&p->module);
+            loaded.result=patched;
+            if(cleanup.status!=NSO_OK) {
+                p->quarantined=1;
+                loaded.result=status(NSO_RETAINED,patched.native_error,cleanup.cleanup_error);
+            }
+        }
+    }
     if(loaded.result.status==NSO_OK) {
         nso_require_executor(p->module);
         if(nso_host_exit_scope_begin(p->module)) {

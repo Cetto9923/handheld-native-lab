@@ -56,6 +56,7 @@ struct nso_module {
     uint64_t relr_offset, relr_size, reloc_count, relr_count;
     uint64_t init_offset, init_array_offset, init_array_size;
     uint64_t text_lo, text_hi;
+    uint64_t text_padding_hi;
     uint8_t build_id[16];
     void (*unload_observer)(void *);
     void *unload_user;
@@ -171,6 +172,7 @@ static struct nso_load_result load_file(const char *path,nso_import_fn resolve,
     CHECK(end && end<=SIZE_MAX-pagesize(),"invalid image extent");
     m->image_size=(size_t)up(end);
     m->text_lo=s[0].mem; m->text_hi=(uint64_t)s[0].mem+s[0].size;
+    m->text_padding_hi=s[1].mem<up(m->text_hi)?s[1].mem:up(m->text_hi);
     memcpy(m->build_id,file+0x40,16);
     if(ops) {
         status=ops->reserve(owner,m->image_size,&m->ticket);
@@ -403,6 +405,106 @@ void nso_set_unload_observer(nso_module *m,void (*observer)(void*),void *user) {
 }
 uint64_t nso_base(const nso_module *m) {return (uint64_t)(uintptr_t)m->image;}
 size_t nso_image_size(const nso_module *m) {return m->image_size;}
+static int text_branch(uint64_t from,uint64_t to,uint32_t *word) {
+    int64_t delta=(int64_t)to-(int64_t)from;
+    if((delta&3) || delta < -0x8000000 || delta > 0x7fffffc)return 0;
+    *word=0x14000000u|((uint32_t)(delta/4)&0x03ffffffu);
+    return 1;
+}
+
+struct nso_result nso_apply_startup_patch_file(nso_module *m,const char *path,
+                                               uintptr_t r3_state) {
+    struct patch_word {uint64_t offset;uint32_t expected,value;} patches[512];
+    if(!m || !m->ready || m->closing || m->executor_required || !path)
+        return load_status(NSO_INVALID,EINVAL,0);
+    FILE *file=fopen(path,"r");
+    if(!file)return load_status(errno==ENOENT?NSO_OK:NSO_LOAD_ERROR,
+                               errno==ENOENT?0:errno,0);
+    char line[128],build_id[33],expected_id[33],extra;
+    uint64_t expected_size=0;
+    size_t count=0,changed=0;
+    int r3_index=-1;
+    uint64_t trampoline_offset=0;
+    /* Preserve x16, every other GPR, SP and NZCV. Only s0 is the result.
+     * LDAR reads the input publisher's release store without a host call.
+     * All code is installed before the first guest instruction executes. */
+    uint32_t trampoline[12]={
+        0xf81f0ff0,0x58000130,0x88dffe10,0x35000070,
+        0x1e2703e0,0x14000002,0x1e2a4d20,0xf84107f0,
+        0,0xd503201f,0,0
+    };
+    struct nso_result result=load_status(NSO_INVALID,EINVAL,0);
+    if(!fgets(line,sizeof(line),file) || strcmp(line,"NSO-TEXT-PATCHES-1\n"))goto done;
+    if(!fgets(line,sizeof(line),file) ||
+       sscanf(line,"%32[0123456789abcdef] %c",expected_id,&extra)!=1 ||
+       strlen(expected_id)!=32)goto done;
+    nso_build_id(m,build_id);
+    if(strcmp(expected_id,build_id))goto done;
+    if(!fgets(line,sizeof(line),file) || strspn(line,"0123456789abcdefABCDEF\r\n")!=strlen(line))goto done;
+    char *end=NULL;
+    errno=0;
+    expected_size=strtoull(line,&end,16);
+    if(errno || end==line || (*end!='\r' && *end!='\n' && *end!='\0') ||
+       expected_size!=m->text_hi-m->text_lo)goto done;
+    while(fgets(line,sizeof(line),file)) {
+        int conditional=!strncmp(line,"R3 ",3);
+        const char *row=conditional?line+3:line;
+        unsigned long long offset;
+        unsigned expected,value;
+        if(count==sizeof(patches)/sizeof(patches[0]) ||
+           strspn(row,"0123456789abcdefABCDEF \t\r\n")!=strlen(row) ||
+           sscanf(row,"%16llx %8x %8x %c",&offset,&expected,&value,&extra)!=3 ||
+           (offset&3) || offset<m->text_lo ||
+           !range(offset,4,m->text_hi) ||
+           (count && offset<=patches[count-1].offset))goto done;
+        if(rd32(m->image+offset)!=expected) {
+            fprintf(stderr,"[nso-patches] expected word mismatch offset=0x%llx\n",offset);
+            goto done;
+        }
+        if(conditional) {
+            if(r3_index>=0 || !r3_state || (r3_state&3) ||
+               expected!=0x1e2a4d20 || value!=0x1e2703e0)goto done;
+            r3_index=(int)count;
+        }
+        patches[count++]=(struct patch_word){offset,expected,value};
+        if(expected!=value)changed++;
+    }
+    if(ferror(file)) {result=load_status(NSO_LOAD_ERROR,EIO,0);goto done;}
+    if(r3_index>=0) {
+        if(m->text_padding_hi<m->text_hi ||
+           m->text_padding_hi-m->text_hi<sizeof(trampoline))goto done;
+        trampoline_offset=(m->text_padding_hi-sizeof(trampoline))&~UINT64_C(15);
+        if(trampoline_offset<m->text_hi)goto done;
+        for(size_t i=0;i<sizeof(trampoline);i++)
+            if(m->image[trampoline_offset+i])goto done;
+        if(!text_branch(patches[r3_index].offset,trampoline_offset,
+                        &patches[r3_index].value) ||
+           !text_branch(trampoline_offset+32,patches[r3_index].offset+4,
+                        &trampoline[8]))goto done;
+        uint64_t pointer=(uint64_t)r3_state;
+        memcpy(&trampoline[10],&pointer,sizeof(pointer));
+    }
+    if(!changed) {result=load_status(NSO_OK,0,0);goto done;}
+    uint8_t *start=m->image+down(m->text_lo);
+    size_t bytes=(size_t)(up(m->text_hi)-down(m->text_lo));
+    if(loader_protect(start,bytes,PROT_READ|PROT_WRITE)) {
+        result=load_status(NSO_LOAD_ERROR,errno,0);goto done;
+    }
+    for(size_t i=0;i<count;i++)memcpy(m->image+patches[i].offset,&patches[i].value,4);
+    if(r3_index>=0)memcpy(m->image+trampoline_offset,trampoline,sizeof(trampoline));
+    __builtin___clear_cache((char *)start,(char *)start+bytes);
+    if(loader_protect(start,bytes,PROT_READ|PROT_EXEC)) {
+        int protection_error=errno;
+        /* The caller must release this image. No guest may execute it. */
+        m->ready=0;
+        result=load_status(NSO_LOAD_ERROR,protection_error,0);goto done;
+    }
+    fprintf(stderr,"[nso-patches] applied build=%s words=%zu guards=%zu\n",build_id,changed,count-changed);
+    result=load_status(NSO_OK,0,0);
+done:
+    fclose(file);
+    return result;
+}
 size_t nso_bound_import_count(const nso_module *m) {return m?m->bound_import_count:0;}
 struct nso_result nso_bound_import_at(const nso_module *m,size_t ordinal,struct nso_import_target *out) {
     if(!m || !out || !m->ready || m->closing)return load_status(NSO_INVALID,EINVAL,0);

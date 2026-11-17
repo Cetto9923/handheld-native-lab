@@ -1018,6 +1018,12 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
      * mapped (see the guest memory scan).
      */
     void openCheatDialog() {
+        String directory = resolveGameDir();
+        CheatMenu.show(this, directory == null ? null : new File(directory, "main.nso"),
+                this::openSaveCheatDialog);
+    }
+
+    private void openSaveCheatDialog() {
         if (!SaveCheater.available()) {
             toast("金手指不可用：存档密钥未随包提供");
             Log.w(TAG, "cheat unavailable: no save key in assets");
@@ -3068,6 +3074,10 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             refreshSetup();
             return;
         }
+        boolean managed = dataInstaller != null && dataInstaller.managed && dataInstaller.root != null
+                && dataInstaller.root.getAbsolutePath().equals(game_dir);
+        File files = managed ? dataInstaller.runtimeRoot : getExternalFilesDir(null);
+        if (!CheatMenu.prepare(this, new File(image), files)) return;
         if (!GUEST_START.begin()) {
             int state = GUEST_START.get();
             guestStarted = state == GuestStartState.STARTING || state == GuestStartState.STARTED;
@@ -3076,9 +3086,6 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             return;
         }
         guestStarted = true;
-        boolean managed = dataInstaller != null && dataInstaller.managed && dataInstaller.root != null
-                && dataInstaller.root.getAbsolutePath().equals(game_dir);
-        File files = managed ? dataInstaller.runtimeRoot : getExternalFilesDir(null);
         String saveRoot = managed ? new File(getFilesDir(), "saves").getAbsolutePath() : null;
         boolean isolatedSave = getIntent() != null
                 && getIntent().getBooleanExtra("isolated_regression_save", false);

@@ -267,6 +267,14 @@ static jlong StartGuest(JNIEnv* env,
     request->romfs = ToStdString(env, romfs);
     request->log_path = ToStdString(env, log_path);
     {
+        std::string plan = request->log_path;
+        size_t slash = plan.find_last_of('/');
+        if (slash == std::string::npos) { delete request; return -1; }
+        plan.resize(slash);
+        plan += "/ffrs-cheats.plan";
+        setenv("FFRS_STARTUP_CHEATS_PLAN", plan.c_str(), 1);
+    }
+    {
         std::string save = ToStdString(env, save_root);
         if (save.empty()) {
             save = request->log_path;

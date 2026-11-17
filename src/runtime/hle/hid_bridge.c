@@ -5,17 +5,21 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdatomic.h>
 _Static_assert(sizeof(ffrs_npad_state) == 0x28, "Npad ABI");
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static ffrs_npad_state current;
 static uint64_t pressed;
 static uint32_t styles = UINT32_MAX, ids = 0x101, hold;
 static int connected, initialized;
+static _Atomic uint32_t r3_held;
+uintptr_t ffrs_hid_r3_address(void) { return (uintptr_t)&r3_held; }
 static int32_t clamp(int32_t value) { return value < -32767 ? -32767 : value > 32767 ? 32767 : value; }
 void ffrs_hid_publish(int on, uint64_t buttons, int32_t lx, int32_t ly, int32_t rx, int32_t ry) {
     pthread_mutex_lock(&lock);
     connected = !!on;
     buttons = on ? buttons & 0xffff : 0;
+    atomic_store_explicit(&r3_held, (buttons & (1u << 5)) != 0, memory_order_release);
     pressed |= buttons & ~current.buttons;
     current.buttons = buttons;
     current.lx = on ? clamp(lx) : 0; current.ly = on ? clamp(ly) : 0;

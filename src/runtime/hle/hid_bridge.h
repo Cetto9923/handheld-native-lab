@@ -12,6 +12,8 @@ typedef struct {
     uint32_t attributes, reserved;
 } ffrs_npad_state;
 void ffrs_hid_publish(int connected, uint64_t buttons, int32_t lx, int32_t ly, int32_t rx, int32_t ry);
+/* Stable process-lifetime atomic input for the pre-execution R3 trampoline. */
+uintptr_t ffrs_hid_r3_address(void);
 uint64_t ffrs_hid_lookup(const char *name, unsigned *arguments, unsigned *returns);
 #ifdef __cplusplus
 }

@@ -1,9 +1,15 @@
 #include "../../src/runtime/hle/hid_bridge.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdatomic.h>
 static int errors;
 #define CHECK(c) do { if (!(c)) { fprintf(stderr,"FAIL %d: %s\n",__LINE__,#c);errors++; } } while(0)
 int main(void) {
+    _Atomic uint32_t *r3=(_Atomic uint32_t *)ffrs_hid_r3_address();
+    ffrs_hid_publish(1,1u<<5,0,0,0,0);CHECK(atomic_load(r3)==1);
+    ffrs_hid_publish(1,1u<<4,0,0,0,0);CHECK(atomic_load(r3)==0);
+    ffrs_hid_publish(1,1u<<5,0,0,0,0);
+    ffrs_hid_publish(0,1u<<5,0,0,0,0);CHECK(atomic_load(r3)==0);
     unsigned args=99, rets=99; uint32_t id=0, missing=1;
     void (*init)(void)=(void (*)(void))(uintptr_t)ffrs_hid_lookup("_ZN2nn3hid14InitializeNpadEv",&args,&rets);
     CHECK(init && args==0 && rets==0);init();
