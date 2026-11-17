@@ -5485,3 +5485,9 @@ Next construct candidate66 build-plan from candidate65, same assets and source h
 下一轮先确认RG477M01445122重新枚举，再将memory-tier68b/policy.android与reclaim.android推送运行，策略输入使用memory-budget68/status.txt和meminfo.txt。组件通过后执行 `python3 .local/water-capital-flowers-20261117/candidate68b/install_test.py`，按直接keyboard路线测试。优先核对soft回收warm_preserved=1、后续技能warm reuse/hit，以及硬门槛/Android关键通知warm_preserved=0和进程存活。1080目前仍依设备测试标记，发行默认统一及神殿/声音/其它机型回归继续待验。当前没有存活构建、采样或自动输入，荣耀继续保留给其它会话。
 
 分支只读审计已保存candidate68b/git-absorption-audit.json。远端main当前ecb9b57，五条本地分支均没有完整被它吸收，因此没有符合用户删除条件的分支。当前优化均已在任务分支提交，外来移植指南WIP继续保留。
+
+## 设备连续三轮离线，目标受阻
+
+前两轮分别完成68及68b源码、组件与整包构建，同一RG断连条件连续三轮存在。本轮再次核对adb devices仅有荣耀A42BBB5109000333，adb mdns services为空，无活动构建或采样。荣耀仍属于其它会话，当前无法执行掌机技能、神殿、出城、压力存活和声音的真实验收。候选源码与构建已提交，继续修改性能参数会缺少同机对照依据，因此目标设为blocked，等待用户重新连接RG477M01445122并恢复本任务。
+
+68b是后续应安装的候选，源1bf221e、APK ddf0c0e4、111宿主及Android通过。尚未证明游戏收益，1080发行默认、跨场景冷暖/显示/音频、其它手机存活、荣耀测试清理及Main吸收后分支清理继续保留完整范围。没有将局部构建当作目标完成。精确恢复步骤沿上一节，当前没有后台监视或自动输入进程。

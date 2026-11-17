@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-17T19:30:37.044672+08:00",
- "phase": "68b分级回收候选构建通过，等待RG重新连接验证",
+ "updated_at": "2026-11-17T19:32:46.436291+08:00",
+ "phase": "68b已构建，RG连续三轮离线，目标受阻等待连机",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -3734,7 +3734,7 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-17T11:07:35.928348+08:00",
-   "checkpoint": "68b源1bf221e完成构建，111宿主及Android退出0，653输入一致，APK ddf0c0e4/3769559B/BuildID324a3647。软门槛仅在核准RG预算、有效余量>10%且无系统提示时保留warm，硬门槛及真正压力继续完整回收。RG断连，未安装，实机收益和独立QA NOT_RUN。",
+   "checkpoint": "RG477M连续三轮未连接，本轮USB列表仅荣耀，mDNS为空，无活动构建或采样。68b源码/构建已提交，111宿主及Android通过，真实技能/出城/神殿/压力存活和声音验收待RG。目标受阻，等待重新连接并恢复。",
    "checkpoint_at": "2026-11-17T18:55:15.424740+08:00"
   }
  ],
@@ -10560,7 +10560,7 @@
    "id": "CODEX-WATER-CAPITAL-FLOWERS-20261117",
    "owner": "root",
    "role": "PERF_INVESTIGATION",
-   "status": "in_progress",
+   "status": "blocked",
    "objective": "核对水都走动及水面发光花朵与卡顿的关系，按实际绘制和CPU/GPU耗时定位，在画面正确前提下优化真实帧率",
    "inputs": [
     "用户32.5秒水都录屏0a62edf9，另一设备型号/APK未明确",
@@ -10595,7 +10595,7 @@
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acceptance": "花朵为用户线索，按key改写前取得实际draw证据。视频帧率与真实游戏帧率分别记录。移动、长帧和音频分别保留证据。",
-   "checkpoint": "68b源1bf221e完成构建，111宿主及Android退出0，653输入一致，APK ddf0c0e4/3769559B/BuildID324a3647。软门槛仅在核准RG预算、有效余量>10%且无系统提示时保留warm，硬门槛及真正压力继续完整回收。RG断连，未安装，实机收益和独立QA NOT_RUN。"
+   "checkpoint": "RG477M连续三轮未连接，本轮USB列表仅荣耀，mDNS为空，无活动构建或采样。68b源码/构建已提交，111宿主及Android通过，真实技能/出城/神殿/压力存活和声音验收待RG。目标受阻，等待重新连接并恢复。"
   }
  ],
  "blockers": [
@@ -10612,7 +10612,8 @@
   "HONOR-P1-20261112 cold load: first entry into the 01 scene averages 24.03 FPS with a 1408.55 ms worst frame because the submit thread compiles shaders synchronously (xbg_game.cpp:2501-2533). With a warm pipeline cache the same scene holds 30.00 FPS for 392 s with zero long frames.",
   "HONOR-SAVE-20261112: the save file lives in external app specific storage and survives APK updates, but the guest only flushes at its own save points, so installing a package while playing loses the progress since the last save point. The save root also switches between the external codex-local-save directory and the internal getFilesDir()/saves when the installer flips to managed mode.",
   "HONOR-BATTLE-EFFECT-STUTTER (attribution withdrawn and re-scoped 2026-11-12): the device data refutes the original claim. Synchronous pipeline creation is NOT the cause of the >100 ms spikes (the largest single creation in the whole session is 1.3 ms). The cause is the CPU blocking in the submit path while the GPU is idle, marked by the readback/writeback drains (sync_rb 9.80 vs 0.03 per window). The repair point is the drain scheduling, which is task HONOR-TRANSIT-RETIRE-20261112. The warm list flush defect (Class A) is fixed; the seed is unproven and is being narrowed. The cold-start 4.5-4.8 s frame is still unexplained.",
-  "RG477M-TEXEL-FORMAT-20261112: on the RG477M (Mali-G615) the guest dies after about five seconds with FATAL: Texel format lacks formatless-write support. Mali reports bufferFeatures=0x78 for the texel formats, so the optional STORAGE_WRITE_WITHOUT_FORMAT and READ_WITHOUT_FORMAT bits are absent for the whole family. The typed path is available (0x78 contains STORAGE_TEXEL_BUFFER_BIT), so the fix is a SPIR-V rewrite. The game cannot be played on the handheld until this lands, which outranks the stutter. Task RG477M-TEXEL-FORMAT-20261112, device RG477M01445122 exclusively."
+  "RG477M-TEXEL-FORMAT-20261112: on the RG477M (Mali-G615) the guest dies after about five seconds with FATAL: Texel format lacks formatless-write support. Mali reports bufferFeatures=0x78 for the texel formats, so the optional STORAGE_WRITE_WITHOUT_FORMAT and READ_WITHOUT_FORMAT bits are absent for the whole family. The typed path is available (0x78 contains STORAGE_TEXEL_BUFFER_BIT), so the fix is a SPIR-V rewrite. The game cannot be played on the handheld until this lands, which outranks the stutter. Task RG477M-TEXEL-FORMAT-20261112, device RG477M01445122 exclusively.",
+  "CODEX-WATER-CAPITAL-FLOWERS-20261117：RG477M连续三轮ADB离线，mDNS无服务，等待用户重新连接；68b尚未装机验收。"
  ],
  "verified": [
   "CURRENT_HANDOFF: a277 runtime sourcee305; actual originalstartup+OScleanup0/0, poststartup originalallocator0/0, HOST14expected, completeCRT515raw133. Earlier append-only bullets are historical stages and not current blockers.",
@@ -10783,16 +10784,16 @@
  ],
  "execution_goal": {
   "objective": "继续优化共鸣原生Android移植，以1080P输出及有界动态内部尺寸，持续优化水都、世界地图、土之神殿和战斗真实帧率及帧时间，不再锁定30Hz目标。保持原速、音频和显示修复。清理已授权测试冗余，核验存档缓存，提交修改，Main确认吸收才删自有分支，保留APK历史。",
-  "mode": "active。用户已恢复并更新目标，最新要求尽可能提升真实帧率。",
+  "mode": "blocked，RG连续三轮离线，等待用户连机恢复。",
   "workers_model": "gpt-6.1-sol",
   "workers_reasoning": "xhigh",
   "completion": "unproven",
   "human_local_development_approval": "用户已授权本轮RG477M测试、自动安装、提交及GitHub发布。荣耀暂由另一会话使用，本轮未操作。",
-  "next_goal": "Reduce verified interleaved page mapping scans, then recheck outcity and actual LIMIT",
+  "next_goal": "验证68b软回收预热存活、真实技能长帧与硬压力存活，然后完成原跨场景目标。",
   "loop": "Locate real blocker -> smallest functional code fix -> compile -> real device recheck -> local checkpoint -> next gate",
-  "parallel_scope": "root串行控制荣耀设备与本树性能源码，金手指独立工作树保持既有归属，独立QA尚未执行。",
+  "parallel_scope": "root串行控制本树与本轮授权RG477M；荣耀平板保留其它会话，独立QA未执行。",
   "reporting": "Report material breakthroughs, required user action or real blockers; no artificial progress from diagnostic counts",
-  "current_priority": "Reduce verified interleaved page mapping scans, then recheck outcity and actual LIMIT"
+  "current_priority": "验证68b软回收预热存活、真实技能长帧与硬压力存活，然后完成原跨场景目标。"
  },
  "coordinator_branch": "task/T-codex-recovery-20261114",
  "progress_assessment": {
@@ -10805,7 +10806,7 @@
    "荣耀400Pro同次闪退日志及其它芯片真机证据"
   ]
  },
- "device_availability": "User confirms other conversation was installing/debugging another game and has now closed it; root sole device operator from this point. Previous foreigngame screenshots do not prove FFRSscene or solely FFRSexit cause; earlier FPS potentially contended, NOT acceptance. Continuous occupancy authorized.",
+ "device_availability": "RG477M连续三轮未连接，本轮USB列表仅荣耀，mDNS为空，无活动构建或采样。68b源码/构建已提交，111宿主及Android通过，真实技能/出城/神殿/压力存活和声音验收待RG。目标受阻，等待重新连接并恢复。",
  "emulator": {
   "name": "pvz2",
   "serial": "emulator-5554",
