@@ -12,6 +12,7 @@
 
 static _Atomic(void *) g_native_window;
 static _Atomic(uint64_t) g_native_window_generation;
+static atomic_bool g_reverse_landscape;
 static pthread_mutex_t g_native_window_use_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void *nso_host_native_window_get(void) {
@@ -43,6 +44,14 @@ bool nso_host_native_window_use(void (*fn)(void *, void *), void *context) {
 
 uint64_t nso_host_native_window_generation(void) {
     return atomic_load_explicit(&g_native_window_generation, memory_order_relaxed);
+}
+
+void nso_host_native_window_set_reverse_landscape(bool reverse) {
+    atomic_store_explicit(&g_reverse_landscape, reverse, memory_order_relaxed);
+}
+
+bool nso_host_native_window_reverse_landscape(void) {
+    return atomic_load_explicit(&g_reverse_landscape, memory_order_relaxed);
 }
 
 void *nso_host_native_window_wait_stable(int min_stable_ms, int timeout_ms) {

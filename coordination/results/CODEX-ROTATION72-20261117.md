@@ -17,3 +17,7 @@
 ## 实机否证与校准修正
 
 用户已授权接管。首轮23161与portlab23809前台交叠已中止，截图不作为72证据。重新接管PID26783，菜单请求反向8且偏好true，但display0为ignoreOrientationRequest=true，实际rotation一直1。撤回此前通过Android方向请求即可校准的假设。改用固定横屏加共享rootLayout的180度变换，SurfaceView与TouchPad同父级，Android输入使用同一变换。生产提取契约覆盖布局创建前恢复、创建后180度应用、再次切回。修改后完整构建与真机验证继续。
+
+## 用户复核及原生输出修正
+
+79ef398实机PID27830启动截图中Square Enix原生字样正向、Java按键倒向，证明共享父布局旋转未作用于原生Surface内容。用户也确认仅菜单旋转。该方案整画面校准结论撤回。默认按用户要求改为sensorLandscape，跟随重力感应切换两种横屏。手动校准通过原子bool发布到最终Vulkan blit，仅反转当前crop源矩形的X/Y两端，目标矩形、比例和黑边保持既有计算，Java仅对TouchPad及setupView做同角度变换。原生窗口换代保持校准值。7项生产提取组件检查通过，含普通/裁剪源的双轴坐标、目标黑边、偏好恢复、JNI接线及菜单。完整构建和原生同向实机验证继续。

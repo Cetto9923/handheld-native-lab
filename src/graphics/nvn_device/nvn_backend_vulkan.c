@@ -1347,6 +1347,12 @@ static int nvn_vulkan_present_image(nvn_device_state *device, void *image, uint3
     blit.srcOffsets[1].x = source_x + (int32_t)source_w;
     blit.srcOffsets[1].y = source_y + (int32_t)source_h;
     blit.srcOffsets[1].z = 1; /* a 2D blit has unit Z extent */
+    if (nso_host_native_window_reverse_landscape()) {
+        blit.srcOffsets[0].x = source_x + (int32_t)source_w;
+        blit.srcOffsets[0].y = source_y + (int32_t)source_h;
+        blit.srcOffsets[1].x = source_x;
+        blit.srcOffsets[1].y = source_y;
+    }
     blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     blit.dstSubresource.layerCount = 1;
     blit.dstOffsets[0].x = destination_x;

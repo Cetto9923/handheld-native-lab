@@ -4295,7 +4295,12 @@
     "scripts/verify_host.py",
     "coordination/results/CODEX-ROTATION72-20261117.md",
     ".local/rotation72-20261117/",
-    "coordination/docs/RELEASE72-ROTATION-20261117.md"
+    "coordination/docs/RELEASE72-ROTATION-20261117.md",
+    "src/android/app/java/org/ffrs/diagnostic/GameWindowNative.java",
+    "src/android/native/game_window_jni.cpp",
+    "src/runtime/hle/native_window.c",
+    "src/runtime/hle/native_window.h",
+    "src/graphics/nvn_device/nvn_backend_vulkan.c"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
@@ -11315,7 +11320,7 @@
    "owner": "root",
    "role": "ANDROID_UI",
    "status": "in_progress",
-   "objective": "加入可持久保存的180度横屏手动校准，验证原生画面与触摸同向；补充诊断APK指纹以核对黑屏报告版本",
+   "objective": "默认重力感应横屏并加入可持久保存的180度手动校准，验证原生画面与触摸同向；补充诊断APK指纹核对黑屏报告版本",
    "inputs": [
     "用户Y700四代横屏倒置反馈及手动校准要求",
     "用户确认realme已安装最新版，与报告metadata60存在差异，实际APK身份待证据核对",
@@ -11339,12 +11344,17 @@
     "scripts/verify_host.py",
     "coordination/results/CODEX-ROTATION72-20261117.md",
     ".local/rotation72-20261117/",
-    "coordination/docs/RELEASE72-ROTATION-20261117.md"
+    "coordination/docs/RELEASE72-ROTATION-20261117.md",
+    "src/android/app/java/org/ffrs/diagnostic/GameWindowNative.java",
+    "src/android/native/game_window_jni.cpp",
+    "src/runtime/hle/native_window.c",
+    "src/runtime/hle/native_window.h",
+    "src/graphics/nvn_device/nvn_backend_vulkan.c"
    ],
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acceptance": "菜单两列完整显示，横屏正反可切换并持久保存，原生画面/触摸可继续操作，版本指纹来自实际APK文件，正式存档保全",
-   "checkpoint": "荣耀72 PID26783实际点击后请求8、偏好true，但display0 ignoreOrientationRequest=true、rotation仍1。撤回系统请求即可完成校准的假设，改为共享父布局180度同步变换，重建后重新真机验证。"
+   "checkpoint": "用户明确默认应自适应重力感应。manifest和Activity改sensorLandscape，手动校准通过最终Vulkan blit双轴反向加Java触摸面板180度变换。前两方案原生未旋转已撤回，7项组件契约通过，重建中。"
   }
  ],
  "blockers": [

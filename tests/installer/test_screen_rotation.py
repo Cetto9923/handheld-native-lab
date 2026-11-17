@@ -9,6 +9,70 @@ JAVA = ROOT / 'src/android/app/java/org/ffrs/diagnostic'
 
 
 class ScreenRotation(unittest.TestCase):
+    def test_native_presentation_rotates_both_axes_and_preserves_crop_and_borders(self):
+        source = (ROOT / 'src/graphics/nvn_device/nvn_backend_vulkan.c').read_text()
+        start = source.index('    memset(&blit, 0, sizeof(blit));')
+        end = source.index('    vkCmdBlitImage(', start)
+        fixture = '''
+#include <assert.h>
+#include <stdint.h>
+#include <string.h>
+#include "native_window.h"
+#define VK_IMAGE_ASPECT_COLOR_BIT 1
+typedef struct { int32_t x, y, z; } Offset;
+typedef struct { unsigned aspectMask, layerCount; } Layers;
+typedef struct {
+    Layers srcSubresource;
+    Offset srcOffsets[2];
+    Layers dstSubresource;
+    Offset dstOffsets[2];
+} VkImageBlit;
+static VkImageBlit region(int32_t source_x, int32_t source_y, uint32_t source_w,
+        uint32_t source_h, int32_t destination_x, int32_t destination_y,
+        int32_t destination_w, int32_t destination_h) {
+    VkImageBlit blit;
+''' + source[start:end] + '''
+    return blit;
+}
+int main(void) {
+    assert(!nso_host_native_window_reverse_landscape());
+    for (int reverse = 0; reverse < 2; ++reverse) {
+        nso_host_native_window_set_reverse_landscape(reverse);
+        for (int crop = 0; crop < 2; ++crop) {
+            int32_t x = crop ? 17 : 0, y = crop ? 23 : 0;
+            VkImageBlit b = region(x, y, 1920, 1080, 0, 116, 3000, 1688);
+            assert(b.srcOffsets[0].x == x + (reverse ? 1920 : 0));
+            assert(b.srcOffsets[0].y == y + (reverse ? 1080 : 0));
+            assert(b.srcOffsets[1].x == x + (reverse ? 0 : 1920));
+            assert(b.srcOffsets[1].y == y + (reverse ? 0 : 1080));
+            assert(b.srcOffsets[0].z == 0 && b.srcOffsets[1].z == 1);
+            assert(b.dstOffsets[0].x == 0 && b.dstOffsets[1].x == 3000);
+            assert(b.dstOffsets[0].y == 116 && b.dstOffsets[1].y == 1804);
+            assert(b.dstOffsets[0].z == 0 && b.dstOffsets[1].z == 1);
+            assert(b.srcSubresource.layerCount == 1 && b.dstSubresource.layerCount == 1);
+        }
+        nso_host_native_window_clear();
+        assert(nso_host_native_window_reverse_landscape() == reverse);
+    }
+    nso_host_native_window_set_reverse_landscape(false);
+    assert(!nso_host_native_window_reverse_landscape());
+}
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            implementation = path / 'rotation.c'
+            implementation.write_text(fixture)
+            command = ['clang', '-std=c11', '-Wall', '-Wextra', '-Werror',
+                       '-fsanitize=address,undefined', '-pthread',
+                       '-I' + str(ROOT / 'src/runtime/hle'),
+                       str(implementation), str(ROOT / 'src/runtime/hle/native_window.c'),
+                       '-o', str(path / 'rotation')]
+            subprocess.run(command, check=True, capture_output=True)
+            subprocess.run([str(path / 'rotation')], check=True, capture_output=True)
+        bridge = (ROOT / 'src/android/native/game_window_jni.cpp').read_text()
+        self.assertIn('Java_org_ffrs_diagnostic_GameWindowNative_setReverseLandscape', bridge)
+        self.assertIn('nso_host_native_window_set_reverse_landscape(reverse == JNI_TRUE)', bridge)
+
     def test_orientation_toggle_restore_and_menu_wiring(self):
         source = (JAVA / 'GameActivity.java').read_text()
         start = source.index('    private void restoreScreenOrientation() {')
@@ -16,7 +80,7 @@ class ScreenRotation(unittest.TestCase):
         methods = source[start:end]
         fixture = '''
 class ActivityInfo {
-    static final int SCREEN_ORIENTATION_LANDSCAPE = 0;
+    static final int SCREEN_ORIENTATION_SENSOR_LANDSCAPE = 6;
     static final int SCREEN_ORIENTATION_REVERSE_LANDSCAPE = 8;
 }
 class Log { static void i(String tag, String value) {} }
@@ -37,7 +101,12 @@ public class RotationContract {
         float rotation;
         void setRotation(float value) { rotation = value; }
     }
-    FrameLayout rootLayout;
+    FrameLayout touchPad;
+    FrameLayout setupView;
+    static final class GameWindowNative {
+        static boolean reverse;
+        static void setReverseLandscape(boolean value) { reverse = value; }
+    }
     RotationContract(Preferences value) { preferences = value; }
     Preferences getPreferences(int mode) { return preferences; }
     void setRequestedOrientation(int orientation) { requested = orientation; }
@@ -46,21 +115,23 @@ public class RotationContract {
         Preferences preferences = new Preferences();
         RotationContract first = new RotationContract(preferences);
         first.restoreScreenOrientation();
-        if (first.requested != 0 || preferences.saved) throw new AssertionError("default");
-        first.rootLayout = new FrameLayout();
+        if (first.requested != 6 || preferences.saved) throw new AssertionError("default");
+        first.touchPad = new FrameLayout();
+        first.setupView = new FrameLayout();
         first.applyScreenOrientation();
-        if (first.rootLayout.rotation != 0f) throw new AssertionError("default transform");
+        if (first.touchPad.rotation != 0f) throw new AssertionError("default transform");
         first.rotateScreen();
-        if (first.requested != 0 || !preferences.saved || first.rootLayout.rotation != 180f)
+        if (first.requested != 6 || !preferences.saved || first.touchPad.rotation != 180f
+                || first.setupView.rotation != 180f || !GameWindowNative.reverse)
             throw new AssertionError("reverse on orientation-ignoring tablet");
         RotationContract recreated = new RotationContract(preferences);
         recreated.restoreScreenOrientation();
-        recreated.rootLayout = new FrameLayout();
+        recreated.touchPad = new FrameLayout();
         recreated.applyScreenOrientation();
-        if (recreated.requested != 0 || recreated.rootLayout.rotation != 180f)
+        if (recreated.requested != 6 || recreated.touchPad.rotation != 180f || !GameWindowNative.reverse)
             throw new AssertionError("restore after view creation");
         recreated.rotateScreen();
-        if (recreated.requested != 0 || preferences.saved || recreated.rootLayout.rotation != 0f) throw new AssertionError("normal");
+        if (recreated.requested != 6 || preferences.saved || recreated.touchPad.rotation != 0f || GameWindowNative.reverse) throw new AssertionError("normal");
     }
 }
 '''
@@ -74,6 +145,7 @@ public class RotationContract {
         self.assertLess(create.index('setContentView(root);'), create.index('applyScreenOrientation();'))
         self.assertIn('root.addView(surface_view,', create)
         self.assertIn('root.addView(touchPad,', create)
+        self.assertIn('android:screenOrientation="sensorLandscape"', (ROOT / 'src/android/app/gamewindow/AndroidManifest.xml').read_text())
         self.assertIn('else if (i == 9) owner.toggleFpsOverlay();', source)
         self.assertIn('else owner.rotateScreen();', source)
         self.assertIn('"旋转屏幕180°"', source)

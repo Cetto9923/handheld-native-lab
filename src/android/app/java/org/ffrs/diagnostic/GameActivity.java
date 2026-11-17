@@ -144,10 +144,12 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     }
 
     private void applyScreenOrientation() {
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
-        // Rotate the shared parent so SurfaceView and touch coordinates stay aligned,
-        // including on tablets that ignore Activity orientation requests.
-        if (rootLayout != null) rootLayout.setRotation(reverseLandscape ? 180f : 0f);
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        // SurfaceView content is rotated in the final native presentation blit.
+        // Android applies the same inverse transform to the touch overlay's input.
+        GameWindowNative.setReverseLandscape(reverseLandscape);
+        if (touchPad != null) touchPad.setRotation(reverseLandscape ? 180f : 0f);
+        if (setupView != null) setupView.setRotation(reverseLandscape ? 180f : 0f);
     }
 
     private void rotateScreen() {

@@ -5547,3 +5547,7 @@ GitHub v1.0.71已发布并设为最新版，精确构建标签b7a08b3；APK bd27
 ## 72方向请求被系统忽略的实测
 
 用户交接已获准，26783实测方向请求8、偏好true，display0 ignoreOrientationRequest=true、rotation1，系统请求方案未实现实际翻转。改为共享根布局旋转，保持横屏、同步原生Surface与触摸。前轮portlab冲突证据与当前有效PID分离。重建和真机触摸验证待执行。
+
+## 72原生画面未转的更正
+
+用户复核仅菜单旋转，27830截图确认原生Square字样正向而Java倒向，79ef398不能交付。现按用户要求默认sensorLandscape重力感应；手动校准接入最终blit双轴反向，触摸与setup独立180度变换，SurfaceView父级保持原布局。新增C11/ASan真实blit契约，7项组件通过。完整重建及实机触摸/原生画面待执行。

@@ -28,6 +28,9 @@ bool nso_host_native_window_use(void (*fn)(void *window, void *context), void *c
 /* Counts set/clear transitions so a reader can tell a fresh window from a
  * stale pointer without dereferencing anything. */
 uint64_t nso_host_native_window_generation(void);
+/* Manual display calibration, independent of window replacement and game logic. */
+void nso_host_native_window_set_reverse_landscape(bool reverse);
+bool nso_host_native_window_reverse_landscape(void);
 
 /* Waits for a platform window that stays published for min_stable_ms and
  * returns it, or NULL when none stayed. The Activity replaces its Surface

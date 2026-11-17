@@ -17,6 +17,11 @@ Java_org_ffrs_diagnostic_GameWindowNative_presentedFrames(JNIEnv*, jclass) {
     return static_cast<jlong>(nvn_engine_presented_frames());
 }
 
+extern "C" JNIEXPORT void JNICALL
+Java_org_ffrs_diagnostic_GameWindowNative_setReverseLandscape(JNIEnv*, jclass, jboolean reverse) {
+    nso_host_native_window_set_reverse_landscape(reverse == JNI_TRUE);
+}
+
 namespace {
 
 constexpr const char* kLogTag = "FFRS-GameWindow";

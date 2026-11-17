@@ -24,6 +24,8 @@ public final class GameWindowNative {
     public static native void requestMemoryTrim(int severity);
     /** Successful game-frame presentations, sampled without the render lock. */
     public static native long presentedFrames();
+    /** Rotate the final game presentation together with the Java touch overlay. */
+    public static native void setReverseLandscape(boolean reverse);
     public static native int nativeGuestThreadState();
     public static native boolean hostExitReady(boolean request);
     /** Returns {present, pointer, width, height, format, generation}. */
