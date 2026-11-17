@@ -101,8 +101,7 @@ public class RotationContract {
         float rotation;
         void setRotation(float value) { rotation = value; }
     }
-    FrameLayout touchPad;
-    FrameLayout setupView;
+    FrameLayout rootLayout;
     static final class GameWindowNative {
         static boolean reverse;
         static void setReverseLandscape(boolean value) { reverse = value; }
@@ -116,22 +115,21 @@ public class RotationContract {
         RotationContract first = new RotationContract(preferences);
         first.restoreScreenOrientation();
         if (first.requested != 6 || preferences.saved) throw new AssertionError("default");
-        first.touchPad = new FrameLayout();
-        first.setupView = new FrameLayout();
+        first.rootLayout = new FrameLayout();
         first.applyScreenOrientation();
-        if (first.touchPad.rotation != 0f) throw new AssertionError("default transform");
+        if (first.rootLayout.rotation != 0f) throw new AssertionError("default transform");
         first.rotateScreen();
-        if (first.requested != 6 || !preferences.saved || first.touchPad.rotation != 180f
-                || first.setupView.rotation != 180f || !GameWindowNative.reverse)
+        if (first.requested != 6 || !preferences.saved || first.rootLayout.rotation != 180f
+                || !GameWindowNative.reverse)
             throw new AssertionError("reverse on orientation-ignoring tablet");
         RotationContract recreated = new RotationContract(preferences);
         recreated.restoreScreenOrientation();
-        recreated.touchPad = new FrameLayout();
+        recreated.rootLayout = new FrameLayout();
         recreated.applyScreenOrientation();
-        if (recreated.requested != 6 || recreated.touchPad.rotation != 180f || !GameWindowNative.reverse)
+        if (recreated.requested != 6 || recreated.rootLayout.rotation != 180f || !GameWindowNative.reverse)
             throw new AssertionError("restore after view creation");
         recreated.rotateScreen();
-        if (recreated.requested != 6 || preferences.saved || recreated.touchPad.rotation != 0f || GameWindowNative.reverse) throw new AssertionError("normal");
+        if (recreated.requested != 6 || preferences.saved || recreated.rootLayout.rotation != 0f || GameWindowNative.reverse) throw new AssertionError("normal");
     }
 }
 '''
