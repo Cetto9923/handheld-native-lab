@@ -5440,3 +5440,9 @@ Next read the latest water-capital report, page-pattern/result.json and page-pcs
 
 66 page mapping candidate: 8 coherent gaps and 8 invalidated-on-free cursors. Host normal465/recovery863 pass; host ASan and RG4KiB contracts pass, both negative controls reject. Real53171-map RG replay median CPU17937.523 ->6546.275ms, all ledgers/cleanup valid. Full APK/gameplay pending. Baseline30e615a, paths saved page-cache66/baseline.
 Next construct candidate66 build-plan from candidate65, same assets and source hashes. Current installed65 PID24373 world map, CSV full120000. Honor remains reserved for other chat.
+
+## 66直接按键装机检查点
+
+66源9c1a765已构建并安装，111项宿主和Android构建退出0，653输入SHA一致。APK90be30a8/3765463B/BuildID5844b657，正式9存档及私有文件安装前后一致。改用ADB keyboard直接Dpad+B，虚拟按键保持隐藏。65 PID29724与66 PID14314实际出城最长长帧782.809→355.764ms，>100ms为13→7；暖资源单对照，种子学习1802→1806，整机收益待重复验证。实际LIMIT仍未复现。
+
+普通对照与截图在compare65c/compare66，早期失败标题脚本与未出城窗口已明确排除。RG正式9存档保护，当前14314继续世界地图与战斗，虚拟按键隐藏。荣耀保持其它会话占用。全部本轮源码已在9c1a765，当前只补证据记录，外来指南WIP保留。下一步检查compare66/battle01.png，复现指定LIMIT并采同PID栈，重复暖资源对照。

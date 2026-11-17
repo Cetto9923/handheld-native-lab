@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-17T12:33:04.811134+08:00",
- "phase": "65 internal texture mirror candidate installed; page scan and LIMIT investigation active",
+ "updated_at": "2026-11-17T16:50:13.560056+08:00",
+ "phase": "66内部候选已装机，直接按键完成首轮出城对照，继续LIMIT与冷暖回归",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -3704,8 +3704,8 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-17T11:07:35.928348+08:00",
-   "checkpoint": "66 page mapping candidate: 8 coherent gaps and 8 invalidated-on-free cursors. Host normal465/recovery863 pass; host ASan and RG4KiB contracts pass, both negative controls reject. Real53171-map RG replay median CPU17937.523 ->6546.275ms, all ledgers/cleanup valid. Full APK/gameplay pending. Baseline30e615a, paths saved page-cache66/baseline.",
-   "checkpoint_at": "2026-11-17T14:40:34.265143+08:00"
+   "checkpoint": "66源9c1a765已构建并安装，111项宿主和Android构建退出0，653输入SHA一致。APK90be30a8/3765463B/BuildID5844b657，正式9存档及私有文件安装前后一致。改用ADB keyboard直接Dpad+B，虚拟按键保持隐藏。65 PID29724与66 PID14314实际出城最长长帧782.809→355.764ms，>100ms为13→7；暖资源单对照，种子学习1802→1806，整机收益待重复验证。实际LIMIT仍未复现。",
+   "checkpoint_at": "2026-11-17T16:50:13.560056+08:00"
   }
  ],
  "tasks": [
@@ -10558,7 +10558,7 @@
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acceptance": "花朵为用户线索，按key改写前取得实际draw证据。视频帧率与真实游戏帧率分别记录。移动、长帧和音频分别保留证据。",
-   "checkpoint": "66 page mapping candidate: 8 coherent gaps and 8 invalidated-on-free cursors. Host normal465/recovery863 pass; host ASan and RG4KiB contracts pass, both negative controls reject. Real53171-map RG replay median CPU17937.523 ->6546.275ms, all ledgers/cleanup valid. Full APK/gameplay pending. Baseline30e615a, paths saved page-cache66/baseline."
+   "checkpoint": "66源9c1a765已构建并安装，111项宿主和Android构建退出0，653输入SHA一致。APK90be30a8/3765463B/BuildID5844b657，正式9存档及私有文件安装前后一致。改用ADB keyboard直接Dpad+B，虚拟按键保持隐藏。65 PID29724与66 PID14314实际出城最长长帧782.809→355.764ms，>100ms为13→7；暖资源单对照，种子学习1802→1806，整机收益待重复验证。实际LIMIT仍未复现。"
   }
  ],
  "blockers": [
