@@ -383,6 +383,10 @@ def main():
                                   'tests.device.test_sample_usage'])
     run('linear-sample-contract', [sys.executable, '-m', 'unittest',
                                    'tests.device.test_linear_sample'])
+    run('memory-pressure-contract', [sys.executable, '-m', 'unittest',
+                                     'tests.device.test_memory_pressure'])
+    run('memory-pressure-lifecycle', [sys.executable, '-m', 'unittest',
+                                      'tests.installer.test_memory_pressure_lifecycle'])
     run('performance-hint-contract', [sys.executable, '-m', 'unittest',
                                      'tests.device.test_performance_hint'])
     run('probe-marker-poll-contract', [sys.executable, '-m', 'unittest',

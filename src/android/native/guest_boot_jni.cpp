@@ -375,6 +375,13 @@ static jlong StartGuest(JNIEnv* env,
     return static_cast<jlong>(thread);
 }
 
+extern "C" void xbg_request_memory_trim(unsigned level);
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_ffrs_diagnostic_GameWindowNative_requestMemoryTrim(JNIEnv*, jclass, jint severity) {
+    if (severity > 0) xbg_request_memory_trim(severity >= 2 ? 2u : 1u);
+}
+
 extern "C" JNIEXPORT jint JNICALL
 Java_org_ffrs_diagnostic_GameWindowNative_nativeGuestThreadState(JNIEnv*, jclass) {
     return static_cast<jint>(g_guest_thread_state.load(std::memory_order_acquire));

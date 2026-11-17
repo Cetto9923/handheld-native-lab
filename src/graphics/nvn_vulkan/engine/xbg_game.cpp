@@ -51,6 +51,10 @@ static_assert(VK_FORMAT_R32_UINT==XBG_VK_FORMAT_R32_UINT && VK_FORMAT_R32_SINT==
 #include "xbg_spirv_narrow.h"
 #include "xbg_spirv_precise.h"
 #include "xbg_packed_shader_words.h"
+#include "xbg_memory_pressure.h"
+#ifdef __ANDROID__
+#include <malloc.h>
+#endif
 #include "xbg_spirv_ldc.h"
 #include "xbg_spirv_temps.h"
 #include "xbg_spirv_raster.h"
@@ -169,6 +173,8 @@ extern "C" void gfx_drain(){
 void gfx_async_stop(){if(!gfx_worker.joinable())return;{std::lock_guard<std::mutex> l(gfx_job_mutex);gfx_stop=true;}gfx_job_cv.notify_all();gfx_worker.join();gfx_stop=false;gfx_async=false;}
 char error_text[1024]{};
 bool initialized=false,failed=false;
+std::atomic<unsigned> memory_trim_requested{0};
+xbg_memory_pressure::Policy memory_pressure_policy;
 VkBool32 sampler_mirror_clamp_enabled=VK_FALSE;
 // Formatless storage access per format needs VK_KHR_format_feature_flags2 (core in Vulkan 1.3). Without it (Vulkan 1.1 drivers
 // such as Adreno 730 512.615) the spec's "Formats Without Shader Storage Format" rule applies: the shaderStorageImage{Read,Write}
@@ -1104,7 +1110,7 @@ struct PerfCounts{size_t pipelines,layouts,samplers,passes,images,host_segments,
 PerfCounts perf_counts();
 // Opt-in counts only: resource counts do not attribute driver or guest memory.
 bool memory_profile_counts=false;
-void log_memory_profile_counts();
+void log_memory_profile_counts(bool include_lifetime=true);
 struct Perf {
     uint64_t frames=0,submits=0,waits=0,sync_writeback=0,sync_readback=0,sync_query=0,sync_other=0,gpu_ns=0,gpu_samples=0,
         submit_cpu_ns=0,present_cpu_ns=0,passes=0,draws=0,dispatches=0,snapshot_hits=0,snapshot_misses=0,pending_views=0,access_by[12]={},folded_clears=0,why_wait=0,why_poll=0,why_access=0,why_cmdwait=0,why_finish=0,why_slot=0,snapshot_bytes=0,arena_peak=0,window_start=0,ops=0,
@@ -3858,6 +3864,16 @@ std::vector<Rec> recs;std::unordered_set<std::string> known;xbg_warm_flush::Pend
 // Explicitly enabled Honor experiment: precompute the LIMIT shaders seen in the device trace.
 std::vector<std::string> compute_prewarm_keys;
 std::unordered_map<std::string,VkPipeline> ready;std::vector<std::thread> threads;std::atomic<bool> stop{false};std::atomic<size_t> next{0};
+std::atomic<bool> memory_constrained{false};
+std::atomic<unsigned> active_workers{0};
+struct WorkerLifetime {
+    WorkerLifetime() {
+        ++active_workers;
+    }
+    ~WorkerLifetime() {
+        --active_workers;
+    }
+};
 std::atomic<uint64_t> built{0},failed{0},build_ns{0},compiled{0};uint64_t hits=0,creates=0,create_ns=0,create_max_ns=0,compute_hits=0,compute_creates=0,compute_create_ns=0,compute_create_max_ns=0;bool enabled=true;
 struct WarmModule {VkShaderModule module;uint32_t stage;};
 std::unordered_map<std::string,WarmModule> modules;std::unordered_map<std::string,VkPipelineLayout> layouts;std::unordered_map<std::string,VkRenderPass> passes;
@@ -3903,11 +3919,12 @@ size_t rewritten_bytes=0;
 std::atomic<uint64_t> rewritten_retained{0},rewritten_denied_budget{0},rewritten_peak_bytes{0};
 void reject_reuse(){std::lock_guard<std::mutex> lock(mu);reuse_rejected=true;}
 void retain_rewritten(const std::string &key,std::vector<uint32_t> input,const std::vector<uint32_t> &output){
+    if(memory_constrained.load())return;
     RewrittenShader packed;
     if(!packed.input.assign(input) || !packed.output.assign(output))return;
     const size_t bytes=packed.input.data.size()+packed.output.data.size();
     std::lock_guard<std::mutex> lock(mu);
-    if(reuse_rejected || rewritten.count(key))return;
+    if(reuse_rejected || memory_constrained.load() || rewritten.count(key))return;
     if(bytes>rewritten_limit-rewritten_bytes){
         ++rewritten_denied_budget;
         if(shader_reuse==2)xbg_logf("NVN shader reuse cache-budget identity=%s used_bytes=%zu request_bytes=%zu limit_bytes=%zu",key.c_str(),rewritten_bytes,bytes,rewritten_limit);
@@ -4016,7 +4033,7 @@ bool build_compute(const Rec &rec,Reader &reader,VkPipelineLayout layout){
     if(timing_clock()-begin>=compile_ns)++compiled;
     std::string bytes(reinterpret_cast<const char*>(rec.words.data()),rec.words.size()*4);
     std::lock_guard<std::mutex> lock(mu);
-    if(!ready.emplace(bytes,pipeline).second)vkDestroyPipeline(cfg.device,pipeline,nullptr);
+    if(memory_constrained.load() || !ready.emplace(bytes,pipeline).second)vkDestroyPipeline(cfg.device,pipeline,nullptr);
     return true;
 }
 bool build(const Rec &rec){
@@ -4055,7 +4072,7 @@ bool build(const Rec &rec){
     if(result!=VK_SUCCESS){if(pl)vkDestroyPipeline(cfg.device,pl,nullptr);return false;}
     if(timing_clock()-c0>=compile_ns)++compiled;
     std::string bytes(reinterpret_cast<const char*>(rec.words.data()),rec.words.size()*4);
-    std::lock_guard<std::mutex> l(mu);if(!ready.emplace(bytes,pl).second)vkDestroyPipeline(cfg.device,pl,nullptr);return true;
+    std::lock_guard<std::mutex> l(mu);if(memory_constrained.load() || !ready.emplace(bytes,pl).second)vkDestroyPipeline(cfg.device,pl,nullptr);return true;
 }
 // The warm-up competes with the game for the driver, not for the CPU: the nice value below lowers the thread's
 // priority in the scheduler, but the pipeline builds land inside the driver, where the game waits for the same queue.
@@ -4064,9 +4081,10 @@ bool build(const Rec &rec){
 // gfx-warm-interval = the pause after every build, in milliseconds (0 = no pause).
 uint64_t budget_per_frame=0,interval_us=0;
 void worker(){
+    WorkerLifetime lifetime;
     setpriority(PRIO_PROCESS,0,5); // below the game and graphics threads
     uint64_t frame=0,built_in_frame=0;
-    for(;;){if(stop.load())return;
+    for(;;){if(stop.load() || memory_constrained.load())return;
         if(budget_per_frame){
             const uint64_t now=stats.presents.load();   // the engine's own frames
             if(now!=frame){frame=now;built_in_frame=0;}
@@ -4085,19 +4103,52 @@ void worker(){
 bool async_on=false;std::deque<Rec> async_q;std::unordered_set<std::string> async_pending,async_failed;std::condition_variable async_cv;std::thread async_thread;
 std::atomic<uint64_t> async_built{0},async_skips{0};
 void async_worker(){
+    WorkerLifetime lifetime;
     setpriority(PRIO_PROCESS,0,5);
-    for(;;){Rec r;{std::unique_lock<std::mutex> l(mu);async_cv.wait(l,[]{return stop.load() || !async_q.empty();});if(stop.load())return;r=std::move(async_q.front());async_q.pop_front();}
+    for(;;){Rec r;{std::unique_lock<std::mutex> l(mu);async_cv.wait(l,[]{return stop.load() || memory_constrained.load() || !async_q.empty();});if(stop.load() || memory_constrained.load())return;r=std::move(async_q.front());async_q.pop_front();}
         bool ok=build(r);if(ok)++async_built;else ++failed;
         std::string bytes(reinterpret_cast<const char*>(r.words.data()),r.words.size()*4);std::lock_guard<std::mutex> l(mu);async_pending.erase(bytes);if(!ok)async_failed.insert(bytes);}
 }
 // Queue the build of this draw's pipeline (once); false when the caller should build it now: a module without a bundle key,
 // a record that failed to build in the background before, or the warm-up threads stopped.
 bool async_request(const VkGraphicsPipelineCreateInfo &ci,const XbgPipelineKey &key,const std::string &bytes){
-    {std::lock_guard<std::mutex> l(mu);if(reuse_rejected)return false;if(async_pending.count(bytes))return true;if(stop.load() || async_failed.count(bytes))return false;Rec r;
+    {std::lock_guard<std::mutex> l(mu);if(reuse_rejected || memory_constrained.load())return false;if(async_pending.count(bytes))return true;if(stop.load() || async_failed.count(bytes))return false;Rec r;
         for(uint32_t i=0;i<ci.stageCount;i++){auto it=ids.find(ci.pStages[i].module);if(it==ids.end())return false;r.keys.push_back(id_keys[it->second]);}
         r.words.assign(key.words,key.words+key.count);async_pending.insert(bytes);async_q.push_back(std::move(r));}
     if(!async_thread.joinable())async_thread=std::thread(async_worker);
     async_cv.notify_one();record(ci,key);return true;
+}
+// Pressure stops future speculative work for this renderer session. Pipelines
+// already taken by the render thread remain in pipeline_objects. Warm modules
+// and layouts are released only after all workers have left their driver calls.
+size_t trim_for_memory_pressure(bool gpu_idle) {
+    memory_constrained.store(true);
+    async_cv.notify_all();
+    std::lock_guard<std::mutex> lock(mu);
+    const size_t count = ready.size();
+    for (auto &entry : ready)
+        vkDestroyPipeline(cfg.device, entry.second, nullptr);
+    ready.clear();
+    rewritten.clear();
+    rewritten_bytes = 0;
+    async_q.clear();
+    async_pending.clear();
+    if (gpu_idle && active_workers.load() == 0) {
+        for (auto &entry : modules)
+            vkDestroyShaderModule(cfg.device, entry.second.module, nullptr);
+        modules.clear();
+        for (auto &entry : layouts)
+            vkDestroyPipelineLayout(cfg.device, entry.second, nullptr);
+        layouts.clear();
+        for (auto layout : set_layouts)
+            vkDestroyDescriptorSetLayout(cfg.device, layout, nullptr);
+        set_layouts.clear();
+        for (auto &entry : passes)
+            vkDestroyRenderPass(cfg.device, entry.second, nullptr);
+        passes.clear();
+        std::vector<Rec>().swap(recs);
+    }
+    return count;
 }
 // 首次启动还没有列表。这时随着色器发的种子（shaders/vk-pipeline-list.seed，用 dm/android/tools/merge_warm_lists.py 合并各设备的
 // 列表而成）就成为列表，预热便在第一场战斗之前、而不是在战斗中建好那些设备见过的管线；设备建不了的记录在预热时失败（warm_failed）。
@@ -4151,6 +4202,7 @@ bool read_record(const std::vector<uint8_t> &bytes,size_t &at,Rec &record){
     return !reader.bad && (kind==1 || reader.i==reader.n);
 }
 void start(){
+    memory_constrained.store(false);
     seed();
     compute_prewarm_keys.clear();
 #ifdef XBG_HAVE_SPIRV_OPT
@@ -7373,7 +7425,7 @@ void execute(const uint8_t *pc,unsigned depth,uint64_t &budget){
     }
 }
 PerfCounts perf_counts(){return {pipeline_objects.size(),layout_cache.size(),sampler_cache.size(),render_pass_cache.size(),images.size(),host_segments.size(),host_bytes};}
-void log_memory_profile_counts(){
+void log_memory_profile_counts(bool include_lifetime){
     size_t pools=0,spare=0,used=0,pinned=0,memo_entries=0,arena_chunks=0;uint64_t arena_bytes=0;
     uint64_t resident_texel_bytes=0;
     auto add_arena=[&](const Arena &a){arena_chunks+=a.chunks.size();for(const auto &chunk:a.chunks)arena_bytes+=chunk.allocation_size;};
@@ -7392,7 +7444,7 @@ void log_memory_profile_counts(){
              slot_count,(unsigned long long)resident_texel_bytes,(unsigned long long)vcache::arena_bytes());
     // Read existing family counters only in the opt-in memory profile. These
     // distinguish guest generation churn from growth of live texture objects.
-    if(nvn_texture_get_stats && nvn_bridge_get_stats){
+    if(include_lifetime && nvn_texture_get_stats && nvn_bridge_get_stats){
         nvn_texture_stats t{};uint64_t objects=0,regenerated=0;
         nvn_texture_get_stats(&t);nvn_bridge_get_stats(&objects,&regenerated);
         xbg_logf("NVN TEXTURE_LIFETIME initialized=%llu finalized=%llu live=%d bridge_objects=%llu bridge_regenerated=%llu",
@@ -7410,6 +7462,112 @@ void destroy_slots(){
     for(unsigned i=0;i<kMaxSlots;i++){if(submit_semaphores[i]){vkDestroySemaphore(cfg.device,submit_semaphores[i],nullptr);submit_semaphores[i]=VK_NULL_HANDLE;}}
     submit_sem_inited=false;last_signal_sem=VK_NULL_HANDLE;
     slot_index=0;snapshot_reset();
+}
+// Called between guest submissions/presents while holding the engine mutex.
+// Nothing is released until submitted GPU work and guest writebacks complete.
+void reclaim_memory_caches(unsigned level) {
+    size_t warm_count = warm::trim_for_memory_pressure(false);
+    complete_all();
+    poolreset::drain();
+    warm_count += warm::trim_for_memory_pressure(true);
+    for (const Slot &slot : active_slots()) {
+        if (slot.pending || slot.recording || slot.waiters.n.load() || !slot.copy_readers.empty()) {
+            xbg_logf("NVN memory reclaim deferred: submission still owns resources");
+            return;
+        }
+    }
+    for (unsigned i = 0; i < slot_count; ++i)
+        memo_unpin_all(i);
+    img_cache.clear();
+    snapshot_reset();
+    sampled_rg16_images.clear();
+    storage_rg16_images.clear();
+    size_t reclaimed_slots = 0;
+    for (unsigned i = 0; i < slot_count; ++i) {
+        Slot &slot = slots[i];
+        texel_evict(i, true);
+        slot.set_cache.clear();
+        slot.spare_sets.clear();
+        slot.used_sets.clear();
+        for (auto pool : slot.pools)
+            vkDestroyDescriptorPool(cfg.device, pool, nullptr);
+        slot.pools.clear();
+        slot.pool_next = 0;
+        slot.stream.release();
+        slot.uniform.release();
+        const size_t keep = slot.readback.keep_chunks;
+        slot.readback.keep_chunks = 0;
+        slot.readback.trim([&](VkBuffer buffer) {
+            return std::any_of(slot.guard.begin(), slot.guard.end(),
+                               [&](const Slot::XRange &range) { return range.buffer == buffer; });
+        });
+        slot.readback.keep_chunks = keep;
+        ++reclaimed_slots;
+    }
+    const uint64_t minimum_age = uint64_t(slot_count) * 2;
+    size_t reclaimed_images = 0;
+    int64_t reclaimed_image_bytes = 0;
+    for (auto it = images.begin(); it != images.end();) {
+        const Image &image = *it->second;
+        // GPU-authored images retain their only authoritative contents. Recent
+        // CPU-backed images remain cached to avoid rebuilding the active scene.
+        if (image.gpu_written || image.slot_use > slot_serial ||
+            slot_serial - image.slot_use < minimum_age) {
+            ++it;
+            continue;
+        }
+        reclaimed_image_bytes += image.mem_bytes;
+        it = images.erase(it);
+        ++reclaimed_images;
+    }
+    if (reclaimed_images) {
+        image_index.clear();
+        image_index_dirty = true;
+        ++images_epoch;
+        ++memo_check_gen;
+    }
+    if (level >= 2)
+        clear_pipeline_objects();
+    ++memo_epoch;
+    xbg_logf("NVN memory reclaim level=%u slots=%zu images=%zu image_bytes=%lld warm_ready=%zu "
+             "warm_workers=%u",
+             level, reclaimed_slots, reclaimed_images, (long long)reclaimed_image_bytes, warm_count,
+             warm::active_workers.load());
+}
+void maintain_memory_pressure() {
+#ifdef __ANDROID__
+    const uint64_t now = shader_monotonic_ns();
+    const unsigned requested = memory_trim_requested.load();
+    const bool first_poll = !memory_pressure_policy.polled;
+    if (!memory_pressure_policy.poll_due(now, requested))
+        return;
+    const auto before = xbg_memory_pressure::read_snapshot();
+    if (first_poll)
+        xbg_logf("NVN memory monitor active poll_ms=500 rss=%llu available=%llu total=%llu",
+                 (unsigned long long)before.resident, (unsigned long long)before.available,
+                 (unsigned long long)before.total);
+    const unsigned hint = memory_trim_requested.exchange(0);
+    const unsigned level = memory_pressure_policy.reclaim_level(now, before, hint);
+    if (!level)
+        return;
+    xbg_logf("NVN memory pressure start level=%u hint=%u rss=%llu available=%llu total=%llu",
+             level, hint, (unsigned long long)before.resident,
+             (unsigned long long)before.available, (unsigned long long)before.total);
+    log_memory_profile_counts(false);
+    // A forensic capture may retain raw pointers across these boundaries.
+    // Preserve that evidence and release speculative work independently.
+    if (capture.trace || provenance_file || probe_is_active())
+        warm::trim_for_memory_pressure(false);
+    else
+        reclaim_memory_caches(level);
+    const int purged = mallopt(M_PURGE, 0);
+    const auto after = xbg_memory_pressure::read_snapshot();
+    xbg_logf("NVN memory pressure level=%u hint=%u rss_before=%llu rss_after=%llu available=%llu "
+             "total=%llu purge=%d",
+             level, hint, (unsigned long long)before.resident, (unsigned long long)after.resident,
+             (unsigned long long)before.available, (unsigned long long)before.total, purged);
+    log_memory_profile_counts(false);
+#endif
 }
 } // namespace
 
@@ -7692,7 +7850,7 @@ vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemor
      warm::start();probe_init();
     texel_copy_cache.reset();texel_copy_enabled=true;
     for(auto &counts:texel_copy_stats)counts=TexelCopyStats{};
-    wtrack::enabled=false;state=State{};state.color.logic_op=3;state.color.alpha_func=8;for(unsigned i=0;i<8;i++)state.blend[i]={i,2,1,2,1,1,1};stats.reset();timing=XbgCpuTiming(timing_clock);pipeline_counts={};pipeline_before={};pipeline_tick=0;timing_active=false;timing_first=timing_last=0;live_profile_used=false;descriptor_detail=false;descriptor_timing=XbgDescriptorTiming{};descriptor_root=nullptr;draw_detail=false;draw_timing=XbgDrawTiming{};draw_root=nullptr;completed=0;last_attachment_trace=UINT64_MAX;sampler_mirror_clamp_enabled=VK_FALSE;failed=false;error_text[0]=0;initialized=true;
+    wtrack::enabled=false;state=State{};state.color.logic_op=3;state.color.alpha_func=8;for(unsigned i=0;i<8;i++)state.blend[i]={i,2,1,2,1,1,1};stats.reset();memory_pressure_policy={};timing=XbgCpuTiming(timing_clock);pipeline_counts={};pipeline_before={};pipeline_tick=0;timing_active=false;timing_first=timing_last=0;live_profile_used=false;descriptor_detail=false;descriptor_timing=XbgDescriptorTiming{};descriptor_root=nullptr;draw_detail=false;draw_timing=XbgDrawTiming{};draw_root=nullptr;completed=0;last_attachment_trace=UINT64_MAX;sampler_mirror_clamp_enabled=VK_FALSE;failed=false;error_text[0]=0;initialized=true;
     {std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-sync-submit").c_str(),"rb");sync_submit_enabled=false;if(m){sync_submit_enabled=fgetc(m)=='1';fclose(m);}xbg_logf("NVN synchronous queue submits=%d (marker gfx-sync-submit)",int(sync_submit_enabled));
      FILE *sc=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-sem-chain").c_str(),"rb");
      const char *profile=getenv("FFRS_PROFILE_TABLET");
@@ -7859,6 +8017,12 @@ extern "C" int xbg_game_profile_cpu(uint64_t first_frame,uint32_t frame_count){
     xbg_logf("NVN CPU_TIMING armed first=%llu count=%u maxSeconds=60 clock=steady elapsed-not-thread-cpu",(unsigned long long)first_frame,frame_count);
     if(first_frame==1)timing_start();return 0;
 }
+extern "C" void xbg_request_memory_trim(unsigned level) {
+    level = std::min(level, 2u);
+    unsigned previous = memory_trim_requested.load();
+    while (previous < level && !memory_trim_requested.compare_exchange_weak(previous, level)) {
+    }
+}
 extern "C" int xbg_game_shutdown(){gfx_drain();gfx_async_stop();std::lock_guard<std::recursive_mutex> lock(mutex);performance_hint::reset();if(!initialized)return 0;timing_report("shutdown-partial");provenance_close("SHUTDOWN");resolve_pending();submit_slots(true);save_pipeline_cache();pending_writebacks.clear();pending_reports.clear();pending_events.clear();recording_events.clear();epochs.clear();VkResult r=vkQueueWaitIdle(cfg.queue);if(r!=VK_SUCCESS)return r;wtrack::release();destroy_slots();clear_pipeline_objects();cache_save_join();warm::shutdown();bright::shutdown();shutdown_rg16_proxy();clear_descriptor_caches();clear_render_pass_cache();images.clear();++images_epoch;for(auto &f:persistent_framebuffers)vkDestroyFramebuffer(cfg.device,f.second,nullptr);persistent_framebuffers.clear();image_index.clear();image_index_dirty=true;program_cache.clear();shaders.clear();textures.clear();clear_texture_record_cache();texture_pool_cache=nullptr;samplers.clear();null_textures.clear();texture_pool_cache=nullptr;pools.clear();host_segments.clear();host_ranges.clear();host_bytes=0;cmd_range_lo=0;cmd_range_bytes=0;vkDestroyPipelineCache(cfg.device,pipeline_cache,nullptr);pipeline_cache=VK_NULL_HANDLE;vkDestroyCommandPool(cfg.device,command_pool,nullptr);command_pool=VK_NULL_HANDLE;if(submit_sem_inited && cfg.device){for(unsigned i=0;i<kMaxSlots;i++){if(submit_semaphores[i]!=VK_NULL_HANDLE)vkDestroySemaphore(cfg.device,submit_semaphores[i],nullptr);submit_semaphores[i]=VK_NULL_HANDLE;submit_sem_signaled[i]=false;}submit_sem_inited=false;last_signal_sem=VK_NULL_HANDLE;last_signal_slot=-1;}initialized=false;return 0;}
 extern "C" void xbg_game_get_stats(xbg_game_stats *out){if(out)*out={stats.submissions.load(),stats.draws.load(),stats.dispatches.load(),stats.presents.load(),stats.shader_loads.load()};}
 extern "C" void xbg_game_frame_counters(xbg_frame_counters *out){if(out)*out={hud::pipelines.load(),hud::pipeline_ns.load(),hud::shaders.load(),hud::shader_ns.load(),hud::uploads.load(),hud::reuploads.load(),hud::upload_bytes.load(),hud::upload_ns.load()};}
@@ -8020,6 +8184,7 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
     if(deferred_live_profile && !timing.top){uint64_t current=stats.presents.load();timing=XbgCpuTiming(timing_clock);timing_first=current+2;timing_last=timing_first+deferred_live_profile-1;deferred_live_profile=0;}
    TimingRoot timing_root;CPU_SCOPE(Other);
    need(initialized && !failed,"Game Vulkan backend not initialized/healthy");
+   maintain_memory_pressure();
    performance_hint::begin_work();
    uint64_t begin=timing_clock();snapshot_reset();uint64_t budget=0;
     // A render-enable block is a property of one submission: the reference clears it when the submission starts
@@ -8290,7 +8455,7 @@ void flame_diag_roi_read(){
     // #endregion
 }
 
-static void xbg_present_texture_now(const win_t *window,const tex_t *texture){std::lock_guard<std::recursive_mutex> lock(mutex);preflight_cpu_reads();{SiteScope site(SITE_PRESENT);cur_op=61;TimingRoot timing_root;CPU_SCOPE(Other);need(initialized&&cfg.present,"Game presentation callback not installed");uint64_t present_begin=timing_clock();Image &im=get_image(texture,false);need(im.gpu_written,"Game tried to present a texture never rendered");probe_present(im);
+static void xbg_present_texture_now(const win_t *window,const tex_t *texture){std::lock_guard<std::recursive_mutex> lock(mutex);maintain_memory_pressure();preflight_cpu_reads();{SiteScope site(SITE_PRESENT);cur_op=61;TimingRoot timing_root;CPU_SCOPE(Other);need(initialized&&cfg.present,"Game presentation callback not installed");uint64_t present_begin=timing_clock();Image &im=get_image(texture,false);need(im.gpu_written,"Game tried to present a texture never rendered");probe_present(im);
     // Stop the uniform fingerprint trace once it has covered the requested number of frames.
     if(ubtrace.on.load(std::memory_order_relaxed)){if(ubtrace.frames>=ubtrace.limit){ubtrace.on.store(false,std::memory_order_relaxed);if(ubtrace.file){fflush(ubtrace.file);fclose(ubtrace.file);ubtrace.file=nullptr;}xbg_logf("LIVE-UBTRACE off after %llu frames",(unsigned long long)ubtrace.frames);}else ++ubtrace.frames;}Commands c;im.transition(c.command,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);fire_trace_present(im,c.command);water_trace_present(im,c.command);c.finish();if(flame_diag_enabled)flame_diag_roi_record(im);submit_slots(false);if(flame_diag_enabled){gpu_sync(perf.sync_readback);flame_diag_roi_read();}performance_hint::finish_work();uint64_t pace_ns=xbg_frame_pace();int r;{CPU_SCOPE(Present);r=cfg.present(cfg.userdata,window->native,im.image,im.fmt,im.width,im.height,window->crop,window->interval);}if(r){static unsigned err_n=0;if(err_n++<10)xbg_logf("Game presentation dropped/warning: %d",r);}++stats.presents;if(flame_diag_enabled){fdiag_present=texture->serial;fdiag_present_mem=uint64_t(uintptr_t(texture->mem));
         uint64_t other_draw=0,other_inst=0,other_bind=0,other_zero=0;for(int i=2;i<flame_diag_keys;i++){other_draw+=fdiag_draws[i];other_inst+=fdiag_inst[i];other_bind+=fdiag_binds[i];other_zero+=fdiag_zero[i];}

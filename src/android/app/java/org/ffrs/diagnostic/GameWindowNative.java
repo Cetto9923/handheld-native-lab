@@ -20,6 +20,8 @@ public final class GameWindowNative {
     public static native void setPadState(boolean connected, long buttons, int lx, int ly, int rx, int ry);
     public static native void audioDevicesChanged();
     public static native void setProfileTargetFps(int fps, boolean docked);
+    /** Queue a pressure hint. GPU resources are reclaimed on the renderer thread. */
+    public static native void requestMemoryTrim(int severity);
     public static native int nativeGuestThreadState();
     public static native boolean hostExitReady(boolean request);
     /** Returns {present, pointer, width, height, format, generation}. */

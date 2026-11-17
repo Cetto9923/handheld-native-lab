@@ -3154,6 +3154,24 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         else { exitHandler.removeCallbacks(this); exitHandler.postDelayed(this, 50); }
     }
 
+    @SuppressWarnings("deprecation")
+    @Override public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        if (guestStarted && ((level >= TRIM_MEMORY_RUNNING_MODERATE && level < TRIM_MEMORY_UI_HIDDEN)
+                || level >= TRIM_MEMORY_BACKGROUND)) {
+            int severity = (level >= TRIM_MEMORY_RUNNING_CRITICAL && level < TRIM_MEMORY_UI_HIDDEN)
+                    || level >= TRIM_MEMORY_MODERATE ? 2 : 1;
+            GameWindowNative.requestMemoryTrim(severity);
+            Log.i(TAG, "memory pressure trim level=" + level + " severity=" + severity);
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    @Override public void onLowMemory() {
+        super.onLowMemory();
+        if (guestStarted) GameWindowNative.requestMemoryTrim(2);
+    }
+
     @Override protected void onStop() {
         Log.i(TAG, "lifecycle onStop");
         super.onStop();

@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-17T01:17:49.199449+08:00",
- "phase": "62闪退修复预览已发布，长卡顿仍开放，报告来源冲突已记录",
+ "updated_at": "2026-11-17T09:26:12.757400+08:00",
+ "phase": "优先低内存存活改造，索尔62人物闪烁另记录待取证",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -3652,6 +3652,35 @@
    "acquired_at": "2026-11-17T01:06:16.057910+08:00",
    "checkpoint": "来源冲突与性能证据边界已修订，尚无经验证的几十秒停顿修复。",
    "write_state": "CHECKPOINTED_PENDING_TARGET_EVIDENCE"
+  },
+  {
+   "task": "CODEX-MEMORY-SURVIVAL63-20261117",
+   "owner": "root",
+   "paths": [
+    ".local/memory-survival63-20261117/",
+    ".local/video-flicker62-20261117/",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_memory_pressure.h",
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "src/android/app/java/org/ffrs/diagnostic/GameWindowNative.java",
+    "src/android/native/guest_boot_jni.cpp",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/device/test_memory_pressure.py",
+    "tests/device/memory_pressure_contract.cpp",
+    "tests/device/memory_reclaim_contract.cpp",
+    "tests/installer/test_memory_pressure_lifecycle.py",
+    "scripts/verify_host.py",
+    "coordination/results/CODEX-MEMORY-SURVIVAL63-20261117.md",
+    "coordination/results/CODEX-VIDEO-FLICKER-20261117.md",
+    "coordination/docs/RELEASE63-UNIVERSAL-20261117.md",
+    "tests/device/memory_warm_contract.cpp"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-17T08:57:16.075948+08:00",
+   "checkpoint": "63主动压力检测/JNI回调/缓存回收首版完成，首轮native compile0。正在复验7项生产提取回归及生命周期JVM。进入最终构建前还需补实际压力注入及显示保全。原机reason3存活与Thor角色闪烁NOT_RUN。",
+   "write_state": "ACTIVE",
+   "checkpoint_at": "2026-11-17T09:26:12.757400+08:00"
   }
  ],
  "tasks": [
@@ -10423,6 +10452,49 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acceptance": "版本/设备/末次PID和退出时间对齐，明确新报告与62修复路径关系，真实模块回归通过，原机待验如实记录",
    "checkpoint": "用户确认对方导出，暂不重复索要报告。来源冲突待核。R32 exit70已有62兼容候选，首60帧为启动混合不能归战斗。5700帧窗口14.64FPS/CPU40.36/GPU36.87，pipeline新创建0，几十秒停顿尚未定位。"
+  },
+  {
+   "id": "CODEX-MEMORY-SURVIVAL63-20261117",
+   "owner": "root",
+   "role": "MEMORY_SURVIVAL",
+   "status": "in_progress",
+   "objective": "按用户优先存活允许卡顿的要求，建立主动压力检测和GPU安全边界缓存回收，减少reason3低内存终止",
+   "inputs": [
+    "62源08baf94，当前HEAD34b9fa4",
+    "ZIP9a58a9d4，62最新两次reason3/RSS3.04与3.64GiB",
+    "索尔62录屏7024cc9a，紫帽和持杖人影间歇消失，用户确认另一台Thor"
+   ],
+   "outputs": [
+    "回收路径和线程安全回调",
+    "有反例的宿主回归及Android构建",
+    "63候选APK与明确实机覆盖范围",
+    "记录Thor闪烁待取证"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/memory-survival63-20261117/",
+    ".local/video-flicker62-20261117/",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_memory_pressure.h",
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "src/android/app/java/org/ffrs/diagnostic/GameWindowNative.java",
+    "src/android/native/guest_boot_jni.cpp",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/device/test_memory_pressure.py",
+    "tests/device/memory_pressure_contract.cpp",
+    "tests/device/memory_reclaim_contract.cpp",
+    "tests/installer/test_memory_pressure_lifecycle.py",
+    "scripts/verify_host.py",
+    "coordination/results/CODEX-MEMORY-SURVIVAL63-20261117.md",
+    "coordination/results/CODEX-VIDEO-FLICKER-20261117.md",
+    "coordination/docs/RELEASE63-UNIVERSAL-20261117.md",
+    "tests/device/memory_warm_contract.cpp"
+   ],
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "acceptance": "压力信号覆盖主动检测与Android回调，前台不依赖已废弃回调；清理前实际完成GPU/写回，GPU权威内容和活跃引用保全；缓存丢弃可重建；源码和构建SHA一致；目标实机存活验收单列，原1080与游戏时序保留",
+   "checkpoint": "63主动压力检测/JNI回调/缓存回收首版完成，首轮native compile0。正在复验7项生产提取回归及生命周期JVM。进入最终构建前还需补实际压力注入及显示保全。原机reason3存活与Thor角色闪烁NOT_RUN。"
   }
  ],
  "blockers": [

@@ -1,7 +1,7 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-17T01:17:49.199449+08:00
-阶段：62闪退修复预览已发布，长卡顿仍开放，报告来源冲突已记录
+状态事件时间：2026-11-17T09:26:12.757400+08:00
+阶段：优先低内存存活改造，索尔62人物闪烁另记录待取证
 总控：Codex /root 本轮接管
 更新方式：按事件更新，没有后台自动刷新。
 
@@ -256,6 +256,7 @@
 | CODEX-THOR-LINEAR62-20261117 | CRASH_COMPATIBILITY | awaiting_user_test | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-PUBLISH62-20261117 | RELEASE | passed | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 | CODEX-HONOR-REPORT62-20261117 | CRASH_ANALYSIS | in_progress | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
+| CODEX-MEMORY-SURVIVAL63-20261117 | MEMORY_SURVIVAL | in_progress | root | 无 | 无额外门禁 | task/T-codex-recovery-20261114 |
 
 ## 独占写入
 
@@ -474,6 +475,7 @@
 - {"task": "CODEX-THOR-LINEAR62-20261117", "owner": "root", "paths": [".local/thor-linear62-20261117/", "src/graphics/nvn_vulkan/engine/xbg_game.cpp", "src/graphics/nvn_vulkan/engine/xbg_spirv_linear_sample.h", "src/graphics/nvn_vulkan/engine/xbg_spirv_sample_usage.h", "src/graphics/nvn_vulkan/engine/xbg_shader_identity.h", "src/android/app/gamewindow/AndroidManifest.xml", "scripts/verify_host.py", "scripts/distribution/inspect_pipeline_warm_list.py", "scripts/graphics/nvn_shader_identity.py", "tests/device/test_shader_identity.cpp", "tests/device/test_linear_sample.py", "tests/device/linear_sample_contract.cpp", "tests/device/linear_sample.spvasm", "tests/installer/test_pipeline_warm_inspector.py", "coordination/docs/RELEASE62-UNIVERSAL-20261117.md", "coordination/results/CODEX-THOR-LINEAR62-20261117.md", "coordination/results/CODEX-THOR-FILTER61-20261116.md", "coordination/docs/RELEASE61-UNIVERSAL-20261116.md", "coordination/EXPERIENCE.md", "tests/native/linear_sample_gpu_contract.cpp", "tests/device/linear_sample_runtime_contract.cpp"], "branch": "task/T-codex-recovery-20261114", "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "acquired_at": "2026-11-17T00:31:38.668741+08:00", "checkpoint": "62源08baf94/APK fafd9f22/3744983B/BuildID15aa4a1a。Android及109宿主0，647输入一致，真实52/106/118改写和生产选择通过，RG500组GPU/CPU参考通过。统一目录已交付并回读，60/61保留历史。Thor、62整包场景、独立QA NOT_RUN，待目标机复测。小米长停顿和稳定30任务暂停。无本轮活动构建、采样、自动输入。", "write_state": "DELIVERED_PENDING_TARGET_TEST", "checkpoint_at": "2026-11-17T01:00:29.043849+08:00"}
 - {"task": "CODEX-PUBLISH62-20261117", "owner": "root", "paths": [".local/releases/1.0.62/", "coordination/results/CODEX-PUBLISH62-20261117.md", "coordination/docs/RELEASE62-UNIVERSAL-20261117.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-17T01:03:24.273906+08:00", "checkpoint": "GitHub v1.0.62-preview已发布并回读APK/SHA/中文说明一致，精确tag08baf94，APK fafd9f22，Main ecb9保全。首次GitHub500后安全重试成功。新增报告设备来源冲突公开说明已纠正。首60帧4.9FPS不当作战斗证据，5700帧窗口14.64FPS需CPU/GPU进一步采样，小米几十秒停顿未修复。", "write_state": "COMPLETE_SCOPED_DELIVERY", "checkpoint_at": "2026-11-17T01:17:49.199449+08:00"}
 - {"task": "CODEX-HONOR-REPORT62-20261117", "owner": "root", "paths": [".local/honor-report63-20261117/", "coordination/results/CODEX-HONOR-REPORT62-20261117.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-17T01:06:16.057910+08:00", "checkpoint": "来源冲突与性能证据边界已修订，尚无经验证的几十秒停顿修复。", "write_state": "CHECKPOINTED_PENDING_TARGET_EVIDENCE"}
+- {"task": "CODEX-MEMORY-SURVIVAL63-20261117", "owner": "root", "paths": [".local/memory-survival63-20261117/", ".local/video-flicker62-20261117/", "src/graphics/nvn_vulkan/engine/xbg_game.cpp", "src/graphics/nvn_vulkan/engine/xbg_memory_pressure.h", "src/android/app/java/org/ffrs/diagnostic/GameActivity.java", "src/android/app/java/org/ffrs/diagnostic/GameWindowNative.java", "src/android/native/guest_boot_jni.cpp", "src/android/app/gamewindow/AndroidManifest.xml", "tests/device/test_memory_pressure.py", "tests/device/memory_pressure_contract.cpp", "tests/device/memory_reclaim_contract.cpp", "tests/installer/test_memory_pressure_lifecycle.py", "scripts/verify_host.py", "coordination/results/CODEX-MEMORY-SURVIVAL63-20261117.md", "coordination/results/CODEX-VIDEO-FLICKER-20261117.md", "coordination/docs/RELEASE63-UNIVERSAL-20261117.md", "tests/device/memory_warm_contract.cpp"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-17T08:57:16.075948+08:00", "checkpoint": "63主动压力检测/JNI回调/缓存回收首版完成，首轮native compile0。正在复验7项生产提取回归及生命周期JVM。进入最终构建前还需补实际压力注入及显示保全。原机reason3存活与Thor角色闪烁NOT_RUN。", "write_state": "ACTIVE", "checkpoint_at": "2026-11-17T09:26:12.757400+08:00"}
 
 ## 阻塞
 
