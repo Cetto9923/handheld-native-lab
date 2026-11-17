@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-17T10:12:41.001311+08:00",
+ "updated_at": "2026-11-17T10:47:09.741325+08:00",
  "phase": "优先低内存存活改造，索尔62人物闪烁另记录待取证",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -10500,7 +10500,7 @@
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acceptance": "压力信号覆盖主动检测与Android回调，前台不依赖已废弃回调；清理前实际完成GPU/写回，GPU权威内容和活跃引用保全；缓存丢弃可重建；源码和构建SHA一致；目标实机存活验收单列，原1080与游戏时序保留",
-   "checkpoint": "继续修复并发布63。当前发现持续RSS门槛会反复清空重建缓存，拟增加回收后RSS增长准入及持续系统压力的收益退避。RG同隔离存档继续真实场景采样，目标原机和Thor仍待远端复测。"
+   "checkpoint": "63源码4c7fd86，111宿主/Android0、653输入SHA一致，APK993c84d7。RG PID11717隔离读档进入土之神殿，首次回收约222MiB，强通知回收约143.8MiB后继续移动；8秒移动19.058FPS，稳30未达标。正式源9文件全SHA相同。原机低内存存活/Thor闪烁/小米长停顿及蓝牙未完成验收。本轮按预览版发布。"
   }
  ],
  "blockers": [
