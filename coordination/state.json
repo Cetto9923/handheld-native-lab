@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-17T11:17:10.763958+08:00",
+ "updated_at": "2026-11-17T12:33:04.811134+08:00",
  "phase": "63不限帧预览版已发布，继续水都移动与花朵热点定位",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -3659,12 +3659,10 @@
    "paths": [
     ".local/memory-survival63-20261117/",
     ".local/video-flicker62-20261117/",
-    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
     "src/graphics/nvn_vulkan/engine/xbg_memory_pressure.h",
     "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
     "src/android/app/java/org/ffrs/diagnostic/GameWindowNative.java",
     "src/android/native/guest_boot_jni.cpp",
-    "src/android/app/gamewindow/AndroidManifest.xml",
     "tests/device/test_memory_pressure.py",
     "tests/device/memory_pressure_contract.cpp",
     "tests/device/memory_reclaim_contract.cpp",
@@ -3692,7 +3690,10 @@
    "owner": "root",
    "paths": [
     ".local/water-capital-flowers-20261117/",
-    "coordination/results/CODEX-WATER-CAPITAL-FLOWERS-20261117.md"
+    "coordination/results/CODEX-WATER-CAPITAL-FLOWERS-20261117.md",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/device/test_upload_cpu_preserve.py"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
@@ -10537,7 +10538,10 @@
    "pass_gates": [],
    "write_scope": [
     ".local/water-capital-flowers-20261117/",
-    "coordination/results/CODEX-WATER-CAPITAL-FLOWERS-20261117.md"
+    "coordination/results/CODEX-WATER-CAPITAL-FLOWERS-20261117.md",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/device/test_upload_cpu_preserve.py"
    ],
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",

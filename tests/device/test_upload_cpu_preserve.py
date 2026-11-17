@@ -10,6 +10,45 @@ GAME = Path(os.environ.get('FFRS_UPLOAD_GAME_SOURCE', ROOT / 'src/graphics/nvn_v
 
 
 class UploadCpuPreserve(unittest.TestCase):
+    def test_bc_upload_logging_is_bounded_and_counts_all_work(self):
+        source = GAME.read_text()
+        start = source.index('        ++perf.bc_upload_calls;')
+        body = source[start:source.index('        return;', start)]
+        fixture = r'''
+#include <cassert>
+#include <cstdint>
+#include <cstddef>
+struct {
+    uint64_t bc_upload_calls=0,bc_upload_source_bytes=0;
+    uint64_t bc_upload_decoded_bytes=0,bc_upload_decode_ns=0;
+} perf;
+static unsigned detail_lines;
+static void xbg_logf(const char *, ...) __attribute__((format(printf,1,2)));
+static void xbg_logf(const char *, ...) { ++detail_lines; }
+static void upload() {
+    struct Texture { struct { unsigned format; } d; } texture{{0x41}};
+    struct { Texture *tex; struct { int width,height,depth; } r; } p{&texture,{512,512,1}};
+    unsigned level=0,layer=0;
+    size_t source_bytes=131072,bytes=1048576;
+    uint64_t decode_ns=100000;
+''' + body + r'''
+}
+int main() {
+    for (unsigned i=0; i<1000; ++i) upload();
+    assert(detail_lines==20 && perf.bc_upload_calls==1000);
+    assert(perf.bc_upload_source_bytes==131072000);
+    assert(perf.bc_upload_decoded_bytes==1048576000);
+    assert(perf.bc_upload_decode_ns==100000000);
+}
+'''
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp)
+            (path / 'bc-log.cpp').write_text(fixture)
+            subprocess.run(['clang++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                            '-Wformat=2', '-fsanitize=address,undefined',
+                            str(path / 'bc-log.cpp'), '-o', str(path / 'bc-log')], check=True)
+            subprocess.run([str(path / 'bc-log')], check=True)
+
     def test_mirror_copy(self):
         source = GAME.read_text()
         start = source.index('bool guest_texture_write(')
