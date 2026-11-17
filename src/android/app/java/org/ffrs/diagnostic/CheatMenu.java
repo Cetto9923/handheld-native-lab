@@ -174,7 +174,19 @@ final class CheatMenu {
 
     private static void save(Activity activity, String buildId, Set<String> selected) {
         boolean saved = preferences(activity).edit().putStringSet(buildId, selected).commit();
-        notice(activity, saved ? "已保存，下次启动游戏生效。" : "金手指设置保存失败。");
+        if (!saved) {
+            notice(activity, "金手指设置保存失败。");
+            return;
+        }
+        new AlertDialog.Builder(activity).setTitle("金手指设置已保存")
+                .setMessage("请先在游戏内保存进度。准备好后点“退出游戏”，再重新打开应用，新的勾选设置即可生效。")
+                .setPositiveButton("退出游戏", (dialog, which) -> {
+                    Log.i(TAG, "user requested process exit to apply startup settings");
+                    activity.finishAndRemoveTask();
+                    android.os.Process.killProcess(android.os.Process.myPid());
+                })
+                .setNegativeButton("稍后退出", null)
+                .show();
     }
 
     private static void clearPlan(AtomicFile plan) throws IOException {
