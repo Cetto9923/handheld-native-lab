@@ -3676,7 +3676,9 @@
     "tests/device/memory_warm_contract.cpp",
     "tests/device/test_packed_shader_words.cpp",
     "src/graphics/nvn_device/nvn_engine.c",
-    "tests/installer/test_engine_log_rotation.py"
+    "tests/installer/test_engine_log_rotation.py",
+    "src/android/app/java/org/ffrs/diagnostic/DataBundleInstaller.java",
+    "tests/device/test_target_fps_marker.py"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
@@ -10461,7 +10463,7 @@
    "owner": "root",
    "role": "MEMORY_SURVIVAL",
    "status": "in_progress",
-   "objective": "按用户优先存活允许卡顿的要求，建立主动压力检测和GPU安全边界缓存回收，减少reason3低内存终止",
+   "objective": "按用户优先存活允许卡顿的要求，建立主动压力检测和GPU安全边界缓存回收，减少reason3低内存终止; 用户最新要求取消30帧目标约束，保持游戏原速并移除默认宿主限帧",
    "inputs": [
     "62源08baf94，当前HEAD34b9fa4",
     "ZIP9a58a9d4，62最新两次reason3/RSS3.04与3.64GiB",
@@ -10495,7 +10497,9 @@
     "tests/device/memory_warm_contract.cpp",
     "tests/device/test_packed_shader_words.cpp",
     "src/graphics/nvn_device/nvn_engine.c",
-    "tests/installer/test_engine_log_rotation.py"
+    "tests/installer/test_engine_log_rotation.py",
+    "src/android/app/java/org/ffrs/diagnostic/DataBundleInstaller.java",
+    "tests/device/test_target_fps_marker.py"
    ],
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",

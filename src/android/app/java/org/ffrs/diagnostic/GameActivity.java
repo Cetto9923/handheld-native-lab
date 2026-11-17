@@ -2254,7 +2254,6 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     // Read the same per-package target marker as the native limiter. A changed
     // target takes effect for display selection on the next Activity launch.
     private int requestedGameFps() {
-        if (target30RenderPolicy) return 30;
         File dir = getExternalFilesDir(null);
         if (dir != null) {
             try (java.util.Scanner input = new java.util.Scanner(new File(dir, "gfx-target-fps"))) {
@@ -2265,7 +2264,31 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             } catch (java.io.FileNotFoundException ignored) {
             }
         }
-        return selectedDeviceProfile.targetFps;
+        return 0;
+    }
+
+    private static void migrateDefaultFramePacing(File dir) {
+        File migrated = new File(dir, "gfx-unlocked-default-v1");
+        if (migrated.exists()) return;
+        File target = new File(dir, "gfx-target-fps");
+        int previous = 0;
+        try (java.util.Scanner input = new java.util.Scanner(target)) {
+            if (input.hasNextInt()) previous = input.nextInt();
+        } catch (java.io.FileNotFoundException error) {
+            if (target.exists()) return;
+        }
+        // Migrate the shipped presets once. Subsequent user overrides retain
+        // their normal meaning, including an explicitly chosen 30 FPS cap.
+        if (!target.exists() || previous == 30 || previous == 60) {
+            try (java.io.FileOutputStream output = new java.io.FileOutputStream(target)) {
+                output.write("0\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                output.getFD().sync();
+            } catch (java.io.IOException error) {
+                Log.w(TAG, "frame pacing default migration failed", error);
+                return;
+            }
+        }
+        writeMarkerIfMissing(migrated, "1\n");
     }
 
     private void ensureDefaultMarkers() {
@@ -2273,7 +2296,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         if (dir == null) return;
         writeMarkerIfMissing(new File(dir, "gfx-legacy-waitall"), "0\n");
         writeMarkerIfMissing(new File(dir, "gfx-readback-cached"), "1\n");
-        writeMarkerIfMissing(new File(dir, "gfx-target-fps"), (selectedDeviceProfile != null ? selectedDeviceProfile.targetFps : 30) + "\n");
+        migrateDefaultFramePacing(dir);
+        writeMarkerIfMissing(new File(dir, "gfx-target-fps"), "0\n");
         // "auto" leaves the decision to the engine, which is the only
         // place that knows the GPU: on the Honor tablet (Adreno 735) reusing
         // the open depth/stencil pass flickers the moon halo, so the engine
@@ -3027,7 +3051,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 Log.w(TAG, "failed to persist operation_mode: " + t.getMessage());
             }
         }
-        GameWindowNative.setProfileTargetFps(selectedDeviceProfile.targetFps,
+        GameWindowNative.setProfileTargetFps(requestedGameFps(),
                 selectedDeviceProfile.usesDockedRendering());
         String log_path = files == null ? null : new File(files, "guest_boot.log").getAbsolutePath();
         Thread guest = new Thread(new GuestBootTask(image, romfs, log_path, saveRoot, getAssets(), files), "ffrs-guest");

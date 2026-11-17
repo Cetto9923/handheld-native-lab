@@ -8285,13 +8285,13 @@ extern "C" int xbg_legacy_wait(uint64_t fence,uint64_t timeout){
     return fence<=completed;
 }
 extern "C" void xbg_legacy_finish(){gfx_drain();std::lock_guard<std::recursive_mutex> lock(mutex);need(initialized,"Queue finish before Vulkan initialization");++perf.why_finish;complete_all();VK(vkQueueWaitIdle(cfg.queue));}
-static uint64_t s_target_frame_ns = 33333333ull; // Default 30 FPS (33.333333 ms)
+static uint64_t s_target_frame_ns = 0; // Default to no additional host frame limiter.
 static uint64_t s_next_present_ns = 0;
 static uint32_t s_pace_check_counter = 0;
 static int s_logged_target_fps = -1;
 
 static void xbg_refresh_target_fps() {
-    int target_fps = 30; // default 30 FPS for stable 30Hz target in game mode
+    int target_fps = 0;
     const char *env_fps = getenv("FFRS_TARGET_FPS");
     if (env_fps && atoi(env_fps) >= 0) target_fps = atoi(env_fps);
     const std::string marker = pipeline_cache_path().substr(0, pipeline_cache_path().find_last_of('/')) + "/gfx-target-fps";
@@ -8301,8 +8301,6 @@ static void xbg_refresh_target_fps() {
         if (fscanf(f, "%d", &val) == 1 && val >= 0) target_fps = val;
         fclose(f);
     }
-    const char *render_policy = getenv("FFRS_RENDER_POLICY");
-    if (render_policy && !strcmp(render_policy, "1")) target_fps = 30;
     if (target_fps > 0) {
         s_target_frame_ns = 1000000000ull / (uint64_t)target_fps;
     } else {
@@ -8310,7 +8308,7 @@ static void xbg_refresh_target_fps() {
     }
     if (target_fps != s_logged_target_fps) {
         s_logged_target_fps = target_fps;
-        xbg_logf("xbg_refresh_target_fps: locked target_fps=%d target_ns=%llu", target_fps, (unsigned long long)s_target_frame_ns);
+        xbg_logf("xbg_refresh_target_fps: target_fps=%d target_ns=%llu (0=unthrottled)", target_fps, (unsigned long long)s_target_frame_ns);
     }
 }
 

@@ -253,7 +253,7 @@ public final class DataBundleInstaller implements Runnable {
         runtimeRoot = runtime;
         data = runtime;
         // Match the frozen runtime profile; do not import diagnostic flags from archives.
-        marker(data, "gfx-target-fps", "30\n"); marker(data, "gfx-fence-spin-us", "0\n");
+        marker(data, "gfx-target-fps", "0\n"); marker(data, "gfx-fence-spin-us", "0\n");
         marker(data, "gfx-legacy-waitall", "0\n"); marker(data, "gfx-async-pipelines", "1\n");
         // "auto" leaves the depth-aspect reuse to the engine, which knows
         // the GPU and keeps the path off on the Honor tablet (the moon halo
