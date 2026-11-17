@@ -1334,8 +1334,7 @@
     "src/graphics/nvn_device/nvn_backend_vulkan.c",
     "src/graphics/nvn_vulkan/engine/xbg_game.h",
     "scripts/graphics/analyze_frame_metrics.py",
-    "tests/native/test_frame_metrics.py",
-    "tests/installer/test_present_outcome.py"
+    "tests/native/test_frame_metrics.py"
    ],
    "acquired_at": "2026-10-30T15:16:47.536209+08:00",
    "checkpoint": "7f05665/APK015 build7593/export7984 exit0; installSHA+SDmatched,real deny/clean setup/grant/warm recheck/title verified;3saveSHAequal.20088 stopped,no active controller.14fullSHA/HOME/CSV338queued142skip0failed verified/stopped.13battle legacy24.96attempt/s max1521.777ms,successunrecorded.8%battery/USB500mA;markers30/fence0/async0,NONE10/buf6150 unchanged. Next warm combat aftercharge;allgates OPEN,no push.",
@@ -1361,6 +1360,12 @@
      "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
      "at": "2026-11-17T20:31:39.837271+08:00",
      "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "tests/installer/test_present_outcome.py",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:56:22.734445+08:00",
+     "reason": "existing adapter fixture must include production atomic counter dependency"
     }
    ]
   },
@@ -4224,7 +4229,8 @@
     "coordination/results/CODEX-STABLE69-CHEAT-FPS-20261117.md",
     "tests/installer/test_touch_pad_menu.py",
     "src/graphics/nvn_device/nvn_window.c",
-    "tests/native/window_acquire_contract.c"
+    "tests/native/window_acquire_contract.c",
+    "tests/installer/test_present_outcome.py"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
@@ -11151,7 +11157,8 @@
     "coordination/results/CODEX-STABLE69-CHEAT-FPS-20261117.md",
     "tests/installer/test_touch_pad_menu.py",
     "src/graphics/nvn_device/nvn_window.c",
-    "tests/native/window_acquire_contract.c"
+    "tests/native/window_acquire_contract.c",
+    "tests/installer/test_present_outcome.py"
    ],
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",

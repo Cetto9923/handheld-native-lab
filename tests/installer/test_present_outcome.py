@@ -52,11 +52,12 @@ int main() {
 
     def test_actual_engine_adapter_does_not_turn_drop_into_success(self):
         source = (ROOT / 'src/graphics/nvn_device/nvn_engine.c').read_text()
-        start = source.index('static int engine_present(')
+        start = source.index('static atomic_uint_fast64_t s_presented_frames;')
         body = source[start:source.index('\nstatic const char *engine_log_default_paths', start)]
         fixture = r'''#include <stdint.h>
 #include <stdio.h>
 #include <assert.h>
+#include <stdatomic.h>
 #include "src/graphics/nvn_device/nvn_device.h"
 typedef void *VkImage;
 typedef uint32_t VkFormat;
@@ -74,6 +75,7 @@ int main(void) {
     nvn_backend backend = {.present_image = backend_present};
     const int32_t crop[4] = {0,0,1280,720};
     device.backend = &backend;
+    assert(nvn_engine_presented_frames() == 0);
     outcome = NVN_PRESENT_QUEUED;
     assert(engine_present(&device, NULL, (void *)0x123, 37, 1280, 720, crop, 1) == 0);
     outcome = NVN_PRESENT_SKIPPED;
@@ -81,6 +83,7 @@ int main(void) {
     outcome = NVN_PRESENT_FAILED;
     assert(engine_present(&device, NULL, (void *)0x123, 37, 1280, 720, crop, 1) == -1);
     assert(calls == 3);
+    assert(nvn_engine_presented_frames() == 1);
     backend.present_image = NULL;
     assert(engine_present(&device, NULL, NULL, 0, 0, 0, NULL, 0) == -1);
     device.backend = NULL;
