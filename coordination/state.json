@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-17T10:47:09.741325+08:00",
- "phase": "优先低内存存活改造，索尔62人物闪烁另记录待取证",
+ "updated_at": "2026-11-17T11:10:51.957833+08:00",
+ "phase": "63 preview publication and water-capital flower performance investigation",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -3686,6 +3686,18 @@
    "checkpoint": "63首轮Android0，111宿主仅旧packed提取夹具缺新增atomic依赖失败，已补mock并加压力拒绝保留断言，单项复验0。RG正式9文件SHA备份及私有files归档完成，当前桌面，尚未安装。下一步最终重建，命令仍run_build.py。",
    "write_state": "ACTIVE",
    "checkpoint_at": "2026-11-17T09:36:59.294697+08:00"
+  },
+  {
+   "task": "CODEX-WATER-CAPITAL-FLOWERS-20261117",
+   "owner": "root",
+   "paths": [
+    ".local/water-capital-flowers-20261117/",
+    "coordination/results/CODEX-WATER-CAPITAL-FLOWERS-20261117.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-17T11:07:35.928348+08:00",
+   "checkpoint": "已提取16帧概览，约0至24秒含水面发光花，末段上无水面平台。RG隔离第三章已到客栈，准备走到同区。63解锁前后数据分别保留。"
   }
  ],
  "tasks": [
@@ -10504,7 +10516,33 @@
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acceptance": "压力信号覆盖主动检测与Android回调，前台不依赖已废弃回调；清理前实际完成GPU/写回，GPU权威内容和活跃引用保全；缓存丢弃可重建；源码和构建SHA一致；目标实机存活验收单列，原1080与游戏时序保留",
-   "checkpoint": "63源码4c7fd86，111宿主/Android0、653输入SHA一致，APK993c84d7。RG PID11717隔离读档进入土之神殿，首次回收约222MiB，强通知回收约143.8MiB后继续移动；8秒移动19.058FPS，稳30未达标。正式源9文件全SHA相同。原机低内存存活/Thor闪烁/小米长停顿及蓝牙未完成验收。本轮按预览版发布。"
+   "checkpoint": "63最终源码ca59451，111宿主/Android0、653输入SHA一致。APK ba3b94ca、3749079字节，RG安装回读及正式源9文件SHA通过。旧30标记已迁0，native target_ns=0；第三章客栈6.13秒移动43.707FPS，已走出客栈。水都花朵卡顿另任务取证，原机低内存/索尔闪烁及蓝牙待验。统一目录已放63，62精确归档，现准备GitHub预览发布。"
+  },
+  {
+   "id": "CODEX-WATER-CAPITAL-FLOWERS-20261117",
+   "owner": "root",
+   "role": "PERF_INVESTIGATION",
+   "status": "in_progress",
+   "objective": "核对水都走动及水面发光花朵与卡顿的关系，按实际绘制和CPU/GPU耗时定位，在画面正确前提下优化真实帧率",
+   "inputs": [
+    "用户32.5秒水都录屏0a62edf9，另一设备型号/APK未明确",
+    "用户确认当前设备同样卡顿",
+    "RG477M已装ca59451源码63，隔离第三章存档可用"
+   ],
+   "outputs": [
+    "视频时间窗口与同机位实测",
+    "实际绘制通道归因与最小修复候选"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/water-capital-flowers-20261117/",
+    "coordination/results/CODEX-WATER-CAPITAL-FLOWERS-20261117.md"
+   ],
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "acceptance": "花朵为用户线索，按key改写前取得实际draw证据。视频帧率与真实游戏帧率分别记录。移动、长帧和音频分别保留证据。",
+   "checkpoint": "已提取16帧概览，约0至24秒含水面发光花，末段上无水面平台。RG隔离第三章已到客栈，准备走到同区。63解锁前后数据分别保留。"
   }
  ],
  "blockers": [
