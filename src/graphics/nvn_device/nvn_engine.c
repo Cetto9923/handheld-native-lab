@@ -10,6 +10,7 @@
 #include "nvn_engine.h"
 
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -50,6 +51,11 @@ static int s_enabled = 1;
 static char s_shader_directory[1024];
 static int s_ready;
 static nvn_device_state *s_device;
+static atomic_uint_fast64_t s_presented_frames;
+
+uint64_t nvn_engine_presented_frames(void) {
+    return atomic_load_explicit(&s_presented_frames, memory_order_relaxed);
+}
 
 /* The present path of the engine asks for the game's own render target to be
  * shown. This runtime owns the swapchain, so the copy into it happens here.
@@ -77,6 +83,7 @@ static int engine_present(void *userdata, void *native_window, VkImage image, Vk
         return -1;
     }
     (void)native_window;
+    atomic_fetch_add_explicit(&s_presented_frames, 1, memory_order_relaxed);
     return 0;
 }
 

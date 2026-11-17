@@ -15,7 +15,7 @@ int nvn_window_initialize(void *, const void *, int);
 int nvn_window_acquire_texture(void *, void *, int *);
 int nvnSyncWait(const void *, uint64_t);
 
-static int gpu_ready = 1, allow_wait = 1;
+static int gpu_ready = 1, allow_wait = 1, platform_surface_ready = 1;
 static uint64_t submitted = 7, completed = 6;
 int nvn_engine_ready(void) { return gpu_ready; }
 uint64_t nvn_engine_last_fence(void) { return submitted; }
@@ -25,7 +25,9 @@ int nvn_engine_wait(uint64_t fence, uint64_t timeout) {
     return 0;
 }
 static int surface(nvn_device_state *d, void *w, uint32_t *x, uint32_t *y, void **s, void **c) {
-    (void)d; (void)w; *x = 1280; *y = 960; *s = (void *)3; *c = (void *)4; return 1;
+    (void)d; (void)w;
+    if (!platform_surface_ready) return 0;
+    *x = 1280; *y = 960; *s = (void *)3; *c = (void *)4; return 1;
 }
 static const nvn_backend backend = {.create_window_surface = surface};
 const nvn_backend *nvn_device_backend(void) { return &backend; }
@@ -64,6 +66,14 @@ int main(void) {
     CHECK(nvn_window_acquire_texture(window, sync, &out.index) == 1 && out.index == -99);
     gpu_ready = 1; allow_wait = 0; submitted++;
     CHECK(nvn_window_acquire_texture(window, sync, &out.index) == 1 && out.index == -99);
+    unsigned char background_window[64];
+    platform_surface_ready = 0;
+    allow_wait = 1;
+    CHECK(nvn_window_initialize(background_window, builder, 0) == 1);
+    CHECK(nvn_window_acquire_texture(background_window, sync, &out.index) == 0 && out.index == 0);
+    CHECK(completed == submitted);
+    CHECK(nvn_window_acquire_texture(background_window, sync, &out.index) == 0 && out.index == 1);
+    CHECK(out.before == 0xaabbccdd && out.after == 0x11223344);
     printf("window_acquire_contract errors=%d\n", errors);
     return errors ? 1 : 0;
 }

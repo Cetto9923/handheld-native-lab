@@ -10,6 +10,12 @@
 #include "nso_host.h"
 #include "hid_bridge.h"
 #include "audio_bridge.h"
+#include "../../graphics/nvn_device/nvn_engine.h"
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_org_ffrs_diagnostic_GameWindowNative_presentedFrames(JNIEnv*, jclass) {
+    return static_cast<jlong>(nvn_engine_presented_frames());
+}
 
 namespace {
 

@@ -534,7 +534,9 @@ int nvn_window_acquire_texture(void *window, void *available_sync, int *texture_
     pthread_mutex_lock(&s_window_lock);
     w = window_find(window, 0);
     count = w ? (w->num_active_textures ? w->num_active_textures : w->num_textures) : 0;
-    if (!w || !w->swapchain || !count || count > w->num_textures ||
+    /* Guest textures remain GPU-owned resources while Android replaces its
+     * Surface. The presentation backend handles the missing platform path. */
+    if (!w || !count || count > w->num_textures ||
         count > NVN_WINDOW_MAX_TEXTURES) {
         pthread_mutex_unlock(&s_window_lock);
         return 1; /* NVN_WINDOW_ACQUIRE_TEXTURE_RESULT_NATIVE_ERROR */

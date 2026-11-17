@@ -146,6 +146,20 @@ public final class SaveCheater {
     /** True when the key is present, i.e. the cheat menu can run. */
     public static boolean available() { return key() != null; }
 
+    /** Android supplies its packaged asset directly through AssetManager. */
+    static boolean initializeKey(InputStream input) throws IOException {
+        byte[] bytes = new byte[32];
+        int count = 0;
+        while (count < bytes.length) {
+            int value = input.read();
+            if (value < 0) return false;
+            bytes[count++] = (byte)value;
+        }
+        if (input.read() != -1) return false;
+        cachedKey = bytes;
+        return true;
+    }
+
     // ------------------------------------------------------------- crypto
 
     private static byte[] aes(byte[] key, byte[] data, boolean decrypt) throws Exception {

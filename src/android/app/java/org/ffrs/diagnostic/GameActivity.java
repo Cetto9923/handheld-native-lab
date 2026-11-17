@@ -90,6 +90,50 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     private int guestTerminalState;
     private final Handler guestWatchHandler = new Handler(Looper.getMainLooper());
     private final Runnable guestWatch = new GuestWatch(this);
+    private boolean fpsVisible;
+    private String fpsLabel = "FPS …";
+    private final FrameRateSampler frameRate = new FrameRateSampler();
+    private final Runnable fpsUpdate = new FpsUpdate(this);
+
+    static final class FrameRateSampler {
+        private long previousFrames = -1, previousMillis;
+        void reset() { previousFrames = -1; }
+        double sample(long frames, long millis) {
+            long deltaFrames = frames - previousFrames;
+            long deltaMillis = millis - previousMillis;
+            boolean valid = previousFrames >= 0 && frames >= previousFrames && deltaMillis > 0;
+            previousFrames = frames;
+            previousMillis = millis;
+            return valid ? deltaFrames * 1000.0 / deltaMillis : Double.NaN;
+        }
+    }
+
+    private static final class FpsUpdate implements Runnable {
+        private final GameActivity owner;
+        FpsUpdate(GameActivity owner) { this.owner = owner; }
+        @Override public void run() {
+            if (!owner.fpsVisible || !owner.resumed) return;
+            double fps = owner.frameRate.sample(GameWindowNative.presentedFrames(), SystemClock.elapsedRealtime());
+            owner.fpsLabel = Double.isNaN(fps) ? "FPS …"
+                    : String.format(java.util.Locale.ROOT, "FPS %.1f", fps);
+            if (owner.touchPad != null) owner.touchPad.invalidate();
+            owner.guestWatchHandler.postDelayed(this, 1000);
+        }
+    }
+
+    private void startFpsMonitor() {
+        guestWatchHandler.removeCallbacks(fpsUpdate);
+        frameRate.reset();
+        if (fpsVisible && resumed) guestWatchHandler.post(fpsUpdate);
+    }
+
+    private void toggleFpsOverlay() {
+        fpsVisible = !fpsVisible;
+        getPreferences(MODE_PRIVATE).edit().putBoolean("show_fps", fpsVisible).apply();
+        startFpsMonitor();
+        if (touchPad != null) touchPad.invalidate();
+        Log.i(TAG, "fps_overlay enabled=" + fpsVisible);
+    }
     private final TouchPadShortcut padShortcut = new TouchPadShortcut();
     private final Runnable padShortcutDispatch = new PadShortcutDispatch(this);
     private static final GuestStartState GUEST_START = new GuestStartState();
@@ -374,7 +418,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         private final RectF menuBtn = new RectF();
         private final RectF btnReset = new RectF(), btnDone = new RectF();
         private final RectF menuPanel = new RectF();
-        private final RectF[] menuItems = new RectF[9];
+        private final RectF[] menuItems = new RectF[10];
         private int handleId = -1, lsId = -1, rsId = -1, menuId = -1;
         private float u, vw, vh, lsKx, lsKy, rsKx, rsKy;
         private final Ctl[] ctls = new Ctl[13];
@@ -580,7 +624,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 else if (i == 5) enterEdit();
                 else if (i == 6) owner.userToggleTouchPad();
                 else if (i == 7) owner.startGuestScan();
-                else owner.startActivity(new Intent(owner, ReportActivity.class));
+                else if (i == 8) owner.startActivity(new Intent(owner, ReportActivity.class));
+                else owner.toggleFpsOverlay();
                 return true;
             }
             return true;
@@ -733,6 +778,15 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 for (int i = 0; i < ctls.length; i++) drawCtl(c, i);
                 if (editing) drawPanel(c);
             }
+            if (owner.fpsVisible) {
+                fill.setColor(0xB0000000);
+                c.drawRoundRect(0.3f * u, 0.3f * u, 4.6f * u, 1.5f * u, 0.2f * u, 0.2f * u, fill);
+                text.setColor(0xFFFFFFFF);
+                text.setTextSize(0.62f * u);
+                text.setTextAlign(Paint.Align.LEFT);
+                c.drawText(owner.fpsLabel, 0.55f * u, 1.12f * u, text);
+                text.setTextAlign(Paint.Align.CENTER);
+            }
             if (menuOpen) drawMenu(c);
         }
 
@@ -785,7 +839,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                     "编辑按键布局",    // layout editor
                     shown ? "隐藏手柄" : "显示手柄",
                     "扫描实时数据",    // guest memory scan
-                    "导出诊断报告"
+                    "导出诊断报告",
+                    owner.fpsVisible ? "关闭帧率显示" : "开启帧率显示"
             };
             for (int i = 0; i < menuItems.length; i++) {
                 RectF r = menuItems[i];
@@ -833,6 +888,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         super.onResume();
         Log.i(TAG, "lifecycle onResume");
         resumed = true;
+        startFpsMonitor();
         discoverPad();
         if (!guestStarted && dataInstaller != null) dataInstaller.rescanDirectory();
         if (!guestStarted) recheckGame();
@@ -842,6 +898,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     @Override protected void onPause() {
         Log.i(TAG, "lifecycle onPause");
         resumed = false;
+        guestWatchHandler.removeCallbacks(fpsUpdate);
         guestWatchHandler.removeCallbacks(padShortcutDispatch);
         padShortcut.reset();
         padButtons = axisButtons = 0;
@@ -855,6 +912,12 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        fpsVisible = getPreferences(MODE_PRIVATE).getBoolean("show_fps", false);
+        try (java.io.InputStream key = getAssets().open("ffrs_save_key.bin")) {
+            Log.i(TAG, "cheat packaged asset ready=" + SaveCheater.initializeKey(key));
+        } catch (java.io.IOException e) {
+            Log.e(TAG, "cheat packaged asset could not be read", e);
+        }
         currentActivity = new WeakReference<GameActivity>(this);
         int startState = GUEST_START.get();
         guestStarted = startState == GuestStartState.STARTING || startState == GuestStartState.STARTED;
@@ -957,7 +1020,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         }
         final File slot = primarySaveSlot();
         if (slot == null) {
-            toast("找不到存档文件");
+            showFlowMessage("请先保存游戏", "在游戏内保存一次，再打开金手指。修改完成后，返回标题画面读取该存档生效。");
             return;
         }
         final SaveCheater.Result info = SaveCheater.inspect(slot);
@@ -3205,6 +3268,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         Log.i(TAG, "lifecycle onDestroy");
         exitHandler.removeCallbacks(this);
         guestWatchHandler.removeCallbacks(guestWatch);
+        guestWatchHandler.removeCallbacks(fpsUpdate);
         if (dataInstaller != null) dataInstaller.detach(this);
         if (audioManager != null) audioManager.unregisterAudioDeviceCallback(audioCallback);
         if (surfaceOwner.get() == this) {

@@ -22,6 +22,8 @@ public final class GameWindowNative {
     public static native void setProfileTargetFps(int fps, boolean docked);
     /** Queue a pressure hint. GPU resources are reclaimed on the renderer thread. */
     public static native void requestMemoryTrim(int severity);
+    /** Successful game-frame presentations, sampled without the render lock. */
+    public static native long presentedFrames();
     public static native int nativeGuestThreadState();
     public static native boolean hostExitReady(boolean request);
     /** Returns {present, pointer, width, height, format, generation}. */

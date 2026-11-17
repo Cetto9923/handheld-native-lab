@@ -24,8 +24,12 @@ class ViewStub {
     protected void onDraw(Canvas canvas) {}
 }
 class Canvas {
+    int fpsDraws;
     void drawRoundRect(Rect rect, float x, float y, Paint paint) {}
-    void drawText(String text, float x, float y, Paint paint) {}
+    void drawRoundRect(float l, float t, float r, float b, float x, float y, Paint paint) {}
+    void drawText(String text, float x, float y, Paint paint) {
+        if (text.startsWith("FPS")) ++fpsDraws;
+    }
 }
 class Rect {
     float height() { return 1; }
@@ -33,6 +37,8 @@ class Rect {
     float centerY() { return 1; }
 }
 class Paint {
+    enum Align { LEFT, CENTER }
+    void setTextAlign(Align align) {}
     void setColor(int color) {}
     void setTextSize(float size) {}
     float getTextSize() { return 1; }
@@ -41,6 +47,11 @@ class Log {
     static void i(String tag, String message) {}
 }
 public class TouchPadMenuContract extends ViewStub {
+    static class Owner {
+        boolean fpsVisible;
+        String fpsLabel = "FPS 30.0";
+    }
+    final Owner owner = new Owner();
     static final String TAG = "test";
     boolean shown, editing, menuOpen;
     int handleId = -1;
@@ -73,6 +84,11 @@ public class TouchPadMenuContract extends ViewStub {
         pad.closeMenu();
         if (!pad.shown || pad.menuOpen || pad.clears != 2)
             throw new AssertionError("menu close or input clearing failed");
+        pad.shown = false;
+        pad.owner.fpsVisible = true;
+        pad.onDraw(canvas);
+        if (canvas.fpsDraws != 1 || pad.controls != 13)
+            throw new AssertionError("FPS overlay depends on virtual pad visibility");
     }
 }
 '''

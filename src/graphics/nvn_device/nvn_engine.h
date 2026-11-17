@@ -70,6 +70,9 @@ int nvn_engine_register_sampler(const void *guest_pool, int id, const void *gues
 /* Show the image of the guest's swapchain texture. */
 int nvn_engine_present(const void *guest_window, int index);
 
+/* Successful game frames queued for presentation. Lock-free UI sampling. */
+uint64_t nvn_engine_presented_frames(void);
+
 /* What the engine has done, for the log. */
 typedef struct nvn_engine_stats {
     uint64_t submissions;

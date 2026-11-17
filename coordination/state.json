@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-17T19:32:46.436291+08:00",
- "phase": "68b已构建，RG连续三轮离线，目标受阻等待连机",
+ "updated_at": "2026-11-17T20:51:56.181885+08:00",
+ "phase": "用户收口闪退排查，集成稳定版金手指并添加菜单FPS开关",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -660,7 +660,6 @@
    "paths": [
     "src/android/app/",
     "src/android/native/game_window_jni.h",
-    "src/android/native/game_window_jni.cpp",
     "src/android/native/game_activity_main.cpp",
     "src/android/native/CMakeLists.txt",
     "src/runtime/hle/native_window.h",
@@ -676,7 +675,15 @@
    "write_state": "COMPLETE_HANDED_BACK",
    "device_boot_lock": null,
    "completed_at": "2026-10-24T12:15:10.953553+00:00",
-   "handoff": "coordination/prompts/P-MM-13A-android-game-window-form.md and docs/analysis/android_game_window_form.md. A game Activity with a SurfaceView hands an ANativeWindow to the native side (ANativeWindow_fromSurface), and a portable holder (src/runtime/hle/native_window.c) keeps it for the runtime. Verified on the RG477M: window_state event=set_surface present=1 pointer=0xb4000073eef8b330 width=1280 height=960 format=1, and surfaceDestroyed releases the reference. The window is empty: no rendering, no input, no frame. The nn::vi bridge that would consume the window is still open, and it is the coordinator card that owns it."
+   "handoff": "coordination/prompts/P-MM-13A-android-game-window-form.md and docs/analysis/android_game_window_form.md. A game Activity with a SurfaceView hands an ANativeWindow to the native side (ANativeWindow_fromSurface), and a portable holder (src/runtime/hle/native_window.c) keeps it for the runtime. Verified on the RG477M: window_state event=set_surface present=1 pointer=0xb4000073eef8b330 width=1280 height=960 format=1, and surfaceDestroyed releases the reference. The window is empty: no rendering, no input, no frame. The nn::vi bridge that would consume the window is still open, and it is the coordinator card that owns it.",
+   "transferred_paths": [
+    {
+     "path": "src/android/native/game_window_jni.cpp",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "P-MM-14-NVN-GRAPHICS-CHAIN",
@@ -687,10 +694,7 @@
     "src/graphics/nvn_las/",
     "src/graphics/vulkan/",
     "src/android/native/game_vulkan_probe.cpp",
-    "src/android/native/game_window_jni.cpp",
     "src/android/native/CMakeLists.txt",
-    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
-    "src/android/app/java/org/ffrs/diagnostic/GameWindowNative.java",
     "src/runtime/hle/native_window.c",
     "src/runtime/hle/native_window.h",
     "docs/analysis/nvn_graphics_chain_references.md",
@@ -704,7 +708,27 @@
    "objective": "Build the path from a real guest call to a presented frame: the guest has to run in the same process as the window, the nn::vi bridge has to hand the Android window to the guest, the NVN queue, window and command buffer families have to exist, and the recorded commands have to be replayed into Vulkan and presented. The work is staged and each stage has to be falsifiable: the presentation path of the window is already proven by a host probe, which is explicitly not a game frame. The first frame from the guest has to be proved by pixels that come from the guest, never by the probe.",
    "write_state": "FROZEN_USER_TAKEOVER",
    "device_boot_lock": null,
-   "release_reason": "User transferred project to Codex; Antigravity execution cancelled; previous WIP preserved in independent takeover worktree."
+   "release_reason": "User transferred project to Codex; Antigravity execution cancelled; previous WIP preserved in independent takeover worktree.",
+   "transferred_paths": [
+    {
+     "path": "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/java/org/ffrs/diagnostic/GameWindowNative.java",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/native/game_window_jni.cpp",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "P-MM-15-NVN-DRAW-PATH-IN-WINDOW-PROCESS",
@@ -862,7 +886,6 @@
    "owner": "/root/gpu_timeout_review",
    "paths": [
     "src/graphics/nvn_device/nvn_backend_vulkan.c",
-    "src/graphics/nvn_device/nvn_engine.c",
     "src/graphics/nvn_device/nvn_vulkan_features.h",
     "tests/native/vulkan_subgroup_probe.cpp"
    ],
@@ -870,7 +893,15 @@
    "branch": "task/T02-codex-black-screen",
    "acquired_at": "2026-10-25T08:13:20.747498+00:00",
    "checkpoint": "3 NDK strict compile passes; RGcapabilityonlyprobe errors0 min=max16 requiredcompute32unsupported; no warp fix",
-   "write_state": "COMPLETE_HANDED_BACK"
+   "write_state": "COMPLETE_HANDED_BACK",
+   "transferred_paths": [
+    {
+     "path": "src/graphics/nvn_device/nvn_engine.c",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "T02-MOVIE-DECODER",
@@ -1128,7 +1159,6 @@
    "owner": "/root/gpu_timeout_review",
    "paths": [
     "src/graphics/nvn_device/nvn_backend_vulkan.c",
-    "src/graphics/nvn_device/nvn_engine.c",
     "src/graphics/nvn_device/nvn_vulkan_features.h",
     "src/graphics/nvn_vulkan/engine/xbg_game.h",
     "scripts/graphics/build_ffrs_xgs.py",
@@ -1144,7 +1174,15 @@
    "write_state": "RELEASED_USER_CONFIRMED_STOPPED",
    "objective": "Explicitactualenabledfeaturegates+canonicalLayerpreservation+correctbaseInstancepublication/cachekeys+realGPUcontract; noADB",
    "released_at": "2026-10-29T08:04:47.126270+00:00",
-   "release_reason": "User explicitly stopped Antigravity process and directed Codex takeover; no Antigravity/build/adb client processes in ps at intake."
+   "release_reason": "User explicitly stopped Antigravity process and directed Codex takeover; no Antigravity/build/adb client processes in ps at intake.",
+   "transferred_paths": [
+    {
+     "path": "src/graphics/nvn_device/nvn_engine.c",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "T02-RG16-CANONICAL-PROXY",
@@ -1185,7 +1223,6 @@
    "task": "P-OPT-RG477M-30hz-game-mode",
    "owner": "Codex /root",
    "paths": [
-    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
     "src/android/native/guest_boot_jni.cpp",
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
     "src/graphics/nvn_device/nvn_backend_vulkan.c",
@@ -1204,13 +1241,20 @@
    "write_state": "RELEASED_USER_CONFIRMED_STOPPED",
    "device_boot_lock": "RG477M01445122 only; isolated package preferred",
    "released_at": "2026-10-29T10:01:27.032578+00:00",
-   "release_reason": "User confirmed stopped and authorized Honor-only takeover in current chat."
+   "release_reason": "User confirmed stopped and authorized Honor-only takeover in current chat.",
+   "transferred_paths": [
+    {
+     "path": "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "P-OPT-HONOR-GTPRO-30hz-game-mode",
    "owner": "Codex /root",
    "paths": [
-    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
     "src/android/native/guest_boot_jni.cpp",
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
     "src/graphics/nvn_vulkan/engine/xbg_probe.inc",
@@ -1225,7 +1269,15 @@
    "write_state": "RELEASED_USER_REQUESTED_HANDOFF",
    "device_boot_lock": "A42BBB5109000333 ONLY; RG477M prohibited",
    "released_at": "2026-10-29T12:10:43.807720+00:00",
-   "release_reason": "User requests stop and Antigravity takeover; all dirty work preserved."
+   "release_reason": "User requests stop and Antigravity takeover; all dirty work preserved.",
+   "transferred_paths": [
+    {
+     "path": "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "P-OPT-RG477M-30-STABILITY-20261030",
@@ -1265,19 +1317,16 @@
     "docs/PACKAGING-NEXT.md",
     "scripts/android/build_game_window_apk.sh",
     "scripts/distribution/",
-    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
     "src/android/app/java/org/ffrs/diagnostic/DataBundleInstaller.java",
     "tests/installer/",
     ".local/installer-20261030/",
     "src/android/app/java/org/ffrs/diagnostic/NativeDataBundle.java",
     "docs/DATA-BUNDLE-FORMAT.md",
-    "src/android/app/java/org/ffrs/diagnostic/GameWindowNative.java",
     "src/android/native/guest_boot_jni.cpp",
     "src/graphics/nvn_vulkan/engine/xbg_shader_archive.h",
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
     "src/graphics/nvn_device/nvn_bridge.c",
     "src/graphics/nvn_device/nvn_bridge.h",
-    "src/graphics/nvn_device/nvn_engine.c",
     "tests/installer/texture_snapshot_contract.c",
     "src/graphics/nvn_device/nvn_command_buffer.c",
     "tests/installer/command_view_snapshot_contract.c",
@@ -1293,20 +1342,38 @@
    "write_state": "RELEASED_SUPERSEDED",
    "checkpoint_at": "2026-10-31T05:44:33.509434+08:00",
    "released_at": "2026-11-11T19:12:51.875440+08:00",
-   "release_reason": "2026-11-11 baseline freeze at df3e108: recorded branch/worktree is not the live tree, and the working tree was clean. Released so a new writer can be registered without pretending the old session is still editing."
+   "release_reason": "2026-11-11 baseline freeze at df3e108: recorded branch/worktree is not the live tree, and the working tree was clean. Released so a new writer can be registered without pretending the old session is still editing.",
+   "transferred_paths": [
+    {
+     "path": "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/java/org/ffrs/diagnostic/GameWindowNative.java",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/graphics/nvn_device/nvn_engine.c",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "P-CX-TERRA-device-profiles",
    "owner": "Codex /root",
    "paths": [
-    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
     "src/android/app/java/org/ffrs/diagnostic/DeviceProfile.java",
     "src/android/native/guest_boot_jni.cpp",
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
     "scripts/android/build_game_window_apk.sh",
     "coordination/results/P-CX-TERRA-device-profiles-RESULT.md",
     ".local/honor-device-profiles/",
-    "src/android/app/java/org/ffrs/diagnostic/GameWindowNative.java",
     "src/graphics/nvn_device/nvn_backend_vulkan.c",
     "tests/device/DeviceProfileContract.java",
     "scripts/android/test_device_profiles.sh",
@@ -1339,7 +1406,21 @@
    "checkpoint": "Boss ordinaryA/B bothblacklines entry76-81s; loc9init hypothesis rejected, own3sourceedits reverted/archive; capture17faf reused, combinedroute triggernorth+11.7 finite3f session88136/log; restoreordinaryea2f+overlayhiddenpending; LimitresidualFAIL, final60Hz/commitpackagesHonor400Propending; audioNOTRUN",
    "write_state": "RELEASED_SUPERSEDED",
    "released_at": "2026-11-11T19:12:51.875440+08:00",
-   "release_reason": "2026-11-11 baseline freeze at df3e108: recorded branch/worktree is not the live tree, and the working tree was clean. Released so a new writer can be registered without pretending the old session is still editing."
+   "release_reason": "2026-11-11 baseline freeze at df3e108: recorded branch/worktree is not the live tree, and the working tree was clean. Released so a new writer can be registered without pretending the old session is still editing.",
+   "transferred_paths": [
+    {
+     "path": "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/java/org/ffrs/diagnostic/GameWindowNative.java",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "HONOR-COMPUTE-PREWARM",
@@ -1518,9 +1599,7 @@
     "src/graphics/nvn_vulkan/engine/xbg_compaction_sum.h",
     "tests/device/test_compaction_sum.cpp",
     "src/android/app/java/org/ffrs/diagnostic/DeviceProfile.java",
-    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
     "src/android/native/guest_boot_jni.cpp",
-    "src/android/app/gamewindow/AndroidManifest.xml",
     "tests/device/DeviceProfileContract.java",
     "tests/device/test_profile_environment.py",
     "tests/device/test_shader_archive_selection.py",
@@ -1559,7 +1638,21 @@
    "source_baseline_commit": "214fd794fb436de14155e8954908685ae2120c21",
    "source_baseline_tag": "honor-graphics-20261107",
    "released_at": "2026-11-11T19:12:51.875440+08:00",
-   "release_reason": "2026-11-11 baseline freeze at df3e108: recorded branch/worktree is not the live tree, and the working tree was clean. Released so a new writer can be registered without pretending the old session is still editing."
+   "release_reason": "2026-11-11 baseline freeze at df3e108: recorded branch/worktree is not the live tree, and the working tree was clean. Released so a new writer can be registered without pretending the old session is still editing.",
+   "transferred_paths": [
+    {
+     "path": "src/android/app/gamewindow/AndroidManifest.xml",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "HONOR-SHRINE-OOM-20261111",
@@ -1585,29 +1678,44 @@
    "owner": "baseline freeze (no feature writer)",
    "paths": [
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
-    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
-    "src/android/app/java/org/ffrs/diagnostic/SaveCheater.java",
     "src/android/app/java/org/ffrs/diagnostic/GuestMemory.java",
     "src/android/app/java/org/ffrs/diagnostic/UnitNames.java",
-    "scripts/android/build_game_window_apk.sh",
-    "src/android/app/gamewindow/AndroidManifest.xml"
+    "scripts/android/build_game_window_apk.sh"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-honor-shrine-20261111",
    "acquired_at": "2026-11-11T19:12:51.875440+08:00",
    "checkpoint": "df3e108",
    "objective": "Frozen at the recorded baseline. No feature edits until one new writer is registered for a single path.",
-   "write_state": "FROZEN"
+   "write_state": "FROZEN",
+   "transferred_paths": [
+    {
+     "path": "src/android/app/gamewindow/AndroidManifest.xml",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/java/org/ffrs/diagnostic/SaveCheater.java",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "T-STABILITY-20261111",
    "owner": "Cursor stability worktree",
    "paths": [
     "tests/",
-    "scripts/verify_host.py",
     "src/runtime/hle/nso_host.c",
     "src/runtime/hle/nso_host.h",
-    "src/graphics/nvn_device/nvn_engine.c",
     "src/graphics/nvn_device/nvn_backend_vulkan.c",
     "src/runtime/hle/audio_bridge.c"
    ],
@@ -1616,7 +1724,21 @@
    "acquired_at": "2026-11-11T19:12:51.875440+08:00",
    "checkpoint": "用户停止外部会话后完成分支归并，工作树已脱离旧分支，原内容和APK保留。",
    "objective": "Host-testable stability fixes are committed on task/T-stability-20261111 at 58901a8. Do not edit xbg_game.cpp or the Java UI. Do not delete this worktree. Device checks for the save sync and the paced audio reopen are NOT_RUN.",
-   "write_state": "FROZEN_ARCHIVED_CONSOLIDATION"
+   "write_state": "FROZEN_ARCHIVED_CONSOLIDATION",
+   "transferred_paths": [
+    {
+     "path": "scripts/verify_host.py",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/graphics/nvn_device/nvn_engine.c",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "HONOR-MOTION-BLOCKS-20261112",
@@ -1797,7 +1919,6 @@
    "task": "HONOR-PACKAGE-1.0.7-20261112",
    "owner": "MiniMax Code /root release takeover",
    "paths": [
-    "src/android/app/gamewindow/AndroidManifest.xml",
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
     "src/android/app/java/org/ffrs/diagnostic/",
     "coordination/state.json",
@@ -1807,15 +1928,21 @@
    "branch": "task/T-package-1.0.7-20261112",
    "acquired_at": "2026-11-12T19:37:54.159407+08:00",
    "checkpoint": "用户停止外部会话后完成分支归并，工作树已脱离旧分支，原内容和APK保留。",
-   "write_state": "FROZEN_ARCHIVED_CONSOLIDATION"
+   "write_state": "FROZEN_ARCHIVED_CONSOLIDATION",
+   "transferred_paths": [
+    {
+     "path": "src/android/app/gamewindow/AndroidManifest.xml",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "RG477M-BASELINE-SYNC-20261112",
    "owner": "worker agent bg_5b168acd-b506-4fbb-97a3-2bf500996fbc",
    "paths": [
-    "src/android/app/gamewindow/AndroidManifest.xml",
     "src/android/app/java/org/ffrs/diagnostic/DeviceProfile.java",
-    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
     "src/graphics/nvn_vulkan/engine/xbg_pipeline_key.h"
    ],
@@ -1824,7 +1951,21 @@
    "acquired_at": "2026-11-12T20:06:51.357052+08:00",
    "checkpoint": "用户停止外部会话后完成分支归并，工作树已脱离旧分支，原内容和APK保留。",
    "objective": "One APK, one codebase, two devices: bring the RG477M baseline up to the Honor line, keep the existing device profile tiering (handheld_mid 720/30 for RG477M, tablet_sd8s 1080/60 for the Honor tablet), and prove title plus battle at a stable 30 FPS on the RG477M.",
-   "write_state": "FROZEN_ARCHIVED_CONSOLIDATION"
+   "write_state": "FROZEN_ARCHIVED_CONSOLIDATION",
+   "transferred_paths": [
+    {
+     "path": "src/android/app/gamewindow/AndroidManifest.xml",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "HONOR-PIPELINE-SEED-20261112",
@@ -1923,7 +2064,6 @@
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
     "src/graphics/nvn_vulkan/engine/xbg_spirv_depth.h",
     "tests/device/test_frag_depth_strip.cpp",
-    "scripts/verify_host.py",
     "coordination/EXPERIENCE.md"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native",
@@ -1931,7 +2071,15 @@
    "acquired_at": "2026-11-14T10:40:00+08:00",
    "checkpoint": "b7a68d8",
    "objective": "Root-cause and fix the protagonist's black horizontal stripes on the RG477M.",
-   "write_state": "COMPLETE_HANDED_BACK"
+   "write_state": "COMPLETE_HANDED_BACK",
+   "transferred_paths": [
+    {
+     "path": "scripts/verify_host.py",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "CODEX-RECOVERY-20261114",
@@ -2017,7 +2165,6 @@
     "src/graphics/nvn_vulkan/engine/third_party/droidplay/spv_narrow.h",
     "src/graphics/nvn_vulkan/engine/third_party/droidplay/LICENSE",
     "src/graphics/nvn_vulkan/engine/third_party/droidplay/provenance.json",
-    "scripts/verify_host.py",
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
     "src/graphics/nvn_vulkan/engine/xbg_probe.inc",
     "src/graphics/nvn_vulkan/engine/xbg_water_trace.inc"
@@ -2027,7 +2174,15 @@
    "acquired_at": "2026-11-14T12:59:16.841391+08:00",
    "checkpoint": "a0f402e已提交，87宿主检查及APK构建退出0，全库2934compute中1195改写/309归约全部验证通过。",
    "objective": "吸收MIT上游16lane subgroup归约修复并补宿主和真实GPU回归，统一接入runtime/warm；关联水都仍待验证。",
-   "write_state": "RELEASED"
+   "write_state": "RELEASED",
+   "transferred_paths": [
+    {
+     "path": "scripts/verify_host.py",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "CODEX-NARROW-GUARD-20261114",
@@ -2069,16 +2224,28 @@
     "src/graphics/nvn_vulkan/engine/xbg_spirv_typed_storage.h",
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
     "tests/device/test_typed_storage.cpp",
-    "scripts/android/verify_typed_storage.sh",
-    "scripts/verify_host.py",
-    "src/android/app/gamewindow/AndroidManifest.xml"
+    "scripts/android/verify_typed_storage.sh"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-14T18:03:12.408229+08:00",
    "checkpoint": "03ab3e6，新包回读SHA一致，PID18110越过b673且用户确认不闪退。",
    "objective": "定位并修复b673 typed-storage格式拒绝，保留写入语义，实际读档/走动验收",
-   "write_state": "RELEASED"
+   "write_state": "RELEASED",
+   "transferred_paths": [
+    {
+     "path": "scripts/verify_host.py",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/gamewindow/AndroidManifest.xml",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "CODEX-TEXEL-COPY-20261114",
@@ -2113,16 +2280,27 @@
   {
    "task": "CODEX-INTEGRATE-PERF-20261114",
    "owner": "Codex /root",
-   "paths": [
-    "scripts/verify_host.py",
-    "src/android/app/gamewindow/AndroidManifest.xml"
-   ],
+   "paths": [],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-14T18:38:31.029224+08:00",
    "checkpoint": "5d81d5a，worker源码冻结",
    "objective": "整合单一候选并串行构建、同包真机对照",
-   "write_state": "CHECKPOINTED_SCOPE_TRANSFERRED_ROOT"
+   "write_state": "CHECKPOINTED_SCOPE_TRANSFERRED_ROOT",
+   "transferred_paths": [
+    {
+     "path": "scripts/verify_host.py",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/gamewindow/AndroidManifest.xml",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "CODEX-AUDIO-SCHED-20261114",
@@ -2392,8 +2570,6 @@
    "task": "CODEX-UPSTREAM-INTEGRATE-20261114",
    "owner": "Codex /root",
    "paths": [
-    "scripts/verify_host.py",
-    "src/android/app/gamewindow/AndroidManifest.xml",
     "coordination/results/CODEX-UPSTREAM-PORTS-20261114.md",
     ".local/upstream-switch-zelda-20261114/baseline-7de9e39/",
     ".local/upstream-switch-zelda-20261114/root-review.md",
@@ -2405,7 +2581,21 @@
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-14T21:35:42.433767+08:00",
    "checkpoint": "实现者正在并行轻契约，根先保全当前基线。",
-   "write_state": "CHECKPOINTED_SCOPE_TRANSFERRED_ROOT"
+   "write_state": "CHECKPOINTED_SCOPE_TRANSFERRED_ROOT",
+   "transferred_paths": [
+    {
+     "path": "scripts/verify_host.py",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/gamewindow/AndroidManifest.xml",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "CODEX-UPSTREAM-UBO-QA-20261114",
@@ -2427,18 +2617,30 @@
     "src/graphics/nvn_vulkan/engine/xbg_spirv_uniform_extent.h",
     "src/graphics/nvn_vulkan/engine/third_party/droidplay/spv_lit.h",
     "src/graphics/nvn_vulkan/engine/third_party/droidplay/provenance.json",
-    "scripts/verify_host.py",
     "scripts/android/verify_spirv_uniform_extent.sh",
     "tests/device/test_spirv_uniform_extent.cpp",
     "tests/device/uniform_extent_cases.spvasm",
-    "src/android/app/gamewindow/AndroidManifest.xml",
     ".local/codex-recovery-20261114/ubo-regression-control/"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-14T22:00:26.730034+08:00",
    "checkpoint": "20已交回；原18APK也复现，root保全原机位及用户视频，不再写该图形源。",
-   "write_state": "RELEASED"
+   "write_state": "RELEASED",
+   "transferred_paths": [
+    {
+     "path": "scripts/verify_host.py",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/gamewindow/AndroidManifest.xml",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "CODEX-UBO-REGRESSION-DOWNSTREAM-20261114",
@@ -2805,7 +3007,6 @@
    "owner": "perf_cpu",
    "paths": [
     "src/android/app/java/org/ffrs/diagnostic/NativeDataBundle.java",
-    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
     "tests/installer/PipelineWarmSeedContract.java",
     "tests/installer/test_apk_pipeline_warm_seed.py",
     ".local/codex-recovery-20261114/stutter22-user-video/apk-seed/"
@@ -2815,7 +3016,15 @@
    "acquired_at": "2026-11-15T01:07:51.520181+08:00",
    "checkpoint": "scope确认后派发，互不重叠。",
    "write_state": "FROZEN_HANDED_BACK",
-   "released_at": "2026-11-15T01:24:07.524884+08:00"
+   "released_at": "2026-11-15T01:24:07.524884+08:00",
+   "transferred_paths": [
+    {
+     "path": "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "CODEX-WARM-SEED-INTEGRATE-20261115",
@@ -3025,7 +3234,6 @@
    "paths": [
     "src/graphics/nvn_device/nvn_backend_vulkan.c",
     "src/graphics/nvn_device/nvn_vulkan_features.h",
-    "src/graphics/nvn_device/nvn_engine.c",
     "tests/native/layer_output_gpu_contract.cpp"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
@@ -3033,13 +3241,20 @@
    "acquired_at": "2026-11-15T10:31:55.399721+08:00",
    "checkpoint": "caa28a3 source; realbackend mirror-clamp +layer component passed onRG MaliG615 andHonor Adreno735; core path only.",
    "write_state": "RELEASED",
-   "released_at": "2026-11-15T11:34:45.323665+08:00"
+   "released_at": "2026-11-15T11:34:45.323665+08:00",
+   "transferred_paths": [
+    {
+     "path": "src/graphics/nvn_device/nvn_engine.c",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "CODEX-TOUCH-SIZE-20261115",
    "owner": "load_profile",
    "paths": [
-    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
     ".local/codex-recovery-20261114/gpu-draw24/touch-size/"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
@@ -3047,7 +3262,15 @@
    "acquired_at": "2026-11-15T10:46:40.915919+08:00",
    "checkpoint": "Java frozen byworker SHA303d6165, root takes integration; actual user single/multitouch failure notyet confirmed.",
    "write_state": "RELEASED",
-   "released_at": "2026-11-15T11:07:11.530257+08:00"
+   "released_at": "2026-11-15T11:07:11.530257+08:00",
+   "transferred_paths": [
+    {
+     "path": "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "CODEX-GPU24-DRAW-REVIEW-20261115",
@@ -3188,10 +3411,6 @@
    "task": "CODEX-PUBLISH-CHEAT30-20261115",
    "owner": "root",
    "paths": [
-    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
-    "src/android/app/gamewindow/AndroidManifest.xml",
-    "tests/installer/test_touch_pad_menu.py",
-    "scripts/verify_host.py",
     ".local/releases/1.0.30/",
     "coordination/results/CODEX-PUBLISH-CHEAT30-20261115.md",
     "tests/installer/test_unit_names.py",
@@ -3202,7 +3421,33 @@
    "acquired_at": "2026-11-15T15:11:14.438940+08:00",
    "checkpoint": "30预览已GitHub公开发布且远端下载SHA89cbb81c/3703949B验证一致，tag/source030149e，108host/Android0，57输入匹配。中文雷因8单位、菜单独立、折叠UI及用户34项保存结果实测。备份恢复宿主文件往返/故障契约通过，最终掌机往返及独立QA NOT_RUN；交叠窗口已排除。主卡顿仍开放。",
    "write_state": "COMPLETE_SCOPED",
-   "checkpoint_at": "2026-11-15T15:50:14.448236+08:00"
+   "checkpoint_at": "2026-11-15T15:50:14.448236+08:00",
+   "transferred_paths": [
+    {
+     "path": "scripts/verify_host.py",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/gamewindow/AndroidManifest.xml",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "tests/installer/test_touch_pad_menu.py",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:39:54.303670+08:00",
+     "reason": "extend existing production drawing fixture for the FPS overlay"
+    }
+   ]
   },
   {
    "task": "CODEX-BACKUP30-ROUNDTRIP-20261115",
@@ -3226,7 +3471,6 @@
     "coordination/results/CODEX-HONOR30-PERF31-20261115.md",
     "src/graphics/nvn_vulkan/engine/xbg_spirv_integer_buffer.h",
     "tests/device/test_reflection_uint_fetch.cpp",
-    "src/android/app/gamewindow/AndroidManifest.xml",
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
     "tests/device/test_upload_cpu_preserve.py"
    ],
@@ -3234,7 +3478,15 @@
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-15T16:39:31.022143+08:00",
    "checkpoint": "e37fcb3218d0ebc89bfe514d0c14d017ed464fa8",
-   "write_state": "FROZEN_CHECKPOINT_TRANSFERRED_TO_GC32"
+   "write_state": "FROZEN_CHECKPOINT_TRANSFERRED_TO_GC32",
+   "transferred_paths": [
+    {
+     "path": "src/android/app/gamewindow/AndroidManifest.xml",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "CODEX-HONOR-CHEAT30-UI-20261115",
@@ -3268,10 +3520,7 @@
    "task": "CODEX-PAD-CHORD33-20261115",
    "owner": "root",
    "paths": [
-    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
-    "src/android/app/gamewindow/AndroidManifest.xml",
     "tests/installer/test_pad_shortcut.py",
-    "scripts/verify_host.py",
     ".local/pad-chord33-20261115/",
     "coordination/results/CODEX-PAD-CHORD33-20261115.md",
     "tests/installer/test_save_flow.py",
@@ -3284,7 +3533,27 @@
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-15T17:57:41.476317+08:00",
    "checkpoint": "c90ff50",
-   "write_state": "COMPLETE_HANDED_BACK"
+   "write_state": "COMPLETE_HANDED_BACK",
+   "transferred_paths": [
+    {
+     "path": "scripts/verify_host.py",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/gamewindow/AndroidManifest.xml",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "CODEX-HONOR-STABLE30-AB-20261115",
@@ -3293,7 +3562,6 @@
     ".local/honor-stable30-20261115/",
     "coordination/results/CODEX-HONOR-STABLE30-AB-20261115.md",
     "src/android/app/java/org/ffrs/diagnostic/DeviceProfile.java",
-    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
     "src/graphics/nvn_device/nvn_backend_vulkan.c",
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
     "tests/device/",
@@ -3318,6 +3586,12 @@
      ],
      "time": "2026-11-17T18:57:41.120372+08:00",
      "reason": "Same root coordinator takes serial ownership; old sessions stopped, source clean and no active build/profiler."
+    },
+    {
+     "path": "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
     }
    ]
   },
@@ -3339,9 +3613,6 @@
    "task": "T-CHEAT-OPTIONS-20261115",
    "owner": "chat-01a1df35-a1ce-7cb2-8e5c-3fa5e081dc66",
    "paths": [
-    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
-    "src/android/app/java/org/ffrs/diagnostic/SaveCheater.java",
-    "src/android/app/java/org/ffrs/diagnostic/GameWindowNative.java",
     "src/android/native/guest_boot_jni.cpp",
     "src/runtime/hle/nso_host.c",
     "src/runtime/hle/nso_host.h",
@@ -3353,7 +3624,27 @@
    "branch": "task/T-cheat-options-20261115",
    "acquired_at": "2026-11-15T20:41:19.544419+08:00",
    "checkpoint": "已核对独立worktree，原树源码冻结，禁止跨树暂存或集成。",
-   "write_state": "ACTIVE_ISOLATED_WORKTREE"
+   "write_state": "ACTIVE_ISOLATED_WORKTREE",
+   "transferred_paths": [
+    {
+     "path": "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/java/org/ffrs/diagnostic/GameWindowNative.java",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/java/org/ffrs/diagnostic/SaveCheater.java",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "CODEX-HONOR-HINT38-20261115",
@@ -3361,10 +3652,8 @@
    "paths": [
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
     "src/graphics/nvn_vulkan/engine/xbg_android_frame_hint.h",
-    "src/android/app/gamewindow/AndroidManifest.xml",
     "tests/device/test_android_frame_hint.py",
     "tests/device/android_frame_hint_contract.cpp",
-    "scripts/verify_host.py",
     "coordination/results/CODEX-HONOR-HINT38-20261115.md",
     ".local/honor-stable30-20261115/build38/",
     ".local/honor-stable30-20261115/hint38/"
@@ -3374,7 +3663,21 @@
    "acquired_at": "2026-11-15T20:51:37.323537+08:00",
    "checkpoint": "负收益，源撤回，实机关闭，继续深处纹理注册表查询热点。",
    "write_state": "COMPLETE_EXPERIMENT_REVERTED",
-   "checkpoint_at": "2026-11-15T21:08:48.983844+08:00"
+   "checkpoint_at": "2026-11-15T21:08:48.983844+08:00",
+   "transferred_paths": [
+    {
+     "path": "scripts/verify_host.py",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/gamewindow/AndroidManifest.xml",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "CODEX-HONOR-TEXTURE39-20261115",
@@ -3382,7 +3685,6 @@
    "paths": [
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
     "tests/device/test_render_policy.py",
-    "src/android/app/gamewindow/AndroidManifest.xml",
     ".local/honor-stable30-20261115/build39/",
     ".local/honor-stable30-20261115/texture39/",
     "coordination/results/CODEX-HONOR-TEXTURE39-20261115.md"
@@ -3392,16 +3694,22 @@
    "acquired_at": "2026-11-15T21:09:48.679053+08:00",
    "checkpoint": "组件与安装保全通过，FPS单项方向混合。",
    "write_state": "COMPLETE_SCOPED_PERF_INCONCLUSIVE",
-   "checkpoint_at": "2026-11-15T22:00:28.314643+08:00"
+   "checkpoint_at": "2026-11-15T22:00:28.314643+08:00",
+   "transferred_paths": [
+    {
+     "path": "src/android/app/gamewindow/AndroidManifest.xml",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "CODEX-HONOR-PROBE40-20261115",
    "owner": "root",
    "paths": [
     "src/graphics/nvn_vulkan/engine/xbg_probe.inc",
-    "src/android/app/gamewindow/AndroidManifest.xml",
     "tests/device/test_probe_marker_poll.py",
-    "scripts/verify_host.py",
     ".local/honor-stable30-20261115/build40/",
     ".local/honor-stable30-20261115/probe40/",
     "coordination/results/CODEX-HONOR-PROBE40-20261115.md",
@@ -3412,7 +3720,21 @@
    "acquired_at": "2026-11-15T21:24:31.309137+08:00",
    "checkpoint": "22:16撤回旧28.81移动结论，PAD隐藏。22:25再次复核19.4窗口截图已在战斗菜单，非零轴也不能证明场景移动；A40-real/41-short均遇敌混合。当前41/14303，需前后画面场景一致的移动窗口，性能改善未证实。",
    "write_state": "COMPLETE_SCOPED",
-   "checkpoint_at": "2026-11-15T22:00:28.314643+08:00"
+   "checkpoint_at": "2026-11-15T22:00:28.314643+08:00",
+   "transferred_paths": [
+    {
+     "path": "scripts/verify_host.py",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/gamewindow/AndroidManifest.xml",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "CODEX-HONOR-MOVING41-20261115",
@@ -3422,8 +3744,6 @@
     "coordination/results/CODEX-HONOR-MOVING41-20261115.md",
     "src/graphics/nvn_device/nvn_bridge.c",
     "tests/device/test_bridge_lookup.py",
-    "scripts/verify_host.py",
-    "src/android/app/gamewindow/AndroidManifest.xml",
     "coordination/EXPERIENCE.md",
     "coordination/results/CODEX-HONOR-PROBE40-20261115.md"
    ],
@@ -3432,7 +3752,21 @@
    "acquired_at": "2026-11-15T22:08:06.022043+08:00",
    "checkpoint": "41源码25b0bd3，APK fe5b9323，113宿主/Android0，79输入一致，装包及9文件SHA通过。14303神殿内部B41-field2真实非零轴、前后探索且位移，26100..26220/120间隔21.7207FPS/P9979.90/max80.61/29超50，短暖窗仍未稳30，单项收益未隔离。旧28.81隐藏摇杆及19.4战斗菜单结论已撤回。",
    "write_state": "CHECKPOINTED_SOURCE_TRANSFERRED_TO_SUBMIT44",
-   "checkpoint_at": "2026-11-16T10:18:02.196296+08:00"
+   "checkpoint_at": "2026-11-16T10:18:02.196296+08:00",
+   "transferred_paths": [
+    {
+     "path": "scripts/verify_host.py",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/gamewindow/AndroidManifest.xml",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "CODEX-HONOR-GPASS42-20261115",
@@ -3441,15 +3775,27 @@
     ".local/honor-gpass42-20261115/",
     "coordination/results/CODEX-HONOR-GPASS42-20261115.md",
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
-    "src/android/app/gamewindow/AndroidManifest.xml",
-    "tests/device/test_depth_attachment.py",
-    "scripts/verify_host.py"
+    "tests/device/test_depth_attachment.py"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-15T23:05:47.156670+08:00",
    "checkpoint": "42源a47c250/APK0a502482，25813复用461。114宿主/Android0/80源SHA/安装9文件及APK回读通过。GPU场景复核后B1/A2/B2/A3/B3纯神殿内部同机位，94与96pass/帧，计时波动不能全归收益。普通持续移动B11520..11640/120间隔23.3551FPS/P9958.02/max69.62，对照A12720..12780/60间隔23.5045FPS/P9955.49/max55.49，均前后探索非零轴及最终归零，未稳30且未见候选FPS收益。设备force=depthomit恢复原深度路径。moving-first与cpu42-moving遇敌混合单列诊断。用户再次确认松手，root独占输入。已正常逃离私有副本随机战斗，现启动6秒Perfetto+持续移动profile42，计划/符号/日志落.local/honor-gpass42-20261115/profile-moving42/，工具session48640。",
-   "write_state": "ACTIVE"
+   "write_state": "ACTIVE",
+   "transferred_paths": [
+    {
+     "path": "scripts/verify_host.py",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/gamewindow/AndroidManifest.xml",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "CODEX-HONOR-FORMAT43-20261116",
@@ -3458,15 +3804,27 @@
     ".local/honor-format43-20261116/",
     "coordination/results/CODEX-HONOR-FORMAT43-20261116.md",
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
-    "src/android/app/gamewindow/AndroidManifest.xml",
     "tests/device/test_render_policy.py",
-    "tests/device/test_depth_attachment.py",
-    "scripts/verify_host.py"
+    "tests/device/test_depth_attachment.py"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-16T00:02:09.270699+08:00",
-   "checkpoint": "43源4a52571/APK e92965c5/3720407B，113宿主Android0/79输入一致，安装回读及9文件保全通过。PID7643复用461，同一内部桥段全幅南北移动A1原11460..11520/60间隔21.3393/P9984.51/max84.51，B2新21240..21300/60间隔25.6498/P9946.48/max46.48，A2原24360..24420/60间隔25.6642/P9945.34/max45.34。全部普通窗口前后探索、非零轴最终归零；B1遇敌黑场混合23.75只作诊断。后续原路同25.66推翻把21→25全归新缓存的解释，尚未确认FPS收益，真实稳30继续开放。当前live-ab ibrecord原查表，最后画面探索红遇敌圈，下一动作可能触发战斗，先新鲜截图核对；root输入已UP。"
+   "checkpoint": "43源4a52571/APK e92965c5/3720407B，113宿主Android0/79输入一致，安装回读及9文件保全通过。PID7643复用461，同一内部桥段全幅南北移动A1原11460..11520/60间隔21.3393/P9984.51/max84.51，B2新21240..21300/60间隔25.6498/P9946.48/max46.48，A2原24360..24420/60间隔25.6642/P9945.34/max45.34。全部普通窗口前后探索、非零轴最终归零；B1遇敌黑场混合23.75只作诊断。后续原路同25.66推翻把21→25全归新缓存的解释，尚未确认FPS收益，真实稳30继续开放。当前live-ab ibrecord原查表，最后画面探索红遇敌圈，下一动作可能触发战斗，先新鲜截图核对；root输入已UP。",
+   "transferred_paths": [
+    {
+     "path": "scripts/verify_host.py",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/gamewindow/AndroidManifest.xml",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "CODEX-HONOR-SUBMIT44-20261116",
@@ -3475,9 +3833,7 @@
     ".local/honor-submit44-20261116/",
     "coordination/results/CODEX-HONOR-SUBMIT44-20261116.md",
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
-    "src/android/app/gamewindow/AndroidManifest.xml",
     "tests/device/test_render_policy.py",
-    "scripts/verify_host.py",
     "tests/device/test_arena_memory_policy.py",
     "tests/device/test_vertex_cache.py",
     "tests/device/test_performance_hint.py",
@@ -3501,7 +3857,21 @@
    "acquired_at": "2026-11-16T00:37:43.134192+08:00",
    "checkpoint": "\n### 1.0.58优化预览已发布并核验\n\nGitHub Release为https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.58-preview。APK和SHA256附件已上传并重新下载，3728599B及SHA a01c2f64a744ddfd8706b46184d8f358d012a4cdff33dcb196148a7a5df4c4bf与本地完全一致。标签精确指向构建源d79ffa6，119项宿主与Android0、89份输入一致。开发分支已推ca05526，最终发布报告追加后再推一次。Main仍ecb9b57，历史APK保留。\n\n最终公开历史自审423 blob/154274750B，在所选凭据模式和排除载荷路径范围内0发现，独立审计未执行。完整发布计划、API、命令退出码、回读摘要和附件在.local/releases/1.0.58/publication/，status=PUBLISHED_VERIFIED。\n\n用户要求先收口提交，随后授权今天发布优化版。发布任务已完成，设备离线且没有运行中的本轮构建/采样/自动输入。性能主任务按用户要求暂停，58常量池收益及暖技能、全场景、长期内存、A2DP完整听感仍待验证，稳定30未达。下次恢复先核设备、PID、末次none实验臂与461私有存档，读取最终发布报告后再继续。\n",
    "checkpoint_at": "2026-11-16T13:20:36.861586+08:00",
-   "write_state": "FROZEN_USER_REQUESTED_WRAPUP"
+   "write_state": "FROZEN_USER_REQUESTED_WRAPUP",
+   "transferred_paths": [
+    {
+     "path": "scripts/verify_host.py",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/gamewindow/AndroidManifest.xml",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "CODEX-PUBLISH58-20261116",
@@ -3530,10 +3900,8 @@
     "src/runtime/hle/nso_host.c",
     "src/runtime/hle/nso_host.h",
     "src/android/native/CMakeLists.txt",
-    "src/android/app/gamewindow/AndroidManifest.xml",
     "tests/native/add_on_content_contract.c",
     "scripts/runtime/verify_add_on_content.sh",
-    "scripts/verify_host.py",
     "scripts/extract/build_scoped_hactool.py",
     "tests/device/test_add_on_content.py",
     "src/runtime/hle/guest_process.c",
@@ -3544,16 +3912,28 @@
    "acquired_at": "2026-11-16T13:42:09.530077+08:00",
    "checkpoint": "50e4d4d source; APK18850fbe, ZIP6d550a98; Honor22661 title/load/short movement/AOC passed; full regression NOT_RUN.",
    "write_state": "COMPLETE_SCOPED_DELIVERY",
-   "checkpoint_at": "2026-11-16T14:49:15.076432+08:00"
+   "checkpoint_at": "2026-11-16T14:49:15.076432+08:00",
+   "transferred_paths": [
+    {
+     "path": "scripts/verify_host.py",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/gamewindow/AndroidManifest.xml",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "CODEX-HONOR400-FENCE60-20261116",
    "owner": "root",
    "paths": [
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
-    "src/android/app/gamewindow/AndroidManifest.xml",
     "tests/device/test_readback_fence_lifetime.py",
-    "scripts/verify_host.py",
     "coordination/results/CODEX-HONOR400-FENCE60-20261116.md",
     ".local/honor400-fence60-20261116/",
     "coordination/EXPERIENCE.md",
@@ -3564,7 +3944,21 @@
    "acquired_at": "2026-11-16T18:12:03.177949+08:00",
    "checkpoint": "d2a01e8; APK a9dafd07; old100 PID11406 and new101 PID12251 scoped checks passed; phone NOT_RUN.",
    "write_state": "COMPLETE_SCOPED_DELIVERY",
-   "checkpoint_at": "2026-11-16T19:03:51.207694+08:00"
+   "checkpoint_at": "2026-11-16T19:03:51.207694+08:00",
+   "transferred_paths": [
+    {
+     "path": "scripts/verify_host.py",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/gamewindow/AndroidManifest.xml",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "CODEX-THOR-FILTER61-20261116",
@@ -3574,8 +3968,6 @@
     "src/graphics/nvn_vulkan/engine/xbg_spirv_sample_usage.h",
     "tests/device/test_sample_usage.py",
     "tests/device/sample_usage_contract.cpp",
-    "scripts/verify_host.py",
-    "src/android/app/gamewindow/AndroidManifest.xml",
     "coordination/results/CODEX-THOR-FILTER61-20261116.md",
     ".local/thor-filter61-20261116/",
     "coordination/docs/RELEASE61-UNIVERSAL-20261116.md"
@@ -3585,7 +3977,21 @@
    "acquired_at": "2026-11-16T23:26:21.631384+08:00",
    "checkpoint": "RG477M同转场基础回归通过，9正式存档SHA保全。新发现同一R32纹理绑定52真正Sample、112 Gather，61仅覆盖已证明过滤无关的读取，索尔根因修复仍待扩展和目标实机。用户优先小米15Pro长停顿。",
    "write_state": "CHECKPOINTED_PENDING_THOR_PATH",
-   "checkpoint_at": "2026-11-17T00:12:08.932096+08:00"
+   "checkpoint_at": "2026-11-17T00:12:08.932096+08:00",
+   "transferred_paths": [
+    {
+     "path": "scripts/verify_host.py",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/gamewindow/AndroidManifest.xml",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "CODEX-XIAOMI-STALL62-20261117",
@@ -3593,15 +3999,27 @@
    "paths": [
     ".local/xiaomi-stall62-20261117/",
     "coordination/results/CODEX-XIAOMI-STALL62-20261117.md",
-    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
-    "src/android/app/gamewindow/AndroidManifest.xml",
-    "scripts/verify_host.py"
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp"
    ],
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acquired_at": "2026-11-17T00:22:18.000559+08:00",
    "checkpoint": "用户暂缓小米长停顿，转索尔R32线性采样。",
-   "write_state": "PAUSED_USER_REQUESTED"
+   "write_state": "PAUSED_USER_REQUESTED",
+   "transferred_paths": [
+    {
+     "path": "scripts/verify_host.py",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/gamewindow/AndroidManifest.xml",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "CODEX-THOR-LINEAR62-20261117",
@@ -3612,8 +4030,6 @@
     "src/graphics/nvn_vulkan/engine/xbg_spirv_linear_sample.h",
     "src/graphics/nvn_vulkan/engine/xbg_spirv_sample_usage.h",
     "src/graphics/nvn_vulkan/engine/xbg_shader_identity.h",
-    "src/android/app/gamewindow/AndroidManifest.xml",
-    "scripts/verify_host.py",
     "scripts/distribution/inspect_pipeline_warm_list.py",
     "scripts/graphics/nvn_shader_identity.py",
     "tests/device/test_shader_identity.cpp",
@@ -3634,7 +4050,21 @@
    "acquired_at": "2026-11-17T00:31:38.668741+08:00",
    "checkpoint": "62源08baf94/APK fafd9f22/3744983B/BuildID15aa4a1a。Android及109宿主0，647输入一致，真实52/106/118改写和生产选择通过，RG500组GPU/CPU参考通过。统一目录已交付并回读，60/61保留历史。Thor、62整包场景、独立QA NOT_RUN，待目标机复测。小米长停顿和稳定30任务暂停。无本轮活动构建、采样、自动输入。",
    "write_state": "DELIVERED_PENDING_TARGET_TEST",
-   "checkpoint_at": "2026-11-17T01:00:29.043849+08:00"
+   "checkpoint_at": "2026-11-17T01:00:29.043849+08:00",
+   "transferred_paths": [
+    {
+     "path": "scripts/verify_host.py",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/gamewindow/AndroidManifest.xml",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
   },
   {
    "task": "CODEX-PUBLISH62-20261117",
@@ -3670,16 +4100,12 @@
    "paths": [
     ".local/memory-survival63-20261117/",
     ".local/video-flicker62-20261117/",
-    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
-    "src/android/app/java/org/ffrs/diagnostic/GameWindowNative.java",
     "tests/installer/test_memory_pressure_lifecycle.py",
-    "scripts/verify_host.py",
     "coordination/results/CODEX-MEMORY-SURVIVAL63-20261117.md",
     "coordination/results/CODEX-VIDEO-FLICKER-20261117.md",
     "coordination/docs/RELEASE63-UNIVERSAL-20261117.md",
     "tests/device/memory_warm_contract.cpp",
     "tests/device/test_packed_shader_words.cpp",
-    "src/graphics/nvn_device/nvn_engine.c",
     "tests/installer/test_engine_log_rotation.py",
     "src/android/app/java/org/ffrs/diagnostic/DataBundleInstaller.java",
     "tests/device/test_target_fps_marker.py"
@@ -3707,6 +4133,30 @@
      "to": "CODEX-WATER-CAPITAL-FLOWERS-20261117",
      "at": "2026-11-17T19:24:19.024666+08:00",
      "reason": "root verified no active source writer; RG soft-tier cache contract"
+    },
+    {
+     "path": "scripts/verify_host.py",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/android/app/java/org/ffrs/diagnostic/GameWindowNative.java",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    },
+    {
+     "path": "src/graphics/nvn_device/nvn_engine.c",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
     }
    ]
   },
@@ -3717,7 +4167,6 @@
     ".local/water-capital-flowers-20261117/",
     "coordination/results/CODEX-WATER-CAPITAL-FLOWERS-20261117.md",
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
-    "src/android/app/gamewindow/AndroidManifest.xml",
     "tests/device/test_upload_cpu_preserve.py",
     "src/runtime/hle/guest_pages.c",
     "src/runtime/hle/address_region.c",
@@ -3735,7 +4184,52 @@
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-17T11:07:35.928348+08:00",
    "checkpoint": "RG477M连续三轮未连接，本轮USB列表仅荣耀，mDNS为空，无活动构建或采样。68b源码/构建已提交，111宿主及Android通过，真实技能/出城/神殿/压力存活和声音验收待RG。目标受阻，等待重新连接并恢复。",
-   "checkpoint_at": "2026-11-17T18:55:15.424740+08:00"
+   "checkpoint_at": "2026-11-17T18:55:15.424740+08:00",
+   "transferred_paths": [
+    {
+     "path": "src/android/app/gamewindow/AndroidManifest.xml",
+     "to": "CODEX-STABLE69-CHEAT-FPS-20261117",
+     "at": "2026-11-17T20:31:39.837271+08:00",
+     "reason": "root verified clean source and no live build; user prioritizes stable release"
+    }
+   ]
+  },
+  {
+   "task": "CODEX-HONOR-OPENING68-20261117",
+   "owner": "root",
+   "paths": [
+    ".local/honor-opening68-20261117/",
+    "coordination/results/CODEX-HONOR-OPENING68-20261117.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-17T20:05:19.743306+08:00",
+   "checkpoint": "设备只读核对完成，准备备份60及原日志，再装最新68b并用空独立存档启动。"
+  },
+  {
+   "task": "CODEX-STABLE69-CHEAT-FPS-20261117",
+   "owner": "root",
+   "paths": [
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "src/android/app/java/org/ffrs/diagnostic/GameWindowNative.java",
+    "src/android/app/java/org/ffrs/diagnostic/SaveCheater.java",
+    "src/android/native/game_window_jni.cpp",
+    "src/graphics/nvn_device/nvn_engine.c",
+    "src/graphics/nvn_device/nvn_engine.h",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/installer/test_fps_overlay.py",
+    "tests/native/present_counter_contract.c",
+    "scripts/verify_host.py",
+    ".local/stable69-20261117/",
+    "coordination/results/CODEX-STABLE69-CHEAT-FPS-20261117.md",
+    "tests/installer/test_touch_pad_menu.py",
+    "src/graphics/nvn_device/nvn_window.c",
+    "tests/native/window_acquire_contract.c"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-17T20:31:39.837271+08:00",
+   "checkpoint": "69实现及5项生产契约通过，待构建。金手指AssetManager直接加载32B内置资源，FPS使用成功呈现的原子计数和菜单持久开关。修正无Androidswapchain时拒绝有效客机纹理的问题，保留GPU和索引保护。荣耀68b仍由用户操控，采样已结束。"
   }
  ],
  "tasks": [
@@ -10596,6 +11090,73 @@
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acceptance": "花朵为用户线索，按key改写前取得实际draw证据。视频帧率与真实游戏帧率分别记录。移动、长帧和音频分别保留证据。",
    "checkpoint": "RG477M连续三轮未连接，本轮USB列表仅荣耀，mDNS为空，无活动构建或采样。68b源码/构建已提交，111宿主及Android通过，真实技能/出城/神殿/压力存活和声音验收待RG。目标受阻，等待重新连接并恢复。"
+  },
+  {
+   "id": "CODEX-HONOR-OPENING68-20261117",
+   "owner": "root",
+   "role": "DEVICE_QA",
+   "status": "paused",
+   "objective": "按用户最新授权使用荣耀平板及最新候选走完整开篇关键流程，核对新建、战斗、BOSS后第二幕转场退出与内存证据",
+   "inputs": [
+    "用户反馈骁龙8Gen2闪退，授权本轮使用荣耀平板",
+    "A42BBB5109000333系统SM8635/Android16，原安装60",
+    "68b候选源1bf221e，APK ddf0c0e4，111宿主与Android通过"
+   ],
+   "outputs": [
+    "正式存档与历史APK备份、安装回读",
+    "开篇逐阶段截图、同PID日志、退出原因与内存记录",
+    "coordination/results/CODEX-HONOR-OPENING68-20261117.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/honor-opening68-20261117/",
+    "coordination/results/CODEX-HONOR-OPENING68-20261117.md"
+   ],
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "acceptance": "最新包真实新游戏从影片到火场、首战、最终BOSS后剧情及第二幕。正式存档保全，用户原进度不参与新游戏写入。按阶段/PID保留冷暖、闪退/系统退出、显示和音频未验范围。8Gen2本机结论需要对应机型日志，平板仅作SM8635实机覆盖。",
+   "checkpoint": "用户明确本次闪退排查到此为止，平板目前未闪退，改做稳定版金手指与FPS菜单开关。用户拥有输入；4543采集进程待收尾。"
+  },
+  {
+   "id": "CODEX-STABLE69-CHEAT-FPS-20261117",
+   "owner": "root",
+   "role": "ANDROID_RELEASE",
+   "status": "in_progress",
+   "objective": "按用户要求收口本次闪退排查，核对APK内置金手指可用性，添加菜单可持久开关的真实游戏呈现FPS显示，验证并交付稳定版APK",
+   "inputs": [
+    "用户2026-11-17收口8Gen2闪退排查",
+    "68b源1bf221e/已装荣耀平板/金手指资源32B已在APK",
+    "既有金手指分支dd7a5e5须核对1.0.0/1.0.1适用范围后有条件吸收"
+   ],
+   "outputs": [
+    "内置金手指及FPS菜单开关",
+    "宿主/Android构建和荣耀功能回归",
+    "统一发布目录APK与中文说明"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "src/android/app/java/org/ffrs/diagnostic/GameWindowNative.java",
+    "src/android/app/java/org/ffrs/diagnostic/SaveCheater.java",
+    "src/android/native/game_window_jni.cpp",
+    "src/graphics/nvn_device/nvn_engine.c",
+    "src/graphics/nvn_device/nvn_engine.h",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "tests/installer/test_fps_overlay.py",
+    "tests/native/present_counter_contract.c",
+    "scripts/verify_host.py",
+    ".local/stable69-20261117/",
+    "coordination/results/CODEX-STABLE69-CHEAT-FPS-20261117.md",
+    "tests/installer/test_touch_pad_menu.py",
+    "src/graphics/nvn_device/nvn_window.c",
+    "tests/native/window_acquire_contract.c"
+   ],
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "acceptance": "FPS来自成功排队的游戏呈现，跳过/失败不计数，UI读取无渲染锁，开关默认关闭并持久保存，暂停/销毁停止采样。包内金手指资源可读，独立存档副本完成修改和恢复核验。真实原进度保全，APK历史保留，不声称完整游戏兼容。",
+   "checkpoint": "69实现及5项生产契约通过，待构建。金手指AssetManager直接加载32B内置资源，FPS使用成功呈现的原子计数和菜单持久开关。修正无Androidswapchain时拒绝有效客机纹理的问题，保留GPU和索引保护。荣耀68b仍由用户操控，采样已结束。"
   }
  ],
  "blockers": [
@@ -10806,7 +11367,7 @@
    "荣耀400Pro同次闪退日志及其它芯片真机证据"
   ]
  },
- "device_availability": "RG477M连续三轮未连接，本轮USB列表仅荣耀，mDNS为空，无活动构建或采样。68b源码/构建已提交，111宿主及Android通过，真实技能/出城/神殿/压力存活和声音验收待RG。目标受阻，等待重新连接并恢复。",
+ "device_availability": "本轮用户明确授权使用荣耀A42BBB5109000333进行开篇测试，覆盖此前保留其它会话的安排。RG未连接。",
  "emulator": {
   "name": "pvz2",
   "serial": "emulator-5554",

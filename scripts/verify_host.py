@@ -363,6 +363,8 @@ def main():
                                          'tests.installer.test_save_export_lifecycle'])
     run('touch-pad-menu-contract', [sys.executable, '-m', 'unittest',
                                    'tests.installer.test_touch_pad_menu'])
+    run('fps-overlay-contract', [sys.executable, '-m', 'unittest',
+                                 'tests.installer.test_fps_overlay'])
     run('pad-shortcut-contract', [sys.executable, '-m', 'unittest',
                                  'tests.installer.test_pad_shortcut'])
     run('unit-names-contract', [sys.executable, '-m', 'unittest',
