@@ -1,4 +1,4 @@
-"""The engine log rotates once and a fatal exit leaves a small file.
+"""Bounded rolling logs keep recent evidence and a fatal exit leaves a small file.
 
 The test compiles the real log functions. It does not start the game.
 """
@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class EngineLogRotation(unittest.TestCase):
-    def test_log_rotates_once_and_fatal_is_recorded(self):
+    def test_log_keeps_latest_window_and_fatal_is_recorded(self):
         source = (ROOT / 'src/graphics/nvn_device/nvn_engine.c').read_text()
         start = source.index('static const char *engine_log_default_paths[]')
         body = source[start:source.index('\nvoid nvn_engine_set_enabled', start)]
@@ -39,11 +39,18 @@ int main(void) {
     struct stat first, active;
     if (stat(backup, &first) != 0) return 2;
     if (stat(path, &active) != 0) return 3;
-    off_t backup_size = first.st_size;
-    off_t active_size = active.st_size;
-    for (int i = 0; i < 40; i++) engine_log(NULL, line);
-    if (stat(backup, &first) != 0 || first.st_size != backup_size) return 4;
-    if (stat(path, &active) != 0 || active.st_size != active_size) return 5;
+    for (int i = 0; i < 240; i++) engine_log(NULL, line);
+    engine_log(NULL, "WARN latest-window-canary");
+    if (stat(backup, &first) != 0 || first.st_size > 3000 + 64 * 200) return 4;
+    if (stat(path, &active) != 0 || active.st_size > 3000 + 64 * 200) return 5;
+    FILE *latest = fopen(path, "rb");
+    if (!latest) return 10;
+    char row[256]; int found = 0;
+    while (fgets(row, sizeof row, latest))
+        if (strstr(row, "latest-window-canary")) found = 1;
+    fclose(latest);
+    if (!found) return 11;
+    fflush(NULL);
     pid_t child = fork();
     if (child == 0) engine_fatal(NULL, "boundary-test");
     int status = 0;

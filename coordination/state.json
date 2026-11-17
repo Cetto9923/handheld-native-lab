@@ -3674,7 +3674,9 @@
     "coordination/results/CODEX-VIDEO-FLICKER-20261117.md",
     "coordination/docs/RELEASE63-UNIVERSAL-20261117.md",
     "tests/device/memory_warm_contract.cpp",
-    "tests/device/test_packed_shader_words.cpp"
+    "tests/device/test_packed_shader_words.cpp",
+    "src/graphics/nvn_device/nvn_engine.c",
+    "tests/installer/test_engine_log_rotation.py"
    ],
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "branch": "task/T-codex-recovery-20261114",
@@ -10491,12 +10493,14 @@
     "coordination/results/CODEX-VIDEO-FLICKER-20261117.md",
     "coordination/docs/RELEASE63-UNIVERSAL-20261117.md",
     "tests/device/memory_warm_contract.cpp",
-    "tests/device/test_packed_shader_words.cpp"
+    "tests/device/test_packed_shader_words.cpp",
+    "src/graphics/nvn_device/nvn_engine.c",
+    "tests/installer/test_engine_log_rotation.py"
    ],
    "branch": "task/T-codex-recovery-20261114",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
    "acceptance": "压力信号覆盖主动检测与Android回调，前台不依赖已废弃回调；清理前实际完成GPU/写回，GPU权威内容和活跃引用保全；缓存丢弃可重建；源码和构建SHA一致；目标实机存活验收单列，原1080与游戏时序保留",
-   "checkpoint": "63最终Android0/111宿主通过，653输入SHA一致，源1cdc8a4。RG安装回读及正式9文件SHA通过，补设备SDK/archive后PID19679到标题。主动level1/注入level2接线通过，强回收仅减4.52MiB，同进程仍运行。真实reason3存活和Thor闪烁未验收。本地发布FFRS-data.zip40550项全CRC通过，SHA7ef10ea4，外部上传副本未核验。"
+   "checkpoint": "继续修复并发布63。当前发现持续RSS门槛会反复清空重建缓存，拟增加回收后RSS增长准入及持续系统压力的收益退避。RG同隔离存档继续真实场景采样，目标原机和Thor仍待远端复测。"
   }
  ],
  "blockers": [

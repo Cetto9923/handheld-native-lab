@@ -46,6 +46,55 @@ int main(int argc, char **argv) {
     assert(policy.reclaim_level(2000000001ull, {}, 2) == 2);
     assert(policy.reclaim_level(0, {}, 2) == 2);
 
+    Policy steady;
+    Snapshot working_set{2300 * mib, 12000 * mib, 6000 * mib, true};
+    assert(steady.reclaim_level(0, working_set, 0) == 1);
+    steady.record_reclaim(working_set);
+    assert(steady.reclaim_level(60000000000ull, working_set, 0) == 0);
+    working_set.resident += 64 * mib - 1;
+    assert(steady.reclaim_level(60000000000ull, working_set, 0) == 0);
+    ++working_set.resident;
+    assert(steady.reclaim_level(60000000000ull, working_set, 0) == 1);
+    steady.record_reclaim(working_set);
+    // Escalation bypasses the cooldown even without another 64 MiB growth.
+    working_set.resident = 2560 * mib;
+    assert(steady.reclaim_level(60000000001ull, working_set, 0) == 2);
+    steady.record_reclaim(working_set);
+    assert(steady.reclaim_level(62000000001ull, working_set, 0) == 0);
+    assert(steady.reclaim_level(62000000001ull, working_set, 2) == 2);
+
+    Policy rebuild;
+    working_set = {3000 * mib, 12000 * mib, 6000 * mib, true};
+    assert(rebuild.reclaim_level(0, working_set, 0) == 2);
+    working_set.resident = 2700 * mib;
+    rebuild.record_reclaim(working_set);
+    working_set.resident = 3000 * mib;
+    assert(rebuild.reclaim_level(60000000000ull, working_set, 0) == 0);
+    working_set.resident += 64 * mib;
+    assert(rebuild.reclaim_level(60000000000ull, working_set, 0) == 2);
+
+    Policy system_pressure;
+    working_set = {1024 * mib, 10000 * mib, 500 * mib, true};
+    assert(system_pressure.reclaim_level(0, working_set, 0) == 2);
+    system_pressure.record_reclaim(working_set);
+    assert(system_pressure.reclaim_level(2000000000ull, working_set, 0) == 0);
+    assert(system_pressure.reclaim_level(4000000000ull, working_set, 0) == 2);
+    system_pressure.record_reclaim(working_set);
+    assert(system_pressure.reclaim_level(8000000000ull, working_set, 0) == 0);
+    assert(system_pressure.reclaim_level(12000000000ull, working_set, 0) == 2);
+    working_set.resident -= 32 * mib;
+    system_pressure.record_reclaim(working_set);
+    assert(system_pressure.reclaim_level(14000000000ull, working_set, 0) == 2);
+    system_pressure.record_reclaim({}); // Missing after-RSS retains the previous measurement.
+    assert(system_pressure.resident_after == working_set.resident);
+    assert(system_pressure.reclaim_level(0, working_set, 0) == 2);
+
+    // Recovery below both thresholds arms a later, new pressure episode.
+    working_set = {};
+    assert(steady.reclaim_level(63000000000ull, working_set, 0) == 0);
+    working_set.resident = 2100 * mib;
+    assert(steady.reclaim_level(63000000001ull, working_set, 0) == 1);
+
     Snapshot parsed = read_snapshot(argv[1], argv[2]);
     assert(parsed.resident == 3072000ull * 1024);
     assert(parsed.total == 12000000ull * 1024);

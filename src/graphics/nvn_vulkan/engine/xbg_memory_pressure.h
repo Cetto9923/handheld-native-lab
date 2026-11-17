@@ -47,21 +47,25 @@ inline Snapshot read_snapshot(const char *status = "/proc/self/status",
     return snapshot;
 }
 
-inline unsigned severity(const Snapshot &snapshot) {
-    // The reported low-memory exits had last RSS samples of 3.04 and 3.64 GiB.
-    // Begin reclaiming earlier. System pressure can also trigger below that RSS.
+inline unsigned system_severity(const Snapshot &snapshot) {
     unsigned level = 0;
-    if (snapshot.resident >= 2560 * mib)
-        level = 2;
-    else if (snapshot.resident >= 2048 * mib)
-        level = 1;
     if (snapshot.available_known && snapshot.total && snapshot.available <= snapshot.total) {
         if (snapshot.available <= snapshot.total / 20)
             level = 2;
         else if (snapshot.available <= snapshot.total / 10)
-            level = std::max(level, 1u);
+            level = 1;
     }
     return level;
+}
+
+inline unsigned severity(const Snapshot &snapshot) {
+    // The reported low-memory exits had last RSS samples of 3.04 and 3.64 GiB.
+    unsigned resident_level = 0;
+    if (snapshot.resident >= 2560 * mib)
+        resident_level = 2;
+    else if (snapshot.resident >= 2048 * mib)
+        resident_level = 1;
+    return std::max(resident_level, system_severity(snapshot));
 }
 
 struct Policy {
@@ -70,6 +74,10 @@ struct Policy {
     unsigned last_level = 0;
     bool polled = false;
     bool reclaimed = false;
+    uint64_t resident_before = 0;
+    uint64_t resident_after = 0;
+    uint64_t retry_interval = 0;
+    bool measured = false;
 
     bool poll_due(uint64_t now, unsigned requested) {
         if (!requested && polled && now >= last_poll && now - last_poll < poll_interval_ns)
@@ -81,16 +89,38 @@ struct Policy {
 
     unsigned reclaim_level(uint64_t now, const Snapshot &snapshot, unsigned requested) {
         const unsigned level = std::max(severity(snapshot), std::min(requested, 2u));
-        if (!level)
+        if (!level) {
+            last_level = 0;
             return 0;
+        }
         const uint64_t interval = level == 2 ? 2000000000ull : 5000000000ull;
-        if (reclaimed && level <= last_level && now >= last_reclaim &&
-            now - last_reclaim < interval)
-            return 0;
+        if (reclaimed && level <= last_level && now >= last_reclaim) {
+            const uint64_t baseline = std::max(resident_before, resident_after);
+            const bool grew = measured && snapshot.resident >= baseline &&
+                              snapshot.resident - baseline >= 64 * mib;
+            // A large live working set can remain above the RSS threshold.
+            // Rebuilding and discarding it every few seconds adds repeated stalls.
+            if (measured && !requested && !system_severity(snapshot) && !grew)
+                return 0;
+            const uint64_t delay = grew || requested ? interval : std::max(interval, retry_interval);
+            if (now - last_reclaim < delay)
+                return 0;
+        }
         reclaimed = true;
         last_reclaim = now;
         last_level = level;
+        resident_before = snapshot.resident;
         return level;
+    }
+
+    void record_reclaim(const Snapshot &snapshot) {
+        resident_after = snapshot.resident ? snapshot.resident : resident_before;
+        const bool useful = resident_before >= resident_after &&
+                            resident_before - resident_after >= 16 * mib;
+        const uint64_t interval = last_level == 2 ? 2000000000ull : 5000000000ull;
+        retry_interval = useful ? interval : std::min(uint64_t(30000000000ull),
+                                                    std::max(interval, retry_interval) * 2);
+        measured = true;
     }
 };
 } // namespace xbg_memory_pressure

@@ -7562,6 +7562,7 @@ void maintain_memory_pressure() {
         reclaim_memory_caches(level);
     const int purged = mallopt(M_PURGE, 0);
     const auto after = xbg_memory_pressure::read_snapshot();
+    memory_pressure_policy.record_reclaim(after);
     xbg_logf("NVN memory pressure level=%u hint=%u rss_before=%llu rss_after=%llu available=%llu "
              "total=%llu purge=%d",
              level, hint, (unsigned long long)before.resident, (unsigned long long)after.resident,
