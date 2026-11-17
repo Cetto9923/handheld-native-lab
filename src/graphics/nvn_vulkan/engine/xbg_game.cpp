@@ -7566,9 +7566,10 @@ void maintain_memory_pressure() {
         return;
     const auto before = xbg_memory_pressure::read_snapshot();
     if (first_poll)
-        xbg_logf("NVN memory monitor active poll_ms=500 rss=%llu available=%llu total=%llu",
+        xbg_logf("NVN memory monitor active poll_ms=500 rss=%llu available=%llu total=%llu resident_limit=%llu",
                  (unsigned long long)before.resident, (unsigned long long)before.available,
-                 (unsigned long long)before.total);
+                 (unsigned long long)before.total,
+                 (unsigned long long)xbg_memory_pressure::resident_limit_bytes(before, memory_pressure_policy.resident_limit));
     const unsigned hint = memory_trim_requested.exchange(0);
     const unsigned level = memory_pressure_policy.reclaim_level(now, before, hint);
     if (!level)
@@ -7875,6 +7876,9 @@ vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemor
     texel_copy_cache.reset();texel_copy_enabled=true;
     for(auto &counts:texel_copy_stats)counts=TexelCopyStats{};
     wtrack::enabled=false;state=State{};state.color.logic_op=3;state.color.alpha_func=8;for(unsigned i=0;i<8;i++)state.blend[i]={i,2,1,2,1,1,1};stats.reset();memory_pressure_policy={};timing=XbgCpuTiming(timing_clock);pipeline_counts={};pipeline_before={};pipeline_tick=0;timing_active=false;timing_first=timing_last=0;live_profile_used=false;descriptor_detail=false;descriptor_timing=XbgDescriptorTiming{};descriptor_root=nullptr;draw_detail=false;draw_timing=XbgDrawTiming{};draw_root=nullptr;completed=0;last_attachment_trace=UINT64_MAX;sampler_mirror_clamp_enabled=VK_FALSE;failed=false;error_text[0]=0;initialized=true;
+    const char *resident_budget = getenv("FFRS_NATIVE_RSS_LIMIT_MIB");
+    if (resident_budget && !std::strcmp(resident_budget, "5120"))
+        memory_pressure_policy.resident_limit = 5120 * xbg_memory_pressure::mib;
     {std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-sync-submit").c_str(),"rb");sync_submit_enabled=false;if(m){sync_submit_enabled=fgetc(m)=='1';fclose(m);}xbg_logf("NVN synchronous queue submits=%d (marker gfx-sync-submit)",int(sync_submit_enabled));
      FILE *sc=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-sem-chain").c_str(),"rb");
      const char *profile=getenv("FFRS_PROFILE_TABLET");

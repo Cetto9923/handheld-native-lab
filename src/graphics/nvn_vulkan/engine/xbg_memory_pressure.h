@@ -3,11 +3,18 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <limits>
 
 namespace xbg_memory_pressure {
 constexpr uint64_t mib = 1024ull * 1024;
 constexpr uint64_t poll_interval_ns = 500000000;
+constexpr uint64_t default_resident_limit = 2560 * mib;
+
+inline unsigned resident_budget_mib_for_model(const char *model) {
+    // RG477M has sustained a working set above 4 GiB in real-scene tests.
+    return model && std::strcmp(model, "RG477M") == 0 ? 5120 : 2560;
+}
 
 struct Snapshot {
     uint64_t resident = 0;
@@ -58,17 +65,29 @@ inline unsigned system_severity(const Snapshot &snapshot) {
     return level;
 }
 
-inline unsigned severity(const Snapshot &snapshot) {
-    // The reported low-memory exits had last RSS samples of 3.04 and 3.64 GiB.
+inline uint64_t resident_limit_bytes(const Snapshot &snapshot,
+                                    uint64_t configured = default_resident_limit) {
+    // A device-specific budget also requires physical RAM headroom. Missing
+    // or insufficient capacity uses the reported phone-exit budget.
+    if (configured > default_resident_limit && configured <= snapshot.total / 2)
+        return configured;
+    return default_resident_limit;
+}
+
+inline unsigned severity(const Snapshot &snapshot,
+                         uint64_t configured = default_resident_limit) {
+    // The reported phone exits had last RSS samples of 3.04 and 3.64 GiB.
+    const uint64_t limit = resident_limit_bytes(snapshot, configured);
     unsigned resident_level = 0;
-    if (snapshot.resident >= 2560 * mib)
+    if (snapshot.resident >= limit)
         resident_level = 2;
-    else if (snapshot.resident >= 2048 * mib)
+    else if (snapshot.resident >= limit - 512 * mib)
         resident_level = 1;
     return std::max(resident_level, system_severity(snapshot));
 }
 
 struct Policy {
+    uint64_t resident_limit = default_resident_limit;
     uint64_t last_poll = 0;
     uint64_t last_reclaim = 0;
     unsigned last_level = 0;
@@ -88,7 +107,7 @@ struct Policy {
     }
 
     unsigned reclaim_level(uint64_t now, const Snapshot &snapshot, unsigned requested) {
-        const unsigned level = std::max(severity(snapshot), std::min(requested, 2u));
+        const unsigned level = std::max(severity(snapshot, resident_limit), std::min(requested, 2u));
         if (!level) {
             last_level = 0;
             return 0;

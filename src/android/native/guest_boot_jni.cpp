@@ -10,6 +10,7 @@
 #include <android/log.h>
 #include "../../graphics/nvn_device/nvn_engine.h"
 #include "../../graphics/nvn_device/nvn_memory_pool.h"
+#include "../../graphics/nvn_vulkan/engine/xbg_memory_pressure.h"
 #include <jni.h>
 
 #include <fcntl.h>
@@ -18,6 +19,7 @@
 #include <string.h>
 #include <sys/syscall.h>
 #include <sys/stat.h>
+#include <sys/system_properties.h>
 #include <unistd.h>
 
 #include <string>
@@ -132,6 +134,11 @@ void* GuestThreadMain(void* opaque) {
         setenv("DM_GFX_NATIVE_BC", "1", 1);
     }
     RedirectOutput(request->log_path);
+    char device_model[PROP_VALUE_MAX] = {};
+    __system_property_get("ro.product.model", device_model);
+    const unsigned resident_mib = xbg_memory_pressure::resident_budget_mib_for_model(device_model);
+    setenv("FFRS_NATIVE_RSS_LIMIT_MIB", std::to_string(resident_mib).c_str(), 1);
+    fprintf(stderr, "[port] native_resident_limit_mib=%u model=%s\n", resident_mib, device_model);
     {
         std::string path = request->log_path;
         size_t slash = path.find_last_of('/');

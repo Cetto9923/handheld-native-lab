@@ -5458,3 +5458,10 @@ Next construct candidate66 build-plan from candidate65, same assets and source h
 67源bad67b6已装，111宿主/Android0，APK4b0171d2/BuildID33956114，9正式源最终一致。24929在1080输出/有界动态/解锁条件短路段城36.51、世界34.62FPS，机械胖陆行鸟max171.7ms仍卡。确认固定RSS门槛在系统可用6.76GB时清掉1846预热管线，warm_built累计1859不能作存活证明；需RG单独预算，FLC12GB reason3报告维持手机防护。65/66当前实际都warm1806，旧1802→1806说法已撤回。
 
 当前RG24929处于森林战斗拉斯韦尔菜单，雷因睡眠，刹足螳螂剩余。设备标记shader-reuse1、opmode1、render-policy1、target-fps0。Honor仍由其它会话占用。APK发布默认仍未统一1080，保持待验。下一步按已测RG和可用系统内存校验RSS预算，手机默认保持现有防护；构建68验证预热缓存实际存活和技能rewrite/pipeline耗时。日志在compare67-1080/engine-battle-latest.log，第2098至2102行有首轮回收。原FLC报告在memory-survival63-20261117，total11.8GB，不能统一按总RAM放宽。没有后台采样，外国指南WIP保留。
+
+
+## 68内存预算源码检查点
+
+68修正RG477M预热缓存被固定RSS门槛过早回收。仅精确机型且物理内存至少10GiB使用4.5/5GiB软硬门槛，其余沿2/2.5GiB；系统10%/5%及Android提示仍生效。8宿主ASan/生命周期通过，两负对照按预期断言失败，Android组件已编译。掌机ADB断开，组件运行/装包/整包复测待连机。
+
+证据在memory-budget68/，首轮容量负对照编译因unused参数被-Werror拒绝，已保留并改为真正触发容量边界断言的突变。当前只剩荣耀平板在线，依其它会话设备隔离要求不操作。没有活动构建、采样或自动按键。下一步构建68并保留符号/653输入摘要，连机后续推送policy组件并在原1080测试标记、隔离存档执行实际出城/技能及压力注入回归。

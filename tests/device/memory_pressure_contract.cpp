@@ -31,6 +31,44 @@ int main(int argc, char **argv) {
     snapshot.available = snapshot.total + 1;
     assert(severity(snapshot) == 0);
 
+    assert(resident_budget_mib_for_model("RG477M") == 5120);
+    assert(resident_budget_mib_for_model("FLC-AN00") == 2560);
+    assert(resident_budget_mib_for_model("RG477M-other") == 2560);
+    assert(resident_budget_mib_for_model("") == 2560);
+    assert(resident_budget_mib_for_model(nullptr) == 2560);
+    Snapshot rg_working_set{2687221760ull, 12400549888ull, 6763016192ull, true};
+    const uint64_t rg_limit = 5120 * mib;
+    assert(severity(rg_working_set) == 2);
+    assert(resident_limit_bytes(rg_working_set, rg_limit) == rg_limit);
+    assert(severity(rg_working_set, rg_limit) == 0);
+    rg_working_set.resident = 4608 * mib - 1;
+    assert(severity(rg_working_set, rg_limit) == 0);
+    ++rg_working_set.resident;
+    assert(severity(rg_working_set, rg_limit) == 1);
+    rg_working_set.resident = rg_limit - 1;
+    assert(severity(rg_working_set, rg_limit) == 1);
+    ++rg_working_set.resident;
+    assert(severity(rg_working_set, rg_limit) == 2);
+    rg_working_set.total = rg_limit * 2 - 1;
+    assert(resident_limit_bytes(rg_working_set, rg_limit) == default_resident_limit);
+    ++rg_working_set.total;
+    assert(resident_limit_bytes(rg_working_set, rg_limit) == rg_limit);
+    assert(resident_limit_bytes({}, rg_limit) == default_resident_limit);
+    assert(resident_limit_bytes(rg_working_set, UINT64_MAX) == default_resident_limit);
+    assert(resident_limit_bytes(rg_working_set, 0) == default_resident_limit);
+
+    Policy rg_policy;
+    rg_policy.resident_limit = rg_limit;
+    rg_working_set = {3700 * mib, 12000 * mib, 6000 * mib, true};
+    assert(rg_policy.reclaim_level(0, rg_working_set, 0) == 0);
+    assert(rg_policy.reclaim_level(1, rg_working_set, 1) == 1);
+    assert(rg_policy.reclaim_level(2, rg_working_set, 2) == 2);
+    assert(severity({3000 * mib, 12000 * mib, 1200 * mib, true}, rg_limit) == 1);
+    assert(severity({3000 * mib, 12000 * mib, 600 * mib, true}, rg_limit) == 2);
+    assert(severity({3000 * mib, 12000 * mib, 0, true}, rg_limit) == 2);
+    // The reported 12 GB phone uses the default profile even with ample RAM.
+    assert(severity({3191264ull * 1024, 11844259840ull, 4407549952ull, true}) == 2);
+
     Policy policy;
     assert(policy.poll_due(0, 0));
     assert(!policy.poll_due(poll_interval_ns - 1, 0));
