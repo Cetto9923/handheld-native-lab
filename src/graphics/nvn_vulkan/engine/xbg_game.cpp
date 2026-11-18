@@ -1109,6 +1109,8 @@ void forget_framebuffers(Image &im,std::vector<VkFramebuffer> *deferred=nullptr)
 // 3.6% of the render thread on Adreno 730. gfx-no-slot-pools keeps the shared pool. Readback arenas in host-cached memory
 // (gfx-readback-cached = '1'): GPU results read back by the CPU (storage writebacks) come from uncached memory otherwise.
 bool slot_pools_enabled=true,readback_cached=false;
+// Diagnostic A/B only: retain one extra ordinary readback chunk per retired slot.
+size_t readback_keep_standard=1;
 // Experiment (marker gfx-no-occlusion = '1'): no occlusion queries at all; counter reports then read 0 samples. Measures
 // what the per-draw precise queries cost the GPU (count_samples stays on after the game's first counter reset). A/B
 // target occ does the same in the off half (on the Redmi K50 Ultra bench the GPU then took 1.75 ms a frame more).
@@ -1502,7 +1504,7 @@ Slot &recording_slot(){
          s.guard.clear();if(o_pending && xview_guard && !ab_off("xguard"))s.guard.swap(s.viewed);s.viewed.clear();s.pro_ops.clear();s.pro_images.clear();}
         // Pending writebacks still read this slot's readback arena; finish them before trimming.
         for(auto &w:pending_writebacks)if(w.slot==&s){++perf.why_slot;resolve_pending();break;}
-        s.stream.trim();s.uniform.keep_chunks=1;s.uniform.trim();s.readback.keep_chunks=1;
+        s.stream.trim();s.uniform.keep_chunks=1;s.uniform.trim();s.readback.keep_chunks=readback_keep_standard;
         // Other pending submissions retain their exact source buffers,
         // including oversized chunks. Idle readback chunks can be released.
         s.readback.trim([&](VkBuffer buffer){
@@ -8067,6 +8069,10 @@ vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemor
       FILE *n=fopen((base+"/gfx-warm-interval").c_str(),"rb");if(n){unsigned v=0;if(fscanf(n,"%u",&v)!=1)v=0;fclose(n);warm::interval_us=v*1000ull;}
       xbg_logf("NVN warm throttle budget_per_frame=%llu interval_ms=%llu",(unsigned long long)warm::budget_per_frame,(unsigned long long)(warm::interval_us/1000));}
      warm::start();probe_init();
+    readback_keep_standard=1;
+    {std::string dir=c->shader_directory;size_t cut=dir.find_last_of('/');std::string base=cut==std::string::npos?dir:dir.substr(0,cut);
+     FILE *m=fopen((base+"/gfx-readback-keep-standard").c_str(),"rb");if(m){unsigned value=0;if(fscanf(m,"%u",&value)==1 && value==2)readback_keep_standard=2;fclose(m);}
+     xbg_logf("NVN readback standard keep=%zu (default=1, experimental=2, pressure keep0 unchanged)",readback_keep_standard);}
     texel_copy_cache.reset();texel_copy_enabled=true;indexed_bbox_ready_enabled=false;readback_fullcopy_enabled=false;readback_fullcopy_hits=readback_fullcopy_bytes=0;
     for(auto &counts:texel_copy_stats)counts=TexelCopyStats{};
     wtrack::enabled=false;state=State{};state.color.logic_op=3;state.color.alpha_func=8;for(unsigned i=0;i<8;i++)state.blend[i]={i,2,1,2,1,1,1};stats.reset();memory_pressure_policy={};timing=XbgCpuTiming(timing_clock);pipeline_counts={};pipeline_before={};pipeline_tick=0;timing_active=false;timing_first=timing_last=0;live_profile_used=false;descriptor_detail=false;descriptor_timing=XbgDescriptorTiming{};descriptor_root=nullptr;draw_detail=false;draw_timing=XbgDrawTiming{};draw_root=nullptr;completed=0;last_attachment_trace=UINT64_MAX;sampler_mirror_clamp_enabled=VK_FALSE;failed=false;error_text[0]=0;initialized=true;
