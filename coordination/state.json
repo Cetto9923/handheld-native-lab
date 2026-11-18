@@ -4309,7 +4309,7 @@
    ],
    "write_state": "PERFORMANCE_DIAGNOSTIC",
    "acquired_at": "2026-11-18T09:44:22.098937+08:00",
-   "checkpoint": "GPUraw candidate2659b941 Android/host0; fixed POD4096, defaultoff init marker, existing query once with originalacceptance, no newwait/query/idle. ASan state/negativecontrols and fullcopy/site regressionpass. Installed Honor marker3000/120/4096, isolatedfactory94001; session95925 launching. Need verify map/threads/exportmtime and native raw evidence before conclusions.",
+   "checkpoint": "Raw27676 actualfactory success first2500/end2560 558rows,0dropped/pending/partial. CPU submitmean0.0468ms; GPUspanunion979.6ms GPUdomainonly, noFPSclaim. Marker restoredoff, originalFFstopped75%connectedstatus3/30C. cpu27676trace+PID/TIDreceipt collectedlaternotrawsamewindow. Previous25764guestnull still unresolved; off26671 and enabled27676 short runs didnotreproduce, notexoneration.",
    "objective": "Evidence-driven CPU/GPU diagnosis and safe optimization; actual directional movement, preserve synchronization/saves."
   }
  ],
@@ -11375,7 +11375,7 @@
    ],
    "acceptance": "真实兵工厂移动/战斗冷暖测量与修复回归；独立APK及统一App模块发布分别验证，未测不声称通过",
    "recovery": "私有100文件荣耀与12文件RG完整备份于.cetto-arsenal-inputs；原RG67 APK保留，测试仅独立save root",
-   "checkpoint": "KGSL actual5s PID23334 factory3Right3Left completed; trace5,741,394B. Fiveexplicit kgsl events allUNKNOWN_TO_SETUP; noAdreno tracks. No permission changes. OriginalFFstopped79%connectedstatus3/29C. Independent CPU trace audit + defaultoff slot-only raw existingquery candidate underway; no newquery/wait/syncchanges, not release.",
+   "checkpoint": "Raw27676 actualfactory success first2500/end2560 558rows,0dropped/pending/partial. CPU submitmean0.0468ms; GPUspanunion979.6ms GPUdomainonly, noFPSclaim. Marker restoredoff, originalFFstopped75%connectedstatus3/30C. cpu27676trace+PID/TIDreceipt collectedlaternotrawsamewindow. Previous25764guestnull still unresolved; off26671 and enabled27676 short runs didnotreproduce, notexoneration.",
    "dependencies": [],
    "role": "performance and graphics repair",
    "branch": "task/T-codex-recovery-20261114"
