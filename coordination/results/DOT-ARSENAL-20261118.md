@@ -34,3 +34,11 @@ Library上传FFRS-report-20261118-094949.zip（本地SHA496bfdb52cae172de2e1a3ef
 .local/arsenal-diagnostic-20261118/FFRS-1.0.72-arsenal-diagnostic.apk SHA e3ca01816f93773ec272c2df214b0aea95f49edeae324199989ff5bd8715391b。Android0、host passed=true且659源码输入构建前后相同。新增生产提取record_failure测试8项ASan/UBSan通过（重复/8条上限/文件512KiB/未知模块/溢出/invalid/符号链接/配方往返），报告测试4项通过并实际断言新白名单导出。不是完整游戏验收。
 RG PID19868覆盖安装全文SHA回读匹配，独立用户存档Continue进入第4章兵工厂并短距离移动正常，完成烟测后停游戏、恢复正式72。没有操作荣耀。没有上传社区，没有称该版本修好了840卡顿。
 本地归档含6个失败VS/FS：原始SPIRV全部spirv-val Vulkan1.3通过。按日志启用的通用stencil/inline/quad/precise链离线应用后仍全通过；三VS仅分别增加700/747/680个precise约束，inline/quad没有改动。此离线链未覆盖实际运行时vertex/input/typed-format变体或真实失败管线状态，不等于完整driver验证。故仍需840的精确失败配方或该设备验证，不能凭通用SPIRV通过就归咎驱动。
+
+诊断交付校验：Library导出完成，APK3781916B；签名与正式71/72相同，证书SHA256 d11967a31fcef92f3d6b44adf9d9678c8d2b07bf8f3246d51a791617ed61f36e。RG已实测adb install -r从72覆盖到诊断72成功、安装路径回读APK SHA=e3ca0181，读独立现有存档进入兵工厂及移动成功。随后正式72再次覆盖恢复，回读0fb453ad且无运行PID。用户OnePlus71只验证发行APK签名相同，尚未实际覆盖安装，因此不能声称其设备安装通过。不卸载、不清数据、不改存档。
+
+### 荣耀重现及接口候选（进行中）
+经库负责人交还荣耀，原72 PID18275隔离存档94001 Continue直接进入同兵工厂，实时画面4–5FPS且17c6/ab0持续graphics pipeline -13重试。Adreno735 driver0x802fa02e，不同于玩家840但已实际复现同错误。随后诊断72 PID18901同场景每次失败创建约66–69ms，持续每帧重复。完整日志保存在~/.cetto-arsenal-inputs/honor-arsenal/，只读查询完整会话边界后使用。日志记录recipe成功，但ADB shell/run-as直接读取受到设备存储权限限制，尚未拿到该文件，不以错误文本代替配方。
+离线六模块发现三FS实际读取VS没有写出的varying：17c6/ab0 loc7.xyz；5a97/350a loc7.xyz；3bce/c9c4 loc4.xyz。原模块及通用改写链各自spirv-val通过不代表链接接口完整。来源Translator.cs固定revision8e0916bf04f6fb8542c52ed01b166a8796158ca0中的EmitOutputsInitialization对下阶段缺失输出初始化xyz0/w1，窄候选依此只补三个精确长度/全字节hash匹配VS，不删片段输入，不负缓存跳绘制。仅Qualcomm运行/warm两路径一致调用。ASan/UBSan两项含真实三模块spirv-val与原指令逐字保留检查通过。
+候选.local/arsenal-interface-20261118/FFRS-1.0.72-arsenal-interface.apk SHA a07942f77d31ea35ff75e58df943f01e01ef8693471e863abf72b04d351d4137，Android构建0，host运行中。尚未完成实机场景验收，不能宣称修复或发布。此候选没有改种子资产，未覆盖其他项目。当前荣耀验证候选；RG已交库负责人短UI测试。
+荣耀候选PID19759正式帧CSV窗口：13.4997秒左右移动301独立呈现，22.22FPS、P99 94.74ms/max183.66ms、3次>100；随后战斗连续A输入20.8179秒14.41FPS、max492.22ms、16次>100。不是最终达标，仍存在CPU/GPU持续负载和首次新管线卡顿。六帧detail CPU探针first6812–6817中descriptor119.49ms/总measured285.17ms，诊断本身开销不可当性能验收。日志轮转，主log+log.1已同时拉回。原17c6/ab0每帧失败已停止，但只这一修复不能称整个副本解决。APK a079候选host完成exit0、输入SHA不变。荣耀已停止游戏并交库负责人短窗口；电量48%、未充电、温度30°C，后续<=20%停止高负载。新增水之都需求另作同场景两设备对照，未预设根因。

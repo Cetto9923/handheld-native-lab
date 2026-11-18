@@ -4291,11 +4291,13 @@
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
     "src/android/app/java/org/ffrs/diagnostic/DiagnosticReport.java",
     "tests/native/test_pipeline_failure_record.py",
-    "tests/installer/DiagnosticReportContract.java"
+    "tests/installer/DiagnosticReportContract.java",
+    "src/graphics/nvn_vulkan/engine/xbg_arsenal_interface.h",
+    "tests/native/test_arsenal_interface.py"
    ],
    "write_state": "DIAGNOSTIC_SOURCE",
    "acquired_at": "2026-11-18T09:44:22.098937+08:00",
-   "checkpoint": "父级确认无其他原FF writer。仅增加有界失败管线配方与耗时诊断，保留渲染语义；OnePlus840驱动失败新证据优先，微优化暂缓。"
+   "checkpoint": "诊断36fd046后准备三个确定VS缺varying的限域候选；不改资源，原始完整hash/shape守卫，待实际配方与设备验证，不发布。"
   }
  ],
  "tasks": [
@@ -11360,7 +11362,10 @@
    ],
    "acceptance": "真实兵工厂移动/战斗冷暖测量与修复回归；独立APK及统一App模块发布分别验证，未测不声称通过",
    "recovery": "私有100文件荣耀与12文件RG完整备份于.cetto-arsenal-inputs；原RG67 APK保留，测试仅独立save root",
-   "checkpoint": "已复现RG兵工厂首次管线长帧及持续战斗21-23fps；seed私有候选未过关不发布。恢复生产72、冷测试前缓存，停止游戏冷却。源码只读审查descriptor结构计划。详见results。"
+   "checkpoint": "Honor735 reproduces factory VS17c6/FSab0 -13; exact output-interface candidate a07942f installed; first factory 28-34FPS; movement/battle/regression pending; RG temporarily library UI owner.",
+   "dependencies": [],
+   "role": "performance and graphics repair",
+   "branch": "task/T-codex-recovery-20261114"
   }
  ],
  "blockers": [
