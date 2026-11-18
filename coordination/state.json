@@ -11377,7 +11377,7 @@
    ],
    "acceptance": "真实兵工厂移动/战斗冷暖测量与修复回归；独立APK及统一App模块发布分别验证，未测不声称通过",
    "recovery": "私有100文件荣耀与12文件RG完整备份于.cetto-arsenal-inputs；原RG67 APK保留，测试仅独立save root",
-   "checkpoint": "Raw27676 actualfactory success first2500/end2560 558rows,0dropped/pending/partial. CPU submitmean0.0468ms; GPUspanunion979.6ms GPUdomainonly, noFPSclaim. Marker restoredoff, originalFFstopped75%connectedstatus3/30C. cpu27676trace+PID/TIDreceipt collectedlaternotrawsamewindow. Previous25764guestnull still unresolved; off26671 and enabled27676 short runs didnotreproduce, notexoneration.",
+   "checkpoint": "First arena sample PID31514 frames2552–2557 confirms standard4MiB readback make12/trim12/protected12, oversize0. Second live profile unsupported sameprocess (one-shot) and foreground Settings, discarded. FF stillalive; stopped safely, library070 shortwindow. Preparing defaultoff keep2 vs1 with guard/pressure unchanged and actualFPS AB; no release.",
    "dependencies": [],
    "role": "performance and graphics repair",
    "branch": "task/T-codex-recovery-20261114"
