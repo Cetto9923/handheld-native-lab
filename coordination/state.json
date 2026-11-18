@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-17T23:32:41.129635+08:00",
+ "updated_at": "2026-11-18T04:25:30.508552+00:00",
  "phase": "1.0.71已发布GitHub，APK和中文说明回读核验完成",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -4307,8 +4307,8 @@
    ],
    "write_state": "PERFORMANCE_DIAGNOSTIC",
    "acquired_at": "2026-11-18T09:44:22.098937+08:00",
-   "checkpoint": "BBox opt dbdb94d Android/host0; clean directional A/B21.47off/20.28on; reverse21.06on/20.77off, no stablegain; keepoff. Excluded on2logpull/on3battle/off2aborted. HonorFFstopped75%connectednotcharging30C; next descriptor/copy majorcost review.",
-   "objective": "Bounded indexed-ready duplicate diagnostics; preserve all synchronization and scans; device window coordinated with port_rules."
+   "checkpoint": "Readback sites APK0f2952 Android/host0 installed Honor20924; bounded1652-1657: texel pending63.06MB zero vs storage pending1.275MB, no expanded fullcopy justified. Truthful timer labels verified; no FPS acceptance. Honor stopped80%connectedstatus3/30C, library069 window. Next explicit kgsl active-game feasibility; no release.",
+   "objective": "Evidence-driven CPU/GPU diagnosis and safe optimization; actual directional movement, preserve synchronization/saves."
   }
  ],
  "tasks": [
@@ -11373,7 +11373,7 @@
    ],
    "acceptance": "真实兵工厂移动/战斗冷暖测量与修复回归；独立APK及统一App模块发布分别验证，未测不声称通过",
    "recovery": "私有100文件荣耀与12文件RG完整备份于.cetto-arsenal-inputs；原RG67 APK保留，测试仅独立save root",
-   "checkpoint": "Honor735 reproduces factory VS17c6/FSab0 -13; exact output-interface candidate a07942f installed; first factory 28-34FPS; movement/battle/regression pending; RG temporarily library UI owner.",
+   "checkpoint": "Readback sites APK0f2952 Android/host0 installed Honor20924; bounded1652-1657: texel pending63.06MB zero vs storage pending1.275MB, no expanded fullcopy justified. Truthful timer labels verified; no FPS acceptance. Honor stopped80%connectedstatus3/30C, library069 window. Next explicit kgsl active-game feasibility; no release.",
    "dependencies": [],
    "role": "performance and graphics repair",
    "branch": "task/T-codex-recovery-20261114"
