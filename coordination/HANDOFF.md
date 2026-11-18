@@ -5712,3 +5712,8 @@ Evidence private init-cleanup-ab/{rgquery1,rgbase2,honorquery1,honorbase2}; isol
 ### Authorized standalone local test delivery
 User authorized local standalone test delivery. Copied verified342a to /Users/yuyan9923/GitHub/游戏发布包/02-最终幻想_共鸣_FFRS/待验证/1.0.72-稳定性测试-20261118/FFRS-1.0.72-stability-test-20261118.apk,3798300B,SHA342a363d5958e6838b8f18b65307e0b72752c1dfa47e2536259df0aaf1878fee. Samecode72/signerd11967a3,scopedHonor/RG installs verified. Notes explicitly not original9400/9500 crashfix,notstable30/60/fixed1080; no query/keep2 promotion. Originalpublic72 SHA0fb453ad preserved. No community/online module release.
 Chinese notes+SHA+verificationJSON copied/readbackverified. Internalversion unchanged deliberately reuse identical testedbytes; filename/hash distinguish. Latest fixedscene setup PID14513 deliberately stopped for delivery; no new performance evidence from that setup.
+
+
+### Actual version73 standalone test delivery
+User requested actual73: manifest code73/name1.0.73 built Android0/host0; APK7f3e71552aee32c3b0bbb2cd765d50f6be3960d7ae0af511ba23a660210184c4 same signer d11967a3. ZIP comparison with tested342a differs ONLY AndroidManifest.xml, native/assets/classes identical. Honor and RG install-r success, installedversion+fullSHA match, no uninstall/data clear. Delivered separate 待验证/1.0.73-稳定性测试-20261118/FFRS-1.0.73-stability-test-20261118.apk +notes/SHA/JSON, old72 preserved. No Quark/community upload.
+Prior scoped gameplay evidence transfers only because all runtime entries byte-identical; no new fullgame acceptance. MT6991 originalcrash and stableFPS open. Highercode means avoid blinddowngrade/uninstall; Chinese notes updated. First publicationPython stdin encoding error made nofiles, retriedwithcodingUTF8success.
