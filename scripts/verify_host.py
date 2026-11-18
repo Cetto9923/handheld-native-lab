@@ -357,6 +357,10 @@ def main():
     run('warm-list-identity-contract', [sys.executable, '-m', 'unittest',
                                        'tests.installer.test_pipeline_warm_inspector',
                                        'tests.installer.test_pipeline_warm_index'])
+    run('warm-layout-validation-contract', [sys.executable,
+                                          'tests/native/test_warm_layout_validation.py'])
+    run('indexed-bbox-ready-contract', [sys.executable,
+                                      'tests/native/test_indexed_bbox_ready.py'])
     run('apk-warm-seed-contract', [sys.executable, '-m', 'unittest',
                                   'tests.installer.test_apk_pipeline_warm_seed'])
     run('save-export-lifecycle-contract', [sys.executable, '-m', 'unittest',

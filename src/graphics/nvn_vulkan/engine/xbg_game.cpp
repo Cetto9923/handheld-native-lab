@@ -4172,8 +4172,28 @@ struct Reader{const uint32_t *w;size_t n,i=0;bool bad=false;uint32_t u(){if(i>=n
 VkPipelineLayout make_layout(const uint32_t *w,uint32_t n){
     std::string k(reinterpret_cast<const char*>(w),size_t(n)*4);{std::lock_guard<std::mutex> l(mu);auto it=layouts.find(k);if(it!=layouts.end())return it->second;}
     Reader r{w,n};VkDescriptorSetLayoutCreateInfo s{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};s.flags=r.u();uint32_t nb=r.u();if(nb>4096)return VK_NULL_HANDLE;std::vector<VkDescriptorSetLayoutBinding> bs(nb);
-    for(auto &b:bs){b.binding=r.u();b.descriptorType=VkDescriptorType(r.u());b.descriptorCount=r.u();b.stageFlags=r.u();}s.bindingCount=nb;s.pBindings=bs.data();
+    // Portable warm recipes are disk input. Reject invalid core layouts before
+    // either Vulkan creation call; unsupported extension descriptors/stages are
+    // outside this engine's enabled device features.
+    std::unordered_set<uint32_t> binding_numbers;
+    constexpr VkShaderStageFlags shader_stages=VK_SHADER_STAGE_ALL_GRAPHICS|VK_SHADER_STAGE_COMPUTE_BIT;
+    for(auto &b:bs){
+        b.binding=r.u();b.descriptorType=VkDescriptorType(r.u());b.descriptorCount=r.u();b.stageFlags=r.u();
+        if(!binding_numbers.insert(b.binding).second || uint32_t(b.descriptorType)>VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT ||
+           (b.descriptorCount && b.stageFlags!=VK_SHADER_STAGE_ALL && (b.stageFlags&~shader_stages)) ||
+           (b.descriptorCount && b.descriptorType==VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT &&
+            b.stageFlags && b.stageFlags!=VK_SHADER_STAGE_FRAGMENT_BIT))return VK_NULL_HANDLE;
+    }
+    s.bindingCount=nb;s.pBindings=bs.data();
     VkPipelineLayoutCreateInfo p{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};p.flags=r.u();uint32_t sets=r.u(),np=r.u();if(sets!=1 || np>16 || r.bad)return VK_NULL_HANDLE;std::vector<VkPushConstantRange> pr(np);for(auto &x:pr){x.stageFlags=r.u();x.offset=r.u();x.size=r.u();}
+    VkShaderStageFlags push_stages=0;
+    for(const auto &range:pr){
+        if((range.stageFlags!=VK_SHADER_STAGE_ALL && (range.stageFlags&~shader_stages)) ||
+           (push_stages&range.stageFlags) || !range.size || (range.size&3) || (range.offset&3) ||
+           range.offset>=properties.limits.maxPushConstantsSize ||
+           range.size>properties.limits.maxPushConstantsSize-range.offset)return VK_NULL_HANDLE;
+        push_stages|=range.stageFlags;
+    }
     if(r.bad || r.i!=n)return VK_NULL_HANDLE;VkDescriptorSetLayout sl;if(vkCreateDescriptorSetLayout(cfg.device,&s,nullptr,&sl)!=VK_SUCCESS)return VK_NULL_HANDLE;
     p.setLayoutCount=1;p.pSetLayouts=&sl;p.pushConstantRangeCount=np;p.pPushConstantRanges=pr.data();VkPipelineLayout pl;if(vkCreatePipelineLayout(cfg.device,&p,nullptr,&pl)!=VK_SUCCESS){vkDestroyDescriptorSetLayout(cfg.device,sl,nullptr);return VK_NULL_HANDLE;}
     std::lock_guard<std::mutex> l(mu);
@@ -7196,8 +7216,9 @@ void execute_draw_record(const p_draw &a){preflight_cpu_reads();
     }
     draw(a.prim,a.first,a.count,nullptr,instances,uint32_t(a.base_instance));
 }
-// A descriptor/vertex snapshot must not retire the command slot during draw().
-// Do not mutate caches or acquire a pending view while deciding eligibility.
+// Eligibility must not retire the command slot or acquire pending GPU views.
+// Registered texture lookup may refresh its pointer-only front cache; registry
+// nodes stay live and no GPU resources or ownership change during this lookup.
 bool indexed_range_ready(uint64_t address,uint64_t bytes,VkDeviceSize alignment,XbgIndexedReadyProbe *probe=nullptr,XbgIndexedBBoxProbe *bbox=nullptr,const XbgIndexedBounds *bounds=nullptr){
     if(probe)probe->request(address,bytes,alignment);
     if(bbox)bbox->request(address,bytes);
@@ -7238,7 +7259,9 @@ bool indexed_graphics_ready(const p_draw_idx &a,size_t index_bytes,IndexedInputF
                 if(slot>=(b.source==XBG_SOURCE_IMAGE?16u:256u) || !state.texture_pool.pool)return false;
                 uint64_t handle=b.source==XBG_SOURCE_IMAGE?state.img[ns][slot]:state.tex[ns][slot];int id=int(handle&0xfffff);
                 if(!id || (state.texture_pool.n>0 && id>=state.texture_pool.n))return reject("null-image",st,b.binding);
-                auto pool=textures.find(pool_key(&state.texture_pool));auto &table=pool==textures.end()?legacy_textures:pool->second;auto found=table.find(id);if(found==table.end())return false;auto &t=found->second.texture;
+                auto pool=textures.find(pool_key(&state.texture_pool));auto &table=pool==textures.end()?legacy_textures:pool->second;const auto *record=find_texture_record(table,id);
+                if(!record)return false;
+                const auto &t=record->texture;
                 if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_IMAGE || b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER)return reject("storage-image",st,b.binding);
                 if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER){if(!range_ready(uint64_t(t.mem),t.L.size,properties.limits.minTexelBufferOffsetAlignment))return reject("texel",st,b.binding,uint64_t(t.mem),t.L.size);}
                 else if(t.mem && t.L.size && !indirect_cpu_clean(uint64_t(t.mem),t.L.size))return reject("image-memory",st,b.binding,uint64_t(t.mem),t.L.size);

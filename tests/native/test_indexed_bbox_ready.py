@@ -9,6 +9,58 @@ TEST='\nvoid attr(unsigned loc,unsigned fmt,unsigned stream){va_st v{};v.fmt=fmt
 ORIGINAL_GRAPHICS='bool indexed_graphics_ready(const p_draw_idx &a,size_t index_bytes,IndexedInputFailure *failure=nullptr){\n    XbgIndexedReadyProbe probe(timing_active?&indexed_ready_stats:nullptr);\n    XbgIndexedBBoxProbe bbox(timing_active?&indexed_bbox_stats:nullptr);\n    auto range_ready=[&](uint64_t address,uint64_t bytes,VkDeviceSize alignment){return indexed_range_ready(address,bytes,alignment,probe.out?&probe:nullptr,bbox.out?&bbox:nullptr);};\n    auto reject=[&](const char *why,uint32_t st=UINT32_MAX,uint32_t binding=UINT32_MAX,uint64_t address=0,uint64_t bytes=0){if(failure)*failure={why,st,binding,address,bytes};return false;};\n    if(read_preflight || capture.active || capture.probe || provenance_file || pass_prof_active() || draw_detail ||\n       state.rast_discard || state.tf_on || !state.shader[0] || (!state.shader[4] && !state.rt.depth) || state.shader[1] || state.shader[2] || state.shader[3])return reject("state");\n    bbox.build(pending_reports,pending_writebacks,sizeof(NVNcounterData));\n    if(!range_ready(a.ibuf,index_bytes,4))return reject("index",0,0,a.ibuf,index_bytes);\n    for(auto loc:state.shader[0]->inputs){if(loc>=16)return reject("vertex-location");va_st v;memcpy(&v,&state.attrib[loc],4);if(!v.fmt)continue;if(v.stream>=16)return reject("vertex-stream");probe.vertex_stream(v.stream);auto r=state.vb[v.stream];if(!range_ready(r.address,r.size,4))return reject("vertex",0,v.stream,r.address,r.size);}\n    for(unsigned st=0;st<5;st++)if(state.shader[st]){auto &shader=*state.shader[st];unsigned ns=nvn_stage[st];if(!shader.storage_writes.empty())return reject("storage-write",st);\n        for(auto &b:shader.bindings)for(unsigned e=0;e<b.count;e++){\n            if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER || b.type==VK_DESCRIPTOR_TYPE_STORAGE_BUFFER){\n                if(b.source==XBG_SOURCE_UNIFORM || b.source==XBG_SOURCE_STORAGE){unsigned slot=b.slot+e;if(slot>=16)return false;auto r=b.source==XBG_SOURCE_UNIFORM?state.ub[ns][slot]:state.sb[ns][slot];size_t bytes=b.type==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER?std::min<size_t>(r.size,b.bytes?b.bytes:65536):r.size;\n                    // Storage intervals can merge; range-ready intervals prove their range either host-clean or fully resident in GPU buffers.\n                    VkDeviceSize alignment = b.type==VK_DESCRIPTOR_TYPE_STORAGE_BUFFER ? properties.limits.minStorageBufferOffsetAlignment : properties.limits.minUniformBufferOffsetAlignment;\n                    if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)bytes=uniform_range(bytes);\n                    if(!range_ready(r.address,bytes,alignment))return reject("cpu-buffer",st,b.binding,r.address,bytes);\n                }else if(b.source!=XBG_SOURCE_SUPPORT && b.source!=XBG_SOURCE_C1 && b.source!=XBG_SOURCE_DRIVER0 && b.source!=XBG_SOURCE_DRIVER2)return false;\n            }else{\n                if(b.source!=XBG_SOURCE_TEXTURE && b.source!=XBG_SOURCE_IMAGE)return false;unsigned slot=b.slot+e;\n                if(slot>=(b.source==XBG_SOURCE_IMAGE?16u:256u) || !state.texture_pool.pool)return false;\n                uint64_t handle=b.source==XBG_SOURCE_IMAGE?state.img[ns][slot]:state.tex[ns][slot];int id=int(handle&0xfffff);\n                if(!id || (state.texture_pool.n>0 && id>=state.texture_pool.n))return reject("null-image",st,b.binding);\n                auto pool=textures.find(pool_key(&state.texture_pool));auto &table=pool==textures.end()?legacy_textures:pool->second;auto found=table.find(id);if(found==table.end())return false;auto &t=found->second.texture;\n                if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_IMAGE || b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER)return reject("storage-image",st,b.binding);\n                if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER){if(!range_ready(uint64_t(t.mem),t.L.size,properties.limits.minTexelBufferOffsetAlignment))return reject("texel",st,b.binding,uint64_t(t.mem),t.L.size);}\n                else if(t.mem && t.L.size && !indirect_cpu_clean(uint64_t(t.mem),t.L.size))return reject("image-memory",st,b.binding,uint64_t(t.mem),t.L.size);\n            }\n        }\n    }\n    return true;\n}'
 ORIGINAL_RANGE='bool indexed_range_ready(uint64_t address,uint64_t bytes,VkDeviceSize alignment,XbgIndexedReadyProbe *probe=nullptr,XbgIndexedBBoxProbe *bbox=nullptr){\n    if(probe)probe->request(address,bytes,alignment);\n    if(bbox)bbox->request(address,bytes);\n    if(!address || !bytes || address+bytes<address)return false;\n    for(auto &r:pending_reports){if(probe)probe->report_step();if(bbox)bbox->report_step();if(xbg_wb_overlaps(address,bytes,r.addr,sizeof(NVNcounterData)))return false;}\n    for(auto w=pending_writebacks.rbegin();w!=pending_writebacks.rend();++w){\n        if(probe)probe->writeback_step();if(bbox)bbox->writeback_step();\n        if(!xbg_wb_overlaps(address,bytes,w->addr,w->bytes))continue;\n        return address>=w->addr && address+bytes<=w->addr+w->bytes &&\n            (w->buffer.offset+address-w->addr)%alignment==0;\n    }\n    return true;\n}'
 
+
+RECORD_CACHE_CASES = r"""
+void record_cache_cases() {
+    clear_texture_record_cache();
+    pending_reports.clear();
+    pending_writebacks.clear();
+    textures.clear();
+    legacy_textures.clear();
+    state = State{};
+    Shader vs, fs;
+    state.shader[0] = &vs;
+    state.shader[4] = &fs;
+    read_preflight = prof = draw_detail = blocked = false;
+    capture = {};
+    provenance_file = nullptr;
+    Binding binding;
+    binding.type = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
+    binding.source = XBG_SOURCE_TEXTURE;
+    vs.bindings.push_back(binding);
+    state.tex[0][0] = 1;
+    // A missing descriptor must remain a miss until registration actually exists.
+    compare();
+    legacy_textures[1] = {};
+    compare();
+    auto hits = texture_record_hits;
+    compare();
+    assert(texture_record_hits > hits);
+    // Registration updates the live node, so a cached pointer sees new bytes.
+    legacy_textures[1].texture.mem = 0;
+    compare();
+    legacy_textures[1].texture.mem = 4096;
+    compare();
+    // Late creation of the actual pool changes table identity immediately.
+    textures[1][1] = {};
+    textures[1][1].texture.mem = 0;
+    compare();
+    textures[1][1].texture.mem = 4096;
+    compare();
+    // Disabling the existing cache retains direct-map behavior and counters.
+    texture_record_cache_enabled = false;
+    hits = texture_record_hits;
+    compare();
+    assert(texture_record_hits == hits);
+    texture_record_cache_enabled = true;
+    // Shutdown-style clear invalidates every stored node before reusing a table.
+    clear_texture_record_cache();
+    textures.clear();
+    legacy_textures.clear();
+    compare();
+}
+"""
+
 def main():
  p=argparse.ArgumentParser();p.add_argument('--source',type=Path,default=Path(__file__).resolve().parents[2]/'src/graphics/nvn_vulkan/engine/xbg_game.cpp');p.add_argument('--header',type=Path);p.add_argument('--engine-dir',type=Path);a=p.parse_args();s=a.source.read_text();engine=a.engine_dir or a.source.parent
  current=fn(s,'bool indexed_graphics_ready(');ready=fn(s,'bool indexed_range_ready(');clean=fn(s,'bool indirect_cpu_clean(')
@@ -22,14 +74,29 @@ def main():
  # list guards differ from the frozen range predicate; reverse order retained.
  stripped=ready.replace(',const XbgIndexedBounds *bounds=nullptr','').replace('if(!bounds || !bounds->reports.outside(address,bytes))','').replace('if(!bounds || !bounds->writebacks.outside(address,bytes))','')
  assert stripped==ORIGINAL_RANGE
- assert current[current.index('    if(!range_ready(a.ibuf'):]==ORIGINAL_GRAPHICS[ORIGINAL_GRAPHICS.index('    if(!range_ready(a.ibuf'):]
+ # The eligibility path reuses the existing registered-node lookup. Keep the
+ # frozen direct-map function as an independent behavioral reference.
+ old_lookup = 'auto found=table.find(id);if(found==table.end())return false;auto &t=found->second.texture;'
+ cached_lookup = ('const auto *record=find_texture_record(table,id);\n'
+                  '                if(!record)return false;\n'
+                  '                const auto &t=record->texture;')
+ assert current.count(cached_lookup) == 1
+ direct_current = current.replace(cached_lookup, old_lookup)
+ assert direct_current[direct_current.index('    if(!range_ready(a.ibuf'):]==ORIGINAL_GRAPHICS[ORIGINAL_GRAPHICS.index('    if(!range_ready(a.ibuf'):]
+ registry_start = s.index('struct TextureRecordFront {')
+ registry_end = s.index('std::map<uint32_t,RegisteredTexture> null_textures;', registry_start)
+ registry = s[registry_start:registry_end]
+ harness = HARNESS.replace('struct Record {Texture texture;};', 'struct Record {Texture texture;};using RegisteredTexture=Record;') + registry
+ test = TEST.replace('pending_reports.clear();pending_writebacks.clear();textures.clear();', 'clear_texture_record_cache();pending_reports.clear();pending_writebacks.clear();textures.clear();')
+ test = test.replace('int main(){', 'void record_cache_cases();\nint main(){').replace(' // Rebuild after pin-like', ' record_cache_cases();\n // Rebuild after pin-like')
+ test += RECORD_CACHE_CASES
  failure=next(x for x in s.splitlines() if x.startswith('struct IndexedInputFailure '))
  with tempfile.TemporaryDirectory(prefix='bbox-ready-') as tmp:
   d=Path(tmp)
   for name in ['xbg_writeback_policy.h','xbg_indexed_ready_probe.h']:(d/name).write_text((engine/name).read_text())
   (d/'xbg_indexed_bbox_probe.h').write_text((a.header or engine/'xbg_indexed_bbox_probe.h').read_text())
   prefix='#include "xbg_writeback_policy.h"\n#include "xbg_indexed_ready_probe.h"\n#include "xbg_indexed_bbox_probe.h"\n'
-  cpp=d/'test.cpp';exe=d/'test';cpp.write_text(prefix+HARNESS+ORIGINAL_RANGE.replace('bool indexed_range_ready(', 'bool original_range(')+ready+clean+failure+ORIGINAL_GRAPHICS.replace('bool indexed_graphics_ready(', 'bool original_graphics(').replace('return indexed_range_ready(', 'return original_range(')+current+TEST)
+  cpp=d/'test.cpp';exe=d/'test';cpp.write_text(prefix+harness+ORIGINAL_RANGE.replace('bool indexed_range_ready(', 'bool original_range(')+ready+clean+failure+ORIGINAL_GRAPHICS.replace('bool indexed_graphics_ready(', 'bool original_graphics(').replace('return indexed_range_ready(', 'return original_range(')+current+test)
   subprocess.run(['clang++','-std=c++17','-Wall','-Wextra','-Werror','-fsanitize=address,undefined',str(cpp),'-o',str(exe)],check=True)
   subprocess.run([str(exe)],check=True)
  print('PASS full graphics 20000 states/failure fields plus 200000 actual-policy ranges, independent diagnostics/default-off/pin/newest/overflow; ASan/UBSan; GPU NOT_RUN')
