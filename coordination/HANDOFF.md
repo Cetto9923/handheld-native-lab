@@ -5566,3 +5566,5 @@ GitHub v1.0.71已发布并设为最新版，精确构建标签b7a08b3；APK bd27
 RG10.12.80.90:45589（ADB5038）兵工厂任务继续，荣耀留给统一库。玩家存档完整备份及隔离副本详见 coordination/results/DOT-ARSENAL-20261118.md。RG当前私人seed候选PID6973，无正式发布；保留原缓存.arsenal-original及冷A.arsenal-coldA，不要清理。候选只增加148预热配方，native/Java不变，尚无受控A/B验收，不宣称修复。所有证据~/.cetto-arsenal-inputs/rg-baseline。另有经验指南既有WIP，禁止覆盖。
 
 DOT-ARSENAL补充：候选实际攻击仍21.92/23.36fps，未过关；RG已恢复生产72 SHA0fb453ad并回读一致，游戏停止。缓存恢复为冷A之前的学习后缓存（不是初次67开机缓存），对应.arsenal-original备份完整保留；.arsenal-coldA/B也保留。温度52°C/skin40.9°C已恢复status0。后续源码候选需另登记writer。
+
+DOT-ARSENAL新诊断：OnePlus840/APK71/旧数据736…反复graphics pipeline -13，RG新数据b7…未复现同错误。优先查该兼容问题而非只优化RG。私有72诊断APK e3ca0181已构建/host/8提取+4报告测试/RG读档移动烟测，含有界pipeline-failures.log；不是修复版，不公开发布。RG再次恢复正式72并停止。完整细节及输入哈希见DOT报告；下一步要840精确失败配方，原始与通用重写6 shader静态均通过。不要用缓存失败不绘制作为修复。

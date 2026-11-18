@@ -3904,6 +3904,33 @@ void record(const VkPipelineShaderStageCreateInfo *stages,uint32_t count,const X
     put(key.count);out.insert(out.end(),bytes.begin(),bytes.end());
     pending.append(out.data(),out.size());
 }
+// Bounded diagnostic only: preserve failed portable recipes separately from the
+// successful warm list. Never retries, accepts, caches or suppresses a draw.
+void record_failure(const VkPipelineShaderStageCreateInfo *stages,uint32_t count,const XbgPipelineKey &key,VkResult result,uint64_t elapsed_ns){
+    static std::unordered_set<std::string> seen;
+    if(!key.valid || !key.count || key.count>4096 || !count || count>5 || seen.size()>=8)return;
+    const std::string bytes(reinterpret_cast<const char*>(key.words),size_t(key.count)*4);
+    if(!seen.insert(bytes).second)return;
+    std::vector<std::string> keys;
+    {std::lock_guard<std::mutex> lock(mu);
+        for(uint32_t i=0;i<count;++i){auto found=ids.find(stages[i].module);if(found==ids.end())return;
+            auto named=id_keys.find(found->second);if(named==id_keys.end() || named->second.size()>256)return;keys.push_back(named->second);}}
+    std::vector<uint8_t> recipe;
+    auto put=[&](uint32_t value){for(unsigned i=0;i<4;++i)recipe.push_back(uint8_t(value>>(8*i)));};
+    put(0x57504c58);put(uint32_t(keys.size()));
+    for(const auto &name:keys){put(uint32_t(name.size()));recipe.insert(recipe.end(),name.begin(),name.end());}
+    put(key.count);recipe.insert(recipe.end(),bytes.begin(),bytes.end());
+    static const char hex[]="0123456789abcdef";
+    std::string line="pipeline_failure v=1 pid="+std::to_string(getpid())+" frame="+std::to_string(stats.presents.load())+
+        " result="+std::to_string(int(result))+" elapsed_ns="+std::to_string(elapsed_ns)+" recipe_hex=";
+    for(uint8_t b:recipe){line.push_back(hex[b>>4]);line.push_back(hex[b&15]);}line.push_back('\n');
+    std::string path=list_path();path.resize(path.find_last_of('/')+1);path+="pipeline-failures.log";
+    int fd=open(path.c_str(),O_WRONLY|O_CREAT|O_APPEND|O_CLOEXEC|O_NOFOLLOW,0600);if(fd<0)return;
+    struct stat st{};constexpr size_t limit=512u*1024u;
+    if(fstat(fd,&st)!=0 || !S_ISREG(st.st_mode) || st.st_size<0 || uint64_t(st.st_size)>limit || line.size()>limit-size_t(st.st_size)){close(fd);return;}
+    const char *at=line.data();size_t left=line.size();while(left){ssize_t n=write(fd,at,left);if(n<=0)break;at+=n;left-=size_t(n);}close(fd);
+    xbg_logf("NVN failed pipeline recipe diagnostic %s bytes=%zu complete=%d",path.c_str(),line.size(),int(left==0));
+}
 void record(const VkGraphicsPipelineCreateInfo &ci,const XbgPipelineKey &key){record(ci.pStages,ci.stageCount,key);}
 void record(const VkComputePipelineCreateInfo &ci,const XbgPipelineKey &key){record(&ci.stage,1,key);}
 // The learned list is written on its own schedule (see xbg_warm_flush.h). A
@@ -4313,7 +4340,9 @@ void pipeline_lookup(PipelineLease &out,const XbgPipelineKey &key,bool cacheable
         }
         VkResult pr = create_graphics_pipeline_resilient(cfg.device,pipeline_cache,1,&g,nullptr,&out.pipeline);
         if(pr != VK_SUCCESS){
-            xbg_logf("NVN pipeline_lookup: graphics pipeline creation failed (%d) for shaders=%s, skipping draw safely", int(pr), pstat_what().c_str());
+            const uint64_t failed_ns=timing_clock()-t0;
+            if(cacheable)warm::record_failure(g.pStages,g.stageCount,key,pr,failed_ns);
+            xbg_logf("NVN pipeline_lookup: graphics pipeline creation failed (%d) for shaders=%s, failed_create_ms=%.2f skipping draw safely", int(pr), pstat_what().c_str(),double(failed_ns)/1e6);
             out.pipeline = VK_NULL_HANDLE;
             out.transient = true;
             return;
@@ -4322,7 +4351,9 @@ void pipeline_lookup(PipelineLease &out,const XbgPipelineKey &key,bool cacheable
     else{if(honor_pipeline_diagnostics)xbg_logf("DIAG pipeline begin compute shaders=%s",pstat_what().c_str());uint64_t t0=timing_clock();VkComputePipelineCreateInfo cc=*compute;if(pipe_stats)cc.flags|=VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR;
         VkResult pr = create_compute_pipeline_resilient(cfg.device,pipeline_cache,1,&cc,nullptr,&out.pipeline);
         if(pr != VK_SUCCESS){
-            xbg_logf("NVN pipeline_lookup: compute pipeline creation failed (%d) for shaders=%s, skipping dispatch safely", int(pr), pstat_what().c_str());
+            const uint64_t failed_ns=timing_clock()-t0;
+            if(cacheable)warm::record_failure(&cc.stage,1,key,pr,failed_ns);
+            xbg_logf("NVN pipeline_lookup: compute pipeline creation failed (%d) for shaders=%s, failed_create_ms=%.2f skipping dispatch safely", int(pr), pstat_what().c_str(),double(failed_ns)/1e6);
             out.pipeline = VK_NULL_HANDLE;
             out.transient = true;
             return;

@@ -4287,11 +4287,15 @@
    "owner": "dot /root/ff_arsenal",
    "paths": [
     "coordination/results/DOT-ARSENAL-20261118.md",
-    ".local/arsenal-20261118/"
+    ".local/arsenal-20261118/",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/android/app/java/org/ffrs/diagnostic/DiagnosticReport.java",
+    "tests/native/test_pipeline_failure_record.py",
+    "tests/installer/DiagnosticReportContract.java"
    ],
-   "write_state": "EVIDENCE_ONLY",
+   "write_state": "DIAGNOSTIC_SOURCE",
    "acquired_at": "2026-11-18T09:44:22.098937+08:00",
-   "checkpoint": "用户授权RG实测覆盖仅荣耀旧限制；不修改旧writer持有源码，源码修复前再登记。荣耀已让库，RG45589测试独立存档。"
+   "checkpoint": "父级确认无其他原FF writer。仅增加有界失败管线配方与耗时诊断，保留渲染语义；OnePlus840驱动失败新证据优先，微优化暂缓。"
   }
  ],
  "tasks": [

@@ -23,7 +23,7 @@ import java.util.zip.ZipInputStream;
 
 /** Self-authored fixtures only. Exercises the actual read-only ZIP writer. */
 public final class DiagnosticReportContract {
-    private static final String[] LOGS = {"guest_boot.log", "guest_boot.log.prev", "engine.log", "engine.log.1", "engine.log.prev", "engine.log.fatal"};
+    private static final String[] LOGS = {"pipeline-failures.log", "guest_boot.log", "guest_boot.log.prev", "engine.log", "engine.log.1", "engine.log.prev", "engine.log.fatal"};
     private static int passed;
 
     private static void check(boolean value, String message) {
@@ -83,7 +83,7 @@ public final class DiagnosticReportContract {
         Files.createSymbolicLink(runtime.resolve("version-link"), outside);
         Files.createSymbolicLink(runtime.resolve("version-5").resolve("engine.log"), outside.resolve("guest_boot.log"));
         Map<String, byte[]> entries = export(external.toFile(), runtime.toFile(), Collections.<DiagnosticReport.Trace>emptyList());
-        check(entries.size() == 13, "unexpected entries " + entries.keySet());
+        check(entries.size() == 14, "unexpected entries " + entries.keySet());
         for (String name : LOGS) check(Arrays.equals(entries.get("logs/external/" + name), bytes(name)), "whitelisted log missing " + name);
         for (int i = 2; i < 6; i++) check(entries.containsKey("logs/runtime/version-" + i + "/guest_boot.log"), "recent runtime missing");
         for (String name : entries.keySet()) {

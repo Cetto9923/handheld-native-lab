@@ -25,7 +25,7 @@ final class DiagnosticReport {
     private static final long CONTENT_BUDGET = 15L * 1024 * 1024;
     private static final int MAX_TEXT_BYTES = 64 * 1024;
     private static final String[] LOG_NAMES = {
-            "guest_boot.log", "guest_boot.log.prev", "engine.log.fatal",
+            "pipeline-failures.log", "guest_boot.log", "guest_boot.log.prev", "engine.log.fatal",
             "engine.log", "engine.log.1", "engine.log.prev"
     };
 
