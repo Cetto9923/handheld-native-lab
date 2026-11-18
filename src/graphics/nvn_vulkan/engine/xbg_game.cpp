@@ -10,6 +10,7 @@
 #include "xbg_spirv_inline.h"
 #endif
 #include "xbg_cpu_timing.h"
+#include "xbg_gpu_raw.h"
 #include "xbg_indexed_ready_probe.h"
 #include "xbg_indexed_bbox_probe.h"
 #include "xbg_completion_wait.h"
@@ -611,6 +612,8 @@ VkPipelineCache pipeline_cache{};
 VkPhysicalDeviceProperties properties{};
 VkPhysicalDeviceMemoryProperties memories{};
 uint32_t timestamp_bits=0;
+XbgGpuRaw gpu_raw;std::string gpu_raw_path;
+void gpu_raw_export(bool partial);
 VkPhysicalDeviceSubgroupProperties subgroup{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES};
 void need(bool condition,const char *text) { if (!condition) xbg_fatalf("%s",text); }
 void check(VkResult r,const char *call) { if(r!=VK_SUCCESS) xbg_fatalf("%s failed: %d",call,int(r)); }
@@ -955,6 +958,7 @@ struct Slot {
     std::vector<ProImage> pro_images;
     std::map<std::vector<uint64_t>,VkFramebuffer> framebuffers;
     std::map<std::array<uint64_t,4>,VkBufferView> texel_views; // per-frame texel views (same snapshot -> one view)
+    XbgGpuRaw::Handle raw_handle{};
     Buffer query_results;size_t query_copied=0; // occlusion results copied by the GPU at the end of the frame
     std::vector<std::pair<uint64_t,uint64_t>> query_refs; // (epoch, absolute index) per used occlusion query, in result order
     std::unordered_map<std::vector<uint64_t>,VkDescriptorSet,SetKeyHash> set_cache; // identical descriptor contents -> one set per frame
@@ -1388,6 +1392,7 @@ VkResult hybrid_wait_fence(VkFence f,uint64_t timeout_ns){
 }
 void retire_slot(Slot &s){
     if(!s.pending)return;
+    if(auto *r=gpu_raw.get(s.raw_handle))r->retire_entry=timing_clock();
     poolreset::finish(s);
     {CPU_SCOPE(Fence);bool busy=vkGetFenceStatus(cfg.device,s.fence)==VK_NOT_READY;uint64_t b0=busy?timing_clock():0;
      VK(hybrid_wait_fence(s.fence,std::max<uint64_t>(cfg.fence_timeout_ns,10000000000ull)));
@@ -1419,7 +1424,8 @@ void retire_slot(Slot &s){
                 d.viewport.x,d.viewport.y,d.viewport.width,d.viewport.height,d.scissor.offset.x,d.scissor.offset.y,d.scissor.extent.width,d.scissor.extent.height);
         }
     }
-    if(s.timestamps){uint64_t t[2]{};if(vkGetQueryPoolResults(cfg.device,s.timestamps,0,2,sizeof(t),t,8,VK_QUERY_RESULT_64_BIT)==VK_SUCCESS && t[1]>=t[0]){uint64_t mask=timestamp_bits<64?(uint64_t(1)<<timestamp_bits)-1:~0ull;const uint64_t ns=uint64_t(double((t[1]-t[0])&mask)*properties.limits.timestampPeriod);perf.gpu_ns+=ns;++perf.gpu_samples;hud::gpu_add(s.hud_frame,ns);}}
+    if(s.timestamps){uint64_t t[2]{};VkResult raw_result=vkGetQueryPoolResults(cfg.device,s.timestamps,0,2,sizeof(t),t,8,VK_QUERY_RESULT_64_BIT);if(gpu_raw.get(s.raw_handle))gpu_raw.query(s.raw_handle,int32_t(raw_result),t[0],t[1],timing_clock());if(raw_result==VK_SUCCESS && t[1]>=t[0]){uint64_t mask=timestamp_bits<64?(uint64_t(1)<<timestamp_bits)-1:~0ull;const uint64_t ns=uint64_t(double((t[1]-t[0])&mask)*properties.limits.timestampPeriod);perf.gpu_ns+=ns;++perf.gpu_samples;hud::gpu_add(s.hud_frame,ns);}}
+    gpu_raw.retire(s.raw_handle);
     CPU_SCOPE(Cleanup);uint64_t c0=timing_clock();
     // One readback per occlusion pool (the fence has signalled, so every used query is available).
     {static std::vector<uint64_t> results;size_t used=s.occlusion_used;results.assign(used,0);
@@ -1462,6 +1468,7 @@ Slot &recording_slot(){
     Slot &s=slots[slot_index];
     if(!s.recording){
         {SiteScope site(SITE_RING,true);retire_slot(s);}
+        s.raw_handle={};
         // From here on this slot reuses its readback arena while the other slot, still in flight, may read it through pending
         // views (xview): its GPU reads then race the CPU copies of this submission.
         {bool o_pending=false,o_xview=false;for(unsigned k=0;k<slot_count;++k){const Slot &t=slots[k];if(&t!=&s && t.pending){o_pending=true;o_xview=o_xview||t.xview;}}if(o_xview)++xview_races;
@@ -1579,8 +1586,12 @@ void submit_slots(bool wait){
             last_signal_sem=next_signal;
             last_signal_slot=slot_index;
         }
-        {CPU_SCOPE(Submit);VK(vkQueueSubmit(cfg.queue,1,&si,s.fence));}++submit_by[sync_site];poolreset::queue(s);
-        s.recording=false;s.pending=true;s.covers=submitted;s.hud_frame=hud::frame.load(std::memory_order_relaxed);slot_index=(slot_index+1)%slot_count;++perf.submits;snapshot_reset();++slot_serial;
+        s.raw_handle=gpu_raw.admit(stats.presents.load(),slot_serial,submitted,slot_index,ncb,s.timestamps!=VK_NULL_HANDLE);
+        {CPU_SCOPE(Submit);if(auto *r=gpu_raw.get(s.raw_handle))r->submit_begin=timing_clock();
+         VkResult raw_submit_result=vkQueueSubmit(cfg.queue,1,&si,s.fence);
+         if(gpu_raw.get(s.raw_handle))gpu_raw.submit_done(s.raw_handle,int32_t(raw_submit_result),timing_clock(),hud::frame.load(std::memory_order_relaxed));
+         check(raw_submit_result,"vkQueueSubmit(cfg.queue,1,&si,s.fence)");}++submit_by[sync_site];poolreset::queue(s);
+        s.recording=false;s.pending=true;s.covers=submitted;s.hud_frame=hud::frame.load(std::memory_order_relaxed);if(auto *r=gpu_raw.get(s.raw_handle))r->hud_frame=s.hud_frame;slot_index=(slot_index+1)%slot_count;++perf.submits;snapshot_reset();++slot_serial;
         pending_events.insert(pending_events.end(),recording_events.begin(),recording_events.end());recording_events.clear();
     }
     if(wait || sync_submit_enabled){
@@ -1614,6 +1625,21 @@ void write_pipeline_cache(size_t unsaved){
     xbg_logf("NVN pipeline cache save bytes=%zu new=%zu ok=%d ms=%.1f on=%s",n,unsaved,int(ok),double(timing_clock()-t0)/1e6,sync_cache_save?"graphics":"saver");
 }
 void cache_save_join(){if(cache_saver.joinable())cache_saver.join();}
+
+void gpu_raw_export(bool partial){
+    if(!gpu_raw.enabled || gpu_raw.exported || (!partial && (!gpu_raw.closed || gpu_raw.pending)))return;
+    gpu_raw.exported=true;
+    FILE *f=fopen(gpu_raw_path.c_str(),"wb");if(!f)return;
+    fprintf(f,"GPU_RAW v=1 cpu_clock=steady_clock gpu_clock=uncalibrated session=%llu first=%llu end_exclusive=%llu rows=%u dropped=%llu pending=%u partial=%u timestamp_bits=%u timestamp_period_ns=%.9g\n",
+        (unsigned long long)gpu_raw.session,(unsigned long long)gpu_raw.first,(unsigned long long)gpu_raw.end,gpu_raw.used,(unsigned long long)gpu_raw.dropped,gpu_raw.pending,unsigned(partial),timestamp_bits,double(properties.limits.timestampPeriod));
+    for(uint32_t i=0;i<gpu_raw.used;++i){const auto &r=gpu_raw.rows[i];
+        fprintf(f,"row=%u serial=%llu ring=%u covers=%llu present=%llu hud=%llu commands=%u submit_begin=%llu submit_end=%llu submit_result=%d submitted=%u retire_entry=%llu retired=%u has_query=%u query_read=%u query_result=%d query_observed=%llu t0=%llu t1=%llu legacy_accepted=%u\n",
+            i,(unsigned long long)r.serial,r.ring,(unsigned long long)r.covers,(unsigned long long)r.present,(unsigned long long)r.hud_frame,r.commands,
+            (unsigned long long)r.submit_begin,(unsigned long long)r.submit_end,r.submit_result,unsigned(r.submitted),(unsigned long long)r.retire_entry,unsigned(r.retired),unsigned(r.has_query),unsigned(r.query_read),r.query_result,
+            (unsigned long long)r.query_observed,(unsigned long long)r.t0,(unsigned long long)r.t1,unsigned(r.legacy_accepted));
+    }
+    fclose(f);
+}
 void save_pipeline_cache(){
     // The learned warm list is written on its own schedule (xbg_warm_flush.h);
     // flushing it here as well keeps the last recipes of a session when the
@@ -1642,6 +1668,7 @@ void perf_frame(){
     // pipeline took 2 ms or more: those recipes were recorded in memory and
     // never reached the disk, so the next launch built them again.
     if(xbg_warm_flush::due(presents,warm_save_frame)){warm_save_frame=presents;warm::flush();}
+    if(gpu_raw.ready(presents))gpu_raw_export(false);
     uint64_t now=timing_clock();scene::frame(now);
     if(!perf.window_start){perf.window_start=now;perf.frames=0;return;}
     if(++perf.frames<60)return;
@@ -7868,6 +7895,10 @@ static void xbg_resolve_depth_aspect(const std::string &base,bool honor){
 extern "C" int xbg_game_initialize(const xbg_game_config *c,char *error,size_t bytes){
     if(!c || c->size!=sizeof(*c) || !c->physical || !c->device || !c->queue || !c->shader_directory || !c->fence_timeout_ns){if(error&&bytes)snprintf(error,bytes,"Invalid xbg_game_config");return -1;}
     std::lock_guard<std::recursive_mutex> lock(mutex);if(initialized){if(error&&bytes)snprintf(error,bytes,"Game graphics already initialized");return -1;}
+    {std::string dir=c->shader_directory;size_t cut=dir.find_last_of('/');std::string base=cut==std::string::npos?dir:dir.substr(0,cut);
+     gpu_raw.configure(0,0,0);gpu_raw_path=base+"/gpu-raw-slots.log";
+     FILE *m=fopen((base+"/gfx-gpu-raw").c_str(),"rb");if(m){unsigned long long first=0,count=0;unsigned maximum=0;
+       if(fscanf(m,"%llu %llu %u",&first,&count,&maximum)==3)gpu_raw.configure(first,count,maximum);fclose(m);}}
     {std::string dir=c->shader_directory;size_t cut=dir.find_last_of('/');
      std::string path=(cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-memory-profile";
      FILE *f=fopen(path.c_str(),"rb");memory_profile_counts=f && fgetc(f)=='1';if(f)fclose(f);}
@@ -8187,7 +8218,7 @@ extern "C" void xbg_request_memory_trim(unsigned level) {
     while (previous < level && !memory_trim_requested.compare_exchange_weak(previous, level)) {
     }
 }
-extern "C" int xbg_game_shutdown(){gfx_drain();gfx_async_stop();std::lock_guard<std::recursive_mutex> lock(mutex);performance_hint::reset();if(!initialized)return 0;timing_report("shutdown-partial");provenance_close("SHUTDOWN");resolve_pending();submit_slots(true);save_pipeline_cache();pending_writebacks.clear();pending_reports.clear();pending_events.clear();recording_events.clear();epochs.clear();VkResult r=vkQueueWaitIdle(cfg.queue);if(r!=VK_SUCCESS)return r;wtrack::release();destroy_slots();clear_pipeline_objects();cache_save_join();warm::shutdown();bright::shutdown();shutdown_rg16_proxy();clear_descriptor_caches();clear_render_pass_cache();images.clear();++images_epoch;for(auto &f:persistent_framebuffers)vkDestroyFramebuffer(cfg.device,f.second,nullptr);persistent_framebuffers.clear();image_index.clear();image_index_dirty=true;program_cache.clear();shaders.clear();textures.clear();clear_texture_record_cache();texture_pool_cache=nullptr;samplers.clear();null_textures.clear();texture_pool_cache=nullptr;pools.clear();host_segments.clear();host_ranges.clear();host_bytes=0;cmd_range_lo=0;cmd_range_bytes=0;vkDestroyPipelineCache(cfg.device,pipeline_cache,nullptr);pipeline_cache=VK_NULL_HANDLE;vkDestroyCommandPool(cfg.device,command_pool,nullptr);command_pool=VK_NULL_HANDLE;if(submit_sem_inited && cfg.device){for(unsigned i=0;i<kMaxSlots;i++){if(submit_semaphores[i]!=VK_NULL_HANDLE)vkDestroySemaphore(cfg.device,submit_semaphores[i],nullptr);submit_semaphores[i]=VK_NULL_HANDLE;submit_sem_signaled[i]=false;}submit_sem_inited=false;last_signal_sem=VK_NULL_HANDLE;last_signal_slot=-1;}initialized=false;return 0;}
+extern "C" int xbg_game_shutdown(){gfx_drain();gfx_async_stop();std::lock_guard<std::recursive_mutex> lock(mutex);performance_hint::reset();if(!initialized)return 0;gpu_raw_export(true);timing_report("shutdown-partial");provenance_close("SHUTDOWN");resolve_pending();submit_slots(true);save_pipeline_cache();pending_writebacks.clear();pending_reports.clear();pending_events.clear();recording_events.clear();epochs.clear();VkResult r=vkQueueWaitIdle(cfg.queue);if(r!=VK_SUCCESS)return r;wtrack::release();destroy_slots();clear_pipeline_objects();cache_save_join();warm::shutdown();bright::shutdown();shutdown_rg16_proxy();clear_descriptor_caches();clear_render_pass_cache();images.clear();++images_epoch;for(auto &f:persistent_framebuffers)vkDestroyFramebuffer(cfg.device,f.second,nullptr);persistent_framebuffers.clear();image_index.clear();image_index_dirty=true;program_cache.clear();shaders.clear();textures.clear();clear_texture_record_cache();texture_pool_cache=nullptr;samplers.clear();null_textures.clear();texture_pool_cache=nullptr;pools.clear();host_segments.clear();host_ranges.clear();host_bytes=0;cmd_range_lo=0;cmd_range_bytes=0;vkDestroyPipelineCache(cfg.device,pipeline_cache,nullptr);pipeline_cache=VK_NULL_HANDLE;vkDestroyCommandPool(cfg.device,command_pool,nullptr);command_pool=VK_NULL_HANDLE;if(submit_sem_inited && cfg.device){for(unsigned i=0;i<kMaxSlots;i++){if(submit_semaphores[i]!=VK_NULL_HANDLE)vkDestroySemaphore(cfg.device,submit_semaphores[i],nullptr);submit_semaphores[i]=VK_NULL_HANDLE;submit_sem_signaled[i]=false;}submit_sem_inited=false;last_signal_sem=VK_NULL_HANDLE;last_signal_slot=-1;}initialized=false;return 0;}
 extern "C" void xbg_game_get_stats(xbg_game_stats *out){if(out)*out={stats.submissions.load(),stats.draws.load(),stats.dispatches.load(),stats.presents.load(),stats.shader_loads.load()};}
 extern "C" void xbg_game_frame_counters(xbg_frame_counters *out){if(out)*out={hud::pipelines.load(),hud::pipeline_ns.load(),hud::shaders.load(),hud::shader_ns.load(),hud::uploads.load(),hud::reuploads.load(),hud::upload_bytes.load(),hud::upload_ns.load()};}
 extern "C" void xbg_game_set_frame(uint64_t frame){hud::frame.store(frame,std::memory_order_relaxed);}

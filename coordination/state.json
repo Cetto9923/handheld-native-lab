@@ -4303,11 +4303,13 @@
     "src/graphics/nvn_vulkan/engine/xbg_indexed_bbox_probe.h",
     "tests/native/test_indexed_bbox_probe.py",
     "tests/native/test_indexed_bbox_ready.py",
-    "tests/native/test_readback_sites.py"
+    "tests/native/test_readback_sites.py",
+    "src/graphics/nvn_vulkan/engine/xbg_gpu_raw.h",
+    "tests/native/test_gpu_raw.py"
    ],
    "write_state": "PERFORMANCE_DIAGNOSTIC",
    "acquired_at": "2026-11-18T09:44:22.098937+08:00",
-   "checkpoint": "KGSL actual5s PID23334 factory3Right3Left completed; trace5,741,394B. Fiveexplicit kgsl events allUNKNOWN_TO_SETUP; noAdreno tracks. No permission changes. OriginalFFstopped79%connectedstatus3/29C. Independent CPU trace audit + defaultoff slot-only raw existingquery candidate underway; no newquery/wait/syncchanges, not release.",
+   "checkpoint": "GPUraw candidate2659b941 Android/host0; fixed POD4096, defaultoff init marker, existing query once with originalacceptance, no newwait/query/idle. ASan state/negativecontrols and fullcopy/site regressionpass. Installed Honor marker3000/120/4096, isolatedfactory94001; session95925 launching. Need verify map/threads/exportmtime and native raw evidence before conclusions.",
    "objective": "Evidence-driven CPU/GPU diagnosis and safe optimization; actual directional movement, preserve synchronization/saves."
   }
  ],
