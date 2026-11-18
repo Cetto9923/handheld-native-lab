@@ -7938,6 +7938,26 @@ static void xbg_resolve_depth_aspect(const std::string &base,bool honor){
     else depth_aspect_source="marker (device default)";
 }
 
+// Retry only an unknown failure with optional disk data, never OOM, validation
+// or device loss. No signal trapping: a driver crash remains a separate issue.
+static VkResult create_pipeline_cache_with_retry(VkDevice device,
+        VkPipelineCacheCreateInfo info,VkPipelineCache *out) {
+    *out=VK_NULL_HANDLE;
+    VkResult result=vkCreatePipelineCache(device,&info,nullptr,out);
+    if(result==VK_SUCCESS) return result;
+    // Failed creation produces no owned handle; do not destroy undefined output.
+    *out=VK_NULL_HANDLE;
+    if(result!=VK_ERROR_UNKNOWN || !info.initialDataSize) return result;
+    xbg_logf("NVN pipeline cache UNKNOWN with %zu bytes; retry empty once",
+             size_t(info.initialDataSize));
+    info.initialDataSize=0;
+    info.pInitialData=nullptr;
+    result=vkCreatePipelineCache(device,&info,nullptr,out);
+    if(result!=VK_SUCCESS) *out=VK_NULL_HANDLE;
+    xbg_logf("NVN pipeline cache empty retry result=%d",int(result));
+    return result;
+}
+
 extern "C" int xbg_game_initialize(const xbg_game_config *c,char *error,size_t bytes){
     if(!c || c->size!=sizeof(*c) || !c->physical || !c->device || !c->queue || !c->shader_directory || !c->fence_timeout_ns){if(error&&bytes)snprintf(error,bytes,"Invalid xbg_game_config");return -1;}
     std::lock_guard<std::recursive_mutex> lock(mutex);if(initialized){if(error&&bytes)snprintf(error,bytes,"Game graphics already initialized");return -1;}
@@ -8045,7 +8065,7 @@ vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemor
     if((cfg.enabled_shader_output_layer || cfg.enabled_shader_output_viewport_index) && (!output_api || (cfg.enabled_shader_output_layer && !outputs.shaderOutputLayer) || (cfg.enabled_shader_output_viewport_index && !outputs.shaderOutputViewportIndex))){if(error&&bytes)snprintf(error,bytes,"Configured Vulkan12 shader outputs unsupported by effective API/device");return -1;}
     xbg_logf("NVN core shader outputs instanceAPI=%u.%u physicalAPI=%u.%u enabledLayer=%u enabledViewport=%u legacyLayerEXT=0",VK_VERSION_MAJOR(cfg.instance_api_version),VK_VERSION_MINOR(cfg.instance_api_version),VK_VERSION_MAJOR(properties.apiVersion),VK_VERSION_MINOR(properties.apiVersion),cfg.enabled_shader_output_layer,cfg.enabled_shader_output_viewport_index);
     VkCommandPoolCreateInfo cp{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};cp.queueFamilyIndex=cfg.queue_family;cp.flags=VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;VkResult r=vkCreateCommandPool(cfg.device,&cp,nullptr,&command_pool);if(r!=VK_SUCCESS){if(error&&bytes)snprintf(error,bytes,"vkCreateCommandPool=%d",r);return r;}
-    VkPipelineCacheCreateInfo cache{VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};std::vector<uint8_t> cache_data=load_pipeline_cache();cache.initialDataSize=cache_data.size();cache.pInitialData=cache_data.empty()?nullptr:cache_data.data();r=vkCreatePipelineCache(cfg.device,&cache,nullptr,&pipeline_cache);if(r!=VK_SUCCESS){vkDestroyCommandPool(cfg.device,command_pool,nullptr);command_pool=VK_NULL_HANDLE;if(error&&bytes)snprintf(error,bytes,"vkCreatePipelineCache=%d",r);return r;}
+    VkPipelineCacheCreateInfo cache{VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};std::vector<uint8_t> cache_data=load_pipeline_cache();cache.initialDataSize=cache_data.size();cache.pInitialData=cache_data.empty()?nullptr:cache_data.data();r=create_pipeline_cache_with_retry(cfg.device,cache,&pipeline_cache);if(r!=VK_SUCCESS){vkDestroyCommandPool(cfg.device,command_pool,nullptr);command_pool=VK_NULL_HANDLE;if(error&&bytes)snprintf(error,bytes,"vkCreatePipelineCache=%d",r);return r;}
     {std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');FILE *q=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-quad-derivatives").c_str(),"rb");quad_derivatives=false;
      if(q){quad_derivatives=fgetc(q)!='0';fclose(q);}else if(const char *e=getenv("DM_GFX_QUAD_DERIVATIVES"))quad_derivatives=atoi(e)!=0;xbg_logf("NVN quad shuffles to fine derivatives=%d (marker gfx-quad-derivatives)",int(quad_derivatives));}
     {std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');FILE *q=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-warp32").c_str(),"rb");warp32=false;

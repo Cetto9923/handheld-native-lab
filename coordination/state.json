@@ -4313,11 +4313,12 @@
     "src/graphics/nvn_vulkan/nvn_vk_adapter.c",
     "tests/native/test_init_cleanup_failure.py",
     "src/runtime/nso/nso_loader.c",
-    "tests/native/test_fault_chain.py"
+    "tests/native/test_fault_chain.py",
+    "tests/native/test_pipeline_cache_retry.py"
    ],
-   "write_state": "PERFORMANCE_REVIEW",
+   "write_state": "CACHE_RETRY_CANDIDATE",
    "acquired_at": "2026-11-18T09:44:22.098937+08:00",
-   "checkpoint": "MT6991 target descriptors independent review found no proven invalid binding/lifetime. New concrete observability defect: custom native handler _exit139 suppresses native crash classification. Honor isolated shell subprocess test exit mode exited139 vs restore-and-return mode SIGSEGV11 with originalPC/fa8 and3frame Android tombstone. No originalAPK/source behavior change yet; independent review of bounded Android synchronous-fault forwarding requested. Published73 unchanged; not crash-root-cause fix.",
+   "checkpoint": "Conservative cache UNKNOWN-only empty retry candidate; published73 unchanged.",
    "objective": "Evidence-driven CPU/GPU diagnosis and safe optimization; actual directional movement, preserve synchronization/saves.",
    "checkpoint_at": "2026-11-18T16:11:06.588545+08:00"
   }
