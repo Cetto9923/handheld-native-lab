@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-18T04:25:30.508552+00:00",
+ "updated_at": "2026-11-18T13:47:27.342116+08:00",
  "phase": "1.0.71已发布GitHub，APK和中文说明回读核验完成",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -4309,10 +4309,11 @@
     "tests/native/test_arena_life.py",
     "tests/device/test_arena_memory_policy.py"
    ],
-   "write_state": "PERFORMANCE_DIAGNOSTIC",
+   "write_state": "PERFORMANCE_REVIEW",
    "acquired_at": "2026-11-18T09:44:22.098937+08:00",
-   "checkpoint": "Arena lifecycle diagnostic integrated, actual Arena mock differential/guard/keep0/multislot deltas pass; existing fixture updated with realArenaLife+allocation_size, not weakened. Android21560bbf built0, hostsession91952 underway. Honor070returned, next6frame early/late factorywindows. No retention behavior change.",
-   "objective": "Evidence-driven CPU/GPU diagnosis and safe optimization; actual directional movement, preserve synchronization/saves."
+   "checkpoint": "Readback keep2 reverse-order control completed: on2 22.842 FPS/p95 52.378ms (thermal0→0), off2 23.312 FPS/p95 52.333ms (thermal0→1). No reproducible gain, keep1 restored; no promotion/release. FF stopped and Honor returned to library071 UI. Offline exact-BuildID RHI self-line attribution next; Mali diagnostic awaiting original-phone feedback.",
+   "objective": "Evidence-driven CPU/GPU diagnosis and safe optimization; actual directional movement, preserve synchronization/saves.",
+   "checkpoint_at": "2026-11-18T13:47:27.342069+08:00"
   }
  ],
  "tasks": [
@@ -11377,7 +11378,7 @@
    ],
    "acceptance": "真实兵工厂移动/战斗冷暖测量与修复回归；独立APK及统一App模块发布分别验证，未测不声称通过",
    "recovery": "私有100文件荣耀与12文件RG完整备份于.cetto-arsenal-inputs；原RG67 APK保留，测试仅独立save root",
-   "checkpoint": "keep-stable562d9dad Android+host0. Actual Dpad3R3Lx6 off1PID9600:28.134s24.312FPS,p95 54.296/p99 71.920ms; on1PID11316:28.679s21.828FPS,p95 53.755/p99 73.666. Bothendfactory screenshots, no battle. HOWEVER thermalstatusoff0→on1skin37C, so no causalregression/gain claim. offPSS3073692KiB/on3130864KiB (~57MiBextra). Boundedlateprofile off5282 standardmake12/trim12, on6182make6/trim6,oversize0. Behaviormechanismworked, benefitunproven. Restoredkeep1,FFstopped; onlyresumeoppositeordershortABwhenactualthermalnormal, notfixedcooldown. No release.",
+   "checkpoint": "Readback keep2 reverse-order control completed: on2 22.842 FPS/p95 52.378ms (thermal0→0), off2 23.312 FPS/p95 52.333ms (thermal0→1). No reproducible gain, keep1 restored; no promotion/release. FF stopped and Honor returned to library071 UI. Offline exact-BuildID RHI self-line attribution next; Mali diagnostic awaiting original-phone feedback.",
    "dependencies": [],
    "role": "performance and graphics repair",
    "branch": "task/T-codex-recovery-20261114"
