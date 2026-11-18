@@ -93,3 +93,9 @@ fullcopy2 APK a730217de510bd3bea40d36e5788c3e4e67da491e9b26ede30313989b514df90�
 用户肉眼确认方向键已移动。固定Right×4/Left×4三轮（Android21/22，每次--longpress），候选a730同会话：on2 13.0332s/20.6395FPS/P99 57.162/max97.710ms；off3 13.1011s/19.9220FPS/P99 61.266/max68.293ms，两组均0>100ms。skin36.891/36.838℃、电池33℃、status0，表明仅小幅收益，远未30，不能发布。此前4.3s短窗off18.81/19.56、on20.03同样只作初步。后续向右探路到地图边缘已按用户提示停止、Left返回楼梯下可通行区；顶墙探索不在上述计时窗口，不计移动验收。
 开优化六帧7712–7717 readback_zero仅1.321MB/0.1208ms（约400个fullcopy/帧命中），说明目标分支确实跳过重复清零；非同帧场景不能用总descriptor76.21ms对此前52.95做收益比。frame CSV/thermal/marker窗口见~/.cetto-arsenal-inputs/fullcopy-ab/；engine744-final.log与final744.csv完整收尾。实验开关恢复0，采样完成停止原FF以开展代码分析，不是例行热保护暂停；保留原存档。
 后续瓶颈：同窗legacy_wait阻塞17–27ms/帧约2calls，不能把waits≈9.8当真正阻塞次数；sync-submit0、completion1、legacywaitall0确认，不改同步规避。Android现有XTRACE全空，仅OHOS有标签，委托独立审查准备API23 ATrace最小诊断，不开放不安全async翻译，不重试无效poolreset。
+
+### Android时间轴与RHI采样
+集成Android API23+ ATrace begin/end诊断（counter仍no-op，未使用API29符号），非采集时也有库enabled检查开销，不宣称零开销；不改变锁/等待。新增自包含tests/native/test_readback_fullcopy.py，实际提取当前实现，ASan/UBSan48+32组合、调用点负对照通过。APK379e8296b8f544c36a4ecede34e08381e046965819b2a386669c76494ce0ad70（.local/arsenal-atrace-20261118），Android/host0。
+Honor PID6308独立厂区，Right×3/Left×3两轮，15秒Perfetto无error stats：主GameThread6502 legacy-lock1656次668.246ms、legacy-relock844次4288.134ms、legacy-wait844次6849.226ms。relock中Sleeping4028.444ms，RHI6509在整个traceCPU11265ms。独立复核relock与RHI Running重叠99.2%，1ms周期重试形状明确；不能把5.08ms平均relock当可全部省掉的空闲或认定互斥公平性问题。没有owner/return标签，waker字段NULL，后续不得跳过发布/改同步凑帧。
+RHI6509另5秒simpleperf task-clock500Hz，2368samples、0lost：memmove6.46%、memset5.19%、indexed_range_ready4.65%、descriptors_build4.43%、pending_view4.10%、indexed_graphics_ready3.21%。原始trace/CSV在~/.cetto-arsenal-inputs/atrace/，simpleperf在同级simpleperf/；只本地诊断，无上传。未改kptr_restrict等安全配置。
+采样完成停原FF、确认无PID，交荣耀给统一库10分钟低负载验收；当前80%、AC/USB供电true但status3（未在充电），电池31℃，未改电源设置。RG仍未发现。未发布，未宣称30FPS/完整特效音频通过。
