@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-18T14:20:33.147492+08:00",
+ "updated_at": "2026-11-18T07:06:36.655590+00:00",
  "phase": "1.0.71已发布GitHub，APK和中文说明回读核验完成",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -11382,7 +11382,7 @@
    ],
    "acceptance": "真实兵工厂移动/战斗冷暖测量与修复回归；独立APK及统一App模块发布分别验证，未测不声称通过",
    "recovery": "私有100文件荣耀与12文件RG完整备份于.cetto-arsenal-inputs；原RG67 APK保留，测试仅独立save root",
-   "checkpoint": "Init+cleanup dual-failure terminal guard implemented in adapter; existing fatal callback records init/cleanup errors and exits70 instead of returning to unsafe guest continuation. Success/early-init/cleanrollback unchanged. Independent review passed;8 extracted production-branch cases ASan/UBSan incl NULL,size,already-ready and exact old-code negative pass. Normal candidate342a363d Android/host0, unstripped symbols preserved. Device regression BLOCKED both offline: Honor old33621/43141 refused; RG45589 timeout; Bonjour/mDNS empty. No formal release, no Mali root-cause claim.",
+   "checkpoint": "Honor USB reconnected A42BBB5109000333. Normal candidate342a363d installed, device APK fullSHA matched. PID29729 thirdchapter donor132001 room→outside via longpress Dpad21x4/20x3 observed, survived until deliberate stop. Short normal-path regression only; no Mali-root-cause/FPS/audio acceptance. 73% charging status2/26C. Brief library helper window, factory actual-movement regression next.",
    "dependencies": [],
    "role": "performance and graphics repair",
    "branch": "task/T-codex-recovery-20261114"
