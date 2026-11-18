@@ -57,3 +57,9 @@ RG PID19868覆盖安装全文SHA回读匹配，独立用户存档Continue进入�
 - 以上不是全城、战斗、稳定锁30或840原机验证。水都baseline短窗口tailCSV未刷新导致一行，已明确不用于数值A/B比率。
 
 - 水都同路线锁30补测10.49997859s，30.00006FPS，P99 36.6892/max43.6882ms，无>100ms。已恢复marker0并切回隔离兵工厂继续，不含完整音频验收。
+
+### 兵工厂细分 CPU 窗口 PID25490
+- 同候选正常短路线9.556s，31.394FPS，P99 52.409/max76.774ms，无>100ms；位置/路线与此前22.22窗口不同，不能据此称进一步优化，战斗仍未过门槛。
+- 六帧2882–2887 descriptor102.27ms：image_lookup残余32.83、texel_readback14.64、remaining32.61、view_lookup0.926（仅0.154ms/帧）。不实施缺乏收益依据的frontcache。
+- 只读复核发现graphics pending_view/texel_acquire仍未分出、readback需拆cpu_access/分配，正在独立副本准备下一最小诊断patch，不跳过同步。
+- 荣耀55%仍充电、电池34°C；thermalstatus1/GPU报告92°C，已停止原FF冷却，不继续高负载。RG交还后准备回归时offline，有限同端点重连中。
