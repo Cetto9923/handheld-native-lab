@@ -5737,3 +5737,4 @@ Production-forwarding caution: independent review found previous_actions/owns_ac
 
 ### Cache resilience candidate in progress
 UNKNOWN-only optional-cache retry now implemented; tests/native/test_pipeline_cache_retry.py executes exact production helper, 11 cases ASan/UBSan pass. Android build session63199, .local/arsenal-cache-retry-20261118/{run.py,build-plan.json,android.log,exit-code}. Not installed/not published, 73 immutable. Next inspect build exit and perform scoped Android regression with device lock; no claim this fixes9400. Do not retry blocked signal-chain work. DeviceFinalize review found generic lifecycle gap, not proven current crash root cause.
+Cache candidate Android build0 and Honor isolated factory smoke passed PID29923; stopped and restored published73 bytes. No actual UNKNOWN failure observed, host11case coverage separate. Candidate5a5262f8 not published; normal73 remains. Full regression still open.
