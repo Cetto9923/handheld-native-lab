@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 #include "xbg_writeback_policy.h"
-// Shadow-only metadata envelopes, never a readiness decision.
+// Conservative metadata envelopes. Shadow counters are separate from production bounds.
 struct XbgIndexedBBox {
     uint64_t low=0,high=0;
     bool empty=true,usable=true;
@@ -14,6 +14,17 @@ struct XbgIndexedBBox {
     bool outside(uint64_t address,uint64_t bytes)const{
         if(!usable || !address || !xbg_wb_range_valid(address,bytes))return false;
         return empty || address+bytes<=low || address>=high;
+    }
+};
+// A fresh, independently built pair for one graphics eligibility call.
+// No diagnostics/statistics or persistent pointers participate in this proof.
+struct XbgIndexedBounds {
+    XbgIndexedBBox reports,writebacks;
+    template<class Reports,class Writebacks>
+    void build(const Reports &r,const Writebacks &w,uint64_t report_bytes){
+        reports={};writebacks={};
+        for(const auto &x:r)reports.add(x.addr,report_bytes);
+        for(const auto &x:w)writebacks.add(x.addr,x.bytes);
     }
 };
 struct XbgIndexedBBoxStats {

@@ -1080,6 +1080,7 @@ bool texel_memo_enabled=true;uint64_t texel_gen=0,texel_refreshes=0,texel_fallba
 // owned by the current recording slot, and range writes use snapshot invalidation.
 XbgTexelSnapshotCache<Buffer> texel_copy_cache;
 bool texel_copy_enabled=true;
+bool indexed_bbox_ready_enabled=false;
 bool readback_fullcopy_enabled=false;uint64_t readback_fullcopy_hits=0,readback_fullcopy_bytes=0;
 struct TexelCopyStats {uint64_t copies=0,hits=0,would_hits=0,copy_bytes=0,hit_bytes=0,pass_ends=0;};
 TexelCopyStats texel_copy_stats[2]; // normal graphics, diagnostic graphics
@@ -7099,12 +7100,12 @@ void execute_draw_record(const p_draw &a){preflight_cpu_reads();
 }
 // A descriptor/vertex snapshot must not retire the command slot during draw().
 // Do not mutate caches or acquire a pending view while deciding eligibility.
-bool indexed_range_ready(uint64_t address,uint64_t bytes,VkDeviceSize alignment,XbgIndexedReadyProbe *probe=nullptr,XbgIndexedBBoxProbe *bbox=nullptr){
+bool indexed_range_ready(uint64_t address,uint64_t bytes,VkDeviceSize alignment,XbgIndexedReadyProbe *probe=nullptr,XbgIndexedBBoxProbe *bbox=nullptr,const XbgIndexedBounds *bounds=nullptr){
     if(probe)probe->request(address,bytes,alignment);
     if(bbox)bbox->request(address,bytes);
     if(!address || !bytes || address+bytes<address)return false;
-    for(auto &r:pending_reports){if(probe)probe->report_step();if(bbox)bbox->report_step();if(xbg_wb_overlaps(address,bytes,r.addr,sizeof(NVNcounterData)))return false;}
-    for(auto w=pending_writebacks.rbegin();w!=pending_writebacks.rend();++w){
+    if(!bounds || !bounds->reports.outside(address,bytes))for(auto &r:pending_reports){if(probe)probe->report_step();if(bbox)bbox->report_step();if(xbg_wb_overlaps(address,bytes,r.addr,sizeof(NVNcounterData)))return false;}
+    if(!bounds || !bounds->writebacks.outside(address,bytes))for(auto w=pending_writebacks.rbegin();w!=pending_writebacks.rend();++w){
         if(probe)probe->writeback_step();if(bbox)bbox->writeback_step();
         if(!xbg_wb_overlaps(address,bytes,w->addr,w->bytes))continue;
         return address>=w->addr && address+bytes<=w->addr+w->bytes &&
@@ -7116,10 +7117,12 @@ struct IndexedInputFailure {const char *why="none";uint32_t stage=UINT32_MAX,bin
 bool indexed_graphics_ready(const p_draw_idx &a,size_t index_bytes,IndexedInputFailure *failure=nullptr){
     XbgIndexedReadyProbe probe(timing_active?&indexed_ready_stats:nullptr);
     XbgIndexedBBoxProbe bbox(timing_active?&indexed_bbox_stats:nullptr);
-    auto range_ready=[&](uint64_t address,uint64_t bytes,VkDeviceSize alignment){return indexed_range_ready(address,bytes,alignment,probe.out?&probe:nullptr,bbox.out?&bbox:nullptr);};
+    XbgIndexedBounds bounds;const XbgIndexedBounds *active_bounds=nullptr;
+    auto range_ready=[&](uint64_t address,uint64_t bytes,VkDeviceSize alignment){return indexed_range_ready(address,bytes,alignment,probe.out?&probe:nullptr,bbox.out?&bbox:nullptr,active_bounds);};
     auto reject=[&](const char *why,uint32_t st=UINT32_MAX,uint32_t binding=UINT32_MAX,uint64_t address=0,uint64_t bytes=0){if(failure)*failure={why,st,binding,address,bytes};return false;};
     if(read_preflight || capture.active || capture.probe || provenance_file || pass_prof_active() || draw_detail ||
        state.rast_discard || state.tf_on || !state.shader[0] || (!state.shader[4] && !state.rt.depth) || state.shader[1] || state.shader[2] || state.shader[3])return reject("state");
+    if(indexed_bbox_ready_enabled && !ab_off("bboxready")){bounds.build(pending_reports,pending_writebacks,sizeof(NVNcounterData));active_bounds=&bounds;}
     bbox.build(pending_reports,pending_writebacks,sizeof(NVNcounterData));
     if(!range_ready(a.ibuf,index_bytes,4))return reject("index",0,0,a.ibuf,index_bytes);
     for(auto loc:state.shader[0]->inputs){if(loc>=16)return reject("vertex-location");va_st v;memcpy(&v,&state.attrib[loc],4);if(!v.fmt)continue;if(v.stream>=16)return reject("vertex-stream");probe.vertex_stream(v.stream);auto r=state.vb[v.stream];if(!range_ready(r.address,r.size,4))return reject("vertex",0,v.stream,r.address,r.size);}
@@ -7981,7 +7984,7 @@ vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemor
       FILE *n=fopen((base+"/gfx-warm-interval").c_str(),"rb");if(n){unsigned v=0;if(fscanf(n,"%u",&v)!=1)v=0;fclose(n);warm::interval_us=v*1000ull;}
       xbg_logf("NVN warm throttle budget_per_frame=%llu interval_ms=%llu",(unsigned long long)warm::budget_per_frame,(unsigned long long)(warm::interval_us/1000));}
      warm::start();probe_init();
-    texel_copy_cache.reset();texel_copy_enabled=true;readback_fullcopy_enabled=false;readback_fullcopy_hits=readback_fullcopy_bytes=0;
+    texel_copy_cache.reset();texel_copy_enabled=true;indexed_bbox_ready_enabled=false;readback_fullcopy_enabled=false;readback_fullcopy_hits=readback_fullcopy_bytes=0;
     for(auto &counts:texel_copy_stats)counts=TexelCopyStats{};
     wtrack::enabled=false;state=State{};state.color.logic_op=3;state.color.alpha_func=8;for(unsigned i=0;i<8;i++)state.blend[i]={i,2,1,2,1,1,1};stats.reset();memory_pressure_policy={};timing=XbgCpuTiming(timing_clock);pipeline_counts={};pipeline_before={};pipeline_tick=0;timing_active=false;timing_first=timing_last=0;live_profile_used=false;descriptor_detail=false;descriptor_timing=XbgDescriptorTiming{};descriptor_root=nullptr;draw_detail=false;draw_timing=XbgDrawTiming{};draw_root=nullptr;completed=0;last_attachment_trace=UINT64_MAX;sampler_mirror_clamp_enabled=VK_FALSE;failed=false;error_text[0]=0;initialized=true;
     const char *resident_budget = getenv("FFRS_NATIVE_RSS_LIMIT_MIB");
@@ -8248,7 +8251,7 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
         static const struct{const char *name;bool *flag;} live_flags[]={
           {"texdirty",&tex_dirty},{"texmemo",&texel_memo_enabled},{"imgcache",&img_cache_enabled},
           {"descmemo",&desc_memo_enabled},{"dynpartial",&dyn_partial_enabled},{"xmemo",&xmemo_enabled},
-          {"bindcache",&bind_cache_enabled},{"ownedinput",&owned_input_copy_enabled},{"rbfullcopy",&readback_fullcopy_enabled},
+          {"bindcache",&bind_cache_enabled},{"ownedinput",&owned_input_copy_enabled},{"rbfullcopy",&readback_fullcopy_enabled},{"bboxready",&indexed_bbox_ready_enabled},
           {"gpuindexed",&gpu_indexed_enabled},{"uppro",&upload_prologue},{"depthaspect",&depth_aspect_enabled},
           {"pipefast",&pipeline_fast_enabled},{"pipememo",&pipe_memo},{"occlusion",&occlusion_batch_enabled},
           {"vcache",&vcache::enabled},{"texrecord",&texture_record_cache_enabled},{"adpf",&performance_hint::enabled},

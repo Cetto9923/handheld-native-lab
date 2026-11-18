@@ -4301,7 +4301,8 @@
     "src/graphics/nvn_vulkan/engine/xbg_indexed_ready_probe.h",
     "tests/native/test_indexed_ready_probe.py",
     "src/graphics/nvn_vulkan/engine/xbg_indexed_bbox_probe.h",
-    "tests/native/test_indexed_bbox_probe.py"
+    "tests/native/test_indexed_bbox_probe.py",
+    "tests/native/test_indexed_bbox_ready.py"
    ],
    "write_state": "PERFORMANCE_DIAGNOSTIC",
    "acquired_at": "2026-11-18T09:44:22.098937+08:00",

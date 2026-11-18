@@ -63,6 +63,14 @@ int main(){
 def main():
  p=argparse.ArgumentParser();p.add_argument('--source',type=Path,default=Path(__file__).resolve().parents[2]/'src/graphics/nvn_vulkan/engine/xbg_game.cpp');p.add_argument('--header',type=Path);p.add_argument('--engine-dir',type=Path);a=p.parse_args();s=a.source.read_text();engine=a.engine_dir or a.source.parent
  current=function(s,'bool indexed_range_ready(')
+ # Optimization has a dedicated full-function differential test. Strip only
+ # its exact optional parameter/list guards to preserve this shadow-only oracle.
+ if 'const XbgIndexedBounds *bounds' in current:
+  for old in [',const XbgIndexedBounds *bounds=nullptr','if(!bounds || !bounds->reports.outside(address,bytes))','if(!bounds || !bounds->writebacks.outside(address,bytes))']:
+   assert current.count(old)==1, 'Unexpected production bbox guard shape'
+   current=current.replace(old,'')
+  assert 'bounds' not in current
+
  graphics=function(s,'bool indexed_graphics_ready(')
  assert 'XbgIndexedBBoxProbe bbox(timing_active?&indexed_bbox_stats:nullptr);' in graphics
  assert 'bbox.build(pending_reports,pending_writebacks,sizeof(NVNcounterData));' in graphics
