@@ -1052,6 +1052,7 @@ bool texel_memo_enabled=true;uint64_t texel_gen=0,texel_refreshes=0,texel_fallba
 // owned by the current recording slot, and range writes use snapshot invalidation.
 XbgTexelSnapshotCache<Buffer> texel_copy_cache;
 bool texel_copy_enabled=true;
+bool readback_fullcopy_enabled=false;uint64_t readback_fullcopy_hits=0,readback_fullcopy_bytes=0;
 struct TexelCopyStats {uint64_t copies=0,hits=0,would_hits=0,copy_bytes=0,hit_bytes=0,pass_ends=0;};
 TexelCopyStats texel_copy_stats[2]; // normal graphics, diagnostic graphics
 // A copy verified earlier in this submission stays valid until an in-stream CPU write overlaps it (snapshot_invalidate
@@ -1661,6 +1662,7 @@ void perf_frame(){
     {size_t entries=0,largest=0;uint64_t live=0,holes=0;
      for(unsigned i=0;i<slot_count;++i){entries+=texel_resident[i].size();largest=std::max(largest,texel_resident[i].size());live+=texel_live_bytes[i];holes+=texel_hole_bytes[i];}
      xbg_logf("NVN PERF texel_resident slots=%u gc_mask=%#x entries=%zu largest=%zu live_mb=%.2f holes_mb=%.2f",slot_count,texel_gc_slots,entries,largest,live/1048576.0,holes/1048576.0);texel_gc_slots=0;}
+    xbg_logf("NVN PERF rbfullcopy enabled=%u hits=%llu bytes=%llu",unsigned(readback_fullcopy_enabled && !ab_off("rbfullcopy")),(unsigned long long)readback_fullcopy_hits,(unsigned long long)readback_fullcopy_bytes);readback_fullcopy_hits=readback_fullcopy_bytes=0;
     xbg_logf("NVN PERF xview views=%.2f races=%.2f guarded=%.2f guarded_kb=%.1f",xviews/f,xview_races/f,xview_guarded/f,xview_guarded_bytes/1024.0/f);xviews=xview_races=xview_guarded=xview_guarded_bytes=0;
     if(uploads_prologue || uploads_inpass){xbg_logf("NVN PERF uploads window prologue=%llu inpass=%llu broke_pass=%llu",(unsigned long long)uploads_prologue,(unsigned long long)uploads_inpass,(unsigned long long)uploads_broke_pass);uploads_prologue=uploads_inpass=uploads_broke_pass=0;}
     for(unsigned stage=0;stage<6;++stage)for(unsigned variant=0;variant<2;++variant){
@@ -1755,6 +1757,18 @@ void readback_sync(uint64_t &reason){
 }
 void retire_handle(std::function<void()> f){recording_slot().retire.handles.push_back(std::move(f));}
 template<class T>void retire_object(std::shared_ptr<T> p){recording_slot().retire.objects.push_back(std::move(p));}
+// Pure bounds check for an immediately following full vkCmdCopyBuffer.
+// Unknown allocation bounds conservatively preserve the initialization path.
+bool readback_fullcopy_bounds(const Buffer &src,const Buffer &dst,size_t n){
+    if(!n || !src.buffer || !dst.buffer || !src.memory || !dst.memory || n>src.size || n>dst.size ||
+       (n&3) || (src.offset&3) || (dst.offset&3) ||
+       !src.allocation_size || !dst.allocation_size)return false;
+    if(src.offset>src.allocation_size || n>src.allocation_size-src.offset ||
+       dst.offset>dst.allocation_size || n>dst.allocation_size-dst.offset)return false;
+    if(src.memory==dst.memory && src.buffer!=dst.buffer)return false;
+    if(src.buffer==dst.buffer && src.offset<dst.offset+n && dst.offset<src.offset+n)return false;
+    return true;
+}
 Buffer stream_buffer(size_t n,const void *data=nullptr,size_t copy=0,bool zero=true,Arena *arena=nullptr){
     Buffer b=(arena?*arena:recording_slot().stream).alloc(n);
     if(data && copy){need(copy<=n,"Buffer copy overflow");evguard::EngineRead er(data,copy);memcpy(b.mapped,data,copy);}
@@ -1768,7 +1782,7 @@ Buffer uniform_buffer(size_t n,const void *data=nullptr,size_t copy=0){
     Arena &arena=honor_inline_enabled && !ab_off("uboarena")?s.uniform:s.stream;
     return stream_buffer(n,data,copy,true,&arena);
 }
-Buffer readback_buffer(size_t n,const void *data=nullptr,size_t copy=0){
+Buffer readback_buffer(size_t n,const void *data=nullptr,size_t copy=0,const Buffer *fullcopy_source=nullptr){
     const bool measured=descriptor_detail && descriptor_root && descriptor_root->recorder;
     Slot &s=recording_slot();Buffer b=DESC_CALL(ReadbackAlloc, s.readback.alloc(n));
     if(measured)descriptor_timing.readback_alloc_bytes+=n;
@@ -1778,6 +1792,12 @@ Buffer readback_buffer(size_t n,const void *data=nullptr,size_t copy=0){
         Buffer src=stream_buffer(n,data,data?copy:0,true);s.pro_ops.push_back({src.buffer,b.buffer,src.offset,b.offset,VkDeviceSize(n)});
         if(measured)descriptor_timing.readback_guard_bytes+=n;
         ++xview_guarded;xview_guarded_bytes+=n;return b;}}
+    // Caller has promised a full GPU copy before any use; guards still take the
+    // unchanged staging/prologue path above. No CPU write => no host flush.
+    if(fullcopy_source && !data && !copy && readback_fullcopy_enabled && !ab_off("rbfullcopy") &&
+       readback_fullcopy_bounds(*fullcopy_source,b,n)){
+        ++readback_fullcopy_hits;readback_fullcopy_bytes+=n;return b;
+    }
     if(data && copy){DESC_SCOPE(ReadbackCopy);need(copy<=n,"Buffer copy overflow");need(b.mapped!=nullptr,"readback_buffer destination mapped pointer is null");evguard::EngineRead er(data,copy);memcpy(b.mapped,data,copy);if(measured)descriptor_timing.readback_copy_bytes+=copy;}else copy=0;
     if(copy<n){DESC_SCOPE(ReadbackZero);need(b.mapped!=nullptr,"readback_buffer zero-fill destination mapped pointer is null");memset(static_cast<uint8_t*>(b.mapped)+copy,0,n-copy);if(measured)descriptor_timing.readback_zero_bytes+=n-copy;}   // only the bytes the copy leaves
     {DESC_SCOPE(ReadbackFlush);if(measured && !b.coherent)++descriptor_timing.readback_noncoherent_flushes;b.flush();}return b;
@@ -5211,7 +5231,10 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                                 retire_object(overlay_shadow.owner);
                                 xbg_logf("NVN partial overlay shadow bound shader=%s binding=%u frame=%llu bytes=%llu",shader.key.c_str(),b.binding,(unsigned long long)stats.presents.load(),(unsigned long long)bytes);
                             }else if(DESC_CALL(TexelPending, pending_view(base,bytes,1,view))){
-                                buf=out.keep(DESC_CALL(TexelReadback, readback_buffer(bytes)));
+                                const bool fullcopy_normal=!capture.active && !capture.probe && !provenance_file &&
+                                    !pass_prof_active() && !draw_detail && !fire_trace_active() && !water_ready() &&
+                                    !flame_diag_enabled && !ubtrace.on.load(std::memory_order_relaxed);
+                                buf=out.keep(DESC_CALL(TexelReadback, readback_buffer(bytes,nullptr,0,(fullcopy_normal && !out.indirect_input && !probe_is_active())?&view:nullptr)));
                                 VkCommandBuffer cmd=recording_slot().cmd;
                                 end_open_pass();
                                 VkBufferCopy region{view.offset,buf->offset,bytes};
@@ -5244,7 +5267,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                                     buf=out.keep(copied);
                                     ++counts->hits;counts->hit_bytes+=bytes;
                                 }else{
-                                    buf=out.keep(DESC_CALL(TexelReadback, readback_buffer(bytes)));
+                                    buf=out.keep(DESC_CALL(TexelReadback, readback_buffer(bytes,nullptr,0,(normal && !out.indirect_input && !probe_is_active())?&view:nullptr)));
                                     VkCommandBuffer cmd=recording_slot().cmd;
                                     const bool ended=end_open_pass();
                                     VkBufferCopy region{view.offset,buf->offset,bytes};
@@ -7923,7 +7946,7 @@ vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemor
       FILE *n=fopen((base+"/gfx-warm-interval").c_str(),"rb");if(n){unsigned v=0;if(fscanf(n,"%u",&v)!=1)v=0;fclose(n);warm::interval_us=v*1000ull;}
       xbg_logf("NVN warm throttle budget_per_frame=%llu interval_ms=%llu",(unsigned long long)warm::budget_per_frame,(unsigned long long)(warm::interval_us/1000));}
      warm::start();probe_init();
-    texel_copy_cache.reset();texel_copy_enabled=true;
+    texel_copy_cache.reset();texel_copy_enabled=true;readback_fullcopy_enabled=false;readback_fullcopy_hits=readback_fullcopy_bytes=0;
     for(auto &counts:texel_copy_stats)counts=TexelCopyStats{};
     wtrack::enabled=false;state=State{};state.color.logic_op=3;state.color.alpha_func=8;for(unsigned i=0;i<8;i++)state.blend[i]={i,2,1,2,1,1,1};stats.reset();memory_pressure_policy={};timing=XbgCpuTiming(timing_clock);pipeline_counts={};pipeline_before={};pipeline_tick=0;timing_active=false;timing_first=timing_last=0;live_profile_used=false;descriptor_detail=false;descriptor_timing=XbgDescriptorTiming{};descriptor_root=nullptr;draw_detail=false;draw_timing=XbgDrawTiming{};draw_root=nullptr;completed=0;last_attachment_trace=UINT64_MAX;sampler_mirror_clamp_enabled=VK_FALSE;failed=false;error_text[0]=0;initialized=true;
     const char *resident_budget = getenv("FFRS_NATIVE_RSS_LIMIT_MIB");
@@ -8190,7 +8213,7 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
         static const struct{const char *name;bool *flag;} live_flags[]={
           {"texdirty",&tex_dirty},{"texmemo",&texel_memo_enabled},{"imgcache",&img_cache_enabled},
           {"descmemo",&desc_memo_enabled},{"dynpartial",&dyn_partial_enabled},{"xmemo",&xmemo_enabled},
-          {"bindcache",&bind_cache_enabled},{"ownedinput",&owned_input_copy_enabled},
+          {"bindcache",&bind_cache_enabled},{"ownedinput",&owned_input_copy_enabled},{"rbfullcopy",&readback_fullcopy_enabled},
           {"gpuindexed",&gpu_indexed_enabled},{"uppro",&upload_prologue},{"depthaspect",&depth_aspect_enabled},
           {"pipefast",&pipeline_fast_enabled},{"pipememo",&pipe_memo},{"occlusion",&occlusion_batch_enabled},
           {"vcache",&vcache::enabled},{"texrecord",&texture_record_cache_enabled},{"adpf",&performance_hint::enabled},

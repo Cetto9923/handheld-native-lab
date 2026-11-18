@@ -83,3 +83,8 @@ RG PID19868覆盖安装全文SHA回读匹配，独立用户存档Continue进入�
 
 ### Readback清零成本实际定位
 新diagnostic-only APK a7ac814027ca74280ba81479a9d6556afcb2e34922ee7317c2d554c98c991367（.local/arsenal-readback-probe-20261118），Android/host均0；追加细分计时不改变渲染。独立提取48组合及真实timing header root-null/nested/early-return ASan/UBSan通过，记录.local/arsenal-fullcopy-review/。荣耀PID31090同兵工厂独立档，frame3602–3607 descriptor52.9485ms，readback_zero7.9435ms/62,798,824B，copy0.5224ms/6,275,048B，alloc0.1747/guard0.1351/flush0.1419ms，guarded_bytes0/noncoherent_flushes0。日志engine-readback31090.log当前最后窗口，勿混前面旧probe数据。新证据支持验证仅随后GPU全量覆盖的两条pending-view copy路径，尚未取消任何清零、未称性能提升。原FF已停止；69%正在充电、电池30℃（启动前实读）。行为候选必须保持guard分支、原完整copy/barrier及存活期，不泛化到部分shader输出。
+
+### 输入纠错与fullcopy候选（尚未验收）
+用户指出滑屏时角色未移动。撤回本轮resolution-ab与fullcopy-ab off1/on1的“移动”描述：仅有输入命令和起止位置相似，不足证明真实移动，不能用作移动性能/优化收益验收。已停止全部swipe，改input keyevent --longpress22，连续3次后紫色恢复点明显从中央移至左边、角色走到空地（/tmp/ff-direction-right2.png），确认方向键有效。后续仅21/22固定方向键。
+fullcopy2 APK a730217de510bd3bea40d36e5788c3e4e67da491e9b26ede30313989b514df90，Android/host0；default-off两完整GPU复制分支候选，guard/未知bound/alignment/alias/indirect CPU读取/probe全回旧路径。独立ASan32组合、原uniform-arena3项及两调用点完整copy/barrier静态检查通过。第一版fc07未安装：审查发现indirect_input隐性CPU读而进一步收窄；host测试helper位置影响fixture编译，重定位helper修复，不削弱测试。
+当前荣耀PID744隔离兵工厂正在方向键A/B，未称性能提高。最初swipe on1掉至21FPS，off后同样约21，未归因候选；需实际固定路线/温频记录。Current HAL skin36.52/status0，GPU50.9–52.1、电池33℃，无热保护；按用户要求正常温度不例行暂停冷却。
