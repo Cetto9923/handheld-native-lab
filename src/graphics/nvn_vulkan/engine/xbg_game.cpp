@@ -442,7 +442,7 @@ void descriptor_report(){
     const uint64_t total=timing.counters[XbgCpuTiming::Descriptor].exclusive_ns;
     const uint64_t tagged=descriptor_timing.sum();
     xbg_logf("NVN DESC_TIMING v=2 first=%llu last=%llu descriptor_ns=%llu tagged_ns=%llu remaining_ns=%llu coverage=%s clock_reads=%llu",(unsigned long long)(timing_before.presents+1),(unsigned long long)stats.presents.load(),(unsigned long long)total,(unsigned long long)tagged,(unsigned long long)(tagged<=total?total-tagged:0),tagged<=total && !descriptor_timing.invalid && !descriptor_timing.top?"OK":"INVALID",(unsigned long long)descriptor_timing.reads);
-    const char *names[]={"setup","buffer_bind","image_lookup","image_transition","image_view","sampler_bind","element_rest"};
+    const char *names[]={"setup","buffer_bind","image_lookup","image_transition","image_view","sampler_bind","element_rest","texel_alias","texel_pending","texel_readback","texel_view_lookup","texel_view_create"};
     for(unsigned i=0;i<XbgDescriptorTiming::Count;++i)xbg_logf("NVN DESC_TIMING part=%s calls=%llu exclusive_ns=%llu",names[i],(unsigned long long)descriptor_timing.counters[i].calls,(unsigned long long)descriptor_timing.counters[i].ns);
     xbg_logf("NVN DESC_TIMING part=remaining calls=0 exclusive_ns=%llu",(unsigned long long)(tagged<=total?total-tagged:0));
 }
@@ -5170,12 +5170,14 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                     if(!res){
                     Buffer *buf=nullptr;uint64_t base=uint64_t(texture.mem),bytes=texture.L.size;
                     VkDeviceSize buf_offset=0;
+                    {DESC_SCOPE(TexelAlias);
                     for(auto &s:out.storage){
                         if(base>=s.first.first && base+bytes<=s.first.first+s.first.second){
                             buf=s.second;
                             buf_offset=buf->offset+(base-s.first.first);
                             break;
                         }
+                    }
                     }
                     if(buf){
                         if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER){
@@ -5196,23 +5198,23 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                                 shadow=std::memcmp(overlay_shadow.owner->view.mapped,texture.mem,size_t(bytes))==0;
                             }
                             if(shadow){
-                                buf=out.keep(readback_buffer(bytes));VkCommandBuffer cmd=recording_slot().cmd;end_open_pass();
+                                buf=out.keep(DESC_CALL(TexelReadback, readback_buffer(bytes)));VkCommandBuffer cmd=recording_slot().cmd;end_open_pass();
                                 VkBufferCopy region{overlay_shadow.owner->view.offset,buf->offset,bytes};
                                 vkCmdCopyBuffer(cmd,overlay_shadow.owner->view.buffer,buf->buffer,1,&region);
                                 VkMemoryBarrier copied{VK_STRUCTURE_TYPE_MEMORY_BARRIER};copied.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;copied.dstAccessMask=VK_ACCESS_SHADER_READ_BIT|VK_ACCESS_SHADER_WRITE_BIT;
                                 vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,0,1,&copied,0,nullptr,0,nullptr);
                                 retire_object(overlay_shadow.owner);
                                 xbg_logf("NVN partial overlay shadow bound shader=%s binding=%u frame=%llu bytes=%llu",shader.key.c_str(),b.binding,(unsigned long long)stats.presents.load(),(unsigned long long)bytes);
-                            }else if(pending_view(base,bytes,1,view)){
-                                buf=out.keep(readback_buffer(bytes));
+                            }else if(DESC_CALL(TexelPending, pending_view(base,bytes,1,view))){
+                                buf=out.keep(DESC_CALL(TexelReadback, readback_buffer(bytes)));
                                 VkCommandBuffer cmd=recording_slot().cmd;
                                 end_open_pass();
                                 VkBufferCopy region{view.offset,buf->offset,bytes};
                                 vkCmdCopyBuffer(cmd,view.buffer,buf->buffer,1,&region);
                                 full_barrier(cmd);
                             }else{
-                                cpu_access(base,bytes,3);
-                                buf=out.keep(readback_buffer(bytes,texture.mem,bytes));
+                                DESC_CALL(TexelReadback, cpu_access(base,bytes,3));
+                                buf=out.keep(DESC_CALL(TexelReadback, readback_buffer(bytes,texture.mem,bytes)));
                             }
                             out.storage.push_back({{base,bytes},buf});
                             out.written.push_back({{base,bytes},buf});
@@ -5222,7 +5224,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                         }else{
                             Buffer view;
                             uint64_t source_version=0;
-                            if(pending_view(base,bytes,1,view,&source_version)){
+                            if(DESC_CALL(TexelPending, pending_view(base,bytes,1,view,&source_version))){
                                 const bool normal=!capture.active && !capture.probe && !provenance_file &&
                                     !pass_prof_active() && !draw_detail && !fire_trace_active() && !water_ready() &&
                                     !flame_diag_enabled && !ubtrace.on.load(std::memory_order_relaxed);
@@ -5237,7 +5239,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                                     buf=out.keep(copied);
                                     ++counts->hits;counts->hit_bytes+=bytes;
                                 }else{
-                                    buf=out.keep(readback_buffer(bytes));
+                                    buf=out.keep(DESC_CALL(TexelReadback, readback_buffer(bytes)));
                                     VkCommandBuffer cmd=recording_slot().cmd;
                                     const bool ended=end_open_pass();
                                     VkBufferCopy region{view.offset,buf->offset,bytes};
@@ -5287,7 +5289,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                             }
                         }
                     }
-                    VkBufferViewCreateInfo v{VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO};v.buffer=buf->buffer;v.offset=buf_offset;v.format=tf;v.range=bytes;VkBufferView bv;{auto &cache=recording_slot().texel_views;std::array<uint64_t,4> key{uint64_t(v.buffer),v.offset,v.range,uint64_t(v.format)};auto f=cache.find(key);if(f!=cache.end())bv=f->second;else{VK(vkCreateBufferView(cfg.device,&v,nullptr,&bv));cache.emplace(key,bv);}}texel_views.push_back(bv);write.pTexelBufferView=&texel_views.back();if(probe_is_active())capture_log("PROBE_TEXEL_BIND shader=%s stage=%u binding=%u element=%u type=%u scalar=%u serial=%llu nvnFormat=%#x vk=%u guest=%#llx bytes=%llu",shader.key.c_str(),st,b.binding,element,unsigned(b.type),(b.flags>>16)&3,(unsigned long long)texture.serial,texture.d.format,unsigned(v.format),(unsigned long long)base,(unsigned long long)bytes);}}
+                    VkBufferViewCreateInfo v{VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO};v.buffer=buf->buffer;v.offset=buf_offset;v.format=tf;v.range=bytes;VkBufferView bv;{auto &cache=recording_slot().texel_views;std::array<uint64_t,4> key{uint64_t(v.buffer),v.offset,v.range,uint64_t(v.format)};auto f=DESC_CALL(TexelViewLookup, cache.find(key));if(f!=cache.end())bv=f->second;else{{DESC_SCOPE(TexelViewCreate);VK(vkCreateBufferView(cfg.device,&v,nullptr,&bv));}cache.emplace(key,bv);}}texel_views.push_back(bv);write.pTexelBufferView=&texel_views.back();if(probe_is_active())capture_log("PROBE_TEXEL_BIND shader=%s stage=%u binding=%u element=%u type=%u scalar=%u serial=%llu nvnFormat=%#x vk=%u guest=%#llx bytes=%llu",shader.key.c_str(),st,b.binding,element,unsigned(b.type),(b.flags>>16)&3,(unsigned long long)texture.serial,texture.d.format,unsigned(v.format),(unsigned long long)base,(unsigned long long)bytes);}}
                 else{if(aspect(texture.d.format)!=VK_IMAGE_ASPECT_COLOR_BIT){auto prior=images.find(texture.serial);if(prior==images.end() || (!prior->second->uploaded && !prior->second->gpu_written))xbg_logf("NVN initial depth descriptor shader=%s stage=%u slot=%u id=%d serial=%llu format=%#x",shader.key.c_str(),ns,slot,id,(unsigned long long)texture.serial,texture.d.format);}
                     VkDescriptorImageInfo ii{};
                     Image &im=get_image(&texture,true);provenance_log("BIND shader=%s stage=%u slot=%u id=%d handle=%llu descriptorMem=%p descriptorOff=%lld type=%u",shader.key.c_str(),ns,slot,id,(unsigned long long)handle,state.texture_pool.pool?state.texture_pool.pool->mem:nullptr,(long long)state.texture_pool.off,unsigned(b.type));provenance_image("BIND",&texture,im,registered.has_view?&registered.view:nullptr);DESC_CALL(ImageTransition, prepare_read(im,commands.command,b.type!=VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,attachment_barrier_enabled && b.type!=VK_DESCRIPTOR_TYPE_STORAGE_IMAGE?im.sampled_aspects(registered.has_view?&registered.view:nullptr):0));if(desc_memo_recording)desc_memo_images.push_back({&texture,&im,record,record->revision});ii.imageView=DESC_CALL(ImageView, im.view(registered.has_view?&registered.view:nullptr,false,b.type==VK_DESCRIPTOR_TYPE_STORAGE_IMAGE));ii.imageLayout=VK_IMAGE_LAYOUT_GENERAL;

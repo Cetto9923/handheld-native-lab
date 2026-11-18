@@ -42,3 +42,9 @@ RG PID19868覆盖安装全文SHA回读匹配，独立用户存档Continue进入�
 离线六模块发现三FS实际读取VS没有写出的varying：17c6/ab0 loc7.xyz；5a97/350a loc7.xyz；3bce/c9c4 loc4.xyz。原模块及通用改写链各自spirv-val通过不代表链接接口完整。来源Translator.cs固定revision8e0916bf04f6fb8542c52ed01b166a8796158ca0中的EmitOutputsInitialization对下阶段缺失输出初始化xyz0/w1，窄候选依此只补三个精确长度/全字节hash匹配VS，不删片段输入，不负缓存跳绘制。仅Qualcomm运行/warm两路径一致调用。ASan/UBSan两项含真实三模块spirv-val与原指令逐字保留检查通过。
 候选.local/arsenal-interface-20261118/FFRS-1.0.72-arsenal-interface.apk SHA a07942f77d31ea35ff75e58df943f01e01ef8693471e863abf72b04d351d4137，Android构建0，host运行中。尚未完成实机场景验收，不能宣称修复或发布。此候选没有改种子资产，未覆盖其他项目。当前荣耀验证候选；RG已交库负责人短UI测试。
 荣耀候选PID19759正式帧CSV窗口：13.4997秒左右移动301独立呈现，22.22FPS、P99 94.74ms/max183.66ms、3次>100；随后战斗连续A输入20.8179秒14.41FPS、max492.22ms、16次>100。不是最终达标，仍存在CPU/GPU持续负载和首次新管线卡顿。六帧detail CPU探针first6812–6817中descriptor119.49ms/总measured285.17ms，诊断本身开销不可当性能验收。日志轮转，主log+log.1已同时拉回。原17c6/ab0每帧失败已停止，但只这一修复不能称整个副本解决。APK a079候选host完成exit0、输入SHA不变。荣耀已停止游戏并交库负责人短窗口；电量48%、未充电、温度30°C，后续<=20%停止高负载。新增水之都需求另作同场景两设备对照，未预设根因。
+
+## 追加：水都基线与细分 CPU 诊断（2026-11-18）
+- 已从既有 memory-survival63 私有备份恢复第三章水都 Slot01 到独立 `shield-regression-20261118104001`，未覆盖正式存档；荣耀生产72 PID21619 实测旅馆外水面花朵路径出现严重低帧。
+- 当前会话日志包含 VS5a97a7e1a99cce45 / FS350ac5272e645d62 及 FS8b3b271f21559280 的管线创建 -13。前者已在窄接口修复证据内；仍须候选同场景对照，不能宣布水都修好。
+- 已整合 diagnostic-only texel 子计时（alias/pending/readback/view lookup/create），仅现有 gfx-cpu-profile 诊断窗口启用，正常路径不计时；无缓存、同步或生命周期优化。独立 ASan/UBSan 用例通过；Android 构建通过，host验证进行中。候选在 `.local/arsenal-texel-probe-20261118/`，未发布。
+- 荣耀实读51%，AC/USB powered true/status2，电池32°C，确认正在充电。
