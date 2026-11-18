@@ -66,3 +66,7 @@ RG PID19868覆盖安装全文SHA回读匹配，独立用户存档Continue进入�
 
 ### 温度纠错与独立验收要求
 上段“GPU92°C”读到了 thermalservice Cached temperatures，撤回作为实时温度证据。已保存的 thermal25490-end.txt 的 Current temperatures from HAL 实为GPU49.3–52.8°C、CPU最高73.2°C、skin38.861°C/status1、电池34°C。停止后当前HAL GPU34–35°C/status0。后续严格分Current HAL/缓存，记录充电；以匹配冷起点的旧/候选、不锁/锁30短场景对照调查发热，不预设充电根因，不以缓存峰值夸大。CPU频率可读，GPU频率接口无可读值则标缺测，不变更权限。
+
+### 二次细分计时与后续约束
+候选2 SHA6d2d016be2249f95692694dbb0c9a477ef9efa521f4cc3b11f2256f327b32507、Android/host0，实际源码checkpoint6af7a82。Honor PID27308隔离兵工厂2702–2707六帧：descriptor55.39ms，image_lookup11.22、readback9.93、resident_pending1.02、resident_acquire3.50、CPU_access0.023、view_lookup0.625、remaining15.64。该次位置/温度/CPU频率与此前不同，不作优化收益比率；新增诊断无渲染行为修改。Honor测试后停止，等待独立热对照，RG5038 offline。文件 `honor-arsenal/engine-probe2.log`。
+用户新增分辨率：初核有 `operation_mode` intent→oe-operation-mode→HLE GetOperationMode，可能借游戏手持/底座档自行选择内部尺寸，待真实附件尺寸证据。`gfx-render-policy`仅Surface展示1920x1080，不可冒充内部缩放。已与统一库沟通不猜参数、不改当前默认、不与锁帧绑定；需重启、UI/触控/画质实测。
