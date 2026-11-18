@@ -4281,6 +4281,17 @@
    "branch": "task/T-codex-recovery-20261114",
    "acquired_at": "2026-11-17T22:55:19.729695+08:00",
    "checkpoint": "仅证据和报告写入，源码先只读。"
+  },
+  {
+   "task": "DOT-ARSENAL-20261118",
+   "owner": "dot /root/ff_arsenal",
+   "paths": [
+    "coordination/results/DOT-ARSENAL-20261118.md",
+    ".local/arsenal-20261118/"
+   ],
+   "write_state": "EVIDENCE_ONLY",
+   "acquired_at": "2026-11-18T09:44:22.098937+08:00",
+   "checkpoint": "用户授权RG实测覆盖仅荣耀旧限制；不修改旧writer持有源码，源码修复前再登记。荣耀已让库，RG45589测试独立存档。"
   }
  ],
  "tasks": [
@@ -11330,6 +11341,22 @@
    "acceptance": "菜单两列完整显示，四向屏幕可切换并保持游戏比例，手动180度校准可持久保存，原生画面/触摸可继续操作，诊断版本指纹来自实际APK文件，正式存档保全",
    "checkpoint": "用户要求结束旋转问题并提交稳定版本。最终源码6c05013，APK0fb453ad，114检查和Android构建通过，荣耀回读一致、105私有项保全。同步旋转与自动旋转已验证，最终竖屏比例视觉、重开与Android诊断导出未完成，按用户指令收口。发布主目录已交付72，71归档。ADB断开使结束8075测试副本进程的请求未送达，当前进程状态未知。",
    "user_closed_scope": "2026-11-18 用户要求结束旋转问题并提交稳定版本，剩余视觉验收记录为未完成。"
+  },
+  {
+   "id": "DOT-ARSENAL-20261118",
+   "status": "in_progress",
+   "owner": "dot /root/ff_arsenal",
+   "inputs": [
+    "用户视频与4文件兵工厂存档",
+    "1.0.67 RG已安装基线",
+    "1.0.72正式APK"
+   ],
+   "outputs": [
+    "coordination/results/DOT-ARSENAL-20261118.md"
+   ],
+   "acceptance": "真实兵工厂移动/战斗冷暖测量与修复回归；独立APK及统一App模块发布分别验证，未测不声称通过",
+   "recovery": "私有100文件荣耀与12文件RG完整备份于.cetto-arsenal-inputs；原RG67 APK保留，测试仅独立save root",
+   "checkpoint": "已复现RG兵工厂首次管线长帧及持续战斗21-23fps；seed私有候选未过关不发布。恢复生产72、冷测试前缓存，停止游戏冷却。源码只读审查descriptor结构计划。详见results。"
   }
  ],
  "blockers": [

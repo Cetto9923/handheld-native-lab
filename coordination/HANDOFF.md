@@ -5561,3 +5561,8 @@ GitHub v1.0.71已发布并设为最新版，精确构建标签b7a08b3；APK bd27
 用户结束旋转问题并要求提交稳定版。最终源码6c05013，APK0fb453ad，大小3777820B。114检查与Android构建通过，659输入一致。荣耀8075实机确认同指针Surface尺寸变化会更新呈现代次3→4→5→6。用户确认自动旋转、画面与菜单同向，最终竖屏比例视觉、重开保持与新诊断字段Android导出未完成。主发布目录已交付72，71归档，详见RELEASE72及结果报告。
 
 退出PC模式已按用户授权完成，临时wm选项恢复free、default、ignore默认true及原user_rotation1。采样20631已停止。结束本应用测试进程时ADB断开，force-stop未送达，最后PID8075处于独立测试存档副本。正式游玩应完全关闭后从桌面重开。设备仅荣耀A42BBB5109000333。黑屏和帧率优化仍按各任务既有缺口解释。外来移植指南WIP保留，Main只读。
+
+### DOT-ARSENAL-20261118 checkpoint
+RG10.12.80.90:45589（ADB5038）兵工厂任务继续，荣耀留给统一库。玩家存档完整备份及隔离副本详见 coordination/results/DOT-ARSENAL-20261118.md。RG当前私人seed候选PID6973，无正式发布；保留原缓存.arsenal-original及冷A.arsenal-coldA，不要清理。候选只增加148预热配方，native/Java不变，尚无受控A/B验收，不宣称修复。所有证据~/.cetto-arsenal-inputs/rg-baseline。另有经验指南既有WIP，禁止覆盖。
+
+DOT-ARSENAL补充：候选实际攻击仍21.92/23.36fps，未过关；RG已恢复生产72 SHA0fb453ad并回读一致，游戏停止。缓存恢复为冷A之前的学习后缓存（不是初次67开机缓存），对应.arsenal-original备份完整保留；.arsenal-coldA/B也保留。温度52°C/skin40.9°C已恢复status0。后续源码候选需另登记writer。
