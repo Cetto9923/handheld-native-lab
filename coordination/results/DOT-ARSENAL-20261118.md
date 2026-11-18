@@ -70,3 +70,10 @@ RG PID19868覆盖安装全文SHA回读匹配，独立用户存档Continue进入�
 ### 二次细分计时与后续约束
 候选2 SHA6d2d016be2249f95692694dbb0c9a477ef9efa521f4cc3b11f2256f327b32507、Android/host0，实际源码checkpoint6af7a82。Honor PID27308隔离兵工厂2702–2707六帧：descriptor55.39ms，image_lookup11.22、readback9.93、resident_pending1.02、resident_acquire3.50、CPU_access0.023、view_lookup0.625、remaining15.64。该次位置/温度/CPU频率与此前不同，不作优化收益比率；新增诊断无渲染行为修改。Honor测试后停止，等待独立热对照，RG5038 offline。文件 `honor-arsenal/engine-probe2.log`。
 用户新增分辨率：初核有 `operation_mode` intent→oe-operation-mode→HLE GetOperationMode，可能借游戏手持/底座档自行选择内部尺寸，待真实附件尺寸证据。`gfx-render-policy`仅Surface展示1920x1080，不可冒充内部缩放。已与统一库沟通不猜参数、不改当前默认、不与锁帧绑定；需重启、UI/触控/画质实测。
+
+### 实际内部尺寸取证
+在同一隔离兵工厂存档位置，分别完整重启 `operation_mode=0` 与恢复默认1，仅开启一帧 gfx-pass-live 诊断，不将它计入性能验收。
+- 低档 PID28072/frame2433：多项主几何/深度/Gbuffer pass768×436，最终合成/UI1280×720。
+- 默认mode1/frame1923：主几何/深度/Gbuffer1040×584，动态policy日志存在80→60%自适应；两档都不是固定1080内部渲染。
+- 证据低档 low-mode-engine/guest.log、默认 default-mode-engine/guest.log，截图保留/tmp/honor-low-factory.png、/tmp/honor-default-factory.png。已恢复oe-operation-mode=1、gfx-render-policy=1、gfx-target-fps=0并停止游戏。
+- 已告统一库用“标准/较低画质”且要求重新启动，不以屏幕/合成分辨率冒充内部尺寸。不宣称低档完整双机视觉/性能/温度通过。
