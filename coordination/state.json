@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-18T07:19:44.434633+00:00",
+ "updated_at": "2026-11-18T16:11:06.588545+08:00",
  "phase": "1.0.71已发布GitHub，APK和中文说明回读核验完成",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -4311,13 +4311,15 @@
     "src/graphics/nvn_vulkan/engine/xbg_api_breadcrumb.h",
     "tests/native/test_api_breadcrumb.py",
     "src/graphics/nvn_vulkan/nvn_vk_adapter.c",
-    "tests/native/test_init_cleanup_failure.py"
+    "tests/native/test_init_cleanup_failure.py",
+    "src/runtime/nso/nso_loader.c",
+    "tests/native/test_fault_chain.py"
    ],
    "write_state": "PERFORMANCE_REVIEW",
    "acquired_at": "2026-11-18T09:44:22.098937+08:00",
-   "checkpoint": "Init+cleanup dual-failure terminal guard implemented in adapter; existing fatal callback records init/cleanup errors and exits70 instead of returning to unsafe guest continuation. Success/early-init/cleanrollback unchanged. Independent review passed;8 extracted production-branch cases ASan/UBSan incl NULL,size,already-ready and exact old-code negative pass. Normal candidate342a363d Android/host0, unstripped symbols preserved. Device regression BLOCKED both offline: Honor old33621/43141 refused; RG45589 timeout; Bonjour/mDNS empty. No formal release, no Mali root-cause claim.",
+   "checkpoint": "MT6991 target descriptors independent review found no proven invalid binding/lifetime. New concrete observability defect: custom native handler _exit139 suppresses native crash classification. Honor isolated shell subprocess test exit mode exited139 vs restore-and-return mode SIGSEGV11 with originalPC/fa8 and3frame Android tombstone. No originalAPK/source behavior change yet; independent review of bounded Android synchronous-fault forwarding requested. Published73 unchanged; not crash-root-cause fix.",
    "objective": "Evidence-driven CPU/GPU diagnosis and safe optimization; actual directional movement, preserve synchronization/saves.",
-   "checkpoint_at": "2026-11-18T14:00:07.316292+08:00"
+   "checkpoint_at": "2026-11-18T16:11:06.588545+08:00"
   }
  ],
  "tasks": [
@@ -11382,7 +11384,7 @@
    ],
    "acceptance": "真实兵工厂移动/战斗冷暖测量与修复回归；独立APK及统一App模块发布分别验证，未测不声称通过",
    "recovery": "私有100文件荣耀与12文件RG完整备份于.cetto-arsenal-inputs；原RG67 APK保留，测试仅独立save root",
-   "checkpoint": "New user9400 report160005 confirms actual1.0.73/code73/APK7f3e7155 on vivoV2405A/MT6991 Android16. Two exit139 records; retained fault SIGSEGVfa0x8/vendorMaliPC+1eda09c/LR+1eda024, same signature as72; lasttarget073ce3549023words/frame1174. Therefore73 did NOT resolve this originaldevice fault. Lastshader adjacency still notAPIcausality. Screenshottitle visible, notfailurebeforeanylaunch. No perAPIbreadcrumbs in ordinary73 report. Performance work paused for priority stability; publishedbytes unchanged.",
+   "checkpoint": "MT6991 target descriptors independent review found no proven invalid binding/lifetime. New concrete observability defect: custom native handler _exit139 suppresses native crash classification. Honor isolated shell subprocess test exit mode exited139 vs restore-and-return mode SIGSEGV11 with originalPC/fa8 and3frame Android tombstone. No originalAPK/source behavior change yet; independent review of bounded Android synchronous-fault forwarding requested. Published73 unchanged; not crash-root-cause fix.",
    "dependencies": [],
    "role": "performance and graphics repair",
    "branch": "task/T-codex-recovery-20261114"
