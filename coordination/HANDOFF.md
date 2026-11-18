@@ -5682,3 +5682,8 @@ Build.local/arsenal-init-cleanup-20261118; source hashes preserved, sole test re
 ### USB reconnect and normal-candidate scene regression
 Honor USB reconnected A42BBB5109000333. Normal candidate342a363d installed, device APK fullSHA matched. PID29729 thirdchapter donor132001 room→outside via longpress Dpad21x4/20x3 observed, survived until deliberate stop. Short normal-path regression only; no Mali-root-cause/FPS/audio acceptance. 73% charging status2/26C. Brief library helper window, factory actual-movement regression next.
 Private images init-cleanup29729/ff-out.png and ff-out2.png. Initial non-longpress batch did not exit room; corrected actual held Dpad route successfully exits. Do not count first batch as successful movement route.
+
+
+### Normal-candidate factory movement regression
+Normal342a Honor PID31635 isolatedfactory20261118094001 uncapped/mode1/keep1 Dpad3Rx3Lx6:27.0398s distinct21.8937FPS,p95 56.5759/p99 76.2009/max179.8834ms. Before/after scene confirms factory and displacement, no observed crash, deliberately stopped aftercapture. Not30FPS/fullcombat/audio acceptance; no perf improvement claimed from failure-only guard.
+Private init-cleanup-ab/normal342a CSV/window/screens/thermal. Actual thermal values in captured files; no repeated keep2 experiment. RG now discovered10.12.80.90:34115, library low-load helper window before FF dual-device.
