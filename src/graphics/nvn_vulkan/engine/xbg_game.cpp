@@ -316,6 +316,15 @@ bool perf_timing=true; // always-on wall-time breakdown for NVN PERF (exclusive 
 // every 32 frames. The Android app turns it off (DM_GFX_PERF_SAMPLE=0); measurement runs set the marker.
 unsigned perf_sample=32;bool perf_frame_timed=true;uint64_t perf_timed_frames=0;
 XbgCpuTiming::Counter perf_timing_before[XbgCpuTiming::Count];
+// Descriptor-only bounded diagnostic. Fixed storage; no clocks or allocation.
+enum class ReadbackSite : unsigned { Other, StoragePending, StorageCPU, TexelPending, TexelCPU, Count };
+struct ReadbackSiteStats {
+    uint64_t calls=0,alloc_bytes=0,copy_bytes=0,zero_bytes=0,guard_bytes=0,fullcopy_bytes=0;
+    uint64_t sizes[5]{}; // requested n: <=4 KiB, <=64 KiB, <=1 MiB, <=16 MiB, larger
+    void allocation(size_t n){++calls;alloc_bytes+=n;++sizes[n<=4096?0:n<=65536?1:n<=1048576?2:n<=16777216?3:4];}
+};
+ReadbackSiteStats readback_sites[unsigned(ReadbackSite::Count)]{};
+bool perf_bounded_contaminated=false;
 bool descriptor_detail=false;
 XbgDescriptorTiming descriptor_timing;
 thread_local XbgCpuTiming::Scope *descriptor_root=nullptr;
@@ -421,7 +430,8 @@ void finish_work(){}
 #endif
 }
 void timing_start(){
-    indexed_ready_stats={};indexed_bbox_stats={};
+    perf_bounded_contaminated=true;
+    indexed_ready_stats={};indexed_bbox_stats={};for(auto &site:readback_sites)site={};
     timing_active=true;timing_start_ns=timing_clock();pipeline_before=pipeline_counts;
     timing_before={stats.submissions.load(),stats.draws.load(),stats.dispatches.load(),stats.presents.load(),stats.shader_loads.load()};
 }
@@ -474,6 +484,12 @@ void descriptor_report(){
     for(unsigned i=0;i<XbgDescriptorTiming::Count;++i)xbg_logf("NVN DESC_TIMING part=%s calls=%llu exclusive_ns=%llu",names[i],(unsigned long long)descriptor_timing.counters[i].calls,(unsigned long long)descriptor_timing.counters[i].ns);
     xbg_logf("NVN DESC_TIMING part=remaining calls=0 exclusive_ns=%llu",(unsigned long long)(tagged<=total?total-tagged:0));
     xbg_logf("NVN READBACK_TIMING alloc_bytes=%llu copy_bytes=%llu zero_bytes=%llu guarded_bytes=%llu noncoherent_flushes=%llu",(unsigned long long)descriptor_timing.readback_alloc_bytes,(unsigned long long)descriptor_timing.readback_copy_bytes,(unsigned long long)descriptor_timing.readback_zero_bytes,(unsigned long long)descriptor_timing.readback_guard_bytes,(unsigned long long)descriptor_timing.readback_noncoherent_flushes);
+    static const char *site_names[]={"other","storage-pending-fullcopy","storage-CPU-preserve","texel-pending","texel-CPU"};
+    for(unsigned i=0;i<unsigned(ReadbackSite::Count);++i){const auto &v=readback_sites[i];
+        xbg_logf("NVN READBACK_SITE v=1 site=%s calls=%llu alloc_bytes=%llu copy_bytes=%llu zero_bytes=%llu guard_bytes=%llu fullcopy_bytes=%llu sizes=%llu/%llu/%llu/%llu/%llu",site_names[i],
+            (unsigned long long)v.calls,(unsigned long long)v.alloc_bytes,(unsigned long long)v.copy_bytes,(unsigned long long)v.zero_bytes,(unsigned long long)v.guard_bytes,(unsigned long long)v.fullcopy_bytes,
+            (unsigned long long)v.sizes[0],(unsigned long long)v.sizes[1],(unsigned long long)v.sizes[2],(unsigned long long)v.sizes[3],(unsigned long long)v.sizes[4]);}
+
 }
 void draw_report(){
     if(!draw_detail)return;
@@ -1632,19 +1648,24 @@ void perf_frame(){
     if(memory_profile_counts)log_memory_profile_counts();
     double wall=double(now-perf.window_start)/1e6,f=double(perf.frames);
     if(poolreset::enabled){xbg_logf("NVN PERF poolreset queued=%.2f waits=%.2f wait_ms=%.3f",poolreset::queued/f,poolreset::waits/f,poolreset::wait_ns/1e6/f);poolreset::queued=poolreset::waits=poolreset::wait_ns=0;}
+    const bool perf_normalizable=perf_timed_frames && !perf_bounded_contaminated && !timing_active;
+    const double desc_divisor=perf_normalizable?double(perf_timed_frames):1.0;
     const double tf=perf_timed_frames?double(perf_timed_frames):1.0;   // parts and descriptor timers come from the timed frames only
     xbg_logf("NVN PERF v=1 count=attempts sync=%d frames=%llu wall_ms=%.1f fps=%.2f submit_cpu_ms=%.2f present_cpu_ms=%.2f gpu_ms=%.2f gpu_samples=%llu submits=%.2f waits=%.2f sync_wb=%llu sync_rb=%llu sync_q=%llu ops=%.1f folded=%.1f passes=%.1f draws=%.1f dispatches=%.1f why=w%llu/p%llu/a%llu(%llu,%llu,%llu,%llu,%llu,%llu|%llu,%llu,%llu,%llu)/c%llu/f%llu/s%llu views=%llu snap_hit=%llu snap_miss=%llu snap_mb=%.1f arena_peak_mb=%.1f pipelines=%zu layouts=%zu samplers=%zu passes=%zu images=%zu host_segments=%zu host_mb=%.1f",
         int(sync_mode),(unsigned long long)perf.frames,wall,f*1000.0/wall,double(perf.submit_cpu_ns)/1e6/f,double(perf.present_cpu_ns)/1e6/f,perf.gpu_samples?double(perf.gpu_ns)/1e6/f:-1.0,(unsigned long long)perf.gpu_samples,
         double(perf.submits)/f,double(perf.waits)/f,(unsigned long long)perf.sync_writeback,(unsigned long long)perf.sync_readback,(unsigned long long)perf.sync_query,double(perf.ops)/f,double(perf.folded_clears)/f,double(perf.passes)/f,double(perf.draws)/f,double(perf.dispatches)/f,
         (unsigned long long)perf.why_wait,(unsigned long long)perf.why_poll,(unsigned long long)perf.why_access,(unsigned long long)perf.access_by[1],(unsigned long long)perf.access_by[2],(unsigned long long)perf.access_by[3],(unsigned long long)perf.access_by[4],(unsigned long long)perf.access_by[5],(unsigned long long)perf.access_by[6],(unsigned long long)perf.access_by[8],(unsigned long long)perf.access_by[9],(unsigned long long)perf.access_by[10],(unsigned long long)perf.access_by[11],(unsigned long long)perf.why_cmdwait,(unsigned long long)perf.why_finish,(unsigned long long)perf.why_slot,(unsigned long long)perf.pending_views,(unsigned long long)perf.snapshot_hits,(unsigned long long)perf.snapshot_misses,double(perf.snapshot_bytes)/1048576.0,double(perf.arena_peak)/1048576.0,perf_counts().pipelines,perf_counts().layouts,perf_counts().samplers,perf_counts().passes,perf_counts().images,perf_counts().host_segments,double(perf_counts().host_bytes)/1048576.0);
     if(perf.clear_coverage_misses)xbg_logf("NVN PERF clearfold coverage_misses=%llu rejected=%llu legacy=%llu",(unsigned long long)perf.clear_coverage_misses,(unsigned long long)(perf.clear_coverage_misses-perf.clear_coverage_legacy),(unsigned long long)perf.clear_coverage_legacy);
-    if(!timing_active){
+    if(!timing_active && perf_normalizable){
         static const char *names[]={"other","draw","dispatch","descriptor","pass","buffer","pipeline","submit","fence","present","cleanup","hash","image","log","program","cpuwrite","snapshot"};
         char line[1024];int at=snprintf(line,sizeof(line),"NVN PERF parts_ms_per_frame timed=%llu",(unsigned long long)perf_timed_frames);
         for(unsigned i=0;i<XbgCpuTiming::Count && at<int(sizeof(line))-48;i++){const auto &c=timing.counters[i];if(c.calls<perf_timing_before[i].calls)perf_timing_before[i]=XbgCpuTiming::Counter{};uint64_t ns=c.exclusive_ns-perf_timing_before[i].exclusive_ns,calls=c.calls-perf_timing_before[i].calls;at+=snprintf(line+at,sizeof(line)-at," %s=%.2f/%.1f",names[i],double(ns)/1e6/tf,double(calls)/tf);perf_timing_before[i]=c;}
         xbg_logf("%s",line);
+    }else{
+        xbg_logf("NVN PERF parts normalization=unavailable reason=%s",(perf_bounded_contaminated || timing_active)?"bounded_profile/counter_reset":"no_sampled_frames");
+        for(unsigned i=0;i<XbgCpuTiming::Count;++i)perf_timing_before[i]=timing.counters[i];
     }
-    xbg_logf("NVN PERF storage_snapshots_per_frame=%.1f union_mb_per_frame=%.2f",storage_snap_count/f,storage_pages.size()*4096.0/1048576.0/tf);storage_pages.clear();storage_snap_count=0;
+    xbg_logf("NVN PERF storage_snapshots_per_frame=%.1f %s=%.2f normalization=%s",storage_snap_count/f,perf_normalizable?"storage_union_mb_per_sampled_frame":"storage_union_mb_window_total",storage_pages.size()*4096.0/1048576.0/desc_divisor,perf_normalizable?"sampled_frames":"unavailable/mixed");storage_pages.clear();storage_snap_count=0;
     xbg_logf("NVN PERF wtrack copied_kb_per_frame=%.1f dirty_pages_per_frame=%.1f mismatches=%llu fallbacks=%llu",wtrack::copied_bytes/1024.0/f,wtrack::dirty_pages/f,(unsigned long long)wtrack::mismatches,(unsigned long long)wtrack::fallbacks);wtrack::copied_bytes=wtrack::dirty_pages=0;
     xbg_logf("NVN PERF uniform_trimmed_bindings=%llu snap_mb_per_frame other=%.2f vertex=%.2f index=%.2f storage=%.2f texel=%.2f uniform=%.2f requested vertex=%.2f index=%.2f storage=%.2f",(unsigned long long)uniform_trimmed,snap_site_bytes[0]/1048576.0/f,snap_site_bytes[1]/1048576.0/f,snap_site_bytes[2]/1048576.0/f,snap_site_bytes[3]/1048576.0/f,snap_site_bytes[4]/1048576.0/f,snap_site_bytes[5]/1048576.0/f,snap_site_req[1]/1048576.0/f,snap_site_req[2]/1048576.0/f,snap_site_req[3]/1048576.0/f);for(auto &b:snap_site_bytes)b=0;for(auto &b:snap_site_req)b=0;
     xbg_logf("NVN PERF quad_rewrites=%llu warp_rewrites=%llu ldc_folds=%llu temps_forwarded=%llu nan_minmax=%llu",(unsigned long long)quad_rewrites.load(std::memory_order_relaxed),(unsigned long long)warp_rewrites.load(std::memory_order_relaxed),(unsigned long long)ldc_folds.load(std::memory_order_relaxed),(unsigned long long)temps_forwarded.load(std::memory_order_relaxed),(unsigned long long)nan_minmax_swaps.load(std::memory_order_relaxed));
@@ -1667,7 +1688,7 @@ void perf_frame(){
     xbg_logf("NVN PERF binds_skipped_per_frame=%.1f xmemo_hits=%.1f drops=%llu bumps=%llu/%llu/%llu/%llu/%llu pinned=%zu/%zu",binds_skipped/f,xmemo_hits/f,(unsigned long long)xmemo_drops,(unsigned long long)memo_bump[0],(unsigned long long)memo_bump[1],(unsigned long long)memo_bump[2],(unsigned long long)memo_bump[3],(unsigned long long)memo_bump[4],memo_pinned[0].size(),memo_pinned[1].size());binds_skipped=0;{char top[160]="";int at=0;bool used[32]={};
      for(int r=0;r<4;r++){int best=-1;for(int k=0;k<32;k++)if(!used[k] && offset_changed_at[k] && (best<0 || offset_changed_at[k]>offset_changed_at[best]))best=k;if(best<0)break;used[best]=true;at+=snprintf(top+at,sizeof(top)-size_t(at),"%s%d:%.1f",r?",":"",best,offset_changed_at[best]/f);}
      xbg_logf("NVN PERF binds set_binds=%.1f offsets_per_bind=%.1f offsets_only=%.1f changed n1=%.1f n2=%.1f n3=%.1f n4+=%.1f at=%s",set_binds/f,set_binds?double(set_bind_offsets)/double(set_binds):0.0,set_binds_offsets_only/f,offset_changes[1]/f,offset_changes[2]/f,offset_changes[3]/f,(offset_changes[4]+offset_changes[5]+offset_changes[6]+offset_changes[7]+offset_changes[8]+offset_changes[9])/f,top);}
-    set_binds=set_bind_offsets=set_binds_offsets_only=0;for(auto &x:offset_changes)x=0;for(auto &x:offset_changed_at)x=0;xmemo_hits=0;xbg_logf("NVN PERF noload_passes_per_frame=%.2f img_cache_hits=%.1f misses=%.1f why=%.1f/%.1f/%.1f/%.1f/%.1f/%.1f/%.1f/%.1f",noload_passes/f,img_cache_hits/f,img_cache_misses/f,noload_why[0]/f,noload_why[1]/f,noload_why[2]/f,noload_why[3]/f,noload_why[4]/f,noload_why[5]/f,noload_why[6]/f,noload_why[7]/f);for(auto &w:noload_why)w=0;noload_passes=0;img_cache_hits=img_cache_misses=0;xbg_logf("NVN PERF desc_ns_per_frame memo_key=%.2f tmpl_update=%.2f alloc=%.2f setkey=%.2f build=%.2f hit_total=%.2f",desc_ns[0]/1e6/tf,desc_ns[1]/1e6/tf,desc_ns[2]/1e6/tf,desc_ns[3]/1e6/tf,desc_ns[4]/1e6/tf,desc_ns[5]/1e6/tf);for(auto &x:desc_ns)x=0;template_updates=plain_updates=0;set_cache_hits=set_cache_misses=set_cache_fresh_skips=0;
+    set_binds=set_bind_offsets=set_binds_offsets_only=0;for(auto &x:offset_changes)x=0;for(auto &x:offset_changed_at)x=0;xmemo_hits=0;xbg_logf("NVN PERF noload_passes_per_frame=%.2f img_cache_hits=%.1f misses=%.1f why=%.1f/%.1f/%.1f/%.1f/%.1f/%.1f/%.1f/%.1f",noload_passes/f,img_cache_hits/f,img_cache_misses/f,noload_why[0]/f,noload_why[1]/f,noload_why[2]/f,noload_why[3]/f,noload_why[4]/f,noload_why[5]/f,noload_why[6]/f,noload_why[7]/f);for(auto &w:noload_why)w=0;noload_passes=0;img_cache_hits=img_cache_misses=0;xbg_logf("NVN PERF %s normalization=%s memo_key=%.2f tmpl_update=%.2f alloc=%.2f setkey=%.2f build=%.2f hit_total=%.2f",perf_normalizable?"desc_ms_per_frame":"desc_ms_window_total",perf_normalizable?"sampled_frames":"unavailable/mixed",desc_ns[0]/1e6/desc_divisor,desc_ns[1]/1e6/desc_divisor,desc_ns[2]/1e6/desc_divisor,desc_ns[3]/1e6/desc_divisor,desc_ns[4]/1e6/desc_divisor,desc_ns[5]/1e6/desc_divisor);for(auto &x:desc_ns)x=0;perf_bounded_contaminated=timing_active;template_updates=plain_updates=0;set_cache_hits=set_cache_misses=set_cache_fresh_skips=0;
     xbg_logf("NVN PERF async=%d drains=%.2f drain_ms=%.2f pace_ms=%.2f waits=%.2f",int(gfx_async),gfx_drain_calls.exchange(0)/f,gfx_drain_ns.exchange(0)/1e6/f,gfx_pace_ns.exchange(0)/1e6/f,gfx_wait_calls.exchange(0)/f);xbg_logf("NVN PERF events defer=%d deferred=%.2f cpu_reads_pending=%llu epochs=%zu reports=%zu targeted=%llu slots=%llu fallback=%llu",int(defer_events),events_deferred/f,(unsigned long long)event_reads,epochs.size(),pending_reports.size(),(unsigned long long)event_targeted,(unsigned long long)event_slots_targeted,(unsigned long long)event_fallback);xbg_logf("NVN PERF render_cond enabled=%d ops=%.2f skips=%.2f force_off=%.2f draws_skipped=%.2f",int(render_cond_enabled),perf.render_cond_ops/f,perf.render_cond_skips/f,perf.render_cond_force_off/f,perf.draws_skipped_cond/f);perf.render_cond_ops=perf.render_cond_skips=perf.render_cond_force_off=perf.draws_skipped_cond=0;xbg_logf("NVN PERF dispatch indirect=%.1f gpu=%.1f cpu_fallback=%.1f cpu_zero=%.1f cpu_xyz=%lld/%lld/%lld",disp_indirect_total/f,disp_gpu_indirect/f,disp_cpu_fallback/f,disp_cpu_zero/f,(long long)disp_cpu_xyz[0],(long long)disp_cpu_xyz[1],(long long)disp_cpu_xyz[2]);disp_indirect_total=disp_gpu_indirect=disp_cpu_fallback=disp_cpu_zero=0;disp_cpu_xyz[0]=disp_cpu_xyz[1]=disp_cpu_xyz[2]=0;if(evguard::enabled){Dl_info di{};uintptr_t pc=evguard::last_pc.load();const char *mod=pc && dladdr(reinterpret_cast<void*>(pc),&di) && di.dli_fname?di.dli_fname:"?";xbg_logf("NVN PERF evguard guards=%llu exact=%llu other=%llu writes=%llu last_addr=%#llx last_pc=%#llx in %s",(unsigned long long)evguard::guards.load(),(unsigned long long)evguard::exact.load(),(unsigned long long)evguard::other.load(),(unsigned long long)evguard::writes.load(),(unsigned long long)evguard::last_addr.load(),(unsigned long long)pc,mod);
      xbg_logf("NVN PERF evguard engine_opens=%llu recloses=%llu",(unsigned long long)evguard::engine_opens.load(),(unsigned long long)evguard::recloses.load());
      xbg_logf("NVN PERF evguard last word=%#llx x0=%#llx x1=%#llx x2=%#llx x3=%#llx x4=%#llx x5=%#llx",(unsigned long long)evguard::last_word.load(),(unsigned long long)evguard::last_x[0].load(),(unsigned long long)evguard::last_x[1].load(),(unsigned long long)evguard::last_x[2].load(),(unsigned long long)evguard::last_x[3].load(),(unsigned long long)evguard::last_x[4].load(),(unsigned long long)evguard::last_x[5].load());
@@ -1811,24 +1832,28 @@ Buffer uniform_buffer(size_t n,const void *data=nullptr,size_t copy=0){
     Arena &arena=honor_inline_enabled && !ab_off("uboarena")?s.uniform:s.stream;
     return stream_buffer(n,data,copy,true,&arena);
 }
-Buffer readback_buffer(size_t n,const void *data=nullptr,size_t copy=0,const Buffer *fullcopy_source=nullptr){
+Buffer readback_buffer(size_t n,const void *data=nullptr,size_t copy=0,const Buffer *fullcopy_source=nullptr,ReadbackSite site=ReadbackSite::Other){
     const bool measured=descriptor_detail && descriptor_root && descriptor_root->recorder;
+    ReadbackSiteStats *site_stats=(timing_active && measured)?&readback_sites[unsigned(site)]:nullptr;
     Slot &s=recording_slot();Buffer b=DESC_CALL(ReadbackAlloc, s.readback.alloc(n));
+    if(site_stats)site_stats->allocation(n);
     if(measured)descriptor_timing.readback_alloc_bytes+=n;
     {DESC_SCOPE(ReadbackGuard);
     for(const auto &g:s.guard)if(g.buffer==b.buffer && b.offset<g.end && g.begin<b.offset+n){
         if(data && copy)need(copy<=n,"Buffer copy overflow");
         Buffer src=stream_buffer(n,data,data?copy:0,true);s.pro_ops.push_back({src.buffer,b.buffer,src.offset,b.offset,VkDeviceSize(n)});
         if(measured)descriptor_timing.readback_guard_bytes+=n;
+        if(site_stats)site_stats->guard_bytes+=n;
         ++xview_guarded;xview_guarded_bytes+=n;return b;}}
     // Caller has promised a full GPU copy before any use; guards still take the
     // unchanged staging/prologue path above. No CPU write => no host flush.
     if(fullcopy_source && !data && !copy && readback_fullcopy_enabled && !ab_off("rbfullcopy") &&
        readback_fullcopy_bounds(*fullcopy_source,b,n)){
+        if(site_stats)site_stats->fullcopy_bytes+=n;
         ++readback_fullcopy_hits;readback_fullcopy_bytes+=n;return b;
     }
-    if(data && copy){DESC_SCOPE(ReadbackCopy);need(copy<=n,"Buffer copy overflow");need(b.mapped!=nullptr,"readback_buffer destination mapped pointer is null");evguard::EngineRead er(data,copy);memcpy(b.mapped,data,copy);if(measured)descriptor_timing.readback_copy_bytes+=copy;}else copy=0;
-    if(copy<n){DESC_SCOPE(ReadbackZero);need(b.mapped!=nullptr,"readback_buffer zero-fill destination mapped pointer is null");memset(static_cast<uint8_t*>(b.mapped)+copy,0,n-copy);if(measured)descriptor_timing.readback_zero_bytes+=n-copy;}   // only the bytes the copy leaves
+    if(data && copy){DESC_SCOPE(ReadbackCopy);need(copy<=n,"Buffer copy overflow");need(b.mapped!=nullptr,"readback_buffer destination mapped pointer is null");evguard::EngineRead er(data,copy);memcpy(b.mapped,data,copy);if(measured)descriptor_timing.readback_copy_bytes+=copy;if(site_stats)site_stats->copy_bytes+=copy;}else copy=0;
+    if(copy<n){DESC_SCOPE(ReadbackZero);need(b.mapped!=nullptr,"readback_buffer zero-fill destination mapped pointer is null");memset(static_cast<uint8_t*>(b.mapped)+copy,0,n-copy);if(measured)descriptor_timing.readback_zero_bytes+=n-copy;if(site_stats)site_stats->zero_bytes+=n-copy;}   // only the bytes the copy leaves
     {DESC_SCOPE(ReadbackFlush);if(measured && !b.coherent)++descriptor_timing.readback_noncoherent_flushes;b.flush();}return b;
 }
 // Per-submission snapshot cache of guest memory ranges. Guest command streams
@@ -5016,7 +5041,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
     for(auto &r:ranges){if(!merged.empty() && r.begin<merged.back().end){merged.back().end=std::max(merged.back().end,r.end);merged.back().written=merged.back().written||r.written;}else merged.push_back(r);}
     for(auto &r:merged){uint64_t base=r.begin,bytes=r.end-base;
         if(r.written){Buffer view,*b;
-            if(pending_view(base,bytes,1,view)){b=out.keep(readback_buffer(bytes));VkCommandBuffer cmd=recording_slot().cmd;end_open_pass();VkBufferCopy region{view.offset,b->offset,bytes};vkCmdCopyBuffer(cmd,view.buffer,b->buffer,1,&region);full_barrier(cmd);}
+            if(pending_view(base,bytes,1,view)){b=out.keep(readback_buffer(bytes,nullptr,0,nullptr,ReadbackSite::StoragePending));VkCommandBuffer cmd=recording_slot().cmd;end_open_pass();VkBufferCopy region{view.offset,b->offset,bytes};vkCmdCopyBuffer(cmd,view.buffer,b->buffer,1,&region);full_barrier(cmd);}
             else{
                 static unsigned miss_logs=0;
                 if(miss_logs++<20 || honor_pipeline_diagnostics){
@@ -5024,7 +5049,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                     xbg_logf("NVN STORAGE_PENDING_VIEW_MISS frame=%llu shader=%s base=%#llx bytes=%llu",
                         (unsigned long long)stats.presents.load(),sk,(unsigned long long)base,(unsigned long long)bytes);
                 }
-                cpu_access(base,bytes,3);b=out.keep(readback_buffer(bytes,reinterpret_cast<void*>(base),bytes));
+                cpu_access(base,bytes,3);b=out.keep(readback_buffer(bytes,reinterpret_cast<void*>(base),bytes,nullptr,ReadbackSite::StorageCPU));
             }
             out.storage.push_back({{base,bytes},b});
             out.written.push_back({{base,bytes},b});
@@ -5263,7 +5288,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                                 const bool fullcopy_normal=!capture.active && !capture.probe && !provenance_file &&
                                     !pass_prof_active() && !draw_detail && !fire_trace_active() && !water_ready() &&
                                     !flame_diag_enabled && !ubtrace.on.load(std::memory_order_relaxed);
-                                buf=out.keep(DESC_CALL(TexelReadback, readback_buffer(bytes,nullptr,0,(fullcopy_normal && !out.indirect_input && !probe_is_active())?&view:nullptr)));
+                                buf=out.keep(DESC_CALL(TexelReadback, readback_buffer(bytes,nullptr,0,(fullcopy_normal && !out.indirect_input && !probe_is_active())?&view:nullptr,ReadbackSite::TexelPending)));
                                 VkCommandBuffer cmd=recording_slot().cmd;
                                 end_open_pass();
                                 VkBufferCopy region{view.offset,buf->offset,bytes};
@@ -5271,7 +5296,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                                 full_barrier(cmd);
                             }else{
                                 DESC_CALL(TexelCpuAccess, cpu_access(base,bytes,3));
-                                buf=out.keep(DESC_CALL(TexelReadback, readback_buffer(bytes,texture.mem,bytes)));
+                                buf=out.keep(DESC_CALL(TexelReadback, readback_buffer(bytes,texture.mem,bytes,nullptr,ReadbackSite::TexelCPU)));
                             }
                             out.storage.push_back({{base,bytes},buf});
                             out.written.push_back({{base,bytes},buf});
@@ -5296,7 +5321,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                                     buf=out.keep(copied);
                                     ++counts->hits;counts->hit_bytes+=bytes;
                                 }else{
-                                    buf=out.keep(DESC_CALL(TexelReadback, readback_buffer(bytes,nullptr,0,(normal && !out.indirect_input && !probe_is_active())?&view:nullptr)));
+                                    buf=out.keep(DESC_CALL(TexelReadback, readback_buffer(bytes,nullptr,0,(normal && !out.indirect_input && !probe_is_active())?&view:nullptr,ReadbackSite::TexelPending)));
                                     VkCommandBuffer cmd=recording_slot().cmd;
                                     const bool ended=end_open_pass();
                                     VkBufferCopy region{view.offset,buf->offset,bytes};

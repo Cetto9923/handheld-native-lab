@@ -92,10 +92,12 @@ def main():
     args=parser.parse_args(); source=args.source.read_text()
     helper=extract(source,'bool readback_fullcopy_bounds(')
     readback=extract(source,'Buffer readback_buffer(')
+    site_declarations=source[source.index('enum class ReadbackSite'):source.index('bool perf_bounded_contaminated')]
+    harness=HARNESS+'\nbool timing_active=true;\n'+site_declarations
     assert 'Buffer stream_buffer(' not in helper+readback
     assert 'Buffer uniform_buffer(' not in helper+readback
     with tempfile.TemporaryDirectory(prefix='ffrs-fullcopy-contract-') as directory:
-        for name,code in [('legacy',HARNESS+helper+ORIGINAL_0400EF7+readback.replace('Buffer readback_buffer(', 'Buffer candidate(')+LEGACY_TEST),('fullcopy',HARNESS+helper+readback+FULLCOPY_TEST)]:
+        for name,code in [('legacy',harness+helper+ORIGINAL_0400EF7+readback.replace('Buffer readback_buffer(', 'Buffer candidate(')+LEGACY_TEST),('fullcopy',harness+helper+readback+FULLCOPY_TEST)]:
             cpp=Path(directory)/(name+'.cpp');exe=Path(directory)/name
             cpp.write_text(code)
             subprocess.run(['clang++','-std=c++17','-O1','-Wall','-Wextra','-Werror','-fsanitize=address,undefined',str(cpp),'-o',str(exe)],check=True)
@@ -104,7 +106,7 @@ def main():
     # Real negative controls run the same checker against corrupted callsites.
     for old,new in [('!out.indirect_input','true'),('!probe_is_active()','true'),('full_barrier(cmd);','/* removed barrier */')]:
         lines=source.splitlines(True)
-        site=next(i for i,line in enumerate(lines) if 'readback_buffer(bytes,nullptr,0,' in line)
+        site=next(i for i,line in enumerate(lines) if 'readback_buffer(bytes,nullptr,0,(' in line)
         tail=''.join(lines[site:]);assert old in tail
         corrupted=''.join(lines[:site])+tail.replace(old,new,1)
         try:
@@ -117,8 +119,11 @@ def main():
     print('ASan/UBSan legacy 48 + candidate 32 combinations; GPU behavior NOT_RUN')
 
 def check_wiring(s):
-    calls=[x for x in s.splitlines() if 'readback_buffer(bytes,nullptr,0,' in x]
+    calls=[x for x in s.splitlines() if 'readback_buffer(bytes,nullptr,0,(' in x]
     assert len(calls)==2,'Only two audited sites may opt in'
+    all_optins=[x for x in s.splitlines() if 'readback_buffer(' in x and '?&view:nullptr' in x]
+    assert all_optins==calls,'Unexpected full-copy caller'
+    assert all('ReadbackSite::TexelPending' in x for x in calls),'Wrong site attribution'
     for x in calls:
      assert '!out.indirect_input' in x and '!probe_is_active()' in x,'Missing CPU-read exclusion'
     a=s.index('Buffer readback_buffer(size_t n,');b=s.index('// Per-submission snapshot cache',a);body=s[a:b]
