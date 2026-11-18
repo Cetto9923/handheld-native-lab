@@ -63,3 +63,6 @@ RG PID19868覆盖安装全文SHA回读匹配，独立用户存档Continue进入�
 - 六帧2882–2887 descriptor102.27ms：image_lookup残余32.83、texel_readback14.64、remaining32.61、view_lookup0.926（仅0.154ms/帧）。不实施缺乏收益依据的frontcache。
 - 只读复核发现graphics pending_view/texel_acquire仍未分出、readback需拆cpu_access/分配，正在独立副本准备下一最小诊断patch，不跳过同步。
 - 荣耀55%仍充电、电池34°C；thermalstatus1/GPU报告92°C，已停止原FF冷却，不继续高负载。RG交还后准备回归时offline，有限同端点重连中。
+
+### 温度纠错与独立验收要求
+上段“GPU92°C”读到了 thermalservice Cached temperatures，撤回作为实时温度证据。已保存的 thermal25490-end.txt 的 Current temperatures from HAL 实为GPU49.3–52.8°C、CPU最高73.2°C、skin38.861°C/status1、电池34°C。停止后当前HAL GPU34–35°C/status0。后续严格分Current HAL/缓存，记录充电；以匹配冷起点的旧/候选、不锁/锁30短场景对照调查发热，不预设充电根因，不以缓存峰值夸大。CPU频率可读，GPU频率接口无可读值则标缺测，不变更权限。
