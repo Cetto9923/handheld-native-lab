@@ -88,3 +88,8 @@ RG PID19868覆盖安装全文SHA回读匹配，独立用户存档Continue进入�
 用户指出滑屏时角色未移动。撤回本轮resolution-ab与fullcopy-ab off1/on1的“移动”描述：仅有输入命令和起止位置相似，不足证明真实移动，不能用作移动性能/优化收益验收。已停止全部swipe，改input keyevent --longpress22，连续3次后紫色恢复点明显从中央移至左边、角色走到空地（/tmp/ff-direction-right2.png），确认方向键有效。后续仅21/22固定方向键。
 fullcopy2 APK a730217de510bd3bea40d36e5788c3e4e67da491e9b26ede30313989b514df90，Android/host0；default-off两完整GPU复制分支候选，guard/未知bound/alignment/alias/indirect CPU读取/probe全回旧路径。独立ASan32组合、原uniform-arena3项及两调用点完整copy/barrier静态检查通过。第一版fc07未安装：审查发现indirect_input隐性CPU读而进一步收窄；host测试helper位置影响fixture编译，重定位helper修复，不削弱测试。
 当前荣耀PID744隔离兵工厂正在方向键A/B，未称性能提高。最初swipe on1掉至21FPS，off后同样约21，未归因候选；需实际固定路线/温频记录。Current HAL skin36.52/status0，GPU50.9–52.1、电池33℃，无热保护；按用户要求正常温度不例行暂停冷却。
+
+### 真实方向键同路线A/B（PID744，不锁帧）
+用户肉眼确认方向键已移动。固定Right×4/Left×4三轮（Android21/22，每次--longpress），候选a730同会话：on2 13.0332s/20.6395FPS/P99 57.162/max97.710ms；off3 13.1011s/19.9220FPS/P99 61.266/max68.293ms，两组均0>100ms。skin36.891/36.838℃、电池33℃、status0，表明仅小幅收益，远未30，不能发布。此前4.3s短窗off18.81/19.56、on20.03同样只作初步。后续向右探路到地图边缘已按用户提示停止、Left返回楼梯下可通行区；顶墙探索不在上述计时窗口，不计移动验收。
+开优化六帧7712–7717 readback_zero仅1.321MB/0.1208ms（约400个fullcopy/帧命中），说明目标分支确实跳过重复清零；非同帧场景不能用总descriptor76.21ms对此前52.95做收益比。frame CSV/thermal/marker窗口见~/.cetto-arsenal-inputs/fullcopy-ab/；engine744-final.log与final744.csv完整收尾。实验开关恢复0，采样完成停止原FF以开展代码分析，不是例行热保护暂停；保留原存档。
+后续瓶颈：同窗legacy_wait阻塞17–27ms/帧约2calls，不能把waits≈9.8当真正阻塞次数；sync-submit0、completion1、legacywaitall0确认，不改同步规避。Android现有XTRACE全空，仅OHOS有标签，委托独立审查准备API23 ATrace最小诊断，不开放不安全async翻译，不重试无效poolreset。

@@ -4299,7 +4299,7 @@
    ],
    "write_state": "PERFORMANCE_DIAGNOSTIC",
    "acquired_at": "2026-11-18T09:44:22.098937+08:00",
-   "checkpoint": "abf19b8: bounded readback diagnostic APK a7ac814 Android/host0; Honor31090 sixframes zero62.8MB/7.94ms. Fullcopy candidate under independent local review, no semantic optimization applied. Honor stopped/cooling; RGoffline; no release."
+   "checkpoint": "770c472: fullcopy default-off Android/host0, true key route20.64vs19.92FPS small gain, not30. Honor sampled then stopped, flag0. Trace review pending, RGoffline. No release."
   }
  ],
  "tasks": [
