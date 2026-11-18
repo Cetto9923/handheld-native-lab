@@ -4316,9 +4316,9 @@
     "tests/native/test_fault_chain.py",
     "tests/native/test_pipeline_cache_retry.py"
    ],
-   "write_state": "CACHE_RETRY_CANDIDATE",
+   "write_state": "CACHE_HEADER_BUILD_AND_LIFETIME_REVIEW",
    "acquired_at": "2026-11-18T09:44:22.098937+08:00",
-   "checkpoint": "Conservative cache UNKNOWN-only empty retry candidate; published73 unchanged.",
+   "checkpoint": "bb038b0: UNKNOWN-only cache retry + exactV1 header32 guard; production-helper ASan/UBSan pass; first candidate Android/Honor isolated factory passed,73 restored; header candidate build96730 pending. No9400fix claim; lifecycle/barrier independent reviews active.",
    "objective": "Evidence-driven CPU/GPU diagnosis and safe optimization; actual directional movement, preserve synchronization/saves.",
    "checkpoint_at": "2026-11-18T16:11:06.588545+08:00"
   }
