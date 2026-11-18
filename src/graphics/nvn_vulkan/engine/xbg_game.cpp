@@ -5163,12 +5163,33 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
     entry=&found->second;shader_layouts.emplace(shader_key,entry);}
     out.entry=entry;out.pipeline_layout=entry->pipeline_layout;
     }
+    const bool api_details=FFRS_API_BREADCRUMB_DIAGNOSTIC && compute && state.shader[5] &&
+        api_breadcrumb.wants_descriptors(state.shader[5]->key.c_str());
+    std::array<XbgApiBreadcrumb::Descriptor,XbgApiBreadcrumb::DescriptorLimit> api_entries{};
+    size_t api_count=0;
     static std::vector<VkDescriptorBufferInfo> buffer_infos;static std::vector<VkDescriptorImageInfo> image_infos;static std::vector<VkBufferView> texel_views;static std::vector<VkWriteDescriptorSet> writes;static std::vector<std::pair<uint64_t,uint32_t>> dynamic_list;static std::vector<uint64_t> set_key;
     {size_t elements=0;for(unsigned st=0;st<6;st++)if(state.shader[st] && (st==5)==compute)for(auto &b:state.shader[st]->bindings)elements+=b.count;
      buffer_infos.clear();image_infos.clear();texel_views.clear();writes.clear();dynamic_list.clear();buffer_infos.reserve(elements);image_infos.reserve(elements);texel_views.reserve(elements);writes.reserve(elements);}
     for(unsigned st=0;st<6;st++)if(state.shader[st] && (st==5)==compute){Shader &shader=*state.shader[st];unsigned ns=nvn_stage[st];
         for(auto &b:shader.bindings)for(unsigned element=0;element<b.count;element++){DESC_SCOPE(ElementRest);
             VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};write.dstSet=VK_NULL_HANDLE;write.dstBinding=b.binding;write.dstArrayElement=element;write.descriptorCount=1;write.descriptorType=UBO_DYN(dmode,b)?VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:VkDescriptorType(b.type);
+            XbgApiBreadcrumb::Descriptor api_binding;
+            if(api_details){api_binding.binding=write.dstBinding;api_binding.element=write.dstArrayElement;api_binding.type=write.descriptorType;}
+            // Match the final VkImageView against its published creation key,
+            // including the sampled RG16 proxy. Never derive a view from NVN input.
+            auto api_image=[&](const Image &image,VkImageView view){
+                if(!api_details)return;
+                api_binding.kind=XbgApiBreadcrumb::Descriptor::Image;
+                for(const Image *actual=&image;actual;actual=actual->filtered.get()){
+                    for(const auto &entry:actual->views)if(entry.second==view){
+                        const auto &key=entry.first;
+                        api_binding.image_metadata=true;api_binding.format=key[4];
+                        api_binding.width=actual->create.extent.width;api_binding.height=actual->create.extent.height;api_binding.depth=actual->create.extent.depth;
+                        api_binding.base_mip=key[0];api_binding.mip_count=key[1];api_binding.base_layer=key[2];api_binding.layer_count=key[3];
+                        api_binding.view_type=key[5];api_binding.aspects=key[6];api_binding.usage=key[7];return;
+                    }
+                }
+            };
             if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER || b.type==VK_DESCRIPTOR_TYPE_STORAGE_BUFFER){DESC_SCOPE(BufferBind);
                 Buffer *buffer=nullptr;bool is_storage=b.type==VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;uint32_t slot=b.slot+element;size_t n=0,buffer_offset=0;const void *data=nullptr;size_t copy=0;
                 if(b.source==XBG_SOURCE_UNIFORM || b.source==XBG_SOURCE_STORAGE){need(slot<16,"Buffer slot out of bounds");auto r=b.source==XBG_SOURCE_UNIFORM?state.ub[ns][slot]:state.sb[ns][slot];need(r.address && r.size,"Required NVN buffer slot is unbound");data=reinterpret_cast<void*>(r.address);copy=r.size;
@@ -5186,6 +5207,12 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                 if(desc_memo_recording)memo_reference_buffer(buffer->buffer,slot_index);
                 if(write.descriptorType==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC){buffer_infos.push_back({buffer->buffer,0,n});if(desc_memo_recording)desc_memo_dyn.push_back({(uint64_t(b.binding)<<32)|element,buffer->buffer,uint32_t(buffer->offset+buffer_offset),b.source==XBG_SOURCE_UNIFORM,uint8_t(b.source),uint8_t(ns),uint8_t(b.source==XBG_SOURCE_DRIVER0?0:1)});dynamic_list.push_back({(uint64_t(b.binding)<<32)|element,uint32_t(buffer->offset+buffer_offset)});}
                 else buffer_infos.push_back({buffer->buffer,buffer->offset+buffer_offset,n});write.pBufferInfo=&buffer_infos.back();
+                if(api_details){
+                    api_binding.kind=XbgApiBreadcrumb::Descriptor::Buffer;
+                    api_binding.offset=write.pBufferInfo->offset;api_binding.range=write.pBufferInfo->range;
+                    api_binding.dynamic=write.descriptorType==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+                    if(api_binding.dynamic)api_binding.dynamic_offset=dynamic_list.back().second;
+                }
                 water_binding_buffer(out.water,shader.key,st,b.binding,element,*buffer,buffer->offset+buffer_offset,n,VK_FORMAT_UNDEFINED,write.descriptorType==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
                 if(capture.active){char label[100];snprintf(label,sizeof(label),"st%u-bind%u-el%u-buffer",st,b.binding,element);capture_log("BUFFER label=%s shader=%s nvnStage=%u sourceKind=%u slot=%u guest=%p copied=%zu descriptorBytes=%zu bufferOffset=%zu",label,shader.key.c_str(),ns,b.source,slot,data,copy,n,buffer_offset);capture_data(label,static_cast<const uint8_t*>(buffer->mapped)+buffer_offset,n);}
                 if(out.indirect_input && !out.indirect_input->instances_only && b.binding==41 && b.source==XBG_SOURCE_UNIFORM && element==0 && copy>=16 && indirect_cpu_clean(uint64_t(data),16)){memcpy(out.indirect_input->params,static_cast<const uint8_t*>(buffer->mapped)+buffer_offset,16);out.indirect_input->params_valid=true;}
@@ -5218,6 +5245,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                             live && live==it->second.im){Image *im=&get_image(it->second.tex,true);
                             prepare_read(*im,commands.command,true,attachment_barrier_enabled?im->sampled_aspects(it->second.record->has_view?&it->second.record->view:nullptr):0);if(desc_memo_recording)desc_memo_images.push_back({it->second.tex,im,it->second.record,it->second.revision});
                             VkDescriptorImageInfo ii{};ii.imageView=it->second.view;ii.sampler=b.type==VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER?it->second.sampler:VK_NULL_HANDLE;ii.imageLayout=VK_IMAGE_LAYOUT_GENERAL;
+                            api_image(*im,ii.imageView);
                             water_binding_image(out.water,shader.key,st,b.binding,element,*im,ii.imageView);
                             image_infos.push_back(ii);write.pImageInfo=&image_infos.back();img_fast=true;++img_cache_hits;}
                         else if(it!=img_cache.end())img_cache.erase(it);
@@ -5489,6 +5517,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                         im.gpu_written=true,provenance_write(im,__LINE__);im.last_write=++write_seq;}
                     probe_bind(im,registered.has_view?&registered.view:nullptr,b.type==VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,st,b.binding,ii.imageView,shader.key);
                     probe_full_image(im,ii.imageView,st,b.binding,element,b.type==VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,shader.key);
+                    api_image(im,ii.imageView);
                     water_binding_image(out.water,shader.key,st,b.binding,element,im,ii.imageView);
                     if(probe_full_target())capture_log("FULL_SAMPLER_BIND event=%u stage=%u binding=%u element=%u sampler=%p imageView=%p layout=%u",capture.events,st,b.binding,element,(void*)ii.sampler,(void*)ii.imageView,unsigned(ii.imageLayout));
                     image_infos.push_back(ii);write.pImageInfo=&image_infos.back();
@@ -5496,11 +5525,15 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                 }
                 }
             }
+            if(api_details && api_count<api_entries.size())api_entries[api_count++]=api_binding;
             writes.push_back(write);
         }
     }
     // Dynamic offsets are consumed in binding/array-element order.
     std::sort(dynamic_list.begin(),dynamic_list.end());out.dynamic_offsets.clear();for(auto &d:dynamic_list)out.dynamic_offsets.push_back(d.second);
+    auto api_descriptor_write=[&](){
+        if(api_details)api_breadcrumb.descriptor_write(state.shader[5]->key.c_str(),stats.presents.load(),api_entries.data(),api_count,writes.size());
+    };
     if(!set_cache_enabled){out.set=allocate_set(out.entry->layout);if(writes.empty())return;
         // Update templates: one driver call with packed payloads instead of parsing VkWriteDescriptorSet per element.
         LayoutEntry &e=*const_cast<LayoutEntry*>(out.entry);static std::vector<uint64_t> sig;sig.clear();
@@ -5510,8 +5543,8 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
             if(vkCreateDescriptorUpdateTemplate(cfg.device,&ti,nullptr,&e.tmpl)==VK_SUCCESS)e.tmpl_sig=sig;else e.tmpl=VK_NULL_HANDLE;}
         if(template_enabled && e.tmpl && sig==e.tmpl_sig){static std::vector<DescEntry> data;data.resize(writes.size());
             for(size_t i=0;i<writes.size();i++){auto &w=writes[i];if(w.pBufferInfo)data[i].buffer=*w.pBufferInfo;else if(w.pImageInfo)data[i].image=*w.pImageInfo;else data[i].view=*w.pTexelBufferView;}
-            vkUpdateDescriptorSetWithTemplate(cfg.device,out.set,e.tmpl,data.data());++template_updates;return;}
-        for(auto &w:writes)w.dstSet=out.set;vkUpdateDescriptorSets(cfg.device,uint32_t(writes.size()),writes.data(),0,nullptr);++plain_updates;return;}
+            vkUpdateDescriptorSetWithTemplate(cfg.device,out.set,e.tmpl,data.data());api_descriptor_write();++template_updates;return;}
+        for(auto &w:writes)w.dstSet=out.set;vkUpdateDescriptorSets(cfg.device,uint32_t(writes.size()),writes.data(),0,nullptr);api_descriptor_write();++plain_updates;return;}
     // Fresh storage outputs in this recording have a new arena offset. Their
     // descriptor key cannot repeat before slot retirement clears set_cache.
     // The allocation sites establish freshness for the exact outputs bound above.
@@ -5549,8 +5582,8 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
             if(vkCreateDescriptorUpdateTemplate(cfg.device,&ti,nullptr,&e.tmpl)==VK_SUCCESS)e.tmpl_sig=sig2;else e.tmpl=VK_NULL_HANDLE;}
         if(e.tmpl && sig2==e.tmpl_sig){static std::vector<DescEntry> data;data.resize(writes.size());
             for(size_t i=0;i<writes.size();i++){auto &w=writes[i];if(w.pBufferInfo)data[i].buffer=*w.pBufferInfo;else if(w.pImageInfo)data[i].image=*w.pImageInfo;else data[i].view=*w.pTexelBufferView;}
-            {uint64_t t0=perf_clock();vkUpdateDescriptorSetWithTemplate(cfg.device,out.set,e.tmpl,data.data());desc_ns[1]+=perf_clock()-t0;}++template_updates;}
-        else{for(auto &w:writes)w.dstSet=out.set;vkUpdateDescriptorSets(cfg.device,uint32_t(writes.size()),writes.data(),0,nullptr);++plain_updates;}}
+            {uint64_t t0=perf_clock();vkUpdateDescriptorSetWithTemplate(cfg.device,out.set,e.tmpl,data.data());api_descriptor_write();desc_ns[1]+=perf_clock()-t0;}++template_updates;}
+        else{for(auto &w:writes)w.dstSet=out.set;vkUpdateDescriptorSets(cfg.device,uint32_t(writes.size()),writes.data(),0,nullptr);api_descriptor_write();++plain_updates;}}
     if(use_cache)slot.set_cache.emplace(set_key,out.set);
 }
 // Render passes are cached by their full definition; framebuffers are cached
@@ -6471,7 +6504,7 @@ void dispatch(p_dispatch p,uint64_t indirect_address=0){overlay_shadow={};struct
     uint64_t indirect_serial=slot_serial;Commands c;fire_trace_compute_begin();Descriptors &d=acquire_descriptors();uint64_t api_desc_seq=api_breadcrumb.begin(state.shader[5]->key.c_str(),XbgApiBreadcrumb::Descriptors,stats.presents.load());descriptors(d,c,true);api_breadcrumb.end(api_desc_seq,XbgApiBreadcrumb::Descriptors,stats.presents.load(),0);need(!gpu_indirect || (slot_serial==indirect_serial && slots[slot_index].cmd==c.command),"Indirect dispatch source slot retired during descriptor preparation");for(auto *im:storage_rg16_images)need(std::find(sampled_rg16_images.begin(),sampled_rg16_images.end(),im)==sampled_rg16_images.end(),"RG16 same-dispatch sampled/storage feedback requires explicit supported subresource semantics");VkComputePipelineCreateInfo ci{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};ci.stage={VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};ci.stage.stage=VK_SHADER_STAGE_COMPUTE_BIT;ci.stage.module=state.shader[5]->module;ci.stage.pName="main";ci.layout=d.pipeline_layout;PipelineLease pipeline;{CPU_SCOPE(Pipeline);XbgPipelineKey key;bool cacheable=xbg_compute_pipeline_key(key,ci,d.entry->definition.view());pipeline_lookup(pipeline,key,cacheable,nullptr,&ci);}if(!pipeline.pipeline){c.finish();return;}vkCmdBindPipeline(c.command,VK_PIPELINE_BIND_POINT_COMPUTE,pipeline.pipeline);vkCmdBindDescriptorSets(c.command,VK_PIPELINE_BIND_POINT_COMPUTE,d.pipeline_layout,0,1,&d.set,uint32_t(d.dynamic_offsets.size()),d.dynamic_offsets.data());int prof_dispatch=pass_prof_compute_begin(c.command,p);
     auto indirect_proof=indirect_template_batch(d,p,gpu_indirect);probe_indirect_template(p);
     const unsigned water_dispatch=water_trace_dispatch_begin(c.command,d.water);
-    uint64_t api_dispatch_seq=api_breadcrumb.begin(state.shader[5]->key.c_str(),XbgApiBreadcrumb::Dispatch,stats.presents.load());
+    uint64_t api_dispatch_seq=api_breadcrumb.begin_dispatch(state.shader[5]->key.c_str(),stats.presents.load(),gpu_indirect,indirect.offset,uint32_t(p.x),uint32_t(p.y),uint32_t(p.z));
     if(gpu_indirect){vkCmdDispatchIndirect(c.command,indirect.buffer,indirect.offset);static unsigned notes=0;if(notes++<8)xbg_logf("NVN GPU indirect dispatch shader=%s address=%#llx sourceSlotSerial=%llu",state.shader[5]->key.c_str(),(unsigned long long)indirect_address,(unsigned long long)indirect_serial);}
     else vkCmdDispatch(c.command,p.x,p.y,p.z);
     api_breadcrumb.end(api_dispatch_seq,XbgApiBreadcrumb::Dispatch,stats.presents.load(),0);

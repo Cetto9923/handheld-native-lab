@@ -51,6 +51,11 @@ std::vector<VkWriteDescriptorSet> writes;
 std::vector<VkDescriptorUpdateTemplateEntry> entries;
 std::vector<Payload> updates;
 uint64_t allocations=0;
+uint64_t api_descriptor_writes=0;
+void api_descriptor_write() {
+    assert(updates.size()>api_descriptor_writes);
+    ++api_descriptor_writes;
+}
 bool ab_off(const char *name) { assert(std::string(name)=="setfresh"); return forced_old; }
 uint64_t perf_clock() { return 1; }
 Slot &recording_slot() {
@@ -106,6 +111,7 @@ void reset() {
     slot.set_cache.clear();entries.clear();updates.clear();writes.clear();
     slot.recording=true;slot_serial=1;
     allocations=set_cache_fresh_skips=set_cache_hits=set_cache_misses=template_updates=plain_updates=0;
+    api_descriptor_writes=0;
 }
 int main() {
     VkDescriptorBufferInfo buffer{handle<VkBuffer>(20),0,512};
@@ -142,6 +148,7 @@ int main() {
         assert(set_cache_misses==(fresh?2u:1u));
         assert(updates.size()==allocations);
         assert((fail?plain_updates:template_updates)==allocations);
+        assert(api_descriptor_writes==updates.size());
         // Slot retirement clears the old key before an arena offset is reused.
         slot.set_cache.clear();buffer.offset=0;finalize(out,fresh);
         assert(allocations==(fresh?3u:2u));

@@ -361,6 +361,8 @@ def main():
                                           'tests/native/test_warm_layout_validation.py'])
     run('indexed-bbox-ready-contract', [sys.executable,
                                       'tests/native/test_indexed_bbox_ready.py'])
+    run('api-breadcrumb-contract', [sys.executable,
+                                    'tests/native/test_api_breadcrumb.py'])
     run('apk-warm-seed-contract', [sys.executable, '-m', 'unittest',
                                   'tests.installer.test_apk_pipeline_warm_seed'])
     run('save-export-lifecycle-contract', [sys.executable, '-m', 'unittest',
