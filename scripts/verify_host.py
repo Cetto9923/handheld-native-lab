@@ -363,6 +363,10 @@ def main():
                                       'tests/native/test_indexed_bbox_ready.py'])
     run('api-breadcrumb-contract', [sys.executable,
                                     'tests/native/test_api_breadcrumb.py'])
+    run('vivo-indexed-fallback-contract', [sys.executable,
+                                           'tests/native/test_vivo_indexed_fallback.py'])
+    run('arsenal-interface-contract', [sys.executable, '-m', 'unittest',
+                                       'tests.native.test_arsenal_interface'])
     run('apk-warm-seed-contract', [sys.executable, '-m', 'unittest',
                                   'tests.installer.test_apk_pipeline_warm_seed'])
     run('save-export-lifecycle-contract', [sys.executable, '-m', 'unittest',
@@ -391,6 +395,10 @@ def main():
                                    'tests.device.test_add_on_content'])
     run('readback-fence-lifetime-contract', [sys.executable, '-m', 'unittest',
                                            'tests.device.test_readback_fence_lifetime'])
+    run('pending-buffer-clear-contract', [sys.executable, '-m', 'unittest',
+                                         'tests.device.test_pending_buffer_clear'])
+    run('pending-view-lifetime-contract', [sys.executable, '-m', 'unittest',
+                                          'tests.device.test_pending_view_lifetime'])
     run('sample-usage-contract', [sys.executable, '-m', 'unittest',
                                   'tests.device.test_sample_usage'])
     run('linear-sample-contract', [sys.executable, '-m', 'unittest',

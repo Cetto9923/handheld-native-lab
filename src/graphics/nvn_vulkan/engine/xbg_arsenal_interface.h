@@ -3,7 +3,7 @@
 #include <cstring>
 #include <vector>
 
-// Three observed VS/FS pair interfaces omit one VS varying that the FS reads.
+// These observed VS/FS pairs omit one VS varying that the FS reads.
 // Match only the exact original bundles. Initialize the added output as the
 // pinned translator's linked-stage initialization policy: xyz=0, w=1.
 // All original instructions remain unchanged. Never strip a fragment input.
@@ -13,7 +13,8 @@ inline bool xbg_arsenal_complete_output(std::vector<uint32_t> &w,const char *key
     static const Shape shapes[]={
         {"17c6ba1e659fec3a",65386,0x24a65713f5370720ull,7},
         {"5a97a7e1a99cce45",70003,0xc42fa989d385136full,7},
-        {"3bce5482c09be3fb",52935,0x3e5b43b3160cd51dull,4}
+        {"3bce5482c09be3fb",52935,0x3e5b43b3160cd51dull,4},
+        {"0d79843412724995",73201,0xf40106f006d0215dull,7}
     };
     const Shape *shape=nullptr;for(const auto &s:shapes)if(key&&!std::strcmp(key,s.key)){shape=&s;break;}
     if(!shape || w.size()!=shape->words || w[0]!=0x07230203u || w[3]>UINT32_MAX-4)return false;

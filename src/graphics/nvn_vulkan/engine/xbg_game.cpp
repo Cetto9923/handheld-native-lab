@@ -58,6 +58,7 @@ static_assert(VK_FORMAT_R32_UINT==XBG_VK_FORMAT_R32_UINT && VK_FORMAT_R32_SINT==
 #include "xbg_memory_pressure.h"
 #ifdef __ANDROID__
 #include <malloc.h>
+#include <sys/system_properties.h>
 #endif
 #include "xbg_spirv_ldc.h"
 #include "xbg_spirv_temps.h"
@@ -824,6 +825,25 @@ int indirect_mode=0;
 // Per-frame indirect draw probe (marker gfx-indirect-probe): a CSV with the shader pair, the template row and the arguments the
 // owned copy holds. It is buffered and flushed in batches, so unlike per-draw logging it does not change the frame cadence.
 bool indirect_probe=false;FILE *indirect_probe_file=nullptr;
+uint64_t cpu_indexed_nonempty = 0;
+bool vivo_indexed_fallback = false;
+
+bool vivo_requires_direct_indexed(const VkPhysicalDeviceProperties &gpu) {
+#ifdef __ANDROID__
+    if (gpu.vendorID != 0x5143 || gpu.deviceID != 0x07030002 ||
+        gpu.driverVersion != 0x80267061 || strcmp(gpu.deviceName, "Adreno (TM) 730") != 0)
+        return false;
+    char manufacturer[PROP_VALUE_MAX]{}, model[PROP_VALUE_MAX]{}, soc[PROP_VALUE_MAX]{};
+    __system_property_get("ro.product.manufacturer", manufacturer);
+    __system_property_get("ro.product.model", model);
+    __system_property_get("ro.soc.model", soc);
+    return !strcmp(manufacturer, "vivo") && !strcmp(model, "V2301A") && !strcmp(soc, "SM8475");
+#else
+    (void)gpu;
+    return false;
+#endif
+}
+
 struct GpuIndexedArgs {std::shared_ptr<OwnedIndirectBuffer> owned;VkDeviceSize offset=0;size_t index_bytes=0;};
 // owner denotes an independent allocation, never a view into the slot arena.
 uint64_t pending_writeback_version=0;
@@ -1618,10 +1638,22 @@ void submit_slots(bool wait){
             last_signal_slot=slot_index;
         }
         s.raw_handle=gpu_raw.admit(stats.presents.load(),slot_serial,submitted,slot_index,ncb,s.timestamps!=VK_NULL_HANDLE);
-        {CPU_SCOPE(Submit);if(auto *r=gpu_raw.get(s.raw_handle))r->submit_begin=timing_clock();
-         VkResult raw_submit_result=vkQueueSubmit(cfg.queue,1,&si,s.fence);
-         if(gpu_raw.get(s.raw_handle))gpu_raw.submit_done(s.raw_handle,int32_t(raw_submit_result),timing_clock(),hud::frame.load(std::memory_order_relaxed));
-         check(raw_submit_result,"vkQueueSubmit(cfg.queue,1,&si,s.fence)");}++submit_by[sync_site];poolreset::queue(s);
+        {
+            CPU_SCOPE(Submit);
+            if(auto *r=gpu_raw.get(s.raw_handle))r->submit_begin=timing_clock();
+            VkResult raw_submit_result=vkQueueSubmit(cfg.queue,1,&si,s.fence);
+            if(gpu_raw.get(s.raw_handle))gpu_raw.submit_done(s.raw_handle,int32_t(raw_submit_result),timing_clock(),hud::frame.load(std::memory_order_relaxed));
+            if (raw_submit_result != VK_SUCCESS) {
+                xbg_logf("NVN submit failure pid=%d frame=%llu slot=%u serial=%llu result=%d "
+                         "vivo_match=%d indexed_resident=%d gpu_indexed_recorded=%llu cpu_indexed_nonempty=%llu",
+                         int(getpid()),(unsigned long long)stats.presents.load(),slot_index,
+                         (unsigned long long)slot_serial,int(raw_submit_result),int(vivo_indexed_fallback),
+                         int(gpu_indexed_enabled),(unsigned long long)gpu_indexed_draws,
+                         (unsigned long long)cpu_indexed_nonempty);
+            }
+            check(raw_submit_result,"vkQueueSubmit(cfg.queue,1,&si,s.fence)");
+        }
+        ++submit_by[sync_site];poolreset::queue(s);
         s.recording=false;s.pending=true;s.covers=submitted;s.hud_frame=hud::frame.load(std::memory_order_relaxed);if(auto *r=gpu_raw.get(s.raw_handle))r->hud_frame=s.hud_frame;slot_index=(slot_index+1)%slot_count;++perf.submits;snapshot_reset();++slot_serial;
         pending_events.insert(pending_events.end(),recording_events.begin(),recording_events.end());recording_events.clear();
     }
@@ -1965,7 +1997,9 @@ void snapshot_invalidate(uint64_t address,uint64_t bytes){
 // (not yet written back) GPU result. The producing operation is followed by a
 // full barrier, so later reads of the view observe it in queue order.
 bool pending_view(uint64_t address,uint64_t bytes,VkDeviceSize align,Buffer &out,uint64_t *version=nullptr){
-    if(!slots[slot_index].recording && std::any_of(pending_writebacks.begin(),pending_writebacks.end(),[](const PendingWriteback &w){return bool(w.owner);}))recording_slot();
+    // Opening a slot may retire and trim the very arena a pending view names.
+    // Select the consumer before looking up a producer or retaining its storage.
+    if (!slots[slot_index].recording && !pending_writebacks.empty()) recording_slot();
     for(auto w=pending_writebacks.rbegin();w!=pending_writebacks.rend();++w){
         if(!(address<w->addr+w->bytes && address+bytes>w->addr))continue;
         if(address<w->addr || address+bytes>w->addr+w->bytes)return false;
@@ -6992,87 +7026,21 @@ void clear_texture(const p_clear_tex &input){preflight_cpu_reads();probe_boundar
     }
     im.gpu_written=true,provenance_write(im,__LINE__);
 }
-// Buffer copy whose source is a pending GPU result: copy on the GPU and keep
-// the destination pending too, instead of stalling for the CPU memmove.
-// 保守门暂时使 pending-view 链接回退CPU；恢复前须证明源readback跨退役仍存活。
-// The conservative gate temporarily falls back to CPU for pending-view chains; restore only after proving source readback lifetime across retirement.
-bool gpu_clear_pending_buffer(const p_clear_buf &p){
+void trace_buffer_clear(const p_clear_buf &p){
     if(fire_trace_overlap(p.addr,p.size))xbg_logf("FIRE_WB clear frame=%llu address=%#llx bytes=%llu value=%#x",(unsigned long long)stats.presents.load(),(unsigned long long)p.addr,(unsigned long long)p.size,p.value);
     static unsigned diagnostics=0;if((diagnostics<20 || honor_pipeline_diagnostics) && !capture.trace){
         ++diagnostics;unsigned aliases=0,overlaps=0;for_images_overlapping(p.addr,p.size,[&](Image &im){if(aliases++<3)xbg_logf("CODEX_CLEAR_ALIAS frame=%llu serial=%llu mem=%p bytes=%llu format=%u uploaded=%u gpuWritten=%u",(unsigned long long)stats.presents.load(),(unsigned long long)im.source.serial,im.source.mem,(unsigned long long)im.source.L.size,unsigned(im.fmt),unsigned(im.uploaded),unsigned(im.gpu_written));});
         for(auto w=pending_writebacks.rbegin();w!=pending_writebacks.rend();++w)if(xbg_wb_overlaps(p.addr,p.size,w->addr,w->bytes)){if(overlaps++<8)xbg_logf("CODEX_CLEAR_PENDING frame=%llu order=%u address=%#llx bytes=%llu slot=%d current=%u offset=%llu",(unsigned long long)stats.presents.load(),overlaps,(unsigned long long)w->addr,(unsigned long long)w->bytes,int(static_cast<const Slot*>(w->slot)-slots),unsigned(w->slot==&slots[slot_index]),(unsigned long long)w->buffer.offset);}
         xbg_logf("CODEX_CLEAR_REASON frame=%llu address=%#llx bytes=%llu value=%#x aliases=%u overlaps=%u currentRange=%u active=%u probe=%u recording=%u",(unsigned long long)stats.presents.load(),(unsigned long long)p.addr,(unsigned long long)p.size,p.value,aliases,overlaps,unsigned(current_pending_range(p.addr,p.size,4)),unsigned(capture.active),unsigned(capture.probe),unsigned(slots[slot_index].recording));
     }
-    if((p.addr&3) || (p.size&3) || capture.active || capture.probe || provenance_file)return false;
-    bool image_alias=false;for_images_overlapping(p.addr,p.size,[&](Image &){image_alias=true;});if(image_alias)return false;
-    Buffer view;
-    if(pending_view(p.addr,p.size,4,view)){
-        snapshot_invalidate(p.addr,p.size);
-        for(auto &w:pending_writebacks){
-            if(w.buffer.buffer==view.buffer && view.offset<w.buffer.offset+w.buffer.size && w.buffer.offset<view.offset+p.size){
-                if(w.indirect && xbg_wb_overlaps(p.addr,p.size,w.indirect->address,w.indirect->bytes))
-                    w.indirect.reset();
-            }
-        }
-        if(view.mapped){
-            for(uint64_t off=0;off+4<=p.size;off+=4)memcpy(static_cast<uint8_t*>(view.mapped)+off,&p.value,4);
-            if(p.size&3){uint8_t tail[4];memcpy(tail,&p.value,4);memcpy(static_cast<uint8_t*>(view.mapped)+(p.size&~3ull),tail,size_t(p.size&3));}
-        }
-        ++write_seq;
-        Commands c;
-        vkCmdFillBuffer(c.command,view.buffer,view.offset,p.size,p.value);
-        VkBufferMemoryBarrier b{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
-        b.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;
-        b.dstAccessMask=VK_ACCESS_SHADER_READ_BIT|VK_ACCESS_SHADER_WRITE_BIT|VK_ACCESS_INDIRECT_COMMAND_READ_BIT|VK_ACCESS_TRANSFER_READ_BIT;
-        b.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
-        b.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
-        b.buffer=view.buffer;
-        b.offset=view.offset;
-        b.size=p.size;
-        vkCmdPipelineBarrier(c.command,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT|VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT|VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT|VK_PIPELINE_STAGE_TRANSFER_BIT,0,0,nullptr,1,&b,0,nullptr);
-        c.finish();
-        static unsigned notes=0;if(notes++<8 || honor_pipeline_diagnostics)
-            xbg_logf("NVN GPU pending buffer clear address=%#llx bytes=%llu value=%#x sourceSlotSerial=%llu",
-                (unsigned long long)p.addr,(unsigned long long)p.size,p.value,(unsigned long long)slot_serial);
-        return true;
-    }
-
-    bool overlap=false;
-    for(auto &w:pending_writebacks)if(xbg_wb_overlaps(p.addr,p.size,w.addr,w.bytes)){overlap=true;break;}
-    if(overlap){
-        if(!nvn_memory_pool_resolve_address || !p.size || p.size>64ull*1024*1024 || p.addr+p.size<p.addr)return false;
-        for(auto &r:pending_reports)if(xbg_wb_overlaps(p.addr,p.size,r.addr,sizeof(NVNcounterData)))return false;
-        size_t available=0;void *base=nvn_memory_pool_resolve_address(p.addr,&available);if(uint64_t(base)!=p.addr || p.size>available)return false;
-        snapshot_invalidate(p.addr,p.size);
-        ++write_seq;
-        Commands c;
-        Buffer cleared=readback_buffer(p.size);
-        if(cleared.mapped){
-            for(uint64_t off=0;off+4<=p.size;off+=4)memcpy(static_cast<uint8_t*>(cleared.mapped)+off,&p.value,4);
-            if(p.size&3){uint8_t tail[4];memcpy(tail,&p.value,4);memcpy(static_cast<uint8_t*>(cleared.mapped)+(p.size&~3ull),tail,size_t(p.size&3));}
-        }
-        vkCmdFillBuffer(c.command,cleared.buffer,cleared.offset,p.size,p.value);
-        VkBufferMemoryBarrier b{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
-        b.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;
-        b.dstAccessMask=VK_ACCESS_SHADER_READ_BIT|VK_ACCESS_SHADER_WRITE_BIT|VK_ACCESS_INDIRECT_COMMAND_READ_BIT|VK_ACCESS_TRANSFER_READ_BIT;
-        b.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
-        b.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
-        b.buffer=cleared.buffer;
-        b.offset=cleared.offset;
-        b.size=p.size;
-        vkCmdPipelineBarrier(c.command,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT|VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT|VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT|VK_PIPELINE_STAGE_TRANSFER_BIT,0,0,nullptr,1,&b,0,nullptr);
-        c.finish();
-        pending_writebacks.push_back({p.addr,p.size,cleared,&slots[slot_index]});
-        static unsigned notes2=0;if(notes2++<8 || honor_pipeline_diagnostics)
-            xbg_logf("NVN GPU pending buffer clear (new buffer) address=%#llx bytes=%llu value=%#x",
-                (unsigned long long)p.addr,(unsigned long long)p.size,p.value);
-        return true;
-    }
-    return false;
 }
 bool gpu_buffer_copy(uint64_t src,uint64_t dst,uint64_t n){preflight_cpu_reads();
     if(!n || (src<dst+n && dst<src+n))return false;
     for(auto &w:pending_writebacks)if(dst<w.addr+w.bytes && dst+n>w.addr)return false;
+    // Resolving a destination counter report can retire the source view.
+    // The caller performs the ordered CPU copy in that case.
+    for (const auto &report : pending_reports)
+        if (xbg_wb_overlaps(dst,n,report.addr,sizeof(NVNcounterData))) return false;
     Buffer view;if(!pending_view(src,n,1,view))return false;
     invalidate_cpu_range(dst,n);
     Slot &s=recording_slot();end_open_pass();Buffer b=readback_buffer(n);
@@ -7500,6 +7468,7 @@ void execute_draw_index_record(const p_draw_idx &a){preflight_cpu_reads();
         if(result)invalid_indirect_draw("draw-index-record",result,a.prim,a.itype,a.ibuf,a.ind,args,sizeof args);
         note_empty_indirect_draw("draw-index-record",a.itype,a.ind,args,sizeof args);
         if(!plan.count || !plan.instances)return;
+        ++cpu_indexed_nonempty;
         p_draw_idx indexed{plan.primitive,plan.index_type,plan.count,plan.base_vertex,plan.base_instance,plan.instances,plan.index_address};
         draw(plan.primitive,0,plan.count,&indexed);
         return;
@@ -7608,10 +7577,9 @@ void execute(const uint8_t *pc,unsigned depth,uint64_t &budget){
         case OP_COPY_STRIDE:{auto a=payload<p_copy_stride>(p,n);need(a.stride>=0,"Negative copy stride");
             state.copy_stride=a.stride;state.copy_image_stride=a.image?a.stride:-1;break;}
         case OP_CLEAR_BUF:{auto a=payload<p_clear_buf>(p,n);need(a.addr&&a.size&&a.size<=256ull*1024*1024,"Invalid buffer clear range");
-            if(gpu_clear_pending_buffer(a))break;
-            // ClearBuffer fills the range with a 32-bit value, in submission order (nvn_mtl.m:7713 mtl_sub_fill).
-            // The range is guest memory: the fill is a host write, and the snapshot of the range is invalidated so a
-            // later GPU read of it sees the new bytes.
+            trace_buffer_clear(a);
+            // A clear changes guest memory in command order. Previously recorded GPU
+            // reads can still consume the old readback allocation until their fence.
             invalidate_cpu_range(a.addr,a.size);
             uint8_t *dst=reinterpret_cast<uint8_t*>(a.addr);
             for(uint64_t off=0;off+4<=a.size;off+=4)memcpy(dst+off,&a.value,4);
@@ -8043,7 +8011,7 @@ extern "C" int xbg_game_initialize(const xbg_game_config *c,char *error,size_t b
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *f=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-owned-input-copy").c_str(),"rb");owned_input_copy_enabled=true;if(f){owned_input_copy_enabled=fgetc(f)!='0';fclose(f);}xbg_logf("NVN owned indexed input copy=%d",int(owned_input_copy_enabled));}
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *f=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-clear-overwrite-probe").c_str(),"rb");clear_overwrite_probe=false;if(f){clear_overwrite_probe=fgetc(f)=='1';fclose(f);}xbg_logf("NVN temporary clear-overwrite diagnostic=%d",int(clear_overwrite_probe));}
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *f=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-texture-lifecycle").c_str(),"rb");texture_lifecycle_enabled=true;if(f){texture_lifecycle_enabled=fgetc(f)!='0';fclose(f);}xbg_logf("NVN texture lifecycle retirement=%d",int(texture_lifecycle_enabled));}
-    {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');std::string base=cut==std::string::npos?dir:dir.substr(0,cut);FILE *g=fopen((base+"/gfx-indexed-resident").c_str(),"rb");gpu_indexed_enabled=true;gpu_indexed_draws=0;if(g){gpu_indexed_enabled=fgetc(g)!='0';fclose(g);}FILE *m=fopen((base+"/gfx-indirect-proof").c_str(),"rb");indirect_diag_enabled=false;indirect_proof_checks=indirect_proof_mismatches=0;if(m){indirect_diag_enabled=fgetc(m)=='1';fclose(m);}indirect_proof_enabled=gpu_indexed_enabled || indirect_diag_enabled;{FILE *ip=fopen((base+"/gfx-indirect-probe").c_str(),"rb");indirect_probe=false;if(ip){indirect_probe=fgetc(ip)=='1';fclose(ip);}FILE *im2=fopen((base+"/gfx-indirect-mode").c_str(),"rb");indirect_mode=0;if(im2){int v=fgetc(im2);if(v>='0'&&v<='9')indirect_mode=v-'0';fclose(im2);}}xbg_logf("NVN indirect-template proof=%d GPU-indexed-resident=%d mode=%d",int(indirect_proof_enabled),int(gpu_indexed_enabled));}
+
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-attachment-barrier").c_str(),"rb");attachment_barrier_enabled=true;attachment_barriers_deferred=0;if(m){attachment_barrier_enabled=fgetc(m)!='0';fclose(m);}xbg_logf("NVN attachment-only barrier defer=%d",int(attachment_barrier_enabled));}
     if(const char *mode=getenv("DM_GFX_COMPLETION_WAIT")){if(!strcmp(mode,"0"))completion_wait_enabled=false;else if(!strcmp(mode,"1"))completion_wait_enabled=true;}
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-legacy-waitall").c_str(),"rb");if(m){legacy_waitall=fgetc(m)=='1';fclose(m);}
@@ -8062,6 +8030,33 @@ extern "C" int xbg_game_initialize(const xbg_game_config *c,char *error,size_t b
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-full-barrier").c_str(),"rb");full_barrier_strict=m&&fgetc(m)=='1';if(m)fclose(m);xbg_logf("NVN full barrier strict=%d (marker gfx-full-barrier, 0=compute scoped)",int(full_barrier_strict));}
     cfg=*c;xbg_logf("NVN completion_wait enabled=%d legacy_waitall=%d",int(completion_wait_enabled),int(legacy_waitall));
 vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemoryProperties(cfg.physical,&memories);{char line[512];int at=snprintf(line,sizeof line,"NVN caps memory types");for(uint32_t i=0;i<memories.memoryTypeCount && at<int(sizeof line)-24;i++)at+=snprintf(line+at,sizeof line-at," %u:%#x/h%u",i,unsigned(memories.memoryTypes[i].propertyFlags),memories.memoryTypes[i].heapIndex);xbg_logf("%s",line);}
+    {
+        std::string dir=c->shader_directory?c->shader_directory:"";
+        size_t cut=dir.find_last_of('/');
+        std::string base=cut==std::string::npos?dir:dir.substr(0,cut);
+        vivo_indexed_fallback = vivo_requires_direct_indexed(properties);
+        gpu_indexed_enabled = !vivo_indexed_fallback;
+        gpu_indexed_draws = cpu_indexed_nonempty = 0;
+        const char *source = vivo_indexed_fallback ? "vivo-driver" : "default";
+        if (FILE *marker = fopen((base+"/gfx-indexed-resident").c_str(),"rb")) {
+            gpu_indexed_enabled = fgetc(marker) != '0';
+            fclose(marker);
+            source = "marker";
+        }
+        FILE *m=fopen((base+"/gfx-indirect-proof").c_str(),"rb");
+        indirect_diag_enabled=false;
+        indirect_proof_checks=indirect_proof_mismatches=0;
+        if(m){indirect_diag_enabled=fgetc(m)=='1';fclose(m);}
+        indirect_proof_enabled=gpu_indexed_enabled || indirect_diag_enabled;
+        FILE *ip=fopen((base+"/gfx-indirect-probe").c_str(),"rb");
+        indirect_probe=false;
+        if(ip){indirect_probe=fgetc(ip)=='1';fclose(ip);}
+        FILE *im2=fopen((base+"/gfx-indirect-mode").c_str(),"rb");
+        indirect_mode=0;
+        if(im2){int v=fgetc(im2);if(v>='0'&&v<='9')indirect_mode=v-'0';fclose(im2);}
+        xbg_logf("NVN indirect-template proof=%d GPU-indexed-resident=%d mode=%d source=%s pid=%d",
+                 int(indirect_proof_enabled),int(gpu_indexed_enabled),indirect_mode,source,int(getpid()));
+    }
     {
         // Adreno 735: reusing the open depth/stencil pass flickers the moon
         // halo in the real scene. Keep the existing end-pass/barrier path.
