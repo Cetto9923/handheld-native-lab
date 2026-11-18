@@ -11382,7 +11382,7 @@
    ],
    "acceptance": "真实兵工厂移动/战斗冷暖测量与修复回归；独立APK及统一App模块发布分别验证，未测不声称通过",
    "recovery": "私有100文件荣耀与12文件RG完整备份于.cetto-arsenal-inputs；原RG67 APK保留，测试仅独立save root",
-   "checkpoint": "User supplied screenshot libfile_ca2d6fdb7bc88191addd670b7dc80545: player says overall improved to around58FPS, but combat20plus; location inside dungeon, outside test not yet provided. This is chat testimony, not game frame capture/device evidence; no model/settings/oldbuild controlled comparison known. Record as 1.0.73 user feedback, no stable58 or causal improvement/regression claim. Published73 bytes unchanged; next target isolated dungeon combat reproduction.",
+   "checkpoint": "New user9400 report160005 confirms actual1.0.73/code73/APK7f3e7155 on vivoV2405A/MT6991 Android16. Two exit139 records; retained fault SIGSEGVfa0x8/vendorMaliPC+1eda09c/LR+1eda024, same signature as72; lasttarget073ce3549023words/frame1174. Therefore73 did NOT resolve this originaldevice fault. Lastshader adjacency still notAPIcausality. Screenshottitle visible, notfailurebeforeanylaunch. No perAPIbreadcrumbs in ordinary73 report. Performance work paused for priority stability; publishedbytes unchanged.",
    "dependencies": [],
    "role": "performance and graphics repair",
    "branch": "task/T-codex-recovery-20261114"

@@ -262,3 +262,8 @@ Prior scoped gameplay evidence transfers only because all runtime entries byte-i
 ### Player73 dungeon combat feedback
 User supplied screenshot libfile_ca2d6fdb7bc88191addd670b7dc80545: player says overall improved to around58FPS, but combat20plus; location inside dungeon, outside test not yet provided. This is chat testimony, not game frame capture/device evidence; no model/settings/oldbuild controlled comparison known. Record as 1.0.73 user feedback, no stable58 or causal improvement/regression claim. Published73 bytes unchanged; next target isolated dungeon combat reproduction.
 Private image user73-feedback/image.png, SHA 989b5f6d887b89d2d2ed1ec0cad366871251bed67f32f1001b48367587784844; no identifying chat screenshot in Git.
+
+
+### Confirmed73 MT6991 recurrence
+New user9400 report160005 confirms actual1.0.73/code73/APK7f3e7155 on vivoV2405A/MT6991 Android16. Two exit139 records; retained fault SIGSEGVfa0x8/vendorMaliPC+1eda09c/LR+1eda024, same signature as72; lasttarget073ce3549023words/frame1174. Therefore73 did NOT resolve this originaldevice fault. Lastshader adjacency still notAPIcausality. Screenshottitle visible, notfailurebeforeanylaunch. No perAPIbreadcrumbs in ordinary73 report. Performance work paused for priority stability; publishedbytes unchanged.
+Private crash73-new/report.zip SHAa1c6f559111f52defdce905edaf7df5c6e8a2048687586892248e69a98e5abd4; read-onlysafeZIP, no save. Two139PIDs19877/24477; otherforce-stop/prestart exits distinct. Userconfirmscombatperformanceissueisfourthchapterdungeon. FF16617deliberatelystopped, no newcombatFPS measurement.
