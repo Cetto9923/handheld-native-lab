@@ -4174,7 +4174,16 @@ VkPipelineLayout make_layout(const uint32_t *w,uint32_t n){
     VkPipelineLayoutCreateInfo p{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};p.flags=r.u();uint32_t sets=r.u(),np=r.u();if(sets!=1 || np>16 || r.bad)return VK_NULL_HANDLE;std::vector<VkPushConstantRange> pr(np);for(auto &x:pr){x.stageFlags=r.u();x.offset=r.u();x.size=r.u();}
     if(r.bad || r.i!=n)return VK_NULL_HANDLE;VkDescriptorSetLayout sl;if(vkCreateDescriptorSetLayout(cfg.device,&s,nullptr,&sl)!=VK_SUCCESS)return VK_NULL_HANDLE;
     p.setLayoutCount=1;p.pSetLayouts=&sl;p.pushConstantRangeCount=np;p.pPushConstantRanges=pr.data();VkPipelineLayout pl;if(vkCreatePipelineLayout(cfg.device,&p,nullptr,&pl)!=VK_SUCCESS){vkDestroyDescriptorSetLayout(cfg.device,sl,nullptr);return VK_NULL_HANDLE;}
-    std::lock_guard<std::mutex> l(mu);set_layouts.push_back(sl);layouts.emplace(k,pl);return pl;
+    std::lock_guard<std::mutex> l(mu);
+    auto inserted=layouts.emplace(k,pl);
+    if(!inserted.second){
+        // This locally created pair has not been returned or published. The
+        // winning layout remains owned by layouts for all concurrent callers.
+        vkDestroyPipelineLayout(cfg.device,pl,nullptr);
+        vkDestroyDescriptorSetLayout(cfg.device,sl,nullptr);
+        return inserted.first->second;
+    }
+    set_layouts.push_back(sl);return pl;
 }
 VkRenderPass make_pass(const uint32_t *w,uint32_t n){
     std::string k(reinterpret_cast<const char*>(w),size_t(n)*4);{std::lock_guard<std::mutex> l(mu);auto it=passes.find(k);if(it!=passes.end())return it->second;}
