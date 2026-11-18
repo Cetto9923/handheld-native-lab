@@ -5697,3 +5697,8 @@ Private init-cleanup-ab/rg342a.* and before/after captures. Host disconnect did 
 ### Exact-build RHI source attribution
 Exact normal342a RHI profile collected on Honor during6 held Dpad inputs in factory:2359samples/lost0, PID2771/TID3239 selects2326; separate same-nameTID4204 has33 and excluded. Matching26b6ff22 debugSO allows true source attribution. Indexed report/writeback overlap scans106 samples,pending_view overlap61; sort2 only. Independent review examining redundant query validity hoist, no optimization written yet. OriginalFF stopped; Honor Ocarina/RG library windows.
 Raw private rhi-exact342a/rhi342a.data; .local/arsenal-current-lines/result342a-expanded. First automatedContinue was too early: confirmedtitlethenpressedagain, factory screenshotconfirmed beforeprofile. No title samples used.
+
+
+### Minimal query-end candidate built and actual codegen verified
+Query-end minimal candidate06426cc4 Android+host0; actual APK and independent debug SO BuildID caf273fc50dc98537cf5fdf45bf38166701c1c1a match. Actual indexed lambda now omits invariant query-valid branch while producer-range mvn/sub/cmp/b.hs remains at3ef8a4..b0. Predicate4million and actual-function20kstates/200kranges ASan+UBSan equivalence PASS. NOT installed, awaiting device windows for baseline/candidate AB; no FPS gain claim.
+Only indexed_range_ready two overlap predicates specialized after original guard; no global helper change/cache/sync alteration. Build.local/arsenal-query-end-20261118, exact disassembly .local/arsenal-query-end-review/actual-candidate-disassembly.txt. Baseline342a retained for AB.

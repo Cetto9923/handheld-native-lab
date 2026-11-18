@@ -11382,7 +11382,7 @@
    ],
    "acceptance": "真实兵工厂移动/战斗冷暖测量与修复回归；独立APK及统一App模块发布分别验证，未测不声称通过",
    "recovery": "私有100文件荣耀与12文件RG完整备份于.cetto-arsenal-inputs；原RG67 APK保留，测试仅独立save root",
-   "checkpoint": "Exact normal342a RHI profile collected on Honor during6 held Dpad inputs in factory:2359samples/lost0, PID2771/TID3239 selects2326; separate same-nameTID4204 has33 and excluded. Matching26b6ff22 debugSO allows true source attribution. Indexed report/writeback overlap scans106 samples,pending_view overlap61; sort2 only. Independent review examining redundant query validity hoist, no optimization written yet. OriginalFF stopped; Honor Ocarina/RG library windows.",
+   "checkpoint": "Query-end minimal candidate06426cc4 Android+host0; actual APK and independent debug SO BuildID caf273fc50dc98537cf5fdf45bf38166701c1c1a match. Actual indexed lambda now omits invariant query-valid branch while producer-range mvn/sub/cmp/b.hs remains at3ef8a4..b0. Predicate4million and actual-function20kstates/200kranges ASan+UBSan equivalence PASS. NOT installed, awaiting device windows for baseline/candidate AB; no FPS gain claim.",
    "dependencies": [],
    "role": "performance and graphics repair",
    "branch": "task/T-codex-recovery-20261114"
