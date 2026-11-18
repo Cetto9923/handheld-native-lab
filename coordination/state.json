@@ -4321,6 +4321,17 @@
    "checkpoint": "bb038b0: UNKNOWN-only cache retry + exactV1 header32 guard; production-helper ASan/UBSan pass; first candidate Android/Honor isolated factory passed,73 restored; header candidate build96730 pending. No9400fix claim; lifecycle/barrier independent reviews active.",
    "objective": "Evidence-driven CPU/GPU diagnosis and safe optimization; actual directional movement, preserve synchronization/saves.",
    "checkpoint_at": "2026-11-18T16:11:06.588545+08:00"
+  },
+  {
+   "task": "DOT-SURFACE-LIFECYCLE-20261118",
+   "owner": "dot /root/ff_arsenal/descriptor_review",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_surface_lifecycle.h",
+    "tests/native/test_surface_lifecycle.py",
+    ".local/arsenal-lifetime-followup/"
+   ],
+   "write_state": "ISOLATED_COMPONENT_IMPLEMENTATION",
+   "checkpoint": "Pure lifecycle component and deterministic tests only; no production include until integrated review;73unchanged."
   }
  ],
  "tasks": [
