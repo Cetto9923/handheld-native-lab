@@ -79,7 +79,11 @@ int xbg_vk_initialize(const xbg_vk_config *config, char *error, size_t bytes) {
     if (r) return r;
     r = xbg_game_set_sampler_mirror_clamp_to_edge(config->sampler_mirror_clamp_to_edge);
     if (r) {
-        xbg_game_shutdown();
+        const int cleanup = xbg_game_shutdown();
+        /* Failed cleanup can retain worker-owned device objects. Do not return
+         * to guest finalization, which could destroy their live backend. Use
+         * the existing fatal host policy, not a pretend successful teardown. */
+        if (cleanup) vk_die("Vulkan initialization failed init=%d cleanup=%d; retained device requires process exit", r, cleanup);
         return r;
     }
     g_config = *config;
