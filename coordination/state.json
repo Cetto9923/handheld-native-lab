@@ -11377,7 +11377,7 @@
    ],
    "acceptance": "真实兵工厂移动/战斗冷暖测量与修复回归；独立APK及统一App模块发布分别验证，未测不声称通过",
    "recovery": "私有100文件荣耀与12文件RG完整备份于.cetto-arsenal-inputs；原RG67 APK保留，测试仅独立save root",
-   "checkpoint": "Priority changed to user-reported stability. keep2 APK0218b016 Android+host0, installed defaultkeep1/titleonly then stopped; performanceAB NOT_RUN. IncidentA Xiaomi58 report+wood-room screenshot user identifies chapter3 watercity room; no save bytes and no explicit crash in retained log. IncidentB vivoMT6991/72 SIGSEGV at vendorMali+0x1eda09c, separate from25764 guest-null. Readonly parallel shader/API lifetime reviews; bounded defaultoff mobile breadcrumbs candidate requested. No release.",
+   "checkpoint": "Stability candidate5db5ceb1 Android+host0, Honor6612 chapter3 donor isolated132001 loads room and walks outdoors with no observed crash. Actual in-game-menu diagnostic ZIP542093B exported and read back, contains11 breadcrumb lines withmatchingPID6612 and all5 targetAPI begin/end pairs successful. NoMali-device verification. Normal diagnosticdefaultoff restored, FFstopped. Preparing explicit auto-on -mali-diag test build, not officialrelease.",
    "dependencies": [],
    "role": "performance and graphics repair",
    "branch": "task/T-codex-recovery-20261114"
