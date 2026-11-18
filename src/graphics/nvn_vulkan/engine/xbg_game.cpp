@@ -10,6 +10,7 @@
 #include "xbg_spirv_inline.h"
 #endif
 #include "xbg_cpu_timing.h"
+#include "xbg_indexed_ready_probe.h"
 #include "xbg_completion_wait.h"
 #ifdef DM_COMPLETION_WAIT_SELFTEST
 extern "C" int xbg_completion_wait_selftest(char *report,size_t bytes);
@@ -416,7 +417,9 @@ void begin_work(){}
 void finish_work(){}
 #endif
 }
+XbgIndexedReadyStats indexed_ready_stats;
 void timing_start(){
+    indexed_ready_stats={};
     timing_active=true;timing_start_ns=timing_clock();pipeline_before=pipeline_counts;
     timing_before={stats.submissions.load(),stats.draws.load(),stats.dispatches.load(),stats.presents.load(),stats.shader_loads.load()};
 }
@@ -434,6 +437,13 @@ void timing_report(const char *reason){
     report_pipeline_cache();
     static const char *names[]={"other","draw","dispatch","descriptor","pass","buffer","pipeline","submit","fence","present","cleanup","hash","image","log","program","cpuwrite","snapshot"};
     for(unsigned i=0;i<XbgCpuTiming::Count;i++){const auto &c=timing.counters[i];xbg_logf("NVN CPU_TIMING part=%s calls=%llu exclusive_ns=%llu inclusive_ns=%llu max_ns=%llu",names[i],(unsigned long long)c.calls,(unsigned long long)c.exclusive_ns,(unsigned long long)c.inclusive_ns,(unsigned long long)c.max_ns);}
+    xbg_logf("NVN INDEXED_READY v=1 calls=%llu requests=%llu exact_calls=%llu exact_requests=%llu unique=%llu duplicates=%llu overflow_calls=%llu reports_steps=%llu writebacks_steps=%llu duplicate_reports_steps=%llu duplicate_writebacks_steps=%llu vertex_requests=%llu vertex_repeats=%llu",
+        (unsigned long long)indexed_ready_stats.calls,(unsigned long long)indexed_ready_stats.requests,
+        (unsigned long long)indexed_ready_stats.exact_calls,(unsigned long long)indexed_ready_stats.exact_requests,
+        (unsigned long long)indexed_ready_stats.unique,(unsigned long long)indexed_ready_stats.duplicates,
+        (unsigned long long)indexed_ready_stats.overflow_calls,(unsigned long long)indexed_ready_stats.reports_steps,
+        (unsigned long long)indexed_ready_stats.writebacks_steps,(unsigned long long)indexed_ready_stats.duplicate_reports_steps,
+        (unsigned long long)indexed_ready_stats.duplicate_writebacks_steps,(unsigned long long)indexed_ready_stats.vertex_requests,(unsigned long long)indexed_ready_stats.vertex_repeats);
     descriptor_report();
     draw_report();
 }
@@ -7071,10 +7081,12 @@ void execute_draw_record(const p_draw &a){preflight_cpu_reads();
 }
 // A descriptor/vertex snapshot must not retire the command slot during draw().
 // Do not mutate caches or acquire a pending view while deciding eligibility.
-bool indexed_range_ready(uint64_t address,uint64_t bytes,VkDeviceSize alignment){
+bool indexed_range_ready(uint64_t address,uint64_t bytes,VkDeviceSize alignment,XbgIndexedReadyProbe *probe=nullptr){
+    if(probe)probe->request(address,bytes,alignment);
     if(!address || !bytes || address+bytes<address)return false;
-    for(auto &r:pending_reports)if(xbg_wb_overlaps(address,bytes,r.addr,sizeof(NVNcounterData)))return false;
+    for(auto &r:pending_reports){if(probe)probe->report_step();if(xbg_wb_overlaps(address,bytes,r.addr,sizeof(NVNcounterData)))return false;}
     for(auto w=pending_writebacks.rbegin();w!=pending_writebacks.rend();++w){
+        if(probe)probe->writeback_step();
         if(!xbg_wb_overlaps(address,bytes,w->addr,w->bytes))continue;
         return address>=w->addr && address+bytes<=w->addr+w->bytes &&
             (w->buffer.offset+address-w->addr)%alignment==0;
@@ -7083,11 +7095,13 @@ bool indexed_range_ready(uint64_t address,uint64_t bytes,VkDeviceSize alignment)
 }
 struct IndexedInputFailure {const char *why="none";uint32_t stage=UINT32_MAX,binding=UINT32_MAX;uint64_t address=0,bytes=0;};
 bool indexed_graphics_ready(const p_draw_idx &a,size_t index_bytes,IndexedInputFailure *failure=nullptr){
+    XbgIndexedReadyProbe probe(timing_active?&indexed_ready_stats:nullptr);
+    auto range_ready=[&](uint64_t address,uint64_t bytes,VkDeviceSize alignment){return indexed_range_ready(address,bytes,alignment,probe.out?&probe:nullptr);};
     auto reject=[&](const char *why,uint32_t st=UINT32_MAX,uint32_t binding=UINT32_MAX,uint64_t address=0,uint64_t bytes=0){if(failure)*failure={why,st,binding,address,bytes};return false;};
     if(read_preflight || capture.active || capture.probe || provenance_file || pass_prof_active() || draw_detail ||
        state.rast_discard || state.tf_on || !state.shader[0] || (!state.shader[4] && !state.rt.depth) || state.shader[1] || state.shader[2] || state.shader[3])return reject("state");
-    if(!indexed_range_ready(a.ibuf,index_bytes,4))return reject("index",0,0,a.ibuf,index_bytes);
-    for(auto loc:state.shader[0]->inputs){if(loc>=16)return reject("vertex-location");va_st v;memcpy(&v,&state.attrib[loc],4);if(!v.fmt)continue;if(v.stream>=16)return reject("vertex-stream");auto r=state.vb[v.stream];if(!indexed_range_ready(r.address,r.size,4))return reject("vertex",0,v.stream,r.address,r.size);}
+    if(!range_ready(a.ibuf,index_bytes,4))return reject("index",0,0,a.ibuf,index_bytes);
+    for(auto loc:state.shader[0]->inputs){if(loc>=16)return reject("vertex-location");va_st v;memcpy(&v,&state.attrib[loc],4);if(!v.fmt)continue;if(v.stream>=16)return reject("vertex-stream");probe.vertex_stream(v.stream);auto r=state.vb[v.stream];if(!range_ready(r.address,r.size,4))return reject("vertex",0,v.stream,r.address,r.size);}
     for(unsigned st=0;st<5;st++)if(state.shader[st]){auto &shader=*state.shader[st];unsigned ns=nvn_stage[st];if(!shader.storage_writes.empty())return reject("storage-write",st);
         for(auto &b:shader.bindings)for(unsigned e=0;e<b.count;e++){
             if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER || b.type==VK_DESCRIPTOR_TYPE_STORAGE_BUFFER){
@@ -7095,7 +7109,7 @@ bool indexed_graphics_ready(const p_draw_idx &a,size_t index_bytes,IndexedInputF
                     // Storage intervals can merge; range-ready intervals prove their range either host-clean or fully resident in GPU buffers.
                     VkDeviceSize alignment = b.type==VK_DESCRIPTOR_TYPE_STORAGE_BUFFER ? properties.limits.minStorageBufferOffsetAlignment : properties.limits.minUniformBufferOffsetAlignment;
                     if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)bytes=uniform_range(bytes);
-                    if(!indexed_range_ready(r.address,bytes,alignment))return reject("cpu-buffer",st,b.binding,r.address,bytes);
+                    if(!range_ready(r.address,bytes,alignment))return reject("cpu-buffer",st,b.binding,r.address,bytes);
                 }else if(b.source!=XBG_SOURCE_SUPPORT && b.source!=XBG_SOURCE_C1 && b.source!=XBG_SOURCE_DRIVER0 && b.source!=XBG_SOURCE_DRIVER2)return false;
             }else{
                 if(b.source!=XBG_SOURCE_TEXTURE && b.source!=XBG_SOURCE_IMAGE)return false;unsigned slot=b.slot+e;
@@ -7104,7 +7118,7 @@ bool indexed_graphics_ready(const p_draw_idx &a,size_t index_bytes,IndexedInputF
                 if(!id || (state.texture_pool.n>0 && id>=state.texture_pool.n))return reject("null-image",st,b.binding);
                 auto pool=textures.find(pool_key(&state.texture_pool));auto &table=pool==textures.end()?legacy_textures:pool->second;auto found=table.find(id);if(found==table.end())return false;auto &t=found->second.texture;
                 if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_IMAGE || b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER)return reject("storage-image",st,b.binding);
-                if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER){if(!indexed_range_ready(uint64_t(t.mem),t.L.size,properties.limits.minTexelBufferOffsetAlignment))return reject("texel",st,b.binding,uint64_t(t.mem),t.L.size);}
+                if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER){if(!range_ready(uint64_t(t.mem),t.L.size,properties.limits.minTexelBufferOffsetAlignment))return reject("texel",st,b.binding,uint64_t(t.mem),t.L.size);}
                 else if(t.mem && t.L.size && !indirect_cpu_clean(uint64_t(t.mem),t.L.size))return reject("image-memory",st,b.binding,uint64_t(t.mem),t.L.size);
             }
         }

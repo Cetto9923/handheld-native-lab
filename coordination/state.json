@@ -4297,11 +4297,14 @@
     "src/graphics/nvn_vulkan/engine/xbg_descriptor_timing.h",
     ".local/arsenal-fullcopy-review/",
     "src/graphics/nvn_vulkan/xtrace.h",
-    "tests/native/test_readback_fullcopy.py"
+    "tests/native/test_readback_fullcopy.py",
+    "src/graphics/nvn_vulkan/engine/xbg_indexed_ready_probe.h",
+    "tests/native/test_indexed_ready_probe.py"
    ],
    "write_state": "PERFORMANCE_DIAGNOSTIC",
    "acquired_at": "2026-11-18T09:44:22.098937+08:00",
-   "checkpoint": "Android ATrace379e829 host/build0; Honor6308 trace RHI11265ms CPU/15s, completion relock overlapsRHI99.2%; simpleperf index-ready hotspots. Honor stopped/handed library10min, RGoffline. No release."
+   "checkpoint": "Android ATrace379e829 host/build0; Honor6308 trace RHI11265ms CPU/15s, completion relock overlapsRHI99.2%; simpleperf index-ready hotspots. Honor stopped/handed library10min, RGoffline. No release.",
+   "objective": "Bounded indexed-ready duplicate diagnostics; preserve all synchronization and scans; device window coordinated with port_rules."
   }
  ],
  "tasks": [
