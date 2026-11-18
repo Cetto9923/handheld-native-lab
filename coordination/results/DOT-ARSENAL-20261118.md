@@ -257,3 +257,8 @@ Chinese notes+SHA+verificationJSON copied/readbackverified. Internalversion unch
 ### Actual version73 standalone test delivery
 User requested actual73: manifest code73/name1.0.73 built Android0/host0; APK7f3e71552aee32c3b0bbb2cd765d50f6be3960d7ae0af511ba23a660210184c4 same signer d11967a3. ZIP comparison with tested342a differs ONLY AndroidManifest.xml, native/assets/classes identical. Honor and RG install-r success, installedversion+fullSHA match, no uninstall/data clear. Delivered separate 待验证/1.0.73-稳定性测试-20261118/FFRS-1.0.73-stability-test-20261118.apk +notes/SHA/JSON, old72 preserved. No Quark/community upload.
 Prior scoped gameplay evidence transfers only because all runtime entries byte-identical; no new fullgame acceptance. MT6991 originalcrash and stableFPS open. Highercode means avoid blinddowngrade/uninstall; Chinese notes updated. First publicationPython stdin encoding error made nofiles, retriedwithcodingUTF8success.
+
+
+### Player73 dungeon combat feedback
+User supplied screenshot libfile_ca2d6fdb7bc88191addd670b7dc80545: player says overall improved to around58FPS, but combat20plus; location inside dungeon, outside test not yet provided. This is chat testimony, not game frame capture/device evidence; no model/settings/oldbuild controlled comparison known. Record as 1.0.73 user feedback, no stable58 or causal improvement/regression claim. Published73 bytes unchanged; next target isolated dungeon combat reproduction.
+Private image user73-feedback/image.png, SHA 989b5f6d887b89d2d2ed1ec0cad366871251bed67f32f1001b48367587784844; no identifying chat screenshot in Git.

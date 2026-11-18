@@ -11382,7 +11382,7 @@
    ],
    "acceptance": "真实兵工厂移动/战斗冷暖测量与修复回归；独立APK及统一App模块发布分别验证，未测不声称通过",
    "recovery": "私有100文件荣耀与12文件RG完整备份于.cetto-arsenal-inputs；原RG67 APK保留，测试仅独立save root",
-   "checkpoint": "User requested actual73: manifest code73/name1.0.73 built Android0/host0; APK7f3e71552aee32c3b0bbb2cd765d50f6be3960d7ae0af511ba23a660210184c4 same signer d11967a3. ZIP comparison with tested342a differs ONLY AndroidManifest.xml, native/assets/classes identical. Honor and RG install-r success, installedversion+fullSHA match, no uninstall/data clear. Delivered separate 待验证/1.0.73-稳定性测试-20261118/FFRS-1.0.73-stability-test-20261118.apk +notes/SHA/JSON, old72 preserved. No Quark/community upload.",
+   "checkpoint": "User supplied screenshot libfile_ca2d6fdb7bc88191addd670b7dc80545: player says overall improved to around58FPS, but combat20plus; location inside dungeon, outside test not yet provided. This is chat testimony, not game frame capture/device evidence; no model/settings/oldbuild controlled comparison known. Record as 1.0.73 user feedback, no stable58 or causal improvement/regression claim. Published73 bytes unchanged; next target isolated dungeon combat reproduction.",
    "dependencies": [],
    "role": "performance and graphics repair",
    "branch": "task/T-codex-recovery-20261114"
