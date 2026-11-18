@@ -12,6 +12,7 @@ main=r'''
 #include <vector>
 #include <set>
 #include <unistd.h>
+#include <sys/stat.h>
 int main(int argc,char **argv){assert(argc==2);std::string path=argv[1];XbgApiBreadcrumb b;
  b.configure(false,path.c_str());assert(b.begin(b.Target,b.RuntimeModule,1)==0);assert(access(path.c_str(),F_OK));
  b.configure(true,path.c_str());assert(!b.begin("another",b.RuntimeModule,1));assert(!b.begin(nullptr,b.RuntimeModule,1));
@@ -23,7 +24,15 @@ int main(int argc,char **argv){assert(argc==2);std::string path=argv[1];XbgApiBr
  auto incomplete=path+".incomplete";b.configure(true,incomplete.c_str());assert(b.begin(b.Target,b.RuntimePipeline,33));
  // File is visible before end/configure/destructor: fflush is part of begin.
  std::ifstream q(incomplete);assert(std::getline(q,line));assert(line.find("API_BREADCRUMB_SESSION")==0);assert(std::getline(q,line));assert(line.find("phase=begin")!=std::string::npos);assert(!std::getline(q,line));
+ // Restart rotates the immediately visible incomplete session intact.
+ b.configure(true,incomplete.c_str());std::ifstream prev(incomplete+".prev");unsigned previous_lines=0;
+ while(std::getline(prev,line)){++previous_lines;if(previous_lines==2)assert(line.find("phase=begin")!=std::string::npos);}
+ assert(previous_lines==2);std::ifstream fresh(incomplete);unsigned fresh_lines=0;while(std::getline(fresh,line))++fresh_lines;assert(fresh_lines==1);
  b.configure(false,path.c_str());assert(!b.begin(b.Target,b.Dispatch,99));
+ // Rotation failure must preserve the current evidence instead of truncating it.
+ auto blocked=path+".blocked";{std::ofstream x(blocked);x<<"preserve me\n";}
+ assert(mkdir((blocked+".prev").c_str(),0700)==0);
+ b.configure(true,blocked.c_str());assert(!b.begin(b.Target,b.Dispatch,99));std::ifstream kept(blocked);assert(std::getline(kept,line)&&line=="preserve me");
 }
 '''
 with tempfile.TemporaryDirectory() as d:

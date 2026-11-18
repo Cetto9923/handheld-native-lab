@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-18T13:47:27.342116+08:00",
+ "updated_at": "2026-11-18T13:56:40.097308+08:00",
  "phase": "1.0.71已发布GitHub，APK和中文说明回读核验完成",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -4307,11 +4307,13 @@
     "src/graphics/nvn_vulkan/engine/xbg_gpu_raw.h",
     "tests/native/test_gpu_raw.py",
     "tests/native/test_arena_life.py",
-    "tests/device/test_arena_memory_policy.py"
+    "tests/device/test_arena_memory_policy.py",
+    "src/graphics/nvn_vulkan/engine/xbg_api_breadcrumb.h",
+    "tests/native/test_api_breadcrumb.py"
    ],
    "write_state": "PERFORMANCE_REVIEW",
    "acquired_at": "2026-11-18T09:44:22.098937+08:00",
-   "checkpoint": "Readback keep2 reverse-order control completed: on2 22.842 FPS/p95 52.378ms (thermal0→0), off2 23.312 FPS/p95 52.333ms (thermal0→1). No reproducible gain, keep1 restored; no promotion/release. FF stopped and Honor returned to library071 UI. Offline exact-BuildID RHI self-line attribution next; Mali diagnostic awaiting original-phone feedback.",
+   "checkpoint": "Dedicated diagnostic restart retention fix: rotate one prior session, fail closed on rotation error; native tests pass, ZIP allowlist/test extended, rebuild then actual restart/export validation pending.",
    "objective": "Evidence-driven CPU/GPU diagnosis and safe optimization; actual directional movement, preserve synchronization/saves.",
    "checkpoint_at": "2026-11-18T13:47:27.342069+08:00"
   }
@@ -11378,7 +11380,7 @@
    ],
    "acceptance": "真实兵工厂移动/战斗冷暖测量与修复回归；独立APK及统一App模块发布分别验证，未测不声称通过",
    "recovery": "私有100文件荣耀与12文件RG完整备份于.cetto-arsenal-inputs；原RG67 APK保留，测试仅独立save root",
-   "checkpoint": "Readback keep2 reverse-order control completed: on2 22.842 FPS/p95 52.378ms (thermal0→0), off2 23.312 FPS/p95 52.333ms (thermal0→1). No reproducible gain, keep1 restored; no promotion/release. FF stopped and Honor returned to library071 UI. Offline exact-BuildID RHI self-line attribution next; Mali diagnostic awaiting original-phone feedback.",
+   "checkpoint": "Diagnostic previous-session rotation implemented. Android1ce83fcb built0; initial host failed only old fixture entry count14 after adding2logs, corrected16 and focused4tests pass; full host rerun exit0. Installed same-signature/code72 on Honor, readback SHA matches. PID18185 thirdchapter isolated runtime validation underway. No formal release.",
    "dependencies": [],
    "role": "performance and graphics repair",
    "branch": "task/T-codex-recovery-20261114"

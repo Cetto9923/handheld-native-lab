@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
+#include <string>
 #include <cerrno>
 #include <pthread.h>
 #include <unistd.h>
@@ -38,7 +39,12 @@ private:
     static const char *name(Site s){static const char *names[]={"runtime_module","descriptors","runtime_pipeline","warm_pipeline","dispatch_record"};return names[unsigned(s)];}
 public:
     ~XbgApiBreadcrumb(){if(file)fclose(file);}
-    void configure(bool on,const char *path){std::lock_guard<std::mutex> lock(mu);if(file)fclose(file);file=nullptr;enabled=false;seen=0;sequence=0;if(on){file=fopen(path,"wb");enabled=file!=nullptr;if(enabled){timespec now{};clock_gettime(CLOCK_MONOTONIC,&now);const uint64_t ns=uint64_t(now.tv_sec)*1000000000ull+uint64_t(now.tv_nsec);fprintf(file,"API_BREADCRUMB_SESSION v=1 pid=%llu init_monotonic_ns=%llu target=%s max_lines=11\n",(unsigned long long)getpid(),(unsigned long long)ns,Target);fflush(file);}}}
+    void configure(bool on,const char *path){std::lock_guard<std::mutex> lock(mu);if(file)fclose(file);file=nullptr;enabled=false;seen=0;sequence=0;if(on){
+        // Preserve the preceding session before a restart can replace its fault evidence.
+        // Failed rotation disables diagnostics rather than truncating the only copy.
+        const std::string previous=std::string(path)+".prev";
+        if(rename(path,previous.c_str())!=0 && errno!=ENOENT)return;
+        file=fopen(path,"wb");enabled=file!=nullptr;if(enabled){timespec now{};clock_gettime(CLOCK_MONOTONIC,&now);const uint64_t ns=uint64_t(now.tv_sec)*1000000000ull+uint64_t(now.tv_nsec);fprintf(file,"API_BREADCRUMB_SESSION v=1 pid=%llu init_monotonic_ns=%llu target=%s max_lines=11\n",(unsigned long long)getpid(),(unsigned long long)ns,Target);fflush(file);}}}
     uint64_t begin(const char *key,Site site,uint64_t frame,const uint32_t *words=nullptr,size_t count=0){
         if(!enabled || !key || unsigned(site)>=Count || std::strcmp(key,Target))return 0;
         unsigned bit=1u<<unsigned(site);if(seen.load(std::memory_order_relaxed)&bit)return 0;
