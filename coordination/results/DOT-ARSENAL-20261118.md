@@ -77,3 +77,6 @@ RG PID19868覆盖安装全文SHA回读匹配，独立用户存档Continue进入�
 - 默认mode1/frame1923：主几何/深度/Gbuffer1040×584，动态policy日志存在80→60%自适应；两档都不是固定1080内部渲染。
 - 证据低档 low-mode-engine/guest.log、默认 default-mode-engine/guest.log，截图保留/tmp/honor-low-factory.png、/tmp/honor-default-factory.png。已恢复oe-operation-mode=1、gfx-render-policy=1、gfx-target-fps=0并停止游戏。
 - 已告统一库用“标准/较低画质”且要求重新启动，不以屏幕/合成分辨率冒充内部尺寸。不宣称低档完整双机视觉/性能/温度通过。
+
+### 低画质短探索对照（PID29645/30138）
+同隔离兵工厂档、同左右各4秒摇杆路径、probe2 APK、uncapped：标准成功独立帧33.8497FPS/P9948.343/max50.473ms；低档33.5449/P9949.193/max50.731ms，均无>100ms。标准CSV在窗口尾未完全flush（实际记录7.799s，clock窗口8.324s），低档8.317s；因此仅探索，不能作精确性能倍率或验收。未见降低分辨率带来明确收益，继续优先CPU归因。Current HAL skin标准35.378→35.591℃、低档35.942→36.622℃，status0，电池31–32℃，充电状态相同；短样本/非平衡不作温升胜负。证据~/.cetto-arsenal-inputs/resolution-ab/。测试结束停原FF、oe-operation-mode恢复1；RG仍offline。复读只改自有记录，保留外部pitfalls文档WIP。已请descriptor_review独立只读复核readback/remaining路径，未委托源码改写。
