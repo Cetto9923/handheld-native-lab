@@ -4293,11 +4293,13 @@
     "tests/native/test_pipeline_failure_record.py",
     "tests/installer/DiagnosticReportContract.java",
     "src/graphics/nvn_vulkan/engine/xbg_arsenal_interface.h",
-    "tests/native/test_arsenal_interface.py"
+    "tests/native/test_arsenal_interface.py",
+    "src/graphics/nvn_vulkan/engine/xbg_descriptor_timing.h",
+    ".local/arsenal-fullcopy-review/"
    ],
-   "write_state": "DIAGNOSTIC_SOURCE",
+   "write_state": "PERFORMANCE_DIAGNOSTIC",
    "acquired_at": "2026-11-18T09:44:22.098937+08:00",
-   "checkpoint": "诊断36fd046后准备三个确定VS缺varying的限域候选；不改资源，原始完整hash/shape守卫，待实际配方与设备验证，不发布。"
+   "checkpoint": "f9e289c: Qualcomm varying fix实机场景消除失败；工厂战斗未达标；低画质短对照无明确收益，继续CPU readback；荣耀已停原FF恢复mode1，RGoffline，不发布。"
   }
  ],
  "tasks": [
