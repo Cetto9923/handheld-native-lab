@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-18T14:00:07.316292+08:00",
+ "updated_at": "2026-11-18T14:13:26.314275+08:00",
  "phase": "1.0.71已发布GitHub，APK和中文说明回读核验完成",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -11380,7 +11380,7 @@
    ],
    "acceptance": "真实兵工厂移动/战斗冷暖测量与修复回归；独立APK及统一App模块发布分别验证，未测不声称通过",
    "recovery": "私有100文件荣耀与12文件RG完整备份于.cetto-arsenal-inputs；原RG67 APK保留，测试仅独立save root",
-   "checkpoint": "Retained-session diagnostic1ce83fcb Android0/full host retest0, same signing/code72 installed+readbackSHA. Honor18185 chapter3 room→exterior succeeds; controlled restart18614 preserves previous11 lines byte-exact. Actual menu export517286B contains previous18185/current18614 (3lines) and correct version. Uploaded new APK+README Library; parent hasIDs. Not Mali original-device fix, no formal/community release. Honor FF stopped74%charging status2/30C.",
+   "checkpoint": "Honor PID21627 retained-diagnostic1ce83fcb chapter3 room→exterior survived9 logged memory reclaims in last initialization segment, including one level2 hint2 injected trim. Second repeated am trim emitted AMS exception (not counted). Process stayed21627 until deliberate stop. Warm admission/reclaim independent11550 SC-interleaving model found no race; no lock patch. Original MT6991 driver fault not reproduced and RG45589 times out: actual device/API boundary remains a substantive blocker, no speculative shader/sync change.",
    "dependencies": [],
    "role": "performance and graphics repair",
    "branch": "task/T-codex-recovery-20261114"
