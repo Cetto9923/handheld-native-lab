@@ -349,6 +349,7 @@ inline XbgCpuTiming *timing_now(){return (!tls_gate || timing_any.load(std::memo
 inline uint64_t perf_clock(){return timing_now()?timing_clock():0;}
 // Opt-in 30 Hz render-work hints. All access is under the engine mutex.
 // Resolve API 33 symbols dynamically so older Android hosts retain their path.
+XbgIndexedReadyStats indexed_ready_stats;
 namespace performance_hint {
 bool enabled=false;
 #if defined(__ANDROID__)
@@ -417,7 +418,6 @@ void begin_work(){}
 void finish_work(){}
 #endif
 }
-XbgIndexedReadyStats indexed_ready_stats;
 void timing_start(){
     indexed_ready_stats={};
     timing_active=true;timing_start_ns=timing_clock();pipeline_before=pipeline_counts;
