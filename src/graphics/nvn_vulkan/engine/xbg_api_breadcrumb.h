@@ -1,4 +1,10 @@
 #pragma once
+#ifndef FFRS_API_BREADCRUMB_DIAGNOSTIC
+#define FFRS_API_BREADCRUMB_DIAGNOSTIC 0
+#endif
+#if FFRS_API_BREADCRUMB_DIAGNOSTIC != 0 && FFRS_API_BREADCRUMB_DIAGNOSTIC != 1
+#error "FFRS_API_BREADCRUMB_DIAGNOSTIC must be 0 or 1"
+#endif
 #include <atomic>
 #include <mutex>
 #include <cstdio>

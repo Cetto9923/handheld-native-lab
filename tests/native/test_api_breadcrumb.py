@@ -33,9 +33,10 @@ def vk_calls(src):
  src=re.sub(r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\])*"','',src,flags=re.S)
  return collections.Counter(re.findall(r'\b(vk\w+)\s*\(',src))
 assert vk_calls(s)==BASELINE_VULKAN_COUNTS,'Vulkan call count changed'
-assert s.count('gfx-api-breadcrumb')==1
+assert 'gfx-api-breadcrumb' not in s
+assert 'const bool on=FFRS_API_BREADCRUMB_DIAGNOSTIC != 0;' in s
 assert 'api_breadcrumb.configure(on,(base+"/api-breadcrumbs.log").c_str());' in s
-assert 'FFRS_PROFILE_TABLET' not in s[s.index('bool on=false;FILE *m=fopen((base+"/gfx-api-breadcrumb")'):s.index('api_breadcrumb.configure(on,')]
+assert 'FFRS_PROFILE_TABLET' not in s[s.index('const bool on=FFRS_API_BREADCRUMB_DIAGNOSTIC'):s.index('api_breadcrumb.configure(on,')]
 assert 'check(api_result,"vkCreateShaderModule(cfg.device,&ci,nullptr,&p->module)")' in s
 assert 'create_compute_pipeline_resilient(cfg.device,pipeline_cache,1,&cc,nullptr,&out.pipeline)' in s
 assert 'warm::register_module(p->module,key)' in s

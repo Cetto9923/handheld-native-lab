@@ -10,6 +10,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FFRS_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 export FFRS_ANDROID_BUILD_DIR="${FFRS_ANDROID_BUILD_DIR:-${FFRS_ROOT}/.local/build/android-arm64-game-window}"
 export FFRS_ANDROID_LOG_DIR="${FFRS_ANDROID_LOG_DIR:-${FFRS_ROOT}/.local/logs/android-game-window}"
+# Always pass an explicit value, even when reusing a former diagnostic build directory.
+FFRS_API_BREADCRUMB_DIAGNOSTIC="${FFRS_API_BREADCRUMB_DIAGNOSTIC:-0}"
+case "${FFRS_API_BREADCRUMB_DIAGNOSTIC}" in 0|1) ;; *) echo "Invalid FFRS_API_BREADCRUMB_DIAGNOSTIC (expected 0 or 1)" >&2; exit 2 ;; esac
 # Reuse the repository toolchain discovery instead of duplicating it.
 # shellcheck source=../device/android_env.sh
 source "${FFRS_ROOT}/scripts/device/android_env.sh"
@@ -33,6 +36,25 @@ FFRS_NATIVE_WINDOW_HEADER="${FFRS_HLE_DIR}/native_window.h"
 mkdir -p "${FFRS_ROOT}/.local/build"
 FFRS_PACKAGE_DIR="$(mktemp -d "${FFRS_ROOT}/.local/build/game-window-apk.XXXXXX")"
 FFRS_APK_NAME="${FFRS_APK_NAME:-ffrs-game-window-debug.apk}"
+# Derive only a packaging copy, never mutate the source manifest or device markers.
+python3 - "${FFRS_APP_MANIFEST}" "${FFRS_PACKAGE_DIR}/AndroidManifest.xml" "${FFRS_API_BREADCRUMB_DIAGNOSTIC}" <<'PY_MANIFEST'
+import sys
+import xml.etree.ElementTree as ET
+source, dest, mode = sys.argv[1:]
+ET.register_namespace('android', 'http://schemas.android.com/apk/res/android')
+tree = ET.parse(source)
+key = '{http://schemas.android.com/apk/res/android}versionName'
+name = tree.getroot().get(key, '')
+suffix = '-mali-diag'
+if mode == '1':
+    if not name.endswith(suffix): name += suffix
+elif name.endswith(suffix):
+    raise SystemExit('Ordinary build refuses diagnostic versionName; choose the ordinary source manifest')
+tree.getroot().set(key, name)
+tree.write(dest, encoding='utf-8', xml_declaration=True)
+PY_MANIFEST
+FFRS_APP_MANIFEST="${FFRS_PACKAGE_DIR}/AndroidManifest.xml"
+printf 'api_breadcrumb_diagnostic=%s\n' "${FFRS_API_BREADCRUMB_DIAGNOSTIC}"
 if [[ -z "${FFRS_SPIRV_TOOLS_SOURCE:-}" && -f "${FFRS_ROOT}/scripts/android/prepare_honor_spirv_tools.sh" ]]; then
     FFRS_SPIRV_TOOLS_SOURCE="$(bash "${FFRS_ROOT}/scripts/android/prepare_honor_spirv_tools.sh" 2>/dev/null || true)"
 fi
@@ -93,7 +115,8 @@ step cmake-configure "${FFRS_CMAKE}" -S "${FFRS_ROOT}/src/android/native" -B "${
     -G 'Unix Makefiles' -DCMAKE_TOOLCHAIN_FILE="${FFRS_NDK}/build/cmake/android.toolchain.cmake" \
     -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-28 -DANDROID_STL=c++_static \
     -DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-    -DFFRS_SPIRV_TOOLS_SOURCE="${FFRS_SPIRV_TOOLS_SOURCE:-}"
+    -DFFRS_SPIRV_TOOLS_SOURCE="${FFRS_SPIRV_TOOLS_SOURCE:-}" \
+    -DFFRS_API_BREADCRUMB_DIAGNOSTIC="${FFRS_API_BREADCRUMB_DIAGNOSTIC}"
 step cmake-build-game-window \
     "${FFRS_CMAKE}" --build "${FFRS_BUILD}" --target ffrs_game_window -j "${FFRS_BUILD_JOBS:-4}"
 step android-elf-header \

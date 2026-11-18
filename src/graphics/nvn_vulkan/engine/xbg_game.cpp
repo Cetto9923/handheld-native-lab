@@ -7942,7 +7942,7 @@ extern "C" int xbg_game_initialize(const xbg_game_config *c,char *error,size_t b
     if(!c || c->size!=sizeof(*c) || !c->physical || !c->device || !c->queue || !c->shader_directory || !c->fence_timeout_ns){if(error&&bytes)snprintf(error,bytes,"Invalid xbg_game_config");return -1;}
     std::lock_guard<std::recursive_mutex> lock(mutex);if(initialized){if(error&&bytes)snprintf(error,bytes,"Game graphics already initialized");return -1;}
     {std::string dir=c->shader_directory;size_t cut=dir.find_last_of('/');std::string base=cut==std::string::npos?dir:dir.substr(0,cut);
-     bool on=false;FILE *m=fopen((base+"/gfx-api-breadcrumb").c_str(),"rb");if(m){on=fgetc(m)=='1';fclose(m);}
+     const bool on=FFRS_API_BREADCRUMB_DIAGNOSTIC != 0; // Build-only; never honor stale device markers.
      api_breadcrumb.configure(on,(base+"/api-breadcrumbs.log").c_str());}
     {std::string dir=c->shader_directory;size_t cut=dir.find_last_of('/');std::string base=cut==std::string::npos?dir:dir.substr(0,cut);
      gpu_raw.configure(0,0,0);gpu_raw_path=base+"/gpu-raw-slots.log";
