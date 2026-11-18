@@ -48,3 +48,12 @@ RG PID19868覆盖安装全文SHA回读匹配，独立用户存档Continue进入�
 - 当前会话日志包含 VS5a97a7e1a99cce45 / FS350ac5272e645d62 及 FS8b3b271f21559280 的管线创建 -13。前者已在窄接口修复证据内；仍须候选同场景对照，不能宣布水都修好。
 - 已整合 diagnostic-only texel 子计时（alias/pending/readback/view lookup/create），仅现有 gfx-cpu-profile 诊断窗口启用，正常路径不计时；无缓存、同步或生命周期优化。独立 ASan/UBSan 用例通过；Android 构建通过，host验证进行中。候选在 `.local/arsenal-texel-probe-20261118/`，未发布。
 - 荣耀实读51%，AC/USB powered true/status2，电池32°C，确认正在充电。
+
+### 水都候选初步结果（PID24213）
+- 新诊断候选 Android/host 均0；APK SHA c9bc2bf5e63c64435a0fe42888938aa67baf3f4a7d3532c5799e9658ca11dc06。
+- 水都生产72 PID21619本次日志639次5a97/350a和10次5a97/8b3b graphics -13；候选PID24213当前会话0次此失败。
+- 水都旅馆外水面花朵来回移动正常无诊断窗口：10.51691411s，独立渲染36.1323FPS，P50 26.6822/P95 36.3107/P99 39.8642/max45.4664ms，无>100ms。证据 `~/.cetto-arsenal-inputs/honor-water/clean-candidate.json` 与同名clock起止、candidate24213.csv。
+- 首次flowers窗口被CPUprofile7412–7417污染，不作性能验收。该诊断窗口descriptor32.45ms/6帧，texel_view_lookup仅0.124ms/6帧，当前水都没有为其增加frontcache的证据。
+- 以上不是全城、战斗、稳定锁30或840原机验证。水都baseline短窗口tailCSV未刷新导致一行，已明确不用于数值A/B比率。
+
+- 水都同路线锁30补测10.49997859s，30.00006FPS，P99 36.6892/max43.6882ms，无>100ms。已恢复marker0并切回隔离兵工厂继续，不含完整音频验收。
