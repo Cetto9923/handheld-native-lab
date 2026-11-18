@@ -7202,12 +7202,10 @@ bool indexed_range_ready(uint64_t address,uint64_t bytes,VkDeviceSize alignment,
     if(probe)probe->request(address,bytes,alignment);
     if(bbox)bbox->request(address,bytes);
     if(!address || !bytes || address+bytes<address)return false;
-    // Query validity is established above; retain each producer range validation.
-    const uint64_t query_end=address+bytes;
-    if(!bounds || !bounds->reports.outside(address,bytes))for(auto &r:pending_reports){if(probe)probe->report_step();if(bbox)bbox->report_step();if((xbg_wb_range_valid(r.addr,sizeof(NVNcounterData)) && address<r.addr+sizeof(NVNcounterData) && r.addr<query_end))return false;}
+    if(!bounds || !bounds->reports.outside(address,bytes))for(auto &r:pending_reports){if(probe)probe->report_step();if(bbox)bbox->report_step();if(xbg_wb_overlaps(address,bytes,r.addr,sizeof(NVNcounterData)))return false;}
     if(!bounds || !bounds->writebacks.outside(address,bytes))for(auto w=pending_writebacks.rbegin();w!=pending_writebacks.rend();++w){
         if(probe)probe->writeback_step();if(bbox)bbox->writeback_step();
-        if(!(xbg_wb_range_valid(w->addr,w->bytes) && address<w->addr+w->bytes && w->addr<query_end))continue;
+        if(!xbg_wb_overlaps(address,bytes,w->addr,w->bytes))continue;
         return address>=w->addr && address+bytes<=w->addr+w->bytes &&
             (w->buffer.offset+address-w->addr)%alignment==0;
     }
