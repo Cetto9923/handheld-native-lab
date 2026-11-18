@@ -63,6 +63,15 @@ def main():
  p=argparse.ArgumentParser();p.add_argument('--source',type=Path,default=Path(__file__).resolve().parents[2]/'src/graphics/nvn_vulkan/engine/xbg_game.cpp');p.add_argument('--header',type=Path)
  a=p.parse_args();s=a.source.read_text();h=(a.header or a.source.parent/'xbg_indexed_ready_probe.h').read_text()
  current=function(s,'bool indexed_range_ready(')
+ # BBox shadow diagnostic has its own actual-helper tests. Remove ONLY its
+ # audited signature/counter calls here, retaining exact original predicate proof.
+ if 'XbgIndexedBBoxProbe' in current:
+  removals=[(',XbgIndexedBBoxProbe *bbox=nullptr',''),('    if(bbox)bbox->request(address,bytes);\n',''),('if(bbox)bbox->report_step();',''),('if(bbox)bbox->writeback_step();','')]
+  for old,new in removals:
+   assert current.count(old)==1, 'Unexpected bbox diagnostic shape'
+   current=current.replace(old,new)
+  assert 'bbox' not in current
+
  # Independent frozen original below, not a current-vs-current comparison.
  graphics=function(s,'bool indexed_graphics_ready(')
  assert 'XbgIndexedReadyProbe probe(timing_active?&indexed_ready_stats:nullptr);' in graphics

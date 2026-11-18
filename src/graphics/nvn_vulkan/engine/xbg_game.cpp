@@ -11,6 +11,7 @@
 #endif
 #include "xbg_cpu_timing.h"
 #include "xbg_indexed_ready_probe.h"
+#include "xbg_indexed_bbox_probe.h"
 #include "xbg_completion_wait.h"
 #ifdef DM_COMPLETION_WAIT_SELFTEST
 extern "C" int xbg_completion_wait_selftest(char *report,size_t bytes);
@@ -350,6 +351,7 @@ inline uint64_t perf_clock(){return timing_now()?timing_clock():0;}
 // Opt-in 30 Hz render-work hints. All access is under the engine mutex.
 // Resolve API 33 symbols dynamically so older Android hosts retain their path.
 XbgIndexedReadyStats indexed_ready_stats;
+XbgIndexedBBoxStats indexed_bbox_stats;
 namespace performance_hint {
 bool enabled=false;
 #if defined(__ANDROID__)
@@ -419,7 +421,7 @@ void finish_work(){}
 #endif
 }
 void timing_start(){
-    indexed_ready_stats={};
+    indexed_ready_stats={};indexed_bbox_stats={};
     timing_active=true;timing_start_ns=timing_clock();pipeline_before=pipeline_counts;
     timing_before={stats.submissions.load(),stats.draws.load(),stats.dispatches.load(),stats.presents.load(),stats.shader_loads.load()};
 }
@@ -444,6 +446,22 @@ void timing_report(const char *reason){
         (unsigned long long)indexed_ready_stats.overflow_calls,(unsigned long long)indexed_ready_stats.reports_steps,
         (unsigned long long)indexed_ready_stats.writebacks_steps,(unsigned long long)indexed_ready_stats.duplicate_reports_steps,
         (unsigned long long)indexed_ready_stats.duplicate_writebacks_steps,(unsigned long long)indexed_ready_stats.vertex_requests,(unsigned long long)indexed_ready_stats.vertex_repeats);
+    xbg_logf("NVN INDEXED_BBOX v=1 calls=%llu report_build_steps=%llu writeback_build_steps=%llu report_empty=%llu writeback_empty=%llu report_unusable=%llu writeback_unusable=%llu queries=%llu invalid_queries=%llu report_outside=%llu writeback_outside=%llu report_scan_steps=%llu writeback_scan_steps=%llu report_avoidable_steps=%llu writeback_avoidable_steps=%llu",
+        (unsigned long long)indexed_bbox_stats.calls,
+        (unsigned long long)indexed_bbox_stats.report_build_steps,
+        (unsigned long long)indexed_bbox_stats.writeback_build_steps,
+        (unsigned long long)indexed_bbox_stats.report_empty,
+        (unsigned long long)indexed_bbox_stats.writeback_empty,
+        (unsigned long long)indexed_bbox_stats.report_unusable,
+        (unsigned long long)indexed_bbox_stats.writeback_unusable,
+        (unsigned long long)indexed_bbox_stats.queries,
+        (unsigned long long)indexed_bbox_stats.invalid_queries,
+        (unsigned long long)indexed_bbox_stats.report_outside,
+        (unsigned long long)indexed_bbox_stats.writeback_outside,
+        (unsigned long long)indexed_bbox_stats.report_scan_steps,
+        (unsigned long long)indexed_bbox_stats.writeback_scan_steps,
+        (unsigned long long)indexed_bbox_stats.report_avoidable_steps,
+        (unsigned long long)indexed_bbox_stats.writeback_avoidable_steps);
     descriptor_report();
     draw_report();
 }
@@ -7081,12 +7099,13 @@ void execute_draw_record(const p_draw &a){preflight_cpu_reads();
 }
 // A descriptor/vertex snapshot must not retire the command slot during draw().
 // Do not mutate caches or acquire a pending view while deciding eligibility.
-bool indexed_range_ready(uint64_t address,uint64_t bytes,VkDeviceSize alignment,XbgIndexedReadyProbe *probe=nullptr){
+bool indexed_range_ready(uint64_t address,uint64_t bytes,VkDeviceSize alignment,XbgIndexedReadyProbe *probe=nullptr,XbgIndexedBBoxProbe *bbox=nullptr){
     if(probe)probe->request(address,bytes,alignment);
+    if(bbox)bbox->request(address,bytes);
     if(!address || !bytes || address+bytes<address)return false;
-    for(auto &r:pending_reports){if(probe)probe->report_step();if(xbg_wb_overlaps(address,bytes,r.addr,sizeof(NVNcounterData)))return false;}
+    for(auto &r:pending_reports){if(probe)probe->report_step();if(bbox)bbox->report_step();if(xbg_wb_overlaps(address,bytes,r.addr,sizeof(NVNcounterData)))return false;}
     for(auto w=pending_writebacks.rbegin();w!=pending_writebacks.rend();++w){
-        if(probe)probe->writeback_step();
+        if(probe)probe->writeback_step();if(bbox)bbox->writeback_step();
         if(!xbg_wb_overlaps(address,bytes,w->addr,w->bytes))continue;
         return address>=w->addr && address+bytes<=w->addr+w->bytes &&
             (w->buffer.offset+address-w->addr)%alignment==0;
@@ -7096,10 +7115,12 @@ bool indexed_range_ready(uint64_t address,uint64_t bytes,VkDeviceSize alignment,
 struct IndexedInputFailure {const char *why="none";uint32_t stage=UINT32_MAX,binding=UINT32_MAX;uint64_t address=0,bytes=0;};
 bool indexed_graphics_ready(const p_draw_idx &a,size_t index_bytes,IndexedInputFailure *failure=nullptr){
     XbgIndexedReadyProbe probe(timing_active?&indexed_ready_stats:nullptr);
-    auto range_ready=[&](uint64_t address,uint64_t bytes,VkDeviceSize alignment){return indexed_range_ready(address,bytes,alignment,probe.out?&probe:nullptr);};
+    XbgIndexedBBoxProbe bbox(timing_active?&indexed_bbox_stats:nullptr);
+    auto range_ready=[&](uint64_t address,uint64_t bytes,VkDeviceSize alignment){return indexed_range_ready(address,bytes,alignment,probe.out?&probe:nullptr,bbox.out?&bbox:nullptr);};
     auto reject=[&](const char *why,uint32_t st=UINT32_MAX,uint32_t binding=UINT32_MAX,uint64_t address=0,uint64_t bytes=0){if(failure)*failure={why,st,binding,address,bytes};return false;};
     if(read_preflight || capture.active || capture.probe || provenance_file || pass_prof_active() || draw_detail ||
        state.rast_discard || state.tf_on || !state.shader[0] || (!state.shader[4] && !state.rt.depth) || state.shader[1] || state.shader[2] || state.shader[3])return reject("state");
+    bbox.build(pending_reports,pending_writebacks,sizeof(NVNcounterData));
     if(!range_ready(a.ibuf,index_bytes,4))return reject("index",0,0,a.ibuf,index_bytes);
     for(auto loc:state.shader[0]->inputs){if(loc>=16)return reject("vertex-location");va_st v;memcpy(&v,&state.attrib[loc],4);if(!v.fmt)continue;if(v.stream>=16)return reject("vertex-stream");probe.vertex_stream(v.stream);auto r=state.vb[v.stream];if(!range_ready(r.address,r.size,4))return reject("vertex",0,v.stream,r.address,r.size);}
     for(unsigned st=0;st<5;st++)if(state.shader[st]){auto &shader=*state.shader[st];unsigned ns=nvn_stage[st];if(!shader.storage_writes.empty())return reject("storage-write",st);
