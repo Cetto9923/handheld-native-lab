@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-18T16:11:06.588545+08:00",
- "phase": "1.0.71已发布GitHub，APK和中文说明回读核验完成",
+ "updated_at": "2026-11-18T19:14:27.615378+08:00",
+ "phase": "1.0.73兼容接续；诊断导出117宿主与荣耀流程通过，主库空轨卡顿专项、OOT接入与在线更新并行",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
  "update_mode": "event_driven_no_background_scheduler",
@@ -4314,11 +4314,24 @@
     "tests/native/test_init_cleanup_failure.py",
     "src/runtime/nso/nso_loader.c",
     "tests/native/test_fault_chain.py",
-    "tests/native/test_pipeline_cache_retry.py"
+    "tests/native/test_pipeline_cache_retry.py",
+    "src/graphics/nvn_device/nvn_backend_none.c",
+    "src/graphics/nvn_device/nvn_backend_vulkan.c",
+    "src/graphics/nvn_device/nvn_device.h",
+    "src/graphics/nvn_device/nvn_engine.c",
+    "src/graphics/nvn_device/nvn_queue.c",
+    "src/graphics/nvn_device/nvn_window.c",
+    "src/graphics/nvn_device/nvn_window.h",
+    "src/graphics/nvn_vulkan/engine/xbg_game.h",
+    "src/graphics/nvn_vulkan/engine/xbg_surface_lifecycle_api.h",
+    "tests/installer/test_fps_overlay.py",
+    "tests/native/surface_lifecycle_shim.cpp",
+    "tests/native/window_acquire_contract.c",
+    "scripts/runtime/build_guest_process_contract.sh"
    ],
-   "write_state": "CACHE_HEADER_BUILD_AND_LIFETIME_REVIEW",
+   "write_state": "FROZEN_HANDOFF_TO_CODEX_ROOT",
    "acquired_at": "2026-11-18T09:44:22.098937+08:00",
-   "checkpoint": "bb038b0: UNKNOWN-only cache retry + exactV1 header32 guard; production-helper ASan/UBSan pass; first candidate Android/Honor isolated factory passed,73 restored; header candidate build96730 pending. No9400fix claim; lifecycle/barrier independent reviews active.",
+   "checkpoint": "用户明确授权Codex接手，17:20冻结15文件hash已核对，原Dots源码保全；后续root串行集成，子代理仅改独立worktree。",
    "objective": "Evidence-driven CPU/GPU diagnosis and safe optimization; actual directional movement, preserve synchronization/saves.",
    "checkpoint_at": "2026-11-18T16:11:06.588545+08:00"
   },
@@ -4332,6 +4345,186 @@
    ],
    "write_state": "ISOLATED_COMPONENT_IMPLEMENTATION",
    "checkpoint": "Pure lifecycle component and deterministic tests only; no production include until integrated review;73unchanged."
+  },
+  {
+   "task": "CODEX-DOTS-TAKEOVER-20261118",
+   "owner": "Codex /root 本聊天",
+   "paths": [
+    ".local/codex-dots-takeover-20261118/",
+    "coordination/results/CODEX-DOTS-TAKEOVER-20261118.md",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "tests/native/test_indexed_bbox_ready.py",
+    "tests/native/test_warm_layout_validation.py",
+    "scripts/verify_host.py",
+    "src/graphics/nvn_vulkan/engine/xbg_indexed_bbox_probe.h",
+    "tests/native/test_pending_bounds.py"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-18T17:36:14.173569+08:00",
+   "checkpoint": "root短暂套用bounds实验源码复用增量构建，基线eb6b7ad与逐文件备份已保存，可精确恢复；独立审查并行中。",
+   "write_state": "ROOT_SERIAL_INTEGRATION"
+  },
+  {
+   "task": "CODEX-DOTS-TAKEOVER-20261118",
+   "owner": "Codex /root 本聊天",
+   "paths": [
+    ".local/codex-dots-takeover-20261118/",
+    "coordination/results/CODEX-DOTS-TAKEOVER-20261118.md",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "tests/native/test_indexed_bbox_ready.py",
+    "tests/native/test_warm_layout_validation.py",
+    "scripts/verify_host.py",
+    "src/graphics/nvn_vulkan/engine/xbg_indexed_bbox_probe.h",
+    "tests/native/test_pending_bounds.py"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-18T17:41:14.452419+08:00",
+   "checkpoint": "root短暂套用bounds实验源码复用增量构建，基线eb6b7ad与逐文件备份已保存，可精确恢复；独立审查并行中。",
+   "device": "A42BBB5109000333",
+   "write_state": "ROOT_SERIAL_INTEGRATION"
+  },
+  {
+   "task": "CODEX-PARALLEL-MALI-20261118",
+   "owner": "/root/mali_crash_fix",
+   "paths": [
+    "独立隔离worktree或候选目录"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/codex-mali-20261118",
+   "branch": "task/codex-parallel-mali-20261118",
+   "acquired_at": "2026-11-18T17:46:39.792497+08:00",
+   "checkpoint": "阶段候选已交root，原源码/证据保留，当前实现写入已释放",
+   "write_state": "COMPLETE_HANDED_BACK"
+  },
+  {
+   "task": "CODEX-PARALLEL-BATTLE-20261118",
+   "owner": "/root/battle_performance_fix",
+   "paths": [
+    "独立隔离worktree或候选目录内自有文件"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/codex-parallel-battle-20261118",
+   "branch": "task/codex-parallel-battle-20261118",
+   "acquired_at": "2026-11-18T17:46:39.792497+08:00",
+   "checkpoint": "阶段候选已交root，原源码/证据保留，当前实现写入已释放",
+   "write_state": "COMPLETE_HANDED_BACK"
+  },
+  {
+   "task": "CODEX-PARALLEL-LIBRARY-20261118",
+   "owner": "/root/library_oot_fix",
+   "paths": [
+    "独立隔离worktree或候选目录内自有文件"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/02-游戏原生移植/switch-android-port-rules/.local/codex-library-oot-20261118",
+   "branch": "task/codex-parallel-library-20261118",
+   "acquired_at": "2026-11-18T17:46:39.792497+08:00",
+   "checkpoint": "先回报实际工作路径再编辑，根工作区仅root写协调状态",
+   "write_state": "ACTIVE_ISOLATED_REPAIR"
+  },
+  {
+   "task": "CODEX-BOUNDS-VALIDATION-20261118",
+   "owner": "Codex /root",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_indexed_bbox_probe.h",
+    "tests/native/test_indexed_bbox_ready.py",
+    "tests/native/test_pending_bounds.py"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/codex-bounds-validation-20261118",
+   "branch": "task/T-pending-bounds-validation-20261118",
+   "acquired_at": "2026-11-18T18:15:51.258899+08:00",
+   "checkpoint": "创建隔离候选，主源码eb6b7ad保留",
+   "write_state": "ISOLATED_PERFORMANCE_VALIDATION"
+  },
+  {
+   "task": "CODEX-LIBRARY-ICON-20261118",
+   "owner": "待启动图标子代理",
+   "paths": [
+    "/Users/yuyan9923/GitHub/02-游戏原生移植/switch-android-port-rules/.local/codex-library-icon-20261118",
+    "coordination/results/CODEX-LIBRARY-ICON-20261118.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/02-游戏原生移植/switch-android-port-rules/.local/codex-library-icon-20261118",
+   "branch": "独立候选目录",
+   "acquired_at": "2026-11-18T18:31:47.197695+08:00",
+   "checkpoint": "图标资源自有目录，与主库逻辑源码分工",
+   "write_state": "ICON_DESIGN_AND_ASSET_INTEGRATION"
+  },
+  {
+   "task": "CODEX-MALI-COMPILE-REVIEW-20261118",
+   "owner": "/root/battle_performance_fix",
+   "paths": [
+    ".local/codex-mali-compile-review-20261118/",
+    "coordination/results/CODEX-MALI-COMPILE-REVIEW-20261118.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-18T18:39:14.032792+08:00",
+   "checkpoint": "阶段候选已交root，原源码/证据保留，当前实现写入已释放",
+   "write_state": "COMPLETE_HANDED_BACK"
+  },
+  {
+   "task": "CODEX-MALI-DIAGNOSTICS-20261118",
+   "owner": "/root/battle_performance_fix",
+   "paths": [
+    "src/graphics/nvn_vulkan/engine/xbg_api_breadcrumb.h",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "tests/native/test_api_breadcrumb.py",
+    "coordination/results/CODEX-MALI-DIAGNOSTICS-20261118.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/codex-mali-diagnostics-20261118",
+   "branch": "task/T-mali-diagnostics-20261118",
+   "acquired_at": "2026-11-18T18:44:43.347968+08:00",
+   "checkpoint": "阶段候选已交root，原源码/证据保留，当前实现写入已释放",
+   "write_state": "COMPLETE_HANDED_BACK"
+  },
+  {
+   "task": "CODEX-TIFA-BACKLOG-20261118",
+   "owner": "/root/tifa_backlog_audit",
+   "paths": [
+    "coordination/results/CODEX-TIFA-BACKLOG-20261118.md",
+    ".local/codex-tifa-backlog-20261118/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-18T18:48:24.570509+08:00",
+   "checkpoint": "阶段候选已交root，原源码/证据保留，当前实现写入已释放",
+   "write_state": "COMPLETE_HANDED_BACK"
+  },
+  {
+   "task": "CODEX-SNK-LIBRARY-STARTUP-20261118",
+   "owner": "/root/snk_library_startup_fix",
+   "paths": [
+    ".",
+    "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/coordination/results/CODEX-SNK-LIBRARY-STARTUP-20261118.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/02-游戏原生移植/switch-android-port-rules/.local/codex-snk-library-startup-20261118",
+   "branch": "隔离候选目录",
+   "acquired_at": "2026-11-18T19:01:56.407705+08:00",
+   "checkpoint": "只写独立候选，设备root统一"
+  },
+  {
+   "task": "CODEX-DIAGNOSTIC-INDEPENDENT-QA-20261118",
+   "owner": "/root/library_icon_design",
+   "paths": [
+    "coordination/results/CODEX-DIAGNOSTIC-INDEPENDENT-QA-20261118.md",
+    ".local/codex-diagnostic-qa-20261118/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acquired_at": "2026-11-18T19:05:17.040081+08:00",
+   "checkpoint": "独立QA报告已交回并随7109848记录",
+   "write_state": "COMPLETE_HANDED_BACK"
+  },
+  {
+   "task": "CODEX-LIBRARY-UPDATE-RECOVERY-20261118",
+   "owner": "/root/library_update_recovery",
+   "paths": [
+    "."
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/02-游戏原生移植/switch-android-port-rules/.local/codex-library-update-20261118",
+   "branch": "独立候选目录",
+   "acquired_at": "2026-11-18T19:13:24.535967+08:00",
+   "checkpoint": "禁止写OOT或安全100原目录，自己隔离候选"
   }
  ],
  "tasks": [
@@ -11400,6 +11593,345 @@
    "dependencies": [],
    "role": "performance and graphics repair",
    "branch": "task/T-codex-recovery-20261114"
+  },
+  {
+   "id": "CODEX-DOTS-TAKEOVER-20261118",
+   "owner": "Codex /root 本聊天",
+   "role": "总控接续、串行集成与实机回归",
+   "status": "in_progress",
+   "objective": "接续Dots当前多设备适配优先任务，核对已有生命周期候选与构建、执行宿主回归并保存可恢复检查点",
+   "inputs": [
+    "蒂法当前对话和任务优先级",
+    "DOT-ARSENAL-20261118 当前未提交候选",
+    "HEAD 273c240155f95db92e2f08050b61164aec401f29"
+   ],
+   "outputs": [
+    "coordination/results/CODEX-DOTS-TAKEOVER-20261118.md",
+    "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/codex-dots-takeover-20261118"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/codex-dots-takeover-20261118/",
+    "coordination/results/CODEX-DOTS-TAKEOVER-20261118.md",
+    "荣耀A42BBB5109000333独立存档候选安装与恢复73",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "tests/native/test_indexed_bbox_ready.py",
+    "tests/native/test_warm_layout_validation.py",
+    "src/graphics/nvn_vulkan/engine/xbg_api_breadcrumb.h",
+    "tests/native/test_api_breadcrumb.py",
+    "scripts/verify_host.py",
+    "tests/device/test_fresh_descriptor_cache.py"
+   ],
+   "branch": "task/T-codex-recovery-20261114",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "acceptance": "保全他人WIP，实际执行当前候选宿主回归，核对APK身份与未验门，记录当前无设备状态及后续精确步骤",
+   "checkpoint": "root串行接入459b6ad诊断候选并准备完整APKflag1验证，图标已真实装机进入主库。"
+  },
+  {
+   "id": "CODEX-PARALLEL-MALI-20261118",
+   "owner": "/root",
+   "role": "崩溃定位与修复",
+   "status": "in_progress",
+   "objective": "接续天玑9400/9500现有报告与成熟实践，对有证据的Vulkan兼容缺陷做最小修复和回归",
+   "inputs": [
+    "用户明确要求启动并行修复",
+    "Dots当前交接与本轮冻结源码"
+   ],
+   "outputs": [
+    "coordination/results/CODEX-PARALLEL-MALI-20261118.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "branch": "task/codex-parallel-mali-20261118",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/codex-mali-20261118",
+   "write_scope": [
+    "独立隔离worktree或候选目录",
+    "coordination/results/CODEX-PARALLEL-MALI-20261118.md"
+   ],
+   "acceptance": "实际复现或代码证据、最小修复、自测、可集成补丁、明确未验范围；设备由root统一调度",
+   "checkpoint": "旧代理最终审查输出被自动审查中断，暖layout修复已集成eb6b7ad，G925原问题未证修复。root继续旧日志和成熟实践核对。"
+  },
+  {
+   "id": "CODEX-PARALLEL-BATTLE-20261118",
+   "owner": "/root/battle_performance_fix",
+   "role": "战斗性能优化",
+   "status": "in_progress",
+   "objective": "接续第四章副本战斗实测，定位持续CPU/GPU开销并实现有正确性证据的最小优化",
+   "inputs": [
+    "用户明确要求启动并行修复",
+    "Dots当前交接与本轮冻结源码"
+   ],
+   "outputs": [
+    "coordination/results/CODEX-PARALLEL-BATTLE-20261118.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "branch": "task/codex-parallel-battle-20261118",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/codex-parallel-battle-20261118",
+   "write_scope": [
+    "独立隔离worktree或候选目录",
+    "coordination/results/CODEX-PARALLEL-BATTLE-20261118.md"
+   ],
+   "acceptance": "实际复现或代码证据、最小修复、自测、可集成补丁、明确未验范围；设备由root统一调度",
+   "checkpoint": "子代理已真实启动并回报实际隔离路径，正在定位与实现"
+  },
+  {
+   "id": "CODEX-PARALLEL-LIBRARY-20261118",
+   "owner": "/root/library_oot_fix",
+   "role": "游戏库与时之笛接入",
+   "status": "in_progress",
+   "objective": "接续游戏库真实按需下载启动回滚与时之笛主库接入，独立检查当前实现并修复关键阻塞",
+   "inputs": [
+    "用户明确要求启动并行修复",
+    "Dots当前交接与本轮冻结源码"
+   ],
+   "outputs": [
+    "coordination/results/CODEX-PARALLEL-LIBRARY-20261118.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "branch": "task/codex-parallel-library-20261118",
+   "worktree": "/Users/yuyan9923/GitHub/02-游戏原生移植/switch-android-port-rules/.local/codex-library-oot-20261118",
+   "write_scope": [
+    "独立隔离worktree或候选目录",
+    "coordination/results/CODEX-PARALLEL-LIBRARY-20261118.md"
+   ],
+   "acceptance": "实际复现或代码证据、最小修复、自测、可集成补丁、明确未验范围；设备由root统一调度",
+   "checkpoint": "已修OOT operations容量耗尽，111检查和Android编译通过。继续隔离主库多文件Journal与OOT接线，内部版本0.10.3-oot-internal/code87已分配，jobs<=2构建窗口。"
+  },
+  {
+   "id": "CODEX-BOUNDS-VALIDATION-20261118",
+   "owner": "Codex /root",
+   "role": "性能候选集成与实测",
+   "status": "ready_for_review",
+   "objective": "独立验证真实战斗热点的增量保守边界候选并同会话开关测量，保持主组合已验证源码",
+   "inputs": [
+    "root实际战斗RHI样本PID9958/TID10265",
+    "性能代理增量边界patch1c9a3944",
+    "已验证主组合eb6b7ad"
+   ],
+   "outputs": [
+    ".local/codex-dots-takeover-20261118/bounds/",
+    "coordination/results/CODEX-DOTS-TAKEOVER-20261118.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/codex-bounds-validation-20261118",
+    ".local/codex-dots-takeover-20261118/bounds/"
+   ],
+   "branch": "task/T-pending-bounds-validation-20261118",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/codex-bounds-validation-20261118",
+   "acceptance": "生产时序差分/负对照、完整APK、实际同战斗场景开关记录、存档保全与原包恢复，收益未证保持候选",
+   "checkpoint": "静止探索关/开/关/开19.55/19.02/20.21/19.45FPS，无收益，未集成。主源码eb6b7ad已恢复，设备原73及123私有/47外部文件SHA核验恢复。战斗A/B未运行。"
+  },
+  {
+   "id": "CODEX-PARALLEL-SNK-20261118",
+   "owner": "/root/battle_performance_fix",
+   "role": "SNK缓存兼容加固",
+   "status": "ready_for_review",
+   "objective": "复用已验证的可选缓存兼容经验，按SNK当前真实源码独立实现header32校验及UNKNOWN窄回退",
+   "inputs": [
+    "用户要求继续Dots两款游戏适配并并行修复",
+    "SNK当前HEAD d6731ee及dirty源码",
+    "FF对应生产helper和组件回归"
+   ],
+   "outputs": [
+    "/Users/yuyan9923/GitHub/snk-the1st-portable/.local/landscape-fix-20261116/coordination/results/T93-CACHE-COMPAT-20261118.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "/Users/yuyan9923/GitHub/snk-the1st-portable/.local/landscape-fix-20261116/.local/codex-snk-cache-20261118"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/snk-the1st-portable/.local/landscape-fix-20261116",
+   "branch": "task/T87-landscape-transform",
+   "acceptance": "实际生产helper正负对照与错误语义保持，未跑设备如实记录",
+   "checkpoint": "T93完整内部APK dc98f287构建0，版本/签名与T92相同，排除签名仅native SO不同。设备回归尚未运行，原发布未改。"
+  },
+  {
+   "id": "CODEX-LIBRARY-ICON-20261118",
+   "owner": "Codex /root 设备验收",
+   "role": "游戏库图标设计与替换",
+   "status": "passed",
+   "objective": "完成用户要求的游戏库APP图标设计与Android图标资源替换，并协同主库候选装机验证",
+   "inputs": [
+    "用户本轮明确要求补齐图标设计和替换",
+    "既有Cetto图标参考/Users/yuyan9923/Documents/Codex/cetto-app-icon-20261118/cetto-icon.png",
+    "主库code87独立候选由library_oot_fix维护"
+   ],
+   "outputs": [
+    "/Users/yuyan9923/GitHub/02-游戏原生移植/switch-android-port-rules/.local/codex-library-icon-20261118",
+    "coordination/results/CODEX-LIBRARY-ICON-20261118.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "/Users/yuyan9923/GitHub/02-游戏原生移植/switch-android-port-rules/.local/codex-library-icon-20261118",
+    "coordination/results/CODEX-LIBRARY-ICON-20261118.md"
+   ],
+   "branch": "独立候选目录",
+   "worktree": "/Users/yuyan9923/GitHub/02-游戏原生移植/switch-android-port-rules/.local/codex-library-icon-20261118",
+   "acceptance": "实际图标资产、各dpi/adaptive/round资源、manifest引用、APK内资源校验与桌面实际显示分别验证",
+   "checkpoint": "荣耀桌面第4页新C标实际可见，点击观察到的图标进入CETTO主库，两游戏卡片显示，code84与安装SHA6ee48354匹配。仅图标任务验收，OOT/游戏流程另行跟进。 观察位置点击图标已成功进入主库，原30个runtime条目同字节，外部数据hash验证。"
+  },
+  {
+   "id": "CODEX-MALI-COMPILE-REVIEW-20261118",
+   "owner": "/root/battle_performance_fix",
+   "role": "旧报告与管线并发独立核查",
+   "status": "ready_for_review",
+   "objective": "核对旧G925报告是否存在warm/runtime并发编译，并审查限定Mali串行化候选的必要性和最小范围",
+   "inputs": [
+    "原73 MT6991报告",
+    "HEAD eb6b7ad",
+    "ScarletNX issue2127原文及2ec5e70"
+   ],
+   "outputs": [
+    ".local/codex-mali-compile-review-20261118/",
+    "coordination/results/CODEX-MALI-COMPILE-REVIEW-20261118.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    ".local/codex-mali-compile-review-20261118/",
+    "coordination/results/CODEX-MALI-COMPILE-REVIEW-20261118.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acceptance": "真实并发调用路径/同会话旧日志证据，指出反证或局限，不将其他GPU案例当本机修复验收",
+   "checkpoint": "末次PID24477崩溃前warm_workers0/async0，与并发编译根因假设冲突，13入口及锁风险已登记。暂不实现无归因的串行化改动。"
+  },
+  {
+   "id": "CODEX-MALI-DIAGNOSTICS-20261118",
+   "owner": "/root/battle_performance_fix",
+   "role": "有界诊断报告补齐",
+   "status": "passed",
+   "objective": "复用既有目标shader API breadcrumb，补充最终绑定和dispatch事实，便于玩家闪退后导出定位",
+   "inputs": [
+    "用户明确允许诊断报告补更多日志",
+    "原G925报告缺失API/TID/final module/bound image/dispatch",
+    "HEAD eb6b7ad"
+   ],
+   "outputs": [
+    "coordination/results/CODEX-MALI-DIAGNOSTICS-20261118.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_api_breadcrumb.h",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "tests/native/test_api_breadcrumb.py"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.worktrees/codex-mali-diagnostics-20261118",
+   "branch": "task/T-mali-diagnostics-20261118",
+   "acceptance": "真实生产数据来源、限定target与有界输出、线程与禁用正负测试，Vulkan调用和错误行为保持",
+   "checkpoint": "commit7109848，117宿主/Android/荣耀目标收据与正常SAF导出/独立QA通过。诊断功能阶段验收，G925原故障未定位、未宣称修复。"
+  },
+  {
+   "id": "CODEX-TIFA-BACKLOG-20261118",
+   "owner": "/root/tifa_backlog_audit",
+   "role": "蒂法待办核对与接续",
+   "status": "ready_for_review",
+   "objective": "直接读取蒂法当前对话与项目最新交接，补齐所有未完成任务和真实负责人，识别可立即并行完成的独立任务",
+   "inputs": [
+    "用户明确要求查看蒂法未完成任务并行跟进",
+    "已确认Dots对话URL",
+    "项目当前state/交接"
+   ],
+   "outputs": [
+    "coordination/results/CODEX-TIFA-BACKLOG-20261118.md",
+    ".local/codex-tifa-backlog-20261118/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "coordination/results/CODEX-TIFA-BACKLOG-20261118.md",
+    ".local/codex-tifa-backlog-20261118/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acceptance": "逐项有当前对话与工程证据、完成条件/负责人/依赖/下一步，明确已交接任务与未证状态，不虚构运行",
+   "checkpoint": "审计报告已交回，补Y700/更新回滚/诊断后台/存档与研协通，移动QA已有Claude R19，避免重复写测试。槽位转SNK主库启动专项。"
+  },
+  {
+   "id": "CODEX-SNK-LIBRARY-STARTUP-20261118",
+   "owner": "/root/snk_library_startup_fix",
+   "role": "荣耀主库空轨启动性能回归修复",
+   "status": "in_progress",
+   "objective": "逐项对照主库与独立版的新建游戏运行库/配置/启动路径，定位并修复荣耀严重卡顿，主线两路持续",
+   "inputs": [
+    "用户报告荣耀游戏库空轨新建卡爆、独立打开不卡",
+    "KIT100安全基线和纯图标code84同runtime包6ee48354",
+    "SNK T92冻结发布源码及APK d61c958"
+   ],
+   "outputs": [
+    "coordination/results/CODEX-SNK-LIBRARY-STARTUP-20261118.md",
+    "/Users/yuyan9923/GitHub/02-游戏原生移植/switch-android-port-rules/.local/codex-snk-library-startup-20261118"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "/Users/yuyan9923/GitHub/02-游戏原生移植/switch-android-port-rules/.local/codex-snk-library-startup-20261118",
+    "coordination/results/CODEX-SNK-LIBRARY-STARTUP-20261118.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/02-游戏原生移植/switch-android-port-rules/.local/codex-snk-library-startup-20261118",
+   "branch": "隔离候选目录，无共享Git切换",
+   "acceptance": "有实际差异/可复验回归/小补丁，与主库owner串行集成，root统一荣耀新建流程与数据保护，未测不宣称修好",
+   "checkpoint": "已登记独立启动代理，禁止其他代理转向抢主线资源"
+  },
+  {
+   "id": "CODEX-DIAGNOSTIC-INDEPENDENT-QA-20261118",
+   "owner": "/root/library_icon_design",
+   "role": "图标收口与诊断独立复核",
+   "status": "passed",
+   "objective": "独立复核root已集成的诊断生产接线、回归与真实UI导出，并补图标桌面视觉验收",
+   "inputs": [
+    "459b6ad及root fixture依赖修正",
+    "荣耀真实导出ZIP a5d41a9e",
+    "同PID25897目标19行",
+    "图标荣耀桌面与正常入口截图"
+   ],
+   "outputs": [
+    "coordination/results/CODEX-DIAGNOSTIC-INDEPENDENT-QA-20261118.md",
+    ".local/codex-diagnostic-qa-20261118/"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "coordination/results/CODEX-DIAGNOSTIC-INDEPENDENT-QA-20261118.md",
+    ".local/codex-diagnostic-qa-20261118/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro",
+   "branch": "task/T-codex-recovery-20261114",
+   "acceptance": "独立生产函数复跑、实际view键与动态offset来源核验、ZIP字段和PID一致，不把荣耀当G925验收",
+   "checkpoint": "独立ASan/UBSan两组回归、真实view键/offset、ZIP同PID25897的19行/6bindings/xyz验证通过，旧prev/fatal已排除。G925原机未验。"
+  },
+  {
+   "id": "CODEX-LIBRARY-UPDATE-RECOVERY-20261118",
+   "owner": "/root/library_update_recovery",
+   "role": "在线更新激活与失败回滚",
+   "status": "in_progress",
+   "objective": "接续Dots独立在线更新开放项，复用现有签名下载/Journal和ledger，核对并修复版本激活/失败回滚/重启恢复的具体缺口",
+   "inputs": [
+    "蒂法六项看板及本轮待办审计",
+    "KIT最新交接与现有activation实现",
+    "用户要求专责新卡顿且主线继续并行"
+   ],
+   "outputs": [
+    "/Users/yuyan9923/GitHub/02-游戏原生移植/switch-android-port-rules/.local/codex-library-update-20261118",
+    "coordination/results/CODEX-LIBRARY-UPDATE-RECOVERY-20261118.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "/Users/yuyan9923/GitHub/02-游戏原生移植/switch-android-port-rules/.local/codex-library-update-20261118",
+    "coordination/results/CODEX-LIBRARY-UPDATE-RECOVERY-20261118.md"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/02-游戏原生移植/switch-android-port-rules/.local/codex-library-update-20261118",
+   "branch": "独立候选目录",
+   "acceptance": "实际版本切换/失败回滚/断点重启正负测试与原数据保全，不放宽签名/READY契约，主库owner串行集成",
+   "checkpoint": "已登记准备派工，先与OOT owner明确冻结组件和文件边界"
   }
  ],
  "blockers": [
@@ -11612,7 +12144,7 @@
    "荣耀400Pro同次闪退日志及其它芯片真机证据"
   ]
  },
- "device_availability": "本轮用户明确授权使用荣耀A42BBB5109000333进行开篇测试，覆盖此前保留其它会话的安排。RG未连接。",
+ "device_availability": "2026-11-18 ADB5038下荣耀A42BBB5109000333与RG477M均在线。root本轮使用荣耀独立存档验证，现已恢复原1.0.73且存档摘要一致。",
  "emulator": {
   "name": "pvz2",
   "serial": "emulator-5554",
@@ -11683,8 +12215,8 @@
   "las_transfer_evidence": ".local/device/rg477m-session1/las-transfer-v1-execution.json",
   "display_mode_observed": "Android display0 mode2=120.00001Hz; supported60/90/120; no appframeoverride and gamemodeunsupported. Game30cap distinct from panel."
  },
- "parallelism_note": "No active Codex workers. runtime/vulkan two newly dispatched tasks stopped at readonly NOT_STARTED safe point; independent515 task never dispatched. All older authors/reviewers already handed back; QA remains errored, no retry.",
- "handoff_checkpoint": "用户授权RG477M01445122，30→61覆盖安装回读APK一致，9正式存档SHA保全通过。9963从旧100数据及空私有副本新建，已过开场影片到火场可操作。用户明确目标为火场最终BOSS后第二幕紫门，并接管掌机推进。root只读采集，live tail宿主PID95042，plan与日志在rg477m/opening/。",
+ "parallelism_note": "实际启动3个Codex子代理：/root/mali_crash_fix负责G925与独立审查，/root/battle_performance_fix负责真实第四章战斗热点与优化，/root/library_oot_fix负责游戏库/OOT事务接入；root串行集成和设备调度。",
+ "handoff_checkpoint": "root已隔离改变第二窗口Initialize行为的生命周期候选，保留完整原WIP快照。当前主组合仅含indexed查表复用和暖layout基础校验，116宿主检查及Android构建通过，APK75ba36f1在荣耀PID14056第四章读档/移动/Home恢复通过，原73已恢复。真实战斗RHI样本PID9958已归档交性能代理；新保守边界优化待独立审查/实测；游戏库code87内部装配在测试，G925原闪退未定位。",
  "runtime_risks": [
   {
    "id": "HOST_GUEST_X18_GATEWAY",

@@ -5744,3 +5744,47 @@ Latest: confirmed extracted window race ASan/UBSan, but lifecycle patch pending 
 Lifecycle full integration design.local/arsenal-lifetime-followup/INTEGRATION-PLAN.md. Separate xbg admission domain+renderer execution domain; logical window token distinct from Android generation. descriptor_review owns isolated xbg_surface_lifecycle.h and test_surface_lifecycle.py, NOT yet production integrated. Core edge cases init failure/old owner/legacy mtl path being reviewed. Do not shortcut to single Finalize mutex or NULL forced surface destroy.
 RG cacheheader candidate smoke+Home/resume passed9835;original73 restored/hashverified,RG returned. Isolated lifecycle component e8cdbde committed, unreferenced byproduction; descriptor_review writing full integration proposal in separate.local copy. Main lifecycle still unchanged; parentrequests full coverage beforedevicepatch.
 RG73 realbattle measured20.25then22.44FPS, both windows actualfight; largeenemy differsHonor two-small so no strictchipAB. Privatecombat73/rg_battle73* andrg-battle-engine.log(.1 pullsession92319). PID14597stopped,RGreturned92%32C. Lifecycleproposal remainsunderindependentreview (4P1found/fixing), nointegrationyet.
+
+## 2026-11-18 Codex接续Dots核查
+
+用户要求继续受额度限制的Dots工作。已直接读取蒂法对话，最新优先级为两款游戏多设备适配，FF天玑9400闪退与第四章战斗低帧优先。当前HEAD 273c240155f95db92e2f08050b61164aec401f29，生命周期候选15文件已在本树，Android构建退出0、内部APK97555255，尚未安装。当前adb devices为空。Codex仅领取独立宿主验证与报告目录，保留原作者源码占用和所有WIP。计划与命令保存在.local/codex-dots-takeover-20261118/plan.json。
+
+## 2026-11-18 用户要求真实并行修复
+
+已分配三个独立任务，分别处理Mali闪退、第四章战斗性能、游戏库与时之笛主库接入。各自隔离源码，root为协调状态唯一写者。当前Honor候选97555255第四章读档/短走动/Home恢复同PID7401通过，已恢复原73摘要7f3e7155，111私有与47外部存档摘要逐项一致。设备使用前向root领取。冻结源码补丁和未跟踪源文件在.local/codex-dots-takeover-20261118。
+
+### 用户要求真实并行修复
+
+已启动 /root/mali_crash_fix、/root/battle_performance_fix、/root/library_oot_fix 三个实际子代理，分别负责Mali闪退、第四章战斗性能、游戏库/OOT功能接入，各自在隔离worktree或候选目录。root统一集成及设备。荣耀候选97555255已用独立存档进入第四章、短移动、Home返回同PID7401，原73安装SHA7f3e7155已恢复，111私有及47外部存档摘要一致。默认宿主98/99，默认模块路径失效项已用从荣耀只读复制的现有模块独立补测通过。现在按正确模块路径补跑--runtime-contracts完整回归，计划见本轮plan.json。
+
+## 2026-11-18 生命周期候选兼容回归隔离
+
+独立代理确认候选把第二guest窗口Initialize从原测试的成功改为失败，属于现有行为变化。root已将原15文件候选和2新增源码可逆隔离于.local/codex-dots-takeover-20261118/deferred-lifecycle/及原冻结快照，主源码仅保留新indexed查表复用和暖layout校验。此前114宿主及荣耀读档/Home短回归为有限覆盖，不证明多窗口兼容。待修复保留原行为后才能集成生命周期改动。游戏库代理获code87内部构建窗口；root下一步重新跑主组合定向检查。
+
+## 2026-11-18 图标与候选检查点
+
+图标沿用Dots已有Cetto C标，library_icon_design交独立资源包，library_oot_fix串行接入最终code87候选，桌面验证待设备窗口。SNK T93缓存兼容已交组件验证候选，完整APK/设备未验。root已按逐文件SHA恢复主源码eb6b7ad，pending-bounds APK ad04cd4d保留隔离待A/B。battle代理接只读Mali编译并发审查。原9400报告尚不能确定故障API。
+
+### 旧G925日志编译并发复核
+
+原engine串接3次init，末次PID24477故障前warm_workers已为0且async为0，撤回将其他项目r44p1串行编译改善直接套作本机归因的设想。已记录13个直接入口，暂不改并发策略。新增隔离诊断任务仅补现有目标breadcrumb的实际绑定/dispatch事实，用户已授权。
+
+## 用户追加蒂法完整待办接续
+
+2026-11-18用户要求核对所有未完成任务并并行推进。保留现有Mali诊断与主库OOT实现两路，新开tifa_backlog_audit直接读取Dots和各项目当前交接，只读查漏后由root明确分配源码范围。图标候选6ee48354组件完成，root正在实机替换。
+
+### 图标已装机与性能候选收口
+
+荣耀原73恢复摘要及123私有/47外部存档摘要一致。增量边界静止探索开关对照未获收益，暂不集成，战斗A/B未跑。主源码已恢复eb6b7ad。随后游戏库纯图标code84包6ee48354已装荣耀，桌面第4页实际Cetto新标可见，运行入口继续补验。库功能code87仍在OOT代理独立实现。
+
+### 荣耀游戏库空轨新建卡顿专项
+
+用户确认主库空轨新建卡爆、直接打开不卡，设备荣耀GT Pro。按用户最新指令，新开snk_library_startup_fix专门逐项排查，OOT主线恢复继续，T93缓存APK主线继续。待办审计已交回并释放槽，完整源索引保留。新代理只写KIT独立目录，设备由root统一，原存档和独立稳定包保全。
+
+### 在线更新主线独立派工
+
+诊断独立QA与图标任务已交回，释放槽位派library_update_recovery接续Dots独立列出的在线更新激活/失败回滚开放项。仅KIT独立候选写，先与OOT主库owner明确冻结组件，防止并发改同Journal文件。荣耀主库空轨卡顿由另一专责代理继续，主线并行。
+
+## 2026-11-18 当前接续点
+
+源码HEAD7109848，诊断补齐已提交，117宿主/完整Android/荣耀目标19行与正常SAF导出/独立QA通过。原G925故障仍开放。原73已恢复，原私有/外部档SHA核验见diagnostic-device/device.json。主库安全100纯图标6ee48354留荣耀并可正常进入CETTO。新snk_library_startup_fix正查荣耀主库新建严重卡顿，已只读取回两侧日志及实际独立APK927e33b3，实际独立包不同T92 d61，旧外部日志跨boot，禁止混作当前对照。OOT继续13文件与正常产品入口，root已提供既有T30 ZIP精确SHAf65b2d33。在线更新激活/失败回滚另由library_update_recovery独立推进，所有设备仍root调度。
