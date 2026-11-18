@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-18T07:06:36.655590+00:00",
+ "updated_at": "2026-11-18T07:19:44.434633+00:00",
  "phase": "1.0.71已发布GitHub，APK和中文说明回读核验完成",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -11382,7 +11382,7 @@
    ],
    "acceptance": "真实兵工厂移动/战斗冷暖测量与修复回归；独立APK及统一App模块发布分别验证，未测不声称通过",
    "recovery": "私有100文件荣耀与12文件RG完整备份于.cetto-arsenal-inputs；原RG67 APK保留，测试仅独立save root",
-   "checkpoint": "Normal342a Honor PID31635 isolatedfactory20261118094001 uncapped/mode1/keep1 Dpad3Rx3Lx6:27.0398s distinct21.8937FPS,p95 56.5759/p99 76.2009/max179.8834ms. Before/after scene confirms factory and displacement, no observed crash, deliberately stopped aftercapture. Not30FPS/fullcombat/audio acceptance; no perf improvement claimed from failure-only guard.",
+   "checkpoint": "RG mt6897 normal342a installed SHA verified, isolatedfactory20261118095001 PID2451 survived host disconnect and resumed. Same3R3Lx6 input sample28.9304s gives28.4476FPS,p95 38.4622/p99 40.9788/max45.8594ms,thermal0→0; deliberate stop aftercapture. Honor21.8937FPS/p9556.5759. Supports observed RG smoother in this scene, NOT strict chip AB: warmup longer afterdisconnect, endposition differs, actualdynamicresolution not matched. Both below target, no Mali9400/9500 fix claim.",
    "dependencies": [],
    "role": "performance and graphics repair",
    "branch": "task/T-codex-recovery-20261114"

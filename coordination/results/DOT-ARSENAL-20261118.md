@@ -227,3 +227,8 @@ Private images init-cleanup29729/ff-out.png and ff-out2.png. Initial non-longpre
 ### Normal-candidate factory movement regression
 Normal342a Honor PID31635 isolatedfactory20261118094001 uncapped/mode1/keep1 Dpad3Rx3Lx6:27.0398s distinct21.8937FPS,p95 56.5759/p99 76.2009/max179.8834ms. Before/after scene confirms factory and displacement, no observed crash, deliberately stopped aftercapture. Not30FPS/fullcombat/audio acceptance; no perf improvement claimed from failure-only guard.
 Private init-cleanup-ab/normal342a CSV/window/screens/thermal. Actual thermal values in captured files; no repeated keep2 experiment. RG now discovered10.12.80.90:34115, library low-load helper window before FF dual-device.
+
+
+### RG normal-candidate factory comparison
+RG mt6897 normal342a installed SHA verified, isolatedfactory20261118095001 PID2451 survived host disconnect and resumed. Same3R3Lx6 input sample28.9304s gives28.4476FPS,p95 38.4622/p99 40.9788/max45.8594ms,thermal0→0; deliberate stop aftercapture. Honor21.8937FPS/p9556.5759. Supports observed RG smoother in this scene, NOT strict chip AB: warmup longer afterdisconnect, endposition differs, actualdynamicresolution not matched. Both below target, no Mali9400/9500 fix claim.
+Private init-cleanup-ab/rg342a.* and before/after captures. Host disconnect did not change PID2451. Needed existing clock helper transfer fromHonor toRG; missingkeep marker means compileddefault1, no marker change. RG handed to library helper; Honor to Ocarina isolated test. Original saves not replaced.
