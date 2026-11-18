@@ -4305,11 +4305,13 @@
     "tests/native/test_indexed_bbox_ready.py",
     "tests/native/test_readback_sites.py",
     "src/graphics/nvn_vulkan/engine/xbg_gpu_raw.h",
-    "tests/native/test_gpu_raw.py"
+    "tests/native/test_gpu_raw.py",
+    "tests/native/test_arena_life.py",
+    "tests/device/test_arena_memory_policy.py"
    ],
    "write_state": "PERFORMANCE_DIAGNOSTIC",
    "acquired_at": "2026-11-18T09:44:22.098937+08:00",
-   "checkpoint": "Raw27676 actualfactory success first2500/end2560 558rows,0dropped/pending/partial. CPU submitmean0.0468ms; GPUspanunion979.6ms GPUdomainonly, noFPSclaim. Marker restoredoff, originalFFstopped75%connectedstatus3/30C. cpu27676trace+PID/TIDreceipt collectedlaternotrawsamewindow. Previous25764guestnull still unresolved; off26671 and enabled27676 short runs didnotreproduce, notexoneration.",
+   "checkpoint": "Arena lifecycle diagnostic integrated, actual Arena mock differential/guard/keep0/multislot deltas pass; existing fixture updated with realArenaLife+allocation_size, not weakened. Android21560bbf built0, hostsession91952 underway. Honor070returned, next6frame early/late factorywindows. No retention behavior change.",
    "objective": "Evidence-driven CPU/GPU diagnosis and safe optimization; actual directional movement, preserve synchronization/saves."
   }
  ],

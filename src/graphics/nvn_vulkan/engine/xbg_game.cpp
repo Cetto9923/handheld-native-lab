@@ -430,7 +430,10 @@ void begin_work(){}
 void finish_work(){}
 #endif
 }
+void arena_life_start();
+void arena_life_report();
 void timing_start(){
+    arena_life_start();
     perf_bounded_contaminated=true;
     indexed_ready_stats={};indexed_bbox_stats={};for(auto &site:readback_sites)site={};
     timing_active=true;timing_start_ns=timing_clock();pipeline_before=pipeline_counts;
@@ -473,6 +476,7 @@ void timing_report(const char *reason){
         (unsigned long long)indexed_bbox_stats.writeback_scan_steps,
         (unsigned long long)indexed_bbox_stats.report_avoidable_steps,
         (unsigned long long)indexed_bbox_stats.writeback_avoidable_steps);
+    arena_life_report();
     descriptor_report();
     draw_report();
 }
@@ -683,7 +687,15 @@ struct Buffer {
     void flush(){if(coherent)return;auto r=cache_range();VK(vkFlushMappedMemoryRanges(cfg.device,1,&r));}
     void invalidate(){if(coherent)return;auto r=cache_range();VK(vkInvalidateMappedMemoryRanges(cfg.device,1,&r));}
 };
+// Cumulative lifecycle counts, no clocks. Slot arenas allocate >= arena_chunk_bytes.
+struct ArenaLife {
+    struct Class {uint64_t made=0,make_bytes=0,make_alloc=0,trimmed=0,trim_bytes=0,trim_alloc=0,forced=0,protected_kept=0;} kind[2]{};
+    void make(uint64_t bytes,uint64_t allocation,uint64_t standard){auto &v=kind[bytes==standard?0:1];++v.made;v.make_bytes+=bytes;v.make_alloc+=allocation;}
+    void trim(uint64_t bytes,uint64_t allocation,uint64_t standard,bool force){auto &v=kind[bytes==standard?0:1];++v.trimmed;v.trim_bytes+=bytes;v.trim_alloc+=allocation;v.forced+=force;}
+    void protect(uint64_t bytes,uint64_t standard){++kind[bytes==standard?0:1].protected_kept;}
+};
 struct Arena {
+    ArenaLife life;
     std::vector<ArenaChunk> chunks;size_t current=0;bool cached=false;VkDeviceSize used_total=0,peak=0;
     ArenaChunk make(VkDeviceSize bytes){
         CPU_SCOPE(Buffer);ArenaChunk c;c.size=bytes;
@@ -695,7 +707,7 @@ struct Arena {
         {static int logged[2];if(!logged[cached]++)xbg_logf("NVN arena chunk cached=%d memoryType=%u flags=%#x heap=%u",int(cached),type,unsigned(memories.memoryTypes[type].propertyFlags),memories.memoryTypes[type].heapIndex);}
         VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};ai.allocationSize=r.size;ai.memoryTypeIndex=type;c.allocation_size=r.size;
         VK(vkAllocateMemory(cfg.device,&ai,nullptr,&c.memory));VK(vkBindBufferMemory(cfg.device,c.buffer,c.memory,0));
-        void *p=nullptr;VK(vkMapMemory(cfg.device,c.memory,0,VK_WHOLE_SIZE,0,&p));need(p!=nullptr,"vkMapMemory returned null pointer");c.mapped=static_cast<uint8_t*>(p);return c;
+        void *p=nullptr;VK(vkMapMemory(cfg.device,c.memory,0,VK_WHOLE_SIZE,0,&p));need(p!=nullptr,"vkMapMemory returned null pointer");c.mapped=static_cast<uint8_t*>(p);life.make(c.size,c.allocation_size,arena_chunk_bytes);return c;
     }
     Buffer alloc(size_t n){
         need(n && n<=256ull*1024*1024,"Invalid or excessive buffer size");
@@ -716,9 +728,9 @@ struct Arena {
     template<class Protected> void trim(Protected protect){
         size_t kept=0;std::vector<ArenaChunk> keep;
         for(auto &c:chunks){
-            if(protect(c.buffer))keep.push_back(c);
+            if(protect(c.buffer)){life.protect(c.size,arena_chunk_bytes);keep.push_back(c);}
             else if(c.size==arena_chunk_bytes && kept<keep_chunks){keep.push_back(c);++kept;}
-            else destroy(c);
+            else {life.trim(c.size,c.allocation_size,arena_chunk_bytes,keep_chunks==0);destroy(c);}
         }
         chunks.swap(keep);current=0;
     }
@@ -981,6 +993,21 @@ struct Slot {
     std::vector<struct Descriptors*> desc_used; // pooled per-draw descriptor records, returned after this slot's fence // handed out this frame; recycled into spare_sets after the slot fence (no per-frame pool reset)
 };
 Slot slots[kMaxSlots];unsigned slot_count=16,slot_index=0;
+
+ArenaLife arena_life_before[kMaxSlots][3];
+void arena_life_start(){for(unsigned i=0;i<kMaxSlots;++i){arena_life_before[i][0]=slots[i].stream.life;arena_life_before[i][1]=slots[i].uniform.life;arena_life_before[i][2]=slots[i].readback.life;}}
+void arena_life_report(){
+    const char *names[]={"stream","uniform","readback"};
+    for(unsigned a=0;a<3;++a)for(unsigned k=0;k<2;++k){ArenaLife::Class total{};unsigned invalid=0;
+        for(unsigned i=0;i<kMaxSlots;++i){const ArenaLife *all[]={&slots[i].stream.life,&slots[i].uniform.life,&slots[i].readback.life};const auto &v=all[a]->kind[k],&b=arena_life_before[i][a].kind[k];
+            if(v.made<b.made || v.make_bytes<b.make_bytes || v.make_alloc<b.make_alloc || v.trimmed<b.trimmed || v.trim_bytes<b.trim_bytes || v.trim_alloc<b.trim_alloc || v.forced<b.forced || v.protected_kept<b.protected_kept){++invalid;continue;}
+            total.made+=v.made-b.made;total.make_bytes+=v.make_bytes-b.make_bytes;total.make_alloc+=v.make_alloc-b.make_alloc;total.trimmed+=v.trimmed-b.trimmed;total.trim_bytes+=v.trim_bytes-b.trim_bytes;total.trim_alloc+=v.trim_alloc-b.trim_alloc;total.forced+=v.forced-b.forced;total.protected_kept+=v.protected_kept-b.protected_kept;
+        }
+        xbg_logf("NVN ARENA_LIFE v=1 arena=%s class=%s standard_bytes=%llu make_calls=%llu make_bytes=%llu make_allocation_bytes=%llu trim_calls=%llu trim_bytes=%llu trim_allocation_bytes=%llu forced_keep0_trim_calls=%llu protected_keep_calls=%llu invalid_slots=%u",names[a],k?"oversize":"standard",(unsigned long long)arena_chunk_bytes,
+            (unsigned long long)total.made,(unsigned long long)total.make_bytes,(unsigned long long)total.make_alloc,(unsigned long long)total.trimmed,(unsigned long long)total.trim_bytes,(unsigned long long)total.trim_alloc,(unsigned long long)total.forced,(unsigned long long)total.protected_kept,invalid);
+    }
+}
+
 static bool xbg_writeback_is_current_slot(const void *slot){return slot==&slots[slot_index];}
 
 VkSemaphore submit_semaphores[kMaxSlots]={};

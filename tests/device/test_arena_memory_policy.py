@@ -97,10 +97,13 @@ struct ArenaChunk {
     uint64_t buffer, memory;
     uint8_t *mapped;
     VkDeviceSize size;
+    VkDeviceSize allocation_size = 0;
 };
 '''
-        body = r'''
+        lifecycle = source[source.index('struct ArenaLife {'):source.index('struct Arena {', source.index('struct ArenaLife {'))]
+        body = lifecycle + r'''
 struct Arena {
+    ArenaLife life;
     std::vector<ArenaChunk> chunks;
     size_t current = 7, keep_chunks = 1;
 ''' + methods + r'''
