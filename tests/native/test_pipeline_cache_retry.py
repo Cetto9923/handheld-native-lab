@@ -37,3 +37,38 @@ with tempfile.TemporaryDirectory() as d:
  subprocess.run(['clang++','-std=c++17','-Wall','-Wextra','-Werror','-fsanitize=address,undefined',str(p/'test.cpp'),'-o',str(p/'test')],check=True)
  subprocess.run([str(p/'test')],check=True)
 print('PASS: actual production cache retry 11 cases with ASan/UBSan')
+
+# Execute the real disk loader, including corrupted header rejection.
+a=s.index('std::vector<uint8_t> load_pipeline_cache(){')
+b=s.index('// The cache is written by its own thread:',a)
+loader=r'''
+#include <vector>
+#include <string>
+#include <cstdint>
+#include <cstring>
+#include <cstdio>
+#include <cassert>
+struct { uint32_t vendorID=1,deviceID=2; unsigned char pipelineCacheUUID[16]={}; } properties;
+const char *path; std::string pipeline_cache_path(){return path;}
+void xbg_logf(const char*,...) {}
+'''+s[a:b]+r'''
+void fixture(uint32_t size,uint32_t version,uint32_t vendor,uint32_t device,int uuid,size_t count,bool valid){
+ uint32_t raw[16]={size,version,vendor,device};
+ reinterpret_cast<unsigned char*>(raw)[16]=uuid;
+ FILE*f=fopen(path,"wb");assert(f);assert(fwrite(raw,1,count,f)==count);fclose(f);
+ assert(!load_pipeline_cache().empty()==valid);
+}
+int main(int argc,char**argv){
+ assert(argc==2);path=argv[1];assert(load_pipeline_cache().empty());
+ fixture(32,1,1,2,0,64,true);
+ for(unsigned n:{0u,16u,31u,33u,64u,0xffffffffu}) fixture(n,1,1,2,0,64,false);
+ fixture(32,2,1,2,0,64,false);fixture(32,1,3,2,0,64,false);
+ fixture(32,1,1,3,0,64,false);fixture(32,1,1,2,1,64,false);
+ fixture(32,1,1,2,0,16,false);
+}
+'''
+with tempfile.TemporaryDirectory() as d:
+ p=Path(d);(p/'loader.cpp').write_text(loader)
+ subprocess.run(['clang++','-std=c++17','-Wall','-Wextra','-Werror','-fsanitize=address,undefined',str(p/'loader.cpp'),'-o',str(p/'loader')],check=True)
+ subprocess.run([str(p/'loader'),str(p/'cache')],check=True)
+print('PASS: actual disk loader rejects invalid V1 header sizes and identity')

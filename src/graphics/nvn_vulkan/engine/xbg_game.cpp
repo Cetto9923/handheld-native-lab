@@ -1640,7 +1640,7 @@ std::vector<uint8_t> load_pipeline_cache(){
     fseek(f,0,SEEK_END);long n=ftell(f);fseek(f,0,SEEK_SET);
     if(n>32 && n<(256l<<20)){data.resize(size_t(n));if(fread(data.data(),1,data.size(),f)!=data.size())data.clear();}
     fclose(f);
-    if(data.size()>=32){uint32_t header[4];memcpy(header,data.data(),16);if(header[1]!=1 || header[2]!=properties.vendorID || header[3]!=properties.deviceID || memcmp(data.data()+16,properties.pipelineCacheUUID,16))data.clear();}
+    if(data.size()>=32){uint32_t header[4];memcpy(header,data.data(),16);if(header[0]!=32 || header[1]!=1 || header[2]!=properties.vendorID || header[3]!=properties.deviceID || memcmp(data.data()+16,properties.pipelineCacheUUID,16))data.clear();}
     xbg_logf("NVN pipeline cache load bytes=%zu",data.size());return data;
 }
 // The cache is written by its own thread: a save serializes the whole cache (17.7 MB on the Redmi K50 Ultra) and writes
