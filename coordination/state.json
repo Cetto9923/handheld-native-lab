@@ -4299,7 +4299,7 @@
    ],
    "write_state": "PERFORMANCE_DIAGNOSTIC",
    "acquired_at": "2026-11-18T09:44:22.098937+08:00",
-   "checkpoint": "f9e289c: Qualcomm varying fix实机场景消除失败；工厂战斗未达标；低画质短对照无明确收益，继续CPU readback；荣耀已停原FF恢复mode1，RGoffline，不发布。"
+   "checkpoint": "abf19b8: bounded readback diagnostic APK a7ac814 Android/host0; Honor31090 sixframes zero62.8MB/7.94ms. Fullcopy candidate under independent local review, no semantic optimization applied. Honor stopped/cooling; RGoffline; no release."
   }
  ],
  "tasks": [
