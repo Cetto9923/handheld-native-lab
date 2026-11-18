@@ -442,7 +442,7 @@ void descriptor_report(){
     const uint64_t total=timing.counters[XbgCpuTiming::Descriptor].exclusive_ns;
     const uint64_t tagged=descriptor_timing.sum();
     xbg_logf("NVN DESC_TIMING v=2 first=%llu last=%llu descriptor_ns=%llu tagged_ns=%llu remaining_ns=%llu coverage=%s clock_reads=%llu",(unsigned long long)(timing_before.presents+1),(unsigned long long)stats.presents.load(),(unsigned long long)total,(unsigned long long)tagged,(unsigned long long)(tagged<=total?total-tagged:0),tagged<=total && !descriptor_timing.invalid && !descriptor_timing.top?"OK":"INVALID",(unsigned long long)descriptor_timing.reads);
-    const char *names[]={"setup","buffer_bind","image_lookup","image_transition","image_view","sampler_bind","element_rest","texel_alias","texel_pending","texel_readback","texel_view_lookup","texel_view_create"};
+    const char *names[]={"setup","buffer_bind","image_lookup","image_transition","image_view","sampler_bind","element_rest","texel_alias","texel_pending","texel_readback","texel_view_lookup","texel_view_create","texel_resident_pending","texel_resident_acquire","texel_cpu_access"};
     for(unsigned i=0;i<XbgDescriptorTiming::Count;++i)xbg_logf("NVN DESC_TIMING part=%s calls=%llu exclusive_ns=%llu",names[i],(unsigned long long)descriptor_timing.counters[i].calls,(unsigned long long)descriptor_timing.counters[i].ns);
     xbg_logf("NVN DESC_TIMING part=remaining calls=0 exclusive_ns=%llu",(unsigned long long)(tagged<=total?total-tagged:0));
 }
@@ -5089,7 +5089,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                     }
                     TexelResident *res=nullptr;
                     if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER && texel_memo_enabled && !compute){Buffer pv;
-                        if(!pending_view(uint64_t(texture.mem),texture.L.size,1,pv))res=texel_acquire(uint64_t(texture.mem),texture.L.size,tf);
+                        if(!DESC_CALL(TexelResidentPending, pending_view(uint64_t(texture.mem),texture.L.size,1,pv)))res=DESC_CALL(TexelResidentAcquire, texel_acquire(uint64_t(texture.mem),texture.L.size,tf));
                         if(res){if(desc_memo_recording){memo_reference_buffer(res->buffer.buffer,slot_index);desc_memo_texel.push_back({record,record->revision,uint64_t(texture.mem),uint64_t(texture.L.size),res->gen,uint32_t(tf)});}
                             texel_views.push_back(res->view);write.pTexelBufferView=&texel_views.back();
                             water_binding_buffer(out.water,shader.key,st,b.binding,element,res->buffer,res->buffer.offset,texture.L.size,tf);
@@ -5213,7 +5213,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                                 vkCmdCopyBuffer(cmd,view.buffer,buf->buffer,1,&region);
                                 full_barrier(cmd);
                             }else{
-                                DESC_CALL(TexelReadback, cpu_access(base,bytes,3));
+                                DESC_CALL(TexelCpuAccess, cpu_access(base,bytes,3));
                                 buf=out.keep(DESC_CALL(TexelReadback, readback_buffer(bytes,texture.mem,bytes)));
                             }
                             out.storage.push_back({{base,bytes},buf});
