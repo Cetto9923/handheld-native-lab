@@ -4307,7 +4307,7 @@
    ],
    "write_state": "PERFORMANCE_DIAGNOSTIC",
    "acquired_at": "2026-11-18T09:44:22.098937+08:00",
-   "checkpoint": "Readback sites APK0f2952 Android/host0 installed Honor20924; bounded1652-1657: texel pending63.06MB zero vs storage pending1.275MB, no expanded fullcopy justified. Truthful timer labels verified; no FPS acceptance. Honor stopped80%connectedstatus3/30C, library069 window. Next explicit kgsl active-game feasibility; no release.",
+   "checkpoint": "Readback sites APK0f2952 Android/host0 installed Honor20924; bounded10862-10867: texel pending63.06MB zero vs storage pending1.275MB, no expanded fullcopy justified. Truthful timer labels verified; no FPS acceptance. Honor stopped80%connectedstatus3/30C, library069 window. Next explicit kgsl active-game feasibility; no release.",
    "objective": "Evidence-driven CPU/GPU diagnosis and safe optimization; actual directional movement, preserve synchronization/saves."
   }
  ],
@@ -11373,7 +11373,7 @@
    ],
    "acceptance": "真实兵工厂移动/战斗冷暖测量与修复回归；独立APK及统一App模块发布分别验证，未测不声称通过",
    "recovery": "私有100文件荣耀与12文件RG完整备份于.cetto-arsenal-inputs；原RG67 APK保留，测试仅独立save root",
-   "checkpoint": "Readback sites APK0f2952 Android/host0 installed Honor20924; bounded1652-1657: texel pending63.06MB zero vs storage pending1.275MB, no expanded fullcopy justified. Truthful timer labels verified; no FPS acceptance. Honor stopped80%connectedstatus3/30C, library069 window. Next explicit kgsl active-game feasibility; no release.",
+   "checkpoint": "Readback sites APK0f2952 Android/host0 installed Honor20924; bounded10862-10867: texel pending63.06MB zero vs storage pending1.275MB, no expanded fullcopy justified. Truthful timer labels verified; no FPS acceptance. Honor stopped80%connectedstatus3/30C, library069 window. Next explicit kgsl active-game feasibility; no release.",
    "dependencies": [],
    "role": "performance and graphics repair",
    "branch": "task/T-codex-recovery-20261114"
