@@ -11,6 +11,7 @@
 #endif
 #include "xbg_cpu_timing.h"
 #include "xbg_gpu_raw.h"
+#include "xbg_api_breadcrumb.h"
 #include "xbg_indexed_ready_probe.h"
 #include "xbg_indexed_bbox_probe.h"
 #include "xbg_completion_wait.h"
@@ -516,6 +517,7 @@ std::atomic<double> perf_gpu_ms{-1},perf_cpu_ms{-1};
 extern "C" double xbg_recent_gpu_ms(void){return perf_gpu_ms.load();}
 extern "C" double xbg_recent_cpu_ms(void){return perf_cpu_ms.load();}
 bool codex_gpu_step=false; // opt-in command/fence diagnosis, no omitted work
+XbgApiBreadcrumb api_breadcrumb;
 bool honor_pipeline_diagnostics=false;
 // Opt-in flame census (marker gfx-flame-diag): one line per presented frame listing the particle draws the frame
 // submitted, the texel data the particle vertex shaders read, and the depth/blend state in force, so a frame where the
@@ -3366,7 +3368,7 @@ Shader *load_shader(const void *control){
     // Retain the exact final bytes passed below, only for the explicit Honor
     // diagnostic's eight target modules. Never reconstruct a cache hit offline.
     if(probe_shader_requested(key))p->probe_words=words;
-    VkShaderModuleCreateInfo ci{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};ci.codeSize=words.size()*4;ci.pCode=words.data();VK(vkCreateShaderModule(cfg.device,&ci,nullptr,&p->module));warm::register_module(p->module,key);Shader *out=p.get();shaders.emplace(key,std::move(p));++stats.shader_loads;++hud::shaders;const uint64_t load_t4=timing_clock();hud::shader_ns+=load_t4-load_t0;
+    VkShaderModuleCreateInfo ci{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};ci.codeSize=words.size()*4;ci.pCode=words.data();uint64_t api_seq=api_breadcrumb.begin(key.c_str(),XbgApiBreadcrumb::RuntimeModule,load_frame,words.data(),words.size());VkResult api_result=vkCreateShaderModule(cfg.device,&ci,nullptr,&p->module);api_breadcrumb.end(api_seq,XbgApiBreadcrumb::RuntimeModule,stats.presents.load(),int(api_result));check(api_result,"vkCreateShaderModule(cfg.device,&ci,nullptr,&p->module)");warm::register_module(p->module,key);Shader *out=p.get();shaders.emplace(key,std::move(p));++stats.shader_loads;++hud::shaders;const uint64_t load_t4=timing_clock();hud::shader_ns+=load_t4-load_t0;
     xbg_logf("NVN shader %s stage=%u loaded words=%zu ms read=%.2f rewrite=%.2f analyse=%.2f module=%.2f reused=%d",key.c_str(),h.stage,words.size(),(load_t1-load_t0)/1e6,(load_t2-load_t1)/1e6,(load_t3-load_t2)/1e6,(load_t4-load_t3)/1e6,int(have_reused));shader_load_anchor(key,h.stage,load_frame,load_monotonic);return out;
 }
 // The device answers are cached, so the guard below is cheap.
@@ -4210,7 +4212,9 @@ bool build_compute(const Rec &rec,Reader &reader,VkPipelineLayout layout){
     if(!info.stage.module)return false;
     VkPipeline pipeline=VK_NULL_HANDLE;
     const uint64_t begin=timing_clock();
+    uint64_t api_seq=api_breadcrumb.begin(rec.keys[0].c_str(),XbgApiBreadcrumb::WarmPipeline,stats.presents.load());
     VkResult result=vkCreateComputePipelines(cfg.device,pipeline_cache,1,&info,nullptr,&pipeline);
+    api_breadcrumb.end(api_seq,XbgApiBreadcrumb::WarmPipeline,stats.presents.load(),int(result));
     if(result!=VK_SUCCESS){if(pipeline)vkDestroyPipeline(cfg.device,pipeline,nullptr);return false;}
     if(timing_clock()-begin>=compile_ns)++compiled;
     std::string bytes(reinterpret_cast<const char*>(rec.words.data()),rec.words.size()*4);
@@ -4499,7 +4503,9 @@ void pipeline_lookup(PipelineLease &out,const XbgPipelineKey &key,bool cacheable
         }
         if(pipe_stats)pstat_log(out.pipeline);uint64_t dt=timing_clock()-t0;if(dt>=compile_ns)++pipelines_unsaved;++warm::creates;warm::create_ns+=dt;++hud::pipelines;hud::pipeline_ns+=dt;warm::create_max_ns=std::max(warm::create_max_ns,dt);if(cacheable)warm::record(*graphics,key);}
     else{if(honor_pipeline_diagnostics)xbg_logf("DIAG pipeline begin compute shaders=%s",pstat_what().c_str());uint64_t t0=timing_clock();VkComputePipelineCreateInfo cc=*compute;if(pipe_stats)cc.flags|=VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR;
+        uint64_t api_seq=api_breadcrumb.begin(state.shader[5]?state.shader[5]->key.c_str():nullptr,XbgApiBreadcrumb::RuntimePipeline,stats.presents.load());
         VkResult pr = create_compute_pipeline_resilient(cfg.device,pipeline_cache,1,&cc,nullptr,&out.pipeline);
+        api_breadcrumb.end(api_seq,XbgApiBreadcrumb::RuntimePipeline,stats.presents.load(),int(pr));
         if(pr != VK_SUCCESS){
             const uint64_t failed_ns=timing_clock()-t0;
             if(cacheable)warm::record_failure(&cc.stage,1,key,pr,failed_ns);
@@ -6442,11 +6448,13 @@ void dispatch(p_dispatch p,uint64_t indirect_address=0){overlay_shadow={};struct
     // Indirect group counts stay on the GPU. Capture/profiling use the CPU fallback
     // so their grid metadata is genuine; no guessed dimensions are published.
     if(!gpu_indirect){need(p.x>=0 && p.y>=0 && p.z>=0,"Negative compute dispatch");if(!p.x||!p.y||!p.z)return;need(uint32_t(p.x)<=properties.limits.maxComputeWorkGroupCount[0] && uint32_t(p.y)<=properties.limits.maxComputeWorkGroupCount[1] && uint32_t(p.z)<=properties.limits.maxComputeWorkGroupCount[2],"Compute dispatch exceeds device limit");}probe_dispatch_begin();
-    uint64_t indirect_serial=slot_serial;Commands c;fire_trace_compute_begin();Descriptors &d=acquire_descriptors();descriptors(d,c,true);need(!gpu_indirect || (slot_serial==indirect_serial && slots[slot_index].cmd==c.command),"Indirect dispatch source slot retired during descriptor preparation");for(auto *im:storage_rg16_images)need(std::find(sampled_rg16_images.begin(),sampled_rg16_images.end(),im)==sampled_rg16_images.end(),"RG16 same-dispatch sampled/storage feedback requires explicit supported subresource semantics");VkComputePipelineCreateInfo ci{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};ci.stage={VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};ci.stage.stage=VK_SHADER_STAGE_COMPUTE_BIT;ci.stage.module=state.shader[5]->module;ci.stage.pName="main";ci.layout=d.pipeline_layout;PipelineLease pipeline;{CPU_SCOPE(Pipeline);XbgPipelineKey key;bool cacheable=xbg_compute_pipeline_key(key,ci,d.entry->definition.view());pipeline_lookup(pipeline,key,cacheable,nullptr,&ci);}if(!pipeline.pipeline){c.finish();return;}vkCmdBindPipeline(c.command,VK_PIPELINE_BIND_POINT_COMPUTE,pipeline.pipeline);vkCmdBindDescriptorSets(c.command,VK_PIPELINE_BIND_POINT_COMPUTE,d.pipeline_layout,0,1,&d.set,uint32_t(d.dynamic_offsets.size()),d.dynamic_offsets.data());int prof_dispatch=pass_prof_compute_begin(c.command,p);
+    uint64_t indirect_serial=slot_serial;Commands c;fire_trace_compute_begin();Descriptors &d=acquire_descriptors();uint64_t api_desc_seq=api_breadcrumb.begin(state.shader[5]->key.c_str(),XbgApiBreadcrumb::Descriptors,stats.presents.load());descriptors(d,c,true);api_breadcrumb.end(api_desc_seq,XbgApiBreadcrumb::Descriptors,stats.presents.load(),0);need(!gpu_indirect || (slot_serial==indirect_serial && slots[slot_index].cmd==c.command),"Indirect dispatch source slot retired during descriptor preparation");for(auto *im:storage_rg16_images)need(std::find(sampled_rg16_images.begin(),sampled_rg16_images.end(),im)==sampled_rg16_images.end(),"RG16 same-dispatch sampled/storage feedback requires explicit supported subresource semantics");VkComputePipelineCreateInfo ci{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};ci.stage={VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};ci.stage.stage=VK_SHADER_STAGE_COMPUTE_BIT;ci.stage.module=state.shader[5]->module;ci.stage.pName="main";ci.layout=d.pipeline_layout;PipelineLease pipeline;{CPU_SCOPE(Pipeline);XbgPipelineKey key;bool cacheable=xbg_compute_pipeline_key(key,ci,d.entry->definition.view());pipeline_lookup(pipeline,key,cacheable,nullptr,&ci);}if(!pipeline.pipeline){c.finish();return;}vkCmdBindPipeline(c.command,VK_PIPELINE_BIND_POINT_COMPUTE,pipeline.pipeline);vkCmdBindDescriptorSets(c.command,VK_PIPELINE_BIND_POINT_COMPUTE,d.pipeline_layout,0,1,&d.set,uint32_t(d.dynamic_offsets.size()),d.dynamic_offsets.data());int prof_dispatch=pass_prof_compute_begin(c.command,p);
     auto indirect_proof=indirect_template_batch(d,p,gpu_indirect);probe_indirect_template(p);
     const unsigned water_dispatch=water_trace_dispatch_begin(c.command,d.water);
+    uint64_t api_dispatch_seq=api_breadcrumb.begin(state.shader[5]->key.c_str(),XbgApiBreadcrumb::Dispatch,stats.presents.load());
     if(gpu_indirect){vkCmdDispatchIndirect(c.command,indirect.buffer,indirect.offset);static unsigned notes=0;if(notes++<8)xbg_logf("NVN GPU indirect dispatch shader=%s address=%#llx sourceSlotSerial=%llu",state.shader[5]->key.c_str(),(unsigned long long)indirect_address,(unsigned long long)indirect_serial);}
     else vkCmdDispatch(c.command,p.x,p.y,p.z);
+    api_breadcrumb.end(api_dispatch_seq,XbgApiBreadcrumb::Dispatch,stats.presents.load(),0);
     water_trace_dispatch_end(c.command,d.water,water_dispatch);
     fire_trace_sort_end(c.command);fire_trace_hist_end(c.command);fire_trace_compute_end(c.command);
     pass_prof_complete(c.command,prof_dispatch);bright::after_dispatch(c);if(d.needs_writeback()||capture.active){VkMemoryBarrier b{VK_STRUCTURE_TYPE_MEMORY_BARRIER};b.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT;b.dstAccessMask=VK_ACCESS_HOST_READ_BIT;vkCmdPipelineBarrier(c.command,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,1,&b,0,nullptr,0,nullptr);}c.finish();++perf.dispatches;
@@ -7933,6 +7941,9 @@ static void xbg_resolve_depth_aspect(const std::string &base,bool honor){
 extern "C" int xbg_game_initialize(const xbg_game_config *c,char *error,size_t bytes){
     if(!c || c->size!=sizeof(*c) || !c->physical || !c->device || !c->queue || !c->shader_directory || !c->fence_timeout_ns){if(error&&bytes)snprintf(error,bytes,"Invalid xbg_game_config");return -1;}
     std::lock_guard<std::recursive_mutex> lock(mutex);if(initialized){if(error&&bytes)snprintf(error,bytes,"Game graphics already initialized");return -1;}
+    {std::string dir=c->shader_directory;size_t cut=dir.find_last_of('/');std::string base=cut==std::string::npos?dir:dir.substr(0,cut);
+     bool on=false;FILE *m=fopen((base+"/gfx-api-breadcrumb").c_str(),"rb");if(m){on=fgetc(m)=='1';fclose(m);}
+     api_breadcrumb.configure(on,(base+"/api-breadcrumbs.log").c_str());}
     {std::string dir=c->shader_directory;size_t cut=dir.find_last_of('/');std::string base=cut==std::string::npos?dir:dir.substr(0,cut);
      gpu_raw.configure(0,0,0);gpu_raw_path=base+"/gpu-raw-slots.log";
      FILE *m=fopen((base+"/gfx-gpu-raw").c_str(),"rb");if(m){unsigned long long first=0,count=0;unsigned maximum=0;
