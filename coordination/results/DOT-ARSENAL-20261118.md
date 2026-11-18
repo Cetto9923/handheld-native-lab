@@ -232,3 +232,8 @@ Private init-cleanup-ab/normal342a CSV/window/screens/thermal. Actual thermal va
 ### RG normal-candidate factory comparison
 RG mt6897 normal342a installed SHA verified, isolatedfactory20261118095001 PID2451 survived host disconnect and resumed. Same3R3Lx6 input sample28.9304s gives28.4476FPS,p95 38.4622/p99 40.9788/max45.8594ms,thermal0→0; deliberate stop aftercapture. Honor21.8937FPS/p9556.5759. Supports observed RG smoother in this scene, NOT strict chip AB: warmup longer afterdisconnect, endposition differs, actualdynamicresolution not matched. Both below target, no Mali9400/9500 fix claim.
 Private init-cleanup-ab/rg342a.* and before/after captures. Host disconnect did not change PID2451. Needed existing clock helper transfer fromHonor toRG; missingkeep marker means compileddefault1, no marker change. RG handed to library helper; Honor to Ocarina isolated test. Original saves not replaced.
+
+
+### Exact-build RHI source attribution
+Exact normal342a RHI profile collected on Honor during6 held Dpad inputs in factory:2359samples/lost0, PID2771/TID3239 selects2326; separate same-nameTID4204 has33 and excluded. Matching26b6ff22 debugSO allows true source attribution. Indexed report/writeback overlap scans106 samples,pending_view overlap61; sort2 only. Independent review examining redundant query validity hoist, no optimization written yet. OriginalFF stopped; Honor Ocarina/RG library windows.
+Raw private rhi-exact342a/rhi342a.data; .local/arsenal-current-lines/result342a-expanded. First automatedContinue was too early: confirmedtitlethenpressedagain, factory screenshotconfirmed beforeprofile. No title samples used.
