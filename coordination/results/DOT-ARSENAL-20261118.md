@@ -80,3 +80,6 @@ RG PID19868覆盖安装全文SHA回读匹配，独立用户存档Continue进入�
 
 ### 低画质短探索对照（PID29645/30138）
 同隔离兵工厂档、同左右各4秒摇杆路径、probe2 APK、uncapped：标准成功独立帧33.8497FPS/P9948.343/max50.473ms；低档33.5449/P9949.193/max50.731ms，均无>100ms。标准CSV在窗口尾未完全flush（实际记录7.799s，clock窗口8.324s），低档8.317s；因此仅探索，不能作精确性能倍率或验收。未见降低分辨率带来明确收益，继续优先CPU归因。Current HAL skin标准35.378→35.591℃、低档35.942→36.622℃，status0，电池31–32℃，充电状态相同；短样本/非平衡不作温升胜负。证据~/.cetto-arsenal-inputs/resolution-ab/。测试结束停原FF、oe-operation-mode恢复1；RG仍offline。复读只改自有记录，保留外部pitfalls文档WIP。已请descriptor_review独立只读复核readback/remaining路径，未委托源码改写。
+
+### Readback清零成本实际定位
+新diagnostic-only APK a7ac814027ca74280ba81479a9d6556afcb2e34922ee7317c2d554c98c991367（.local/arsenal-readback-probe-20261118），Android/host均0；追加细分计时不改变渲染。独立提取48组合及真实timing header root-null/nested/early-return ASan/UBSan通过，记录.local/arsenal-fullcopy-review/。荣耀PID31090同兵工厂独立档，frame3602–3607 descriptor52.9485ms，readback_zero7.9435ms/62,798,824B，copy0.5224ms/6,275,048B，alloc0.1747/guard0.1351/flush0.1419ms，guarded_bytes0/noncoherent_flushes0。日志engine-readback31090.log当前最后窗口，勿混前面旧probe数据。新证据支持验证仅随后GPU全量覆盖的两条pending-view copy路径，尚未取消任何清零、未称性能提升。原FF已停止；69%正在充电、电池30℃（启动前实读）。行为候选必须保持guard分支、原完整copy/barrier及存活期，不泛化到部分shader输出。

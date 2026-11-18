@@ -442,9 +442,10 @@ void descriptor_report(){
     const uint64_t total=timing.counters[XbgCpuTiming::Descriptor].exclusive_ns;
     const uint64_t tagged=descriptor_timing.sum();
     xbg_logf("NVN DESC_TIMING v=2 first=%llu last=%llu descriptor_ns=%llu tagged_ns=%llu remaining_ns=%llu coverage=%s clock_reads=%llu",(unsigned long long)(timing_before.presents+1),(unsigned long long)stats.presents.load(),(unsigned long long)total,(unsigned long long)tagged,(unsigned long long)(tagged<=total?total-tagged:0),tagged<=total && !descriptor_timing.invalid && !descriptor_timing.top?"OK":"INVALID",(unsigned long long)descriptor_timing.reads);
-    const char *names[]={"setup","buffer_bind","image_lookup","image_transition","image_view","sampler_bind","element_rest","texel_alias","texel_pending","texel_readback","texel_view_lookup","texel_view_create","texel_resident_pending","texel_resident_acquire","texel_cpu_access"};
+    const char *names[]={"setup","buffer_bind","image_lookup","image_transition","image_view","sampler_bind","element_rest","texel_alias","texel_pending","texel_readback","texel_view_lookup","texel_view_create","texel_resident_pending","texel_resident_acquire","texel_cpu_access","readback_alloc","readback_guard","readback_copy","readback_zero","readback_flush"};
     for(unsigned i=0;i<XbgDescriptorTiming::Count;++i)xbg_logf("NVN DESC_TIMING part=%s calls=%llu exclusive_ns=%llu",names[i],(unsigned long long)descriptor_timing.counters[i].calls,(unsigned long long)descriptor_timing.counters[i].ns);
     xbg_logf("NVN DESC_TIMING part=remaining calls=0 exclusive_ns=%llu",(unsigned long long)(tagged<=total?total-tagged:0));
+    xbg_logf("NVN READBACK_TIMING alloc_bytes=%llu copy_bytes=%llu zero_bytes=%llu guarded_bytes=%llu noncoherent_flushes=%llu",(unsigned long long)descriptor_timing.readback_alloc_bytes,(unsigned long long)descriptor_timing.readback_copy_bytes,(unsigned long long)descriptor_timing.readback_zero_bytes,(unsigned long long)descriptor_timing.readback_guard_bytes,(unsigned long long)descriptor_timing.readback_noncoherent_flushes);
 }
 void draw_report(){
     if(!draw_detail)return;
@@ -1768,14 +1769,18 @@ Buffer uniform_buffer(size_t n,const void *data=nullptr,size_t copy=0){
     return stream_buffer(n,data,copy,true,&arena);
 }
 Buffer readback_buffer(size_t n,const void *data=nullptr,size_t copy=0){
-    Slot &s=recording_slot();Buffer b=s.readback.alloc(n);
+    const bool measured=descriptor_detail && descriptor_root && descriptor_root->recorder;
+    Slot &s=recording_slot();Buffer b=DESC_CALL(ReadbackAlloc, s.readback.alloc(n));
+    if(measured)descriptor_timing.readback_alloc_bytes+=n;
+    {DESC_SCOPE(ReadbackGuard);
     for(const auto &g:s.guard)if(g.buffer==b.buffer && b.offset<g.end && g.begin<b.offset+n){
         if(data && copy)need(copy<=n,"Buffer copy overflow");
         Buffer src=stream_buffer(n,data,data?copy:0,true);s.pro_ops.push_back({src.buffer,b.buffer,src.offset,b.offset,VkDeviceSize(n)});
-        ++xview_guarded;xview_guarded_bytes+=n;return b;}
-    if(data && copy){need(copy<=n,"Buffer copy overflow");need(b.mapped!=nullptr,"readback_buffer destination mapped pointer is null");evguard::EngineRead er(data,copy);memcpy(b.mapped,data,copy);}else copy=0;
-    if(copy<n){need(b.mapped!=nullptr,"readback_buffer zero-fill destination mapped pointer is null");memset(static_cast<uint8_t*>(b.mapped)+copy,0,n-copy);}   // only the bytes the copy leaves
-    b.flush();return b;
+        if(measured)descriptor_timing.readback_guard_bytes+=n;
+        ++xview_guarded;xview_guarded_bytes+=n;return b;}}
+    if(data && copy){DESC_SCOPE(ReadbackCopy);need(copy<=n,"Buffer copy overflow");need(b.mapped!=nullptr,"readback_buffer destination mapped pointer is null");evguard::EngineRead er(data,copy);memcpy(b.mapped,data,copy);if(measured)descriptor_timing.readback_copy_bytes+=copy;}else copy=0;
+    if(copy<n){DESC_SCOPE(ReadbackZero);need(b.mapped!=nullptr,"readback_buffer zero-fill destination mapped pointer is null");memset(static_cast<uint8_t*>(b.mapped)+copy,0,n-copy);if(measured)descriptor_timing.readback_zero_bytes+=n-copy;}   // only the bytes the copy leaves
+    {DESC_SCOPE(ReadbackFlush);if(measured && !b.coherent)++descriptor_timing.readback_noncoherent_flushes;b.flush();}return b;
 }
 // Per-submission snapshot cache of guest memory ranges. Guest command streams
 // cannot change memory between draws except through in-stream CPU operations
