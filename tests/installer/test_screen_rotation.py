@@ -198,7 +198,8 @@ public class RotationContract {
         self.assertIn('root.addView(touchPad,', create)
         self.assertIn('android:screenOrientation="fullSensor"', (ROOT / 'src/android/app/gamewindow/AndroidManifest.xml').read_text())
         self.assertIn('else if (i == 9) owner.toggleFpsOverlay();', source)
-        self.assertIn('else owner.rotateScreen();', source)
+        self.assertIn('else if (i == 10) owner.rotateScreen();', source)
+        self.assertIn('else owner.openDisplaySettings();', source)
         self.assertIn('"旋转屏幕180°"', source)
         self.assertIn('private final RectF[] menuItems = new RectF[11];', source)
 
