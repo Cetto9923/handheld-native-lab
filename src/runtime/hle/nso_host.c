@@ -1270,19 +1270,29 @@ __asm__(".text\n"
         ".size nb_save_open_trace_target,.-nb_save_open_trace_target\n");
 
 static void trace_save_stack(uintptr_t frame) {
-    pthread_attr_t attr;
-    if (pthread_getattr_np(pthread_self(), &attr) != 0)
+    // The guest may switch stacks underneath pthread's registered stack.
+    // Limit the walk to the readable mapping containing this gateway call.
+    FILE *maps = fopen("/proc/self/maps", "r");
+    if (!maps)
         return;
-    void *stack = NULL;
-    size_t size = 0;
-    int error = pthread_attr_getstack(&attr, &stack, &size);
-    pthread_attr_destroy(&attr);
-    if (error || size < 2 * sizeof(uintptr_t))
+    char line[256];
+    uintptr_t base = 0, end = 0;
+    const uintptr_t stack_address = (uintptr_t)line;
+    while (fgets(line, sizeof(line), maps)) {
+        uintptr_t lo, hi;
+        char readable;
+        if (sscanf(line, "%" SCNxPTR "-%" SCNxPTR " %c", &lo, &hi, &readable) == 3 &&
+            readable == 'r' && stack_address >= lo && stack_address < hi) {
+            base = lo;
+            end = hi;
+            break;
+        }
+    }
+    fclose(maps);
+    if (end - base < 2 * sizeof(uintptr_t))
         return;
-
-    const uintptr_t base = (uintptr_t)stack;
     for (unsigned depth = 0; depth < 6; ++depth) {
-        if (frame < base || frame - base > size - 2 * sizeof(uintptr_t) || frame % 16)
+        if (frame < base || frame > end - 2 * sizeof(uintptr_t) || frame % 16)
             break;
         uintptr_t record[2];
         memcpy(record, (const void *)frame, sizeof(record));
