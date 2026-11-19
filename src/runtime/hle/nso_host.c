@@ -1265,12 +1265,36 @@ __asm__(".text\n"
         ".type nb_save_open_trace_target,%function\n"
         "nb_save_open_trace_target:\n"
         ".inst 0xd503245f\n"
-        "ldr x3, [x29, #8]\n"
+        "ldp x4, x3, [x29]\n"
         "b nso_host_fs_open_file_trace\n"
         ".size nb_save_open_trace_target,.-nb_save_open_trace_target\n");
 
+static void trace_save_stack(uintptr_t frame) {
+    pthread_attr_t attr;
+    if (pthread_getattr_np(pthread_self(), &attr) != 0)
+        return;
+    void *stack = NULL;
+    size_t size = 0;
+    int error = pthread_attr_getstack(&attr, &stack, &size);
+    pthread_attr_destroy(&attr);
+    if (error || size < 2 * sizeof(uintptr_t))
+        return;
+
+    const uintptr_t base = (uintptr_t)stack;
+    for (unsigned depth = 0; depth < 6; ++depth) {
+        if (frame < base || frame - base > size - 2 * sizeof(uintptr_t) || frame % 16)
+            break;
+        uintptr_t record[2];
+        memcpy(record, (const void *)frame, sizeof(record));
+        fprintf(stderr, "[save-abi] frame depth=%u guest_lr=%#" PRIxPTR "\n", depth, record[1]);
+        if (record[0] <= frame)
+            break;
+        frame = record[0];
+    }
+}
+
 int32_t nso_host_fs_open_file_trace(nn_fs_file_handle *out_handle, const char *path, int32_t mode,
-                                    uintptr_t guest_return_pc) {
+                                    uintptr_t guest_return_pc, uintptr_t guest_frame) {
     int32_t result = nso_host_fs_open_file(out_handle, path, mode);
     static const char prefix[] = "save0:/GameSaveData";
     if (path && strncmp(path, prefix, sizeof(prefix) - 1) == 0) {
@@ -1278,6 +1302,8 @@ int32_t nso_host_fs_open_file_trace(nn_fs_file_handle *out_handle, const char *p
         if (slot >= '0' && slot <= '9' && path[sizeof(prefix)] == '\0') {
             fprintf(stderr, "[save-abi] open slot=%c mode=%d result=%d guest_lr=%#" PRIxPTR "\n",
                     slot, mode, result, guest_return_pc);
+            if (result == 0)
+                trace_save_stack(guest_frame);
         }
     }
     return result;
