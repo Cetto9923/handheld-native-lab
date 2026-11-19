@@ -329,7 +329,11 @@ static jlong StartGuest(JNIEnv* env,
         if (save_leaf != std::string::npos && save.compare(save_leaf + 1, 18, "shield-regression-") == 0) {
             if (FILE *marker = fopen(trace_file.c_str(), "rb")) {
                 const int requested = fgetc(marker);
-                if (requested >= '1' && requested <= '4') {
+                if (requested == '0') {
+                    mode = requested;
+                    __android_log_print(ANDROID_LOG_INFO, kLogTag,
+                        "isolated save read comparison: native gateway disabled");
+                } else if (requested >= '1' && requested <= '4') {
                     mode = requested;
                     setenv("FFRS_ISOLATED_SAVE_ABI_TRACE", "1", 1);
                 }
@@ -337,7 +341,7 @@ static jlong StartGuest(JNIEnv* env,
             }
         }
         save_edit_mode.store(0);
-        if (mode != '1' && PrepareSaveReadEdit(env, mode)) {
+        if (mode >= '2' && mode <= '4' && PrepareSaveReadEdit(env, mode)) {
             save_edit_attempted.store(false);
             save_edit_mode.store(mode);
             setenv("FFRS_SAVE_READ_EDIT", "1", 1);
