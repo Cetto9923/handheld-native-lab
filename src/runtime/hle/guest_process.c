@@ -2014,6 +2014,17 @@ static uintptr_t save_payload_host_forward(void *descriptor) {
     if (!p || !p->save_payload_probe ||
         nso_entry_address(p->module, 0x2bed654, &entry).status != NSO_OK)
         return 0;
+#if defined(__ANDROID__)
+    extern void ffrs_apply_isolated_read_payload(void *, uint32_t) __attribute__((weak));
+    if (descriptor && ffrs_apply_isolated_read_payload) {
+        // The validated build's reader takes {pointer, uint32_t length, capacity}.
+        void *buffer;
+        uint32_t size;
+        memcpy(&buffer, descriptor, sizeof(buffer));
+        memcpy(&size, (const unsigned char *)descriptor + 8, sizeof(size));
+        ffrs_apply_isolated_read_payload(buffer, size);
+    }
+#endif
     nb_registers packet = {.x = {(uintptr_t)descriptor}};
     nb_status result = nb_call_from_host(&p->boundary, (void (*)(void))(uintptr_t)entry,
                                          &packet);

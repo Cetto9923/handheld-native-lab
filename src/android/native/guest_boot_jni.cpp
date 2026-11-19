@@ -249,6 +249,21 @@ std::string ToStdString(JNIEnv* env, jstring value) {
 
 }  // namespace
 
+static JavaVM *save_edit_vm = nullptr;
+static jclass save_edit_class = nullptr;
+static jmethodID save_edit_method = nullptr;
+static std::atomic<bool> save_edit_enabled{false};
+static std::atomic<bool> save_edit_attempted{false};
+static void PrepareIsolatedSaveEdit(JNIEnv *env) {
+    jclass local = env->FindClass("org/ffrs/diagnostic/SaveCheater");
+    if (local && env->GetJavaVM(&save_edit_vm) == JNI_OK) {
+        save_edit_method = env->GetStaticMethodID(local, "editIsolatedReadPayload", "([B)Z");
+        if (save_edit_method) save_edit_class = static_cast<jclass>(env->NewGlobalRef(local));
+        env->DeleteLocalRef(local);
+    }
+    if (env->ExceptionCheck()) env->ExceptionClear();
+}
+
 static jlong StartGuest(JNIEnv* env,
                                                             jstring image, jstring romfs,
                                                             jstring log_path, jlong quota,
@@ -285,10 +300,17 @@ static jlong StartGuest(JNIEnv* env,
         std::string save = ToStdString(env, save_root);
         const std::string trace_file = request->log_path + ".save-abi";
         unsetenv("FFRS_ISOLATED_SAVE_ABI_TRACE");
+        save_edit_enabled.store(false);
         const size_t save_leaf = save.find_last_of('/');
         if (save_leaf != std::string::npos && save.compare(save_leaf + 1, 18, "shield-regression-") == 0) {
             if (FILE *marker = fopen(trace_file.c_str(), "rb")) {
-                if (fgetc(marker) == '1') setenv("FFRS_ISOLATED_SAVE_ABI_TRACE", "1", 1);
+                const int mode = fgetc(marker);
+                if (mode == '1' || mode == '2') setenv("FFRS_ISOLATED_SAVE_ABI_TRACE", "1", 1);
+                if (mode == '2') {
+                    if (!save_edit_class) PrepareIsolatedSaveEdit(env);
+                    save_edit_attempted.store(false);
+                    save_edit_enabled.store(save_edit_class && save_edit_method && save_edit_vm);
+                }
                 fclose(marker);
             }
         }
@@ -404,6 +426,38 @@ static jlong StartGuest(JNIEnv* env,
     reservation.commit();
     pthread_detach(thread);
     return static_cast<jlong>(thread);
+}
+
+extern "C" void ffrs_apply_isolated_read_payload(void *buffer, uint32_t size) {
+    if (!save_edit_enabled.load() || !buffer || size != 413968)
+        return;
+    if (save_edit_attempted.exchange(true)) return;
+
+    JNIEnv *env = nullptr;
+    const jint state = save_edit_vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6);
+    if (state != JNI_OK && (state != JNI_EDETACHED ||
+            save_edit_vm->AttachCurrentThread(&env, nullptr) != JNI_OK)) return;
+
+    jbyteArray payload = env->NewByteArray(size);
+    if (payload && !env->ExceptionCheck()) {
+        env->SetByteArrayRegion(payload, 0, size, static_cast<const jbyte *>(buffer));
+        if (!env->ExceptionCheck() &&
+            env->CallStaticBooleanMethod(save_edit_class, save_edit_method, payload) &&
+            !env->ExceptionCheck()) {
+            jbyte *edited = env->GetByteArrayElements(payload, nullptr);
+            if (edited && !env->ExceptionCheck()) {
+                memcpy(buffer, edited, size);
+                env->ReleaseByteArrayElements(payload, edited, JNI_ABORT);
+                fprintf(stderr, "[save-abi] isolated HP edit applied bytes=%u\n", size);
+            }
+        }
+    }
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        fprintf(stderr, "[save-abi] isolated HP edit rejected by JNI\n");
+    }
+    if (payload) env->DeleteLocalRef(payload);
+    if (state == JNI_EDETACHED) save_edit_vm->DetachCurrentThread();
 }
 
 extern "C" void xbg_request_memory_trim(unsigned level);

@@ -471,6 +471,19 @@ public final class SaveCheater {
         return result;
     }
 
+    // Only the isolated native read-path diagnostic calls this entry point.
+    static boolean editIsolatedReadPayload(byte[] plain) {
+        if (plain.length != 413968) return false;
+        List<Unit> units = groupUnits(plain);
+        if (units.isEmpty() || units.get(0).hitPointOffset < 0) return false;
+        Unit unit = units.get(0);
+        Result result = new Result();
+        if (!editPayload(plain, 7777, null, null, null, null, null, unit.unitId, result)
+                || result.edits.size() != 1) return false;
+        warn("isolated payload unit=" + unit.unitId + " HP " + unit.hitPoint + " -> 7777");
+        return true;
+    }
+
     // The caller owns the writable, validated payload and its transaction.
     // This parser does not open a save file or acquire an encryption key.
     static boolean editPayload(byte[] plain, Integer hp, Integer maxHp, Integer mp, Integer maxMp,
