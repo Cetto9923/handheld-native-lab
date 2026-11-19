@@ -1,5 +1,6 @@
 """Exercise production menu and drawing methods with counted Android stubs."""
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import unittest
@@ -62,7 +63,7 @@ public class TouchPadMenuContract extends ViewStub {
     boolean shown, editing, menuOpen;
     int handleId = -1;
     float u = 1;
-    final Object[] ctls = new Object[13];
+    final Object[] ctls = new Object[@CONTROL_COUNT@];
     final Rect handle = new Rect(), menuBtn = new Rect();
     final Paint fill = new Paint(), line = new Paint(), text = new Paint();
     int controls, menus, clears;
@@ -85,7 +86,7 @@ public class TouchPadMenuContract extends ViewStub {
         pad.shown = true;
         pad.openMenu();
         pad.onDraw(canvas);
-        if (!pad.shown || pad.controls != 13 || pad.menus != 2)
+        if (!pad.shown || pad.controls != @CONTROL_COUNT@ || pad.menus != 2)
             throw new AssertionError("visible pad or menu disappeared");
         pad.closeMenu();
         if (!pad.shown || pad.menuOpen || pad.clears != 2)
@@ -93,13 +94,15 @@ public class TouchPadMenuContract extends ViewStub {
         pad.shown = false;
         pad.owner.fpsVisible = true;
         pad.onDraw(canvas);
-        if (canvas.fpsDraws != 1 || pad.controls != 13)
+        if (canvas.fpsDraws != 1 || pad.controls != @CONTROL_COUNT@)
             throw new AssertionError("FPS overlay depends on virtual pad visibility");
         if (canvas.fpsSize > 0.30f * pad.u || canvas.fpsSize <= 0)
             throw new AssertionError("FPS overlay is too large");
     }
 }
 '''
+        count = re.search(r'ctls = new Ctl\[(\d+)\]', source)[1]
+        fixture = fixture.replace('@CONTROL_COUNT@', count)
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / 'TouchPadMenuContract.java'
             path.write_text(fixture)
@@ -136,7 +139,7 @@ class RectF {
 public class MenuGeometryContract {
     float u;
     RectF menuPanel = new RectF();
-    RectF[] menuItems = new RectF[11];
+    RectF[] menuItems = new RectF[@MENU_COUNT@];
     void layout(int w, int h) {
         u = Math.min(w, h) / 15f;
         for (int i = 0; i < menuItems.length; ++i) menuItems[i] = new RectF();
@@ -172,6 +175,8 @@ public class MenuGeometryContract {
     }
 }
 '''
+        count = re.search(r'menuItems = new RectF\[(\d+)\]', source)[1]
+        fixture = fixture.replace('@MENU_COUNT@', count)
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'MenuGeometryContract.java'
             path.write_text(fixture)
