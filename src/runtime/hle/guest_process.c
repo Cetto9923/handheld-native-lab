@@ -2015,14 +2015,17 @@ static uintptr_t save_payload_host_forward(void *descriptor) {
         nso_entry_address(p->module, 0x2bed654, &entry).status != NSO_OK)
         return 0;
 #if defined(__ANDROID__)
-    extern void ffrs_apply_isolated_read_payload(void *, uint32_t) __attribute__((weak));
+    extern int nso_host_take_selected_save_slot(void);
+    extern void ffrs_apply_isolated_read_payload(void *, uint32_t, int) __attribute__((weak));
+    const int slot = nso_host_take_selected_save_slot();
+    fprintf(stderr, "[save-abi] native forward selected slot=%d\n", slot);
     if (descriptor && ffrs_apply_isolated_read_payload) {
         // The validated build's reader takes {pointer, uint32_t length, capacity}.
         void *buffer;
         uint32_t size;
         memcpy(&buffer, descriptor, sizeof(buffer));
         memcpy(&size, (const unsigned char *)descriptor + 8, sizeof(size));
-        ffrs_apply_isolated_read_payload(buffer, size);
+        ffrs_apply_isolated_read_payload(buffer, size, slot);
     }
 #endif
     nb_registers packet = {.x = {(uintptr_t)descriptor}};

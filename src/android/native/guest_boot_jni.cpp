@@ -465,8 +465,8 @@ static void *EditIsolatedSaveOnHostStack(void *opaque) {
     return nullptr;
 }
 
-extern "C" void ffrs_apply_isolated_read_payload(void *buffer, uint32_t size) {
-    if (!save_edit_enabled.load() || !buffer || size != 413968 ||
+extern "C" void ffrs_apply_isolated_read_payload(void *buffer, uint32_t size, int slot) {
+    if (!save_edit_enabled.load() || !buffer || slot != 1 || size != 413968 ||
         save_edit_attempted.exchange(true)) return;
 
     // ART expects the calling SP to be on the registered pthread stack.
