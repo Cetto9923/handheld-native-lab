@@ -476,9 +476,12 @@ public final class SaveCheater {
     // load. The caller reports the parser result before consuming the request.
     static final class ReadEdit {
         final Integer hp, maxHp, mp, maxMp, exp, level, unit;
+        final int slot;
 
         ReadEdit(Integer hp, Integer maxHp, Integer mp, Integer maxMp,
-                 Integer exp, Integer level, Integer unit) {
+                 Integer exp, Integer level, Integer unit, int slot) {
+            if (slot < 0 || slot > 9) throw new IllegalArgumentException("invalid save slot");
+            this.slot = slot;
             this.hp = hp;
             this.maxHp = maxHp;
             this.mp = mp;
@@ -516,8 +519,9 @@ public final class SaveCheater {
             pending = request;
         }
 
-        synchronized ReadEdit begin(byte[] plain) {
-            if (pending == null || inFlight != null || !pending.apply(plain)) return null;
+        synchronized ReadEdit begin(int loadedSlot, byte[] plain) {
+            if (pending == null || pending.slot != loadedSlot ||
+                    inFlight != null || !pending.apply(plain)) return null;
             inFlight = pending;
             return inFlight;
         }
@@ -535,7 +539,7 @@ public final class SaveCheater {
         List<Unit> units = groupUnits(plain);
         if (units.isEmpty() || units.get(0).hitPointOffset < 0) return false;
         Unit unit = units.get(0);
-        if (!new ReadEdit(7777, null, null, null, null, null, unit.unitId).apply(plain))
+        if (!new ReadEdit(7777, null, null, null, null, null, unit.unitId, 1).apply(plain))
             return false;
         warn("isolated payload unit=" + unit.unitId + " HP " + unit.hitPoint + " -> 7777");
         return true;

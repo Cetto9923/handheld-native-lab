@@ -166,26 +166,28 @@ public final class SaveCheaterRoundTrip {
 
         SaveCheater.ReadEdits queued = new SaveCheater.ReadEdits();
         SaveCheater.ReadEdit request = new SaveCheater.ReadEdit(7777, null, null,
-                null, null, null, UNIT_IDS[0]);
+                null, null, null, UNIT_IDS[0], 1);
         queued.stage(request);
-        require(queued.begin(directPayload) == request, "the queued edit was not applied");
-        require(queued.begin(originalPayload.clone()) == null, "a second load claimed the same edit");
+        require(queued.begin(0, directPayload) == null && Arrays.equals(originalPayload, directPayload),
+                "loading a different slot applied the pending edit");
+        require(queued.begin(1, directPayload) == request, "the queued edit was not applied");
+        require(queued.begin(1, originalPayload.clone()) == null, "a second load claimed the same edit");
         require(ByteBuffer.wrap(directPayload).order(ByteOrder.LITTLE_ENDIAN)
                         .getInt(hpOffset) == 7777, "the queued HP was not applied");
         queued.finish(request, false);
-        require(queued.begin(originalPayload.clone()) == request, "a failed load consumed the edit");
+        require(queued.begin(1, originalPayload.clone()) == request, "a failed load consumed the edit");
         SaveCheater.ReadEdit replacement = new SaveCheater.ReadEdit(5555, null, null,
-                null, null, null, UNIT_IDS[0]);
+                null, null, null, UNIT_IDS[0], 1);
         queued.stage(replacement);
         queued.finish(request, true);
-        require(queued.begin(originalPayload.clone()) == replacement,
+        require(queued.begin(1, originalPayload.clone()) == replacement,
                 "finishing the previous load consumed a replacement edit");
         queued.finish(replacement, true);
-        require(queued.begin(originalPayload.clone()) == null, "a successful load did not consume the edit");
+        require(queued.begin(1, originalPayload.clone()) == null, "a successful load did not consume the edit");
 
         byte[] unrelated = originalPayload.clone();
-        queued.stage(new SaveCheater.ReadEdit(7777, null, null, null, null, null, -1));
-        require(queued.begin(unrelated) == null && Arrays.equals(originalPayload, unrelated),
+        queued.stage(new SaveCheater.ReadEdit(7777, null, null, null, null, null, -1, 1));
+        require(queued.begin(1, unrelated) == null && Arrays.equals(originalPayload, unrelated),
                 "an absent character changed the payload");
 
         byte[] key;
