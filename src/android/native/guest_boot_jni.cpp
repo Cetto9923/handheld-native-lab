@@ -456,6 +456,7 @@ struct IsolatedSaveEdit {
     int slot = -1;
     int mode = 0;
     jobject request = nullptr;
+    void *original = nullptr;
     bool accepted = false;
     bool finish = false;
 };
@@ -490,11 +491,15 @@ static void *EditIsolatedSaveOnHostStack(void *opaque) {
             if (ready && !env->ExceptionCheck()) {
                 jbyte *bytes = env->GetByteArrayElements(payload, nullptr);
                 if (bytes) {
-                    memcpy(edit.buffer, bytes, edit.size);
+                    edit.original = malloc(edit.size);
+                    if (edit.original) {
+                        memcpy(edit.original, edit.buffer, edit.size);
+                        memcpy(edit.buffer, bytes, edit.size);
+                        copied = true;
+                        fprintf(stderr, "[save-abi] isolated read edit applied slot=%d bytes=%u\n",
+                                edit.slot, edit.size);
+                    }
                     env->ReleaseByteArrayElements(payload, bytes, JNI_ABORT);
-                    copied = true;
-                    fprintf(stderr, "[save-abi] isolated read edit applied slot=%d bytes=%u\n",
-                            edit.slot, edit.size);
                 }
             }
             if (begun && !copied) {
@@ -523,7 +528,8 @@ static bool RunIsolatedSaveEdit(IsolatedSaveEdit &edit) {
     return true;
 }
 
-extern "C" void *ffrs_apply_isolated_read_payload(void *buffer, uint32_t size, int slot) {
+extern "C" void *ffrs_apply_isolated_read_payload(void *buffer, uint32_t size, int slot,
+                                                  void **original) {
     const int mode = save_edit_mode.load();
     if (!mode || !buffer || slot < 0 || slot > 9 || !size || size > 16u * 1024 * 1024)
         return nullptr;
@@ -534,7 +540,9 @@ extern "C" void *ffrs_apply_isolated_read_payload(void *buffer, uint32_t size, i
     edit.size = size;
     edit.slot = slot;
     edit.mode = mode;
-    return RunIsolatedSaveEdit(edit) ? edit.request : nullptr;
+    if (!RunIsolatedSaveEdit(edit)) return nullptr;
+    *original = edit.original;
+    return edit.request;
 }
 
 extern "C" void ffrs_finish_isolated_read_payload(void *request, int accepted) {

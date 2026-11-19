@@ -2016,26 +2016,42 @@ static uintptr_t save_payload_host_forward(void *descriptor) {
         return 0;
 #if defined(__ANDROID__)
     extern int nso_host_take_selected_save_slot(void);
-    extern void *ffrs_apply_isolated_read_payload(void *, uint32_t, int) __attribute__((weak));
+    extern void *ffrs_apply_isolated_read_payload(void *, uint32_t, int, void **) __attribute__((weak));
     extern void ffrs_finish_isolated_read_payload(void *, int) __attribute__((weak));
     void *edit_request = NULL;
+    void *original = NULL;
+    void *buffer = NULL;
+    uint32_t size = 0;
     const int slot = nso_host_take_selected_save_slot();
     fprintf(stderr, "[save-abi] native forward selected slot=%d\n", slot);
     if (descriptor && ffrs_apply_isolated_read_payload) {
         // The validated build's reader takes {pointer, uint32_t length, capacity}.
-        void *buffer;
-        uint32_t size;
         memcpy(&buffer, descriptor, sizeof(buffer));
         memcpy(&size, (const unsigned char *)descriptor + 8, sizeof(size));
-        edit_request = ffrs_apply_isolated_read_payload(buffer, size, slot);
+        edit_request = ffrs_apply_isolated_read_payload(buffer, size, slot, &original);
     }
 #endif
     nb_registers packet = {.x = {(uintptr_t)descriptor}};
     nb_status result = nb_call_from_host(&p->boundary, (void (*)(void))(uintptr_t)entry,
                                          &packet);
 #if defined(__ANDROID__)
+    const int accepted = result == NB_OK && packet.x[0] != 0;
+    const int edited = original != NULL;
+    if (edited) {
+        if (!accepted) {
+            memcpy(buffer, original, size);
+            fprintf(stderr, "[save-abi] restored original payload slot=%d\n", slot);
+        }
+        free(original);
+    }
     if (edit_request && ffrs_finish_isolated_read_payload)
-        ffrs_finish_isolated_read_payload(edit_request, result == NB_OK && packet.x[0] != 0);
+        ffrs_finish_isolated_read_payload(edit_request, accepted);
+    // Only retry a serializer rejection. A call-gateway failure is not an
+    // ordinary rejected save and a second gateway call could compound it.
+    if (edited && result == NB_OK && !accepted) {
+        packet = (nb_registers){.x = {(uintptr_t)descriptor}};
+        result = nb_call_from_host(&p->boundary, (void (*)(void))(uintptr_t)entry, &packet);
+    }
 #endif
     fprintf(stderr, "[save-abi] selected native forward result=%d object=%u\n",
             result, (unsigned)(result == NB_OK && packet.x[0] != 0));

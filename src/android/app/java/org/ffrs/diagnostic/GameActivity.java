@@ -1105,8 +1105,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             SaveCheater.Unit u = roster.get(i);
             String label = nameMap.get(u.unitId);
             names[i] = (label != null ? label : "角色" + u.unitId)
-                    + "  生命 " + u.hitPoint + "/" + u.maxHitPoint
-                    + "  魔法 " + u.magicPoint + "/" + u.maxMagicPoint
+                    + "  当前生命 " + u.hitPoint + (offline ? "/" + u.maxHitPoint : "")
+                    + "  当前魔法 " + u.magicPoint + (offline ? "/" + u.maxMagicPoint : "")
                     + "  经验 " + u.experience;
         }
         android.widget.ArrayAdapter<String> adapter =
@@ -1125,7 +1125,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         box.addView(all);
 
         TextView presetHint = new TextView(this);
-        presetHint.setText("满状态预设：等级99、生命99999、魔法999、经验9999999。");
+        presetHint.setText(offline ? "满状态预设：等级99、生命99999、魔法999、经验9999999。"
+                : "预设会尝试修改多项存档字段。上限与等级的实际效果待验证。");
         presetHint.setTextSize(12f);
         box.addView(presetHint);
 
@@ -1145,11 +1146,11 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         final EditText expField = new EditText(this);
         final EditText levelField = new EditText(this);
         addCheatField(custom, "生命值（当前）", hpField, 0);
-        addCheatField(custom, "生命上限", maxHpField, 0);
+        addCheatField(custom, offline ? "生命上限" : "存档生命上限字段（待验证）", maxHpField, 0);
         addCheatField(custom, "魔法值（当前）", mpField, 0);
-        addCheatField(custom, "魔法上限", maxMpField, 0);
+        addCheatField(custom, offline ? "魔法上限" : "存档魔法上限字段（待验证）", maxMpField, 0);
         addCheatField(custom, "经验", expField, 0);
-        addCheatField(custom, "等级", levelField, 1);
+        addCheatField(custom, offline ? "等级" : "存档等级字段（待验证）", levelField, 1);
 
         TextView originalView = new TextView(this);
         originalView.setTextSize(12f);
@@ -1619,9 +1620,9 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             SaveCheater.Unit o = originalById.get(u.unitId);
             originalView.setText(o == null
                     ? "原值: 无记录"
-                    : "原值  生命 " + o.hitPoint + "/" + o.maxHitPoint
-                      + "  魔法 " + o.magicPoint + "/" + o.maxMagicPoint
-                      + "  经验 " + o.experience + "  等级 " + o.level);
+                    : "原值  生命 " + o.hitPoint + (startEmpty ? "" : "/" + o.maxHitPoint)
+                      + "  魔法 " + o.magicPoint + (startEmpty ? "" : "/" + o.maxMagicPoint)
+                      + "  经验 " + o.experience + (startEmpty ? "" : "  等级 " + o.level));
         }
         Integer hpValue() { return parseField(hp); }
         Integer maxHpValue() { return parseField(maxHp); }
