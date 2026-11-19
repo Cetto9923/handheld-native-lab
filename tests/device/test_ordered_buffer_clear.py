@@ -34,6 +34,7 @@ struct p_clear_buf { uint64_t addr, size; uint32_t value; };
 struct NVNcounterData { uint64_t counter, timestamp; };
 struct { bool active, probe, trace; } capture;
 bool provenance_file, ordered_buffer_clear_enabled = true, image_alias;
+bool ab_off(const char *) { return false; }
 struct Image {};
 struct Slot {
     bool recording = true;
@@ -100,6 +101,9 @@ int main() {
     const VkPhysicalDeviceProperties target{0x5143,0x44050001,0x80320050};
     assert(ordered_clear_device("PKJ110", target));
     assert(!ordered_clear_device("V2301A", target));
+    assert(ordered_clear_device("ROD2-W69", {0x5143,0x43030b00,0x802fa02e}));
+    assert(!ordered_clear_device("ROD2-W69", {0x5143,0x43030b00,0x802fa02f}));
+    assert(!ordered_clear_device("other", {0x5143,0x43030b00,0x802fa02e}));
     assert(!ordered_clear_device("PKJ110", {0x5143,0x44050001,0x8032004b}));
     assert(ordered_clear_device("25098PN5AC", {0x5143,0x44050a31,0x8034a02c}));
     assert(ordered_clear_device("RG477M", {0x13b5,0xb8a31030,0x0b001000}));
@@ -157,6 +161,8 @@ class OrderedBufferClear(unittest.TestCase):
         rg_fixture = rg_fixture.replace('8192', '4096')
         rg_check = CHECK.replace('8192', '4096').replace('16384', '8192')
         self.assertEqual(run_program(rg_fixture + policy + clear + rg_check), 0)
+        honor_fixture = rg_fixture.replace('0x13b5,0xb8a31030,0x0b001000', '0x5143,0x43030b00,0x802fa02e')
+        self.assertEqual(run_program(honor_fixture + policy + clear + rg_check), 0)
 
 
 if __name__ == '__main__':

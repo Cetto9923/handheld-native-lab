@@ -835,7 +835,9 @@ bool ordered_clear_device(const char *model, const VkPhysicalDeviceProperties &g
     if (std::strcmp(model, "RG477M") == 0 && gpu.vendorID == 0x13b5 &&
         gpu.deviceID == 0xb8a31030 && gpu.driverVersion == 0x0b001000) return true;
     if (gpu.vendorID != 0x5143) return false;
-    return (std::strcmp(model, "PKJ110") == 0 &&
+    return (std::strcmp(model, "ROD2-W69") == 0 &&
+            gpu.deviceID == 0x43030b00 && gpu.driverVersion == 0x802fa02e) ||
+           (std::strcmp(model, "PKJ110") == 0 &&
             gpu.deviceID == 0x44050001 && gpu.driverVersion == 0x80320050) ||
            (std::strcmp(model, "25098PN5AC") == 0 &&
             gpu.deviceID == 0x44050a31 && gpu.driverVersion == 0x8034a02c);
@@ -7071,9 +7073,12 @@ void trace_buffer_clear(const p_clear_buf &p){
 // result. Move the complete result to a fresh span so recorded readers keep
 // their original input, while future reads see the clear and untouched bytes.
 bool gpu_ordered_buffer_clear(const p_clear_buf &clear) {
-    const bool rg_shape = properties.vendorID == 0x13b5 && properties.deviceID == 0xb8a31030 &&
-                          properties.driverVersion == 0x0b001000 && clear.size == 4096;
-    if (!ordered_buffer_clear_enabled || (clear.size != 8192 && !rg_shape) || (clear.addr & 3) ||
+    const bool compact_shape = clear.size == 4096 &&
+        ((properties.vendorID == 0x13b5 && properties.deviceID == 0xb8a31030 &&
+          properties.driverVersion == 0x0b001000) ||
+         (properties.vendorID == 0x5143 && properties.deviceID == 0x43030b00 &&
+          properties.driverVersion == 0x802fa02e));
+    if (!ordered_buffer_clear_enabled || ab_off("orderedclear") || (clear.size != 8192 && !compact_shape) || (clear.addr & 3) ||
         capture.active || capture.probe || capture.trace || provenance_file ||
         !slots[slot_index].recording)
         return false;
@@ -7083,7 +7088,7 @@ bool gpu_ordered_buffer_clear(const p_clear_buf &clear) {
     for (auto &pending : pending_writebacks) {
         if (!xbg_wb_overlaps(clear.addr, clear.size, pending.addr, pending.bytes)) continue;
         if (producer || pending.slot != &slot || pending.owner || pending.indirect ||
-            pending.bytes != (rg_shape ? 87040u : 146432u) || !xbg_wb_contains(pending.addr, pending.bytes, clear.addr, clear.size))
+            pending.bytes != (compact_shape ? 87040u : 146432u) || !xbg_wb_contains(pending.addr, pending.bytes, clear.addr, clear.size))
             return false;
         producer = &pending;
     }
