@@ -283,6 +283,15 @@ static jlong StartGuest(JNIEnv* env,
     }
     {
         std::string save = ToStdString(env, save_root);
+        const std::string trace_file = request->log_path + ".save-abi";
+        unsetenv("FFRS_ISOLATED_SAVE_ABI_TRACE");
+        const size_t save_leaf = save.find_last_of('/');
+        if (save_leaf != std::string::npos && save.compare(save_leaf + 1, 18, "shield-regression-") == 0) {
+            if (FILE *marker = fopen(trace_file.c_str(), "rb")) {
+                if (fgetc(marker) == '1') setenv("FFRS_ISOLATED_SAVE_ABI_TRACE", "1", 1);
+                fclose(marker);
+            }
+        }
         if (save.empty()) {
             save = request->log_path;
             size_t slash = save.find_last_of('/');

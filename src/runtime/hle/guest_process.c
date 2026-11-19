@@ -2041,7 +2041,14 @@ static struct nso_result prepare_boundary_locked(guest_process *p) {
     struct nso_result r=status(NSO_OK,0,0);
     for(size_t i=0;i<callable;i++) {
         nb_signature signature;(void)import_signature(targets[i].name,&signature);
-        s=nb_import_bind(&bindings[i],&p->boundary,(void(*)(void))(uintptr_t)targets[i].target,&signature);
+        void (*target)(void) = (void (*)(void))(uintptr_t)targets[i].target;
+#if defined(__ANDROID__) && defined(__aarch64__)
+        extern void nb_save_open_trace_target(void);
+        if (getenv("FFRS_ISOLATED_SAVE_ABI_TRACE") &&
+            target == (void (*)(void))nso_host_fs_open_file)
+            target = nb_save_open_trace_target;
+#endif
+        s=nb_import_bind(&bindings[i],&p->boundary,target,&signature);
         if(s!=NB_OK) {
             fprintf(stderr,"[boundary-error] bind index=%u name=%s status=%d mapping=%p entry=%p; ownership retained\n",targets[i].index,targets[i].name,s,bindings[i].mapping,(void *)bindings[i].entry);
             if(s==NB_RETAINED)fputs("[boundary-retained] non-callable RX rollback owner retained; no import retarget/publication\n",stderr);

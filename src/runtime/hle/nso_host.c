@@ -1255,6 +1255,35 @@ int32_t nso_host_fs_open_file(nn_fs_file_handle *out_handle, const char *path, i
     return 0;
 }
 
+#if defined(__ANDROID__) && defined(__aarch64__)
+/* The register-only import gateway saved the guest LR at FP + 8.
+ * Bind this entry only as that gateway's diagnostic OpenFile target. */
+__asm__(".text\n"
+        ".p2align 2\n"
+        ".global nb_save_open_trace_target\n"
+        ".hidden nb_save_open_trace_target\n"
+        ".type nb_save_open_trace_target,%function\n"
+        "nb_save_open_trace_target:\n"
+        ".inst 0xd503245f\n"
+        "ldr x3, [x29, #8]\n"
+        "b nso_host_fs_open_file_trace\n"
+        ".size nb_save_open_trace_target,.-nb_save_open_trace_target\n");
+
+int32_t nso_host_fs_open_file_trace(nn_fs_file_handle *out_handle, const char *path, int32_t mode,
+                                    uintptr_t guest_return_pc) {
+    int32_t result = nso_host_fs_open_file(out_handle, path, mode);
+    static const char prefix[] = "save0:/GameSaveData";
+    if (path && strncmp(path, prefix, sizeof(prefix) - 1) == 0) {
+        char slot = path[sizeof(prefix) - 1];
+        if (slot >= '0' && slot <= '9' && path[sizeof(prefix)] == '\0') {
+            fprintf(stderr, "[save-abi] open slot=%c mode=%d result=%d guest_lr=%#" PRIxPTR "\n",
+                    slot, mode, result, guest_return_pc);
+        }
+    }
+    return result;
+}
+#endif
+
 int32_t nso_host_fs_get_file_size(int64_t *out_size, nn_fs_file_handle handle) {
     if (!out_size) {
         fprintf(stderr, "[hle] nn::fs::GetFileSize: null out pointer\n");
