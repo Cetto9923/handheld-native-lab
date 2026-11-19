@@ -66,7 +66,8 @@ def main():
     env = os.environ.copy()
     env.update(FFRS_APP_MANIFEST=str(manifest), FFRS_APP_RES=str(resources),
                FFRS_APK_DIR=str(out), FFRS_APK_NAME='handheld-native-lab-preview.apk',
-               FFRS_ANDROID_LOG_DIR=str(out / 'build-logs'))
+               FFRS_ANDROID_LOG_DIR=str(out / 'build-logs'),
+               FFRS_LOCAL_CHEAT_APK='0')
     if args.malloc_backtrace:
         wrap = out / 'wrap.sh'
         wrap.write_text('#!/system/bin/sh\nLIBC_DEBUG_MALLOC_OPTIONS="backtrace_enable_on_signal=16 backtrace_dump_prefix=/data/user/0/' + PACKAGE + '/files/hnl-malloc" logwrapper "$@"\n')
@@ -88,7 +89,7 @@ def main():
             'controller_pid': os.getpid(), 'build_log': str(out / 'build.log'),
             'output': str(out), 'scope': 'new preview only; no device install or game-data copy',
             'environment_overrides': {k: env[k] for k in ['FFRS_APP_MANIFEST', 'FFRS_APP_RES',
-                'FFRS_APK_DIR', 'FFRS_APK_NAME', 'FFRS_ANDROID_LOG_DIR'] + (['FFRS_APP_ASSETS'] if args.data_index else []) + (['FFRS_APP_WRAP_SCRIPT'] if args.malloc_backtrace else [])}}
+                'FFRS_APK_DIR', 'FFRS_APK_NAME', 'FFRS_ANDROID_LOG_DIR', 'FFRS_LOCAL_CHEAT_APK'] + (['FFRS_APP_ASSETS'] if args.data_index else []) + (['FFRS_APP_WRAP_SCRIPT'] if args.malloc_backtrace else [])}}
     (out / 'plan.json').write_text(json.dumps(plan, indent=2))
     with (out / 'build.log').open('wb') as log:
         result = subprocess.run(cmd, cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)
@@ -97,6 +98,8 @@ def main():
         return result.returncode
     apk = out / 'handheld-native-lab-preview.apk'
     with zipfile.ZipFile(apk) as z:
+        if 'assets/ffrs_save_key.bin' in z.namelist():
+            raise ValueError('preview APK contains a local save key')
         native = z.read('lib/arm64-v8a/libffrs_game_window.so')
     sources = ['src/android/app/java/org/ffrs/diagnostic/GameActivity.java',
                'scripts/android/build_game_window_apk.sh',
