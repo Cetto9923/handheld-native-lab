@@ -1043,7 +1043,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     void openCheatDialog() {
         String directory = resolveGameDir();
         CheatMenu.show(this, directory == null ? null : new File(directory, "main.nso"),
-                this::openSaveCheatDialog);
+                this::openSaveCheatDialog,
+                SaveCheater.readSnapshot() != null || SaveCheater.available());
     }
 
     private void openSaveCheatDialog() {

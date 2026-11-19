@@ -119,7 +119,8 @@ final class CheatMenu {
         Toast.makeText(activity, message, Toast.LENGTH_LONG).show();
     }
 
-    static void show(final Activity activity, File image, final Runnable saveEditor) {
+    static void show(final Activity activity, File image, final Runnable saveEditor,
+                     boolean saveEditorAvailable) {
         try {
             final Catalog catalog = load(activity);
             if (image == null || !catalog.matches(image)) {
@@ -165,7 +166,8 @@ final class CheatMenu {
                     .show();
             notice(activity, "勾选并保存后重启游戏生效，取消勾选并重启可恢复。");
         } catch (FileNotFoundException missing) {
-            notice(activity, "此安装包尚未包含兼容的金手指。");
+            if (saveEditorAvailable) saveEditor.run();
+            else notice(activity, "此安装包尚未包含兼容的金手指。");
         } catch (Exception error) {
             Log.e(TAG, "cheat menu failed", error);
             notice(activity, "金手指读取失败，请检查游戏资源与安装包。");
