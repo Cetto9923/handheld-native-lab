@@ -221,7 +221,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         Log.i(TAG, "game_input touch_pad=" + (show ? "shown" : "hidden") + " marker=" + marker + " physical_pad=" + padConnected);
     }
 
-    /** Called by the on-screen PAD handle: flip the virtual pad and remember the choice in files/touch-pad ('1' / '0'). */
+    /** Flip the virtual pad and remember the choice in files/touch-pad ('1' / '0'). */
     void userToggleTouchPad() {
         if (touchPad == null) return;
         boolean now = !touchPad.shown;
@@ -415,10 +415,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
     /**
      * On-screen pad drawn over the SurfaceView. Emits the same button bits as buttonBit().
-     * Tap the small PAD handle to show/hide; long-press it to edit: drag a control to move it,
-     * tap it then use the size slider, drag the opacity slider, Reset / Done. Saved in files/touch-pad.cfg.
-     * The function menu (export / cheat / quick save / layout) has its own
-     * small button next to the PAD handle, so it stays one tap away.
+     * The function menu controls pad visibility and opens the layout editor.
+     * Layout and visibility choices are saved in files/touch-pad.cfg.
      */
     private static final class TouchPad extends View {
         private static final int T_BTN = 0, T_STICK = 1, T_DPAD = 2;
@@ -427,24 +425,18 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             float fx, fy, scale = 1f; boolean visible = true;                        // centre as fraction of the view, size factor
             Ctl(String n, int t, int b, float hw, float hh) { name = n; type = t; bit = b; this.hw = hw; this.hh = hh; }
         }
-        private static final class LongPress implements Runnable {
-            private final TouchPad pad;
-            LongPress(TouchPad p) { pad = p; }
-            @Override public void run() { pad.onLongPress(); }
-        }
-
         private final GameActivity owner;
         boolean shown;
-        private boolean editing, handleLong, menuOpen;
+        private boolean editing, menuOpen;
         private float opacity = 1f;
         private int selected = -1, dragMode;                 // dragMode: 1 opacity, 2 size, 3 move
         private float dragDx, dragDy;
-        private final RectF handle = new RectF(), panel = new RectF(), opTrack = new RectF(), scTrack = new RectF();
+        private final RectF panel = new RectF(), opTrack = new RectF(), scTrack = new RectF();
         private final RectF menuBtn = new RectF();
         private final RectF btnReset = new RectF(), btnDone = new RectF(), btnVisibility = new RectF(), btnSelectedVisibility = new RectF();
         private final RectF menuPanel = new RectF();
         private final RectF[] menuItems = new RectF[13];
-        private int handleId = -1, lsId = -1, rsId = -1, menuId = -1;
+        private int lsId = -1, rsId = -1, menuId = -1;
         private int r3Id = -1, l3Id = -1;
         private float u, vw, vh, lsKx, lsKy, rsKx, rsKy;
         private final Ctl[] ctls = new Ctl[15];
@@ -452,7 +444,6 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         private final Paint line = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Runnable longPress = new LongPress(this);
 
         TouchPad(GameActivity owner) {
             super(owner);
@@ -517,22 +508,20 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             vw = w; vh = h; u = Math.min(w, h) / 15f;
             defaults();
             loadConfig();
-            handle.set(w / 2f - 0.8f * u, 0.05f * u, w / 2f + 0.8f * u, 0.6f * u);
-            // The function menu keeps its own button next to the PAD handle,
-            // so it stays one tap away and the long press stays free for the
-            // layout editor.
-            menuBtn.set(w / 2f + 1.1f * u, 0.05f * u, w / 2f + 2.5f * u, 0.6f * u);
-            float pw = Math.min(0.46f * w, 18f * u), ph = 7.2f * u;
+            // The menu remains reachable even when the virtual pad is hidden.
+            menuBtn.set(w / 2f - 0.7f * u, 0.05f * u, w / 2f + 0.7f * u, 0.6f * u);
+            float pw = Math.min(0.46f * w, 18f * u), ph = 8.2f * u;
             panel.set(w / 2f - pw / 2f, h / 2f - ph / 2f, w / 2f + pw / 2f, h / 2f + ph / 2f);
             opTrack.set(panel.left + 4.2f * u, panel.top + 2.6f * u - 0.15f * u, panel.right - 1.0f * u, panel.top + 2.6f * u + 0.15f * u);
             scTrack.set(opTrack.left, panel.top + 4.3f * u - 0.15f * u, opTrack.right, panel.top + 4.3f * u + 0.15f * u);
-            // The reset button stays small and hugs the left edge: a wide
-            // target is easy to hit by accident on a phone.
-            float bw = 2.8f * u, bh = 0.9f * u, by = panel.bottom - 1.5f * u;
-            btnReset.set(panel.left + 1.1f * u, by, panel.left + 1.1f * u + bw, by + bh);
-            btnDone.set(panel.right - 1.1f * u - 2.2f * u, by, panel.right - 1.1f * u, by + bh);
-            btnSelectedVisibility.set(panel.centerX() - 3.7f * u, panel.top + 5.0f * u, panel.centerX() - 0.15f * u, panel.top + 5.8f * u);
-            btnVisibility.set(panel.centerX() + 0.15f * u, panel.top + 5.0f * u, panel.centerX() + 3.7f * u, panel.top + 5.8f * u);
+            float left = panel.left + 0.7f * u, right = panel.right - 0.7f * u;
+            float gap = 0.4f * u, mid = panel.centerX();
+            float top = panel.top + 5.15f * u, bh = 0.8f * u;
+            btnSelectedVisibility.set(left, top, mid - gap / 2f, top + bh);
+            btnVisibility.set(mid + gap / 2f, top, right, top + bh);
+            top += 1.05f * u;
+            btnReset.set(left, top, mid - gap / 2f, top + bh);
+            btnDone.set(mid + gap / 2f, top, right, top + bh);
             float mw = Math.min(0.76f * w, 18f * u), mh = Math.min(10.5f * u, 0.80f * h);
             menuPanel.set(w / 2f - mw / 2f, h / 2f - mh / 2f, w / 2f + mw / 2f, h / 2f + mh / 2f);
             // Drawing and hit testing share the same two-column rectangles.
@@ -586,22 +575,6 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         }
 
         // ---------------- menu mode ----------------
-        /**
-         * Long press on the PAD handle opens the layout editor.
-         *
-         * The long press used to open the function menu, which pushed the
-         * editor onto a second tap and made a tap turn into an edit instead
-         * of a plain show/hide. The editor is the deliberate gesture now:
-         * tap shows or hides the pad, long press edits the layout.
-         *
-         * The function menu stays reachable through the small button next to
-         * the handle.
-         */
-        void onLongPress() {
-            handleLong = true;
-            enterEdit();
-        }
-
         /** Opens the function menu from its own button. */
         private void openMenu() {
             clearInput();
@@ -617,12 +590,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         }
 
         // ---------------- edit mode ----------------
-        /**
-         * Enters the layout editor.
-         *
-         * Only the handle reaches this state. A long press on a game button
-         * does nothing at all, so the editor can never interrupt a fight.
-         */
+        /** Enters the layout editor from the function menu. */
         void enterEdit() {
             shown = true; editing = true; selected = -1; dragMode = 0;
             menuOpen = false;
@@ -737,7 +705,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         @Override public boolean onTouchEvent(MotionEvent e) {
             int act = e.getActionMasked(), idx = e.getActionIndex();
             // The function menu swallows every touch while it is open, so a
-            // tap outside it closes the menu instead of reaching the handle.
+            // tap outside it closes the menu instead of reaching the game.
             if (menuOpen) return onMenuTouch(e);
             if ((act == MotionEvent.ACTION_DOWN || act == MotionEvent.ACTION_POINTER_DOWN)
                     && menuId < 0 && menuBtn.contains(e.getX(idx), e.getY(idx))) {
@@ -749,27 +717,6 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                     && menuId >= 0 && e.getPointerId(idx) == menuId) {
                 menuId = -1;
                 if (act != MotionEvent.ACTION_CANCEL) openMenu();
-                invalidate();
-                return true;
-            }
-            if ((act == MotionEvent.ACTION_DOWN || act == MotionEvent.ACTION_POINTER_DOWN)
-                    && handleId < 0 && handle.contains(e.getX(idx), e.getY(idx))) {
-                handleId = e.getPointerId(idx); handleLong = false;
-                postDelayed(longPress, 500);
-                invalidate();
-                return true;
-            }
-            if ((act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_POINTER_UP) && handleId >= 0 && e.getPointerId(idx) == handleId) {
-                removeCallbacks(longPress);
-                boolean inside = handle.contains(e.getX(idx), e.getY(idx));
-                handleId = -1;
-                if (!handleLong && inside) {
-                    // Tap the handle: show the pad when it is hidden, hide it
-                    // when it is shown. A tap never opens the editor, so it
-                    // cannot interrupt a fight by accident.
-                    if (editing) exitEdit();
-                    else owner.userToggleTouchPad();
-                }
                 invalidate();
                 return true;
             }
@@ -831,12 +778,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         private int col(int alpha) { return (Math.max(0, Math.min(255, Math.round(alpha * opacity))) << 24) | 0xFFFFFF; }
 
         @Override protected void onDraw(Canvas c) {
-            // Small, low-contrast handle (not affected by the opacity setting so it can always be found).
-            fill.setColor(handleId >= 0 ? 0x60FFFFFF : (shown ? 0x20FFFFFF : 0x10FFFFFF));
             line.setColor(0x50FFFFFF); text.setColor(0x80FFFFFF); text.setTextSize(0.4f * u);
-            c.drawRoundRect(handle, handle.height() / 3f, handle.height() / 3f, fill);
-            c.drawRoundRect(handle, handle.height() / 3f, handle.height() / 3f, line);
-            c.drawText(editing ? "OK" : (shown ? "PAD -" : "PAD +"), handle.centerX(), handle.centerY() + text.getTextSize() / 3f, text);
             // Function menu button, always visible so the menu is reachable
             // even while the pad itself is hidden.
             fill.setColor(menuOpen ? 0x50FFFFFF : 0x20FFFFFF);
@@ -935,7 +877,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             text.setColor(0xFFFFFFFF); text.setTextSize(0.5f * u);
             c.drawText("拖动按键移动位置，点选后调大小", panel.centerX(), panel.top + 1.0f * u, text);
             text.setTextSize(0.38f * u); text.setColor(0x90FFFFFF);
-            c.drawText("长按顶部 PAD 打开功能菜单", panel.centerX(), panel.top + 1.75f * u, text);
+            c.drawText("点选按键后可隐藏，列表可恢复", panel.centerX(), panel.top + 1.75f * u, text);
             text.setTextSize(0.5f * u); text.setColor(0xFFFFFFFF);
             Paint.Align al = text.getTextAlign(); text.setTextAlign(Paint.Align.LEFT);
             c.drawText("\u900f\u660e\u5ea6", panel.left + 1.0f * u, opTrack.centerY() + 0.18f * u, text);
@@ -943,21 +885,15 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             text.setTextAlign(al);
             drawSlider(c, opTrack, (opacity - 0.15f) / 0.85f, true);
             drawSlider(c, scTrack, selected >= 0 ? (ctls[selected].scale - 0.5f) / 1.5f : 0f, selected >= 0);
-            fill.setColor(selected >= 0 ? 0x60FFFFFF : 0x20FFFFFF);
-            c.drawRoundRect(btnSelectedVisibility, u * 0.25f, u * 0.25f, fill);
-            text.setColor(selected >= 0 ? 0xFFFFFFFF : 0x70FFFFFF); text.setTextSize(0.42f * u);
-            c.drawText(selected < 0 ? "先点选按键" : (ctls[selected].visible ? "隐藏 " : "显示 ") + ctls[selected].name,
-                    btnSelectedVisibility.centerX(), btnSelectedVisibility.centerY() + 0.14f * u, text);
-            fill.setColor(0x60FFFFFF);
-            c.drawRoundRect(btnVisibility, u * 0.25f, u * 0.25f, fill);
-            text.setColor(0xFFFFFFFF); text.setTextSize(0.42f * u);
-            c.drawText("按键显示设置", btnVisibility.centerX(), btnVisibility.centerY() + 0.14f * u, text);
-            for (int pass = 0; pass < 2; pass++) {
-                RectF r = pass == 0 ? btnReset : btnDone;
-                fill.setColor(0x40FFFFFF); c.drawRoundRect(r, u * 0.3f, u * 0.3f, fill);
-                line.setColor(0xA0FFFFFF); c.drawRoundRect(r, u * 0.3f, u * 0.3f, line);
-                text.setColor(0xFFFFFFFF); text.setTextSize(pass == 0 ? 0.42f * u : 0.5f * u);
-                c.drawText(pass == 0 ? "恢复默认" : "完成", r.centerX(), r.centerY() + 0.16f * u, text);
+            RectF[] actions = {btnSelectedVisibility, btnVisibility, btnReset, btnDone};
+            String[] labels = {selected < 0 ? "先点选按键" : (ctls[selected].visible ? "隐藏 " : "显示 ") + ctls[selected].name,
+                    "按键显示设置", "恢复默认", "完成"};
+            for (int i = 0; i < actions.length; i++) {
+                RectF r = actions[i]; boolean enabled = i != 0 || selected >= 0;
+                fill.setColor(enabled ? 0x40FFFFFF : 0x20FFFFFF); c.drawRoundRect(r, u * 0.25f, u * 0.25f, fill);
+                line.setColor(enabled ? 0xA0FFFFFF : 0x50FFFFFF); c.drawRoundRect(r, u * 0.25f, u * 0.25f, line);
+                text.setColor(enabled ? 0xFFFFFFFF : 0x70FFFFFF); text.setTextSize(0.40f * u);
+                c.drawText(labels[i], r.centerX(), r.centerY() + 0.14f * u, text);
             }
         }
 
