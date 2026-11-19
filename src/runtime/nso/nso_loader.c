@@ -414,20 +414,31 @@ static int text_branch(uint64_t from,uint64_t to,uint32_t *word) {
 }
 
 static _Atomic uint32_t save_payload_size;
-uint32_t nso_take_save_payload_size(void) {
-    return atomic_exchange_explicit(&save_payload_size, 0, memory_order_acq_rel);
+void nso_report_save_payload_probe(void) {
+    const uint32_t result = atomic_exchange_explicit(&save_payload_size, 0, memory_order_acq_rel);
+    if (result)
+        fprintf(stderr, "[save-abi] deserializer selected=%u payload_bytes=%" PRIu32 "\n",
+                result >> 31, result & 0x7fffffffu);
 }
 
 struct nso_result nso_install_save_payload_probe(nso_module *m) {
     const uint64_t call = 0x3dcc668, original = 0x2bed654;
     const uint32_t expected_call = 0x97b883fb, expected_decrypt_call = 0x970e95fe;
-    // Preserve LR and every incoming argument. Only the ABI scratch registers
-    // x16/x17 are used, and the original deserializer is tail-called.
-    uint32_t stub[6] = {
+    // Verified FP chain: deserialize caller -> slot helper -> actual load.
+    // The high bit marks the caller observed for the selected load.
+    // x15-x17 are scratch; arguments, flags and the return address stay intact.
+    uint32_t stub[16] = {
         0xb9400811, // ldr w17, [x0, #8]
-        0x58000070, // ldr x16, literal at +16
+        0xf94003b0, // ldr x16, [x29]
+        0xb40000d0, // cbz x16, publish
+        0xf9400610, // ldr x16, [x16, #8]
+        0x5800014f, // ldr x15, selected return address
+        0xca0f0210, // eor x16, x16, x15
+        0xb5000050, // cbnz x16, publish
+        0x32010231, // orr w17, w17, #0x80000000
+        0x58000090, // publish: ldr x16, record address
         0x889ffe11, // stlr w17, [x16]
-        0, 0, 0
+        0, 0xd503201f, 0, 0, 0, 0
     };
     if (!m || !m->ready || m->closing || m->executor_required)
         return load_status(NSO_INVALID, EINVAL, 0);
@@ -437,6 +448,7 @@ struct nso_result nso_install_save_payload_probe(nso_module *m) {
         m->text_lo != 0 || m->text_hi != 0x5e6b890 ||
         rd32(m->image + call) != expected_call ||
         rd32(m->image + 0x3dcc648) != expected_decrypt_call ||
+        rd32(m->image + 0x428a4d8) != 0x940000b5 ||
         m->text_padding_hi < m->text_hi + 128)
         return load_status(NSO_UNSUPPORTED, ENOTSUP, 0);
 
@@ -445,13 +457,15 @@ struct nso_result nso_install_save_payload_probe(nso_module *m) {
     uint32_t branch;
     if (offset < m->text_hi ||
         !text_branch(call, offset, &branch) ||
-        !text_branch(offset + 12, original, &stub[3]))
+        !text_branch(offset + 40, original, &stub[10]))
         return load_status(NSO_UNSUPPORTED, ENOTSUP, 0);
     for (size_t i = 0; i < sizeof(stub); ++i)
         if (m->image[offset + i] != 0)
             return load_status(NSO_UNSUPPORTED, ENOTSUP, 0);
     const uint64_t destination = (uintptr_t)&save_payload_size;
-    memcpy(&stub[4], &destination, sizeof(destination));
+    const uint64_t selected_return = (uintptr_t)m->image + 0x428a4dc;
+    memcpy(&stub[12], &destination, sizeof(destination));
+    memcpy(&stub[14], &selected_return, sizeof(selected_return));
     branch |= 0x80000000u; // B to BL: retain the original caller's return PC.
 
     uint8_t *start = m->image + down(call);

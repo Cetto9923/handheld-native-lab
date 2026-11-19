@@ -407,6 +407,7 @@ static jlong StartGuest(JNIEnv* env,
 }
 
 extern "C" void xbg_request_memory_trim(unsigned level);
+extern "C" void nso_report_save_payload_probe(void);
 
 extern "C" JNIEXPORT void JNICALL
 Java_org_ffrs_diagnostic_GameWindowNative_requestMemoryTrim(JNIEnv*, jclass, jint severity) {
@@ -415,6 +416,7 @@ Java_org_ffrs_diagnostic_GameWindowNative_requestMemoryTrim(JNIEnv*, jclass, jin
 
 extern "C" JNIEXPORT jint JNICALL
 Java_org_ffrs_diagnostic_GameWindowNative_nativeGuestThreadState(JNIEnv*, jclass) {
+    if (getenv("FFRS_ISOLATED_SAVE_ABI_TRACE")) nso_report_save_payload_probe();
     return static_cast<jint>(g_guest_thread_state.load(std::memory_order_acquire));
 }
 
