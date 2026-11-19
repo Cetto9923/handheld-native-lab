@@ -1,4 +1,4 @@
-"""Check the command order and writeback publication for the OPPO clear."""
+"""Check the command order and writeback publication for the partial clear."""
 import unittest
 
 from tests.device.test_pending_buffer_clear import ENGINE, function, run_program
@@ -32,7 +32,7 @@ struct VkBufferMemoryBarrier {
 struct p_clear_buf { uint64_t addr, size; uint32_t value; };
 struct NVNcounterData { uint64_t counter, timestamp; };
 struct { bool active, probe, trace; } capture;
-bool provenance_file, oppo_ordered_buffer_clear = true, image_alias;
+bool provenance_file, ordered_buffer_clear_enabled = true, image_alias;
 struct Image {};
 struct Slot {
     bool recording = true;
@@ -97,9 +97,12 @@ void vkCmdFillBuffer(int cmd, int dst, size_t offset, size_t size, uint32_t valu
 CHECK = r'''
 int main() {
     const VkPhysicalDeviceProperties target{0x5143,0x44050001,0x80320050};
-    assert(oppo_ordered_clear_device("PKJ110", target));
-    assert(!oppo_ordered_clear_device("V2301A", target));
-    assert(!oppo_ordered_clear_device("PKJ110", {0x5143,0x44050001,0x8032004b}));
+    assert(ordered_clear_device("PKJ110", target));
+    assert(!ordered_clear_device("V2301A", target));
+    assert(!ordered_clear_device("PKJ110", {0x5143,0x44050001,0x8032004b}));
+    assert(ordered_clear_device("25098PN5AC", {0x5143,0x44050a31,0x8034a02c}));
+    assert(!ordered_clear_device("PMS110", {0x5143,0x44050a31,0x8034a035}));
+    assert(!ordered_clear_device("25098PN5AC", {0x5143,0x44050a31,0x8034a035}));
     const p_clear_buf request{guest_base+8192,8192,0x1a52f6bf};
     PendingWriteback producer{guest_base,result_size,{1,0,result_size},&slots[0],false,false,40};
     for (int scenario = 0; scenario < 9; ++scenario) {
@@ -109,7 +112,7 @@ int main() {
         pending_writebacks = {producer};
         pending_reports.clear();
         events.clear();
-        oppo_ordered_buffer_clear = scenario != 1;
+        ordered_buffer_clear_enabled = scenario != 1;
         slots[0].recording = scenario != 2;
         image_alias = scenario == 3;
         pending_writebacks[0].slot = scenario == 4 ? &slots[1] : &slots[0];
@@ -142,7 +145,7 @@ int main() {
 class OrderedBufferClear(unittest.TestCase):
     def test_original_span_and_untouched_bytes_survive(self):
         source = (ENGINE / 'xbg_game.cpp').read_text()
-        policy = function(source, 'bool oppo_ordered_clear_device(')
+        policy = function(source, 'bool ordered_clear_device(')
         clear = function(source, 'bool gpu_ordered_buffer_clear(')
         self.assertEqual(run_program(FIXTURE + policy + clear + CHECK), 0)
 

@@ -165,6 +165,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     private static WeakReference<GameActivity> surfaceOwner = new WeakReference<GameActivity>(null);
     private DeviceProfile selectedDeviceProfile;
     private boolean target30RenderPolicy;
+    private static int runningRenderHeight;
     private AudioManager audioManager;
     private final AudioDeviceCallback audioCallback = new GameAudioDeviceCallback();
     private static final class GameAudioDeviceCallback extends AudioDeviceCallback {
@@ -442,10 +443,11 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         private final RectF menuBtn = new RectF();
         private final RectF btnReset = new RectF(), btnDone = new RectF();
         private final RectF menuPanel = new RectF();
-        private final RectF[] menuItems = new RectF[11];
+        private final RectF[] menuItems = new RectF[12];
         private int handleId = -1, lsId = -1, rsId = -1, menuId = -1;
+        private int r3Id = -1;
         private float u, vw, vh, lsKx, lsKy, rsKx, rsKy;
-        private final Ctl[] ctls = new Ctl[13];
+        private final Ctl[] ctls = new Ctl[14];
         private long pressed;
         private final Paint line = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -471,6 +473,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             ctls[10] = new Ctl("DPAD", T_DPAD, -1, 1.6f, 1.6f);
             ctls[11] = new Ctl("LS", T_STICK, -1, 1.9f, 1.9f);
             ctls[12] = new Ctl("RS", T_STICK, -1, 1.5f, 1.5f);
+            ctls[13] = new Ctl("R3", T_BTN, 5, 0.8f, 0.55f);
             for (int i = 0; i < menuItems.length; i++) menuItems[i] = new RectF();
             setFocusable(false);
         }
@@ -482,8 +485,11 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         }
 
         private void clearInput() {
-            lsId = rsId = -1; pressed = 0; dragMode = 0;
+            lsId = rsId = r3Id = -1; pressed = 0; dragMode = 0;
+            boolean hadInput = owner.touchButtons != 0 || owner.touchLx != 0 ||
+                    owner.touchLy != 0 || owner.touchRx != 0 || owner.touchRy != 0;
             owner.touchButtons = 0; owner.touchLx = owner.touchLy = owner.touchRx = owner.touchRy = 0;
+            if (hadInput) owner.publishPad();
         }
 
         private float cxOf(Ctl c) { return c.fx * vw; }
@@ -500,6 +506,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             place(6, w - 2.0f * u, 2.4f * u); place(7, w - 2.0f * u, 1.0f * u);
             place(8, w / 2f - 1.5f * u, h - 0.95f * u); place(9, w / 2f + 1.5f * u, h - 0.95f * u);
             place(10, 2.9f * u, h - 9.4f * u); place(11, 2.9f * u, h - 3.3f * u); place(12, w - 3.1f * u, h - 9.0f * u);
+            place(13, w - 6.0f * u, h - 8.3f * u);
             opacity = 1f;
         }
 
@@ -653,7 +660,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 else if (i == 7) owner.startGuestScan();
                 else if (i == 8) owner.startActivity(new Intent(owner, ReportActivity.class));
                 else if (i == 9) owner.toggleFpsOverlay();
-                else owner.rotateScreen();
+                else if (i == 10) owner.rotateScreen();
+                else owner.openDisplaySettings();
                 return true;
             }
             return true;
@@ -742,20 +750,23 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             if (act == MotionEvent.ACTION_DOWN || act == MotionEvent.ACTION_POINTER_DOWN) {
                 int pid = e.getPointerId(idx); float x = e.getX(idx), y = e.getY(idx);
                 Ctl ls = ctls[11], rs = ctls[12];
-                if (lsId < 0 && Math.hypot(x - cxOf(ls), y - cyOf(ls)) < hwOf(ls) * 1.6f) lsId = pid;
+                if (r3Id < 0 && hit(ctls[13], x, y)) r3Id = pid;
+                else if (lsId < 0 && Math.hypot(x - cxOf(ls), y - cyOf(ls)) < hwOf(ls) * 1.6f) lsId = pid;
                 else if (rsId < 0 && Math.hypot(x - cxOf(rs), y - cyOf(rs)) < hwOf(rs) * 1.6f) rsId = pid;
             }
             boolean up = act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_POINTER_UP, cancel = act == MotionEvent.ACTION_CANCEL;
-            if (up) { int pid = e.getPointerId(idx); if (pid == lsId) lsId = -1; if (pid == rsId) rsId = -1; }
+            if (up) { int pid = e.getPointerId(idx); if (pid == lsId) lsId = -1; if (pid == rsId) rsId = -1; if (pid == r3Id) r3Id = -1; }
             long buttons = 0; int lx = 0, ly = 0, rx = 0, ry = 0;
             Ctl ls = ctls[11], rs = ctls[12], dp = ctls[10];
             lsKx = cxOf(ls); lsKy = cyOf(ls); rsKx = cxOf(rs); rsKy = cyOf(rs);
-            if (cancel) { lsId = rsId = -1; }
+            if (cancel) { lsId = rsId = r3Id = -1; }
             else {
                 for (int i = 0; i < e.getPointerCount(); i++) {
                     if (up && i == idx) continue;
                     int pid = e.getPointerId(i); float x = e.getX(i), y = e.getY(i);
-                    if (pid == lsId) {
+                    if (pid == r3Id) {
+                        buttons |= 1L << ctls[13].bit;
+                    } else if (pid == lsId) {
                         float r = hwOf(ls), nx = (x - cxOf(ls)) / r, ny = (y - cyOf(ls)) / r, len = (float) Math.hypot(nx, ny);
                         if (len > 1f) { nx /= len; ny /= len; len = 1f; }
                         if (len > 0.15f) { lx = Math.round(nx * 32767f); ly = Math.round(-ny * 32767f); }
@@ -870,7 +881,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                     "扫描实时数据",    // guest memory scan
                     "导出诊断报告",
                     owner.fpsVisible ? "关闭帧率显示" : "开启帧率显示",
-                    "旋转屏幕180°"
+                    "旋转屏幕180°",
+                    "画质与帧率"
             };
             for (int i = 0; i < menuItems.length; i++) {
                 RectF r = menuItems[i];
@@ -934,6 +946,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         padButtons = axisButtons = 0;
         padLx = padLy = padRx = padRy = 0;
         if (currentActivity.get() == this) {
+            if (touchPad != null) touchPad.clearInput();
             publishPad();
             GameWindowNative.setFocusState(3);
         }
@@ -959,13 +972,14 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         if (audioManager != null) audioManager.registerAudioDeviceCallback(audioCallback, new Handler(Looper.getMainLooper()));
         selectedDeviceProfile = deviceProfile();
         File policyDir = getExternalFilesDir(null);
-        if (policyDir != null) {
+        if (policyDir != null && (guestStarted ? runningRenderHeight : selectedRenderHeight()) == 0) {
             try (java.io.FileInputStream marker =
                          new java.io.FileInputStream(new File(policyDir, "gfx-render-policy"))) {
                 target30RenderPolicy = marker.read() == '1';
             } catch (java.io.IOException ignored) { }
         }
         ensureDefaultMarkers();
+        if (!guestStarted) GameWindowNative.setDisplaySettings(selectedFrameRate(), selectedRenderHeight());
         configureWindow();
         surface_view = new SurfaceView(this);
         if (target30RenderPolicy) {
@@ -2352,9 +2366,83 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         return profile;
     }
 
-    // Read the same per-package target marker as the native limiter. A changed
-    // target takes effect for display selection on the next Activity launch.
+    private static final int[] FRAME_RATE_CHOICES = {0, 30, 40, 60};
+    private static final int[] RENDER_HEIGHT_CHOICES = {0, 720, 1080};
+
+    private int selectedFrameRate() {
+        return getPreferences(MODE_PRIVATE).getInt("frame_rate_limit", 0);
+    }
+
+    private int selectedRenderHeight() {
+        return getPreferences(MODE_PRIVATE).getInt("render_height", 0);
+    }
+
+    private static android.widget.RadioGroup displayOptions(GameActivity activity,
+            android.widget.LinearLayout panel, String title, String[] labels, int[] choices, int selected) {
+        android.widget.TextView heading = new android.widget.TextView(activity);
+        heading.setText(title);
+        panel.addView(heading);
+        android.widget.RadioGroup options = new android.widget.RadioGroup(activity);
+        for (int i = 0; i < labels.length; i++) {
+            android.widget.RadioButton option = new android.widget.RadioButton(activity);
+            option.setId(View.generateViewId());
+            option.setText(labels[i]);
+            option.setTag(choices[i]);
+            options.addView(option);
+            if (choices[i] == selected || i == 0) options.check(option.getId());
+        }
+        panel.addView(options);
+        return options;
+    }
+
+    private void openDisplaySettings() {
+        android.widget.LinearLayout panel = new android.widget.LinearLayout(this);
+        panel.setOrientation(android.widget.LinearLayout.VERTICAL);
+        int padding = Math.round(20 * getResources().getDisplayMetrics().density);
+        panel.setPadding(padding, padding / 2, padding, 0);
+        android.widget.RadioGroup rates = displayOptions(this, panel, "帧率上限",
+                new String[]{"沿用原设置", "30 FPS", "40 FPS", "60 FPS"},
+                FRAME_RATE_CHOICES, selectedFrameRate());
+        android.widget.RadioGroup quality = displayOptions(this, panel, "画质档位（重新进入游戏后生效）",
+                new String[]{"沿用原设置", "720p", "1080p"},
+                RENDER_HEIGHT_CHOICES, selectedRenderHeight());
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+        scroll.addView(panel);
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("画质与帧率")
+                .setView(scroll)
+                .setNegativeButton("取消", null)
+                .setPositiveButton("应用", (dialog, which) -> {
+                    int fps = (int) rates.findViewById(rates.getCheckedRadioButtonId()).getTag();
+                    int height = (int) quality.findViewById(quality.getCheckedRadioButtonId()).getTag();
+                    int previousFps = selectedFrameRate();
+                    if (!getPreferences(MODE_PRIVATE).edit().putInt("frame_rate_limit", fps)
+                            .putInt("render_height", height).commit()) {
+                        toast("画质与帧率设置保存失败");
+                        return;
+                    }
+                    GameWindowNative.setDisplaySettings(fps, guestStarted ? runningRenderHeight : height);
+                    if (fps != previousFps) {
+                        configureWindow();
+                        if (surface_view != null) applySurfaceFrameRate(surface_view.getHolder().getSurface(), true);
+                    }
+                    if (guestStarted && height != runningRenderHeight) {
+                        new android.app.AlertDialog.Builder(this).setTitle("重开游戏后应用画质")
+                                .setMessage("请先在游戏内保存进度。保存后退出并重新打开应用。")
+                                .setNegativeButton("稍后退出", null)
+                                .setPositiveButton("退出游戏", (confirm, action) -> {
+                                    finishAndRemoveTask();
+                                    android.os.Process.killProcess(android.os.Process.myPid());
+                                }).show();
+                    }
+                }).show();
+    }
+
+    // An explicit choice wins over the historical marker, for both display
+    // scheduling and the native limiter.
     private int requestedGameFps() {
+        int selected = selectedFrameRate();
+        if (selected > 0) return selected;
         File dir = getExternalFilesDir(null);
         if (dir != null) {
             try (java.util.Scanner input = new java.util.Scanner(new File(dir, "gfx-target-fps"))) {
@@ -2495,14 +2583,16 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             // the panel rate as it is; only the higher targets, which need a
             // rate of their own, ask for one.
             requestedDisplayHz = 0.0f;
+            lp.preferredDisplayModeId = 0;
+            lp.preferredRefreshRate = 0.0f;
             Display display = getWindowManager().getDefaultDisplay();
             if ((target == 0 || target > 30) && display != null) {
                 Display.Mode current = display.getMode();
-                boolean compatibleOnly = false;
+                boolean compatibleOnly = selectedFrameRate() > 0;
                 File dataDir = getExternalFilesDir(null);
                 if (selectedDeviceProfile.usesDockedRendering() && target > 0 && dataDir != null) {
                     try (java.io.FileInputStream marker = new java.io.FileInputStream(new File(dataDir, "gfx-display-compatible"))) {
-                        compatibleOnly = marker.read() == '1';
+                        compatibleOnly |= marker.read() == '1';
                     } catch (java.io.IOException ignored) { }
                 }
                 if (compatibleOnly) {
@@ -2573,12 +2663,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         }
     }
 
-    @Override public void surfaceCreated(SurfaceHolder holder) {
-        Surface surface = holder.getSurface();
-        if (surface == null || !surface.isValid()) {
-            Log.e(TAG, "surface_created without a valid Surface; no window is published");
-            return;
-        }
+    private void applySurfaceFrameRate(Surface surface, boolean resetPreviousRequest) {
+        if (surface == null || !surface.isValid()) return;
         if (Build.VERSION.SDK_INT >= 30 && requestedDisplayHz > 0.0f) {
             try {
                 surface.setFrameRate(requestedDisplayHz, Surface.FRAME_RATE_COMPATIBILITY_DEFAULT);
@@ -2596,8 +2682,10 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 : selectedDeviceProfile.surfaceFrameRateRequest((int) requestedDisplayHz, requestedGameFps());
         boolean declares = selectedDeviceProfile != null
                 && selectedDeviceProfile.declaresSurfaceFrameRate();
-        if (declareHz > 0 && requestedDisplayHz <= 0.0f && declares) {
-            if (surfaceFrameRateDeclarationEnabled()) {
+        boolean canDeclare = declareHz > 0 && requestedDisplayHz <= 0.0f && declares;
+        boolean declarationEnabled = canDeclare && surfaceFrameRateDeclarationEnabled();
+        if (canDeclare) {
+            if (declarationEnabled) {
                 declareSurfaceFrameRate(surface, declareHz);
             } else {
                 Log.i(TAG, "surface_frame_rate_declaration: hz=" + declareHz + " skipped marker=off");
@@ -2606,6 +2694,23 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             Log.i(TAG, "surface_frame_rate_declaration: hz=" + declareHz + " skipped"
                     + " display_mode_hz=" + requestedDisplayHz + " tier_declares=" + declares);
         }
+        if (resetPreviousRequest && Build.VERSION.SDK_INT >= 30 && requestedDisplayHz <= 0.0f
+                && !declarationEnabled) {
+            try {
+                surface.setFrameRate(0.0f, Surface.FRAME_RATE_COMPATIBILITY_DEFAULT);
+            } catch (IllegalArgumentException e) {
+                Log.w(TAG, "surface_frame_rate reset rejected", e);
+            }
+        }
+    }
+
+    @Override public void surfaceCreated(SurfaceHolder holder) {
+        Surface surface = holder.getSurface();
+        if (surface == null || !surface.isValid()) {
+            Log.e(TAG, "surface_created without a valid Surface; no window is published");
+            return;
+        }
+        applySurfaceFrameRate(surface, false);
         display_snapshot = captureDisplaySnapshot();
         long[] window = GameWindowNative.setSurface(surface);
         if (window == null) {
@@ -3161,6 +3266,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         }
         GameWindowNative.setProfileTargetFps(requestedGameFps(),
                 selectedDeviceProfile.usesDockedRendering());
+        runningRenderHeight = selectedRenderHeight();
+        GameWindowNative.setDisplaySettings(selectedFrameRate(), runningRenderHeight);
         String log_path = files == null ? null : new File(files, "guest_boot.log").getAbsolutePath();
         Thread guest = new Thread(new GuestBootTask(image, romfs, log_path, saveRoot, getAssets(), files), "ffrs-guest");
         guest.start();

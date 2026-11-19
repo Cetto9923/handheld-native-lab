@@ -10,6 +10,47 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class ProfileEnvironment(unittest.TestCase):
+    def test_render_choice_preserves_device_profile_and_legacy_default(self):
+        source = (ROOT / 'src/android/native/guest_boot_jni.cpp').read_text()
+        start = source.index('        const std::string operation_marker =')
+        end = source.index('        const std::string marker =', start)
+        fixture = r'''
+#include <atomic>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <string>
+static std::atomic<int> g_render_height{0};
+static void apply(const std::string &path) {
+''' + source[start:end] + r'''
+}
+int main(int argc, char **argv) {
+    if (argc != 2) return 2;
+    const std::string path=argv[1];
+    setenv("FFRS_PROFILE_OPERATION_MODE", "1", 1);
+    setenv("FFRS_PROFILE_TABLET", "1", 1);
+    apply(path);
+    if (*getenv("FFRS_OPERATION_MODE")!='0' || *getenv("FFRS_RENDER_POLICY")!='1') return 3;
+    g_render_height=1080;
+    apply(path);
+    if (*getenv("FFRS_OPERATION_MODE")!='1' || *getenv("FFRS_RENDER_POLICY")!='0') return 4;
+    g_render_height=720;
+    apply(path);
+    if (*getenv("FFRS_OPERATION_MODE")!='0' || *getenv("FFRS_PROFILE_TABLET")!='1') return 5;
+    g_render_height=0;
+    apply(path);
+    if (*getenv("FFRS_RENDER_POLICY")!='1') return 6;
+}
+'''
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp)
+            (path / 'test.cpp').write_text(fixture)
+            (path / 'oe-operation-mode').write_text('0\n')
+            (path / 'gfx-render-policy').write_text('1\n')
+            subprocess.run(['c++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                            str(path / 'test.cpp'), '-o', str(path / 'test')], check=True)
+            subprocess.run([str(path / 'test'), str(path)], check=True)
+
     def test_profile_switch_and_external_override(self):
         source = (ROOT / 'src/android/native/guest_boot_jni.cpp').read_text()
         signature = 'Java_org_ffrs_diagnostic_GameWindowNative_setProfileTargetFps(JNIEnv*, jclass, jint fps, jboolean docked) {'

@@ -391,6 +391,9 @@ def main():
                                         'tests.device.test_arena_memory_policy'])
     run('render-policy-contract', [sys.executable, '-m', 'unittest',
                                   'tests.device.test_render_policy'])
+    run('display-settings-and-touch-contract', [sys.executable, '-m', 'unittest',
+            'tests.device.test_target_fps_marker', 'tests.device.test_profile_environment',
+            'tests.device.test_touch_r3'])
     run('add-on-content-contract', [sys.executable, '-m', 'unittest',
                                    'tests.device.test_add_on_content'])
     run('readback-fence-lifetime-contract', [sys.executable, '-m', 'unittest',

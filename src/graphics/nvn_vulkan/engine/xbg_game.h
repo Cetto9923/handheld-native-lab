@@ -118,6 +118,7 @@ int xbg_game_profile_cpu(uint64_t first_frame,uint32_t frame_count);
  * missing completion callback is INCOMPLETE, never elapsed-time success. */
 int xbg_game_profile_cpu_live(uint32_t frame_count);
 int xbg_game_shutdown(void); /* all game threads must have exited */
+void xbg_game_set_frame_rate(int fps);
 /* The NVN ABI is NOT supplied by this engine. xbg_nvn_get_proc_address is declared here
  * because the D2R tree declared it in the same header, but the engine has never defined it:
  * the real NVN entry table lived in that project's SDK-specific hle_nvn.c, which is not

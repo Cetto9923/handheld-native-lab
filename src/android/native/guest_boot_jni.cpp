@@ -11,6 +11,7 @@
 #include "../../graphics/nvn_device/nvn_engine.h"
 #include "../../graphics/nvn_device/nvn_memory_pool.h"
 #include "../../graphics/nvn_vulkan/engine/xbg_memory_pressure.h"
+#include "../../graphics/nvn_vulkan/engine/xbg_game.h"
 #include <jni.h>
 
 #include <fcntl.h>
@@ -56,6 +57,7 @@ pthread_mutex_t g_boot_lock = PTHREAD_MUTEX_INITIALIZER;
 bool g_boot_started = false;
 /* 0: not started, 1: thread active, 2: completed, 3: failed. */
 std::atomic<int> g_guest_thread_state{0};
+std::atomic<int> g_render_height{0};
 
 struct GuestThreadCompletion {
     int result = -1;
@@ -161,10 +163,15 @@ void* GuestThreadMain(void* opaque) {
                 operation_source = "app-marker";
             } else fprintf(stderr, "[port] invalid operation-mode marker; using handheld\n");
         }
+        const int render_height = g_render_height.load();
+        if (render_height == 720 || render_height == 1080) {
+            operation_mode = render_height == 1080;
+            operation_source = "display-settings";
+        }
         setenv("FFRS_OPERATION_MODE", operation_mode ? "1" : "0", 1);
         const std::string policy_marker = path + "/gfx-render-policy";
         FILE *policy_file = fopen(policy_marker.c_str(), "rb");
-        const bool target30_policy = policy_file && fgetc(policy_file) == '1';
+        const bool target30_policy = render_height == 0 && policy_file && fgetc(policy_file) == '1';
         if (policy_file) fclose(policy_file);
         setenv("FFRS_RENDER_POLICY", target30_policy ? "1" : "0", 1);
         fprintf(stderr, "[port] target30_render_policy=%d marker=%s\n",
@@ -420,6 +427,12 @@ Java_org_ffrs_diagnostic_GameWindowNative_setProfileTargetFps(JNIEnv*, jclass, j
     }
     setenv("FFRS_PROFILE_OPERATION_MODE", docked ? "1" : "0", 1);
     setenv("FFRS_PROFILE_TABLET", docked ? "1" : "0", 1);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_ffrs_diagnostic_GameWindowNative_setDisplaySettings(JNIEnv*, jclass, jint fps, jint render_height) {
+    g_render_height.store(render_height == 720 || render_height == 1080 ? render_height : 0);
+    xbg_game_set_frame_rate(fps);
 }
 
 extern "C" JNIEXPORT jlong JNICALL

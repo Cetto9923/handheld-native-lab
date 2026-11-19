@@ -20,6 +20,8 @@ public final class GameWindowNative {
     public static native void setPadState(boolean connected, long buttons, int lx, int ly, int rx, int ry);
     public static native void audioDevicesChanged();
     public static native void setProfileTargetFps(int fps, boolean docked);
+    /** Set the frame cap now, and the game render tier for the next guest start. */
+    public static native void setDisplaySettings(int fps, int renderHeight);
     /** Queue a pressure hint. GPU resources are reclaimed on the renderer thread. */
     public static native void requestMemoryTrim(int severity);
     /** Successful game-frame presentations, sampled without the render lock. */

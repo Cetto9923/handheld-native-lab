@@ -827,12 +827,16 @@ int indirect_mode=0;
 bool indirect_probe=false;FILE *indirect_probe_file=nullptr;
 uint64_t cpu_indexed_nonempty = 0;
 bool vivo_indexed_fallback = false;
-bool oppo_ordered_buffer_clear = false;
+bool ordered_buffer_clear_enabled = false;
+bool log_write_sync = false;
 bool thor_compact_memory = false;
 
-bool oppo_ordered_clear_device(const char *model, const VkPhysicalDeviceProperties &gpu) {
-    return std::strcmp(model, "PKJ110") == 0 && gpu.vendorID == 0x5143 &&
-           gpu.deviceID == 0x44050001 && gpu.driverVersion == 0x80320050;
+bool ordered_clear_device(const char *model, const VkPhysicalDeviceProperties &gpu) {
+    if (gpu.vendorID != 0x5143) return false;
+    return (std::strcmp(model, "PKJ110") == 0 &&
+            gpu.deviceID == 0x44050001 && gpu.driverVersion == 0x80320050) ||
+           (std::strcmp(model, "25098PN5AC") == 0 &&
+            gpu.deviceID == 0x44050a31 && gpu.driverVersion == 0x8034a02c);
 }
 
 bool vivo_requires_direct_indexed(const VkPhysicalDeviceProperties &gpu) {
@@ -1755,7 +1759,7 @@ void perf_frame(){
         double(perf.submits)/f,double(perf.waits)/f,(unsigned long long)perf.sync_writeback,(unsigned long long)perf.sync_readback,(unsigned long long)perf.sync_query,double(perf.ops)/f,double(perf.folded_clears)/f,double(perf.passes)/f,double(perf.draws)/f,double(perf.dispatches)/f,
         (unsigned long long)perf.why_wait,(unsigned long long)perf.why_poll,(unsigned long long)perf.why_access,(unsigned long long)perf.access_by[1],(unsigned long long)perf.access_by[2],(unsigned long long)perf.access_by[3],(unsigned long long)perf.access_by[4],(unsigned long long)perf.access_by[5],(unsigned long long)perf.access_by[6],(unsigned long long)perf.access_by[8],(unsigned long long)perf.access_by[9],(unsigned long long)perf.access_by[10],(unsigned long long)perf.access_by[11],(unsigned long long)perf.why_cmdwait,(unsigned long long)perf.why_finish,(unsigned long long)perf.why_slot,(unsigned long long)perf.pending_views,(unsigned long long)perf.snapshot_hits,(unsigned long long)perf.snapshot_misses,double(perf.snapshot_bytes)/1048576.0,double(perf.arena_peak)/1048576.0,perf_counts().pipelines,perf_counts().layouts,perf_counts().samplers,perf_counts().passes,perf_counts().images,perf_counts().host_segments,double(perf_counts().host_bytes)/1048576.0);
     if(perf.clear_coverage_misses)xbg_logf("NVN PERF clearfold coverage_misses=%llu rejected=%llu legacy=%llu",(unsigned long long)perf.clear_coverage_misses,(unsigned long long)(perf.clear_coverage_misses-perf.clear_coverage_legacy),(unsigned long long)perf.clear_coverage_legacy);
-    if (oppo_ordered_buffer_clear) {
+    if (log_write_sync) {
         uint64_t other = 0;
         for (size_t op = 0; op < perf.write_sync_by_op.size(); ++op)
             if (op != OP_CLEAR_BUF && op != OP_COPY_B2B && op != OP_UPDATE_UB)
@@ -2709,7 +2713,7 @@ void cpu_access(uint64_t address,uint64_t bytes,unsigned why){
         if(access_logs++<20 || honor_pipeline_diagnostics)
             xbg_logf("NVN CPU_ACCESS_SYNC frame=%llu why=%u cur_op=%u addr=%#llx bytes=%llu pending=%#llx+%llu",
                 (unsigned long long)stats.presents.load(),why,cur_op,(unsigned long long)address,(unsigned long long)bytes,(unsigned long long)w.addr,(unsigned long long)w.bytes);
-        if (why == 4 && oppo_ordered_buffer_clear) ++perf.write_sync_by_op[std::min(cur_op,63u)];
+        if (why == 4 && log_write_sync) ++perf.write_sync_by_op[std::min(cur_op,63u)];
         probe_cpu_sync(address,bytes,why,w.addr,w.bytes);++perf.why_access;if(why<12)++perf.access_by[why];resolve_pending();return;}
     // GPU reads of counter memory (snapshots) see the last resolved report, i.e.
     // one frame of latency for occlusion-driven effects instead of a full stall.
@@ -7061,11 +7065,11 @@ void trace_buffer_clear(const p_clear_buf &p){
     }
 }
 
-// The OPPO log repeatedly shows 8 KiB clears inside an in-flight 143 KiB
+// The affected devices repeatedly clear 8 KiB inside an in-flight 143 KiB
 // result. Move the complete result to a fresh span so recorded readers keep
 // their original input, while future reads see the clear and untouched bytes.
 bool gpu_ordered_buffer_clear(const p_clear_buf &clear) {
-    if (!oppo_ordered_buffer_clear || clear.size != 8192 || (clear.addr & 3) ||
+    if (!ordered_buffer_clear_enabled || clear.size != 8192 || (clear.addr & 3) ||
         capture.active || capture.probe || capture.trace || provenance_file ||
         !slots[slot_index].recording)
         return false;
@@ -8124,17 +8128,20 @@ extern "C" int xbg_game_initialize(const xbg_game_config *c,char *error,size_t b
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-full-barrier").c_str(),"rb");full_barrier_strict=m&&fgetc(m)=='1';if(m)fclose(m);xbg_logf("NVN full barrier strict=%d (marker gfx-full-barrier, 0=compute scoped)",int(full_barrier_strict));}
     cfg=*c;xbg_logf("NVN completion_wait enabled=%d legacy_waitall=%d",int(completion_wait_enabled),int(legacy_waitall));
 vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemoryProperties(cfg.physical,&memories);{char line[512];int at=snprintf(line,sizeof line,"NVN caps memory types");for(uint32_t i=0;i<memories.memoryTypeCount && at<int(sizeof line)-24;i++)at+=snprintf(line+at,sizeof line-at," %u:%#x/h%u",i,unsigned(memories.memoryTypes[i].propertyFlags),memories.memoryTypes[i].heapIndex);xbg_logf("%s",line);}
-    oppo_ordered_buffer_clear = false;
+    ordered_buffer_clear_enabled = false;
+    log_write_sync = false;
     thor_compact_memory = false;
 #ifdef __ANDROID__
     char device_model[PROP_VALUE_MAX]{};
     __system_property_get("ro.product.model", device_model);
-    oppo_ordered_buffer_clear = oppo_ordered_clear_device(device_model, properties);
+    ordered_buffer_clear_enabled = ordered_clear_device(device_model, properties);
+    log_write_sync = ordered_buffer_clear_enabled ||
+                    (properties.vendorID == 0x5143 && properties.deviceID == 0x44050a31);
     if (std::strcmp(device_model, "AYN Thor") == 0)
         thor_compact_memory = xbg_memory_pressure::thor_small_memory(
             device_model, properties.vendorID, properties.deviceID, xbg_memory_pressure::read_snapshot().total);
-    xbg_logf("NVN device policy pid=%d oppo_ordered_clear=%d thor_compact_memory=%d",
-             int(getpid()), int(oppo_ordered_buffer_clear), int(thor_compact_memory));
+    xbg_logf("NVN device policy pid=%d ordered_buffer_clear=%d thor_compact_memory=%d",
+             int(getpid()), int(ordered_buffer_clear_enabled), int(thor_compact_memory));
 #endif
     {
         std::string dir=c->shader_directory?c->shader_directory:"";
@@ -8713,17 +8720,25 @@ static uint64_t s_target_frame_ns = 0; // Default to no additional host frame li
 static uint64_t s_next_present_ns = 0;
 static uint32_t s_pace_check_counter = 0;
 static int s_logged_target_fps = -1;
+static std::atomic<int> s_selected_frame_rate{0};
+static int s_sampled_frame_rate = 0;
 
-static void xbg_refresh_target_fps() {
-    int target_fps = 0;
-    const char *env_fps = getenv("FFRS_TARGET_FPS");
-    if (env_fps && atoi(env_fps) >= 0) target_fps = atoi(env_fps);
-    const std::string marker = pipeline_cache_path().substr(0, pipeline_cache_path().find_last_of('/')) + "/gfx-target-fps";
-    FILE *f = fopen(marker.c_str(), "rb");
-    if (f) {
-        int val = -1;
-        if (fscanf(f, "%d", &val) == 1 && val >= 0) target_fps = val;
-        fclose(f);
+extern "C" void xbg_game_set_frame_rate(int fps) {
+    s_selected_frame_rate.store(fps == 30 || fps == 40 || fps == 60 ? fps : 0);
+}
+
+static void xbg_refresh_target_fps(int selected_fps) {
+    int target_fps = selected_fps;
+    if (target_fps == 0) {
+        const char *env_fps = getenv("FFRS_TARGET_FPS");
+        if (env_fps && atoi(env_fps) >= 0) target_fps = atoi(env_fps);
+        const std::string cache = pipeline_cache_path();
+        const std::string marker = cache.substr(0, cache.find_last_of('/')) + "/gfx-target-fps";
+        if (FILE *file = fopen(marker.c_str(), "rb")) {
+            int value = -1;
+            if (fscanf(file, "%d", &value) == 1 && value >= 0) target_fps = value;
+            fclose(file);
+        }
     }
     if (target_fps > 0) {
         s_target_frame_ns = 1000000000ull / (uint64_t)target_fps;
@@ -8732,13 +8747,17 @@ static void xbg_refresh_target_fps() {
     }
     if (target_fps != s_logged_target_fps) {
         s_logged_target_fps = target_fps;
-        xbg_logf("xbg_refresh_target_fps: target_fps=%d target_ns=%llu (0=unthrottled)", target_fps, (unsigned long long)s_target_frame_ns);
+        s_next_present_ns = 0;
+        xbg_logf("xbg_refresh_target_fps: target_fps=%d target_ns=%llu selected_fps=%d (0=unthrottled)",
+                 target_fps, (unsigned long long)s_target_frame_ns, selected_fps);
     }
 }
 
 static uint64_t xbg_frame_pace() {
-    if ((s_pace_check_counter++ % 60) == 0) {
-        xbg_refresh_target_fps();
+    const int selected_fps = s_selected_frame_rate.load();
+    if (selected_fps != s_sampled_frame_rate || (s_pace_check_counter++ % 60) == 0) {
+        s_sampled_frame_rate = selected_fps;
+        xbg_refresh_target_fps(selected_fps);
     }
     if (s_target_frame_ns == 0) return 0;
 

@@ -25,6 +25,8 @@ public class PacingMigration {
     static final String TAG = "test";
     static class Log { static void w(String tag, String message, Exception error) {} }
     File directory;
+    int selection = 0;
+    int selectedFrameRate() { return selection; }
     File getExternalFilesDir(Object ignored) { return directory; }
 ''' + migration + writer + reader + r'''
     public static void main(String[] args) throws Exception {
@@ -45,6 +47,8 @@ public class PacingMigration {
             Files.write(target.toPath(), "30\n".getBytes());
             migrateDefaultFramePacing(dir);
             if (activity.requestedGameFps() != 30) throw new AssertionError("later explicit cap");
+            activity.selection = 40;
+            if (activity.requestedGameFps() != 40) throw new AssertionError("menu override");
         }
         File blocked = new File(root, "blocked");
         if (!blocked.mkdir() || !new File(blocked, "gfx-target-fps").mkdir())
@@ -66,7 +70,8 @@ public class PacingMigration {
         start = source.index('static uint64_t s_target_frame_ns =')
         end = source.index('static uint64_t xbg_frame_pace()', start)
         body = source[start:end]
-        fixture = r'''#include <cstdio>
+        fixture = r'''#include <atomic>
+#include <cstdio>
 #include <cstdlib>
 #include <cstdint>
 #include <string>
@@ -87,30 +92,40 @@ int main(int argc, char **argv) {
     (void)s_next_present_ns;
     (void)s_pace_check_counter;
     unsetenv("FFRS_TARGET_FPS");
-    xbg_refresh_target_fps();
+    xbg_refresh_target_fps(0);
     if (s_target_frame_ns != 0) return 2;
     setenv("FFRS_TARGET_FPS", "60", 1);
-    xbg_refresh_target_fps();
+    xbg_refresh_target_fps(0);
     if (s_target_frame_ns != 16666666ull) return 3;
     marker("30\n");
-    xbg_refresh_target_fps();
+    xbg_refresh_target_fps(0);
     if (s_target_frame_ns != 33333333ull) return 4;
     marker("not-a-number\n");
-    xbg_refresh_target_fps();
+    xbg_refresh_target_fps(0);
     if (s_target_frame_ns != 16666666ull) return 5;
     marker("0\n");
-    xbg_refresh_target_fps();
+    xbg_refresh_target_fps(0);
     if (s_target_frame_ns != 0) return 6;
     unlink((parent + "/gfx-target-fps").c_str());
     unsetenv("FFRS_TARGET_FPS");
-    xbg_refresh_target_fps();
+    xbg_refresh_target_fps(0);
     if (s_target_frame_ns != 0) return 7;
     setenv("FFRS_RENDER_POLICY", "1", 1);
-    xbg_refresh_target_fps();
+    xbg_refresh_target_fps(0);
     if (s_target_frame_ns != 0) return 8;
     marker("45\n");
-    xbg_refresh_target_fps();
+    xbg_refresh_target_fps(0);
     if (s_target_frame_ns != 22222222ull) return 9;
+    (void)s_sampled_frame_rate;
+    for (int fps : {30,40,60}) {
+        s_next_present_ns = 1000;
+        xbg_game_set_frame_rate(fps);
+        xbg_refresh_target_fps(s_selected_frame_rate.load());
+        if (s_target_frame_ns != 1000000000ull / fps || s_next_present_ns != 0) return 10;
+    }
+    xbg_game_set_frame_rate(59);
+    xbg_refresh_target_fps(s_selected_frame_rate.load());
+    if (s_target_frame_ns != 22222222ull) return 11;
     return 0;
 }
 '''

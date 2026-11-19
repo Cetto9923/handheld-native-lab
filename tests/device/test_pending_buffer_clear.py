@@ -40,7 +40,7 @@ struct Image {
     uint64_t checked_submission;
 } image;
 bool has_image, draw_detail, honor_pipeline_diagnostics, resolving_pending;
-constexpr bool oppo_ordered_buffer_clear = false;
+constexpr bool log_write_sync = false;
 unsigned cur_op = 0;
 struct {void image() {}} draw_timing;
 struct {int why_access, access_by[12], write_sync_by_op[64];} perf;
