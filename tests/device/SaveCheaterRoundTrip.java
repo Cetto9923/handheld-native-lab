@@ -164,6 +164,30 @@ public final class SaveCheaterRoundTrip {
         require(Arrays.equals(originalPayload, directPayload),
                 "plaintext edit changed bytes outside the selected HP");
 
+        SaveCheater.ReadEdits queued = new SaveCheater.ReadEdits();
+        SaveCheater.ReadEdit request = new SaveCheater.ReadEdit(7777, null, null,
+                null, null, null, UNIT_IDS[0]);
+        queued.stage(request);
+        require(queued.begin(directPayload) == request, "the queued edit was not applied");
+        require(queued.begin(originalPayload.clone()) == null, "a second load claimed the same edit");
+        require(ByteBuffer.wrap(directPayload).order(ByteOrder.LITTLE_ENDIAN)
+                        .getInt(hpOffset) == 7777, "the queued HP was not applied");
+        queued.finish(request, false);
+        require(queued.begin(originalPayload.clone()) == request, "a failed load consumed the edit");
+        SaveCheater.ReadEdit replacement = new SaveCheater.ReadEdit(5555, null, null,
+                null, null, null, UNIT_IDS[0]);
+        queued.stage(replacement);
+        queued.finish(request, true);
+        require(queued.begin(originalPayload.clone()) == replacement,
+                "finishing the previous load consumed a replacement edit");
+        queued.finish(replacement, true);
+        require(queued.begin(originalPayload.clone()) == null, "a successful load did not consume the edit");
+
+        byte[] unrelated = originalPayload.clone();
+        queued.stage(new SaveCheater.ReadEdit(7777, null, null, null, null, null, -1));
+        require(queued.begin(unrelated) == null && Arrays.equals(originalPayload, unrelated),
+                "an absent character changed the payload");
+
         byte[] key;
         try (InputStream in = SaveCheaterRoundTrip.class.getClassLoader()
                 .getResourceAsStream("assets/ffrs_save_key.bin")) {

@@ -78,6 +78,7 @@ public final class SaveCheater {
         public final List<String> edits = new ArrayList<>();
         public final List<Unit> units = new ArrayList<>();
         public String savePath;
+        private int skippedFields;
     }
 
     // ---------------------------------------------------------------- key
@@ -471,15 +472,71 @@ public final class SaveCheater {
         return result;
     }
 
+    // A pending edit is tied to the chosen character and the next accepted
+    // load. The caller reports the parser result before consuming the request.
+    static final class ReadEdit {
+        final Integer hp, maxHp, mp, maxMp, exp, level, unit;
+
+        ReadEdit(Integer hp, Integer maxHp, Integer mp, Integer maxMp,
+                 Integer exp, Integer level, Integer unit) {
+            this.hp = hp;
+            this.maxHp = maxHp;
+            this.mp = mp;
+            this.maxMp = maxMp;
+            this.exp = exp;
+            this.level = level;
+            this.unit = unit;
+        }
+
+        boolean apply(byte[] plain) {
+            if (plain == null || plain.length == 0 ||
+                    (hp == null && maxHp == null && mp == null && maxMp == null &&
+                            exp == null && level == null)) return false;
+            byte[] edited = plain.clone();
+            Result result = new Result();
+            if (!editPayload(edited, hp, maxHp, mp, maxMp, exp, level, unit, result)
+                    || result.skippedFields != 0) return false;
+            if (unit != null) {
+                int matching = 0;
+                for (Unit candidate : result.units) {
+                    if (candidate.unitId == unit) matching++;
+                }
+                if (matching != 1) return false;
+            }
+            System.arraycopy(edited, 0, plain, 0, plain.length);
+            return true;
+        }
+    }
+
+    static final class ReadEdits {
+        private ReadEdit pending;
+        private ReadEdit inFlight;
+
+        synchronized void stage(ReadEdit request) {
+            pending = request;
+        }
+
+        synchronized ReadEdit begin(byte[] plain) {
+            if (pending == null || inFlight != null || !pending.apply(plain)) return null;
+            inFlight = pending;
+            return inFlight;
+        }
+
+        synchronized void finish(ReadEdit request, boolean accepted) {
+            if (request == null || inFlight != request) return;
+            if (accepted && pending == request) pending = null;
+            inFlight = null;
+        }
+    }
+
     // Only the isolated native read-path diagnostic calls this entry point.
     static boolean editIsolatedReadPayload(byte[] plain) {
         if (plain.length != 413968) return false;
         List<Unit> units = groupUnits(plain);
         if (units.isEmpty() || units.get(0).hitPointOffset < 0) return false;
         Unit unit = units.get(0);
-        Result result = new Result();
-        if (!editPayload(plain, 7777, null, null, null, null, null, unit.unitId, result)
-                || result.edits.size() != 1) return false;
+        if (!new ReadEdit(7777, null, null, null, null, null, unit.unitId).apply(plain))
+            return false;
         warn("isolated payload unit=" + unit.unitId + " HP " + unit.hitPoint + " -> 7777");
         return true;
     }
@@ -669,6 +726,7 @@ public final class SaveCheater {
         // The offset comes from the parsed tag, so it must point at a whole
         // int32 inside the decrypted body before anything is written.
         if (offset < 0 || offset + 4 > plain.length) {
+            result.skippedFields++;
             result.edits.add("单位" + unitId + " " + label + " 偏移非法（已跳过）");
             return;
         }
@@ -703,6 +761,7 @@ public final class SaveCheater {
                 return;
             }
         }
+        result.skippedFields++;
         result.edits.add("单位" + u.unitId + " 等级 未找到可写字段（已跳过）");
     }
 
