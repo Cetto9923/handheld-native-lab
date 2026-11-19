@@ -397,6 +397,8 @@ def main():
                                            'tests.device.test_readback_fence_lifetime'])
     run('pending-buffer-clear-contract', [sys.executable, '-m', 'unittest',
                                          'tests.device.test_pending_buffer_clear'])
+    run('ordered-buffer-clear-contract', [sys.executable, '-m', 'unittest',
+                                          'tests.device.test_ordered_buffer_clear'])
     run('pending-view-lifetime-contract', [sys.executable, '-m', 'unittest',
                                           'tests.device.test_pending_view_lifetime'])
     run('sample-usage-contract', [sys.executable, '-m', 'unittest',

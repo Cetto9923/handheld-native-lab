@@ -40,8 +40,10 @@ struct Image {
     uint64_t checked_submission;
 } image;
 bool has_image, draw_detail, honor_pipeline_diagnostics, resolving_pending;
+constexpr bool oppo_ordered_buffer_clear = false;
+unsigned cur_op = 0;
 struct {void image() {}} draw_timing;
-struct {int why_access, access_by[12];} perf;
+struct {int why_access, access_by[12], write_sync_by_op[64];} perf;
 std::vector<Writeback> pending_writebacks;
 std::vector<Report> pending_reports;
 int sync_count;
@@ -69,6 +71,7 @@ void resolve_pending() {
     pending_writebacks.clear();
 }
 void trace_buffer_clear(const p_clear_buf &) {}
+bool gpu_ordered_buffer_clear(const p_clear_buf &) { return false; }
 enum {OP_CLEAR_BUF};
 template<class T> T payload(const void *p, size_t n) {
     assert(n == sizeof(T));

@@ -827,6 +827,13 @@ int indirect_mode=0;
 bool indirect_probe=false;FILE *indirect_probe_file=nullptr;
 uint64_t cpu_indexed_nonempty = 0;
 bool vivo_indexed_fallback = false;
+bool oppo_ordered_buffer_clear = false;
+bool thor_compact_memory = false;
+
+bool oppo_ordered_clear_device(const char *model, const VkPhysicalDeviceProperties &gpu) {
+    return std::strcmp(model, "PKJ110") == 0 && gpu.vendorID == 0x5143 &&
+           gpu.deviceID == 0x44050001 && gpu.driverVersion == 0x80320050;
+}
 
 bool vivo_requires_direct_indexed(const VkPhysicalDeviceProperties &gpu) {
 #ifdef __ANDROID__
@@ -1221,6 +1228,8 @@ struct Perf {
         readback_targeted=0,readback_no_wait=0,readback_fallback=0,readback_inflight=0,sync_drain=0,
         clear_coverage_misses=0,clear_coverage_legacy=0;
     uint64_t bc_upload_calls=0,bc_upload_source_bytes=0,bc_upload_decoded_bytes=0,bc_upload_decode_ns=0;
+    uint64_t ordered_buffer_clears=0;
+    std::array<uint64_t,64> write_sync_by_op{};
 } perf;
 // ===== 场景切换测量（标记 gfx-scene-tag，默认关闭）=====
 // Off unless the marker file files/gfx-scene-tag exists: without it there is no file read, no counter and no line at
@@ -1746,6 +1755,17 @@ void perf_frame(){
         double(perf.submits)/f,double(perf.waits)/f,(unsigned long long)perf.sync_writeback,(unsigned long long)perf.sync_readback,(unsigned long long)perf.sync_query,double(perf.ops)/f,double(perf.folded_clears)/f,double(perf.passes)/f,double(perf.draws)/f,double(perf.dispatches)/f,
         (unsigned long long)perf.why_wait,(unsigned long long)perf.why_poll,(unsigned long long)perf.why_access,(unsigned long long)perf.access_by[1],(unsigned long long)perf.access_by[2],(unsigned long long)perf.access_by[3],(unsigned long long)perf.access_by[4],(unsigned long long)perf.access_by[5],(unsigned long long)perf.access_by[6],(unsigned long long)perf.access_by[8],(unsigned long long)perf.access_by[9],(unsigned long long)perf.access_by[10],(unsigned long long)perf.access_by[11],(unsigned long long)perf.why_cmdwait,(unsigned long long)perf.why_finish,(unsigned long long)perf.why_slot,(unsigned long long)perf.pending_views,(unsigned long long)perf.snapshot_hits,(unsigned long long)perf.snapshot_misses,double(perf.snapshot_bytes)/1048576.0,double(perf.arena_peak)/1048576.0,perf_counts().pipelines,perf_counts().layouts,perf_counts().samplers,perf_counts().passes,perf_counts().images,perf_counts().host_segments,double(perf_counts().host_bytes)/1048576.0);
     if(perf.clear_coverage_misses)xbg_logf("NVN PERF clearfold coverage_misses=%llu rejected=%llu legacy=%llu",(unsigned long long)perf.clear_coverage_misses,(unsigned long long)(perf.clear_coverage_misses-perf.clear_coverage_legacy),(unsigned long long)perf.clear_coverage_legacy);
+    if (oppo_ordered_buffer_clear) {
+        uint64_t other = 0;
+        for (size_t op = 0; op < perf.write_sync_by_op.size(); ++op)
+            if (op != OP_CLEAR_BUF && op != OP_COPY_B2B && op != OP_UPDATE_UB)
+                other += perf.write_sync_by_op[op];
+        xbg_logf("NVN PERF write_sync clear=%llu copy=%llu uniform=%llu other=%llu ordered_clears=%llu",
+                 (unsigned long long)perf.write_sync_by_op[OP_CLEAR_BUF],
+                 (unsigned long long)perf.write_sync_by_op[OP_COPY_B2B],
+                 (unsigned long long)perf.write_sync_by_op[OP_UPDATE_UB],
+                 (unsigned long long)other, (unsigned long long)perf.ordered_buffer_clears);
+    }
     if(!timing_active && perf_normalizable){
         static const char *names[]={"other","draw","dispatch","descriptor","pass","buffer","pipeline","submit","fence","present","cleanup","hash","image","log","program","cpuwrite","snapshot"};
         char line[1024];int at=snprintf(line,sizeof(line),"NVN PERF parts_ms_per_frame timed=%llu",(unsigned long long)perf_timed_frames);
@@ -2689,6 +2709,7 @@ void cpu_access(uint64_t address,uint64_t bytes,unsigned why){
         if(access_logs++<20 || honor_pipeline_diagnostics)
             xbg_logf("NVN CPU_ACCESS_SYNC frame=%llu why=%u cur_op=%u addr=%#llx bytes=%llu pending=%#llx+%llu",
                 (unsigned long long)stats.presents.load(),why,cur_op,(unsigned long long)address,(unsigned long long)bytes,(unsigned long long)w.addr,(unsigned long long)w.bytes);
+        if (why == 4 && oppo_ordered_buffer_clear) ++perf.write_sync_by_op[std::min(cur_op,63u)];
         probe_cpu_sync(address,bytes,why,w.addr,w.bytes);++perf.why_access;if(why<12)++perf.access_by[why];resolve_pending();return;}
     // GPU reads of counter memory (snapshots) see the last resolved report, i.e.
     // one frame of latency for occlusion-driven effects instead of a full stall.
@@ -4443,6 +4464,11 @@ bool read_record(const std::vector<uint8_t> &bytes,size_t &at,Rec &record){
 }
 void start(){
     memory_constrained.store(false);
+    if (thor_compact_memory) {
+        enabled = false;
+        xbg_logf("NVN speculative pipeline prewarm disabled for 8 GB AYN Thor");
+        return;
+    }
     seed();
     compute_prewarm_keys.clear();
 #ifdef XBG_HAVE_SPIRV_OPT
@@ -7034,6 +7060,73 @@ void trace_buffer_clear(const p_clear_buf &p){
         xbg_logf("CODEX_CLEAR_REASON frame=%llu address=%#llx bytes=%llu value=%#x aliases=%u overlaps=%u currentRange=%u active=%u probe=%u recording=%u",(unsigned long long)stats.presents.load(),(unsigned long long)p.addr,(unsigned long long)p.size,p.value,aliases,overlaps,unsigned(current_pending_range(p.addr,p.size,4)),unsigned(capture.active),unsigned(capture.probe),unsigned(slots[slot_index].recording));
     }
 }
+
+// The OPPO log repeatedly shows 8 KiB clears inside an in-flight 143 KiB
+// result. Move the complete result to a fresh span so recorded readers keep
+// their original input, while future reads see the clear and untouched bytes.
+bool gpu_ordered_buffer_clear(const p_clear_buf &clear) {
+    if (!oppo_ordered_buffer_clear || clear.size != 8192 || (clear.addr & 3) ||
+        capture.active || capture.probe || capture.trace || provenance_file ||
+        !slots[slot_index].recording)
+        return false;
+
+    Slot &slot = slots[slot_index];
+    PendingWriteback *producer = nullptr;
+    for (auto &pending : pending_writebacks) {
+        if (!xbg_wb_overlaps(clear.addr, clear.size, pending.addr, pending.bytes)) continue;
+        if (producer || pending.slot != &slot || pending.owner || pending.indirect ||
+            pending.bytes != 146432 || !xbg_wb_contains(pending.addr, pending.bytes, clear.addr, clear.size))
+            return false;
+        producer = &pending;
+    }
+    if (!producer || !producer->buffer.buffer || (producer->buffer.offset & 3) ||
+        producer->buffer.size < producer->bytes)
+        return false;
+    for (const auto &pending : pending_writebacks)
+        if (&pending != producer && xbg_wb_overlaps(producer->addr, producer->bytes, pending.addr, pending.bytes))
+            return false;
+    for (const auto &report : pending_reports)
+        if (xbg_wb_overlaps(producer->addr, producer->bytes, report.addr, sizeof(NVNcounterData)))
+            return false;
+    bool image_alias = false;
+    for_images_overlapping(producer->addr, producer->bytes, [&](Image &) { image_alias = true; });
+    if (image_alias) return false;
+
+    const Buffer original = producer->buffer;
+    // Arena allocation is monotonic within this slot. All bytes in the new
+    // span are written by GPU commands, including spans protected from CPU
+    // stores by an older submission's pending view.
+    const Buffer replacement = slot.readback.alloc(size_t(producer->bytes));
+    Commands commands;
+    full_barrier(commands.command);
+    VkBufferCopy copy{original.offset, replacement.offset, producer->bytes};
+    vkCmdCopyBuffer(commands.command, original.buffer, replacement.buffer, 1, &copy);
+
+    VkBufferMemoryBarrier before_fill{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+    before_fill.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    before_fill.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    before_fill.srcQueueFamilyIndex = before_fill.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    before_fill.buffer = replacement.buffer;
+    before_fill.offset = replacement.offset + (clear.addr - producer->addr);
+    before_fill.size = clear.size;
+    vkCmdPipelineBarrier(commands.command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         0, 0, nullptr, 1, &before_fill, 0, nullptr);
+    vkCmdFillBuffer(commands.command, replacement.buffer, before_fill.offset, clear.size, clear.value);
+    ++write_seq;
+    VkBufferMemoryBarrier host_read = before_fill;
+    host_read.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    host_read.offset = replacement.offset;
+    host_read.size = producer->bytes;
+    vkCmdPipelineBarrier(commands.command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+                         0, 0, nullptr, 1, &host_read, 0, nullptr);
+    commands.finish();
+    snapshot_invalidate(producer->addr, producer->bytes);
+    producer->buffer = replacement;
+    producer->version = ++pending_writeback_version;
+    ++perf.ordered_buffer_clears;
+    return true;
+}
+
 bool gpu_buffer_copy(uint64_t src,uint64_t dst,uint64_t n){preflight_cpu_reads();
     if(!n || (src<dst+n && dst<src+n))return false;
     for(auto &w:pending_writebacks)if(dst<w.addr+w.bytes && dst+n>w.addr)return false;
@@ -7578,6 +7671,7 @@ void execute(const uint8_t *pc,unsigned depth,uint64_t &budget){
             state.copy_stride=a.stride;state.copy_image_stride=a.image?a.stride:-1;break;}
         case OP_CLEAR_BUF:{auto a=payload<p_clear_buf>(p,n);need(a.addr&&a.size&&a.size<=256ull*1024*1024,"Invalid buffer clear range");
             trace_buffer_clear(a);
+            if (gpu_ordered_buffer_clear(a)) break;
             // A clear changes guest memory in command order. Previously recorded GPU
             // reads can still consume the old readback allocation until their fence.
             invalidate_cpu_range(a.addr,a.size);
@@ -8030,6 +8124,18 @@ extern "C" int xbg_game_initialize(const xbg_game_config *c,char *error,size_t b
     {std::string dir=c->shader_directory?c->shader_directory:"";size_t cut=dir.find_last_of('/');FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-full-barrier").c_str(),"rb");full_barrier_strict=m&&fgetc(m)=='1';if(m)fclose(m);xbg_logf("NVN full barrier strict=%d (marker gfx-full-barrier, 0=compute scoped)",int(full_barrier_strict));}
     cfg=*c;xbg_logf("NVN completion_wait enabled=%d legacy_waitall=%d",int(completion_wait_enabled),int(legacy_waitall));
 vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemoryProperties(cfg.physical,&memories);{char line[512];int at=snprintf(line,sizeof line,"NVN caps memory types");for(uint32_t i=0;i<memories.memoryTypeCount && at<int(sizeof line)-24;i++)at+=snprintf(line+at,sizeof line-at," %u:%#x/h%u",i,unsigned(memories.memoryTypes[i].propertyFlags),memories.memoryTypes[i].heapIndex);xbg_logf("%s",line);}
+    oppo_ordered_buffer_clear = false;
+    thor_compact_memory = false;
+#ifdef __ANDROID__
+    char device_model[PROP_VALUE_MAX]{};
+    __system_property_get("ro.product.model", device_model);
+    oppo_ordered_buffer_clear = oppo_ordered_clear_device(device_model, properties);
+    if (std::strcmp(device_model, "AYN Thor") == 0)
+        thor_compact_memory = xbg_memory_pressure::thor_small_memory(
+            device_model, properties.vendorID, properties.deviceID, xbg_memory_pressure::read_snapshot().total);
+    xbg_logf("NVN device policy pid=%d oppo_ordered_clear=%d thor_compact_memory=%d",
+             int(getpid()), int(oppo_ordered_buffer_clear), int(thor_compact_memory));
+#endif
     {
         std::string dir=c->shader_directory?c->shader_directory:"";
         size_t cut=dir.find_last_of('/');
@@ -8207,7 +8313,7 @@ vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemor
       FILE *dq=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-defer-query-preflight").c_str(),"rb");defer_query_preflight=true;if(dq){defer_query_preflight=fgetc(dq)!='0';fclose(dq);}else if(const char *e=getenv("DM_GFX_DEFER_QUERY_PREFLIGHT"))defer_query_preflight=atoi(e)!=0;
       xbg_logf("NVN CPU reads resolved before each operation=%d defer_query_preflight=%d (marker gfx-read-preflight)",int(read_preflight),int(defer_query_preflight));}
      {FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-sync-cache-save").c_str(),"rb");sync_cache_save=false;if(m){sync_cache_save=fgetc(m)=='1';fclose(m);}}
-     {FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-slot-count").c_str(),"rb");slot_count=16;if(m){unsigned val=0;if(fscanf(m,"%u",&val)==1 && val>=2 && val<=kMaxSlots)slot_count=val;fclose(m);}xbg_logf("NVN frame slots=%u (marker gfx-slot-count, 2..%u)",slot_count,kMaxSlots);}
+     {FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-slot-count").c_str(),"rb");slot_count=thor_compact_memory?8:16;if(m){unsigned val=0;if(fscanf(m,"%u",&val)==1 && val>=2 && val<=kMaxSlots)slot_count=val;fclose(m);}xbg_logf("NVN frame slots=%u (marker gfx-slot-count, 2..%u)",slot_count,kMaxSlots);}
      {FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-fence-spin-us").c_str(),"rb");fence_spin_us=0;if(m){unsigned v=0;if(fscanf(m,"%u",&v)==1 && v<=5000)fence_spin_us=v;fclose(m);}xbg_logf("NVN fence spin-wait=%u us (marker gfx-fence-spin-us, 0=off)",fence_spin_us);}
      {FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-flame-diag").c_str(),"rb");flame_diag_enabled=false;fdiag_sync=false;if(m){int fc=fgetc(m);flame_diag_enabled=(fc=='1'||fc=='2');fdiag_sync=(fc=='2');fclose(m);}xbg_logf("NVN flame frame census=%d (marker gfx-flame-diag)",int(flame_diag_enabled));}
      {FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-flame-delay").c_str(),"rb");flame_diag_delay_us=0;if(m){unsigned v=0;if(fscanf(m,"%u",&v)==1 && v<=50000)flame_diag_delay_us=v;fclose(m);}xbg_logf("NVN flame draw sampling delay=%u us (marker gfx-flame-delay)",flame_diag_delay_us);}

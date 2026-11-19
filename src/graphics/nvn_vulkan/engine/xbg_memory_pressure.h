@@ -23,6 +23,13 @@ struct Snapshot {
     bool available_known = false;
 };
 
+inline bool thor_small_memory(const char *model, uint32_t vendor, uint32_t device,
+                              uint64_t total) {
+    return model && std::strcmp(model, "AYN Thor") == 0 &&
+           vendor == 0x5143 && device == 0x43050a01 &&
+           total >= 6 * 1024 * mib && total <= 8 * 1024 * mib;
+}
+
 inline Snapshot read_snapshot(const char *status = "/proc/self/status",
                               const char *meminfo = "/proc/meminfo") {
     Snapshot snapshot;

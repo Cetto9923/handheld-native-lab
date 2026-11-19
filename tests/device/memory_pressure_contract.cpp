@@ -11,6 +11,11 @@ std::atomic<unsigned> memory_trim_requested{0};
 
 int main(int argc, char **argv) {
     assert(argc == 3);
+    assert(thor_small_memory("AYN Thor", 0x5143, 0x43050a01, 7540305920ull));
+    assert(!thor_small_memory("AYN Thor", 0x5143, 0x43050a01, 15996096512ull));
+    assert(!thor_small_memory("AYN Thor", 0x5143, 0x43050a01, 0));
+    assert(!thor_small_memory("AYN Thor", 0x5143, 0x44050001, 7540305920ull));
+    assert(!thor_small_memory("RG477M", 0x5143, 0x43050a01, 7540305920ull));
     Snapshot snapshot;
     assert(severity(snapshot) == 0);
     snapshot.resident = 2048 * mib - 1;
