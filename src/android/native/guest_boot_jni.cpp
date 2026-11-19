@@ -428,15 +428,19 @@ static jlong StartGuest(JNIEnv* env,
     return static_cast<jlong>(thread);
 }
 
-extern "C" void ffrs_apply_isolated_read_payload(void *buffer, uint32_t size) {
-    if (!save_edit_enabled.load() || !buffer || size != 413968)
-        return;
-    if (save_edit_attempted.exchange(true)) return;
+struct IsolatedSaveEdit {
+    void *buffer;
+    uint32_t size;
+};
 
+static void *EditIsolatedSaveOnHostStack(void *opaque) {
+    const auto &edit = *static_cast<IsolatedSaveEdit *>(opaque);
+    void *buffer = edit.buffer;
+    const uint32_t size = edit.size;
     JNIEnv *env = nullptr;
     const jint state = save_edit_vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6);
     if (state != JNI_OK && (state != JNI_EDETACHED ||
-            save_edit_vm->AttachCurrentThread(&env, nullptr) != JNI_OK)) return;
+            save_edit_vm->AttachCurrentThread(&env, nullptr) != JNI_OK)) return nullptr;
 
     jbyteArray payload = env->NewByteArray(size);
     if (payload && !env->ExceptionCheck()) {
@@ -458,6 +462,21 @@ extern "C" void ffrs_apply_isolated_read_payload(void *buffer, uint32_t size) {
     }
     if (payload) env->DeleteLocalRef(payload);
     if (state == JNI_EDETACHED) save_edit_vm->DetachCurrentThread();
+    return nullptr;
+}
+
+extern "C" void ffrs_apply_isolated_read_payload(void *buffer, uint32_t size) {
+    if (!save_edit_enabled.load() || !buffer || size != 413968 ||
+        save_edit_attempted.exchange(true)) return;
+
+    // ART expects the calling SP to be on the registered pthread stack.
+    // The game is running on its own stack, so do JNI work on a host thread.
+    IsolatedSaveEdit edit{buffer, size};
+    pthread_t worker;
+    if (pthread_create(&worker, nullptr, EditIsolatedSaveOnHostStack, &edit) != 0)
+        return;
+    if (pthread_join(worker, nullptr) != 0)
+        abort(); // Do not release the guest-owned buffer while a worker can use it.
 }
 
 extern "C" void xbg_request_memory_trim(unsigned level);
