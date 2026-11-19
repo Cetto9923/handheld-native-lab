@@ -441,9 +441,9 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         private float dragDx, dragDy;
         private final RectF handle = new RectF(), panel = new RectF(), opTrack = new RectF(), scTrack = new RectF();
         private final RectF menuBtn = new RectF();
-        private final RectF btnReset = new RectF(), btnDone = new RectF(), btnVisibility = new RectF();
+        private final RectF btnReset = new RectF(), btnDone = new RectF(), btnVisibility = new RectF(), btnSelectedVisibility = new RectF();
         private final RectF menuPanel = new RectF();
-        private final RectF[] menuItems = new RectF[12];
+        private final RectF[] menuItems = new RectF[13];
         private int handleId = -1, lsId = -1, rsId = -1, menuId = -1;
         private int r3Id = -1, l3Id = -1;
         private float u, vw, vh, lsKx, lsKy, rsKx, rsKy;
@@ -531,8 +531,9 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             float bw = 2.8f * u, bh = 0.9f * u, by = panel.bottom - 1.5f * u;
             btnReset.set(panel.left + 1.1f * u, by, panel.left + 1.1f * u + bw, by + bh);
             btnDone.set(panel.right - 1.1f * u - 2.2f * u, by, panel.right - 1.1f * u, by + bh);
-            btnVisibility.set(panel.centerX() - 1.8f * u, panel.top + 5.05f * u, panel.centerX() + 1.8f * u, panel.top + 6.0f * u);
-            float mw = Math.min(0.76f * w, 18f * u), mh = Math.min(10.0f * u, 0.80f * h);
+            btnSelectedVisibility.set(panel.centerX() - 3.7f * u, panel.top + 5.0f * u, panel.centerX() - 0.15f * u, panel.top + 5.8f * u);
+            btnVisibility.set(panel.centerX() + 0.15f * u, panel.top + 5.0f * u, panel.centerX() + 3.7f * u, panel.top + 5.8f * u);
+            float mw = Math.min(0.76f * w, 18f * u), mh = Math.min(10.5f * u, 0.80f * h);
             menuPanel.set(w / 2f - mw / 2f, h / 2f - mh / 2f, w / 2f + mw / 2f, h / 2f + mh / 2f);
             // Drawing and hit testing share the same two-column rectangles.
             int rows = (menuItems.length + 1) / 2;
@@ -651,6 +652,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                     .setPositiveButton("确定", (dialog, which) -> {
                         clearInput();
                         for (int i = 0; i < ctls.length; i++) ctls[i].visible = chosen[i];
+                        saveConfig();
                         invalidate();
                     }).show();
         }
@@ -684,7 +686,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 else if (i == 8) owner.startActivity(new Intent(owner, ReportActivity.class));
                 else if (i == 9) owner.toggleFpsOverlay();
                 else if (i == 10) owner.rotateScreen();
-                else owner.openDisplaySettings();
+                else if (i == 11) owner.openDisplaySettings();
+                else editVisibility();
                 return true;
             }
             return true;
@@ -704,6 +707,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 if (panel.contains(x, y)) {
                     if (btnDone.contains(x, y)) { exitEdit(); return true; }
                     if (btnReset.contains(x, y)) { resetDefaults(); return true; }
+                    if (btnSelectedVisibility.contains(x, y) && selected >= 0) { ctls[selected].visible = !ctls[selected].visible; invalidate(); return true; }
                     if (btnVisibility.contains(x, y)) { editVisibility(); return true; }
                     RectF o = new RectF(opTrack); o.inset(-0.4f * u, -0.6f * u);
                     RectF sc = new RectF(scTrack); sc.inset(-0.4f * u, -0.6f * u);
@@ -911,7 +915,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                     "导出诊断报告",
                     owner.fpsVisible ? "关闭帧率显示" : "开启帧率显示",
                     "旋转屏幕180°",
-                    "画质与帧率"
+                    "画质与帧率",
+                    "按键显示设置"
             };
             for (int i = 0; i < menuItems.length; i++) {
                 RectF r = menuItems[i];
@@ -938,6 +943,11 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             text.setTextAlign(al);
             drawSlider(c, opTrack, (opacity - 0.15f) / 0.85f, true);
             drawSlider(c, scTrack, selected >= 0 ? (ctls[selected].scale - 0.5f) / 1.5f : 0f, selected >= 0);
+            fill.setColor(selected >= 0 ? 0x60FFFFFF : 0x20FFFFFF);
+            c.drawRoundRect(btnSelectedVisibility, u * 0.25f, u * 0.25f, fill);
+            text.setColor(selected >= 0 ? 0xFFFFFFFF : 0x70FFFFFF); text.setTextSize(0.42f * u);
+            c.drawText(selected < 0 ? "先点选按键" : (ctls[selected].visible ? "隐藏 " : "显示 ") + ctls[selected].name,
+                    btnSelectedVisibility.centerX(), btnSelectedVisibility.centerY() + 0.14f * u, text);
             fill.setColor(0x60FFFFFF);
             c.drawRoundRect(btnVisibility, u * 0.25f, u * 0.25f, fill);
             text.setColor(0xFFFFFFFF); text.setTextSize(0.42f * u);
