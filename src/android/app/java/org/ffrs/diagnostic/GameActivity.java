@@ -492,14 +492,17 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
         private void defaults() {
             float w = vw, h = vh;
-            float fx = w - 3.4f * u, fy = h - 3.4f * u, d = 1.45f * u;
+            float fx = w - 3.1f * u, fy = h - 3.4f * u, d = 1.25f * u;
             place(0, fx, fy + d); place(1, fx + d, fy); place(2, fx - d, fy); place(3, fx, fy - d);
             place(4, 2.0f * u, 2.4f * u); place(5, 2.0f * u, 1.0f * u);
             place(6, w - 2.0f * u, 2.4f * u); place(7, w - 2.0f * u, 1.0f * u);
             place(8, w / 2f - 1.5f * u, h - 0.95f * u); place(9, w / 2f + 1.5f * u, h - 0.95f * u);
-            place(10, 2.9f * u, h - 9.4f * u); place(11, 2.9f * u, h - 3.3f * u); place(12, w - 3.1f * u, h - 9.0f * u);
-            place(13, w - 6.0f * u, h - 8.3f * u);
-            place(14, 5.9f * u, h - 3.3f * u);
+            // Keep each thumb's controls on the same side and leave space between their hit areas.
+            place(10, 2.9f * u, h - 7.3f * u);
+            place(11, 2.9f * u, h - 3.3f * u);
+            place(12, w - 3.1f * u, h - 7.1f * u);
+            place(13, w - 5.65f * u, h - 7.1f * u);
+            place(14, 5.8f * u, h - 3.3f * u);
             for (Ctl c : ctls) c.visible = true;
             opacity = 1f;
         }
