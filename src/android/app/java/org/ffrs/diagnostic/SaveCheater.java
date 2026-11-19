@@ -26,7 +26,7 @@ import javax.crypto.spec.SecretKeySpec;
  * MagicPoint per unit, and a guest/party record after the roster carries the
  * same two names again as the caps.
  *
- * The 32 byte key ships in assets/ffrs_save_key.bin.
+ * Explicit local cheat-test APKs can provide the key in assets/ffrs_save_key.bin.
  */
 public final class SaveCheater {
     private static final String TAG = "FFRS-SaveCheat";
@@ -92,7 +92,7 @@ public final class SaveCheater {
     /**
      * Load the 32 byte AES key.
      *
-     * On the device the key ships as an asset. The file fallback keeps the
+     * A local test APK can provide the key as an asset. The file fallback keeps the
      * class usable outside the app (host side tooling and tests).
      */
     public static synchronized byte[] key() {
