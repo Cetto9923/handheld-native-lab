@@ -5792,3 +5792,7 @@ RG73 realbattle measured20.25then22.44FPS, both windows actualfight; largeenemy 
 UNIVERSAL74-20261118。隔离基线 4650403；从原测试分支提取功能与测试，保留现有提交计时、设备分流、预热路径。
 
 UNIVERSAL74-20261118。1.0.74 通用 APK 4b9891436357，宿主 135 项通过。vivo 开头已获玩家二测确认，统一构建和小米飞空艇原机帧率待复测。 详见 coordination/results/UNIVERSAL74-20261118.md。
+
+OPPO-THOR-20261119。统一包 1.0.74 基线 da73305，原 OPPO 与 Thor 均未连接。Open Android 构建与原机验收分别记录。
+
+OPPO-THOR-20261119。1.0.75 通用候选 b82ce508bfcb 已交付，136 项宿主检查、Android 构建及 OPPO 独立 Vulkan 组件通过，两台原设备待测。 详见 coordination/results/OPPO-THOR-20261119.md。

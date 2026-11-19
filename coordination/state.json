@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-18T21:10:01.398543+08:00",
+ "updated_at": "2026-11-19T15:15:21.114711+08:00",
  "phase": "1.0.73兼容接续；诊断导出117宿主与荣耀流程通过，主库空轨卡顿专项、OOT接入与在线更新并行",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -11966,6 +11966,38 @@
    "checkpoint": "1.0.74 通用 APK 4b9891436357，宿主 135 项通过。vivo 开头已获玩家二测确认，统一构建和小米飞空艇原机帧率待复测。",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/universal74-20261118",
    "branch": "task/T-universal74-20261118"
+  },
+  {
+   "id": "OPPO-THOR-20261119",
+   "owner": "Codex /root",
+   "role": "性能与内存兼容",
+   "objective": "修复 OPPO 写回开销和降低 8 GB Thor 开头内存峰值，交付单一通用包",
+   "inputs": [
+    "两份玩家诊断包",
+    "统一版 1.0.74"
+   ],
+   "outputs": [
+    "/Users/yuyan9923/GitHub/游戏发布包/02-最终幻想_共鸣_FFRS/待验证/1.0.75-通用测试/FFRS-1.0.75-universal.apk",
+    "coordination/results/OPPO-THOR-20261119.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "write_scope": [
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_memory_pressure.h",
+    "src/graphics/nvn_vulkan/engine/xbg_writeback_policy.h",
+    "tests/device/",
+    "tests/native/test_api_breadcrumb.py",
+    "scripts/verify_host.py",
+    "src/android/app/gamewindow/AndroidManifest.xml",
+    "coordination/",
+    ".local/case/"
+   ],
+   "status": "candidate_delivered_device_pending",
+   "acceptance": "组件正负对照与通用 Android 构建；原机同场景复测另外记录",
+   "checkpoint": "1.0.75 通用候选 b82ce508bfcb 已交付，136 项宿主检查、Android 构建及 OPPO 独立 Vulkan 组件通过，两台原设备待测。",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/oppo-thor-20261119",
+   "branch": "task/T-oppo-thor-20261119"
   }
  ],
  "blockers": [
