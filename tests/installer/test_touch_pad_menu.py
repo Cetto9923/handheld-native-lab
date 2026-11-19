@@ -63,7 +63,9 @@ public class TouchPadMenuContract extends ViewStub {
     boolean shown, editing, menuOpen;
     int handleId = -1;
     float u = 1;
-    final Object[] ctls = new Object[@CONTROL_COUNT@];
+    static class Ctl { boolean visible = true; }
+    final Ctl[] ctls = new Ctl[@CONTROL_COUNT@];
+    TouchPadMenuContract() { for (int i=0; i<ctls.length; i++) ctls[i]=new Ctl(); }
     final Rect handle = new Rect(), menuBtn = new Rect();
     final Paint fill = new Paint(), line = new Paint(), text = new Paint();
     int controls, menus, clears;

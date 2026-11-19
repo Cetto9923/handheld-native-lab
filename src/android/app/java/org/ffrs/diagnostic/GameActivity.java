@@ -424,7 +424,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         private static final int T_BTN = 0, T_STICK = 1, T_DPAD = 2;
         private static final class Ctl {
             final String name; final int type; final int bit; final float hw, hh;   // half extents at scale 1, in u units
-            float fx, fy, scale = 1f;                                                // centre as fraction of the view, size factor
+            float fx, fy, scale = 1f; boolean visible = true;                        // centre as fraction of the view, size factor
             Ctl(String n, int t, int b, float hw, float hh) { name = n; type = t; bit = b; this.hw = hw; this.hh = hh; }
         }
         private static final class LongPress implements Runnable {
@@ -441,13 +441,13 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         private float dragDx, dragDy;
         private final RectF handle = new RectF(), panel = new RectF(), opTrack = new RectF(), scTrack = new RectF();
         private final RectF menuBtn = new RectF();
-        private final RectF btnReset = new RectF(), btnDone = new RectF();
+        private final RectF btnReset = new RectF(), btnDone = new RectF(), btnVisibility = new RectF();
         private final RectF menuPanel = new RectF();
         private final RectF[] menuItems = new RectF[12];
         private int handleId = -1, lsId = -1, rsId = -1, menuId = -1;
-        private int r3Id = -1;
+        private int r3Id = -1, l3Id = -1;
         private float u, vw, vh, lsKx, lsKy, rsKx, rsKy;
-        private final Ctl[] ctls = new Ctl[14];
+        private final Ctl[] ctls = new Ctl[15];
         private long pressed;
         private final Paint line = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -474,6 +474,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             ctls[11] = new Ctl("LS", T_STICK, -1, 1.9f, 1.9f);
             ctls[12] = new Ctl("RS", T_STICK, -1, 1.5f, 1.5f);
             ctls[13] = new Ctl("R3", T_BTN, 5, 0.8f, 0.55f);
+            ctls[14] = new Ctl("L3", T_BTN, 4, 0.8f, 0.55f);
             for (int i = 0; i < menuItems.length; i++) menuItems[i] = new RectF();
             setFocusable(false);
         }
@@ -485,7 +486,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         }
 
         private void clearInput() {
-            lsId = rsId = r3Id = -1; pressed = 0; dragMode = 0;
+            lsId = rsId = r3Id = l3Id = -1; pressed = 0; dragMode = 0;
             boolean hadInput = owner.touchButtons != 0 || owner.touchLx != 0 ||
                     owner.touchLy != 0 || owner.touchRx != 0 || owner.touchRy != 0;
             owner.touchButtons = 0; owner.touchLx = owner.touchLy = owner.touchRx = owner.touchRy = 0;
@@ -507,6 +508,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             place(8, w / 2f - 1.5f * u, h - 0.95f * u); place(9, w / 2f + 1.5f * u, h - 0.95f * u);
             place(10, 2.9f * u, h - 9.4f * u); place(11, 2.9f * u, h - 3.3f * u); place(12, w - 3.1f * u, h - 9.0f * u);
             place(13, w - 6.0f * u, h - 8.3f * u);
+            place(14, 5.9f * u, h - 3.3f * u);
+            for (Ctl c : ctls) c.visible = true;
             opacity = 1f;
         }
 
@@ -528,6 +531,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             float bw = 2.8f * u, bh = 0.9f * u, by = panel.bottom - 1.5f * u;
             btnReset.set(panel.left + 1.1f * u, by, panel.left + 1.1f * u + bw, by + bh);
             btnDone.set(panel.right - 1.1f * u - 2.2f * u, by, panel.right - 1.1f * u, by + bh);
+            btnVisibility.set(panel.centerX() - 1.8f * u, panel.top + 5.05f * u, panel.centerX() + 1.8f * u, panel.top + 6.0f * u);
             float mw = Math.min(0.76f * w, 18f * u), mh = Math.min(10.0f * u, 0.80f * h);
             menuPanel.set(w / 2f - mw / 2f, h / 2f - mh / 2f, w / 2f + mw / 2f, h / 2f + mh / 2f);
             // Drawing and hit testing share the same two-column rectangles.
@@ -549,7 +553,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             try {
                 File f = cfgFile(); if (f == null) return;
                 StringBuilder sb = new StringBuilder("opacity ").append(opacity).append('\n');
-                for (Ctl c : ctls) sb.append(c.name).append(' ').append(c.fx).append(' ').append(c.fy).append(' ').append(c.scale).append('\n');
+                for (Ctl c : ctls) sb.append(c.name).append(' ').append(c.fx).append(' ').append(c.fy).append(' ').append(c.scale).append(' ').append(c.visible ? 1 : 0).append('\n');
                 java.io.FileOutputStream o = new java.io.FileOutputStream(f); o.write(sb.toString().getBytes("UTF-8")); o.close();
             } catch (Exception e) { Log.w(TAG, "touch_pad cfg save failed: " + e.getMessage()); }
         }
@@ -562,11 +566,12 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 while ((ln = r.readLine()) != null) {
                     String[] t = ln.trim().split("\\s+");
                     if (t.length == 2 && t[0].equals("opacity")) { opacity = Math.max(0.15f, Math.min(1f, Float.parseFloat(t[1]))); continue; }
-                    if (t.length != 4) continue;
+                    if (t.length != 4 && t.length != 5) continue;
                     for (Ctl c : ctls) if (c.name.equals(t[0])) {
                         c.fx = Math.max(0f, Math.min(1f, Float.parseFloat(t[1])));
                         c.fy = Math.max(0f, Math.min(1f, Float.parseFloat(t[2])));
                         c.scale = Math.max(0.5f, Math.min(2f, Float.parseFloat(t[3])));
+                        if (t.length == 5) c.visible = !t[4].equals("0");
                     }
                 }
                 r.close();
@@ -632,6 +637,24 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             invalidate();
         }
 
+        private void editVisibility() {
+            String[] names = new String[ctls.length];
+            boolean[] chosen = new boolean[ctls.length];
+            for (int i = 0; i < ctls.length; i++) {
+                names[i] = ctls[i].name;
+                chosen[i] = ctls[i].visible;
+            }
+            new android.app.AlertDialog.Builder(owner)
+                    .setTitle("显示的虚拟按键")
+                    .setMultiChoiceItems(names, chosen, (dialog, which, checked) -> chosen[which] = checked)
+                    .setNegativeButton("取消", null)
+                    .setPositiveButton("确定", (dialog, which) -> {
+                        clearInput();
+                        for (int i = 0; i < ctls.length; i++) ctls[i].visible = chosen[i];
+                        invalidate();
+                    }).show();
+        }
+
         /**
          * Touch handling while the function menu is open.
          *
@@ -681,6 +704,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 if (panel.contains(x, y)) {
                     if (btnDone.contains(x, y)) { exitEdit(); return true; }
                     if (btnReset.contains(x, y)) { resetDefaults(); return true; }
+                    if (btnVisibility.contains(x, y)) { editVisibility(); return true; }
                     RectF o = new RectF(opTrack); o.inset(-0.4f * u, -0.6f * u);
                     RectF sc = new RectF(scTrack); sc.inset(-0.4f * u, -0.6f * u);
                     if (o.contains(x, y)) { dragMode = 1; opacity = 0.15f + 0.85f * track(opTrack, x); invalidate(); return true; }
@@ -750,22 +774,25 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             if (act == MotionEvent.ACTION_DOWN || act == MotionEvent.ACTION_POINTER_DOWN) {
                 int pid = e.getPointerId(idx); float x = e.getX(idx), y = e.getY(idx);
                 Ctl ls = ctls[11], rs = ctls[12];
-                if (r3Id < 0 && hit(ctls[13], x, y)) r3Id = pid;
-                else if (lsId < 0 && Math.hypot(x - cxOf(ls), y - cyOf(ls)) < hwOf(ls) * 1.6f) lsId = pid;
-                else if (rsId < 0 && Math.hypot(x - cxOf(rs), y - cyOf(rs)) < hwOf(rs) * 1.6f) rsId = pid;
+                if (r3Id < 0 && ctls[13].visible && hit(ctls[13], x, y)) r3Id = pid;
+                else if (l3Id < 0 && ctls[14].visible && hit(ctls[14], x, y)) l3Id = pid;
+                else if (lsId < 0 && ls.visible && Math.hypot(x - cxOf(ls), y - cyOf(ls)) < hwOf(ls) * 1.6f) lsId = pid;
+                else if (rsId < 0 && rs.visible && Math.hypot(x - cxOf(rs), y - cyOf(rs)) < hwOf(rs) * 1.6f) rsId = pid;
             }
             boolean up = act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_POINTER_UP, cancel = act == MotionEvent.ACTION_CANCEL;
-            if (up) { int pid = e.getPointerId(idx); if (pid == lsId) lsId = -1; if (pid == rsId) rsId = -1; if (pid == r3Id) r3Id = -1; }
+            if (up) { int pid = e.getPointerId(idx); if (pid == lsId) lsId = -1; if (pid == rsId) rsId = -1; if (pid == r3Id) r3Id = -1; if (pid == l3Id) l3Id = -1; }
             long buttons = 0; int lx = 0, ly = 0, rx = 0, ry = 0;
             Ctl ls = ctls[11], rs = ctls[12], dp = ctls[10];
             lsKx = cxOf(ls); lsKy = cyOf(ls); rsKx = cxOf(rs); rsKy = cyOf(rs);
-            if (cancel) { lsId = rsId = r3Id = -1; }
+            if (cancel) { lsId = rsId = r3Id = l3Id = -1; }
             else {
                 for (int i = 0; i < e.getPointerCount(); i++) {
                     if (up && i == idx) continue;
                     int pid = e.getPointerId(i); float x = e.getX(i), y = e.getY(i);
                     if (pid == r3Id) {
                         buttons |= 1L << ctls[13].bit;
+                    } else if (pid == l3Id) {
+                        buttons |= 1L << ctls[14].bit;
                     } else if (pid == lsId) {
                         float r = hwOf(ls), nx = (x - cxOf(ls)) / r, ny = (y - cyOf(ls)) / r, len = (float) Math.hypot(nx, ny);
                         if (len > 1f) { nx /= len; ny /= len; len = 1f; }
@@ -777,9 +804,9 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                         if (len > 0.15f) { rx = Math.round(nx * 32767f); ry = Math.round(-ny * 32767f); }
                         rsKx = cxOf(rs) + nx * r; rsKy = cyOf(rs) + ny * r;
                     } else {
-                        for (int k = 0; k < 10; k++) if (hit(ctls[k], x, y)) buttons |= 1L << ctls[k].bit;
+                        for (int k = 0; k < 10; k++) if (ctls[k].visible && hit(ctls[k], x, y)) buttons |= 1L << ctls[k].bit;
                         float dx = x - cxOf(dp), dy = y - cyOf(dp), dist = (float) Math.hypot(dx, dy), R = hwOf(dp);
-                        if (dist < R * 1.1f && dist > R * 0.18f) {
+                        if (dp.visible && dist < R * 1.1f && dist > R * 0.18f) {
                             if (Math.abs(dx) > Math.abs(dy)) buttons |= dx < 0 ? 1L << 12 : 1L << 14;
                             else buttons |= dy < 0 ? 1L << 13 : 1L << 15;
                         }
@@ -814,7 +841,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             c.drawText("≡", menuBtn.centerX(), menuBtn.centerY() + text.getTextSize() / 3f, text);
             if (shown) {
                 text.setTextSize(0.65f * u);
-                for (int i = 0; i < ctls.length; i++) drawCtl(c, i);
+                for (int i = 0; i < ctls.length; i++) if (editing || ctls[i].visible) drawCtl(c, i);
                 if (editing) drawPanel(c);
             }
             if (owner.fpsVisible) {
@@ -832,6 +859,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
         private void drawCtl(Canvas c, int i) {
             Ctl k = ctls[i]; float cx = cxOf(k), cy = cyOf(k), hw = hwOf(k), hh = hhOf(k);
+            if (editing && !k.visible) c.saveLayerAlpha(cx - hw - 8, cy - hh - 8, cx + hw + 8, cy + hh + 8, 75);
             line.setColor(col(0xB0)); text.setColor(col(0xD0)); text.setTextSize(0.65f * u * Math.min(1.4f, k.scale));
             if (k.type == T_BTN) {
                 boolean on = (pressed & (1L << k.bit)) != 0;
@@ -862,6 +890,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 else c.drawCircle(cx, cy, hw + 6, line);
                 line.setStrokeWidth(sw); line.setStyle(st);
             }
+            if (editing && !k.visible) c.restore();
         }
 
         /** The function menu: save export, cheat editor, layout editor. */
@@ -909,6 +938,10 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             text.setTextAlign(al);
             drawSlider(c, opTrack, (opacity - 0.15f) / 0.85f, true);
             drawSlider(c, scTrack, selected >= 0 ? (ctls[selected].scale - 0.5f) / 1.5f : 0f, selected >= 0);
+            fill.setColor(0x60FFFFFF);
+            c.drawRoundRect(btnVisibility, u * 0.25f, u * 0.25f, fill);
+            text.setColor(0xFFFFFFFF); text.setTextSize(0.42f * u);
+            c.drawText("按键显示设置", btnVisibility.centerX(), btnVisibility.centerY() + 0.14f * u, text);
             for (int pass = 0; pass < 2; pass++) {
                 RectF r = pass == 0 ? btnReset : btnDone;
                 fill.setColor(0x40FFFFFF); c.drawRoundRect(r, u * 0.3f, u * 0.3f, fill);

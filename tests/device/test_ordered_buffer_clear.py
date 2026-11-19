@@ -20,6 +20,7 @@ enum { copy_op, transfer_barrier, fill_op, host_barrier, finish_op, publish_op }
 std::vector<int> events;
 uint64_t write_seq, pending_writeback_version;
 struct VkPhysicalDeviceProperties { unsigned vendorID, deviceID, driverVersion; };
+VkPhysicalDeviceProperties properties{0x5143,0x44050001,0x80320050};
 struct VkBufferCopy { size_t srcOffset, dstOffset, size; };
 constexpr unsigned VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER = 1, VK_ACCESS_TRANSFER_WRITE_BIT = 2,
     VK_ACCESS_HOST_READ_BIT = 4, VK_QUEUE_FAMILY_IGNORED = ~0u, VK_PIPELINE_STAGE_TRANSFER_BIT = 8,
@@ -101,6 +102,8 @@ int main() {
     assert(!ordered_clear_device("V2301A", target));
     assert(!ordered_clear_device("PKJ110", {0x5143,0x44050001,0x8032004b}));
     assert(ordered_clear_device("25098PN5AC", {0x5143,0x44050a31,0x8034a02c}));
+    assert(ordered_clear_device("RG477M", {0x13b5,0xb8a31030,0x0b001000}));
+    assert(!ordered_clear_device("RG477M", {0x13b5,0xb8a31030,0x0b001001}));
     assert(!ordered_clear_device("PMS110", {0x5143,0x44050a31,0x8034a035}));
     assert(!ordered_clear_device("25098PN5AC", {0x5143,0x44050a31,0x8034a035}));
     const p_clear_buf request{guest_base+8192,8192,0x1a52f6bf};
@@ -148,6 +151,12 @@ class OrderedBufferClear(unittest.TestCase):
         policy = function(source, 'bool ordered_clear_device(')
         clear = function(source, 'bool gpu_ordered_buffer_clear(')
         self.assertEqual(run_program(FIXTURE + policy + clear + CHECK), 0)
+        rg_fixture = FIXTURE.replace('result_size = 146432', 'result_size = 87040')
+        rg_fixture = rg_fixture.replace('properties{0x5143,0x44050001,0x80320050}',
+                                        'properties{0x13b5,0xb8a31030,0x0b001000}')
+        rg_fixture = rg_fixture.replace('8192', '4096')
+        rg_check = CHECK.replace('8192', '4096').replace('16384', '8192')
+        self.assertEqual(run_program(rg_fixture + policy + clear + rg_check), 0)
 
 
 if __name__ == '__main__':

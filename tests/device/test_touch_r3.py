@@ -29,11 +29,11 @@ class Log { static void i(String tag,String msg){} }
 class Rect { boolean contains(float x,float y){return false;} }
 public class TouchR3 extends View {
     static final String TAG="test";
-    static final class Ctl { final int bit; final float x; Ctl(int bit,float x){this.bit=bit;this.x=x;} }
-    final Ctl[] ctls = new Ctl[14];
+    static final class Ctl { final int bit; final float x; boolean visible=true; Ctl(int bit,float x){this.bit=bit;this.x=x;} }
+    final Ctl[] ctls = new Ctl[15];
     final TouchR3 owner=this;
     long touchButtons, pressed, published;
-    int touchLx,touchLy,touchRx,touchRy,handleId=-1,lsId=-1,rsId=-1,menuId=-1,r3Id=-1,dragMode;
+    int touchLx,touchLy,touchRx,touchRy,handleId=-1,lsId=-1,rsId=-1,menuId=-1,r3Id=-1,l3Id=-1,dragMode;
     float lsKx,lsKy,rsKx,rsKy;
     boolean shown=true,menuOpen,editing,handleLong;
     final Object longPress=new Object();
@@ -41,6 +41,7 @@ public class TouchR3 extends View {
     TouchR3() {
         for(int i=0;i<ctls.length;++i) ctls[i]=new Ctl(i,i*10);
         ctls[13]=new Ctl(5,130);
+        ctls[14]=new Ctl(4,140);
     }
     void publishPad(){published=touchButtons;}
     void openMenu(){}
@@ -73,6 +74,16 @@ CHECKS = r'''
         onTouchEvent(new MotionEvent(0,0,one,130));
         clearInput();
         if (published!=0 || r3Id!=-1) throw new AssertionError("focus loss");
+        onTouchEvent(new MotionEvent(0,0,one,140));
+        if (published!=16) throw new AssertionError("L3 down");
+        onTouchEvent(new MotionEvent(5,1,two,140,110));
+        onTouchEvent(new MotionEvent(2,0,two,140,111));
+        if (published!=16 || touchLx==0) throw new AssertionError("L3 with left stick");
+        onTouchEvent(new MotionEvent(3,0,two,140,111));
+        if (published!=0 || touchLx!=0 || l3Id!=-1) throw new AssertionError("L3 cancel");
+        ctls[14].visible=false;
+        onTouchEvent(new MotionEvent(0,0,one,140));
+        if (published!=0 || l3Id!=-1) throw new AssertionError("hidden L3");
     }
     public static void main(String[] args) { new TouchR3().verifyR3(); }
 }

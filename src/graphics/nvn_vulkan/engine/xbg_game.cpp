@@ -832,6 +832,8 @@ bool log_write_sync = false;
 bool thor_compact_memory = false;
 
 bool ordered_clear_device(const char *model, const VkPhysicalDeviceProperties &gpu) {
+    if (std::strcmp(model, "RG477M") == 0 && gpu.vendorID == 0x13b5 &&
+        gpu.deviceID == 0xb8a31030 && gpu.driverVersion == 0x0b001000) return true;
     if (gpu.vendorID != 0x5143) return false;
     return (std::strcmp(model, "PKJ110") == 0 &&
             gpu.deviceID == 0x44050001 && gpu.driverVersion == 0x80320050) ||
@@ -7065,11 +7067,13 @@ void trace_buffer_clear(const p_clear_buf &p){
     }
 }
 
-// The affected devices repeatedly clear 8 KiB inside an in-flight 143 KiB
+// The affected devices repeatedly clear a small range inside an in-flight
 // result. Move the complete result to a fresh span so recorded readers keep
 // their original input, while future reads see the clear and untouched bytes.
 bool gpu_ordered_buffer_clear(const p_clear_buf &clear) {
-    if (!ordered_buffer_clear_enabled || clear.size != 8192 || (clear.addr & 3) ||
+    const bool rg_shape = properties.vendorID == 0x13b5 && properties.deviceID == 0xb8a31030 &&
+                          properties.driverVersion == 0x0b001000 && clear.size == 4096;
+    if (!ordered_buffer_clear_enabled || (clear.size != 8192 && !rg_shape) || (clear.addr & 3) ||
         capture.active || capture.probe || capture.trace || provenance_file ||
         !slots[slot_index].recording)
         return false;
@@ -7079,7 +7083,7 @@ bool gpu_ordered_buffer_clear(const p_clear_buf &clear) {
     for (auto &pending : pending_writebacks) {
         if (!xbg_wb_overlaps(clear.addr, clear.size, pending.addr, pending.bytes)) continue;
         if (producer || pending.slot != &slot || pending.owner || pending.indirect ||
-            pending.bytes != 146432 || !xbg_wb_contains(pending.addr, pending.bytes, clear.addr, clear.size))
+            pending.bytes != (rg_shape ? 87040u : 146432u) || !xbg_wb_contains(pending.addr, pending.bytes, clear.addr, clear.size))
             return false;
         producer = &pending;
     }
