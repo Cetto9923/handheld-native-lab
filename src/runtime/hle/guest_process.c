@@ -436,6 +436,21 @@ struct nso_result guest_process_load(guest_process *p,const char *path,char *err
             }
         }
     }
+    if (loaded.result.status == NSO_OK && getenv("FFRS_ISOLATED_SAVE_ABI_TRACE")) {
+        struct nso_result probe = nso_install_save_payload_probe(p->module);
+        if (probe.status != NSO_OK) {
+            fprintf(stderr, "[save-abi] payload probe rejected status=%d error=%d\n",
+                    probe.status, probe.native_error);
+            if (probe.status != NSO_UNSUPPORTED) {
+                struct nso_result cleanup = nso_release(&p->module);
+                loaded.result = probe;
+                if (cleanup.status != NSO_OK) {
+                    p->quarantined = 1;
+                    loaded.result = status(NSO_RETAINED, probe.native_error, cleanup.cleanup_error);
+                }
+            }
+        }
+    }
     if(loaded.result.status==NSO_OK) {
         nso_require_executor(p->module);
         if(nso_host_exit_scope_begin(p->module)) {

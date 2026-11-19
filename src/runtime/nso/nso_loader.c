@@ -7,6 +7,7 @@
 #include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
@@ -410,6 +411,74 @@ static int text_branch(uint64_t from,uint64_t to,uint32_t *word) {
     if((delta&3) || delta < -0x8000000 || delta > 0x7fffffc)return 0;
     *word=0x14000000u|((uint32_t)(delta/4)&0x03ffffffu);
     return 1;
+}
+
+static _Atomic uint32_t save_payload_size;
+uint32_t nso_take_save_payload_size(void) {
+    return atomic_exchange_explicit(&save_payload_size, 0, memory_order_acq_rel);
+}
+
+struct nso_result nso_install_save_payload_probe(nso_module *m) {
+    const uint64_t call = 0x3dcc668, original = 0x2bed654;
+    const uint32_t expected_call = 0x97b883fb, expected_decrypt_call = 0x970e95fe;
+    // Preserve LR and every incoming argument. Only the ABI scratch registers
+    // x16/x17 are used, and the original deserializer is tail-called.
+    uint32_t stub[6] = {
+        0xb9400811, // ldr w17, [x0, #8]
+        0x58000070, // ldr x16, literal at +16
+        0x889ffe11, // stlr w17, [x16]
+        0, 0, 0
+    };
+    if (!m || !m->ready || m->closing || m->executor_required)
+        return load_status(NSO_INVALID, EINVAL, 0);
+    char build_id[33];
+    nso_build_id(m, build_id);
+    if (strcmp(build_id, "b7f965b9d7227db8e29f04e84ea7331b0") ||
+        m->text_lo != 0 || m->text_hi != 0x5e6b890 ||
+        rd32(m->image + call) != expected_call ||
+        rd32(m->image + 0x3dcc648) != expected_decrypt_call ||
+        m->text_padding_hi < m->text_hi + 128)
+        return load_status(NSO_UNSUPPORTED, ENOTSUP, 0);
+
+    // Leave the final 64 bytes available to the existing R3 trampoline.
+    const uint64_t offset = (m->text_padding_hi - 128) & ~UINT64_C(15);
+    uint32_t branch;
+    if (offset < m->text_hi ||
+        !text_branch(call, offset, &branch) ||
+        !text_branch(offset + 12, original, &stub[3]))
+        return load_status(NSO_UNSUPPORTED, ENOTSUP, 0);
+    for (size_t i = 0; i < sizeof(stub); ++i)
+        if (m->image[offset + i] != 0)
+            return load_status(NSO_UNSUPPORTED, ENOTSUP, 0);
+    const uint64_t destination = (uintptr_t)&save_payload_size;
+    memcpy(&stub[4], &destination, sizeof(destination));
+    branch |= 0x80000000u; // B to BL: retain the original caller's return PC.
+
+    uint8_t *start = m->image + down(call);
+    unsigned char *tail = m->image + down(offset);
+    const size_t page = up(1);
+    if (loader_protect(start, page, PROT_READ | PROT_WRITE))
+        return load_status(NSO_LOAD_ERROR, errno, 0);
+    if (loader_protect(tail, page, PROT_READ | PROT_WRITE)) {
+        int error = errno;
+        if (loader_protect(start, page, PROT_READ | PROT_EXEC))
+            m->ready = 0;
+        return load_status(NSO_LOAD_ERROR, error, 0);
+    }
+    atomic_store_explicit(&save_payload_size, 0, memory_order_relaxed);
+    memcpy(m->image + offset, stub, sizeof(stub));
+    memcpy(m->image + call, &branch, sizeof(branch));
+    __builtin___clear_cache((char *)m->image + call, (char *)m->image + call + 4);
+    __builtin___clear_cache((char *)m->image + offset, (char *)m->image + offset + sizeof(stub));
+    const int call_rx = loader_protect(start, page, PROT_READ | PROT_EXEC);
+    const int call_error = call_rx ? errno : 0;
+    const int tail_rx = loader_protect(tail, page, PROT_READ | PROT_EXEC);
+    if (call_rx || tail_rx) {
+        m->ready = 0;
+        return load_status(NSO_LOAD_ERROR, call_error ? call_error : errno, 0);
+    }
+    fprintf(stderr, "[save-abi] payload probe installed\n");
+    return load_status(NSO_OK, 0, 0);
 }
 
 struct nso_result nso_apply_startup_patch_file(nso_module *m,const char *path,

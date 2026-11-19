@@ -1312,6 +1312,10 @@ int32_t nso_host_fs_open_file_trace(nn_fs_file_handle *out_handle, const char *p
         if (slot >= '0' && slot <= '9' && path[sizeof(prefix)] == '\0') {
             fprintf(stderr, "[save-abi] open slot=%c mode=%d result=%d guest_lr=%#" PRIxPTR "\n",
                     slot, mode, result, guest_return_pc);
+            uint32_t payload_size = nso_take_save_payload_size();
+            if (payload_size)
+                fprintf(stderr, "[save-abi] previous deserializer payload_bytes=%" PRIu32 "\n",
+                        payload_size);
             if (result == 0)
                 trace_save_stack(guest_frame);
         }

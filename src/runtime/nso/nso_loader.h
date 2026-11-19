@@ -118,6 +118,10 @@ size_t nso_image_size(const nso_module *m);
 struct nso_result nso_apply_startup_patch_file(nso_module *, const char *path,
                                               uintptr_t r3_state);
 
+/* Isolated diagnostics, before publishing the executable. */
+struct nso_result nso_install_save_payload_probe(nso_module *);
+uint32_t nso_take_save_payload_size(void);
+
 /* Quiescent host control only. These are validated imported function identities,
  * not pointers discovered by scanning guest memory. Names are borrowed. */
 struct nso_import_target {uint32_t index;const char *name;uint64_t target;};
