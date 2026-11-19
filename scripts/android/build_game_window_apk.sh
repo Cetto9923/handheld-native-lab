@@ -18,6 +18,29 @@ case "${FFRS_API_BREADCRUMB_DIAGNOSTIC}" in 0|1) ;; *) echo "Invalid FFRS_API_BR
 source "${FFRS_ROOT}/scripts/device/android_env.sh"
 
 FFRS_APK_DIR="${FFRS_APK_DIR:-${FFRS_ROOT}/.local/android-apk}"
+FFRS_APK_NAME="${FFRS_APK_NAME:-ffrs-game-window-debug.apk}"
+FFRS_LOCAL_CHEAT_APK="${FFRS_LOCAL_CHEAT_APK:-0}"
+case "${FFRS_LOCAL_CHEAT_APK}" in
+    0)
+        if [[ -n "${FFRS_APP_ASSETS:-}" ]] &&
+           [[ -e "${FFRS_APP_ASSETS}/ffrs_save_key.bin" || -L "${FFRS_APP_ASSETS}/ffrs_save_key.bin" ]]; then
+            echo "BLOCKED_ASSETS: input assets contain a local save key" >&2
+            exit 2
+        fi
+        ;;
+    1)
+        python3 - "${FFRS_ROOT}/.local" "${FFRS_APK_DIR}/${FFRS_APK_NAME}" <<'PY_LOCAL_APK'
+from pathlib import Path
+import sys
+
+local_root = Path(sys.argv[1]).resolve()
+output = Path(sys.argv[2]).resolve()
+if local_root not in output.parents:
+    sys.exit("BLOCKED_APK: local cheat test APK must stay inside the repository .local directory")
+PY_LOCAL_APK
+        ;;
+    *) echo "Invalid FFRS_LOCAL_CHEAT_APK (expected 0 or 1)" >&2; exit 2 ;;
+esac
 FFRS_BUILD_TOOLS="${FFRS_BUILD_TOOLS:-${FFRS_SDK}/build-tools/34.0.0}"
 # d8 8.2.2 (build-tools 34.0.0) dies with an internal NPE while dexing the anonymous
 # OnClickListener that captures the cheat-dialog fields (org/ffrs/diagnostic/GameActivity$1):
@@ -35,7 +58,6 @@ FFRS_NATIVE_WINDOW_SOURCE="${FFRS_HLE_DIR}/native_window.c"
 FFRS_NATIVE_WINDOW_HEADER="${FFRS_HLE_DIR}/native_window.h"
 mkdir -p "${FFRS_ROOT}/.local/build"
 FFRS_PACKAGE_DIR="$(mktemp -d "${FFRS_ROOT}/.local/build/game-window-apk.XXXXXX")"
-FFRS_APK_NAME="${FFRS_APK_NAME:-ffrs-game-window-debug.apk}"
 # Derive only a packaging copy, never mutate the source manifest or device markers.
 python3 - "${FFRS_APP_MANIFEST}" "${FFRS_PACKAGE_DIR}/AndroidManifest.xml" "${FFRS_API_BREADCRUMB_DIAGNOSTIC}" <<'PY_MANIFEST'
 import sys
@@ -175,26 +197,23 @@ if [[ -n "${FFRS_SPIRV_TOOLS_SOURCE:-}" ]]; then
     cp "${FFRS_SPIRV_TOOLS_SOURCE}/spirv-headers/LICENSE" "${FFRS_NOTICE_DIR}/SPIRV-Headers-license.txt"
     FFRS_APP_ASSETS="${FFRS_NOTICE_ASSETS}"
 fi
-# The cheat editor needs the 32 byte SaveDataEncryptionKey. The key is a build
-# input, not a source file: it lives outside git and is staged into the
-# package assets here so the key never lands in a tracked path.
-FFRS_SAVE_KEY_FILE="${FFRS_SAVE_KEY_FILE:-${FFRS_ROOT}/.local/cheat/save_key.txt}"
-if [[ -f "${FFRS_SAVE_KEY_FILE}" ]]; then
+# Only a deliberate local test may stage a save key.
+if [[ "${FFRS_LOCAL_CHEAT_APK}" == 1 ]]; then
+    FFRS_SAVE_KEY_FILE="${FFRS_SAVE_KEY_FILE:-${FFRS_ROOT}/.local/cheat/save_key.txt}"
     FFRS_CHEAT_ASSETS="${FFRS_PACKAGE_DIR}/cheat-assets"
     mkdir -p "${FFRS_CHEAT_ASSETS}"
-    cp "${FFRS_SAVE_KEY_FILE}" "${FFRS_CHEAT_ASSETS}/ffrs_save_key.bin"
     if [[ -n "${FFRS_APP_ASSETS:-}" ]]; then
-        FFRS_MERGE_ASSETS="${FFRS_PACKAGE_DIR}/merged-assets"
-        mkdir -p "${FFRS_MERGE_ASSETS}"
-        cp -R "${FFRS_APP_ASSETS}/." "${FFRS_MERGE_ASSETS}/"
-        cp -R "${FFRS_CHEAT_ASSETS}/." "${FFRS_MERGE_ASSETS}/"
-        FFRS_APP_ASSETS="${FFRS_MERGE_ASSETS}"
-    else
-        FFRS_APP_ASSETS="${FFRS_CHEAT_ASSETS}"
+        cp -R "${FFRS_APP_ASSETS}/." "${FFRS_CHEAT_ASSETS}/"
     fi
-    echo "cheat_assets: staged the save key from ${FFRS_SAVE_KEY_FILE}"
-else
-    echo "cheat_assets: no save key at ${FFRS_SAVE_KEY_FILE}; the cheat menu stays disabled"
+    if [[ -f "${FFRS_SAVE_KEY_FILE}" ]]; then
+        # Replace only the package staging entry, including any copied symlink.
+        rm -f "${FFRS_CHEAT_ASSETS}/ffrs_save_key.bin"
+        cp "${FFRS_SAVE_KEY_FILE}" "${FFRS_CHEAT_ASSETS}/ffrs_save_key.bin"
+    elif [[ ! -f "${FFRS_CHEAT_ASSETS}/ffrs_save_key.bin" ]]; then
+        echo "BLOCKED_ASSETS: local cheat test requested without a save key" >&2
+        exit 2
+    fi
+    FFRS_APP_ASSETS="${FFRS_CHEAT_ASSETS}"
 fi
 if [[ -n "${FFRS_APP_ASSETS:-}" ]]; then
     step aapt2-link "${FFRS_BUILD_TOOLS}/aapt2" link \
@@ -220,6 +239,17 @@ step payload-zip bash -c 'cd "$1" && zip -q -r "$2" classes.dex lib' \
     _ "${FFRS_PACKAGE_DIR}/payload" "${FFRS_PACKAGE_DIR}/unsigned.apk"
 step zipalign "${FFRS_BUILD_TOOLS}/zipalign" -f -p 4 \
     "${FFRS_PACKAGE_DIR}/unsigned.apk" "${FFRS_PACKAGE_DIR}/aligned.apk"
+
+if [[ "${FFRS_LOCAL_CHEAT_APK}" == 0 ]]; then
+    python3 - "${FFRS_PACKAGE_DIR}/aligned.apk" <<'PY_APK_ASSETS'
+import sys
+import zipfile
+
+with zipfile.ZipFile(sys.argv[1]) as archive:
+    if "assets/ffrs_save_key.bin" in archive.namelist():
+        sys.exit("BLOCKED_APK: a save key reached the APK payload")
+PY_APK_ASSETS
+fi
 
 SIGNING_DIR="${FFRS_ROOT}/.local/signing"
 mkdir -p "${SIGNING_DIR}"
