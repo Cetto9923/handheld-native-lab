@@ -828,6 +828,8 @@ bool indirect_probe=false;FILE *indirect_probe_file=nullptr;
 uint64_t cpu_indexed_nonempty = 0;
 bool vivo_indexed_fallback = false;
 bool ordered_buffer_clear_enabled = false;
+bool clear_sync_census = false;
+unsigned clear_sync_records = 0;
 bool log_write_sync = false;
 bool thor_compact_memory = false;
 
@@ -2717,6 +2719,20 @@ void cpu_access(uint64_t address,uint64_t bytes,unsigned why){
         if(access_logs++<20 || honor_pipeline_diagnostics)
             xbg_logf("NVN CPU_ACCESS_SYNC frame=%llu why=%u cur_op=%u addr=%#llx bytes=%llu pending=%#llx+%llu",
                 (unsigned long long)stats.presents.load(),why,cur_op,(unsigned long long)address,(unsigned long long)bytes,(unsigned long long)w.addr,(unsigned long long)w.bytes);
+        if (why == 4 && cur_op == OP_CLEAR_BUF && clear_sync_census && clear_sync_records < 48) {
+            ++clear_sync_records;
+            size_t overlaps = 0, aliases = 0;
+            for (const auto &pending : pending_writebacks)
+                if (xbg_wb_overlaps(address, bytes, pending.addr, pending.bytes)) ++overlaps;
+            for_images_overlapping(w.addr, w.bytes, [&](Image &) { ++aliases; });
+            xbg_logf("NVN clear sync census frame=%llu clear=%llu producer=%llu same_slot=%u "
+                     "recording=%u owner=%u indirect=%u contains=%u overlaps=%zu image_aliases=%zu",
+                     (unsigned long long)stats.presents.load(), (unsigned long long)bytes,
+                     (unsigned long long)w.bytes, unsigned(w.slot == &slots[slot_index]),
+                     unsigned(slots[slot_index].recording), unsigned(bool(w.owner)),
+                     unsigned(bool(w.indirect)),
+                     unsigned(xbg_wb_contains(w.addr, w.bytes, address, bytes)), overlaps, aliases);
+        }
         if (why == 4 && log_write_sync) ++perf.write_sync_by_op[std::min(cur_op,63u)];
         probe_cpu_sync(address,bytes,why,w.addr,w.bytes);++perf.why_access;if(why<12)++perf.access_by[why];resolve_pending();return;}
     // GPU reads of counter memory (snapshots) see the last resolved report, i.e.
@@ -8551,6 +8567,7 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
       {std::string gs=probe.base+"/gfx-live-set";FILE *gsf=fopen(gs.c_str(),"rb");
        if(gsf){char buf[512]={0};size_t n=fread(buf,1,sizeof(buf)-1,gsf);buf[n]=0;fclose(gsf);
         static const struct{const char *name;bool *flag;} live_flags[]={
+          {"clearsynccensus",&clear_sync_census},
           {"texdirty",&tex_dirty},{"texmemo",&texel_memo_enabled},{"imgcache",&img_cache_enabled},
           {"descmemo",&desc_memo_enabled},{"dynpartial",&dyn_partial_enabled},{"xmemo",&xmemo_enabled},
           {"bindcache",&bind_cache_enabled},{"ownedinput",&owned_input_copy_enabled},{"rbfullcopy",&readback_fullcopy_enabled},{"bboxready",&indexed_bbox_ready_enabled},
