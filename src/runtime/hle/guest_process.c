@@ -2016,7 +2016,9 @@ static uintptr_t save_payload_host_forward(void *descriptor) {
         return 0;
 #if defined(__ANDROID__)
     extern int nso_host_take_selected_save_slot(void);
-    extern void ffrs_apply_isolated_read_payload(void *, uint32_t, int) __attribute__((weak));
+    extern void *ffrs_apply_isolated_read_payload(void *, uint32_t, int) __attribute__((weak));
+    extern void ffrs_finish_isolated_read_payload(void *, int) __attribute__((weak));
+    void *edit_request = NULL;
     const int slot = nso_host_take_selected_save_slot();
     fprintf(stderr, "[save-abi] native forward selected slot=%d\n", slot);
     if (descriptor && ffrs_apply_isolated_read_payload) {
@@ -2025,12 +2027,16 @@ static uintptr_t save_payload_host_forward(void *descriptor) {
         uint32_t size;
         memcpy(&buffer, descriptor, sizeof(buffer));
         memcpy(&size, (const unsigned char *)descriptor + 8, sizeof(size));
-        ffrs_apply_isolated_read_payload(buffer, size, slot);
+        edit_request = ffrs_apply_isolated_read_payload(buffer, size, slot);
     }
 #endif
     nb_registers packet = {.x = {(uintptr_t)descriptor}};
     nb_status result = nb_call_from_host(&p->boundary, (void (*)(void))(uintptr_t)entry,
                                          &packet);
+#if defined(__ANDROID__)
+    if (edit_request && ffrs_finish_isolated_read_payload)
+        ffrs_finish_isolated_read_payload(edit_request, result == NB_OK && packet.x[0] != 0);
+#endif
     fprintf(stderr, "[save-abi] selected native forward result=%d object=%u\n",
             result, (unsigned)(result == NB_OK && packet.x[0] != 0));
     return result == NB_OK ? packet.x[0] : 0;

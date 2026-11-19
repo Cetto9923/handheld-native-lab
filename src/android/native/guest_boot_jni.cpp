@@ -252,16 +252,38 @@ std::string ToStdString(JNIEnv* env, jstring value) {
 static JavaVM *save_edit_vm = nullptr;
 static jclass save_edit_class = nullptr;
 static jmethodID save_edit_method = nullptr;
-static std::atomic<bool> save_edit_enabled{false};
+static jmethodID save_edit_begin = nullptr;
+static jmethodID save_edit_finish = nullptr;
+static std::atomic<int> save_edit_mode{0};
 static std::atomic<bool> save_edit_attempted{false};
-static void PrepareIsolatedSaveEdit(JNIEnv *env) {
+
+static bool PrepareIsolatedSaveEdit(JNIEnv *env, int mode) {
     jclass local = env->FindClass("org/ffrs/diagnostic/SaveCheater");
+    const char *edit_type = "Lorg/ffrs/diagnostic/SaveCheater$ReadEdit;";
     if (local && env->GetJavaVM(&save_edit_vm) == JNI_OK) {
-        save_edit_method = env->GetStaticMethodID(local, "editIsolatedReadPayload", "([B)Z");
-        if (save_edit_method) save_edit_class = static_cast<jclass>(env->NewGlobalRef(local));
+        if (mode == '2') {
+            save_edit_method = env->GetStaticMethodID(local, "editIsolatedReadPayload", "([B)Z");
+        } else {
+            std::string begin_signature = std::string("(I[B)") + edit_type;
+            std::string finish_signature = std::string("(") + edit_type + "Z)V";
+            save_edit_begin = env->GetStaticMethodID(local, "beginReadEdit", begin_signature.c_str());
+            if (!env->ExceptionCheck())
+                save_edit_finish = env->GetStaticMethodID(local, "finishReadEdit", finish_signature.c_str());
+            if (!env->ExceptionCheck()) {
+                jmethodID stage = env->GetStaticMethodID(local, "stageIsolatedReadEdit", "()V");
+                if (stage) env->CallStaticVoidMethod(local, stage);
+            }
+        }
+        if (!env->ExceptionCheck() && !save_edit_class)
+            save_edit_class = static_cast<jclass>(env->NewGlobalRef(local));
         env->DeleteLocalRef(local);
     }
-    if (env->ExceptionCheck()) env->ExceptionClear();
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        return false;
+    }
+    return save_edit_vm && save_edit_class &&
+        (mode == '2' ? save_edit_method != nullptr : save_edit_begin && save_edit_finish);
 }
 
 static jlong StartGuest(JNIEnv* env,
@@ -300,16 +322,15 @@ static jlong StartGuest(JNIEnv* env,
         std::string save = ToStdString(env, save_root);
         const std::string trace_file = request->log_path + ".save-abi";
         unsetenv("FFRS_ISOLATED_SAVE_ABI_TRACE");
-        save_edit_enabled.store(false);
+        save_edit_mode.store(0);
         const size_t save_leaf = save.find_last_of('/');
         if (save_leaf != std::string::npos && save.compare(save_leaf + 1, 18, "shield-regression-") == 0) {
             if (FILE *marker = fopen(trace_file.c_str(), "rb")) {
                 const int mode = fgetc(marker);
-                if (mode == '1' || mode == '2') setenv("FFRS_ISOLATED_SAVE_ABI_TRACE", "1", 1);
-                if (mode == '2') {
-                    if (!save_edit_class) PrepareIsolatedSaveEdit(env);
+                if (mode == '1' || mode == '2' || mode == '3') setenv("FFRS_ISOLATED_SAVE_ABI_TRACE", "1", 1);
+                if ((mode == '2' || mode == '3') && PrepareIsolatedSaveEdit(env, mode)) {
                     save_edit_attempted.store(false);
-                    save_edit_enabled.store(save_edit_class && save_edit_method && save_edit_vm);
+                    save_edit_mode.store(mode);
                 }
                 fclose(marker);
             }
@@ -429,54 +450,98 @@ static jlong StartGuest(JNIEnv* env,
 }
 
 struct IsolatedSaveEdit {
-    void *buffer;
-    uint32_t size;
+    void *buffer = nullptr;
+    uint32_t size = 0;
+    int slot = -1;
+    int mode = 0;
+    jobject request = nullptr;
+    bool accepted = false;
+    bool finish = false;
 };
 
 static void *EditIsolatedSaveOnHostStack(void *opaque) {
-    const auto &edit = *static_cast<IsolatedSaveEdit *>(opaque);
-    void *buffer = edit.buffer;
-    const uint32_t size = edit.size;
+    auto &edit = *static_cast<IsolatedSaveEdit *>(opaque);
     JNIEnv *env = nullptr;
     const jint state = save_edit_vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6);
     if (state != JNI_OK && (state != JNI_EDETACHED ||
             save_edit_vm->AttachCurrentThread(&env, nullptr) != JNI_OK)) return nullptr;
 
-    jbyteArray payload = env->NewByteArray(size);
-    if (payload && !env->ExceptionCheck()) {
-        env->SetByteArrayRegion(payload, 0, size, static_cast<const jbyte *>(buffer));
-        if (!env->ExceptionCheck() &&
-            env->CallStaticBooleanMethod(save_edit_class, save_edit_method, payload) &&
-            !env->ExceptionCheck()) {
-            jbyte *edited = env->GetByteArrayElements(payload, nullptr);
-            if (edited && !env->ExceptionCheck()) {
-                memcpy(buffer, edited, size);
-                env->ReleaseByteArrayElements(payload, edited, JNI_ABORT);
-                fprintf(stderr, "[save-abi] isolated HP edit applied bytes=%u\n", size);
+    if (edit.finish) {
+        env->CallStaticVoidMethod(save_edit_class, save_edit_finish, edit.request,
+                                  static_cast<jboolean>(edit.accepted));
+        env->DeleteGlobalRef(edit.request);
+    } else {
+        jbyteArray payload = env->NewByteArray(edit.size);
+        if (payload && !env->ExceptionCheck()) {
+            env->SetByteArrayRegion(payload, 0, edit.size, static_cast<const jbyte *>(edit.buffer));
+            jobject begun = nullptr;
+            bool ready = false;
+            if (!env->ExceptionCheck()) {
+                if (edit.mode == '2') {
+                    ready = env->CallStaticBooleanMethod(save_edit_class, save_edit_method, payload);
+                } else {
+                    begun = env->CallStaticObjectMethod(save_edit_class, save_edit_begin, edit.slot, payload);
+                    if (begun && !env->ExceptionCheck()) edit.request = env->NewGlobalRef(begun);
+                    ready = edit.request != nullptr;
+                }
             }
+            bool copied = false;
+            if (ready && !env->ExceptionCheck()) {
+                jbyte *bytes = env->GetByteArrayElements(payload, nullptr);
+                if (bytes) {
+                    memcpy(edit.buffer, bytes, edit.size);
+                    env->ReleaseByteArrayElements(payload, bytes, JNI_ABORT);
+                    copied = true;
+                    fprintf(stderr, "[save-abi] isolated read edit applied slot=%d bytes=%u\n",
+                            edit.slot, edit.size);
+                }
+            }
+            if (begun && !copied) {
+                if (env->ExceptionCheck()) env->ExceptionClear();
+                env->CallStaticVoidMethod(save_edit_class, save_edit_finish, begun, JNI_FALSE);
+                if (edit.request) env->DeleteGlobalRef(edit.request);
+                edit.request = nullptr;
+            }
+            if (begun) env->DeleteLocalRef(begun);
         }
+        if (payload) env->DeleteLocalRef(payload);
     }
     if (env->ExceptionCheck()) {
         env->ExceptionClear();
-        fprintf(stderr, "[save-abi] isolated HP edit rejected by JNI\n");
+        fprintf(stderr, "[save-abi] isolated read edit JNI failure\n");
     }
-    if (payload) env->DeleteLocalRef(payload);
     if (state == JNI_EDETACHED) save_edit_vm->DetachCurrentThread();
     return nullptr;
 }
 
-extern "C" void ffrs_apply_isolated_read_payload(void *buffer, uint32_t size, int slot) {
-    if (!save_edit_enabled.load() || !buffer || slot != 1 || size != 413968 ||
-        save_edit_attempted.exchange(true)) return;
-
-    // ART expects the calling SP to be on the registered pthread stack.
-    // The game is running on its own stack, so do JNI work on a host thread.
-    IsolatedSaveEdit edit{buffer, size};
+static bool RunIsolatedSaveEdit(IsolatedSaveEdit &edit) {
+    // ART expects SP on a registered pthread stack. The game uses its own stack.
     pthread_t worker;
-    if (pthread_create(&worker, nullptr, EditIsolatedSaveOnHostStack, &edit) != 0)
-        return;
-    if (pthread_join(worker, nullptr) != 0)
-        abort(); // Do not release the guest-owned buffer while a worker can use it.
+    if (pthread_create(&worker, nullptr, EditIsolatedSaveOnHostStack, &edit) != 0) return false;
+    if (pthread_join(worker, nullptr) != 0) abort();
+    return true;
+}
+
+extern "C" void *ffrs_apply_isolated_read_payload(void *buffer, uint32_t size, int slot) {
+    const int mode = save_edit_mode.load();
+    if (!mode || !buffer || slot != 1 || size != 413968) return nullptr;
+    if (mode == '2' && save_edit_attempted.exchange(true)) return nullptr;
+    IsolatedSaveEdit edit;
+    edit.buffer = buffer;
+    edit.size = size;
+    edit.slot = slot;
+    edit.mode = mode;
+    return RunIsolatedSaveEdit(edit) ? edit.request : nullptr;
+}
+
+extern "C" void ffrs_finish_isolated_read_payload(void *request, int accepted) {
+    if (!request) return;
+    IsolatedSaveEdit edit;
+    edit.request = static_cast<jobject>(request);
+    edit.accepted = accepted != 0;
+    edit.finish = true;
+    if (!RunIsolatedSaveEdit(edit))
+        fprintf(stderr, "[save-abi] isolated read edit acknowledgement unavailable\n");
 }
 
 extern "C" void xbg_request_memory_trim(unsigned level);

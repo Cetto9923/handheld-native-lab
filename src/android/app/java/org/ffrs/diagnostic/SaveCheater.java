@@ -533,6 +533,22 @@ public final class SaveCheater {
         }
     }
 
+    private static final ReadEdits readEdits = new ReadEdits();
+
+    static void stageReadEdit(ReadEdit request) { readEdits.stage(request); }
+
+    static ReadEdit beginReadEdit(int slot, byte[] payload) { return readEdits.begin(slot, payload); }
+
+    static void finishReadEdit(ReadEdit request, boolean accepted) {
+        readEdits.finish(request, accepted);
+        warn("queued read edit slot=" + request.slot + " accepted=" + accepted);
+    }
+
+    // Isolated round-trip fixture. The production menu will stage its own request.
+    static void stageIsolatedReadEdit() {
+        stageReadEdit(new ReadEdit(7654, null, null, null, null, null, 1001, 1));
+    }
+
     // Only the isolated native read-path diagnostic calls this entry point.
     static boolean editIsolatedReadPayload(byte[] plain) {
         if (plain.length != 413968) return false;
