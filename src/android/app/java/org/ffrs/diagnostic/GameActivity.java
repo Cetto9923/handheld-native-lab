@@ -2408,9 +2408,12 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         android.widget.RadioGroup rates = displayOptions(this, panel, "帧率上限",
                 new String[]{"沿用原设置", "30 FPS", "40 FPS", "60 FPS"},
                 FRAME_RATE_CHOICES, selectedFrameRate());
-        android.widget.RadioGroup quality = displayOptions(this, panel, "画质档位（重新进入游戏后生效）",
-                new String[]{"沿用原设置", "720p", "1080p"},
+        android.widget.RadioGroup quality = displayOptions(this, panel, "画面输出档位（重开游戏后生效）",
+                new String[]{"沿用原设置", "720p 输出", "1080p 输出"},
                 RENDER_HEIGHT_CHOICES, selectedRenderHeight());
+        TextView resolutionNote = new TextView(this);
+        resolutionNote.setText("内部渲染分辨率由游戏决定。");
+        panel.addView(resolutionNote);
         android.widget.ScrollView scroll = new android.widget.ScrollView(this);
         scroll.addView(panel);
         new android.app.AlertDialog.Builder(this)
