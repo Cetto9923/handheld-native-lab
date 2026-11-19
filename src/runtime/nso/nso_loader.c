@@ -421,26 +421,31 @@ void nso_report_save_payload_probe(void) {
                 result >> 31, result & 0x7fffffffu);
 }
 
-struct nso_result nso_install_save_payload_probe(nso_module *m) {
+struct nso_result nso_install_save_payload_probe(nso_module *m, uintptr_t gate_cell) {
     const uint64_t call = 0x3dcc668, original = 0x2bed654;
     const uint32_t expected_call = 0x97b883fb, expected_decrypt_call = 0x970e95fe;
     // Verified FP chain: deserialize caller -> slot helper -> actual load.
     // The high bit marks the caller observed for the selected load.
     // x15-x17 are scratch; arguments, flags and the return address stay intact.
-    uint32_t stub[16] = {
+    uint32_t stub[22] = {
         0xb9400811, // ldr w17, [x0, #8]
         0xf94003b0, // ldr x16, [x29]
         0xb40000d0, // cbz x16, publish
         0xf9400610, // ldr x16, [x16, #8]
-        0x5800014f, // ldr x15, selected return address
+        0x580001cf, // ldr x15, selected return address
         0xca0f0210, // eor x16, x16, x15
         0xb5000050, // cbnz x16, publish
         0x32010231, // orr w17, w17, #0x80000000
-        0x58000090, // publish: ldr x16, record address
+        0x58000110, // publish: ldr x16, record address
         0x889ffe11, // stlr w17, [x16]
-        0, 0xd503201f, 0, 0, 0, 0
+        0x36f800b1, // tbz w17, #31, original
+        0x58000130, // ldr x16, gate cell address
+        0xc8dffe10, // ldar x16, [x16]
+        0xb4000050, // cbz x16, original
+        0xd61f0200, // br x16
+        0, 0, 0, 0, 0, 0, 0
     };
-    if (!m || !m->ready || m->closing || m->executor_required)
+    if (!m || !m->ready || m->closing || m->executor_required || !gate_cell || gate_cell % 8)
         return load_status(NSO_INVALID, EINVAL, 0);
     char build_id[33];
     nso_build_id(m, build_id);
@@ -449,23 +454,25 @@ struct nso_result nso_install_save_payload_probe(nso_module *m) {
         rd32(m->image + call) != expected_call ||
         rd32(m->image + 0x3dcc648) != expected_decrypt_call ||
         rd32(m->image + 0x428a4d8) != 0x940000b5 ||
-        m->text_padding_hi < m->text_hi + 128)
+        m->text_padding_hi < m->text_hi + 192)
         return load_status(NSO_UNSUPPORTED, ENOTSUP, 0);
 
     // Leave the final 64 bytes available to the existing R3 trampoline.
-    const uint64_t offset = (m->text_padding_hi - 128) & ~UINT64_C(15);
+    const uint64_t offset = (m->text_padding_hi - 192) & ~UINT64_C(15);
     uint32_t branch;
     if (offset < m->text_hi ||
         !text_branch(call, offset, &branch) ||
-        !text_branch(offset + 40, original, &stub[10]))
+        !text_branch(offset + 60, original, &stub[15]))
         return load_status(NSO_UNSUPPORTED, ENOTSUP, 0);
     for (size_t i = 0; i < sizeof(stub); ++i)
         if (m->image[offset + i] != 0)
             return load_status(NSO_UNSUPPORTED, ENOTSUP, 0);
     const uint64_t destination = (uintptr_t)&save_payload_size;
     const uint64_t selected_return = (uintptr_t)m->image + 0x428a4dc;
-    memcpy(&stub[12], &destination, sizeof(destination));
-    memcpy(&stub[14], &selected_return, sizeof(selected_return));
+    const uint64_t gate_address = gate_cell;
+    memcpy(&stub[16], &destination, sizeof(destination));
+    memcpy(&stub[18], &selected_return, sizeof(selected_return));
+    memcpy(&stub[20], &gate_address, sizeof(gate_address));
     branch |= 0x80000000u; // B to BL: retain the original caller's return PC.
 
     uint8_t *start = m->image + down(call);

@@ -119,7 +119,7 @@ struct nso_result nso_apply_startup_patch_file(nso_module *, const char *path,
                                               uintptr_t r3_state);
 
 /* Isolated diagnostics, before publishing the executable. */
-struct nso_result nso_install_save_payload_probe(nso_module *);
+struct nso_result nso_install_save_payload_probe(nso_module *, uintptr_t gate_cell);
 void nso_report_save_payload_probe(void);
 
 /* Quiescent host control only. These are validated imported function identities,

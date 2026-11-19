@@ -27,6 +27,7 @@
 #include <math.h>
 #include <pthread.h>
 #include <stdio.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 #if defined(__ANDROID__)
@@ -111,6 +112,8 @@ struct guest_process {
     nb_scope boundary;
     nb_import *bindings;
     size_t bindings_count;
+    _Atomic uintptr_t save_payload_gate;
+    int save_payload_probe;
     int boundary_initialized,boundary_prepared,guest_session_ended,init_attempted;
     uint64_t guest_x18;
     guest_os_tls_manager *os_tls;
@@ -437,7 +440,10 @@ struct nso_result guest_process_load(guest_process *p,const char *path,char *err
         }
     }
     if (loaded.result.status == NSO_OK && getenv("FFRS_ISOLATED_SAVE_ABI_TRACE")) {
-        struct nso_result probe = nso_install_save_payload_probe(p->module);
+        atomic_init(&p->save_payload_gate, 0);
+        struct nso_result probe = nso_install_save_payload_probe(p->module,
+                                            (uintptr_t)&p->save_payload_gate);
+        p->save_payload_probe = probe.status == NSO_OK;
         if (probe.status != NSO_OK) {
             fprintf(stderr, "[save-abi] payload probe rejected status=%d error=%d\n",
                     probe.status, probe.native_error);
@@ -2002,18 +2008,34 @@ found:
         .gp_arguments=(uint8_t)arguments,.gp_returns=(uint8_t)returns};
     return 1;
 }
+static uintptr_t save_payload_host_forward(void *descriptor) {
+    guest_process *p = current_process ? current_process : exclusive_process;
+    uint64_t entry;
+    if (!p || !p->save_payload_probe ||
+        nso_entry_address(p->module, 0x2bed654, &entry).status != NSO_OK)
+        return 0;
+    nb_registers packet = {.x = {(uintptr_t)descriptor}};
+    nb_status result = nb_call_from_host(&p->boundary, (void (*)(void))(uintptr_t)entry,
+                                         &packet);
+    fprintf(stderr, "[save-abi] selected native forward result=%d object=%u\n",
+            result, (unsigned)(result == NB_OK && packet.x[0] != 0));
+    return result == NB_OK ? packet.x[0] : 0;
+}
+
 static struct nso_result prepare_boundary_locked(guest_process *p) {
     if(p->guest_session_ended)return status(NSO_UNSUPPORTED,ENOTSUP,0);
     if(p->boundary_prepared)return status(NSO_OK,0,0);
     if(p->boundary_initialized || p->bindings)return status(NSO_RETAINED,EBUSY,0);
     size_t count=nso_bound_import_count(p->module);
+    const size_t save_gates = p->save_payload_probe ? 1 : 0;
     size_t virtual_count=0;
     const struct ffrs_movie_virtual *virtuals=ffrs_movie_decoder_virtuals(&virtual_count);
-    if(virtual_count>64 || (virtual_count && !virtuals) || count>SIZE_MAX-virtual_count ||
-       count+virtual_count>SIZE_MAX/sizeof(nb_import) || count>SIZE_MAX/sizeof(struct nso_import_target))return status(NSO_OWNER_ERROR,EOVERFLOW,0);
+    if(virtual_count>64 || (virtual_count && !virtuals) || count>SIZE_MAX-virtual_count-save_gates ||
+       count+virtual_count+save_gates>SIZE_MAX/sizeof(nb_import) || count>SIZE_MAX/sizeof(struct nso_import_target))return status(NSO_OWNER_ERROR,EOVERFLOW,0);
     struct nso_import_target *targets=count?calloc(count,sizeof(*targets)):NULL;
-    nb_import *bindings=(count+virtual_count)?calloc(count+virtual_count,sizeof(*bindings)):NULL;
-    if((count && !targets) || ((count+virtual_count) && !bindings)) {free(targets);free(bindings);return status(NSO_OWNER_ERROR,ENOMEM,0);}
+    const size_t capacity = count + virtual_count + save_gates;
+    nb_import *bindings=capacity?calloc(capacity,sizeof(*bindings)):NULL;
+    if((count && !targets) || (capacity && !bindings)) {free(targets);free(bindings);return status(NSO_OWNER_ERROR,ENOMEM,0);}
     /* A data import (STT_OBJECT) is addressed by the guest, never called: the
      * loader already wrote the resolved object address into the guest GOT
      * (R_GLOB_DAT, zero addend) and the guest loads the object value from
@@ -2050,7 +2072,7 @@ static struct nso_result prepare_boundary_locked(guest_process *p) {
     }
     nb_status s=nb_scope_init(&p->boundary);
     if(s!=NB_OK) {free(targets);free(bindings);fprintf(stderr,"[boundary-error] scope-init status=%d; no guest execution\n",s);return status(s==NB_UNSUPPORTED?NSO_UNSUPPORTED:NSO_OWNER_ERROR,s==NB_UNSUPPORTED?ENOTSUP:EIO,0);}
-    p->boundary_initialized=1;p->bindings=bindings;p->bindings_count=callable+virtual_count;
+    p->boundary_initialized=1;p->bindings=bindings;p->bindings_count=callable+virtual_count+save_gates;
     /* The NVN command buffer layer calls the guest through the boundary from now on. */
     nvn_command_buffer_set_guest_call(nvn_guest_call_through_boundary);
     struct nso_result r=status(NSO_OK,0,0);
@@ -2081,6 +2103,17 @@ static struct nso_result prepare_boundary_locked(guest_process *p) {
         s=nb_import_bind(&bindings[callable+i],&p->boundary,virtuals[i].target,&sig);
         if(s!=NB_OK){fprintf(stderr,"[boundary-error] movie virtual=%zu status=%d; ownership retained\n",i,s);r=status(NSO_RETAINED,EIO,0);break;}
         virtual_gates[i]=(void*)nb_import_entry(&bindings[callable+i]);
+    }
+    if (r.status == NSO_OK && save_gates) {
+        nb_import *gate = &bindings[callable + virtual_count];
+        nb_signature sig = {.version=1, .flags=NB_SIG_REGISTER_ONLY,
+                            .gp_arguments=1, .gp_returns=1};
+        s = nb_import_bind(gate, &p->boundary, (void (*)(void))save_payload_host_forward, &sig);
+        if (s == NB_OK)
+            atomic_store_explicit(&p->save_payload_gate, (uintptr_t)nb_import_entry(gate),
+                                  memory_order_release);
+        else
+            fprintf(stderr, "[save-abi] host gate unavailable status=%d; using original call\n", s);
     }
     if(r.status==NSO_OK)r=nso_retarget_imports(p->module,targets,callable);
     if(r.status==NSO_OK && ffrs_movie_decoder_publish_virtuals(virtual_gates,virtual_count))r=status(NSO_RETAINED,EIO,0);
