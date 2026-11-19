@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import xml.etree.ElementTree as ET
 import zipfile
@@ -58,11 +59,19 @@ def main():
     manifest = out / 'AndroidManifest.xml'
     tree.write(manifest, encoding='utf-8', xml_declaration=True)
     resources = out / 'res'
-    (resources / 'mipmap').mkdir(parents=True)
-    (resources / 'values').mkdir()
+    shutil.copytree(ROOT / 'src/android/app/gamewindow/res', resources)
     (resources / 'mipmap/ic_launcher.xml').write_text(ICON)
-    (resources / 'values/strings.xml').write_text(
-        '<resources><string name="app_name">Handheld Native Lab · Preview</string></resources>\n')
+    for strings in resources.glob('values*/strings.xml'):
+        localized = ET.parse(strings)
+        app_name = localized.find("./string[@name='app_name']")
+        if app_name is not None:
+            app_name.text = 'Handheld Native Lab · Preview'
+            localized.write(strings, encoding='utf-8', xml_declaration=True)
+    shortcuts_file = resources / 'xml/report_shortcuts.xml'
+    shortcuts = ET.parse(shortcuts_file)
+    for intent in shortcuts.iter('intent'):
+        intent.set(ANDROID + 'targetPackage', PACKAGE)
+    shortcuts.write(shortcuts_file, encoding='utf-8', xml_declaration=True)
     env = os.environ.copy()
     env.update(FFRS_APP_MANIFEST=str(manifest), FFRS_APP_RES=str(resources),
                FFRS_APK_DIR=str(out), FFRS_APK_NAME='handheld-native-lab-preview.apk',
