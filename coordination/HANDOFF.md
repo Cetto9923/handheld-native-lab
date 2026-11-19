@@ -5796,3 +5796,7 @@ UNIVERSAL74-20261118。1.0.74 通用 APK 4b9891436357，宿主 135 项通过。v
 OPPO-THOR-20261119。统一包 1.0.74 基线 da73305，原 OPPO 与 Thor 均未连接。Open Android 构建与原机验收分别记录。
 
 OPPO-THOR-20261119。1.0.75 通用候选 b82ce508bfcb 已交付，136 项宿主检查、Android 构建及 OPPO 独立 Vulkan 组件通过，两台原设备待测。 详见 coordination/results/OPPO-THOR-20261119.md。
+
+DISPLAY-SETTINGS-20261120。1.0.75 通用候选 7a29e94 基线，使用已实测的游戏手持/底座档，分开控制帧率与设备兼容配置，跟踪 Adreno 840 回归。
+
+DISPLAY-SETTINGS-20261120。1.0.76 通用候选 3835a610706e 已交付，137 项宿主检查与 Android 构建通过。原机菜单、画质、性能和开场待复测。 详见 coordination/results/DISPLAY-SETTINGS-20261120.md。

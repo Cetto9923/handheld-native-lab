@@ -1,6 +1,6 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-19T15:15:21.114711+08:00
+状态事件时间：2026-11-20T00:22:14.940344+08:00
 阶段：1.0.73兼容接续；诊断导出117宿主与荣耀流程通过，主库空轨卡顿专项、OOT接入与在线更新并行
 总控：Codex /root 本轮接管
 更新方式：按事件更新，没有后台自动刷新。
@@ -279,6 +279,7 @@
 | CODEX-LIBRARY-UPDATE-RECOVERY-20261118 | 在线更新激活与失败回滚 | in_progress | /root/library_update_recovery | 无 | 无额外门禁 | 独立候选目录 |
 | UNIVERSAL74-20261118 | 交付主干集成 | integrated_local_candidate | Codex /root | 无 | 无额外门禁 | task/T-universal74-20261118 |
 | OPPO-THOR-20261119 | 性能与内存兼容 | candidate_delivered_device_pending | Codex /root | 无 | 无额外门禁 | task/T-oppo-thor-20261119 |
+| DISPLAY-SETTINGS-20261120 | 图形设置与虚拟输入 | candidate_delivered_device_pending | Codex /root | 无 | 无额外门禁 | task/T-display-settings-20261120 |
 
 ## 独占写入
 

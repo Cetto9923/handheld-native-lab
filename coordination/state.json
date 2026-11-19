@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-19T15:15:21.114711+08:00",
+ "updated_at": "2026-11-20T00:22:14.940344+08:00",
  "phase": "1.0.73兼容接续；诊断导出117宿主与荣耀流程通过，主库空轨卡顿专项、OOT接入与在线更新并行",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -11998,6 +11998,37 @@
    "checkpoint": "1.0.75 通用候选 b82ce508bfcb 已交付，136 项宿主检查、Android 构建及 OPPO 独立 Vulkan 组件通过，两台原设备待测。",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/oppo-thor-20261119",
    "branch": "task/T-oppo-thor-20261119"
+  },
+  {
+   "id": "DISPLAY-SETTINGS-20261120",
+   "owner": "Codex /root",
+   "role": "图形设置与虚拟输入",
+   "objective": "设置30/40/60 FPS和720p/1080p，加入虚拟R3，核查8e5升级回归",
+   "inputs": [
+    "用户请求和截图",
+    "原1.0.73/1.0.74与1.0.75候选"
+   ],
+   "outputs": [
+    "/Users/yuyan9923/GitHub/游戏发布包/02-最终幻想_共鸣_FFRS/待验证/1.0.76-画质帧率通用测试/FFRS-1.0.76-universal.apk",
+    "coordination/results/DISPLAY-SETTINGS-20261120.md"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "status": "candidate_delivered_device_pending",
+   "write_scope": [
+    "src/android/app/",
+    "src/android/native/guest_boot_jni.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "src/graphics/nvn_vulkan/engine/xbg_game.h",
+    "tests/device/",
+    "scripts/verify_host.py",
+    "coordination/",
+    ".local/case/"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/display-settings-20261120",
+   "branch": "task/T-display-settings-20261120",
+   "checkpoint": "1.0.76 通用候选 3835a610706e 已交付，137 项宿主检查与 Android 构建通过。原机菜单、画质、性能和开场待复测。",
+   "acceptance": "设置实际送游戏和限帧器，触屏R3按住和松开，完成宿主/Android验证，原机验收另记"
   }
  ],
  "blockers": [
