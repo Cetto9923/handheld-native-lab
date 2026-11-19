@@ -1,6 +1,8 @@
 package org.ffrs.diagnostic;
 
 import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -149,6 +151,19 @@ public final class SaveCheaterRoundTrip {
     }
 
     public static void main(String[] args) throws Exception {
+        byte[] directPayload = plainBody();
+        byte[] originalPayload = directPayload.clone();
+        SaveCheater.Result direct = new SaveCheater.Result();
+        require(SaveCheater.editPayload(directPayload, 8000, null, null, null,
+                        null, null, UNIT_IDS[0], direct),
+                "plaintext edit failed: " + direct.message);
+        int hpOffset = direct.units.get(0).hitPointOffset;
+        require(ByteBuffer.wrap(directPayload).order(ByteOrder.LITTLE_ENDIAN)
+                        .getInt(hpOffset) == 8000, "plaintext HP was not updated");
+        System.arraycopy(originalPayload, hpOffset, directPayload, hpOffset, Integer.BYTES);
+        require(Arrays.equals(originalPayload, directPayload),
+                "plaintext edit changed bytes outside the selected HP");
+
         byte[] key;
         try (InputStream in = SaveCheaterRoundTrip.class.getClassLoader()
                 .getResourceAsStream("assets/ffrs_save_key.bin")) {

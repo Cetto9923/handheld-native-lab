@@ -410,23 +410,8 @@ public final class SaveCheater {
             return result;
         }
 
-        List<Unit> units = groupUnits(plain);
-        readCaps(plain, units);
-        result.units.addAll(units);
-        if (units.isEmpty()) {
-            result.message = "没有找到单位数据";
+        if (!editPayload(plain, hp, maxHp, mp, maxMp, exp, level, onlyUnit, result))
             return result;
-        }
-
-        for (Unit u : units) {
-            if (onlyUnit != null && u.unitId != onlyUnit) continue;
-            if (hp != null) put(plain, u.hitPointOffset, hp, result, u.unitId, "HP");
-            if (maxHp != null) put(plain, u.maxHitPointOffset, maxHp, result, u.unitId, "HP上限");
-            if (mp != null) put(plain, u.magicPointOffset, mp, result, u.unitId, "MP");
-            if (maxMp != null) put(plain, u.maxMagicPointOffset, maxMp, result, u.unitId, "MP上限");
-            if (exp != null) put(plain, u.experienceOffset, exp, result, u.unitId, "经验");
-            if (level != null) putLevel(plain, u, level, result);
-        }
 
         byte[] outBody;
         try {
@@ -484,6 +469,30 @@ public final class SaveCheater {
                 + "\n本局不生效：运行中的数值在 guest 内存里，存档只改到下次读档"
                 + "\n回标题画面 Load Game 重新读档后生效";
         return result;
+    }
+
+    // The caller owns the writable, validated payload and its transaction.
+    // This parser does not open a save file or acquire an encryption key.
+    static boolean editPayload(byte[] plain, Integer hp, Integer maxHp, Integer mp, Integer maxMp,
+                               Integer exp, Integer level, Integer onlyUnit, Result result) {
+        List<Unit> units = groupUnits(plain);
+        readCaps(plain, units);
+        result.units.addAll(units);
+        if (units.isEmpty()) {
+            result.message = "没有找到单位数据";
+            return false;
+        }
+
+        for (Unit u : units) {
+            if (onlyUnit != null && u.unitId != onlyUnit) continue;
+            if (hp != null) put(plain, u.hitPointOffset, hp, result, u.unitId, "HP");
+            if (maxHp != null) put(plain, u.maxHitPointOffset, maxHp, result, u.unitId, "HP上限");
+            if (mp != null) put(plain, u.magicPointOffset, mp, result, u.unitId, "MP");
+            if (maxMp != null) put(plain, u.maxMagicPointOffset, maxMp, result, u.unitId, "MP上限");
+            if (exp != null) put(plain, u.experienceOffset, exp, result, u.unitId, "经验");
+            if (level != null) putLevel(plain, u, level, result);
+        }
+        return true;
     }
 
     /** The copy of the slot that was taken before the first cheat edit. */
