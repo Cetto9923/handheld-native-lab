@@ -1047,17 +1047,19 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     }
 
     private void openSaveCheatDialog() {
-        if (!SaveCheater.available()) {
-            toast("金手指不可用：存档密钥未随包提供");
-            Log.w(TAG, "cheat unavailable: no save key in assets");
+        final boolean offline = SaveCheater.available();
+        final SaveCheater.ReadSnapshot snapshot = offline ? null : SaveCheater.readSnapshot();
+        if (!offline && snapshot == null) {
+            showFlowMessage("金手指", "请先读取存档再打开数值修改。");
             return;
         }
-        final File slot = primarySaveSlot();
-        if (slot == null) {
+        final File slot = offline ? primarySaveSlot() : null;
+        if (offline && slot == null) {
             showFlowMessage("请先保存游戏", "在游戏内保存一次，再打开金手指。修改完成后，返回标题画面读取该存档生效。");
             return;
         }
-        final SaveCheater.Result info = SaveCheater.inspect(slot);
+        final int queuedSlot = snapshot == null ? -1 : snapshot.slot;
+        final SaveCheater.Result info = offline ? SaveCheater.inspect(slot) : snapshot.info;
         if (!info.ok) {
             toast("读取存档失败：" + info.message);
             return;
@@ -1078,7 +1080,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         // game keeps its own copy of the roster in the guest memory, so the
         // edited save is only read by the next load.
         TextView timingView = new TextView(this);
-        timingView.setText("建议在标题画面修改。保存后重新读取存档生效。");
+        timingView.setText(offline ? "建议在标题画面修改。保存后重新读取存档生效。"
+                : String.format(java.util.Locale.ROOT, "返回标题读取存档 %02d 时生效一次。", queuedSlot));
         timingView.setTextSize(12f);
         box.addView(timingView);
 
@@ -1093,7 +1096,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         // The names come from a table that the guest memory scan produced, so
         // they can be refreshed without rebuilding the app.
         final java.util.Map<Integer, String> nameMap = unitNames();
-        final SaveCheater.Result originalInfo = SaveCheater.original(slot);
+        final SaveCheater.Result originalInfo = offline ? SaveCheater.original(slot) : info;
         final java.util.Map<Integer, SaveCheater.Unit> originalById = new java.util.HashMap<>();
         for (SaveCheater.Unit u : originalInfo.units) originalById.put(u.unitId, u);
         String[] names = new String[roster.size()];
@@ -1112,12 +1115,12 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
         Button preset = new Button(this);
         preset.setText("所选角色一键满状态");
-        preset.setOnClickListener(new CheatPreset(this, slot, picker, roster));
+        preset.setOnClickListener(new CheatPreset(this, slot, queuedSlot, picker, roster));
         box.addView(preset);
 
         Button all = new Button(this);
         all.setText("全体角色一键满状态");
-        all.setOnClickListener(new CheatAll(this, slot));
+        all.setOnClickListener(new CheatAll(this, slot, queuedSlot));
         box.addView(all);
 
         TextView presetHint = new TextView(this);
@@ -1150,7 +1153,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         TextView originalView = new TextView(this);
         originalView.setTextSize(12f);
         custom.addView(originalView);
-        final CheatFields fields = new CheatFields(this, hpField, maxHpField, mpField, maxMpField, expField, levelField);
+        final CheatFields fields = new CheatFields(this, hpField, maxHpField, mpField, maxMpField, expField, levelField, !offline);
         fields.setOriginalView(originalView);
         fields.setOriginals(originalById);
         picker.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
@@ -1163,14 +1166,16 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         if (!roster.isEmpty()) fields.fill(roster.get(0));
 
         Button apply = new Button(this);
-        apply.setText("保存所选角色的自定义数值");
-        apply.setOnClickListener(new CheatApply(this, slot, fields, picker, roster));
+        apply.setText(offline ? "保存所选角色的自定义数值" : "预约下次读档时修改");
+        apply.setOnClickListener(new CheatApply(this, slot, queuedSlot, fields, picker, roster));
         custom.addView(apply);
 
-        Button restore = new Button(this);
-        restore.setText("恢复修改前的原始存档");
-        restore.setOnClickListener(new CheatRestore(this, slot));
-        box.addView(restore);
+        if (offline) {
+            Button restore = new Button(this);
+            restore.setText("恢复修改前的原始存档");
+            restore.setOnClickListener(new CheatRestore(this, slot));
+            box.addView(restore);
+        }
 
         cheatDialog = new android.app.AlertDialog.Builder(this)
                 .setTitle("金手指 · 存档修改")
@@ -1205,6 +1210,10 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             return;
         }
         if (cheatDialog != null) cheatDialog.dismiss();
+        if (result.queued) {
+            showFlowMessage(result.message, RELOAD_STEPS);
+            return;
+        }
         showFlowMessage("修改已保存，请读档生效", "存档已更新。\n\n" + RELOAD_STEPS);
     }
 
@@ -1587,9 +1596,10 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     private static final class CheatFields {
         private final GameActivity owner;
         private final EditText hp, maxHp, mp, maxMp, exp, level;
+        private final boolean startEmpty;
         CheatFields(GameActivity o, EditText hp, EditText maxHp, EditText mp,
-                    EditText maxMp, EditText exp, EditText level) {
-            owner = o; this.hp = hp; this.maxHp = maxHp; this.mp = mp;
+                    EditText maxMp, EditText exp, EditText level, boolean startEmpty) {
+            owner = o; this.startEmpty = startEmpty; this.hp = hp; this.maxHp = maxHp; this.mp = mp;
             this.maxMp = maxMp; this.exp = exp; this.level = level;
         }
         private TextView originalView;
@@ -1598,12 +1608,12 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         void setOriginals(java.util.Map<Integer, SaveCheater.Unit> m) { originalById = m; }
         /** Loads the unit's current values into the fields. */
         void fill(SaveCheater.Unit u) {
-            hp.setText(String.valueOf(u.hitPoint));
-            maxHp.setText(String.valueOf(u.maxHitPoint));
-            mp.setText(String.valueOf(u.magicPoint));
-            maxMp.setText(String.valueOf(u.maxMagicPoint));
-            exp.setText(String.valueOf(u.experience));
-            level.setText(String.valueOf(u.level));
+            hp.setText(startEmpty ? "" : String.valueOf(u.hitPoint));
+            maxHp.setText(startEmpty ? "" : String.valueOf(u.maxHitPoint));
+            mp.setText(startEmpty ? "" : String.valueOf(u.magicPoint));
+            maxMp.setText(startEmpty ? "" : String.valueOf(u.maxMagicPoint));
+            exp.setText(startEmpty ? "" : String.valueOf(u.experience));
+            level.setText(startEmpty ? "" : String.valueOf(u.level));
             if (originalView == null) return;
             SaveCheater.Unit o = originalById.get(u.unitId);
             originalView.setText(o == null
@@ -1632,14 +1642,23 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
      * trips an internal error on a lambda or an anonymous class that captures
      * a local variable.
      */
+    private static SaveCheater.Result submitCheat(File slot, int queuedSlot,
+            Integer hp, Integer maxHp, Integer mp, Integer maxMp, Integer exp, Integer level,
+            Integer unit) {
+        return queuedSlot >= 0
+                ? SaveCheater.queueMenuReadEdit(queuedSlot, hp, maxHp, mp, maxMp, exp, level, unit)
+                : SaveCheater.apply(slot, hp, maxHp, mp, maxMp, exp, level, unit);
+    }
+
     private static final class CheatApply implements View.OnClickListener {
         private final GameActivity owner;
         private final File slot;
+        private final int queuedSlot;
         private final CheatFields fields;
         private final Spinner picker;
         private final List<SaveCheater.Unit> roster;
-        CheatApply(GameActivity o, File s, CheatFields fields, Spinner picker, List<SaveCheater.Unit> roster) {
-            owner = o; slot = s; this.fields = fields; this.picker = picker; this.roster = roster;
+        CheatApply(GameActivity o, File s, int queuedSlot, CheatFields fields, Spinner picker, List<SaveCheater.Unit> roster) {
+            owner = o; slot = s; this.queuedSlot = queuedSlot; this.fields = fields; this.picker = picker; this.roster = roster;
         }
         @Override public void onClick(View v) {
             Integer hpValue = fields.hpValue(), maxHpValue = fields.maxHpValue();
@@ -1651,7 +1670,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 return;
             }
             Integer unit = selectedUnit(picker, roster);
-            SaveCheater.Result r = SaveCheater.apply(slot, hpValue, maxHpValue, mpValue,
+            SaveCheater.Result r = submitCheat(slot, queuedSlot, hpValue, maxHpValue, mpValue,
                     maxMpValue, expValue, levelValue, unit);
             owner.showCheatResult(r);
             Log.i(TAG, "cheat applied unit=" + unit + ": " + r.message + " " + r.edits);
@@ -1662,14 +1681,15 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     private static final class CheatPreset implements View.OnClickListener {
         private final GameActivity owner;
         private final File slot;
+        private final int queuedSlot;
         private final Spinner picker;
         private final List<SaveCheater.Unit> roster;
-        CheatPreset(GameActivity o, File s, Spinner picker, List<SaveCheater.Unit> roster) {
-            owner = o; slot = s; this.picker = picker; this.roster = roster;
+        CheatPreset(GameActivity o, File s, int queuedSlot, Spinner picker, List<SaveCheater.Unit> roster) {
+            owner = o; slot = s; this.queuedSlot = queuedSlot; this.picker = picker; this.roster = roster;
         }
         @Override public void onClick(View v) {
             Integer unit = selectedUnit(picker, roster);
-            SaveCheater.Result r = SaveCheater.apply(slot, 99999, 99999, 999, 999, 9999999, 99, unit);
+            SaveCheater.Result r = submitCheat(slot, queuedSlot, 99999, 99999, 999, 999, 9999999, 99, unit);
             owner.showCheatResult(r);
             Log.i(TAG, "cheat preset unit=" + unit + ": " + r.message + " " + r.edits);
         }
@@ -1679,9 +1699,10 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     private static final class CheatAll implements View.OnClickListener {
         private final GameActivity owner;
         private final File slot;
-        CheatAll(GameActivity o, File s) { owner = o; slot = s; }
+        private final int queuedSlot;
+        CheatAll(GameActivity o, File s, int queuedSlot) { owner = o; slot = s; this.queuedSlot = queuedSlot; }
         @Override public void onClick(View v) {
-            SaveCheater.Result r = SaveCheater.apply(slot, 99999, 99999, 999, 999, 9999999, 99, null);
+            SaveCheater.Result r = submitCheat(slot, queuedSlot, 99999, 99999, 999, 999, 9999999, 99, null);
             owner.showCheatResult(r);
             Log.i(TAG, "cheat all applied: " + r.message + " " + r.edits);
         }

@@ -72,6 +72,7 @@ public final class SaveCheater {
     /** Outcome of a cheat run, suitable for showing to the user. */
     public static final class Result {
         public boolean ok;
+        boolean queued;
         public String message = "";
         /** True when this run wrote the untouched slot aside first. */
         public boolean backupCreated;
@@ -538,6 +539,38 @@ public final class SaveCheater {
     static void stageReadEdit(ReadEdit request) { readEdits.stage(request); }
 
     static ReadEdit beginReadEdit(int slot, byte[] payload) { return readEdits.begin(slot, payload); }
+
+    static final class ReadSnapshot {
+        final int slot;
+        final Result info;
+        ReadSnapshot(int slot, Result info) {
+            this.slot = slot;
+            this.info = info;
+        }
+    }
+
+    private static volatile ReadSnapshot lastReadSnapshot;
+
+    static ReadSnapshot readSnapshot() { return lastReadSnapshot; }
+
+    static ReadEdit beginMenuReadEdit(int slot, byte[] plain) {
+        Result info = new Result();
+        info.units.addAll(groupUnits(plain));
+        readCaps(plain, info.units);
+        info.ok = !info.units.isEmpty();
+        lastReadSnapshot = info.ok ? new ReadSnapshot(slot, info) : null;
+        return info.ok ? beginReadEdit(slot, plain) : null;
+    }
+
+    static Result queueMenuReadEdit(int slot, Integer hp, Integer maxHp, Integer mp,
+                                   Integer maxMp, Integer exp, Integer level, Integer unit) {
+        Result result = new Result();
+        stageReadEdit(new ReadEdit(hp, maxHp, mp, maxMp, exp, level, unit, slot));
+        result.ok = true;
+        result.queued = true;
+        result.message = String.format(java.util.Locale.ROOT, "已预约存档 %02d 的下次读取", slot);
+        return result;
+    }
 
     static void finishReadEdit(ReadEdit request, boolean accepted) {
         readEdits.finish(request, accepted);

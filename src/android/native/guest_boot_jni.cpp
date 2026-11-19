@@ -266,10 +266,11 @@ static bool PrepareIsolatedSaveEdit(JNIEnv *env, int mode) {
         } else {
             std::string begin_signature = std::string("(I[B)") + edit_type;
             std::string finish_signature = std::string("(") + edit_type + "Z)V";
-            save_edit_begin = env->GetStaticMethodID(local, "beginReadEdit", begin_signature.c_str());
+            save_edit_begin = env->GetStaticMethodID(local, mode == '4' ? "beginMenuReadEdit" : "beginReadEdit",
+                                                   begin_signature.c_str());
             if (!env->ExceptionCheck())
                 save_edit_finish = env->GetStaticMethodID(local, "finishReadEdit", finish_signature.c_str());
-            if (!env->ExceptionCheck()) {
+            if (mode == '3' && !env->ExceptionCheck()) {
                 jmethodID stage = env->GetStaticMethodID(local, "stageIsolatedReadEdit", "()V");
                 if (stage) env->CallStaticVoidMethod(local, stage);
             }
@@ -327,8 +328,8 @@ static jlong StartGuest(JNIEnv* env,
         if (save_leaf != std::string::npos && save.compare(save_leaf + 1, 18, "shield-regression-") == 0) {
             if (FILE *marker = fopen(trace_file.c_str(), "rb")) {
                 const int mode = fgetc(marker);
-                if (mode == '1' || mode == '2' || mode == '3') setenv("FFRS_ISOLATED_SAVE_ABI_TRACE", "1", 1);
-                if ((mode == '2' || mode == '3') && PrepareIsolatedSaveEdit(env, mode)) {
+                if (mode == '1' || mode == '2' || mode == '3' || mode == '4') setenv("FFRS_ISOLATED_SAVE_ABI_TRACE", "1", 1);
+                if ((mode == '2' || mode == '3' || mode == '4') && PrepareIsolatedSaveEdit(env, mode)) {
                     save_edit_attempted.store(false);
                     save_edit_mode.store(mode);
                 }
@@ -524,7 +525,9 @@ static bool RunIsolatedSaveEdit(IsolatedSaveEdit &edit) {
 
 extern "C" void *ffrs_apply_isolated_read_payload(void *buffer, uint32_t size, int slot) {
     const int mode = save_edit_mode.load();
-    if (!mode || !buffer || slot != 1 || size != 413968) return nullptr;
+    if (!mode || !buffer || slot < 0 || slot > 9 || !size || size > 16u * 1024 * 1024)
+        return nullptr;
+    if (mode != '4' && (slot != 1 || size != 413968)) return nullptr;
     if (mode == '2' && save_edit_attempted.exchange(true)) return nullptr;
     IsolatedSaveEdit edit;
     edit.buffer = buffer;
