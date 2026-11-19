@@ -199,9 +199,9 @@ public class RotationContract {
         self.assertIn('android:screenOrientation="fullSensor"', (ROOT / 'src/android/app/gamewindow/AndroidManifest.xml').read_text())
         self.assertIn('else if (i == 9) owner.toggleFpsOverlay();', source)
         self.assertIn('else if (i == 10) owner.rotateScreen();', source)
-        self.assertIn('else owner.openDisplaySettings();', source)
+        self.assertIn('else if (i == 11) owner.openDisplaySettings();', source)
         self.assertIn('"旋转屏幕180°"', source)
-        self.assertIn('private final RectF[] menuItems = new RectF[12];', source)
+        self.assertIn('private final RectF[] menuItems = new RectF[13];', source)
 
     def test_apk_fingerprint_hashes_actual_bytes(self):
         source = (JAVA / 'ReportActivity.java').read_text()
