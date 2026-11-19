@@ -5800,3 +5800,13 @@ OPPO-THOR-20261119。1.0.75 通用候选 b82ce508bfcb 已交付，136 项宿主�
 DISPLAY-SETTINGS-20261120。1.0.75 通用候选 7a29e94 基线，使用已实测的游戏手持/底座档，分开控制帧率与设备兼容配置，跟踪 Adreno 840 回归。
 
 DISPLAY-SETTINGS-20261120。1.0.76 通用候选 3835a610706e 已交付，137 项宿主检查与 Android 构建通过。原机菜单、画质、性能和开场待复测。 详见 coordination/results/DISPLAY-SETTINGS-20261120.md。
+
+## 2026-11-20 L3, visibility and performance regression
+
+TOUCH-L3-VISIBILITY-PERF-20261120; branch task/T-display-settings-20261120; base 11e5e7a. Device evidence in main worktree .local/device-validation-20261120/005611. Work in progress.
+
+2026-11-20 checkpoint: f8432ef, 1.0.77-test d277f695; 137/137 host checks, Android build and two-device button checks. RG water scene 73=43.65, 76=32.00, 77 native candidate=37.53 FPS, remaining prior-slot overlapping writebacks on 1024-byte clear unresolved. Full evidence and limitations: coordination/results/TOUCH-L3-VISIBILITY-PERF-20261120.md. Test APK in release directory, not final acceptance. Next: safe cross-slot ordering and GPU canary, then same-scene device A/B.
+
+2026-11-20 续：源码提交 b98325b、3294ccf；1.0.78-test SHA256 7408fedf80f21fe36391c30057489ec7381baae0413b8ff7bac249d36b957e30，双机编辑页与 L3 和整手柄显隐自测见任务报告。发现 77 发布目录测试包及 78 本地包均包含存档密钥资产，77 应停止分发，78 未发布；金手指需要安全密钥方案。仍待跨槽多写回优化、GPU 正确性验收及实机场景复测，不能标记性能完成。
+
+5dc9f4a 更新扩展菜单的旋转测试；全量宿主重跑 137/137、退出码 0（.local/final78b/host-recheck/summary.json），该结果不覆盖独立 QA 和未完成性能验收。

@@ -4525,6 +4525,24 @@
    "branch": "独立候选目录",
    "acquired_at": "2026-11-18T19:13:24.535967+08:00",
    "checkpoint": "禁止写OOT或安全100原目录，自己隔离候选"
+  },
+  {
+   "task": "TOUCH-L3-VISIBILITY-PERF-20261120",
+   "owner": "/root",
+   "paths": [
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "tests/device/test_touch_r3.py",
+    "coordination/results/TOUCH-L3-VISIBILITY-PERF-20261120.md",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "tests/installer/test_touch_pad_menu.py",
+    "tests/installer/test_screen_rotation.py"
+   ],
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/display-settings-20261120",
+   "branch": "task/T-display-settings-20261120",
+   "acquired_at": "2026-11-20T01:16:32.320420+08:00",
+   "checkpoint": "5dc9f4a; APK contains key; performance work unfinished",
+   "write_state": "CHECKPOINTED_RELEASED",
+   "released_at": "2026-11-20T01:52:33.152213+08:00"
   }
  ],
  "tasks": [
@@ -12029,6 +12047,36 @@
    "branch": "task/T-display-settings-20261120",
    "checkpoint": "1.0.76 通用候选 3835a610706e 已交付，137 项宿主检查与 Android 构建通过。原机菜单、画质、性能和开场待复测。",
    "acceptance": "设置实际送游戏和限帧器，触屏R3按住和松开，完成宿主/Android验证，原机验收另记"
+  },
+  {
+   "id": "TOUCH-L3-VISIBILITY-PERF-20261120",
+   "role": "coordinator",
+   "objective": "L3, button visibility, investigate 1.0.73 performance regression",
+   "inputs": [
+    "1.0.76 device traces",
+    "coordination/EXPERIENCE.md"
+   ],
+   "outputs": [
+    "code",
+    "tests",
+    "report"
+   ],
+   "dependencies": [],
+   "pass_gates": [],
+   "status": "in_progress",
+   "write_scope": [
+    "src/android/app/java/org/ffrs/diagnostic/GameActivity.java",
+    "tests/device/test_touch_r3.py",
+    "coordination/results/TOUCH-L3-VISIBILITY-PERF-20261120.md",
+    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+    "tests/installer/test_touch_pad_menu.py",
+    "tests/installer/test_screen_rotation.py"
+   ],
+   "acceptance": "compatible layout; button operation and visibility; compare device performance",
+   "checkpoint": "5dc9f4a; 1.0.78 local APK 7408fedf; two-device UI self-test; prior 1.0.77 release candidate includes key and must not be distributed; cross-slot performance unresolved",
+   "next": "Design a key-free cheat workflow; investigate overlapping cross-slot writebacks with GPU correctness canaries, then repeat device A/B before delivery.",
+   "owner": "/root",
+   "branch": "task/T-display-settings-20261120"
   }
  ],
  "blockers": [

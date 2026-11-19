@@ -280,6 +280,7 @@
 | UNIVERSAL74-20261118 | 交付主干集成 | integrated_local_candidate | Codex /root | 无 | 无额外门禁 | task/T-universal74-20261118 |
 | OPPO-THOR-20261119 | 性能与内存兼容 | candidate_delivered_device_pending | Codex /root | 无 | 无额外门禁 | task/T-oppo-thor-20261119 |
 | DISPLAY-SETTINGS-20261120 | 图形设置与虚拟输入 | candidate_delivered_device_pending | Codex /root | 无 | 无额外门禁 | task/T-display-settings-20261120 |
+| TOUCH-L3-VISIBILITY-PERF-20261120 | coordinator | in_progress | /root | 无 | 无额外门禁 | task/T-display-settings-20261120 |
 
 ## 独占写入
 
@@ -519,6 +520,7 @@
 - {"task": "CODEX-SNK-LIBRARY-STARTUP-20261118", "owner": "/root/snk_library_startup_fix", "paths": [".", "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/coordination/results/CODEX-SNK-LIBRARY-STARTUP-20261118.md"], "worktree": "/Users/yuyan9923/GitHub/02-游戏原生移植/switch-android-port-rules/.local/codex-snk-library-startup-20261118", "branch": "隔离候选目录", "acquired_at": "2026-11-18T19:01:56.407705+08:00", "checkpoint": "只写独立候选，设备root统一"}
 - {"task": "CODEX-DIAGNOSTIC-INDEPENDENT-QA-20261118", "owner": "/root/library_icon_design", "paths": ["coordination/results/CODEX-DIAGNOSTIC-INDEPENDENT-QA-20261118.md", ".local/codex-diagnostic-qa-20261118/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-18T19:05:17.040081+08:00", "checkpoint": "独立QA报告已交回并随7109848记录", "write_state": "COMPLETE_HANDED_BACK"}
 - {"task": "CODEX-LIBRARY-UPDATE-RECOVERY-20261118", "owner": "/root/library_update_recovery", "paths": ["."], "worktree": "/Users/yuyan9923/GitHub/02-游戏原生移植/switch-android-port-rules/.local/codex-library-update-20261118", "branch": "独立候选目录", "acquired_at": "2026-11-18T19:13:24.535967+08:00", "checkpoint": "禁止写OOT或安全100原目录，自己隔离候选"}
+- {"task": "TOUCH-L3-VISIBILITY-PERF-20261120", "owner": "/root", "paths": ["src/android/app/java/org/ffrs/diagnostic/GameActivity.java", "tests/device/test_touch_r3.py", "coordination/results/TOUCH-L3-VISIBILITY-PERF-20261120.md", "src/graphics/nvn_vulkan/engine/xbg_game.cpp", "tests/installer/test_touch_pad_menu.py", "tests/installer/test_screen_rotation.py"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/display-settings-20261120", "branch": "task/T-display-settings-20261120", "acquired_at": "2026-11-20T01:16:32.320420+08:00", "checkpoint": "5dc9f4a; APK contains key; performance work unfinished", "write_state": "CHECKPOINTED_RELEASED", "released_at": "2026-11-20T01:52:33.152213+08:00"}
 
 ## 阻塞
 
