@@ -257,7 +257,7 @@ static jmethodID save_edit_finish = nullptr;
 static std::atomic<int> save_edit_mode{0};
 static std::atomic<bool> save_edit_attempted{false};
 
-static bool PrepareIsolatedSaveEdit(JNIEnv *env, int mode) {
+static bool PrepareSaveReadEdit(JNIEnv *env, int mode) {
     jclass local = env->FindClass("org/ffrs/diagnostic/SaveCheater");
     const char *edit_type = "Lorg/ffrs/diagnostic/SaveCheater$ReadEdit;";
     if (local && env->GetJavaVM(&save_edit_vm) == JNI_OK) {
@@ -323,18 +323,24 @@ static jlong StartGuest(JNIEnv* env,
         std::string save = ToStdString(env, save_root);
         const std::string trace_file = request->log_path + ".save-abi";
         unsetenv("FFRS_ISOLATED_SAVE_ABI_TRACE");
-        save_edit_mode.store(0);
+        unsetenv("FFRS_SAVE_READ_EDIT");
+        int mode = '4'; // Use the menu on builds accepted by the native instruction guard.
         const size_t save_leaf = save.find_last_of('/');
         if (save_leaf != std::string::npos && save.compare(save_leaf + 1, 18, "shield-regression-") == 0) {
             if (FILE *marker = fopen(trace_file.c_str(), "rb")) {
-                const int mode = fgetc(marker);
-                if (mode == '1' || mode == '2' || mode == '3' || mode == '4') setenv("FFRS_ISOLATED_SAVE_ABI_TRACE", "1", 1);
-                if ((mode == '2' || mode == '3' || mode == '4') && PrepareIsolatedSaveEdit(env, mode)) {
-                    save_edit_attempted.store(false);
-                    save_edit_mode.store(mode);
+                const int requested = fgetc(marker);
+                if (requested >= '1' && requested <= '4') {
+                    mode = requested;
+                    setenv("FFRS_ISOLATED_SAVE_ABI_TRACE", "1", 1);
                 }
                 fclose(marker);
             }
+        }
+        save_edit_mode.store(0);
+        if (mode != '1' && PrepareSaveReadEdit(env, mode)) {
+            save_edit_attempted.store(false);
+            save_edit_mode.store(mode);
+            setenv("FFRS_SAVE_READ_EDIT", "1", 1);
         }
         if (save.empty()) {
             save = request->log_path;

@@ -439,7 +439,8 @@ struct nso_result guest_process_load(guest_process *p,const char *path,char *err
             }
         }
     }
-    if (loaded.result.status == NSO_OK && getenv("FFRS_ISOLATED_SAVE_ABI_TRACE")) {
+    if (loaded.result.status == NSO_OK &&
+        (getenv("FFRS_SAVE_READ_EDIT") || getenv("FFRS_ISOLATED_SAVE_ABI_TRACE"))) {
         atomic_init(&p->save_payload_gate, 0);
         struct nso_result probe = nso_install_save_payload_probe(p->module,
                                             (uintptr_t)&p->save_payload_gate);
@@ -2023,7 +2024,8 @@ static uintptr_t save_payload_host_forward(void *descriptor) {
     void *buffer = NULL;
     uint32_t size = 0;
     const int slot = nso_host_take_selected_save_slot();
-    fprintf(stderr, "[save-abi] native forward selected slot=%d\n", slot);
+    if (getenv("FFRS_ISOLATED_SAVE_ABI_TRACE"))
+        fprintf(stderr, "[save-abi] native forward selected slot=%d\n", slot);
     if (descriptor && ffrs_apply_isolated_read_payload) {
         // The validated build's reader takes {pointer, uint32_t length, capacity}.
         memcpy(&buffer, descriptor, sizeof(buffer));
@@ -2117,7 +2119,7 @@ static struct nso_result prepare_boundary_locked(guest_process *p) {
         void (*target)(void) = (void (*)(void))(uintptr_t)targets[i].target;
 #if defined(__ANDROID__) && defined(__aarch64__)
         extern void nb_save_open_trace_target(void);
-        if (getenv("FFRS_ISOLATED_SAVE_ABI_TRACE") &&
+        if ((p->save_payload_probe || getenv("FFRS_ISOLATED_SAVE_ABI_TRACE")) &&
             target == (void (*)(void))nso_host_fs_open_file)
             target = nb_save_open_trace_target;
 #endif

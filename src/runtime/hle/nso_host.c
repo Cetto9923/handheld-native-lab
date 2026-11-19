@@ -1276,7 +1276,7 @@ int nso_host_take_selected_save_slot(void) {
     return slot;
 }
 
-static bool trace_save_stack(uintptr_t frame, uintptr_t guest_return_pc) {
+static bool trace_save_stack(uintptr_t frame, uintptr_t guest_return_pc, bool verbose) {
     bool selected = false;
     const uintptr_t save_open = 0x591db38;
     const uintptr_t expected_frames[] = {0x2bed8f8, 0x3dcc0a8, 0x428a804, 0x428a4dc};
@@ -1303,12 +1303,13 @@ static bool trace_save_stack(uintptr_t frame, uintptr_t guest_return_pc) {
     fclose(maps);
     if (end - base < 2 * sizeof(uintptr_t))
         return false;
-    for (unsigned depth = 0; depth < 6; ++depth) {
+    for (unsigned depth = 0; depth < (verbose ? 6u : 4u); ++depth) {
         if (frame < base || frame > end - 2 * sizeof(uintptr_t) || frame % 16)
             break;
         uintptr_t record[2];
         memcpy(record, (const void *)frame, sizeof(record));
-        fprintf(stderr, "[save-abi] frame depth=%u guest_lr=%#" PRIxPTR "\n", depth, record[1]);
+        if (verbose)
+            fprintf(stderr, "[save-abi] frame depth=%u guest_lr=%#" PRIxPTR "\n", depth, record[1]);
         if (depth < sizeof(expected_frames) / sizeof(expected_frames[0]))
             matches = matches && record[1] >= image_base &&
                 record[1] - image_base == expected_frames[depth];
@@ -1328,10 +1329,14 @@ int32_t nso_host_fs_open_file_trace(nn_fs_file_handle *out_handle, const char *p
     if (path && strncmp(path, prefix, sizeof(prefix) - 1) == 0) {
         char slot = path[sizeof(prefix) - 1];
         if (slot >= '0' && slot <= '9' && path[sizeof(prefix)] == '\0') {
-            fprintf(stderr, "[save-abi] open slot=%c mode=%d result=%d guest_lr=%#" PRIxPTR "\n",
-                    slot, mode, result, guest_return_pc);
-            nso_report_save_payload_probe();
-            if (result == 0 && trace_save_stack(guest_frame, guest_return_pc) && mode == 1)
+            const bool verbose = getenv("FFRS_ISOLATED_SAVE_ABI_TRACE") != NULL;
+            if (verbose) {
+                fprintf(stderr, "[save-abi] open slot=%c mode=%d result=%d guest_lr=%#" PRIxPTR "\n",
+                        slot, mode, result, guest_return_pc);
+                nso_report_save_payload_probe();
+            }
+            if (result == 0 && (mode == 1 || verbose) &&
+                trace_save_stack(guest_frame, guest_return_pc, verbose) && mode == 1)
                 selected_save_slot = slot - '0';
         }
     }
