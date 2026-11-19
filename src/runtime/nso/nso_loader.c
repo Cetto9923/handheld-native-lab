@@ -433,7 +433,7 @@ struct nso_result nso_install_save_payload_probe(nso_module *m) {
         return load_status(NSO_INVALID, EINVAL, 0);
     char build_id[33];
     nso_build_id(m, build_id);
-    if (strcmp(build_id, "b7f965b9d7227db8e29f04e84ea7331b0") ||
+    if (strcmp(build_id, "b7f965b9d7227db8e29f04e84ea7331b") ||
         m->text_lo != 0 || m->text_hi != 0x5e6b890 ||
         rd32(m->image + call) != expected_call ||
         rd32(m->image + 0x3dcc648) != expected_decrypt_call ||
