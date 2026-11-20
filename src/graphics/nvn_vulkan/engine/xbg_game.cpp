@@ -487,7 +487,7 @@ void descriptor_report(){
     const uint64_t total=timing.counters[XbgCpuTiming::Descriptor].exclusive_ns;
     const uint64_t tagged=descriptor_timing.sum();
     xbg_logf("NVN DESC_TIMING v=2 first=%llu last=%llu descriptor_ns=%llu tagged_ns=%llu remaining_ns=%llu coverage=%s clock_reads=%llu",(unsigned long long)(timing_before.presents+1),(unsigned long long)stats.presents.load(),(unsigned long long)total,(unsigned long long)tagged,(unsigned long long)(tagged<=total?total-tagged:0),tagged<=total && !descriptor_timing.invalid && !descriptor_timing.top?"OK":"INVALID",(unsigned long long)descriptor_timing.reads);
-    const char *names[]={"setup","buffer_bind","image_lookup","image_transition","image_view","sampler_bind","element_rest","texel_alias","texel_pending","texel_readback","texel_view_lookup","texel_view_create","texel_resident_pending","texel_resident_acquire","texel_cpu_access","readback_alloc","readback_guard","readback_copy","readback_zero","readback_flush"};
+    const char *names[]={"setup","buffer_bind","image_lookup","image_transition","image_view","sampler_bind","element_rest","texel_alias","texel_pending","texel_readback","texel_view_lookup","texel_view_create","texel_resident_pending","texel_resident_acquire","texel_cpu_access","readback_alloc","readback_guard","readback_copy","readback_zero","readback_flush","memo_lookup","set_finalize"};
     for(unsigned i=0;i<XbgDescriptorTiming::Count;++i)xbg_logf("NVN DESC_TIMING part=%s calls=%llu exclusive_ns=%llu",names[i],(unsigned long long)descriptor_timing.counters[i].calls,(unsigned long long)descriptor_timing.counters[i].ns);
     xbg_logf("NVN DESC_TIMING part=remaining calls=0 exclusive_ns=%llu",(unsigned long long)(tagged<=total?total-tagged:0));
     xbg_logf("NVN READBACK_TIMING alloc_bytes=%llu copy_bytes=%llu zero_bytes=%llu guarded_bytes=%llu noncoherent_flushes=%llu",(unsigned long long)descriptor_timing.readback_alloc_bytes,(unsigned long long)descriptor_timing.readback_copy_bytes,(unsigned long long)descriptor_timing.readback_zero_bytes,(unsigned long long)descriptor_timing.readback_guard_bytes,(unsigned long long)descriptor_timing.readback_noncoherent_flushes);
@@ -5133,7 +5133,7 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
     // perf_sample); a miss without tags skips the census. A/B target ktag tags every frame again.
     const bool tags=timing_now()!=nullptr || ab_off("ktag");
     bool ok=desc_memo_enabled && !fire_trace_active() && !compute && !capture.active && !capture.probe && !provenance_file && g_ui_moff==0;
-    if(ok){CPU_SCOPE(Descriptor);
+    if(ok){CPU_SCOPE(Descriptor);DescriptorRoot descriptor_measurement(&cpu_scope);DESC_SCOPE(MemoLookup);
         static std::vector<DynUbo> dyn_ubos;dyn_ubos.clear();
         bool no_ubo=false;const unsigned dmode=dyn_mode_for(false,&no_ubo);memo_dyn_ok=dmode!=0 || no_ubo;
         for(unsigned st=0;st<5;st++){key.push_back(uint64_t(uintptr_t(state.shader[st])));if(tags)ktag.push_back(0);}
@@ -5672,6 +5672,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
             writes.push_back(write);
         }
     }
+    DESC_SCOPE(SetFinalize);
     // Dynamic offsets are consumed in binding/array-element order.
     std::sort(dynamic_list.begin(),dynamic_list.end());out.dynamic_offsets.clear();for(auto &d:dynamic_list)out.dynamic_offsets.push_back(d.second);
     auto api_descriptor_write=[&](){

@@ -3,7 +3,7 @@
 // Same Descriptor root exclusive clock; child main scopes remain in original parts.
 // Caller holds graphics recursive mutex. No allocation/I/O in measured subscopes.
 struct XbgDescriptorTiming {
-    enum Kind { Setup, BufferBind, ImageLookup, ImageTransition, ImageView, SamplerBind, ElementRest, TexelAlias, TexelPending, TexelReadback, TexelViewLookup, TexelViewCreate, TexelResidentPending, TexelResidentAcquire, TexelCpuAccess, ReadbackAlloc, ReadbackGuard, ReadbackCopy, ReadbackZero, ReadbackFlush, Count };
+    enum Kind { Setup, BufferBind, ImageLookup, ImageTransition, ImageView, SamplerBind, ElementRest, TexelAlias, TexelPending, TexelReadback, TexelViewLookup, TexelViewCreate, TexelResidentPending, TexelResidentAcquire, TexelCpuAccess, ReadbackAlloc, ReadbackGuard, ReadbackCopy, ReadbackZero, ReadbackFlush, MemoLookup, SetFinalize, Count };
     struct Counter { uint64_t calls=0, ns=0; } counters[Count];
     uint64_t readback_alloc_bytes=0,readback_copy_bytes=0,readback_zero_bytes=0,readback_guard_bytes=0,readback_noncoherent_flushes=0;
     struct Scope;
