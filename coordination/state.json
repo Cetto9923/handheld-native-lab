@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-20T00:22:14.940344+08:00",
+ "updated_at": "2026-11-20T09:06:50+08:00",
  "phase": "1.0.73兼容接续；诊断导出117宿主与荣耀流程通过，主库空轨卡顿专项、OOT接入与在线更新并行",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -12070,13 +12070,16 @@
     "coordination/results/TOUCH-L3-VISIBILITY-PERF-20261120.md",
     "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
     "tests/installer/test_touch_pad_menu.py",
-    "tests/installer/test_screen_rotation.py"
+    "tests/installer/test_screen_rotation.py",
+    "src/graphics/nvn_vulkan/engine/xbg_descriptor_timing.h",
+    "tests/device/test_fresh_descriptor_cache.py"
    ],
    "acceptance": "compatible layout; button operation and visibility; compare device performance",
-   "checkpoint": "5dc9f4a; 1.0.78 local APK 7408fedf; two-device UI self-test; prior 1.0.77 release candidate includes key and must not be distributed; cross-slot performance unresolved",
-   "next": "Design a key-free cheat workflow; investigate overlapping cross-slot writebacks with GPU correctness canaries, then repeat device A/B before delivery.",
+   "checkpoint": "b9752b2；荣耀工厂战斗集合键候选已实测，出现 282.86 ms 回收长帧，保持默认关闭。ARM64 构建、集合缓存宿主 3/3、单次普通攻击及恢复已核对。",
+   "next": "将回收与重建耗时对齐独立战斗流程，确认触发频率，保留画质与同步语义。继续逐场景及单包双机验收。",
    "owner": "/root",
-   "branch": "task/T-display-settings-20261120"
+   "branch": "task/T-no-key-delivery-20261120",
+   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/no-key-delivery-20261120"
   }
  ],
  "blockers": [
