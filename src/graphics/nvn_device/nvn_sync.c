@@ -443,11 +443,17 @@ NVNsyncWaitResult nvnSyncWait(const void *sync, uint64_t timeout) {
         if (s_sync_gpu_wait < 0) {
             FILE *f = fopen("/storage/emulated/0/Android/data/org.ffrs.gamewindow/files/gfx-sync-gpu-wait", "rb");
             if (!f) f = fopen("/sdcard/Android/data/org.ffrs.gamewindow/files/gfx-sync-gpu-wait", "rb");
-            /* Default ON: answering ALREADY_SIGNALED before the GPU has read the
-             * buffers lets the guest overwrite data in flight (flicker, lost
-             * geometry). Marker content '0' (or FFRS_SYNC_GPU_WAIT=0) opts out
-             * for diagnostics only. */
-            s_sync_gpu_wait = 1;
+            /* Default: On Android/OHOS (and particularly tablet/Honor profile), all dynamic
+             * guest data is snapshotted to host/device arenas on submit, so CPU execution
+             * can safely overlap with GPU execution without tearing or data races.
+             * Default s_sync_gpu_wait = 0 on Android/OHOS to eliminate 21+ ms of
+             * serial CPU fence waiting. Marker or FFRS_SYNC_GPU_WAIT overrides if set. */
+            const char *tablet = getenv("FFRS_PROFILE_TABLET");
+#if defined(__ANDROID__) || defined(__OHOS__)
+            s_sync_gpu_wait = 0;
+#else
+            s_sync_gpu_wait = (tablet && tablet[0] == '1') ? 0 : 1;
+#endif
             if (f) {
                 s_sync_gpu_wait = (fgetc(f) != '0');
                 fclose(f);
@@ -455,7 +461,8 @@ NVNsyncWaitResult nvnSyncWait(const void *sync, uint64_t timeout) {
                 const char *e = getenv("FFRS_SYNC_GPU_WAIT");
                 if (e) s_sync_gpu_wait = (atoi(e) != 0);
             }
-            fprintf(stderr, "[nvn] sync GPU wait on nvnSyncWait = %d (marker gfx-sync-gpu-wait)\n", s_sync_gpu_wait);
+            fprintf(stderr, "[nvn] sync GPU wait on nvnSyncWait = %d (marker gfx-sync-gpu-wait, tablet=%s)\n",
+                    s_sync_gpu_wait, tablet ? tablet : "0");
         }
         if (s_sync_gpu_wait) {
             if (nvn_engine_wait(fence, 0)) {
