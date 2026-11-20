@@ -22,6 +22,7 @@ PREAMBLE = r'''
 #include <cstdio>
 #define CPU_SCOPE(...)
 #define xbg_logf(...)
+struct Slot {};
 struct Buffer {
     void *mapped;
     void invalidate() {}
@@ -30,7 +31,12 @@ struct Writeback {
     uint64_t addr, bytes;
     Buffer buffer;
     bool indirect;
+    const void *owner = nullptr;
+    const void *slot = nullptr;
 };
+void retire_honor_clear_producer(uint64_t, uint64_t) {}
+bool clear_sync_census = false;
+unsigned clear_sync_records = 0;
 struct NVNcounterData { uint64_t value, timestamp; };
 struct Report { uint64_t addr; };
 struct p_clear_buf { uint64_t addr, size; uint32_t value; };

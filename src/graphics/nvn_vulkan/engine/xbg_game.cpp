@@ -831,6 +831,7 @@ bool ordered_buffer_clear_enabled = false;
 bool clear_sync_census = false;
 bool honor_small_clear_experiment = false;
 bool honor_clear_retire_experiment = false;
+bool honor_img_cache_persist_experiment = false;
 bool honor_set_cache_bypass_experiment = false;
 bool honor_descriptor_refill_experiment = false;
 unsigned clear_sync_records = 0;
@@ -2689,11 +2690,11 @@ void resolve_pending(){
 bool read_preflight=true;
 bool defer_query_preflight=true;
 void preflight_cpu_reads(){if(read_preflight && (!pending_writebacks.empty() || (!defer_query_preflight && !pending_reports.empty())))resolve_pending();}
-// Retire only the submitted slot that owns both overlapping writes. The CPU
+// Retire only the submitted slot that owns overlapping writes. The CPU
 // clear below then runs against the normal writeback result without submitting
 // the recording slot. Any residual write or report still uses the old path.
 void retire_honor_clear_producer(uint64_t address, uint64_t bytes) {
-    if (!honor_clear_retire_experiment || clear_sync_census || bytes != 512 ||
+    if (!honor_clear_retire_experiment || clear_sync_census ||
         properties.vendorID != 0x5143 || properties.deviceID != 0x43030b00 ||
         properties.driverVersion != 0x802fa02e || capture.active || capture.probe ||
         capture.trace || provenance_file || !slots[slot_index].recording)
@@ -2702,8 +2703,7 @@ void retire_honor_clear_producer(uint64_t address, uint64_t bytes) {
     unsigned matches = 0;
     for (const auto &w : pending_writebacks) {
         if (!xbg_wb_overlaps(address, bytes, w.addr, w.bytes)) continue;
-        if (matches == 2 || w.addr != address || w.bytes != (matches ? 4096u : 73728u) ||
-            w.owner || w.indirect || !w.slot)
+        if (w.owner || w.indirect || !w.slot)
             return;
         const auto *slot = static_cast<const Slot *>(w.slot);
         if (slot == &slots[slot_index] || !slot->pending || (producer && producer != slot))
@@ -2711,15 +2711,19 @@ void retire_honor_clear_producer(uint64_t address, uint64_t bytes) {
         producer = slot;
         ++matches;
     }
-    if (matches != 2) return;
+    if (matches == 0 || !producer) return;
     bool image_alias = false;
-    for_images_overlapping(address, 73728, [&](Image &) { image_alias = true; });
+    for (const auto &w : pending_writebacks) {
+        if (xbg_wb_overlaps(address, bytes, w.addr, w.bytes))
+            for_images_overlapping(w.addr, w.bytes, [&](Image &) { image_alias = true; });
+    }
     if (image_alias) return;
     SiteScope site(SITE_GPU_SYNC);
     if (retire_through(producer, false)) {
         static unsigned samples = 0;
         if (samples++ < 8)
-            xbg_logf("NVN clear producer retired frame=%llu", (unsigned long long)stats.presents.load());
+            xbg_logf("NVN clear producer retired frame=%llu matches=%u bytes=%llu",
+                     (unsigned long long)stats.presents.load(), matches, (unsigned long long)bytes);
     }
 }
 
@@ -5021,7 +5025,8 @@ void memo_check_epoch(){
     }
 }
 // End of a submit for the recording slot: frame-local entries go (their snapshots are per submit); persistent ones stay.
-void desc_memo_reset(){img_cache.clear();
+void desc_memo_reset(){
+    if(!honor_img_cache_persist_experiment || img_cache.size()>4096)img_cache.clear();
     if(!xmemo_enabled){memo_unpin_all(slot_index);return;}
     // Sweep only when the slot holds frame-local entries: walking its ~600-800 persistent entries every submission to find
     // none was ~1% of the D2R camp's render thread on the Redmi K50 Ultra.
@@ -8410,6 +8415,7 @@ vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemor
     clear_sync_records=0;
     honor_small_clear_experiment=false;
     honor_clear_retire_experiment=false;
+    honor_img_cache_persist_experiment=false;
     honor_set_cache_bypass_experiment=false;
     honor_descriptor_refill_experiment=false;
     wtrack::enabled=false;state=State{};state.color.logic_op=3;state.color.alpha_func=8;for(unsigned i=0;i<8;i++)state.blend[i]={i,2,1,2,1,1,1};stats.reset();memory_pressure_policy={};timing=XbgCpuTiming(timing_clock);pipeline_counts={};pipeline_before={};pipeline_tick=0;timing_active=false;timing_first=timing_last=0;live_profile_used=false;descriptor_detail=false;descriptor_timing=XbgDescriptorTiming{};descriptor_root=nullptr;draw_detail=false;draw_timing=XbgDrawTiming{};draw_root=nullptr;completed=0;last_attachment_trace=UINT64_MAX;sampler_mirror_clamp_enabled=VK_FALSE;failed=false;error_text[0]=0;initialized=true;
@@ -8677,6 +8683,7 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
         static const struct{const char *name;bool *flag;} live_flags[]={
           {"clearsynccensus",&clear_sync_census},{"honorsmallclear",&honor_small_clear_experiment},
           {"honorclearretire",&honor_clear_retire_experiment},{"honorsetbypass",&honor_set_cache_bypass_experiment},
+          {"honorimgpersist",&honor_img_cache_persist_experiment},
           {"honordescrefill",&honor_descriptor_refill_experiment},
           {"texdirty",&tex_dirty},{"texmemo",&texel_memo_enabled},{"imgcache",&img_cache_enabled},
           {"descmemo",&desc_memo_enabled},{"dynpartial",&dyn_partial_enabled},{"xmemo",&xmemo_enabled},
@@ -8691,7 +8698,7 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
           // mipmaxlod0 is not one of the bool flags: read it inside the token loop. strtok_r has already
           // replaced the '=' in buf with a NUL by now, so a later strstr on the same buffer can never match it.
           if(!strcmp(tok,"mipmaxlod0")){mipmaxlod0_want=v;continue;}
-          for(auto &e:live_flags)if(!strcmp(e.name,tok)){if(*e.flag!=v){*e.flag=v;xbg_logf("LIVE-SET %s=%d at present %llu",e.name,v,(unsigned long long)pr);}break;}}
+          for(auto &e:live_flags)if(!strcmp(e.name,tok)){if(*e.flag!=v){*e.flag=v;if(!strcmp(e.name,"honorimgpersist")&&!v)img_cache.clear();xbg_logf("LIVE-SET %s=%d at present %llu",e.name,v,(unsigned long long)pr);}break;}}
         // Diagnostic: force maxLod=0 on every sampler, so no mip can ever be selected.
         {int want=mipmaxlod0_want;
          if(want!=xbg_sampler_force_maxlod0){xbg_sampler_force_maxlod0=want;xbg_logf("LIVE-SET mipmaxlod0=%d at present %llu",want,(unsigned long long)pr);}}}}
