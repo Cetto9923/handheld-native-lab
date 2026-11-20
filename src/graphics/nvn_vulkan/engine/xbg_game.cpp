@@ -3052,6 +3052,16 @@ using TypedStorageFormats=std::vector<std::pair<uint32_t,uint32_t>>;
 // Vertex locations use the same numeric classes as xbg_vertex_input_classes.
 using VertexInputFormats=std::vector<std::pair<uint32_t,uint32_t>>;
 struct Shader {std::string key;std::string identity;
+    // Counts depend only on binding metadata, never on the current buffer or device.
+    unsigned ubo_all=0,ubo_varying=0;
+    void count_uniform_bindings(){
+        ubo_all=ubo_varying=0;
+        for(const auto &b:bindings)if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER){
+            ubo_all+=b.count;
+            if(b.source==XBG_SOURCE_UNIFORM || b.source==XBG_SOURCE_DRIVER0 || b.source==XBG_SOURCE_DRIVER2)
+                ubo_varying+=b.count;
+        }
+    }
     // Registration updates std::map nodes in place. Shader lifetime ends before
     // these tables are cleared. Cache the lookup, and reread live metadata.
     mutable const std::map<int,RegisteredTexture> *integer_texture_table=nullptr;
@@ -3483,6 +3493,7 @@ Shader *load_shader(const void *control){
     const uint64_t load_t1=timing_clock();uint64_t load_t2=0,load_t3=0;
     auto p=std::make_unique<Shader>();p->key=key;p->identity=key;p->stage=h.stage;p->bindings.resize(h.binding_count);memcpy(p->bindings.data(),bytes.data()+offset,h.binding_count*sizeof(xbg_shader_binding));offset+=h.binding_count*sizeof(xbg_shader_binding);p->inputs.resize(h.input_count);memcpy(p->inputs.data(),bytes.data()+offset,h.input_count*4);offset+=h.input_count*4;p->c1.assign(bytes.begin()+offset,bytes.begin()+offset+h.c1_bytes);offset+=h.c1_bytes;
     std::vector<uint32_t> words(h.spirv_bytes/4);memcpy(words.data(),bytes.data()+offset,h.spirv_bytes);spv_override(key,words);arsenal_interface_rewrite(words,h.stage,key.c_str(),"runtime");boss_interface_rewrite(words,h.stage,key.c_str(),"runtime");histogram_sync_rewrite(words,h.stage,key.c_str(),"runtime");terrain_depth_rewrite(words,h.stage,key.c_str(),"runtime");if(stencil_rewrite(words,h.stage,key.c_str(),"runtime")){for(auto &binding:p->bindings){uint32_t scalar=xbg_ffrs_integer_fact(h.stage,key.c_str(),binding.binding);if(binding.binding==xbg_ffrs_uint_binding(h.stage,key.c_str()) || binding.binding==xbg_ffrs_uint_store_binding(h.stage,key.c_str()))scalar=1;if(scalar)binding.flags=(binding.flags&~(3u<<16))|(scalar<<16);}}validate_capabilities(words,h.stage);
+    p->count_uniform_bindings();
     p->float_buffer_bindings=shader_float_buffer_bindings(words);
     p->integer_buffer_bindings=xbg_spirv_integer_buffer_candidates(words);
     if(!p->integer_buffer_bindings.empty())p->variant_source=words;
@@ -3652,7 +3663,7 @@ Shader *integer_buffer_variant(Shader &base){
     const bool reused=optimize_runtime_shader(words,base.stage,base.key,identity,"runtime-variant");
     auto variant=std::make_unique<Shader>();
     variant->key=base.key;variant->identity=identity;variant->stage=base.stage;
-    variant->bindings=base.bindings;variant->inputs=base.inputs;variant->input_classes=base.input_classes;
+    variant->bindings=base.bindings;variant->ubo_all=base.ubo_all;variant->ubo_varying=base.ubo_varying;variant->inputs=base.inputs;variant->input_classes=base.input_classes;
     variant->c1=base.c1;variant->storage_writes=base.storage_writes;variant->discards=base.discards;variant->raster=base.raster;
     variant->storage_image_formats=base.storage_image_formats;
     variant->storage_binding_info=base.storage_binding_info;
@@ -3846,7 +3857,7 @@ Shader *typed_storage_variant(Shader &base){
     const uint64_t load_monotonic=shader_monotonic_ns(),load_frame=stats.presents.load();
     auto variant=std::make_unique<Shader>();
     variant->key=base.key;variant->identity=identity;variant->stage=base.stage;
-    variant->bindings=base.bindings;variant->inputs=base.inputs;variant->input_classes=base.input_classes;
+    variant->bindings=base.bindings;variant->ubo_all=base.ubo_all;variant->ubo_varying=base.ubo_varying;variant->inputs=base.inputs;variant->input_classes=base.input_classes;
     variant->c1=base.c1;variant->storage_writes=base.storage_writes;variant->discards=base.discards;variant->raster=base.raster;
     variant->storage_image_formats=base.storage_image_formats;
     variant->storage_binding_info=base.storage_binding_info;
@@ -3927,7 +3938,7 @@ Shader *vertex_input_variant(Shader &base){
     const uint64_t load_monotonic=shader_monotonic_ns(),load_frame=stats.presents.load();
     auto variant=std::make_unique<Shader>();
     variant->key=base.key;variant->identity=identity;variant->stage=base.stage;
-    variant->bindings=base.bindings;variant->inputs=base.inputs;
+    variant->bindings=base.bindings;variant->ubo_all=base.ubo_all;variant->ubo_varying=base.ubo_varying;variant->inputs=base.inputs;
     variant->input_classes.resize(base.inputs.size());
     need(xbg_vertex_input_classes(words.data(),words.size(),variant->inputs.data(),variant->inputs.size(),variant->input_classes.data())==0,"Unsupported rewritten vertex input interface");
     variant->c1=base.c1;variant->storage_writes=base.storage_writes;variant->discards=base.discards;
@@ -4033,7 +4044,7 @@ Shader *linear_sample_variant(Shader &base) {
     variant->key = base.key;
     variant->identity = identity;
     variant->stage = base.stage;
-    variant->bindings = base.bindings;
+    variant->bindings = base.bindings; variant->ubo_all=base.ubo_all;variant->ubo_varying=base.ubo_varying;
     variant->inputs = base.inputs;
     variant->input_classes = base.input_classes;
     variant->c1 = base.c1;
@@ -5011,7 +5022,10 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute);
 // only, kept in the static arena) and c1 constants (static) bound at fixed offsets; mode 0 = none dynamic.
 #define UBO_DYN(mode,b) ((b).type==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER && ((mode)==1 || ((mode)==2 && ((b).source==XBG_SOURCE_UNIFORM||(b).source==XBG_SOURCE_DRIVER0||(b).source==XBG_SOURCE_DRIVER2))))
 unsigned dyn_mode_for(bool compute,bool *no_ubo=nullptr){unsigned all=0,vary=0;
-    for(unsigned st=0;st<6;st++)if(state.shader[st] && (st==5)==compute)for(auto &b:state.shader[st]->bindings)if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER){all+=b.count;if(b.source==XBG_SOURCE_UNIFORM||b.source==XBG_SOURCE_DRIVER0||b.source==XBG_SOURCE_DRIVER2)vary+=b.count;}
+    for(unsigned st=0;st<6;st++)if(state.shader[st] && (st==5)==compute){
+        all+=state.shader[st]->ubo_all;
+        vary+=state.shader[st]->ubo_varying;
+    }
     if(no_ubo)*no_ubo=all==0;unsigned lim=properties.limits.maxDescriptorSetUniformBuffersDynamic;
     return all && all<=lim?1:(vary && vary<=lim && dyn_partial_enabled?2:0);}
 void memo_unpin_all(unsigned si){Slot &s=slots[si];for(auto &pn:memo_pinned[si])s.used_sets[pn.second.layout].push_back(pn.first);memo_pinned[si].clear();desc_memo_slot[si].clear();desc_memo_local[si]=0;++memo_mod_gen;}
