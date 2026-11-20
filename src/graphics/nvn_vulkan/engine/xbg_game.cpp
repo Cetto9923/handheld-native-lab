@@ -7239,6 +7239,71 @@ bool gpu_ordered_buffer_clear(const p_clear_buf &clear) {
     return true;
 }
 
+bool gpu_clear_pending_buffer(const p_clear_buf &p) {
+    if (!ordered_buffer_clear_enabled || ab_off("pendingclear")) return false;
+    if ((p.addr & 3) || (p.size & 3) || !p.size || p.size > 256ull * 1024 * 1024 ||
+        capture.active || capture.probe || capture.trace || provenance_file ||
+        !slots[slot_index].recording)
+        return false;
+    for (const auto &report : pending_reports)
+        if (xbg_wb_overlaps(p.addr, p.size, report.addr, sizeof(NVNcounterData))) return false;
+    bool image_alias = false;
+    for_images_overlapping(p.addr, p.size, [&](Image &) { image_alias = true; });
+    if (image_alias) return false;
+
+    Buffer view;
+    if (pending_view(p.addr, p.size, 4, view)) {
+        snapshot_invalidate(p.addr, p.size);
+        for (auto &w : pending_writebacks) {
+            if (w.buffer.buffer == view.buffer && view.offset < w.buffer.offset + w.buffer.size &&
+                w.buffer.offset < view.offset + p.size) {
+                if (w.indirect && xbg_wb_overlaps(p.addr, p.size, w.indirect->address, w.indirect->bytes))
+                    w.indirect.reset();
+            }
+        }
+        if (view.mapped) {
+            for (uint64_t off = 0; off + 4 <= p.size; off += 4)
+                memcpy(static_cast<uint8_t *>(view.mapped) + off, &p.value, 4);
+            if (p.size & 3) {
+                uint8_t tail[4];
+                memcpy(tail, &p.value, 4);
+                memcpy(static_cast<uint8_t *>(view.mapped) + (p.size & ~3ull), tail, size_t(p.size & 3));
+            }
+        }
+        uint8_t *dst = reinterpret_cast<uint8_t *>(p.addr);
+        for (uint64_t off = 0; off + 4 <= p.size; off += 4)
+            memcpy(dst + off, &p.value, 4);
+        if (p.size & 3) {
+            uint8_t tail[4];
+            memcpy(tail, &p.value, 4);
+            memcpy(dst + (p.size & ~3ull), tail, size_t(p.size & 3));
+        }
+        ++write_seq;
+        Commands c;
+        vkCmdFillBuffer(c.command, view.buffer, view.offset, p.size, p.value);
+        VkBufferMemoryBarrier b{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+        b.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        b.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT |
+                          VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT;
+        b.srcQueueFamilyIndex = b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        b.buffer = view.buffer;
+        b.offset = view.offset;
+        b.size = p.size;
+        vkCmdPipelineBarrier(c.command, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT |
+                             VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             0, 0, nullptr, 1, &b, 0, nullptr);
+        c.finish();
+        ++perf.ordered_buffer_clears;
+        static unsigned notes = 0;
+        if (notes++ < 8 || honor_pipeline_diagnostics)
+            xbg_logf("NVN GPU pending buffer clear addr=%#llx bytes=%llu value=%#x",
+                     (unsigned long long)p.addr, (unsigned long long)p.size, p.value);
+        return true;
+    }
+    return false;
+}
+
 bool gpu_buffer_copy(uint64_t src,uint64_t dst,uint64_t n){preflight_cpu_reads();
     if(!n || (src<dst+n && dst<src+n))return false;
     for(auto &w:pending_writebacks)if(dst<w.addr+w.bytes && dst+n>w.addr)return false;
@@ -7784,6 +7849,7 @@ void execute(const uint8_t *pc,unsigned depth,uint64_t &budget){
         case OP_CLEAR_BUF:{auto a=payload<p_clear_buf>(p,n);need(a.addr&&a.size&&a.size<=256ull*1024*1024,"Invalid buffer clear range");
             trace_buffer_clear(a);
             if (gpu_ordered_buffer_clear(a)) break;
+            if (gpu_clear_pending_buffer(a)) break;
             // A clear changes guest memory in command order. Previously recorded GPU
             // reads can still consume the old readback allocation until their fence.
             invalidate_cpu_range(a.addr,a.size);

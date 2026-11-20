@@ -78,6 +78,7 @@ void resolve_pending() {
 }
 void trace_buffer_clear(const p_clear_buf &) {}
 bool gpu_ordered_buffer_clear(const p_clear_buf &) { return false; }
+bool gpu_clear_pending_buffer(const p_clear_buf &) { return false; }
 enum {OP_CLEAR_BUF};
 template<class T> T payload(const void *p, size_t n) {
     assert(n == sizeof(T));
