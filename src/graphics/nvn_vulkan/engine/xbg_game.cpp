@@ -829,6 +829,7 @@ uint64_t cpu_indexed_nonempty = 0;
 bool vivo_indexed_fallback = false;
 bool ordered_buffer_clear_enabled = false;
 bool clear_sync_census = false;
+bool honor_small_clear_experiment = false;
 unsigned clear_sync_records = 0;
 bool log_write_sync = false;
 bool thor_compact_memory = false;
@@ -7089,12 +7090,15 @@ void trace_buffer_clear(const p_clear_buf &p){
 // result. Move the complete result to a fresh span so recorded readers keep
 // their original input, while future reads see the clear and untouched bytes.
 bool gpu_ordered_buffer_clear(const p_clear_buf &clear) {
+    const bool honor_device = properties.vendorID == 0x5143 &&
+        properties.deviceID == 0x43030b00 && properties.driverVersion == 0x802fa02e;
     const bool compact_shape = clear.size == 4096 &&
-        ((properties.vendorID == 0x13b5 && properties.deviceID == 0xb8a31030 &&
-          properties.driverVersion == 0x0b001000) ||
-         (properties.vendorID == 0x5143 && properties.deviceID == 0x43030b00 &&
-          properties.driverVersion == 0x802fa02e));
-    if (!ordered_buffer_clear_enabled || ab_off("orderedclear") || (clear.size != 8192 && !compact_shape) || (clear.addr & 3) ||
+        (honor_device || (properties.vendorID == 0x13b5 && properties.deviceID == 0xb8a31030 &&
+                          properties.driverVersion == 0x0b001000));
+    const bool honor_small_shape = honor_small_clear_experiment && honor_device && clear.size == 2048;
+    const uint64_t producer_bytes = honor_small_shape ? 43008u : (compact_shape ? 87040u : 146432u);
+    if (!ordered_buffer_clear_enabled || ab_off("orderedclear") ||
+        (clear.size != 8192 && !compact_shape && !honor_small_shape) || (clear.addr & 3) ||
         capture.active || capture.probe || capture.trace || provenance_file ||
         !slots[slot_index].recording)
         return false;
@@ -7104,7 +7108,7 @@ bool gpu_ordered_buffer_clear(const p_clear_buf &clear) {
     for (auto &pending : pending_writebacks) {
         if (!xbg_wb_overlaps(clear.addr, clear.size, pending.addr, pending.bytes)) continue;
         if (producer || pending.slot != &slot || pending.owner || pending.indirect ||
-            pending.bytes != (compact_shape ? 87040u : 146432u) || !xbg_wb_contains(pending.addr, pending.bytes, clear.addr, clear.size))
+            pending.bytes != producer_bytes || !xbg_wb_contains(pending.addr, pending.bytes, clear.addr, clear.size))
             return false;
         producer = &pending;
     }
@@ -8567,7 +8571,7 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
       {std::string gs=probe.base+"/gfx-live-set";FILE *gsf=fopen(gs.c_str(),"rb");
        if(gsf){char buf[512]={0};size_t n=fread(buf,1,sizeof(buf)-1,gsf);buf[n]=0;fclose(gsf);
         static const struct{const char *name;bool *flag;} live_flags[]={
-          {"clearsynccensus",&clear_sync_census},
+          {"clearsynccensus",&clear_sync_census},{"honorsmallclear",&honor_small_clear_experiment},
           {"texdirty",&tex_dirty},{"texmemo",&texel_memo_enabled},{"imgcache",&img_cache_enabled},
           {"descmemo",&desc_memo_enabled},{"dynpartial",&dyn_partial_enabled},{"xmemo",&xmemo_enabled},
           {"bindcache",&bind_cache_enabled},{"ownedinput",&owned_input_copy_enabled},{"rbfullcopy",&readback_fullcopy_enabled},{"bboxready",&indexed_bbox_ready_enabled},
