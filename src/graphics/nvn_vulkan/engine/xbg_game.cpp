@@ -7097,6 +7097,7 @@ bool gpu_ordered_buffer_clear(const p_clear_buf &clear) {
                           properties.driverVersion == 0x0b001000));
     const bool honor_small_shape = honor_small_clear_experiment && honor_device && clear.size == 2048;
     const uint64_t producer_bytes = honor_small_shape ? 43008u : (compact_shape ? 87040u : 146432u);
+    const bool honor_compact_experiment = honor_small_clear_experiment && honor_device && compact_shape;
     if (!ordered_buffer_clear_enabled || ab_off("orderedclear") ||
         (clear.size != 8192 && !compact_shape && !honor_small_shape) || (clear.addr & 3) ||
         capture.active || capture.probe || capture.trace || provenance_file ||
@@ -7107,8 +7108,10 @@ bool gpu_ordered_buffer_clear(const p_clear_buf &clear) {
     PendingWriteback *producer = nullptr;
     for (auto &pending : pending_writebacks) {
         if (!xbg_wb_overlaps(clear.addr, clear.size, pending.addr, pending.bytes)) continue;
+        const bool producer_size_matches = pending.bytes == producer_bytes ||
+            (honor_compact_experiment && pending.bytes == 73728);
         if (producer || pending.slot != &slot || pending.owner || pending.indirect ||
-            pending.bytes != producer_bytes || !xbg_wb_contains(pending.addr, pending.bytes, clear.addr, clear.size))
+            !producer_size_matches || !xbg_wb_contains(pending.addr, pending.bytes, clear.addr, clear.size))
             return false;
         producer = &pending;
     }

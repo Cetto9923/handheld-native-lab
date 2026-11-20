@@ -170,6 +170,17 @@ class OrderedBufferClear(unittest.TestCase):
         small_fixture = small_fixture.replace('honor_small_clear_experiment = false',
                                               'honor_small_clear_experiment = true')
         self.assertEqual(run_program(small_fixture + policy + clear + rg_check.replace('4096', '2048')), 0)
+        walk_fixture = honor_fixture.replace('result_size = 87040', 'result_size = 73728')
+        check_experiment = rg_check.replace(
+            '        if (scenario) {',
+            '''        if (!scenario) {
+            assert(!gpu_ordered_buffer_clear(request));
+            assert(memory == before && events.empty());
+            honor_small_clear_experiment = true;
+        }
+        if (scenario) {''',
+        )
+        self.assertEqual(run_program(walk_fixture + policy + clear + check_experiment), 0)
 
 
 if __name__ == '__main__':
