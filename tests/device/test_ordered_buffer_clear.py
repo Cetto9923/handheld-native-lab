@@ -137,10 +137,11 @@ int main() {
         }
         assert(gpu_ordered_buffer_clear(request));
         assert(std::equal(memory.begin(), memory.begin()+result_size, before.begin()));
+        const size_t clear_offset = request.addr - guest_base;
         for (size_t i = 0; i < result_size; i += 4) {
             uint32_t word;
             memcpy(&word,memory.data()+result_size+i,4);
-            assert(word == (i >= 8192 && i < 16384 ? request.value : 0x66666666));
+            assert(word == (i >= clear_offset && i < clear_offset + request.size ? request.value : 0x66666666));
         }
         assert((events == std::vector<int>{copy_op,transfer_barrier,fill_op,host_barrier,finish_op,publish_op}));
         assert(pending_writebacks[0].buffer.offset == result_size && pending_writebacks[0].version == 41);
@@ -160,7 +161,7 @@ class OrderedBufferClear(unittest.TestCase):
         rg_fixture = rg_fixture.replace('properties{0x5143,0x44050001,0x80320050}',
                                         'properties{0x13b5,0xb8a31030,0x0b001000}')
         rg_fixture = rg_fixture.replace('8192', '4096')
-        rg_check = CHECK.replace('8192', '4096').replace('16384', '8192')
+        rg_check = CHECK.replace('8192', '4096')
         self.assertEqual(run_program(rg_fixture + policy + clear + rg_check), 0)
         honor_fixture = rg_fixture.replace('0x13b5,0xb8a31030,0x0b001000', '0x5143,0x43030b00,0x802fa02e')
         self.assertEqual(run_program(honor_fixture + policy + clear + rg_check), 0)
