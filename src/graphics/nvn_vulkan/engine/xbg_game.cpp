@@ -7912,13 +7912,17 @@ void destroy_slots(){
 // Called between guest submissions/presents while holding the engine mutex.
 // Nothing is released until submitted GPU work and guest writebacks complete.
 void reclaim_memory_caches(unsigned level, bool preserve_warm = false) {
+    const uint64_t start = shader_monotonic_ns();
     size_t warm_count = 0;
     if (!preserve_warm)
         warm_count = warm::trim_for_memory_pressure(false);
+    const uint64_t drain_start = shader_monotonic_ns();
     complete_all();
     poolreset::drain();
+    const uint64_t drain_end = shader_monotonic_ns();
     if (!preserve_warm)
         warm_count += warm::trim_for_memory_pressure(true);
+    const uint64_t cleanup_start = shader_monotonic_ns();
     for (const Slot &slot : active_slots()) {
         if (slot.pending || slot.recording || slot.waiters.n.load() || !slot.copy_readers.empty()) {
             xbg_logf("NVN memory reclaim deferred: submission still owns resources");
@@ -7931,6 +7935,9 @@ void reclaim_memory_caches(unsigned level, bool preserve_warm = false) {
     snapshot_reset();
     sampled_rg16_images.clear();
     storage_rg16_images.clear();
+    const uint64_t slots_start = shader_monotonic_ns();
+    uint64_t descriptor_ns = 0;
+    uint64_t buffer_ns = 0;
     size_t reclaimed_slots = 0;
     for (unsigned i = 0; i < slot_count; ++i) {
         Slot &slot = slots[i];
@@ -7938,10 +7945,13 @@ void reclaim_memory_caches(unsigned level, bool preserve_warm = false) {
         slot.set_cache.clear();
         slot.spare_sets.clear();
         slot.used_sets.clear();
+        const uint64_t descriptor_start = shader_monotonic_ns();
         for (auto pool : slot.pools)
             vkDestroyDescriptorPool(cfg.device, pool, nullptr);
         slot.pools.clear();
         slot.pool_next = 0;
+        const uint64_t buffer_start = shader_monotonic_ns();
+        descriptor_ns += buffer_start - descriptor_start;
         slot.stream.release();
         slot.uniform.release();
         const size_t keep = slot.readback.keep_chunks;
@@ -7951,8 +7961,10 @@ void reclaim_memory_caches(unsigned level, bool preserve_warm = false) {
                                [&](const Slot::XRange &range) { return range.buffer == buffer; });
         });
         slot.readback.keep_chunks = keep;
+        buffer_ns += shader_monotonic_ns() - buffer_start;
         ++reclaimed_slots;
     }
+    const uint64_t images_start = shader_monotonic_ns();
     const uint64_t minimum_age = uint64_t(slot_count) * 2;
     size_t reclaimed_images = 0;
     int64_t reclaimed_image_bytes = 0;
@@ -7975,13 +7987,22 @@ void reclaim_memory_caches(unsigned level, bool preserve_warm = false) {
         ++images_epoch;
         ++memo_check_gen;
     }
+    const uint64_t pipelines_start = shader_monotonic_ns();
     if (level >= 2)
         clear_pipeline_objects();
     ++memo_epoch;
+    const uint64_t cleanup_end = shader_monotonic_ns();
     xbg_logf("NVN memory reclaim level=%u slots=%zu images=%zu image_bytes=%lld warm_ready=%zu "
-             "warm_workers=%u warm_preserved=%u",
+             "warm_workers=%u warm_preserved=%u frame=%llu drain_ms=%.2f warm_ms=%.2f cleanup_ms=%.2f "
+             "cache_ms=%.2f slots_ms=%.2f descriptor_ms=%.2f buffer_ms=%.2f "
+             "images_ms=%.2f pipelines_ms=%.2f",
              level, reclaimed_slots, reclaimed_images, (long long)reclaimed_image_bytes, warm_count,
-             warm::active_workers.load(), unsigned(preserve_warm));
+             warm::active_workers.load(), unsigned(preserve_warm),
+             (unsigned long long)stats.presents.load(), (drain_end - drain_start) / 1e6,
+             ((drain_start - start) + (cleanup_start - drain_end)) / 1e6,
+             (cleanup_end - cleanup_start) / 1e6, (slots_start - cleanup_start) / 1e6,
+             (images_start - slots_start) / 1e6, descriptor_ns / 1e6, buffer_ns / 1e6,
+             (pipelines_start - images_start) / 1e6, (cleanup_end - pipelines_start) / 1e6);
 }
 void maintain_memory_pressure() {
 #ifdef __ANDROID__
@@ -8013,13 +8034,16 @@ void maintain_memory_pressure() {
             warm::trim_for_memory_pressure(false);
     } else
         reclaim_memory_caches(level, preserve_warm);
+    const uint64_t purge_start = shader_monotonic_ns();
     const int purged = mallopt(M_PURGE, 0);
+    const uint64_t purge_end = shader_monotonic_ns();
     const auto after = xbg_memory_pressure::read_snapshot();
     memory_pressure_policy.record_reclaim(after);
     xbg_logf("NVN memory pressure level=%u hint=%u rss_before=%llu rss_after=%llu available=%llu "
-             "total=%llu purge=%d",
+             "total=%llu purge=%d frame=%llu purge_ms=%.2f",
              level, hint, (unsigned long long)before.resident, (unsigned long long)after.resident,
-             (unsigned long long)before.available, (unsigned long long)before.total, purged);
+             (unsigned long long)before.available, (unsigned long long)before.total, purged,
+             (unsigned long long)stats.presents.load(), (purge_end - purge_start) / 1e6);
     log_memory_profile_counts(false);
 #endif
 }

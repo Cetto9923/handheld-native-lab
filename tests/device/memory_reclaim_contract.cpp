@@ -104,6 +104,14 @@ void clear_pipeline_objects() {
     ++pipeline_clears;
 }
 
+static uint64_t shader_monotonic_ns() {
+    static uint64_t now = 0;
+    return ++now;
+}
+struct {
+    std::atomic<uint64_t> presents{0};
+} stats;
+
 #include PRODUCTION_HEADER
 
 void initialize() {
