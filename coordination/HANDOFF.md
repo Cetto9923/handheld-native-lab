@@ -1,3 +1,13 @@
+# 2026-11-21 荣耀 GT Pro 1080p 全场景四图对照复测
+
+在荣耀 GT Pro（Snapdragon 8s Gen 3 / Adreno 735，`A42BBB5109000333`）完成用户指定的 4 个核心回归场景 1080p 内部渲染对照实测（基线 A `e3c31cc9…` vs 候选 B `9789e703…`，提交 `29b6762` 预计算动态 UBO 绑定数量）。全场景严格开启真实 GPU 完成等待 `nvnSyncWait=1`，使用独立隔离存档，纳秒时钟 `/data/local/tmp/codex-t88-monotonic` 统计真实呈现间隔：
+- 开局月夜火场：A 27.08/28.37 FPS vs B 27.64/27.40 FPS（Delta: +0.56 / -0.96 FPS）。
+- 土之神殿紫阵：A 41.03/39.72 FPS vs B 37.22/40.06 FPS（Delta: -3.81 / +0.35 FPS）。
+- 第四章兵器工厂：A 20.90/20.38 FPS vs B 20.54/20.80 FPS（Delta: -0.36 / +0.43 FPS）。
+- 飞空艇飞行：A 15.97/13.74 FPS vs B 13.65/13.77 FPS（Delta: -2.32 / +0.03 FPS）。
+
+实测帧率增益均在基线波动范围内（±1~2%），无可复现的稳定收益；画面全部通过，无几何空洞或闪烁。按工程规范弃用候选 B，不合入主分支。荣耀平板已回装验证防闪基线 `e3c31cc9…`，回读指纹一致。全量证据位于 `.local/honor-benchmark-20261120/`。详细指标见 [双机报告](results/DOT-HONOR-OPENING-FLICKER-20261120.md#荣耀-gt-prosnapdragon-8s-gen-3--adreno-7351080p-全场景四图对照复测)。
+
 # 2026-11-20 RG477M 黄门长廊动态 UBO 计数复测
 
 候选 `29b6762` 预计算着色器的 UBO 绑定计数。RG477M 用三个相同隔离自动档副本完成 A/B/A，GPU 完成等待=1，原 720p 配置、无显式 FPS 上限。原地 20.10 / 20.18 / 19.67 FPS，往返 19.88 / 20.27 / 19.63 FPS；候选 P95 67.91 / 68.49 ms。不能确认有稳定收益，30 FPS 未达，40 FPS 未达。候选保留在隔离分支，RG 已装回 `e3c31cc9…`，正式档摘要一致。对照指标、视觉范围及下一项假设见 [RG 黄门长廊复测](results/DOT-HONOR-OPENING-FLICKER-20261120.md#rg477m-黄门长廊动态-ubo-计数对照)。本地原证据在 `.local/honor-opening-flicker-20261120/rg-shrine-ubo-facts/`。

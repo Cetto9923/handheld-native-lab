@@ -1,12 +1,13 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-20T22:27:01+08:00
+状态事件时间：2026-11-21T05:40:00+08:00
 阶段：1.0.73兼容接续；诊断导出117宿主与荣耀流程通过，主库空轨卡顿专项、OOT接入与在线更新并行
-总控：Codex /root 本轮接管
+总控：Antigravity 本轮接管
 更新方式：按事件更新，没有后台自动刷新。
 
 | 任务 | 角色 | 状态 | 实际负责人 | 启动依赖 | 验收门禁 | 分支 |
 |---|---|---|---|---|---|---|
+| T-HONOR-1080P-FOUR-SCENE-REGRESSION-20261121 | 荣耀 GT Pro 1080p 全场景四图实测 | completed_performance_inconclusive | Antigravity | 无 | 无额外门禁 | task/T-rg-shrine-dynamic-ubo-facts-20261120 |
 | T-RG-SHRINE-DYNAMIC-UBO-FACTS-20261120 | RG477M 渲染性能实测 | completed_performance_inconclusive | /root | 无 | 无额外门禁 | task/T-rg-shrine-dynamic-ubo-facts-20261120 |
 | T00 | RE | passed | Antigravity (RE) | 无 | 无额外门禁 | work/rg477m-native |
 | T00R | QA | passed | Agent C (QA, 独立复核) | T00 | 无额外门禁 | task/T00-qa-review |
@@ -286,6 +287,7 @@
 
 ## 独占写入
 
+- {"task": "T-HONOR-1080P-FOUR-SCENE-REGRESSION-20261121", "owner": "Antigravity", "paths": ["coordination/results/DOT-HONOR-OPENING-FLICKER-20261120.md", "coordination/state.json", "coordination/HANDOFF.md", "coordination/STATUS.md", ".local/honor-benchmark-20261120/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/no-key-delivery-20261120", "branch": "task/T-rg-shrine-dynamic-ubo-facts-20261120", "acquired_at": "2026-11-21T05:40:00+08:00", "checkpoint": "完成荣耀GT Pro 1080p火场/神殿/第四章/飞空艇四场景A/B对照；e3c31cc9已回装，正式存档一致", "write_state": "COMPLETE_HANDED_BACK", "released_at": "2026-11-21T05:40:00+08:00"}
 - {"task": "T-RG-SHRINE-DYNAMIC-UBO-FACTS-20261120", "owner": "/root", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", "coordination/results/DOT-HONOR-OPENING-FLICKER-20261120.md", "coordination/state.json", "coordination/HANDOFF.md", "coordination/STATUS.md", ".local/honor-opening-flicker-20261120/rg-shrine-ubo-facts/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/no-key-delivery-20261120", "branch": "task/T-rg-shrine-dynamic-ubo-facts-20261120", "acquired_at": "2026-11-20T22:27:01+08:00", "checkpoint": "29b6762；.local/honor-opening-flicker-20261120/rg-shrine-ubo-facts/metrics.txt；本条登记本轮结果文档写入", "write_state": "COMPLETE_HANDED_BACK", "released_at": "2026-11-20T22:27:01+08:00"}
 - {"task": "T02-DSO-THREAD-OWNER", "owner": "Antigravity coordinator", "paths": ["src/runtime/hle/guest_process.c", "src/runtime/hle/guest_process.h", "tests/native/guest_process_contract.c", "scripts/runtime/build_guest_process_contract.sh", "docs/analysis/codex_guest_process_report.md", "src/runtime/hle/nso_host.c", "src/runtime/hle/nso_host.h"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native", "branch": "work/rg477m-native", "acquired_at": "2026-10-23T15:25:00.000000+00:00", "checkpoint": "P-CC-5", "objective": "Owned startup runtime: nnsslInitialize/nnsslFinalize HLE, ABI verification against retail SDK NSO, and RG477M boot past import 606", "write_state": "RELEASED_SUPERSEDED", "released_at": "2026-10-24T05:58:21.954359+00:00", "release_reason": "owner session exited; no live process holds repo handles on this worktree (verified: no open handles on src/runtime/hle, agy PID 54526 idle in ~, claude --print P-CC-8 PID 44703 stopped)"}
 - {"task": "T03B-RG477M-DIAGNOSTIC", "owner": "Antigravity coordinator — sole device operator", "paths": [".local/device/rg477m-session1/", "docs/analysis/codex_device_report.md", "docs/analysis/codex_stage_status.md", "docs/analysis/codex_guest_context_report.md", "docs/analysis/codex_guest_process_device_report.md", "docs/analysis/codex_native_stack_capacity_review.md", "docs/analysis/codex_guest_pages_report.md", "docs/analysis/codex_guest_pages_review.md", "docs/analysis/codex_native_boundary_report.md", "docs/analysis/codex_startup_thread_gate_report.md", "docs/analysis/codex_guest_page_profile_review.md", "docs/analysis/codex_os_tls_report.md", "docs/analysis/codex_native_boundary_review.md", "docs/analysis/codex_os_tls_review.md", "docs/analysis/codex_native_profile_review.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native", "branch": "work/rg477m-native", "acquired_at": "2026-10-23T15:25:00.000000+00:00", "checkpoint": "b137209bc3a2747cf41f41de1ad9d26d1ca8a49d", "objective": "User-connected RG477M actual install/load/JNI/Vulkan/display/leaf/compiler-runtime diagnostics; no data clear or fake full-game PASS", "write_state": "RELEASED_SUPERSEDED", "released_at": "2026-10-24T05:58:21.954359+00:00", "release_reason": "owner session exited; no live process holds repo handles on this worktree (verified: no open handles on src/runtime/hle, agy PID 54526 idle in ~, claude --print P-CC-8 PID 44703 stopped)"}

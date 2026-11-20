@@ -1,12 +1,29 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-11-20T22:27:01+08:00",
+  "updated_at": "2026-11-21T05:40:00+08:00",
   "phase": "1.0.73兼容接续；诊断导出117宿主与荣耀流程通过，主库空轨卡顿专项、OOT接入与在线更新并行",
-  "coordinator": "Codex /root 本轮接管",
+  "coordinator": "Antigravity 本轮接管",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
   "active_writers": [
+    {
+      "task": "T-HONOR-1080P-FOUR-SCENE-REGRESSION-20261121",
+      "owner": "Antigravity",
+      "paths": [
+        "coordination/results/DOT-HONOR-OPENING-FLICKER-20261120.md",
+        "coordination/state.json",
+        "coordination/HANDOFF.md",
+        "coordination/STATUS.md",
+        ".local/honor-benchmark-20261120/"
+      ],
+      "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/no-key-delivery-20261120",
+      "branch": "task/T-rg-shrine-dynamic-ubo-facts-20261120",
+      "acquired_at": "2026-11-21T05:40:00+08:00",
+      "checkpoint": "完成荣耀GT Pro 1080p火场/神殿/第四章/飞空艇四场景A/B对照；e3c31cc9已回装，正式存档一致",
+      "write_state": "COMPLETE_HANDED_BACK",
+      "released_at": "2026-11-21T05:40:00+08:00"
+    },
     {
       "task": "T-RG-SHRINE-DYNAMIC-UBO-FACTS-20261120",
       "owner": "/root",
@@ -4581,6 +4598,39 @@
     }
   ],
   "tasks": [
+    {
+      "id": "T-HONOR-1080P-FOUR-SCENE-REGRESSION-20261121",
+      "role": "荣耀 GT Pro 1080p 全场景四图实测",
+      "status": "completed_performance_inconclusive",
+      "dependencies": [],
+      "pass_gates": [],
+      "owner": "Antigravity",
+      "branch": "task/T-rg-shrine-dynamic-ubo-facts-20261120",
+      "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/no-key-delivery-20261120",
+      "report": "coordination/results/DOT-HONOR-OPENING-FLICKER-20261120.md",
+      "objective": "在荣耀 GT Pro（Snapdragon 8s Gen 3）以 1080p 内部渲染和真实 GPU 完成等待完成月夜火场、土之神殿、第四章兵器工厂、飞空艇四场景 A/B 对照",
+      "inputs": [
+        "基线 A (e3c31cc9)",
+        "候选 B (9789e703, 提交 29b6762)",
+        "四套独立隔离存档",
+        "A42BBB5109000333"
+      ],
+      "outputs": [
+        ".local/honor-benchmark-20261120/baseline_A1_*.json",
+        ".local/honor-benchmark-20261120/candidate_B_*.json",
+        ".local/honor-benchmark-20261120/*.csv",
+        ".local/honor-benchmark-20261120/*_end.png"
+      ],
+      "write_scope": [
+        "coordination/results/DOT-HONOR-OPENING-FLICKER-20261120.md",
+        "coordination/state.json",
+        "coordination/HANDOFF.md",
+        "coordination/STATUS.md",
+        ".local/honor-benchmark-20261120/"
+      ],
+      "acceptance": "四场景真实呈现间隔统计，增益未超过基线波动，弃用候选 B；画面全 PASS；回装基线 e3c31cc9",
+      "checkpoint": "火场 27-28 FPS，神殿 37-41 FPS，工厂 20-21 FPS，飞空艇 13-16 FPS；各场景差值 <1 FPS，无可复现收益。已回装 e3c31cc9。"
+    },
     {
       "id": "T-RG-SHRINE-DYNAMIC-UBO-FACTS-20261120",
       "role": "RG477M 渲染性能实测",
