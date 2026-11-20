@@ -8406,6 +8406,12 @@ vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemor
      xbg_logf("NVN readback standard keep=%zu (default=1, experimental=2, pressure keep0 unchanged)",readback_keep_standard);}
     texel_copy_cache.reset();texel_copy_enabled=true;indexed_bbox_ready_enabled=false;readback_fullcopy_enabled=false;readback_fullcopy_hits=readback_fullcopy_bytes=0;
     for(auto &counts:texel_copy_stats)counts=TexelCopyStats{};
+    clear_sync_census=false;
+    clear_sync_records=0;
+    honor_small_clear_experiment=false;
+    honor_clear_retire_experiment=false;
+    honor_set_cache_bypass_experiment=false;
+    honor_descriptor_refill_experiment=false;
     wtrack::enabled=false;state=State{};state.color.logic_op=3;state.color.alpha_func=8;for(unsigned i=0;i<8;i++)state.blend[i]={i,2,1,2,1,1,1};stats.reset();memory_pressure_policy={};timing=XbgCpuTiming(timing_clock);pipeline_counts={};pipeline_before={};pipeline_tick=0;timing_active=false;timing_first=timing_last=0;live_profile_used=false;descriptor_detail=false;descriptor_timing=XbgDescriptorTiming{};descriptor_root=nullptr;draw_detail=false;draw_timing=XbgDrawTiming{};draw_root=nullptr;completed=0;last_attachment_trace=UINT64_MAX;sampler_mirror_clamp_enabled=VK_FALSE;failed=false;error_text[0]=0;initialized=true;
     const char *resident_budget = getenv("FFRS_NATIVE_RSS_LIMIT_MIB");
     if (resident_budget && !std::strcmp(resident_budget, "5120"))
