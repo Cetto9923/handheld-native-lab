@@ -831,6 +831,7 @@ bool ordered_buffer_clear_enabled = false;
 bool clear_sync_census = false;
 bool honor_small_clear_experiment = false;
 bool honor_clear_retire_experiment = false;
+bool honor_set_cache_bypass_experiment = false;
 unsigned clear_sync_records = 0;
 bool log_write_sync = false;
 bool thor_compact_memory = false;
@@ -958,7 +959,7 @@ uint32_t draw_base_instance=0;
 struct SupportCache{float w=-1,h=-1;uint64_t slot=0;Buffer buffer;};SupportCache support_cache;
 struct SetKeyHash{size_t operator()(const std::vector<uint64_t> &k)const{uint64_t h=1469598103934665603ull;for(uint64_t v:k){h^=v;h*=1099511628211ull;h^=h>>32;}return size_t(h);}};
 uint64_t set_cache_hits=0,set_cache_misses=0,uniform_trimmed=0;bool template_enabled=true;uint64_t template_updates=0,plain_updates=0;bool set_cache_enabled=true; // same-process A/B showed no gain on Maleoon
-uint64_t set_cache_fresh_skips=0;
+uint64_t set_cache_fresh_skips=0, set_cache_experiment_skips=0;
 // In-process A/B (iOS method: alternate in the same process, same thermal state). files/gfx-ab-toggle holding
 // N (seconds) flips ab_on every N seconds; ab_on=false disables the optimization under test. Perf lines carry ab=.
 int ab_period=0;bool ab_on=true;
@@ -1743,7 +1744,7 @@ void perf_frame(){
     {texel_distinct+=texel_frame_keys.size();for(auto k:texel_frame_keys)if(texel_prev_keys.count(k))++texel_reused;texel_prev_keys.swap(texel_frame_keys);texel_frame_keys.clear();}
     if(completion_wait_enabled)fold_completion_wait_stats();
     if(perf_frame_timed)++perf_timed_frames;perf_frame_timed=perf_sample && stats.presents.load()%perf_sample==0;   // the next frame
-    {bool was=ab_frame_on;ab_frame_on=ab_enabled();update_program_lookup_policy();tls_gate=!ab_off("tlsgate");img_fast=!ab_off("imgfast");if(was!=ab_frame_on && ab_period>0){perf=Perf{};perf.window_start=timing_clock();set_cache_hits=set_cache_misses=set_cache_fresh_skips=0;integer_texture_lookup_hits=integer_texture_lookup_misses=typed_storage_static_skips=0;for(auto &counts:texel_copy_stats)counts=TexelCopyStats{};return;}}
+    {bool was=ab_frame_on;ab_frame_on=ab_enabled();update_program_lookup_policy();tls_gate=!ab_off("tlsgate");img_fast=!ab_off("imgfast");if(was!=ab_frame_on && ab_period>0){perf=Perf{};perf.window_start=timing_clock();set_cache_hits=set_cache_misses=set_cache_fresh_skips=set_cache_experiment_skips=0;integer_texture_lookup_hits=integer_texture_lookup_misses=typed_storage_static_skips=0;for(auto &counts:texel_copy_stats)counts=TexelCopyStats{};return;}}
     pipelines_unsaved+=size_t(warm::compiled.exchange(0));
     const uint64_t presents=stats.presents.load();
     if(pipelines_unsaved && presents>=pipeline_save_frame+300){pipeline_save_frame=presents;save_pipeline_cache();}
@@ -1806,11 +1807,11 @@ void perf_frame(){
     xbg_logf("NVN PERF memo_buffers destroyed=%llu referenced=%llu slot_drops=%llu tracked=%zu invalid_slots=%#x control=%d",
              (unsigned long long)memo_buffers_destroyed,(unsigned long long)memo_buffers_referenced,
              (unsigned long long)memo_buffer_slot_drops,memo_buffer_slots.size(),memo_buffer_invalid_slots,int(ab_off("memobuffer")));
-    xbg_logf("NVN PERF setcache ab=%d hits=%.1f misses=%.1f template=%.1f plain=%.1f memo_hits=%.1f memo_misses=%.1f memo_front=%.1f why=texel%.1f/simg%.1f/dm%.1f/dynbuf%.1f/store%.1f fresh_skips=%.1f",int(ab_frame_on),set_cache_hits/f,set_cache_misses/f,template_updates/f,plain_updates/f,desc_memo_hits/f,desc_memo_misses/f,memo_front_hits/f,desc_memo_why[0]/f,desc_memo_why[1]/f,desc_memo_why[2]/f,desc_memo_why[3]/f,desc_memo_why[4]/f,set_cache_fresh_skips/f);desc_memo_hits=desc_memo_misses=memo_front_hits=0;for(auto &w:desc_memo_why)w=0;xbg_logf("NVN PERF keydiff shader%.0f pool%.0f ubo%.0f uaddr%.0f size%.0f vp%.0f alpha%.0f drv%.0f tex%.0f samp%.0f saddr%.0f same%.0f new%.0f len%.0f",key_diff[0]/tf,key_diff[1]/tf,key_diff[2]/tf,key_diff[3]/tf,key_diff[4]/tf,key_diff[5]/tf,key_diff[6]/tf,key_diff[7]/tf,key_diff[8]/tf,key_diff[9]/tf,key_diff[10]/tf,key_diff[11]/tf,key_diff[12]/tf,key_diff[13]/tf);for(auto &k:key_diff)k=0;   // per timed frame
+    xbg_logf("NVN PERF setcache ab=%d hits=%.1f misses=%.1f template=%.1f plain=%.1f memo_hits=%.1f memo_misses=%.1f memo_front=%.1f why=texel%.1f/simg%.1f/dm%.1f/dynbuf%.1f/store%.1f fresh_skips=%.1f experiment_skips=%.1f",int(ab_frame_on),set_cache_hits/f,set_cache_misses/f,template_updates/f,plain_updates/f,desc_memo_hits/f,desc_memo_misses/f,memo_front_hits/f,desc_memo_why[0]/f,desc_memo_why[1]/f,desc_memo_why[2]/f,desc_memo_why[3]/f,desc_memo_why[4]/f,set_cache_fresh_skips/f,set_cache_experiment_skips/f);desc_memo_hits=desc_memo_misses=memo_front_hits=0;for(auto &w:desc_memo_why)w=0;xbg_logf("NVN PERF keydiff shader%.0f pool%.0f ubo%.0f uaddr%.0f size%.0f vp%.0f alpha%.0f drv%.0f tex%.0f samp%.0f saddr%.0f same%.0f new%.0f len%.0f",key_diff[0]/tf,key_diff[1]/tf,key_diff[2]/tf,key_diff[3]/tf,key_diff[4]/tf,key_diff[5]/tf,key_diff[6]/tf,key_diff[7]/tf,key_diff[8]/tf,key_diff[9]/tf,key_diff[10]/tf,key_diff[11]/tf,key_diff[12]/tf,key_diff[13]/tf);for(auto &k:key_diff)k=0;   // per timed frame
     xbg_logf("NVN PERF binds_skipped_per_frame=%.1f xmemo_hits=%.1f drops=%llu bumps=%llu/%llu/%llu/%llu/%llu pinned=%zu/%zu",binds_skipped/f,xmemo_hits/f,(unsigned long long)xmemo_drops,(unsigned long long)memo_bump[0],(unsigned long long)memo_bump[1],(unsigned long long)memo_bump[2],(unsigned long long)memo_bump[3],(unsigned long long)memo_bump[4],memo_pinned[0].size(),memo_pinned[1].size());binds_skipped=0;{char top[160]="";int at=0;bool used[32]={};
      for(int r=0;r<4;r++){int best=-1;for(int k=0;k<32;k++)if(!used[k] && offset_changed_at[k] && (best<0 || offset_changed_at[k]>offset_changed_at[best]))best=k;if(best<0)break;used[best]=true;at+=snprintf(top+at,sizeof(top)-size_t(at),"%s%d:%.1f",r?",":"",best,offset_changed_at[best]/f);}
      xbg_logf("NVN PERF binds set_binds=%.1f offsets_per_bind=%.1f offsets_only=%.1f changed n1=%.1f n2=%.1f n3=%.1f n4+=%.1f at=%s",set_binds/f,set_binds?double(set_bind_offsets)/double(set_binds):0.0,set_binds_offsets_only/f,offset_changes[1]/f,offset_changes[2]/f,offset_changes[3]/f,(offset_changes[4]+offset_changes[5]+offset_changes[6]+offset_changes[7]+offset_changes[8]+offset_changes[9])/f,top);}
-    set_binds=set_bind_offsets=set_binds_offsets_only=0;for(auto &x:offset_changes)x=0;for(auto &x:offset_changed_at)x=0;xmemo_hits=0;xbg_logf("NVN PERF noload_passes_per_frame=%.2f img_cache_hits=%.1f misses=%.1f why=%.1f/%.1f/%.1f/%.1f/%.1f/%.1f/%.1f/%.1f",noload_passes/f,img_cache_hits/f,img_cache_misses/f,noload_why[0]/f,noload_why[1]/f,noload_why[2]/f,noload_why[3]/f,noload_why[4]/f,noload_why[5]/f,noload_why[6]/f,noload_why[7]/f);for(auto &w:noload_why)w=0;noload_passes=0;img_cache_hits=img_cache_misses=0;xbg_logf("NVN PERF %s normalization=%s memo_key=%.2f tmpl_update=%.2f alloc=%.2f setkey=%.2f build=%.2f hit_total=%.2f",perf_normalizable?"desc_ms_per_frame":"desc_ms_window_total",perf_normalizable?"sampled_frames":"unavailable/mixed",desc_ns[0]/1e6/desc_divisor,desc_ns[1]/1e6/desc_divisor,desc_ns[2]/1e6/desc_divisor,desc_ns[3]/1e6/desc_divisor,desc_ns[4]/1e6/desc_divisor,desc_ns[5]/1e6/desc_divisor);for(auto &x:desc_ns)x=0;perf_bounded_contaminated=timing_active;template_updates=plain_updates=0;set_cache_hits=set_cache_misses=set_cache_fresh_skips=0;
+    set_binds=set_bind_offsets=set_binds_offsets_only=0;for(auto &x:offset_changes)x=0;for(auto &x:offset_changed_at)x=0;xmemo_hits=0;xbg_logf("NVN PERF noload_passes_per_frame=%.2f img_cache_hits=%.1f misses=%.1f why=%.1f/%.1f/%.1f/%.1f/%.1f/%.1f/%.1f/%.1f",noload_passes/f,img_cache_hits/f,img_cache_misses/f,noload_why[0]/f,noload_why[1]/f,noload_why[2]/f,noload_why[3]/f,noload_why[4]/f,noload_why[5]/f,noload_why[6]/f,noload_why[7]/f);for(auto &w:noload_why)w=0;noload_passes=0;img_cache_hits=img_cache_misses=0;xbg_logf("NVN PERF %s normalization=%s memo_key=%.2f tmpl_update=%.2f alloc=%.2f setkey=%.2f build=%.2f hit_total=%.2f",perf_normalizable?"desc_ms_per_frame":"desc_ms_window_total",perf_normalizable?"sampled_frames":"unavailable/mixed",desc_ns[0]/1e6/desc_divisor,desc_ns[1]/1e6/desc_divisor,desc_ns[2]/1e6/desc_divisor,desc_ns[3]/1e6/desc_divisor,desc_ns[4]/1e6/desc_divisor,desc_ns[5]/1e6/desc_divisor);for(auto &x:desc_ns)x=0;perf_bounded_contaminated=timing_active;template_updates=plain_updates=0;set_cache_hits=set_cache_misses=set_cache_fresh_skips=set_cache_experiment_skips=0;
     xbg_logf("NVN PERF async=%d drains=%.2f drain_ms=%.2f pace_ms=%.2f waits=%.2f",int(gfx_async),gfx_drain_calls.exchange(0)/f,gfx_drain_ns.exchange(0)/1e6/f,gfx_pace_ns.exchange(0)/1e6/f,gfx_wait_calls.exchange(0)/f);xbg_logf("NVN PERF events defer=%d deferred=%.2f cpu_reads_pending=%llu epochs=%zu reports=%zu targeted=%llu slots=%llu fallback=%llu",int(defer_events),events_deferred/f,(unsigned long long)event_reads,epochs.size(),pending_reports.size(),(unsigned long long)event_targeted,(unsigned long long)event_slots_targeted,(unsigned long long)event_fallback);xbg_logf("NVN PERF render_cond enabled=%d ops=%.2f skips=%.2f force_off=%.2f draws_skipped=%.2f",int(render_cond_enabled),perf.render_cond_ops/f,perf.render_cond_skips/f,perf.render_cond_force_off/f,perf.draws_skipped_cond/f);perf.render_cond_ops=perf.render_cond_skips=perf.render_cond_force_off=perf.draws_skipped_cond=0;xbg_logf("NVN PERF dispatch indirect=%.1f gpu=%.1f cpu_fallback=%.1f cpu_zero=%.1f cpu_xyz=%lld/%lld/%lld",disp_indirect_total/f,disp_gpu_indirect/f,disp_cpu_fallback/f,disp_cpu_zero/f,(long long)disp_cpu_xyz[0],(long long)disp_cpu_xyz[1],(long long)disp_cpu_xyz[2]);disp_indirect_total=disp_gpu_indirect=disp_cpu_fallback=disp_cpu_zero=0;disp_cpu_xyz[0]=disp_cpu_xyz[1]=disp_cpu_xyz[2]=0;if(evguard::enabled){Dl_info di{};uintptr_t pc=evguard::last_pc.load();const char *mod=pc && dladdr(reinterpret_cast<void*>(pc),&di) && di.dli_fname?di.dli_fname:"?";xbg_logf("NVN PERF evguard guards=%llu exact=%llu other=%llu writes=%llu last_addr=%#llx last_pc=%#llx in %s",(unsigned long long)evguard::guards.load(),(unsigned long long)evguard::exact.load(),(unsigned long long)evguard::other.load(),(unsigned long long)evguard::writes.load(),(unsigned long long)evguard::last_addr.load(),(unsigned long long)pc,mod);
      xbg_logf("NVN PERF evguard engine_opens=%llu recloses=%llu",(unsigned long long)evguard::engine_opens.load(),(unsigned long long)evguard::recloses.load());
      xbg_logf("NVN PERF evguard last word=%#llx x0=%#llx x1=%#llx x2=%#llx x3=%#llx x4=%#llx x5=%#llx",(unsigned long long)evguard::last_word.load(),(unsigned long long)evguard::last_x[0].load(),(unsigned long long)evguard::last_x[1].load(),(unsigned long long)evguard::last_x[2].load(),(unsigned long long)evguard::last_x[3].load(),(unsigned long long)evguard::last_x[4].load(),(unsigned long long)evguard::last_x[5].load());
@@ -5692,10 +5693,16 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
     // Fresh storage outputs in this recording have a new arena offset. Their
     // descriptor key cannot repeat before slot retirement clears set_cache.
     // The allocation sites establish freshness for the exact outputs bound above.
-    const bool use_cache=!(honor_inline_enabled && fresh_storage_output &&
-                          slots[slot_index].recording && fresh_storage_serial==slot_serial &&
-                          !ab_off("setfresh"));
-    if(!use_cache)++set_cache_fresh_skips;
+    const bool fresh_cache_skip = honor_inline_enabled && fresh_storage_output &&
+        slots[slot_index].recording && fresh_storage_serial==slot_serial && !ab_off("setfresh");
+    // Keep empty layouts and the independent cross-draw memo on their normal
+    // paths. The experiment skips only the slot-local key and lookup.
+    const bool experiment_cache_skip = !fresh_cache_skip && honor_set_cache_bypass_experiment &&
+        properties.vendorID == 0x5143 && properties.deviceID == 0x43030b00 &&
+        properties.driverVersion == 0x802fa02e && !writes.empty();
+    const bool use_cache = !fresh_cache_skip && !experiment_cache_skip;
+    if(fresh_cache_skip)++set_cache_fresh_skips;
+    if(experiment_cache_skip)++set_cache_experiment_skips;
     uint64_t tk0=perf_clock();
     if(use_cache){
         set_key.clear();
@@ -8634,7 +8641,7 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
        if(gsf){char buf[512]={0};size_t n=fread(buf,1,sizeof(buf)-1,gsf);buf[n]=0;fclose(gsf);
         static const struct{const char *name;bool *flag;} live_flags[]={
           {"clearsynccensus",&clear_sync_census},{"honorsmallclear",&honor_small_clear_experiment},
-          {"honorclearretire",&honor_clear_retire_experiment},
+          {"honorclearretire",&honor_clear_retire_experiment},{"honorsetbypass",&honor_set_cache_bypass_experiment},
           {"texdirty",&tex_dirty},{"texmemo",&texel_memo_enabled},{"imgcache",&img_cache_enabled},
           {"descmemo",&desc_memo_enabled},{"dynpartial",&dyn_partial_enabled},{"xmemo",&xmemo_enabled},
           {"bindcache",&bind_cache_enabled},{"ownedinput",&owned_input_copy_enabled},{"rbfullcopy",&readback_fullcopy_enabled},{"bboxready",&indexed_bbox_ready_enabled},

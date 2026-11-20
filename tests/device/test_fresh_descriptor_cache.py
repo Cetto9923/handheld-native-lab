@@ -11,12 +11,12 @@ ROOT = Path(__file__).resolve().parents[2]
 class FreshDescriptorCache(unittest.TestCase):
     def run_finalization(self, restore_old=False):
         source = (ROOT / 'src/graphics/nvn_vulkan/engine/xbg_game.cpp').read_text()
-        start = source.index('    const bool use_cache=!(honor_inline_enabled && fresh_storage_output')
+        start = source.index('    const bool fresh_cache_skip = honor_inline_enabled && fresh_storage_output')
         end = source.index('// Render passes are cached by their full definition;', start)
         tail = source[start:end]
         if restore_old:
-            declaration = tail[:tail.index(';')+1]
-            tail = tail.replace(declaration, '    const bool use_cache=true;', 1)
+            tail = tail.replace('const bool use_cache = !fresh_cache_skip && !experiment_cache_skip;',
+                                'const bool use_cache = true;', 1)
         fixture = r'''
 #include <vulkan/vulkan.h>
 #include <cassert>
@@ -44,7 +44,9 @@ struct Payload {
 VkDevice device=handle<VkDevice>(1);
 struct Config { VkDevice device; } cfg{device};
 bool honor_inline_enabled=true,forced_old=false,fail_template=false;
-uint64_t set_cache_fresh_skips=0,set_cache_hits=0,set_cache_misses=0;
+bool honor_set_cache_bypass_experiment=false;
+struct Properties { uint32_t vendorID=0x5143,deviceID=0x43030b00,driverVersion=0x802fa02e; } properties;
+uint64_t set_cache_fresh_skips=0,set_cache_experiment_skips=0,set_cache_hits=0,set_cache_misses=0;
 uint64_t template_updates=0,plain_updates=0,desc_ns[6]{};
 std::vector<uint64_t> set_key;
 std::vector<VkWriteDescriptorSet> writes;
@@ -110,7 +112,7 @@ void finalize(Descriptors &out,bool fresh_storage_output,uint64_t fresh_storage_
 void reset() {
     slot.set_cache.clear();entries.clear();updates.clear();writes.clear();
     slot.recording=true;slot_serial=1;
-    allocations=set_cache_fresh_skips=set_cache_hits=set_cache_misses=template_updates=plain_updates=0;
+    allocations=set_cache_experiment_skips=set_cache_fresh_skips=set_cache_hits=set_cache_misses=template_updates=plain_updates=0;
     api_descriptor_writes=0;
 }
 int main() {
@@ -118,8 +120,11 @@ int main() {
     VkDescriptorImageInfo image{handle<VkSampler>(21),handle<VkImageView>(22),VK_IMAGE_LAYOUT_GENERAL};
     VkBufferView view=handle<VkBufferView>(23);
     for(bool honor:{false,true}) for(bool old:{false,true})
-    for(bool fresh:{false,true}) for(bool fail:{false,true}) {
+    for(bool fresh:{false,true}) for(bool fail:{false,true})
+    for(bool experiment:{false,true}) for(bool matching_driver:{false,true}) {
         reset();honor_inline_enabled=honor;forced_old=old;fail_template=fail;
+        honor_set_cache_bypass_experiment=experiment;
+        properties.driverVersion=matching_driver?0x802fa02e:0x802fa02f;
         LayoutEntry layout;Descriptors out{&layout};
         for(unsigned i=0;i<3;++i) {
             VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
@@ -133,7 +138,7 @@ int main() {
             buffer.offset=fresh?call*256:0;
             finalize(out,fresh);
             assert(out.set);
-            if(call==0 || fresh) {
+            if(call==0 || fresh || (experiment && matching_driver)) {
                 const Payload &payload=updates.back();
                 assert(payload.buffer.buffer==buffer.buffer && payload.buffer.offset==buffer.offset && payload.buffer.range==512);
                 assert(payload.image.sampler==image.sampler && payload.image.imageView==image.imageView && payload.image.imageLayout==image.imageLayout);
@@ -142,21 +147,25 @@ int main() {
         }
         const bool skip=honor && fresh && !old;
         assert(set_cache_fresh_skips==(skip?2u:0u));
-        assert(allocations==(fresh?2u:1u));
-        assert(slot.set_cache.size()==(skip?0u:fresh?2u:1u));
-        assert(set_cache_hits==(fresh?0u:1u));
-        assert(set_cache_misses==(fresh?2u:1u));
+        const bool bypass=experiment && matching_driver;
+        assert(set_cache_experiment_skips==(!skip && bypass?2u:0u));
+        assert(allocations==(fresh || bypass?2u:1u));
+        assert(slot.set_cache.size()==(skip || bypass?0u:fresh?2u:1u));
+        assert(set_cache_hits==(fresh || bypass?0u:1u));
+        assert(set_cache_misses==(fresh || bypass?2u:1u));
         assert(updates.size()==allocations);
         assert((fail?plain_updates:template_updates)==allocations);
         assert(api_descriptor_writes==updates.size());
         // Slot retirement clears the old key before an arena offset is reused.
         slot.set_cache.clear();buffer.offset=0;finalize(out,fresh);
-        assert(allocations==(fresh?3u:2u));
+        assert(allocations==(fresh || bypass?3u:2u));
     }
     reset();honor_inline_enabled=true;forced_old=false;
+    honor_set_cache_bypass_experiment=true;properties.driverVersion=0x802fa02e;
     LayoutEntry empty;Descriptors out{&empty};
     finalize(out,false);finalize(out,false);
     assert(allocations==1 && set_cache_hits==1 && updates.empty());
+    honor_set_cache_bypass_experiment=false;
     // A CPU synchronization during preparation can retire the allocation slot.
     for(bool still_recording:{false,true}) {
         reset();fail_template=false;slot.recording=still_recording;
