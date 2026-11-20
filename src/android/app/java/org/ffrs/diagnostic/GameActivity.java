@@ -435,7 +435,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         private final RectF menuBtn = new RectF();
         private final RectF btnReset = new RectF(), btnDone = new RectF(), btnVisibility = new RectF(), btnSelectedVisibility = new RectF();
         private final RectF menuPanel = new RectF();
-        private final RectF[] menuItems = new RectF[13];
+        private final RectF[] menuItems = new RectF[12];
         private int lsId = -1, rsId = -1, menuId = -1;
         private int r3Id = -1, l3Id = -1;
         private float u, vw, vh, lsKx, lsKy, rsKx, rsKy;
@@ -653,11 +653,10 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 else if (i == 4) owner.quickLoad();
                 else if (i == 5) enterEdit();
                 else if (i == 6) owner.userToggleTouchPad();
-                else if (i == 7) owner.startGuestScan();
-                else if (i == 8) owner.startActivity(new Intent(owner, ReportActivity.class));
-                else if (i == 9) owner.toggleFpsOverlay();
-                else if (i == 10) owner.rotateScreen();
-                else if (i == 11) owner.openDisplaySettings();
+                else if (i == 7) owner.startActivity(new Intent(owner, ReportActivity.class));
+                else if (i == 8) owner.toggleFpsOverlay();
+                else if (i == 9) owner.rotateScreen();
+                else if (i == 10) owner.openDisplaySettings();
                 else editVisibility();
                 return true;
             }
@@ -856,7 +855,6 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                     "恢复备份",        // quick load
                     "编辑按键布局",    // layout editor
                     shown ? "隐藏手柄" : "显示手柄",
-                    "扫描实时数据",    // guest memory scan
                     "导出诊断报告",
                     owner.fpsVisible ? "关闭帧率显示" : "开启帧率显示",
                     "旋转屏幕180°",
