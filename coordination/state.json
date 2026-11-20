@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "project": "ff-resonance-rg477m-native",
- "updated_at": "2026-11-20T09:25:36+08:00",
+ "updated_at": "2026-11-20T09:39:40+08:00",
  "phase": "1.0.73兼容接续；诊断导出117宿主与荣耀流程通过，主库空轨卡顿专项、OOT接入与在线更新并行",
  "coordinator": "Codex /root 本轮接管",
  "integration_branch": "work/rg477m-native",
@@ -12075,8 +12075,8 @@
     "tests/device/test_fresh_descriptor_cache.py"
    ],
    "acceptance": "compatible layout; button operation and visibility; compare device performance",
-   "checkpoint": "f6268e0；荣耀补货候选默认关闭，首次回收混有旧集合，收益未证。原 APK 与配置已恢复。换模型接续见 HANDOFF.md。",
-   "next": "同包同隔离档进场前切换 honordescrefill，确认完整新池周期再评估，继续多场景和单包双机验收。",
+   "checkpoint": "481b7b5；同进程补货对照已准备，荣耀设备未连接，脚本在启动前退出，未更改设备。",
+   "next": "荣耀恢复连接后检查并运行 factory-refill-same-session，同场景比较完整新池周期与画面，再继续多场景验收。",
    "owner": "/root",
    "branch": "task/T-no-key-delivery-20261120",
    "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/no-key-delivery-20261120"
