@@ -2733,6 +2733,28 @@ void cpu_access(uint64_t address,uint64_t bytes,unsigned why){
                      unsigned(slots[slot_index].recording), unsigned(bool(w.owner)),
                      unsigned(bool(w.indirect)),
                      unsigned(xbg_wb_contains(w.addr, w.bytes, address, bytes)), overlaps, aliases);
+            if (overlaps > 1) {
+                unsigned index = 0;
+                for (const auto &pending : pending_writebacks) {
+                    if (!xbg_wb_overlaps(address, bytes, pending.addr, pending.bytes)) continue;
+                    const auto *producer_slot = static_cast<const Slot *>(pending.slot);
+                    const uint64_t overlap_begin = std::max(address, pending.addr);
+                    const uint64_t overlap_end = std::min(address + bytes, pending.addr + pending.bytes);
+                    xbg_logf("NVN clear sync producer sample=%u order=%u bytes=%llu clear_offset=%llu "
+                             "producer_offset=%llu overlap=%llu same_range_as_first=%u slot=%d "
+                             "current=%u pending=%u owner=%u indirect=%u",
+                             clear_sync_records, index++, (unsigned long long)pending.bytes,
+                             (unsigned long long)(overlap_begin - address),
+                             (unsigned long long)(overlap_begin - pending.addr),
+                             (unsigned long long)(overlap_end - overlap_begin),
+                             unsigned(pending.addr == w.addr && pending.bytes == w.bytes),
+                             producer_slot ? int(producer_slot - slots) : -1,
+                             unsigned(producer_slot == &slots[slot_index]),
+                             unsigned(producer_slot && producer_slot->pending),
+                             unsigned(bool(pending.owner)), unsigned(bool(pending.indirect)));
+                    if (index == 4) break;
+                }
+            }
         }
         if (why == 4 && log_write_sync) ++perf.write_sync_by_op[std::min(cur_op,63u)];
         probe_cpu_sync(address,bytes,why,w.addr,w.bytes);++perf.why_access;if(why<12)++perf.access_by[why];resolve_pending();return;}
