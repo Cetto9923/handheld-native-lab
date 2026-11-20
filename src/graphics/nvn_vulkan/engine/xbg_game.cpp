@@ -830,6 +830,7 @@ bool vivo_indexed_fallback = false;
 bool ordered_buffer_clear_enabled = false;
 bool clear_sync_census = false;
 bool honor_small_clear_experiment = false;
+bool honor_clear_retire_experiment = false;
 unsigned clear_sync_records = 0;
 bool log_write_sync = false;
 bool thor_compact_memory = false;
@@ -1525,13 +1526,13 @@ void retire_slot(Slot &s){
 // Retire the submissions in order, up to and including `target`. The submissions queued after it stay in flight: the
 // guest waits for the work its own signal covered, not for the work that was queued after that signal. This is the fence
 // retirement a driver does when a host waits for the value of its own signal.
-bool retire_through(const Slot *target){
+bool retire_through(const Slot *target, bool count_event = true){
     if(!target||!target->pending)return false;   // the submission that carries the signal is not in flight: its value is published already
     for(;;){
         Slot *op=oldest_pending();
         if(!op)return false;   // the target is not in flight: its value is published already
         retire_slot(*op);
-        ++event_slots_targeted;
+        if(count_event)++event_slots_targeted;
         if(op==target)return true;
     }
 }
@@ -2686,6 +2687,40 @@ void resolve_pending(){
 bool read_preflight=true;
 bool defer_query_preflight=true;
 void preflight_cpu_reads(){if(read_preflight && (!pending_writebacks.empty() || (!defer_query_preflight && !pending_reports.empty())))resolve_pending();}
+// Retire only the submitted slot that owns both overlapping writes. The CPU
+// clear below then runs against the normal writeback result without submitting
+// the recording slot. Any residual write or report still uses the old path.
+void retire_honor_clear_producer(uint64_t address, uint64_t bytes) {
+    if (!honor_clear_retire_experiment || clear_sync_census || bytes != 512 ||
+        properties.vendorID != 0x5143 || properties.deviceID != 0x43030b00 ||
+        properties.driverVersion != 0x802fa02e || capture.active || capture.probe ||
+        capture.trace || provenance_file || !slots[slot_index].recording)
+        return;
+    const Slot *producer = nullptr;
+    unsigned matches = 0;
+    for (const auto &w : pending_writebacks) {
+        if (!xbg_wb_overlaps(address, bytes, w.addr, w.bytes)) continue;
+        if (matches == 2 || w.addr != address || w.bytes != (matches ? 4096u : 73728u) ||
+            w.owner || w.indirect || !w.slot)
+            return;
+        const auto *slot = static_cast<const Slot *>(w.slot);
+        if (slot == &slots[slot_index] || !slot->pending || (producer && producer != slot))
+            return;
+        producer = slot;
+        ++matches;
+    }
+    if (matches != 2) return;
+    bool image_alias = false;
+    for_images_overlapping(address, 73728, [&](Image &) { image_alias = true; });
+    if (image_alias) return;
+    SiteScope site(SITE_GPU_SYNC);
+    if (retire_through(producer, false)) {
+        static unsigned samples = 0;
+        if (samples++ < 8)
+            xbg_logf("NVN clear producer retired frame=%llu", (unsigned long long)stats.presents.load());
+    }
+}
+
 void cpu_access(uint64_t address,uint64_t bytes,unsigned why){
     if(!bytes)return;
     need(xbg_wb_range_valid(address,bytes),"CPU access range overflow");
@@ -2715,6 +2750,7 @@ void cpu_access(uint64_t address,uint64_t bytes,unsigned why){
         }
         return;
     }
+    if (why == 4 && cur_op == OP_CLEAR_BUF) retire_honor_clear_producer(address, bytes);
     for(auto &w:pending_writebacks)if(xbg_wb_overlaps(address,bytes,w.addr,w.bytes)){
         static unsigned access_logs=0;
         if(access_logs++<20 || honor_pipeline_diagnostics)
@@ -8597,6 +8633,7 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
        if(gsf){char buf[512]={0};size_t n=fread(buf,1,sizeof(buf)-1,gsf);buf[n]=0;fclose(gsf);
         static const struct{const char *name;bool *flag;} live_flags[]={
           {"clearsynccensus",&clear_sync_census},{"honorsmallclear",&honor_small_clear_experiment},
+          {"honorclearretire",&honor_clear_retire_experiment},
           {"texdirty",&tex_dirty},{"texmemo",&texel_memo_enabled},{"imgcache",&img_cache_enabled},
           {"descmemo",&desc_memo_enabled},{"dynpartial",&dyn_partial_enabled},{"xmemo",&xmemo_enabled},
           {"bindcache",&bind_cache_enabled},{"ownedinput",&owned_input_copy_enabled},{"rbfullcopy",&readback_fullcopy_enabled},{"bboxready",&indexed_bbox_ready_enabled},
