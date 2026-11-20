@@ -832,6 +832,7 @@ bool clear_sync_census = false;
 bool honor_small_clear_experiment = false;
 bool honor_clear_retire_experiment = false;
 bool honor_set_cache_bypass_experiment = false;
+bool honor_descriptor_refill_experiment = false;
 unsigned clear_sync_records = 0;
 bool log_write_sync = false;
 bool thor_compact_memory = false;
@@ -4722,19 +4723,23 @@ void clear_descriptor_caches(){sampler_fast.clear();pipeline_fast.clear();pipe_m
 }
 VkDescriptorSet allocate_set(VkDescriptorSetLayout layout){
     Slot &s=recording_slot();
+    const bool compact_refill = honor_descriptor_refill_experiment &&
+        properties.vendorID == 0x5143 && properties.deviceID == 0x43030b00 &&
+        properties.driverVersion == 0x802fa02e;
+    const uint32_t batch = compact_refill ? 4 : 16;
     for(;;){
         if(s.pool_next==s.pools.size()){
             std::vector<VkDescriptorPoolSize> sizes;for(uint32_t t=0;t<=VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;t++)sizes.push_back({VkDescriptorType(t),t==VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER||t==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER||t==VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC||t==VK_DESCRIPTOR_TYPE_STORAGE_BUFFER?16384u:2048u});
             VkDescriptorPoolCreateInfo ci{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};ci.maxSets=2048;ci.poolSizeCount=sizes.size();ci.pPoolSizes=sizes.data();
             VkDescriptorPool pool;VK(vkCreateDescriptorPool(cfg.device,&ci,nullptr,&pool));s.pools.push_back(pool);
         }
-        // Sets are allocated 16 at a time per layout and handed out from a per-slot spare list.
+        // Allocate batches per layout and hand out the remaining sets from this slot.
         auto &spare=s.spare_sets[layout];auto &used=s.used_sets[layout];if(!spare.empty()){VkDescriptorSet set=spare.back();spare.pop_back();used.push_back(set);return set;}
         VkDescriptorSetLayout layouts[16];for(auto &l:layouts)l=layout;VkDescriptorSet sets[16]{};
-        VkDescriptorSetAllocateInfo ai{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};ai.descriptorPool=s.pools[s.pool_next];ai.descriptorSetCount=16;ai.pSetLayouts=layouts;
+        VkDescriptorSetAllocateInfo ai{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};ai.descriptorPool=s.pools[s.pool_next];ai.descriptorSetCount=batch;ai.pSetLayouts=layouts;
         VkResult r=vkAllocateDescriptorSets(cfg.device,&ai,sets);
         if(r!=VK_SUCCESS){ai.descriptorSetCount=1;r=vkAllocateDescriptorSets(cfg.device,&ai,sets);if(r==VK_SUCCESS){used.push_back(sets[0]);return sets[0];}}
-        else{spare.insert(spare.end(),sets+1,sets+16);used.push_back(sets[0]);return sets[0];}
+        else{spare.insert(spare.end(),sets+1,sets+batch);used.push_back(sets[0]);return sets[0];}
         if(r==VK_ERROR_OUT_OF_POOL_MEMORY || r==VK_ERROR_FRAGMENTED_POOL){++s.pool_next;continue;}
         check(r,"vkAllocateDescriptorSets");
     }
@@ -8666,6 +8671,7 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
         static const struct{const char *name;bool *flag;} live_flags[]={
           {"clearsynccensus",&clear_sync_census},{"honorsmallclear",&honor_small_clear_experiment},
           {"honorclearretire",&honor_clear_retire_experiment},{"honorsetbypass",&honor_set_cache_bypass_experiment},
+          {"honordescrefill",&honor_descriptor_refill_experiment},
           {"texdirty",&tex_dirty},{"texmemo",&texel_memo_enabled},{"imgcache",&img_cache_enabled},
           {"descmemo",&desc_memo_enabled},{"dynpartial",&dyn_partial_enabled},{"xmemo",&xmemo_enabled},
           {"bindcache",&bind_cache_enabled},{"ownedinput",&owned_input_copy_enabled},{"rbfullcopy",&readback_fullcopy_enabled},{"bboxready",&indexed_bbox_ready_enabled},
