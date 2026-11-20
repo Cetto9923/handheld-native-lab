@@ -834,6 +834,7 @@ bool honor_clear_retire_experiment = false;
 bool honor_img_cache_persist_experiment = false;
 bool honor_set_cache_bypass_experiment = false;
 bool honor_descriptor_refill_experiment = false;
+bool honor_frame_texel_memo_enabled = true;
 unsigned clear_sync_records = 0;
 bool log_write_sync = false;
 bool thor_compact_memory = false;
@@ -2022,6 +2023,7 @@ void snapshot_invalidate(uint64_t address,uint64_t bytes){
     ++snap_invalidations;if(ab_off("snapinval"))++snapshot_epoch;
     texel_copy_cache.invalidate(address,bytes);
     if(address<texel_hi && address+bytes>texel_lo)texel_touch(address,bytes);
+    desc_memo_reset();
     uint64_t lo=address>snapshot_maxlen?address-snapshot_maxlen:0;int which=0;
     for(auto *m:{&snapshots,&uniform_snapshots}){
         for(auto it=m->lower_bound({lo,0});it!=m->end() && it->first.first<address+bytes;){uint64_t b=it->first.first,n=it->first.second,e=b+n;
@@ -5002,7 +5004,7 @@ std::vector<uint64_t> memo_front_key;std::unordered_map<std::vector<uint64_t>,De
 uint64_t memo_mod_gen=1,memo_front_gen=0,memo_front_hits=0;unsigned memo_front_slot=~0u;
 uint64_t desc_ns[6]={};bool desc_memo_enabled=true;uint64_t desc_memo_hits=0,desc_memo_misses=0,desc_memo_why[6]={};
 std::vector<MemoImage> desc_memo_images;std::vector<DescMemo::Dyn> desc_memo_dyn;bool desc_memo_recording=false;
-std::vector<DescMemo::Texel> desc_memo_texel;bool desc_memo_texel_fail=false;
+std::vector<DescMemo::Texel> desc_memo_texel;bool desc_memo_texel_fail=false,desc_memo_per_frame_texel=false;
 void descriptors_build(Descriptors &out,Commands &commands,bool compute);
 // Dynamic uniform buffers (Claude C151): Maleoon allows 8 per pipeline layout. Mode 1 = every uniform buffer dynamic (fits);
 // mode 2 = only the per-draw ones (guest uniform buffers, driver blocks) dynamic, the support block (depends on the viewport
@@ -5242,7 +5244,7 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
                 if(!m.persistent && desc_memo_local[slot_index])--desc_memo_local[slot_index];desc_memo.erase(hit);++memo_mod_gen;}}
     }
     desc_ns[0]+=perf_clock()-tm0;
-    desc_memo_images.clear();desc_memo_dyn.clear();desc_memo_texel.clear();desc_memo_texel_fail=false;desc_memo_recording=ok;
+    desc_memo_images.clear();desc_memo_dyn.clear();desc_memo_texel.clear();desc_memo_texel_fail=false;desc_memo_per_frame_texel=false;desc_memo_recording=ok;
     {uint64_t tb=perf_clock();descriptors_build(out,commands,compute);desc_ns[4]+=perf_clock()-tb;}
     desc_memo_recording=false;
     if(ok && desc_memo_texel_fail){ok=false;++desc_memo_why[0];}
@@ -5251,7 +5253,7 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
         std::sort(desc_memo_dyn.begin(),desc_memo_dyn.end(),[](const DescMemo::Dyn &a,const DescMemo::Dyn &b){return a.order<b.order;});
         DescMemo dm{out.entry,out.set,out.pipeline_layout,out.dynamic_offsets,desc_memo_images,desc_memo_dyn};dm.texel=desc_memo_texel;dm.water=out.water;
         {size_t elements=0;for(unsigned st=0;st<5;st++)if(state.shader[st])for(auto &b:state.shader[st]->bindings)elements+=b.count;dm.reserve=elements*2+40;}
-        dm.persistent=xmemo_enabled && memo_dyn_ok && out.written.empty();
+        dm.persistent=xmemo_enabled && memo_dyn_ok && out.written.empty() && !desc_memo_per_frame_texel;
         for(auto &st:out.storage)dm.stor.push_back({st.first.first,st.first.second,st.second->buffer,st.second->offset});
         for(auto &ti:dm.images)dm.tex_ids.push_back({ti.first->serial,ti.first->mem});
         for(auto &d:dm.dyn)if(!d.uniform && d.src!=XBG_SOURCE_SUPPORT && d.src!=XBG_SOURCE_DRIVER0 && d.src!=XBG_SOURCE_DRIVER2 && d.src!=XBG_SOURCE_C1)dm.persistent=false;
@@ -5441,14 +5443,17 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                     }
                     TexelResident *res=nullptr;
                     if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER && texel_memo_enabled && !compute){Buffer pv;
-                        if(!DESC_CALL(TexelResidentPending, pending_view(uint64_t(texture.mem),texture.L.size,1,pv)))res=DESC_CALL(TexelResidentAcquire, texel_acquire(uint64_t(texture.mem),texture.L.size,tf));
+                        const bool has_pv=DESC_CALL(TexelResidentPending, pending_view(uint64_t(texture.mem),texture.L.size,1,pv));
+                        if(!has_pv)res=DESC_CALL(TexelResidentAcquire, texel_acquire(uint64_t(texture.mem),texture.L.size,tf));
                         if(res){if(desc_memo_recording){memo_reference_buffer(res->buffer.buffer,slot_index);desc_memo_texel.push_back({record,record->revision,uint64_t(texture.mem),uint64_t(texture.L.size),res->gen,uint32_t(tf)});}
                             texel_views.push_back(res->view);write.pTexelBufferView=&texel_views.back();
                             water_binding_buffer(out.water,shader.key,st,b.binding,element,res->buffer,res->buffer.offset,texture.L.size,tf);
                             if(probe_is_active())probe_texel_buffer(shader.key,st,b.binding,element,res->buffer,tf,uint64_t(texture.mem),texture.L.size,true);
                             probe_full_buffer(shader.key,st,b.binding,element,res->buffer,res->buffer.offset,texture.L.size,tf,false);
                             if(fire_trace_active()){if(shader.key=="8b27994fdc0e32c9" && st==0 && b.binding==12 && !element)xbg_logf("FIRE_SOURCE frame=%llu resident=1 guesthash=%llx srchash=%llx",(unsigned long long)stats.presents.load(),(unsigned long long)hash_memory(texture.mem,4096),(unsigned long long)hash_memory(res->buffer.mapped,4096));fire_trace_texel(shader.key,st,b.binding,element,res->buffer,texture.L.size,uint64_t(texture.mem));}}
-                        else desc_memo_texel_fail=true;}   // the set then holds a per-frame view: not memoized
+                        else if(has_pv && honor_frame_texel_memo_enabled && !ab_off("texelframe")){
+                            desc_memo_per_frame_texel=true;
+                        }else desc_memo_texel_fail=true;}   // the set then holds a per-frame view: not memoized
                     // gfx-flame-diag: census of the raw particle data the flame vertex shaders fetch (the binding the
                     // integer facts mark). Only counts a signature; no behaviour changes.
                     if(flame_diag_enabled && st==4 && b.type==VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER && texture.mem){
@@ -8475,7 +8480,7 @@ vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemor
     {std::string dir=c->shader_directory;size_t cut=dir.find_last_of('/');std::string base=cut==std::string::npos?dir:dir.substr(0,cut);
      FILE *m=fopen((base+"/gfx-readback-keep-standard").c_str(),"rb");if(m){unsigned value=0;if(fscanf(m,"%u",&value)==1 && value==2)readback_keep_standard=2;fclose(m);}
      xbg_logf("NVN readback standard keep=%zu (default=1, experimental=2, pressure keep0 unchanged)",readback_keep_standard);}
-    texel_copy_cache.reset();texel_copy_enabled=true;indexed_bbox_ready_enabled=false;readback_fullcopy_enabled=false;readback_fullcopy_hits=readback_fullcopy_bytes=0;
+    texel_copy_cache.reset();texel_copy_enabled=true;indexed_bbox_ready_enabled=false;readback_fullcopy_enabled=(properties.vendorID==0x5143);honor_frame_texel_memo_enabled=true;readback_fullcopy_hits=readback_fullcopy_bytes=0;
     for(auto &counts:texel_copy_stats)counts=TexelCopyStats{};
     clear_sync_census=false;
     clear_sync_records=0;
@@ -8751,6 +8756,7 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
           {"honorclearretire",&honor_clear_retire_experiment},{"honorsetbypass",&honor_set_cache_bypass_experiment},
           {"honorimgpersist",&honor_img_cache_persist_experiment},
           {"honordescrefill",&honor_descriptor_refill_experiment},
+          {"texelframe",&honor_frame_texel_memo_enabled},
           {"texdirty",&tex_dirty},{"texmemo",&texel_memo_enabled},{"imgcache",&img_cache_enabled},
           {"descmemo",&desc_memo_enabled},{"dynpartial",&dyn_partial_enabled},{"xmemo",&xmemo_enabled},
           {"bindcache",&bind_cache_enabled},{"ownedinput",&owned_input_copy_enabled},{"rbfullcopy",&readback_fullcopy_enabled},{"bboxready",&indexed_bbox_ready_enabled},
