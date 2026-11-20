@@ -281,6 +281,7 @@
 | OPPO-THOR-20261119 | 性能与内存兼容 | candidate_delivered_device_pending | Codex /root | 无 | 无额外门禁 | task/T-oppo-thor-20261119 |
 | DISPLAY-SETTINGS-20261120 | 图形设置与虚拟输入 | candidate_delivered_device_pending | Codex /root | 无 | 无额外门禁 | task/T-display-settings-20261120 |
 | TOUCH-L3-VISIBILITY-PERF-20261120 | coordinator | in_progress | /root | 无 | 无额外门禁 | task/T-no-key-delivery-20261120 |
+| T-HONOR-FACTORY-BATTLE-OPT-20261120 | GRAPHICS_PERF | passed_partial_unmet_30fps | Antigravity (Goal Mode) | 无 | 无额外门禁 | task/T-honor-factory-battle-opt-20261120 |
 
 ## 独占写入
 
@@ -521,6 +522,7 @@
 - {"task": "CODEX-DIAGNOSTIC-INDEPENDENT-QA-20261118", "owner": "/root/library_icon_design", "paths": ["coordination/results/CODEX-DIAGNOSTIC-INDEPENDENT-QA-20261118.md", ".local/codex-diagnostic-qa-20261118/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro", "branch": "task/T-codex-recovery-20261114", "acquired_at": "2026-11-18T19:05:17.040081+08:00", "checkpoint": "独立QA报告已交回并随7109848记录", "write_state": "COMPLETE_HANDED_BACK"}
 - {"task": "CODEX-LIBRARY-UPDATE-RECOVERY-20261118", "owner": "/root/library_update_recovery", "paths": ["."], "worktree": "/Users/yuyan9923/GitHub/02-游戏原生移植/switch-android-port-rules/.local/codex-library-update-20261118", "branch": "独立候选目录", "acquired_at": "2026-11-18T19:13:24.535967+08:00", "checkpoint": "禁止写OOT或安全100原目录，自己隔离候选"}
 - {"task": "TOUCH-L3-VISIBILITY-PERF-20261120", "owner": "/root", "paths": ["src/android/app/java/org/ffrs/diagnostic/GameActivity.java", "tests/device/test_touch_r3.py", "coordination/results/TOUCH-L3-VISIBILITY-PERF-20261120.md", "src/graphics/nvn_vulkan/engine/xbg_game.cpp", "tests/installer/test_touch_pad_menu.py", "tests/installer/test_screen_rotation.py"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/display-settings-20261120", "branch": "task/T-display-settings-20261120", "acquired_at": "2026-11-20T01:16:32.320420+08:00", "checkpoint": "5dc9f4a; APK contains key; performance work unfinished", "write_state": "CHECKPOINTED_RELEASED", "released_at": "2026-11-20T01:52:33.152213+08:00"}
+- {"task": "T-HONOR-FACTORY-BATTLE-OPT-20261120", "owner": "Antigravity (Goal Mode)", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", "tests/device/test_pending_buffer_clear.py", "tests/device/test_honor_clear_retire.py", "tests/device/test_honor_img_cache_persist.py"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/no-key-delivery-20261120", "branch": "task/T-honor-factory-battle-opt-20261120", "acquired_at": "2026-11-20T10:48:28+08:00", "checkpoint": "28261873924311eaeb98a3687a40f9b5cd2a2b59", "write_state": "COMPLETE_HANDED_BACK", "released_at": "2026-11-20T03:19:23.447411+00:00", "objective": "Optimize Chapter 4 factory battle 720p on Honor GT Pro. Delivered Candidate 1 (generalized clear producer retire) and Candidate 2 (persistent img_cache); verified on device, original APK 8d91177b restored."}
 
 ## 阻塞
 
