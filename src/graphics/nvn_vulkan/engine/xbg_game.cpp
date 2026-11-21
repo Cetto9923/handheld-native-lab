@@ -1460,7 +1460,10 @@ VkResult hybrid_wait_fence(VkFence f,uint64_t timeout_ns){
         for(unsigned it=0;;++it){
             VkResult st=vkGetFenceStatus(cfg.device,f);
             if(st!=VK_NOT_READY)return st==VK_SUCCESS?VK_SUCCESS:st;
-            if((it&15)==0){
+#if defined(__aarch64__)
+            asm volatile("yield" ::: "memory");
+#endif
+            if((it&31)==0){
                 uint64_t el=uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-t0).count());
                 if(el>=spin_ns){timeout_ns=timeout_ns>el?timeout_ns-el:0;break;}
             }
@@ -3206,7 +3209,7 @@ struct PipeMemoKey{const void *shader[5];const void *layout,*pass_def;VkRenderPa
     uint8_t tail[offsetof(State,count_samples)-offsetof(State,patch_size)];};      // patch_size, bounds
 PipeMemoKey pipe_memo_key,pipe_memo_next;VkPipeline pipe_memo_pipeline=VK_NULL_HANDLE;bool pipe_memo=false,pipe_memo_valid=false;uint64_t pipe_memo_hits=0,pipe_memo_misses=0;
 std::vector<VkVertexInputBindingDescription> pipe_memo_bindings;int pipe_memo_zero_binding=-1;
-constexpr size_t kPipeMemoSlots = 64;
+constexpr size_t kPipeMemoSlots = 256;
 struct PipeMemoEntry {
     PipeMemoKey key{};
     VkPipeline pipeline = VK_NULL_HANDLE;
@@ -3224,7 +3227,8 @@ inline uint32_t pipe_memo_hash(const PipeMemoKey &k){
     h ^= uint32_t(uintptr_t(k.pass) >> 3);
     h ^= uint32_t(uintptr_t(k.pipeline_layout) >> 3);
     h ^= uint32_t(k.prim ^ (k.colors << 4) ^ (k.depth_format << 8));
-    return (h ^ (h >> 6) ^ (h >> 12)) & (kPipeMemoSlots - 1);
+    h *= 0x9e3779b9u;
+    return (h ^ (h >> 8)) & (kPipeMemoSlots - 1);
 }
 void pipe_memo_fill(PipeMemoKey &k,const void *layout,const void *pass_def,VkRenderPass pass,VkPipelineLayout pipeline_layout,int prim,VkSampleCountFlagBits samples,uint32_t colors){
     memset(&k,0,sizeof k);for(unsigned i=0;i<5;i++)k.shader[i]=state.shader[i];k.layout=layout;k.pass_def=pass_def;k.pass=pass;k.pipeline_layout=pipeline_layout;k.prim=prim;k.samples=uint32_t(samples);
@@ -6212,9 +6216,10 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
             fdiag_bi=indexed?uint64_t(uint32_t(indexed->base_instance)):uint64_t(first_instance);fdiag_bv=indexed?uint64_t(uint32_t(indexed->base_vertex)):0;fdiag_count=uint64_t(uint32_t(count));fdiag_prim=prim;fdiag_itype=indexed?indexed->itype:-1;
             fdiag_c5a=fdiag_c5b=fdiag_c5c=fdiag_c2a=fdiag_c0a=~0u;fdiag_ubo=0;
             readu(60,40,fdiag_c5a);readu(60,24,fdiag_c5b);readu(60,424,fdiag_c5c);readu(66,376,fdiag_c2a);readu(72,1604,fdiag_c0a);}}}
-    if(state.shader[0] && state.shader[0]->key=="be4e89a0687ae37c"){
-        static unsigned flame_call_cnt=0;
-        if(flame_call_cnt++<120){
+    static unsigned flame_call_cnt=0;
+    if(__builtin_expect(flame_call_cnt<120, 0)){
+        if(state.shader[0] && state.shader[0]->key=="be4e89a0687ae37c"){
+            flame_call_cnt++;
             xbg_logf("FLAME_DRAW_CALL fr=%llu gpu_args=%d instances=%u",
                 (unsigned long long)stats.presents.load(), int(gpu_args!=nullptr), indexed ? indexed->instances : instances);
         }
@@ -6459,7 +6464,7 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
         const bool dw_en = memo_hit ? (state.ds.dw != 0) : ds.depthWriteEnable;
         const bool st_en = memo_hit ? (state.ds.st != 0) : ds.stencilTestEnable;
         open_pass.depth_writes|=dt_en && dw_en;
-        open_pass.stencil_writes|=st_en && (stencil_writes(stencil(false)) || stencil_writes(stencil(true)));
+        open_pass.stencil_writes|=st_en && (state.stencil_write[0]!=0 || state.stencil_write[1]!=0) && (stencil_writes(stencil(false)) || stencil_writes(stencil(true)));
         open_pass.depth_may_write|=open_pass.depth_writes || open_pass.stencil_writes;
         if(depth_aspect_enabled && open_pass.depth_attached && !open_pass.depth_writes && !open_pass.images.empty() &&
             std::find(draw_depth_reads.begin(),draw_depth_reads.end(),open_pass.images[open_pass.images.size()-1])!=draw_depth_reads.end())open_pass.depth_sample_visible=true;
@@ -7805,15 +7810,17 @@ bool gpu_draw_indexed(const p_draw_idx &a){
                 input.why, input.stage, input.binding, (unsigned long long)input.address, (unsigned long long)input.bytes, int(pin), int(ready), (unsigned long long)a.ind, (unsigned long long)stats.presents.load());
         if(!ready)return false;
     }
-    static std::set<std::pair<std::string, std::string>> seen_pairs;
-    std::string vs_key = state.shader[0] ? state.shader[0]->key : "none";
-    std::string fs_key = state.shader[4] ? state.shader[4]->key : "none";
-    if(seen_pairs.insert({vs_key, fs_key}).second){
+    static std::set<std::pair<const Shader*, const Shader*>> seen_shaders;
+    if(__builtin_expect(seen_shaders.insert({state.shader[0], state.shader[4]}).second, 0)){
+        std::string vs_key = state.shader[0] ? state.shader[0]->key : "none";
+        std::string fs_key = state.shader[4] ? state.shader[4]->key : "none";
         xbg_logf("GPU_INDEXED_SHADER_PAIR vs=%s fs=%s count=%u ind=%#llx", vs_key.c_str(), fs_key.c_str(), row.index_count, (unsigned long long)a.ind);
     }
-    if(indirect_probe){
+    if(__builtin_expect(indirect_probe != 0, 0)){
         if(!indirect_probe_file){indirect_probe_file=fopen((probe.base+"/indirect-probe.csv").c_str(),"w");if(indirect_probe_file)setvbuf(indirect_probe_file,nullptr,_IOFBF,4096);}
         if(indirect_probe_file){
+            std::string vs_key = state.shader[0] ? state.shader[0]->key : "none";
+            std::string fs_key = state.shader[4] ? state.shader[4]->key : "none";
             uint32_t args5[5]={0,0,0,0,0};
             if(batch->owned&&batch->owned->view.mapped&&batch->owned->view.size>=20){uint64_t off=a.ind-batch->address;if(off+20<=batch->owned->view.size)memcpy(args5,static_cast<const uint8_t*>(batch->owned->view.mapped)+off,20);}
             fprintf(indirect_probe_file,"%llu,%s,%s,%u,%u,%#llx,%#llx,%d,%u,%u,%u,%u,%u\n",
@@ -7823,9 +7830,10 @@ bool gpu_draw_indexed(const p_draw_idx &a){
             if(!(stats.presents.load()%30))fflush(indirect_probe_file);
         }
     }
-    if(vs_key=="be4e89a0687ae37c"){
-        static unsigned flame_draw_cnt=0;
-        if(flame_draw_cnt++<120){
+    static unsigned flame_draw_cnt=0;
+    if(__builtin_expect(flame_draw_cnt<120, 0)){
+        if(state.shader[0] && state.shader[0]->key=="be4e89a0687ae37c"){
+            flame_draw_cnt++;
             xbg_logf("FLAME_DRAW_DIAG fr=%llu slot=%u ind=%#llx batch_addr=%#llx batch_owned=%d",
                 (unsigned long long)stats.presents.load(), slot_index, (unsigned long long)a.ind,
                 batch ? (unsigned long long)batch->address : 0,
@@ -7852,9 +7860,10 @@ void execute_draw_index_record(const p_draw_idx &a){preflight_cpu_reads();
             (unsigned long long)a.ind, batch ? (unsigned long long)(a.ind - batch->address) : 0,
             int(tmpl_ok), row.index_count, row.first_index, batch ? (unsigned long long)batch->address : 0);
     }
-    if(state.shader[0] && state.shader[0]->key=="be4e89a0687ae37c"){
-        static unsigned flame_exec_cnt=0;
-        if(flame_exec_cnt++<120){
+    static unsigned flame_exec_cnt=0;
+    if(__builtin_expect(flame_exec_cnt<120, 0)){
+        if(state.shader[0] && state.shader[0]->key=="be4e89a0687ae37c"){
+            flame_exec_cnt++;
             xbg_logf("FLAME_EXEC_DRAW_REC fr=%llu ind=%#llx",
                 (unsigned long long)stats.presents.load(), (unsigned long long)a.ind);
         }
