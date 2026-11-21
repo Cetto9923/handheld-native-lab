@@ -3099,6 +3099,7 @@ struct Shader {std::string key;std::string identity;
     std::set<VertexInputFormats> unsupported_vertex_inputs;
     uint32_t stage;VkShaderModule module{};std::vector<xbg_shader_binding> bindings;std::vector<uint32_t> inputs,input_classes,probe_words;std::vector<uint8_t> c1;
     std::set<uint32_t> storage_writes; // Vulkan bindings of storage buffers the SPIR-V may write
+    uint64_t storage_writes_mask=0;
     std::set<uint32_t> filter_independent_bindings;
     std::vector<uint32_t> linear_sample_candidates;
     XbgPackedShaderWords linear_sample_source;
@@ -3523,6 +3524,7 @@ Shader *load_shader(const void *control){
             xbg_logf("NVN indirect instance-field shader=%s binding=%u axis=%u",key.c_str(),field.binding,field.axis);
     }
     {bool unknown=false;p->storage_writes=spirv_storage_writes(words,unknown);if(unknown){for(auto &b:p->bindings)if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)p->storage_writes.insert(b.binding);}}
+    for(uint32_t b:p->storage_writes)if(b<64)p->storage_writes_mask|=(1ull<<b);
     if(h.stage==0){p->input_classes.resize(p->inputs.size());need(xbg_vertex_input_classes(words.data(),words.size(),p->inputs.data(),p->inputs.size(),p->input_classes.data())==0,"Unsupported vertex input scalar interface");}
     load_t3=timing_clock();
     // Retain the exact final bytes passed below, only for the explicit Honor
@@ -3667,7 +3669,7 @@ Shader *integer_buffer_variant(Shader &base){
     auto variant=std::make_unique<Shader>();
     variant->key=base.key;variant->identity=identity;variant->stage=base.stage;
     variant->bindings=base.bindings;variant->ubo_all=base.ubo_all;variant->ubo_varying=base.ubo_varying;variant->inputs=base.inputs;variant->input_classes=base.input_classes;
-    variant->c1=base.c1;variant->storage_writes=base.storage_writes;variant->discards=base.discards;variant->raster=base.raster;
+    variant->c1=base.c1;variant->storage_writes=base.storage_writes;variant->storage_writes_mask=base.storage_writes_mask;variant->discards=base.discards;variant->raster=base.raster;
     variant->storage_image_formats=base.storage_image_formats;
     variant->storage_binding_info=base.storage_binding_info;
     if(!base.module_words.empty())variant->module_words=words;
@@ -3861,7 +3863,7 @@ Shader *typed_storage_variant(Shader &base){
     auto variant=std::make_unique<Shader>();
     variant->key=base.key;variant->identity=identity;variant->stage=base.stage;
     variant->bindings=base.bindings;variant->ubo_all=base.ubo_all;variant->ubo_varying=base.ubo_varying;variant->inputs=base.inputs;variant->input_classes=base.input_classes;
-    variant->c1=base.c1;variant->storage_writes=base.storage_writes;variant->discards=base.discards;variant->raster=base.raster;
+    variant->c1=base.c1;variant->storage_writes=base.storage_writes;variant->storage_writes_mask=base.storage_writes_mask;variant->discards=base.discards;variant->raster=base.raster;
     variant->storage_image_formats=base.storage_image_formats;
     variant->storage_binding_info=base.storage_binding_info;
     variant->typed_storage_rewritten=base.typed_storage_rewritten;
@@ -3944,7 +3946,7 @@ Shader *vertex_input_variant(Shader &base){
     variant->bindings=base.bindings;variant->ubo_all=base.ubo_all;variant->ubo_varying=base.ubo_varying;variant->inputs=base.inputs;
     variant->input_classes.resize(base.inputs.size());
     need(xbg_vertex_input_classes(words.data(),words.size(),variant->inputs.data(),variant->inputs.size(),variant->input_classes.data())==0,"Unsupported rewritten vertex input interface");
-    variant->c1=base.c1;variant->storage_writes=base.storage_writes;variant->discards=base.discards;
+    variant->c1=base.c1;variant->storage_writes=base.storage_writes;variant->storage_writes_mask=base.storage_writes_mask;variant->discards=base.discards;
     variant->raster=xbg_spirv_raster_facts(words.data(),words.size(),base.stage);
     variant->storage_image_formats=base.storage_image_formats;
     variant->storage_binding_info=base.storage_binding_info;
@@ -4052,6 +4054,7 @@ Shader *linear_sample_variant(Shader &base) {
     variant->input_classes = base.input_classes;
     variant->c1 = base.c1;
     variant->storage_writes = base.storage_writes;
+    variant->storage_writes_mask = base.storage_writes_mask;
     variant->discards = base.discards;
     variant->raster = base.raster;
     variant->storage_image_formats = base.storage_image_formats;
@@ -5021,7 +5024,8 @@ struct MemoFrontSlot {
     uint64_t gen = 0;
     unsigned slot = ~0u;
 };
-static MemoFrontSlot memo_front_slots[64];
+static constexpr size_t kMemoFrontSlots = 256;
+static MemoFrontSlot memo_front_slots[kMemoFrontSlots];
 uint64_t memo_mod_gen=1,memo_front_hits=0;
 uint64_t desc_ns[6]={};bool desc_memo_enabled=true;uint64_t desc_memo_hits=0,desc_memo_misses=0,desc_memo_why[6]={};
 uint64_t vwhy_blk=0,vwhy_buf=0,vwhy_ord=0,vwhy_img=0,vwhy_tex=0,vwhy_stor=0;
@@ -5174,43 +5178,47 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
     const bool tags=timing_now()!=nullptr || ab_off("ktag");
     bool ok=desc_memo_enabled && !fire_trace_active() && !compute && !capture.active && !capture.probe && !provenance_file && g_ui_moff==0;
     if(ok){CPU_SCOPE(Descriptor);DescriptorRoot descriptor_measurement(&cpu_scope);
-        static std::vector<DynUbo> dyn_ubos;dyn_ubos.clear();
+        static std::vector<DynUbo> dyn_ubos;if(dyn_ubos.capacity()<16)dyn_ubos.reserve(16);dyn_ubos.clear();
         auto hit=desc_memo.end();
+        uint64_t key_hash = 1469598103934665603ull;
+#define PUSH_KEY(v) do { uint64_t _kv = uint64_t(v); key.push_back(_kv); key_hash = (key_hash ^ _kv) * 1099511628211ull; } while(0)
         {
             DESC_SCOPE(MemoKey);
             bool no_ubo=false;const unsigned dmode=dyn_mode_for(false,&no_ubo);memo_dyn_ok=dmode!=0 || no_ubo;
-            for(unsigned st=0;st<5;st++){key.push_back(uint64_t(uintptr_t(state.shader[st])));if(tags)ktag.push_back(0);}
-            key.push_back(state.texture_pool.pool?uint64_t(uintptr_t(state.texture_pool.pool->mem)):0);key.push_back(uint64_t(state.texture_pool.off));key.push_back(uint64_t(state.texture_pool.n));if(tags)ktag.insert(ktag.end(),3,1);
-            key.push_back(state.sampler_pool.pool?uint64_t(uintptr_t(state.sampler_pool.pool->mem)):0);key.push_back(uint64_t(state.sampler_pool.off));if(tags)ktag.insert(ktag.end(),2,1);
+            for(unsigned st=0;st<5;st++){PUSH_KEY(uintptr_t(state.shader[st]));if(tags)ktag.push_back(0);}
+            uint64_t tp_mem = state.texture_pool.pool?uint64_t(uintptr_t(state.texture_pool.pool->mem)):0;
+            PUSH_KEY(tp_mem);PUSH_KEY(state.texture_pool.off);PUSH_KEY(state.texture_pool.n);if(tags)ktag.insert(ktag.end(),3,1);
+            uint64_t sp_mem = state.sampler_pool.pool?uint64_t(uintptr_t(state.sampler_pool.pool->mem)):0;
+            PUSH_KEY(sp_mem);PUSH_KEY(state.sampler_pool.off);if(tags)ktag.insert(ktag.end(),2,1);
             for(unsigned st=0;st<5 && ok;st++)if(state.shader[st]){Shader &shader=*state.shader[st];unsigned ns=nvn_stage[st];
                 for(auto &b:shader.bindings){
                     // Texel view 属于 slot，退休时销毁；memo 不追踪其快照或生命周期，不能保留旧 set。
                     // Slot retirement destroys texel views; memo tracks neither their snapshots nor lifetime, so exclude both kinds.
                     if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER || (b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER && !texel_memo_enabled)){ok=false;++desc_memo_why[0];break;}
                     if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_IMAGE){ok=false;++desc_memo_why[1];break;}
-                    if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_BUFFER && shader.storage_writes.count(b.binding)){ok=false;++desc_memo_why[2];break;}
+                    if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_BUFFER && (b.binding<64 ? ((shader.storage_writes_mask&(1ull<<b.binding))!=0) : (shader.storage_writes.count(b.binding)!=0))){ok=false;++desc_memo_why[2];break;}
                     for(unsigned element=0;element<b.count;element++){unsigned slot=b.slot+element;
                         switch(b.source){
                         case XBG_SOURCE_UNIFORM:case XBG_SOURCE_STORAGE:{if(slot>=16){ok=false;break;}auto r=b.source==XBG_SOURCE_UNIFORM?state.ub[ns][slot]:state.sb[ns][slot];
-                            if(UBO_DYN(dmode,b) && b.source==XBG_SOURCE_UNIFORM && r.address && r.size){size_t copy=std::min<size_t>(r.size,b.bytes?b.bytes:65536);key.push_back(copy);if(tags)ktag.push_back(2);dyn_ubos.push_back({(uint64_t(b.binding)<<32)|element,r.address,copy});} // address only moves the dynamic offset
-                            else{key.push_back(r.address);key.push_back(r.size);if(tags){ktag.push_back(b.source==XBG_SOURCE_UNIFORM?3:10);ktag.push_back(4);}}break;}
-                        case XBG_SOURCE_SUPPORT:key.push_back((uint64_t(uint32_t(state.viewport.width))<<32)|uint32_t(state.viewport.height));key.push_back(state.color.alpha_func);if(tags){ktag.push_back(5);ktag.push_back(6);}break;
+                            if(UBO_DYN(dmode,b) && b.source==XBG_SOURCE_UNIFORM && r.address && r.size){size_t copy=std::min<size_t>(r.size,b.bytes?b.bytes:65536);PUSH_KEY(copy);if(tags)ktag.push_back(2);dyn_ubos.push_back({(uint64_t(b.binding)<<32)|element,r.address,copy});} // address only moves the dynamic offset
+                            else{PUSH_KEY(r.address);PUSH_KEY(r.size);if(tags){ktag.push_back(b.source==XBG_SOURCE_UNIFORM?3:10);ktag.push_back(4);}}break;}
+                        case XBG_SOURCE_SUPPORT:PUSH_KEY((uint64_t(uint32_t(state.viewport.width))<<32)|uint32_t(state.viewport.height));PUSH_KEY(state.color.alpha_func);if(tags){ktag.push_back(5);ktag.push_back(6);}break;
                         case XBG_SOURCE_C1:break;
                         case XBG_SOURCE_DRIVER0:case XBG_SOURCE_DRIVER2:
-                            key.push_back(UBO_DYN(dmode,b)?uint64_t(0xD0D0+b.source):(b.source==XBG_SOURCE_DRIVER0?buf_gen[ns]:tex_gen[ns]));if(tags)ktag.push_back(7);
+                            PUSH_KEY(UBO_DYN(dmode,b)?uint64_t(0xD0D0+b.source):(b.source==XBG_SOURCE_DRIVER0?buf_gen[ns]:tex_gen[ns]));if(tags)ktag.push_back(7);
                             // Every memo mode, including dynamic/front/persistent,
                             // must distinguish the per-draw c0 parameter. A buffer
                             // rebind is not required when firstInstance changes.
-                            if(b.source==XBG_SOURCE_DRIVER0 && ns!=5){key.push_back(draw_base_instance);if(tags)ktag.push_back(7);}break;
-                        case XBG_SOURCE_TEXTURE:case XBG_SOURCE_IMAGE:{if(slot>=(b.source==XBG_SOURCE_IMAGE?16u:256u)){ok=false;break;}key.push_back(b.source==XBG_SOURCE_IMAGE?state.img[ns][slot]:state.tex[ns][slot]);if(tags)ktag.push_back(8);
-                            if(b.sampler_slot!=UINT32_MAX){if(b.sampler_slot>=128){ok=false;break;}key.push_back(state.samp[ns][b.sampler_slot]);if(tags)ktag.push_back(9);}break;}
+                            if(b.source==XBG_SOURCE_DRIVER0 && ns!=5){PUSH_KEY(draw_base_instance);if(tags)ktag.push_back(7);}break;
+                        case XBG_SOURCE_TEXTURE:case XBG_SOURCE_IMAGE:{if(slot>=(b.source==XBG_SOURCE_IMAGE?16u:256u)){ok=false;break;}PUSH_KEY(b.source==XBG_SOURCE_IMAGE?state.img[ns][slot]:state.tex[ns][slot]);if(tags)ktag.push_back(8);
+                            if(b.sampler_slot!=UINT32_MAX){if(b.sampler_slot>=128){ok=false;break;}PUSH_KEY(state.samp[ns][b.sampler_slot]);if(tags)ktag.push_back(9);}break;}
                         default:ok=false;}
                         if(!ok)break;
                     }
                     if(!ok)break;
                 }}
             if(ok){memo_check_epoch();
-                const uint32_t fidx = uint32_t(key.size() ^ (key.empty() ? 0 : (key[0] >> 3)) ^ (key.size() > 5 ? key[5] : 0) ^ (key.size() > 10 ? key[10] : 0)) & 63;
+                const uint32_t fidx = uint32_t((key_hash ^ (key_hash >> 32)) * 0x45d9f3bull) & (kMemoFrontSlots - 1);
                 auto &mf = memo_front_slots[fidx];
                 if(mf.gen==memo_mod_gen && mf.slot==slot_index && !ab_off("memofront") && mf.key==key){hit=mf.it;++memo_front_hits;}
                 else{hit=desc_memo.find(key);if(hit!=desc_memo.end()){mf.key=key;mf.it=hit;mf.gen=memo_mod_gen;mf.slot=slot_index;}}
@@ -5220,22 +5228,27 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
                     prev=key;}
             }
         }
+#undef PUSH_KEY
         if(ok && hit!=desc_memo.end()){DescMemo &m=hit->second;
-            static std::vector<std::pair<uint64_t,Buffer>> fresh;fresh.clear();
-            static std::vector<uint32_t> offsets;offsets.clear();bool same=true;
+            struct FreshDyn { uint64_t order; VkBuffer buffer; VkDeviceSize offset; };
+            static std::vector<FreshDyn> fresh;if(fresh.capacity()<16)fresh.reserve(16);fresh.clear();
+            static std::vector<uint32_t> offsets;if(offsets.capacity()<32)offsets.reserve(32);offsets.clear();bool same=true;
             {
                 DESC_SCOPE(MemoSnapshot);
-                for(auto &u:dyn_ubos)fresh.push_back({u.order,uniform_snapshot(u.address,u.copy)});
+                for(auto &u:dyn_ubos){
+                    Buffer b=uniform_snapshot(u.address,u.copy);
+                    fresh.push_back({u.order,b.buffer,b.offset});
+                }
                 if(fresh.size()==2){
-                    if(fresh[0].first>fresh[1].first)std::swap(fresh[0],fresh[1]);
+                    if(fresh[0].order>fresh[1].order)std::swap(fresh[0],fresh[1]);
                 }else if(fresh.size()==3){
-                    if(fresh[0].first>fresh[1].first)std::swap(fresh[0],fresh[1]);
-                    if(fresh[1].first>fresh[2].first){
+                    if(fresh[0].order>fresh[1].order)std::swap(fresh[0],fresh[1]);
+                    if(fresh[1].order>fresh[2].order){
                         std::swap(fresh[1],fresh[2]);
-                        if(fresh[0].first>fresh[1].first)std::swap(fresh[0],fresh[1]);
+                        if(fresh[0].order>fresh[1].order)std::swap(fresh[0],fresh[1]);
                     }
                 }else if(fresh.size()>3){
-                    std::sort(fresh.begin(),fresh.end(),[](const std::pair<uint64_t,Buffer> &a,const std::pair<uint64_t,Buffer> &b){return a.first<b.first;});
+                    std::sort(fresh.begin(),fresh.end(),[](const FreshDyn &a,const FreshDyn &b){return a.order<b.order;});
                 }
                 size_t fi=0;
                 // Room for keep() below (support / driver blocks) and draw()'s vertex/index buffers. The count of the shaders' bindings
@@ -5246,9 +5259,9 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
                         if(d.src==XBG_SOURCE_SUPPORT || d.src==XBG_SOURCE_DRIVER0 || d.src==XBG_SOURCE_DRIVER2){
                             Buffer &blk=d.src==XBG_SOURCE_SUPPORT?support_block():driver_block(d.ns,d.bank);if(blk.buffer!=d.buffer){same=false;++vwhy_blk;break;}out.keep(blk);offsets.push_back(uint32_t(blk.offset));}
                         else offsets.push_back(d.offset);continue;}
-                    if(fi>=fresh.size() || fresh[fi].first!=d.order){same=false;++vwhy_ord;break;}
-                    if(fresh[fi].second.buffer!=d.buffer){same=false;++vwhy_buf;break;}
-                    offsets.push_back(uint32_t(fresh[fi].second.offset));++fi;}
+                    if(fi>=fresh.size() || fresh[fi].order!=d.order){same=false;++vwhy_ord;break;}
+                    if(fresh[fi].buffer!=d.buffer){same=false;++vwhy_buf;break;}
+                    offsets.push_back(uint32_t(fresh[fi].offset));++fi;}
                 if(same && fi!=fresh.size()){same=false;++vwhy_ord;}
             }
             {
@@ -5300,7 +5313,7 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
                     out.water=m.water;out.water.memo=true;
                     for(auto &binding:out.water.buffers)if(binding.dynamic){
                         const uint64_t order=uint64_t(binding.binding)<<32;
-                        for(const auto &uniform:fresh)if(uniform.first==order){binding.source=uniform.second;binding.offset=uniform.second.offset;break;}
+                        for(const auto &u:dyn_ubos)if(u.order==order){Buffer b=uniform_snapshot(u.address,u.copy);binding.source=b;binding.offset=b.offset;break;}
                         // Dynamic support/driver blocks are kept above, separately
                         // from fresh guest UBOs. Match the actual selected offset.
                         for(size_t i=0;i<m.dyn.size();i++)if(m.dyn[i].order==order && !m.dyn[i].uniform){
@@ -6317,7 +6330,7 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
         else if(fr>=3060 && !pstat_logged){pstat_logged=true;std::vector<std::pair<VkPipeline,PstatUse>> v(pstat_use.begin(),pstat_use.end());std::sort(v.begin(),v.end(),[](const auto &a,const auto &b){return a.second.draws>b.second.draws;});
             for(size_t i=0;i<v.size() && i<80;i++)xbg_logf("NVN PSTAT use pipeline=%p draws_per_frame=%.1f what=%s",(void*)v[i].first,v[i].second.draws/60.0,v[i].second.what.c_str());}}
     // Buffer copies precede the draw; original guest layout remains unchanged.
-    static std::vector<std::pair<uint32_t,Buffer*>> vertex_buffers;vertex_buffers.clear();
+    static std::vector<std::pair<uint32_t,Buffer*>> vertex_buffers;if(vertex_buffers.capacity()<16)vertex_buffers.reserve(16);vertex_buffers.clear();
     Buffer *ib=nullptr;VkIndexType index_type=VK_INDEX_TYPE_UINT16;
     {DRAW_SCOPE(VertexPrepare);for(auto &b:bindings){if(int(b.binding)==zero_binding){const uint32_t zero[4]={0};vertex_buffers.push_back({b.binding,d.keep(stream_buffer(sizeof(zero),zero,sizeof(zero)))});continue;}auto r=state.vb[b.binding];need(r.address && r.size,"Unbound vertex buffer");snap_site=1;vertex_buffers.push_back({b.binding,d.keep(snapshot(r.address,r.size))});snap_site=0;}
     if(indexed){need(indexed->itype>=0 && indexed->itype<=2 && (gpu_args || indexed->instances>0) && indexed->base_instance>=0,"Invalid indexed draw");size_t bytes=gpu_args?gpu_args->index_bytes:size_t(count)*(1u<<indexed->itype);need(indexed->ibuf,"Unbound index buffer");if(indexed->itype==0){if(draw_detail)draw_timing.index(uint64_t(count));std::vector<uint16_t> expanded(count);const uint8_t *src=reinterpret_cast<const uint8_t*>(indexed->ibuf);for(int i=0;i<count;i++)expanded[i]=src[i];ib=d.keep(stream_buffer(expanded.size()*2,expanded.data(),expanded.size()*2));}else{index_type=indexed->itype==1?VK_INDEX_TYPE_UINT16:VK_INDEX_TYPE_UINT32;snap_site=2;ib=indexed==&quad_indexed?d.keep(stream_buffer(bytes,reinterpret_cast<void*>(indexed->ibuf),bytes)):d.keep(snapshot(uint64_t(indexed->ibuf),bytes));snap_site=0;}}
@@ -6359,7 +6372,7 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
         if(gpu_args)full_capture.buffers.push_back({gpu_args->owned->view,gpu_args->offset,20,gpu_args->owned->chunk.size,"indirect",false});
         full_before_draw(c.command,p);
     }
-    const unsigned water_draw=water_trace_draw_begin(c.command,d.water,count,indexed?unsigned(indexed->instances):instances,draw_base_instance,gpu_args!=nullptr);
+    const unsigned water_draw=__builtin_expect(water_ready(), 0)?water_trace_draw_begin(c.command,d.water,count,indexed?unsigned(indexed->instances):instances,draw_base_instance,gpu_args!=nullptr):0;
     VkQueryPool occlusion{};uint32_t occlusion_index=0;const bool counting=state.count_samples && !no_occlusion_queries && !ab_off("occ");
     const bool spell_probe=probe_is_active() && probe.compact && state.shader[4] &&
         (state.shader[4]->key=="c0adc062e4b8e8fa" || state.shader[4]->key=="b7dd0f48aea00196");
@@ -6377,7 +6390,7 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
     {const uint32_t no=uint32_t(d.dynamic_offsets.size());
      bool offsets_differ=false;
      if(no<=32 && bc.layout==d.pipeline_layout && bc.set==d.set && bc.noff==no){
-         for(uint32_t k=0;k<no;++k){if(bc.off[k]!=d.dynamic_offsets[k]){offsets_differ=true;break;}}
+         offsets_differ=memcmp(bc.off,d.dynamic_offsets.data(),no*sizeof(uint32_t))!=0;
      }else{offsets_differ=true;}
      if(offsets_differ || no>32){
         ++set_binds;set_bind_offsets+=no;
@@ -6433,7 +6446,7 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
             std::find(draw_depth_reads.begin(),draw_depth_reads.end(),open_pass.images[open_pass.images.size()-1])!=draw_depth_reads.end())open_pass.depth_sample_visible=true;
     }
     if(!occlusion_batch_enabled)end_occlusion_query();c.finish();++perf.draws;++pass_prof_draws;if(!gpu_args)pass_prof_verts+=uint64_t(uint32_t(count))*(indexed?uint32_t(indexed->instances):instances);
-    water_trace_draw_end(c.command,water_draw,viewport,sc);
+    if(__builtin_expect(water_draw>0, 0))water_trace_draw_end(c.command,water_draw,viewport,sc);
     if(d.needs_writeback() || capture.active){unsigned saved=cur_op;cur_op=62;end_open_pass();full_barrier(c.command);cur_op=saved;VkMemoryBarrier barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};barrier.srcAccessMask=VK_ACCESS_SHADER_WRITE_BIT;barrier.dstAccessMask=VK_ACCESS_HOST_READ_BIT;vkCmdPipelineBarrier(c.command,VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,1,&barrier,0,nullptr,0,nullptr);}
     {DRAW_SCOPE(Writeback);if(capture.active){if(d.needs_writeback())gpu_sync(perf.sync_writeback);d.writeback();}else d.defer_writeback();}stats.draws.fetch_add(1,std::memory_order_relaxed);   // diagnostics only: a seq_cst add (LDADDAL) waits for every earlier store, ~2.7% of the render thread
     probe_draw_end(p);
