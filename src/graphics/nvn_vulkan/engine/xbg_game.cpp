@@ -664,9 +664,10 @@ constexpr VkBufferUsageFlags arena_usage=VK_BUFFER_USAGE_TRANSFER_SRC_BIT|VK_BUF
 #if defined(__ANDROID__)
 // Bound the minimum retained allocation across the independent slot arenas.
 // alloc() still grows each chunk to fit a larger individual request.
-constexpr VkDeviceSize arena_chunk_bytes=4ull*1024*1024;
+// 16 MiB fits full frame vertex/index snapshots (~8-10 MiB) in chunk 0 without spilling to chunk 1.
+VkDeviceSize arena_chunk_bytes=16ull*1024*1024;
 #else
-constexpr VkDeviceSize arena_chunk_bytes=32ull*1024*1024;
+VkDeviceSize arena_chunk_bytes=32ull*1024*1024;
 #endif
 constexpr VkDeviceSize arena_flush_bytes=96ull*1024*1024;
 VkDeviceSize arena_alignment=256;
@@ -935,6 +936,7 @@ constexpr unsigned kMaxSlots=16;
 extern std::atomic<uint64_t> memo_epoch;extern uint64_t key_diff[14];extern uint64_t memo_bump[5];extern uint64_t xmemo_hits,xmemo_drops;struct PinRef{VkDescriptorSetLayout layout;uint32_t refs;};extern std::unordered_map<VkDescriptorSet,PinRef> memo_pinned[kMaxSlots];
 extern uint64_t texture_record_hits,texture_record_misses;
 extern uint64_t memo_front_hits;extern uint64_t desc_memo_hits,desc_memo_misses,desc_memo_why[6],desc_ns[6],noload_passes,img_cache_hits,img_cache_misses,noload_why[8],binds_skipped,set_binds,set_bind_offsets,set_binds_offsets_only,offset_changes[10],offset_changed_at[32];
+extern uint64_t vwhy_blk,vwhy_buf,vwhy_ord,vwhy_img,vwhy_tex,vwhy_stor;
 extern bool honor_inline_enabled;
 namespace warm{extern uint64_t hits,creates,create_ns,create_max_ns,compute_hits,compute_creates,compute_create_ns,compute_create_max_ns;extern std::atomic<uint64_t> built,failed,build_ns,async_built,async_skips,compiled,rewritten_retained,rewritten_denied_budget,rewritten_peak_bytes;extern bool async_on;void flush();void register_module(VkShaderModule m,const std::string &key);
     extern bool keep_rewritten;bool take_rewritten(const std::string &key,const std::vector<uint32_t> &input,std::vector<uint32_t> &out);void reject_reuse();}
@@ -1810,7 +1812,7 @@ void perf_frame(){
     xbg_logf("NVN PERF memo_buffers destroyed=%llu referenced=%llu slot_drops=%llu tracked=%zu invalid_slots=%#x control=%d",
              (unsigned long long)memo_buffers_destroyed,(unsigned long long)memo_buffers_referenced,
              (unsigned long long)memo_buffer_slot_drops,memo_buffer_slots.size(),memo_buffer_invalid_slots,int(ab_off("memobuffer")));
-    xbg_logf("NVN PERF setcache ab=%d hits=%.1f misses=%.1f template=%.1f plain=%.1f memo_hits=%.1f memo_misses=%.1f memo_front=%.1f why=texel%.1f/simg%.1f/dm%.1f/dynbuf%.1f/store%.1f fresh_skips=%.1f experiment_skips=%.1f",int(ab_frame_on),set_cache_hits/f,set_cache_misses/f,template_updates/f,plain_updates/f,desc_memo_hits/f,desc_memo_misses/f,memo_front_hits/f,desc_memo_why[0]/f,desc_memo_why[1]/f,desc_memo_why[2]/f,desc_memo_why[3]/f,desc_memo_why[4]/f,set_cache_fresh_skips/f,set_cache_experiment_skips/f);desc_memo_hits=desc_memo_misses=memo_front_hits=0;for(auto &w:desc_memo_why)w=0;xbg_logf("NVN PERF keydiff shader%.0f pool%.0f ubo%.0f uaddr%.0f size%.0f vp%.0f alpha%.0f drv%.0f tex%.0f samp%.0f saddr%.0f same%.0f new%.0f len%.0f",key_diff[0]/tf,key_diff[1]/tf,key_diff[2]/tf,key_diff[3]/tf,key_diff[4]/tf,key_diff[5]/tf,key_diff[6]/tf,key_diff[7]/tf,key_diff[8]/tf,key_diff[9]/tf,key_diff[10]/tf,key_diff[11]/tf,key_diff[12]/tf,key_diff[13]/tf);for(auto &k:key_diff)k=0;   // per timed frame
+    xbg_logf("NVN PERF setcache ab=%d hits=%.1f misses=%.1f template=%.1f plain=%.1f memo_hits=%.1f memo_misses=%.1f memo_front=%.1f why=texel%.1f/simg%.1f/dm%.1f/dynbuf%.1f/store%.1f fresh_skips=%.1f experiment_skips=%.1f vwhy=blk%.1f/buf%.1f/ord%.1f/img%.1f/tex%.1f/stor%.1f",int(ab_frame_on),set_cache_hits/f,set_cache_misses/f,template_updates/f,plain_updates/f,desc_memo_hits/f,desc_memo_misses/f,memo_front_hits/f,desc_memo_why[0]/f,desc_memo_why[1]/f,desc_memo_why[2]/f,desc_memo_why[3]/f,desc_memo_why[4]/f,set_cache_fresh_skips/f,set_cache_experiment_skips/f,vwhy_blk/f,vwhy_buf/f,vwhy_ord/f,vwhy_img/f,vwhy_tex/f,vwhy_stor/f);desc_memo_hits=desc_memo_misses=memo_front_hits=0;for(auto &w:desc_memo_why)w=0;vwhy_blk=vwhy_buf=vwhy_ord=vwhy_img=vwhy_tex=vwhy_stor=0;xbg_logf("NVN PERF keydiff shader%.0f pool%.0f ubo%.0f uaddr%.0f size%.0f vp%.0f alpha%.0f drv%.0f tex%.0f samp%.0f saddr%.0f same%.0f new%.0f len%.0f",key_diff[0]/tf,key_diff[1]/tf,key_diff[2]/tf,key_diff[3]/tf,key_diff[4]/tf,key_diff[5]/tf,key_diff[6]/tf,key_diff[7]/tf,key_diff[8]/tf,key_diff[9]/tf,key_diff[10]/tf,key_diff[11]/tf,key_diff[12]/tf,key_diff[13]/tf);for(auto &k:key_diff)k=0;   // per timed frame
     xbg_logf("NVN PERF binds_skipped_per_frame=%.1f xmemo_hits=%.1f drops=%llu bumps=%llu/%llu/%llu/%llu/%llu pinned=%zu/%zu",binds_skipped/f,xmemo_hits/f,(unsigned long long)xmemo_drops,(unsigned long long)memo_bump[0],(unsigned long long)memo_bump[1],(unsigned long long)memo_bump[2],(unsigned long long)memo_bump[3],(unsigned long long)memo_bump[4],memo_pinned[0].size(),memo_pinned[1].size());binds_skipped=0;{char top[160]="";int at=0;bool used[32]={};
      for(int r=0;r<4;r++){int best=-1;for(int k=0;k<32;k++)if(!used[k] && offset_changed_at[k] && (best<0 || offset_changed_at[k]>offset_changed_at[best]))best=k;if(best<0)break;used[best]=true;at+=snprintf(top+at,sizeof(top)-size_t(at),"%s%d:%.1f",r?",":"",best,offset_changed_at[best]/f);}
      xbg_logf("NVN PERF binds set_binds=%.1f offsets_per_bind=%.1f offsets_only=%.1f changed n1=%.1f n2=%.1f n3=%.1f n4+=%.1f at=%s",set_binds/f,set_binds?double(set_bind_offsets)/double(set_binds):0.0,set_binds_offsets_only/f,offset_changes[1]/f,offset_changes[2]/f,offset_changes[3]/f,(offset_changes[4]+offset_changes[5]+offset_changes[6]+offset_changes[7]+offset_changes[8]+offset_changes[9])/f,top);}
@@ -2466,7 +2468,6 @@ bool graphics_attachment_only();
 // a depth clear/write, a stencil sample, compute/storage use, or a layout change.
 bool can_keep_depth_sample(const Image &im,VkCommandBuffer cmd,bool sampled,VkImageAspectFlags read_aspects);
 void prepare_read(Image &im,VkCommandBuffer cmd,bool sampled=true,VkImageAspectFlags read_aspects=0){
-    if(sampled && !im.gpu_written && im.layout==VK_IMAGE_LAYOUT_GENERAL && !im.rg16_proxy && !(im.aspects & VK_IMAGE_ASPECT_DEPTH_BIT) && !(read_aspects & VK_IMAGE_ASPECT_DEPTH_BIT) && !ab_off("roimgfast"))return;
     if(depth_aspect_enabled && preparing_draw_descriptors && sampled && read_aspects==VK_IMAGE_ASPECT_DEPTH_BIT)draw_depth_reads.push_back(&im);
     if(sampled && im.rg16_proxy){sampled_rg16_images.push_back(&im);prepare_rg16_proxy(im,cmd);return;}
     bool in_open=open_pass.cmd && std::find(open_pass.images.begin(),open_pass.images.end(),&im)!=open_pass.images.end();
@@ -5015,6 +5016,7 @@ std::atomic<uint64_t> memo_epoch{1};bool dyn_partial_enabled=true;uint64_t key_d
 std::vector<uint64_t> memo_front_key;std::unordered_map<std::vector<uint64_t>,DescMemo,SetKeyHash>::iterator memo_front_it;
 uint64_t memo_mod_gen=1,memo_front_gen=0,memo_front_hits=0;unsigned memo_front_slot=~0u;
 uint64_t desc_ns[6]={};bool desc_memo_enabled=true;uint64_t desc_memo_hits=0,desc_memo_misses=0,desc_memo_why[6]={};
+uint64_t vwhy_blk=0,vwhy_buf=0,vwhy_ord=0,vwhy_img=0,vwhy_tex=0,vwhy_stor=0;
 std::vector<MemoImage> desc_memo_images;std::vector<DescMemo::Dyn> desc_memo_dyn;bool desc_memo_recording=false;
 std::vector<DescMemo::Texel> desc_memo_texel;bool desc_memo_texel_fail=false,desc_memo_per_frame_texel=false;
 void descriptors_build(Descriptors &out,Commands &commands,bool compute);
@@ -5098,8 +5100,10 @@ void texel_evict(unsigned si,bool all){
     need(!slots[si].pending && (!slots[si].recording || !slots[si].ops),"Evict texel residents only after slot retirement");
     if(!all)texel_gc_slots|=1u<<si;
     auto &map=texel_resident[si];
-    for(auto it=map.begin();it!=map.end();){if(all || it->second.used+128<slot_serial){vkDestroyBufferView(cfg.device,it->second.view,nullptr);texel_hole_bytes[si]+=it->first.bytes;texel_live_bytes[si]-=it->first.bytes;it=map.erase(it);++texel_evictions;}else ++it;}
-    if(all || texel_hole_bytes[si]>8ull*1024*1024){for(auto &e:map)vkDestroyBufferView(cfg.device,e.second.view,nullptr);map.clear();texel_arena[si].release();texel_hole_bytes[si]=texel_live_bytes[si]=0;}
+    const uint64_t keep_submissions = 1024;
+    for(auto it=map.begin();it!=map.end();){if(all || it->second.used+keep_submissions<slot_serial){vkDestroyBufferView(cfg.device,it->second.view,nullptr);texel_hole_bytes[si]+=it->first.bytes;texel_live_bytes[si]-=it->first.bytes;it=map.erase(it);++texel_evictions;}else ++it;}
+    const bool arena_full = (texel_live_bytes[si] + texel_hole_bytes[si] > 48ull*1024*1024) && (texel_hole_bytes[si] > texel_live_bytes[si]);
+    if(all || map.empty() || arena_full){for(auto &e:map)vkDestroyBufferView(cfg.device,e.second.view,nullptr);map.clear();texel_arena[si].release();texel_hole_bytes[si]=texel_live_bytes[si]=0;}
 }
 // Live uniform-binding fingerprint trace (marker files/gfx-live-ubtrace).
 // The draw census proved the draw list is identical in both flicker states, so the
@@ -5220,10 +5224,12 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
                 else out.buffers.reserve(m.reserve);
                 for(auto &d:m.dyn){if(!d.uniform){
                         if(d.src==XBG_SOURCE_SUPPORT || d.src==XBG_SOURCE_DRIVER0 || d.src==XBG_SOURCE_DRIVER2){
-                            Buffer &blk=d.src==XBG_SOURCE_SUPPORT?support_block():driver_block(d.ns,d.bank);if(blk.buffer!=d.buffer){same=false;break;}out.keep(blk);offsets.push_back(uint32_t(blk.offset));}
+                            Buffer &blk=d.src==XBG_SOURCE_SUPPORT?support_block():driver_block(d.ns,d.bank);if(blk.buffer!=d.buffer){same=false;++vwhy_blk;break;}out.keep(blk);offsets.push_back(uint32_t(blk.offset));}
                         else offsets.push_back(d.offset);continue;}
-                    if(fi>=fresh.size() || fresh[fi].first!=d.order || fresh[fi].second.buffer!=d.buffer){same=false;break;}offsets.push_back(uint32_t(fresh[fi].second.offset));++fi;}
-                same=same && fi==fresh.size();
+                    if(fi>=fresh.size() || fresh[fi].first!=d.order){same=false;++vwhy_ord;break;}
+                    if(fresh[fi].second.buffer!=d.buffer){same=false;++vwhy_buf;break;}
+                    offsets.push_back(uint32_t(fresh[fi].second.offset));++fi;}
+                if(same && fi!=fresh.size()){same=false;++vwhy_ord;}
             }
             {
                 DESC_SCOPE(MemoVerify);
@@ -5234,19 +5240,17 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
                 // A/B target hitgen repeats them on every hit, as before.
                 if(same && (m.checked_gen!=memo_check_gen || ab_off("hitgen"))){
                     for(size_t k=0;k<m.images.size();k++){const auto &cached=m.images[k];const tex_t *t=cached.first;
-                        if(cached.record->revision!=cached.revision){same=false;break;}
-                        if(t->serial!=m.tex_ids[k].first || t->mem!=m.tex_ids[k].second){same=false;break;}
-                        if(find_image(t->serial)!=m.images[k].second){same=false;break;}}
+                        if(cached.record->revision!=cached.revision || t->serial!=m.tex_ids[k].first || t->mem!=m.tex_ids[k].second || find_image(t->serial)!=m.images[k].second){same=false;++vwhy_img;break;}}
                     if(same)m.checked_gen=memo_check_gen;}
                 // Resident texel copies: same registration and range, the same copy the set holds (generation), content
                 // refreshed if the guest changed it since this slot last recorded.
                 if(same)for(auto &tr:m.texel){const tex_t &tt=tr.record->texture;
-                    if(tr.record->revision!=tr.revision || uint64_t(uintptr_t(tt.mem))!=tr.base || uint64_t(tt.L.size)!=tr.bytes){same=false;break;}
-                    TexelResident *r=texel_acquire(tr.base,tr.bytes,VkFormat(tr.format));if(!r || r->gen!=tr.gen){same=false;break;}++texel_hits;}
+                    if(tr.record->revision!=tr.revision || uint64_t(uintptr_t(tt.mem))!=tr.base || uint64_t(tt.L.size)!=tr.bytes){same=false;++vwhy_tex;break;}
+                    TexelResident *r=texel_acquire(tr.base,tr.bytes,VkFormat(tr.format));if(!r || r->gen!=tr.gen){same=false;++vwhy_tex;break;}++texel_hits;}
                 // Read-only storage ranges: refresh the snapshot (write-tracked resident copies only copy dirty pages); the set
                 // stays valid only if the range lands in the same buffer at the same offset as when the set was written.
                 if(same && m.persistent)for(auto &st:m.stor){snap_site=3;Buffer b=snapshot(st.base,st.bytes,properties.limits.minStorageBufferOffsetAlignment);snap_site=0;
-                    if(b.buffer!=st.buffer || b.offset!=st.offset){same=false;break;}}
+                    if(b.buffer!=st.buffer || b.offset!=st.offset){same=false;++vwhy_stor;break;}}
                 if(same){
                 // 命中也走既有按 submit 节流的 CPU 内容复核，不强制重传。
                 // Hits retain get_image's bounded per-submit CPU checks, without forcing uploads.
@@ -8932,7 +8936,14 @@ extern "C" int xbg_legacy_wait(uint64_t fence,uint64_t timeout){
                 // 设备错误不能被 completed 快路吞掉；原 fatal 状态仍在 engine 下处理。
                 // Completion must not hide device errors; handle the original fatal state while holding engine.
                 if(r!=VK_SUCCESS){lock.lock();fold_completion_wait_stats();VK(r);}
-                XTRACE_BEGIN("dm-legacy-relock");const auto acquired=completion_wait.acquire(lock,fence,deadline);XTRACE_END();
+                XTRACE_BEGIN("dm-legacy-relock");
+                if(completed.load()>=fence){
+                    XTRACE_END();
+                    fold_completion_wait_stats();
+                    return 1;
+                }
+                const auto acquired=ab_off("relockfast")?completion_wait.acquire(lock,fence,deadline):(lock.lock(),xbg_completion::Acquire::EngineLocked);
+                XTRACE_END();
                 XTRACE_COUNT("dm-legacy-relock-result", int(acquired));XTRACE_COUNT("dm-legacy-completed", completed.load());
                 if(acquired==xbg_completion::Acquire::Completed)return 1;
                 if(acquired==xbg_completion::Acquire::TimedOut)return 0;

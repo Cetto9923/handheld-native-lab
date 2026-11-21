@@ -76,6 +76,9 @@ inline uint64_t resident_limit_bytes(const Snapshot &snapshot,
                                     uint64_t configured = default_resident_limit) {
     // A device-specific budget also requires physical RAM headroom. Missing
     // or insufficient capacity uses the reported phone-exit budget.
+    if (snapshot.total >= 12ull * 1024 * mib) {
+        return std::min<uint64_t>(6144ull * mib, snapshot.total / 2);
+    }
     if (configured > default_resident_limit && configured <= snapshot.total / 2)
         return configured;
     return default_resident_limit;

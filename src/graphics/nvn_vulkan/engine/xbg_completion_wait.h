@@ -27,7 +27,7 @@ public:
     bool expired() const {return remaining_ns()==0;}
     Clock::time_point retry_at() const {
         const auto now=Clock::now();
-        return now+std::chrono::nanoseconds(std::min<uint64_t>(remaining_at(now),1000000));
+        return now+std::chrono::nanoseconds(std::min<uint64_t>(remaining_at(now),2500000));
     }
 };
 
