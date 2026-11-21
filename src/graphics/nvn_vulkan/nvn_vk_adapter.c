@@ -215,7 +215,7 @@ void mtl_sub_counter(uint64_t addr, uint32_t type) {
 
 uint64_t mtl_sub_commit(void) {
     if (!g_in_sub) vk_die("an NVN commit without a begin");
-    xbg_submit((int)g_nhandles, g_handles);
+    xbg_submit((int)g_nhandles, g_handles, NULL);
     uint64_t f = xbg_legacy_last_fence();
     while (g_direct) {
         direct_record *r = g_direct;

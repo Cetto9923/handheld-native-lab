@@ -54,7 +54,8 @@ void nvn_engine_set_enabled(int enabled);
  *
  * The handles are the addresses of the first record of each package, in the
  * order the guest gave them. */
-int nvn_engine_submit(const uint64_t *handles, int count);
+struct nvn_command_package_lease;
+int nvn_engine_submit(const uint64_t *handles, int count, struct nvn_command_package_lease *leases);
 
 /* Tell the engine about a memory pool of the guest, so that the addresses
  * the guest uses can be resolved. */

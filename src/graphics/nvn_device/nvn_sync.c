@@ -476,9 +476,12 @@ NVNsyncWaitResult nvnSyncWait(const void *sync, uint64_t timeout) {
     } else if (!known) {
         fprintf(stderr, "[nvn] nvnSyncWait: sync=%p was never initialized by the guest; the answer is %d (%s)\n", sync,
                 (int)result, fenced ? "already signalled" : "timeout expired");
-    } else if (first) {
-        fprintf(stderr, "[nvn] nvnSyncWait: sync=%p fence=%" PRIu64 " timeout=%" PRIu64 " -> %d engine=%d\n",
-                sync, fence, timeout, (int)result, nvn_engine_ready());
+    } else if (first || timeout > 0) {
+        static unsigned s_sync_log = 0;
+        if (s_sync_log++ < 20 || !(s_sync_log % 300)) {
+            fprintf(stderr, "[nvn] nvnSyncWait: sync=%p fence=%" PRIu64 " timeout=%" PRIu64 " -> %d engine=%d\n",
+                    sync, fence, timeout, (int)result, nvn_engine_ready());
+        }
     }
     return result;
 }

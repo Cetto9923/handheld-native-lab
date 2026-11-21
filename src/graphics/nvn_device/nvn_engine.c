@@ -340,9 +340,9 @@ int nvn_engine_wait(uint64_t fence, uint64_t timeout) {
     return nvn_engine_ready() ? xbg_legacy_wait(fence, timeout) : 0;
 }
 
-int nvn_engine_submit(const uint64_t *handles, int count) {
+int nvn_engine_submit(const uint64_t *handles, int count, struct nvn_command_package_lease *leases) {
     if (!nvn_engine_ready() || !handles || count <= 0) return 0;
-    xbg_submit(count, handles);
+    xbg_submit(count, handles, leases);
     return 1;
 }
 

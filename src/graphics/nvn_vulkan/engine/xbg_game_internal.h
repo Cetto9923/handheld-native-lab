@@ -33,7 +33,8 @@ int xbg_command_clone(int count,const uint64_t *handles,void *output,size_t capa
 void xbg_copy_commands(cmd_t *command,int count,const uint64_t *handles);
 void xbg_record_command(cmd_t *command,const void *record,uint32_t bytes);
 void xbg_invoke_command_callback(cmd_t *command,size_t bytes);
-void xbg_submit(int count,const uint64_t *handles);
+struct nvn_command_package_lease;
+void xbg_submit(int count,const uint64_t *handles,struct nvn_command_package_lease *leases);
 void xbg_present_texture(const win_t *window,const tex_t *texture);
 uint64_t xbg_legacy_last_fence(void);
 int xbg_legacy_wait(uint64_t fence,uint64_t timeout);

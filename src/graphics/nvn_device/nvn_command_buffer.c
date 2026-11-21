@@ -2733,6 +2733,20 @@ void nvn_command_buffer_package_release(nvn_command_package_lease *lease){
     for(size_t i=0;i<owner->count;i++){if(!owner->packages[i]->readers)abort();owner->packages[i]->readers--;}
     pthread_mutex_unlock(&s_lock);free(owner->packages);free(owner);lease->owner=NULL;packages_collect();
 }
+void nvn_command_buffer_package_lease_fence_syncs(const nvn_command_package_lease *lease, uint64_t fence){
+    const package_lease_owner *owner=lease?lease->owner:NULL;if(!owner)return;
+    pthread_mutex_lock(&s_lock);
+    for(size_t i=0;i<owner->count;i++){
+        nvn_cb_package *p=owner->packages[i];
+        for(nvn_cb_sync_ref *r=p?p->sync_refs:NULL;r;r=r->next){
+            if(r->object){
+                r->object->fence=fence;
+                __atomic_store_n(&r->object->fenced,1,__ATOMIC_RELEASE);
+            }
+        }
+    }
+    pthread_mutex_unlock(&s_lock);
+}
 int nvn_command_buffer_get_package(uint64_t handle, nvn_command_package *out) {
     int found = 0;
     if (!out) return 0;

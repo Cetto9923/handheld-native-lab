@@ -76,6 +76,7 @@ static_assert(VK_FORMAT_R32_UINT==XBG_VK_FORMAT_R32_UINT && VK_FORMAT_R32_SINT==
 extern "C" {
 #include "../tex/nvn_deswizzle.h"
 #include "../../nvn_device/nvn_texture.h"
+#include "../../nvn_device/nvn_command_buffer.h"
 __attribute__((weak)) void nvn_texture_get_stats(nvn_texture_stats *out);
 __attribute__((weak)) void nvn_bridge_get_stats(uint64_t *objects,uint64_t *regenerated);
 __attribute__((weak)) void nvn_program_set_fast_lookup(int enabled);
@@ -157,6 +158,10 @@ std::mutex gfx_job_mutex;std::condition_variable gfx_job_cv,gfx_idle_cv;std::deq
 void gfx_worker_loop(){
     gfx_worker_id=std::this_thread::get_id();
     pthread_setname_np(pthread_self(),"dm-gfx");
+#if defined(__ANDROID__)
+    // Boost thread priority on Android so kernel scheduler assigns to Cortex-X4 / Cortex-A720 performance cores
+    setpriority(PRIO_PROCESS, 0, -10);
+#endif
     // Graphics thread on performance cores (QoS USER_INTERACTIVE, as for the audio thread).
     {void *h=dlopen("libqos.so",RTLD_NOW);auto set=h?reinterpret_cast<int(*)(int)>(dlsym(h,"OH_QoS_SetThreadQoS")):nullptr;int r=set?set(5):-1;xbg_logf("NVN async graphics thread QoS=USER_INTERACTIVE rc=%d",r);}
     for(;;){std::function<void()> job;
@@ -172,6 +177,10 @@ void gfx_enqueue(std::function<void()> job){
 std::atomic<uint64_t> gfx_drain_calls{0},gfx_drain_ns{0},gfx_pace_ns{0},gfx_wait_calls{0};
 extern "C" void gfx_drain(){
     if(!gfx_async || std::this_thread::get_id()==gfx_worker_id)return;
+    static unsigned s_drain_log = 0;
+    if (s_drain_log++ < 30 || !(s_drain_log % 60)) {
+        xbg_logf("GFX_DRAIN caller=%p", __builtin_return_address(0));
+    }
     uint64_t t0=uint64_t(std::chrono::steady_clock::now().time_since_epoch().count());
     {std::unique_lock<std::mutex> l(gfx_job_mutex);gfx_idle_cv.wait(l,[]{return gfx_jobs.empty() && !gfx_busy;});}
     ++gfx_drain_calls;gfx_drain_ns+=uint64_t(std::chrono::steady_clock::now().time_since_epoch().count())-t0;
@@ -2181,11 +2190,56 @@ bool tex_dirty=false;uint64_t tex_dirty_tracked=0,tex_dirty_checks=0,tex_dirty_c
 // refuses pages this tracker has protected: two trackers must never share a page (each would take the other's faults).
 // Entries in a deleted pool are dropped, and past the budget the whole arena is handed to the retiring slot and the cache
 // starts over.
+#if defined(__aarch64__)
+#include <arm_acle.h>
+__attribute__((target("+crc")))
+static inline uint64_t fast_buffer_hash(const void *ptr, size_t len) {
+    const uint8_t *p = static_cast<const uint8_t*>(ptr);
+    uint32_t crc0 = 0xFFFFFFFF;
+    uint32_t crc1 = 0x55555555;
+    size_t words = len / 8;
+    size_t i = 0;
+    for (; i + 1 < words; i += 2) {
+        uint64_t v0, v1;
+        memcpy(&v0, p + i * 8, 8);
+        memcpy(&v1, p + (i + 1) * 8, 8);
+        crc0 = __builtin_arm_crc32cd(crc0, v0);
+        crc1 = __builtin_arm_crc32cd(crc1, v1);
+    }
+    if (i < words) {
+        uint64_t v0;
+        memcpy(&v0, p + i * 8, 8);
+        crc0 = __builtin_arm_crc32cd(crc0, v0);
+    }
+    size_t rem = len % 8;
+    if (rem >= 4) {
+        uint32_t v;
+        memcpy(&v, p + len - rem, 4);
+        crc0 = __builtin_arm_crc32cw(crc0, v);
+        rem -= 4;
+    }
+    while (rem > 0) {
+        crc0 = __builtin_arm_crc32cb(crc0, p[len - rem]);
+        rem--;
+    }
+    return (uint64_t(crc0) << 32) | crc1;
+}
+#else
+static inline uint64_t fast_buffer_hash(const void *ptr, size_t len) {
+    const uint8_t *p = static_cast<const uint8_t*>(ptr);
+    uint64_t h = 0xcbf29ce484222325ull ^ len;
+    for (size_t i = 0; i < len; ++i) {
+        h = (h ^ p[i]) * 0x100000001b3ull;
+    }
+    return h;
+}
+#endif
+
 namespace vcache {
 bool enabled=false;uint64_t hits=0,hit_bytes=0,fills=0,fill_bytes=0,refills=0,volatiles=0,untracked=0,flushes=0;
-constexpr size_t min_bytes=256;constexpr VkDeviceSize budget=64ull<<20;constexpr uint64_t volatile_window=8,retry_after=600;
+constexpr size_t min_bytes=256;constexpr VkDeviceSize budget=256ull<<20;constexpr uint64_t volatile_presents=3,retry_after_presents=300;
 enum State:uint8_t{EMPTY,CACHED,VOLATILE,UNTRACKED};
-struct Entry{Buffer buffer;uint64_t stamp=0,filled=0,retry=0;State state=EMPTY;};
+struct Entry{Buffer buffer;uint64_t hash=0;uint64_t stamp=0,filled_pres=0,retry_pres=0;State state=EMPTY;};
 struct KeyHash{size_t operator()(const std::pair<uint64_t,uint64_t> &k)const{uint64_t x=k.first*0x9E3779B97F4A7C15ull^k.second*0xC2B2AE3D27D4EB4Full;return size_t(x^(x>>29));}};
 std::unordered_map<std::pair<uint64_t,uint64_t>,Entry,KeyHash> map;Arena arena;
 size_t live(){return map.size();}
@@ -2196,20 +2250,38 @@ void flush(){if(arena.chunks.empty() && map.empty())return;std::vector<ArenaChun
     retire_handle([old]()mutable{for(auto &c:old)Arena::destroy(c);});}   // after the recording slot retires, no submission reads them
 void drop_pool(uint64_t base,uint64_t bytes){for(auto it=map.begin();it!=map.end();){if(it->first.first<base+bytes && it->first.first+it->first.second>base)it=map.erase(it);else ++it;}}
 bool lookup(uint64_t address,size_t bytes,Buffer &out){
-    if(bytes<min_bytes || !nvn_dirty_since || !nvn_dirty_tracked || !nvn_dirty_protect || !nvn_dirty_now)return false;
-    const void *p=reinterpret_cast<const void*>(uintptr_t(address));Entry &e=map[{address,uint64_t(bytes)}];
-    if(e.state==VOLATILE || e.state==UNTRACKED){if(slot_serial<e.retry)return false;e.state=EMPTY;}
-    if(e.state==CACHED){
-        if(!nvn_dirty_since(p,bytes,e.stamp)){++hits;hit_bytes+=bytes;out=e.buffer;return true;}
-        if(slot_serial-e.filled<volatile_window){e.state=VOLATILE;e.retry=slot_serial+retry_after;++volatiles;return false;}
-        ++refills;
+    if(bytes<min_bytes)return false;
+    uint64_t cur_pres=stats.presents.load(std::memory_order_relaxed);
+    auto it=map.find({address,uint64_t(bytes)});
+    if(it!=map.end()){
+        Entry &e=it->second;
+        if(e.state==VOLATILE || e.state==UNTRACKED){
+            if(cur_pres<e.retry_pres)return false;
+            e.state=EMPTY;
+        }
+        if(e.state==CACHED){
+            const void *p=reinterpret_cast<const void*>(uintptr_t(address));
+            uint64_t cur_hash=fast_buffer_hash(p,bytes);
+            if(cur_hash==e.hash){++hits;hit_bytes+=bytes;out=e.buffer;return true;}
+            if(cur_pres - e.filled_pres <= volatile_presents){
+                e.state=VOLATILE;e.retry_pres=cur_pres+retry_after_presents;++volatiles;return false;
+            }
+            ++refills;
+            if(arena.used_total+bytes>budget)flush();
+            Entry &f=map[{address,uint64_t(bytes)}];
+            Buffer b=arena.alloc(bytes);memcpy(b.mapped,p,bytes);b.flush();
+            f.buffer=b;f.hash=cur_hash;f.filled_pres=cur_pres;f.state=CACHED;++fills;fill_bytes+=bytes;out=b;return true;
+        }
     }
-    if(!nvn_dirty_tracked(p,bytes) || overlaps_wtrack(address,bytes)){e.state=UNTRACKED;e.retry=slot_serial+retry_after;++untracked;return false;}
+    const void *p=reinterpret_cast<const void*>(uintptr_t(address));
+    if(overlaps_wtrack(address,bytes)){
+        Entry &e=map[{address,uint64_t(bytes)}];e.state=UNTRACKED;e.retry_pres=cur_pres+retry_after_presents;++untracked;return false;
+    }
+    uint64_t cur_hash=fast_buffer_hash(p,bytes);
     if(arena.used_total+bytes>budget)flush();
-    Entry &f=map[{address,uint64_t(bytes)}];   // flush() may have cleared the map
-    uint64_t stamp=nvn_dirty_now();nvn_dirty_protect(p,bytes);
+    Entry &f=map[{address,uint64_t(bytes)}];
     Buffer b=arena.alloc(bytes);memcpy(b.mapped,p,bytes);b.flush();
-    f.buffer=b;f.stamp=stamp;f.filled=slot_serial;f.state=CACHED;++fills;fill_bytes+=bytes;out=b;return true;
+    f.buffer=b;f.hash=cur_hash;f.filled_pres=cur_pres;f.state=CACHED;++fills;fill_bytes+=bytes;out=b;return true;
 }
 }
 Buffer snapshot_slow(uint64_t address,size_t bytes,VkDeviceSize align);
@@ -5242,12 +5314,9 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
                     if(!ok)break;
                 }}
             if(ok){memo_check_epoch();
-                uint32_t h = uint32_t(key.size());
-                if(!key.empty()) h ^= uint32_t(key[0] >> 4);
-                if(key.size() > 4) h ^= uint32_t(key[4] >> 4);
-                if(key.size() > 10) h ^= uint32_t(key[10]);
-                if(key.size() > 14) h ^= uint32_t(key[14]);
-                const uint32_t fidx = (h ^ (h >> 8) ^ (h >> 16)) & (kMemoFrontSlots - 1);
+                uint32_t h = 0x811c9dc5u;
+                for(uint64_t w : key) h = (h ^ uint32_t(w ^ (w >> 32))) * 16777619u;
+                const uint32_t fidx = (h ^ (h >> 16)) & (kMemoFrontSlots - 1);
                 auto &mf = memo_front_slots[fidx];
                 if(mf.gen==memo_mod_gen && mf.slot==slot_index && !ab_off("memofront") && mf.key==key){hit=mf.it;++memo_front_hits;}
                 else{hit=desc_memo.find(key);if(hit!=desc_memo.end()){mf.key=key;mf.it=hit;mf.gen=memo_mod_gen;mf.slot=slot_index;}}
@@ -8591,7 +8660,7 @@ vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemor
     {std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');std::string parent=cut==std::string::npos?dir:dir.substr(0,cut);FILE *m=fopen((parent+"/gfx-codex-frame-metrics").c_str(),"rb");bool enabled=false;if(m){enabled=fgetc(m)=='1';fclose(m);}if(enabled){std::string path=parent+"/codex-frame-"+std::to_string(getpid())+".csv";int fd=open(path.c_str(),O_WRONLY|O_CREAT|O_EXCL|O_CLOEXEC,0644);if(fd>=0){frame_trace.file=fdopen(fd,"wb");if(!frame_trace.file)close(fd);else{setvbuf(frame_trace.file,nullptr,_IOFBF,65536);fputs("frame,monotonic_ns,texture_serial,image_writer,draws,dispatches,submissions,present_result\n",frame_trace.file);xbg_logf("CODEX_FRAME metrics path=%s maxRows=120000 flushEvery=60",path.c_str());}}}}
     {std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');std::string marker=(cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-codex-gpu-step";FILE *m=fopen(marker.c_str(),"rb");codex_gpu_step=false;if(m){codex_gpu_step=fgetc(m)=='1';fclose(m);}xbg_logf("CODEX_GPU step diagnosis=%d",int(codex_gpu_step));}
     {std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');std::string marker=(cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-sync-mode";FILE *m=fopen(marker.c_str(),"rb");sync_mode=false;if(m){sync_mode=fgetc(m)=='1';fclose(m);}}
-     {std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-defer-events").c_str(),"rb");defer_events=0;if(m){int c=fgetc(m);defer_events=c=='1'?1:c=='2'?2:0;fclose(m);}else if(const char *e=getenv("DM_GFX_DEFER_EVENTS")){int v=atoi(e);defer_events=v==1?1:v==2?2:0;}xbg_logf("NVN defer events=%d (marker gfx-defer-events)",int(defer_events));{FILE *r=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-event-retire").c_str(),"rb");event_retire_targeted=true;if(r){event_retire_targeted=fgetc(r)!=0x30;fclose(r);}xbg_logf("NVN event retirement targeted=%d (marker gfx-event-retire)",int(event_retire_targeted));}{FILE *rb=fopen(((cut==std::string::npos?dir:dir)+"/gfx-readback-retire").c_str(),"rb");readback_retire_targeted=true;if(rb){readback_retire_targeted=fgetc(rb)!=0x30;fclose(rb);}xbg_logf("NVN readback retirement targeted=%d (marker gfx-readback-retire)",int(readback_retire_targeted));}{FILE *eg=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-event-guard").c_str(),"rb");evguard::enabled=eg!=nullptr;if(eg)fclose(eg);if(evguard::enabled)xbg_logf("NVN event guard on (marker gfx-event-guard)");}{FILE *v=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-vcache").c_str(),"rb");vcache::enabled=false;if(v){vcache::enabled=fgetc(v)!='0';fclose(v);}else if(const char *e=getenv("DM_GFX_VCACHE"))vcache::enabled=atoi(e)!=0;xbg_logf("NVN vertex/index cross-frame cache=%d tracker=%d (marker gfx-vcache)",int(vcache::enabled),int(nvn_dirty_since!=nullptr));}
+     {std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-defer-events").c_str(),"rb");defer_events=0;if(m){int c=fgetc(m);defer_events=c=='1'?1:c=='2'?2:0;fclose(m);}else if(const char *e=getenv("DM_GFX_DEFER_EVENTS")){int v=atoi(e);defer_events=v==1?1:v==2?2:0;}xbg_logf("NVN defer events=%d (marker gfx-defer-events)",int(defer_events));{FILE *r=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-event-retire").c_str(),"rb");event_retire_targeted=true;if(r){event_retire_targeted=fgetc(r)!=0x30;fclose(r);}xbg_logf("NVN event retirement targeted=%d (marker gfx-event-retire)",int(event_retire_targeted));}{FILE *rb=fopen(((cut==std::string::npos?dir:dir)+"/gfx-readback-retire").c_str(),"rb");readback_retire_targeted=true;if(rb){readback_retire_targeted=fgetc(rb)!=0x30;fclose(rb);}xbg_logf("NVN readback retirement targeted=%d (marker gfx-readback-retire)",int(readback_retire_targeted));}{FILE *eg=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-event-guard").c_str(),"rb");evguard::enabled=eg!=nullptr;if(eg)fclose(eg);if(evguard::enabled)xbg_logf("NVN event guard on (marker gfx-event-guard)");}{FILE *v=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-vcache").c_str(),"rb");vcache::enabled=true;if(v){vcache::enabled=fgetc(v)!='0';fclose(v);}else if(const char *e=getenv("DM_GFX_VCACHE"))vcache::enabled=atoi(e)!=0;xbg_logf("NVN vertex/index cross-frame cache=%d (marker gfx-vcache)",int(vcache::enabled));}
      {FILE *v=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-tex-dirty").c_str(),"rb");tex_dirty=false;if(v){tex_dirty=fgetc(v)!='0';fclose(v);}else if(const char *e=getenv("DM_GFX_TEX_DIRTY"))tex_dirty=atoi(e)!=0;
       xbg_logf("NVN texture checks through the dirty tracker=%d (marker gfx-tex-dirty)",int(tex_dirty));}{const bool is_adreno = properties.vendorID == 0x5143 || strstr(properties.deviceName, "Adreno") != nullptr;FILE *b=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-native-bc").c_str(),"rb");native_bc=false;if(b){native_bc=fgetc(b)!='0';fclose(b);}else if(const char *e=getenv("DM_GFX_NATIVE_BC"))native_bc=is_adreno && atoi(e)!=0;xbg_logf("NVN native BC textures=%d (marker gfx-native-bc)",int(native_bc));}{FILE *td=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-terrain-depth").c_str(),"rb");terrain_depth_strip=0;if(td){terrain_depth_strip=fgetc(td)=='1';fclose(td);}xbg_logf("NVN terrain drop frag depth=%d (marker gfx-terrain-depth=1 enables the diagnostic)",terrain_depth_strip);}
      {FILE *b=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-noload").c_str(),"rb");noload_enabled=false;if(b){noload_enabled=fgetc(b)!='0';fclose(b);}else if(const char *e=getenv("DM_GFX_NOLOAD"))noload_enabled=atoi(e)!=0;xbg_logf("NVN proven full-overwrite first draws skip the color load=%d (marker gfx-noload; A/B target noload)",int(noload_enabled));}{FILE *q=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-bright").c_str(),"rb");bright::enabled=true;if(q){bright::enabled=fgetc(q)!='0';fclose(q);}else if(const char *e=getenv("DM_GFX_BRIGHT"))bright::enabled=atoi(e)!=0;xbg_logf("NVN 3D brightening=%d (marker gfx-bright; A/B target bright)",int(bright::enabled));}{FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-perf-sample").c_str(),"rb");perf_sample=32;if(m){if(fscanf(m,"%u",&perf_sample)!=1)perf_sample=32;fclose(m);}else if(const char *e=getenv("DM_GFX_PERF_SAMPLE"))perf_sample=unsigned(atoi(e));perf_frame_timed=perf_sample!=0;perf_timed_frames=0;xbg_logf("NVN perf timing every %u frames (marker gfx-perf-sample; 0 = off)",perf_sample);}}
@@ -8755,7 +8824,15 @@ vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemor
       for(size_t at=0;at<list.size();at+=900)xbg_logf("NVN caps extensions[%zu] %s",at/900,list.substr(at,900).c_str());
       xbg_logf("NVN caps api=%u.%u.%u driver=%u maxUBdyn=%u maxPerStageUB=%u minUBAlign=%llu maxBoundSets=%u",VK_API_VERSION_MAJOR(properties.apiVersion),VK_API_VERSION_MINOR(properties.apiVersion),VK_API_VERSION_PATCH(properties.apiVersion),properties.driverVersion,properties.limits.maxDescriptorSetUniformBuffersDynamic,properties.limits.maxPerStageDescriptorUniformBuffers,(unsigned long long)properties.limits.minUniformBufferOffsetAlignment,properties.limits.maxBoundDescriptorSets);}
      {FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-ab-toggle").c_str(),"rb");ab_period=0;if(m){if(fscanf(m,"%d",&ab_period)!=1)ab_period=0;fclose(m);}{FILE *t=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-ab-target").c_str(),"rb");memset(ab_target,0,sizeof ab_target);if(t){if(fscanf(t,"%15s",ab_target)!=1)ab_target[0]=0;fclose(t);}}xbg_logf("NVN PERF ab_period=%d",ab_period);}
-     ++slot_serial;gfx_enqueued=0;gfx_executed=0;gfx_presents_queued=0;gfx_async=false; /* Android game command memory remains guest-owned. */if(gfx_async)gfx_worker=std::thread(gfx_worker_loop);xbg_logf("NVN async translation=%d",int(gfx_async));}
+     ++slot_serial;gfx_enqueued=0;gfx_executed=0;gfx_presents_queued=0;
+     {
+         FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-async-submit").c_str(),"rb");
+         gfx_async=false;
+         if(m){gfx_async=fgetc(m)!='0';fclose(m);}
+         else{const char *env=getenv("DM_GFX_ASYNC");if(env)gfx_async=env[0]!='0';}
+     }
+     if(gfx_async)gfx_worker=std::thread(gfx_worker_loop);
+     xbg_logf("NVN async translation=%d (marker gfx-async-submit / DM_GFX_ASYNC)",int(gfx_async));}
     return 0;
 }
 // nvnEventGetValue on a deferred event: finish the GPU work the signal covers, then the value is published (apply_ready_events).
@@ -9014,61 +9091,82 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
     for(int i=0;i<n;i++)execute(reinterpret_cast<const uint8_t*>(handles[i]),0,budget);++stats.submissions;++submitted;if(sync_mode)complete_all();perf.submit_cpu_ns+=timing_clock()-begin;}
 extern "C" uint64_t xbg_legacy_last_fence(){return gfx_async?gfx_enqueued.load():[]{std::lock_guard<std::recursive_mutex> lock(mutex);return submitted;}();}
 extern "C" void xbg_legacy_flush(){
-    gfx_drain();std::lock_guard<std::recursive_mutex> lock(mutex);
+    if (gfx_async) {
+        gfx_enqueue([]{
+            std::lock_guard<std::recursive_mutex> lock(mutex);
+            if(!initialized || failed) return;
+            Slot &s=slots[slot_index];
+            if(s.recording && s.ops>0) submit_slots(false);
+            poll_retire();
+        });
+        return;
+    }
+    std::lock_guard<std::recursive_mutex> lock(mutex);
     if(!initialized)return;need(!failed,"Queue flush on failed Vulkan backend");
-    /* gfx_drain alone only finishes CPU translation. In particular, a
-     * subsequent zero-timeout fence poll must have actual submitted GPU work
-     * to observe. Preserve normal slot retirement order and genuine fences. */
     Slot &s=slots[slot_index];
     if(s.recording && s.ops>0) submit_slots(false);
     poll_retire();
 }
 extern "C" int xbg_legacy_wait(uint64_t fence,uint64_t timeout){
+    uint64_t target_fence = fence;
+
     static unsigned s_wait_log = 0;
-    if (s_wait_log++ < 10 || !(s_wait_log % 300)) {
-        xbg_logf("XBG_WAIT fence=%llu timeout=%llu submitted=%llu completed=%llu",
-                 (unsigned long long)fence, (unsigned long long)timeout,
+    if (s_wait_log++ < 20 || !(s_wait_log % 300)) {
+        xbg_logf("XBG_WAIT fence=%llu target=%llu timeout=%llu caller=%p submitted=%llu completed=%llu",
+                 (unsigned long long)fence, (unsigned long long)target_fence, (unsigned long long)timeout,
+                 __builtin_return_address(0),
                  (unsigned long long)submitted, (unsigned long long)completed.load());
     }
     // 不取锁的提前返回只用于新写法；旧写法（非鸿蒙缺省）先判 failed，与原来逐条相同
     // the lock-free early return is new-path only; the old path (default off HarmonyOS) checks failed first, exactly as before
-    if(!legacy_waitall && fence<=completed.load())return 1;
+    if(!legacy_waitall && target_fence<=completed.load())return 1;
+    if(gfx_async && std::this_thread::get_id()!=gfx_worker_id && target_fence > gfx_executed.load()){
+        if(!timeout && !legacy_waitall)return 0;
+        uint64_t t0 = timing_clock();
+        std::unique_lock<std::mutex> l(gfx_job_mutex);
+        if (timeout == UINT64_MAX) {
+            gfx_idle_cv.wait(l, [&]{ return gfx_executed.load() >= target_fence || gfx_stop || failed; });
+        } else {
+            gfx_idle_cv.wait_for(l, std::chrono::nanoseconds(timeout), [&]{
+                return gfx_executed.load() >= target_fence || gfx_stop || failed;
+            });
+            uint64_t dt = timing_clock() - t0;
+            timeout = (timeout > dt) ? (timeout - dt) : 0;
+        }
+        if (target_fence > gfx_executed.load()) return 0;
+    }
     const bool completion_path=completion_wait_enabled && timeout && !legacy_waitall;
     // 新路径的唯一总预算含初锁、重锁与四轮后的回退；旧路径保留原时限语义。
     // One new-path budget includes initial lock, relock and the post-four-round fallback; preserve the old path's timeout semantics.
     const xbg_completion::Deadline deadline(completion_path?timeout:UINT64_MAX);
-    // 只等覆盖 fence 的那一批（同 wait_fence / d2r-harmonyos），且等 GPU 时不持引擎锁：游戏每帧都等刚交的那一帧，旧写法先强交、再等全部在途命令，
+    // 只等覆盖 target_fence 的那一批（同 wait_fence / d2r-harmonyos），且等 GPU 时不持引擎锁：游戏每帧都等刚交的那一帧，旧写法先强交、再等全部在途命令，
     // 全程攥着引擎锁，翻译线程的出图每帧被堵约 16 ms。轮询（timeout 0）只 try_lock，翻译线程正持锁就当没完成，不排队。按提交顺序退槽（写回不越序）。
     // 标记 gfx-legacy-waitall=1 / 0 选旧 / 新写法；非鸿蒙缺省旧写法（与原来逐条相同）。
-    // Wait only for the batch covering `fence` (as wait_fence / d2r-harmonyos), without holding the engine lock while the GPU works: the game waits every frame for the frame it just
-    // submitted; the old code force-submitted, waited for all in-flight work and held the engine lock throughout, blocking translation's present ~16 ms per frame. A poll (timeout 0)
-    // only try_locks: if translation holds the lock it reports not done instead of queueing. Slots retire in submission order (writebacks stay ordered). Marker gfx-legacy-waitall=1 / 0 picks the old / new code; off HarmonyOS the old code (unchanged) is the default.
     std::unique_lock<std::recursive_mutex> lock(mutex,std::defer_lock);
     // 仅对可能阻塞的调用记 trace；保持单次 try_lock 轮询与原退休顺序。
-    // Trace potentially blocking calls only; retain single-try-lock polls and the original retirement order.
-    if(timeout || legacy_waitall){XTRACE_COUNT("dm-legacy-target", fence);XTRACE_COUNT("dm-legacy-completed-before-lock", completed.load());}
+    if(timeout || legacy_waitall){XTRACE_COUNT("dm-legacy-target", target_fence);XTRACE_COUNT("dm-legacy-completed-before-lock", completed.load());}
     if(!timeout && !legacy_waitall){if(!lock.try_lock())return 0;}else{
         XTRACE_BEGIN("dm-legacy-lock");
-        const auto acquired=completion_path?completion_wait.acquire(lock,fence,deadline):(lock.lock(),xbg_completion::Acquire::EngineLocked);
+        const auto acquired=completion_path?completion_wait.acquire(lock,target_fence,deadline):(lock.lock(),xbg_completion::Acquire::EngineLocked);
         XTRACE_END();XTRACE_COUNT("dm-legacy-lock-result", int(acquired));
         if(acquired==xbg_completion::Acquire::Completed){XTRACE_COUNT("dm-legacy-completed", completed.load());return 1;}
         if(acquired==xbg_completion::Acquire::TimedOut)return 0;
     }
     if(timeout || legacy_waitall){XTRACE_COUNT("dm-legacy-submitted", submitted);XTRACE_COUNT("dm-legacy-completed", completed.load());}
-    if(failed || fence>submitted)return 0;if(fence<=completed)return 1;
+    if(failed || target_fence>submitted)return 0;if(target_fence<=completed)return 1;
     if(completion_path && deadline.expired())return 0;
     if(!legacy_waitall){
         auto begin=std::chrono::steady_clock::now();
         auto retire_done=[&]{for(unsigned i=0;i<slot_count;i++){if(completion_path && deadline.expired())break;Slot *op=oldest_pending();if(!op)break;Slot &o=*op;if(!o.pending || vkGetFenceStatus(cfg.device,o.fence)!=VK_SUCCESS)break;SiteScope site(SITE_LEGACY_WAIT);retire_slot(o);}};
         for(int round=0;round<4;round++){
-            if(completion_path && deadline.expired())return fence<=completed;
-            retire_done();if(failed)return 0;if(fence<=completed)return 1;
+            if(completion_path && deadline.expired())return target_fence<=completed;
+            retire_done();if(failed)return 0;if(target_fence<=completed)return 1;
             if(completion_path && deadline.expired())return 0;
             Slot *op=oldest_pending(),*np=newest_pending();Slot &older=op?*op:slots[prev_slot_index()],&newer=np?*np:slots[slot_index];Slot &cur=slots[slot_index];
             // 没有在途槽、录制槽也是空的：已翻译的提交全都做完了（游戏常等一次不含 GPU 命令的提交）| Nothing in flight and an empty recording slot: every translated submit is done (the game often waits on a submit with no GPU commands)
-            if(!older.pending && !newer.pending && !(cur.recording && cur.ops)){resolve_known_reports();if(pending_writebacks.empty()&&pending_reports.empty()){publish_completed(std::max(completed.load(),submitted));}if(fence<=completed)return 1;break;}
+            if(!older.pending && !newer.pending && !(cur.recording && cur.ops)){resolve_known_reports();if(pending_writebacks.empty()&&pending_reports.empty()){publish_completed(std::max(completed.load(),submitted));}if(target_fence<=completed)return 1;break;}
             if(!timeout)return 0;
-            Slot *t=first_pending_covering(fence);
+            Slot *t=first_pending_covering(target_fence);
             if(!t){if(cur.recording && cur.ops){SiteScope site(SITE_LEGACY_WAIT);submit_slots(false);continue;}   // 目标还在录制中的槽：交掉再等 | target still in the recording slot: submit it, then wait
                 t=newer.pending?&newer:&older;}   // 目标提交没有 GPU 命令：等最新的在途批次 | the target submit has no GPU commands: wait for the newest in-flight batch
             uint64_t remaining=completion_path?deadline.remaining_ns():timeout;if(!completion_path && timeout!=UINT64_MAX){auto elapsed=std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-begin).count();remaining=uint64_t(elapsed)>=timeout?0:timeout-uint64_t(elapsed);}
@@ -9079,8 +9177,8 @@ extern "C" int xbg_legacy_wait(uint64_t fence,uint64_t timeout){
             if ((b1 - b0) > 1000000) {
                 static unsigned s_heavy_log = 0;
                 if (s_heavy_log++ < 10 || !(s_heavy_log % 300)) {
-                    xbg_logf("XBG_HEAVY_WAIT fence=%llu t_covers=%llu waited_ms=%.2f submitted=%llu completed=%llu",
-                             (unsigned long long)fence, (unsigned long long)t->covers,
+                    xbg_logf("XBG_HEAVY_WAIT fence=%llu (target=%llu) t_covers=%llu waited_ms=%.2f submitted=%llu completed=%llu",
+                             (unsigned long long)fence, (unsigned long long)target_fence, (unsigned long long)t->covers,
                              (b1 - b0) / 1e6, (unsigned long long)submitted, (unsigned long long)completed.load());
                 }
             }
@@ -9094,12 +9192,12 @@ extern "C" int xbg_legacy_wait(uint64_t fence,uint64_t timeout){
                 // Completion must not hide device errors; handle the original fatal state while holding engine.
                 if(r!=VK_SUCCESS){lock.lock();fold_completion_wait_stats();VK(r);}
                 XTRACE_BEGIN("dm-legacy-relock");
-                if(completed.load()>=fence){
+                if(completed.load()>=target_fence){
                     XTRACE_END();
                     fold_completion_wait_stats();
                     return 1;
                 }
-                const auto acquired=ab_off("relockfast")?completion_wait.acquire(lock,fence,deadline):(lock.lock(),xbg_completion::Acquire::EngineLocked);
+                const auto acquired=ab_off("relockfast")?completion_wait.acquire(lock,target_fence,deadline):(lock.lock(),xbg_completion::Acquire::EngineLocked);
                 XTRACE_END();
                 XTRACE_COUNT("dm-legacy-relock-result", int(acquired));XTRACE_COUNT("dm-legacy-completed", completed.load());
                 if(acquired==xbg_completion::Acquire::Completed)return 1;
@@ -9111,19 +9209,19 @@ extern "C" int xbg_legacy_wait(uint64_t fence,uint64_t timeout){
                 block_ns[SITE_LEGACY_WAIT]+=b1-b0;++block_calls[SITE_LEGACY_WAIT];legacy_wait_ns+=b1-b0;
                 if(r==VK_TIMEOUT)return 0;VK(r);
             }}
-        retire_done();if(fence<=completed)return 1;}
-    if(completion_path && deadline.expired())return fence<=completed;
+        retire_done();if(target_fence<=completed)return 1;}
+    if(completion_path && deadline.expired())return target_fence<=completed;
     SiteScope site(SITE_LEGACY_WAIT);uint64_t w0=timing_clock();struct Spent{uint64_t w0;~Spent(){legacy_wait_ns+=timing_clock()-w0;}}spent{w0};
     submit_slots(false);auto begin=std::chrono::steady_clock::now();
     for(auto &slot:active_slots())if(slot.pending){uint64_t remaining=completion_path?deadline.remaining_ns():timeout;
-        if(completion_path && !remaining)return fence<=completed;
+        if(completion_path && !remaining)return target_fence<=completed;
         if(!completion_path && timeout!=UINT64_MAX){auto elapsed=std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-begin).count();remaining=uint64_t(elapsed)>=timeout?0:timeout-uint64_t(elapsed);}
         bool busy=vkGetFenceStatus(cfg.device,slot.fence)==VK_NOT_READY;uint64_t b0=busy?timing_clock():0;
         VkResult r=hybrid_wait_fence(slot.fence,remaining);if(busy){block_ns[SITE_LEGACY_WAIT]+=timing_clock()-b0;++block_calls[SITE_LEGACY_WAIT];}
         if(r==VK_TIMEOUT)return 0;VK(r);retire_slot(slot);
     }
     resolve_known_reports();if(pending_writebacks.empty()&&pending_reports.empty()){publish_completed(submitted);}
-    return fence<=completed;
+    return target_fence<=completed;
 }
 extern "C" void xbg_legacy_finish(){gfx_drain();std::lock_guard<std::recursive_mutex> lock(mutex);need(initialized,"Queue finish before Vulkan initialization");++perf.why_finish;complete_all();VK(vkQueueWaitIdle(cfg.queue));}
 static uint64_t s_target_frame_ns = 0; // Default to no additional host frame limiter.
@@ -9309,7 +9407,8 @@ void flame_diag_roi_read(){
 
 static void xbg_present_texture_now(const win_t *window,const tex_t *texture){std::lock_guard<std::recursive_mutex> lock(mutex);maintain_memory_pressure();preflight_cpu_reads();{SiteScope site(SITE_PRESENT);cur_op=61;TimingRoot timing_root;CPU_SCOPE(Other);need(initialized&&cfg.present,"Game presentation callback not installed");uint64_t present_begin=timing_clock();Image &im=get_image(texture,false);need(im.gpu_written,"Game tried to present a texture never rendered");probe_present(im);
     // Stop the uniform fingerprint trace once it has covered the requested number of frames.
-    if(ubtrace.on.load(std::memory_order_relaxed)){if(ubtrace.frames>=ubtrace.limit){ubtrace.on.store(false,std::memory_order_relaxed);if(ubtrace.file){fflush(ubtrace.file);fclose(ubtrace.file);ubtrace.file=nullptr;}xbg_logf("LIVE-UBTRACE off after %llu frames",(unsigned long long)ubtrace.frames);}else ++ubtrace.frames;}Commands c;im.transition(c.command,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);fire_trace_present(im,c.command);water_trace_present(im,c.command);c.finish();if(flame_diag_enabled)flame_diag_roi_record(im);submit_slots(false);if(flame_diag_enabled){gpu_sync(perf.sync_readback);flame_diag_roi_read();}performance_hint::finish_work();uint64_t pace_ns=xbg_frame_pace();int r;{CPU_SCOPE(Present);r=cfg.present(cfg.userdata,window->native,im.image,im.fmt,im.width,im.height,window->crop,window->interval);}if(r){static unsigned err_n=0;if(err_n++<10)xbg_logf("Game presentation dropped/warning: %d",r);}++stats.presents;if(flame_diag_enabled){fdiag_present=texture->serial;fdiag_present_mem=uint64_t(uintptr_t(texture->mem));
+    if(ubtrace.on.load(std::memory_order_relaxed)){if(ubtrace.frames>=ubtrace.limit){ubtrace.on.store(false,std::memory_order_relaxed);if(ubtrace.file){fflush(ubtrace.file);fclose(ubtrace.file);ubtrace.file=nullptr;}xbg_logf("LIVE-UBTRACE off after %llu frames",(unsigned long long)ubtrace.frames);}else ++ubtrace.frames;}Commands c;im.transition(c.command,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);fire_trace_present(im,c.command);water_trace_present(im,c.command);c.finish();if(flame_diag_enabled)flame_diag_roi_record(im);submit_slots(false);if(flame_diag_enabled){gpu_sync(perf.sync_readback);flame_diag_roi_read();}performance_hint::finish_work();uint64_t pace_ns=xbg_frame_pace();int r;{CPU_SCOPE(Present);r=cfg.present(cfg.userdata,window->native,im.image,im.fmt,im.width,im.height,window->crop,window->interval);}if(r){static unsigned err_n=0;if(err_n++<10)xbg_logf("Game presentation dropped/warning: %d",r);}
+    ++stats.presents;if(flame_diag_enabled){fdiag_present=texture->serial;fdiag_present_mem=uint64_t(uintptr_t(texture->mem));
         uint64_t other_draw=0,other_inst=0,other_bind=0,other_zero=0;for(int i=2;i<flame_diag_keys;i++){other_draw+=fdiag_draws[i];other_inst+=fdiag_inst[i];other_bind+=fdiag_binds[i];other_zero+=fdiag_zero[i];}
         xbg_logf("FLAME_FRAME fr=%llu be4e_draw=%llu be4e_inst=%llu be4e_bind=%llu be4e_zero=%llu f8b27_draw=%llu f8b27_inst=%llu f8b27_bind=%llu f8b27_zero=%llu f8b27_nz=%llu f8b27_sig=%#llx f8b27_mem=%#llx other_draw=%llu other_inst=%llu other_bind=%llu other_zero=%llu skip=%llu ds=%u/%u/%u blend=%u/%u/%u rt=%#llx dsrt=%#llx vp=%#llx sc=%#llx bi=%llu bv=%llu cnt=%llu prim=%d itype=%d present=%llu pmem=%#llx pf=%llu pmean=%llu roi=%u,%u,%u,%u im=%llu,%llu c5a=%#x c5b=%#x c5c=%#x c2a=%#x c0a=%#x ubo=%#llx c5mask=%#llx c5min=%llu c5max=%llu c5n=%llu rtpx=%llu rtw=%llu rth=%llu b18=%#x rthash=%#llx texhash=%#llx vb0=%#llx:%llu vb1=%#llx:%llu vb2=%#llx:%llu vb3=%#llx:%llu ibuf=%#llx ibytes=%llu",
             (unsigned long long)stats.presents.load(),(unsigned long long)fdiag_draws[0],(unsigned long long)fdiag_inst[0],(unsigned long long)fdiag_binds[0],(unsigned long long)fdiag_zero[0],
@@ -9422,10 +9521,27 @@ extern "C" void xbg_texture_lifetime_end(const tex_t *t){
 }
 extern "C" void xbg_legacy_prog_release(prog_t *p){if(!p)return;if(!gfx_async){xbg_legacy_prog_release_now(p);return;}prog_t copy=*p;gfx_enqueue([copy]()mutable{xbg_legacy_prog_release_now(&copy);});}
 extern "C" void xbg_texture_invalidate(const tex_t *t){if(!t)return;if(!gfx_async){xbg_texture_invalidate_now(t);return;}tex_t copy=*t;gfx_enqueue([copy]{xbg_texture_invalidate_now(&copy);});}
-extern "C" void xbg_submit(int n,const uint64_t *handles){
-    if(!gfx_async){xbg_submit_now(n,handles);return;}
-    std::vector<uint64_t> list(handles,handles+n);++gfx_enqueued;
-    gfx_enqueue([list]{xbg_submit_now(int(list.size()),list.data());gfx_executed.store(submitted);});}
+extern "C" void xbg_submit(int n,const uint64_t *handles, struct nvn_command_package_lease *leases){
+    if(!gfx_async){
+        xbg_submit_now(n,handles);
+        if(leases)for(int i=0;i<n;i++)nvn_command_buffer_package_release(&leases[i]);
+        return;
+    }
+    std::vector<uint64_t> list(handles,handles+n);
+    std::vector<nvn_command_package_lease> lease_list;
+    if(leases){
+        lease_list.assign(leases,leases+n);
+        memset(leases,0,sizeof(nvn_command_package_lease)*n);
+    }
+    ++gfx_enqueued;
+    gfx_enqueue([list,lease_list=std::move(lease_list)]() mutable {
+        xbg_submit_now(int(list.size()),list.data());
+        for(auto &l:lease_list){
+            nvn_command_buffer_package_release(&l);
+        }
+        lease_list.clear();
+        gfx_executed.store(submitted);
+    });}
 extern "C" void xbg_present_texture(const win_t *window,const tex_t *texture){
     if(!gfx_async){xbg_present_texture_now(window,texture);return;}
     // At most two frames queued ahead of the graphics thread.

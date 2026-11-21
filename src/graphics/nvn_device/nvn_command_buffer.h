@@ -441,6 +441,7 @@ int nvn_command_buffer_package_acquire(uint64_t handle,nvn_command_package_lease
 size_t nvn_command_buffer_package_lease_count(const nvn_command_package_lease *lease);
 int nvn_command_buffer_package_lease_at(const nvn_command_package_lease *lease,size_t index,nvn_command_package *out);
 void nvn_command_buffer_package_release(nvn_command_package_lease *lease);
+void nvn_command_buffer_package_lease_fence_syncs(const nvn_command_package_lease *lease, uint64_t fence);
 
 /* ------------------------------------------------------------------ */
 /* Statistics for the contract                                         */

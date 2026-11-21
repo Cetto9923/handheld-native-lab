@@ -547,8 +547,15 @@ void nvn_queue_reset_memory_usage_counts(void *queue) {
 /* The submission seam                                                  */
 /* ------------------------------------------------------------------ */
 static void submit_package_batch(uint64_t *handles,int count,nvn_command_package_lease *leases){
-    if(count&&!nvn_engine_submit(handles,count))fprintf(stderr,"[nvn] queue engine refused %d command packages\n",count);
-    for(int i=0;i<count;i++)nvn_command_buffer_package_release(&leases[i]);
+    if(!count)return;
+    uint64_t target_fence = nvn_engine_last_fence() + 1;
+    if(leases)for(int i=0;i<count;i++){
+        nvn_command_buffer_package_lease_fence_syncs(&leases[i], target_fence);
+    }
+    if(!nvn_engine_submit(handles,count,leases)){
+        fprintf(stderr,"[nvn] queue engine refused %d command packages\n",count);
+        for(int i=0;i<count;i++)nvn_command_buffer_package_release(&leases[i]);
+    }
 }
 
 void nvn_queue_submit_commands(void *queue, int count, const uint64_t *handles) {
