@@ -5011,11 +5011,18 @@ std::unordered_map<std::vector<uint64_t>,DescMemo,SetKeyHash> desc_memo_slot[kMa
 size_t desc_memo_local[kMaxSlots]={};   // entries that are not persistent, which desc_memo_reset drops
 std::atomic<uint64_t> memo_epoch{1};bool dyn_partial_enabled=true;uint64_t key_diff[14]={};uint64_t memo_bump[5]={};uint64_t memo_slot_epoch[kMaxSlots]={1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1};bool xmemo_enabled=true,memo_dyn_ok=false;uint64_t xmemo_hits=0,xmemo_drops=0;
 #define desc_memo desc_memo_slot[slot_index]
-// Front of the memo lookup: a draw whose key equals the key last found reuses that entry without hashing the key and
-// walking its bucket. Any change that can erase an entry or rehash the map (clear, sweep, erase, insert) moves
-// memo_mod_gen, which drops the front. A/B target memofront looks every key up.
-std::vector<uint64_t> memo_front_key;std::unordered_map<std::vector<uint64_t>,DescMemo,SetKeyHash>::iterator memo_front_it;
-uint64_t memo_mod_gen=1,memo_front_gen=0,memo_front_hits=0;unsigned memo_front_slot=~0u;
+// Front of the memo lookup: a direct-mapped 16-slot table caches the most recent entries
+// across alternating draw materials (e.g. wall/floor/column/props) without walking hash buckets.
+// Any change that can erase an entry or rehash the map (clear, sweep, erase, insert) moves
+// memo_mod_gen, which drops the front slots. A/B target memofront looks every key up.
+struct MemoFrontSlot {
+    std::vector<uint64_t> key;
+    std::unordered_map<std::vector<uint64_t>,DescMemo,SetKeyHash>::iterator it;
+    uint64_t gen = 0;
+    unsigned slot = ~0u;
+};
+static MemoFrontSlot memo_front_slots[16];
+uint64_t memo_mod_gen=1,memo_front_hits=0;
 uint64_t desc_ns[6]={};bool desc_memo_enabled=true;uint64_t desc_memo_hits=0,desc_memo_misses=0,desc_memo_why[6]={};
 uint64_t vwhy_blk=0,vwhy_buf=0,vwhy_ord=0,vwhy_img=0,vwhy_tex=0,vwhy_stor=0;
 std::vector<MemoImage> desc_memo_images;std::vector<DescMemo::Dyn> desc_memo_dyn;bool desc_memo_recording=false;
@@ -5203,8 +5210,10 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
                     if(!ok)break;
                 }}
             if(ok){memo_check_epoch();
-                if(memo_front_gen==memo_mod_gen && memo_front_slot==slot_index && !ab_off("memofront") && memo_front_key==key){hit=memo_front_it;++memo_front_hits;}
-                else{hit=desc_memo.find(key);if(hit!=desc_memo.end()){memo_front_key=key;memo_front_it=hit;memo_front_gen=memo_mod_gen;memo_front_slot=slot_index;}}
+                const uint32_t fidx = uint32_t(key.size() ^ (key.empty() ? 0 : (key[0] >> 3)) ^ (key.size() > 5 ? key[5] : 0)) & 15;
+                auto &mf = memo_front_slots[fidx];
+                if(mf.gen==memo_mod_gen && mf.slot==slot_index && !ab_off("memofront") && mf.key==key){hit=mf.it;++memo_front_hits;}
+                else{hit=desc_memo.find(key);if(hit!=desc_memo.end()){mf.key=key;mf.it=hit;mf.gen=memo_mod_gen;mf.slot=slot_index;}}
                 if(hit==desc_memo.end() && ktag.size()==key.size()){   // diagnostic: which key part differs from the last key of the same shaders
                     static std::unordered_map<std::vector<uint64_t>,std::vector<uint64_t>,SetKeyHash> last;std::vector<uint64_t> pre(key.begin(),key.begin()+5);
                     auto &prev=last[pre];if(prev.size()==key.size()){bool any=false;for(size_t i=0;i<key.size();i++)if(prev[i]!=key[i]){++key_diff[ktag[i]<12?ktag[i]:11];any=true;}if(!any)++key_diff[11];}else ++key_diff[prev.empty()?12:13];
@@ -5265,7 +5274,16 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
                 if(same){
                 // 命中也走既有按 submit 节流的 CPU 内容复核，不强制重传。
                 // Hits retain get_image's bounded per-submit CPU checks, without forcing uploads.
-                for(auto &ti:m.images){Image &im=get_image(ti.first,true);prepare_read(im,commands.command,true,attachment_barrier_enabled && ti.record?im.sampled_aspects(ti.record->has_view?&ti.record->view:nullptr):0);}
+                for(auto &ti:m.images){
+                    Image *cached_im=ti.second;
+                    if(cached_im && cached_im->checked_submission==stats.submissions &&
+                       !cached_im->gpu_written && cached_im->layout==VK_IMAGE_LAYOUT_GENERAL &&
+                       !cached_im->rg16_proxy && !(cached_im->aspects & VK_IMAGE_ASPECT_DEPTH_BIT) && !ab_off("roimgfast")){
+                        continue;
+                    }
+                    Image &im=get_image(ti.first,true);
+                    prepare_read(im,commands.command,true,attachment_barrier_enabled && ti.record?im.sampled_aspects(ti.record->has_view?&ti.record->view:nullptr):0);
+                }
                 if(__builtin_expect(water_ready(), 0)){
                     out.water=m.water;out.water.memo=true;
                     for(auto &binding:out.water.buffers)if(binding.dynamic){
@@ -5756,9 +5774,9 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
         slots[slot_index].recording && fresh_storage_serial==slot_serial && !ab_off("setfresh");
     // Keep empty layouts and the independent cross-draw memo on their normal
     // paths. The experiment skips only the slot-local key and lookup.
-    const bool experiment_cache_skip = !fresh_cache_skip && honor_set_cache_bypass_experiment &&
-        properties.vendorID == 0x5143 && properties.deviceID == 0x43030b00 &&
-        properties.driverVersion == 0x802fa02e && !writes.empty();
+    const bool experiment_cache_skip = !fresh_cache_skip &&
+        (desc_memo_enabled || (honor_set_cache_bypass_experiment && properties.vendorID == 0x5143)) &&
+        properties.vendorID == 0x5143 && !writes.empty() && !ab_off("setbypass");
     const bool use_cache = !fresh_cache_skip && !experiment_cache_skip;
     if(fresh_cache_skip)++set_cache_fresh_skips;
     if(experiment_cache_skip)++set_cache_experiment_skips;
@@ -6150,11 +6168,8 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
     // once; the draw still runs the vertex stage, so its side effects are kept, but the feedback buffers stay empty.
     if(state.rast_discard&&state.tf_on){static int once=0;if(!once++){once=1;xbg_logf("NVN transform feedback capture is not implemented: the draw under rasterizer discard produced no feedback");}}
     need(state.rt.n>=0 && state.rt.n<=8,"Invalid draw color target count");
-    VkShaderModule modules[5]{};for(unsigned i=0;i<5;i++)if(state.shader[i])modules[i]=state.shader[i]->module;
     uint32_t active_colors=0;for(int i=0;i<state.rt.n;i++)if(state.rt.color[i])active_colors|=1u<<i;
-    static std::vector<VkPipelineShaderStageCreateInfo> stages;stages.assign(5,VkPipelineShaderStageCreateInfo{});uint32_t stage_count=0;   // draw(): graphics thread only, not re-entrant
-    int stage_result=xbg_graphics_stages(modules,state.rt.depth!=nullptr,active_colors,state.mask.mask,state.ms.a2c,stages.data(),&stage_count);
-    if(stage_result)xbg_fatalf("Invalid graphics stage/depth-only state: %d count=%d first=%d prim=%d indexed=%u instances=%u colors=%#x mask=%#x depth=%u a2c=%u discard=%u vs=%s fs=%s",stage_result,count,first,prim,unsigned(indexed!=nullptr),instances,active_colors,state.mask.mask,unsigned(state.rt.depth!=nullptr),unsigned(state.ms.a2c),unsigned(state.rast_discard),state.shader[0]?state.shader[0]->key.c_str():"none",state.shader[4]?state.shader[4]->key.c_str():"none");stages.resize(stage_count);need(count>=0 && first>=0,"Negative draw range");if(!count || (indexed && indexed->instances==0 && !gpu_args))return;provenance_draw();
+    need(count>=0 && first>=0,"Negative draw range");if(!count || (indexed && indexed->instances==0 && !gpu_args))return;provenance_draw();
     const int orig_count=count;std::vector<uint32_t> quad_indices;p_draw_idx quad_indexed{};
     if(prim==7 && !indexed){
         need(instances<=INT32_MAX && first_instance<=INT32_MAX,"Quad instance range exceeds backend limits");
@@ -6180,6 +6195,7 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
     PipelineLease pipeline;
     static std::vector<VkVertexInputBindingDescription> bindings;
     static std::vector<VkVertexInputAttributeDescription> attributes;
+    static std::vector<VkPipelineShaderStageCreateInfo> stages;
     int zero_binding=-1;
     VkGraphicsPipelineCreateInfo ci{};
     VkPipelineDepthStencilStateCreateInfo ds{};
@@ -6211,6 +6227,11 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
         }
     }
     if(!memo_hit){
+        VkShaderModule modules[5]{};for(unsigned i=0;i<5;i++)if(state.shader[i])modules[i]=state.shader[i]->module;
+        stages.assign(5,VkPipelineShaderStageCreateInfo{});uint32_t stage_count=0;
+        int stage_result=xbg_graphics_stages(modules,state.rt.depth!=nullptr,active_colors,state.mask.mask,state.ms.a2c,stages.data(),&stage_count);
+        if(stage_result)xbg_fatalf("Invalid graphics stage/depth-only state: %d count=%d first=%d prim=%d indexed=%u instances=%u colors=%#x mask=%#x depth=%u a2c=%u discard=%u vs=%s fs=%s",stage_result,count,first,prim,unsigned(indexed!=nullptr),instances,active_colors,state.mask.mask,unsigned(state.rt.depth!=nullptr),unsigned(state.ms.a2c),unsigned(state.rast_discard),state.shader[0]?state.shader[0]->key.c_str():"none",state.shader[4]?state.shader[4]->key.c_str():"none");
+        stages.resize(stage_count);
         attributes.clear();VkVertexInputBindingDescription binding_slots[16];uint32_t binding_used=0;
         zero_binding=-1;
         for(size_t input=0;input<state.shader[0]->inputs.size();input++){
