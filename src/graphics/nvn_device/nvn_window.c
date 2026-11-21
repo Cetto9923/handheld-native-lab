@@ -564,7 +564,24 @@ int nvn_window_acquire_texture(void *window, void *available_sync, int *texture_
     pthread_mutex_unlock(&s_window_lock);
 
     *texture_index = index;
-    if (available_sync) nvn_sync_family_fence(available_sync);
+    if (available_sync) {
+        static int s_pipelined_sync = -1;
+        if (s_pipelined_sync < 0) {
+            FILE *f = fopen("/storage/emulated/0/Android/data/org.ffrs.gamewindow/files/gfx-pipelined-sync", "rb");
+            if (!f) f = fopen("/sdcard/Android/data/org.ffrs.gamewindow/files/gfx-pipelined-sync", "rb");
+            s_pipelined_sync = 1;
+            if (f) {
+                s_pipelined_sync = (fgetc(f) != '0');
+                fclose(f);
+            }
+            fprintf(stderr, "[nvn] pipelined acquire sync = %d (marker gfx-pipelined-sync)\n", s_pipelined_sync);
+        }
+        if (s_pipelined_sync) {
+            nvn_sync_family_set_fence_value(available_sync, wait_fence);
+        } else {
+            nvn_sync_family_fence(available_sync);
+        }
+    }
     static unsigned s_acq_log = 0;
     if (s_acq_log++ < 20) {
         fprintf(stderr, "[nvn] nvnWindowAcquireTexture: window=%p sync=%p -> guest texture %d/%u (fence=%" PRIu64 ")\n",

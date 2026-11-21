@@ -118,6 +118,9 @@ const nvn_sync_family_entry *nvn_sync_family_entry_at(size_t index);
  * would drop a fence the guest asked for. */
 void nvn_sync_family_fence(void *sync);
 
+/* Mark a sync object as fenced with an explicit fence sequence number. */
+void nvn_sync_family_set_fence_value(void *sync, uint64_t fence_value);
+
 /* Mark a sync object as fenced via its internal object pointer. */
 void nvn_sync_family_fence_object(ffrs_sync *object);
 

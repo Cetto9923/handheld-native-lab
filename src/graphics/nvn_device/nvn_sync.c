@@ -627,6 +627,29 @@ void nvn_sync_family_fence(void *sync) {
     }
 }
 
+void nvn_sync_family_set_fence_value(void *sync, uint64_t fence_value) {
+    nvn_sync_state *slot;
+    int refused = 0;
+
+    pthread_mutex_lock(&s_sync_lock);
+    slot = sync_find(sync, 1);
+    if (!slot) {
+        s_stats.refused++;
+        refused = 1;
+    } else {
+        ++s_direct_fences;
+        slot->object->fence = fence_value;
+        __atomic_store_n(&slot->object->fenced, 1, __ATOMIC_RELEASE);
+        s_stats.fences_taken++;
+    }
+    pthread_mutex_unlock(&s_sync_lock);
+
+    if (refused) {
+        fprintf(stderr, "[nvn] nvn_sync_family_set_fence_value: no room for another sync object; the sync %p was not fenced\n",
+                sync);
+    }
+}
+
 void nvn_sync_family_fence_object(ffrs_sync *object) {
     if (!object) return;
     pthread_mutex_lock(&s_sync_lock);
