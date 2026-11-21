@@ -4998,7 +4998,7 @@ void upgrade_mutable(Image &im){
     xbg_logf("NVN mutable upgrade serial=%llu fmt=%d %ux%ux%u levels=%u layers=%u copied=%d total=%llu",(unsigned long long)im.source.serial,int(im.fmt),im.width,im.height,im.depth,im.levels,im.layers,int(copied),(unsigned long long)mutable_upgrades);
 }
 struct DescMemo{const LayoutEntry *entry;VkDescriptorSet set;VkPipelineLayout pipeline_layout;std::vector<uint32_t> dynamic_offsets;std::vector<MemoImage> images;struct Dyn{uint64_t order;VkBuffer buffer;uint32_t offset;bool uniform;uint8_t src=0,ns=0,bank=0;};std::vector<Dyn> dyn;bool persistent=false;std::vector<std::pair<uint64_t,const void*>> tex_ids;struct Stor{uint64_t base,bytes;VkBuffer buffer;VkDeviceSize offset;};std::vector<Stor> stor;
-    struct Texel{const RegisteredTexture *record;uint64_t revision,base,bytes,gen;uint32_t format;};std::vector<Texel> texel;uint64_t checked_gen=0;size_t reserve=0;WaterBindings water;};   // checked_gen: memo_check_gen at its last passed image checks   // texel: resident uniform texel buffers (texel_acquire)
+    struct Texel{const RegisteredTexture *record;uint64_t revision,base,bytes,gen;uint32_t format;};std::vector<Texel> texel;uint64_t checked_gen=0;size_t reserve=0;WaterBindings water;uint64_t ro_checked_submission=0;bool all_images_ro=false;};   // checked_gen: memo_check_gen at its last passed image checks   // texel: resident uniform texel buffers (texel_acquire)
 struct DynUbo{uint64_t order,address;size_t copy;};
 // Cross-frame memo (Claude C147): the memo lives per frame slot and survives submits. An entry is persistent when its set
 // holds no per-frame snapshot except dynamic uniform buffers (re-snapshotted on every hit, only the offset moves) and the
@@ -5011,7 +5011,7 @@ std::unordered_map<std::vector<uint64_t>,DescMemo,SetKeyHash> desc_memo_slot[kMa
 size_t desc_memo_local[kMaxSlots]={};   // entries that are not persistent, which desc_memo_reset drops
 std::atomic<uint64_t> memo_epoch{1};bool dyn_partial_enabled=true;uint64_t key_diff[14]={};uint64_t memo_bump[5]={};uint64_t memo_slot_epoch[kMaxSlots]={1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1};bool xmemo_enabled=true,memo_dyn_ok=false;uint64_t xmemo_hits=0,xmemo_drops=0;
 #define desc_memo desc_memo_slot[slot_index]
-// Front of the memo lookup: a direct-mapped 16-slot table caches the most recent entries
+// Front of the memo lookup: a direct-mapped 64-slot table caches the most recent entries
 // across alternating draw materials (e.g. wall/floor/column/props) without walking hash buckets.
 // Any change that can erase an entry or rehash the map (clear, sweep, erase, insert) moves
 // memo_mod_gen, which drops the front slots. A/B target memofront looks every key up.
@@ -5021,7 +5021,7 @@ struct MemoFrontSlot {
     uint64_t gen = 0;
     unsigned slot = ~0u;
 };
-static MemoFrontSlot memo_front_slots[16];
+static MemoFrontSlot memo_front_slots[64];
 uint64_t memo_mod_gen=1,memo_front_hits=0;
 uint64_t desc_ns[6]={};bool desc_memo_enabled=true;uint64_t desc_memo_hits=0,desc_memo_misses=0,desc_memo_why[6]={};
 uint64_t vwhy_blk=0,vwhy_buf=0,vwhy_ord=0,vwhy_img=0,vwhy_tex=0,vwhy_stor=0;
@@ -5168,7 +5168,7 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
     draw_depth_reads.clear();
     need(!read_preflight || (pending_writebacks.empty() && (defer_query_preflight || pending_reports.empty())),"Unresolved CPU reads at descriptor entry");
     uint64_t tm0=perf_clock();struct MemoClock{uint64_t t0;~MemoClock(){}} mc{tm0};
-    static std::vector<uint64_t> key;key.clear();static std::vector<uint8_t> ktag;ktag.clear();
+    static std::vector<uint64_t> key;key.clear();if(key.capacity()<64)key.reserve(64);static std::vector<uint8_t> ktag;ktag.clear();
     // ktag (which part of the key each word is) only feeds the keydiff census, so it is filled on timed frames only (one in
     // perf_sample); a miss without tags skips the census. A/B target ktag tags every frame again.
     const bool tags=timing_now()!=nullptr || ab_off("ktag");
@@ -5210,7 +5210,7 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
                     if(!ok)break;
                 }}
             if(ok){memo_check_epoch();
-                const uint32_t fidx = uint32_t(key.size() ^ (key.empty() ? 0 : (key[0] >> 3)) ^ (key.size() > 5 ? key[5] : 0)) & 15;
+                const uint32_t fidx = uint32_t(key.size() ^ (key.empty() ? 0 : (key[0] >> 3)) ^ (key.size() > 5 ? key[5] : 0) ^ (key.size() > 10 ? key[10] : 0)) & 63;
                 auto &mf = memo_front_slots[fidx];
                 if(mf.gen==memo_mod_gen && mf.slot==slot_index && !ab_off("memofront") && mf.key==key){hit=mf.it;++memo_front_hits;}
                 else{hit=desc_memo.find(key);if(hit!=desc_memo.end()){mf.key=key;mf.it=hit;mf.gen=memo_mod_gen;mf.slot=slot_index;}}
@@ -5274,15 +5274,27 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
                 if(same){
                 // 命中也走既有按 submit 节流的 CPU 内容复核，不强制重传。
                 // Hits retain get_image's bounded per-submit CPU checks, without forcing uploads.
-                for(auto &ti:m.images){
-                    Image *cached_im=ti.second;
-                    if(cached_im && cached_im->checked_submission==stats.submissions &&
-                       !cached_im->gpu_written && cached_im->layout==VK_IMAGE_LAYOUT_GENERAL &&
-                       !cached_im->rg16_proxy && !(cached_im->aspects & VK_IMAGE_ASPECT_DEPTH_BIT) && !ab_off("roimgfast")){
-                        continue;
+                // If all images in this memo entry are read-only and verified in this submission, bypass the loop.
+                if(m.all_images_ro && m.ro_checked_submission == stats.submissions && !ab_off("roimgfast")){
+                    // Zero iterations!
+                }else{
+                    bool all_ro_now = true;
+                    for(auto &ti:m.images){
+                        Image *cached_im=ti.second;
+                        if(cached_im && cached_im->checked_submission==stats.submissions &&
+                           !cached_im->gpu_written && cached_im->layout==VK_IMAGE_LAYOUT_GENERAL &&
+                           !cached_im->rg16_proxy && !(cached_im->aspects & VK_IMAGE_ASPECT_DEPTH_BIT) && !ab_off("roimgfast")){
+                            continue;
+                        }
+                        Image &im=get_image(ti.first,true);
+                        prepare_read(im,commands.command,true,attachment_barrier_enabled && ti.record?im.sampled_aspects(ti.record->has_view?&ti.record->view:nullptr):0);
+                        if(im.gpu_written || im.layout != VK_IMAGE_LAYOUT_GENERAL || im.rg16_proxy || (im.aspects & VK_IMAGE_ASPECT_DEPTH_BIT))
+                            all_ro_now = false;
                     }
-                    Image &im=get_image(ti.first,true);
-                    prepare_read(im,commands.command,true,attachment_barrier_enabled && ti.record?im.sampled_aspects(ti.record->has_view?&ti.record->view:nullptr):0);
+                    if(all_ro_now){
+                        m.all_images_ro = true;
+                        m.ro_checked_submission = stats.submissions;
+                    }
                 }
                 if(__builtin_expect(water_ready(), 0)){
                     out.water=m.water;out.water.memo=true;
@@ -5318,6 +5330,14 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
         dm.persistent=xmemo_enabled && memo_dyn_ok && out.written.empty() && !desc_memo_per_frame_texel;
         for(auto &st:out.storage)dm.stor.push_back({st.first.first,st.first.second,st.second->buffer,st.second->offset});
         for(auto &ti:dm.images)dm.tex_ids.push_back({ti.first->serial,ti.first->mem});
+        dm.all_images_ro=true;
+        for(auto &ti:dm.images){
+            Image *im=ti.second;
+            if(!im || im->gpu_written || im->layout!=VK_IMAGE_LAYOUT_GENERAL || im->rg16_proxy || (im->aspects & VK_IMAGE_ASPECT_DEPTH_BIT)){
+                dm.all_images_ro=false;break;
+            }
+        }
+        if(dm.all_images_ro)dm.ro_checked_submission=stats.submissions;
         for(auto &d:dm.dyn)if(!d.uniform && d.src!=XBG_SOURCE_SUPPORT && d.src!=XBG_SOURCE_DRIVER0 && d.src!=XBG_SOURCE_DRIVER2 && d.src!=XBG_SOURCE_C1)dm.persistent=false;
         if(dm.persistent){unsigned si=slot_index;VkDescriptorSetLayout lay=out.entry->layout;
             auto pin=memo_pinned[si].find(out.set);if(pin!=memo_pinned[si].end())++pin->second.refs;
