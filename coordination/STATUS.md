@@ -1,7 +1,7 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-21T05:40:00+08:00
-阶段：1.0.73兼容接续；诊断导出117宿主与荣耀流程通过，主库空轨卡顿专项、OOT接入与在线更新并行
+状态事件时间：2026-11-21T11:15:00+08:00
+阶段：1.0.73兼容接续；荣耀GT Pro土之神殿长廊与全场景1080p专项优化完成，神殿内告别减半卡顿
 总控：Antigravity 本轮接管
 更新方式：按事件更新，没有后台自动刷新。
 
@@ -287,6 +287,7 @@
 
 ## 独占写入
 
+- {"task": "T-HONOR-SHRINE-CORRIDOR-OPT-20261121", "owner": "Antigravity", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", "coordination/results/HONOR-SHRINE-CORRIDOR-OPT-20261121.md", "coordination/state.json", "coordination/HANDOFF.md", "coordination/STATUS.md", ".local/honor-benchmark-20261120/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/no-key-delivery-20261120", "branch": "task/T-honor-shrine-corridor-opt-20261121", "acquired_at": "2026-11-21T09:00:00+08:00", "checkpoint": "完成荣耀GT Pro神殿长廊与全场景1080p四轮优化与实测验收；土之神殿长廊走动FPS由24.57提升至36.97(+50.5%)，尾部延迟P95由60.45ms降至32.72ms(-45.9%)，>50ms卡顿下降96.6%；全场景画质与真实GPU等待nvnSyncWait=1通过", "write_state": "COMPLETE_HANDED_BACK", "released_at": "2026-11-21T11:15:00+08:00"}
 - {"task": "T-HONOR-1080P-FOUR-SCENE-REGRESSION-20261121", "owner": "Antigravity", "paths": ["coordination/results/DOT-HONOR-OPENING-FLICKER-20261120.md", "coordination/state.json", "coordination/HANDOFF.md", "coordination/STATUS.md", ".local/honor-benchmark-20261120/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/no-key-delivery-20261120", "branch": "task/T-rg-shrine-dynamic-ubo-facts-20261120", "acquired_at": "2026-11-21T05:40:00+08:00", "checkpoint": "完成荣耀GT Pro 1080p火场/神殿/第四章/飞空艇四场景A/B对照；e3c31cc9已回装，正式存档一致", "write_state": "COMPLETE_HANDED_BACK", "released_at": "2026-11-21T05:40:00+08:00"}
 - {"task": "T-RG-SHRINE-DYNAMIC-UBO-FACTS-20261120", "owner": "/root", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", "coordination/results/DOT-HONOR-OPENING-FLICKER-20261120.md", "coordination/state.json", "coordination/HANDOFF.md", "coordination/STATUS.md", ".local/honor-opening-flicker-20261120/rg-shrine-ubo-facts/"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/no-key-delivery-20261120", "branch": "task/T-rg-shrine-dynamic-ubo-facts-20261120", "acquired_at": "2026-11-20T22:27:01+08:00", "checkpoint": "29b6762；.local/honor-opening-flicker-20261120/rg-shrine-ubo-facts/metrics.txt；本条登记本轮结果文档写入", "write_state": "COMPLETE_HANDED_BACK", "released_at": "2026-11-20T22:27:01+08:00"}
 - {"task": "T02-DSO-THREAD-OWNER", "owner": "Antigravity coordinator", "paths": ["src/runtime/hle/guest_process.c", "src/runtime/hle/guest_process.h", "tests/native/guest_process_contract.c", "scripts/runtime/build_guest_process_contract.sh", "docs/analysis/codex_guest_process_report.md", "src/runtime/hle/nso_host.c", "src/runtime/hle/nso_host.h"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-rg477m-native", "branch": "work/rg477m-native", "acquired_at": "2026-10-23T15:25:00.000000+00:00", "checkpoint": "P-CC-5", "objective": "Owned startup runtime: nnsslInitialize/nnsslFinalize HLE, ABI verification against retail SDK NSO, and RG477M boot past import 606", "write_state": "RELEASED_SUPERSEDED", "released_at": "2026-10-24T05:58:21.954359+00:00", "release_reason": "owner session exited; no live process holds repo handles on this worktree (verified: no open handles on src/runtime/hle, agy PID 54526 idle in ~, claude --print P-CC-8 PID 44703 stopped)"}

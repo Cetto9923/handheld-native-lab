@@ -1,3 +1,23 @@
+# 2026-11-21 荣耀平板 GT Pro 土之神殿深处长廊专项优化四轮实机交付
+
+在荣耀平板 GT Pro（Snapdragon 8s Gen 3 / Adreno 735，`A42BBB5109000333`，Port 15039）上，针对用户反馈的“神殿内卡爆了，神殿外40HZ神殿内立马减半”的严重瓶颈进行了四轮针对性代码重构与真机实测（严格保留 `nvnSyncWait=1` 真实 GPU 完成等待与零画质妥协）：
+- **土之神殿深处长廊（~765 Draws）实机成果**：
+  - 基线（`24539`, `e3c31cc9`）：走动 24.57 FPS，静止 28.96 FPS，P95 60.45 ms，>50ms 卡顿帧 93 帧（18.2%）。
+  - Round 1（`0b697da`, `e8fffe08`）：`relockfast` 原子快速返回 + `arena16m` 消除多 chunk 溢出 + `texel_evict` 保护活跃纹理 -> 走动 31.56 FPS（+28.4%），>50ms 卡顿帧降至 15 帧。
+  - Round 2（`916dbbd`, `2c2702d3`）：`pipe_memo_fastbypass` 顶点属性解码前置旁路 + `water_trace_guard` 水面追踪循环常规屏蔽 + `fresh_sort_unroll` 极速小数组排序 + `bindcache_fastcmp` 64 位整数直接比对 -> 走动 **36.97 FPS（+50.5%）**，P50 22.78 ms（折合 43.9 FPS），>50ms 卡顿帧仅 3 帧（降低 96.6%）。
+  - Round 3（`9852ef2`, `91e27a18`）：`memo_front_slots` 前置直接映射表 + `memo_img_rofast` 只读纹理快速跳过 + `set_cache_bypass_on_memo` Adreno 专属无效 SetCache 旁路 + `draw_stages_lazy` 着色器阶段惰性计算 -> 静止稳定在 35.85 FPS。
+  - Round 4（`3aa9b16`, `82854bd0`）：`memo_front_64` 扩容至 64 槽直接映射 + `all_images_ro_fast` 材质级整体跳过 + `key_reserve` 预分配 -> 走动 P95 尾部延迟降至 **32.72 ms（-45.9%）**，>50ms 帧仅 7 帧（1.0%）。
+- **全场景 1080p Docked 回归表现**：
+  - 土之神殿深处长廊：35.8~37.0 FPS（彻底告别减半至 24 FPS）
+  - 土之神殿大厅：47.70 FPS
+  - 神殿外森林入口：40.40 FPS
+  - 开局王城废墟月夜火场：47.56 FPS
+  - 飞空艇甲板：45.09 FPS
+  - 第四章副本战斗：44.88 FPS
+- **产物与交付**：
+  - 候选 APK：`.local/honor-opening-flicker-20261120/ffrs-cand-round4-82854bd0.apk`（SHA-256 前缀 `82854bd0`）与 `ffrs-cand-round2-2c2702d3.apk`（SHA-256 前缀 `2c2702d3`）均通过画质与防闪回归。
+  - 报告文件：`coordination/results/HONOR-SHRINE-CORRIDOR-OPT-20261121.md`。
+
 # 2026-11-21 荣耀 GT Pro 1080p 全场景四图对照复测
 
 在荣耀 GT Pro（Snapdragon 8s Gen 3 / Adreno 735，`A42BBB5109000333`）完成用户指定的 4 个核心回归场景 1080p 内部渲染对照实测（基线 A `e3c31cc9…` vs 候选 B `9789e703…`，提交 `29b6762` 预计算动态 UBO 绑定数量）。全场景严格开启真实 GPU 完成等待 `nvnSyncWait=1`，使用独立隔离存档，纳秒时钟 `/data/local/tmp/codex-t88-monotonic` 统计真实呈现间隔：
