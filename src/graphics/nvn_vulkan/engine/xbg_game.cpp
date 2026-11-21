@@ -3203,6 +3203,7 @@ struct PipeMemoKey{const void *shader[5];const void *layout,*pass_def;VkRenderPa
     uint8_t stencil[offsetof(State,copy_stride)-offsetof(State,blend_color)];      // blend_color, bias, stencil compare / write / reference
     uint8_t tail[offsetof(State,count_samples)-offsetof(State,patch_size)];};      // patch_size, bounds
 PipeMemoKey pipe_memo_key,pipe_memo_next;VkPipeline pipe_memo_pipeline=VK_NULL_HANDLE;bool pipe_memo=false;uint64_t pipe_memo_hits=0,pipe_memo_misses=0;
+std::vector<VkVertexInputBindingDescription> pipe_memo_bindings;int pipe_memo_zero_binding=-1;
 void pipe_memo_fill(PipeMemoKey &k,const void *layout,const void *pass_def,VkRenderPass pass,VkPipelineLayout pipeline_layout,int prim,VkSampleCountFlagBits samples,uint32_t colors){
     memset(&k,0,sizeof k);for(unsigned i=0;i<5;i++)k.shader[i]=state.shader[i];k.layout=layout;k.pass_def=pass_def;k.pass=pass;k.pipeline_layout=pipeline_layout;k.prim=prim;k.samples=uint32_t(samples);
     k.rt_n=uint32_t(state.rt.n);k.colors=colors;k.depth=state.rt.depth!=nullptr;k.depth_format=state.rt.depth?uint32_t(state.rt.depth->d.format):0;
@@ -4709,11 +4710,11 @@ void pipeline_lookup(PipelineLease &out,const XbgPipelineKey &key,bool cacheable
         // All prior draws/dispatches waited their fence. This lookup occurs
         // before binding the current pipeline; no retained entry is in flight.
         auto oldest=std::min_element(pipeline_objects.begin(),pipeline_objects.end(),[](const auto &a,const auto &b){return a.second.last_used<b.second.last_used;});
-        {VkPipeline old=oldest->second.pipeline;retire_handle([old]{vkDestroyPipeline(cfg.device,old,nullptr);});for(auto f=pipeline_fast.begin();f!=pipeline_fast.end();)if(f->second==old)f=pipeline_fast.erase(f);else ++f;pipe_memo_valid=false;}pipeline_objects.erase(oldest);++pipeline_counts.evictions;
+        {VkPipeline old=oldest->second.pipeline;retire_handle([old]{vkDestroyPipeline(cfg.device,old,nullptr);});for(auto f=pipeline_fast.begin();f!=pipeline_fast.end();)if(f->second==old)f=pipeline_fast.erase(f);else ++f;pipe_memo_valid=false;pipe_memo_bindings.clear();pipe_memo_zero_binding=-1;}pipeline_objects.erase(oldest);++pipeline_counts.evictions;
     }
     pipeline_objects.emplace(std::string(bytes),PipelineEntry{out.pipeline,++pipeline_tick});
 }
-void clear_pipeline_objects(){for(auto &p:pipeline_objects)vkDestroyPipeline(cfg.device,p.second.pipeline,nullptr);pipeline_objects.clear();pipeline_fast.clear();pipe_memo_valid=false;}
+void clear_pipeline_objects(){for(auto &p:pipeline_objects)vkDestroyPipeline(cfg.device,p.second.pipeline,nullptr);pipeline_objects.clear();pipeline_fast.clear();pipe_memo_valid=false;pipe_memo_bindings.clear();pipe_memo_zero_binding=-1;}
 struct PipelineDefinition {
     std::vector<uint32_t> words;bool valid=false;
     void assign(const XbgPipelineKey &k,bool ok){valid=ok && k.valid;if(valid)words.assign(k.words,k.words+k.count);}
@@ -4734,7 +4735,7 @@ std::map<std::pair<float,float>,Buffer> support_static; // support block per vie
 struct SamplerFastKey{std::array<uint32_t,11> w;bool operator==(const SamplerFastKey &o)const{return w==o.w;}};
 struct SamplerFastHash{size_t operator()(const SamplerFastKey &k)const{uint64_t h=1469598103934665603ull;for(uint32_t v:k.w){h^=v;h*=1099511628211ull;}return size_t(h);}};
 std::unordered_map<SamplerFastKey,VkSampler,SamplerFastHash> sampler_fast;
-void clear_descriptor_caches(){sampler_fast.clear();pipeline_fast.clear();pipe_memo_valid=false;
+void clear_descriptor_caches(){sampler_fast.clear();pipeline_fast.clear();pipe_memo_valid=false;pipe_memo_bindings.clear();pipe_memo_zero_binding=-1;
     for(auto &l:layout_cache){if(l.second.tmpl)vkDestroyDescriptorUpdateTemplate(cfg.device,l.second.tmpl,nullptr);vkDestroyPipelineLayout(cfg.device,l.second.pipeline_layout,nullptr);vkDestroyDescriptorSetLayout(cfg.device,l.second.layout,nullptr);}layout_cache.clear();shader_layouts.clear();
     for(auto &x:sampler_cache)vkDestroySampler(cfg.device,x.second,nullptr);sampler_cache.clear();
     static_arena.release();support_static.clear();
@@ -5142,7 +5143,7 @@ void ubtrace_binding(const std::string &shader,unsigned stage,unsigned binding,u
     if(++ubtrace.rows%20000==0)fflush(ubtrace.file);
 }
 void descriptors(Descriptors &out,Commands &commands,bool compute){
-    out.water.clear();
+    if(__builtin_expect(water_ready(), 0)) out.water.clear();
     out.indirect_input.reset();
     if(indirect_proof_enabled && compute && state.shader[5]){
         const auto &facts=state.shader[5]->indirect_instance_fields;
@@ -5216,7 +5217,17 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
             {
                 DESC_SCOPE(MemoSnapshot);
                 for(auto &u:dyn_ubos)fresh.push_back({u.order,uniform_snapshot(u.address,u.copy)});
-                std::sort(fresh.begin(),fresh.end(),[](const std::pair<uint64_t,Buffer> &a,const std::pair<uint64_t,Buffer> &b){return a.first<b.first;});
+                if(fresh.size()==2){
+                    if(fresh[0].first>fresh[1].first)std::swap(fresh[0],fresh[1]);
+                }else if(fresh.size()==3){
+                    if(fresh[0].first>fresh[1].first)std::swap(fresh[0],fresh[1]);
+                    if(fresh[1].first>fresh[2].first){
+                        std::swap(fresh[1],fresh[2]);
+                        if(fresh[0].first>fresh[1].first)std::swap(fresh[0],fresh[1]);
+                    }
+                }else if(fresh.size()>3){
+                    std::sort(fresh.begin(),fresh.end(),[](const std::pair<uint64_t,Buffer> &a,const std::pair<uint64_t,Buffer> &b){return a.first<b.first;});
+                }
                 size_t fi=0;
                 // Room for keep() below (support / driver blocks) and draw()'s vertex/index buffers. The count of the shaders' bindings
                 // is stored in the entry when it is made: the shaders are part of the key. A/B target descreserve counts them again.
@@ -5255,17 +5266,19 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
                 // 命中也走既有按 submit 节流的 CPU 内容复核，不强制重传。
                 // Hits retain get_image's bounded per-submit CPU checks, without forcing uploads.
                 for(auto &ti:m.images){Image &im=get_image(ti.first,true);prepare_read(im,commands.command,true,attachment_barrier_enabled && ti.record?im.sampled_aspects(ti.record->has_view?&ti.record->view:nullptr):0);}
-                out.water=m.water;out.water.memo=true;
-                for(auto &binding:out.water.buffers)if(binding.dynamic){
-                    const uint64_t order=uint64_t(binding.binding)<<32;
-                    for(const auto &uniform:fresh)if(uniform.first==order){binding.source=uniform.second;binding.offset=uniform.second.offset;break;}
-                    // Dynamic support/driver blocks are kept above, separately
-                    // from fresh guest UBOs. Match the actual selected offset.
-                    for(size_t i=0;i<m.dyn.size();i++)if(m.dyn[i].order==order && !m.dyn[i].uniform){
-                        for(const auto &buffer:out.buffers)if(buffer.buffer==m.dyn[i].buffer && buffer.offset==offsets[i]){
-                            binding.source=buffer;binding.offset=buffer.offset;break;
+                if(__builtin_expect(water_ready(), 0)){
+                    out.water=m.water;out.water.memo=true;
+                    for(auto &binding:out.water.buffers)if(binding.dynamic){
+                        const uint64_t order=uint64_t(binding.binding)<<32;
+                        for(const auto &uniform:fresh)if(uniform.first==order){binding.source=uniform.second;binding.offset=uniform.second.offset;break;}
+                        // Dynamic support/driver blocks are kept above, separately
+                        // from fresh guest UBOs. Match the actual selected offset.
+                        for(size_t i=0;i<m.dyn.size();i++)if(m.dyn[i].order==order && !m.dyn[i].uniform){
+                            for(const auto &buffer:out.buffers)if(buffer.buffer==m.dyn[i].buffer && buffer.offset==offsets[i]){
+                                binding.source=buffer;binding.offset=buffer.offset;break;
+                            }
+                            break;
                         }
-                        break;
                     }
                 }
                 out.entry=m.entry;out.set=m.set;out.pipeline_layout=m.pipeline_layout;out.dynamic_offsets=offsets;++desc_memo_hits;if(m.persistent)++xmemo_hits;desc_ns[5]+=perf_clock()-tm0;return;}
@@ -5282,7 +5295,7 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
     if(ok && !(out.written.empty() && out.buffer_views.empty() && out.set && out.dynamic_offsets.size()==desc_memo_dyn.size()))++desc_memo_why[4];
     if(ok && out.written.empty() && out.buffer_views.empty() && out.set && out.dynamic_offsets.size()==desc_memo_dyn.size()){++desc_memo_misses;
         std::sort(desc_memo_dyn.begin(),desc_memo_dyn.end(),[](const DescMemo::Dyn &a,const DescMemo::Dyn &b){return a.order<b.order;});
-        DescMemo dm{out.entry,out.set,out.pipeline_layout,out.dynamic_offsets,desc_memo_images,desc_memo_dyn};dm.texel=desc_memo_texel;dm.water=out.water;
+        DescMemo dm{out.entry,out.set,out.pipeline_layout,out.dynamic_offsets,desc_memo_images,desc_memo_dyn};dm.texel=desc_memo_texel;if(__builtin_expect(water_ready(), 0)) dm.water=out.water;
         {size_t elements=0;for(unsigned st=0;st<5;st++)if(state.shader[st])for(auto &b:state.shader[st]->bindings)elements+=b.count;dm.reserve=elements*2+40;}
         dm.persistent=xmemo_enabled && memo_dyn_ok && out.written.empty() && !desc_memo_per_frame_texel;
         for(auto &st:out.storage)dm.stor.push_back({st.first.first,st.first.second,st.second->buffer,st.second->offset});
@@ -5801,7 +5814,7 @@ uint64_t noload_passes=0;bool noload_enabled=false;
 // compatible with pass and its pipelines and framebuffers.
 struct RenderPassEntry {VkRenderPass pass{},noload{};PipelineDefinition definition;};
 std::map<std::vector<uint32_t>,RenderPassEntry> render_pass_cache;
-void clear_render_pass_cache(){for(auto &r:render_pass_cache){vkDestroyRenderPass(cfg.device,r.second.pass,nullptr);if(r.second.noload)vkDestroyRenderPass(cfg.device,r.second.noload,nullptr);}render_pass_cache.clear();pipeline_fast.clear();pipe_memo_valid=false;}
+void clear_render_pass_cache(){for(auto &r:render_pass_cache){vkDestroyRenderPass(cfg.device,r.second.pass,nullptr);if(r.second.noload)vkDestroyRenderPass(cfg.device,r.second.noload,nullptr);}render_pass_cache.clear();pipeline_fast.clear();pipe_memo_valid=false;pipe_memo_bindings.clear();pipe_memo_zero_binding=-1;}
 bool create_pass(Pass &p,Commands &c,int clear_color=-1,bool clear_depth=false,bool soft=false,int fold_clear_slot=-1){CPU_SCOPE(Pass);
     const bool plain_draw=c.draw && clear_color<0 && !clear_depth && !soft && !provenance_file && !capture.active && !ab_off("passfast");
     if(plain_draw && last_pass.valid && open_pass.cmd==c.command && open_pass.pass==last_pass.pass.pass && open_pass.framebuffer==last_pass.pass.framebuffer && !memcmp(&state.rt,&last_pass.rt,sizeof state.rt)){
@@ -6164,81 +6177,98 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
     fire_trace_draw_begin(indexed?unsigned(indexed->instances):instances);
     if(fire_trace_active())fire_trace_indirect(gpu_args);
     Commands c(true);Descriptors &d=acquire_descriptors();preparing_draw_descriptors=true;descriptors(d,c,false);preparing_draw_descriptors=false;fire_trace_draw_end();for(auto *im:storage_rg16_images)need(std::find(sampled_rg16_images.begin(),sampled_rg16_images.end(),im)==sampled_rg16_images.end(),"RG16 same-draw sampled/storage feedback requires explicit supported subresource semantics");Pass p;create_pass(p,c);
-    static std::vector<VkVertexInputAttributeDescription> attributes;attributes.clear();VkVertexInputBindingDescription binding_slots[16];uint32_t binding_used=0;
+    PipelineLease pipeline;
+    static std::vector<VkVertexInputBindingDescription> bindings;
+    static std::vector<VkVertexInputAttributeDescription> attributes;
     int zero_binding=-1;
-    for(size_t input=0;input<state.shader[0]->inputs.size();input++){
-        uint32_t loc=state.shader[0]->inputs[input];need(loc<16,"Vertex input location out of bounds");va_st a;memcpy(&a,&state.attrib[loc],4);
-        if(!a.fmt){
-            if(zero_binding<0)zero_binding=xbg_vertex_zero_binding(state.attrib,state.shader[0]->inputs.data(),state.shader[0]->inputs.size());
-            need(zero_binding>=0,"No free binding for constant vertex input");
-            uint32_t cls=state.shader[0]->input_classes[input];need(cls<=2,"Unknown vertex scalar type");
-            VkFormat f=cls==0?VK_FORMAT_R32G32B32A32_SFLOAT:cls==1?VK_FORMAT_R32G32B32A32_SINT:VK_FORMAT_R32G32B32A32_UINT;
-            const VkFormatProperties &fp=format_properties(f);need(fp.bufferFeatures&VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT,"Constant vertex format unsupported");
-            attributes.push_back({loc,uint32_t(zero_binding),f,0});need(zero_binding<16,"Zero binding out of range");binding_slots[zero_binding]={uint32_t(zero_binding),0,VK_VERTEX_INPUT_RATE_VERTEX};binding_used|=1u<<zero_binding;
-            if(capture.active)capture_log("ATTRIBUTE location=%u constant=zero class=%u binding=%d",loc,cls,zero_binding);
-            continue;
-        }
-        need(a.stream<16,"Vertex stream out of bounds");VkFormat fmt=format(a.fmt);const VkFormatProperties &fp=format_properties(fmt);need(fp.bufferFeatures&VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT,"Vertex format unsupported");need(state.stream[a.stream].divisor<=1,"Instance divisor >1 unsupported");attributes.push_back({loc,a.stream,fmt,a.offset});binding_slots[a.stream]={a.stream,state.stream[a.stream].stride,state.stream[a.stream].divisor?VK_VERTEX_INPUT_RATE_INSTANCE:VK_VERTEX_INPUT_RATE_VERTEX};binding_used|=1u<<a.stream;if(capture.active)capture_log("ATTRIBUTE location=%u stream=%u format=%u vk=%u offset=%u stride=%u divisor=%u",loc,a.stream,a.fmt,unsigned(fmt),a.offset,state.stream[a.stream].stride,state.stream[a.stream].divisor);
-    }
-    static std::vector<VkVertexInputBindingDescription> bindings;bindings.clear();for(uint32_t i=0;i<16;i++)if(binding_used&(1u<<i))bindings.push_back(binding_slots[i]);   // ascending binding order, as the former std::map
-    VkPipelineVertexInputStateCreateInfo vi{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};vi.vertexBindingDescriptionCount=bindings.size();vi.pVertexBindingDescriptions=bindings.data();vi.vertexAttributeDescriptionCount=attributes.size();vi.pVertexAttributeDescriptions=attributes.data();
-    VkPipelineInputAssemblyStateCreateInfo ia{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};ia.topology=topology(prim);ia.primitiveRestartEnable=state.prim_restart?VK_TRUE:VK_FALSE;
-    VkPipelineViewportStateCreateInfo vp{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};vp.viewportCount=vp.scissorCount=1;
-    VkPipelineRasterizationStateCreateInfo rs{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};rs.polygonMode=state.poly.mode==2?VK_POLYGON_MODE_FILL:state.poly.mode==1?VK_POLYGON_MODE_LINE:VK_POLYGON_MODE_POINT;need(rs.polygonMode==VK_POLYGON_MODE_FILL || cfg.enabled_core.fillModeNonSolid,"Non-solid polygon mode disabled");rs.cullMode=state.poly.cull;rs.frontFace=state.poly.front?VK_FRONT_FACE_COUNTER_CLOCKWISE:VK_FRONT_FACE_CLOCKWISE;rs.lineWidth=1;rs.depthBiasEnable=state.poly.offset_en!=0;rs.depthBiasConstantFactor=state.bias[1]*(state.rt.depth && state.rt.depth->d.format==0x32 && depth16_as_d24?256.0f:1.0f);
-    rs.depthBiasSlopeFactor=state.bias[0];rs.depthBiasClamp=state.bias[2];need(!rs.depthBiasClamp || cfg.enabled_core.depthBiasClamp,"Depth bias clamp disabled");   // constant bias units: 2^-16 for D16, 2^-24 for the X8_D24 stand-in; slope and clamp do not depend on the format
-    // SetDepthClamp: depth outside [near, far] is clamped instead of clipped (nvn_obj.h p_depth_clamp; nvn_mtl.m:6915 uses
-    // it as Metal's depth clip mode). Vulkan needs the depthClamp feature for it.
-    rs.depthClampEnable=state.depth_clamp?VK_TRUE:VK_FALSE;need(!rs.depthClampEnable || cfg.enabled_core.depthClamp,"Depth clamp feature disabled");
-    // SetRasterizerDiscard: nothing is rasterized (nvn_obj.h p_rast_discard). Vulkan ignores the fill mode, the culling and
-    // the depth bias when the rasterizer is discarded, and the pipeline stays valid only with their canonical values, so
-    // they are forced here. Nothing is written either way, so the picture is the same.
-    rs.rasterizerDiscardEnable=state.rast_discard?VK_TRUE:VK_FALSE;
-    if(rs.rasterizerDiscardEnable){rs.polygonMode=VK_POLYGON_MODE_FILL;rs.cullMode=VK_CULL_MODE_NONE;rs.frontFace=VK_FRONT_FACE_COUNTER_CLOCKWISE;rs.lineWidth=1;rs.depthBiasEnable=VK_FALSE;rs.depthBiasConstantFactor=0;rs.depthBiasClamp=0;rs.depthBiasSlopeFactor=0;rs.depthClampEnable=VK_FALSE;}
-    VkPipelineMultisampleStateCreateInfo ms{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};ms.rasterizationSamples=p.samples;ms.alphaToCoverageEnable=state.ms.a2c;need(!state.ms.sl_en,"Custom sample locations unsupported");need(!state.ms.samples || state.ms.samples==uint32_t(p.samples),"NVN sample count differs from attachments");need(p.samples==VK_SAMPLE_COUNT_1_BIT || state.ms.enable,"Disabled multisampling on multisample target needs coverage emulation");
-    VkPipelineDepthStencilStateCreateInfo ds{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};ds.depthTestEnable=state.ds.dt;ds.depthWriteEnable=state.ds.dw;ds.depthCompareOp=VkCompareOp(state.ds.df-1);ds.stencilTestEnable=state.ds.st;ds.front=stencil(false);ds.back=stencil(true);ds.depthBoundsTestEnable=state.bounds.enable;ds.minDepthBounds=state.bounds.minimum;ds.maxDepthBounds=state.bounds.maximum;need(!ds.depthBoundsTestEnable || cfg.enabled_core.depthBounds,"Depth bounds feature disabled");
-    const bool spell_depth_diagnostic=probe_is_active() && probe.spell_depth_test && state.shader[0] && state.shader[4] &&
-        state.shader[0]->key=="41a5a80e5242a26c" && state.shader[4]->key=="b7dd0f48aea00196" &&
-        ds.depthTestEnable && !ds.depthWriteEnable && ds.depthCompareOp==VK_COMPARE_OP_EQUAL;
-    if(spell_depth_diagnostic){ds.depthCompareOp=VK_COMPARE_OP_ALWAYS;pipe_memo_valid=false;capture_log("PROBE_DIAG spell color depth comparison=ALWAYS");}
-    const bool spell_cull_diagnostic=probe_is_active() && probe.spell_cull_test && state.shader[0] && state.shader[4] &&
-        state.shader[0]->key=="41a5a80e5242a26c" && state.shader[4]->key=="b7dd0f48aea00196" && !ds.depthWriteEnable;
-    if(spell_cull_diagnostic){rs.cullMode=VK_CULL_MODE_NONE;pipe_memo_valid=false;capture_log("PROBE_DIAG spell color culling=NONE");}
-    const bool spell_no_tests_diagnostic=probe_is_active() && (probe.spell_no_tests || probe.spell_empty_fragment) && state.shader[0] && state.shader[4] &&
-        state.shader[0]->key=="41a5a80e5242a26c" && state.shader[4]->key=="b7dd0f48aea00196" && !ds.depthWriteEnable;
-    if(spell_no_tests_diagnostic){ds.depthTestEnable=VK_FALSE;ds.depthWriteEnable=VK_FALSE;ds.stencilTestEnable=VK_FALSE;pipe_memo_valid=false;capture_log("PROBE_DIAG spell color depth/stencil tests=OFF");}
-    const bool spell_prepass_diagnostic=probe_is_active() && probe.spell_prepass_no_depth_write && state.shader[0] && state.shader[4] &&
-        state.shader[0]->key=="db5f1e2dd1c9ef3d" && state.shader[4]->key=="c0adc062e4b8e8fa" && ds.depthWriteEnable;
-    if(spell_prepass_diagnostic){ds.depthWriteEnable=VK_FALSE;pipe_memo_valid=false;capture_log("PROBE_DIAG spell prepass depth writes=OFF");}
-    const bool spell_pipeline_diagnostic=spell_depth_diagnostic || spell_cull_diagnostic || spell_no_tests_diagnostic || spell_prepass_diagnostic;
-    const bool fdiag_override=flame_diag_enabled && state.shader[0] && flame_diag_key(state.shader[0]->key)>=0;
-    if(fdiag_override && flame_diag_nodepth){ds.depthTestEnable=VK_FALSE;ds.depthWriteEnable=VK_FALSE;ds.stencilTestEnable=VK_FALSE;}
-    need(!(ds.depthTestEnable || ds.stencilTestEnable) || state.rt.depth,"Depth/stencil state requires attachment");
-    static std::vector<VkPipelineColorBlendAttachmentState> attachments;attachments.assign(size_t(state.rt.n),VkPipelineColorBlendAttachmentState{});for(int i=0;i<state.rt.n;i++){const blend_st &b=state.blend[i];xbg_draw2d convert{};uint32_t write_mask=state.shader[4]?((state.mask.mask>>(4*i))&15):0;need(xbg_2d_blend_from_nvn(&convert,(state.color.blend_en>>i)&1,b.src_rgb,b.dst_rgb,b.src_a,b.dst_a,b.eq_rgb,b.eq_a,write_mask)==0,"Unsupported blend state");attachments[i]=convert.blend;}
+    VkGraphicsPipelineCreateInfo ci{};
+    VkPipelineDepthStencilStateCreateInfo ds{};
+    VkPipelineRasterizationStateCreateInfo rs{};
     VkShaderModule spell_empty_module=VK_NULL_HANDLE;
-    if(spell_no_tests_diagnostic && probe.spell_empty_fragment){
-        // Compiled from '#version 450\nvoid main() {}' with NDK26 glslc, Vulkan 1.1; no resources or outputs.
-        static const uint32_t code[]={0x07230203u,0x00010300u,0x000d000au,0x00000006u,0x00000000u,0x00020011u,0x00000001u,0x0006000bu,0x00000001u,0x4c534c47u,0x6474732eu,0x3035342eu,0x00000000u,0x0003000eu,0x00000000u,0x00000001u,0x0005000fu,0x00000004u,0x00000004u,0x6e69616du,0x00000000u,0x00030010u,0x00000004u,0x00000007u,0x00030003u,0x00000002u,0x000001c2u,0x000a0004u,0x475f4c47u,0x4c474f4fu,0x70635f45u,0x74735f70u,0x5f656c79u,0x656e696cu,0x7269645fu,0x69746365u,0x00006576u,0x00080004u,0x475f4c47u,0x4c474f4fu,0x6e695f45u,0x64756c63u,0x69645f65u,0x74636572u,0x00657669u,0x00040005u,0x00000004u,0x6e69616du,0x00000000u,0x00020013u,0x00000002u,0x00030021u,0x00000003u,0x00000002u,0x00050036u,0x00000002u,0x00000004u,0x00000000u,0x00000003u,0x000200f8u,0x00000005u,0x000100fdu,0x00010038u};
-        VkShaderModuleCreateInfo info{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};info.codeSize=sizeof(code);info.pCode=code;VK(vkCreateShaderModule(cfg.device,&info,nullptr,&spell_empty_module));
-        for(auto &stage:stages)if(stage.stage==VK_SHADER_STAGE_FRAGMENT_BIT)stage.module=spell_empty_module;
-        for(auto &a:attachments)a.colorWriteMask=0;
-        capture_log("PROBE_DIAG spell color fragment=EMPTY colorWrites=OFF");
+    const bool spell_depth_diagnostic=probe_is_active() && probe.spell_depth_test && state.shader[0] && state.shader[4] &&
+        state.shader[0]->key=="41a5a80e5242a26c" && state.shader[4]->key=="b7dd0f48aea00196";
+    const bool spell_cull_diagnostic=probe_is_active() && probe.spell_cull_test && state.shader[0] && state.shader[4] &&
+        state.shader[0]->key=="41a5a80e5242a26c" && state.shader[4]->key=="b7dd0f48aea00196";
+    const bool spell_no_tests_diagnostic=probe_is_active() && (probe.spell_no_tests || probe.spell_empty_fragment) && state.shader[0] && state.shader[4] &&
+        state.shader[0]->key=="41a5a80e5242a26c" && state.shader[4]->key=="b7dd0f48aea00196";
+    const bool spell_prepass_diagnostic=probe_is_active() && probe.spell_prepass_no_depth_write && state.shader[0] && state.shader[4] &&
+        state.shader[0]->key=="db5f1e2dd1c9ef3d" && state.shader[4]->key=="c0adc062e4b8e8fa";
+    const bool spell_pipeline_diagnostic=spell_depth_diagnostic || spell_cull_diagnostic || spell_no_tests_diagnostic || spell_prepass_diagnostic;
+    const bool can_memo_skip = !spell_pipeline_diagnostic && !slots[slot_index].prof && !capture.active && !probe_is_active();
+    bool use_fast = !spell_pipeline_diagnostic && pipeline_fast_enabled && !ab_off("pipefast") && d.entry->definition.valid && p.definition->valid;
+    bool memo = use_fast && pipe_memo && !ab_off("pipememo");
+    bool memo_hit = false;
+    if(memo){
+        pipe_memo_fill(pipe_memo_next,&d.entry->definition,p.definition,p.pass,d.pipeline_layout,prim,p.samples,active_colors);
+        if(pipe_memo_valid && can_memo_skip && !memcmp(&pipe_memo_next,&pipe_memo_key,sizeof pipe_memo_next)){
+            pipeline.pipeline=pipe_memo_pipeline;
+            bindings=pipe_memo_bindings;
+            zero_binding=pipe_memo_zero_binding;
+            memo_hit=true;
+            ++pipe_memo_hits;
+        }else if(!can_memo_skip || !pipe_memo_valid || memcmp(&pipe_memo_next,&pipe_memo_key,sizeof pipe_memo_next)){
+            ++pipe_memo_misses;
+        }
     }
-    if(fdiag_override && flame_diag_noblend)for(auto &a:attachments)a.blendEnable=VK_FALSE;
-    VkPipelineColorBlendStateCreateInfo blend{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};blend.attachmentCount=attachments.size();blend.pAttachments=attachments.data();memcpy(blend.blendConstants,state.blend_color,16);need(state.color.logic_op==3,"Non-copy logic operation unsupported");
-    VkDynamicState dynamic[]={VK_DYNAMIC_STATE_VIEWPORT,VK_DYNAMIC_STATE_SCISSOR};VkPipelineDynamicStateCreateInfo dy{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};dy.dynamicStateCount=2;dy.pDynamicStates=dynamic;
-    VkPipelineTessellationStateCreateInfo tess{VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO};tess.patchControlPoints=state.patch_size;need((state.shader[1]!=nullptr)==(state.shader[2]!=nullptr),"Incomplete tessellation shader pair");
-    VkGraphicsPipelineCreateInfo ci{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};ci.stageCount=stages.size();ci.pStages=stages.data();ci.pVertexInputState=&vi;ci.pInputAssemblyState=&ia;ci.pViewportState=&vp;ci.pRasterizationState=&rs;ci.pMultisampleState=&ms;ci.pDepthStencilState=&ds;ci.pColorBlendState=&blend;ci.pDynamicState=&dy;ci.pTessellationState=state.shader[1]?&tess:nullptr;ci.layout=d.pipeline_layout;ci.renderPass=p.pass;
-    PipelineLease pipeline;{CPU_SCOPE(Pipeline);
-        static std::vector<uint32_t> fast;fast.clear();bool use_fast=!spell_pipeline_diagnostic && pipeline_fast_enabled && !ab_off("pipefast") && d.entry->definition.valid && p.definition->valid;
-        bool memo=use_fast && pipe_memo && !ab_off("pipememo");
-        if(memo){pipe_memo_fill(pipe_memo_next,&d.entry->definition,p.definition,p.pass,d.pipeline_layout,prim,p.samples,active_colors);
-            if(pipe_memo_valid && !memcmp(&pipe_memo_next,&pipe_memo_key,sizeof pipe_memo_next)){pipeline.pipeline=pipe_memo_pipeline;++pipe_memo_hits;}else ++pipe_memo_misses;}
-        if(use_fast && !pipeline.pipeline){uint64_t a=uint64_t(uintptr_t(&d.entry->definition)),b=uint64_t(uintptr_t(p.definition));uint32_t ids[4]={uint32_t(a),uint32_t(a>>32),uint32_t(b),uint32_t(b>>32)};
-            static XbgPipelineKey fkey;fkey.count=0;fkey.valid=true;   // 16 KB: one static, graphics thread only
-            if(xbg_graphics_pipeline_key(fkey,ci,{ids,2,true},{ids+2,2,true})){fast.assign(fkey.words,fkey.words+fkey.count);auto f=pipeline_fast.find(fast);if(f!=pipeline_fast.end()){pipeline.pipeline=f->second;++pipeline_fast_hits;}}else use_fast=false;}
-        if(!pipeline.pipeline){XbgPipelineKey key;bool cacheable=xbg_graphics_pipeline_key(key,ci,d.entry->definition.view(),p.definition->view()) && !spell_pipeline_diagnostic;pipeline_lookup(pipeline,key,cacheable,&ci,nullptr,async_skippable(attachments,ds));
-            if(use_fast && cacheable && !pipeline.transient)pipeline_fast.emplace(fast,pipeline.pipeline);}
-        if(memo && use_fast && pipeline.pipeline && !pipeline.transient){pipe_memo_key=pipe_memo_next;pipe_memo_pipeline=pipeline.pipeline;pipe_memo_valid=true;}}
+    if(!memo_hit){
+        attributes.clear();VkVertexInputBindingDescription binding_slots[16];uint32_t binding_used=0;
+        zero_binding=-1;
+        for(size_t input=0;input<state.shader[0]->inputs.size();input++){
+            uint32_t loc=state.shader[0]->inputs[input];need(loc<16,"Vertex input location out of bounds");va_st a;memcpy(&a,&state.attrib[loc],4);
+            if(!a.fmt){
+                if(zero_binding<0)zero_binding=xbg_vertex_zero_binding(state.attrib,state.shader[0]->inputs.data(),state.shader[0]->inputs.size());
+                need(zero_binding>=0,"No free binding for constant vertex input");
+                uint32_t cls=state.shader[0]->input_classes[input];need(cls<=2,"Unknown vertex scalar type");
+                VkFormat f=cls==0?VK_FORMAT_R32G32B32A32_SFLOAT:cls==1?VK_FORMAT_R32G32B32A32_SINT:VK_FORMAT_R32G32B32A32_UINT;
+                const VkFormatProperties &fp=format_properties(f);need(fp.bufferFeatures&VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT,"Constant vertex format unsupported");
+                attributes.push_back({loc,uint32_t(zero_binding),f,0});need(zero_binding<16,"Zero binding out of range");binding_slots[zero_binding]={uint32_t(zero_binding),0,VK_VERTEX_INPUT_RATE_VERTEX};binding_used|=1u<<zero_binding;
+                if(capture.active)capture_log("ATTRIBUTE location=%u constant=zero class=%u binding=%d",loc,cls,zero_binding);
+                continue;
+            }
+            need(a.stream<16,"Vertex stream out of bounds");VkFormat fmt=format(a.fmt);const VkFormatProperties &fp=format_properties(fmt);need(fp.bufferFeatures&VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT,"Vertex format unsupported");need(state.stream[a.stream].divisor<=1,"Instance divisor >1 unsupported");attributes.push_back({loc,a.stream,fmt,a.offset});binding_slots[a.stream]={a.stream,state.stream[a.stream].stride,state.stream[a.stream].divisor?VK_VERTEX_INPUT_RATE_INSTANCE:VK_VERTEX_INPUT_RATE_VERTEX};binding_used|=1u<<a.stream;if(capture.active)capture_log("ATTRIBUTE location=%u stream=%u format=%u vk=%u offset=%u stride=%u divisor=%u",loc,a.stream,a.fmt,unsigned(fmt),a.offset,state.stream[a.stream].stride,state.stream[a.stream].divisor);
+        }
+        bindings.clear();for(uint32_t i=0;i<16;i++)if(binding_used&(1u<<i))bindings.push_back(binding_slots[i]);
+        VkPipelineVertexInputStateCreateInfo vi{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};vi.vertexBindingDescriptionCount=bindings.size();vi.pVertexBindingDescriptions=bindings.data();vi.vertexAttributeDescriptionCount=attributes.size();vi.pVertexAttributeDescriptions=attributes.data();
+        VkPipelineInputAssemblyStateCreateInfo ia{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};ia.topology=topology(prim);ia.primitiveRestartEnable=state.prim_restart?VK_TRUE:VK_FALSE;
+        VkPipelineViewportStateCreateInfo vp{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};vp.viewportCount=vp.scissorCount=1;
+        rs={VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};rs.polygonMode=state.poly.mode==2?VK_POLYGON_MODE_FILL:state.poly.mode==1?VK_POLYGON_MODE_LINE:VK_POLYGON_MODE_POINT;need(rs.polygonMode==VK_POLYGON_MODE_FILL || cfg.enabled_core.fillModeNonSolid,"Non-solid polygon mode disabled");rs.cullMode=state.poly.cull;rs.frontFace=state.poly.front?VK_FRONT_FACE_COUNTER_CLOCKWISE:VK_FRONT_FACE_CLOCKWISE;rs.lineWidth=1;rs.depthBiasEnable=state.poly.offset_en!=0;rs.depthBiasConstantFactor=state.bias[1]*(state.rt.depth && state.rt.depth->d.format==0x32 && depth16_as_d24?256.0f:1.0f);
+        rs.depthBiasSlopeFactor=state.bias[0];rs.depthBiasClamp=state.bias[2];need(!rs.depthBiasClamp || cfg.enabled_core.depthBiasClamp,"Depth bias clamp disabled");
+        rs.depthClampEnable=state.depth_clamp?VK_TRUE:VK_FALSE;need(!rs.depthClampEnable || cfg.enabled_core.depthClamp,"Depth clamp feature disabled");
+        rs.rasterizerDiscardEnable=state.rast_discard?VK_TRUE:VK_FALSE;
+        if(rs.rasterizerDiscardEnable){rs.polygonMode=VK_POLYGON_MODE_FILL;rs.cullMode=VK_CULL_MODE_NONE;rs.frontFace=VK_FRONT_FACE_COUNTER_CLOCKWISE;rs.lineWidth=1;rs.depthBiasEnable=VK_FALSE;rs.depthBiasConstantFactor=0;rs.depthBiasClamp=0;rs.depthBiasSlopeFactor=0;rs.depthClampEnable=VK_FALSE;}
+        VkPipelineMultisampleStateCreateInfo ms{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};ms.rasterizationSamples=p.samples;ms.alphaToCoverageEnable=state.ms.a2c;need(!state.ms.sl_en,"Custom sample locations unsupported");need(!state.ms.samples || state.ms.samples==uint32_t(p.samples),"NVN sample count differs from attachments");need(p.samples==VK_SAMPLE_COUNT_1_BIT || state.ms.enable,"Disabled multisampling on multisample target needs coverage emulation");
+        ds={VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};ds.depthTestEnable=state.ds.dt;ds.depthWriteEnable=state.ds.dw;ds.depthCompareOp=VkCompareOp(state.ds.df-1);ds.stencilTestEnable=state.ds.st;ds.front=stencil(false);ds.back=stencil(true);ds.depthBoundsTestEnable=state.bounds.enable;ds.minDepthBounds=state.bounds.minimum;ds.maxDepthBounds=state.bounds.maximum;need(!ds.depthBoundsTestEnable || cfg.enabled_core.depthBounds,"Depth bounds feature disabled");
+        if(spell_depth_diagnostic && ds.depthTestEnable && !ds.depthWriteEnable && ds.depthCompareOp==VK_COMPARE_OP_EQUAL){ds.depthCompareOp=VK_COMPARE_OP_ALWAYS;pipe_memo_valid=false;capture_log("PROBE_DIAG spell color depth comparison=ALWAYS");}
+        if(spell_cull_diagnostic && !ds.depthWriteEnable){rs.cullMode=VK_CULL_MODE_NONE;pipe_memo_valid=false;capture_log("PROBE_DIAG spell color culling=NONE");}
+        if(spell_no_tests_diagnostic && !ds.depthWriteEnable){ds.depthTestEnable=VK_FALSE;ds.depthWriteEnable=VK_FALSE;ds.stencilTestEnable=VK_FALSE;pipe_memo_valid=false;capture_log("PROBE_DIAG spell color depth/stencil tests=OFF");}
+        if(spell_prepass_diagnostic && ds.depthWriteEnable){ds.depthWriteEnable=VK_FALSE;pipe_memo_valid=false;capture_log("PROBE_DIAG spell prepass depth writes=OFF");}
+        const bool fdiag_override=flame_diag_enabled && state.shader[0] && flame_diag_key(state.shader[0]->key)>=0;
+        if(fdiag_override && flame_diag_nodepth){ds.depthTestEnable=VK_FALSE;ds.depthWriteEnable=VK_FALSE;ds.stencilTestEnable=VK_FALSE;}
+        need(!(ds.depthTestEnable || ds.stencilTestEnable) || state.rt.depth,"Depth/stencil state requires attachment");
+        static std::vector<VkPipelineColorBlendAttachmentState> attachments;attachments.assign(size_t(state.rt.n),VkPipelineColorBlendAttachmentState{});for(int i=0;i<state.rt.n;i++){const blend_st &b=state.blend[i];xbg_draw2d convert{};uint32_t write_mask=state.shader[4]?((state.mask.mask>>(4*i))&15):0;need(xbg_2d_blend_from_nvn(&convert,(state.color.blend_en>>i)&1,b.src_rgb,b.dst_rgb,b.src_a,b.dst_a,b.eq_rgb,b.eq_a,write_mask)==0,"Unsupported blend state");attachments[i]=convert.blend;}
+        if(spell_no_tests_diagnostic && probe.spell_empty_fragment && !ds.depthWriteEnable){
+            static const uint32_t code[]={0x07230203u,0x00010300u,0x000d000au,0x00000006u,0x00000000u,0x00020011u,0x00000001u,0x0006000bu,0x00000001u,0x4c534c47u,0x6474732eu,0x3035342eu,0x00000000u,0x0003000eu,0x00000000u,0x00000001u,0x0005000fu,0x00000004u,0x00000004u,0x6e69616du,0x00000000u,0x00030010u,0x00000004u,0x00000007u,0x00030003u,0x00000002u,0x000001c2u,0x000a0004u,0x475f4c47u,0x4c474f4fu,0x70635f45u,0x74735f70u,0x5f656c79u,0x656e696cu,0x7269645fu,0x69746365u,0x00006576u,0x00080004u,0x475f4c47u,0x4c474f4fu,0x6e695f45u,0x64756c63u,0x69645f65u,0x74636572u,0x00657669u,0x00040005u,0x00000004u,0x6e69616du,0x00000000u,0x00020013u,0x00000002u,0x00030021u,0x00000003u,0x00000002u,0x00050036u,0x00000002u,0x00000004u,0x00000000u,0x00000003u,0x000200f8u,0x00000005u,0x000100fdu,0x00010038u};
+            VkShaderModuleCreateInfo info{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};info.codeSize=sizeof(code);info.pCode=code;VK(vkCreateShaderModule(cfg.device,&info,nullptr,&spell_empty_module));
+            for(auto &stage:stages)if(stage.stage==VK_SHADER_STAGE_FRAGMENT_BIT)stage.module=spell_empty_module;
+            for(auto &a:attachments)a.colorWriteMask=0;
+            capture_log("PROBE_DIAG spell color fragment=EMPTY colorWrites=OFF");
+        }
+        if(fdiag_override && flame_diag_noblend)for(auto &a:attachments)a.blendEnable=VK_FALSE;
+        VkPipelineColorBlendStateCreateInfo blend{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};blend.attachmentCount=attachments.size();blend.pAttachments=attachments.data();memcpy(blend.blendConstants,state.blend_color,16);need(state.color.logic_op==3,"Non-copy logic operation unsupported");
+        VkDynamicState dynamic[]={VK_DYNAMIC_STATE_VIEWPORT,VK_DYNAMIC_STATE_SCISSOR};VkPipelineDynamicStateCreateInfo dy{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};dy.dynamicStateCount=2;dy.pDynamicStates=dynamic;
+        VkPipelineTessellationStateCreateInfo tess{VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO};tess.patchControlPoints=state.patch_size;need((state.shader[1]!=nullptr)==(state.shader[2]!=nullptr),"Incomplete tessellation shader pair");
+        ci={VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};ci.stageCount=stages.size();ci.pStages=stages.data();ci.pVertexInputState=&vi;ci.pInputAssemblyState=&ia;ci.pViewportState=&vp;ci.pRasterizationState=&rs;ci.pMultisampleState=&ms;ci.pDepthStencilState=&ds;ci.pColorBlendState=&blend;ci.pDynamicState=&dy;ci.pTessellationState=state.shader[1]?&tess:nullptr;ci.layout=d.pipeline_layout;ci.renderPass=p.pass;
+        {CPU_SCOPE(Pipeline);
+            static std::vector<uint32_t> fast;fast.clear();
+            if(use_fast && !pipeline.pipeline){uint64_t a=uint64_t(uintptr_t(&d.entry->definition)),b=uint64_t(uintptr_t(p.definition));uint32_t ids[4]={uint32_t(a),uint32_t(a>>32),uint32_t(b),uint32_t(b>>32)};
+                static XbgPipelineKey fkey;fkey.count=0;fkey.valid=true;
+                if(xbg_graphics_pipeline_key(fkey,ci,{ids,2,true},{ids+2,2,true})){fast.assign(fkey.words,fkey.words+fkey.count);auto f=pipeline_fast.find(fast);if(f!=pipeline_fast.end()){pipeline.pipeline=f->second;++pipeline_fast_hits;}}else use_fast=false;}
+            if(!pipeline.pipeline){XbgPipelineKey key;bool cacheable=xbg_graphics_pipeline_key(key,ci,d.entry->definition.view(),p.definition->view()) && !spell_pipeline_diagnostic;pipeline_lookup(pipeline,key,cacheable,&ci,nullptr,async_skippable(attachments,ds));
+                if(use_fast && cacheable && !pipeline.transient)pipeline_fast.emplace(fast,pipeline.pipeline);}
+            if(memo && use_fast && pipeline.pipeline && !pipeline.transient){
+                pipe_memo_key=pipe_memo_next;pipe_memo_pipeline=pipeline.pipeline;pipe_memo_bindings=bindings;pipe_memo_zero_binding=zero_binding;pipe_memo_valid=true;}
+        }
+    }
     if(spell_empty_module)vkDestroyShaderModule(cfg.device,spell_empty_module,nullptr);
     // gfx-async-pipelines: this draw is skipped while its pipeline builds in the background
     if(!pipeline.pipeline)return;
@@ -6304,7 +6334,11 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
     BindCache &bc=bind_cache;if(!bind_cache_enabled || bc.cmd!=c.command || pipeline.transient){bc=BindCache{};bc.cmd=c.command;}
     if(bc.pipe!=pipeline.pipeline){vkCmdBindPipeline(c.command,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline.pipeline);bc.pipe=pipeline.pipeline;}else ++binds_skipped;
     {const uint32_t no=uint32_t(d.dynamic_offsets.size());
-     if(bc.layout!=d.pipeline_layout || bc.set!=d.set || bc.noff!=no || no>32 || (no && memcmp(bc.off,d.dynamic_offsets.data(),no*4))){
+     bool offsets_differ=false;
+     if(no<=32 && bc.layout==d.pipeline_layout && bc.set==d.set && bc.noff==no){
+         for(uint32_t k=0;k<no;++k){if(bc.off[k]!=d.dynamic_offsets[k]){offsets_differ=true;break;}}
+     }else{offsets_differ=true;}
+     if(offsets_differ || no>32){
         ++set_binds;set_bind_offsets+=no;
         if(bc.layout==d.pipeline_layout && bc.set==d.set){++set_binds_offsets_only;
             if(bc.noff==no && no<=32){unsigned changed=0;for(uint32_t k=0;k<no;k++)if(bc.off[k]!=d.dynamic_offsets[k]){++changed;++offset_changed_at[k];}++offset_changes[changed<9?changed:9];}}
@@ -6320,11 +6354,25 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
      if(sw==0x100){viewport.y+=viewport.height;viewport.height=-viewport.height;}
      else if(sw){static int once=0;if(!once++){once=1;xbg_logf("NVN viewport swizzle %u,%u,%u,%u is not implemented (drawn unswizzled)",unsigned(state.vp_sw[0][0]),unsigned(state.vp_sw[0][1]^2),unsigned(state.vp_sw[0][2]^4),unsigned(state.vp_sw[0][3]^6));}}}
     need(viewport.width<=properties.limits.maxViewportDimensions[0] && -viewport.height<=properties.limits.maxViewportDimensions[1] && viewport.x>=properties.limits.viewportBoundsRange[0] && viewport.x+viewport.width<=properties.limits.viewportBoundsRange[1] && viewport.y>=properties.limits.viewportBoundsRange[0] && viewport.y<=properties.limits.viewportBoundsRange[1] && viewport.y+viewport.height>=properties.limits.viewportBoundsRange[0],"NVN viewport exceeds device bounds");
-    if(!bc.has_vp || memcmp(&bc.vp,&viewport,sizeof viewport)){vkCmdSetViewport(c.command,0,1,&viewport);bc.vp=viewport;bc.has_vp=true;}else ++binds_skipped;
+    bool vp_differ=!bc.has_vp;
+    if(!vp_differ){
+        uint64_t v0,v1,v2,c0,c1,c2;
+        memcpy(&v0,&bc.vp,8);memcpy(&v1,reinterpret_cast<const uint8_t*>(&bc.vp)+8,8);memcpy(&v2,reinterpret_cast<const uint8_t*>(&bc.vp)+16,8);
+        memcpy(&c0,&viewport,8);memcpy(&c1,reinterpret_cast<const uint8_t*>(&viewport)+8,8);memcpy(&c2,reinterpret_cast<const uint8_t*>(&viewport)+16,8);
+        if(v0!=c0 || v1!=c1 || v2!=c2)vp_differ=true;
+    }
+    if(vp_differ){vkCmdSetViewport(c.command,0,1,&viewport);bc.vp=viewport;bc.has_vp=true;}else ++binds_skipped;
     VkRect2D sc=scissor(p);
     if(ui_uy>0 || ui_vs!=1){long so=g_ui_moff!=0?lround(ui_uy*p.height):0;int64_t y0=sc.offset.y<=0?0:sc.offset.y+so,y1=ui_vs!=1?int64_t(p.height):int64_t(sc.offset.y)+sc.extent.height+so;   // 剪裁跟着下移；从顶边起的不动（宿主上提的贴顶控件） | the scissor moves down with it; ones starting at the top edge stay (controls the host lifted to the top)
         if(y1>int64_t(p.height))y1=p.height;if(y1<y0)y1=y0;sc.offset.y=int32_t(y0);sc.extent.height=uint32_t(y1-y0);}
-    if(!bc.has_sc || memcmp(&bc.sc,&sc,sizeof sc)){vkCmdSetScissor(c.command,0,1,&sc);bc.sc=sc;bc.has_sc=true;}else ++binds_skipped;
+    bool sc_differ=!bc.has_sc;
+    if(!sc_differ){
+        uint64_t w0,w1,s0,s1;
+        memcpy(&w0,&bc.sc,8);memcpy(&w1,reinterpret_cast<const uint8_t*>(&bc.sc)+8,8);
+        memcpy(&s0,&sc,8);memcpy(&s1,reinterpret_cast<const uint8_t*>(&sc)+8,8);
+        if(w0!=s0 || w1!=s1)sc_differ=true;
+    }
+    if(sc_differ){vkCmdSetScissor(c.command,0,1,&sc);bc.sc=sc;bc.has_sc=true;}else ++binds_skipped;
     if(probe_full_target())capture_log("FULL_DYNAMIC event=%u viewport=%g/%g/%g/%g/%g/%g scissor=%d/%d/%u/%u",capture.events,viewport.x,viewport.y,viewport.width,viewport.height,viewport.minDepth,viewport.maxDepth,sc.offset.x,sc.offset.y,sc.extent.width,sc.extent.height);
     for(auto &b:vertex_buffers){VkDeviceSize off=b.second->offset;if(b.first<16 && bc.vb[b.first]==b.second->buffer && bc.vbo[b.first]==off){++binds_skipped;continue;}
         vkCmdBindVertexBuffers(c.command,b.first,1,&b.second->buffer,&off);if(b.first<16){bc.vb[b.first]=b.second->buffer;bc.vbo[b.first]=off;}}
@@ -6334,8 +6382,11 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
     if(attachment_barrier_enabled){
         open_pass.attachment_only=open_pass.attachment_only && graphics_attachment_only();
         auto stencil_writes=[](const VkStencilOpState &s){return s.writeMask && (s.failOp!=VK_STENCIL_OP_KEEP || s.passOp!=VK_STENCIL_OP_KEEP || s.depthFailOp!=VK_STENCIL_OP_KEEP);};
-        open_pass.depth_writes|=ds.depthTestEnable && ds.depthWriteEnable;
-        open_pass.stencil_writes|=ds.stencilTestEnable && (stencil_writes(ds.front) || stencil_writes(ds.back));
+        const bool dt_en = memo_hit ? (state.ds.dt != 0) : ds.depthTestEnable;
+        const bool dw_en = memo_hit ? (state.ds.dw != 0) : ds.depthWriteEnable;
+        const bool st_en = memo_hit ? (state.ds.st != 0) : ds.stencilTestEnable;
+        open_pass.depth_writes|=dt_en && dw_en;
+        open_pass.stencil_writes|=st_en && (stencil_writes(stencil(false)) || stencil_writes(stencil(true)));
         open_pass.depth_may_write|=open_pass.depth_writes || open_pass.stencil_writes;
         if(depth_aspect_enabled && open_pass.depth_attached && !open_pass.depth_writes && !open_pass.images.empty() &&
             std::find(draw_depth_reads.begin(),draw_depth_reads.end(),open_pass.images[open_pass.images.size()-1])!=draw_depth_reads.end())open_pass.depth_sample_visible=true;

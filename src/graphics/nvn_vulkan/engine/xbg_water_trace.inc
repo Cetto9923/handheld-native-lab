@@ -3,7 +3,7 @@
 // transfers perturb scheduling, so this trace is not a performance measurement.
 void water_binding_buffer(WaterBindings &out,const std::string &shader,unsigned stage,unsigned binding,unsigned element,
                           const Buffer &source,uint64_t offset,uint64_t bytes,VkFormat format,bool dynamic){
-    if(element)return;
+    if(!water_ready() || element)return;
     const bool uniform=format==VK_FORMAT_UNDEFINED;
     const bool vertex=stage==0 && ((uniform && binding==66) || (!uniform && (binding==18 || binding==24 || binding==30 || binding==36)));
     const bool fragment=stage==4 && uniform && (binding==4 || binding==64 || binding==70);
@@ -11,7 +11,7 @@ void water_binding_buffer(WaterBindings &out,const std::string &shader,unsigned 
         out.buffers.push_back({source,offset,bytes,stage,binding,format,dynamic});
 }
 void water_binding_image(WaterBindings &out,const std::string &shader,unsigned stage,unsigned binding,unsigned element,Image &image,VkImageView view){
-    if(element)return;
+    if(!water_ready() || element)return;
     if((stage==4 && binding==22 && shader=="6e2d000b284e669c") ||
        (stage==5 && (binding==47 || binding==59 || binding==77) && shader=="f55cfedfb74f811a"))
         out.images.push_back({&image,view,stage,binding});
