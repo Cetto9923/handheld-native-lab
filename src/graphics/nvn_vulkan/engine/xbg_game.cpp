@@ -2211,7 +2211,7 @@ bool lookup(uint64_t address,size_t bytes,Buffer &out){
 }
 Buffer snapshot_slow(uint64_t address,size_t bytes,VkDeviceSize align);
 Buffer snapshot(uint64_t address,size_t bytes,VkDeviceSize align=4){CPU_SCOPE(Snapshot);
-    SnapFront &f=snap_front_for(0,address,bytes);if(f.epoch==snapshot_epoch && f.address==address && f.bytes==bytes){++perf.snapshot_hits;++snap_front_hits;return f.buffer;}
+    SnapFront &f=snap_front_for(0,address,bytes);if(__builtin_expect(f.epoch==snapshot_epoch && f.address==address && f.bytes==bytes, 1)){++perf.snapshot_hits;++snap_front_hits;return f.buffer;}
     Buffer b=snapshot_slow(address,bytes,align);f.address=address;f.bytes=bytes;f.epoch=snapshot_epoch;f.buffer=b;return b;
 }
 Buffer snapshot_slow(uint64_t address,size_t bytes,VkDeviceSize align){
@@ -2693,7 +2693,7 @@ void resolve_pending(){
 // writeback or report (why=a0 in NVN PERF).
 bool read_preflight=true;
 bool defer_query_preflight=true;
-void preflight_cpu_reads(){if(read_preflight && (!pending_writebacks.empty() || (!defer_query_preflight && !pending_reports.empty())))resolve_pending();}
+inline void preflight_cpu_reads(){if(__builtin_expect(read_preflight && (!pending_writebacks.empty() || (!defer_query_preflight && !pending_reports.empty())), 0))resolve_pending();}
 // Retire only the submitted slot that owns overlapping writes. The CPU
 // clear below then runs against the normal writeback result without submitting
 // the recording slot. Any residual write or report still uses the old path.
@@ -3100,6 +3100,7 @@ struct Shader {std::string key;std::string identity;
     uint32_t stage;VkShaderModule module{};std::vector<xbg_shader_binding> bindings;std::vector<uint32_t> inputs,input_classes,probe_words;std::vector<uint8_t> c1;
     std::set<uint32_t> storage_writes; // Vulkan bindings of storage buffers the SPIR-V may write
     uint64_t storage_writes_mask=0;
+    bool has_storage_bindings=false;
     std::set<uint32_t> filter_independent_bindings;
     std::vector<uint32_t> linear_sample_candidates;
     XbgPackedShaderWords linear_sample_source;
@@ -3525,6 +3526,7 @@ Shader *load_shader(const void *control){
     }
     {bool unknown=false;p->storage_writes=spirv_storage_writes(words,unknown);if(unknown){for(auto &b:p->bindings)if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)p->storage_writes.insert(b.binding);}}
     for(uint32_t b:p->storage_writes)if(b<64)p->storage_writes_mask|=(1ull<<b);
+    for(auto &b:p->bindings)if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_IMAGE || b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER || b.type==VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT)p->has_storage_bindings=true;
     if(h.stage==0){p->input_classes.resize(p->inputs.size());need(xbg_vertex_input_classes(words.data(),words.size(),p->inputs.data(),p->inputs.size(),p->input_classes.data())==0,"Unsupported vertex input scalar interface");}
     load_t3=timing_clock();
     // Retain the exact final bytes passed below, only for the explicit Honor
@@ -3669,7 +3671,7 @@ Shader *integer_buffer_variant(Shader &base){
     auto variant=std::make_unique<Shader>();
     variant->key=base.key;variant->identity=identity;variant->stage=base.stage;
     variant->bindings=base.bindings;variant->ubo_all=base.ubo_all;variant->ubo_varying=base.ubo_varying;variant->inputs=base.inputs;variant->input_classes=base.input_classes;
-    variant->c1=base.c1;variant->storage_writes=base.storage_writes;variant->storage_writes_mask=base.storage_writes_mask;variant->discards=base.discards;variant->raster=base.raster;
+    variant->c1=base.c1;variant->storage_writes=base.storage_writes;variant->storage_writes_mask=base.storage_writes_mask;variant->has_storage_bindings=base.has_storage_bindings;variant->discards=base.discards;variant->raster=base.raster;
     variant->storage_image_formats=base.storage_image_formats;
     variant->storage_binding_info=base.storage_binding_info;
     if(!base.module_words.empty())variant->module_words=words;
@@ -3863,7 +3865,7 @@ Shader *typed_storage_variant(Shader &base){
     auto variant=std::make_unique<Shader>();
     variant->key=base.key;variant->identity=identity;variant->stage=base.stage;
     variant->bindings=base.bindings;variant->ubo_all=base.ubo_all;variant->ubo_varying=base.ubo_varying;variant->inputs=base.inputs;variant->input_classes=base.input_classes;
-    variant->c1=base.c1;variant->storage_writes=base.storage_writes;variant->storage_writes_mask=base.storage_writes_mask;variant->discards=base.discards;variant->raster=base.raster;
+    variant->c1=base.c1;variant->storage_writes=base.storage_writes;variant->storage_writes_mask=base.storage_writes_mask;variant->has_storage_bindings=base.has_storage_bindings;variant->discards=base.discards;variant->raster=base.raster;
     variant->storage_image_formats=base.storage_image_formats;
     variant->storage_binding_info=base.storage_binding_info;
     variant->typed_storage_rewritten=base.typed_storage_rewritten;
@@ -3946,7 +3948,7 @@ Shader *vertex_input_variant(Shader &base){
     variant->bindings=base.bindings;variant->ubo_all=base.ubo_all;variant->ubo_varying=base.ubo_varying;variant->inputs=base.inputs;
     variant->input_classes.resize(base.inputs.size());
     need(xbg_vertex_input_classes(words.data(),words.size(),variant->inputs.data(),variant->inputs.size(),variant->input_classes.data())==0,"Unsupported rewritten vertex input interface");
-    variant->c1=base.c1;variant->storage_writes=base.storage_writes;variant->storage_writes_mask=base.storage_writes_mask;variant->discards=base.discards;
+    variant->c1=base.c1;variant->storage_writes=base.storage_writes;variant->storage_writes_mask=base.storage_writes_mask;variant->has_storage_bindings=base.has_storage_bindings;variant->discards=base.discards;
     variant->raster=xbg_spirv_raster_facts(words.data(),words.size(),base.stage);
     variant->storage_image_formats=base.storage_image_formats;
     variant->storage_binding_info=base.storage_binding_info;
@@ -4055,6 +4057,7 @@ Shader *linear_sample_variant(Shader &base) {
     variant->c1 = base.c1;
     variant->storage_writes = base.storage_writes;
     variant->storage_writes_mask = base.storage_writes_mask;
+    variant->has_storage_bindings = base.has_storage_bindings;
     variant->discards = base.discards;
     variant->raster = base.raster;
     variant->storage_image_formats = base.storage_image_formats;
@@ -4955,7 +4958,7 @@ Buffer uniform_snapshot(uint64_t address,size_t copy){
     return uniform_snapshot_cached(address,copy);
 }
 Buffer uniform_snapshot_cached(uint64_t address,size_t copy){CPU_SCOPE(Snapshot);
-    SnapFront &f=snap_front_for(1,address,copy);if(f.epoch==snapshot_epoch && f.address==address && f.bytes==copy){++perf.snapshot_hits;++snap_front_hits;return f.buffer;}
+    SnapFront &f=snap_front_for(1,address,copy);if(__builtin_expect(f.epoch==snapshot_epoch && f.address==address && f.bytes==copy, 1)){++perf.snapshot_hits;++snap_front_hits;return f.buffer;}
     Buffer b=uniform_snapshot_slow(address,copy);f.address=address;f.bytes=copy;f.epoch=snapshot_epoch;f.buffer=b;return b;
 }
 Buffer uniform_snapshot_slow(uint64_t address,size_t copy){
@@ -5180,16 +5183,14 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
     if(ok){CPU_SCOPE(Descriptor);DescriptorRoot descriptor_measurement(&cpu_scope);
         static std::vector<DynUbo> dyn_ubos;if(dyn_ubos.capacity()<16)dyn_ubos.reserve(16);dyn_ubos.clear();
         auto hit=desc_memo.end();
-        uint64_t key_hash = 1469598103934665603ull;
-#define PUSH_KEY(v) do { uint64_t _kv = uint64_t(v); key.push_back(_kv); key_hash = (key_hash ^ _kv) * 1099511628211ull; } while(0)
         {
             DESC_SCOPE(MemoKey);
             bool no_ubo=false;const unsigned dmode=dyn_mode_for(false,&no_ubo);memo_dyn_ok=dmode!=0 || no_ubo;
-            for(unsigned st=0;st<5;st++){PUSH_KEY(uintptr_t(state.shader[st]));if(tags)ktag.push_back(0);}
+            for(unsigned st=0;st<5;st++){key.push_back(uintptr_t(state.shader[st]));if(tags)ktag.push_back(0);}
             uint64_t tp_mem = state.texture_pool.pool?uint64_t(uintptr_t(state.texture_pool.pool->mem)):0;
-            PUSH_KEY(tp_mem);PUSH_KEY(state.texture_pool.off);PUSH_KEY(state.texture_pool.n);if(tags)ktag.insert(ktag.end(),3,1);
+            key.push_back(tp_mem);key.push_back(state.texture_pool.off);key.push_back(state.texture_pool.n);if(tags)ktag.insert(ktag.end(),3,1);
             uint64_t sp_mem = state.sampler_pool.pool?uint64_t(uintptr_t(state.sampler_pool.pool->mem)):0;
-            PUSH_KEY(sp_mem);PUSH_KEY(state.sampler_pool.off);if(tags)ktag.insert(ktag.end(),2,1);
+            key.push_back(sp_mem);key.push_back(state.sampler_pool.off);if(tags)ktag.insert(ktag.end(),2,1);
             for(unsigned st=0;st<5 && ok;st++)if(state.shader[st]){Shader &shader=*state.shader[st];unsigned ns=nvn_stage[st];
                 for(auto &b:shader.bindings){
                     // Texel view 属于 slot，退休时销毁；memo 不追踪其快照或生命周期，不能保留旧 set。
@@ -5200,25 +5201,30 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
                     for(unsigned element=0;element<b.count;element++){unsigned slot=b.slot+element;
                         switch(b.source){
                         case XBG_SOURCE_UNIFORM:case XBG_SOURCE_STORAGE:{if(slot>=16){ok=false;break;}auto r=b.source==XBG_SOURCE_UNIFORM?state.ub[ns][slot]:state.sb[ns][slot];
-                            if(UBO_DYN(dmode,b) && b.source==XBG_SOURCE_UNIFORM && r.address && r.size){size_t copy=std::min<size_t>(r.size,b.bytes?b.bytes:65536);PUSH_KEY(copy);if(tags)ktag.push_back(2);dyn_ubos.push_back({(uint64_t(b.binding)<<32)|element,r.address,copy});} // address only moves the dynamic offset
-                            else{PUSH_KEY(r.address);PUSH_KEY(r.size);if(tags){ktag.push_back(b.source==XBG_SOURCE_UNIFORM?3:10);ktag.push_back(4);}}break;}
-                        case XBG_SOURCE_SUPPORT:PUSH_KEY((uint64_t(uint32_t(state.viewport.width))<<32)|uint32_t(state.viewport.height));PUSH_KEY(state.color.alpha_func);if(tags){ktag.push_back(5);ktag.push_back(6);}break;
+                            if(UBO_DYN(dmode,b) && b.source==XBG_SOURCE_UNIFORM && r.address && r.size){size_t copy=std::min<size_t>(r.size,b.bytes?b.bytes:65536);key.push_back(copy);if(tags)ktag.push_back(2);dyn_ubos.push_back({(uint64_t(b.binding)<<32)|element,r.address,copy});} // address only moves the dynamic offset
+                            else{key.push_back(r.address);key.push_back(r.size);if(tags){ktag.push_back(b.source==XBG_SOURCE_UNIFORM?3:10);ktag.push_back(4);}}break;}
+                        case XBG_SOURCE_SUPPORT:key.push_back((uint64_t(uint32_t(state.viewport.width))<<32)|uint32_t(state.viewport.height));key.push_back(state.color.alpha_func);if(tags){ktag.push_back(5);ktag.push_back(6);}break;
                         case XBG_SOURCE_C1:break;
                         case XBG_SOURCE_DRIVER0:case XBG_SOURCE_DRIVER2:
-                            PUSH_KEY(UBO_DYN(dmode,b)?uint64_t(0xD0D0+b.source):(b.source==XBG_SOURCE_DRIVER0?buf_gen[ns]:tex_gen[ns]));if(tags)ktag.push_back(7);
+                            key.push_back(UBO_DYN(dmode,b)?uint64_t(0xD0D0+b.source):(b.source==XBG_SOURCE_DRIVER0?buf_gen[ns]:tex_gen[ns]));if(tags)ktag.push_back(7);
                             // Every memo mode, including dynamic/front/persistent,
                             // must distinguish the per-draw c0 parameter. A buffer
                             // rebind is not required when firstInstance changes.
-                            if(b.source==XBG_SOURCE_DRIVER0 && ns!=5){PUSH_KEY(draw_base_instance);if(tags)ktag.push_back(7);}break;
-                        case XBG_SOURCE_TEXTURE:case XBG_SOURCE_IMAGE:{if(slot>=(b.source==XBG_SOURCE_IMAGE?16u:256u)){ok=false;break;}PUSH_KEY(b.source==XBG_SOURCE_IMAGE?state.img[ns][slot]:state.tex[ns][slot]);if(tags)ktag.push_back(8);
-                            if(b.sampler_slot!=UINT32_MAX){if(b.sampler_slot>=128){ok=false;break;}PUSH_KEY(state.samp[ns][b.sampler_slot]);if(tags)ktag.push_back(9);}break;}
+                            if(b.source==XBG_SOURCE_DRIVER0 && ns!=5){key.push_back(draw_base_instance);if(tags)ktag.push_back(7);}break;
+                        case XBG_SOURCE_TEXTURE:case XBG_SOURCE_IMAGE:{if(slot>=(b.source==XBG_SOURCE_IMAGE?16u:256u)){ok=false;break;}key.push_back(b.source==XBG_SOURCE_IMAGE?state.img[ns][slot]:state.tex[ns][slot]);if(tags)ktag.push_back(8);
+                            if(b.sampler_slot!=UINT32_MAX){if(b.sampler_slot>=128){ok=false;break;}key.push_back(state.samp[ns][b.sampler_slot]);if(tags)ktag.push_back(9);}break;}
                         default:ok=false;}
                         if(!ok)break;
                     }
                     if(!ok)break;
                 }}
             if(ok){memo_check_epoch();
-                const uint32_t fidx = uint32_t((key_hash ^ (key_hash >> 32)) * 0x45d9f3bull) & (kMemoFrontSlots - 1);
+                uint32_t h = uint32_t(key.size());
+                if(!key.empty()) h ^= uint32_t(key[0] >> 4);
+                if(key.size() > 4) h ^= uint32_t(key[4] >> 4);
+                if(key.size() > 10) h ^= uint32_t(key[10]);
+                if(key.size() > 14) h ^= uint32_t(key[14]);
+                const uint32_t fidx = (h ^ (h >> 8) ^ (h >> 16)) & (kMemoFrontSlots - 1);
                 auto &mf = memo_front_slots[fidx];
                 if(mf.gen==memo_mod_gen && mf.slot==slot_index && !ab_off("memofront") && mf.key==key){hit=mf.it;++memo_front_hits;}
                 else{hit=desc_memo.find(key);if(hit!=desc_memo.end()){mf.key=key;mf.it=hit;mf.gen=memo_mod_gen;mf.slot=slot_index;}}
@@ -6094,9 +6100,7 @@ bool first_draw_covers(const Pass &p,int prim,int first,int count,const p_draw_i
 bool graphics_attachment_only(){
     if(state.tf_on || state.rast_discard)return false;
     for(unsigned st=0;st<5;st++)if(state.shader[st]){
-        if(!state.shader[st]->storage_writes.empty())return false;
-        for(const auto &b:state.shader[st]->bindings)if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_IMAGE ||
-            b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER || b.type==VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT)return false;
+        if(state.shader[st]->storage_writes_mask!=0 || state.shader[st]->has_storage_bindings)return false;
     }
     return true;
 }
@@ -7475,7 +7479,17 @@ void resolve_texture(const p_copy_t2t &p){preflight_cpu_reads();probe_boundary("
 // Consecutive commands nearly always sit in one range: remember the last one (pools change only under the mutex,
 // and clear it; host segments are freed only at shutdown).
 uintptr_t cmd_range_lo=0;size_t cmd_range_bytes=0;
-size_t command_available(const uint8_t *p){uintptr_t address=uintptr_t(p);if(address-cmd_range_lo<cmd_range_bytes)return cmd_range_bytes-(address-cmd_range_lo);auto it=pools.upper_bound(address);if(it!=pools.begin()){--it;if(address>=it->first && address-it->first<it->second){cmd_range_lo=it->first;cmd_range_bytes=it->second;return it->second-(address-it->first);}}{auto h=host_ranges.upper_bound(address);if(h!=host_ranges.begin()){--h;if(address>=h->first && address-h->first<h->second){cmd_range_lo=h->first;cmd_range_bytes=h->second;return h->second-(address-h->first);}}}xbg_fatalf("NVN command address %#llx is outside registered command pools",(unsigned long long)address);}
+size_t command_available_slow(uintptr_t address){
+    auto it=pools.upper_bound(address);
+    if(it!=pools.begin()){--it;if(address>=it->first && address-it->first<it->second){cmd_range_lo=it->first;cmd_range_bytes=it->second;return it->second-(address-it->first);}}
+    {auto h=host_ranges.upper_bound(address);if(h!=host_ranges.begin()){--h;if(address>=h->first && address-h->first<h->second){cmd_range_lo=h->first;cmd_range_bytes=h->second;return h->second-(address-h->first);}}}
+    xbg_fatalf("NVN command address %#llx is outside registered command pools",(unsigned long long)address);
+}
+inline size_t command_available(const uint8_t *p){
+    uintptr_t address=uintptr_t(p);
+    if(__builtin_expect(address-cmd_range_lo<cmd_range_bytes, 1))return cmd_range_bytes-(address-cmd_range_lo);
+    return command_available_slow(address);
+}
 void execute_draw_call(const xbg_draw_call &p){
     need(p.index_type>=-1 && p.index_type<=2 && p.first>=0 && p.count>=0 && p.instances>=0 && p.base_instance>=0,"Invalid recorded draw plan");
     if(!p.count || !p.instances)return;
