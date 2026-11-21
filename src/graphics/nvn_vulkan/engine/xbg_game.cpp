@@ -3206,6 +3206,26 @@ struct PipeMemoKey{const void *shader[5];const void *layout,*pass_def;VkRenderPa
     uint8_t tail[offsetof(State,count_samples)-offsetof(State,patch_size)];};      // patch_size, bounds
 PipeMemoKey pipe_memo_key,pipe_memo_next;VkPipeline pipe_memo_pipeline=VK_NULL_HANDLE;bool pipe_memo=false;uint64_t pipe_memo_hits=0,pipe_memo_misses=0;
 std::vector<VkVertexInputBindingDescription> pipe_memo_bindings;int pipe_memo_zero_binding=-1;
+constexpr size_t kPipeMemoSlots = 64;
+struct PipeMemoEntry {
+    PipeMemoKey key{};
+    VkPipeline pipeline = VK_NULL_HANDLE;
+    std::vector<VkVertexInputBindingDescription> bindings;
+    int zero_binding = -1;
+    bool valid = false;
+};
+static PipeMemoEntry pipe_memo_table[kPipeMemoSlots];
+inline void clear_pipe_memo(){
+    pipe_memo_valid = false;
+    for(auto &pme : pipe_memo_table){ pme.valid = false; pme.bindings.clear(); }
+}
+inline uint32_t pipe_memo_hash(const PipeMemoKey &k){
+    uint32_t h = uint32_t(uintptr_t(k.shader[0]) ^ (uintptr_t(k.shader[4]) >> 4));
+    h ^= uint32_t(uintptr_t(k.pass) >> 3);
+    h ^= uint32_t(uintptr_t(k.pipeline_layout) >> 3);
+    h ^= uint32_t(k.prim ^ (k.colors << 4) ^ (k.depth_format << 8));
+    return (h ^ (h >> 6) ^ (h >> 12)) & (kPipeMemoSlots - 1);
+}
 void pipe_memo_fill(PipeMemoKey &k,const void *layout,const void *pass_def,VkRenderPass pass,VkPipelineLayout pipeline_layout,int prim,VkSampleCountFlagBits samples,uint32_t colors){
     memset(&k,0,sizeof k);for(unsigned i=0;i<5;i++)k.shader[i]=state.shader[i];k.layout=layout;k.pass_def=pass_def;k.pass=pass;k.pipeline_layout=pipeline_layout;k.prim=prim;k.samples=uint32_t(samples);
     k.rt_n=uint32_t(state.rt.n);k.colors=colors;k.depth=state.rt.depth!=nullptr;k.depth_format=state.rt.depth?uint32_t(state.rt.depth->d.format):0;
@@ -4716,11 +4736,11 @@ void pipeline_lookup(PipelineLease &out,const XbgPipelineKey &key,bool cacheable
         // All prior draws/dispatches waited their fence. This lookup occurs
         // before binding the current pipeline; no retained entry is in flight.
         auto oldest=std::min_element(pipeline_objects.begin(),pipeline_objects.end(),[](const auto &a,const auto &b){return a.second.last_used<b.second.last_used;});
-        {VkPipeline old=oldest->second.pipeline;retire_handle([old]{vkDestroyPipeline(cfg.device,old,nullptr);});for(auto f=pipeline_fast.begin();f!=pipeline_fast.end();)if(f->second==old)f=pipeline_fast.erase(f);else ++f;pipe_memo_valid=false;pipe_memo_bindings.clear();pipe_memo_zero_binding=-1;}pipeline_objects.erase(oldest);++pipeline_counts.evictions;
+        {VkPipeline old=oldest->second.pipeline;retire_handle([old]{vkDestroyPipeline(cfg.device,old,nullptr);});for(auto f=pipeline_fast.begin();f!=pipeline_fast.end();)if(f->second==old)f=pipeline_fast.erase(f);else ++f;clear_pipe_memo();}pipeline_objects.erase(oldest);++pipeline_counts.evictions;
     }
     pipeline_objects.emplace(std::string(bytes),PipelineEntry{out.pipeline,++pipeline_tick});
 }
-void clear_pipeline_objects(){for(auto &p:pipeline_objects)vkDestroyPipeline(cfg.device,p.second.pipeline,nullptr);pipeline_objects.clear();pipeline_fast.clear();pipe_memo_valid=false;pipe_memo_bindings.clear();pipe_memo_zero_binding=-1;}
+void clear_pipeline_objects(){for(auto &p:pipeline_objects)vkDestroyPipeline(cfg.device,p.second.pipeline,nullptr);pipeline_objects.clear();pipeline_fast.clear();clear_pipe_memo();}
 struct PipelineDefinition {
     std::vector<uint32_t> words;bool valid=false;
     void assign(const XbgPipelineKey &k,bool ok){valid=ok && k.valid;if(valid)words.assign(k.words,k.words+k.count);}
@@ -4741,7 +4761,7 @@ std::map<std::pair<float,float>,Buffer> support_static; // support block per vie
 struct SamplerFastKey{std::array<uint32_t,11> w;bool operator==(const SamplerFastKey &o)const{return w==o.w;}};
 struct SamplerFastHash{size_t operator()(const SamplerFastKey &k)const{uint64_t h=1469598103934665603ull;for(uint32_t v:k.w){h^=v;h*=1099511628211ull;}return size_t(h);}};
 std::unordered_map<SamplerFastKey,VkSampler,SamplerFastHash> sampler_fast;
-void clear_descriptor_caches(){sampler_fast.clear();pipeline_fast.clear();pipe_memo_valid=false;pipe_memo_bindings.clear();pipe_memo_zero_binding=-1;
+void clear_descriptor_caches(){sampler_fast.clear();pipeline_fast.clear();clear_pipe_memo();
     for(auto &l:layout_cache){if(l.second.tmpl)vkDestroyDescriptorUpdateTemplate(cfg.device,l.second.tmpl,nullptr);vkDestroyPipelineLayout(cfg.device,l.second.pipeline_layout,nullptr);vkDestroyDescriptorSetLayout(cfg.device,l.second.layout,nullptr);}layout_cache.clear();shader_layouts.clear();
     for(auto &x:sampler_cache)vkDestroySampler(cfg.device,x.second,nullptr);sampler_cache.clear();
     static_arena.release();support_static.clear();
@@ -5871,7 +5891,7 @@ uint64_t noload_passes=0;bool noload_enabled=false;
 // compatible with pass and its pipelines and framebuffers.
 struct RenderPassEntry {VkRenderPass pass{},noload{};PipelineDefinition definition;};
 std::map<std::vector<uint32_t>,RenderPassEntry> render_pass_cache;
-void clear_render_pass_cache(){for(auto &r:render_pass_cache){vkDestroyRenderPass(cfg.device,r.second.pass,nullptr);if(r.second.noload)vkDestroyRenderPass(cfg.device,r.second.noload,nullptr);}render_pass_cache.clear();pipeline_fast.clear();pipe_memo_valid=false;pipe_memo_bindings.clear();pipe_memo_zero_binding=-1;}
+void clear_render_pass_cache(){for(auto &r:render_pass_cache){vkDestroyRenderPass(cfg.device,r.second.pass,nullptr);if(r.second.noload)vkDestroyRenderPass(cfg.device,r.second.noload,nullptr);}render_pass_cache.clear();pipeline_fast.clear();clear_pipe_memo();}
 bool create_pass(Pass &p,Commands &c,int clear_color=-1,bool clear_depth=false,bool soft=false,int fold_clear_slot=-1){CPU_SCOPE(Pass);
     const bool plain_draw=c.draw && clear_color<0 && !clear_depth && !soft && !provenance_file && !capture.active && !ab_off("passfast");
     if(plain_draw && last_pass.valid && open_pass.cmd==c.command && open_pass.pass==last_pass.pass.pass && open_pass.framebuffer==last_pass.pass.framebuffer && !memcmp(&state.rt,&last_pass.rt,sizeof state.rt)){
@@ -6253,13 +6273,15 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
     bool memo_hit = false;
     if(memo){
         pipe_memo_fill(pipe_memo_next,&d.entry->definition,p.definition,p.pass,d.pipeline_layout,prim,p.samples,active_colors);
-        if(pipe_memo_valid && can_memo_skip && !memcmp(&pipe_memo_next,&pipe_memo_key,sizeof pipe_memo_next)){
-            pipeline.pipeline=pipe_memo_pipeline;
-            bindings=pipe_memo_bindings;
-            zero_binding=pipe_memo_zero_binding;
+        const uint32_t pidx = pipe_memo_hash(pipe_memo_next);
+        auto &pme = pipe_memo_table[pidx];
+        if(pme.valid && can_memo_skip && !memcmp(&pipe_memo_next,&pme.key,sizeof pipe_memo_next)){
+            pipeline.pipeline=pme.pipeline;
+            bindings=pme.bindings;
+            zero_binding=pme.zero_binding;
             memo_hit=true;
             ++pipe_memo_hits;
-        }else if(!can_memo_skip || !pipe_memo_valid || memcmp(&pipe_memo_next,&pipe_memo_key,sizeof pipe_memo_next)){
+        }else if(!can_memo_skip || !pme.valid || memcmp(&pipe_memo_next,&pme.key,sizeof pipe_memo_next)){
             ++pipe_memo_misses;
         }
     }
@@ -6324,6 +6346,9 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
             if(!pipeline.pipeline){XbgPipelineKey key;bool cacheable=xbg_graphics_pipeline_key(key,ci,d.entry->definition.view(),p.definition->view()) && !spell_pipeline_diagnostic;pipeline_lookup(pipeline,key,cacheable,&ci,nullptr,async_skippable(attachments,ds));
                 if(use_fast && cacheable && !pipeline.transient)pipeline_fast.emplace(fast,pipeline.pipeline);}
             if(memo && use_fast && pipeline.pipeline && !pipeline.transient){
+                const uint32_t pidx = pipe_memo_hash(pipe_memo_next);
+                auto &pme = pipe_memo_table[pidx];
+                pme.key=pipe_memo_next;pme.pipeline=pipeline.pipeline;pme.bindings=bindings;pme.zero_binding=zero_binding;pme.valid=true;
                 pipe_memo_key=pipe_memo_next;pipe_memo_pipeline=pipeline.pipeline;pipe_memo_bindings=bindings;pipe_memo_zero_binding=zero_binding;pipe_memo_valid=true;}
         }
     }
@@ -6412,25 +6437,16 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
      if(sw==0x100){viewport.y+=viewport.height;viewport.height=-viewport.height;}
      else if(sw){static int once=0;if(!once++){once=1;xbg_logf("NVN viewport swizzle %u,%u,%u,%u is not implemented (drawn unswizzled)",unsigned(state.vp_sw[0][0]),unsigned(state.vp_sw[0][1]^2),unsigned(state.vp_sw[0][2]^4),unsigned(state.vp_sw[0][3]^6));}}}
     need(viewport.width<=properties.limits.maxViewportDimensions[0] && -viewport.height<=properties.limits.maxViewportDimensions[1] && viewport.x>=properties.limits.viewportBoundsRange[0] && viewport.x+viewport.width<=properties.limits.viewportBoundsRange[1] && viewport.y>=properties.limits.viewportBoundsRange[0] && viewport.y<=properties.limits.viewportBoundsRange[1] && viewport.y+viewport.height>=properties.limits.viewportBoundsRange[0],"NVN viewport exceeds device bounds");
-    bool vp_differ=!bc.has_vp;
-    if(!vp_differ){
-        uint64_t v0,v1,v2,c0,c1,c2;
-        memcpy(&v0,&bc.vp,8);memcpy(&v1,reinterpret_cast<const uint8_t*>(&bc.vp)+8,8);memcpy(&v2,reinterpret_cast<const uint8_t*>(&bc.vp)+16,8);
-        memcpy(&c0,&viewport,8);memcpy(&c1,reinterpret_cast<const uint8_t*>(&viewport)+8,8);memcpy(&c2,reinterpret_cast<const uint8_t*>(&viewport)+16,8);
-        if(v0!=c0 || v1!=c1 || v2!=c2)vp_differ=true;
-    }
-    if(vp_differ){vkCmdSetViewport(c.command,0,1,&viewport);bc.vp=viewport;bc.has_vp=true;}else ++binds_skipped;
+    bool vp_differ=!bc.has_vp || memcmp(&bc.vp,&viewport,sizeof(VkViewport))!=0;
+    if(__builtin_expect(vp_differ, 0)){vkCmdSetViewport(c.command,0,1,&viewport);bc.vp=viewport;bc.has_vp=true;}else ++binds_skipped;
     VkRect2D sc=scissor(p);
-    if(ui_uy>0 || ui_vs!=1){long so=g_ui_moff!=0?lround(ui_uy*p.height):0;int64_t y0=sc.offset.y<=0?0:sc.offset.y+so,y1=ui_vs!=1?int64_t(p.height):int64_t(sc.offset.y)+sc.extent.height+so;   // 剪裁跟着下移；从顶边起的不动（宿主上提的贴顶控件） | the scissor moves down with it; ones starting at the top edge stay (controls the host lifted to the top)
-        if(y1>int64_t(p.height))y1=p.height;if(y1<y0)y1=y0;sc.offset.y=int32_t(y0);sc.extent.height=uint32_t(y1-y0);}
-    bool sc_differ=!bc.has_sc;
-    if(!sc_differ){
-        uint64_t w0,w1,s0,s1;
-        memcpy(&w0,&bc.sc,8);memcpy(&w1,reinterpret_cast<const uint8_t*>(&bc.sc)+8,8);
-        memcpy(&s0,&sc,8);memcpy(&s1,reinterpret_cast<const uint8_t*>(&sc)+8,8);
-        if(w0!=s0 || w1!=s1)sc_differ=true;
+    if(__builtin_expect(ui_uy>0 || ui_vs!=1, 0)){
+        long so=g_ui_moff!=0?lround(ui_uy*p.height):0;
+        int64_t y0=sc.offset.y<=0?0:sc.offset.y+so,y1=ui_vs!=1?int64_t(p.height):int64_t(sc.offset.y)+sc.extent.height+so;
+        if(y1>int64_t(p.height))y1=p.height;if(y1<y0)y1=y0;sc.offset.y=int32_t(y0);sc.extent.height=uint32_t(y1-y0);
     }
-    if(sc_differ){vkCmdSetScissor(c.command,0,1,&sc);bc.sc=sc;bc.has_sc=true;}else ++binds_skipped;
+    bool sc_differ=!bc.has_sc || memcmp(&bc.sc,&sc,sizeof(VkRect2D))!=0;
+    if(__builtin_expect(sc_differ, 0)){vkCmdSetScissor(c.command,0,1,&sc);bc.sc=sc;bc.has_sc=true;}else ++binds_skipped;
     if(probe_full_target())capture_log("FULL_DYNAMIC event=%u viewport=%g/%g/%g/%g/%g/%g scissor=%d/%d/%u/%u",capture.events,viewport.x,viewport.y,viewport.width,viewport.height,viewport.minDepth,viewport.maxDepth,sc.offset.x,sc.offset.y,sc.extent.width,sc.extent.height);
     for(auto &b:vertex_buffers){VkDeviceSize off=b.second->offset;if(b.first<16 && bc.vb[b.first]==b.second->buffer && bc.vbo[b.first]==off){++binds_skipped;continue;}
         vkCmdBindVertexBuffers(c.command,b.first,1,&b.second->buffer,&off);if(b.first<16){bc.vb[b.first]=b.second->buffer;bc.vbo[b.first]=off;}}
@@ -8681,7 +8697,7 @@ vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemor
       xbg_logf("NVN CPU reads resolved before each operation=%d defer_query_preflight=%d (marker gfx-read-preflight)",int(read_preflight),int(defer_query_preflight));}
      {FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-sync-cache-save").c_str(),"rb");sync_cache_save=false;if(m){sync_cache_save=fgetc(m)=='1';fclose(m);}}
      {FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-slot-count").c_str(),"rb");slot_count=thor_compact_memory?8:16;if(m){unsigned val=0;if(fscanf(m,"%u",&val)==1 && val>=2 && val<=kMaxSlots)slot_count=val;fclose(m);}xbg_logf("NVN frame slots=%u (marker gfx-slot-count, 2..%u)",slot_count,kMaxSlots);}
-     {FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-fence-spin-us").c_str(),"rb");fence_spin_us=0;if(m){unsigned v=0;if(fscanf(m,"%u",&v)==1 && v<=5000)fence_spin_us=v;fclose(m);}xbg_logf("NVN fence spin-wait=%u us (marker gfx-fence-spin-us, 0=off)",fence_spin_us);}
+     {FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-fence-spin-us").c_str(),"rb");fence_spin_us=250;if(m){unsigned v=0;if(fscanf(m,"%u",&v)==1 && v<=5000)fence_spin_us=v;fclose(m);}xbg_logf("NVN fence spin-wait=%u us (marker gfx-fence-spin-us, 0=off)",fence_spin_us);}
      {FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-flame-diag").c_str(),"rb");flame_diag_enabled=false;fdiag_sync=false;if(m){int fc=fgetc(m);flame_diag_enabled=(fc=='1'||fc=='2');fdiag_sync=(fc=='2');fclose(m);}xbg_logf("NVN flame frame census=%d (marker gfx-flame-diag)",int(flame_diag_enabled));}
      {FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-flame-delay").c_str(),"rb");flame_diag_delay_us=0;if(m){unsigned v=0;if(fscanf(m,"%u",&v)==1 && v<=50000)flame_diag_delay_us=v;fclose(m);}xbg_logf("NVN flame draw sampling delay=%u us (marker gfx-flame-delay)",flame_diag_delay_us);}
      flame_diag_nodepth=flame_diag_noblend=false;
