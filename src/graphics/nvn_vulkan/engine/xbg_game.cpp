@@ -3204,7 +3204,7 @@ struct PipeMemoKey{const void *shader[5];const void *layout,*pass_def;VkRenderPa
     uint8_t fixed[offsetof(State,viewport)-offsetof(State,attrib)];               // attrib, stream, blend, color, mask, ms, poly, ds
     uint8_t stencil[offsetof(State,copy_stride)-offsetof(State,blend_color)];      // blend_color, bias, stencil compare / write / reference
     uint8_t tail[offsetof(State,count_samples)-offsetof(State,patch_size)];};      // patch_size, bounds
-PipeMemoKey pipe_memo_key,pipe_memo_next;VkPipeline pipe_memo_pipeline=VK_NULL_HANDLE;bool pipe_memo=false;uint64_t pipe_memo_hits=0,pipe_memo_misses=0;
+PipeMemoKey pipe_memo_key,pipe_memo_next;VkPipeline pipe_memo_pipeline=VK_NULL_HANDLE;bool pipe_memo=false,pipe_memo_valid=false;uint64_t pipe_memo_hits=0,pipe_memo_misses=0;
 std::vector<VkVertexInputBindingDescription> pipe_memo_bindings;int pipe_memo_zero_binding=-1;
 constexpr size_t kPipeMemoSlots = 64;
 struct PipeMemoEntry {
@@ -4168,7 +4168,6 @@ std::map<std::string,PipelineEntry> pipeline_objects;
 // caches; an evicted pipeline is dropped from it.
 struct FastKeyHash{size_t operator()(const std::vector<uint32_t> &v)const{uint64_t h=1469598103934665603ull;for(uint32_t x:v){h^=x;h*=1099511628211ull;}return size_t(h^(h>>29));}};
 std::unordered_map<std::vector<uint32_t>,VkPipeline,FastKeyHash> pipeline_fast;bool pipeline_fast_enabled=true;uint64_t pipeline_fast_hits=0;
-bool pipe_memo_valid=false;   // the previous draw's pipeline (pipe_memo_key below); cleared wherever pipeline_fast drops entries
 uint64_t pipeline_tick=0;
 constexpr size_t pipeline_object_limit=4096; // field scenes exceed 256 live pipelines; eviction+rebuild caused 100ms+ hitches
 struct PipelineLease {
