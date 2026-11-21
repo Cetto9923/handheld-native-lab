@@ -9024,6 +9024,12 @@ extern "C" void xbg_legacy_flush(){
     poll_retire();
 }
 extern "C" int xbg_legacy_wait(uint64_t fence,uint64_t timeout){
+    static unsigned s_wait_log = 0;
+    if (s_wait_log++ < 10 || !(s_wait_log % 300)) {
+        xbg_logf("XBG_WAIT fence=%llu timeout=%llu submitted=%llu completed=%llu",
+                 (unsigned long long)fence, (unsigned long long)timeout,
+                 (unsigned long long)submitted, (unsigned long long)completed.load());
+    }
     // 不取锁的提前返回只用于新写法；旧写法（非鸿蒙缺省）先判 failed，与原来逐条相同
     // the lock-free early return is new-path only; the old path (default off HarmonyOS) checks failed first, exactly as before
     if(!legacy_waitall && fence<=completed.load())return 1;
@@ -9070,6 +9076,14 @@ extern "C" int xbg_legacy_wait(uint64_t fence,uint64_t timeout){
             XTRACE_COUNT("dm-legacy-completed", completed.load());
             VkFence f=t->fence;t->waiters.n.fetch_add(1);lock.unlock();
             XTRACE_BEGIN("dm-legacy-wait");uint64_t b0=timing_clock();VkResult r=hybrid_wait_fence(f,remaining);uint64_t b1=timing_clock();XTRACE_END();
+            if ((b1 - b0) > 1000000) {
+                static unsigned s_heavy_log = 0;
+                if (s_heavy_log++ < 10 || !(s_heavy_log % 300)) {
+                    xbg_logf("XBG_HEAVY_WAIT fence=%llu t_covers=%llu waited_ms=%.2f submitted=%llu completed=%llu",
+                             (unsigned long long)fence, (unsigned long long)t->covers,
+                             (b1 - b0) / 1e6, (unsigned long long)submitted, (unsigned long long)completed.load());
+                }
+            }
             // 先释放 waiter 再等待完成/重锁；此后槽可被另一线程复用，不再读取 t。
             // Release the waiter before completion/relock waits; another thread may now reuse the slot, so never read t again.
             t->waiters.n.fetch_sub(1);

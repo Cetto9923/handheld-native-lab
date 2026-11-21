@@ -549,10 +549,24 @@ int nvn_window_acquire_texture(void *window, void *available_sync, int *texture_
     uint64_t prev_fence = w->texture_fences[index];
     pthread_mutex_unlock(&s_window_lock);
 
+    static int s_pipelined_sync = -1;
+    if (s_pipelined_sync < 0) {
+        FILE *f = fopen("/storage/emulated/0/Android/data/org.ffrs.gamewindow/files/gfx-pipelined-sync", "rb");
+        if (!f) f = fopen("/sdcard/Android/data/org.ffrs.gamewindow/files/gfx-pipelined-sync", "rb");
+        s_pipelined_sync = 1;
+        if (f) {
+            s_pipelined_sync = (fgetc(f) != '0');
+            fclose(f);
+        }
+        fprintf(stderr, "[nvn] pipelined acquire sync = %d (marker gfx-pipelined-sync)\n", s_pipelined_sync);
+    }
+
     /* If this texture was previously presented, wait only for that texture's fence;
-     * otherwise wait for any prior submission to ensure initial readiness. */
+     * otherwise wait for any prior submission to ensure initial readiness.
+     * When pipelined sync is enabled and available_sync is provided, do not stall
+     * the CPU thread here; available_sync carries wait_fence for queue synchronization. */
     uint64_t wait_fence = prev_fence > 0 ? prev_fence : nvn_engine_last_fence();
-    if (wait_fence > 0 && !nvn_engine_wait(wait_fence, UINT64_MAX)) return 1;
+    if ((!s_pipelined_sync || !available_sync) && wait_fence > 0 && !nvn_engine_wait(wait_fence, UINT64_MAX)) return 1;
 
     pthread_mutex_lock(&s_window_lock);
     w = window_find(window, 0);
@@ -565,17 +579,6 @@ int nvn_window_acquire_texture(void *window, void *available_sync, int *texture_
 
     *texture_index = index;
     if (available_sync) {
-        static int s_pipelined_sync = -1;
-        if (s_pipelined_sync < 0) {
-            FILE *f = fopen("/storage/emulated/0/Android/data/org.ffrs.gamewindow/files/gfx-pipelined-sync", "rb");
-            if (!f) f = fopen("/sdcard/Android/data/org.ffrs.gamewindow/files/gfx-pipelined-sync", "rb");
-            s_pipelined_sync = 1;
-            if (f) {
-                s_pipelined_sync = (fgetc(f) != '0');
-                fclose(f);
-            }
-            fprintf(stderr, "[nvn] pipelined acquire sync = %d (marker gfx-pipelined-sync)\n", s_pipelined_sync);
-        }
         if (s_pipelined_sync) {
             nvn_sync_family_set_fence_value(available_sync, wait_fence);
         } else {
