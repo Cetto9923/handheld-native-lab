@@ -140,6 +140,33 @@ memo 侧：命中 407 → 506、未命中 0.9 → 96.8、setcache 重建 444.9 �
    而 memo 的 verify 已经检查了"注册版本 + serial + 存活 image 身份"⇒ 键也许只该用稳定的纹理 id
    （池指针/偏移已在键里）。这是**下一版最值得先试的一枪**：改动小、命中率高的话收益远超 V2。
 
+
+## 8. 追加验证：memo 键的 tex 分量（同一轮内追加的第二个探针，已证伪）
+
+第 5 节列的"下一版第一枪"（把 memo 键里的 tex 分量从完整句柄换成稳定纹理 id）在本轮剩余时间里直接试了：
+
+- **改动**：键里的 `state.tex[ns][slot]`（含每帧可能变化的代次）换成 `handle & 0xfffff`（池内 id）。
+  依据是 `register_texture_record` 只在**纹理内容真的变了**时才 `revision++`
+  （`changed=!slot.revision || !registered_texture_equal(slot,next)`），
+  而 memo 的 verify 已经校验"注册版本 + serial + 存活 image 身份"⇒ 语义等价。
+  做成运行时开关 `gfx-live-set "memokey=1"`，同进程交错 A/B。
+- **实机结果（兵工厂，交错 3 轮）**：
+
+  ```
+  memokey=1: fps 中位 33.88 | cpu 25.19 ms | memo_hits 405.1 | memo_misses 0.9 | setcache_misses 442.9
+  memokey=0: fps 中位 33.71 | cpu 25.20 ms | memo_hits 405.0 | memo_misses 0.9 | setcache_misses 442.9
+  DELTA: Δfps +0.17   Δcpu −0.01 ms/帧
+  ```
+
+  **完全没有任何变化**：memo 命中数一模一样（405.1 vs 405.0），重建数也一样。
+  ⇒ **纹理句柄不是 memo 未命中的原因**，上一轮基于 `keydiff tex=154/帧` 的推论被实机证伪。
+- **探针代码**：侧分支 `task/T-mavis-perf-20261122-memokeyprobe`（默认关闭，不影响出厂行为）。
+- **修正后的判断**：memo 的 443 次/帧重建**几乎全部来自 texel 绑定被排除**（423），
+  其余是 storage image(14)/dynamic mode(6)/dynbuf(1)。也就是说，
+  **"让 texel 绑定进 memo"仍然是唯一的大杠杆**，但它必须做到
+  **刷新摊到每资源每提交一次 + 失效强度不低于原路径 + pending_writeback 查找 O(1)**，
+  否则就会被命中路径的新增成本吃光（V2 的实测已经证明）。
+
 ## 6. 设备与仓库状态
 
 - 设备：已装回已出货的第 1 版包 `ffrs-texel-20261122.apk`（SHA-256 `2d60e8b4…`，同签名 `install -r`），

@@ -6090,6 +6090,15 @@ P3 GPU pass 合并（收益最大、画面风险最高，须逐 pass 取证）�
   改动小、命中率高的话收益远超 V2。其次才是"刷新摊到每资源每提交一次 + pending_writeback 查找 O(1)"。
 - **设备已复原**：装回已出货的第 1 版包（SHA `2d60e8b4…`，同签名 `install -r`，`texel memo=0` 已回读），
   游戏前台停在第 4 章兵工厂（隔离存档 `shield-regression-20261122073707`），冷机瞬态 fps 37.8 / submit_cpu 17.5 ms。
+
+- **追加探针（同一轮）**：把 memo 键里的 tex 分量换成池内稳定 id（`handle & 0xfffff`；
+  依据是 `register_texture_record` 只在纹理内容真变时 `revision++`，而 memo verify 已校验版本+serial+存活身份），
+  实机交错 A/B：**memo_hits 405.1 vs 405.0、重建数一致、Δfps +0.17 ⇒ 完全无变化**。
+  ⇒ **上一轮基于 `keydiff tex=154/帧` 的推论被证伪**：keydiff 比的是"同 shader 相邻两次的键"，
+  不是"memo 查找失败的键"（见 L-052）。探针在侧分支 `task/T-mavis-perf-20261122-memokeyprobe`（默认关）。
+- **修正后的判断**：memo 的 443 次/帧重建里 **423 次来自 texel 排除**（storage image 14 / dynamic mode 6 / dynbuf 1），
+  所以"让 texel 进 memo"仍是唯一大杠杆；但必须做到 **刷新摊到每资源每提交一次 + 失效强度不低于原路径 +
+  pending_writeback 查找 O(1)**，否则会被命中路径的新增成本吃光（V2 实测已证）。
 - **仍未达 40 Hz**（热机 29–33 fps，冷机瞬态 36–40）。**未完成**：战斗特效场景复测 / 场景B / RG477M 双机回归。
 - **经验库新增 L-048 ~ L-051**（路径开关也要扫 + 扫描偏差 / memo 化的收益要乘命中次数 /
   真瓶颈可能是键稳定性 / 池化前先算内存账与命中率天花板）。

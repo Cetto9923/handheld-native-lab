@@ -1,6 +1,6 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-23T01:25:00+08:00
+状态事件时间：2026-11-23T02:05:00+08:00
 阶段：P0 descriptor 路径轮：descriptor 子项耗时分解已用引擎自带明细 profiler 取到（兵工厂场景，60 帧，coverage=OK，descriptor 7.05 ms/帧）；P0 第一版「descriptor memo 覆盖 compute dispatch」已实现、构建、装机并实机交错 A/B —— **收益≈0 被证伪**（compute 每帧仅 1 次命中；163/165 dispatch 因 texel 绑定无法进 memo）；同时定位到 draw 侧 177 次/帧整表重建由 tex 句柄变化驱动，是 descriptor 路径真正的大头；descriptor 契约测试的既有漂移已修复（此前该守卫等于没在跑）；下一步 P0 入口见 MAVIS-P0-DESCRIPTOR-20261122.md §8。**同场景 desccompute ON/OFF 显示回归已 PASS**（ON 180 帧 / 20 段、OFF 171 帧 / 19 段，段内 9 帧严格连续，段级指标一致，像素级差异落在同状态自然漂移带内）⇒ 该开关既不改画面也不提速，是零风险零收益的中性开关。**帧率优化第 1 版已出货**：关闭 texel 驻留副本与逐帧 texel-view memo（默认改 false，标记反转为 opt-in 的 gfx-texel-memo=1），交错配对 A/B 实测每帧 submit CPU −0.26 ms、fps +0.5（组合轮 +1.09），显示回归 PASS（各 90 帧 / 10 段 × 9 连续帧，段级指标一致，像素级差异落在同状态自然漂移带内）；APK ffrs-texel-20261122.apk SHA 2d60e8b4…，同签名覆盖安装、设备侧 texel memo=0。**40 Hz 尚未达成**：兵工厂冷机 36.0–37.7 fps、热机 29 fps（第 1 章探索区已达 60 fps 呈现上限）；平板屏幕 90 Hz，兵工厂远低于刷新率上限 ⇒ 纯 CPU/GPU 瓶颈。下一步入口见 MAVIS-PERF-TEXEL-20261122.md §8
 总控：Antigravity 本轮接管
 更新方式：按事件更新，没有后台自动刷新。
@@ -289,7 +289,7 @@
 | MAVIS-BATTLE-VALIDATION-20261122 | RELEASE_PERF_ATTRIBUTION | passed_battle_effects_scene_c_partial | Mavis | 无 | 无额外门禁 | task/T-mavis-perf-20261122 |
 | MAVIS-P0-DESCRIPTOR-20261122 | PERF_P0_DESCRIPTOR | implemented_and_falsified_by_device_ab_neutral_no_perf_gain | Mavis | 无 | 无额外门禁 | task/T-mavis-perf-20261122 |
 | MAVIS-PERF-TEXEL-20261122 | PERF_FRAMEPACE_1 | implemented_measured_gain_display_regression_pass_40hz_not_yet_reached | Mavis | 无 | 无额外门禁 | task/T-mavis-perf-20261122 |
-| MAVIS-PERF-V2-TEXELPOOL-20261123 | PERF_FRAMEPACE_1 | negative_result_probe_branched_off_no_new_shipped_version | Mavis | MAVIS-PERF-TEXEL-20261122 | 无额外门禁 | task/T-mavis-perf-20261122 (probe: task/T-mavis-perf-20261122-v2probe) |
+| MAVIS-PERF-V2-TEXELPOOL-20261123 | PERF_FRAMEPACE_1 | negative_results_documented_two_probes_branched_off_no_new_shipped_version | Mavis | MAVIS-PERF-TEXEL-20261122 | 无额外门禁 | task/T-mavis-perf-20261122 (probe: task/T-mavis-perf-20261122-v2probe) |
 
 ## 独占写入
 

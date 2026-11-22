@@ -691,3 +691,19 @@ BUTTON_A=0、BUTTON_B=1、BUTTON_X=2、BUTTON_Y=3、L1/R1/L2/R2、START/SELECT�
 
 **出处**：MAVIS-PERF-V2-TEXELPOOL-20261123.md §4、§5。
 
+### L-052 keydiff 普查比的是"相邻两次同 shader 的键"，不是"memo 未命中的键"（2026-11-23）
+
+**现象**：上一轮报告里 `keydiff tex=154/帧` 被读成"很多 draw 的纹理句柄每帧在变 ⇒ memo 键不稳 ⇒ 必然 miss"，
+于是把"memo 键的 tex 分量换成稳定纹理 id"列为下一版第一枪。
+实机把它做成运行时开关做交错 A/B，结果 **memo_hits 405.1 vs 405.0、重建数一模一样、帧率零变化**。
+
+**真相**：`keydiff` 普查比较的是"**同一 shader 相邻两次的键**"（诊断"这次绑定和上次哪里不一样"），
+**不是**"这次查找与 memo 里存的那个键差在哪"（后者是 `memo_misses` / `vwhy_*` 的职责）。
+两者含义不同，不能拿前者推断未命中的原因。
+
+**正确做法**：判断 memo 为什么未命中，只看 `memo_misses` / `memo_front` / `why=texel…` / `vwhy=…`
+这几组计数；`keydiff` 只用于回答"这两次绑定内容变了没有"。
+**任何基于 keydiff 的优化设想，先做一次运行时开关 A/B 证伪，再写进下一版计划。**
+
+**出处**：MAVIS-PERF-V2-TEXELPOOL-20261123.md §8。
+
