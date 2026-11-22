@@ -1,0 +1,210 @@
+---
+title: MAVIS-PERF-V4-AFFINITY-20261123
+type: perf-result
+round: 5
+date: 2026-11-23
+device: A42BBB5109000333 (Honor ROD2-W69 / SM8635 / Adreno 735)
+branch: task/T-mavis-perf-20261123-v4affinity (ship), task/T-mavis-perf-20261122 (delivered)
+verdict: SHIPPED as version 2
+---
+
+# 第 5 轮：把渲染线程钉在超大核（实机 +38% 帧率）
+
+## 1. 本轮目标
+
+上一轮（第 3/4 轮）把 texel 方向连续证伪两次后（L-029 止损），剩下的唯一大杠杆是
+**CPU 调度层**：掉速时所有子域等比放大 1.75x，是"CPU 整体变慢"的特征。本轮要回答：
+
+1. 帧率掉速的**真因**是什么（排除热降频、排除抢占）？
+2. 能不能在**不改变任何特效与显示**的前提下把它修好？
+3. 修好后兵工厂深处能不能稳住 **40 Hz 以上**？
+
+## 2. 定位过程：先钉"谁在干活"，再看"跑在哪"
+
+### 2.1 线程级归属（决定性）
+
+用 /proc/<pid>/task/<tid>/stat 的第 39 字段（最后执行核）和第 14/15 字段（utime+stime）
+逐线程采样（10 秒窗口，jiffies 增量）：
+
+| 线程 | jiffies/10s | 占比 |
+|---|---|---|
+| `dm-gfx`（图形翻译线程） | **+811 ~ +918** | **约 90~100% 单核** |
+| `ffrs.gamewindow`（主线程） | +43 ~ +50 | 约 5% |
+| `ffrs-guest` x 2 | +0（恒定 33 / 15） | 约 0% |
+
+=> 进程内几乎所有工作都在 `dm-gfx` 一个线程上。**帧率 = 1000 / dm-gfx 的每帧 CPU 时间**。
+（L-067 当时写的是"游戏主线程在 cpu3~6 迁移"，主线程其实只有 5%——**该归因在第 6 节显式撤回**。）
+
+### 2.2 核拓扑（实测，不是推测）
+
+/sys/devices/system/cpu/cpuN/cpufreq/cpuinfo_max_freq：
+
+| CPU | 档位 | max | 常态 cur |
+|---|---|---|---|
+| cpu0~2 | Cortex-A520 | 2.016 GHz | 1.709 GHz |
+| cpu3~6 | Cortex-A720 | 2.803 GHz | 2.707 GHz |
+| **cpu7** | **Cortex-X4（超大核）** | **3.014 GHz** | 0.63~3.01 GHz |
+
+### 2.3 核掩码：真正的根因
+
+逐线程读 Cpus_allowed_list（/proc/<pid>/task/<tid>/status）：
+
+```
+dm-gfx                = 0-6      <- 只有它被排除超大核
+ffrs.gamewindow       = 0-7
+ffrs-guest            = 0-7
+RenderThread / GameThread / hwuiTask0 / SurfaceSyncGrou / ...（共 40+ 线程）= 0-7
+```
+
+**全应用 40+ 个线程里，只有 `dm-gfx` 一个被限制成 0-6**，也就是**被排除在 Cortex-X4 之外**。
+这解释了"所有子域等比变慢"：翻译线程被挪到了 IPC 明显更低的 A720 核上，
+1.6x 的每帧 CPU 时间正好对应 X4 与 A720 的 IPC+频率差距。
+
+### 2.4 收窄的时刻
+
+用引擎自己的窗口仪表记录每次的掩码（`NVN AB aff ... mask=0x..`）：
+
+- 会话 A：present 61 时 mask=0xff -> present 2341 时 mask=0x7f
+- 会话 B：present 61 时 mask=0xff -> present 4681 时 mask=0x7f
+
+外部采样也正好卡住翻转点（同一会话、同一场景 draws=602）：
+
+| 时刻 | mask | dm-gfx 所在核 | fps | submit_cpu_ms |
+|---|---|---|---|---|
+| 进入深处 | 0-7 | **cpu7** | **45.86** | **15.42** |
+| 约 12 s 后 | 0-6 | cpu6 | **33.58** | **24.85** |
+
+**同一份工作量（draws=602、ops/draws 不变），仅因为线程所在核不同，每帧 CPU 时间差 1.6x。**
+这也终于解释了上一轮记下的怪现象："进入位置后约 20 秒帧率从 40+ 掉到 26~30 并保持"——
+掉速的**时刻**就是掩码被收窄的时刻。
+
+### 2.5 谁收窄的
+
+排查过并**排除**：
+
+- 本仓源码：无任何 sched_setaffinity / pthread_setaffinity_np 调用（src/ 全量搜索）；
+- 客机 NSO：nn::os::SetThreadCoreMask 由 typed HLE 接管为**空实现**
+  （nso_host_set_thread_core_mask 是 stub，不改掩码）；
+- 客机导入解析是**严格白名单**（nso_call.c:resolve_import），sched_setaffinity 不在其中，
+  客机拿不到这个符号；
+- cgroup：进程在 cpuset:/vip，但同一 cgroup 下其它线程都是 0-7 => 不是 cpuset 收窄；
+- 热降频：dumpsys thermalservice Thermal Status=0、电池 21 C、CPU 热区 52~65 C。
+
+=> 收窄来自**系统侧**（厂商调度策略），不是本仓代码、不是客机、不是 cgroup、不是温度。
+这条不重要——**关键是它只发生一次，不是每帧**，因此可以被"抢回"。
+
+## 3. 实现（只改线程落在哪个核）
+
+src/graphics/nvn_vulkan/engine/xbg_game.cpp，新增一个自包含的亲和性区块：
+
+1. **拓扑识别**：读 cpuinfo_max_freq，取最快核为 prime，并算出次高档为 big cluster。
+2. **异构闸门**：**只有存在两个不同频率档时才绑**（prime > second）。
+   同构设备（例如最终目标 RG477M 这类全同构 SoC）不绑，保持系统调度，避免白白占死一个核。
+3. **启动即绑**：gfx_worker_loop() 里 dm-gfx 线程启动后 sched_setaffinity 到 prime 单核。
+4. **每帧复查**：perf_frame()（每帧）与提交路径末尾各复查一次掩码，被收窄就抢回；
+   一帧一次 sched_getaffinity（约 1 us，相对 16 ms 的帧可忽略）。
+5. **失败回退**：sched_setaffinity 失败就放弃绑核，保持系统调度。
+6. **诊断开关**：live-set gfxaffinity=prime|big|off（默认 prime），并新增引擎侧分臂累计
+   （NVN AB aff），模式切换时**重置测量窗口**，保证窗口不跨臂。
+
+**渲染路径零改动**：git diff 只有 1 行被改写（提交路径追加一次掩码复查）+ 152 行新增；
+不碰绘制、不碰 fence、不碰节拍、不碰游戏状态、不碰任何贴图/着色器。
+
+## 4. 实机 A/B（同会话、同场景、引擎侧分臂累计）
+
+场景：第 4 章兵工厂深处（draws=602，同一存档同一位置）。
+方法：进程内交错切臂（每臂 6 s），引擎自己按臂累计帧数与墙钟，窗口不跨臂。
+
+| 臂 | 掩码 | fps（逐窗） | submit_cpu_ms（逐窗） |
+|---|---|---|---|
+| **big**（cpu3~6，A720） | 0x78 | **33.2 ~ 34.4** | 24.3 ~ 25.8 |
+| **prime**（cpu7，X4） | 0x80 | **43.3 ~ 48.5** | 15.5 ~ 16.2 |
+
+**+38% 帧率、每帧 CPU 时间 -38%**，远超 L-029 的噪声阈值（跨进程噪声 +-3.5 fps）。
+逐臂样本（6 轮交错，fps）：big 33.35 / 34.07 / 33.46 / 34.15 / 33.99 / 34.41，
+prime 48.54 / 47.99 / 43.30 / 46.44 / 45.04 / 47.73。
+
+引擎侧分臂累计（NVN AB aff）同样给出：mode=2（big）fps 33.75，mode=1（prime）深区窗口 fps 43~48。
+
+## 5. 持续压测与热/频证据
+
+prime 模式连续跑 2 分钟以上（兵工厂深处，draws=602）：
+
+- fps **43.8 ~ 48.7**，无衰减趋势；
+- 掩码**恒为 0x80**、reassert=1（只在切臂那一次发生）=> 系统不是每帧收窄，抢回是稳的；
+- cpu7 实际运行频率 **2.46 ~ 3.01 GHz**（多数时间顶到 3.014 GHz 上限），**无热降频**；
+- 热区读数 52~65 C，与绑核前同量级。
+
+标题画面（draws=39）全程 59.6~59.9 fps，绑核后同样稳。
+
+## 6. 对上一轮归因的显式撤回
+
+L-067 写的是"**游戏主线程** ffrs.gamewindow 在 cpu3~6 之间来回迁移"。
+本轮线程级采样证明：主线程只占约 5%，真正吃满单核的是 dm-gfx；
+主线程的迁移与帧率掉速**没有因果关系**。掉速的真实机制是
+**dm-gfx 的核掩码被系统从 0xFF 收窄到 0x7F（被排除在超大核之外）**。
+L-067 的"所有子域等比放大 = CPU 整体变慢"这一判读法仍然成立且是本次定位的入口，
+但"主线程迁移"这一具体归因在此撤回。
+
+## 7. 出货决策与产物
+
+- **按 L-029 出货第 2 版**：收益 +38%，远大于测量噪声。
+- 代码：357d653（分支 task/T-mavis-perf-20261123-v4affinity，src 与已出货第 1 版 caa0cff 的
+  src 逐字节一致，只多了本轮亲和性代码）。
+- 包：ffrs-v4-affinity-20261123.apk，
+  sha256 33e12d335e673ca9e318cef408d88e65e58e3efb8e14432b118437e00652a8d4。
+- 构建命令：
+  cd .local/worktrees/mavis-perf-v4-20261123 && FFRS_APK_NAME=ffrs-v4-affinity-20261123.apk bash scripts/android/build_game_window_apk.sh
+- 上一版 ffrs-texel-20261122.apk（sha256 2d60e8b4...）仍是可回退基线。
+
+## 8. 风险与可移植性
+
+| 风险 | 处置 |
+|---|---|
+| 同构设备上白绑一个核 | 异构闸门：只有 >=2 个频率档才绑（heterogeneous=1 才生效） |
+| 绑核失败 | sched_setaffinity 失败即回退系统调度 |
+| 超大核长时间满载过热 | 实测 cpu7 2.46~3.01 GHz、热区 52~65 C，无降频 |
+| 系统再次收窄掩码 | 每帧复查并抢回（实测 reassert 只发生一次） |
+| 影响其它线程/系统 | 只改 dm-gfx 自身掩码，其它线程与 cgroup 不变 |
+| RG477M（最终目标）行为未实测 | 代码按拓扑自适应；未在 RG477M 上验证，合入前必须补双机回归 |
+
+## 9. 仍未完成（合入 work/rg477m-native 的前提未变）
+
+- 战斗特效场景复测；
+- 场景B（月夜火场）复测；
+- RG477M 双机回归；
+- 兵工厂深处虽然已到 45~48 fps（>40），但"所有场景都 40 Hz 以上"仍需上述场景逐一验证。
+
+## 10. 附录：关键日志行
+
+```
+NVN AFFINITY topology prime_cpu=7 prime_mask=0x80 big_mask=0x78 prime_khz=3014400 second_khz=2803200 heterogeneous=1
+NVN AFFINITY mode=1 mask=0x80 ok=1 current=0x80
+NVN AB aff v=1 present=8971 mode=1 frames=6720 fps=49.32 submit_ms=9.08 gpu_ms=11.58 mask=0x80 want=0x80 reassert=1
+NVN AB aff v=1 present=8521 mode=2 frames=1620 fps=33.75 submit_ms=25.13 gpu_ms=15.52 mask=0x78 want=0x78 reassert=1
+```
+
+外部采样（同一脚本）：
+
+```
+[03:37:25] arm=big   fps=33.35 draws=602.0 submit=25.20 mask=3-6@5
+[03:37:35] arm=prime fps=48.54 draws=601.8 submit=15.46 mask=7@7
+[03:39:29] fps=48.67 submit=15.53 gpu=14.45 c7=2668800 mask=7@7
+```
+
+## 11. 显示回归（引擎侧帧 dump）
+
+用引擎自己的帧导出通道（files/gfx-live-framedump，写 9 则导出接下来 9 个**已呈现帧**）
+在兵工厂深处采集，出货配置（prime 臂）：
+
+- 共 **141 帧 / 10 轮导出**，呈现号 17223..21008，**段内连续**（连续呈现对 125），
+  满足项目判据 ">=90 帧 = 10 段 x 9 连续呈现帧"；
+- **无近黑帧**：nearblack 占比最大 0.1127（场景暗部像素，不是整帧近黑）；
+- 段级指标稳定：mean 61.4~75.5、lap 735.8~798.4、nearwhite <= 0.0034；
+- 同一场景第二次采集 60 帧 / 6 段 >=9 连续呈现帧，mean 75.0~75.3、lap 738.7~749.0，
+  落在上一次的指标带内。
+
+**限制（不夸大）**：本轮想再采一份 big 臂做同场景对照，采集到一半**用户把平板拿回去看红果**，
+游戏进程被系统结束，big 臂采集未完成；因此显示回归覆盖的是**出货配置（prime）**，
+没有 big 臂的像素级对照。"画面不受影响"的主要依据仍是：
+代码 diff 不触碰任何渲染路径（1 行改写 + 152 行新增，全在亲和性与仪表里）。

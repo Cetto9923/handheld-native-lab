@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-11-23T02:05:00+08:00",
-  "phase": "P0 descriptor 路径轮：descriptor 子项耗时分解已用引擎自带明细 profiler 取到（兵工厂场景，60 帧，coverage=OK，descriptor 7.05 ms/帧）；P0 第一版「descriptor memo 覆盖 compute dispatch」已实现、构建、装机并实机交错 A/B —— **收益≈0 被证伪**（compute 每帧仅 1 次命中；163/165 dispatch 因 texel 绑定无法进 memo）；同时定位到 draw 侧 177 次/帧整表重建由 tex 句柄变化驱动，是 descriptor 路径真正的大头；descriptor 契约测试的既有漂移已修复（此前该守卫等于没在跑）；下一步 P0 入口见 MAVIS-P0-DESCRIPTOR-20261122.md §8。**同场景 desccompute ON/OFF 显示回归已 PASS**（ON 180 帧 / 20 段、OFF 171 帧 / 19 段，段内 9 帧严格连续，段级指标一致，像素级差异落在同状态自然漂移带内）⇒ 该开关既不改画面也不提速，是零风险零收益的中性开关。**帧率优化第 1 版已出货**：关闭 texel 驻留副本与逐帧 texel-view memo（默认改 false，标记反转为 opt-in 的 gfx-texel-memo=1），交错配对 A/B 实测每帧 submit CPU −0.26 ms、fps +0.5（组合轮 +1.09），显示回归 PASS（各 90 帧 / 10 段 × 9 连续帧，段级指标一致，像素级差异落在同状态自然漂移带内）；APK ffrs-texel-20261122.apk SHA 2d60e8b4…，同签名覆盖安装、设备侧 texel memo=0。**40 Hz 尚未达成**：兵工厂冷机 36.0–37.7 fps、热机 29 fps（第 1 章探索区已达 60 fps 呈现上限）；平板屏幕 90 Hz，兵工厂远低于刷新率上限 ⇒ 纯 CPU/GPU 瓶颈。下一步入口见 MAVIS-PERF-TEXEL-20261122.md §8",
+  "updated_at": "2026-11-23T03:50:00+08:00",
+  "phase": "P0 descriptor 路径轮：descriptor 子项耗时分解已用引擎自带明细 profiler 取到（兵工厂场景，60 帧，coverage=OK，descriptor 7.05 ms/帧）；P0 第一版「descriptor memo 覆盖 compute dispatch」已实现、构建、装机并实机交错 A/B —— **收益≈0 被证伪**（compute 每帧仅 1 次命中；163/165 dispatch 因 texel 绑定无法进 memo）；同时定位到 draw 侧 177 次/帧整表重建由 tex 句柄变化驱动，是 descriptor 路径真正的大头；descriptor 契约测试的既有漂移已修复（此前该守卫等于没在跑）；下一步 P0 入口见 MAVIS-P0-DESCRIPTOR-20261122.md §8。**同场景 desccompute ON/OFF 显示回归已 PASS**（ON 180 帧 / 20 段、OFF 171 帧 / 19 段，段内 9 帧严格连续，段级指标一致，像素级差异落在同状态自然漂移带内）⇒ 该开关既不改画面也不提速，是零风险零收益的中性开关。**帧率优化第 1 版已出货**：关闭 texel 驻留副本与逐帧 texel-view memo（默认改 false，标记反转为 opt-in 的 gfx-texel-memo=1），交错配对 A/B 实测每帧 submit CPU −0.26 ms、fps +0.5（组合轮 +1.09），显示回归 PASS（各 90 帧 / 10 段 × 9 连续帧，段级指标一致，像素级差异落在同状态自然漂移带内）；APK ffrs-texel-20261122.apk SHA 2d60e8b4…，同签名覆盖安装、设备侧 texel memo=0。**40 Hz 尚未达成**：兵工厂冷机 36.0–37.7 fps、热机 29 fps（第 1 章探索区已达 60 fps 呈现上限）；平板屏幕 90 Hz，兵工厂远低于刷新率上限 ⇒ 纯 CPU/GPU 瓶颈。下一步入口见 MAVIS-PERF-TEXEL-20261122.md §8\n\n**第 5 轮（V4 亲和性）已出货第 2 版**：掉速真因定位到「图形翻译线程 dm-gfx 的核掩码被系统从 0xFF 收窄成 0x7F（被排除在 Cortex-X4 之外），全应用 40+ 线程里只有它一个被限制成 0-6」，与热降频/抢占/cgroup/客机全部无关。改法是把 dm-gfx 按 cpufreq 拓扑绑到最快核并每帧复查抢回（异构闸门：同构设备不绑），渲染路径零改动。实机同会话交错 A/B（引擎侧分臂累计）：big 掩码 0x78 fps 33.2~34.4 / submit_cpu 24.3~25.8 ms，prime 掩码 0x80 fps 43.3~48.5 / submit_cpu 15.5~16.2 ms ⇒ +38% 帧率、每帧 CPU -38%；持续压测 2 分钟以上 fps 43.8~48.7、掩码恒 0x80、cpu7 实跑 2.46~3.01 GHz 无降频。APK ffrs-v4-affinity-20261123.apk SHA 33e12d33…。详见 MAVIS-PERF-V4-AFFINITY-20261123.md。**仍未达成『所有场景 40 Hz』**：战斗特效场景复测 / 场景B（月夜火场）/ RG477M 双机回归三项前提未完成。",
   "coordinator": "Antigravity 本轮接管",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
@@ -12468,6 +12468,81 @@
       "owner": "Mavis",
       "branch": "task/T-mavis-perf-20261122 (probe: task/T-mavis-perf-20261122-v2probe)",
       "notes": "See coordination/results/MAVIS-PERF-V2-TEXELPOOL-20261123.md for the full instrument map, the switch sweep and the probe design. Experience entries L-048..L-051."
+    },
+    {
+      "id": "MAVIS-PERF-V3-TEXELKEY-20261123",
+      "role": "PERF_FRAMEPACE_1",
+      "objective": "Round 3 of the Honor GT Pro frame-rate work: split the descriptor-memo exclusion reason by texel kind, build the texel pooling plus a stable memo key plus a same-submission refresh gate (the combination the previous two rounds never tested together), and make the measurement survive short foreground windows by accumulating per arm inside the engine",
+      "inputs": [
+        "coordination/HANDOFF.md",
+        "coordination/EXPERIENCE.md",
+        "coordination/state.json",
+        "coordination/results/MAVIS-PERF-V2-TEXELPOOL-20261123.md"
+      ],
+      "outputs": [
+        "coordination/results/MAVIS-PERF-V3-TEXELKEY-20261123.md",
+        "coordination/EXPERIENCE.md",
+        "coordination/state.json",
+        "coordination/HANDOFF.md",
+        "coordination/STATUS.md"
+      ],
+      "dependencies": [
+        "MAVIS-PERF-V2-TEXELPOOL-20261123"
+      ],
+      "pass_gates": [],
+      "status": "probe_crash_root_caused_and_fixed_v3_measured_net_negative_no_new_shipped_version_next_lever_is_cpu_scheduling",
+      "write_scope": [
+        "coordination/results/MAVIS-PERF-V3-TEXELKEY-20261123.md",
+        "coordination/EXPERIENCE.md",
+        "coordination/state.json",
+        "coordination/HANDOFF.md",
+        "coordination/STATUS.md",
+        "src/graphics/nvn_vulkan/engine/xbg_game.cpp (branch task/T-mavis-perf-20261122-v3probe only)"
+      ],
+      "acceptance": "A measured answer with the device as the judge: the texel exclusion reason split by kind, the pooling+stable-key+fast-refresh combination measured against the shipped behaviour inside the foundry scene with the engine accumulating per arm, and either a shipped version with a real gain and a passing display regression or a documented rejection; the device left on a known build and the delivered branch left clean",
+      "checkpoint": "No new version shipped this round; V3 is REJECTED under L-029 with a measured net loss. What the round added: (1) the scene was finally entered - the tablet was idle, the split-screen floating window over the game was hidden, and key events turned out to be swallowed by the foreground app, so the game's own on-screen buttons are now tapped by coordinate (L-059); the Chapter 4 foundry is reached through the Load Game route, not Continue, which crashes (L-060); the foundry has two load levels - the entrance at draws=140 running 60 fps with a cold texel path (unif=0, useless for this comparison) and the deep area at draws~602 running 27-44 fps with unif=385/frame, which is the measurement point (L-061). (2) The V3 probe's own crash was root-caused and fixed: an arm bisect over arm0/4/5/6/7 with one cold boot each pinned the crash to texelkey=1 alone (arm6 and arm7 die three seconds into the load, arm0/4/5 reach the scene), and code review found the cause in the new diagnostic counter texel_key_census - it wrote through the end() iterator of an empty unordered_map lookup, undefined behaviour that corrupts the map's internals (L-066, commit f61515f, fixed package ffrs-v3-fix-20261123.apk sha 6328a699...). After the fix the same process survived 14 consecutive 6-second arm switches with no crash, which also shows the earlier 'hot switching crashes' report (L-063) was the same heap corruption detonating late, not a pool teardown bug. (3) V3 measured net negative with two independent methods at the same spot (draws 601.9): process-separated ABBA (arm7/arm0/arm0/arm7) gives fps 40.15 vs 43.64 (-3.49) and submit CPU +2.39 ms/frame; in-process 6-second interleaving (same process, same thermal state) gives fps 28.58 vs 30.37 (-1.79) and submit CPU +1.64 ms/frame. The mechanism does work - uniform texel exclusion 385 -> 131 per frame, set-cache misses 415 -> 337, descriptor build 6.12 -> 5.00 ms/frame - but it is cancelled: memo misses rise 1.0 -> 80.3 per frame, because letting a texel binding join the memo only gives it a ticket into the pool while the other key components (UBO addresses) still change every frame, so it misses instead of hitting; plus the hit path costs +0.92 ms/frame and the key path +0.53 ms/frame (mostly the new diagnostic census, which a shipped build would not have). (4) Two previous conclusions were corrected: the earlier 'mechanism confirmed' sample (texel exclusion 423 -> 0, build 7.6 -> 0.24 ms/frame) only holds in the scene-transition window - steady state in the foundry is about a third of that; and the old 'hot 24.6-33.5 fps / cold 36.8-43 fps' pair is half explained by device state - the frame rate drops from 40+ to 26-30 about 20 s after reaching the position and stays there, in BOTH arms at the same window index. (5) A new lever, bigger than all the descriptor micro-optimisation put together: the main game thread migrates between cpu3-cpu6 (measured from /proc/<pid>/task/<tid>/stat) while per-core frequencies jump (cpu0 1.0-1.7 GHz, cpu3 2.7 GHz, cpu7 0.63-3.0 GHz) and dumpsys thermalservice reports Thermal Status 0 at 21 C, so this is scheduling, not thermal throttling; when the frame rate drops every sub-domain scales up by the same ~1.75x, the signature of the CPU as a whole getting slower. The code only raises priority (setpriority(PRIO_PROCESS,0,-10) at xbg_game.cpp:163) and never pins a core. Pinning the render thread to the big cores, or requesting a performance mode, changes no rendering semantics and is the only lever seen so far that could hold 40 Hz. Probe package ffrs-v3-fix-20261123.apk (sha 6328a699...) was installed for the measurement; the delivered branch task/T-mavis-perf-20261122 stays at caa0cff with a clean tree and the probe (with the crash fix) is NOT merged into work/rg477m-native. Measurement method is now fixed to in-process time interleaving because process-separated comparisons are polluted by device scheduling state (+/-3.5 fps at the same spot). Still short of 'all scenes at 40 Hz': the shipped build runs 40-44 fps cold and 26-30 fps hot at the foundry deep area. Still open: battle-effect scene re-test, scene B (moonlit fire scene), RG477M dual-device regression. Experience entries L-053..L-067.",
+      "next": "DONE: the scheduling lever named here was taken up in the next round - MAVIS-PERF-V4-AFFINITY-20261123 - and it shipped as version 2 (+38% fps). Root cause: dm-gfx is the only thread in the process whose Cpus_allowed_list is 0-6, i.e. the system narrows it out of the Cortex-X4 after the heavy scene starts; pinning it to the fastest core recovers the lost third. The texel direction stays parked: if revived, the root cause to solve first is still that the other memo key components change every frame, so pooling can never convert an exclusion into a hit (V2 and V3 both measured net negative). Measurement rule unchanged: in-process interleaved A/B at a fixed scene position (deep area ~602 draws), never across processes. Gates before work/rg477m-native can take the branch are still: battle-effect scene re-test, scene B (moonlit fire scene), RG477M dual-device regression.",
+      "owner": "Mavis",
+      "branch": "task/T-mavis-perf-20261122 (probe: task/T-mavis-perf-20261122-v3probe)",
+      "notes": "See coordination/results/MAVIS-PERF-V3-TEXELKEY-20261123.md: section 3 (texel exclusion split), section 10 (scene-entry recipe, the crash root cause and its fix, the final net-negative A/B in two methods, and the CPU scheduling lever). Experience entries L-053..L-067."
+    },
+    {
+      "id": "MAVIS-PERF-V4-AFFINITY-20261123",
+      "role": "PERF_FRAMEPACE_1",
+      "objective": "Round 5 of the Honor GT Pro frame-rate work: find the real cause of the steady frame-rate drop in the Chapter 4 foundry deep area (all sub-domains scaled up by the same ~1.6x with an unchanged workload), and fix it without touching any rendering semantics, effects or display, so the foundry holds 40 Hz or better.",
+      "inputs": [
+        "coordination/HANDOFF.md",
+        "coordination/EXPERIENCE.md",
+        "coordination/state.json",
+        "coordination/results/MAVIS-PERF-V3-TEXELKEY-20261123.md"
+      ],
+      "outputs": [
+        "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+        "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md",
+        "coordination/EXPERIENCE.md",
+        "coordination/state.json",
+        "coordination/HANDOFF.md",
+        "coordination/STATUS.md"
+      ],
+      "dependencies": [
+        "MAVIS-PERF-V3-TEXELKEY-20261123"
+      ],
+      "pass_gates": [],
+      "status": "implemented_measured_gain_display_regression_pass_shipped_version_2_foundry_above_40hz",
+      "write_scope": [
+        "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+        "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md",
+        "coordination/EXPERIENCE.md",
+        "coordination/state.json",
+        "coordination/HANDOFF.md",
+        "coordination/STATUS.md"
+      ],
+      "acceptance": "The device decides: a measured, reproduced cause for the drop, a fix that changes no rendering semantics, an in-process interleaved A/B in the foundry deep area showing a gain clearly above the measurement noise, a sustained run showing no thermal or frequency collapse, and a display regression on the engine-side frame dump. The device is left on a known build and the delivered branch is left clean.",
+      "checkpoint": "Version 2 SHIPPED under L-029 (gain +38%, far above the +-3.5 fps noise). Root cause found: the engine graphics worker dm-gfx is the ONLY thread in the process whose Cpus_allowed_list is 0-6 (every other one of the 40+ threads is 0-7) - the system narrows it out of the Cortex-X4 (cpu7, 3.014 GHz) a few seconds into the heavy scene, leaving it on the Cortex-A720 cores (cpu3-6, 2.803 GHz). The same workload (draws=602, ops/draws unchanged) then costs submit_cpu_ms 15.4 -> 24.9-27.2 and fps 45.9 -> 33.3. This finally explains the old mystery of \"the frame rate drops from 40+ to 26-30 about 20 s after reaching the position and stays there\": the drop IS the moment the mask is narrowed. Ruled out with evidence: thermal throttling (Thermal Status 0, battery 21 C, CPU zones 52-65 C), other processes pre-empting the CPU, the cgroup (the process is in cpuset:/vip but every other thread there is 0-7), this repository (no sched_setaffinity anywhere in src/) and the guest (its import resolution is a strict allowlist, so it cannot even reach sched_setaffinity, and nn::os::SetThreadCoreMask is bound to an empty HLE stub). Thread-level sampling also showed the earlier L-067 attribution to the main thread was wrong and it is withdrawn (L-069): ffrs.gamewindow only uses ~5% of a core while dm-gfx uses 90-100% of one. Fix: the worker pins itself to the fastest core detected from cpufreq at start and re-checks the mask every frame, taking it back if the system narrows it again; a heterogeneity gate keeps homogeneous devices on the system scheduler, and a failed sched_setaffinity falls back to the system placement. Rendering path untouched: the diff is 1 rewritten line plus 152 added lines, no draw, fence, pacing, texture or shader change. Measured in-process interleaved A/B in the foundry deep area with the engine accumulating per arm (windows never straddle an arm): big arm (mask 0x78, cpu3-6 A720) fps 33.2-34.4 with submit_cpu_ms 24.3-25.8, prime arm (mask 0x80, cpu7 X4) fps 43.3-48.5 with submit_cpu_ms 15.5-16.2. Sustained prime run of more than two minutes: fps 43.8-48.7 with no decay, mask constantly 0x80, reassert happening only on the arm switch, cpu7 actually running at 2.46-3.01 GHz and the thermal zones at 52-65 C (no collapse). Title screen stays at 59.6-59.9 fps. Artifacts: commit 357d653 on task/T-mavis-perf-20261123-v4affinity, package ffrs-v4-affinity-20261123.apk sha 33e12d335e673ca9e318cef408d88e65e58e3efb8e14432b118437e00652a8d4; version 1 (ffrs-texel-20261122.apk sha 2d60e8b4...) stays available as the rollback baseline. Display regression on the engine-side frame dump: 141 frames over 10 export rounds in the shipped (prime) configuration, presents 17223..21008 with 125 consecutive present pairs, no near-black frame (nearblack max 0.1127), segment metrics stable (mean 61.4-75.5, lap 735.8-798.4, nearwhite <= 0.0034); a second capture of the same scene gave 60 frames / 6 runs of >=9 consecutive presents with mean 75.0-75.3, inside the same band. Limit, not overclaimed: the matching big-arm capture did not complete because the tablet was taken back for another app and the game process ended mid-capture, so the display regression covers the shipped configuration only and there is no pixel-level big-arm comparison; the main evidence that the display is unaffected is that the code diff touches no render path at all. Still short of \"all scenes at 40 Hz\": the battle-effect scene re-test, scene B (moonlit fire scene) and the RG477M dual-device regression are still open, and the affinity behaviour on the RG477M itself is unverified because that device must not be operated. Experience entries L-068..L-075.",
+      "next": "1) Verify the remaining scenes with the shipped build: battle-effect scene and scene B (moonlit fire scene), and confirm each holds 40 Hz or better; the foundry deep area is now 45-48 fps. 2) Run the RG477M dual-device regression (the affinity gate is topology-driven and falls back on homogeneous devices, but the RG477M behaviour is unverified and that device must not be operated from here). 3) Then hand the branch to the coordinator for the serial integration into work/rg477m-native. 4) Keep the texel direction parked; if revived, first fix the root cause that the other memo key components change every frame (V2 and V3 both measured net negative). 5) Measurement rule unchanged: in-process interleaved A/B at a fixed scene position (foundry deep area, draws ~602), never across processes.",
+      "owner": "Mavis",
+      "branch": "task/T-mavis-perf-20261122 (work branch: task/T-mavis-perf-20261123-v4affinity)",
+      "notes": "See coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md: section 2 (thread-level attribution, topology, the mask narrowing and who did NOT do it), section 3 (the fix and the heterogeneity gate), section 4 (the interleaved A/B), section 5 (the sustained run, cpu7 frequency and thermals), section 6 (the explicit withdrawal of the L-067 main-thread attribution). Experience entries L-068..L-075."
     }
   ],
   "blockers": [
