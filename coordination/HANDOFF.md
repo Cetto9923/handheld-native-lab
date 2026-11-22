@@ -6711,4 +6711,36 @@ OP_BIND_STATE 0.10 / OP_BARRIER 0.10 ⇒ **两条命令吃掉 13.8 ms/帧**。
   尖峰要看规模与耗时是否成比例。
 - 设备：**已装回已出货的第 2 版** `ffrs-v4-affinity-20261123.apk`；
   live-set `gfxaffinity=prime`；无残留 marker；游戏进程已停止；**红果在前台**。
+## 第 13 轮（V11，**诊断轮，未出货**）：OP_DRAW_IDX 拆开 —— 68% 的索引绘制走 CPU 回退，每帧白付 1.63 ms 的 O(n) 查找 (2026-11-23)
+
+第 12 轮把第一靶定在 `OP_DRAW_IDX` 的 16.04 µs/次；第 13 轮把它拆到**调用分支**层。报告 §21.1~§21.8。**本轮没出货。**
+
+**① 干净窗口**：兵工厂 `shield-regression-20261118094001`，`gfx-cpu-profile 0 60 0`，60 连续帧 frames 3332–3391。
+wall **25.44 ms/帧（39.3 fps）**、measured **22.603 ms/帧**、uncovered 2.838 ms/帧、draws 40,975。
+**34 个域独占求和 = 22.603 ms/帧，与 measured 差 0.00%**（归属树无泄漏）；
+本窗口 61,168 次 scope 进入/帧，引擎独立计时 `submit_cpu_ms=21.18` ⇒ **插桩开销 1.42 ms/帧（23 ns/次）**。
+
+**② 第一靶拆开**：`op26` 680.9 次/帧 × 16.04 µs = 10.919 ms/帧；
+`execute_draw_index_record` 含时 11.050 → `gpu_draw_indexed` **3.327**（自身独占 2.42 µs/次）+ CPU 回退 **7.473（68.4%）**。
+引擎计数器 `NVN GPU indexed resident issued` 实测**约 110 次/帧** ⇒ **约 84% 的索引绘制根本没走 GPU 快路径**；
+两侧 draw() 单位成本同量级（15.0 vs 12.8 µs/次）⇒ 快路径没让 draw 变便宜。
+
+**③ 新靶点 A**：`find_indirect_template`（`xbg_game.cpp:1051`）对 `pending_writebacks`（实测 **294 条**）做全量线性扫描，
+692 次/帧 × 294 = **203,517 次区间检查/帧** ≈ **1.63~1.67 ms/帧（submit CPU 的 7.8%）**，
+且扫描日志 `had_overlap=0` ⇒ 注定一无所获。失败原因几乎全在「找不到 indirect 模板」（240 条；prim/itype/ibuf/avail/keep_owned 从未出现）。
+改成 O(1) 早退 / 索引是**零渲染语义风险**的纯查询优化 ⇒ 下一轮首选。
+
+**④ poll_retire / cleanup 尖峰**：poll_retire 单次峰值 **8.684 ms**、cleanup 单次峰值 **7.926 ms** ⇒ 第 12 轮判断**被独立复现**；
+cleanup 每帧独占 1.640 ms/帧（views 0.87 / writebacks 0.67 / queries 0.06 / retire 0.16 / arena_pools 0.17）。
+**L-032 红线：只诊断不动手。**
+
+**⑤ 下一步（V12）**：先定价再动手 —— 给 `find_indirect_template` 单独计时 + 统计扫描长度与返回原因分布，
+并给 `pending_writebacks` 长度加每帧计数（确认 294 是稳态还是渐涨）；定价确认 ≥1.0 ms/帧 再做 O(1) 早退的 A/B。
+
+- **经验库新增 L-111 ~ L-115**：插桩开销要先与引擎独立计时对账 / 归属树要自洽校验 /
+  一次性采样入口会残留文件被下次启动误消费 / 判断路径有没有被走到要读引擎自己的计数器 /
+  高频调用上的 O(n) 查找要先量 n 与 k。
+- 设备：**已装回已出货的第 2 版** `ffrs-v4-affinity-20261123.apk`（sha256 `33e12d33…`）；
+  live-set `gfxaffinity=prime`；无残留 marker（含设备上的 `gfx-cpu-profile` 已删）；游戏进程已停止；**红果在前台**。
+
 

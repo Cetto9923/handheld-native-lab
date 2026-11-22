@@ -300,7 +300,7 @@
 | MAVIS-PERF-V8-SNAPDESC-20261123 | PERF_FRAMEPACE_1 | diagnostic_round_no_version_shipped_three_hypotheses_refuted_vcache_net_zero_snapinval_premise_misread_imgcache_persist_below_noise_descriptor_domain_confirmed_at_48_to_49_percent_of_submit_cpu | Mavis | MAVIS-PERF-V7-TEXELMEMO-20261123 | 无额外门禁 | task/T-mavis-perf-20261122 |
 | MAVIS-PERF-V9-GPUPASS-20261123 | PERF_FRAMEPACE_1 | diagnostic_round_no_version_shipped_first_gpu_side_baseline_established_2ms_per_frame_gap_attribution_to_storage_writeback_path_EXPLICITLY_RETRECTED_in_round_10_see_section_18_1 | Mavis | MAVIS-PERF-V8-SNAPDESC-20261123 | 无额外门禁 | task/T-mavis-perf-20261122 |
 | MAVIS-PERF-V10-TEXELBAR-20261123 | PERF_FRAMEPACE_1 | diagnostic_round_no_version_shipped_round9_attribution_explicitly_retracted_narrow_barrier_measured_neutral_in_both_capped_and_uncapped_scenes_texel_pending_path_proven_free_by_marginal_cost_probe_first_uncapped_scene_measurement_recipe_found_real_bottleneck_is_dm_gfx_cpu_18_3ms_per_frame | Mavis | MAVIS-PERF-V9-GPUPASS-20261123 | 无额外门禁 | task/T-mavis-perf-20261122 |
-| MAVIS-PERF-V11-BINDSCOPE-20261123 | PERF_FRAMEPACE_1 | round12_v10_diagnostic_done_no_version_shipped_execute_split_to_command_level_primary_target_is_op_draw_idx_10_96ms_per_frame_round11_interpreter_wording_corrected | Mavis | MAVIS-PERF-V10-TEXELBAR-20261123 | 无额外门禁 | task/T-mavis-perf-20261122 |
+| MAVIS-PERF-V11-BINDSCOPE-20261123 | PERF_FRAMEPACE_1 | round13_v11_diagnostic_done_no_version_shipped_op_draw_idx_split_68pct_cpu_fallback_new_primary_target_find_indirect_template_linear_scan_294_entries_1_63ms_per_frame | Mavis | MAVIS-PERF-V10-TEXELBAR-20261123 | 无额外门禁 | task/T-mavis-perf-20261122 |
 
 ## 独占写入
 
