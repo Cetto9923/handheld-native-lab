@@ -1309,4 +1309,112 @@ snapshot_maps_reset / texel_copy_cache.reset / snapshot_maxlen / desc_memo_reset
   新任务卡 `MAVIS-PERF-V11-BINDSCOPE-20261123`。
 - 设备：仍装**已出货的第 2 版** `ffrs-v4-affinity-20261123.apk`；
   live-set `gfxaffinity=prime`；无残留 marker；**红果在前台**；游戏进程已停止。
+（§19.5 记录的是解剖完成时的状态；V9 诊断包的构建、装机、测量与还原过程见 §19.6~§19.11。）
+### 19.6 V9 诊断包与子域画像
+
+**V9 构建**：`ffrs-v9-bindscope-20261123.apk`
+sha256 `eac5d8c719c2e7c0f52028fc81c00fa9c82de846b449c69befb364cffd78185c`（**诊断用，未出货**）。
+
+**源码改动（纯计时，零渲染语义变更）**：
+- `xbg_cpu_timing.h`：枚举尾部**追加** 9 个子域（既有索引完全不变）：
+  `SubMaint / SubExec / SubSubmit / SubAff / SubPresPrep / SubPresSubmit / SubPace / SubSnapFast / SubSnapSlow`
+- `xbg_game.cpp`：
+  - 提交回调：`maintain_memory_pressure` + `performance_hint::begin_work` → SubMaint；
+    **`execute()` 循环 → SubExec**；`complete_all()` → SubSubmit；`gfx_aff_reassert()` → SubAff
+  - present 回调：`Commands` + transition + trace + finish → SubPresPrep；`submit_slots` → SubPresSubmit；
+    `xbg_frame_pace()` → SubPace
+  - `snapshot()` 与 `uniform_snapshot_cached()`：直映前端命中 → SubSnapFast，慢路径 → SubSnapSlow
+- 两处 `names[]` 数组同步扩展到 26 项（`timing_report` 与 PERF 逐帧行）
+- `CPU_SCOPE` 在非计时帧是空操作（`timing_now()` 为假 → recorder 为空 → 不读时钟）⇒ **零常态开销**
+
+**采样方式**：兵工厂场景（`shield-regression-20261118094001` + Continue），
+`gfx-cpu-profile = "0 60 0"`（**detail=0**，原因见 §19.9），60 连续帧。
+
+### 19.7 干净窗口的逐域账（detail=0，60 帧，first=1712 last=1771）
+
+wall **24.25 ms/帧**（41.2 fps；本轮设备热负载高于第 10 轮的 21.8 ms/帧），
+measured **17.91 ms/帧**，uncovered 6.34 ms/帧（根 scope 之外的来宾 CPU 时间，不在 dm-gfx 上）。
+
+| 域 | ms/帧 | 次/帧 | 单次峰值 |
+|---|---|---|---|
+| **sub_exec** | **4.212** | 8.6 | **10.12 ms** ★ |
+| **descriptor** | **4.608** | 1310 | 2.42 ms |
+| cleanup | 1.561 | 8.9 | 1.80 ms |
+| draw | 1.417 | 691 | 2.44 ms |
+| dispatch | 0.388 | 168 | 0.20 ms |
+| present | 0.299 | 1.0 | 0.53 ms |
+| image | 0.278 | 1824 | 2.41 ms |
+| pipeline | 0.179 | 196 | 0.04 ms |
+| pass | 0.207 | 711 | 0.04 ms |
+| program | 0.172 | 594 | 0.05 ms |
+| hash | 0.126 | 254 | 0.18 ms |
+| buffer | 0.126 | 1.1 | 1.62 ms |
+| cpuwrite | 0.120 | 406 | 0.20 ms |
+| log | 0.037 | 1.7 | 0.07 ms |
+| other（残余） | 0.139 | 9.7 | 10.13 ms |
+| sub_pres_prep | 0.022 | 1.0 | 0.03 ms |
+| sub_aff | 0.016 | 8.6 | 0.02 ms |
+| sub_maint | 0.008 | 8.6 | 0.17 ms |
+| sub_pres_submit | 0.001 | 1.0 | 0.01 ms |
+| sub_submit | 0.0004 | 8.6 | 0.2 µs |
+| **sub_pace** | **0.0002** | 1.0 | **0.6 µs** |
+| **sub_snap_fast** | **0.600** | 6277 | 0.05 ms |
+| **sub_snap_slow** | **2.570** | 2409 | **1.66 ms** |
+| snapshot（残余） | 0.813 | 6277 | 1.66 ms |
+
+### 19.8 三个结论
+
+**①「other 域 11.15 ms 的神秘峰值」= execute() 里的 NVN 命令流解释器开销（实测，非推测）**
+`other` 的残余只剩 **0.139 ms/帧**，其中 `sub_exec` 独占 **4.212 ms/帧**；
+`sub_exec` 的**单次峰值 10.12 ms** 与 `other` 的峰值 **10.13 ms** 逐条对应
+⇒ 前面 11 轮里一直看不见的那块，就是提交回调里 `execute()` 的**命令解释开销**：
+每次提交一次（8.6 次/帧）、均值 489 µs，**偶发一次 10 ms 的巨型提交**。
+它占整帧 measured CPU 的 **23.5%**，比整个 descriptor 域（4.61 ms）还接近
+⇒ **新的第一靶不是 descriptor，是 `sub_exec`。**
+
+**② snapshot 慢路径 2.57 ms/帧**：6277 次/帧里 **2409 次（38.4%）没命中直映前端**，
+每次走慢路径 1.07 µs（map 查找 + pending_view + cpu_access + `stream_buffer` 的 CPU memcpy）；
+前端命中只要 96 ns（相差 11 倍）⇒ **可攻的是慢路径的 38.4%**，前端本身不是。
+
+**③ 帧率节拍（`xbg_frame_pace`）不是成本**：单次峰值 **625 ns**
+⇒ 第 9~11 轮怀疑过的「在 dm-gfx 上等 vsync」不存在。
+
+### 19.9 撤回与修正：第 10 轮的「descriptor 7.52 ms/帧」是被测量工具虚增的
+
+第 10 轮用 `gfx-cpu-profile` 的 **detail=1** 模式读 descriptor 域，得到 **7.52 ms/帧**
+（第 1 章火场 7.05 ms/帧），并据此把「descriptor 域 8.67 ms/帧」写成下一轮入口。
+本轮改用 **detail=0**，**同一场景**读到 **4.61 ms/帧**。差值约 **3.0 ms/帧**。
+
+根因：`detail=1` 会打开 `XbgDescriptorTiming` 的 24 个子域，每个子域的构造与析构各调用一次
+`root->recorder->clock()`。引擎自报 `NVN DESC_TIMING v=2 ... clock_reads=3412856`
+= **56,881 次时钟读/帧**，全部落在 descriptor scope 内部 ⇒ **纯测量开销，不是真实成本**。
+
+⇒ **第 10 轮报告里的「descriptor 域 7.52 ms/帧（占 dm-gfx 47%）」这个数字作废**，
+改为 **4.61 ms/帧（占 measured 17.91 ms/帧 的 25.7%）**；
+第 10 轮据此写的「下一轮入口：descriptor 域 8.67 ms/帧」一并修正。
+⇒ 第 9~11 轮里「descriptor 是第一靶」的排序**由本条撤回**，第一靶改为 `sub_exec` 4.21 ms/帧。
+
+### 19.10 下一步（V10 诊断）：把 execute() 拆开 + 统计命令条数
+
+`sub_exec` 的 4.21 ms/帧 是「解释器自身」这一类（子 scope 之外的部分），下一步要回答三件事：
+1. **每帧有多少条 NVN 命令**（引擎目前没有这个计数）→ 才能给「每条命令多少 ns」定价；
+2. **命令头解码**（`command_available` + `memcpy(&h,pc,8)` + `payload<uint64_t>(p,n)`）
+   与 **switch 分派**各占多少；
+3. **10.12 ms 的单次峰值**属于哪一次提交、哪一类 op。
+
+实现方向（纯诊断，不改任何渲染语义）：
+- 在 `execute()` 的命令循环内加 `SubCmdDecode`（头解码 + payload 读取）与
+  `SubCmdDispatch`（switch 主体）两个子域，并**新增每帧 NVN 命令条数计数器**；
+- 复用引擎已有的 `cur_op` 与 `SiteScope`，在计时窗口内做**按 op 分类的耗时累计**，
+  用于定位 10 ms 级峰值；
+- 采样仍用兵工厂场景 + `detail=0`（绝对值），子域归因另用 `detail=1`（并扣除 clock_reads 开销）。
+
+### 19.11 产出与设备状态
+
+- V9 诊断包 **未出货**（纯计时改动，无收益可测）；设备已还原到**已出货的第 2 版**
+  `ffrs-v4-affinity-20261123.apk`（sha256 `33e12d33…`）。
+- `gfx-live-set` = `gfxaffinity=prime`；`gfx-cpu-profile` / `gfx-live-ab` / `gfx-pass-live` /
+  `gfx-live-framedump` 均已清理；游戏进程已停止；**红果在前台**。
+- 报告新增 §19.6~§19.11；经验库新增 L-107 / L-108；
+  任务卡 `MAVIS-PERF-V11-BINDSCOPE-20261123` 已更新。
 
