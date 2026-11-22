@@ -1115,3 +1115,40 @@ ops（操作数）上升、submit_cpu_ms 上升、gpu_ms 上升。
 
 **出处**：MAVIS-PERF-V4-AFFINITY-20261123.md 第 12.1 与 12.3 节。
 
+
+### L-079 一次性的 fps 下跌不能写成场景特性，必须复现 (2026-11-23)
+
+本轮教训：火场曾观测到一段 26 s 的 41.0~43.4 fps 窗口（submit 与 gpu 同时等比放大 ~25%），
+第一版结论直接把它写成"战斗特效峰值"。后续两次复现都失败：
+16 次 A 键连按 → 52.99~57.05 fps；150 s 无输入长采样 → 52.8~57.2 fps，全程无自发下跌。
+做法：**任何写进结论的"最紧一档"都要满足两条**——(1) 重复脚本能复现；
+(2) 无输入长采样排除自发事件与测量工具自身负载（adb 注入/截图会扰动）。
+判读辅助：submit_cpu 与 gpu **同时等比**放大约 25% = 整机变慢签名（后台负载/电源状态），
+不是该场景专属开销；只有某一侧单独放大才指向该路径。
+未复现的窗口可以写进报告（附证据），但不能作为场景的稳态下限。
+
+**出处**：MAVIS-PERF-V4-AFFINITY-20261123.md 第 12.1 与 12.3 节。
+
+### L-080 引擎自带 gfx-cpu-profile 入口：免改代码取描述符分阶段耗时 (2026-11-23)
+
+排查描述符路径不必改代码重编译：写文件 `files/gfx-cpu-profile`，内容格式
+`<起始 present> <帧数> <detail>`（detail=1 开描述符分阶段计时，帧数 ≤ 60），
+引擎每 30 个 present 轮询一次该文件，取完自删，日志里输出
+`NVN DESC_TIMING part=<分段> calls=… exclusive_ns=…`（21 个分段 + remaining + READBACK_SITE）。
+注意：插桩本身会让 fps 掉一截（实测 55→47，clock_reads 达 448 万次），所以**看占比不看绝对值**。
+
+**出处**：MAVIS-PERF-V4-AFFINITY-20261123.md 第 13 节。
+
+### L-081 火场描述符开销分布：set cache 实际已完全失效，texel 是 memo front 的拦路虎 (2026-11-23)
+
+火场（draws≈735）描述符构建 6.72 ms/帧（占 submit_cpu 14.4 ms 的 ~47%），分阶段占比：
+image_lookup 29% / element_rest 16% / set_finalize 15% / buffer_bind 9% / remaining 11% / texel_* 13%。
+两个必须知道的事实：
+1. **set cache 已经完全不起作用**：`setcache hits=0.0`，516.2 次/帧全部被
+   `fresh_skips=119.0` + `experiment_skips=397.2` 绕过 ⇒ set_finalize 的 1.32 ms/帧主要是
+   **516 次/帧的 `vkUpdateDescriptorSetWithTemplate` 驱动调用**（0.91 ms），不是缓存查找。
+2. **memo front 主要被 texel 挡住**：`why=texel493.4`（每帧 493 次因 texel 被排除）——
+   这正是第 2/3 轮 texel 池化 + 稳定 memo 键实测净负的那个方向，再动它之前
+   必须先解释 V2/V3 的额外开销落在哪一段。
+
+**出处**：MAVIS-PERF-V4-AFFINITY-20261123.md 第 13 节。
