@@ -1,6 +1,8 @@
 #include "../nvn/nvn_copy_pitch.h"
 #include "../xtrace.h"
 #include <pthread.h>
+#include <sched.h>
+#include <unistd.h>
 #include <fcntl.h>
 #include <time.h>
 #include <sys/stat.h>
@@ -154,6 +156,130 @@ uint32_t deferred_live_profile=0;
 // guest memory is read at execution; the game only reuses it after the fence (waits drain).
 // files/gfx-sync-submit containing '1' restores synchronous translation.
 bool gfx_async=false;std::atomic<uint64_t> gfx_enqueued{0},gfx_executed{0};std::atomic<int> gfx_presents_queued{0};
+// ---- Graphics-thread CPU affinity (V4, 2026-11-23) ---------------------------------
+// Root cause measured on Honor ROD2-W69 (SM8635: 3x A520 2.016 GHz + 4x A720 2.803 GHz +
+// 1x Cortex-X4 3.014 GHz): the engine's graphics worker (dm-gfx) is the only thread of the
+// process whose Cpus_allowed_list is 0-6, while every other thread of the same process is 0-7.
+// While dm-gfx was placed on cpu7 (the X4) the same scene cost submit_cpu_ms 15.5 and ran at
+// 45 fps; after the placement moved to the A720 cores the identical workload (ops and draws
+// unchanged) cost submit_cpu_ms 24.8 and ran at 34 fps. This is CPU placement only: no render
+// path, no fence, no timing and no game state is touched here.
+// Modes: OFF keeps the system placement untouched (the shipping behaviour), PRIME pins the
+// worker to the fastest core, BIG pins it to the big cluster (the observed steady state).
+enum { GFX_AFF_OFF = 0, GFX_AFF_PRIME = 1, GFX_AFF_BIG = 2 };
+static std::atomic<int> gfx_aff_mode{GFX_AFF_OFF};
+static uint64_t gfx_aff_prime_mask = 0, gfx_aff_big_mask = 0;
+static int gfx_aff_prime_cpu = -1, gfx_aff_reasserts = 0, gfx_aff_logged = 0;
+static bool gfx_aff_heterogeneous = false;   // false: every core shares one frequency tier
+static uint64_t gfx_aff_orig_mask = 0;          // mask the thread had before any pinning
+// Per-arm accumulation: a measurement window restarts whenever the mode flips, so no window ever
+// mixes two modes and every frame lands in exactly one arm.
+struct GfxAffArm { uint64_t frames = 0, wall_ns = 0, submit_ns = 0, gpu_ns = 0; };
+static GfxAffArm gfx_aff_arm[4];
+
+// The kernel wants a cpumask of at least cpumask_size() bytes; 1024 covers every NR_CPUS in
+// use, so no CPU_* macro (and no _GNU_SOURCE dependency) is needed here.
+static bool gfx_aff_read(uint64_t *out) {
+    cpu_set_t set;
+    CPU_ZERO(&set);
+    if (sched_getaffinity(0, sizeof(set), &set) != 0) return false;
+    uint64_t mask = 0;
+    for (int cpu = 0; cpu < CPU_SETSIZE && cpu < 64; ++cpu) if (CPU_ISSET(cpu, &set)) mask |= 1ull << cpu;
+    *out = mask;
+    return true;
+}
+static uint64_t gfx_aff_mask_now() { uint64_t m = 0; gfx_aff_read(&m); return m; }
+static bool gfx_aff_write(uint64_t mask) {
+    cpu_set_t set;
+    CPU_ZERO(&set);
+    for (int cpu = 0; cpu < CPU_SETSIZE && cpu < 64; ++cpu) if (mask & (1ull << cpu)) CPU_SET(cpu, &set);
+    return sched_setaffinity(0, sizeof(set), &set) == 0;
+}
+static long gfx_aff_cpu_max_freq(int cpu) {
+    char path[96];
+    snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%d/cpufreq/cpuinfo_max_freq", cpu);
+    FILE *f = fopen(path, "rb");
+    if (!f) return 0;
+    long v = 0;
+    if (fscanf(f, "%ld", &v) != 1) v = 0;
+    fclose(f);
+    return v;
+}
+// Core tiers from the cpufreq tables: the fastest core is the prime one, the next distinct tier
+// is the big cluster.
+static void gfx_aff_detect() {
+    if (gfx_aff_prime_mask) return;
+    const long ncpu = sysconf(_SC_NPROCESSORS_CONF);
+    long prime = 0, second = 0;
+    int prime_cpu = -1;
+    for (long cpu = 0; cpu < ncpu && cpu < 64; ++cpu) {
+        long f = gfx_aff_cpu_max_freq((int)cpu);
+        if (f <= 0) continue;
+        if (f > prime) { second = prime; prime = f; prime_cpu = (int)cpu; }
+        else if (f > second) second = f;
+    }
+    if (prime_cpu < 0) return;
+    uint64_t prime_mask = 0, big_mask = 0;
+    for (long cpu = 0; cpu < ncpu && cpu < 64; ++cpu) {
+        long f = gfx_aff_cpu_max_freq((int)cpu);
+        if (f <= 0) continue;
+        if (cpu == prime_cpu) prime_mask |= 1ull << cpu;
+        else if (second > 0 && f * 10 >= second * 9) big_mask |= 1ull << cpu;
+    }
+    gfx_aff_prime_mask = prime_mask;
+    gfx_aff_big_mask = big_mask;
+    gfx_aff_prime_cpu = prime_cpu;
+    // A device whose cores all share one frequency tier has no prime core to win: pinning the
+    // worker to one of them would only take a core away from the system, so leave the placement
+    // to the scheduler there.
+    gfx_aff_heterogeneous = (second > 0 && prime > second);
+    xbg_logf("NVN AFFINITY topology prime_cpu=%d prime_mask=0x%llx big_mask=0x%llx prime_khz=%ld second_khz=%ld heterogeneous=%d",
+             prime_cpu, (unsigned long long)prime_mask, (unsigned long long)big_mask, prime, second, int(gfx_aff_heterogeneous));
+}
+// Applies the mode to the calling thread (the graphics worker).
+static void gfx_aff_apply(int mode) {
+    gfx_aff_mode.store(mode);
+    if (mode == GFX_AFF_OFF) {
+        // Back to the mask the thread had before any pinning; the scheduler may narrow it again on
+        // its own, which is exactly the un-pinned behaviour.
+        if (gfx_aff_orig_mask) {
+            const bool ok = gfx_aff_write(gfx_aff_orig_mask);
+            xbg_logf("NVN AFFINITY mode=off restored mask=0x%llx ok=%d current=0x%llx",
+                     (unsigned long long)gfx_aff_orig_mask, int(ok), (unsigned long long)gfx_aff_mask_now());
+        } else xbg_logf("NVN AFFINITY mode=off (no captured original mask)");
+        return;
+    }
+    gfx_aff_detect();
+    const uint64_t want = mode == GFX_AFF_PRIME ? gfx_aff_prime_mask : gfx_aff_big_mask;
+    if (!want) { xbg_logf("NVN AFFINITY mode=%d skipped: no core detected", mode); return; }
+    const bool ok = gfx_aff_write(want);
+    if (!ok) {
+        gfx_aff_mode.store(GFX_AFF_OFF);
+        xbg_logf("NVN AFFINITY mode=%d mask=0x%llx FAILED: placement left to the system", mode, (unsigned long long)want);
+        return;
+    }
+    xbg_logf("NVN AFFINITY mode=%d mask=0x%llx ok=1 current=0x%llx", mode, (unsigned long long)want,
+             (unsigned long long)gfx_aff_mask_now());
+}
+// Cheap per-present check: something in the process narrows this thread's mask at runtime
+// (observed 0-7 -> 0-6), and the placement decides the per-frame CPU cost. One syscall per
+// present, and a set only when the mask really drifted.
+static void gfx_aff_reassert() {
+    const int mode = gfx_aff_mode.load();
+    if (mode == GFX_AFF_OFF) return;
+    const uint64_t want = mode == GFX_AFF_PRIME ? gfx_aff_prime_mask : gfx_aff_big_mask;
+    if (!want) return;
+    const uint64_t cur = gfx_aff_mask_now();
+    if (cur == want) return;
+    if (gfx_aff_write(want)) {
+        ++gfx_aff_reasserts;
+        if (gfx_aff_logged < 10 || !(gfx_aff_logged % 300)) {
+            ++gfx_aff_logged;
+            xbg_logf("NVN AFFINITY reassert mode=%d want=0x%llx was=0x%llx total=%d", mode,
+                     (unsigned long long)want, (unsigned long long)cur, gfx_aff_reasserts);
+        }
+    }
+}
 std::mutex gfx_job_mutex;std::condition_variable gfx_job_cv,gfx_idle_cv;std::deque<std::function<void()>> gfx_jobs;bool gfx_busy=false,gfx_stop=false;std::thread gfx_worker;std::thread::id gfx_worker_id;
 void gfx_worker_loop(){
     gfx_worker_id=std::this_thread::get_id();
@@ -164,6 +290,18 @@ void gfx_worker_loop(){
 #endif
     // Graphics thread on performance cores (QoS USER_INTERACTIVE, as for the audio thread).
     {void *h=dlopen("libqos.so",RTLD_NOW);auto set=h?reinterpret_cast<int(*)(int)>(dlsym(h,"OH_QoS_SetThreadQoS")):nullptr;int r=set?set(5):-1;xbg_logf("NVN async graphics thread QoS=USER_INTERACTIVE rc=%d",r);}
+    // Placement of the graphics worker decides the per-frame CPU cost on this device class; log the
+    // starting mask so a later narrowing of the mask can be told apart from a slow start.
+    {uint64_t m=0; if(gfx_aff_read(&m)) gfx_aff_orig_mask=m;}
+    xbg_logf("NVN AFFINITY start mask=0x%llx",(unsigned long long)gfx_aff_mask_now());
+    gfx_aff_detect();
+    // Default policy: keep the graphics worker on the fastest core. Measured on Honor ROD2-W69
+    // (SM8635): the system narrows this thread's mask to 0x7f a few seconds into a heavy scene,
+    // which pushes the worker off the Cortex-X4 onto the A720 cores and costs about a third of the
+    // frame rate (fps 33.3 -> 45.4, submit_cpu_ms 25.6 -> 15.8 for the same workload). Pinning
+    // only changes which core the existing work runs on; no render path, fence or timing changes.
+    if (gfx_aff_heterogeneous && gfx_aff_prime_mask) gfx_aff_apply(GFX_AFF_PRIME);
+    else { gfx_aff_mode.store(GFX_AFF_OFF); xbg_logf("NVN AFFINITY default skipped (no distinct prime core): placement left to the system"); }
     for(;;){std::function<void()> job;
         {std::unique_lock<std::mutex> l(gfx_job_mutex);gfx_job_cv.wait(l,[]{return gfx_stop||!gfx_jobs.empty();});if(gfx_jobs.empty())return;job=std::move(gfx_jobs.front());gfx_jobs.pop_front();gfx_busy=true;}
         job();
@@ -1775,10 +1913,13 @@ extern bool tex_dirty;extern uint64_t tex_dirty_tracked,tex_dirty_checks,tex_dir
 // Readings of the 3D picture brightening (defined in namespace bright before dispatch)
 namespace bright{extern bool enabled;extern uint64_t applied;extern float last_k;}
 void perf_frame(){
+    gfx_aff_reassert();
     {texel_distinct+=texel_frame_keys.size();for(auto k:texel_frame_keys)if(texel_prev_keys.count(k))++texel_reused;texel_prev_keys.swap(texel_frame_keys);texel_frame_keys.clear();}
     if(completion_wait_enabled)fold_completion_wait_stats();
     if(perf_frame_timed)++perf_timed_frames;perf_frame_timed=perf_sample && stats.presents.load()%perf_sample==0;   // the next frame
     {bool was=ab_frame_on;ab_frame_on=ab_enabled();update_program_lookup_policy();tls_gate=!ab_off("tlsgate");img_fast=!ab_off("imgfast");if(was!=ab_frame_on && ab_period>0){perf=Perf{};perf.window_start=timing_clock();set_cache_hits=set_cache_misses=set_cache_fresh_skips=set_cache_experiment_skips=0;integer_texture_lookup_hits=integer_texture_lookup_misses=typed_storage_static_skips=0;for(auto &counts:texel_copy_stats)counts=TexelCopyStats{};return;}}
+    // A mode change restarts the measurement window, so no window ever mixes two modes.
+    {static int aff_last=-1;const int aff_now=gfx_aff_mode.load();if(aff_now!=aff_last){aff_last=aff_now;perf=Perf{};perf.window_start=timing_clock();set_cache_hits=set_cache_misses=set_cache_fresh_skips=set_cache_experiment_skips=0;integer_texture_lookup_hits=integer_texture_lookup_misses=typed_storage_static_skips=0;for(auto &counts:texel_copy_stats)counts=TexelCopyStats{};return;}}
     pipelines_unsaved+=size_t(warm::compiled.exchange(0));
     const uint64_t presents=stats.presents.load();
     if(pipelines_unsaved && presents>=pipeline_save_frame+300){pipeline_save_frame=presents;save_pipeline_cache();}
@@ -1801,6 +1942,9 @@ void perf_frame(){
         int(sync_mode),(unsigned long long)perf.frames,wall,f*1000.0/wall,double(perf.submit_cpu_ns)/1e6/f,double(perf.present_cpu_ns)/1e6/f,perf.gpu_samples?double(perf.gpu_ns)/1e6/f:-1.0,(unsigned long long)perf.gpu_samples,
         double(perf.submits)/f,double(perf.waits)/f,(unsigned long long)perf.sync_writeback,(unsigned long long)perf.sync_readback,(unsigned long long)perf.sync_query,double(perf.ops)/f,double(perf.folded_clears)/f,double(perf.passes)/f,double(perf.draws)/f,double(perf.dispatches)/f,
         (unsigned long long)perf.why_wait,(unsigned long long)perf.why_poll,(unsigned long long)perf.why_access,(unsigned long long)perf.access_by[1],(unsigned long long)perf.access_by[2],(unsigned long long)perf.access_by[3],(unsigned long long)perf.access_by[4],(unsigned long long)perf.access_by[5],(unsigned long long)perf.access_by[6],(unsigned long long)perf.access_by[8],(unsigned long long)perf.access_by[9],(unsigned long long)perf.access_by[10],(unsigned long long)perf.access_by[11],(unsigned long long)perf.why_cmdwait,(unsigned long long)perf.why_finish,(unsigned long long)perf.why_slot,(unsigned long long)perf.pending_views,(unsigned long long)perf.snapshot_hits,(unsigned long long)perf.snapshot_misses,double(perf.snapshot_bytes)/1048576.0,double(perf.arena_peak)/1048576.0,perf_counts().pipelines,perf_counts().layouts,perf_counts().samplers,perf_counts().passes,perf_counts().images,perf_counts().host_segments,double(perf_counts().host_bytes)/1048576.0);
+    {GfxAffArm &A=gfx_aff_arm[gfx_aff_mode.load()&3];A.frames+=perf.frames;A.wall_ns+=uint64_t(wall*1e6);A.submit_ns+=perf.submit_cpu_ns;A.gpu_ns+=perf.gpu_ns;
+     const int m=gfx_aff_mode.load();
+     xbg_logf("NVN AB aff v=1 present=%llu mode=%d frames=%llu fps=%.2f submit_ms=%.2f gpu_ms=%.2f mask=0x%llx want=0x%llx reassert=%d",(unsigned long long)stats.presents.load(),m,(unsigned long long)A.frames,A.wall_ns?double(A.frames)*1e9/double(A.wall_ns):0.0,A.frames?double(A.submit_ns)/1e6/double(A.frames):0.0,A.gpu_ns?double(A.gpu_ns)/1e6/double(A.frames):0.0,(unsigned long long)gfx_aff_mask_now(),(unsigned long long)(m==GFX_AFF_PRIME?gfx_aff_prime_mask:(m==GFX_AFF_BIG?gfx_aff_big_mask:0)),gfx_aff_reasserts);}
     if(perf.clear_coverage_misses)xbg_logf("NVN PERF clearfold coverage_misses=%llu rejected=%llu legacy=%llu",(unsigned long long)perf.clear_coverage_misses,(unsigned long long)(perf.clear_coverage_misses-perf.clear_coverage_legacy),(unsigned long long)perf.clear_coverage_legacy);
     if (log_write_sync) {
         uint64_t other = 0;
@@ -9087,6 +9231,13 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
           // mipmaxlod0 is not one of the bool flags: read it inside the token loop. strtok_r has already
           // replaced the '=' in buf with a NUL by now, so a later strstr on the same buffer can never match it.
           if(!strcmp(tok,"mipmaxlod0")){mipmaxlod0_want=v;continue;}
+          // gfxaffinity is a mode, not a bool: gfxaffinity=prime|big|off.
+          if(!strcmp(tok,"gfxaffinity")){
+            int m=-1;
+            if(!strcmp(eq+1,"prime")||!strcmp(eq+1,"1"))m=GFX_AFF_PRIME;else if(!strcmp(eq+1,"big")||!strcmp(eq+1,"2"))m=GFX_AFF_BIG;else if(!strcmp(eq+1,"off")||!strcmp(eq+1,"0"))m=GFX_AFF_OFF;
+            if(m>=0)gfx_aff_apply(m);
+            xbg_logf("LIVE-SET gfxaffinity=%s mode=%d at present %llu",eq+1,gfx_aff_mode.load(),(unsigned long long)pr);
+            continue;}
           for(auto &e:live_flags)if(!strcmp(e.name,tok)){if(*e.flag!=v){*e.flag=v;if(!strcmp(e.name,"honorimgpersist")&&!v)img_cache.clear();xbg_logf("LIVE-SET %s=%d at present %llu",e.name,v,(unsigned long long)pr);}break;}}
         // Diagnostic: force maxLod=0 on every sampler, so no mip can ever be selected.
         {int want=mipmaxlod0_want;
@@ -9154,7 +9305,7 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
     // A render-enable block is a property of one submission: the reference clears it when the submission starts
     // (nvn_mtl.m:649, g_rc_skip = 0), so a block left false by the previous frame does not drop this frame's draws.
     state.render_cond_skip=false;
-    for(int i=0;i<n;i++)execute(reinterpret_cast<const uint8_t*>(handles[i]),0,budget);++stats.submissions;++submitted;if(sync_mode)complete_all();perf.submit_cpu_ns+=timing_clock()-begin;}
+    for(int i=0;i<n;i++)execute(reinterpret_cast<const uint8_t*>(handles[i]),0,budget);++stats.submissions;++submitted;if(sync_mode)complete_all();gfx_aff_reassert();perf.submit_cpu_ns+=timing_clock()-begin;}
 extern "C" uint64_t xbg_legacy_last_fence(){return gfx_async?gfx_enqueued.load():[]{std::lock_guard<std::recursive_mutex> lock(mutex);return submitted;}();}
 extern "C" void xbg_legacy_flush(){
     if (gfx_async) {
