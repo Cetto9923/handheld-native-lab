@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-11-21T11:15:00+08:00",
-  "phase": "1.0.73兼容接续；荣耀GT Pro土之神殿长廊与全场景1080p专项优化完成，神殿内告别减半卡顿",
+  "updated_at": "2026-11-22T14:30:00+08:00",
+  "phase": "Round 10 诊断轮：GPASS 崩溃已修并实机取到第四章兵工厂的 GPU pass 归因与 CPU 热点地图；build 链路打通；Round 10 三项计划改动按实测证伪未采纳；descriptor 路径优化待启动",
   "coordinator": "Antigravity 本轮接管",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
@@ -4613,6 +4613,22 @@
       "write_state": "COMPLETE_HANDED_BACK",
       "released_at": "2026-11-20T03:19:23.447411+00:00",
       "objective": "Optimize Chapter 4 factory battle 720p on Honor GT Pro. Delivered Candidate 1 (generalized clear producer retire) and Candidate 2 (persistent img_cache); verified on device, original APK 8d91177b restored."
+    },
+    {
+      "task": "MAVIS-GPASS-ATTRIBUTION-20261122",
+      "owner": "Mavis",
+      "paths": [
+        "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+        "coordination/results/MAVIS-GPASS-ATTRIBUTION-20261122.md",
+        "coordination/EXPERIENCE.md",
+        "coordination/state.json",
+        "coordination/HANDOFF.md"
+      ],
+      "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/mavis-perf-20261122",
+      "branch": "task/T-mavis-perf-20261122",
+      "acquired_at": "2026-11-22T13:10:00+08:00",
+      "checkpoint": "bcf6dc8",
+      "write_state": "ACTIVE"
     }
   ],
   "tasks": [
@@ -12245,6 +12261,36 @@
       "owner": "Antigravity (Goal Mode)",
       "branch": "task/T-honor-factory-battle-opt-20261120",
       "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/no-key-delivery-20261120"
+    },
+    {
+      "id": "MAVIS-GPASS-ATTRIBUTION-20261122",
+      "role": "GRAPHICS_PERF_DIAGNOSTIC",
+      "objective": "Honor GT Pro chapter 4 factory: obtain real GPU pass attribution and a CPU hotspot map without changing rendering semantics",
+      "inputs": [
+        "coordination/HANDOFF.md",
+        "coordination/EXPERIENCE.md",
+        "coordination/state.json",
+        ".local/honor-shrine-live-20261122-073221/factory/diagnose-20798/gpass-diagnostic-fix/"
+      ],
+      "outputs": [
+        "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+        "coordination/results/MAVIS-GPASS-ATTRIBUTION-20261122.md",
+        "coordination/EXPERIENCE.md"
+      ],
+      "dependencies": [],
+      "pass_gates": [],
+      "status": "passed_diagnostic_only",
+      "write_scope": [
+        "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+        "coordination/results/MAVIS-GPASS-ATTRIBUTION-20261122.md",
+        "coordination/EXPERIENCE.md",
+        "coordination/state.json",
+        "coordination/HANDOFF.md"
+      ],
+      "acceptance": "GPASS no longer crashes on the device and returns complete per-pass timings; baseline and hotspot map measured without instrumentation; no rendering semantics changed",
+      "checkpoint": "74e7b96+bcf6dc8. GPASS fix verified on A42BBB5109000333 (result=0, no crash). Clean baseline: submit CPU 32.79-35.65 ms, GPU 17.87-30.27 ms -> CPU bound. CPU map per frame: descriptor 12.8, other 5.4-7.2, snapshot 5.0, draw 4.3, cleanup 2.0 ms. GPU: 111 passes/frame, fmt=122 R16G16B16A16 family about 7.6 ms/frame, about 30 single-draw 768x436 FP16 passes per frame (4.1 ms). Round 10 memo_front/pipe_memo widening rejected (below noise, <0.02 ms/frame); desc_memo_invalidate_local at snapshot_invalidate rejected (would keep img_cache alive across guest writes).",
+      "next": "P0 descriptor path (vkUpdateDescriptorSetWithTemplate 342/frame, 177 set rebuilds/frame) with a runtime A/B marker and display regression; then snapshot path (per-frame table rebuild) and the cleanup WAIT_BIT stall; GPU pass merging last and only with per-pass visual proof.",
+      "owner": "Mavis"
     }
   ],
   "blockers": [

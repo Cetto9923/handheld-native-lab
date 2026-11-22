@@ -5866,3 +5866,40 @@ TOUCH-L3-VISIBILITY-PERF-20261120; branch task/T-display-settings-20261120; base
 - 观察到特效缺失、闪烁、黑块、颜色异常或不同步时，保留日志与画面对照，把该候选切回关闭状态并确认原表现。画面或稳定性待验证的优化保持默认关闭。验收通过后才打新基线和最终单包。
 
 2026-11-20 同进程补货对照准备在 `.local/factory-refill-same-session/`。计划在同一工厂战斗中按自然回收切换，关闭与开启各等待最多 180 秒或两次回收，首轮回收后再判断新批次。命令、工作目录和恢复脚本记在该目录 `checkpoint`、`session.zsh`。本次启动前 ADB 报设备 A42BBB5109000333 未找到，`adb -P 15039 devices -l` 列表为空，脚本退出码 1，尚未创建设备备份、安装 APK 或更改设备配置。设备恢复后先检查同包、原 APK、配置、设备焦点及脚本，再继续自然回收对照。若不能在同一会话抓到完整周期，保留事实，不以短窗推断。
+
+## 2026-11-22 Mavis 接手：诊断轮（GPASS 修复 + 兵工厂归因）
+
+用户直接指令接手优化。独立 worktree .local/worktrees/mavis-perf-20261122，分支 task/T-mavis-perf-20261122，
+Codex 的 no-key-delivery-20261120 worktree 与其未提交的 Round 10 WIP 原样未动。
+
+### 已完成
+- **构建链路打通**：Codex 07:50 的「platform safety check 拦截」是其平台限制，非项目限制。
+  scripts/android/build_game_window_apk.sh 全量构建通过（含自签调试证书）。
+  坑：脚本在每个 worktree 内新建 keystore，签名与设备上已装包不同则 install -r 失败；
+  解法是软链同源 keystore 后用 apksigner 重签 aligned.apk，**不要卸载**（会丢正式存档）。见 L-030。
+- **GPASS 崩溃已修并实机验证**：pass_prof_draw 的 NULL 解引用按复核补丁修复，
+  设备上 gfx-pass-live 不再崩，result=0，每帧拿到完整 pass 明细。提交 74e7b96。
+- **兵工厂第一份真实 GPU pass 归因** + 干净基线 + CPU 热点地图。报告：
+  coordination/results/MAVIS-GPASS-ATTRIBUTION-20261122.md（提交 bcf6dc8）。
+
+### 关键数字（荣耀 A42BBB5109000333，第四章兵工厂，静止）
+- 干净基线：submit CPU **32.79-35.65 ms**、GPU 17.87-30.27 ms、FPS 20.84-24.56 -> **CPU 受限**
+- CPU/帧：descriptor 12.8 / other 5.4-7.2 / snapshot 5.0 / draw 4.3 / cleanup 2.0
+- GPU：111 pass/帧；fmt=122(R16G16B16A16) 族约 7.6 ms/帧；其中每帧约 30 个单 draw 的 768x436 FP16 pass = 4.1 ms/帧
+- 插桩采样数字只用于定位，不作基线（见 L-031）
+
+### Round 10 三项计划改动：按实测全部不采纳
+1. memo_front 256->1024：慢路径回退仅 121 次/帧 -> 收益 <0.02 ms/帧，量不出来（见 L-029）
+2. pipe_memo 256->1024：命中率已 95.9%，同样量不出来
+3. snapshot_invalidate 里改用 desc_memo_invalidate_local()：**不再清 img_cache** = 扩大跨帧图像缓存寿命，
+   正是审计禁止的方向（见 L-032）
+
+### 设备状态
+- 当前装：本轮诊断包 a45430a8...（与本地逐字节一致）；formal 存档未触碰。
+- 回退：adb install -r .local/worktrees/no-key-delivery-20261120/.local/honor-benchmark-20261120/ffrs-cand-round3-3f7c02e6.apk
+- 一次性标记已自删，无插桩残留；未触碰 RG477M；未 push；未改 main。
+
+### 下一步（按实测收益/风险）
+P0 descriptor 路径（342 次/帧 vkUpdateDescriptorSetWithTemplate、177 次/帧 set 重建）-> 必须配运行时 A/B 标记 + 显示回归；
+P1 snapshot 每帧整表重建（5529 次/帧调用全冷）；P2 cleanup 的 vkGetQueryPoolResults(WAIT_BIT) 同步阻塞；
+P3 GPU pass 合并（收益最大、画面风险最高，须逐 pass 取证）。
