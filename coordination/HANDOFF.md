@@ -6531,5 +6531,7 @@ B 写回惰性化（guest 真读时才拷）；C 让来宾存储缓冲直接用 
 - **经验库新增 L-094 ~ L-096**：GPU 侧计时比 CPU 侧稳定（热负载下仍可出结论）/
   用「给 CPU 加负担」区分「GPU 空转」与「GPU 真在干活」/
   GPU 写主机可见内存比 CPU memcpy 慢 2.4 倍。
+**⑧ 方案 A 有现成脚手架**：`OwnedInputCopy` + `Slot::copy_readers`（`xbg_game.cpp:8021`）与 `capture_indirect_args()`（2477~2493）就是「GPU 侧拷进私有缓冲 + 独立 fence + 退役时等」的现成模式，第 10 轮照它实现即可；但写回可见性语义（pending_view 的 pending 窗口）、与 `s.guard` xview 保护的交互、以及读回缓冲的 slot 生命周期这三点必须先钉死，否则会画面撕裂（L-032）。详见报告 §17.9。
+
 - 设备：仍装第 2 版；live-set 已恢复 `gfxaffinity=prime`；`gfx-live-ab` 已清空；
   `gfx-cpu-profile` / `gfx-pass-live` 均已清空；游戏进程存活；**红果已还回前台**。

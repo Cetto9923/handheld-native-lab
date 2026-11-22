@@ -1009,3 +1009,25 @@ NVN READBACK_TIMING alloc_bytes=559122340 copy_bytes=46815768 zero_bytes=3505548
    并用三条独立证据归因到**存储写回路径的 9.32 MB/帧 GPU→主机可见内存写入**。
 4. **本轮不出货**：改动落在写回正确性路径（L-032），
    且当前设备处于热负载，无法做可信的显示回归 ⇒ 按 L-029 不占构建周期。
+
+### 17.9 方案 A 有现成脚手架（把第 10 轮的入口变成确切的）
+
+方案 A（写回目的地改 device-local，退役时补一次 device→host 拷贝）在引擎里**已有同构的现成机制**：
+
+- `OwnedInputCopy` + `Slot::copy_readers`：`xbg_game.cpp:8021` 的写法是
+  `auto job=std::make_shared<OwnedInputCopy>(source,size_t(input.bytes));
+  producer->copy_readers.push_back(job); slots[slot_index].retire.objects.push_back(job);`
+  ——「GPU 侧拷进一块私有缓冲 + 独立 fence + 随 slot 退役」，而
+  `retire_slot()` 已经在 `xbg_game.cpp:1643~1644` 逐个等这些 fence
+  （`reader->wait()`）并在等完后清空列表。
+- `capture_indirect_args()`（`xbg_game.cpp:2477~2493`）就是**这个模式的完整样板**：
+  在 GPU 上做一次拷贝 + 两道 buffer barrier，再把结果交给 CPU 读。
+
+⇒ 第 10 轮要做的是：把存储写回的**目的地**从 `s.readback`（HOST_VISIBLE，
+GPU 直接往这里写，4.66 GB/s）改到一块 **device-local** 缓冲（GPU 写它很快），
+再用上述脚手架在退役时补一次 device→host 拷贝，然后现有的 host→host memcpy 照旧。
+**待定的关键点**（第 10 轮必须先钉死，否则动不了）：
+写回缓冲的可见性语义（`pending_view` 的"pending"窗口）、与 xview 保护
+（`s.guard`）的交互、以及"读回缓冲必须在 slot 退役前保持可读"这条生命周期约束
+——这三者任何一个处理错，都会让画面出现撕裂/特效丢失（L-032）。
+
