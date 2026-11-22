@@ -12290,7 +12290,8 @@
       "acceptance": "GPASS no longer crashes on the device and returns complete per-pass timings; baseline and hotspot map measured without instrumentation; no rendering semantics changed",
       "checkpoint": "74e7b96+bcf6dc8. GPASS fix verified on A42BBB5109000333 (result=0, no crash). Clean baseline: submit CPU 32.79-35.65 ms, GPU 17.87-30.27 ms -> CPU bound. CPU map per frame: descriptor 12.8, other 5.4-7.2, snapshot 5.0, draw 4.3, cleanup 2.0 ms. GPU: 111 passes/frame, fmt=122 R16G16B16A16 family about 7.6 ms/frame, about 30 single-draw 768x436 FP16 passes per frame (4.1 ms). Round 10 memo_front/pipe_memo widening rejected (below noise, <0.02 ms/frame); desc_memo_invalidate_local at snapshot_invalidate rejected (would keep img_cache alive across guest writes).",
       "next": "P0 descriptor path (vkUpdateDescriptorSetWithTemplate 342/frame, 177 set rebuilds/frame) with a runtime A/B marker and display regression; then snapshot path (per-frame table rebuild) and the cleanup WAIT_BIT stall; GPU pass merging last and only with per-pass visual proof.",
-      "owner": "Mavis"
+      "owner": "Mavis",
+      "branch": "task/T-mavis-perf-20261122"
     }
   ],
   "blockers": [

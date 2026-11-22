@@ -1,7 +1,7 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-21T11:15:00+08:00
-阶段：1.0.73兼容接续；荣耀GT Pro土之神殿长廊与全场景1080p专项优化完成，神殿内告别减半卡顿
+状态事件时间：2026-11-22T14:30:00+08:00
+阶段：Round 10 诊断轮：GPASS 崩溃已修并实机取到第四章兵工厂的 GPU pass 归因与 CPU 热点地图；build 链路打通；Round 10 三项计划改动按实测证伪未采纳；descriptor 路径优化待启动
 总控：Antigravity 本轮接管
 更新方式：按事件更新，没有后台自动刷新。
 
@@ -284,6 +284,7 @@
 | DISPLAY-SETTINGS-20261120 | 图形设置与虚拟输入 | candidate_delivered_device_pending | Codex /root | 无 | 无额外门禁 | task/T-display-settings-20261120 |
 | TOUCH-L3-VISIBILITY-PERF-20261120 | coordinator | in_progress | /root | 无 | 无额外门禁 | task/T-no-key-delivery-20261120 |
 | T-HONOR-FACTORY-BATTLE-OPT-20261120 | GRAPHICS_PERF | passed_partial_unmet_30fps | Antigravity (Goal Mode) | 无 | 无额外门禁 | task/T-honor-factory-battle-opt-20261120 |
+| MAVIS-GPASS-ATTRIBUTION-20261122 | GRAPHICS_PERF_DIAGNOSTIC | passed_diagnostic_only | Mavis | 无 | 无额外门禁 | task/T-mavis-perf-20261122 |
 
 ## 独占写入
 
@@ -528,6 +529,7 @@
 - {"task": "CODEX-LIBRARY-UPDATE-RECOVERY-20261118", "owner": "/root/library_update_recovery", "paths": ["."], "worktree": "/Users/yuyan9923/GitHub/02-游戏原生移植/switch-android-port-rules/.local/codex-library-update-20261118", "branch": "独立候选目录", "acquired_at": "2026-11-18T19:13:24.535967+08:00", "checkpoint": "禁止写OOT或安全100原目录，自己隔离候选"}
 - {"task": "TOUCH-L3-VISIBILITY-PERF-20261120", "owner": "/root", "paths": ["src/android/app/java/org/ffrs/diagnostic/GameActivity.java", "tests/device/test_touch_r3.py", "coordination/results/TOUCH-L3-VISIBILITY-PERF-20261120.md", "src/graphics/nvn_vulkan/engine/xbg_game.cpp", "tests/installer/test_touch_pad_menu.py", "tests/installer/test_screen_rotation.py"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/display-settings-20261120", "branch": "task/T-display-settings-20261120", "acquired_at": "2026-11-20T01:16:32.320420+08:00", "checkpoint": "5dc9f4a; APK contains key; performance work unfinished", "write_state": "CHECKPOINTED_RELEASED", "released_at": "2026-11-20T01:52:33.152213+08:00"}
 - {"task": "T-HONOR-FACTORY-BATTLE-OPT-20261120", "owner": "Antigravity (Goal Mode)", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", "tests/device/test_pending_buffer_clear.py", "tests/device/test_honor_clear_retire.py", "tests/device/test_honor_img_cache_persist.py"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/no-key-delivery-20261120", "branch": "task/T-honor-factory-battle-opt-20261120", "acquired_at": "2026-11-20T10:48:28+08:00", "checkpoint": "28261873924311eaeb98a3687a40f9b5cd2a2b59", "write_state": "COMPLETE_HANDED_BACK", "released_at": "2026-11-20T03:19:23.447411+00:00", "objective": "Optimize Chapter 4 factory battle 720p on Honor GT Pro. Delivered Candidate 1 (generalized clear producer retire) and Candidate 2 (persistent img_cache); verified on device, original APK 8d91177b restored."}
+- {"task": "MAVIS-GPASS-ATTRIBUTION-20261122", "owner": "Mavis", "paths": ["src/graphics/nvn_vulkan/engine/xbg_game.cpp", "coordination/results/MAVIS-GPASS-ATTRIBUTION-20261122.md", "coordination/EXPERIENCE.md", "coordination/state.json", "coordination/HANDOFF.md"], "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/mavis-perf-20261122", "branch": "task/T-mavis-perf-20261122", "acquired_at": "2026-11-22T13:10:00+08:00", "checkpoint": "bcf6dc8", "write_state": "ACTIVE"}
 
 ## 阻塞
 
