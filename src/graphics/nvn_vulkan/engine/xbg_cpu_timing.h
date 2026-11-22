@@ -10,6 +10,8 @@ struct XbgCpuTiming {
         // callback and of the present callback, plus the snapshot lookup split. Purely additive:
         // existing kind indices are unchanged, and every scope is free on untimed frames.
         SubMaint, SubExec, SubSubmit, SubAff, SubPresPrep, SubPresSubmit, SubPace, SubSnapFast, SubSnapSlow,
+        // V10 diagnostic sub-domains (2026-11-23): the NVN command interpreter inside execute().
+        SubCmdDecode, SubPollRetire, SubArenaCheck,
         Count };
     struct Counter { uint64_t calls=0, exclusive_ns=0, inclusive_ns=0, max_ns=0; } counters[Count];
     struct Scope;

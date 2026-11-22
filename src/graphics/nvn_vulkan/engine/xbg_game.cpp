@@ -465,6 +465,9 @@ bool perf_timing=true; // always-on wall-time breakdown for NVN PERF (exclusive 
 // took ~4 ms more of the render thread in the D2R camp on the Redmi K50 Ultra and so missed its vsync: one visible hitch
 // every 32 frames. The Android app turns it off (DM_GFX_PERF_SAMPLE=0); measurement runs set the marker.
 unsigned perf_sample=32;bool perf_frame_timed=true;uint64_t perf_timed_frames=0;
+// V10 NVN command-stream counters (profiling windows only): how many commands the interpreter ran, how many one
+// guest submission carried, and which opcodes dominate. nvn_cmd_by_op is indexed by NVN opcode.
+uint64_t nvn_cmd_total=0,nvn_cmd_sub_max_cmds=0,nvn_cmd_sub_max_cmds_ns=0,nvn_cmd_sub_max_ns=0,nvn_cmd_sub_max_ns_cmds=0,nvn_cmd_by_op[256]={};
 XbgCpuTiming::Counter perf_timing_before[XbgCpuTiming::Count];
 // Descriptor-only bounded diagnostic. Fixed storage; no clocks or allocation.
 enum class ReadbackSite : unsigned { Other, StoragePending, StorageCPU, TexelPending, TexelCPU, TexelPendingStorage, Count };
@@ -586,6 +589,7 @@ void timing_start(){
     perf_bounded_contaminated=true;
     indexed_ready_stats={};indexed_bbox_stats={};for(auto &site:readback_sites)site={};
     timing_active=true;timing_start_ns=timing_clock();pipeline_before=pipeline_counts;
+    nvn_cmd_total=0;nvn_cmd_sub_max_cmds=0;nvn_cmd_sub_max_cmds_ns=0;nvn_cmd_sub_max_ns=0;nvn_cmd_sub_max_ns_cmds=0;memset(nvn_cmd_by_op,0,sizeof(nvn_cmd_by_op));
     timing_before={stats.submissions.load(),stats.draws.load(),stats.dispatches.load(),stats.presents.load(),stats.shader_loads.load()};
 }
 void descriptor_report();
@@ -600,8 +604,13 @@ void timing_report(const char *reason){
         (unsigned long long)(stats.draws-timing_before.draws),(unsigned long long)(stats.dispatches-timing_before.dispatches),
         (unsigned long long)(stats.submissions-timing_before.submissions),(unsigned long long)(stats.shader_loads-timing_before.shader_loads));
     report_pipeline_cache();
-    static const char *names[]={"other","draw","dispatch","descriptor","pass","buffer","pipeline","submit","fence","present","cleanup","hash","image","log","program","cpuwrite","snapshot","sub_maint","sub_exec","sub_submit","sub_aff","sub_pres_prep","sub_pres_submit","sub_pace","sub_snap_fast","sub_snap_slow"};
+    static const char *names[]={"other","draw","dispatch","descriptor","pass","buffer","pipeline","submit","fence","present","cleanup","hash","image","log","program","cpuwrite","snapshot","sub_maint","sub_exec","sub_submit","sub_aff","sub_pres_prep","sub_pres_submit","sub_pace","sub_snap_fast","sub_snap_slow","sub_cmd_decode","sub_poll_retire","sub_arena_check"};
     for(unsigned i=0;i<XbgCpuTiming::Count;i++){const auto &c=timing.counters[i];xbg_logf("NVN CPU_TIMING part=%s calls=%llu exclusive_ns=%llu inclusive_ns=%llu max_ns=%llu",names[i],(unsigned long long)c.calls,(unsigned long long)c.exclusive_ns,(unsigned long long)c.inclusive_ns,(unsigned long long)c.max_ns);}
+    {uint64_t fr=stats.presents-timing_before.presents;xbg_logf("NVN CPU_TIMING nvn_cmds total=%llu per_frame=%llu sub_max_cmds=%llu sub_max_cmds_ns=%llu sub_max_ns=%llu sub_max_ns_cmds=%llu",
+        (unsigned long long)nvn_cmd_total,(unsigned long long)(fr?nvn_cmd_total/fr:0),
+        (unsigned long long)nvn_cmd_sub_max_cmds,(unsigned long long)nvn_cmd_sub_max_cmds_ns,
+        (unsigned long long)nvn_cmd_sub_max_ns,(unsigned long long)nvn_cmd_sub_max_ns_cmds);
+     for(unsigned k=0;k<8;++k){unsigned bi=0;uint64_t bv=0;for(unsigned o=0;o<256;++o)if(nvn_cmd_by_op[o]>bv){bv=nvn_cmd_by_op[o];bi=o;}if(!bv)break;xbg_logf("NVN CPU_TIMING nvn_op op=%u calls=%llu",bi,(unsigned long long)bv);}}
     xbg_logf("NVN INDEXED_READY v=1 calls=%llu requests=%llu exact_calls=%llu exact_requests=%llu unique=%llu duplicates=%llu overflow_calls=%llu reports_steps=%llu writebacks_steps=%llu duplicate_reports_steps=%llu duplicate_writebacks_steps=%llu vertex_requests=%llu vertex_repeats=%llu",
         (unsigned long long)indexed_ready_stats.calls,(unsigned long long)indexed_ready_stats.requests,
         (unsigned long long)indexed_ready_stats.exact_calls,(unsigned long long)indexed_ready_stats.exact_requests,
@@ -1991,7 +2000,7 @@ void perf_frame(){
                  (unsigned long long)other, (unsigned long long)perf.ordered_buffer_clears);
     }
     if(!timing_active && perf_normalizable){
-        static const char *names[]={"other","draw","dispatch","descriptor","pass","buffer","pipeline","submit","fence","present","cleanup","hash","image","log","program","cpuwrite","snapshot","sub_maint","sub_exec","sub_submit","sub_aff","sub_pres_prep","sub_pres_submit","sub_pace","sub_snap_fast","sub_snap_slow"};
+        static const char *names[]={"other","draw","dispatch","descriptor","pass","buffer","pipeline","submit","fence","present","cleanup","hash","image","log","program","cpuwrite","snapshot","sub_maint","sub_exec","sub_submit","sub_aff","sub_pres_prep","sub_pres_submit","sub_pace","sub_snap_fast","sub_snap_slow","sub_cmd_decode","sub_poll_retire","sub_arena_check"};
         char line[1024];int at=snprintf(line,sizeof(line),"NVN PERF parts_ms_per_frame timed=%llu",(unsigned long long)perf_timed_frames);
         for(unsigned i=0;i<XbgCpuTiming::Count && at<int(sizeof(line))-48;i++){const auto &c=timing.counters[i];if(c.calls<perf_timing_before[i].calls)perf_timing_before[i]=XbgCpuTiming::Counter{};uint64_t ns=c.exclusive_ns-perf_timing_before[i].exclusive_ns,calls=c.calls-perf_timing_before[i].calls;at+=snprintf(line+at,sizeof(line)-at," %s=%.2f/%.1f",names[i],double(ns)/1e6/tf,double(calls)/tf);perf_timing_before[i]=c;}
         xbg_logf("%s",line);
@@ -8263,10 +8272,12 @@ void poll_retire(){
 void execute(const uint8_t *pc,unsigned depth,uint64_t &budget){
     need(depth<64,"NVN command CALL nesting limit exceeded");
     for(;;){need(budget++<10000000,"NVN command count/cycle limit exceeded");
-        if(gfx_async && (budget&63)==0)poll_retire();
+        {CPU_SCOPE(SubPollRetire);if(gfx_async && (budget&63)==0)poll_retire();}
         // Bound host arena use per frame slot; only at command boundaries.
-        {Slot &cur=slots[slot_index];if(cur.recording && cur.stream.used_total+cur.uniform.used_total+cur.readback.used_total>arena_flush_bytes){SiteScope site(SITE_ARENA);submit_slots(false);}}
-        size_t available=command_available(pc);need(available>=8,"Truncated command header");op_hdr h;memcpy(&h,pc,8);need(h.size>=8 && !(h.size&7) && h.size<=available,"NVN command size outside pool");const uint8_t *p=pc+8;size_t n=h.size-8;cur_op=h.op;
+        {CPU_SCOPE(SubArenaCheck);{Slot &cur=slots[slot_index];if(cur.recording && cur.stream.used_total+cur.uniform.used_total+cur.readback.used_total>arena_flush_bytes){SiteScope site(SITE_ARENA);submit_slots(false);}}}
+        size_t available=0;op_hdr h{};const uint8_t *p=nullptr;size_t n=0;
+        {CPU_SCOPE(SubCmdDecode);available=command_available(pc);need(available>=8,"Truncated command header");memcpy(&h,pc,8);need(h.size>=8 && !(h.size&7) && h.size<=available,"NVN command size outside pool");p=pc+8;n=h.size-8;cur_op=h.op;}
+        if(timing_now()&&h.op<256)++nvn_cmd_by_op[h.op];
         if(codex_gpu_step){
             std::string keys;for(unsigned st=0;st<6;st++)if(state.shader[st])keys+=std::to_string(st)+":"+state.shader[st]->key+" ";
             xbg_logf("CODEX_GPU begin seq=%llu op=%u shaders=%s",(unsigned long long)budget,h.op,keys.c_str());
@@ -9352,7 +9363,9 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
     // A render-enable block is a property of one submission: the reference clears it when the submission starts
     // (nvn_mtl.m:649, g_rc_skip = 0), so a block left false by the previous frame does not drop this frame's draws.
     state.render_cond_skip=false;
+    uint64_t b0=budget;uint64_t t0=timing_now()?timing_clock():0;
     {CPU_SCOPE(SubExec);for(int i=0;i<n;i++)execute(reinterpret_cast<const uint8_t*>(handles[i]),0,budget);}
+    if(t0){uint64_t cmds=budget-b0,ns=timing_clock()-t0;nvn_cmd_total+=cmds;if(cmds>nvn_cmd_sub_max_cmds){nvn_cmd_sub_max_cmds=cmds;nvn_cmd_sub_max_cmds_ns=ns;}if(ns>nvn_cmd_sub_max_ns){nvn_cmd_sub_max_ns=ns;nvn_cmd_sub_max_ns_cmds=cmds;}}
     ++stats.submissions;++submitted;
     {CPU_SCOPE(SubSubmit);if(sync_mode)complete_all();}
     {CPU_SCOPE(SubAff);gfx_aff_reassert();}
