@@ -5906,3 +5906,16 @@ Codex 的 no-key-delivery-20261120 worktree 与其未提交的 Round 10 WIP 原�
 P0 descriptor 路径（342 次/帧 vkUpdateDescriptorSetWithTemplate、177 次/帧 set 重建）-> 必须配运行时 A/B 标记 + 显示回归；
 P1 snapshot 每帧整表重建（5529 次/帧调用全冷）；P2 cleanup 的 vkGetQueryPoolResults(WAIT_BIT) 同步阻塞；
 P3 GPU pass 合并（收益最大、画面风险最高，须逐 pass 取证）。
+
+### 2026-11-22 交付「最稳定版本」并撤回一个坏包
+
+- **交付**：`~/GitHub/游戏发布包/02-最终幻想_共鸣_FFRS/FFRS-1.0.78-stable.apk`
+  SHA-256 `a45430a8e4d5a9eb1510051b70836219e330c45128bf5d299ea17e7c15c2aaa8`，同目录附 `.sha256` 与说明。
+  内容 = Round 9 基线 `3f7c02e6`（严格 GPU 等待，L-028 合规）+ GPASS 诊断崩溃修复 `74e7b96`。
+  运行时核验：`XBG_WAIT fence=N target=N timeout=0`，`legacy_wait` 每帧 0.10-0.88 ms（等待真实生效）。
+  与基线同条件 A/B：submit CPU 30.81-31.55 vs 31.29-32.08 ms，GPU 均 22.33 ms，FPS 均 25-26 —— 零代价。
+  签名与 1.0.72/1.0.74/1.0.76 及历史包一致（证书 `d11967a3…`），可覆盖安装、存档不丢。
+- **撤回**：`待验证/1.0.78-战斗优化与菜单精简/FFRS-1.0.78-test.apk`（SHA `13f4662b…`）——
+  该包把 Android 的 GPU 完成等待默认关闭（其说明把它当卖点），是 L-028 记录的缺面/黑白闪回归根因。
+  已在同目录加《⚠️勿装-此包已撤回-请看说明.txt》，**未改动原 APK**。
+- 提醒：`1.0.78-stable` 与被撤回的 `1.0.78-test` **版本号相同、指纹不同**，认包必须看 SHA。
