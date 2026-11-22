@@ -1,7 +1,7 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-22T21:30:00+08:00
-阶段：Round 10 诊断轮：GPASS 崩溃已修并实机取到 GPU pass 归因与 CPU 热点地图；Round 10 三项计划改动按实测证伪未采纳；最稳定版 a45430a8 已在 Honor GT Pro 完成场景A(神殿含紫色调查点)引擎侧帧验证 PASS；场景B(开场火场)/场景C(第四章兵工厂+战斗特效)因平板双通道失联 NOT_RUN；descriptor 路径优化待启动
+状态事件时间：2026-11-22T23:45:00+08:00
+阶段：P0 descriptor 路径轮：descriptor 子项耗时分解已用引擎自带明细 profiler 取到（兵工厂场景，60 帧，coverage=OK，descriptor 7.05 ms/帧）；P0 第一版「descriptor memo 覆盖 compute dispatch」已实现、构建、装机并实机交错 A/B —— **收益≈0 被证伪**（compute 每帧仅 1 次命中；163/165 dispatch 因 texel 绑定无法进 memo）；同时定位到 draw 侧 177 次/帧整表重建由 tex 句柄变化驱动，是 descriptor 路径真正的大头；descriptor 契约测试的既有漂移已修复（此前该守卫等于没在跑）；下一步 P0 入口见 MAVIS-P0-DESCRIPTOR-20261122.md §8。**同场景 desccompute ON/OFF 显示回归已 PASS**（ON 180 帧 / 20 段、OFF 171 帧 / 19 段，段内 9 帧严格连续，段级指标一致，像素级差异落在同状态自然漂移带内）⇒ 该开关既不改画面也不提速，是零风险零收益的中性开关
 总控：Antigravity 本轮接管
 更新方式：按事件更新，没有后台自动刷新。
 
@@ -285,7 +285,9 @@
 | TOUCH-L3-VISIBILITY-PERF-20261120 | coordinator | in_progress | /root | 无 | 无额外门禁 | task/T-no-key-delivery-20261120 |
 | T-HONOR-FACTORY-BATTLE-OPT-20261120 | GRAPHICS_PERF | passed_partial_unmet_30fps | Antigravity (Goal Mode) | 无 | 无额外门禁 | task/T-honor-factory-battle-opt-20261120 |
 | MAVIS-GPASS-ATTRIBUTION-20261122 | GRAPHICS_PERF_DIAGNOSTIC | passed_diagnostic_only | Mavis | 无 | 无额外门禁 | task/T-mavis-perf-20261122 |
-| MAVIS-SCENE-VALIDATION-20261122 | RELEASE_SCENE_VALIDATION | partially_passed_scenes_b_c_blocked | Mavis | 无 | 无额外门禁 | task/T-mavis-perf-20261122 |
+| MAVIS-SCENE-VALIDATION-20261122 | RELEASE_SCENE_VALIDATION | partially_passed_scene_b_and_chapter4_factory_not_run_battle_effects_measured | Mavis | 无 | 无额外门禁 | task/T-mavis-perf-20261122 |
+| MAVIS-BATTLE-VALIDATION-20261122 | RELEASE_PERF_ATTRIBUTION | passed_battle_effects_scene_c_partial | Mavis | 无 | 无额外门禁 | task/T-mavis-perf-20261122 |
+| MAVIS-P0-DESCRIPTOR-20261122 | PERF_P0_DESCRIPTOR | implemented_and_falsified_by_device_ab_neutral_no_perf_gain | Mavis | 无 | 无额外门禁 | task/T-mavis-perf-20261122 |
 
 ## 独占写入
 
@@ -534,7 +536,7 @@
 
 ## 阻塞
 
-- MAVIS-SCENE-VALIDATION-20261122: 场景B(开场火场)与场景C(第四章兵工厂+战斗特效) NOT_RUN。采集途中平板 USB 通道 A42BBB5109000333 掉线，备用 TCP 192.168.31.41:44333 随主机换网(主机从 192.168.31.x 切到 192.168.1.126)失效，平板 ping 100% 丢包且本地网段无 adb 端口命中。场景A(神殿含紫色调查点)已 PASS。设备恢复前不得宣称全场景无闪烁。
+- MAVIS-SCENE-VALIDATION-20261122: 场景A(神殿含紫色调查点)已 PASS；场景C的战斗特效部分已由 MAVIS-BATTLE-VALIDATION-20261122 实测(战斗帧 225 帧 25 段，撕咬特效经 PNG 目视确认为合法画面)。仍 NOT_RUN：场景B(开场火场)与第四章兵工厂 —— 设备上全部隔离存档实际内容都是第1章探索区，命名与内容不符，这两个场景在平板上目前不存在。另：正常随机遇敌入场未复现(长按 R3 巡游 64 s 无遇敌)，战斗入场的 24.96 s 冻结目前只测到「读档续战」这一条路径。设备端 files/frame-dump 目录 shell/run-as 均无法删除，帧文件持续累积。
 - P-CX-50: run59现场报告NVNSubmission.cpp:315 TIMEOUT_EXPIRED，原日志尾部缺失；设备文件已属另一运行，A/B/C/D未证。禁止归为随机驱动超时。
 - Realstable60FPSnotpassed; existingpublicsinglewordinterval1patch exactcurrentBuildderivedcopyvalidated/deployed; sameAPKrun55launchedtocheckmappedword/behavior. NativeWSIignoresinterval, originalclockunchanged; noadaptiveimplementation peruser.
 - Expectedshaderfiles73483/73496 after2065delta appUIDallhasherrors0. Remaining12semanticallyrefused+Layer1, Maliwarp32vs16 andactualsceneresourcecorrectnessunresolved.

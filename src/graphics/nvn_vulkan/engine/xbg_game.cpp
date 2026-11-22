@@ -944,8 +944,9 @@ namespace wtrack{extern uint64_t copied_bytes,dirty_pages,mismatches,fallbacks;}
 constexpr unsigned kMaxSlots=16;
 extern std::atomic<uint64_t> memo_epoch;extern uint64_t key_diff[14];extern uint64_t memo_bump[5];extern uint64_t xmemo_hits,xmemo_drops;struct PinRef{VkDescriptorSetLayout layout;uint32_t refs;};extern std::unordered_map<VkDescriptorSet,PinRef> memo_pinned[kMaxSlots];
 extern uint64_t texture_record_hits,texture_record_misses;
-extern uint64_t memo_front_hits;extern uint64_t desc_memo_hits,desc_memo_misses,desc_memo_why[6],desc_ns[6],noload_passes,img_cache_hits,img_cache_misses,noload_why[8],binds_skipped,set_binds,set_bind_offsets,set_binds_offsets_only,offset_changes[10],offset_changed_at[32];
+extern uint64_t memo_front_hits;extern uint64_t desc_memo_hits,desc_memo_misses,desc_memo_why[6],desc_ns[6],desc_memo_compute_hits,desc_memo_compute_misses,desc_memo_compute_why[6],noload_passes,img_cache_hits,img_cache_misses,noload_why[8],binds_skipped,set_binds,set_bind_offsets,set_binds_offsets_only,offset_changes[10],offset_changed_at[32];
 extern uint64_t vwhy_blk,vwhy_buf,vwhy_ord,vwhy_img,vwhy_tex,vwhy_stor;
+extern bool desc_memo_compute_enabled;
 extern bool honor_inline_enabled;
 namespace warm{extern uint64_t hits,creates,create_ns,create_max_ns,compute_hits,compute_creates,compute_create_ns,compute_create_max_ns;extern std::atomic<uint64_t> built,failed,build_ns,async_built,async_skips,compiled,rewritten_retained,rewritten_denied_budget,rewritten_peak_bytes;extern bool async_on;void flush();void register_module(VkShaderModule m,const std::string &key);
     extern bool keep_rewritten;bool take_rewritten(const std::string &key,const std::vector<uint32_t> &input,std::vector<uint32_t> &out);void reject_reuse();}
@@ -1829,7 +1830,7 @@ void perf_frame(){
     xbg_logf("NVN PERF memo_buffers destroyed=%llu referenced=%llu slot_drops=%llu tracked=%zu invalid_slots=%#x control=%d",
              (unsigned long long)memo_buffers_destroyed,(unsigned long long)memo_buffers_referenced,
              (unsigned long long)memo_buffer_slot_drops,memo_buffer_slots.size(),memo_buffer_invalid_slots,int(ab_off("memobuffer")));
-    xbg_logf("NVN PERF setcache ab=%d hits=%.1f misses=%.1f template=%.1f plain=%.1f memo_hits=%.1f memo_misses=%.1f memo_front=%.1f why=texel%.1f/simg%.1f/dm%.1f/dynbuf%.1f/store%.1f fresh_skips=%.1f experiment_skips=%.1f vwhy=blk%.1f/buf%.1f/ord%.1f/img%.1f/tex%.1f/stor%.1f",int(ab_frame_on),set_cache_hits/f,set_cache_misses/f,template_updates/f,plain_updates/f,desc_memo_hits/f,desc_memo_misses/f,memo_front_hits/f,desc_memo_why[0]/f,desc_memo_why[1]/f,desc_memo_why[2]/f,desc_memo_why[3]/f,desc_memo_why[4]/f,set_cache_fresh_skips/f,set_cache_experiment_skips/f,vwhy_blk/f,vwhy_buf/f,vwhy_ord/f,vwhy_img/f,vwhy_tex/f,vwhy_stor/f);desc_memo_hits=desc_memo_misses=memo_front_hits=0;for(auto &w:desc_memo_why)w=0;vwhy_blk=vwhy_buf=vwhy_ord=vwhy_img=vwhy_tex=vwhy_stor=0;xbg_logf("NVN PERF keydiff shader%.0f pool%.0f ubo%.0f uaddr%.0f size%.0f vp%.0f alpha%.0f drv%.0f tex%.0f samp%.0f saddr%.0f same%.0f new%.0f len%.0f",key_diff[0]/tf,key_diff[1]/tf,key_diff[2]/tf,key_diff[3]/tf,key_diff[4]/tf,key_diff[5]/tf,key_diff[6]/tf,key_diff[7]/tf,key_diff[8]/tf,key_diff[9]/tf,key_diff[10]/tf,key_diff[11]/tf,key_diff[12]/tf,key_diff[13]/tf);for(auto &k:key_diff)k=0;   // per timed frame
+    xbg_logf("NVN PERF setcache ab=%d hits=%.1f misses=%.1f template=%.1f plain=%.1f memo_hits=%.1f memo_misses=%.1f memo_front=%.1f why=texel%.1f/simg%.1f/dm%.1f/dynbuf%.1f/store%.1f fresh_skips=%.1f experiment_skips=%.1f vwhy=blk%.1f/buf%.1f/ord%.1f/img%.1f/tex%.1f/stor%.1f compute=off%u hits%.1f misses%.1f why=texel%.1f/simg%.1f/dm%.1f/dynbuf%.1f/store%.1f",int(ab_frame_on),set_cache_hits/f,set_cache_misses/f,template_updates/f,plain_updates/f,desc_memo_hits/f,desc_memo_misses/f,memo_front_hits/f,desc_memo_why[0]/f,desc_memo_why[1]/f,desc_memo_why[2]/f,desc_memo_why[3]/f,desc_memo_why[4]/f,set_cache_fresh_skips/f,set_cache_experiment_skips/f,vwhy_blk/f,vwhy_buf/f,vwhy_ord/f,vwhy_img/f,vwhy_tex/f,vwhy_stor/f,unsigned(desc_memo_compute_enabled?0:1),desc_memo_compute_hits/f,desc_memo_compute_misses/f,desc_memo_compute_why[0]/f,desc_memo_compute_why[1]/f,desc_memo_compute_why[2]/f,desc_memo_compute_why[3]/f,desc_memo_compute_why[4]/f);desc_memo_hits=desc_memo_misses=memo_front_hits=0;for(auto &w:desc_memo_why)w=0;desc_memo_compute_hits=desc_memo_compute_misses=0;for(auto &w:desc_memo_compute_why)w=0;vwhy_blk=vwhy_buf=vwhy_ord=vwhy_img=vwhy_tex=vwhy_stor=0;xbg_logf("NVN PERF keydiff shader%.0f pool%.0f ubo%.0f uaddr%.0f size%.0f vp%.0f alpha%.0f drv%.0f tex%.0f samp%.0f saddr%.0f same%.0f new%.0f len%.0f",key_diff[0]/tf,key_diff[1]/tf,key_diff[2]/tf,key_diff[3]/tf,key_diff[4]/tf,key_diff[5]/tf,key_diff[6]/tf,key_diff[7]/tf,key_diff[8]/tf,key_diff[9]/tf,key_diff[10]/tf,key_diff[11]/tf,key_diff[12]/tf,key_diff[13]/tf);for(auto &k:key_diff)k=0;   // per timed frame
     xbg_logf("NVN PERF binds_skipped_per_frame=%.1f xmemo_hits=%.1f drops=%llu bumps=%llu/%llu/%llu/%llu/%llu pinned=%zu/%zu",binds_skipped/f,xmemo_hits/f,(unsigned long long)xmemo_drops,(unsigned long long)memo_bump[0],(unsigned long long)memo_bump[1],(unsigned long long)memo_bump[2],(unsigned long long)memo_bump[3],(unsigned long long)memo_bump[4],memo_pinned[0].size(),memo_pinned[1].size());binds_skipped=0;{char top[160]="";int at=0;bool used[32]={};
      for(int r=0;r<4;r++){int best=-1;for(int k=0;k<32;k++)if(!used[k] && offset_changed_at[k] && (best<0 || offset_changed_at[k]>offset_changed_at[best]))best=k;if(best<0)break;used[best]=true;at+=snprintf(top+at,sizeof(top)-size_t(at),"%s%d:%.1f",r?",":"",best,offset_changed_at[best]/f);}
      xbg_logf("NVN PERF binds set_binds=%.1f offsets_per_bind=%.1f offsets_only=%.1f changed n1=%.1f n2=%.1f n3=%.1f n4+=%.1f at=%s",set_binds/f,set_binds?double(set_bind_offsets)/double(set_binds):0.0,set_binds_offsets_only/f,offset_changes[1]/f,offset_changes[2]/f,offset_changes[3]/f,(offset_changes[4]+offset_changes[5]+offset_changes[6]+offset_changes[7]+offset_changes[8]+offset_changes[9])/f,top);}
@@ -5131,6 +5132,13 @@ static constexpr size_t kMemoFrontSlots = 256;
 static MemoFrontSlot memo_front_slots[kMemoFrontSlots];
 uint64_t memo_mod_gen=1,memo_front_hits=0;
 uint64_t desc_ns[6]={};bool desc_memo_enabled=true;uint64_t desc_memo_hits=0,desc_memo_misses=0,desc_memo_why[6]={};
+// P0 (2026-11-22): the descriptor memo also covers compute dispatches. Only draws were memoized, so
+// every dispatch rebuilt its whole descriptor set (171 of the 348 builds per frame in the Chapter 4
+// foundry scene). The dispatch key covers the compute stage instead of the five graphics stages, so
+// the two key shapes can never alias each other in the shared memo map.
+// Live switch: files/gfx-live-set "desccompute=0" restores the old behaviour in the same session.
+bool desc_memo_compute_enabled=true;uint64_t desc_memo_compute_hits=0,desc_memo_compute_misses=0,desc_memo_compute_why[6]={};
+constexpr uint64_t kDescMemoComputeMarker=0x434f4d5055544501ull;
 uint64_t vwhy_blk=0,vwhy_buf=0,vwhy_ord=0,vwhy_img=0,vwhy_tex=0,vwhy_stor=0;
 std::vector<MemoImage> desc_memo_images;std::vector<DescMemo::Dyn> desc_memo_dyn;bool desc_memo_recording=false;
 std::vector<DescMemo::Texel> desc_memo_texel;bool desc_memo_texel_fail=false,desc_memo_per_frame_texel=false;
@@ -5279,25 +5287,36 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
     // ktag (which part of the key each word is) only feeds the keydiff census, so it is filled on timed frames only (one in
     // perf_sample); a miss without tags skips the census. A/B target ktag tags every frame again.
     const bool tags=timing_now()!=nullptr || ab_off("ktag");
-    bool ok=desc_memo_enabled && !fire_trace_active() && !compute && !capture.active && !capture.probe && !provenance_file && g_ui_moff==0;
+    // A dispatch may join the memo as well (P0). It stays out when the compute stage is missing, when it
+    // needs the indirect-draw parameters that only descriptors_build() copies out, and when the live
+    // switch desccompute=0 turns the new path off.
+    const bool compute_memo = compute && desc_memo_compute_enabled && state.shader[5] &&
+        !(out.indirect_input && !out.indirect_input->instances_only);
+    bool ok=desc_memo_enabled && !fire_trace_active() && (!compute || compute_memo) && !capture.active && !capture.probe && !provenance_file && g_ui_moff==0;
     if(ok){CPU_SCOPE(Descriptor);DescriptorRoot descriptor_measurement(&cpu_scope);
         static std::vector<DynUbo> dyn_ubos;if(dyn_ubos.capacity()<16)dyn_ubos.reserve(16);dyn_ubos.clear();
         auto hit=desc_memo.end();
         {
             DESC_SCOPE(MemoKey);
-            bool no_ubo=false;const unsigned dmode=dyn_mode_for(false,&no_ubo);memo_dyn_ok=dmode!=0 || no_ubo;
-            for(unsigned st=0;st<5;st++){key.push_back(uintptr_t(state.shader[st]));if(tags)ktag.push_back(0);}
+            bool no_ubo=false;const unsigned dmode=dyn_mode_for(compute,&no_ubo);memo_dyn_ok=dmode!=0 || no_ubo;
+            // The key must cover exactly the stages descriptors_build() binds: the five graphics stages
+            // for a draw, the compute stage for a dispatch. A dispatch key carries its own marker, so a
+            // dispatch key and a draw key can never alias each other in the shared memo map.
+            if(compute){key.push_back(uintptr_t(state.shader[5]));key.push_back(kDescMemoComputeMarker);if(tags){ktag.push_back(0);ktag.push_back(0);}}
+            else for(unsigned st=0;st<5;st++){key.push_back(uintptr_t(state.shader[st]));if(tags)ktag.push_back(0);}
             uint64_t tp_mem = state.texture_pool.pool?uint64_t(uintptr_t(state.texture_pool.pool->mem)):0;
             key.push_back(tp_mem);key.push_back(state.texture_pool.off);key.push_back(state.texture_pool.n);if(tags)ktag.insert(ktag.end(),3,1);
             uint64_t sp_mem = state.sampler_pool.pool?uint64_t(uintptr_t(state.sampler_pool.pool->mem)):0;
             key.push_back(sp_mem);key.push_back(state.sampler_pool.off);if(tags)ktag.insert(ktag.end(),2,1);
-            for(unsigned st=0;st<5 && ok;st++)if(state.shader[st]){Shader &shader=*state.shader[st];unsigned ns=nvn_stage[st];
+            for(unsigned st=0;st<6 && ok;st++)if(state.shader[st] && (st==5)==compute){Shader &shader=*state.shader[st];unsigned ns=nvn_stage[st];
                 for(auto &b:shader.bindings){
                     // Texel view 属于 slot，退休时销毁；memo 不追踪其快照或生命周期，不能保留旧 set。
                     // Slot retirement destroys texel views; memo tracks neither their snapshots nor lifetime, so exclude both kinds.
-                    if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER || (b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER && !texel_memo_enabled)){ok=false;++desc_memo_why[0];break;}
-                    if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_IMAGE){ok=false;++desc_memo_why[1];break;}
-                    if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_BUFFER && (b.binding<64 ? ((shader.storage_writes_mask&(1ull<<b.binding))!=0) : (shader.storage_writes.count(b.binding)!=0))){ok=false;++desc_memo_why[2];break;}
+                    // A dispatch builds its texel view per dispatch (the resident-copy path is draw-only),
+                    // so a memoized set would hold a view the memo does not track.
+                    if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER || (b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER && (!texel_memo_enabled || compute))){ok=false;++desc_memo_why[0];if(compute)++desc_memo_compute_why[0];break;}
+                    if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_IMAGE){ok=false;++desc_memo_why[1];if(compute)++desc_memo_compute_why[1];break;}
+                    if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_BUFFER && (b.binding<64 ? ((shader.storage_writes_mask&(1ull<<b.binding))!=0) : (shader.storage_writes.count(b.binding)!=0))){ok=false;++desc_memo_why[2];if(compute)++desc_memo_compute_why[2];break;}
                     for(unsigned element=0;element<b.count;element++){unsigned slot=b.slot+element;
                         switch(b.source){
                         case XBG_SOURCE_UNIFORM:case XBG_SOURCE_STORAGE:{if(slot>=16){ok=false;break;}auto r=b.source==XBG_SOURCE_UNIFORM?state.ub[ns][slot]:state.sb[ns][slot];
@@ -5427,9 +5446,9 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
                         }
                     }
                 }
-                out.entry=m.entry;out.set=m.set;out.pipeline_layout=m.pipeline_layout;out.dynamic_offsets=offsets;++desc_memo_hits;if(m.persistent)++xmemo_hits;desc_ns[5]+=perf_clock()-tm0;return;}
+                out.entry=m.entry;out.set=m.set;out.pipeline_layout=m.pipeline_layout;out.dynamic_offsets=offsets;++desc_memo_hits;if(compute)++desc_memo_compute_hits;if(m.persistent)++xmemo_hits;desc_ns[5]+=perf_clock()-tm0;return;}
             }
-            ++desc_memo_why[3];
+            ++desc_memo_why[3];if(compute)++desc_memo_compute_why[3];
             if(m.persistent){auto pin=memo_pinned[slot_index].find(m.set);if(pin!=memo_pinned[slot_index].end() && --pin->second.refs==0){slots[slot_index].used_sets[pin->second.layout].push_back(m.set);memo_pinned[slot_index].erase(pin);}}
             if(!m.persistent && desc_memo_local[slot_index])--desc_memo_local[slot_index];desc_memo.erase(hit);++memo_mod_gen;}
     }
@@ -5439,10 +5458,10 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
     desc_memo_recording=false;
     if(ok && desc_memo_texel_fail){ok=false;++desc_memo_why[0];}
     if(ok && !(out.written.empty() && out.buffer_views.empty() && out.set && out.dynamic_offsets.size()==desc_memo_dyn.size()))++desc_memo_why[4];
-    if(ok && out.written.empty() && out.buffer_views.empty() && out.set && out.dynamic_offsets.size()==desc_memo_dyn.size()){++desc_memo_misses;
+    if(ok && out.written.empty() && out.buffer_views.empty() && out.set && out.dynamic_offsets.size()==desc_memo_dyn.size()){++desc_memo_misses;if(compute)++desc_memo_compute_misses;
         std::sort(desc_memo_dyn.begin(),desc_memo_dyn.end(),[](const DescMemo::Dyn &a,const DescMemo::Dyn &b){return a.order<b.order;});
         DescMemo dm{out.entry,out.set,out.pipeline_layout,out.dynamic_offsets,desc_memo_images,desc_memo_dyn};dm.texel=desc_memo_texel;if(__builtin_expect(water_ready(), 0)) dm.water=out.water;
-        {size_t elements=0;for(unsigned st=0;st<5;st++)if(state.shader[st])for(auto &b:state.shader[st]->bindings)elements+=b.count;dm.reserve=elements*2+40;}
+        {size_t elements=0;for(unsigned st=0;st<6;st++)if(state.shader[st] && (st==5)==compute)for(auto &b:state.shader[st]->bindings)elements+=b.count;dm.reserve=elements*2+40;}
         dm.persistent=xmemo_enabled && memo_dyn_ok && out.written.empty() && !desc_memo_per_frame_texel;
         for(auto &st:out.storage)dm.stor.push_back({st.first.first,st.first.second,st.second->buffer,st.second->offset});
         for(auto &ti:dm.images)dm.tex_ids.push_back({ti.first->serial,ti.first->mem});
@@ -9045,7 +9064,7 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
           {"honordescrefill",&honor_descriptor_refill_experiment},
           {"texelframe",&honor_frame_texel_memo_enabled},
           {"texdirty",&tex_dirty},{"texmemo",&texel_memo_enabled},{"imgcache",&img_cache_enabled},
-          {"descmemo",&desc_memo_enabled},{"dynpartial",&dyn_partial_enabled},{"xmemo",&xmemo_enabled},
+          {"descmemo",&desc_memo_enabled},{"desccompute",&desc_memo_compute_enabled},{"dynpartial",&dyn_partial_enabled},{"xmemo",&xmemo_enabled},
           {"bindcache",&bind_cache_enabled},{"ownedinput",&owned_input_copy_enabled},{"rbfullcopy",&readback_fullcopy_enabled},{"bboxready",&indexed_bbox_ready_enabled},
           {"gpuindexed",&gpu_indexed_enabled},{"uppro",&upload_prologue},{"depthaspect",&depth_aspect_enabled},
           {"pipefast",&pipeline_fast_enabled},{"pipememo",&pipe_memo},{"occlusion",&occlusion_batch_enabled},

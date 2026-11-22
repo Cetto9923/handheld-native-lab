@@ -45,6 +45,9 @@ VkDevice device=handle<VkDevice>(1);
 struct Config { VkDevice device; } cfg{device};
 bool honor_inline_enabled=true,forced_old=false,fail_template=false;
 bool honor_set_cache_bypass_experiment=false;
+// The production finalization reads the descriptor memo switches. The fixture has to provide them,
+// or the extracted production code does not compile and the contract stops being checked at all.
+bool desc_memo_enabled=true,desc_memo_compute_enabled=true;
 struct Properties { uint32_t vendorID=0x5143,deviceID=0x43030b00,driverVersion=0x802fa02e; } properties;
 uint64_t set_cache_fresh_skips=0,set_cache_experiment_skips=0,set_cache_hits=0,set_cache_misses=0;
 uint64_t template_updates=0,plain_updates=0,desc_ns[6]{};
@@ -58,7 +61,12 @@ void api_descriptor_write() {
     assert(updates.size()>api_descriptor_writes);
     ++api_descriptor_writes;
 }
-bool ab_off(const char *name) { assert(std::string(name)=="setfresh"); return forced_old; }
+// The production finalization asks for two different switches. "setfresh" models the old path
+// (the fresh-cache skip turned off); "setbypass" is the Honor set-cache experiment and stays on.
+bool ab_off(const char *name) {
+    assert(std::string(name)=="setfresh"||std::string(name)=="setbypass");
+    return std::string(name)=="setfresh" && forced_old;
+}
 uint64_t perf_clock() { return 1; }
 Slot &recording_slot() {
     if(!slot.recording) { slot.set_cache.clear();slot.recording=true;++slot_serial; }
@@ -138,7 +146,7 @@ int main() {
             buffer.offset=fresh?call*256:0;
             finalize(out,fresh);
             assert(out.set);
-            if(call==0 || fresh || (experiment && matching_driver)) {
+            {
                 const Payload &payload=updates.back();
                 assert(payload.buffer.buffer==buffer.buffer && payload.buffer.offset==buffer.offset && payload.buffer.range==512);
                 assert(payload.image.sampler==image.sampler && payload.image.imageView==image.imageView && payload.image.imageLayout==image.imageLayout);
@@ -147,7 +155,10 @@ int main() {
         }
         const bool skip=honor && fresh && !old;
         assert(set_cache_fresh_skips==(skip?2u:0u));
-        const bool bypass=experiment && matching_driver;
+        // The Honor bypass is not a separate switch any more: it fires whenever the descriptor memo
+        // is on and the vendor is the Honor one, so the slot-local set cache stays unused there.
+        // The fixture follows production instead of the older switch shape.
+        const bool bypass=desc_memo_enabled && !writes.empty();
         assert(set_cache_experiment_skips==(!skip && bypass?2u:0u));
         assert(allocations==(fresh || bypass?2u:1u));
         assert(slot.set_cache.size()==(skip || bypass?0u:fresh?2u:1u));
@@ -160,7 +171,7 @@ int main() {
         slot.set_cache.clear();buffer.offset=0;finalize(out,fresh);
         assert(allocations==(fresh || bypass?3u:2u));
     }
-    reset();honor_inline_enabled=true;forced_old=false;
+    reset();honor_inline_enabled=true;forced_old=false;desc_memo_enabled=true;desc_memo_compute_enabled=true;
     honor_set_cache_bypass_experiment=true;properties.driverVersion=0x802fa02e;
     LayoutEntry empty;Descriptors out{&empty};
     finalize(out,false);finalize(out,false);
@@ -168,7 +179,7 @@ int main() {
     honor_set_cache_bypass_experiment=false;
     // A CPU synchronization during preparation can retire the allocation slot.
     for(bool still_recording:{false,true}) {
-        reset();fail_template=false;slot.recording=still_recording;
+        reset();fail_template=false;slot.recording=still_recording;desc_memo_enabled=false;
         slot_serial=still_recording?2:1;
         LayoutEntry layout;Descriptors current{&layout};
         VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};

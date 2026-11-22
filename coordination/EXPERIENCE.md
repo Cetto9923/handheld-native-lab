@@ -499,3 +499,97 @@ I/O 与拷贝都记在提交路径里，数字会被抬高。
 本轮正是这样分开的：战斗稳态 30.8–33.3 FPS / submit 26.4–27.9 ms 取自关闭转储后的窗口。
 
 **出处**：MAVIS-BATTLE-VALIDATION-20261122.md §2、§4。
+
+### L-039 「扩大 memo 覆盖面」不等于收益：先量有多少次调用真的进了 memo（2026-11-22）
+
+**现象**：P0 第一版把 descriptor memo 从「仅绘制」扩到「compute dispatch」，理由是兵工厂场景
+每帧 348 次 descriptor 重建里有约 171 次来自 dispatch。实机 A/B（同一会话交错 ON/OFF/ON/OFF）：
+descriptor 9.92–10.80 ms（ON）对 10.63–10.84 ms（OFF）—— **无差异**。
+
+**错在哪**：把「重建次数」当成了「memo 能吃下的次数」。计数显示 compute 侧**每帧只有 1 次命中、0 次未命中**：
+165 个 dispatch/帧里有 **163 个因为绑定 texel buffer（或 storage image / 写存储）被排除在 memo 之外**，
+真正能进 memo 的只有约 2 个。省下 1 次重建 ≈ 13 µs ≈ 0.013 ms/帧，量不出来。
+（顺带证伪了一个此前的怀疑：Honor 上 slot-local set_cache **恒 0 命中**，生产条件已与 `desc_memo_enabled`
+耦合而恒被旁路，`set_key` 构造成本只有 0.01 ms/帧 ⇒「set_cache 白建」不是入口。）
+
+**正确做法**：动缓存覆盖面之前，先把**排除原因做成计数器**（本轮加了 `desc_memo_compute_why[6]`），
+量「有多少次调用真的进了缓存」。如果能进的比例很低，那么「扩大覆盖面」的上限收益 =
+低比例 × 单次成本，很容易低于测量噪声（L-029 的判据）。
+**排除原因比命中率更早告诉你要不要继续做**。
+
+**出处**：MAVIS-P0-DESCRIPTOR-20261122.md §1、§4。
+
+### L-040 同一张 map 里的两类键必须用不同形状，不能只靠「内容不同」（2026-11-22）
+
+**现象**：descriptor memo 的 map 原本只有绘制键（5 个 shader 指针）。要让 dispatch 也用这张 map，
+就把 dispatch 键换成 `{shader[5]}` —— 于是两类键的前缀不同、长度也不同。
+
+**错在哪**：只靠「内容碰巧不同」是脆的。绘制键 5 个 word、dispatch 键 2 个 word，
+一旦以后有人给 dispatch 键补成 5 个 word，两类键就可能撞上；
+更糟的是 map 的 front-slot 快路径按整键比较，撞键会直接复用**错误的 descriptor set** ⇒ 画面错乱。
+
+**正确做法**：给 dispatch 键加一个**专属标记 word**（本轮 `kDescMemoComputeMarker=0x434f4d5055544501`），
+使两类键的**长度与内容都**不同；并把「两类键恒不相等」写成**行为级契约测试**
+（抽取生产源码里的键构造语句编译运行，断言恒不等），而不是只写一句注释。
+
+**出处**：MAVIS-P0-DESCRIPTOR-20261122.md §3、§6；`tests/device/test_descriptor_compute_memo.py`。
+
+### L-041 契约测试的 fixture 会相对生产代码漂移；红线守卫失效时必须先修好再谈回归（2026-11-22）
+
+**现象**：`tests/device/test_fresh_descriptor_cache.py`（descriptor 路径的生产契约测试）
+在本次改动**之前就已经跑不起来**了：fixture 缺 `desc_memo_enabled` 声明 → 从生产源码抽出的片段编译不过；
+`ab_off` stub 只认 `setfresh` 而生产代码还问 `setbypass`；bypass 期望还按已被生产侧删除的
+driverVersion 条件写着。三处漂移叠在一起，这个守卫等于**没有在跑**。
+
+**错在哪**：契约测试失败容易被当成「我这次改动弄坏的」，从而把精力花在回退上；
+也更容易被当成「环境问题」跳过——那等于让一条红线守卫长期空转。
+
+**正确做法**：改这个路径之前，先在**未改动的 HEAD** 上跑一遍测试，**区分「本来就红」和「我弄红的」**；
+本来就红的，且红的正好是这条路径的红线守卫，**必须先修好再继续**，否则后面的回归结论没有保护网。
+fixture 里的期望要**跟着生产语义走**，并在注释里写清为什么（生产条件变了，期望就得跟着变）。
+
+**出处**：MAVIS-P0-DESCRIPTOR-20261122.md §6。
+
+### L-042 开关扫描必须交错 A/B；单个 part 变好不等于整帧变快（2026-11-22）
+
+**现象**：用 `gfx-live-set` 扫了一批既有开关（零编译）。其中 `vcache=0`（关顶点快照缓存）
+让 snapshot part **稳定降 1.3–1.7 ms/帧**（5.27–5.54 → 3.80–4.43），看上去是个 1.5 ms 的现成收益。
+但同一批窗口里 **submit_cpu 并没有下降**（30.38–32.51 对 34.04–34.20，且随时间整体漂移）。
+
+**错在哪**：part 计数器是分桶的，**省下的时间可能只是从「snapshot 桶」挪到别的桶**，
+整帧预算并没有变；而且这台机器同一进程内 submit CPU 会随时间漂（27.4 → 34.2），
+**顺序测量**会把漂移读成差异。
+
+**正确做法**：(1) 任何开关对比都要**交错**（ON/OFF/ON/OFF）取窗口；(2) 以**整帧指标**
+（submit_cpu / fps）判定，单个 part 的变化只能当线索；(3) 单 part 变好但整帧不变 ⇒ 净收益不可证 ⇒
+按 L-029 不占用一轮构建周期。
+
+**顺带结论**：这台机器上「顶点快照缓存」算哈希比拷贝还贵——**省拷贝的缓存不一定划算**，
+缓存必须按「哈希成本 vs 拷贝成本」在本机上重新量过。
+
+**出处**：MAVIS-P0-DESCRIPTOR-20261122.md §5。
+### L-043 Android 端口的"取消/返回"是 KEYCODE_BUTTON_B(97)，不是 BACK(4)（2026-11-22）
+
+**现象**：为了关掉游戏内的 SAVE POINT / SAVE DATA 菜单，用 `input keyevent 4`（BACK）连按三次，
+结果**第一次关掉了引擎内绘制的弹窗，第二次直接把 Activity finish 掉退到了桌面**；
+再重启时游戏把上次的「要保存到这个栏位吗？」确认框原样恢复出来。
+一次取证因此报废，还差点在错误焦点上按下"是"覆盖存档。
+
+**错在哪**：
+1. 端口只映射了一部分 keycode 到手柄键位（`GameActivity.buttonBit()`：
+BUTTON_A=0、BUTTON_B=1、BUTTON_X=2、BUTTON_Y=3、L1/R1/L2/R2、START/SELECT、DPAD×4）；
+   **KEYCODE_BACK 不在表里**，会走 `super.dispatchKeyEvent` → Activity finish。
+2. 引擎内绘制的菜单（弹窗、SAVE POINT 面板）是**游戏画面的一部分**，不是 Android 原生对话框，
+   所以系统 BACK 的语义（退出 Activity）与游戏内的"返回"完全不同。
+3. 焦点默认位置是**存档项**，盲目按确认键会真的覆盖存档。
+
+**正确做法**：
+- 取消/返回一律用 **`input keyevent 97`（KEYCODE_BUTTON_B）**；确认用 `input keyevent 96`（BUTTON_A）。
+- 进场景脚本 `enter_scene.sh` 里的 `keyevent 96` 是确认（不是数字键），与 `keyevent 4` 语义完全不同，别混用。
+- 关弹窗要**逐层、每步截图核对**，不要连按；截图确认无菜单（无 SAVE POINT / SAVE DATA 字样、
+  有 HUD 与小地图）才允许开始采集。
+- 截图本身会暴露是否还在菜单上：**帧指标会被菜单面板污染**（本轮 SAVE DATA 面板 ⇒ lum 恒 36.5、
+  nearblack≈0.221、lap≈1390，与游戏场景完全是两套数），
+  所以"指标很稳定"不等于"场景正确"——先看图再看数。
+
+**出处**：MAVIS-P0-DESCRIPTOR-20261122.md §7、§9。

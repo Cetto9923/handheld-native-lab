@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-11-22T21:30:00+08:00",
-  "phase": "Round 10 诊断轮：GPASS 崩溃已修并实机取到 GPU pass 归因与 CPU 热点地图；Round 10 三项计划改动按实测证伪未采纳；最稳定版 a45430a8 已在 Honor GT Pro 完成场景A(神殿含紫色调查点)引擎侧帧验证 PASS；场景B(开场火场)/场景C(第四章兵工厂+战斗特效)因平板双通道失联 NOT_RUN；descriptor 路径优化待启动",
+  "updated_at": "2026-11-22T23:45:00+08:00",
+  "phase": "P0 descriptor 路径轮：descriptor 子项耗时分解已用引擎自带明细 profiler 取到（兵工厂场景，60 帧，coverage=OK，descriptor 7.05 ms/帧）；P0 第一版「descriptor memo 覆盖 compute dispatch」已实现、构建、装机并实机交错 A/B —— **收益≈0 被证伪**（compute 每帧仅 1 次命中；163/165 dispatch 因 texel 绑定无法进 memo）；同时定位到 draw 侧 177 次/帧整表重建由 tex 句柄变化驱动，是 descriptor 路径真正的大头；descriptor 契约测试的既有漂移已修复（此前该守卫等于没在跑）；下一步 P0 入口见 MAVIS-P0-DESCRIPTOR-20261122.md §8。**同场景 desccompute ON/OFF 显示回归已 PASS**（ON 180 帧 / 20 段、OFF 171 帧 / 19 段，段内 9 帧严格连续，段级指标一致，像素级差异落在同状态自然漂移带内）⇒ 该开关既不改画面也不提速，是零风险零收益的中性开关",
   "coordinator": "Antigravity 本轮接管",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
@@ -12352,6 +12352,47 @@
       "acceptance": "Engine-side frame dump of at least 10 segments x 9 consecutive present frames for the battle scene, a clean (frame dump disabled) performance window, a per-part CPU breakdown compared against a same-area exploration baseline, and a visual check of every near-white / near-black anomaly before calling it a defect",
       "checkpoint": "Battle measured on A42BBB5109000333 with the delivered stable build (device-side SHA256 matches a45430a8). Entered by reloading isolated save shield-regression-20261122073707, which resumes inside a battle (chapter 1 ruin, 2x Lv.2 mutant rats, party Rayen/Laszlo). Full flow run: entry -> command menu -> target select -> physical attack -> enemy 'bite' full-screen particle effect -> victory -> level up (Laszlo Lv.4->Lv.5). Entry: 74 consecutive stalled frames gap 84.9-176.4 ms; peak present=103974 gap 24957.4 ms with submit_cpu 24892.63 ms while gpu was only 37.34 ms -> CPU-side submit block, not a GPU bottleneck. Steady battle with the frame dump disabled: fps 30.82-33.34, submit_cpu 26.38-27.92 ms, gpu 12.57-17.12 ms, passes 66, draws 1171; same-area exploration baseline fps 39.04-40.07, submit_cpu 21.32-21.95 ms, passes 93, draws 536-543. Action frames present 110796-110799 gap 76.8-94.3 ms with sync_rb=1. First-use effect shaders: present 105309 shader_ms 124.0 / 4 pipelines (gap 145.9), 111133 shader_ms 45.5 / 7 pipelines (gap 113.2). Frame dump 225 frames / 25 segments x 9 consecutive present frames (present 107070-111938): nearblack 0.0056-0.0089, nearwhite 0.0021-0.0266, green 0.0064-0.0403, lap 695.5-1312.5; the only anomaly segment (round 22, present 111150-111158) was exported to PNG and confirmed as the legit 'bite' full-screen particle effect, not missing geometry or a black/white flash. Root cause by parts_ms_per_frame against the same-area exploration baseline: battle costs +6.0 ms/frame of CPU (draws 526->1182), made of snapshot per-frame full-table rebuild +1.96 ms (4050->8153 ops), draw +1.82 ms, descriptor +1.56 ms (643->1269 ops); GPU unchanged at 12-17 ms. The 25.3->31.3 ms frame budget matches the measured 39.6->32.0 FPS.",
       "next": "Normal random-encounter entry was NOT reproduced: 64 s of walking with R3 held in the chapter 1 ruin (11 screenshots) never triggered an encounter, so the 25 s entry freeze is measured on the save-resume path only. Repeat the entry measurement on a real encounter before generalising it. Then attack P0 descriptor (1269 ops/frame, 7.59 ms in battle) and P1 snapshot (8153 ops/frame, 4.79 ms) with runtime A/B markers plus display regression, and investigate the 25 s fence wait chain of the battle-entry freeze without cancelling the target_fence == fence wait (L-028).",
+      "owner": "Mavis",
+      "branch": "task/T-mavis-perf-20261122"
+    },
+    {
+      "id": "MAVIS-P0-DESCRIPTOR-20261122",
+      "role": "PERF_P0_DESCRIPTOR",
+      "objective": "Honor GT Pro: cut the CPU cost of the descriptor path (combat frame drops) with a runtime A/B switch and a display regression, using engine-side evidence only",
+      "inputs": [
+        "coordination/HANDOFF.md",
+        "coordination/EXPERIENCE.md",
+        "coordination/state.json",
+        "coordination/results/MAVIS-BATTLE-VALIDATION-20261122.md",
+        "coordination/results/MAVIS-GPASS-ATTRIBUTION-20261122.md"
+      ],
+      "outputs": [
+        "coordination/results/MAVIS-P0-DESCRIPTOR-20261122.md",
+        "coordination/EXPERIENCE.md",
+        "coordination/state.json",
+        "coordination/HANDOFF.md",
+        "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+        "tests/device/test_fresh_descriptor_cache.py",
+        "tests/device/test_descriptor_compute_memo.py",
+        ".local/ffrs-validate/p0/"
+      ],
+      "dependencies": [],
+      "pass_gates": [],
+      "status": "implemented_and_falsified_by_device_ab_neutral_no_perf_gain",
+      "write_scope": [
+        "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+        "tests/device/test_fresh_descriptor_cache.py",
+        "tests/device/test_descriptor_compute_memo.py",
+        "coordination/results/MAVIS-P0-DESCRIPTOR-20261122.md",
+        "coordination/EXPERIENCE.md",
+        "coordination/state.json",
+        "coordination/HANDOFF.md",
+        "coordination/STATUS.md",
+        ".local/ffrs-validate/p0/"
+      ],
+      "acceptance": "Engine-side per-part descriptor breakdown with coverage=OK; a runtime A/B switch (same APK, one boolean, live in one session) with an interleaved on/off comparison in the same scene and the same save; a display regression on the same build; no claim of a performance win unless the whole-frame metric moves beyond the measurement noise",
+      "checkpoint": "Built ffrs-desccompute-20261122.apk SHA 2b5bce720de2476fcca9d81253412301d73f8701aa6882d31e4de4c87e7721a0, signer d11967a3... same as the delivered stable a45430a8, install -r over the running build, data preserved, device APK hash read back identical. Change: the descriptor memo now also covers compute dispatches - the dispatch key is {shader[5], marker} instead of the five graphics stages, dyn_mode_for(compute) matches the build, the binding walk uses the same (st==5)==compute stage selection, dispatch texel bindings and dispatches that need the indirect draw parameters stay out of the memo; runtime switch files/gfx-live-set desccompute=0|1; new counters desc_memo_compute_hits/misses/why[6] in the NVN PERF setcache line. Device A/B in the chapter 4 foundry (same session, interleaved on/off/on/off): descriptor 9.92-10.80 ms (on, 1187.8 calls) vs 10.63-10.84 ms (off, 1024.9 calls) - no difference. Reason measured, not guessed: compute hits are 1.0 per frame and misses 0.0, because 163 of the 165 dispatches per frame bind a texel buffer (why=texel143.0/simg14.0/dm6.0) and are excluded from the memo. Secondary finding from a zero-build switch sweep: turning the vertex snapshot cache off lowers the snapshot part by a stable 1.3-1.7 ms per frame but does not move submit_cpu, so the net gain is unproven and was not adopted (L-029). Also repaired the descriptor contract test, which had already been broken before this round (fixture missing desc_memo_enabled, ab_off stub only accepting setfresh, bypass expectation still on the removed driverVersion condition); it now passes and a new compute-memo contract test with a behavioural proof that a draw key and a dispatch key can never alias was added. Display regression on the same build PASS: same foundry scene, engine-side frame dump, interleaved desccompute=1/0/1/0, ON 180 frames over 20 segments and OFF 171 frames over 19 segments, every segment 9 strictly consecutive presented frames with no gaps. Segment metrics match - nearblack 0.11664 (on) vs 0.11686 (off) mean, nearwhite 0.00340 both, luminance 61.660 vs 61.661, lap 821.61 vs 821.57; in-segment dLum max 0.06 and dLap max 3.7 so no black/white flicker. Pixel-level cross-state differences (mean_abs 1.46-3.12) fall inside the same-state natural animation drift band (2.05-3.74), so the switch changes nothing on screen. Also recorded L-043: engine-drawn menus are part of the picture and pollute frame metrics, the port maps cancel to KEYCODE_BUTTON_B(97) and confirm to KEYCODE_BUTTON_A(96), and BACK(4) finishes the activity instead of closing the menu, which invalidated two earlier capture attempts.",
+      "next": "Next P0 (ordered by measured benefit/risk): (1) make dispatch texel bindings memoizable - but only after proving a compute write cannot stale the resident copy, otherwise it is the L-032 way of trading speed for broken pictures; (2) stop the draw side from rebuilding whole descriptor sets when only the texture handle changed (177 rebuilds per frame, keydiff tex=148) - write only the bindings that changed, which means splitting the flat memo key per binding (medium-high risk); (3) P1 snapshot path (per-submit table rebuild, vcache hashing costs more than the copies it saves on this device); (4) P2 cleanup WAIT_BIT stall; (5) P3 GPU pass merging, last and only with per-pass visual proof. Scene B (moonlit fire) and the combat effect scene are still NOT_RUN: the isolated save has advanced to chapter 4, so the combat scene has to be reached again. RG477M two-device regression is still out of scope, so this branch must not be merged into work/rg477m-native.",
       "owner": "Mavis",
       "branch": "task/T-mavis-perf-20261122"
     }

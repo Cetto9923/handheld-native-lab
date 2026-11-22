@@ -5967,3 +5967,63 @@ P3 GPU pass 合并（收益最大、画面风险最高，须逐 pass 取证）�
   证据 `.local/ffrs-validate/battle/`（frame_metrics.csv 225 帧、engine_tail.log、impact_sheet.png 等）；
   经验库新增 L-035（战斗掉帧拆三层 + CPU 分解定位）、L-036（近白尖峰必须目视核对）、
   L-037（客机 UI 用 keyevent；金手指开关读 SharedPreferences）、L-038（帧转储污染 CPU 读数，基线要关转储后取）。
+
+### 2026-11-22 P0 descriptor 路径轮：分解拿到了，方案被实机证伪（收益≈0），下一步入口明确
+
+**结论先说**：本轮**没有拿到性能收益**。P0 第一版「扩大 descriptor memo 覆盖面到 compute dispatch」
+实机交错 A/B 后判定为中性，**不宣称任何帧率改善**。交付的是分解证据、可复用的 A/B 开关与计数器、
+被修复的契约测试守卫，以及一个精确到「哪一条守卫挡住了多少调用」的下一步入口。
+
+- **分支/包**：`task/T-mavis-perf-20261122`；`ffrs-desccompute-20261122.apk`
+  SHA-256 `2b5bce720de2476fcca9d81253412301d73f8701aa6882d31e4de4c87e7721a0`，
+  签名证书 `d11967a3…` 与在装稳定包 `a45430a8…` 同源，`install -r` 覆盖安装，**未卸载、存档未触碰**，
+  设备回读 APK SHA 逐位一致。设备 `A42BBB5109000333`，独立 adb 端口 5041 + 无线。
+- **分解证据**（引擎自带 `gfx-cpu-profile` 明细模式，兵工厂场景 60 帧，coverage=OK）：
+  descriptor 合计 **7.05 ms/帧**。子项 ms/帧：image_lookup 1.652（2460 次/帧）、set_finalize 0.894（348）、
+  element_rest 0.658（5802）、buffer_bind 0.573（3342）、remaining 0.567、memo_verify 0.517（523）、
+  texel_resident_acquire 0.448、memo_key 0.435（694）、texel_view_create 0.300、memo_snapshot 0.252（523）、setup 0.175。
+  **结构**：descriptor 调用 1188/帧；绘制侧 memo 命中 507、未命中 177（74%），未命中主因是 **texture 句柄变化
+  148/帧**（keydiff）。**slot-local set_cache 在 Honor 上恒 0 命中**（生产条件已与 `desc_memo_enabled` 耦合而恒被旁路），
+  `set_key` 构造成本仅 0.01 ms/帧 ⇒「set_cache 白建」不是入口，此前怀疑作废。
+- **P0 实现**：descriptor memo 覆盖 compute dispatch。dispatch 键 = `{shader[5], 0x434f4d5055544501}`（与绘制键形状不同，
+  同一张 map 里永不别名）；`dyn_mode_for(compute,&no_ubo)` 与 build 同参；绑定遍历同选段规则 `(st==5)==compute`；
+  dispatch 的 texel 绑定与需要 indirect draw 参数的 dispatch 不进 memo。
+  **运行时 A/B 标记**：`files/gfx-live-set "desccompute=0|1"`（同会话即时切换）；
+  新计数器 `desc_memo_compute_hits/_misses/_why[6]` 并入 `NVN PERF setcache` 行。
+- **实机 A/B（同一会话交错 ON/OFF/ON/OFF，兵工厂，同存档同起点）**：
+  descriptor **9.92–10.80 ms（ON）/ 10.63–10.84 ms（OFF）** ⇒ 无差异；compute **命中 1.0 次/帧、未命中 0.0**。
+  原因由计数给出而非猜测：**165 个 dispatch/帧里 163 个绑定 texel buffer（why=texel143.0/simg14.0/dm6.0）被挡在 memo 外**。
+- **零编译开关扫描**（同会话交错）：`vcache=0` 让 snapshot part 稳定降 1.3–1.7 ms/帧，但 **submit_cpu 未体现** ⇒
+  净收益不可证，按 L-029 不采纳；`ownedinput/texmemo/depthaspect/rbfullcopy/uppro` 全部落在噪声内。
+  附带结论：这台机器上「顶点快照缓存」算哈希比拷贝还贵。
+- **契约测试**：`tests/device/test_fresh_descriptor_cache.py` **此前就已经失效**（fixture 缺 `desc_memo_enabled` 导致
+  抽出的生产片段编译不过；`ab_off` stub 只认 `setfresh`；bypass 期望还按已被删除的 driverVersion 条件写），
+  三处已修，3 个用例恢复通过；新增 `tests/device/test_descriptor_compute_memo.py`（9 用例，含行为级
+  「绘制键与 dispatch 键恒不相等」的编译+运行验证）。
+- **显示回归 PASS（同场景单变量对照，兵工厂真实游戏场景）**：引擎侧 `gfx-live-framedump`，
+  同会话交错 `desccompute` ON→OFF→ON→OFF；**ON 180 帧 / 20 段、OFF 171 帧 / 19 段，每段 9 帧 present 号严格连续**。
+  段级指标一致：nearblack 均值 0.11664(ON) vs 0.11686(OFF)、nearwhite 恒 0.00340、亮度 61.660 vs 61.661、
+  lap 821.61 vs 821.57；段内相邻帧 ΔLum ≤ 0.06、Δlap ≤ 3.7 ⇒ **无黑白闪、无缺面**。
+  像素级交叉验证：跨状态 mean_abs 1.46–3.12，**落在同状态自然动画漂移带（2.05–3.74）内** ⇒ 差异由熔岩/粒子动画解释，
+  不是开关带来的。导出 PNG 目视（`ab_on_frame.png` / `ab_off_frame.png`）：熔岩、人物、紫色调查点、小地图、
+  任务文字、A 调查 提示、左侧系统栏全部完整，两帧仅熔岩相位不同。
+  **⇒ `desccompute` 开关既不改画面也不提速，是零风险零收益的中性开关。**
+- **其它显示取证**：兵工厂静态（desccompute=ON）108 帧 / 12 段 × 9 连续呈现帧，nearblack 0.107–0.112、
+  nearwhite 恒 0.0034、green 0.00003–0.0114、亮度均值 61.5–62.3、lap 793–798，段间无闪烁特征；
+  导出 PNG 目视：熔岩、人物、紫色调查点、小地图与按钮完整，无缺面无黑白闪。
+  **场景A（神殿）本轮未取到有效对照**：隔离存档 `shield-regression-20261122073233` 当前实际落在兵工厂，
+  且 `enter_scene.sh` 的按键序列把画面停在 SAVE POINT 菜单上（深蓝半透明面板占屏约 1/3，即那组 189 帧
+  nearblack 0.114–0.116 的来源，**不是渲染缺陷**，PNG 目视已确认）⇒ 该组帧不作场景A对照，
+  场景A 维持上一轮稳定包结论。
+- **采集期间的一次设备侧干扰**：显示对照采集中途，平板前台被切到系统设置页（游戏转后台、帧停止产出、
+  live 开关随之失效），已强制结束设置页并用 `enter_scene.sh` 恢复同一隔离存档后重采。
+- **下一步 P0（按实测收益/风险排序）**：① 让 dispatch 的 texel 绑定可 memo 化 —— 但必须先证明 compute 写入不会让
+  resident 拷贝过期，否则就是 L-032 的「提速换画面异常」，建议单独一轮先做写入跟踪证据；
+  ② 减少 draw 侧 177 次/帧整表重建（tex 句柄变化驱动），方向是「只写变化的 binding」，需把扁平键拆成按 binding 结构，
+  中高风险；③ P1 snapshot 路径；④ P2 cleanup WAIT_BIT；⑤ P3 GPU pass 合并（最后做，逐 pass 取证）。
+- **仍不合入 `work/rg477m-native`**：RG477M 双机回归未做（权限外）；场景B（月夜火场）与战斗特效场景仍未测
+  （隔离存档已推进到第 4 章，战斗场景需重新推进进度）。
+- 报告 `coordination/results/MAVIS-P0-DESCRIPTOR-20261122.md`；证据 `.local/ffrs-validate/p0/`；
+  经验库新增 L-039（扩大 memo 覆盖面不等于收益，先量排除原因）、L-040（同一 map 里两类键必须不同形状）、
+  L-041（契约 fixture 会漂移，红线守卫要先恢复再谈回归）、L-042（开关扫描要交错 A/B，单 part 变好≠整帧变快）、
+  L-043（端口的取消/返回是 KEYCODE_BUTTON_B(97) 不是 BACK(4)；引擎内菜单会污染帧指标，"指标稳定"≠"场景正确")。
