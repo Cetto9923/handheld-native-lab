@@ -6478,3 +6478,58 @@ gpu 14.15~14.70 ms 只占周期 **63~68%**。
   desc_memo_reset 每帧 708 次连带清空 img_cache / 热负载下噪声底 ≥1 ms/帧。
 - 设备：仍装第 2 版；live-set 已恢复为 `gfxaffinity=prime`；`gfx-live-ab` 已清空；
   无 `gfx-cpu-profile` 残留；游戏进程保持存活；**红果需还回前台**。
+
+## 第 9 轮（V7，诊断，无出货）：**第一次拆开 GPU 侧**，定位到 2.0 ms/帧 的写回成本 (2026-11-23)
+
+第 8 轮把入口收窄成「转 GPU 侧」。本轮用引擎自带的免重编译入口
+`gfx-pass-live = "<帧数>"` 拿到本项目**第一份 GPU 侧分解**，
+并用排除法把一条 **2.0 ms/帧** 的 GPU 成本钉死。报告 §17.1~§17.8。
+
+**① 第一个 GPU 侧基线**
+内部渲染分辨率 **768×436**（96 个 pass 里 71 个是它）；火场每帧 96 个 render pass、
+735 draw、135 dispatch。GPU 一帧的账：pass 9.86 ms + compute 3.18 ms + **空档 2.13 ms**
+= 15.07 ms（与 `gpu_ms` 14.7~15.1 吻合）。
+**top 4 个 pass 占 pass 总时长 53%**；**同一批几何每帧被光栅化两遍**
+（585504/585642 顶点、242/246 draw，一次进 7 个 attachment 2366 µs、一次进 1 个 749 µs）
+合计 32%；**每 pass 固定开销基线约 23 µs**（40 个同 shader 的后处理 pass 每个 23~31 µs）。
+
+**② 两个离群 pass**：i=13 = 600/602/608 µs、i=17 = 422/422/429 µs，
+而结构完全相同的 pass 只要 63 µs（i=13 与 i=14 同 shader 对却是 600 vs 210）。
+⇒ 成本在片元着色器读了什么 / attachment 的 load-store 方式，未定位。
+
+**③ 2.0 ms/帧 的空档（核心发现）**
+`span_us` 的定义是「第一个记录项的 q0 → 最后一个记录项的 q1」，
+所以 **span − pass − compute = 落在所有 pass 与 dispatch 之间的 GPU 时间**。
+实测：每 slot 的 compute dispatch 数 1 → 空档 0、3 → 2、15 → 96、**115 → 2011~2032 µs**，
+**跨帧极差 ≤21 µs**，且与该 slot 的 compute 工作量无关。
+
+**④ 决定性排除：不是「GPU 等 CPU」**
+`descmemo=0` 让 submit_cpu **+1.28 ms**、fps **−3.6**，
+而空档 **2028 / 2022 / 2032 / 2031 µs 纹丝不动** ⇒ 是真实 GPU 工作（L-095）。
+
+**⑤ 归因：存储写回路径 9.32 MB/帧**
+`READBACK_TIMING`：**alloc_bytes 9.32 MB/帧**（430 次）、CPU 拷贝仅 0.78 MB/帧
+⇒ 其余 ~8.5 MB/帧 是 **GPU 写进去的**；读回缓冲是 HOST_VISIBLE|HOST_COHERENT|HOST_CACHED
+⇒ **GPU 直接写主机可见内存**。带宽核对：GPU 写 9.32 MB 用 2.0 ms = **4.66 GB/s**，
+CPU memcpy 同样字节只要 11 GB/s ⇒ **GPU 写 host-visible 慢 2.4 倍**（L-096）。
+另：`cleanup writebacks=0.64 ms (7.1 MB)` 是 CPU 侧 host→host memcpy
+（热负载时升到 2.58 ms）。**合计 2.6~4.6 ms/帧 = 整帧的 12~20%**。
+
+**⑥ 这是 9 轮以来第一条不依赖重复收益、量级够大的 GPU 侧靶子。**
+三个候选修法（都不改画面，但风险不同，已写进报告 §17.6）：
+A 写回目的地改 device-local + 退役时补一次 device→host 拷贝（GPU 侧 2.0 → 约 0.9 ms）；
+B 写回惰性化（guest 真读时才拷）；C 让来宾存储缓冲直接用 HOST_VISIBLE（只省 CPU 侧）。
+
+**⑦ 附带确认**：遮挡查询已是批量模式（155.7 次/帧，不是引擎注释里的旧版 2200 次/帧 ≈ 10 ms GPU），
+这条大头不用再查；每帧另有 448.9 次来自 compute dispatch 的屏障
+（`compute_barrier` 的 dst mask 含 ALL_GRAPHICS|ALL_COMMANDS），
+其 dst stage 能否延后到 compute 段末尾才发，是 ④ 的备选解释之一。
+
+**本轮不出货**：改动落在写回正确性路径（L-032），且设备处于热负载、
+无法做可信的显示回归 ⇒ 按 L-029 不占构建周期。
+
+- **经验库新增 L-094 ~ L-096**：GPU 侧计时比 CPU 侧稳定（热负载下仍可出结论）/
+  用「给 CPU 加负担」区分「GPU 空转」与「GPU 真在干活」/
+  GPU 写主机可见内存比 CPU memcpy 慢 2.4 倍。
+- 设备：仍装第 2 版；live-set 已恢复 `gfxaffinity=prime`；`gfx-live-ab` 已清空；
+  `gfx-cpu-profile` / `gfx-pass-live` 均已清空；游戏进程存活；**红果已还回前台**。
