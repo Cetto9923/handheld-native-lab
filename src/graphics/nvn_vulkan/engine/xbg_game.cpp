@@ -600,7 +600,7 @@ void timing_report(const char *reason){
         (unsigned long long)(stats.draws-timing_before.draws),(unsigned long long)(stats.dispatches-timing_before.dispatches),
         (unsigned long long)(stats.submissions-timing_before.submissions),(unsigned long long)(stats.shader_loads-timing_before.shader_loads));
     report_pipeline_cache();
-    static const char *names[]={"other","draw","dispatch","descriptor","pass","buffer","pipeline","submit","fence","present","cleanup","hash","image","log","program","cpuwrite","snapshot"};
+    static const char *names[]={"other","draw","dispatch","descriptor","pass","buffer","pipeline","submit","fence","present","cleanup","hash","image","log","program","cpuwrite","snapshot","sub_maint","sub_exec","sub_submit","sub_aff","sub_pres_prep","sub_pres_submit","sub_pace","sub_snap_fast","sub_snap_slow"};
     for(unsigned i=0;i<XbgCpuTiming::Count;i++){const auto &c=timing.counters[i];xbg_logf("NVN CPU_TIMING part=%s calls=%llu exclusive_ns=%llu inclusive_ns=%llu max_ns=%llu",names[i],(unsigned long long)c.calls,(unsigned long long)c.exclusive_ns,(unsigned long long)c.inclusive_ns,(unsigned long long)c.max_ns);}
     xbg_logf("NVN INDEXED_READY v=1 calls=%llu requests=%llu exact_calls=%llu exact_requests=%llu unique=%llu duplicates=%llu overflow_calls=%llu reports_steps=%llu writebacks_steps=%llu duplicate_reports_steps=%llu duplicate_writebacks_steps=%llu vertex_requests=%llu vertex_repeats=%llu",
         (unsigned long long)indexed_ready_stats.calls,(unsigned long long)indexed_ready_stats.requests,
@@ -1991,7 +1991,7 @@ void perf_frame(){
                  (unsigned long long)other, (unsigned long long)perf.ordered_buffer_clears);
     }
     if(!timing_active && perf_normalizable){
-        static const char *names[]={"other","draw","dispatch","descriptor","pass","buffer","pipeline","submit","fence","present","cleanup","hash","image","log","program","cpuwrite","snapshot"};
+        static const char *names[]={"other","draw","dispatch","descriptor","pass","buffer","pipeline","submit","fence","present","cleanup","hash","image","log","program","cpuwrite","snapshot","sub_maint","sub_exec","sub_submit","sub_aff","sub_pres_prep","sub_pres_submit","sub_pace","sub_snap_fast","sub_snap_slow"};
         char line[1024];int at=snprintf(line,sizeof(line),"NVN PERF parts_ms_per_frame timed=%llu",(unsigned long long)perf_timed_frames);
         for(unsigned i=0;i<XbgCpuTiming::Count && at<int(sizeof(line))-48;i++){const auto &c=timing.counters[i];if(c.calls<perf_timing_before[i].calls)perf_timing_before[i]=XbgCpuTiming::Counter{};uint64_t ns=c.exclusive_ns-perf_timing_before[i].exclusive_ns,calls=c.calls-perf_timing_before[i].calls;at+=snprintf(line+at,sizeof(line)-at," %s=%.2f/%.1f",names[i],double(ns)/1e6/tf,double(calls)/tf);perf_timing_before[i]=c;}
         xbg_logf("%s",line);
@@ -2486,8 +2486,10 @@ bool lookup(uint64_t address,size_t bytes,Buffer &out){
 }
 Buffer snapshot_slow(uint64_t address,size_t bytes,VkDeviceSize align);
 Buffer snapshot(uint64_t address,size_t bytes,VkDeviceSize align=4){CPU_SCOPE(Snapshot);
-    SnapFront &f=snap_front_for(0,address,bytes);if(__builtin_expect(f.epoch==snapshot_epoch && f.address==address && f.bytes==bytes, 1)){++perf.snapshot_hits;++snap_front_hits;return f.buffer;}
-    Buffer b=snapshot_slow(address,bytes,align);f.address=address;f.bytes=bytes;f.epoch=snapshot_epoch;f.buffer=b;return b;
+    SnapFront &f=snap_front_for(0,address,bytes);
+    {CPU_SCOPE(SubSnapFast);if(__builtin_expect(f.epoch==snapshot_epoch && f.address==address && f.bytes==bytes, 1)){++perf.snapshot_hits;++snap_front_hits;return f.buffer;}}
+    Buffer b;{CPU_SCOPE(SubSnapSlow);b=snapshot_slow(address,bytes,align);}
+    f.address=address;f.bytes=bytes;f.epoch=snapshot_epoch;f.buffer=b;return b;
 }
 Buffer snapshot_slow(uint64_t address,size_t bytes,VkDeviceSize align){
     if(bytes>256ull*1024*1024)
@@ -5253,8 +5255,10 @@ Buffer uniform_snapshot(uint64_t address,size_t copy){
     return uniform_snapshot_cached(address,copy);
 }
 Buffer uniform_snapshot_cached(uint64_t address,size_t copy){CPU_SCOPE(Snapshot);
-    SnapFront &f=snap_front_for(1,address,copy);if(__builtin_expect(f.epoch==snapshot_epoch && f.address==address && f.bytes==copy, 1)){++perf.snapshot_hits;++snap_front_hits;return f.buffer;}
-    Buffer b=uniform_snapshot_slow(address,copy);f.address=address;f.bytes=copy;f.epoch=snapshot_epoch;f.buffer=b;return b;
+    SnapFront &f=snap_front_for(1,address,copy);
+    {CPU_SCOPE(SubSnapFast);if(__builtin_expect(f.epoch==snapshot_epoch && f.address==address && f.bytes==copy, 1)){++perf.snapshot_hits;++snap_front_hits;return f.buffer;}}
+    Buffer b;{CPU_SCOPE(SubSnapSlow);b=uniform_snapshot_slow(address,copy);}
+    f.address=address;f.bytes=copy;f.epoch=snapshot_epoch;f.buffer=b;return b;
 }
 Buffer uniform_snapshot_slow(uint64_t address,size_t copy){
     size_t n=uniform_range(copy);auto key=std::make_pair(address,uint64_t(copy));
@@ -9343,13 +9347,16 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
     if(deferred_live_profile && !timing.top){uint64_t current=stats.presents.load();timing=XbgCpuTiming(timing_clock);timing_first=current+2;timing_last=timing_first+deferred_live_profile-1;deferred_live_profile=0;}
    TimingRoot timing_root;CPU_SCOPE(Other);
    need(initialized && !failed,"Game Vulkan backend not initialized/healthy");
-   maintain_memory_pressure();
-   performance_hint::begin_work();
+   {CPU_SCOPE(SubMaint);maintain_memory_pressure();performance_hint::begin_work();}
    uint64_t begin=timing_clock();snapshot_reset();uint64_t budget=0;
     // A render-enable block is a property of one submission: the reference clears it when the submission starts
     // (nvn_mtl.m:649, g_rc_skip = 0), so a block left false by the previous frame does not drop this frame's draws.
     state.render_cond_skip=false;
-    for(int i=0;i<n;i++)execute(reinterpret_cast<const uint8_t*>(handles[i]),0,budget);++stats.submissions;++submitted;if(sync_mode)complete_all();gfx_aff_reassert();perf.submit_cpu_ns+=timing_clock()-begin;}
+    {CPU_SCOPE(SubExec);for(int i=0;i<n;i++)execute(reinterpret_cast<const uint8_t*>(handles[i]),0,budget);}
+    ++stats.submissions;++submitted;
+    {CPU_SCOPE(SubSubmit);if(sync_mode)complete_all();}
+    {CPU_SCOPE(SubAff);gfx_aff_reassert();}
+    perf.submit_cpu_ns+=timing_clock()-begin;}
 extern "C" uint64_t xbg_legacy_last_fence(){return gfx_async?gfx_enqueued.load():[]{std::lock_guard<std::recursive_mutex> lock(mutex);return submitted;}();}
 extern "C" void xbg_legacy_flush(){
     if (gfx_async) {
@@ -9668,7 +9675,9 @@ void flame_diag_roi_read(){
 
 static void xbg_present_texture_now(const win_t *window,const tex_t *texture){std::lock_guard<std::recursive_mutex> lock(mutex);maintain_memory_pressure();preflight_cpu_reads();{SiteScope site(SITE_PRESENT);cur_op=61;TimingRoot timing_root;CPU_SCOPE(Other);need(initialized&&cfg.present,"Game presentation callback not installed");uint64_t present_begin=timing_clock();Image &im=get_image(texture,false);need(im.gpu_written,"Game tried to present a texture never rendered");probe_present(im);
     // Stop the uniform fingerprint trace once it has covered the requested number of frames.
-    if(ubtrace.on.load(std::memory_order_relaxed)){if(ubtrace.frames>=ubtrace.limit){ubtrace.on.store(false,std::memory_order_relaxed);if(ubtrace.file){fflush(ubtrace.file);fclose(ubtrace.file);ubtrace.file=nullptr;}xbg_logf("LIVE-UBTRACE off after %llu frames",(unsigned long long)ubtrace.frames);}else ++ubtrace.frames;}Commands c;im.transition(c.command,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);fire_trace_present(im,c.command);water_trace_present(im,c.command);c.finish();if(flame_diag_enabled)flame_diag_roi_record(im);submit_slots(false);if(flame_diag_enabled){gpu_sync(perf.sync_readback);flame_diag_roi_read();}performance_hint::finish_work();uint64_t pace_ns=xbg_frame_pace();int r;{CPU_SCOPE(Present);r=cfg.present(cfg.userdata,window->native,im.image,im.fmt,im.width,im.height,window->crop,window->interval);}if(r){static unsigned err_n=0;if(err_n++<10)xbg_logf("Game presentation dropped/warning: %d",r);}
+    if(ubtrace.on.load(std::memory_order_relaxed)){if(ubtrace.frames>=ubtrace.limit){ubtrace.on.store(false,std::memory_order_relaxed);if(ubtrace.file){fflush(ubtrace.file);fclose(ubtrace.file);ubtrace.file=nullptr;}xbg_logf("LIVE-UBTRACE off after %llu frames",(unsigned long long)ubtrace.frames);}else ++ubtrace.frames;}{CPU_SCOPE(SubPresPrep);Commands c;im.transition(c.command,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);fire_trace_present(im,c.command);water_trace_present(im,c.command);c.finish();if(flame_diag_enabled)flame_diag_roi_record(im);}
+{CPU_SCOPE(SubPresSubmit);submit_slots(false);if(flame_diag_enabled){gpu_sync(perf.sync_readback);flame_diag_roi_read();}}
+performance_hint::finish_work();uint64_t pace_ns=0;{CPU_SCOPE(SubPace);pace_ns=xbg_frame_pace();}int r;{CPU_SCOPE(Present);r=cfg.present(cfg.userdata,window->native,im.image,im.fmt,im.width,im.height,window->crop,window->interval);}if(r){static unsigned err_n=0;if(err_n++<10)xbg_logf("Game presentation dropped/warning: %d",r);}
     ++stats.presents;if(flame_diag_enabled){fdiag_present=texture->serial;fdiag_present_mem=uint64_t(uintptr_t(texture->mem));
         uint64_t other_draw=0,other_inst=0,other_bind=0,other_zero=0;for(int i=2;i<flame_diag_keys;i++){other_draw+=fdiag_draws[i];other_inst+=fdiag_inst[i];other_bind+=fdiag_binds[i];other_zero+=fdiag_zero[i];}
         xbg_logf("FLAME_FRAME fr=%llu be4e_draw=%llu be4e_inst=%llu be4e_bind=%llu be4e_zero=%llu f8b27_draw=%llu f8b27_inst=%llu f8b27_bind=%llu f8b27_zero=%llu f8b27_nz=%llu f8b27_sig=%#llx f8b27_mem=%#llx other_draw=%llu other_inst=%llu other_bind=%llu other_zero=%llu skip=%llu ds=%u/%u/%u blend=%u/%u/%u rt=%#llx dsrt=%#llx vp=%#llx sc=%#llx bi=%llu bv=%llu cnt=%llu prim=%d itype=%d present=%llu pmem=%#llx pf=%llu pmean=%llu roi=%u,%u,%u,%u im=%llu,%llu c5a=%#x c5b=%#x c5c=%#x c2a=%#x c0a=%#x ubo=%#llx c5mask=%#llx c5min=%llu c5max=%llu c5n=%llu rtpx=%llu rtw=%llu rth=%llu b18=%#x rthash=%#llx texhash=%#llx vb0=%#llx:%llu vb1=%#llx:%llu vb2=%#llx:%llu vb3=%#llx:%llu ibuf=%#llx ibytes=%llu",
