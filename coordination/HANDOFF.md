@@ -6684,4 +6684,31 @@ draw 1.417 / dispatch 0.388 / present 0.299 / image 0.278 / sub_snap_fast **0.60
   聚合域的均值会掩盖尖峰（峰值与均值分开读）。L-106 已验证命中。
 - 设备：**已装回已出货的第 2 版** `ffrs-v4-affinity-20261123.apk`；
   live-set `gfxaffinity=prime`；无残留 marker；游戏进程已停止；**红果在前台**。
+（第 11 轮测量完成时的状态；第 12 轮的 V10 构建、装机、测量与还原见下一段。）
+## 第 12 轮（V10，**已完成**）：execute() 拆到命令级 —— 第一靶定为 OP_DRAW_IDX 的 16.15 µs/次 (2026-11-23)
+
+第 11 轮把 `other` 域拆出 `execute()`；第 12 轮把 `execute()` 再拆到**命令级**，
+把 12 轮以来最大的黑箱拆到了 op。报告 §20.1~§20.7。**本轮没出货。**
+
+**① 规模**：每帧 **10,846 条 NVN 命令**；poll_retire **169 次/帧**；命令体累计 15.98 ms/帧。
+
+**② 按 op 的 ms/帧**
+**OP_DRAW_IDX 10.96**（679 次/帧 × 16.15 µs）/ **OP_DISPATCH 2.85**（165 × 17.25 µs）/
+OP_REPORT_COUNTER 0.76 / OP_CLEAR_BUF 0.27 / OP_BIND_PROGRAM 0.23 / OP_BIND_UBO 0.13 /
+OP_BIND_STATE 0.10 / OP_BARRIER 0.10 ⇒ **两条命令吃掉 13.8 ms/帧**。
+
+**③ 尖峰不是命令条数**：最慢的提交 18.52 ms 只有 2,450 条命令，
+而 6,844 条命令的那次只花 10.42 ms ⇒ 尖峰在 `poll_retire` → `retire_slot` → cleanup
+（cleanup 单次峰值 **9.37 ms**，poll_retire 单次峰值 **9.96 ms**）。
+
+**④ 修正第 11 轮的措辞**：解释器自身很便宜（头解码 51 ns/命令、arena 检查 50 ns/命令）；
+`sub_exec` 独占 5.06 ms/帧 实际是「命令体中未被现有 scope 覆盖的部分」。
+
+**⑤ 下一步（V11 诊断）**：在 `OP_DRAW_IDX` 的 case 内加 2~3 个子域
+（索引数据解析 / 间接参数准备 / 状态绑定），把那约 7 µs/次的盲区定位出来。
+
+- **经验库新增 L-109 ~ L-110**：独占时间会混淆「本层逻辑」与「调用到的无 scope 工作」/
+  尖峰要看规模与耗时是否成比例。
+- 设备：**已装回已出货的第 2 版** `ffrs-v4-affinity-20261123.apk`；
+  live-set `gfxaffinity=prime`；无残留 marker；游戏进程已停止；**红果在前台**。
 
