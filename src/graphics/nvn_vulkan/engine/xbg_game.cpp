@@ -1037,6 +1037,8 @@ struct Slot {
             uint32_t count=0,instances=0,first_instance=0,topology=0,cull=0,blend=0,write_mask=0;
             int32_t first=0,base_vertex=0;
             bool indexed=false,indirect=false,depth_test=false,depth_write=false;
+            bool pipeline_state_known=false,blend_state_known=false;
+            uint32_t blend_attachment_count=0;
             uint32_t depth_compare=0;VkViewport viewport{};VkRect2D scissor{};
         };
         uint32_t q0=0,q1=0,w=0,h=0,att=0,fmt=0,draws0=0,draws1=0,x=0,y=0,z=0;uint64_t verts0=0,verts1=0;
@@ -1509,9 +1511,12 @@ void retire_slot(Slot &s){
         if(complete)span_us=double((last-first)&mask)*per;
         xbg_logf("NVN GPASS frame=%llu slot=%u ring=%u summary recorded=%zu complete=%zu skipped=%u queries=%u result=%d pass_us=%.0f compute_us=%.0f span_us=%.0f",(unsigned long long)s.prof_frame,s.prof_slot,unsigned(&s-slots),s.prof_recs.size(),complete,s.prof_skipped,s.prof_used,int(status),pass_us,compute_us,span_us);
         for(size_t i=0;i<s.prof_recs.size();++i)for(const auto &d:s.prof_recs[i].draw_records){
-            xbg_logf("NVN GPASS_DRAW frame=%llu slot=%u ring=%u pass=%zu ordinal=%llu shaders=%s count=%u instances=%u first=%d base_vertex=%d first_instance=%u indexed=%u indirect=%u topology=%u cull=%u depth=%u/%u/%u blend=%#x write_mask=%#x viewport=%g/%g/%g/%g scissor=%d/%d/%u/%u",
-                (unsigned long long)s.prof_frame,s.prof_slot,unsigned(&s-slots),i,(unsigned long long)d.ordinal,d.shaders.c_str(),d.count,d.instances,d.first,d.base_vertex,d.first_instance,unsigned(d.indexed),unsigned(d.indirect),d.topology,d.cull,unsigned(d.depth_test),unsigned(d.depth_write),d.depth_compare,d.blend,d.write_mask,
-                d.viewport.x,d.viewport.y,d.viewport.width,d.viewport.height,d.scissor.offset.x,d.scissor.offset.y,d.scissor.extent.width,d.scissor.extent.height);
+            char blend[16]="unknown",write_mask[16]="unknown";
+            if(d.blend_state_known){snprintf(blend,sizeof(blend),"%#x",d.blend);snprintf(write_mask,sizeof(write_mask),"%#x",d.write_mask);}
+            xbg_logf("NVN GPASS_DRAW frame=%llu slot=%u ring=%u pass=%zu ordinal=%llu shaders=%s count=%u instances=%u first=%d base_vertex=%d first_instance=%u indexed=%u indirect=%u topology=%u cull=%u depth=%u/%u/%u blend=%s write_mask=%s viewport=%g/%g/%g/%g scissor=%d/%d/%u/%u pipeline_state_known=%u blend_state_known=%u blend_attachment_count=%u",
+                (unsigned long long)s.prof_frame,s.prof_slot,unsigned(&s-slots),i,(unsigned long long)d.ordinal,d.shaders.c_str(),d.count,d.instances,d.first,d.base_vertex,d.first_instance,unsigned(d.indexed),unsigned(d.indirect),d.topology,d.cull,unsigned(d.depth_test),unsigned(d.depth_write),d.depth_compare,blend,write_mask,
+                d.viewport.x,d.viewport.y,d.viewport.width,d.viewport.height,d.scissor.offset.x,d.scissor.offset.y,d.scissor.extent.width,d.scissor.extent.height,
+                unsigned(d.pipeline_state_known),unsigned(d.blend_state_known),d.blend_attachment_count);
         }
     }
     if(s.timestamps){uint64_t t[2]{};VkResult raw_result=vkGetQueryPoolResults(cfg.device,s.timestamps,0,2,sizeof(t),t,8,VK_QUERY_RESULT_64_BIT);if(gpu_raw.get(s.raw_handle))gpu_raw.query(s.raw_handle,int32_t(raw_result),t[0],t[1],timing_clock());if(raw_result==VK_SUCCESS && t[1]>=t[0]){uint64_t mask=timestamp_bits<64?(uint64_t(1)<<timestamp_bits)-1:~0ull;const uint64_t ns=uint64_t(double((t[1]-t[0])&mask)*properties.limits.timestampPeriod);perf.gpu_ns+=ns;++perf.gpu_samples;hud::gpu_add(s.hud_frame,ns);}}
@@ -6073,7 +6078,37 @@ void pass_prof_depth_idle(VkCommandBuffer cmd){Slot &s=slots[slot_index];if(!s.p
 void pass_prof_begin(const Pass &p,VkCommandBuffer cmd){Slot &s=slots[slot_index];s.prof_open=pass_prof_reserve(cmd);if(s.prof_open<0)return;
     auto &r=s.prof_recs[s.prof_open];r.w=p.width;r.h=p.height;r.att=uint32_t(p.images.size());r.fmt=p.images.empty()?0u:uint32_t(p.images[0]->fmt);
 }
-void pass_prof_draw(VkCommandBuffer cmd,const VkGraphicsPipelineCreateInfo &ci,int first,int count,
+struct PassDrawState {
+    uint32_t topology=0,cull=0,depth_compare=0,blend=0,write_mask=0,blend_attachment_count=0;
+    bool depth_test=false,depth_write=false,pipeline_known=false,blend_known=false;
+};
+// Vulkan pipeline create-info points into scratch storage valid only while constructing the pipeline.
+// Copy the effective static metadata while it is live. The dynamic viewport/scissor are supplied
+// separately by the draw that actually records them. Absence of an attachment array is not blend off.
+PassDrawState pass_prof_snapshot(const VkGraphicsPipelineCreateInfo &ci){
+    PassDrawState s{};
+    if(ci.pInputAssemblyState && ci.pRasterizationState && ci.pDepthStencilState){
+        s.pipeline_known=true;
+        s.topology=uint32_t(ci.pInputAssemblyState->topology);
+        s.cull=ci.pRasterizationState->cullMode;
+        s.depth_test=ci.pDepthStencilState->depthTestEnable;
+        s.depth_write=ci.pDepthStencilState->depthWriteEnable;
+        s.depth_compare=uint32_t(ci.pDepthStencilState->depthCompareOp);
+    }
+    const auto *b=ci.pColorBlendState;
+    if(b){
+        s.blend_attachment_count=b->attachmentCount;
+        if(!b->attachmentCount || b->pAttachments){
+            s.blend_known=true;
+            for(uint32_t i=0;i<b->attachmentCount && i<8;++i){
+                const auto &a=b->pAttachments[i];
+                s.blend|=uint32_t(a.blendEnable!=0)<<i;s.write_mask|=uint32_t(a.colorWriteMask)<<(i*4);
+            }
+        }
+    }
+    return s;
+}
+void pass_prof_draw(VkCommandBuffer cmd,const PassDrawState &pipeline_state,int first,int count,
                     const p_draw_idx *indexed,uint32_t instances,uint32_t first_instance,bool indirect,
                     const VkViewport &viewport,const VkRect2D &scissor){
     Slot &s=slots[slot_index];if(!s.prof || cmd!=s.cmd || s.prof_open<0)return;
@@ -6088,13 +6123,10 @@ void pass_prof_draw(VkCommandBuffer cmd,const VkGraphicsPipelineCreateInfo &ci,i
             d.instances=indexed?uint32_t(indexed->instances):instances;
             d.base_vertex=indexed?indexed->base_vertex:0;
             d.first_instance=indexed?uint32_t(indexed->base_instance):first_instance;
-            d.topology=uint32_t(ci.pInputAssemblyState->topology);d.cull=ci.pRasterizationState->cullMode;
-            d.depth_test=ci.pDepthStencilState->depthTestEnable;d.depth_write=ci.pDepthStencilState->depthWriteEnable;
-            d.depth_compare=uint32_t(ci.pDepthStencilState->depthCompareOp);
-            for(uint32_t i=0;i<ci.pColorBlendState->attachmentCount && i<8;++i){
-                const auto &a=ci.pColorBlendState->pAttachments[i];
-                d.blend|=uint32_t(a.blendEnable!=0)<<i;d.write_mask|=uint32_t(a.colorWriteMask)<<(i*4);
-            }
+            d.topology=pipeline_state.topology;d.cull=pipeline_state.cull;
+            d.depth_test=pipeline_state.depth_test;d.depth_write=pipeline_state.depth_write;d.depth_compare=pipeline_state.depth_compare;
+            d.pipeline_state_known=pipeline_state.pipeline_known;d.blend_state_known=pipeline_state.blend_known;
+            d.blend_attachment_count=pipeline_state.blend_attachment_count;d.blend=pipeline_state.blend;d.write_mask=pipeline_state.write_mask;
             d.viewport=viewport;d.scissor=scissor;r.draw_records.push_back(std::move(d));++pass_prof_draw_records;
         }else ++pass_prof_draw_dropped;
     }
@@ -6328,6 +6360,7 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
     static std::vector<VkPipelineShaderStageCreateInfo> stages;
     int zero_binding=-1;
     VkGraphicsPipelineCreateInfo ci{};
+    PassDrawState pass_draw_state{};
     VkPipelineDepthStencilStateCreateInfo ds{};
     VkPipelineRasterizationStateCreateInfo rs{};
     VkShaderModule spell_empty_module=VK_NULL_HANDLE;
@@ -6411,6 +6444,9 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
         VkDynamicState dynamic[]={VK_DYNAMIC_STATE_VIEWPORT,VK_DYNAMIC_STATE_SCISSOR};VkPipelineDynamicStateCreateInfo dy{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};dy.dynamicStateCount=2;dy.pDynamicStates=dynamic;
         VkPipelineTessellationStateCreateInfo tess{VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO};tess.patchControlPoints=state.patch_size;need((state.shader[1]!=nullptr)==(state.shader[2]!=nullptr),"Incomplete tessellation shader pair");
         ci={VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};ci.stageCount=stages.size();ci.pStages=stages.data();ci.pVertexInputState=&vi;ci.pInputAssemblyState=&ia;ci.pViewportState=&vp;ci.pRasterizationState=&rs;ci.pMultisampleState=&ms;ci.pDepthStencilState=&ds;ci.pColorBlendState=&blend;ci.pDynamicState=&dy;ci.pTessellationState=state.shader[1]?&tess:nullptr;ci.layout=d.pipeline_layout;ci.renderPass=p.pass;
+        if(slots[slot_index].prof && slots[slot_index].prof_frame==pass_prof_draw_frame &&
+           pass_prof_draw_records<pass_prof_draw_limit)
+            pass_draw_state=pass_prof_snapshot(ci);
         {CPU_SCOPE(Pipeline);
             static std::vector<uint32_t> fast;fast.clear();
             if(use_fast && !pipeline.pipeline){uint64_t a=uint64_t(uintptr_t(&d.entry->definition)),b=uint64_t(uintptr_t(p.definition));uint32_t ids[4]={uint32_t(a),uint32_t(a>>32),uint32_t(b),uint32_t(b>>32)};
@@ -6523,7 +6559,7 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
     if(probe_full_target())capture_log("FULL_DYNAMIC event=%u viewport=%g/%g/%g/%g/%g/%g scissor=%d/%d/%u/%u",capture.events,viewport.x,viewport.y,viewport.width,viewport.height,viewport.minDepth,viewport.maxDepth,sc.offset.x,sc.offset.y,sc.extent.width,sc.extent.height);
     for(auto &b:vertex_buffers){VkDeviceSize off=b.second->offset;if(b.first<16 && bc.vb[b.first]==b.second->buffer && bc.vbo[b.first]==off){++binds_skipped;continue;}
         vkCmdBindVertexBuffers(c.command,b.first,1,&b.second->buffer,&off);if(b.first<16){bc.vb[b.first]=b.second->buffer;bc.vbo[b.first]=off;}}
-    pass_prof_draw(c.command,ci,first,count,indexed,instances,first_instance,gpu_args!=nullptr,viewport,sc);
+    pass_prof_draw(c.command,pass_draw_state,first,count,indexed,instances,first_instance,gpu_args!=nullptr,viewport,sc);
     if(indexed){if(bc.ib!=ib->buffer || bc.ibo!=ib->offset || bc.it!=index_type){vkCmdBindIndexBuffer(c.command,ib->buffer,ib->offset,index_type);bc.ib=ib->buffer;bc.ibo=ib->offset;bc.it=index_type;}else ++binds_skipped;if(gpu_args){retire_object(gpu_args->owned);vkCmdDrawIndexedIndirect(c.command,gpu_args->owned->view.buffer,gpu_args->offset,1,20);++gpu_indexed_draws;if(gpu_indexed_draws<=12 || !(gpu_indexed_draws%600))xbg_logf("NVN GPU indexed resident issued=%llu frame=%llu",(unsigned long long)gpu_indexed_draws,(unsigned long long)stats.presents.load());}else vkCmdDrawIndexed(c.command,count,indexed->instances,0,indexed->base_vertex,indexed->base_instance);}else vkCmdDraw(c.command,count,instances,first,first_instance);
     if(probe_is_active())probe_draw_occlusion();
     if(attachment_barrier_enabled){
