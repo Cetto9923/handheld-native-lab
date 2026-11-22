@@ -12,6 +12,8 @@ struct XbgCpuTiming {
         SubMaint, SubExec, SubSubmit, SubAff, SubPresPrep, SubPresSubmit, SubPace, SubSnapFast, SubSnapSlow,
         // V10 diagnostic sub-domains (2026-11-23): the NVN command interpreter inside execute().
         SubCmdDecode, SubPollRetire, SubArenaCheck,
+        // V11 diagnostic sub-domains (2026-11-23): the indexed-draw path and the snapshot slow path.
+        SubDrawIdxExec, SubDrawGpuIdx, SubDrawPrologue, SubSnapMap, SubSnapStream,
         Count };
     struct Counter { uint64_t calls=0, exclusive_ns=0, inclusive_ns=0, max_ns=0; } counters[Count];
     struct Scope;

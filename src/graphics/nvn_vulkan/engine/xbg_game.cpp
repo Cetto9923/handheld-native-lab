@@ -606,7 +606,7 @@ void timing_report(const char *reason){
         (unsigned long long)(stats.draws-timing_before.draws),(unsigned long long)(stats.dispatches-timing_before.dispatches),
         (unsigned long long)(stats.submissions-timing_before.submissions),(unsigned long long)(stats.shader_loads-timing_before.shader_loads));
     report_pipeline_cache();
-    static const char *names[]={"other","draw","dispatch","descriptor","pass","buffer","pipeline","submit","fence","present","cleanup","hash","image","log","program","cpuwrite","snapshot","sub_maint","sub_exec","sub_submit","sub_aff","sub_pres_prep","sub_pres_submit","sub_pace","sub_snap_fast","sub_snap_slow","sub_cmd_decode","sub_poll_retire","sub_arena_check"};
+    static const char *names[]={"other","draw","dispatch","descriptor","pass","buffer","pipeline","submit","fence","present","cleanup","hash","image","log","program","cpuwrite","snapshot","sub_maint","sub_exec","sub_submit","sub_aff","sub_pres_prep","sub_pres_submit","sub_pace","sub_snap_fast","sub_snap_slow","sub_cmd_decode","sub_poll_retire","sub_arena_check","sub_draw_idx_exec","sub_draw_gpu_idx","sub_draw_prologue","sub_snap_map","sub_snap_stream"};
     for(unsigned i=0;i<XbgCpuTiming::Count;i++){const auto &c=timing.counters[i];xbg_logf("NVN CPU_TIMING part=%s calls=%llu exclusive_ns=%llu inclusive_ns=%llu max_ns=%llu",names[i],(unsigned long long)c.calls,(unsigned long long)c.exclusive_ns,(unsigned long long)c.inclusive_ns,(unsigned long long)c.max_ns);}
     {uint64_t fr=stats.presents-timing_before.presents;xbg_logf("NVN CPU_TIMING nvn_cmds total=%llu per_frame=%llu sub_max_cmds=%llu sub_max_cmds_ns=%llu sub_max_ns=%llu sub_max_ns_cmds=%llu",
         (unsigned long long)nvn_cmd_total,(unsigned long long)(fr?nvn_cmd_total/fr:0),
@@ -2004,7 +2004,7 @@ void perf_frame(){
                  (unsigned long long)other, (unsigned long long)perf.ordered_buffer_clears);
     }
     if(!timing_active && perf_normalizable){
-        static const char *names[]={"other","draw","dispatch","descriptor","pass","buffer","pipeline","submit","fence","present","cleanup","hash","image","log","program","cpuwrite","snapshot","sub_maint","sub_exec","sub_submit","sub_aff","sub_pres_prep","sub_pres_submit","sub_pace","sub_snap_fast","sub_snap_slow","sub_cmd_decode","sub_poll_retire","sub_arena_check"};
+        static const char *names[]={"other","draw","dispatch","descriptor","pass","buffer","pipeline","submit","fence","present","cleanup","hash","image","log","program","cpuwrite","snapshot","sub_maint","sub_exec","sub_submit","sub_aff","sub_pres_prep","sub_pres_submit","sub_pace","sub_snap_fast","sub_snap_slow","sub_cmd_decode","sub_poll_retire","sub_arena_check","sub_draw_idx_exec","sub_draw_gpu_idx","sub_draw_prologue","sub_snap_map","sub_snap_stream"};
         char line[1024];int at=snprintf(line,sizeof(line),"NVN PERF parts_ms_per_frame timed=%llu",(unsigned long long)perf_timed_frames);
         for(unsigned i=0;i<XbgCpuTiming::Count && at<int(sizeof(line))-48;i++){const auto &c=timing.counters[i];if(c.calls<perf_timing_before[i].calls)perf_timing_before[i]=XbgCpuTiming::Counter{};uint64_t ns=c.exclusive_ns-perf_timing_before[i].exclusive_ns,calls=c.calls-perf_timing_before[i].calls;at+=snprintf(line+at,sizeof(line)-at," %s=%.2f/%.1f",names[i],double(ns)/1e6/tf,double(calls)/tf);perf_timing_before[i]=c;}
         xbg_logf("%s",line);
@@ -2509,7 +2509,7 @@ Buffer snapshot_slow(uint64_t address,size_t bytes,VkDeviceSize align){
         xbg_logf("NVN SNAPSHOT_OVERSIZE frame=%llu op=%u site=%u address=%#llx bytes=%zu align=%llu",
             (unsigned long long)stats.presents.load(),cur_op,snap_site,
             (unsigned long long)address,bytes,(unsigned long long)align);
-    auto key=std::make_pair(address,uint64_t(bytes));auto it=snapshots.find(key);
+    auto key=std::make_pair(address,uint64_t(bytes));auto it=snapshots.end();{CPU_SCOPE(SubSnapMap);it=snapshots.find(key);}
     if(it!=snapshots.end()){++perf.snapshot_hits;++snap_map_hits;return it->second;}
     {Buffer view;if(pending_view(address,bytes,align,view)){snapshots.emplace(key,view);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,bytes);return view;}}
     ++perf.snapshot_misses;perf.snapshot_bytes+=bytes;snap_site_req[snap_site<6?snap_site:0]+=bytes;if(snap_site==3){static unsigned logged=0;if(logged<40 && bytes>=65536){++logged;xbg_logf("NVN PERF storage_snapshot addr=%#llx bytes=%zu frame=%llu",(unsigned long long)address,bytes,(unsigned long long)stats.presents.load());}++storage_snap_count;if(timing_now())for(uint64_t pg=address>>12;pg<=(address+bytes-1)>>12;pg++)storage_pages.insert(pg);}   // page union: timed frames only (~4.8k inserts per D2R frame)
@@ -2517,7 +2517,7 @@ Buffer snapshot_slow(uint64_t address,size_t bytes,VkDeviceSize align){
     if(snap_site==3 && bytes>=wtrack::min_bytes && wtrack::enabled && !ab_off("wtrack")){Buffer t;if(wtrack::snapshot(address,bytes,t)){snapshots.emplace(key,t);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,bytes);return t;}}
     if((snap_site==1 || snap_site==2) && vcache::enabled && !ab_off("vcache")){Buffer v;if(vcache::lookup(address,bytes,v)){snapshots.emplace(key,v);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,bytes);return v;}}
     snap_site_bytes[snap_site<6?snap_site:0]+=bytes;
-    Buffer b=stream_buffer(bytes,reinterpret_cast<const void*>(address),bytes,false);snapshots.emplace(key,b);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,bytes);return b;
+    Buffer b;{CPU_SCOPE(SubSnapStream);b=stream_buffer(bytes,reinterpret_cast<const void*>(address),bytes,false);}snapshots.emplace(key,b);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,bytes);return b;
 }
 struct Commands {
     VkCommandBuffer command{};bool draw=false;
@@ -5275,10 +5275,10 @@ Buffer uniform_snapshot_cached(uint64_t address,size_t copy){CPU_SCOPE(Snapshot)
 }
 Buffer uniform_snapshot_slow(uint64_t address,size_t copy){
     size_t n=uniform_range(copy);auto key=std::make_pair(address,uint64_t(copy));
-    auto it=uniform_snapshots.find(key);if(it!=uniform_snapshots.end()){++perf.snapshot_hits;++snap_map_hits;return it->second;}
+    auto it=uniform_snapshots.end();{CPU_SCOPE(SubSnapMap);it=uniform_snapshots.find(key);}if(it!=uniform_snapshots.end()){++perf.snapshot_hits;++snap_map_hits;return it->second;}
     {Buffer view;if(pending_view(address,n,properties.limits.minUniformBufferOffsetAlignment,view)){uniform_snapshots.emplace(key,view);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,n);return view;}}
     ++perf.snapshot_misses;perf.snapshot_bytes+=copy;snap_site_bytes[5]+=copy;snap_site_req[5]+=copy;cpu_access(address,copy,2);
-    Buffer b=uniform_buffer(n,reinterpret_cast<const void*>(address),copy);uniform_snapshots.emplace(key,b);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,copy);return b;
+    Buffer b;{CPU_SCOPE(SubSnapStream);b=uniform_buffer(n,reinterpret_cast<const void*>(address),copy);}uniform_snapshots.emplace(key,b);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,copy);return b;
 }
 // Descriptor memo (iOS "same inputs -> reuse the parameter block"): within one guest submit, a draw whose shaders and
 // bound inputs (buffer ranges, texture/sampler handles, pools, driver generations, viewport) equal an earlier draw's
@@ -6489,7 +6489,7 @@ bool ui_cover_all(double hf){
         x0=std::min(x0,nx);x1=std::max(x1,nx);y0=std::min(y0,ny);y1=std::max(y1,ny);}
     return x0<0.002f && x1>0.998f && y0<0.002f && std::fabs(y1-float(hf))<0.002f;
 }
-void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instances=1,uint32_t first_instance=0,const GpuIndexedArgs *gpu_args=nullptr){preflight_cpu_reads();IntegerBufferSelection shader_selection(false);TypedStorageSelection typed_selection(false);VertexInputSelection vertex_selection;LinearSampleSelection linear_selection(false);CPU_SCOPE(Draw);DrawRoot draw_timing_root(&cpu_scope);provenance_draw();
+void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instances=1,uint32_t first_instance=0,const GpuIndexedArgs *gpu_args=nullptr){{CPU_SCOPE(SubDrawPrologue);preflight_cpu_reads();}IntegerBufferSelection shader_selection(false);TypedStorageSelection typed_selection(false);VertexInputSelection vertex_selection;LinearSampleSelection linear_selection(false);CPU_SCOPE(Draw);DrawRoot draw_timing_root(&cpu_scope);provenance_draw();
     // #region agent log
     // Draws that share the 8b27 depth buffer but write a different (or no) colour target: depth prepass candidates.
     if(flame_diag_enabled && fdiag_prevds && state.shader[0] && state.rt.depth && uint64_t(uintptr_t(state.rt.depth->mem))==fdiag_prevds && !(state.rt.color[0] && uint64_t(uintptr_t(state.rt.color[0]->mem))==fdiag_prev8)){
@@ -8207,7 +8207,7 @@ void execute_draw_index_record(const p_draw_idx &a){preflight_cpu_reads();
                 (unsigned long long)stats.presents.load(), (unsigned long long)a.ind);
         }
     }
-    if(gpu_draw_indexed(a))return;
+    {CPU_SCOPE(SubDrawGpuIdx);if(gpu_draw_indexed(a))return;}
     static unsigned fallback_logs=0;if(gpu_indexed_enabled && a.ind && probe.waiting && !capture.trace && fallback_logs<16){
         bool waits=false;for(auto &w:pending_writebacks)if(xbg_wb_overlaps(a.ind,20,w.addr,w.bytes))waits=true;
         FILE *f=waits?fopen((probe.base+"/gfx-codex-probe").c_str(),"rb"):nullptr;int mode=f?fgetc(f):0;if(f)fclose(f);
@@ -8347,7 +8347,7 @@ void execute(const uint8_t *pc,unsigned depth,uint64_t &budget){
         case OP_STENCIL:{auto a=payload<p_stencil>(p,n);need(a.face>=0 && a.face<=3 && a.which>=0 && a.which<=2,"Invalid stencil state");for(unsigned i=0;i<2;i++)if(a.face&(1<<i)){if(a.which==0)state.stencil_compare[i]=a.value_mask;else if(a.which==1)state.stencil_write[i]=a.mask;else state.stencil_ref[i]=a.ref;}break;}
         case OP_POLY_OFFSET:{auto a=payload<p_poly_offset>(p,n);state.bias[0]=a.factor;state.bias[1]=a.units;state.bias[2]=a.clamp;break;}
         case OP_DRAW:{if(state.render_cond_skip){++perf.draws_skipped_cond;if(flame_diag_enabled && state.shader[0] && flame_diag_key(state.shader[0]->key)>=0)++fdiag_skip;if(probe_is_active())capture_log("PROBE_CONDITIONAL_SKIP indexed=0 vs=%s fs=%s",state.shader[0]?state.shader[0]->key.c_str():"none",state.shader[4]?state.shader[4]->key.c_str():"none");break;}p_draw t;execute_draw_record(*draw_rec(p,h.size,&t));break;}
-        case OP_DRAW_IDX:{if(state.render_cond_skip){++perf.draws_skipped_cond;if(flame_diag_enabled && state.shader[0] && flame_diag_key(state.shader[0]->key)>=0)++fdiag_skip;if(probe_is_active())capture_log("PROBE_CONDITIONAL_SKIP indexed=1 vs=%s fs=%s",state.shader[0]?state.shader[0]->key.c_str():"none",state.shader[4]?state.shader[4]->key.c_str():"none");break;}p_draw_idx t;execute_draw_index_record(*draw_idx_rec(p,h.size,&t));break;}
+        case OP_DRAW_IDX:{if(state.render_cond_skip){++perf.draws_skipped_cond;if(flame_diag_enabled && state.shader[0] && flame_diag_key(state.shader[0]->key)>=0)++fdiag_skip;if(probe_is_active())capture_log("PROBE_CONDITIONAL_SKIP indexed=1 vs=%s fs=%s",state.shader[0]?state.shader[0]->key.c_str():"none",state.shader[4]?state.shader[4]->key.c_str():"none");break;}p_draw_idx t;{CPU_SCOPE(SubDrawIdxExec);execute_draw_index_record(*draw_idx_rec(p,h.size,&t));}break;}
         case OP_DISPATCH:{auto a=payload<p_dispatch>(p,n);dispatch(a,a.ind);break;}
         // Commands ends the open pass and records a full barrier. The explicit barrier and finish() recorded the same barrier
         // twice more with no command between them (3 per game barrier, ~130 per D2R fight frame), which Vulkan treats as one.
