@@ -310,3 +310,82 @@ printf '0 60 1' > /sdcard/Android/data/org.ffrs.gamewindow/files/gfx-cpu-profile
   ≥90 帧 / 10 段 × 9 连续呈现帧），且按 L-029 以同场景交错 A/B 判定收益是否大于噪声。
 - 风险提示：这几处都在"每 draw 重建描述符"的路径上，改错会直接表现为画面错乱或特效丢失，
   不适合在没有显示回归护栏的情况下试。
+
+## 14. 第 6 轮开路：描述符 memo 的真正拦路虎（**不是键**）
+
+第 5 轮收尾时把下一轮指向描述符路径（image_lookup 29% / element_rest 16% / set_finalize 15%）。
+本轮把它拆开，结论与原先的假设**不一样**，因此单独成节。
+
+### 14.1 火场每帧的事实（可复算）
+
+| 指标 | 每帧 |
+|---|---|
+| set 构建次数 | 516.2 |
+| 排除原因 texel（UNIFORM_TEXEL_BUFFER） | **493.4** |
+| 排除原因 storage-image / storage-write / dynbuf | 14.9 / 6.0 / 0.9 |
+| 描述符 memo 命中 / 未命中 | 353.5 / 0.6~1.1 |
+| slot-local set cache 命中 | **0.0**（全被绕过：fresh 119.0 + experiment 397.6） |
+| 描述符构建耗时（未插桩） | 6.72 ms/帧（占 submit_cpu 14.4 ms 的约 47%） |
+
+### 14.2 撤回 V3 §10.12.2 的前提：「memo 键里其它分量每帧变」
+
+V3 报告写的是「键里其它分量（UBO 地址等）每帧仍变 ⇒ 命中不了」，并把它列为重启 texel 方向的前置根因。
+本轮实测**这条前提没有测量支撑**：
+
+- 引擎自带的 keydiff 普查（`NVN PERF keydiff …`）在当前构建里**从不产生数据**：
+  它只在 `hit==desc_memo.end()`（真未命中）时运行，而实战里 0.9/帧的「未命中」与
+  `why[3]=dynbuf` 的**条目被拒**计数同数，六个拒绝原因计数器 `vwhy=blk/buf/ord/img/tex/stor`
+  **全部为 0** ⇒ 根本没有真未命中 ⇒ 普查不触发（60 个采样窗口全 0）。
+- 也就是说：**键不是拦路虎**。V3 的净负来自池化与 hit 路径的开销
+  （descriptor build −1.12 ms，但 hit 路径 +0.92 ms、memo_key +0.53 ms 里大部分是诊断 census，
+  另有未归项的池维护开销），不是键不稳定。
+
+> **撤回依据**：§14.2 的两条实测（普查不触发 + vwhy 全 0）。
+
+### 14.3 三个免重编译的运行时实验（live-set 切换，同会话同场景）
+
+火场（draws≈735），每臂 5 个采样：
+
+| 臂 | fps | submit_cpu_ms | memo_hits | set-cache 命中 | template 更新/帧 |
+|---|---|---|---|---|---|
+| ① 出货配置（基线） | 54.2~56.9 | 14.2~14.7 | 353.2~355.1 | **0.0** | 515.6~516.9 |
+| ② `texelframe=1` | 53.7~55.6 | 14.6~15.2 | 353.2~354.6 | 0.0 | 515.5~516.3 |
+| ③ `descmemo=0` | 53.8~55.7 | **15.3~15.4** | 0.0 | **363.7~367.3** | 504.9~505.4 |
+
+三条结论：
+
+1. **描述符 memo 在火场的总价值只有约 0.9 ms/帧**（submit 14.4 → 15.3），fps 差异在 ±1.5 噪声内。
+   它服务 353 次命中/帧，但命中路径的复核/快照开销几乎抵消了收益。
+   ⇒ **「把 493 次 texel draw 送进 memo」这条路的上限只有约 1 ms/帧，不是 6 ms/帧**。
+2. **一项此前被掩盖的能力**：`descmemo=0` 时 slot-local set cache 命中 **367/帧**——
+   它平时被 `experiment_cache_skip` 全量绕过（`desc_memo_enabled` 为真即绕过，
+   `honorsetbypass` 这个 live 开关改不动它），而且比 memo 路径**便宜约 0.9 ms/帧**。
+3. **两臂的 template 更新数几乎一样**（516 vs 505）⇒ set cache 的命中并没有替掉那 493 次 texel 构建：
+   set cache 在 `descriptors_build` 内部，只省下 set 分配 + 模板更新，省不掉每 draw 的逐绑定工作。
+   ⇒ 真正的大头就是 **493 次 texel draw 本身**。
+
+### 14.4 texel 路径的真实代价（60 帧计时窗口）
+
+| 站点 | 调用/帧 | 字节/帧 |
+|---|---|---|
+| texel-pending（全拷贝） | 401 | **8.57 MB（fullcopy）** |
+| texel-CPU | 13 | 0.40 MB（copy） |
+| storage-pending-fullcopy | 6 | 0.04 MB（zero） |
+| storage-CPU-preserve | 3 | 0.14 MB（copy） |
+| READBACK_TIMING 合计 | — | **alloc 9.32 MB/帧**、copy 0.55 MB/帧、zero 0.058 MB/帧 |
+
+⇒ 每帧 401 次 texel view 申请 + 8.57 MB 全拷贝 + 9.32 MB 分配。
+
+### 14.5 下一轮（V5）的精确假设与前置
+
+**假设**：给 texel 绑定一个**跨 slot 存活的稳定 view**（持久 resident buffer + 脏区间增量刷新），
+使 set 键稳定 ⇒ 已被证明能命中 367/帧的 **set cache** 就能覆盖这 493 次 draw
+⇒ 省掉每次约 13 µs 的整表重建（上限约 6.7 ms/帧 ⇒ 火场 55 fps 上探 60 Hz），
+同时把 8.57 MB/帧 的全拷贝降成脏区间拷贝。
+
+**前置必答**：**texel 内容每帧到底改多少字节**。若几乎全改，增量刷新没有收益 ⇒ V5 直接死。
+引擎已有现成计数器可测（`texelcopy` 的 copy_kb/wouldhit_kb、`wtrack` 的 dirty_pages_per_frame），
+但当前火场里 `wtrack dirty_pages_per_frame=0.0`（写跟踪未生效），需要先把脏区间跟踪打开。
+
+**门禁不变**：L-032（不得弱化失效/清理——resident buffer 的刷新必须精确覆盖来宾写入）、
+显示回归（≥90 帧 / 10 段 × 9 连续呈现帧）、L-029（同场景交错 A/B，收益大于噪声才出货）。

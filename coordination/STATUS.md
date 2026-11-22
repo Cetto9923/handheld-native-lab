@@ -295,6 +295,7 @@
 | MAVIS-PERF-V3-TEXELKEY-20261123 | PERF_FRAMEPACE_1 | probe_crash_root_caused_and_fixed_v3_measured_net_negative_no_new_shipped_version_next_lever_is_cpu_scheduling | Mavis | MAVIS-PERF-V2-TEXELPOOL-20261123 | 无额外门禁 | task/T-mavis-perf-20261122 (probe: task/T-mavis-perf-20261122-v3probe) |
 | MAVIS-PERF-V4-AFFINITY-20261123 | PERF_FRAMEPACE_1 | implemented_measured_gain_display_regression_pass_shipped_version_2_foundry_above_40hz | Mavis | MAVIS-PERF-V3-TEXELKEY-20261123 | 无额外门禁 | task/T-mavis-perf-20261122 (work branch: task/T-mavis-perf-20261123-v4affinity) |
 | MAVIS-PERF-V5-SCENECOVER-20261123 | PERF_FRAMEPACE_1 | verified_all_measured_honor_scenes_at_or_above_40hz_effect_peak_claim_withdrawn_as_not_reproducible_next_lever_is_the_descriptor_path | Mavis | MAVIS-PERF-V4-AFFINITY-20261123 | 无额外门禁 | task/T-mavis-perf-20261122 |
+| MAVIS-PERF-V6-MEMOPATH-20261123 | PERF_FRAMEPACE_1 | diagnostic_round_no_version_shipped_descriptor_memo_worth_only_0_9ms_per_frame_real_blocker_is_the_493_texel_draws_per_frame_v3_prerequisite_withdrawn | Mavis | MAVIS-PERF-V5-SCENECOVER-20261123 | 无额外门禁 | task/T-mavis-perf-20261122 |
 
 ## 独占写入
 

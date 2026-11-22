@@ -1152,3 +1152,46 @@ image_lookup 29% / element_rest 16% / set_finalize 15% / buffer_bind 9% / remain
    必须先解释 V2/V3 的额外开销落在哪一段。
 
 **出处**：MAVIS-PERF-V4-AFFINITY-20261123.md 第 13 节。
+
+### L-082 引擎自带的「普查类」仪表可能根本没在跑——先证明触发条件成立再信它的数字 (2026-11-23)
+
+引擎里有一堆现成的普查计数器（keydiff / texelkey / desc_memo_why / vwhy_*），
+**但它们的触发条件可能永远不成立**，于是打印出一排 0，看起来像「没差异」。
+本轮实例：keydiff 普查只在 `hit==desc_memo.end()`（真未命中）时运行，
+而实战里那 0.9/帧的「未命中」其实是 `why[3]=dynbuf`（**条目找到了但被拒**），
+六个拒绝原因计数器 vwhy=blk/buf/ord/img/tex/stor **全为 0** ⇒ 根本没有真未命中 ⇒ 普查从不触发。
+做法：读到「全 0」的普查输出时，先去找它的触发条件与**互斥的替代计数器**，
+证明「0」是「没触发」而不是「没差异」；再下结论。
+本轮据此撤回了 V3 报告的前提「memo 键里其它分量每帧变」——那条从未被测到。
+
+**出处**：MAVIS-PERF-V4-AFFINITY-20261123.md 第 14.2 节。
+
+### L-083 免重编译的引擎诊断入口清单（ff-resonance 移植引擎） (2026-11-23)
+
+想在不重编译、不重装的前提下量引擎内部，有这些现成入口（都在 app 的 files 目录）：
+
+- `gfx-cpu-profile`：内容 `<起始 present> <帧数> <detail>`。detail=1 开**描述符 21 分段计时**
+  （`NVN DESC_TIMING part=…` + `NVN READBACK_TIMING/SITE`）；detail=0 开 CPU 分域计时并**武装计时帧**。
+  引擎每 30 个 present 轮询一次，取完自删。
+- `gfx-live-ab`：写一个引擎内部路径名（如 `ktag`），运行时**强制该路径处于关闭态**
+  （日志 `LIVE-AB force=… at present N`）。可用来打开平时不跑的诊断分支。
+- `gfx-live-set`：`名字=0/1` 的空格分隔开关（`texmemo` `texelframe` `descmemo` `honorsetbypass`
+  `gfxaffinity=prime|big|off` …），运行时生效，日志 `LIVE-SET …`。
+- `gfx-live-framedump`：写 9 导出接下来 9 个**已呈现帧**（显示回归用）。
+- `gfx-ab-toggle` + `gfx-ab-target`：进程内交错 A/B 的周期与目标名。
+
+用法要点：live-set 是**整文件替换**语义，没写到的开关保持当前值；改完必须回读日志确认引擎真的应用了
+（`LIVE-SET … at present N`），别假设「写了文件 = 引擎改了状态」。
+
+**出处**：MAVIS-PERF-V4-AFFINITY-20261123.md 第 13 与 14 节。
+
+### L-084 「关掉 A 看 B」能暴露被掩盖的机制 (2026-11-23)
+
+本轮最有用的一步是**用 live-set 把描述符 memo 关掉**（`descmemo=0`），结果暴露了两件事：
+1. slot-local **set cache 其实一直能命中 367/帧**，只是平时被 `experiment_cache_skip` 全量绕过
+   （`desc_memo_enabled` 为真即绕过，那个 live 开关 `honorsetbypass` 改不动它）；
+2. memo 关掉后 fps 几乎不变、submit 只多 0.9 ms/帧 ⇒ **memo 的总价值远小于它的命中数给人的直觉**。
+做法：怀疑某机制「没起作用」时，先把它关掉，看被它掩盖的下游机制是否显形；
+同时用关掉前后的 submit_cpu 差值给这个机制**定量**（而不是靠命中数推断收益）。
+
+**出处**：MAVIS-PERF-V4-AFFINITY-20261123.md 第 14.3 节。

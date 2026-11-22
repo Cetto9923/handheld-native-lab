@@ -6293,3 +6293,42 @@ P3 GPU pass 合并（收益最大、画面风险最高，须逐 pass 取证）�
   gfx-cpu-profile 免改代码采样入口 / 火场描述符开销分布与 set cache 失效事实。
 - 设备：仍装着第 2 版；live-set 保持 `gfxaffinity=prime`；**红果已还回前台**；gfx-cpu-profile 标记已清。
 - 未闭合项不变：**RG477M 双机回归**（该机禁止由此处操作）。
+
+## 第 6 轮（诊断，无出货）：描述符 memo 的真正拦路虎是 texel，**不是键**（2026-11-23）
+
+本轮没有出货版本（本轮没测出大于噪声的收益），但把下一轮的方向从"猜"变成了"有靶子"。
+
+**火场每帧事实（出货构建）**：set 构建 516.2 次/帧，其中 **493.4 次被 texel 规则排除**
+（UNIFORM_TEXEL_BUFFER，出货版 `texel_memo_enabled=false`）；描述符 memo 命中 353.5、
+未命中 0.6~1.1；slot-local set cache 命中 **0.0**（全被绕过：fresh 119.0 + experiment 397.6）；
+描述符构建 6.72 ms/帧（占 submit_cpu 14.4 ms 约 47%），
+引擎 21 分段计时（`gfx-cpu-profile`，免改代码）：image_lookup 29% / element_rest 16% /
+set_finalize 15% / buffer_bind 9% / remaining 11% / texel_* 13%。
+
+**三条结论**：
+
+1. **撤回 V3 §10.12.2 的前提**（「memo 键里其它分量每帧变」）：keydiff 普查在当前构建里
+   **从不产生数据**（它只在真未命中时跑；实战里 0.9/帧的"未命中"其实是 `why[3]=dynbuf`
+   条目被拒，而六个拒绝原因计数器 vwhy=blk/buf/ord/img/tex/stor **全 0**）
+   ⇒ 键不是拦路虎；V3 的净负来自池化与 hit 路径开销。
+2. **给描述符 memo 定量：只值约 0.9 ms/帧**（三个免重编译 live-set 实验，同会话同场景）：
+   - 出货基线：fps 54.2~56.9 / submit 14.2~14.7 / memo_hits 353
+   - `texelframe=1`：无变化（该分支在 `texel_memo_enabled=false` 时不可达，天然对照组）
+   - `descmemo=0`：fps 53.8~55.7 / submit **15.3~15.4** ⇒ memo 总价值 ≈0.9 ms/帧；
+     同时暴露出 **set cache 其实一直能命中 367/帧**（平时被 `experiment_cache_skip` 掩盖，
+     `desc_memo_enabled` 为真即绕过，`honorsetbypass` 改不动），且它比 memo 路径便宜 ~0.9 ms/帧
+3. **两臂的 template 更新数几乎一样**（516 vs 505）⇒ set cache 在 `descriptors_build` 内部，
+   只省 set 分配 + 模板更新，省不掉逐绑定工作 ⇒ **真正的大头是 493 次 texel draw 本身**。
+   texel 路径实测代价：**401 次 texel-pending/帧、8.57 MB/帧 全拷贝、9.32 MB/帧 分配**。
+
+**下一轮（V5）假设**：给 texel 绑定一个**跨 slot 存活的稳定 view**（持久 resident buffer +
+脏区间增量刷新）⇒ set 键稳定 ⇒ 已被证明能命中 367/帧的 set cache 就能覆盖这 493 次 draw
+⇒ 上限约 6.7 ms/帧（55 fps 上探 60 Hz），同时把 8.57 MB/帧 全拷贝降成脏区间拷贝。
+**前置必答（一轮可测）**：texel 内容每帧到底改多少字节——几乎全改则 V5 直接死。
+注意火场里 `wtrack dirty_pages_per_frame=0.0`（写跟踪未生效），脏区间跟踪要先打开。
+门禁不变：L-032（resident 刷新必须精确覆盖来宾写入）+ 显示回归 + L-029 交错 A/B。
+
+- **经验库新增 L-082 ~ L-084**：普查输出全 0 可能是"没触发"而不是"没差异" / 
+  免重编译诊断入口清单（gfx-cpu-profile、gfx-live-ab、gfx-live-set、gfx-live-framedump）/ 
+  「关掉 A 看 B」暴露被掩盖的机制。
+- 设备：仍装第 2 版；live-set 恢复为 `gfxaffinity=prime`；`gfx-live-ab` 已清空；红果已还回前台。
