@@ -1231,3 +1231,82 @@ GPU 侧整条搬运/屏障路径在本设备上都很便宜（host-visible GPU�
 **没测过的方向**：① 单次查找的固定成本（64 字节 key 的构造与哈希）② 988 次/帧整表清空的成本
 （`desc_memo_reset()` → `snapshot_invalidate()` → `img_cache.clear()`）
 ③ set_finalize 1.03 / element_rest 0.97 / buffer_bind 0.64 三个绑定解析固定成本。
+## 19. 第 11 轮（V9，开工）：把 dm-gfx 的 18.30 ms/帧 解到绑定级
+
+### 19.1 绑定量表（兵工厂场景，60 帧窗口）
+
+| 量 | 每帧 | 备注 |
+|---|---|---|
+| descriptor set 查找 | 442.9 次 | `descriptors()` 入口 |
+| ├ memo 命中 | **405.1（91.5%）** | 复用已有 set |
+| └ 重建 | 37.8 | 每次重建都要重新解析绑定 |
+| 绑定元素 | **8475.4** 次 | image 3951.5 + buffer 4523.9 |
+| snapshot 域调用 | 6201 次 | |
+| img_cache 命中 / 未命中 | 1842.8 / 230.1 | 命中 89% |
+| texture_record 前端 命中 / 未命中 | 3893.2 / 120.3 | 命中 97% |
+| snapfront front / map / 失效 | 3805.6 / 14.6 / **988.8** | |
+
+descriptor 域 7.52 ms/帧的构成：image_lookup 2.18（3951 次/帧）、
+element_rest 0.97（8475 次）、set_finalize 1.03、buffer_bind 0.64、remaining 0.73。
+
+### 19.2 三个伪靶子被证据排除
+
+1. **图像路径的 miss 慢路径不是主因。** `get_image()`（xbg_game.cpp:3155）与
+   `pool_key()`（2833）已有直映前端缓存；img_cache 未命中只有 230.1/帧
+   （占 3951 次调用的 5.8%）。⇒ image_lookup 的 2.18 ms/帧是
+   **每次调用的固定成本**（构造 8 字段 ImgKey + 哈希 + 比对），不是 miss 路径的代价。
+   第 8 轮「让 img_cache 持久化」把 miss 归零只换来 +0.2 ms（低于噪声），与此一致。
+2. **`desc_memo_reset()` 每帧清 img_cache 988 次不是问题。**
+   `desc_memo_reset()`（5364-5370）→ `snapshot_invalidate()`（2236-2240）→ `img_cache.clear()`；
+   但两次清之间只插入 2~3 条 ⇒ 清表本身约 0.1 ms/帧，与第 8 轮 L-092 观测到的
+   +0.2 ms 同量级，低于本轮噪声。
+3. **descriptor memo 没有整体失效。** `desc_memo_reset()` 只清**帧内**条目，
+   持久条目保留；实测 memo 命中 405.1/帧 = 91.5%。第 8 轮看到的「memo 零命中」
+   是**第 1 章火场**的场景差异（模板不同），不是引擎行为。
+
+### 19.3 memo 剩余重建（37.8/帧）是结构性原因，不是缓存 bug
+
+`setcache why=` 分站显示：**texel 421.0 次/帧** 的重建源于「含 texel 绑定的
+descriptor set 持有每帧都变的 GPU 产物」——GPU 侧 texel view/buffer 地址逐帧变化，
+所以在**定义上**就无法进 memo（memo key 里含这些会变的 GPU 产物）。
+
+引擎里为此专门准备的机制是 resident texel（`xbg_game.cpp:5379-5381` 注释：
+"558 of 2188 draws per frame bind one and were rebuilt every time, ~21 us each
+against ~2.5 us for a memo hit"），但它当前**恒为空**：
+`texel_resident entries=0 hits=0.0` ⇒ 那 37.8 次/帧重建正是它本该消灭的那一批。
+
+**但这条路不重开**：resident texel 就是第 5/7 轮的 V5 方向（逐帧 texel-view memo），
+已按 L-029 退役并默认关闭。本轮只把它记为「重建的来源解释」，**不作为候选方案**。
+
+⇒ descriptor 域剩余可攻击空间：memo 已命中 91.5% ⇒ **缓存层面没有便宜可捡**；
+剩下的是 37.8 次/帧的结构性重建 + 每次调用的固定成本。
+
+### 19.4 V9 下一步：给 other 3.94 ms 与 snapshot 3.11 ms 加 CPU 子域计时
+
+本轮新增的两块信息：
+
+- **`other` 域 3.94 ms/帧**：9.4 次/帧、平均 419 µs、**最大单次 11.15 ms**。
+  `other` 是帧函数（`xbg_game.cpp:9344`）与 present 回调（`:9669`）上的
+  **根 scope 未归因余量**：`CPU_SCOPE(Other)` 覆盖这两段里所有没有被子 scope 归因的
+  时间（`xbg_cpu_timing.h` 里 `exclusive_ns = elapsed − children`）⇒ 这 3.94 ms 是
+  **没有子域拆分的黑盒**，粒度不够动手。
+- **`snapshot` 域 3.11 ms/帧**：6201 次/帧。`snapshot_reset()`（2235）每帧清
+  snapshot maps + texel copy cache + desc memo；
+  `wtrack copied_kb_per_frame=0.0` ⇒ 不是整块拷贝。
+
+⇒ **V9 的第一个改动是加计时，不是加优化**：在 `other` 的两个根 scope 上拆出可归因的
+子域（present 路径：maintain_memory_pressure / preflight_cpu_reads / probe_present /
+get_image / 上传等；帧路径：每帧的 submission 准备），在 `snapshot` 域上拆出
+snapshot_maps_reset / texel_copy_cache.reset / snapshot_maxlen / desc_memo_reset。
+
+这是**纯诊断计时改动**，不改任何渲染语义、不改任何特效与显示
+（只在已有 scope 边界上插计时点）⇒ 零画面风险；但按 L-029 必须先证明它能定位到子域。
+
+### 19.5 产出
+
+- **本轮无代码改动**：纯解剖（引擎自带计数器 + 源码对照），未改一行代码。
+- 报告新增 §19.1~§19.5；经验库新增 L-105 / L-106；
+  新任务卡 `MAVIS-PERF-V11-BINDSCOPE-20261123`。
+- 设备：仍装**已出货的第 2 版** `ffrs-v4-affinity-20261123.apk`；
+  live-set `gfxaffinity=prime`；无残留 marker；**红果在前台**；游戏进程已停止。
+
