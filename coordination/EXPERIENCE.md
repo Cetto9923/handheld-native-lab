@@ -330,3 +330,83 @@ readback_sync中的retire_completed_slots可回收先前观察为pending的owner
 **流水等待退化与上一帧信号陷阱（2026-11-21）**：在试图重叠 CPU 与 GPU 时，实验性流水逻辑试图将游戏请求等待的 GPU 完成信号替换为上一帧的完成信号（实机日志实证：`fence=32850 target=32843 completed=32848`）。由于目标栅栏号被降级为已完成的旧帧（`32843 <= 32848` 为真），等待条件提前满足并提前返回 1，导致游戏逻辑误以为当前帧渲染工作已完成，从而提前复用或向交换链呈现正在被 GPU 写入的画面缓冲，在真机上引发严重的整屏白闪与地表破面。**铁律：不能靠等待上一帧来宣称本帧已完成。** 任何 GPU 完成等待必须严格等待原本请求的目标栅栏（`target_fence == fence`），且成功返回必须对应原本请求的 GPU 工作真实已在底层硬件完成。
 
 **旧案例索引（只索引已核相关条目）**：L-004 的单变量验证、L-008 的证据门槛、L-009 的正确性与性能双基线、L-015 的快照/依赖/槽位生命周期，以及上面的显示回归检查点；第三章水都覆盖层、开场人物深度和地形输入异常按各案证据区分，不当作本次同因。本轮详情、现有录像路径和 RG 逐帧证据链接见 [双机报告](results/DOT-HONOR-OPENING-FLICKER-20261120.md)。
+
+---
+
+### L-029 缓存槽位扩容前，先量「回退次数」（2026-11-22）
+
+**现象**：Codex 的 Round 10 WIP 计划把 descriptor 的 memo front 与 pipe_memo 从 256 扩到 1024 槽，
+理由是「命中率高、扩容能减少冲突」。直觉上像是个稳赚的改动。
+
+**实测**：兵工厂场景 front 直接命中 384.8/帧，回退到 unordered_map 查找的次数只有
+`memo_hits(505.8) - memo_front(384.8) = 121 次/帧`；pipe_memo 命中率已 95.9%（hits 391.3 / misses 16.8），
+最多再省 17 次 map 查找。按整 key（数十个 word）哈希一次 0.2–0.4 µs 估算，
+两项合计省不到 **0.02 ms/帧**，而该场景 submit CPU 是 **33 ms**——收益占 0.06%，量不出来。
+
+**正确做法**：扩容前先从已有计数器算出「有多少次回退到慢路径」：
+`慢路径次数 = 命中数 - 快路径命中数`。这个数乘以单次慢路径成本，才是扩容的上限收益。
+上限收益小于测量噪声的改动，不要单独占用一轮构建。
+
+**同一轮的另外两项**：FNV 增量哈希（PUSH_KEY，边构建边算 hash，hash 值与旧算法逐位相同）与
+`desc_memo_reset` 的函数拆分，语义完全不变但同样只有 0.2 ms 量级，留到与主线改动合并时一起上。
+
+**出处**：MAVIS-GPASS-ATTRIBUTION-20261122.md §5。
+
+---
+
+### L-030 每个 worktree 各自生成调试密钥，install -r 会失败（2026-11-22）
+
+**现象**：`scripts/android/build_game_window_apk.sh` 在每个 worktree 内
+`keytool -genkeypair` 生成新的 `gamewindow-debug.p12`。新包的签名证书与设备上已装包不同，
+`adb install -r` 直接失败。
+
+**危险做法**：`adb uninstall` 再装 —— 应用的正式存档在 app 私有目录里，卸载即丢失，
+且 AGENTS-HONOR 明确禁止卸载。
+
+**正确做法**：把已装包同源的 keystore 软链进本 worktree 的 `.local/signing/`，
+再用 `apksigner sign` 对已 zipalign 的 `aligned.apk` 重签（先 zipalign 后 apksigner 是正确顺序，
+apksigner 不改变 zip 条目偏移）。本轮实测 Codex keystore 证书 SHA-256 为
+`d11967a31fcef92f3d6b44adf9d9678c8d2b07bf8f3246d51a791617ed61f36e`，重签后 install -r 成功，
+`sha256sum` 回读设备端 base.apk 与本地产物逐字节一致，存档未动。
+
+**安装后必做**：回读设备端 base.apk 的 SHA-256 与本地产物比对，确认装的确实是刚构建的那一个。
+
+**出处**：MAVIS-GPASS-ATTRIBUTION-20261122.md §1–2。
+
+---
+
+### L-031 插桩采样出来的数字不能当性能基线（L-019 的具体应用）
+
+**现象**：本轮先开 GPASS（每帧 pass 时间戳 + 逐 draw 记录）再开 `gfx-cpu-profile`（descriptor 明细），
+取到的 submit CPU 是 35.65 ms；关掉所有插桩、让同一场景静置后重新取样，submit CPU 落到 32.79–33.40 ms，
+FPS 从 20.84 回到 24.56。
+
+**规则**：
+- 性能基线必须在**无插桩**的独立采样窗口里取，并且该窗口之后不再复用同一批日志。
+- 插桩数据只能用于**定位热点与排序**，不能用于「改前/改后」差值结论。
+- 一次性标记（`gfx-pass-live`、`gfx-cpu-profile`）读后即删，用完要确认设备上确实没有残留标记，
+  否则整个会话留在慢路径上（见 L-019 的原始记录）。
+
+**出处**：MAVIS-GPASS-ATTRIBUTION-20261122.md §3、§7。
+
+---
+
+### L-032 「少清一次缓存」等于扩大跨帧缓存寿命（L-030 之外的独立红线）
+
+**现象**：Round 10 WIP 把 `snapshot_invalidate()` 里的 `desc_memo_reset()` 换成
+`desc_memo_invalidate_local()`。两者的**唯一**语义差别是：后者**不再清 `img_cache`**。
+也就是客机写了内存之后，图像缓存继续存活。
+
+**为什么否决**：这正是 07:46 审计写死的方向——「Do not widen cross-frame image caches」，
+历史 `8c009f3` 减少调用次数但帧率没降、`bd87e09` 暴露 sampler/view 身份隐患。
+「让缓存活得久一点」在本项目里反复等价于「画面异常」。
+
+**可复用的判据**：任何「把某次失效/清理改成更弱」的改动，先问它是否延长了某个跨帧缓存的寿命。
+如果是，除非能证明该缓存的所有消费者都独立校验了内容版本，否则一律不采纳。
+本项目里「多写一次清理」几乎总是比「少写一次清理」便宜。
+
+**同族的反面例子（正确方向）**：`snapshot_invalidate` 靠遍历 map 找到要作废的 front 槽，
+所以**不能**为了快而直接去掉 map —— 那会让 guest 写入后 front 仍返回旧快照。
+map 在那里不是缓存，是**失效索引**，语义不可省。
+
+**出处**：MAVIS-GPASS-ATTRIBUTION-20261122.md §5、§6-P1。
