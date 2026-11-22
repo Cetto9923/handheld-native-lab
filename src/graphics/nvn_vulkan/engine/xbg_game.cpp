@@ -1387,6 +1387,9 @@ bool texel_dup_barrier_probe=false;   // marginal-cost probe: one extra full bar
 uint64_t texel_pending_copies=0,texel_pending_bytes=0,texel_pending_storage=0,texel_pending_uniform=0;
 uint64_t texel_barrier_full=0,texel_barrier_narrow=0,texel_barrier_skipped=0;
 bool indexed_bbox_ready_enabled=false;
+// V13: the indexed readiness probes count every scan step, so they inflate the measured cost of the
+// pending-list scan. This switch turns them off so the production cost of that scan can be read.
+bool indexed_bbox_probe_enabled=true;
 bool readback_fullcopy_enabled=false;uint64_t readback_fullcopy_hits=0,readback_fullcopy_bytes=0;
 struct TexelCopyStats {uint64_t copies=0,hits=0,would_hits=0,copy_bytes=0,hit_bytes=0,pass_ends=0;};
 TexelCopyStats texel_copy_stats[2]; // normal graphics, diagnostic graphics
@@ -8051,8 +8054,8 @@ bool indexed_range_ready(uint64_t address,uint64_t bytes,VkDeviceSize alignment,
 }
 struct IndexedInputFailure {const char *why="none";uint32_t stage=UINT32_MAX,binding=UINT32_MAX;uint64_t address=0,bytes=0;};
 bool indexed_graphics_ready(const p_draw_idx &a,size_t index_bytes,IndexedInputFailure *failure=nullptr){
-    XbgIndexedReadyProbe probe(timing_active?&indexed_ready_stats:nullptr);
-    XbgIndexedBBoxProbe bbox(timing_active?&indexed_bbox_stats:nullptr);
+    XbgIndexedReadyProbe probe((timing_active&&indexed_bbox_probe_enabled)?&indexed_ready_stats:nullptr);
+    XbgIndexedBBoxProbe bbox((timing_active&&indexed_bbox_probe_enabled)?&indexed_bbox_stats:nullptr);
     XbgIndexedBounds bounds;const XbgIndexedBounds *active_bounds=nullptr;
     auto range_ready=[&](uint64_t address,uint64_t bytes,VkDeviceSize alignment){return indexed_range_ready(address,bytes,alignment,probe.out?&probe:nullptr,bbox.out?&bbox:nullptr,active_bounds);};
     auto reject=[&](const char *why,uint32_t st=UINT32_MAX,uint32_t binding=UINT32_MAX,uint64_t address=0,uint64_t bytes=0){if(failure)*failure={why,st,binding,address,bytes};return false;};
@@ -9316,7 +9319,7 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
           {"texelframe",&honor_frame_texel_memo_enabled},
           {"texdirty",&tex_dirty},{"texmemo",&texel_memo_enabled},{"imgcache",&img_cache_enabled},
           {"descmemo",&desc_memo_enabled},{"desccompute",&desc_memo_compute_enabled},{"dynpartial",&dyn_partial_enabled},{"xmemo",&xmemo_enabled},
-          {"bindcache",&bind_cache_enabled},{"ownedinput",&owned_input_copy_enabled},{"rbfullcopy",&readback_fullcopy_enabled},{"bboxready",&indexed_bbox_ready_enabled},
+          {"bindcache",&bind_cache_enabled},{"ownedinput",&owned_input_copy_enabled},{"rbfullcopy",&readback_fullcopy_enabled},{"bboxready",&indexed_bbox_ready_enabled},{"bboxprobe",&indexed_bbox_probe_enabled},
           {"gpuindexed",&gpu_indexed_enabled},{"uppro",&upload_prologue},{"depthaspect",&depth_aspect_enabled},
           {"pipefast",&pipeline_fast_enabled},{"pipememo",&pipe_memo},{"occlusion",&occlusion_batch_enabled},
           {"vcache",&vcache::enabled},{"texrecord",&texture_record_cache_enabled},{"adpf",&performance_hint::enabled},
