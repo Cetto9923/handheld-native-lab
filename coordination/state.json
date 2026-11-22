@@ -12310,7 +12310,7 @@
       ],
       "dependencies": [],
       "pass_gates": [],
-      "status": "partially_passed_scenes_b_c_blocked",
+      "status": "partially_passed_scene_b_and_chapter4_factory_not_run_battle_effects_measured",
       "write_scope": [
         "coordination/results/MAVIS-SCENE-VALIDATION-20261122.md",
         "coordination/EXPERIENCE.md",
@@ -12320,13 +12320,44 @@
       ],
       "acceptance": "Engine-side frame dump of at least 10 segments x 9 consecutive present frames per scene, no near-black / near-white frames and no missing-geometry green signature; the character must actually move on device (virtual joystick injection), not just navigate menus",
       "checkpoint": "223fb4a. Stable build a45430a8 installed on A42BBB5109000333; device-side SHA256 matches the release package; no uninstall, official save untouched. Shrine scene PASS: 21 segments / 189 frames over present 2370-10418, including the purple investigation point frame (present=5434) that L-028 names as the flicker trigger. green max 0.00026 (threshold 0.002), nearblack max 0.0220, nearwhite max 0.0023, adjacent-frame diff mean 0.0006 / max 0.0078. Cold-start frames present 0-8 are fully black and were discarded by the scene guard. Virtual joystick injection proven: motionevent DOWN 371 1498 + MOVE without UP yields L=-27,26623 and real character displacement (35.9 percent of the screen changed).",
-      "next": "Reconnect the tablet (USB or same-subnet TCP; the host moved from 192.168.31.x to 192.168.1.126 mid-run and lost the wireless adb channel) and run enter_scene.sh with shield-regression-20261120204301 (opening fire scene) and shield-regression-20261122073707 (chapter 4 factory + battle effects), then capture_walk.sh + an_walk.py. Do NOT claim all-scene stability before both are captured, and do not merge to work/rg477m-native before the RG477M regression (L-028).",
+      "next": "Scene C battle effects are measured in a separate card (MAVIS-BATTLE-VALIDATION-20261122). Scene B (opening fire scene) and the chapter 4 factory are still NOT_RUN: every isolated save on the device actually holds the chapter 1 exploration area, so the named scenes do not exist on this device yet. Obtain a real chapter 4 / opening-fire save or reach the chapter on foot, then repeat enter_scene.sh + capture_walk.sh + an_walk.py. Do NOT claim all-scene stability before those are captured, and do not merge to work/rg477m-native before the RG477M regression (L-028).",
+      "owner": "Mavis",
+      "branch": "task/T-mavis-perf-20261122"
+    },
+    {
+      "id": "MAVIS-BATTLE-VALIDATION-20261122",
+      "role": "RELEASE_PERF_ATTRIBUTION",
+      "objective": "Honor GT Pro: quantify the user-reported combat frame drops on the delivered stable build a45430a8 and attribute them to CPU submit cost using engine-side evidence",
+      "inputs": [
+        "coordination/HANDOFF.md",
+        "coordination/EXPERIENCE.md",
+        "coordination/state.json",
+        "~/GitHub/游戏发布包/02-最终幻想_共鸣_FFRS/FFRS-1.0.78-stable.apk"
+      ],
+      "outputs": [
+        "coordination/results/MAVIS-BATTLE-VALIDATION-20261122.md",
+        "coordination/EXPERIENCE.md",
+        ".local/ffrs-validate/battle/"
+      ],
+      "dependencies": [],
+      "pass_gates": [],
+      "status": "passed_battle_effects_scene_c_partial",
+      "write_scope": [
+        "coordination/results/MAVIS-BATTLE-VALIDATION-20261122.md",
+        "coordination/EXPERIENCE.md",
+        "coordination/state.json",
+        "coordination/HANDOFF.md",
+        ".local/ffrs-validate/battle/"
+      ],
+      "acceptance": "Engine-side frame dump of at least 10 segments x 9 consecutive present frames for the battle scene, a clean (frame dump disabled) performance window, a per-part CPU breakdown compared against a same-area exploration baseline, and a visual check of every near-white / near-black anomaly before calling it a defect",
+      "checkpoint": "Battle measured on A42BBB5109000333 with the delivered stable build (device-side SHA256 matches a45430a8). Entered by reloading isolated save shield-regression-20261122073707, which resumes inside a battle (chapter 1 ruin, 2x Lv.2 mutant rats, party Rayen/Laszlo). Full flow run: entry -> command menu -> target select -> physical attack -> enemy 'bite' full-screen particle effect -> victory -> level up (Laszlo Lv.4->Lv.5). Entry: 74 consecutive stalled frames gap 84.9-176.4 ms; peak present=103974 gap 24957.4 ms with submit_cpu 24892.63 ms while gpu was only 37.34 ms -> CPU-side submit block, not a GPU bottleneck. Steady battle with the frame dump disabled: fps 30.82-33.34, submit_cpu 26.38-27.92 ms, gpu 12.57-17.12 ms, passes 66, draws 1171; same-area exploration baseline fps 39.04-40.07, submit_cpu 21.32-21.95 ms, passes 93, draws 536-543. Action frames present 110796-110799 gap 76.8-94.3 ms with sync_rb=1. First-use effect shaders: present 105309 shader_ms 124.0 / 4 pipelines (gap 145.9), 111133 shader_ms 45.5 / 7 pipelines (gap 113.2). Frame dump 225 frames / 25 segments x 9 consecutive present frames (present 107070-111938): nearblack 0.0056-0.0089, nearwhite 0.0021-0.0266, green 0.0064-0.0403, lap 695.5-1312.5; the only anomaly segment (round 22, present 111150-111158) was exported to PNG and confirmed as the legit 'bite' full-screen particle effect, not missing geometry or a black/white flash. Root cause by parts_ms_per_frame against the same-area exploration baseline: battle costs +6.0 ms/frame of CPU (draws 526->1182), made of snapshot per-frame full-table rebuild +1.96 ms (4050->8153 ops), draw +1.82 ms, descriptor +1.56 ms (643->1269 ops); GPU unchanged at 12-17 ms. The 25.3->31.3 ms frame budget matches the measured 39.6->32.0 FPS.",
+      "next": "Normal random-encounter entry was NOT reproduced: 64 s of walking with R3 held in the chapter 1 ruin (11 screenshots) never triggered an encounter, so the 25 s entry freeze is measured on the save-resume path only. Repeat the entry measurement on a real encounter before generalising it. Then attack P0 descriptor (1269 ops/frame, 7.59 ms in battle) and P1 snapshot (8153 ops/frame, 4.79 ms) with runtime A/B markers plus display regression, and investigate the 25 s fence wait chain of the battle-entry freeze without cancelling the target_fence == fence wait (L-028).",
       "owner": "Mavis",
       "branch": "task/T-mavis-perf-20261122"
     }
   ],
   "blockers": [
-    "MAVIS-SCENE-VALIDATION-20261122: 场景B(开场火场)与场景C(第四章兵工厂+战斗特效) NOT_RUN。采集途中平板 USB 通道 A42BBB5109000333 掉线，备用 TCP 192.168.31.41:44333 随主机换网(主机从 192.168.31.x 切到 192.168.1.126)失效，平板 ping 100% 丢包且本地网段无 adb 端口命中。场景A(神殿含紫色调查点)已 PASS。设备恢复前不得宣称全场景无闪烁。",
+    "MAVIS-SCENE-VALIDATION-20261122: 场景A(神殿含紫色调查点)已 PASS；场景C的战斗特效部分已由 MAVIS-BATTLE-VALIDATION-20261122 实测(战斗帧 225 帧 25 段，撕咬特效经 PNG 目视确认为合法画面)。仍 NOT_RUN：场景B(开场火场)与第四章兵工厂 —— 设备上全部隔离存档实际内容都是第1章探索区，命名与内容不符，这两个场景在平板上目前不存在。另：正常随机遇敌入场未复现(长按 R3 巡游 64 s 无遇敌)，战斗入场的 24.96 s 冻结目前只测到「读档续战」这一条路径。设备端 files/frame-dump 目录 shell/run-as 均无法删除，帧文件持续累积。",
     "P-CX-50: run59现场报告NVNSubmission.cpp:315 TIMEOUT_EXPIRED，原日志尾部缺失；设备文件已属另一运行，A/B/C/D未证。禁止归为随机驱动超时。",
     "Realstable60FPSnotpassed; existingpublicsinglewordinterval1patch exactcurrentBuildderivedcopyvalidated/deployed; sameAPKrun55launchedtocheckmappedword/behavior. NativeWSIignoresinterval, originalclockunchanged; noadaptiveimplementation peruser.",
     "Expectedshaderfiles73483/73496 after2065delta appUIDallhasherrors0. Remaining12semanticallyrefused+Layer1, Maliwarp32vs16 andactualsceneresourcecorrectnessunresolved.",

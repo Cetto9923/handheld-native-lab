@@ -5941,3 +5941,29 @@ P3 GPU pass 合并（收益最大、画面风险最高，须逐 pass 取证）�
 - **仍不合入** `work/rg477m-native`：场景 B/C 未测，且 L-028 要求的 RG477M 双机回归未做。
 - 报告：`coordination/results/MAVIS-SCENE-VALIDATION-20261122.md`；证据 `.local/ffrs-validate/`；
   经验库新增 L-033（摇杆持续行走）、L-034（全黑帧先分宿主态/渲染缺陷）。
+
+### 2026-11-22 最稳定版 a45430a8 战斗场景取证（战斗掉帧归因）
+
+平板恢复后（独立端口 adb server 5041 + 无线 192.168.1.121:44689；旧 5037 server 损坏但未动、未 kill），
+重载隔离存档 `shield-regression-20261122073707` → **直接落在战斗中**，跑通完整战斗流程：
+战斗入场 → 指令菜单 → 选目标 → 物理攻击 → 敌方「撕咬」全屏粒子特效 → 胜利 → 升级结算（拉斯韦尔 Lv.4→Lv.5）。
+
+- **战斗入场卡顿（本轮最严重）**：present 103900–103978 连续 74 帧 stall，gap 84.9–176.4 ms；
+  峰值 present=103974 gap **24957.4 ms**，其中 submit_cpu 24892.63 ms、同帧 gpu 仅 37.34 ms
+  → **CPU 侧提交阻塞，不是 GPU 瓶颈**。对应汇总窗 frames=60 wall_ms=31822.6 fps=1.89。
+- **战斗稳态（关闭帧转储后取）**：fps 30.82–33.34、submit_cpu 26.38–27.92 ms、gpu 12.57–17.12 ms、
+  passes=66、draws=1171。同区域探索区基线 fps 39.04–40.07、submit_cpu 21.32–21.95 ms、draws 536–543。
+- **特效首帧**：present 105309 shader_ms 124.0 / 新建 4 条管线（gap 145.9）；111133 shader_ms 45.5 / 7 条（gap 113.2）。
+- **画面完整性**：225 帧 / 25 段 × 9 连续呈现帧，nearblack 0.0056–0.0089、nearwhite 0.0021–0.0266、
+  green 0.0064–0.0403、lap 695.5–1312.5。唯一异常段（present 111150–111158）已导出 PNG 目视核对：
+  是敌方「撕咬」全屏粒子特效（伤害数字 1212），**合法画面，不是缺面 / 黑白闪**。
+- **根因（parts_ms_per_frame 差分）**：战斗比探索每帧多 **6.0 ms CPU** ——
+  snapshot 整表重建 +1.96 ms（4050→8153 次/帧）、draw +1.82 ms、descriptor +1.56 ms（643→1269 次/帧）；
+  GPU 不变（12–17 ms）。25.3→31.3 ms 帧预算正好解释 39.6→32.0 FPS。
+- **未复现**：正常随机遇敌入场 —— 长按 R3 + 四方向巡游 64 s（11 张截图）仍无遇敌，
+  因此 24.96 s 冻结目前只测到「读档续战」这一条路径，**不得**直接外推到普通战斗。
+- **仍不合入** `work/rg477m-native`：RG477M 双机回归未做（权限外），场景B / 兵工厂未测。
+- 报告：`coordination/results/MAVIS-BATTLE-VALIDATION-20261122.md`；
+  证据 `.local/ffrs-validate/battle/`（frame_metrics.csv 225 帧、engine_tail.log、impact_sheet.png 等）；
+  经验库新增 L-035（战斗掉帧拆三层 + CPU 分解定位）、L-036（近白尖峰必须目视核对）、
+  L-037（客机 UI 用 keyevent；金手指开关读 SharedPreferences）、L-038（帧转储污染 CPU 读数，基线要关转储后取）。
