@@ -1639,5 +1639,124 @@ op26 (OP_DRAW_IDX)  680.9 次/帧   10.919 ms/帧
 - 设备已还原到**已出货的第 2 版** `ffrs-v4-affinity-20261123.apk`（sha256 `33e12d335e673ca9e318cef408d88e65e58e3efb8e14432b118437e00652a8d4`）；
   `gfx-live-set` = `gfxaffinity=prime`；无残留 marker（含设备上的 `gfx-cpu-profile` 已删除）；游戏进程已停止；**红果在前台**。
 - 经验库新增 L-111 ~ L-115；任务卡 `MAVIS-PERF-V11-BINDSCOPE-20261123` 已更新。
+## 第 14 轮（V12，诊断轮，**未出货**）：给 `find_indirect_template` 定价 —— **撤回第 13 轮归因**，新第一靶是「pending 列表没有区间索引」 (2026-11-23)
+
+### 22.1 本轮范围
+
+- 只加计时与计数，不改任何查找语义、不改任何渲染路径、不改失效与清理逻辑。
+- 新增 1 个 CPU 子域 `SubFindTemplate`（`XbgCpuTiming::Kind` 尾部追加，既有索引不变，非计时帧零开销）+ 一组全局计数器：
+  `nvn_find_calls` / `nvn_find_scan_entries` / `nvn_find_reason[8]`（失败原因直方图）/ `nvn_find_outside_range`，
+  以及 `nvn_wb_len_*` / `nvn_wb_add` / `nvn_wb_del` / `nvn_wb_min_addr` / `nvn_wb_max_end`（writeback 队列的长度、地址范围与变更次数）。
+- 代码提交 `bc3f007`（两分支同步）；诊断包 `ffrs-v12-findprice-20261123.apk`，
+  sha256 `e6b8855f2cae7f31c0e738bbfed48ac7e022e0ec893755094426d47f12a3743f`，**未出货**。
+
+### 22.2 采样配方（沿用第 13 轮修正后的流程）
+
+兵工厂隔离存档 `shield-regression-20261118094001`；**重启进程前先删掉设备上的 `gfx-cpu-profile` 触发文件**
+（L-113：残留文件会在新进程启动时被当成请求消费掉），`am start` → sleep 32 → `keyevent 96` → sleep 45，
+就绪判据 `binds set_binds=495.1` 且 `setcache misses=442.9`，再写 `0 60 0`，sleep 22。
+干净窗口 **frames 3392–3451（60 帧）**：
+
+| 项 | 值 |
+|---|---|
+| wall | 1529.1 ms → **25.49 ms/帧（39.2 fps）** |
+| measured（scope 树覆盖） | 1379.7 ms → **22.995 ms/帧** |
+| uncovered（所有 scope 之外） | 149.5 ms → **2.491 ms/帧** |
+| draws / dispatches / submissions | 40,965 / 9,900 / 488 |
+| op26 | 680.8 次/帧 × 16.585 µs = **11.29 ms/帧**（第 13 轮 16.04 µs / 10.919 ms/帧，热漂移） |
+
+34 个域独占求和 = **22.995 ms/帧**，与 `measured_ns` **完全一致（差 0.00%）**；
+引擎独立计时 `submit_cpu_ms=21.14 ms/帧` ⇒ 本轮插桩开销 **1.855 ms/帧**。
+
+### 22.3 定价结果：靶点 A 只值 0.0153 ms/帧
+
+`NVN CPU_TIMING nvn_find`（本窗口 60 帧）：
+
+| 项 | 值 | 换算 |
+|---|---|---|
+| calls | 10,140 | **169.0 次/帧**（不是 692） |
+| scan_entries | 20,280 | **每次调用只扫 2.0 项** |
+| found | 6,240 | **104 次/帧命中** |
+| no_overlap | 3,900 | 65 次/帧完全没重叠 |
+| partial / wrong_slot / row_missing / disabled | 0 / 0 / 0 / 0 | 失败原因**只有「一个都没重叠」** |
+| outside_range | 0 | 查的地址**全部落在** writeback 地址区间内 |
+| wb_len_avg / wb_len_max | 10.0 / 10 | 队列长 **10**，不是 294 |
+| wb_add / wb_del | 23,880 / 180 | 每帧新增 398、移除 3 |
+| wb_min / wb_max_end | 0x6f22b38400 / 0x6fa03f8dfc | 地址范围跨度约 2.8 GB |
+
+`part=sub_find_template`：**calls=10,309、exclusive 919,466 ns = 0.0153 ms/帧、89 ns/次、峰值 40.7 µs**。
+
+⇒ **`find_indirect_template` 只值 0.0153 ms/帧（submit CPU 的 0.07%）。它不是靶子。**
+
+### 22.4 显式撤回第 13 轮归因（AGENTS.md 要求）
+
+**作废**：第 13 轮 §21.5①③ 与 §21.7 的「靶 A：`find_indirect_template` 的 294 项线性扫描 = 1.63~1.67 ms/帧（submit CPU 的 7.8%）」，
+以及据此得出的「下一轮先给这个扫描定价」这个入口。**三处错因**：
+
+1. **「294 条 pending_writebacks」取自历史日志行，不是本轮窗口。** 设备 `engine.log` 是追加式的（已 44 MB，含多轮旧运行），
+   我按 `n_wb=294` 在**整份日志**上聚合（7,752 次采样），那些行来自更早的运行与更早的引擎版本。
+   本轮窗口实测队列长 **10**。
+2. **「692 次/帧都在扫」是错的。** `gpu_draw_indexed` 在 `find_indirect_template` **之前**有 4 个廉价早退
+   （`mdi_cnt` / `prim != 4` / `itype` / `!a.ind`），只有 **169 次/帧**能走到扫描；
+   失败原因分布也印证了这点：`partial` / `wrong_slot` / `row_missing` / `disabled` **全是 0**。
+3. **我把「估算」当成了结论。** 当时写的是「按 8 ns/次估」——这违反了 L-115 自己在同一天立的规矩：
+   **n（表长）和 k（调用次数）都必须在当前窗口实测，不能拿历史日志的 n 配上别处的 k 去估。**
+
+⇒ 连带作废：第 13 轮「新第一靶 = 靶 A」的排序。**靶 A 降级为非靶子**（0.0153 ms/帧）。
+
+### 22.5 新的第一靶：`pending_writebacks` / `pending_reports` 没有区间索引
+
+第 13 轮留下的「`gpu_draw_indexed` 自身独占 1.679 ms/帧」这个**现象**是对的；第 14 轮把它的**去向**定死了。
+引擎自带的计数器（`NVN INDEXED_BBOX`，本窗口 60 帧）：
+
+| 项 | 值 | 换算 |
+|---|---|---|
+| calls | 6,240 | **104 次/帧**（`indexed_graphics_ready`） |
+| queries | 84,240 | **1,404 次/帧**的区间检查 |
+| report_scan_steps | 8,121,750 | **135,363 步/帧** |
+| writeback_scan_steps | 30,532,560 | **508,876 步/帧** |
+| 合计 | — | **644,239 步/帧**，每次检查平均扫 **459 项**（96 report + 362 writeback） |
+| report_avoidable / writeback_avoidable | 4,918,338 / 2,126,340 | 117,411 步/帧可跳过（**18.2%**） |
+
+对账：644,239 步/帧 × 约 2.6 ns/步 ≈ **1.66 ms/帧**，
+正好等于 `sub_draw_gpu_idx` 独占 1.679 − `sub_find_template` 0.015 = **1.664 ms/帧** ⇒ **这 1.66 ms/帧就是区间扫描本身**
+（`xbg_game.cpp:8043` 与 `:8044` 两个 for 循环，每个都全量扫 `pending_reports` 与 `pending_writebacks`）。
+
+**同根因的第二处**：`pending_view`（`xbg_game.cpp:2299`）对 `pending_writebacks` 做**完全相同的全量线性扫描**（rbegin→rend，命中即返回），
+它被 `snapshot_slow` 调用 **2,420 次/帧** —— 这是 `sub_snap_slow` 残差（约 1.07 ms/帧）的主要来源。
+
+⇒ **根因统一**：`pending_writebacks`（每帧新增 398 条）与 `pending_reports`（每帧约 96 条）**没有区间索引**，
+每一次「这个区间能不能读」的判定都是 **O(n) 全量扫描**。合计约 **2.6 ms/帧（submit CPU 的 12%）**。
+
+### 22.6 为什么不能直接开 `bboxready`（省不了）
+
+引擎里已有保守包络快路径：`indexed_bbox_ready_enabled`（live-set 名 `bboxready`，默认关，`xbg_game.cpp:8061`），
+它用「pending 列表的地址包络」证明某个区间**不可能**与任何条目重叠，从而跳过整个扫描循环。
+但按引擎自己的 `avoidable` 计数器，它只能跳过 **18.2%** 的扫描步（117,411 步/帧 ≈ 0.30 ms/帧），
+再扣掉每帧 104 次包络重建（456 项 × 104 ≈ 47K 步/帧 ≈ 0.12 ms/帧），
+**净收益 ≈ 0.2 ms/帧，低于噪声（L-029）⇒ 不出货**。
+另外该开关在**已出货的第 2 版里根本不存在**（它是 `e792206` 之后才加的），不能当作现成方案。
+
+### 22.7 下一轮（V13）实现计划：版本号门控的区间索引
+
+1. **索引结构**：按 4 KB 页分桶的哈希表（页 → 候选条目下标）。一次重建 = O(条目数 + 页数)，
+   本场景约每帧几千次操作（对比现在每帧 644K 次区间检查）。
+2. **一致性**：在 `pending_writebacks` / `pending_reports` 的**全部变更点**递增版本号
+   （push ×3、`erase`、`swap`（`resolve_slot_writebacks`）、`clear`（`resolve_pending`）），
+   查询时版本不一致就重建 ⇒ 索引永远不会比列表旧，**语义与现在完全一致**。
+3. **只改两个热点查询**，并保持各自语义：
+   - writeback 查询必须返回**最新的那一条**重叠项（现在是 rbegin→rend 首个命中）⇒ 候选里取下标最大的；
+   - report 查询只要「有没有重叠」（现在首个命中即 `return false`）⇒ 布尔即可。
+4. **门禁**：收益须明显高于噪声（L-029）；显示回归必须过 —— 这条路径决定「GPU 能不能读某段宿主内存」，
+   改错就是读到过期数据 = 画面错乱（L-032 精神）。
+5. **预计上限**：1.66 ms/帧（`indexed_range_ready`）+ 约 1.0 ms/帧（`pending_view`）≈ **2.6 ms/帧（submit CPU 的 12%）**。
+
+### 22.8 产出与设备状态
+
+- V12 诊断包 **未出货**（纯计时改动，无收益可测）。
+- 设备已还原到**已出货的第 2 版** `ffrs-v4-affinity-20261123.apk`（sha256 `33e12d335e673ca9e318cef408d88e65e58e3efb8e14432b118437e00652a8d4`）；
+  `gfx-live-set` = `gfxaffinity=prime`；无残留 marker（含设备上的 `gfx-cpu-profile` 已删除）；游戏进程已停止；**红果在前台**。
+- 经验库新增 L-116 ~ L-119；任务卡 `MAVIS-PERF-V11-BINDSCOPE-20261123` 已更新。
+
 
 
