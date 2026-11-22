@@ -470,6 +470,13 @@ unsigned perf_sample=32;bool perf_frame_timed=true;uint64_t perf_timed_frames=0;
 uint64_t nvn_cmd_total=0,nvn_cmd_sub_max_cmds=0,nvn_cmd_sub_max_cmds_ns=0,nvn_cmd_sub_max_ns=0,nvn_cmd_sub_max_ns_cmds=0,nvn_cmd_by_op[256]={};
 // V11: per-op accumulated time and the worst single command per op, plus the real poll_retire call count.
 uint64_t nvn_cmd_ns_by_op[256]={},nvn_cmd_max_ns_by_op[256]={},nvn_poll_calls=0,nvn_cmd_timed=0;
+// V12: pricing for find_indirect_template. The lookup scans the whole pending-writeback list once per indexed
+// draw, so these counters measure the scan instead of estimating it. nvn_find_reason[0]=found,
+// [1]=no writeback overlapped at all, [2]=the overlapping write is not a full indirect template,
+// [3]=the overlapping write belongs to another recording slot, [4]=the template batch has no row for the
+// address, [5]=the proof path is disabled. nvn_find_scan_entries counts the loop iterations.
+uint64_t nvn_find_calls=0,nvn_find_scan_entries=0,nvn_find_reason[8]={},nvn_find_outside_range=0;
+uint64_t nvn_wb_len_sum=0,nvn_wb_len_max=0,nvn_wb_frames=0,nvn_wb_add=0,nvn_wb_del=0,nvn_wb_min_addr=0,nvn_wb_max_end=0;
 XbgCpuTiming::Counter perf_timing_before[XbgCpuTiming::Count];
 // Descriptor-only bounded diagnostic. Fixed storage; no clocks or allocation.
 enum class ReadbackSite : unsigned { Other, StoragePending, StorageCPU, TexelPending, TexelCPU, TexelPendingStorage, Count };
@@ -592,6 +599,8 @@ void timing_start(){
     indexed_ready_stats={};indexed_bbox_stats={};for(auto &site:readback_sites)site={};
     timing_active=true;timing_start_ns=timing_clock();pipeline_before=pipeline_counts;
     nvn_cmd_total=0;nvn_cmd_sub_max_cmds=0;nvn_cmd_sub_max_cmds_ns=0;nvn_cmd_sub_max_ns=0;nvn_cmd_sub_max_ns_cmds=0;memset(nvn_cmd_by_op,0,sizeof(nvn_cmd_by_op));memset(nvn_cmd_ns_by_op,0,sizeof(nvn_cmd_ns_by_op));memset(nvn_cmd_max_ns_by_op,0,sizeof(nvn_cmd_max_ns_by_op));nvn_poll_calls=0;nvn_cmd_timed=0;
+    nvn_find_calls=0;nvn_find_scan_entries=0;memset(nvn_find_reason,0,sizeof(nvn_find_reason));nvn_find_outside_range=0;
+    nvn_wb_len_sum=0;nvn_wb_len_max=0;nvn_wb_frames=0;nvn_wb_add=0;nvn_wb_del=0;nvn_wb_min_addr=0;nvn_wb_max_end=0;
     timing_before={stats.submissions.load(),stats.draws.load(),stats.dispatches.load(),stats.presents.load(),stats.shader_loads.load()};
 }
 void descriptor_report();
@@ -606,7 +615,7 @@ void timing_report(const char *reason){
         (unsigned long long)(stats.draws-timing_before.draws),(unsigned long long)(stats.dispatches-timing_before.dispatches),
         (unsigned long long)(stats.submissions-timing_before.submissions),(unsigned long long)(stats.shader_loads-timing_before.shader_loads));
     report_pipeline_cache();
-    static const char *names[]={"other","draw","dispatch","descriptor","pass","buffer","pipeline","submit","fence","present","cleanup","hash","image","log","program","cpuwrite","snapshot","sub_maint","sub_exec","sub_submit","sub_aff","sub_pres_prep","sub_pres_submit","sub_pace","sub_snap_fast","sub_snap_slow","sub_cmd_decode","sub_poll_retire","sub_arena_check","sub_draw_idx_exec","sub_draw_gpu_idx","sub_draw_prologue","sub_snap_map","sub_snap_stream"};
+    static const char *names[]={"other","draw","dispatch","descriptor","pass","buffer","pipeline","submit","fence","present","cleanup","hash","image","log","program","cpuwrite","snapshot","sub_maint","sub_exec","sub_submit","sub_aff","sub_pres_prep","sub_pres_submit","sub_pace","sub_snap_fast","sub_snap_slow","sub_cmd_decode","sub_poll_retire","sub_arena_check","sub_draw_idx_exec","sub_draw_gpu_idx","sub_draw_prologue","sub_snap_map","sub_snap_stream","sub_find_template"};
     for(unsigned i=0;i<XbgCpuTiming::Count;i++){const auto &c=timing.counters[i];xbg_logf("NVN CPU_TIMING part=%s calls=%llu exclusive_ns=%llu inclusive_ns=%llu max_ns=%llu",names[i],(unsigned long long)c.calls,(unsigned long long)c.exclusive_ns,(unsigned long long)c.inclusive_ns,(unsigned long long)c.max_ns);}
     {uint64_t fr=stats.presents-timing_before.presents;xbg_logf("NVN CPU_TIMING nvn_cmds total=%llu per_frame=%llu sub_max_cmds=%llu sub_max_cmds_ns=%llu sub_max_ns=%llu sub_max_ns_cmds=%llu",
         (unsigned long long)nvn_cmd_total,(unsigned long long)(fr?nvn_cmd_total/fr:0),
@@ -615,6 +624,16 @@ void timing_report(const char *reason){
      uint64_t sum_ns=0;for(unsigned o=0;o<256;++o)sum_ns+=nvn_cmd_ns_by_op[o];
      xbg_logf("NVN CPU_TIMING nvn_op_sum ns=%llu per_frame=%llu timed_cmds=%llu poll_calls=%llu",(unsigned long long)sum_ns,(unsigned long long)(fr?sum_ns/fr:0),(unsigned long long)nvn_cmd_timed,(unsigned long long)nvn_poll_calls);
      bool used[256]={};for(unsigned k=0;k<10;++k){unsigned bi=0;uint64_t bv=0;for(unsigned o=0;o<256;++o)if(!used[o]&&nvn_cmd_ns_by_op[o]>bv){bv=nvn_cmd_ns_by_op[o];bi=o;}if(!bv)break;used[bi]=true;uint64_t cc=nvn_cmd_by_op[bi];xbg_logf("NVN CPU_TIMING nvn_op op=%u calls=%llu ns=%llu ns_per_call=%.1f max_ns=%llu",bi,(unsigned long long)cc,(unsigned long long)bv,(double)(cc?bv/cc:0),(unsigned long long)nvn_cmd_max_ns_by_op[bi]);}}
+    {uint64_t fr=stats.presents-timing_before.presents;
+     xbg_logf("NVN CPU_TIMING nvn_find calls=%llu per_frame=%.1f scan_entries=%llu entries_per_call=%.1f found=%llu no_overlap=%llu partial=%llu wrong_slot=%llu row_missing=%llu disabled=%llu outside_range=%llu wb_len_avg=%.1f wb_len_max=%llu wb_min=%#llx wb_max_end=%#llx wb_add=%llu wb_del=%llu",
+        (unsigned long long)nvn_find_calls,(double)(fr?nvn_find_calls/fr:0),
+        (unsigned long long)nvn_find_scan_entries,(double)(nvn_find_calls?double(nvn_find_scan_entries)/double(nvn_find_calls):0),
+        (unsigned long long)nvn_find_reason[0],(unsigned long long)nvn_find_reason[1],(unsigned long long)nvn_find_reason[2],
+        (unsigned long long)nvn_find_reason[3],(unsigned long long)nvn_find_reason[4],(unsigned long long)nvn_find_reason[5],
+        (unsigned long long)nvn_find_outside_range,
+        (double)(nvn_wb_frames?double(nvn_wb_len_sum)/double(nvn_wb_frames):0),(unsigned long long)nvn_wb_len_max,
+        (unsigned long long)nvn_wb_min_addr,(unsigned long long)nvn_wb_max_end,
+        (unsigned long long)nvn_wb_add,(unsigned long long)nvn_wb_del);}
     xbg_logf("NVN INDEXED_READY v=1 calls=%llu requests=%llu exact_calls=%llu exact_requests=%llu unique=%llu duplicates=%llu overflow_calls=%llu reports_steps=%llu writebacks_steps=%llu duplicate_reports_steps=%llu duplicate_writebacks_steps=%llu vertex_requests=%llu vertex_repeats=%llu",
         (unsigned long long)indexed_ready_stats.calls,(unsigned long long)indexed_ready_stats.requests,
         (unsigned long long)indexed_ready_stats.exact_calls,(unsigned long long)indexed_ready_stats.exact_requests,
@@ -1049,9 +1068,15 @@ bool indirect_cpu_clean(uint64_t address,uint64_t bytes){
 // is recording now.
 static bool xbg_writeback_is_current_slot(const void *slot);
 bool find_indirect_template(uint64_t address,XbgIndirectTemplateRow &row,std::shared_ptr<IndirectTemplateBatch> *batch=nullptr){
-    if(!indirect_proof_enabled)return false;
+    CPU_SCOPE(SubFindTemplate);
+    ++nvn_find_calls;
+    if(!indirect_proof_enabled){++nvn_find_reason[5];return false;}
+    // V12 measurement only: would one address-range test already prove that no writeback can overlap this
+    // address? The scan below still runs either way, so the lookup result is unchanged.
+    if(nvn_wb_len_max && (address+20<=nvn_wb_min_addr || address>=nvn_wb_max_end))++nvn_find_outside_range;
     bool had_overlap=false,had_indirect=false;
     for(auto w=pending_writebacks.rbegin();w!=pending_writebacks.rend();++w){
+        ++nvn_find_scan_entries;
         if(!xbg_wb_overlaps(address,20,w->addr,w->bytes))continue;
         had_overlap=true;
         // The newest overlapping write is authoritative, including partial or
@@ -1062,18 +1087,20 @@ bool find_indirect_template(uint64_t address,XbgIndirectTemplateRow &row,std::sh
         // newer producer in this slot may already have replaced those bytes.
         // Serving that older template draws with a stale instance count, which
         // shows as a halo that alternates between two states frame by frame.
-        if(address<w->addr || address+20>w->addr+w->bytes || !w->indirect)return false;
-        if(indirect_mode==3){if(!xbg_writeback_is_current_slot(w->slot))return false;}
-        else if(indirect_mode==2){if(!xbg_writeback_is_current_slot(w->slot)&&!(w->indirect&&w->indirect->owned))return false;}
+        if(address<w->addr || address+20>w->addr+w->bytes || !w->indirect){++nvn_find_reason[2];return false;}
+        if(indirect_mode==3){if(!xbg_writeback_is_current_slot(w->slot)){++nvn_find_reason[3];return false;}}
+        else if(indirect_mode==2){if(!xbg_writeback_is_current_slot(w->slot)&&!(w->indirect&&w->indirect->owned)){++nvn_find_reason[3];return false;}}
         had_indirect=true;
         const auto &rows=w->indirect->rows;auto it=std::lower_bound(rows.begin(),rows.end(),address,[](const XbgIndirectTemplateRow &a,uint64_t b){return a.address<b;});
-        if(it==rows.end() || it->address!=address)return false;row=*it;if(batch)*batch=w->indirect;return true;
+        if(it==rows.end() || it->address!=address){++nvn_find_reason[4];return false;}
+        row=*it;if(batch)*batch=w->indirect;++nvn_find_reason[0];return true;
     }
     static unsigned fail_tmpl=0;
     if(fail_tmpl++<20 || honor_pipeline_diagnostics){
         xbg_logf("NVN FIND_INDIRECT_FAIL addr=%#llx frame=%llu n_wb=%zu had_overlap=%d had_indirect=%d",
             (unsigned long long)address,(unsigned long long)stats.presents.load(),pending_writebacks.size(),int(had_overlap),int(had_indirect));
     }
+    ++nvn_find_reason[1];
     return false;
 }
 // Storage writebacks superseded by a newer GPU result (gfx-wb-skip). In the D2R camp five compute outputs, 1.37 MB a frame
@@ -1976,6 +2003,11 @@ void perf_frame(){
     if(xbg_warm_flush::due(presents,warm_save_frame)){warm_save_frame=presents;warm::flush();}
     if(gpu_raw.ready(presents))gpu_raw_export(false);
     uint64_t now=timing_clock();scene::frame(now);
+    // V12: price the indirect-template lookup. Sample the pending-writeback list once per frame: its length,
+    // its address range (a single range test could replace the per-draw scan when the address falls outside it),
+    // and how often the list changes (a cached index is only viable while the list is stable).
+    {uint64_t n=pending_writebacks.size();nvn_wb_len_sum+=n;if(n>nvn_wb_len_max)nvn_wb_len_max=n;++nvn_wb_frames;
+     if(n){uint64_t mn=UINT64_MAX,mx=0;for(auto &w:pending_writebacks){if(w.addr<mn)mn=w.addr;uint64_t e=w.addr+w.bytes;if(e>mx)mx=e;}nvn_wb_min_addr=mn;nvn_wb_max_end=mx;}}
     if(!perf.window_start){perf.window_start=now;perf.frames=0;return;}
     if(++perf.frames<60)return;
     if(memory_profile_counts)log_memory_profile_counts();
@@ -2004,7 +2036,7 @@ void perf_frame(){
                  (unsigned long long)other, (unsigned long long)perf.ordered_buffer_clears);
     }
     if(!timing_active && perf_normalizable){
-        static const char *names[]={"other","draw","dispatch","descriptor","pass","buffer","pipeline","submit","fence","present","cleanup","hash","image","log","program","cpuwrite","snapshot","sub_maint","sub_exec","sub_submit","sub_aff","sub_pres_prep","sub_pres_submit","sub_pace","sub_snap_fast","sub_snap_slow","sub_cmd_decode","sub_poll_retire","sub_arena_check","sub_draw_idx_exec","sub_draw_gpu_idx","sub_draw_prologue","sub_snap_map","sub_snap_stream"};
+        static const char *names[]={"other","draw","dispatch","descriptor","pass","buffer","pipeline","submit","fence","present","cleanup","hash","image","log","program","cpuwrite","snapshot","sub_maint","sub_exec","sub_submit","sub_aff","sub_pres_prep","sub_pres_submit","sub_pace","sub_snap_fast","sub_snap_slow","sub_cmd_decode","sub_poll_retire","sub_arena_check","sub_draw_idx_exec","sub_draw_gpu_idx","sub_draw_prologue","sub_snap_map","sub_snap_stream","sub_find_template"};
         char line[1024];int at=snprintf(line,sizeof(line),"NVN PERF parts_ms_per_frame timed=%llu",(unsigned long long)perf_timed_frames);
         for(unsigned i=0;i<XbgCpuTiming::Count && at<int(sizeof(line))-48;i++){const auto &c=timing.counters[i];if(c.calls<perf_timing_before[i].calls)perf_timing_before[i]=XbgCpuTiming::Counter{};uint64_t ns=c.exclusive_ns-perf_timing_before[i].exclusive_ns,calls=c.calls-perf_timing_before[i].calls;at+=snprintf(line+at,sizeof(line)-at," %s=%.2f/%.1f",names[i],double(ns)/1e6/tf,double(calls)/tf);perf_timing_before[i]=c;}
         xbg_logf("%s",line);
@@ -2962,7 +2994,7 @@ void resolve_pending(){
         xbg_logf("NVN RESOLVE_PENDING frame=%llu n_wb=%zu n_rep=%zu",(unsigned long long)stats.presents.load(),pending_writebacks.size(),pending_reports.size());
     resolving_pending=true;
     gpu_sync(pending_writebacks.empty()?perf.sync_query:perf.sync_writeback);
-    auto writebacks=std::move(pending_writebacks);pending_writebacks.clear();
+    auto writebacks=std::move(pending_writebacks);pending_writebacks.clear();nvn_wb_del+=writebacks.size();
     for(auto &w:writebacks){w.buffer.invalidate();invalidate_cpu_range(w.addr,w.bytes);memcpy(reinterpret_cast<void*>(w.addr),w.buffer.mapped,w.bytes);}
     for(auto &r:pending_reports)write_report(r);
     pending_reports.clear();
@@ -3028,7 +3060,7 @@ void cpu_access(uint64_t address,uint64_t bytes,unsigned why){
     if(why==4){
         for(auto it=pending_writebacks.begin();it!=pending_writebacks.end();){
             if(address<=it->addr && address+bytes>=it->addr+it->bytes){
-                it=pending_writebacks.erase(it);
+                it=pending_writebacks.erase(it);++nvn_wb_del;
             }else{
                 ++it;
             }
@@ -5158,7 +5190,7 @@ struct Descriptors {
     ~Descriptors(){for(auto x:buffer_views)vkDestroyBufferView(cfg.device,x,nullptr);}
     Buffer *keep(const Buffer &b){need(buffers.size()<buffers.capacity(),"Descriptor buffer reservation exceeded");buffers.push_back(b);return &buffers.back();}
     bool needs_writeback()const{return !written.empty();}
-    void defer_writeback(std::shared_ptr<IndirectTemplateBatch> proof={}){const void *slot=&slots[slot_index];for(auto &v:written){if(draw_detail)draw_timing.storage(v.first.second);snapshot_invalidate(v.first.first,v.first.second);pending_writebacks.push_back({v.first.first,v.first.second,*v.second,slot,proof && proof->address==v.first.first && proof->bytes==v.first.second?proof:nullptr});}}
+    void defer_writeback(std::shared_ptr<IndirectTemplateBatch> proof={}){const void *slot=&slots[slot_index];for(auto &v:written){if(draw_detail)draw_timing.storage(v.first.second);snapshot_invalidate(v.first.first,v.first.second);++nvn_wb_add;pending_writebacks.push_back({v.first.first,v.first.second,*v.second,slot,proof && proof->address==v.first.first && proof->bytes==v.first.second?proof:nullptr});}}
     void writeback(){for(auto &v:written){if(draw_detail)draw_timing.storage(v.first.second);v.second->invalidate();invalidate_cpu_range(v.first.first,v.first.second);memcpy(reinterpret_cast<void*>(v.first.first),v.second->mapped,v.first.second);}}
     void capture_read_images(){for(auto &i:capture_inputs)capture_image(*i.image,i.has_view?&i.view:nullptr,i.label.c_str());}
 };
@@ -7819,7 +7851,7 @@ bool gpu_buffer_copy(uint64_t src,uint64_t dst,uint64_t n){preflight_cpu_reads()
     invalidate_cpu_range(dst,n);
     Slot &s=recording_slot();end_open_pass();Buffer b=readback_buffer(n);
     VkBufferCopy region{view.offset,b.offset,n};vkCmdCopyBuffer(s.cmd,view.buffer,b.buffer,1,&region);full_barrier(s.cmd);
-    pending_writebacks.push_back({dst,n,b,&s});return true;
+    ++nvn_wb_add;pending_writebacks.push_back({dst,n,b,&s});return true;
 }
 void resolve_texture(const p_copy_t2t &p){preflight_cpu_reads();probe_boundary("resolve-texture");if(flame_diag_enabled && fdiag_prev8 && uint64_t(uintptr_t(p.dst->mem))==fdiag_prev8){char sb[16];snprintf(sb,sizeof sb,"%llx",(unsigned long long)(uintptr_t(p.src->mem)>>4)&0xfffffffull);fdiag_event('R',sb,"");}
     Image &s=get_image(p.src,true),&d=get_image(p.dst,false);
@@ -8080,7 +8112,7 @@ bool pin_indexed_input(const IndexedInputFailure &input){
         if(source.offset&3) return false;
         auto job=std::make_shared<OwnedInputCopy>(source,size_t(input.bytes));producer->copy_readers.push_back(job);slots[slot_index].retire.objects.push_back(job);
         ++perf.submits;++submit_by[SITE_OTHER];snapshot_invalidate(input.address,input.bytes);
-        pending_writebacks.push_back({input.address,input.bytes,job->owned->view,&slots[slot_index],{},job});
+        ++nvn_wb_add;pending_writebacks.push_back({input.address,input.bytes,job->owned->view,&slots[slot_index],{},job});
         static unsigned copies=0;if(copies++<12 || !(copies%600))xbg_logf("NVN owned indexed input copy copies=%u bytes=%llu sourceSlot=%d consumerSlot=%u",copies,(unsigned long long)input.bytes,int(producer-slots),slot_index);return true;
     }
     return false;

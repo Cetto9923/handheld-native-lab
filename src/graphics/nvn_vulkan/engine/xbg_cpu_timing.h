@@ -14,6 +14,8 @@ struct XbgCpuTiming {
         SubCmdDecode, SubPollRetire, SubArenaCheck,
         // V11 diagnostic sub-domains (2026-11-23): the indexed-draw path and the snapshot slow path.
         SubDrawIdxExec, SubDrawGpuIdx, SubDrawPrologue, SubSnapMap, SubSnapStream,
+        // V12 diagnostic sub-domain (2026-11-23): the indirect-template lookup, priced on its own.
+        SubFindTemplate,
         Count };
     struct Counter { uint64_t calls=0, exclusive_ns=0, inclusive_ns=0, max_ns=0; } counters[Count];
     struct Scope;
