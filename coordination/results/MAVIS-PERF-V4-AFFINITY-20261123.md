@@ -1031,3 +1031,150 @@ GPU 直接往这里写，4.66 GB/s）改到一块 **device-local** 缓冲（GPU 
 （`s.guard`）的交互、以及"读回缓冲必须在 slot 退役前保持可读"这条生命周期约束
 ——这三者任何一个处理错，都会让画面出现撕裂/特效丢失（L-032）。
 
+
+## 18. 第 10 轮（V8，诊断，无出货）：**撤回第 9 轮的归因**，并把真正的约束找出来 (2026-11-23)
+
+第 9 轮把 2.0 ms/帧 的 GPU 空档归因到「存储写回路径 9.32 MB/帧」，并把方案 A
+（写回目的地改 device-local）定为第 10 轮入口。本轮先验证这个归因对不对，**结果它错了**：
+按 AGENTS.md 的要求，本节显式撤回该归因并写明依据。报告 §18.1~§18.10。
+
+### 18.1 撤回：第 9 轮「存储写回路径」归因不成立
+
+第 9 轮用的是 `NVN READBACK_TIMING` 的**总量**（alloc_bytes 9.32 MB/帧）。
+引擎另有一张**分站**表 `NVN READBACK_SITE v=1 site=...`，本轮直接读它：
+
+| 站点 | calls/帧 | alloc MB/帧 | CPU memcpy MB/帧 | GPU 写入 MB/帧 |
+|---|---|---|---|---|
+| texel-pending | **400** | **8.34** | 0 | **8.34** |
+| texel-CPU | 14 | 0.63 | 0.63 | 0 |
+| storage-CPU-preserve | 3 | 0.14 | 0.14 | 0 |
+| storage-pending-fullcopy | 6 | 0.041 | 0（全是 memset 浪费） | 0.041 |
+| other | 0 | 0 | 0 | 0 |
+
+总量 9.32 MB/帧 **与第 9 轮一致**，但**落点完全不同**：
+**93% 的读回分配来自 texel-pending**（`xbg_game.cpp:5941` STORAGE_TEXEL_BUFFER 分支
+与 `5974` UNIFORM_TEXEL_BUFFER 分支的 `readback_buffer(...TexelPending)`），
+而**真正的「存储写回」只有 0.18 MB/帧**（storage-pending 41 KB + storage-CPU 141 KB）。
+
+⇒ **撤回结论**：第 9 轮 §17.6 的「方案 A（写回目的地改 device-local）」**打错了靶子**——
+它针对的 41 KB/帧 收益上限极低。L-096 的「GPU 写 host-visible 4.66 GB/s」这个带宽数字
+也是从错误归因反推出来的，本轮被实测推翻（见 §18.5）。
+
+### 18.2 texel-pending 到底是什么
+
+`pending_view()`（`xbg_game.cpp:2211`）跨 slot 取「上一 slot 写回产物」的 buffer，
+texel 路径随后**再分配一块读回 arena**，用 `vkCmdCopyBuffer` 把它拷过去再绑给 shader。
+两端都是 HOST_VISIBLE|HOST_COHERENT|HOST_CACHED ⇒ 是一次 **host-visible → host-visible
+的 GPU→GPU 拷贝**。第 9 轮火场场景每帧 **400 次**。
+
+### 18.3 V8 构建（三个免重编译开关 + 一张分站拆分）
+
+本轮新增（`xbg_game.cpp`）：
+
+- `ReadbackSite::TexelPendingStorage`：把 texel-pending 拆成 STORAGE / UNIFORM 两站；
+- `gfx-live-set texelnarrow=1`：把 texel-pending 拷贝后的 `full_barrier`（ALL_COMMANDS↔ALL_COMMANDS）
+  换成窄屏障（TRANSFER_WRITE → SHADER_READ|SHADER_WRITE，TRANSFER → ALL_GRAPHICS|COMPUTE_SHADER），
+  参照同文件 `5933~5934` 已有的 overlay_shadow 窄屏障先例；
+- `gfx-live-set texeldupcopy=1`：把同一条 `vkCmdCopyBuffer` **重复一次**（边际成本探针）；
+- `gfx-live-set texeldupbar=1`：额外再发一次**不去重**的 full barrier（边际成本探针）；
+- `NVN PERF texel_pending copies= kb= storage= uniform= bar_full= bar_narrow= bar_skip=`。
+
+构建产物：`ffrs-v8-texelbar-20261123.apk`
+sha256 `3fd23c5209ab07d8b3c78f15553cd7f5e37f0653c293fe1723f38edba93718be`
+（诊断用，**未出货**）。
+
+### 18.4 一个必须记住的事实：屏障去重是有效的
+
+第 9 轮与本轮初稿都假设「400 次拷贝 = 400 次 full barrier」。**实测不是**：
+
+`NVN PERF texel_pending` 显示 **bar_full=52.0 / bar_skip=104.0**（共 156 次调用）
+⇒ `full_barrier()` 的去重（`barrier_seq==write_seq && last_finish_ops==perf.ops`）
+把 **104 次直接跳过**。估算屏障代价时必须用**实际发出的次数**，不是调用次数。
+
+### 18.5 紧配对 A/B：窄屏障完全中性
+
+测量场景：**第 1 章「探索的开端」**（火焰/废墟场景，内部 768×436）。
+交替 6 s 窗口 × 3 对（A=full / B=narrow）：
+
+| 臂 | fps | submit_ms | gpu_ms |
+|---|---|---|---|
+| A(full) | 57.64 / 57.70 / 57.76 | 11.86 / 11.88 / 11.90 | 12.12 / 12.14 / 12.15 |
+| B(narrow) | 57.67 / 57.73 / 57.78 | 11.87 / 11.89 / 11.91 | 12.13 / 12.15 / 12.16 |
+| **B − A** | **+0.03** | **+0.01** | **+0.01** |
+
+⇒ 窄屏障 **收益 = 0**（远小于噪声）⇒ 按 **L-029 不占构建周期、不出货**。
+源码里保留开关但**默认关闭**（`texel_narrow_barrier_enabled=false`）。
+两个边际成本探针（每帧多 3.58 MB 拷贝 / 多 156 次 full barrier）同样**测不出差异**。
+
+### 18.6 测量方法论：GPASS 时间戳会被 GPU 饥饿污染
+
+本轮踩到两个坑，都写进经验库：
+
+1. **同一个 pass 的耗时在连续帧里从 2408 µs 涨到 5485 µs**（slot5 i=5，draws/verts 完全相同），
+   且**每次采样窗口的形状一模一样**（前 8 帧低、第 9~12 帧爬升、之后稳定在 27 ms）⇒
+   这是**与「开启采样」绑定的测量伪影**，不是场景变化。
+   ⇒ `gfx-pass-live` 的时间戳会把「GPU 等 CPU」计进 pass 耗时，**不能直接拿来做 A/B**。
+2. **热漂移**：6 个臂按时间顺序排开时 `gpu_ms` 单调上升 9.85 → 10.80（0.17 ms/臂），
+   交错配对后差值消失。⇒ **必须用交替窗口 + 配对差**，不能用「顺序多臂取均值」。
+
+### 18.7 真正的约束：面板 60 Hz + dm-gfx 线程 93.8% 饱和
+
+- **显示**：`dumpsys display` 显示当前模式 `id=0 / 60.000004 Hz`，
+  SurfaceFlinger `FPS min:60 max:60 cur:60`；设备其实支持 90/120/144 Hz，但当前是 60。
+  本轮测的场景 fps 54~60 ⇒ **大部分场景被 vsync 顶住**，渲染侧省下来的时间**换不来帧率**。
+- **线程**（`/proc/<pid>/task/*/stat` 两次采样差分）：
+
+| 线程 | 占单核 |
+|---|---|
+| **dm-gfx** | **93.8%** |
+| RHIThread | 35.2% |
+| RenderThread 0 | 33.4% |
+| GameThread（多个合计） | ~102% |
+| 进程合计 | 290% / 8 核 |
+
+⇒ **瓶颈是图形线程 dm-gfx，不是 GPU**（GPU 只有 10~12 ms/帧）。
+
+### 18.8 逐域 CPU 账（61 帧窗口，独占 ns/帧）
+
+`NVN CPU_TIMING part=...` 独占时间合计 **18.30 ms/帧**（与 dm-gfx 93.8% × 18.5 ms 帧周期吻合）：
+
+| 域 | ms/帧 | 域 | ms/帧 |
+|---|---|---|---|
+| **descriptor** | **8.67** | draw | 1.41 |
+| other | 2.92 | cleanup | 1.18 |
+| **snapshot** | **2.44** | image | 0.32 |
+| dispatch | 0.31 | present | 0.28 |
+| pass | 0.18 | pipeline | 0.16 |
+| program | 0.15 | buffer | 0.11 |
+| cpuwrite | 0.08 | hash | 0.07 |
+| log / submit / fence | 0.011 / 0.011 / 0.001 | | |
+
+descriptor 域内部（`NVN DESC_TIMING`，每帧）：
+image_lookup **2.51**（6824 次/帧）、element_rest **1.39**、set_finalize **1.18**、
+remaining **0.95**、buffer_bind **0.74**、texel_view_create 0.35、texel_pending 0.26、
+texel_view_lookup 0.19、memo_key 0.15、memo_verify 0.15、texel_alias 0.11、
+texel_readback 0.08、setup 0.21、image_view 0.07、sampler_bind 0.07 ⇒ 合计 8.6 ms。
+
+排除项：`wtrack copied_kb_per_frame=0.0` ⇒ snapshot 域那 2.44 ms **不是** 19.5 MB 整块拷贝；
+`setcache memo_hits=0.0`（503.9 misses/帧，全是 template miss）⇒ **描述符 memo 目前零命中**。
+
+### 18.9 本轮结论
+
+1. **撤回**第 9 轮「2.0 ms/帧 GPU 空档 = 存储写回路径」的归因：93% 的读回字节在 texel-pending，
+   存储写回只有 0.18 MB/帧；L-096 的 4.66 GB/s 带宽推论随之作废。
+2. **窄屏障（V8 候选）实测收益 = 0** ⇒ 不出货，默认关闭，仅保留开关。
+3. **真正的约束被找出来**：面板 60 Hz + **dm-gfx 线程 93.8% 饱和** ⇒
+   帧率瓶颈在图形线程的 CPU 侧，逐域账见 §18.8。
+4. **下一轮入口**：`descriptor` 域 **8.67 ms/帧**（占 dm-gfx 47%），
+   其中 image_lookup 2.51 + element_rest 1.39 + set_finalize 1.18 + remaining 0.95 +
+   buffer_bind 0.74 = **6.8 ms**，且必须**在未被 vsync 顶住的场景**（如兵工厂深处）测量。
+
+### 18.10 产物与状态
+
+- 本轮**不出货**（L-029：实测收益 0）；设备最终恢复到**已出货的第 2 版**
+  `ffrs-v4-affinity-20261123.apk`（sha256 `33e12d33…`）。
+- V8 诊断包保留在 `.local/android-apk/ffrs-v8-texelbar-20261123.apk`
+  （sha256 `3fd23c52…`），**不作为交付版本**。
+- 源码新增：分站统计（`ReadbackSite::TexelPendingStorage`）、
+  三个 live 开关（`texelnarrow` / `texeldupcopy` / `texeldupbar`）、
+  `NVN PERF texel_pending` 行；`full_barrier()` 改为返回 bool（是否真的发出）。

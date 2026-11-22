@@ -6535,3 +6535,51 @@ B 写回惰性化（guest 真读时才拷）；C 让来宾存储缓冲直接用 
 
 - 设备：仍装第 2 版；live-set 已恢复 `gfxaffinity=prime`；`gfx-live-ab` 已清空；
   `gfx-cpu-profile` / `gfx-pass-live` 均已清空；游戏进程存活；**红果已还回前台**。
+
+## 第 10 轮（V8，诊断，无出货）：**撤回第 9 轮的归因**，并找到真正的约束（60 Hz 面板 + dm-gfx 93.8%） (2026-11-23)
+
+第 9 轮把 2.0 ms/帧 的 GPU 空档归因到「存储写回路径 9.32 MB/帧」，并把方案 A
+定为入口。本轮先验证归因 —— **归因错了**，按 AGENTS.md 显式撤回。报告 §18.1~§18.10。
+
+**① 撤回第 9 轮归因（AGENTS.md 要求显式撤回）**
+改读分站表 `NVN READBACK_SITE`：总量 9.32 MB/帧 与第 9 轮一致，但
+**93%（8.34 MB/帧）在 texel-pending**，真正的存储写回只有 **0.18 MB/帧**。
+⇒ 第 9 轮 §17.6 的「方案 A（写回目的地改 device-local）」**打错靶子**，收益上限极低。
+⇒ L-096 的「GPU 写 host-visible 4.66 GB/s」也随之作废（那是从错误归因反推的）。
+
+**② V8 构建**：分站拆分（texel-pending 再分 STORAGE/UNIFORM）+ 三个免重编译开关
+`texelnarrow`（窄屏障）/ `texeldupcopy` / `texeldupbar`（边际成本探针）
++ `NVN PERF texel_pending` 行。产物 `ffrs-v8-texelbar-20261123.apk`
+sha256 `3fd23c52…`（**诊断用，未出货**）。
+
+**③ 屏障去重是有效的**：156 次拷贝调用只发出 **52 次** full barrier，104 次被跳过。
+
+**④ 紧配对 A/B：窄屏障完全中性**（交替 6 s 窗口 × 3 对，第 1 章场景）
+submit **+0.01** / gpu **+0.01** / fps **+0.03 ms** ⇒ 收益 0 ⇒ 按 L-029 不出货，
+源码保留开关但**默认关闭**。两个边际成本探针同样测不出差异。
+
+**⑤ 测量方法论两个坑**
+（a）同一个 pass 的耗时在连续帧里从 2408 µs 涨到 5485 µs，且每次采样窗口形状一致
+⇒ `gfx-pass-live` 的时间戳会把「GPU 等 CPU」计进 pass 耗时，**不能直接做 A/B**；
+（b）6 个臂顺序排开时 `gpu_ms` 单调漂 0.17 ms/臂 ⇒ 必须交替窗口 + 配对差。
+
+**⑥ 真正的约束找到了**
+**面板当前 60 Hz**（SurfaceFlinger min/max/cur = 60），第 1 章场景 fps 54~60
+⇒ 大部分场景**被 vsync 顶住**，渲染侧省时间换不来帧率；
+**dm-gfx 线程占满 93.8%**（RHIThread 35.2%、RenderThread0 33.4%、GameThread 合计 ~102%，
+进程 290%/8 核）⇒ **瓶颈在图形线程 CPU 侧，不在 GPU**（GPU 只有 10~12 ms/帧）。
+逐域独占时间合计 **18.30 ms/帧**：**descriptor 8.67** / other 2.92 / **snapshot 2.44** /
+draw 1.41 / cleanup 1.18 / image 0.32 / dispatch 0.31 / present 0.28 / …
+
+**⑦ 下一轮（V9）入口**：descriptor 域 **8.67 ms/帧**（占 dm-gfx 47%），
+其中 image_lookup 2.51（6824 次/帧）+ element_rest 1.39 + set_finalize 1.18 +
+remaining 0.95 + buffer_bind 0.74 = **6.8 ms**；
+且**必须在未被 vsync 顶住的场景**（兵工厂深处 43.8~48.7 Hz）测量，否则测不出收益。
+另两个现成线索：`setcache memo_hits=0.0`（503.9 misses/帧全是 template miss，memo 零命中）、
+`wtrack copied_kb_per_frame=0.0`（snapshot 那 2.44 ms 不是 19.5 MB 整块拷贝）。
+
+- **经验库新增 L-097 ~ L-102**：读回必须分站统计 / 屏障去重 / GPU 时间戳含等待 /
+  先量线程占满度 / 面板刷新率是硬上限 / A/B 必须交替配对差。
+- 设备：已恢复**已出货的第 2 版** `ffrs-v4-affinity-20261123.apk`；
+  live-set 已清成 `gfxaffinity=prime`；无 `gfx-cpu-profile` / `gfx-pass-live` 残留；
+  **红果已还回前台**。

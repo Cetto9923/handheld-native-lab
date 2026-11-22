@@ -467,7 +467,7 @@ bool perf_timing=true; // always-on wall-time breakdown for NVN PERF (exclusive 
 unsigned perf_sample=32;bool perf_frame_timed=true;uint64_t perf_timed_frames=0;
 XbgCpuTiming::Counter perf_timing_before[XbgCpuTiming::Count];
 // Descriptor-only bounded diagnostic. Fixed storage; no clocks or allocation.
-enum class ReadbackSite : unsigned { Other, StoragePending, StorageCPU, TexelPending, TexelCPU, Count };
+enum class ReadbackSite : unsigned { Other, StoragePending, StorageCPU, TexelPending, TexelCPU, TexelPendingStorage, Count };
 struct ReadbackSiteStats {
     uint64_t calls=0,alloc_bytes=0,copy_bytes=0,zero_bytes=0,guard_bytes=0,fullcopy_bytes=0;
     uint64_t sizes[5]{}; // requested n: <=4 KiB, <=64 KiB, <=1 MiB, <=16 MiB, larger
@@ -638,7 +638,7 @@ void descriptor_report(){
     for(unsigned i=0;i<XbgDescriptorTiming::Count;++i)xbg_logf("NVN DESC_TIMING part=%s calls=%llu exclusive_ns=%llu",names[i],(unsigned long long)descriptor_timing.counters[i].calls,(unsigned long long)descriptor_timing.counters[i].ns);
     xbg_logf("NVN DESC_TIMING part=remaining calls=0 exclusive_ns=%llu",(unsigned long long)(tagged<=total?total-tagged:0));
     xbg_logf("NVN READBACK_TIMING alloc_bytes=%llu copy_bytes=%llu zero_bytes=%llu guarded_bytes=%llu noncoherent_flushes=%llu",(unsigned long long)descriptor_timing.readback_alloc_bytes,(unsigned long long)descriptor_timing.readback_copy_bytes,(unsigned long long)descriptor_timing.readback_zero_bytes,(unsigned long long)descriptor_timing.readback_guard_bytes,(unsigned long long)descriptor_timing.readback_noncoherent_flushes);
-    static const char *site_names[]={"other","storage-pending-fullcopy","storage-CPU-preserve","texel-pending","texel-CPU"};
+    static const char *site_names[]={"other","storage-pending-fullcopy","storage-CPU-preserve","texel-pending","texel-CPU","texel-pending-storage"};
     for(unsigned i=0;i<unsigned(ReadbackSite::Count);++i){const auto &v=readback_sites[i];
         xbg_logf("NVN READBACK_SITE v=1 site=%s calls=%llu alloc_bytes=%llu copy_bytes=%llu zero_bytes=%llu guard_bytes=%llu fullcopy_bytes=%llu sizes=%llu/%llu/%llu/%llu/%llu",site_names[i],
             (unsigned long long)v.calls,(unsigned long long)v.alloc_bytes,(unsigned long long)v.copy_bytes,(unsigned long long)v.zero_bytes,(unsigned long long)v.guard_bytes,(unsigned long long)v.fullcopy_bytes,
@@ -1337,6 +1337,15 @@ bool texel_memo_enabled=false;uint64_t texel_gen=0,texel_refreshes=0,texel_fallb
 // owned by the current recording slot, and range writes use snapshot invalidation.
 XbgTexelSnapshotCache<Buffer> texel_copy_cache;
 bool texel_copy_enabled=true;
+// V8: the texel-pending path issues ~400 copies per frame (8.3 MB), each followed by a
+// full ALL_COMMANDS barrier. The narrow form declares exactly the visibility the
+// consuming shader needs (TRANSFER_WRITE -> SHADER_READ|SHADER_WRITE) and keeps
+// barrier_seq untouched, so later full barriers still run (safe direction).
+bool texel_narrow_barrier_enabled=false;   // round 10: measured neutral (+0.01 ms), so it stays off by default
+bool texel_dup_copy_probe=false;      // marginal-cost probe: repeat the copy
+bool texel_dup_barrier_probe=false;   // marginal-cost probe: one extra full barrier
+uint64_t texel_pending_copies=0,texel_pending_bytes=0,texel_pending_storage=0,texel_pending_uniform=0;
+uint64_t texel_barrier_full=0,texel_barrier_narrow=0,texel_barrier_skipped=0;
 bool indexed_bbox_ready_enabled=false;
 bool readback_fullcopy_enabled=false;uint64_t readback_fullcopy_hits=0,readback_fullcopy_bytes=0;
 struct TexelCopyStats {uint64_t copies=0,hits=0,would_hits=0,copy_bytes=0,hit_bytes=0,pass_ends=0;};
@@ -1539,7 +1548,31 @@ bool render_cond_enabled=true;
 // dispatch.  These counters show which path a frame took and how often the fallback
 // produced an empty dispatch.
 uint64_t disp_indirect_total=0,disp_gpu_indirect=0,disp_cpu_fallback=0,disp_cpu_zero=0,disp_cpu_xyz[3]={};
-void full_barrier(VkCommandBuffer cmd){if(barrier_seq==write_seq && last_finish_ops==perf.ops)return;VkMemoryBarrier b{VK_STRUCTURE_TYPE_MEMORY_BARRIER};b.srcAccessMask=VK_ACCESS_MEMORY_WRITE_BIT;b.dstAccessMask=VK_ACCESS_MEMORY_READ_BIT|VK_ACCESS_MEMORY_WRITE_BIT;vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,0,1,&b,0,nullptr,0,nullptr);barrier_seq=write_seq;last_finish_ops=perf.ops;++barrier_by[cur_op<64?cur_op:63];}
+bool full_barrier(VkCommandBuffer cmd){if(barrier_seq==write_seq && last_finish_ops==perf.ops)return false;VkMemoryBarrier b{VK_STRUCTURE_TYPE_MEMORY_BARRIER};b.srcAccessMask=VK_ACCESS_MEMORY_WRITE_BIT;b.dstAccessMask=VK_ACCESS_MEMORY_READ_BIT|VK_ACCESS_MEMORY_WRITE_BIT;vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,0,1,&b,0,nullptr,0,nullptr);barrier_seq=write_seq;last_finish_ops=perf.ops;++barrier_by[cur_op<64?cur_op:63];return true;}
+// Scoped barrier for the texel-pending copy. The copy is the only writer before the
+// consuming shader reads the destination buffer, so TRANSFER_WRITE -> SHADER_READ|
+// SHADER_WRITE is exactly the visibility that consumer needs. The destination is only
+// ever bound as a texel buffer, so its consumer stage is a graphics or compute stage;
+// the full ALL_COMMANDS form invalidates every stage's cache and is issued ~400x/frame.
+// barrier_seq is deliberately not advanced: a narrow barrier does not provide the
+// visibility the dedup in full_barrier() stands for, so later full barriers keep running.
+inline void texel_copy_barrier(VkCommandBuffer cmd){
+    if(texel_narrow_barrier_enabled){
+        VkMemoryBarrier b{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+        b.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;
+        b.dstAccessMask=VK_ACCESS_SHADER_READ_BIT|VK_ACCESS_SHADER_WRITE_BIT|VK_ACCESS_UNIFORM_READ_BIT;
+        vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT|VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0,1,&b,0,nullptr,0,nullptr);
+        ++texel_barrier_narrow;
+    }else if(full_barrier(cmd))++texel_barrier_full;else ++texel_barrier_skipped;
+    if(texel_dup_barrier_probe){
+        // Marginal-cost probe: one extra full barrier, not deduplicated.
+        VkMemoryBarrier b{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+        b.srcAccessMask=VK_ACCESS_MEMORY_WRITE_BIT;b.dstAccessMask=VK_ACCESS_MEMORY_READ_BIT|VK_ACCESS_MEMORY_WRITE_BIT;
+        vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,0,1,&b,0,nullptr,0,nullptr);
+    }
+}
 // The shared barrier_seq means visibility to every subsequent consumer, not
 // just shader reads: indirect fetch, transfer and attachment reuse also occur.
 // The compute-scoped barrier carries those access bits, so the visibility the
@@ -2030,6 +2063,12 @@ void perf_frame(){
             counts.copies/f,counts.hits/f,counts.would_hits/f,counts.copy_bytes/1024.0/f,counts.hit_bytes/1024.0/f,counts.pass_ends/f);
         counts=TexelCopyStats{};
     }
+    xbg_logf("NVN PERF texel_pending copies=%.1f kb=%.1f storage=%.1f uniform=%.1f bar_full=%.1f bar_narrow=%.1f bar_skip=%.1f narrow=%u dupcopy=%u dupbar=%u",
+        texel_pending_copies/f,texel_pending_bytes/1024.0/f,texel_pending_storage/f,texel_pending_uniform/f,
+        texel_barrier_full/f,texel_barrier_narrow/f,texel_barrier_skipped/f,
+        unsigned(texel_narrow_barrier_enabled),unsigned(texel_dup_copy_probe),unsigned(texel_dup_barrier_probe));
+    texel_pending_copies=texel_pending_bytes=texel_pending_storage=texel_pending_uniform=0;
+    texel_barrier_full=texel_barrier_narrow=texel_barrier_skipped=0;
     xbg_logf("NVN PERF integer_texture_lookup ab=%u hits=%llu misses=%llu typed_static_skips_per_frame=%.1f",unsigned(ab_frame_on),(unsigned long long)integer_texture_lookup_hits,(unsigned long long)integer_texture_lookup_misses,typed_storage_static_skips/f);
     integer_texture_lookup_hits=integer_texture_lookup_misses=typed_storage_static_skips=0;
     if(shader_reuse)xbg_logf("NVN PERF shader_reuse_cache retained=%llu denied_budget=%llu peak_bytes=%llu",(unsigned long long)warm::rewritten_retained.load(),(unsigned long long)warm::rewritten_denied_budget.load(),(unsigned long long)warm::rewritten_peak_bytes.load());
@@ -5938,12 +5977,14 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                                 const bool fullcopy_normal=!capture.active && !capture.probe && !provenance_file &&
                                     !pass_prof_active() && !draw_detail && !fire_trace_active() && !water_ready() &&
                                     !flame_diag_enabled && !ubtrace.on.load(std::memory_order_relaxed);
-                                buf=out.keep(DESC_CALL(TexelReadback, readback_buffer(bytes,nullptr,0,(fullcopy_normal && !out.indirect_input && !probe_is_active())?&view:nullptr,ReadbackSite::TexelPending)));
+                                buf=out.keep(DESC_CALL(TexelReadback, readback_buffer(bytes,nullptr,0,(fullcopy_normal && !out.indirect_input && !probe_is_active())?&view:nullptr,ReadbackSite::TexelPendingStorage)));
                                 VkCommandBuffer cmd=recording_slot().cmd;
                                 end_open_pass();
                                 VkBufferCopy region{view.offset,buf->offset,bytes};
                                 vkCmdCopyBuffer(cmd,view.buffer,buf->buffer,1,&region);
-                                full_barrier(cmd);
+                                ++texel_pending_copies;texel_pending_bytes+=bytes;++texel_pending_storage;
+                                if(texel_dup_copy_probe)vkCmdCopyBuffer(cmd,view.buffer,buf->buffer,1,&region);
+                                texel_copy_barrier(cmd);
                             }else{
                                 DESC_CALL(TexelCpuAccess, cpu_access(base,bytes,3));
                                 buf=out.keep(DESC_CALL(TexelReadback, readback_buffer(bytes,texture.mem,bytes,nullptr,ReadbackSite::TexelCPU)));
@@ -5976,7 +6017,9 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                                     const bool ended=end_open_pass();
                                     VkBufferCopy region{view.offset,buf->offset,bytes};
                                     vkCmdCopyBuffer(cmd,view.buffer,buf->buffer,1,&region);
-                                    full_barrier(cmd);
+                                    ++texel_pending_copies;texel_pending_bytes+=bytes;++texel_pending_uniform;
+                                    if(texel_dup_copy_probe)vkCmdCopyBuffer(cmd,view.buffer,buf->buffer,1,&region);
+                                    texel_copy_barrier(cmd);
                                     if(cacheable)texel_copy_cache.store(scope,base,bytes,source,*buf);
                                     if(counts){++counts->copies;counts->copy_bytes+=bytes;counts->pass_ends+=ended;}
                                 }
@@ -9224,6 +9267,7 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
           {"gpuindexed",&gpu_indexed_enabled},{"uppro",&upload_prologue},{"depthaspect",&depth_aspect_enabled},
           {"pipefast",&pipeline_fast_enabled},{"pipememo",&pipe_memo},{"occlusion",&occlusion_batch_enabled},
           {"vcache",&vcache::enabled},{"texrecord",&texture_record_cache_enabled},{"adpf",&performance_hint::enabled},
+          {"texelnarrow",&texel_narrow_barrier_enabled},{"texeldupcopy",&texel_dup_copy_probe},{"texeldupbar",&texel_dup_barrier_probe},
         };
         char *save=nullptr;int mipmaxlod0_want=xbg_sampler_force_maxlod0;
         for(char *tok=strtok_r(buf," \t\n\r",&save);tok;tok=strtok_r(nullptr," \t\n\r",&save)){
