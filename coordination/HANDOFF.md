@@ -6583,3 +6583,27 @@ remaining 0.95 + buffer_bind 0.74 = **6.8 ms**；
 - 设备：已恢复**已出货的第 2 版** `ffrs-v4-affinity-20261123.apk`；
   live-set 已清成 `gfxaffinity=prime`；无 `gfx-cpu-profile` / `gfx-pass-live` 残留；
   **红果已还回前台**。
+
+**⑨ 补：找到未触顶场景，第 10 轮的测量全部重做（关键）**
+场景入口（确定性、可复现）：
+`am start -n org.ffrs.gamewindow/org.ffrs.diagnostic.GameActivity --ez isolated_regression_save true --es isolated_regression_resume shield-regression-20261118094001`
+⇒ **第 4 章兵器工厂熔岩场景**，启动后约 25~30 s 出标题菜单，再发一次 `keyevent 96`（Continue）。
+该场景 **fps 45.8~48.6（未触 60 Hz 顶）**，是本项目第一个**可以验证帧率收益**的测量场景。
+
+兵工厂的账：帧周期 21.8 ms，**dm-gfx 18.30 ms/帧 = 84%**；
+逐域 descriptor **7.52** / other 3.94 / snapshot 3.11 / cleanup 1.60 / draw 1.44 ms；
+descriptor 子域 image_lookup **2.18**（3951 次/帧）/ set_finalize 1.03 / element_rest 0.97 /
+remaining 0.73 / buffer_bind 0.64 ms。
+
+**四臂配对 A/B（未触顶场景，漂移校正后）：**
+双拷贝（+9.5 MB/帧 GPU 拷贝）gpu Δ = **−0.001 ms**；
+双屏障（+408 次 full barrier/帧）gpu Δ = **−0.024 ms**；
+窄屏障 submit Δ = +0.045 ms。
+⇒ **GPU 侧的搬运与屏障在本设备上都几乎免费，texel-pending 这条路不是成本**
+（第 9 轮的靶子错，本轮改瞄 texel-pending 也错）。
+⇒ **下一轮只攻 dm-gfx 的 CPU 侧**，第一靶 image_lookup 2.18 ms/帧。
+
+- **经验库新增 L-103 ~ L-104**：用 intent extra 确定性回到未触顶场景 /
+  给 GPU 搬运定价只能用重复一次的边际成本探针（"总量÷带宽"高估 60 倍）。
+- 设备：已装回**已出货的第 2 版** `ffrs-v4-affinity-20261123.apk`；
+  live-set 恢复 `gfxaffinity=prime`；无残留 marker；游戏已停止；**红果在前台**。

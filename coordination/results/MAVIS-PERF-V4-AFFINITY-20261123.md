@@ -1178,3 +1178,56 @@ texel_readback 0.08、setup 0.21、image_view 0.07、sampler_bind 0.07 ⇒ 合�
 - 源码新增：分站统计（`ReadbackSite::TexelPendingStorage`）、
   三个 live 开关（`texelnarrow` / `texeldupcopy` / `texeldupbar`）、
   `NVN PERF texel_pending` 行；`full_barrier()` 改为返回 bool（是否真的发出）。
+
+### 18.11 未触顶场景的完整账（兵工厂深处）+ 可复现的进入配方
+
+**为什么必须换场景**：第 1 章火场 fps 54~60 = 面板 60 Hz 上限，渲染侧省下的时间换不来帧率。
+本轮找到**可复现地进入未触顶场景**的办法，并用它重做了本轮全部测量。
+
+**进入配方（确定性，可复现）**
+`
+adb shell am force-stop org.ffrs.gamewindow
+adb shell am start -n org.ffrs.gamewindow/org.ffrs.diagnostic.GameActivity \
+  --ez isolated_regression_save true \
+  --es isolated_regression_resume shield-regression-20261118094001
+# 约 25~30 s 后出现标题菜单，再发一次 keyevent 96（确认 = Continue）
+`
+`RegressionSaveRoot.java:11~28` 允许 resume 名为 `shield-regression-[0-9]+` 的 app 私有目录；
+`shield-regression-20261118094001` = **第 4 章「向这面旗帜起誓」兵器工厂熔岩场景**
+（同一机制在 §18.10 之前只被 QA 用过，未被性能轮次使用）。
+
+**兵工厂的账**（61 帧窗口，`gfx-cpu-profile 0 60 1`）：
+- fps **45.8~48.6**（未触 60 顶），帧周期 21.8 ms
+- **dm-gfx 18.30 ms/帧 = 帧周期的 84%** ← 关键路径
+- 逐域独占：descriptor **7.52** / other **3.94** / snapshot **3.11** / cleanup 1.60 / draw 1.44 /
+  dispatch 0.375 / present 0.295 / image 0.225 / pass 0.21 / pipeline 0.19 / program 0.17 /
+  buffer 0.16 / cpuwrite 0.13 / hash 0.12 ms
+- descriptor 子域：image_lookup **2.18**（3951 次/帧）/ set_finalize 1.03 / element_rest 0.97 /
+  remaining 0.73 / buffer_bind 0.64 / texel_view_create 0.36 / texel_pending 0.27 / setup 0.20 /
+  texel_view_lookup 0.18 / memo_key 0.17 / memo_verify 0.17 / memo_snapshot 0.15 ms
+- 读回：texel-pending **401 次/帧、9.5 MB/帧**（**storage 374 / uniform 34**）、
+  texel-CPU 12 次 0.58 MB、storage-CPU 3 次 0.14 MB、storage-pending 5.8 次 0.04 MB（全 memset 浪费）
+- `cleanup writebacks=0.70 ms/帧（9.3 MB）` ⇒ 那 9.5 MB 走的是 CPU host→host memcpy（13 GB/s）
+- `setcache memo_hits=405.1/帧, memo_misses=0.9`（这里 memo 是命中的，与第 1 章场景不同）
+- `snapfront invalidations=988.8/帧` ⇒ `desc_memo_reset()` 每帧整表清空 img_cache 约 988 次
+
+**四臂配对 A/B（未触顶场景，线性漂移校正后）**
+
+| 臂 | submit Δ | gpu Δ | fps Δ |
+|---|---|---|---|
+| B 窄屏障（narrow=1） | +0.045 ms | −0.018 ms | +0.11 |
+| C 双拷贝（+9.5 MB/帧 GPU 拷贝） | +0.051 ms | **−0.001 ms** | +0.07 |
+| D 双屏障（+408 次 full barrier/帧） | +0.001 ms | **−0.024 ms** | +0.05 |
+
+⇒ **在未触顶的场景里，多搬 9.5 MB/帧 GPU 拷贝、多发 408 次全屏障，代价都 <0.03 ms。**
+⇒ **texel-pending 这条路不是成本**：既不是第 9 轮说的"存储写回"，改瞄 texel-pending 也省不到。
+GPU 侧整条搬运/屏障路径在本设备上都很便宜（host-visible GPU→GPU 拷贝走统一内存，接近 LPDDR 带宽）。
+⇒ **路只有一条：dm-gfx 的 CPU 侧 18.30 ms/帧。**
+
+**下一轮（V9）第一靶：image_lookup 2.18 ms/帧**
+位置 `xbg_game.cpp:5801~5822`：构造 8 字段 `ImgKey`（含两个 pool 指针）→ `img_cache.find(ikey)`，
+命中还要 `find_image(serial)` + revision 比对；`DESC_SCOPE(ImageLookup)` 覆盖的是**整条图像绑定解析路径**。
+第 8 轮只测过"让 img_cache 持久化"（miss 归零但只 +0.2 ms，低于噪声）⇒ **慢路径不是主因**；
+**没测过的方向**：① 单次查找的固定成本（64 字节 key 的构造与哈希）② 988 次/帧整表清空的成本
+（`desc_memo_reset()` → `snapshot_invalidate()` → `img_cache.clear()`）
+③ set_finalize 1.03 / element_rest 0.97 / buffer_bind 0.64 三个绑定解析固定成本。

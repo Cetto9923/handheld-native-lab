@@ -1521,3 +1521,29 @@ device-local、host-visible、host-cached 三者的 GPU 带宽可以差数倍。
 同时：**边际成本探针**（把一条拷贝/屏障重复一次，看差值）比"总量 ÷ 带宽"可靠得多，
 因为后者依赖一个从没被单独测过的带宽假设（本案里 4.66 GB/s 就是错的）。
 **出处**：MAVIS-PERF-V4-AFFINITY-20261123.md 第 18.5~§18.6 节。
+
+### L-103 用 intent extra 确定性地回到某个未触顶场景，比手动导航可靠 (2026-11-23)
+
+引擎自带隔离存档恢复入口（`src/android/app/java/org/ffrs/diagnostic/RegressionSaveRoot.java:11~28`）：
+`am start ... --ez isolated_regression_save true --es isolated_regression_resume shield-regression-<数字>`
+即可从 app 私有目录里的那个存档继续。设备上现成可用：
+`shield-regression-20261118094001` = **第 4 章兵器工厂熔岩场景**（fps 45.8~48.6，未触 60 Hz 顶）。
+
+**规则**：性能测量前先确认"这个场景有没有被面板刷新率顶住"（见 L-101）；
+如果被顶住，**不要在它上面做 A/B**——换场景。
+换场景优先用**存档恢复**而不是手动导航：手动走位不可复现，而存档恢复是确定性的
+（本项目此前只在 QA 轮次用过这个入口，性能轮次一直缺一个可靠的"未触顶场景"）。
+**出处**：MAVIS-PERF-V4-AFFINITY-20261123.md 第 18.11 节。
+
+### L-104 别用「总量 ÷ 假设带宽」给 GPU 搬运定价，用"重复一次"的边际成本探针 (2026-11-23)
+
+在兵工厂这个未触顶场景里，用"把同一条 `vkCmdCopyBuffer` 重复一次"测出：
+**每帧多搬 9.5 MB 的 host-visible GPU→GPU 拷贝，代价 <0.03 ms**（gpu_ms 差 −0.001 ms）。
+若按第 9 轮反推出来的 4.66 GB/s 算，这 9.5 MB 要 2.0 ms —— **高估了 60 倍以上**。
+移动 GPU 上 host-visible 与 host-cached 内存走统一内存，GPU→GPU 拷贝接近 LPDDR 带宽，
+远比"写主机可见内存"这类估算暗示的便宜。
+
+**规则**：给 GPU 搬运路径定价，**只能靠重复一次的真实边际成本**；
+"总量 ÷ 带宽"里的带宽必须是**在���设备实测过的**，否则会系统性高估并把优化引到错误的靶子上
+（第 9 轮就是这样把 9 轮的工作指向了一条 41 KB/帧 的"方案 A"）。
+**出处**：MAVIS-PERF-V4-AFFINITY-20261123.md 第 18.11 节。
