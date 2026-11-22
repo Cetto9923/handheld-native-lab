@@ -468,6 +468,8 @@ unsigned perf_sample=32;bool perf_frame_timed=true;uint64_t perf_timed_frames=0;
 // V10 NVN command-stream counters (profiling windows only): how many commands the interpreter ran, how many one
 // guest submission carried, and which opcodes dominate. nvn_cmd_by_op is indexed by NVN opcode.
 uint64_t nvn_cmd_total=0,nvn_cmd_sub_max_cmds=0,nvn_cmd_sub_max_cmds_ns=0,nvn_cmd_sub_max_ns=0,nvn_cmd_sub_max_ns_cmds=0,nvn_cmd_by_op[256]={};
+// V11: per-op accumulated time and the worst single command per op, plus the real poll_retire call count.
+uint64_t nvn_cmd_ns_by_op[256]={},nvn_cmd_max_ns_by_op[256]={},nvn_poll_calls=0,nvn_cmd_timed=0;
 XbgCpuTiming::Counter perf_timing_before[XbgCpuTiming::Count];
 // Descriptor-only bounded diagnostic. Fixed storage; no clocks or allocation.
 enum class ReadbackSite : unsigned { Other, StoragePending, StorageCPU, TexelPending, TexelCPU, TexelPendingStorage, Count };
@@ -589,7 +591,7 @@ void timing_start(){
     perf_bounded_contaminated=true;
     indexed_ready_stats={};indexed_bbox_stats={};for(auto &site:readback_sites)site={};
     timing_active=true;timing_start_ns=timing_clock();pipeline_before=pipeline_counts;
-    nvn_cmd_total=0;nvn_cmd_sub_max_cmds=0;nvn_cmd_sub_max_cmds_ns=0;nvn_cmd_sub_max_ns=0;nvn_cmd_sub_max_ns_cmds=0;memset(nvn_cmd_by_op,0,sizeof(nvn_cmd_by_op));
+    nvn_cmd_total=0;nvn_cmd_sub_max_cmds=0;nvn_cmd_sub_max_cmds_ns=0;nvn_cmd_sub_max_ns=0;nvn_cmd_sub_max_ns_cmds=0;memset(nvn_cmd_by_op,0,sizeof(nvn_cmd_by_op));memset(nvn_cmd_ns_by_op,0,sizeof(nvn_cmd_ns_by_op));memset(nvn_cmd_max_ns_by_op,0,sizeof(nvn_cmd_max_ns_by_op));nvn_poll_calls=0;nvn_cmd_timed=0;
     timing_before={stats.submissions.load(),stats.draws.load(),stats.dispatches.load(),stats.presents.load(),stats.shader_loads.load()};
 }
 void descriptor_report();
@@ -610,7 +612,9 @@ void timing_report(const char *reason){
         (unsigned long long)nvn_cmd_total,(unsigned long long)(fr?nvn_cmd_total/fr:0),
         (unsigned long long)nvn_cmd_sub_max_cmds,(unsigned long long)nvn_cmd_sub_max_cmds_ns,
         (unsigned long long)nvn_cmd_sub_max_ns,(unsigned long long)nvn_cmd_sub_max_ns_cmds);
-     for(unsigned k=0;k<8;++k){unsigned bi=0;uint64_t bv=0;for(unsigned o=0;o<256;++o)if(nvn_cmd_by_op[o]>bv){bv=nvn_cmd_by_op[o];bi=o;}if(!bv)break;xbg_logf("NVN CPU_TIMING nvn_op op=%u calls=%llu",bi,(unsigned long long)bv);}}
+     uint64_t sum_ns=0;for(unsigned o=0;o<256;++o)sum_ns+=nvn_cmd_ns_by_op[o];
+     xbg_logf("NVN CPU_TIMING nvn_op_sum ns=%llu per_frame=%llu timed_cmds=%llu poll_calls=%llu",(unsigned long long)sum_ns,(unsigned long long)(fr?sum_ns/fr:0),(unsigned long long)nvn_cmd_timed,(unsigned long long)nvn_poll_calls);
+     bool used[256]={};for(unsigned k=0;k<10;++k){unsigned bi=0;uint64_t bv=0;for(unsigned o=0;o<256;++o)if(!used[o]&&nvn_cmd_ns_by_op[o]>bv){bv=nvn_cmd_ns_by_op[o];bi=o;}if(!bv)break;used[bi]=true;uint64_t cc=nvn_cmd_by_op[bi];xbg_logf("NVN CPU_TIMING nvn_op op=%u calls=%llu ns=%llu ns_per_call=%.1f max_ns=%llu",bi,(unsigned long long)cc,(unsigned long long)bv,(double)(cc?bv/cc:0),(unsigned long long)nvn_cmd_max_ns_by_op[bi]);}}
     xbg_logf("NVN INDEXED_READY v=1 calls=%llu requests=%llu exact_calls=%llu exact_requests=%llu unique=%llu duplicates=%llu overflow_calls=%llu reports_steps=%llu writebacks_steps=%llu duplicate_reports_steps=%llu duplicate_writebacks_steps=%llu vertex_requests=%llu vertex_repeats=%llu",
         (unsigned long long)indexed_ready_stats.calls,(unsigned long long)indexed_ready_stats.requests,
         (unsigned long long)indexed_ready_stats.exact_calls,(unsigned long long)indexed_ready_stats.exact_requests,
@@ -8272,12 +8276,13 @@ void poll_retire(){
 void execute(const uint8_t *pc,unsigned depth,uint64_t &budget){
     need(depth<64,"NVN command CALL nesting limit exceeded");
     for(;;){need(budget++<10000000,"NVN command count/cycle limit exceeded");
-        {CPU_SCOPE(SubPollRetire);if(gfx_async && (budget&63)==0)poll_retire();}
+        {CPU_SCOPE(SubPollRetire);if(gfx_async && (budget&63)==0){++nvn_poll_calls;poll_retire();}}
         // Bound host arena use per frame slot; only at command boundaries.
         {CPU_SCOPE(SubArenaCheck);{Slot &cur=slots[slot_index];if(cur.recording && cur.stream.used_total+cur.uniform.used_total+cur.readback.used_total>arena_flush_bytes){SiteScope site(SITE_ARENA);submit_slots(false);}}}
         size_t available=0;op_hdr h{};const uint8_t *p=nullptr;size_t n=0;
         {CPU_SCOPE(SubCmdDecode);available=command_available(pc);need(available>=8,"Truncated command header");memcpy(&h,pc,8);need(h.size>=8 && !(h.size&7) && h.size<=available,"NVN command size outside pool");p=pc+8;n=h.size-8;cur_op=h.op;}
         if(timing_now()&&h.op<256)++nvn_cmd_by_op[h.op];
+        uint64_t c0=timing_now()?timing_clock():0;
         if(codex_gpu_step){
             std::string keys;for(unsigned st=0;st<6;st++)if(state.shader[st])keys+=std::to_string(st)+":"+state.shader[st]->key+" ";
             xbg_logf("CODEX_GPU begin seq=%llu op=%u shaders=%s",(unsigned long long)budget,h.op,keys.c_str());
@@ -8459,6 +8464,7 @@ void execute(const uint8_t *pc,unsigned depth,uint64_t &budget){
         default:xbg_fatalf("NVN opcode %u at %#llx not implemented",h.op,(unsigned long long)uintptr_t(pc));
         }
         if(codex_gpu_step){gpu_sync(perf.sync_writeback);xbg_logf("CODEX_GPU complete seq=%llu op=%u",(unsigned long long)budget,h.op);}
+        if(c0){uint64_t c1=timing_clock(),el=c1>=c0?c1-c0:0;++nvn_cmd_timed;if(h.op<256){nvn_cmd_ns_by_op[h.op]+=el;if(el>nvn_cmd_max_ns_by_op[h.op])nvn_cmd_max_ns_by_op[h.op]=el;}}
         pc+=h.size;
     }
 }
