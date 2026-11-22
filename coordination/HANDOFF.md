@@ -6027,3 +6027,39 @@ P3 GPU pass 合并（收益最大、画面风险最高，须逐 pass 取证）�
   经验库新增 L-039（扩大 memo 覆盖面不等于收益，先量排除原因）、L-040（同一 map 里两类键必须不同形状）、
   L-041（契约 fixture 会漂移，红线守卫要先恢复再谈回归）、L-042（开关扫描要交错 A/B，单 part 变好≠整帧变快）、
   L-043（端口的取消/返回是 KEYCODE_BUTTON_B(97) 不是 BACK(4)；引擎内菜单会污染帧指标，"指标稳定"≠"场景正确")。
+
+## 2026-11-23 Mavis：帧率优化第 1 版（关闭 texel 驻留副本）
+
+目标：在不影响任何特效与显示的前提下提升帧率，稳步推进到所有场景 40 Hz 以上。
+报告：`coordination/results/MAVIS-PERF-TEXEL-20261122.md`。
+
+- **先纠正仪表口径（上一轮结论已推翻重写）**：之前读到的 `present=16.24 ms/帧`、`descriptor=28 ms/帧`
+  来自**游戏被切到后台**的节流窗口；`DESC_TIMING` 的 `descriptor_ns` 是**进程启动累计**值，不能除以窗口帧数。
+  校正后的兵工厂基线：fps 36.02、submit_cpu 17.63 ms、GPU 17.34 ms、帧长 27.4 ms。
+  CPU 分部：descriptor 5.45 > other 4.22（每 submit 一次，共 9.5 次/帧）> snapshot 2.60 > draw 1.86 >
+  cleanup 1.27 > cpuwrite 1.21 ms/帧。
+- **屏幕与上限**：平板内置屏当前 **90 Hz**（支持 60/90/120/144）；轻场景实测 59.9–60.0 fps。
+  兵工厂只有 32–38 fps ⇒ **纯 CPU/GPU 瓶颈，不是 vsync**，省 CPU 直接换帧率。
+- **零编译交错 A/B 扫了 21 个开关**：赢家是 `texmemo=0`（+1.86 ms / −3.34 fps）与 `texelframe=0`
+  （+1.58 ms / −3.03 fps）；`xmemo/dynpartial/pipefast/pipememo` 保持 ON；其余 12 个在噪声内不动。
+- **交错确认（抗热漂移）**：组合 A/B 中位数 31.78 → 32.87 fps（+1.09）；
+  出货包上 4 轮配对 Δcpu = −0.26 ms/帧、Δfps = +0.5（CPU 4/4 轮占优）。
+- **热漂移实测**：2 分钟内 submit_cpu 18.8 → 28.8 ms、fps 36.7 → 29.0（−21%）。
+  所有对比必须交错，且报帧率要注明冷/热。
+- **改动**（`src/graphics/nvn_vulkan/engine/xbg_game.cpp`，3 处）：`texel_memo_enabled` 与
+  `honor_frame_texel_memo_enabled` 默认改 false；标记语义反转为 opt-in 的 `gfx-texel-memo=1`。
+  驻留副本每帧要 refresh 178 次，而直接绑 guest 内存本来就是新鲜的。
+  **只改声明无效**——初始化会被标记文件覆盖（见 L-046）。
+- **显示回归 PASS**：开关对照各 90 帧 / 10 段 × 9 帧严格连续，段级指标一致
+  （nearblack 0.1151 vs 0.1153、亮度 61.5 vs 61.4、lap 818.5 vs 818.7）；
+  像素级跨状态差异 2.02–3.02 **落在同状态自然动画漂移带 2.32–3.26 内**；PNG 目视仅熔岩相位不同。
+  出货包自身 105 帧 / 12 段，指标与旧包基线一致，无缺面无黑白闪。
+- **出货**：`ffrs-texel-20261122.apk`，SHA-256 `2d60e8b4e90e3201a23b5341d6569c814e000f5cf942ae91ec853ad8ff22ff3b`，
+  与稳定包同签名，`install -r` 覆盖安装、**未卸载未丢档**，设备侧 `texel memo=0` 已确认。
+- **仍未达 40 Hz**：兵工厂冷机 36.0–37.7 fps、热机 29 fps；第 1 章探索区 60 fps（已达上限）。
+  下一轮入口（实测排序）：① descriptor 整表重建 179 次/帧（keydiff tex=154 ⇒ 纹理句柄每帧变，
+  改"只重写变化的 binding"，中高风险）；② 每帧 9.5 次 submit 合并（P3，收益最大风险最高）；
+  ③ snapshot 每帧 12.4 MB（顶点 10.15 MB）；④ cleanup 1.3–1.5 ms/帧。
+- **未完成**：战斗特效场景未用新包复测（存档已推进到第 4 章）；场景B（月夜火场）仍缺；
+  RG477M 双机回归未做 ⇒ **仍不合入 `work/rg477m-native`**。
+- 经验库新增 L-044~L-047（仪表口径 / 热漂移 / 默认值被标记覆盖 / present 编号重启归零）。
