@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-11-22T14:30:00+08:00",
-  "phase": "Round 10 诊断轮：GPASS 崩溃已修并实机取到第四章兵工厂的 GPU pass 归因与 CPU 热点地图；build 链路打通；Round 10 三项计划改动按实测证伪未采纳；descriptor 路径优化待启动",
+  "updated_at": "2026-11-22T21:30:00+08:00",
+  "phase": "Round 10 诊断轮：GPASS 崩溃已修并实机取到 GPU pass 归因与 CPU 热点地图；Round 10 三项计划改动按实测证伪未采纳；最稳定版 a45430a8 已在 Honor GT Pro 完成场景A(神殿含紫色调查点)引擎侧帧验证 PASS；场景B(开场火场)/场景C(第四章兵工厂+战斗特效)因平板双通道失联 NOT_RUN；descriptor 路径优化待启动",
   "coordinator": "Antigravity 本轮接管",
   "integration_branch": "work/rg477m-native",
   "update_mode": "event_driven_no_background_scheduler",
@@ -12292,9 +12292,41 @@
       "next": "P0 descriptor path (vkUpdateDescriptorSetWithTemplate 342/frame, 177 set rebuilds/frame) with a runtime A/B marker and display regression; then snapshot path (per-frame table rebuild) and the cleanup WAIT_BIT stall; GPU pass merging last and only with per-pass visual proof.",
       "owner": "Mavis",
       "branch": "task/T-mavis-perf-20261122"
+    },
+    {
+      "id": "MAVIS-SCENE-VALIDATION-20261122",
+      "role": "RELEASE_SCENE_VALIDATION",
+      "objective": "Honor GT Pro: validate the delivered stable build a45430a8 in the scenes most prone to missing geometry / black-white flicker, using engine-side frame evidence and real on-device movement",
+      "inputs": [
+        "coordination/HANDOFF.md",
+        "coordination/EXPERIENCE.md",
+        "coordination/state.json",
+        "~/GitHub/游戏发布包/02-最终幻想_共鸣_FFRS/FFRS-1.0.78-stable.apk"
+      ],
+      "outputs": [
+        "coordination/results/MAVIS-SCENE-VALIDATION-20261122.md",
+        "coordination/EXPERIENCE.md",
+        ".local/ffrs-validate/"
+      ],
+      "dependencies": [],
+      "pass_gates": [],
+      "status": "partially_passed_scenes_b_c_blocked",
+      "write_scope": [
+        "coordination/results/MAVIS-SCENE-VALIDATION-20261122.md",
+        "coordination/EXPERIENCE.md",
+        "coordination/state.json",
+        "coordination/HANDOFF.md",
+        ".local/ffrs-validate/"
+      ],
+      "acceptance": "Engine-side frame dump of at least 10 segments x 9 consecutive present frames per scene, no near-black / near-white frames and no missing-geometry green signature; the character must actually move on device (virtual joystick injection), not just navigate menus",
+      "checkpoint": "223fb4a. Stable build a45430a8 installed on A42BBB5109000333; device-side SHA256 matches the release package; no uninstall, official save untouched. Shrine scene PASS: 21 segments / 189 frames over present 2370-10418, including the purple investigation point frame (present=5434) that L-028 names as the flicker trigger. green max 0.00026 (threshold 0.002), nearblack max 0.0220, nearwhite max 0.0023, adjacent-frame diff mean 0.0006 / max 0.0078. Cold-start frames present 0-8 are fully black and were discarded by the scene guard. Virtual joystick injection proven: motionevent DOWN 371 1498 + MOVE without UP yields L=-27,26623 and real character displacement (35.9 percent of the screen changed).",
+      "next": "Reconnect the tablet (USB or same-subnet TCP; the host moved from 192.168.31.x to 192.168.1.126 mid-run and lost the wireless adb channel) and run enter_scene.sh with shield-regression-20261120204301 (opening fire scene) and shield-regression-20261122073707 (chapter 4 factory + battle effects), then capture_walk.sh + an_walk.py. Do NOT claim all-scene stability before both are captured, and do not merge to work/rg477m-native before the RG477M regression (L-028).",
+      "owner": "Mavis",
+      "branch": "task/T-mavis-perf-20261122"
     }
   ],
   "blockers": [
+    "MAVIS-SCENE-VALIDATION-20261122: 场景B(开场火场)与场景C(第四章兵工厂+战斗特效) NOT_RUN。采集途中平板 USB 通道 A42BBB5109000333 掉线，备用 TCP 192.168.31.41:44333 随主机换网(主机从 192.168.31.x 切到 192.168.1.126)失效，平板 ping 100% 丢包且本地网段无 adb 端口命中。场景A(神殿含紫色调查点)已 PASS。设备恢复前不得宣称全场景无闪烁。",
     "P-CX-50: run59现场报告NVNSubmission.cpp:315 TIMEOUT_EXPIRED，原日志尾部缺失；设备文件已属另一运行，A/B/C/D未证。禁止归为随机驱动超时。",
     "Realstable60FPSnotpassed; existingpublicsinglewordinterval1patch exactcurrentBuildderivedcopyvalidated/deployed; sameAPKrun55launchedtocheckmappedword/behavior. NativeWSIignoresinterval, originalclockunchanged; noadaptiveimplementation peruser.",
     "Expectedshaderfiles73483/73496 after2065delta appUIDallhasherrors0. Remaining12semanticallyrefused+Layer1, Maliwarp32vs16 andactualsceneresourcecorrectnessunresolved.",

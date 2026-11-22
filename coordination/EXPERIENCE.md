@@ -419,3 +419,24 @@ FPS 都是 25-26 —— **逐项一致，补丁零代价**。
 map 在那里不是缓存，是**失效索引**，语义不可省。
 
 **出处**：MAVIS-GPASS-ATTRIBUTION-20261122.md §5、§6-P1。
+### L-033 虚拟摇杆持续行走必须靠 motionevent 保持按下
+
+此前"角色走不动"是场景验证的真正卡点：缺面/黑白闪只在「走动 + 紫色调查点路线」触发，静止采样天然测不出，`input swipe` 又会把按下-抬起一次性走完。
+
+可行写法（Honor GT Pro 实测）：坐标 = app 视图坐标（横向 3000×1920, rotation 1），`input tap` 命中虚拟按键可作为坐标空间锚点；左摇杆中心由 `TouchPad.defaults()` 决定，`u = min(vw,vh)/15`，LS = `(2.9u, h-3.3u)` = (371,1498)，捕获半径 `hw*1.6`。
+
+持续行走 = `input motionevent DOWN 371 1498` → `input motionevent MOVE <x> <y>` → **不发 UP** 即保持按住，结束再发 UP。实测 `MOVE 371 1300` 上报 `L=-27,26623`。
+
+两个反例：用 `input swipe` 一次性推完会立刻回中，角色只抖一下；用 `logcat -s GameActivity` 过滤输入日志会全部落空（真实 tag 是 `FFRS-GameWindow`），误判成"输入没送达"。DOWN 落在摇杆正中心时不触发 publish（日志无输出）属正常，值没变就不发。
+
+**出处**：MAVIS-SCENE-VALIDATION-20261122.md §方法。
+
+### L-034 全黑帧必须先分清宿主态与渲染缺陷
+
+本轮采到 198 帧里有 9 帧整帧纯黑（present 0~8，mean=0.00，nearblack=1.0000）。它不是闪烁，是**冷启动首帧**——按场景守卫整段作废。若不剔除，会把 mean 波动从 54.75 拉到 0，直接把结论带偏。
+
+另外两类黑帧同样是宿主态，不是被测包问题：通知栏（NotificationShade）盖屏导致 `surface_destroyed` / `onStop`；红果短剧抢前台把游戏切后台。判据看应用日志里有没有 `surface_destroyed` / `lifecycle onStop`，有则该段作废。
+
+同一条经验：**采集期间必须逐段核对前台窗口**，被系统界面打断的帧不能计入被测包。设备侧连接也要提前固定：本次 USB 掉线 + 主机网络从 192.168.31.x 切到 192.168.1.x，平板两路通道同时失效，场景 B/C 采集中断。
+
+**出处**：MAVIS-SCENE-VALIDATION-20261122.md §场景 A 证据、§未完成项。
