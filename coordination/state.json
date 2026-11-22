@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "ff-resonance-rg477m-native",
-  "updated_at": "2026-11-23T00:19:14+0800",
+  "updated_at": "2026-11-23T01:25:00+08:00",
   "phase": "P0 descriptor 路径轮：descriptor 子项耗时分解已用引擎自带明细 profiler 取到（兵工厂场景，60 帧，coverage=OK，descriptor 7.05 ms/帧）；P0 第一版「descriptor memo 覆盖 compute dispatch」已实现、构建、装机并实机交错 A/B —— **收益≈0 被证伪**（compute 每帧仅 1 次命中；163/165 dispatch 因 texel 绑定无法进 memo）；同时定位到 draw 侧 177 次/帧整表重建由 tex 句柄变化驱动，是 descriptor 路径真正的大头；descriptor 契约测试的既有漂移已修复（此前该守卫等于没在跑）；下一步 P0 入口见 MAVIS-P0-DESCRIPTOR-20261122.md §8。**同场景 desccompute ON/OFF 显示回归已 PASS**（ON 180 帧 / 20 段、OFF 171 帧 / 19 段，段内 9 帧严格连续，段级指标一致，像素级差异落在同状态自然漂移带内）⇒ 该开关既不改画面也不提速，是零风险零收益的中性开关。**帧率优化第 1 版已出货**：关闭 texel 驻留副本与逐帧 texel-view memo（默认改 false，标记反转为 opt-in 的 gfx-texel-memo=1），交错配对 A/B 实测每帧 submit CPU −0.26 ms、fps +0.5（组合轮 +1.09），显示回归 PASS（各 90 帧 / 10 段 × 9 连续帧，段级指标一致，像素级差异落在同状态自然漂移带内）；APK ffrs-texel-20261122.apk SHA 2d60e8b4…，同签名覆盖安装、设备侧 texel memo=0。**40 Hz 尚未达成**：兵工厂冷机 36.0–37.7 fps、热机 29 fps（第 1 章探索区已达 60 fps 呈现上限）；平板屏幕 90 Hz，兵工厂远低于刷新率上限 ⇒ 纯 CPU/GPU 瓶颈。下一步入口见 MAVIS-PERF-TEXEL-20261122.md §8",
   "coordinator": "Antigravity 本轮接管",
   "integration_branch": "work/rg477m-native",
@@ -12431,6 +12431,43 @@
       "next": "Next round, ordered by measured benefit and risk from this round's own data: (1) the descriptor path rebuilds whole sets 179 times per frame because a bound texture handle changes every frame (keydiff tex=154) - write only the binding that changed instead of the whole table, which means splitting the flat memo key per binding; medium-high risk, needs per-binding picture proof. (2) 9.5 submits per frame, each paying about 440 us of guest frame callback overhead (other bucket 4.1 ms per frame) - batch the submits; biggest gain, highest risk. (3) the snapshot path copies 12.4 MB per frame, 10.15 MB of it vertex data, with 988 front invalidations per frame - study why the vertex cache misses. (4) cleanup at 1.3-1.5 ms per frame (P2 WAIT_BIT). Reducing CPU also reduces heat, so CPU work compounds through less throttling. Still open: the combat effect scene has not been re-measured on the new build (the isolated save advanced to chapter 4), scene B (moonlit fire) is still missing, and the RG477M two-device regression is still out of scope, so this branch must not be merged into work/rg477m-native.",
       "owner": "Mavis",
       "branch": "task/T-mavis-perf-20261122"
+    },
+    {
+      "id": "MAVIS-PERF-V2-TEXELPOOL-20261123",
+      "role": "PERF_FRAMEPACE_1",
+      "objective": "Round 2 of the Honor GT Pro frame-rate work: take the engine's frame cost apart to sub-domain level, sweep every remaining path switch, and probe the one structural lever left (letting texel bindings join the descriptor memo) without touching any effect or the picture",
+      "inputs": [
+        "coordination/HANDOFF.md",
+        "coordination/EXPERIENCE.md",
+        "coordination/state.json",
+        "coordination/results/MAVIS-PERF-TEXEL-20261122.md"
+      ],
+      "outputs": [
+        "coordination/results/MAVIS-PERF-V2-TEXELPOOL-20261123.md",
+        "coordination/EXPERIENCE.md",
+        "coordination/state.json",
+        "coordination/HANDOFF.md",
+        "coordination/STATUS.md"
+      ],
+      "dependencies": [
+        "MAVIS-PERF-TEXEL-20261122"
+      ],
+      "pass_gates": [],
+      "status": "negative_result_probe_branched_off_no_new_shipped_version",
+      "write_scope": [
+        "coordination/results/MAVIS-PERF-V2-TEXELPOOL-20261123.md",
+        "coordination/EXPERIENCE.md",
+        "coordination/state.json",
+        "coordination/HANDOFF.md",
+        "coordination/STATUS.md",
+        "src/graphics/nvn_vulkan/engine/xbg_game.cpp (branch task/T-mavis-perf-20261122-v2probe only)"
+      ],
+      "acceptance": "A measured answer with the device as the judge: the frame cost split to sub-domain level, every remaining path switch measured, and the structural probe either shipped with a real gain and a passing display regression or rejected with the cost attributed; the device left on the shipped build and the delivered branch left clean",
+      "checkpoint": "No new version shipped this round. Instrument map on the real device: descriptor full-set rebuild 9.14 ms/frame (35%, 445 rebuilds/frame at ~20.6 us vs ~3 us for a memo hit), snapshot 4.59 ms (12.4 MB/frame), guest 'other' 4.57 ms (2664 guest ops/frame), vkCmdDraw 3.13 ms (683 draws), cleanup 1.82 ms (writebacks 1.05 with 9.6 MB/frame, destroying 668 buffer views 0.51). Two new facts: with the memo on, the slot set_cache is bypassed entirely (hits=0.0), and every texel binding gets a fresh target buffer each frame so the buffer-view cache never hits. All 43 ab_off path switches swept (previous rounds only swept the 29 live-set booleans): no free gains; only passfast (off costs -3.34 fps) and texelcopy (off costs -2.77 fps) beat the scan bias, both in the helping direction. Probe (branch task/T-mavis-perf-20261122-v2probe, commit 2123237, ~200 lines): a per-slot pooled texel destination whose buffer identity never changes, refreshed on every use through the same per-submission copy cache as before, so a texel binding can join the descriptor memo. Measured on the device with an interleaved A/B: texelpool=1 fps median 27.55 / submit_cpu 31.10 ms vs texelpool=0 fps median 28.57 / submit_cpu 28.61 ms, i.e. dfps -1.02 and dcpu +2.49 ms/frame, rejected under L-029. Attribution: rebuilds fell only 445 -> 342 (-1.62 ms/frame) while the hit path now refreshes 1629 times/frame at 1.69 us (+2.75 ms/frame). Even a free refresh caps the probe at ~1.7 fps, because only ~103 of the 423 newly memo-eligible draws actually hit (memo misses rose to 96.8/frame): keydiff tex=154/frame shows the memo key's texture handle changes every frame for many draws, so the key, not the texel handling, is the ceiling. Next lever ranked: make the memo key's tex component stable (the verify already checks registration revision + serial + live image identity), then amortise the refresh to one per resource per submission with an O(1) pending-writeback lookup. Device restored to the shipped build ffrs-texel-20261122.apk (sha 2d60e8b4..., same signer, install -r, no uninstall, texel memo=0 confirmed), game in the foreground at the Chapter 4 foundry on the isolated save shield-regression-20261122073707. Delivered branch task/T-mavis-perf-20261122 stays at caa0cff with a clean tree; the probe is not merged into work/rg477m-native. Still not 40 Hz: 29-33 fps hot, 36-40 fps cold. Still open: battle-effect scene re-test, scene B, RG477M dual-device regression.",
+      "next": "1) Probe the memo key stability: replace the tex component in the descriptor memo key (the full guest handle, whose generation changes every frame) with the stable texture id, since the memo verify already checks registration revision + serial + live image identity; measure the memo hit rate and the whole-frame metric on the real device, and run the display regression before shipping anything. 2) Only then amortise the texel refresh to one per resource per submission, with an O(1) pending-writeback lookup and dirty marking that is no weaker than the current per-draw source check. 3) Re-test the battle-effect scene, scene B and the RG477M dual-device regression, which are the remaining gates before work/rg477m-native can take this branch.",
+      "owner": "Mavis",
+      "branch": "task/T-mavis-perf-20261122 (probe: task/T-mavis-perf-20261122-v2probe)",
+      "notes": "See coordination/results/MAVIS-PERF-V2-TEXELPOOL-20261123.md for the full instrument map, the switch sweep and the probe design. Experience entries L-048..L-051."
     }
   ],
   "blockers": [

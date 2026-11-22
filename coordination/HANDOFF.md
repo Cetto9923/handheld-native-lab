@@ -6063,3 +6063,33 @@ P3 GPU pass 合并（收益最大、画面风险最高，须逐 pass 取证）�
 - **未完成**：战斗特效场景未用新包复测（存档已推进到第 4 章）；场景B（月夜火场）仍缺；
   RG477M 双机回归未做 ⇒ **仍不合入 `work/rg477m-native`**。
 - 经验库新增 L-044~L-047（仪表口径 / 热漂移 / 默认值被标记覆盖 / present 编号重启归零）。
+
+### 2026-11-23 Mavis：帧率优化第 2 轮（仪表全拆 + 路径开关扫全 + texel memo 化探针 → 止损）
+
+- **本轮未出货新版本**。主交付分支 `task/T-mavis-perf-20261122` 仍停在已出货的第 1 版 `caa0cff`；
+  探针代码单独放侧分支 `task/T-mavis-perf-20261122-v2probe`（`2123237`），**未合入 `work/rg477m-native`**。
+- **仪表全景**（兵工厂热机，submit_cpu 26–27 ms/帧）：
+  descriptor 整表重建 **9.14 ms/帧（35%）** > snapshot 4.59（12.4 MB/帧）> other 4.57（客机 2664 op）
+  > draw 3.13（683 次 vkCmdDraw）> cleanup 1.82（writeback 1.05 + 销毁 668 个 buffer view 0.51）。
+  descriptor 拆到 27 个子域：image_lookup 1.65 / set_finalize 0.89 / element_rest 0.66 / buffer_bind 0.57 /
+  memo_verify 0.52 / texel_resident_acquire 0.45 / memo_key 0.43 / texel_view_create 0.30 …
+  **新发现**：memo 打开时 slot 的 `set_cache` 被整条绕过（hits=0.0）⇒ 每次重建都新分配 set + 全量写回；
+  每帧 668 个 VkBufferView 因为 texel 目标缓冲每帧换新而全部 miss。
+- **43 个 `ab_off` 路径开关全量扫过**（上一轮只扫了 29 个 live-set 布尔开关）：
+  结论 **没有免费收益**；只有 `passfast`（关掉 −3.34 fps）与 `texelcopy`（关掉 −2.77 fps）跳出噪声带，
+  方向都是"在帮忙"，保持默认。其余全在噪声内。扫描设计有系统性偏差（基线取在每轮末尾），
+  已在 L-048 记录。
+- **探针（V2）**：让 texel 绑定进 descriptor memo——每 slot 一个稳定目标缓冲池 + 池内缓冲每次使用刷新
+  （来源与拷贝粒度与原路径完全一致）⇒ 绑定 view 稳定 ⇒ memo 化后 set 仍有效。约 200 行，20 处改动。
+- **实机 A/B：净负 2.49 ms/帧（fps −1.02）**。归因：重建只少 103 次（−1.62 ms），
+  而命中路径每次都要刷新缓冲，1629 次/帧 × 1.69 µs = **+2.75 ms**。
+  **即使刷新免费，天花板也只有 ~1.7 fps**——423 个解除了排除的 draw 里只有约 103 个真能命中。
+- **真正的瓶颈指向**：`keydiff tex=154/帧` ⇒ 很多 draw 的纹理句柄每帧在变 ⇒ memo 键不稳 ⇒ 必然 miss。
+  **下一版第一枪**：把 memo 键里的 tex 分量从"完整句柄（含代次）"换成稳定标识
+  （池指针/偏移已在键里，memo verify 已校验注册版本 + serial + 存活 image 身份），
+  改动小、命中率高的话收益远超 V2。其次才是"刷新摊到每资源每提交一次 + pending_writeback 查找 O(1)"。
+- **设备已复原**：装回已出货的第 1 版包（SHA `2d60e8b4…`，同签名 `install -r`，`texel memo=0` 已回读），
+  游戏前台停在第 4 章兵工厂（隔离存档 `shield-regression-20261122073707`），冷机瞬态 fps 37.8 / submit_cpu 17.5 ms。
+- **仍未达 40 Hz**（热机 29–33 fps，冷机瞬态 36–40）。**未完成**：战斗特效场景复测 / 场景B / RG477M 双机回归。
+- **经验库新增 L-048 ~ L-051**（路径开关也要扫 + 扫描偏差 / memo 化的收益要乘命中次数 /
+  真瓶颈可能是键稳定性 / 池化前先算内存账与命中率天花板）。
