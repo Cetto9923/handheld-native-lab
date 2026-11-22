@@ -1195,3 +1195,70 @@ image_lookup 29% / element_rest 16% / set_finalize 15% / buffer_bind 9% / remain
 同时用关掉前后的 submit_cpu 差值给这个机制**定量**（而不是靠命中数推断收益）。
 
 **出处**：MAVIS-PERF-V4-AFFINITY-20261123.md 第 14.3 节。
+
+### L-085 插桩会让「拷贝量」类计数器失真：插桩窗口的数字不能当常态 (2026-11-23)
+
+第 14.4 节那张「texel 全拷贝 8.57 MB/帧、分配 9.32 MB/帧」的表，是在 `gfx-cpu-profile`
+插桩窗口里取的。插桩会把 `normal` 置 false，于是 `texel_copy_cache` 的
+`cacheable = !compute && normal && graphics_attachment_only()` 闸门失效、拷贝缓存被绕过
+（日志里 `NVN PERF texelcopy normal=0` 全为 0 正是这个原因）。
+正常会话下同一条日志的真值是 **texel 0.04~1.75 MB/帧、vertex 3.84~4.03 MB/帧**——
+**vertex 才是拷贝量的大头（约 80%），texel 不是**。
+同理 `READBACK_SITE` 的 `texel-pending fullcopy` 在插桩窗口是 24001 calls / 500 MB，
+正常会话下真拷贝只有 3 次/帧、400 KB/帧（其余是帧内复用命中）。
+
+**规则**：凡是用插桩窗口取的**量纲类**计数器（字节数、拷贝次数、分配量），
+必须在正常会话里复核一遍再写进结论；插桩窗口只能用来取**占比**。
+判据：日志里 `NVN PERF texelcopy normal=0` 是否全为 0——全 0 就说明拷贝缓存被绕过了。
+
+**出处**：MAVIS-PERF-V4-AFFINITY-20261123.md 第 15.1 节。
+
+### L-086 跨帧缓存的内容变化率有现成计数器：hits vs refresh (2026-11-23)
+
+要回答「某个 guest 区间每帧内容改多少」，不必自己写探针。
+`gfx-live-set` 的 `texmemo=1` 会打开跨帧 resident 副本路径（`texel_acquire`，用内容 hash 判断），
+然后 `NVN PERF pass_ends` 里就有两个互斥计数：
+`texel_hits`（内容未变，直接复用副本）与 `texel_refreshes`（内容变了，必须重拷）。
+火场实测：hits 761~776/帧、refresh 126.6~127.0/帧 ⇒ **约 84% 的读取内容稳定**。
+另有 `texel_binds`（走 resident 的绑定数）、`distinct`/`reused`（每帧不同区间数 / 上一帧也用过的）、
+`fallback`（退回逐帧快照）、`evict`（被淘汰）四个计数可交叉校验。
+
+**规则**：判断「缓存/增量刷新方向是否成立」时，先找引擎里**已有的互斥计数**（hits vs refresh、
+hit vs miss、filled vs reused），它们比新写的探针更可信、且不占构建周期。
+
+**出处**：MAVIS-PERF-V4-AFFINITY-20261123.md 第 15.2 节。
+
+### L-087 中间计数器的下降不等于净收益：必须把整帧所有域加起来 (2026-11-23)
+
+今天差点被一个漂亮的中间数字骗过去：`texmemo=1` 让描述符 `build` 从 10.28 ms/帧降到
+5.58 ms/帧（−46%），set 构建 516 → 264 次/帧。若只看这一个计数器，会得出「省了 4.7 ms/帧」的错误结论。
+把 `NVN PERF parts_ms_per_frame` 的**所有域**加起来（fire scene 同口径、中位数）才知道真实净差：
+descriptor −1.97 ms、hash +0.21 ms、snapshot −0.35 ms、其余 −0.65 ms ⇒ **各域总和 −1.95 ms/帧**。
+也就是说：`build` 省下的 4.7 ms 被命中路径的复核成本（hit_total +2.24 ms）与 hash（+0.21 ms）吃回大半。
+而且 V1 报告（2026-11-22）早就实测过 `texmemo=0` 在 Honor 上快 1.86 ms/帧——本轮独立复现为 1.95 ms/帧。
+
+**规则**：给任何机制定价，必须用**整帧所有域的净差**，而不是某一个计数器（build / hit / miss）的差。
+hit 路径自己也有成本（复核、hash、刷新），这些成本会出现在别的域里。
+判法：`parts_ms_per_frame` 把各域加起来 vs `submit_cpu_ms`，两者的差额就是没被归类的开销；
+另外用**中位数**而不是均值（热负载窗口会拉偏均值）。
+还有一层：净账为正**也不等于该装**——要看这份收益是不是**重复收益**
+（引擎当前配置是否已经用更便宜的方式拿到了同样的东西）。
+
+**出处**：MAVIS-PERF-V4-AFFINITY-20261123.md 第 15.3 与 15.6 节。
+
+### L-088 测量环境的热状态会伪装成「场景变慢」：先查 load/温度再下结论 (2026-11-23)
+
+今天开工时设备 `load average 19.67`（8 核）、GPU 89.9°C、Thermal Status=1、
+CPU0~2 频率掉到 1.1~1.7 GHz。火场 fps 一度只有 42.7~47.3、submit 19.6~20.3 ms，
+而健康状态是 52.8~57.2 fps、submit 14.2~14.7 ms。
+**submit_cpu 与 gpu_ms 同时等比放大约 25%** = 整机变慢签名（L-067）。
+
+顺带解开一桩旧事：第 12.1 节那个被撤回的「41.0~43.4 fps 一次性下跌窗口」，
+其数值形态与今天热负载窗口**完全同形**（submit 18.2~19.1 / gpu 16.7~16.8 vs 今天 19.6~20.3 / 16.7~16.7）。
+它既不是场景特性也不是特效峰值，而是**设备热/负载状态的产物**——今天这次是可复现地再次出现。
+
+**规则**：开工先看 `loadavg` / `dumpsys thermalservice` / `cpufreq scaling_cur_freq`；
+热负载窗口下的 fps 只能当**计数器类证据**的来源，不能写成帧率结论。
+同时记录热窗口的数值形态，将来遇到同形窗口可以直接归因，不用再花一轮去复现。
+
+**出处**：MAVIS-PERF-V4-AFFINITY-20261123.md 第 15.5 节。
