@@ -1,9 +1,9 @@
 # 当前项目状态（生成文件）
 
-状态事件时间：2026-11-23T03:50:00+08:00
+状态事件时间：2026-11-23T04:20:00+08:00
 阶段：P0 descriptor 路径轮：descriptor 子项耗时分解已用引擎自带明细 profiler 取到（兵工厂场景，60 帧，coverage=OK，descriptor 7.05 ms/帧）；P0 第一版「descriptor memo 覆盖 compute dispatch」已实现、构建、装机并实机交错 A/B —— **收益≈0 被证伪**（compute 每帧仅 1 次命中；163/165 dispatch 因 texel 绑定无法进 memo）；同时定位到 draw 侧 177 次/帧整表重建由 tex 句柄变化驱动，是 descriptor 路径真正的大头；descriptor 契约测试的既有漂移已修复（此前该守卫等于没在跑）；下一步 P0 入口见 MAVIS-P0-DESCRIPTOR-20261122.md §8。**同场景 desccompute ON/OFF 显示回归已 PASS**（ON 180 帧 / 20 段、OFF 171 帧 / 19 段，段内 9 帧严格连续，段级指标一致，像素级差异落在同状态自然漂移带内）⇒ 该开关既不改画面也不提速，是零风险零收益的中性开关。**帧率优化第 1 版已出货**：关闭 texel 驻留副本与逐帧 texel-view memo（默认改 false，标记反转为 opt-in 的 gfx-texel-memo=1），交错配对 A/B 实测每帧 submit CPU −0.26 ms、fps +0.5（组合轮 +1.09），显示回归 PASS（各 90 帧 / 10 段 × 9 连续帧，段级指标一致，像素级差异落在同状态自然漂移带内）；APK ffrs-texel-20261122.apk SHA 2d60e8b4…，同签名覆盖安装、设备侧 texel memo=0。**40 Hz 尚未达成**：兵工厂冷机 36.0–37.7 fps、热机 29 fps（第 1 章探索区已达 60 fps 呈现上限）；平板屏幕 90 Hz，兵工厂远低于刷新率上限 ⇒ 纯 CPU/GPU 瓶颈。下一步入口见 MAVIS-PERF-TEXEL-20261122.md §8
 
-**第 5 轮（V4 亲和性）已出货第 2 版**：掉速真因定位到「图形翻译线程 dm-gfx 的核掩码被系统从 0xFF 收窄成 0x7F（被排除在 Cortex-X4 之外），全应用 40+ 线程里只有它一个被限制成 0-6」，与热降频/抢占/cgroup/客机全部无关。改法是把 dm-gfx 按 cpufreq 拓扑绑到最快核并每帧复查抢回（异构闸门：同构设备不绑），渲染路径零改动。实机同会话交错 A/B（引擎侧分臂累计）：big 掩码 0x78 fps 33.2~34.4 / submit_cpu 24.3~25.8 ms，prime 掩码 0x80 fps 43.3~48.5 / submit_cpu 15.5~16.2 ms ⇒ +38% 帧率、每帧 CPU -38%；持续压测 2 分钟以上 fps 43.8~48.7、掩码恒 0x80、cpu7 实跑 2.46~3.01 GHz 无降频。APK ffrs-v4-affinity-20261123.apk SHA 33e12d33…。详见 MAVIS-PERF-V4-AFFINITY-20261123.md。**仍未达成『所有场景 40 Hz』**：战斗特效场景复测 / 场景B（月夜火场）/ RG477M 双机回归三项前提未完成。
+**第 5 轮（V4 亲和性）已出货第 2 版**：掉速真因定位到「图形翻译线程 dm-gfx 的核掩码被系统从 0xFF 收窄成 0x7F（被排除在 Cortex-X4 之外），全应用 40+ 线程里只有它一个被限制成 0-6」，与热降频/抢占/cgroup/客机全部无关。改法是把 dm-gfx 按 cpufreq 拓扑绑到最快核并每帧复查抢回（异构闸门：同构设备不绑），渲染路径零改动。实机同会话交错 A/B（引擎侧分臂累计）：big 掩码 0x78 fps 33.2~34.4 / submit_cpu 24.3~25.8 ms，prime 掩码 0x80 fps 43.3~48.5 / submit_cpu 15.5~16.2 ms ⇒ +38% 帧率、每帧 CPU -38%；持续压测 2 分钟以上 fps 43.8~48.7、掩码恒 0x80、cpu7 实跑 2.46~3.01 GHz 无降频。APK ffrs-v4-affinity-20261123.apk SHA 33e12d33…。详见 MAVIS-PERF-V4-AFFINITY-20261123.md。**场景覆盖复测已闭合（Honor）**：用已出货的第 2 版（无新代码）逐场景复测——月夜火场静止 fps 50.2~56.6、**战斗特效峰值 41.0~43.4**（ops 2128→2231、submit 14.8→19.1、gpu 13.7→16.8，特效确在渲染）、走廊 59.5~60.0、兵工厂深处 43.8~48.7、标题 59.6~59.9 ⇒ **Honor 上所有已测场景 ≥ 40 Hz**；火场同会话交错 A/B（每采样校验掩码）：big 0x78 fps 34.4~35.7 vs prime 0x80 fps 53.6~55.5 ⇒ **同场景 +57%**。详见 MAVIS-PERF-V4-AFFINITY-20261123.md §12 与卡 MAVIS-PERF-V5-SCENECOVER-20261123。**仍未闭合的只剩 RG477M 双机回归**（该机禁止由此处操作；异构闸门在同构机上保持系统调度，不绑核）。
 总控：Antigravity 本轮接管
 更新方式：按事件更新，没有后台自动刷新。
 
@@ -294,6 +294,7 @@
 | MAVIS-PERF-V2-TEXELPOOL-20261123 | PERF_FRAMEPACE_1 | negative_results_documented_two_probes_branched_off_no_new_shipped_version | Mavis | MAVIS-PERF-TEXEL-20261122 | 无额外门禁 | task/T-mavis-perf-20261122 (probe: task/T-mavis-perf-20261122-v2probe) |
 | MAVIS-PERF-V3-TEXELKEY-20261123 | PERF_FRAMEPACE_1 | probe_crash_root_caused_and_fixed_v3_measured_net_negative_no_new_shipped_version_next_lever_is_cpu_scheduling | Mavis | MAVIS-PERF-V2-TEXELPOOL-20261123 | 无额外门禁 | task/T-mavis-perf-20261122 (probe: task/T-mavis-perf-20261122-v3probe) |
 | MAVIS-PERF-V4-AFFINITY-20261123 | PERF_FRAMEPACE_1 | implemented_measured_gain_display_regression_pass_shipped_version_2_foundry_above_40hz | Mavis | MAVIS-PERF-V3-TEXELKEY-20261123 | 无额外门禁 | task/T-mavis-perf-20261122 (work branch: task/T-mavis-perf-20261123-v4affinity) |
+| MAVIS-PERF-V5-SCENECOVER-20261123 | PERF_FRAMEPACE_1 | verified_all_measured_honor_scenes_at_or_above_40hz_tightest_is_the_fire_scene_attack_peak_at_41fps_rg477m_still_pending | Mavis | MAVIS-PERF-V4-AFFINITY-20261123 | 无额外门禁 | task/T-mavis-perf-20261122 |
 
 ## 独占写入
 
