@@ -5883,10 +5883,11 @@ Codex 的 no-key-delivery-20261120 worktree 与其未提交的 Round 10 WIP 原�
   coordination/results/MAVIS-GPASS-ATTRIBUTION-20261122.md（提交 bcf6dc8）。
 
 ### 关键数字（荣耀 A42BBB5109000333，第四章兵工厂，静止）
-- 干净基线：submit CPU **32.79-35.65 ms**、GPU 17.87-30.27 ms、FPS 20.84-24.56 -> **CPU 受限**
+- 干净基线（全新进程、无插桩）：submit CPU **31.3 ms**、GPU 22.33 ms、FPS 25.2-26.3 -> **CPU 受限**
+- 同条件 A/B：基线 `3f7c02e6` submit CPU 30.8-31.6 ms vs 本轮 `a45430a8` 31.3-32.1 ms，GPU 都是 22.33 -> **GPASS 修复零代价**
 - CPU/帧：descriptor 12.8 / other 5.4-7.2 / snapshot 5.0 / draw 4.3 / cleanup 2.0
 - GPU：111 pass/帧；fmt=122(R16G16B16A16) 族约 7.6 ms/帧；其中每帧约 30 个单 draw 的 768x436 FP16 pass = 4.1 ms/帧
-- 插桩采样数字只用于定位，不作基线（见 L-031）
+- 插桩采样数字只用于定位，不作基线；本轮第一组基线被 `descriptor_detail` 残留污染，已用新进程重测更正（见 L-031）
 
 ### Round 10 三项计划改动：按实测全部不采纳
 1. memo_front 256->1024：慢路径回退仅 121 次/帧 -> 收益 <0.02 ms/帧，量不出来（见 L-029）
@@ -5896,6 +5897,8 @@ Codex 的 no-key-delivery-20261120 worktree 与其未提交的 Round 10 WIP 原�
 
 ### 设备状态
 - 当前装：本轮诊断包 a45430a8...（与本地逐字节一致）；formal 存档未触碰。
+- Round 9 尚未合进 `work/rg477m-native`：它改动了同步/提交路径，按 L-028 需 RG477M 双机回归，
+  而 AGENTS-HONOR 禁止本轮操作 RG477M 设备，集成留给 RG477M 侧负责人。
 - 回退：adb install -r .local/worktrees/no-key-delivery-20261120/.local/honor-benchmark-20261120/ffrs-cand-round3-3f7c02e6.apk
 - 一次性标记已自删，无插桩残留；未触碰 RG477M；未 push；未改 main。
 
