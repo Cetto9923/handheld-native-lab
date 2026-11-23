@@ -1494,6 +1494,9 @@ uint32_t texel_gc_slots=0;
 // The guest memory is the source of truth either way, so this changes no pixels: the display
 // regression in coordination/results/MAVIS-PERF-TEXEL-20261122.md compares both states.
 bool texel_memo_enabled=false;uint64_t texel_gen=0,texel_refreshes=0,texel_fallbacks=0,texel_evictions=0,texel_hits=0;
+// Texel snapshot memo (2026-11-24): the switch and the counters sit here, next to the other texel switches,
+// because the perf line that prints them comes earlier in the file.
+bool texel_snap_memo_enabled=true;uint64_t texel_snap_hits=0,vwhy_texsnap=0;
 // Only copied, read-only graphics inputs are reused. Their destination remains
 // owned by the current recording slot, and range writes use snapshot invalidation.
 XbgTexelSnapshotCache<Buffer> texel_copy_cache;
@@ -5608,7 +5611,6 @@ std::vector<DescMemo::Texel> desc_memo_texel;bool desc_memo_texel_fail=false,des
 // that view, and a hit re-snapshots the guest range and compares, the same way the read-only storage ranges
 // are checked. No resident copy is involved: the guest memory stays the source of truth, so no pixel changes.
 // The resident-copy texel memo (texel_memo_enabled) and the per-frame one are untouched.
-bool texel_snap_memo_enabled=true;uint64_t texel_snap_hits=0,vwhy_texsnap=0;
 std::vector<DescMemo::TexelSnap> desc_memo_texel_snap;
 void descriptors_build(Descriptors &out,Commands &commands,bool compute);
 // Dynamic uniform buffers (Claude C151): Maleoon allows 8 per pipeline layout. Mode 1 = every uniform buffer dynamic (fits);
