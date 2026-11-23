@@ -7072,3 +7072,10 @@ CPU 侧每帧两段长间隔 8.5 / 11.1 ms，正好落在 GPU 的空档里 ⇒ �
     ③ texel 视图 ~0.9~1.1 ms/帧（跨槽共享，收益上限 ~+1.7 fps）；
     ④ `poll_retire` 只查最老 pending fence（0.66 ms/帧）。
   - 经验库新增 L-142 ~ L-146。
+  - **⑧ 补：op 级解释器地图（零额外设备操作）**：`NVN CPU_TIMING nvn_op` 表合计 **17.59 ms/帧**，99% 集中在 10 个 op：
+    **op26 (OP_DRAW_IDX) 680.9 次/帧 = 11.93 ms/帧**、**op27 (OP_DISPATCH) 165 次/帧 = 3.83 ms/帧**，
+    而 6300+ 次绑定/屏障 op 合计仅 0.55 ms/帧 ⇒ 解释器**不是均匀的每命令开销**，要切的是 draw/dispatch 内部；
+    op26 扣掉 descriptor 后仍有 ~7.3 ms/帧 未被子站点覆盖（主体疑似驱动侧录制调用）。
+  - **⑨ 零构建排除**：每帧 ~660 次 full ALL_COMMANDS 屏障（其中 575 次在 dispatch）看着像 3~6 ms/帧的靶子，
+    但第 10 轮 `texeldupbar` 边际成本探针实测「每帧多 156 次 full barrier 无任何差异」⇒ **屏障不是 CPU 靶子**（L-148）。
+  - 经验库新增 L-147 ~ L-148。
