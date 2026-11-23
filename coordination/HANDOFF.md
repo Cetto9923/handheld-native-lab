@@ -7041,3 +7041,34 @@ CPU 侧每帧两段长间隔 8.5 / 11.1 ms，正好落在 GPU 的空档里 ⇒ �
     ② 若不是大头，拆 descriptor 构建路径内部（6.8 ms/帧，从未内部拆过）；
     ③ 已退役清单见报告 §30.6（含本轮关闭的 NVN API 层）。
   - 经验库新增 L-140 ~ L-141。
+
+- **第 23 轮（2026-11-23）：零构建诊断轮（未出货、未改代码、未构建任何包）—— 撤回第 22 轮三条前提 +
+  第 21 轮一条结论；取得兵工厂 descriptor 域 24 子站点账本与引擎 CPU 全账（含 inclusive）。**
+  - **① 撤回第 22 轮（AGENTS.md 要求显式撤回并写明依据）**：
+    - 「每帧 ~1250 个 `VkBufferView` 被创建」⇒ 实测 **869.2 次/帧、0.356 ms/帧**（`texel_view_create`，419 ns/次）；
+    - 「per-slot 视图缓存每帧只命中 67 次」⇒ **67 是跨帧键复用数**（`texel_prev_keys` 交集），
+      真实命中 **1014.7 次/帧（53.9%）**，查找 1883.9 次/帧；
+    - 「descriptor 路径从未内部拆过」⇒ 早已由 `NVN DESC_TIMING` v=2 拆成 24 个子站点。
+    ⇒ 第 22 轮预设的「跨槽共享视图缓存（值 2~4 ms/帧）」**判死**（视图创建+退休销毁合计 ~0.9~1.1 ms/帧，收益上限 ~+1.7 fps）。
+  - **② 撤回第 21 轮**：「解释器逐命令开销只剩插桩量级、真实仅 ~0.5 ms/帧」**算术错误** ⇒
+    `sub_exec` **exclusive 4.423 ms/帧**（inclusive 24.10，8.3 次/帧，10873 条命令/帧 ⇒ 自有 ~407 ns/命令），
+    三个 per-command 探针站点合计 1.78 ms/帧 才是探针开销 ⇒ 解释器**重新列为最大未定价池**。
+  - **③ 兵工厂 descriptor 域 24 子站点（60 帧 DESC_TIMING 窗口，coverage=OK，draws=683，set_binds=495，出货第 3 版实测）**：
+    image_lookup **2.178**（4017.7 次/帧）> set_finalize 0.969 > element_rest 0.964 > buffer_bind 0.635 >
+    texel_pending 0.357 ≈ texel_view_create 0.356 > setup 0.195 > texel_view_lookup 0.178 > memo_key 0.169 >
+    memo_verify 0.167 > memo_snapshot 0.151 > texel_alias 0.099 > texel_readback 0.080 > sampler_bind 0.067 ≈ image_view 0.067
+    > readback_copy 0.048 > 其余 ≈0.08；已打标 **6.766** + remaining 0.719 ⇒ **7.49 ms/帧**，**没有单一子站点 ≥1 ms**。
+  - **④ image_lookup 内部拆分（零构建差分：同场景同帧结构，A 臂缓存开 / B 臂启动期 `gfx-no-imgcache` 关，
+    `img_cache_hits=0` 证实生效）** ⇒ **图像缓存今天的价值 = 0.78 ms/帧**（每次命中改成未命中多付 **423 ns**）；
+    B 臂里 image_view/image_transition/sampler_bind 只从 251 涨到 **2133** 次/帧（≠4018）⇒ `image_lookup` 里那
+    **1945 次/帧是 texel 绑定**（走 texel 分支），不是「不可缓存的图像绑定」。
+  - **⑤ 引擎 CPU 全账（首次取到 inclusive）**：descriptor 7.49 > **sub_exec 自有 4.42** > snapshot 家族 5.05
+    （含 `sub_snap_slow` 自有 **2.40**、stream 0.71）> cleanup 1.69 > draw 自有 1.45 > dispatch 0.43；
+    `sub_poll_retire` inclusive 2.45 里**只有 0.66 是 fence 查询**，其余 1.79 是它触发的 `retire_slot`（=cleanup，L-032 不动）。
+  - **⑥ 无版本出货**（L-029 + L-032）；设备全程用出货第 3 版（base.apk sha256 `012efeb6…`），
+    临时标记 `gfx-no-imgcache` 已删，游戏进程已停，**红果已还回前台**。
+  - **⑦ 下一轮入口**：① 解释器自有 2.6~4.4 ms/帧（合并三个 per-command 探针成一个，先按 op 排序）；
+    ② snapshot 慢路径固定开销 ~1.3 ms/帧（`std::map` find+insert、`cpu_access` 是否在等）；
+    ③ texel 视图 ~0.9~1.1 ms/帧（跨槽共享，收益上限 ~+1.7 fps）；
+    ④ `poll_retire` 只查最老 pending fence（0.66 ms/帧）。
+  - 经验库新增 L-142 ~ L-146。

@@ -2531,3 +2531,191 @@ L-029（没有高于噪声的收益就不占构建周期）+ L-032（不动失�
    合并 vkQueueSubmit（0.016 ms/次）。
 
 RG477M 双机回归仍未做（AGENTS-HONOR 禁止由此处操作该机），Goal 未闭合。
+
+## 31. 第 23 轮（**零构建诊断轮，未出货**）：撤回第 22 轮的三条前提 + 兵工厂 CPU 全账（含 inclusive）
+
+### 31.1 本轮结论先行
+
+第 22 轮留给本轮的入口（「给 texel 视图创建定价 → 若值 2~4 ms/帧则做跨槽共享视图缓存」）
+**在动手前就被已有数据判死了**：视图创建的真实成本是 **0.356 ms/帧（869.2 次/帧）**，不是 2~4 ms/帧。
+因此本轮**没有做任何代码改动、没有占构建周期**（L-029），改为用**零构建**手段把两个最大的黑盒拆开：
+
+1. **兵工厂 descriptor 域的 24 个子站点**（`NVN DESC_TIMING` v=2，60 帧窗口，出货第 3 版实测）；
+2. **`image_lookup` 内部**（同一场景、同一帧结构下用 `imgcache` 开关做差分分解 ⇒ 该缓存今天的价值 = **0.78 ms/帧**）；
+3. **引擎 CPU 全账**（`NVN CPU_TIMING` 的 exclusive + inclusive，本场景第一次取到 inclusive）。
+
+顺手**撤回第 22 轮的另外两条前提**与**第 21 轮的一条结论**（依据见 31.2）。
+
+### 31.2 显式撤回（AGENTS.md：数据推翻先前归因必须显式撤回并写明依据）
+
+**撤回 A（第 22 轮 §30.4/§30.6）**：「每帧约 1250 个 `VkBufferView` 被创建」「per-slot 视图缓存每帧只命中 67 次」
+⇒ **两条都不成立**：
+
+| 口径 | 第 22 轮说法 | 本轮实测（`NVN DESC_TIMING`，兵工厂，60 帧窗口） |
+| --- | --- | --- |
+| 每帧视图创建数 | ~1250 | **869.2 次/帧**（`texel_view_create`） |
+| 视图缓存查找数 | — | **1883.9 次/帧**（`texel_view_lookup`） |
+| 视图缓存命中 | 67 次/帧 | **1014.7 次/帧（命中率 53.9%）** |
+| 视图创建耗时 | 预设 2~4 ms/帧 | **0.356 ms/帧**（409.8 ns/次） |
+
+依据：`texel_binds=1330 distinct=309 reused=67` 里的 **67 是「本帧用到、上一帧也用到的不同区间数」（跨帧键复用）**，
+**不是**视图缓存的命中次数（`texel_frame_keys`/`texel_prev_keys` 的定义在 `perf_frame()` 里：
+`texel_distinct += texel_frame_keys.size(); for(k:texel_frame_keys) if(texel_prev_keys.count(k)) ++texel_reused;`）。
+视图缓存的真实命中数只能由**创建点自己的计数器**给出 ⇒ **L-143**。
+
+**撤回 B（第 22 轮 §30.6 第 2 条）**：「descriptor 构建路径（~6.8 ms/帧）从来没被内部拆过」
+⇒ **错**：`NVN DESC_TIMING` v=2 早已把它拆成 **24 个子站点**（第 15~20 轮就用过），本轮只是第一次在本场景取到完整表。
+
+**撤回 C（第 21 轮 §29.2）**：「`sub_cmd_decode`/`sub_poll_retire`/`sub_arena_check` 三项基本等于插桩自身开销
+⇒ 解释器的真实逐命令开销只有 ~0.5 ms/帧，不是可动的靶子」
+⇒ **算术错误，结论作废**。本轮取到 `NVN CPU_TIMING` 的 **inclusive_ns** 后：
+
+- `sub_exec` **exclusive = 4.423 ms/帧**（inclusive 24.10 ms/帧，8.3 次/帧），每帧 **10873 条 NVN 命令**
+  ⇒ 解释器**自有**开销 **≈ 407 ns/命令**；
+- 那三个 per-command 子站点合计 1.781 ms/帧（`cmd_decode` 0.565 + `poll_retire` 0.661 + `arena_check` 0.555），
+  每次 ~51 ns 而插桩自身约 ~40 ns ⇒ **这 1.78 ms/帧 基本是探针开销**；
+- 即使把它全扣掉，解释器自有仍有 **≈2.6~4.4 ms/帧**，**绝不是 0.5 ms/帧**。
+
+⇒ 第 21 轮那句「解释器逐命令开销（实测只剩插桩量级）、不是可动靶子」**必须撤回**：
+解释器是引擎里**仅次于 descriptor 域的单一大池**，只是至今没有栈级归因 ⇒ **L-142**。
+
+**撤回 D（第 22 轮 §30.4 的推论）**：「`image_lookup` 里有 1945 次/帧是『不可缓存的图像绑定』」
+（这是本轮初稿的中间结论，测完即否）⇒ **错**：arm B 显示 `image_view`/`image_transition`/`sampler_bind`
+只从 251 涨到 **2133 次/帧**（而不是 4018）⇒ 说明那 1945 次/帧走的是**texel 分支**（分支在 `ImageLookup` 作用域内部），
+不是图像分支 ⇒ **作用域覆盖的调用数 ≠ 走某条分支的调用数** ⇒ **L-146**。
+
+### 31.3 兵工厂 descriptor 域的 24 子站点账本（`NVN DESC_TIMING`，60 帧窗口，出货第 3 版）
+
+窗口 `first=3152 last=3211`（60 帧）、`coverage=OK`、`descriptor_ns/帧 = 7.485 ms`、`remaining = 0.719 ms`、
+`clock_reads/帧 = 56849`（⇒ 本表含插桩开销，生产口径约低 10%，L-123）；
+场景核对：`draws=683.1`、`set_binds=495.4`、`texel_binds=1330 distinct=309`（兵工厂深处）。
+
+| 子站点 | 次/帧 | ms/帧 | µs/次 |
+| --- | --- | --- | --- |
+| **image_lookup** | **4017.7** | **2.178** | 542 |
+| set_finalize | 450.3 | 0.969 | 2153 |
+| element_rest | 8617.6 | 0.964 | 112 |
+| buffer_bind | 4599.9 | 0.635 | 138 |
+| texel_pending | 1882.9 | 0.357 | 190 |
+| **texel_view_create** | **869.2** | **0.356** | 410 |
+| setup | 450.3 | 0.195 | 434 |
+| texel_view_lookup | 1883.9 | 0.178 | 94 |
+| memo_key | 861.0 | 0.169 | 196 |
+| memo_verify | 412.6 | 0.167 | 405 |
+| memo_snapshot | 412.6 | 0.151 | 366 |
+| texel_alias | 1883.9 | 0.099 | 53 |
+| texel_readback | 427.0 | 0.080 | 188 |
+| sampler_bind | 224.6 | 0.067 | 299 |
+| image_view | 251.1 | 0.067 | 266 |
+| readback_copy | 15.3 | 0.048 | 3109 |
+| readback_alloc | 436.1 | 0.028 | 64 |
+| image_transition | 251.1 | 0.026 | 102 |
+| readback_guard | 436.1 | 0.023 | 52 |
+| texel_cpu_access | 12.2 | 0.004 | 307 |
+| readback_zero | 7.1 | 0.003 | 413 |
+| readback_flush | 22.4 | 0.001 | 63 |
+| texel_resident_pending / acquire | 0 | 0 | — |
+| **已打标合计** | | **6.766** | |
+| remaining（未打标） | — | 0.719 | — |
+
+⇒ **descriptor 域 7.49 ms/帧的分布**：image_lookup 2.18（29%）> set_finalize 0.97（驱动调用）>
+element_rest 0.96（8618 次/帧 × ~70 ns 探针 ≈ 0.60 ⇒ 真实仅 ~0.36）> buffer_bind 0.64
+> texel_pending 0.36 ≈ texel_view_create 0.36 > 其余。**没有任何单一子站点 ≥1 ms** ⇒
+下一步只能靠「把某个子站点再切一刀」或「减少调用次数」，而不是挑一个大站点下手。
+
+### 31.4 `image_lookup` 的内部拆分（同一场景、同一帧结构下的开关差分）
+
+**做法（零构建）**：`gfx-cpu-profile` 标记写 `1 60 1` ⇒ `descriptor_detail=true` ⇒ 引擎在窗口内打 `NVN DESC_TIMING` 表；
+`live_profile_used` **每进程只能用一次**，所以两个臂分两次启动取（arm B 用**启动期**标记 `gfx-no-imgcache` 关掉图像缓存）。
+
+| 臂 | image_lookup | image_view | image_transition | sampler_bind | descriptor 总量 | fps | submit_cpu |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| A（缓存开） | 4017.7 次/帧 / **2.178 ms/帧** | 251.1 次 / 0.067 | 251.1 次 / 0.026 | 224.6 次 / 0.067 | 7.485 | 37.07 / 38.20 | 23.50 / 22.86 |
+| B（缓存关） | 4017.3 次/帧 / **2.333 ms/帧** | 2133.4 次 / 0.230 | 2133.4 次 / 0.271 | 2107.0 次 / 0.287 | 8.365 | 35.94 / 35.46 | 24.68 / 24.45 |
+
+（两臂都在插桩窗口内，fps 因此比生产低 2~3 fps；`img_cache_hits` A=1851.6/帧、B=0 ⇒ 开关确实生效。）
+
+**结论**：
+
+1. **图像缓存今天的价值 = 0.78 ms/帧**（= (2.333+0.788) − (2.178+0.160)，同一负载下的纯差分）。
+   换算成每次绑定：把 1852 次/帧的命中改成未命中，每次**多付 423 ns**（视图 + 布局过渡 + 采样器三项）。
+2. arm B 里 `image_view`/`image_transition`/`sampler_bind` 只涨到 **2133 次/帧**（= 2073 次采样图像绑定 + 60），
+   **没有涨到 4018** ⇒ `image_lookup` 作用域里那 **1945 次/帧是 texel 绑定**（走 texel 分支），不是图像分支 ⇒ 撤回 D。
+3. ⇒ `image_lookup` 的 2.18 ms/帧 = **采样图像路径自有 + texel 分支自有**，其中 texel 分支的子站点已单列
+   （texel_view_create 0.356 + texel_pending 0.357 + texel_view_lookup 0.178 + texel_alias 0.099 + texel_readback 0.080 = **1.07 ms/帧**），
+   余额（自有开销）最多 ~1.1 ms/帧，**两者都还没被拆过**。
+
+### 31.5 引擎 CPU 全账（`NVN CPU_TIMING`，60 帧窗口，exclusive + inclusive，本场景首次取到 inclusive）
+
+| 站点 | 次/帧 | exclusive ms/帧 | inclusive ms/帧 |
+| --- | --- | --- | --- |
+| **descriptor** | 1311 | **7.485** | 10.64 |
+| **sub_exec（命令解释器自有）** | 8.3 | **4.423** | 24.10 |
+| **snapshot 家族** | 6317 | 0.835 | **5.05** |
+| ├ sub_snap_slow | 2419 | **2.399** | 3.576 |
+| ├ sub_snap_stream | 2184 | 0.714 | 0.714 |
+| ├ sub_snap_fast | 6317 | 0.639 | 0.639 |
+| └ sub_snap_map | 2419 | 0.214 | 0.214 |
+| cleanup | 9.2 | 1.689 | 1.790 |
+| draw（自有） | 694 | 1.448 | 11.42 |
+| dispatch | 167.8 | 0.430 | 3.734 |
+| sub_poll_retire | 11054 | 0.661 | 2.453 |
+| sub_cmd_decode | 11054 | 0.565 | 0.565 |
+| sub_arena_check | 11054 | 0.555 | 0.555 |
+| buffer / present / image / pass / program / pipeline / hash / cpuwrite | — | 1.63 | — |
+| **合计（插桩口径）** | | **≈21 ms** | （引擎自报 submit_cpu 22.9~23.5 ms） |
+
+其它硬数字：`nvn_cmds per_frame = 10873`；`snap_hit=3845/帧 snap_miss=2364/帧 snap_mb=14.5 MB/帧`；
+`texel_pending copies=408/帧 9.5 MB/帧（storage 374 / uniform 34）`；`cleanup views=0.49~0.77 ms/帧`；
+`writebacks=0.72~0.84 ms/帧（9.3 MB）`；`block_ms legacy_wait`（来宾等自己的 fence）不计入引擎 CPU。
+
+**两条读数陷阱（本轮新增）**：
+
+- `sub_poll_retire` 的 **inclusive 2.453 ms/帧 里只有 0.661 ms/帧 是 fence 查询本身**，
+  其余 1.79 ms/帧 是它触发的 `retire_slot()`（= cleanup 1.689 ms/帧，已知且 L-032 不动）
+  ⇒ **别把 2.45 ms 当成「可省的轮询成本」**。
+- `snapshot` 家族的 5.05 ms/帧 里，**sub_snap_slow 自有 2.40 ms/帧（2419 次/帧、991 ns/次）** 才是大头；
+  14.5 MB/帧的拷贝按 13 GB/s 约占 1.1 ms/帧 ⇒ 其余 ~1.3 ms/帧 是**每次调用的固定开销**
+  （`snapshots` 是 `std::map` ⇒ find 88 ns + insert、pending_view、cpu_access）。
+
+### 31.6 新的靶子地图（兵工厂，插桩口径 ms/帧；敏感度按同会话 §27.3/§28.2）
+
+| 候选靶 | ms/帧 | 敏感度 | 每省 1 ms 换到的帧周期 | 判定 |
+| --- | --- | --- | --- | --- |
+| **解释器自有**（10873 条命令 × 240~400 ns） | 2.6~4.4 | ≈0.90（other 段） | 0.90 ms | **最大未定价池**，但至今无栈级归因（perf_event 不可用）⇒ 先切一刀 |
+| **snapshot 慢路径固定开销**（sub_snap_slow 自有） | 2.40 | 0.74~0.79 | 0.78 ms | 次大；可动手段：`std::map`→front cache、`cpu_access` 是否在等 |
+| **texel 视图创建 + 退休销毁** | 0.356 + 0.49~0.77 | 0.75 / **1.645** | 创建 0.75 ms、销毁 **1.645 ms** | 合计 ~0.9~1.1 ms/帧；跨槽共享仍可做，但**收益上限只有 ~+1.7 fps**（不再是 2~4 ms/帧的大池） |
+| **图像缓存可覆盖范围**（当前 0.78 ms/帧） | 0.78 | 0.75 | 0.75 ms | 已实现的存量价值；扩大覆盖面要先知道那 1945 次/帧 texel 绑定各自的分支代价 |
+| `poll_retire` 的 fence 查询 | 0.661 | ≈0.90 | 0.90 ms | 只查最老 pending fence 即可（队列按提交序完成） |
+| cleanup（GPU 等待 + 失效路径） | 1.689 | 1.645 | 1.65 ms | **L-032 ⇒ 不动** |
+| set_finalize（`vkUpdateDescriptorSets`） | 0.969 | 0.75 | 0.75 ms | 驱动调用，不可省 |
+| element_rest | 0.964 | 0.75 | 0.75 ms | 其中 ~0.60 是探针开销 ⇒ 真实仅 ~0.36 |
+
+### 31.7 本轮无版本出货 + 设备状态
+
+L-029（本轮没有测到高于噪声的收益 ⇒ 不占构建周期）+ L-032（不动失效/清理路径）。
+**本轮没有改任何代码、没有构建任何包**。
+
+设备侧：全程用**出货第 3 版**（设备侧 base.apk sha256 `012efeb68482d7d0ded018396fa7067d30814e49cc7e920c4cc3246ef787b8e2`）；
+本轮只写了一个临时启动标记 `gfx-no-imgcache`（arm B 用），**已删除**；其余诊断标记保持原状；
+游戏进程已停；**红果已还回前台**（`mCurrentFocus=com.hongguo.pcplayer`）。
+
+本地证据：`/tmp/ffrs-validate/v23_A_cache_on.log`（arm A，60 帧 DESC+CPU_TIMING 窗口）、
+`v23_B_cache_off.log`（arm B）、`run_v23.py` / `run_v23b.py` / `parse_v23.py`（可复跑）。
+
+### 31.8 下一轮（第 24 轮）入口
+
+1. **解释器自有 2.6~4.4 ms/帧**（最大池，至今无归因）：`perf_event` 本机不可用 ⇒ 改用**零插桩**的做法——
+   把 per-command 的三个探针站点（`sub_cmd_decode`/`sub_poll_retire`/`sub_arena_check`）**合并成一个**
+   （每条命令 1 次时钟对而不是 3 次），既能去掉 ~1.2 ms/帧 的探针污染，
+   又能把「解释器自有」和「命令实际工作」分开；op 级（`nvn_cmd_by_op`）已有分布，先按 op 排序出最贵的几条。
+2. **snapshot 慢路径固定开销 ~1.3 ms/帧**（次大）：`snapshots` 的 `std::map` find+insert ≈ 88 ns×2364 ≈ 0.21 ms/帧，
+   `cpu_access(address,bytes,1)` 是否在等 fence 要查；先量再改。
+3. **texel 视图（创建 0.356 + 销毁 0.49~0.77 = ~0.9~1.1 ms/帧）**：跨槽共享视图缓存
+   （生命周期不得弱于现状，L-032）—— 但**收益上限只有 ~+1.7 fps**，排在前两项之后。
+4. `poll_retire` 的 fence 查询 0.661 ms/帧：只查最老 pending fence（队列按提交序完成 ⇒ 老的没完成则新的也没完成）。
+
+不要再开的方向（依据见 §31.2 的撤回）：texel 视图创建值 2~4 ms/帧、per-slot 视图缓存只命中 67 次/帧、
+descriptor 路径没被内部拆过、解释器逐命令开销只剩插桩量级、NVN API 层（§30.3 已判不在关键路径上）。
+
+RG477M 双机回归仍未做（AGENTS-HONOR 禁止由此处操作该机），Goal 未闭合；需由能操作该机的会话或用户执行。
