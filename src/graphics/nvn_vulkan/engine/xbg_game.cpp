@@ -630,7 +630,7 @@ void timing_report(const char *reason){
         (unsigned long long)(stats.draws-timing_before.draws),(unsigned long long)(stats.dispatches-timing_before.dispatches),
         (unsigned long long)(stats.submissions-timing_before.submissions),(unsigned long long)(stats.shader_loads-timing_before.shader_loads));
     report_pipeline_cache();
-    static const char *names[]={"other","draw","dispatch","descriptor","pass","buffer","pipeline","submit","fence","present","cleanup","hash","image","log","program","cpuwrite","snapshot","sub_maint","sub_exec","sub_submit","sub_aff","sub_pres_prep","sub_pres_submit","sub_pace","sub_snap_fast","sub_snap_slow","sub_cmd_decode","sub_poll_retire","sub_arena_check","sub_draw_idx_exec","sub_draw_gpu_idx","sub_draw_prologue","sub_snap_map","sub_snap_stream","sub_find_template"};
+    static const char *names[]={"other","draw","dispatch","descriptor","pass","buffer","pipeline","submit","fence","present","cleanup","hash","image","log","program","cpuwrite","snapshot","sub_maint","sub_exec","sub_submit","sub_aff","sub_pres_prep","sub_pres_submit","sub_pace","sub_snap_fast","sub_snap_slow","sub_cmd_decode","sub_poll_retire","sub_arena_check","sub_draw_idx_exec","sub_draw_gpu_idx","sub_draw_prologue","sub_snap_map","sub_snap_stream","sub_find_template","sub_snap_pv","sub_snap_access"};
     for(unsigned i=0;i<XbgCpuTiming::Count;i++){const auto &c=timing.counters[i];xbg_logf("NVN CPU_TIMING part=%s calls=%llu exclusive_ns=%llu inclusive_ns=%llu max_ns=%llu",names[i],(unsigned long long)c.calls,(unsigned long long)c.exclusive_ns,(unsigned long long)c.inclusive_ns,(unsigned long long)c.max_ns);}
     {uint64_t fr=stats.presents-timing_before.presents;xbg_logf("NVN CPU_TIMING nvn_cmds total=%llu per_frame=%llu sub_max_cmds=%llu sub_max_cmds_ns=%llu sub_max_ns=%llu sub_max_ns_cmds=%llu",
         (unsigned long long)nvn_cmd_total,(unsigned long long)(fr?nvn_cmd_total/fr:0),
@@ -2162,7 +2162,7 @@ void perf_frame(){
                  (unsigned long long)other, (unsigned long long)perf.ordered_buffer_clears);
     }
     if(!timing_active && perf_normalizable){
-        static const char *names[]={"other","draw","dispatch","descriptor","pass","buffer","pipeline","submit","fence","present","cleanup","hash","image","log","program","cpuwrite","snapshot","sub_maint","sub_exec","sub_submit","sub_aff","sub_pres_prep","sub_pres_submit","sub_pace","sub_snap_fast","sub_snap_slow","sub_cmd_decode","sub_poll_retire","sub_arena_check","sub_draw_idx_exec","sub_draw_gpu_idx","sub_draw_prologue","sub_snap_map","sub_snap_stream","sub_find_template"};
+        static const char *names[]={"other","draw","dispatch","descriptor","pass","buffer","pipeline","submit","fence","present","cleanup","hash","image","log","program","cpuwrite","snapshot","sub_maint","sub_exec","sub_submit","sub_aff","sub_pres_prep","sub_pres_submit","sub_pace","sub_snap_fast","sub_snap_slow","sub_cmd_decode","sub_poll_retire","sub_arena_check","sub_draw_idx_exec","sub_draw_gpu_idx","sub_draw_prologue","sub_snap_map","sub_snap_stream","sub_find_template","sub_snap_pv","sub_snap_access"};
         char line[1024];int at=snprintf(line,sizeof(line),"NVN PERF parts_ms_per_frame timed=%llu",(unsigned long long)perf_timed_frames);
         for(unsigned i=0;i<XbgCpuTiming::Count && at<int(sizeof(line))-48;i++){const auto &c=timing.counters[i];if(c.calls<perf_timing_before[i].calls)perf_timing_before[i]=XbgCpuTiming::Counter{};uint64_t ns=c.exclusive_ns-perf_timing_before[i].exclusive_ns,calls=c.calls-perf_timing_before[i].calls;at+=snprintf(line+at,sizeof(line)-at," %s=%.2f/%.1f",names[i],double(ns)/1e6/tf,double(calls)/tf);perf_timing_before[i]=c;}
         xbg_logf("%s",line);
@@ -2698,15 +2698,22 @@ Buffer snapshot_slow(uint64_t address,size_t bytes,VkDeviceSize align){
         xbg_logf("NVN SNAPSHOT_OVERSIZE frame=%llu op=%u site=%u address=%#llx bytes=%zu align=%llu",
             (unsigned long long)stats.presents.load(),cur_op,snap_site,
             (unsigned long long)address,bytes,(unsigned long long)align);
-    auto key=std::make_pair(address,uint64_t(bytes));auto it=snapshots.end();{CPU_SCOPE(SubSnapMap);it=snapshots.find(key);}
-    if(it!=snapshots.end()){++perf.snapshot_hits;++snap_map_hits;return it->second;}
-    {Buffer view;if(pending_view(address,bytes,align,view)){snapshots.emplace(key,view);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,bytes);return view;}}
+    auto key=std::make_pair(address,uint64_t(bytes));auto it=snapshots.end();
+    // One tree walk instead of two: lower_bound answers "is the key there" and is also the insertion
+    // position, so the inserts below no longer walk the tree a second time.
+    {CPU_SCOPE(SubSnapMap);it=snapshots.lower_bound(key);}
+    if(it!=snapshots.end()&&it->first==key){++perf.snapshot_hits;++snap_map_hits;return it->second;}
+    // A submission replaces the map (snapshot_maps_reset), which invalidates the iterator above;
+    // snapshot_epoch moves with it, so re-anchor the hint when that happened.
+    uint64_t map_epoch=snapshot_epoch;
+    auto insert_snap=[&](Buffer v){if(snapshot_epoch!=map_epoch){it=snapshots.lower_bound(key);map_epoch=snapshot_epoch;}snapshots.emplace_hint(it,key,v);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,bytes);return v;};
+    {Buffer view;bool have=false;{CPU_SCOPE(SubSnapPv);have=pending_view(address,bytes,align,view);}if(have){insert_snap(view);return view;}}
     ++perf.snapshot_misses;perf.snapshot_bytes+=bytes;snap_site_req[snap_site<6?snap_site:0]+=bytes;if(snap_site==3){static unsigned logged=0;if(logged<40 && bytes>=65536){++logged;xbg_logf("NVN PERF storage_snapshot addr=%#llx bytes=%zu frame=%llu",(unsigned long long)address,bytes,(unsigned long long)stats.presents.load());}++storage_snap_count;if(timing_now())for(uint64_t pg=address>>12;pg<=(address+bytes-1)>>12;pg++)storage_pages.insert(pg);}   // page union: timed frames only (~4.8k inserts per D2R frame)
-    cpu_access(address,bytes,1);   // a pending GPU result that only partly covers the range (or is misaligned for a view) lands first
-    if(snap_site==3 && bytes>=wtrack::min_bytes && wtrack::enabled && !ab_off("wtrack")){Buffer t;if(wtrack::snapshot(address,bytes,t)){snapshots.emplace(key,t);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,bytes);return t;}}
-    if((snap_site==1 || snap_site==2) && vcache::enabled && !ab_off("vcache")){Buffer v;if(vcache::lookup(address,bytes,v)){snapshots.emplace(key,v);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,bytes);return v;}}
+    {CPU_SCOPE(SubSnapAccess);cpu_access(address,bytes,1);}   // a pending GPU result that only partly covers the range (or is misaligned for a view) lands first
+    if(snap_site==3 && bytes>=wtrack::min_bytes && wtrack::enabled && !ab_off("wtrack")){Buffer t;if(wtrack::snapshot(address,bytes,t)){insert_snap(t);return t;}}
+    if((snap_site==1 || snap_site==2) && vcache::enabled && !ab_off("vcache")){Buffer v;if(vcache::lookup(address,bytes,v)){insert_snap(v);return v;}}
     snap_site_bytes[snap_site<6?snap_site:0]+=bytes;
-    Buffer b;{CPU_SCOPE(SubSnapStream);b=stream_buffer(bytes,reinterpret_cast<const void*>(address),bytes,false);}snapshots.emplace(key,b);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,bytes);return b;
+    Buffer b;{CPU_SCOPE(SubSnapStream);b=stream_buffer(bytes,reinterpret_cast<const void*>(address),bytes,false);}insert_snap(b);return b;
 }
 struct Commands {
     VkCommandBuffer command{};bool draw=false;
@@ -5475,10 +5482,15 @@ Buffer uniform_snapshot_cached(uint64_t address,size_t copy){CPU_SCOPE(Snapshot)
 Buffer uniform_snapshot_slow(uint64_t address,size_t copy){
     gfx_probe_seg_tick(GFX_SEG_SNAPU);
     size_t n=uniform_range(copy);auto key=std::make_pair(address,uint64_t(copy));
-    auto it=uniform_snapshots.end();{CPU_SCOPE(SubSnapMap);it=uniform_snapshots.find(key);}if(it!=uniform_snapshots.end()){++perf.snapshot_hits;++snap_map_hits;return it->second;}
-    {Buffer view;if(pending_view(address,n,properties.limits.minUniformBufferOffsetAlignment,view)){uniform_snapshots.emplace(key,view);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,n);return view;}}
-    ++perf.snapshot_misses;perf.snapshot_bytes+=copy;snap_site_bytes[5]+=copy;snap_site_req[5]+=copy;cpu_access(address,copy,2);
-    Buffer b;{CPU_SCOPE(SubSnapStream);b=uniform_buffer(n,reinterpret_cast<const void*>(address),copy);}uniform_snapshots.emplace(key,b);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,copy);return b;
+    auto it=uniform_snapshots.end();
+    // Same one-walk trick as snapshot_slow: lower_bound is both the lookup and the insert position.
+    {CPU_SCOPE(SubSnapMap);it=uniform_snapshots.lower_bound(key);}
+    if(it!=uniform_snapshots.end()&&it->first==key){++perf.snapshot_hits;++snap_map_hits;return it->second;}
+    uint64_t map_epoch=snapshot_epoch;
+    auto insert_snap=[&](Buffer v,size_t len){if(snapshot_epoch!=map_epoch){it=uniform_snapshots.lower_bound(key);map_epoch=snapshot_epoch;}uniform_snapshots.emplace_hint(it,key,v);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,len);return v;};
+    {Buffer view;bool have=false;{CPU_SCOPE(SubSnapPv);have=pending_view(address,n,properties.limits.minUniformBufferOffsetAlignment,view);}if(have){insert_snap(view,n);return view;}}
+    ++perf.snapshot_misses;perf.snapshot_bytes+=copy;snap_site_bytes[5]+=copy;snap_site_req[5]+=copy;{CPU_SCOPE(SubSnapAccess);cpu_access(address,copy,2);}
+    Buffer b;{CPU_SCOPE(SubSnapStream);b=uniform_buffer(n,reinterpret_cast<const void*>(address),copy);}insert_snap(b,copy);return b;
 }
 // Descriptor memo (iOS "same inputs -> reuse the parameter block"): within one guest submit, a draw whose shaders and
 // bound inputs (buffer ranges, texture/sampler handles, pools, driver generations, viewport) equal an earlier draw's
@@ -8503,7 +8515,9 @@ template<class T>T variable_payload(const uint8_t *p,size_t n){T out{};memcpy(&o
 // Graphics thread: retire submitted slots whose fence already signalled (non-blocking) so a game
 // thread blocked on an older fence is released while the next frame is still being translated.
 void poll_retire(){
-    bool any=false;for(auto &s:active_slots())if(s.pending && !s.recording && vkGetFenceStatus(cfg.device,s.fence)==VK_SUCCESS){retire_slot(s);any=true;}
+    // Slots retire in submission order and the queue signals their fences in that same order, so the
+    // oldest pending fence is the only one that can be ready: query that one and stop when it is not.
+    bool any=false;for(;;){Slot *op=oldest_pending();if(!op||op->recording)break;if(vkGetFenceStatus(cfg.device,op->fence)!=VK_SUCCESS)break;retire_slot(*op);any=true;}
     if(any){{std::lock_guard<std::mutex> l(gfx_job_mutex);}gfx_idle_cv.notify_all();}
 }
 void execute(const uint8_t *pc,unsigned depth,uint64_t &budget){
