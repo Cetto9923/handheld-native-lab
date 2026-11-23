@@ -2239,7 +2239,7 @@ void perf_frame(){
     xbg_logf("NVN PERF cleanup_ms_per_frame queries=%.2f writebacks=%.2f(%.1fMB) views=%.2f retire=%.2f arena_pools=%.2f",cleanup_ns[0]/1e6/f,cleanup_ns[1]/1e6/f,writeback_bytes/1048576.0/f,cleanup_ns[2]/1e6/f,cleanup_ns[3]/1e6/f,cleanup_ns[4]/1e6/f);for(auto &c:cleanup_ns)c=0;writeback_bytes=0;
     {size_t entries=0,largest=0;uint64_t live=0,holes=0;
      for(unsigned i=0;i<slot_count;++i){entries+=texel_resident[i].size();largest=std::max(largest,texel_resident[i].size());live+=texel_live_bytes[i];holes+=texel_hole_bytes[i];}
-     xbg_logf("NVN PERF texel_resident slots=%u gc_mask=%#x entries=%zu largest=%zu live_mb=%.2f holes_mb=%.2f",slot_count,texel_gc_slots,entries,largest,live/1048576.0,holes/1048576.0);texel_gc_slots=0;}
+     xbg_logf("NVN PERF texel_resident slots=%u gc_mask=%#x entries=%zu largest=%zu live_mb=%.2f holes_mb=%.2f",slot_count,texel_gc_slots,entries,largest,live/1048576.0,holes/1048576.0);texel_gc_slots=0;}xbg_logf("NVN PERF texel_snap_memo enabled=%d hits=%.1f vwhy=%.1f",int(texel_snap_memo_enabled),texel_snap_hits/f,vwhy_texsnap/f);texel_snap_hits=0;vwhy_texsnap=0;
     xbg_logf("NVN PERF rbfullcopy enabled=%u hits=%llu bytes=%llu",unsigned(readback_fullcopy_enabled && !ab_off("rbfullcopy")),(unsigned long long)readback_fullcopy_hits,(unsigned long long)readback_fullcopy_bytes);readback_fullcopy_hits=readback_fullcopy_bytes=0;
     xbg_logf("NVN PERF xview views=%.2f races=%.2f guarded=%.2f guarded_kb=%.1f",xviews/f,xview_races/f,xview_guarded/f,xview_guarded_bytes/1024.0/f);xviews=xview_races=xview_guarded=xview_guarded_bytes=0;
     if(uploads_prologue || uploads_inpass){xbg_logf("NVN PERF uploads window prologue=%llu inpass=%llu broke_pass=%llu",(unsigned long long)uploads_prologue,(unsigned long long)uploads_inpass,(unsigned long long)uploads_broke_pass);uploads_prologue=uploads_inpass=uploads_broke_pass=0;}
@@ -5564,7 +5564,7 @@ void upgrade_mutable(Image &im){
     xbg_logf("NVN mutable upgrade serial=%llu fmt=%d %ux%ux%u levels=%u layers=%u copied=%d total=%llu",(unsigned long long)im.source.serial,int(im.fmt),im.width,im.height,im.depth,im.levels,im.layers,int(copied),(unsigned long long)mutable_upgrades);
 }
 struct DescMemo{const LayoutEntry *entry;VkDescriptorSet set;VkPipelineLayout pipeline_layout;std::vector<uint32_t> dynamic_offsets;std::vector<MemoImage> images;struct Dyn{uint64_t order;VkBuffer buffer;uint32_t offset;bool uniform;uint8_t src=0,ns=0,bank=0;};std::vector<Dyn> dyn;bool persistent=false;std::vector<std::pair<uint64_t,const void*>> tex_ids;struct Stor{uint64_t base,bytes;VkBuffer buffer;VkDeviceSize offset;};std::vector<Stor> stor;
-    struct Texel{const RegisteredTexture *record;uint64_t revision,base,bytes,gen;uint32_t format;};std::vector<Texel> texel;uint64_t checked_gen=0;size_t reserve=0;WaterBindings water;uint64_t ro_checked_submission=0;bool all_images_ro=false;};   // checked_gen: memo_check_gen at its last passed image checks   // texel: resident uniform texel buffers (texel_acquire)
+    struct Texel{const RegisteredTexture *record;uint64_t revision,base,bytes,gen;uint32_t format;};std::vector<Texel> texel;struct TexelSnap{uint64_t base,bytes;VkBuffer buffer;VkDeviceSize offset;uint32_t format;uint64_t revision;const RegisteredTexture *record;};std::vector<TexelSnap> texel_snap;uint64_t checked_gen=0;size_t reserve=0;WaterBindings water;uint64_t ro_checked_submission=0;bool all_images_ro=false;};   // checked_gen: memo_check_gen at its last passed image checks   // texel: resident uniform texel buffers (texel_acquire)
 struct DynUbo{uint64_t order,address;size_t copy;};
 // Cross-frame memo (Claude C147): the memo lives per frame slot and survives submits. An entry is persistent when its set
 // holds no per-frame snapshot except dynamic uniform buffers (re-snapshotted on every hit, only the offset moves) and the
@@ -5601,6 +5601,15 @@ constexpr uint64_t kDescMemoComputeMarker=0x434f4d5055544501ull;
 uint64_t vwhy_blk=0,vwhy_buf=0,vwhy_ord=0,vwhy_img=0,vwhy_tex=0,vwhy_stor=0;
 std::vector<MemoImage> desc_memo_images;std::vector<DescMemo::Dyn> desc_memo_dyn;bool desc_memo_recording=false;
 std::vector<DescMemo::Texel> desc_memo_texel;bool desc_memo_texel_fail=false,desc_memo_per_frame_texel=false;
+// Texel snapshot memo (2026-11-24): a draw that binds a uniform texel buffer used to be kept out of the
+// descriptor memo, because the memo could not hold the per-frame buffer view the set pointed at: the view
+// belonged to the recording slot and died with it. V22 moved the texel view into a global cache whose entries
+// die with their buffer, so a memoized set may hold the view. The entry records the buffer and the offset of
+// that view, and a hit re-snapshots the guest range and compares, the same way the read-only storage ranges
+// are checked. No resident copy is involved: the guest memory stays the source of truth, so no pixel changes.
+// The resident-copy texel memo (texel_memo_enabled) and the per-frame one are untouched.
+bool texel_snap_memo_enabled=true;uint64_t texel_snap_hits=0,vwhy_texsnap=0;
+std::vector<DescMemo::TexelSnap> desc_memo_texel_snap;
 void descriptors_build(Descriptors &out,Commands &commands,bool compute);
 // Dynamic uniform buffers (Claude C151): Maleoon allows 8 per pipeline layout. Mode 1 = every uniform buffer dynamic (fits);
 // mode 2 = only the per-draw ones (guest uniform buffers, driver blocks) dynamic, the support block (depends on the viewport
@@ -5773,7 +5782,8 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
                     // Slot retirement destroys texel views; memo tracks neither their snapshots nor lifetime, so exclude both kinds.
                     // A dispatch builds its texel view per dispatch (the resident-copy path is draw-only),
                     // so a memoized set would hold a view the memo does not track.
-                    if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER || (b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER && (!texel_memo_enabled || compute))){ok=false;++desc_memo_why[0];if(compute)++desc_memo_compute_why[0];break;}
+                    const bool texel_snap_memo = texel_snap_memo_enabled && !texel_memo_enabled && !compute && b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
+                    if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER || (b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER && !texel_snap_memo)){ok=false;++desc_memo_why[0];if(compute)++desc_memo_compute_why[0];break;}
                     if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_IMAGE){ok=false;++desc_memo_why[1];if(compute)++desc_memo_compute_why[1];break;}
                     if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_BUFFER && (b.binding<64 ? ((shader.storage_writes_mask&(1ull<<b.binding))!=0) : (shader.storage_writes.count(b.binding)!=0))){ok=false;++desc_memo_why[2];if(compute)++desc_memo_compute_why[2];break;}
                     for(unsigned element=0;element<b.count;element++){unsigned slot=b.slot+element;
@@ -5861,6 +5871,16 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
                 if(same)for(auto &tr:m.texel){const tex_t &tt=tr.record->texture;
                     if(tr.record->revision!=tr.revision || uint64_t(uintptr_t(tt.mem))!=tr.base || uint64_t(tt.L.size)!=tr.bytes){same=false;++vwhy_tex;break;}
                     TexelResident *r=texel_acquire(tr.base,tr.bytes,VkFormat(tr.format));if(!r || r->gen!=tr.gen){same=false;++vwhy_tex;break;}++texel_hits;}
+                // Uniform texel buffers bound through a snapshot: the set holds a view of the snapshot buffer, so
+                // the hit is valid only when the range still lands in the same buffer at the same offset. The
+                // snapshot refreshes the content, so the descriptor stays correct; a different buffer or offset
+                // means the view the set holds is gone or wrong, and the set has to be rebuilt.
+                if(same)for(auto &ts:m.texel_snap){
+                    const tex_t &tt=ts.record->texture;
+                    if(ts.record->revision!=ts.revision || uint64_t(uintptr_t(tt.mem))!=ts.base || uint64_t(tt.L.size)!=ts.bytes){same=false;++vwhy_texsnap;break;}
+                    snap_site=4;Buffer tb=snapshot(ts.base,ts.bytes,properties.limits.minTexelBufferOffsetAlignment);snap_site=0;
+                    if(tb.buffer!=ts.buffer || tb.offset!=ts.offset){same=false;++vwhy_texsnap;break;}
+                    ++texel_snap_hits;}
                 // Read-only storage ranges: refresh the snapshot (write-tracked resident copies only copy dirty pages); the set
                 // stays valid only if the range lands in the same buffer at the same offset as when the set was written.
                 if(same && m.persistent)for(auto &st:m.stor){snap_site=3;Buffer b=snapshot(st.base,st.bytes,properties.limits.minStorageBufferOffsetAlignment);snap_site=0;
@@ -5912,14 +5932,14 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
             if(!m.persistent && desc_memo_local[slot_index])--desc_memo_local[slot_index];desc_memo.erase(hit);++memo_mod_gen;}
     }
     desc_ns[0]+=perf_clock()-tm0;
-    desc_memo_images.clear();desc_memo_dyn.clear();desc_memo_texel.clear();desc_memo_texel_fail=false;desc_memo_per_frame_texel=false;desc_memo_recording=ok;
+    desc_memo_images.clear();desc_memo_dyn.clear();desc_memo_texel.clear();desc_memo_texel_snap.clear();desc_memo_texel_fail=false;desc_memo_per_frame_texel=false;desc_memo_recording=ok;
     {uint64_t tb=perf_clock();descriptors_build(out,commands,compute);desc_ns[4]+=perf_clock()-tb;}
     desc_memo_recording=false;
     if(ok && desc_memo_texel_fail){ok=false;++desc_memo_why[0];}
     if(ok && !(out.written.empty() && out.buffer_views.empty() && out.set && out.dynamic_offsets.size()==desc_memo_dyn.size()))++desc_memo_why[4];
     if(ok && out.written.empty() && out.buffer_views.empty() && out.set && out.dynamic_offsets.size()==desc_memo_dyn.size()){++desc_memo_misses;if(compute)++desc_memo_compute_misses;
         std::sort(desc_memo_dyn.begin(),desc_memo_dyn.end(),[](const DescMemo::Dyn &a,const DescMemo::Dyn &b){return a.order<b.order;});
-        DescMemo dm{out.entry,out.set,out.pipeline_layout,out.dynamic_offsets,desc_memo_images,desc_memo_dyn};dm.texel=desc_memo_texel;if(__builtin_expect(water_ready(), 0)) dm.water=out.water;
+        DescMemo dm{out.entry,out.set,out.pipeline_layout,out.dynamic_offsets,desc_memo_images,desc_memo_dyn};dm.texel=desc_memo_texel;dm.texel_snap=desc_memo_texel_snap;if(__builtin_expect(water_ready(), 0)) dm.water=out.water;
         {size_t elements=0;for(unsigned st=0;st<6;st++)if(state.shader[st] && (st==5)==compute)for(auto &b:state.shader[st]->bindings)elements+=b.count;dm.reserve=elements*2+40;}
         dm.persistent=xmemo_enabled && memo_dyn_ok && out.written.empty() && !desc_memo_per_frame_texel;
         for(auto &st:out.storage)dm.stor.push_back({st.first.first,st.first.second,st.second->buffer,st.second->offset});
@@ -6302,6 +6322,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                             }
                         }
                         buf_offset=buf->offset;
+                        if(desc_memo_recording){memo_reference_buffer(buf->buffer,slot_index);desc_memo_texel_snap.push_back({base,bytes,buf->buffer,buf_offset,uint32_t(tf),record->revision,record});}
                     }
                     // #region agent log
                     // Is the buffer the GPU reads the same bytes the guest holds right now? (read-only texel buffers)
@@ -9597,7 +9618,7 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
           {"honorimgpersist",&honor_img_cache_persist_experiment},
           {"honordescrefill",&honor_descriptor_refill_experiment},
           {"texelframe",&honor_frame_texel_memo_enabled},
-          {"texdirty",&tex_dirty},{"texmemo",&texel_memo_enabled},{"imgcache",&img_cache_enabled},{"texviewcache",&texel_view_cache_enabled},
+          {"texdirty",&tex_dirty},{"texmemo",&texel_memo_enabled},{"imgcache",&img_cache_enabled},{"texviewcache",&texel_view_cache_enabled},{"texelsnap",&texel_snap_memo_enabled},
           {"descmemo",&desc_memo_enabled},{"desccompute",&desc_memo_compute_enabled},{"dynpartial",&dyn_partial_enabled},{"xmemo",&xmemo_enabled},
           {"bindcache",&bind_cache_enabled},{"ownedinput",&owned_input_copy_enabled},{"rbfullcopy",&readback_fullcopy_enabled},{"bboxready",&indexed_bbox_ready_enabled},{"bboxprobe",&indexed_bbox_probe_enabled},{"wbfilter",&wb_interval_filter_enabled},{"wbfverify",&wb_interval_verify_enabled},
           {"gpuindexed",&gpu_indexed_enabled},{"uppro",&upload_prologue},{"depthaspect",&depth_aspect_enabled},
