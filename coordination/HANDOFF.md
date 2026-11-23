@@ -7360,3 +7360,23 @@ CPU 侧每帧两段长间隔 8.5 / 11.1 ms，正好落在 GPU 的空档里 ⇒ �
 - **未发布**：`1.0.79-test` 内部验证件不对外；源码未 push（AGENTS-HONOR 第 5 条「不要 push」，
   且 v1.0.71 的既有做法同样只发布 Release、不推源码）。
 - 本地发布目录 `.local/releases/1.0.79/README.md` 已补记本次 GitHub 发布信息。
+
+## 源码推送 GitHub：v1.0.79 交付分支（2026-11-23）
+
+- 用户授权 push（原 AGENTS-HONOR 第 5 条「不要 push」本轮被显式覆盖）。
+- **推的是交付分支，不是 main**：本地历史与 `origin/main` **无共同祖先**（公开仓是 source-only 重写快照，
+  PUBLICATION.json 记 "original history excluded"），推 main 只能强推 ⇒ 不做（强推禁令）。
+  改为 `git push origin task/T-mavis-perf-20261122:refs/heads/task/T-mavis-perf-20261122`（新建分支，996 个提交）。
+- **v1.0.79 tag 已从 `ecb9b57`（main 的旧 docs 提交）改指 `fb9598f`（真实构建提交）**，
+  与 v1.0.71（tag → `b7a08b3e` 构建提交）的既有约定一致；release 本体与三个资产未受影响。
+  改指后 `gh api commits/fb9598f` 可读到该提交，发布说明里的「构建源码」现在可追溯。
+- **推送前全树审计**：`.local/` 未被跟踪（签名密钥与全部 APK 留在本地）；无私钥 PEM；
+  无 `.pak/.bin/.nso/.ucas/.nca` 等游戏本体；被跟踪最大文件 1.1 MB，整树 pack 18.19 MiB。
+- **一处既有公开项（本轮未新增暴露）**：`evidence/assets/romfs_inventory.json` 与
+  `docs/analysis/asset_inventory.md` 里含 `titlekey_derived`，二者在 `origin/main` 上的 blob
+  与本地完全相同（`536836e4…`），**早已公开**；但 PUBLICATION.json 声称
+  "exclude the save-data decryption key from every published artifact"，二者口径不一致，
+  需后续单独处理（不在本轮范围）。
+- **远端 main 仍是 v1.0.30-era 的公开 README**（带 Release 徽章、更新历史、下载示例）；
+  本地交付分支的 README 是更早的内部版（2026-10-30 研究基线），**因此不把交付分支设为默认分支**。
+  README 的「更新历史」仍停在 v1.0.30-preview、下载示例仍是 1.0.30 的文件名，与 v1.0.71 当初一致未同步。

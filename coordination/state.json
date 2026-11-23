@@ -13007,8 +13007,13 @@
         "verification": "GitHub 侧 digest 与本地已验证件一致；已从 releases/download 回拉并逐字节比对（BYTE_IDENTICAL_TO_VERIFIED_BUILD）；三个资产 HTTP 200；/releases/latest 重定向到 v1.0.79；APK 内无游戏数据包/密钥（仅 libffrs_game_window.so + classes.dex + 许可证文本）",
         "not_published": [
           "1.0.79-test（内部验证件）",
-          "源码未 push（AGENTS-HONOR 第 5 条；v1.0.71 同样只发 Release）"
-        ]
+          "源码未 push（AGENTS-HONOR 第 5 条；v1.0.71 同样只发 Release）",
+          "1.0.79-test（内部验证件）"
+        ],
+        "source_branch_pushed": "task/T-mavis-perf-20261122 (origin, tip 11a02fc)",
+        "tag_sha": "fb9598f64ceb74144d8af18dc5fa4fffa0b18167",
+        "tag_convention": "v1.0.79 tag 指到真实构建提交（与 v1.0.71 → b7a08b3e 同约定）；先前建 release 时 tag 落在 main 的 ecb9b57，已修正",
+        "main_not_touched": "本地历史与 origin/main 无共同祖先（公开仓是 source-only 重写快照），推 main 需强推 ⇒ 不做；改推交付分支"
       }
     },
     {
