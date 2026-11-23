@@ -12856,7 +12856,7 @@
   ],
   "dependencies": [],
   "pass_gates": [],
-  "status": "candidate_installed_pending_battle_measurement",
+  "status": "shipped_1_0_79_pending_battle_measurement",
   "write_scope": [
    "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
    "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md",
@@ -12866,7 +12866,7 @@
    "coordination/STATUS.md"
   ],
   "acceptance": "机制证据（cleanup views 桶减半）+ 显示无回归（截图正常、0 Vulkan 错误）+ 战斗场景 fps 实测后才允许出货",
-  "checkpoint": "ON views 0.20/0.01/0.01 vs OFF 0.43/0.40（序章，texel_binds 858/帧）=> 机制成立，约省 0.3 ms/帧，战斗场景外推 0.6~0.8 ms/帧；显示正常、0 错误；战斗 fps 未测 => 未出货，归档件仍是 V21；设备跑 V22 候选",
+  "checkpoint": "ON views 0.20/0.01/0.01 vs OFF 0.43/0.40（序章，texel_binds 858/帧）=> 机制成立，约省 0.3 ms/帧，战斗场景外推 0.6~0.8 ms/帧；显示正常、0 错误；1.0.79 已出货（sha256 dbf82bd8…）：兵工厂熔岩场景配对 A→B→A→B，submit_cpu 22.28/22.01/21.50/22.38 vs 24.80/22.39/23.74 两组完全分离 => −1.6 ms/帧、同热态 fps +2.5；显示零回归；战斗场景 fps 仍待人工走位",
   "next": "",
   "owner": "/root",
   "branch": "task/T-mavis-perf-20261122",
