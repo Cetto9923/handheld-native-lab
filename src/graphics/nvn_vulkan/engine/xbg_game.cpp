@@ -5566,6 +5566,21 @@ void upgrade_mutable(Image &im){
     ++memo_epoch;img_cache.clear();++mutable_upgrades;last_pass_reset();
     xbg_logf("NVN mutable upgrade serial=%llu fmt=%d %ux%ux%u levels=%u layers=%u copied=%d total=%llu",(unsigned long long)im.source.serial,int(im.fmt),im.width,im.height,im.depth,im.levels,im.layers,int(copied),(unsigned long long)mutable_upgrades);
 }
+// The memo key of a texel binding needs the format that binding resolves to. Resolving it walks the shader
+// storage binding info and asks the driver about format features, which is far too expensive for the key
+// path: it runs once per stage, binding and element of every draw (about 2100 times a frame on the foundry
+// scene, 0.9 us each, 1.8 ms a frame). The result only changes when the registration format changes, so it
+// is cached per registration and binding, and the cached entry carries the format fields it was derived
+// from, so a format change invalidates it.
+struct TexelFormatCacheEntry{const RegisteredTexture *rec=nullptr;const xbg_shader_binding *bind=nullptr;const void *owner=nullptr;uint32_t tformat=0,vformat=0;bool has_view=false,set_view=false;VkFormat fmt=VK_FORMAT_UNDEFINED;};
+TexelFormatCacheEntry texel_format_cache[256];
+VkFormat texel_binding_format_cached(const RegisteredTexture &rec,const xbg_shader_binding &binding,const void *owner,const std::map<uint32_t,XbgStorageBindingInfo> *info){
+    const uint32_t tformat=rec.texture.d.format;const bool has_view=rec.has_view;const bool set_view=has_view&&rec.view.set_format;const uint32_t vformat=set_view?uint32_t(rec.view.format):0u;
+    const size_t idx=(size_t)((uintptr_t(&rec)^(uintptr_t(&binding))>>4)&255u;
+    TexelFormatCacheEntry &e=texel_format_cache[idx];
+    if(e.rec==&rec&&e.bind==&binding&&e.owner==owner&&e.tformat==tformat&&e.vformat==vformat&&e.has_view==has_view&&e.set_view==set_view)return e.fmt;
+    e.rec=&rec;e.bind=&binding;e.owner=owner;e.tformat=tformat;e.vformat=vformat;e.has_view=has_view;e.set_view=set_view;e.fmt=texel_binding_format(rec,binding,info);
+    return e.fmt;}
 struct DescMemo{const LayoutEntry *entry;VkDescriptorSet set;VkPipelineLayout pipeline_layout;std::vector<uint32_t> dynamic_offsets;std::vector<MemoImage> images;struct Dyn{uint64_t order;VkBuffer buffer;uint32_t offset;bool uniform;uint8_t src=0,ns=0,bank=0;};std::vector<Dyn> dyn;bool persistent=false;std::vector<std::pair<uint64_t,const void*>> tex_ids;struct Stor{uint64_t base,bytes;VkBuffer buffer;VkDeviceSize offset;};std::vector<Stor> stor;
     struct Texel{const RegisteredTexture *record;uint64_t revision,base,bytes,gen;uint32_t format;};std::vector<Texel> texel;struct TexelSnap{uint64_t base,bytes;VkBuffer buffer;VkDeviceSize offset;uint32_t format;uint64_t revision;const RegisteredTexture *record;};std::vector<TexelSnap> texel_snap;uint64_t checked_gen=0;size_t reserve=0;WaterBindings water;uint64_t ro_checked_submission=0;bool all_images_ro=false;};   // checked_gen: memo_check_gen at its last passed image checks   // texel: resident uniform texel buffers (texel_acquire)
 struct DynUbo{uint64_t order,address;size_t copy;};
