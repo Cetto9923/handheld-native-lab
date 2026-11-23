@@ -12908,6 +12908,43 @@
       "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/mavis-perf-20261122",
       "report": "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md",
       "task": "MAVIS-PERF-V14-TEXELSNAP-20261123"
+    },
+    {
+      "id": "MAVIS-PERF-V15-TEXELKEY-20261123",
+      "role": "texel buffer view 跨帧/跨槽共享缓存（改动轮，候选已装机未出货）",
+      "objective": "把 UNIFORM_TEXEL_BUFFER 放进 descriptor memo（第 31~34 轮三次尝试：句柄键→解析区间键→格式解析缓存）",
+      "inputs": [
+        "出货 V21 基线（40aed8fa…）",
+        "V22 候选（482e7fcb…）",
+        "Honor A42BBB5109000333",
+        "序章月夜废墟场景（自动起手）"
+      ],
+      "outputs": [
+        "ffrs-v22-texviewcache-20261123.apk",
+        "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md 第 38 节",
+        "coordination/EXPERIENCE.md L-168~L-169",
+        "coordination/HANDOFF.md 第 29 轮",
+        "/tmp/ffrs-validate/v22/shot2.png"
+      ],
+      "dependencies": [],
+      "pass_gates": [],
+      "status": "withdrawn_net_negative_three_attempts",
+      "write_scope": [
+        "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+        "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md",
+        "coordination/EXPERIENCE.md",
+        "coordination/HANDOFF.md",
+        "coordination/state.json",
+        "coordination/STATUS.md"
+      ],
+      "acceptance": "机制证据（cleanup views 桶减半）+ 显示无回归（截图正常、0 Vulkan 错误）+ 战斗场景 fps 实测后才允许出货",
+      "checkpoint": "三次全净负：31 轮键用每帧变句柄⇒misses 4→377/帧⇒描述符集回收⇒pipeline 桶 0.25→8.49 ms/帧；32 轮键改解析区间+格式⇒抖动消失、命中 213~235/帧、build 省 1.95 ms/帧，但 memo_key 0.12→1.91（+1.79）；33 轮给格式解析加缓存后 memo_key 只降到 1.75 ⇒ 贵的不是解析而是放开后这批 draw 必须走完整键构建。submit_cpu 关 19.63/20.10 对开 20.96/20.76。主分支已恢复到逐字节等于 V22，实验留侧分支 task/T-mavis-perf-20261122-v3texelsnap；V24/V25 不归档；设备恢复 1.0.79-test（sha256 dbf82bd8…）。附带确认 V22 下熔岩场景 fps 40.64 已达 40 Hz，战斗场景基线 fps 37.67。",
+      "next": "",
+      "owner": "/root",
+      "branch": "task/T-mavis-perf-20261122",
+      "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/mavis-perf-20261122",
+      "report": "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md",
+      "task": "MAVIS-PERF-V14-TEXELSNAP-20261123"
     }
   ],
   "blockers": [
