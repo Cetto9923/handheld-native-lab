@@ -7128,3 +7128,22 @@ CPU 侧每帧两段长间隔 8.5 / 11.1 ms，正好落在 GPU 的空档里 ⇒ �
     ⇒ **单窗口 CPU 对比不可用于判定改动**；跨会话稳定的 per-call 数字才可信
     （`pending_view` 81 ns/次、`cpu_access` 282~287 ns/次、树查找 91~100 ns/次，三窗口几乎不变）
     ⇒ **`cpu_access` 的 0.68 ms/帧新定价是稳的**，可作下一轮靶子；而「其余」波动大，须先加子站点拆细。
+
+- **第 26 轮（2026-11-23）：出货第 4 版（V21）—— 快照慢路径跳过「无重叠的 cpu_access」。**
+  - **① 靶子**：`cpu_access` 在快照路径（why=1/2）只做「扫 `pending_writebacks` 找重叠，找到才 `resolve_pending()`」；
+    该场景从不重叠 ⇒ 第 25 轮定价的 287 ns/次（0.68 ms/帧）纯属白花。
+  - **② 改法**：先用引擎已有的写回区间索引 `wb_interval_index.any()`（O(log n)）判重叠，没有就不调 `cpu_access`；
+    索引不可用时退回旧路径。**同步性逐点审计**：3 个 push_back 都紧跟 `index.insert`，3 个移除/清空都紧跟 `index.erase/clear`，
+    shutdown 同清 ⇒ 不会「索引说没有、列表里有」。**再用引擎自带 `wbfverify` 交叉核对模式自证**：
+    48.7 万次查询 **mism=0 / rebuild_mism=0 / entry_mism=0 / size_mism=0**。
+  - **③ 同会话 A→B→A→B（203 窗口，兵工厂）**：A_ON median 39.43 / B_OFF 39.09 / C_ON 38.96 / D_OFF 38.48；
+    合并 ON n=101 median 39.35、OFF n=102 median 38.88 ⇒ **Δmedian +0.470 fps、Δmean +0.591 fps，两对配对同号**
+    ⇒ 过 L-029 噪声门槛（对比第 25 轮 V20 的 +0.075 fps 且符号相反）。
+  - **④ 显示回归 PASS**：ON vs OFF 帧差 mean|d| 1.729 / 12.65% 像素差>2，与 **OFF vs OFF 漂移基线 1.728 / 12.62% 同量级**；
+    补取的 on2（ON）亮度 59.424 与 OFF 组（59.419/59.429）一致 ⇒ on1 的 0.32 偏高是场景慢漂移。
+  - **⑤ 出货第 4 版**：`ffrs-v21-wbfast-20261123.apk` sha256 `40aed8fad898b96ade112c4ce129729744c73b5acb8b61a3ed18136ff7fa8d4f`，
+    设备侧同签名覆盖安装。
+  - **⑥ 下一轮入口**：① snapshot 慢路径剩余自有 0.51~0.81 ms/帧（跨会话 542~810 ns/次，波动大 ⇒ 先加子站点拆细）；
+    ② `set_finalize` 442.9 次/帧真重建（0.67 ms/帧，需让被绑定 texel 视图跨帧稳定）；
+    ③ texel 分支自有 ~1.1 ms/帧再切一刀。
+  - 经验库新增 L-157 ~ L-158。
