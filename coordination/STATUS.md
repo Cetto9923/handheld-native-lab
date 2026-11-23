@@ -307,6 +307,7 @@
 | MAVIS-PERF-V11-BINDSCOPE-20261123 | PERF_FRAMEPACE_1 | round27b_dual_device_effects_regression_no_missing_effects_stable_release_1_0_78_archived_launch_recipe_requires_explicit_game_dir_same_camera_pixel_comparison_pending_human_walk_all_scenes_at_or_above_30fps_arsenal_battle_31 | Mavis | MAVIS-PERF-V10-TEXELBAR-20261123 | 无额外门禁 | task/T-mavis-perf-20261122 |
 | MAVIS-PERF-V12-BATTLE-COST-20261123 | 战斗场景「特效卡」定量归因（零构建诊断轮） | completed_zero_build_no_ship | /root | 无 | 无额外门禁 | task/T-mavis-perf-20261122 |
 | MAVIS-PERF-V13-TEXVIEW-20261123 | texel buffer view 跨帧/跨槽共享缓存（改动轮，候选已装机未出货） | shipped_1_0_79_pending_battle_measurement | /root | 无 | 无额外门禁 | task/T-mavis-perf-20261122 |
+| MAVIS-PERF-V14-TEXELSNAP-20261123 | texel buffer view 跨帧/跨槽共享缓存（改动轮，候选已装机未出货） | withdrawn_net_negative | /root | 无 | 无额外门禁 | task/T-mavis-perf-20261122 |
 
 ## 独占写入
 

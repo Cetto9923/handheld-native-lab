@@ -12873,7 +12873,7 @@
       "report": "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md"
     },
     {
-      "id": "MAVIS-PERF-V13-TEXVIEW-20261123",
+      "id": "MAVIS-PERF-V14-TEXELSNAP-20261123",
       "role": "texel buffer view 跨帧/跨槽共享缓存（改动轮，候选已装机未出货）",
       "objective": "把 UNIFORM_TEXEL_BUFFER 放进 descriptor memo（V22 后视图随 buffer 消亡），绕开 L-049 的驻留池刷新成本",
       "inputs": [
