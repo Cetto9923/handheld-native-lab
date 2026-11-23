@@ -907,11 +907,28 @@ bool texel_view_cache_enabled=true;
 std::mutex texel_view_mutex;   // the cache is shared: the worker creates the views, a retiring slot destroys them
 std::map<std::array<uint64_t,4>,VkBufferView> texel_view_cache;
 std::map<VkBuffer,std::vector<std::array<uint64_t,4>>> texel_view_by_buffer;
+// Direct-mapped front for the texel view cache (2026-11-23). The map walk is O(log n) on a
+// 32-byte key and runs once per texel binding (about 1900 per frame in the heavy scene), while
+// the number of distinct keys per frame is far smaller, so most lookups repeat a key resolved
+// moments earlier. The front hands back the very same VkBufferView the map holds, so the
+// rendered image cannot change. Live switch files/gfx-live-set "texviewfront=0" restores the
+// map-only lookup; that is how the paired A/B is run inside one session.
+struct TexelViewFront{uint64_t k0=0,k1=0,k2=0,k3=0;VkBufferView view=VK_NULL_HANDLE;bool valid=false;};
+constexpr size_t kTexelViewFrontSlots=4096;
+TexelViewFront texel_view_front[kTexelViewFrontSlots];
+bool texel_view_front_enabled=true;
+uint64_t texel_view_front_hits=0,texel_view_front_misses=0;
+inline TexelViewFront &texel_view_front_for(uint64_t a,uint64_t b,uint64_t c,uint64_t d){
+    uint64_t x=a*0x9E3779B97F4A7C15ull^b*0xC2B2AE3D27D4EB4Full^c*0x165667B19E3779F9ull^d*0x27D4EB2F165667C5ull;
+    x^=x>>29;x*=0xBF58476D1CE4E5B9ull;x^=x>>32;
+    return texel_view_front[(x^(x>>31))&(kTexelViewFrontSlots-1)];
+}
 void texel_view_forget_buffer(VkBuffer b){
     std::vector<VkBufferView> dead;
     {std::lock_guard<std::mutex> lock(texel_view_mutex);
      auto it=texel_view_by_buffer.find(b);if(it==texel_view_by_buffer.end())return;
-     for(auto &k:it->second){auto f=texel_view_cache.find(k);if(f!=texel_view_cache.end()){dead.push_back(f->second);texel_view_cache.erase(f);}}
+     for(auto &k:it->second){auto f=texel_view_cache.find(k);if(f!=texel_view_cache.end()){dead.push_back(f->second);texel_view_cache.erase(f);}
+       TexelViewFront &fr=texel_view_front_for(k[0],k[1],k[2],k[3]);if(fr.valid&&fr.k0==k[0]&&fr.k1==k[1]&&fr.k2==k[2]&&fr.k3==k[3])fr.valid=false;}
      texel_view_by_buffer.erase(it);}
     for(auto v:dead)vkDestroyBufferView(cfg.device,v,nullptr);
 }
@@ -2197,7 +2214,7 @@ void perf_frame(){
     xbg_logf("NVN PERF wtrack copied_kb_per_frame=%.1f dirty_pages_per_frame=%.1f mismatches=%llu fallbacks=%llu",wtrack::copied_bytes/1024.0/f,wtrack::dirty_pages/f,(unsigned long long)wtrack::mismatches,(unsigned long long)wtrack::fallbacks);wtrack::copied_bytes=wtrack::dirty_pages=0;
     xbg_logf("NVN PERF uniform_trimmed_bindings=%llu snap_mb_per_frame other=%.2f vertex=%.2f index=%.2f storage=%.2f texel=%.2f uniform=%.2f requested vertex=%.2f index=%.2f storage=%.2f",(unsigned long long)uniform_trimmed,snap_site_bytes[0]/1048576.0/f,snap_site_bytes[1]/1048576.0/f,snap_site_bytes[2]/1048576.0/f,snap_site_bytes[3]/1048576.0/f,snap_site_bytes[4]/1048576.0/f,snap_site_bytes[5]/1048576.0/f,snap_site_req[1]/1048576.0/f,snap_site_req[2]/1048576.0/f,snap_site_req[3]/1048576.0/f);for(auto &b:snap_site_bytes)b=0;for(auto &b:snap_site_req)b=0;
     xbg_logf("NVN PERF quad_rewrites=%llu warp_rewrites=%llu ldc_folds=%llu temps_forwarded=%llu nan_minmax=%llu",(unsigned long long)quad_rewrites.load(std::memory_order_relaxed),(unsigned long long)warp_rewrites.load(std::memory_order_relaxed),(unsigned long long)ldc_folds.load(std::memory_order_relaxed),(unsigned long long)temps_forwarded.load(std::memory_order_relaxed),(unsigned long long)nan_minmax_swaps.load(std::memory_order_relaxed));
-    xbg_logf("NVN PERF snapfront front_hits=%.1f map_hits=%.1f invalidations=%.1f erased=%.1f",snap_front_hits/f,snap_map_hits/f,snap_invalidations/f,snap_invalidated/f);xbg_logf("NVN PERF textures bc_native=%llu bc_decoded=%llu live_images=%.1fMB bc_images=%.1fMB bc_payload=%.1fMB",(unsigned long long)native_bc_images,(unsigned long long)decoded_bc_images,image_bytes_live/1048576.0,bc_image_bytes_live/1048576.0,bc_data_bytes_live/1048576.0);snap_front_hits=snap_map_hits=snap_invalidations=snap_invalidated=0;
+    xbg_logf("NVN PERF snapfront front_hits=%.1f map_hits=%.1f invalidations=%.1f erased=%.1f",snap_front_hits/f,snap_map_hits/f,snap_invalidations/f,snap_invalidated/f);xbg_logf("NVN PERF texel_view_front hits=%.1f misses=%.1f slots=%zu",texel_view_front_hits/f,texel_view_front_misses/f,kTexelViewFrontSlots);texel_view_front_hits=texel_view_front_misses=0;xbg_logf("NVN PERF textures bc_native=%llu bc_decoded=%llu live_images=%.1fMB bc_images=%.1fMB bc_payload=%.1fMB",(unsigned long long)native_bc_images,(unsigned long long)decoded_bc_images,image_bytes_live/1048576.0,bc_image_bytes_live/1048576.0,bc_data_bytes_live/1048576.0);snap_front_hits=snap_map_hits=snap_invalidations=snap_invalidated=0;
     if(perf.bc_upload_calls)
         xbg_logf("NVN PERF bc_upload calls_total=%llu source_mb_total=%.2f decoded_mb_total=%.2f decode_ms_total=%.3f",
                  (unsigned long long)perf.bc_upload_calls,perf.bc_upload_source_bytes/1048576.0,
@@ -6329,7 +6346,12 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                             }
                         }
                     }
-                    VkBufferViewCreateInfo v{VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO};v.buffer=buf->buffer;v.offset=buf_offset;v.format=tf;v.range=bytes;VkBufferView bv;{std::lock_guard<std::mutex> vlock(texel_view_mutex);auto &cache=texel_view_cache_enabled?texel_view_cache:recording_slot().texel_views;std::array<uint64_t,4> key{uint64_t(v.buffer),v.offset,v.range,uint64_t(v.format)};auto f=DESC_CALL(TexelViewLookup, cache.find(key));if(f!=cache.end())bv=f->second;else{{DESC_SCOPE(TexelViewCreate);VK(vkCreateBufferView(cfg.device,&v,nullptr,&bv));}cache.emplace(key,bv);if(texel_view_cache_enabled)texel_view_by_buffer[v.buffer].push_back(key);}}texel_views.push_back(bv);write.pTexelBufferView=&texel_views.back();if(probe_is_active())capture_log("PROBE_TEXEL_BIND shader=%s stage=%u binding=%u element=%u type=%u scalar=%u serial=%llu nvnFormat=%#x vk=%u guest=%#llx bytes=%llu",shader.key.c_str(),st,b.binding,element,unsigned(b.type),(b.flags>>16)&3,(unsigned long long)texture.serial,texture.d.format,unsigned(v.format),(unsigned long long)base,(unsigned long long)bytes);}}
+                    VkBufferViewCreateInfo v{VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO};v.buffer=buf->buffer;v.offset=buf_offset;v.format=tf;v.range=bytes;VkBufferView bv=VK_NULL_HANDLE;{std::lock_guard<std::mutex> vlock(texel_view_mutex);std::array<uint64_t,4> key{uint64_t(v.buffer),v.offset,v.range,uint64_t(v.format)};bool front_hit=false;
+ {DESC_SCOPE(TexelViewLookup);
+  if(texel_view_front_enabled&&texel_view_cache_enabled){TexelViewFront &fr=texel_view_front_for(key[0],key[1],key[2],key[3]);if(fr.valid&&fr.k0==key[0]&&fr.k1==key[1]&&fr.k2==key[2]&&fr.k3==key[3]){bv=fr.view;front_hit=true;++texel_view_front_hits;}}
+  if(!front_hit){++texel_view_front_misses;auto &cache=texel_view_cache_enabled?texel_view_cache:recording_slot().texel_views;auto f=cache.find(key);if(f!=cache.end())bv=f->second;else{{DESC_SCOPE(TexelViewCreate);VK(vkCreateBufferView(cfg.device,&v,nullptr,&bv));}cache.emplace(key,bv);if(texel_view_cache_enabled)texel_view_by_buffer[v.buffer].push_back(key);}
+   if(texel_view_front_enabled&&texel_view_cache_enabled){TexelViewFront &fr=texel_view_front_for(key[0],key[1],key[2],key[3]);fr.k0=key[0];fr.k1=key[1];fr.k2=key[2];fr.k3=key[3];fr.view=bv;fr.valid=true;}}}
+texel_views.push_back(bv);write.pTexelBufferView=&texel_views.back();if(probe_is_active())capture_log("PROBE_TEXEL_BIND shader=%s stage=%u binding=%u element=%u type=%u scalar=%u serial=%llu nvnFormat=%#x vk=%u guest=%#llx bytes=%llu",shader.key.c_str(),st,b.binding,element,unsigned(b.type),(b.flags>>16)&3,(unsigned long long)texture.serial,texture.d.format,unsigned(v.format),(unsigned long long)base,(unsigned long long)bytes);}}
                 else{if(aspect(texture.d.format)!=VK_IMAGE_ASPECT_COLOR_BIT){auto prior=images.find(texture.serial);if(prior==images.end() || (!prior->second->uploaded && !prior->second->gpu_written))xbg_logf("NVN initial depth descriptor shader=%s stage=%u slot=%u id=%d serial=%llu format=%#x",shader.key.c_str(),ns,slot,id,(unsigned long long)texture.serial,texture.d.format);}
                     VkDescriptorImageInfo ii{};
                     Image &im=get_image(&texture,true);provenance_log("BIND shader=%s stage=%u slot=%u id=%d handle=%llu descriptorMem=%p descriptorOff=%lld type=%u",shader.key.c_str(),ns,slot,id,(unsigned long long)handle,state.texture_pool.pool?state.texture_pool.pool->mem:nullptr,(long long)state.texture_pool.off,unsigned(b.type));provenance_image("BIND",&texture,im,registered.has_view?&registered.view:nullptr);DESC_CALL(ImageTransition, prepare_read(im,commands.command,b.type!=VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,attachment_barrier_enabled && b.type!=VK_DESCRIPTOR_TYPE_STORAGE_IMAGE?im.sampled_aspects(registered.has_view?&registered.view:nullptr):0));if(desc_memo_recording)desc_memo_images.push_back({&texture,&im,record,record->revision});ii.imageView=DESC_CALL(ImageView, im.view(registered.has_view?&registered.view:nullptr,false,b.type==VK_DESCRIPTOR_TYPE_STORAGE_IMAGE));ii.imageLayout=VK_IMAGE_LAYOUT_GENERAL;
@@ -6370,7 +6392,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
     }
     DESC_SCOPE(SetFinalize);
     // Dynamic offsets are consumed in binding/array-element order.
-    std::sort(dynamic_list.begin(),dynamic_list.end());out.dynamic_offsets.clear();for(auto &d:dynamic_list)out.dynamic_offsets.push_back(d.second);
+    if(!std::is_sorted(dynamic_list.begin(),dynamic_list.end()))std::sort(dynamic_list.begin(),dynamic_list.end());out.dynamic_offsets.clear();for(auto &d:dynamic_list)out.dynamic_offsets.push_back(d.second);
     auto api_descriptor_write=[&](){
         if(api_details)api_breadcrumb.descriptor_write(state.shader[5]->key.c_str(),stats.presents.load(),api_entries.data(),api_count,writes.size());
     };
@@ -8799,7 +8821,7 @@ void destroy_slots(){
         memo_unpin_all(i);
         texel_evict(i,true);
     }
-    for(auto &s:active_slots()){s.retire.run();release_descriptors(s);for(auto &v:s.texel_views)vkDestroyBufferView(cfg.device,v.second,nullptr);s.texel_views.clear();for(auto &kb:texel_view_by_buffer)for(auto &key:kb.second){auto f=texel_view_cache.find(key);if(f!=texel_view_cache.end())vkDestroyBufferView(cfg.device,f->second,nullptr);}texel_view_cache.clear();texel_view_by_buffer.clear();for(auto &f:s.framebuffers)vkDestroyFramebuffer(cfg.device,f.second,nullptr);s.framebuffers.clear();for(auto p:s.pools)vkDestroyDescriptorPool(cfg.device,p,nullptr);s.pools.clear();s.pool_next=0;s.stream.release();s.uniform.release();s.readback.release();s.viewed.clear();s.guard.clear();s.pro_ops.clear();s.pro=VK_NULL_HANDLE;if(s.fence)vkDestroyFence(cfg.device,s.fence,nullptr);if(s.timestamps)vkDestroyQueryPool(cfg.device,s.timestamps,nullptr);if(s.prof_pool)vkDestroyQueryPool(cfg.device,s.prof_pool,nullptr);for(auto q:s.occlusion_pools)vkDestroyQueryPool(cfg.device,q,nullptr);for(auto q:s.timestamp_pools)vkDestroyQueryPool(cfg.device,q,nullptr);if(s.pool)vkDestroyCommandPool(cfg.device,s.pool,nullptr);s=Slot{};}
+    for(auto &s:active_slots()){s.retire.run();release_descriptors(s);for(auto &v:s.texel_views)vkDestroyBufferView(cfg.device,v.second,nullptr);s.texel_views.clear();for(auto &kb:texel_view_by_buffer)for(auto &key:kb.second){auto f=texel_view_cache.find(key);if(f!=texel_view_cache.end())vkDestroyBufferView(cfg.device,f->second,nullptr);}texel_view_cache.clear();texel_view_by_buffer.clear();for(auto &fr:texel_view_front)fr.valid=false;for(auto &f:s.framebuffers)vkDestroyFramebuffer(cfg.device,f.second,nullptr);s.framebuffers.clear();for(auto p:s.pools)vkDestroyDescriptorPool(cfg.device,p,nullptr);s.pools.clear();s.pool_next=0;s.stream.release();s.uniform.release();s.readback.release();s.viewed.clear();s.guard.clear();s.pro_ops.clear();s.pro=VK_NULL_HANDLE;if(s.fence)vkDestroyFence(cfg.device,s.fence,nullptr);if(s.timestamps)vkDestroyQueryPool(cfg.device,s.timestamps,nullptr);if(s.prof_pool)vkDestroyQueryPool(cfg.device,s.prof_pool,nullptr);for(auto q:s.occlusion_pools)vkDestroyQueryPool(cfg.device,q,nullptr);for(auto q:s.timestamp_pools)vkDestroyQueryPool(cfg.device,q,nullptr);if(s.pool)vkDestroyCommandPool(cfg.device,s.pool,nullptr);s=Slot{};}
     for(unsigned i=0;i<kMaxSlots;i++){if(submit_semaphores[i]){vkDestroySemaphore(cfg.device,submit_semaphores[i],nullptr);submit_semaphores[i]=VK_NULL_HANDLE;}}
     submit_sem_inited=false;last_signal_sem=VK_NULL_HANDLE;
     slot_index=0;snapshot_reset();
@@ -9597,7 +9619,7 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
           {"honorimgpersist",&honor_img_cache_persist_experiment},
           {"honordescrefill",&honor_descriptor_refill_experiment},
           {"texelframe",&honor_frame_texel_memo_enabled},
-          {"texdirty",&tex_dirty},{"texmemo",&texel_memo_enabled},{"imgcache",&img_cache_enabled},{"texviewcache",&texel_view_cache_enabled},
+          {"texdirty",&tex_dirty},{"texmemo",&texel_memo_enabled},{"imgcache",&img_cache_enabled},{"texviewcache",&texel_view_cache_enabled},{"texviewfront",&texel_view_front_enabled},
           {"descmemo",&desc_memo_enabled},{"desccompute",&desc_memo_compute_enabled},{"dynpartial",&dyn_partial_enabled},{"xmemo",&xmemo_enabled},
           {"bindcache",&bind_cache_enabled},{"ownedinput",&owned_input_copy_enabled},{"rbfullcopy",&readback_fullcopy_enabled},{"bboxready",&indexed_bbox_ready_enabled},{"bboxprobe",&indexed_bbox_probe_enabled},{"wbfilter",&wb_interval_filter_enabled},{"wbfverify",&wb_interval_verify_enabled},
           {"gpuindexed",&gpu_indexed_enabled},{"uppro",&upload_prologue},{"depthaspect",&depth_aspect_enabled},
