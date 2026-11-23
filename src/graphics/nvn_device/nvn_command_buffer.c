@@ -41,6 +41,25 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+
+/* ------------------------------------------------------------------ */
+/* V19 diagnostic: the price of one recorded command (2026-11-23)      */
+/* ------------------------------------------------------------------ */
+
+/* The guest records its commands through this layer, and the engine waits for
+ * the commands recorded here, so the cost of one recorded command sits on the
+ * frame's critical path. Every 64th call is timed with a pair of clock reads:
+ * timing every call would cost more than the work being measured (the foundry
+ * records about 10864 commands per frame). The counters are plain 64-bit words
+ * on purpose: an aligned 64-bit store does not tear on this target, and a lost
+ * update inside one report window does not change a diagnostic's reading. */
+uint64_t nvn_cb_api_calls=0,nvn_cb_api_samples=0,nvn_cb_api_ns=0;
+uint64_t nvn_cb_api_bind_calls=0,nvn_cb_api_bind_samples=0,nvn_cb_api_bind_ns=0;
+static inline uint64_t cb_now_ns(void){struct timespec ts;clock_gettime(CLOCK_MONOTONIC,&ts);return (uint64_t)ts.tv_sec*1000000000ull+(uint64_t)ts.tv_nsec;}
+/* One clock read on every call, a second one on every sampled call. */
+static inline uint64_t cb_sample_begin(uint64_t *counter){uint64_t c=*counter;*counter=c+1;return ((c&63u)==63u)?cb_now_ns():0;}
+static inline void cb_sample_end(uint64_t t0,uint64_t *samples,uint64_t *ns){if(t0){*samples+=1;*ns+=cb_now_ns()-t0;}}
 
 /* ------------------------------------------------------------------ */
 /* The bounds of this layer                                            */
@@ -907,7 +926,8 @@ static int record_write_locked(nvn_cb_buffer *slot, uint32_t op, uint32_t payloa
  * memory, and the end of the recording still hands out a handle. Only when
  * the bound of the host's lent memory is reached is a command refused, and
  * that refusal is named. */
-static uint8_t *record_open_owned(void *buffer, uint32_t op, uint32_t payload_size,nvn_cb_sync_ref *sync_ref) {
+static uint8_t *record_open_owned(void *buffer, uint32_t op, uint32_t payload_size,nvn_cb_sync_ref *sync_ref);
+static uint8_t *record_open_owned_inner(void *buffer, uint32_t op, uint32_t payload_size,nvn_cb_sync_ref *sync_ref) {
     uint8_t *payload = NULL;
     int tries = 0;
     s_stats.calls++;
@@ -973,6 +993,15 @@ static uint8_t *record_open_owned(void *buffer, uint32_t op, uint32_t payload_si
         s_stats.overflow++;
         return NULL;
     }
+}
+
+/* V19: the timed wrapper. The cost of one recorded command is the cost of
+ * this call: the registry lock, the slot lookup and the record write. */
+static uint8_t *record_open_owned(void *buffer, uint32_t op, uint32_t payload_size,nvn_cb_sync_ref *sync_ref){
+    uint64_t t0=cb_sample_begin(&nvn_cb_api_calls);
+    uint8_t *payload=record_open_owned_inner(buffer,op,payload_size,sync_ref);
+    cb_sample_end(t0,&nvn_cb_api_samples,&nvn_cb_api_ns);
+    return payload;
 }
 
 static uint8_t *record_open(void *buffer,uint32_t op,uint32_t payload_size){
@@ -1387,6 +1416,9 @@ static void bind_handles(void *buffer, uint32_t op, int stage, int first, int co
     {
         int32_t tex_base = 0;
         int32_t samp_base = 0;
+        /* V19: this is a second registry lock and a second slot lookup on top of
+         * the one the record itself takes; time it on its own. */
+        uint64_t t0=cb_sample_begin(&nvn_cb_api_bind_calls);
         pthread_mutex_lock(&s_lock);
         {
             nvn_cb_buffer *state = buffer_find(buffer, 0);
@@ -1396,6 +1428,7 @@ static void bind_handles(void *buffer, uint32_t op, int stage, int first, int co
             }
         }
         pthread_mutex_unlock(&s_lock);
+        cb_sample_end(t0,&nvn_cb_api_bind_samples,&nvn_cb_api_bind_ns);
         if (tex_base || samp_base) {
             fprintf(stderr, "[nvn] the handles bound in a batch are read at replay without the numbering "
                             "base of the descriptor pools this buffer bound (texture pool base %d, sampler "
@@ -1411,6 +1444,8 @@ void nvn_command_buffer_rec_bind_texture(void *buffer, int stage, int slot, uint
     int32_t tex_base = 0;
     int32_t samp_base = 0;
     if (!record) return;
+    /* V19: the second registry lock and slot lookup of a single texture bind. */
+    uint64_t t0=cb_sample_begin(&nvn_cb_api_bind_calls);
     pthread_mutex_lock(&s_lock);
     {
         nvn_cb_buffer *state = buffer_find(buffer, 0);
@@ -1420,6 +1455,7 @@ void nvn_command_buffer_rec_bind_texture(void *buffer, int stage, int slot, uint
         }
     }
     pthread_mutex_unlock(&s_lock);
+    cb_sample_end(t0,&nvn_cb_api_bind_samples,&nvn_cb_api_bind_ns);
     record->stage = stage;
     record->slot = slot;
     record->h = handle;
