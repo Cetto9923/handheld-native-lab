@@ -3457,3 +3457,93 @@ GPU 在这些帧上尖峰到 25.6 ms（均值 15）。
 排靶子时先扣掉（L-123）；以 `coverage=OK` 与 `remaining_ns` 为准。
 **取数方法**（给下一轮）：`gfx-cpu-profile` 标记格式是 **`起始present 帧数 detail`**（第三位 = 1 才出描述符子站点表），
 且**每进程只能 arm 一次**；要在目标场景里取样，必须先等场景加载完再写标记（起始 present 用当时的 `AB aff` present 值 +5）。
+
+## 39. 第 31 轮：texel 绑定进 descriptor memo —— 机制成立，净负，撤回（2026-11-23）
+
+### 39.1 起点（第 30 轮输入，全量部件账）
+
+兵工厂熔岩场景 60 帧窗口，`NVN PERF parts_ms_per_frame` 全量桶合计 ≈ 24.1 ms，与 submit_cpu 25.65 ms 吻合，
+说明没有大的未命名残余。按桶排序：descriptor 8.27 / snapshot 子树 5.07 / sub_exec 4.72 / draw 1.63 / cleanup 1.52。
+
+描述符域内部（`NVN DESC_TIMING v=2`）与本轮结论无关的部分已归档；本轮只看 **memo 覆盖面**：
+
+```
+NVN PERF setcache ab=1 hits=0.0 misses=442.9 template=442.9 plain=0.0 memo_hits=405.1 memo_misses=0.9
+  why=texel421.0/simg14.0/dm6.0/dynbuf0.9/store0.0
+NVN PERF desc_ms_per_frame memo_key=0.17 tmpl_update=1.01 alloc=0.10 setkey=0.03 build=10.41 hit_total=1.20
+```
+
+即：每帧 443 次描述符集重建里 **421 次是被 texel 绑定挡在 memo 之外**；按 build=10.41 ms 折合
+每次重建约 23.5 us，即 **9~10 ms/帧**。这是 submit_cpu 里最大的一块可回收项。
+
+### 39.2 为什么这次和 L-049（前次同方向、净负 2.49 ms/帧）不一样
+
+前次（MAVIS-PERF-V2-TEXELPOOL-20261123）用 4 MB/slot 驻留池：memo 命中时每个 texel 绑定要
+**重新解析来源 + 查拷贝缓存**，1629 次/帧 × 1.69 us = +2.75 ms，把省下的 1.62 ms 吃光还倒欠；
+另外池上限导致 84~94 次/帧回退，常驻 64 MB。
+
+本次实现的三点不同：
+
+1. **不引入驻留副本**：仍直接绑定 guest 内存的快照，guest 内存是唯一数据源，画面零风险。
+2. **视图生命周期交给 V22**：V22 把 texel view 放进全局缓存、随 buffer 消亡，所以 memo 条目
+   可以安全持有视图（此前排除 texel 的理由正是「视图属于 slot、随 slot 退休销毁」）。
+3. **刷新成本被摊开**：命中校验用既有 per-submit 快照缓存（同一区间一次 submit 只慢查一次），
+   不做驻留副本的内容哈希。
+
+### 39.3 实测：净负（战斗场景，同会话交错 A→B→A→B，60 帧窗口值口径）
+
+```
+texelsnap=0  fps 37.67 / 36.78   submit_cpu 22.48 / 22.21 ms
+texelsnap=1  fps 37.90 / 38.42   submit_cpu 22.78 / 22.26 ms
+```
+
+两对 submit_cpu 都变差；fps 的 +0.23 / +1.64 没有 CPU 侧支撑，落在 ±0.5 fps 噪声里。
+
+拆账（同场景部件账）：
+
+| 项 | texelsnap=0 | texelsnap=1 |
+| --- | --- | --- |
+| setcache 重建/帧 | 747.1 | 564.1 |
+| texel 排除/帧（draw） | 722.0 | 165.6 |
+| memo_hits/帧 | 575.9 | 740.8 |
+| **memo_misses/帧** | **4.0** | **376.8** |
+| why=dynbuf/帧 | 2.0 | 168.4 |
+| desc build ms/帧 | 12.39 | 9.85 |
+| **pipeline ms/帧** | **0.25** | **8.49** |
+| program ms/帧 | 0.21 | 1.54 |
+| descriptor ms/帧 | 8.31 | 10.18 |
+| submit_cpu ms/帧 | 22.48 / 22.21 | 22.78 / 22.26 |
+
+### 39.4 失败归因：memo 键对 texel 绑定每帧都变
+
+机制本身成立（texel 排除 722→166，重建 747→564，省下 2.54 ms/帧），但 **memo_misses 从 4.0 涨到 376.8/帧**：
+新放开的 texel draw 的 memo 键每帧都变，条目被反复存入又擦除，
+**描述符集因此被回收重建，连带 pipeline 被反复创建（pipeline 桶 +8.24 ms/帧）**，
+把省下的 2.54 ms 全部吃光并倒欠。
+
+根因不是 texel 的处理方式，而是 **键的稳定性**：texel 绑定的 guest 地址每帧变，
+描述符内容真的每帧变，键跟着变，条目在语义上就不可能被复用。
+这与 L-050 同向，但 L-052 已纠正 keydiff 的读法，本次证据是 memo_misses / why=dynbuf，属正确口径。
+
+### 39.5 撤回与设备恢复
+
+- 主交付分支撤回（提交 `9bec225`），并用 `git checkout 2b170eb -- <两文件>` 精确还原；
+  `git diff --stat 2b170eb HEAD` 为空 ⇒ 引擎与版本号与已出货 V22 逐字节一致。
+- 实验完整保留在侧分支 `task/T-mavis-perf-20261122-v3texelsnap`（`532a828` + `9e08e20`）。
+- V23 候选 APK（sha256 `f9804b0e62392836bec5d866b757ccc2e85743a07f44641bb7b624b9daae86dd`）**不归档、不出货**。
+- 设备恢复为已出货的第 5 版 1.0.79-test（sha256 `dbf82bd8d9345e27934e7b1bdb6620bee7b6b23c671577068c40e008b36fc2c1`）。
+
+### 39.6 本轮附带取得的真实数据（战斗场景可测了）
+
+本轮战斗中场景首次在无人工走位的情况下被采样到（存档 `shield-regression-20261122073707` 自动推进到战斗段）。
+V22 下的战斗场景基线：**fps 37.67 / submit_cpu 22.48 ms / 重建 747 次/帧 / draws 1135 / 描述符域 8.31 ms**。
+比第 28 轮记录的 ~31 fps 高，说明 V22 对战斗场景同样有正收益，且当时的 31 fps 很可能混入了热降频。
+
+### 39.7 下一枪
+
+不要再一次「放开 memo」。战斗场景要 40 Hz，缺口约 6 ms/帧；而战斗场景每帧有 **722 次**
+因 texel 排除而重建的描述符集（≈15 ms/帧），这才是真正的池子。
+可行方向：**让键稳定（texel 绑定的键分量换成稳定标识）+ 命中时只局部更新那一个 texel 绑定**
+（`vkUpdateDescriptorSets` 单写，~2~3 us），而不是重建整张表（23.5 us）。
+L-052 已把「键的 tex 分量换成稳定纹理 id」做成运行时开关并实测为零变化——
+那是在 texel 仍被排除的前提下测的（键分量对被排除的 draw 不参与查表），因此下一次必须与本轮的放开同时做。

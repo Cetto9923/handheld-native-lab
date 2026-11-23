@@ -12800,79 +12800,116 @@
       "next": "第 28 轮入口（重排后）：\n\n1. **≥40 Hz 缺口集中在三处**：兵工厂战斗 31.0、兵工厂热态 38.5~39.4、第 1 章探索的开端 39.0（V21 与基线 1.0.73 同读数 39.0 ⇒ 该场景在两版上同速，非优化引入的退化）。\n2. **cleanup/退休域 1.83 ms/帧（9.5 次/帧）已自带子站点**（sub_poll_retire 0.71 / sub_arena_check 0.66 / sub_draw_prologue 0.06 等）⇒ **不再需要新增诊断插桩**，可直接按子站点定靶子（V11 卡的「先加子域计时」步骤已随 V20/V21 完成）。\n3. **跨帧 texel 视图 + 描述符集缓存链 ≈1.8~2.3 ms/帧**（set_finalize 0.963 + view_create 0.356 + 退休销毁）：仍是双因结构（L-159），需同时解决键稳定与缓存跨帧存活，并为快照失效 / arena chunk 销毁挂钩销毁钩子（L-032）。\n4. **snapshot 域**：部件级 1.36 ms/帧，已拆到 sub_snap_fast 1.00 / sub_snap_slow 1.79 / sub_snap_stream 1.16 / sub_snap_map 0.38 / sub_find_template 0.02 / sub_snap_pv 0.25 / sub_snap_access 0.24 ⇒ 下一步按子站点挑靶子。\n5. **同机位像素对照（特效最终结论）**：由人工固定站位（agent 读档 + 取帧），在 V21 与基线 1.0.73 之间做同机位对照，补齐本轮的未闭合项。\n6. **设备操作配方**（任何设备测试都要带上）：`--es game_dir`（Honor /sdcard/FFRS；RG477M /sdcard/HandheldNativeLab/data）；先看 `engine.log` mtime 是否推进判断引擎有没有起来；取帧通道三标记（gfx-live-framedump / gfx-live-ab / gfx-cpu-profile）两台都支持。\n7. 测量纪律（L-152 / L-156 / L-158 / L-163）：低于单窗口噪声的改动必须运行时可切 + 同会话 A→B→A→B；单窗口 CPU 对比不可用于判定；显示回归必须自带同状态漂移基线；跨版本像素对照必须先量同版本帧间漂移基线并保证机位对齐。\n8. **已判死、勿重开**：honorimgpersist、图像缓存覆盖面、image_lookup miss 方向、texel 常驻拷贝、ADPF、NVN API 层、snapshot 跨帧复用、cleanup/失效路径（L-032）、compute descriptor memo、合并 vkQueueSubmit、GPU 侧拷贝/屏障类改动、40 fps 上限、full ALL_COMMANDS 屏障、format properties / texel features 查询、gfx_probe_seg_tick。",
       "owner": "Mavis",
       "branch": "task/T-mavis-perf-20261122"
+    },
+    {
+      "id": "MAVIS-PERF-V12-BATTLE-COST-20261123",
+      "role": "战斗场景「特效卡」定量归因（零构建诊断轮）",
+      "objective": "把兵工厂战斗场景（此前 31.0 fps，全场唯一 <35）的帧时间结构定到底，找出可动的一级靶子；不改码、不构建、不出货",
+      "inputs": [
+        "出货 V21（sha256 40aed8fa…）",
+        "隔离存档 shield-regression-20261118094001",
+        "Honor A42BBB5109000333",
+        "引擎自带 parts/desc/cleanup/setcache/stall 计时",
+        "运行时 live-set 开关"
+      ],
+      "outputs": [
+        "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md 第 37 节",
+        "coordination/EXPERIENCE.md L-165~L-167",
+        "coordination/HANDOFF.md 第 28 轮",
+        "coordination/state.json 本卡"
+      ],
+      "dependencies": [],
+      "pass_gates": [],
+      "status": "completed_zero_build_no_ship",
+      "write_scope": [
+        "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md",
+        "coordination/EXPERIENCE.md",
+        "coordination/HANDOFF.md",
+        "coordination/state.json",
+        "coordination/STATUS.md"
+      ],
+      "acceptance": "给出战斗场景的帧时间结构与 40 Hz 缺口算术，并明确退役/保留的方向，附可复现依据",
+      "checkpoint": "fps 31.5~32.0；submit_cpu_ms 25.8~28.1 为唯一瓶颈（GPU 14.9~18.8 被掩盖）；缺口 6.3~6.8 ms/帧；无单块 >=3 ms；texel 视图链 ~=2.2 ms/帧（约 35 fps，仍 <40）；镜像 miss 方向证伪；set_cache 非靶子；live-set 开关无增益；AB aff 累计均值口径已撤回",
+      "next": "",
+      "owner": "/root",
+      "branch": "task/T-mavis-perf-20261122",
+      "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/mavis-perf-20261122",
+      "report": "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md"
+    },
+    {
+      "id": "MAVIS-PERF-V13-TEXVIEW-20261123",
+      "role": "texel buffer view 跨帧/跨槽共享缓存（改动轮，候选已装机未出货）",
+      "objective": "把 texel buffer view 的缓存从每帧槽私有改为全局共享，视图与其 buffer 同生共死，不改任何渲染语义",
+      "inputs": [
+        "出货 V21 基线（40aed8fa…）",
+        "V22 候选（482e7fcb…）",
+        "Honor A42BBB5109000333",
+        "序章月夜废墟场景（自动起手）"
+      ],
+      "outputs": [
+        "ffrs-v22-texviewcache-20261123.apk",
+        "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md 第 38 节",
+        "coordination/EXPERIENCE.md L-168~L-169",
+        "coordination/HANDOFF.md 第 29 轮",
+        "/tmp/ffrs-validate/v22/shot2.png"
+      ],
+      "dependencies": [],
+      "pass_gates": [],
+      "status": "shipped_1_0_79_pending_battle_measurement",
+      "write_scope": [
+        "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+        "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md",
+        "coordination/EXPERIENCE.md",
+        "coordination/HANDOFF.md",
+        "coordination/state.json",
+        "coordination/STATUS.md"
+      ],
+      "acceptance": "机制证据（cleanup views 桶减半）+ 显示无回归（截图正常、0 Vulkan 错误）+ 战斗场景 fps 实测后才允许出货",
+      "checkpoint": "ON views 0.20/0.01/0.01 vs OFF 0.43/0.40（序章，texel_binds 858/帧）=> 机制成立，约省 0.3 ms/帧，战斗场景外推 0.6~0.8 ms/帧；显示正常、0 错误；1.0.79 已出货（sha256 dbf82bd8…）：兵工厂熔岩场景配对 A→B→A→B，submit_cpu 22.28/22.01/21.50/22.38 vs 24.80/22.39/23.74 两组完全分离 => −1.6 ms/帧、同热态 fps +2.5；显示零回归；战斗场景 fps 仍待人工走位",
+      "next": "",
+      "owner": "/root",
+      "branch": "task/T-mavis-perf-20261122",
+      "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/mavis-perf-20261122",
+      "report": "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md"
+    },
+    {
+      "id": "MAVIS-PERF-V13-TEXVIEW-20261123",
+      "role": "texel buffer view 跨帧/跨槽共享缓存（改动轮，候选已装机未出货）",
+      "objective": "把 UNIFORM_TEXEL_BUFFER 放进 descriptor memo（V22 后视图随 buffer 消亡），绕开 L-049 的驻留池刷新成本",
+      "inputs": [
+        "出货 V21 基线（40aed8fa…）",
+        "V22 候选（482e7fcb…）",
+        "Honor A42BBB5109000333",
+        "序章月夜废墟场景（自动起手）"
+      ],
+      "outputs": [
+        "ffrs-v22-texviewcache-20261123.apk",
+        "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md 第 38 节",
+        "coordination/EXPERIENCE.md L-168~L-169",
+        "coordination/HANDOFF.md 第 29 轮",
+        "/tmp/ffrs-validate/v22/shot2.png"
+      ],
+      "dependencies": [],
+      "pass_gates": [],
+      "status": "withdrawn_net_negative",
+      "write_scope": [
+        "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+        "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md",
+        "coordination/EXPERIENCE.md",
+        "coordination/HANDOFF.md",
+        "coordination/state.json",
+        "coordination/STATUS.md"
+      ],
+      "acceptance": "机制证据（cleanup views 桶减半）+ 显示无回归（截图正常、0 Vulkan 错误）+ 战斗场景 fps 实测后才允许出货",
+      "checkpoint": "机制成立（texel 排除 722→166、重建 747→564、build 12.39→9.85 ms/帧）但实机净负：memo_misses 4→376.8/帧（键每帧变）⇒ 描述符集被回收 ⇒ pipeline 桶 0.25→8.49 ms/帧，submit_cpu 22.48/22.21（关）对 22.78/22.26（开）。主分支已撤回至逐字节等于 V22，实验留侧分支 task/T-mavis-perf-20261122-v3texelsnap；设备恢复 1.0.79-test（sha256 dbf82bd8…）。附带取得战斗场景基线 fps 37.67 / submit_cpu 22.48 ms / 重建 747 次/帧。",
+      "next": "",
+      "owner": "/root",
+      "branch": "task/T-mavis-perf-20261122",
+      "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/mavis-perf-20261122",
+      "report": "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md",
+      "task": "MAVIS-PERF-V14-TEXELSNAP-20261123"
     }
-  ,
- {
-  "id": "MAVIS-PERF-V12-BATTLE-COST-20261123",
-  "role": "战斗场景「特效卡」定量归因（零构建诊断轮）",
-  "objective": "把兵工厂战斗场景（此前 31.0 fps，全场唯一 <35）的帧时间结构定到底，找出可动的一级靶子；不改码、不构建、不出货",
-  "inputs": [
-   "出货 V21（sha256 40aed8fa…）",
-   "隔离存档 shield-regression-20261118094001",
-   "Honor A42BBB5109000333",
-   "引擎自带 parts/desc/cleanup/setcache/stall 计时",
-   "运行时 live-set 开关"
   ],
-  "outputs": [
-   "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md 第 37 节",
-   "coordination/EXPERIENCE.md L-165~L-167",
-   "coordination/HANDOFF.md 第 28 轮",
-   "coordination/state.json 本卡"
-  ],
-  "dependencies": [],
-  "pass_gates": [],
-  "status": "completed_zero_build_no_ship",
-  "write_scope": [
-   "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md",
-   "coordination/EXPERIENCE.md",
-   "coordination/HANDOFF.md",
-   "coordination/state.json",
-   "coordination/STATUS.md"
-  ],
-  "acceptance": "给出战斗场景的帧时间结构与 40 Hz 缺口算术，并明确退役/保留的方向，附可复现依据",
-  "checkpoint": "fps 31.5~32.0；submit_cpu_ms 25.8~28.1 为唯一瓶颈（GPU 14.9~18.8 被掩盖）；缺口 6.3~6.8 ms/帧；无单块 >=3 ms；texel 视图链 ~=2.2 ms/帧（约 35 fps，仍 <40）；镜像 miss 方向证伪；set_cache 非靶子；live-set 开关无增益；AB aff 累计均值口径已撤回",
-  "next": "",
-  "owner": "/root",
-  "branch": "task/T-mavis-perf-20261122",
-  "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/mavis-perf-20261122",
-  "report": "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md"
- },
- {
-  "id": "MAVIS-PERF-V13-TEXVIEW-20261123",
-  "role": "texel buffer view 跨帧/跨槽共享缓存（改动轮，候选已装机未出货）",
-  "objective": "把 texel buffer view 的缓存从每帧槽私有改为全局共享，视图与其 buffer 同生共死，不改任何渲染语义",
-  "inputs": [
-   "出货 V21 基线（40aed8fa…）",
-   "V22 候选（482e7fcb…）",
-   "Honor A42BBB5109000333",
-   "序章月夜废墟场景（自动起手）"
-  ],
-  "outputs": [
-   "ffrs-v22-texviewcache-20261123.apk",
-   "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md 第 38 节",
-   "coordination/EXPERIENCE.md L-168~L-169",
-   "coordination/HANDOFF.md 第 29 轮",
-   "/tmp/ffrs-validate/v22/shot2.png"
-  ],
-  "dependencies": [],
-  "pass_gates": [],
-  "status": "shipped_1_0_79_pending_battle_measurement",
-  "write_scope": [
-   "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
-   "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md",
-   "coordination/EXPERIENCE.md",
-   "coordination/HANDOFF.md",
-   "coordination/state.json",
-   "coordination/STATUS.md"
-  ],
-  "acceptance": "机制证据（cleanup views 桶减半）+ 显示无回归（截图正常、0 Vulkan 错误）+ 战斗场景 fps 实测后才允许出货",
-  "checkpoint": "ON views 0.20/0.01/0.01 vs OFF 0.43/0.40（序章，texel_binds 858/帧）=> 机制成立，约省 0.3 ms/帧，战斗场景外推 0.6~0.8 ms/帧；显示正常、0 错误；1.0.79 已出货（sha256 dbf82bd8…）：兵工厂熔岩场景配对 A→B→A→B，submit_cpu 22.28/22.01/21.50/22.38 vs 24.80/22.39/23.74 两组完全分离 => −1.6 ms/帧、同热态 fps +2.5；显示零回归；战斗场景 fps 仍待人工走位",
-  "next": "",
-  "owner": "/root",
-  "branch": "task/T-mavis-perf-20261122",
-  "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/mavis-perf-20261122",
-  "report": "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md"
- }],
   "blockers": [
     "MAVIS-SCENE-VALIDATION-20261122: 场景A(神殿含紫色调查点)已 PASS；场景C的战斗特效部分已由 MAVIS-BATTLE-VALIDATION-20261122 实测(战斗帧 225 帧 25 段，撕咬特效经 PNG 目视确认为合法画面)。仍 NOT_RUN：场景B(开场火场)与第四章兵工厂 —— 设备上全部隔离存档实际内容都是第1章探索区，命名与内容不符，这两个场景在平板上目前不存在。另：正常随机遇敌入场未复现(长按 R3 巡游 64 s 无遇敌)，战斗入场的 24.96 s 冻结目前只测到「读档续战」这一条路径。设备端 files/frame-dump 目录 shell/run-as 均无法删除，帧文件持续累积。",
     "P-CX-50: run59现场报告NVNSubmission.cpp:315 TIMEOUT_EXPIRED，原日志尾部缺失；设备文件已属另一运行，A/B/C/D未证。禁止归为随机驱动超时。",
