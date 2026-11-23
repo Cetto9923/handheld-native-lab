@@ -5812,7 +5812,7 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
                                 if(tid==0||(state.texture_pool.n>0&&tid>=state.texture_pool.n))rec=&null_texture(b);
                                 else{PoolKey pk=pool_key(&state.texture_pool);if(!texture_pool_cache||!(pk==texture_pool_cache_key)){auto pool=textures.find(pk);texture_pool_cache=pool==textures.end()?&legacy_textures:&pool->second;texture_pool_cache_key=pk;}rec=find_texture_record(*texture_pool_cache,tid);}
                                 if(!rec||!rec->texture.mem||!rec->texture.L.size){ok=false;break;}
-                                VkFormat ktf=texel_binding_format(*rec,b,&shader.storage_binding_info);
+                                VkFormat ktf=texel_binding_format_cached(*rec,b,&shader,&shader.storage_binding_info);
                                 if(ktf==VK_FORMAT_UNDEFINED){ok=false;break;}
                                 key.push_back(uint64_t(uintptr_t(rec->texture.mem)));key.push_back(uint64_t(rec->texture.L.size));key.push_back(uint64_t(ktf));if(tags){ktag.push_back(8);ktag.push_back(8);ktag.push_back(8);}
                             } else {key.push_back(b.source==XBG_SOURCE_IMAGE?state.img[ns][slot]:state.tex[ns][slot]);if(tags)ktag.push_back(8);}
