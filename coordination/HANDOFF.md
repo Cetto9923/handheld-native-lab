@@ -7094,3 +7094,37 @@ CPU 侧每帧两段长间隔 8.5 / 11.1 ms，正好落在 GPU 的空档里 ⇒ �
   - **⑦ 下一轮入口**：V20 一次构建里给 texel 分支加 3~4 个子站点，同时打包 `poll_retire` 只查最老 fence（0.66 ms/帧）
     与 snapshot `emplace_hint`（0.2~0.4 ms/帧）两个零语义风险改动，一起做同会话交错 A/B，过噪声才出货。
   - 经验库新增 L-149 ~ L-150。
+
+- **第 25 轮（2026-11-23）：先零构建差分、再一次构建（V20）的组合轮 —— 一条方向判死、两处小改动收益低于噪声、
+  descriptor 域之外最大的一块未定价开销（snapshot 慢路径）第一次被拆开、新的第一候选改写为 `cpu_access`。**
+  - **① 零构建判死：`honorimgpersist`**（img_cache 跨 `desc_memo_reset` 不清空；`desc_memo_reset` 每帧被调 ~988 次）。
+    同会话 A→B 实测：img_cache 命中 1847.5→2072.7、**miss 225.3→0.0**，而 fps median **39.55 vs 39.52**
+    （另一口径 39.39 vs 39.45）⇒ **零差异** ⇒ 图像缓存的「覆盖面」不是瓶颈，方向判死，不进包。
+    修正第 23 轮读法：0.78 ms/帧是**缓存整体**的差值，不能按命中次数线性外推。
+  - **② V20 两处改动（语义等价）**：snapshot 慢路径 `lower_bound`+`emplace_hint`（省一次树遍历；
+    `find` 未命中返回 `end()` 不能当 hint，命中判定改 `it->first==key`；`snapshot_epoch` 作换 map 的失效护栏）；
+    `poll_retire` 只查 `oldest_pending()` 的 fence（槽按提交序退休、单队列 fence 按提交序置位，引擎 9711 行同款写法）。
+    两处都挂运行时开关 `snapfast_enabled`（live 标记 `gfx-live-ab=snapfast` 退回旧行为、写空文件回新行为），
+    因为理论收益 ~0.3 ms/帧**低于单窗口噪声**（60 帧窗口 stdev≈0.9 fps），必须同进程 A→B→A→B 才测得动。
+  - **③ V20 同会话 A→B→A→B（210 个窗口）**：A_ON median 40.56 / B_OFF 40.97 / C_ON 40.82 / D_OFF 40.47；
+    合并 ON n=92 median 40.81、OFF n=118 median 40.73 ⇒ **Δmedian +0.075 fps**，且**两对配对符号相反**
+    （−0.41 / +0.35）⇒ 无系统性收益 ⇒ **按 L-029 不出货**（代码保留在分支上，不作为出货版本）。
+  - **④ snapshot 慢路径第一次被拆开**（V20 新增 `sub_snap_pv` / `sub_snap_access` 两个子站点，插桩口径）：
+    `pending_view` **0.192 ms/帧**（81 ns/次）、`cpu_access` **0.679 ms/帧**（287 ns/次）、
+    剩余自有（插入/`wtrack`/`vcache`/账务）0.506 ms/帧（213 ns/次）、树查找 0.227 ms/帧、stream 0.774 ms/帧。
+    对账：旧构建 `sub_snap_slow` 自有 991 ns/次 ⇒ 991−81−287−站点开销(≈46) ≈ 577 ns/次，拆分自洽。
+  - **⑤ 撤回第 24 轮的一条归因**：「`cpu_access` 在快照路径等 GPU ⇒ 排除」。
+    「从不触发等待」没错，但**调用本身 287 ns/次 × 2379 次/帧 = 0.68 ms/帧**，代价是对 `pending_writebacks` 的线性重叠扫描。
+  - **⑥ 新的第一候选 = snapshot 慢路径的 `cpu_access`（0.68 ms/帧）**；
+    `set_finalize` 结构已读码确认（`set_cache` 命中即早退不调驱动，但命中率 0 ⇒ 442.9 次/帧全是真重建，
+    `tmpl_update=0.67 ms/帧`；根因是被绑定的 texel 视图跨帧不稳定）。
+  - **⑦ 下一轮入口**：① 把「线性扫 `pending_writebacks` 找重叠」换成 O(1)/O(log n) 判定（包围盒或已有 wb 区间索引），
+    命中重叠时仍走原 `cpu_access`（语义不变）；② snapshot 慢路径剩余 0.51 ms/帧还没拆，下轮加子站点；
+    ③ `set_finalize` 的 442.9 次/帧真重建需让被绑定 texel 视图跨帧稳定（风险更高，先想清楚）。
+  - 经验库新增 L-151 ~ L-155。
+  - **⑧ 设备状态**：装机为诊断版 V20 `ffrs-v20-snapfast-20261123.apk` sha256 `c6494cba…`（**非出货版本**），
+    临时标记已清、游戏进程已停、**红果已还回前台**。RG477M 双机回归仍未做（该机禁止由此处操作），Goal 未闭合。  - **⑨ CPU 侧旁证（不作判据，L-156）**：跨两次会话各抓一个 60 帧 `CPU_TIMING` 窗口比 ON/OFF：同会话内 ON 臂 snapshot 慢路径「其余」
+    少 268 ns/次（≈0.64 ms/帧，方向与「省一次树遍历」一致），但**同一 OFF 臂跨会话就差 33 ns/次**（577 vs 810 ns/次，±40%）
+    ⇒ **单窗口 CPU 对比不可用于判定改动**；跨会话稳定的 per-call 数字才可信
+    （`pending_view` 81 ns/次、`cpu_access` 282~287 ns/次、树查找 91~100 ns/次，三窗口几乎不变）
+    ⇒ **`cpu_access` 的 0.68 ms/帧新定价是稳的**，可作下一轮靶子；而「其余」波动大，须先加子站点拆细。
