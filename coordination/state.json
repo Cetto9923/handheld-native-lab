@@ -12801,7 +12801,42 @@
       "owner": "Mavis",
       "branch": "task/T-mavis-perf-20261122"
     }
+  ,
+ {
+  "id": "MAVIS-PERF-V12-BATTLE-COST-20261123",
+  "role": "战斗场景「特效卡」定量归因（零构建诊断轮）",
+  "objective": "把兵工厂战斗场景（此前 31.0 fps，全场唯一 <35）的帧时间结构定到底，找出可动的一级靶子；不改码、不构建、不出货",
+  "inputs": [
+   "出货 V21（sha256 40aed8fa…）",
+   "隔离存档 shield-regression-20261118094001",
+   "Honor A42BBB5109000333",
+   "引擎自带 parts/desc/cleanup/setcache/stall 计时",
+   "运行时 live-set 开关"
   ],
+  "outputs": [
+   "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md 第 37 节",
+   "coordination/EXPERIENCE.md L-165~L-167",
+   "coordination/HANDOFF.md 第 28 轮",
+   "coordination/state.json 本卡"
+  ],
+  "dependencies": [],
+  "pass_gates": [],
+  "status": "completed_zero_build_no_ship",
+  "write_scope": [
+   "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md",
+   "coordination/EXPERIENCE.md",
+   "coordination/HANDOFF.md",
+   "coordination/state.json",
+   "coordination/STATUS.md"
+  ],
+  "acceptance": "给出战斗场景的帧时间结构与 40 Hz 缺口算术，并明确退役/保留的方向，附可复现依据",
+  "checkpoint": "fps 31.5~32.0；submit_cpu_ms 25.8~28.1 为唯一瓶颈（GPU 14.9~18.8 被掩盖）；缺口 6.3~6.8 ms/帧；无单块 >=3 ms；texel 视图链 ~=2.2 ms/帧（约 35 fps，仍 <40）；镜像 miss 方向证伪；set_cache 非靶子；live-set 开关无增益；AB aff 累计均值口径已撤回",
+  "next": "",
+  "owner": "/root",
+  "branch": "task/T-mavis-perf-20261122",
+  "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/mavis-perf-20261122",
+  "report": "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md"
+ }],
   "blockers": [
     "MAVIS-SCENE-VALIDATION-20261122: 场景A(神殿含紫色调查点)已 PASS；场景C的战斗特效部分已由 MAVIS-BATTLE-VALIDATION-20261122 实测(战斗帧 225 帧 25 段，撕咬特效经 PNG 目视确认为合法画面)。仍 NOT_RUN：场景B(开场火场)与第四章兵工厂 —— 设备上全部隔离存档实际内容都是第1章探索区，命名与内容不符，这两个场景在平板上目前不存在。另：正常随机遇敌入场未复现(长按 R3 巡游 64 s 无遇敌)，战斗入场的 24.96 s 冻结目前只测到「读档续战」这一条路径。设备端 files/frame-dump 目录 shell/run-as 均无法删除，帧文件持续累积。",
     "P-CX-50: run59现场报告NVNSubmission.cpp:315 TIMEOUT_EXPIRED，原日志尾部缺失；设备文件已属另一运行，A/B/C/D未证。禁止归为随机驱动超时。",

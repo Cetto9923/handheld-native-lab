@@ -305,6 +305,7 @@
 | MAVIS-PERF-V9-GPUPASS-20261123 | PERF_FRAMEPACE_1 | diagnostic_round_no_version_shipped_first_gpu_side_baseline_established_2ms_per_frame_gap_attribution_to_storage_writeback_path_EXPLICITLY_RETRECTED_in_round_10_see_section_18_1 | Mavis | MAVIS-PERF-V8-SNAPDESC-20261123 | 无额外门禁 | task/T-mavis-perf-20261122 |
 | MAVIS-PERF-V10-TEXELBAR-20261123 | PERF_FRAMEPACE_1 | diagnostic_round_no_version_shipped_round9_attribution_explicitly_retracted_narrow_barrier_measured_neutral_in_both_capped_and_uncapped_scenes_texel_pending_path_proven_free_by_marginal_cost_probe_first_uncapped_scene_measurement_recipe_found_real_bottleneck_is_dm_gfx_cpu_18_3ms_per_frame | Mavis | MAVIS-PERF-V9-GPUPASS-20261123 | 无额外门禁 | task/T-mavis-perf-20261122 |
 | MAVIS-PERF-V11-BINDSCOPE-20261123 | PERF_FRAMEPACE_1 | round27b_dual_device_effects_regression_no_missing_effects_stable_release_1_0_78_archived_launch_recipe_requires_explicit_game_dir_same_camera_pixel_comparison_pending_human_walk_all_scenes_at_or_above_30fps_arsenal_battle_31 | Mavis | MAVIS-PERF-V10-TEXELBAR-20261123 | 无额外门禁 | task/T-mavis-perf-20261122 |
+| MAVIS-PERF-V12-BATTLE-COST-20261123 | 战斗场景「特效卡」定量归因（零构建诊断轮） | completed_zero_build_no_ship | /root | 无 | 无额外门禁 | task/T-mavis-perf-20261122 |
 
 ## 独占写入
 
