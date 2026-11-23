@@ -12945,6 +12945,43 @@
       "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/mavis-perf-20261122",
       "report": "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md",
       "task": "MAVIS-PERF-V14-TEXELSNAP-20261123"
+    },
+    {
+      "id": "MAVIS-PERF-V16-STABLE-079-20261123",
+      "role": "texel buffer view 跨帧/跨槽共享缓存（改动轮，候选已装机未出货）",
+      "objective": "收口：把已验证的 1.0.79-test 固化为正式发布版 1.0.79（只改版本标签，引擎逐字节同源）",
+      "inputs": [
+        "出货 V21 基线（40aed8fa…）",
+        "V22 候选（482e7fcb…）",
+        "Honor A42BBB5109000333",
+        "序章月夜废墟场景（自动起手）"
+      ],
+      "outputs": [
+        "ffrs-v22-texviewcache-20261123.apk",
+        "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md 第 38 节",
+        "coordination/EXPERIENCE.md L-168~L-169",
+        "coordination/HANDOFF.md 第 29 轮",
+        "/tmp/ffrs-validate/v22/shot2.png"
+      ],
+      "dependencies": [],
+      "pass_gates": [],
+      "status": "shipped_stable_1_0_79",
+      "write_scope": [
+        "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+        "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md",
+        "coordination/EXPERIENCE.md",
+        "coordination/HANDOFF.md",
+        "coordination/state.json",
+        "coordination/STATUS.md"
+      ],
+      "acceptance": "机制证据（cleanup views 桶减半）+ 显示无回归（截图正常、0 Vulkan 错误）+ 战斗场景 fps 实测后才允许出货",
+      "checkpoint": "APK .local/releases/1.0.79/FFRS-1.0.79-stable-texviewcache-20261123.apk sha256 cac57659755ae40691ad010c146dfb008883b7f7d9b57bcb748c53487814f9de；提交 fb9598f。Honor 复测 fps 38.8~40.9 / submit_cpu 19.7~20.5 ms / gpu_ms 15.8~16.1 ms / Vulkan 错误 0 / 画面零回归。场景基线：熔岩 ~39.7（已达 40 Hz）、战斗 37.7、第 1 章 ~39；GPU 侧上限约 62 fps（gpu_ms 16.1），缺口仍在 CPU 侧。RG477M 未动，等授权。",
+      "next": "",
+      "owner": "/root",
+      "branch": "task/T-mavis-perf-20261122",
+      "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/mavis-perf-20261122",
+      "report": "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md",
+      "task": "MAVIS-PERF-V14-TEXELSNAP-20261123"
     }
   ],
   "blockers": [

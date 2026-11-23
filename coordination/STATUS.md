@@ -309,6 +309,7 @@
 | MAVIS-PERF-V13-TEXVIEW-20261123 | texel buffer view 跨帧/跨槽共享缓存（改动轮，候选已装机未出货） | shipped_1_0_79_pending_battle_measurement | /root | 无 | 无额外门禁 | task/T-mavis-perf-20261122 |
 | MAVIS-PERF-V14-TEXELSNAP-20261123 | texel buffer view 跨帧/跨槽共享缓存（改动轮，候选已装机未出货） | withdrawn_net_negative | /root | 无 | 无额外门禁 | task/T-mavis-perf-20261122 |
 | MAVIS-PERF-V15-TEXELKEY-20261123 | texel buffer view 跨帧/跨槽共享缓存（改动轮，候选已装机未出货） | withdrawn_net_negative_three_attempts | /root | 无 | 无额外门禁 | task/T-mavis-perf-20261122 |
+| MAVIS-PERF-V16-STABLE-079-20261123 | texel buffer view 跨帧/跨槽共享缓存（改动轮，候选已装机未出货） | shipped_stable_1_0_79 | /root | 无 | 无额外门禁 | task/T-mavis-perf-20261122 |
 
 ## 独占写入
 
