@@ -900,6 +900,17 @@ struct ArenaLife {
     void trim(uint64_t bytes,uint64_t allocation,uint64_t standard,bool force){auto &v=kind[bytes==standard?0:1];++v.trimmed;v.trim_bytes+=bytes;v.trim_alloc+=allocation;v.forced+=force;}
     void protect(uint64_t bytes,uint64_t standard){++kind[bytes==standard?0:1].protected_kept;}
 };
+// Texel buffer views: one per (buffer, offset, range, format), not one per frame slot.
+// The same snapshot offset recurs every frame, so the view is kept until its buffer dies.
+// A view is destroyed exactly where its buffer is destroyed, which is already a safe point.
+bool texel_view_cache_enabled=true;
+std::map<std::array<uint64_t,4>,VkBufferView> texel_view_cache;
+std::map<VkBuffer,std::vector<std::array<uint64_t,4>>> texel_view_by_buffer;
+void texel_view_forget_buffer(VkBuffer b){
+    auto it=texel_view_by_buffer.find(b);if(it==texel_view_by_buffer.end())return;
+    for(auto &k:it->second){auto f=texel_view_cache.find(k);if(f!=texel_view_cache.end()){vkDestroyBufferView(cfg.device,f->second,nullptr);texel_view_cache.erase(f);}}
+    texel_view_by_buffer.erase(it);
+}
 struct Arena {
     ArenaLife life;
     std::vector<ArenaChunk> chunks;size_t current=0;bool cached=false;VkDeviceSize used_total=0,peak=0;
@@ -941,7 +952,7 @@ struct Arena {
         chunks.swap(keep);current=0;
     }
     void trim(){trim([](VkBuffer){return false;});}
-    static void destroy(ArenaChunk &c){if(c.buffer)memo_forget_buffer(c.buffer);if(c.mapped)vkUnmapMemory(cfg.device,c.memory);if(c.buffer)vkDestroyBuffer(cfg.device,c.buffer,nullptr);if(c.memory)vkFreeMemory(cfg.device,c.memory,nullptr);c=ArenaChunk{};}
+    static void destroy(ArenaChunk &c){if(c.buffer){memo_forget_buffer(c.buffer);texel_view_forget_buffer(c.buffer);}if(c.mapped)vkUnmapMemory(cfg.device,c.memory);if(c.buffer)vkDestroyBuffer(cfg.device,c.buffer,nullptr);if(c.memory)vkFreeMemory(cfg.device,c.memory,nullptr);c=ArenaChunk{};}
     void release(){for(auto &c:chunks)destroy(c);chunks.clear();current=0;used_total=0;}
 };
 // Independent allocation: shared ownership can outlive the producer slot arena.
@@ -2579,7 +2590,7 @@ void release(){
     nregions=0;
     for(auto &t:tracked)for(auto &v:t.second->v){
         if(v.mapped)vkUnmapMemory(cfg.device,v.memory);
-        if(v.buffer)vkDestroyBuffer(cfg.device,v.buffer,nullptr);
+        if(v.buffer){texel_view_forget_buffer(v.buffer);vkDestroyBuffer(cfg.device,v.buffer,nullptr);}
         if(v.memory)vkFreeMemory(cfg.device,v.memory,nullptr);
     }
     tracked.clear();exhausted=false;
@@ -6314,7 +6325,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                             }
                         }
                     }
-                    VkBufferViewCreateInfo v{VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO};v.buffer=buf->buffer;v.offset=buf_offset;v.format=tf;v.range=bytes;VkBufferView bv;{auto &cache=recording_slot().texel_views;std::array<uint64_t,4> key{uint64_t(v.buffer),v.offset,v.range,uint64_t(v.format)};auto f=DESC_CALL(TexelViewLookup, cache.find(key));if(f!=cache.end())bv=f->second;else{{DESC_SCOPE(TexelViewCreate);VK(vkCreateBufferView(cfg.device,&v,nullptr,&bv));}cache.emplace(key,bv);}}texel_views.push_back(bv);write.pTexelBufferView=&texel_views.back();if(probe_is_active())capture_log("PROBE_TEXEL_BIND shader=%s stage=%u binding=%u element=%u type=%u scalar=%u serial=%llu nvnFormat=%#x vk=%u guest=%#llx bytes=%llu",shader.key.c_str(),st,b.binding,element,unsigned(b.type),(b.flags>>16)&3,(unsigned long long)texture.serial,texture.d.format,unsigned(v.format),(unsigned long long)base,(unsigned long long)bytes);}}
+                    VkBufferViewCreateInfo v{VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO};v.buffer=buf->buffer;v.offset=buf_offset;v.format=tf;v.range=bytes;VkBufferView bv;{auto &cache=texel_view_cache_enabled?texel_view_cache:recording_slot().texel_views;std::array<uint64_t,4> key{uint64_t(v.buffer),v.offset,v.range,uint64_t(v.format)};auto f=DESC_CALL(TexelViewLookup, cache.find(key));if(f!=cache.end())bv=f->second;else{{DESC_SCOPE(TexelViewCreate);VK(vkCreateBufferView(cfg.device,&v,nullptr,&bv));}cache.emplace(key,bv);if(texel_view_cache_enabled)texel_view_by_buffer[v.buffer].push_back(key);}}texel_views.push_back(bv);write.pTexelBufferView=&texel_views.back();if(probe_is_active())capture_log("PROBE_TEXEL_BIND shader=%s stage=%u binding=%u element=%u type=%u scalar=%u serial=%llu nvnFormat=%#x vk=%u guest=%#llx bytes=%llu",shader.key.c_str(),st,b.binding,element,unsigned(b.type),(b.flags>>16)&3,(unsigned long long)texture.serial,texture.d.format,unsigned(v.format),(unsigned long long)base,(unsigned long long)bytes);}}
                 else{if(aspect(texture.d.format)!=VK_IMAGE_ASPECT_COLOR_BIT){auto prior=images.find(texture.serial);if(prior==images.end() || (!prior->second->uploaded && !prior->second->gpu_written))xbg_logf("NVN initial depth descriptor shader=%s stage=%u slot=%u id=%d serial=%llu format=%#x",shader.key.c_str(),ns,slot,id,(unsigned long long)texture.serial,texture.d.format);}
                     VkDescriptorImageInfo ii{};
                     Image &im=get_image(&texture,true);provenance_log("BIND shader=%s stage=%u slot=%u id=%d handle=%llu descriptorMem=%p descriptorOff=%lld type=%u",shader.key.c_str(),ns,slot,id,(unsigned long long)handle,state.texture_pool.pool?state.texture_pool.pool->mem:nullptr,(long long)state.texture_pool.off,unsigned(b.type));provenance_image("BIND",&texture,im,registered.has_view?&registered.view:nullptr);DESC_CALL(ImageTransition, prepare_read(im,commands.command,b.type!=VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,attachment_barrier_enabled && b.type!=VK_DESCRIPTOR_TYPE_STORAGE_IMAGE?im.sampled_aspects(registered.has_view?&registered.view:nullptr):0));if(desc_memo_recording)desc_memo_images.push_back({&texture,&im,record,record->revision});ii.imageView=DESC_CALL(ImageView, im.view(registered.has_view?&registered.view:nullptr,false,b.type==VK_DESCRIPTOR_TYPE_STORAGE_IMAGE));ii.imageLayout=VK_IMAGE_LAYOUT_GENERAL;
@@ -9582,7 +9593,7 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
           {"honorimgpersist",&honor_img_cache_persist_experiment},
           {"honordescrefill",&honor_descriptor_refill_experiment},
           {"texelframe",&honor_frame_texel_memo_enabled},
-          {"texdirty",&tex_dirty},{"texmemo",&texel_memo_enabled},{"imgcache",&img_cache_enabled},
+          {"texdirty",&tex_dirty},{"texmemo",&texel_memo_enabled},{"imgcache",&img_cache_enabled},{"texviewcache",&texel_view_cache_enabled},
           {"descmemo",&desc_memo_enabled},{"desccompute",&desc_memo_compute_enabled},{"dynpartial",&dyn_partial_enabled},{"xmemo",&xmemo_enabled},
           {"bindcache",&bind_cache_enabled},{"ownedinput",&owned_input_copy_enabled},{"rbfullcopy",&readback_fullcopy_enabled},{"bboxready",&indexed_bbox_ready_enabled},{"bboxprobe",&indexed_bbox_probe_enabled},{"wbfilter",&wb_interval_filter_enabled},{"wbfverify",&wb_interval_verify_enabled},
           {"gpuindexed",&gpu_indexed_enabled},{"uppro",&upload_prologue},{"depthaspect",&depth_aspect_enabled},
