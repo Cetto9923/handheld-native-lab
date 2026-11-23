@@ -1043,6 +1043,9 @@ bool honor_img_cache_persist_experiment = false;
 // Chapter 4 foundry scene; the live marker gfx-live-ab holding "snapfast" turns both off, so the two arms
 // can be compared inside one session instead of across two installs. Refreshed once per submission.
 bool snapfast_enabled = true;
+// V21 (2026-11-23): skip cpu_access() on the snapshot path when the writeback interval index says no
+// pending writeback overlaps the range. The live marker gfx-live-ab holding "wbfast" turns it off.
+bool wbfast_enabled = true;
 bool honor_set_cache_bypass_experiment = false;
 bool honor_descriptor_refill_experiment = false;
 // Honor GT Pro (2026-11-22): the per-frame texel-view memo is off by default. Measured on the
@@ -2423,6 +2426,19 @@ void snapshot_invalidate(uint64_t address,uint64_t bytes){
 // GPU-resident view of a guest range whose newest content is a pending
 // (not yet written back) GPU result. The producing operation is followed by a
 // full barrier, so later reads of the view observe it in queue order.
+// V21 (2026-11-23): cpu_access() on the snapshot path (why 1 and 2) only does something when a
+// pending writeback overlaps the requested range - it resolves that GPU result. With no overlap it
+// merely pays for a linear scan of pending_writebacks, which measured 287 ns per call (0.68 ms/frame
+// at 2379 calls/frame). The writeback interval index answers "does anything overlap this range" in
+// O(log n) and is kept in sync with the list at every mutation site (each push_back is followed by an
+// index insert, each erase/clear by an index erase/clear), so ask it first and skip the call when
+// nothing overlaps. Without a usable index this returns true, i.e. the old path is kept.
+inline bool pending_wb_may_overlap(uint64_t address,uint64_t bytes){
+    if(pending_writebacks.empty())return false;
+    if(!(wb_interval_filter_enabled||wb_interval_verify_enabled)||!wb_interval_index.usable())return true;
+    if(!xbg_wb_range_valid(address,bytes))return true;
+    return wb_interval_index.any(address,bytes);
+}
 bool pending_view(uint64_t address,uint64_t bytes,VkDeviceSize align,Buffer &out,uint64_t *version=nullptr){
     // Opening a slot may retire and trim the very arena a pending view names.
     // Select the consumer before looking up a producer or retaining its storage.
@@ -2714,7 +2730,7 @@ Buffer snapshot_slow(uint64_t address,size_t bytes,VkDeviceSize align){
     auto insert_snap=[&](Buffer v){if(snapshot_epoch!=map_epoch){it=snapshots.lower_bound(key);map_epoch=snapshot_epoch;}if(snapfast_enabled)snapshots.emplace_hint(it,key,v);else snapshots.emplace(key,v);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,bytes);return v;};
     {Buffer view;bool have=false;{CPU_SCOPE(SubSnapPv);have=pending_view(address,bytes,align,view);}if(have){insert_snap(view);return view;}}
     ++perf.snapshot_misses;perf.snapshot_bytes+=bytes;snap_site_req[snap_site<6?snap_site:0]+=bytes;if(snap_site==3){static unsigned logged=0;if(logged<40 && bytes>=65536){++logged;xbg_logf("NVN PERF storage_snapshot addr=%#llx bytes=%zu frame=%llu",(unsigned long long)address,bytes,(unsigned long long)stats.presents.load());}++storage_snap_count;if(timing_now())for(uint64_t pg=address>>12;pg<=(address+bytes-1)>>12;pg++)storage_pages.insert(pg);}   // page union: timed frames only (~4.8k inserts per D2R frame)
-    {CPU_SCOPE(SubSnapAccess);cpu_access(address,bytes,1);}   // a pending GPU result that only partly covers the range (or is misaligned for a view) lands first
+    {CPU_SCOPE(SubSnapAccess);if(!wbfast_enabled||pending_wb_may_overlap(address,bytes))cpu_access(address,bytes,1);}   // a pending GPU result that only partly covers the range (or is misaligned for a view) lands first
     if(snap_site==3 && bytes>=wtrack::min_bytes && wtrack::enabled && !ab_off("wtrack")){Buffer t;if(wtrack::snapshot(address,bytes,t)){insert_snap(t);return t;}}
     if((snap_site==1 || snap_site==2) && vcache::enabled && !ab_off("vcache")){Buffer v;if(vcache::lookup(address,bytes,v)){insert_snap(v);return v;}}
     snap_site_bytes[snap_site<6?snap_site:0]+=bytes;
@@ -5494,7 +5510,7 @@ Buffer uniform_snapshot_slow(uint64_t address,size_t copy){
     uint64_t map_epoch=snapshot_epoch;
     auto insert_snap=[&](Buffer v,size_t len){if(snapshot_epoch!=map_epoch){it=uniform_snapshots.lower_bound(key);map_epoch=snapshot_epoch;}if(snapfast_enabled)uniform_snapshots.emplace_hint(it,key,v);else uniform_snapshots.emplace(key,v);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,len);return v;};
     {Buffer view;bool have=false;{CPU_SCOPE(SubSnapPv);have=pending_view(address,n,properties.limits.minUniformBufferOffsetAlignment,view);}if(have){insert_snap(view,n);return view;}}
-    ++perf.snapshot_misses;perf.snapshot_bytes+=copy;snap_site_bytes[5]+=copy;snap_site_req[5]+=copy;{CPU_SCOPE(SubSnapAccess);cpu_access(address,copy,2);}
+    ++perf.snapshot_misses;perf.snapshot_bytes+=copy;snap_site_bytes[5]+=copy;snap_site_req[5]+=copy;{CPU_SCOPE(SubSnapAccess);if(!wbfast_enabled||pending_wb_may_overlap(address,copy))cpu_access(address,copy,2);}
     Buffer b;{CPU_SCOPE(SubSnapStream);b=uniform_buffer(n,reinterpret_cast<const void*>(address),copy);}insert_snap(b,copy);return b;
 }
 // Descriptor memo (iOS "same inputs -> reuse the parameter block"): within one guest submit, a draw whose shaders and
@@ -9649,7 +9665,7 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
    TimingRoot timing_root;CPU_SCOPE(Other);
    need(initialized && !failed,"Game Vulkan backend not initialized/healthy");
    {CPU_SCOPE(SubMaint);maintain_memory_pressure();performance_hint::begin_work();}
-   uint64_t begin=timing_clock();snapfast_enabled=!ab_off("snapfast");snapshot_reset();uint64_t budget=0;
+   uint64_t begin=timing_clock();snapfast_enabled=!ab_off("snapfast");wbfast_enabled=!ab_off("wbfast");snapshot_reset();uint64_t budget=0;
     // A render-enable block is a property of one submission: the reference clears it when the submission starts
     // (nvn_mtl.m:649, g_rc_skip = 0), so a block left false by the previous frame does not drop this frame's draws.
     state.render_cond_skip=false;
