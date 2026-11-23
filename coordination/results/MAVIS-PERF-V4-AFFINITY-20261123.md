@@ -3229,3 +3229,95 @@ NVN CPU_TIMING wbindex_verify mism=0 entry_mism=0 rebuild_mism=0 size_mism=0
 
 ⇒ V11 卡里「先给 cleanup/退休域加 CPU 子域计时（纯诊断）」这一步**已经做完**（这些子站点随 V20/V21 出货），
 第 28 轮可直接按子站点定靶子。**口径提醒**：第二个数是调用计数，但与「calls/帧」不一一对应（取用时需核对）。
+## 37 第 28 轮（零构建诊断轮，未改码 / 未构建 / 未出货）：战斗场景「特效卡」的定量归因 + 三条方向退役
+
+### 37.1 触发与本轮目标
+
+用户实机反馈「**战斗时候特效超级卡**」。本轮目标：把兵工厂**战斗**场景（此前 31.0 fps，是全场唯一低于 35 的场景）的帧时间结构定到底，找出可动的一级靶子。
+本轮**未改码、未构建、未出货**；全部结论来自出货 V21 装机态 + 引擎自带计时 + 运行时 live 开关。
+
+### 37.2 战斗场景的帧时间结构（Honor A42BBB5109000333，V21，隔离存档 shield-regression-20261118094001）
+
+60 帧窗口（`NVN PERF v=1`）：
+
+| 指标 | 读数 | 说明 |
+|---|---|---|
+| fps | 31.5 ~ 32.0 | 帧时 31.3 ~ 31.8 ms |
+| **submit_cpu_ms** | **25.8 ~ 28.1** | **主项，占帧时 82~89%** |
+| present_cpu_ms | 0.37 ~ 0.41 | 出图 |
+| gpu_ms | 14.9 ~ 18.8 | 被 CPU 掩盖，非瓶颈 |
+| submits / waits | 9.97 / 9.97 每帧 | 每帧 10 次提交 + 10 次等待 |
+| ops / draws / dispatches / passes | 3197 / 1116 / 186 / 129 每帧 | |
+| legacy_wait | 3.59 ms/帧 | guest 侧等待路径的 CPU 阻塞 |
+
+部件级（`parts_ms_per_frame timed=60`，ms/帧 / 调用数）：
+`descriptor=7.72/2038`、`draw=2.26/1116`、`cleanup=1.93/9.8`、`snapshot=1.41/10375`、`dispatch=0.55/186`、
+`hash=0.39`、`image=0.43`、`program=0.21`、`pipeline=0.25`、`pass=0.26`、`cpuwrite=0.12`、`buffer=0.12`、
+`present=0.35`、`other=0.21`、`sub_exec=5.35/8.9`。
+
+描述符域（`desc_ms_per_frame`）：`build=11.0~11.5`、`hit_total=1.2`、`tmpl_update=1.24~1.45`、`memo_key=0.18`、`alloc=0.14`、`setkey=0.04`。
+清理域（`cleanup_ms_per_frame`）：`writebacks=0.80~0.82`（11.0 MB/帧）、`views=0.67~0.72`、`arena_pools=0.27~0.28`、`retire=0.19~0.20`、`queries=0.04~0.05`。
+
+**长帧（=「特效卡」的观感来源）**：本会话累计 1280 次，典型 `gap_ms=50~57`，
+且 **gap ≈ submit_cpu_ms + gpu_ms**（34.88+25.61=50.5；29.32+18.64=47.9）⇒ 长帧是**CPU 与 GPU 未重叠**的帧，不是单侧慢；
+GPU 在这些帧上尖峰到 25.6 ms（均值 15）。
+
+### 37.3 三个必须写清的口径（其中一个是我本轮自己踩的坑）
+
+1. **`submit_cpu_ms` = 异步翻译线程整段提交耗时**（`xbg_game.cpp:9665-9678`，从 `begin` 到提交完成，含 `execute()` 命令循环），
+   **不是 guest 线程耗时**。⇒ 帧率的 CPU 瓶颈是 **worker**，不是来宾线程。
+2. **`NVN AB aff` 的 fps 是会话累计均值**（`A.frames / A.wall_ns` 跨整个会话累积），**不能用于 A/B 判定**；
+   A/B 必须用 `NVN PERF v=1` 的 60 帧窗口值。本轮第一次 A/B 我用了累计均值，结论无效，已用窗口值重做（见 37.4）。
+3. `legacy_wait` 是 guest 侧 `xbg_legacy_wait` 路径的 CPU 阻塞计时，不是「GPU 等待」。
+
+### 37.4 A/B 实测（运行时 live 开关，零构建，同会话 A→B→A→B，60 帧窗口值）
+
+| 开关 | fps / submit_cpu_ms / gpu_ms | 结论 |
+|---|---|---|
+| 基线 | 31.96 / 27.80 / 16.61 | |
+| honorimgpersist=1 | 31.72 / 27.93 / 15.44 | img_cache misses 由 ~357/帧 → **0/帧**（机制生效），**帧率不动** |
+| honorimgpersist=0 | 31.42 / 28.21 / 18.77 | 配对符号不稳定 |
+| honordescrefill=1 | 30.80 / 28.44 / 19.14 | 反而更慢 |
+| honordescrefill=0 | 31.09 / 28.55 / 15.91 | |
+| ownedinput=0 | 31.45 / 28.06 / 15.76 | 无差异 |
+| ownedinput=1 | 31.33 / 28.21 / 17.01 | |
+| texelnarrow=0 | 30.47 / 28.86 / 17.15 | 关掉更慢 |
+| texelnarrow=1 | 31.07 / 28.12 / 18.50 | |
+
+读数噪声 ±0.5 fps（与设备热漂移同量级），四组开关**没有一组**产生可复现增益，配对符号也不一致
+⇒ **live-set 这批开关在战斗场景没有杠杆**。
+
+### 37.5 三条方向退役（附依据）
+
+1. **镜像缓存 miss 方向 —— 证伪（证据升级）。**
+   `honorimgpersist=1` 把 img_cache 的 misses 从 ~357/帧压到 **0/帧**，机制确认生效，但帧率不动 ⇒
+   `image_lookup` 的 2.149 ms/帧 **不在 miss 路径上**，而在命中路径的固定成本上。
+   **显式撤回**：记忆里「honorimgpersist 已排除」的理由（该开关此前**从未被测过**，仓库无任何记录）不成立；
+   **保留**「镜像 miss 方向不成立」这一结论。
+2. **set_cache 不是开销源。**
+   `setcache` 表显示 `hits=0.0 misses=736.8`（命中率 0），且本机上因 `desc_memo_enabled && vendorID==0x5143`
+   被**整体旁路**（`experiment_skips=565.8` + `fresh_skips=171.0` = 736.8）⇒ 它根本没在跑，
+   没有 key 构造 / 哈希 / 向量拷贝开销，**不是靶子**。
+3. **描述符集的「驱动侧」只占 1.42 ms/帧。**
+   `alloc=0.14` + `tmpl_update=1.24~1.45`；其余 ~6.3 ms 是 2038 次**逐绑定解析**
+   （image_lookup 2.15 / element_rest 0.96 / set_finalize 0.96 / buffer_bind 0.63 / texel_view_create 0.36 /
+   texel_pending 0.35 / texel_view_lookup 0.18 / memo 0.49）—— **弥散，没有单点 ≥3 ms**。
+   描述符 memo 本身工作得很好（`memo_hits=565.2 / memo_misses=1.8`，命中率 99.7%），
+   未命中原因几乎全是 `why=texel714`（texel 缓冲每帧换 arena 偏移 ⇒ 键必变）。
+
+### 37.6 40 Hz 缺口的算术与下一步（需要用户拍板）
+
+- 战斗场景帧时 31.3~31.8 ms，要 40 Hz 需 ≤25 ms ⇒ **还要砍 6.3~6.8 ms/帧**。
+- worker CPU 25.8~28.1 ms/帧是唯一瓶颈（GPU 14.9~18.8 被掩盖），但 worker 的账已被拆成 7~8 块，
+  每块 0.3~2.2 ms，**没有任何单块 ≥3 ms**。
+- 已知仍可动的引擎侧杠杆只剩 **texel 视图生命周期**（创建 0.356 + 销毁 ~0.65 ≈ 1.0 ms/帧）
+  及其派生链（视图句柄跨帧稳定 ⇒ memo 的 why=texel714 少一半 ⇒ 回收 tmpl_update 的一部分），
+  合计 **≈2.2 ms/帧 ⇒ +2.5 fps ⇒ 约 35 fps**，**仍然到不了 40 Hz**。
+- ⇒ 要在战斗场景真正达到 40 Hz，只能动「每帧 13020 条来宾命令 / 1116 次绘制 / 2038 次描述符绑定」的结构本身，
+  或触碰「不改画面」红线。**这两条都超出本轮授权范围，本轮不擅自开工。**
+
+### 37.7 设备状态
+
+- Honor：出货 V21 未动；测量用 `files/gfx-live-set` 标记已删除（`bboxready`/`honordescrefill` 默认值与备份内容一致 ⇒ 恢复原状）；
+  游戏留在兵工厂战斗场景后台；**红果已还回前台**。
+- RG477M：未动包体，仍是基线 1.0.78-test。
