@@ -1380,6 +1380,28 @@ struct SiteScope{int old;explicit SiteScope(int site,bool force=false):old(sync_
 // frame. Neither changes what is drawn, and both stay inert without their markers.
 uint64_t gfx_probe_cpu_delay_ns=460,gfx_probe_cpu_burn_ns=0,gfx_probe_cpu_burns=0;
 int gfx_probe_cpu_delay_on=0,gfx_probe_gpu_delay_on=0;
+// V19 segmented sensitivity probes: the V16 probe spread its slice over the whole command stream, so it could
+// only say "the recording path matters". These burn inside one segment at a time (draw / dispatch / descriptor /
+// snapshot / cleanup / other commands), each with its own live-tunable ns-per-occurrence rate, so the marginal
+// frame cost of one segment's CPU work can be measured inside a single session, without restarting the game.
+// Occurrence counting is always on, so a plain baseline window also yields the per-frame call count of every
+// segment; only the armed segment burns.
+enum {GFX_SEG_DRAW=0,GFX_SEG_DISPATCH=1,GFX_SEG_DESC=2,GFX_SEG_SNAP=3,GFX_SEG_CLEANUP=4,GFX_SEG_OTHER=5,GFX_SEG_COUNT=6};
+const char *const gfx_probe_seg_name[GFX_SEG_COUNT]={"draw","dispatch","desc","snap","cleanup","other"};
+uint64_t gfx_probe_seg_mask=0;                                   // armed segments (one bit per segment)
+uint64_t gfx_probe_seg_rate[GFX_SEG_COUNT]={0,0,0,0,0,0};         // ns burned per occurrence
+uint64_t gfx_probe_seg_rate_max=5000000;                          // one occurrence cannot stall longer than this
+uint64_t gfx_probe_seg_occ[GFX_SEG_COUNT]={0,0,0,0,0,0};           // occurrences since the last report
+uint64_t gfx_probe_seg_burn[GFX_SEG_COUNT]={0,0,0,0,0,0};          // ns burned since the last report
+inline int gfx_probe_seg_class(unsigned op){return op==OP_DRAW||op==OP_DRAW_IDX?GFX_SEG_DRAW:op==OP_DISPATCH?GFX_SEG_DISPATCH:GFX_SEG_OTHER;}
+inline void gfx_probe_seg_tick(int seg){
+    ++gfx_probe_seg_occ[seg];
+    if(!(gfx_probe_seg_mask&(1ull<<seg)))return;
+    uint64_t r=gfx_probe_seg_rate[seg];if(!r)return;
+    if(r>gfx_probe_seg_rate_max)r=gfx_probe_seg_rate_max;
+    uint64_t t0=timing_clock();while(timing_clock()-t0<r){}
+    gfx_probe_seg_burn[seg]+=timing_clock()-t0;
+}
 uint64_t gfx_probe_gpu_copies=0,gfx_probe_gpu_frame=UINT64_MAX;
 VkBuffer gfx_probe_gpu_src=VK_NULL_HANDLE,gfx_probe_gpu_dst=VK_NULL_HANDLE;
 VkDeviceMemory gfx_probe_gpu_mem1=VK_NULL_HANDLE,gfx_probe_gpu_mem2=VK_NULL_HANDLE;
@@ -1820,7 +1842,7 @@ void retire_slot(Slot &s){
     }
     if(s.timestamps){uint64_t t[2]{};VkResult raw_result=vkGetQueryPoolResults(cfg.device,s.timestamps,0,2,sizeof(t),t,8,VK_QUERY_RESULT_64_BIT);if(gpu_raw.get(s.raw_handle))gpu_raw.query(s.raw_handle,int32_t(raw_result),t[0],t[1],timing_clock());if(raw_result==VK_SUCCESS && t[1]>=t[0]){uint64_t mask=timestamp_bits<64?(uint64_t(1)<<timestamp_bits)-1:~0ull;const uint64_t ns=uint64_t(double((t[1]-t[0])&mask)*properties.limits.timestampPeriod);perf.gpu_ns+=ns;++perf.gpu_samples;hud::gpu_add(s.hud_frame,ns);}}
     gpu_raw.retire(s.raw_handle);
-    CPU_SCOPE(Cleanup);uint64_t c0=timing_clock();
+    CPU_SCOPE(Cleanup);gfx_probe_seg_tick(GFX_SEG_CLEANUP);uint64_t c0=timing_clock();
     // One readback per occlusion pool (the fence has signalled, so every used query is available).
     {static std::vector<uint64_t> results;size_t used=s.occlusion_used;results.assign(used,0);
      if(s.query_copied==used && used){s.query_results.invalidate();memcpy(results.data(),s.query_results.mapped,used*8);}
@@ -2104,6 +2126,15 @@ void perf_frame(){
     if(poolreset::enabled){xbg_logf("NVN PERF poolreset queued=%.2f waits=%.2f wait_ms=%.3f",poolreset::queued/f,poolreset::waits/f,poolreset::wait_ns/1e6/f);poolreset::queued=poolreset::waits=poolreset::wait_ns=0;}
     xbg_logf("NVN PERF probe cpu_delay_on=%d cpu_delay_ns_per_cmd=%llu cpu_burn_ms=%.3f cpu_burns=%.1f gpu_delay_on=%d gpu_bytes=%llu gpu_copies=%.2f",int(gfx_probe_cpu_delay_on),(unsigned long long)gfx_probe_cpu_delay_ns,gfx_probe_cpu_burn_ns/1e6/f,gfx_probe_cpu_burns/f,int(gfx_probe_gpu_delay_on),(unsigned long long)gfx_probe_gpu_size,gfx_probe_gpu_copies/f);
     gfx_probe_cpu_burn_ns=0;gfx_probe_cpu_burns=0;gfx_probe_gpu_copies=0;
+    xbg_logf("NVN PERF segprobe mask=%llu draw_ms=%.3f draw_occ=%.1f dispatch_ms=%.3f dispatch_occ=%.1f desc_ms=%.3f desc_occ=%.1f snap_ms=%.3f snap_occ=%.1f cleanup_ms=%.3f cleanup_occ=%.1f other_ms=%.3f other_occ=%.1f",
+        (unsigned long long)gfx_probe_seg_mask,
+        gfx_probe_seg_burn[GFX_SEG_DRAW]/1e6/f,gfx_probe_seg_occ[GFX_SEG_DRAW]/f,
+        gfx_probe_seg_burn[GFX_SEG_DISPATCH]/1e6/f,gfx_probe_seg_occ[GFX_SEG_DISPATCH]/f,
+        gfx_probe_seg_burn[GFX_SEG_DESC]/1e6/f,gfx_probe_seg_occ[GFX_SEG_DESC]/f,
+        gfx_probe_seg_burn[GFX_SEG_SNAP]/1e6/f,gfx_probe_seg_occ[GFX_SEG_SNAP]/f,
+        gfx_probe_seg_burn[GFX_SEG_CLEANUP]/1e6/f,gfx_probe_seg_occ[GFX_SEG_CLEANUP]/f,
+        gfx_probe_seg_burn[GFX_SEG_OTHER]/1e6/f,gfx_probe_seg_occ[GFX_SEG_OTHER]/f);
+    for(int si=0;si<GFX_SEG_COUNT;si++){gfx_probe_seg_burn[si]=0;gfx_probe_seg_occ[si]=0;}
     const bool perf_normalizable=perf_timed_frames && !perf_bounded_contaminated && !timing_active;
     const double desc_divisor=perf_normalizable?double(perf_timed_frames):1.0;
     const double tf=perf_timed_frames?double(perf_timed_frames):1.0;   // parts and descriptor timers come from the timed frames only
@@ -2658,6 +2689,7 @@ Buffer snapshot(uint64_t address,size_t bytes,VkDeviceSize align=4){CPU_SCOPE(Sn
     f.address=address;f.bytes=bytes;f.epoch=snapshot_epoch;f.buffer=b;return b;
 }
 Buffer snapshot_slow(uint64_t address,size_t bytes,VkDeviceSize align){
+    gfx_probe_seg_tick(GFX_SEG_SNAP);
     if(bytes>256ull*1024*1024)
         xbg_logf("NVN SNAPSHOT_OVERSIZE frame=%llu op=%u site=%u address=%#llx bytes=%zu align=%llu",
             (unsigned long long)stats.presents.load(),cur_op,snap_site,
@@ -5853,7 +5885,7 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
             else{auto &u=slots[si].used_sets[lay];for(size_t i=0;i<u.size();i++)if(u[i]==out.set){u[i]=u.back();u.pop_back();break;}memo_pinned[si].emplace(out.set,PinRef{lay,1});}}
         bool local=!dm.persistent;if(desc_memo.emplace(key,std::move(dm)).second && local)++desc_memo_local[slot_index];++memo_mod_gen;}
 }
-void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCOPE(Descriptor);DescriptorRoot descriptor_measurement(&cpu_scope);
+void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCOPE(Descriptor);gfx_probe_seg_tick(GFX_SEG_DESC);DescriptorRoot descriptor_measurement(&cpu_scope);
     // Uniform buffers use dynamic offsets (when the set fits the device limit) so per-draw constants do not change set contents.
     const unsigned dmode=dyn_mode_for(compute);
     bool fresh_storage_output=false;
@@ -8490,6 +8522,7 @@ void execute(const uint8_t *pc,unsigned depth,uint64_t &budget){
         size_t available=0;op_hdr h{};const uint8_t *p=nullptr;size_t n=0;
         {CPU_SCOPE(SubCmdDecode);available=command_available(pc);need(available>=8,"Truncated command header");memcpy(&h,pc,8);need(h.size>=8 && !(h.size&7) && h.size<=available,"NVN command size outside pool");p=pc+8;n=h.size-8;cur_op=h.op;}
         if(timing_now()&&h.op<256)++nvn_cmd_by_op[h.op];
+        gfx_probe_seg_tick(gfx_probe_seg_class(h.op));
         uint64_t c0=timing_now()?timing_clock():0;
         if(codex_gpu_step){
             std::string keys;for(unsigned st=0;st<6;st++)if(state.shader[st])keys+=std::to_string(st)+":"+state.shader[st]->key+" ";
@@ -9465,6 +9498,18 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
        if(cdpf){int value=fgetc(cdpf);fclose(cdpf);if(value=='0'||value=='1'){gfx_probe_cpu_delay_on=(value=='1');xbg_logf("LIVE-CPU-DELAY on=%d ns_per_cmd=%llu at present %llu",int(gfx_probe_cpu_delay_on),(unsigned long long)gfx_probe_cpu_delay_ns,(unsigned long long)pr);}}}
       {std::string gdp=probe.base+"/gfx-live-gpu-delay";FILE *gdpf=fopen(gdp.c_str(),"rb");
        if(gdpf){int value=fgetc(gdpf);fclose(gdpf);if(value=='0'||value=='1'){gfx_probe_gpu_delay_on=(value=='1');if(gfx_probe_gpu_delay_on&&!gfx_probe_gpu_buffers_ready())gfx_probe_gpu_delay_on=0;xbg_logf("LIVE-GPU-DELAY on=%d bytes=%llu at present %llu",int(gfx_probe_gpu_delay_on),(unsigned long long)gfx_probe_gpu_size,(unsigned long long)pr);}}}
+      {std::string sgp=probe.base+"/gfx-live-seg-probe";FILE *sgpf=fopen(sgp.c_str(),"rb");
+       if(sgpf){char sb[256]={0};size_t sn=fread(sb,1,sizeof(sb)-1,sgpf);sb[sn]=0;fclose(sgpf);
+        char *ssave=nullptr;
+        for(char *tok=strtok_r(sb," \t\n\r",&ssave);tok;tok=strtok_r(nullptr," \t\n\r",&ssave)){
+            char *eq=strchr(tok,'=');if(!eq)continue;*eq=0;const char *k=tok,*v=eq+1;
+            if(!strcmp(k,"mask")){
+                uint64_t m=0;
+                if(!strncmp(v,"0x",2)||!strncmp(v,"0X",2))m=strtoull(v+2,nullptr,16);
+                else{int si=-1;for(int i=0;i<GFX_SEG_COUNT;i++)if(!strcmp(v,gfx_probe_seg_name[i]))si=i;m=si>=0?(1ull<<si):strtoull(v,nullptr,10);}
+                gfx_probe_seg_mask=m;continue;}
+            for(int i=0;i<GFX_SEG_COUNT;i++)if(!strcmp(k,gfx_probe_seg_name[i])){gfx_probe_seg_rate[i]=strtoull(v,nullptr,10);break;}}
+        xbg_logf("LIVE-SEG-PROBE mask=%llu draw=%llu dispatch=%llu desc=%llu snap=%llu cleanup=%llu other=%llu at present %llu",(unsigned long long)gfx_probe_seg_mask,(unsigned long long)gfx_probe_seg_rate[GFX_SEG_DRAW],(unsigned long long)gfx_probe_seg_rate[GFX_SEG_DISPATCH],(unsigned long long)gfx_probe_seg_rate[GFX_SEG_DESC],(unsigned long long)gfx_probe_seg_rate[GFX_SEG_SNAP],(unsigned long long)gfx_probe_seg_rate[GFX_SEG_CLEANUP],(unsigned long long)gfx_probe_seg_rate[GFX_SEG_OTHER],(unsigned long long)pr);}}
       {std::string fdg=probe.base+"/gfx-live-flame-diag";FILE *fdgf=fopen(fdg.c_str(),"rb");
        if(fdgf){int value=fgetc(fdgf);fclose(fdgf);if(value=='0'||value=='1'){
            flame_diag_enabled=(value=='1');xbg_logf("LIVE-FLAME-DIAG enabled=%d at present %llu",int(flame_diag_enabled),(unsigned long long)pr);}}}
