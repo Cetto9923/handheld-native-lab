@@ -1038,6 +1038,11 @@ bool clear_sync_census = false;
 bool honor_small_clear_experiment = false;
 bool honor_clear_retire_experiment = false;
 bool honor_img_cache_persist_experiment = false;
+// V20 (2026-11-23): the snapshot slow path walks the tree once instead of twice (lower_bound doubles as
+// the insert hint) and poll_retire asks only the oldest pending fence. Measured on the Honor GT Pro in the
+// Chapter 4 foundry scene; the live marker gfx-live-ab holding "snapfast" turns both off, so the two arms
+// can be compared inside one session instead of across two installs. Refreshed once per submission.
+bool snapfast_enabled = true;
 bool honor_set_cache_bypass_experiment = false;
 bool honor_descriptor_refill_experiment = false;
 // Honor GT Pro (2026-11-22): the per-frame texel-view memo is off by default. Measured on the
@@ -2701,12 +2706,12 @@ Buffer snapshot_slow(uint64_t address,size_t bytes,VkDeviceSize align){
     auto key=std::make_pair(address,uint64_t(bytes));auto it=snapshots.end();
     // One tree walk instead of two: lower_bound answers "is the key there" and is also the insertion
     // position, so the inserts below no longer walk the tree a second time.
-    {CPU_SCOPE(SubSnapMap);it=snapshots.lower_bound(key);}
+    {CPU_SCOPE(SubSnapMap);it=snapfast_enabled?snapshots.lower_bound(key):snapshots.find(key);}
     if(it!=snapshots.end()&&it->first==key){++perf.snapshot_hits;++snap_map_hits;return it->second;}
     // A submission replaces the map (snapshot_maps_reset), which invalidates the iterator above;
     // snapshot_epoch moves with it, so re-anchor the hint when that happened.
     uint64_t map_epoch=snapshot_epoch;
-    auto insert_snap=[&](Buffer v){if(snapshot_epoch!=map_epoch){it=snapshots.lower_bound(key);map_epoch=snapshot_epoch;}snapshots.emplace_hint(it,key,v);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,bytes);return v;};
+    auto insert_snap=[&](Buffer v){if(snapshot_epoch!=map_epoch){it=snapshots.lower_bound(key);map_epoch=snapshot_epoch;}if(snapfast_enabled)snapshots.emplace_hint(it,key,v);else snapshots.emplace(key,v);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,bytes);return v;};
     {Buffer view;bool have=false;{CPU_SCOPE(SubSnapPv);have=pending_view(address,bytes,align,view);}if(have){insert_snap(view);return view;}}
     ++perf.snapshot_misses;perf.snapshot_bytes+=bytes;snap_site_req[snap_site<6?snap_site:0]+=bytes;if(snap_site==3){static unsigned logged=0;if(logged<40 && bytes>=65536){++logged;xbg_logf("NVN PERF storage_snapshot addr=%#llx bytes=%zu frame=%llu",(unsigned long long)address,bytes,(unsigned long long)stats.presents.load());}++storage_snap_count;if(timing_now())for(uint64_t pg=address>>12;pg<=(address+bytes-1)>>12;pg++)storage_pages.insert(pg);}   // page union: timed frames only (~4.8k inserts per D2R frame)
     {CPU_SCOPE(SubSnapAccess);cpu_access(address,bytes,1);}   // a pending GPU result that only partly covers the range (or is misaligned for a view) lands first
@@ -5484,10 +5489,10 @@ Buffer uniform_snapshot_slow(uint64_t address,size_t copy){
     size_t n=uniform_range(copy);auto key=std::make_pair(address,uint64_t(copy));
     auto it=uniform_snapshots.end();
     // Same one-walk trick as snapshot_slow: lower_bound is both the lookup and the insert position.
-    {CPU_SCOPE(SubSnapMap);it=uniform_snapshots.lower_bound(key);}
+    {CPU_SCOPE(SubSnapMap);it=snapfast_enabled?uniform_snapshots.lower_bound(key):uniform_snapshots.find(key);}
     if(it!=uniform_snapshots.end()&&it->first==key){++perf.snapshot_hits;++snap_map_hits;return it->second;}
     uint64_t map_epoch=snapshot_epoch;
-    auto insert_snap=[&](Buffer v,size_t len){if(snapshot_epoch!=map_epoch){it=uniform_snapshots.lower_bound(key);map_epoch=snapshot_epoch;}uniform_snapshots.emplace_hint(it,key,v);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,len);return v;};
+    auto insert_snap=[&](Buffer v,size_t len){if(snapshot_epoch!=map_epoch){it=uniform_snapshots.lower_bound(key);map_epoch=snapshot_epoch;}if(snapfast_enabled)uniform_snapshots.emplace_hint(it,key,v);else uniform_snapshots.emplace(key,v);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,len);return v;};
     {Buffer view;bool have=false;{CPU_SCOPE(SubSnapPv);have=pending_view(address,n,properties.limits.minUniformBufferOffsetAlignment,view);}if(have){insert_snap(view,n);return view;}}
     ++perf.snapshot_misses;perf.snapshot_bytes+=copy;snap_site_bytes[5]+=copy;snap_site_req[5]+=copy;{CPU_SCOPE(SubSnapAccess);cpu_access(address,copy,2);}
     Buffer b;{CPU_SCOPE(SubSnapStream);b=uniform_buffer(n,reinterpret_cast<const void*>(address),copy);}insert_snap(b,copy);return b;
@@ -8517,7 +8522,8 @@ template<class T>T variable_payload(const uint8_t *p,size_t n){T out{};memcpy(&o
 void poll_retire(){
     // Slots retire in submission order and the queue signals their fences in that same order, so the
     // oldest pending fence is the only one that can be ready: query that one and stop when it is not.
-    bool any=false;for(;;){Slot *op=oldest_pending();if(!op||op->recording)break;if(vkGetFenceStatus(cfg.device,op->fence)!=VK_SUCCESS)break;retire_slot(*op);any=true;}
+    bool any=false;if(snapfast_enabled){for(;;){Slot *op=oldest_pending();if(!op||op->recording)break;if(vkGetFenceStatus(cfg.device,op->fence)!=VK_SUCCESS)break;retire_slot(*op);any=true;}}
+    else for(auto &s:active_slots())if(s.pending && !s.recording && vkGetFenceStatus(cfg.device,s.fence)==VK_SUCCESS){retire_slot(s);any=true;}
     if(any){{std::lock_guard<std::mutex> l(gfx_job_mutex);}gfx_idle_cv.notify_all();}
 }
 void execute(const uint8_t *pc,unsigned depth,uint64_t &budget){
@@ -9643,7 +9649,7 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
    TimingRoot timing_root;CPU_SCOPE(Other);
    need(initialized && !failed,"Game Vulkan backend not initialized/healthy");
    {CPU_SCOPE(SubMaint);maintain_memory_pressure();performance_hint::begin_work();}
-   uint64_t begin=timing_clock();snapshot_reset();uint64_t budget=0;
+   uint64_t begin=timing_clock();snapfast_enabled=!ab_off("snapfast");snapshot_reset();uint64_t budget=0;
     // A render-enable block is a property of one submission: the reference clears it when the submission starts
     // (nvn_mtl.m:649, g_rc_skip = 0), so a block left false by the previous frame does not drop this frame's draws.
     state.render_cond_skip=false;
