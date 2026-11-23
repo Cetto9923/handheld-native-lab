@@ -5576,7 +5576,7 @@ struct TexelFormatCacheEntry{const RegisteredTexture *rec=nullptr;const xbg_shad
 TexelFormatCacheEntry texel_format_cache[256];
 VkFormat texel_binding_format_cached(const RegisteredTexture &rec,const xbg_shader_binding &binding,const void *owner,const std::map<uint32_t,XbgStorageBindingInfo> *info){
     const uint32_t tformat=rec.texture.d.format;const bool has_view=rec.has_view;const bool set_view=has_view&&rec.view.set_format;const uint32_t vformat=set_view?uint32_t(rec.view.format):0u;
-    const size_t idx=(size_t)((uintptr_t(&rec)^(uintptr_t(&binding))>>4)&255u;
+    const size_t idx=(size_t)((((uintptr_t)&rec)^((uintptr_t)&binding))>>4)&255u;
     TexelFormatCacheEntry &e=texel_format_cache[idx];
     if(e.rec==&rec&&e.bind==&binding&&e.owner==owner&&e.tformat==tformat&&e.vformat==vformat&&e.has_view==has_view&&e.set_view==set_view)return e.fmt;
     e.rec=&rec;e.bind=&binding;e.owner=owner;e.tformat=tformat;e.vformat=vformat;e.has_view=has_view;e.set_view=set_view;e.fmt=texel_binding_format(rec,binding,info);
