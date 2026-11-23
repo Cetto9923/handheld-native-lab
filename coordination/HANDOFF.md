@@ -7147,3 +7147,30 @@ CPU 侧每帧两段长间隔 8.5 / 11.1 ms，正好落在 GPU 的空档里 ⇒ �
     ② `set_finalize` 442.9 次/帧真重建（0.67 ms/帧，需让被绑定 texel 视图跨帧稳定）；
     ③ texel 分支自有 ~1.1 ms/帧再切一刀。
   - 经验库新增 L-157 ~ L-158。
+- **第 27 轮（2026-11-23）：零构建全表归因 —— `descriptor` 部件 7.93 ms/帧，新第一候选 `image_lookup` 2.15 ms/帧（未改码、未出货）。**
+  - **① 做法**：零构建零改码，直接用出货第 4 版（V21）自带的 `gfx-cpu-profile`（60 帧 `CPU_TIMING` 窗口）
+    与引擎自带 `DESC_TIMING` 明细表，在兵工厂深处（隔离存档 `shield-regression-20261118094001`）取一个 60 帧窗口。
+    窗口：`frames=60 wall=28.16 ms/帧 measured=25.74 ms/帧 uncovered=2.41 ms/帧 draws=683/帧 dispatches=165/帧 submissions=8.3/帧`。
+  - **② 部件级**：`descriptor` **7.925 ms/帧**（1311 次/帧，占已归因 CPU 的 56%）＝第一大池；
+    `cleanup` **1.669 ms/帧**（仅 9.2 次/帧，平均 181 µs/次、单次最高 8.25 ms）；draw 1.492；snapshot 0.846；dispatch 0.442。
+    已归因自有合计 14.13 ms/帧（实测帧的 55%）。
+  - **③ descriptor 内部（`image_lookup` = 复核既有结论，不是新靶子）**：**`image_lookup` 2.149 ms/帧**（4017 次/帧，535 ns/次）
+    —— 与 V11 卡 round-23 已定的「2.18 ms/帧 = 每调用固定成本（8 字段 `ImgKey` 构造 + 哈希）、miss 方向已否」一致 ⇒ 复核通过，不重开；
+    `set_finalize` 0.963（450 次/帧）；`element_rest` 0.959（8617 次/帧，111 ns/次）；`buffer_bind` 0.626；
+    `texel_view_create` 0.356（869 次/帧）；`texel_pending` 0.345；`texel_view_lookup` 0.175；memo_* 0.489；remaining 0.724。
+    计数自洽：`element_rest` 8617 = buffer 4600 + image 4017。
+  - **④ `set_finalize` 每帧全重建的「双因」结构（读码确认）**：① `set_key` 含 `uint64_t(*w.pTexelBufferView)`，
+    而 `Slot::texel_views` 在 `retire_slot()`（`xbg_game.cpp:1871`）被全部销毁并 clear ⇒ 下一帧新句柄 ⇒ 键必变；
+    ② `s.set_cache.clear()` 同样在 `retire_slot()`（`xbg_game.cpp:1876`）⇒ 跨提交也不可能命中。
+    **单改任一因都产生不了命中**；要拿这 ≈1.8~2.3 ms/帧必须同时做跨帧视图缓存 + 跨帧描述符集缓存，
+    并为快照失效 / arena chunk 销毁挂钩销毁钩子 ⇒ 触碰 L-032 ⇒ **本轮不动代码**。
+  - **⑤ 口径提醒**：`texel_cpu_access`（12 次/帧、0.004 ms/帧）与第 25 轮定价的 snapshot 路径 `cpu_access`
+    （2379 次/帧、0.68 ms/帧）是两个不同口径，不可互相印证。
+  - **⑥ 第 28 轮入口（按 V11 卡原计划 + 本轮复核重排）**：① **cleanup/退休域 1.669 ms/帧**（9.2 次/帧，平均 181 µs/次、
+    单次最高 8.25 ms）—— V11 卡所称「other domain」的当前值（该卡记 3.94 ms/帧；跨会话不可直接比大小，只比形状），
+    下一步先加 CPU 子域计时拆细；② snapshot 域剩余自有 0.846 ms/帧（6316 次/帧）+ 慢路径剩余 0.51~0.81 ms/帧；
+    ③ 跨帧视图 + 描述符集缓存链 ≈1.8~2.3 ms/帧（**双因**，需专门设计失效路径 + 自证机制）；
+    ④ `element_rest` 0.959 ms/帧 的每元素固定开销待定价。`image_lookup` 维持既有定价，不重开。
+  - 经验库新增 L-159 ~ L-160。
+  - **⑦ 设备状态**：Honor 装机仍为出货第 4 版 V21（sha256 `40aed8fa…`）；测量后**红果已还回前台**；
+    本轮零改动零构建零出货。RG477M 双机回归由用户在本轮末发起。
