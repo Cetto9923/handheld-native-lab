@@ -1374,6 +1374,31 @@ void fold_completion_wait_stats(){
     block_ns[SITE_LEGACY_WAIT]+=pending.ns;block_calls[SITE_LEGACY_WAIT]+=pending.calls;legacy_wait_ns+=pending.ns;
 }
 struct SiteScope{int old;explicit SiteScope(int site,bool force=false):old(sync_site){if(force || sync_site==SITE_OTHER)sync_site=site;}~SiteScope(){sync_site=old;}};
+// V16 sensitivity probes: which side of a frame owns the frame period.
+// The CPU probe burns a fixed slice per command, spread over the command stream, so the
+// recording path is slowed down uniformly; the GPU probe adds one device-local copy per
+// frame. Neither changes what is drawn, and both stay inert without their markers.
+uint64_t gfx_probe_cpu_delay_ns=460,gfx_probe_cpu_burn_ns=0,gfx_probe_cpu_burns=0;
+int gfx_probe_cpu_delay_on=0,gfx_probe_gpu_delay_on=0;
+uint64_t gfx_probe_gpu_copies=0,gfx_probe_gpu_frame=UINT64_MAX;
+VkBuffer gfx_probe_gpu_src=VK_NULL_HANDLE,gfx_probe_gpu_dst=VK_NULL_HANDLE;
+VkDeviceMemory gfx_probe_gpu_mem1=VK_NULL_HANDLE,gfx_probe_gpu_mem2=VK_NULL_HANDLE;
+VkDeviceSize gfx_probe_gpu_size=64ull<<20;
+// The GPU scratch pair is allocated the first time the live switch turns the probe on.
+bool gfx_probe_gpu_buffers_ready(){
+    if(gfx_probe_gpu_src!=VK_NULL_HANDLE)return true;
+    VkBufferCreateInfo bi{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};bi.size=gfx_probe_gpu_size;bi.usage=VK_BUFFER_USAGE_TRANSFER_SRC_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT;bi.sharingMode=VK_SHARING_MODE_EXCLUSIVE;
+    if(vkCreateBuffer(cfg.device,&bi,nullptr,&gfx_probe_gpu_src)!=VK_SUCCESS)return false;
+    if(vkCreateBuffer(cfg.device,&bi,nullptr,&gfx_probe_gpu_dst)!=VK_SUCCESS)return false;
+    VkMemoryRequirements r1{},r2{};vkGetBufferMemoryRequirements(cfg.device,gfx_probe_gpu_src,&r1);vkGetBufferMemoryRequirements(cfg.device,gfx_probe_gpu_dst,&r2);
+    VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};ai.allocationSize=r1.size;ai.memoryTypeIndex=memory_type(r1.memoryTypeBits,VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    if(vkAllocateMemory(cfg.device,&ai,nullptr,&gfx_probe_gpu_mem1)!=VK_SUCCESS)return false;
+    if(vkBindBufferMemory(cfg.device,gfx_probe_gpu_src,gfx_probe_gpu_mem1,0)!=VK_SUCCESS)return false;
+    ai.allocationSize=r2.size;ai.memoryTypeIndex=memory_type(r2.memoryTypeBits,VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    if(vkAllocateMemory(cfg.device,&ai,nullptr,&gfx_probe_gpu_mem2)!=VK_SUCCESS)return false;
+    if(vkBindBufferMemory(cfg.device,gfx_probe_gpu_dst,gfx_probe_gpu_mem2,0)!=VK_SUCCESS)return false;
+    return true;
+}
 uint64_t write_seq=1,barrier_seq=0; uint64_t last_finish_ops=~0ull; // image writes vs. last full barrier (render-pass merging); last_finish_ops: perf.ops right after the previous non-draw Commands::finish() barrier
 // Render-pass merging: consecutive draws into the same framebuffer share one
 // render pass. Any non-draw operation, a texture read of something written
@@ -2077,6 +2102,8 @@ void perf_frame(){
     if(memory_profile_counts)log_memory_profile_counts();
     double wall=double(now-perf.window_start)/1e6,f=double(perf.frames);
     if(poolreset::enabled){xbg_logf("NVN PERF poolreset queued=%.2f waits=%.2f wait_ms=%.3f",poolreset::queued/f,poolreset::waits/f,poolreset::wait_ns/1e6/f);poolreset::queued=poolreset::waits=poolreset::wait_ns=0;}
+    xbg_logf("NVN PERF probe cpu_delay_on=%d cpu_delay_ns_per_cmd=%llu cpu_burn_ms=%.3f cpu_burns=%.1f gpu_delay_on=%d gpu_bytes=%llu gpu_copies=%.2f",int(gfx_probe_cpu_delay_on),(unsigned long long)gfx_probe_cpu_delay_ns,gfx_probe_cpu_burn_ns/1e6/f,gfx_probe_cpu_burns/f,int(gfx_probe_gpu_delay_on),(unsigned long long)gfx_probe_gpu_size,gfx_probe_gpu_copies/f);
+    gfx_probe_cpu_burn_ns=0;gfx_probe_cpu_burns=0;gfx_probe_gpu_copies=0;
     const bool perf_normalizable=perf_timed_frames && !perf_bounded_contaminated && !timing_active;
     const double desc_divisor=perf_normalizable?double(perf_timed_frames):1.0;
     const double tf=perf_timed_frames?double(perf_timed_frames):1.0;   // parts and descriptor timers come from the timed frames only
@@ -8445,6 +8472,18 @@ void poll_retire(){
 void execute(const uint8_t *pc,unsigned depth,uint64_t &budget){
     need(depth<64,"NVN command CALL nesting limit exceeded");
     for(;;){need(budget++<10000000,"NVN command count/cycle limit exceeded");
+        // V16 probes: burn a fixed slice every 64 commands, and add one GPU copy per frame.
+        if(gfx_probe_cpu_delay_on && gfx_probe_cpu_delay_ns && ((budget&63)==0)){uint64_t t0=timing_clock();uint64_t want=gfx_probe_cpu_delay_ns*64;while(timing_clock()-t0<want){}gfx_probe_cpu_burn_ns+=want;++gfx_probe_cpu_burns;}
+        if(gfx_probe_gpu_delay_on && gfx_probe_gpu_src!=VK_NULL_HANDLE && gfx_probe_gpu_frame!=stats.presents.load()){
+            gfx_probe_gpu_frame=stats.presents.load();
+            Slot &cur=recording_slot();
+            if(cur.recording && cur.cmd){
+                VkMemoryBarrier b{VK_STRUCTURE_TYPE_MEMORY_BARRIER};b.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;b.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT|VK_ACCESS_TRANSFER_WRITE_BIT;
+                vkCmdPipelineBarrier(cur.cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,1,&b,0,nullptr,0,nullptr);
+                VkBufferCopy region{0,0,gfx_probe_gpu_size};vkCmdCopyBuffer(cur.cmd,gfx_probe_gpu_src,gfx_probe_gpu_dst,1,&region);
+                ++gfx_probe_gpu_copies;
+            }
+        }
         {CPU_SCOPE(SubPollRetire);if(gfx_async && (budget&63)==0){++nvn_poll_calls;poll_retire();}}
         // Bound host arena use per frame slot; only at command boundaries.
         {CPU_SCOPE(SubArenaCheck);{Slot &cur=slots[slot_index];if(cur.recording && cur.stream.used_total+cur.uniform.used_total+cur.readback.used_total>arena_flush_bytes){SiteScope site(SITE_ARENA);submit_slots(false);}}}
@@ -9420,6 +9459,12 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
       // Diagnostic only: marker files/gfx-live-flame-diag holds '0' or '1' and switches the per-frame draw census
       // (the flame/particle census ported from the Honor tree) on or off live, so the census can be compared with the
       // same scene without restarting the game. The census only observes: it never changes what is rendered.
+      // Diagnostic only: the two sensitivity probes are switched live, so every arm can be compared
+      // inside one session with the same scene and the same thermal state.
+      {std::string cdp=probe.base+"/gfx-live-cpu-delay";FILE *cdpf=fopen(cdp.c_str(),"rb");
+       if(cdpf){int value=fgetc(cdpf);fclose(cdpf);if(value=='0'||value=='1'){gfx_probe_cpu_delay_on=(value=='1');xbg_logf("LIVE-CPU-DELAY on=%d ns_per_cmd=%llu at present %llu",int(gfx_probe_cpu_delay_on),(unsigned long long)gfx_probe_cpu_delay_ns,(unsigned long long)pr);}}}
+      {std::string gdp=probe.base+"/gfx-live-gpu-delay";FILE *gdpf=fopen(gdp.c_str(),"rb");
+       if(gdpf){int value=fgetc(gdpf);fclose(gdpf);if(value=='0'||value=='1'){gfx_probe_gpu_delay_on=(value=='1');if(gfx_probe_gpu_delay_on&&!gfx_probe_gpu_buffers_ready())gfx_probe_gpu_delay_on=0;xbg_logf("LIVE-GPU-DELAY on=%d bytes=%llu at present %llu",int(gfx_probe_gpu_delay_on),(unsigned long long)gfx_probe_gpu_size,(unsigned long long)pr);}}}
       {std::string fdg=probe.base+"/gfx-live-flame-diag";FILE *fdgf=fopen(fdg.c_str(),"rb");
        if(fdgf){int value=fgetc(fdgf);fclose(fdgf);if(value=='0'||value=='1'){
            flame_diag_enabled=(value=='1');xbg_logf("LIVE-FLAME-DIAG enabled=%d at present %llu",int(flame_diag_enabled),(unsigned long long)pr);}}}
