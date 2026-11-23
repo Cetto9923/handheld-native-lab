@@ -7314,3 +7314,33 @@ CPU 侧每帧两段长间隔 8.5 / 11.1 ms，正好落在 GPU 的空档里 ⇒ �
 - Honor 复测：fps 38.8~40.9、submit_cpu 19.7~20.5 ms、gpu_ms 15.8~16.1 ms、Vulkan 错误 0、画面零回归。
 - 场景基线：熔岩 ~39.7（已达 40 Hz）、战斗 37.7、第 1 章 ~39；GPU 侧上限约 62 fps（gpu_ms 16.1）。
 - RG477M 仍为 1.0.78-test，未动（等用户明确授权）。
+
+## 第 35 轮（2026-11-23）：重区描述符域成本结构定性 + 前置缓存负结果撤回
+
+- **零构建诊断**（Honor，1.0.79，重区 draws=687.4 / ops=2663.7 / passes=108.3 /
+  fps 41.4 / submit_cpu 20.60 ms / gpu_ms 16.3~16.6 ms）：
+  `files/gfx-cpu-profile "0 30 1"` 取 30 帧 DESC_TIMING（first=8162 last=8191，
+  coverage=OK，descriptor 7.884 ms/帧）：
+  image_lookup 2.138（4089 次）/ set_finalize 1.113（460）/ element_rest 0.992（8780）/
+  buffer_bind 0.655（4691）/ texel_view_lookup 0.610（1918）/ remaining 0.738 /
+  texel_pending 0.346。
+  **驱动侧只有 tmpl_update 0.80 + alloc 0.09 ms/帧 ⇒ 描述符域 86% 是引擎逐绑定解析，
+  不是 Vulkan 调用。**（这解释了第 31~34 轮为什么全负：memo 与前置缓存省的是「写」和「查」，
+  大头在「解析」。）
+- **显式撤回先前归因**：第 41.4 节的「等价合并命令/绘制批次」方向**不攻击这批成本** ——
+  重建按描述符内容计（444.9 份/帧），合并相邻 draw 不减份数；引擎 draw 在解释器里即时录制
+  （无 draw list、无前瞻），全树无 multi-draw、无二级命令缓冲，alpha 顺序敏感 ⇒ 合并只减
+  draw call，不减解析成本，还会改画面。该方向撤出候选。
+- **改动轮（1.0.80-test）负结果并撤回**：texel view 直映射前置缓存（4096 槽，
+  `gfx-live-set "texviewfront=0/1"` 实时开关）+ 跳过已排序的 `std::sort`。
+  配对 A→B→A→B（重区 draws≈687，60 帧窗口值）：
+  submit_cpu A 20.07/20.08/19.97/19.92 对 B 19.99/19.88/19.94/20.04 ⇒ 配对差 +0.08/+0.03 ms
+  ⇒ 无增益。机制成立（前置命中 1102/帧、59%）但无收益 ⇒ **查表不是大头**。
+  Vulkan 错误计数 0。撤回（提交 `c6307da`，引擎与已出货 V22 逐字节一致），
+  APK sha256 9f25f15f… 不归档不出货，设备恢复 1.0.79。
+- **下一枪**：最大单项 `image_lookup`（扣探针开销后约 1.9 ms/帧）需要**再拆子站点**
+  （prepare_read 屏障记录 / get_image / sampler 装配 / api 面包屑），而不是继续换查找结构。
+- **RG477M**：用户已授权装 1.0.79（覆盖 1.0.78-test）；包与四段脚本就绪、三个版本签名证书
+  逐字节一致（cert_sha256 d11967a31fcef92f3d6b44adf9d9678c）；**阻塞在设备不在线**
+  （`adb -P 5037 devices` 空、macOS USB 枚举不到、mDNS 无服务、局域网 192.168.1.116 只开 80 端口），
+  需用户把 USB 插上。

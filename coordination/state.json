@@ -12982,6 +12982,42 @@
       "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/mavis-perf-20261122",
       "report": "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md",
       "task": "MAVIS-PERF-V14-TEXELSNAP-20261123"
+    },
+    {
+      "id": "MAVIS-PERF-V17-DESCTIMING-20261123",
+      "role": "描述符域成本结构诊断（零构建）+ texel view 直映射前置缓存改动轮（负结果已撤回）",
+      "objective": "定性战斗/重区每帧 444.9 次描述符集重建的成本构成，验证「等价合并绘制批次」方向是否成立；尝试用直映射前置缓存压低查表成本",
+      "inputs": [
+        "已出货 V22 / 1.0.79（引擎与 2b170eb 同源）",
+        "Honor GT Pro A42BBB5109000333",
+        "重区存档 shield-regression-20261122073707（自动推进到 draws≈687 的重区）",
+        "引擎自带子站点探针 files/gfx-cpu-profile \"0 30 1\""
+      ],
+      "outputs": [
+        "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md 第 42 节",
+        "coordination/EXPERIENCE.md L-176~L-178",
+        "coordination/HANDOFF.md 第 35 轮",
+        "1.0.80-test APK（sha256 9f25f15f…，负结果，不归档不出货）"
+      ],
+      "dependencies": [],
+      "pass_gates": [],
+      "status": "withdrawn_net_negative_plus_diagnosis",
+      "write_scope": [
+        "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+        "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md",
+        "coordination/EXPERIENCE.md",
+        "coordination/HANDOFF.md",
+        "coordination/state.json",
+        "coordination/STATUS.md"
+      ],
+      "acceptance": "描述符域成本结构要有子站点级证据；任何改动必须机制成立 + 配对 A→B→A→B 完全分离 + 显示零回归 + Vulkan 错误计数 0 才可出货",
+      "checkpoint": "提交 f6cf22e/564b160（改动）+ c6307da（撤回）。撤回后 git diff --quiet 2b170eb HEAD -- src/graphics/nvn_vulkan/engine/xbg_game.cpp 为空 ⇒ 引擎回到已出货 V22；Honor 设备已恢复 1.0.79。诊断结论：重区描述符域 7.884 ms/帧，其中驱动调用仅 tmpl_update 0.80 + alloc 0.09（11%），其余 86% 是引擎逐绑定解析；最大单项 image_lookup 2.138 ms/帧（4089 次/帧）。「等价合并绘制批次」方向撤出候选：重建按描述符内容计（444.9 份/帧），合并 draw 不减份数，且引擎无 draw list/无前瞻/无 multi-draw/无二级命令缓冲，alpha 顺序敏感。前置缓存机制成立（命中 1102/帧、59%）但 submit_cpu 配对差 +0.08/+0.03 ms ⇒ 无增益，已撤回 ⇒ 查表不是大头。",
+      "next": "对 image_lookup 再拆子站点（prepare_read 屏障记录 / get_image / sampler 装配 / api 面包屑），并扣掉探针时钟读开销（约 55 ns/次）后按真实成本排靶子；RG477M 装 1.0.79 等用户插 USB",
+      "owner": "/root",
+      "branch": "task/T-mavis-perf-20261122",
+      "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/mavis-perf-20261122",
+      "report": "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md",
+      "task": "MAVIS-PERF-V16-STABLE-079-20261123"
     }
   ],
   "blockers": [

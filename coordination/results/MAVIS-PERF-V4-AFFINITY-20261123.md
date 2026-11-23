@@ -3643,3 +3643,112 @@ device lost / VK_ERROR / fatal 计数 = 0
   键构建的代价大于一次重建。要吃到它需要「等价合并命令/绘制批次」（触及画面红线，需授权）
   或「集合可复用 + 只局部更新那一个 texel 绑定」（前提是 set_cache 可用，它本机恒 0 命中）。
 - 同机位像素对照（1.0.79 vs 基线 1.0.73）仍需人工固定站位后才能闭合。
+
+## 42. 第 35 轮（2026-11-23）：重区描述符域成本结构定性 + 前置缓存负结果撤回
+
+### 42.1 本轮性质与授权
+
+用户在 goal 暂停期间授权了两件事：① RG477M 装正式版 1.0.79（覆盖 1.0.78-test 基线）；
+② 战斗场景走「等价合并命令/绘制批次」（触及画面红线）。
+
+本轮先做**零构建诊断**，再做一次**改动轮**（1.0.80-test），实测净负并**撤回**。
+
+**对先前归因的显式撤回**：第 41.4 节写「要吃到那 722 次/帧重建需要等价合并命令/绘制批次
+或集合可复用+局部更新」。本轮实测数据表明**这个方向选错了靶子**，依据见 42.3。
+
+### 42.2 零构建诊断：重区的描述符子站点表
+
+来源：Honor GT Pro，1.0.79，重区（draws=687.4 / ops=2663.7 / passes=108.3 /
+fps 41.4 / submit_cpu 20.60 ms / gpu_ms 16.3~16.6 ms）；
+`files/gfx-cpu-profile "0 30 1"` 取 30 帧（first=8162 last=8191，coverage=OK，
+descriptor 7.884 ms/帧）。
+
+| 子站点 | ms/帧 | 次/帧 | ns/次 |
+| --- | --- | --- | --- |
+| image_lookup | 2.138 | 4089 | 523 |
+| set_finalize | 1.113 | 460 | 2420 |
+| element_rest | 0.992 | 8780 | 113 |
+| buffer_bind | 0.655 | 4691 | 140 |
+| texel_view_lookup | 0.610 | 1918 | 319 |
+| remaining（未命名残余） | 0.738 | — | — |
+| texel_pending | 0.346 | 1917 | 181 |
+| setup | 0.204 | 460 | 444 |
+| memo_verify | 0.190 | 451 | 421 |
+| memo_key | 0.199 | 909 | 219 |
+| memo_snapshot | 0.170 | 451 | 378 |
+| texel_alias | 0.103 | 1918 | 54 |
+| 其余（readback_*/image_*/sampler_* 等） | ≈0.37 | — | — |
+| **合计** | **7.884** | | |
+
+**关键结论：驱动侧只有 tmpl_update 0.80 + alloc 0.09 ms/帧 ⇒ 描述符域 86% 的成本是引擎
+自己的逐绑定解析，不是 Vulkan 调用。** 这解释了第 31~34 轮为什么全部净负：memo 与前置缓存
+能省的只是「写」和「查」，而大头在「解析」。
+
+同场其它读数：descriptor 调用 1324.8/帧；memo_hits 436.1；setcache misses 444.9
+（其中 why=texel 423.0）；fresh_skips 150、experiment_skips 294.9；
+texel_binds 1329.5 / distinct 311.0 / reused 67.0；
+img_cache hits 1825.7 / misses 255.8；texture_record_cache hits 3600.9 / misses 117.9；
+binds_skipped 3006.9/帧。
+
+### 42.3 对「等价合并命令/绘制批次」方向的显式撤回
+
+1. **重建是按描述符内容计费的**：444.9 次/帧 = 444.9 份不同内容。合并相邻 draw 只减少
+   draw call 与状态切换，**不减少需要重建的描述符集份数**（被合并的 draw 若 texel 不同，
+   仍各要一份 set）。
+2. **引擎不具备合并前提**：draw 在解释器里即时录制（`execute()` → `OP_DRAW` →
+   `execute_draw_index_record` → `draw()` → `vkCmdDrawIndexed`），**无 draw list、无前瞻**；
+   全树无 `vkCmdDrawMulti*`/`drawCount`/`VK_KHR_multi_draw`；**无二级命令缓冲**；
+   alpha blend 顺序敏感 ⇒ 合并会改画面。
+3. ⇒ 该方向**不攻击本轮实测到的大头（解析成本）**，且触及画面红线：**撤出候选**。
+
+### 42.4 改动轮（1.0.80-test）：前置缓存负结果并撤回
+
+改动（提交 `f6cf22e` / `564b160`）：
+
+1. `texel_view_cache` 前加直映射前置缓存（4096 槽，键同 map 的
+   {buffer,offset,range,format}），命中直接返回**同一个** VkBufferView；view 销毁
+   （`texel_view_forget_buffer`）与 `destroy_slots` 时同步失效对应槽；
+   运行时开关 `files/gfx-live-set "texviewfront=0/1"`。
+2. `set_finalize`：`dynamic_list` 已排序时跳过 `std::sort`（`is_sorted` 判定，结果等价）。
+3. 新增计数 `NVN PERF texel_view_front hits/misses`。
+
+实测（Honor，重区 draws≈687，同会话配对 A→B→A→B，60 帧窗口值）：
+
+```
+A(texviewfront=0) fps 42.28/42.61/43.34/42.74  submit_cpu 20.07/20.08/19.97/19.92
+B(texviewfront=1) fps 41.45/41.84/40.02/40.35  submit_cpu 19.99/19.88/19.94/20.04
+```
+
+- submit_cpu 配对差 **+0.08 / +0.03 ms**（两对同号，但均在 ±0.1 ms 噪声内）⇒ **判为无增益**。
+- fps 差被 gpu_ms 带偏（B 臂 15.6~18.0 vs A 臂 14.3~15.1），不作为 CPU 结论。
+- 机制成立但无收益：前置命中 1102/帧、miss 753/帧（合计 1856 次查表/帧，命中率 59%），
+  build 桶 7.05/7.16（A）对 6.98/7.31（B）无差异。
+- Vulkan 错误计数 0。
+
+⇒ **撤回**（提交 `c6307da`）：代码回到已出货 V22，`git diff --quiet 2b170eb HEAD -- <引擎>`
+为空。1.0.80-test APK（sha256 9f25f15f…）**不归档、不出货**；设备已恢复 1.0.79。
+
+### 42.5 本轮拿到的三条可执行结论
+
+1. **查表不是大头**：把 59% 的查表换成 O(1) 直映射后 submit_cpu 一点没动 ⇒
+   `texel_view_lookup` 的 319 ns/次主要在查表**之外**（互斥量、探针时钟读、哈希与键比较、
+   外层流程）。同理 `image_lookup` 的 523 ns/次的大头也不在查找本身。
+2. **子站点表的绝对值要扣探针开销**：30 帧共 1,694,682 次探针时钟读（`clock_reads`），
+   即约 5.65 万次/帧、约 55 ns/次，会摊进每个子站点桶（例：texel_view_lookup 真实值
+   ≈1918×(319−55)≈0.51 ms/帧，不是 0.61）。排序不变、绝对值要扣（L-170 同一条纪律，
+   本轮再次踩到）。
+3. **下一枪**：真正的最大单项是 `image_lookup`（扣探针后约 1.9 ms/帧、4089 次/帧）。
+   按第 1 条，它的成本在外围工作 —— `prepare_read`（屏障记录）、`get_image`、
+   `sampler()` 装配、api 面包屑、`water_binding_*`。下一轮应对 image_lookup
+   **再拆子站点**（prepare_read / get_image / sampler 三段），而不是继续换查找结构。
+
+### 42.6 RG477M
+
+用户已授权装 1.0.79（覆盖 1.0.78-test 基线）。包已备好；三个版本的签名证书逐字节一致
+（cert_sha256 = d11967a31fcef92f3d6b44adf9d9678c）⇒ 可直接覆盖装；
+安装/复核脚本写在 `.local/install-rg477m-1079.sh`（preflight / install / postflight / verify
+四段；保留 `/sdcard/HandheldNativeLab/data` 与 app 私有目录；不卸载、不清数据、不 kill-server）。
+
+**阻塞：该机当前不在线** —— `adb -P 5037 devices` 为空、macOS USB 枚举不到安卓设备、
+mDNS 无该机服务、局域网 192.168.1.116 只开 80 端口（不是它）。项目记录显示该机自
+2026-11-17 起就已 ADB 离线。**需要用户把 USB 插上**。
