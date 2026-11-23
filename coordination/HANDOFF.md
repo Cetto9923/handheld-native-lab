@@ -6954,8 +6954,8 @@ CPU 侧每帧两段长间隔 8.5 / 11.1 ms，正好落在 GPU 的空档里 ⇒ �
   站点级 descriptor 4.62/1290 次、snapshot 家族 4.25/6207 次、sub_exec 4.35、cleanup 1.69/9 次、draw 1.44/683。
 
   **⑦ 下一轮入口**：① 补测 uniform 慢路径敏感度（本轮只测了通用慢路径，uniform 1578 次/帧 未测）；
-  ② 打 draw 侧 descriptor 的「假未命中」（P0 已定位：148 次/帧 由 tex 句柄变化驱动，
-  177 次/帧 整表重建 ≈ 1.9 ms/帧，按 0.747 折算 ≈ 1.4 ms 帧周期 ≈ +2.7 fps）；
+  ② 打 draw 侧 descriptor 的「假未命中」（P0 已定位：148 次/帧 由 tex 句柄变化驱动；
+  按本轮实测构建速率 10.4 µs/次 ≈ 1.54 ms/帧 CPU，按 0.747 折算 ≈ 1.15 ms 帧周期 ≈ +2.2 fps）；
   ③ GPU 侧按第 17 轮两个重槽分段烧录。
   **不要再做**：合并 `vkQueueSubmit`、GPU 拷贝/屏障类、40 fps 上限、cleanup/失效路径（L-032）、compute descriptor memo。
 

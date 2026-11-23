@@ -2232,7 +2232,7 @@ sub_draw_idx_exec 0.25/681、sub_draw_gpu_idx 0.31/681、sub_find_template 0.02/
 
 | 候选靶 | 该段 CPU 量 | 敏感度 | 每省 1 ms 换到的帧周期 | 可省量 |
 | --- | --- | --- | --- | --- |
-| draw 侧 descriptor 整表重建 | descriptor 4.62 ms/帧 | 0.747 | 0.75 ms | 177 次/帧 ≈ 1.9 ms（P0 已定位根因：tex 句柄变化造成的**假未命中**） |
+| draw 侧 descriptor 整表重建 | descriptor 4.62 ms/帧（442.9 次构建 × 10.4 µs） | 0.747 | 0.75 ms | 148 次/帧的假未命中 ≈ 1.54 ms（P0 keydiff 口径） |
 | snapshot 家族（含 uniform 慢路径） | 4.25 ms/帧 | 0.781 / 未测 | 0.78 ms / ? | 待测 |
 | dispatch 段 | 3.18 ms/帧 | 1.459 | **1.46 ms** | compute descriptor 已被 P0 证伪 ⇒ 只剩非 descriptor 部分 |
 | cleanup 段 | 1.69 ms/帧 | 1.645 | 1.65 ms | **GPU 等待 + L-032 ⇒ 不动** |
@@ -2243,7 +2243,10 @@ sub_draw_idx_exec 0.25/681、sub_draw_gpu_idx 0.31/681、sub_find_template 0.02/
    一次构建即可），并给 uniform 慢路径定价 —— 它是 snapshot 家族里更大的一半，本轮未测。
 2. **打 draw 侧 descriptor 的「假未命中」**：P0 已证明 148 次/帧的未命中由 tex 句柄变化驱动；
    若句柄变了但解析出的 Image/View 没变，则是键的粒度问题而不是内容问题。
-   命中收益按 0.747 折算：177 次/帧全中约省 1.9 ms CPU ≈ 1.4 ms 帧周期 ≈ +2.7 fps。
+   命中收益按 0.747 折算：148 次/帧全中约省 1.54 ms CPU ≈ 1.15 ms 帧周期 ≈ +2.2 fps。
+   **口径提示**：P0 报告里的「177 次/帧整表重建」是 setcache 口径（整表重建这一子集），
+   与本轮实测的「442.9 次/帧 descriptors_build」不是同一个计数器，两者不可混用；
+   本轮按实测构建速率 10.4 µs/次折算。
 3. GPU 侧按第 17 轮的两个重槽分段烧录，确认 0.489 来自哪一段。
 
 不要再做的方向（已有依据）：合并 `vkQueueSubmit`（0.016 ms/次）、GPU 侧拷贝/屏障类改动、
