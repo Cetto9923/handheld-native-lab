@@ -5801,7 +5801,21 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
                             // must distinguish the per-draw c0 parameter. A buffer
                             // rebind is not required when firstInstance changes.
                             if(b.source==XBG_SOURCE_DRIVER0 && ns!=5){key.push_back(draw_base_instance);if(tags)ktag.push_back(7);}break;
-                        case XBG_SOURCE_TEXTURE:case XBG_SOURCE_IMAGE:{if(slot>=(b.source==XBG_SOURCE_IMAGE?16u:256u)){ok=false;break;}key.push_back(b.source==XBG_SOURCE_IMAGE?state.img[ns][slot]:state.tex[ns][slot]);if(tags)ktag.push_back(8);
+                        case XBG_SOURCE_TEXTURE:case XBG_SOURCE_IMAGE:{if(slot>=(b.source==XBG_SOURCE_IMAGE?16u:256u)){ok=false;break;}
+                            if(texel_snap_memo && b.source==XBG_SOURCE_TEXTURE){
+                                // Stable key component for a texel binding. The texture handle moves every frame (the
+                                // guest re-registers the texture, so its serial and revision move), while the guest
+                                // range and the format it is viewed as do not. Keying on the handle made every texel
+                                // draw miss the memo and churn the descriptor sets, which rebuilt the pipelines
+                                // (round 31, net negative).
+                                uint64_t th=state.tex[ns][slot];int tid=int(th&0xfffff);const RegisteredTexture *rec=nullptr;
+                                if(tid==0||(state.texture_pool.n>0&&tid>=state.texture_pool.n))rec=&null_texture(b);
+                                else{PoolKey pk=pool_key(&state.texture_pool);if(!texture_pool_cache||!(pk==texture_pool_cache_key)){auto pool=textures.find(pk);texture_pool_cache=pool==textures.end()?&legacy_textures:&pool->second;texture_pool_cache_key=pk;}rec=find_texture_record(*texture_pool_cache,tid);}
+                                if(!rec||!rec->texture.mem||!rec->texture.L.size){ok=false;break;}
+                                VkFormat ktf=texel_binding_format(*rec,b,&shader.storage_binding_info);
+                                if(ktf==VK_FORMAT_UNDEFINED){ok=false;break;}
+                                key.push_back(uint64_t(uintptr_t(rec->texture.mem)));key.push_back(uint64_t(rec->texture.L.size));key.push_back(uint64_t(ktf));if(tags){ktag.push_back(8);ktag.push_back(8);ktag.push_back(8);}
+                            } else {key.push_back(b.source==XBG_SOURCE_IMAGE?state.img[ns][slot]:state.tex[ns][slot]);if(tags)ktag.push_back(8);}
                             if(b.sampler_slot!=UINT32_MAX){if(b.sampler_slot>=128){ok=false;break;}key.push_back(state.samp[ns][b.sampler_slot]);if(tags)ktag.push_back(9);}break;}
                         default:ok=false;}
                         if(!ok)break;
@@ -5879,7 +5893,7 @@ void descriptors(Descriptors &out,Commands &commands,bool compute){
                 // means the view the set holds is gone or wrong, and the set has to be rebuilt.
                 if(same)for(auto &ts:m.texel_snap){
                     const tex_t &tt=ts.record->texture;
-                    if(ts.record->revision!=ts.revision || uint64_t(uintptr_t(tt.mem))!=ts.base || uint64_t(tt.L.size)!=ts.bytes){same=false;++vwhy_texsnap;break;}
+                    if(uint64_t(uintptr_t(tt.mem))!=ts.base || uint64_t(tt.L.size)!=ts.bytes){same=false;++vwhy_texsnap;break;}
                     snap_site=4;Buffer tb=snapshot(ts.base,ts.bytes,properties.limits.minTexelBufferOffsetAlignment);snap_site=0;
                     if(tb.buffer!=ts.buffer || tb.offset!=ts.offset){same=false;++vwhy_texsnap;break;}
                     ++texel_snap_hits;}
