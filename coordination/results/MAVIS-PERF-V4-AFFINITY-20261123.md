@@ -2751,3 +2751,77 @@ RG477M 双机回归仍未做（AGENTS-HONOR 禁止由此处操作该机），Goa
 **每帧约 660 次 full ALL_COMMANDS 屏障**（其中 575 次在 dispatch 里），乍看像 3~6 ms/帧的靶子。
 但第 10 轮（§18.5）已经用 `texeldupbar` 边际成本探针实测过：**每帧多 156 次 full barrier 测不出任何差异**
 （窄屏障版本同样中性）⇒ **屏障不是 CPU 靶子**（本轮据此把它从靶子地图里划掉，不再花构建周期）。
+
+## 32. 第 24 轮（**零构建收口轮，未出货**）：靶子地图收口 —— 剩下的池分别属于「结构性 / 驱动侧 / 冻结 / 太小」
+
+### 32.1 本轮做了什么
+
+第 23 轮给出了完整 CPU 账与 op 级地图，本轮**全部用已有日志与源码零构建地**回答「剩下的池还能不能动」：
+逐条去查每个大池的机制，并**把不能动的明确标注出来**，避免下一轮再花构建周期去撞墙。
+
+### 32.2 已证**结构性**（动不了，除非改客机行为）
+
+1. **descriptor 整表重建（4.6~7.5 ms/帧）**：`NVN PERF setcache` 的 `misses=442.9 template=442.9`、
+   `memo_hits=405.1 memo_misses=0.9`、`why=texel421.0/simg14.0/dm6.0/dynbuf0.9/store0.0`
+   ⇒ **421/442.9 次 memo 失配是 texel 键变化驱动**（客机每帧改写 texel 内容 ⇒ 描述符集内容真的变了）。
+   这与第 21 轮的撤回一致：不是「键粒度问题」的假未命中，是**真失配** ⇒ 重建本身是结构性的。
+2. **snapshot 拷贝（~9.3~14.5 MB/帧）**：客机每帧改写快照源 ⇒ 副本必须每帧新建
+   （`wtrack copied_kb_per_frame=0.0`、`vcache` 第 8 轮实测净零 ⇒ 现成的两条免拷贝机制都无效）。
+3. **cleanup（1.69 ms/帧）**：GPU 等待 + 失效/清理路径 ⇒ **L-032 冻结**。
+
+### 32.3 已证是**驱动侧录制成本**（改它就改画面 ⇒ 禁区）
+
+op26（`OP_DRAW_IDX`）11.93 ms/帧里，扣掉落在其中的 descriptor（~4.6）与引擎自己的站点
+（`draw` 1.42 + `sub_draw_idx_exec` 0.24 + `sub_draw_gpu_idx` 0.29 + `sub_draw_prologue` 0.03）
+⇒ **还有 ~5.3 ms/帧落在 draw 处理里未被任何站点覆盖**（每次 draw ~7.8 µs）。
+本轮查证：**绑定早已去重**——`binds_skipped_per_frame=2970.0`，源码里
+`vkCmdBindPipeline`/`vkCmdSetViewport`/`vkCmdSetScissor`/`vkCmdBindIndexBuffer` 都有「同值就跳过」的条件
+⇒ 剩下的是 `vkCmdBindDescriptorSets` + `vkCmdBindVertexBuffers` + `vkCmdDrawIndexed` 这类**必需**的驱动调用。
+⇒ **这一段要降只能改录制的命令流（＝改画面），按任务书属禁区**；本轮把它从靶子地图里划掉。
+
+### 32.4 本轮**零构建排除**的四个「看起来很大」的嫌疑
+
+| 嫌疑 | 实测/实查结论 |
+| --- | --- |
+| 每帧 ~660 次 full ALL_COMMANDS 屏障 | 第 10 轮 `texeldupbar` 边际探针：每帧多 156 次 full barrier **无任何差异** ⇒ 不是 CPU 靶子（L-148） |
+| 每个 texel 绑定都问驱动要 format properties | `format_properties` 有 flat table（<256）+ map 缓存；`texel_buffer_features` 有静态 map + legacy set ⇒ 都已缓存 |
+| `cpu_access` 在快照路径里等 GPU | `perf.why_access=0`、`access_by[*]=0` ⇒ 快照/顶点访问**从不**与 pending writeback 重叠，从不触发 `resolve_pending()` |
+| 每条命令的诊断钩子 `gfx_probe_seg_tick` | 只是计数器自增 + 掩码判断（inline，无时钟读）⇒ 可忽略 |
+
+### 32.5 新的第一候选：**texel 分支自有 ~1.1 ms/帧**
+
+`image_lookup` 的 2.178 ms/帧里，**1945 次/帧是 texel 绑定**（走 texel 分支，不是图像分支，见 §31.4），
+其子站点合计 1.07 ms/帧（texel_view_create 0.356 + texel_pending 0.357 + texel_view_lookup 0.178
++ texel_alias 0.099 + texel_readback 0.080）⇒ **分支自有余额 ~1.1 ms/帧（每次 ~563 ns）**。
+
+本轮已排除「格式解析」这个最像的嫌疑：`texel_binding_format()` 只有几次分支与一次 `format()` 查表
+（`texel_view_format` 一次查表 + 标量类别判断），**不可能是 563 ns**。
+⇒ 563 ns 的构成仍需**再切一刀**（下一次构建里给 texel 分支加 3~4 个子站点：
+typed-storage 决策 / `out.written` 线性扫描 / `out.storage` 扫描 / 其余自有逻辑）。
+这是目前**唯一 >1 ms 的引擎侧可动池**，且它是引擎自己的逻辑（不是驱动调用），值得一次构建。
+
+### 32.6 靶子地图收口（兵工厂，插桩口径 ms/帧）
+
+| 池 | ms/帧 | 判定 |
+| --- | --- | --- |
+| descriptor 整表重建 | 4.6~7.5 | **结构性**（421/442.9 失配是 texel 驱动） |
+| op26/op27 未覆盖的驱动调用 | ~5.3 + ~0.9 | **驱动侧** ⇒ 改录制=改画面，禁区 |
+| snapshot 拷贝 | ~1.1（+固定开销 ~1.3） | **结构性**（客机每帧改写源）；固定开销可再优化 ~0.2~0.4 |
+| cleanup | 1.69 | **L-032 冻结** |
+| **texel 分支自有** | **~1.1** | **新的第一候选**（引擎自身逻辑，需再切一刀） |
+| texel 视图创建 + 退休销毁 | 0.356 + 0.49~0.77 | 可动但收益上限 ~+1.7 fps，且生命周期不得弱于现状（L-032） |
+| 图像缓存覆盖面 | 0.78（今天的存量价值） | 要再扩大覆盖面需先知道各绑定种类的分布 |
+| `poll_retire` 的 fence 查询 | 0.66 | 可动（只查最老 pending fence ⇒ 最坏只是延迟退休） |
+| `set_finalize` / `element_rest` / `buffer_bind` | 0.97 / 0.96（多为探针） / 0.64 | 驱动调用 / 探针为主 |
+
+⇒ **诚实结论：目前没有任何「单点、安全、≥1 fps」的改动**。下一步有两条路：
+**(a)** 把几个小的引擎侧改动**打包**（texel 分支自有 1.1 + poll_retire 0.66 + snapshot map 0.2~0.4 + 图像缓存覆盖面 0.78 中的一部分）
+一次构建 + 同会话交错 A/B，**合计预期 +0.5~1.2 fps**，过噪声才出货；
+**(b)** 换一类手段（减少来宾→引擎的命令数、减少每 draw 的驱动调用、改 GPU 侧），但这些都触及「不改画面」的红线，需要先与需求方对齐。
+
+### 32.7 本轮无版本出货 + 设备状态
+
+L-029（没有测到高于噪声的收益就不占构建周期）+ L-032（不动失效/清理路径）。
+**本轮没有改代码、没有构建任何包、没有连设备**（全部结论来自第 23 轮已落盘的日志与源码复核）。
+设备状态维持第 23 轮结束时：出货第 3 版（`012efeb6…`）、无临时标记、游戏进程已停、**红果在前台**。
+RG477M 双机回归仍未做（AGENTS-HONOR 禁止由此处操作该机），Goal 未闭合。
