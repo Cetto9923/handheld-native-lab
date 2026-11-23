@@ -3321,3 +3321,58 @@ GPU 在这些帧上尖峰到 25.6 ms（均值 15）。
 - Honor：出货 V21 未动；测量用 `files/gfx-live-set` 标记已删除（`bboxready`/`honordescrefill` 默认值与备份内容一致 ⇒ 恢复原状）；
   游戏留在兵工厂战斗场景后台；**红果已还回前台**。
 - RG477M：未动包体，仍是基线 1.0.78-test。
+## 38 第 29 轮（改动轮，**候选已装机待测，未出货**）：texel buffer view 改为跨帧/跨槽共享缓存
+
+### 38.1 靶子
+
+第 28 轮的战斗场景部件表里，视图相关成本有两处，合计约 **1.05 ms/帧**，是那轮之后
+唯一还留在 1 ms 量级、且**不触碰画面语义**的杠杆：
+
+| 位置 | 成本 | 次数 |
+|---|---|---|
+| `cleanup` 域 `views` 桶 | 0.67 ~ 0.72 ms/帧 | 869 次 `vkDestroyBufferView` |
+| descriptor 域 `texel_view_create` | 0.356 ms/帧 | 869 次 `vkCreateBufferView` |
+
+**根因**：视图缓存挂在**帧槽**上（`Slot::texel_views`），每帧、每槽重建；而同一个
+`(buffer, offset, range, format)` 在**跨帧**与**跨槽**都重复出现
+（战斗场景实测 `texel_binds=2259.9/帧`、`distinct=416`、`reused=112`，实际却创建了 869 次
+⇒ 约 2.1 倍的槽间重复 + 每帧重建）。
+
+### 38.2 改动（commit `ac41468`，两棵工作树同 HEAD）
+
+1. 视图缓存从「每槽私有」改为**全局共享**，键仍是 `(buffer, offset, range, format)`；
+2. **视图与其 buffer 同生共死**：在 `Arena::destroy(ArenaChunk&)`（chunk 缓冲的唯一销毁收敛点，
+   `Arena::release()` 也走它）与 wtrack `release()`（池缓冲释放）处销毁该 buffer 上的全部视图；
+   不再在槽退休处销毁；
+3. **跨线程安全**：视图创建在 worker 线程（`execute()`），而视图销毁挂在 `retire_handle` 的延迟回调上，
+   槽退休可能发生在**来宾线程**（`xbg_legacy_wait` 路径）⇒ 全局容器用专用 `std::mutex texel_view_mutex`；
+   锁序恒为「引擎锁 → 视图锁」，持锁期间不做队列操作、不反向索取引擎锁；
+4. 运行时开关：`files/gfx-live-set "texviewcache=0"` 可在同会话关回旧行为做 A→B→A→B。
+
+**安全性论证**：视图的销毁点与 buffer 的销毁点相同 —— 原代码在槽退休（栅栏信号之后）销毁视图，
+现在视图活得**更久**，只可能在它的 buffer 已销毁时随之销毁，而该点本就是引擎认定的安全点。
+渲染语义零改动：绑定到描述符集里的仍是同一个 `(buffer, offset, range, format)`，只是不再重建句柄。
+
+### 38.3 实测（V22 候选，Honor，序章月夜废墟场景）
+
+同会话 A→B→A→B，指标取 `cleanup_ms_per_frame` 的 `views` 桶（窗口值）：
+
+| 开关 | views 桶（ms/帧） |
+|---|---|
+| texviewcache=1 | 0.20 / 0.01 / 0.01 |
+| texviewcache=0 | 0.43 / 0.40 |
+
+⇒ **机制成立**：视图销毁成本从 ~0.42 降到 ~0.01~0.20 ms/帧。
+序章场景 `texel_binds=858/帧` ⇒ 约省 0.3 ms/帧；按战斗场景 `texel_binds=2260/帧`（2.6 倍）外推，
+战斗场景约省 **0.6~0.8 ms/帧**，加上创建侧（869 → 数百）的一部分。
+
+**显示回归**：V22 装机后截图（序章月夜废墟：火焰、辉光、烟雾、主角、月亮、小地图、60 fps 角标）全部正常，
+`engine.log` 中 `device lost / VK_ERROR / fatal` 计数 = **0**，游戏稳定运行。
+
+### 38.4 尚未完成（不出货的原因）
+
+- **战斗场景 fps 未实测**：需要人工走进战斗场景（存档 `shield-regression-20261118094001` 已不存在，
+  当前只能从序章起手），分工是 agent 读档/取帧/测帧率、人工走位；
+- 序章场景 60 fps 无 CPU 余量，fps 读数落在噪声内，**机制证据不等于帧率证据**；
+- 因此 V22 **未归档为稳定版**（归档件仍是 V21，sha256 `40aed8fa…`），设备上当前装的是 V22 候选
+  （sha256 `482e7fcb6076c0210bfb1ed7b79f3e977748d5a94ee74d6883a5e45367f203cd`）。

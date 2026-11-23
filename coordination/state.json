@@ -12836,6 +12836,42 @@
   "branch": "task/T-mavis-perf-20261122",
   "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/mavis-perf-20261122",
   "report": "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md"
+ },
+ {
+  "id": "MAVIS-PERF-V13-TEXVIEW-20261123",
+  "role": "texel buffer view 跨帧/跨槽共享缓存（改动轮，候选已装机未出货）",
+  "objective": "把 texel buffer view 的缓存从每帧槽私有改为全局共享，视图与其 buffer 同生共死，不改任何渲染语义",
+  "inputs": [
+   "出货 V21 基线（40aed8fa…）",
+   "V22 候选（482e7fcb…）",
+   "Honor A42BBB5109000333",
+   "序章月夜废墟场景（自动起手）"
+  ],
+  "outputs": [
+   "ffrs-v22-texviewcache-20261123.apk",
+   "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md 第 38 节",
+   "coordination/EXPERIENCE.md L-168~L-169",
+   "coordination/HANDOFF.md 第 29 轮",
+   "/tmp/ffrs-validate/v22/shot2.png"
+  ],
+  "dependencies": [],
+  "pass_gates": [],
+  "status": "candidate_installed_pending_battle_measurement",
+  "write_scope": [
+   "src/graphics/nvn_vulkan/engine/xbg_game.cpp",
+   "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md",
+   "coordination/EXPERIENCE.md",
+   "coordination/HANDOFF.md",
+   "coordination/state.json",
+   "coordination/STATUS.md"
+  ],
+  "acceptance": "机制证据（cleanup views 桶减半）+ 显示无回归（截图正常、0 Vulkan 错误）+ 战斗场景 fps 实测后才允许出货",
+  "checkpoint": "ON views 0.20/0.01/0.01 vs OFF 0.43/0.40（序章，texel_binds 858/帧）=> 机制成立，约省 0.3 ms/帧，战斗场景外推 0.6~0.8 ms/帧；显示正常、0 错误；战斗 fps 未测 => 未出货，归档件仍是 V21；设备跑 V22 候选",
+  "next": "",
+  "owner": "/root",
+  "branch": "task/T-mavis-perf-20261122",
+  "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/mavis-perf-20261122",
+  "report": "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md"
  }],
   "blockers": [
     "MAVIS-SCENE-VALIDATION-20261122: 场景A(神殿含紫色调查点)已 PASS；场景C的战斗特效部分已由 MAVIS-BATTLE-VALIDATION-20261122 实测(战斗帧 225 帧 25 段，撕咬特效经 PNG 目视确认为合法画面)。仍 NOT_RUN：场景B(开场火场)与第四章兵工厂 —— 设备上全部隔离存档实际内容都是第1章探索区，命名与内容不符，这两个场景在平板上目前不存在。另：正常随机遇敌入场未复现(长按 R3 巡游 64 s 无遇敌)，战斗入场的 24.96 s 冻结目前只测到「读档续战」这一条路径。设备端 files/frame-dump 目录 shell/run-as 均无法删除，帧文件持续累积。",

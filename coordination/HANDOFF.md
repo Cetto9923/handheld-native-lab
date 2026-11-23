@@ -7228,3 +7228,23 @@ CPU 侧每帧两段长间隔 8.5 / 11.1 ms，正好落在 GPU 的空档里 ⇒ �
   游戏留在兵工厂战斗场景后台；**红果已还回前台**。RG477M 未动包体，仍是基线 1.0.78-test。
 - **⑦ 报告**：`coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md` 第 37 节；
   经验库新增 L-165 ~ L-167。
+
+## 第 29 轮（2026-11-23，**改动轮：候选已装机，未出货**）
+
+- **改动**：texel buffer view 缓存从「每帧槽私有」改为**全局共享**，键 `(buffer, offset, range, format)`；
+  **视图与其 buffer 同生共死**（在 `Arena::destroy(ArenaChunk&)` 与 wtrack `release()` 处销毁该 buffer 上的视图）；
+  跨线程安全用专用 `std::mutex texel_view_mutex`（创建在 worker、销毁可能由来宾线程的槽退休触发）；
+  运行时开关 `gfx-live-set "texviewcache=0"` 可关回旧行为。
+  commit `ac41468`（含线程安全补正 `ac41468` 之前的 `bbf3222`），两棵工作树同 HEAD。
+- **动机**：第 28 轮实测 `cleanup views` 桶 0.67~0.72 ms/帧（869 次销毁）+ `texel_view_create` 0.356 ms/帧（869 次创建）
+  ≈ 1.05 ms/帧；根因是缓存挂帧槽、每帧每槽重建，而同键跨帧跨槽重复（texel_binds 2260/帧、distinct 416）。
+- **实测（V22 候选，序章场景，同会话 A→B→A→B）**：`cleanup views` 桶 —— ON 0.20/0.01/0.01，OFF 0.43/0.40
+  ⇒ **机制成立**，序章省 ~0.3 ms/帧；按战斗场景 texel 绑定量（2.6 倍）外推约省 **0.6~0.8 ms/帧**。
+- **显示回归**：V22 装机截图正常（序章火焰/辉光/烟雾/主角/月亮/小地图/60 fps 角标），
+  `engine.log` 中 device lost / VK_ERROR / fatal = **0**，运行稳定。
+- **构建**：`ffrs-v22-texviewcache-20261123.apk`，sha256 `482e7fcb6076c0210bfb1ed7b79f3e977748d5a94ee74d6883a5e45367f203cd`，
+  已装 Honor。
+- **未出货**：**战斗场景 fps 未实测**（隔离存档 `shield-regression-20261118094001` 已不存在，当前从序章起手，
+  进战斗需人工走位）；序章 60 fps 无余量，fps 读数在噪声内 ⇒ 机制证据 ≠ 帧率证据。
+  归档件仍是 V21（`40aed8fa…`），设备上跑的是 V22 候选。
+- **经验库**：新增 L-168（缓存条目绑定资源销毁点）、L-169（改全局共享前先查延迟销毁回调的线程）。
