@@ -214,3 +214,39 @@ own code shows, and what the device confirmed:
   could not be pinned to a revision. The Khronos sample (§3) and the spec (§1, §2)
   cover the same ground and are pinnable.
 - No external code was copied into this project for this task.
+
+## 2. Interval tree — the structure behind the pending-list index
+
+Task: perf round 16 (2026-11-23), the exact interval index over the pending
+writeback and pending report lists
+(`src/graphics/nvn_vulkan/engine/xbg_interval_index.h`).
+
+- **Source**: Wikipedia, "Interval tree", revision `1378431441` (2026-10-04).
+  <https://en.wikipedia.org/w/index.php?title=Interval_tree&oldid=1378431441>
+- **Licence**: CC BY-SA 4.0 (the article page links to
+  `creativecommons.org/licenses/by-sa/4.0/deed.en`).
+- **Retrieved**: yes — the article text was fetched through the MediaWiki API
+  (`action=query&prop=extracts`) and the page itself over HTTPS (HTTP 200).
+- **What the source supports** (quoted from the article):
+
+  > "The trivial solution to finding all overlapping intervals is to visit each interval
+  > and test whether it intersects the given point or interval, which requires O(n) time."
+  > "Interval trees have a query time of O(log n + m) and an initial creation time of
+  > O(n log n), while limiting memory consumption to O(n). After creation, interval trees may
+  > be dynamic, allowing efficient insertion and deletion of an interval in O(log n) time."
+
+  The trivial solution it names is exactly the linear scan this round replaced, and the
+  O(log n + m) query and O(log n) dynamic update are the properties the implementation relies on.
+
+**What this project implemented (its own code, nothing copied)**: the article describes the
+centred interval tree, which splits the space at the centre point of the intervals. This project
+instead uses the augmented balanced search tree variant: the treap is keyed by (range start, id)
+and every node carries the maximum end of its subtree, so a query prunes a whole subtree as soon
+as that maximum is at or below the start of the query range. Two reasons for the variant: the
+entries are half-open ranges whose "newest overlapping entry wins" rule needs a stable id (ids
+are handed out in push order), and the variant needs no coordinate bound, while the guest address
+space is 48 bit and its occupied span is about 3.7 GB.
+
+Measured on the device (arsenal scene, shipped build): 89,163 treap node visits per frame over
+7,261 queries (15.5 nodes per query), 786 inserts and erases per frame, index cost about 0.22 ms
+per frame, and the linear scan it replaced cost about 0.9 ms per frame.

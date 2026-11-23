@@ -16,6 +16,7 @@
 #include "xbg_api_breadcrumb.h"
 #include "xbg_indexed_ready_probe.h"
 #include "xbg_indexed_bbox_probe.h"
+#include "xbg_interval_index.h"
 #include "xbg_completion_wait.h"
 #ifdef DM_COMPLETION_WAIT_SELFTEST
 extern "C" int xbg_completion_wait_selftest(char *report,size_t bytes);
@@ -150,6 +151,17 @@ namespace {
 xbg_game_config cfg{};
 std::recursive_mutex mutex;
 uint32_t deferred_live_profile=0;
+// V14: exact interval index over the pending lists. The scans it replaces cost
+// about 2.05 ms of submission CPU per frame (MAVIS-PERF-V4-AFFINITY-20261123.md
+// section 23). The index is maintained at every mutation site, so it can never
+// be older than the list. Live switches: gfx-live-set "wbfilter=1" answers the
+// pending-list queries from the index, "wbfverify=1" runs the scans beside it
+// and counts any disagreement.
+XbgIntervalIndex wb_interval_index,rep_interval_index;
+// V14: the shipped default uses the interval index. The verification switch still
+// answers every query from the scan, so the index can be proven against it.
+bool wb_interval_filter_enabled=true,wb_interval_verify_enabled=false;
+uint64_t wb_interval_verify_mismatch=0,wb_interval_verify_rebuild_mismatch=0,wb_interval_verify_entry_mismatch=0,wb_interval_size_mismatch=0;
 // ---- Asynchronous translation (Claude, C076): the game thread queues submits/presents/resource updates;
 // one graphics thread translates NVN -> Vulkan and owns the VkQueue, in order. Calls that need results
 // (fence waits, readback, finish, command-memory allocation) drain the queue first. Like a real GPU,
@@ -601,6 +613,9 @@ void timing_start(){
     nvn_cmd_total=0;nvn_cmd_sub_max_cmds=0;nvn_cmd_sub_max_cmds_ns=0;nvn_cmd_sub_max_ns=0;nvn_cmd_sub_max_ns_cmds=0;memset(nvn_cmd_by_op,0,sizeof(nvn_cmd_by_op));memset(nvn_cmd_ns_by_op,0,sizeof(nvn_cmd_ns_by_op));memset(nvn_cmd_max_ns_by_op,0,sizeof(nvn_cmd_max_ns_by_op));nvn_poll_calls=0;nvn_cmd_timed=0;
     nvn_find_calls=0;nvn_find_scan_entries=0;memset(nvn_find_reason,0,sizeof(nvn_find_reason));nvn_find_outside_range=0;
     nvn_wb_len_sum=0;nvn_wb_len_max=0;nvn_wb_frames=0;nvn_wb_add=0;nvn_wb_del=0;nvn_wb_min_addr=0;nvn_wb_max_end=0;
+    wb_interval_index.queries=0;wb_interval_index.hits=0;wb_interval_index.node_visits=0;wb_interval_index.inserts=0;wb_interval_index.erases=0;
+    rep_interval_index.queries=0;rep_interval_index.hits=0;rep_interval_index.node_visits=0;rep_interval_index.inserts=0;rep_interval_index.erases=0;
+    wb_interval_verify_mismatch=0;wb_interval_verify_rebuild_mismatch=0;wb_interval_verify_entry_mismatch=0;wb_interval_size_mismatch=0;
     timing_before={stats.submissions.load(),stats.draws.load(),stats.dispatches.load(),stats.presents.load(),stats.shader_loads.load()};
 }
 void descriptor_report();
@@ -633,7 +648,15 @@ void timing_report(const char *reason){
         (unsigned long long)nvn_find_outside_range,
         (double)(nvn_wb_frames?double(nvn_wb_len_sum)/double(nvn_wb_frames):0),(unsigned long long)nvn_wb_len_max,
         (unsigned long long)nvn_wb_min_addr,(unsigned long long)nvn_wb_max_end,
-        (unsigned long long)nvn_wb_add,(unsigned long long)nvn_wb_del);}
+        (unsigned long long)nvn_wb_add,(unsigned long long)nvn_wb_del);
+     xbg_logf("NVN CPU_TIMING wbindex enabled=%d verify=%d usable=%d wb_q=%llu wb_hits=%llu wb_nodes=%llu wb_ins=%llu wb_ers=%llu wb_size=%zu rep_q=%llu rep_hits=%llu rep_nodes=%llu rep_ins=%llu rep_ers=%llu rep_size=%zu mism=%llu rebuild_mism=%llu",
+        int(wb_interval_filter_enabled),int(wb_interval_verify_enabled),int(wb_interval_index.usable()&&rep_interval_index.usable()),
+        (unsigned long long)wb_interval_index.queries,(unsigned long long)wb_interval_index.hits,(unsigned long long)wb_interval_index.node_visits,
+        (unsigned long long)wb_interval_index.inserts,(unsigned long long)wb_interval_index.erases,wb_interval_index.size(),
+        (unsigned long long)rep_interval_index.queries,(unsigned long long)rep_interval_index.hits,(unsigned long long)rep_interval_index.node_visits,
+        (unsigned long long)rep_interval_index.inserts,(unsigned long long)rep_interval_index.erases,rep_interval_index.size(),
+        (unsigned long long)wb_interval_verify_mismatch,(unsigned long long)wb_interval_verify_rebuild_mismatch);
+     xbg_logf("NVN CPU_TIMING wbindex_verify mism=%llu entry_mism=%llu rebuild_mism=%llu size_mism=%llu",(unsigned long long)wb_interval_verify_mismatch,(unsigned long long)wb_interval_verify_entry_mismatch,(unsigned long long)wb_interval_verify_rebuild_mismatch,(unsigned long long)wb_interval_size_mismatch);}
     xbg_logf("NVN INDEXED_READY v=1 calls=%llu requests=%llu exact_calls=%llu exact_requests=%llu unique=%llu duplicates=%llu overflow_calls=%llu reports_steps=%llu writebacks_steps=%llu duplicate_reports_steps=%llu duplicate_writebacks_steps=%llu vertex_requests=%llu vertex_repeats=%llu",
         (unsigned long long)indexed_ready_stats.calls,(unsigned long long)indexed_ready_stats.requests,
         (unsigned long long)indexed_ready_stats.exact_calls,(unsigned long long)indexed_ready_stats.exact_requests,
@@ -968,7 +991,10 @@ struct EpochState{std::deque<EpochQuery> q;uint64_t base=0,known_upto=0,summed_u
     uint64_t prefix(uint64_t count){while(summed_upto<count && summed_upto<size()){sum+=q[summed_upto-base].value;++summed_upto;}return sum;}
     void trim(){while(base<summed_upto && !q.empty()){q.pop_front();++base;}}};
 uint64_t counter_epoch=0;std::map<uint64_t,EpochState> epochs;
-struct PendingReport {uint64_t addr,type,epoch;size_t count;const void *slot;VkQueryPool ts;uint32_t ts_index;uint64_t ts_value;bool ts_known;};
+// V14: the interval index needs a stable id per report. Ids are handed out in
+// push order, so the id also orders the reports by age.
+uint64_t pending_report_version=0;
+struct PendingReport {uint64_t addr,type,epoch;size_t count;const void *slot;VkQueryPool ts;uint32_t ts_index;uint64_t ts_value;bool ts_known;uint64_t id=++pending_report_version;};
 std::vector<PendingReport> pending_reports;
 // Command-buffer SignalEvent (4 per frame in D2R) completes when the GPU reaches it. Completing all work at the signal stalls
 // the CPU on the GPU at every signal; marker file gfx-defer-events = '1' instead submits the work so far without waiting and
@@ -1057,8 +1083,30 @@ struct GpuIndexedArgs {std::shared_ptr<OwnedIndirectBuffer> owned;VkDeviceSize o
 uint64_t pending_writeback_version=0;
 struct PendingWriteback {uint64_t addr,bytes;Buffer buffer;const void *slot;std::shared_ptr<IndirectTemplateBatch> indirect;std::shared_ptr<void> owner;uint64_t version=++pending_writeback_version;};
 std::vector<PendingWriteback> pending_writebacks;
+// V14: the pending list is ordered by version (ids are handed out in push order
+// and removals keep the order), so the entry of a known version is found with a
+// binary search instead of a scan over the whole list.
+const PendingWriteback *pending_writeback_by_version(uint64_t version){
+    size_t lo=0,hi=pending_writebacks.size();
+    while(lo<hi){size_t mid=(lo+hi)/2;if(pending_writebacks[mid].version<version)lo=mid+1;else hi=mid;}
+    if(lo<pending_writebacks.size()&&pending_writebacks[lo].version==version)return &pending_writebacks[lo];
+    return nullptr;
+}
 bool indirect_cpu_clean(uint64_t address,uint64_t bytes){
     if(!address || !bytes || address+bytes<address)return false;
+    // V14: the index answers the same question as the scans below. The
+    // verification mode runs both and counts every disagreement.
+    if((wb_interval_filter_enabled||wb_interval_verify_enabled)&&wb_interval_index.usable()&&rep_interval_index.usable()){
+        bool index_clean=!wb_interval_index.any(address,bytes)&&!rep_interval_index.any(address,bytes);
+        if(wb_interval_verify_enabled){
+            bool scan_clean=true;
+            for(auto &w:pending_writebacks)if(xbg_wb_overlaps(address,bytes,w.addr,w.bytes)){scan_clean=false;break;}
+            if(scan_clean)for(auto &r:pending_reports)if(xbg_wb_overlaps(address,bytes,r.addr,sizeof(NVNcounterData))){scan_clean=false;break;}
+            if(index_clean!=scan_clean)++wb_interval_verify_mismatch;
+            return scan_clean;
+        }
+        return index_clean;
+    }
     for(auto &w:pending_writebacks)if(xbg_wb_overlaps(address,bytes,w.addr,w.bytes))return false;
     for(auto &r:pending_reports)if(xbg_wb_overlaps(address,bytes,r.addr,sizeof(NVNcounterData)))return false;
     return true;
@@ -2011,6 +2059,19 @@ void perf_frame(){
     // and how often the list changes (a cached index is only viable while the list is stable).
     {uint64_t n=pending_writebacks.size();nvn_wb_len_sum+=n;if(n>nvn_wb_len_max)nvn_wb_len_max=n;++nvn_wb_frames;
      if(n){uint64_t mn=UINT64_MAX,mx=0;for(auto &w:pending_writebacks){if(w.addr<mn)mn=w.addr;uint64_t e=w.addr+w.bytes;if(e>mx)mx=e;}nvn_wb_min_addr=mn;nvn_wb_max_end=mx;}}
+    // V14: a cheap always-on guard. The index must hold exactly the live entries;
+    // a mutation site that was not mirrored shows up here as a size difference.
+    if(wb_interval_index.usable()&&rep_interval_index.usable()&&
+       (wb_interval_index.size()!=pending_writebacks.size()||rep_interval_index.size()!=pending_reports.size()))++wb_interval_size_mismatch;
+    // V14: the verification mode rebuilds the index from the list every frame and
+    // compares it with the incrementally maintained one, so a missed mutation
+    // site cannot hide behind a query answer that happens to agree.
+    if(wb_interval_verify_enabled){
+        XbgIntervalIndex check_wb,check_rep;
+        for(auto &w:pending_writebacks)check_wb.insert(w.version,w.addr,w.bytes);
+        for(auto &r:pending_reports)check_rep.insert(r.id,r.addr,sizeof(NVNcounterData));
+        if(!check_wb.same_contents(wb_interval_index)||!check_rep.same_contents(rep_interval_index))++wb_interval_verify_rebuild_mismatch;
+    }
     if(!perf.window_start){perf.window_start=now;perf.frames=0;return;}
     if(++perf.frames<60)return;
     if(memory_profile_counts)log_memory_profile_counts();
@@ -2299,6 +2360,36 @@ bool pending_view(uint64_t address,uint64_t bytes,VkDeviceSize align,Buffer &out
     // Opening a slot may retire and trim the very arena a pending view names.
     // Select the consumer before looking up a producer or retaining its storage.
     if (!slots[slot_index].recording && !pending_writebacks.empty()) recording_slot();
+    // V14: the index answers "which pending writeback covers this range" with
+    // the same rule as the scan below, the newest overlapping one winning.
+    if((wb_interval_filter_enabled||wb_interval_verify_enabled)&&wb_interval_index.usable()&&xbg_wb_range_valid(address,bytes)){
+        uint64_t id=0;
+        bool hit=wb_interval_index.newest(address,bytes,id);
+        if(wb_interval_verify_enabled){
+            bool scan_hit=false;uint64_t scan_id=0,scan_addr=0,scan_bytes=0,scan_boff=0;
+            for(auto w=pending_writebacks.rbegin();w!=pending_writebacks.rend();++w){
+                if(!(address<w->addr+w->bytes && address+bytes>w->addr))continue;
+                scan_hit=true;scan_id=w->version;scan_addr=w->addr;scan_bytes=w->bytes;scan_boff=w->buffer.offset;break;}
+            if(scan_hit!=hit||(scan_hit&&scan_id!=id))++wb_interval_verify_mismatch;
+            if(scan_hit){
+                const PendingWriteback *resolved=pending_writeback_by_version(id);
+                if(!resolved||resolved->addr!=scan_addr||resolved->bytes!=scan_bytes||resolved->buffer.offset!=scan_boff)++wb_interval_verify_entry_mismatch;
+            }
+            hit=scan_hit;id=scan_id;
+        }
+        if(!hit)return false;
+        const PendingWriteback *w=pending_writeback_by_version(id);
+        if(!w)return false;
+        if(address<w->addr || address+bytes>w->addr+w->bytes)return false;
+        VkDeviceSize delta=address-w->addr;if(align>1 && (w->buffer.offset+delta)%align)return false;
+        out=w->buffer;out.offset+=delta;out.mapped=static_cast<uint8_t*>(out.mapped)+delta;out.size=bytes;++perf.pending_views;
+        if(version)*version=w->version;
+        if(w->owner)slots[slot_index].retire.objects.push_back(w->owner);
+        if(!w->owner && w->slot!=&slots[slot_index]){++xviews;slots[slot_index].xview=true;
+            const_cast<Slot*>(static_cast<const Slot*>(w->slot))->viewed.push_back({out.buffer,out.offset,out.offset+bytes});
+            static unsigned n=0;if(n++<24)xbg_logf("NVN XVIEW frame=%llu addr=%#llx bytes=%llu writeback=%#llx+%llu",(unsigned long long)stats.presents.load(),(unsigned long long)address,(unsigned long long)bytes,(unsigned long long)w->addr,(unsigned long long)w->bytes);}
+        return true;
+    }
     for(auto w=pending_writebacks.rbegin();w!=pending_writebacks.rend();++w){
         if(!(address<w->addr+w->bytes && address+bytes>w->addr))continue;
         if(address<w->addr || address+bytes>w->addr+w->bytes)return false;
@@ -2956,6 +3047,8 @@ void resolve_slot_writebacks(const void *slot){
     if(pending_writebacks.empty())return;resolving_pending=true;
     std::vector<PendingWriteback> keep;
     for(size_t i=0;i<pending_writebacks.size();i++){auto &w=pending_writebacks[i];if(w.slot!=slot){keep.push_back(w);continue;}
+        // V14: the entry leaves the pending list here, so it leaves the index too.
+        wb_interval_index.erase(w.version,w.addr,w.bytes);
         if(writeback_superseded(i)){++wb_skipped;wb_skipped_bytes+=w.bytes;continue;}
         writeback_bytes+=w.bytes;w.buffer.invalidate();invalidate_cpu_range(w.addr,w.bytes);memcpy(reinterpret_cast<void*>(w.addr),w.buffer.mapped,w.bytes);}
     pending_writebacks.swap(keep);resolving_pending=false;
@@ -2981,7 +3074,11 @@ void write_report(const PendingReport &r){
 void resolve_known_reports(){
     size_t done=0;
     for(;done<pending_reports.size();done++){const auto &r=pending_reports[done];if(!r.ts_known)break;auto e=epochs.find(r.epoch);bool known=true;if(e!=epochs.end()){e->second.advance_known();known=e->second.known_upto>=std::min<uint64_t>(r.count,e->second.size());}if(!known)break;write_report(r);}
-    if(done)pending_reports.erase(pending_reports.begin(),pending_reports.begin()+done);
+    if(done){
+        // V14: the resolved reports leave the list, so they leave the index too.
+        for(size_t i=0;i<done;i++)rep_interval_index.erase(pending_reports[i].id,pending_reports[i].addr,sizeof(NVNcounterData));
+        pending_reports.erase(pending_reports.begin(),pending_reports.begin()+done);
+    }
     // Fold known queries into the running sum up to the earliest count still needed by a pending report, then drop them.
     for(auto &e:epochs){uint64_t limit=e.second.known_upto;for(auto &r:pending_reports)if(r.epoch==e.first)limit=std::min<uint64_t>(limit,r.count);e.second.prefix(limit);e.second.trim();}
     // A report only ever names the epoch current when it was recorded, so an older epoch that no pending report names is
@@ -2998,9 +3095,11 @@ void resolve_pending(){
     resolving_pending=true;
     gpu_sync(pending_writebacks.empty()?perf.sync_query:perf.sync_writeback);
     auto writebacks=std::move(pending_writebacks);pending_writebacks.clear();nvn_wb_del+=writebacks.size();
+    wb_interval_index.clear();   // V14: every pending writeback just left the list
     for(auto &w:writebacks){w.buffer.invalidate();invalidate_cpu_range(w.addr,w.bytes);memcpy(reinterpret_cast<void*>(w.addr),w.buffer.mapped,w.bytes);}
     for(auto &r:pending_reports)write_report(r);
     pending_reports.clear();
+    rep_interval_index.clear();   // V14: every pending report just left the list
     for(auto it=epochs.begin();it!=epochs.end();)if(it->first!=counter_epoch)it=epochs.erase(it);else ++it;
     apply_ready_events();
     resolving_pending=false;
@@ -3063,6 +3162,8 @@ void cpu_access(uint64_t address,uint64_t bytes,unsigned why){
     if(why==4){
         for(auto it=pending_writebacks.begin();it!=pending_writebacks.end();){
             if(address<=it->addr && address+bytes>=it->addr+it->bytes){
+                // V14: the entry leaves the pending list here, so it leaves the index too.
+                wb_interval_index.erase(it->version,it->addr,it->bytes);
                 it=pending_writebacks.erase(it);++nvn_wb_del;
             }else{
                 ++it;
@@ -5193,7 +5294,7 @@ struct Descriptors {
     ~Descriptors(){for(auto x:buffer_views)vkDestroyBufferView(cfg.device,x,nullptr);}
     Buffer *keep(const Buffer &b){need(buffers.size()<buffers.capacity(),"Descriptor buffer reservation exceeded");buffers.push_back(b);return &buffers.back();}
     bool needs_writeback()const{return !written.empty();}
-    void defer_writeback(std::shared_ptr<IndirectTemplateBatch> proof={}){const void *slot=&slots[slot_index];for(auto &v:written){if(draw_detail)draw_timing.storage(v.first.second);snapshot_invalidate(v.first.first,v.first.second);++nvn_wb_add;pending_writebacks.push_back({v.first.first,v.first.second,*v.second,slot,proof && proof->address==v.first.first && proof->bytes==v.first.second?proof:nullptr});}}
+    void defer_writeback(std::shared_ptr<IndirectTemplateBatch> proof={}){const void *slot=&slots[slot_index];for(auto &v:written){if(draw_detail)draw_timing.storage(v.first.second);snapshot_invalidate(v.first.first,v.first.second);++nvn_wb_add;pending_writebacks.push_back({v.first.first,v.first.second,*v.second,slot,proof && proof->address==v.first.first && proof->bytes==v.first.second?proof:nullptr});wb_interval_index.insert(pending_writebacks.back().version,pending_writebacks.back().addr,pending_writebacks.back().bytes);}}
     void writeback(){for(auto &v:written){if(draw_detail)draw_timing.storage(v.first.second);v.second->invalidate();invalidate_cpu_range(v.first.first,v.first.second);memcpy(reinterpret_cast<void*>(v.first.first),v.second->mapped,v.first.second);}}
     void capture_read_images(){for(auto &i:capture_inputs)capture_image(*i.image,i.has_view?&i.view:nullptr,i.label.c_str());}
 };
@@ -7854,7 +7955,7 @@ bool gpu_buffer_copy(uint64_t src,uint64_t dst,uint64_t n){preflight_cpu_reads()
     invalidate_cpu_range(dst,n);
     Slot &s=recording_slot();end_open_pass();Buffer b=readback_buffer(n);
     VkBufferCopy region{view.offset,b.offset,n};vkCmdCopyBuffer(s.cmd,view.buffer,b.buffer,1,&region);full_barrier(s.cmd);
-    ++nvn_wb_add;pending_writebacks.push_back({dst,n,b,&s});return true;
+    ++nvn_wb_add;pending_writebacks.push_back({dst,n,b,&s});wb_interval_index.insert(pending_writebacks.back().version,pending_writebacks.back().addr,pending_writebacks.back().bytes);return true;
 }
 void resolve_texture(const p_copy_t2t &p){preflight_cpu_reads();probe_boundary("resolve-texture");if(flame_diag_enabled && fdiag_prev8 && uint64_t(uintptr_t(p.dst->mem))==fdiag_prev8){char sb[16];snprintf(sb,sizeof sb,"%llx",(unsigned long long)(uintptr_t(p.src->mem)>>4)&0xfffffffull);fdiag_event('R',sb,"");}
     Image &s=get_image(p.src,true),&d=get_image(p.dst,false);
@@ -8043,6 +8144,39 @@ bool indexed_range_ready(uint64_t address,uint64_t bytes,VkDeviceSize alignment,
     if(probe)probe->request(address,bytes,alignment);
     if(bbox)bbox->request(address,bytes);
     if(!address || !bytes || address+bytes<address)return false;
+    // V14: the index answers the two questions the scans below ask, with the
+    // same answers: a report that overlaps the range makes the range not
+    // ready, and the newest overlapping writeback decides the containment and
+    // alignment verdict. The bboxready envelope is not consulted here; the
+    // index answers the question the envelope was approximating.
+    if((wb_interval_filter_enabled||wb_interval_verify_enabled)&&wb_interval_index.usable()&&rep_interval_index.usable()){
+        bool report_hit=rep_interval_index.any(address,bytes);
+        uint64_t wb_id=0;
+        bool wb_hit=wb_interval_index.newest(address,bytes,wb_id);
+        if(wb_interval_verify_enabled){
+            bool scan_report=false;
+            for(auto &r:pending_reports)if(xbg_wb_overlaps(address,bytes,r.addr,sizeof(NVNcounterData))){scan_report=true;break;}
+            bool scan_wb=false;uint64_t scan_id=0,scan_addr=0,scan_bytes=0,scan_boff=0;
+            for(auto w=pending_writebacks.rbegin();w!=pending_writebacks.rend();++w){
+                if(!xbg_wb_overlaps(address,bytes,w->addr,w->bytes))continue;
+                scan_wb=true;scan_id=w->version;scan_addr=w->addr;scan_bytes=w->bytes;scan_boff=w->buffer.offset;break;}
+            if(scan_report!=report_hit||scan_wb!=wb_hit||(scan_wb&&scan_id!=wb_id))++wb_interval_verify_mismatch;
+            // The index answers with an id; the entry behind that id must be the
+            // same entry the scan found, or the verdict would be taken from the
+            // wrong writeback.
+            if(scan_wb){
+                const PendingWriteback *resolved=pending_writeback_by_version(wb_id);
+                if(!resolved||resolved->addr!=scan_addr||resolved->bytes!=scan_bytes||resolved->buffer.offset!=scan_boff)++wb_interval_verify_entry_mismatch;
+            }
+            report_hit=scan_report;wb_hit=scan_wb;wb_id=scan_id;
+        }
+        if(report_hit)return false;
+        if(!wb_hit)return true;
+        const PendingWriteback *w=pending_writeback_by_version(wb_id);
+        if(!w)return true;
+        return address>=w->addr && address+bytes<=w->addr+w->bytes &&
+            (w->buffer.offset+address-w->addr)%alignment==0;
+    }
     if(!bounds || !bounds->reports.outside(address,bytes))for(auto &r:pending_reports){if(probe)probe->report_step();if(bbox)bbox->report_step();if(xbg_wb_overlaps(address,bytes,r.addr,sizeof(NVNcounterData)))return false;}
     if(!bounds || !bounds->writebacks.outside(address,bytes))for(auto w=pending_writebacks.rbegin();w!=pending_writebacks.rend();++w){
         if(probe)probe->writeback_step();if(bbox)bbox->writeback_step();
@@ -8115,7 +8249,7 @@ bool pin_indexed_input(const IndexedInputFailure &input){
         if(source.offset&3) return false;
         auto job=std::make_shared<OwnedInputCopy>(source,size_t(input.bytes));producer->copy_readers.push_back(job);slots[slot_index].retire.objects.push_back(job);
         ++perf.submits;++submit_by[SITE_OTHER];snapshot_invalidate(input.address,input.bytes);
-        ++nvn_wb_add;pending_writebacks.push_back({input.address,input.bytes,job->owned->view,&slots[slot_index],{},job});
+        ++nvn_wb_add;pending_writebacks.push_back({input.address,input.bytes,job->owned->view,&slots[slot_index],{},job});wb_interval_index.insert(pending_writebacks.back().version,pending_writebacks.back().addr,pending_writebacks.back().bytes);
         static unsigned copies=0;if(copies++<12 || !(copies%600))xbg_logf("NVN owned indexed input copy copies=%u bytes=%llu sourceSlot=%d consumerSlot=%u",copies,(unsigned long long)input.bytes,int(producer-slots),slot_index);return true;
     }
     return false;
@@ -8495,7 +8629,7 @@ void execute(const uint8_t *pc,unsigned depth,uint64_t &budget){
                 timestamp_query(r.ts,r.ts_index,r.slot);
                 Slot &ts=recording_slot();++ts.ops;++perf.ops;vkCmdWriteTimestamp(ts.cmd,ts_stage,r.ts,r.ts_index);
             }else{Commands c;timestamp_query(r.ts,r.ts_index,r.slot);vkCmdWriteTimestamp(c.command,ts_stage,r.ts,r.ts_index);c.finish();}
-            pending_reports.push_back(r);break;}
+            pending_reports.push_back(r);rep_interval_index.insert(r.id,r.addr,sizeof(NVNcounterData));break;}
         default:xbg_fatalf("NVN opcode %u at %#llx not implemented",h.op,(unsigned long long)uintptr_t(pc));
         }
         if(codex_gpu_step){gpu_sync(perf.sync_writeback);xbg_logf("CODEX_GPU complete seq=%llu op=%u",(unsigned long long)budget,h.op);}
@@ -9225,7 +9359,7 @@ extern "C" void xbg_request_memory_trim(unsigned level) {
     while (previous < level && !memory_trim_requested.compare_exchange_weak(previous, level)) {
     }
 }
-extern "C" int xbg_game_shutdown(){gfx_drain();gfx_async_stop();std::lock_guard<std::recursive_mutex> lock(mutex);performance_hint::reset();if(!initialized)return 0;gpu_raw_export(true);timing_report("shutdown-partial");provenance_close("SHUTDOWN");resolve_pending();submit_slots(true);save_pipeline_cache();pending_writebacks.clear();pending_reports.clear();pending_events.clear();recording_events.clear();epochs.clear();VkResult r=vkQueueWaitIdle(cfg.queue);if(r!=VK_SUCCESS)return r;wtrack::release();destroy_slots();clear_pipeline_objects();cache_save_join();warm::shutdown();bright::shutdown();shutdown_rg16_proxy();clear_descriptor_caches();clear_render_pass_cache();images.clear();++images_epoch;for(auto &f:persistent_framebuffers)vkDestroyFramebuffer(cfg.device,f.second,nullptr);persistent_framebuffers.clear();image_index.clear();image_index_dirty=true;program_cache.clear();shaders.clear();textures.clear();clear_texture_record_cache();texture_pool_cache=nullptr;samplers.clear();null_textures.clear();texture_pool_cache=nullptr;pools.clear();host_segments.clear();host_ranges.clear();host_bytes=0;cmd_range_lo=0;cmd_range_bytes=0;vkDestroyPipelineCache(cfg.device,pipeline_cache,nullptr);pipeline_cache=VK_NULL_HANDLE;vkDestroyCommandPool(cfg.device,command_pool,nullptr);command_pool=VK_NULL_HANDLE;if(submit_sem_inited && cfg.device){for(unsigned i=0;i<kMaxSlots;i++){if(submit_semaphores[i]!=VK_NULL_HANDLE)vkDestroySemaphore(cfg.device,submit_semaphores[i],nullptr);submit_semaphores[i]=VK_NULL_HANDLE;submit_sem_signaled[i]=false;}submit_sem_inited=false;last_signal_sem=VK_NULL_HANDLE;last_signal_slot=-1;}initialized=false;return 0;}
+extern "C" int xbg_game_shutdown(){gfx_drain();gfx_async_stop();std::lock_guard<std::recursive_mutex> lock(mutex);performance_hint::reset();if(!initialized)return 0;gpu_raw_export(true);timing_report("shutdown-partial");provenance_close("SHUTDOWN");resolve_pending();submit_slots(true);save_pipeline_cache();pending_writebacks.clear();pending_reports.clear();wb_interval_index.clear();rep_interval_index.clear();pending_events.clear();recording_events.clear();epochs.clear();VkResult r=vkQueueWaitIdle(cfg.queue);if(r!=VK_SUCCESS)return r;wtrack::release();destroy_slots();clear_pipeline_objects();cache_save_join();warm::shutdown();bright::shutdown();shutdown_rg16_proxy();clear_descriptor_caches();clear_render_pass_cache();images.clear();++images_epoch;for(auto &f:persistent_framebuffers)vkDestroyFramebuffer(cfg.device,f.second,nullptr);persistent_framebuffers.clear();image_index.clear();image_index_dirty=true;program_cache.clear();shaders.clear();textures.clear();clear_texture_record_cache();texture_pool_cache=nullptr;samplers.clear();null_textures.clear();texture_pool_cache=nullptr;pools.clear();host_segments.clear();host_ranges.clear();host_bytes=0;cmd_range_lo=0;cmd_range_bytes=0;vkDestroyPipelineCache(cfg.device,pipeline_cache,nullptr);pipeline_cache=VK_NULL_HANDLE;vkDestroyCommandPool(cfg.device,command_pool,nullptr);command_pool=VK_NULL_HANDLE;if(submit_sem_inited && cfg.device){for(unsigned i=0;i<kMaxSlots;i++){if(submit_semaphores[i]!=VK_NULL_HANDLE)vkDestroySemaphore(cfg.device,submit_semaphores[i],nullptr);submit_semaphores[i]=VK_NULL_HANDLE;submit_sem_signaled[i]=false;}submit_sem_inited=false;last_signal_sem=VK_NULL_HANDLE;last_signal_slot=-1;}initialized=false;return 0;}
 extern "C" void xbg_game_get_stats(xbg_game_stats *out){if(out)*out={stats.submissions.load(),stats.draws.load(),stats.dispatches.load(),stats.presents.load(),stats.shader_loads.load()};}
 extern "C" void xbg_game_frame_counters(xbg_frame_counters *out){if(out)*out={hud::pipelines.load(),hud::pipeline_ns.load(),hud::shaders.load(),hud::shader_ns.load(),hud::uploads.load(),hud::reuploads.load(),hud::upload_bytes.load(),hud::upload_ns.load()};}
 extern "C" void xbg_game_set_frame(uint64_t frame){hud::frame.store(frame,std::memory_order_relaxed);}
@@ -9319,7 +9453,7 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
           {"texelframe",&honor_frame_texel_memo_enabled},
           {"texdirty",&tex_dirty},{"texmemo",&texel_memo_enabled},{"imgcache",&img_cache_enabled},
           {"descmemo",&desc_memo_enabled},{"desccompute",&desc_memo_compute_enabled},{"dynpartial",&dyn_partial_enabled},{"xmemo",&xmemo_enabled},
-          {"bindcache",&bind_cache_enabled},{"ownedinput",&owned_input_copy_enabled},{"rbfullcopy",&readback_fullcopy_enabled},{"bboxready",&indexed_bbox_ready_enabled},{"bboxprobe",&indexed_bbox_probe_enabled},
+          {"bindcache",&bind_cache_enabled},{"ownedinput",&owned_input_copy_enabled},{"rbfullcopy",&readback_fullcopy_enabled},{"bboxready",&indexed_bbox_ready_enabled},{"bboxprobe",&indexed_bbox_probe_enabled},{"wbfilter",&wb_interval_filter_enabled},{"wbfverify",&wb_interval_verify_enabled},
           {"gpuindexed",&gpu_indexed_enabled},{"uppro",&upload_prologue},{"depthaspect",&depth_aspect_enabled},
           {"pipefast",&pipeline_fast_enabled},{"pipememo",&pipe_memo},{"occlusion",&occlusion_batch_enabled},
           {"vcache",&vcache::enabled},{"texrecord",&texture_record_cache_enabled},{"adpf",&performance_hint::enabled},
