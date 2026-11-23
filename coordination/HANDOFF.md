@@ -7267,3 +7267,15 @@ CPU 侧每帧两段长间隔 8.5 / 11.1 ms，正好落在 GPU 的空档里 ⇒ �
   `shield-regression-20261118094001` = 序章（60 fps，无 CPU 余量），
   `shield-regression-1080-baseline-1795152210` 会让游戏停在数据发现页不启动；
   `input keyevent 96`（FORWARD）**不能移动角色**，进战斗仍需人工。
+
+### 第 30 轮输入（已落盘，待开工）：兵工厂熔岩场景的描述符域子站点表
+
+- 场景：兵工厂第 4 章熔岩（`shield-regression-20261122073707`），V22 实测，60 帧窗口，`DESC_TIMING coverage=OK`。
+- 描述符域 8.35 ms/帧，子站点排序：`image_lookup 2.28` > `set_finalize 1.32` > `element_rest 1.00` >
+  `remaining 0.75` > `buffer_bind 0.69` > `texel_view_lookup 0.53` > `texel_pending 0.37`。
+- V21→V22 对照：`texel_view_create` 869 → 63 次/帧，`cleanup views` ~0.6 → 0.08 ms/帧。
+- 下一轮第一靶子：`image_lookup` 的 568 ns/次里有约 300 ns 未定位 ⇒ 需在 ImageLookup 内加**子子站点**
+  （按 `descriptor_detail` 门控，避免热路径探针开销）。
+- 取数方法：`gfx-cpu-profile` 标记 = `起始present 帧数 1`，**每进程只能 arm 一次**，
+  且必须在目标场景加载完之后再写（起始 present 取当时 `AB aff` 的 present +5）。
+- 经验库新增 L-170（子站点先扣探针开销）、L-171（共享容器变大 ⇒ 查找变贵）。

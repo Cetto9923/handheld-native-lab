@@ -3407,3 +3407,53 @@ GPU 在这些帧上尖峰到 25.6 ms（均值 15）。
   **`shield-regression-20261122073707` = 兵工厂第 4 章熔岩**（CPU 受限，38~40 fps）⇒ 量帧率就用这个。
 - **`input keyevent 96`（FORWARD）不能移动角色**（连发 12 次，draws 与画面均无变化）
   ⇒ 进战斗这类场景仍需人工操作；agent 侧只能靠选对存档。
+
+### 38.7 第 30 轮输入：兵工厂熔岩场景（V22）的完整部件账 + 描述符域子站点表
+
+场景：兵工厂第 4 章熔岩（隔离存档 `shield-regression-20261122073707`），**V22 实测**，60 帧窗口。
+这是当前唯一一个「CPU 受限、非 60 Hz 面板限帧」的可复现量测场景。
+
+**部件级**（ms/帧 / 次数每帧）：`descriptor 8.12/1289.9`、`sub_exec 5.29/7.5`、`draw 1.53~3.15/682.9`、
+`cleanup 1.05~1.41`、`snapshot 0.99/6193.4`、`dispatch 0.45~0.90/165`、`pass 0.21~0.40/702`、
+`pipeline 0.20~0.36/196`、`buffer 0.17~0.35`、`image 0.32`、`program 0.27`、`hash 0.13`、`cpuwrite 0.15`。
+
+**描述符域子站点**（`NVN DESC_TIMING v=2`，`coverage=OK`，`descriptor_ns=501.2 ms / 60 帧 = 8.35 ms/帧`）：
+
+| 子站点 | ms/帧 | 次数/帧 | ns/次 |
+|---|---|---|---|
+| **image_lookup** | **2.28** | 4018 | 568 |
+| **set_finalize** | **1.32** | 450 | 2920 |
+| **element_rest** | **1.00** | 8617 | 116 |
+| remaining（未打点） | 0.75 | — | — |
+| buffer_bind | 0.69 | 4600 | 150 |
+| texel_view_lookup | 0.53 | 1884 | 282 |
+| texel_pending | 0.37 | 1883 | 196 |
+| texel_alias | 0.11 | 1884 | 59 |
+| memo_verify / memo_key / memo_snapshot | 0.20 / 0.19 / 0.17 | 413 / 861 / 413 | 477 / 226 / 405 |
+| texel_view_create | 0.12 | 63 | 1849 |
+| image_view / sampler_bind / image_transition | 0.09 / 0.08 / 0.03 | 251 / 225 / 251 | 344 / 349 / 130 |
+| texel_readback / readback_* | 0.08 / ~0.08 | 427 / ~440 | 197 / ~50 |
+
+**V21 → V22 对照（视图链整体）**：`texel_view_create` **869 → 63 次/帧**（降 93%），
+`cleanup views` 桶 **~0.6 → 0.08 ms/帧** ⇒ 视图链从 ~1.05 降到 ~0.12 ms/帧。
+
+**第 30 轮靶子排序（本轮已做的除外）**
+
+1. **image_lookup 2.28 ms/帧**（4018 次/帧、568 ns/次）—— 最大单项。已知**不在 miss 路径**
+   （第 28 轮用 `honorimgpersist` 把 misses 压到 0/帧，帧率不动 ⇒ 证伪）；
+   命中路径里 ImgKey 构造 + `unordered_map` 查找 + `find_image/get_image` 前端缓存 + `api_image` + 两次 push_back
+   合计只能解释约 150~200 ns，**尚有 ~300 ns 未定位**
+   ⇒ 需要在 `ImageLookup` 内加**子子站点**（按 `descriptor_detail` 门控，避免热路径探针开销）。
+2. **set_finalize 1.32 ms/帧** —— 其中 `vkUpdateDescriptorSetWithTemplate` 约 0.95 ms/帧
+   （450 次/帧 × 2.1 µs，每次约 98 个绑定 ⇒ 驱动侧每绑定约 21 ns，已是驱动成本；
+   换回 plain `vkUpdateDescriptorSets` 未必更快，而且 plain 本来就是被模板替代掉的旧写法）。
+3. **element_rest 1.00 ms/帧**（8617 次/帧 × 116 ns）—— 语义未查。
+4. **buffer_bind 0.69 ms/帧**（4600 次/帧 × 150 ns）。
+5. **texel_view_lookup 0.53 ms/帧** —— 含 mutex 约 40 ns + `std::map` 树查找约 140 ns；
+   改 `unordered_map` + 直接映射前置缓存（复用本引擎 `img_front` / `MemoFrontSlot` 既有范式）
+   预计再省 ~0.3 ms/帧，**收益接近噪声，按 L-029 暂不单独占构建周期**。
+
+**口径提醒**：`DESC_TIMING` 每个站点含 2 次时钟读（本次 `clock_reads=3,314,180` / 60 帧 ⇒ 每站点约 55 ns 探针开销），
+排靶子时先扣掉（L-123）；以 `coverage=OK` 与 `remaining_ns` 为准。
+**取数方法**（给下一轮）：`gfx-cpu-profile` 标记格式是 **`起始present 帧数 detail`**（第三位 = 1 才出描述符子站点表），
+且**每进程只能 arm 一次**；要在目标场景里取样，必须先等场景加载完再写标记（起始 present 用当时的 `AB aff` present 值 +5）。
