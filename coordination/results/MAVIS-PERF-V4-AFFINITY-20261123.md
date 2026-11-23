@@ -2337,3 +2337,117 @@ Image/View 没变，那是键的粒度问题而不是内容问题）。按 0.747
 compute descriptor memo（P0 已证伪）、uniform/通用快照的跨帧复用（结构性，每帧必须重拷）。
 
 RG477M 双机回归仍未做（AGENTS-HONOR 禁止由此处操作该机），Goal 未闭合。
+
+## 29. 第 21 轮：撤回「148 次/帧假未命中」+ CPU 账本收口 + 管线结构实测
+
+### 29.1 本轮结论先行：上一轮排第一的靶子已经被自己的历史证伪，本轮不追
+
+第 27.9 / 28.6 节把「draw 侧 descriptor 假未命中（148 次/帧 ≈ 1.54 ms CPU ≈ +2.2 fps）」
+列为第 21 轮唯一值得做的事。**开工前的文档核对发现：这个前提在本仓库里已经被证伪过两次，
+第 20 轮的收口结论（唯一 ≥1 ms 可动池 = 该假未命中）建立在一个不能支撑它的推论上。本轮把
+撤回写进报告，并给出当前构建的实测口径。**
+
+**依据一（L-052，2026-11-23 已记录）**：引擎自带的 `keydiff` 普查比较的是「**同一 shader 相邻两次**
+的键（回答「这次绑定和上次哪里不一样」），**不是**「这次查找与 memo 里存的那条键差在哪」
+（后者是 `memo_misses` / `vwhy_*` 的职责）。用 keydiff 推断 memo 未命中的原因是无效推论。
+
+**依据二（同一个 A/B 已经做过）**：把 memo 键的 tex 分量换成稳定的池内 id（`handle & 0xfffff`），
+做成运行时开关 `memokey=1` 做同进程交错 A/B，实测
+`memokey=1: fps 中位 33.88 | cpu 25.19 ms | memo_hits 405.1 | memo_misses 0.9 | setcache_misses 442.9`
+对 `memokey=0: fps 中位 33.71 | cpu 25.20 ms | memo_hits 405.0 | memo_misses 0.9 | setcache_misses 442.9`
+⇒ **命中数一样、重建数一样、帧率零变化**。若真有 148 次/帧的假未命中，这个 A/B 会把它们变成命中，
+重建数会掉 —— 没有掉。
+
+**依据三（本轮实测，当前出货第 3 版，兵工厂）**：`NVN PERF setcache` 行给出
+`memo_hits=405.1  memo_misses=0.9  why=texel421.0/simg14.0/dm6.0/dynbuf0.9/store0.0`，
+compute 侧 `why=texel143.0/simg14.0/dm6.0`。⇒
+
+- **真未命中只有 0.9 次/帧**（不是 148）：memo 的命中率是 405.1/(405.1+0.9) = **99.8%**；
+- 442.9 次/帧的重建里，**421 次（94.9%）是 texel 绑定被结构性排除**（`why=texel`），
+  14 次 storage image、6 次 dynamic mode、0.9 次 dynbuf —— 这些是**设计上不能进 memo**，不是键的粒度问题。
+
+⇒ **撤回**：§27.9 / §28.4 / §28.6 里「148 次/帧假未命中 ≈ 1.54 ms CPU ≈ 1.15 ms 帧周期 ≈ +2.2 fps」
+这条收益估计**不成立**，一并撤回「descriptor 池是唯一 ≥1 ms 可动池」的判断。
+descriptor 池的可动部分只剩「把 texel 绑定变成可 memo」，而这条在本机已实测净负：
+引擎注释（`xbg_game.cpp:1464-1467`）写明跨帧常驻 texel 拷贝「关掉它 CPU 每帧快约 1.9 ms」，
+因为常驻拷贝每帧要刷新 178 次，而直接绑来宾内存本来就是新的；开关 `files/gfx-live-set "texmemo=1"`
+仍可复现该行为（**属已退役方向，不重开**）。
+
+### 29.2 CPU 账本修正：站点表不能直接相加
+
+§27.7 的站点级清单把**嵌套 scope 相加了**。以当前构建同会话窗口（`parts_ms_per_frame timed=60`）为准：
+`snapshot=0.82/6202.6` 是父站点，而 `sub_snap_fast 0.61 + sub_snap_slow 1.64 + sub_snap_map 0.20 +
+sub_snap_stream 0.83 = 3.28` 是它的子站点；§27.7 把两者相加写成「snapshot 家族 4.25 ms/帧」，
+**重复计了 0.82 ms**。同理 `descriptor 4.61` 与 `desc_ms_per_frame` 的 `build 6.78` 是两套口径
+（后者只统计 descriptor 内部若干子阶段），不能互相换算。
+
+按父站点（不重复计子站点）重算，兵工厂的引擎 CPU 约 15~16 ms/帧：
+`sub_exec 4.33`（命令解释器，8.1 次/帧）+ `descriptor 4.61`（1290 次/帧）+ `draw 1.41`（683）
++ `cleanup 1.56`（9）+ `dispatch 0.43` + `present 0.28` + `pass 0.21` + `image 0.22` + `pipeline 0.17`
++ `program 0.15` + `hash 0.12` + `cpuwrite 0.12` + `buffer 0.13` + `other 0.14`。
+其中 `sub_cmd_decode 0.56`、`sub_poll_retire 0.66`、`sub_arena_check 0.55` 三项都是 10864 次/帧、
+每次 51~61 ns，**基本等于插桩自身的 scope 开销（约 40 ns/次）** ⇒ 解释器的真实逐命令开销只有 ~0.5 ms/帧，
+不是可动的靶子。
+
+### 29.3 管线结构实测：帧周期 24 ms 里，引擎占 19.5 ms，来宾占 6.5 ms（并行）
+
+`perf_event` 在这台设备上完全不可用（`simpleperf` 报 `Event type 'cpu-cycles' is not supported on the device`，
+软件事件 `cpu-clock` 同样被拒）⇒ 栈级归因本轮做不了。改用 `/proc/<pid>/task/<tid>/stat` 的
+逐线程 tick 差值，tick→毫秒用引擎自报的 `submit_cpu_ms` 交叉标定（`CONFIG_HZ ≈ 250`）。
+12 s 窗口、约 500 帧（fps 41.3~42.2）：
+
+| 线程 | 每帧 CPU | 说明 |
+| --- | --- | --- |
+| **dm-gfx（引擎渲染线程）** | **19.5 ms/帧（占帧周期 23.8 ms 的 82%）** | 最重的线程；与引擎自报 submit_cpu 20.1 ms/帧吻合 |
+| RHIThread（来宾） | 6.5 ms/帧 | 来宾的 RHI 线程：把 UE 的渲染命令翻译成 NVN 调用 |
+| 其余来宾 GameThread（6 个） | 合计 ~15.4 ms/帧 | 与上面并行，不叠加到帧周期 |
+| 进程合计 | ~41 ms/帧 / 9 线程 | 1.7 核并行 |
+
+`NVN PERF block_ms legacy_wait=3.95~5.68/0.57~0.80` 是**来宾线程等自己的 fence（GPU 完成）**的时间，
+不是引擎的等待；引擎线程那 4.3 ms/帧的空档是**等来宾把命令产出来**。
+
+⇒ 帧周期由一条流水线决定：**来宾产命令 → 引擎 19.5 ms/帧 CPU → GPU 16.1 ms/帧**。
+GPU 比引擎 CPU 快 ⇒ GPU 侧不是瓶颈（这与第 19/20 轮 GPU 侧退休的结论一致）。
+引擎线程 82% 饱和 ⇒ 引擎 CPU 仍是主项，但它的每个池本轮都已证明是结构性或已证伪。
+
+### 29.4 唯一还没定价的池：NVN API 层（来宾 RHI 线程上）
+
+来宾每帧发 ~10864 条 NVN 命令（引擎的命令流实测），每条在 `nvn_command_buffer.c` 的
+`record_open_owned()` 里都要：**全局互斥锁 → `buffer_find()` 线性扫槽 → 写记录**；
+`rec_bind_texture` / `bind_handles` 还会**再加一次同样的锁 + 扫槽**（为了取池的编号基数）。
+槽表在实机日志里从未增长过（`[nvn] command buffer table grew` 未出现 ⇒ ≤32 槽），
+所以**线性扫描本身不贵**，贵的是「每条命令一次锁 + 一次记录写」——而这部分跑在**来宾的 RHI 线程**上，
+位于关键路径的上游。
+
+⇒ 下一轮的第一件事是**给这一层定价**（不是直接改）：在 `record_open_owned` 与 bind 路径上做
+**抽样计时**（每 64 次取一次时钟对，避免探针自身污染），把 API 层的 ms/帧打进 PERF 行；
+只有当它 ≥0.5 ms/帧时才动手改（候选：用槽自身的 `object` 字段做校验的每线程槽位缓存）。
+
+### 29.5 本轮同时排除的零构建方向（记录，避免重复劳动）
+
+- `gfx-readback-retire=0`（旧的读回全排空路径）：兵工厂 `readback targeted=0 nowait=0 fallback=0 drain=0`
+  ⇒ 该场景**根本没有读回**，改这个标记无意义；
+- `gfx-legacy-waitall=0`（新等待路径）已在用；`gfx-fence-spin-us=250`（混合自旋等待）已在用；
+- `gfx-wtrack=0`、`gfx-async-submit` 存在但 `async drains=0.00 waits=0.00` ⇒ 异步提交路径本场景未触发；
+- ADPF 性能提示：本机已实测无收益（`coordination/experiments/honor-adpf-20261108/`、
+  `results/CODEX-HONOR-HINT38-20261115.md`），不重开。
+
+### 29.6 本轮无版本出货
+
+依据 L-029（没有测到高于噪声的收益就不占构建周期）与 L-032（不动失效/清理路径）。
+本轮产出的是**一条被撤回的收益估计 + 一份修正后的 CPU 账本 + 一张管线结构图 + 一个已定位但待定价的候选池**。
+
+### 29.7 下一轮（第 22 轮）入口
+
+1. **给 NVN API 层定价**（§29.4）：抽样计时 + PERF 上报；≥0.5 ms/帧才做优化（每线程槽位缓存，
+   用槽自身 `object` 字段校验，语义不变、只改查找方式），然后同会话交错 A/B + 显示回归才出货；
+2. 若 API 层 <0.3 ms/帧 ⇒ 关闭该方向，转而量「来宾产命令的串行段」：看引擎能否提前消费、
+   缩短「引擎等来宾」的 4.3 ms/帧空档（流水线深度，而不是省 CPU）；
+3. GPU 侧按第 17 轮两个重槽分段烧录（仍待做），但注意 GPU 16.1 ms < CPU 20.1 ms，
+   只有在 CPU 侧确实无解时才有价值。
+
+不要再做的方向（已有依据）：descriptor 假未命中（§29.1 已证伪）、texel 常驻拷贝（Honor 实测净负）、
+ADPF（本机无收益）、snapshot 跨帧复用（结构性）、cleanup/失效路径（L-032）、
+compute descriptor memo（P0 已证伪）、解释器逐命令开销（实测只剩插桩开销量级）。
+
+RG477M 双机回归仍未做（AGENTS-HONOR 禁止由此处操作该机），Goal 未闭合。
