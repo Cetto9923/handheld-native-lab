@@ -1386,13 +1386,13 @@ int gfx_probe_cpu_delay_on=0,gfx_probe_gpu_delay_on=0;
 // frame cost of one segment's CPU work can be measured inside a single session, without restarting the game.
 // Occurrence counting is always on, so a plain baseline window also yields the per-frame call count of every
 // segment; only the armed segment burns.
-enum {GFX_SEG_DRAW=0,GFX_SEG_DISPATCH=1,GFX_SEG_DESC=2,GFX_SEG_SNAP=3,GFX_SEG_CLEANUP=4,GFX_SEG_OTHER=5,GFX_SEG_COUNT=6};
-const char *const gfx_probe_seg_name[GFX_SEG_COUNT]={"draw","dispatch","desc","snap","cleanup","other"};
+enum {GFX_SEG_DRAW=0,GFX_SEG_DISPATCH=1,GFX_SEG_DESC=2,GFX_SEG_SNAP=3,GFX_SEG_CLEANUP=4,GFX_SEG_OTHER=5,GFX_SEG_SNAPU=6,GFX_SEG_COUNT=7};
+const char *const gfx_probe_seg_name[GFX_SEG_COUNT]={"draw","dispatch","desc","snap","cleanup","other","snapu"};
 uint64_t gfx_probe_seg_mask=0;                                   // armed segments (one bit per segment)
-uint64_t gfx_probe_seg_rate[GFX_SEG_COUNT]={0,0,0,0,0,0};         // ns burned per occurrence
+uint64_t gfx_probe_seg_rate[GFX_SEG_COUNT]={0,0,0,0,0,0,0};       // ns burned per occurrence
 uint64_t gfx_probe_seg_rate_max=5000000;                          // one occurrence cannot stall longer than this
-uint64_t gfx_probe_seg_occ[GFX_SEG_COUNT]={0,0,0,0,0,0};           // occurrences since the last report
-uint64_t gfx_probe_seg_burn[GFX_SEG_COUNT]={0,0,0,0,0,0};          // ns burned since the last report
+uint64_t gfx_probe_seg_occ[GFX_SEG_COUNT]={0,0,0,0,0,0,0};         // occurrences since the last report
+uint64_t gfx_probe_seg_burn[GFX_SEG_COUNT]={0,0,0,0,0,0,0};        // ns burned since the last report
 inline int gfx_probe_seg_class(unsigned op){return op==OP_DRAW||op==OP_DRAW_IDX?GFX_SEG_DRAW:op==OP_DISPATCH?GFX_SEG_DISPATCH:GFX_SEG_OTHER;}
 inline void gfx_probe_seg_tick(int seg){
     ++gfx_probe_seg_occ[seg];
@@ -2126,12 +2126,13 @@ void perf_frame(){
     if(poolreset::enabled){xbg_logf("NVN PERF poolreset queued=%.2f waits=%.2f wait_ms=%.3f",poolreset::queued/f,poolreset::waits/f,poolreset::wait_ns/1e6/f);poolreset::queued=poolreset::waits=poolreset::wait_ns=0;}
     xbg_logf("NVN PERF probe cpu_delay_on=%d cpu_delay_ns_per_cmd=%llu cpu_burn_ms=%.3f cpu_burns=%.1f gpu_delay_on=%d gpu_bytes=%llu gpu_copies=%.2f",int(gfx_probe_cpu_delay_on),(unsigned long long)gfx_probe_cpu_delay_ns,gfx_probe_cpu_burn_ns/1e6/f,gfx_probe_cpu_burns/f,int(gfx_probe_gpu_delay_on),(unsigned long long)gfx_probe_gpu_size,gfx_probe_gpu_copies/f);
     gfx_probe_cpu_burn_ns=0;gfx_probe_cpu_burns=0;gfx_probe_gpu_copies=0;
-    xbg_logf("NVN PERF segprobe mask=%llu draw_ms=%.3f draw_occ=%.1f dispatch_ms=%.3f dispatch_occ=%.1f desc_ms=%.3f desc_occ=%.1f snap_ms=%.3f snap_occ=%.1f cleanup_ms=%.3f cleanup_occ=%.1f other_ms=%.3f other_occ=%.1f",
+    xbg_logf("NVN PERF segprobe mask=%llu draw_ms=%.3f draw_occ=%.1f dispatch_ms=%.3f dispatch_occ=%.1f desc_ms=%.3f desc_occ=%.1f snap_ms=%.3f snap_occ=%.1f snapu_ms=%.3f snapu_occ=%.1f cleanup_ms=%.3f cleanup_occ=%.1f other_ms=%.3f other_occ=%.1f",
         (unsigned long long)gfx_probe_seg_mask,
         gfx_probe_seg_burn[GFX_SEG_DRAW]/1e6/f,gfx_probe_seg_occ[GFX_SEG_DRAW]/f,
         gfx_probe_seg_burn[GFX_SEG_DISPATCH]/1e6/f,gfx_probe_seg_occ[GFX_SEG_DISPATCH]/f,
         gfx_probe_seg_burn[GFX_SEG_DESC]/1e6/f,gfx_probe_seg_occ[GFX_SEG_DESC]/f,
         gfx_probe_seg_burn[GFX_SEG_SNAP]/1e6/f,gfx_probe_seg_occ[GFX_SEG_SNAP]/f,
+        gfx_probe_seg_burn[GFX_SEG_SNAPU]/1e6/f,gfx_probe_seg_occ[GFX_SEG_SNAPU]/f,
         gfx_probe_seg_burn[GFX_SEG_CLEANUP]/1e6/f,gfx_probe_seg_occ[GFX_SEG_CLEANUP]/f,
         gfx_probe_seg_burn[GFX_SEG_OTHER]/1e6/f,gfx_probe_seg_occ[GFX_SEG_OTHER]/f);
     for(int si=0;si<GFX_SEG_COUNT;si++){gfx_probe_seg_burn[si]=0;gfx_probe_seg_occ[si]=0;}
@@ -5469,6 +5470,7 @@ Buffer uniform_snapshot_cached(uint64_t address,size_t copy){CPU_SCOPE(Snapshot)
     f.address=address;f.bytes=copy;f.epoch=snapshot_epoch;f.buffer=b;return b;
 }
 Buffer uniform_snapshot_slow(uint64_t address,size_t copy){
+    gfx_probe_seg_tick(GFX_SEG_SNAPU);
     size_t n=uniform_range(copy);auto key=std::make_pair(address,uint64_t(copy));
     auto it=uniform_snapshots.end();{CPU_SCOPE(SubSnapMap);it=uniform_snapshots.find(key);}if(it!=uniform_snapshots.end()){++perf.snapshot_hits;++snap_map_hits;return it->second;}
     {Buffer view;if(pending_view(address,n,properties.limits.minUniformBufferOffsetAlignment,view)){uniform_snapshots.emplace(key,view);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,n);return view;}}
@@ -9509,7 +9511,7 @@ static void xbg_submit_now(int n,const uint64_t *handles){std::lock_guard<std::r
                 else{int si=-1;for(int i=0;i<GFX_SEG_COUNT;i++)if(!strcmp(v,gfx_probe_seg_name[i]))si=i;m=si>=0?(1ull<<si):strtoull(v,nullptr,10);}
                 gfx_probe_seg_mask=m;continue;}
             for(int i=0;i<GFX_SEG_COUNT;i++)if(!strcmp(k,gfx_probe_seg_name[i])){gfx_probe_seg_rate[i]=strtoull(v,nullptr,10);break;}}
-        xbg_logf("LIVE-SEG-PROBE mask=%llu draw=%llu dispatch=%llu desc=%llu snap=%llu cleanup=%llu other=%llu at present %llu",(unsigned long long)gfx_probe_seg_mask,(unsigned long long)gfx_probe_seg_rate[GFX_SEG_DRAW],(unsigned long long)gfx_probe_seg_rate[GFX_SEG_DISPATCH],(unsigned long long)gfx_probe_seg_rate[GFX_SEG_DESC],(unsigned long long)gfx_probe_seg_rate[GFX_SEG_SNAP],(unsigned long long)gfx_probe_seg_rate[GFX_SEG_CLEANUP],(unsigned long long)gfx_probe_seg_rate[GFX_SEG_OTHER],(unsigned long long)pr);}}
+        xbg_logf("LIVE-SEG-PROBE mask=%llu draw=%llu dispatch=%llu desc=%llu snap=%llu snapu=%llu cleanup=%llu other=%llu at present %llu",(unsigned long long)gfx_probe_seg_mask,(unsigned long long)gfx_probe_seg_rate[GFX_SEG_DRAW],(unsigned long long)gfx_probe_seg_rate[GFX_SEG_DISPATCH],(unsigned long long)gfx_probe_seg_rate[GFX_SEG_DESC],(unsigned long long)gfx_probe_seg_rate[GFX_SEG_SNAP],(unsigned long long)gfx_probe_seg_rate[GFX_SEG_SNAPU],(unsigned long long)gfx_probe_seg_rate[GFX_SEG_CLEANUP],(unsigned long long)gfx_probe_seg_rate[GFX_SEG_OTHER],(unsigned long long)pr);}}
       {std::string fdg=probe.base+"/gfx-live-flame-diag";FILE *fdgf=fopen(fdg.c_str(),"rb");
        if(fdgf){int value=fgetc(fdgf);fclose(fdgf);if(value=='0'||value=='1'){
            flame_diag_enabled=(value=='1');xbg_logf("LIVE-FLAME-DIAG enabled=%d at present %llu",int(flame_diag_enabled),(unsigned long long)pr);}}}
