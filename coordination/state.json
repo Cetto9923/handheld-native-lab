@@ -12981,7 +12981,35 @@
       "branch": "task/T-mavis-perf-20261122",
       "worktree": "/Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/.local/worktrees/mavis-perf-20261122",
       "report": "coordination/results/MAVIS-PERF-V4-AFFINITY-20261123.md",
-      "task": "MAVIS-PERF-V14-TEXELSNAP-20261123"
+      "task": "MAVIS-PERF-V14-TEXELSNAP-20261123",
+      "github_release": {
+        "repo": "Cetto9923/handheld-native-lab",
+        "visibility": "public",
+        "tag": "v1.0.79",
+        "title": "1.0.79 · 帧率优化：纹理缓冲视图跨帧复用",
+        "latest": true,
+        "prerelease": false,
+        "target_commitish": "main",
+        "url": "https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.79",
+        "assets": [
+          {
+            "name": "FFRS-1.0.79-universal.apk",
+            "bytes": 3753030,
+            "sha256": "cac57659755ae40691ad010c146dfb008883b7f7d9b57bcb748c53487814f9de"
+          },
+          {
+            "name": "FFRS-1.0.79-universal.apk.sha256"
+          },
+          {
+            "name": "FFRS-1.0.79-release-notes-zh-CN.md"
+          }
+        ],
+        "verification": "GitHub 侧 digest 与本地已验证件一致；已从 releases/download 回拉并逐字节比对（BYTE_IDENTICAL_TO_VERIFIED_BUILD）；三个资产 HTTP 200；/releases/latest 重定向到 v1.0.79；APK 内无游戏数据包/密钥（仅 libffrs_game_window.so + classes.dex + 许可证文本）",
+        "not_published": [
+          "1.0.79-test（内部验证件）",
+          "源码未 push（AGENTS-HONOR 第 5 条；v1.0.71 同样只发 Release）"
+        ]
+      }
     },
     {
       "id": "MAVIS-PERF-V17-DESCTIMING-20261123",

@@ -7344,3 +7344,19 @@ CPU 侧每帧两段长间隔 8.5 / 11.1 ms，正好落在 GPU 的空档里 ⇒ �
   逐字节一致（cert_sha256 d11967a31fcef92f3d6b44adf9d9678c）；**阻塞在设备不在线**
   （`adb -P 5037 devices` 空、macOS USB 枚举不到、mDNS 无服务、局域网 192.168.1.116 只开 80 端口），
   需用户把 USB 插上。
+
+## GitHub 发布：v1.0.79（2026-11-23）
+
+- **Release**：`v1.0.79 · 帧率优化：纹理缓冲视图跨帧复用`（Latest，非预发布，targetCommitish=main）
+  https://github.com/Cetto9923/handheld-native-lab/releases/tag/v1.0.79
+- 仓库 `Cetto9923/handheld-native-lab`（PUBLIC，即本项目 origin）。发布约定沿用 v1.0.71：
+  tag + `FFRS-1.0.79-universal.apk` + `.sha256` + `-release-notes-zh-CN.md`，正文为中文更新说明
+  （本次更新 / 安装与数据 / 验证范围 / 构建与校验四段）。
+- **端到端校验**：GitHub 侧资产 digest `sha256:cac57659…` 与本地已验证件一致；已从
+  `releases/download` 回拉 APK 并逐字节比对 = `BYTE_IDENTICAL_TO_VERIFIED_BUILD`；
+  三个资产 HTTP 200；`/releases/latest` 重定向到 v1.0.79；`releases/latest` API 返回 v1.0.79。
+- **发布前审计**：APK 内仅 `libffrs_game_window.so` + `classes.dex` + 第三方许可证文本，
+  **不含游戏数据包、ROMFS、固件或密钥**。
+- **未发布**：`1.0.79-test` 内部验证件不对外；源码未 push（AGENTS-HONOR 第 5 条「不要 push」，
+  且 v1.0.71 的既有做法同样只发布 Release、不推源码）。
+- 本地发布目录 `.local/releases/1.0.79/README.md` 已补记本次 GitHub 发布信息。
