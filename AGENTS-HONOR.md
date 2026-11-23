@@ -7,3 +7,4 @@
 5. 不要 push；不要改 `main`；RG477M 基线仓库并行测试时不要抢同一 APK 包名安装到 RG477M。
 6. 常设音频验收：`coordination/prompts/_STANDING-audio-acceptance.md`。
 7. 任务提词：`coordination/prompts/P-OPT-HONOR-GTPRO-30hz-game-mode.md`。
+8. **不要打开红果**（`com.hongguo.pcplayer` / `com.hongguo.noad`）：真机测量/取帧/装包测完就结束，不要把红果切回前台，也不要用 monkey / am start 把它拉起来（2026-11-23 用户明确指令，取代旧口径「测量完红果还回前台」）。
