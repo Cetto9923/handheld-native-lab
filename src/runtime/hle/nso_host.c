@@ -3631,12 +3631,27 @@ void nso_host_vi_open_default_display(nso_vi_display **out_display) {
 static pthread_t s_vsync_thread;
 static volatile bool s_vsync_thread_started = false;
 
+#if defined(__APPLE__)
+__attribute__((weak)) int guest_process_get_target_fps(void) { return 0; }
+#else
+extern int guest_process_get_target_fps(void) __attribute__((weak));
+#endif
+
 static void *vsync_worker_thread(void *arg) {
     (void)arg;
-    struct timespec ts;
-    ts.tv_sec = 0;
-    ts.tv_nsec = 16666667; // 60 Hz = ~16.67ms
     while (1) {
+        int target_fps = guest_process_get_target_fps ? guest_process_get_target_fps() : 0;
+        if (target_fps <= 0) {
+            const char *env_fps = getenv("FFRS_TARGET_FPS");
+            if (env_fps && atoi(env_fps) > 0) target_fps = atoi(env_fps);
+        }
+        uint64_t interval_ns = 16666667; // default 60 Hz ticker (~16.67ms)
+        if (target_fps == 40) interval_ns = 25000000; // 40 Hz ticker for 40 FPS
+        else if (target_fps > 60) interval_ns = 1000000000ull / (uint64_t)target_fps;
+
+        struct timespec ts;
+        ts.tv_sec = (time_t)(interval_ns / 1000000000ull);
+        ts.tv_nsec = (long)(interval_ns % 1000000000ull);
         nanosleep(&ts, NULL);
         nso_host_vi_signal_vsync_event();
     }

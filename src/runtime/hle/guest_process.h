@@ -62,6 +62,9 @@ struct nso_result guest_process_load(guest_process *,const char *path,char *err,
 nso_module *guest_process_module(guest_process *);
 /* Opt-in, version-checked runtime render settings at the native present boundary. */
 void guest_process_update_render_policy(void);
+/* Target frame rate requested by user / profile (0 = unthrottled/default). */
+void guest_process_set_target_fps(int fps);
+int guest_process_get_target_fps(void);
 struct nso_result guest_process_run(guest_process *,guest_process_callback,void *arg,void **value);
 /* Known integer/pointer register ABI only. Up to six explicit scalar arguments,
  * one x0 result, no foreign unwind/stack arguments/unknown aggregate ABI.

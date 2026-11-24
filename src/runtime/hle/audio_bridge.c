@@ -78,6 +78,8 @@ typedef struct {
     uint64_t level_window_frames,level_window_nonzero,level_window_max_zero_run,level_zero_run,level_window_peak;
     FILE *capture;
     _Atomic(audio_timing *) timing;
+    int idle_silent;
+    uint64_t consecutive_silent_frames;
 #if defined(__ANDROID__)
     AAudioStream *stream;
 #endif
@@ -465,6 +467,53 @@ static void *audio_worker(void *argument) {
         uint64_t position=0;
 #if defined(__ANDROID__)
         uint64_t frames=buffer->bytes/(2u*out->channels);
+
+        const int16_t *pcm_data = (const int16_t*)buffer->data;
+        uint64_t total_samples = frames * (uint64_t)out->channels;
+        int buffer_silent = 1;
+        for (uint64_t i = 0; i < total_samples; ++i) {
+            if (pcm_data[i] != 0) {
+                buffer_silent = 0;
+                break;
+            }
+        }
+        if (buffer_silent) {
+            out->consecutive_silent_frames += frames;
+        } else {
+            out->consecutive_silent_frames = 0;
+        }
+
+        /* Degradation for prolonged 100% silent streams (e.g. unused secondary stream):
+         * Avoid spinning AAudioStream_write with zeroes which causes 15 xruns/sec
+         * and starves the main audio thread. When silent for > 1.5s, pause AAudio
+         * and pace via nanosleep. Wake immediately upon non-zero audio. */
+        if (buffer_silent && (out->consecutive_silent_frames >= (uint64_t)out->rate * 3u / 2u ||
+                              (out->stats.nonzero_samples == 0 && out->consecutive_silent_frames >= (uint64_t)out->rate))) {
+            if (out->stream && !out->idle_silent) {
+                AAudioStream_requestPause(out->stream);
+                out->idle_silent = 1;
+                fprintf(stderr, "[audio] key=%p ch=%d entered idle silent mode (consecutive_silent=%llu); stream paused\n",
+                        out->key, out->channels, (unsigned long long)out->consecutive_silent_frames);
+            }
+        } else if (!buffer_silent && out->idle_silent) {
+            if (out->stream) {
+                AAudioStream_requestStart(out->stream);
+            }
+            out->idle_silent = 0;
+            fprintf(stderr, "[audio] key=%p ch=%d audible sample detected; resumed from idle silent\n",
+                    out->key, out->channels);
+        }
+
+        if (out->idle_silent && buffer_silent) {
+            struct timespec ts;
+            ts.tv_sec = (time_t)(frames / (uint64_t)out->rate);
+            ts.tv_nsec = (long)((frames % (uint64_t)out->rate) * 1000000000ull / (uint64_t)out->rate);
+            nanosleep(&ts, NULL);
+            pthread_mutex_lock(&out->mutex);
+            scan_written(out, pcm_data, frames);
+            pthread_mutex_unlock(&out->mutex);
+            position = frames;
+        }
 
         if (atomic_exchange(&out->device_changed, 0) || !out->stream) {
             if (open_aaudio_stream(out) == AAUDIO_OK && out->stream) {

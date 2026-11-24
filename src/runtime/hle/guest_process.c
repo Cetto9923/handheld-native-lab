@@ -1166,6 +1166,16 @@ static uintptr_t render_policy_data(guest_process *p, uintptr_t offset,
     return data;
 }
 
+static int s_guest_target_fps = 0;
+
+void guest_process_set_target_fps(int fps) {
+    __atomic_store_n(&s_guest_target_fps, fps >= 0 ? fps : 0, __ATOMIC_RELAXED);
+}
+
+int guest_process_get_target_fps(void) {
+    return __atomic_load_n(&s_guest_target_fps, __ATOMIC_RELAXED);
+}
+
 void guest_process_update_render_policy(void) {
     static pthread_mutex_t policy_mutex = PTHREAD_MUTEX_INITIALIZER;
     static unsigned frames;
@@ -1175,7 +1185,17 @@ void guest_process_update_render_policy(void) {
         const char *value = getenv("FFRS_RENDER_POLICY");
         enabled = value && !strcmp(value, "1");
     }
-    if (!enabled || frames++ % 60) {
+    int target_fps = guest_process_get_target_fps();
+    if (target_fps <= 0) {
+        const char *env_fps = getenv("FFRS_TARGET_FPS");
+        if (env_fps && atoi(env_fps) > 0) target_fps = atoi(env_fps);
+    }
+    int active = enabled;
+    if (!active && target_fps > 0) {
+        const char *value = getenv("FFRS_RENDER_POLICY");
+        if (!value || strcmp(value, "0") != 0) active = 1;
+    }
+    if (!active || frames++ % 60) {
         pthread_mutex_unlock(&policy_mutex);
         return;
     }
@@ -1205,8 +1225,12 @@ void guest_process_update_render_policy(void) {
         pthread_mutex_unlock(&policy_mutex);
         return;
     }
+    float target_budget = 1000.0f / 30.0f;
+    if (target_fps > 0) {
+        target_budget = 1000.0f / (float)target_fps;
+    }
     const uintptr_t addresses[] = { maximum, minimum, budget };
-    float values[] = { 80.0f, 60.0f, 1000.0f / 30.0f };
+    float values[] = { 80.0f, 60.0f, target_budget };
     float previous[3][2];
     int previous_mode[2];
     int valid = 1, changed = 0;
@@ -1231,9 +1255,10 @@ void guest_process_update_render_policy(void) {
             for (unsigned j = 0; j < 2; ++j)
                 __atomic_store((float *)addresses[i] + j, &values[i], __ATOMIC_RELAXED);
         for (unsigned i = 0; i < 2; ++i) __atomic_store_n((int *)mode + i, 2, __ATOMIC_RELAXED);
-        fprintf(stderr, "[render-policy] dynamic mode=%d/%d->2 min=%.3f/%.3f->60 max=%.3f/%.3f->%.3f budget=%.3f/%.3f->%.3f ms\n",
+        fprintf(stderr, "[render-policy] dynamic mode=%d/%d->2 min=%.3f/%.3f->60 max=%.3f/%.3f->%.3f budget=%.3f/%.3f->%.3f ms (fps=%d)\n",
                 previous_mode[0], previous_mode[1], previous[1][0], previous[1][1],
-                previous[0][0], previous[0][1], values[0], previous[2][0], previous[2][1], values[2]);
+                previous[0][0], previous[0][1], values[0], previous[2][0], previous[2][1], values[2],
+                target_fps > 0 ? target_fps : 30);
     }
     pthread_mutex_unlock(&policy_mutex);
 }

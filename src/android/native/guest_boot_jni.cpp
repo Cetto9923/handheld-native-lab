@@ -33,6 +33,7 @@
 extern "C" {
 #include "nso_boot.h"
 #include "nso_host.h"
+#include "../../runtime/hle/guest_process.h"
 #include "sdk_component.h"
 #include "movie_decoder.h"
 #include "audio_bridge.h"
@@ -171,11 +172,14 @@ void* GuestThreadMain(void* opaque) {
         setenv("FFRS_OPERATION_MODE", operation_mode ? "1" : "0", 1);
         const std::string policy_marker = path + "/gfx-render-policy";
         FILE *policy_file = fopen(policy_marker.c_str(), "rb");
-        const bool target30_policy = render_height == 0 && policy_file && fgetc(policy_file) == '1';
+        bool render_policy_enabled = policy_file && fgetc(policy_file) == '1';
         if (policy_file) fclose(policy_file);
-        setenv("FFRS_RENDER_POLICY", target30_policy ? "1" : "0", 1);
+        if (render_height > 0 || guest_process_get_target_fps() > 0) {
+            render_policy_enabled = true;
+        }
+        setenv("FFRS_RENDER_POLICY", render_policy_enabled ? "1" : "0", 1);
         fprintf(stderr, "[port] target30_render_policy=%d marker=%s\n",
-                int(target30_policy), policy_marker.c_str());
+                int(render_policy_enabled), policy_marker.c_str());
         fprintf(stderr, "[port] operation_mode=%d source=%s marker=%s\n",
                 operation_mode, operation_source, operation_marker.c_str());
         const std::string marker = path + "/gfx-codex-movie-dump";
@@ -592,9 +596,16 @@ Java_org_ffrs_diagnostic_GameWindowNative_setProfileTargetFps(JNIEnv*, jclass, j
         observed_target = true;
     }
     if (!external_target) {
-        if (docked && fps == 60) setenv("FFRS_TARGET_FPS", "60", 1);
+        if (fps > 0) {
+            char buf[16];
+            snprintf(buf, sizeof(buf), "%d", (int)fps);
+            setenv("FFRS_TARGET_FPS", buf, 1);
+        } else if (fps == 0) {
+            setenv("FFRS_TARGET_FPS", "0", 1);
+        }
         else unsetenv("FFRS_TARGET_FPS");
     }
+    guest_process_set_target_fps(fps);
     setenv("FFRS_PROFILE_OPERATION_MODE", docked ? "1" : "0", 1);
     setenv("FFRS_PROFILE_TABLET", docked ? "1" : "0", 1);
 }
@@ -603,6 +614,14 @@ extern "C" JNIEXPORT void JNICALL
 Java_org_ffrs_diagnostic_GameWindowNative_setDisplaySettings(JNIEnv*, jclass, jint fps, jint render_height) {
     g_render_height.store(render_height == 720 || render_height == 1080 ? render_height : 0);
     xbg_game_set_frame_rate(fps);
+    guest_process_set_target_fps(fps);
+    if (fps > 0) {
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%d", (int)fps);
+        setenv("FFRS_TARGET_FPS", buf, 1);
+    } else if (fps == 0) {
+        setenv("FFRS_TARGET_FPS", "0", 1);
+    }
 }
 
 extern "C" JNIEXPORT jlong JNICALL

@@ -177,12 +177,35 @@ void nvn_window_builder_set_textures(void *builder, int count, void *textures) {
     NVN_VOID_RETURN();
 }
 
+#if defined(__APPLE__)
+__attribute__((weak)) int guest_process_get_target_fps(void) { return 0; }
+#else
+extern int guest_process_get_target_fps(void) __attribute__((weak));
+#endif
+
+static int resolve_effective_present_interval(int requested_interval) {
+    int target_fps = guest_process_get_target_fps ? guest_process_get_target_fps() : 0;
+    if (target_fps <= 0) {
+        const char *env_fps = getenv("FFRS_TARGET_FPS");
+        if (env_fps && atoi(env_fps) > 0) target_fps = atoi(env_fps);
+    }
+    if (target_fps == 60) return 1;
+    if (target_fps == 40) return 1;
+    if (target_fps == 30) return 2;
+    if (target_fps > 30) return 1;
+    if (target_fps == 0) {
+        const char *env_fps = getenv("FFRS_TARGET_FPS");
+        if (env_fps && !strcmp(env_fps, "0")) return 1;
+    }
+    return requested_interval;
+}
+
 void nvn_window_builder_set_present_interval(void *builder, int interval) {
     nvn_window_builder_state *b;
     pthread_mutex_lock(&s_window_lock);
     s_window_stats.builder_calls++;
     b = window_builder_find(builder, 1);
-    if (b) b->present_interval = (uint32_t)interval;
+    if (b) b->present_interval = (uint32_t)resolve_effective_present_interval(interval);
     pthread_mutex_unlock(&s_window_lock);
     NVN_VOID_RETURN();
 }
@@ -344,7 +367,7 @@ int nvn_window_initialize(void *window, const void *builder, int flags) {
     }
     w->native_window = native_window;
     w->flags = (uint32_t)flags;
-    w->present_interval = b->present_interval;
+    w->present_interval = (uint32_t)resolve_effective_present_interval((int)b->present_interval);
     w->num_textures = b->num_textures;
     w->num_active_textures = b->num_active_textures;
     w->next_texture = 0;
@@ -468,7 +491,7 @@ void nvn_window_set_present_interval(void *window, int interval) {
     nvn_window_state *w;
     pthread_mutex_lock(&s_window_lock);
     w = window_find(window, 1);
-    if (w) w->present_interval = (uint32_t)interval;
+    if (w) w->present_interval = (uint32_t)resolve_effective_present_interval(interval);
     pthread_mutex_unlock(&s_window_lock);
     NVN_VOID_RETURN();
 }
@@ -553,7 +576,7 @@ int nvn_window_acquire_texture(void *window, void *available_sync, int *texture_
     if (s_pipelined_sync < 0) {
         FILE *f = fopen("/storage/emulated/0/Android/data/org.ffrs.gamewindow/files/gfx-pipelined-sync", "rb");
         if (!f) f = fopen("/sdcard/Android/data/org.ffrs.gamewindow/files/gfx-pipelined-sync", "rb");
-        s_pipelined_sync = 1;
+        s_pipelined_sync = 0;
         if (f) {
             s_pipelined_sync = (fgetc(f) != '0');
             fclose(f);

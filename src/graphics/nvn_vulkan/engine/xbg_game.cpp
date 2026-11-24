@@ -9830,14 +9830,14 @@ static uint64_t s_target_frame_ns = 0; // Default to no additional host frame li
 static uint64_t s_next_present_ns = 0;
 static uint32_t s_pace_check_counter = 0;
 static int s_logged_target_fps = -1;
-static std::atomic<int> s_selected_frame_rate{0};
-static int s_sampled_frame_rate = 0;
+[[maybe_unused]] static std::atomic<int> s_selected_frame_rate{0};
+[[maybe_unused]] static int s_sampled_frame_rate = 0;
 
 extern "C" void xbg_game_set_frame_rate(int fps) {
     s_selected_frame_rate.store(fps == 30 || fps == 40 || fps == 60 ? fps : 0);
 }
 
-static void xbg_refresh_target_fps(int selected_fps) {
+static void xbg_refresh_target_fps(int selected_fps = 0) {
     int target_fps = selected_fps;
     if (target_fps == 0) {
         const char *env_fps = getenv("FFRS_TARGET_FPS");
@@ -9881,25 +9881,15 @@ static uint64_t xbg_frame_pace() {
         return 0;
     }
 
-    if (now_ns < s_next_present_ns) {
-        uint64_t diff = s_next_present_ns - now_ns;
-        if (diff > 1500000ull) {
-            uint64_t sleep_ns = diff - 1200000ull;
+    uint64_t pace_deadline = (s_next_present_ns > 1500000ull) ? (s_next_present_ns - 1500000ull) : s_next_present_ns;
+    if (now_ns < pace_deadline) {
+        uint64_t diff = pace_deadline - now_ns;
+        if (diff > 1000000ull) {
+            uint64_t sleep_ns = diff - 500000ull;
             struct timespec req;
             req.tv_sec = (time_t)(sleep_ns / 1000000000ull);
             req.tv_nsec = (long)(sleep_ns % 1000000000ull);
             nanosleep(&req, nullptr);
-            clock_gettime(CLOCK_MONOTONIC, &ts);
-            now_ns = (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
-        }
-        while (now_ns < s_next_present_ns) {
-#if defined(__aarch64__)
-            __asm__ volatile("isb" ::: "memory");
-#elif defined(__arm__)
-            __asm__ volatile("yield" ::: "memory");
-#elif defined(__x86_64__) || defined(_M_X64)
-            __builtin_ia32_pause();
-#endif
             clock_gettime(CLOCK_MONOTONIC, &ts);
             now_ns = (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
         }
