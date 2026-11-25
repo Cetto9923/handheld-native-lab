@@ -2444,72 +2444,26 @@ template<class T> struct SnapAlloc {
     void deallocate(T*,size_t){}   // snapshot_reset rewinds the arena
     template<class U> bool operator==(const SnapAlloc<U>&)const{return true;}template<class U> bool operator!=(const SnapAlloc<U>&)const{return false;}
 };
-struct SnapFlatTable {
-    struct Slot{uint64_t address=0,bytes=0,epoch=0;Buffer buffer{};};
-    std::vector<Slot> slots;
-    size_t mask=0,count=0;
-    uint64_t cur_epoch=1;
-    uint64_t min_addr=UINT64_MAX,max_end=0;
-    SnapFlatTable(){rehash(4096);}
-    static inline uint64_t hash(uint64_t a,uint64_t b){uint64_t x=a*0x9E3779B97F4A7C15ull^b*0xC2B2AE3D27D4EB4Full;return x^(x>>29);}
-    void rehash(size_t n){
-        std::vector<Slot> next(n);size_t nmask=n-1;
-        for(const auto &s:slots)if(s.epoch==cur_epoch){size_t idx=hash(s.address,s.bytes)&nmask;while(next[idx].epoch==cur_epoch)idx=(idx+1)&nmask;next[idx]=s;}
-        slots.swap(next);mask=nmask;
-    }
-    void reset(uint64_t next_epoch){cur_epoch=next_epoch;count=0;min_addr=UINT64_MAX;max_end=0;}
-    bool find(uint64_t a,uint64_t b,Buffer &out)const{
-        size_t idx=hash(a,b)&mask;
-        for(;;){const Slot &s=slots[idx];if(s.epoch!=cur_epoch)return false;if(s.address==a && s.bytes==b){out=s.buffer;return true;}idx=(idx+1)&mask;}
-    }
-    void insert(uint64_t a,uint64_t b,const Buffer &buf){
-        if((count+1)*2>slots.size())rehash(slots.size()*2);
-        if(a<min_addr)min_addr=a;
-        uint64_t end=a+b;if(end>max_end)max_end=end;
-        size_t idx=hash(a,b)&mask;
-        for(;;){Slot &s=slots[idx];if(s.epoch!=cur_epoch){s={a,b,cur_epoch,buf};++count;return;}if(s.address==a && s.bytes==b){s.buffer=buf;return;}idx=(idx+1)&mask;}
-    }
-    template<class Fn> void invalidate(uint64_t address,uint64_t bytes,Fn &&on_erase){
-        if(!count || !bytes || address>=max_end || address+bytes<=min_addr)return;
-        for(size_t i=0;i<slots.size();++i){
-            if(slots[i].epoch!=cur_epoch)continue;
-            uint64_t b=slots[i].address,n=slots[i].bytes,e=b+n;
-            if(address<e && address+bytes>b){
-                on_erase(b,n);slots[i].epoch=0;--count;
-                size_t j=(i+1)&mask;
-                while(slots[j].epoch==cur_epoch){
-                    Slot moved=slots[j];slots[j].epoch=0;--count;
-                    if(address<moved.address+moved.bytes && address+bytes>moved.address)on_erase(moved.address,moved.bytes);
-                    else insert(moved.address,moved.bytes,moved.buffer);
-                    j=(j+1)&mask;
-                }
-            }
-        }
-    }
-};
-SnapFlatTable &snapshots=*new SnapFlatTable(),&uniform_snapshots=*new SnapFlatTable();
+using SnapMap=std::map<std::pair<uint64_t,uint64_t>,Buffer,std::less<std::pair<uint64_t,uint64_t>>,SnapAlloc<std::pair<const std::pair<uint64_t,uint64_t>,Buffer>>>;
+static_assert(std::is_trivially_destructible<Buffer>::value,"snapshot_reset skips the map nodes' destructors");
+SnapMap &snapshots=*new SnapMap(),&uniform_snapshots=*new SnapMap();
 uint64_t snapshot_maxlen=0;
 uint64_t snapshot_epoch=1;
-void snapshot_maps_reset(){++snapshot_epoch;snapshots.reset(snapshot_epoch);uniform_snapshots.reset(snapshot_epoch);snap_arena().rewind();}
+void snapshot_maps_reset(){new(&snapshots) SnapMap();new(&uniform_snapshots) SnapMap();snap_arena().rewind();++snapshot_epoch;}
 void desc_memo_reset();
-// Direct-mapped front for the two snapshot maps: most lookups repeat within a submission (~12k of 15k per D2R camp frame).
-// Entries carry snapshot_epoch, which every reset bumps, so a stale entry never matches. Every front entry mirrors a map
-// entry of the same key, so an invalidation clears just the front slots of the map entries it erases; bumping the epoch
-// there (A/B target snapinval) emptied the whole front on every in-stream CPU write, overlapping or not.
 struct SnapFront{uint64_t address=0,bytes=0,epoch=0;Buffer buffer;};SnapFront snap_front[2][4096][2];
 uint64_t snap_front_hits=0,snap_map_hits=0,snap_invalidations=0,snap_invalidated=0;   // perf (NVN PERF snapfront)
 inline SnapFront *snap_front_bucket(int which,uint64_t a,uint64_t n){uint64_t x=a*0x9E3779B97F4A7C15ull^n*0xC2B2AE3D27D4EB4Full;return snap_front[which][(x^(x>>31))&4095];}
 void snapshot_reset(){snapshot_maps_reset();texel_copy_cache.reset();snapshot_maxlen=0;desc_memo_reset();++texel_write_epoch;last_pass_reset();}   // the guest may write memory between submissions: texel copies are re-verified
 void snapshot_invalidate(uint64_t address,uint64_t bytes){
-    ++snap_invalidations;if(ab_off("snapinval")){++snapshot_epoch;snapshots.reset(snapshot_epoch);uniform_snapshots.reset(snapshot_epoch);}
+    ++snap_invalidations;if(ab_off("snapinval"))++snapshot_epoch;
     texel_copy_cache.invalidate(address,bytes);
     if(address<texel_hi && address+bytes>texel_lo)texel_touch(address,bytes);
     desc_memo_reset();
-    int which=0;
+    uint64_t lo=address>snapshot_maxlen?address-snapshot_maxlen:0;int which=0;
     for(auto *m:{&snapshots,&uniform_snapshots}){
-        m->invalidate(address,bytes,[&](uint64_t b,uint64_t n){
-            SnapFront *fb=snap_front_bucket(which,b,n);if(fb[0].address==b && fb[0].bytes==n)fb[0].epoch=0;if(fb[1].address==b && fb[1].bytes==n)fb[1].epoch=0;++snap_invalidated;
-        });
+        for(auto it=m->lower_bound({lo,0});it!=m->end() && it->first.first<address+bytes;){uint64_t b=it->first.first,n=it->first.second,e=b+n;
+            if(address<e && address+bytes>b){SnapFront *fb=snap_front_bucket(which,b,n);if(fb[0].address==b && fb[0].bytes==n)fb[0].epoch=0;if(fb[1].address==b && fb[1].bytes==n)fb[1].epoch=0;++snap_invalidated;it=m->erase(it);}else ++it;}
         ++which;}
 }
 // GPU-resident view of a guest range whose newest content is a pending
@@ -2815,9 +2769,9 @@ Buffer snapshot_slow(uint64_t address,size_t bytes,VkDeviceSize align,bool check
         xbg_logf("NVN SNAPSHOT_OVERSIZE frame=%llu op=%u site=%u address=%#llx bytes=%zu align=%llu",
             (unsigned long long)stats.presents.load(),cur_op,snap_site,
             (unsigned long long)address,bytes,(unsigned long long)align);
-    {Buffer found;bool hit=false;{CPU_SCOPE(SubSnapMap);hit=snapshots.find(address,uint64_t(bytes),found);}
-    if(hit){++perf.snapshot_hits;++snap_map_hits;return found;}}
-    auto insert_snap=[&](Buffer v){snapshots.insert(address,uint64_t(bytes),v);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,bytes);return v;};
+    {SnapMap::iterator it;{CPU_SCOPE(SubSnapMap);it=snapshots.find({address,uint64_t(bytes)});}
+    if(it!=snapshots.end()){++perf.snapshot_hits;++snap_map_hits;return it->second;}}
+    auto insert_snap=[&](Buffer v){snapshots.emplace(std::make_pair(address,uint64_t(bytes)),v);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,bytes);return v;};
     bool may_overlap=true;
     if(check_pv){Buffer view;bool have=false;{CPU_SCOPE(SubSnapPv);have=pending_view(address,bytes,align,view,nullptr,&may_overlap);}if(have){insert_snap(view);return view;}}
     ++perf.snapshot_misses;perf.snapshot_bytes+=bytes;snap_site_req[snap_site<6?snap_site:0]+=bytes;if(snap_site==3){static unsigned logged=0;if(logged<40 && bytes>=65536){++logged;xbg_logf("NVN PERF storage_snapshot addr=%#llx bytes=%zu frame=%llu",(unsigned long long)address,bytes,(unsigned long long)stats.presents.load());}++storage_snap_count;if(timing_now())for(uint64_t pg=address>>12;pg<=(address+bytes-1)>>12;pg++)storage_pages.insert(pg);}   // page union: timed frames only (~4.8k inserts per D2R frame)
@@ -3272,18 +3226,12 @@ bool writeback_superseded(size_t i){
 // Writebacks of a slot whose fence has signalled can be applied without waiting.
 void resolve_slot_writebacks(const void *slot){
     if(pending_writebacks.empty())return;resolving_pending=true;
-    static std::vector<PendingWriteback> keep,ready;
-    static std::vector<VkMappedMemoryRange> inv_ranges;
-    keep.clear();ready.clear();inv_ranges.clear();
+    std::vector<PendingWriteback> keep;
     for(size_t i=0;i<pending_writebacks.size();i++){auto &w=pending_writebacks[i];if(w.slot!=slot){keep.push_back(w);continue;}
         // V14: the entry leaves the pending list here, so it leaves the index too.
         wb_interval_index.erase(w.version,w.addr,w.bytes);
         if(writeback_superseded(i)){++wb_skipped;wb_skipped_bytes+=w.bytes;continue;}
-        writeback_bytes+=w.bytes;
-        if(!w.buffer.coherent)inv_ranges.push_back(w.buffer.cache_range());
-        ready.push_back(w);}
-    if(!inv_ranges.empty())VK(vkInvalidateMappedMemoryRanges(cfg.device,uint32_t(inv_ranges.size()),inv_ranges.data()));
-    for(auto &w:ready){invalidate_cpu_range(w.addr,w.bytes);memcpy(reinterpret_cast<void*>(w.addr),w.buffer.mapped,w.bytes);}
+        writeback_bytes+=w.bytes;w.buffer.invalidate();invalidate_cpu_range(w.addr,w.bytes);memcpy(reinterpret_cast<void*>(w.addr),w.buffer.mapped,w.bytes);}
     pending_writebacks.swap(keep);resolving_pending=false;
 }
 void write_report(const PendingReport &r){
@@ -5684,9 +5632,9 @@ Buffer uniform_snapshot_cached(uint64_t address,size_t copy){CPU_SCOPE(Snapshot)
 Buffer uniform_snapshot_slow(uint64_t address,size_t copy){
     gfx_probe_seg_tick(GFX_SEG_SNAPU);
     size_t n=uniform_range(copy);
-    {Buffer found;bool hit=false;{CPU_SCOPE(SubSnapMap);hit=uniform_snapshots.find(address,uint64_t(copy),found);}
-    if(hit){++perf.snapshot_hits;++snap_map_hits;return found;}}
-    auto insert_snap=[&](Buffer v,size_t len){uniform_snapshots.insert(address,uint64_t(copy),v);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,len);return v;};
+    {SnapMap::iterator it;{CPU_SCOPE(SubSnapMap);it=uniform_snapshots.find({address,uint64_t(copy)});}
+    if(it!=uniform_snapshots.end()){++perf.snapshot_hits;++snap_map_hits;return it->second;}}
+    auto insert_snap=[&](Buffer v,size_t len){uniform_snapshots.emplace(std::make_pair(address,uint64_t(copy)),v);snapshot_maxlen=std::max<uint64_t>(snapshot_maxlen,len);return v;};
     bool may_overlap=true;
     {Buffer view;bool have=false;{CPU_SCOPE(SubSnapPv);have=pending_view(address,n,properties.limits.minUniformBufferOffsetAlignment,view,nullptr,&may_overlap);}if(have){insert_snap(view,n);return view;}}
     ++perf.snapshot_misses;perf.snapshot_bytes+=copy;snap_site_bytes[5]+=copy;snap_site_req[5]+=copy;{CPU_SCOPE(SubSnapAccess);if(may_overlap && (!wbfast_enabled||pending_wb_may_overlap(address,copy)))cpu_access(address,copy,2);}
@@ -6834,16 +6782,9 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                    !(b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER && b.binding==out.indirect_input->binding && b.count==1 && element==0))
                     out.indirect_input->other_writes.push_back({uint64_t(texture.mem),texture.L.size});
                 if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER || b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER){need(texture.d.target==10 && texture.mem && texture.L.size,"Invalid buffer texture");
-                    VkFormat tf=VK_FORMAT_UNDEFINED;
-                    const unsigned scalar=(b.flags>>16)&3;
-                    if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER && !registered.has_view && !probe_is_active() && registered.fast_texel_vk[scalar]){
-                        tf=VkFormat(registered.fast_texel_vk[scalar]);
-                    }else{
-                        tf=texel_view_format(registered);
-                        if(probe_is_active())capture_log("PROBE_TEXEL_NATIVE shader=%s stage=%u binding=%u element=%u nvnFormat=%#x nativeVk=%u scalar=%u guest=%#llx bytes=%llu",shader.key.c_str(),st,b.binding,element,texture.d.format,unsigned(tf),scalar,(unsigned long long)uintptr_t(texture.mem),(unsigned long long)texture.L.size);
-                        tf=texel_binding_format(registered,b,&shader.storage_binding_info);
-                        if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER && !registered.has_view && tf)registered.fast_texel_vk[scalar]=uint32_t(tf);
-                    }
+                    VkFormat tf=texel_view_format(registered);
+                    if(probe_is_active()){const unsigned scalar=(b.flags>>16)&3;capture_log("PROBE_TEXEL_NATIVE shader=%s stage=%u binding=%u element=%u nvnFormat=%#x nativeVk=%u scalar=%u guest=%#llx bytes=%llu",shader.key.c_str(),st,b.binding,element,texture.d.format,unsigned(tf),scalar,(unsigned long long)uintptr_t(texture.mem),(unsigned long long)texture.L.size);}
+                    tf=texel_binding_format(registered,b,&shader.storage_binding_info);
                     if(b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER){
                         const VkFormatFeatureFlags2 features=texel_buffer_features(tf);
                         need(features&VK_FORMAT_FEATURE_2_STORAGE_TEXEL_BUFFER_BIT,"Format not usable as storage texel buffer");
@@ -6952,14 +6893,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                     Buffer *buf=nullptr;uint64_t base=uint64_t(texture.mem),bytes=texture.L.size;
                     VkDeviceSize buf_offset=0;
                     if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER){
-                        if(out.storage.empty() && !pending_wb_may_overlap(base,bytes)){
-                            snap_site=4;Buffer b_snap=snapshot(base,bytes,properties.limits.minTexelBufferOffsetAlignment,false);snap_site=0;
-                            buf=out.keep(b_snap);buf_offset=buf->offset;
-                            if(__builtin_expect(perf_frame_timed,0))texel_frame_keys.insert((base<<12)^bytes);
-                            ++texel_binds;
-                        }else{
-                            resolve_uniform_texel_buffer(out,base,bytes,compute,shader.key.c_str(),st,b.binding,buf,buf_offset);
-                        }
+                        resolve_uniform_texel_buffer(out,base,bytes,compute,shader.key.c_str(),st,b.binding,buf,buf_offset);
                     }else{
                         bool fresh_out=false;
                         resolve_storage_texel_copy(out,base,bytes,compute,shader.key.c_str(),b.binding,registered,buf,buf_offset,fresh_out);
@@ -6994,18 +6928,7 @@ void descriptors_build(Descriptors &out,Commands &commands,bool compute){CPU_SCO
                             }
                         }
                     }
-                    VkBufferView bv=VK_NULL_HANDLE;
-                    if(b.type==VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER){
-                        const uint64_t tv_ep=texel_view_epoch.load(std::memory_order_acquire);
-                        if(__builtin_expect(registered.last_bv!=VK_NULL_HANDLE && registered.last_tv_epoch==tv_ep && registered.last_vk_buf==buf->buffer && registered.last_offset==buf_offset && registered.last_bytes==bytes && registered.last_fmt==uint32_t(tf),1)){
-                            bv=registered.last_bv;
-                        }else{
-                            bv=resolve_texel_buffer_view(*buf,buf_offset,bytes,tf);
-                            registered.last_bv=bv;registered.last_tv_epoch=tv_ep;registered.last_vk_buf=buf->buffer;registered.last_offset=buf_offset;registered.last_bytes=bytes;registered.last_fmt=uint32_t(tf);
-                        }
-                    }else{
-                        bv=resolve_texel_buffer_view(*buf,buf_offset,bytes,tf);
-                    }
+                    VkBufferView bv=resolve_texel_buffer_view(*buf,buf_offset,bytes,tf);
                     if(push_memo_cap.active){
                         push_memo_cap.texels.push_back({record,record->revision,texture.serial,texture.mem,uint64_t(texture.L.size),uint32_t(texture.d.format),uint32_t(tf),uint16_t(elem_idx),uint8_t(st),b.binding,shader.key.c_str(),b.type==VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER,registered.has_view,uint32_t(registered.view.format),bv,texel_view_epoch.load(std::memory_order_acquire),buf->buffer,buf_offset,bytes,uint32_t(tf)});
                     }

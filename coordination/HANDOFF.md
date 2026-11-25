@@ -1,3 +1,10 @@
+# 2026-11-25 荣耀平板 GT Pro Stage D1–D4（v1.1.0 修复洞窟半屏闪烁）交付
+
+针对用户反馈洞窟路段左右移动出现右半屏模糊棕橙色隔帧闪烁（`SVID_20261125_132554_1.mp4` 实测 `122–161` 次隔帧突变，`v1.0.79` 同点 `0` 次），经二分排查后撤回 `SnapFlatTable`（恢复 `SnapMap`）、`resolve_slot_writebacks` 批量失效（恢复逐条失效）及无开关 `fast_texel_vk` / `last_bv` / 直通 `snapshot`：
+- **闪烁修复验证**：在完全相同洞窟岩柱位置复测（`fix2_cave_check.mp4`），`239` 帧 **0 次隔帧突变**。
+- **主机门禁（最终改动后复跑）**：`tests.device.test_target_fps_marker` + `tests.device.test_fresh_descriptor_cache`（5 tests OK）及 9 项 `scripts/android/*.sh` 脚本全部 PASS。
+- **发布产物（`v1.1.0`，`versionCode=80`）**：`.local/releases/1.1.0/FFRS-1.1.0-universal.apk`（SHA-256 `7caec1a9ecb630b8afe6f6af645af260c3fb7adbf127cebe2907d643ff6e30ad`）已更新本地目录与 GitHub Release `v1.1.0`。
+
 # 2026-11-25 荣耀平板 GT Pro Stage D4+D5（PushMemo 挥发绕过 + texel 视图缓存 + 写回批量失效）交付
 
 在 Stage D1–D3 基础上完成 Stage D4 与 Stage D5 实现、主机门禁与真机实测（`A42BBB5109000333`，原生 `1080p`，`nvnSyncWait=1`）：
