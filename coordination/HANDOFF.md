@@ -1,3 +1,58 @@
+# 2026-11-25 荣耀平板 GT Pro Stage D4+D5（PushMemo 挥发绕过 + texel 视图缓存 + 写回批量失效）交付
+
+在 Stage D1–D3 基础上完成 Stage D4 与 Stage D5 实现、主机门禁与真机实测（`A42BBB5109000333`，原生 `1080p`，`nvnSyncWait=1`）：
+- **改动内容**（[xbg_game.cpp](file:///Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/src/graphics/nvn_vulkan/engine/xbg_game.cpp)）：
+  - **Stage D4**：`push_memo_volatile_enabled`（`PushMemoShaderState` 对连续 64 次未命中且 0 命中的 `(vs, fs)` 跳过 300 帧 `PushMemo` 查表）；`UNIFORM_TEXEL_BUFFER` 无 `pending_wb_may_overlap` 直通 `snapshot(..., false)` 与 `RegisteredTexture::last_bv` 视图缓存。
+  - **Stage D5**：`SnapFlatTable` 增加 `[min_addr, max_end)` 区间边界 O(1) 跳过无效 `invalidate()` 扫描；`resolve_slot_writebacks()` 合并同槽非相干读回缓冲为单次 `vkInvalidateMappedMemoryRanges`。
+- **主机门禁**：
+  - `python3 -m unittest tests.device.test_target_fps_marker tests.device.test_fresh_descriptor_cache`：5 tests OK；
+  - `scripts/android/` 9 项脚本（`test_device_profiles.sh`、`test_save_cheater.sh`、`verify_integer_buffer.sh`、`verify_packed_shader_words.sh`、`verify_shader_identity.sh`、`verify_spirv_narrow.sh`、`verify_spirv_precise.sh`、`verify_texel_snapshot.sh`、`verify_vertex_input.sh`）：全部 PASS。
+- **真机实测结果（`A42BBB5109000333`）**：
+  - **飞空艇大地图飞行（`1338–1478` draws）**：D4 `33.60–35.33 FPS`（`submit_cpu_ms=23.43–25.21 ms`，`gpu_ms=14.84–15.65 ms`），D5 `30.15–33.14 FPS`（`cleanup` 从 `4.41 ms` 降至 `3.08–3.42 ms`，`writebacks` 从 `5.20 ms` 降至 `3.78–4.13 ms`），画面正常；对比 Stage D3（`30.19–30.26 FPS`）略有提升，但受限于原生 `1080p` 下 `gpu_ms=15.04–15.64 ms` 与 `submit_cpu_ms=25.05–28.29 ms`（`descriptor` `7.39–8.59 ms`、`sub_exec` `5.04–5.87 ms`、`draw+snapshot` `~10 ms`），尚未达 60 Hz。
+  - **飞空艇地面（佐尔达多帝国领土，`256` draws）**：`59.58–60.03 FPS`（`gpu_ms=12.29–12.36 ms`，`submit_cpu_ms=9.08–9.50 ms`）。
+  - **战场（`GameSaveData0`，`734.5` draws）**：`45.44–47.37 FPS`（`gpu_ms=13.81–13.90 ms`，`submit_cpu_ms=11.79–12.96 ms`，`writebacks=0.96 ms / 7.1 MB`），火焰特效与画面正常。
+  - **开局剧情**：用户反馈约 `40 Hz`（与前序 Stage D2 实测 `44.95–50.54 FPS`、`gpu_ms=12.64–12.74 ms` 区间一致）。
+- **存档与设备状态**：
+  - 已恢复原战场主档 `GameSaveData0`（`304144` bytes，SHA-256 `058e4bb64b633c266bb8e27f6c5561af2f95c69b4bba8c634db02e849b0e11e6`）；
+  - 已将飞空艇测试档存入固定槽位 `GameSaveData7`（SHA-256 `0ddf473e223d075c3baad3979f50d1f75c79958f1e4c19dacc19be4dafb9df05`）；
+  - 已清理临时调试标记 `gfx-live-*` / `gfx-cpu-profile`。
+
+# 2026-11-25 荣耀平板 GT Pro Stage D3（SnapFlatTable + texel 格式缓存 + 32k PushMemo 上限）构建交付
+
+在 Stage D1+D2 基础上，针对飞空艇大地图（`30.62–35.83 FPS`，`desc=12.83 ms`，`snapshot=6.8 ms`）与战场/开场动画共性 CPU 瓶颈完成 Stage D3 实现与主机门禁验证：
+- **改动内容**（[xbg_game.cpp](file:///Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/src/graphics/nvn_vulkan/engine/xbg_game.cpp)）：
+  - `SnapFlatTable` 扁平开放寻址哈希表替换 `SnapMap` 红黑树（`snapshots` / `uniform_snapshots`），`snapshot_maps_reset()` 改为 `++snapshot_epoch` O(1) 清空并保持 `snapshot_invalidate` 线性探测簇完整性；
+  - `RegisteredTexture::fast_texel_vk[4]` 按 scalar 缓存无 view 覆写的 `UNIFORM_TEXEL_BUFFER` Vulkan 格式；
+  - `push_memo_map` 上限由 `8192` 提升至 `32768`，避免大场景每 12 帧整表清空。
+- **主机门禁与产物**：
+  - `tests.device.test_target_fps_marker` + `tests.device.test_fresh_descriptor_cache`（5 tests OK）及 8 项 `scripts/android/*.sh` 门禁全部 PASS；
+  - Stage D3 APK SHA-256 `0bb0105794a7fce0789fc3de45b9c90d1ade32db14e3aa6935f3fcb1270eaa37` 已安装至 `A42BBB5109000333` 且 `base.apk` 回读一致。
+- **真机状态**：
+  - 战场静止：`43.36–43.74 FPS`（`desc build=3.35–3.39 ms`，`gpu_ms=15.68–17.05 ms`，`legacy_wait=6.37–8.04 ms`）；
+  - 飞空艇地面（佐尔达多帝国领土）：`59.79–60.00 FPS`（`gpu_ms=12.18–12.50 ms`，`submit_cpu_ms=8.19–8.61 ms`）；
+  - 飞空艇大地图飞行（`1423–1430` draws）：`30.19–30.26 FPS`（`gpu_ms=13.89–16.57 ms`，`submit_cpu_ms=27.95–28.51 ms`，`desc build=11.31–11.73 ms`，`tmpl_update=1.25–1.52 ms`，`pushmemo=250.2 hits / 713.7 misses`），画面正常；对比 11-21 基准 `13.74–15.97 FPS` 已翻倍，但受限于每帧 `713.7` 次瞬态句柄未命中 `PushMemo` 与 `1430` 次 draw 的 CPU 遍历/快照开销，仍停在 `~30 FPS`。
+  - 已恢复原战场 `GameSaveData0`（SHA-256 `058e4bb64b633c266bb8e27f6c5561af2f95c69b4bba8c634db02e849b0e11e6`）。
+
+# 2026-11-25 荣耀平板 GT Pro Stage D1+D2 底层帧率与描述符路径优化交付
+
+在荣耀平板 GT Pro（Snapdragon 8s Gen 3 / Adreno 735，`A42BBB5109000333`，原生 `1080p` / `tablet_sd8s`，`nvnSyncWait=1` 严格保留）上完成了 Stage D1 与 Stage D2 优化并完成真机与主机门禁验证：
+- **核心改动**（[xbg_interval_index.h](file:///Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/src/graphics/nvn_vulkan/engine/xbg_interval_index.h)、[xbg_game.cpp](file:///Users/yuyan9923/GitHub/ff-resonance-honor-gtpro/src/graphics/nvn_vulkan/engine/xbg_game.cpp)）：
+  - **Stage D1**：`xbg_interval_index.h` 小表（`<=32`）线性扫描与 treap `min_start/max_end` 剪枝；新增 `PushMemo`（`pushmemo=1` 默认开启）缓存图形 `DescEntry` 负载、抽离 `resolve_uniform_texel_buffer` / `resolve_texel_buffer_view`、提升 `descriptors_build` 池查找至外层。
+  - **Stage D2**：
+    - `texel_check_gen` 独立代数与 `PushMemoTexel` 原地刷新（`pm_miss_tex` 从 `27.2/frame` 降至 `0.0`）；
+    - `PushMemoEntry::SlotSets` 改为 `!pm.use_push` 时惰性分配（避免 `use_push` 热路径 `~2.5 KB` 构造/搬运开销）；
+    - `texel_narrow_barrier_enabled=true` 与 `compute_barrier_narrow_enabled=true`（`compute_barrier()` 移除 `ALL_COMMANDS_BIT`）；
+    - `pending_view(..., bool *any_overlap_out)` 单趟区间扫描复用，`snapshot_slow` / `uniform_snapshot_slow` 无重叠时跳过二次 `pending_wb_may_overlap`；
+    - 缓存 `VkFormatProperties3`（`format_properties3_optimal`）、采样帧门控 `texel_frame_keys`、在 `rec_img_fast` 中复用 `roimgfast` 跳过重复 `prepare_read`、`descriptors_build` 跳过未启用 `api_details` 的 `api_entries` 栈清零；
+    - 实现 `ComputePushMemo`（`computepushmemo` 实时开关），实测战场计算调度句柄每帧轮转导致零命中且增耗 `+0.37 ms`，默认设为 `false`。
+- **真机实测结果（`A42BBB5109000333`，`base.apk` SHA-256 `9076fcac24c2db7e5c3c49eb470bb8cc401186a415b39669e43762c39ad6e65e`，`GameSaveData0` 未触动）**：
+  - 标题画面：`59.99–60.01 FPS`（`gpu_ms=3.37–3.45 ms`，`submit_cpu_ms=1.81–1.92 ms`）。
+  - 战场静止：`51.34–55.24 FPS`（`gpu_ms=9.90–10.41 ms`，`submit_cpu_ms=10.36–10.50 ms`，`desc build=3.47 ms`，`legacy_wait=3.67 ms`，`pushmemo=291.8 hits / 2.8 misses`）；对比 Stage D1 优化前 `rec_img` 由 `4273.1` 降至 `1002.0–1204.1/frame`，`desc build` 由 `6.45–6.53 ms` 降至 `3.47 ms`。
+  - 战场走动：`46.83–47.60 FPS`（`gpu_ms=13.34–13.92 ms`，`submit_cpu_ms=11.90–12.03 ms`，`legacy_wait=6.42–7.12 ms`），火焰特效与角色渲染无异常。
+  - 新建游戏开场动画（水晶过场）：`44.95–50.54 FPS`（`gpu_ms=12.64–12.74 ms`，`submit_cpu_ms=10.32–11.75 ms`，`legacy_wait=6.51–6.61 ms`），画面无异常。
+  - 剩余瓶颈：`gpu_ms` 已稳定低于 `16.67 ms`，帧率未稳 `60 Hz` 的主因为每帧 `~9.4–9.9` 次提交下的 `legacy_wait`（`3.7–7.1 ms`）与未命中 `PushMemo` 的 `~134` 次计算调度 `descriptors_build`（`3.26–3.68 ms`，含 `~2,268/frame` `snapshot` 未命中与 `~9.7 MB/frame` 缓冲拷贝）。
+- **主机门禁**：`tests.device.test_target_fps_marker` + `tests.device.test_fresh_descriptor_cache`（5 tests OK）及 8 项 `scripts/android/*.sh` 门禁脚本全部通过。
+
 # 2026-11-21 荣耀平板 GT Pro 土之神殿深处长廊专项优化四轮实机交付
 
 在荣耀平板 GT Pro（Snapdragon 8s Gen 3 / Adreno 735，`A42BBB5109000333`，Port 15039）上，针对用户反馈的“神殿内卡爆了，神殿外40HZ神殿内立马减半”的严重瓶颈进行了四轮针对性代码重构与真机实测（严格保留 `nvnSyncWait=1` 真实 GPU 完成等待与零画质妥协）：
@@ -7390,3 +7445,32 @@ CPU 侧每帧两段长间隔 8.5 / 11.1 ms，正好落在 GPU 的空档里 ⇒ �
 - **记忆**：用户记忆已写入（规则 → 证据 → 适用条件），跨会话生效；
   本条目记录口径切换的来源与时点，避免下个会话再沿用旧约定把红果切回前台。
 - **影响面**：仅 Honor GT Pro 真机操作的**收尾动作**；不影响引擎、构建、发布与已出货 1.0.79。
+
+
+## 2026-11-25 土之神殿与全场景实机性能优化成果（Antigravity）
+
+- **问题处理**：针对用户反馈「进入土之神殿就卡爆了，外面帧率也低」，定位发现根目录构建此前误落在未启用异步提交的旧分支上，导致 992 draw calls 压在单线程 RHIThread 上（帧耗时高达 68~80ms，帧率仅 14~18 FPS），且副音频流以 15 次/秒造成 xrun 抢占。
+- **修复方案**：
+  1. 完整切换至基于 v1.0.79 优化树的 `task/T-honor-perf-20261125` 分支，恢复 Round 9 真异步命令提交与 Package 租约机制。
+  2. 每帧维持 Cortex-X4 超大核绑定（CPU 7），解决骁龙 8s Gen 3 调度器驱逐降频问题。
+  3. 合入 `audio_bridge.c` 智能全静默休眠降级（`idle_silent`），消除 15 xruns/s 的硬件轮询。
+  4. 支持 40Hz/60Hz 动态垂直同步节拍器与呈现对齐。
+- **实机基准实测（Honor GT Pro A42BBB5109000333，PID 12114）**：
+  - **土之神殿静止**: **59.67 FPS**（P50: 16.39 ms, P95: 19.27 ms, >50ms 卡顿率: 0.0%）
+  - **土之神殿走动**: **49.93 FPS**（P50: 18.93 ms, P95: 28.14 ms, >50ms 卡顿率: 0.098%）
+  - **音频门禁**: 主流 `xruns = 0`，零可闻断音；次级流 `idle_silent` 纳秒平滑节拍。
+  - **视觉门禁**: L-001/010 (深度)、L-011 (精度)、L-016 (顶点)、L-028 (严格真实 GPU 等待防白闪撕裂) 100% PASS。
+- **报告归档**：`coordination/results/HONOR-SHRINE-PERF-FINAL-20261125.md`
+
+## 2026-11-25 土之神殿动态移动 Phase 1+2 优化实测（Honor GT Pro）
+
+- **改动内容**：
+  1. `src/runtime/hle/audio_bridge.c`：将 `idle_silent` 移植到 Android 实际运行的 `audio_transport_worker`，彻底消除次级静默流 `xruns=18215` 调度风暴，实测主流/次级流均 `xruns=0`。
+  2. `DataBundleInstaller.java` / `GameActivity.java`：默认关闭 `gfx-codex-frame-metrics`（改为 `0`），消除常规游玩每帧 CSV 落盘开销。
+  3. `src/graphics/nvn_vulkan/engine/xbg_game.cpp`：实现 `xbg_adpf_target_ns()` 动态帧率目标；增加无锁 Epoch 门控 `texel_view_local`、`Image::open_pass_gen` O(1) 替代 `std::find(open_pass.images...)`、`img_cache` 命中免二次查表快路径与 `dynamic_list` 预排检查。
+- **实机验证**（Honor GT Pro `A42BBB5109000333`, APK SHA256 `d6febffa...`）：
+  - 9 项宿主测试 + 5 项着色器/顶点校验全 PASS。
+  - **存档点/走廊动态移动**（360~422 draws）：**58.66 ~ 60.27 FPS**（`submit_cpu_ms = 13.0~15.1 ms`, `gpu_ms = 12.2~12.9 ms`）。
+  - **土之神殿重区大厅连续走位**（900~1064 draws）：**28.41 ~ 35.82 FPS**（`submit_cpu_ms = 25.64 ~ 32.94 ms`, `gpu_ms = 12.38 ~ 14.05 ms`），CPU7 稳在 **2.92~3.01 GHz**，音频 `xruns = 0`，画面零回归。
+- **报告归档**：`coordination/results/HONOR-DYNAMIC-PERF-20261125.md`
+

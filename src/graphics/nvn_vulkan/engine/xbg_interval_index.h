@@ -34,10 +34,12 @@
 // whose nodes carry the maximum end of their subtree. See OSS-NOTES.md.
 struct XbgIntervalIndex {
     struct Node {
-        uint64_t start=0,end=0,id=0,max_end=0;
+        uint64_t start=0,end=0,id=0,min_start=UINT64_MAX,max_end=0;
         uint32_t left=0,right=0,priority=0;
     };
+    struct Flat { uint64_t start,end,id; };
     std::vector<Node> nodes;              // nodes[0] is the null node
+    std::vector<Flat> flat;
     std::vector<uint32_t> freelist;
     uint32_t root=0;
     uint64_t rng=0x9E3779B97F4A7C15ull;
@@ -56,16 +58,25 @@ struct XbgIntervalIndex {
         if(!xbg_wb_range_valid(start,bytes)){++invalid_ranges;return false;}
         uint32_t i=alloc();
         Node &x=nodes[i];
-        x.start=start;x.end=start+bytes;x.id=id;x.max_end=start+bytes;
+        x.start=start;x.end=start+bytes;x.id=id;x.min_start=start;x.max_end=start+bytes;
         x.left=0;x.right=0;x.priority=next_priority();
-        root=insert_rec(root,i);++inserts;return true;
+        root=insert_rec(root,i);
+        flat.push_back({start,start+bytes,id});
+        ++inserts;return true;
     }
     void erase(uint64_t id,uint64_t start,uint64_t bytes){
         if(!xbg_wb_range_valid(start,bytes)){if(invalid_ranges)--invalid_ranges;}
-        else root=erase_rec(root,start,id);
+        else{
+            root=erase_rec(root,start,id);
+            for(size_t fi=flat.size();fi--;){
+                if(flat[fi].id==id&&flat[fi].start==start){
+                    flat[fi]=flat.back();flat.pop_back();break;
+                }
+            }
+        }
         ++erases;
     }
-    void clear(){root=0;nodes.clear();nodes.push_back(Node{});freelist.clear();invalid_ranges=0;}
+    void clear(){root=0;nodes.clear();nodes.push_back(Node{});flat.clear();freelist.clear();invalid_ranges=0;}
 
     // Newest overlapping entry (the greatest id). False when nothing overlaps.
     bool newest(uint64_t address,uint64_t bytes,uint64_t &out_id){
@@ -73,7 +84,14 @@ struct XbgIntervalIndex {
         if(!xbg_wb_range_valid(address,bytes))return false;
         uint64_t a=address,b=address+bytes,best=0;
         bool found=false;
-        collect(root,a,b,found,best);
+        if(flat.size()<=32){
+            for(size_t i=0,n=flat.size();i<n;++i){
+                const Flat &f=flat[i];
+                if(f.start<b&&f.end>a){if(!found||f.id>best){found=true;best=f.id;}}
+            }
+        }else if(root&&b>nodes[root].min_start&&a<nodes[root].max_end){
+            collect(root,a,b,found,best);
+        }
         if(found){out_id=best;++hits;}
         return found;
     }
@@ -82,7 +100,15 @@ struct XbgIntervalIndex {
         ++queries;
         if(!xbg_wb_range_valid(address,bytes))return false;
         uint64_t a=address,b=address+bytes;
-        bool found=collect_any(root,a,b);
+        bool found=false;
+        if(flat.size()<=32){
+            for(size_t i=0,n=flat.size();i<n;++i){
+                const Flat &f=flat[i];
+                if(f.start<b&&f.end>a){found=true;break;}
+            }
+        }else if(root&&b>nodes[root].min_start&&a<nodes[root].max_end){
+            found=collect_any(root,a,b);
+        }
         if(found)++hits;
         return found;
     }
@@ -111,10 +137,10 @@ private:
     static bool key_less(uint64_t s1,uint64_t i1,uint64_t s2,uint64_t i2){return s1!=s2?s1<s2:i1<i2;}
     void pull(uint32_t i){
         Node &x=nodes[i];
-        uint64_t m=x.end;
-        if(x.left&&nodes[x.left].max_end>m)m=nodes[x.left].max_end;
-        if(x.right&&nodes[x.right].max_end>m)m=nodes[x.right].max_end;
-        x.max_end=m;
+        uint64_t mn=x.start,m=x.end;
+        if(x.left){if(nodes[x.left].min_start<mn)mn=nodes[x.left].min_start;if(nodes[x.left].max_end>m)m=nodes[x.left].max_end;}
+        if(x.right){if(nodes[x.right].min_start<mn)mn=nodes[x.right].min_start;if(nodes[x.right].max_end>m)m=nodes[x.right].max_end;}
+        x.min_start=mn;x.max_end=m;
     }
     uint32_t rotate_right(uint32_t y){
         uint32_t x=nodes[y].left;
