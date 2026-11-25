@@ -5345,10 +5345,9 @@ void pipeline_lookup(PipelineLease &out,const XbgPipelineKey &key,bool cacheable
             if(cacheable)warm::record_failure(g.pStages,g.stageCount,key,pr,failed_ns);
             xbg_logf("NVN pipeline_lookup: graphics pipeline creation failed (%d) for shaders=%s, failed_create_ms=%.2f skipping draw safely", int(pr), pstat_what().c_str(),double(failed_ns)/1e6);
             out.pipeline = VK_NULL_HANDLE;
-            out.transient = true;
-            return;
-        }
-        if(pipe_stats)pstat_log(out.pipeline);uint64_t dt=timing_clock()-t0;if(dt>=compile_ns)++pipelines_unsaved;++warm::creates;warm::create_ns+=dt;++hud::pipelines;hud::pipeline_ns+=dt;warm::create_max_ns=std::max(warm::create_max_ns,dt);if(cacheable)warm::record(*graphics,key);}
+            if(!cacheable){out.transient = true;return;}
+        }else{
+        if(pipe_stats)pstat_log(out.pipeline);uint64_t dt=timing_clock()-t0;if(dt>=compile_ns)++pipelines_unsaved;++warm::creates;warm::create_ns+=dt;++hud::pipelines;hud::pipeline_ns+=dt;warm::create_max_ns=std::max(warm::create_max_ns,dt);if(cacheable)warm::record(*graphics,key);}}
     else{if(honor_pipeline_diagnostics)xbg_logf("DIAG pipeline begin compute shaders=%s",pstat_what().c_str());uint64_t t0=timing_clock();VkComputePipelineCreateInfo cc=*compute;if(pipe_stats)cc.flags|=VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR;
         uint64_t api_seq=api_breadcrumb.begin(state.shader[5]?state.shader[5]->key.c_str():nullptr,XbgApiBreadcrumb::RuntimePipeline,stats.presents.load());
         VkResult pr = create_compute_pipeline_resilient(cfg.device,pipeline_cache,1,&cc,nullptr,&out.pipeline);
@@ -5358,25 +5357,24 @@ void pipeline_lookup(PipelineLease &out,const XbgPipelineKey &key,bool cacheable
             if(cacheable)warm::record_failure(&cc.stage,1,key,pr,failed_ns);
             xbg_logf("NVN pipeline_lookup: compute pipeline creation failed (%d) for shaders=%s, failed_create_ms=%.2f skipping dispatch safely", int(pr), pstat_what().c_str(),double(failed_ns)/1e6);
             out.pipeline = VK_NULL_HANDLE;
-            out.transient = true;
-            return;
-        }
+            if(!cacheable){out.transient = true;return;}
+        }else{
         const uint64_t elapsed=timing_clock()-t0;
         ++pipelines_unsaved;++hud::pipelines;hud::pipeline_ns+=elapsed;
         ++warm::compute_creates;warm::compute_create_ns+=elapsed;
         warm::compute_create_max_ns=std::max(warm::compute_create_max_ns,elapsed);
         if(pipe_stats)pstat_log(out.pipeline);
-        if(cacheable)warm::record(*compute,key);}
+        if(cacheable)warm::record(*compute,key);}}
     if(!cacheable){out.transient=true;return;}
     if(pipeline_objects.size()==pipeline_object_limit){
         // All prior draws/dispatches waited their fence. This lookup occurs
         // before binding the current pipeline; no retained entry is in flight.
         auto oldest=std::min_element(pipeline_objects.begin(),pipeline_objects.end(),[](const auto &a,const auto &b){return a.second.last_used<b.second.last_used;});
-        {VkPipeline old=oldest->second.pipeline;retire_handle([old]{vkDestroyPipeline(cfg.device,old,nullptr);});for(auto f=pipeline_fast.begin();f!=pipeline_fast.end();)if(f->second==old)f=pipeline_fast.erase(f);else ++f;clear_pipe_memo();}pipeline_objects.erase(oldest);++pipeline_counts.evictions;
+        {VkPipeline old=oldest->second.pipeline;if(old!=VK_NULL_HANDLE)retire_handle([old]{vkDestroyPipeline(cfg.device,old,nullptr);});for(auto f=pipeline_fast.begin();f!=pipeline_fast.end();)if(f->second==old)f=pipeline_fast.erase(f);else ++f;clear_pipe_memo();}pipeline_objects.erase(oldest);++pipeline_counts.evictions;
     }
     pipeline_objects.emplace(std::string(bytes),PipelineEntry{out.pipeline,++pipeline_tick});
 }
-void clear_pipeline_objects(){for(auto &p:pipeline_objects)vkDestroyPipeline(cfg.device,p.second.pipeline,nullptr);pipeline_objects.clear();pipeline_fast.clear();clear_pipe_memo();}
+void clear_pipeline_objects(){for(auto &p:pipeline_objects)if(p.second.pipeline!=VK_NULL_HANDLE)vkDestroyPipeline(cfg.device,p.second.pipeline,nullptr);pipeline_objects.clear();pipeline_fast.clear();clear_pipe_memo();}
 struct PipelineDefinition {
     std::vector<uint32_t> words;bool valid=false;
     void assign(const XbgPipelineKey &k,bool ok){valid=ok && k.valid;if(valid)words.assign(k.words,k.words+k.count);}
@@ -5571,7 +5569,7 @@ std::shared_ptr<IndirectTemplateBatch> indirect_template_batch(const Descriptors
 }
 Descriptors &acquire_descriptors(){
     Descriptors *d;if(desc_free.empty()){desc_all.push_back(std::make_unique<Descriptors>());d=desc_all.back().get();}else{d=desc_free.back();desc_free.pop_back();}
-    recording_slot().desc_used.push_back(d);return *d;
+    return *d;
 }
 void release_descriptors(Slot &s){
     for(Descriptors *d:s.desc_used){for(auto x:d->buffer_views)vkDestroyBufferView(cfg.device,x,nullptr);
@@ -7469,7 +7467,7 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
         if(ui_vs==1 && g_ui_moff==0)ui_uy=0;}
     fire_trace_draw_begin(indexed?unsigned(indexed->instances):instances);
     if(fire_trace_active())fire_trace_indirect(gpu_args);
-    Commands c(true);Descriptors &d=acquire_descriptors();preparing_draw_descriptors=true;descriptors(d,c,false);preparing_draw_descriptors=false;fire_trace_draw_end();for(auto *im:storage_rg16_images)need(std::find(sampled_rg16_images.begin(),sampled_rg16_images.end(),im)==sampled_rg16_images.end(),"RG16 same-draw sampled/storage feedback requires explicit supported subresource semantics");Pass p;create_pass(p,c);
+    uint64_t draw_serial=slot_serial;Commands c(true);Descriptors &d=acquire_descriptors();preparing_draw_descriptors=true;descriptors(d,c,false);preparing_draw_descriptors=false;if(slot_serial!=draw_serial || slots[slot_index].cmd!=c.command)c.command=recording_slot().cmd;recording_slot().desc_used.push_back(&d);fire_trace_draw_end();for(auto *im:storage_rg16_images)need(std::find(sampled_rg16_images.begin(),sampled_rg16_images.end(),im)==sampled_rg16_images.end(),"RG16 same-draw sampled/storage feedback requires explicit supported subresource semantics");Pass p;create_pass(p,c);
     PipelineLease pipeline;
     static std::vector<VkVertexInputBindingDescription> bindings;
     static std::vector<VkVertexInputAttributeDescription> attributes;
@@ -8052,7 +8050,7 @@ void dispatch(p_dispatch p,uint64_t indirect_address=0){overlay_shadow={};struct
     // Indirect group counts stay on the GPU. Capture/profiling use the CPU fallback
     // so their grid metadata is genuine; no guessed dimensions are published.
     if(!gpu_indirect){need(p.x>=0 && p.y>=0 && p.z>=0,"Negative compute dispatch");if(!p.x||!p.y||!p.z)return;need(uint32_t(p.x)<=properties.limits.maxComputeWorkGroupCount[0] && uint32_t(p.y)<=properties.limits.maxComputeWorkGroupCount[1] && uint32_t(p.z)<=properties.limits.maxComputeWorkGroupCount[2],"Compute dispatch exceeds device limit");}probe_dispatch_begin();
-    uint64_t indirect_serial=slot_serial;Commands c;fire_trace_compute_begin();Descriptors &d=acquire_descriptors();uint64_t api_desc_seq=api_breadcrumb.begin(state.shader[5]->key.c_str(),XbgApiBreadcrumb::Descriptors,stats.presents.load());descriptors(d,c,true);api_breadcrumb.end(api_desc_seq,XbgApiBreadcrumb::Descriptors,stats.presents.load(),0);need(!gpu_indirect || (slot_serial==indirect_serial && slots[slot_index].cmd==c.command),"Indirect dispatch source slot retired during descriptor preparation");for(auto *im:storage_rg16_images)need(std::find(sampled_rg16_images.begin(),sampled_rg16_images.end(),im)==sampled_rg16_images.end(),"RG16 same-dispatch sampled/storage feedback requires explicit supported subresource semantics");VkComputePipelineCreateInfo ci{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};ci.stage={VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};ci.stage.stage=VK_SHADER_STAGE_COMPUTE_BIT;ci.stage.module=state.shader[5]->module;ci.stage.pName="main";ci.layout=d.pipeline_layout;PipelineLease pipeline;{CPU_SCOPE(Pipeline);XbgPipelineKey key;bool cacheable=xbg_compute_pipeline_key(key,ci,d.entry->definition.view());pipeline_lookup(pipeline,key,cacheable,nullptr,&ci);}if(!pipeline.pipeline){c.finish();return;}vkCmdBindPipeline(c.command,VK_PIPELINE_BIND_POINT_COMPUTE,pipeline.pipeline);if(d.push_desc){pfn_vkCmdPushDescriptorSetWithTemplateKHR(c.command,d.entry->push_tmpl,d.pipeline_layout,0,d.push_data.data());++push_desc_dispatches;}else{vkCmdBindDescriptorSets(c.command,VK_PIPELINE_BIND_POINT_COMPUTE,d.pipeline_layout,0,1,&d.set,uint32_t(d.dynamic_offsets.size()),d.dynamic_offsets.data());}int prof_dispatch=pass_prof_compute_begin(c.command,p);
+    uint64_t indirect_serial=slot_serial;Commands c;fire_trace_compute_begin();Descriptors &d=acquire_descriptors();uint64_t api_desc_seq=api_breadcrumb.begin(state.shader[5]->key.c_str(),XbgApiBreadcrumb::Descriptors,stats.presents.load());descriptors(d,c,true);api_breadcrumb.end(api_desc_seq,XbgApiBreadcrumb::Descriptors,stats.presents.load(),0);need(!gpu_indirect || (slot_serial==indirect_serial && slots[slot_index].cmd==c.command),"Indirect dispatch source slot retired during descriptor preparation");if(slot_serial!=indirect_serial || slots[slot_index].cmd!=c.command)c.command=recording_slot().cmd;recording_slot().desc_used.push_back(&d);for(auto *im:storage_rg16_images)need(std::find(sampled_rg16_images.begin(),sampled_rg16_images.end(),im)==sampled_rg16_images.end(),"RG16 same-dispatch sampled/storage feedback requires explicit supported subresource semantics");VkComputePipelineCreateInfo ci{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};ci.stage={VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};ci.stage.stage=VK_SHADER_STAGE_COMPUTE_BIT;ci.stage.module=state.shader[5]->module;ci.stage.pName="main";ci.layout=d.pipeline_layout;PipelineLease pipeline;{CPU_SCOPE(Pipeline);XbgPipelineKey key;bool cacheable=xbg_compute_pipeline_key(key,ci,d.entry->definition.view());pipeline_lookup(pipeline,key,cacheable,nullptr,&ci);}if(!pipeline.pipeline){c.finish();return;}vkCmdBindPipeline(c.command,VK_PIPELINE_BIND_POINT_COMPUTE,pipeline.pipeline);if(d.push_desc){pfn_vkCmdPushDescriptorSetWithTemplateKHR(c.command,d.entry->push_tmpl,d.pipeline_layout,0,d.push_data.data());++push_desc_dispatches;}else{vkCmdBindDescriptorSets(c.command,VK_PIPELINE_BIND_POINT_COMPUTE,d.pipeline_layout,0,1,&d.set,uint32_t(d.dynamic_offsets.size()),d.dynamic_offsets.data());}int prof_dispatch=pass_prof_compute_begin(c.command,p);
     auto indirect_proof=indirect_template_batch(d,p,gpu_indirect);probe_indirect_template(p);
     const unsigned water_dispatch=water_trace_dispatch_begin(c.command,d.water);
     uint64_t api_dispatch_seq=api_breadcrumb.begin_dispatch(state.shader[5]->key.c_str(),stats.presents.load(),gpu_indirect,indirect.offset,uint32_t(p.x),uint32_t(p.y),uint32_t(p.z));
