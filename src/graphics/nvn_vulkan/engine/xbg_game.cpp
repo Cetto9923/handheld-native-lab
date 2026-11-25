@@ -5370,7 +5370,7 @@ void pipeline_lookup(PipelineLease &out,const XbgPipelineKey &key,bool cacheable
         // All prior draws/dispatches waited their fence. This lookup occurs
         // before binding the current pipeline; no retained entry is in flight.
         auto oldest=std::min_element(pipeline_objects.begin(),pipeline_objects.end(),[](const auto &a,const auto &b){return a.second.last_used<b.second.last_used;});
-        {VkPipeline old=oldest->second.pipeline;if(old!=VK_NULL_HANDLE)retire_handle([old]{vkDestroyPipeline(cfg.device,old,nullptr);});for(auto f=pipeline_fast.begin();f!=pipeline_fast.end();)if(f->second==old)f=pipeline_fast.erase(f);else ++f;clear_pipe_memo();}pipeline_objects.erase(oldest);++pipeline_counts.evictions;
+        {VkPipeline old=oldest->second.pipeline;if(old!=VK_NULL_HANDLE){retire_handle([old]{vkDestroyPipeline(cfg.device,old,nullptr);});for(auto f=pipeline_fast.begin();f!=pipeline_fast.end();)if(f->second==old)f=pipeline_fast.erase(f);else ++f;clear_pipe_memo();}}pipeline_objects.erase(oldest);++pipeline_counts.evictions;
     }
     pipeline_objects.emplace(std::string(bytes),PipelineEntry{out.pipeline,++pipeline_tick});
 }
@@ -7567,7 +7567,7 @@ void draw(int prim,int first,int count,const p_draw_idx *indexed,uint32_t instan
                 static XbgPipelineKey fkey;fkey.count=0;fkey.valid=true;
                 if(xbg_graphics_pipeline_key(fkey,ci,{ids,2,true},{ids+2,2,true})){fast.assign(fkey.words,fkey.words+fkey.count);auto f=pipeline_fast.find(fast);if(f!=pipeline_fast.end()){pipeline.pipeline=f->second;++pipeline_fast_hits;}}else use_fast=false;}
             if(!pipeline.pipeline){XbgPipelineKey key;bool cacheable=xbg_graphics_pipeline_key(key,ci,d.entry->definition.view(),p.definition->view()) && !spell_pipeline_diagnostic;pipeline_lookup(pipeline,key,cacheable,&ci,nullptr,async_skippable(attachments,ds));
-                if(use_fast && cacheable && !pipeline.transient)pipeline_fast.emplace(fast,pipeline.pipeline);}
+                if(use_fast && cacheable && !pipeline.transient && pipeline.pipeline!=VK_NULL_HANDLE)pipeline_fast.emplace(fast,pipeline.pipeline);}
             if(memo && use_fast && pipeline.pipeline && !pipeline.transient){
                 const uint32_t pidx = pipe_memo_hash(pipe_memo_next);
                 auto &pme = pipe_memo_table[pidx];
