@@ -2704,13 +2704,27 @@ constexpr size_t min_bytes=256;constexpr VkDeviceSize budget=256ull<<20;constexp
 enum State:uint8_t{EMPTY,CACHED,VOLATILE,UNTRACKED};
 struct Entry{Buffer buffer;uint64_t hash=0;uint64_t stamp=0,filled_pres=0,retry_pres=0;State state=EMPTY;};
 struct KeyHash{size_t operator()(const std::pair<uint64_t,uint64_t> &k)const{uint64_t x=k.first*0x9E3779B97F4A7C15ull^k.second*0xC2B2AE3D27D4EB4Full;return size_t(x^(x>>29));}};
-std::unordered_map<std::pair<uint64_t,uint64_t>,Entry,KeyHash> map;Arena arena;
+std::unordered_map<std::pair<uint64_t,uint64_t>,Entry,KeyHash> map;Arena arena;std::vector<ArenaChunk> spare;
 size_t live(){return map.size();}
 VkDeviceSize arena_bytes(){return arena.used_total;}
 bool overlaps_wtrack(uint64_t a,uint64_t n){unsigned k=wtrack::nregions.load(std::memory_order_acquire);
     for(unsigned i=0;i<k;i++){uint64_t b=wtrack::regions[i].begin.load(std::memory_order_relaxed),e=wtrack::regions[i].end.load(std::memory_order_relaxed);if(a<e && a+n>b)return true;}return false;}
+Buffer alloc_buf(size_t bytes){
+    for(size_t i=arena.current;i<arena.chunks.size();++i){
+        ArenaChunk &c=arena.chunks[i];VkDeviceSize at=(c.used+arena_alignment-1)&~(arena_alignment-1);
+        if(at+bytes<=c.size){arena.current=i;c.used=at+bytes;arena.used_total+=bytes;arena.peak=std::max(arena.peak,arena.used_total);
+            return {c.buffer,c.memory,at,bytes,c.mapped+at,c.coherent,c.allocation_size};}
+    }
+    if(bytes<=arena_chunk_bytes && !spare.empty()){
+        ArenaChunk c=spare.back();spare.pop_back();c.used=0;arena.chunks.push_back(c);arena.current=arena.chunks.size()-1;
+        ArenaChunk &dst=arena.chunks.back();dst.used=bytes;arena.used_total+=bytes;arena.peak=std::max(arena.peak,arena.used_total);
+        return {dst.buffer,dst.memory,0,bytes,dst.mapped,dst.coherent,dst.allocation_size};
+    }
+    return arena.alloc(bytes);
+}
 void flush(){if(arena.chunks.empty() && map.empty())return;std::vector<ArenaChunk> old;old.swap(arena.chunks);arena.current=0;arena.used_total=0;arena.peak=0;map.clear();++flushes;
-    retire_handle([old]()mutable{for(auto &c:old)Arena::destroy(c);});}   // after the recording slot retires, no submission reads them
+    retire_handle([old]()mutable{for(auto &c:old){if(c.buffer){memo_forget_buffer(c.buffer);texel_view_forget_buffer(c.buffer);}if(c.size==arena_chunk_bytes && spare.size()<24){c.used=0;spare.push_back(c);}else Arena::destroy(c);}});}   // after the recording slot retires, no submission reads them
+void release(){arena.release();for(auto &c:spare)Arena::destroy(c);spare.clear();map.clear();}
 void drop_pool(uint64_t base,uint64_t bytes){for(auto it=map.begin();it!=map.end();){if(it->first.first<base+bytes && it->first.first+it->first.second>base)it=map.erase(it);else ++it;}}
 bool lookup(uint64_t address,size_t bytes,Buffer &out){
     if(bytes<min_bytes)return false;
@@ -2732,7 +2746,7 @@ bool lookup(uint64_t address,size_t bytes,Buffer &out){
             ++refills;
             if(arena.used_total+bytes>budget)flush();
             Entry &f=map[{address,uint64_t(bytes)}];
-            Buffer b=arena.alloc(bytes);memcpy(b.mapped,p,bytes);b.flush();
+            Buffer b=alloc_buf(bytes);memcpy(b.mapped,p,bytes);b.flush();
             f.buffer=b;f.hash=cur_hash;f.filled_pres=cur_pres;f.state=CACHED;++fills;fill_bytes+=bytes;out=b;return true;
         }
     }
@@ -2743,7 +2757,7 @@ bool lookup(uint64_t address,size_t bytes,Buffer &out){
     uint64_t cur_hash=fast_buffer_hash(p,bytes);
     if(arena.used_total+bytes>budget)flush();
     Entry &f=map[{address,uint64_t(bytes)}];
-    Buffer b=arena.alloc(bytes);memcpy(b.mapped,p,bytes);b.flush();
+    Buffer b=alloc_buf(bytes);memcpy(b.mapped,p,bytes);b.flush();
     f.buffer=b;f.hash=cur_hash;f.filled_pres=cur_pres;f.state=CACHED;++fills;fill_bytes+=bytes;out=b;return true;
 }
 }
@@ -10131,7 +10145,7 @@ extern "C" void xbg_request_memory_trim(unsigned level) {
     while (previous < level && !memory_trim_requested.compare_exchange_weak(previous, level)) {
     }
 }
-extern "C" int xbg_game_shutdown(){gfx_drain();gfx_async_stop();std::lock_guard<std::recursive_mutex> lock(mutex);performance_hint::reset();if(!initialized)return 0;gpu_raw_export(true);timing_report("shutdown-partial");provenance_close("SHUTDOWN");resolve_pending();submit_slots(true);save_pipeline_cache();pending_writebacks.clear();pending_reports.clear();wb_interval_index.clear();rep_interval_index.clear();pending_events.clear();recording_events.clear();epochs.clear();VkResult r=vkQueueWaitIdle(cfg.queue);if(r!=VK_SUCCESS)return r;wtrack::release();destroy_slots();clear_pipeline_objects();cache_save_join();warm::shutdown();bright::shutdown();shutdown_rg16_proxy();clear_descriptor_caches();clear_render_pass_cache();images.clear();++images_epoch;for(auto &f:persistent_framebuffers)vkDestroyFramebuffer(cfg.device,f.second,nullptr);persistent_framebuffers.clear();image_index.clear();image_index_dirty=true;program_cache.clear();shaders.clear();textures.clear();clear_texture_record_cache();texture_pool_cache=nullptr;samplers.clear();null_textures.clear();texture_pool_cache=nullptr;pools.clear();host_segments.clear();host_ranges.clear();host_bytes=0;cmd_range_lo=0;cmd_range_bytes=0;vkDestroyPipelineCache(cfg.device,pipeline_cache,nullptr);pipeline_cache=VK_NULL_HANDLE;vkDestroyCommandPool(cfg.device,command_pool,nullptr);command_pool=VK_NULL_HANDLE;if(submit_sem_inited && cfg.device){for(unsigned i=0;i<kMaxSlots;i++){if(submit_semaphores[i]!=VK_NULL_HANDLE)vkDestroySemaphore(cfg.device,submit_semaphores[i],nullptr);submit_semaphores[i]=VK_NULL_HANDLE;submit_sem_signaled[i]=false;}submit_sem_inited=false;last_signal_sem=VK_NULL_HANDLE;last_signal_slot=-1;}push_descriptor_supported=false;max_push_descriptors=0;pfn_vkCmdPushDescriptorSetWithTemplateKHR=nullptr;initialized=false;return 0;}
+extern "C" int xbg_game_shutdown(){gfx_drain();gfx_async_stop();std::lock_guard<std::recursive_mutex> lock(mutex);performance_hint::reset();if(!initialized)return 0;gpu_raw_export(true);timing_report("shutdown-partial");provenance_close("SHUTDOWN");resolve_pending();submit_slots(true);save_pipeline_cache();pending_writebacks.clear();pending_reports.clear();wb_interval_index.clear();rep_interval_index.clear();pending_events.clear();recording_events.clear();epochs.clear();VkResult r=vkQueueWaitIdle(cfg.queue);if(r!=VK_SUCCESS)return r;wtrack::release();destroy_slots();vcache::release();clear_pipeline_objects();cache_save_join();warm::shutdown();bright::shutdown();shutdown_rg16_proxy();clear_descriptor_caches();clear_render_pass_cache();images.clear();++images_epoch;for(auto &f:persistent_framebuffers)vkDestroyFramebuffer(cfg.device,f.second,nullptr);persistent_framebuffers.clear();image_index.clear();image_index_dirty=true;program_cache.clear();shaders.clear();textures.clear();clear_texture_record_cache();texture_pool_cache=nullptr;samplers.clear();null_textures.clear();texture_pool_cache=nullptr;pools.clear();host_segments.clear();host_ranges.clear();host_bytes=0;cmd_range_lo=0;cmd_range_bytes=0;vkDestroyPipelineCache(cfg.device,pipeline_cache,nullptr);pipeline_cache=VK_NULL_HANDLE;vkDestroyCommandPool(cfg.device,command_pool,nullptr);command_pool=VK_NULL_HANDLE;if(submit_sem_inited && cfg.device){for(unsigned i=0;i<kMaxSlots;i++){if(submit_semaphores[i]!=VK_NULL_HANDLE)vkDestroySemaphore(cfg.device,submit_semaphores[i],nullptr);submit_semaphores[i]=VK_NULL_HANDLE;submit_sem_signaled[i]=false;}submit_sem_inited=false;last_signal_sem=VK_NULL_HANDLE;last_signal_slot=-1;}push_descriptor_supported=false;max_push_descriptors=0;pfn_vkCmdPushDescriptorSetWithTemplateKHR=nullptr;initialized=false;return 0;}
 extern "C" void xbg_game_get_stats(xbg_game_stats *out){if(out)*out={stats.submissions.load(),stats.draws.load(),stats.dispatches.load(),stats.presents.load(),stats.shader_loads.load()};}
 extern "C" void xbg_game_frame_counters(xbg_frame_counters *out){if(out)*out={hud::pipelines.load(),hud::pipeline_ns.load(),hud::shaders.load(),hud::shader_ns.load(),hud::uploads.load(),hud::reuploads.load(),hud::upload_bytes.load(),hud::upload_ns.load()};}
 extern "C" void xbg_game_set_frame(uint64_t frame){hud::frame.store(frame,std::memory_order_relaxed);}
