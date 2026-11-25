@@ -61,6 +61,7 @@ public class TouchPadMenuContract extends ViewStub {
     final Owner owner = new Owner();
     static final String TAG = "test";
     boolean shown, editing, menuOpen;
+    int menuSelected;
     int handleId = -1;
     float u = 1;
     static class Ctl { boolean visible = true; }
@@ -79,6 +80,8 @@ public class TouchPadMenuContract extends ViewStub {
         TouchPadMenuContract pad = new TouchPadMenuContract();
         Canvas canvas = new Canvas();
         pad.openMenu();
+        if (pad.menuSelected != 0)
+            throw new AssertionError("menu did not reset selection to 0");
         pad.onDraw(canvas);
         if (pad.shown || !pad.menuOpen || pad.controls != 0 || pad.menus != 1)
             throw new AssertionError("hidden pad expanded or menu disappeared");
@@ -87,6 +90,8 @@ public class TouchPadMenuContract extends ViewStub {
             throw new AssertionError("closing menu changed hidden pad");
         pad.shown = true;
         pad.openMenu();
+        if (pad.menuSelected != 0)
+            throw new AssertionError("menu did not reset selection to 0");
         pad.onDraw(canvas);
         if (!pad.shown || pad.controls != @CONTROL_COUNT@ || pad.menus != 2)
             throw new AssertionError("visible pad or menu disappeared");
@@ -184,5 +189,50 @@ public class MenuGeometryContract {
             path.write_text(fixture)
             subprocess.run(['javac', str(path)], check=True, capture_output=True, text=True)
             result = subprocess.run(['java', '-cp', directory, 'MenuGeometryContract'],
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_gamepad_menu_navigation_wraps_two_columns(self):
+        source = SOURCE.read_text()
+        start = source.index('        void moveMenuSelection(int dx, int dy) {')
+        end = source.index('        private void activateMenuItem(int i) {', start)
+        nav = source[start:end]
+        count = re.search(r'menuItems = new RectF\[(\d+)\]', source)[1]
+        fixture = '''
+class RectF {}
+public class MenuGamepadNavContract {
+    final RectF[] menuItems = new RectF[''' + count + '''];
+    int menuSelected, invalidates;
+    void invalidate() { ++invalidates; }
+''' + nav + '''
+    public static void main(String[] args) {
+        MenuGamepadNavContract pad = new MenuGamepadNavContract();
+        pad.moveMenuSelection(1, 0);
+        if (pad.menuSelected != 1) throw new AssertionError("expected right col 1");
+        pad.moveMenuSelection(1, 0);
+        if (pad.menuSelected != 0) throw new AssertionError("expected col wrap to 0");
+        pad.moveMenuSelection(-1, 0);
+        if (pad.menuSelected != 1) throw new AssertionError("expected col wrap to 1");
+        pad.moveMenuSelection(0, 1);
+        if (pad.menuSelected != 3) throw new AssertionError("expected row 1 col 1");
+        pad.moveMenuSelection(0, -1);
+        if (pad.menuSelected != 1) throw new AssertionError("expected row 0 col 1");
+        pad.moveMenuSelection(0, -1);
+        if (pad.menuSelected != ''' + str(int(count) - 1) + ''')
+            throw new AssertionError("expected top wrap to last col-1 item");
+        pad.moveMenuSelection(0, 1);
+        if (pad.menuSelected != 1) throw new AssertionError("expected bottom wrap to 1");
+        pad.menuSelected = 99;
+        pad.moveMenuSelection(0, 1);
+        if (pad.menuSelected != 2) throw new AssertionError("expected out-of-range reset");
+        if (pad.invalidates != 8) throw new AssertionError("expected invalidate per move");
+    }
+}
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'MenuGamepadNavContract.java'
+            path.write_text(fixture)
+            subprocess.run(['javac', str(path)], check=True, capture_output=True, text=True)
+            result = subprocess.run(['java', '-cp', directory, 'MenuGamepadNavContract'],
                                     capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)

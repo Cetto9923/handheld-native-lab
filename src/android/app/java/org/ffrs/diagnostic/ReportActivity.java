@@ -14,6 +14,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.DisplayMetrics;
 import android.view.Display;
+import android.view.KeyEvent;
 import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
@@ -38,6 +39,7 @@ public final class ReportActivity extends Activity {
     private ExportState state;
     private TextView status;
     private Button export;
+    private boolean backArmed;
 
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -61,7 +63,24 @@ public final class ReportActivity extends Activity {
         status.setTextIsSelectable(true);
         layout.addView(status);
         setContentView(layout);
+        export.requestFocus();
         updateUi();
+    }
+
+    @Override public boolean dispatchKeyEvent(KeyEvent event) {
+        int code = event.getKeyCode(), action = event.getAction();
+        if (code == KeyEvent.KEYCODE_BUTTON_B) {
+            if (action == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) backArmed = true;
+            else if (action == KeyEvent.ACTION_UP && backArmed) { backArmed = false; finish(); }
+            return true;
+        }
+        if (code == KeyEvent.KEYCODE_BUTTON_A && (action == KeyEvent.ACTION_DOWN || action == KeyEvent.ACTION_UP)) {
+            KeyEvent center = new KeyEvent(event.getDownTime(), event.getEventTime(), action,
+                    KeyEvent.KEYCODE_DPAD_CENTER, event.getRepeatCount(), event.getMetaState(),
+                    event.getDeviceId(), 0, event.getFlags(), event.getSource());
+            return super.dispatchKeyEvent(center);
+        }
+        return super.dispatchKeyEvent(event);
     }
 
     @Override public Object onRetainNonConfigurationInstance() { return state; }

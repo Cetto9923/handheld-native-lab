@@ -42,6 +42,10 @@ public class DeviceProfileContract {
         check("SM8635", 420, "tablet_sd8s", "tablet_sd8s", 1080, 60);
         check("SM8650", 420, "", "phone_sd8g3", 1080, 60);
         check("SM8750", 420, "", "phone_sd8g3", 1080, 60);
+        check("SM8750P", 420, "", "phone_sd8g3", 1080, 60);
+        check("SM8750P", 0, "", "phone_sd8g3", 1080, 60);
+        check("SM8850P", 0, "", "phone_sd8g3", 1080, 60);
+        check("SM87500", 0, "", "handheld_mid", 720, 30);
         check("MT6989", 420, "", "phone_mali", 1080, 60);
         check("kirin9000", 420, "", "phone_mali", 1080, 60);
         check("MT6989", 420, "phone_mali", "phone_mali", 1080, 60);

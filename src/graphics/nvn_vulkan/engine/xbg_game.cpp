@@ -1091,10 +1091,32 @@ unsigned clear_sync_records = 0;
 bool log_write_sync = false;
 bool thor_compact_memory = false;
 
-bool ordered_clear_device(const char *model, const VkPhysicalDeviceProperties &gpu) {
+bool ordered_clear_device(const char *model, const VkPhysicalDeviceProperties &gpu, const char *soc) {
+    if (!model) model = "";
+    if (!soc) soc = "";
     if (std::strcmp(model, "RG477M") == 0 && gpu.vendorID == 0x13b5 &&
         gpu.deviceID == 0xb8a31030 && gpu.driverVersion == 0x0b001000) return true;
-    return gpu.vendorID == 0x5143;
+    if (gpu.vendorID != 0x5143) return false;
+    // SM8750 / SM8850 (including variants such as SM8750P) keep the ordered clear
+    // across driver builds. Every other Adreno stays on the measured tuple.
+    auto soc_family = [](const char *value, const char *prefix) {
+        if (!value || !prefix) return false;
+        for (; *prefix; ++value, ++prefix) {
+            unsigned char a = (unsigned char)*value, b = (unsigned char)*prefix;
+            if (a >= 'a' && a <= 'z') a = (unsigned char)(a - 'a' + 'A');
+            if (b >= 'a' && b <= 'z') b = (unsigned char)(b - 'a' + 'A');
+            if (a != b) return false;
+        }
+        unsigned char tail = (unsigned char)*value;
+        return tail == '\0' || tail < '0' || tail > '9';
+    };
+    if (soc_family(soc, "SM8750") || soc_family(soc, "SM8850")) return true;
+    return (std::strcmp(model, "ROD2-W69") == 0 &&
+            gpu.deviceID == 0x43030b00 && gpu.driverVersion == 0x802fa02e) ||
+           (std::strcmp(model, "PKJ110") == 0 &&
+            gpu.deviceID == 0x44050001 && gpu.driverVersion == 0x80320050) ||
+           (std::strcmp(model, "25098PN5AC") == 0 &&
+            gpu.deviceID == 0x44050a31 && gpu.driverVersion == 0x8034a02c);
 }
 
 bool vivo_requires_direct_indexed(const VkPhysicalDeviceProperties &gpu) {
@@ -2724,7 +2746,8 @@ Buffer alloc_buf(size_t bytes){
 }
 void flush(){if(arena.chunks.empty() && map.empty())return;std::vector<ArenaChunk> old;old.swap(arena.chunks);arena.current=0;arena.used_total=0;arena.peak=0;map.clear();++flushes;
     retire_handle([old]()mutable{for(auto &c:old){if(c.buffer){memo_forget_buffer(c.buffer);texel_view_forget_buffer(c.buffer);}if(c.size==arena_chunk_bytes && spare.size()<24){c.used=0;spare.push_back(c);}else Arena::destroy(c);}});}   // after the recording slot retires, no submission reads them
-void release(){arena.release();for(auto &c:spare)Arena::destroy(c);spare.clear();map.clear();}
+size_t release_spare(){size_t n=spare.size();for(auto &c:spare)Arena::destroy(c);spare.clear();if(n)xbg_logf("NVN vcache spare released chunks=%zu",n);return n;}
+void release(){arena.release();release_spare();map.clear();}
 void drop_pool(uint64_t base,uint64_t bytes){for(auto it=map.begin();it!=map.end();){if(it->first.first<base+bytes && it->first.first+it->first.second>base)it=map.erase(it);else ++it;}}
 bool lookup(uint64_t address,size_t bytes,Buffer &out){
     if(bytes<min_bytes)return false;
@@ -5324,7 +5347,12 @@ void pipeline_lookup(PipelineLease &out,const XbgPipelineKey &key,bool cacheable
     if(cacheable){
         bytes.assign(reinterpret_cast<const char*>(key.words),size_t(key.count)*4);
         auto found=pipeline_objects.find(bytes);
-        if(found!=pipeline_objects.end()){++pipeline_counts.hits;found->second.last_used=++pipeline_tick;out.pipeline=found->second.pipeline;return;}
+        if(found!=pipeline_objects.end()){
+            ++pipeline_counts.hits;
+            // A cached VK_ERROR_UNKNOWN miss stays cold so it is the first
+            // eviction candidate and never pins a live pipeline out of the set.
+            if(found->second.pipeline!=VK_NULL_HANDLE)found->second.last_used=++pipeline_tick;
+            out.pipeline=found->second.pipeline;return;}
         ++pipeline_counts.misses;
     }else ++pipeline_counts.bypass;
     if(cacheable && warm::take(bytes,out.pipeline)){if(graphics)++warm::hits;else ++warm::compute_hits;}
@@ -5345,7 +5373,9 @@ void pipeline_lookup(PipelineLease &out,const XbgPipelineKey &key,bool cacheable
             if(cacheable)warm::record_failure(g.pStages,g.stageCount,key,pr,failed_ns);
             xbg_logf("NVN pipeline_lookup: graphics pipeline creation failed (%d) for shaders=%s, failed_create_ms=%.2f skipping draw safely", int(pr), pstat_what().c_str(),double(failed_ns)/1e6);
             out.pipeline = VK_NULL_HANDLE;
-            if(!cacheable){out.transient = true;return;}
+            // Only VK_ERROR_UNKNOWN is a durable driver rejection. OOM and
+            // device loss skip this draw and compile again next frame.
+            if(!cacheable || pr!=VK_ERROR_UNKNOWN){out.transient = true;return;}
         }else{
         if(pipe_stats)pstat_log(out.pipeline);uint64_t dt=timing_clock()-t0;if(dt>=compile_ns)++pipelines_unsaved;++warm::creates;warm::create_ns+=dt;++hud::pipelines;hud::pipeline_ns+=dt;warm::create_max_ns=std::max(warm::create_max_ns,dt);if(cacheable)warm::record(*graphics,key);}}
     else{if(honor_pipeline_diagnostics)xbg_logf("DIAG pipeline begin compute shaders=%s",pstat_what().c_str());uint64_t t0=timing_clock();VkComputePipelineCreateInfo cc=*compute;if(pipe_stats)cc.flags|=VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR;
@@ -5357,7 +5387,7 @@ void pipeline_lookup(PipelineLease &out,const XbgPipelineKey &key,bool cacheable
             if(cacheable)warm::record_failure(&cc.stage,1,key,pr,failed_ns);
             xbg_logf("NVN pipeline_lookup: compute pipeline creation failed (%d) for shaders=%s, failed_create_ms=%.2f skipping dispatch safely", int(pr), pstat_what().c_str(),double(failed_ns)/1e6);
             out.pipeline = VK_NULL_HANDLE;
-            if(!cacheable){out.transient = true;return;}
+            if(!cacheable || pr!=VK_ERROR_UNKNOWN){out.transient = true;return;}
         }else{
         const uint64_t elapsed=timing_clock()-t0;
         ++pipelines_unsaved;++hud::pipelines;hud::pipeline_ns+=elapsed;
@@ -5366,6 +5396,18 @@ void pipeline_lookup(PipelineLease &out,const XbgPipelineKey &key,bool cacheable
         if(pipe_stats)pstat_log(out.pipeline);
         if(cacheable)warm::record(*compute,key);}}
     if(!cacheable){out.transient=true;return;}
+    if(out.pipeline==VK_NULL_HANDLE){
+        // Remember the unknown failure, but never drop a live pipeline to do it.
+        // last_used stays 0, so the next real pipeline that needs a slot takes
+        // this entry first and the shader is compiled again.
+        if(pipeline_objects.size()==pipeline_object_limit){
+            auto oldest=std::min_element(pipeline_objects.begin(),pipeline_objects.end(),[](const auto &a,const auto &b){return a.second.last_used<b.second.last_used;});
+            if(oldest->second.pipeline!=VK_NULL_HANDLE){out.transient=true;return;}
+            pipeline_objects.erase(oldest);++pipeline_counts.evictions;
+        }
+        pipeline_objects.emplace(std::string(bytes),PipelineEntry{VK_NULL_HANDLE,0});
+        return;
+    }
     if(pipeline_objects.size()==pipeline_object_limit){
         // All prior draws/dispatches waited their fence. This lookup occurs
         // before binding the current pipeline; no retained entry is in flight.
@@ -9460,6 +9502,10 @@ void reclaim_memory_caches(unsigned level, bool preserve_warm = false) {
             return;
         }
     }
+    if (level >= 2)
+        vcache::release();
+    else
+        vcache::release_spare();
     for (unsigned i = 0; i < slot_count; ++i)
         memo_unpin_all(i);
     img_cache.clear();
@@ -9786,8 +9832,10 @@ vkGetPhysicalDeviceProperties(cfg.physical,&properties);vkGetPhysicalDeviceMemor
     thor_compact_memory = false;
 #ifdef __ANDROID__
     char device_model[PROP_VALUE_MAX]{};
+    char soc_model[PROP_VALUE_MAX]{};
     __system_property_get("ro.product.model", device_model);
-    ordered_buffer_clear_enabled = ordered_clear_device(device_model, properties);
+    __system_property_get("ro.soc.model", soc_model);
+    ordered_buffer_clear_enabled = ordered_clear_device(device_model, properties, soc_model);
     log_write_sync = ordered_buffer_clear_enabled ||
                     (properties.vendorID == 0x5143 && properties.deviceID == 0x44050a31);
     if (std::strcmp(device_model, "AYN Thor") == 0)
@@ -10053,21 +10101,28 @@ extern "C" void xbg_game_event_read(const void *addr){
 extern "C" void xbg_game_set_push_descriptor(VkBool32 enabled){
     std::lock_guard<std::recursive_mutex> lock(mutex);
     push_descriptor_supported=false;max_push_descriptors=0;pfn_vkCmdPushDescriptorSetWithTemplateKHR=nullptr;
-    if(enabled && initialized && cfg.device && properties.apiVersion>=VK_API_VERSION_1_1){
+    if(cfg.shader_directory && cfg.shader_directory[0]){
+        std::string dir=cfg.shader_directory;size_t cut=dir.find_last_of('/');
+        FILE *m=fopen(((cut==std::string::npos?dir:dir.substr(0,cut))+"/gfx-push-descriptor").c_str(),"rb");
+        if(m){push_descriptor_enabled=fgetc(m)!='0';fclose(m);}
+        else if(const char *e=getenv("DM_GFX_PUSH_DESCRIPTOR"))push_descriptor_enabled=atoi(e)!=0;
+    }else if(const char *e=getenv("DM_GFX_PUSH_DESCRIPTOR")){
+        push_descriptor_enabled=atoi(e)!=0;
+    }
+    /* 0x13b5 is ARM Mali. Push descriptors stay off there until a device run
+     * confirms them; a reported max of 0 is also not a usable limit. */
+    if(enabled && initialized && cfg.device && properties.vendorID!=0x13b5 &&
+       properties.apiVersion>=VK_API_VERSION_1_1 && cfg.instance_api_version>=VK_API_VERSION_1_1){
         pfn_vkCmdPushDescriptorSetWithTemplateKHR=reinterpret_cast<PFN_vkCmdPushDescriptorSetWithTemplateKHR>(
             vkGetDeviceProcAddr(cfg.device,"vkCmdPushDescriptorSetWithTemplateKHR"));
         if(pfn_vkCmdPushDescriptorSetWithTemplateKHR){
-            uint32_t max_pd=32;
-            if(cfg.instance_api_version>=VK_API_VERSION_1_1){
-                VkPhysicalDevicePushDescriptorPropertiesKHR pdp{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PUSH_DESCRIPTOR_PROPERTIES_KHR};
-                VkPhysicalDeviceProperties2 pp{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};pp.pNext=&pdp;
-                vkGetPhysicalDeviceProperties2(cfg.physical,&pp);
-                if(pdp.maxPushDescriptors>0)max_pd=pdp.maxPushDescriptors;
-            }
-            max_push_descriptors=max_pd;push_descriptor_supported=true;
+            VkPhysicalDevicePushDescriptorPropertiesKHR pdp{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PUSH_DESCRIPTOR_PROPERTIES_KHR};
+            VkPhysicalDeviceProperties2 pp{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};pp.pNext=&pdp;
+            vkGetPhysicalDeviceProperties2(cfg.physical,&pp);
+            if(pdp.maxPushDescriptors>0){max_push_descriptors=pdp.maxPushDescriptors;push_descriptor_supported=true;}
         }
     }
-    xbg_logf("NVN push descriptor supported=%d enabled=%d maxPushDescriptors=%u",
+    xbg_logf("NVN push descriptor supported=%d enabled=%d maxPushDescriptors=%u (marker gfx-push-descriptor)",
              int(push_descriptor_supported),int(push_descriptor_enabled),max_push_descriptors);
 }
 extern "C" int xbg_game_set_sampler_mirror_clamp_to_edge(VkBool32 enabled){
@@ -10551,11 +10606,10 @@ static uint64_t xbg_frame_pace() {
         return 0;
     }
 
-    uint64_t pace_deadline = (s_next_present_ns > 1500000ull) ? (s_next_present_ns - 1500000ull) : s_next_present_ns;
-    if (now_ns < pace_deadline) {
-        uint64_t diff = pace_deadline - now_ns;
-        if (diff > 1000000ull) {
-            uint64_t sleep_ns = diff - 500000ull;
+    if (now_ns < s_next_present_ns) {
+        uint64_t diff = s_next_present_ns - now_ns;
+        if (diff > 500000ull) {
+            uint64_t sleep_ns = diff - 250000ull;
             struct timespec req;
             req.tv_sec = (time_t)(sleep_ns / 1000000000ull);
             req.tv_nsec = (long)(sleep_ns % 1000000000ull);
@@ -10565,10 +10619,12 @@ static uint64_t xbg_frame_pace() {
         }
     }
 
-    s_next_present_ns += s_target_frame_ns;
-    // Catch-up clamp: if we fell behind by more than 1 frame interval, reset deadline
-    if (now_ns > s_next_present_ns + s_target_frame_ns) {
+    if (now_ns >= s_next_present_ns) {
+        // Re-anchor smoothly when a frame ran late instead of compressing
+        // the next interval into a burst-then-stall oscillation.
         s_next_present_ns = now_ns + s_target_frame_ns;
+    } else {
+        s_next_present_ns += s_target_frame_ns;
     }
     return now_ns > start_ns ? (now_ns - start_ns) : 0;
 }

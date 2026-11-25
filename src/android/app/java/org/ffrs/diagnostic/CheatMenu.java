@@ -2,10 +2,17 @@ package org.ffrs.diagnostic;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.Dialog;
 import android.content.DialogInterface;
 import android.content.SharedPreferences;
 import android.util.AtomicFile;
 import android.util.Log;
+import android.view.InputDevice;
+import android.view.KeyEvent;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.Window;
+import android.widget.ListView;
 import android.widget.Toast;
 
 import org.json.JSONArray;
@@ -119,15 +126,142 @@ final class CheatMenu {
         Toast.makeText(activity, message, Toast.LENGTH_LONG).show();
     }
 
+    private static final class GamepadDialogHook
+            implements DialogInterface.OnKeyListener, View.OnGenericMotionListener {
+        private final AlertDialog dialog;
+        private boolean bArmed;
+        private int stickX, stickY;
+
+        GamepadDialogHook(AlertDialog dialog) {
+            this.dialog = dialog;
+        }
+
+        private static int dirOf(float v) {
+            return v >= 0.5f ? 1 : v <= -0.5f ? -1 : 0;
+        }
+
+        private boolean sendDpad(int keyCode, KeyEvent template) {
+            Window w = dialog.getWindow();
+            if (w == null) return false;
+            long t = template.getEventTime();
+            int dev = template.getDeviceId();
+            int src = template.getSource();
+            KeyEvent down = new KeyEvent(t, t, KeyEvent.ACTION_DOWN, keyCode, 0,
+                    template.getMetaState(), dev, 0, 0, src);
+            KeyEvent up = new KeyEvent(t, t, KeyEvent.ACTION_UP, keyCode, 0,
+                    template.getMetaState(), dev, 0, 0, src);
+            boolean handled = w.superDispatchKeyEvent(down);
+            w.superDispatchKeyEvent(up);
+            return handled;
+        }
+
+        @Override public boolean onKey(DialogInterface d, int keyCode, KeyEvent event) {
+            if (event.isSystem()) return false;
+            int action = event.getAction();
+            if (keyCode == KeyEvent.KEYCODE_BUTTON_B || keyCode == KeyEvent.KEYCODE_BACK) {
+                if (action != KeyEvent.ACTION_DOWN && action != KeyEvent.ACTION_UP) return true;
+                if (action == KeyEvent.ACTION_DOWN) {
+                    if (event.getRepeatCount() == 0) bArmed = true;
+                } else if (bArmed) {
+                    bArmed = false;
+                    ((Dialog)d).cancel();
+                } else if (keyCode == KeyEvent.KEYCODE_BACK) {
+                    ((Dialog)d).cancel();
+                }
+                return true;
+            }
+            if (keyCode == KeyEvent.KEYCODE_BUTTON_A) {
+                if (action != KeyEvent.ACTION_DOWN && action != KeyEvent.ACTION_UP) return true;
+                Window w = dialog.getWindow();
+                if (w == null) return false;
+                View current = dialog.getCurrentFocus();
+                if (current == null) focusInitial(dialog);
+                else if (current.isInTouchMode()) current.requestFocusFromTouch();
+                KeyEvent center = new KeyEvent(event.getDownTime(), event.getEventTime(), action,
+                        KeyEvent.KEYCODE_DPAD_CENTER, event.getRepeatCount(), event.getMetaState(),
+                        event.getDeviceId(), 0, event.getFlags(), event.getSource());
+                w.superDispatchKeyEvent(center);
+                return true;
+            }
+            return false;
+        }
+
+        @Override public boolean onGenericMotion(View v, MotionEvent event) {
+            if ((event.getSource() & InputDevice.SOURCE_JOYSTICK) != InputDevice.SOURCE_JOYSTICK
+                    || event.getAction() != MotionEvent.ACTION_MOVE) return false;
+            int hatX = dirOf(event.getAxisValue(MotionEvent.AXIS_HAT_X));
+            int hatY = dirOf(event.getAxisValue(MotionEvent.AXIS_HAT_Y));
+            int ax = dirOf(event.getAxisValue(MotionEvent.AXIS_X));
+            int ay = dirOf(event.getAxisValue(MotionEvent.AXIS_Y));
+            int nx = hatX != 0 ? hatX : ax;
+            int ny = hatY != 0 ? hatY : ay;
+            if (nx == stickX && ny == stickY && nx == 0 && ny == 0) return false;
+            long now = event.getEventTime();
+            KeyEvent dummy = new KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_UNKNOWN, 0,
+                    0, event.getDeviceId(), 0, 0, InputDevice.SOURCE_DPAD);
+            if (nx != 0 || ny != 0) {
+                View current = dialog.getCurrentFocus();
+                if (current == null) focusInitial(dialog);
+                else if (current.isInTouchMode()) current.requestFocusFromTouch();
+            }
+            if (nx != stickX) {
+                if (nx < 0) sendDpad(KeyEvent.KEYCODE_DPAD_LEFT, dummy);
+                else if (nx > 0) sendDpad(KeyEvent.KEYCODE_DPAD_RIGHT, dummy);
+                stickX = nx;
+            }
+            if (ny != stickY) {
+                if (ny < 0) sendDpad(KeyEvent.KEYCODE_DPAD_UP, dummy);
+                else if (ny > 0) sendDpad(KeyEvent.KEYCODE_DPAD_DOWN, dummy);
+                stickY = ny;
+            }
+            return true;
+        }
+    }
+
+    private static void focusInitial(AlertDialog dialog) {
+        ListView list = dialog.getListView();
+        if (list != null && list.getCount() > 0) {
+            if (!list.hasFocus() || list.isInTouchMode()) {
+                list.requestFocusFromTouch();
+                list.setSelection(0);
+            }
+            return;
+        }
+        View positive = dialog.getButton(DialogInterface.BUTTON_POSITIVE);
+        if (positive != null && (dialog.getCurrentFocus() == null || positive.isInTouchMode())) {
+            positive.requestFocusFromTouch();
+        }
+    }
+
+    static AlertDialog enableGamepad(AlertDialog dialog) {
+        GamepadDialogHook hook = new GamepadDialogHook(dialog);
+        dialog.setOnKeyListener(hook);
+        Window w = dialog.getWindow();
+        if (w != null) {
+            w.getDecorView().setOnGenericMotionListener(hook);
+            w.getDecorView().post(() -> {
+                if (dialog.isShowing()) focusInitial(dialog);
+            });
+        }
+        focusInitial(dialog);
+        return dialog;
+    }
+
+    static AlertDialog showDialog(AlertDialog.Builder builder) {
+        AlertDialog dialog = builder.create();
+        dialog.show();
+        return enableGamepad(dialog);
+    }
+
     static void show(final Activity activity, File image, final Runnable saveEditor,
                      boolean saveEditorAvailable) {
         try {
             final Catalog catalog = load(activity);
             if (image == null || !catalog.matches(image)) {
-                new AlertDialog.Builder(activity).setTitle("金手指")
+                showDialog(new AlertDialog.Builder(activity).setTitle("金手指")
                         .setMessage("玩法开关适配游戏数据1.0.1。当前数据可使用角色存档修改。")
                         .setPositiveButton("存档修改", (dialog, which) -> saveEditor.run())
-                        .setNegativeButton("关闭", null).show();
+                        .setNegativeButton("关闭", null));
                 return;
             }
             final Set<String> saved = preferences(activity).getStringSet(catalog.buildId, new HashSet<String>());
@@ -138,7 +272,7 @@ final class CheatMenu {
                 names[i] = entry.name;
                 checked[i] = saved.contains(entry.id);
             }
-            new AlertDialog.Builder(activity).setTitle("金手指 · 重启游戏生效")
+            showDialog(new AlertDialog.Builder(activity).setTitle("金手指 · 重启游戏生效")
                     .setMultiChoiceItems(names, checked, new DialogInterface.OnMultiChoiceClickListener() {
                         @Override public void onClick(DialogInterface dialog, int which, boolean enabled) {
                             checked[which] = enabled;
@@ -162,8 +296,7 @@ final class CheatMenu {
                         }
                     })
                     .setNeutralButton("角色存档修改", (dialog, which) -> saveEditor.run())
-                    .setNegativeButton("取消", null)
-                    .show();
+                    .setNegativeButton("取消", null));
             notice(activity, "勾选并保存后重启游戏生效，取消勾选并重启可恢复。");
         } catch (FileNotFoundException missing) {
             if (saveEditorAvailable) saveEditor.run();
@@ -180,15 +313,14 @@ final class CheatMenu {
             notice(activity, "金手指设置保存失败。");
             return;
         }
-        new AlertDialog.Builder(activity).setTitle("金手指设置已保存")
+        showDialog(new AlertDialog.Builder(activity).setTitle("金手指设置已保存")
                 .setMessage("请先在游戏内保存进度。准备好后点“退出游戏”，再重新打开应用，新的勾选设置即可生效。")
                 .setPositiveButton("退出游戏", (dialog, which) -> {
                     Log.i(TAG, "user requested process exit to apply startup settings");
                     activity.finishAndRemoveTask();
                     android.os.Process.killProcess(android.os.Process.myPid());
                 })
-                .setNegativeButton("稍后退出", null)
-                .show();
+                .setNegativeButton("稍后退出", null));
     }
 
     private static void clearPlan(AtomicFile plan) throws IOException {

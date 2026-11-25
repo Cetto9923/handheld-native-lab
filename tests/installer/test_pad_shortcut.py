@@ -80,11 +80,26 @@ class PadShortcutContract(unittest.TestCase):
                           source.index('    private static int stick(')]
         self.assertIn('if (bit == 10 || bit == 11)', dispatch)
         self.assertIn('padShortcut.key(bit, event.getAction() == KeyEvent.ACTION_DOWN, now)', dispatch)
-        self.assertIn('userToggleTouchPad();', dispatch)
+        self.assertIn('toggleMenuFromShortcut();', dispatch)
+        self.assertIn('if (touchPad != null && touchPad.menuOpen) return handleOverlayMenuKey(event);', dispatch)
         self.assertIn('padButtons |= 1L << bit', dispatch)
         self.assertIn('padButtons &= ~(1L << bit)', dispatch)
+        menu_keys = source[source.index('    private boolean handleOverlayMenuKey('):
+                           source.index('    @Override public boolean dispatchKeyEvent(')]
+        for key in ('KEYCODE_DPAD_LEFT', 'KEYCODE_DPAD_RIGHT', 'KEYCODE_DPAD_UP', 'KEYCODE_DPAD_DOWN',
+                    'KEYCODE_BUTTON_A', 'KEYCODE_DPAD_CENTER', 'KEYCODE_BUTTON_B', 'KEYCODE_BACK'):
+            self.assertIn(key, menu_keys)
+        motion = source[source.index('    @Override public boolean onGenericMotionEvent('):
+                        source.index('        InputDevice dev = event.getDevice();')]
+        self.assertIn('touchPad.menuOpen', motion)
+        self.assertIn('touchPad.moveMenuSelection(', motion)
         publish = source[source.index('    private void publishPad()'):source.index('    private void discoverPad()')]
+        self.assertIn('if (touchPad != null && touchPad.menuOpen)', publish)
+        self.assertIn('GameWindowNative.setPadState(padConnected || touchOn, 0L, 0, 0, 0, 0);', publish)
         self.assertIn('touchButtons | padShortcut.buttons', publish)
         pause = source[source.index('    @Override protected void onPause()'):source.index('    @Override public void onCreate(')]
         self.assertIn('padShortcut.reset();', pause)
         self.assertIn('removeCallbacks(padShortcutDispatch)', pause)
+        self.assertIn('clearPhysicalInputs();', pause)
+        clear_fn = source[source.index('    private void clearPhysicalInputs()'):source.index('    private void toggleMenuFromShortcut()')]
+        self.assertIn('menuConfirmKey = -1;', clear_fn)

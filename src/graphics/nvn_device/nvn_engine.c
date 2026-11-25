@@ -286,6 +286,7 @@ int nvn_engine_initialize(nvn_device_state *device, char *reason, size_t reason_
     /* The features of the device that the engine needs are the ones the
      * device was created with; the engine has to submit on the same device
      * or an image of one device cannot be given to the queue of another. */
+    VkBool32 push_descriptor = VK_FALSE;
     {
         nvn_vulkan_enabled_features enabled;
         if (!nvn_vulkan_get_enabled_features(device, &enabled)) {
@@ -298,13 +299,14 @@ int nvn_engine_initialize(nvn_device_state *device, char *reason, size_t reason_
         config.game.enabled_shader_output_layer = enabled.shader_output_layer;
         config.game.enabled_shader_output_viewport_index = enabled.shader_output_viewport_index;
         config.sampler_mirror_clamp_to_edge = enabled.sampler_mirror_clamp_to_edge;
+        push_descriptor = enabled.push_descriptor;
         fprintf(stderr, "[engine] using successful device feature request: instance API %u.%u.%u, "
-                        "physical API %u.%u.%u, enabled shaderDrawParameters=%u outputLayer=%u outputViewportIndex=%u legacyLayerEXT=0\n",
+                        "physical API %u.%u.%u, enabled shaderDrawParameters=%u outputLayer=%u outputViewportIndex=%u pushDescriptor=%u legacyLayerEXT=0\n",
                 VK_VERSION_MAJOR(enabled.instance_api_version), VK_VERSION_MINOR(enabled.instance_api_version),
                 VK_VERSION_PATCH(enabled.instance_api_version), VK_VERSION_MAJOR(enabled.physical_api_version),
                 VK_VERSION_MINOR(enabled.physical_api_version), VK_VERSION_PATCH(enabled.physical_api_version),
                 enabled.shader_draw_parameters,enabled.shader_output_layer,
-                enabled.shader_output_viewport_index);
+                enabled.shader_output_viewport_index,push_descriptor);
     }
 
     result = xbg_vk_initialize(&config, error, sizeof(error));
@@ -315,6 +317,7 @@ int nvn_engine_initialize(nvn_device_state *device, char *reason, size_t reason_
         fprintf(stderr, "[engine] the engine did not start: %s\n", error[0] ? error : "no reason given");
         return 0;
     }
+    xbg_game_set_push_descriptor(push_descriptor);
     pthread_mutex_lock(&s_lock);
     s_ready = 1;
     s_device = device;

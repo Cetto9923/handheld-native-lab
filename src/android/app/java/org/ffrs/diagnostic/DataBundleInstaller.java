@@ -259,7 +259,7 @@ public final class DataBundleInstaller implements Runnable {
         // the GPU and keeps the path off on the Honor tablet (the moon halo
         // flickers there). See GameActivity.ensureDefaultMarkers.
         marker(data, "gfx-depth-aspect", "auto\n"); marker(data, "gfx-audio-paced-transport", "1\n");
-        marker(data, "gfx-codex-audio-dump", "0\n"); marker(data, "gfx-codex-frame-metrics", "1\n");
+        marker(data, "gfx-codex-audio-dump", "0\n"); marker(data, "gfx-codex-frame-metrics", "0\n");
         // Only an APK contract that names the archive may enable the native fallback.
         marker(data, "gfx-shader-archive", contract.required.containsKey("shaders.hnla") ? "1\n" : "0\n");
     }

@@ -259,6 +259,67 @@ static aaudio_result_t open_aaudio_stream(audio_output *out) {
     }
     return status;
 }
+/* requestStart/requestPause return before the stream has moved. Wait outside
+ * the output mutex: a device-change callback only needs that lock to wake us.
+ * Returns 1 when STARTED/STARTING (write-ready; shared AudioTrack-backed AAudio
+ * often remains STARTING after pause->start until frames are written), 0 when
+ * stopped or transiently unready, -1 when the stream is closed/disconnected. */
+static int aaudio_wait_until_started(AAudioStream *stream, const _Atomic int *running) {
+    if(!stream || (running && !atomic_load(running))) return 0;
+    aaudio_stream_state_t state = AAudioStream_getState(stream);
+    if(state == AAUDIO_STREAM_STATE_DISCONNECTED || state == AAUDIO_STREAM_STATE_CLOSED ||
+       state == AAUDIO_STREAM_STATE_CLOSING) return -1;
+    if(state == AAUDIO_STREAM_STATE_STARTED) return 1;
+    if(state == AAUDIO_STREAM_STATE_PAUSING || state == AAUDIO_STREAM_STATE_STOPPING ||
+       state == AAUDIO_STREAM_STATE_FLUSHING) {
+        uint64_t settle_deadline = audio_now_ns() + 100000000ull;
+        while(audio_now_ns() < settle_deadline) {
+            if(running && !atomic_load(running)) return 0;
+            aaudio_stream_state_t next = AAUDIO_STREAM_STATE_UNINITIALIZED;
+            AAudioStream_waitForStateChange(stream, state, &next, 20000000ll);
+            if(running && !atomic_load(running)) return 0;
+            state = AAudioStream_getState(stream);
+            if(state != AAUDIO_STREAM_STATE_PAUSING && state != AAUDIO_STREAM_STATE_STOPPING &&
+               state != AAUDIO_STREAM_STATE_FLUSHING) break;
+        }
+        if(state == AAUDIO_STREAM_STATE_DISCONNECTED || state == AAUDIO_STREAM_STATE_CLOSED ||
+           state == AAUDIO_STREAM_STATE_CLOSING) return -1;
+    }
+    if(state != AAUDIO_STREAM_STATE_STARTED &&
+       state != AAUDIO_STREAM_STATE_STARTING) {
+        if(running && !atomic_load(running)) return 0;
+        aaudio_result_t res = AAudioStream_requestStart(stream);
+        if(res != AAUDIO_OK) {
+            state = AAudioStream_getState(stream);
+            if(res == AAUDIO_ERROR_DISCONNECTED || state == AAUDIO_STREAM_STATE_DISCONNECTED ||
+               state == AAUDIO_STREAM_STATE_CLOSED || state == AAUDIO_STREAM_STATE_CLOSING) return -1;
+            return 0;
+        }
+        state = AAudioStream_getState(stream);
+    }
+    if(state == AAUDIO_STREAM_STATE_STARTING) {
+        aaudio_stream_state_t next = AAUDIO_STREAM_STATE_UNINITIALIZED;
+        AAudioStream_waitForStateChange(stream, state, &next, 10000000ll);
+        if(running && !atomic_load(running)) return 0;
+        state = AAudioStream_getState(stream);
+    }
+    if(state == AAUDIO_STREAM_STATE_DISCONNECTED || state == AAUDIO_STREAM_STATE_CLOSED ||
+       state == AAUDIO_STREAM_STATE_CLOSING) return -1;
+    return (state == AAUDIO_STREAM_STATE_STARTED || state == AAUDIO_STREAM_STATE_STARTING) ? 1 : 0;
+}
+static int aaudio_pause_outside(AAudioStream *stream) {
+    if(!stream) return 0;
+    aaudio_stream_state_t state = AAudioStream_getState(stream);
+    if(state == AAUDIO_STREAM_STATE_PAUSED || state == AAUDIO_STREAM_STATE_PAUSING) return 1;
+    if(AAudioStream_requestPause(stream) != AAUDIO_OK) return 0;
+    aaudio_stream_state_t cur = AAudioStream_getState(stream);
+    if(cur != AAUDIO_STREAM_STATE_PAUSED) {
+        aaudio_stream_state_t next = AAUDIO_STREAM_STATE_UNINITIALIZED;
+        AAudioStream_waitForStateChange(stream, cur, &next, 100000000ll);
+        cur = AAudioStream_getState(stream);
+    }
+    return cur == AAUDIO_STREAM_STATE_PAUSED || cur == AAUDIO_STREAM_STATE_PAUSING;
+}
 static void audio_worker_identity(audio_output *out, const char *name) {
     int name_result = pthread_setname_np(pthread_self(), name);
     errno = 0;
@@ -375,6 +436,7 @@ static void *audio_endpoint_worker(void *argument) {
 }
 static void *audio_transport_worker(void *argument) {
     audio_output *out=argument;int16_t scratch[1024*8];
+    unsigned invalid_writes=0;
     audio_worker_identity(out, "ffrs-audio-out");
     pthread_mutex_lock(&out->mutex);
     while(!out->closing){
@@ -382,6 +444,7 @@ static void *audio_transport_worker(void *argument) {
             uint32_t have=ffrs_audio_fifo_size(&out->fifo);
             if(!atomic_load(&out->device_changed) && (!atomic_load(&out->state) || !have)){
                 if(!out->backend_started)out->warmup_deadline_ns=0;
+                invalid_writes=0;
                 pthread_cond_wait(&out->condition,&out->mutex);continue;
             }
             if(!atomic_load(&out->device_changed) && !out->backend_started && have<out->warmup_frames){
@@ -399,14 +462,30 @@ static void *audio_transport_worker(void *argument) {
         /* Reopen outside the mutex. A device-change callback only
          * needs the mutex to wake this worker, not to wait out AAudio. */
         if(atomic_exchange(&out->device_changed,0) || !out->stream){
-            out->backend_started=0;
+            out->backend_started=0;out->idle_silent=0;out->consecutive_silent_frames=0;invalid_writes=0;
             pthread_mutex_unlock(&out->mutex);
             open_aaudio_stream(out);
             pthread_mutex_lock(&out->mutex);
             if(out->closing)break;
+            if(!atomic_load(&out->state))continue;
         }
         if(out->stream && !out->backend_started){
-            if(AAudioStream_requestStart(out->stream)==AAUDIO_OK)out->backend_started=1;
+            AAudioStream *starting=out->stream;
+            pthread_mutex_unlock(&out->mutex);
+            int started=aaudio_wait_until_started(starting,&out->state);
+            pthread_mutex_lock(&out->mutex);
+            if(out->closing)break;
+            if(!atomic_load(&out->state)){
+                out->backend_started=0;out->idle_silent=0;out->consecutive_silent_frames=0;invalid_writes=0;
+                if(out->stream==starting)AAudioStream_requestStop(starting);
+                continue;
+            }
+            if(out->stream==starting && started<0){
+                out->backend_started=0;out->idle_silent=0;out->consecutive_silent_frames=0;invalid_writes=0;
+                atomic_store(&out->device_changed,1);
+                continue;
+            }
+            if(out->stream==starting && started>0)out->backend_started=1;
         }
         if(!out->stream || !out->backend_started){
             uint64_t wake=audio_now_ns()+10000000ull;
@@ -414,25 +493,113 @@ static void *audio_transport_worker(void *argument) {
             pthread_cond_timedwait(&out->condition,&out->mutex,&when);continue;
         }
         uint32_t ask=ffrs_audio_fifo_peek(&out->fifo,scratch,1024);
+        if(!ask)continue;
+        int chunk_silent=1;
+        uint64_t total_samples=(uint64_t)ask*(uint64_t)out->channels;
+        for(uint64_t i=0;i<total_samples;++i){
+            if(scratch[i]!=0){chunk_silent=0;break;}
+        }
+        if(chunk_silent)out->consecutive_silent_frames+=ask;
+        else out->consecutive_silent_frames=0;
+        int enter_idle=chunk_silent && (out->consecutive_silent_frames>=(uint64_t)out->rate*3u/2u ||
+                            (out->stats.nonzero_samples==0 && out->consecutive_silent_frames>=(uint64_t)out->rate));
+        int leave_idle=!chunk_silent && out->idle_silent;
+        if(enter_idle && !out->idle_silent){
+            AAudioStream *pausing=out->stream;
+            pthread_mutex_unlock(&out->mutex);
+            int paused=aaudio_pause_outside(pausing);
+            pthread_mutex_lock(&out->mutex);
+            if(out->closing)break;
+            if(!atomic_load(&out->state) || atomic_load(&out->device_changed)){
+                if(!atomic_load(&out->state)){out->backend_started=0;out->idle_silent=0;out->consecutive_silent_frames=0;invalid_writes=0;}
+                continue;
+            }
+            if(out->stream==pausing && paused){
+                out->idle_silent=1;invalid_writes=0;
+                fprintf(stderr,"[audio] paced key=%p ch=%d entered idle silent mode (consecutive_silent=%llu); stream paused\n",
+                        out->key,out->channels,(unsigned long long)out->consecutive_silent_frames);
+            }
+        }else if(leave_idle){
+            AAudioStream *resuming=out->stream;
+            pthread_mutex_unlock(&out->mutex);
+            int started=aaudio_wait_until_started(resuming,&out->state);
+            pthread_mutex_lock(&out->mutex);
+            if(out->closing)break;
+            if(!atomic_load(&out->state) || atomic_load(&out->device_changed)){
+                if(!atomic_load(&out->state)){
+                    out->backend_started=0;out->idle_silent=0;out->consecutive_silent_frames=0;invalid_writes=0;
+                    if(out->stream==resuming)AAudioStream_requestStop(resuming);
+                }
+                continue;
+            }
+            if(out->stream==resuming && started<0){
+                out->idle_silent=0;out->backend_started=0;out->consecutive_silent_frames=0;invalid_writes=0;
+                atomic_store(&out->device_changed,1);
+                fprintf(stderr,"[audio] paced key=%p ch=%d stream disconnected on resume; reopening\n",
+                        out->key,out->channels);
+                continue;
+            }
+            if(out->stream==resuming){
+                out->idle_silent=0;invalid_writes=0;
+                out->backend_started=started>0?1:0;
+                fprintf(stderr,"[audio] paced key=%p ch=%d audible sample detected; resumed from idle silent started=%d\n",
+                        out->key,out->channels,started);
+            }
+        }
+        if(out->idle_silent && chunk_silent){
+            if(ffrs_audio_fifo_size(&out->fifo)<ask)continue;
+            if(!ffrs_audio_fifo_consume(&out->fifo,ask))abort();
+            scan_written(out,scratch,ask);out->frames_written+=ask;
+            if(!out->last_log_frames || out->stats.frames_written-out->last_log_frames>=(uint64_t)out->rate){
+                log_stats(out,"paced silent");out->last_log_frames=out->stats.frames_written;
+            }
+            pthread_cond_broadcast(&out->condition);
+            uint64_t sleep_ns=(uint64_t)ask*1000000000ull/(uint32_t)out->rate;
+            pthread_mutex_unlock(&out->mutex);
+            struct timespec ts={(time_t)(sleep_ns/1000000000ull),(long)(sleep_ns%1000000000ull)};
+            nanosleep(&ts,NULL);
+            pthread_mutex_lock(&out->mutex);
+            continue;
+        }
+        if(!out->stream || !out->backend_started){
+            /* Resume has not reached STARTED/STARTING. Keep the FIFO and retry. */
+            uint64_t wake=audio_now_ns()+2000000ull;
+            struct timespec when={(time_t)(wake/1000000000ull),(long)(wake%1000000000ull)};
+            pthread_cond_timedwait(&out->condition,&out->mutex,&when);continue;
+        }
+        if(ffrs_audio_fifo_size(&out->fifo)<ask)continue;
         out->transport_busy=1;uint64_t begin=audio_timing_begin(out);
+        AAudioStream *writing=out->stream;
         pthread_mutex_unlock(&out->mutex);
-        aaudio_result_t wrote=AAudioStream_write(out->stream,scratch,(int32_t)ask,100000000ll);
+        aaudio_result_t wrote=AAudioStream_write(writing,scratch,(int32_t)ask,100000000ll);
+        aaudio_stream_state_t post_state = wrote == AAUDIO_ERROR_INVALID_STATE
+            ? AAudioStream_getState(writing) : AAUDIO_STREAM_STATE_UNINITIALIZED;
         uint64_t end=begin?audio_now_ns():0;
         pthread_mutex_lock(&out->mutex);
         out->transport_busy=0;out->stats.write_calls++;
         audio_timing_record(out,3,begin,end,wrote,ask);
         if(wrote>0){
+            invalid_writes=0;
             if((uint32_t)wrote>ask || !ffrs_audio_fifo_consume(&out->fifo,(uint32_t)wrote))abort();
             scan_written(out,scratch,(uint32_t)wrote);out->frames_written+=(uint32_t)wrote;
             if(!out->last_log_frames || out->stats.frames_written-out->last_log_frames>=(uint64_t)out->rate){
                 log_stats(out,"paced progress");out->last_log_frames=out->stats.frames_written;
             }
-        }else if(wrote==0 || wrote==AAUDIO_ERROR_TIMEOUT){
+        }else if(wrote==0 || wrote==AAUDIO_ERROR_TIMEOUT ||
+                 (wrote==AAUDIO_ERROR_INVALID_STATE && post_state==AAUDIO_STREAM_STATE_STARTING && invalid_writes<25)){
+            /* A stream still leaving PAUSED/STARTING is not dead yet. */
             out->stats.zero_writes++;
+            if(wrote==AAUDIO_ERROR_INVALID_STATE){
+                invalid_writes++;
+                if(invalid_writes==1){
+                    fprintf(stderr,"[audio] paced resume write still starting (%d); waiting briefly\n",(int)wrote);
+                }
+            }
         }else if(atomic_load(&out->state)){
+            invalid_writes=0;
             out->stats.errors++;
-            fprintf(stderr,"[audio] paced write error=%d; retaining FIFO and reopening\n",(int)wrote);
-            out->backend_started=0;
+            fprintf(stderr,"[audio] paced write error=%d state=%d; retaining FIFO and reopening\n",(int)wrote,(int)post_state);
+            out->backend_started=0;out->idle_silent=0;out->consecutive_silent_frames=0;
             pthread_mutex_unlock(&out->mutex);
             open_aaudio_stream(out);
             pthread_mutex_lock(&out->mutex);
@@ -489,19 +656,22 @@ static void *audio_worker(void *argument) {
          * and pace via nanosleep. Wake immediately upon non-zero audio. */
         if (buffer_silent && (out->consecutive_silent_frames >= (uint64_t)out->rate * 3u / 2u ||
                               (out->stats.nonzero_samples == 0 && out->consecutive_silent_frames >= (uint64_t)out->rate))) {
-            if (out->stream && !out->idle_silent) {
-                AAudioStream_requestPause(out->stream);
+            if (out->stream && !out->idle_silent && aaudio_pause_outside(out->stream)) {
                 out->idle_silent = 1;
                 fprintf(stderr, "[audio] key=%p ch=%d entered idle silent mode (consecutive_silent=%llu); stream paused\n",
                         out->key, out->channels, (unsigned long long)out->consecutive_silent_frames);
             }
         } else if (!buffer_silent && out->idle_silent) {
-            if (out->stream) {
-                AAudioStream_requestStart(out->stream);
-            }
+            int started = out->stream ? aaudio_wait_until_started(out->stream, &out->state) : -1;
             out->idle_silent = 0;
-            fprintf(stderr, "[audio] key=%p ch=%d audible sample detected; resumed from idle silent\n",
-                    out->key, out->channels);
+            if (started < 0 && atomic_load(&out->state)) {
+                out->consecutive_silent_frames = 0;
+                if (open_aaudio_stream(out) == AAUDIO_OK && out->stream) {
+                    started = aaudio_wait_until_started(out->stream, &out->state);
+                }
+            }
+            fprintf(stderr, "[audio] key=%p ch=%d audible sample detected; resumed from idle silent started=%d\n",
+                    out->key, out->channels, started);
         }
 
         if (out->idle_silent && buffer_silent) {
@@ -516,15 +686,17 @@ static void *audio_worker(void *argument) {
         }
 
         if (atomic_exchange(&out->device_changed, 0) || !out->stream) {
+            out->consecutive_silent_frames = 0;
+            out->idle_silent = 0;
             if (open_aaudio_stream(out) == AAUDIO_OK && out->stream) {
-                if (atomic_load(&out->state)) AAudioStream_requestStart(out->stream);
+                if (atomic_load(&out->state)) aaudio_wait_until_started(out->stream, &out->state);
             }
         }
 
         while(position<frames && atomic_load(&out->state)) {
             if (!out->stream) {
                 if (open_aaudio_stream(out) == AAUDIO_OK && out->stream) {
-                    if (atomic_load(&out->state)) AAudioStream_requestStart(out->stream);
+                    if (atomic_load(&out->state)) aaudio_wait_until_started(out->stream, &out->state);
                 }
             }
             if (!out->stream) {
@@ -556,8 +728,10 @@ static void *audio_worker(void *argument) {
                 pthread_mutex_unlock(&out->mutex);
 
                 if (wrote == AAUDIO_ERROR_DISCONNECTED || atomic_exchange(&out->device_changed, 0)) {
+                    out->consecutive_silent_frames = 0;
+                    out->idle_silent = 0;
                     if (open_aaudio_stream(out) == AAUDIO_OK && out->stream) {
-                        if (atomic_load(&out->state)) AAudioStream_requestStart(out->stream);
+                        if (atomic_load(&out->state)) aaudio_wait_until_started(out->stream, &out->state);
                         continue;
                     }
                 }
@@ -698,6 +872,7 @@ static void stop_output(void *key) {
 #endif
         while(out->busy || out->transport_busy)pthread_cond_wait(&out->condition,&out->mutex);
         out->fifo.read=out->fifo.write=0;out->sample_clock=(ffrs_audio_sample_clock){0};out->backend_started=0;out->warmup_deadline_ns=0;
+        out->idle_silent=0;out->consecutive_silent_frames=0;
         int returned=0;while(out->ph!=out->pt){release_buffer(out,out->pending[out->ph++%64]);returned=1;}
         pthread_mutex_unlock(&out->mutex);mirror_output(out);
         if(returned&&out->event)nso_host_os_signal_system_event(out->event);
@@ -708,6 +883,7 @@ static void stop_output(void *key) {
 #endif
     pthread_mutex_lock(&out->mutex);
     while(out->busy)pthread_cond_wait(&out->condition,&out->mutex);
+    out->idle_silent=0;out->consecutive_silent_frames=0;
     int returned=0;while(out->ph!=out->pt){release_buffer(out,out->pending[out->ph++%64]);returned=1;}
     pthread_mutex_unlock(&out->mutex);mirror_output(out);if(returned&&out->event)nso_host_os_signal_system_event(out->event);
 }

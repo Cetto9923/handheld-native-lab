@@ -693,8 +693,21 @@ static uint32_t finish_page_service(guest_process *p,const char *operation,
         fputs("[page-unsupported] no unproved SDK Result mapping; owner/tickets retained until isolated process shutdown\n",stderr);
         abort();
     }
-    fprintf(stderr,"[page-port-policy] op=%s address=0x%" PRIxPTR " bytes=%zu result=0 after real VM/accounting transition\n",
-        operation,address,bytes);
+    static uint64_t map_log_count = 0, free_log_count = 0;
+    int should_log = 1;
+    if(!getenv("FFRS_PAGE_LOG_ALL")) {
+        if(strcmp(operation,"map")==0) {
+            uint64_t n = __atomic_fetch_add(&map_log_count, 1, __ATOMIC_RELAXED);
+            should_log = (n < 64 || (n & 255) == 0);
+        } else if(strcmp(operation,"free-allocations")==0) {
+            uint64_t n = __atomic_fetch_add(&free_log_count, 1, __ATOMIC_RELAXED);
+            should_log = (n < 64 || (n & 255) == 0);
+        }
+    }
+    if(should_log) {
+        fprintf(stderr,"[page-port-policy] op=%s address=0x%" PRIxPTR " bytes=%zu result=0 after real VM/accounting transition\n",
+            operation,address,bytes);
+    }
     return 0;
 }
 static uint32_t allocate_region(uintptr_t *out,size_t bytes) {

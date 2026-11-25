@@ -72,6 +72,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     private boolean padConnected;
     private long padButtons, axisButtons;
     private int padLx, padLy, padRx, padRy;
+    private int menuConfirmKey = -1, menuStickX, menuStickY;
     // Virtual (on-screen) pad state; merged with the physical pad in publishPad().
     private long touchButtons;
     private int touchLx, touchLy, touchRx, touchRy;
@@ -175,6 +176,10 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
     private void publishPad() {
         boolean touchOn = touchPad != null && touchPad.shown;
+        if (touchPad != null && touchPad.menuOpen) {
+            GameWindowNative.setPadState(padConnected || touchOn, 0L, 0, 0, 0, 0);
+            return;
+        }
         GameWindowNative.setPadState(padConnected || touchOn, padButtons | axisButtons | touchButtons | padShortcut.buttons,
                 touchLx != 0 ? touchLx : padLx, touchLy != 0 ? touchLy : padLy,
                 touchRx != 0 ? touchRx : padRx, touchRy != 0 ? touchRy : padRy);
@@ -336,10 +341,67 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         }
     }
 
+    private void clearPhysicalInputs() {
+        padButtons = axisButtons = 0;
+        padLx = padLy = padRx = padRy = 0;
+        menuConfirmKey = -1;
+        menuStickX = 0;
+        menuStickY = 0;
+    }
+
+    private void toggleMenuFromShortcut() {
+        if (touchPad == null) return;
+        clearPhysicalInputs();
+        if (touchPad.menuOpen) touchPad.closeMenu();
+        else touchPad.openMenu();
+        publishPad();
+    }
+
+    private static int menuAxisDir(float v) {
+        return v >= 0.5f ? 1 : v <= -0.5f ? -1 : 0;
+    }
+
+    private boolean handleOverlayMenuKey(KeyEvent event) {
+        if (event.isSystem()) return super.dispatchKeyEvent(event);
+        int code = event.getKeyCode();
+        int action = event.getAction();
+        if (code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT
+                || code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN) {
+            if (action == KeyEvent.ACTION_DOWN) {
+                int dx = code == KeyEvent.KEYCODE_DPAD_LEFT ? -1 : code == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : 0;
+                int dy = code == KeyEvent.KEYCODE_DPAD_UP ? -1 : code == KeyEvent.KEYCODE_DPAD_DOWN ? 1 : 0;
+                touchPad.moveMenuSelection(dx, dy);
+            }
+            return true;
+        }
+        if (code == KeyEvent.KEYCODE_BUTTON_A || code == KeyEvent.KEYCODE_DPAD_CENTER
+                || code == KeyEvent.KEYCODE_ENTER) {
+            if (action == KeyEvent.ACTION_DOWN) {
+                if (event.getRepeatCount() == 0) menuConfirmKey = code;
+            } else if (action == KeyEvent.ACTION_UP && menuConfirmKey == code) {
+                clearPhysicalInputs();
+                touchPad.activateSelectedMenuItem();
+                publishPad();
+            }
+            return true;
+        }
+        if (code == KeyEvent.KEYCODE_BUTTON_B || code == KeyEvent.KEYCODE_BACK) {
+            if (action == KeyEvent.ACTION_DOWN) {
+                if (event.getRepeatCount() == 0) menuConfirmKey = code;
+            } else if (action == KeyEvent.ACTION_UP && (menuConfirmKey == code || code == KeyEvent.KEYCODE_BACK)) {
+                clearPhysicalInputs();
+                touchPad.closeMenu();
+                publishPad();
+            }
+            return true;
+        }
+        if (buttonBit(code) >= 0) return true;
+        return super.dispatchKeyEvent(event);
+    }
+
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
         if (!guestStarted && dataInstaller != null && dataInstaller.managed) return super.dispatchKeyEvent(event);
         int bit = buttonBit(event.getKeyCode());
-        if (bit < 0) return super.dispatchKeyEvent(event);
         if (bit == 10 || bit == 11) {
             if (event.getAction() != KeyEvent.ACTION_DOWN && event.getAction() != KeyEvent.ACTION_UP)
                 return super.dispatchKeyEvent(event);
@@ -350,12 +412,14 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 guestWatchHandler.postDelayed(padShortcutDispatch, Math.max(0, padShortcut.deadline - now));
             publishPad();
             if (toggle) {
-                userToggleTouchPad();
-                toast(touchPad != null && touchPad.shown ? "虚拟按键已显示（+ 和 − 可切换）" : "虚拟按键已隐藏（+ 和 − 可切换）");
-                Log.i(TAG, "game_input pad_shortcut toggled buttons=" + padShortcut.buttons);
+                toggleMenuFromShortcut();
+                Log.i(TAG, "game_input pad_shortcut toggled menu=" + (touchPad != null && touchPad.menuOpen)
+                        + " buttons=" + padShortcut.buttons);
             }
             return true;
         }
+        if (touchPad != null && touchPad.menuOpen) return handleOverlayMenuKey(event);
+        if (bit < 0) return super.dispatchKeyEvent(event);
         if (event.getAction() == KeyEvent.ACTION_DOWN) padButtons |= 1L << bit;
         else if (event.getAction() == KeyEvent.ACTION_UP) padButtons &= ~(1L << bit);
         else return super.dispatchKeyEvent(event);
@@ -380,6 +444,24 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     @Override public boolean onGenericMotionEvent(MotionEvent event) {
         if ((event.getSource() & InputDevice.SOURCE_JOYSTICK) != InputDevice.SOURCE_JOYSTICK
                 || event.getAction() != MotionEvent.ACTION_MOVE) return super.onGenericMotionEvent(event);
+        if (touchPad != null && touchPad.menuOpen) {
+            int hatX = menuAxisDir(event.getAxisValue(MotionEvent.AXIS_HAT_X));
+            int hatY = menuAxisDir(event.getAxisValue(MotionEvent.AXIS_HAT_Y));
+            int ax = menuAxisDir(event.getAxisValue(MotionEvent.AXIS_X));
+            int ay = menuAxisDir(event.getAxisValue(MotionEvent.AXIS_Y));
+            int nx = hatX != 0 ? hatX : ax;
+            int ny = hatY != 0 ? hatY : ay;
+            if (nx != menuStickX) {
+                if (nx != 0) touchPad.moveMenuSelection(nx, 0);
+                menuStickX = nx;
+            }
+            if (ny != menuStickY) {
+                if (ny != 0) touchPad.moveMenuSelection(0, ny);
+                menuStickY = ny;
+            }
+            publishPad();
+            return true;
+        }
         InputDevice dev = event.getDevice();
         int src = event.getSource();
         // Pads disagree on which axes carry the right stick and the analog triggers:
@@ -429,7 +511,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         boolean shown;
         private boolean editing, menuOpen;
         private float opacity = 1f;
-        private int selected = -1, dragMode;                 // dragMode: 1 opacity, 2 size, 3 move
+        private int selected = -1, dragMode, menuSelected;   // dragMode: 1 opacity, 2 size, 3 move
         private float dragDx, dragDy;
         private final RectF panel = new RectF(), opTrack = new RectF(), scTrack = new RectF();
         private final RectF menuBtn = new RectF();
@@ -596,10 +678,11 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         }
 
         // ---------------- menu mode ----------------
-        /** Opens the function menu from its own button. */
+        /** Opens the function menu from its own button or the controller shortcut. */
         private void openMenu() {
             clearInput();
             menuOpen = true;
+            menuSelected = 0;
             Log.i(TAG, "game_input touch_pad menu=on");
             invalidate();
         }
@@ -634,7 +717,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 names[i] = ctls[i].name;
                 chosen[i] = ctls[i].visible;
             }
-            new android.app.AlertDialog.Builder(owner)
+            CheatMenu.showDialog(new android.app.AlertDialog.Builder(owner)
                     .setTitle("显示的虚拟按键")
                     .setMultiChoiceItems(names, chosen, (dialog, which, checked) -> chosen[which] = checked)
                     .setNegativeButton("取消", null)
@@ -643,7 +726,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                         for (int i = 0; i < ctls.length; i++) ctls[i].visible = chosen[i];
                         saveConfig();
                         invalidate();
-                    }).show();
+                    }));
         }
 
         /**
@@ -659,26 +742,59 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             if (!menuPanel.contains(x, y)) { closeMenu(); return true; }
             for (int i = 0; i < menuItems.length; i++) {
                 if (!menuItems[i].contains(x, y)) continue;
-                menuOpen = false;
-                // The menu is raised from inside the editor, so leave the
-                // editor before the action runs and keep the pad usable.
-                if (editing) exitEdit();
-                invalidate();
-                if (i == 0) owner.exportSaves();
-                else if (i == 1) owner.openCheatDialog();
-                else if (i == 2) owner.restoreSave();
-                else if (i == 3) owner.quickSave();
-                else if (i == 4) owner.quickLoad();
-                else if (i == 5) enterEdit();
-                else if (i == 6) owner.userToggleTouchPad();
-                else if (i == 7) owner.startActivity(new Intent(owner, ReportActivity.class));
-                else if (i == 8) owner.toggleFpsOverlay();
-                else if (i == 9) owner.rotateScreen();
-                else if (i == 10) owner.openDisplaySettings();
-                else editVisibility();
+                activateMenuItem(i);
                 return true;
             }
             return true;
+        }
+
+        void moveMenuSelection(int dx, int dy) {
+            int count = menuItems.length;
+            if (count <= 0) return;
+            if (menuSelected < 0 || menuSelected >= count) menuSelected = 0;
+            int cols = 2;
+            int rows = (count + cols - 1) / cols;
+            int row = menuSelected / cols;
+            int col = menuSelected % cols;
+            if (dx != 0) {
+                int step = dx > 0 ? 1 : -1;
+                col = (col + step + cols) % cols;
+                if (row * cols + col >= count) col = count - 1 - row * cols;
+            }
+            if (dy != 0) {
+                int step = dy > 0 ? 1 : -1;
+                do {
+                    row = (row + step + rows) % rows;
+                } while (row * cols + col >= count);
+            }
+            menuSelected = row * cols + col;
+            invalidate();
+        }
+
+        private void activateMenuItem(int i) {
+            menuSelected = i;
+            menuOpen = false;
+            // The menu is raised from inside the editor, so leave the
+            // editor before the action runs and keep the pad usable.
+            if (editing) exitEdit();
+            invalidate();
+            if (i == 0) owner.exportSaves();
+            else if (i == 1) owner.openCheatDialog();
+            else if (i == 2) owner.restoreSave();
+            else if (i == 3) owner.quickSave();
+            else if (i == 4) owner.quickLoad();
+            else if (i == 5) enterEdit();
+            else if (i == 6) owner.userToggleTouchPad();
+            else if (i == 7) owner.startActivity(new Intent(owner, ReportActivity.class));
+            else if (i == 8) owner.toggleFpsOverlay();
+            else if (i == 9) owner.rotateScreen();
+            else if (i == 10) owner.openDisplaySettings();
+            else editVisibility();
+        }
+
+        void activateSelectedMenuItem() {
+            int i = menuSelected >= 0 && menuSelected < menuItems.length ? menuSelected : 0;
+            activateMenuItem(i);
         }
 
         private boolean hit(Ctl c, float x, float y) {
@@ -872,22 +988,27 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                     "备份存档",        // quick save
                     "恢复备份",        // quick load
                     "编辑按键布局",    // layout editor
-                    shown ? "隐藏手柄" : "显示手柄",
+                    shown ? "隐藏虚拟按键" : "显示虚拟按键",
                     "导出诊断报告",
                     owner.fpsVisible ? "关闭帧率显示" : "开启帧率显示",
                     "旋转屏幕180°",
                     "画质与帧率",
                     "按键显示设置"
             };
+            float baseStroke = line.getStrokeWidth();
             for (int i = 0; i < menuItems.length; i++) {
                 RectF r = menuItems[i];
-                fill.setColor(0x40FFFFFF); c.drawRoundRect(r, u * 0.3f, u * 0.3f, fill);
-                line.setColor(0xA0FFFFFF); c.drawRoundRect(r, u * 0.3f, u * 0.3f, line);
+                boolean focused = i == menuSelected;
+                fill.setColor(focused ? 0x803B82F6 : 0x40FFFFFF); c.drawRoundRect(r, u * 0.3f, u * 0.3f, fill);
+                line.setColor(focused ? 0xFFFFD040 : 0xA0FFFFFF);
+                if (focused) line.setStrokeWidth(Math.max(baseStroke, 0.08f * u));
+                c.drawRoundRect(r, u * 0.3f, u * 0.3f, line);
+                if (focused) line.setStrokeWidth(baseStroke);
                 text.setColor(0xFFFFFFFF); text.setTextSize(0.48f * u);
                 c.drawText(labels[i], r.centerX(), r.centerY() + 0.16f * u, text);
             }
-            text.setTextSize(0.42f * u); text.setColor(0x90FFFFFF);
-            c.drawText("\u70b9\u51fb\u5176\u4ed6\u5904\u53d6\u6d88", menuPanel.centerX(), menuPanel.bottom - 0.5f * u, text);
+            text.setTextSize(0.36f * u); text.setColor(0xB0FFFFFF);
+            c.drawText("方向键+A 选择 · B/+−或空白处取消", menuPanel.centerX(), menuPanel.bottom - 0.5f * u, text);
         }
 
         private void drawPanel(Canvas c) {
@@ -941,8 +1062,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         guestWatchHandler.removeCallbacks(fpsUpdate);
         guestWatchHandler.removeCallbacks(padShortcutDispatch);
         padShortcut.reset();
-        padButtons = axisButtons = 0;
-        padLx = padLy = padRx = padRy = 0;
+        clearPhysicalInputs();
         if (currentActivity.get() == this) {
             if (touchPad != null) touchPad.clearInput();
             publishPad();
@@ -1202,6 +1322,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 .create();
         cheatDialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
         cheatDialog.show();
+        CheatMenu.enableGamepad(cheatDialog);
     }
 
     private static final class CheatDetails implements View.OnClickListener {
@@ -1215,8 +1336,8 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     }
 
     private void showFlowMessage(String title, String message) {
-        new AlertDialog.Builder(this).setTitle(title).setMessage(message)
-                .setPositiveButton("知道了", null).show();
+        CheatMenu.showDialog(new AlertDialog.Builder(this).setTitle(title).setMessage(message)
+                .setPositiveButton("知道了", null));
     }
 
     private static final String RELOAD_STEPS =
@@ -2036,11 +2157,10 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         for (int i = 0; i < snaps.size(); i++) {
             box.addView(saveCard(snaps.get(i), i == 0));
         }
-        saveCardsDialog = new android.app.AlertDialog.Builder(this)
+        saveCardsDialog = CheatMenu.showDialog(new android.app.AlertDialog.Builder(this)
                 .setTitle("恢复存档备份")
                 .setView(scroll)
-                .setPositiveButton("关闭", null)
-                .show();
+                .setPositiveButton("关闭", null));
     }
 
     /** One card of the save list. */
@@ -2275,7 +2395,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             }
         });
         builder.setNegativeButton("取消", null);
-        builder.show();
+        CheatMenu.showDialog(builder);
     }
 
     private void exportSaves() {
@@ -2432,7 +2552,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         panel.addView(resolutionNote);
         android.widget.ScrollView scroll = new android.widget.ScrollView(this);
         scroll.addView(panel);
-        new android.app.AlertDialog.Builder(this)
+        CheatMenu.showDialog(new android.app.AlertDialog.Builder(this)
                 .setTitle("画质与帧率")
                 .setView(scroll)
                 .setNegativeButton("取消", null)
@@ -2451,15 +2571,15 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                         if (surface_view != null) applySurfaceFrameRate(surface_view.getHolder().getSurface(), true);
                     }
                     if (guestStarted && height != runningRenderHeight) {
-                        new android.app.AlertDialog.Builder(this).setTitle("重开游戏后应用画质")
+                        CheatMenu.showDialog(new android.app.AlertDialog.Builder(this).setTitle("重开游戏后应用画质")
                                 .setMessage("请先在游戏内保存进度。保存后退出并重新打开应用。")
                                 .setNegativeButton("稍后退出", null)
                                 .setPositiveButton("退出游戏", (confirm, action) -> {
                                     finishAndRemoveTask();
                                     android.os.Process.killProcess(android.os.Process.myPid());
-                                }).show();
+                                }));
                     }
-                }).show();
+                }));
     }
 
     // An explicit choice wins over the historical marker, for both display

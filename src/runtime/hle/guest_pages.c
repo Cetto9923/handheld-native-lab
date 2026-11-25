@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "guest_pages.h"
+#include "rb_tree.h"
 #include <pthread.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -11,19 +12,49 @@ struct page_allocation {
     size_t bytes;
     guest_charge_ticket *ticket;
     int committed, backed;
-    struct page_allocation *next;
+    struct hle_rb_node rb;
 };
-enum { MAP_GAP_COUNT = 8 };
 struct page_region {
     uintptr_t base;
-    uintptr_t allocation_high_end;
-    struct { uintptr_t begin, end; } map_gaps[MAP_GAP_COUNT];
-    unsigned map_gap_next;
     size_t bytes;
     int live, quarantined;
-    struct page_allocation *allocations;
+    struct hle_rb_node *allocations;
     struct page_region *next;
 };
+_Static_assert(sizeof(struct page_allocation)<=224,"page_allocation exceeds metadata slab");
+_Static_assert(sizeof(struct page_region)<=224,"page_region exceeds metadata slab");
+
+static struct page_allocation *alloc_first(struct hle_rb_node *root) {
+    struct hle_rb_node *n=hle_rb_first(root);
+    return n?HLE_RB_ENTRY(n,struct page_allocation,rb):NULL;
+}
+
+static struct page_allocation *alloc_next(struct page_allocation *a) {
+    struct hle_rb_node *n=hle_rb_next(&a->rb);
+    return n?HLE_RB_ENTRY(n,struct page_allocation,rb):NULL;
+}
+
+/* First disjoint allocation with address + bytes > x in inorder traversal. */
+static struct page_allocation *alloc_first_ending_after(struct hle_rb_node *root,uintptr_t x) {
+    struct page_allocation *best=NULL;
+    struct hle_rb_node *cur=root;
+    while(cur) {
+        struct page_allocation *a=HLE_RB_ENTRY(cur,struct page_allocation,rb);
+        if(a->address+a->bytes>x) {best=a;cur=cur->child[0];}
+        else cur=cur->child[1];
+    }
+    return best;
+}
+
+static void alloc_insert(struct hle_rb_node **root,struct page_allocation *z) {
+    struct hle_rb_node **link=root,*parent=NULL;
+    while(*link) {
+        struct page_allocation *a=HLE_RB_ENTRY(*link,struct page_allocation,rb);
+        parent=*link;
+        link=&parent->child[z->address>=a->address];
+    }
+    hle_rb_link_and_insert(root,parent,link,&z->rb);
+}
 struct guest_pages {
     guest_context *context;
     pthread_mutex_t mutex;
@@ -149,7 +180,7 @@ struct guest_pages_result guest_pages_reserve(guest_pages *p, size_t bytes, uint
     v.region_result = nso_host_allocate_address_region(&r->base, bytes);
     if (v.region_result) { v.status = GUEST_PAGES_VM_ERROR; drop_node(p,GUEST_METADATA_PAGE_REGION,r); }
     else {
-        r->bytes = bytes; r->live = 1;r->allocation_high_end=r->base;
+        r->bytes = bytes; r->live = 1;
         r->next = p->regions; p->regions = r;
         *out = r->base;
         changed(p);
@@ -167,23 +198,10 @@ struct guest_pages_result guest_pages_map(guest_pages *p, uintptr_t address, siz
     struct page_region *r = containing(p, address, bytes);
     if (!r) { v.status = GUEST_PAGES_NOT_OWNED; goto done; }
     if (r->quarantined) { v.status = GUEST_PAGES_QUARANTINED; goto done; }
-    uintptr_t end=address+bytes;
-    uintptr_t gap_end=r->base+r->bytes;
-    /* Previously validated gaps also cover ascending maps below the highest
-     * allocation. Frees/splits only remove occupied bytes from such a gap.
-     * Every map publishes a new, smaller gap under this same owner lock. */
-    int gap_cached=0;
-    for(unsigned i=0;i<MAP_GAP_COUNT;i++)
-        if(address>=r->map_gaps[i].begin && end<=r->map_gaps[i].end) {
-            gap_end=r->map_gaps[i].end;gap_cached=1;break;
-        }
-    if(!gap_cached && address<r->allocation_high_end)
-        for (struct page_allocation *a = r->allocations; a; a = a->next) {
-            if (overlaps(address, bytes, a->address, a->bytes)) {
-                v.status = GUEST_PAGES_OVERLAP; goto done;
-            }
-            if(a->address>=end && a->address<gap_end)gap_end=a->address;
-        }
+    struct page_allocation *hit = alloc_first_ending_after(r->allocations, address);
+    if (hit && overlaps(address, bytes, hit->address, hit->bytes)) {
+        v.status = GUEST_PAGES_OVERLAP; goto done;
+    }
     struct page_allocation *a = page_node(p,GUEST_METADATA_PAGE_ALLOCATION,sizeof(*a));
     if (!a) { v.status = GUEST_PAGES_NO_MEMORY; goto done; }
     a->address = address; a->bytes = bytes;
@@ -217,41 +235,19 @@ struct guest_pages_result guest_pages_map(guest_pages *p, uintptr_t address, siz
         if (v.ticket_cleanup.status == GUEST_CONTEXT_OK) { drop_node(p,GUEST_METADATA_PAGE_ALLOCATION,a); goto done; }
         v.status = context_status(v.ticket_cleanup.status);
     }
-    a->next = r->allocations; r->allocations = a;
-    if(end>r->allocation_high_end)r->allocation_high_end=end;
-    /* Interleaved heaps can advance in different known-free gaps. A new map
-     * trims every cached gap it intersects before publishing its upper gap.
-     * Frees only remove occupied bytes, so they cannot invalidate a free gap. */
-    for(unsigned i=0;i<MAP_GAP_COUNT;i++) {
-        if(r->map_gaps[i].begin<end && address<r->map_gaps[i].end)
-            r->map_gaps[i].end=address>r->map_gaps[i].begin?address:r->map_gaps[i].begin;
-    }
-    r->map_gaps[r->map_gap_next].begin=end;
-    r->map_gaps[r->map_gap_next].end=gap_end;
-    r->map_gap_next=(r->map_gap_next+1)%MAP_GAP_COUNT;
+    alloc_insert(&r->allocations, a);
     changed(p);
 done:
     pthread_mutex_unlock(&p->mutex);
     return v;
 }
 
-static struct guest_pages_result free_exact_locked(guest_pages *p,uintptr_t address,size_t bytes) {
+static struct guest_pages_result free_node_locked(guest_pages *p, struct page_region *r,
+                                                  struct page_allocation *a) {
     struct guest_pages_result v = result(GUEST_PAGES_OK);
-    struct page_region *r = containing(p, address, bytes);
-    if (!r) { v.status = GUEST_PAGES_NOT_OWNED; goto done; }
-    if (r->quarantined) { v.status = GUEST_PAGES_QUARANTINED; goto done; }
-    struct page_allocation **link = &r->allocations;
-    while (*link && ((*link)->address != address || (*link)->bytes != bytes)) link = &(*link)->next;
-    if (!*link) {
-        v.status = GUEST_PAGES_NOT_OWNED;
-        for (struct page_allocation *a = r->allocations; a; a = a->next)
-            if (overlaps(address, bytes, a->address, a->bytes)) v.status = GUEST_PAGES_UNSUPPORTED;
-        goto done;
-    }
-    struct page_allocation *a = *link;
     if (a->backed) {
         v.vm_attempted = 1;
-        v.vm = nso_host_owned_pages_free(address, bytes);
+        v.vm = nso_host_owned_pages_free(a->address, a->bytes);
         if (v.vm.status != NSO_OWNED_PAGE_OK) {
             r->quarantined = 1; changed(p);
             v.status = GUEST_PAGES_QUARANTINED; goto done;
@@ -262,9 +258,24 @@ static struct guest_pages_result free_exact_locked(guest_pages *p,uintptr_t addr
     if (v.ticket_cleanup.status != GUEST_CONTEXT_OK) {
         v.status = context_status(v.ticket_cleanup.status); goto done;
     }
-    *link = a->next; drop_node(p,GUEST_METADATA_PAGE_ALLOCATION,a); changed(p);
+    hle_rb_erase(&r->allocations, &a->rb);
+    drop_node(p,GUEST_METADATA_PAGE_ALLOCATION,a); changed(p);
 done:
     return v;
+}
+
+static struct guest_pages_result free_exact_locked(guest_pages *p,uintptr_t address,size_t bytes) {
+    struct guest_pages_result v = result(GUEST_PAGES_OK);
+    struct page_region *r = containing(p, address, bytes);
+    if (!r) { v.status = GUEST_PAGES_NOT_OWNED; return v; }
+    if (r->quarantined) { v.status = GUEST_PAGES_QUARANTINED; return v; }
+    struct page_allocation *a = alloc_first_ending_after(r->allocations, address);
+    if (!a || a->address != address || a->bytes != bytes) {
+        v.status = (a && overlaps(address, bytes, a->address, a->bytes))
+            ? GUEST_PAGES_UNSUPPORTED : GUEST_PAGES_NOT_OWNED;
+        return v;
+    }
+    return free_node_locked(p, r, a);
 }
 struct guest_pages_result guest_pages_free_exact(guest_pages *p,uintptr_t address,size_t bytes) {
     if(!p)return result(GUEST_PAGES_INVALID);
@@ -276,15 +287,16 @@ struct guest_pages_result guest_pages_free_exact(guest_pages *p,uintptr_t addres
 /* Refine a live allocation at an aligned boundary without changing backing
  * or charged totals. New metadata is secured before publishing either half. */
 static struct guest_pages_result split_at_locked(guest_pages *p,struct page_region *r,uintptr_t cut) {
-    for(struct page_allocation *a=r->allocations;a;a=a->next){
-        if(cut<=a->address || cut-a->address>=a->bytes)continue;
+    struct page_allocation *a=alloc_first_ending_after(r->allocations,cut);
+    if(a && cut>a->address && cut-a->address<a->bytes){
         struct page_allocation *right=page_node(p,GUEST_METADATA_PAGE_ALLOCATION,sizeof(*right));
         if(!right)return result(GUEST_PAGES_NO_MEMORY);
         guest_charge_ticket *ticket=NULL;
         struct guest_context_result c=guest_charge_split(a->ticket,cut-a->address,&ticket);
         if(c.status!=GUEST_CONTEXT_OK){drop_node(p,GUEST_METADATA_PAGE_ALLOCATION,right);struct guest_pages_result v=result(context_status(c.status));v.context=c;return v;}
-        *right=*a;right->address=cut;right->bytes=a->bytes-(cut-a->address);right->ticket=ticket;
-        a->bytes=cut-a->address;a->next=right;changed(p);break;
+        right->address=cut;right->bytes=a->bytes-(cut-a->address);right->ticket=ticket;
+        right->committed=a->committed;right->backed=a->backed;
+        a->bytes=cut-a->address;alloc_insert(&r->allocations,right);changed(p);
     }
     return result(GUEST_PAGES_OK);
 }
@@ -300,21 +312,24 @@ struct guest_pages_result guest_pages_free_allocations(guest_pages *p,uintptr_t 
     if(!r){v.status=GUEST_PAGES_NOT_OWNED;goto done;}
     if(r->quarantined){v.status=GUEST_PAGES_QUARANTINED;goto done;}
     uintptr_t end=address+bytes;
-    for(uintptr_t at=address;at<end;){
-        struct page_allocation *a=r->allocations;
-        while(a && !(at>=a->address && at-a->address<a->bytes))a=a->next;
-        if(!a || !a->committed || !a->backed){v.status=GUEST_PAGES_UNSUPPORTED;goto done;}
+    uintptr_t at=address;
+    for(struct page_allocation *a=alloc_first_ending_after(r->allocations,address);at<end;a=alloc_next(a)){
+        if(!a || at<a->address || at-a->address>=a->bytes || !a->committed || !a->backed){
+            v.status=GUEST_PAGES_UNSUPPORTED;goto done;
+        }
         uintptr_t next=a->address+a->bytes;at=next<end?next:end;
     }
     v=split_at_locked(p,r,address);if(v.status!=GUEST_PAGES_OK)goto done;
     v=split_at_locked(p,r,end);if(v.status!=GUEST_PAGES_OK)goto done;
-    for(uintptr_t at=address;at<end;){
-        struct page_allocation *a=r->allocations;
-        while(a&&a->address!=at)a=a->next;
-        size_t count=a->bytes;
-        v=free_exact_locked(p,at,count);
+    at=address;
+    struct page_allocation *cur=alloc_first_ending_after(r->allocations,address);
+    while(at<end){
+        struct page_allocation *next=alloc_next(cur);
+        size_t count=cur->bytes;
+        v=free_node_locked(p,r,cur);
         if(v.status!=GUEST_PAGES_OK)goto done;
         at+=count;
+        cur=next;
     }
 done:
     pthread_mutex_unlock(&p->mutex);return v;
@@ -331,15 +346,16 @@ static struct guest_pages_result release_locked(guest_pages *p, struct page_regi
         v.region_result = nso_host_free_address_region(r->base);
         if (v.region_result) { v.status = GUEST_PAGES_VM_ERROR; return v; }
         r->live = 0; r->quarantined = 0; changed(p);
-        for (struct page_allocation *a = r->allocations; a; a = a->next) a->backed = 0;
+        for (struct page_allocation *a = alloc_first(r->allocations); a; a = alloc_next(a)) a->backed = 0;
     }
     while (r->allocations) {
-        struct page_allocation *a = r->allocations;
+        struct page_allocation *a = HLE_RB_ENTRY(r->allocations, struct page_allocation, rb);
         v.ticket_cleanup = drop_ticket(a);
         if (v.ticket_cleanup.status != GUEST_CONTEXT_OK) {
             v.status = context_status(v.ticket_cleanup.status); return v;
         }
-        r->allocations = a->next; drop_node(p,GUEST_METADATA_PAGE_ALLOCATION,a); changed(p);
+        hle_rb_erase(&r->allocations, &a->rb);
+        drop_node(p,GUEST_METADATA_PAGE_ALLOCATION,a); changed(p);
     }
     *link = r->next; drop_node(p,GUEST_METADATA_PAGE_REGION,r); changed(p);
     return v;
@@ -352,6 +368,36 @@ struct guest_pages_result guest_pages_release_region(guest_pages *p, uintptr_t b
     struct guest_pages_result v = *link ? release_locked(p, link) : result(GUEST_PAGES_NOT_OWNED);
     pthread_mutex_unlock(&p->mutex);
     return v;
+}
+
+static int compare_ticket_ptr(const void *lhs, const void *rhs) {
+    uintptr_t a = (uintptr_t)*(guest_charge_ticket *const *)lhs;
+    uintptr_t b = (uintptr_t)*(guest_charge_ticket *const *)rhs;
+    return (a > b) - (a < b);
+}
+
+static int has_duplicate_ticket(guest_pages *p, size_t count) {
+    if (count < 2) return 0;
+    guest_charge_ticket *stack_buf[64];
+    guest_charge_ticket **buf = count <= 64 ? stack_buf : malloc(count * sizeof(*buf));
+    if (!buf) {
+        for (struct page_region *r = p->regions; r; r = r->next)
+            for (struct page_allocation *a = alloc_first(r->allocations); a; a = alloc_next(a))
+                for (struct page_region *s = p->regions; s; s = s->next)
+                    for (struct page_allocation *b = alloc_first(s->allocations); b; b = alloc_next(b))
+                        if (a != b && a->ticket == b->ticket) return 1;
+        return 0;
+    }
+    size_t n = 0;
+    for (struct page_region *r = p->regions; r; r = r->next)
+        for (struct page_allocation *a = alloc_first(r->allocations); a; a = alloc_next(a))
+            if (n < count) buf[n++] = a->ticket;
+    qsort(buf, n, sizeof(*buf), compare_ticket_ptr);
+    int dup = 0;
+    for (size_t i = 1; i < n; i++)
+        if (buf[i] == buf[i - 1]) { dup = 1; break; }
+    if (buf != stack_buf) free(buf);
+    return dup;
 }
 
 struct guest_pages_result guest_pages_usage(guest_pages *p, struct guest_pages_usage *out) {
@@ -368,20 +414,22 @@ struct guest_pages_result guest_pages_usage(guest_pages *p, struct guest_pages_u
             if (r->base == s->base || (r->live && s->live && overlaps(r->base,r->bytes,s->base,s->bytes))) u.ledger_valid = 0;
         if (r->live && (!add_size(&u.region_count,1) || !add_size(&u.reserved_bytes,r->bytes))) u.ledger_valid = 0;
         if (r->quarantined) { ++u.quarantined_regions; u.backing_valid = 0; }
-        for (struct page_allocation *a = r->allocations; a; a = a->next) {
+        struct page_allocation *prev = NULL;
+        for (struct page_allocation *a = alloc_first(r->allocations); a; a = alloc_next(a)) {
             ++u.metadata_allocations;
             if(!guest_metadata_is_owned(p->context,GUEST_METADATA_PAGE_ALLOCATION,a,sizeof(*a))) {u.ledger_valid=0;break;}
             if (!a->ticket || !valid_range(p,a->address,a->bytes) || a->address < r->base ||
                 a->address - r->base >= r->bytes || a->bytes > r->bytes - (a->address - r->base) ||
                 (!r->live && a->backed)) u.ledger_valid = 0;
+            if (prev && (a->address < prev->address || overlaps(prev->address,prev->bytes,a->address,a->bytes)))
+                u.ledger_valid = 0;
+            prev = a;
             if (!add_size(&u.allocation_count,1) || !add_size(&u.ticket_count,1) ||
                 !add_size(a->committed ? &u.charged_bytes : &u.pending_bytes,a->bytes)) u.ledger_valid = 0;
             if (a->backed && !add_size(&u.backing_bytes,a->bytes)) u.ledger_valid = 0;
-            for (struct page_region *s = p->regions; s; s = s->next)
-                for (struct page_allocation *b = s->allocations; b; b = b->next)
-                    if (a != b && (a->ticket == b->ticket || (r == s && overlaps(a->address,a->bytes,b->address,b->bytes)))) u.ledger_valid = 0;
         }
     }
+    if (u.ledger_valid && has_duplicate_ticket(p, u.allocation_count)) u.ledger_valid = 0;
     v.vm = nso_host_owned_pages_usage(&u.vm);
     v.context = guest_context_usage(p->context,&u.context);
     struct guest_context_result resource=guest_context_resource_usage(p->context,&u.resources);

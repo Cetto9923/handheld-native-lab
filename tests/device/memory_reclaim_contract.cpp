@@ -8,7 +8,8 @@
 #include <memory>
 #include <vector>
 
-unsigned phase = 0, unpinned = 0, destroyed_pools = 0, pipeline_clears = 0, warm_trims = 0;
+unsigned phase = 0, unpinned = 0, destroyed_pools = 0, pipeline_clears = 0, warm_trims = 0,
+         vcache_spare_releases = 0, vcache_releases = 0;
 bool expect_preserved_warm = false;
 using VkBuffer = int;
 struct Arena {
@@ -99,6 +100,17 @@ void vkDestroyDescriptorPool(int, int, void *) {
     assert(phase == 3 && unpinned == slot_count);
     ++destroyed_pools;
 }
+namespace vcache {
+size_t release_spare() {
+    assert(phase == 3);
+    ++vcache_spare_releases;
+    return 0;
+}
+void release() {
+    assert(phase == 3);
+    ++vcache_releases;
+}
+} // namespace vcache
 void clear_pipeline_objects() {
     assert(phase == 3);
     ++pipeline_clears;
@@ -116,6 +128,7 @@ struct {
 
 void initialize() {
     phase = unpinned = destroyed_pools = pipeline_clears = warm_trims = 0;
+    vcache_spare_releases = vcache_releases = 0;
     expect_preserved_warm = false;
     warm::memory_constrained = false;
     image_index_dirty = false;
@@ -148,6 +161,7 @@ int main() {
         assert(images.count(2) && !images.count(3) && images.count(4));
         assert(image_index_dirty && images_epoch == 1 && memo_check_gen == 1);
         assert(destroyed_pools == 4 && pipeline_clears == (level == 2));
+        assert(vcache_spare_releases == (level == 1) && vcache_releases == (level >= 2));
         assert(warm_trims == 2 && warm::memory_constrained);
         for (unsigned i = 0; i < slots.size(); ++i) {
             assert(slots[i].stream.buffers.empty() && slots[i].uniform.buffers.empty());
@@ -160,6 +174,7 @@ int main() {
     reclaim_memory_caches(1, true);
     assert(warm_trims == 0 && !warm::memory_constrained);
     assert(destroyed_pools == 4 && pipeline_clears == 0);
+    assert(vcache_spare_releases == 1 && vcache_releases == 0);
     assert(images.count(1) && images.count(2) && !images.count(3) && images.count(4));
     assert(image_index_dirty && images_epoch == 1 && memo_check_gen == 1);
     for (unsigned state = 0; state < 4; ++state) {
@@ -173,7 +188,8 @@ int main() {
         if (state == 3)
             slots[2].copy_readers.push_back(1);
         reclaim_memory_caches(2);
-        if (unpinned || destroyed_pools || images.size() != 4 || pipeline_clears)
+        if (unpinned || destroyed_pools || images.size() != 4 || pipeline_clears ||
+            vcache_spare_releases || vcache_releases)
             return 11;
     }
 }

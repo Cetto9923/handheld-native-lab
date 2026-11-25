@@ -3639,6 +3639,9 @@ extern int guest_process_get_target_fps(void) __attribute__((weak));
 
 static void *vsync_worker_thread(void *arg) {
     (void)arg;
+    struct timespec now_ts;
+    clock_gettime(CLOCK_MONOTONIC, &now_ts);
+    uint64_t next_ns = (uint64_t)now_ts.tv_sec * 1000000000ull + (uint64_t)now_ts.tv_nsec;
     while (1) {
         int target_fps = guest_process_get_target_fps ? guest_process_get_target_fps() : 0;
         if (target_fps <= 0) {
@@ -3646,13 +3649,26 @@ static void *vsync_worker_thread(void *arg) {
             if (env_fps && atoi(env_fps) > 0) target_fps = atoi(env_fps);
         }
         uint64_t interval_ns = 16666667; // default 60 Hz ticker (~16.67ms)
-        if (target_fps == 40) interval_ns = 25000000; // 40 Hz ticker for 40 FPS
-        else if (target_fps > 60) interval_ns = 1000000000ull / (uint64_t)target_fps;
+        if (target_fps == 40) {
+            // Use the 120 Hz grid (3x40, 4x30) rather than 25 ms so a single 26 ms
+            // frame does not drop straight to 50 ms (20 Hz); xbg_frame_pace holds 40 FPS.
+            interval_ns = 8333333;
+        } else if (target_fps > 60) {
+            interval_ns = 1000000000ull / (uint64_t)target_fps;
+        }
 
-        struct timespec ts;
-        ts.tv_sec = (time_t)(interval_ns / 1000000000ull);
-        ts.tv_nsec = (long)(interval_ns % 1000000000ull);
-        nanosleep(&ts, NULL);
+        next_ns += interval_ns;
+        clock_gettime(CLOCK_MONOTONIC, &now_ts);
+        uint64_t now_ns = (uint64_t)now_ts.tv_sec * 1000000000ull + (uint64_t)now_ts.tv_nsec;
+        if (now_ns < next_ns) {
+            uint64_t wait_ns = next_ns - now_ns;
+            struct timespec ts;
+            ts.tv_sec = (time_t)(wait_ns / 1000000000ull);
+            ts.tv_nsec = (long)(wait_ns % 1000000000ull);
+            nanosleep(&ts, NULL);
+        } else if (now_ns - next_ns > interval_ns) {
+            next_ns = now_ns;
+        }
         nso_host_vi_signal_vsync_event();
     }
     return NULL;
@@ -3903,6 +3919,7 @@ void *nso_host_valloc(size_t size) {
 
 extern int guest_process_is_guest_memory(uintptr_t) __attribute__((weak));
 extern int guest_process_interposed_free(void *) __attribute__((weak));
+extern int guest_process_release_guest_page_block(void *, size_t) __attribute__((weak));
 
 void nso_host_free(void *ptr) {
     if (!ptr) {

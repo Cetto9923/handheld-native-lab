@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "address_region.h"
+#include "rb_tree.h"
 #include <errno.h>
 #include <inttypes.h>
 #include <pthread.h>
@@ -11,20 +12,51 @@
 
 struct accessible_interval {
     uintptr_t begin,end;
-    struct accessible_interval *next;
+    struct hle_rb_node rb;
 };
-enum { MAP_CURSOR_COUNT = 8 };
 struct reservation {
     uintptr_t address;
     void *mapping;
     size_t mapping_size,requested_size;
     size_t mapped_guest_bytes;
     int quarantined;
-    struct accessible_interval *accessible;
-    struct accessible_interval *map_cursors[MAP_CURSOR_COUNT];
-    unsigned map_cursor_next;
+    struct hle_rb_node *accessible;
     struct reservation *next;
 };
+_Static_assert(sizeof(struct accessible_interval)<=224,"accessible_interval exceeds metadata slab");
+_Static_assert(sizeof(struct reservation)<=224,"reservation exceeds metadata slab");
+
+static struct accessible_interval *iv_first(struct hle_rb_node *root) {
+    struct hle_rb_node *n=hle_rb_first(root);
+    return n?HLE_RB_ENTRY(n,struct accessible_interval,rb):NULL;
+}
+
+static struct accessible_interval *iv_next(struct accessible_interval *i) {
+    struct hle_rb_node *n=hle_rb_next(&i->rb);
+    return n?HLE_RB_ENTRY(n,struct accessible_interval,rb):NULL;
+}
+
+/* First disjoint interval with end > x in inorder traversal. */
+static struct accessible_interval *iv_first_ending_after(struct hle_rb_node *root,uintptr_t x) {
+    struct accessible_interval *best=NULL;
+    struct hle_rb_node *cur=root;
+    while(cur) {
+        struct accessible_interval *i=HLE_RB_ENTRY(cur,struct accessible_interval,rb);
+        if(i->end>x) {best=i;cur=cur->child[0];}
+        else cur=cur->child[1];
+    }
+    return best;
+}
+
+static void iv_insert(struct hle_rb_node **root,struct accessible_interval *z) {
+    struct hle_rb_node **link=root,*parent=NULL;
+    while(*link) {
+        struct accessible_interval *i=HLE_RB_ENTRY(*link,struct accessible_interval,rb);
+        parent=*link;
+        link=&parent->child[z->begin>=i->begin];
+    }
+    hle_rb_link_and_insert(root,parent,link,&z->rb);
+}
 static pthread_mutex_t region_mutex=PTHREAD_MUTEX_INITIALIZER;
 static struct reservation *regions;
 static struct nso_region_allocator node_allocator;
@@ -103,9 +135,16 @@ static struct reservation *find_owner(uintptr_t address,size_t size) {
 }
 static int accessible_outside(struct reservation *r,uintptr_t host_begin,uintptr_t host_end,
                               uintptr_t begin,uintptr_t end) {
-    for(struct accessible_interval *i=r->accessible;i && i->begin<host_end;i=i->next)
-        if(host_begin<i->end && ((i->begin<begin && host_begin<begin) ||
-                                (end<i->end && end<host_end)))return 1;
+    if(host_begin<begin) {
+        uintptr_t head_end=host_end<begin?host_end:begin;
+        struct accessible_interval *i=iv_first_ending_after(r->accessible,host_begin);
+        if(i && i->begin<head_end)return 1;
+    }
+    if(end<host_end) {
+        uintptr_t tail_begin=host_begin>end?host_begin:end;
+        struct accessible_interval *i=iv_first_ending_after(r->accessible,tail_begin);
+        if(i && i->begin<host_end)return 1;
+    }
     return 0;
 }
 static void unshared_host_span(struct reservation *r,uintptr_t begin,uintptr_t end,
@@ -186,11 +225,9 @@ uint32_t nso_host_free_address_region(uintptr_t address) {
         abort();
     }
     *slot=r->next;
-    struct accessible_interval *interval=r->accessible;
-    while(interval) {
-        struct accessible_interval *next=interval->next;
-        release_node(2,interval);interval=next;
-    }
+    struct hle_rb_node *interval;
+    while((interval=hle_rb_pop_vine(&r->accessible))!=NULL)
+        release_node(2,HLE_RB_ENTRY(interval,struct accessible_interval,rb));
     pthread_mutex_unlock(&region_mutex);
     fprintf(stderr,"[address-region] released address=0x%" PRIxPTR " size=0x%zx\n",address,r->requested_size);
     release_node(1,r);
@@ -206,16 +243,8 @@ struct nso_owned_page_result nso_host_owned_pages_map(uintptr_t address,size_t s
     if(!r)result=page_result(NSO_OWNED_PAGE_NOT_OWNED,NSO_OWNED_PAGE_DETAIL_NONE,0,0);
     else if(r->quarantined)result=page_result(NSO_OWNED_PAGE_QUARANTINED,NSO_OWNED_PAGE_DETAIL_NONE,0,0);
     else {
-        struct accessible_interval **slot=&r->accessible;
-        struct accessible_interval *cursor=NULL;
-        for(unsigned i=0;i<MAP_CURSOR_COUNT;i++) {
-            struct accessible_interval *candidate=r->map_cursors[i];
-            if(candidate && candidate->end<=address && (!cursor || candidate->end>cursor->end))
-                cursor=candidate;
-        }
-        if(cursor)slot=&cursor->next;
-        while(*slot && (*slot)->end<=address)slot=&(*slot)->next;
-        if(*slot && (*slot)->begin<end)
+        struct accessible_interval *hit=iv_first_ending_after(r->accessible,address);
+        if(hit && hit->begin<end)
             result=page_result(NSO_OWNED_PAGE_UNSUPPORTED,NSO_OWNED_PAGE_DETAIL_OVERLAP,0,0);
         else {
             struct accessible_interval *node=allocate_node(2,sizeof(*node));
@@ -236,12 +265,12 @@ struct nso_owned_page_result nso_host_owned_pages_map(uintptr_t address,size_t s
                 /* New anonymous host pages are already zero and stay lazy.
                  * Clear only new guest bytes sharing a live neighbor's page. */
                 zero_shared_edges(address,end,host_begin,host_end);
-                *node=(struct accessible_interval){address,end,*slot};
                 /* Owned containment plus disjointness bounds the sum by the
                  * requested reservation size, so this addition cannot wrap. */
-                *slot=node;r->mapped_guest_bytes+=size;
-                r->map_cursors[r->map_cursor_next]=node;
-                r->map_cursor_next=(r->map_cursor_next+1)%MAP_CURSOR_COUNT;
+                node->begin=address;
+                node->end=end;
+                iv_insert(&r->accessible,node);
+                r->mapped_guest_bytes+=size;
             }
         }
     }
@@ -258,17 +287,11 @@ struct nso_owned_page_result nso_host_owned_pages_free(uintptr_t address,size_t 
     if(!r)result=page_result(NSO_OWNED_PAGE_NOT_OWNED,NSO_OWNED_PAGE_DETAIL_NONE,0,0);
     else if(r->quarantined)result=page_result(NSO_OWNED_PAGE_QUARANTINED,NSO_OWNED_PAGE_DETAIL_NONE,0,0);
     else {
-        /* A successful free can delete or split the cached node. Rebuild the
-         * forward cursor on a later map while holding this same owner lock. */
-        memset(r->map_cursors,0,sizeof(r->map_cursors));
-        r->map_cursor_next=0;
-        struct accessible_interval **slot=&r->accessible;
-        while(*slot && (*slot)->end<=address)slot=&(*slot)->next;
-        struct accessible_interval *first=*slot,*cursor=first;
+        struct accessible_interval *first=iv_first_ending_after(r->accessible,address),*cursor=first;
         uintptr_t covered=address;
         while(cursor && cursor->begin<=covered && covered<end) {
             covered=cursor->end;
-            cursor=cursor->next;
+            cursor=iv_next(cursor);
         }
         if(covered<end)
             result=page_result(NSO_OWNED_PAGE_UNSUPPORTED,NSO_OWNED_PAGE_DETAIL_HOLES,0,0);
@@ -294,16 +317,23 @@ struct nso_owned_page_result nso_host_owned_pages_free(uintptr_t address,size_t 
                 } else {
                     zero_shared_edges(address,end,host_begin,host_end);
                     if(split) {
-                        *right=(struct accessible_interval){end,first->end,first->next};
-                        first->end=address;first->next=right;
+                        uintptr_t tail_end=first->end;
+                        first->end=address;
+                        right->begin=end;
+                        right->end=tail_end;
+                        iv_insert(&r->accessible,right);
                     } else {
-                        if(first->begin<address) {
-                            first->end=address;slot=&first->next;
+                        struct accessible_interval *node=first;
+                        if(node->begin<address) {
+                            node->end=address;
+                            node=iv_next(node);
                         }
-                        while(*slot && (*slot)->begin<end) {
-                            struct accessible_interval *node=*slot;
+                        while(node && node->begin<end) {
                             if(node->end>end) {node->begin=end;break;}
-                            *slot=node->next;release_node(2,node);
+                            struct accessible_interval *next=iv_next(node);
+                            hle_rb_erase(&r->accessible,&node->rb);
+                            release_node(2,node);
+                            node=next;
                         }
                     }
                     r->mapped_guest_bytes-=size;
@@ -330,7 +360,7 @@ struct nso_owned_page_result nso_host_owned_pages_usage(struct nso_owned_page_us
             out->mapped_guest_bytes_valid=0;break;
         }
         out->region_count++;out->reserved_guest_bytes+=r->requested_size;
-        for(struct accessible_interval *i=r->accessible;i;i=i->next) {
+        for(struct accessible_interval *i=iv_first(r->accessible);i;i=iv_next(i)) {
             if(node_allocator.owns && !node_allocator.owns(node_allocator.owner,2,i,sizeof(*i))) {
                 out->mapped_guest_bytes_valid=0;result=page_result(NSO_OWNED_PAGE_QUARANTINED,NSO_OWNED_PAGE_DETAIL_NONE,EFAULT,0);break;
             }

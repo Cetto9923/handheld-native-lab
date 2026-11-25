@@ -160,3 +160,8 @@ int xbg_game_profile_descriptor_live(uint32_t frame_count);
 extern "C"
 #endif
 int xbg_game_profile_draw_live(uint32_t frame_count);
+
+#ifdef __cplusplus
+extern "C"
+#endif
+void xbg_game_set_push_descriptor(VkBool32 enabled);
