@@ -488,21 +488,22 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         private float cyOf(Ctl c) { return c.fy * vh; }
         private float hwOf(Ctl c) { return c.hw * u * c.scale; }
         private float hhOf(Ctl c) { return c.hh * u * c.scale; }
-        private void place(int i, float px, float py) { ctls[i].fx = px / vw; ctls[i].fy = py / vh; ctls[i].scale = 1f; }
+        private void place(int i, float px, float py, float sc) { ctls[i].fx = px / vw; ctls[i].fy = py / vh; ctls[i].scale = sc; }
 
         private void defaults() {
             float w = vw, h = vh;
-            float fx = w - 3.1f * u, fy = h - 3.4f * u, d = 1.25f * u;
-            place(0, fx, fy + d); place(1, fx + d, fy); place(2, fx - d, fy); place(3, fx, fy - d);
-            place(4, 2.0f * u, 2.4f * u); place(5, 2.0f * u, 1.0f * u);
-            place(6, w - 2.0f * u, 2.4f * u); place(7, w - 2.0f * u, 1.0f * u);
-            place(8, w / 2f - 1.5f * u, h - 0.95f * u); place(9, w / 2f + 1.5f * u, h - 0.95f * u);
-            // Keep each thumb's controls on the same side and leave space between their hit areas.
-            place(10, 2.9f * u, h - 7.3f * u);
-            place(11, 2.9f * u, h - 3.3f * u);
-            place(12, w - 3.1f * u, h - 7.1f * u);
-            place(13, w - 5.65f * u, h - 7.1f * u);
-            place(14, 5.8f * u, h - 3.3f * u);
+            float fx = w - 3.40f * u, fy = h - 3.00f * u, d = 1.22f * u;
+            place(0, fx, fy + d, 0.92f); place(1, fx + d, fy, 0.92f); place(2, fx - d, fy, 0.92f); place(3, fx, fy - d, 0.92f);
+            float shoulderX = 1.25f * u, r1Y = h * 0.480f, r2Y = h * 0.415f;
+            place(4, shoulderX, r1Y, 0.55f); place(5, shoulderX, r2Y, 0.55f);
+            place(6, w - shoulderX, r1Y, 0.55f); place(7, w - shoulderX, r2Y, 0.55f);
+            place(8, w / 2f - 0.85f * u, h - 0.55f * u, 0.55f); place(9, w / 2f + 0.85f * u, h - 0.55f * u, 0.55f);
+            // Aligned compact layout: keep shoulders clear of top HUD and both sticks aligned with L3/R3.
+            place(10, 1.95f * u, h * 0.635f, 0.85f);
+            place(11, 3.10f * u, h - 2.55f * u, 0.68f);
+            place(12, w - 1.85f * u, h * 0.595f, 0.75f);
+            place(13, w - 4.10f * u, r1Y, 0.72f);
+            place(14, 5.45f * u, h - 2.55f * u, 0.72f);
             for (Ctl c : ctls) c.visible = true;
             opacity = 1f;
         }
@@ -2503,7 +2504,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         writeMarkerIfMissing(new File(dir, "gfx-fence-spin-us"), "0\n");
         writeMarkerIfMissing(new File(dir, "gfx-audio-paced-transport"), "1\n");
         writeMarkerIfMissing(new File(dir, "gfx-codex-audio-dump"), "0\n");
-        writeMarkerIfMissing(new File(dir, "gfx-codex-frame-metrics"), "1\n");
+        writeMarkerIfMissing(new File(dir, "gfx-codex-frame-metrics"), "0\n");
         /* The frame rate declaration to the platform is on by default. The
          * marker lets it be turned off on the device, without a new build. */
         writeMarkerIfMissing(new File(dir, "gfx-surface-frame-rate"), "1\n");

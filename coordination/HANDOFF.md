@@ -3,7 +3,7 @@
 针对用户反馈洞窟路段左右移动出现右半屏模糊棕橙色隔帧闪烁（`SVID_20261125_132554_1.mp4` 实测 `122–161` 次隔帧突变，`v1.0.79` 同点 `0` 次），经二分排查后撤回 `SnapFlatTable`（恢复 `SnapMap`）、`resolve_slot_writebacks` 批量失效（恢复逐条失效）及无开关 `fast_texel_vk` / `last_bv` / 直通 `snapshot`：
 - **闪烁修复验证**：在完全相同洞窟岩柱位置复测（`fix2_cave_check.mp4`），`239` 帧 **0 次隔帧突变**。
 - **主机门禁（最终改动后复跑）**：`tests.device.test_target_fps_marker` + `tests.device.test_fresh_descriptor_cache`（5 tests OK）及 9 项 `scripts/android/*.sh` 脚本全部 PASS。
-- **发布产物（`v1.1.0`，`versionCode=80`）**：`.local/releases/1.1.0/FFRS-1.1.0-universal.apk`（SHA-256 `cc97c551fb11586b1bab8c5fff32ea8d6c82c84249571078690c43c91b80e08c`）已合入完整「画质与帧率」设置（30/40/60 FPS 实时限帧 + 720p/1080p 输出档位）与 Switch v1.0.1 同款 5 项金手指（`src/android/app/gamewindow/assets/ffrs-cheats.json`），真机菜单与主机门禁全部通过并已同步更新本地目录与 GitHub Release `v1.1.0`。
+- **发布产物（`v1.1.0`，`versionCode=80`）**：已整理至 `/Users/yuyan9923/GitHub/游戏发布包/02-最终幻想_共鸣_FFRS/FFRS-1.1.0-universal.apk`（含优化后的对称紧凑虚拟手柄默认布局、`画质与帧率`设置与 Switch v1.0.1 同款 5 项金手指），主机门禁全部通过并已同步更新本地发布目录与 GitHub Release `v1.1.0`。
 
 # 2026-11-25 荣耀平板 GT Pro Stage D4+D5（PushMemo 挥发绕过 + texel 视图缓存 + 写回批量失效）交付
 
