@@ -119,7 +119,7 @@ final class DeviceProfile {
             return new DeviceProfile("phone_mali", 1080, 60);
         }
         // Honor 400 Pro, OnePlus Ace (SM8750 / Snapdragon 8 Elite), Snapdragon 8 series, and general phones.
-        if (chip.equals("sm8650") || chip.equals("sm8750") || chip.equals("sm8550")
+        if (chip.equals("sm8650") || chip.equals("sm8750") || chip.equals("sm8850") || chip.equals("sm8550")
                 || chip.equals("sm8475") || chip.equals("sm8450") || chip.equals("sm7675")
                 || chip.equals("sm7475")
                 || (!chip.isEmpty() && !chip.equals("mt6897") && !chip.equals("sm8635")

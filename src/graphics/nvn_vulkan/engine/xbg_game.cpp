@@ -228,14 +228,14 @@ static void gfx_aff_detect() {
         long f = gfx_aff_cpu_max_freq((int)cpu);
         if (f <= 0) continue;
         if (f > prime) { second = prime; prime = f; prime_cpu = (int)cpu; }
-        else if (f > second) second = f;
+        else if (f < prime && f > second) second = f;
     }
     if (prime_cpu < 0) return;
     uint64_t prime_mask = 0, big_mask = 0;
     for (long cpu = 0; cpu < ncpu && cpu < 64; ++cpu) {
         long f = gfx_aff_cpu_max_freq((int)cpu);
         if (f <= 0) continue;
-        if (cpu == prime_cpu) prime_mask |= 1ull << cpu;
+        if (f == prime) prime_mask |= 1ull << cpu;
         else if (second > 0 && f * 10 >= second * 9) big_mask |= 1ull << cpu;
     }
     gfx_aff_prime_mask = prime_mask;
@@ -1094,13 +1094,7 @@ bool thor_compact_memory = false;
 bool ordered_clear_device(const char *model, const VkPhysicalDeviceProperties &gpu) {
     if (std::strcmp(model, "RG477M") == 0 && gpu.vendorID == 0x13b5 &&
         gpu.deviceID == 0xb8a31030 && gpu.driverVersion == 0x0b001000) return true;
-    if (gpu.vendorID != 0x5143) return false;
-    return (std::strcmp(model, "ROD2-W69") == 0 &&
-            gpu.deviceID == 0x43030b00 && gpu.driverVersion == 0x802fa02e) ||
-           (std::strcmp(model, "PKJ110") == 0 &&
-            gpu.deviceID == 0x44050001 && gpu.driverVersion == 0x80320050) ||
-           (std::strcmp(model, "25098PN5AC") == 0 &&
-            gpu.deviceID == 0x44050a31 && gpu.driverVersion == 0x8034a02c);
+    return gpu.vendorID == 0x5143;
 }
 
 bool vivo_requires_direct_indexed(const VkPhysicalDeviceProperties &gpu) {
