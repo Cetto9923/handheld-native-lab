@@ -184,6 +184,9 @@ if [[ -n "${FFRS_SPIRV_TOOLS_SOURCE:-}" ]]; then
     if [[ -n "${FFRS_APP_ASSETS:-}" ]]; then
         cp -R "${FFRS_APP_ASSETS}/." "${FFRS_NOTICE_ASSETS}/"
     fi
+    if [[ -f "${FFRS_ROOT}/src/android/app/gamewindow/assets/ffrs-cheats.json" && ! -f "${FFRS_NOTICE_ASSETS}/ffrs-cheats.json" ]]; then
+        cp "${FFRS_ROOT}/src/android/app/gamewindow/assets/ffrs-cheats.json" "${FFRS_NOTICE_ASSETS}/ffrs-cheats.json"
+    fi
     FFRS_NOTICE_DIR="${FFRS_NOTICE_ASSETS}/licenses/ffrs-subgroup-inline"
     if [[ -e "${FFRS_NOTICE_DIR}" ]]; then
         echo "BLOCKED_ASSETS: license asset path already exists: ${FFRS_NOTICE_DIR}" >&2
