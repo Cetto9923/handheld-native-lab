@@ -492,18 +492,35 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
 
         private void defaults() {
             float w = vw, h = vh;
-            float fx = w - 3.40f * u, fy = h - 3.00f * u, d = 1.22f * u;
-            place(0, fx, fy + d, 0.92f); place(1, fx + d, fy, 0.92f); place(2, fx - d, fy, 0.92f); place(3, fx, fy - d, 0.92f);
-            float shoulderX = 1.25f * u, r1Y = h * 0.480f, r2Y = h * 0.415f;
-            place(4, shoulderX, r1Y, 0.55f); place(5, shoulderX, r2Y, 0.55f);
-            place(6, w - shoulderX, r1Y, 0.55f); place(7, w - shoulderX, r2Y, 0.55f);
-            place(8, w / 2f - 0.85f * u, h - 0.55f * u, 0.55f); place(9, w / 2f + 0.85f * u, h - 0.55f * u, 0.55f);
+            float density = getResources().getDisplayMetrics().density;
+            float minDp = density > 0f ? Math.min(w, h) / density : 600f;
+            // Scale controls up on phones (smaller physical dp) while keeping the compact tablet layout.
+            float boost = Math.max(1.0f, Math.min(1.30f, 1.0f + (560f - minDp) / 600f));
+            float t = (boost - 1.0f) / 0.30f; // 0 on tablets, ~1 on phones
+
+            float fx = w - (3.40f + 0.30f * t) * u, fy = h - (3.00f + 0.25f * t) * u;
+            float d = (1.22f + 0.24f * t) * u;
+            float abxyScale = 0.92f * (1.0f + 0.24f * t);
+            place(0, fx, fy + d, abxyScale); place(1, fx + d, fy, abxyScale);
+            place(2, fx - d, fy, abxyScale); place(3, fx, fy - d, abxyScale);
+
+            float shoulderX = (1.25f + 0.32f * t) * u;
+            float r1Y = h * (0.480f - 0.045f * t), r2Y = h * (0.415f - 0.070f * t);
+            float shoulderScale = 0.55f * (1.0f + 0.32f * t);
+            place(4, shoulderX, r1Y, shoulderScale); place(5, shoulderX, r2Y, shoulderScale);
+            place(6, w - shoulderX, r1Y, shoulderScale); place(7, w - shoulderX, r2Y, shoulderScale);
+
+            float sysScale = 0.55f * (1.0f + 0.30f * t);
+            float sysX = (0.85f + 0.22f * t) * u, sysY = h - (0.55f + 0.08f * t) * u;
+            place(8, w / 2f - sysX, sysY, sysScale); place(9, w / 2f + sysX, sysY, sysScale);
+
             // Aligned compact layout: keep shoulders clear of top HUD and both sticks aligned with L3/R3.
-            place(10, 1.95f * u, h * 0.635f, 0.85f);
-            place(11, 3.10f * u, h - 2.55f * u, 0.68f);
-            place(12, w - 1.85f * u, h * 0.595f, 0.75f);
-            place(13, w - 4.10f * u, r1Y, 0.72f);
-            place(14, 5.45f * u, h - 2.55f * u, 0.72f);
+            place(10, (1.95f + 0.22f * t) * u, h * (0.635f - 0.040f * t), 0.85f * (1.0f + 0.22f * t));
+            float lsY = h - (2.55f + 0.30f * t) * u;
+            place(11, (3.10f + 0.45f * t) * u, lsY, 0.68f * (1.0f + 0.22f * t));
+            place(12, w - (1.85f + 0.35f * t) * u, h * (0.595f - 0.085f * t), 0.75f * (1.0f + 0.22f * t));
+            place(13, w - (4.10f + 0.45f * t) * u, r1Y, 0.72f * (1.0f + 0.25f * t));
+            place(14, (5.45f + 0.85f * t) * u, lsY, 0.72f * (1.0f + 0.25f * t));
             for (Ctl c : ctls) c.visible = true;
             opacity = 1f;
         }
