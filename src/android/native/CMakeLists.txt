@@ -152,7 +152,12 @@ if(ANDROID)
         "${FFRS_NVN_VULKAN_DIR}" "${FFRS_NVN_VULKAN_DIR}/nvn" "${FFRS_NVN_VULKAN_DIR}/tex")
     set_target_properties(ffrs_nvn_vulkan_engine PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON
         POSITION_INDEPENDENT_CODE ON)
-    target_compile_options(ffrs_nvn_vulkan_engine PRIVATE -O2 -fno-strict-aliasing -Wall)
+    # The engine is the CPU side of the port: every guest draw is translated here. The default stays
+    # -O2; a device work build can ask for -O3 / -mtune=cortex-a715 (tuning only, no new ISA) without
+    # touching any other target. CMake keeps the cached value across the normal build script runs.
+    set(FFRS_ENGINE_OPT_FLAGS "-O2" CACHE STRING "Optimization flags for the NVN/Vulkan engine (-O3 -mtune=cortex-a715 was tried and regressed the saturated airship scene 4x)")
+    separate_arguments(FFRS_ENGINE_OPT_FLAGS_LIST NATIVE_COMMAND "${FFRS_ENGINE_OPT_FLAGS}")
+    target_compile_options(ffrs_nvn_vulkan_engine PRIVATE ${FFRS_ENGINE_OPT_FLAGS_LIST} -fno-strict-aliasing -Wall)
     # The engine reads the guest's texture bytes as signed characters, which
     # is not the default on arm64.
     set_source_files_properties("${FFRS_NVN_VULKAN_DIR}/engine/xbg_texture.c"

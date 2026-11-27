@@ -9,11 +9,15 @@ struct guest_os_tls_thread {
     enum guest_os_tls_thread_state state;
     struct guest_os_tls_cleanup_report report;
     struct guest_os_tls_thread *next;
+    /* Owner set while registered (cleared on unregister) so the per-call identity check is
+     * O(1) instead of a walk of every registered thread under the manager lock. Unregistered
+     * handles move to retired and are freed with the manager, so a stale handle stays readable. */
+    struct guest_os_tls_manager *manager;
 };
 struct guest_os_tls_manager {
     pthread_mutex_t mutex;
     struct tls_slot slots[GUEST_OS_TLS_SLOT_COUNT];
-    struct guest_os_tls_thread *threads, *cleaning;
+    struct guest_os_tls_thread *threads, *cleaning, *retired;
     int quarantined;
 };
 static struct guest_os_tls_result result(enum guest_os_tls_status status) {
@@ -33,6 +37,11 @@ static struct guest_os_tls_thread **thread_link(guest_os_tls_manager *m, guest_o
     struct guest_os_tls_thread **p = &m->threads;
     while (*p && *p != t) p = &(*p)->next;
     return p;
+}
+/* Registered identity check for the value paths: the owner pointer is only written under the
+ * manager lock, and unregistered handles are retired (not freed), so the read is valid. */
+static int thread_registered(guest_os_tls_manager *m, guest_os_tls_thread *t) {
+    return t && t->manager == m;
 }
 static void report(guest_os_tls_thread *t, struct guest_os_tls_cleanup_report *out) {
     *out = t->report;
@@ -58,7 +67,7 @@ struct guest_os_tls_result guest_os_tls_register(guest_os_tls_manager *m, guest_
     struct guest_os_tls_result r = lock(m);
     if (r.status != GUEST_OS_TLS_OK) { free(t); return r; }
     if (m->quarantined) { r.status = GUEST_OS_TLS_QUARANTINED; free(t); }
-    else { t->state = GUEST_OS_TLS_THREAD_LIVE; t->next = m->threads; m->threads = t; *out = t; }
+    else { t->state = GUEST_OS_TLS_THREAD_LIVE; t->manager = m; t->next = m->threads; m->threads = t; *out = t; }
     pthread_mutex_unlock(&m->mutex);
     return r;
 }
@@ -101,7 +110,7 @@ struct guest_os_tls_result guest_os_tls_get(guest_os_tls_manager *m, guest_os_tl
     if (s != GUEST_OS_TLS_OK) return result(s);
     struct guest_os_tls_result r = lock(m);
     if (r.status != GUEST_OS_TLS_OK) return r;
-    if (!*thread_link(m,t)) r.status = GUEST_OS_TLS_NOT_REGISTERED;
+    if (!thread_registered(m,t)) r.status = GUEST_OS_TLS_NOT_REGISTERED;
     else *out = t->values[slot];
     pthread_mutex_unlock(&m->mutex);
     return r;
@@ -112,7 +121,7 @@ struct guest_os_tls_result guest_os_tls_set(guest_os_tls_manager *m, guest_os_tl
     if (s != GUEST_OS_TLS_OK) return result(s);
     struct guest_os_tls_result r = lock(m);
     if (r.status != GUEST_OS_TLS_OK) return r;
-    if (!*thread_link(m,t)) r.status = GUEST_OS_TLS_NOT_REGISTERED;
+    if (!thread_registered(m,t)) r.status = GUEST_OS_TLS_NOT_REGISTERED;
     else if (m->quarantined) r.status = GUEST_OS_TLS_QUARANTINED;
     else if (t->state != GUEST_OS_TLS_THREAD_LIVE && t->state != GUEST_OS_TLS_THREAD_CLEANING) r.status = GUEST_OS_TLS_BAD_STATE;
     else t->values[slot] = value;
@@ -141,7 +150,7 @@ struct guest_os_tls_result guest_os_tls_report(guest_os_tls_manager *m, guest_os
     if (!out) return result(GUEST_OS_TLS_INVALID);
     struct guest_os_tls_result r = lock(m);
     if (r.status != GUEST_OS_TLS_OK) return r;
-    if (!*thread_link(m,t)) r.status = GUEST_OS_TLS_NOT_REGISTERED;
+    if (!thread_registered(m,t)) r.status = GUEST_OS_TLS_NOT_REGISTERED;
     else report(t,out);
     pthread_mutex_unlock(&m->mutex);
     return r;
@@ -152,7 +161,7 @@ struct guest_os_tls_result guest_os_tls_cleanup(guest_os_tls_manager *m, guest_o
     if (!out) return result(GUEST_OS_TLS_INVALID);
     struct guest_os_tls_result r = lock(m);
     if (r.status != GUEST_OS_TLS_OK) return r;
-    if (!*thread_link(m,t)) { r.status = GUEST_OS_TLS_NOT_REGISTERED; goto done; }
+    if (!thread_registered(m,t)) { r.status = GUEST_OS_TLS_NOT_REGISTERED; goto done; }
     if (m->quarantined) { r.status = GUEST_OS_TLS_QUARANTINED; goto copy; }
     if (m->cleaning) { r.status = GUEST_OS_TLS_BUSY; goto copy; }
     if (t->state != GUEST_OS_TLS_THREAD_LIVE) { r.status = GUEST_OS_TLS_BAD_STATE; goto copy; }
@@ -210,7 +219,7 @@ struct guest_os_tls_result guest_os_tls_unregister(guest_os_tls_manager *m, gues
     else if (m->quarantined) r.status = GUEST_OS_TLS_QUARANTINED;
     else if (t->state == GUEST_OS_TLS_THREAD_CLEANING) r.status = GUEST_OS_TLS_BUSY;
     else if (t->state != GUEST_OS_TLS_THREAD_CLEANED) r.status = GUEST_OS_TLS_BAD_STATE;
-    else { *link = t->next; free(t); }
+    else { *link = t->next; t->manager = NULL; t->next = m->retired; m->retired = t; }
     pthread_mutex_unlock(&m->mutex);
     return r;
 }
@@ -218,7 +227,10 @@ struct guest_os_tls_result guest_os_tls_destroy(guest_os_tls_manager *m) {
     struct guest_os_tls_result r = lock(m);
     if (r.status != GUEST_OS_TLS_OK) return r;
     if (m->threads || m->cleaning) { pthread_mutex_unlock(&m->mutex); return result(GUEST_OS_TLS_BUSY); }
+    struct guest_os_tls_thread *retired = m->retired;
+    m->retired = NULL;
     pthread_mutex_unlock(&m->mutex);
+    while (retired) { struct guest_os_tls_thread *next = retired->next; free(retired); retired = next; }
     int e = pthread_mutex_destroy(&m->mutex);
     if (e) return (struct guest_os_tls_result){GUEST_OS_TLS_SYSTEM_ERROR,e};
     free(m);

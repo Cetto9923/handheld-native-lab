@@ -64,6 +64,8 @@ nso_module *guest_process_module(guest_process *);
 void guest_process_update_render_policy(void);
 /* Target frame rate requested by user / profile (0 = unthrottled/default). */
 void guest_process_set_target_fps(int fps);
+/* Dynamic-resolution floor in percent of the display render target (0 = keep the built-in 60%). */
+void guest_process_set_render_min_pct(int pct);
 int guest_process_get_target_fps(void);
 struct nso_result guest_process_run(guest_process *,guest_process_callback,void *arg,void **value);
 /* Known integer/pointer register ABI only. Up to six explicit scalar arguments,

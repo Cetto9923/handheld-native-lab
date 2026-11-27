@@ -1181,6 +1181,20 @@ static uintptr_t render_policy_data(guest_process *p, uintptr_t offset,
 
 static int s_guest_target_fps = 0;
 
+static int s_render_min_pct = 0;
+
+void guest_process_set_render_min_pct(int pct) {
+    __atomic_store_n(&s_render_min_pct, pct, __ATOMIC_RELAXED);
+}
+
+static int render_min_pct(void) {
+    int pct = __atomic_load_n(&s_render_min_pct, __ATOMIC_RELAXED);
+    if (pct <= 0) return 60;   /* unset: the built-in floor, unchanged from before */
+    if (pct < 30) pct = 30;
+    if (pct > 80) pct = 80;
+    return pct;
+}
+
 void guest_process_set_target_fps(int fps) {
     __atomic_store_n(&s_guest_target_fps, fps >= 0 ? fps : 0, __ATOMIC_RELAXED);
 }
@@ -1243,7 +1257,7 @@ void guest_process_update_render_policy(void) {
         target_budget = 1000.0f / (float)target_fps;
     }
     const uintptr_t addresses[] = { maximum, minimum, budget };
-    float values[] = { 80.0f, 60.0f, target_budget };
+    float values[] = { 80.0f, (float)render_min_pct(), target_budget };
     float previous[3][2];
     int previous_mode[2];
     int valid = 1, changed = 0;

@@ -290,9 +290,12 @@ struct {
 } state;
 struct Shader {
     unsigned stage = 0;
-    mutable const std::map<int,RegisteredTexture> *integer_texture_table = nullptr;
-    mutable int integer_texture_id = 0;
-    mutable const RegisteredTexture *integer_texture_record = nullptr;
+    struct IntegerTexSlot {
+        const std::map<int,RegisteredTexture> *table = nullptr;
+        int id = 0;
+        const RegisteredTexture *record = nullptr;
+    };
+    mutable IntegerTexSlot integer_texture_cache[32]{};
 };
 struct xbg_shader_binding {
     unsigned type = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;

@@ -930,16 +930,26 @@ static int nvn_vulkan_create_window_surface(nvn_device_state *device, void *nati
      *
      * The community port of this game (d2r-mobile, dm/android/vulkan_present.cpp,
      * revision f1e4b081af8ea65d95f0bf490a568cb657c3917e, MIT) creates its
-     * swapchain with VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR for the same reason,
-     * and falls back to the first mode the device reports when OPAQUE is not
-     * offered. That fallback is kept here.
+     * swapchain with VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR for the same reason.
      *
-     * Only the tablet profile changes. The handheld presents by rendering
-     * straight into the swapchain image, so no blit carries an alpha channel
-     * there, and its composite alpha stays exactly as it was. */
-    if (tablet_profile && tablet_profile[0] == '1') {
-        swapchain_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-        if (!(capabilities.supportedCompositeAlpha & swapchain_info.compositeAlpha)) {
+     * Both profiles ask for OPAQUE when the device offers it. Every profile,
+     * handheld included, presents through the same blit, so every profile
+     * carries that alpha zero; INHERIT left it to whatever mode the window had
+     * at the time, and entering a small/freeform window and coming back, or
+     * returning from another app, could leave the window composited with alpha
+     * and the world invisible (only the HUD survives) even though the game
+     * keeps presenting. OPAQUE states the intent instead of inheriting a window
+     * flag. When the device does not offer OPAQUE the window's own mode wins
+     * (the pre-existing behaviour), then any supported bit.
+     * FFRS_PRESENT_INHERIT_ALPHA=1 restores the old mode. */
+    const char *inherit_alpha = getenv("FFRS_PRESENT_INHERIT_ALPHA");
+    swapchain_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    if ((inherit_alpha && inherit_alpha[0] == '1') ||
+        !(capabilities.supportedCompositeAlpha & swapchain_info.compositeAlpha)) {
+        swapchain_info.compositeAlpha = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
+        if ((capabilities.supportedCompositeAlpha & swapchain_info.compositeAlpha)) {
+            /* keep the window's own mode */
+        } else {
             for (uint32_t bit = 1; bit <= 8; bit <<= 1) {
                 if (capabilities.supportedCompositeAlpha & bit) {
                     swapchain_info.compositeAlpha = (VkCompositeAlphaFlagBitsKHR)bit;
@@ -947,11 +957,10 @@ static int nvn_vulkan_create_window_surface(nvn_device_state *device, void *nati
                 }
             }
         }
-    } else {
-        swapchain_info.compositeAlpha = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
     }
     fprintf(stderr, "[nvn] vulkan: composite alpha selected=%#x supported=%#x "
-                    "(tablet=%d; opaque game layer ignores the alpha of the copied frame)\n",
+                    "(tablet=%d; the game's frame carries alpha zero over its world, so the "
+                    "compositor must not read alpha)\n",
             (unsigned)swapchain_info.compositeAlpha,
             (unsigned)capabilities.supportedCompositeAlpha,
             (tablet_profile && tablet_profile[0] == '1') ? 1 : 0);
@@ -1222,6 +1231,16 @@ static int nvn_vulkan_present_image(nvn_device_state *device, void *image, uint3
     }
 
     void *cur_win = nso_host_native_window_get();
+    /* One line per transition, so a log from a stuck session says whether the
+     * Activity had a window at all and whether the swapchain was rebuilt. */
+    static int present_window_state = -1;
+    if ((cur_win != NULL) != present_window_state) {
+        present_window_state = cur_win != NULL;
+        fprintf(stderr, "[nvn] vulkan: platform window %s (generation %llu); swapchain %s\n",
+                present_window_state ? "published" : "gone",
+                (unsigned long long)nso_host_native_window_generation(),
+                st->swapchain == VK_NULL_HANDLE ? "will be built" : "kept");
+    }
     if (!cur_win) {
         /* App is in background or surface destroyed by Android lifecycle */
         if (st->swapchain != VK_NULL_HANDLE) {
@@ -1291,7 +1310,7 @@ static int nvn_vulkan_present_image(nvn_device_state *device, void *image, uint3
 
     {
         static uint32_t s_present_log_count = 0;
-        if (s_present_log_count < 5 || (s_present_log_count % 300 == 0 && s_present_log_count <= 1800)) {
+        if (s_present_log_count < 5 || s_present_log_count % 300 == 0) {
             /* The border the picture leaves is reported with the picture
              * itself: on a 4:3 panel a 16:9 game leaves two black bars, and
              * the log says how big they are instead of leaving it to be

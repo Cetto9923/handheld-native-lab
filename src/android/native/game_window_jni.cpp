@@ -80,9 +80,12 @@ void ReleasePublishedWindow() {
 
 }  // namespace
 
+extern "C" __attribute__((weak)) void xbg_game_set_focus(int focused);
+
 extern "C" JNIEXPORT void JNICALL
 Java_org_ffrs_diagnostic_GameWindowNative_setFocusState(JNIEnv*, jclass, jint state) {
     nso_host_oe_set_host_focus(static_cast<uint32_t>(state));
+    if (xbg_game_set_focus) xbg_game_set_focus(state == 1 ? 1 : 0);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL

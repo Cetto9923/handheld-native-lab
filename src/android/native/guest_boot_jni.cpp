@@ -134,7 +134,6 @@ void* GuestThreadMain(void* opaque) {
     if (profile_tablet && profile_tablet[0] == '1') {
         setenv("DM_GFX_WARP32", "1", 1);
         setenv("DM_GFX_QUAD_DERIVATIVES", "1", 1);
-        setenv("DM_GFX_NATIVE_BC", "1", 1);
     }
     RedirectOutput(request->log_path);
     char device_model[PROP_VALUE_MAX] = {};

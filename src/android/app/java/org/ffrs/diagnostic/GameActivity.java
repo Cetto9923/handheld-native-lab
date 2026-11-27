@@ -1128,7 +1128,19 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
          * VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR.
          *
          * The handheld keeps RGBA_8888, the format it has always used. */
-        if (selectedDeviceProfile != null && selectedDeviceProfile.usesDockedRendering()) {
+        // Opaque on every profile. The game's final frame carries alpha zero over the whole 3D world (the HUD pass is
+        // the only one that writes alpha), and the RG477M's driver reports only VK_COMPOSITE_ALPHA_INHERIT, so the
+        // swapchain cannot state "ignore alpha": the compositor takes the alpha mode from this Surface. RGBA_8888 left
+        // the world invisible whenever the window was composited with alpha (entering a small/freeform window and
+        // coming back, or returning from another app) while the game kept presenting. RGBX_8888 is the opaque variant
+        // of the same layout; files/gfx-surface-rgba restores the old format for an A/B.
+        boolean opaqueSurface = true;
+        try (java.io.FileInputStream marker = new java.io.FileInputStream(
+                new java.io.File(getExternalFilesDir(null), "gfx-surface-rgba"))) {
+            opaqueSurface = marker.read() != '1';
+        } catch (java.io.IOException ignored) {
+        }
+        if (opaqueSurface || (selectedDeviceProfile != null && selectedDeviceProfile.usesDockedRendering())) {
             surface_view.getHolder().setFormat(PixelFormat.RGBX_8888);
         } else {
             surface_view.getHolder().setFormat(PixelFormat.RGBA_8888);
@@ -2600,6 +2612,26 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         return 0;
     }
 
+    /**
+     * Display rate requested by files/gfx-display-hz (0 = let the frame-rate rules decide).
+     * A 40 FPS frame is 25 ms; on a 60 Hz panel that lands between the 33.3/16.7 ms grid slots,
+     * so a title that holds ~25 ms alternates and reads as judder. The 120 Hz mode presents it
+     * every third refresh. This only picks a display mode: it changes neither the render
+     * resolution nor the game's own frame pacing.
+     */
+    private int requestedDisplayHz() {
+        File dir = getExternalFilesDir(null);
+        if (dir == null) return 0;
+        try (java.util.Scanner input = new java.util.Scanner(new File(dir, "gfx-display-hz"))) {
+            if (input.hasNextInt()) {
+                int value = input.nextInt();
+                if (value >= 0 && value <= 240) return value;
+            }
+        } catch (java.io.FileNotFoundException ignored) {
+        }
+        return 0;
+    }
+
     private static void migrateDefaultFramePacing(File dir) {
         File migrated = new File(dir, "gfx-unlocked-default-v1");
         if (migrated.exists()) return;
@@ -2730,7 +2762,25 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             lp.preferredDisplayModeId = 0;
             lp.preferredRefreshRate = 0.0f;
             Display display = getWindowManager().getDefaultDisplay();
-            if ((target == 0 || target > 30) && display != null) {
+            int displayHz = requestedDisplayHz();
+            boolean displayForced = displayHz > 0 && display != null;
+            if (displayForced) {
+                // Marker-driven: exact or nearest supported rate at the panel's own resolution.
+                Display.Mode current = display.getMode();
+                float best = Float.MAX_VALUE;
+                for (Display.Mode mode : display.getSupportedModes()) {
+                    if (mode.getPhysicalWidth() != current.getPhysicalWidth()
+                            || mode.getPhysicalHeight() != current.getPhysicalHeight()) continue;
+                    float distance = Math.abs(mode.getRefreshRate() - displayHz);
+                    if (distance < best) {
+                        best = distance;
+                        requestedDisplayHz = mode.getRefreshRate();
+                        lp.preferredDisplayModeId = mode.getModeId();
+                    }
+                }
+                lp.preferredRefreshRate = requestedDisplayHz;
+            }
+            if (!displayForced && (target == 0 || target > 30) && display != null) {
                 Display.Mode current = display.getMode();
                 boolean compatibleOnly = selectedFrameRate() > 0;
                 File dataDir = getExternalFilesDir(null);
@@ -3398,6 +3448,14 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         Log.i(TAG, "guest_start setup_view_hidden");
         Log.i(TAG, "game_dir=" + game_dir);
         String op_mode = getIntent() == null ? null : getIntent().getStringExtra("operation_mode");
+        /* The device profile names the rendering tier, and the guest applies that
+         * tier only through its operation mode. Keep the marker in step with the
+         * profile on every launch: a stale "1" from an old intent made the RG477M
+         * handheld profile run docked and pick a 1024x576 DRS target instead of
+         * the handheld one, which cost the airship scene about 25% of its frames. */
+        if ((op_mode == null || op_mode.isEmpty()) && selectedDeviceProfile != null) {
+            op_mode = selectedDeviceProfile.usesDockedRendering() ? "1" : "0";
+        }
         if (op_mode != null && !op_mode.isEmpty() && files != null) {
             try {
                 java.io.FileOutputStream fos = new java.io.FileOutputStream(new File(files, "oe-operation-mode"));

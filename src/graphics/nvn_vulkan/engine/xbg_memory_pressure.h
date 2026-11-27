@@ -30,6 +30,10 @@ inline bool thor_small_memory(const char *model, uint32_t vendor, uint32_t devic
            total >= 6 * 1024 * mib && total <= 8 * 1024 * mib;
 }
 
+inline bool general_compact_memory(uint64_t total) {
+    return total > 0 && total <= 8500 * mib;
+}
+
 inline Snapshot read_snapshot(const char *status = "/proc/self/status",
                               const char *meminfo = "/proc/meminfo") {
     Snapshot snapshot;
@@ -76,8 +80,19 @@ inline uint64_t resident_limit_bytes(const Snapshot &snapshot,
                                     uint64_t configured = default_resident_limit) {
     // A device-specific budget also requires physical RAM headroom. Missing
     // or insufficient capacity uses the reported phone-exit budget.
-    if (snapshot.total >= 12ull * 1024 * mib) {
-        return std::min<uint64_t>(6144ull * mib, snapshot.total / 2);
+    // RG477M reports MemTotal just under 12 GiB (11.83 GiB after carve-outs);
+    // a 12 GiB threshold skipped this branch, so its model budget fell through
+    // and the engine ran its scene working set (~4.6-5.2 GiB) inside the warn
+    // band, reclaiming every few frames. 11 GiB covers 11.5-12 GiB handhelds
+    // while 8 GiB phones keep the configured path.
+    // The 720P airship working set peaks at ~6.0 GiB RSS once memo and arenas
+    // stay warm, so a total/2 cap (5912 MiB here) put the steady state at or
+    // past the level-2 line: the wipe cost 653 ms, landed in a slower rebuilt
+    // state, and RSS re-crossed within minutes. Budget to 2/3 of physical RAM
+    // capped at 7.5 GiB; the handheld runs the game alone, so ~4.3 GiB still
+    // stays outside the process at peak.
+    if (snapshot.total >= 11ull * 1024 * mib) {
+        return std::min<uint64_t>(7680ull * mib, snapshot.total / 3 * 2);
     }
     if (configured > default_resident_limit && configured <= snapshot.total / 2)
         return configured;
@@ -135,8 +150,11 @@ struct Policy {
         const uint64_t interval = level == 2 ? 2000000000ull : 5000000000ull;
         if (reclaimed && level <= last_level && now >= last_reclaim) {
             const uint64_t baseline = std::max(resident_before, resident_after);
+            // Resident jitters by ~±80 MiB around the baseline; a 64 MiB growth
+            // test kept re-arming the loop and repeated a reclaim that had just
+            // been measured as useless, every retry_interval.
             const bool grew = measured && snapshot.resident >= baseline &&
-                              snapshot.resident - baseline >= 64 * mib;
+                              snapshot.resident - baseline >= 256 * mib;
             // A large live working set can remain above the RSS threshold.
             // Rebuilding and discarding it every few seconds adds repeated stalls.
             if (measured && !requested && !system_severity(snapshot) && !grew)

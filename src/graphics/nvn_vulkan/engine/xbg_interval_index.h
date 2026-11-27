@@ -77,6 +77,19 @@ struct XbgIntervalIndex {
         ++erases;
     }
     void clear(){root=0;nodes.clear();nodes.push_back(Node{});flat.clear();freelist.clear();invalid_ranges=0;}
+    bool replace_id_at(uint64_t start,uint64_t bytes,uint64_t new_id){
+        if(!xbg_wb_range_valid(start,bytes))return false;
+        const uint64_t end=start+bytes;
+        for(size_t i=0,n=flat.size();i<n;++i){
+            if(flat[i].start==start && flat[i].end==end){
+                const uint64_t old_id=flat[i].id;
+                erase(old_id,start,bytes);
+                insert(new_id,start,bytes);
+                return true;
+            }
+        }
+        return false;
+    }
 
     // Newest overlapping entry (the greatest id). False when nothing overlaps.
     bool newest(uint64_t address,uint64_t bytes,uint64_t &out_id){

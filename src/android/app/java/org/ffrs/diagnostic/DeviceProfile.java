@@ -118,13 +118,11 @@ final class DeviceProfile {
         if (chip.startsWith("mt69") || chip.startsWith("kirin")) {
             return new DeviceProfile("phone_mali", 1080, 60);
         }
-        // Honor 400 Pro, OnePlus Ace / Pad Pro (SM8750 / SM8750P), Snapdragon 8 series, and general phones.
+        // Known Snapdragon 8/7+ flagships get the 1080p phone profile; unfamiliar or mid-range SoCs fall back safely to 720p.
         if (chip.equals("sm8650") || socMatchesFamily(chip, "sm8750") || socMatchesFamily(chip, "sm8850")
                 || chip.equals("sm8550")
                 || chip.equals("sm8475") || chip.equals("sm8450") || chip.equals("sm7675")
-                || chip.equals("sm7475")
-                || (!chip.isEmpty() && !chip.equals("mt6897") && !chip.equals("sm8635")
-                    && !chip.equals("sm86350") && !chip.equals("sm86500") && smallestWidthDp > 0)) {
+                || chip.equals("sm7475")) {
             return new DeviceProfile("phone_sd8g3", 1080, 60);
         }
         return new DeviceProfile("handheld_mid", 720, 30);
